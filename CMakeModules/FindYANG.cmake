@@ -1,7 +1,7 @@
-#  YANG_FOUND - System has CMocka
-#  YANG_INCLUDE_DIRS - The CMocka include directories
-#  YANG_LIBRARIES - The libraries needed to use CMocka
-#  YANG_DEFINITIONS - Compiler switches required for using CMocka
+#  YANG_FOUND - System has libyang
+#  YANG_INCLUDE_DIRS - The libyang include directories
+#  YANG_LIBRARIES - The libraries needed to use libyang
+#  YANG_DEFINITIONS - Compiler switches required for using libyang
 
 find_package(PkgConfig)
 pkg_check_modules(PC_YANG QUIET yang)
