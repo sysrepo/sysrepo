@@ -58,8 +58,7 @@ endif(DOXYGEN_FOUND)
 
 
 #install
-install(FILES sysrepo-config.cmake DESTINATION lib/myproj)
-configure_file("libsysrepo.pc.in" "libsysrepo.pc" @ONLY)
+install(FILES sysrepo-config.cmake DESTINATION lib)
 
 find_package(PkgConfig)
 if(PKG_CONFIG_FOUND)
