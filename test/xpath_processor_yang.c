@@ -34,7 +34,7 @@
 int setup(void **state){
     struct ly_ctx *ctx;
     ctx = ly_ctx_new(TEST_DATA_DIR);
-    struct lys_module *module;
+    const struct lys_module *module;
     FILE *fd = fopen(MODULE_PATH,"r");
     if (fd == NULL){
          puts("Unable to open a file.");
@@ -81,7 +81,7 @@ void xpath_set_node(void **state){
     char *moduleName = CPY_TOKEN(l,GET_NODE_NS_INDEX(l,0));
     assert_non_null(moduleName);
 
-    struct lys_module *module = ly_ctx_get_module(ctx,moduleName,NULL);
+    const struct lys_module *module = ly_ctx_get_module(ctx,moduleName,NULL);
     assert_non_null(module);
 
 
@@ -153,7 +153,7 @@ void xpath_sch_match(void **state){
     char *moduleName = CPY_TOKEN(l,GET_NODE_NS_INDEX(l,0));
     assert_non_null(moduleName);
 
-    struct lys_module *module = ly_ctx_get_module(ctx,moduleName,NULL);
+    const struct lys_module *module = ly_ctx_get_module(ctx,moduleName,NULL);
     assert_non_null(module);
 
     struct lys_node *node = module->data;
