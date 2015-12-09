@@ -12,4 +12,11 @@ set(SYSREPO-ENGINE-SOURCES
 
 #shared and static library
 add_library(sysrepo ${SYSREPO-SOURCES})
+add_library(sysrepo_so SHARED ${SYSREPO-SOURCES})
+SET_TARGET_PROPERTIES(sysrepo_so PROPERTIES
+              OUTPUT_NAME sysrepo CLEAN_DIRECT_OUTPUT 1)
+
 add_library(sysrepo-engine ${SYSREPO-ENGINE-SOURCES})
+add_library(sysrepo-engine_so SHARED ${SYSREPO-ENGINE-SOURCES})
+SET_TARGET_PROPERTIES(sysrepo-engine_so PROPERTIES
+              OUTPUT_NAME sysrepo-engine CLEAN_DIRECT_OUTPUT 1)
