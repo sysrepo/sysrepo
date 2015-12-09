@@ -1,0 +1,27 @@
+#  YANG_FOUND - System has CMocka
+#  YANG_INCLUDE_DIRS - The CMocka include directories
+#  YANG_LIBRARIES - The libraries needed to use CMocka
+#  YANG_DEFINITIONS - Compiler switches required for using CMocka
+
+find_package(PkgConfig)
+pkg_check_modules(PC_YANG QUIET yang)
+set(YANG_DEFINITIONS ${PC_YANG_CFLAGS_OTHER})
+
+find_path(YANG_INCLUDE_DIR libyang/libyang.h
+          HINTS ${PC_YANG_INCLUDEDIR} ${PC_YANG_INCLUDE_DIRS}
+          PATH_SUFFIXES yang )
+
+find_library(YANG_LIBRARY NAMES yang 
+             HINTS ${PC_YANG_LIBDIR} ${PC_YANG_LIBRARY_DIRS} )
+
+set(YANG_LIBRARIES ${YANG_LIBRARY} )
+set(YANG_INCLUDE_DIRS ${YANG_INCLUDE_DIR} )
+
+include(FindPackageHandleStandardArgs)
+# handle the QUIETLY and REQUIRED arguments and set YANG_FOUND to TRUE
+# if all listed variables are TRUE
+find_package_handle_standard_args(yang  DEFAULT_MSG
+                                  YANG_LIBRARY YANG_INCLUDE_DIR)
+
+mark_as_advanced(YANG_INCLUDE_DIR YANG_LIBRARY )
+
