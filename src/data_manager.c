@@ -3,6 +3,7 @@
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
  * @brief 
  *
+ * @copyright
  * Copyright 2015 Cisco Systems, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
