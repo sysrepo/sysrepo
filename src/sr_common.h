@@ -1,7 +1,8 @@
 /**
  * @file sr_common.h
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
- * @brief 
+ * @brief Sysrepo common utilities.
+ *
  * @copyright
  * Copyright 2015 Cisco Systems, Inc.
  *
@@ -18,12 +19,10 @@
  * limitations under the License.
  */
 
-
 #ifndef SRC_SR_COMMON_H_
 #define SRC_SR_COMMON_H_
 
-
-
-
+#include "sr_error.h"
+#include "sr_logger.h"
 
 #endif /* SRC_SR_COMMON_H_ */

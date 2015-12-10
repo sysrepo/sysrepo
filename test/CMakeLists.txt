@@ -22,4 +22,4 @@ endmacro(ADD_UNIT_TEST)
 ADD_UNIT_TEST(test_parser xpath_processor_parser.c "" 1)
 ADD_UNIT_TEST(test_yang xpath_processor_yang.c "yang" 0)
 
-
+ADD_UNIT_TEST(test_session_manager session_manager.c "" 1)

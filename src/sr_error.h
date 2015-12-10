@@ -1,7 +1,8 @@
 /**
  * @file sr_error.h
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
- * @brief 
+ * @brief Sysrepo error definitions.
+ *
  * @copyright
  * Copyright 2015 Cisco Systems, Inc.
  *
@@ -18,12 +19,18 @@
  * limitations under the License.
  */
 
-
 #ifndef SRC_SR_ERROR_H_
 #define SRC_SR_ERROR_H_
 
-
-
-
+/**
+ * Sysrepo error codes.
+ */
+typedef enum sr_error_e {
+  SR_ERR_OK = 0,       /**< No error. */
+  SR_ERR_INVAL_ARG,    /**< Invalid argument. */
+  SR_ERR_NOMEM,        /**< Not enough memory. */
+  SR_ERR_NOT_FOUND,    /**< Item not found. */
+  SR_ERR_INTERNAL,     /**< Other internal error. */
+} sr_error_t;
 
 #endif /* SRC_SR_ERROR_H_ */
