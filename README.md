@@ -1,14 +1,6 @@
 
 ## Before install
 
-###LibYang
-- sudo apt-get install libpcre3-dev
-- git clone https://github.com/CESNET/libyang.git
-- cd libyang; mkdir build; cd build
-- cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr ..
-- make
-- sudo make install
-
 ###CMocka
 
 - git clone git://git.cryptomilk.org/projects/cmocka.git
@@ -16,6 +8,15 @@
 - git checkout tags/cmocka-1.0.1
 - mkdir build; cd build
 - cmake -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_BUILD_TYPE=Debug ..
+- make
+- sudo make install
+
+
+###LibYang
+- sudo apt-get install libpcre3-dev
+- git clone https://github.com/CESNET/libyang.git
+- cd libyang; mkdir build; cd build
+- cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr ..
 - make
 - sudo make install
 
