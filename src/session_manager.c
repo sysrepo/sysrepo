@@ -36,7 +36,7 @@
 #define SM_FD_INVALID -1
 
 /**
- * Session Manager context.
+ * @brief Session Manager context.
  */
 typedef struct sm_ctx_s {
     avl_tree_t *session_id_avl;  /**< avl tree for fast session lookup by session ID. */
