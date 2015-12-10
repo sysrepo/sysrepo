@@ -7,5 +7,4 @@ Description: @SYSREPO_DESC@
 Version: @SYSREPO_VERSION@
 Requires.private: libyang
 Libs: -L${libdir} -lsysrepo
-Libs.private: 
 Cflags: -I${includedir}
