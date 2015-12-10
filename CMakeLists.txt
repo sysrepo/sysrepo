@@ -58,7 +58,8 @@ endif(DOXYGEN_FOUND)
 
 
 #install
-install(FILES sysrepo-config.cmake DESTINATION lib)
+#install(FILES sysrepo-config.cmake DESTINATION lib)
+
 
 find_package(PkgConfig)
 if(PKG_CONFIG_FOUND)

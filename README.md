@@ -25,7 +25,7 @@
 - cd sr
 - mkdir build
 - cd build
-- cmake ..
+- cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr ..
 - make
 - ctest
 - make doc
