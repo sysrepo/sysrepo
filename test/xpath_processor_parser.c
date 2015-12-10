@@ -30,28 +30,28 @@
 
 
 int setup(void **state){
-    location_id_p l;
-    assert_int_equal(0, xpath_to_location_id(XPATH_TO_PARSE, &l));
+    xp_loc_id_p l;
+    assert_int_equal(0, xp_char_to_loc_id(XPATH_TO_PARSE, &l));
     (*state) = (void *) l;
     return 0;
 }
 
 int teardown(void **state){
-    location_id_p l = (location_id_p) *state;
-    free_location_id(l);
+    xp_loc_id_p l = (xp_loc_id_p) *state;
+    xp_free_loc_id(l);
     return 0;
 }
 
 void check_tokens(void **state){
-    location_id_p l = (location_id_p) *state;
-    assert_true(GET_TOKEN(l,0)==SLASH);
-    assert_true(GET_TOKEN(l,1)==NAMESPACE);
-    assert_true(GET_TOKEN(l,2)==COLON);
-    assert_true(GET_TOKEN(l,3)==NODE);
+    xp_loc_id_p l = (xp_loc_id_p) *state;
+    assert_true(GET_TOKEN(l,0)==T_SLASH);
+    assert_true(GET_TOKEN(l,1)==T_NS);
+    assert_true(GET_TOKEN(l,2)==T_COLON);
+    assert_true(GET_TOKEN(l,3)==T_NODE);
 }
 
 void check_nodes(void **state){
-    location_id_p l = (location_id_p) *state;
+    xp_loc_id_p l = (xp_loc_id_p) *state;
     assert_true(l->node_count  == 3);
 
     assert_true(COMPARE_NODE(l,0,"container"));
@@ -63,7 +63,7 @@ void check_nodes(void **state){
 }
 
 void check_ns(void **state){
-    location_id_p l = (location_id_p) *state;
+    xp_loc_id_p l = (xp_loc_id_p) *state;
 
     assert_true(HAS_NS(l,0));
     assert_int_equal(1,GET_NODE_NS_INDEX(l,0));
@@ -74,9 +74,9 @@ void check_ns(void **state){
 }
 
 void check_keys(void **state){
-    location_id_p l = (location_id_p) *state;
-    assert_int_equal(node_key_count(l,0),0);
-    assert_int_equal(node_key_count(l,1),2);
+    xp_loc_id_p l = (xp_loc_id_p) *state;
+    assert_int_equal(xp_node_key_count(l,0),0);
+    assert_int_equal(xp_node_key_count(l,1),2);
 
     assert_true(HAS_KEY_NAMES(l,1));
 
@@ -98,7 +98,7 @@ void check_keys(void **state){
 }
 
 void test1(void **state){
-    location_id_p l = (location_id_p) *state;
+    xp_loc_id_p l = (xp_loc_id_p) *state;
 
     for(int i=0; i < l->node_count; i++){
         puts(GET_NODE_START(l,i));
@@ -111,19 +111,19 @@ void test1(void **state){
 }
 
 void check_parsing(void **state){
-   location_id_p l;
-   assert_int_not_equal(0,xpath_to_location_id("abc", &l));
+   xp_loc_id_p l;
+   assert_int_not_equal(0,xp_char_to_loc_id("abc", &l));
    /* path must not end with slash */
-   assert_int_not_equal(0,xpath_to_location_id("/model:leaf/", &l));
+   assert_int_not_equal(0,xp_char_to_loc_id("/model:leaf/", &l));
 
-   assert_int_not_equal(0,xpath_to_location_id("//container", &l));
-   assert_int_not_equal(0,xpath_to_location_id("/ns:cont/list[", &l));
+   assert_int_not_equal(0,xp_char_to_loc_id("//container", &l));
+   assert_int_not_equal(0,xp_char_to_loc_id("/ns:cont/list[", &l));
    /* apostroph can not be ommitted */
-   assert_int_not_equal(0,xpath_to_location_id("/cont/l[k=abc]", &l));
-   assert_int_not_equal(0,xpath_to_location_id("/c/l[abc]", &l));
+   assert_int_not_equal(0,xp_char_to_loc_id("/cont/l[k=abc]", &l));
+   assert_int_not_equal(0,xp_char_to_loc_id("/c/l[abc]", &l));
 
-   assert_int_not_equal(0,xpath_to_location_id("/ns:ns:c/l[abc]", &l));
-   assert_int_not_equal(0,xpath_to_location_id("/c/l[abc]", &l));
+   assert_int_not_equal(0,xp_char_to_loc_id("/ns:ns:c/l[abc]", &l));
+   assert_int_not_equal(0,xp_char_to_loc_id("/c/l[abc]", &l));
 }
 
 int main(){

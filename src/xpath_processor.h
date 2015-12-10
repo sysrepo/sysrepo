@@ -22,42 +22,43 @@
 #ifndef SRC_XPATH_PROCESSOR_H_
 #define SRC_XPATH_PROCESSOR_H_
 
-#define MAX_TOKENS 100
+#define MAX_TOKENS 500
 
 #include <string.h>
 #define _POSIX_C_SOURCE 200809L
 
 
-typedef enum token{
-    NAMESPACE,
-    NODE,
-    KEY_NAME,
-    KEY_VALUE,
+typedef enum xp_token_e{
+    T_NS,
+    T_NODE,
+    T_KEY_NAME,
+    T_KEY_VALUE,
 
-    /*optional*/
-    SLASH,
-    COLON,
-    LSQB,
-    EQUAL,
-    RSQB,
-    APOSTROPH,
-    ZERO,
+    T_SLASH,
+    T_COLON,
+    T_LSQB,
+    T_EQUAL,
+    T_RSQB,
+    T_APOS,
+    T_ZERO,
 
-}token_t;
+}xp_token_t;
 
-typedef struct location_id_s{
-    token_t *tokens;
+typedef struct xp_loc_id_s{
+    xp_token_t *tokens;
     size_t *positions;
+    size_t cnt;
     size_t *node_index;
     size_t node_count;
-    size_t cnt;
     char *xpath;
-}location_id_t;
-typedef location_id_t * location_id_p;
+}xp_loc_id_t;
+typedef xp_loc_id_t * xp_loc_id_p;
 
 
-int xpath_to_location_id(char *xpath, location_id_p *loc);
-void free_location_id(location_id_p l);
+int xp_char_to_loc_id(char *xpath, xp_loc_id_p *loc);
+void xp_free_loc_id(xp_loc_id_p l);
+int xp_node_key_count(xp_loc_id_p l, size_t node);
+void xp_print_location_id(xp_loc_id_p l);
 
 /*
  * -start returns pointer to XPATH
@@ -82,21 +83,19 @@ void free_location_id(location_id_p l);
 #define COMPARE_TOKEN_STR(L,ORD,VAL) (strncmp(GET_TOKEN_START(L,ORD),(VAL), TOKEN_LENGTH(L,ORD)) ==0)
 
 //NAMESPACE
-#define HAS_NS(L,NODE) (GET_NODE_TOKEN(L,NODE)>2 && GET_TOKEN(L,GET_NODE_TOKEN(L,NODE)-2)==NAMESPACE)
+#define HAS_NS(L,NODE) (GET_NODE_TOKEN(L,NODE)>2 && GET_TOKEN(L,GET_NODE_TOKEN(L,NODE)-2)==T_NS)
 #define GET_NODE_NS_INDEX(L,NODE) (GET_NODE_TOKEN(L,NODE)-2)
 #define COMPARE_NODE_NS(L,NODE,VAL) COMPARE_TOKEN_STR(L,GET_NODE_NS_INDEX(L,NODE),VAL)
 
 //KEYS (Key names are mandatory)
-#define HAS_KEY_NAMES(L,NODE) (GET_TOKEN(L,GET_NODE_TOKEN(L,NODE)+2)==KEY_NAME)
+#define HAS_KEY_NAMES(L,NODE) (GET_TOKEN(L,GET_NODE_TOKEN(L,NODE)+2)==T_KEY_NAME)
 #define GET_KEY_NAME_INDEX(L,NODE,K) (GET_NODE_TOKEN(L,NODE)+(K)*7+2)
 #define GET_KEY_VALUE_INDEX(L,NODE,K) (HAS_KEY_NAMES(L,NODE) ? (GET_NODE_TOKEN(L,NODE)+(K)*7+5) : (GET_NODE_TOKEN(L,NODE)+(K)*5+3))
 #define COMPARE_KEY_NAME(L,NODE,K,VAL) COMPARE_TOKEN_STR(L,GET_KEY_NAME_INDEX(L,NODE,K),VAL)
 #define COMPARE_KEY_VALUE(L,NODE,K,VAL) COMPARE_TOKEN_STR(L,GET_KEY_VALUE_INDEX(L,NODE,K),VAL)
 
 
-int node_key_count(location_id_p l, size_t node);
 
-void print_location_id(location_id_p l);
 
 
 

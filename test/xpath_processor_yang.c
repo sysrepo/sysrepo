@@ -74,8 +74,8 @@ void xpath_set_node(void **state){
 
     struct ly_ctx *ctx = *state;
 
-    location_id_p l = NULL;
-    xpath_to_location_id(XPATH, &l);
+    xp_loc_id_p l = NULL;
+    xp_char_to_loc_id(XPATH, &l);
     assert_non_null(l);
 
     char *moduleName = CPY_TOKEN(l,GET_NODE_NS_INDEX(l,0));
@@ -99,7 +99,7 @@ void xpath_set_node(void **state){
             assert_non_null(node);
         }
         else{
-            int key_count = node_key_count(l,n);
+            int key_count = xp_node_key_count(l,n);
             if(key_count !=0){
                 node = lyd_new(node, module, node_name);
                 for(int k=0; k<key_count; k++){
@@ -138,7 +138,7 @@ void xpath_set_node(void **state){
     lyd_free(root);
 
     free(moduleName);
-    free_location_id(l);
+    xp_free_loc_id(l);
 
 }
 
@@ -146,8 +146,8 @@ void xpath_sch_match(void **state){
     struct ly_ctx *ctx = *state;
 
 
-    location_id_p l = NULL;
-    xpath_to_location_id(XPATH, &l);
+    xp_loc_id_p l = NULL;
+    xp_char_to_loc_id(XPATH, &l);
     assert_non_null(l);
 
     char *moduleName = CPY_TOKEN(l,GET_NODE_NS_INDEX(l,0));
@@ -177,7 +177,7 @@ void xpath_sch_match(void **state){
     assert_int_equal(l->node_count,n);
 
     free(moduleName);
-    free_location_id(l);
+    xp_free_loc_id(l);
 
 }
 
