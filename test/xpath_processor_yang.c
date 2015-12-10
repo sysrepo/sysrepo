@@ -30,6 +30,8 @@
 #include "test_data.h"
 
 #define MODULE_PATH TEST_DATA_DIR "/example-module.yin"
+#define DATA_PATH TEST_DATA_DIR "/example-module.data"
+
 
 int setup(void **state){
     struct ly_ctx *ctx;
@@ -129,7 +131,7 @@ void xpath_set_node(void **state){
         free(node_name);
     }
 
-    FILE *data = fopen("/home/lukas/playground/xpath/yangs/example-module.data","w");
+    FILE *data = fopen(DATA_PATH,"w");
     assert_non_null(data);
     lyd_print(data,root,LYD_XML);
 
