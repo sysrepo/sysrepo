@@ -22,6 +22,7 @@
 #ifndef SRC_CONNECTION_MANAGER_H_
 #define SRC_CONNECTION_MANAGER_H_
 
+#include "sysrepo.pb-c.h"
 #include "session_manager.h"
 
 /**
@@ -94,19 +95,19 @@ int cm_start_local(cm_ctx_t **cm_ctx, int *communication_fd);
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int cm_cleanup(const cm_ctx_t *cm_ctx);
+int cm_cleanup(cm_ctx_t *cm_ctx);
 
 /**
  * @brief Sends the message to the proper reciepient according to provided session.
  *
  * This function is thread safe, can be called from any thread.
  *
- * @param[in] session Session context used to identifiy the receiver.
+ * @param[in] cm_session_ctx Session context used to identifiy the receiver.
  * @param[in] msg Messge to be send.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int cm_msg_send(sm_session_t session, void *msg);
+int cm_msg_send(void *cm_session_ctx, Sr__Msg *msg);
 
 /**@} cm */
 
