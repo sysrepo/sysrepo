@@ -1,9 +1,31 @@
 include_directories("${PROJECT_SOURCE_DIR}/inc")
+
+
+#compile protobuf-c
+set(PROTO_NAME sysrepo)
+set(PROTO_FILE "${CMAKE_CURRENT_SOURCE_DIR}/${PROTO_NAME}.proto")
+set(GENERATED_PROTO  "${PROTO_NAME}.pb-c.c")
+
+get_filename_component(ABS_PATH ${PROTO_FILE} PATH)
+add_custom_command(
+    OUTPUT "${CMAKE_CURRENT_SOURCE_DIR}/${PROTO_NAME}.pb-c.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/${PROTO_NAME}.pb-c.h"
+   COMMAND  ${PROTOBUFC_PROTOC_EXECUTABLE}
+   ARGS --c_out  ${CMAKE_CURRENT_SOURCE_DIR} -I ${ABS_PATH} ${PROTO_FILE}
+   DEPENDS ${PROTO_FILE}
+   COMMENT "Running C protocol buffer compiler on ${PROTO_FILE}"
+   VERBATIM )
+
+add_custom_target(proto DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${PROTO_NAME}.pb-c.c)
+
+
+#setup library sources
 set(SYSREPO-SOURCES
      sr_access.c
      )
 
 set(SYSREPO-ENGINE-SOURCES
+    ${GENERATED_PROTO}
      data_manager.c
      connection_manager.c
      session_manager.c
@@ -25,10 +47,10 @@ add_library(sysrepo-engine_so SHARED ${SYSREPO-ENGINE-SOURCES})
 SET_TARGET_PROPERTIES(sysrepo-engine_so PROPERTIES
               OUTPUT_NAME sysrepo-engine CLEAN_DIRECT_OUTPUT 1)
 
-target_link_libraries(sysrepo avl)
-target_link_libraries(sysrepo_so avl)
-target_link_libraries(sysrepo-engine avl)
-target_link_libraries(sysrepo-engine_so avl)
+target_link_libraries(sysrepo avl protobuf-c)
+target_link_libraries(sysrepo_so avl protobuf-c)
+target_link_libraries(sysrepo-engine avl protobuf-c)
+target_link_libraries(sysrepo-engine_so avl protobuf-c)
 
 install(TARGETS sysrepo_so DESTINATION ${LIB_INSTALL_DIR})
 install(TARGETS sysrepo-engine_so DESTINATION ${LIB_INSTALL_DIR})

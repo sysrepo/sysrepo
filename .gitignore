@@ -3,3 +3,4 @@
 build/
 doc/
 test/data/test_data.h
+src/*.pb-c.*

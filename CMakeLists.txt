@@ -30,6 +30,10 @@ add_subdirectory(inc)
 add_subdirectory(examples)
 
 find_package(YANG REQUIRED)
+find_package(Protobuf-c REQUIRED)
+include_directories(${PROTOBUF-C_INCLUDE_DIR})
+include_directories(${CMAKE_CURRENT_BINARY_DIR})
+
 
 
 #Testing
