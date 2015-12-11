@@ -261,8 +261,8 @@ sr_error_t xp_char_to_loc_id(const char *xpath, xp_loc_id_t **loc)
     xp_token_t tokens[MAX_TOKENS];
     size_t positions[MAX_TOKENS] = { 0, };
     size_t node_index[MAX_TOKENS] = { 0, };
-    int cnt = 0;
-    int i = 0;
+    size_t cnt = 0;
+    size_t i = 0;
     size_t node_count = 0;
     enum xp_states state = S_START;
 
@@ -278,7 +278,7 @@ sr_error_t xp_char_to_loc_id(const char *xpath, xp_loc_id_t **loc)
                 state = S_NS;
             }
             else{
-                SR_LOG_ERR("Invalid lexem '%c' in xpath: %s at position %d", xpath[i], xpath, i);
+                SR_LOG_ERR("Invalid lexem '%c' in xpath: %s at position %zu", xpath[i], xpath, i);
                                     return SR_ERR_INVAL_ARG;
             }
             break;
@@ -296,12 +296,12 @@ sr_error_t xp_char_to_loc_id(const char *xpath, xp_loc_id_t **loc)
                 state = S_KEY_NAME;
             } else if (cnt > 0 && tokens[cnt - 1] == T_NS) {
                 if (!(isalnum(xpath[i]) || xpath[i] == '_' || xpath[i] == '-' || xpath[i] == '.')) {
-                    SR_LOG_ERR("Invalid lexem '%c' in xpath: %s at position %d", xpath[i], xpath, i);
+                    SR_LOG_ERR("Invalid lexem '%c' in xpath: %s at position %zu", xpath[i], xpath, i);
                     return SR_ERR_INVAL_ARG;
                 }
             } else {
                 if (!(isalpha(xpath[i]) || xpath[i] == '_')) {
-                    SR_LOG_ERR("Invalid lexem '%c' in xpath: %s at position %d", xpath[i], xpath, i);
+                    SR_LOG_ERR("Invalid lexem '%c' in xpath: %s at position %zu", xpath[i], xpath, i);
                     return SR_ERR_INVAL_ARG;
                 }
             }
@@ -317,12 +317,12 @@ sr_error_t xp_char_to_loc_id(const char *xpath, xp_loc_id_t **loc)
                 state = S_NS;
             } else if (cnt > 0 && tokens[cnt - 1] == T_KEY_NAME) {
                 if (!(isalnum(xpath[i]) || xpath[i] == '_' || xpath[i] == '-' || xpath[i] == '.')) {
-                    SR_LOG_ERR("Invalid lexem '%c' in xpath: %s at position %d", xpath[i], xpath, i);
+                    SR_LOG_ERR("Invalid lexem '%c' in xpath: %s at position %zu", xpath[i], xpath, i);
                     return SR_ERR_INVAL_ARG;
                 }
             } else {
                 if (!(isalpha(xpath[i]) || xpath[i] == '_')) {
-                    SR_LOG_ERR("Invalid lexem '%c' in xpath: %s at position %d", xpath[i], xpath, i);
+                    SR_LOG_ERR("Invalid lexem '%c' in xpath: %s at position %zu", xpath[i], xpath, i);
                     return SR_ERR_INVAL_ARG;
                 }
             }
@@ -340,12 +340,12 @@ sr_error_t xp_char_to_loc_id(const char *xpath, xp_loc_id_t **loc)
                 state = S_KEY;
             } else if (cnt > 0 && tokens[cnt - 1] == T_KEY_NAME) {
                 if (!(isalnum(xpath[i]) || xpath[i] == '_' || xpath[i] == '-' || xpath[i] == '.')) {
-                    SR_LOG_ERR("Invalid lexem '%c' in xpath: %s at position %d", xpath[i], xpath, i);
+                    SR_LOG_ERR("Invalid lexem '%c' in xpath: %s at position %zu", xpath[i], xpath, i);
                     return SR_ERR_INVAL_ARG;
                 }
             } else {
                 if (!(isalpha(xpath[i]) || xpath[i] == '_')) {
-                    SR_LOG_ERR("Invalid lexem '%c' in xpath: %s at position %d", xpath[i], xpath, i);
+                    SR_LOG_ERR("Invalid lexem '%c' in xpath: %s at position %zu", xpath[i], xpath, i);
                     return SR_ERR_INVAL_ARG;
                 }
             }
@@ -427,8 +427,8 @@ sr_error_t xp_print_location_id(const xp_loc_id_t *l)
 {
     CHECK_NULL_ARG(l);
     puts(l->xpath);
-    for (int i = 0; i < l->cnt; i++) {
-        printf("%c\t%d\n", xp_token_to_ch(l->tokens[i]), (int) l->positions[i]);
+    for (size_t i = 0; i < l->cnt; i++) {
+        printf("%c\t%zu\n", xp_token_to_ch(l->tokens[i]), l->positions[i]);
     }
     return SR_ERR_OK;
 }
