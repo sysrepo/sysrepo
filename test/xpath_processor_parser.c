@@ -30,40 +30,40 @@
 
 
 int setup(void **state){
-    xp_loc_id_p l;
+    xp_loc_id_t *l;
     assert_int_equal(0, xp_char_to_loc_id(XPATH_TO_PARSE, &l));
     (*state) = (void *) l;
     return 0;
 }
 
 int teardown(void **state){
-    xp_loc_id_p l = (xp_loc_id_p) *state;
+    xp_loc_id_t *l = (xp_loc_id_t *) *state;
     xp_free_loc_id(l);
     return 0;
 }
 
 void check_tokens(void **state){
-    xp_loc_id_p l = (xp_loc_id_p) *state;
-    assert_true(GET_TOKEN(l,0)==T_SLASH);
-    assert_true(GET_TOKEN(l,1)==T_NS);
-    assert_true(GET_TOKEN(l,2)==T_COLON);
-    assert_true(GET_TOKEN(l,3)==T_NODE);
+    xp_loc_id_t *l = (xp_loc_id_t *) *state;
+    assert_true(XP_GET_TOKEN(l,0)==T_SLASH);
+    assert_true(XP_GET_TOKEN(l,1)==T_NS);
+    assert_true(XP_GET_TOKEN(l,2)==T_COLON);
+    assert_true(XP_GET_TOKEN(l,3)==T_NODE);
 }
 
 void check_nodes(void **state){
-    xp_loc_id_p l = (xp_loc_id_p) *state;
+    xp_loc_id_t *l = (xp_loc_id_t *) *state;
     assert_true(l->node_count  == 3);
 
-    assert_true(COMPARE_NODE(l,0,"container"));
-    assert_true(COMPARE_NODE(l,1,"list"));
-    assert_true(COMPARE_NODE(l,2,"leaf"));
+    assert_true(XP_CMP_NODE(l,0,"container"));
+    assert_true(XP_CMP_NODE(l,1,"list"));
+    assert_true(XP_CMP_NODE(l,2,"leaf"));
 
-    assert_false(COMPARE_NODE(l,0,"asfadsf"));
+    assert_false(XP_CMP_NODE(l,0,"asfadsf"));
 
 }
 
 void check_ns(void **state){
-    xp_loc_id_p l = (xp_loc_id_p) *state;
+    xp_loc_id_t *l = (xp_loc_id_t *) *state;
 
     assert_true(HAS_NS(l,0));
     assert_int_equal(1,GET_NODE_NS_INDEX(l,0));
@@ -74,7 +74,7 @@ void check_ns(void **state){
 }
 
 void check_keys(void **state){
-    xp_loc_id_p l = (xp_loc_id_p) *state;
+    xp_loc_id_t *l = (xp_loc_id_t *) *state;
     assert_int_equal(xp_node_key_count(l,0),0);
     assert_int_equal(xp_node_key_count(l,1),2);
 
@@ -83,8 +83,8 @@ void check_keys(void **state){
     assert_true(COMPARE_KEY_NAME(l,1,0,"k1"));
     assert_true(COMPARE_KEY_VALUE(l,1,0,"key1"));
 
-    char *keyVal = CPY_TOKEN(l,GET_KEY_VALUE_INDEX(l,1,0));
-    char *keyName = CPY_TOKEN(l,GET_KEY_NAME_INDEX(l,1,0));
+    char *keyVal = XP_CPY_TOKEN(l,GET_KEY_VALUE_INDEX(l,1,0));
+    char *keyName = XP_CPY_TOKEN(l,GET_KEY_NAME_INDEX(l,1,0));
 
     assert_string_equal(keyName,"k1");
     assert_string_equal(keyVal,"key1");
@@ -98,20 +98,20 @@ void check_keys(void **state){
 }
 
 void test1(void **state){
-    xp_loc_id_p l = (xp_loc_id_p) *state;
+    xp_loc_id_t *l = (xp_loc_id_t *) *state;
 
     for(int i=0; i < l->node_count; i++){
-        puts(GET_NODE_START(l,i));
+        puts(XP_GET_NODE_START(l,i));
     }
 
-    char* second = CPY_TOKEN(l,GET_NODE_TOKEN(l,0));
+    char* second = XP_CPY_TOKEN(l,XP_GET_NODE_TOKEN(l,0));
     printf("%s\n",second);
     free(second);
 
 }
 
 void check_parsing(void **state){
-   xp_loc_id_p l;
+   xp_loc_id_t *l;
    assert_int_not_equal(0,xp_char_to_loc_id("abc", &l));
    /* path must not end with slash */
    assert_int_not_equal(0,xp_char_to_loc_id("/model:leaf/", &l));

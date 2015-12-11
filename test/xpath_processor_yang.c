@@ -76,11 +76,11 @@ void xpath_set_node(void **state){
 
     struct ly_ctx *ctx = *state;
 
-    xp_loc_id_p l = NULL;
+    xp_loc_id_t *l = NULL;
     xp_char_to_loc_id(XPATH, &l);
     assert_non_null(l);
 
-    char *moduleName = CPY_TOKEN(l,GET_NODE_NS_INDEX(l,0));
+    char *moduleName = XP_CPY_TOKEN(l,GET_NODE_NS_INDEX(l,0));
     assert_non_null(moduleName);
 
     const struct lys_module *module = ly_ctx_get_module(ctx,moduleName,NULL);
@@ -92,7 +92,7 @@ void xpath_set_node(void **state){
     struct lyd_node *node=NULL;
     for(int n=0; n < l->node_count; n++) {
         //check whether node is a leaf
-        char *node_name = CPY_TOKEN(l,GET_NODE_TOKEN(l,n));
+        char *node_name = XP_CPY_TOKEN(l,XP_GET_NODE_TOKEN(l,n));
         assert_non_null(node_name);
 
         if(l->node_count == (n+1)){
@@ -105,10 +105,10 @@ void xpath_set_node(void **state){
             if(key_count !=0){
                 node = lyd_new(node, module, node_name);
                 for(int k=0; k<key_count; k++){
-                    char *key_name = CPY_TOKEN(l,GET_KEY_NAME_INDEX(l,n,k));
+                    char *key_name = XP_CPY_TOKEN(l,GET_KEY_NAME_INDEX(l,n,k));
                     assert_non_null(key_name);
 
-                    char *key_value = CPY_TOKEN(l,GET_KEY_VALUE_INDEX(l,n,k));
+                    char *key_value = XP_CPY_TOKEN(l,GET_KEY_VALUE_INDEX(l,n,k));
                     assert_non_null(key_value);
 
                     assert_non_null(lyd_new_leaf(node,module,key_name,key_value));
@@ -148,11 +148,11 @@ void xpath_sch_match(void **state){
     struct ly_ctx *ctx = *state;
 
 
-    xp_loc_id_p l = NULL;
+    xp_loc_id_t *l = NULL;
     xp_char_to_loc_id(XPATH, &l);
     assert_non_null(l);
 
-    char *moduleName = CPY_TOKEN(l,GET_NODE_NS_INDEX(l,0));
+    char *moduleName = XP_CPY_TOKEN(l,GET_NODE_NS_INDEX(l,0));
     assert_non_null(moduleName);
 
     const struct lys_module *module = ly_ctx_get_module(ctx,moduleName,NULL);
@@ -163,7 +163,7 @@ void xpath_sch_match(void **state){
     int n = 0;
     for(; n<l->node_count;n++){
         while(node != NULL) {
-            if (COMPARE_NODE(l, n, node->name)) {
+            if (XP_CMP_NODE(l, n, node->name)) {
                 if(node->child!=NULL) {
                     node = node->child;
                 }

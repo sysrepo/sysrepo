@@ -25,17 +25,18 @@
 #include <ctype.h>
 #include "xpath_processor.h"
 
-enum states {
-    S_START, S_NS, S_NODE, S_KEY_NAME, S_KEY,
+/**@brief The xp_states of parsing xpath*/
+enum xp_states {
+    S_START,
+    S_NS,
+    S_NODE,
+    S_KEY_NAME,
+    S_KEY,
 };
 
-#define EOK 0
-#define BAD_ALLOC 1
-#define BAD_LEX 2
-#define BAD_TOKEN 4
-#define TOO_MANY_TOKENS 5
 
-static char token_to_ch(xp_token_t t)
+/** @brief helper function return char representation of token*/
+static char xp_token_to_ch(xp_token_t t)
 {
     switch (t) {
     case T_SLASH:
@@ -65,9 +66,47 @@ static char token_to_ch(xp_token_t t)
     }
 }
 
-static xp_loc_id_p alloc_loction_id(char *xpath, size_t node_count, size_t token_count)
+/** @brief helper function return string representation of token*/
+static char *xp_token_to_str(xp_token_t t)
 {
-    xp_loc_id_p l = (xp_loc_id_p) malloc(sizeof(xp_loc_id_t));
+    switch (t) {
+    case T_SLASH:
+        return "T_SLASH";
+    case T_COLON:
+        return "T_COLON";
+    case T_LSQB:
+        return "T_LSQB";
+    case T_RSQB:
+        return "T_RSQB";
+    case T_APOS:
+        return "T_APOS";
+    case T_KEY_NAME:
+        return "T_KEY_NAME";
+    case T_KEY_VALUE:
+        return "T_KEY_VALUE";
+    case T_NS:
+        return "T_NAMESPACE";
+    case T_NODE:
+        return "T_NODE";
+    case T_EQUAL:
+        return "T_EQUAL";
+    case T_ZERO:
+        return "T_ZERO";
+    default:
+        return "(UNKNOWN_TOKEN)";
+    }
+}
+
+/**
+ * Allocates xp_loc_id structure with specified token and node count.
+ * @param [in] xpath
+ * @param [in] node_count
+ * @param [in] token_count
+ * @return allocated structure or NULL in case of error
+ */
+static xp_loc_id_t* alloc_loction_id(const char *xpath, size_t node_count, size_t token_count)
+{
+    xp_loc_id_t *l = (xp_loc_id_t *) malloc(sizeof(xp_loc_id_t));
     if (l == NULL) {
         return l;
     }
@@ -93,100 +132,117 @@ static xp_loc_id_p alloc_loction_id(char *xpath, size_t node_count, size_t token
     return l;
 }
 
-static int validate_token_order(xp_token_t *tokens, size_t token_count)
+static sr_error_t validate_token_order(xp_token_t *tokens, size_t token_count, size_t *err_token)
 {
+    if(err_token == NULL){
+        return SR_ERR_INVAL_ARG;
+    }
     xp_token_t curr = T_SLASH;
     xp_token_t t = tokens[0];
     if (t != T_SLASH)
-        return BAD_TOKEN;
-    for (int i = 1; i < token_count; i++) {
+        return SR_ERR_INVAL_ARG;
+    int i;
+    for (i = 1; i < token_count; i++) {
         t = tokens[i];
         switch (curr) {
         case T_SLASH:
             if (t == T_NS || t == T_NODE) {
                 curr = t;
             } else {
-                return BAD_TOKEN;
+                *err_token = i;
+                return SR_ERR_INVAL_ARG;
             }
             break;
         case T_NODE:
             if (t == T_SLASH || t == T_LSQB || t == T_ZERO) {
                 curr = t;
             } else {
-                return BAD_TOKEN;
+                *err_token = i;
+                return SR_ERR_INVAL_ARG;
             }
             break;
         case T_LSQB:
             if (t == T_APOS || t == T_KEY_NAME) {
                 curr = t;
             } else {
-                return BAD_TOKEN;
+                *err_token = i;
+                return SR_ERR_INVAL_ARG;
             }
             break;
         case T_RSQB:
             if (t == T_LSQB || t == T_ZERO || t == T_SLASH) {
                 curr = t;
             } else {
-                return BAD_TOKEN;
+                *err_token = i;
+                return SR_ERR_INVAL_ARG;
             }
             break;
         case T_APOS:
             if (t == T_KEY_VALUE || t == T_RSQB) {
                 curr = t;
             } else {
-                return BAD_TOKEN;
+                *err_token = i;
+                return SR_ERR_INVAL_ARG;
             }
             break;
         case T_NS:
             if (t == T_COLON) {
                 curr = t;
             } else {
-                return BAD_TOKEN;
+                *err_token = i;
+                return SR_ERR_INVAL_ARG;
             }
             break;
         case T_KEY_NAME:
             if (t == T_EQUAL) {
                 curr = t;
             } else {
-                return BAD_TOKEN;
+                *err_token = i;
+                return SR_ERR_INVAL_ARG;
             }
             break;
         case T_KEY_VALUE:
             if (t == T_APOS) {
                 curr = t;
             } else {
-                return BAD_TOKEN;
+                *err_token = i;
+                return SR_ERR_INVAL_ARG;
             }
             break;
         case T_COLON:
             if (t == T_NODE) {
                 curr = t;
             } else {
-                return BAD_TOKEN;
+                *err_token = i;
+                return SR_ERR_INVAL_ARG;
             }
             break;
         case T_EQUAL:
             if (t == T_APOS) {
                 curr = t;
             } else {
-                return BAD_TOKEN;
+                *err_token = i;
+                return SR_ERR_INVAL_ARG;
             }
             break;
         case T_ZERO:
+                curr=T_ZERO;
             break;
         default:
-            return BAD_TOKEN;
+            *err_token = i;
+            return SR_ERR_INVAL_ARG;
         }
     }
 
     if (t != T_ZERO) {
-        return BAD_TOKEN;
+        *err_token = i;
+        return SR_ERR_INVAL_ARG;
     }
-    return EOK;
+    return SR_ERR_OK;
 }
 
 /**
- * if the last token is T_NS namespace it is changed to T_NODE node
+ * @brief if the last token is ::T_NS namespace it is changed to ::T_NODE node
  */
 inline static void change_ns_to_node(const size_t cnt, xp_token_t *tokens, size_t *node_index, size_t *node_count)
 {
@@ -199,7 +255,7 @@ inline static void change_ns_to_node(const size_t cnt, xp_token_t *tokens, size_
 /**
  * TODO more tokens than MAX_TOKENS
  */
-int xp_char_to_loc_id(char *xpath, xp_loc_id_p *loc)
+sr_error_t xp_char_to_loc_id(const char *xpath, xp_loc_id_t **loc)
 {
     xp_token_t tokens[MAX_TOKENS];
     size_t positions[MAX_TOKENS] = { 0, };
@@ -207,7 +263,7 @@ int xp_char_to_loc_id(char *xpath, xp_loc_id_p *loc)
     int cnt = 0;
     int i = 0;
     size_t node_count = 0;
-    enum states state = S_START;
+    enum xp_states state = S_START;
 
     /* Saves the token type and marks the position */
 #define MARK_TOKEN(T) do{tokens[cnt]=T; positions[cnt]=i;  cnt++;}while(0)
@@ -219,6 +275,10 @@ int xp_char_to_loc_id(char *xpath, xp_loc_id_p *loc)
             if ('/' == xpath[i]) {
                 MARK_TOKEN(T_SLASH);
                 state = S_NS;
+            }
+            else{
+                SR_LOG_ERR("Invalid lexem '%c' in xpath: %s at position %d", xpath[i], xpath, i);
+                                    return SR_ERR_INVAL_ARG;
             }
             break;
         case S_NS:
@@ -234,12 +294,14 @@ int xp_char_to_loc_id(char *xpath, xp_loc_id_p *loc)
                 MARK_TOKEN(T_LSQB);
                 state = S_KEY_NAME;
             } else if (cnt > 0 && tokens[cnt - 1] == T_NS) {
-                if (!(isalpha(xpath[i]) || xpath[i] == '_' || xpath[i] == '-' || xpath[i] == '.')) {
-                    return BAD_LEX;
+                if (!(isalnum(xpath[i]) || xpath[i] == '_' || xpath[i] == '-' || xpath[i] == '.')) {
+                    SR_LOG_ERR("Invalid lexem '%c' in xpath: %s at position %d", xpath[i], xpath, i);
+                    return SR_ERR_INVAL_ARG;
                 }
             } else {
                 if (!(isalpha(xpath[i]) || xpath[i] == '_')) {
-                    return BAD_LEX;
+                    SR_LOG_ERR("Invalid lexem '%c' in xpath: %s at position %d", xpath[i], xpath, i);
+                    return SR_ERR_INVAL_ARG;
                 }
             }
             break;
@@ -252,13 +314,15 @@ int xp_char_to_loc_id(char *xpath, xp_loc_id_p *loc)
                 change_ns_to_node(cnt, tokens, node_index, &node_count);
                 MARK_TOKEN(T_SLASH);
                 state = S_NS;
-            } else if (cnt > 0 && tokens[cnt - 1] == T_NODE) {
-                if (!(isalpha(xpath[i]) || xpath[i] == '_' || xpath[i] == '-' || xpath[i] == '.')) {
-                    return BAD_LEX;
+            } else if (cnt > 0 && tokens[cnt - 1] == T_KEY_NAME) {
+                if (!(isalnum(xpath[i]) || xpath[i] == '_' || xpath[i] == '-' || xpath[i] == '.')) {
+                    SR_LOG_ERR("Invalid lexem '%c' in xpath: %s at position %d", xpath[i], xpath, i);
+                    return SR_ERR_INVAL_ARG;
                 }
             } else {
                 if (!(isalpha(xpath[i]) || xpath[i] == '_')) {
-                    return BAD_LEX;
+                    SR_LOG_ERR("Invalid lexem '%c' in xpath: %s at position %d", xpath[i], xpath, i);
+                    return SR_ERR_INVAL_ARG;
                 }
             }
             break;
@@ -273,6 +337,16 @@ int xp_char_to_loc_id(char *xpath, xp_loc_id_p *loc)
             } else if ('\'' == xpath[i]) {
                 MARK_TOKEN(T_APOS);
                 state = S_KEY;
+            } else if (cnt > 0 && tokens[cnt - 1] == T_KEY_NAME) {
+                if (!(isalnum(xpath[i]) || xpath[i] == '_' || xpath[i] == '-' || xpath[i] == '.')) {
+                    SR_LOG_ERR("Invalid lexem '%c' in xpath: %s at position %d", xpath[i], xpath, i);
+                    return SR_ERR_INVAL_ARG;
+                }
+            } else {
+                if (!(isalpha(xpath[i]) || xpath[i] == '_')) {
+                    SR_LOG_ERR("Invalid lexem '%c' in xpath: %s at position %d", xpath[i], xpath, i);
+                    return SR_ERR_INVAL_ARG;
+                }
             }
             break;
         case S_KEY:
@@ -304,7 +378,7 @@ int xp_char_to_loc_id(char *xpath, xp_loc_id_p *loc)
 
         i++;
         if (cnt > MAX_TOKENS) {
-            return TOO_MANY_TOKENS;
+            return SR_ERR_INVAL_ARG;
         }
 
     }
@@ -312,14 +386,17 @@ int xp_char_to_loc_id(char *xpath, xp_loc_id_p *loc)
     MARK_TOKEN(T_ZERO);
 
     /*Validate token order*/
-    if (validate_token_order(tokens, cnt) != EOK) {
-        return BAD_TOKEN;
+    size_t err_token=0;
+    if (validate_token_order(tokens, cnt, &err_token) != SR_ERR_OK) {
+        SR_LOG_ERR("Invalid token %s occured in xpath %s on position %zu.", xp_token_to_str(tokens[err_token]), xpath, positions[err_token]);
+        return SR_ERR_INVAL_ARG;
     }
 
     /*Allocate structure*/
-    xp_loc_id_p l = alloc_loction_id(xpath, node_count, cnt);
+    xp_loc_id_t *l = alloc_loction_id(xpath, node_count, cnt);
     if (l == NULL) {
-        return BAD_ALLOC;
+        SR_LOG_ERR_MSG("Cannot allocate memory for xp_loc_id_t.");
+        return SR_ERR_NOMEM;
     }
 
     for (int j = 0; j < cnt; j++) {
@@ -334,7 +411,7 @@ int xp_char_to_loc_id(char *xpath, xp_loc_id_p *loc)
     return 0;
 }
 
-void xp_free_loc_id(xp_loc_id_p l)
+void xp_free_loc_id(xp_loc_id_t *l)
 {
     free(l->xpath);
     free(l->tokens);
@@ -343,22 +420,22 @@ void xp_free_loc_id(xp_loc_id_p l)
     free(l);
 }
 
-void xp_print_location_id(const xp_loc_id_p l)
+void xp_print_location_id(const xp_loc_id_t *l)
 {
     if (l != NULL) {
         puts(l->xpath);
         for (int i = 0; i < l->cnt; i++) {
-            printf("%c\t%d\n", token_to_ch(l->tokens[i]), (int) l->positions[i]);
+            printf("%c\t%d\n", xp_token_to_ch(l->tokens[i]), (int) l->positions[i]);
         }
     }
 }
 
-int xp_node_key_count(xp_loc_id_p l, size_t node)
+int xp_node_key_count(const xp_loc_id_t *l, size_t node)
 {
-    size_t token_index = GET_NODE_TOKEN(l, node);
+    size_t token_index = XP_GET_NODE_TOKEN(l, node);
     int key_count = 0;
-    while (GET_TOKEN(l,token_index) != T_SLASH && GET_TOKEN(l,token_index) != T_ZERO) {
-        if (GET_TOKEN(l,token_index) == T_KEY_VALUE) {
+    while (XP_GET_TOKEN(l,token_index) != T_SLASH && XP_GET_TOKEN(l,token_index) != T_ZERO) {
+        if (XP_GET_TOKEN(l,token_index) == T_KEY_VALUE) {
             key_count++;
         }
         token_index++;
