@@ -1,7 +1,7 @@
 /**
  * @file connection_manager.c
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
- * @brief 
+ * @brief Implementation of Connection Manager - module that handles all connection to Sysrepo Engine.
  *
  * @copyright
  * Copyright 2015 Cisco Systems, Inc.
@@ -19,10 +19,28 @@
  * limitations under the License.
  */
 
+#include <stdlib.h>
+#include <stdio.h>
+#include <stdint.h>
+#include <inttypes.h>
+
+#include "sr_common.h"
+#include "session_manager.h"
+#include "connection_manager.h"
 
 /**
- * @return int err_code
+ * @brief Modes of Connection Manager.
  */
-int cm_session_start(){
-    return 0;
-}
+typedef enum {
+    CM_MODE_SERVER,  /**< Server mode - any client is able to connect to it. */
+    CM_MODE_LOCAL,   /**< Local mode - only one, local client connection is possible */
+} cm_connection_mode_t;
+
+/**
+ * @brief Connection Manager context.
+ */
+typedef struct cm_ctx_s {
+    sm_ctx_t *session_manager;  /**< Session Manager context. */
+
+    int out_msg_fd;             /**< "queue" of messagess to be sent (fd of a pipe to read from) */
+} cm_ctx_t;

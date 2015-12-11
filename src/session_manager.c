@@ -104,9 +104,7 @@ sm_init(sm_ctx_t **sm_ctx)
     sm_ctx_t *ctx = NULL;
     int rc = SR_ERR_OK;
 
-    if (NULL == sm_ctx) {
-        return SR_ERR_INVAL_ARG; // TODO: macro
-    }
+    CHECK_NULL_ARG(sm_ctx);
 
     ctx = calloc(1, sizeof(*ctx));
     if (NULL == ctx) {
@@ -164,9 +162,7 @@ sm_session_create(const sm_ctx_t *sm_ctx, sm_session_type_t type, sm_session_t *
     avl_node_t *node = NULL;
     int rc = SR_ERR_OK;
 
-    if (NULL == sm_ctx || NULL == session_p) {
-        return SR_ERR_INVAL_ARG; // TODO: macro
-    }
+    CHECK_NULL_ARG2(sm_ctx, session_p);
 
     session = calloc(1, sizeof(*session));
     if (NULL == session) {
@@ -216,9 +212,7 @@ int
 sm_session_assign_fd(const sm_ctx_t *sm_ctx, sm_session_t *session, int fd) {
     avl_node_t *node_fd = NULL;
 
-    if (NULL == sm_ctx || NULL == session) {
-        return SR_ERR_INVAL_ARG; // TODO: macro
-    }
+    CHECK_NULL_ARG2(sm_ctx, session);
 
     session->fd = fd;
 
@@ -238,9 +232,7 @@ sm_session_assign_fd(const sm_ctx_t *sm_ctx, sm_session_t *session, int fd) {
 int
 sm_session_assign_user(const sm_ctx_t *sm_ctx, sm_session_t *session, const char *real_user, const char *effective_user)
 {
-    if (NULL == sm_ctx || NULL == session || NULL == real_user) {
-        return SR_ERR_INVAL_ARG; // TODO: macro
-    }
+    CHECK_NULL_ARG3(sm_ctx, session, real_user);
 
     session->real_user = strdup(real_user);
     if (NULL == session->real_user) {
@@ -264,9 +256,7 @@ sm_session_assign_user(const sm_ctx_t *sm_ctx, sm_session_t *session, const char
 int
 sm_session_drop(const sm_ctx_t *sm_ctx, sm_session_t *session)
 {
-    if (NULL == sm_ctx || NULL == session) {
-        return SR_ERR_INVAL_ARG; // TODO: macro
-    }
+    CHECK_NULL_ARG2(sm_ctx, session);
 
     avl_delete(sm_ctx->fd_avl, session);
     avl_delete(sm_ctx->session_id_avl, session); /* sm_session_cleanup will be automatically invoked */
@@ -282,9 +272,7 @@ sm_session_find_id(const sm_ctx_t *sm_ctx, uint32_t session_id, sm_session_t **s
     sm_session_t tmp = { 0, };
     avl_node_t *node = NULL;
 
-    if (NULL == sm_ctx || NULL == session) {
-        return SR_ERR_INVAL_ARG; // TODO: macro
-    }
+    CHECK_NULL_ARG2(sm_ctx, session);
 
     tmp.id = session_id;
     node = avl_search(sm_ctx->session_id_avl, &tmp);
@@ -304,9 +292,7 @@ sm_session_find_fd(const sm_ctx_t *sm_ctx, int fd, sm_session_t **session)
     sm_session_t tmp = { 0, };
     avl_node_t *node = NULL;
 
-    if (NULL == sm_ctx || NULL == session) {
-        return SR_ERR_INVAL_ARG; // TODO: macro
-    }
+    CHECK_NULL_ARG2(sm_ctx, session);
 
     tmp.fd = fd;
     node = avl_search(sm_ctx->fd_avl, &tmp);
