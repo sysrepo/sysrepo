@@ -27,9 +27,11 @@
 #include <string.h>
 #define _POSIX_C_SOURCE 200809L
 
-
+/**
+ * Enum of tokens that can be found in xpath
+ */
 typedef enum xp_token_e{
-    T_NS,
+    T_NS,               /**< Namespace token*/
     T_NODE,
     T_KEY_NAME,
     T_KEY_VALUE,
@@ -40,7 +42,7 @@ typedef enum xp_token_e{
     T_EQUAL,
     T_RSQB,
     T_APOS,
-    T_ZERO,
+    T_ZERO,             /**< Ending zero char*/
 
 }xp_token_t;
 
@@ -54,18 +56,29 @@ typedef struct xp_loc_id_s{
 }xp_loc_id_t;
 typedef xp_loc_id_t * xp_loc_id_p;
 
-
+/**
+ *
+ */
 int xp_char_to_loc_id(char *xpath, xp_loc_id_p *loc);
+/**
+ *
+ */
 void xp_free_loc_id(xp_loc_id_p l);
+/**
+ * Returns the number of key for t
+ */
 int xp_node_key_count(xp_loc_id_p l, size_t node);
-void xp_print_location_id(xp_loc_id_p l);
+/**
+ * Prints the location_id for debug purposes
+ * @param [in] l
+ */
+void xp_print_location_id(const xp_loc_id_p l);
 
 /*
  * -start returns pointer to XPATH
  * -token return value of token
  * -index integer
  * -length return integer
- *
  */
 
 #define GET_TOKEN(L,ORD) ((L)->tokens[ORD])
@@ -93,11 +106,5 @@ void xp_print_location_id(xp_loc_id_p l);
 #define GET_KEY_VALUE_INDEX(L,NODE,K) (HAS_KEY_NAMES(L,NODE) ? (GET_NODE_TOKEN(L,NODE)+(K)*7+5) : (GET_NODE_TOKEN(L,NODE)+(K)*5+3))
 #define COMPARE_KEY_NAME(L,NODE,K,VAL) COMPARE_TOKEN_STR(L,GET_KEY_NAME_INDEX(L,NODE,K),VAL)
 #define COMPARE_KEY_VALUE(L,NODE,K,VAL) COMPARE_TOKEN_STR(L,GET_KEY_VALUE_INDEX(L,NODE,K),VAL)
-
-
-
-
-
-
 
 #endif /* SRC_XPATH_PROCESSOR_H_ */

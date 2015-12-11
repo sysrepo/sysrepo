@@ -343,11 +343,13 @@ void xp_free_loc_id(xp_loc_id_p l)
     free(l);
 }
 
-void xp_print_location_id(xp_loc_id_p l)
+void xp_print_location_id(const xp_loc_id_p l)
 {
-    puts(l->xpath);
-    for (int i = 0; i < l->cnt; i++) {
-        printf("%c\t%d\n", token_to_ch(l->tokens[i]), (int) l->positions[i]);
+    if (l != NULL) {
+        puts(l->xpath);
+        for (int i = 0; i < l->cnt; i++) {
+            printf("%c\t%d\n", token_to_ch(l->tokens[i]), (int) l->positions[i]);
+        }
     }
 }
 

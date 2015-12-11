@@ -20,7 +20,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include "libsysrepo.h"
+#include "sysrepo.h"
 
 int main(int argc, char **argv){
   //init
@@ -56,7 +56,7 @@ int main(int argc, char **argv){
 
       switch(SR_VAL_TYPE(val)){
 
-          case SR_LIST:
+          case SR_LIST_T:
               printf("%s is a list with keys: ", SR_VAL_NAME(val));
               for(size_t k=0; k < SR_VAL_KEY_COUNT(val); k++){
                   printf("%s = %s", SR_VAL_KEY_NAME(val, k),  SR_VAL_KEY_VALUE(val, k));
@@ -65,7 +65,7 @@ int main(int argc, char **argv){
               sr_get_items(session, SR_VAL_XPATH(val), sub_val, sub_val_cnt);
               break;
 
-          case SR_CONTAINER:
+          case SR_CONTAINER_T:
                if(strcmp(SR_VAL_NAME(val), "my_presence_container") == 0){
                    puts("My presence container is present :)");
                }
