@@ -30,7 +30,7 @@
 #include "test_data.h"
 
 #define MODULE_PATH TEST_DATA_DIR "/example-module.yin"
-#define DATA_PATH TEST_DATA_DIR "/example-module.data"
+#define DATA_PATH "./example-module.data"
 
 
 int setup(void **state){
