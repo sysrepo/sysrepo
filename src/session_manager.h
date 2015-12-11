@@ -24,10 +24,23 @@
 
 #include <stdint.h>
 
-typedef struct sm_ctx_s sm_ctx_t; /* Opaque session manager context. */
+/**
+ * @defgroup sm Session Manager
+ * @{
+ *
+ * @brief Session manager holds information about all active sysrepo sessions.
+ *
+ * It allows fast session lookup by provided session_id (::sm_session_t#id - see ::sm_session_find_id) or
+ * by associated file desciptor (::sm_session_t#fd - see ::sm_session_find_fd).
+ */
 
 /**
- * Defines various types of sessions.
+ * @brief Session manager context used to identify particular instance of Session manager.
+ */
+typedef struct sm_ctx_s sm_ctx_t;
+
+/**
+ * @brief Defines various types of sessions.
  */
 typedef enum {
     SM_AF_UNIX_CLIENT_LOCAL,   /**< The other side is a local (intra-process) client. */
@@ -36,7 +49,7 @@ typedef enum {
 } sm_session_type_t;
 
 /**
- * Defines valid states of sessions.
+ * @brief Defines valid states of sessions.
  */
 typedef enum {
     SM_SESS_NOT_CONNECTED,  /**< Session is not connected, but ready for usage later. */
@@ -45,7 +58,7 @@ typedef enum {
 } sm_session_state_t;
 
 /**
- * Session Context structure.
+ * @brief Session context structure, represents one particular session.
  */
 typedef struct sm_session_s {
     sm_session_type_t type;      /**< Type of the session. */
@@ -57,7 +70,7 @@ typedef struct sm_session_s {
     const char *effective_user;  /**< Effective username of the other side (if different to real_user). */
 
     /**
-     * Buffers used for send/receive data to/from the other side.
+     * @brief Buffers used for send/receive data to/from the other side.
      */
     struct {
         char *in_buff;           /**< Input buffer. If not empty, there is some message to be processed (or part of it). */
@@ -97,7 +110,8 @@ void sm_cleanup(sm_ctx_t *sm_ctx);
  * @brief Creates new Session manager instance.
  *
  * A new unique session ID will be assigned and set to the allocated session
- * context. Lookup for a session by given session ID is possible (@see).
+ * context (::sm_session_t#id). Lookup for a session by given session ID is possible
+ * (see ::sm_session_find_id).
  *
  * @param[in] sm_ctx Session Manager context.
  * @param[in] type Type of the session.
@@ -111,7 +125,7 @@ int sm_session_create(const sm_ctx_t *sm_ctx, sm_session_type_t type, sm_session
  * @brief Assigns a file descriptor to given session.
  *
  * File descriptor will be stored in the avl tree, to allow fast lookup for
- * session by provided descriptor (@see sm_session_find_fd).
+ * session by provided descriptor (see ::sm_session_find_fd).
  *
  * @param[in] sm_ctx Session Manager context.
  * @param[in] session Session context.
@@ -152,7 +166,7 @@ int sm_session_assign_user(const sm_ctx_t *sm_ctx, sm_session_t *session, const 
 int sm_session_drop(const sm_ctx_t *sm_ctx, sm_session_t *session);
 
 /**
- * @brief Finds session context related to provided session ID.
+ * @brief Finds session context assocaiated to provided session ID.
  *
  * @param[in] sm_ctx Session Manager context.
  * @param[in] session_id ID of the session.
@@ -164,7 +178,8 @@ int sm_session_drop(const sm_ctx_t *sm_ctx, sm_session_t *session);
 int sm_session_find_id(const sm_ctx_t *sm_ctx, uint32_t session_id, sm_session_t **session);
 
 /**
- * @brief Finds session context related to provided file descriptor.
+ * @brief Finds session context associated to provided file descriptor.
+ * @see sm_session_assign_fd
  *
  * @param[in] sm_ctx Session Manager context.
  * @param[in] fd File Descriptor of the session.
@@ -174,5 +189,7 @@ int sm_session_find_id(const sm_ctx_t *sm_ctx, uint32_t session_id, sm_session_t
  * matching to fd cannot be found).
  */
 int sm_session_find_fd(const sm_ctx_t *sm_ctx, int fd, sm_session_t **session);
+
+/**@} sm */
 
 #endif /* SESSION_MANAGER_H_ */
