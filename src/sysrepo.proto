@@ -1,0 +1,93 @@
+package sr;
+
+enum DataStore {
+  RUNNING = 1;
+  CANDIDATE = 2;
+  STARTUP = 3;
+}
+
+message Value {
+  enum Types {
+    LIST = 1;
+    CONTAINER = 2;
+    CONTAINER_PRESENCE = 3;
+    LEAF_EMPTY = 4;
+
+    BOOL = 11;
+    UINT32 = 12;
+    STRING = 13;
+  }
+
+  required string path = 1;
+  required Types type = 2;
+  
+  optional uint32 length = 3;
+
+  optional bool bool_val = 10;
+  optional uint32 uint32_val = 11;
+  optional string string_val = 12;
+}
+
+message SessionStartReq {
+  required string user_name = 1;
+}
+
+message SessionStartResp {
+  required uint32 session_id = 1;
+}
+
+message GetItemReq {
+  required DataStore datastore = 1;
+  required string path = 2;
+}
+
+message GetItemResp {
+  optional Value value = 1;
+}
+
+message GetItemsReq {
+  required DataStore datastore = 1;
+  required string path = 2;
+
+  optional bool recursive = 3;
+  optional uint32 limit = 4;
+  optional uint32 offset = 5;
+}
+
+message GetItemsResp {
+  repeated Value value = 1;
+}
+
+enum Operation {
+  SESSION_START = 1;
+  SESSION_STOP = 2;
+
+  GET_ITEM = 3;
+  GET_ITEMS = 4;
+}
+
+message Req {
+  required Operation operation = 1;
+
+  optional SessionStartReq session_start_req = 10;
+}
+
+message Resp {
+  required Operation operation = 1;
+  required uint32 result = 2;
+  optional string error_msg = 3;
+
+  optional SessionStartResp session_start_resp = 10;
+}
+
+message Msg {
+  enum MsgType {
+    REQUEST = 1;
+    RESPONSE = 2;
+  }
+
+  required MsgType type = 1;
+  required uint32 session_id = 2;
+  optional Req request = 3;
+  optional Resp response = 4;
+}
