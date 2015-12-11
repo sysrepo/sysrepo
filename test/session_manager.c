@@ -124,7 +124,8 @@ static void
 session_find_fd(void **state) {
     sm_ctx_t *ctx = *state;
     sm_session_t *sess = NULL;
-    int rc = SR_ERR_OK;
+    sm_session_list_t *sess_list = NULL, *curr = NULL;
+    int rc = SR_ERR_OK, cnt = 0;
 
     /* create 100 sessions */
     int i = 0;
@@ -134,24 +135,51 @@ session_find_fd(void **state) {
         assert_non_null(sess);
         rc = sm_session_assign_user(ctx, sess, "root", "alice");
         assert_int_equal(rc, SR_ERR_OK);
-        rc = sm_session_assign_fd(ctx, sess, i);
+        rc = sm_session_assign_fd(ctx, sess, i % 10);
         assert_int_equal(rc, SR_ERR_OK);
     }
 
-    /* find session by fd */
-    rc = sm_session_find_fd(ctx, 50, &sess);
+    /* find session list by fd */
+    rc = sm_session_find_fd(ctx, 5, &sess_list);
     assert_int_equal(rc, SR_ERR_OK);
-    assert_non_null(sess);
+    assert_non_null(sess_list);
 
-    /* drop session */
-    rc = sm_session_drop(ctx, sess);
+    curr = sess_list;
+    cnt = 0;
+    sm_session_t *s0, *s5, *s9 = 0;
+    while (NULL != curr) {
+        if (0 == cnt) s0 = curr->session;
+        if (5 == cnt) s5 = curr->session;
+        if (9 == cnt) s9 = curr->session;
+        curr = curr->next;
+        cnt++;
+    }
+    assert_int_equal(cnt, 10);
+
+    /* drop first, middle and last session from list */
+    rc = sm_session_drop(ctx, s0);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sm_session_drop(ctx, s5);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sm_session_drop(ctx, s9);
     assert_int_equal(rc, SR_ERR_OK);
 
-    /* find session by fd again - should return not found */
-    sess = NULL;
-    rc = sm_session_find_fd(ctx, 50, &sess);
-    assert_int_equal(rc, SR_ERR_NOT_FOUND);
-    assert_null(sess);
+    /* find session list by fd again */
+    rc = sm_session_find_fd(ctx, 5, &sess_list);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_non_null(sess_list);
+
+    curr = sess_list;
+    cnt = 0;
+    while (NULL != curr) {
+        /* check for already removed sessions */
+        assert_ptr_not_equal(curr->session, s0);
+        assert_ptr_not_equal(curr->session, s5);
+        assert_ptr_not_equal(curr->session, s9);
+        curr = curr->next;
+        cnt++;
+    }
+    assert_int_equal(cnt, 7);
 }
 
 int

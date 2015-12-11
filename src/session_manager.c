@@ -44,10 +44,18 @@ typedef struct sm_ctx_s {
 } sm_ctx_t;
 
 /**
- * @brief Compares two sessions by session ID (used by lookups in avl tree).
+ * @brief List of sessions assigned to a file descriptor.
+ */
+typedef struct sm_fd_session_list_s {
+    int fd;
+    sm_session_list_t *session_list;  /**< List of sessions associated to the same file descriptor. */
+} sm_fd_session_list_t;               /**< File descriptor. */
+
+/**
+ * @brief Compares two sessions by session ID (used by lookups in session avl tree).
  */
 static int
-sm_session_cmp_id(const void *a, const void *b)
+sm_session_cmp(const void *a, const void *b)
 {
     assert(a);
     assert(b);
@@ -64,19 +72,20 @@ sm_session_cmp_id(const void *a, const void *b)
 }
 
 /**
- * @brief Compares two sessions by file descriptors (used by lookups in avl tree).
+ * @brief Compares two session lists by associated file descriptors
+ * (used by lookups in fd avl tree).
  */
 static int
-sm_session_cmp_fd(const void *a, const void *b)
+sm_fd_session_list_cmp(const void *a, const void *b)
 {
     assert(a);
     assert(b);
-    sm_session_t *sess_a = (sm_session_t*)a;
-    sm_session_t *sess_b = (sm_session_t*)b;
+    sm_fd_session_list_t *list_a = (sm_fd_session_list_t*)a;
+    sm_fd_session_list_t *list_b = (sm_fd_session_list_t*)b;
 
-    if (sess_a->fd == sess_b->fd) {
+    if (list_a->fd == list_b->fd) {
         return 0;
-    } else if (sess_a->fd < sess_b->fd) {
+    } else if (list_a->fd < list_b->fd) {
         return -1;
     } else {
         return 1;
@@ -84,8 +93,10 @@ sm_session_cmp_fd(const void *a, const void *b)
 }
 
 /**
- * @brief Cleans up the session. Releases all resources held by Session Manager.
- * @note Called automatically when a node from session_id avl tree is removed (which is also when the tree is being destroyed).
+ * @brief Cleans up the session. Releases all resources held in session context
+ * by Session Manager.
+ * @note Called automatically when a node from session_id avl tree is removed
+ * (which is also when the tree itself is being destroyed).
  */
 static void
 sm_session_cleanup(void *session)
@@ -95,6 +106,31 @@ sm_session_cleanup(void *session)
         free((void*)sm_session->real_user);
         free((void*)sm_session->effective_user);
         free(sm_session);
+    }
+}
+
+/**
+ * @brief Cleans up file descriptor session list entry. Releases all resources
+ * allocated by Session manager when a fd has been assigned to a session
+ * (see ::sm_session_assign_fd).
+ * @note Called automatically when a node from fd avl tree is removed
+ * (which is also when the tree itself is being destroyed).
+ */
+static void
+sm_session_list_cleanup(void *fd_session_list_p)
+{
+    sm_fd_session_list_t *fd_session_list = NULL;
+    sm_session_list_t *curr = NULL, *tmp = NULL;
+
+    if (NULL != fd_session_list_p) {
+        fd_session_list = (sm_fd_session_list_t *)fd_session_list_p;
+        curr = fd_session_list->session_list;
+        while (NULL != curr) {
+            tmp = curr;
+            curr = curr->next;
+            free(tmp);
+        }
+        free(fd_session_list);
     }
 }
 
@@ -114,7 +150,7 @@ sm_init(sm_ctx_t **sm_ctx)
     }
 
     /* create avl tree for session_id lookup, with automatic cleanup callback when the session is removed */
-    ctx->session_id_avl = avl_alloc_tree(sm_session_cmp_id, sm_session_cleanup);
+    ctx->session_id_avl = avl_alloc_tree(sm_session_cmp, sm_session_cleanup);
     if (NULL == ctx->session_id_avl) {
         SR_LOG_ERR_MSG("Cannot allocate avl tree for session ids.");
         rc = SR_ERR_NOMEM;
@@ -122,7 +158,7 @@ sm_init(sm_ctx_t **sm_ctx)
     }
 
     /* create avl tree for fd lookup */
-    ctx->fd_avl = avl_alloc_tree(sm_session_cmp_fd, NULL);
+    ctx->fd_avl = avl_alloc_tree(sm_fd_session_list_cmp, sm_session_list_cleanup);
     if (NULL == ctx->fd_avl) {
         SR_LOG_ERR_MSG("Cannot allocate avl tree for session fds.");
         rc = SR_ERR_NOMEM;
@@ -210,20 +246,52 @@ cleanup:
 
 int
 sm_session_assign_fd(const sm_ctx_t *sm_ctx, sm_session_t *session, int fd) {
-    avl_node_t *node_fd = NULL;
+    sm_fd_session_list_t tmp_list = { 0, }, *fd_list = NULL;
+    sm_session_list_t *session_item = NULL, *tmp = NULL;
+    avl_node_t *node = NULL;
 
     CHECK_NULL_ARG2(sm_ctx, session);
 
-    session->fd = fd;
+    session_item = calloc(1, sizeof(*session_item));
+    if (NULL == session_item) {
+        SR_LOG_ERR_MSG("Cannot allocate memory for new fd session entry.");
+        return SR_ERR_NOMEM;
+    }
+    session_item->session = session;
 
-    /* insert into avl tree for fd lookup */
-    node_fd = avl_insert(sm_ctx->fd_avl, session);
-    if (NULL == node_fd) {
-        SR_LOG_ERR_MSG("Duplicate fd detected, could not insert into avl tree.");
-        session->fd = SM_FD_INVALID;
-        return SR_ERR_INTERNAL;
+    tmp_list.fd = fd;
+    node = avl_search(sm_ctx->fd_avl, &tmp_list);
+
+    if (NULL != node) {
+        /* entry for this fd found - append session at the end of list */
+        fd_list = node->item;
+        tmp = fd_list->session_list;
+        while (NULL != tmp->next) {
+            tmp = tmp->next;
+        }
+        tmp->next = session_item;
+    } else {
+        /* no entry for this fd NOT found - create one */
+        fd_list = calloc(1, sizeof(*fd_list));
+        if (NULL == fd_list) {
+            SR_LOG_ERR_MSG("Cannot allocate memory for new fd entry.");
+            free(session_item);
+            return SR_ERR_NOMEM;
+        }
+        fd_list->fd = fd;
+        fd_list->session_list = session_item;
+
+        /* insert into avl tree for fd lookup */
+        node = avl_insert(sm_ctx->fd_avl, fd_list);
+        if (NULL == node) {
+            SR_LOG_ERR_MSG("Cannot insert new entry into fd avl tree.");
+            free(fd_list);
+            free(session_item);
+            return SR_ERR_INTERNAL;
+        }
     }
 
+    session->fd = fd;
     session->state = SM_SESS_CONNECTED;
 
     return SR_ERR_OK;
@@ -256,10 +324,47 @@ sm_session_assign_user(const sm_ctx_t *sm_ctx, sm_session_t *session, const char
 int
 sm_session_drop(const sm_ctx_t *sm_ctx, sm_session_t *session)
 {
+    sm_fd_session_list_t tmp_list = { 0, }, *fd_list = NULL;
+    sm_session_list_t *tmp = NULL, *prev = NULL;
+    avl_node_t *node = NULL;
+
     CHECK_NULL_ARG2(sm_ctx, session);
 
-    avl_delete(sm_ctx->fd_avl, session);
-    avl_delete(sm_ctx->session_id_avl, session); /* sm_session_cleanup will be automatically invoked */
+    /* remove FD mapping if any */
+    if (session->fd != SM_FD_INVALID) {
+        tmp_list.fd = session->fd;
+        node = avl_search(sm_ctx->fd_avl, &tmp_list);
+        if (NULL != node) {
+            fd_list = node->item;
+            tmp = fd_list->session_list;
+            /* find the session in fd linked list */
+            while (NULL != tmp && tmp->session != session) {
+                prev = tmp;
+                tmp = tmp->next;
+            }
+            /* remove the session from linked-list */
+            if (NULL != tmp) {
+                if (NULL != prev) {
+                    /* tmp is NOT the first item in list - skip it */
+                    prev->next = tmp->next;
+                    free(tmp);
+                } else if (NULL != tmp->next) {
+                    /* tmp is the first item in list - skip it */
+                    fd_list->session_list = tmp->next;
+                    free(tmp);
+                } else {
+                    /* tmp is the only item in list - delete list from avl tree */
+                    avl_delete(sm_ctx->fd_avl, fd_list); /* sm_session_list_cleanup auto-invoked */
+                }
+            } else {
+                SR_LOG_WRN("Session %p not found in fd list.", (void*)session);
+            }
+        } else {
+            SR_LOG_WRN("Session list for fd=%d not found.", session->fd);
+        }
+    }
+
+    avl_delete(sm_ctx->session_id_avl, session); /* sm_session_cleanup auto-invoked */
 
     SR_LOG_DBG("Session dropped succesfully, session_id=%"PRIu32".", session->id);
 
@@ -287,21 +392,27 @@ sm_session_find_id(const sm_ctx_t *sm_ctx, uint32_t session_id, sm_session_t **s
 }
 
 int
-sm_session_find_fd(const sm_ctx_t *sm_ctx, int fd, sm_session_t **session)
+sm_session_find_fd(const sm_ctx_t *sm_ctx, int fd, sm_session_list_t **session_list)
 {
-    sm_session_t tmp = { 0, };
+    sm_fd_session_list_t tmp_list = { 0, }, *fd_list = NULL;
     avl_node_t *node = NULL;
 
-    CHECK_NULL_ARG2(sm_ctx, session);
+    CHECK_NULL_ARG2(sm_ctx, session_list);
 
-    tmp.fd = fd;
-    node = avl_search(sm_ctx->fd_avl, &tmp);
+    if (SM_FD_INVALID == fd) {
+        SR_LOG_ERR_MSG("Invalid fd speciefied.");
+        return SR_ERR_INVAL_ARG;
+    }
+
+    tmp_list.fd = fd;
+    node = avl_search(sm_ctx->fd_avl, &tmp_list);
 
     if (NULL == node) {
-        SR_LOG_WRN("Cannot find session with fd=%d.", fd);
+        SR_LOG_WRN("Cannot find session list with fd=%d.", fd);
         return SR_ERR_NOT_FOUND;
     } else {
-        *session = node->item;
+        fd_list = node->item;
+        *session_list = fd_list->session_list;
         return SR_ERR_OK;
     }
 }

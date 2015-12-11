@@ -86,6 +86,14 @@ typedef struct sm_session_s {
 } sm_session_t;
 
 /**
+ * @brief Linked-list of sessions.
+ */
+typedef struct sm_session_list_s {
+    sm_session_t *session;           /**< Session context. */
+    struct sm_session_list_s *next;  /**< Pointer to next session */
+} sm_session_list_t;
+
+/**
  * @brief Initializes Session Manager.
  *
  * @param[out] sm_ctx Allocated Session Manager context that can be used in subsequent SM requests.
@@ -178,17 +186,19 @@ int sm_session_drop(const sm_ctx_t *sm_ctx, sm_session_t *session);
 int sm_session_find_id(const sm_ctx_t *sm_ctx, uint32_t session_id, sm_session_t **session);
 
 /**
- * @brief Finds session context associated to provided file descriptor.
+ * @brief Finds session contexts associated to provided file descriptor.
  * @see sm_session_assign_fd
+ * @see sm_session_list_t
  *
  * @param[in] sm_ctx Session Manager context.
- * @param[in] fd File Descriptor of the session.
- * @param[out] session Session context matching with provided file descriptor.
+ * @param[in] fd File Descriptor of sessions.
+ * @param[out] session_list List of session contexts matching with provided
+ * file descriptor.
  *
  * @return Error code (SR_ERR_OK on success, SR_ERR_NOT_FOUND if session
  * matching to fd cannot be found).
  */
-int sm_session_find_fd(const sm_ctx_t *sm_ctx, int fd, sm_session_t **session);
+int sm_session_find_fd(const sm_ctx_t *sm_ctx, int fd, sm_session_list_t **session_list);
 
 /**@} sm */
 
