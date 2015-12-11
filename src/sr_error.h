@@ -23,7 +23,7 @@
 #define SRC_SR_ERROR_H_
 
 /**
- * Sysrepo error codes.
+ * @brief Sysrepo error codes.
  */
 typedef enum sr_error_e {
   SR_ERR_OK = 0,       /**< No error. */

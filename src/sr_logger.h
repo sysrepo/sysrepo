@@ -28,11 +28,30 @@
 #include <string.h>
 #include <syslog.h>
 
+/**
+ * @defgroup logger Logger
+ * @{
+ *
+ * @brief Logger module allows logging of messages with various severities to stderr and/or syslog.
+ *
+ * To filter messages according to their severities, set desired log level via ::sr_logger_set_level function.
+ * If no specific log level is configured, default log levels will be used (defined as
+ * ::SR_LOG_STDERR_DEFAULT_LL and ::SR_LOG_SYSLOG_DEFAULT_LL).
+ *
+ * Since syslog does not allow opening more connections to system logger per application,
+ * this module is global for the application (call ::sr_logger_init and ::sr_logger_cleanup only
+ * once in the lifetime of the application).
+ *
+ * Logs in syslog will be identified as application "sysrepo" in case that provided
+ * app_name argument of ::sr_logger_init will be NULL, or as "sysrepo-app_name" if some string
+ * will be provided (see ::sr_logger_init).
+ */
+
 #define SR_LOGGING_ENABLED (1)           /**< Controls whether logging is enabled. */
 #define SR_LOG_PRINT_FUNCTION_NAMES (1)  /**< Controls whether function names should be printed. */
 
 /**
- * Log levels used to determine if message of certain severity should be printed
+ * @brief Log levels used to determine if message of certain severity should be printed.
  */
 typedef enum {
     SR_LL_NONE,  /**< Do not print any messages. */
@@ -82,20 +101,24 @@ extern volatile uint8_t sr_ll_syslog;  /**< Holds current level of syslog debugs
 
 #if SR_LOGGING_ENABLED
 
-/** Prints an error message. */
+/** Prints an error message (with format specifiers). */
 #define SR_LOG_ERR(MSG, ...) SR_LOG__INTERNAL(SR_LL_ERR, MSG, ##__VA_ARGS__)
+/** Prints an error message. */
 #define SR_LOG_ERR_MSG(MSG) SR_LOG__INTERNAL(SR_LL_ERR, MSG "%s", "")
 
-/** Prints a warning message. */
+/** Prints a warning message (with format specifiers). */
 #define SR_LOG_WRN(MSG, ...) SR_LOG__INTERNAL(SR_LL_WRN, MSG, ##__VA_ARGS__)
+/** Prints a warning message. */
 #define SR_LOG_WRN_MSG(MSG) SR_LOG__INTERNAL(SR_LL_WRN, MSG "%s", "")
 
-/** Prints an informational message. */
+/** Prints an informational message (with format specifiers). */
 #define SR_LOG_INF(MSG, ...) SR_LOG__INTERNAL(SR_LL_INF, MSG, ##__VA_ARGS__)
+/** Prints an informational message. */
 #define SR_LOG_INF_MSG(MSG) SR_LOG__INTERNAL(SR_LL_INF, MSG "%s", "")
 
-/** Prints a development debug message. */
+/** Prints a development debug message (with format specifiers). */
 #define SR_LOG_DBG(MSG, ...) SR_LOG__INTERNAL(SR_LL_DBG, MSG, ##__VA_ARGS__)
+/** Prints a development debug message. */
 #define SR_LOG_DBG_MSG(MSG) SR_LOG__INTERNAL(SR_LL_DBG, MSG "%s", "")
 
 #else
@@ -108,8 +131,10 @@ extern volatile uint8_t sr_ll_syslog;  /**< Holds current level of syslog debugs
 /**
  * @brief Initializes Sysrepo logging subsystem.
  *
- * @param[in] app_name Name of the application using Sysrepo. Can be NULL for sysrepo deamon / core library.
- * the string will be duped and automatically released upon sr_logger_cleanup call.
+ * @param[in] app_name Name of the application using Sysrepo, used to identify the logs in syslog.
+ * Prefix "sysrepo-" will be prepended to the application name. Can be NULL for sysrepo deamon / core library,
+ * in that case, logs will be identified as "sysrepo". The string will be duped and automatically
+ * released upon sr_logger_cleanup call.
  */
 void sr_logger_init(const char *app_name);
 
@@ -125,5 +150,7 @@ void sr_logger_cleanup();
  * @param[in] ll_syslog Log level for syslog logs.
  */
 void sr_logger_set_level(sr_log_level_t ll_stderr, sr_log_level_t ll_syslog);
+
+/**@} logger */
 
 #endif /* SR_LOGGER_H_ */

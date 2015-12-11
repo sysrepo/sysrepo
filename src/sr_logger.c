@@ -29,12 +29,12 @@
 #include "sr_common.h"
 #include "sr_logger.h"
 
-volatile uint8_t sr_ll_stderr = SR_LOG_STDERR_DEFAULT_LL;
-volatile uint8_t sr_ll_syslog = SR_LOG_SYSLOG_DEFAULT_LL;
+volatile uint8_t sr_ll_stderr = SR_LOG_STDERR_DEFAULT_LL;  /**< Global variable used to store log level of stderr messages. */
+volatile uint8_t sr_ll_syslog = SR_LOG_SYSLOG_DEFAULT_LL;  /**< Global variable used to store log level of syslog messages. */
 
 #define SR_LOG_IDENTIFIER "sysrepo"  /**< Default identifier used in syslog messages. */
 
-char *syslog_identifier = NULL; /** Global variable used to store syslog identifier. TODO: wrap into some context */
+char *syslog_identifier = NULL; /**< Global variable used to store syslog identifier. */
 
 void
 sr_logger_init(const char *app_name)
@@ -55,7 +55,6 @@ sr_logger_init(const char *app_name)
         identifier = SR_LOG_IDENTIFIER;
     }
 
-    printf("id: %s\n", identifier);
     setlogmask(LOG_UPTO(LOG_INFO));
     openlog(identifier, LOG_CONS | LOG_PID | LOG_NDELAY, LOG_DAEMON);
 #endif
