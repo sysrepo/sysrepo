@@ -87,8 +87,9 @@ int xp_node_key_count(const xp_loc_id_t *l, const size_t node);
 /**
  * @brief Prints the location_id for debug purposes
  * @param [in] l
+ * @return err_code
  */
-void xp_print_location_id(const xp_loc_id_t *l);
+sr_error_t xp_print_location_id(const xp_loc_id_t *l);
 
 /*
  * -start returns pointer to XPATH

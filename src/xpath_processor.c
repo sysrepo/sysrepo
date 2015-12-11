@@ -257,6 +257,7 @@ inline static void change_ns_to_node(const size_t cnt, xp_token_t *tokens, size_
  */
 sr_error_t xp_char_to_loc_id(const char *xpath, xp_loc_id_t **loc)
 {
+    CHECK_NULL_ARG2(xpath, loc);
     xp_token_t tokens[MAX_TOKENS];
     size_t positions[MAX_TOKENS] = { 0, };
     size_t node_index[MAX_TOKENS] = { 0, };
@@ -413,21 +414,23 @@ sr_error_t xp_char_to_loc_id(const char *xpath, xp_loc_id_t **loc)
 
 void xp_free_loc_id(xp_loc_id_t *l)
 {
-    free(l->xpath);
-    free(l->tokens);
-    free(l->positions);
-    free(l->node_index);
-    free(l);
+    if(l!=NULL){
+        free(l->xpath);
+        free(l->tokens);
+        free(l->positions);
+        free(l->node_index);
+        free(l);
+    }
 }
 
-void xp_print_location_id(const xp_loc_id_t *l)
+sr_error_t xp_print_location_id(const xp_loc_id_t *l)
 {
-    if (l != NULL) {
-        puts(l->xpath);
-        for (int i = 0; i < l->cnt; i++) {
-            printf("%c\t%d\n", xp_token_to_ch(l->tokens[i]), (int) l->positions[i]);
-        }
+    CHECK_NULL_ARG(l);
+    puts(l->xpath);
+    for (int i = 0; i < l->cnt; i++) {
+        printf("%c\t%d\n", xp_token_to_ch(l->tokens[i]), (int) l->positions[i]);
     }
+    return SR_ERR_OK;
 }
 
 int xp_node_key_count(const xp_loc_id_t *l, size_t node)
