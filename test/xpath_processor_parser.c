@@ -118,6 +118,10 @@ void check_parsing(void **state){
 
    assert_int_not_equal(0,xp_char_to_loc_id("//container", &l));
    assert_int_not_equal(0,xp_char_to_loc_id("/ns:cont/list[", &l));
+   assert_int_not_equal(0,xp_char_to_loc_id("/ns:cont/list[abc][k2='key2']", &l));
+   assert_int_not_equal(0,xp_char_to_loc_id("/ns:cont/list[k1='abc'][va2]", &l));
+   assert_int_not_equal(0,xp_char_to_loc_id("/ns:cont/list[k1=']", &l));
+
    /* apostroph can not be ommitted */
    assert_int_not_equal(0,xp_char_to_loc_id("/cont/l[k=abc]", &l));
    assert_int_not_equal(0,xp_char_to_loc_id("/c/l[abc]", &l));

@@ -34,6 +34,12 @@ enum xp_states {
     S_KEY,
 };
 
+enum xp_keys_state {
+    K_UNKNOWN,
+    K_LISTED,
+    K_OMITTED
+};
+
 
 /** @brief helper function return char representation of token*/
 static char xp_token_to_ch(xp_token_t t)
@@ -104,7 +110,7 @@ static char *xp_token_to_str(xp_token_t t)
  * @param [in] token_count
  * @return allocated structure or NULL in case of error
  */
-static xp_loc_id_t* alloc_loction_id(const char *xpath, size_t node_count, size_t token_count)
+static xp_loc_id_t* xp_alloc_loc_id(const char *xpath, size_t node_count, size_t token_count)
 {
     xp_loc_id_t *l = (xp_loc_id_t *) malloc(sizeof(xp_loc_id_t));
     if (l == NULL) {
@@ -132,11 +138,9 @@ static xp_loc_id_t* alloc_loction_id(const char *xpath, size_t node_count, size_
     return l;
 }
 
-static sr_error_t validate_token_order(xp_token_t *tokens, size_t token_count, size_t *err_token)
+static sr_error_t xp_validate_token_order(xp_token_t *tokens, size_t token_count, size_t *err_token)
 {
-    if(err_token == NULL){
-        return SR_ERR_INVAL_ARG;
-    }
+    CHECK_NULL_ARG(err_token);
     xp_token_t curr = T_SLASH;
     xp_token_t t = tokens[0];
     if (t != T_SLASH)
@@ -178,7 +182,8 @@ static sr_error_t validate_token_order(xp_token_t *tokens, size_t token_count, s
             }
             break;
         case T_APOS:
-            if (t == T_KEY_VALUE || t == T_RSQB) {
+            /* prevent the xpath like this /cont/list[k=']*/
+            if (t == T_KEY_VALUE || (t == T_RSQB && tokens[i-2]!=T_EQUAL)) {
                 curr = t;
             } else {
                 *err_token = i;
@@ -241,10 +246,45 @@ static sr_error_t validate_token_order(xp_token_t *tokens, size_t token_count, s
     return SR_ERR_OK;
 }
 
+/**@brief check if all list keynames are specified or all is ommitted */
+static sr_error_t xp_validate_list_nodes(xp_token_t *tokens, size_t token_count, size_t *err_token)
+{
+    CHECK_NULL_ARG(err_token);
+    enum xp_keys_state k = K_UNKNOWN;
+
+    for (size_t i = 1; i < token_count; i++) {
+        xp_token_t curr = tokens[i];
+        switch (curr) {
+        case T_NODE:
+            k = K_UNKNOWN;
+            *err_token = i;
+            break;
+        case T_KEY_NAME:
+            if (k == K_UNKNOWN) {
+                k = K_LISTED;
+            } else if (k == K_OMITTED) {
+                return SR_ERR_INVAL_ARG;
+            }
+            break;
+        case T_KEY_VALUE:
+            if (k == K_UNKNOWN) {
+                k = K_OMITTED;
+            } else if (k == K_OMITTED) {
+                return SR_ERR_INVAL_ARG;
+            }
+            break;
+        default:
+            break;
+        }
+
+    }
+    *err_token = 0;
+    return SR_ERR_OK;
+}
 /**
  * @brief if the last token is ::T_NS namespace it is changed to ::T_NODE node
  */
-inline static void change_ns_to_node(const size_t cnt, xp_token_t *tokens, size_t *node_index, size_t *node_count)
+inline static void xp_change_ns_to_node(const size_t cnt, xp_token_t *tokens, size_t *node_index, size_t *node_count)
 {
     if (cnt > 0 && tokens[cnt - 1] == T_NS) {
         tokens[cnt - 1] = T_NODE;
@@ -287,11 +327,11 @@ sr_error_t xp_char_to_loc_id(const char *xpath, xp_loc_id_t **loc)
                 MARK_TOKEN(T_COLON);
                 state = S_NODE;
             } else if ('/' == xpath[i]) {
-                change_ns_to_node(cnt, tokens, node_index, &node_count);
+                xp_change_ns_to_node(cnt, tokens, node_index, &node_count);
                 MARK_TOKEN(T_SLASH);
                 state = S_NS;
             } else if ('[' == xpath[i]) {
-                change_ns_to_node(cnt, tokens, node_index, &node_count);
+                xp_change_ns_to_node(cnt, tokens, node_index, &node_count);
                 MARK_TOKEN(T_LSQB);
                 state = S_KEY_NAME;
             } else if (cnt > 0 && tokens[cnt - 1] == T_NS) {
@@ -308,11 +348,11 @@ sr_error_t xp_char_to_loc_id(const char *xpath, xp_loc_id_t **loc)
             break;
         case S_NODE:
             if ('[' == xpath[i]) {
-                change_ns_to_node(cnt, tokens, node_index, &node_count);
+                xp_change_ns_to_node(cnt, tokens, node_index, &node_count);
                 MARK_TOKEN(T_LSQB);
                 state = S_KEY_NAME;
             } else if ('/' == xpath[i]) {
-                change_ns_to_node(cnt, tokens, node_index, &node_count);
+                xp_change_ns_to_node(cnt, tokens, node_index, &node_count);
                 MARK_TOKEN(T_SLASH);
                 state = S_NS;
             } else if (cnt > 0 && tokens[cnt - 1] == T_KEY_NAME) {
@@ -383,18 +423,23 @@ sr_error_t xp_char_to_loc_id(const char *xpath, xp_loc_id_t **loc)
         }
 
     }
-    change_ns_to_node(cnt, tokens, node_index, &node_count);
+    xp_change_ns_to_node(cnt, tokens, node_index, &node_count);
     MARK_TOKEN(T_ZERO);
 
     /*Validate token order*/
     size_t err_token=0;
-    if (validate_token_order(tokens, cnt, &err_token) != SR_ERR_OK) {
+    if (xp_validate_token_order(tokens, cnt, &err_token) != SR_ERR_OK) {
         SR_LOG_ERR("Invalid token %s occured in xpath %s on position %zu.", xp_token_to_str(tokens[err_token]), xpath, positions[err_token]);
         return SR_ERR_INVAL_ARG;
     }
 
+    if (xp_validate_list_nodes(tokens, cnt, &err_token) != SR_ERR_OK) {
+        SR_LOG_ERR("Invalid list node occured in xpath %s on position %zu.", xpath, positions[err_token]);
+        return SR_ERR_INVAL_ARG;
+    }
+
     /*Allocate structure*/
-    xp_loc_id_t *l = alloc_loction_id(xpath, node_count, cnt);
+    xp_loc_id_t *l = xp_alloc_loc_id(xpath, node_count, cnt);
     if (l == NULL) {
         SR_LOG_ERR_MSG("Cannot allocate memory for xp_loc_id_t.");
         return SR_ERR_NOMEM;
