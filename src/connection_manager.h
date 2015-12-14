@@ -53,7 +53,7 @@ typedef struct cm_ctx_s cm_ctx_t;
  * to the server (as of now, by connecting to server's unix-domain socket).
  *
  * This function will block the thread in the event loop until stop is requested
- * or until an error occurs.
+ * or until an error occured.
  *
  * @param[in] socket_path Path to the unix-domain socket where server should bind to.
  * @param[out] cm_ctx Connectaion manager context which can be used in subsequent
@@ -61,7 +61,7 @@ typedef struct cm_ctx_s cm_ctx_t;
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int cm_start_server(const char *socket_path, cm_ctx_t **cm_ctx);
+int cm_start(const char *socket_path, cm_ctx_t **cm_ctx);
 
 /**
  * @brief Initializes Connection Manager in local (library) mode.
@@ -81,7 +81,7 @@ int cm_start_server(const char *socket_path, cm_ctx_t **cm_ctx);
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int cm_start_local(cm_ctx_t **cm_ctx, int *communication_fd);
+int cm_start_local(cm_ctx_t **cm_ctx, char **socket_path);
 
 /**
  * @brief Cleans up a Connection Manager instance.
@@ -95,19 +95,20 @@ int cm_start_local(cm_ctx_t **cm_ctx, int *communication_fd);
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int cm_cleanup(cm_ctx_t *cm_ctx);
+int cm_stop(cm_ctx_t *cm_ctx);
 
 /**
  * @brief Sends the message to the proper reciepient according to provided session.
  *
  * This function is thread safe, can be called from any thread.
  *
+ * @param[in] cm_ctx Connection Manager context.
  * @param[in] cm_session_ctx Session context used to identifiy the receiver.
  * @param[in] msg Messge to be send.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int cm_msg_send(void *cm_session_ctx, Sr__Msg *msg);
+int cm_msg_send(const cm_ctx_t *cm_ctx, void *cm_session_ctx, Sr__Msg *msg);
 
 /**@} cm */
 
