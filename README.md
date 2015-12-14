@@ -20,8 +20,25 @@
 - make
 - sudo make install
 
+###Google protocol buffers
+- sudo apt-get install autoconf libtool
+- git clone https://github.com/google/protobuf.git
+- cd protobuf
+- ./autogen.sh
+- ./configure --prefix=/usr
+- make
+- sudo make install
+
+###Protobuf-c
+- git clone https://github.com/protobuf-c/protobuf-c.git
+- cd protobuf-c
+- ./autogen.sh && ./configure --prefix=/usr 
+- make 
+- sudo make install
+
+
 ## How to build
-- sudo apt-get install git cmake doxygen valgrind
+- sudo apt-get install git cmake doxygen valgrind libavl-dev
 - git clone https://github.com/lukasmacko/sr.git
 - cd sr
 - mkdir build

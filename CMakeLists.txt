@@ -25,14 +25,15 @@ if(NOT INCLUDE_INSTALL_DIR)
     set(INCLUDE_INSTALL_DIR "include")
 endif()
 
-add_subdirectory(src)
-add_subdirectory(inc)
-add_subdirectory(examples)
-
 find_package(YANG REQUIRED)
 find_package(Protobuf-c REQUIRED)
 include_directories(${PROTOBUF-C_INCLUDE_DIR})
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
+
+#add subdirectories
+add_subdirectory(src)
+add_subdirectory(inc)
+add_subdirectory(examples)
 
 
 

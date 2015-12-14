@@ -80,7 +80,7 @@ void xpath_set_node(void **state){
     xp_char_to_loc_id(XPATH, &l);
     assert_non_null(l);
 
-    char *moduleName = XP_CPY_TOKEN(l,GET_NODE_NS_INDEX(l,0));
+    char *moduleName = XP_CPY_TOKEN(l,XP_GET_NODE_NS_INDEX(l,0));
     assert_non_null(moduleName);
 
     const struct lys_module *module = ly_ctx_get_module(ctx,moduleName,NULL);
@@ -90,25 +90,25 @@ void xpath_set_node(void **state){
     char *value = "Leaf value";
     struct lyd_node *root=NULL;
     struct lyd_node *node=NULL;
-    for(int n=0; n < l->node_count; n++) {
+    for(int n=0; n < XP_GET_NODE_COUNT(l); n++) {
         //check whether node is a leaf
         char *node_name = XP_CPY_TOKEN(l,XP_GET_NODE_TOKEN(l,n));
         assert_non_null(node_name);
 
-        if(l->node_count == (n+1)){
+        if(XP_GET_NODE_COUNT(l) == (n+1)){
             //leaf
             node = lyd_new_leaf(node,module,node_name,value);
             assert_non_null(node);
         }
         else{
-            int key_count = xp_node_key_count(l,n);
+            int key_count = XP_GET_KEY_COUNT(l,n);
             if(key_count !=0){
                 node = lyd_new(node, module, node_name);
                 for(int k=0; k<key_count; k++){
-                    char *key_name = XP_CPY_TOKEN(l,GET_KEY_NAME_INDEX(l,n,k));
+                    char *key_name = XP_CPY_TOKEN(l,XP_GET_KEY_NAME_INDEX(l,n,k));
                     assert_non_null(key_name);
 
-                    char *key_value = XP_CPY_TOKEN(l,GET_KEY_VALUE_INDEX(l,n,k));
+                    char *key_value = XP_CPY_TOKEN(l,XP_GET_KEY_VALUE_INDEX(l,n,k));
                     assert_non_null(key_value);
 
                     assert_non_null(lyd_new_leaf(node,module,key_name,key_value));
@@ -152,7 +152,7 @@ void xpath_sch_match(void **state){
     xp_char_to_loc_id(XPATH, &l);
     assert_non_null(l);
 
-    char *moduleName = XP_CPY_TOKEN(l,GET_NODE_NS_INDEX(l,0));
+    char *moduleName = XP_CPY_TOKEN(l,XP_GET_NODE_NS_INDEX(l,0));
     assert_non_null(moduleName);
 
     const struct lys_module *module = ly_ctx_get_module(ctx,moduleName,NULL);
@@ -161,7 +161,7 @@ void xpath_sch_match(void **state){
     struct lys_node *node = module->data;
 
     int n = 0;
-    for(; n<l->node_count;n++){
+    for(; n < XP_GET_NODE_COUNT(l);n++){
         while(node != NULL) {
             if (XP_CMP_NODE(l, n, node->name)) {
                 if(node->child!=NULL) {
