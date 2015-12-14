@@ -100,6 +100,8 @@ sr_error_t xp_print_location_id(const xp_loc_id_t *l);
 /**@brief Returns the pointer to the position in ::xp_loc_id_t#xpath where the namespace of NODE starts*/
 #define XP_GET_NODE_NS_START(L,NODE) XP_GET_TOKEN_START(L,XP_GET_NODE_NS_INDEX(L,NODE))
 
+/**@brief Returns the NODE's namespace length.*/
+#define XP_GET_NODE_NS_LENGTH(L,NODE) XP_GET_TOKEN_LENGTH(L,XP_GET_NODE_NS_INDEX(L,NODE))
 /**@brief Returns the copied content of the NODE's namespace*/
 #define XP_CPY_NODE_NS(L,NODE) XP_CPY_TOKEN(L,XP_GET_NODE_NS_INDEX(L,NODE))
 
@@ -109,19 +111,24 @@ sr_error_t xp_print_location_id(const xp_loc_id_t *l);
 //KEYS (Key names are mandatory)
 /**@brief Return the number of the keys for the NODE*/
 #define XP_GET_KEY_COUNT(L,NODE) xp_node_key_count(L,NODE)
-
 /**@brief Returns true if the key names are explictly specified*/
 #define XP_HAS_KEY_NAMES(L,NODE) (XP_GET_TOKEN(L,XP_GET_NODE_TOKEN(L,NODE)+2)==T_KEY_NAME)
 
+/**@brief Returns the pointer to the position in ::xp_loc_id_t#xpath where NODES's K'th keyname starts. All indexes must be in a valid range.*/
+#define XP_GET_KEY_NAME_START(L,NODE,K) XP_GET_TOKEN_START(L,XP_GET_KEY_VALUE_INDEX(L,NODE,K))
+/**@brief Returns the length NODES's K'th keyname. All indexes must be in a valid range.*/
+#define XP_GET_KEY_NAME_LENGTH(L,NODE,K) XP_GET_TOKEN_LENGTH(L,XP_GET_KEY_NAME_INDEX(L,NODE,K))
 /**@brief String compare of the NODES's K'th keyname. All indexes must be in a valid range.*/
 #define XP_CMP_KEY_NAME(L,NODE,K,VAL) XP_CMP_TOKEN_STR(L,XP_GET_KEY_NAME_INDEX(L,NODE,K),VAL)
-
 /**@brief Returns the copied content of the NODE's K'th keyname*/
 #define XP_CPY_KEY_NAME(L,NODE,K) XP_CPY_TOKEN(L,XP_GET_KEY_NAME_INDEX(L,NODE,K))
 
-/**@brief String compare of the NODES's K'th keyname. All indexes must be in a valid range.*/
+/**@brief Returns the pointer to the position in ::xp_loc_id_t#xpath where the NODES's K'th keyvalue starts. All indexes must be in a valid range. */
+#define XP_GET_KEY_VALUE_START(L,NODE,K) XP_GET_TOKEN_START(L,XP_GET_KEY_VALUE_INDEX(L,NODE,K))
+/**@brief Returns the length of NODES's K'th keyvalue. All indexes must be in a valid range.*/
+#define XP_GET_KEY_VALUE_LENGTH(L,NODE,K) XP_GET_TOKEN_LENGTH(L,XP_GET_KEY_VALUE_INDEX(L,NODE,K))
+/**@brief String compare of the NODES's K'th keyvalue. All indexes must be in a valid range.*/
 #define XP_CMP_KEY_VALUE(L,NODE,K,VAL) XP_CMP_TOKEN_STR(L,XP_GET_KEY_VALUE_INDEX(L,NODE,K),VAL)
-
 /**@brief Returns the copied content of the NODE's K'th keyvalue*/
 #define XP_CPY_KEY_VALUE(L,NODE,K) XP_CPY_TOKEN(L,XP_GET_KEY_VALUE_INDEX(L,NODE,K))
 /**@} xPath processor */

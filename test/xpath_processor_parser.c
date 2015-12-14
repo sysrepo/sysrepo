@@ -52,7 +52,7 @@ void check_tokens(void **state){
 
 void check_nodes(void **state){
     xp_loc_id_t *l = (xp_loc_id_t *) *state;
-    assert_true(l->node_count  == 3);
+    assert_true(XP_GET_NODE_COUNT(l)  == 3);
 
     assert_true(XP_CMP_NODE(l,0,"container"));
     assert_true(XP_CMP_NODE(l,1,"list"));
@@ -100,7 +100,7 @@ void check_keys(void **state){
 void test1(void **state){
     xp_loc_id_t *l = (xp_loc_id_t *) *state;
 
-    for(int i=0; i < l->node_count; i++){
+    for(int i=0; i < XP_GET_NODE_COUNT(l); i++){
         puts(XP_GET_NODE_START(l,i));
     }
 

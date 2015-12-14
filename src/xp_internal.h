@@ -57,13 +57,13 @@ typedef enum xp_token_e{
 #define XP_GET_TOKEN_START(L, ORD) (&(L)->xpath[(L)->positions[ORD]])
 
 /**@brief Returns the length of the ORD-th token. ORD must be in a valid range. */
-#define XP_TOKEN_LENGTH(L,ORD) ((L)->positions[ORD+1] - (L)->positions[ORD])
+#define XP_GET_TOKEN_LENGTH(L,ORD) ((L)->positions[ORD+1] - (L)->positions[ORD])
 
 /**@brief Returns the copied content of the ORD-th token . ORD must be in a valid range. */
-#define XP_CPY_TOKEN(L,ORD) (strndup(XP_GET_TOKEN_START(L,ORD),XP_TOKEN_LENGTH(L,ORD)))
+#define XP_CPY_TOKEN(L,ORD) (strndup(XP_GET_TOKEN_START(L,ORD),XP_GET_TOKEN_LENGTH(L,ORD)))
 
 /**@brief String compare of the ORD-th token with VAL */
-#define XP_CMP_TOKEN_STR(L,ORD,VAL) (strncmp(XP_GET_TOKEN_START(L,ORD),(VAL), XP_TOKEN_LENGTH(L,ORD)) ==0)
+#define XP_CMP_TOKEN_STR(L,ORD,VAL) (strncmp(XP_GET_TOKEN_START(L,ORD),(VAL), XP_GET_TOKEN_LENGTH(L,ORD)) ==0)
 
 #define XP_GET_NODE_NS_INDEX(L,NODE) (XP_GET_NODE_TOKEN(L,NODE)-2)
 
