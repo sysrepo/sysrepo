@@ -28,27 +28,12 @@
 #define MAX_TOKENS 500
 
 #include <string.h>
+#include "xp_internal.h"
 #include "sr_common.h"
+
 #define _POSIX_C_SOURCE 200809L
 
-/**
- * @brief Enum of tokens that can be found in xpath
- */
-typedef enum xp_token_e{
-    T_NS,               /**< Namespace token*/
-    T_NODE,             /**< Node(leaf,container,list) token */
-    T_KEY_NAME,         /**< Name of the key list token*/
-    T_KEY_VALUE,        /**< Value of the key list token*/
 
-    T_SLASH,            /**< Slash tokens between the nodes*/
-    T_COLON,            /**< Colon token separating the namespace and the node*/
-    T_LSQB,             /**< Left square bracket */
-    T_EQUAL,            /**< Equal sign token between key value and key name*/
-    T_RSQB,             /**< Right square bracket */
-    T_APOS,             /**< Apostrophe surrounding the key value*/
-    T_ZERO,             /**< Ending zero char*/
-
-}xp_token_t;
 
 /**
  * @brief The structure indexing xPath
@@ -91,45 +76,53 @@ int xp_node_key_count(const xp_loc_id_t *l, const size_t node);
  */
 sr_error_t xp_print_location_id(const xp_loc_id_t *l);
 
-/*
- * -start returns pointer to XPATH
- * -token return value of token
- * -index integer
- * -length return integer
- */
+//NODES
+/**@brief returns the node count*/
+#define XP_GET_NODE_COUNT(L) (L->node_count)
 
-/**@brief Returns ORD-th token from ::xp_loc_id_t. ORD must be in a valid range.*/
-#define XP_GET_TOKEN(L,ORD) ((L)->tokens[ORD])
-/**@brief Returns ORD-th ::T_NODE token. ORD must be in a valid range. */
-#define XP_GET_NODE_TOKEN(L,ORD) ((L)->node_index[ORD])
-/**@brief Returns the pointer to the position in ::xp_loc_id_t#xpath referenced by ORD-th token. ORD must be in a valid range.*/
-#define XP_GET_TOKEN_START(L, ORD) (&(L)->xpath[(L)->positions[ORD]])
 /**@brief Returns the pointer to the position in ::xp_loc_id_t#xpath referenced by ORD-th ::T_NODE token. ORD must be in a valid range.*/
 #define XP_GET_NODE_START(L,ORD) XP_GET_TOKEN_START(L,(L)->node_index[ORD])
 
-/**@brief Returns the length of the ORD-th token. ORD must be in a valid range. */
-#define XP_TOKEN_LENGTH(L,ORD) ((L)->positions[ORD+1] - (L)->positions[ORD])
 /**@brief Returns the length of the ORD-th ::T_NODE token. ORD must be in a valid range. */
-#define XP_NODE_LENGTH(L,ORD) XP_TOKEN_LENGTH(L, XP_GET_NODE_TOKEN(L, ORD))
-/**@brief Returns the copied content of the ORD-th. ORD must be in a valid range. */
-#define XP_CPY_TOKEN(L,ORD) (strndup(XP_GET_TOKEN_START(L,ORD),XP_TOKEN_LENGTH(L,ORD)))
+#define XP_GET_NODE_LENGTH(L,ORD) XP_TOKEN_LENGTH(L, XP_GET_NODE_TOKEN(L, ORD))
 
-/**@brief String compare of the ORD-th token with VAL */
-#define XP_CMP_TOKEN_STR(L,ORD,VAL) (strncmp(XP_GET_TOKEN_START(L,ORD),(VAL), XP_TOKEN_LENGTH(L,ORD)) ==0)
+/**@brief Returns the copied content of the ORD-th T_NODE_TOKEN. ORD must be in a valid range. */
+#define XP_CPY_NODE(L,ORD) XP_CPY_TOKEN(L,XP_GET_NODE_TOKEN(L,ORD))
+
 /**@brief String compare of the ORD-th ::T_NODE token with VAL*/
-#define XP_CMP_NODE(L,ORD,VAL) (strncmp(XP_GET_NODE_START(L,ORD), (VAL), XP_NODE_LENGTH(L,ORD) ) == 0)
+#define XP_CMP_NODE(L,ORD,VAL) XP_CMP_TOKEN_STR(L,XP_GET_NODE_TOKEN(L,ORD),VAL)
 
 
 //NAMESPACE
-#define HAS_NS(L,NODE) (XP_GET_NODE_TOKEN(L,NODE)>2 && XP_GET_TOKEN(L,XP_GET_NODE_TOKEN(L,NODE)-2)==T_NS)
-#define GET_NODE_NS_INDEX(L,NODE) (XP_GET_NODE_TOKEN(L,NODE)-2)
-#define COMPARE_NODE_NS(L,NODE,VAL) XP_CMP_TOKEN_STR(L,GET_NODE_NS_INDEX(L,NODE),VAL)
+/**@brief Returns true if the NODE's namespace is explicitly specified*/
+#define XP_HAS_NODE_NS(L,NODE) (XP_GET_NODE_TOKEN(L,NODE)>2 && XP_GET_TOKEN(L,XP_GET_NODE_TOKEN(L,NODE)-2)==T_NS)
+
+/**@brief Returns the pointer to the position in ::xp_loc_id_t#xpath where the namespace of NODE starts*/
+#define XP_GET_NODE_NS_START(L,NODE) XP_GET_TOKEN_START(L,XP_GET_NODE_NS_INDEX(L,NODE))
+
+/**@brief Returns the copied content of the NODE's namespace*/
+#define XP_CPY_NODE_NS(L,NODE) XP_CPY_TOKEN(L,XP_GET_NODE_NS_INDEX(L,NODE))
+
+/**@brief String compare of NODE's namespace*/
+#define XP_CMP_NODE_NS(L,NODE,VAL) XP_CMP_TOKEN_STR(L,XP_GET_NODE_NS_INDEX(L,NODE),VAL)
 
 //KEYS (Key names are mandatory)
-#define HAS_KEY_NAMES(L,NODE) (XP_GET_TOKEN(L,XP_GET_NODE_TOKEN(L,NODE)+2)==T_KEY_NAME)
-#define GET_KEY_NAME_INDEX(L,NODE,K) (XP_GET_NODE_TOKEN(L,NODE)+(K)*7+2)
-#define GET_KEY_VALUE_INDEX(L,NODE,K) (HAS_KEY_NAMES(L,NODE) ? (XP_GET_NODE_TOKEN(L,NODE)+(K)*7+5) : (XP_GET_NODE_TOKEN(L,NODE)+(K)*5+3))
-#define COMPARE_KEY_NAME(L,NODE,K,VAL) XP_CMP_TOKEN_STR(L,GET_KEY_NAME_INDEX(L,NODE,K),VAL)
-#define COMPARE_KEY_VALUE(L,NODE,K,VAL) XP_CMP_TOKEN_STR(L,GET_KEY_VALUE_INDEX(L,NODE,K),VAL)
+/**@brief Return the number of the keys for the NODE*/
+#define XP_GET_KEY_COUNT(L,NODE) xp_node_key_count(L,NODE)
+
+/**@brief Returns true if the key names are explictly specified*/
+#define XP_HAS_KEY_NAMES(L,NODE) (XP_GET_TOKEN(L,XP_GET_NODE_TOKEN(L,NODE)+2)==T_KEY_NAME)
+
+/**@brief String compare of the NODES's K'th keyname. All indexes must be in a valid range.*/
+#define XP_CMP_KEY_NAME(L,NODE,K,VAL) XP_CMP_TOKEN_STR(L,XP_GET_KEY_NAME_INDEX(L,NODE,K),VAL)
+
+/**@brief Returns the copied content of the NODE's K'th keyname*/
+#define XP_CPY_KEY_NAME(L,NODE,K) XP_CPY_TOKEN(L,XP_GET_KEY_NAME_INDEX(L,NODE,K))
+
+/**@brief String compare of the NODES's K'th keyname. All indexes must be in a valid range.*/
+#define XP_CMP_KEY_VALUE(L,NODE,K,VAL) XP_CMP_TOKEN_STR(L,XP_GET_KEY_VALUE_INDEX(L,NODE,K),VAL)
+
+/**@brief Returns the copied content of the NODE's K'th keyvalue*/
+#define XP_CPY_KEY_VALUE(L,NODE,K) XP_CPY_TOKEN(L,XP_GET_KEY_VALUE_INDEX(L,NODE,K))
 /**@} xPath processor */
 #endif /* SRC_XPATH_PROCESSOR_H_ */

@@ -80,7 +80,7 @@ void xpath_set_node(void **state){
     xp_char_to_loc_id(XPATH, &l);
     assert_non_null(l);
 
-    char *moduleName = XP_CPY_TOKEN(l,GET_NODE_NS_INDEX(l,0));
+    char *moduleName = XP_CPY_TOKEN(l,XP_GET_NODE_NS_INDEX(l,0));
     assert_non_null(moduleName);
 
     const struct lys_module *module = ly_ctx_get_module(ctx,moduleName,NULL);
@@ -105,10 +105,10 @@ void xpath_set_node(void **state){
             if(key_count !=0){
                 node = lyd_new(node, module, node_name);
                 for(int k=0; k<key_count; k++){
-                    char *key_name = XP_CPY_TOKEN(l,GET_KEY_NAME_INDEX(l,n,k));
+                    char *key_name = XP_CPY_TOKEN(l,XP_GET_KEY_NAME_INDEX(l,n,k));
                     assert_non_null(key_name);
 
-                    char *key_value = XP_CPY_TOKEN(l,GET_KEY_VALUE_INDEX(l,n,k));
+                    char *key_value = XP_CPY_TOKEN(l,XP_GET_KEY_VALUE_INDEX(l,n,k));
                     assert_non_null(key_value);
 
                     assert_non_null(lyd_new_leaf(node,module,key_name,key_value));
@@ -152,7 +152,7 @@ void xpath_sch_match(void **state){
     xp_char_to_loc_id(XPATH, &l);
     assert_non_null(l);
 
-    char *moduleName = XP_CPY_TOKEN(l,GET_NODE_NS_INDEX(l,0));
+    char *moduleName = XP_CPY_TOKEN(l,XP_GET_NODE_NS_INDEX(l,0));
     assert_non_null(moduleName);
 
     const struct lys_module *module = ly_ctx_get_module(ctx,moduleName,NULL);

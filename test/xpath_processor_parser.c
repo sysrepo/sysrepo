@@ -65,11 +65,11 @@ void check_nodes(void **state){
 void check_ns(void **state){
     xp_loc_id_t *l = (xp_loc_id_t *) *state;
 
-    assert_true(HAS_NS(l,0));
-    assert_int_equal(1,GET_NODE_NS_INDEX(l,0));
-    assert_true(COMPARE_NODE_NS(l,0,"model"));
-    assert_false(COMPARE_NODE_NS(l,0,"asfaafafa"));
-    assert_false(HAS_NS(l,1));
+    assert_true(XP_HAS_NODE_NS(l,0));
+    assert_int_equal(1,XP_GET_NODE_NS_INDEX(l,0));
+    assert_true(XP_CMP_NODE_NS(l,0,"model"));
+    assert_false(XP_CMP_NODE_NS(l,0,"asfaafafa"));
+    assert_false(XP_HAS_NODE_NS(l,1));
 
 }
 
@@ -78,13 +78,13 @@ void check_keys(void **state){
     assert_int_equal(xp_node_key_count(l,0),0);
     assert_int_equal(xp_node_key_count(l,1),2);
 
-    assert_true(HAS_KEY_NAMES(l,1));
+    assert_true(XP_HAS_KEY_NAMES(l,1));
 
-    assert_true(COMPARE_KEY_NAME(l,1,0,"k1"));
-    assert_true(COMPARE_KEY_VALUE(l,1,0,"key1"));
+    assert_true(XP_CMP_KEY_NAME(l,1,0,"k1"));
+    assert_true(XP_CMP_KEY_VALUE(l,1,0,"key1"));
 
-    char *keyVal = XP_CPY_TOKEN(l,GET_KEY_VALUE_INDEX(l,1,0));
-    char *keyName = XP_CPY_TOKEN(l,GET_KEY_NAME_INDEX(l,1,0));
+    char *keyVal = XP_CPY_TOKEN(l,XP_GET_KEY_VALUE_INDEX(l,1,0));
+    char *keyName = XP_CPY_TOKEN(l,XP_GET_KEY_NAME_INDEX(l,1,0));
 
     assert_string_equal(keyName,"k1");
     assert_string_equal(keyVal,"key1");
@@ -92,8 +92,8 @@ void check_keys(void **state){
     free(keyName);
     free(keyVal);
 
-    assert_true(COMPARE_KEY_NAME(l,1,1,"k2"));
-    assert_true(COMPARE_KEY_VALUE(l,1,1,"key2"));
+    assert_true(XP_CMP_KEY_NAME(l,1,1,"k2"));
+    assert_true(XP_CMP_KEY_VALUE(l,1,1,"key2"));
 
 }
 
