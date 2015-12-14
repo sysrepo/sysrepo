@@ -47,10 +47,12 @@ add_library(sysrepo-engine_so SHARED ${SYSREPO-ENGINE-SOURCES})
 SET_TARGET_PROPERTIES(sysrepo-engine_so PROPERTIES
               OUTPUT_NAME sysrepo-engine CLEAN_DIRECT_OUTPUT 1)
 
-target_link_libraries(sysrepo avl protobuf-c)
-target_link_libraries(sysrepo_so avl protobuf-c)
-target_link_libraries(sysrepo-engine avl protobuf-c)
-target_link_libraries(sysrepo-engine_so avl protobuf-c)
+set(LINK_LIBRARIES avl protobuf-c yang)
+
+target_link_libraries(sysrepo ${LINK_LIBRARIES})
+target_link_libraries(sysrepo_so ${LINK_LIBRARIES})
+target_link_libraries(sysrepo-engine ${LINK_LIBRARIES})
+target_link_libraries(sysrepo-engine_so ${LINK_LIBRARIES})
 
 install(TARGETS sysrepo_so DESTINATION ${LIB_INSTALL_DIR})
 install(TARGETS sysrepo-engine_so DESTINATION ${LIB_INSTALL_DIR})
