@@ -47,6 +47,14 @@
 typedef struct cm_ctx_s cm_ctx_t;
 
 /**
+ * @brief Modes of Connection Manager.
+ */
+typedef enum {
+    CM_MODE_DAEMON,  /**< Daemon mode - clients from any process are able to connect to it. */
+    CM_MODE_LOCAL,   /**< Local mode - only local (intra-process) client connections are possible. */
+} cm_connection_mode_t;
+
+/**
  * @brief Initializes Connection Manager in server (daemon) mode.
  *
  * After initialization, clients (other applications) are able to connect
@@ -55,13 +63,14 @@ typedef struct cm_ctx_s cm_ctx_t;
  * This function will block the thread in the event loop until stop is requested
  * or until an error occured.
  *
+ * @param[in] mode Mode in which the Connection Mnager will operate (daemon/local).
  * @param[in] socket_path Path to the unix-domain socket where server should bind to.
  * @param[out] cm_ctx Connectaion manager context which can be used in subsequent
  * CM API calls.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int cm_start(const char *socket_path, cm_ctx_t **cm_ctx);
+int cm_start(const cm_connection_mode_t mode, const char *socket_path, cm_ctx_t **cm_ctx);
 
 /**
  * @brief Initializes Connection Manager in local (library) mode.
@@ -84,18 +93,20 @@ int cm_start(const char *socket_path, cm_ctx_t **cm_ctx);
 int cm_start_local(cm_ctx_t **cm_ctx, char **socket_path);
 
 /**
- * @brief Cleans up a Connection Manager instance.
+ * @brief "Nice" request to stop an Connection Manager instance.
  *
- * All open connections will be closed and all memory held by CM will be released.
- * In case of local CM mode, cleanup will cause immediate destroy of local
- * CM instance and can be called at any time. In case of server CM mode, this
- * can be called only after ::cm_start_server returns.
+ * Used to request for cleanup from signal handlers (if CM is running in daemon
+ * mode), or from parent thread (if CM is running in library mode).
  *
- * @param[in] cm_ctx Connection Manager context to be released.
+ * All open connections will be closed and all memory held by Connection Manager
+ * and chained modules of sysrepo will be released.
+ * In case of library mode, the thread where CM was running will be destroyed too.
+ *
+ * @param[in] cm_ctx Connection Manager context.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int cm_stop(cm_ctx_t *cm_ctx);
+int cm_stop_request(cm_ctx_t *cm_ctx);
 
 /**
  * @brief Sends the message to the proper reciepient according to provided session.

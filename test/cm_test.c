@@ -21,20 +21,32 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <signal.h>
 #include <setjmp.h>
 #include <cmocka.h>
 
 #include "sr_common.h"
 #include "connection_manager.h"
 
+static void hdl(int sig)
+{
+    SR_LOG_DBG_MSG("signal is here");
+    cm_stop_request(NULL);
+}
+
 static int
 setup(void **state) {
     cm_ctx_t *ctx = NULL;
 
-    sr_logger_init(NULL);
-    sr_logger_set_level(SR_LL_ERR, SR_LL_ERR); /* print only errors. */
+    struct sigaction act;
+    memset (&act, '\0', sizeof(act));
+    act.sa_handler = &hdl;
+    sigaction(SIGINT, &act, NULL);
 
-    cm_start("/tmp/sysrepo-test", &ctx);
+    sr_logger_init("srtest");
+    sr_logger_set_level(SR_LL_DBG, SR_LL_DBG); /* print only errors. */
+
+    cm_start(CM_MODE_LOCAL, "/tmp/sysrepo-test", &ctx);
     *state = ctx;
 
     return 0;
