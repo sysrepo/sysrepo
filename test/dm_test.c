@@ -1,7 +1,7 @@
 /**
- * @file data_manager.c
+ * @file dm_test.c
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
- * @brief 
+ * @brief Data Manager unit tests.
  *
  * @copyright
  * Copyright 2015 Cisco Systems, Inc.

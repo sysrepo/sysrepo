@@ -1,5 +1,5 @@
 /**
- * @file connection_manager.c
+ * @file cm_test.c
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
  * @brief Connection Manager unit tests.
  *
