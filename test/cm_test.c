@@ -1,7 +1,7 @@
 /**
- * @file data_manager.c
+ * @file cm_test.c
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
- * @brief 
+ * @brief Connection Manager unit tests.
  *
  * @copyright
  * Copyright 2015 Cisco Systems, Inc.
@@ -19,33 +19,47 @@
  * limitations under the License.
  */
 
-#include <stdarg.h>
-#include <stddef.h>
-#include <setjmp.h>
-#include <cmocka.h>
 #include <stdlib.h>
 #include <stdio.h>
-#include "data_manager.h"
-#include "test_data.h"
+#include <setjmp.h>
+#include <cmocka.h>
+
 #include "sr_common.h"
+#include "connection_manager.h"
 
-void dm_create_cleanup(void **state){
-   int rc;
-   dm_ctx_t *ctx;
-   rc = dm_init(TEST_DATA_DIR, &ctx);
-   assert_int_equal(SR_ERR_OK,rc);
+static int
+setup(void **state) {
+    cm_ctx_t *ctx = NULL;
 
-   rc = dm_cleanup(ctx);
-   assert_int_equal(SR_ERR_OK,rc);
+    sr_logger_init(NULL);
+    sr_logger_set_level(SR_LL_ERR, SR_LL_ERR); /* print only errors. */
 
+    cm_start("/tmp/sysrepo-test", &ctx);
+    *state = ctx;
+
+    return 0;
 }
 
-int main(){
+static int
+teardown(void **state) {
+    //sm_ctx_t *ctx = *state;
 
+    //cm_cleanup(ctx); // TODO
+    sr_logger_cleanup();
+
+    return 0;
+}
+
+static void
+cm_simple(void **state) {
+    ;
+}
+
+int
+main() {
     const struct CMUnitTest tests[] = {
-            cmocka_unit_test(dm_create_cleanup),
+            cmocka_unit_test_setup_teardown(cm_simple, setup, teardown),
     };
+
     return cmocka_run_group_tests(tests, NULL, NULL);
 }
-
-

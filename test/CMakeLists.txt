@@ -19,9 +19,10 @@ macro(ADD_UNIT_TEST TEST_NAME TEST_SRC LIBS USE_VALGRIND)
     endif(valgrind_FOUND)
 endmacro(ADD_UNIT_TEST)
 
-ADD_UNIT_TEST(test_parser xpath_processor_parser.c "" 1)
-ADD_UNIT_TEST(test_yang xpath_processor_yang.c "yang" 0)
+ADD_UNIT_TEST(xp_parser_test xp_parser_test.c "" 1)
+ADD_UNIT_TEST(xp_yang_test xp_yang_test.c "yang" 0)
 
-ADD_UNIT_TEST(test_session_manager session_manager.c "" 1)
-ADD_UNIT_TEST(test_data_manager data_manager.c "" 1)
+ADD_UNIT_TEST(sm_test sm_test.c "" 1)
+#ADD_UNIT_TEST(cm_test cm_test.c "" 1)
+ADD_UNIT_TEST(dm_test dm_test.c "" 1)
 

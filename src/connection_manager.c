@@ -239,18 +239,24 @@ cm_server_accept(cm_ctx_t *cm_ctx)
 static int
 cm_out_msg_queue_dispatch(const cm_ctx_t *cm_ctx)
 {
+    SR_LOG_DBG_MSG("out msg queue dispatch");
+
     return SR_ERR_OK;
 }
 
 static int
 cm_conn_read(const cm_ctx_t *cm_ctx, const int fd)
 {
+    SR_LOG_DBG("fd %d readable", fd);
+
     return SR_ERR_OK;
 }
 
 static int
 cm_conn_write(const cm_ctx_t *cm_ctx, const int fd)
 {
+    SR_LOG_DBG("fd %d writeable", fd);
+
     /* check for server_socket_fd and out_msg_fds[0] */
 
     return SR_ERR_OK;

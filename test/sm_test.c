@@ -1,5 +1,5 @@
 /**
- * @file session_manager.c
+ * @file sm_test.c
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
  * @brief Session Manager unit tests.
  *

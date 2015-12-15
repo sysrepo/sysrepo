@@ -1,7 +1,7 @@
 /**
- * @file xpath_processor_parser.c
+ * @file xp_parser_test.c
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
- * @brief 
+ * @brief XPath Processor parser unit tests.
  *
  * Copyright 2015 Cisco Systems, Inc.
  *
