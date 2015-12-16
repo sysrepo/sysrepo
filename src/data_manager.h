@@ -27,6 +27,8 @@
 #define SRC_DATA_MANAGER_H_
 
 #include "sysrepo.pb-c.h"
+#include <libyang/libyang.h>
+
 
 
 /**
@@ -82,7 +84,7 @@ int dm_session_stop(const dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx);
  * @param [out] module
  * @return
  */
-int dm_get_datatree(const dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, const char *module_name);
+int dm_get_datatree(const dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, const char *module_name, struct lyd_node **data_tree);
 
 
 

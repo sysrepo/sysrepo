@@ -17,9 +17,34 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+#include <stdlib.h>
 #include "sr_common.h"
 
-void sr_log(char *name){
+int sr_str_ends_with(const char *str, const char *suffix)
+{
+    CHECK_NULL_ARG2(str, suffix);
 
+    size_t str_len = strlen(str);
+    size_t suffix_len = strlen(suffix);
+    if (suffix_len >  str_len){
+        return 0;
+    }
+    return strncmp(str + str_len - suffix_len, suffix, suffix_len) == 0;
+}
+
+
+int sr_str_join(const char *str1, const char *str2, char **result){
+    CHECK_NULL_ARG3(str1,str2,result);
+    char *res=NULL;
+    size_t l1 = strlen(str1);
+    size_t l2 = strlen(str2);
+    res = malloc(l1 + l2 + 1);
+    if(res == NULL){
+        SR_LOG_ERR_MSG("Calloc in for str_join failed.");
+        return SR_ERR_OK;
+    }
+    strcpy(res,str1);
+    strcpy(res+l1,str2);
+    *result = res;
+    return SR_ERR_OK;
 }

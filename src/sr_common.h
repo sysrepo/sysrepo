@@ -66,4 +66,15 @@
         CHECK_NULL_ARG__INTERNAL(ARG5) \
     } while(0)
 
+/**
+ *
+ */
+int sr_str_ends_with(const char *str, const char *suffix);
+
+/**
+ *
+ */
+int sr_str_join(const char *str1, const char *str2, char **result);
+
+
 #endif /* SRC_SR_COMMON_H_ */
