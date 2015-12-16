@@ -60,6 +60,9 @@ dm_module_cmp(const void *a, const void *b)
     }
 }
 
+/**
+ * @brief frees the data_tree stored in avl tree
+ */
 static void
 dm_module_cleanup(void *module)
 {
@@ -69,6 +72,15 @@ dm_module_cleanup(void *module)
     }
 }
 
+/**
+ * @brief Creates the file_name corresponding to the module_name (schema). Function does not check if the schema name
+ * is valid. The file name is allocated on heap and needs to be freed by caller. Returns SR_ERR_OK or SR_ERR_NOMEM
+ * if memory allocation failed.
+ * @param [in] dm_ctx
+ * @param [in] module_name
+ * @param [out] file_name
+ * @return err_code
+ */
 static int dm_get_data_file(const dm_ctx_t *dm_ctx, const char *module_name, char **file_name)
 {
     CHECK_NULL_ARG3(dm_ctx, module_name, file_name);
@@ -82,11 +94,23 @@ static int dm_get_data_file(const dm_ctx_t *dm_ctx, const char *module_name, cha
     return SR_ERR_NOMEM;
 }
 
+/**
+ * @brief Check whether the file_name corresponds to the schema file. Returns 1 if it does, 0 otherwise.
+ */
 static int dm_is_schema_file(const char *file_name)
 {
     return sr_str_ends_with(file_name, ".yin");
 }
 
+/**
+ * @brief Loads the schema file into the context. The path for loading file is specified as concatenation of dir_name
+ * and file_name. Function returns SR_ERR_OK if loading was successful. If might returns SR_ERR_IO if the file can not
+ * be opened, SR_ERR_INTERNAL if parsing the file failed or SR_ERR_NOMEM if memory allocation failed.
+ * @param [in] dm_ctx
+ * @param [in] dir_name
+ * @param [in] file_name
+ * @return err_code
+ */
 static int dm_load_schema_file(const dm_ctx_t *dm_ctx, const char *dir_name, const char *file_name)
 {
     CHECK_NULL_ARG3(dm_ctx, dir_name, file_name);
@@ -113,6 +137,9 @@ static int dm_load_schema_file(const dm_ctx_t *dm_ctx, const char *dir_name, con
     return SR_ERR_OK;
 }
 
+/**
+ * Loops through the specified directory and tries to load schema files from it.
+ */
 static int dm_load_schemas(const dm_ctx_t *dm_ctx){
     CHECK_NULL_ARG(dm_ctx);
     DIR *dir;
@@ -120,9 +147,11 @@ static int dm_load_schemas(const dm_ctx_t *dm_ctx){
     if ((dir = opendir (dm_ctx->search_dir)) != NULL) {
         while ((ent = readdir (dir)) != NULL) {
             if(dm_is_schema_file(ent->d_name)){
-                printf ("%s\n", ent->d_name);
-                if(dm_load_schema_file(dm_ctx, dm_ctx->search_dir, ent->d_name)){
+                if(dm_load_schema_file(dm_ctx, dm_ctx->search_dir, ent->d_name)!=SR_ERR_OK){
                     SR_LOG_WRN("Loading schema file: %s failed.", ent->d_name);
+                }
+                else{
+                    SR_LOG_DBG("Schema file %s loaded successfuly", ent->d_name);
                 }
             }
         }
@@ -241,6 +270,8 @@ static int dm_find_data_tree(const dm_ctx_t *dm_ctx, const struct lys_module *mo
     if(dm_load_data_tree(dm_ctx, module, data_tree)){
 
     }
+
+    //create empty data tree
     return SR_ERR_OK;
 }
 
@@ -323,10 +354,12 @@ int dm_get_datatree(const dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, const 
     const struct lys_module *module;
     //check if schema exists if yes try to load data file
     if(dm_find_module_schema(dm_ctx, module_name, &module)!=SR_ERR_OK){
+        SR_LOG_WRN("Unknown schema: %s", module_name);
         return SR_ERR_INVAL_ARG;
     }
     //if found return
     if(dm_find_data_tree(dm_ctx, module, data_tree) != SR_ERR_OK){
+        SR_LOG_ERR("Getting data tree for %s failed.", module_name);
         return SR_ERR_INTERNAL;
     }
 
