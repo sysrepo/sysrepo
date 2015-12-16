@@ -1,7 +1,7 @@
 /**
  * @file xpath_processor_yang.c
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
- * @brief 
+ * @brief XPath Processor YANG unit tests.
  *
  * @copyright
  * Copyright 2015 Cisco Systems, Inc.
@@ -18,6 +18,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 #include <stdarg.h>
 #include <stddef.h>
 #include <setjmp.h>
