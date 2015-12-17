@@ -29,6 +29,8 @@
 #include <sys/un.h>
 #include <sys/ioctl.h>
 #include <sys/poll.h>
+#include <pthread.h>
+#include <signal.h>
 
 #include "sr_common.h"
 #include "session_manager.h"
@@ -36,9 +38,15 @@
 
 #define CM_FD_INVALID -1  /**< Invalid file descriptor. */
 #define CM_POLL_MAX_FD_CNT 200 /**< Maximum number of file descriptors that CM is able to handle. */
-#define CM_POLL_TIMEOUT (60 * 1000) /**< Timeout used for poll calls (in milliseconds) */
+#define CM_POLL_TIMEOUT (10 * 1000) /**< Timeout used for poll calls (in milliseconds) */
 
-volatile bool stop_requested;
+#define CM_SIG_STOP (SIGRTMIN + 8)  /**< signal used to notify the thread with event loop about stop request */
+
+/**
+ * Global variable used to request stop of the event loop in all instances of CM,
+ * it should be set ONLY by signal handler functions within the same thread as the loop.
+ */
+static volatile sig_atomic_t stop_requested = 0;
 
 /**
  * @brief Connection Manager context.
@@ -52,6 +60,8 @@ typedef struct cm_ctx_s {
     int out_msg_fds[2];              /**< "queue" of messagess to be sent (descriptors of a pipe). */
     struct pollfd poll_fds[CM_POLL_MAX_FD_CNT];     /**< Poll file descriptors. TODO: make this dynamic. */
     int poll_fd_cnt;                 /**< Number of file descriptors being polled. */
+
+    pthread_t event_loop_thread;
 } cm_ctx_t;
 
 /**
@@ -192,6 +202,7 @@ cm_poll_init(cm_ctx_t *cm_ctx)
     cm_ctx->poll_fds[1].events = POLLIN;
 
     cm_ctx->poll_fd_cnt = 2;
+
     return SR_ERR_OK;
 }
 
@@ -207,15 +218,6 @@ cm_poll_cleanup(cm_ctx_t *cm_ctx)
             }
         }
     }
-}
-
-static void
-cm_cleanup(cm_ctx_t *cm_ctx)
-{
-    cm_poll_cleanup(cm_ctx);
-    cm_server_cleanup(cm_ctx);
-    cm_out_msg_queue_cleanup(cm_ctx);
-    free(cm_ctx);
 }
 
 /**
@@ -285,7 +287,7 @@ cm_conn_read(const cm_ctx_t *cm_ctx, int *fd)
             SR_LOG_DBG("%d bytes of data recieved on fd %d.", bytes, *fd);
         } else if (0 == bytes) {
             /* connection closed by the other side */
-            SR_LOG_DBG("Peer on fd %d disconnected.", bytes);
+            SR_LOG_DBG("Peer on fd %d disconnected.", *fd);
             close_connection = true;
         } else {
             if (EWOULDBLOCK == errno || EAGAIN == errno) {
@@ -359,13 +361,15 @@ cm_event_loop(cm_ctx_t *cm_ctx)
     CHECK_NULL_ARG(cm_ctx);
 
     SR_LOG_DBG_MSG("Starting CM event loop.");
-    stop_requested = false;
 
     fds = cm_ctx->poll_fds;
-    fd_cnt = cm_ctx->poll_fd_cnt;
 
     do {
+        fd_cnt = cm_ctx->poll_fd_cnt;
         events_cnt = poll(fds, fd_cnt, CM_POLL_TIMEOUT);
+
+        SR_LOG_DBG("poll unblocked, events_cnt=%d.", events_cnt);
+
         if (-1 == events_cnt) {
             /* error */
             if (EINTR == errno) {
@@ -377,6 +381,7 @@ cm_event_loop(cm_ctx_t *cm_ctx)
             }
         } else if (0 == events_cnt) {
             /* timeout */
+            SR_LOG_DBG_MSG("poll timeout expired.");
         } else {
             /* event on some of the fds */
             events_processed = 0;
@@ -421,16 +426,41 @@ cm_event_loop(cm_ctx_t *cm_ctx)
                 rc = cm_poll_fds_compress(cm_ctx);
             }
         }
-    } while ((SR_ERR_OK == rc) && (false == stop_requested));
+    } while ((SR_ERR_OK == rc) && (0 == stop_requested));
 
-    /* cleanup everything */
-    cm_cleanup(cm_ctx);
+    SR_LOG_DBG_MSG("CM event loop finished.");
 
     return rc;
 }
 
+static void
+cm_sig_stop_handle(int sig)
+{
+    SR_LOG_DBG_MSG("signal is here");
+    stop_requested = 1;
+}
+
+static void *
+cm_event_loop_threaded(void *cm_ctx_p)
+{
+    cm_ctx_t *cm_ctx = (cm_ctx_t*)cm_ctx_p;
+    int rc = SR_ERR_OK;
+
+    struct sigaction act;
+    memset (&act, '\0', sizeof(act));
+    act.sa_handler = &cm_sig_stop_handle;
+    sigaction(CM_SIG_STOP, &act, NULL);
+
+    rc = cm_event_loop(cm_ctx);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Error by processing in the event loop occured.");
+    }
+
+    return NULL;
+}
+
 int
-cm_start(const cm_connection_mode_t mode, const char *socket_path, cm_ctx_t **cm_ctx_p)
+cm_init(const cm_connection_mode_t mode, const char *socket_path, cm_ctx_t **cm_ctx_p)
 {
     cm_ctx_t *ctx = NULL;
     int rc = SR_ERR_OK;
@@ -467,18 +497,6 @@ cm_start(const cm_connection_mode_t mode, const char *socket_path, cm_ctx_t **cm
 
     SR_LOG_DBG_MSG("Connection Manager initialized successfully.");
 
-    if (CM_MODE_DAEMON == mode) {
-        /* run the event loop in this thread */
-        rc = cm_event_loop(ctx);
-        if (SR_ERR_OK != rc) {
-            SR_LOG_ERR_MSG("Error by processing in the event loop occured.");
-            goto cleanup;
-        }
-    } else {
-        /* run the event loop in a new thread */
-
-    }
-
     *cm_ctx_p = ctx;
     return SR_ERR_OK;
 
@@ -487,10 +505,65 @@ cleanup:
     return rc;
 }
 
-int
-cm_stop_request(cm_ctx_t *cm_ctx)
+void
+cm_cleanup(cm_ctx_t *cm_ctx)
 {
-    stop_requested = true;
+    cm_poll_cleanup(cm_ctx);
+    cm_server_cleanup(cm_ctx);
+    cm_out_msg_queue_cleanup(cm_ctx);
+    free(cm_ctx);
+}
+
+int
+cm_start(cm_ctx_t *cm_ctx)
+{
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG(cm_ctx);
+
+    stop_requested = 0;
+
+    if (CM_MODE_DAEMON == cm_ctx->mode) {
+        /* run the event loop in this thread */
+        rc = cm_event_loop(cm_ctx);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR_MSG("Error by processing in the event loop occured.");
+        }
+//    } else {
+//        sigset_t mask, orig_mask;
+//        sigemptyset(&mask);
+//        sigaddset(&mask, CM_SIG_STOP);
+//        sigprocmask(SIG_BLOCK, &mask, &orig_mask);
+
+        /* run the event loop in a new thread */
+        rc = pthread_create(&cm_ctx->event_loop_thread, NULL,
+                cm_event_loop_threaded, cm_ctx);
+        if (0 != rc) {
+            SR_LOG_ERR("Error by creating a new thread: %s", strerror(errno));
+        }
+
+//        sigprocmask(SIG_SETMASK, &orig_mask, NULL);
+    }
+
+    return rc;
+}
+
+int
+cm_stop(cm_ctx_t *cm_ctx)
+{
+    CHECK_NULL_ARG(cm_ctx);
+
+    SR_LOG_DBG_MSG("CM stop requested.");
+
+    if (CM_MODE_DAEMON == cm_ctx->mode) {
+        /* main thread (with event loop) interrupted by signal, just mark request to stop */
+        stop_requested = 1;
+    } else {
+        /* send a signal to the thread with event loop */
+        pthread_kill(cm_ctx->event_loop_thread, CM_SIG_STOP);
+        /* block until cleanup is finished */
+        pthread_join(cm_ctx->event_loop_thread, NULL);
+    }
 
     return SR_ERR_OK;
 }

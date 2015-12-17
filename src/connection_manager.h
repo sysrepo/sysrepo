@@ -55,6 +55,16 @@ typedef enum {
 } cm_connection_mode_t;
 
 /**
+ *
+ */
+int cm_init(const cm_connection_mode_t mode, const char *socket_path, cm_ctx_t **cm_ctx);
+
+/**
+ *
+ */
+void cm_cleanup(cm_ctx_t *cm_ctx);
+
+/**
  * @brief Initializes Connection Manager in server (daemon) mode.
  *
  * After initialization, clients (other applications) are able to connect
@@ -70,30 +80,10 @@ typedef enum {
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int cm_start(const cm_connection_mode_t mode, const char *socket_path, cm_ctx_t **cm_ctx);
+int cm_start(cm_ctx_t *cm_ctx);
 
 /**
- * @brief Initializes Connection Manager in local (library) mode.
- *
- * The function will initialize an socket pair and return a socket file descriptor
- * that can be used for client communication with Connection Manager. No other
- * clients will be able to connect to this instance of Connection Manager.
- *
- * Connection Manager will be initialized and run in a new thread, so this
- * function call won't block more then needed to execute a new thread. The thread
- * will be automatically later stopped and destroyed by ::cm_cleanup call.
- *
- * @param[out] cm_ctx Connectaion Manager context which can be used in subsequent
- * CM API calls.
- * @param[out] communication_fd Socket file descriptor that can be used for
- * client communication with Connection Manager.
- *
- * @return Error code (SR_ERR_OK on success).
- */
-int cm_start_local(cm_ctx_t **cm_ctx, char **socket_path);
-
-/**
- * @brief "Nice" request to stop an Connection Manager instance.
+ * @brief "Nice" request to stop the Connection Manager instance.
  *
  * Used to request for cleanup from signal handlers (if CM is running in daemon
  * mode), or from parent thread (if CM is running in library mode).
@@ -106,7 +96,7 @@ int cm_start_local(cm_ctx_t **cm_ctx, char **socket_path);
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int cm_stop_request(cm_ctx_t *cm_ctx);
+int cm_stop(cm_ctx_t *cm_ctx);
 
 /**
  * @brief Sends the message to the proper reciepient according to provided session.
