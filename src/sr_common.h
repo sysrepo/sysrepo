@@ -23,7 +23,7 @@
 #define SRC_SR_COMMON_H_
 
 #include <libyang/libyang.h>
-#include "sr_error.h"
+#include "sysrepo.h"
 #include "sr_logger.h"
 
 #define CHECK_NULL_ARG__INTERNAL(ARG) \
