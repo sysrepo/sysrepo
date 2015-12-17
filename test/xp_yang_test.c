@@ -132,14 +132,9 @@ void xpath_set_node(void **state){
         free(node_name);
     }
 
-    FILE *data = fopen(DATA_PATH,"w");
-    assert_non_null(data);
-    lyd_print(data,root,LYD_XML);
-
-    fclose(data);
+    assert_int_equal(SR_ERR_OK, sr_save_data_tree_file(DATA_PATH, root));
 
     lyd_free(root);
-
     free(moduleName);
     xp_free_loc_id(l);
 

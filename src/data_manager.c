@@ -21,6 +21,7 @@
 
 #include "data_manager.h"
 #include "sr_common.h"
+#include <unistd.h>
 #include <stdlib.h>
 #include <dirent.h>
 #include <avl.h>
@@ -98,13 +99,14 @@ dm_get_data_file(const dm_ctx_t *dm_ctx, const char *module_name, char **file_na
 static int
 dm_is_schema_file(const char *file_name)
 {
+    CHECK_NULL_ARG(file_name);
     return sr_str_ends_with(file_name, ".yin");
 }
 
 /**
  * @brief Loads the schema file into the context. The path for loading file is specified as concatenation of dir_name
- * and file_name. Function returns SR_ERR_OK if loading was successful. If might returns SR_ERR_IO if the file can not
- * be opened, SR_ERR_INTERNAL if parsing the file failed or SR_ERR_NOMEM if memory allocation failed.
+ * and file_name. Function returns SR_ERR_OK if loading was successful. It might return SR_ERR_IO if the file can not
+ * be opened, SR_ERR_INTERNAL if parsing of the file failed or SR_ERR_NOMEM if memory allocation failed.
  * @param [in] dm_ctx
  * @param [in] dir_name
  * @param [in] file_name
@@ -115,14 +117,14 @@ dm_load_schema_file(const dm_ctx_t *dm_ctx, const char *dir_name, const char *fi
 {
     CHECK_NULL_ARG3(dm_ctx, dir_name, file_name);
     const struct lys_module *module = NULL;
-    char *schema_file = NULL;
-    int res = sr_str_join(dir_name, file_name, &schema_file);
+    char *schema_filename = NULL;
+    int res = sr_str_join(dir_name, file_name, &schema_filename);
     if (SR_ERR_OK != res) {
         return SR_ERR_NOMEM;
     }
 
-    FILE *fd = fopen(schema_file, "r");
-    free(schema_file);
+    FILE *fd = fopen(schema_filename, "r");
+    free(schema_filename);
 
     if (NULL == fd) {
         SR_LOG_WRN("Unable to open a schema file: %s", file_name);
@@ -138,7 +140,7 @@ dm_load_schema_file(const dm_ctx_t *dm_ctx, const char *dir_name, const char *fi
 }
 
 /**
- * Loops through the specified directory and tries to load schema files from it.
+ * @brief Loops through the specified directory and tries to load schema files from it.
  */
 static int
 dm_load_schemas(const dm_ctx_t *dm_ctx)
@@ -152,7 +154,7 @@ dm_load_schemas(const dm_ctx_t *dm_ctx)
                 if (SR_ERR_OK != dm_load_schema_file(dm_ctx, dm_ctx->search_dir, ent->d_name)) {
                     SR_LOG_WRN("Loading schema file: %s failed.", ent->d_name);
                 } else {
-                    SR_LOG_DBG("Schema file %s loaded successfuly", ent->d_name);
+                    SR_LOG_INF("Schema file %s loaded successfuly", ent->d_name);
                 }
             }
         }
@@ -164,13 +166,27 @@ dm_load_schemas(const dm_ctx_t *dm_ctx)
     }
 }
 
+/**
+ * @brief adds empty data tree for the specified module into dm_ctx
+ * @param [in] dm_ctx
+ * @param [in] module
+ * @param [out] data_tree
+ * @return err_code
+ */
 static int
-dm_create_empty_data_tree(const dm_ctx_t *dm_ctx, const struct lys_module *module, struct lyd_node **data_tree)
+dm_add_empty_data_tree(const dm_ctx_t *dm_ctx, const struct lys_module *module, struct lyd_node **data_tree)
 {
     CHECK_NULL_ARG3(dm_ctx, module, data_tree);
     *data_tree = lyd_new(NULL, module, module->data->name);
     if (NULL == *data_tree) {
         SR_LOG_ERR_MSG("Creating empty data tree failed");
+        return SR_ERR_INTERNAL;
+    }
+    avl_node_t *avl_node = avl_insert(dm_ctx->module_avl, *data_tree);
+    if (NULL == avl_node) {
+        SR_LOG_ERR("Insert data tree %s into avl tree failed", module->name);
+        lyd_free(*data_tree);
+        *data_tree = NULL;
         return SR_ERR_INTERNAL;
     }
     return SR_ERR_OK;
@@ -190,68 +206,92 @@ dm_find_module_schema(const dm_ctx_t *dm_ctx, const char *module_name, const str
     return (*module == NULL ) ? SR_ERR_NOT_FOUND : SR_ERR_OK;
 }
 
+/**
+ * @brief Loads data tree from file and adds it into dm context
+ * @param [in] dm_ctx
+ * @param [in] module
+ * @param [out] data_tree
+ * @return err_code
+ */
 static int
 dm_load_data_tree(const dm_ctx_t *dm_ctx, const struct lys_module *module, struct lyd_node **data_tree)
 {
     CHECK_NULL_ARG2(dm_ctx, module);
 
-    char *data_file = NULL;
+    char *data_filename = NULL;
     int rc = 0;
     *data_tree = NULL;
-    rc = dm_get_data_file(dm_ctx, module->name, &data_file);
+    rc = dm_get_data_file(dm_ctx, module->name, &data_filename);
     if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Get data_filename failed for %s", module->name);
         return rc;
     }
-    FILE *f = fopen(data_file, "r");
-    if (f != NULL) {
+
+    if (access(data_filename, F_OK) == -1){
+        SR_LOG_INF("Data file %s not found", data_filename);
+        free(data_filename);
+        return SR_ERR_NOT_FOUND;
+    }
+
+    FILE *f = fopen(data_filename, "r");
+    if (NULL != f) {
         fseek(f, 0, SEEK_END);
         long fsize = ftell(f);
         fseek(f, 0, SEEK_SET);
 
         char *data_string = malloc(fsize + 1);
         fread(data_string, fsize, 1, f);
+        data_string[fsize] = '\0';
         fclose(f);
 
-        //lyxml_read
         struct lyxml_elem* root_elem = lyxml_read(dm_ctx->ly_ctx, data_string, 0);
         free(data_string);
 
         if (NULL == root_elem) {
-
+            SR_LOG_ERR("Parsing xml from file %s failed", data_filename);
+            free(data_filename);
+            fclose(f);
+            return SR_ERR_INTERNAL;
         }
-        //lyd_parse_xml
+
         *data_tree = lyd_parse_xml(dm_ctx->ly_ctx, root_elem, 0);
+        if(NULL == *data_tree){
+            SR_LOG_ERR("Parsing data tree from file %s failed", data_filename);
+            free(data_filename);
+            fclose(f);
+            return SR_ERR_INTERNAL;
+        }
 
         lyxml_free(dm_ctx->ly_ctx, root_elem);
 
     } else {
-        SR_LOG_ERR("Failed to open a file %s", data_file);
+        SR_LOG_ERR("Failed to open a file %s", data_filename);
+        free(data_filename);
+        return SR_ERR_IO;
     }
-    free(data_file);
+    SR_LOG_INF("Data file %s loaded successfuly", data_filename);
+    free(data_filename);
 
-    if (NULL == *data_tree) {
-        dm_create_empty_data_tree(dm_ctx, module, data_tree);
-        SR_LOG_ERR_MSG("DATA FILE CREATE empty");
-    } else {
-        SR_LOG_ERR_MSG("DATA FILE LOADED SUCCESS");
-    }
-
-    //save lyd_node to context
     avl_node_t *avl_node = avl_insert(dm_ctx->module_avl, *data_tree);
     if (NULL == avl_node) {
+        SR_LOG_ERR("Insert data tree %s into avl tree failed", module->name);
         lyd_free(*data_tree);
+        *data_tree = NULL;
         return SR_ERR_INTERNAL;
     }
+
     return SR_ERR_OK;
 }
 
 /**
- * Looks up the data tree in already loaded structures. If it is not found it tries to load it from file.
+ * @brief Looks up the data tree in already loaded structures. If it is not found it tries to load it from file.
+ * If data_tree does not exists empty data_tree is created
  */
 static int
 dm_find_data_tree(const dm_ctx_t *dm_ctx, const struct lys_module *module, struct lyd_node **data_tree)
 {
     CHECK_NULL_ARG3(dm_ctx, module, data_tree);
+    int rc = 0;
     struct lyd_node *data_node = NULL;
     avl_node_t *avl_node = NULL;
     data_node = lyd_new(NULL, module, module->data->name);
@@ -260,7 +300,7 @@ dm_find_data_tree(const dm_ctx_t *dm_ctx, const struct lys_module *module, struc
         return SR_ERR_NOMEM;
     }
 
-    //look up in loaded
+    /* look up in loaded */
     avl_node = avl_search(dm_ctx->module_avl, data_node);
     lyd_free(data_node);
     if (NULL != avl_node) {
@@ -268,13 +308,16 @@ dm_find_data_tree(const dm_ctx_t *dm_ctx, const struct lys_module *module, struc
         return SR_ERR_OK;
     }
 
-    //load the data tree
-    if (SR_ERR_OK != dm_load_data_tree(dm_ctx, module, data_tree)) {
-
+    /* try to load data_tree */
+    rc = dm_load_data_tree(dm_ctx, module, data_tree);
+    if (SR_ERR_NOT_FOUND == rc ) {
+        rc = dm_add_empty_data_tree(dm_ctx, module, data_tree);
+    }
+    else if(SR_ERR_OK != rc){
+        SR_LOG_ERR("Loading data_tree %s failed", module->name);
     }
 
-    //create empty data tree
-    return SR_ERR_OK;
+    return rc;
 }
 
 int
@@ -305,6 +348,8 @@ dm_init(const char *search_dir, dm_ctx_t **dm_ctx)
     ctx->module_avl = avl_alloc_tree(dm_module_cmp, dm_module_cleanup);
     if (NULL == ctx->module_avl) {
         SR_LOG_ERR_MSG("Cannot allocate memory for avl module in Data Manager.");
+        free(ctx->search_dir);
+        return SR_ERR_NOMEM;
     }
 
     *dm_ctx = ctx;
@@ -321,7 +366,6 @@ int
 dm_cleanup(dm_ctx_t *dm_ctx)
 {
     CHECK_NULL_ARG(dm_ctx);
-
     free(dm_ctx->search_dir);
     avl_free_tree(dm_ctx->module_avl);
     ly_ctx_destroy(dm_ctx->ly_ctx);
@@ -354,20 +398,18 @@ dm_session_stop(const dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx)
     free(dm_session_ctx->modules);
     free(dm_session_ctx);
     return SR_ERR_OK;
-
 }
 
 int
 dm_get_datatree(const dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, const char *module_name, struct lyd_node **data_tree)
 {
-
-    const struct lys_module *module;
-    //check if schema exists if yes try to load data file
+    CHECK_NULL_ARG4(dm_ctx, dm_session_ctx, module_name, data_tree);
+    const struct lys_module *module = NULL;
     if (dm_find_module_schema(dm_ctx, module_name, &module) != SR_ERR_OK) {
         SR_LOG_WRN("Unknown schema: %s", module_name);
         return SR_ERR_INVAL_ARG;
     }
-    //if found return
+
     if (dm_find_data_tree(dm_ctx, module, data_tree) != SR_ERR_OK) {
         SR_LOG_ERR("Getting data tree for %s failed.", module_name);
         return SR_ERR_INTERNAL;

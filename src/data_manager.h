@@ -77,12 +77,12 @@ int dm_session_start(const dm_ctx_t *dm_ctx, dm_session_t **dm_session_ctx);
 int dm_session_stop(const dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx);
 
 /**
- * @brief Returns the data tree. Returns SR_INVALID_ARG if non existing schema is passed
+ * @brief Returns the data tree for the specified moduel. Returns SR_INVALID_ARG if the requested module does not exist.
  * @param [in] dm_ctx
  * @param [in] dm_session_ctx
  * @param [in] module_name
- * @param [out] module
- * @return
+ * @param [out] data_tree
+ * @return err_cpode
  */
 int dm_get_datatree(const dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, const char *module_name, struct lyd_node **data_tree);
 

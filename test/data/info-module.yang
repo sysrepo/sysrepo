@@ -1,0 +1,21 @@
+module info-module {
+  namespace "urn:ietf:params:xml:ns:yang:info";
+  prefix ie;
+import small-module {
+    prefix sm;
+  }
+
+  organization "organization";
+  description
+    "example yang module";
+  contact
+    "contact@example.com";
+
+  
+
+  augment "/sm:item" {
+    leaf info {
+      type string;
+    }
+  }
+}
