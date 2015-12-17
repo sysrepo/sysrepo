@@ -34,24 +34,25 @@
 /* we need a global context to be able to implement the signal handler */
 static cm_ctx_t *ctx = NULL;
 
-static void hdl(int sig)
+static void
+signal_handle(int sig)
 {
-    SR_LOG_DBG_MSG("signal is here");
     cm_stop(ctx);
 }
 
 static int
 setup(void **state) {
     sr_logger_init("srtest");
-    sr_logger_set_level(SR_LL_DBG, SR_LL_DBG); /* print only errors. */
+    sr_logger_set_level(SR_LL_DBG, SR_LL_ERR); /* print only errors. */
 
     cm_init(CM_MODE_LOCAL, "/tmp/sysrepo-test", &ctx);
     *state = ctx;
 
     struct sigaction act;
     memset (&act, '\0', sizeof(act));
-    act.sa_handler = &hdl;
+    act.sa_handler = &signal_handle;
     sigaction(SIGINT, &act, NULL);
+    sigaction(SIGTERM, &act, NULL);
 
     cm_start(ctx);
 
@@ -71,8 +72,8 @@ teardown(void **state) {
 }
 
 static void
-cm_simple(void **state) {
-
+cm_make_connection()
+{
     struct sockaddr_un addr;
     int fd;
 
@@ -90,12 +91,23 @@ cm_simple(void **state) {
       exit(-1);
     }
 
-    char *data = "Half a league, half a league . . .";
+    char *data = "Data to be sent...";
 
     if (write(fd, data, strlen(data)+1) < 0)
         perror("writing on stream socket");
 
-    close(fd);
+    if (write(fd, data, strlen(data)+1) < 0)
+        perror("writing on stream socket");
+
+    //close(fd);
+}
+
+static void
+cm_simple(void **state) {
+    int i = 0;
+    for (i = 0; i < 1500; i++) {
+        cm_make_connection();
+    }
 }
 
 int

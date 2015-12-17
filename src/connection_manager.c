@@ -28,7 +28,9 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <sys/ioctl.h>
+#include <fcntl.h>
 #include <sys/poll.h>
+#include <sys/select.h>
 #include <pthread.h>
 #include <signal.h>
 
@@ -36,11 +38,12 @@
 #include "session_manager.h"
 #include "connection_manager.h"
 
-#define CM_FD_INVALID -1  /**< Invalid file descriptor. */
-#define CM_POLL_MAX_FD_CNT 200 /**< Maximum number of file descriptors that CM is able to handle. */
-#define CM_POLL_TIMEOUT (10 * 1000) /**< Timeout used for poll calls (in milliseconds) */
+#define CM_SELECT_TIMEOUT (10) /**< Timeout used for poll calls (in seconds) */
 
 #define CM_SIG_STOP (SIGRTMIN + 8)  /**< signal used to notify the thread with event loop about stop request */
+
+#define PIPE_READ 0
+#define PIPE_WRITE 1
 
 /**
  * Global variable used to request stop of the event loop in all instances of CM,
@@ -58,11 +61,32 @@ typedef struct cm_ctx_s {
     int listen_socket_fd;            /**< Socket descriptor used to listen & accept new connections. */
     const char *server_socket_path;  /**< Path used for unix-domain socket communication. */
     int out_msg_fds[2];              /**< "queue" of messagess to be sent (descriptors of a pipe). */
-    struct pollfd poll_fds[CM_POLL_MAX_FD_CNT];     /**< Poll file descriptors. TODO: make this dynamic. */
-    int poll_fd_cnt;                 /**< Number of file descriptors being polled. */
 
     pthread_t event_loop_thread;
+
+    fd_set select_read_fds;
+    fd_set select_write_fds;
+    int select_fd_max;
 } cm_ctx_t;
+
+static int
+cm_fd_set_nonblock(int fd)
+{
+    int flags = 0, rc = 0;
+
+    flags = fcntl(fd, F_GETFL, 0);
+    if (-1 == flags) {
+        SR_LOG_WRN("Socket fcntl error (skipped): %s", strerror(errno));
+        flags = 0;
+    }
+    rc = fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+    if (-1 == rc) {
+        SR_LOG_ERR("Socket fcntl error: %s", strerror(errno));
+        return SR_ERR_INTERNAL;
+    }
+
+    return SR_ERR_OK;
+}
 
 /**
  * @brief TODO
@@ -74,10 +98,9 @@ typedef struct cm_ctx_s {
 static int
 cm_server_init(cm_ctx_t *cm_ctx, const char *socket_path)
 {
-    int fd = CM_FD_INVALID;
+    int fd = -1;
     int rc = SR_ERR_OK;
     struct sockaddr_un addr;
-    int on = 1;
 
     CHECK_NULL_ARG2(cm_ctx, socket_path);
 
@@ -88,9 +111,9 @@ cm_server_init(cm_ctx_t *cm_ctx, const char *socket_path)
         goto cleanup;
     }
 
-    rc = ioctl(fd, FIONBIO, (char *)&on);
-    if (-1 == rc) {
-        SR_LOG_ERR("Socket ioctl error: %s", strerror(errno));
+    rc = cm_fd_set_nonblock(fd);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Cannot set socket to nonblocking mode.");
         rc = SR_ERR_INIT_FAILED;
         goto cleanup;
     }
@@ -125,7 +148,7 @@ cm_server_init(cm_ctx_t *cm_ctx, const char *socket_path)
     return SR_ERR_OK;
 
 cleanup:
-    if (CM_FD_INVALID != fd) {
+    if (-1 != fd) {
         close(fd);
     }
     unlink(socket_path);
@@ -141,7 +164,7 @@ static void
 cm_server_cleanup(cm_ctx_t *cm_ctx)
 {
     if (NULL != cm_ctx) {
-        if (CM_FD_INVALID != cm_ctx->listen_socket_fd) {
+        if (-1 != cm_ctx->listen_socket_fd) {
             close(cm_ctx->listen_socket_fd);
         }
         if (NULL != cm_ctx->server_socket_path) {
@@ -163,9 +186,19 @@ cm_out_msg_queue_init(cm_ctx_t *cm_ctx)
 
     CHECK_NULL_ARG(cm_ctx);
 
+    /* create a pipe */
     rc = pipe(cm_ctx->out_msg_fds);
     if (-1 == rc) {
         SR_LOG_ERR("Pipe create error: %s", strerror(errno));
+        return SR_ERR_INIT_FAILED;
+    }
+
+    /* set read end to nonblocking */
+    rc = cm_fd_set_nonblock(cm_ctx->out_msg_fds[PIPE_READ]);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Cannot set read end of the pipe to nonblocking mode.");
+        close(cm_ctx->out_msg_fds[PIPE_READ]);
+        close(cm_ctx->out_msg_fds[PIPE_WRITE]);
         return SR_ERR_INIT_FAILED;
     }
 
@@ -180,41 +213,49 @@ static void
 cm_out_msg_queue_cleanup(cm_ctx_t *cm_ctx)
 {
     if (NULL != cm_ctx) {
-        close(cm_ctx->out_msg_fds[0]);
-        close(cm_ctx->out_msg_fds[1]);
+        close(cm_ctx->out_msg_fds[PIPE_READ]);
+        close(cm_ctx->out_msg_fds[PIPE_WRITE]);
     }
 }
 
 static int
-cm_poll_init(cm_ctx_t *cm_ctx)
+cm_select_init(cm_ctx_t *cm_ctx)
 {
     CHECK_NULL_ARG(cm_ctx);
 
-    /* initialize the array */
-    memset(cm_ctx->poll_fds, 0, sizeof(cm_ctx->poll_fds));
+    if ((cm_ctx->listen_socket_fd >= FD_SETSIZE) || (cm_ctx->out_msg_fds[PIPE_READ] >= FD_SETSIZE)) {
+        SR_LOG_ERR("FD_SETSIZE(%d) reached, cannot select on one of provided fds.", FD_SETSIZE);
+        return SR_ERR_INTERNAL;
+    }
 
-    /* poll on server listen socket */
-    cm_ctx->poll_fds[0].fd = cm_ctx->listen_socket_fd;
-    cm_ctx->poll_fds[0].events = POLLIN;
+    /* init both read and write fd sets */
+    FD_ZERO(&cm_ctx->select_read_fds);
+    FD_ZERO(&cm_ctx->select_write_fds);
 
-    /* poll on msg queue pipe */
-    cm_ctx->poll_fds[1].fd = cm_ctx->out_msg_fds[0];
-    cm_ctx->poll_fds[1].events = POLLIN;
+    /* select on server listen socket */
+    FD_SET(cm_ctx->listen_socket_fd, &cm_ctx->select_read_fds);
+    cm_ctx->select_fd_max = cm_ctx->listen_socket_fd;
 
-    cm_ctx->poll_fd_cnt = 2;
+    /* select on msg queue pipe */
+    FD_SET(cm_ctx->out_msg_fds[PIPE_READ], &cm_ctx->select_read_fds);
+    if (cm_ctx->out_msg_fds[PIPE_READ] > cm_ctx->select_fd_max) {
+        cm_ctx->select_fd_max = cm_ctx->out_msg_fds[PIPE_READ];
+    }
 
     return SR_ERR_OK;
 }
 
 static void
-cm_poll_cleanup(cm_ctx_t *cm_ctx)
+cm_select_cleanup(cm_ctx_t *cm_ctx)
 {
     int i = 0;
+
     if (NULL != cm_ctx) {
-        for (i = 0; i < cm_ctx->poll_fd_cnt; i++) {
-            if (CM_FD_INVALID != cm_ctx->poll_fds[i].fd) {
-                close(cm_ctx->poll_fds[i].fd);
-                cm_ctx->poll_fds[i].fd = CM_FD_INVALID;
+        for (i = 0; i < cm_ctx->select_fd_max; i++) {
+            if (FD_ISSET(i, &cm_ctx->select_read_fds) || FD_ISSET(i, &cm_ctx->select_write_fds)) {
+                close(i);
+                FD_CLR(i, &cm_ctx->select_read_fds);
+                FD_CLR(i, &cm_ctx->select_write_fds);
             }
         }
     }
@@ -227,30 +268,40 @@ cm_poll_cleanup(cm_ctx_t *cm_ctx)
 static int
 cm_server_accept(cm_ctx_t *cm_ctx)
 {
-    int clnt_fd = CM_FD_INVALID;
+    int clnt_fd = -1;
+    int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG(cm_ctx);
 
     do {
         clnt_fd = accept(cm_ctx->listen_socket_fd, NULL, NULL);
         if (clnt_fd > 0) {
-            /* add the new connection to polled fds */
+            /* accepted the new connection */
             SR_LOG_DBG("New client connection on fd %d", clnt_fd);
-            if (cm_ctx->poll_fd_cnt >= CM_POLL_MAX_FD_CNT) {
-                SR_LOG_ERR_MSG("Maximum number of file descriptors reached, "
-                        "cannot accept any more connections.");
-                return SR_ERR_INTERNAL;
+            if (clnt_fd >= FD_SETSIZE) {
+                /* cannot accept connections with fd above FD_SETSIZE */
+                SR_LOG_ERR("FD_SETSIZE(%d) reached, cannot accept connection with fd=%d.", FD_SETSIZE, clnt_fd);
+                close(clnt_fd);
+                continue; /* let's try next one */
             }
-            cm_ctx->poll_fds[cm_ctx->poll_fd_cnt].fd = clnt_fd;
-            cm_ctx->poll_fds[cm_ctx->poll_fd_cnt].events = POLLIN;
-            cm_ctx->poll_fd_cnt += 1;
+            rc = cm_fd_set_nonblock(clnt_fd);
+            if (SR_ERR_OK != rc) {
+                SR_LOG_ERR("Cannot set fd=%d to nonblocking mode.", clnt_fd);
+                close(clnt_fd);
+                continue; /* let's try next one */
+            }
+            /* add to select fd set */
+            FD_SET(clnt_fd, &cm_ctx->select_read_fds);
+            if (clnt_fd > cm_ctx->select_fd_max) {
+                cm_ctx->select_fd_max = clnt_fd;
+            }
         } else {
-            if (EWOULDBLOCK == errno || EAGAIN == errno) {
+            if ((EWOULDBLOCK == errno) || (EAGAIN == errno)) {
                 /* no more connections to accept */
                 break;
             } else {
                 /* error by accept - only log the error and skip it */
-                SR_LOG_ERR("Error by accepting a new connection: %s", strerror(errno));
+                SR_LOG_ERR("Unexpected error by accepting new connection: %s", strerror(errno));
                 continue;
             }
         }
@@ -270,82 +321,57 @@ cm_out_msg_queue_dispatch(const cm_ctx_t *cm_ctx)
 }
 
 static int
-cm_conn_read(const cm_ctx_t *cm_ctx, int *fd)
+cm_conn_read(cm_ctx_t *cm_ctx, int fd)
 {
     int bytes = 0;
     bool close_connection = false;
     char buffer[80]; // TODO temporary
 
-    CHECK_NULL_ARG2(cm_ctx, fd);
+    CHECK_NULL_ARG(cm_ctx);
 
-    SR_LOG_DBG("fd %d readable", *fd);
+    SR_LOG_DBG("fd %d readable", fd);
 
     do {
-        bytes = recv(*fd, buffer, sizeof(buffer), 0);
+        bytes = recv(fd, buffer, sizeof(buffer), 0);
         if (bytes > 0) {
             /* recieved "bytes" bytes of data */
-            SR_LOG_DBG("%d bytes of data recieved on fd %d.", bytes, *fd);
+            SR_LOG_DBG("%d bytes of data recieved on fd %d : %s", bytes, fd, buffer);
         } else if (0 == bytes) {
             /* connection closed by the other side */
-            SR_LOG_DBG("Peer on fd %d disconnected.", *fd);
+            SR_LOG_DBG("Peer on fd %d disconnected.", fd);
             close_connection = true;
         } else {
-            if (EWOULDBLOCK == errno || EAGAIN == errno) {
+            if ((EWOULDBLOCK == errno) || (EAGAIN == errno)) {
                 /* no more data to be read */
+                SR_LOG_DBG("fd %d would block", fd);
                 break;
             } else {
                 /* error by reading - close the connection due to an error */
-                SR_LOG_ERR("Error by reading data on fd %d: %s.", *fd, strerror(errno));
+                SR_LOG_ERR("Error by reading data on fd %d: %s.", fd, strerror(errno));
                 close_connection = true;
+                break;
             }
         }
     } while (bytes > 0); /* recv returns -1 when there is no more data to be read */
 
     if (close_connection) {
-        close(*fd);
-        *fd = CM_FD_INVALID;
+        close(fd);
+        FD_CLR(fd, &cm_ctx->select_read_fds);
+        FD_CLR(fd, &cm_ctx->select_write_fds);
     }
 
     return SR_ERR_OK;
 }
 
 static int
-cm_conn_write(const cm_ctx_t *cm_ctx, int *fd)
+cm_conn_write(const cm_ctx_t *cm_ctx, int fd)
 {
-    CHECK_NULL_ARG2(cm_ctx, fd);
-
-    SR_LOG_DBG("fd %d writeable", *fd);
-
-    /* check for server_socket_fd and out_msg_fds[0] */
-
-    return SR_ERR_OK;
-}
-
-static int
-cm_poll_fds_compress(cm_ctx_t *cm_ctx)
-{
-    int i = 0, j = 0;
-    struct pollfd *fds = NULL;
-    int fd_cnt = 0;
-
     CHECK_NULL_ARG(cm_ctx);
 
-    SR_LOG_DBG_MSG("Poll FDs compress invoked.");
+    SR_LOG_DBG("fd %d writeable", fd);
 
-    fds = cm_ctx->poll_fds;
-    fd_cnt = cm_ctx->poll_fd_cnt;
+    /* check for server_socket_fd and out_msg_fds[PIPE_READ] */
 
-    for (i = 0; i < fd_cnt; i++) {
-        if (CM_FD_INVALID == fds[i].fd) {
-            for (j = i; j < (fd_cnt - 1); j++) {
-                fds[j].fd = fds[j+1].fd;
-            }
-            i--;
-            fd_cnt--;
-        }
-    }
-
-    cm_ctx->poll_fd_cnt = fd_cnt;
     return SR_ERR_OK;
 }
 
@@ -353,22 +379,41 @@ static int
 cm_event_loop(cm_ctx_t *cm_ctx)
 {
     int events_cnt = 0, events_processed = 0, i = 0;
-    bool compress_needed = false;
-    struct pollfd *fds = NULL;
-    int fd_cnt = 0;
+    int fd_max = -1;
+    fd_set read_fds, write_fds;
+    struct timespec timeout = { 0, };
+    sigset_t sig_mask;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG(cm_ctx);
 
     SR_LOG_DBG_MSG("Starting CM event loop.");
 
-    fds = cm_ctx->poll_fds;
+    timeout.tv_sec  = CM_SELECT_TIMEOUT;
+    timeout.tv_nsec = 0;
+
+    /* prepare sig_mask used to unblock signals when execution is blocked in pselect */
+    sigemptyset(&sig_mask);
+    sigprocmask(SIG_SETMASK, NULL, &sig_mask); /* get current mask */
+    if (CM_MODE_DAEMON == cm_ctx->mode) {
+        /* unblock deamon signals inside of pselect */
+        sigdelset(&sig_mask, SIGINT);
+        sigdelset(&sig_mask, SIGTERM);
+    } else {
+        /* unblock library signals inside of pselect */
+        sigdelset(&sig_mask, CM_SIG_STOP);
+    }
 
     do {
-        fd_cnt = cm_ctx->poll_fd_cnt;
-        events_cnt = poll(fds, fd_cnt, CM_POLL_TIMEOUT);
+        /* copy select master sets over working sets */
+        memcpy(&read_fds, &cm_ctx->select_read_fds, sizeof(cm_ctx->select_read_fds));
+        memcpy(&write_fds, &cm_ctx->select_write_fds, sizeof(cm_ctx->select_write_fds));
+        fd_max = cm_ctx->select_fd_max;
 
-        SR_LOG_DBG("poll unblocked, events_cnt=%d.", events_cnt);
+        /* block until an event occurs */
+        events_cnt = pselect(fd_max + 1, &read_fds, &write_fds, NULL, &timeout, &sig_mask);
+
+        SR_LOG_DBG("select unblocked, events_cnt=%d.", events_cnt);
 
         if (-1 == events_cnt) {
             /* error */
@@ -376,54 +421,40 @@ cm_event_loop(cm_ctx_t *cm_ctx)
                 SR_LOG_DBG("Event loop interrupted by a signal, "
                         "stop_requested=%d.", stop_requested);
             } else {
-                SR_LOG_ERR("Unexpected error by poll: %s.", strerror(errno));
+                SR_LOG_ERR("Unexpected error by select: %s.", strerror(errno));
                 break;
             }
         } else if (0 == events_cnt) {
             /* timeout */
-            SR_LOG_DBG_MSG("poll timeout expired.");
+            SR_LOG_DBG_MSG("select timeout expired.");
         } else {
-            /* event on some of the fds */
+            /* event on some of the pollfds */
             events_processed = 0;
-            compress_needed = false;
 
-            for (i = 0 ; i < fd_cnt; i++) {
-                if (0 == fds[i].revents) {
-                    /* no events on this fd */
-                    continue;
-                } else {
-                    events_processed += 1;
-                }
-                if (fds[i].revents & POLLIN) {
+            for (i = 0 ; i <= fd_max; i++) {
+                if (FD_ISSET(i, &read_fds)) {
                     /* data ready to be read */
-                    if (fds[i].fd == cm_ctx->listen_socket_fd) {
+                    events_processed += 1;
+                    if (i == cm_ctx->listen_socket_fd) {
                         /* new connection */
                         rc = cm_server_accept(cm_ctx);
-                    } else if (fds[i].fd == cm_ctx->out_msg_fds[0]) {
+                    } else if (i == cm_ctx->out_msg_fds[PIPE_READ]) {
                         /* new msg in the outgoing queue */
                         rc = cm_out_msg_queue_dispatch(cm_ctx);
                     } else {
                         /* new data from some connection */
-                        rc = cm_conn_read(cm_ctx, &fds[i].fd);
+                        rc = cm_conn_read(cm_ctx, i);
                     }
                 }
-                if (fds[i].revents & POLLOUT) {
+                if (FD_ISSET(i, &write_fds)) {
                     /* ready to write to some connection */
-                    rc = cm_conn_write(cm_ctx, &cm_ctx->poll_fds[i].fd);
+                    events_processed += 1;
+                    rc = cm_conn_write(cm_ctx, i);
                 }
-                /* if the peer disconnected in read / write handler, mark it */
-                if (CM_FD_INVALID == fds[i].fd) {
-                    compress_needed = true;
-                }
-                /* if all fds with events are processed, stop the iteration */
+                /* if all pollfds with events are processed, stop the iteration */
                 if (events_processed == events_cnt) {
                     break;
                 }
-            }
-
-            /* if some of the connections has closed, we need to compress the fds array */
-            if (compress_needed) {
-                rc = cm_poll_fds_compress(cm_ctx);
             }
         }
     } while ((SR_ERR_OK == rc) && (0 == stop_requested));
@@ -436,7 +467,6 @@ cm_event_loop(cm_ctx_t *cm_ctx)
 static void
 cm_sig_stop_handle(int sig)
 {
-    SR_LOG_DBG_MSG("signal is here");
     stop_requested = 1;
 }
 
@@ -444,13 +474,15 @@ static void *
 cm_event_loop_threaded(void *cm_ctx_p)
 {
     cm_ctx_t *cm_ctx = (cm_ctx_t*)cm_ctx_p;
+    struct sigaction signal_action;
     int rc = SR_ERR_OK;
 
-    struct sigaction act;
-    memset (&act, '\0', sizeof(act));
-    act.sa_handler = &cm_sig_stop_handle;
-    sigaction(CM_SIG_STOP, &act, NULL);
+    /* install CM_SIG_STOP signal handler used to break the event loop from parent thread */
+    memset(&signal_action, 0, sizeof(signal_action));
+    signal_action.sa_handler = &cm_sig_stop_handle;
+    sigaction(CM_SIG_STOP, &signal_action, NULL);
 
+    /* start the event loop */
     rc = cm_event_loop(cm_ctx);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Error by processing in the event loop occured.");
@@ -489,7 +521,7 @@ cm_init(const cm_connection_mode_t mode, const char *socket_path, cm_ctx_t **cm_
         goto cleanup;
     }
 
-    rc = cm_poll_init(ctx);
+    rc = cm_select_init(ctx);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Cannot initialize poll structure.");
         goto cleanup;
@@ -508,7 +540,7 @@ cleanup:
 void
 cm_cleanup(cm_ctx_t *cm_ctx)
 {
-    cm_poll_cleanup(cm_ctx);
+    cm_select_cleanup(cm_ctx);
     cm_server_cleanup(cm_ctx);
     cm_out_msg_queue_cleanup(cm_ctx);
     free(cm_ctx);
@@ -518,31 +550,38 @@ int
 cm_start(cm_ctx_t *cm_ctx)
 {
     int rc = SR_ERR_OK;
+    sigset_t mask;
 
     CHECK_NULL_ARG(cm_ctx);
 
     stop_requested = 0;
 
     if (CM_MODE_DAEMON == cm_ctx->mode) {
+        /* block daemon signals (will be unblocked in the event loop) */
+        sigemptyset(&mask);
+        sigaddset(&mask, SIGINT);
+        sigaddset(&mask, SIGTERM);
+        pthread_sigmask(SIG_BLOCK, &mask, NULL);
+
         /* run the event loop in this thread */
         rc = cm_event_loop(cm_ctx);
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR_MSG("Error by processing in the event loop occured.");
+            pthread_sigmask(SIG_UNBLOCK, &mask, NULL);
         }
-//    } else {
-//        sigset_t mask, orig_mask;
-//        sigemptyset(&mask);
-//        sigaddset(&mask, CM_SIG_STOP);
-//        sigprocmask(SIG_BLOCK, &mask, &orig_mask);
+    } else {
+        /* block CM_SIG_STOP signal (will be unblocked in the event loop) */
+        sigemptyset(&mask);
+        sigaddset(&mask, CM_SIG_STOP);
+        pthread_sigmask(SIG_BLOCK, &mask, NULL);
 
         /* run the event loop in a new thread */
         rc = pthread_create(&cm_ctx->event_loop_thread, NULL,
                 cm_event_loop_threaded, cm_ctx);
         if (0 != rc) {
             SR_LOG_ERR("Error by creating a new thread: %s", strerror(errno));
+            pthread_sigmask(SIG_UNBLOCK, &mask, NULL);
         }
-
-//        sigprocmask(SIG_SETMASK, &orig_mask, NULL);
     }
 
     return rc;
@@ -553,12 +592,11 @@ cm_stop(cm_ctx_t *cm_ctx)
 {
     CHECK_NULL_ARG(cm_ctx);
 
-    SR_LOG_DBG_MSG("CM stop requested.");
-
     if (CM_MODE_DAEMON == cm_ctx->mode) {
         /* main thread (with event loop) interrupted by signal, just mark request to stop */
         stop_requested = 1;
     } else {
+        SR_LOG_DBG_MSG("Sending stop signal to the event loop thread.");
         /* send a signal to the thread with event loop */
         pthread_kill(cm_ctx->event_loop_thread, CM_SIG_STOP);
         /* block until cleanup is finished */
