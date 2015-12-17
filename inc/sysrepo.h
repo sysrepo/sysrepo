@@ -18,8 +18,8 @@
  * limitations under the License.
  */
 
-#ifndef __SYSREPO_H__
-#define __SYSREPO_H__
+#ifndef SYSREPO_H__
+#define SYSREPO_H__
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -37,12 +37,6 @@
 #define SR_VAL_IS_STRING(val) ((val)->type == SR_STRING_T)
 #define SR_VAL_DATA(val)  SR_VAL_IS_UINT32_T ? val->data.uint32_t : SR_VAL_IS_STRING ? val->data.string: ….
 
-
-/* Cool struct identifing yang node*/
-typedef struct sr_location_id_s{
-    char *xpath;
-}sr_location_id_t;
-typedef sr_location_id_t * sr_location_id_p;
 
 /* sysrepo settings*/
 typedef struct sr_settings_s{
@@ -96,13 +90,20 @@ typedef sr_val_t * sr_val_p;
 
 
 
-typedef enum sr_error_e{
-  SR_ERR_OK,
-  SR_ERR_NOT_FOUND,
-  SR_ERR_INIT_FAILED,
-  SR_ERR_UNAUTHORIZED,
-  /* ... */
-}sr_error_t;
+/**
+ * @brief Sysrepo error codes.
+ */
+typedef enum sr_error_e {
+  SR_ERR_OK = 0,       /**< No error. */
+  SR_ERR_INVAL_ARG,    /**< Invalid argument. */
+  SR_ERR_NOMEM,        /**< Not enough memory. */
+  SR_ERR_NOT_FOUND,    /**< Item not found. */
+  SR_ERR_INTERNAL,     /**< Other internal error. */
+  SR_ERR_INIT_FAILED,  /**< Sysrepo infra initailization failed. */
+  SR_ERR_IO,           /**< Input/Ouput eror. */
+} sr_error_t;
+
+
 
 typedef struct sr_val_iter_s{
   size_t index;
