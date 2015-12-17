@@ -1,4 +1,4 @@
-set(TEST_DATA_DIR_V "${PROJECT_SOURCE_DIR}/test/data")
+set(TEST_DATA_DIR_V "${PROJECT_SOURCE_DIR}/test/data/")
 
 configure_file("${PROJECT_SOURCE_DIR}/test/data/test_data.h.in" "${PROJECT_SOURCE_DIR}/test/data/test_data.h" ESCAPE_QUOTES @ONLY) 
 include_directories ("${PROJECT_SOURCE_DIR}/src" "${PROJECT_SOURCE_DIR}/test/data/")

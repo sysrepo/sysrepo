@@ -22,6 +22,7 @@
 #ifndef SRC_SR_COMMON_H_
 #define SRC_SR_COMMON_H_
 
+#include <libyang/libyang.h>
 #include "sr_error.h"
 #include "sr_logger.h"
 
@@ -65,5 +66,31 @@
         CHECK_NULL_ARG__INTERNAL(ARG4) \
         CHECK_NULL_ARG__INTERNAL(ARG5) \
     } while(0)
+
+/**
+ * @brief Compares the suffix of the string, if it matches 0 is returned
+ * @param [in] str
+ * @param [in] suffix
+ * @return
+ */
+int sr_str_ends_with(const char *str, const char *suffix);
+
+/**
+ * @brief concatenates two string into newly allocated one.
+ * @param [in] str1
+ * @param [in] str2
+ * @param [out] result
+ * @return err_code
+ */
+int sr_str_join(const char *str1, const char *str2, char **result);
+
+
+/**
+ * @brief Saves the data tree into file. Workaround function that adds the root element to data_tree.
+ * @param [in] file_name
+ * @param [in] data_tree
+ * @return err_code
+ */
+int sr_save_data_tree_file(const char *file_name, const struct lyd_node *data_tree);
 
 #endif /* SRC_SR_COMMON_H_ */
