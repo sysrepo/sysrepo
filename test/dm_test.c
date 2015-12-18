@@ -40,10 +40,38 @@ void dm_create_cleanup(void **state){
 
 }
 
+void dm_get_data_tree(void **state)
+{
+    int rc;
+    dm_ctx_t *ctx;
+    dm_session_t *ses_ctx;
+    struct lyd_node *data_tree;
+
+    rc = dm_init(TEST_DATA_DIR, &ctx);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    dm_session_start(ctx, &ses_ctx);
+    /* Load from file */
+    assert_int_equal(SR_ERR_OK, dm_get_datatree(ctx, ses_ctx ,"example-module", &data_tree));
+    /* Get from avl tree */
+    assert_int_equal(SR_ERR_OK, dm_get_datatree(ctx, ses_ctx ,"example-module", &data_tree));
+    /* Module without data*/
+    assert_int_equal(SR_ERR_OK, dm_get_datatree(ctx, ses_ctx ,"small-module", &data_tree));
+    /* Not existing module should return an error*/
+    assert_int_equal(SR_ERR_INVAL_ARG, dm_get_datatree(ctx, ses_ctx ,"not-existing-module", &data_tree));
+
+    dm_session_stop(ctx, ses_ctx);
+
+    rc = dm_cleanup(ctx);
+    assert_int_equal(SR_ERR_OK, rc);
+
+}
+
 int main(){
 
     const struct CMUnitTest tests[] = {
             cmocka_unit_test(dm_create_cleanup),
+            cmocka_unit_test(dm_get_data_tree),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }
