@@ -8,7 +8,7 @@ set(SYSREPO_MINOR_VERSION 0)
 set(SYSREPO_MICRO_VERSION 1)
 set(SYSREPO_VERSION ${SYSREPO_MAJOR_VERSION}.${SYSREPO_MINOR_VERSION}.${SYSREPO_MICRO_VERSION})
 
-set(CMAKE_C_FLAGS "-Wall -Werror -Wpedantic -std=gnu11 -D_GNU_SOURCE=1")
+set(CMAKE_C_FLAGS "-Wall -Werror -Wpedantic -std=gnu11 ")
 
 # include custom Modules
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/CMakeModules/")
