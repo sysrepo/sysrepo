@@ -42,12 +42,13 @@ signal_handle(int sig)
 
 static int
 setup(void **state) {
-    sr_logger_init("srtest");
-    sr_logger_set_level(SR_LL_DBG, SR_LL_ERR); /* print only errors. */
+    sr_logger_init("cm-test");
+    sr_logger_set_level(SR_LL_ERR, SR_LL_ERR); /* print only errors. */
 
     cm_init(CM_MODE_LOCAL, "/tmp/sysrepo-test", &ctx);
     *state = ctx;
 
+    /* installs signal handlers (for manual testing of daemon mode) */
     struct sigaction act;
     memset (&act, '\0', sizeof(act));
     act.sa_handler = &signal_handle;
@@ -75,29 +76,24 @@ static void
 cm_make_connection()
 {
     struct sockaddr_un addr;
-    int fd;
+    int fd = -1, rc = -1;
+    char *data = "Data to be sent...";
 
-    if ( (fd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
-      perror("socket error");
-      exit(-1);
-    }
+    fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    assert_int_not_equal(fd, -1);
 
     memset(&addr, 0, sizeof(addr));
     addr.sun_family = AF_UNIX;
     strncpy(addr.sun_path, "/tmp/sysrepo-test", sizeof(addr.sun_path)-1);
 
-    if (connect(fd, (struct sockaddr*)&addr, sizeof(addr)) == -1) {
-      perror("connect error");
-      exit(-1);
-    }
+    rc = connect(fd, (struct sockaddr*)&addr, sizeof(addr));
+    assert_int_not_equal(rc, -1);
 
-    char *data = "Data to be sent...";
+    rc = write(fd, data, strlen(data) + 1);
+    assert_int_not_equal(rc, -1);
 
-    if (write(fd, data, strlen(data)+1) < 0)
-        perror("writing on stream socket");
-
-    if (write(fd, data, strlen(data)+1) < 0)
-        perror("writing on stream socket");
+    rc = write(fd, data, strlen(data) + 1);
+    assert_int_not_equal(rc, -1);
 
     //close(fd);
 }
@@ -105,7 +101,7 @@ cm_make_connection()
 static void
 cm_simple(void **state) {
     int i = 0;
-    for (i = 0; i < 1500; i++) {
+    for (i = 0; i < 500; i++) {
         cm_make_connection();
     }
 }

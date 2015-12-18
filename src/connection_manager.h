@@ -31,13 +31,17 @@
  *
  * @brief Connection Manager is responsible for communication between Sysrepo
  * daemon (or core engine in library mode) and sysrepo access library
- * (tha application which is accessing data in sysrepo).
+ * (the application which is accessing data in sysrepo).
  *
- * It handles all connections and does message retreival/delivery from/to
- * client library.
+ * It provides an event loop (started with ::cm_start), which handles all
+ * connections and does message retreival/delivery between client library and
+ * sysrepo request processor.
  *
- * It can work in two modes: server (daemon), or local (library) mode. See
- * ::cm_start_server and ::cm_start_local for more information.
+ * It can work in two modes: daemon mode, or library mode. The main distinction
+ * between the two is that the event loop is executed in the main thread in
+ * daemon mode (making the main thread blocked until stop is requested
+ * by ::cm_stop), whereas in library mode the event loop runs in a new
+ * dedicated thread (to not block caller thread).
  */
 
 /**
@@ -47,50 +51,71 @@
 typedef struct cm_ctx_s cm_ctx_t;
 
 /**
- * @brief Modes of Connection Manager.
+ * @brief Modes in which Connection Manager can operate.
  */
 typedef enum {
-    CM_MODE_DAEMON,  /**< Daemon mode - clients from any process are able to connect to it. */
+    CM_MODE_DAEMON,  /**< Daemon mode - clients from other processess are able to connect to it. */
     CM_MODE_LOCAL,   /**< Local mode - only local (intra-process) client connections are possible. */
 } cm_connection_mode_t;
 
 /**
+ * @brief Initilizes Connection Manager.
  *
+ * Initializes server for accepting new connections and prepares all internal
+ * structures, but still not starts the server (use ::cm_start to start it).
+ *
+ * @param[in] mode Mode in which Connection Manager will operate.
+ * @param[in] socket_path Path of the unix-domain socket for accepting new connections.
+ * @param[out] cm_ctx Connectaion manager context which can be used in
+ * subsequent CM API calls.
+ *
+ * @return Error code (SR_ERR_OK on success).
  */
 int cm_init(const cm_connection_mode_t mode, const char *socket_path, cm_ctx_t **cm_ctx);
 
 /**
+ * @brief Cleans up Connection Manager.
  *
+ * All outstanding connections will be automatically closed and all memory held
+ * by this Connection Manager instance will be freed.
+ * This call does not stop the evnet loop of connection manager. Prior calling
+ * this function, it must be stopped via ::cm_stop.
+ *
+ * @param[in] cm_ctx Connection Manager context.
+ *
+ * @return Error code (SR_ERR_OK on success).
  */
 void cm_cleanup(cm_ctx_t *cm_ctx);
 
 /**
- * @brief Initializes Connection Manager in server (daemon) mode.
+ * @brief Starts the event loop of Connection Manager.
  *
- * After initialization, clients (other applications) are able to connect
- * to the server (as of now, by connecting to server's unix-domain socket).
+ * After calling, Connection manager is able to start accepting incoming
+ * connections and processing messages.
  *
- * This function will block the thread in the event loop until stop is requested
- * or until an error occured.
+ * If Connection manager runs in daemon mode (see ::cm_init), this function will
+ * block the calling thread in the event loop until stop is requested or until
+ * an error occured. In library mode it returns immediately.
  *
- * @param[in] mode Mode in which the Connection Mnager will operate (daemon/local).
- * @param[in] socket_path Path to the unix-domain socket where server should bind to.
- * @param[out] cm_ctx Connectaion manager context which can be used in subsequent
- * CM API calls.
+ * @param[in] cm_ctx Connection Manager context.
  *
  * @return Error code (SR_ERR_OK on success).
  */
 int cm_start(cm_ctx_t *cm_ctx);
 
 /**
- * @brief "Nice" request to stop the Connection Manager instance.
+ * @brief Sends a request to stop the Connection Manager.
  *
- * Used to request for cleanup from signal handlers (if CM is running in daemon
- * mode), or from parent thread (if CM is running in library mode).
+ * Used to request "nice" cleanup from signal handlers (if CM is running in
+ * daemon mode), or from parent thread (if CM is running in library mode).
  *
- * All open connections will be closed and all memory held by Connection Manager
- * and chained modules of sysrepo will be released.
- * In case of library mode, the thread where CM was running will be destroyed too.
+ * Event loop will end and a) ::cm_start will return in case of daemon mode,
+ * b) event loop thread will be destroyed in case of library mode.
+ *
+ * Due to the characteristics of signals which are used to accomplish this
+ * request, this would stop all instances of Connection Manager if they were
+ * multiple of them. Therefore having multiple instances of CM within one
+ * application may not be a good design consideration.
  *
  * @param[in] cm_ctx Connection Manager context.
  *
@@ -99,7 +124,7 @@ int cm_start(cm_ctx_t *cm_ctx);
 int cm_stop(cm_ctx_t *cm_ctx);
 
 /**
- * @brief Sends the message to the proper reciepient according to provided session.
+ * @brief Sends the message to the proper recipient according to provided session.
  *
  * This function is thread safe, can be called from any thread.
  *

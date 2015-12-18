@@ -27,9 +27,7 @@
 #include <inttypes.h>
 #include <sys/socket.h>
 #include <sys/un.h>
-#include <sys/ioctl.h>
 #include <fcntl.h>
-#include <sys/poll.h>
 #include <sys/select.h>
 #include <pthread.h>
 #include <signal.h>
@@ -38,15 +36,14 @@
 #include "session_manager.h"
 #include "connection_manager.h"
 
-#define CM_SELECT_TIMEOUT (10) /**< Timeout used for poll calls (in seconds) */
+#define CM_SELECT_TIMEOUT (10)  /**< Timeout used for select calls (in seconds). */
+#define CM_SIG_STOP (SIGRTMIN + 8)  /**< Signal used to notify the thread with event loop about stop request (applicable for library mode). */
 
-#define CM_SIG_STOP (SIGRTMIN + 8)  /**< signal used to notify the thread with event loop about stop request */
-
-#define PIPE_READ 0
-#define PIPE_WRITE 1
+#define PIPE_READ 0   /**< Identifies read end of a pipe. */
+#define PIPE_WRITE 1  /**< Identifies write end of a pipe. */
 
 /**
- * Global variable used to request stop of the event loop in all instances of CM,
+ * @brief Global variable used to request stop of the event loop in all instances of CM,
  * it should be set ONLY by signal handler functions within the same thread as the loop.
  */
 static volatile sig_atomic_t stop_requested = 0;
@@ -55,20 +52,32 @@ static volatile sig_atomic_t stop_requested = 0;
  * @brief Connection Manager context.
  */
 typedef struct cm_ctx_s {
+    /** Mode in which Connection Manager will operate. */
     cm_connection_mode_t mode;
 
-    sm_ctx_t *session_manager;       /**< Session Manager context. */
-    int listen_socket_fd;            /**< Socket descriptor used to listen & accept new connections. */
-    const char *server_socket_path;  /**< Path used for unix-domain socket communication. */
-    int out_msg_fds[2];              /**< "queue" of messagess to be sent (descriptors of a pipe). */
+    /** Session Manager context. */
+    sm_ctx_t *session_manager;
 
+    /** Path where unix-domain server is binded to. */
+    const char *server_socket_path;
+    /** Socket descriptor used to listen & accept new unix-domain connections. */
+    int listen_socket_fd;
+    /** outgoing message queue (descriptors of a pipe, write is performed by ::cm_msg_send). */
+    int out_msg_fds[2];
+
+    /** Thread where event lopp will be running in case of library mode. */
     pthread_t event_loop_thread;
-
+    /** File descriptor set beeing watched for readable event by select. */
     fd_set select_read_fds;
+    /** File descriptor set beeing watched for writable event by select. */
     fd_set select_write_fds;
+    /** Maximum file descriptor beeing watched by select. */
     int select_fd_max;
 } cm_ctx_t;
 
+/**
+ * @brief Sets a file descriptor to non-blocking I/O mode.
+ */
 static int
 cm_fd_set_nonblock(int fd)
 {
@@ -89,11 +98,7 @@ cm_fd_set_nonblock(int fd)
 }
 
 /**
- * @brief TODO
- *
- * @param cm_ctx
- * @param socket_path
- * @return
+ * @brief Initializes unix-domain socket server.
  */
 static int
 cm_server_init(cm_ctx_t *cm_ctx, const char *socket_path)
@@ -157,8 +162,7 @@ cleanup:
 }
 
 /**
- * @brief TODO
- * @param cm_ctx
+ * @brief Cleans up unix-domain socket server.
  */
 static void
 cm_server_cleanup(cm_ctx_t *cm_ctx)
@@ -175,9 +179,7 @@ cm_server_cleanup(cm_ctx_t *cm_ctx)
 }
 
 /**
- * @brief TODO
- * @param cm_ctx
- * @return
+ * @brief Initializes outgoing message queue.
  */
 static int
 cm_out_msg_queue_init(cm_ctx_t *cm_ctx)
@@ -206,8 +208,7 @@ cm_out_msg_queue_init(cm_ctx_t *cm_ctx)
 }
 
 /**
- * TODO
- * @param cm_ctx
+ * @brief Cleans up outgoing message queue.
  */
 static void
 cm_out_msg_queue_cleanup(cm_ctx_t *cm_ctx)
@@ -218,6 +219,10 @@ cm_out_msg_queue_cleanup(cm_ctx_t *cm_ctx)
     }
 }
 
+/**
+ * @brief Initializes data structures used by select. Adds unix-domain server
+ * socket and read-end of the outgoing message queue to fd set monitored by select.
+ */
 static int
 cm_select_init(cm_ctx_t *cm_ctx)
 {
@@ -236,7 +241,7 @@ cm_select_init(cm_ctx_t *cm_ctx)
     FD_SET(cm_ctx->listen_socket_fd, &cm_ctx->select_read_fds);
     cm_ctx->select_fd_max = cm_ctx->listen_socket_fd;
 
-    /* select on msg queue pipe */
+    /* select on read-end of outgoing msg queue pipe */
     FD_SET(cm_ctx->out_msg_fds[PIPE_READ], &cm_ctx->select_read_fds);
     if (cm_ctx->out_msg_fds[PIPE_READ] > cm_ctx->select_fd_max) {
         cm_ctx->select_fd_max = cm_ctx->out_msg_fds[PIPE_READ];
@@ -245,6 +250,10 @@ cm_select_init(cm_ctx_t *cm_ctx)
     return SR_ERR_OK;
 }
 
+/**
+ * socket Cleans up the structures used by select. Closes all monitored
+ * descriptors that left open.
+ */
 static void
 cm_select_cleanup(cm_ctx_t *cm_ctx)
 {
@@ -262,7 +271,7 @@ cm_select_cleanup(cm_ctx_t *cm_ctx)
 }
 
 /**
- * @brief Accept new connections to the server and start polling on new
+ * @brief Accepts new connections to the server and starts monitoring the new
  * client file descriptors.
  */
 static int
@@ -310,6 +319,9 @@ cm_server_accept(cm_ctx_t *cm_ctx)
     return SR_ERR_OK;
 }
 
+/**
+ * @brief Dispatches a readable event on read-end of outgoing message queue.
+ */
 static int
 cm_out_msg_queue_dispatch(const cm_ctx_t *cm_ctx)
 {
@@ -320,6 +332,9 @@ cm_out_msg_queue_dispatch(const cm_ctx_t *cm_ctx)
     return SR_ERR_OK;
 }
 
+/**
+ * @brief Dispatches a readable event on the file descriptor of a normal connection.
+ */
 static int
 cm_conn_read(cm_ctx_t *cm_ctx, int fd)
 {
@@ -363,6 +378,9 @@ cm_conn_read(cm_ctx_t *cm_ctx, int fd)
     return SR_ERR_OK;
 }
 
+/**
+ * @brief Dispatches a writeable event on the file descriptor of a normal connection.
+ */
 static int
 cm_conn_write(const cm_ctx_t *cm_ctx, int fd)
 {
@@ -370,11 +388,16 @@ cm_conn_write(const cm_ctx_t *cm_ctx, int fd)
 
     SR_LOG_DBG("fd %d writeable", fd);
 
-    /* check for server_socket_fd and out_msg_fds[PIPE_READ] */
+    /* TODO: check for server_socket_fd and out_msg_fds[PIPE_READ] */
 
     return SR_ERR_OK;
 }
 
+/**
+ * @brief Event loop of Connection Manager. Monitors all connections for events
+ * and calls proper dispatch handler for each event. This function call blocks
+ * until an error occured or until a stop request comes via stop_requested variable.
+ */
 static int
 cm_event_loop(cm_ctx_t *cm_ctx)
 {
@@ -464,12 +487,18 @@ cm_event_loop(cm_ctx_t *cm_ctx)
     return rc;
 }
 
+/**
+ * @brief Signal handler for CM_SIG_STOP signal (applicable only for library mode).
+ */
 static void
 cm_sig_stop_handle(int sig)
 {
     stop_requested = 1;
 }
 
+/**
+ * @brief Starts the event loop in a new thread (applicable only for library mode).
+ */
 static void *
 cm_event_loop_threaded(void *cm_ctx_p)
 {
