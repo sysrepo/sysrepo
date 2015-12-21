@@ -25,4 +25,6 @@ ADD_UNIT_TEST(xp_yang_test xp_yang_test.c "yang" 0)
 ADD_UNIT_TEST(sm_test sm_test.c "" 1)
 ADD_UNIT_TEST(cm_test cm_test.c "" 1)
 ADD_UNIT_TEST(dm_test dm_test.c "" 1)
+ADD_UNIT_TEST(rp_datatree_test rp_datatree_test.c "" 1)
+
 
