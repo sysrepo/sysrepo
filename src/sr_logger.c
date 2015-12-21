@@ -55,7 +55,6 @@ sr_logger_init(const char *app_name)
         identifier = SR_LOG_IDENTIFIER;
     }
 
-    setlogmask(LOG_UPTO(LOG_INFO));
     openlog(identifier, LOG_CONS | LOG_PID | LOG_NDELAY, LOG_DAEMON);
 #endif
 }

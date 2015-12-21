@@ -56,22 +56,26 @@ teardown(void **state) {
 static void
 session_create_drop(void **state) {
     sm_ctx_t *ctx = *state;
+    sm_connection_t *conn = NULL;
     sm_session_t *sess = NULL;
     int rc = SR_ERR_OK;
 
+    /* start a connection */
+    rc = sm_connection_start(ctx, CM_AF_UNIX_CLIENT, 10, &conn);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_non_null(conn);
+
     /* create one session */
-    rc = sm_session_create(ctx, SM_AF_UNIX_CLIENT_REMOTE, &sess);
+    rc = sm_session_create(ctx, conn, "root", NULL, &sess);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(sess);
 
-    rc = sm_session_assign_fd(ctx, sess, 10);
-    assert_int_equal(rc, SR_ERR_OK);
-
-    rc = sm_session_assign_user(ctx, sess, "root", "alice");
-    assert_int_equal(rc, SR_ERR_OK);
-
     /* drop session */
     rc = sm_session_drop(ctx, sess);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* stop a connection */
+    rc = sm_connection_stop(ctx, conn);
     assert_int_equal(rc, SR_ERR_OK);
 }
 
@@ -82,21 +86,24 @@ session_create_drop(void **state) {
 static void
 session_find_id(void **state) {
     sm_ctx_t *ctx = *state;
+    sm_connection_t *conn = NULL;
     sm_session_t *sess = NULL;
     int rc = SR_ERR_OK;
+
+    /* start a connection */
+    rc = sm_connection_start(ctx, CM_AF_UNIX_CLIENT, 10, &conn);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_non_null(conn);
 
     /* create 100 sessions */
     size_t i = 0;
     for (i = 0; i < 100; i ++) {
-        rc = sm_session_create(ctx, SM_AF_UNIX_CLIENT_REMOTE, &sess);
+        rc = sm_session_create(ctx, conn, "root", "bob", &sess);
         assert_int_equal(rc, SR_ERR_OK);
         assert_non_null(sess);
-        rc = sm_session_assign_user(ctx, sess, "root", "alice");
-        assert_int_equal(rc, SR_ERR_OK);
     }
 
     /* save session id of last session */
-    assert_non_null(sess);
     uint32_t id = sess->id;
     sess = NULL;
 
@@ -114,6 +121,10 @@ session_find_id(void **state) {
     rc = sm_session_find_id(ctx, id, &sess);
     assert_int_equal(rc, SR_ERR_NOT_FOUND);
     assert_null(sess);
+
+    /* stop the connection */
+    rc = sm_connection_stop(ctx, conn);
+    assert_int_equal(rc, SR_ERR_OK);
 }
 
 /**
@@ -123,28 +134,32 @@ session_find_id(void **state) {
 static void
 session_find_fd(void **state) {
     sm_ctx_t *ctx = *state;
+    sm_connection_t *conn = NULL;
     sm_session_t *sess = NULL;
-    sm_session_list_t *sess_list = NULL, *curr = NULL;
+    sm_session_list_t *curr = NULL;
     int rc = SR_ERR_OK, cnt = 0;
 
-    /* create 100 sessions */
+    /* create 100 sessions in 10 connections */
     int i = 0;
     for (i = 0; i < 100; i ++) {
-        rc = sm_session_create(ctx, SM_AF_UNIX_CLIENT_REMOTE, &sess);
+        if (0 == i % 10) {
+            conn = NULL;
+            rc = sm_connection_start(ctx, CM_AF_UNIX_CLIENT, i, &conn);
+            assert_int_equal(rc, SR_ERR_OK);
+            assert_non_null(conn);
+        }
+        rc = sm_session_create(ctx, conn, "root", "bob", &sess);
         assert_int_equal(rc, SR_ERR_OK);
         assert_non_null(sess);
-        rc = sm_session_assign_user(ctx, sess, "root", "alice");
-        assert_int_equal(rc, SR_ERR_OK);
-        rc = sm_session_assign_fd(ctx, sess, i % 10);
-        assert_int_equal(rc, SR_ERR_OK);
     }
 
-    /* find session list by fd */
-    rc = sm_session_find_fd(ctx, 5, &sess_list);
+    /* find connection by fd */
+    conn = NULL;
+    rc = sm_connection_find_fd(ctx, 50, &conn);
     assert_int_equal(rc, SR_ERR_OK);
-    assert_non_null(sess_list);
+    assert_non_null(conn);
 
-    curr = sess_list;
+    curr = conn->session_list;
     cnt = 0;
     sm_session_t *s0, *s5, *s9 = 0;
     while (NULL != curr) {
@@ -164,12 +179,13 @@ session_find_fd(void **state) {
     rc = sm_session_drop(ctx, s9);
     assert_int_equal(rc, SR_ERR_OK);
 
-    /* find session list by fd again */
-    rc = sm_session_find_fd(ctx, 5, &sess_list);
+    /* find connection by fd again */
+    conn = NULL;
+    rc = sm_connection_find_fd(ctx, 50, &conn);
     assert_int_equal(rc, SR_ERR_OK);
-    assert_non_null(sess_list);
+    assert_non_null(conn);
 
-    curr = sess_list;
+    curr = conn->session_list;
     cnt = 0;
     while (NULL != curr) {
         /* check for already removed sessions */

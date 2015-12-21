@@ -47,7 +47,7 @@ add_library(sysrepo-engine_so SHARED ${SYSREPO-ENGINE-SOURCES})
 SET_TARGET_PROPERTIES(sysrepo-engine_so PROPERTIES
               OUTPUT_NAME sysrepo-engine CLEAN_DIRECT_OUTPUT 1)
 
-set(LINK_LIBRARIES avl protobuf-c yang)
+set(LINK_LIBRARIES avl protobuf-c pthread yang)
 
 target_link_libraries(sysrepo ${LINK_LIBRARIES})
 target_link_libraries(sysrepo_so ${LINK_LIBRARIES})

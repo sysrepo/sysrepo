@@ -26,13 +26,13 @@
  * @brief Sysrepo error codes.
  */
 typedef enum sr_error_e {
-  SR_ERR_OK = 0,       /**< No error. */
-  SR_ERR_INVAL_ARG,    /**< Invalid argument. */
-  SR_ERR_NOMEM,        /**< Not enough memory. */
-  SR_ERR_NOT_FOUND,    /**< Item not found. */
-  SR_ERR_INTERNAL,     /**< Other internal error. */
-  SR_ERR_INIT_FAILED,  /**< Sysrepo infra initailization failed. */
-  SR_ERR_IO,           /**< Input/Ouput eror. */
+    SR_ERR_OK = 0,       /**< No error. */
+    SR_ERR_INVAL_ARG,    /**< Invalid argument. */
+    SR_ERR_NOMEM,        /**< Not enough memory. */
+    SR_ERR_NOT_FOUND,    /**< Item not found. */
+    SR_ERR_INTERNAL,     /**< Other internal error. */
+    SR_ERR_INIT_FAILED,  /**< Sysrepo infra initailization failed. */
+    SR_ERR_IO,           /**< Input/Ouput eror. */
 } sr_error_t;
 
 #endif /* SRC_SR_ERROR_H_ */
