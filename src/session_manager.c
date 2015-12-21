@@ -214,13 +214,23 @@ sm_connection_start(const sm_ctx_t *sm_ctx, const sm_connection_type_t type, con
 
     SR_LOG_DBG("New connection created succesfully, fd=%d.", fd);
 
+    *connection_p = connection;
     return rc;
 }
 
 int
 sm_connection_stop(const sm_ctx_t *sm_ctx,  sm_connection_t *connection)
 {
+    sm_session_list_t *tmp = NULL;
+
     CHECK_NULL_ARG2(sm_ctx, connection);
+
+    /* unlink pointers to the connection from outstanding sessions */
+    tmp = connection->session_list;
+    while (NULL != tmp) {
+        tmp->session->connection = NULL;
+        tmp = tmp->next;
+    }
 
     avl_delete(sm_ctx->connection_fd_avl, connection); /* sm_connection_cleanup auto-invoked */
 
@@ -242,11 +252,15 @@ sm_connection_add_session(const sm_ctx_t *sm_ctx, sm_connection_t *connection, s
     session_item->session = session;
 
     /* append session entry at the end of list */
-    tmp = connection->session_list;
-    while (NULL != tmp->next) {
-        tmp = tmp->next;
+    if (NULL == connection->session_list) {
+        connection->session_list = session_item;
+    } else {
+        tmp = connection->session_list;
+        while (NULL != tmp->next) {
+            tmp = tmp->next;
+        }
+        tmp->next = session_item;
     }
-    tmp->next = session_item;
 
     return SR_ERR_OK;
 }
