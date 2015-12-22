@@ -1,1 +1,22 @@
-Library used:
+Sysrepo 
+Copyright 2015 Copyright 2015 Cisco Systems, Inc.
+
+This product uses several libraries developed by third-parties:
+
+libyang - YANG data modeling language library, open source software
+developed by CESNET, z.s.p.o., available from:
+  https://github.com/CESNET/libyang/
+  
+Google protocol buffers - language-neutral, platform-neutral, extensible 
+mechanism for serializing structured data, open source software developed
+by Google Inc., available from:
+  https://github.com/google/protobuf
+
+protobuf-c - Protocol Buffers implementation in C, open source software
+developed by Dave Benson and other protobuf-c authors, available from:
+  https://github.com/protobuf-c/protobuf-c/
+  
+CMocka - An unit testing framework for C with support for mock objects,
+open source software developed by Andreas Schneider and Jakub Hrozek,
+available from:
+  git://git.cryptomilk.org/projects/cmocka.git
