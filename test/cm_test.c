@@ -156,6 +156,8 @@ cm_session_start_generate(const char *user_name, void **msg_buf, size_t *msg_siz
     Sr__SessionStartReq session_start = SR__SESSION_START_REQ__INIT;
     msg.request = &req;
     req.session_start_req = &session_start;
+
+    msg.type = SR__MSG__MSG_TYPE__REQUEST;
     req.operation = SR__OPERATION__SESSION_START;
 
     session_start.user_name = (char*)user_name;
@@ -170,12 +172,18 @@ cm_communicate(int fd)
 {
     void *msg_buf = NULL;
     size_t msg_size = 0;
+    int i = 0;
 
     cm_session_start_generate("alice", &msg_buf, &msg_size);
-    cm_message_send(fd, msg_buf, msg_size);
+    for (i = 0; i < 5; i++)
+        cm_message_send(fd, msg_buf, msg_size);
+    free(msg_buf);
 
     Sr__Msg *msg = cm_message_recv(fd);
     assert_non_null(msg);
+
+    printf("SSID=%d\n", msg->response->session_start_resp->session_id);
+    sr__msg__free_unpacked(msg, NULL);
 }
 
 static void

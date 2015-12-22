@@ -33,6 +33,7 @@ typedef enum sr_error_e {
     SR_ERR_INTERNAL,     /**< Other internal error. */
     SR_ERR_INIT_FAILED,  /**< Sysrepo infra initailization failed. */
     SR_ERR_IO,           /**< Input/Ouput eror. */
+    SR_ERR_DISCONNECT,   /**< The peer disconnected. */
 } sr_error_t;
 
 #endif /* SRC_SR_ERROR_H_ */

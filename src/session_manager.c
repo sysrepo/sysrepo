@@ -123,6 +123,8 @@ sm_connection_cleanup(void *connection_p)
             session = session->next;
             free(tmp);
         }
+        free(connection->in_buff.data);
+        free(connection->out_buff.data);
         free(connection);
     }
 }
@@ -194,7 +196,7 @@ sm_connection_start(const sm_ctx_t *sm_ctx, const sm_connection_type_t type, con
     avl_node_t *node = NULL;
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG2(sm_ctx, connection_p);
+    CHECK_NULL_ARG(sm_ctx);
 
     /* allocate the context */
     connection = calloc(1, sizeof(*connection));
@@ -214,7 +216,9 @@ sm_connection_start(const sm_ctx_t *sm_ctx, const sm_connection_type_t type, con
 
     SR_LOG_DBG("New connection created succesfully, fd=%d.", fd);
 
-    *connection_p = connection;
+    if (NULL != connection_p) {
+        *connection_p = connection;
+    }
     return rc;
 }
 
@@ -272,7 +276,7 @@ sm_connection_remove_session(const sm_ctx_t *sm_ctx, sm_connection_t *connection
 
     /* find matching session in linked list */
     tmp = connection->session_list;
-    while (NULL != tmp && tmp->session != session) {
+    while ((NULL != tmp) && (tmp->session != session)) {
         prev = tmp;
         tmp = tmp->next;
     }
@@ -378,14 +382,14 @@ sm_session_drop(const sm_ctx_t *sm_ctx, sm_session_t *session)
 
     CHECK_NULL_ARG2(sm_ctx, session);
 
-    sm_connection_remove_session(sm_ctx, session->connection, session);
+    SR_LOG_DBG("Dropping session id=%"PRIu32".", session->id);
+
+    rc = sm_connection_remove_session(sm_ctx, session->connection, session);
     if (SR_ERR_OK != rc) {
         SR_LOG_WRN("Cannot remove the session from connection (id=%"PRIu32").", session->id);
     }
 
     avl_delete(sm_ctx->session_id_avl, session); /* sm_session_cleanup auto-invoked */
-
-    SR_LOG_DBG("Session dropped succesfully, session_id=%"PRIu32".", session->id);
 
     return SR_ERR_OK;
 }

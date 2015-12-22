@@ -23,6 +23,7 @@
 #define SESSION_MANAGER_H_
 
 #include <stdint.h>
+#include <stdbool.h>
 
 /**
  * @defgroup sm Session Manager
@@ -69,6 +70,15 @@ typedef enum {
 } sm_connection_type_t;
 
 /**
+ * @brief Buffers of raw data recevied from / to be sent to the other side.
+ */
+typedef struct sm_buffer_s {
+    uint8_t *data;  /**< data of the buffer */
+    size_t size;    /**< Current size of the buffer. */
+    size_t pos;      /**< Current possition in the buffer */
+} sm_buffer_t;
+
+/**
  * @brief Connection context structure, represents one particalar connection.
  * Multiple sessions can be assigned to the same connection.
  */
@@ -76,20 +86,11 @@ typedef struct sm_connection_s {
     sm_connection_type_t type;        /**< Type of the connection. */
     sm_session_list_t *session_list;  /**< List of sessions associated to the connection. */
 
-    int fd;  /**< File descriptor of the connection. */
+    int fd;                           /**< File descriptor of the connection. */
+    bool close_requested;             /**< Connection close requested. */
 
-    /**
-     * @brief Buffers used for send/receive data to/from the other side.
-     */
-    struct {
-        char *in_buff;           /**< Input buffer. If not empty, there is some message to be processed (or part of it). */
-        size_t in_buff_size;     /**< Current size of the input buffer. */
-        size_t in_buff_pos;      /**< Current possition in the input buffer (new data is appended starting from this position). */
-
-        char *out_buff;          /**< Output buffer. If not empty, there is some data to be sent when reciever is ready. */
-        size_t out_buff_size;    /**< Current size of the output buffer. */
-        size_t out_buff_pos;     /**< Current possition in the output buffer (new data is appended starting from this position). */
-    } buffers;
+    sm_buffer_t in_buff;   /**< Input buffer. If not empty, there is some receved data to be processed. */
+    sm_buffer_t out_buff;  /**< Output buffer. If not empty, there is some data to be sent when reciever is ready. */
 } sm_connection_t;
 
 /**

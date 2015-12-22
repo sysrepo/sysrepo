@@ -25,6 +25,7 @@
 #include <libyang/libyang.h>
 #include "sr_error.h"
 #include "sr_logger.h"
+#include "sysrepo.pb-c.h"
 
 #define CHECK_NULL_ARG__INTERNAL(ARG) \
     if (NULL == ARG) { \
@@ -92,5 +93,23 @@ int sr_str_join(const char *str1, const char *str2, char **result);
  * @return err_code
  */
 int sr_save_data_tree_file(const char *file_name, const struct lyd_node *data_tree);
+
+/**
+ * @brief Allocates and initializes GPB request message.
+ * @param[in] session_id ID of session identifying the recipient. Pass 0 if session is not open yet.
+ * @param[in] operation Requested operation.
+ * @param[out] msg GPB message.
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_pb_req_alloc(const uint32_t session_id, const Sr__Operation operation, Sr__Msg **msg);
+
+/**
+ * @brief Allocates and initializes GPB response message.
+ * @param[in] session_id ID of session identifying the recipient. Pass 0 if session is not open yet.
+ * @param[in] operation Requested operation.
+ * @param[out] msg GPB message.
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_pb_resp_alloc(const uint32_t session_id, const Sr__Operation operation, Sr__Msg **msg);
 
 #endif /* SRC_SR_COMMON_H_ */

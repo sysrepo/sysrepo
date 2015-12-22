@@ -72,3 +72,103 @@ sr_save_data_tree_file(const char *file_name, const struct lyd_node *data_tree)
     return SR_ERR_OK;
 }
 
+int
+sr_pb_req_alloc(const uint32_t session_id, const Sr__Operation operation, Sr__Msg **msg_p)
+{
+    Sr__Msg *msg = NULL;
+    Sr__Req *req = NULL;
+    ProtobufCMessage *sub_msg = NULL;
+
+    /* initialize Sr__Msg */
+    msg = calloc(1, sizeof(*msg));
+    if (NULL == msg) {
+        goto nomem;
+    }
+    sr__msg__init(msg);
+    msg->type = SR__MSG__MSG_TYPE__REQUEST;
+    msg->session_id = session_id;
+
+    /* initialize Sr__Resp */
+    req = calloc(1, sizeof(*req));
+    if (NULL == req) {
+        goto nomem;
+    }
+    sr__req__init(req);
+    msg->request = req;
+    req->operation = operation;
+
+    /* initialize submessage */
+    switch (operation) {
+        case SR__OPERATION__SESSION_START:
+            sub_msg = calloc(1, sizeof(Sr__SessionStartReq));
+            if (NULL == sub_msg) {
+                goto nomem;
+            }
+            sr__session_start_req__init((Sr__SessionStartReq*)sub_msg);
+            req->session_start_req = (Sr__SessionStartReq*)sub_msg;
+            break;
+        default:
+            break;
+    }
+
+    *msg_p = msg;
+    return SR_ERR_OK;
+
+nomem:
+    SR_LOG_ERR_MSG("Cannot allocate PB message - not enough memory.");
+    free(msg);
+    free(req);
+
+    return SR_ERR_NOMEM;
+}
+
+int
+sr_pb_resp_alloc(const uint32_t session_id, const Sr__Operation operation, Sr__Msg **msg_p)
+{
+    Sr__Msg *msg = NULL;
+    Sr__Resp *resp = NULL;
+    ProtobufCMessage *sub_msg = NULL;
+
+    /* initialize Sr__Msg */
+    msg = calloc(1, sizeof(*msg));
+    if (NULL == msg) {
+        goto nomem;
+    }
+    sr__msg__init(msg);
+    msg->type = SR__MSG__MSG_TYPE__RESPONSE;
+    msg->session_id = session_id;
+
+    /* initialize Sr__Resp */
+    resp = calloc(1, sizeof(*resp));
+    if (NULL == resp) {
+        goto nomem;
+    }
+    sr__resp__init(resp);
+    msg->response = resp;
+    resp->operation = operation;
+    resp->result = SR_ERR_OK;
+
+    /* initialize submessage */
+    switch (operation) {
+        case SR__OPERATION__SESSION_START:
+            sub_msg = calloc(1, sizeof(Sr__SessionStartResp));
+            if (NULL == sub_msg) {
+                goto nomem;
+            }
+            sr__session_start_resp__init((Sr__SessionStartResp*)sub_msg);
+            resp->session_start_resp = (Sr__SessionStartResp*)sub_msg;
+            break;
+        default:
+            break;
+    }
+
+    *msg_p = msg;
+    return SR_ERR_OK;
+
+nomem:
+    SR_LOG_ERR_MSG("Cannot allocate PB message - not enough memory.");
+    free(msg);
+    free(resp);
+
+    return SR_ERR_NOMEM;
+}
