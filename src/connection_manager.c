@@ -514,15 +514,18 @@ cm_session_start_req_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, Sr__Sessio
 
     SR_LOG_DBG_MSG("Processing session_start request.");
 
+    // TODO: retrieve real user name
+
     /* create session in SM */
     rc = sm_session_create(cm_ctx->session_manager, conn, "root", req->user_name, &session);
 
     // TODO: call sesion_start in request processor
 
+    rc = sr_pb_resp_alloc(SR__OPERATION__SESSION_START, session->id, &msg);
+    // TODO: handle error code
+
     if (SR_ERR_OK == rc) {
         /* prepare response */
-        rc = sr_pb_resp_alloc(session->id, SR__OPERATION__SESSION_START, &msg);
-        // TODO: handle error code
         msg->response->session_start_resp->session_id = session->id;
     } else {
         msg->response->result = rc;
@@ -534,10 +537,44 @@ cm_session_start_req_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, Sr__Sessio
 }
 
 static int
+cm_session_stop_req_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, Sr__SessionStopReq *req)
+{
+    sm_session_t *session = NULL;
+    Sr__Msg *msg = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG3(cm_ctx, conn, req);
+
+    SR_LOG_DBG_MSG("Processing session_stop request.");
+
+    rc = sm_session_find_id(cm_ctx->session_manager, req->session_id, &session);
+    // handle not found and others
+
+    // TODO: call sesion_stop in request processor
+
+    rc = sr_pb_resp_alloc(SR__OPERATION__SESSION_STOP, session->id, &msg);
+    // TODO: handle error code
+
+    if (SR_ERR_OK == rc) {
+        /* prepare response */
+        msg->response->session_stop_resp->session_id = session->id;
+    } else {
+        msg->response->result = rc;
+    }
+
+    rc = cm_msg_send_session(cm_ctx, session, msg);
+
+    /* drop session in SM - must be called after sending */
+    rc = sm_session_drop(cm_ctx->session_manager, session);
+
+    return rc;
+}
+
+static int
 cm_conn_msg_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, uint8_t *msg_data, size_t msg_size)
 {
     Sr__Msg *msg = NULL;
-    bool release_msg = true;
+    bool release_msg = false;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG3(cm_ctx, conn, msg_data);
@@ -548,10 +585,14 @@ cm_conn_msg_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, uint8_t *msg_data, 
         /* request handling */
         switch (msg->request->operation) {
             case SR__OPERATION__SESSION_START:
+                // TODO NULL checks
                 rc = cm_session_start_req_process(cm_ctx, conn, msg->request->session_start_req);
+                release_msg = true;
                 break;
             case SR__OPERATION__SESSION_STOP:
-                // TODO: process session_stop
+                // TODO NULL checks
+                rc = cm_session_stop_req_process(cm_ctx, conn, msg->request->session_stop_req);
+                release_msg = true;
                 break;
             default:
                 // TODO: forward to request processor
@@ -560,7 +601,7 @@ cm_conn_msg_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, uint8_t *msg_data, 
     } else if ((SR__MSG__MSG_TYPE__RESPONSE == msg->type) && (NULL != msg->response)) {
         /* response handling */
 
-        // TODO process response
+        // TODO forward to request processor
     } else {
         /* malformed message type */
         SR_LOG_ERR_MSG("Message with malformed type received.");
@@ -590,6 +631,10 @@ cm_conn_in_buff_process(cm_ctx_t *cm_ctx, sm_connection_t *conn)
     buff = &conn->in_buff;
     buff_size = buff->pos;
     buff_pos = 0;
+
+    if (buff_size <= MSG_PREAM_SIZE) {
+        return SR_ERR_OK; /* nothing to process so far */
+    }
 
     while ((buff_size - buff_pos) > MSG_PREAM_SIZE) {
         msg_size = ntohl( *((uint32_t*)(buff->data + buff_pos)) );

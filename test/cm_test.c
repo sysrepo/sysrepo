@@ -151,38 +151,110 @@ cm_session_start_generate(const char *user_name, void **msg_buf, size_t *msg_siz
     assert_non_null(msg_buf);
     assert_non_null(msg_size);
 
-    Sr__Msg msg = SR__MSG__INIT;
-    Sr__Req req = SR__REQ__INIT;
-    Sr__SessionStartReq session_start = SR__SESSION_START_REQ__INIT;
-    msg.request = &req;
-    req.session_start_req = &session_start;
+    Sr__Msg *msg = NULL;
+    sr_pb_req_alloc(SR__OPERATION__SESSION_START, 0, &msg);
+    assert_non_null(msg);
+    assert_non_null(msg->request);
+    assert_non_null(msg->request->session_start_req);
 
-    msg.type = SR__MSG__MSG_TYPE__REQUEST;
-    req.operation = SR__OPERATION__SESSION_START;
+    if (NULL != user_name) {
+        msg->request->session_start_req->user_name = strdup(user_name);
+    }
 
-    session_start.user_name = (char*)user_name;
-
-    *msg_size = sr__msg__get_packed_size(&msg);
+    *msg_size = sr__msg__get_packed_size(msg);
     *msg_buf = calloc(1, *msg_size);
-    sr__msg__pack(&msg, *msg_buf);
+    assert_non_null(*msg_buf);
+
+    sr__msg__pack(msg, *msg_buf);
+    sr__msg__free_unpacked(msg, NULL);
+}
+
+//static void
+//cm_get_item_generate(const char *xpath, uint32_t session_id, void **msg_buf, size_t *msg_size)
+//{
+//    assert_non_null(xpath);
+//    assert_non_null(msg_buf);
+//    assert_non_null(msg_size);
+//
+//    Sr__Msg *msg = NULL;
+//    sr_pb_req_alloc(SR__OPERATION__GET_ITEM, session_id, &msg);
+//    assert_non_null(msg);
+//    assert_non_null(msg->request);
+//    assert_non_null(msg->request->get_item_req);
+//
+//    msg->request->get_item_req->datastore = SR__DATA_STORE__CANDIDATE;
+//    msg->request->get_item_req->path = strdup(xpath);
+//
+//    *msg_size = sr__msg__get_packed_size(msg);
+//    *msg_buf = calloc(1, *msg_size);
+//    assert_non_null(*msg_buf);
+//
+//    sr__msg__pack(msg, *msg_buf);
+//    sr__msg__free_unpacked(msg, NULL);
+//}
+
+static void
+cm_session_stop_generate(uint32_t session_id, void **msg_buf, size_t *msg_size)
+{
+    assert_non_null(msg_buf);
+    assert_non_null(msg_size);
+
+    Sr__Msg *msg = NULL;
+    sr_pb_req_alloc(SR__OPERATION__SESSION_STOP, session_id, &msg);
+    assert_non_null(msg);
+    assert_non_null(msg->request);
+    assert_non_null(msg->request->session_stop_req);
+
+    msg->request->session_stop_req->session_id = session_id;
+
+    *msg_size = sr__msg__get_packed_size(msg);
+    *msg_buf = calloc(1, *msg_size);
+    assert_non_null(*msg_buf);
+
+    sr__msg__pack(msg, *msg_buf);
+    sr__msg__free_unpacked(msg, NULL);
 }
 
 static void
 cm_communicate(int fd)
 {
+    Sr__Msg *msg = NULL;
     void *msg_buf = NULL;
     size_t msg_size = 0;
-    int i = 0;
+    uint32_t session_id = 0;
 
+    /* send session_start request */
     cm_session_start_generate("alice", &msg_buf, &msg_size);
-    for (i = 0; i < 5; i++)
-        cm_message_send(fd, msg_buf, msg_size);
+    cm_message_send(fd, msg_buf, msg_size);
     free(msg_buf);
 
-    Sr__Msg *msg = cm_message_recv(fd);
+    /* receive the response */
+    msg = cm_message_recv(fd);
     assert_non_null(msg);
+    assert_int_equal(msg->type, SR__MSG__MSG_TYPE__RESPONSE);
+    assert_non_null(msg->response);
+    assert_int_equal(msg->response->result, SR_ERR_OK);
+    assert_int_equal(msg->response->operation, SR__OPERATION__SESSION_START);
+    assert_non_null(msg->response->session_start_resp);
 
-    printf("SSID=%d\n", msg->response->session_start_resp->session_id);
+    session_id = msg->response->session_start_resp->session_id;
+    sr__msg__free_unpacked(msg, NULL);
+
+    /* send session-stop request */
+    cm_session_stop_generate(session_id, &msg_buf, &msg_size);
+    cm_message_send(fd, msg_buf, msg_size);
+    free(msg_buf);
+
+    /* receive the response */
+    msg = cm_message_recv(fd);
+    assert_non_null(msg);
+    assert_int_equal(msg->type, SR__MSG__MSG_TYPE__RESPONSE);
+    assert_non_null(msg->response);
+    assert_int_equal(msg->response->result, SR_ERR_OK);
+    assert_int_equal(msg->response->operation, SR__OPERATION__SESSION_STOP);
+    assert_non_null(msg->response->session_stop_resp);
+    assert_int_equal(msg->response->session_stop_resp->session_id, session_id);
+
     sr__msg__free_unpacked(msg, NULL);
 }
 
@@ -190,7 +262,7 @@ static void
 cm_simple(void **state) {
     int i = 0, fd = 0;
 
-    for (i = 0; i < 1; i++) {
+    for (i = 0; i < 100; i++) {
         fd = cm_connect_to_server();
         cm_communicate(fd);
         close(fd);
