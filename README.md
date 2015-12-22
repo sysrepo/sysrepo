@@ -2,7 +2,7 @@
 - Dec 2015: working on the first milestone - internal infrastructure, get-config functionality
 
 ## Before install
-Install following libraries that sysrepo needs to 
+Install following libraries that sysrepo depends on:
 
 ###CMocka
 (for unit-tests only)
