@@ -19,6 +19,7 @@
  */
 
 #include "sysrepo.h"
+#include "sr_common.h"
 
 /**
  * @brief sets default values into setting structure

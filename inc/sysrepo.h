@@ -18,8 +18,8 @@
  * limitations under the License.
  */
 
-#ifndef __SYSREPO_H__
-#define __SYSREPO_H__
+#ifndef SYSREPO_H__
+#define SYSREPO_H__
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -37,12 +37,6 @@
 #define SR_VAL_IS_STRING(val) ((val)->type == SR_STRING_T)
 #define SR_VAL_DATA(val)  SR_VAL_IS_UINT32_T ? val->data.uint32_t : SR_VAL_IS_STRING ? val->data.string: ….
 
-
-/* Cool struct identifing yang node*/
-typedef struct sr_location_id_s{
-    char *xpath;
-}sr_location_id_t;
-typedef sr_location_id_t * sr_location_id_p;
 
 /* sysrepo settings*/
 typedef struct sr_settings_s{
@@ -69,40 +63,67 @@ typedef struct session_ctx_s{
 }sr_session_ctx_t;
 typedef sr_session_ctx_t * sr_session_ctx_p;
 
-typedef enum sr_type_e{
-   SR_LIST_T,
-   SR_CONTAINER_T,
-   SR_CONTAINER_PRESENCE_T,
-   SR_LEAF_EMPTY_T,
-   SR_UINT32_T,
-   SR_BOOL_T,
-   SR_STRING_T,
-   /* ... */
-}sr_type_t;
+typedef enum sr_type_e {
+    SR_UNKNOWN_T,
+    SR_LIST_T,
+    SR_CONTAINER_T,
+    SR_CONTAINER_PRESENCE_T,
+    /* YANG built-in*/
+    SR_LEAF_EMPTY_T,
+    SR_BINARY_T,
+    SR_BITS_T,
+    SR_BOOL_T,
+    SR_DECIMAL64_T,
+    SR_ENUM_T,
+    SR_IDENTITYREF_T,
+    SR_INSTANCEID_T,
+    SR_INT8_T,
+    SR_INT16_T,
+    SR_INT32_T,
+    SR_INT64_T,
+    SR_STRING_T,
+    SR_UINT8_T,
+    SR_UINT16_T,
+    SR_UINT32_T,
+    SR_UINT64_T,
+    SR_UNION_T,
+} sr_type_t;
 
-typedef struct sr_val_s{
-   char *path;
-   /*sr_location_id_t *loc_id */
-   union{
-      uint32_t uint32_val;
-      bool boolean_val;
-      char *string_val;
-      /* ...*/
-   }data;
-   uint32_t length; /*For datatypes where their length may vary   */
-   sr_type_t type;
-}sr_val_t;
+typedef struct sr_val_s {
+    char *path;
+    /*sr_location_id_t *loc_id */
+    union {
+        bool boolean_val;
+        int8_t int8_val;
+        int16_t int16_val;
+        int32_t int32_val;
+        int64_t int64_val;
+        char *string_val;
+        uint8_t uint8_val;
+        uint16_t uint16_val;
+        uint32_t uint32_val;
+        uint64_t uint64_val;
+        /* ...*/
+    } data;
+    uint32_t length; /*For datatypes where their length may vary   */
+    sr_type_t type;
+} sr_val_t;
 typedef sr_val_t * sr_val_p;
 
+/**
+ * @brief Sysrepo error codes.
+ */
+typedef enum sr_error_e {
+    SR_ERR_OK = 0, /**< No error. */
+    SR_ERR_INVAL_ARG, /**< Invalid argument. */
+    SR_ERR_NOMEM, /**< Not enough memory. */
+    SR_ERR_NOT_FOUND, /**< Item not found. */
+    SR_ERR_INTERNAL, /**< Other internal error. */
+    SR_ERR_INIT_FAILED, /**< Sysrepo infra initailization failed. */
+    SR_ERR_IO, /**< Input/Ouput eror. */
+} sr_error_t;
 
 
-typedef enum sr_error_e{
-  SR_ERR_OK,
-  SR_ERR_NOT_FOUND,
-  SR_ERR_INIT_FAILED,
-  SR_ERR_UNAUTHORIZED,
-  /* ... */
-}sr_error_t;
 
 typedef struct sr_val_iter_s{
   size_t index;

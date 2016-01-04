@@ -26,6 +26,7 @@ set(SYSREPO-SOURCES
 
 set(SYSREPO-ENGINE-SOURCES
     ${GENERATED_PROTO}
+     rp_data_tree.c
      data_manager.c
      connection_manager.c
      session_manager.c
