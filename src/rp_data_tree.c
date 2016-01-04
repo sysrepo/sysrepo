@@ -39,15 +39,17 @@ rp_dt_create_xpath_for_cont_leaf_node(const struct lyd_node *data_tree, char **x
 
     /* calculate length */
     if (namespace){
+        CHECK_NULL_ARG3(data_tree->schema, data_tree->schema->module, data_tree->schema->module->name);
         ns_len = strlen(data_tree->schema->module->name) + 1; /*namespace + colon*/
         len += ns_len;
     }
+    CHECK_NULL_ARG(data_tree->schema->name);
     node_len = strlen(data_tree->schema->name);
     len += node_len;
     if (trailing_slash){
         len++;
     }
-    s = calloc(sizeof(char),len);
+    s = calloc(len, sizeof(*s));
     if (NULL == s){
         SR_LOG_ERR_MSG("Memory allocation failed");
         return SR_ERR_NOMEM;
@@ -83,9 +85,11 @@ rp_dt_create_xpath_for_list_node(const struct lyd_node *data_tree, char **xpath,
 
     /* calculate length*/
     if (namespace) {
+        CHECK_NULL_ARG3(data_tree->schema, data_tree->schema->module, data_tree->schema->module->name);
         ns_len = strlen(data_tree->schema->module->name);
         len += ns_len + 1; /*namespace + colon*/
     }
+    CHECK_NULL_ARG(data_tree->schema->name);
     len += strlen(data_tree->schema->name);
     if (trailing_slash) {
         len++;
@@ -93,7 +97,7 @@ rp_dt_create_xpath_for_list_node(const struct lyd_node *data_tree, char **xpath,
     /* lookup keys */
     struct lys_node_list *sch_list = (struct lys_node_list *) data_tree->schema;
 
-    struct lyd_node_leaf_list **key_nodes = calloc(sch_list->keys_size, sizeof(struct lyd_node_leaf_list *));
+    struct lyd_node_leaf_list **key_nodes = calloc(sch_list->keys_size, sizeof(*key_nodes));
     if (key_nodes == NULL){
         SR_LOG_ERR_MSG("Memory allocation failed");
         return SR_ERR_NOMEM;
@@ -103,7 +107,14 @@ rp_dt_create_xpath_for_list_node(const struct lyd_node *data_tree, char **xpath,
 
     while (c != NULL){
         for (int k=0; k < sch_list->keys_size; k++){
-            if(0 == strcmp(sch_list->keys[k]->name, c->schema->name)){
+            if (NULL == sch_list->keys[k] || NULL == sch_list->keys[k]->name ||
+                NULL == c->schema || NULL == c->schema->name){
+                c = c->next;
+                SR_LOG_WRN("Skipping node when matching keys for %s, schema information missing", sch_list->name);
+                continue;
+            }
+
+            if (0 == strcmp(sch_list->keys[k]->name, c->schema->name)){
                 key_nodes[matched] = (struct lyd_node_leaf_list *) c;
                 len += strlen(key_nodes[matched]->value_str); /*key value*/
                 len += strlen(c->schema->name); /*key name*/
@@ -115,14 +126,15 @@ rp_dt_create_xpath_for_list_node(const struct lyd_node *data_tree, char **xpath,
         c = c->next;
     }
     if (matched != sch_list->keys_size){
-        SR_LOG_ERR_MSG("Keys not found");
+        SR_LOG_ERR("Keys not found for list %s", sch_list->name);
         free(key_nodes);
         return SR_ERR_INTERNAL;
     }
 
-    s = calloc(sizeof(char), len);
+    s = calloc(len, sizeof(*s));
     if (NULL == s) {
         SR_LOG_ERR_MSG("Memory allocation failed");
+        free(key_nodes);
         return SR_ERR_NOMEM;
     }
 
@@ -175,7 +187,7 @@ rp_dt_create_xpath_for_node(const struct lyd_node *data_tree, char **xpath)
         n = n->parent;
         level++;
     }
-    parts = calloc(level, sizeof(char *));
+    parts = calloc(level, sizeof(*parts));
     if (NULL == parts){
         SR_LOG_ERR_MSG("Memory allocation failed.");
         return SR_ERR_NOMEM;
@@ -189,10 +201,17 @@ rp_dt_create_xpath_for_node(const struct lyd_node *data_tree, char **xpath)
         bool slash = i!=(level-1);
         /*print namespace only for the root node*/
         bool namespace = i==0;
+        if (NULL == n->schema){
+            SR_LOG_ERR("Schema node at level %zu is NULL", i);
+        }
         if (n->schema->nodetype & (LYS_LEAF | LYS_CONTAINER)){
             rc = rp_dt_create_xpath_for_cont_leaf_node(n, &parts[i], namespace, slash);
             if (SR_ERR_OK != rc){
                SR_LOG_ERR_MSG("Creating xpath failed.");
+               for (size_t j=0; j<i; j++){
+                   free(parts[j]);
+               }
+               free(parts);
                return rc;
             }
         }
@@ -200,6 +219,10 @@ rp_dt_create_xpath_for_node(const struct lyd_node *data_tree, char **xpath)
             rc = rp_dt_create_xpath_for_list_node(n, &parts[i], namespace, slash);
             if (SR_ERR_OK != rc){
                 SR_LOG_ERR_MSG("Creating xpath failed.");
+                for (size_t j=0; j<i; j++){
+                    free(parts[j]);
+                }
+                free(parts);
                 return rc;
             }
         }
@@ -214,7 +237,7 @@ rp_dt_create_xpath_for_node(const struct lyd_node *data_tree, char **xpath)
     }
     length++; /*terminating null byte*/
 
-    result = calloc(sizeof(char), length);
+    result = calloc(length, sizeof(*result));
     if (NULL == result){
         SR_LOG_ERR_MSG("Memory allocation failed.");
         for (int j=0; j<level; j++){
@@ -383,7 +406,7 @@ rp_dt_get_node_xpath(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const c
     rc = xp_char_to_loc_id(xpath, &l);
 
     if (SR_ERR_OK != rc){
-        SR_LOG_ERR_MSG("Converting xpath to loc_id failed.");
+        SR_LOG_ERR("Converting xpath '%s' to loc_id failed.", xpath);
         return rc;
     }
     rc = rp_dt_get_node(dm_ctx, data_tree, l, node);
@@ -409,7 +432,7 @@ rp_dt_get_value(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp_loc
         return rc;
     }
 
-    sr_val_t *val = calloc(1, sizeof(sr_val_t));
+    sr_val_t *val = calloc(1, sizeof(*val));
     if (NULL == value){
         SR_LOG_ERR_MSG("Memory allocation failed.");
         return SR_ERR_NOMEM;
@@ -461,7 +484,7 @@ rp_dt_get_value_xpath(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const 
     rc = xp_char_to_loc_id(xpath, &l);
 
     if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Converting xpath to loc_id failed.");
+        SR_LOG_ERR("Converting xpath '%s' to loc_id failed.", xpath);
         return rc;
     }
     rc = rp_dt_get_value(dm_ctx, data_tree, l, value);
