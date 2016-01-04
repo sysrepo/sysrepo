@@ -24,6 +24,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <sys/types.h>
 
 /**
  * @defgroup sm Session Manager
@@ -94,6 +95,8 @@ typedef struct sm_connection_s {
     sm_session_list_t *session_list;  /**< List of sessions associated to the connection. */
 
     int fd;                           /**< File descriptor of the connection. */
+    uid_t uid;                        /**< Peer's effective user ID. */
+    gid_t gid;                        /**< Peer's effective group ID. */
     bool close_requested;             /**< Connection close requested. */
 
     sm_buffer_t in_buff;   /**< Input buffer. If not empty, there is some received data to be processed. */
@@ -130,7 +133,7 @@ void sm_cleanup(sm_ctx_t *sm_ctx);
  * @param[in] sm_ctx Session Manager context.
  * @param[in] type Type of the connection.
  * @param[in] fd File descriptor of the connection.
- * @param[out] session Allocated and initialized connection context.
+ * @param[out] connection Allocated and initialized connection context.
  *
  * @return Error code (SR_ERR_OK on success).
  */
@@ -147,7 +150,7 @@ int sm_connection_start(const sm_ctx_t *sm_ctx, const sm_connection_type_t type,
  * connection will become NULL) and explicit ::sm_session_drop is needed.
  *
  * @param[in] sm_ctx Session Manager context.
- * @param[in] session Connection context.
+ * @param[in] connection Connection context.
  *
  * @return Error code (SR_ERR_OK on success).
  */

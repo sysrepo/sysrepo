@@ -264,7 +264,7 @@ static void
 cm_simple(void **state) {
     int i = 0, fd = 0;
 
-    for (i = 0; i < 100; i++) {
+    for (i = 0; i < 10; i++) {
         fd = cm_connect_to_server();
         cm_communicate(fd);
         close(fd);

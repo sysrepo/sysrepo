@@ -31,9 +31,9 @@
 #include "sr_common.h"
 #include "session_manager.h"
 
-#define SM_SESSION_ID_INVALID 0
-#define SM_SESSION_ID_MAX_ATTEMPTS 100
-#define SM_FD_INVALID -1
+#define SM_SESSION_ID_INVALID 0         /**< Invalid value of session id. */
+#define SM_SESSION_ID_MAX_ATTEMPTS 100  /**< Maximum number of attempts to generate unused random session id. */
+#define SM_FD_INVALID -1                /**< invalid value of file descriptor. */
 
 /**
  * @brief Session Manager context.
@@ -275,6 +275,14 @@ sm_connection_start(const sm_ctx_t *sm_ctx, const sm_connection_type_t type, con
     connection->type = type;
     connection->fd = fd;
 
+    /* set peer's uid and gid */
+    rc = sr_get_peer_eid(fd, &connection->uid, &connection->gid);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Cannot retrieve uid and gid of the peer.");
+        free(connection);
+        return SR_ERR_INTERNAL;
+    }
+
     /* insert connection into avl tree for fast lookup by fd */
     node = avl_insert(sm_ctx->connection_fd_avl, connection);
     if (NULL == node) {
@@ -283,7 +291,7 @@ sm_connection_start(const sm_ctx_t *sm_ctx, const sm_connection_type_t type, con
         return SR_ERR_INTERNAL;
     }
 
-    SR_LOG_DBG("New connection started successfully, fd=%d.", fd);
+    SR_LOG_DBG("New connection started successfully, fd=%d, conn ctx=%p.", fd, (void*)connection);
 
     if (NULL != connection_p) {
         *connection_p = connection;
@@ -376,7 +384,8 @@ sm_session_create(const sm_ctx_t *sm_ctx, sm_connection_t *connection,
         goto cleanup;
     }
 
-    SR_LOG_DBG("New session created successfully, session_id=%"PRIu32".", session->id);
+    SR_LOG_INF("New session created successfully, real user=%s, effective user=%s, "
+            "session id=%"PRIu32".", real_user, effective_user, session->id);
 
     *session_p = session;
     return rc;
@@ -393,7 +402,7 @@ sm_session_drop(const sm_ctx_t *sm_ctx, sm_session_t *session)
 
     CHECK_NULL_ARG2(sm_ctx, session);
 
-    SR_LOG_DBG("Dropping session id=%"PRIu32".", session->id);
+    SR_LOG_INF("Dropping session id=%"PRIu32".", session->id);
 
     rc = sm_connection_remove_session(sm_ctx, session->connection, session);
     if (SR_ERR_OK != rc) {

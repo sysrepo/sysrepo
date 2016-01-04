@@ -18,7 +18,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 #include <stdlib.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <unistd.h>
+
 #include "sr_common.h"
 
 int
@@ -221,3 +226,75 @@ nomem:
 
     return SR_ERR_NOMEM;
 }
+
+/*
+ * An attempt for portable sr_get_peer_eid implementation
+ */
+#if !defined(HAVE_GETPEEREID)
+
+#if defined(SO_PEERCRED)
+
+#if !defined(__USE_GNU)
+/* struct ucred is ifdefined behind __USE_GNU, but __USE_GNU is not defined */
+struct ucred {
+    pid_t pid;    /* process ID of the sending process */
+    uid_t uid;    /* user ID of the sending process */
+    gid_t gid;    /* group ID of the sending process */
+};
+#endif /* !defined(__USE_GNU) */
+
+int
+sr_get_peer_eid(int fd, uid_t *uid, gid_t *gid)
+{
+    struct ucred cred = { 0, };
+    socklen_t len = sizeof(cred);
+
+    if (getsockopt(fd, SOL_SOCKET, SO_PEERCRED, &cred, &len) < 0) {
+        return SR_ERR_INTERNAL;
+    }
+    *uid = cred.uid;
+    *gid = cred.gid;
+
+    return SR_ERR_OK;
+}
+
+#elif defined(HAVE_GETPEERUCRED)
+
+#if defined(HAVE_UCRED_H)
+#include <ucred.h>
+#endif /* defined(HAVE_UCRED_H) */
+
+int
+sr_get_peer_eid(int fd, uid_t *uid, gid_t *gid)
+{
+    ucred_t *ucred = NULL;
+
+    if (getpeerucred(fd, &ucred) == -1)
+        return SR_ERR_INTERNAL;
+    if ((*uid = ucred_geteuid(ucred)) == -1)
+        return SR_ERR_INTERNAL;
+    if ((*gid = ucred_getrgid(ucred)) == -1)
+        return SR_ERR_INTERNAL;
+
+    ucred_free(ucred);
+    return SR_ERR_OK;
+}
+
+#endif /* defined(SO_PEERCRED) */
+
+#elif defined(HAVE_GETPEEREID)
+
+int
+sr_get_peer_eid(int fd, uid_t *uid, gid_t *gid)
+{
+    int ret = 0;
+    ret = getpeereid(int fd, uid, gid);
+
+    if (-1 == ret) {
+        return SR_ERR_OK;
+    } else {
+        return SR_ERR_INTERNAL;
+    }
+}
+
+#endif /* !defined(HAVE_GETPEEREID) */

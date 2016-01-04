@@ -1,7 +1,7 @@
 /**
  * @file connection_manager.c
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
- * @brief Implementation of Connection Manager - module that handles all connection to Sysrepo Engine.
+ * @brief Implementation of Connection Manager - module that handles all connections to Sysrepo Engine.
  *
  * @copyright
  * Copyright 2015 Cisco Systems, Inc.
@@ -27,28 +27,30 @@
 #include <inttypes.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <sys/types.h>
 #include <fcntl.h>
 #include <sys/select.h>
 #include <pthread.h>
 #include <signal.h>
 #include <arpa/inet.h>
+#include <pwd.h>
 
 #include "sr_common.h"
 #include "session_manager.h"
 #include "connection_manager.h"
 
-#define CM_FD_INVALID -1
+#define CM_FD_INVALID -1  /**< Invalid value of file descriptor. */
 
-#define CM_SELECT_TIMEOUT (10)  /**< Timeout used for select calls (in seconds). */
+#define CM_SELECT_TIMEOUT (10)      /**< Timeout used for select calls (in seconds). */
 #define CM_SIG_STOP (SIGRTMIN + 8)  /**< Signal used to notify the thread with event loop about stop request (applicable for library mode). */
 
 #define PIPE_READ 0   /**< Identifies read end of a pipe. */
 #define PIPE_WRITE 1  /**< Identifies write end of a pipe. */
 
-#define CM_BUFF_MIN_SIZE 512
-#define CM_BUFF_ALLOC_CHUNK 1024
+#define CM_IN_BUFF_MIN_SPACE 512  /**< Minimal empty space in the input buffer. */
+#define CM_BUFF_ALLOC_CHUNK 1024  /**< Chunk size for buffer expansions. */
 
-#define MSG_PREAM_SIZE sizeof(uint32_t)
+#define MSG_PREAM_SIZE sizeof(uint32_t)  /**< Size of message preamble. */
 
 /**
  * @brief Global variable used to request stop of the event loop in all instances of CM,
@@ -73,18 +75,18 @@ typedef struct cm_ctx_s {
     /** outgoing message queue (descriptors of a pipe, write is performed by ::cm_msg_send). */
     int out_msg_fds[2];
 
-    /** Thread where event lopp will be running in case of library mode. */
+    /** Thread where event loop will be running in case of library mode. */
     pthread_t event_loop_thread;
-    /** File descriptor set beeing watched for readable event by select. */
+    /** File descriptor set being watched for readable event by select. */
     fd_set select_read_fds;
-    /** File descriptor set beeing watched for writable event by select. */
+    /** File descriptor set being watched for writable event by select. */
     fd_set select_write_fds;
-    /** Maximum file descriptor beeing watched by select. */
+    /** Maximum file descriptor being watched by select. */
     int select_fd_max;
 } cm_ctx_t;
 
 /**
- * @brief Sets a file descriptor to non-blocking I/O mode.
+ * @brief Sets the file descriptor to non-blocking I/O mode.
  */
 static int
 cm_fd_set_nonblock(int fd)
@@ -286,6 +288,7 @@ static int
 cm_server_accept(cm_ctx_t *cm_ctx)
 {
     int clnt_fd = -1;
+    sm_connection_t *connection = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG(cm_ctx);
@@ -309,11 +312,21 @@ cm_server_accept(cm_ctx_t *cm_ctx)
                 continue;
             }
             /* start connection in session manager */
-            rc = sm_connection_start(cm_ctx->session_manager, CM_AF_UNIX_CLIENT, clnt_fd, NULL);
+            rc = sm_connection_start(cm_ctx->session_manager, CM_AF_UNIX_CLIENT, clnt_fd, &connection);
             if (SR_ERR_OK != rc) {
                 SR_LOG_ERR("Cannot start connection in Session manager (fd=%d).", clnt_fd);
                 close(clnt_fd);
                 continue;
+            }
+            /* check uid in case of local (library) mode */
+            if (CM_MODE_LOCAL == cm_ctx->mode) {
+                if (connection->uid != geteuid()) {
+                    SR_LOG_ERR("Peer's uid=%d does not match with local uid=%d "
+                            "(required by local mode).", connection->uid, geteuid());
+                    sm_connection_stop(cm_ctx->session_manager, connection);
+                    close(clnt_fd);
+                    continue;
+                }
             }
             /* add to select fd set */
             FD_SET(clnt_fd, &cm_ctx->select_read_fds);
@@ -345,6 +358,8 @@ cm_out_msg_queue_dispatch(const cm_ctx_t *cm_ctx)
 
     SR_LOG_DBG_MSG("out msg queue dispatch");
 
+    // TODO process the message
+
     return SR_ERR_OK;
 }
 
@@ -356,6 +371,8 @@ cm_conn_close(cm_ctx_t *cm_ctx, sm_connection_t *conn)
 {
     sm_session_list_t *sess = NULL;
     int rc = SR_ERR_OK;
+
+    SR_LOG_INF("Closing the connection %p.", (void*)conn);
 
     /* close all sessions assigned to this connection */
     while (NULL != conn->session_list) {
@@ -419,6 +436,9 @@ cm_conn_buffer_expand(const sm_connection_t *conn, sm_buffer_t *buff, size_t req
     return SR_ERR_OK;
 }
 
+/**
+ * @brief Flush contents of the output buffer of the given connection.
+ */
 static int
 cm_conn_out_buff_flush(cm_ctx_t *cm_ctx, sm_connection_t *connection)
 {
@@ -434,20 +454,21 @@ cm_conn_out_buff_flush(cm_ctx_t *cm_ctx, sm_connection_t *connection)
     buff_pos = 0;
 
     do {
+        /* try to send all data */
         written = send(connection->fd, (buff->data + buff_pos), (buff_size - buff_pos), 0);
         if (written > 0) {
             buff_pos += written;
         } else {
             if ((EWOULDBLOCK == errno) || (EAGAIN == errno)) {
-                /* no more data to be read */
+                /* no more data can be sent now */
                 SR_LOG_DBG("fd %d would block", connection->fd);
-                /* monitor fd for writeable event */
+                /* monitor fd for writable event */
                 FD_SET(connection->fd, &cm_ctx->select_write_fds);
                 if (connection->fd > cm_ctx->select_fd_max) {
                     cm_ctx->select_fd_max = connection->fd;
                 }
             } else {
-                /* error by reading - close the connection due to an error */
+                /* error by writing - close the connection due to an error */
                 SR_LOG_ERR("Error by writing data to fd %d: %s.", connection->fd, strerror(errno));
                 connection->close_requested = true;
                 break;
@@ -468,7 +489,7 @@ cm_conn_out_buff_flush(cm_ctx_t *cm_ctx, sm_connection_t *connection)
 }
 
 /**
- * @brief Send message to the recipient identified by session.
+ * @brief Send message to the recipient identified by session context.
  */
 static int
 cm_msg_send_session(cm_ctx_t *cm_ctx, sm_session_t *session, Sr__Msg *msg)
@@ -503,39 +524,64 @@ cm_msg_send_session(cm_ctx_t *cm_ctx, sm_session_t *session, Sr__Msg *msg)
     return rc;
 }
 
+/**
+ * @brief Processes a session start request.
+ */
 static int
 cm_session_start_req_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, Sr__Req *req)
 {
     sm_session_t *session = NULL;
+    struct passwd *pws = NULL;
     Sr__Msg *msg = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG4(cm_ctx, conn, req, req->session_start_req);
 
-    SR_LOG_DBG_MSG("Processing session_start request.");
+    SR_LOG_DBG("Processing session_start request (conn=%p).", (void*)conn);
 
-    // TODO: retrieve real user name
+    /* retrieve real user name */
+    pws = getpwuid(conn->uid);
 
-    /* create session in SM */
-    rc = sm_session_create(cm_ctx->session_manager, conn, "root", req->session_start_req->user_name, &session);
+    /* create the session in SM */
+    rc = sm_session_create(cm_ctx->session_manager, conn, pws->pw_name,
+            req->session_start_req->user_name, &session);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Unable to create the session in Session Manager (conn=%p).", (void*)conn);
+        return rc;
+    }
 
-    // TODO: call sesion_start in request processor
-
+    /* prepare the response */
     rc = sr_pb_resp_alloc(SR__OPERATION__SESSION_START, session->id, &msg);
-    // TODO: handle error code
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Cannot allocate the response for session_start request (conn=%p).", (void*)conn);
+        if (NULL != session) {
+            sm_session_drop(cm_ctx->session_manager, session);
+        }
+        return SR_ERR_NOMEM;
+    }
+
+    // TODO: start session in Request Processor
 
     if (SR_ERR_OK == rc) {
-        /* prepare response */
+        /* set the id to response */
         msg->response->session_start_resp->session_id = session->id;
     } else {
+        /* set the error code to response */
         msg->response->result = rc;
     }
 
+    /* send the response */
     rc = cm_msg_send_session(cm_ctx, session, msg);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Unable to send session_start response (conn=%p).", (void*)conn);
+    }
 
     return rc;
 }
 
+/**
+ * @brief Processes a session stop request.
+ */
 static int
 cm_session_stop_req_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, Sr__Req *req)
 {
@@ -545,27 +591,48 @@ cm_session_stop_req_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, Sr__Req *re
 
     CHECK_NULL_ARG4(cm_ctx, conn, req, req->session_stop_req);
 
-    SR_LOG_DBG_MSG("Processing session_stop request.");
+    SR_LOG_DBG("Processing session_stop request (conn=%p, session id=%"PRIu32").",
+            (void*)conn, req->session_stop_req->session_id);
 
+    /* find the session ctx */
     rc = sm_session_find_id(cm_ctx->session_manager, req->session_stop_req->session_id, &session);
-    // handle not found and others
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Unable to find session context for id=%"PRIu32" (conn=%p).",
+                req->session_stop_req->session_id, (void*)conn);
+        return SR_ERR_NOT_FOUND;
+    }
 
-    // TODO: call sesion_stop in request processor
-
+    /* prepare the response */
     rc = sr_pb_resp_alloc(SR__OPERATION__SESSION_STOP, session->id, &msg);
-    // TODO: handle error code
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Cannot allocate the response for session_stop request (conn=%p, session id=%"PRIu32").",
+                (void*)conn, req->session_stop_req->session_id);
+        return SR_ERR_NOMEM;
+    }
+
+    // TODO: call sesion_stop in Request Processor
 
     if (SR_ERR_OK == rc) {
-        /* prepare response */
+        /* set the id to response */
         msg->response->session_stop_resp->session_id = session->id;
     } else {
+        /* set the error code to response */
         msg->response->result = rc;
     }
 
+    /* send the response */
     rc = cm_msg_send_session(cm_ctx, session, msg);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_WRN("Unable to send session_stop response (conn=%p, session id=%"PRIu32").",
+                (void*)conn, req->session_stop_req->session_id);
+    }
 
-    /* drop session in SM - must be called after sending */
+    /* drop session in SM - must be called AFTER sending */
     rc = sm_session_drop(cm_ctx->session_manager, session);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Unable to drop the session in Session manager (conn=%p, session id=%"PRIu32").",
+                (void*)conn, req->session_stop_req->session_id);
+    }
 
     return rc;
 }
@@ -580,31 +647,33 @@ cm_conn_msg_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, uint8_t *msg_data, 
     CHECK_NULL_ARG3(cm_ctx, conn, msg_data);
 
     msg = sr__msg__unpack(NULL, msg_size, msg_data);
+    if (NULL == msg) {
+        SR_LOG_ERR("Unable to unpack the message (conn=%p).", (void*)conn);
+        return SR_ERR_INTERNAL;
+    }
 
     if ((SR__MSG__MSG_TYPE__REQUEST == msg->type) && (NULL != msg->request)) {
         /* request handling */
         switch (msg->request->operation) {
             case SR__OPERATION__SESSION_START:
-                // TODO NULL checks
                 rc = cm_session_start_req_process(cm_ctx, conn, msg->request);
                 release_msg = true;
                 break;
             case SR__OPERATION__SESSION_STOP:
-                // TODO NULL checks
                 rc = cm_session_stop_req_process(cm_ctx, conn, msg->request);
                 release_msg = true;
                 break;
             default:
-                // TODO: forward to request processor
+                // TODO: forward msg to Request Processor
                 break;
         }
     } else if ((SR__MSG__MSG_TYPE__RESPONSE == msg->type) && (NULL != msg->response)) {
         /* response handling */
 
-        // TODO forward to request processor
+        // TODO forward msg to Request Processor
     } else {
         /* malformed message type */
-        SR_LOG_ERR_MSG("Message with malformed type received.");
+        SR_LOG_ERR("Message with malformed type received (conn=%p).", (void*)conn);
         rc = SR_ERR_INVAL_ARG;
     }
 
@@ -640,7 +709,7 @@ cm_conn_in_buff_process(cm_ctx_t *cm_ctx, sm_connection_t *conn)
         msg_size = ntohl( *((uint32_t*)(buff->data + buff_pos)) );
         if ((buff_size - buff_pos) >= msg_size) {
             /* the message is completely retrieved, parse it */
-            SR_LOG_DBG("New message of size %d bytes recieved.", msg_size);
+            SR_LOG_DBG("New message of size %d bytes received.", msg_size);
             rc = cm_conn_msg_process(cm_ctx, conn,
                     (buff->data + buff_pos + MSG_PREAM_SIZE), msg_size);
             buff_pos += MSG_PREAM_SIZE + msg_size;
@@ -656,7 +725,7 @@ cm_conn_in_buff_process(cm_ctx_t *cm_ctx, sm_connection_t *conn)
         }
     }
 
-    if ((SR_ERR_OK == rc) && (0 != buff_pos) && (buff_size - buff_pos) > 0) {
+    if ((0 != buff_pos) && (buff_size - buff_pos) > 0) {
         /* move unprocessed data to the front of the buffer */
         memmove(buff->data, (buff->data + buff_pos), (buff_size - buff_pos));
         buff->pos = buff_size - buff_pos;
@@ -665,7 +734,7 @@ cm_conn_in_buff_process(cm_ctx_t *cm_ctx, sm_connection_t *conn)
         buff->pos = 0;
     }
 
-    return SR_ERR_OK;
+    return rc;
 }
 
 /**
@@ -693,7 +762,7 @@ cm_conn_read(cm_ctx_t *cm_ctx, int fd)
 
     do {
         /* expand input buffer if needed */
-        rc = cm_conn_buffer_expand(conn, buff, CM_BUFF_MIN_SIZE);
+        rc = cm_conn_buffer_expand(conn, buff, CM_IN_BUFF_MIN_SPACE);
         if (SR_ERR_OK != rc) {
             conn->close_requested = true;
             break;
@@ -727,7 +796,9 @@ cm_conn_read(cm_ctx_t *cm_ctx, int fd)
     if (SR_ERR_OK == rc) {
         rc = cm_conn_in_buff_process(cm_ctx, conn);
         if (SR_ERR_OK != rc) {
-            SR_LOG_WRN_MSG("Error by processing of input buffer.");
+            SR_LOG_WRN("Error by processing of the input buffer of fd=%d, closing the connection.", fd);
+            conn->close_requested = true;
+            rc = SR_ERR_OK; /* connection will be closed, we can continue */
         }
     }
 
@@ -741,7 +812,7 @@ cm_conn_read(cm_ctx_t *cm_ctx, int fd)
 }
 
 /**
- * @brief Dispatches a writeable event on the file descriptor of a normal connection.
+ * @brief Dispatches a writable event on the file descriptor of a normal connection.
  */
 static int
 cm_conn_write(cm_ctx_t *cm_ctx, int fd)
