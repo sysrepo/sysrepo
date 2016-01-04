@@ -267,6 +267,7 @@ rp_dt_create_xpath_for_node(const struct lyd_node *data_tree, char **xpath)
 int
 rp_dt_copy_value(const struct lyd_node_leaf_list *leaf, LY_DATA_TYPE type, sr_val_t *value)
 {
+    CHECK_NULL_ARG2(leaf, value);
     //TODO copy all types
     switch (type) {
     case LY_TYPE_BINARY:
