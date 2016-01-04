@@ -64,23 +64,46 @@ typedef struct session_ctx_s{
 typedef sr_session_ctx_t * sr_session_ctx_p;
 
 typedef enum sr_type_e{
+   SR_UNKNOWN_T,
    SR_LIST_T,
    SR_CONTAINER_T,
    SR_CONTAINER_PRESENCE_T,
+   /* YANG built-in*/
    SR_LEAF_EMPTY_T,
-   SR_UINT32_T,
+   SR_BINARY_T,
+   SR_BITS_T,
    SR_BOOL_T,
+   SR_DECIMAL64_T,
+   SR_ENUM_T,
+   SR_IDENTITYREF_T,
+   SR_INSTANCEID_T,
+   SR_INT8_T,
+   SR_INT16_T,
+   SR_INT32_T,
+   SR_INT64_T,
    SR_STRING_T,
-   /* ... */
+   SR_UINT8_T,
+   SR_UINT16_T,
+   SR_UINT32_T,
+   SR_UINT64_T,
+   SR_UNION_T,
 }sr_type_t;
 
 typedef struct sr_val_s{
    char *path;
    /*sr_location_id_t *loc_id */
    union{
-      uint32_t uint32_val;
       bool boolean_val;
+      int8_t int8_val;
+      int16_t int16_val;
+      int32_t int32_val;
+      int64_t int64_val;
       char *string_val;
+      uint8_t uint8_val;
+      uint16_t uint16_val;
+      uint32_t uint32_val;
+      uint64_t uint64_val;
+
       /* ...*/
    }data;
    uint32_t length; /*For datatypes where their length may vary   */

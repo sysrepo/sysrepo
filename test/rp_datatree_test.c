@@ -47,6 +47,49 @@ int teardown(void **state){
     return rc;
 }
 
+
+void get_value_test(void **state){
+    int rc = 0;
+    dm_ctx_t *ctx = *state;
+    dm_session_t *ses_ctx = NULL;
+    struct lyd_node *data_tree = NULL;
+    dm_session_start(ctx, &ses_ctx);
+
+    /* Load from file */
+    rc = dm_get_datatree(ctx, ses_ctx, "example-module", &data_tree);
+    assert_int_equal(SR_ERR_OK, rc);
+    sr_val_t *value = NULL;
+
+    /*leaf*/
+    xp_loc_id_t *l;
+#define XPATH_FOR_VALUE "/example-module:container/list[key1='key1'][key2='key2']/leaf"
+    assert_int_equal(SR_ERR_OK, xp_char_to_loc_id(XPATH_FOR_VALUE, &l));
+    assert_int_equal(SR_ERR_OK, rp_dt_get_value(ctx, data_tree, l, &value));
+
+    assert_int_equal(SR_STRING_T, value->type);
+    assert_string_equal("Leaf value", value->data.string_val);
+    assert_string_equal(XPATH_FOR_VALUE, value->path);
+
+    sr_free_val_t(value);
+    xp_free_loc_id(l);
+
+    /*list*/
+#define XPATH_FOR_LIST "/example-module:container/list[key1='key1'][key2='key2']"
+    assert_int_equal(SR_ERR_OK, rp_dt_get_value_xpath(ctx, data_tree, XPATH_FOR_LIST, &value));
+    assert_int_equal(SR_LIST_T, value->type);
+    assert_string_equal(XPATH_FOR_LIST, value->path);
+    sr_free_val_t(value);
+
+    /*container*/
+#define XPATH_FOR_CONTAINER "/example-module:container"
+    assert_int_equal(SR_ERR_OK, rp_dt_get_value_xpath(ctx, data_tree, "/example-module:container", &value));
+    assert_int_equal(SR_CONTAINER_T, value->type);
+    assert_string_equal(XPATH_FOR_CONTAINER, value->path);
+    sr_free_val_t(value);
+
+    dm_session_stop(ctx, ses_ctx);
+}
+
 void get_node_test_found(void **state)
 {
     int rc = 0;
@@ -132,6 +175,7 @@ int main(){
     const struct CMUnitTest tests[] = {
             cmocka_unit_test(get_node_test_found),
             cmocka_unit_test(get_node_test_not_found),
+            cmocka_unit_test(get_value_test),
     };
     return cmocka_run_group_tests(tests, setup, teardown);
 }
