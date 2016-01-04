@@ -169,30 +169,6 @@ cm_session_start_generate(const char *user_name, void **msg_buf, size_t *msg_siz
     sr__msg__free_unpacked(msg, NULL);
 }
 
-//static void
-//cm_get_item_generate(const char *xpath, uint32_t session_id, void **msg_buf, size_t *msg_size)
-//{
-//    assert_non_null(xpath);
-//    assert_non_null(msg_buf);
-//    assert_non_null(msg_size);
-//
-//    Sr__Msg *msg = NULL;
-//    sr_pb_req_alloc(SR__OPERATION__GET_ITEM, session_id, &msg);
-//    assert_non_null(msg);
-//    assert_non_null(msg->request);
-//    assert_non_null(msg->request->get_item_req);
-//
-//    msg->request->get_item_req->datastore = SR__DATA_STORE__CANDIDATE;
-//    msg->request->get_item_req->path = strdup(xpath);
-//
-//    *msg_size = sr__msg__get_packed_size(msg);
-//    *msg_buf = calloc(1, *msg_size);
-//    assert_non_null(*msg_buf);
-//
-//    sr__msg__pack(msg, *msg_buf);
-//    sr__msg__free_unpacked(msg, NULL);
-//}
-
 static void
 cm_session_stop_generate(uint32_t session_id, void **msg_buf, size_t *msg_size)
 {
@@ -214,6 +190,32 @@ cm_session_stop_generate(uint32_t session_id, void **msg_buf, size_t *msg_size)
     sr__msg__pack(msg, *msg_buf);
     sr__msg__free_unpacked(msg, NULL);
 }
+
+#ifdef UNUSED
+static void
+cm_get_item_generate(const char *xpath, uint32_t session_id, void **msg_buf, size_t *msg_size)
+{
+    assert_non_null(xpath);
+    assert_non_null(msg_buf);
+    assert_non_null(msg_size);
+
+    Sr__Msg *msg = NULL;
+    sr_pb_req_alloc(SR__OPERATION__GET_ITEM, session_id, &msg);
+    assert_non_null(msg);
+    assert_non_null(msg->request);
+    assert_non_null(msg->request->get_item_req);
+
+    msg->request->get_item_req->datastore = SR__DATA_STORE__CANDIDATE;
+    msg->request->get_item_req->path = strdup(xpath);
+
+    *msg_size = sr__msg__get_packed_size(msg);
+    *msg_buf = calloc(1, *msg_size);
+    assert_non_null(*msg_buf);
+
+    sr__msg__pack(msg, *msg_buf);
+    sr__msg__free_unpacked(msg, NULL);
+}
+#endif
 
 static void
 cm_communicate(int fd)

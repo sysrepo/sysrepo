@@ -259,7 +259,7 @@ cm_select_init(cm_ctx_t *cm_ctx)
 }
 
 /**
- * socket Cleans up the structures used by select. Closes all monitored
+ * @brief Cleans up the structures used by select. Closes all monitored
  * descriptors that left open.
  */
 static void
@@ -504,20 +504,20 @@ cm_msg_send_session(cm_ctx_t *cm_ctx, sm_session_t *session, Sr__Msg *msg)
 }
 
 static int
-cm_session_start_req_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, Sr__SessionStartReq *req)
+cm_session_start_req_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, Sr__Req *req)
 {
     sm_session_t *session = NULL;
     Sr__Msg *msg = NULL;
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG3(cm_ctx, conn, req);
+    CHECK_NULL_ARG4(cm_ctx, conn, req, req->session_start_req);
 
     SR_LOG_DBG_MSG("Processing session_start request.");
 
     // TODO: retrieve real user name
 
     /* create session in SM */
-    rc = sm_session_create(cm_ctx->session_manager, conn, "root", req->user_name, &session);
+    rc = sm_session_create(cm_ctx->session_manager, conn, "root", req->session_start_req->user_name, &session);
 
     // TODO: call sesion_start in request processor
 
@@ -537,17 +537,17 @@ cm_session_start_req_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, Sr__Sessio
 }
 
 static int
-cm_session_stop_req_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, Sr__SessionStopReq *req)
+cm_session_stop_req_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, Sr__Req *req)
 {
     sm_session_t *session = NULL;
     Sr__Msg *msg = NULL;
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG3(cm_ctx, conn, req);
+    CHECK_NULL_ARG4(cm_ctx, conn, req, req->session_stop_req);
 
     SR_LOG_DBG_MSG("Processing session_stop request.");
 
-    rc = sm_session_find_id(cm_ctx->session_manager, req->session_id, &session);
+    rc = sm_session_find_id(cm_ctx->session_manager, req->session_stop_req->session_id, &session);
     // handle not found and others
 
     // TODO: call sesion_stop in request processor
@@ -586,12 +586,12 @@ cm_conn_msg_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, uint8_t *msg_data, 
         switch (msg->request->operation) {
             case SR__OPERATION__SESSION_START:
                 // TODO NULL checks
-                rc = cm_session_start_req_process(cm_ctx, conn, msg->request->session_start_req);
+                rc = cm_session_start_req_process(cm_ctx, conn, msg->request);
                 release_msg = true;
                 break;
             case SR__OPERATION__SESSION_STOP:
                 // TODO NULL checks
-                rc = cm_session_stop_req_process(cm_ctx, conn, msg->request->session_stop_req);
+                rc = cm_session_stop_req_process(cm_ctx, conn, msg->request);
                 release_msg = true;
                 break;
             default:

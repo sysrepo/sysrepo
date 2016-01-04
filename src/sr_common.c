@@ -1,7 +1,8 @@
 /**
  * @file sr_common.c
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
- * @brief 
+ * @brief Sysrepo common utilities.
+ *
  * @copyright
  * Copyright 2015 Cisco Systems, Inc.
  *
@@ -97,7 +98,7 @@ sr_pb_req_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__Ms
     msg->request = req;
     req->operation = operation;
 
-    /* initialize submessage */
+    /* initialize sub-message */
     switch (operation) {
         case SR__OPERATION__SESSION_START:
             sub_msg = calloc(1, sizeof(Sr__SessionStartReq));
@@ -172,7 +173,7 @@ sr_pb_resp_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__M
     resp->operation = operation;
     resp->result = SR_ERR_OK;
 
-    /* initialize submessage */
+    /* initialize sub-message */
     switch (operation) {
         case SR__OPERATION__SESSION_START:
             sub_msg = calloc(1, sizeof(Sr__SessionStartResp));
