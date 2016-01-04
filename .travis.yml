@@ -23,9 +23,7 @@ before_install:
   
   - git clone https://github.com/CESNET/libyang.git
   - cd libyang; mkdir build; cd build
-  - cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr ..
-  - make
-  - make install
-  - cd ../..
+  - cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr -DCMAKE_BUILD_TYPE=Release ..
+  - make && sudo make install && cd ../..
 
 script: cmake . && make && make test
