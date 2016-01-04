@@ -12,7 +12,7 @@ branches:
 
 before_install:
   - sudo apt-get update -qq
-  - sudo apt-get install -y libavl-dev
+  - sudo apt-get install -y libavl-dev libprotobuf-dev
   
   - git clone git://git.cryptomilk.org/projects/cmocka.git
   - cd cmocka
@@ -28,14 +28,9 @@ before_install:
   - make && sudo make install
   - cd ../..
   
-  - git clone https://github.com/google/protobuf.git
-  - cd protobuf
-  - ./autogen.sh && ./configure --prefix=/usr && make && sudo make install
-  - cd ..
-  
   - git clone https://github.com/protobuf-c/protobuf-c.git
   - cd protobuf-c
   - ./autogen.sh && ./configure --prefix=/usr && make && sudo make install
   - cd ..
 
-script: cmake . && make && make test
+script: mkdir build && cd build && cmake .. && make && ctest
