@@ -23,7 +23,7 @@
 #define SRC_SR_COMMON_H_
 
 #include <libyang/libyang.h>
-#include "sr_error.h"
+#include "sysrepo.h"
 #include "sr_logger.h"
 
 #define CHECK_NULL_ARG__INTERNAL(ARG) \
@@ -92,5 +92,18 @@ int sr_str_join(const char *str1, const char *str2, char **result);
  * @return err_code
  */
 int sr_save_data_tree_file(const char *file_name, const struct lyd_node *data_tree);
+
+/**
+ * @brief Converts libyang enum of YANG built-in types to sysrepo representation
+ * @param [in] t
+ * @return sr_type_t
+ */
+sr_type_t sr_libyang_type_to_sysrepo(LY_DATA_TYPE t);
+
+/**
+ * Frees sr_val_t structure
+ * @param [in] value
+ */
+void sr_free_val_t(sr_val_t *value);
 
 #endif /* SRC_SR_COMMON_H_ */
