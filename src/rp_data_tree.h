@@ -54,7 +54,29 @@ int rp_dt_get_node(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp_
  */
 int rp_dt_get_node_xpath(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char *xpath, struct lyd_node **node);
 
-int rp_dt_get_leaf_value(const struct lyd_node *data_tree, const xp_loc_id_t *loc_id, sr_val_t **value);
+/**
+ * @brief Returns the value for the specified location_id for leaf, container and list.
+ * @param [in] dm_ctx
+ * @param [in] data_tree
+ * @param [in] loc_id
+ * @param [out] value
+ * @return err_code
+ */
+int rp_dt_get_value(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp_loc_id_t *loc_id, sr_val_t **value);
+
+/**
+ * @brief Returns the value for the specified xpath for leaf, container and list. It converts the xpath to loc_id
+ * and calls ::rp_dt_get_value internally.
+ * @param [in] dm_ctx
+ * @param [in] data_tree
+ * @param [in] xpath
+ * @param [out] value
+ * @return err_code
+ */
+int rp_dt_get_value_xpath(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char *xpath, sr_val_t **value);
+
+int rp_dt_get_values(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp_loc_id_t *loc_id, sr_val_t **values, size_t *count);
+
 
 /**
  * @}
