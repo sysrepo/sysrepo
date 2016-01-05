@@ -130,7 +130,7 @@ dm_load_schema_file(const dm_ctx_t *dm_ctx, const char *dir_name, const char *fi
         SR_LOG_WRN("Unable to open a schema file: %s", file_name);
         return SR_ERR_IO;
     }
-    module = lys_read(dm_ctx->ly_ctx, fileno(fd), LYS_IN_YIN);
+    module = lys_parse_fd(dm_ctx->ly_ctx, fileno(fd), LYS_IN_YIN);
     fclose(fd);
     if (module == NULL) {
         SR_LOG_WRN("Unable to parse a schema file: %s", file_name);
@@ -235,35 +235,14 @@ dm_load_data_tree(const dm_ctx_t *dm_ctx, const struct lys_module *module, struc
 
     FILE *f = fopen(data_filename, "r");
     if (NULL != f) {
-        fseek(f, 0, SEEK_END);
-        long fsize = ftell(f);
-        fseek(f, 0, SEEK_SET);
-
-        char *data_string = malloc(fsize + 1);
-        fread(data_string, fsize, 1, f);
-        data_string[fsize] = '\0';
-        fclose(f);
-
-        struct lyxml_elem* root_elem = lyxml_read(dm_ctx->ly_ctx, data_string, 0);
-        free(data_string);
-
-        if (NULL == root_elem) {
-            SR_LOG_ERR("Parsing xml from file %s failed", data_filename);
-            free(data_filename);
-            fclose(f);
-            return SR_ERR_INTERNAL;
-        }
-
-        *data_tree = lyd_parse_xml(dm_ctx->ly_ctx, root_elem, 0);
-        if(NULL == *data_tree){
+        *data_tree = lyd_parse_fd(dm_ctx->ly_ctx, fileno(f), LYD_XML, LYD_OPT_STRICT);
+        if (NULL == *data_tree){
             SR_LOG_ERR("Parsing data tree from file %s failed", data_filename);
             free(data_filename);
             fclose(f);
             return SR_ERR_INTERNAL;
         }
-
-        lyxml_free(dm_ctx->ly_ctx, root_elem);
-
+        fclose(f);
     } else {
         SR_LOG_ERR("Failed to open a file %s", data_filename);
         free(data_filename);
