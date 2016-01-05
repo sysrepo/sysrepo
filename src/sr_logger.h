@@ -81,43 +81,43 @@ extern volatile uint8_t sr_ll_syslog;  /**< Holds current level of syslog debugs
 
 #if SR_LOG_PRINT_FUNCTION_NAMES
 #define SR_LOG__SYSLOG(LL, MSG, ...) \
-        syslog(SR_LOG__LL_FACILITY(LL), "[%s] (%s:%d) " MSG, SR_LOG__LL_STR(LL), __FUNCTION__, __LINE__, ##__VA_ARGS__);
+        syslog(SR_LOG__LL_FACILITY(LL), "[%s] (%s:%d) " MSG, SR_LOG__LL_STR(LL), __FUNCTION__, __LINE__, __VA_ARGS__);
 #define SR_LOG__STDERR(LL, MSG, ...) \
-        fprintf(stderr, "[%s] (%s:%d) " MSG "\n", SR_LOG__LL_STR(LL), __FUNCTION__, __LINE__, ##__VA_ARGS__);
+        fprintf(stderr, "[%s] (%s:%d) " MSG "\n", SR_LOG__LL_STR(LL), __FUNCTION__, __LINE__, __VA_ARGS__);
 #else
 #define SR_LOG__SYSLOG(LL, MSG, ...) \
-        syslog(SR_LOG__LL_FACILITY(LL), "[%s] " MSG, SR_LOG__LL_STR(LL), ##__VA_ARGS__);
+        syslog(SR_LOG__LL_FACILITY(LL), "[%s] " MSG, SR_LOG__LL_STR(LL), __VA_ARGS__);
 #define SR_LOG__STDERR(LL, MSG, ...) \
-        fprintf(stderr, "[%s] " MSG "\n", SR_LOG__LL_STR(LL), ##__VA_ARGS__);
+        fprintf(stderr, "[%s] " MSG "\n", SR_LOG__LL_STR(LL), __VA_ARGS__);
 #endif
 
 #define SR_LOG__INTERNAL(LL, MSG, ...) \
     do { \
         if (sr_ll_stderr >= LL) \
-            SR_LOG__STDERR(LL, MSG, ##__VA_ARGS__) \
+            SR_LOG__STDERR(LL, MSG, __VA_ARGS__) \
         if (sr_ll_syslog >= LL) \
-            SR_LOG__SYSLOG(LL, MSG, ##__VA_ARGS__) \
+            SR_LOG__SYSLOG(LL, MSG, __VA_ARGS__) \
     } while(0)
 
 #if SR_LOGGING_ENABLED
 
 /** Prints an error message (with format specifiers). */
-#define SR_LOG_ERR(MSG, ...) SR_LOG__INTERNAL(SR_LL_ERR, MSG, ##__VA_ARGS__)
+#define SR_LOG_ERR(MSG, ...) SR_LOG__INTERNAL(SR_LL_ERR, MSG, __VA_ARGS__)
 /** Prints an error message. */
 #define SR_LOG_ERR_MSG(MSG) SR_LOG__INTERNAL(SR_LL_ERR, MSG "%s", "")
 
 /** Prints a warning message (with format specifiers). */
-#define SR_LOG_WRN(MSG, ...) SR_LOG__INTERNAL(SR_LL_WRN, MSG, ##__VA_ARGS__)
+#define SR_LOG_WRN(MSG, ...) SR_LOG__INTERNAL(SR_LL_WRN, MSG, __VA_ARGS__)
 /** Prints a warning message. */
 #define SR_LOG_WRN_MSG(MSG) SR_LOG__INTERNAL(SR_LL_WRN, MSG "%s", "")
 
 /** Prints an informational message (with format specifiers). */
-#define SR_LOG_INF(MSG, ...) SR_LOG__INTERNAL(SR_LL_INF, MSG, ##__VA_ARGS__)
+#define SR_LOG_INF(MSG, ...) SR_LOG__INTERNAL(SR_LL_INF, MSG, __VA_ARGS__)
 /** Prints an informational message. */
 #define SR_LOG_INF_MSG(MSG) SR_LOG__INTERNAL(SR_LL_INF, MSG "%s", "")
 
 /** Prints a development debug message (with format specifiers). */
-#define SR_LOG_DBG(MSG, ...) SR_LOG__INTERNAL(SR_LL_DBG, MSG, ##__VA_ARGS__)
+#define SR_LOG_DBG(MSG, ...) SR_LOG__INTERNAL(SR_LL_DBG, MSG, __VA_ARGS__)
 /** Prints a development debug message. */
 #define SR_LOG_DBG_MSG(MSG) SR_LOG__INTERNAL(SR_LL_DBG, MSG "%s", "")
 
