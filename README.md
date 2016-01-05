@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.org/sysrepo/sysrepo.svg)](https://travis-ci.org/sysrepo/sysrepo)
+
 ## Status
 - Dec 2015: working on the first milestone - internal infrastructure, get-config functionality
 
