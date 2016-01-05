@@ -69,7 +69,7 @@ sr_save_data_tree_file(const char *file_name, const struct lyd_node *data_tree)
     }
 
     fprintf(f, "<module>");
-    if( 0 != lyd_print(f, data_tree, LYD_XML)){
+    if( 0 != lyd_print_file(f, data_tree, LYD_XML)){
         SR_LOG_ERR("Failed to write output into %s", file_name);
         return SR_ERR_INTERNAL;
     }

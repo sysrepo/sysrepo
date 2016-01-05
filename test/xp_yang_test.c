@@ -43,7 +43,7 @@ int setup(void **state){
          puts("Unable to open a file.");
          return 4;
     }
-    module = lys_read(ctx, fileno(fd), LYS_IN_YIN);
+    module = lys_parse_fd(ctx, fileno(fd), LYS_IN_YIN);
     fclose(fd);
     if (module == NULL){
          puts("Module je NULL");
