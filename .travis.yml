@@ -1,10 +1,14 @@
-language: c
-compiler: clang
-
 os: linux
 sudo: required
 dist: trusty
 
+language: 
+  - c
+
+compiler: 
+  - gcc
+  - clang
+  
 branches:
   only:
     - master
@@ -27,12 +31,12 @@ before_install:
   - cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr -DCMAKE_BUILD_TYPE=Release ..
   - make -j2 && sudo make install
   - cd ../..
-  
+
   - git clone https://github.com/google/protobuf.git
   - cd protobuf
   - ./autogen.sh && ./configure --prefix=/usr && make -j2 && sudo make install
   - cd ..
-  
+
   - git clone https://github.com/protobuf-c/protobuf-c.git
   - cd protobuf-c
   - ./autogen.sh && ./configure --prefix=/usr && make -j2 && sudo make install
@@ -42,4 +46,4 @@ script:
   - mkdir build && cd build && cmake .. && make -j2 && ctest
 
 after_success:
-  - codecov
+  - if [ "$CC" = "gcc" ]; then codecov; fi
