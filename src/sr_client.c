@@ -1,9 +1,10 @@
 /**
- * @file sr_engine.h
+ * @file sr_client.c
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
- * @brief 
+ * @brief Sysrepo client library (public API) implementation.
  *
- * Copyright 2015 Cisco Systems, Inc.
+ * @copyright
+ * Copyright 2016 Cisco Systems, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,13 +19,10 @@
  * limitations under the License.
  */
 
+#include "sr_common.h"
 
-#ifndef INC_SR_ENGINE_H_
-#define INC_SR_ENGINE_H_
-
-
-int sr_engine_init();
-int sr_engine_cleanup();
-
-
-#endif /* INC_SR_ENGINE_H_ */
+int
+sr_init(sr_settings_p settings, sr_ctx_p *sr_ctx)
+{
+    return 0;
+}

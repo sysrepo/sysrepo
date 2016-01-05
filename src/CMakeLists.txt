@@ -22,21 +22,24 @@ add_custom_target(proto DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${PROTO_NAME}.pb-c.c
 #setup library sources
 set(SYSREPO-SOURCES
     ${GENERATED_PROTO}
-     sr_access.c
-     )
+    sr_client.c
+    sr_common.c
+    sr_logger.c
+)
 
 set(SYSREPO-ENGINE-SOURCES
     ${GENERATED_PROTO}
-     rp_data_tree.c
-     data_manager.c
-     connection_manager.c
-     session_manager.c
-     xpath_processor.c
-     sr_common.c
-     sr_logger.c
+    connection_manager.c
+    session_manager.c
+    request_processor.c
+    rp_data_tree.c
+    data_manager.c
+    xpath_processor.c
+    sr_common.c
+    sr_logger.c
 )
 
-set(HEADERS "${PROJECT_SOURCE_DIR}/inc/sysrepo.h" "${PROJECT_SOURCE_DIR}/inc/sr_engine.h")
+set(HEADERS "${PROJECT_SOURCE_DIR}/inc/sysrepo.h")
 
 #shared and static library
 add_library(sysrepo ${SYSREPO-SOURCES})

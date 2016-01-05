@@ -19,11 +19,14 @@
  * limitations under the License.
  */
 
+#include "sr_common.h"
+#include "connection_manager.h"
+
 /**
  * @brief Structure that holds the context of an instance of Request Processor.
  */
 typedef struct rp_ctx_s {
-
+    int dummy;
 } rp_ctx_t;
 
 /**

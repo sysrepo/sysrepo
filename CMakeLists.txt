@@ -2,13 +2,20 @@ cmake_minimum_required(VERSION 2.8)
 project(sysrepo)
 set(SYSREPO_DESC "YANG based system repository")
 
-#Setup version
+# setup version
 set(SYSREPO_MAJOR_VERSION 0)
 set(SYSREPO_MINOR_VERSION 0)
 set(SYSREPO_MICRO_VERSION 1)
 set(SYSREPO_VERSION ${SYSREPO_MAJOR_VERSION}.${SYSREPO_MINOR_VERSION}.${SYSREPO_MICRO_VERSION})
 
-set(CMAKE_C_FLAGS "-Wall -Werror -Wpedantic -std=gnu11 ")
+# set default build type if not specified by user
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE debug)
+endif()
+
+set(CMAKE_C_FLAGS         "${CMAKE_C_FLAGS} -Wall -Werror -Wpedantic -std=gnu11")
+set(CMAKE_C_FLAGS_RELEASE "-O2 -DNDEBUG")
+set(CMAKE_C_FLAGS_DEBUG   "-coverage -g -O0")
 
 # include custom Modules
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/CMakeModules/")
