@@ -18,8 +18,10 @@ before_install:
   - sudo apt-get install -y libavl-dev valgrind
   - pip install --user codecov
   
-  - wget http://mirrors.kernel.org/ubuntu/pool/main/p/protobuf/libprotobuf_2.6.1-1_amd64.deb
-  - sudo dpkg -i --force-depends libprotobuf_2.6.1-1_amd64.deb
+  - wget http://mirrors.kernel.org/ubuntu/pool/main/p/protobuf/libprotobuf9_2.6.1-1_amd64.deb
+  - sudo dpkg -i --force-depends libprotobuf9_2.6.1-1_amd64.deb
+  - wget http://mirrors.kernel.org/ubuntu/pool/main/p/protobuf/libprotobuf-lite9_2.6.1-1_amd64.deb
+  - sudo dpkg -i --force-depends libprotobuf-lite9_2.6.1-1_amd64.deb
   - wget http://mirrors.kernel.org/ubuntu/pool/main/p/protobuf/libprotobuf-dev_2.6.1-1_amd64.deb
   - sudo dpkg -i --force-depends libprotobuf-dev_2.6.1-1_amd64.deb
   
