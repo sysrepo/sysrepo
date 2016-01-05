@@ -1,9 +1,8 @@
 language: c
 compiler: clang
 
-os: linux
-sudo: required
-dist: trusty
+os:  linux
+sudo:  required
 
 branches:
   only:
