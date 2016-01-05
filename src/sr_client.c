@@ -21,8 +21,18 @@
 
 #include "sr_common.h"
 
+/* Sysrepo context */
+typedef struct sr_conn_ctx_s {
+    char *path_to_conf;
+} sr_conn_ctx_t;
+
+/* session context */
+typedef struct sr_session_ctx_s {
+    uint32_t session_id;
+} sr_session_ctx_t;
+
 int
-sr_init(sr_settings_p settings, sr_ctx_p *sr_ctx)
+sr_connect(const bool allow_library_mode, sr_conn_ctx_t **conn_ctx)
 {
     return 0;
 }
