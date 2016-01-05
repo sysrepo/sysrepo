@@ -342,7 +342,7 @@ rp_dt_get_node(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp_loc_
             }
             /* check keys*/
             if (0 !=XP_GET_KEY_COUNT(loc_id, n)){
-                if (curr->schema->nodetype != LYS_LIST){
+                if (LYS_LIST != curr->schema->nodetype){
                     SR_LOG_DBG("Keys specified for non list node %s", curr->schema->name);
                     goto match_done;
                 }
@@ -379,6 +379,12 @@ key_mismatch:
                     curr = curr->next;
                     continue;
                 }
+            }
+            else if (LYS_LIST == curr->schema->nodetype){
+                /* no keys are specified and node is list*/
+                SR_LOG_WRN("Keys not specified for list node %s", curr->schema->name);
+                curr = NULL;
+                goto match_done;
             }
 
             /* match found*/

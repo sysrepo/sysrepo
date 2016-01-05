@@ -35,7 +35,8 @@
  */
 
 /**
- * @brief Retrieves node from datatree based on location_id.
+ * @brief Retrieves node from datatree based on location_id. Location_id can identify leaf, container or list
+ * with all key values defined.
  * @param [in] dm_ctx
  * @param [in] data_tree - root node of the model
  * @param [in] loc_id
