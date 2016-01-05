@@ -18,23 +18,23 @@ before_install:
   - git checkout tags/cmocka-1.0.1
   - mkdir build; cd build
   - cmake -DCMAKE_INSTALL_PREFIX=/usr ..
-  - make && sudo make install
+  - make -j2 && sudo make install
   - cd ../..
   
   - git clone https://github.com/CESNET/libyang.git
   - cd libyang; mkdir build; cd build
   - cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr -DCMAKE_BUILD_TYPE=Release ..
-  - make && sudo make install
+  - make -j2 && sudo make install
   - cd ../..
   
   - git clone https://github.com/google/protobuf.git
   - cd protobuf
-  - ./autogen.sh && ./configure --prefix=/usr && make && sudo make install
+  - ./autogen.sh && ./configure --prefix=/usr && make -j2 && sudo make install
   - cd ..
   
   - git clone https://github.com/protobuf-c/protobuf-c.git
   - cd protobuf-c
-  - ./autogen.sh && ./configure --prefix=/usr && make && sudo make install
+  - ./autogen.sh && ./configure --prefix=/usr && make -j2 && sudo make install
   - cd ..
 
-script: mkdir build && cd build && cmake .. && make && ctest
+script: mkdir build && cd build && cmake .. && make -j2 && ctest
