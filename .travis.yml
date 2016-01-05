@@ -1,15 +1,9 @@
-language: 
-  - c
-  
-compiler:
-  - clang
-  - gcc
+language: c
+compiler: gcc
 
-os: 
-  - linux
-  
-sudo: 
-  - required
+os: linux
+sudo: required
+dist: trusty
 
 branches:
   only:
@@ -48,4 +42,4 @@ script:
   - mkdir build && cd build && cmake .. && make -j2 && ctest
 
 after_success:
-  - if [ "$CC" = "gcc" ]; then codecov; fi
+  - codecov
