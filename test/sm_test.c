@@ -21,6 +21,8 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <unistd.h>
+#include <sys/socket.h>
 #include <setjmp.h>
 #include <cmocka.h>
 
@@ -58,10 +60,14 @@ session_create_drop(void **state) {
     sm_ctx_t *ctx = *state;
     sm_connection_t *conn = NULL;
     sm_session_t *sess = NULL;
+    int sockets[2] = { 0, };
     int rc = SR_ERR_OK;
 
+    /* create some sockets */
+    socketpair(AF_UNIX, SOCK_STREAM, 0, sockets);
+
     /* start a connection */
-    rc = sm_connection_start(ctx, CM_AF_UNIX_CLIENT, 10, &conn);
+    rc = sm_connection_start(ctx, CM_AF_UNIX_CLIENT, sockets[0], &conn);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(conn);
 
@@ -88,10 +94,14 @@ session_find_id(void **state) {
     sm_ctx_t *ctx = *state;
     sm_connection_t *conn = NULL;
     sm_session_t *sess = NULL;
+    int sockets[2] = { 0, };
     int rc = SR_ERR_OK;
 
+    /* create some sockets */
+    socketpair(AF_UNIX, SOCK_STREAM, 0, sockets);
+
     /* start a connection */
-    rc = sm_connection_start(ctx, CM_AF_UNIX_CLIENT, 10, &conn);
+    rc = sm_connection_start(ctx, CM_AF_UNIX_CLIENT, sockets[0], &conn);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(conn);
 
@@ -137,6 +147,7 @@ session_find_fd(void **state) {
     sm_connection_t *conn = NULL;
     sm_session_t *sess = NULL;
     sm_session_list_t *curr = NULL;
+    int sockets[2] = { 0, };
     int rc = SR_ERR_OK, cnt = 0;
 
     /* create 100 sessions in 10 connections */
@@ -144,7 +155,8 @@ session_find_fd(void **state) {
     for (i = 0; i < 100; i ++) {
         if (0 == i % 10) {
             conn = NULL;
-            rc = sm_connection_start(ctx, CM_AF_UNIX_CLIENT, i, &conn);
+            socketpair(AF_UNIX, SOCK_STREAM, 0, sockets);
+            rc = sm_connection_start(ctx, CM_AF_UNIX_CLIENT, sockets[0], &conn);
             assert_int_equal(rc, SR_ERR_OK);
             assert_non_null(conn);
         }
@@ -155,7 +167,7 @@ session_find_fd(void **state) {
 
     /* find connection by fd */
     conn = NULL;
-    rc = sm_connection_find_fd(ctx, 50, &conn);
+    rc = sm_connection_find_fd(ctx, sockets[0], &conn);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(conn);
 
@@ -181,7 +193,7 @@ session_find_fd(void **state) {
 
     /* find connection by fd again */
     conn = NULL;
-    rc = sm_connection_find_fd(ctx, 50, &conn);
+    rc = sm_connection_find_fd(ctx, sockets[0], &conn);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(conn);
 

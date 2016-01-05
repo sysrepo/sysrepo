@@ -22,9 +22,13 @@
 #ifndef SRC_SR_COMMON_H_
 #define SRC_SR_COMMON_H_
 
+#include <linux/socket.h>
+#include <sys/types.h>
 #include <libyang/libyang.h>
+
 #include "sysrepo.h"
 #include "sr_logger.h"
+#include "sysrepo.pb-c.h"
 
 #define CHECK_NULL_ARG__INTERNAL(ARG) \
     if (NULL == ARG) { \
@@ -105,5 +109,39 @@ sr_type_t sr_libyang_type_to_sysrepo(LY_DATA_TYPE t);
  * @param [in] value
  */
 void sr_free_val_t(sr_val_t *value);
+
+/**
+ * @brief Allocates and initializes GPB request message.
+ *
+ * @param[in] session_id ID of session identifying the recipient. Pass 0 if session is not open yet.
+ * @param[in] operation Requested operation.
+ * @param[out] msg GPB message.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_pb_req_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__Msg **msg);
+
+/**
+ * @brief Allocates and initializes GPB response message.
+ *
+ * @param[in] session_id ID of session identifying the recipient. Pass 0 if session is not open yet.
+ * @param[in] operation Requested operation.
+ * @param[out] msg GPB message.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_pb_resp_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__Msg **msg);
+
+/**
+ * @brief Portable way to retrieve effective user ID and group ID of the
+ * other end of a unix-domain socket.
+ *
+ * @param[in] fd File descriptor of a socket.
+ * @param[out] uid User ID of the other end.
+ * @param[out] gid Group ID of the other end.
+ *
+ * @return Error code.
+ */
+int sr_get_peer_eid(int fd, uid_t *uid, gid_t *gid);
 
 #endif /* SRC_SR_COMMON_H_ */

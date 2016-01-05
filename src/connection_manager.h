@@ -1,7 +1,7 @@
 /**
  * @file connection_manager.h
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
- * @brief API of Connection Manager - module that handles all connection to Sysrepo Engine.
+ * @brief API of Connection Manager - module that handles all connections to Sysrepo Engine.
  *
  * @copyright
  * Copyright 2015 Cisco Systems, Inc.
@@ -30,12 +30,12 @@
  * @{
  *
  * @brief Connection Manager is responsible for communication between Sysrepo
- * daemon (or core engine in library mode) and sysrepo access library
+ * daemon (or core engine in library mode) and sysrepo client library
  * (the application which is accessing data in sysrepo).
  *
  * It provides an event loop (started with ::cm_start), which handles all
- * connections and does message retreival/delivery between client library and
- * sysrepo request processor.
+ * connections and does message retrieval/delivery between client library and
+ * Sysrepo Request Processor.
  *
  * It can work in two modes: daemon mode, or library mode. The main distinction
  * between the two is that the event loop is executed in the main thread in
@@ -54,19 +54,19 @@ typedef struct cm_ctx_s cm_ctx_t;
  * @brief Modes in which Connection Manager can operate.
  */
 typedef enum {
-    CM_MODE_DAEMON,  /**< Daemon mode - clients from other processess are able to connect to it. */
+    CM_MODE_DAEMON,  /**< Daemon mode - clients from other processes are able to connect to it. */
     CM_MODE_LOCAL,   /**< Local mode - only local (intra-process) client connections are possible. */
 } cm_connection_mode_t;
 
 /**
- * @brief Initilizes Connection Manager.
+ * @brief Initializes Connection Manager.
  *
  * Initializes server for accepting new connections and prepares all internal
  * structures, but still not starts the server (use ::cm_start to start it).
  *
  * @param[in] mode Mode in which Connection Manager will operate.
  * @param[in] socket_path Path of the unix-domain socket for accepting new connections.
- * @param[out] cm_ctx Connectaion manager context which can be used in
+ * @param[out] cm_ctx Connection Manager context which can be used in
  * subsequent CM API calls.
  *
  * @return Error code (SR_ERR_OK on success).
@@ -78,7 +78,7 @@ int cm_init(const cm_connection_mode_t mode, const char *socket_path, cm_ctx_t *
  *
  * All outstanding connections will be automatically closed and all memory held
  * by this Connection Manager instance will be freed.
- * This call does not stop the evnet loop of connection manager. Prior calling
+ * This call does not stop the event loop of connection manager. Prior to calling
  * this function, it must be stopped via ::cm_stop.
  *
  * @param[in] cm_ctx Connection Manager context.
@@ -90,12 +90,12 @@ void cm_cleanup(cm_ctx_t *cm_ctx);
 /**
  * @brief Starts the event loop of Connection Manager.
  *
- * After calling, Connection manager is able to start accepting incoming
+ * After calling, Connection Manager is able to start accepting incoming
  * connections and processing messages.
  *
  * If Connection manager runs in daemon mode (see ::cm_init), this function will
  * block the calling thread in the event loop until stop is requested or until
- * an error occured. In library mode it returns immediately.
+ * an error occurred. In library mode it returns immediately.
  *
  * @param[in] cm_ctx Connection Manager context.
  *
@@ -124,17 +124,17 @@ int cm_start(cm_ctx_t *cm_ctx);
 int cm_stop(cm_ctx_t *cm_ctx);
 
 /**
- * @brief Sends the message to the proper recipient according to provided session.
+ * @brief Sends the message to the proper recipient according to the
+ * session id filled in in the message.
  *
- * This function is thread safe, can be called from any thread.
+ * @note This function is thread safe, can be called from any thread.
  *
  * @param[in] cm_ctx Connection Manager context.
- * @param[in] cm_session_ctx Session context used to identifiy the receiver.
- * @param[in] msg Messge to be send.
+ * @param[in] msg Message to be send.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int cm_msg_send(const cm_ctx_t *cm_ctx, void *cm_session_ctx, Sr__Msg *msg);
+int cm_msg_send(const cm_ctx_t *cm_ctx, Sr__Msg *msg);
 
 /**@} cm */
 

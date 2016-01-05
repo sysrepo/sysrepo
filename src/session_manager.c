@@ -31,9 +31,9 @@
 #include "sr_common.h"
 #include "session_manager.h"
 
-#define SM_SESSION_ID_INVALID 0
-#define SM_SESSION_ID_MAX_ATTEMPTS 100
-#define SM_FD_INVALID -1
+#define SM_SESSION_ID_INVALID 0         /**< Invalid value of session id. */
+#define SM_SESSION_ID_MAX_ATTEMPTS 100  /**< Maximum number of attempts to generate unused random session id. */
+#define SM_FD_INVALID -1                /**< invalid value of file descriptor. */
 
 /**
  * @brief Session Manager context.
@@ -123,120 +123,15 @@ sm_connection_cleanup(void *connection_p)
             session = session->next;
             free(tmp);
         }
+        free(connection->in_buff.data);
+        free(connection->out_buff.data);
         free(connection);
     }
 }
 
-int
-sm_init(sm_ctx_t **sm_ctx)
-{
-    sm_ctx_t *ctx = NULL;
-    int rc = SR_ERR_OK;
-
-    CHECK_NULL_ARG(sm_ctx);
-
-    ctx = calloc(1, sizeof(*ctx));
-    if (NULL == ctx) {
-        SR_LOG_ERR_MSG("Cannot allocate memory for Session Manager.");
-        rc = SR_ERR_NOMEM;
-        goto cleanup;
-    }
-
-    /* create avl tree for fast session lookup by id,
-     * with automatic cleanup when the session is removed from tree */
-    ctx->session_id_avl = avl_alloc_tree(sm_session_cmp_id, sm_session_cleanup);
-    if (NULL == ctx->session_id_avl) {
-        SR_LOG_ERR_MSG("Cannot allocate avl tree for session ids.");
-        rc = SR_ERR_NOMEM;
-        goto cleanup;
-    }
-
-    /* create avl tree for fast connection lookup by fd,
-     * with automatic cleanup when the connection is removed from tree */
-    ctx->connection_fd_avl = avl_alloc_tree(sm_connection_cmp_fd, sm_connection_cleanup);
-    if (NULL == ctx->connection_fd_avl) {
-        SR_LOG_ERR_MSG("Cannot allocate avl tree for session fds.");
-        rc = SR_ERR_NOMEM;
-        goto cleanup;
-    }
-
-    srand(time(NULL));
-
-    SR_LOG_DBG_MSG("Session Manager initialized successfully.");
-
-    *sm_ctx = ctx;
-    return rc;
-
-cleanup:
-    sm_cleanup(ctx);
-    return rc;
-}
-
-void
-sm_cleanup(sm_ctx_t *sm_ctx)
-{
-    if (NULL != sm_ctx) {
-        if (NULL != sm_ctx->session_id_avl) {
-            avl_free_tree(sm_ctx->session_id_avl);
-        }
-        if (NULL != sm_ctx->connection_fd_avl) {
-            avl_free_tree(sm_ctx->connection_fd_avl);
-        }
-        free(sm_ctx);
-    }
-}
-
-int
-sm_connection_start(const sm_ctx_t *sm_ctx, const sm_connection_type_t type, const int fd,
-        sm_connection_t **connection_p)
-{
-    sm_connection_t *connection = NULL;
-    avl_node_t *node = NULL;
-    int rc = SR_ERR_OK;
-
-    CHECK_NULL_ARG2(sm_ctx, connection_p);
-
-    /* allocate the context */
-    connection = calloc(1, sizeof(*connection));
-    if (NULL == connection) {
-        SR_LOG_ERR_MSG("Cannot allocate memory for new connection context.");
-        return SR_ERR_NOMEM;
-    }
-    connection->fd = fd;
-
-    /* insert connection into avl tree for fast lookup by fd */
-    node = avl_insert(sm_ctx->connection_fd_avl, connection);
-    if (NULL == node) {
-        SR_LOG_ERR_MSG("Cannot insert new entry into fd avl tree (duplicate fd?).");
-        free(connection);
-        return SR_ERR_INTERNAL;
-    }
-
-    SR_LOG_DBG("New connection created succesfully, fd=%d.", fd);
-
-    *connection_p = connection;
-    return rc;
-}
-
-int
-sm_connection_stop(const sm_ctx_t *sm_ctx,  sm_connection_t *connection)
-{
-    sm_session_list_t *tmp = NULL;
-
-    CHECK_NULL_ARG2(sm_ctx, connection);
-
-    /* unlink pointers to the connection from outstanding sessions */
-    tmp = connection->session_list;
-    while (NULL != tmp) {
-        tmp->session->connection = NULL;
-        tmp = tmp->next;
-    }
-
-    avl_delete(sm_ctx->connection_fd_avl, connection); /* sm_connection_cleanup auto-invoked */
-
-    return SR_ERR_OK;
-}
-
+/**
+ * @brief Adds a new session to the session list of the connection.
+ */
 static int
 sm_connection_add_session(const sm_ctx_t *sm_ctx, sm_connection_t *connection, sm_session_t *session)
 {
@@ -265,6 +160,9 @@ sm_connection_add_session(const sm_ctx_t *sm_ctx, sm_connection_t *connection, s
     return SR_ERR_OK;
 }
 
+/**
+ * @brief Removes a session from the session list of a connection.
+ */
 static int
 sm_connection_remove_session(const sm_ctx_t *sm_ctx, sm_connection_t *connection, sm_session_t *session)
 {
@@ -272,7 +170,7 @@ sm_connection_remove_session(const sm_ctx_t *sm_ctx, sm_connection_t *connection
 
     /* find matching session in linked list */
     tmp = connection->session_list;
-    while (NULL != tmp && tmp->session != session) {
+    while ((NULL != tmp) && (tmp->session != session)) {
         prev = tmp;
         tmp = tmp->next;
     }
@@ -298,6 +196,131 @@ sm_connection_remove_session(const sm_ctx_t *sm_ctx, sm_connection_t *connection
 }
 
 int
+sm_init(sm_ctx_t **sm_ctx)
+{
+    sm_ctx_t *ctx = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG(sm_ctx);
+
+    ctx = calloc(1, sizeof(*ctx));
+    if (NULL == ctx) {
+        SR_LOG_ERR_MSG("Cannot allocate memory for Session Manager.");
+        rc = SR_ERR_NOMEM;
+        goto cleanup;
+    }
+
+    /* create avl tree for fast session lookup by id,
+     * with automatic cleanup when the session is removed from tree */
+    ctx->session_id_avl = avl_alloc_tree(sm_session_cmp_id, sm_session_cleanup);
+    if (NULL == ctx->session_id_avl) {
+        SR_LOG_ERR_MSG("Cannot allocate avl tree for session IDs.");
+        rc = SR_ERR_NOMEM;
+        goto cleanup;
+    }
+
+    /* create avl tree for fast connection lookup by fd,
+     * with automatic cleanup when the connection is removed from tree */
+    ctx->connection_fd_avl = avl_alloc_tree(sm_connection_cmp_fd, sm_connection_cleanup);
+    if (NULL == ctx->connection_fd_avl) {
+        SR_LOG_ERR_MSG("Cannot allocate avl tree for connection FDs.");
+        rc = SR_ERR_NOMEM;
+        goto cleanup;
+    }
+
+    srand(time(NULL));
+
+    SR_LOG_DBG("Session Manager initialized successfully, ctx=%p.", (void*)ctx);
+
+    *sm_ctx = ctx;
+    return rc;
+
+cleanup:
+    sm_cleanup(ctx);
+    return rc;
+}
+
+void
+sm_cleanup(sm_ctx_t *sm_ctx)
+{
+    SR_LOG_DBG("Session Manager cleanup requested, ctx=%p.", (void*)sm_ctx);
+
+    if (NULL != sm_ctx) {
+        if (NULL != sm_ctx->session_id_avl) {
+            avl_free_tree(sm_ctx->session_id_avl);
+        }
+        if (NULL != sm_ctx->connection_fd_avl) {
+            avl_free_tree(sm_ctx->connection_fd_avl);
+        }
+        free(sm_ctx);
+    }
+}
+
+int
+sm_connection_start(const sm_ctx_t *sm_ctx, const sm_connection_type_t type, const int fd,
+        sm_connection_t **connection_p)
+{
+    sm_connection_t *connection = NULL;
+    avl_node_t *node = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG(sm_ctx);
+
+    /* allocate the context */
+    connection = calloc(1, sizeof(*connection));
+    if (NULL == connection) {
+        SR_LOG_ERR_MSG("Cannot allocate memory for new connection context.");
+        return SR_ERR_NOMEM;
+    }
+    connection->type = type;
+    connection->fd = fd;
+
+    /* set peer's uid and gid */
+    rc = sr_get_peer_eid(fd, &connection->uid, &connection->gid);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Cannot retrieve uid and gid of the peer.");
+        free(connection);
+        return SR_ERR_INTERNAL;
+    }
+
+    /* insert connection into avl tree for fast lookup by fd */
+    node = avl_insert(sm_ctx->connection_fd_avl, connection);
+    if (NULL == node) {
+        SR_LOG_ERR_MSG("Cannot insert new entry into fd avl tree (duplicate fd?).");
+        free(connection);
+        return SR_ERR_INTERNAL;
+    }
+
+    SR_LOG_DBG("New connection started successfully, fd=%d, conn ctx=%p.", fd, (void*)connection);
+
+    if (NULL != connection_p) {
+        *connection_p = connection;
+    }
+    return rc;
+}
+
+int
+sm_connection_stop(const sm_ctx_t *sm_ctx,  sm_connection_t *connection)
+{
+    sm_session_list_t *tmp = NULL;
+
+    CHECK_NULL_ARG2(sm_ctx, connection);
+
+    SR_LOG_DBG("Connection stop requested, fd=%d.", connection->fd);
+
+    /* unlink pointers to the connection from outstanding sessions */
+    tmp = connection->session_list;
+    while (NULL != tmp) {
+        tmp->session->connection = NULL;
+        tmp = tmp->next;
+    }
+
+    avl_delete(sm_ctx->connection_fd_avl, connection); /* sm_connection_cleanup auto-invoked */
+
+    return SR_ERR_OK;
+}
+
+int
 sm_session_create(const sm_ctx_t *sm_ctx, sm_connection_t *connection,
         const char *real_user, const char *effective_user, sm_session_t **session_p)
 {
@@ -315,7 +338,7 @@ sm_session_create(const sm_ctx_t *sm_ctx, sm_connection_t *connection,
         goto cleanup;
     }
 
-    /* duplicate and set usernames */
+    /* duplicate and set user names */
     session->real_user = strdup(real_user);
     if (NULL == session->real_user) {
         SR_LOG_ERR_MSG("Cannot allocate memory for real user name.");
@@ -361,7 +384,8 @@ sm_session_create(const sm_ctx_t *sm_ctx, sm_connection_t *connection,
         goto cleanup;
     }
 
-    SR_LOG_DBG("New session created succesfully, session_id=%"PRIu32".", session->id);
+    SR_LOG_INF("New session created successfully, real user=%s, effective user=%s, "
+            "session id=%"PRIu32".", real_user, effective_user, session->id);
 
     *session_p = session;
     return rc;
@@ -378,14 +402,14 @@ sm_session_drop(const sm_ctx_t *sm_ctx, sm_session_t *session)
 
     CHECK_NULL_ARG2(sm_ctx, session);
 
-    sm_connection_remove_session(sm_ctx, session->connection, session);
+    SR_LOG_INF("Dropping session id=%"PRIu32".", session->id);
+
+    rc = sm_connection_remove_session(sm_ctx, session->connection, session);
     if (SR_ERR_OK != rc) {
         SR_LOG_WRN("Cannot remove the session from connection (id=%"PRIu32").", session->id);
     }
 
     avl_delete(sm_ctx->session_id_avl, session); /* sm_session_cleanup auto-invoked */
-
-    SR_LOG_DBG("Session dropped succesfully, session_id=%"PRIu32".", session->id);
 
     return SR_ERR_OK;
 }
@@ -402,7 +426,7 @@ sm_session_find_id(const sm_ctx_t *sm_ctx, uint32_t session_id, sm_session_t **s
     node = avl_search(sm_ctx->session_id_avl, &tmp);
 
     if (NULL == node) {
-        SR_LOG_WRN("Cannot find session with id=%"PRIu32".", session_id);
+        SR_LOG_WRN("Cannot find the session with id=%"PRIu32".", session_id);
         return SR_ERR_NOT_FOUND;
     } else {
         *session = node->item;
@@ -419,7 +443,7 @@ sm_connection_find_fd(const sm_ctx_t *sm_ctx, const int fd, sm_connection_t **co
     CHECK_NULL_ARG2(sm_ctx, connection);
 
     if (SM_FD_INVALID == fd) {
-        SR_LOG_ERR_MSG("Invalid fd speciefied.");
+        SR_LOG_ERR_MSG("Invalid fd specified.");
         return SR_ERR_INVAL_ARG;
     }
 
@@ -427,7 +451,7 @@ sm_connection_find_fd(const sm_ctx_t *sm_ctx, const int fd, sm_connection_t **co
     node = avl_search(sm_ctx->connection_fd_avl, &tmp_conn);
 
     if (NULL == node) {
-        SR_LOG_WRN("Cannot find session list with fd=%d.", fd);
+        SR_LOG_WRN("Cannot find the connection with fd=%d.", fd);
         return SR_ERR_NOT_FOUND;
     } else {
         *connection = node->item;

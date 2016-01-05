@@ -37,6 +37,14 @@ message SessionStartResp {
   required uint32 session_id = 1;
 }
 
+message SessionStopReq {
+  required uint32 session_id = 1;
+}
+
+message SessionStopResp {
+  required uint32 session_id = 1;
+}
+
 message GetItemReq {
   required DataStore datastore = 1;
   required string path = 2;
@@ -71,6 +79,10 @@ message Req {
   required Operation operation = 1;
 
   optional SessionStartReq session_start_req = 10;
+  optional SessionStopReq session_stop_req = 11;
+  
+  optional GetItemReq get_item_req = 12;
+  optional GetItemsReq get_items_req = 13;
 }
 
 message Resp {
@@ -79,6 +91,10 @@ message Resp {
   optional string error_msg = 3;
 
   optional SessionStartResp session_start_resp = 10;
+  optional SessionStopResp session_stop_resp = 11;
+  
+  optional GetItemResp get_item_resp = 12;
+  optional GetItemsResp get_items_resp = 13;
 }
 
 message Msg {

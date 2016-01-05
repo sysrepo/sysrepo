@@ -23,19 +23,28 @@
 #define SESSION_MANAGER_H_
 
 #include <stdint.h>
+#include <stdbool.h>
+#include <sys/types.h>
 
 /**
  * @defgroup sm Session Manager
  * @{
  *
- * @brief Session manager holds information about all active sysrepo sessions.
+ * @brief Session manager tracks information about all active sysrepo sessions
+ * (see ::sm_session_t), including connection-related information
+ * (see ::sm_connection_t).
  *
- * It allows fast session lookup by provided session_id (::sm_session_t#id - see ::sm_session_find_id) or
- * by associated file desciptor (::sm_session_t#fd - see ::sm_session_find_fd).
+ * Sessions and connections are tied together, one connection can be used
+ * to serve multiple sessions.
+ *
+ * SM allows fast session lookup by provided session_id (::sm_session_t#id
+ * - see ::sm_session_find_id) and connection lookup by associated file descriptor
+ * (::sm_connection_t#fd - see ::sm_connection_find_fd).
  */
 
 /**
- * @brief Session manager context used to identify particular instance of Session manager.
+ * @brief Opaque Session Manager context used to identify particular instance of
+ * Session Manager.
  */
 typedef struct sm_ctx_s sm_ctx_t;
 
@@ -46,8 +55,8 @@ typedef struct sm_session_s {
     uint32_t id;                         /**< Auto-generated unique session ID (do not modify it). */
     struct sm_connection_s *connection;  /**< Connection associated with this session. */
 
-    const char *real_user;               /**< Real username of the other side. */
-    const char *effective_user;          /**< Effective username of the other side (if different to real_user). */
+    const char *real_user;               /**< Real user name of the other side. */
+    const char *effective_user;          /**< Effective user name of the other side (if different to real_user). */
 
     void *rp_data;                       /**< Request Processor session data, opaque to Session Manager. */
 } sm_session_t;
@@ -69,27 +78,29 @@ typedef enum {
 } sm_connection_type_t;
 
 /**
- * @brief Connection context structure, represents one particalar connection.
+ * @brief Buffers of raw data received from / to be sent to the other side.
+ */
+typedef struct sm_buffer_s {
+    uint8_t *data;  /**< data of the buffer */
+    size_t size;    /**< Current size of the buffer. */
+    size_t pos;     /**< Current position in the buffer */
+} sm_buffer_t;
+
+/**
+ * @brief Connection context structure, represents one particular connection.
  * Multiple sessions can be assigned to the same connection.
  */
 typedef struct sm_connection_s {
     sm_connection_type_t type;        /**< Type of the connection. */
     sm_session_list_t *session_list;  /**< List of sessions associated to the connection. */
 
-    int fd;  /**< File descriptor of the connection. */
+    int fd;                           /**< File descriptor of the connection. */
+    uid_t uid;                        /**< Peer's effective user ID. */
+    gid_t gid;                        /**< Peer's effective group ID. */
+    bool close_requested;             /**< Connection close requested. */
 
-    /**
-     * @brief Buffers used for send/receive data to/from the other side.
-     */
-    struct {
-        char *in_buff;           /**< Input buffer. If not empty, there is some message to be processed (or part of it). */
-        size_t in_buff_size;     /**< Current size of the input buffer. */
-        size_t in_buff_pos;      /**< Current possition in the input buffer (new data is appended starting from this position). */
-
-        char *out_buff;          /**< Output buffer. If not empty, there is some data to be sent when reciever is ready. */
-        size_t out_buff_size;    /**< Current size of the output buffer. */
-        size_t out_buff_pos;     /**< Current possition in the output buffer (new data is appended starting from this position). */
-    } buffers;
+    sm_buffer_t in_buff;   /**< Input buffer. If not empty, there is some received data to be processed. */
+    sm_buffer_t out_buff;  /**< Output buffer. If not empty, there is some data to be sent when receiver is ready. */
 } sm_connection_t;
 
 /**
@@ -114,26 +125,49 @@ int sm_init(sm_ctx_t **sm_ctx);
 void sm_cleanup(sm_ctx_t *sm_ctx);
 
 /**
- * TODO
+ * @brief Starts a new connection identified by provided file descriptor.
+ *
+ * Lookup for the connection identified by given session ID is possible with
+ * ::sm_connection_find_fd.
+ *
+ * @param[in] sm_ctx Session Manager context.
+ * @param[in] type Type of the connection.
+ * @param[in] fd File descriptor of the connection.
+ * @param[out] connection Allocated and initialized connection context.
+ *
+ * @return Error code (SR_ERR_OK on success).
  */
-int sm_connection_start(const sm_ctx_t *sm_ctx, const sm_connection_type_t type, const int fd,
-        sm_connection_t **connection);
+int sm_connection_start(const sm_ctx_t *sm_ctx, const sm_connection_type_t type,
+        const int fd, sm_connection_t **connection);
 
 /**
- * TODO
+ * @brief Stops the connection.
+ *
+ * All connection-related memory held by Session Manager will be freed.
+ *
+ * @note Sessions assigned to the connection won't be automatically dropped,
+ * they will be only unassigned from the connection (their pointers to the
+ * connection will become NULL) and explicit ::sm_session_drop is needed.
+ *
+ * @param[in] sm_ctx Session Manager context.
+ * @param[in] connection Connection context.
+ *
+ * @return Error code (SR_ERR_OK on success).
  */
 int sm_connection_stop(const sm_ctx_t *sm_ctx,  sm_connection_t *connection);
 
 /**
- * @brief Creates new session.
+ * @brief Creates new session and ties it with provided connection.
  *
  * A new unique session ID will be assigned and set to the allocated session
- * context (::sm_session_t#id). Lookup for a session by given session ID is possible
- * (see ::sm_session_find_id).
+ * context (::sm_session_t#id). Lookup for the session identified by given session
+ * ID is possible with ::sm_session_find_id.
  *
  * @param[in] sm_ctx Session Manager context.
- * @param[in] type Type of the session.
- * @param[out] session Allocated session context.
+ * @param[in] connection Connection where the session belongs.
+ * @param[in] real_user Real user name of the other side.
+ * @param[in] effective_user Effective user name of the other side.
+ * @param[out] session Allocated and initialized session context.
  *
  * @return Error code (SR_ERR_OK on success).
  */
@@ -141,10 +175,14 @@ int sm_session_create(const sm_ctx_t *sm_ctx, sm_connection_t *connection,
         const char *real_user, const char *effective_user, sm_session_t **session);
 
 /**
- * @brief Drops a session.
+ * @brief Drops the session.
  *
  * All session-related memory held by Session Manager will be freed, session ID
  * won't be valid anymore.
+ *
+ * @note Dropping of the last session of a connection won't cause automatic
+ * connection cleanup, explicit ::sm_connection_stop is needed if no new
+ * sessions are expected on the connection.
  *
  * @param[in] sm_ctx Session Manager context.
  * @param[in] session Session context.
@@ -154,7 +192,7 @@ int sm_session_create(const sm_ctx_t *sm_ctx, sm_connection_t *connection,
 int sm_session_drop(const sm_ctx_t *sm_ctx, sm_session_t *session);
 
 /**
- * @brief Finds session context assocaiated to provided session ID.
+ * @brief Finds session context associated to provided session ID.
  *
  * @param[in] sm_ctx Session Manager context.
  * @param[in] session_id ID of the session.
@@ -166,15 +204,13 @@ int sm_session_drop(const sm_ctx_t *sm_ctx, sm_session_t *session);
 int sm_session_find_id(const sm_ctx_t *sm_ctx, uint32_t session_id, sm_session_t **session);
 
 /**
- * @brief Finds session contexts associated to provided file descriptor.
- * @see sm_session_assign_fd
- * @see sm_session_list_t
+ * @brief Finds connection context associated to provided file descriptor.
  *
  * @param[in] sm_ctx Session Manager context.
- * @param[in] fd File Descriptor of sessions.
+ * @param[in] fd File descriptor of the connection.
  * @param[out] connection Connection context matching with provided file descriptor.
  *
- * @return Error code (SR_ERR_OK on success, SR_ERR_NOT_FOUND if session
+ * @return Error code (SR_ERR_OK on success, SR_ERR_NOT_FOUND if the connection
  * matching to fd cannot be found).
  */
 int sm_connection_find_fd(const sm_ctx_t *sm_ctx, const int fd, sm_connection_t **connection);
