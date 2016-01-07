@@ -1,4 +1,5 @@
 [![Build Status](https://travis-ci.org/sysrepo/sysrepo.svg)](https://travis-ci.org/sysrepo/sysrepo)
+[![codecov.io](https://codecov.io/github/sysrepo/sysrepo/coverage.svg?branch=master)](https://codecov.io/github/sysrepo/sysrepo?branch=master)
 
 ## Status
 - Dec 2015: working on the first milestone - internal infrastructure, get-config functionality
