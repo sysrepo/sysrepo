@@ -22,7 +22,7 @@ add_custom_target(proto DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${PROTO_NAME}.pb-c.c
 #setup library sources
 set(SYSREPO-SOURCES
     ${GENERATED_PROTO}
-    sr_client.c
+    client_library.c
     sr_common.c
     sr_logger.c
 )

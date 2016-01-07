@@ -79,14 +79,10 @@ typedef struct sr_val_s {
      */
     char *xpath;
 
-    /**
-     * Type of an item.
-     */
+    /** Type of an item. */
     sr_type_t type;
 
-    /**
-     * Data of an item (if applicable), properly set according to the type.
-     */
+    /** Data of an item (if applicable), properly set according to the type. */
     union {
         char *binary_val;
         char *bits_val;
@@ -107,9 +103,7 @@ typedef struct sr_val_s {
         uint64_t uint64_val;
     } data;
 
-    /**
-     * Length of the data, applicable for data types where their length may vary.
-     */
+    /** Length of the data, applicable for data types where their length may vary. */
     uint32_t length;
 } sr_val_t;
 
@@ -127,16 +121,12 @@ typedef enum sr_error_e {
     SR_ERR_DISCONNECT,   /**< The peer disconnected. */
 } sr_error_t;
 
-// TODO hide and make this opaque
-typedef struct sr_val_iter_s {
-  size_t index;
-} sr_val_iter_t;
-typedef sr_val_iter_t * sr_val_iter_p;
-
 /**
- * Returns the error message corresponding to the errcode
- * [in] err_code
- * return error mesage (statically allocated, do not free)
+ * @brief Returns the error message corresponding to the error code.
+ *
+ * @param[in] err_code Error code.
+ *
+ * @return Error message (statically allocated, do not free).
  */
 char *sr_strerror(int err_code);
 
@@ -144,12 +134,17 @@ char *sr_strerror(int err_code);
 // Session management
 ///////////////////////////////////////////////////////////////////////////////
 
-typedef enum sr_datastore_e{
-    SR_RUNNING = 0, /* note: direct writes to running are not allowed, changes need to be made via candidate */
-    SR_CANDIDATE = 1, 
-    SR_STARTUP = 2 /* note: direct writes to startup can be dangerous since applications are not notified upon changes and do not verify them. It is recommended to copy there from running instead (using sr_save_to_startup). */
-}sr_datastore_t;
-
+/**
+ * Data stores that sysrepo supports.
+ */
+typedef enum sr_datastore_e {
+    SR_RUNNING = 0,    /**< Currently running configuration.
+                            @note Direct writes to running are not allowed, changes need to be made via candidate. */
+    SR_CANDIDATE = 1,  /**< Candidate datastore - accepts configuration changes.
+                            @note Candidate is isolated for each session (not committed changes are not visible in other sessions). */
+    SR_STARTUP = 2     /**< Configuration loaded upon application startup.
+                            @note Direct writes to startup are not allowed, changes need to be made via running. */
+} sr_datastore_t;
 
 /*
  * Creates handle for sysrepo access and store application identifier
@@ -157,14 +152,14 @@ typedef enum sr_datastore_e{
  * [out] sr_ctx (allocated)
  * return err_code
  */
-int sr_connect(const bool allow_library_mode, sr_conn_ctx_t **conn_ctx);
+int sr_connect(const char *app_name, const bool allow_library_mode, sr_conn_ctx_t **conn_ctx);
 
 /**
  * Cleans up all sysrepo resources. All sessions created in the context will be automatically stopped.
  * [in] sr_ctx
  * return err_code
  */
-int sr_disconnect(const sr_conn_ctx_t *conn_ctx);
+void sr_disconnect(sr_conn_ctx_t *conn_ctx);
 
 /*
  * Starts a new user session
@@ -179,7 +174,6 @@ int sr_disconnect(const sr_conn_ctx_t *conn_ctx);
  */
 int sr_session_start(sr_conn_ctx_t *conn_ctx, const char *user_name, sr_datastore_t datastore, sr_session_ctx_t **session);
 
-
 /**
  * Stops current session and releases resources tied to the session.
  * [in] session
@@ -187,10 +181,14 @@ int sr_session_start(sr_conn_ctx_t *conn_ctx, const char *user_name, sr_datastor
  */
 int sr_session_stop(sr_session_ctx_t *session);
 
-
 //////////////////////////////////////////////////////////////////////
 //Read requests
 //////////////////////////////////////////////////////////////////////
+
+typedef struct sr_val_iter_s {
+  size_t index;
+} sr_val_iter_t;
+typedef sr_val_iter_t * sr_val_iter_p;
 
 /**
  * Retrieves a single element stored under provided path.

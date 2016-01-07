@@ -119,6 +119,8 @@ cm_server_init(cm_ctx_t *cm_ctx, const char *socket_path)
 
     CHECK_NULL_ARG2(cm_ctx, socket_path);
 
+    SR_LOG_DBG("Initializing sysrepo server at socket=%s", socket_path);
+
     fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (-1 == fd){
         SR_LOG_ERR("Socket create error: %s", strerror(errno));
