@@ -199,12 +199,17 @@ rp_dt_create_xpath_for_node(const struct lyd_node *data_tree, char **xpath)
     while (NULL != n){
         /*append slash to all nodes except the last one*/
         bool slash = i!=(level-1);
-        /*print namespace only for the root node*/
-        //TODO fix augments print namespace if it is different from last node
-        bool namespace = i==0;
-        if (NULL == n->schema){
+
+        if (NULL == n->schema || NULL == n->schema->module || NULL == n->schema->module->name
+                || (
+                NULL != n->parent
+                        && (NULL == n->parent || NULL == n->parent->schema || NULL == n->parent->schema->module
+                                || NULL == n->parent->schema->module->name))) {
             SR_LOG_ERR("Schema node at level %zu is NULL", i);
         }
+        /*print namespace for the root node and when there is an augment*/
+        bool namespace = NULL == n->parent || 0 != strcmp(n->parent->schema->module->name, n->schema->module->name);
+
         if (n->schema->nodetype & (LYS_LEAF | LYS_CONTAINER | LYS_LEAFLIST)){
             rc = rp_dt_create_xpath_for_cont_leaf_node(n, &parts[i], namespace, slash);
             if (SR_ERR_OK != rc){
@@ -452,7 +457,7 @@ rp_dt_get_value_from_node(struct lyd_node *node, sr_val_t **value){
         SR_LOG_ERR_MSG("Memory allocation failed.");
         return SR_ERR_NOMEM;
     }
-    val->path = xpath;
+    val->xpath = xpath;
 
     switch (node->schema->nodetype){
     case LYS_LEAF:
@@ -749,3 +754,20 @@ rp_dt_get_values(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp_lo
     return SR_ERR_OK;
 }
 
+
+int
+rp_dt_get_values_xpath(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char *xpath, sr_val_t ***values, size_t *count){
+    CHECK_NULL_ARG5(dm_ctx, data_tree, xpath, values, count);
+
+    int rc = SR_ERR_OK;
+    xp_loc_id_t *l = NULL;
+    rc = xp_char_to_loc_id(xpath, &l);
+
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Converting xpath '%s' to loc_id failed.", xpath);
+        return rc;
+    }
+    rc = rp_dt_get_values(dm_ctx, data_tree, l, values, count);
+    xp_free_loc_id(l);
+    return rc;
+}
