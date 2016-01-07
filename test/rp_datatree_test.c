@@ -68,7 +68,7 @@ void get_value_test(void **state){
 
     assert_int_equal(SR_STRING_T, value->type);
     assert_string_equal("Leaf value", value->data.string_val);
-    assert_string_equal(XPATH_FOR_VALUE, value->path);
+    assert_string_equal(XPATH_FOR_VALUE, value->xpath);
 
     sr_free_val_t(value);
     xp_free_loc_id(l);
@@ -77,14 +77,14 @@ void get_value_test(void **state){
 #define XPATH_FOR_LIST "/example-module:container/list[key1='key1'][key2='key2']"
     assert_int_equal(SR_ERR_OK, rp_dt_get_value_xpath(ctx, data_tree, XPATH_FOR_LIST, &value));
     assert_int_equal(SR_LIST_T, value->type);
-    assert_string_equal(XPATH_FOR_LIST, value->path);
+    assert_string_equal(XPATH_FOR_LIST, value->xpath);
     sr_free_val_t(value);
 
     /*container*/
 #define XPATH_FOR_CONTAINER "/example-module:container"
     assert_int_equal(SR_ERR_OK, rp_dt_get_value_xpath(ctx, data_tree, "/example-module:container", &value));
     assert_int_equal(SR_CONTAINER_T, value->type);
-    assert_string_equal(XPATH_FOR_CONTAINER, value->path);
+    assert_string_equal(XPATH_FOR_CONTAINER, value->xpath);
     sr_free_val_t(value);
 
     dm_session_stop(ctx, ses_ctx);

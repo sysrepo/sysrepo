@@ -273,7 +273,7 @@ rp_dt_copy_value(const struct lyd_node_leaf_list *leaf, LY_DATA_TYPE type, sr_va
     case LY_TYPE_BINARY:
     case LY_TYPE_BITS:
     case LY_TYPE_BOOL:
-        value->data.boolean_val = leaf->value.bln;
+        value->data.bool_val = leaf->value.bln;
         return SR_ERR_OK;
     case LY_TYPE_DEC64:
     case LY_TYPE_EMPTY:
@@ -438,7 +438,7 @@ rp_dt_get_value(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp_loc
         SR_LOG_ERR_MSG("Memory allocation failed.");
         return SR_ERR_NOMEM;
     }
-    val->path = xpath;//strdup(loc_id->xpath);
+    val->xpath = xpath;//strdup(loc_id->xpath);
 
 
     if (LYS_LEAF == node->schema->nodetype){
