@@ -282,7 +282,7 @@ rp_dt_copy_value(const struct lyd_node_leaf_list *leaf, LY_DATA_TYPE type, sr_va
     case LY_TYPE_BINARY:
     case LY_TYPE_BITS:
     case LY_TYPE_BOOL:
-        value->data.boolean_val = leaf->value.bln;
+        value->data.bool_val = leaf->value.bln;
         return SR_ERR_OK;
     case LY_TYPE_DEC64:
     case LY_TYPE_EMPTY:
@@ -393,8 +393,9 @@ rp_dt_lookup_node(struct lyd_node *data_tree, const xp_loc_id_t *loc_id, bool al
                     c = c->next;
                 }
 
-                if (matched_key != XP_GET_KEY_COUNT(loc_id, n)) {
-                    key_mismatch: curr = curr->next;
+                if(matched_key != XP_GET_KEY_COUNT(loc_id, n)){
+key_mismatch:
+                    curr = curr->next;
                     continue;
                 }
             } else if (LYS_LIST == curr->schema->nodetype) {
@@ -414,7 +415,8 @@ rp_dt_lookup_node(struct lyd_node *data_tree, const xp_loc_id_t *loc_id, bool al
         }
     }
 
-    match_done: if (n != XP_GET_NODE_COUNT(loc_id) || NULL == curr) {
+match_done:
+    if(n != XP_GET_NODE_COUNT(loc_id) || NULL == curr){
         SR_LOG_DBG("Match of xpath %s was not completed", loc_id->xpath);
         return SR_ERR_NOT_FOUND;
     }
@@ -688,7 +690,7 @@ rp_dt_get_nodes(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp_loc
         SR_LOG_ERR("Unsupported node type for xpath %s", loc_id->xpath);
         return SR_ERR_INTERNAL;
     }
-
+    return SR_ERR_INTERNAL;
 }
 
 int
@@ -747,19 +749,3 @@ rp_dt_get_values(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp_lo
     return SR_ERR_OK;
 }
 
-int
-rp_dt_get_values_xpath(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char *xpath, sr_val_t ***values, size_t *count){
-    CHECK_NULL_ARG5(dm_ctx, data_tree, xpath, values, count);
-
-    int rc = SR_ERR_OK;
-    xp_loc_id_t *l = NULL;
-    rc = xp_char_to_loc_id(xpath, &l);
-
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Converting xpath '%s' to loc_id failed.", xpath);
-        return rc;
-    }
-    rc = rp_dt_get_values(dm_ctx, data_tree, l, values, count);
-    xp_free_loc_id(l);
-    return rc;
-}

@@ -136,7 +136,7 @@ sr_libyang_type_to_sysrepo(LY_DATA_TYPE t)
 
 void
 sr_free_val_t(sr_val_t *value){
-    free(value->path);
+    free(value->xpath);
     if (SR_STRING_T == value->type){
         free(value->data.string_val);
     }

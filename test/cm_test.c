@@ -47,10 +47,13 @@ signal_handle(int sig)
 static int
 setup(void **state)
 {
-    sr_logger_init("cm-test");
-    sr_logger_set_level(SR_LL_DBG, SR_LL_ERR); /* print only errors. */
+    int rc = 0;
 
-    cm_init(CM_MODE_LOCAL, CM_AF_SOCKET_PATH, &ctx);
+    sr_logger_init("cm-test");
+    sr_logger_set_level(SR_LL_DBG, SR_LL_ERR); /* print debugs to stderr */
+
+    rc = cm_init(CM_MODE_LOCAL, CM_AF_SOCKET_PATH, &ctx);
+    assert_int_equal(rc, SR_ERR_OK);
     *state = ctx;
 
     /* installs signal handlers (for manual testing of daemon mode) */
@@ -60,7 +63,8 @@ setup(void **state)
     sigaction(SIGINT, &act, NULL);
     sigaction(SIGTERM, &act, NULL);
 
-    cm_start(ctx);
+    rc = cm_start(ctx);
+    assert_int_equal(rc, SR_ERR_OK);
 
     return 0;
 }
@@ -261,7 +265,7 @@ cm_communicate(int fd)
 }
 
 static void
-cm_simple(void **state) {
+cm_connect_test(void **state) {
     int i = 0, fd = 0;
 
     for (i = 0; i < 10; i++) {
@@ -274,7 +278,7 @@ cm_simple(void **state) {
 int
 main() {
     const struct CMUnitTest tests[] = {
-            cmocka_unit_test_setup_teardown(cm_simple, setup, teardown),
+            cmocka_unit_test_setup_teardown(cm_connect_test, setup, teardown),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);
