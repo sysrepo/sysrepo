@@ -31,6 +31,8 @@
 #include "rp_data_tree.h"
 #include "xpath_processor.h"
 
+#define LEAF_VALUE "leafV"
+
 int setup(void **state){
    int rc = 0;
    dm_ctx_t *ctx;
@@ -47,6 +49,38 @@ int teardown(void **state){
     return rc;
 }
 
+void createDataTree(struct ly_ctx *ctx, struct lyd_node **root){
+    struct lyd_node *node = NULL;
+    const struct lys_module *module = ly_ctx_get_module(ctx, "example-module",NULL);
+    assert_non_null(module);
+
+    *root = lyd_new(NULL, module, "container");
+    assert_non_null(root);
+
+    node = lyd_new(*root, module, "list");
+    assert_non_null(lyd_new_leaf(node, module, "key1", "key1"));
+    assert_non_null(lyd_new_leaf(node, module, "key2", "key2"));
+    assert_non_null(lyd_new_leaf(node, module, "leaf", LEAF_VALUE));
+
+    node = lyd_new(*root, module, "list");
+    assert_non_null(lyd_new_leaf(node, module, "key1", "keyA"));
+    assert_non_null(lyd_new_leaf(node, module, "key2", "keyB"));
+    assert_non_null(lyd_new_leaf(node, module, "leaf", "leafAB"));
+
+    node = lyd_new_leaf(NULL,module,"number","42");
+    assert_non_null(node);
+    assert_int_equal(0, lyd_insert_after(*root, node));
+
+    node = lyd_new_leaf(NULL,module,"number","1");
+    assert_non_null(node);
+    assert_int_equal(0, lyd_insert_after(*root, node));
+
+    node = lyd_new_leaf(NULL,module,"number","2");
+    assert_non_null(node);
+    lyd_insert_after(*root, node);
+
+}
+
 void get_values_test(void **state){
     int rc = 0;
     dm_ctx_t *ctx = *state;
@@ -56,18 +90,66 @@ void get_values_test(void **state){
     rc = dm_get_datatree(ctx, ses_ctx, "example-module", &data_tree);
     assert_int_equal(SR_ERR_OK, rc);
 
+    struct lyd_node *root = NULL;
+    createDataTree(data_tree->schema->module->ctx, &root);
+    assert_non_null(root);
 
     sr_val_t **values;
     size_t count;
 
-#define XP "/example-module:container/list[key1='key1'][key2='key2']"
-    rc = rp_dt_get_values_xpath(ctx, data_tree, XP, &values, &count);
-    for (size_t i = 0; i<count; i++){
-        puts(values[i]->path);
+#define XP_LEAF "/example-module:container/list[key1='key1'][key2='key2']/leaf"
+    rc = rp_dt_get_values_xpath(ctx, root, XP_LEAF, &values, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(1, count);
+    for (size_t i = 0; i < count; i++) {
+        assert_string_equal(XP_LEAF, values[i]->path);
+        assert_string_equal(LEAF_VALUE, values[i]->data.string_val);
         sr_free_val_t(values[i]);
     }
     free(values);
+
+#define XP_LIST_WITH_KEYS "/example-module:container/list[key1='key1'][key2='key2']"
+    rc = rp_dt_get_values_xpath(ctx, root, XP_LIST_WITH_KEYS, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(3, count);
+    for (size_t i = 0; i < count; i++) {
+        assert_int_equal(0, strncmp(XP_LIST_WITH_KEYS, values[i]->path, strlen(XP_LIST_WITH_KEYS)));
+        sr_free_val_t(values[i]);
+    }
+    free(values);
+
+#define XP_LIST_WITHOUT_KEYS "/example-module:container/list"
+    rc = rp_dt_get_values_xpath(ctx, root, XP_LIST_WITHOUT_KEYS, &values, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(2, count);
+    for (size_t i = 0; i < count; i++) {
+        assert_int_equal(0, strncmp(XP_LIST_WITHOUT_KEYS, values[i]->path, strlen(XP_LIST_WITHOUT_KEYS)));
+        sr_free_val_t(values[i]);
+    }
+    free(values);
+
+#define XP_CONTAINER "/example-module:container"
+    rc = rp_dt_get_values_xpath(ctx, root, XP_LIST_WITHOUT_KEYS, &values, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(2, count);
+    for (size_t i = 0; i < count; i++) {
+        assert_int_equal(0, strncmp(XP_CONTAINER, values[i]->path, strlen(XP_CONTAINER)));
+        sr_free_val_t(values[i]);
+    }
+    free(values);
+
+#define XP_LEAFLIST "/example-module:number"
+    rc = rp_dt_get_values_xpath(ctx, root, XP_LEAFLIST, &values, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(3, count);
+    for (size_t i = 0; i < count; i++) {
+        assert_string_equal(XP_LEAFLIST, values[i]->path);
+        printf("Leaf list %d\n", values[i]->data.uint16_val);
+        sr_free_val_t(values[i]);
+    }
+    free(values);
+
+    sr_free_datatree(root);
 
     dm_session_stop(ctx, ses_ctx);
 }

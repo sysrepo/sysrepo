@@ -205,7 +205,7 @@ rp_dt_create_xpath_for_node(const struct lyd_node *data_tree, char **xpath)
         if (NULL == n->schema){
             SR_LOG_ERR("Schema node at level %zu is NULL", i);
         }
-        if (n->schema->nodetype & (LYS_LEAF | LYS_CONTAINER)){
+        if (n->schema->nodetype & (LYS_LEAF | LYS_CONTAINER | LYS_LEAFLIST)){
             rc = rp_dt_create_xpath_for_cont_leaf_node(n, &parts[i], namespace, slash);
             if (SR_ERR_OK != rc){
                SR_LOG_ERR_MSG("Creating xpath failed.");
@@ -226,6 +226,14 @@ rp_dt_create_xpath_for_node(const struct lyd_node *data_tree, char **xpath)
                 free(parts);
                 return rc;
             }
+        }
+        else{
+            SR_LOG_ERR_MSG("Unsupported node type.");
+            for (size_t j = 0; j < i; j++) {
+                free(parts[j]);
+            }
+            free(parts);
+            return SR_ERR_INTERNAL;
         }
         n = n->parent;
         i--;

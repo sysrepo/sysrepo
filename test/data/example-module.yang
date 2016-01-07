@@ -21,4 +21,8 @@ module example-module {
          key "key1 key2";
       }
    }
+
+   leaf-list number {
+      type uint16;
+   }
 }
