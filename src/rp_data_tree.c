@@ -200,11 +200,9 @@ rp_dt_create_xpath_for_node(const struct lyd_node *data_tree, char **xpath)
         /*append slash to all nodes except the last one*/
         bool slash = i!=(level-1);
 
-        if (NULL == n->schema || NULL == n->schema->module || NULL == n->schema->module->name
-                || (
-                NULL != n->parent
-                        && (NULL == n->parent || NULL == n->parent->schema || NULL == n->parent->schema->module
-                                || NULL == n->parent->schema->module->name))) {
+        if (NULL == n->schema || NULL == n->schema->module || NULL == n->schema->module->name ||
+           (NULL != n->parent && (NULL == n->parent || NULL == n->parent->schema ||
+                   NULL == n->parent->schema->module || NULL == n->parent->schema->module->name))) {
             SR_LOG_ERR("Schema node at level %zu is NULL", i);
         }
         /*print namespace for the root node and when there is an augment*/

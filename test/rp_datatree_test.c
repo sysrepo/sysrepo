@@ -172,7 +172,7 @@ void get_values_test(void **state){
     dm_session_stop(ctx, ses_ctx);
 }
 
-void get_values_with_augments(void **state){
+void get_values_with_augments_test(void **state){
     int rc = 0;
     dm_ctx_t *ctx = *state;
     dm_session_t *ses_ctx = NULL;
@@ -186,12 +186,13 @@ void get_values_with_augments(void **state){
     assert_int_equal(SR_ERR_OK, rc);
     createDataTreeWithAugments(data_tree->schema->module->ctx, &root);
     assert_non_null(root);
-
-    rc = rp_dt_get_values_xpath(ctx, root, "/small-module:item", &values, &count);
+#define SM_MODULE "/small-module:item"
+    rc = rp_dt_get_values_xpath(ctx, root, SM_MODULE, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(2, count);
 
     for (size_t i = 0; i < count; i++) {
-        printf("%s\n", values[i]->xpath);
+        assert_int_equal(0, strncmp(SM_MODULE, values[i]->xpath, strlen(SM_MODULE)));
         sr_free_val_t(values[i]);
     }
     free(values);
@@ -335,7 +336,7 @@ int main(){
             cmocka_unit_test(get_node_test_not_found),
             cmocka_unit_test(get_value_test),
             cmocka_unit_test(get_values_test),
-            cmocka_unit_test(get_values_with_augments),
+            cmocka_unit_test(get_values_with_augments_test),
     };
     return cmocka_run_group_tests(tests, setup, teardown);
 }
