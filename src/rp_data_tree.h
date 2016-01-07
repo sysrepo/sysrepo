@@ -76,7 +76,55 @@ int rp_dt_get_value(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp
  */
 int rp_dt_get_value_xpath(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char *xpath, sr_val_t **value);
 
-int rp_dt_get_values(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp_loc_id_t *loc_id, sr_val_t **values, size_t *count);
+/**
+ * @brief Returns nodes under specified location_id. For leaf returns the same as rp_dt_get_node. If location_id identifies
+ * the container returns its children. If the location_id identifies the list instance and all key values defined
+ * the children of the list instance is returned. If the location_id identifies the list and key values for the last list
+ * are omitted, all instances of the list are returned. Finally, if the location_id identifies leaf-list all its members
+ * are returned. If SR_ERR_OK is returned nodes must be freed by caller.
+ * @param [in] dm_ctx
+ * @param [in] data_tree
+ * @param [in] loc_id
+ * @param [out] nodes
+ * @param [out] count
+ * @return err_code
+ */
+int rp_dt_get_nodes(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp_loc_id_t *loc_id, struct lyd_node ***nodes, size_t *count);
+
+/**
+ * @brief Converts the xpath to loc_id and calls ::rp_dt_get_nodes internally.
+ * @param [in] dm_ctx
+ * @param [in] data_tree
+ * @param [in] xpath
+ * @param [out] nodes
+ * @param [out] count
+ * @return err_code
+ */
+int rp_dt_get_nodes_xpath(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char *xpath, struct lyd_node ***nodes, size_t *count);
+
+/**
+ * @brief Retrieves all nodes corresponding to location_id using ::rp_dt_get_value_xpath and copy all values.
+ * @param [in] dm_ctx
+ * @param [in] data_tree
+ * @param [in] loc_id
+ * @param [out] values
+ * @param [out] count
+ * @return err_code
+ */
+int rp_dt_get_values(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp_loc_id_t *loc_id, sr_val_t ***values, size_t *count);
+
+
+/**
+ * @brief Converts the xpath to loc_id and calls ::rp_dt_get_values internally.
+ * @param [in] dm_ctx
+ * @param [in] data_tree
+ * @param [in] xpath
+ * @param [out] values
+ * @param [out] count
+ * @return err_code
+ */
+int rp_dt_get_values_xpath(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char *xpath, sr_val_t ***values, size_t *count);
+
 
 
 /**

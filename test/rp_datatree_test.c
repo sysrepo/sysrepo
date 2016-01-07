@@ -47,6 +47,30 @@ int teardown(void **state){
     return rc;
 }
 
+void get_values_test(void **state){
+    int rc = 0;
+    dm_ctx_t *ctx = *state;
+    dm_session_t *ses_ctx = NULL;
+    struct lyd_node *data_tree = NULL;
+    dm_session_start(ctx, &ses_ctx);
+    rc = dm_get_datatree(ctx, ses_ctx, "example-module", &data_tree);
+    assert_int_equal(SR_ERR_OK, rc);
+
+
+    sr_val_t **values;
+    size_t count;
+
+#define XP "/example-module:container/list[key1='key1'][key2='key2']"
+    rc = rp_dt_get_values_xpath(ctx, data_tree, XP, &values, &count);
+    for (size_t i = 0; i<count; i++){
+        puts(values[i]->path);
+        sr_free_val_t(values[i]);
+    }
+    free(values);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    dm_session_stop(ctx, ses_ctx);
+}
 
 void get_value_test(void **state){
     int rc = 0;
@@ -181,6 +205,7 @@ int main(){
             cmocka_unit_test(get_node_test_found),
             cmocka_unit_test(get_node_test_not_found),
             cmocka_unit_test(get_value_test),
+            cmocka_unit_test(get_values_test),
     };
     return cmocka_run_group_tests(tests, setup, teardown);
 }
