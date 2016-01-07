@@ -453,6 +453,7 @@ rp_dt_get_value_from_node(struct lyd_node *node, sr_val_t **value){
     sr_val_t *val = calloc(1, sizeof(*val));
     if (NULL == value) {
         SR_LOG_ERR_MSG("Memory allocation failed.");
+        free(xpath);
         return SR_ERR_NOMEM;
     }
     val->xpath = xpath;
@@ -470,6 +471,8 @@ rp_dt_get_value_from_node(struct lyd_node *node, sr_val_t **value){
 
         if (SR_ERR_OK != rp_dt_copy_value(data_leaf, sch_leaf->type.base, val)) {
             SR_LOG_ERR_MSG("Copying of value failed");
+            free(val->xpath);
+            free(val);
             return SR_ERR_INTERNAL;
         }
         break;
@@ -491,11 +494,15 @@ rp_dt_get_value_from_node(struct lyd_node *node, sr_val_t **value){
 
         if (SR_ERR_OK != rp_dt_copy_value(data_leaf, sch_leaflist->type.base, val)) {
             SR_LOG_ERR_MSG("Copying of value failed");
+            free(val->xpath);
+            free(val);
             return SR_ERR_INTERNAL;
         }
         break;
     default:
         SR_LOG_WRN_MSG("Get value is not implemented for this node type");
+        free(val->xpath);
+        free(val);
         return SR_ERR_INTERNAL;
     }
     *value = val;
@@ -722,7 +729,6 @@ rp_dt_get_values(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp_lo
     rc = rp_dt_get_nodes(dm_ctx, data_tree, loc_id, &nodes, count);
     if (SR_ERR_OK != rc){
         SR_LOG_ERR("Get nodes for xpath %s failed", loc_id->xpath);
-        free(nodes);
         return SR_ERR_INTERNAL;
     }
 
