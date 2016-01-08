@@ -22,6 +22,7 @@
 #ifndef REQUEST_PROCESSOR_H_
 #define REQUEST_PROCESSOR_H_
 
+#include "connection_manager.h"
 #include "sysrepo.pb-c.h"
 
 /**
@@ -34,14 +35,17 @@ typedef struct rp_ctx_s rp_ctx_t;
  */
 typedef struct rp_session_s rp_session_t;
 
-int rp_init(rp_ctx_t **rp_ctx);
+typedef struct cm_ctx_s cm_ctx_t; /* forward declaration */
 
-int rp_cleanup(rp_ctx_t *rp_ctx);
+int rp_init(cm_ctx_t *cm_ctx, rp_ctx_t **rp_ctx);
 
-int rp_session_start(const rp_ctx_t *rp_ctx, const char *user_name, const void *cm_session_ctx, rp_session_t **rp_session_ctx);
+void rp_cleanup(rp_ctx_t *rp_ctx);
 
-int rp_session_stop(const rp_ctx_t *rp_ctx, rp_session_t *rp_session_ctx);
+int rp_session_start(const rp_ctx_t *rp_ctx, const char *real_user, const char *effective_user,
+        const uint32_t session_id, const sr_datastore_t datastore, rp_session_t **session);
 
-int rp_msg_process(const rp_ctx_t *rp_ctx, const rp_session_t *rp_session_ctx, Sr__Msg *msg);
+int rp_session_stop(const rp_ctx_t *rp_ctx, rp_session_t *session);
+
+int rp_msg_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg);
 
 #endif /* REQUEST_PROCESSOR_H_ */

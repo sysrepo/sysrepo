@@ -134,7 +134,7 @@ int cm_stop(cm_ctx_t *cm_ctx);
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int cm_msg_send(const cm_ctx_t *cm_ctx, Sr__Msg *msg);
+int cm_msg_send(cm_ctx_t *cm_ctx, Sr__Msg *msg);
 
 /**@} cm */
 

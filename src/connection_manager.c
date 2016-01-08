@@ -37,6 +37,7 @@
 
 #include "sr_common.h"
 #include "session_manager.h"
+#include "request_processor.h"
 #include "connection_manager.h"
 
 #define CM_FD_INVALID -1  /**< Invalid value of file descriptor. */
@@ -66,7 +67,9 @@ typedef struct cm_ctx_s {
     cm_connection_mode_t mode;
 
     /** Session Manager context. */
-    sm_ctx_t *session_manager;
+    sm_ctx_t *sm_ctx;
+    /** Request Processor context. */
+    rp_ctx_t *rp_ctx;
 
     /** Path where unix-domain server is binded to. */
     const char *server_socket_path;
@@ -314,7 +317,7 @@ cm_server_accept(cm_ctx_t *cm_ctx)
                 continue;
             }
             /* start connection in session manager */
-            rc = sm_connection_start(cm_ctx->session_manager, CM_AF_UNIX_CLIENT, clnt_fd, &connection);
+            rc = sm_connection_start(cm_ctx->sm_ctx, CM_AF_UNIX_CLIENT, clnt_fd, &connection);
             if (SR_ERR_OK != rc) {
                 SR_LOG_ERR("Cannot start connection in Session manager (fd=%d).", clnt_fd);
                 close(clnt_fd);
@@ -325,7 +328,7 @@ cm_server_accept(cm_ctx_t *cm_ctx)
                 if (connection->uid != geteuid()) {
                     SR_LOG_ERR("Peer's uid=%d does not match with local uid=%d "
                             "(required by local mode).", connection->uid, geteuid());
-                    sm_connection_stop(cm_ctx->session_manager, connection);
+                    sm_connection_stop(cm_ctx->sm_ctx, connection);
                     close(clnt_fd);
                     continue;
                 }
@@ -380,12 +383,14 @@ cm_conn_close(cm_ctx_t *cm_ctx, sm_connection_t *conn)
     while (NULL != conn->session_list) {
         sess = conn->session_list;
 
-        // TODO: drop session in Request Processor
+        /* stop the session in Request Processor */
+        rp_session_stop(cm_ctx->rp_ctx, sess->session->rp_session);
 
-        sm_session_drop(cm_ctx->session_manager, sess->session); /* also removes from conn->session_list */
+        /* drop the session in Session manager */
+        sm_session_drop(cm_ctx->sm_ctx, sess->session); /* also removes from conn->session_list */
     }
 
-    sm_connection_stop(cm_ctx->session_manager, conn);
+    sm_connection_stop(cm_ctx->sm_ctx, conn);
 
     return rc;
 }
@@ -516,12 +521,12 @@ cm_msg_send_session(cm_ctx_t *cm_ctx, sm_session_t *session, Sr__Msg *msg)
         sr__msg__pack(msg, (buff->data + buff->pos));
         buff->pos += msg_size;
 
-        /* release the message */
-        sr__msg__free_unpacked(msg, NULL);
-
         /* flush the buffer */
         rc = cm_conn_out_buff_flush(cm_ctx, session->connection);
     }
+
+    /* release the message */
+    sr__msg__free_unpacked(msg, NULL);
 
     return rc;
 }
@@ -552,7 +557,7 @@ cm_session_start_req_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, Sr__Msg *m
     pws = getpwuid(conn->uid);
 
     /* create the session in SM */
-    rc = sm_session_create(cm_ctx->session_manager, conn, pws->pw_name,
+    rc = sm_session_create(cm_ctx->sm_ctx, conn, pws->pw_name,
             msg_in->request->session_start_req->user_name, &session);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Unable to create the session in Session Manager (conn=%p).", (void*)conn);
@@ -564,12 +569,17 @@ cm_session_start_req_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, Sr__Msg *m
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Cannot allocate the response for session_start request (conn=%p).", (void*)conn);
         if (NULL != session) {
-            sm_session_drop(cm_ctx->session_manager, session);
+            sm_session_drop(cm_ctx->sm_ctx, session);
         }
         return SR_ERR_NOMEM;
     }
 
-    // TODO: start session in Request Processor
+    /* start session in Request Processor */
+    rc = rp_session_start(cm_ctx->rp_ctx, session->real_user, session->effective_user, session->id,
+            /* TODO datastore */SR_CANDIDATE, &session->rp_session);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Cannot start Request Processor session (conn=%p).", (void*)conn);
+    }
 
     if (SR_ERR_OK == rc) {
         /* set the id to response */
@@ -625,7 +635,10 @@ cm_session_stop_req_process(cm_ctx_t *cm_ctx, sm_session_t *session, Sr__Msg *ms
         }
     }
 
-    // TODO: call sesion_stop in Request Processor
+    /* stop session in Request Processor */
+    if (SR_ERR_OK == rc) {
+        rc = rp_session_stop(cm_ctx->rp_ctx, session->rp_session);
+    }
 
     if (SR_ERR_OK == rc) {
         /* set the id to response */
@@ -643,7 +656,7 @@ cm_session_stop_req_process(cm_ctx_t *cm_ctx, sm_session_t *session, Sr__Msg *ms
 
     /* drop session in SM - must be called AFTER sending */
     if (SR_ERR_OK == rc) {
-        rc = sm_session_drop(cm_ctx->session_manager, session);
+        rc = sm_session_drop(cm_ctx->sm_ctx, session);
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR("Unable to drop the session in Session Manager (session id=%"PRIu32").", session->id);
         }
@@ -670,7 +683,7 @@ cm_conn_msg_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, uint8_t *msg_data, 
 
     /* find matching session (except for session_start request) */
     if ((SR__MSG__MSG_TYPE__REQUEST != msg->type) || (SR__OPERATION__SESSION_START != msg->request->operation)) {
-        rc = sm_session_find_id(cm_ctx->session_manager, msg->session_id, &session);
+        rc = sm_session_find_id(cm_ctx->sm_ctx, msg->session_id, &session);
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR("Unable to find session context for session id=%"PRIu32" (conn=%p).",
                     msg->session_id, (void*)conn);
@@ -681,6 +694,7 @@ cm_conn_msg_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, uint8_t *msg_data, 
 
     if ((SR__MSG__MSG_TYPE__REQUEST == msg->type) && (NULL != msg->request)) {
         /* request handling */
+
         switch (msg->request->operation) {
             case SR__OPERATION__SESSION_START:
                 rc = cm_session_start_req_process(cm_ctx, conn, msg);
@@ -691,13 +705,15 @@ cm_conn_msg_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, uint8_t *msg_data, 
                 release_msg = true;
                 break;
             default:
-                // TODO: forward msg to Request Processor
+                /* forward the message to Request Processor */
+                rc = rp_msg_process(cm_ctx->rp_ctx, session->rp_session, msg);
                 break;
         }
     } else if ((SR__MSG__MSG_TYPE__RESPONSE == msg->type) && (NULL != msg->response)) {
         /* response handling */
 
-        // TODO forward msg to Request Processor
+        /* forward the message to Request Processor */
+        rc = rp_msg_process(cm_ctx->rp_ctx, session->rp_session, msg);
     } else {
         /* malformed message type */
         SR_LOG_ERR("Message with malformed type received (conn=%p).", (void*)conn);
@@ -780,7 +796,7 @@ cm_conn_read(cm_ctx_t *cm_ctx, int fd)
     SR_LOG_DBG("fd %d readable", fd);
 
     /* find matching SM connection */
-    rc = sm_connection_find_fd(cm_ctx->session_manager, fd, &conn);
+    rc = sm_connection_find_fd(cm_ctx->sm_ctx, fd, &conn);
     if ((SR_ERR_OK != rc) || (NULL == conn)) {
         SR_LOG_ERR("No SM connection assigned to fd=%d.", fd);
         return SR_ERR_OK;
@@ -852,7 +868,7 @@ cm_conn_write(cm_ctx_t *cm_ctx, int fd)
     SR_LOG_DBG("fd %d writeable", fd);
 
     /* find matching SM connection */
-    rc = sm_connection_find_fd(cm_ctx->session_manager, fd, &conn);
+    rc = sm_connection_find_fd(cm_ctx->sm_ctx, fd, &conn);
     if ((SR_ERR_OK != rc) || (NULL == conn)) {
         SR_LOG_ERR("No SM connection assigned to fd=%d.", fd);
         return SR_ERR_OK;
@@ -1015,7 +1031,7 @@ cm_init(const cm_connection_mode_t mode, const char *socket_path, cm_ctx_t **cm_
     }
     ctx->mode = mode;
 
-    rc = sm_init(&ctx->session_manager);
+    rc = sm_init(&ctx->sm_ctx);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Cannot initialize Session Manager.");
         goto cleanup;
@@ -1039,6 +1055,12 @@ cm_init(const cm_connection_mode_t mode, const char *socket_path, cm_ctx_t **cm_
         goto cleanup;
     }
 
+    rc = rp_init(ctx, &ctx->rp_ctx);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Cannot initialize Request Processor.");
+        goto cleanup;
+    }
+
     SR_LOG_DBG_MSG("Connection Manager initialized successfully.");
 
     *cm_ctx_p = ctx;
@@ -1052,11 +1074,14 @@ cleanup:
 void
 cm_cleanup(cm_ctx_t *cm_ctx)
 {
-    cm_select_cleanup(cm_ctx);
-    cm_server_cleanup(cm_ctx);
-    cm_out_msg_queue_cleanup(cm_ctx);
-    sm_cleanup(cm_ctx->session_manager);
-    free(cm_ctx);
+    if (NULL != cm_ctx) {
+        rp_cleanup(cm_ctx->rp_ctx);
+        cm_select_cleanup(cm_ctx);
+        cm_server_cleanup(cm_ctx);
+        cm_out_msg_queue_cleanup(cm_ctx);
+        sm_cleanup(cm_ctx->sm_ctx);
+        free(cm_ctx);
+    }
 }
 
 int
@@ -1116,6 +1141,30 @@ cm_stop(cm_ctx_t *cm_ctx)
         pthread_kill(cm_ctx->event_loop_thread, CM_SIG_STOP);
         /* block until cleanup is finished */
         pthread_join(cm_ctx->event_loop_thread, NULL);
+    }
+
+    return SR_ERR_OK;
+}
+
+int
+cm_msg_send(cm_ctx_t *cm_ctx, Sr__Msg *msg)
+{
+    sm_session_t *session = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG2(cm_ctx, msg);
+
+    rc = sm_session_find_id(cm_ctx->sm_ctx, msg->session_id, &session);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Unable to find the session matching with id specified in the message "
+                "(id=%"PRIu32").", msg->session_id);
+        return rc;
+    }
+
+    rc = cm_msg_send_session(cm_ctx, session, msg);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Unable to send the message over session (id=%"PRIu32").", msg->session_id);
+        return rc;
     }
 
     return SR_ERR_OK;

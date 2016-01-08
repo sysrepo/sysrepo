@@ -26,6 +26,8 @@
 #include <stdbool.h>
 #include <sys/types.h>
 
+#include "request_processor.h"
+
 /**
  * @defgroup sm Session Manager
  * @{
@@ -58,7 +60,7 @@ typedef struct sm_session_s {
     const char *real_user;               /**< Real user name of the other side. */
     const char *effective_user;          /**< Effective user name of the other side (if different to real_user). */
 
-    void *rp_data;                       /**< Request Processor session data, opaque to Session Manager. */
+    rp_session_t *rp_session;            /**< Request Processor session data, opaque to Session Manager. */
 } sm_session_t;
 
 /**

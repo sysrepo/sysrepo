@@ -194,7 +194,7 @@ typedef sr_val_iter_t * sr_val_iter_p;
 
 /**
  * Retrieves a single element stored under provided path.
- * If the path identifies an empty leaf or a presenece container, the value has no data filled in 
+ * If the path identifies an empty leaf or a presence container, the value has no data filled in
  * and its type is set properly (SR_LEAF_EMPTY_T / SR_CONTAINER_PRESENCE_T). 
  * Returns error if the path identifies a list, non-presence container or leaf-list,
  * SR_ERR_NOT_FOUND if the entity is not present in the data tree, or the user does not have read
