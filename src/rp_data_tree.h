@@ -103,7 +103,7 @@ int rp_dt_get_nodes(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp
 int rp_dt_get_nodes_xpath(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char *xpath, struct lyd_node ***nodes, size_t *count);
 
 /**
- * @brief Retrieves all nodes corresponding to location_id using ::rp_dt_get_value_xpath and copy all values.
+ * @brief Retrieves all nodes corresponding to location_id using ::rp_dt_get_nodes and copy all values.
  * @param [in] dm_ctx
  * @param [in] data_tree
  * @param [in] loc_id
