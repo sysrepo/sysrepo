@@ -56,7 +56,7 @@ typedef struct sr_session_ctx_s {
  * Linked-list of sessions.
  */
 typedef struct sr_session_list_s {
-    sr_session_ctx_t session;        /**< Session context. */
+    sr_session_ctx_t *session;       /**< Session context. */
     struct sr_session_list_s *next;  /**< Next element in the linked-list. */
 } sr_session_list_t;
 
@@ -120,6 +120,74 @@ cl_engine_init_local(sr_conn_ctx_t *conn_ctx, const char *socket_path)
     }
 
     return rc;
+}
+
+/**
+ * @brief Adds a new session to the session list of the connection.
+ */
+static int
+cl_conn_add_session(sr_conn_ctx_t *connection, sr_session_ctx_t *session)
+{
+    sr_session_list_t *session_item = NULL, *tmp = NULL;
+
+    CHECK_NULL_ARG2(connection, session);
+
+    session_item = calloc(1, sizeof(*session_item));
+    if (NULL == session_item) {
+        SR_LOG_ERR_MSG("Cannot allocate memory for new session list entry.");
+        return SR_ERR_NOMEM;
+    }
+    session_item->session = session;
+
+    /* append session entry at the end of list */
+    if (NULL == connection->session_list) {
+        connection->session_list = session_item;
+    } else {
+        tmp = connection->session_list;
+        while (NULL != tmp->next) {
+            tmp = tmp->next;
+        }
+        tmp->next = session_item;
+    }
+
+    return SR_ERR_OK;
+}
+
+/**
+ * @brief Removes a session from the session list of the connection.
+ */
+static int
+cl_conn_remove_session(sr_conn_ctx_t *connection, sr_session_ctx_t *session)
+{
+    sr_session_list_t *tmp = NULL, *prev = NULL;
+
+    CHECK_NULL_ARG2(connection, session);
+
+    /* find matching session in linked list */
+    tmp = connection->session_list;
+    while ((NULL != tmp) && (tmp->session != session)) {
+        prev = tmp;
+        tmp = tmp->next;
+    }
+
+    /* remove the session from linked-list */
+    if (NULL != tmp) {
+        if (NULL != prev) {
+            /* tmp is NOT the first item in list - skip it */
+            prev->next = tmp->next;
+        } else if (NULL != tmp->next) {
+            /* tmp is the first, but not last item in list - skip it */
+            connection->session_list = tmp->next;
+        } else {
+            /* tmp is the only item in the list */
+            connection->session_list = NULL;
+        }
+        free(tmp);
+    } else {
+        SR_LOG_WRN("Session %p not found in session list of connection.", (void*)session);
+    }
+
+    return SR_ERR_OK;
 }
 
 /**
@@ -283,16 +351,29 @@ cleanup:
 void
 sr_disconnect(sr_conn_ctx_t *conn_ctx)
 {
+    sr_session_list_t *session = NULL, *tmp = NULL;
+
     if (NULL != conn_ctx) {
         if (NULL != conn_ctx->local_cm) {
             /* destroy our own sysrepo engine */
             cm_stop(conn_ctx->local_cm);
             cm_cleanup(conn_ctx->local_cm);
         }
+
         if (conn_ctx->primary) {
             /* destroy global resources */
             sr_logger_cleanup();
         }
+
+        /* destroy all sessions */
+        session = conn_ctx->session_list;
+        while (NULL != session) {
+            tmp = session;
+            session = session->next;
+            free(tmp->session);
+            free(tmp);
+        }
+
         close(conn_ctx->fd);
         free(conn_ctx);
     }
@@ -356,6 +437,12 @@ sr_session_start(sr_conn_ctx_t *conn_ctx, const char *user_name, sr_datastore_t 
     session->id = msg->response->session_start_resp->session_id;
     sr__msg__free_unpacked(msg, NULL);
 
+    /* store the session the in connection */
+    rc = cl_conn_add_session(conn_ctx, session);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_WRN_MSG("Error by adding the session to the connection session list.");
+    }
+
     session->conn_ctx = conn_ctx;
     *session_p = session;
 
@@ -413,6 +500,12 @@ int sr_session_stop(sr_session_ctx_t *session)
                 (NULL != msg->response->error_msg) ? msg->response->error_msg : sr_strerror(msg->response->result));
         rc = msg->response->result;
         goto cleanup;
+    }
+
+    /* remove the session from connection */
+    rc = cl_conn_remove_session(session->conn_ctx, session);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_WRN_MSG("Error by removing the session from the connection session list.");
     }
 
     sr__msg__free_unpacked(msg, NULL);

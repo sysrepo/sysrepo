@@ -137,7 +137,7 @@ sm_connection_add_session(const sm_ctx_t *sm_ctx, sm_connection_t *connection, s
 {
     sm_session_list_t *session_item = NULL, *tmp = NULL;
 
-    CHECK_NULL_ARG2(sm_ctx, session);
+    CHECK_NULL_ARG3(sm_ctx, connection, session);
 
     session_item = calloc(1, sizeof(*session_item));
     if (NULL == session_item) {
@@ -167,6 +167,8 @@ static int
 sm_connection_remove_session(const sm_ctx_t *sm_ctx, sm_connection_t *connection, sm_session_t *session)
 {
     sm_session_list_t *tmp = NULL, *prev = NULL;
+
+    CHECK_NULL_ARG3(sm_ctx, connection, session);
 
     /* find matching session in linked list */
     tmp = connection->session_list;
