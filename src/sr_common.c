@@ -78,6 +78,16 @@ sr_save_data_tree_file(const char *file_name, const struct lyd_node *data_tree)
     return SR_ERR_OK;
 }
 
+void
+sr_free_datatree(struct lyd_node *root){
+    struct lyd_node *next = NULL;
+    while (NULL != root) {
+        next = root->next;
+        lyd_free(root);
+        root = next;
+    }
+}
+
 sr_type_t
 sr_libyang_type_to_sysrepo(LY_DATA_TYPE t)
 {
