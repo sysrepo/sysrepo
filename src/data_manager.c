@@ -66,7 +66,7 @@ dm_module_cleanup(void *module)
 {
     struct lyd_node *m = (struct lyd_node *) module;
     if (NULL != m) {
-        lyd_free(m);
+        sr_free_datatree(m);
     }
 }
 
@@ -254,7 +254,7 @@ dm_load_data_tree(const dm_ctx_t *dm_ctx, const struct lys_module *module, struc
     avl_node_t *avl_node = avl_insert(dm_ctx->module_avl, *data_tree);
     if (NULL == avl_node) {
         SR_LOG_ERR("Insert data tree %s into avl tree failed", module->name);
-        lyd_free(*data_tree);
+        sr_free_datatree(*data_tree);
         *data_tree = NULL;
         return SR_ERR_INTERNAL;
     }
