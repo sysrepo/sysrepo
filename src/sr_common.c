@@ -140,6 +140,8 @@ sr_pb_req_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__Ms
     Sr__Req *req = NULL;
     ProtobufCMessage *sub_msg = NULL;
 
+    CHECK_NULL_ARG(msg_p);
+
     /* initialize Sr__Msg */
     msg = calloc(1, sizeof(*msg));
     if (NULL == msg) {
@@ -214,6 +216,8 @@ sr_pb_resp_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__M
     Sr__Resp *resp = NULL;
     ProtobufCMessage *sub_msg = NULL;
 
+    CHECK_NULL_ARG(msg_p);
+
     /* initialize Sr__Msg */
     msg = calloc(1, sizeof(*msg));
     if (NULL == msg) {
@@ -280,6 +284,69 @@ nomem:
     free(resp);
 
     return SR_ERR_NOMEM;
+}
+
+int
+sr_pb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__Operation operation)
+{
+    CHECK_NULL_ARG(msg);
+
+    if (SR__MSG__MSG_TYPE__REQUEST == type) {
+        /* request */
+        if (NULL == msg->request) {
+            return SR_ERR_MALFORMED_MSG;
+        }
+        switch (operation) {
+            case SR__OPERATION__SESSION_START:
+                if (NULL == msg->request->session_start_req)
+                    return SR_ERR_MALFORMED_MSG;
+                break;
+            case SR__OPERATION__SESSION_STOP:
+                if (NULL == msg->request->session_stop_req)
+                    return SR_ERR_MALFORMED_MSG;
+                break;
+            case SR__OPERATION__GET_ITEM:
+                if (NULL == msg->request->get_item_req)
+                    return SR_ERR_MALFORMED_MSG;
+                break;
+            case SR__OPERATION__GET_ITEMS:
+                if (NULL == msg->request->get_items_req)
+                    return SR_ERR_MALFORMED_MSG;
+                break;
+            default:
+                return SR_ERR_MALFORMED_MSG;
+        }
+    } else if (SR__MSG__MSG_TYPE__RESPONSE == type) {
+        /* response */
+        if (NULL == msg->response) {
+            return SR_ERR_MALFORMED_MSG;
+        }
+        switch (operation) {
+            case SR__OPERATION__SESSION_START:
+                if (NULL == msg->response->session_start_resp)
+                    return SR_ERR_MALFORMED_MSG;
+                break;
+            case SR__OPERATION__SESSION_STOP:
+                if (NULL == msg->response->session_stop_resp)
+                    return SR_ERR_MALFORMED_MSG;
+                break;
+            case SR__OPERATION__GET_ITEM:
+                if (NULL == msg->response->get_item_resp)
+                    return SR_ERR_MALFORMED_MSG;
+                break;
+            case SR__OPERATION__GET_ITEMS:
+                if (NULL == msg->response->get_items_resp)
+                    return SR_ERR_MALFORMED_MSG;
+                break;
+            default:
+                return SR_ERR_MALFORMED_MSG;
+        }
+    } else {
+        /* unknown operation */
+        return SR_ERR_MALFORMED_MSG;
+    }
+
+    return SR_ERR_OK;
 }
 
 /*

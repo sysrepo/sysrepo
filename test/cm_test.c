@@ -150,7 +150,7 @@ cm_message_recv(const int fd)
 }
 
 static void
-cm_session_start_generate(const char *user_name, void **msg_buf, size_t *msg_size)
+cm_session_start_generate(const char *user_name, uint8_t **msg_buf, size_t *msg_size)
 {
     assert_non_null(msg_buf);
     assert_non_null(msg_size);
@@ -166,7 +166,7 @@ cm_session_start_generate(const char *user_name, void **msg_buf, size_t *msg_siz
     }
 
     *msg_size = sr__msg__get_packed_size(msg);
-    *msg_buf = calloc(1, *msg_size);
+    *msg_buf = calloc(*msg_size, sizeof(**msg_buf));
     assert_non_null(*msg_buf);
 
     sr__msg__pack(msg, *msg_buf);
@@ -174,7 +174,7 @@ cm_session_start_generate(const char *user_name, void **msg_buf, size_t *msg_siz
 }
 
 static void
-cm_session_stop_generate(uint32_t session_id, void **msg_buf, size_t *msg_size)
+cm_session_stop_generate(uint32_t session_id, uint8_t **msg_buf, size_t *msg_size)
 {
     assert_non_null(msg_buf);
     assert_non_null(msg_size);
@@ -188,7 +188,7 @@ cm_session_stop_generate(uint32_t session_id, void **msg_buf, size_t *msg_size)
     msg->request->session_stop_req->session_id = session_id;
 
     *msg_size = sr__msg__get_packed_size(msg);
-    *msg_buf = calloc(1, *msg_size);
+    *msg_buf = calloc(*msg_size, sizeof(**msg_buf));
     assert_non_null(*msg_buf);
 
     sr__msg__pack(msg, *msg_buf);
@@ -225,7 +225,7 @@ static void
 cm_communicate(int fd)
 {
     Sr__Msg *msg = NULL;
-    void *msg_buf = NULL;
+    uint8_t *msg_buf = NULL;
     size_t msg_size = 0;
     uint32_t session_id = 0;
 

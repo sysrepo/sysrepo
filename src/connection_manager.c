@@ -530,14 +530,21 @@ cm_msg_send_session(cm_ctx_t *cm_ctx, sm_session_t *session, Sr__Msg *msg)
  * @brief Processes a session start request.
  */
 static int
-cm_session_start_req_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, Sr__Req *req)
+cm_session_start_req_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, Sr__Msg *msg_in)
 {
     sm_session_t *session = NULL;
     struct passwd *pws = NULL;
     Sr__Msg *msg = NULL;
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG4(cm_ctx, conn, req, req->session_start_req);
+    CHECK_NULL_ARG3(cm_ctx, conn, msg_in);
+
+    /* validate the message */
+    rc = sr_pb_msg_validate(msg_in, SR__MSG__MSG_TYPE__REQUEST, SR__OPERATION__SESSION_START);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Malformed message received.");
+        return SR_ERR_INVAL_ARG;
+    }
 
     SR_LOG_DBG("Processing session_start request (conn=%p).", (void*)conn);
 
@@ -546,7 +553,7 @@ cm_session_start_req_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, Sr__Req *r
 
     /* create the session in SM */
     rc = sm_session_create(cm_ctx->session_manager, conn, pws->pw_name,
-            req->session_start_req->user_name, &session);
+            msg_in->request->session_start_req->user_name, &session);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Unable to create the session in Session Manager (conn=%p).", (void*)conn);
         return rc;
@@ -585,55 +592,61 @@ cm_session_start_req_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, Sr__Req *r
  * @brief Processes a session stop request.
  */
 static int
-cm_session_stop_req_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, Sr__Req *req)
+cm_session_stop_req_process(cm_ctx_t *cm_ctx, sm_session_t *session, Sr__Msg *msg_in)
 {
-    sm_session_t *session = NULL;
-    Sr__Msg *msg = NULL;
-    int rc = SR_ERR_OK;
+    Sr__Msg *msg_out = NULL;
+    int rc = SR_ERR_OK, rc_tmp = SR_ERR_OK;
 
-    CHECK_NULL_ARG4(cm_ctx, conn, req, req->session_stop_req);
+    CHECK_NULL_ARG3(cm_ctx, session, msg_in);
 
-    SR_LOG_DBG("Processing session_stop request (conn=%p, session id=%"PRIu32").",
-            (void*)conn, req->session_stop_req->session_id);
-
-    /* find the session ctx */
-    rc = sm_session_find_id(cm_ctx->session_manager, req->session_stop_req->session_id, &session);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Unable to find session context for id=%"PRIu32" (conn=%p).",
-                req->session_stop_req->session_id, (void*)conn);
-        return SR_ERR_NOT_FOUND;
-    }
+    SR_LOG_DBG("Processing session_stop request (session id=%"PRIu32").", session->id);
 
     /* prepare the response */
-    rc = sr_pb_resp_alloc(SR__OPERATION__SESSION_STOP, session->id, &msg);
+    rc = sr_pb_resp_alloc(SR__OPERATION__SESSION_STOP, msg_in->session_id, &msg_out);
     if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Cannot allocate the response for session_stop request (conn=%p, session id=%"PRIu32").",
-                (void*)conn, req->session_stop_req->session_id);
+        SR_LOG_ERR("Cannot allocate the response for session_stop request (session id=%"PRIu32").", session->id);
         return SR_ERR_NOMEM;
+    }
+
+    /* validate the message */
+    rc = sr_pb_msg_validate(msg_in, SR__MSG__MSG_TYPE__REQUEST, SR__OPERATION__SESSION_STOP);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Malformed message received.");
+        rc = SR_ERR_INVAL_ARG;
+    }
+
+    if (SR_ERR_OK == rc) {
+        /* validate provided session id */
+        if (session->id != msg_in->request->session_stop_req->session_id) {
+            SR_LOG_ERR("Stopping of other sessions is not allowed (sess id=%"PRIu32", requested id=%"PRIu32").",
+                    session->id, msg_in->request->session_stop_req->session_id);
+            msg_out->response->error_msg = strdup("Stopping of other sessions is not allowed");
+            rc = SR_ERR_UNSUPPORTED;
+        }
     }
 
     // TODO: call sesion_stop in Request Processor
 
     if (SR_ERR_OK == rc) {
         /* set the id to response */
-        msg->response->session_stop_resp->session_id = session->id;
+        msg_out->response->session_stop_resp->session_id = session->id;
     } else {
         /* set the error code to response */
-        msg->response->result = rc;
+        msg_out->response->result = rc;
     }
 
     /* send the response */
-    rc = cm_msg_send_session(cm_ctx, session, msg);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_WRN("Unable to send session_stop response (conn=%p, session id=%"PRIu32").",
-                (void*)conn, req->session_stop_req->session_id);
+    rc_tmp = cm_msg_send_session(cm_ctx, session, msg_out);
+    if (SR_ERR_OK != rc_tmp) {
+        SR_LOG_WRN("Unable to send session_stop response via session id=%"PRIu32".", session->id);
     }
 
     /* drop session in SM - must be called AFTER sending */
-    rc = sm_session_drop(cm_ctx->session_manager, session);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Unable to drop the session in Session manager (conn=%p, session id=%"PRIu32").",
-                (void*)conn, req->session_stop_req->session_id);
+    if (SR_ERR_OK == rc) {
+        rc = sm_session_drop(cm_ctx->session_manager, session);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR("Unable to drop the session in Session Manager (session id=%"PRIu32").", session->id);
+        }
     }
 
     return rc;
@@ -644,6 +657,7 @@ cm_conn_msg_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, uint8_t *msg_data, 
 {
     Sr__Msg *msg = NULL;
     bool release_msg = false;
+    sm_session_t *session = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG3(cm_ctx, conn, msg_data);
@@ -654,15 +668,26 @@ cm_conn_msg_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, uint8_t *msg_data, 
         return SR_ERR_INTERNAL;
     }
 
+    /* find matching session (except for session_start request) */
+    if ((SR__MSG__MSG_TYPE__REQUEST != msg->type) || (SR__OPERATION__SESSION_START != msg->request->operation)) {
+        rc = sm_session_find_id(cm_ctx->session_manager, msg->session_id, &session);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR("Unable to find session context for session id=%"PRIu32" (conn=%p).",
+                    msg->session_id, (void*)conn);
+            sr__msg__free_unpacked(msg, NULL);
+            return SR_ERR_INVAL_ARG;
+        }
+    }
+
     if ((SR__MSG__MSG_TYPE__REQUEST == msg->type) && (NULL != msg->request)) {
         /* request handling */
         switch (msg->request->operation) {
             case SR__OPERATION__SESSION_START:
-                rc = cm_session_start_req_process(cm_ctx, conn, msg->request);
+                rc = cm_session_start_req_process(cm_ctx, conn, msg);
                 release_msg = true;
                 break;
             case SR__OPERATION__SESSION_STOP:
-                rc = cm_session_stop_req_process(cm_ctx, conn, msg->request);
+                rc = cm_session_stop_req_process(cm_ctx, session, msg);
                 release_msg = true;
                 break;
             default:

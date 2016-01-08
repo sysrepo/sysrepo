@@ -133,6 +133,17 @@ int sr_pb_req_alloc(const Sr__Operation operation, const uint32_t session_id, Sr
 int sr_pb_resp_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__Msg **msg);
 
 /**
+ * @brief Validates the message according to excepted message type and operation.
+ *
+ * @param[in] msg Unpacked message.
+ * @param[in] type Expected type of the message.
+ * @param[in] operation Expected operation of the message.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_pb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__Operation operation);
+
+/**
  * @brief Portable way to retrieve effective user ID and group ID of the
  * other end of a unix-domain socket.
  *

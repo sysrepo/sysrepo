@@ -37,6 +37,7 @@ logging_setup(void **state)
 static void
 cl_connection_test(void **state) {
     sr_conn_ctx_t *conn1 = NULL, *conn2 = NULL;
+    sr_session_ctx_t *sess1 = NULL, *sess2 = NULL;
     int rc = 0;
 
     /* connect to sysrepo - conn 1 */
@@ -48,6 +49,22 @@ cl_connection_test(void **state) {
     rc = sr_connect("cl_test", true, &conn2);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(conn2);
+
+    /* start a session in conn 1 */
+    rc = sr_session_start(conn1, "alice", SR_CANDIDATE, &sess1);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_non_null(sess1);
+
+    /* start a session in conn 2 */
+    rc = sr_session_start(conn2, "bob", SR_CANDIDATE, &sess2);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_non_null(sess2);
+
+    /* stop the session 1 */
+    rc = sr_session_stop(sess1);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* session 2 not stopped explicitly - should be released automatically by disconnect */
 
     /* disconnect from sysrepo - conn 2 */
     sr_disconnect(conn2);

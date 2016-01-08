@@ -422,6 +422,11 @@ sm_session_find_id(const sm_ctx_t *sm_ctx, uint32_t session_id, sm_session_t **s
 
     CHECK_NULL_ARG2(sm_ctx, session);
 
+    if (SM_SESSION_ID_INVALID == session_id) {
+        SR_LOG_ERR_MSG("Invalid session id specified.");
+        return SR_ERR_INVAL_ARG;
+    }
+
     tmp.id = session_id;
     node = avl_search(sm_ctx->session_id_avl, &tmp);
 
