@@ -422,9 +422,7 @@ rp_dt_copy_value(const struct lyd_node_leaf_list *leaf, LY_DATA_TYPE type, sr_va
         value->data.uint64_val = leaf->value.uint64;
         return SR_ERR_OK;
     default:
-        if (NULL != leaf->schema && NULL != leaf->schema->name){
-            SR_LOG_ERR("Copy value failed for leaf '%s'", leaf->schema->name);
-        }
+        SR_LOG_ERR("Copy value failed for leaf '%s'", leaf->schema->name);
         return SR_ERR_INTERNAL;
     }
 }

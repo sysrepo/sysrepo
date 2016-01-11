@@ -540,6 +540,35 @@ void get_node_test_found(void **state)
 
 }
 
+void get_nodes_test(void **state){
+    int rc = 0;
+    dm_ctx_t *ctx = *state;
+    dm_session_t *ses_ctx = NULL;
+    struct lyd_node *data_tree = NULL;
+    dm_session_start(ctx, &ses_ctx);
+    rc = dm_get_datatree(ctx, ses_ctx, "example-module", &data_tree);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    struct lyd_node *root = NULL;
+    createDataTree(data_tree->schema->module->ctx, &root);
+    assert_non_null(root);
+
+    struct lyd_node **nodes = NULL;
+    size_t count = 0;
+
+
+#define EXAMPLE_LIST "/example-module:container/list[key1='key1'][key2='key2']"
+    rc = rp_dt_get_nodes_xpath(ctx, root, EXAMPLE_LIST, &nodes, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(3, count);
+
+    free(nodes);
+
+    sr_free_datatree(root);
+    dm_session_stop(ctx, ses_ctx);
+
+}
+
 void get_node_test_not_found(void **state)
 {
     int rc = 0;
@@ -588,6 +617,7 @@ int main(){
             cmocka_unit_test(get_values_with_augments_test),
             cmocka_unit_test(ietf_interfaces_test),
             cmocka_unit_test(get_values_test_module_test),
+            cmocka_unit_test(get_nodes_test)
     };
     return cmocka_run_group_tests(tests, setup, teardown);
 }
