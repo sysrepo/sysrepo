@@ -46,7 +46,6 @@ sr_str_ends_with(const char *str, const char *suffix)
     return strncmp(str + str_len - suffix_len, suffix, suffix_len) == 0;
 }
 
-
 int sr_str_join(const char *str1, const char *str2, char **result)
 {
     CHECK_NULL_ARG3(str1, str2, result);
@@ -481,4 +480,3 @@ sr_get_peer_eid(int fd, uid_t *uid, gid_t *gid)
 }
 
 #endif /* !defined(HAVE_GETPEEREID) */
-

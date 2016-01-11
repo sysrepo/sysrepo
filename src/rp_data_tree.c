@@ -523,7 +523,6 @@ match_done:
     return SR_ERR_OK;
 }
 
-
 /**
  * @brief Fills sr_val_t from lyd_node structure. It fills xpath and copies the value.
  * @param [in] node
@@ -606,7 +605,6 @@ rp_dt_get_value_from_node(struct lyd_node *node, sr_val_t **value){
     return SR_ERR_OK;
 }
 
-
 int
 rp_dt_get_node(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp_loc_id_t *loc_id, struct lyd_node **node)
 {
@@ -630,7 +628,6 @@ rp_dt_get_node_xpath(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const c
     xp_free_loc_id(l);
     return rc;
 }
-
 
 int
 rp_dt_get_value(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp_loc_id_t *loc_id, sr_val_t **value){
@@ -732,7 +729,6 @@ rp_dt_get_siblings_node_by_name(struct lyd_node *node, const char* name, struct 
     }
     return SR_ERR_OK;
 }
-
 
 int
 rp_dt_get_nodes(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp_loc_id_t *loc_id, struct lyd_node ***nodes, size_t *count){
@@ -854,7 +850,6 @@ rp_dt_get_values(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp_lo
     free(nodes);
     return SR_ERR_OK;
 }
-
 
 int
 rp_dt_get_values_xpath(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char *xpath, sr_val_t ***values, size_t *count){
