@@ -281,9 +281,16 @@ rp_dt_copy_value(const struct lyd_node_leaf_list *leaf, LY_DATA_TYPE type, sr_va
 {
     CHECK_NULL_ARG2(leaf, value);
     //TODO copy all types
+    if (NULL == leaf->schema || NULL == leaf->schema->name) {
+        SR_LOG_ERR_MSG("Missing schema information");
+        return SR_ERR_INTERNAL;
+    }
+
     switch (type) {
     case LY_TYPE_BINARY:
     case LY_TYPE_BITS:
+        SR_LOG_ERR("Copy value failed for leaf '%s'", leaf->schema->name);
+        return SR_ERR_INTERNAL;
     case LY_TYPE_BOOL:
         value->data.bool_val = leaf->value.bln;
         return SR_ERR_OK;
@@ -291,7 +298,20 @@ rp_dt_copy_value(const struct lyd_node_leaf_list *leaf, LY_DATA_TYPE type, sr_va
     case LY_TYPE_EMPTY:
     case LY_TYPE_ENUM:
     case LY_TYPE_IDENT:
+        if (NULL == leaf->value.ident->name){
+            SR_LOG_ERR("Identity ref in leaf '%s' is NULL", leaf->schema->name);
+            return SR_ERR_INTERNAL;
+        }
+        value->data.identityref_val = strdup(leaf->value.ident->name);
+        if (NULL == value->data.identityref_val){
+            SR_LOG_ERR("Copy value failed for leaf '%s' of type 'identityref'", leaf->schema->name);
+            return SR_ERR_INTERNAL;
+        }
+        return SR_ERR_OK;
     case LY_TYPE_INST:
+        if (NULL != leaf->schema && NULL != leaf->schema->name) {
+            SR_LOG_ERR("Copy value failed for leaf '%s'", leaf->schema->name);
+        }
         return SR_ERR_INTERNAL;
     case LY_TYPE_STRING:
         value->data.string_val = strdup(leaf->value.string);
@@ -327,6 +347,9 @@ rp_dt_copy_value(const struct lyd_node_leaf_list *leaf, LY_DATA_TYPE type, sr_va
         value->data.uint64_val = leaf->value.uint64;
         return SR_ERR_OK;
     default:
+        if (NULL != leaf->schema && NULL != leaf->schema->name){
+            SR_LOG_ERR("Copy value failed for leaf '%s'", leaf->schema->name);
+        }
         return SR_ERR_INTERNAL;
     }
 }
@@ -404,7 +427,7 @@ key_mismatch:
             } else if (LYS_LIST == curr->schema->nodetype) {
                 /* no keys are specified and node is list*/
                 if ((XP_GET_NODE_COUNT(loc_id) - 1) != n || !allow_no_keys){
-                    SR_LOG_WRN("Keys not specified for list node %s", curr->schema->name);
+                    SR_LOG_WRN("Keys not specified for list node '%s'", curr->schema->name);
                     curr = NULL;
                     goto match_done;
                 }
@@ -462,6 +485,7 @@ rp_dt_get_value_from_node(struct lyd_node *node, sr_val_t **value){
     case LYS_LEAF:
         sch_leaf = (struct lys_node_leaf *) node->schema;
         data_leaf = (struct lyd_node_leaf_list *) node;
+
 
         if (LY_TYPE_DER == sch_leaf->type.base) {
             SR_LOG_WRN_MSG("Leaf has derived type, not supported yet");

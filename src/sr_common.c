@@ -140,6 +140,9 @@ sr_free_val_t(sr_val_t *value){
     if (SR_STRING_T == value->type){
         free(value->data.string_val);
     }
+    else if (SR_IDENTITYREF_T == value->type){
+        free(value->data.identityref_val);
+    }
     free(value);
 }
 
