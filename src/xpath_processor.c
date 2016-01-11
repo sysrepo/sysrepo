@@ -355,7 +355,7 @@ sr_error_t xp_char_to_loc_id(const char *xpath, xp_loc_id_t **loc)
                 xp_change_ns_to_node(cnt, tokens, node_index, &node_count);
                 MARK_TOKEN(T_SLASH);
                 state = S_NS;
-            } else if (cnt > 0 && tokens[cnt - 1] == T_KEY_NAME) {
+            } else if (cnt > 0 && tokens[cnt - 1] == T_NODE) {
                 if (!(isalnum(xpath[i]) || xpath[i] == '_' || xpath[i] == '-' || xpath[i] == '.')) {
                     SR_LOG_ERR("Invalid lexem '%c' in xpath: %s at position %zu", xpath[i], xpath, i);
                     return SR_ERR_INVAL_ARG;
