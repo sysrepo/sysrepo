@@ -251,7 +251,7 @@ static sr_error_t xp_validate_list_nodes(xp_token_t *tokens, size_t token_count,
 {
     CHECK_NULL_ARG(err_token);
     enum xp_keys_state k = K_UNKNOWN;
-    bool key_name = false; /* set if insided the square bracket the key is set*/
+    bool key_name = false; /* set for each square bracket pair if the key_name is listed */
 
     for (size_t i = 1; i < token_count; i++) {
         xp_token_t curr = tokens[i];
