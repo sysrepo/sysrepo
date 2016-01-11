@@ -98,6 +98,26 @@ void createDataTreeWithAugments(struct ly_ctx *ctx, struct lyd_node **root){
 
 }
 
+void createDataTreeTestModule(struct ly_ctx *ctx, struct lyd_node **root){
+    struct lyd_node *node = NULL;
+    const struct lys_module *module = ly_ctx_get_module(ctx, "test-module",NULL);
+    assert_non_null(module);
+
+    *root = lyd_new_leaf(NULL, module, "decided", "maybe");
+    assert_non_null(*root);
+    /*Hellow world!  (base64 encoded)*/
+    node = lyd_new_leaf(NULL, module, "raw", "SGVsbG8gd29ybGQh");
+    assert_non_null(node);
+    assert_int_equal(0, lyd_insert_after(*root, node));
+
+    /*Strict = 1, Recursive = 1, Loggin = 0*/
+    node = lyd_new_leaf(NULL, module, "options", "strict recursive");
+    assert_non_null(node);
+    assert_int_equal(0, lyd_insert_after(*root, node));
+
+
+}
+
 void createDataTreeIETFinterfaces(struct ly_ctx *ctx, struct lyd_node **root){
 
     const struct lys_module *module_interfaces = ly_ctx_get_module(ctx, "ietf-interfaces", NULL);
@@ -182,7 +202,7 @@ void check_ietf_interfaces_ipv4_values(sr_val_t **values, size_t count){
              assert_int_equal(SR_UINT16_T, v->type);
              assert_int_equal(1500, v->data.uint32_val);
          }
-         else if (XP_CMP_NODE(loc_id, XP_GET_NODE_COUNT(loc_id), "address")){
+         else if (XP_CMP_NODE(loc_id, XP_GET_NODE_COUNT(loc_id)-1, "address")){
              assert_int_equal(SR_LIST_T, v->type);
          }
          xp_free_loc_id(loc_id);
@@ -275,6 +295,56 @@ void ietf_interfaces_test(void **state){
     dm_session_stop(ctx, ses_ctx);
 }
 
+
+void get_values_test_module_test(void **state){
+    int rc = 0;
+    dm_ctx_t *ctx = *state;
+    dm_session_t *ses_ctx = NULL;
+    struct lyd_node *data_tree = NULL;
+    dm_session_start(ctx, &ses_ctx);
+    rc = dm_get_datatree(ctx, ses_ctx, "example-module", &data_tree);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    struct lyd_node *root = NULL;
+    createDataTreeTestModule(data_tree->schema->module->ctx, &root);
+    assert_non_null(root);
+
+    sr_val_t *value;
+
+    /* enum leaf*/
+#define XP_TEST_MODULE_DECIDED "/test-module:decided"
+    rc = rp_dt_get_value_xpath(ctx, root, XP_TEST_MODULE_DECIDED, &value);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    assert_int_equal(SR_ENUM_T, value->type);
+    assert_string_equal("maybe", value->data.enum_val);
+
+    sr_free_val_t(value);
+
+    /* binary leaf*/
+#define XP_TEST_MODULE_RAW "/test-module:raw"
+    rc = rp_dt_get_value_xpath(ctx, root, XP_TEST_MODULE_RAW, &value);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    assert_int_equal(SR_BINARY_T, value->type);
+    assert_string_equal("SGVsbG8gd29ybGQh", value->data.binary_val);
+
+    sr_free_val_t(value);
+
+    /*bits leaf*/
+
+#define XP_TEST_MODULE_BITS "/test-module:options"
+    rc = rp_dt_get_value_xpath(ctx, root, XP_TEST_MODULE_BITS, &value);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    assert_int_equal(SR_BITS_T, value->type);
+    assert_string_equal("strict recursive", value->data.bits_val);
+
+    sr_free_val_t(value);
+
+    sr_free_datatree(root);
+    dm_session_stop(ctx, ses_ctx);
+}
 
 
 
@@ -517,6 +587,7 @@ int main(){
             cmocka_unit_test(get_values_test),
             cmocka_unit_test(get_values_with_augments_test),
             cmocka_unit_test(ietf_interfaces_test),
+            cmocka_unit_test(get_values_test_module_test),
     };
     return cmocka_run_group_tests(tests, setup, teardown);
 }
