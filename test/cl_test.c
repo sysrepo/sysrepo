@@ -79,21 +79,21 @@ cl_connection_test(void **state) {
     assert_non_null(conn2);
 
     /* start a new session in conn 1 */
-    rc = sr_session_start(conn1, "alice", SR_CANDIDATE, &sess1);
+    rc = sr_session_start(conn1, "alice", SR_DS_CANDIDATE, &sess1);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(sess1);
 
     /* start few new sessions in conn 2 */
-    rc = sr_session_start(conn2, "bob1", SR_CANDIDATE, &sess2);
+    rc = sr_session_start(conn2, "bob1", SR_DS_CANDIDATE, &sess2);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(sess2);
-    rc = sr_session_start(conn2, "bob2", SR_CANDIDATE, &sess2);
+    rc = sr_session_start(conn2, "bob2", SR_DS_CANDIDATE, &sess2);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(sess2);
-    rc = sr_session_start(conn2, "bob3", SR_CANDIDATE, &sess2);
+    rc = sr_session_start(conn2, "bob3", SR_DS_CANDIDATE, &sess2);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(sess2);
-    rc = sr_session_start(conn2, "bob4", SR_CANDIDATE, &sess2);
+    rc = sr_session_start(conn2, "bob4", SR_DS_CANDIDATE, &sess2);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(sess2);
 
@@ -122,7 +122,7 @@ cl_get_item_test(void **state) {
     int rc = 0;
 
     /* start a session */
-    rc = sr_session_start(conn, "alice", SR_CANDIDATE, &session);
+    rc = sr_session_start(conn, "alice", SR_DS_CANDIDATE, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* perform a get-item request */
@@ -147,7 +147,7 @@ cl_get_items_test(void **state) {
     int rc = 0;
 
     /* start a session */
-    rc = sr_session_start(conn, "alice", SR_CANDIDATE, &session);
+    rc = sr_session_start(conn, "alice", SR_DS_CANDIDATE, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* perform a get-items request */

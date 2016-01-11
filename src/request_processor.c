@@ -23,12 +23,14 @@
 
 #include "sr_common.h"
 #include "connection_manager.h"
+#include "data_manager.h"
 
 /**
  * @brief Structure that holds the context of an instance of Request Processor.
  */
 typedef struct rp_ctx_s {
     cm_ctx_t *cm_ctx;  /**< Connection Manager context. */
+    dm_ctx_t *dm_ctx;  /**< Data Manager Context */
 } rp_ctx_t;
 
 /**
@@ -96,6 +98,8 @@ rp_init(cm_ctx_t *cm_ctx, rp_ctx_t **rp_ctx_p)
         return SR_ERR_NOMEM;
     }
 
+    // TODO: DM init
+
     ctx->cm_ctx = cm_ctx;
     *rp_ctx_p = ctx;
 
@@ -106,6 +110,8 @@ void
 rp_cleanup(rp_ctx_t *rp_ctx)
 {
     SR_LOG_DBG_MSG("Request Processor cleanup.");
+
+    // TODO: DM cleanup
 
     if (NULL != rp_ctx) {
         free(rp_ctx);
@@ -182,7 +188,7 @@ rp_msg_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg
     } else {
         /* response handling */
         SR_LOG_ERR("Unsupported response received (session id=%"PRIu32", operation=%d).",
-                session->id, msg->request->operation);
+                session->id, msg->response->operation);
         rc = SR_ERR_UNSUPPORTED;
     }
 
@@ -192,5 +198,5 @@ rp_msg_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg
     if (SR_ERR_OK != rc) {
         SR_LOG_WRN("Error by processing of the message: %s.", sr_strerror(rc));
     }
-    return SR_ERR_OK; /* message processed, no matter what was the return code */
+    return rc;
 }

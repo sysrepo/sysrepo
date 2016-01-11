@@ -28,6 +28,8 @@
 
 #include "request_processor.h"
 
+typedef struct rp_session_s rp_session_t; /**< Forward-declaration of Request processor's session */
+
 /**
  * @defgroup sm Session Manager
  * @{

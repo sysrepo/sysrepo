@@ -573,7 +573,7 @@ cm_session_start_req_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, Sr__Msg *m
 
     /* start session in Request Processor */
     rc = rp_session_start(cm_ctx->rp_ctx, session->real_user, session->effective_user, session->id,
-            /* TODO datastore */SR_CANDIDATE, &session->rp_session);
+            /* TODO datastore */SR_DS_CANDIDATE, &session->rp_session);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Cannot start Request Processor session (conn=%p).", (void*)conn);
     }
