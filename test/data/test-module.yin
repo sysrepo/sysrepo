@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<module name="test-module"
+        xmlns="urn:ietf:params:xml:ns:yang:yin:1"
+        xmlns:tm="urn:ietf:params:xml:ns:yang:test-module">
+  <namespace uri="urn:ietf:params:xml:ns:yang:test-module"/>
+  <prefix value="tm"/>
+  <organization>
+    <text>organization</text>
+  </organization>
+  <description>
+    <text>example yang module</text>
+  </description>
+  <contact>
+    <text>example@example.org</text>
+  </contact>
+  <leaf name="decided">
+    <type name="enumeration">
+      <enum name="yes">
+        <value value="1"/>
+      </enum>
+      <enum name="no">
+        <value value="2"/>
+      </enum>
+      <enum name="maybe">
+        <value value="3"/>
+      </enum>
+    </type>
+  </leaf>
+  <leaf name="options">
+    <type name="bits">
+      <bit name="strict"/>
+      <bit name="recursive"/>
+      <bit name="logging"/>
+    </type>
+  </leaf>
+  <leaf name="raw">
+    <type name="binary"/>
+  </leaf>
+</module>

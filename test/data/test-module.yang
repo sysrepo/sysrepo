@@ -1,0 +1,35 @@
+module test-module {
+  namespace "urn:ietf:params:xml:ns:yang:test-module";
+  prefix tm;
+
+  organization "organization";
+  description
+    "example yang module";
+  contact
+    "example@example.org";
+
+  leaf decided {
+    type enumeration {
+      enum "yes" {
+        value 1;
+      }
+      enum "no" {
+        value 2;
+      }
+      enum "maybe" {
+        value 3;
+      }
+    }
+  }
+  leaf options {
+    type bits {
+      bit strict;
+      bit recursive;
+      bit logging;
+    }
+  }
+  leaf raw {
+    type binary;
+  }
+}
+

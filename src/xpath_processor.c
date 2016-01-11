@@ -251,6 +251,7 @@ static sr_error_t xp_validate_list_nodes(xp_token_t *tokens, size_t token_count,
 {
     CHECK_NULL_ARG(err_token);
     enum xp_keys_state k = K_UNKNOWN;
+    bool key_name = false; /* set for each square bracket pair if the key_name is listed */
 
     for (size_t i = 1; i < token_count; i++) {
         xp_token_t curr = tokens[i];
@@ -259,17 +260,22 @@ static sr_error_t xp_validate_list_nodes(xp_token_t *tokens, size_t token_count,
             k = K_UNKNOWN;
             *err_token = i;
             break;
+        case T_LSQB:
+            key_name = false;
+            break;
         case T_KEY_NAME:
-            if (k == K_UNKNOWN) {
+            if (K_UNKNOWN == k) {
                 k = K_LISTED;
-            } else if (k == K_OMITTED) {
+            } else if (K_OMITTED == k) {
                 return SR_ERR_INVAL_ARG;
             }
+            key_name = true;
             break;
         case T_KEY_VALUE:
-            if (k == K_UNKNOWN) {
+            if (K_UNKNOWN == k) {
                 k = K_OMITTED;
-            } else if (k == K_OMITTED) {
+            }
+            else if (K_LISTED == k && !key_name){
                 return SR_ERR_INVAL_ARG;
             }
             break;
@@ -355,7 +361,7 @@ sr_error_t xp_char_to_loc_id(const char *xpath, xp_loc_id_t **loc)
                 xp_change_ns_to_node(cnt, tokens, node_index, &node_count);
                 MARK_TOKEN(T_SLASH);
                 state = S_NS;
-            } else if (cnt > 0 && tokens[cnt - 1] == T_KEY_NAME) {
+            } else if (cnt > 0 && tokens[cnt - 1] == T_NODE) {
                 if (!(isalnum(xpath[i]) || xpath[i] == '_' || xpath[i] == '-' || xpath[i] == '.')) {
                     SR_LOG_ERR("Invalid lexem '%c' in xpath: %s at position %zu", xpath[i], xpath, i);
                     return SR_ERR_INVAL_ARG;
