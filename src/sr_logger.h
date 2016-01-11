@@ -123,9 +123,13 @@ extern volatile uint8_t sr_ll_syslog;  /**< Holds current level of syslog debugs
 
 #else
 #define SR_LOG_ERR(...)
+#define SR_LOG_ERR_MSG(...)
 #define SR_LOG_WRN(...)
+#define SR_LOG_WRN_MSG(...)
 #define SR_LOG_INF(...)
+#define SR_LOG_INF_MSG(...)
 #define SR_LOG_DBG(...)
+#define SR_LOG_DBG_MSG(...)
 #endif
 
 /**

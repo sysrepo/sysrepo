@@ -675,10 +675,19 @@ cm_conn_msg_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, uint8_t *msg_data, 
 
     CHECK_NULL_ARG3(cm_ctx, conn, msg_data);
 
+    /* unpack the message */
     msg = sr__msg__unpack(NULL, msg_size, msg_data);
     if (NULL == msg) {
         SR_LOG_ERR("Unable to unpack the message (conn=%p).", (void*)conn);
         return SR_ERR_INTERNAL;
+    }
+
+    /* NULL check according to message type */
+    if (((SR__MSG__MSG_TYPE__REQUEST == msg->type) && (NULL == msg->request)) ||
+            ((SR__MSG__MSG_TYPE__RESPONSE == msg->type) && (NULL == msg->response))) {
+        SR_LOG_ERR("Message with malformed type received (conn=%p).", (void*)conn);
+        sr__msg__free_unpacked(msg, NULL);
+        return SR_ERR_INVAL_ARG;
     }
 
     /* find matching session (except for session_start request) */
@@ -692,9 +701,8 @@ cm_conn_msg_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, uint8_t *msg_data, 
         }
     }
 
-    if ((SR__MSG__MSG_TYPE__REQUEST == msg->type) && (NULL != msg->request)) {
+    if (SR__MSG__MSG_TYPE__REQUEST == msg->type) {
         /* request handling */
-
         switch (msg->request->operation) {
             case SR__OPERATION__SESSION_START:
                 rc = cm_session_start_req_process(cm_ctx, conn, msg);
@@ -709,15 +717,10 @@ cm_conn_msg_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, uint8_t *msg_data, 
                 rc = rp_msg_process(cm_ctx->rp_ctx, session->rp_session, msg);
                 break;
         }
-    } else if ((SR__MSG__MSG_TYPE__RESPONSE == msg->type) && (NULL != msg->response)) {
+    } else {
         /* response handling */
-
         /* forward the message to Request Processor */
         rc = rp_msg_process(cm_ctx->rp_ctx, session->rp_session, msg);
-    } else {
-        /* malformed message type */
-        SR_LOG_ERR("Message with malformed type received (conn=%p).", (void*)conn);
-        rc = SR_ERR_INVAL_ARG;
     }
 
     if (release_msg) {

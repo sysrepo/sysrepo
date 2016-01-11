@@ -241,7 +241,7 @@ cl_message_send(const sr_conn_ctx_t *conn_ctx, Sr__Msg *msg)
 static int
 cl_message_recv(const sr_conn_ctx_t *conn_ctx, Sr__Msg **msg)
 {
-    uint8_t *buf[CM_BUFF_LEN] = { 0, };
+    static uint8_t buf[CM_BUFF_LEN] = { 0, };
     size_t len = 0, pos = 0;
 
     /* read first 4 bytes with length of the message */
@@ -578,8 +578,3 @@ cleanup:
     return rc;
 }
 
-char *
-sr_strerror(int err_code)
-{
-    return NULL; // TODO
-}

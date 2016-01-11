@@ -26,6 +26,12 @@
 
 #include "sr_common.h"
 
+char *
+sr_strerror(int err_code)
+{
+    return NULL; // TODO: error map
+}
+
 int
 sr_str_ends_with(const char *str, const char *suffix)
 {

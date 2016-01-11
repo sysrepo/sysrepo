@@ -30,7 +30,7 @@
 static int
 logging_setup(void **state)
 {
-    sr_logger_set_level(SR_LL_DBG, SR_LL_ERR); /* print debugs to stderr */
+    sr_logger_set_level(SR_LL_ERR, SR_LL_ERR); /* print debugs to stderr */
     return 0;
 }
 
@@ -100,9 +100,11 @@ cl_get_item_test(void **state) {
     assert_int_equal(rc, SR_ERR_OK);
 
     /* perform a get-item request */
-    rc = sr_get_item(session, "/model:container/leaf", &value);
-    assert_int_equal(rc, SR_ERR_OK);
-
+    int i = 0;
+    for (i = 0; i < 100000; i++) {
+        rc = sr_get_item(session, "/model:container/leaf", &value);
+        assert_int_equal(rc, SR_ERR_OK);
+    }
     // TODO: validate value
 
     /* stop the session */
