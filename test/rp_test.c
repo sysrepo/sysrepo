@@ -91,7 +91,12 @@ rp_msg_neg_test(void **state)
     rp_ctx_t *rp_ctx = *state;
     assert_non_null(rp_ctx);
 
-    /* NULL session and message - expect INVAL_ARG error */
+    /* generate some request */
+    rc = sr_pb_req_alloc(SR__OPERATION__GET_ITEM, 123456, &msg);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_non_null(msg);
+
+    /* process the message with NULL session - expect INVAL_ARG error */
     rc = rp_msg_process(rp_ctx, NULL, NULL);
     assert_int_equal(rc, SR_ERR_INVAL_ARG);
 

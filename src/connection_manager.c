@@ -717,6 +717,9 @@ cm_conn_msg_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, uint8_t *msg_data, 
                 break;
             default:
                 /* forward the message to Request Processor */
+
+                // TODO: make sure that there is always only one outstanding RP request per session at the time
+
                 rc = rp_msg_process(cm_ctx->rp_ctx, session->rp_session, msg);
                 break;
         }
