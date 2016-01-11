@@ -36,7 +36,6 @@ typedef struct sr_conn_ctx_s sr_conn_ctx_t;
  */
 typedef struct sr_session_ctx_s sr_session_ctx_t;
 
-
 /**
  * @brief Possible types of an item stored in the sysrepo datastore.
  */

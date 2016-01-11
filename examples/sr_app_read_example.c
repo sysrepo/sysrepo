@@ -84,5 +84,3 @@ int main(int argc, char **argv){
   sr_session_stop(session);
   sr_clean_up(sr_ctx);
 }
-
-

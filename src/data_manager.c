@@ -396,4 +396,3 @@ dm_get_datatree(const dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, const char
 
     return SR_ERR_OK;
 }
-
