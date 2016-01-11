@@ -98,6 +98,255 @@ void createDataTreeWithAugments(struct ly_ctx *ctx, struct lyd_node **root){
 
 }
 
+void createDataTreeTestModule(struct ly_ctx *ctx, struct lyd_node **root){
+    struct lyd_node *node = NULL;
+    const struct lys_module *module = ly_ctx_get_module(ctx, "test-module",NULL);
+    assert_non_null(module);
+
+    *root = lyd_new_leaf(NULL, module, "decided", "maybe");
+    assert_non_null(*root);
+    /*Hellow world!  (base64 encoded)*/
+    node = lyd_new_leaf(NULL, module, "raw", "SGVsbG8gd29ybGQh");
+    assert_non_null(node);
+    assert_int_equal(0, lyd_insert_after(*root, node));
+
+    /*Strict = 1, Recursive = 1, Loggin = 0*/
+    node = lyd_new_leaf(NULL, module, "options", "strict recursive");
+    assert_non_null(node);
+    assert_int_equal(0, lyd_insert_after(*root, node));
+
+
+}
+
+void createDataTreeIETFinterfaces(struct ly_ctx *ctx, struct lyd_node **root){
+
+    const struct lys_module *module_interfaces = ly_ctx_get_module(ctx, "ietf-interfaces", NULL);
+    const struct lys_module *module_ip = ly_ctx_get_module(ctx, "ietf-ip", NULL);
+
+    struct lyd_node *node = NULL;
+
+    *root = lyd_new(NULL, module_interfaces, "interfaces");
+    node = lyd_new(*root, module_interfaces, "interface");
+    lyd_new_leaf(node, module_interfaces, "name", "eth0");
+    lyd_new_leaf(node, module_interfaces, "description", "Ethernet 0");
+    lyd_new_leaf(node, module_interfaces, "type", "ethernetCsmacd");
+    lyd_new_leaf(node, module_interfaces, "enabled", "true");
+    node = lyd_new(node, module_ip, "ipv4");
+    lyd_new_leaf(node, module_ip, "enabled", "true");
+    lyd_new_leaf(node, module_ip, "mtu", "1500");
+    node = lyd_new(node, module_ip, "address");
+    lyd_new_leaf(node, module_ip, "ip", "192.168.2.100");
+    lyd_new_leaf(node, module_ip, "prefix-length", "24");
+
+    node = lyd_new(*root, module_interfaces, "interface");
+    lyd_new_leaf(node, module_interfaces, "name", "eth1");
+    lyd_new_leaf(node, module_interfaces, "description", "Ethernet 1");
+    lyd_new_leaf(node, module_interfaces, "type", "ethernetCsmacd");
+    lyd_new_leaf(node, module_interfaces, "enabled", "true");
+    node = lyd_new(node, module_ip, "ipv4");
+    lyd_new_leaf(node, module_ip, "enabled", "true");
+    lyd_new_leaf(node, module_ip, "mtu", "1500");
+    node = lyd_new(node, module_ip, "address");
+    lyd_new_leaf(node, module_ip, "ip", "10.10.1.5");
+    lyd_new_leaf(node, module_ip, "prefix-length", "16");
+
+    node = lyd_new(*root, module_interfaces, "interface");
+    lyd_new_leaf(node, module_interfaces, "name", "gigaeth0");
+    lyd_new_leaf(node, module_interfaces, "description", "GigabitEthernet 0");
+    lyd_new_leaf(node, module_interfaces, "type", "ethernetCsmacd");
+    lyd_new_leaf(node, module_interfaces, "enabled", "false");
+
+    assert_int_equal(0, lyd_validate(*root, LYD_OPT_STRICT));
+
+}
+
+/**
+ * Function expects the values under xpath
+ * "/ietf-interfaces:interfaces/interface[name='eth0']"
+ */
+void check_ietf_interfaces_int_values(sr_val_t **values, size_t count){
+    for (size_t i = 0; i < count; i++) {
+        xp_loc_id_t *loc_id = NULL;
+        sr_val_t *v = values[i];
+        assert_int_equal(SR_ERR_OK, xp_char_to_loc_id(v->xpath, &loc_id));
+        if (XP_CMP_NODE(loc_id, XP_GET_NODE_COUNT(loc_id)-1, "name")){
+            assert_int_equal(SR_STRING_T, v->type);
+            assert_string_equal("eth0", v->data.string_val);
+        }
+        else if (XP_CMP_NODE(loc_id, XP_GET_NODE_COUNT(loc_id)-1, "type")){
+            assert_int_equal(SR_IDENTITYREF_T, v->type);
+            assert_string_equal("ethernetCsmacd", v->data.identityref_val);
+        }
+        else if (XP_CMP_NODE(loc_id, XP_GET_NODE_COUNT(loc_id)-1, "enabled")){
+            assert_int_equal(SR_BOOL_T, v->type);
+            assert_true(v->data.bool_val);
+        }
+        xp_free_loc_id(loc_id);
+    }
+}
+
+/**
+ * Function expect the values under xpath
+ * /ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4
+ */
+void check_ietf_interfaces_ipv4_values(sr_val_t **values, size_t count){
+    for (size_t i = 0; i < count; i++) {
+         xp_loc_id_t *loc_id = NULL;
+         sr_val_t *v = values[i];
+         assert_int_equal(SR_ERR_OK, xp_char_to_loc_id(v->xpath, &loc_id));
+         if (XP_CMP_NODE(loc_id, XP_GET_NODE_COUNT(loc_id)-1, "enabled")){
+             assert_int_equal(SR_BOOL_T, v->type);
+             assert_true(v->data.bool_val);
+         }
+         else if (XP_CMP_NODE(loc_id, XP_GET_NODE_COUNT(loc_id)-1, "mtu")){
+             assert_int_equal(SR_UINT16_T, v->type);
+             assert_int_equal(1500, v->data.uint32_val);
+         }
+         else if (XP_CMP_NODE(loc_id, XP_GET_NODE_COUNT(loc_id)-1, "address")){
+             assert_int_equal(SR_LIST_T, v->type);
+         }
+         xp_free_loc_id(loc_id);
+     }
+}
+
+
+/**
+ * Function expects the values under xpath
+ * /ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/address[ip='192.168.2.100']
+ */
+void check_ietf_interfaces_addr_values(sr_val_t **values, size_t count){
+    for (size_t i = 0; i < count; i++) {
+        xp_loc_id_t *loc_id = NULL;
+        sr_val_t *v = values[i];
+        assert_int_equal(SR_ERR_OK, xp_char_to_loc_id(v->xpath, &loc_id));
+        if (XP_CMP_NODE(loc_id, XP_GET_NODE_COUNT(loc_id)-1, "ip")){
+            assert_int_equal(SR_STRING_T, v->type);
+            assert_string_equal("192.168.2.100", v->data.string_val);
+        }
+        else if (XP_CMP_NODE(loc_id, XP_GET_NODE_COUNT(loc_id)-1, "prefix-length")){
+            assert_int_equal(SR_UINT8_T, v->type);
+            assert_int_equal(24, v->data.uint8_val);
+        }
+        xp_free_loc_id(loc_id);
+    }
+}
+
+void ietf_interfaces_test(void **state){
+    int rc = 0;
+    dm_ctx_t *ctx = *state;
+    dm_session_t *ses_ctx = NULL;
+    struct lyd_node *data_tree = NULL;
+    dm_session_start(ctx, &ses_ctx);
+    rc = dm_get_datatree(ctx, ses_ctx, "example-module", &data_tree);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    struct lyd_node *root = NULL;
+    createDataTreeIETFinterfaces(data_tree->schema->module->ctx, &root);
+    assert_non_null(root);
+
+    sr_val_t **values;
+    size_t count;
+
+#define INTERFACES "/ietf-interfaces:interfaces"
+    rc = rp_dt_get_values_xpath(ctx, root, INTERFACES, &values, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(3, count);
+    for (size_t i = 0; i < count; i++) {
+        assert_int_equal(0, strncmp(INTERFACES, values[i]->xpath, strlen(INTERFACES)));
+        puts(values[i]->xpath);
+        sr_free_val_t(values[i]);
+    }
+    free(values);
+
+#define INTERFACE_ETH0 "/ietf-interfaces:interfaces/interface[name='eth0']"
+    rc = rp_dt_get_values_xpath(ctx, root, INTERFACE_ETH0, &values, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    check_ietf_interfaces_int_values(values, count);
+    for (size_t i = 0; i < count; i++) {
+        assert_int_equal(0, strncmp(INTERFACE_ETH0, values[i]->xpath, strlen(INTERFACE_ETH0)));
+        puts(values[i]->xpath);
+        sr_free_val_t(values[i]);
+    }
+    free(values);
+
+#define INTERFACE_ETH0_IPV4 "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4"
+    rc = rp_dt_get_values_xpath(ctx, root, INTERFACE_ETH0_IPV4, &values, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    check_ietf_interfaces_ipv4_values(values, count);
+    for (size_t i = 0; i < count; i++) {
+        assert_int_equal(0, strncmp(INTERFACE_ETH0_IPV4, values[i]->xpath, strlen(INTERFACE_ETH0_IPV4)));
+        puts(values[i]->xpath);
+        sr_free_val_t(values[i]);
+    }
+    free(values);
+
+#define INTERFACE_ETH0_IPV4_IP "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/address[ip='192.168.2.100']"
+    rc = rp_dt_get_values_xpath(ctx, root, INTERFACE_ETH0_IPV4_IP, &values, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    check_ietf_interfaces_addr_values(values, count);
+    for (size_t i = 0; i < count; i++) {
+        assert_int_equal(0, strncmp(INTERFACE_ETH0_IPV4_IP, values[i]->xpath, strlen(INTERFACE_ETH0_IPV4_IP)));
+        puts(values[i]->xpath);
+        sr_free_val_t(values[i]);
+    }
+    free(values);
+
+    sr_free_datatree(root);
+    dm_session_stop(ctx, ses_ctx);
+}
+
+
+void get_values_test_module_test(void **state){
+    int rc = 0;
+    dm_ctx_t *ctx = *state;
+    dm_session_t *ses_ctx = NULL;
+    struct lyd_node *data_tree = NULL;
+    dm_session_start(ctx, &ses_ctx);
+    rc = dm_get_datatree(ctx, ses_ctx, "example-module", &data_tree);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    struct lyd_node *root = NULL;
+    createDataTreeTestModule(data_tree->schema->module->ctx, &root);
+    assert_non_null(root);
+
+    sr_val_t *value;
+
+    /* enum leaf*/
+#define XP_TEST_MODULE_DECIDED "/test-module:decided"
+    rc = rp_dt_get_value_xpath(ctx, root, XP_TEST_MODULE_DECIDED, &value);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    assert_int_equal(SR_ENUM_T, value->type);
+    assert_string_equal("maybe", value->data.enum_val);
+
+    sr_free_val_t(value);
+
+    /* binary leaf*/
+#define XP_TEST_MODULE_RAW "/test-module:raw"
+    rc = rp_dt_get_value_xpath(ctx, root, XP_TEST_MODULE_RAW, &value);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    assert_int_equal(SR_BINARY_T, value->type);
+    assert_string_equal("SGVsbG8gd29ybGQh", value->data.binary_val);
+
+    sr_free_val_t(value);
+
+    /*bits leaf*/
+
+#define XP_TEST_MODULE_BITS "/test-module:options"
+    rc = rp_dt_get_value_xpath(ctx, root, XP_TEST_MODULE_BITS, &value);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    assert_int_equal(SR_BITS_T, value->type);
+    assert_string_equal("strict recursive", value->data.bits_val);
+
+    sr_free_val_t(value);
+
+    sr_free_datatree(root);
+    dm_session_stop(ctx, ses_ctx);
+}
+
+
 
 void get_values_test(void **state){
     int rc = 0;
@@ -291,6 +540,35 @@ void get_node_test_found(void **state)
 
 }
 
+void get_nodes_test(void **state){
+    int rc = 0;
+    dm_ctx_t *ctx = *state;
+    dm_session_t *ses_ctx = NULL;
+    struct lyd_node *data_tree = NULL;
+    dm_session_start(ctx, &ses_ctx);
+    rc = dm_get_datatree(ctx, ses_ctx, "example-module", &data_tree);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    struct lyd_node *root = NULL;
+    createDataTree(data_tree->schema->module->ctx, &root);
+    assert_non_null(root);
+
+    struct lyd_node **nodes = NULL;
+    size_t count = 0;
+
+
+#define EXAMPLE_LIST "/example-module:container/list[key1='key1'][key2='key2']"
+    rc = rp_dt_get_nodes_xpath(ctx, root, EXAMPLE_LIST, &nodes, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(3, count);
+
+    free(nodes);
+
+    sr_free_datatree(root);
+    dm_session_stop(ctx, ses_ctx);
+
+}
+
 void get_node_test_not_found(void **state)
 {
     int rc = 0;
@@ -337,6 +615,9 @@ int main(){
             cmocka_unit_test(get_value_test),
             cmocka_unit_test(get_values_test),
             cmocka_unit_test(get_values_with_augments_test),
+            cmocka_unit_test(ietf_interfaces_test),
+            cmocka_unit_test(get_values_test_module_test),
+            cmocka_unit_test(get_nodes_test)
     };
     return cmocka_run_group_tests(tests, setup, teardown);
 }

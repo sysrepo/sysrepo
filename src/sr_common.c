@@ -144,8 +144,23 @@ sr_libyang_type_to_sysrepo(LY_DATA_TYPE t)
 void
 sr_free_val_t(sr_val_t *value){
     free(value->xpath);
-    if (SR_STRING_T == value->type){
+    if (SR_BINARY_T == value->type){
+        free(value->data.binary_val);
+    }
+    else if (SR_STRING_T == value->type){
         free(value->data.string_val);
+    }
+    else if (SR_IDENTITYREF_T == value->type){
+        free(value->data.identityref_val);
+    }
+    else if (SR_ENUM_T == value->type){
+        free(value->data.enum_val);
+    }
+    else if (SR_BINARY_T == value->type){
+        free(value->data.binary_val);
+    }
+    else if (SR_BITS_T == value->type){
+        free(value->data.bits_val);
     }
     free(value);
 }
