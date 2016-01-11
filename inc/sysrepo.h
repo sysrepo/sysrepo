@@ -27,6 +27,13 @@
 #include <stdlib.h>
 
 /**
+ * @defgroup cl Client Library
+ * @{
+ *
+ * @brief TODO
+ */
+
+/**
  * @brief Sysrepo connection context used to identify a connection to sysrepo datastore.
  */
 typedef struct sr_conn_ctx_s sr_conn_ctx_t;
@@ -264,5 +271,7 @@ int sr_get_item_next(sr_session_ctx_t *session, sr_val_iter_p iter, sr_val_t **v
 #define SR_VAL_IS_UINT32_T(val) ((val)->type == SR_UINT32_T)
 #define SR_VAL_IS_STRING(val) ((val)->type == SR_STRING_T)
 #define SR_VAL_DATA(val)  SR_VAL_IS_UINT32_T ? val->data.uint32_t : SR_VAL_IS_STRING ? val->data.string: ….
+
+/**@} cl */
 
 #endif

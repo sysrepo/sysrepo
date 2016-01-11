@@ -30,7 +30,35 @@
 static int
 logging_setup(void **state)
 {
-    sr_logger_set_level(SR_LL_ERR, SR_LL_ERR); /* print debugs to stderr */
+    sr_logger_set_level(SR_LL_DBG, SR_LL_ERR); /* print debugs to stderr */
+    return 0;
+}
+
+static int
+sysrepo_setup(void **state)
+{
+    sr_conn_ctx_t *conn = NULL;
+    int rc = SR_ERR_OK;
+
+    logging_setup(state);
+
+    /* connect to sysrepo */
+    rc = sr_connect("cl_test", true, &conn);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    *state = (void*)conn;
+    return 0;
+}
+
+static int
+sysrepo_teardown(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+
+    /* disconnect from sysrepo */
+    sr_disconnect(conn);
+
     return 0;
 }
 
@@ -86,40 +114,59 @@ cl_connection_test(void **state) {
 
 static void
 cl_get_item_test(void **state) {
-    sr_conn_ctx_t *conn = NULL;
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+
     sr_session_ctx_t *session = NULL;
     sr_val_t *value = NULL;
     int rc = 0;
-
-    /* connect to sysrepo */
-    rc = sr_connect("cl_test", true, &conn);
-    assert_int_equal(rc, SR_ERR_OK);
 
     /* start a session */
     rc = sr_session_start(conn, "alice", SR_CANDIDATE, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* perform a get-item request */
-    int i = 0;
-    for (i = 0; i < 100000; i++) {
-        rc = sr_get_item(session, "/model:container/leaf", &value);
-        assert_int_equal(rc, SR_ERR_OK);
-    }
+    rc = sr_get_item(session, "/model:container/leaf", &value);
+    assert_int_equal(rc, SR_ERR_OK);
+
     // TODO: validate value
 
     /* stop the session */
     rc = sr_session_stop(session);
     assert_int_equal(rc, SR_ERR_OK);
+}
 
-    /* disconnect from sysrepo */
-    sr_disconnect(conn);
+static void
+cl_get_items_test(void **state) {
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+
+    sr_session_ctx_t *session = NULL;
+    sr_val_t **values = NULL;
+    size_t values_cnt = 0;
+    int rc = 0;
+
+    /* start a session */
+    rc = sr_session_start(conn, "alice", SR_CANDIDATE, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* perform a get-items request */
+    rc = sr_get_items(session, "/model:container", &values, &values_cnt);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    // TODO: validate values
+
+    /* stop the session */
+    rc = sr_session_stop(session);
+    assert_int_equal(rc, SR_ERR_OK);
 }
 
 int
 main() {
     const struct CMUnitTest tests[] = {
             cmocka_unit_test_setup_teardown(cl_connection_test, logging_setup, NULL),
-            cmocka_unit_test_setup_teardown(cl_get_item_test, logging_setup, NULL),
+            cmocka_unit_test_setup_teardown(cl_get_item_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_get_items_test, sysrepo_setup, sysrepo_teardown),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);

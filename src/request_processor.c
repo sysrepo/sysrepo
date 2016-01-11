@@ -51,6 +51,8 @@ rp_get_item_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr_
 
     CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->get_item_req);
 
+    SR_LOG_DBG_MSG("Processing get_item request.");
+
     // TODO: implementation - for now, just send an empty response
     Sr__Msg *resp = NULL;
     rc = sr_pb_resp_alloc(SR__OPERATION__GET_ITEM, session->id, &resp);
@@ -68,6 +70,8 @@ rp_get_items_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->get_items_req);
+
+    SR_LOG_DBG_MSG("Processing get_items request.");
 
     // TODO: implementation - for now, just send an empty response
     Sr__Msg *resp = NULL;
@@ -150,7 +154,15 @@ int
 rp_msg_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
 {
     int rc = SR_ERR_OK;
-    CHECK_NULL_ARG3(rp_ctx, session, msg);
+
+    CHECK_NULL_ARG_NORET3(rc, rp_ctx, session, msg);
+
+    if (SR_ERR_OK != rc) {
+        if (NULL != msg) {
+            sr__msg__free_unpacked(msg, NULL);
+        }
+        return rc;
+    }
 
     if (SR__MSG__MSG_TYPE__REQUEST == msg->type) {
         /* request handling */
@@ -174,6 +186,7 @@ rp_msg_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg
         rc = SR_ERR_UNSUPPORTED;
     }
 
+    /* release the message */
     sr__msg__free_unpacked(msg, NULL);
 
     if (SR_ERR_OK != rc) {

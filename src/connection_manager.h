@@ -130,7 +130,8 @@ int cm_stop(cm_ctx_t *cm_ctx);
  * @note This function is thread safe, can be called from any thread.
  *
  * @param[in] cm_ctx Connection Manager context.
- * @param[in] msg Message to be send.
+ * @param[in] msg Message to be send. @note Message will be freed automatically
+ * after sending, also in case of error.
  *
  * @return Error code (SR_ERR_OK on success).
  */

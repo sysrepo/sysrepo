@@ -1,5 +1,5 @@
 /**
- * @file sr_client.c
+ * @file client_library.c
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
  * @brief Sysrepo client library (public API) implementation.
  *
@@ -24,7 +24,6 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/un.h>
-#include <arpa/inet.h>
 
 #include "sr_common.h"
 #include "connection_manager.h"
@@ -198,6 +197,7 @@ cl_message_send(const sr_conn_ctx_t *conn_ctx, Sr__Msg *msg)
 {
     size_t msg_size = 0;
     uint8_t *msg_buf = NULL; // TODO: preallocated dynamic message buffer per connection
+    uint8_t len_buf[sizeof(uint32_t)] = { 0, };
     int rc = 0;
 
     CHECK_NULL_ARG2(conn_ctx, msg);
@@ -214,8 +214,8 @@ cl_message_send(const sr_conn_ctx_t *conn_ctx, Sr__Msg *msg)
     sr__msg__pack(msg, msg_buf);
 
     /* write 4-byte length */
-    uint32_t length = htonl(msg_size);
-    rc = send(conn_ctx->fd, &length, sizeof(length), 0);
+    sr_uint32_to_buff(msg_size, len_buf);
+    rc = send(conn_ctx->fd, len_buf, sizeof(uint32_t), 0);
     if (rc < 1) {
         SR_LOG_ERR("Error by sending of the message: %s.", strerror(errno));
         free(msg_buf);
@@ -243,6 +243,7 @@ cl_message_recv(const sr_conn_ctx_t *conn_ctx, Sr__Msg **msg)
 {
     static uint8_t buf[CM_BUFF_LEN] = { 0, };
     size_t len = 0, pos = 0;
+    size_t msg_size = 0;
 
     /* read first 4 bytes with length of the message */
     while (pos < 4) {
@@ -257,9 +258,7 @@ cl_message_recv(const sr_conn_ctx_t *conn_ctx, Sr__Msg **msg)
         }
         pos += len;
     }
-
-    uint32_t msg_size_net = *((uint32_t*)buf);
-    size_t msg_size = ntohl(msg_size_net);
+    msg_size = sr_buff_to_uint32(buf);
 
     /* read the rest of the message */
     while (pos < msg_size + 4) {
@@ -557,7 +556,7 @@ int sr_get_item(sr_session_ctx_t *session, const char *path, sr_val_t **value)
     /* send the request and receive the response */
     rc = cl_request_process(session->conn_ctx, msg_req, &msg_resp, SR__OPERATION__GET_ITEM);
     if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Error by processing of session_stop request.");
+        SR_LOG_ERR_MSG("Error by processing of get_item request.");
         goto cleanup;
     }
 
@@ -578,3 +577,47 @@ cleanup:
     return rc;
 }
 
+int sr_get_items(sr_session_ctx_t *session, const char *path, sr_val_t ***values, size_t *value_cnt)
+{
+    Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG5(session, session->conn_ctx, path, values, value_cnt);
+
+    /* prepare get_item message */
+    rc = sr_pb_req_alloc(SR__OPERATION__GET_ITEMS, session->id, &msg_req);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Cannot allocate get_items message.");
+        goto cleanup;
+    }
+
+    /* fill in the path */
+    msg_req->request->get_items_req->path = strdup(path);
+    if (NULL == msg_req->request->get_items_req->path) {
+        SR_LOG_ERR_MSG("Cannot allocate get_items path.");
+        goto cleanup;
+    }
+
+    /* send the request and receive the response */
+    rc = cl_request_process(session->conn_ctx, msg_req, &msg_resp, SR__OPERATION__GET_ITEMS);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Error by processing of get_items request.");
+        goto cleanup;
+    }
+
+    // TODO: allocate and fill-in the value
+
+    sr__msg__free_unpacked(msg_req, NULL);
+    sr__msg__free_unpacked(msg_resp, NULL);
+
+    return SR_ERR_OK;
+
+cleanup:
+    if (NULL != msg_req) {
+        sr__msg__free_unpacked(msg_req, NULL);
+    }
+    if (NULL != msg_resp) {
+        sr__msg__free_unpacked(msg_resp, NULL);
+    }
+    return rc;
+}

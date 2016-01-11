@@ -525,9 +525,6 @@ cm_msg_send_session(cm_ctx_t *cm_ctx, sm_session_t *session, Sr__Msg *msg)
         rc = cm_conn_out_buff_flush(cm_ctx, session->connection);
     }
 
-    /* release the message */
-    sr__msg__free_unpacked(msg, NULL);
-
     return rc;
 }
 
@@ -595,6 +592,9 @@ cm_session_start_req_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, Sr__Msg *m
         SR_LOG_ERR("Unable to send session_start response (conn=%p).", (void*)conn);
     }
 
+    /* release the message */
+    sr__msg__free_unpacked(msg, NULL);
+
     return rc;
 }
 
@@ -653,6 +653,9 @@ cm_session_stop_req_process(cm_ctx_t *cm_ctx, sm_session_t *session, Sr__Msg *ms
     if (SR_ERR_OK != rc_tmp) {
         SR_LOG_WRN("Unable to send session_stop response via session id=%"PRIu32".", session->id);
     }
+
+    /* release the message */
+    sr__msg__free_unpacked(msg_out, NULL);
 
     /* drop session in SM - must be called AFTER sending */
     if (SR_ERR_OK == rc) {
@@ -1155,7 +1158,14 @@ cm_msg_send(cm_ctx_t *cm_ctx, Sr__Msg *msg)
     sm_session_t *session = NULL;
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG2(cm_ctx, msg);
+    CHECK_NULL_ARG_NORET2(rc, cm_ctx, msg);
+
+    if (SR_ERR_OK != rc) {
+        if (NULL != msg) {
+            sr__msg__free_unpacked(msg, NULL);
+        }
+        return rc;
+    }
 
     rc = sm_session_find_id(cm_ctx->sm_ctx, msg->session_id, &session);
     if (SR_ERR_OK != rc) {
@@ -1169,6 +1179,9 @@ cm_msg_send(cm_ctx_t *cm_ctx, Sr__Msg *msg)
         SR_LOG_ERR("Unable to send the message over session (id=%"PRIu32").", msg->session_id);
         return rc;
     }
+
+    /* release the message */
+    sr__msg__free_unpacked(msg, NULL);
 
     return SR_ERR_OK;
 }
