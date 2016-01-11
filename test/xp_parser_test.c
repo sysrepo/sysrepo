@@ -122,12 +122,26 @@ void check_parsing(void **state){
    assert_int_not_equal(0,xp_char_to_loc_id("/ns:cont/list[k1='abc'][va2]", &l));
    assert_int_not_equal(0,xp_char_to_loc_id("/ns:cont/list[k1=']", &l));
 
-   /* apostroph can not be ommitted */
+   /* apostroph can not be omitted */
    assert_int_not_equal(0,xp_char_to_loc_id("/cont/l[k=abc]", &l));
    assert_int_not_equal(0,xp_char_to_loc_id("/c/l[abc]", &l));
 
    assert_int_not_equal(0,xp_char_to_loc_id("/ns:ns:c/l[abc]", &l));
    assert_int_not_equal(0,xp_char_to_loc_id("/c/l[abc]", &l));
+
+   /* Invalid characters*/
+   assert_int_not_equal(0,xp_char_to_loc_id("/model%:leaf", &l));
+   assert_int_not_equal(0,xp_char_to_loc_id("/%model:leaf", &l));
+   assert_int_not_equal(0,xp_char_to_loc_id("/model:%leaf", &l));
+   assert_int_not_equal(0,xp_char_to_loc_id("/model:lea%f", &l));
+   assert_int_not_equal(0,xp_char_to_loc_id("/model:list[ab%='k1']/leaf", &l));
+
+   /* Either all keys are listed or all are omitted */
+   assert_int_not_equal(0,xp_char_to_loc_id("/model:list[a='k1']['k2']/leaf", &l));
+   assert_int_not_equal(0,xp_char_to_loc_id("/model:list['k1'][b='k2']/leaf", &l));
+
+
+
 }
 
 int main(){
