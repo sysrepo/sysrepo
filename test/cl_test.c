@@ -126,10 +126,12 @@ cl_get_item_test(void **state) {
     assert_int_equal(rc, SR_ERR_OK);
 
     /* perform a get-item request */
-    rc = sr_get_item(session, "/model:container/leaf", &value);
+    rc = sr_get_item(session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &value);
     assert_int_equal(rc, SR_ERR_OK);
-
-    // TODO: validate value
+    assert_non_null(value);
+    assert_int_equal(SR_STRING_T, value->type);
+    assert_string_equal("Leaf value", value->data.string_val);
+    sr_free_val_t(value);
 
     /* stop the session */
     rc = sr_session_stop(session);

@@ -560,7 +560,18 @@ int sr_get_item(sr_session_ctx_t *session, const char *path, sr_val_t **value)
         goto cleanup;
     }
 
-    // TODO: allocate and fill-in the value
+    /* check response code */
+    if (SR_ERR_OK != msg_resp->response->result){
+        SR_LOG_ERR("Get item response with code %u", msg_resp->response->result);
+        goto cleanup;
+    }
+
+    /* copy the content of gpb to sr_val_t*/
+    rc = sr_copy_gpb_to_val_t(msg_resp->response->get_item_resp->value, value);
+    if (SR_ERR_OK != rc){
+        SR_LOG_ERR_MSG("Copying from gpb to sr_val_t failed");
+        goto cleanup;
+    }
 
     sr__msg__free_unpacked(msg_req, NULL);
     sr__msg__free_unpacked(msg_resp, NULL);

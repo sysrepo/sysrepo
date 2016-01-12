@@ -275,7 +275,6 @@ sr_pb_resp_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__M
     Sr__Msg *msg = NULL;
     Sr__Resp *resp = NULL;
     ProtobufCMessage *sub_msg = NULL;
-
     CHECK_NULL_ARG(msg_p);
 
     /* initialize Sr__Msg */
@@ -480,3 +479,144 @@ sr_get_peer_eid(int fd, uid_t *uid, gid_t *gid)
 }
 
 #endif /* !defined(HAVE_GETPEEREID) */
+
+static int
+sr_set_val_t_type_in_gpb(const sr_val_t *value, Sr__Value *gpb_value){
+    CHECK_NULL_ARG2(value, gpb_value);
+    int rc = SR_ERR_OK;
+    switch (value->type){
+    case SR_STRING_T:
+        gpb_value->type = SR__VALUE__TYPES__STRING;
+        break;
+    default:
+        SR_LOG_ERR("Type can not be mapped to gpb type '%s'", value->xpath);
+        return SR_ERR_INTERNAL;
+    }
+
+    return rc;
+}
+
+static int
+sr_set_val_t_value_in_gpb(const sr_val_t *value, Sr__Value *gpb_value){
+    CHECK_NULL_ARG2(value, gpb_value);
+
+    switch (value->type) {
+    case SR_STRING_T:
+        gpb_value->string_val = strdup(value->data.string_val);
+        if (NULL == gpb_value->string_val) {
+            SR_LOG_ERR("Copy string value failed for xpath '%s'", value->xpath);
+            return SR_ERR_INTERNAL;
+        }
+        SR_LOG_INF("Duplicating value %s", gpb_value->string_val);
+        return SR_ERR_OK;
+    default:
+        SR_LOG_ERR("Conversion of value type not supported '%s'", value->xpath);
+        return SR_ERR_INTERNAL;
+    }
+
+    return SR_ERR_OK;
+}
+
+
+
+int sr_copy_val_t_to_gpb(const sr_val_t *value, Sr__Value **gpb_value){
+    CHECK_NULL_ARG2(value, gpb_value);
+    int rc = SR_ERR_OK;
+    Sr__Value *gpb;
+
+    gpb = calloc(1, sizeof(*gpb));
+    if (NULL == gpb){
+        SR_LOG_ERR_MSG("Memory allocation failed");
+        return SR_ERR_NOMEM;
+    }
+    sr__value__init(gpb);
+
+    rc = sr_set_val_t_type_in_gpb(value, gpb);
+    if (SR_ERR_OK != rc){
+        SR_LOG_ERR("Setting type in gpb failed for xpath '%s'", value->xpath);
+        goto cleanup;
+    }
+
+    rc = sr_set_val_t_value_in_gpb(value, gpb);
+    if (SR_ERR_OK != rc){
+        SR_LOG_ERR("Setting value in gpb failed for xpath '%s'", value->xpath);
+        goto cleanup;
+    }
+
+    *gpb_value = gpb;
+    return rc;
+
+cleanup:
+    free(gpb);
+    return rc;
+}
+
+
+static int
+sr_set_gpb_type_in_val_t(const Sr__Value *gpb_value, sr_val_t *value){
+    CHECK_NULL_ARG2(value, gpb_value);
+    int rc = SR_ERR_OK;
+    switch (gpb_value->type){
+    case SR__VALUE__TYPES__STRING:
+        value->type = SR_STRING_T;
+        break;
+    default:
+        SR_LOG_ERR_MSG("Type can not be mapped to sr_val_t");
+        return SR_ERR_INTERNAL;
+    }
+
+    return rc;
+}
+
+static int
+sr_set_gpb_value_in_val_t(const Sr__Value *gpb_value, sr_val_t *value){
+    CHECK_NULL_ARG2(value, gpb_value);
+
+    switch (gpb_value->type) {
+    case SR__VALUE__TYPES__STRING:
+        value->data.string_val = strdup(gpb_value->string_val);
+        if (NULL == value->data.string_val) {
+            SR_LOG_ERR_MSG("Copy string value failed");
+            return SR_ERR_INTERNAL;
+        }
+        return SR_ERR_OK;
+    default:
+        SR_LOG_ERR_MSG("Copy of value failed");
+        return SR_ERR_INTERNAL;
+    }
+    return SR_ERR_OK;
+}
+
+int sr_copy_gpb_to_val_t(const Sr__Value *gpb_value, sr_val_t **value){
+    CHECK_NULL_ARG2(gpb_value, value);
+    int rc = SR_ERR_INTERNAL;
+
+    sr_val_t *val = NULL;
+    val = calloc(1, sizeof(*val));
+    if (NULL == val) {
+        SR_LOG_DBG_MSG("Memory allocation failed");
+        return SR_ERR_NOMEM;
+    }
+
+    rc = sr_set_gpb_type_in_val_t(gpb_value, val);
+    if (SR_ERR_OK != rc){
+        SR_LOG_ERR_MSG("Setting type in for sr_value_t failed");
+        goto cleanup;
+    }
+
+    rc = sr_set_gpb_value_in_val_t(gpb_value, val);
+    if (SR_ERR_OK != rc){
+        SR_LOG_ERR_MSG("Setting value in for sr_value_t failed");
+        goto cleanup;
+    }
+
+    *value = val;
+    return rc;
+
+cleanup:
+    sr_free_val_t(val);
+    *value = NULL;
+    return rc;
+}
+
+

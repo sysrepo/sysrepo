@@ -663,6 +663,48 @@ rp_dt_get_value_xpath(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const 
     return rc;
 }
 
+int rp_dt_get_value_wrapper(const dm_ctx_t *dm_ctx,  dm_session_t *dm_session, const char *xpath, sr_val_t **value){
+    CHECK_NULL_ARG4(dm_ctx, dm_session, xpath, value);
+
+    int rc = SR_ERR_INVAL_ARG;
+    xp_loc_id_t *l = NULL;
+    struct lyd_node *data_tree = NULL;
+    char *data_tree_name = NULL;
+    rc = xp_char_to_loc_id(xpath, &l);
+
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Converting xpath '%s' to loc_id failed.", xpath);
+        return rc;
+    }
+
+    if (!XP_HAS_NODE_NS(l,0)){
+        SR_LOG_ERR("Provided xpath '%s' doesn't containt namespace on the root node", xpath);
+        goto cleanup;
+    }
+
+    data_tree_name = XP_CPY_NODE_NS(l, 0);
+    if (NULL == data_tree_name){
+        SR_LOG_ERR("Copying module name failed for xpath '%s'", xpath);
+        goto cleanup;
+    }
+
+    rc = dm_get_datatree(dm_ctx, dm_session, data_tree_name, &data_tree);
+    if (SR_ERR_OK != rc){
+        SR_LOG_ERR("Getting data tree failed for xpath '%s'", xpath);
+        goto cleanup;
+    }
+
+    rc = rp_dt_get_value(dm_ctx, data_tree, l, value);
+    if (SR_ERR_OK != rc){
+        SR_LOG_ERR("Copying module name failed for xpath '%s'", xpath);
+    }
+
+cleanup:
+    xp_free_loc_id(l);
+    free(data_tree_name);
+    return rc;
+}
+
 /**
  * @brief Fills nodes with all node children
  * @param [in] node

@@ -18,6 +18,7 @@ add_custom_command(
 
 add_custom_target(proto DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${PROTO_NAME}.pb-c.c)
 
+configure_file("${PROJECT_SOURCE_DIR}/src/dm_location.h.in" "${PROJECT_SOURCE_DIR}/src/dm_location.h" ESCAPE_QUOTES @ONLY)
 
 #setup library sources
 set(SYSREPO-SOURCES

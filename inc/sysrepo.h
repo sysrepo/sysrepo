@@ -259,6 +259,12 @@ int sr_get_items_iter(sr_session_ctx_t *session, const char *path, bool recursiv
 int sr_get_item_next(sr_session_ctx_t *session, sr_val_iter_p iter, sr_val_t **value);
 
 
+/**
+ * @brief Frees sr_val_t structure
+ * @param [in] value
+ */
+void sr_free_val_t(sr_val_t *value);
+
 #define SR_VAL_TYPE(val) (val)->type
 #define SR_VAL_NAME(val) ...
 #define SR_VAL_KEY(val,index) ...
