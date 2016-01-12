@@ -36,6 +36,12 @@
         return SR_ERR_INVAL_ARG; \
     } \
 
+#define CHECK_NULL_ARG_NORET__INTERNAL(RC, ARG) \
+    if (NULL == ARG) { \
+        SR_LOG_ERR("NULL value detected for %s argument of %s", #ARG, __FUNCTION__); \
+        RC = SR_ERR_INVAL_ARG; \
+    } \
+
 #define CHECK_NULL_ARG(ARG) \
     do { \
         CHECK_NULL_ARG__INTERNAL(ARG) \
@@ -69,6 +75,41 @@
         CHECK_NULL_ARG__INTERNAL(ARG3) \
         CHECK_NULL_ARG__INTERNAL(ARG4) \
         CHECK_NULL_ARG__INTERNAL(ARG5) \
+    } while(0)
+
+#define CHECK_NULL_ARG_NORET(RC, ARG) \
+    do { \
+        CHECK_NULL_ARG_NORET__INTERNAL(RC, ARG) \
+    } while(0)
+
+#define CHECK_NULL_ARG_NORET2(RC, ARG1, ARG2) \
+    do { \
+        CHECK_NULL_ARG_NORET__INTERNAL(RC, ARG1) \
+        CHECK_NULL_ARG_NORET__INTERNAL(RC, ARG2) \
+    } while(0)
+
+#define CHECK_NULL_ARG_NORET3(RC, ARG1, ARG2, ARG3) \
+    do { \
+        CHECK_NULL_ARG_NORET__INTERNAL(RC, ARG1) \
+        CHECK_NULL_ARG_NORET__INTERNAL(RC, ARG2) \
+        CHECK_NULL_ARG_NORET__INTERNAL(RC, ARG3) \
+    } while(0)
+
+#define CHECK_NULL_ARG_NORET4(RC, ARG1, ARG2, ARG3, ARG4) \
+    do { \
+        CHECK_NULL_ARG_NORET__INTERNAL(RC, ARG1) \
+        CHECK_NULL_ARG_NORET__INTERNAL(RC, ARG2) \
+        CHECK_NULL_ARG_NORET__INTERNAL(RC, ARG3) \
+        CHECK_NULL_ARG_NORET__INTERNAL(RC, ARG4) \
+    } while(0)
+
+#define CHECK_NULL_ARG_NORET5(RC, ARG1, ARG2, ARG3, ARG4, ARG5) \
+    do { \
+        CHECK_NULL_ARG_NORET__INTERNAL(RC, ARG1) \
+        CHECK_NULL_ARG_NORET__INTERNAL(RC, ARG2) \
+        CHECK_NULL_ARG_NORET__INTERNAL(RC, ARG3) \
+        CHECK_NULL_ARG_NORET__INTERNAL(RC, ARG4) \
+        CHECK_NULL_ARG_NORET__INTERNAL(RC, ARG5) \
     } while(0)
 
 /**
@@ -111,10 +152,27 @@ void sr_free_datatree(struct lyd_node *root);
 sr_type_t sr_libyang_type_to_sysrepo(LY_DATA_TYPE t);
 
 /**
- * Frees sr_val_t structure
+ * @brief Frees sr_val_t structure
  * @param [in] value
  */
 void sr_free_val_t(sr_val_t *value);
+
+/**
+ * @brief Converts byte buffer content to uint32_t number.
+ *
+ * @param[in] buff pointer to buffer where uint32_t number starts.
+ *
+ * @return uint32_t number.
+ */
+uint32_t sr_buff_to_uint32(uint8_t *buff);
+
+/**
+ * @brief Converts uint32_t number to byte buffer content.
+ *
+ * @param[in] number uint32_t value of the number.
+ * @param[in] buff pointer to buffer where uint32_t number will be placed.
+ */
+void sr_uint32_to_buff(uint32_t number, uint8_t *buff);
 
 /**
  * @brief Allocates and initializes GPB request message.

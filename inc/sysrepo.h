@@ -27,6 +27,13 @@
 #include <stdlib.h>
 
 /**
+ * @defgroup cl Client Library
+ * @{
+ *
+ * @brief TODO
+ */
+
+/**
  * @brief Sysrepo connection context used to identify a connection to sysrepo datastore.
  */
 typedef struct sr_conn_ctx_s sr_conn_ctx_t;
@@ -139,12 +146,12 @@ char *sr_strerror(int err_code);
  * Data stores that sysrepo supports.
  */
 typedef enum sr_datastore_e {
-    SR_RUNNING = 0,    /**< Currently running configuration.
-                            @note Direct writes to running are not allowed, changes need to be made via candidate. */
-    SR_CANDIDATE = 1,  /**< Candidate datastore - accepts configuration changes.
-                            @note Candidate is isolated for each session (not committed changes are not visible in other sessions). */
-    SR_STARTUP = 2     /**< Configuration loaded upon application startup.
-                            @note Direct writes to startup are not allowed, changes need to be made via running. */
+    SR_DS_RUNNING = 0,    /**< Currently running configuration.
+                               @note Direct writes to running are not allowed, changes need to be made via candidate. */
+    SR_DS_CANDIDATE = 1,  /**< Candidate datastore - accepts configuration changes.
+                               @note Candidate is isolated for each session (not committed changes are not visible in other sessions). */
+    SR_DS_STARTUP = 2     /**< Configuration loaded upon application startup.
+                               @note Direct writes to startup are not allowed, changes need to be made via running. */
 } sr_datastore_t;
 
 /*
@@ -193,7 +200,7 @@ typedef sr_val_iter_t * sr_val_iter_p;
 
 /**
  * Retrieves a single element stored under provided path.
- * If the path identifies an empty leaf or a presenece container, the value has no data filled in 
+ * If the path identifies an empty leaf or a presence container, the value has no data filled in
  * and its type is set properly (SR_LEAF_EMPTY_T / SR_CONTAINER_PRESENCE_T). 
  * Returns error if the path identifies a list, non-presence container or leaf-list,
  * SR_ERR_NOT_FOUND if the entity is not present in the data tree, or the user does not have read
@@ -263,5 +270,7 @@ int sr_get_item_next(sr_session_ctx_t *session, sr_val_iter_p iter, sr_val_t **v
 #define SR_VAL_IS_UINT32_T(val) ((val)->type == SR_UINT32_T)
 #define SR_VAL_IS_STRING(val) ((val)->type == SR_STRING_T)
 #define SR_VAL_DATA(val)  SR_VAL_IS_UINT32_T ? val->data.uint32_t : SR_VAL_IS_STRING ? val->data.string: ….
+
+/**@} cl */
 
 #endif

@@ -1,5 +1,5 @@
 /**
- * @file sr_client.c
+ * @file client_library.c
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
  * @brief Sysrepo client library (public API) implementation.
  *
@@ -24,7 +24,6 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/un.h>
-#include <arpa/inet.h>
 
 #include "sr_common.h"
 #include "connection_manager.h"
@@ -198,6 +197,7 @@ cl_message_send(const sr_conn_ctx_t *conn_ctx, Sr__Msg *msg)
 {
     size_t msg_size = 0;
     uint8_t *msg_buf = NULL; // TODO: preallocated dynamic message buffer per connection
+    uint8_t len_buf[sizeof(uint32_t)] = { 0, };
     int rc = 0;
 
     CHECK_NULL_ARG2(conn_ctx, msg);
@@ -214,8 +214,8 @@ cl_message_send(const sr_conn_ctx_t *conn_ctx, Sr__Msg *msg)
     sr__msg__pack(msg, msg_buf);
 
     /* write 4-byte length */
-    uint32_t length = htonl(msg_size);
-    rc = send(conn_ctx->fd, &length, sizeof(length), 0);
+    sr_uint32_to_buff(msg_size, len_buf);
+    rc = send(conn_ctx->fd, len_buf, sizeof(uint32_t), 0);
     if (rc < 1) {
         SR_LOG_ERR("Error by sending of the message: %s.", strerror(errno));
         free(msg_buf);
@@ -241,8 +241,9 @@ cl_message_send(const sr_conn_ctx_t *conn_ctx, Sr__Msg *msg)
 static int
 cl_message_recv(const sr_conn_ctx_t *conn_ctx, Sr__Msg **msg)
 {
-    uint8_t *buf[CM_BUFF_LEN] = { 0, };
+    static uint8_t buf[CM_BUFF_LEN] = { 0, };
     size_t len = 0, pos = 0;
+    size_t msg_size = 0;
 
     /* read first 4 bytes with length of the message */
     while (pos < 4) {
@@ -257,9 +258,7 @@ cl_message_recv(const sr_conn_ctx_t *conn_ctx, Sr__Msg **msg)
         }
         pos += len;
     }
-
-    uint32_t msg_size_net = *((uint32_t*)buf);
-    size_t msg_size = ntohl(msg_size_net);
+    msg_size = sr_buff_to_uint32(buf);
 
     /* read the rest of the message */
     while (pos < msg_size + 4) {
@@ -280,6 +279,50 @@ cl_message_recv(const sr_conn_ctx_t *conn_ctx, Sr__Msg **msg)
     if (NULL == *msg) {
         SR_LOG_ERR_MSG("Malformed message received.");
         return SR_ERR_IO;
+    }
+
+    return SR_ERR_OK;
+}
+
+/**
+ * Process (send) the request over the connection and receive the response.
+ */
+static int
+cl_request_process(sr_conn_ctx_t *conn_ctx, Sr__Msg *msg_req, Sr__Msg **msg_resp,
+        const Sr__Operation expected_response_op)
+{
+    int rc = SR_ERR_OK;
+
+    /* send the request */
+    rc = cl_message_send(conn_ctx, msg_req);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Unable to send the message with request (conn=%p, operation=%d).",
+                (void*)conn_ctx, msg_req->request->operation);
+        return rc;
+    }
+
+    /* receive the response */
+    rc = cl_message_recv(conn_ctx, msg_resp);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Unable to receive the message with response (conn=%p, operation=%d).",
+                (void*)conn_ctx, msg_req->request->operation);
+        return rc;
+    }
+
+    /* validate the response */
+    rc = sr_pb_msg_validate(*msg_resp, SR__MSG__MSG_TYPE__RESPONSE, expected_response_op);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Malformed message with response received (conn=%p, operation=%d).",
+                (void*)conn_ctx, msg_req->request->operation);
+        return rc;
+    }
+
+    /* check for errors */
+    if (SR_ERR_OK != (*msg_resp)->response->result) {
+        SR_LOG_ERR("Error by processing of the request conn=%p, operation=%d): %s.",
+                (void*)conn_ctx, msg_req->request->operation, (NULL != (*msg_resp)->response->error_msg) ?
+                        (*msg_resp)->response->error_msg : sr_strerror((*msg_resp)->response->result));
+        return (*msg_resp)->response->result;
     }
 
     return SR_ERR_OK;
@@ -383,7 +426,7 @@ int
 sr_session_start(sr_conn_ctx_t *conn_ctx, const char *user_name, sr_datastore_t datastore, sr_session_ctx_t **session_p)
 {
     sr_session_ctx_t *session = NULL;
-    Sr__Msg *msg = NULL;
+    Sr__Msg *msg_req = NULL, *msg_resp = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG2(conn_ctx, session_p);
@@ -397,7 +440,7 @@ sr_session_start(sr_conn_ctx_t *conn_ctx, const char *user_name, sr_datastore_t 
     }
 
     /* prepare session_start message */
-    rc = sr_pb_req_alloc(SR__OPERATION__SESSION_START, /* undefined session id */ 0, &msg);
+    rc = sr_pb_req_alloc(SR__OPERATION__SESSION_START, /* undefined session id */ 0, &msg_req);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Cannot allocate session_start message.");
         goto cleanup;
@@ -405,37 +448,23 @@ sr_session_start(sr_conn_ctx_t *conn_ctx, const char *user_name, sr_datastore_t 
 
     /* set user name if provided */
     if (NULL != user_name) {
-        msg->request->session_start_req->user_name = strdup(user_name);
-        if (NULL == msg->request->session_start_req->user_name) {
+        msg_req->request->session_start_req->user_name = strdup(user_name);
+        if (NULL == msg_req->request->session_start_req->user_name) {
             SR_LOG_ERR_MSG("Cannot duplicate user name for session_start message.");
             goto cleanup;
         }
     }
 
-    /* send the message */
-    rc = cl_message_send(conn_ctx, msg);
+    /* send the request and receive the response */
+    rc = cl_request_process(conn_ctx, msg_req, &msg_resp, SR__OPERATION__SESSION_START);
     if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Unable to send session_start message.");
-        goto cleanup;
-    }
-    sr__msg__free_unpacked(msg, NULL);
-
-    /* receive the response */
-    rc = cl_message_recv(conn_ctx, &msg);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Unable to receive session_start response message.");
+        SR_LOG_ERR_MSG("Error by processing of session_stop request.");
         goto cleanup;
     }
 
-    /* validate the message */
-    rc = sr_pb_msg_validate(msg, SR__MSG__MSG_TYPE__RESPONSE, SR__OPERATION__SESSION_START);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Malformed message received.");
-        goto cleanup;
-    }
-
-    session->id = msg->response->session_start_resp->session_id;
-    sr__msg__free_unpacked(msg, NULL);
+    session->id = msg_resp->response->session_start_resp->session_id;
+    sr__msg__free_unpacked(msg_req, NULL);
+    sr__msg__free_unpacked(msg_resp, NULL);
 
     /* store the session the in connection */
     rc = cl_conn_add_session(conn_ctx, session);
@@ -449,8 +478,11 @@ sr_session_start(sr_conn_ctx_t *conn_ctx, const char *user_name, sr_datastore_t 
     return SR_ERR_OK;
 
 cleanup:
-    if (NULL != msg) {
-        sr__msg__free_unpacked(msg, NULL);
+    if (NULL != msg_req) {
+        sr__msg__free_unpacked(msg_req, NULL);
+    }
+    if (NULL != msg_resp) {
+        sr__msg__free_unpacked(msg_resp, NULL);
     }
     free(session);
     return rc;
@@ -458,47 +490,23 @@ cleanup:
 
 int sr_session_stop(sr_session_ctx_t *session)
 {
-    Sr__Msg *msg = NULL;
+    Sr__Msg *msg_req = NULL, *msg_resp = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG2(session, session->conn_ctx);
 
     /* prepare session_stop message */
-    rc = sr_pb_req_alloc(SR__OPERATION__SESSION_STOP, session->id, &msg);
+    rc = sr_pb_req_alloc(SR__OPERATION__SESSION_STOP, session->id, &msg_req);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Cannot allocate session_stop message.");
         goto cleanup;
     }
-    msg->request->session_stop_req->session_id = session->id;
+    msg_req->request->session_stop_req->session_id = session->id;
 
-    /* send the message */
-    rc = cl_message_send(session->conn_ctx, msg);
+    /* send the request and receive the response */
+    rc = cl_request_process(session->conn_ctx, msg_req, &msg_resp, SR__OPERATION__SESSION_STOP);
     if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Unable to send session_stop message.");
-        goto cleanup;
-    }
-    sr__msg__free_unpacked(msg, NULL);
-    msg = NULL;
-
-    /* receive the response */
-    rc = cl_message_recv(session->conn_ctx, &msg);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Unable to receive session_stop response message.");
-        goto cleanup;
-    }
-
-    /* validate the message */
-    rc = sr_pb_msg_validate(msg, SR__MSG__MSG_TYPE__RESPONSE, SR__OPERATION__SESSION_STOP);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Malformed message received.");
-        goto cleanup;
-    }
-
-    /* check for errors */
-    if (SR_ERR_OK != msg->response->result) {
-        SR_LOG_ERR("Error by processing session_stop request: %s.",
-                (NULL != msg->response->error_msg) ? msg->response->error_msg : sr_strerror(msg->response->result));
-        rc = msg->response->result;
+        SR_LOG_ERR_MSG("Error by processing of session_stop request.");
         goto cleanup;
     }
 
@@ -508,20 +516,108 @@ int sr_session_stop(sr_session_ctx_t *session)
         SR_LOG_WRN_MSG("Error by removing the session from the connection session list.");
     }
 
-    sr__msg__free_unpacked(msg, NULL);
+    sr__msg__free_unpacked(msg_req, NULL);
+    sr__msg__free_unpacked(msg_resp, NULL);
     free(session);
 
     return SR_ERR_OK;
 
 cleanup:
-    if (NULL != msg) {
-        sr__msg__free_unpacked(msg, NULL);
+    if (NULL != msg_req) {
+        sr__msg__free_unpacked(msg_req, NULL);
+    }
+    if (NULL != msg_resp) {
+        sr__msg__free_unpacked(msg_resp, NULL);
     }
     return rc;
 }
 
-char *
-sr_strerror(int err_code)
+int sr_get_item(sr_session_ctx_t *session, const char *path, sr_val_t **value)
 {
-    return NULL; // TODO
+    Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG4(session, session->conn_ctx, path, value);
+
+    /* prepare get_item message */
+    rc = sr_pb_req_alloc(SR__OPERATION__GET_ITEM, session->id, &msg_req);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Cannot allocate get_item message.");
+        goto cleanup;
+    }
+
+    /* fill in the path */
+    msg_req->request->get_item_req->path = strdup(path);
+    if (NULL == msg_req->request->get_item_req->path) {
+        SR_LOG_ERR_MSG("Cannot allocate get_item path.");
+        goto cleanup;
+    }
+
+    /* send the request and receive the response */
+    rc = cl_request_process(session->conn_ctx, msg_req, &msg_resp, SR__OPERATION__GET_ITEM);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Error by processing of get_item request.");
+        goto cleanup;
+    }
+
+    // TODO: allocate and fill-in the value
+
+    sr__msg__free_unpacked(msg_req, NULL);
+    sr__msg__free_unpacked(msg_resp, NULL);
+
+    return SR_ERR_OK;
+
+cleanup:
+    if (NULL != msg_req) {
+        sr__msg__free_unpacked(msg_req, NULL);
+    }
+    if (NULL != msg_resp) {
+        sr__msg__free_unpacked(msg_resp, NULL);
+    }
+    return rc;
+}
+
+int sr_get_items(sr_session_ctx_t *session, const char *path, sr_val_t ***values, size_t *value_cnt)
+{
+    Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG5(session, session->conn_ctx, path, values, value_cnt);
+
+    /* prepare get_item message */
+    rc = sr_pb_req_alloc(SR__OPERATION__GET_ITEMS, session->id, &msg_req);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Cannot allocate get_items message.");
+        goto cleanup;
+    }
+
+    /* fill in the path */
+    msg_req->request->get_items_req->path = strdup(path);
+    if (NULL == msg_req->request->get_items_req->path) {
+        SR_LOG_ERR_MSG("Cannot allocate get_items path.");
+        goto cleanup;
+    }
+
+    /* send the request and receive the response */
+    rc = cl_request_process(session->conn_ctx, msg_req, &msg_resp, SR__OPERATION__GET_ITEMS);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Error by processing of get_items request.");
+        goto cleanup;
+    }
+
+    // TODO: allocate and fill-in the value
+
+    sr__msg__free_unpacked(msg_req, NULL);
+    sr__msg__free_unpacked(msg_resp, NULL);
+
+    return SR_ERR_OK;
+
+cleanup:
+    if (NULL != msg_req) {
+        sr__msg__free_unpacked(msg_req, NULL);
+    }
+    if (NULL != msg_resp) {
+        sr__msg__free_unpacked(msg_resp, NULL);
+    }
+    return rc;
 }

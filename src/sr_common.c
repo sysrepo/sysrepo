@@ -23,8 +23,15 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#include <arpa/inet.h>
 
 #include "sr_common.h"
+
+char *
+sr_strerror(int err_code)
+{
+    return NULL; // TODO: error map
+}
 
 int
 sr_str_ends_with(const char *str, const char *suffix)
@@ -155,6 +162,35 @@ sr_free_val_t(sr_val_t *value){
         free(value->data.bits_val);
     }
     free(value);
+}
+
+/* used for sr_buff_to_uint32 and sr_uint32_to_buff conversions */
+typedef union {
+   uint32_t value;
+   uint8_t data[sizeof(uint32_t)];
+} uint32_value_t;
+
+uint32_t
+sr_buff_to_uint32(uint8_t *buff)
+{
+    uint32_value_t val = { 0, };
+
+    if (NULL == buff) {
+        return 0;
+    }
+    memcpy(val.data, buff, sizeof(uint32_t));
+    return ntohl(val.value);
+}
+
+void
+sr_uint32_to_buff(uint32_t number, uint8_t *buff)
+{
+    uint32_value_t val = { 0, };
+
+    if (NULL != buff) {
+        val.value = htonl(number);
+        memcpy(buff, val.data, sizeof(uint32_t));
+    }
 }
 
 int

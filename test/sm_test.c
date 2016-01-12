@@ -173,7 +173,7 @@ session_find_fd(void **state) {
 
     curr = conn->session_list;
     cnt = 0;
-    sm_session_t *s0, *s5, *s9 = 0;
+    sm_session_t *s0 = 0, *s5 = 0, *s9 = 0;
     while (NULL != curr) {
         if (0 == cnt) s0 = curr->session;
         if (5 == cnt) s5 = curr->session;

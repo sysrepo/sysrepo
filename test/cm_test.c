@@ -105,12 +105,14 @@ cm_connect_to_server()
 static void
 cm_message_send(const int fd, const void *msg_buf, const size_t msg_size)
 {
+    uint8_t len_buf[sizeof(uint32_t)] = { 0, };
     int rc = 0;
+
     assert_non_null(msg_buf);
 
     /* write 4-byte length */
-    uint32_t length = htonl(msg_size);
-    rc = send(fd, &length, sizeof(length), 0);
+    sr_uint32_to_buff(msg_size, len_buf);
+    rc = send(fd, len_buf, sizeof(uint32_t), 0);
     assert_int_not_equal(rc, -1);
 
     /* write the message */
@@ -123,8 +125,9 @@ cm_message_send(const int fd, const void *msg_buf, const size_t msg_size)
 static Sr__Msg *
 cm_message_recv(const int fd)
 {
-    uint8_t *buf[CM_BUFF_LEN] = { 0, };
+    uint8_t buf[CM_BUFF_LEN] = { 0, };
     size_t len = 0, pos = 0;
+    size_t msg_size = 0;
 
     /* read first 4 bytes with length of the message */
     while (pos < 4) {
@@ -133,9 +136,7 @@ cm_message_recv(const int fd)
         assert_int_not_equal(len, 0);
         pos += len;
     }
-
-    uint32_t msg_size_net = *((uint32_t*)buf);
-    size_t msg_size = ntohl(msg_size_net);
+    msg_size = sr_buff_to_uint32(buf);
 
     /* read the rest of the message */
     while (pos < msg_size + 4) {

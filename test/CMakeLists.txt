@@ -30,6 +30,7 @@ ADD_UNIT_TEST(xp_yang_test)
 ADD_UNIT_TEST(sm_test)
 ADD_UNIT_TEST(cm_test)
 ADD_UNIT_TEST(dm_test)
+ADD_UNIT_TEST(rp_test)
 ADD_UNIT_TEST(rp_datatree_test)
 
 ADD_UNIT_TEST(cl_test)
