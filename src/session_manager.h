@@ -62,6 +62,8 @@ typedef struct sm_session_s {
     const char *real_user;               /**< Real user name of the other side. */
     const char *effective_user;          /**< Effective user name of the other side (if different to real_user). */
 
+    sr_cbuff_t *request_queue;           /**< Queue of requests waiting for forwarding to Request Processor. */
+
     uint32_t rp_req_cnt;                 /**< Number of session-related outstanding requests in Request Processor. */
     rp_session_t *rp_session;            /**< Request Processor session data, opaque to Session Manager. */
 } sm_session_t;

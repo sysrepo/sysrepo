@@ -300,7 +300,7 @@ cm_server_accept(cm_ctx_t *cm_ctx)
 
     do {
         clnt_fd = accept(cm_ctx->listen_socket_fd, NULL, NULL);
-        if (clnt_fd > 0) {
+        if (-1 != clnt_fd) {
             /* accepted the new connection */
             SR_LOG_DBG("New client connection on fd %d", clnt_fd);
             if (clnt_fd >= FD_SETSIZE) {
@@ -348,7 +348,7 @@ cm_server_accept(cm_ctx_t *cm_ctx)
                 continue;
             }
         }
-    } while (clnt_fd > 0); /* accept returns -1 when there are no more connections to accept */
+    } while (-1 != clnt_fd); /* accept returns -1 when there are no more connections to accept */
 
     return SR_ERR_OK;
 }
@@ -556,7 +556,7 @@ cm_session_start_req_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, Sr__Msg *m
     /* create the session in SM */
     rc = sm_session_create(cm_ctx->sm_ctx, conn, pws->pw_name,
             msg_in->request->session_start_req->user_name, &session);
-    if (SR_ERR_OK != rc) {
+    if ((SR_ERR_OK != rc) || (NULL == session)) {
         SR_LOG_ERR("Unable to create the session in Session Manager (conn=%p).", (void*)conn);
         return rc;
     }

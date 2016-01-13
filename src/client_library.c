@@ -87,6 +87,7 @@ cl_socket_connect(sr_conn_ctx_t *conn_ctx, const char *socket_path)
     rc = connect(fd, (struct sockaddr*)&addr, sizeof(addr));
     if (-1 == rc) {
         SR_LOG_DBG("Unable to connect to socket (socket=%s)", socket_path);
+        close(fd);
         return SR_ERR_DISCONNECT;
     }
 
@@ -384,7 +385,7 @@ sr_connect(const char *app_name, const bool allow_library_mode, sr_conn_ctx_t **
     return SR_ERR_OK;
 
 cleanup:
-    if (NULL != ctx->local_cm) {
+    if ((NULL != ctx) && (NULL != ctx->local_cm)) {
         cm_cleanup(ctx->local_cm);
     }
     free(ctx);
