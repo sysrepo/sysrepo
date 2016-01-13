@@ -773,6 +773,81 @@ rp_dt_get_siblings_node_by_name(struct lyd_node *node, const char* name, struct 
 }
 
 int
+rp_dt_get_nodes_with_opts(const dm_ctx_t *dm_ctx, dm_session_t *dm_session, struct lyd_node *data_tree, const xp_loc_id_t *loc_id,
+                          bool recursive, size_t offset, size_t limit, struct lyd_node ***nodes, size_t *count){
+    CHECK_NULL_ARG5(dm_ctx, data_tree, loc_id, nodes, count);
+
+    int rc = SR_ERR_OK;
+    struct lyd_node *node = NULL;
+    size_t last_node = 0;
+
+    //TODO check if we continue where we left
+
+    rc = rp_dt_lookup_node(data_tree, loc_id, true, &node);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Look up failed for xpath %s", loc_id->xpath);
+        return rc;
+    }
+
+    if (NULL == node->schema || NULL == node->schema->name){
+        SR_LOG_ERR("Missing schema information for node %s", loc_id->xpath);
+        return SR_ERR_INTERNAL;
+    }
+
+    //TODO initially push something to stack
+    switch (node->schema->nodetype) {
+        case LYS_LEAF:
+            //push leaf
+            return rc;
+        case LYS_CONTAINER:
+            //push the children
+            return rc;
+        case LYS_LIST:
+            //if has keys
+             //push the children
+            //if doesn't push list instances
+            return rc;
+        case LYS_LEAFLIST:
+            //push all instances
+            return rc;
+        default:
+            SR_LOG_ERR("Unsupported node type for xpath %s", loc_id->xpath);
+            return SR_ERR_INTERNAL;
+    }
+    //TODO allocate response
+    size_t cnt = 0;
+    size_t index = 0;
+
+    //TODO process Stack
+    while (cnt < limit) {
+        //top
+        //if in valid range append to result
+        //
+        switch (node->schema->nodetype) {
+            case LYS_LEAF:
+                //pop node from stack,
+                return rc;
+            case LYS_CONTAINER:
+                //if recursive expand and push on stack
+                return rc;
+            case LYS_LIST:
+                //if recursive expand and push on stack
+                return rc;
+            case LYS_LEAFLIST:
+                //same as leaf
+                return rc;
+            default:
+                SR_LOG_ERR("Unsupported node type for xpath %s", loc_id->xpath);
+                return SR_ERR_INTERNAL;
+        }
+        //inc counter
+    }
+
+
+    return SR_ERR_INTERNAL;
+}
+
+int
 rp_dt_get_nodes(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp_loc_id_t *loc_id, struct lyd_node ***nodes, size_t *count){
     CHECK_NULL_ARG5(dm_ctx, data_tree, loc_id, nodes, count);
 
