@@ -60,6 +60,9 @@ rp_get_item_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr_
 
     Sr__Msg *resp = NULL;
     rc = sr_pb_resp_alloc(SR__OPERATION__GET_ITEM, session->id, &resp);
+    if (SR_ERR_OK != rc){
+        //TODO log err
+    }
 
     sr_val_t *value = NULL;
     char *xpath = msg->request->get_item_req->path;
@@ -100,10 +103,66 @@ rp_get_items_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr
 
     SR_LOG_DBG_MSG("Processing get_items request.");
 
-    // TODO: implementation - for now, just send an empty response
     Sr__Msg *resp = NULL;
     rc = sr_pb_resp_alloc(SR__OPERATION__GET_ITEMS, session->id, &resp);
+
+    if (SR_ERR_OK != rc){
+        SR_LOG_ERR_MSG("Memory allocation failed");
+        return SR_ERR_NOMEM;
+    }
+
+    sr_val_t **values = NULL;
+    size_t count = 0;
+    char *xpath = msg->request->get_items_req->path;
+
+    /* get values from data manager*/
+    rc = rp_dt_get_values_wrapper(rp_ctx->dm_ctx, session->dm_session, xpath, &values, &count);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Get items failed for '%s', session id=%"PRIu32".", xpath, session->id);
+        goto cleanup;
+    }
+    SR_LOG_DBG("%zu items found for '%s', session id=%"PRIu32".", count, xpath, session->id);
+
+    if (0 == count){
+        SR_LOG_DBG("No items found for '%s', session id=%"PRIu32".", xpath, session->id);
+        rc = SR_ERR_NOT_FOUND;
+        goto cleanup;
+    }
+
+
+    resp->response->get_items_resp->value = calloc(count, sizeof(Sr__Value *));
+    if (NULL == resp->response->get_items_resp->value){
+        SR_LOG_ERR_MSG("Memory allocation failed");
+        rc = SR_ERR_NOMEM;
+        goto cleanup;
+    }
+
+    /* copy value to gpb*/
+    if (SR_ERR_OK == rc) {
+        for (size_t i = 0; i< count; i++){
+            rc = sr_copy_val_t_to_gpb(values[i], &resp->response->get_items_resp->value[i]);
+            if (SR_ERR_OK != rc) {
+                SR_LOG_ERR("Copying sr_val_t to gpb failed for xpath '%s'", xpath);
+                for (size_t j = 0; j<i; j++){
+                    sr__value__free_unpacked(resp->response->get_items_resp->value[j], NULL);
+                }
+                free(resp->response->get_items_resp->value);
+            }
+        }
+        resp->response->get_items_resp->n_value = count;
+    }
+
+cleanup:
+
+
+    /* set response code */
+    resp->response->result = rc;
+
     rc = cm_msg_send(rp_ctx->cm_ctx, resp);
+    for (size_t i = 0; i< count; i++){
+        sr_free_val_t(values[i]);
+    }
+    free(values);
 
     return rc;
 }
