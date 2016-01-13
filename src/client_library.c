@@ -651,7 +651,7 @@ int sr_get_items(sr_session_ctx_t *session, const char *path, sr_val_t ***values
     size_t cnt = msg_resp->response->get_items_resp->n_value;
     vals = calloc(cnt, sizeof(*vals));
     if (NULL == vals){
-        SR_LOG_ERR_MSG("Memorya allocation failed");
+        SR_LOG_ERR_MSG("Memory allocation failed");
         rc = SR_ERR_NOMEM;
         goto cleanup;
     }
