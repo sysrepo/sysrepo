@@ -287,6 +287,7 @@ static sr_error_t xp_validate_list_nodes(xp_token_t *tokens, size_t token_count,
     *err_token = 0;
     return SR_ERR_OK;
 }
+
 /**
  * @brief if the last token is ::T_NS namespace it is changed to ::T_NODE node
  */
@@ -298,6 +299,7 @@ inline static void xp_change_ns_to_node(const size_t cnt, xp_token_t *tokens, si
         (*node_count)++;
     }
 }
+
 /**
  * TODO more tokens than MAX_TOKENS
  */
