@@ -717,10 +717,11 @@ cm_conn_msg_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, uint8_t *msg_data, 
                 break;
             default:
                 /* forward the message to Request Processor */
-
-                // TODO: make sure that there is always only one outstanding RP request per session at the time
-
+                session->rp_req_cnt += 1;
                 rc = rp_msg_process(cm_ctx->rp_ctx, session->rp_session, msg);
+                if ((SR_ERR_OK != rc) && (session->rp_req_cnt > 0)) {
+                    session->rp_req_cnt -= 1;
+                }
                 break;
         }
     } else {
@@ -1183,8 +1184,14 @@ cm_msg_send(cm_ctx_t *cm_ctx, Sr__Msg *msg)
         return rc;
     }
 
+    if ((SR__MSG__MSG_TYPE__RESPONSE == msg->type) || (session->rp_req_cnt > 0)) {
+        session->rp_req_cnt -= 1;
+    }
+
     /* release the message */
     sr__msg__free_unpacked(msg, NULL);
+
+    // TODO: send next message from buffer (if any)
 
     return SR_ERR_OK;
 }

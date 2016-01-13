@@ -27,6 +27,110 @@
 
 #include "sr_common.h"
 
+/**
+ * @brief FIFO circular buffer queue context.
+ */
+typedef struct sr_cbuff_s {
+    void **data;   /**< Data of the buffer. */
+    size_t size;   /**< Buffer capacity. */
+    size_t head;   /**< Index of the first element in the buffer. */
+    size_t count;  /**< Number of elements stored in the buffer. */
+} sr_cbuff_t;
+
+int
+sr_cbuff_init(const size_t initial_size, sr_cbuff_t **buffer_p)
+{
+    sr_cbuff_t *buffer = NULL;
+
+    CHECK_NULL_ARG(buffer_p);
+
+    SR_LOG_DBG("Initiating circular buffer for %zu elements.", initial_size);
+
+    buffer = calloc(1, sizeof(*buffer));
+    if (NULL == buffer) {
+        SR_LOG_ERR_MSG("Cannot allocate memory for circular buffer.");
+        return SR_ERR_NOMEM;
+    }
+
+    buffer->data = calloc(initial_size, sizeof(void*));
+    if (NULL == buffer) {
+        SR_LOG_ERR_MSG("Cannot allocate memory for circular buffer data.");
+        free(buffer);
+        return SR_ERR_NOMEM;
+    }
+
+    buffer->size = initial_size;
+    buffer->head = 0;
+    buffer->count = 0;
+
+    *buffer_p = buffer;
+    return SR_ERR_OK;
+}
+
+void
+sr_cbuff_cleanup(sr_cbuff_t *buffer)
+{
+    if (NULL != buffer) {
+        free(buffer->data);
+        free(buffer);
+    }
+}
+
+int
+sr_cbuff_enqueue(sr_cbuff_t *buffer, void *item)
+{
+    void **tmp = NULL;
+    size_t pos = 0;
+
+    CHECK_NULL_ARG2(buffer, item);
+
+    if (buffer->count == buffer->size) {
+        /* buffer is full - double it's size */
+        SR_LOG_DBG("Enlarging circular buffer from %zu to %zu elements.", buffer->size, buffer->size * 2);
+
+        tmp = realloc(buffer->data, (buffer->size * 2) * sizeof(void*));
+        if (NULL == tmp) {
+            SR_LOG_ERR_MSG("Cannot enlarge circular buffer - not enough memory.");
+            return SR_ERR_NOMEM;
+        }
+        buffer->data = tmp;
+
+        if (0 != buffer->head) {
+            /* move the the elements from before head to the end */
+            SR_LOG_DBG("Moving %zu circular buffer elements from pos 0 to pos %zu.", buffer->head, buffer->size);
+            memmove(buffer->data + buffer->size, buffer->data, buffer->head * sizeof(void*));
+        }
+        buffer->size *= 2;
+    }
+
+    pos = (buffer->head + buffer->count) % buffer->size;
+
+    SR_LOG_DBG("Circular buffer enqueue to position=%zu.", pos);
+
+    buffer->data[pos] = item;
+    buffer->count++;
+
+    return SR_ERR_OK;
+}
+
+void *
+sr_cbuff_dequeue(sr_cbuff_t *buffer)
+{
+    void *item = NULL;
+
+    if (0 == buffer->count) {
+        return NULL;
+    }
+
+    item = buffer->data[buffer->head];
+    buffer->head = (buffer->head + 1) % buffer->size;
+    buffer->count--;
+
+    SR_LOG_DBG("Circular buffer dequeue, new buffer head=%zu, count=%zu.", buffer->head, buffer->count);
+
+    return item;
+}
+
 char *
 sr_strerror(int err_code)
 {

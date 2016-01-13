@@ -113,6 +113,51 @@
     } while(0)
 
 /**
+ * @brief FIFO circular buffer queue context.
+ */
+typedef struct sr_cbuff_s sr_cbuff_t;
+
+/**
+ * @brief Initializes FIFO circular buffer of pointer elements.
+ *
+ * You can provide initial size of the buffer. The buffer automatically
+ * enlarges when it's full (it always doubles its size).
+ *
+ * @param[in] initial_size Initial size in number of pointer elements.
+ * @param[out] buffer Circular buffer queue context.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_cbuff_init(const size_t initial_size, sr_cbuff_t **buffer);
+
+/**
+ * @brief Cleans up circular buffer queue.
+ *
+ * All memory allocated within provided circular buffer context will be free.
+ *
+ * @param[in] buffer Circular buffer queue context.
+ */
+void sr_cbuff_cleanup(sr_cbuff_t *buffer);
+
+/**
+ * @brief Enqueues an element into circular buffer.
+ *
+ * @param[in] buffer Circular buffer queue context.
+ * @param[in] item The element to be enqueued.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_cbuff_enqueue(sr_cbuff_t *buffer, void *item);
+
+/**
+ * @brief Dequeues an element from circular buffer.
+ *
+ * @param[in] buffer Circular buffer queue context.
+ * @return Head element from the buffer, NULL if the buffer is empty.
+ */
+void* sr_cbuff_dequeue(sr_cbuff_t *buffer);
+
+/**
  * @brief Compares the suffix of the string, if it matches 0 is returned
  * @param [in] str
  * @param [in] suffix
