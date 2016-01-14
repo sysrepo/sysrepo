@@ -668,11 +668,112 @@ cm_session_stop_req_process(cm_ctx_t *cm_ctx, sm_session_t *session, Sr__Msg *ms
     return rc;
 }
 
+/**
+ * Process a request from client.
+ */
+static int
+cm_req_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, sm_session_t *session, Sr__Msg *msg)
+{
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG4(cm_ctx, conn, msg, msg->request); /* session can be NULL by session_start */
+
+    rc = sr_pb_msg_validate(msg, SR__MSG__MSG_TYPE__REQUEST, msg->request->operation);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Invalid request received (conn=%p).", (void*)conn);
+        rc = SR_ERR_INVAL_ARG;
+        goto cleanup;
+    }
+
+    if (CM_AF_UNIX_CLIENT != conn->type) {
+        SR_LOG_ERR("Request received from non-client connection (conn=%p).", (void*)conn);
+        rc = SR_ERR_INVAL_ARG;
+        goto cleanup;
+    }
+
+    switch (msg->request->operation) {
+        case SR__OPERATION__SESSION_START:
+            rc = cm_session_start_req_process(cm_ctx, conn, msg);
+            sr__msg__free_unpacked(msg, NULL);
+            break;
+        case SR__OPERATION__SESSION_STOP:
+            rc = cm_session_stop_req_process(cm_ctx, session, msg);
+            sr__msg__free_unpacked(msg, NULL);
+            break;
+        default:
+            if (session->rp_req_cnt > 0) {
+                /* there are some outstanding requests in RP, put the message into queue */
+                rc = sr_cbuff_enqueue(session->request_queue, &msg);
+                if (SR_ERR_OK != rc) {
+                    goto cleanup;
+                }
+            } else {
+                /* no outstanding requests in RP, we can forward the message to request Processor */
+                session->rp_req_cnt += 1;
+                rc = rp_msg_process(cm_ctx->rp_ctx, session->rp_session, msg);
+                if (SR_ERR_OK != rc) {
+                    session->rp_req_cnt -= 1;
+                    /* do not cleanup the message (already done in RP) */
+                }
+            }
+            break;
+    }
+
+    return rc;
+
+cleanup:
+    sr__msg__free_unpacked(msg, NULL);
+    return rc;
+}
+
+/**
+ * Process a response from client.
+ */
+static int
+cm_resp_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, sm_session_t *session, Sr__Msg *msg)
+{
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG5(cm_ctx, conn, session, msg, msg->response);
+
+    rc = sr_pb_msg_validate(msg, SR__MSG__MSG_TYPE__RESPONSE, msg->response->operation);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Invalid response received (conn=%p).", (void*)conn);
+        rc = SR_ERR_INVAL_ARG;
+        goto cleanup;
+    }
+
+    if (CM_AF_UNIX_SERVER != conn->type) {
+        SR_LOG_ERR("Response received from non-server connection (conn=%p).", (void*)conn);
+        rc = SR_ERR_INVAL_ARG;
+        goto cleanup;
+    }
+
+    if (session->rp_resp_expected > 0) {
+        /* the response is expected, forward it to Request Processor */
+        rc = rp_msg_process(cm_ctx->rp_ctx, session->rp_session, msg);
+        /* do not cleanup the message (already done in RP) */
+    } else {
+        /* the response is unexpected */
+        SR_LOG_ERR("Unexpected response received to session id=%"PRIu32".", session->id);
+        rc = SR_ERR_INVAL_ARG;
+        goto cleanup;
+    }
+
+    return rc;
+
+cleanup:
+    sr__msg__free_unpacked(msg, NULL);
+    return rc;
+}
+
+/**
+ * Process a message received on connection.
+ */
 static int
 cm_conn_msg_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, uint8_t *msg_data, size_t msg_size)
 {
     Sr__Msg *msg = NULL;
-    bool release_msg = false;
     sm_session_t *session = NULL;
     int rc = SR_ERR_OK;
 
@@ -689,8 +790,8 @@ cm_conn_msg_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, uint8_t *msg_data, 
     if (((SR__MSG__MSG_TYPE__REQUEST == msg->type) && (NULL == msg->request)) ||
             ((SR__MSG__MSG_TYPE__RESPONSE == msg->type) && (NULL == msg->response))) {
         SR_LOG_ERR("Message with malformed type received (conn=%p).", (void*)conn);
-        sr__msg__free_unpacked(msg, NULL);
-        return SR_ERR_INVAL_ARG;
+        rc = SR_ERR_INVAL_ARG;
+        goto cleanup;
     }
 
     /* find matching session (except for session_start request) */
@@ -699,45 +800,34 @@ cm_conn_msg_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, uint8_t *msg_data, 
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR("Unable to find session context for session id=%"PRIu32" (conn=%p).",
                     msg->session_id, (void*)conn);
-            sr__msg__free_unpacked(msg, NULL);
-            return SR_ERR_INVAL_ARG;
+            rc = SR_ERR_INVAL_ARG;
+            goto cleanup;
+        }
+        if (conn != session->connection) {
+            SR_LOG_ERR("Session mismatched with connection (session id=%"PRIu32", conn=%p).",
+                    msg->session_id, (void*)conn);
+            rc = SR_ERR_INVAL_ARG;
+            goto cleanup;
         }
     }
 
-    if (SR__MSG__MSG_TYPE__REQUEST == msg->type) {
-        /* request handling */
-        switch (msg->request->operation) {
-            case SR__OPERATION__SESSION_START:
-                rc = cm_session_start_req_process(cm_ctx, conn, msg);
-                release_msg = true;
-                break;
-            case SR__OPERATION__SESSION_STOP:
-                rc = cm_session_stop_req_process(cm_ctx, session, msg);
-                release_msg = true;
-                break;
-            default:
-                /* forward the message to Request Processor */
-                if (session->rp_req_cnt > 0) {
-                    rc = sr_cbuff_enqueue(session->request_queue, msg);
-                } else {
-                    session->rp_req_cnt += 1;
-                    rc = rp_msg_process(cm_ctx->rp_ctx, session->rp_session, msg);
-                    if (SR_ERR_OK != rc) {
-                        session->rp_req_cnt -= 1;
-                    }
-                }
-                break;
-        }
-    } else {
-        /* response handling */
-        /* forward the message to Request Processor */
-        rc = rp_msg_process(cm_ctx->rp_ctx, session->rp_session, msg);
+    switch (msg->type) {
+        case SR__MSG__MSG_TYPE__REQUEST:
+            rc = cm_req_process(cm_ctx, conn, session, msg);
+            break;
+        case SR__MSG__MSG_TYPE__RESPONSE:
+            rc = cm_resp_process(cm_ctx, conn, session, msg);
+            break;
+        default:
+            SR_LOG_ERR("Unexpected message type received (session id=%"PRIu32").", session->id);
+            rc = SR_ERR_INVAL_ARG;
+            goto cleanup;
     }
 
-    if (release_msg) {
-        sr__msg__free_unpacked(msg, NULL);
-    }
+    return rc;
 
+cleanup:
+    sr__msg__free_unpacked(msg, NULL);
     return rc;
 }
 
@@ -1175,6 +1265,7 @@ cm_msg_send(cm_ctx_t *cm_ctx, Sr__Msg *msg)
         return rc;
     }
 
+    /* find the session */
     rc = sm_session_find_id(cm_ctx->sm_ctx, msg->session_id, &session);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Unable to find the session matching with id specified in the message "
@@ -1182,23 +1273,28 @@ cm_msg_send(cm_ctx_t *cm_ctx, Sr__Msg *msg)
         return rc;
     }
 
+    /* update counters of session-related requests in RP */
+    if (SR__MSG__MSG_TYPE__RESPONSE == msg->type) {
+        if (session->rp_req_cnt > 0) {
+            session->rp_req_cnt -= 1;
+        }
+    } else if (SR__MSG__MSG_TYPE__REQUEST == msg->type) {
+        session->rp_resp_expected += 1;
+    }
+
+    /* send the message */
     rc = cm_msg_send_session(cm_ctx, session, msg);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Unable to send the message over session (id=%"PRIu32").", msg->session_id);
         return rc;
     }
 
-    if ((SR__MSG__MSG_TYPE__RESPONSE == msg->type) || (session->rp_req_cnt > 0)) {
-        session->rp_req_cnt -= 1;
-    }
-
     /* release the message */
     sr__msg__free_unpacked(msg, NULL);
 
-    // TODO: send next message from buffer (if any)
+    /* if there are no outstanding session-related requests in RP and there are some requests waiting, process them */
     if (0 == session->rp_req_cnt) {
-        msg = sr_cbuff_dequeue(session->request_queue);
-        if (NULL != msg) {
+        if (sr_cbuff_dequeue(session->request_queue, &msg)) {
             session->rp_req_cnt += 1;
             rc = rp_msg_process(cm_ctx->rp_ctx, session->rp_session, msg);
             if (SR_ERR_OK != rc) {

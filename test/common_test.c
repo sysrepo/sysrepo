@@ -37,62 +37,53 @@ logging_setup(void **state)
 }
 
 /*
- * Test circular buffer 1
+ * Tests circular buffer - stores integers in it.
  */
 static void
 circular_buffer_test1(void **state)
 {
     sr_cbuff_t *buffer = NULL;
     int rc = 0, i = 0;
-    int *tmp = NULL;
+    int tmp = NULL;
 
-    rc = sr_cbuff_init(2, &buffer);
+    rc = sr_cbuff_init(2, sizeof(int), &buffer);
     assert_int_equal(rc, SR_ERR_OK);
 
     for (i = 1; i <= 50; i++) {
-        tmp = calloc(1, sizeof(*tmp));
-        *tmp = i;
-        rc = sr_cbuff_enqueue(buffer, tmp);
+        rc = sr_cbuff_enqueue(buffer, &i);
         assert_int_equal(rc, SR_ERR_OK);
 
         if (4 == i) {
-            tmp = sr_cbuff_dequeue(buffer);
-            assert_int_equal(*tmp, 1);
-            free(tmp);
-            tmp = sr_cbuff_dequeue(buffer);
-            assert_int_equal(*tmp, 2);
-            free(tmp);
+            sr_cbuff_dequeue(buffer, &tmp);
+            assert_int_equal(tmp, 1);
+            sr_cbuff_dequeue(buffer, &tmp);
+            assert_int_equal(tmp, 2);
         }
         if (10 == i) {
-            tmp = sr_cbuff_dequeue(buffer);
-            assert_int_equal(*tmp, 3);
-            free(tmp);
-            tmp = sr_cbuff_dequeue(buffer);
-            assert_int_equal(*tmp, 4);
-            free(tmp);
-            tmp = sr_cbuff_dequeue(buffer);
-            assert_int_equal(*tmp, 5);
-            free(tmp);
-            tmp = sr_cbuff_dequeue(buffer);
-            assert_int_equal(*tmp, 6);
-            free(tmp);
+            sr_cbuff_dequeue(buffer, &tmp);
+            assert_int_equal(tmp, 3);
+            sr_cbuff_dequeue(buffer, &tmp);
+            assert_int_equal(tmp, 4);
+            sr_cbuff_dequeue(buffer, &tmp);
+            assert_int_equal(tmp, 5);
+            sr_cbuff_dequeue(buffer, &tmp);
+            assert_int_equal(tmp, 6);
         }
     }
 
     for (i = 7; i <= 50; i++) {
-        tmp = sr_cbuff_dequeue(buffer);
-        assert_int_equal(*tmp, i);
-        free(tmp);
+        sr_cbuff_dequeue(buffer, &tmp);
+        assert_int_equal(tmp, i);
     }
 
-    tmp = sr_cbuff_dequeue(buffer);
-    assert_null(tmp);
+    /* buffer should be empty now */
+    assert_false(sr_cbuff_dequeue(buffer, &tmp));
 
     sr_cbuff_cleanup(buffer);
 }
 
 /*
- * Test circular buffer 2
+ * Tests circular buffer - stores pointers in it.
  */
 static void
 circular_buffer_test2(void **state)
@@ -101,41 +92,77 @@ circular_buffer_test2(void **state)
     int rc = 0, i = 0;
     int *tmp = NULL;
 
-    rc = sr_cbuff_init(2, &buffer);
+    rc = sr_cbuff_init(2, sizeof(int*), &buffer);
     assert_int_equal(rc, SR_ERR_OK);
 
-    for (i = 1; i <= 10; i++) {
+    for (i = 1; i <= 20; i++) {
         tmp = calloc(1, sizeof(*tmp));
         *tmp = i;
-        rc = sr_cbuff_enqueue(buffer, tmp);
+        rc = sr_cbuff_enqueue(buffer, &tmp);
         assert_int_equal(rc, SR_ERR_OK);
 
-        if (4 == i) {
-            tmp = sr_cbuff_dequeue(buffer);
+        if (7 == i) {
+            sr_cbuff_dequeue(buffer, &tmp);
             assert_int_equal(*tmp, 1);
             free(tmp);
-            tmp = sr_cbuff_dequeue(buffer);
+            sr_cbuff_dequeue(buffer, &tmp);
             assert_int_equal(*tmp, 2);
             free(tmp);
-            tmp = sr_cbuff_dequeue(buffer);
+            sr_cbuff_dequeue(buffer, &tmp);
             assert_int_equal(*tmp, 3);
             free(tmp);
-            tmp = sr_cbuff_dequeue(buffer);
-            assert_int_equal(*tmp, 4);
-            free(tmp);
-            tmp = sr_cbuff_dequeue(buffer);
-            assert_null(tmp);
         }
     }
 
-    for (i = 5; i <= 10; i++) {
-        tmp = sr_cbuff_dequeue(buffer);
+    for (i = 4; i <= 20; i++) {
+        sr_cbuff_dequeue(buffer, &tmp);
         assert_int_equal(*tmp, i);
         free(tmp);
     }
 
-    tmp = sr_cbuff_dequeue(buffer);
-    assert_null(tmp);
+    /* buffer should be empty now */
+    assert_false(sr_cbuff_dequeue(buffer, &tmp));
+
+    sr_cbuff_cleanup(buffer);
+}
+
+/*
+ * Tests circular buffer - stores GPB structures in it.
+ */
+static void
+circular_buffer_test3(void **state)
+{
+    sr_cbuff_t *buffer = NULL;
+    int rc = 0, i = 0;
+    Sr__Msg msg = SR__MSG__INIT;
+
+    rc = sr_cbuff_init(2, sizeof(msg), &buffer);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    for (i = 1; i <= 10; i++) {
+        msg.session_id = i;
+        rc = sr_cbuff_enqueue(buffer, &msg);
+        assert_int_equal(rc, SR_ERR_OK);
+
+        if (4 == i) {
+            sr_cbuff_dequeue(buffer, &msg);
+            assert_int_equal(msg.session_id, 1);
+            sr_cbuff_dequeue(buffer, &msg);
+            assert_int_equal(msg.session_id, 2);
+            sr_cbuff_dequeue(buffer, &msg);
+            assert_int_equal(msg.session_id, 3);
+            sr_cbuff_dequeue(buffer, &msg);
+            assert_int_equal(msg.session_id, 4);
+        }
+    }
+
+    for (i = 5; i <= 10; i++) {
+        sr_cbuff_dequeue(buffer, &msg);
+        assert_int_equal(msg.session_id, i);
+    }
+
+    /* buffer should be empty now */
+    assert_false(sr_cbuff_dequeue(buffer, &msg));
 
     sr_cbuff_cleanup(buffer);
 }
@@ -145,6 +172,7 @@ main() {
     const struct CMUnitTest tests[] = {
             cmocka_unit_test_setup_teardown(circular_buffer_test1, logging_setup, NULL),
             cmocka_unit_test_setup_teardown(circular_buffer_test2, logging_setup, NULL),
+            cmocka_unit_test_setup_teardown(circular_buffer_test3, logging_setup, NULL),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);

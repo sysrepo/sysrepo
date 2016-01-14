@@ -343,7 +343,7 @@ sm_session_create(const sm_ctx_t *sm_ctx, sm_connection_t *connection,
     }
 
     /* initialize session request queue */
-    rc = sr_cbuff_init(SM_SESSION_REQ_QUEUE_SIZE, &session->request_queue);
+    rc = sr_cbuff_init(SM_SESSION_REQ_QUEUE_SIZE, sizeof(Sr__Msg*), &session->request_queue);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Cannot initialize session request queue (session id=%"PRIu32").", session->id);
         goto cleanup;
