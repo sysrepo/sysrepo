@@ -460,6 +460,7 @@ sr_session_start(sr_conn_ctx_t *conn_ctx, const char *user_name, sr_datastore_t 
         SR_LOG_ERR_MSG("Cannot allocate session_start message.");
         goto cleanup;
     }
+    msg_req->request->session_start_req->datastore = sr_datastore_sr_to_gpb(datastore);
 
     /* set user name if provided */
     if (NULL != user_name) {

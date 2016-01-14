@@ -200,7 +200,6 @@ void sr_free_datatree(struct lyd_node *root);
  */
 sr_type_t sr_libyang_type_to_sysrepo(LY_DATA_TYPE t);
 
-
 /**
  * @brief Converts byte buffer content to uint32_t number.
  *
@@ -279,5 +278,20 @@ int sr_copy_val_t_to_gpb(const sr_val_t *value, Sr__Value **gpb_value);
  */
 int sr_copy_gpb_to_val_t(const Sr__Value *gpb_value, sr_val_t **value);
 
+/**
+ * @brief Converts sysrepo datastore to GPB datastore.
+ *
+ * @param [in] sr_ds Sysrepo datastore.
+ * @return GPB datastore.
+ */
+Sr__DataStore sr_datastore_sr_to_gpb(const sr_datastore_t sr_ds);
+
+/**
+ * @brief Converts GPB datastore to sysrepo datastore.
+ *
+ * @param [in] gpb_ds GPB datastore
+ * @return Sysrepo datastore.
+ */
+sr_datastore_t sr_datastore_gpb_to_sr(Sr__DataStore gpb_ds);
 
 #endif /* SRC_SR_COMMON_H_ */
