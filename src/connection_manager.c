@@ -717,10 +717,14 @@ cm_conn_msg_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, uint8_t *msg_data, 
                 break;
             default:
                 /* forward the message to Request Processor */
-                session->rp_req_cnt += 1;
-                rc = rp_msg_process(cm_ctx->rp_ctx, session->rp_session, msg);
-                if ((SR_ERR_OK != rc) && (session->rp_req_cnt > 0)) {
-                    session->rp_req_cnt -= 1;
+                if (session->rp_req_cnt > 0) {
+                    rc = sr_cbuff_enqueue(session->request_queue, msg);
+                } else {
+                    session->rp_req_cnt += 1;
+                    rc = rp_msg_process(cm_ctx->rp_ctx, session->rp_session, msg);
+                    if (SR_ERR_OK != rc) {
+                        session->rp_req_cnt -= 1;
+                    }
                 }
                 break;
         }
@@ -1192,6 +1196,16 @@ cm_msg_send(cm_ctx_t *cm_ctx, Sr__Msg *msg)
     sr__msg__free_unpacked(msg, NULL);
 
     // TODO: send next message from buffer (if any)
+    if (0 == session->rp_req_cnt) {
+        msg = sr_cbuff_dequeue(session->request_queue);
+        if (NULL != msg) {
+            session->rp_req_cnt += 1;
+            rc = rp_msg_process(cm_ctx->rp_ctx, session->rp_session, msg);
+            if (SR_ERR_OK != rc) {
+                session->rp_req_cnt -= 1;
+            }
+        }
+    }
 
     return SR_ERR_OK;
 }
