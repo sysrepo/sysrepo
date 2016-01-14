@@ -273,7 +273,7 @@ cm_session_neg_test(void **state) {
     uint8_t *msg_buf = NULL;
     size_t msg_size = 0;
     int fd1 = 0, fd2 = 0;
-    uint32_t session_id = 0;
+    uint32_t session_id1 = 0, session_id2 = 0;
 
     fd1 = cm_connect_to_server();
 
@@ -317,10 +317,10 @@ cm_session_neg_test(void **state) {
     assert_non_null(msg);
     assert_non_null(msg->response);
     assert_non_null(msg->response->session_start_resp);
-    session_id = msg->response->session_start_resp->session_id;
+    session_id1 = msg->response->session_start_resp->session_id;
     sr__msg__free_unpacked(msg, NULL);
     /* stop via another connection */
-    cm_session_stop_generate(session_id, &msg_buf, &msg_size);
+    cm_session_stop_generate(session_id1, &msg_buf, &msg_size);
     cm_message_send(fd2, msg_buf, msg_size);
     free(msg_buf);
     /* receive the response */
@@ -332,7 +332,19 @@ cm_session_neg_test(void **state) {
     fd2 = cm_connect_to_server();
 
     /* try sending a response */
-    sr_pb_resp_alloc(SR__OPERATION__SESSION_STOP, session_id, &msg);
+    /* session_start request */
+    cm_session_start_generate("alice", &msg_buf, &msg_size);
+    cm_message_send(fd2, msg_buf, msg_size);
+    free(msg_buf);
+    /* receive the response */
+    msg = cm_message_recv(fd2);
+    assert_non_null(msg);
+    assert_non_null(msg->response);
+    assert_non_null(msg->response->session_start_resp);
+    session_id2 = msg->response->session_start_resp->session_id;
+    sr__msg__free_unpacked(msg, NULL);
+    /* send a response */
+    sr_pb_resp_alloc(SR__OPERATION__SESSION_STOP, session_id2, &msg);
     cm_msg_pack_to_buff(msg, &msg_buf, &msg_size);
     cm_message_send(fd2, msg_buf, msg_size);
     free(msg_buf);
@@ -345,7 +357,7 @@ cm_session_neg_test(void **state) {
     fd2 = cm_connect_to_server();
 
     /* try to stop another session id */
-    sr_pb_req_alloc(SR__OPERATION__SESSION_STOP, session_id, &msg);
+    sr_pb_req_alloc(SR__OPERATION__SESSION_STOP, session_id1, &msg);
     assert_non_null(msg);
     assert_non_null(msg->request);
     assert_non_null(msg->request->session_stop_req);
@@ -358,11 +370,12 @@ cm_session_neg_test(void **state) {
     assert_non_null(msg);
     assert_non_null(msg->response);
     assert_int_not_equal(msg->response->result, SR_ERR_OK);
+    assert_non_null(sr_strerror(msg->response->result));
     assert_non_null(msg->response->error_msg);
     sr__msg__free_unpacked(msg, NULL);
 
     /* try sending a message with invalid type */
-    sr_pb_resp_alloc(SR__OPERATION__SESSION_STOP, session_id, &msg);
+    sr_pb_resp_alloc(SR__OPERATION__SESSION_STOP, session_id1, &msg);
     msg->type = 53;
     cm_msg_pack_to_buff(msg, &msg_buf, &msg_size);
     cm_message_send(fd1, msg_buf, msg_size);

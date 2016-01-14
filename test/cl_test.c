@@ -79,7 +79,7 @@ cl_connection_test(void **state) {
     assert_non_null(conn2);
 
     /* start a new session in conn 1 */
-    rc = sr_session_start(conn1, "alice", SR_DS_CANDIDATE, &sess1);
+    rc = sr_session_start(conn1, "alice", SR_DS_RUNNING, &sess1);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(sess1);
 
@@ -87,7 +87,7 @@ cl_connection_test(void **state) {
     rc = sr_session_start(conn2, "bob1", SR_DS_CANDIDATE, &sess2);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(sess2);
-    rc = sr_session_start(conn2, "bob2", SR_DS_CANDIDATE, &sess_other);
+    rc = sr_session_start(conn2, "bob2", SR_DS_STARTUP, &sess_other);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(sess2);
     rc = sr_session_start(conn2, "bob3", SR_DS_CANDIDATE, &sess2);
