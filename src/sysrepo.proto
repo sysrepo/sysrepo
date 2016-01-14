@@ -14,9 +14,23 @@ message Value {
     CONTAINER_PRESENCE = 3;
     LEAF_EMPTY = 4;
 
-    BOOL = 11;
-    UINT32 = 12;
-    STRING = 13;
+    BINARY = 10;
+    BITS = 11;
+    BOOL = 12;
+    DECIMAL64 = 13;
+    ENUM = 14;
+    IDENTITYREF = 15;
+    INSTANCEID = 16;
+    INT8 = 17;
+    INT16 = 18;
+    INT32 = 19;
+    INT64 = 20;
+    LEAFREF = 21;
+    STRING = 22;
+    UINT8 = 23;
+    UINT16 = 24;
+    UINT32 = 25;
+    UINT64 = 26;
   }
 
   required string path = 1;
@@ -24,9 +38,24 @@ message Value {
   
   optional uint32 length = 3;
 
-  optional bool bool_val = 10;
-  optional uint32 uint32_val = 11;
-  optional string string_val = 12;
+  optional string binary_val = 10;
+  optional string bits_val = 11;
+  optional bool bool_val = 12;
+  optional uint64 decimal64_val = 13;
+  optional string enum_val = 14;
+  optional string identityref_val = 15;
+  optional string instanceid_val = 16;
+  optional int32 int8_val = 17;
+  optional int32 int16_val = 18;
+  optional int32 int32_val = 19;
+  optional int64 int64_val = 20;
+  optional string leafref_val = 21;
+  optional string string_val = 22;
+  optional uint32 uint8_val = 23;
+  optional uint32 uint16_val = 24;
+  optional uint32 uint32_val = 25;
+  optional uint64 uint64_val = 26;
+  
 }
 
 message SessionStartReq {

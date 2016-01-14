@@ -29,6 +29,7 @@
 #include "connection_manager.h"
 
 #define SR_LCONN_PATH_PREFIX "/tmp/sysrepo-local"  /**< Filesystem path prefix for local unix-domain connections (library mode). */
+#define SR_GET_ITEM_DEF_LIMIT 2
 
 /**
  * Connection context used to identify a connection to sysrepo datastore.
@@ -58,6 +59,19 @@ typedef struct sr_session_list_s {
     sr_session_ctx_t *session;       /**< Session context. */
     struct sr_session_list_s *next;  /**< Next element in the linked-list. */
 } sr_session_list_t;
+
+/**
+ * Structure holding data for iterative access to items
+ */
+typedef struct sr_val_iter_s{
+    char *path;                     /**< xpath of the request */
+    bool recursive;                 /**< flag denoting whether child subtrees should be iterated */
+    size_t offset;                  /**< offset where the next data should be read */
+    size_t limit;                   /**< how many items should be read */
+    sr_val_t **buff_values;         /**< buffered values */
+    size_t index;                   /**< index into buff_values pointing to the value to be returned by next call */
+    size_t count;                   /**< number of element currently buffered */
+} sr_val_iter_t;
 
 static sr_conn_ctx_t *primary_connection = NULL;  /**< Global variable holding pointer to the primary connection. */
 
@@ -532,6 +546,16 @@ cleanup:
     return rc;
 }
 
+void sr_free_val_iter(sr_val_iter_t *iter){
+    if (NULL == iter){
+        return;
+    }
+    free(iter->path);
+    iter->path = NULL;
+    sr_free_values_t(iter->buff_values, iter->count);
+    iter->buff_values = NULL;
+}
+
 int sr_get_item(sr_session_ctx_t *session, const char *path, sr_val_t **value)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
@@ -560,7 +584,18 @@ int sr_get_item(sr_session_ctx_t *session, const char *path, sr_val_t **value)
         goto cleanup;
     }
 
-    // TODO: allocate and fill-in the value
+    /* check response code */
+    if (SR_ERR_OK != msg_resp->response->result){
+        SR_LOG_ERR("Get item response with code %u", msg_resp->response->result);
+        goto cleanup;
+    }
+
+    /* copy the content of gpb to sr_val_t*/
+    rc = sr_copy_gpb_to_val_t(msg_resp->response->get_item_resp->value, value);
+    if (SR_ERR_OK != rc){
+        SR_LOG_ERR_MSG("Copying from gpb to sr_val_t failed");
+        goto cleanup;
+    }
 
     sr__msg__free_unpacked(msg_req, NULL);
     sr__msg__free_unpacked(msg_resp, NULL);
@@ -605,7 +640,37 @@ int sr_get_items(sr_session_ctx_t *session, const char *path, sr_val_t ***values
         goto cleanup;
     }
 
-    // TODO: allocate and fill-in the value
+    /* check response code */
+    if (SR_ERR_OK != msg_resp->response->result) {
+        SR_LOG_ERR("Get item response with code %u", msg_resp->response->result);
+        goto cleanup;
+    }
+
+    /* copy the content of gpb to sr_val_t*/
+    sr_val_t **vals = NULL;
+    size_t cnt = msg_resp->response->get_items_resp->n_value;
+    vals = calloc(cnt, sizeof(*vals));
+    if (NULL == vals){
+        SR_LOG_ERR_MSG("Memory allocation failed");
+        rc = SR_ERR_NOMEM;
+        goto cleanup;
+    }
+
+    for (size_t i = 0; i<cnt; i++){
+        rc = sr_copy_gpb_to_val_t(msg_resp->response->get_items_resp->value[i], &vals[i]);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR_MSG("Copying from gpb to sr_val_t failed");
+            for (size_t j=0; j<i; j++){
+                sr_free_val_t(vals[i]);
+            }
+            free(vals);
+            rc = SR_ERR_INTERNAL;
+            goto cleanup;
+        }
+    }
+
+    *values = vals;
+    *value_cnt = cnt;
 
     sr__msg__free_unpacked(msg_req, NULL);
     sr__msg__free_unpacked(msg_resp, NULL);
@@ -621,3 +686,101 @@ cleanup:
     }
     return rc;
 }
+
+
+int
+sr_get_items_iter(sr_session_ctx_t *session, const char *path, bool recursive, sr_val_iter_t **iter){
+    Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG4(session, session->conn_ctx, path, iter);
+
+    /* prepare get_item message */
+    rc = sr_pb_req_alloc(SR__OPERATION__GET_ITEMS, session->id, &msg_req);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Cannot allocate get_items message.");
+        goto cleanup;
+    }
+
+    /* fill in the path */
+    msg_req->request->get_items_req->path = strdup(path);
+    if (NULL == msg_req->request->get_items_req->path) {
+        SR_LOG_ERR_MSG("Cannot allocate get_items path.");
+        goto cleanup;
+    }
+    msg_req->request->get_items_req->limit = SR_GET_ITEM_DEF_LIMIT;
+    msg_req->request->get_items_req->offset = 0;
+    msg_req->request->get_items_req->recursive =recursive;
+    msg_req->request->get_items_req->has_recursive = true;
+    msg_req->request->get_items_req->has_limit = true;
+    msg_req->request->get_items_req->has_offset = true;
+
+
+    /* send the request and receive the response */
+    rc = cl_request_process(session->conn_ctx, msg_req, &msg_resp, SR__OPERATION__GET_ITEMS);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Error by processing of get_items request.");
+        goto cleanup;
+    }
+
+    /* check response code */
+    if (SR_ERR_OK != msg_resp->response->result) {
+        SR_LOG_ERR("Get items response with code %u", msg_resp->response->result);
+        goto cleanup;
+    }
+
+    sr_val_iter_t *it = NULL;
+    it = calloc(1, sizeof(*it));
+    if (NULL == iter){
+        SR_LOG_ERR_MSG("Memory allocation failed");
+        rc = SR_ERR_NOMEM;
+        goto cleanup;
+    }
+
+    it->count = msg_resp->response->get_items_resp->n_value;
+
+    it->recursive = recursive;
+    it->path = strdup(path);
+    if (NULL == it->path){
+        SR_LOG_ERR_MSG("Duplication of path failed");
+        free(it);
+        rc = SR_ERR_INTERNAL;
+        goto cleanup;
+    }
+
+    it->buff_values = calloc(it->count, sizeof(*it->buff_values));
+    if (NULL == it->buff_values){
+        SR_LOG_ERR_MSG("Memory allocation failed");
+        rc = SR_ERR_NOMEM;
+        goto cleanup;
+    }
+
+    /* copy the content of gpb to sr_val_t*/
+    for (size_t i = 0; i < it->count; i++){
+        rc = sr_copy_gpb_to_val_t(msg_resp->response->get_items_resp->value[i], &it->buff_values[i]);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR_MSG("Copying from gpb to sr_val_t failed");
+            sr_free_values_t(it->buff_values, i);
+            free(it);
+            rc = SR_ERR_INTERNAL;
+            goto cleanup;
+        }
+    }
+
+    *iter = it;
+
+    sr__msg__free_unpacked(msg_req, NULL);
+    sr__msg__free_unpacked(msg_resp, NULL);
+
+    return SR_ERR_OK;
+
+cleanup:
+    if (NULL != msg_req) {
+        sr__msg__free_unpacked(msg_req, NULL);
+    }
+    if (NULL != msg_resp) {
+        sr__msg__free_unpacked(msg_resp, NULL);
+    }
+    return rc;
+}
+

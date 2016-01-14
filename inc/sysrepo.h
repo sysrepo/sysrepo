@@ -193,9 +193,7 @@ int sr_session_stop(sr_session_ctx_t *session);
 //Read requests
 //////////////////////////////////////////////////////////////////////
 
-typedef struct sr_val_iter_s {
-  size_t index;
-} sr_val_iter_t;
+typedef struct sr_val_iter_s sr_val_iter_t;
 typedef sr_val_iter_t * sr_val_iter_p;
 
 /**
@@ -246,7 +244,7 @@ int sr_get_items(sr_session_ctx_t *session, const char *path, sr_val_t ***values
  * [out] iter (allocated by function)
  * return err_code
  */
-int sr_get_items_iter(sr_session_ctx_t *session, const char *path, bool recursive, sr_val_iter_p *iter);
+int sr_get_items_iter(sr_session_ctx_t *session, const char *path, bool recursive, sr_val_iter_t **iter);
 
 
 /**
@@ -256,9 +254,24 @@ int sr_get_items_iter(sr_session_ctx_t *session, const char *path, bool recursiv
  * [out] value (allocated)
  * return err_code
  */
-int sr_get_item_next(sr_session_ctx_t *session, sr_val_iter_p iter, sr_val_t **value);
+int sr_get_item_next(sr_session_ctx_t *session, sr_val_iter_t *iter, sr_val_t **value);
 
 
+/**
+ * @brief Frees sr_val_t structure
+ * @param [in] value
+ */
+void sr_free_val_t(sr_val_t *value);
+
+
+/**
+ * @brief Frees array of sr_valt_t. For each element the sr_free_val_t is called.
+ * @param [in] values
+ * @param [in] count length of array
+ */
+void sr_free_values_t(sr_val_t **values, size_t count);
+
+void sr_free_val_iter(sr_val_iter_t *iter);
 #define SR_VAL_TYPE(val) (val)->type
 #define SR_VAL_NAME(val) ...
 #define SR_VAL_KEY(val,index) ...

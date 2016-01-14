@@ -126,10 +126,13 @@ cl_get_item_test(void **state) {
     assert_int_equal(rc, SR_ERR_OK);
 
     /* perform a get-item request */
-    rc = sr_get_item(session, "/model:container/leaf", &value);
+    rc = sr_get_item(session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &value);
     assert_int_equal(rc, SR_ERR_OK);
-
-    // TODO: validate value
+    assert_non_null(value);
+    assert_int_equal(SR_STRING_T, value->type);
+    assert_string_equal("Leaf value", value->data.string_val);
+    assert_string_equal("/example-module:container/list[key1='key1'][key2='key2']/leaf", value->xpath);
+    sr_free_val_t(value);
 
     /* stop the session */
     rc = sr_session_stop(session);
@@ -149,12 +152,18 @@ cl_get_items_test(void **state) {
     /* start a session */
     rc = sr_session_start(conn, "alice", SR_DS_CANDIDATE, &session);
     assert_int_equal(rc, SR_ERR_OK);
+    assert_non_null(session);
 
     /* perform a get-items request */
-    rc = sr_get_items(session, "/model:container", &values, &values_cnt);
+    rc = sr_get_items(session, "/example-module:container", &values, &values_cnt);
     assert_int_equal(rc, SR_ERR_OK);
+    assert_int_equal(1, values_cnt);
 
-    // TODO: validate values
+    for (size_t i=0; i < values_cnt; i++){
+        sr_free_val_t(values[i]);
+    }
+    free(values);
+
 
     /* stop the session */
     rc = sr_session_stop(session);

@@ -151,11 +151,6 @@ void sr_free_datatree(struct lyd_node *root);
  */
 sr_type_t sr_libyang_type_to_sysrepo(LY_DATA_TYPE t);
 
-/**
- * @brief Frees sr_val_t structure
- * @param [in] value
- */
-void sr_free_val_t(sr_val_t *value);
 
 /**
  * @brief Converts byte buffer content to uint32_t number.
@@ -218,5 +213,22 @@ int sr_pb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr
  * @return Error code.
  */
 int sr_get_peer_eid(int fd, uid_t *uid, gid_t *gid);
+
+/**
+ * @brief Fills gpb structure form sr_val_t.
+ * @param [in] value
+ * @param [out] gpb_value
+ * @return err_code
+ */
+int sr_copy_val_t_to_gpb(const sr_val_t *value, Sr__Value **gpb_value);
+
+/**
+ * @brief Allocates and fills sr_val_t structure from gpb.
+ * @param [in] gpb_value
+ * @param [out] value
+ * @return err_code
+ */
+int sr_copy_gpb_to_val_t(const Sr__Value *gpb_value, sr_val_t **value);
+
 
 #endif /* SRC_SR_COMMON_H_ */
