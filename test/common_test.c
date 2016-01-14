@@ -44,7 +44,7 @@ circular_buffer_test1(void **state)
 {
     sr_cbuff_t *buffer = NULL;
     int rc = 0, i = 0;
-    int tmp = NULL;
+    int tmp = 0;
 
     rc = sr_cbuff_init(2, sizeof(int), &buffer);
     assert_int_equal(rc, SR_ERR_OK);
