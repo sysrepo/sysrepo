@@ -39,11 +39,12 @@ typedef struct rp_ctx_s {
  * @brief Structure that holds Request Processor's per-session context.
  */
 typedef struct rp_session_s {
-    uint32_t id;                 /**< Assigned session id. */
-    const char *real_user;       /**< Real user name of the client. */
-    const char *effective_user;  /**< Effective user name of the client (if different to real_user). */
-    sr_datastore_t datastore;    /**< Datastore selected for this session. */
-    dm_session_t *dm_session;    /**< Per session data manager context */
+    uint32_t id;                         /**< Assigned session id. */
+    const char *real_user;               /**< Real user name of the client. */
+    const char *effective_user;          /**< Effective user name of the client (if different to real_user). */
+    sr_datastore_t datastore;            /**< Datastore selected for this session. */
+    dm_session_t *dm_session;            /**< Per session data manager context */
+    rp_dt_get_items_ctx_t get_items_ctx; /**< Context for get_items_iter calls*/
 } rp_session_t;
 
 /**
@@ -95,7 +96,7 @@ rp_get_item_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr_
  * Processes a get_items request.
  */
 static int
-rp_get_items_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
+rp_get_items_req_process(const rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
 {
     int rc = SR_ERR_OK;
 
@@ -115,8 +116,17 @@ rp_get_items_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr
     size_t count = 0;
     char *xpath = msg->request->get_items_req->path;
 
-    /* get values from data manager*/
-    rc = rp_dt_get_values_wrapper(rp_ctx->dm_ctx, session->dm_session, xpath, &values, &count);
+    if (msg->request->get_items_req->has_recursive || msg->request->get_items_req->has_offset ||
+            msg->request->get_items_req->has_limit){
+
+        rc = rp_dt_get_values_wrapper_with_opts(rp_ctx->dm_ctx, session->dm_session, &session->get_items_ctx, xpath,
+        msg->request->get_items_req->recursive, msg->request->get_items_req->offset, msg->request->get_items_req->limit,
+        &values, &count);
+    }
+    else {
+        rc = rp_dt_get_values_wrapper(rp_ctx->dm_ctx, session->dm_session, xpath, &values, &count);
+    }
+
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Get items failed for '%s', session id=%"PRIu32".", xpath, session->id);
         goto cleanup;
@@ -251,13 +261,15 @@ rp_session_stop(const rp_ctx_t *rp_ctx, rp_session_t *session)
 
     dm_session_stop(rp_ctx->dm_ctx, session->dm_session);
 
+    rp_ns_clean(&session->get_items_ctx.stack);
+    free(session->get_items_ctx.xpath);
     free(session);
 
     return SR_ERR_OK;
 }
 
 int
-rp_msg_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
+rp_msg_process(const rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
 {
     int rc = SR_ERR_OK;
 

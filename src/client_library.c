@@ -552,8 +552,9 @@ void sr_free_val_iter(sr_val_iter_t *iter){
     }
     free(iter->path);
     iter->path = NULL;
-    sr_free_values_t(iter->buff_values, iter->count);
+    sr_free_values_in_range(iter->buff_values, iter->index, iter->count);
     iter->buff_values = NULL;
+    free(iter);
 }
 
 int sr_get_item(sr_session_ctx_t *session, const char *path, sr_val_t **value)
@@ -651,7 +652,7 @@ int sr_get_items(sr_session_ctx_t *session, const char *path, sr_val_t ***values
     size_t cnt = msg_resp->response->get_items_resp->n_value;
     vals = calloc(cnt, sizeof(*vals));
     if (NULL == vals){
-        SR_LOG_ERR_MSG("Memorya allocation failed");
+        SR_LOG_ERR_MSG("Memory allocation failed");
         rc = SR_ERR_NOMEM;
         goto cleanup;
     }
@@ -737,6 +738,7 @@ sr_get_items_iter(sr_session_ctx_t *session, const char *path, bool recursive, s
         goto cleanup;
     }
 
+    it->index = 0;
     it->count = msg_resp->response->get_items_resp->n_value;
 
     it->recursive = recursive;
@@ -782,5 +784,24 @@ cleanup:
         sr__msg__free_unpacked(msg_resp, NULL);
     }
     return rc;
+}
+
+int
+sr_get_item_next(sr_session_ctx_t *session, sr_val_iter_t *iter, sr_val_t **value){
+    CHECK_NULL_ARG3(session, iter, value);
+    if (0 == iter->count){
+        /*No more data to be read*/
+        *value = NULL;
+        return SR_ERR_NOT_FOUND;
+    }
+    else if (iter->index < iter->count){
+        /*There are buffered data*/
+        *value = iter->buff_values[iter->index++];
+    }
+    else{
+        //TODO load another data
+        return SR_ERR_INTERNAL;
+    }
+    return SR_ERR_OK;
 }
 

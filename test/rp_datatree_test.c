@@ -421,6 +421,64 @@ void get_values_test(void **state){
     dm_session_stop(ctx, ses_ctx);
 }
 
+
+void get_values_opts_test(void **state) {
+    int rc = 0;
+    dm_ctx_t *ctx = *state;
+    dm_session_t *ses_ctx = NULL;
+    struct lyd_node *data_tree = NULL;
+    dm_session_start(ctx, &ses_ctx);
+    rc = dm_get_datatree(ctx, ses_ctx, "example-module", &data_tree);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    struct lyd_node *root = NULL;
+    createDataTree(data_tree->schema->module->ctx, &root);
+    assert_non_null(root);
+
+    sr_val_t **values;
+    size_t count = 0;
+    rp_dt_get_items_ctx_t get_items_ctx;
+    get_items_ctx.stack = NULL;
+    get_items_ctx.xpath = NULL;
+    get_items_ctx.offset = 0;
+    get_items_ctx.recursive =true;
+
+#define EX_CONT "/example-module:container"
+    xp_loc_id_t *l;
+    assert_int_equal(SR_ERR_OK, xp_char_to_loc_id(EX_CONT, &l));
+    struct lyd_node **nodes = NULL;
+    rc = rp_dt_get_nodes_with_opts(ctx,ses_ctx, &get_items_ctx, root, l, true, 0, 3, &nodes, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    free(nodes);
+    xp_free_loc_id(l);
+
+    rc = rp_dt_get_values_wrapper_with_opts(ctx, ses_ctx, &get_items_ctx, EX_CONT, true, 0, 1, &values, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_string_equal(EX_CONT, get_items_ctx.xpath);
+    assert_int_equal(1, get_items_ctx.offset);
+    for (size_t i=0; i < count; i++){
+        puts(values[i]->xpath);
+    }
+    sr_free_values_t(values, count);
+
+    rc = rp_dt_get_values_wrapper_with_opts(ctx, ses_ctx, &get_items_ctx, EX_CONT, true, 100, 1, &values, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_string_equal(EX_CONT, get_items_ctx.xpath);
+    for (size_t i=0; i < count; i++){
+        puts(values[i]->xpath);
+    }
+    sr_free_values_t(values, count);
+
+//TODO test not existing nodes, offset and limit out of range
+
+    free(get_items_ctx.xpath);
+    rp_ns_clean(&get_items_ctx.stack);
+    sr_free_datatree(root);
+    dm_session_stop(ctx, ses_ctx);
+}
+
+
 void get_values_with_augments_test(void **state){
     int rc = 0;
     dm_ctx_t *ctx = *state;
@@ -617,7 +675,8 @@ int main(){
             cmocka_unit_test(get_values_with_augments_test),
             cmocka_unit_test(ietf_interfaces_test),
             cmocka_unit_test(get_values_test_module_test),
-            cmocka_unit_test(get_nodes_test)
+            cmocka_unit_test(get_nodes_test),
+            cmocka_unit_test(get_values_opts_test)
     };
     return cmocka_run_group_tests(tests, setup, teardown);
 }
