@@ -45,7 +45,7 @@ signal_handle(int sig)
 }
 
 static int
-setup(void **state)
+cm_setup(void **state)
 {
     int rc = 0;
 
@@ -54,6 +54,7 @@ setup(void **state)
 
     rc = cm_init(CM_MODE_LOCAL, CM_AF_SOCKET_PATH, &ctx);
     assert_int_equal(rc, SR_ERR_OK);
+    assert_non_null(ctx);
     *state = ctx;
 
     /* installs signal handlers (for manual testing of daemon mode) */
@@ -70,9 +71,10 @@ setup(void **state)
 }
 
 static int
-teardown(void **state)
+cm_teardown(void **state)
 {
     cm_ctx_t *ctx = *state;
+    assert_non_null(ctx);
 
     cm_stop(ctx);
     cm_cleanup(ctx);
@@ -133,7 +135,9 @@ cm_message_recv(const int fd)
     while (pos < 4) {
         len = recv(fd, buf + pos, CM_BUFF_LEN - pos, 0);
         assert_int_not_equal(len, -1);
-        assert_int_not_equal(len, 0);
+        if (0 == len) {
+            return NULL; /* disconnect */
+        }
         pos += len;
     }
     msg_size = sr_buff_to_uint32(buf);
@@ -142,12 +146,29 @@ cm_message_recv(const int fd)
     while (pos < msg_size + 4) {
         len = recv(fd, buf + pos, CM_BUFF_LEN - pos, 0);
         assert_int_not_equal(len, -1);
-        assert_int_not_equal(len, 0);
+        if (0 == len) {
+            return NULL; /* disconnect */
+        }
         pos += len;
     }
 
     Sr__Msg *msg = sr__msg__unpack(NULL, msg_size, (const uint8_t*)buf + 4);
     return msg;
+}
+
+static void
+cm_msg_pack_to_buff(Sr__Msg *msg, uint8_t **msg_buf, size_t *msg_size)
+{
+    assert_non_null(msg);
+    assert_non_null(msg_buf);
+    assert_non_null(msg_size);
+
+    *msg_size = sr__msg__get_packed_size(msg);
+    *msg_buf = calloc(*msg_size, sizeof(**msg_buf));
+    assert_non_null(*msg_buf);
+
+    sr__msg__pack(msg, *msg_buf);
+    sr__msg__free_unpacked(msg, NULL);
 }
 
 static void
@@ -166,12 +187,7 @@ cm_session_start_generate(const char *user_name, uint8_t **msg_buf, size_t *msg_
         msg->request->session_start_req->user_name = strdup(user_name);
     }
 
-    *msg_size = sr__msg__get_packed_size(msg);
-    *msg_buf = calloc(*msg_size, sizeof(**msg_buf));
-    assert_non_null(*msg_buf);
-
-    sr__msg__pack(msg, *msg_buf);
-    sr__msg__free_unpacked(msg, NULL);
+    cm_msg_pack_to_buff(msg, msg_buf, msg_size);
 }
 
 static void
@@ -188,42 +204,11 @@ cm_session_stop_generate(uint32_t session_id, uint8_t **msg_buf, size_t *msg_siz
 
     msg->request->session_stop_req->session_id = session_id;
 
-    *msg_size = sr__msg__get_packed_size(msg);
-    *msg_buf = calloc(*msg_size, sizeof(**msg_buf));
-    assert_non_null(*msg_buf);
-
-    sr__msg__pack(msg, *msg_buf);
-    sr__msg__free_unpacked(msg, NULL);
+    cm_msg_pack_to_buff(msg, msg_buf, msg_size);
 }
 
-#ifdef UNUSED
 static void
-cm_get_item_generate(const char *xpath, uint32_t session_id, void **msg_buf, size_t *msg_size)
-{
-    assert_non_null(xpath);
-    assert_non_null(msg_buf);
-    assert_non_null(msg_size);
-
-    Sr__Msg *msg = NULL;
-    sr_pb_req_alloc(SR__OPERATION__GET_ITEM, session_id, &msg);
-    assert_non_null(msg);
-    assert_non_null(msg->request);
-    assert_non_null(msg->request->get_item_req);
-
-    msg->request->get_item_req->datastore = SR__DATA_STORE__CANDIDATE;
-    msg->request->get_item_req->path = strdup(xpath);
-
-    *msg_size = sr__msg__get_packed_size(msg);
-    *msg_buf = calloc(1, *msg_size);
-    assert_non_null(*msg_buf);
-
-    sr__msg__pack(msg, *msg_buf);
-    sr__msg__free_unpacked(msg, NULL);
-}
-#endif
-
-static void
-cm_communicate(int fd)
+session_start_stop(int fd)
 {
     Sr__Msg *msg = NULL;
     uint8_t *msg_buf = NULL;
@@ -265,21 +250,137 @@ cm_communicate(int fd)
     sr__msg__free_unpacked(msg, NULL);
 }
 
+/**
+ * Session start / stop test.
+ */
 static void
-cm_connect_test(void **state) {
+cm_session_test(void **state) {
     int i = 0, fd = 0;
 
     for (i = 0; i < 10; i++) {
         fd = cm_connect_to_server();
-        cm_communicate(fd);
+        session_start_stop(fd);
         close(fd);
     }
+}
+
+/**
+ * Session start / stop negative test.
+ */
+static void
+cm_session_neg_test(void **state) {
+    Sr__Msg *msg = NULL;
+    uint8_t *msg_buf = NULL;
+    size_t msg_size = 0;
+    int fd1 = 0, fd2 = 0;
+    uint32_t session_id = 0;
+
+    fd1 = cm_connect_to_server();
+
+    /* try a message with NULL request  */
+    msg = calloc(1, sizeof(*msg));
+    assert_non_null(msg);
+    sr__msg__init(msg);
+    msg->type = SR__MSG__MSG_TYPE__REQUEST;
+    /* send the message */
+    cm_msg_pack_to_buff(msg, &msg_buf, &msg_size);
+    cm_message_send(fd1, msg_buf, msg_size);
+    free(msg_buf);
+    /* receive the response */
+    msg = cm_message_recv(fd1);
+    /* disconnect expected */
+    assert_null(msg);
+    close(fd1);
+
+    fd1 = cm_connect_to_server();
+
+    /* try a message with bad session id */
+    cm_session_stop_generate(999, &msg_buf, &msg_size);
+    cm_message_send(fd1, msg_buf, msg_size);
+    free(msg_buf);
+    /* receive the response */
+    msg = cm_message_recv(fd1);
+    /* disconnect expected */
+    assert_null(msg);
+    close(fd1);
+
+    fd1 = cm_connect_to_server();
+    fd2 = cm_connect_to_server();
+
+    /* try to stop session via another connection */
+    /* session_start request */
+    cm_session_start_generate("alice", &msg_buf, &msg_size);
+    cm_message_send(fd1, msg_buf, msg_size);
+    free(msg_buf);
+    /* receive the response */
+    msg = cm_message_recv(fd1);
+    assert_non_null(msg);
+    assert_non_null(msg->response);
+    assert_non_null(msg->response->session_start_resp);
+    session_id = msg->response->session_start_resp->session_id;
+    sr__msg__free_unpacked(msg, NULL);
+    /* stop via another connection */
+    cm_session_stop_generate(session_id, &msg_buf, &msg_size);
+    cm_message_send(fd2, msg_buf, msg_size);
+    free(msg_buf);
+    /* receive the response */
+    msg = cm_message_recv(fd2);
+    /* disconnect expected */
+    assert_null(msg);
+    close(fd2);
+
+    fd2 = cm_connect_to_server();
+
+    /* try sending a response */
+    sr_pb_resp_alloc(SR__OPERATION__SESSION_STOP, session_id, &msg);
+    cm_msg_pack_to_buff(msg, &msg_buf, &msg_size);
+    cm_message_send(fd2, msg_buf, msg_size);
+    free(msg_buf);
+    /* receive the response */
+    msg = cm_message_recv(fd2);
+    /* disconnect expected */
+    assert_null(msg);
+    close(fd2);
+
+    fd2 = cm_connect_to_server();
+
+    /* try to stop another session id */
+    sr_pb_req_alloc(SR__OPERATION__SESSION_STOP, session_id, &msg);
+    assert_non_null(msg);
+    assert_non_null(msg->request);
+    assert_non_null(msg->request->session_stop_req);
+    msg->request->session_stop_req->session_id = 0; /* should be invalid */
+    cm_msg_pack_to_buff(msg, &msg_buf, &msg_size);
+    cm_message_send(fd1, msg_buf, msg_size);
+    free(msg_buf);
+    /* receive the response - error is expected */
+    msg = cm_message_recv(fd1);
+    assert_non_null(msg);
+    assert_non_null(msg->response);
+    assert_int_not_equal(msg->response->result, SR_ERR_OK);
+    assert_non_null(msg->response->error_msg);
+    sr__msg__free_unpacked(msg, NULL);
+
+    /* try sending a message with invalid type */
+    sr_pb_resp_alloc(SR__OPERATION__SESSION_STOP, session_id, &msg);
+    msg->type = 53;
+    cm_msg_pack_to_buff(msg, &msg_buf, &msg_size);
+    cm_message_send(fd1, msg_buf, msg_size);
+    free(msg_buf);
+    /* receive the response */
+    msg = cm_message_recv(fd1);
+    /* disconnect expected */
+    assert_null(msg);
+    close(fd1);
+
+    // TODO: test not closing a connection with an open session (auto cleanup)
 }
 
 int
 main() {
     const struct CMUnitTest tests[] = {
-            cmocka_unit_test_setup_teardown(cm_connect_test, setup, teardown),
+            cmocka_unit_test_setup_teardown(cm_session_test, cm_setup, cm_teardown),
+            cmocka_unit_test_setup_teardown(cm_session_neg_test, cm_setup, cm_teardown),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);

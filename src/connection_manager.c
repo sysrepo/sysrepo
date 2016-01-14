@@ -539,14 +539,7 @@ cm_session_start_req_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, Sr__Msg *m
     Sr__Msg *msg = NULL;
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG3(cm_ctx, conn, msg_in);
-
-    /* validate the message */
-    rc = sr_pb_msg_validate(msg_in, SR__MSG__MSG_TYPE__REQUEST, SR__OPERATION__SESSION_START);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Malformed message received.");
-        return SR_ERR_INVAL_ARG;
-    }
+    CHECK_NULL_ARG5(cm_ctx, conn, msg_in, msg_in->request, msg_in->request->session_start_req);
 
     SR_LOG_DBG("Processing session_start request (conn=%p).", (void*)conn);
 
@@ -605,9 +598,10 @@ static int
 cm_session_stop_req_process(cm_ctx_t *cm_ctx, sm_session_t *session, Sr__Msg *msg_in)
 {
     Sr__Msg *msg_out = NULL;
-    int rc = SR_ERR_OK, rc_tmp = SR_ERR_OK;
+    int rc = SR_ERR_OK;
+    bool drop_session = false;
 
-    CHECK_NULL_ARG3(cm_ctx, session, msg_in);
+    CHECK_NULL_ARG5(cm_ctx, session, msg_in, msg_in->request, msg_in->request->session_stop_req);
 
     SR_LOG_DBG("Processing session_stop request (session id=%"PRIu32").", session->id);
 
@@ -616,13 +610,6 @@ cm_session_stop_req_process(cm_ctx_t *cm_ctx, sm_session_t *session, Sr__Msg *ms
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Cannot allocate the response for session_stop request (session id=%"PRIu32").", session->id);
         return SR_ERR_NOMEM;
-    }
-
-    /* validate the message */
-    rc = sr_pb_msg_validate(msg_in, SR__MSG__MSG_TYPE__REQUEST, SR__OPERATION__SESSION_STOP);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Malformed message received.");
-        rc = SR_ERR_INVAL_ARG;
     }
 
     if (SR_ERR_OK == rc) {
@@ -643,14 +630,15 @@ cm_session_stop_req_process(cm_ctx_t *cm_ctx, sm_session_t *session, Sr__Msg *ms
     if (SR_ERR_OK == rc) {
         /* set the id to response */
         msg_out->response->session_stop_resp->session_id = session->id;
+        drop_session = true;
     } else {
         /* set the error code to response */
         msg_out->response->result = rc;
     }
 
     /* send the response */
-    rc_tmp = cm_msg_send_session(cm_ctx, session, msg_out);
-    if (SR_ERR_OK != rc_tmp) {
+    rc = cm_msg_send_session(cm_ctx, session, msg_out);
+    if (SR_ERR_OK != rc) {
         SR_LOG_WRN("Unable to send session_stop response via session id=%"PRIu32".", session->id);
     }
 
@@ -658,7 +646,7 @@ cm_session_stop_req_process(cm_ctx_t *cm_ctx, sm_session_t *session, Sr__Msg *ms
     sr__msg__free_unpacked(msg_out, NULL);
 
     /* drop session in SM - must be called AFTER sending */
-    if (SR_ERR_OK == rc) {
+    if (drop_session && (SR_ERR_OK == rc)) {
         rc = sm_session_drop(cm_ctx->sm_ctx, session);
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR("Unable to drop the session in Session Manager (session id=%"PRIu32").", session->id);
@@ -705,7 +693,7 @@ cm_req_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, sm_session_t *session, S
                 /* there are some outstanding requests in RP, put the message into queue */
                 rc = sr_cbuff_enqueue(session->request_queue, &msg);
                 if (SR_ERR_OK != rc) {
-                    goto cleanup;
+                    goto cleanup; /* TODO: send response with error */
                 }
             } else {
                 /* no outstanding requests in RP, we can forward the message to request Processor */
@@ -751,7 +739,7 @@ cm_resp_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, sm_session_t *session, 
 
     if (session->rp_resp_expected > 0) {
         /* the response is expected, forward it to Request Processor */
-        rc = rp_msg_process(cm_ctx->rp_ctx, session->rp_session, msg);
+        rc = rp_msg_process(cm_ctx->rp_ctx, session->rp_session, msg); /* TODO: send response by error? */
         /* do not cleanup the message (already done in RP) */
     } else {
         /* the response is unexpected */
@@ -789,7 +777,7 @@ cm_conn_msg_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, uint8_t *msg_data, 
     /* NULL check according to message type */
     if (((SR__MSG__MSG_TYPE__REQUEST == msg->type) && (NULL == msg->request)) ||
             ((SR__MSG__MSG_TYPE__RESPONSE == msg->type) && (NULL == msg->response))) {
-        SR_LOG_ERR("Message with malformed type received (conn=%p).", (void*)conn);
+        SR_LOG_ERR("Message with NULL payload received (conn=%p).", (void*)conn);
         rc = SR_ERR_INVAL_ARG;
         goto cleanup;
     }

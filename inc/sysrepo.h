@@ -136,7 +136,7 @@ typedef enum sr_error_e {
  *
  * @return Error message (statically allocated, do not free).
  */
-char *sr_strerror(int err_code);
+const char *sr_strerror(int err_code);
 
 ///////////////////////////////////////////////////////////////////////////////
 // Session management
