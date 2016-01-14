@@ -37,6 +37,8 @@ find_package(Protobuf-c REQUIRED)
 include_directories(${PROTOBUF-C_INCLUDE_DIR})
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 
+set(DM_SEARCH_DIR_V "${PROJECT_SOURCE_DIR}/test/data/" CACHE STRING "Default search path")
+
 #add subdirectories
 add_subdirectory(src)
 add_subdirectory(inc)

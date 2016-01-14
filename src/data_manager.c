@@ -328,6 +328,8 @@ dm_init(const char *search_dir, dm_ctx_t **dm_ctx)
     if (NULL == ctx->module_avl) {
         SR_LOG_ERR_MSG("Cannot allocate memory for avl module in Data Manager.");
         free(ctx->search_dir);
+        ly_ctx_destroy(ctx->ly_ctx);
+        free(ctx);
         return SR_ERR_NOMEM;
     }
 

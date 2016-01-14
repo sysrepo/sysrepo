@@ -77,6 +77,16 @@ int rp_dt_get_value(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp
 int rp_dt_get_value_xpath(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char *xpath, sr_val_t **value);
 
 /**
+ * @brief Returns the value for the specified xpath. Internaly converts xpath to location_id and looks up the datatree
+ * @param [in] dm_ctx
+ * @param [in] dm_session
+ * @param [in] xpath
+ * @param [out] value
+ * @return err_code
+ */
+int rp_dt_get_value_wrapper(const dm_ctx_t *dm_ctx, dm_session_t *dm_session, const char *xpath, sr_val_t **value);
+
+/**
  * @brief Returns nodes under specified location_id. For leaf returns the same as rp_dt_get_node. If location_id identifies
  * the container returns its children. If the location_id identifies the list instance and all key values defined
  * the children of the list instance is returned. If the location_id identifies the list and key values for the last list
@@ -126,6 +136,16 @@ int rp_dt_get_values(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const x
 int rp_dt_get_values_xpath(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char *xpath, sr_val_t ***values, size_t *count);
 
 
+/**
+ * @brief Returns the values for the specified xpath. Internaly converts xpath to location_id and looks up the datatree.
+ * @param [in] dm_ctx
+ * @param [in] dm_session
+ * @param [in] xpath
+ * @param [out] values
+ * @param [out] count
+ * @return err_code
+ */
+int rp_dt_get_values_wrapper(const dm_ctx_t *dm_ctx, dm_session_t *dm_session, const char *xpath, sr_val_t ***values, size_t *count);
 
 /**
  * @}
