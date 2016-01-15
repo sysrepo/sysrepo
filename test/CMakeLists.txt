@@ -24,6 +24,8 @@ macro(ADD_UNIT_TEST TEST_NAME)
     ADD_UNIT_TEST_WITH_OPTS(${TEST_NAME} ${TEST_NAME}.c "" 1)
 endmacro(ADD_UNIT_TEST)
 
+ADD_UNIT_TEST(common_test)
+
 ADD_UNIT_TEST(xp_parser_test)
 ADD_UNIT_TEST(xp_yang_test)
 

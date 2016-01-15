@@ -33,7 +33,8 @@
 
 #define SM_SESSION_ID_INVALID 0         /**< Invalid value of session id. */
 #define SM_SESSION_ID_MAX_ATTEMPTS 100  /**< Maximum number of attempts to generate unused random session id. */
-#define SM_FD_INVALID -1                /**< invalid value of file descriptor. */
+#define SM_FD_INVALID -1                /**< Invalid value of file descriptor. */
+#define SM_SESSION_REQ_QUEUE_SIZE 2     /**< Initial size of the request queue buffer. */
 
 /**
  * @brief Session Manager context.
@@ -98,6 +99,7 @@ sm_session_cleanup(void *session)
         sm_session_t *sm_session = (sm_session_t *)session;
         free((void*)sm_session->real_user);
         free((void*)sm_session->effective_user);
+        sr_cbuff_cleanup(sm_session->request_queue);
         free(sm_session);
     }
 }
@@ -340,6 +342,13 @@ sm_session_create(const sm_ctx_t *sm_ctx, sm_connection_t *connection,
         goto cleanup;
     }
 
+    /* initialize session request queue */
+    rc = sr_cbuff_init(SM_SESSION_REQ_QUEUE_SIZE, sizeof(Sr__Msg*), &session->request_queue);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Cannot initialize session request queue (session id=%"PRIu32").", session->id);
+        goto cleanup;
+    }
+
     /* duplicate and set user names */
     session->real_user = strdup(real_user);
     if (NULL == session->real_user) {
@@ -379,6 +388,7 @@ sm_session_create(const sm_ctx_t *sm_ctx, sm_connection_t *connection,
         goto cleanup;
     }
 
+    /* add the session to connection's list */
     session->connection = connection;
     rc = sm_connection_add_session(sm_ctx, connection, session);
     if (SR_ERR_OK != rc) {
