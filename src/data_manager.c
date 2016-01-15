@@ -166,6 +166,8 @@ dm_load_schemas(const dm_ctx_t *dm_ctx)
     }
 }
 
+#if 0
+//will be used with edit config
 /**
  * @brief adds empty data tree for the specified module into dm_ctx
  * @param [in] dm_ctx
@@ -191,6 +193,7 @@ dm_add_empty_data_tree(const dm_ctx_t *dm_ctx, const struct lys_module *module, 
     }
     return SR_ERR_OK;
 }
+#endif
 
 /**
  * Checks whether the schema of the module has been loaded
@@ -203,7 +206,7 @@ dm_find_module_schema(const dm_ctx_t *dm_ctx, const char *module_name, const str
 {
     CHECK_NULL_ARG2(dm_ctx, module_name);
     *module = ly_ctx_get_module(dm_ctx->ly_ctx, module_name, NULL);
-    return (*module == NULL ) ? SR_ERR_NOT_FOUND : SR_ERR_OK;
+    return (*module == NULL ) ? SR_ERR_UNKNOWN_MODEL : SR_ERR_OK;
 }
 
 /**
@@ -298,7 +301,7 @@ dm_find_data_tree(const dm_ctx_t *dm_ctx, const struct lys_module *module, struc
     /* try to load data_tree */
     rc = dm_load_data_tree(dm_ctx, module, data_tree);
     if (SR_ERR_NOT_FOUND == rc ) {
-        rc = dm_add_empty_data_tree(dm_ctx, module, data_tree);
+        return SR_ERR_NOT_FOUND;
     }
     else if(SR_ERR_OK != rc){
         SR_LOG_ERR("Loading data_tree %s failed", module->name);
@@ -393,16 +396,20 @@ int
 dm_get_datatree(const dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, const char *module_name, struct lyd_node **data_tree)
 {
     CHECK_NULL_ARG4(dm_ctx, dm_session_ctx, module_name, data_tree);
+    int rc = SR_ERR_OK;
     const struct lys_module *module = NULL;
     if (dm_find_module_schema(dm_ctx, module_name, &module) != SR_ERR_OK) {
         SR_LOG_WRN("Unknown schema: %s", module_name);
-        return SR_ERR_INVAL_ARG;
+        return SR_ERR_UNKNOWN_MODEL;
     }
 
-    if (dm_find_data_tree(dm_ctx, module, data_tree) != SR_ERR_OK) {
+    rc = dm_find_data_tree(dm_ctx, module, data_tree);
+    if (SR_ERR_NOT_FOUND == rc){
+        SR_LOG_DBG("Data tree for %s not found.", module_name);
+    }
+    else if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Getting data tree for %s failed.", module_name);
-        return SR_ERR_INTERNAL;
     }
 
-    return SR_ERR_OK;
+    return rc;
 }

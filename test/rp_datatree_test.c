@@ -665,6 +665,28 @@ void get_node_test_not_found(void **state)
 
 }
 
+void get_value_wrapper_test(void **state){
+    int rc = 0;
+    dm_ctx_t *ctx = *state;
+    dm_session_t *ses_ctx = NULL;
+    dm_session_start(ctx, &ses_ctx);
+
+    /* unknown model*/
+    sr_val_t *value = NULL;
+    rc = rp_dt_get_value_wrapper(ctx, ses_ctx, "/non-existing:abc", &value);
+    assert_int_equal(SR_ERR_UNKNOWN_MODEL, rc);
+
+    /* not existing data tree*/
+    rc = rp_dt_get_value_wrapper(ctx, ses_ctx, "/ietf-interfaces:interfaces", &value);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+
+    /* not exisiting now in existing data tree*/
+    rc = rp_dt_get_value_wrapper(ctx, ses_ctx, "/example-module:container/list[key1='abc'][key2='def']", &value);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+
+    dm_session_stop(ctx, ses_ctx);
+}
+
 int main(){
 
     const struct CMUnitTest tests[] = {
@@ -676,7 +698,8 @@ int main(){
             cmocka_unit_test(ietf_interfaces_test),
             cmocka_unit_test(get_values_test_module_test),
             cmocka_unit_test(get_nodes_test),
-            cmocka_unit_test(get_values_opts_test)
+            cmocka_unit_test(get_values_opts_test),
+            cmocka_unit_test(get_value_wrapper_test)
     };
     return cmocka_run_group_tests(tests, setup, teardown);
 }

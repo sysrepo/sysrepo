@@ -127,6 +127,7 @@ typedef enum sr_error_e {
     SR_ERR_DISCONNECT,     /**< The peer disconnected. */
     SR_ERR_MALFORMED_MSG,  /**< Malformed message. */
     SR_ERR_UNSUPPORTED,    /**< Unsupported operation requested. */
+    SR_ERR_UNKNOWN_MODEL,  /**< Request includes unknown schema */
 } sr_error_t;
 
 /**
