@@ -679,7 +679,7 @@ void get_value_wrapper_test(void **state){
     assert_int_equal(SR_ERR_UNKNOWN_MODEL, rc);
 
     /* not existing data tree*/
-    rc = rp_dt_get_value_wrapper(ctx, ses_ctx, "/ietf-interfaces:interfaces", &value);
+    rc = rp_dt_get_value_wrapper(ctx, ses_ctx, "/small-module:item", &value);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
     /* not exisiting now in existing data tree*/
