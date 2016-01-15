@@ -605,6 +605,41 @@ rp_dt_get_value_from_node(struct lyd_node *node, sr_val_t **value){
     return SR_ERR_OK;
 }
 
+/**
+ * Fills the values from the array of nodes
+ */
+static int
+rp_dt_get_values_from_nodes(struct lyd_node **nodes, size_t count, sr_val_t ***values){
+    CHECK_NULL_ARG2(nodes, values);
+    int rc = SR_ERR_OK;
+    sr_val_t **vals = NULL;
+    vals = calloc(count, sizeof(*vals));
+    if (NULL ==  vals){
+        SR_LOG_ERR_MSG("Memory allocation failed");
+        return SR_ERR_NOMEM;
+    }
+
+    for(size_t i=0; i<count; i++){
+        rc = rp_dt_get_value_from_node(nodes[i], &vals[i]);
+        if (SR_ERR_OK != rc){
+            const char *name = "";
+            if (NULL != nodes[i] && NULL != nodes[i]->schema && NULL != nodes[i]->schema->name){
+                name = nodes[i]->schema->name;
+            }
+            SR_LOG_ERR("Getting value from node %s failed", name);
+            for (size_t j = 0; j<i; j++){
+                sr_free_val_t((vals)[j]);
+            }
+            free(*vals);
+            return SR_ERR_INTERNAL;
+        }
+    }
+    *values = vals;
+
+    return rc;
+}
+
+
 int
 rp_dt_get_node(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp_loc_id_t *loc_id, struct lyd_node **node)
 {
@@ -772,6 +807,188 @@ rp_dt_get_siblings_node_by_name(struct lyd_node *node, const char* name, struct 
     return SR_ERR_OK;
 }
 
+static int
+rp_dt_push_child_nodes_to_stack(rp_node_stack_t **stack, struct lyd_node *node){
+    CHECK_NULL_ARG2(stack, node);
+    int rc = SR_ERR_OK;
+    struct lyd_node *n = node->child;
+    while (NULL != n) {
+        rc = rp_ns_push(stack, n);
+        if (SR_ERR_OK != rc){
+            return SR_ERR_INTERNAL;
+        }
+        n = n->next;
+    }
+    return rc;
+}
+
+static int
+rp_dt_push_nodes_with_same_name_to_stack(rp_node_stack_t **stack, struct lyd_node *node){
+    CHECK_NULL_ARG2(stack, node);
+    int rc = SR_ERR_OK;
+    struct lyd_node *n = node;
+    while (NULL != n) {
+        if(NULL == n->schema || NULL == n->schema->name){
+            SR_LOG_ERR_MSG("Missing schema information");
+            return SR_ERR_INTERNAL;
+        }
+        if (0 == strcmp(node->schema->name, n->schema->name)) {
+            rc = rp_ns_push(stack, n);
+            if (SR_ERR_OK != rc){
+                return SR_ERR_INTERNAL;
+            }
+        }
+        n = n->next;
+    }
+    return rc;
+}
+
+int
+rp_dt_get_nodes_with_opts(const dm_ctx_t *dm_ctx, dm_session_t *dm_session, rp_dt_get_items_ctx_t *get_items_ctx, struct lyd_node *data_tree, const xp_loc_id_t *loc_id,
+                          bool recursive, size_t offset, size_t limit, struct lyd_node ***nodes, size_t *count){
+    CHECK_NULL_ARG5(dm_ctx, dm_session, get_items_ctx, data_tree, loc_id);
+    CHECK_NULL_ARG3(nodes, count, loc_id->xpath);
+
+    int rc = SR_ERR_OK;
+    struct lyd_node *node = NULL;
+    bool cache_hit = false;
+
+    SR_LOG_DBG("Get_nodes opts with args: %s %zu %zu %d", loc_id->xpath, limit, offset, recursive);
+    /* check if we continue where we left */
+    if (get_items_ctx->xpath == NULL || 0 != strcmp(loc_id->xpath, get_items_ctx->xpath) || get_items_ctx->recursive != recursive ||
+            offset != get_items_ctx->offset){
+        rc = rp_dt_lookup_node(data_tree, loc_id, true, &node);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR("Look up failed for xpath %s", loc_id->xpath);
+            return rc;
+        }
+
+        if (NULL == node->schema || NULL == node->schema->name){
+            SR_LOG_ERR("Missing schema information for node %s", loc_id->xpath);
+            return SR_ERR_INTERNAL;
+        }
+        rp_ns_clean(&get_items_ctx->stack);
+        free(get_items_ctx->xpath);
+
+        get_items_ctx->xpath = strdup(loc_id->xpath);
+        if (NULL == get_items_ctx->xpath){
+            SR_LOG_ERR_MSG("String duplication failed");
+            return SR_ERR_INTERNAL;
+        }
+        get_items_ctx->offset = offset;
+        get_items_ctx->recursive = recursive;
+
+
+        /*initially push nodes to stack */
+        size_t last_node = 0;
+        switch (node->schema->nodetype) {
+            case LYS_LEAF:
+                rc = rp_ns_push(&get_items_ctx->stack, node);
+                if (SR_ERR_OK != rc){
+                    return SR_ERR_INTERNAL;
+                }
+                break;
+            case LYS_CONTAINER:
+                rc = rp_dt_push_child_nodes_to_stack(&get_items_ctx->stack, node);
+                if (SR_ERR_OK != rc){
+                    SR_LOG_ERR_MSG("Push child nodes to stack failed");
+                    return SR_ERR_INTERNAL;
+                }
+                break;
+            case LYS_LIST:
+                last_node = XP_GET_NODE_COUNT(loc_id) -1;
+                if (0 != XP_GET_KEY_COUNT(loc_id, last_node)){
+                    rc = rp_dt_push_child_nodes_to_stack(&get_items_ctx->stack, node);
+                    if (SR_ERR_OK != rc){
+                        SR_LOG_ERR_MSG("Push child nodes to stack failed");
+                        return SR_ERR_INTERNAL;
+                    }
+                    break;
+                }
+                else{
+                    rc = rp_dt_push_nodes_with_same_name_to_stack(&get_items_ctx->stack, node);
+                    if (SR_ERR_OK != rc){
+                        SR_LOG_ERR_MSG("Push nodes to stack failed");
+                        return SR_ERR_INTERNAL;
+                    }
+                }
+                break;
+            case LYS_LEAFLIST:
+                rc = rp_dt_push_nodes_with_same_name_to_stack(&get_items_ctx->stack, node);
+                if (SR_ERR_OK != rc){
+                    SR_LOG_ERR_MSG("Push nodes to stack failed");
+                    return SR_ERR_INTERNAL;
+                }
+                break;
+            default:
+                SR_LOG_ERR("Unsupported node type for xpath %s", loc_id->xpath);
+                return SR_ERR_INTERNAL;
+        }
+        SR_LOG_DBG_MSG("Cache miss in get_nodes_with_opts");
+
+    }
+    else{
+        cache_hit = true;
+        SR_LOG_DBG_MSG("Cache hit in get_nodes_with_opts");
+    }
+
+
+    size_t cnt = 0;
+    /* setup index whether we continue using get_items_ctx or starting fresh */
+    size_t index = cache_hit ? get_items_ctx->offset : 0;
+
+    /*allocate nodes*/
+    *nodes = calloc(limit, sizeof(**nodes));
+    if (NULL == *nodes){
+        return SR_ERR_NOMEM;
+    }
+
+    /* process stack*/
+    rp_node_stack_t *item;
+    size_t i = 0; /*index into returned nodes*/
+    while (cnt < limit) {
+        if (rp_ns_is_empty(&get_items_ctx->stack)){
+            break;
+        }
+
+        rp_ns_pop(&get_items_ctx->stack, &item);
+        if (NULL == item->node || NULL == item->node->schema){
+            SR_LOG_ERR_MSG("Stack item doesn't contain a node or schema is missing");
+            return SR_ERR_INTERNAL;
+        }
+        switch (item->node->schema->nodetype) {
+            case LYS_LEAF:  /* fallthrough */
+            case LYS_LEAFLIST:
+                break;
+            case LYS_LIST: /* fallthrough */
+            case LYS_CONTAINER:
+                if (get_items_ctx->recursive){
+                    rc = rp_dt_push_child_nodes_to_stack(&get_items_ctx->stack, item->node);
+                    if (SR_ERR_OK != rc){
+                        SR_LOG_ERR_MSG("Push child nodes to stack failed");
+                        return SR_ERR_INTERNAL;
+                    }
+                }
+                break;
+            default:
+                SR_LOG_ERR("Unsupported node type for xpath %s", loc_id->xpath);
+                return SR_ERR_INTERNAL;
+        }
+
+        /* append node to result if it is in chosen range*/
+        if (index >= offset){
+            (*nodes)[i++] = item->node;
+            cnt++;
+        }
+        free(item);
+        index++;
+    }
+    /* mark the index where the processing stopped*/
+    get_items_ctx->offset = index;
+    *count = cnt;
+    return SR_ERR_OK;
+}
+
 int
 rp_dt_get_nodes(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp_loc_id_t *loc_id, struct lyd_node ***nodes, size_t *count){
     CHECK_NULL_ARG5(dm_ctx, data_tree, loc_id, nodes, count);
@@ -808,7 +1025,7 @@ rp_dt_get_nodes(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp_loc
         }
         return rc;
     case LYS_LIST:
-        /* chceck if the key values is specified */
+        /* check if the key values is specified */
         last_node = XP_GET_NODE_COUNT(loc_id) -1;
         if (0 != XP_GET_KEY_COUNT(loc_id, last_node)){
             /* return the content of the list instance*/
@@ -867,29 +1084,14 @@ rp_dt_get_values(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp_lo
         return SR_ERR_INTERNAL;
     }
 
-    *values = calloc(*count, sizeof(*values));
-    if (NULL ==  *values){
-        SR_LOG_ERR_MSG("Memory allocation failed");
-        free(nodes);
-        return SR_ERR_NOMEM;
-    }
-    for(size_t i=0; i<*count; i++){
-        rc = rp_dt_get_value_from_node(nodes[i], &(*values)[i]);
-        if (SR_ERR_OK != rc){
-            const char *name = "";
-            if (NULL != nodes[i] && NULL != nodes[i]->schema && NULL != nodes[i]->schema->name){
-                name = nodes[i]->schema->name;
-            }
-            SR_LOG_ERR("Getting value from node %s failed", name);
-            for (size_t j = 0; j<i; j++){
-                sr_free_val_t((*values)[j]);
-            }
-            free(*values);
-            free(nodes);
-            return SR_ERR_INTERNAL;
-        }
-    }
+    rc = rp_dt_get_values_from_nodes(nodes,*count, values);
     free(nodes);
+
+    if (SR_ERR_OK != rc){
+        SR_LOG_ERR("Copying values from nodes failed for xpath '%s'", loc_id->xpath);
+        return rc;
+    }
+
     return SR_ERR_OK;
 }
 
@@ -953,3 +1155,54 @@ cleanup:
     return rc;
 }
 
+int rp_dt_get_values_wrapper_with_opts(const dm_ctx_t *dm_ctx, dm_session_t *dm_session, rp_dt_get_items_ctx_t *get_items_ctx, const char *xpath,
+                                       bool recursive, size_t offset, size_t limit, sr_val_t ***values, size_t *count){
+
+    int rc = SR_ERR_INVAL_ARG;
+    xp_loc_id_t *l = NULL;
+    struct lyd_node *data_tree = NULL;
+    char *data_tree_name = NULL;
+    rc = xp_char_to_loc_id(xpath, &l);
+
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Converting xpath '%s' to loc_id failed.", xpath);
+        return rc;
+    }
+
+    if (!XP_HAS_NODE_NS(l,0)){
+        SR_LOG_ERR("Provided xpath's root doesn't contain a namespace '%s' ", xpath);
+        goto cleanup;
+    }
+
+    data_tree_name = XP_CPY_NODE_NS(l, 0);
+    if (NULL == data_tree_name){
+        SR_LOG_ERR("Copying module name failed for xpath '%s'", xpath);
+        goto cleanup;
+    }
+
+    rc = dm_get_datatree(dm_ctx, dm_session, data_tree_name, &data_tree);
+    if (SR_ERR_OK != rc){
+        SR_LOG_ERR("Getting data tree failed for xpath '%s'", xpath);
+        goto cleanup;
+    }
+
+    struct lyd_node **nodes = NULL;
+    rc = rp_dt_get_nodes_with_opts(dm_ctx, dm_session, get_items_ctx, data_tree, l, recursive, offset, limit, &nodes, count);
+    if (SR_ERR_OK != rc){
+        SR_LOG_ERR("Get nodes for xpath %s failed", l->xpath);
+        return SR_ERR_INTERNAL;
+    }
+
+    rc = rp_dt_get_values_from_nodes(nodes,*count, values);
+    free(nodes);
+    if (SR_ERR_OK != rc){
+        SR_LOG_ERR("Copying values from nodes failed for xpath '%s'", l->xpath);
+        return rc;
+    }
+
+    cleanup:
+    xp_free_loc_id(l);
+    free(data_tree_name);
+    return rc;
+
+}

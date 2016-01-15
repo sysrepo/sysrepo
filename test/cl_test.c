@@ -172,12 +172,50 @@ cl_get_items_test(void **state) {
     assert_int_equal(rc, SR_ERR_OK);
 }
 
+static void
+cl_get_items_iter_test(void **state) {
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+
+    sr_session_ctx_t *session = NULL;
+    sr_val_t *value = NULL;
+    int rc = 0;
+
+    /* start a session */
+    rc = sr_session_start(conn, "alice", SR_DS_CANDIDATE, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_non_null(session);
+
+    /* perform a get-items_iter request */
+    sr_val_iter_t *it;
+    rc = sr_get_items_iter(session, "/example-module:container", true, &it);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_non_null(it);
+    for (int i = 0; i < 6; i++) {
+        rc = sr_get_item_next(session, it, &value);
+        if (SR_ERR_NOT_FOUND == rc ){
+            break;
+        }
+        assert_int_equal(SR_ERR_OK, rc);
+        puts(value->xpath);
+        sr_free_val_t(value);
+    }
+
+    sr_free_val_iter(it);
+
+
+    /* stop the session */
+    rc = sr_session_stop(session);
+    assert_int_equal(rc, SR_ERR_OK);
+}
+
 int
 main() {
     const struct CMUnitTest tests[] = {
             cmocka_unit_test_setup_teardown(cl_connection_test, logging_setup, NULL),
             cmocka_unit_test_setup_teardown(cl_get_item_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_get_items_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_get_items_iter_test, sysrepo_setup, sysrepo_teardown),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);

@@ -343,6 +343,59 @@ cl_request_process(sr_conn_ctx_t *conn_ctx, Sr__Msg *msg_req, Sr__Msg **msg_resp
     return SR_ERR_OK;
 }
 
+/**
+ * Create get_items request with options and send it
+ */
+static int
+cl_send_get_items_iter(sr_session_ctx_t *session, const char *path, bool recursive, size_t offset, size_t limit, Sr__Msg **msg_resp){
+    Sr__Msg *msg_req = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG4(session, session->conn_ctx, path, msg_resp);
+
+    /* prepare get_item message */
+    rc = sr_pb_req_alloc(SR__OPERATION__GET_ITEMS, session->id, &msg_req);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Cannot allocate get_items message.");
+        goto cleanup;
+    }
+
+    /* fill in the path */
+    msg_req->request->get_items_req->path = strdup(path);
+    if (NULL == msg_req->request->get_items_req->path) {
+        SR_LOG_ERR_MSG("Cannot allocate get_items path.");
+        rc = SR_ERR_NOMEM;
+        goto cleanup;
+    }
+    msg_req->request->get_items_req->limit = limit;
+    msg_req->request->get_items_req->offset = offset;
+    msg_req->request->get_items_req->recursive =recursive;
+    msg_req->request->get_items_req->has_recursive = true;
+    msg_req->request->get_items_req->has_limit = true;
+    msg_req->request->get_items_req->has_offset = true;
+
+
+    /* send the request and receive the response */
+    rc = cl_request_process(session->conn_ctx, msg_req, msg_resp, SR__OPERATION__GET_ITEMS);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Error by processing of get_items request.");
+        goto cleanup;
+    }
+
+    sr__msg__free_unpacked(msg_req, NULL);
+
+    return rc;
+
+    cleanup:
+    if (NULL != msg_req) {
+        sr__msg__free_unpacked(msg_req, NULL);
+    }
+    if (NULL != msg_resp){
+        sr__msg__free_unpacked(*msg_resp, NULL);
+    }
+    return rc;
+}
+
 int
 sr_connect(const char *app_name, const bool allow_library_mode, sr_conn_ctx_t **conn_ctx_p)
 {
@@ -554,8 +607,12 @@ void sr_free_val_iter(sr_val_iter_t *iter){
     }
     free(iter->path);
     iter->path = NULL;
-    sr_free_values_t(iter->buff_values, iter->count);
-    iter->buff_values = NULL;
+    if (NULL != iter->buff_values) {
+        /* free items that has not been passed to user already*/
+        sr_free_values_in_range(iter->buff_values, iter->index, iter->count);
+        iter->buff_values = NULL;
+    }
+    free(iter);
 }
 
 int sr_get_item(sr_session_ctx_t *session, const char *path, sr_val_t **value)
@@ -692,36 +749,13 @@ cleanup:
 
 int
 sr_get_items_iter(sr_session_ctx_t *session, const char *path, bool recursive, sr_val_iter_t **iter){
-    Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    Sr__Msg *msg_resp = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG4(session, session->conn_ctx, path, iter);
-
-    /* prepare get_item message */
-    rc = sr_pb_req_alloc(SR__OPERATION__GET_ITEMS, session->id, &msg_req);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Cannot allocate get_items message.");
-        goto cleanup;
-    }
-
-    /* fill in the path */
-    msg_req->request->get_items_req->path = strdup(path);
-    if (NULL == msg_req->request->get_items_req->path) {
-        SR_LOG_ERR_MSG("Cannot allocate get_items path.");
-        goto cleanup;
-    }
-    msg_req->request->get_items_req->limit = SR_GET_ITEM_DEF_LIMIT;
-    msg_req->request->get_items_req->offset = 0;
-    msg_req->request->get_items_req->recursive =recursive;
-    msg_req->request->get_items_req->has_recursive = true;
-    msg_req->request->get_items_req->has_limit = true;
-    msg_req->request->get_items_req->has_offset = true;
-
-
-    /* send the request and receive the response */
-    rc = cl_request_process(session->conn_ctx, msg_req, &msg_resp, SR__OPERATION__GET_ITEMS);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Error by processing of get_items request.");
+    rc = cl_send_get_items_iter(session, path, recursive, 0, SR_GET_ITEM_DEF_LIMIT, &msg_resp);
+    if (SR_ERR_OK != rc){
+        SR_LOG_ERR("Sending get_items request failed '%s'", path);
         goto cleanup;
     }
 
@@ -739,6 +773,7 @@ sr_get_items_iter(sr_session_ctx_t *session, const char *path, bool recursive, s
         goto cleanup;
     }
 
+    it->index = 0;
     it->count = msg_resp->response->get_items_resp->n_value;
 
     it->recursive = recursive;
@@ -771,16 +806,80 @@ sr_get_items_iter(sr_session_ctx_t *session, const char *path, bool recursive, s
 
     *iter = it;
 
-    sr__msg__free_unpacked(msg_req, NULL);
     sr__msg__free_unpacked(msg_resp, NULL);
 
     return SR_ERR_OK;
 
 cleanup:
-    if (NULL != msg_req) {
-        sr__msg__free_unpacked(msg_req, NULL);
-    }
     if (NULL != msg_resp) {
+        sr__msg__free_unpacked(msg_resp, NULL);
+    }
+    return rc;
+}
+
+int
+sr_get_item_next(sr_session_ctx_t *session, sr_val_iter_t *iter, sr_val_t **value){
+    int rc = SR_ERR_OK;
+    Sr__Msg *msg_resp = NULL;
+
+    CHECK_NULL_ARG3(session, iter, value);
+
+    if (0 == iter->count){
+        /*No more data to be read*/
+        *value = NULL;
+        return SR_ERR_NOT_FOUND;
+    }
+    else if (iter->index < iter->count){
+        /*There are buffered data*/
+        *value = iter->buff_values[iter->index++];
+        iter->offset++;
+    }
+    else{
+
+        /*Fetch more items*/
+        rc = cl_send_get_items_iter(session, iter->path, iter->recursive, iter->offset, SR_GET_ITEM_DEF_LIMIT, &msg_resp);
+        if (SR_ERR_OK != rc){
+            SR_LOG_ERR("Fetching more items failed '%s'", iter->path);
+            return  rc;
+        }
+
+        iter->index = 0;
+        iter->count = msg_resp->response->get_items_resp->n_value;
+        if (0 == iter->count){
+            /*There is no more data to be read*/
+            *value = NULL;
+            rc = SR_ERR_NOT_FOUND;
+            goto cleanup;
+        }
+
+        free(iter->buff_values);
+        iter->buff_values = calloc(iter->count, sizeof(*iter->buff_values));
+        if (NULL == iter->buff_values){
+            SR_LOG_ERR_MSG("Memory allocation failed");
+            rc = SR_ERR_NOMEM;
+            goto cleanup;
+        }
+
+        /* copy the content of gpb to sr_val_t*/
+        for (size_t i = 0; i < iter->count; i++){
+            rc = sr_copy_gpb_to_val_t(msg_resp->response->get_items_resp->value[i], &iter->buff_values[i]);
+            if (SR_ERR_OK != rc) {
+                SR_LOG_ERR_MSG("Copying from gpb to sr_val_t failed");
+                sr_free_values_t(iter->buff_values, i);
+                free(iter->buff_values);
+                iter->count = 0;
+                rc = SR_ERR_INTERNAL;
+                goto cleanup;
+            }
+        }
+        *value = iter->buff_values[iter->index++];
+        iter->offset++;
+        sr__msg__free_unpacked(msg_resp, NULL);
+    }
+    return SR_ERR_OK;
+
+cleanup:
+    if (NULL != msg_resp){
         sr__msg__free_unpacked(msg_resp, NULL);
     }
     return rc;

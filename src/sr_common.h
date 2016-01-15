@@ -200,6 +200,7 @@ void sr_free_datatree(struct lyd_node *root);
  */
 sr_type_t sr_libyang_type_to_sysrepo(LY_DATA_TYPE t);
 
+
 /**
  * @brief Converts byte buffer content to uint32_t number.
  *
@@ -277,6 +278,14 @@ int sr_copy_val_t_to_gpb(const sr_val_t *value, Sr__Value **gpb_value);
  * @return err_code
  */
 int sr_copy_gpb_to_val_t(const Sr__Value *gpb_value, sr_val_t **value);
+
+/**
+ * Frees sr_val_t array, but sr_free_val_t is called only for indexes in range
+ * @param [in] values
+ * @param [in] from
+ * @param [in] to
+ */
+void sr_free_values_in_range(sr_val_t **values, const size_t from, const size_t to);
 
 /**
  * @brief Converts sysrepo datastore to GPB datastore.

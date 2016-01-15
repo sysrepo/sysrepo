@@ -34,6 +34,7 @@ set(SYSREPO-ENGINE-SOURCES
     session_manager.c
     request_processor.c
     rp_data_tree.c
+    rp_node_stack.c
     data_manager.c
     xpath_processor.c
     sr_common.c

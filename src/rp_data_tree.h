@@ -27,12 +27,20 @@
 #include "xpath_processor.h"
 #include "data_manager.h"
 #include "sysrepo.h"
+#include "rp_node_stack.h"
 
 /**
  * @defgroup rp_dt Request processor datatree
  * @brief Functions for accessing and manipulation data trees.
  * @{
  */
+
+typedef struct rp_dt_get_items_ctx{
+    char *xpath;
+    bool recursive;
+    size_t offset;
+    rp_node_stack_t *stack;
+}rp_dt_get_items_ctx_t;
 
 /**
  * @brief Retrieves node from datatree based on location_id. Location_id can identify leaf, container or list
@@ -113,6 +121,22 @@ int rp_dt_get_nodes(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp
 int rp_dt_get_nodes_xpath(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char *xpath, struct lyd_node ***nodes, size_t *count);
 
 /**
+ * @brief Return the nodes under specified location id. The selcetion of nodes can be altered using options recursive, offset, limit.
+ * @param [in] dm_ctx
+ * @param [in] dm_session
+ * @param [in] get_items_ctx
+ * @param [in] data_tree
+ * @param [in] loc_id
+ * @param [in] recursive
+ * @param [in] offset
+ * @param [in] limit
+ * @param [out] nodes
+ * @param [out] count
+ * @return err_code
+ */
+int rp_dt_get_nodes_with_opts(const dm_ctx_t *dm_ctx, dm_session_t *dm_session, rp_dt_get_items_ctx_t *get_items_ctx, struct lyd_node *data_tree, const xp_loc_id_t *loc_id,
+                                  bool recursive, size_t offset, size_t limit, struct lyd_node ***nodes, size_t *count);
+/**
  * @brief Retrieves all nodes corresponding to location_id using ::rp_dt_get_nodes and copy all values.
  * @param [in] dm_ctx
  * @param [in] data_tree
@@ -137,7 +161,7 @@ int rp_dt_get_values_xpath(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, c
 
 
 /**
- * @brief Returns the values for the specified xpath. Internaly converts xpath to location_id and looks up the datatree.
+ * @brief Returns the values for the specified xpath. Internally converts xpath to location_id and looks up the datatree.
  * @param [in] dm_ctx
  * @param [in] dm_session
  * @param [in] xpath
@@ -146,6 +170,23 @@ int rp_dt_get_values_xpath(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, c
  * @return err_code
  */
 int rp_dt_get_values_wrapper(const dm_ctx_t *dm_ctx, dm_session_t *dm_session, const char *xpath, sr_val_t ***values, size_t *count);
+
+/**
+ * @brief Returns the values for the specified xpath. Internally converts xpath to location_id and looks up the datatree. The
+ * selection of returned valued can be specified by recursive, limit and offset.
+ * @param [in] dm_ctx
+ * @param [in] dm_session
+ * @param [in] get_items_ctx
+ * @param [in] xpath
+ * @param [in] recursive - include all nodes under the selected xpath
+ * @param [in] offset - return the values with index and above
+ * @param [in] limit - the maximum count of values that can be returned
+ * @param [out] values
+ * @param [out] count
+ */
+int rp_dt_get_values_wrapper_with_opts(const dm_ctx_t *dm_ctx, dm_session_t *dm_session, rp_dt_get_items_ctx_t *get_items_ctx, const char *xpath,
+                                       bool recursive, size_t offset, size_t limit, sr_val_t ***values, size_t *count);
+
 
 /**
  * @}

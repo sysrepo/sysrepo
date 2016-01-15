@@ -300,6 +300,16 @@ void sr_free_values_t(sr_val_t **values, size_t count){
     free(values);
 }
 
+void sr_free_values_in_range(sr_val_t **values, size_t from, size_t to){
+    if (NULL == values){
+        return;
+    }
+
+    for (size_t i = from; i < to; i++){
+        sr_free_val_t(values[i]);
+    }
+    free(values);
+}
 
 /* used for sr_buff_to_uint32 and sr_uint32_to_buff conversions */
 typedef union {
@@ -696,7 +706,7 @@ sr_set_val_t_type_in_gpb(const sr_val_t *value, Sr__Value *gpb_value){
 
 static int
 sr_set_val_t_value_in_gpb(const sr_val_t *value, Sr__Value *gpb_value){
-    CHECK_NULL_ARG2(value, gpb_value);
+    CHECK_NULL_ARG3(value, gpb_value, value->xpath);
 
     gpb_value->path = strdup(value->xpath);
     if (NULL == gpb_value->path){
@@ -892,7 +902,7 @@ sr_set_gpb_type_in_val_t(const Sr__Value *gpb_value, sr_val_t *value){
 
 static int
 sr_set_gpb_value_in_val_t(const Sr__Value *gpb_value, sr_val_t *value){
-    CHECK_NULL_ARG2(value, gpb_value);
+    CHECK_NULL_ARG3(value, gpb_value, gpb_value->path);
 
     value->xpath = strdup(gpb_value->path);
     if (NULL == value->xpath){

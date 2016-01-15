@@ -116,7 +116,7 @@ int rp_session_stop(const rp_ctx_t *rp_ctx, rp_session_t *session);
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int rp_msg_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg);
+int rp_msg_process(const rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg);
 
 /**@} rp */
 
