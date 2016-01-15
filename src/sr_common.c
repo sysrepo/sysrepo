@@ -28,10 +28,134 @@
 
 #include "sr_common.h"
 
-char *
+/**
+ * Sysrepo error descriptions.
+ */
+const char *const sr_errlist[] = {
+        "Operation succeeded",      /* SR_ERR_OK */
+        "Invalid argument",         /* SR_ERR_INVAL_ARG */
+        "Out of memory",            /* SR_ERR_NOMEM */
+        "Item not found",           /* SR_ERR_NOT_FOUND */
+        "Sysrepo-internal error",   /* SR_ERR_INTERNAL */
+        "Initialization failed",    /* SR_ERR_INIT_FAILED */
+        "Input/output error",       /* SR_ERR_IO */
+        "The peer disconnected",    /* SR_ERR_DISCONNECT */
+        "Malformed message",        /* SR_ERR_MALFORMED_MSG */
+        "Operation not supported",  /* SR_ERR_UNSUPPORTED */
+};
+
+const char *
 sr_strerror(int err_code)
 {
-    return NULL; // TODO: error map
+    if (err_code >= (sizeof(sr_errlist) / (sizeof *sr_errlist))) {
+        return NULL;
+    } else {
+        return sr_errlist[err_code];
+    }
+}
+
+/**
+ * @brief FIFO circular buffer queue context.
+ */
+typedef struct sr_cbuff_s {
+    void *data;       /**< Data of the buffer. */
+    size_t capacity;   /**< Buffer capacity in number of elements. */
+    size_t elem_size;  /**< Size of one element in the buffer */
+    size_t head;       /**< Index of the first element in the buffer. */
+    size_t count;      /**< Number of elements stored in the buffer. */
+} sr_cbuff_t;
+
+int
+sr_cbuff_init(const size_t initial_capacity, const size_t elem_size, sr_cbuff_t **buffer_p)
+{
+    sr_cbuff_t *buffer = NULL;
+
+    CHECK_NULL_ARG(buffer_p);
+
+    SR_LOG_DBG("Initiating circular buffer for %zu elements.", initial_capacity);
+
+    buffer = calloc(1, sizeof(*buffer));
+    if (NULL == buffer) {
+        SR_LOG_ERR_MSG("Cannot allocate memory for circular buffer.");
+        return SR_ERR_NOMEM;
+    }
+
+    buffer->data = calloc(initial_capacity, elem_size);
+    if (NULL == buffer) {
+        SR_LOG_ERR_MSG("Cannot allocate memory for circular buffer data.");
+        free(buffer);
+        return SR_ERR_NOMEM;
+    }
+
+    buffer->capacity = initial_capacity;
+    buffer->elem_size = elem_size;
+    buffer->head = 0;
+    buffer->count = 0;
+
+    *buffer_p = buffer;
+    return SR_ERR_OK;
+}
+
+void
+sr_cbuff_cleanup(sr_cbuff_t *buffer)
+{
+    if (NULL != buffer) {
+        free(buffer->data);
+        free(buffer);
+    }
+}
+
+int
+sr_cbuff_enqueue(sr_cbuff_t *buffer, void *item)
+{
+    void *tmp = NULL;
+    size_t pos = 0;
+
+    CHECK_NULL_ARG2(buffer, item);
+
+    if (buffer->count == buffer->capacity) {
+        /* buffer is full - double it's size */
+        SR_LOG_DBG("Enlarging circular buffer from %zu to %zu elements.", buffer->capacity, buffer->capacity * 2);
+
+        tmp = realloc(buffer->data, (buffer->capacity * 2 * buffer->elem_size));
+        if (NULL == tmp) {
+            SR_LOG_ERR_MSG("Cannot enlarge circular buffer - not enough memory.");
+            return SR_ERR_NOMEM;
+        }
+        buffer->data = tmp;
+
+        if (0 != buffer->head) {
+            /* move the the elements from before head to the end */
+            SR_LOG_DBG("Moving %zu circular buffer elements from pos 0 to pos %zu.", buffer->head, buffer->capacity);
+            memmove(((uint8_t*)buffer->data + (buffer->capacity * buffer->elem_size)), buffer->data, (buffer->head * buffer->elem_size));
+        }
+        buffer->capacity *= 2;
+    }
+
+    pos = (buffer->head + buffer->count) % buffer->capacity;
+
+    SR_LOG_DBG("Circular buffer enqueue to position=%zu.", pos);
+
+    memcpy(((uint8_t*)buffer->data + (pos * buffer->elem_size)), item, buffer->elem_size);
+    buffer->count++;
+
+    return SR_ERR_OK;
+}
+
+bool
+sr_cbuff_dequeue(sr_cbuff_t *buffer, void *item)
+{
+    if (0 == buffer->count) {
+        return false;
+    }
+
+    memcpy(item, ((uint8_t*)buffer->data + (buffer->head * buffer->elem_size)), buffer->elem_size);
+    buffer->head = (buffer->head + 1) % buffer->capacity;
+    buffer->count--;
+
+    SR_LOG_DBG("Circular buffer dequeue, new buffer head=%zu, count=%zu.", buffer->head, buffer->count);
+
+    return true;
 }
 
 int
@@ -910,4 +1034,38 @@ cleanup:
     return rc;
 }
 
+Sr__DataStore
+sr_datastore_sr_to_gpb(const sr_datastore_t sr_ds)
+{
+    switch (sr_ds) {
+        case SR_DS_RUNNING:
+            return SR__DATA_STORE__RUNNING;
+            break;
+        case SR_DS_CANDIDATE:
+            return SR__DATA_STORE__CANDIDATE;
+            break;
+        case SR_DS_STARTUP:
+            return SR__DATA_STORE__STARTUP;
+            break;
+    }
+    return SR__DATA_STORE__RUNNING;
+}
 
+sr_datastore_t
+sr_datastore_gpb_to_sr(Sr__DataStore gpb_ds)
+{
+    switch (gpb_ds) {
+        case SR__DATA_STORE__RUNNING:
+            return SR_DS_RUNNING;
+            break;
+        case SR__DATA_STORE__CANDIDATE:
+            return SR_DS_CANDIDATE;
+            break;
+        case SR__DATA_STORE__STARTUP:
+            return SR_DS_STARTUP;
+            break;
+        default:
+            return SR_DS_RUNNING;
+    }
+    return SR_DS_RUNNING;
+}

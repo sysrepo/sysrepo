@@ -546,7 +546,7 @@ rp_dt_get_value_from_node(struct lyd_node *node, sr_val_t **value){
     }
 
     sr_val_t *val = calloc(1, sizeof(*val));
-    if (NULL == value) {
+    if (NULL == val) {
         SR_LOG_ERR_MSG("Memory allocation failed.");
         free(xpath);
         return SR_ERR_NOMEM;
@@ -713,7 +713,7 @@ int rp_dt_get_value_wrapper(const dm_ctx_t *dm_ctx,  dm_session_t *dm_session, c
     }
 
     if (!XP_HAS_NODE_NS(l,0)){
-        SR_LOG_ERR("Provided xpath '%s' doesn't containt namespace on the root node", xpath);
+        SR_LOG_ERR("Provided xpath '%s' doesn't contain namespace on the root node", xpath);
         goto cleanup;
     }
 
