@@ -42,6 +42,8 @@ typedef struct sr_conn_ctx_s {
                                                   once per process (first connection is always primary). */
     pthread_mutex_t lock;                    /**< Mutex of the connection to guarantee that requests on the
                                                   same connection are processed serially (one after another). */
+    uint8_t *msg_buf;                        /**< Buffer used for sending / receiving messages. */
+    size_t msg_buf_size;                     /**< Length of the message buffer. */
     struct sr_session_list_s *session_list;  /**< Linked-list of associated sessions. */
     bool library_mode;                       /**< Determine if we are connected to sysrepo daemon
                                                   or our own sysrepo engine (library mode). */
@@ -226,14 +228,35 @@ cl_conn_remove_session(sr_conn_ctx_t *connection, sr_session_ctx_t *session)
 }
 
 /**
+ * Expand message buffer of a connection to fit given size, if needed.
+ */
+static int
+cl_conn_msg_buf_expand(sr_conn_ctx_t *conn_ctx, size_t required_size)
+{
+    uint8_t *tmp = NULL;
+
+    CHECK_NULL_ARG(conn_ctx);
+
+    if (conn_ctx->msg_buf_size < required_size) {
+        tmp = realloc(conn_ctx->msg_buf, required_size * sizeof(*tmp));
+        if (NULL == tmp) {
+            SR_LOG_ERR("Unable to expand message buffer of connection=%p.", (void*)conn_ctx);
+            return SR_ERR_NOMEM;
+        }
+        conn_ctx->msg_buf = tmp;
+        conn_ctx->msg_buf_size = required_size;
+    }
+
+    return SR_ERR_OK;
+}
+
+/**
  * Sends a message via provided connection.
  */
 static int
-cl_message_send(const sr_conn_ctx_t *conn_ctx, Sr__Msg *msg)
+cl_message_send(sr_conn_ctx_t *conn_ctx, Sr__Msg *msg)
 {
     size_t msg_size = 0;
-    uint8_t *msg_buf = NULL; // TODO: preallocated dynamic message buffer per connection
-    uint8_t len_buf[sizeof(uint32_t)] = { 0, };
     int rc = 0;
 
     CHECK_NULL_ARG2(conn_ctx, msg);
@@ -245,51 +268,49 @@ cl_message_send(const sr_conn_ctx_t *conn_ctx, Sr__Msg *msg)
         return SR_ERR_INTERNAL;
     }
 
-    /* allocate the buffer */
-    msg_buf = calloc(msg_size, sizeof(*msg_buf));
-    if (NULL == msg_buf) {
-        SR_LOG_ERR_MSG("Cannot allocate buffer for the message.");
-        return SR_ERR_NOMEM;
+    /* expand the buffer if needed */
+    rc = cl_conn_msg_buf_expand(conn_ctx, msg_size + SR_MSG_PREAM_SIZE);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Cannot expand buffer for the message.");
+        return rc;
     }
-
-    /* pack the message */
-    sr__msg__pack(msg, msg_buf);
 
     /* write 4-byte length */
-    sr_uint32_to_buff(msg_size, len_buf);
-    rc = send(conn_ctx->fd, len_buf, sizeof(uint32_t), 0);
+    sr_uint32_to_buff(msg_size, conn_ctx->msg_buf);
+
+    /* pack the message */
+    sr__msg__pack(msg, (conn_ctx->msg_buf + SR_MSG_PREAM_SIZE));
+
+    /* send the message */
+    rc = send(conn_ctx->fd, conn_ctx->msg_buf, (msg_size + SR_MSG_PREAM_SIZE), 0);
     if (rc < 1) {
         SR_LOG_ERR("Error by sending of the message: %s.", strerror(errno));
-        free(msg_buf);
         return SR_ERR_DISCONNECT;
     }
 
-    /* write the message */
-    rc = send(conn_ctx->fd, msg_buf, msg_size, 0);
-    if (rc < 1) {
-        SR_LOG_ERR("Error by sending of the message: %s.", strerror(errno));
-        free(msg_buf);
-        return SR_ERR_DISCONNECT;
-    }
-
-    free(msg_buf);
     return SR_ERR_OK;
 }
 
-#define CM_BUFF_LEN 1024  // TODO: preallocated dynamic message buffer per connection
 /*
  * Receive a message on provided connection (blocks until a message is received).
  */
 static int
-cl_message_recv(const sr_conn_ctx_t *conn_ctx, Sr__Msg **msg)
+cl_message_recv(sr_conn_ctx_t *conn_ctx, Sr__Msg **msg)
 {
-    static uint8_t buf[CM_BUFF_LEN] = { 0, };
     size_t len = 0, pos = 0;
     size_t msg_size = 0;
+    int rc = 0;
 
-    /* read first 4 bytes with length of the message */
-    while (pos < 4) {
-        len = recv(conn_ctx->fd, buf + pos, CM_BUFF_LEN - pos, 0);
+    /* expand the buffer if needed */
+    rc = cl_conn_msg_buf_expand(conn_ctx, SR_MSG_PREAM_SIZE);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Cannot expand buffer for the message.");
+        return rc;
+    }
+
+    /* read at least first 4 bytes with length of the message */
+    while (pos < SR_MSG_PREAM_SIZE) {
+        len = recv(conn_ctx->fd, conn_ctx->msg_buf, conn_ctx->msg_buf_size, 0);
         if (-1 == len) {
             SR_LOG_ERR("Error by receiving of the message: %s.", strerror(errno));
             return SR_ERR_MALFORMED_MSG;
@@ -300,7 +321,7 @@ cl_message_recv(const sr_conn_ctx_t *conn_ctx, Sr__Msg **msg)
         }
         pos += len;
     }
-    msg_size = sr_buff_to_uint32(buf);
+    msg_size = sr_buff_to_uint32(conn_ctx->msg_buf);
 
     /* check message size bounds */
     if ((msg_size <= 0) || (msg_size > SR_MAX_MSG_SIZE)) {
@@ -308,9 +329,16 @@ cl_message_recv(const sr_conn_ctx_t *conn_ctx, Sr__Msg **msg)
         return SR_ERR_MALFORMED_MSG;
     }
 
+    /* expand the buffer if needed */
+    rc = cl_conn_msg_buf_expand(conn_ctx, (msg_size + SR_MSG_PREAM_SIZE));
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Cannot expand buffer for the message.");
+        return rc;
+    }
+
     /* read the rest of the message */
-    while (pos < msg_size + 4) {
-        len = recv(conn_ctx->fd, buf + pos, CM_BUFF_LEN - pos, 0);
+    while (pos < (msg_size + SR_MSG_PREAM_SIZE)) {
+        len = recv(conn_ctx->fd, (conn_ctx->msg_buf + pos), conn_ctx->msg_buf_size, 0);
         if (-1 == len) {
             SR_LOG_ERR("Error by receiving of the message: %s.", strerror(errno));
             return SR_ERR_MALFORMED_MSG;
@@ -323,7 +351,7 @@ cl_message_recv(const sr_conn_ctx_t *conn_ctx, Sr__Msg **msg)
     }
 
     /* unpack the message */
-    *msg = sr__msg__unpack(NULL, msg_size, (const uint8_t*)buf + 4);
+    *msg = sr__msg__unpack(NULL, msg_size, (const uint8_t*)(conn_ctx->msg_buf + SR_MSG_PREAM_SIZE));
     if (NULL == *msg) {
         SR_LOG_ERR_MSG("Malformed message received.");
         return SR_ERR_MALFORMED_MSG;
@@ -533,6 +561,7 @@ sr_disconnect(sr_conn_ctx_t *conn_ctx)
         }
 
         pthread_mutex_destroy(&conn_ctx->lock);
+        free(conn_ctx->msg_buf);
         close(conn_ctx->fd);
         free(conn_ctx);
     }

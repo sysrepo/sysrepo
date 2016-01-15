@@ -51,8 +51,6 @@
 #define CM_IN_BUFF_MIN_SPACE 512  /**< Minimal empty space in the input buffer. */
 #define CM_BUFF_ALLOC_CHUNK 1024  /**< Chunk size for buffer expansions. */
 
-#define MSG_PREAM_SIZE sizeof(uint32_t)  /**< Size of message preamble. */
-
 /**
  * @brief Global variable used to request stop of the event loop in all instances of CM,
  * it should be set ONLY by signal handler functions within the same thread as the loop.
@@ -517,12 +515,12 @@ cm_msg_send_session(cm_ctx_t *cm_ctx, sm_session_t *session, Sr__Msg *msg)
     }
 
     /* expand the buffer if needed */
-    rc = cm_conn_buffer_expand(session->connection, buff, MSG_PREAM_SIZE + msg_size);
+    rc = cm_conn_buffer_expand(session->connection, buff, SR_MSG_PREAM_SIZE + msg_size);
 
     if (SR_ERR_OK == rc) {
         /* write the pramble */
         sr_uint32_to_buff(msg_size, (buff->data + buff->pos));
-        buff->pos += MSG_PREAM_SIZE;
+        buff->pos += SR_MSG_PREAM_SIZE;
 
         /* write the message */
         sr__msg__pack(msg, (buff->data + buff->pos));
@@ -847,11 +845,11 @@ cm_conn_in_buff_process(cm_ctx_t *cm_ctx, sm_connection_t *conn)
     buff_size = buff->pos;
     buff_pos = 0;
 
-    if (buff_size <= MSG_PREAM_SIZE) {
+    if (buff_size <= SR_MSG_PREAM_SIZE) {
         return SR_ERR_OK; /* nothing to process so far */
     }
 
-    while ((buff_size - buff_pos) > MSG_PREAM_SIZE) {
+    while ((buff_size - buff_pos) > SR_MSG_PREAM_SIZE) {
         msg_size = sr_buff_to_uint32(buff->data + buff_pos);
         if ((msg_size <= 0) || (msg_size > SR_MAX_MSG_SIZE)) {
             /* invalid message size */
@@ -861,8 +859,8 @@ cm_conn_in_buff_process(cm_ctx_t *cm_ctx, sm_connection_t *conn)
             /* the message is completely retrieved, parse it */
             SR_LOG_DBG("New message of size %zu bytes received.", msg_size);
             rc = cm_conn_msg_process(cm_ctx, conn,
-                    (buff->data + buff_pos + MSG_PREAM_SIZE), msg_size);
-            buff_pos += MSG_PREAM_SIZE + msg_size;
+                    (buff->data + buff_pos + SR_MSG_PREAM_SIZE), msg_size);
+            buff_pos += SR_MSG_PREAM_SIZE + msg_size;
             if (SR_ERR_OK != rc) {
                 SR_LOG_ERR_MSG("Error by processing of the message.");
                 break;
@@ -870,7 +868,7 @@ cm_conn_in_buff_process(cm_ctx_t *cm_ctx, sm_connection_t *conn)
         } else {
             /* the message is not completely retrieved, end processing */
             SR_LOG_DBG("Partial message of size %zu, received %zu.", msg_size,
-                    (buff_size - MSG_PREAM_SIZE - buff_pos));
+                    (buff_size - SR_MSG_PREAM_SIZE - buff_pos));
             break;
         }
     }

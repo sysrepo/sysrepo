@@ -34,6 +34,9 @@
 /** Maximum size of a GPB message. */
 #define SR_MAX_MSG_SIZE ((SIZE_MAX < UINT32_MAX) ? SIZE_MAX : UINT32_MAX)
 
+/** Size of the preamble sent before each sysrepo GPB message. */
+#define SR_MSG_PREAM_SIZE sizeof(uint32_t)
+
 #define CHECK_NULL_ARG__INTERNAL(ARG) \
     if (NULL == ARG) { \
         SR_LOG_ERR("NULL value detected for %s argument of %s", #ARG, __FUNCTION__); \
