@@ -24,10 +24,12 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <pthread.h>
 
 #include "sr_common.h"
 #include "connection_manager.h"
 
+#define SR_CL_REQUEST_TIMEOUT 2 /**< Timeout (in seconds) for waiting for a response from server by each request. */
 #define SR_LCONN_PATH_PREFIX "/tmp/sysrepo-local"  /**< Filesystem path prefix for local unix-domain connections (library mode). */
 #define SR_GET_ITEM_DEF_LIMIT 2
 
@@ -38,6 +40,8 @@ typedef struct sr_conn_ctx_s {
     int fd;                                  /**< File descriptor of the connection. */
     bool primary;                            /**< Primary connection. Handles all resources allocated only
                                                   once per process (first connection is always primary). */
+    pthread_mutex_t lock;                    /**< Mutex of the connection to guarantee that requests on the
+                                                  same connection are processed serially (one after another). */
     struct sr_session_list_s *session_list;  /**< Linked-list of associated sessions. */
     bool library_mode;                       /**< Determine if we are connected to sysrepo daemon
                                                   or our own sysrepo engine (library mode). */
@@ -74,6 +78,7 @@ typedef struct sr_val_iter_s{
 } sr_val_iter_t;
 
 static sr_conn_ctx_t *primary_connection = NULL;  /**< Global variable holding pointer to the primary connection. */
+pthread_mutex_t primary_lock = PTHREAD_MUTEX_INITIALIZER;  /**< Mutex for locking global variable ::primary_connection. */
 
 /**
  * Connect the client to provided unix-domain socket.
@@ -82,12 +87,14 @@ static int
 cl_socket_connect(sr_conn_ctx_t *conn_ctx, const char *socket_path)
 {
     struct sockaddr_un addr;
+    struct timeval tv = { 0, };
     int fd = -1, rc = -1;
 
     CHECK_NULL_ARG2(socket_path, socket_path);
 
     SR_LOG_DBG("Connecting to socket=%s", socket_path);
 
+    /* prepare a socket */
     fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (-1 == fd) {
         SR_LOG_ERR("Unable to create a new socket (socket=%s)", socket_path);
@@ -98,12 +105,18 @@ cl_socket_connect(sr_conn_ctx_t *conn_ctx, const char *socket_path)
     addr.sun_family = AF_UNIX;
     strncpy(addr.sun_path, socket_path, sizeof(addr.sun_path)-1);
 
+    /* connect to server */
     rc = connect(fd, (struct sockaddr*)&addr, sizeof(addr));
     if (-1 == rc) {
         SR_LOG_DBG("Unable to connect to socket (socket=%s)", socket_path);
         close(fd);
         return SR_ERR_DISCONNECT;
     }
+
+    /* set timeout for receive operation */
+    tv.tv_sec = SR_CL_REQUEST_TIMEOUT;
+    tv.tv_usec = 0;
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, (char *)&tv, sizeof(tv));
 
     conn_ctx->fd = fd;
     return SR_ERR_OK;
@@ -153,6 +166,8 @@ cl_conn_add_session(sr_conn_ctx_t *connection, sr_session_ctx_t *session)
     }
     session_item->session = session;
 
+    pthread_mutex_lock(&connection->lock);
+
     /* append session entry at the end of list */
     if (NULL == connection->session_list) {
         connection->session_list = session_item;
@@ -163,6 +178,8 @@ cl_conn_add_session(sr_conn_ctx_t *connection, sr_session_ctx_t *session)
         }
         tmp->next = session_item;
     }
+
+    pthread_mutex_unlock(&connection->lock);
 
     return SR_ERR_OK;
 }
@@ -176,6 +193,8 @@ cl_conn_remove_session(sr_conn_ctx_t *connection, sr_session_ctx_t *session)
     sr_session_list_t *tmp = NULL, *prev = NULL;
 
     CHECK_NULL_ARG2(connection, session);
+
+    pthread_mutex_lock(&connection->lock);
 
     /* find matching session in linked list */
     tmp = connection->session_list;
@@ -200,6 +219,8 @@ cl_conn_remove_session(sr_conn_ctx_t *connection, sr_session_ctx_t *session)
     } else {
         SR_LOG_WRN("Session %p not found in session list of connection.", (void*)session);
     }
+
+    pthread_mutex_unlock(&connection->lock);
 
     return SR_ERR_OK;
 }
@@ -308,11 +329,14 @@ cl_request_process(sr_conn_ctx_t *conn_ctx, Sr__Msg *msg_req, Sr__Msg **msg_resp
 {
     int rc = SR_ERR_OK;
 
+    pthread_mutex_lock(&conn_ctx->lock);
+
     /* send the request */
     rc = cl_message_send(conn_ctx, msg_req);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Unable to send the message with request (conn=%p, operation=%d).",
                 (void*)conn_ctx, msg_req->request->operation);
+        pthread_mutex_unlock(&conn_ctx->lock);
         return rc;
     }
 
@@ -321,8 +345,11 @@ cl_request_process(sr_conn_ctx_t *conn_ctx, Sr__Msg *msg_req, Sr__Msg **msg_resp
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Unable to receive the message with response (conn=%p, operation=%d).",
                 (void*)conn_ctx, msg_req->request->operation);
+        pthread_mutex_unlock(&conn_ctx->lock);
         return rc;
     }
+
+    pthread_mutex_unlock(&conn_ctx->lock);
 
     /* validate the response */
     rc = sr_pb_msg_validate(*msg_resp, SR__MSG__MSG_TYPE__RESPONSE, expected_response_op);
@@ -360,18 +387,26 @@ sr_connect(const char *app_name, const bool allow_library_mode, sr_conn_ctx_t **
         goto cleanup;
     }
 
-    /* check if this is the primary connection */
-    // TODO: lock
-    if (NULL == primary_connection) {
-        primary_connection = ctx;
-        // unlock
-        ctx->primary = true;
+    /* init connection mutext */
+    rc = pthread_mutex_init(&ctx->lock, NULL);
+    if (0 != rc) {
+        SR_LOG_ERR_MSG("Cannot initialize connection mutex.");
+        rc = SR_ERR_INIT_FAILED;
+        goto cleanup;
+    }
 
+    /* check if this is the primary connection */
+    pthread_mutex_lock(&primary_lock);
+    if (NULL == primary_connection) {
+        /* this is the first connection - set as primary */
+        primary_connection = ctx;
+        ctx->primary = true;
         /* initialize logging */
         sr_logger_init(app_name);
     }
+    pthread_mutex_unlock(&primary_lock);
 
-    // TODO: attempt to connect to sysrepo daemon socket
+    // TODO: milestone 2: attempt to connect to sysrepo daemon socket
 
     /* connect in library mode */
     ctx->library_mode = true;
@@ -432,6 +467,7 @@ sr_disconnect(sr_conn_ctx_t *conn_ctx)
             free(tmp);
         }
 
+        pthread_mutex_destroy(&conn_ctx->lock);
         close(conn_ctx->fd);
         free(conn_ctx);
     }
