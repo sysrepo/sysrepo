@@ -189,9 +189,15 @@ cl_get_items_iter_test(void **state) {
     rc = sr_get_items_iter(session, "/example-module:container", true, &it);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(it);
-    rc = sr_get_item_next(session, it, &value);
-    assert_int_equal(SR_ERR_OK, rc);
-    sr_free_val_t(value);
+    for (int i = 0; i < 6; i++) {
+        rc = sr_get_item_next(session, it, &value);
+        if (SR_ERR_NOT_FOUND == rc ){
+            break;
+        }
+        assert_int_equal(SR_ERR_OK, rc);
+        puts(value->xpath);
+        sr_free_val_t(value);
+    }
 
     sr_free_val_iter(it);
 

@@ -853,6 +853,7 @@ rp_dt_get_nodes_with_opts(const dm_ctx_t *dm_ctx, dm_session_t *dm_session, rp_d
     struct lyd_node *node = NULL;
     bool cache_hit = false;
 
+    SR_LOG_DBG("Get_nodes opts with args: %s %zu %zu %d", loc_id->xpath, limit, offset, recursive);
     /* check if we continue where we left */
     if (get_items_ctx->xpath == NULL || 0 != strcmp(loc_id->xpath, get_items_ctx->xpath) || get_items_ctx->recursive != recursive ||
             offset != get_items_ctx->offset){
@@ -923,10 +924,12 @@ rp_dt_get_nodes_with_opts(const dm_ctx_t *dm_ctx, dm_session_t *dm_session, rp_d
                 SR_LOG_ERR("Unsupported node type for xpath %s", loc_id->xpath);
                 return SR_ERR_INTERNAL;
         }
+        SR_LOG_DBG_MSG("Cache miss in get_nodes_with_opts");
+
     }
     else{
         cache_hit = true;
-        SR_LOG_INF_MSG("Cache hit in get_nodes_with_opts");
+        SR_LOG_DBG_MSG("Cache hit in get_nodes_with_opts");
     }
 
 
@@ -1023,7 +1026,7 @@ rp_dt_get_nodes(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp_loc
         }
         return rc;
     case LYS_LIST:
-        /* chceck if the key values is specified */
+        /* check if the key values is specified */
         last_node = XP_GET_NODE_COUNT(loc_id) -1;
         if (0 != XP_GET_KEY_COUNT(loc_id, last_node)){
             /* return the content of the list instance*/
@@ -1168,7 +1171,7 @@ int rp_dt_get_values_wrapper_with_opts(const dm_ctx_t *dm_ctx, dm_session_t *dm_
     }
 
     if (!XP_HAS_NODE_NS(l,0)){
-        SR_LOG_ERR("Provided xpath '%s' doesn't containt namespace on the root node", xpath);
+        SR_LOG_ERR("Provided xpath's root doesn't contain a namespace '%s' ", xpath);
         goto cleanup;
     }
 
