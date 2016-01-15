@@ -62,7 +62,8 @@ rp_get_item_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr_
     Sr__Msg *resp = NULL;
     rc = sr_pb_resp_alloc(SR__OPERATION__GET_ITEM, session->id, &resp);
     if (SR_ERR_OK != rc){
-        //TODO log err
+        SR_LOG_ERR_MSG("Memory allocation failed");
+        return SR_ERR_NOMEM;
     }
 
     sr_val_t *value = NULL;
@@ -115,13 +116,16 @@ rp_get_items_req_process(const rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg 
     sr_val_t **values = NULL;
     size_t count = 0;
     char *xpath = msg->request->get_items_req->path;
+    bool recursive = msg->request->get_items_req->recursive;
+    size_t offset = msg->request->get_items_req->offset;
+    size_t limit = msg->request->get_items_req->limit;
+
 
     if (msg->request->get_items_req->has_recursive || msg->request->get_items_req->has_offset ||
             msg->request->get_items_req->has_limit){
 
         rc = rp_dt_get_values_wrapper_with_opts(rp_ctx->dm_ctx, session->dm_session, &session->get_items_ctx, xpath,
-        msg->request->get_items_req->recursive, msg->request->get_items_req->offset, msg->request->get_items_req->limit,
-        &values, &count);
+        recursive, offset, limit, &values, &count);
     }
     else {
         rc = rp_dt_get_values_wrapper(rp_ctx->dm_ctx, session->dm_session, xpath, &values, &count);
