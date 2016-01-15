@@ -215,9 +215,8 @@ rp_cleanup(rp_ctx_t *rp_ctx)
 {
     SR_LOG_DBG_MSG("Request Processor cleanup.");
 
-    dm_cleanup(rp_ctx->dm_ctx);
-
     if (NULL != rp_ctx) {
+        dm_cleanup(rp_ctx->dm_ctx);
         free(rp_ctx);
     }
 }

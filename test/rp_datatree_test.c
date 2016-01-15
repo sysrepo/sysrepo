@@ -537,6 +537,7 @@ void get_value_test(void **state){
     /*list*/
 #define XPATH_FOR_LIST "/example-module:container/list[key1='key1'][key2='key2']"
     assert_int_equal(SR_ERR_OK, rp_dt_get_value_xpath(ctx, data_tree, XPATH_FOR_LIST, &value));
+    assert_non_null(value);
     assert_int_equal(SR_LIST_T, value->type);
     assert_string_equal(XPATH_FOR_LIST, value->xpath);
     sr_free_val_t(value);
@@ -544,6 +545,7 @@ void get_value_test(void **state){
     /*container*/
 #define XPATH_FOR_CONTAINER "/example-module:container"
     assert_int_equal(SR_ERR_OK, rp_dt_get_value_xpath(ctx, data_tree, "/example-module:container", &value));
+    assert_non_null(value);
     assert_int_equal(SR_CONTAINER_T, value->type);
     assert_string_equal(XPATH_FOR_CONTAINER, value->xpath);
     sr_free_val_t(value);

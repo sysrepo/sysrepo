@@ -758,7 +758,7 @@ rp_dt_get_all_children_node(struct lyd_node *node, struct lyd_node ***nodes, siz
     }
 
     *count = cnt;
-    *nodes = calloc(cnt, sizeof(*nodes));
+    *nodes = calloc(cnt, sizeof(**nodes));
     if (NULL == *nodes) {
         SR_LOG_ERR_MSG("Memory allocation failed");
         return SR_ERR_NOMEM;
@@ -789,7 +789,7 @@ rp_dt_get_siblings_node_by_name(struct lyd_node *node, const char* name, struct 
     }
 
     *count = cnt;
-    *nodes = calloc(cnt, sizeof(*nodes));
+    *nodes = calloc(cnt, sizeof(**nodes));
     if (NULL == *nodes) {
         SR_LOG_ERR_MSG("Memory allocation failed");
         return SR_ERR_NOMEM;
