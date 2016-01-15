@@ -39,8 +39,7 @@ void rp_node_stack_test(void **state)
     n = calloc(1, sizeof(*n));
     assert_non_null(n);
 
-    /* init check is_empty, cleanup*/
-    rp_ns_init(&stack);
+    /* check is_empty, cleanup*/
     assert_true(rp_ns_is_empty(&stack));
     assert_int_equal(SR_ERR_INVAL_ARG, rp_ns_pop(&stack, &item));
     assert_int_equal(SR_ERR_OK, rp_ns_top(&stack, &item));
@@ -49,7 +48,6 @@ void rp_node_stack_test(void **state)
 
 
     /* init, check, empty, push, pop, top, cleanup*/
-    rp_ns_init(&stack);
     rp_ns_push(&stack, n);
     assert_false(rp_ns_is_empty(&stack));
 

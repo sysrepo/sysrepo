@@ -21,15 +21,6 @@
 
 #include "rp_node_stack.h"
 
-
-int
-rp_ns_init(rp_node_stack_t **stack){
-    CHECK_NULL_ARG(stack);
-    *stack = NULL;
-    return SR_ERR_OK;
-}
-
-
 int
 rp_ns_push(rp_node_stack_t **stack, struct lyd_node *node){
     CHECK_NULL_ARG2(stack, node);

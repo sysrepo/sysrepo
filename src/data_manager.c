@@ -35,11 +35,6 @@ typedef struct dm_ctx_s {
 typedef struct dm_session_s {
     struct lyd_node *modules;
     size_t modules_count;
-
-    /**get_items_ter ctx */
-    struct lyd_node **nodes_stack;
-    size_t size;
-
 } dm_session_t;
 
 /**

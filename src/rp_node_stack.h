@@ -29,17 +29,41 @@ typedef struct rp_node_stack_s{
     struct rp_node_stack_s *next;
 }rp_node_stack_t;
 
-
-int rp_ns_init(rp_node_stack_t **stack);
-
+/**
+ * @brief Allocates and pushes an item to the stack
+ * @param [in] stack
+ * @param [in] node
+ * @return err_code
+ */
 int rp_ns_push(rp_node_stack_t **stack, struct lyd_node *node);
 
+/**
+ * @brief Removes the item from top of the stack
+ * @param [in] stack
+ * @param [out] item
+ * @return err_code
+ */
 int rp_ns_pop(rp_node_stack_t **stack, rp_node_stack_t **item);
 
+/**
+ * @brief Returns the pointer to the first item on the stack
+ * @param [in] stack
+ * @param [out] item
+ * @return err_code
+ */
 int rp_ns_top(rp_node_stack_t **stack, rp_node_stack_t **item);
 
+/**
+ * @brief Test if the stack is empty
+ * @param [in] stack
+ * @return true if there are some items on the stack, false otherwise
+ */
 bool rp_ns_is_empty(rp_node_stack_t **stack);
 
+/**
+ * @brief Frees all values on stack
+ * @param [in] stack
+ */
 int rp_ns_clean(rp_node_stack_t **stack);
 
 

@@ -606,7 +606,7 @@ rp_dt_get_value_from_node(struct lyd_node *node, sr_val_t **value){
 }
 
 /**
- *
+ * Fills the values from the array of nodes
  */
 static int
 rp_dt_get_values_from_nodes(struct lyd_node **nodes, size_t count, sr_val_t ***values){
@@ -934,11 +934,10 @@ rp_dt_get_nodes_with_opts(const dm_ctx_t *dm_ctx, dm_session_t *dm_session, rp_d
 
 
     size_t cnt = 0;
-    /* setup index whether we get_items_ctx or starting fresh */
+    /* setup index whether we continue using get_items_ctx or starting fresh */
     size_t index = cache_hit ? get_items_ctx->offset : 0;
 
     /*allocate nodes*/
-
     *nodes = calloc(limit, sizeof(**nodes));
     if (NULL == *nodes){
         return SR_ERR_NOMEM;
@@ -946,15 +945,15 @@ rp_dt_get_nodes_with_opts(const dm_ctx_t *dm_ctx, dm_session_t *dm_session, rp_d
 
     /* process stack*/
     rp_node_stack_t *item;
-    size_t i = 0;
+    size_t i = 0; /*index into returned nodes*/
     while (cnt < limit) {
         if (rp_ns_is_empty(&get_items_ctx->stack)){
             break;
         }
 
         rp_ns_pop(&get_items_ctx->stack, &item);
-        if (NULL == item->node){
-            SR_LOG_ERR_MSG("Stack item doesn't contain a node");
+        if (NULL == item->node || NULL == item->node->schema){
+            SR_LOG_ERR_MSG("Stack item doesn't contain a node or schema is missing");
             return SR_ERR_INTERNAL;
         }
         switch (item->node->schema->nodetype) {
@@ -981,10 +980,10 @@ rp_dt_get_nodes_with_opts(const dm_ctx_t *dm_ctx, dm_session_t *dm_session, rp_d
             (*nodes)[i++] = item->node;
             cnt++;
         }
-
         free(item);
         index++;
     }
+    /* mark the index where the processing stopped*/
     get_items_ctx->offset = index;
     *count = cnt;
     return SR_ERR_OK;

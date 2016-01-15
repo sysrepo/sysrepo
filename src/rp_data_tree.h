@@ -120,7 +120,20 @@ int rp_dt_get_nodes(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp
  */
 int rp_dt_get_nodes_xpath(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char *xpath, struct lyd_node ***nodes, size_t *count);
 
-
+/**
+ * @brief Return the nodes under specified location id. The selcetion of nodes can be altered using options recursive, offset, limit.
+ * @param [in] dm_ctx
+ * @param [in] dm_session
+ * @param [in] get_items_ctx
+ * @param [in] data_tree
+ * @param [in] loc_id
+ * @param [in] recursive
+ * @param [in] offset
+ * @param [in] limit
+ * @param [out] nodes
+ * @param [out] count
+ * @return err_code
+ */
 int rp_dt_get_nodes_with_opts(const dm_ctx_t *dm_ctx, dm_session_t *dm_session, rp_dt_get_items_ctx_t *get_items_ctx, struct lyd_node *data_tree, const xp_loc_id_t *loc_id,
                                   bool recursive, size_t offset, size_t limit, struct lyd_node ***nodes, size_t *count);
 /**
