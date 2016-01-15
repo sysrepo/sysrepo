@@ -24,11 +24,15 @@
 
 #include <linux/socket.h>
 #include <sys/types.h>
+#include <stdint.h>
 #include <libyang/libyang.h>
 
 #include "sysrepo.h"
 #include "sr_logger.h"
 #include "sysrepo.pb-c.h"
+
+/** Maximum size of a GPB message. */
+#define SR_MAX_MSG_SIZE ((SIZE_MAX < UINT32_MAX) ? SIZE_MAX : UINT32_MAX)
 
 #define CHECK_NULL_ARG__INTERNAL(ARG) \
     if (NULL == ARG) { \

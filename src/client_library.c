@@ -29,7 +29,7 @@
 #include "sr_common.h"
 #include "connection_manager.h"
 
-#define SR_CL_REQUEST_TIMEOUT 2 /**< Timeout (in seconds) for waiting for a response from server by each request. */
+#define CL_REQUEST_TIMEOUT 2 /**< Timeout (in seconds) for waiting for a response from server by each request. */
 #define SR_LCONN_PATH_PREFIX "/tmp/sysrepo-local"  /**< Filesystem path prefix for local unix-domain connections (library mode). */
 #define SR_GET_ITEM_DEF_LIMIT 2
 
@@ -114,7 +114,7 @@ cl_socket_connect(sr_conn_ctx_t *conn_ctx, const char *socket_path)
     }
 
     /* set timeout for receive operation */
-    tv.tv_sec = SR_CL_REQUEST_TIMEOUT;
+    tv.tv_sec = CL_REQUEST_TIMEOUT;
     tv.tv_usec = 0;
     setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, (char *)&tv, sizeof(tv));
 
@@ -238,8 +238,14 @@ cl_message_send(const sr_conn_ctx_t *conn_ctx, Sr__Msg *msg)
 
     CHECK_NULL_ARG2(conn_ctx, msg);
 
-    /* allocate the buffer */
+    /* find out required message size */
     msg_size = sr__msg__get_packed_size(msg);
+    if ((msg_size <= 0) || (msg_size > SR_MAX_MSG_SIZE)) {
+        SR_LOG_ERR("Unable to send the message of size %zuB.", msg_size);
+        return SR_ERR_INTERNAL;
+    }
+
+    /* allocate the buffer */
     msg_buf = calloc(msg_size, sizeof(*msg_buf));
     if (NULL == msg_buf) {
         SR_LOG_ERR_MSG("Cannot allocate buffer for the message.");
@@ -286,7 +292,7 @@ cl_message_recv(const sr_conn_ctx_t *conn_ctx, Sr__Msg **msg)
         len = recv(conn_ctx->fd, buf + pos, CM_BUFF_LEN - pos, 0);
         if (-1 == len) {
             SR_LOG_ERR("Error by receiving of the message: %s.", strerror(errno));
-            return SR_ERR_DISCONNECT;
+            return SR_ERR_MALFORMED_MSG;
         }
         if (0 == len) {
             SR_LOG_ERR_MSG("Sysrepo server disconnected.");
@@ -296,12 +302,18 @@ cl_message_recv(const sr_conn_ctx_t *conn_ctx, Sr__Msg **msg)
     }
     msg_size = sr_buff_to_uint32(buf);
 
+    /* check message size bounds */
+    if ((msg_size <= 0) || (msg_size > SR_MAX_MSG_SIZE)) {
+        SR_LOG_ERR("Invalid message size in the message preamble (%zu).", msg_size);
+        return SR_ERR_MALFORMED_MSG;
+    }
+
     /* read the rest of the message */
     while (pos < msg_size + 4) {
         len = recv(conn_ctx->fd, buf + pos, CM_BUFF_LEN - pos, 0);
         if (-1 == len) {
             SR_LOG_ERR("Error by receiving of the message: %s.", strerror(errno));
-            return SR_ERR_DISCONNECT;
+            return SR_ERR_MALFORMED_MSG;
         }
         if (0 == len) {
             SR_LOG_ERR_MSG("Sysrepo server disconnected.");
@@ -314,7 +326,7 @@ cl_message_recv(const sr_conn_ctx_t *conn_ctx, Sr__Msg **msg)
     *msg = sr__msg__unpack(NULL, msg_size, (const uint8_t*)buf + 4);
     if (NULL == *msg) {
         SR_LOG_ERR_MSG("Malformed message received.");
-        return SR_ERR_IO;
+        return SR_ERR_MALFORMED_MSG;
     }
 
     return SR_ERR_OK;

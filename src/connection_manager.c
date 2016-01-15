@@ -508,13 +508,20 @@ cm_msg_send_session(cm_ctx_t *cm_ctx, sm_session_t *session, Sr__Msg *msg)
     CHECK_NULL_ARG4(cm_ctx, session, session->connection, msg);
 
     buff = &session->connection->out_buff;
-    msg_size = sr__msg__get_packed_size(msg);
 
+    /* find out required message size */
+    msg_size = sr__msg__get_packed_size(msg);
+    if ((msg_size <= 0) || (msg_size > SR_MAX_MSG_SIZE)) {
+        SR_LOG_ERR("Unable to send the message of size %zuB.", msg_size);
+        return SR_ERR_INTERNAL;
+    }
+
+    /* expand the buffer if needed */
     rc = cm_conn_buffer_expand(session->connection, buff, MSG_PREAM_SIZE + msg_size);
 
     if (SR_ERR_OK == rc) {
         /* write the pramble */
-        *((uint32_t*)(buff->data + buff->pos)) = htonl(msg_size);
+        sr_uint32_to_buff(msg_size, (buff->data + buff->pos));
         buff->pos += MSG_PREAM_SIZE;
 
         /* write the message */
@@ -664,7 +671,11 @@ cm_req_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, sm_session_t *session, S
 {
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG4(cm_ctx, conn, msg, msg->request); /* session can be NULL by session_start */
+    CHECK_NULL_ARG4(cm_ctx, conn, msg, msg->request);
+    /* session can be NULL by session_start */
+    if ((SR__OPERATION__SESSION_START != msg->request->operation) && (NULL == session)) {
+        return SR_ERR_INVAL_ARG;
+    }
 
     rc = sr_pb_msg_validate(msg, SR__MSG__MSG_TYPE__REQUEST, msg->request->operation);
     if (SR_ERR_OK != rc) {
@@ -827,7 +838,7 @@ cm_conn_in_buff_process(cm_ctx_t *cm_ctx, sm_connection_t *conn)
 {
     sm_buffer_t *buff = NULL;
     size_t buff_pos = 0, buff_size = 0;
-    uint32_t msg_size = 0;
+    size_t msg_size = 0;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG2(cm_ctx, conn);
@@ -841,10 +852,14 @@ cm_conn_in_buff_process(cm_ctx_t *cm_ctx, sm_connection_t *conn)
     }
 
     while ((buff_size - buff_pos) > MSG_PREAM_SIZE) {
-        msg_size = ntohl( *((uint32_t*)(buff->data + buff_pos)) );
-        if ((buff_size - buff_pos) >= msg_size) {
+        msg_size = sr_buff_to_uint32(buff->data + buff_pos);
+        if ((msg_size <= 0) || (msg_size > SR_MAX_MSG_SIZE)) {
+            /* invalid message size */
+            SR_LOG_ERR("Invalid message size in the message preamble (%zu).", msg_size);
+            return SR_ERR_MALFORMED_MSG;
+        } else if ((buff_size - buff_pos) >= msg_size) {
             /* the message is completely retrieved, parse it */
-            SR_LOG_DBG("New message of size %d bytes received.", msg_size);
+            SR_LOG_DBG("New message of size %zu bytes received.", msg_size);
             rc = cm_conn_msg_process(cm_ctx, conn,
                     (buff->data + buff_pos + MSG_PREAM_SIZE), msg_size);
             buff_pos += MSG_PREAM_SIZE + msg_size;
@@ -854,7 +869,7 @@ cm_conn_in_buff_process(cm_ctx_t *cm_ctx, sm_connection_t *conn)
             }
         } else {
             /* the message is not completely retrieved, end processing */
-            SR_LOG_DBG("Partial message of size %d, received %zu.", msg_size,
+            SR_LOG_DBG("Partial message of size %zu, received %zu.", msg_size,
                     (buff_size - MSG_PREAM_SIZE - buff_pos));
             break;
         }

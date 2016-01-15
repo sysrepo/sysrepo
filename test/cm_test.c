@@ -99,7 +99,7 @@ cm_connect_to_server()
     strncpy(addr.sun_path, CM_AF_SOCKET_PATH, sizeof(addr.sun_path)-1);
 
     rc = connect(fd, (struct sockaddr*)&addr, sizeof(addr));
-    assert_int_not_equal(rc, -1);
+    assert_true(-1 < rc);
 
     return fd;
 }
@@ -141,6 +141,7 @@ cm_message_recv(const int fd)
         pos += len;
     }
     msg_size = sr_buff_to_uint32(buf);
+    assert_true((msg_size > 0) && (msg_size <= SR_MAX_MSG_SIZE));
 
     /* read the rest of the message */
     while (pos < msg_size + 4) {
@@ -353,8 +354,6 @@ cm_session_neg_test(void **state) {
     /* disconnect expected */
     assert_null(msg);
     close(fd2);
-
-    fd2 = cm_connect_to_server();
 
     /* try to stop another session id */
     sr_pb_req_alloc(SR__OPERATION__SESSION_STOP, session_id1, &msg);
