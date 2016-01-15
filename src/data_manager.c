@@ -248,6 +248,14 @@ dm_load_data_tree(const dm_ctx_t *dm_ctx, const struct lys_module *module, struc
         free(data_filename);
         return SR_ERR_IO;
     }
+
+    if ( 0 != lyd_validate(*data_tree, LYD_OPT_STRICT)){
+        SR_LOG_ERR("Loaded data tree '%s' is not valid", data_filename);
+        free(data_filename);
+        sr_free_datatree(*data_tree);
+        return SR_ERR_INTERNAL;
+    }
+
     SR_LOG_INF("Data file %s loaded successfuly", data_filename);
     free(data_filename);
 
