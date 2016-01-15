@@ -191,15 +191,38 @@ cl_get_items_test(void **state) {
     assert_non_null(session);
 
     /* perform a get-items request */
-    rc = sr_get_items(session, "/example-module:container", &values, &values_cnt);
+
+    /* illegal xpath */
+    rc = sr_get_items(session, "^&((",  &values, &values_cnt);
+    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+
+    /* unknown model */
+    rc = sr_get_items(session, "/unknown-model:abc",  &values, &values_cnt);
+    assert_int_equal(SR_ERR_UNKNOWN_MODEL, rc);
+
+    /* not existing data tree*/
+    rc = sr_get_items(session, "/small-module:item",  &values, &values_cnt);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+
+    /* container */
+    rc = sr_get_items(session, "/ietf-interfaces:interfaces", &values, &values_cnt);
     assert_int_equal(rc, SR_ERR_OK);
-    assert_int_equal(1, values_cnt);
+    assert_int_equal(3, values_cnt);
+    sr_free_values_t(values, values_cnt);
 
-    for (size_t i=0; i < values_cnt; i++){
-        sr_free_val_t(values[i]);
-    }
-    free(values);
+    /* list without keys */
+    rc = sr_get_items(session, "/ietf-interfaces:interfaces/interface", &values, &values_cnt);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_int_equal(3, values_cnt);
+    sr_free_values_t(values, values_cnt);
 
+    /* list with keys */
+    rc = sr_get_items(session, "/ietf-interfaces:interfaces/interface[name='eth0']", &values, &values_cnt);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_int_equal(5, values_cnt);
+    sr_free_values_t(values, values_cnt);
+
+    //TODO leaf-list
 
     /* stop the session */
     rc = sr_session_stop(session);
