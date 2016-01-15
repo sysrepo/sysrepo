@@ -1179,12 +1179,25 @@ cleanup:
 void
 cm_cleanup(cm_ctx_t *cm_ctx)
 {
+    size_t i = 0;
+    sm_session_t *session = NULL;
+    int rc = SR_ERR_OK;
+
     if (NULL != cm_ctx) {
+        /* stop all sessions in RP */
+        while (SR_ERR_OK == rc) {
+            rc = sm_session_get_index(cm_ctx->sm_ctx, i++, &session);
+            if (NULL != session) {
+                rp_session_stop(cm_ctx->rp_ctx, session->rp_session);
+                session = NULL;
+            }
+        }
         rp_cleanup(cm_ctx->rp_ctx);
+        sm_cleanup(cm_ctx->sm_ctx);
+
         cm_select_cleanup(cm_ctx);
         cm_server_cleanup(cm_ctx);
         cm_out_msg_queue_cleanup(cm_ctx);
-        sm_cleanup(cm_ctx->sm_ctx);
         free(cm_ctx);
     }
 }

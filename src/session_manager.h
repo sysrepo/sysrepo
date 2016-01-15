@@ -223,6 +223,22 @@ int sm_session_find_id(const sm_ctx_t *sm_ctx, uint32_t session_id, sm_session_t
  */
 int sm_connection_find_fd(const sm_ctx_t *sm_ctx, const int fd, sm_connection_t **connection);
 
+/**
+ * @brief Returns session context at given index (position) in a list (starting
+ * from index 0, in increments of 1).
+ *
+ * It can be used to iterate over all sessions in the session manager, by
+ * incrementing the index starting from 0 until SR_ERR_NOT_FOUND is returned.
+ *
+ * @param[in] sm_ctx Session Manager context.
+ * @param[in] index Index of the session in the list, starting from 0.
+ * @param[out] session Session context stored at provided index in the list.
+ *
+ * @return Error code (SR_ERR_OK on success, SR_ERR_NOT_FOUND if the session
+ * on provided index does not exist).
+ */
+int sm_session_get_index(const sm_ctx_t *sm_ctx, uint32_t index, sm_session_t **session);
+
 /**@} sm */
 
 #endif /* SESSION_MANAGER_H_ */

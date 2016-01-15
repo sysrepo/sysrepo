@@ -344,7 +344,7 @@ cm_session_neg_test(void **state) {
     assert_non_null(msg->response->session_start_resp);
     session_id2 = msg->response->session_start_resp->session_id;
     sr__msg__free_unpacked(msg, NULL);
-    /* send a response */
+    /* send BAD response */
     sr_pb_resp_alloc(SR__OPERATION__SESSION_STOP, session_id2, &msg);
     cm_msg_pack_to_buff(msg, &msg_buf, &msg_size);
     cm_message_send(fd2, msg_buf, msg_size);
@@ -385,14 +385,30 @@ cm_session_neg_test(void **state) {
     assert_null(msg);
     close(fd1);
 
-    // TODO: test not closing a connection with an open session (auto cleanup)
+    fd2 = cm_connect_to_server();
+
+    /* try not closing a connection with an open session (auto cleanup) */
+    /* session_start request */
+    cm_session_start_generate(NULL, &msg_buf, &msg_size);
+    cm_message_send(fd2, msg_buf, msg_size);
+    free(msg_buf);
+    /* receive the response */
+    msg = cm_message_recv(fd2);
+    assert_non_null(msg);
+    assert_non_null(msg->response);
+    assert_non_null(msg->response->session_start_resp);
+    session_id2 = msg->response->session_start_resp->session_id;
+    sr__msg__free_unpacked(msg, NULL);
+
+    cm_teardown(state);
+    close(fd2);
 }
 
 int
 main() {
     const struct CMUnitTest tests[] = {
             cmocka_unit_test_setup_teardown(cm_session_test, cm_setup, cm_teardown),
-            cmocka_unit_test_setup_teardown(cm_session_neg_test, cm_setup, cm_teardown),
+            cmocka_unit_test_setup_teardown(cm_session_neg_test, cm_setup, NULL),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);
