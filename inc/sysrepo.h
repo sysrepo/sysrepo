@@ -127,6 +127,7 @@ typedef enum sr_error_e {
     SR_ERR_DISCONNECT,     /**< The peer disconnected. */
     SR_ERR_MALFORMED_MSG,  /**< Malformed message. */
     SR_ERR_UNSUPPORTED,    /**< Unsupported operation requested. */
+    SR_ERR_UNKNOWN_MODEL,  /**< Request includes unknown schema */
 } sr_error_t;
 
 /**
@@ -198,9 +199,9 @@ typedef sr_val_iter_t * sr_val_iter_p;
 
 /**
  * Retrieves a single element stored under provided path.
- * If the path identifies an empty leaf or a presence container, the value has no data filled in
- * and its type is set properly (SR_LEAF_EMPTY_T / SR_CONTAINER_PRESENCE_T). 
- * Returns error if the path identifies a list, non-presence container or leaf-list,
+ * If the path identifies an empty leaf, a list or a presence container, the value has no data filled in
+ * and its type is set properly (SR_LEAF_EMPTY_T / SR_LIST_T / SR_CONTAINER_PRESENCE_T). In case of leaf-list
+ * only one element is returned.
  * SR_ERR_NOT_FOUND if the entity is not present in the data tree, or the user does not have read
  * permission to access it.
  * [in] session

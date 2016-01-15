@@ -128,6 +128,23 @@ cl_get_item_test(void **state) {
     assert_int_equal(rc, SR_ERR_OK);
 
     /* perform a get-item request */
+
+    /* illegal xpath */
+    rc = sr_get_item(session, "^&((", &value);
+    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+    assert_null(value);
+
+    /* unknown model */
+    rc = sr_get_item(session, "/unknown-model:abc", &value);
+    assert_int_equal(SR_ERR_UNKNOWN_MODEL, rc);
+    assert_null(value);
+
+    /* not existing data tree*/
+    rc = sr_get_item(session, "/small-module:item", &value);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+    assert_null(value);
+
+    /* existing leaf */
     rc = sr_get_item(session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &value);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(value);
@@ -135,6 +152,23 @@ cl_get_item_test(void **state) {
     assert_string_equal("Leaf value", value->data.string_val);
     assert_string_equal("/example-module:container/list[key1='key1'][key2='key2']/leaf", value->xpath);
     sr_free_val_t(value);
+
+    /* container */
+    rc = sr_get_item(session, "/example-module:container", &value);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_non_null(value);
+    assert_int_equal(SR_CONTAINER_T, value->type);
+    assert_string_equal("/example-module:container", value->xpath);
+    sr_free_val_t(value);
+
+    /* list */
+    rc = sr_get_item(session, "/example-module:container/list[key1='key1'][key2='key2']", &value);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_non_null(value);
+    assert_int_equal(SR_LIST_T, value->type);
+    assert_string_equal("/example-module:container/list[key1='key1'][key2='key2']", value->xpath);
+    sr_free_val_t(value);
+
 
     /* stop the session */
     rc = sr_session_stop(session);
@@ -157,15 +191,38 @@ cl_get_items_test(void **state) {
     assert_non_null(session);
 
     /* perform a get-items request */
-    rc = sr_get_items(session, "/example-module:container", &values, &values_cnt);
+
+    /* illegal xpath */
+    rc = sr_get_items(session, "^&((",  &values, &values_cnt);
+    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+
+    /* unknown model */
+    rc = sr_get_items(session, "/unknown-model:abc",  &values, &values_cnt);
+    assert_int_equal(SR_ERR_UNKNOWN_MODEL, rc);
+
+    /* not existing data tree*/
+    rc = sr_get_items(session, "/small-module:item",  &values, &values_cnt);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+
+    /* container */
+    rc = sr_get_items(session, "/ietf-interfaces:interfaces", &values, &values_cnt);
     assert_int_equal(rc, SR_ERR_OK);
-    assert_int_equal(1, values_cnt);
+    assert_int_equal(3, values_cnt);
+    sr_free_values_t(values, values_cnt);
 
-    for (size_t i=0; i < values_cnt; i++){
-        sr_free_val_t(values[i]);
-    }
-    free(values);
+    /* list without keys */
+    rc = sr_get_items(session, "/ietf-interfaces:interfaces/interface", &values, &values_cnt);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_int_equal(3, values_cnt);
+    sr_free_values_t(values, values_cnt);
 
+    /* list with keys */
+    rc = sr_get_items(session, "/ietf-interfaces:interfaces/interface[name='eth0']", &values, &values_cnt);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_int_equal(5, values_cnt);
+    sr_free_values_t(values, values_cnt);
+
+    //TODO leaf-list
 
     /* stop the session */
     rc = sr_session_stop(session);
