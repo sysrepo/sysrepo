@@ -338,7 +338,7 @@ cl_message_recv(sr_conn_ctx_t *conn_ctx, Sr__Msg **msg)
 
     /* read the rest of the message */
     while (pos < (msg_size + SR_MSG_PREAM_SIZE)) {
-        len = recv(conn_ctx->fd, (conn_ctx->msg_buf + pos), conn_ctx->msg_buf_size, 0);
+        len = recv(conn_ctx->fd, (conn_ctx->msg_buf + pos), (conn_ctx->msg_buf_size - pos), 0);
         if (-1 == len) {
             SR_LOG_ERR("Error by receiving of the message: %s.", strerror(errno));
             return SR_ERR_MALFORMED_MSG;
