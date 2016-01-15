@@ -157,6 +157,7 @@ void createDataTreeIETFinterfaces(struct ly_ctx *ctx, struct lyd_node **root){
     lyd_new_leaf(node, module_interfaces, "enabled", "false");
 
     assert_int_equal(0, lyd_validate(*root, LYD_OPT_STRICT));
+    assert_int_equal(SR_ERR_OK, sr_save_data_tree_file("./ietf-interfaces.data", *root));
 
 }
 
@@ -537,6 +538,7 @@ void get_value_test(void **state){
     /*list*/
 #define XPATH_FOR_LIST "/example-module:container/list[key1='key1'][key2='key2']"
     assert_int_equal(SR_ERR_OK, rp_dt_get_value_xpath(ctx, data_tree, XPATH_FOR_LIST, &value));
+    assert_non_null(value);
     assert_int_equal(SR_LIST_T, value->type);
     assert_string_equal(XPATH_FOR_LIST, value->xpath);
     sr_free_val_t(value);
@@ -544,6 +546,7 @@ void get_value_test(void **state){
     /*container*/
 #define XPATH_FOR_CONTAINER "/example-module:container"
     assert_int_equal(SR_ERR_OK, rp_dt_get_value_xpath(ctx, data_tree, "/example-module:container", &value));
+    assert_non_null(value);
     assert_int_equal(SR_CONTAINER_T, value->type);
     assert_string_equal(XPATH_FOR_CONTAINER, value->xpath);
     sr_free_val_t(value);
@@ -665,6 +668,28 @@ void get_node_test_not_found(void **state)
 
 }
 
+void get_value_wrapper_test(void **state){
+    int rc = 0;
+    dm_ctx_t *ctx = *state;
+    dm_session_t *ses_ctx = NULL;
+    dm_session_start(ctx, &ses_ctx);
+
+    /* unknown model*/
+    sr_val_t *value = NULL;
+    rc = rp_dt_get_value_wrapper(ctx, ses_ctx, "/non-existing:abc", &value);
+    assert_int_equal(SR_ERR_UNKNOWN_MODEL, rc);
+
+    /* not existing data tree*/
+    rc = rp_dt_get_value_wrapper(ctx, ses_ctx, "/small-module:item", &value);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+
+    /* not exisiting now in existing data tree*/
+    rc = rp_dt_get_value_wrapper(ctx, ses_ctx, "/example-module:container/list[key1='abc'][key2='def']", &value);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+
+    dm_session_stop(ctx, ses_ctx);
+}
+
 int main(){
 
     const struct CMUnitTest tests[] = {
@@ -676,7 +701,8 @@ int main(){
             cmocka_unit_test(ietf_interfaces_test),
             cmocka_unit_test(get_values_test_module_test),
             cmocka_unit_test(get_nodes_test),
-            cmocka_unit_test(get_values_opts_test)
+            cmocka_unit_test(get_values_opts_test),
+            cmocka_unit_test(get_value_wrapper_test)
     };
     return cmocka_run_group_tests(tests, setup, teardown);
 }

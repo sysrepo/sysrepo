@@ -56,9 +56,9 @@ void dm_get_data_tree(void **state)
     /* Get from avl tree */
     assert_int_equal(SR_ERR_OK, dm_get_datatree(ctx, ses_ctx ,"example-module", &data_tree));
     /* Module without data*/
-    assert_int_equal(SR_ERR_OK, dm_get_datatree(ctx, ses_ctx ,"small-module", &data_tree));
+    assert_int_equal(SR_ERR_NOT_FOUND, dm_get_datatree(ctx, ses_ctx ,"small-module", &data_tree));
     /* Not existing module should return an error*/
-    assert_int_equal(SR_ERR_INVAL_ARG, dm_get_datatree(ctx, ses_ctx ,"not-existing-module", &data_tree));
+    assert_int_equal(SR_ERR_UNKNOWN_MODEL, dm_get_datatree(ctx, ses_ctx ,"not-existing-module", &data_tree));
 
     dm_session_stop(ctx, ses_ctx);
 

@@ -844,7 +844,7 @@ sr_get_items_iter(sr_session_ctx_t *session, const char *path, bool recursive, s
 
     sr_val_iter_t *it = NULL;
     it = calloc(1, sizeof(*it));
-    if (NULL == iter){
+    if (NULL == it){
         SR_LOG_ERR_MSG("Memory allocation failed");
         rc = SR_ERR_NOMEM;
         goto cleanup;
