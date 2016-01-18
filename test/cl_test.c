@@ -65,7 +65,7 @@ sysrepo_teardown(void **state)
 static void
 cl_connection_test(void **state) {
     sr_conn_ctx_t *conn1 = NULL, *conn2 = NULL;
-    sr_session_ctx_t *sess1 = NULL, *sess2 = NULL, *sess_other = NULL;
+    sr_session_ctx_t *sess1 = NULL, *sess2 = NULL, *sess_other1 = NULL, *sess_other2 = NULL;
     int rc = 0;
 
     /* connect to sysrepo - conn 1 */
@@ -84,12 +84,12 @@ cl_connection_test(void **state) {
     assert_non_null(sess1);
 
     /* start few new sessions in conn 2 */
-    rc = sr_session_start(conn2, "bob1", SR_DS_CANDIDATE, &sess2);
+    rc = sr_session_start(conn2, "bob1", SR_DS_CANDIDATE, &sess_other1);
     assert_int_equal(rc, SR_ERR_OK);
-    assert_non_null(sess2);
-    rc = sr_session_start(conn2, "bob2", SR_DS_STARTUP, &sess_other);
+    assert_non_null(sess_other1);
+    rc = sr_session_start(conn2, "bob2", SR_DS_STARTUP, &sess_other2);
     assert_int_equal(rc, SR_ERR_OK);
-    assert_non_null(sess2);
+    assert_non_null(sess_other2);
     rc = sr_session_start(conn2, "bob3", SR_DS_CANDIDATE, &sess2);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(sess2);
@@ -102,9 +102,9 @@ cl_connection_test(void **state) {
     assert_int_equal(rc, SR_ERR_OK);
 
     /* not all sessions in conn2 stopped explicitly - should be released automatically by disconnect */
-    rc = sr_session_stop(sess_other);
+    rc = sr_session_stop(sess_other2);
     assert_int_equal(rc, SR_ERR_OK);
-    rc = sr_session_stop(sess2);
+    rc = sr_session_stop(sess_other1);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* disconnect from sysrepo - conn 2 */
