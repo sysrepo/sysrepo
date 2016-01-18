@@ -13,27 +13,96 @@
   <contact>
     <text>example@example.org</text>
   </contact>
-  <leaf name="decided">
-    <type name="enumeration">
-      <enum name="yes">
-        <value value="1"/>
-      </enum>
-      <enum name="no">
-        <value value="2"/>
-      </enum>
-      <enum name="maybe">
-        <value value="3"/>
-      </enum>
-    </type>
-  </leaf>
-  <leaf name="options">
-    <type name="bits">
-      <bit name="strict"/>
-      <bit name="recursive"/>
-      <bit name="logging"/>
-    </type>
-  </leaf>
-  <leaf name="raw">
-    <type name="binary"/>
-  </leaf>
+  <container name="main">
+    <leaf name="enum">
+      <type name="enumeration">
+        <enum name="yes">
+          <value value="1"/>
+        </enum>
+        <enum name="no">
+          <value value="2"/>
+        </enum>
+        <enum name="maybe">
+          <value value="3"/>
+        </enum>
+      </type>
+    </leaf>
+    <leaf name="options">
+      <type name="bits">
+        <bit name="strict"/>
+        <bit name="recursive"/>
+        <bit name="logging"/>
+      </type>
+    </leaf>
+    <leaf name="raw">
+      <type name="binary"/>
+    </leaf>
+    <leaf name="dec64">
+      <type name="decimal64">
+        <fraction-digits value="2"/>
+      </type>
+    </leaf>
+    <leaf name="i8">
+      <type name="int8"/>
+    </leaf>
+    <leaf name="i16">
+      <type name="int16"/>
+    </leaf>
+    <leaf name="i32">
+      <type name="int32"/>
+    </leaf>
+    <leaf name="i64">
+      <type name="int64"/>
+    </leaf>
+    <leaf name="ui8">
+      <type name="uint8"/>
+    </leaf>
+    <leaf name="ui16">
+      <type name="uint16"/>
+    </leaf>
+    <leaf name="ui32">
+      <type name="uint32"/>
+    </leaf>
+    <leaf name="ui64">
+      <type name="uint64"/>
+    </leaf>
+    <leaf name="empty">
+      <type name="empty"/>
+    </leaf>
+    <leaf-list name="numbers">
+      <type name="uint8"/>
+    </leaf-list>
+  </container>
+  <identity name="base_id"/>
+  <identity name="id_1">
+    <base name="base_id"/>
+  </identity>
+  <identity name="id_2">
+    <base name="base_id"/>
+  </identity>
+  <list name="list">
+    <key value="key"/>
+    <leaf name="key">
+      <type name="string"/>
+    </leaf>
+    <leaf name="id_ref">
+      <type name="identityref">
+        <base name="base_id"/>
+      </type>
+    </leaf>
+    <leaf name="union">
+      <type name="union">
+        <type name="uint8"/>
+        <type name="enumeration">
+          <enum name="infinity"/>
+        </type>
+      </type>
+    </leaf>
+    <container name="wireless">
+      <presence value="wireless is enabled"/>
+      <leaf name="vendor_name">
+        <type name="string"/>
+      </leaf>
+    </container>
+  </list>
 </module>
