@@ -175,6 +175,20 @@ void createDataTreeTestModule(struct ly_ctx *ctx, struct lyd_node **root){
     n = lyd_new(node, module, "wireless");
     assert_non_null(n);
 
+    /* list k2*/
+    node = lyd_new(NULL, module, "list");
+    assert_non_null(node);
+    assert_int_equal(0, lyd_insert_after(*root, node));
+
+    n = lyd_new_leaf(node, module, "key", "k2");
+    assert_non_null(n);
+
+    n = lyd_new_leaf(node, module, "id_ref", "id_2");
+    assert_non_null(n);
+
+    n = lyd_new_leaf(node, module, "union", "infinity");
+    assert_non_null(n);
+
     assert_int_equal(0, lyd_validate(*root, LYD_OPT_STRICT));
     assert_int_equal(SR_ERR_OK, sr_save_data_tree_file("./test-module.data", *root));
 

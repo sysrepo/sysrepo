@@ -270,6 +270,36 @@ cl_get_items_iter_test(void **state) {
     }
     sr_free_val_iter(it);
 
+    /* list */
+    rc = sr_get_items_iter(session, "/test-module:list[key='k1']", true, &it);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_non_null(it);
+    while(SR_ERR_OK == sr_get_item_next(session, it, &value)) {
+        puts(value->xpath);
+        sr_free_val_t(value);
+    }
+    sr_free_val_iter(it);
+
+    rc = sr_get_items_iter(session, "/test-module:list", false, &it);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_non_null(it);
+    while(SR_ERR_OK == sr_get_item_next(session, it, &value)) {
+        puts(value->xpath);
+        sr_free_val_t(value);
+    }
+    sr_free_val_iter(it);
+
+    /* leaf-list*/
+    rc = sr_get_items_iter(session, "/test-module:main/numbers", true, &it);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_non_null(it);
+    while(SR_ERR_OK == sr_get_item_next(session, it, &value)) {
+        assert_string_equal("/test-module:main/numbers", value->xpath);
+        sr_free_val_t(value);
+    }
+    sr_free_val_iter(it);
+
+
     /* all supported data types*/
     rc = sr_get_items_iter(session, "/test-module:main", true, &it);
     assert_int_equal(rc, SR_ERR_OK);

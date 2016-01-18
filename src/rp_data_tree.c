@@ -399,7 +399,7 @@ rp_dt_copy_value(const struct lyd_node_leaf_list *leaf, LY_DATA_TYPE type, sr_va
         }
         return SR_ERR_OK;
     case LY_TYPE_UNION:
-        /* Copy of selected union type should be called insteadd */
+        /* Copy of selected union type should be called instead */
         SR_LOG_ERR("Can not copy value of union '%s'", leaf->schema->name);
         return SR_ERR_INTERNAL;
     case LY_TYPE_INT8:
@@ -540,10 +540,8 @@ rp_dt_get_value_from_node(struct lyd_node *node, sr_val_t **value){
 
     int rc = SR_ERR_OK;
     char *xpath = NULL;
-    struct lys_node_leaf *sch_leaf = NULL;
     struct lyd_node_leaf_list *data_leaf = NULL;
     struct lys_node_container *sch_cont = NULL;
-    struct lys_node_leaflist *sch_leaflist = NULL;
     rc = rp_dt_create_xpath_for_node(node, &xpath);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Create xpath for node failed");
@@ -560,17 +558,11 @@ rp_dt_get_value_from_node(struct lyd_node *node, sr_val_t **value){
 
     switch (node->schema->nodetype){
     case LYS_LEAF:
-        sch_leaf = (struct lys_node_leaf *) node->schema;
         data_leaf = (struct lyd_node_leaf_list *) node;
 
+        val->type = sr_libyang_type_to_sysrepo(data_leaf->value_type);
 
-        if (LY_TYPE_DER == sch_leaf->type.base) {
-            SR_LOG_WRN_MSG("Leaf has derived type, not supported yet");
-        } else {
-            val->type = sr_libyang_type_to_sysrepo(sch_leaf->type.base);
-        }
-
-        if (SR_ERR_OK != rp_dt_copy_value(data_leaf, sch_leaf->type.base, val)) {
+        if (SR_ERR_OK != rp_dt_copy_value(data_leaf, data_leaf->value_type, val)) {
             SR_LOG_ERR_MSG("Copying of value failed");
             free(val->xpath);
             free(val);
@@ -585,15 +577,11 @@ rp_dt_get_value_from_node(struct lyd_node *node, sr_val_t **value){
         val->type = SR_LIST_T;
         break;
     case LYS_LEAFLIST:
-        sch_leaflist = (struct lys_node_leaflist *) node->schema;
         data_leaf = (struct lyd_node_leaf_list *) node;
-        if (LY_TYPE_DER == sch_leaflist->type.base) {
-            SR_LOG_WRN_MSG("Leaf has derived type, not supported yet");
-        } else {
-            val->type = sr_libyang_type_to_sysrepo(sch_leaflist->type.base);
-        }
 
-        if (SR_ERR_OK != rp_dt_copy_value(data_leaf, sch_leaflist->type.base, val)) {
+        val->type = sr_libyang_type_to_sysrepo(data_leaf->value_type);
+
+        if (SR_ERR_OK != rp_dt_copy_value(data_leaf, data_leaf->value_type, val)) {
             SR_LOG_ERR_MSG("Copying of value failed");
             free(val->xpath);
             free(val);
