@@ -245,6 +245,13 @@ cl_get_items_iter_test(void **state) {
 
     /* perform a get-items_iter request */
     sr_val_iter_t *it;
+
+    /* illegal xpath */
+    rc = sr_get_items_iter(session, "^&((", true, &it);
+    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+    assert_non_null(it);
+
+    /* container */
     rc = sr_get_items_iter(session, "/example-module:container", true, &it);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(it);
@@ -257,7 +264,6 @@ cl_get_items_iter_test(void **state) {
         puts(value->xpath);
         sr_free_val_t(value);
     }
-
     sr_free_val_iter(it);
 
 

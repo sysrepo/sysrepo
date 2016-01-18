@@ -390,9 +390,6 @@ cl_send_get_items_iter(sr_session_ctx_t *session, const char *path, bool recursi
     if (NULL != msg_req) {
         sr__msg__free_unpacked(msg_req, NULL);
     }
-    if (NULL != msg_resp){
-        sr__msg__free_unpacked(*msg_resp, NULL);
-    }
     return rc;
 }
 
@@ -840,7 +837,7 @@ sr_get_item_next(sr_session_ctx_t *session, sr_val_iter_t *iter, sr_val_t **valu
         rc = cl_send_get_items_iter(session, iter->path, iter->recursive, iter->offset, SR_GET_ITEM_DEF_LIMIT, &msg_resp);
         if (SR_ERR_OK != rc){
             SR_LOG_ERR("Fetching more items failed '%s'", iter->path);
-            return  rc;
+            goto cleanup;
         }
 
         iter->index = 0;
