@@ -222,7 +222,11 @@ cl_get_items_test(void **state) {
     assert_int_equal(5, values_cnt);
     sr_free_values_t(values, values_cnt);
 
-    //TODO leaf-list
+    /* leaf-list*/
+    rc = sr_get_items(session, "/test-module:main/numbers", &values, &values_cnt);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_int_equal(3, values_cnt);
+    sr_free_values_t(values, values_cnt);
 
     /* stop the session */
     rc = sr_session_stop(session);
@@ -266,7 +270,16 @@ cl_get_items_iter_test(void **state) {
     }
     sr_free_val_iter(it);
 
-
+    /* all supported data types*/
+    rc = sr_get_items_iter(session, "/test-module:main", true, &it);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_non_null(it);
+    while(SR_ERR_OK == sr_get_item_next(session, it, &value)) {
+        puts(value->xpath);
+        sr_free_val_t(value);
+    }
+    sr_free_val_iter(it);
+    
     /* stop the session */
     rc = sr_session_stop(session);
     assert_int_equal(rc, SR_ERR_OK);

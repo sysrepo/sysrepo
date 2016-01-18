@@ -176,6 +176,7 @@ void createDataTreeTestModule(struct ly_ctx *ctx, struct lyd_node **root){
     assert_non_null(n);
 
     assert_int_equal(0, lyd_validate(*root, LYD_OPT_STRICT));
+    assert_int_equal(SR_ERR_OK, sr_save_data_tree_file("./test-module.data", *root));
 
 
 }

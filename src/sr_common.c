@@ -201,7 +201,7 @@ sr_save_data_tree_file(const char *file_name, const struct lyd_node *data_tree)
     }
 
     fprintf(f, "<module>");
-    if( 0 != lyd_print_file(f, data_tree, LYD_XML)){
+    if( 0 != lyd_print_file(f, data_tree, LYD_XML_FORMAT)){
         SR_LOG_ERR("Failed to write output into %s", file_name);
         return SR_ERR_INTERNAL;
     }
@@ -785,6 +785,18 @@ sr_set_val_t_value_in_gpb(const sr_val_t *value, Sr__Value *gpb_value){
         }
         SR_LOG_INF("Duplicating value %s", gpb_value->string_val);
         return SR_ERR_OK;
+    case SR_UINT8_T:
+        gpb_value->uint8_val = value->data.uint8_val;
+        break;
+    case SR_UINT16_T:
+        gpb_value->uint16_val = value->data.uint16_val;
+        break;
+    case SR_UINT32_T:
+        gpb_value->uint32_val = value->data.uint32_val;
+        break;
+    case SR_UINT64_T:
+        gpb_value->uint64_val = value->data.uint64_val;
+        break;
     default:
         SR_LOG_ERR("Conversion of value type not supported '%s'", value->xpath);
         return SR_ERR_INTERNAL;
