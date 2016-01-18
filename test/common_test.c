@@ -100,24 +100,33 @@ circular_buffer_test2(void **state)
         *tmp = i;
         rc = sr_cbuff_enqueue(buffer, &tmp);
         assert_int_equal(rc, SR_ERR_OK);
+        tmp = NULL;
 
         if (7 == i) {
             sr_cbuff_dequeue(buffer, &tmp);
+            assert_non_null(tmp);
             assert_int_equal(*tmp, 1);
             free(tmp);
+            tmp = NULL;
             sr_cbuff_dequeue(buffer, &tmp);
+            assert_non_null(tmp);
             assert_int_equal(*tmp, 2);
             free(tmp);
+            tmp = NULL;
             sr_cbuff_dequeue(buffer, &tmp);
+            assert_non_null(tmp);
             assert_int_equal(*tmp, 3);
             free(tmp);
+            tmp = NULL;
         }
     }
 
     for (i = 4; i <= 20; i++) {
         sr_cbuff_dequeue(buffer, &tmp);
+        assert_non_null(tmp);
         assert_int_equal(*tmp, i);
         free(tmp);
+        tmp = NULL;
     }
 
     /* buffer should be empty now */
