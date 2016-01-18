@@ -824,6 +824,7 @@ cleanup:
 int
 sr_get_items_iter(sr_session_ctx_t *session, const char *path, bool recursive, sr_val_iter_t **iter){
     Sr__Msg *msg_resp = NULL;
+    sr_val_iter_t *it = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG4(session, session->conn_ctx, path, iter);
@@ -839,7 +840,6 @@ sr_get_items_iter(sr_session_ctx_t *session, const char *path, bool recursive, s
         goto cleanup;
     }
 
-    sr_val_iter_t *it = NULL;
     it = calloc(1, sizeof(*it));
     if (NULL == it){
         SR_LOG_ERR_MSG("Memory allocation failed");
@@ -854,7 +854,6 @@ sr_get_items_iter(sr_session_ctx_t *session, const char *path, bool recursive, s
     it->path = strdup(path);
     if (NULL == it->path){
         SR_LOG_ERR_MSG("Duplication of path failed");
-        free(it);
         rc = SR_ERR_INTERNAL;
         goto cleanup;
     }
@@ -872,7 +871,6 @@ sr_get_items_iter(sr_session_ctx_t *session, const char *path, bool recursive, s
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR_MSG("Copying from gpb to sr_val_t failed");
             sr_free_values_t(it->buff_values, i);
-            free(it);
             rc = SR_ERR_INTERNAL;
             goto cleanup;
         }
@@ -887,6 +885,12 @@ sr_get_items_iter(sr_session_ctx_t *session, const char *path, bool recursive, s
 cleanup:
     if (NULL != msg_resp) {
         sr__msg__free_unpacked(msg_resp, NULL);
+    }
+    if (NULL != it){
+        if (NULL != it->path){
+            free(it->path);
+        }
+        free(it);
     }
     return rc;
 }
@@ -940,7 +944,6 @@ sr_get_item_next(sr_session_ctx_t *session, sr_val_iter_t *iter, sr_val_t **valu
             if (SR_ERR_OK != rc) {
                 SR_LOG_ERR_MSG("Copying from gpb to sr_val_t failed");
                 sr_free_values_t(iter->buff_values, i);
-                free(iter->buff_values);
                 iter->count = 0;
                 rc = SR_ERR_INTERNAL;
                 goto cleanup;

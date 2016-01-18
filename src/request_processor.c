@@ -69,6 +69,8 @@ rp_get_item_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr_
     sr_val_t *value = NULL;
     char *xpath = msg->request->get_item_req->path;
 
+    //TODO select datatree corresponding to the datastore
+
     /* get value from data manager*/
     rc = rp_dt_get_value_wrapper(rp_ctx->dm_ctx, session->dm_session, xpath, &value);
     if (SR_ERR_OK != rc){
@@ -120,6 +122,7 @@ rp_get_items_req_process(const rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg 
     size_t offset = msg->request->get_items_req->offset;
     size_t limit = msg->request->get_items_req->limit;
 
+    //TODO select datatree corresponding to the datastore
 
     if (msg->request->get_items_req->has_recursive || msg->request->get_items_req->has_offset ||
             msg->request->get_items_req->has_limit){
