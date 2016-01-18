@@ -154,7 +154,7 @@ dm_load_schemas(const dm_ctx_t *dm_ctx)
                 if (SR_ERR_OK != dm_load_schema_file(dm_ctx, dm_ctx->search_dir, ent->d_name)) {
                     SR_LOG_WRN("Loading schema file: %s failed.", ent->d_name);
                 } else {
-                    SR_LOG_INF("Schema file %s loaded successfuly", ent->d_name);
+                    SR_LOG_INF("Schema file %s loaded successfully", ent->d_name);
                 }
             }
         }

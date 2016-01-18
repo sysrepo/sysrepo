@@ -284,7 +284,7 @@ rp_dt_create_xpath_for_node(const struct lyd_node *data_tree, char **xpath)
 /**
  * Functions copies the bits into string
  * @param [in] leaf - data tree node from the bits will be copied
- * @param [out] dest - space separeted set bit field
+ * @param [out] dest - space separated set bit field
  */
 static int
 rp_dt_copy_bits(const struct lyd_node_leaf_list *leaf, char **dest){
@@ -950,10 +950,10 @@ rp_dt_get_nodes_with_opts(const dm_ctx_t *dm_ctx, dm_session_t *dm_session, rp_d
             goto cleanup;
         }
         switch (item->node->schema->nodetype) {
-            case LYS_LEAF:  /* fallthrough */
+            case LYS_LEAF:  /* fall through */
             case LYS_LEAFLIST:
                 break;
-            case LYS_LIST: /* fallthrough */
+            case LYS_LIST: /* fall through */
             case LYS_CONTAINER:
                 if (get_items_ctx->recursive){
                     rc = rp_dt_push_child_nodes_to_stack(&get_items_ctx->stack, item->node);

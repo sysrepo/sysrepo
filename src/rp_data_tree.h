@@ -1,4 +1,7 @@
 /**
+ * @defgroup rp_dt Request processor datatree helpers
+ * @{
+ * @brief Functions for accessing and manipulation data trees.
  * @file rp_data_tree.h
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
  * @brief 
@@ -29,11 +32,6 @@
 #include "sysrepo.h"
 #include "rp_node_stack.h"
 
-/**
- * @defgroup rp_dt Request processor datatree
- * @brief Functions for accessing and manipulation data trees.
- * @{
- */
 
 typedef struct rp_dt_get_items_ctx{
     char *xpath;
@@ -43,7 +41,7 @@ typedef struct rp_dt_get_items_ctx{
 }rp_dt_get_items_ctx_t;
 
 /**
- * @brief Retrieves node from datatree based on location_id. Location_id can identify leaf, container or list
+ * @brief Retrieves node from datatree based on location_id. Location_id can identify leaf, leaf-list, container or list
  * with all key values defined.
  * @param [in] dm_ctx
  * @param [in] data_tree - root node of the model
@@ -85,7 +83,7 @@ int rp_dt_get_value(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp
 int rp_dt_get_value_xpath(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char *xpath, sr_val_t **value);
 
 /**
- * @brief Returns the value for the specified xpath. Internaly converts xpath to location_id and looks up the datatree
+ * @brief Returns the value for the specified xpath. Internally converts xpath to location_id and looks up the datatree
  * @param [in] dm_ctx
  * @param [in] dm_session
  * @param [in] xpath
@@ -96,7 +94,7 @@ int rp_dt_get_value_wrapper(const dm_ctx_t *dm_ctx, dm_session_t *dm_session, co
 
 /**
  * @brief Returns nodes under specified location_id. For leaf returns the same as rp_dt_get_node. If location_id identifies
- * the container returns its children. If the location_id identifies the list instance and all key values defined
+ * the container returns its children. If the location_id identifies the list instance and all key values are defined
  * the children of the list instance is returned. If the location_id identifies the list and key values for the last list
  * are omitted, all instances of the list are returned. Finally, if the location_id identifies leaf-list all its members
  * are returned. If SR_ERR_OK is returned nodes must be freed by caller.
@@ -121,7 +119,7 @@ int rp_dt_get_nodes(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp
 int rp_dt_get_nodes_xpath(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char *xpath, struct lyd_node ***nodes, size_t *count);
 
 /**
- * @brief Return the nodes under specified location id. The selcetion of nodes can be altered using options recursive, offset, limit.
+ * @brief Returns the nodes under specified location id. The selection of nodes can be altered using options recursive, offset, limit.
  * @param [in] dm_ctx
  * @param [in] dm_session
  * @param [in] get_items_ctx

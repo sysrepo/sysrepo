@@ -246,7 +246,7 @@ static sr_error_t xp_validate_token_order(xp_token_t *tokens, size_t token_count
     return SR_ERR_OK;
 }
 
-/**@brief check if all list keynames are specified or all is ommitted */
+/**@brief check if all list keynames are specified or all is omitted */
 static sr_error_t xp_validate_list_nodes(xp_token_t *tokens, size_t token_count, size_t *err_token)
 {
     CHECK_NULL_ARG(err_token);
