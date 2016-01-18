@@ -84,7 +84,6 @@ cm_teardown(void **state)
     return 0;
 }
 
-
 static int
 cm_connect_to_server()
 {
@@ -92,14 +91,14 @@ cm_connect_to_server()
     int fd = -1, rc = -1;
 
     fd = socket(AF_UNIX, SOCK_STREAM, 0);
-    assert_true(-1 < fd);
+    assert_int_not_equal(fd, -1);
 
     memset(&addr, 0, sizeof(addr));
     addr.sun_family = AF_UNIX;
     strncpy(addr.sun_path, CM_AF_SOCKET_PATH, sizeof(addr.sun_path)-1);
 
     rc = connect(fd, (struct sockaddr*)&addr, sizeof(addr));
-    assert_true(-1 < rc);
+    assert_int_not_equal(rc, -1);
 
     return fd;
 }
