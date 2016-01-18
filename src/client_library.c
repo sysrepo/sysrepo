@@ -120,7 +120,7 @@ cl_socket_connect(sr_conn_ctx_t *conn_ctx, const char *socket_path)
     tv.tv_usec = 0;
     rc = setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, (char *)&tv, sizeof(tv));
     if (-1 == rc) {
-        SR_LOG_DBG("Unable to set timeout for socket operations (socket=%s)", socket_path);
+        SR_LOG_ERR("Unable to set timeout for socket operations (socket=%s)", socket_path);
         close(fd);
         return SR_ERR_DISCONNECT;
     }
