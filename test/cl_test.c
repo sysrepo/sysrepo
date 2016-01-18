@@ -244,12 +244,12 @@ cl_get_items_iter_test(void **state) {
     assert_non_null(session);
 
     /* perform a get-items_iter request */
-    sr_val_iter_t *it;
+    sr_val_iter_t *it = NULL;
 
     /* illegal xpath */
     rc = sr_get_items_iter(session, "^&((", true, &it);
     assert_int_equal(SR_ERR_INVAL_ARG, rc);
-    assert_non_null(it);
+    assert_null(it);
 
     /* container */
     rc = sr_get_items_iter(session, "/example-module:container", true, &it);
