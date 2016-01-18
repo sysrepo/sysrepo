@@ -974,6 +974,7 @@ rp_dt_get_nodes_with_opts(const dm_ctx_t *dm_ctx, dm_session_t *dm_session, rp_d
             cnt++;
         }
         free(item);
+        item = NULL;
         index++;
     }
     /* mark the index where the processing stopped*/
