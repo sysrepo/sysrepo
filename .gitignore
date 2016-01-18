@@ -5,3 +5,6 @@ doc/
 test/data/test_data.h
 src/dm_location.h
 src/*.pb-c.*
+.idea/
+nbproject/
+CMakeCache.txt

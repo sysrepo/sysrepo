@@ -223,7 +223,7 @@ int sr_get_item(sr_session_ctx_t *session, const char *path, sr_val_t **value);
  * (can be used to list existing key values of a list).
  * If the user does not have read permission to access certain nodes, these won't be part of the result.
  * Empty values array may be returned if the element does not contain any data, SR_ERR_NOT_FOUND
- * will be retuned if the element under provided path does not exist in the data tree.
+ * will be returned if the element under provided path does not exist in the data tree.
  * [in] session
  * [in] path
  * [out] values (allocated by function)
