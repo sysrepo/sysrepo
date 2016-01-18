@@ -717,12 +717,6 @@ int sr_get_item(sr_session_ctx_t *session, const char *path, sr_val_t **value)
         goto cleanup;
     }
 
-    /* check response code */
-    if (SR_ERR_OK != msg_resp->response->result){
-        SR_LOG_ERR("Get item response with code %u", msg_resp->response->result);
-        goto cleanup;
-    }
-
     /* copy the content of gpb to sr_val_t*/
     rc = sr_copy_gpb_to_val_t(msg_resp->response->get_item_resp->value, value);
     if (SR_ERR_OK != rc){
@@ -770,12 +764,6 @@ int sr_get_items(sr_session_ctx_t *session, const char *path, sr_val_t ***values
     rc = cl_request_process(session->conn_ctx, msg_req, &msg_resp, SR__OPERATION__GET_ITEMS);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Error by processing of get_items request.");
-        goto cleanup;
-    }
-
-    /* check response code */
-    if (SR_ERR_OK != msg_resp->response->result) {
-        SR_LOG_ERR("Get item response with code %u", msg_resp->response->result);
         goto cleanup;
     }
 
@@ -831,12 +819,6 @@ sr_get_items_iter(sr_session_ctx_t *session, const char *path, bool recursive, s
     rc = cl_send_get_items_iter(session, path, recursive, 0, SR_GET_ITEM_DEF_LIMIT, &msg_resp);
     if (SR_ERR_OK != rc){
         SR_LOG_ERR("Sending get_items request failed '%s'", path);
-        goto cleanup;
-    }
-
-    /* check response code */
-    if (SR_ERR_OK != msg_resp->response->result) {
-        SR_LOG_ERR("Get items response with code %u", msg_resp->response->result);
         goto cleanup;
     }
 
