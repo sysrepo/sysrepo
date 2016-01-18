@@ -276,6 +276,52 @@ cl_get_items_iter_test(void **state) {
     assert_non_null(it);
     while(SR_ERR_OK == sr_get_item_next(session, it, &value)) {
         puts(value->xpath);
+        if (0 == strcmp("/test-module:main/numbers", value->xpath)){
+            assert_int_equal(SR_UINT8_T, value->type);
+        }
+        else if (0 == strcmp("/test-module:main/empty",value->xpath)){
+            assert_int_equal(SR_LEAF_EMPTY_T, value->type);
+        }
+        else if (0 == strcmp("/test-module:main/ui64", value->xpath)){
+            assert_int_equal(SR_UINT64_T, value->type);
+        }
+        else if (0 == strcmp("/test-module:main/ui32", value->xpath)){
+            assert_int_equal(SR_UINT32_T, value->type);
+        }
+        else if (0 == strcmp("/test-module:main/ui16", value->xpath)){
+            assert_int_equal(SR_UINT16_T, value->type);
+        }
+        else if (0 == strcmp("/test-module:main/ui8", value->xpath)){
+            assert_int_equal(SR_UINT8_T, value->type);
+        }
+        else if (0 == strcmp("/test-module:main/i64", value->xpath)){
+            assert_int_equal(SR_INT64_T, value->type);
+        }
+        else if (0 == strcmp("/test-module:main/i32", value->xpath)){
+            assert_int_equal(SR_INT32_T, value->type);
+        }
+        else if (0 == strcmp("/test-module:main/i16", value->xpath)){
+            assert_int_equal(SR_INT16_T, value->type);
+        }
+        else if (0 == strcmp("/test-module:main/i8", value->xpath)){
+            assert_int_equal(SR_INT8_T, value->type);
+        }
+        else if (0 == strcmp("/test-module:main/dec64", value->xpath)){
+            assert_int_equal(SR_DECIMAL64_T, value->type);
+        }
+        else if (0 == strcmp("/test-module:main/options", value->xpath)){
+            assert_int_equal(SR_BITS_T, value->type);
+        }
+        else if (0 == strcmp("/test-module:main/raw", value->xpath)){
+            assert_int_equal(SR_BINARY_T, value->type);
+        }
+        else if (0 == strcmp("/test-module:main/enum", value->xpath)){
+            assert_int_equal(SR_ENUM_T, value->type);
+        }
+        else{
+            /* unknown node*/
+            assert_true(false);
+        }
         sr_free_val_t(value);
     }
     sr_free_val_iter(it);
