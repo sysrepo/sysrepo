@@ -32,16 +32,17 @@
  * Sysrepo error descriptions.
  */
 const char *const sr_errlist[] = {
-        "Operation succeeded",      /* SR_ERR_OK */
-        "Invalid argument",         /* SR_ERR_INVAL_ARG */
-        "Out of memory",            /* SR_ERR_NOMEM */
-        "Item not found",           /* SR_ERR_NOT_FOUND */
-        "Sysrepo-internal error",   /* SR_ERR_INTERNAL */
-        "Initialization failed",    /* SR_ERR_INIT_FAILED */
-        "Input/output error",       /* SR_ERR_IO */
-        "The peer disconnected",    /* SR_ERR_DISCONNECT */
-        "Malformed message",        /* SR_ERR_MALFORMED_MSG */
-        "Operation not supported",  /* SR_ERR_UNSUPPORTED */
+        "Operation succeeded",                  /* SR_ERR_OK */
+        "Invalid argument",                     /* SR_ERR_INVAL_ARG */
+        "Out of memory",                        /* SR_ERR_NOMEM */
+        "Item not found",                       /* SR_ERR_NOT_FOUND */
+        "Sysrepo-internal error",               /* SR_ERR_INTERNAL */
+        "Initialization failed",                /* SR_ERR_INIT_FAILED */
+        "Input/output error",                   /* SR_ERR_IO */
+        "The peer disconnected",                /* SR_ERR_DISCONNECT */
+        "Malformed message",                    /* SR_ERR_MALFORMED_MSG */
+        "Operation not supported",              /* SR_ERR_UNSUPPORTED */
+        "Requested schema model is not known",  /* SR_ERR_UNKNOWN_MODEL */
 };
 
 const char *

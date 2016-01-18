@@ -475,3 +475,21 @@ sm_connection_find_fd(const sm_ctx_t *sm_ctx, const int fd, sm_connection_t **co
         return SR_ERR_OK;
     }
 }
+
+int
+sm_session_get_index(const sm_ctx_t *sm_ctx, uint32_t index, sm_session_t **session)
+{
+    avl_node_t *node = NULL;
+
+    CHECK_NULL_ARG2(sm_ctx, session);
+
+    node = avl_at(sm_ctx->session_id_avl, index);
+
+    if (NULL == node) {
+        SR_LOG_DBG("Cannot find the session at index=%"PRIu32".", index);
+        return SR_ERR_NOT_FOUND;
+    } else {
+        *session = node->item;
+        return SR_ERR_OK;
+    }
+}
