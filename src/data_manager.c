@@ -84,7 +84,7 @@ dm_get_data_file(const dm_ctx_t *dm_ctx, const char *module_name, char **file_na
 {
     CHECK_NULL_ARG3(dm_ctx, module_name, file_name);
     char *tmp = NULL;
-    int rc = sr_str_join("./", module_name, &tmp);
+    int rc = sr_str_join(dm_ctx->search_dir, module_name, &tmp);
     if (SR_ERR_OK == rc) {
         rc = sr_str_join(tmp, ".data", file_name);
         free(tmp);

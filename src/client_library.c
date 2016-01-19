@@ -29,7 +29,7 @@
 #include "sr_common.h"
 #include "connection_manager.h"
 
-#define CL_REQUEST_TIMEOUT 2 /**< Timeout (in seconds) for waiting for a response from server by each request. */
+#define CL_REQUEST_TIMEOUT 100 /**< Timeout (in seconds) for waiting for a response from server by each request. */
 #define SR_LCONN_PATH_PREFIX "/tmp/sysrepo-local"  /**< Filesystem path prefix for local unix-domain connections (library mode). */
 #define SR_GET_ITEM_DEF_LIMIT 2
 

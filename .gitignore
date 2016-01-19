@@ -8,3 +8,4 @@ src/*.pb-c.*
 .idea/
 nbproject/
 CMakeCache.txt
+test/data/*.data
