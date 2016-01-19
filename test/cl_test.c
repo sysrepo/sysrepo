@@ -152,7 +152,7 @@ cl_get_item_test(void **state) {
     assert_string_equal("Leaf value", value->data.string_val);
     assert_string_equal("/example-module:container/list[key1='key1'][key2='key2']/leaf", value->xpath);
     sr_free_val_t(value);
-
+    
     /* container */
     rc = sr_get_item(session, "/example-module:container", &value);
     assert_int_equal(rc, SR_ERR_OK);
@@ -314,6 +314,7 @@ cl_get_items_iter_test(void **state) {
         }
         else if (0 == strcmp("/test-module:main/ui64", value->xpath)){
             assert_int_equal(SR_UINT64_T, value->type);
+            assert_int_equal(64, value->data.uint64_val);
         }
         else if (0 == strcmp("/test-module:main/ui32", value->xpath)){
             assert_int_equal(SR_UINT32_T, value->type);

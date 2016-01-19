@@ -740,9 +740,11 @@ sr_set_val_t_value_in_gpb(const sr_val_t *value, Sr__Value *gpb_value){
         return SR_ERR_OK;
     case SR_BOOL_T:
         gpb_value->bool_val = value->data.bool_val;
+        gpb_value->has_bool_val = true;
         return SR_ERR_OK;
     case SR_DECIMAL64_T:
         gpb_value->decimal64_val = value->data.decimal64_val;
+        gpb_value->has_decimal64_val = true;
         return SR_ERR_OK;
     case SR_ENUM_T:
         gpb_value->enum_val = strdup(value->data.enum_val);
@@ -767,15 +769,19 @@ sr_set_val_t_value_in_gpb(const sr_val_t *value, Sr__Value *gpb_value){
         return SR_ERR_OK;
     case SR_INT8_T:
         gpb_value->int8_val = value->data.int8_val;
+        gpb_value->has_int8_val = true;
         break;
     case SR_INT16_T:
         gpb_value->int16_val = value->data.int16_val;
+        gpb_value->has_int16_val = true;
         break;
     case SR_INT32_T:
         gpb_value->int32_val = value->data.int32_val;
+        gpb_value->has_int32_val = true;
         break;
     case SR_INT64_T:
         gpb_value->int64_val = value->data.int64_val;
+        gpb_value->has_int64_val = true;
         break;
     case SR_STRING_T:
         gpb_value->string_val = strdup(value->data.string_val);
@@ -783,19 +789,22 @@ sr_set_val_t_value_in_gpb(const sr_val_t *value, Sr__Value *gpb_value){
             SR_LOG_ERR("Copy string value failed for xpath '%s'", value->xpath);
             return SR_ERR_INTERNAL;
         }
-        SR_LOG_INF("Duplicating value %s", gpb_value->string_val);
         return SR_ERR_OK;
     case SR_UINT8_T:
         gpb_value->uint8_val = value->data.uint8_val;
+        gpb_value->has_uint8_val = true;
         break;
     case SR_UINT16_T:
         gpb_value->uint16_val = value->data.uint16_val;
+        gpb_value->has_uint16_val = true;
         break;
     case SR_UINT32_T:
         gpb_value->uint32_val = value->data.uint32_val;
+        gpb_value->has_uint32_val = true;
         break;
     case SR_UINT64_T:
         gpb_value->uint64_val = value->data.uint64_val;
+        gpb_value->has_uint64_val = true;
         break;
     default:
         SR_LOG_ERR("Conversion of value type not supported '%s'", value->xpath);

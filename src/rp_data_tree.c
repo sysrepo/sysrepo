@@ -691,7 +691,7 @@ rp_dt_get_value_xpath(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const 
     return rc;
 }
 
-int rp_dt_get_value_wrapper(const dm_ctx_t *dm_ctx,  dm_session_t *dm_session, const char *xpath, sr_val_t **value){
+int rp_dt_get_value_wrapper(dm_ctx_t *dm_ctx,  dm_session_t *dm_session, const char *xpath, sr_val_t **value){
     CHECK_NULL_ARG4(dm_ctx, dm_session, xpath, value);
 
     int rc = SR_ERR_INVAL_ARG;
@@ -1113,7 +1113,7 @@ rp_dt_get_values_xpath(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const
 }
 
 int
-rp_dt_get_values_wrapper(const dm_ctx_t *dm_ctx, dm_session_t *dm_session, const char *xpath, sr_val_t ***values, size_t *count){
+rp_dt_get_values_wrapper(dm_ctx_t *dm_ctx, dm_session_t *dm_session, const char *xpath, sr_val_t ***values, size_t *count){
     CHECK_NULL_ARG5(dm_ctx, dm_session, xpath, values, count);
 
     int rc = SR_ERR_INVAL_ARG;
@@ -1155,7 +1155,7 @@ cleanup:
     return rc;
 }
 
-int rp_dt_get_values_wrapper_with_opts(const dm_ctx_t *dm_ctx, dm_session_t *dm_session, rp_dt_get_items_ctx_t *get_items_ctx, const char *xpath,
+int rp_dt_get_values_wrapper_with_opts(dm_ctx_t *dm_ctx, dm_session_t *dm_session, rp_dt_get_items_ctx_t *get_items_ctx, const char *xpath,
                                        bool recursive, size_t offset, size_t limit, sr_val_t ***values, size_t *count){
 
     int rc = SR_ERR_INVAL_ARG;

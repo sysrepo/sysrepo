@@ -90,7 +90,7 @@ int rp_dt_get_value_xpath(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, co
  * @param [out] value
  * @return err_code
  */
-int rp_dt_get_value_wrapper(const dm_ctx_t *dm_ctx, dm_session_t *dm_session, const char *xpath, sr_val_t **value);
+int rp_dt_get_value_wrapper(dm_ctx_t *dm_ctx, dm_session_t *dm_session, const char *xpath, sr_val_t **value);
 
 /**
  * @brief Returns nodes under specified location_id. For leaf returns the same as rp_dt_get_node. If location_id identifies
@@ -167,7 +167,7 @@ int rp_dt_get_values_xpath(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, c
  * @param [out] count
  * @return err_code
  */
-int rp_dt_get_values_wrapper(const dm_ctx_t *dm_ctx, dm_session_t *dm_session, const char *xpath, sr_val_t ***values, size_t *count);
+int rp_dt_get_values_wrapper(dm_ctx_t *dm_ctx, dm_session_t *dm_session, const char *xpath, sr_val_t ***values, size_t *count);
 
 /**
  * @brief Returns the values for the specified xpath. Internally converts xpath to location_id and looks up the datatree. The
@@ -182,7 +182,7 @@ int rp_dt_get_values_wrapper(const dm_ctx_t *dm_ctx, dm_session_t *dm_session, c
  * @param [out] values
  * @param [out] count
  */
-int rp_dt_get_values_wrapper_with_opts(const dm_ctx_t *dm_ctx, dm_session_t *dm_session, rp_dt_get_items_ctx_t *get_items_ctx, const char *xpath,
+int rp_dt_get_values_wrapper_with_opts(dm_ctx_t *dm_ctx, dm_session_t *dm_session, rp_dt_get_items_ctx_t *get_items_ctx, const char *xpath,
                                        bool recursive, size_t offset, size_t limit, sr_val_t ***values, size_t *count);
 
 
