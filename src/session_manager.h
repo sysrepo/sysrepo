@@ -25,11 +25,9 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <sys/types.h>
-#include <ev.h>
 
-#include "request_processor.h"
-
-typedef struct rp_session_s rp_session_t; /**< Forward-declaration of Request processor's session */
+typedef struct cm_session_ctx_s cm_session_ctx_t;       /** Forward-declaration of CM's session-related context. */
+typedef struct cm_connection_ctx_s cm_connection_ctx_t; /** Forward-declaration of CM's connection-related context. */
 
 /**
  * @defgroup sm Session Manager
@@ -54,6 +52,11 @@ typedef struct rp_session_s rp_session_t; /**< Forward-declaration of Request pr
 typedef struct sm_ctx_s sm_ctx_t;
 
 /**
+ * @brief Callback called by session / connection cleanup used to cleanup CM-related data.
+ */
+typedef void (*sm_cleanup_cb)(void *ctx);
+
+/**
  * @brief Session context structure, represents one particular session.
  */
 typedef struct sm_session_s {
@@ -63,11 +66,8 @@ typedef struct sm_session_s {
     const char *real_user;               /**< Real user name of the other side. */
     const char *effective_user;          /**< Effective user name of the other side (if different to real_user). */
 
-    uint32_t rp_req_cnt;                 /**< Number of session-related outstanding requests in Request Processor. */
-    sr_cbuff_t *request_queue;           /**< Queue of requests waiting for forwarding to Request Processor. */
-    uint32_t rp_resp_expected;           /**< Number of expected session-related responses to be forwarded to Request Processor. */
-
-    rp_session_t *rp_session;            /**< Request Processor session data, opaque to Session Manager. */
+    sm_ctx_t *sm_ctx;                    /**< Associated Session Manager context. */
+    cm_session_ctx_t *cm_data;           /**< Connection Manager-related data. */
 } sm_session_t;
 
 /**
@@ -108,12 +108,8 @@ typedef struct sm_connection_s {
     gid_t gid;                        /**< Peer's effective group ID. */
     bool close_requested;             /**< Connection close requested. */
 
-    sm_buffer_t in_buff;   /**< Input buffer. If not empty, there is some received data to be processed. */
-    sm_buffer_t out_buff;  /**< Output buffer. If not empty, there is some data to be sent when receiver is ready. */
-
-    ev_io read_watcher;
-    ev_io write_watcher;
-    void *cm_ctx;
+    sm_ctx_t *sm_ctx;                 /**< Associated Session Manager context. */
+    cm_connection_ctx_t *cm_data;     /**< Connection Manager-related data. */
 } sm_connection_t;
 
 /**
@@ -123,7 +119,7 @@ typedef struct sm_connection_s {
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int sm_init(sm_ctx_t **sm_ctx);
+int sm_init(sm_ctx_t **sm_ctx, sm_cleanup_cb session_cleanup_cb, sm_cleanup_cb connection_cleanup_cb);
 
 /**
  * @brief Cleans up Session Manager.

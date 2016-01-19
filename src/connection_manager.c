@@ -43,6 +43,8 @@
 #define CM_IN_BUFF_MIN_SPACE 512  /**< Minimal empty space in the input buffer. */
 #define CM_BUFF_ALLOC_CHUNK 1024  /**< Chunk size for buffer expansions. */
 
+#define CM_SESSION_REQ_QUEUE_SIZE 2     /**< Initial size of the request queue buffer. */
+
 /**
  * @brief Connection Manager context.
  */
@@ -67,6 +69,29 @@ typedef struct cm_ctx_s {
     ev_io server_watcher;
     ev_async stop_watcher;
 } cm_ctx_t;
+
+/**
+ * @brief TODO
+ */
+typedef struct cm_session_ctx_s {
+    uint32_t rp_req_cnt;                 /**< Number of session-related outstanding requests in Request Processor. */
+    sr_cbuff_t *request_queue;           /**< Queue of requests waiting for forwarding to Request Processor. */
+    uint32_t rp_resp_expected;           /**< Number of expected session-related responses to be forwarded to Request Processor. */
+
+    rp_session_t *rp_session;            /**< Request Processor session data. */
+} cm_session_ctx_t;
+
+/**
+ * @brief TODO
+ */
+typedef struct cm_connection_ctx_s {
+    sm_buffer_t in_buff;   /**< Input buffer. If not empty, there is some received data to be processed. */
+    sm_buffer_t out_buff;  /**< Output buffer. If not empty, there is some data to be sent when receiver is ready. */
+
+    ev_io read_watcher;
+    ev_io write_watcher;
+    cm_ctx_t *cm_ctx;
+} cm_connection_ctx_t;
 
 /**
  * @brief Sets the file descriptor to non-blocking I/O mode.
@@ -174,35 +199,67 @@ cm_server_cleanup(cm_ctx_t *cm_ctx)
 }
 
 /**
+ * @brief Cleans up Connection Manager-related session data. Automatically called from Session Manager.
+ */
+static void
+cm_session_data_cleanup(void *session)
+{
+    sm_session_t *sm_session = (sm_session_t*)session;
+    if ((NULL != sm_session) && (NULL != sm_session->cm_data)) {
+        sr_cbuff_cleanup(sm_session->cm_data->request_queue);
+        free(sm_session->cm_data);
+        sm_session->cm_data = NULL;
+    }
+}
+
+/**
+ * @brief  Cleans up Connection Manager-related connection data. Automatically called from Session Manager.
+ */
+static void
+cm_connection_data_cleanup(void *connection)
+{
+    sm_connection_t *sm_connection = (sm_connection_t*)connection;
+    if ((NULL != sm_connection) && (NULL != sm_connection->cm_data)) {
+        free(sm_connection->cm_data->in_buff.data);
+        free(sm_connection->cm_data->out_buff.data);
+        free(sm_connection->cm_data);
+        sm_connection->cm_data = NULL;
+    }
+}
+
+/**
  * @brief Close the connection inside of Connection Manager and Request Processor.
  */
 static int
 cm_conn_close(cm_ctx_t *cm_ctx, sm_connection_t *conn)
 {
     sm_session_list_t *sess = NULL;
-    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG3(cm_ctx, conn, conn->cm_data);
 
     SR_LOG_INF("Closing the connection %p.", (void*)conn);
 
-    ev_io_stop(cm_ctx->event_loop, &conn->read_watcher);
-    ev_io_stop(cm_ctx->event_loop, &conn->write_watcher);
+    ev_io_stop(cm_ctx->event_loop, &conn->cm_data->read_watcher);
+    ev_io_stop(cm_ctx->event_loop, &conn->cm_data->write_watcher);
 
     close(conn->fd);
 
     /* close all sessions assigned to this connection */
     while (NULL != conn->session_list) {
         sess = conn->session_list;
-
-        /* stop the session in Request Processor */
-        rp_session_stop(cm_ctx->rp_ctx, sess->session->rp_session);
-
-        /* drop the session in Session manager */
-        sm_session_drop(cm_ctx->sm_ctx, sess->session); /* also removes from conn->session_list */
+        if (NULL != sess->session) {
+            if (NULL != sess->session->cm_data) {
+                /* stop the session in Request Processor */
+                rp_session_stop(cm_ctx->rp_ctx, sess->session->cm_data->rp_session);
+            }
+            /* drop the session in Session manager */
+            sm_session_drop(cm_ctx->sm_ctx, sess->session); /* also removes from conn->session_list */
+        }
     }
 
     sm_connection_stop(cm_ctx->sm_ctx, conn);
 
-    return rc;
+    return SR_ERR_OK;
 }
 
 /**
@@ -213,7 +270,7 @@ cm_conn_buffer_expand(const sm_connection_t *conn, sm_buffer_t *buff, size_t req
 {
     uint8_t *tmp = NULL;
 
-    CHECK_NULL_ARG2(conn, buff);
+    CHECK_NULL_ARG3(conn, conn->cm_data, buff);
 
     if ((buff->size - buff->pos) < requested_space) {
         if (requested_space < CM_BUFF_ALLOC_CHUNK) {
@@ -224,10 +281,10 @@ cm_conn_buffer_expand(const sm_connection_t *conn, sm_buffer_t *buff, size_t req
             buff->data = tmp;
             buff->size += requested_space;
             SR_LOG_DBG("%s buffer for fd=%d expanded to %zu bytes.",
-                    (&conn->in_buff == buff ? "Input" : "Output"), conn->fd, buff->size);
+                    (&conn->cm_data->in_buff == buff ? "Input" : "Output"), conn->fd, buff->size);
         } else {
             SR_LOG_ERR("Cannot expand %s buffer for fd=%d - not enough memory.",
-                    (&conn->in_buff == buff ? "input" : "output"), conn->fd);
+                    (&conn->cm_data->in_buff == buff ? "input" : "output"), conn->fd);
             return SR_ERR_NOMEM;
         }
     }
@@ -246,9 +303,9 @@ cm_conn_out_buff_flush(cm_ctx_t *cm_ctx, sm_connection_t *connection)
     size_t buff_size = 0, buff_pos = 0;
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG2(cm_ctx, connection);
+    CHECK_NULL_ARG3(cm_ctx, connection, connection->cm_data);
 
-    buff = &connection->out_buff;
+    buff = &connection->cm_data->out_buff;
     buff_size = buff->pos;
     buff_pos = 0;
 
@@ -262,7 +319,7 @@ cm_conn_out_buff_flush(cm_ctx_t *cm_ctx, sm_connection_t *connection)
                 /* no more data can be sent now */
                 SR_LOG_DBG("fd %d would block", connection->fd);
                 /* monitor fd for writable event */
-                ev_io_start(cm_ctx->event_loop, &connection->write_watcher);
+                ev_io_start(cm_ctx->event_loop, &connection->cm_data->write_watcher);
             } else {
                 /* error by writing - close the connection due to an error */
                 SR_LOG_ERR("Error by writing data to fd %d: %s.", connection->fd, strerror(errno));
@@ -294,9 +351,9 @@ cm_msg_send_session(cm_ctx_t *cm_ctx, sm_session_t *session, Sr__Msg *msg)
     size_t msg_size = 0;
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG4(cm_ctx, session, session->connection, msg);
+    CHECK_NULL_ARG5(cm_ctx, session, session->connection, session->connection->cm_data, msg);
 
-    buff = &session->connection->out_buff;
+    buff = &session->connection->cm_data->out_buff;
 
     /* find out required message size */
     msg_size = sr__msg__get_packed_size(msg);
@@ -319,6 +376,9 @@ cm_msg_send_session(cm_ctx_t *cm_ctx, sm_session_t *session, Sr__Msg *msg)
 
         /* flush the buffer */
         rc = cm_conn_out_buff_flush(cm_ctx, session->connection);
+        if ((session->connection->close_requested) || (SR_ERR_OK != rc)) {
+            cm_conn_close(cm_ctx, session->connection);
+        }
     }
 
     return rc;
@@ -360,11 +420,29 @@ cm_session_start_req_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, Sr__Msg *m
         return SR_ERR_NOMEM;
     }
 
+    /* prepare CM session data */
+    session->cm_data = calloc(1, sizeof(*(session->cm_data)));
+    if (NULL == session->cm_data) {
+        SR_LOG_ERR_MSG("Cannot allocate CM session data.");
+        rc = SR_ERR_NOMEM;
+    }
+
+    /* initialize session request queue */
+    if (SR_ERR_OK == rc) {
+        rc = sr_cbuff_init(CM_SESSION_REQ_QUEUE_SIZE, sizeof(Sr__Msg*), &session->cm_data->request_queue);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR("Cannot initialize session request queue (session id=%"PRIu32").", session->id);
+            rc = SR_ERR_NOMEM;
+        }
+    }
+
     /* start session in Request Processor */
-    rc = rp_session_start(cm_ctx->rp_ctx, session->real_user, session->effective_user, session->id,
-            sr_datastore_gpb_to_sr(msg_in->request->session_start_req->datastore), &session->rp_session);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Cannot start Request Processor session (conn=%p).", (void*)conn);
+    if (SR_ERR_OK == rc) {
+        rc = rp_session_start(cm_ctx->rp_ctx, session->real_user, session->effective_user, session->id,
+                sr_datastore_gpb_to_sr(msg_in->request->session_start_req->datastore), &session->cm_data->rp_session);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR("Cannot start Request Processor session (conn=%p).", (void*)conn);
+        }
     }
 
     if (SR_ERR_OK == rc) {
@@ -372,6 +450,7 @@ cm_session_start_req_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, Sr__Msg *m
         msg->response->session_start_resp->session_id = session->id;
     } else {
         /* set the error code to response */
+        sm_session_drop(cm_ctx->sm_ctx, session);
         msg->response->result = rc;
     }
 
@@ -419,8 +498,8 @@ cm_session_stop_req_process(cm_ctx_t *cm_ctx, sm_session_t *session, Sr__Msg *ms
     }
 
     /* stop session in Request Processor */
-    if (SR_ERR_OK == rc) {
-        rc = rp_session_stop(cm_ctx->rp_ctx, session->rp_session);
+    if ((SR_ERR_OK == rc) && (NULL != session->cm_data)) {
+        rc = rp_session_stop(cm_ctx->rp_ctx, session->cm_data->rp_session);
     }
 
     if (SR_ERR_OK == rc) {
@@ -462,7 +541,8 @@ cm_req_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, sm_session_t *session, S
 
     CHECK_NULL_ARG4(cm_ctx, conn, msg, msg->request);
     /* session can be NULL by session_start */
-    if ((SR__OPERATION__SESSION_START != msg->request->operation) && (NULL == session)) {
+    if ((SR__OPERATION__SESSION_START != msg->request->operation) &&
+            ((NULL == session || NULL == session->cm_data))) {
         return SR_ERR_INVAL_ARG;
     }
 
@@ -489,18 +569,18 @@ cm_req_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, sm_session_t *session, S
             sr__msg__free_unpacked(msg, NULL);
             break;
         default:
-            if (session->rp_req_cnt > 0) {
+            if (session->cm_data->rp_req_cnt > 0) {
                 /* there are some outstanding requests in RP, put the message into queue */
-                rc = sr_cbuff_enqueue(session->request_queue, &msg);
+                rc = sr_cbuff_enqueue(session->cm_data->request_queue, &msg);
                 if (SR_ERR_OK != rc) {
-                    goto cleanup; /* TODO: send response with error */
+                    goto cleanup;
                 }
             } else {
                 /* no outstanding requests in RP, we can forward the message to request Processor */
-                session->rp_req_cnt += 1;
-                rc = rp_msg_process(cm_ctx->rp_ctx, session->rp_session, msg);
+                session->cm_data->rp_req_cnt += 1;
+                rc = rp_msg_process(cm_ctx->rp_ctx, session->cm_data->rp_session, msg);
                 if (SR_ERR_OK != rc) {
-                    session->rp_req_cnt -= 1;
+                    session->cm_data->rp_req_cnt -= 1;
                     /* do not cleanup the message (already done in RP) */
                 }
             }
@@ -522,7 +602,8 @@ cm_resp_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, sm_session_t *session, 
 {
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG5(cm_ctx, conn, session, msg, msg->response);
+    CHECK_NULL_ARG4(cm_ctx, conn, msg, msg->response);
+    CHECK_NULL_ARG2(session, session->cm_data);
 
     rc = sr_pb_msg_validate(msg, SR__MSG__MSG_TYPE__RESPONSE, msg->response->operation);
     if (SR_ERR_OK != rc) {
@@ -537,10 +618,9 @@ cm_resp_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, sm_session_t *session, 
         goto cleanup;
     }
 
-    if (session->rp_resp_expected > 0) {
+    if (session->cm_data->rp_resp_expected > 0) {
         /* the response is expected, forward it to Request Processor */
-        rc = rp_msg_process(cm_ctx->rp_ctx, session->rp_session, msg); /* TODO: send response by error? */
-        /* do not cleanup the message (already done in RP) */
+        rc = rp_msg_process(cm_ctx->rp_ctx, session->cm_data->rp_session, msg);
     } else {
         /* the response is unexpected */
         SR_LOG_ERR("Unexpected response received to session id=%"PRIu32".", session->id);
@@ -630,9 +710,9 @@ cm_conn_in_buff_process(cm_ctx_t *cm_ctx, sm_connection_t *conn)
     size_t msg_size = 0;
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG2(cm_ctx, conn);
+    CHECK_NULL_ARG3(cm_ctx, conn, conn->cm_data);
 
-    buff = &conn->in_buff;
+    buff = &conn->cm_data->in_buff;
     buff_size = buff->pos;
     buff_pos = 0;
 
@@ -682,17 +762,26 @@ cm_conn_in_buff_process(cm_ctx_t *cm_ctx, sm_connection_t *conn)
 static void
 cm_conn_read_cb(struct ev_loop *loop, ev_io *w, int revents)
 {
-    sm_connection_t *conn = (sm_connection_t*)w->data;
-    cm_ctx_t *cm_ctx = conn->cm_ctx;
-    int bytes = 0;
+    sm_connection_t *conn = NULL;
+    cm_ctx_t *cm_ctx = NULL;
     sm_buffer_t *buff = NULL;
+    int bytes = 0;
     int rc = SR_ERR_OK;
 
-    // TODO err check
+    CHECK_NULL_ARG_NORET2(rc, w, w->data);
+    if (SR_ERR_OK != rc) {
+        return;
+    }
+    conn = (sm_connection_t*)w->data;
+
+    CHECK_NULL_ARG_NORET3(rc, conn, conn->cm_data, conn->cm_data->cm_ctx);
+    if (SR_ERR_OK != rc) {
+        return;
+    }
+    cm_ctx = conn->cm_data->cm_ctx;
+    buff = &conn->cm_data->in_buff;
 
     SR_LOG_DBG("fd %d readable", conn->fd);
-
-    buff = &conn->in_buff;
 
     do {
         /* expand input buffer if needed */
@@ -748,15 +837,25 @@ cm_conn_read_cb(struct ev_loop *loop, ev_io *w, int revents)
 static void
 cm_conn_write_cb(struct ev_loop *loop, ev_io *w, int revents)
 {
-    sm_connection_t *conn = (sm_connection_t*)w->data;
-    cm_ctx_t *cm_ctx = conn->cm_ctx;
+    sm_connection_t *conn = NULL;
+    cm_ctx_t *cm_ctx = NULL;
     int rc = SR_ERR_OK;
 
-    // TODO err check
+    CHECK_NULL_ARG_NORET2(rc, w, w->data);
+    if (SR_ERR_OK != rc) {
+        return;
+    }
+    conn = (sm_connection_t*)w->data;
+
+    CHECK_NULL_ARG_NORET3(rc, conn, conn->cm_data, conn->cm_data->cm_ctx);
+    if (SR_ERR_OK != rc) {
+        return;
+    }
+    cm_ctx = conn->cm_data->cm_ctx;
 
     SR_LOG_DBG("fd %d writeable", conn->fd);
 
-    ev_io_stop(cm_ctx->event_loop, &conn->write_watcher);
+    ev_io_stop(cm_ctx->event_loop, &conn->cm_data->write_watcher);
 
     /* flush the output buffer */
     rc = cm_conn_out_buff_flush(cm_ctx, conn);
@@ -768,21 +867,27 @@ cm_conn_write_cb(struct ev_loop *loop, ev_io *w, int revents)
 }
 
 /**
- * @brief Initializes connection watchers
+ * @brief Initializes connection watchers.
  */
 static int
 cm_conn_watcher_init(cm_ctx_t *cm_ctx, sm_connection_t *conn)
 {
     CHECK_NULL_ARG2(cm_ctx, conn);
 
-    conn->cm_ctx = cm_ctx;
+    conn->cm_data = calloc(1, sizeof(*(conn->cm_data)));
+    if (NULL == conn->cm_data) {
+        SR_LOG_ERR_MSG("Cannot allocate CM connection data context.");
+        return SR_ERR_NOMEM;
+    }
 
-    ev_io_init(&conn->read_watcher, cm_conn_read_cb, conn->fd, EV_READ);
-    conn->read_watcher.data = (void*)conn;
-    ev_io_start(cm_ctx->event_loop, &conn->read_watcher);
+    conn->cm_data->cm_ctx = cm_ctx;
 
-    ev_io_init(&conn->write_watcher, cm_conn_write_cb, conn->fd, EV_WRITE);
-    conn->write_watcher.data = (void*)conn;
+    ev_io_init(&conn->cm_data->read_watcher, cm_conn_read_cb, conn->fd, EV_READ);
+    conn->cm_data->read_watcher.data = (void*)conn;
+    ev_io_start(cm_ctx->event_loop, &conn->cm_data->read_watcher);
+
+    ev_io_init(&conn->cm_data->write_watcher, cm_conn_write_cb, conn->fd, EV_WRITE);
+    conn->cm_data->write_watcher.data = (void*)conn;
     /* do not start write watcher - will be started when needed */
 
     return SR_ERR_OK;
@@ -792,14 +897,15 @@ cm_conn_watcher_init(cm_ctx_t *cm_ctx, sm_connection_t *conn)
  * @brief Accepts new connections to the server and starts monitoring the new
  * client file descriptors.
  */
-static int
-cm_server_accept(cm_ctx_t *cm_ctx)
+static void
+cm_server_watcher_cb(struct ev_loop *loop, ev_io *w, int revents)
 {
     int clnt_fd = -1;
     sm_connection_t *connection = NULL;
     int rc = SR_ERR_OK;
+    cm_ctx_t *cm_ctx = (cm_ctx_t*)w->data;
 
-    CHECK_NULL_ARG(cm_ctx);
+    // TODO err check
 
     do {
         clnt_fd = accept(cm_ctx->listen_socket_fd, NULL, NULL);
@@ -854,18 +960,6 @@ cm_server_accept(cm_ctx_t *cm_ctx)
             }
         }
     } while (-1 != clnt_fd); /* accept returns -1 when there are no more connections to accept */
-
-    return SR_ERR_OK;
-}
-
-static void
-cm_server_watcher_cb(struct ev_loop *loop, ev_io *w, int revents)
-{
-    cm_ctx_t *cm_ctx = (cm_ctx_t*)w->data;
-
-    // TODO err check
-
-    cm_server_accept(cm_ctx);
 }
 
 /**
@@ -943,7 +1037,7 @@ cm_init(const cm_connection_mode_t mode, const char *socket_path, cm_ctx_t **cm_
     }
     ctx->mode = mode;
 
-    rc = sm_init(&ctx->sm_ctx);
+    rc = sm_init(&ctx->sm_ctx, cm_session_data_cleanup, cm_connection_data_cleanup);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Cannot initialize Session Manager.");
         goto cleanup;
@@ -993,8 +1087,8 @@ cm_cleanup(cm_ctx_t *cm_ctx)
         /* stop all sessions in RP */
         while (SR_ERR_OK == rc) {
             rc = sm_session_get_index(cm_ctx->sm_ctx, i++, &session);
-            if (NULL != session) {
-                rp_session_stop(cm_ctx->rp_ctx, session->rp_session);
+            if ((NULL != session) && (NULL != session->cm_data)) {
+                rp_session_stop(cm_ctx->rp_ctx, session->cm_data->rp_session);
                 session = NULL;
             }
         }
@@ -1070,13 +1164,18 @@ cm_msg_send(cm_ctx_t *cm_ctx, Sr__Msg *msg)
         return rc;
     }
 
+    if ((NULL == session) || (NULL == session->cm_data)) {
+        SR_LOG_ERR("invalid session context - NULL value detected (id=%"PRIu32").", msg->session_id);
+        return rc;
+    }
+
     /* update counters of session-related requests in RP */
     if (SR__MSG__MSG_TYPE__RESPONSE == msg->type) {
-        if (session->rp_req_cnt > 0) {
-            session->rp_req_cnt -= 1;
+        if (session->cm_data->rp_req_cnt > 0) {
+            session->cm_data->rp_req_cnt -= 1;
         }
     } else if (SR__MSG__MSG_TYPE__REQUEST == msg->type) {
-        session->rp_resp_expected += 1;
+        session->cm_data->rp_resp_expected += 1;
     }
 
     /* send the message */
@@ -1090,12 +1189,12 @@ cm_msg_send(cm_ctx_t *cm_ctx, Sr__Msg *msg)
     sr__msg__free_unpacked(msg, NULL);
 
     /* if there are no outstanding session-related requests in RP and there are some requests waiting, process them */
-    if (0 == session->rp_req_cnt) {
-        if (sr_cbuff_dequeue(session->request_queue, &msg)) {
-            session->rp_req_cnt += 1;
-            rc = rp_msg_process(cm_ctx->rp_ctx, session->rp_session, msg);
+    if (0 == session->cm_data->rp_req_cnt) {
+        if (sr_cbuff_dequeue(session->cm_data->request_queue, &msg)) {
+            session->cm_data->rp_req_cnt += 1;
+            rc = rp_msg_process(cm_ctx->rp_ctx, session->cm_data->rp_session, msg);
             if (SR_ERR_OK != rc) {
-                session->rp_req_cnt -= 1;
+                session->cm_data->rp_req_cnt -= 1;
             }
         }
     }
