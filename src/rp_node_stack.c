@@ -74,6 +74,7 @@ rp_ns_clean(rp_node_stack_t **stack){
     while (!rp_ns_is_empty(stack)){
         rp_ns_pop(stack, &item);
         free(item);
+        item = NULL;
     }
     *stack = NULL;
     return SR_ERR_OK;
