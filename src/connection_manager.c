@@ -29,33 +29,19 @@
 #include <sys/un.h>
 #include <sys/types.h>
 #include <fcntl.h>
-#include <sys/select.h>
 #include <pthread.h>
 #include <signal.h>
 #include <arpa/inet.h>
 #include <pwd.h>
+#include <ev.h>
 
 #include "sr_common.h"
 #include "session_manager.h"
 #include "request_processor.h"
 #include "connection_manager.h"
 
-#define CM_FD_INVALID -1  /**< Invalid value of file descriptor. */
-
-#define CM_SELECT_TIMEOUT (10)      /**< Timeout used for select calls (in seconds). */
-#define CM_SIG_STOP (SIGRTMIN + 8)  /**< Signal used to notify the thread with event loop about stop request (applicable for library mode). */
-
-#define PIPE_READ 0   /**< Identifies read end of a pipe. */
-#define PIPE_WRITE 1  /**< Identifies write end of a pipe. */
-
 #define CM_IN_BUFF_MIN_SPACE 512  /**< Minimal empty space in the input buffer. */
 #define CM_BUFF_ALLOC_CHUNK 1024  /**< Chunk size for buffer expansions. */
-
-/**
- * @brief Global variable used to request stop of the event loop in all instances of CM,
- * it should be set ONLY by signal handler functions within the same thread as the loop.
- */
-static volatile sig_atomic_t stop_requested = 0;
 
 /**
  * @brief Connection Manager context.
@@ -73,17 +59,13 @@ typedef struct cm_ctx_s {
     const char *server_socket_path;
     /** Socket descriptor used to listen & accept new unix-domain connections. */
     int listen_socket_fd;
-    /** outgoing message queue (descriptors of a pipe, write is performed by ::cm_msg_send). */
-    int out_msg_fds[2];
 
     /** Thread where event loop will be running in case of library mode. */
     pthread_t event_loop_thread;
-    /** File descriptor set being watched for readable event by select. */
-    fd_set select_read_fds;
-    /** File descriptor set being watched for writable event by select. */
-    fd_set select_write_fds;
-    /** Maximum file descriptor being watched by select. */
-    int select_fd_max;
+
+    struct ev_loop *event_loop; // TODO
+    ev_io server_watcher;
+    ev_async stop_watcher;
 } cm_ctx_t;
 
 /**
@@ -192,181 +174,6 @@ cm_server_cleanup(cm_ctx_t *cm_ctx)
 }
 
 /**
- * @brief Initializes outgoing message queue.
- */
-static int
-cm_out_msg_queue_init(cm_ctx_t *cm_ctx)
-{
-    int rc = -1;
-
-    CHECK_NULL_ARG(cm_ctx);
-
-    /* create a pipe */
-    rc = pipe(cm_ctx->out_msg_fds);
-    if (-1 == rc) {
-        SR_LOG_ERR("Pipe create error: %s", strerror(errno));
-        return SR_ERR_INIT_FAILED;
-    }
-
-    /* set read end to nonblocking */
-    rc = cm_fd_set_nonblock(cm_ctx->out_msg_fds[PIPE_READ]);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Cannot set read end of the pipe to nonblocking mode.");
-        close(cm_ctx->out_msg_fds[PIPE_READ]);
-        close(cm_ctx->out_msg_fds[PIPE_WRITE]);
-        return SR_ERR_INIT_FAILED;
-    }
-
-    return SR_ERR_OK;
-}
-
-/**
- * @brief Cleans up outgoing message queue.
- */
-static void
-cm_out_msg_queue_cleanup(cm_ctx_t *cm_ctx)
-{
-    if (NULL != cm_ctx) {
-        close(cm_ctx->out_msg_fds[PIPE_READ]);
-        close(cm_ctx->out_msg_fds[PIPE_WRITE]);
-    }
-}
-
-/**
- * @brief Initializes data structures used by select. Adds unix-domain server
- * socket and read-end of the outgoing message queue to fd set monitored by select.
- */
-static int
-cm_select_init(cm_ctx_t *cm_ctx)
-{
-    CHECK_NULL_ARG(cm_ctx);
-
-    if ((cm_ctx->listen_socket_fd >= FD_SETSIZE) || (cm_ctx->out_msg_fds[PIPE_READ] >= FD_SETSIZE)) {
-        SR_LOG_ERR("FD_SETSIZE(%d) reached, cannot select on one of provided fds.", FD_SETSIZE);
-        return SR_ERR_INTERNAL;
-    }
-
-    /* init both read and write fd sets */
-    FD_ZERO(&cm_ctx->select_read_fds);
-    FD_ZERO(&cm_ctx->select_write_fds);
-
-    /* select on server listen socket */
-    FD_SET(cm_ctx->listen_socket_fd, &cm_ctx->select_read_fds);
-    cm_ctx->select_fd_max = cm_ctx->listen_socket_fd;
-
-    /* select on read-end of outgoing msg queue pipe */
-    FD_SET(cm_ctx->out_msg_fds[PIPE_READ], &cm_ctx->select_read_fds);
-    if (cm_ctx->out_msg_fds[PIPE_READ] > cm_ctx->select_fd_max) {
-        cm_ctx->select_fd_max = cm_ctx->out_msg_fds[PIPE_READ];
-    }
-
-    return SR_ERR_OK;
-}
-
-/**
- * @brief Cleans up the structures used by select. Closes all monitored
- * descriptors that left open.
- */
-static void
-cm_select_cleanup(cm_ctx_t *cm_ctx)
-{
-    int i = 0;
-
-    if (NULL != cm_ctx) {
-        for (i = 0; i < cm_ctx->select_fd_max; i++) {
-            if (FD_ISSET(i, &cm_ctx->select_read_fds) || FD_ISSET(i, &cm_ctx->select_write_fds)) {
-                close(i);
-                FD_CLR(i, &cm_ctx->select_read_fds);
-                FD_CLR(i, &cm_ctx->select_write_fds);
-            }
-        }
-    }
-}
-
-/**
- * @brief Accepts new connections to the server and starts monitoring the new
- * client file descriptors.
- */
-static int
-cm_server_accept(cm_ctx_t *cm_ctx)
-{
-    int clnt_fd = -1;
-    sm_connection_t *connection = NULL;
-    int rc = SR_ERR_OK;
-
-    CHECK_NULL_ARG(cm_ctx);
-
-    do {
-        clnt_fd = accept(cm_ctx->listen_socket_fd, NULL, NULL);
-        if (-1 != clnt_fd) {
-            /* accepted the new connection */
-            SR_LOG_DBG("New client connection on fd %d", clnt_fd);
-            if (clnt_fd >= FD_SETSIZE) {
-                /* cannot accept connections with fd above FD_SETSIZE */
-                SR_LOG_ERR("FD_SETSIZE(%d) reached, cannot accept connection with fd=%d.", FD_SETSIZE, clnt_fd);
-                close(clnt_fd);
-                continue;
-            }
-            /* set to nonblocking mode */
-            rc = cm_fd_set_nonblock(clnt_fd);
-            if (SR_ERR_OK != rc) {
-                SR_LOG_ERR("Cannot set fd=%d to nonblocking mode.", clnt_fd);
-                close(clnt_fd);
-                continue;
-            }
-            /* start connection in session manager */
-            rc = sm_connection_start(cm_ctx->sm_ctx, CM_AF_UNIX_CLIENT, clnt_fd, &connection);
-            if (SR_ERR_OK != rc) {
-                SR_LOG_ERR("Cannot start connection in Session manager (fd=%d).", clnt_fd);
-                close(clnt_fd);
-                continue;
-            }
-            /* check uid in case of local (library) mode */
-            if (CM_MODE_LOCAL == cm_ctx->mode) {
-                if (connection->uid != geteuid()) {
-                    SR_LOG_ERR("Peer's uid=%d does not match with local uid=%d "
-                            "(required by local mode).", connection->uid, geteuid());
-                    sm_connection_stop(cm_ctx->sm_ctx, connection);
-                    close(clnt_fd);
-                    continue;
-                }
-            }
-            /* add to select fd set */
-            FD_SET(clnt_fd, &cm_ctx->select_read_fds);
-            if (clnt_fd > cm_ctx->select_fd_max) {
-                cm_ctx->select_fd_max = clnt_fd;
-            }
-        } else {
-            if ((EWOULDBLOCK == errno) || (EAGAIN == errno)) {
-                /* no more connections to accept */
-                break;
-            } else {
-                /* error by accept - only log the error and skip it */
-                SR_LOG_ERR("Unexpected error by accepting new connection: %s", strerror(errno));
-                continue;
-            }
-        }
-    } while (-1 != clnt_fd); /* accept returns -1 when there are no more connections to accept */
-
-    return SR_ERR_OK;
-}
-
-/**
- * @brief Dispatches a readable event on read-end of outgoing message queue.
- */
-static int
-cm_out_msg_queue_dispatch(const cm_ctx_t *cm_ctx)
-{
-    CHECK_NULL_ARG(cm_ctx);
-
-    SR_LOG_DBG_MSG("out msg queue dispatch");
-
-    // TODO process the message
-
-    return SR_ERR_OK;
-}
-
-/**
  * @brief Close the connection inside of Connection Manager and Request Processor.
  */
 static int
@@ -376,6 +183,11 @@ cm_conn_close(cm_ctx_t *cm_ctx, sm_connection_t *conn)
     int rc = SR_ERR_OK;
 
     SR_LOG_INF("Closing the connection %p.", (void*)conn);
+
+    ev_io_stop(cm_ctx->event_loop, &conn->read_watcher);
+    ev_io_stop(cm_ctx->event_loop, &conn->write_watcher);
+
+    close(conn->fd);
 
     /* close all sessions assigned to this connection */
     while (NULL != conn->session_list) {
@@ -391,24 +203,6 @@ cm_conn_close(cm_ctx_t *cm_ctx, sm_connection_t *conn)
     sm_connection_stop(cm_ctx->sm_ctx, conn);
 
     return rc;
-}
-
-/**
- * @brief Close the file descriptor and stop monitoring it.
- */
-static int
-cm_fd_close(cm_ctx_t *cm_ctx, int fd)
-{
-    CHECK_NULL_ARG(cm_ctx);
-
-    /* close the file descriptor */
-    close(fd);
-
-    /* remove from set of monitored fds */
-    FD_CLR(fd, &cm_ctx->select_read_fds);
-    FD_CLR(fd, &cm_ctx->select_write_fds);
-
-    return SR_ERR_OK;
 }
 
 /**
@@ -468,10 +262,7 @@ cm_conn_out_buff_flush(cm_ctx_t *cm_ctx, sm_connection_t *connection)
                 /* no more data can be sent now */
                 SR_LOG_DBG("fd %d would block", connection->fd);
                 /* monitor fd for writable event */
-                FD_SET(connection->fd, &cm_ctx->select_write_fds);
-                if (connection->fd > cm_ctx->select_fd_max) {
-                    cm_ctx->select_fd_max = connection->fd;
-                }
+                ev_io_start(cm_ctx->event_loop, &connection->write_watcher);
             } else {
                 /* error by writing - close the connection due to an error */
                 SR_LOG_ERR("Error by writing data to fd %d: %s.", connection->fd, strerror(errno));
@@ -888,24 +679,19 @@ cm_conn_in_buff_process(cm_ctx_t *cm_ctx, sm_connection_t *conn)
 /**
  * @brief Dispatches a readable event on the file descriptor of a normal connection.
  */
-static int
-cm_conn_read(cm_ctx_t *cm_ctx, int fd)
+static void
+cm_conn_read_cb(struct ev_loop *loop, ev_io *w, int revents)
 {
-    sm_connection_t *conn = NULL;
+    sm_connection_t *conn = (sm_connection_t*)w->data;
+    cm_ctx_t *cm_ctx = conn->cm_ctx;
     int bytes = 0;
     sm_buffer_t *buff = NULL;
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG(cm_ctx);
+    // TODO err check
 
-    SR_LOG_DBG("fd %d readable", fd);
+    SR_LOG_DBG("fd %d readable", conn->fd);
 
-    /* find matching SM connection */
-    rc = sm_connection_find_fd(cm_ctx->sm_ctx, fd, &conn);
-    if ((SR_ERR_OK != rc) || (NULL == conn)) {
-        SR_LOG_ERR("No SM connection assigned to fd=%d.", fd);
-        return SR_ERR_OK;
-    }
     buff = &conn->in_buff;
 
     do {
@@ -916,24 +702,24 @@ cm_conn_read(cm_ctx_t *cm_ctx, int fd)
             break;
         }
         /* receive data */
-        bytes = recv(fd, (buff->data + buff->pos), (buff->size - buff->pos), 0);
+        bytes = recv(conn->fd, (buff->data + buff->pos), (buff->size - buff->pos), 0);
         if (bytes > 0) {
             /* recieved "bytes" bytes of data */
-            SR_LOG_DBG("%d bytes of data recieved on fd %d : %s", bytes, fd, buff->data);
+            SR_LOG_DBG("%d bytes of data recieved on fd %d : %s", bytes, conn->fd, buff->data);
             buff->pos += bytes;
         } else if (0 == bytes) {
             /* connection closed by the other side */
-            SR_LOG_DBG("Peer on fd %d disconnected.", fd);
+            SR_LOG_DBG("Peer on fd %d disconnected.", conn->fd);
             conn->close_requested = true;
             break;
         } else {
             if ((EWOULDBLOCK == errno) || (EAGAIN == errno)) {
                 /* no more data to be read */
-                SR_LOG_DBG("fd %d would block", fd);
+                SR_LOG_DBG("fd %d would block", conn->fd);
                 break;
             } else {
                 /* error by reading - close the connection due to an error */
-                SR_LOG_ERR("Error by reading data on fd %d: %s.", fd, strerror(errno));
+                SR_LOG_ERR("Error by reading data on fd %d: %s.", conn->fd, strerror(errno));
                 conn->close_requested = true;
                 break;
             }
@@ -944,51 +730,142 @@ cm_conn_read(cm_ctx_t *cm_ctx, int fd)
     if (SR_ERR_OK == rc) {
         rc = cm_conn_in_buff_process(cm_ctx, conn);
         if (SR_ERR_OK != rc) {
-            SR_LOG_WRN("Error by processing of the input buffer of fd=%d, closing the connection.", fd);
+            SR_LOG_WRN("Error by processing of the input buffer of fd=%d, closing the connection.", conn->fd);
             conn->close_requested = true;
             rc = SR_ERR_OK; /* connection will be closed, we can continue */
         }
     }
 
     /* close the connection if requested */
-    if (conn->close_requested) {
+    if ((conn->close_requested) || (SR_ERR_OK != rc)) {
         cm_conn_close(cm_ctx, conn);
-        cm_fd_close(cm_ctx, fd);
     }
-
-    return rc;
 }
 
 /**
  * @brief Dispatches a writable event on the file descriptor of a normal connection.
  */
-static int
-cm_conn_write(cm_ctx_t *cm_ctx, int fd)
+static void
+cm_conn_write_cb(struct ev_loop *loop, ev_io *w, int revents)
 {
-    sm_connection_t *conn = NULL;
+    sm_connection_t *conn = (sm_connection_t*)w->data;
+    cm_ctx_t *cm_ctx = conn->cm_ctx;
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG(cm_ctx);
+    // TODO err check
 
-    SR_LOG_DBG("fd %d writeable", fd);
+    SR_LOG_DBG("fd %d writeable", conn->fd);
 
-    /* find matching SM connection */
-    rc = sm_connection_find_fd(cm_ctx->sm_ctx, fd, &conn);
-    if ((SR_ERR_OK != rc) || (NULL == conn)) {
-        SR_LOG_ERR("No SM connection assigned to fd=%d.", fd);
-        return SR_ERR_OK;
-    }
+    ev_io_stop(cm_ctx->event_loop, &conn->write_watcher);
 
     /* flush the output buffer */
     rc = cm_conn_out_buff_flush(cm_ctx, conn);
 
     /* close the connection if requested */
-    if (conn->close_requested) {
+    if ((conn->close_requested) || (SR_ERR_OK != rc)) {
         cm_conn_close(cm_ctx, conn);
-        cm_fd_close(cm_ctx, fd);
     }
+}
+
+/**
+ * @brief Initializes connection watchers
+ */
+static int
+cm_conn_watcher_init(cm_ctx_t *cm_ctx, sm_connection_t *conn)
+{
+    CHECK_NULL_ARG2(cm_ctx, conn);
+
+    conn->cm_ctx = cm_ctx;
+
+    ev_io_init(&conn->read_watcher, cm_conn_read_cb, conn->fd, EV_READ);
+    conn->read_watcher.data = (void*)conn;
+    ev_io_start(cm_ctx->event_loop, &conn->read_watcher);
+
+    ev_io_init(&conn->write_watcher, cm_conn_write_cb, conn->fd, EV_WRITE);
+    conn->write_watcher.data = (void*)conn;
+    /* do not start write watcher - will be started when needed */
 
     return SR_ERR_OK;
+}
+
+/**
+ * @brief Accepts new connections to the server and starts monitoring the new
+ * client file descriptors.
+ */
+static int
+cm_server_accept(cm_ctx_t *cm_ctx)
+{
+    int clnt_fd = -1;
+    sm_connection_t *connection = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG(cm_ctx);
+
+    do {
+        clnt_fd = accept(cm_ctx->listen_socket_fd, NULL, NULL);
+        if (-1 != clnt_fd) {
+            /* accepted the new connection */
+            SR_LOG_DBG("New client connection on fd %d", clnt_fd);
+            if (clnt_fd >= FD_SETSIZE) {
+                /* cannot accept connections with fd above FD_SETSIZE */
+                SR_LOG_ERR("FD_SETSIZE(%d) reached, cannot accept connection with fd=%d.", FD_SETSIZE, clnt_fd);
+                close(clnt_fd);
+                continue;
+            }
+            /* set to nonblocking mode */
+            rc = cm_fd_set_nonblock(clnt_fd);
+            if (SR_ERR_OK != rc) {
+                SR_LOG_ERR("Cannot set fd=%d to nonblocking mode.", clnt_fd);
+                close(clnt_fd);
+                continue;
+            }
+            /* start connection in session manager */
+            rc = sm_connection_start(cm_ctx->sm_ctx, CM_AF_UNIX_CLIENT, clnt_fd, &connection);
+            if (SR_ERR_OK != rc) {
+                SR_LOG_ERR("Cannot start connection in Session manager (fd=%d).", clnt_fd);
+                close(clnt_fd);
+                continue;
+            }
+            /* check uid in case of local (library) mode */
+            if (CM_MODE_LOCAL == cm_ctx->mode) {
+                if (connection->uid != geteuid()) {
+                    SR_LOG_ERR("Peer's uid=%d does not match with local uid=%d "
+                            "(required by local mode).", connection->uid, geteuid());
+                    sm_connection_stop(cm_ctx->sm_ctx, connection);
+                    close(clnt_fd);
+                    continue;
+                }
+            }
+            /* start watching this fd */
+            rc = cm_conn_watcher_init(cm_ctx, connection);
+            if (SR_ERR_OK != rc) {
+                SR_LOG_ERR("Cannot initialize watcher for fd=%d.", clnt_fd);
+                close(clnt_fd);
+                continue;
+            }
+        } else {
+            if ((EWOULDBLOCK == errno) || (EAGAIN == errno)) {
+                /* no more connections to accept */
+                break;
+            } else {
+                /* error by accept - only log the error and skip it */
+                SR_LOG_ERR("Unexpected error by accepting new connection: %s", strerror(errno));
+                continue;
+            }
+        }
+    } while (-1 != clnt_fd); /* accept returns -1 when there are no more connections to accept */
+
+    return SR_ERR_OK;
+}
+
+static void
+cm_server_watcher_cb(struct ev_loop *loop, ev_io *w, int revents)
+{
+    cm_ctx_t *cm_ctx = (cm_ctx_t*)w->data;
+
+    // TODO err check
+
+    cm_server_accept(cm_ctx);
 }
 
 /**
@@ -996,102 +873,18 @@ cm_conn_write(cm_ctx_t *cm_ctx, int fd)
  * and calls proper dispatch handler for each event. This function call blocks
  * until an error occured or until a stop request comes via stop_requested variable.
  */
-static int
+void
 cm_event_loop(cm_ctx_t *cm_ctx)
 {
-    int events_cnt = 0, events_processed = 0, i = 0;
-    int fd_max = -1;
-    fd_set read_fds, write_fds;
-    struct timespec timeout = { 0, };
-    sigset_t sig_mask;
-    int rc = SR_ERR_OK;
-
-    CHECK_NULL_ARG(cm_ctx);
+    if (NULL == cm_ctx) {
+        return;
+    }
 
     SR_LOG_DBG_MSG("Starting CM event loop.");
 
-    timeout.tv_sec  = CM_SELECT_TIMEOUT;
-    timeout.tv_nsec = 0;
-
-    /* prepare sig_mask used to unblock signals when execution is blocked in pselect */
-    sigemptyset(&sig_mask);
-    sigprocmask(SIG_SETMASK, NULL, &sig_mask); /* get current mask */
-    if (CM_MODE_DAEMON == cm_ctx->mode) {
-        /* unblock deamon signals inside of pselect */
-        sigdelset(&sig_mask, SIGINT);
-        sigdelset(&sig_mask, SIGTERM);
-    } else {
-        /* unblock library signals inside of pselect */
-        sigdelset(&sig_mask, CM_SIG_STOP);
-    }
-
-    do {
-        /* copy select master sets over working sets */
-        memcpy(&read_fds, &cm_ctx->select_read_fds, sizeof(cm_ctx->select_read_fds));
-        memcpy(&write_fds, &cm_ctx->select_write_fds, sizeof(cm_ctx->select_write_fds));
-        fd_max = cm_ctx->select_fd_max;
-
-        /* block until an event occurs */
-        events_cnt = pselect(fd_max + 1, &read_fds, &write_fds, NULL, &timeout, &sig_mask);
-
-        SR_LOG_DBG("select unblocked, events_cnt=%d.", events_cnt);
-
-        if (-1 == events_cnt) {
-            /* error */
-            if (EINTR == errno) {
-                SR_LOG_DBG("Event loop interrupted by a signal, "
-                        "stop_requested=%d.", stop_requested);
-            } else {
-                SR_LOG_ERR("Unexpected error by select: %s.", strerror(errno));
-                break;
-            }
-        } else if (0 == events_cnt) {
-            /* timeout */
-            SR_LOG_DBG_MSG("select timeout expired.");
-        } else {
-            /* event on some of the pollfds */
-            events_processed = 0;
-
-            for (i = 0 ; i <= fd_max; i++) {
-                if (FD_ISSET(i, &read_fds)) {
-                    /* data ready to be read */
-                    events_processed += 1;
-                    if (i == cm_ctx->listen_socket_fd) {
-                        /* new connection */
-                        rc = cm_server_accept(cm_ctx);
-                    } else if (i == cm_ctx->out_msg_fds[PIPE_READ]) {
-                        /* new msg in the outgoing queue */
-                        rc = cm_out_msg_queue_dispatch(cm_ctx);
-                    } else {
-                        /* new data from some connection */
-                        rc = cm_conn_read(cm_ctx, i);
-                    }
-                }
-                if (FD_ISSET(i, &write_fds)) {
-                    /* ready to write to some connection */
-                    events_processed += 1;
-                    rc = cm_conn_write(cm_ctx, i);
-                }
-                /* if all pollfds with events are processed, stop the iteration */
-                if (events_processed == events_cnt) {
-                    break;
-                }
-            }
-        }
-    } while ((SR_ERR_OK == rc) && (0 == stop_requested));
+    ev_run(cm_ctx->event_loop, 0);
 
     SR_LOG_DBG_MSG("CM event loop finished.");
-
-    return rc;
-}
-
-/**
- * @brief Signal handler for CM_SIG_STOP signal (applicable only for library mode).
- */
-static void
-cm_sig_stop_handle(int sig)
-{
-    stop_requested = 1;
 }
 
 /**
@@ -1100,22 +893,36 @@ cm_sig_stop_handle(int sig)
 static void *
 cm_event_loop_threaded(void *cm_ctx_p)
 {
-    cm_ctx_t *cm_ctx = (cm_ctx_t*)cm_ctx_p;
-    struct sigaction signal_action;
-    int rc = SR_ERR_OK;
-
-    /* install CM_SIG_STOP signal handler used to break the event loop from parent thread */
-    memset(&signal_action, 0, sizeof(signal_action));
-    signal_action.sa_handler = &cm_sig_stop_handle;
-    sigaction(CM_SIG_STOP, &signal_action, NULL);
-
-    /* start the event loop */
-    rc = cm_event_loop(cm_ctx);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Error by processing in the event loop occured.");
+    if (NULL == cm_ctx_p) {
+        return NULL;
     }
 
+    cm_ctx_t *cm_ctx = (cm_ctx_t*)cm_ctx_p;
+
+    cm_event_loop(cm_ctx);
+
     return NULL;
+}
+
+/**
+ * Callback called by the event loop when an async request to stop the loop is sent.
+ */
+static void
+cm_stop_cb(struct ev_loop *loop, ev_io *w, int revents)
+{
+    cm_ctx_t *cm_ctx = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG_NORET3(rc, loop, w, w->data);
+    if (SR_ERR_OK != rc) {
+        return;
+    }
+
+    cm_ctx = (cm_ctx_t*)w->data;
+
+    SR_LOG_DBG_MSG("Event loop stop requested.");
+
+    ev_break(cm_ctx->event_loop, EVBREAK_ALL);
 }
 
 int
@@ -1148,17 +955,16 @@ cm_init(const cm_connection_mode_t mode, const char *socket_path, cm_ctx_t **cm_
         goto cleanup;
     }
 
-    rc = cm_out_msg_queue_init(ctx);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Cannot initialize output message queue.");
-        goto cleanup;
-    }
+    // TODO: wrap
+    ctx->event_loop = ev_default_loop(0);
 
-    rc = cm_select_init(ctx);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Cannot initialize poll structure.");
-        goto cleanup;
-    }
+    ev_io_init(&ctx->server_watcher, cm_server_watcher_cb, ctx->listen_socket_fd, EV_READ);
+    ctx->server_watcher.data = (void*)ctx;
+    ev_io_start(ctx->event_loop, &ctx->server_watcher);
+
+    ev_async_init(&ctx->stop_watcher, cm_stop_cb);
+    ctx->stop_watcher.data = (void*)ctx;
+    ev_async_start(ctx->event_loop, &ctx->stop_watcher);
 
     rc = rp_init(ctx, &ctx->rp_ctx);
     if (SR_ERR_OK != rc) {
@@ -1195,9 +1001,8 @@ cm_cleanup(cm_ctx_t *cm_ctx)
         rp_cleanup(cm_ctx->rp_ctx);
         sm_cleanup(cm_ctx->sm_ctx);
 
-        cm_select_cleanup(cm_ctx);
+        ev_loop_destroy(cm_ctx->event_loop);
         cm_server_cleanup(cm_ctx);
-        cm_out_msg_queue_cleanup(cm_ctx);
         free(cm_ctx);
     }
 }
@@ -1210,29 +1015,10 @@ cm_start(cm_ctx_t *cm_ctx)
 
     CHECK_NULL_ARG(cm_ctx);
 
-    stop_requested = 0;
-
     if (CM_MODE_DAEMON == cm_ctx->mode) {
-        /* block daemon signals (will be unblocked in the event loop) */
-        sigemptyset(&mask);
-        sigaddset(&mask, SIGINT);
-        sigaddset(&mask, SIGTERM);
-        sigaddset(&mask, SIGPIPE); /* also block SIGPIPE */
-        pthread_sigmask(SIG_BLOCK, &mask, NULL);
-
         /* run the event loop in this thread */
-        rc = cm_event_loop(cm_ctx);
-        if (SR_ERR_OK != rc) {
-            SR_LOG_ERR_MSG("Error by processing in the event loop occured.");
-            pthread_sigmask(SIG_UNBLOCK, &mask, NULL);
-        }
+        cm_event_loop(cm_ctx);
     } else {
-        /* block CM_SIG_STOP signal (will be unblocked in the event loop) */
-        sigemptyset(&mask);
-        sigaddset(&mask, CM_SIG_STOP);
-        sigaddset(&mask, SIGPIPE); /* also block SIGPIPE */
-        pthread_sigmask(SIG_BLOCK, &mask, NULL);
-
         /* run the event loop in a new thread */
         rc = pthread_create(&cm_ctx->event_loop_thread, NULL,
                 cm_event_loop_threaded, cm_ctx);
@@ -1250,14 +1036,11 @@ cm_stop(cm_ctx_t *cm_ctx)
 {
     CHECK_NULL_ARG(cm_ctx);
 
-    if (CM_MODE_DAEMON == cm_ctx->mode) {
-        /* main thread (with event loop) interrupted by signal, just mark request to stop */
-        stop_requested = 1;
-    } else {
-        SR_LOG_DBG_MSG("Sending stop signal to the event loop thread.");
-        /* send a signal to the thread with event loop */
-        pthread_kill(cm_ctx->event_loop_thread, CM_SIG_STOP);
-        /* block until cleanup is finished */
+    /* send async event to the event loop */
+    ev_async_send(cm_ctx->event_loop, &cm_ctx->stop_watcher);
+
+    if (CM_MODE_LOCAL == cm_ctx->mode) {
+        /* block until cleanup is finished and the thread with event loop exits */
         pthread_join(cm_ctx->event_loop_thread, NULL);
     }
 

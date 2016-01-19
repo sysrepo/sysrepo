@@ -25,6 +25,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <sys/types.h>
+#include <ev.h>
 
 #include "request_processor.h"
 
@@ -109,6 +110,10 @@ typedef struct sm_connection_s {
 
     sm_buffer_t in_buff;   /**< Input buffer. If not empty, there is some received data to be processed. */
     sm_buffer_t out_buff;  /**< Output buffer. If not empty, there is some data to be sent when receiver is ready. */
+
+    ev_io read_watcher;
+    ev_io write_watcher;
+    void *cm_ctx;
 } sm_connection_t;
 
 /**

@@ -13,8 +13,8 @@ if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE debug)
 endif()
 
-set(CMAKE_C_FLAGS         "${CMAKE_C_FLAGS} -Wall -Werror -Wpedantic -std=gnu11")
-set(CMAKE_C_FLAGS_RELEASE "-DNDEBUG -O2")
+set(CMAKE_C_FLAGS         "${CMAKE_C_FLAGS} -Wall -Wpedantic -std=gnu11")
+set(CMAKE_C_FLAGS_RELEASE "-Werror -DNDEBUG -O2")
 set(CMAKE_C_FLAGS_DEBUG   "-coverage -g -O0")
 
 # include custom Modules
