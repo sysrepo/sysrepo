@@ -25,6 +25,9 @@
 #include <ctype.h>
 #include "xpath_processor.h"
 
+/**@brief The number of token that is allocated at the beginning for a conversion*/
+#define DEF_TOKEN_COUNT 50
+
 /**@brief The xp_states of parsing xpath*/
 enum xp_states {
     S_START,
@@ -101,41 +104,6 @@ static char *xp_token_to_str(xp_token_t t)
     default:
         return "(UNKNOWN_TOKEN)";
     }
-}
-
-/**
- * Allocates xp_loc_id structure with specified token and node count.
- * @param [in] xpath
- * @param [in] node_count
- * @param [in] token_count
- * @return allocated structure or NULL in case of error
- */
-static xp_loc_id_t* xp_alloc_loc_id(const char *xpath, size_t node_count, size_t token_count)
-{
-    xp_loc_id_t *l = (xp_loc_id_t *) malloc(sizeof(xp_loc_id_t));
-    if (l == NULL) {
-        return l;
-    }
-    if (xpath != NULL) {
-        l->xpath = strdup(xpath);
-    } else {
-        l->xpath = NULL;
-    }
-    l->positions = malloc(token_count * sizeof(size_t));
-    l->tokens = malloc(token_count * sizeof(xp_token_t));
-    l->cnt = token_count;
-    l->node_index = malloc(node_count * sizeof(size_t));
-    l->node_count = node_count;
-
-    if (l->positions == NULL || l->tokens == NULL || l->node_index == NULL) {
-        free(l->positions);
-        free(l->tokens);
-        free(l->node_index);
-        free(l);
-        l = NULL;
-    }
-
-    return l;
 }
 
 static sr_error_t xp_validate_token_order(xp_token_t *tokens, size_t token_count, size_t *err_token)
@@ -300,19 +268,27 @@ inline static void xp_change_ns_to_node(const size_t cnt, xp_token_t *tokens, si
     }
 }
 
-/**
- * TODO more tokens than MAX_TOKENS
- */
 sr_error_t xp_char_to_loc_id(const char *xpath, xp_loc_id_t **loc)
 {
     CHECK_NULL_ARG2(xpath, loc);
-    xp_token_t tokens[MAX_TOKENS];
-    size_t positions[MAX_TOKENS] = { 0, };
-    size_t node_index[MAX_TOKENS] = { 0, };
+    size_t arr_size = DEF_TOKEN_COUNT;
+    int rc = SR_ERR_INVAL_ARG;
+    xp_token_t *tokens = NULL;
+    size_t *positions = NULL;
+    size_t *node_index = NULL;
     size_t cnt = 0;
     size_t i = 0;
     size_t node_count = 0;
     enum xp_states state = S_START;
+
+    tokens = calloc(arr_size, sizeof(*tokens));
+    positions = calloc(arr_size, sizeof(*positions));
+    node_index = calloc(arr_size, sizeof(*node_index));
+    if (NULL == tokens || NULL == positions || NULL == node_index){
+        SR_LOG_ERR_MSG("Memory allocation failed");
+        rc = SR_ERR_NOMEM;
+        goto cleanup;
+    }
 
     /* Saves the token type and marks the position */
 #define MARK_TOKEN(T) do{tokens[cnt]=T; positions[cnt]=i;  cnt++;}while(0)
@@ -327,7 +303,7 @@ sr_error_t xp_char_to_loc_id(const char *xpath, xp_loc_id_t **loc)
             }
             else{
                 SR_LOG_ERR("Invalid lexem '%c' in xpath: %s at position %zu", xpath[i], xpath, i);
-                                    return SR_ERR_INVAL_ARG;
+                goto cleanup;
             }
             break;
         case S_NS:
@@ -345,12 +321,12 @@ sr_error_t xp_char_to_loc_id(const char *xpath, xp_loc_id_t **loc)
             } else if (cnt > 0 && tokens[cnt - 1] == T_NS) {
                 if (!(isalnum(xpath[i]) || xpath[i] == '_' || xpath[i] == '-' || xpath[i] == '.')) {
                     SR_LOG_ERR("Invalid lexem '%c' in xpath: %s at position %zu", xpath[i], xpath, i);
-                    return SR_ERR_INVAL_ARG;
+                    goto cleanup;
                 }
             } else {
                 if (!(isalpha(xpath[i]) || xpath[i] == '_')) {
                     SR_LOG_ERR("Invalid lexem '%c' in xpath: %s at position %zu", xpath[i], xpath, i);
-                    return SR_ERR_INVAL_ARG;
+                    goto cleanup;
                 }
             }
             break;
@@ -366,12 +342,12 @@ sr_error_t xp_char_to_loc_id(const char *xpath, xp_loc_id_t **loc)
             } else if (cnt > 0 && tokens[cnt - 1] == T_NODE) {
                 if (!(isalnum(xpath[i]) || xpath[i] == '_' || xpath[i] == '-' || xpath[i] == '.')) {
                     SR_LOG_ERR("Invalid lexem '%c' in xpath: %s at position %zu", xpath[i], xpath, i);
-                    return SR_ERR_INVAL_ARG;
+                    goto cleanup;
                 }
             } else {
                 if (!(isalpha(xpath[i]) || xpath[i] == '_')) {
                     SR_LOG_ERR("Invalid lexem '%c' in xpath: %s at position %zu", xpath[i], xpath, i);
-                    return SR_ERR_INVAL_ARG;
+                    goto cleanup;
                 }
             }
             break;
@@ -389,12 +365,12 @@ sr_error_t xp_char_to_loc_id(const char *xpath, xp_loc_id_t **loc)
             } else if (cnt > 0 && tokens[cnt - 1] == T_KEY_NAME) {
                 if (!(isalnum(xpath[i]) || xpath[i] == '_' || xpath[i] == '-' || xpath[i] == '.')) {
                     SR_LOG_ERR("Invalid lexem '%c' in xpath: %s at position %zu", xpath[i], xpath, i);
-                    return SR_ERR_INVAL_ARG;
+                    goto cleanup;
                 }
             } else {
                 if (!(isalpha(xpath[i]) || xpath[i] == '_')) {
                     SR_LOG_ERR("Invalid lexem '%c' in xpath: %s at position %zu", xpath[i], xpath, i);
-                    return SR_ERR_INVAL_ARG;
+                    goto cleanup;
                 }
             }
             break;
@@ -426,8 +402,24 @@ sr_error_t xp_char_to_loc_id(const char *xpath, xp_loc_id_t **loc)
         }
 
         i++;
-        if (cnt > MAX_TOKENS) {
-            return SR_ERR_INVAL_ARG;
+        if (cnt >= arr_size) {
+            arr_size *= 2; /*double the allocated size*/
+            xp_token_t *tokens_tmp = realloc(tokens, arr_size * sizeof(*tokens));
+            size_t *positions_tmp = realloc(positions, arr_size * sizeof(*positions));
+            size_t *node_index_tmp = realloc(node_index, arr_size * sizeof(*node_index));
+            if (NULL == tokens_tmp || NULL == positions_tmp || NULL == node_index_tmp){
+                free(tokens_tmp);
+                free(positions_tmp);
+                free(node_index_tmp);
+                rc = SR_ERR_NOMEM;
+                SR_LOG_ERR_MSG("Memory allocation failed");
+                goto cleanup;
+            }
+            else{
+                positions = positions_tmp;
+                tokens = tokens_tmp;
+                node_index = node_index_tmp;
+            }
         }
 
     }
@@ -438,31 +430,57 @@ sr_error_t xp_char_to_loc_id(const char *xpath, xp_loc_id_t **loc)
     size_t err_token=0;
     if (xp_validate_token_order(tokens, cnt, &err_token) != SR_ERR_OK) {
         SR_LOG_ERR("Invalid token %s occured in xpath %s on position %zu.", xp_token_to_str(tokens[err_token]), xpath, positions[err_token]);
-        return SR_ERR_INVAL_ARG;
+        goto cleanup;
     }
 
     if (xp_validate_list_nodes(tokens, cnt, &err_token) != SR_ERR_OK) {
         SR_LOG_ERR("Invalid list node occured in xpath %s on position %zu.", xpath, positions[err_token]);
-        return SR_ERR_INVAL_ARG;
+        goto cleanup;
     }
 
     /*Allocate structure*/
-    xp_loc_id_t *l = xp_alloc_loc_id(xpath, node_count, cnt);
-    if (l == NULL) {
-        SR_LOG_ERR_MSG("Cannot allocate memory for xp_loc_id_t.");
-        return SR_ERR_NOMEM;
+    xp_loc_id_t *l = NULL;
+    l = calloc(1, sizeof(*l));
+    if (NULL == l){
+        SR_LOG_ERR_MSG("Memory allocation failed");
+        rc = SR_ERR_NOMEM;
+        goto cleanup;
     }
+    l->xpath = strdup(xpath);
+    if (NULL == l->xpath){
+        free(l);
+        SR_LOG_ERR_MSG("Memory allocation failed");
+        rc = SR_ERR_NOMEM;
+        goto cleanup;
+    }
+    l->cnt = cnt;
+    l->node_count = node_count;
 
-    for (int j = 0; j < cnt; j++) {
-        l->tokens[j] = tokens[j];
-        l->positions[j] = positions[j];
-    }
-    for (int j = 0; j < node_count; j++) {
-        l->node_index[j] = node_index[j];
+    /* shrink the space to the used length*/
+    l->tokens = realloc(tokens, cnt * sizeof(*tokens));
+    l->positions = realloc(positions, cnt * sizeof(*positions));
+    l->node_index = realloc(node_index, node_count * sizeof(*node_index));
+    if (NULL == l->tokens || NULL == l->positions || NULL == l->node_index){
+        SR_LOG_ERR_MSG("Memory allocation failed");
+        xp_free_loc_id(l);
+        rc = SR_ERR_NOMEM;
+        goto cleanup;
     }
 
     *loc = l;
-    return 0;
+    return SR_ERR_OK;
+
+cleanup:
+    if (NULL != positions){
+        free(positions);
+    }
+    if (NULL != node_index){
+        free(node_index);
+    }
+    if (NULL != tokens){
+        free(tokens);
+    }
+    return rc;
 }
 
 void xp_free_loc_id(xp_loc_id_t *l)
