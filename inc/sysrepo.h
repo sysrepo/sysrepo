@@ -139,6 +139,25 @@ typedef enum sr_error_e {
  */
 const char *sr_strerror(int err_code);
 
+/**
+ * @brief Log levels used to determine if message of certain severity should be printed.
+ */
+typedef enum {
+    SR_LL_NONE,  /**< Do not print any messages. */
+    SR_LL_ERR,   /**< Print only error messages. */
+    SR_LL_WRN,   /**< Print error and warning messages. */
+    SR_LL_INF,   /**< Besides errors and warnings, print some other informational messages. */
+    SR_LL_DBG    /**< Print all messages including some development debug messages. */
+} sr_log_level_t;
+
+/**
+ * @brief Sets Logging Level of stderr logs and syslog logs.
+ *
+ * @param[in] ll_stderr Log level for stderr logs.
+ * @param[in] ll_syslog Log level for syslog logs.
+ */
+void sr_logger_set_level(sr_log_level_t ll_stderr, sr_log_level_t ll_syslog);
+
 ///////////////////////////////////////////////////////////////////////////////
 // Session management
 ///////////////////////////////////////////////////////////////////////////////

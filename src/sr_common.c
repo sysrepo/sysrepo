@@ -789,7 +789,6 @@ sr_set_val_t_value_in_gpb(const sr_val_t *value, Sr__Value *gpb_value){
             SR_LOG_ERR("Copy string value failed for xpath '%s'", value->xpath);
             return SR_ERR_INTERNAL;
         }
-        SR_LOG_INF("Duplicating value %s", gpb_value->string_val);
         return SR_ERR_OK;
     case SR_UINT8_T:
         gpb_value->uint8_val = value->data.uint8_val;

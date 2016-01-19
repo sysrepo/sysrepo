@@ -1,7 +1,7 @@
 /**
- * @file sr_get_item_example.c
+ * @file sr_get_items_iter_example.c
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
- * @brief Example usage of sr_get_item function
+ * @brief Example usage of sr_get_items_iter function
  *
  * @copyright
  * Copyright 2016 Cisco Systems, Inc.
@@ -27,8 +27,9 @@ int main(int argc, char **argv) {
     sr_conn_ctx_t *conn = NULL;
     sr_session_ctx_t *sess = NULL;
     sr_val_t *value = NULL;
+    sr_val_iter_t *iter = NULL;
     int rc = SR_ERR_OK;
-    
+
     /* connect to sysrepo */
     rc = sr_connect("sr_get_item_example", true, &conn);
     if (SR_ERR_OK != rc) {
@@ -41,13 +42,16 @@ int main(int argc, char **argv) {
         goto cleanup;
     }
 
-    /* read one value*/
-    rc = sr_get_item(sess, "/ietf-interfaces:interfaces/interface[name='eth0']/enabled", &value);
+    /* get all list instances*/
+    rc = sr_get_items_iter(sess, "/ietf-interfaces:interfaces/interface", true, &iter);
     if (SR_ERR_OK != rc) {
         goto cleanup;
     }
-    printf("Value on xpath: %s has value %d\n", value->xpath, value->data.bool_val);
-    sr_free_val_t(value);
+    
+    while (SR_ERR_OK == sr_get_item_next(sess, iter, &value)){
+        puts(value->xpath);
+        sr_free_val_t(value);
+    }
 
 cleanup:
     if (NULL != sess) {
@@ -58,3 +62,4 @@ cleanup:
     }
     return rc;
 }
+
