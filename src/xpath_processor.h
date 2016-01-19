@@ -1,6 +1,7 @@
 /**
  * @defgroup xpath_process xPath processor
  * @{
+ * @brief xpath helpers for addressing the nodes
  * @file xpath_processor.h
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
  * @brief xPath helpers for addressing the nodes
@@ -212,5 +213,7 @@ sr_error_t xp_print_location_id(const xp_loc_id_t *l);
  * @param [in] K key index
  */
 #define XP_CPY_KEY_VALUE(L,NODE,K) XP_CPY_TOKEN(L,XP_GET_KEY_VALUE_INDEX(L,NODE,K))
-/**@} xPath processor */
+/**
+ * @} xPath processor 
+ */
 #endif /* SRC_XPATH_PROCESSOR_H_ */

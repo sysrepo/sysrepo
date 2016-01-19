@@ -204,6 +204,11 @@ rp_dt_create_xpath_for_node(const struct lyd_node *data_tree, char **xpath)
            (NULL != n->parent && (NULL == n->parent || NULL == n->parent->schema ||
                    NULL == n->parent->schema->module || NULL == n->parent->schema->module->name))) {
             SR_LOG_ERR("Schema node at level %zu is NULL", i);
+            for (size_t j=0; j<i; j++){
+                free(parts[j]);
+            }
+            free(parts);
+            return SR_ERR_INTERNAL;
         }
         /*print namespace for the root node and when there is an augment*/
         bool namespace = NULL == n->parent || 0 != strcmp(n->parent->schema->module->name, n->schema->module->name);
@@ -279,7 +284,7 @@ rp_dt_create_xpath_for_node(const struct lyd_node *data_tree, char **xpath)
 /**
  * Functions copies the bits into string
  * @param [in] leaf - data tree node from the bits will be copied
- * @param [out] dest - space separeted set bit field
+ * @param [out] dest - space separated set bit field
  */
 static int
 rp_dt_copy_bits(const struct lyd_node_leaf_list *leaf, char **dest){
@@ -394,7 +399,7 @@ rp_dt_copy_value(const struct lyd_node_leaf_list *leaf, LY_DATA_TYPE type, sr_va
         }
         return SR_ERR_OK;
     case LY_TYPE_UNION:
-        /* Copy of selected union type should be called insteadd */
+        /* Copy of selected union type should be called instead */
         SR_LOG_ERR("Can not copy value of union '%s'", leaf->schema->name);
         return SR_ERR_INTERNAL;
     case LY_TYPE_INT8:
@@ -535,10 +540,8 @@ rp_dt_get_value_from_node(struct lyd_node *node, sr_val_t **value){
 
     int rc = SR_ERR_OK;
     char *xpath = NULL;
-    struct lys_node_leaf *sch_leaf = NULL;
     struct lyd_node_leaf_list *data_leaf = NULL;
     struct lys_node_container *sch_cont = NULL;
-    struct lys_node_leaflist *sch_leaflist = NULL;
     rc = rp_dt_create_xpath_for_node(node, &xpath);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Create xpath for node failed");
@@ -555,17 +558,11 @@ rp_dt_get_value_from_node(struct lyd_node *node, sr_val_t **value){
 
     switch (node->schema->nodetype){
     case LYS_LEAF:
-        sch_leaf = (struct lys_node_leaf *) node->schema;
         data_leaf = (struct lyd_node_leaf_list *) node;
 
+        val->type = sr_libyang_type_to_sysrepo(data_leaf->value_type);
 
-        if (LY_TYPE_DER == sch_leaf->type.base) {
-            SR_LOG_WRN_MSG("Leaf has derived type, not supported yet");
-        } else {
-            val->type = sr_libyang_type_to_sysrepo(sch_leaf->type.base);
-        }
-
-        if (SR_ERR_OK != rp_dt_copy_value(data_leaf, sch_leaf->type.base, val)) {
+        if (SR_ERR_OK != rp_dt_copy_value(data_leaf, data_leaf->value_type, val)) {
             SR_LOG_ERR_MSG("Copying of value failed");
             free(val->xpath);
             free(val);
@@ -580,15 +577,11 @@ rp_dt_get_value_from_node(struct lyd_node *node, sr_val_t **value){
         val->type = SR_LIST_T;
         break;
     case LYS_LEAFLIST:
-        sch_leaflist = (struct lys_node_leaflist *) node->schema;
         data_leaf = (struct lyd_node_leaf_list *) node;
-        if (LY_TYPE_DER == sch_leaflist->type.base) {
-            SR_LOG_WRN_MSG("Leaf has derived type, not supported yet");
-        } else {
-            val->type = sr_libyang_type_to_sysrepo(sch_leaflist->type.base);
-        }
 
-        if (SR_ERR_OK != rp_dt_copy_value(data_leaf, sch_leaflist->type.base, val)) {
+        val->type = sr_libyang_type_to_sysrepo(data_leaf->value_type);
+
+        if (SR_ERR_OK != rp_dt_copy_value(data_leaf, data_leaf->value_type, val)) {
             SR_LOG_ERR_MSG("Copying of value failed");
             free(val->xpath);
             free(val);
@@ -628,9 +621,9 @@ rp_dt_get_values_from_nodes(struct lyd_node **nodes, size_t count, sr_val_t ***v
             }
             SR_LOG_ERR("Getting value from node %s failed", name);
             for (size_t j = 0; j<i; j++){
-                sr_free_val_t((vals)[j]);
+                sr_free_val_t(vals[j]);
             }
-            free(*vals);
+            free(vals);
             return SR_ERR_INTERNAL;
         }
     }
@@ -952,27 +945,27 @@ rp_dt_get_nodes_with_opts(const dm_ctx_t *dm_ctx, dm_session_t *dm_session, rp_d
         }
 
         rp_ns_pop(&get_items_ctx->stack, &item);
-        if (NULL == item->node || NULL == item->node->schema){
+        if (NULL == item || NULL == item->node || NULL == item->node->schema){
             SR_LOG_ERR_MSG("Stack item doesn't contain a node or schema is missing");
-            return SR_ERR_INTERNAL;
+            goto cleanup;
         }
         switch (item->node->schema->nodetype) {
-            case LYS_LEAF:  /* fallthrough */
+            case LYS_LEAF:  /* fall through */
             case LYS_LEAFLIST:
                 break;
-            case LYS_LIST: /* fallthrough */
+            case LYS_LIST: /* fall through */
             case LYS_CONTAINER:
                 if (get_items_ctx->recursive){
                     rc = rp_dt_push_child_nodes_to_stack(&get_items_ctx->stack, item->node);
                     if (SR_ERR_OK != rc){
                         SR_LOG_ERR_MSG("Push child nodes to stack failed");
-                        return SR_ERR_INTERNAL;
+                        goto cleanup;
                     }
                 }
                 break;
             default:
                 SR_LOG_ERR("Unsupported node type for xpath %s", loc_id->xpath);
-                return SR_ERR_INTERNAL;
+                goto cleanup;
         }
 
         /* append node to result if it is in chosen range*/
@@ -981,12 +974,19 @@ rp_dt_get_nodes_with_opts(const dm_ctx_t *dm_ctx, dm_session_t *dm_session, rp_d
             cnt++;
         }
         free(item);
+        item = NULL;
         index++;
     }
     /* mark the index where the processing stopped*/
     get_items_ctx->offset = index;
     *count = cnt;
     return SR_ERR_OK;
+
+cleanup:
+    free(*nodes);
+    *nodes = NULL;
+    return SR_ERR_INTERNAL;
+
 }
 
 int
@@ -1011,7 +1011,7 @@ rp_dt_get_nodes(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp_loc
     switch(node->schema->nodetype){
     case LYS_LEAF:
         *count = 1;
-        *nodes = calloc(*count, sizeof(*nodes));
+        *nodes = calloc(*count, sizeof(**nodes));
         if (NULL == *nodes) {
             SR_LOG_ERR_MSG("Memory allocation failed");
             return SR_ERR_NOMEM;
@@ -1161,6 +1161,7 @@ int rp_dt_get_values_wrapper_with_opts(const dm_ctx_t *dm_ctx, dm_session_t *dm_
     int rc = SR_ERR_INVAL_ARG;
     xp_loc_id_t *l = NULL;
     struct lyd_node *data_tree = NULL;
+    struct lyd_node **nodes = NULL;
     char *data_tree_name = NULL;
     rc = xp_char_to_loc_id(xpath, &l);
 
@@ -1186,21 +1187,20 @@ int rp_dt_get_values_wrapper_with_opts(const dm_ctx_t *dm_ctx, dm_session_t *dm_
         goto cleanup;
     }
 
-    struct lyd_node **nodes = NULL;
     rc = rp_dt_get_nodes_with_opts(dm_ctx, dm_session, get_items_ctx, data_tree, l, recursive, offset, limit, &nodes, count);
     if (SR_ERR_OK != rc){
         SR_LOG_ERR("Get nodes for xpath %s failed", l->xpath);
-        return SR_ERR_INTERNAL;
+        goto cleanup;
     }
 
     rc = rp_dt_get_values_from_nodes(nodes,*count, values);
-    free(nodes);
     if (SR_ERR_OK != rc){
         SR_LOG_ERR("Copying values from nodes failed for xpath '%s'", l->xpath);
-        return rc;
+        goto cleanup;
     }
 
-    cleanup:
+cleanup:
+    free(nodes);
     xp_free_loc_id(l);
     free(data_tree_name);
     return rc;

@@ -1,10 +1,11 @@
 /**
  * @defgroup dm Data Manager
  * @{
+ * @brief Data manager provides access to schemas and data trees managed by sysrepo. It allows to
+ * read, lock and edit the data models.
  * @file data_manager.h
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
- * @brief Data manager provides access to schemas and data trees manged by sysrepo. It allows to
- * read, lock and edit the data models.
+ * 
  *
  * @copyright
  * Copyright 2015 Cisco Systems, Inc.
@@ -42,10 +43,10 @@ typedef struct dm_ctx_s dm_ctx_t;
 typedef struct dm_session_s dm_session_t;
 
 /**
- * @brief Intializes the data manager context, which will be passed in further
+ * @brief Initializes the data manager context, which will be passed in further
  * dm_session related calls.
- * @param [in] search_dir
- * @param [in] dm_ctx
+ * @param [in] search_dir - directory where schemas and data trees are located
+ * @param [out] dm_ctx
  * @return err_code
  */
 int dm_init(const char *search_dir, dm_ctx_t **dm_ctx);
@@ -63,7 +64,7 @@ int dm_cleanup(dm_ctx_t *dm_ctx);
 /**
  * @brief Allocates resources for the session in Data manger.
  * @param [in] dm_ctx
- * @param [in] dm_session_ctx
+ * @param [out] dm_session_ctx
  * @return err_code
  */
 int dm_session_start(const dm_ctx_t *dm_ctx, dm_session_t **dm_session_ctx);
@@ -72,17 +73,17 @@ int dm_session_start(const dm_ctx_t *dm_ctx, dm_session_t **dm_session_ctx);
  * @brief Frees resources allocated for the session.
  * @param [in] dm_ctx
  * @param [in] dm_session_ctx
- * @return
+ * @return err_code
  */
 int dm_session_stop(const dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx);
 
 /**
- * @brief Returns the data tree for the specified moduel. Returns SR_INVALID_ARG if the requested module does not exist.
+ * @brief Returns the data tree for the specified module. Returns SR_ERR_UNKNOWN_MODEL if the requested module does not exist.
  * @param [in] dm_ctx
  * @param [in] dm_session_ctx
  * @param [in] module_name
  * @param [out] data_tree
- * @return err_cpode
+ * @return err_code
  */
 int dm_get_datatree(const dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, const char *module_name, struct lyd_node **data_tree);
 
