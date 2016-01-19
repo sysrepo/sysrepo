@@ -153,7 +153,7 @@ dm_load_schemas(dm_ctx_t *dm_ctx)
     DIR *dir = NULL;
     struct dirent *ent = NULL;
     if ((dir = opendir(dm_ctx->search_dir)) != NULL) {
-        while ((ent = readdir(dir)) != NULL ) {
+        while ((ent = readdir(dir)) != NULL) {
             if (dm_is_schema_file(ent->d_name)) {
                 if (SR_ERR_OK != dm_load_schema_file(dm_ctx, dm_ctx->search_dir, ent->d_name)) {
                     SR_LOG_WRN("Loading schema file: %s failed.", ent->d_name);
@@ -172,6 +172,7 @@ dm_load_schemas(dm_ctx_t *dm_ctx)
 
 #if 0
 //will be used with edit config
+
 /**
  * @brief adds empty data tree for the specified module into dm_ctx
  * @param [in] dm_ctx
@@ -210,7 +211,7 @@ dm_find_module_schema(const dm_ctx_t *dm_ctx, const char *module_name, const str
 {
     CHECK_NULL_ARG2(dm_ctx, module_name);
     *module = ly_ctx_get_module(dm_ctx->ly_ctx, module_name, NULL);
-    return (*module == NULL ) ? SR_ERR_UNKNOWN_MODEL : SR_ERR_OK;
+    return *module == NULL ? SR_ERR_UNKNOWN_MODEL : SR_ERR_OK;
 }
 
 /**
@@ -239,7 +240,7 @@ dm_load_data_tree(dm_ctx_t *dm_ctx, const struct lys_module *module, struct lyd_
         pthread_mutex_lock(&dm_ctx->lyctx_lock);
         *data_tree = lyd_parse_fd(dm_ctx->ly_ctx, fileno(f), LYD_XML, LYD_OPT_STRICT);
         pthread_mutex_unlock(&dm_ctx->lyctx_lock);
-        if (NULL == *data_tree){
+        if (NULL == *data_tree) {
             SR_LOG_ERR("Parsing data tree from file %s failed", data_filename);
             free(data_filename);
             fclose(f);
@@ -252,7 +253,7 @@ dm_load_data_tree(dm_ctx_t *dm_ctx, const struct lys_module *module, struct lyd_
         return SR_ERR_NOT_FOUND;
     }
 
-    if ( 0 != lyd_validate(*data_tree, LYD_OPT_STRICT)){
+    if (0 != lyd_validate(*data_tree, LYD_OPT_STRICT)) {
         SR_LOG_ERR("Loaded data tree '%s' is not valid", data_filename);
         free(data_filename);
         sr_free_datatree(*data_tree);
@@ -300,10 +301,9 @@ dm_find_data_tree(dm_ctx_t *dm_ctx, const struct lys_module *module, struct lyd_
 
     /* try to load data_tree */
     rc = dm_load_data_tree(dm_ctx, module, data_tree);
-    if (SR_ERR_NOT_FOUND == rc ) {
+    if (SR_ERR_NOT_FOUND == rc) {
         return SR_ERR_NOT_FOUND;
-    }
-    else if(SR_ERR_OK != rc){
+    } else if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Loading data_tree %s failed", module->name);
     }
 
@@ -343,8 +343,8 @@ dm_init(const char *search_dir, dm_ctx_t **dm_ctx)
         free(ctx);
         return SR_ERR_NOMEM;
     }
-    
-    if (0 != pthread_mutex_init(&ctx->lyctx_lock, NULL)){
+
+    if (0 != pthread_mutex_init(&ctx->lyctx_lock, NULL)) {
         SR_LOG_ERR_MSG("lyctx mutex initialization failed");
         dm_cleanup(ctx);
         return SR_ERR_INTERNAL;
@@ -410,10 +410,9 @@ dm_get_datatree(dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, const char *modu
     }
 
     rc = dm_find_data_tree(dm_ctx, module, data_tree);
-    if (SR_ERR_NOT_FOUND == rc){
+    if (SR_ERR_NOT_FOUND == rc) {
         SR_LOG_DBG("Data tree for %s not found.", module_name);
-    }
-    else if (SR_ERR_OK != rc) {
+    } else if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Getting data tree for %s failed.", module_name);
     }
 
