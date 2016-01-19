@@ -230,12 +230,6 @@ dm_load_data_tree(const dm_ctx_t *dm_ctx, const struct lys_module *module, struc
         return rc;
     }
 
-    if (access(data_filename, F_OK) == -1){
-        SR_LOG_INF("Data file %s not found", data_filename);
-        free(data_filename);
-        return SR_ERR_NOT_FOUND;
-    }
-
     FILE *f = fopen(data_filename, "r");
     if (NULL != f) {
         *data_tree = lyd_parse_fd(dm_ctx->ly_ctx, fileno(f), LYD_XML, LYD_OPT_STRICT);
@@ -247,9 +241,9 @@ dm_load_data_tree(const dm_ctx_t *dm_ctx, const struct lys_module *module, struc
         }
         fclose(f);
     } else {
-        SR_LOG_ERR("Failed to open a file %s", data_filename);
+        SR_LOG_INF("File %s couldn't be opened for reading, file probably doesn't exist", data_filename);
         free(data_filename);
-        return SR_ERR_IO;
+        return SR_ERR_NOT_FOUND;
     }
 
     if ( 0 != lyd_validate(*data_tree, LYD_OPT_STRICT)){
