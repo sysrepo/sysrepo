@@ -1,5 +1,4 @@
 include_directories("${PROJECT_SOURCE_DIR}/inc")
-include_directories("${PROJECT_SOURCE_DIR}/src")
 
 add_executable(sr_get_item_example sr_get_item_example.c)
 add_executable(sr_get_items_example sr_get_items_example.c)

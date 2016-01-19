@@ -46,7 +46,7 @@ int main(int argc, char **argv) {
     if (SR_ERR_OK != rc) {
         goto cleanup;
     }
-    printf("Value on xpath: %s has value %d\n", value->xpath, value->data.bool_val);
+    printf("\n\nValue on xpath: %s has value %d\n", value->xpath, value->data.bool_val);
     sr_free_val_t(value);
 
 cleanup:
