@@ -406,9 +406,12 @@ cl_request_process(sr_conn_ctx_t *conn_ctx, Sr__Msg *msg_req, Sr__Msg **msg_resp
 
     /* check for errors */
     if (SR_ERR_OK != (*msg_resp)->response->result) {
-        SR_LOG_ERR("Error by processing of the request conn=%p, operation=%d): %s.",
+        /* don't log not found err*/
+        if (SR_ERR_NOT_FOUND != (*msg_resp)->response->result){
+            SR_LOG_ERR("Error by processing of the request conn=%p, operation=%d): %s.",
                 (void*)conn_ctx, msg_req->request->operation, (NULL != (*msg_resp)->response->error_msg) ?
                         (*msg_resp)->response->error_msg : sr_strerror((*msg_resp)->response->result));
+        }
         return (*msg_resp)->response->result;
     }
 
@@ -449,7 +452,10 @@ cl_send_get_items_iter(sr_session_ctx_t *session, const char *path, bool recursi
 
     /* send the request and receive the response */
     rc = cl_request_process(session->conn_ctx, msg_req, msg_resp, SR__OPERATION__GET_ITEMS);
-    if (SR_ERR_OK != rc) {
+    if (SR_ERR_NOT_FOUND == rc){
+        goto cleanup;
+    }
+    else if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Error by processing of get_items request.");
         goto cleanup;
     }
@@ -822,7 +828,11 @@ sr_get_items_iter(sr_session_ctx_t *session, const char *path, bool recursive, s
 
     CHECK_NULL_ARG4(session, session->conn_ctx, path, iter);
     rc = cl_send_get_items_iter(session, path, recursive, 0, SR_GET_ITEM_DEF_LIMIT, &msg_resp);
-    if (SR_ERR_OK != rc){
+    if (SR_ERR_NOT_FOUND == rc){
+        SR_LOG_DBG("No items found for xpath '%s'", path);
+        goto cleanup;
+    }
+    else if (SR_ERR_OK != rc){
         SR_LOG_ERR("Sending get_items request failed '%s'", path);
         goto cleanup;
     }
@@ -903,7 +913,11 @@ sr_get_item_next(sr_session_ctx_t *session, sr_val_iter_t *iter, sr_val_t **valu
 
         /*Fetch more items*/
         rc = cl_send_get_items_iter(session, iter->path, iter->recursive, iter->offset, SR_GET_ITEM_DEF_LIMIT, &msg_resp);
-        if (SR_ERR_OK != rc){
+        if (SR_ERR_NOT_FOUND == rc){
+            SR_LOG_DBG("All items has been read for path '%s'", iter->path);
+            goto cleanup;
+        }
+        else if (SR_ERR_OK != rc){
             SR_LOG_ERR("Fetching more items failed '%s'", iter->path);
             goto cleanup;
         }

@@ -85,7 +85,7 @@ int dm_session_stop(const dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx);
  * @param [out] data_tree
  * @return err_code
  */
-int dm_get_datatree(const dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, const char *module_name, struct lyd_node **data_tree);
+int dm_get_datatree(dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, const char *module_name, struct lyd_node **data_tree);
 
 
 

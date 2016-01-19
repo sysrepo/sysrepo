@@ -25,10 +25,12 @@
 #include <stdlib.h>
 #include <dirent.h>
 #include <avl.h>
+#include <pthread.h>
 
 typedef struct dm_ctx_s {
     char *search_dir;
     struct ly_ctx *ly_ctx;
+    pthread_mutex_t lyctx_lock;
     avl_tree_t *module_avl;
 } dm_ctx_t;
 
@@ -84,7 +86,7 @@ dm_get_data_file(const dm_ctx_t *dm_ctx, const char *module_name, char **file_na
 {
     CHECK_NULL_ARG3(dm_ctx, module_name, file_name);
     char *tmp = NULL;
-    int rc = sr_str_join("./", module_name, &tmp);
+    int rc = sr_str_join(dm_ctx->search_dir, module_name, &tmp);
     if (SR_ERR_OK == rc) {
         rc = sr_str_join(tmp, ".data", file_name);
         free(tmp);
@@ -113,7 +115,7 @@ dm_is_schema_file(const char *file_name)
  * @return err_code
  */
 static int
-dm_load_schema_file(const dm_ctx_t *dm_ctx, const char *dir_name, const char *file_name)
+dm_load_schema_file(dm_ctx_t *dm_ctx, const char *dir_name, const char *file_name)
 {
     CHECK_NULL_ARG3(dm_ctx, dir_name, file_name);
     const struct lys_module *module = NULL;
@@ -130,7 +132,9 @@ dm_load_schema_file(const dm_ctx_t *dm_ctx, const char *dir_name, const char *fi
         SR_LOG_WRN("Unable to open a schema file: %s", file_name);
         return SR_ERR_IO;
     }
+    pthread_mutex_lock(&dm_ctx->lyctx_lock);
     module = lys_parse_fd(dm_ctx->ly_ctx, fileno(fd), LYS_IN_YIN);
+    pthread_mutex_unlock(&dm_ctx->lyctx_lock);
     fclose(fd);
     if (module == NULL) {
         SR_LOG_WRN("Unable to parse a schema file: %s", file_name);
@@ -143,7 +147,7 @@ dm_load_schema_file(const dm_ctx_t *dm_ctx, const char *dir_name, const char *fi
  * @brief Loops through the specified directory and tries to load schema files from it.
  */
 static int
-dm_load_schemas(const dm_ctx_t *dm_ctx)
+dm_load_schemas(dm_ctx_t *dm_ctx)
 {
     CHECK_NULL_ARG(dm_ctx);
     DIR *dir = NULL;
@@ -217,7 +221,7 @@ dm_find_module_schema(const dm_ctx_t *dm_ctx, const char *module_name, const str
  * @return err_code
  */
 static int
-dm_load_data_tree(const dm_ctx_t *dm_ctx, const struct lys_module *module, struct lyd_node **data_tree)
+dm_load_data_tree(dm_ctx_t *dm_ctx, const struct lys_module *module, struct lyd_node **data_tree)
 {
     CHECK_NULL_ARG2(dm_ctx, module);
 
@@ -232,7 +236,9 @@ dm_load_data_tree(const dm_ctx_t *dm_ctx, const struct lys_module *module, struc
 
     FILE *f = fopen(data_filename, "r");
     if (NULL != f) {
+        pthread_mutex_lock(&dm_ctx->lyctx_lock);
         *data_tree = lyd_parse_fd(dm_ctx->ly_ctx, fileno(f), LYD_XML, LYD_OPT_STRICT);
+        pthread_mutex_unlock(&dm_ctx->lyctx_lock);
         if (NULL == *data_tree){
             SR_LOG_ERR("Parsing data tree from file %s failed", data_filename);
             free(data_filename);
@@ -272,7 +278,7 @@ dm_load_data_tree(const dm_ctx_t *dm_ctx, const struct lys_module *module, struc
  * If data_tree does not exists empty data_tree is created
  */
 static int
-dm_find_data_tree(const dm_ctx_t *dm_ctx, const struct lys_module *module, struct lyd_node **data_tree)
+dm_find_data_tree(dm_ctx_t *dm_ctx, const struct lys_module *module, struct lyd_node **data_tree)
 {
     CHECK_NULL_ARG3(dm_ctx, module, data_tree);
     int rc = 0;
@@ -337,6 +343,12 @@ dm_init(const char *search_dir, dm_ctx_t **dm_ctx)
         free(ctx);
         return SR_ERR_NOMEM;
     }
+    
+    if (0 != pthread_mutex_init(&ctx->lyctx_lock, NULL)){
+        SR_LOG_ERR_MSG("lyctx mutex initialization failed");
+        dm_cleanup(ctx);
+        return SR_ERR_INTERNAL;
+    }
 
     *dm_ctx = ctx;
     int res = dm_load_schemas(ctx);
@@ -387,7 +399,7 @@ dm_session_stop(const dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx)
 }
 
 int
-dm_get_datatree(const dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, const char *module_name, struct lyd_node **data_tree)
+dm_get_datatree(dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, const char *module_name, struct lyd_node **data_tree)
 {
     CHECK_NULL_ARG4(dm_ctx, dm_session_ctx, module_name, data_tree);
     int rc = SR_ERR_OK;
