@@ -996,7 +996,7 @@ cm_event_loop_threaded(void *cm_ctx_p)
  * @brief Callback called by the event loop watcher when an async request to stop the loop is received.
  */
 static void
-cm_stop_cb(struct ev_loop *loop, ev_io *w, int revents)
+cm_stop_cb(struct ev_loop *loop, ev_async *w, int revents)
 {
     cm_ctx_t *cm_ctx = NULL;
 
