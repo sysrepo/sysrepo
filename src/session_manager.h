@@ -74,7 +74,7 @@ typedef struct sm_session_s {
  */
 typedef struct sm_session_list_s {
     sm_session_t *session;           /**< Session context. */
-    struct sm_session_list_s *next;  /**< Pointer to next session context. */
+    struct sm_session_list_s *next;  /**< Pointer to the next session context. */
 } sm_session_list_t;
 
 /**
@@ -105,11 +105,13 @@ typedef struct sm_connection_s {
 /**
  * @brief Initializes Session Manager.
  *
+ * @param[in] session_cleanup_cb Callback called by session cleanup (used to free CM-related data).
+ * @param[in] connection_cleanup_cb Callback called by connection cleanup (used to free CM-related data).
  * @param[out] sm_ctx Allocated Session Manager context that can be used in subsequent SM requests.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int sm_init(sm_ctx_t **sm_ctx, sm_cleanup_cb session_cleanup_cb, sm_cleanup_cb connection_cleanup_cb);
+int sm_init(sm_cleanup_cb session_cleanup_cb, sm_cleanup_cb connection_cleanup_cb, sm_ctx_t **sm_ctx);
 
 /**
  * @brief Cleans up Session Manager.

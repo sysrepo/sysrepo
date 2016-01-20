@@ -19,11 +19,6 @@
  * limitations under the License.
  */
 
-/* Turn off strict aliasing error in GCC - incorrectly detects aliasing issue in ev_io_init */
-#if (__GNUC__ == 4 && 3 <= __GNUC_MINOR__) || 4 < __GNUC__
-    #pragma GCC diagnostic ignored "-Wstrict-aliasing"
-#endif
-
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
@@ -228,7 +223,7 @@ cm_session_data_cleanup(void *session)
 }
 
 /**
- * @brief  Cleans up Connection Manager-related connection data. Automatically called from Session Manager.
+ * @brief Cleans up Connection Manager-related connection data. Automatically called from Session Manager.
  */
 static void
 cm_connection_data_cleanup(void *connection)
@@ -357,7 +352,7 @@ cm_conn_out_buff_flush(cm_ctx_t *cm_ctx, sm_connection_t *connection)
 }
 
 /**
- * @brief Send message to the recipient identified by session context.
+ * @brief Sends a message to the recipient identified by session context.
  */
 static int
 cm_msg_send_session(cm_ctx_t *cm_ctx, sm_session_t *session, Sr__Msg *msg)
@@ -772,7 +767,8 @@ cm_conn_in_buff_process(cm_ctx_t *cm_ctx, sm_connection_t *conn)
 }
 
 /**
- * @brief Dispatches a readable event on the file descriptor of a normal connection.
+ * @brief Callback called by the event loop watcher when the file descriptor of
+ * a connection is readable (some data has arrived).
  */
 static void
 cm_conn_read_cb(struct ev_loop *loop, ev_io *w, int revents)
@@ -783,16 +779,10 @@ cm_conn_read_cb(struct ev_loop *loop, ev_io *w, int revents)
     int bytes = 0;
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG_NORET2(rc, w, w->data);
-    if (SR_ERR_OK != rc) {
-        return;
-    }
+    CHECK_NULL_ARG_VOID2(w, w->data);
     conn = (sm_connection_t*)w->data;
 
-    CHECK_NULL_ARG_NORET3(rc, conn, conn->cm_data, conn->cm_data->cm_ctx);
-    if (SR_ERR_OK != rc) {
-        return;
-    }
+    CHECK_NULL_ARG_VOID3(conn, conn->cm_data, conn->cm_data->cm_ctx);
     cm_ctx = conn->cm_data->cm_ctx;
     buff = &conn->cm_data->in_buff;
 
@@ -847,7 +837,8 @@ cm_conn_read_cb(struct ev_loop *loop, ev_io *w, int revents)
 }
 
 /**
- * @brief Dispatches a writable event on the file descriptor of a normal connection.
+ * @brief Callback called by the event loop watcher when the file descriptor of
+ * a connection is writable (without blocking).
  */
 static void
 cm_conn_write_cb(struct ev_loop *loop, ev_io *w, int revents)
@@ -856,16 +847,10 @@ cm_conn_write_cb(struct ev_loop *loop, ev_io *w, int revents)
     cm_ctx_t *cm_ctx = NULL;
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG_NORET2(rc, w, w->data);
-    if (SR_ERR_OK != rc) {
-        return;
-    }
+    CHECK_NULL_ARG_VOID2(w, w->data);
     conn = (sm_connection_t*)w->data;
 
-    CHECK_NULL_ARG_NORET3(rc, conn, conn->cm_data, conn->cm_data->cm_ctx);
-    if (SR_ERR_OK != rc) {
-        return;
-    }
+    CHECK_NULL_ARG_VOID3(conn, conn->cm_data, conn->cm_data->cm_ctx);
     cm_ctx = conn->cm_data->cm_ctx;
 
     SR_LOG_DBG("fd %d writeable", conn->fd);
@@ -882,7 +867,7 @@ cm_conn_write_cb(struct ev_loop *loop, ev_io *w, int revents)
 }
 
 /**
- * @brief Initializes connection watchers.
+ * @brief Initializes read and write watchers for the file descriptor of provided connection.
  */
 static int
 cm_conn_watcher_init(cm_ctx_t *cm_ctx, sm_connection_t *conn)
@@ -909,8 +894,9 @@ cm_conn_watcher_init(cm_ctx_t *cm_ctx, sm_connection_t *conn)
 }
 
 /**
- * @brief Accepts new connections to the server and starts monitoring the new
- * client file descriptors.
+ * @brief Callback called by the event loop watcher when a new connection is detected
+ * on the server socket. Accepts new connections to the server and starts
+ * monitoring the new client file descriptors.
  */
 static void
 cm_server_watcher_cb(struct ev_loop *loop, ev_io *w, int revents)
@@ -920,10 +906,7 @@ cm_server_watcher_cb(struct ev_loop *loop, ev_io *w, int revents)
     int clnt_fd = -1;
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG_NORET2(rc, w, w->data);
-    if (SR_ERR_OK != rc) {
-        return;
-    }
+    CHECK_NULL_ARG_VOID2(w, w->data);
     cm_ctx = (cm_ctx_t*)w->data;
 
     do {
@@ -931,12 +914,6 @@ cm_server_watcher_cb(struct ev_loop *loop, ev_io *w, int revents)
         if (-1 != clnt_fd) {
             /* accepted the new connection */
             SR_LOG_DBG("New client connection on fd %d", clnt_fd);
-            if (clnt_fd >= FD_SETSIZE) {
-                /* cannot accept connections with fd above FD_SETSIZE */
-                SR_LOG_ERR("FD_SETSIZE(%d) reached, cannot accept connection with fd=%d.", FD_SETSIZE, clnt_fd);
-                close(clnt_fd);
-                continue;
-            }
             /* set to nonblocking mode */
             rc = cm_fd_set_nonblock(clnt_fd);
             if (SR_ERR_OK != rc) {
@@ -989,9 +966,7 @@ cm_server_watcher_cb(struct ev_loop *loop, ev_io *w, int revents)
 void
 cm_event_loop(cm_ctx_t *cm_ctx)
 {
-    if (NULL == cm_ctx) {
-        return;
-    }
+    CHECK_NULL_ARG_VOID(cm_ctx);
 
     SR_LOG_DBG_MSG("Starting CM event loop.");
 
@@ -1018,19 +993,14 @@ cm_event_loop_threaded(void *cm_ctx_p)
 }
 
 /**
- * @brief Callback called by the event loop when an async request to stop the loop is received.
+ * @brief Callback called by the event loop watcher when an async request to stop the loop is received.
  */
 static void
 cm_stop_cb(struct ev_loop *loop, ev_io *w, int revents)
 {
     cm_ctx_t *cm_ctx = NULL;
-    int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG_NORET3(rc, loop, w, w->data);
-    if (SR_ERR_OK != rc) {
-        return;
-    }
-
+    CHECK_NULL_ARG_VOID3(loop, w, w->data);
     cm_ctx = (cm_ctx_t*)w->data;
 
     SR_LOG_DBG_MSG("Event loop stop requested.");
@@ -1057,7 +1027,7 @@ cm_init(const cm_connection_mode_t mode, const char *socket_path, cm_ctx_t **cm_
     ctx->mode = mode;
 
     /* initialize Session Manager */
-    rc = sm_init(&ctx->sm_ctx, cm_session_data_cleanup, cm_connection_data_cleanup);
+    rc = sm_init(cm_session_data_cleanup, cm_connection_data_cleanup, &ctx->sm_ctx);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Cannot initialize Session Manager.");
         goto cleanup;
@@ -1131,7 +1101,6 @@ int
 cm_start(cm_ctx_t *cm_ctx)
 {
     int rc = SR_ERR_OK;
-    sigset_t mask;
 
     CHECK_NULL_ARG(cm_ctx);
 
@@ -1144,7 +1113,6 @@ cm_start(cm_ctx_t *cm_ctx)
                 cm_event_loop_threaded, cm_ctx);
         if (0 != rc) {
             SR_LOG_ERR("Error by creating a new thread: %s", strerror(errno));
-            pthread_sigmask(SIG_UNBLOCK, &mask, NULL);
         }
     }
 

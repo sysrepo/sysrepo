@@ -205,7 +205,7 @@ sm_connection_remove_session(const sm_ctx_t *sm_ctx, sm_connection_t *connection
 }
 
 int
-sm_init(sm_ctx_t **sm_ctx, sm_cleanup_cb session_cleanup_cb, sm_cleanup_cb connection_cleanup_cb)
+sm_init(sm_cleanup_cb session_cleanup_cb, sm_cleanup_cb connection_cleanup_cb, sm_ctx_t **sm_ctx)
 {
     sm_ctx_t *ctx = NULL;
     int rc = SR_ERR_OK;
