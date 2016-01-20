@@ -30,7 +30,7 @@
 typedef struct dm_ctx_s {
     char *search_dir;
     struct ly_ctx *ly_ctx;
-    pthread_mutex_t lyctx_lock;
+    pthread_rwlock_t lyctx_lock;
     avl_tree_t *module_avl;
     pthread_rwlock_t avl_lock;
 } dm_ctx_t;
@@ -133,9 +133,9 @@ dm_load_schema_file(dm_ctx_t *dm_ctx, const char *dir_name, const char *file_nam
         SR_LOG_WRN("Unable to open a schema file: %s", file_name);
         return SR_ERR_IO;
     }
-    pthread_mutex_lock(&dm_ctx->lyctx_lock);
+    pthread_rwlock_wrlock(&dm_ctx->lyctx_lock);
     module = lys_parse_fd(dm_ctx->ly_ctx, fileno(fd), LYS_IN_YIN);
-    pthread_mutex_unlock(&dm_ctx->lyctx_lock);
+    pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
     fclose(fd);
     if (module == NULL) {
         SR_LOG_WRN("Unable to parse a schema file: %s", file_name);
@@ -211,9 +211,9 @@ static int
 dm_find_module_schema(dm_ctx_t *dm_ctx, const char *module_name, const struct lys_module **module)
 {
     CHECK_NULL_ARG2(dm_ctx, module_name);
-    pthread_mutex_lock(&dm_ctx->lyctx_lock);
+    pthread_rwlock_rdlock(&dm_ctx->lyctx_lock);
     *module = ly_ctx_get_module(dm_ctx->ly_ctx, module_name, NULL);
-    pthread_mutex_unlock(&dm_ctx->lyctx_lock);
+    pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
     return *module == NULL ? SR_ERR_UNKNOWN_MODEL : SR_ERR_OK;
 }
 
@@ -240,20 +240,20 @@ dm_load_data_tree(dm_ctx_t *dm_ctx, const struct lys_module *module, struct lyd_
 
     FILE *f = fopen(data_filename, "r");
     if (NULL != f) {
-        pthread_mutex_lock(&dm_ctx->lyctx_lock);
+        pthread_rwlock_wrlock(&dm_ctx->lyctx_lock);
         *data_tree = lyd_parse_fd(dm_ctx->ly_ctx, fileno(f), LYD_XML, LYD_OPT_STRICT);
         if (NULL == *data_tree) {
             SR_LOG_ERR("Parsing data tree from file %s failed", data_filename);
             free(data_filename);
             fclose(f);
-            pthread_mutex_unlock(&dm_ctx->lyctx_lock);
+            pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
             return SR_ERR_INTERNAL;
         }
         fclose(f);
     } else {
         SR_LOG_INF("File %s couldn't be opened for reading, file probably doesn't exist", data_filename);
         free(data_filename);
-        pthread_mutex_unlock(&dm_ctx->lyctx_lock);
+        pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
         return SR_ERR_NOT_FOUND;
     }
 
@@ -261,10 +261,10 @@ dm_load_data_tree(dm_ctx_t *dm_ctx, const struct lys_module *module, struct lyd_
         SR_LOG_ERR("Loaded data tree '%s' is not valid", data_filename);
         free(data_filename);
         sr_free_datatree(*data_tree);
-        pthread_mutex_unlock(&dm_ctx->lyctx_lock);
+        pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
         return SR_ERR_INTERNAL;
     }
-    pthread_mutex_unlock(&dm_ctx->lyctx_lock);
+    pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
 
     SR_LOG_INF("Data file %s loaded successfuly", data_filename);
     free(data_filename);
@@ -356,16 +356,16 @@ dm_init(const char *search_dir, dm_ctx_t **dm_ctx)
         return SR_ERR_NOMEM;
     }
 
-    if (0 != pthread_mutex_init(&ctx->lyctx_lock, NULL)) {
+    pthread_rwlockattr_t attr;
+    pthread_rwlockattr_init(&attr);
+    pthread_rwlockattr_setkind_np(&attr, PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP);
+
+    if (0 != pthread_rwlock_init(&ctx->lyctx_lock, &attr)) {
         SR_LOG_ERR_MSG("lyctx mutex initialization failed");
         dm_cleanup(ctx);
         return SR_ERR_INTERNAL;
     }
     
-    pthread_rwlockattr_t    attr;
-    pthread_rwlockattr_init(&attr);
-    pthread_rwlockattr_setkind_np(&attr, PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP);
-
     if (0 != pthread_rwlock_init(&ctx->avl_lock, &attr)){
         SR_LOG_ERR_MSG("avl rwlock init failed");
         dm_cleanup(ctx);
