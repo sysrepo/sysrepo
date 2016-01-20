@@ -74,6 +74,15 @@ typedef struct cm_ctx_s {
 } cm_ctx_t;
 
 /**
+ * @brief Buffer of raw data received from / to be sent to the other side.
+ */
+typedef struct cm_buffer_s {
+    uint8_t *data;  /**< data of the buffer */
+    size_t size;    /**< Current size of the buffer. */
+    size_t pos;     /**< Current position in the buffer */
+} cm_buffer_t;
+
+/**
  * @brief Context used to store session-related data managed by Connection Manager.
  */
 typedef struct cm_session_ctx_s {
@@ -88,8 +97,8 @@ typedef struct cm_session_ctx_s {
  */
 typedef struct cm_connection_ctx_s {
     cm_ctx_t *cm_ctx;      /**< Connection manager context assigned to this connection. */
-    sm_buffer_t in_buff;   /**< Input buffer. If not empty, there is some received data to be processed. */
-    sm_buffer_t out_buff;  /**< Output buffer. If not empty, there is some data to be sent when receiver is ready. */
+    cm_buffer_t in_buff;   /**< Input buffer. If not empty, there is some received data to be processed. */
+    cm_buffer_t out_buff;  /**< Output buffer. If not empty, there is some data to be sent when receiver is ready. */
     ev_io read_watcher;    /**< Watcher for readable events on connection's socket. */
     ev_io write_watcher;   /**< Watcher for writable events on connection's socket. */
 } cm_connection_ctx_t;
@@ -267,7 +276,7 @@ cm_conn_close(cm_ctx_t *cm_ctx, sm_connection_t *conn)
  * @brief Expand the size of the buffer of given connection.
  */
 static int
-cm_conn_buffer_expand(const sm_connection_t *conn, sm_buffer_t *buff, size_t requested_space)
+cm_conn_buffer_expand(const sm_connection_t *conn, cm_buffer_t *buff, size_t requested_space)
 {
     uint8_t *tmp = NULL;
 
@@ -299,7 +308,7 @@ cm_conn_buffer_expand(const sm_connection_t *conn, sm_buffer_t *buff, size_t req
 static int
 cm_conn_out_buff_flush(cm_ctx_t *cm_ctx, sm_connection_t *connection)
 {
-    sm_buffer_t *buff = NULL;
+    cm_buffer_t *buff = NULL;
     int written = 0;
     size_t buff_size = 0, buff_pos = 0;
     int rc = SR_ERR_OK;
@@ -348,7 +357,7 @@ cm_conn_out_buff_flush(cm_ctx_t *cm_ctx, sm_connection_t *connection)
 static int
 cm_msg_send_session(cm_ctx_t *cm_ctx, sm_session_t *session, Sr__Msg *msg)
 {
-    sm_buffer_t *buff = NULL;
+    cm_buffer_t *buff = NULL;
     size_t msg_size = 0;
     int rc = SR_ERR_OK;
 
@@ -706,7 +715,7 @@ cleanup:
 static int
 cm_conn_in_buff_process(cm_ctx_t *cm_ctx, sm_connection_t *conn)
 {
-    sm_buffer_t *buff = NULL;
+    cm_buffer_t *buff = NULL;
     size_t buff_pos = 0, buff_size = 0;
     size_t msg_size = 0;
     int rc = SR_ERR_OK;
@@ -765,7 +774,7 @@ cm_conn_read_cb(struct ev_loop *loop, ev_io *w, int revents)
 {
     sm_connection_t *conn = NULL;
     cm_ctx_t *cm_ctx = NULL;
-    sm_buffer_t *buff = NULL;
+    cm_buffer_t *buff = NULL;
     int bytes = 0;
     int rc = SR_ERR_OK;
 

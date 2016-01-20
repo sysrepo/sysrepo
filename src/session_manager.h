@@ -26,16 +26,15 @@
 #include <stdbool.h>
 #include <sys/types.h>
 
-typedef struct cm_session_ctx_s cm_session_ctx_t;       /** Forward-declaration of CM's session-related context. */
-typedef struct cm_connection_ctx_s cm_connection_ctx_t; /** Forward-declaration of CM's connection-related context. */
+typedef struct cm_session_ctx_s cm_session_ctx_t;        /** Forward-declaration of Connection Manager's session context. */
+typedef struct cm_connection_ctx_s cm_connection_ctx_t;  /** Forward-declaration of Connection Manager's connection context. */
 
 /**
  * @defgroup sm Session Manager
  * @{
  *
  * @brief Session manager tracks information about all active sysrepo sessions
- * (see ::sm_session_t), including connection-related information
- * (see ::sm_connection_t).
+ * (see ::sm_session_t), and connections (see ::sm_connection_t).
  *
  * Sessions and connections are tied together, one connection can be used
  * to serve multiple sessions.
@@ -85,15 +84,6 @@ typedef enum {
     CM_AF_UNIX_CLIENT,  /**< The other side is an unix-domain socket client. */
     CM_AF_UNIX_SERVER,  /**< The other side is an unix-domain socket server. */
 } sm_connection_type_t;
-
-/**
- * @brief Buffers of raw data received from / to be sent to the other side.
- */
-typedef struct sm_buffer_s {
-    uint8_t *data;  /**< data of the buffer */
-    size_t size;    /**< Current size of the buffer. */
-    size_t pos;     /**< Current position in the buffer */
-} sm_buffer_t;
 
 /**
  * @brief Connection context structure, represents one particular connection.
