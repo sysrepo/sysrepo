@@ -38,3 +38,4 @@ ADD_UNIT_TEST(rp_node_stack_test)
 
 
 ADD_UNIT_TEST(cl_test)
+ADD_UNIT_TEST_WITH_OPTS(perf_test perf_test.c "" 0)
