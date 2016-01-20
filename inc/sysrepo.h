@@ -292,18 +292,6 @@ void sr_free_val_t(sr_val_t *value);
 void sr_free_values_t(sr_val_t **values, size_t count);
 
 void sr_free_val_iter(sr_val_iter_t *iter);
-#define SR_VAL_TYPE(val) (val)->type
-#define SR_VAL_NAME(val) ...
-#define SR_VAL_KEY(val,index) ...
-
-#define SR_VAL_UINT32_T(val) (val)->data.uint32_t
-
-#define SR_VAL_INIT_UINT32(val) {.data.uint32_val=val,.type=SR_UINT32_T}
-
-#define SR_VAL_IS_UINT32_T(val) ((val)->type == SR_UINT32_T)
-#define SR_VAL_IS_STRING(val) ((val)->type == SR_STRING_T)
-#define SR_VAL_DATA(val)  SR_VAL_IS_UINT32_T ? val->data.uint32_t : SR_VAL_IS_STRING ? val->data.string: ….
-
 /**@} cl */
 
 #endif

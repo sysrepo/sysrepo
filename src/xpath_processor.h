@@ -25,9 +25,6 @@
 #ifndef SRC_XPATH_PROCESSOR_H_
 #define SRC_XPATH_PROCESSOR_H_
 
-/**@brief Maximum number of tokens location_id can contain*/
-#define MAX_TOKENS 500
-
 #include <string.h>
 #include "xp_internal.h"
 #include "sr_common.h"
