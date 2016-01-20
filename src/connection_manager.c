@@ -43,7 +43,7 @@
 #define CM_IN_BUFF_MIN_SPACE 512  /**< Minimal empty space in the input buffer. */
 #define CM_BUFF_ALLOC_CHUNK 1024  /**< Chunk size for buffer expansions. */
 
-#define CM_SESSION_REQ_QUEUE_SIZE 2     /**< Initial size of the request queue buffer. */
+#define CM_SESSION_REQ_QUEUE_SIZE 2  /**< Initial size of the request queue buffer. */
 
 /**
  * @brief Connection Manager context.
@@ -65,32 +65,33 @@ typedef struct cm_ctx_s {
     /** Thread where event loop will be running in case of library mode. */
     pthread_t event_loop_thread;
 
-    struct ev_loop *event_loop; // TODO
+    /** Event loop context. */
+    struct ev_loop *event_loop;
+    /** Watcher for events on server unix-domain socket. */
     ev_io server_watcher;
+    /** Watcher for stop request events. */
     ev_async stop_watcher;
 } cm_ctx_t;
 
 /**
- * @brief TODO
+ * @brief Context used to store session-related data managed by Connection Manager.
  */
 typedef struct cm_session_ctx_s {
-    uint32_t rp_req_cnt;                 /**< Number of session-related outstanding requests in Request Processor. */
-    sr_cbuff_t *request_queue;           /**< Queue of requests waiting for forwarding to Request Processor. */
-    uint32_t rp_resp_expected;           /**< Number of expected session-related responses to be forwarded to Request Processor. */
-
-    rp_session_t *rp_session;            /**< Request Processor session data. */
+    uint32_t rp_req_cnt;        /**< Number of session-related outstanding requests in Request Processor. */
+    sr_cbuff_t *request_queue;  /**< Queue of requests waiting for forwarding to Request Processor. */
+    uint32_t rp_resp_expected;  /**< Number of expected session-related responses to be forwarded to Request Processor. */
+    rp_session_t *rp_session;   /**< Request Processor's session context. */
 } cm_session_ctx_t;
 
 /**
- * @brief TODO
+ * @brief Context used to store connection-related data managed by Connection Manager.
  */
 typedef struct cm_connection_ctx_s {
+    cm_ctx_t *cm_ctx;      /**< Connection manager context assigned to this connection. */
     sm_buffer_t in_buff;   /**< Input buffer. If not empty, there is some received data to be processed. */
     sm_buffer_t out_buff;  /**< Output buffer. If not empty, there is some data to be sent when receiver is ready. */
-
-    ev_io read_watcher;
-    ev_io write_watcher;
-    cm_ctx_t *cm_ctx;
+    ev_io read_watcher;    /**< Watcher for readable events on connection's socket. */
+    ev_io write_watcher;   /**< Watcher for writable events on connection's socket. */
 } cm_connection_ctx_t;
 
 /**
@@ -900,12 +901,16 @@ cm_conn_watcher_init(cm_ctx_t *cm_ctx, sm_connection_t *conn)
 static void
 cm_server_watcher_cb(struct ev_loop *loop, ev_io *w, int revents)
 {
-    int clnt_fd = -1;
+    cm_ctx_t *cm_ctx = NULL;
     sm_connection_t *connection = NULL;
+    int clnt_fd = -1;
     int rc = SR_ERR_OK;
-    cm_ctx_t *cm_ctx = (cm_ctx_t*)w->data;
 
-    // TODO err check
+    CHECK_NULL_ARG_NORET2(rc, w, w->data);
+    if (SR_ERR_OK != rc) {
+        return;
+    }
+    cm_ctx = (cm_ctx_t*)w->data;
 
     do {
         clnt_fd = accept(cm_ctx->listen_socket_fd, NULL, NULL);
@@ -964,8 +969,8 @@ cm_server_watcher_cb(struct ev_loop *loop, ev_io *w, int revents)
 
 /**
  * @brief Event loop of Connection Manager. Monitors all connections for events
- * and calls proper dispatch handler for each event. This function call blocks
- * until an error occured or until a stop request comes via stop_requested variable.
+ * and calls proper callback handlers for each event. This function call blocks
+ * until stop is requested via async stop request.
  */
 void
 cm_event_loop(cm_ctx_t *cm_ctx)
@@ -999,7 +1004,7 @@ cm_event_loop_threaded(void *cm_ctx_p)
 }
 
 /**
- * Callback called by the event loop when an async request to stop the loop is sent.
+ * @brief Callback called by the event loop when an async request to stop the loop is received.
  */
 static void
 cm_stop_cb(struct ev_loop *loop, ev_io *w, int revents)
@@ -1037,34 +1042,39 @@ cm_init(const cm_connection_mode_t mode, const char *socket_path, cm_ctx_t **cm_
     }
     ctx->mode = mode;
 
+    /* initialize Session Manager */
     rc = sm_init(&ctx->sm_ctx, cm_session_data_cleanup, cm_connection_data_cleanup);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Cannot initialize Session Manager.");
         goto cleanup;
     }
 
+    /* initialize unix-domain server */
     rc = cm_server_init(ctx, socket_path);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Cannot initialize server socket.");
         goto cleanup;
     }
 
-    // TODO: wrap
-    ctx->event_loop = ev_default_loop(0);
-
-    ev_io_init(&ctx->server_watcher, cm_server_watcher_cb, ctx->listen_socket_fd, EV_READ);
-    ctx->server_watcher.data = (void*)ctx;
-    ev_io_start(ctx->event_loop, &ctx->server_watcher);
-
-    ev_async_init(&ctx->stop_watcher, cm_stop_cb);
-    ctx->stop_watcher.data = (void*)ctx;
-    ev_async_start(ctx->event_loop, &ctx->stop_watcher);
-
+    /* initialize Request Processor */
     rc = rp_init(ctx, &ctx->rp_ctx);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Cannot initialize Request Processor.");
         goto cleanup;
     }
+
+    /* initialize event loop */
+    ctx->event_loop = ev_default_loop(0);
+
+    /* initialize event watcher for unix-domain server socket */
+    ev_io_init(&ctx->server_watcher, cm_server_watcher_cb, ctx->listen_socket_fd, EV_READ);
+    ctx->server_watcher.data = (void*)ctx;
+    ev_io_start(ctx->event_loop, &ctx->server_watcher);
+
+    /* initialize event watcher for async stop requests */
+    ev_async_init(&ctx->stop_watcher, cm_stop_cb);
+    ctx->stop_watcher.data = (void*)ctx;
+    ev_async_start(ctx->event_loop, &ctx->stop_watcher);
 
     SR_LOG_DBG_MSG("Connection Manager initialized successfully.");
 

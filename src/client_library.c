@@ -262,7 +262,8 @@ static int
 cl_message_send(sr_conn_ctx_t *conn_ctx, Sr__Msg *msg)
 {
     size_t msg_size = 0;
-    int rc = 0;
+    int pos = 0, sent = 0;
+    int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG2(conn_ctx, msg);
 
@@ -287,11 +288,18 @@ cl_message_send(sr_conn_ctx_t *conn_ctx, Sr__Msg *msg)
     sr__msg__pack(msg, (conn_ctx->msg_buf + SR_MSG_PREAM_SIZE));
 
     /* send the message */
-    rc = send(conn_ctx->fd, conn_ctx->msg_buf, (msg_size + SR_MSG_PREAM_SIZE), 0);
-    if (rc < 1) {
-        SR_LOG_ERR("Error by sending of the message: %s.", strerror(errno));
-        return SR_ERR_DISCONNECT;
-    }
+    do {
+        sent = send(conn_ctx->fd, (conn_ctx->msg_buf + pos), (msg_size + SR_MSG_PREAM_SIZE - pos), 0);
+        if (sent > 0) {
+            pos += sent;
+        } else {
+            if (errno == EINTR) {
+                continue;
+            }
+            SR_LOG_ERR("Error by sending of the message: %s.", strerror(errno));
+            return SR_ERR_DISCONNECT;
+        }
+    } while ((pos < (msg_size + SR_MSG_PREAM_SIZE)) && (sent > 0));
 
     return SR_ERR_OK;
 }
@@ -317,6 +325,9 @@ cl_message_recv(sr_conn_ctx_t *conn_ctx, Sr__Msg **msg)
     while (pos < SR_MSG_PREAM_SIZE) {
         len = recv(conn_ctx->fd, conn_ctx->msg_buf, conn_ctx->msg_buf_size, 0);
         if (-1 == len) {
+            if (errno == EINTR) {
+                continue;
+            }
             SR_LOG_ERR("Error by receiving of the message: %s.", strerror(errno));
             return SR_ERR_MALFORMED_MSG;
         }
@@ -345,6 +356,9 @@ cl_message_recv(sr_conn_ctx_t *conn_ctx, Sr__Msg **msg)
     while (pos < (msg_size + SR_MSG_PREAM_SIZE)) {
         len = recv(conn_ctx->fd, (conn_ctx->msg_buf + pos), (conn_ctx->msg_buf_size - pos), 0);
         if (-1 == len) {
+            if (errno == EINTR) {
+                continue;
+            }
             SR_LOG_ERR("Error by receiving of the message: %s.", strerror(errno));
             return SR_ERR_MALFORMED_MSG;
         }
