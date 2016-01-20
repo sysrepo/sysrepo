@@ -253,7 +253,6 @@ dm_load_data_tree(dm_ctx_t *dm_ctx, const struct lys_module *module, struct lyd_
     } else {
         SR_LOG_INF("File %s couldn't be opened for reading, file probably doesn't exist", data_filename);
         free(data_filename);
-        pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
         return SR_ERR_NOT_FOUND;
     }
 
@@ -391,6 +390,7 @@ dm_cleanup(dm_ctx_t *dm_ctx)
     ly_ctx_destroy(dm_ctx->ly_ctx);
     free(dm_ctx);
     pthread_rwlock_destroy(&dm_ctx->avl_lock);
+    pthread_rwlock_destroy(&dm_ctx->lyctx_lock);
     return SR_ERR_OK;
 }
 
