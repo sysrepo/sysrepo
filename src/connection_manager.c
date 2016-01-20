@@ -19,6 +19,11 @@
  * limitations under the License.
  */
 
+/* Turn off strict aliasing error in GCC - incorrectly detects aliasing issue in ev_io_init */
+#if (__GNUC__ == 4 && 3 <= __GNUC_MINOR__) || 4 < __GNUC__
+    #pragma GCC diagnostic ignored "-Wstrict-aliasing"
+#endif
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
@@ -1073,7 +1078,9 @@ cm_init(const cm_connection_mode_t mode, const char *socket_path, cm_ctx_t **cm_
     }
 
     /* initialize event loop */
-    ctx->event_loop = ev_default_loop(0);
+    /* According to our measurements, EPOLL backend is significantly slower for
+     * fewer file descriptors, so we are disabling it for now. */
+    ctx->event_loop = ev_default_loop((EVBACKEND_ALL ^ EVBACKEND_EPOLL) | EVFLAG_NOENV);
 
     /* initialize event watcher for unix-domain server socket */
     ev_io_init(&ctx->server_watcher, cm_server_watcher_cb, ctx->listen_socket_fd, EV_READ);
