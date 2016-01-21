@@ -241,6 +241,13 @@ int sr_save_data_tree_file(const char *file_name, const struct lyd_node *data_tr
  */
 void sr_free_datatree(struct lyd_node *root);
 
+/*
+ * @brief Copies the datatree pointed by root including its siblings.
+ * @param [in] root
+ * @return duplicated datatree or NULL in case of error
+ */
+struct lyd_node* sr_dup_datatree(struct lyd_node *root);
+
 /**
  * @brief Converts libyang enum of YANG built-in types to sysrepo representation
  * @param [in] t

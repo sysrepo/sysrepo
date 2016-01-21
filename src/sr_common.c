@@ -220,6 +220,38 @@ sr_free_datatree(struct lyd_node *root){
     }
 }
 
+struct lyd_node*
+sr_dup_datatree(struct lyd_node *root){
+    struct lyd_node *dup = NULL, *s = NULL, *n = NULL;
+
+    struct lyd_node *next = NULL;
+    /* loop through top-level nodes*/
+    while (NULL != root) {
+        next = root->next;
+
+
+        n = lyd_dup(root, 1);
+        /*set output node*/
+        if (NULL == dup){
+            dup = n;
+        }
+
+        if (NULL == s){
+            s = n;
+        }
+        else if (0 != lyd_insert_after(s, n)){
+            SR_LOG_ERR_MSG("Memory allocation failed");
+            sr_free_datatree(dup);
+            return NULL;
+        }
+        /* last appended sibling*/
+        s = n;
+
+        root = next;
+    }
+    return dup;
+}
+
 sr_type_t
 sr_libyang_type_to_sysrepo(LY_DATA_TYPE t)
 {
