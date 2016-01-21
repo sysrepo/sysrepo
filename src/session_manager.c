@@ -34,12 +34,13 @@
 #define SM_SESSION_ID_INVALID 0         /**< Invalid value of session id. */
 #define SM_SESSION_ID_MAX_ATTEMPTS 100  /**< Maximum number of attempts to generate unused random session id. */
 #define SM_FD_INVALID -1                /**< Invalid value of file descriptor. */
-#define SM_SESSION_REQ_QUEUE_SIZE 2     /**< Initial size of the request queue buffer. */
 
 /**
  * @brief Session Manager context.
  */
 typedef struct sm_ctx_s {
+    sm_cleanup_cb session_cleanup_cb;     /**< Callback called by session cleanup. */
+    sm_cleanup_cb connection_cleanup_cb;  /**< Callback called by connection cleanup. */
     avl_tree_t *session_id_avl;     /**< avl tree for fast session lookup by id. */
     avl_tree_t *connection_fd_avl;  /**< avl tree for fast connection lookup by file descriptor. */
 } sm_ctx_t;
@@ -88,7 +89,7 @@ sm_connection_cmp_fd(const void *a, const void *b)
 
 /**
  * @brief Cleans up the session. Releases all resources held in session context
- * by Session Manager.
+ * by Session Manager and Connection Manager (via provided callback).
  * @note Called automatically when a node from session_id avl tree is removed
  * (which is also when the tree itself is being destroyed).
  */
@@ -99,15 +100,17 @@ sm_session_cleanup(void *session)
         sm_session_t *sm_session = (sm_session_t *)session;
         free((void*)sm_session->real_user);
         free((void*)sm_session->effective_user);
-        sr_cbuff_cleanup(sm_session->request_queue);
+        /* cleanup Connection Manager-related data */
+        if ((NULL != sm_session->sm_ctx) && (NULL != sm_session->sm_ctx->session_cleanup_cb)) {
+            sm_session->sm_ctx->session_cleanup_cb(sm_session);
+        }
         free(sm_session);
     }
 }
 
 /**
- * @brief Cleans up file descriptor session list entry. Releases all resources
- * allocated by Session manager when a fd has been assigned to a session
- * (see ::sm_session_assign_fd).
+ * @brief Cleans up connection list entry. Releases all resources held in connection
+ * context by Session Manager and Connection Manager (via provided callback).
  * @note Called automatically when a node from fd avl tree is removed
  * (which is also when the tree itself is being destroyed).
  */
@@ -125,8 +128,10 @@ sm_connection_cleanup(void *connection_p)
             session = session->next;
             free(tmp);
         }
-        free(connection->in_buff.data);
-        free(connection->out_buff.data);
+        /* cleanup Connection Manager-related data */
+        if ((NULL != connection->sm_ctx) && (NULL != connection->sm_ctx->connection_cleanup_cb)) {
+            connection->sm_ctx->connection_cleanup_cb(connection);
+        }
         free(connection);
     }
 }
@@ -200,7 +205,7 @@ sm_connection_remove_session(const sm_ctx_t *sm_ctx, sm_connection_t *connection
 }
 
 int
-sm_init(sm_ctx_t **sm_ctx)
+sm_init(sm_cleanup_cb session_cleanup_cb, sm_cleanup_cb connection_cleanup_cb, sm_ctx_t **sm_ctx)
 {
     sm_ctx_t *ctx = NULL;
     int rc = SR_ERR_OK;
@@ -213,6 +218,8 @@ sm_init(sm_ctx_t **sm_ctx)
         rc = SR_ERR_NOMEM;
         goto cleanup;
     }
+    ctx->session_cleanup_cb = session_cleanup_cb;
+    ctx->connection_cleanup_cb = connection_cleanup_cb;
 
     /* create avl tree for fast session lookup by id,
      * with automatic cleanup when the session is removed from tree */
@@ -276,6 +283,7 @@ sm_connection_start(const sm_ctx_t *sm_ctx, const sm_connection_type_t type, con
         SR_LOG_ERR_MSG("Cannot allocate memory for new connection context.");
         return SR_ERR_NOMEM;
     }
+    connection->sm_ctx = (sm_ctx_t*)sm_ctx;
     connection->type = type;
     connection->fd = fd;
 
@@ -341,13 +349,7 @@ sm_session_create(const sm_ctx_t *sm_ctx, sm_connection_t *connection,
         rc = SR_ERR_NOMEM;
         goto cleanup;
     }
-
-    /* initialize session request queue */
-    rc = sr_cbuff_init(SM_SESSION_REQ_QUEUE_SIZE, sizeof(Sr__Msg*), &session->request_queue);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Cannot initialize session request queue (session id=%"PRIu32").", session->id);
-        goto cleanup;
-    }
+    session->sm_ctx = (sm_ctx_t*)sm_ctx;
 
     /* duplicate and set user names */
     session->real_user = strdup(real_user);

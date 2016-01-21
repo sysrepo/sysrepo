@@ -43,6 +43,12 @@
         return SR_ERR_INVAL_ARG; \
     } \
 
+#define CHECK_NULL_ARG_VOID__INTERNAL(ARG) \
+    if (NULL == ARG) { \
+        SR_LOG_ERR("NULL value detected for %s argument of %s", #ARG, __FUNCTION__); \
+        return; \
+    } \
+
 #define CHECK_NULL_ARG_NORET__INTERNAL(RC, ARG) \
     if (NULL == ARG) { \
         SR_LOG_ERR("NULL value detected for %s argument of %s", #ARG, __FUNCTION__); \
@@ -82,6 +88,41 @@
         CHECK_NULL_ARG__INTERNAL(ARG3) \
         CHECK_NULL_ARG__INTERNAL(ARG4) \
         CHECK_NULL_ARG__INTERNAL(ARG5) \
+    } while(0)
+
+#define CHECK_NULL_ARG_VOID(ARG) \
+    do { \
+        CHECK_NULL_ARG_VOID__INTERNAL(ARG) \
+    } while(0)
+
+#define CHECK_NULL_ARG_VOID2(ARG1, ARG2) \
+    do { \
+        CHECK_NULL_ARG_VOID__INTERNAL(ARG1) \
+        CHECK_NULL_ARG_VOID__INTERNAL(ARG2) \
+    } while(0)
+
+#define CHECK_NULL_ARG_VOID3(ARG1, ARG2, ARG3) \
+    do { \
+        CHECK_NULL_ARG_VOID__INTERNAL(ARG1) \
+        CHECK_NULL_ARG_VOID__INTERNAL(ARG2) \
+        CHECK_NULL_ARG_VOID__INTERNAL(ARG3) \
+    } while(0)
+
+#define CHECK_NULL_ARG_VOID4(ARG1, ARG2, ARG3, ARG4) \
+    do { \
+        CHECK_NULL_ARG_VOID__INTERNAL(ARG1) \
+        CHECK_NULL_ARG_VOID__INTERNAL(ARG2) \
+        CHECK_NULL_ARG_VOID__INTERNAL(ARG3) \
+        CHECK_NULL_ARG_VOID__INTERNAL(ARG4) \
+    } while(0)
+
+#define CHECK_NULL_ARG_VOID5(ARG1, ARG2, ARG3, ARG4, ARG5) \
+    do { \
+        CHECK_NULL_ARG_VOID__INTERNAL(ARG1) \
+        CHECK_NULL_ARG_VOID__INTERNAL(ARG2) \
+        CHECK_NULL_ARG_VOID__INTERNAL(ARG3) \
+        CHECK_NULL_ARG_VOID__INTERNAL(ARG4) \
+        CHECK_NULL_ARG_VOID__INTERNAL(ARG5) \
     } while(0)
 
 #define CHECK_NULL_ARG_NORET(RC, ARG) \

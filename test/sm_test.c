@@ -36,7 +36,7 @@ setup(void **state) {
     sr_logger_init(NULL);
     sr_logger_set_level(SR_LL_ERR, SR_LL_ERR); /* print only errors. */
 
-    sm_init(&ctx);
+    sm_init(NULL, NULL, &ctx);
     *state = ctx;
 
     return 0;
