@@ -799,7 +799,7 @@ cm_conn_read_cb(struct ev_loop *loop, ev_io *w, int revents)
         bytes = recv(conn->fd, (buff->data + buff->pos), (buff->size - buff->pos), 0);
         if (bytes > 0) {
             /* recieved "bytes" bytes of data */
-            SR_LOG_DBG("%d bytes of data recieved on fd %d : %s", bytes, conn->fd, buff->data);
+            SR_LOG_DBG("%d bytes of data recieved on fd %d", bytes, conn->fd);
             buff->pos += bytes;
         } else if (0 == bytes) {
             /* connection closed by the other side */

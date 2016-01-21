@@ -22,21 +22,25 @@
 #include <stdlib.h>
 #include "sysrepo.h"
 
-int main(int argc, char **argv) {
-
+int
+main(int argc, char **argv)
+{
     sr_conn_ctx_t *conn = NULL;
     sr_session_ctx_t *sess = NULL;
     sr_val_t *value = NULL;
     int rc = SR_ERR_OK;
     
     /* connect to sysrepo */
-    rc = sr_connect("sr_get_item_example", true, &conn);
+    rc = sr_connect("app1", true, &conn);
     if (SR_ERR_OK != rc) {
         goto cleanup;
     }
 
+    /* turn on debug logging on stderr */
+    sr_logger_set_level(SR_LL_DBG, SR_LL_INF);
+
     /* start session */
-    rc = sr_session_start(conn, "app1", SR_DS_CANDIDATE, &sess);
+    rc = sr_session_start(conn, NULL, SR_DS_CANDIDATE, &sess);
     if (SR_ERR_OK != rc) {
         goto cleanup;
     }
@@ -46,7 +50,7 @@ int main(int argc, char **argv) {
     if (SR_ERR_OK != rc) {
         goto cleanup;
     }
-    printf("\n\nValue on xpath: %s has value %d\n", value->xpath, value->data.bool_val);
+    printf("\nValue on xpath: %s = %s\n", value->xpath, (value->data.bool_val ? "true" : "false"));
     sr_free_val_t(value);
 
 cleanup:

@@ -30,7 +30,7 @@
 static int
 logging_setup(void **state)
 {
-    sr_logger_set_level(SR_LL_NONE, SR_LL_NONE); /* print debugs to stderr */
+    sr_logger_set_level(SR_LL_NONE, SR_LL_NONE); /* turn off all logging */
     return 0;
 }
 
