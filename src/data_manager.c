@@ -268,14 +268,32 @@ dm_load_data_tree(dm_ctx_t *dm_ctx, const struct lys_module *module, struct lyd_
     SR_LOG_INF("Data file %s loaded successfuly", data_filename);
     free(data_filename);
 
+    /* insert into avl tree */
     pthread_rwlock_wrlock(&dm_ctx->avl_lock);
     avl_node_t *avl_node = avl_insert(dm_ctx->module_avl, *data_tree);
     if (NULL == avl_node) {
-        SR_LOG_ERR("Insert data tree %s into avl tree failed", module->name);
-        sr_free_datatree(*data_tree);
-        *data_tree = NULL;
-        pthread_rwlock_unlock(&dm_ctx->avl_lock);
-        return SR_ERR_INTERNAL;
+        if (EEXIST == errno){
+            /* if the node has been inserted meanwhile by someone else find it*/
+            avl_node = avl_search(dm_ctx->module_avl, *data_tree);
+            sr_free_datatree(*data_tree);
+            *data_tree = NULL;
+            if (NULL != avl_node){
+                SR_LOG_INF("Data tree '%s' has been inserted already", module->name);
+                *data_tree = avl_node->item;
+                pthread_rwlock_unlock(&dm_ctx->avl_lock);
+                return SR_ERR_OK;
+            }
+            SR_LOG_ERR("Insert data tree %s into avl tree failed", module->name);
+            pthread_rwlock_unlock(&dm_ctx->avl_lock);
+            return SR_ERR_INTERNAL;
+        }
+        else{
+            SR_LOG_ERR("Insert data tree %s into avl tree failed", module->name);
+            sr_free_datatree(*data_tree);
+            *data_tree = NULL;
+            pthread_rwlock_unlock(&dm_ctx->avl_lock);
+            return SR_ERR_INTERNAL;
+        }
     }
     pthread_rwlock_unlock(&dm_ctx->avl_lock);
 
