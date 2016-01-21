@@ -1,5 +1,5 @@
 /**
- * @defgroup xpath_process xPath processor
+ * @defgroup xpath_process xPath Processor
  * @{
  * @brief xpath helpers for addressing the nodes
  * @file xpath_processor.h

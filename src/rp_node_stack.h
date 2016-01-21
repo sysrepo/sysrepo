@@ -1,7 +1,10 @@
 /**
+ * @defgroup rp_ns Request Processor's Node Stack
+ * @{
+ * @brief Provides stack of libyang data nodes.
  * @file rp_node_stack.h
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
- * @brief 
+ * @brief
  *
  * @copyright
  * Copyright 2016 Cisco Systems, Inc.
@@ -66,5 +69,7 @@ bool rp_ns_is_empty(rp_node_stack_t **stack);
  */
 int rp_ns_clean(rp_node_stack_t **stack);
 
-
+/**
+ * @}
+ */
 #endif /* SRC_RP_NODE_STACK_H_ */

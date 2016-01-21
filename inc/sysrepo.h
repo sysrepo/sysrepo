@@ -22,16 +22,25 @@
 #ifndef SYSREPO_H__
 #define SYSREPO_H__
 
-#include <stdbool.h>
-#include <stdint.h>
-#include <stdlib.h>
-
 /**
  * @defgroup cl Client Library
  * @{
  *
- * @brief TODO
+ * @brief Provides the public API towards applications using sysrepo to store
+ * their configuration data, or towards management agents.
+ *
+ * Communicates with Sysrepo Engine (@ref cm), which is running
+ * either inside of dedicated sysrepo daemon, or within this library if
+ * daemon is not alive.
+ *
+ * Messages are sent in the format of encoded (binary) Google Protocol
+ * Buffer messages, which are always prepended with 4-byte preamble containing
+ * message size.
  */
+
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdlib.h>
 
 /**
  * @brief Sysrepo connection context used to identify a connection to sysrepo datastore.
