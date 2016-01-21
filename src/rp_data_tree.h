@@ -32,12 +32,14 @@
 #include "sysrepo.h"
 #include "rp_node_stack.h"
 
-
+/**
+ * @brief Cache structure that holds the state of the last get_item_iter call.
+ */
 typedef struct rp_dt_get_items_ctx{
-    char *xpath;
-    bool recursive;
-    size_t offset;
-    rp_node_stack_t *stack;
+    char *xpath;            /**< xpath of the request*/
+    bool recursive;         /**< flag denotes if the subtrees should be part of the response*/
+    size_t offset;          /**< index of the node to be processed */
+    rp_node_stack_t *stack; /**< stack of nodes to be processed in depth-first walk */
 }rp_dt_get_items_ctx_t;
 
 /**
