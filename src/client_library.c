@@ -388,6 +388,8 @@ cl_request_process(sr_conn_ctx_t *conn_ctx, Sr__Msg *msg_req, Sr__Msg **msg_resp
 {
     int rc = SR_ERR_OK;
 
+    SR_LOG_DBG("Sending a request for operation=%d", expected_response_op);
+
     pthread_mutex_lock(&conn_ctx->lock);
 
     /* send the request */
@@ -399,6 +401,8 @@ cl_request_process(sr_conn_ctx_t *conn_ctx, Sr__Msg *msg_req, Sr__Msg **msg_resp
         return rc;
     }
 
+    SR_LOG_DBG("Request for operation=%d sent, waiting for response.", expected_response_op);
+
     /* receive the response */
     rc = cl_message_recv(conn_ctx, msg_resp);
     if (SR_ERR_OK != rc) {
@@ -409,6 +413,8 @@ cl_request_process(sr_conn_ctx_t *conn_ctx, Sr__Msg *msg_req, Sr__Msg **msg_resp
     }
 
     pthread_mutex_unlock(&conn_ctx->lock);
+
+    SR_LOG_DBG("Response for operation=%d received, processing.", expected_response_op);
 
     /* validate the response */
     rc = sr_pb_msg_validate(*msg_resp, SR__MSG__MSG_TYPE__RESPONSE, expected_response_op);
@@ -494,6 +500,8 @@ sr_connect(const char *app_name, const bool allow_library_mode, sr_conn_ctx_t **
 
     CHECK_NULL_ARG2(app_name, conn_ctx_p);
 
+    SR_LOG_DBG_MSG("Connecting to Sysrepo Engine.");
+
     /* initialize the context */
     ctx = calloc(1, sizeof(*ctx));
     if (NULL == ctx) {
@@ -522,6 +530,7 @@ sr_connect(const char *app_name, const bool allow_library_mode, sr_conn_ctx_t **
     pthread_mutex_unlock(&primary_lock);
 
     // TODO: milestone 2: attempt to connect to sysrepo daemon socket
+    SR_LOG_WRN_MSG("Sysrepo daemon not detected. Connecting to local Sysrepo Engine.");
 
     /* connect in library mode */
     ctx->library_mode = true;
@@ -531,7 +540,7 @@ sr_connect(const char *app_name, const bool allow_library_mode, sr_conn_ctx_t **
     rc = cl_socket_connect(ctx, socket_path);
     if (SR_ERR_OK != rc) {
         /* initialize our own sysrepo engine and attempt to connect again */
-        SR_LOG_DBG_MSG("Local sysrepo engine not running yet, initializing new one.");
+        SR_LOG_INF_MSG("Local Sysrepo Engine not running yet, initializing new one.");
 
         rc = cl_engine_init_local(ctx, socket_path);
         if (SR_ERR_OK != rc) {
@@ -544,6 +553,8 @@ sr_connect(const char *app_name, const bool allow_library_mode, sr_conn_ctx_t **
             goto cleanup;
         }
     }
+
+    SR_LOG_INF("Connected to Sysrepo Engine at socket=%s", socket_path);
 
     *conn_ctx_p = ctx;
     return SR_ERR_OK;

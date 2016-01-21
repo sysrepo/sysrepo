@@ -1095,6 +1095,7 @@ cm_cleanup(cm_ctx_t *cm_ctx)
         cm_server_cleanup(cm_ctx);
         free(cm_ctx);
     }
+    SR_LOG_INF_MSG("Connection Manager successfully destroyed.");
 }
 
 int
@@ -1123,6 +1124,8 @@ int
 cm_stop(cm_ctx_t *cm_ctx)
 {
     CHECK_NULL_ARG(cm_ctx);
+
+    SR_LOG_INF_MSG("Connection Manager stop requested.");
 
     /* send async event to the event loop */
     ev_async_send(cm_ctx->event_loop, &cm_ctx->stop_watcher);

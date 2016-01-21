@@ -30,14 +30,14 @@ main(int argc, char **argv)
     sr_val_t *value = NULL;
     int rc = SR_ERR_OK;
     
+    /* turn on debug logging to stderr - to see what's happening behind :) */
+    sr_logger_set_level(SR_LL_DBG, SR_LL_INF);
+
     /* connect to sysrepo */
     rc = sr_connect("app1", true, &conn);
     if (SR_ERR_OK != rc) {
         goto cleanup;
     }
-
-    /* turn on debug logging on stderr */
-    sr_logger_set_level(SR_LL_DBG, SR_LL_INF);
 
     /* start session */
     rc = sr_session_start(conn, NULL, SR_DS_CANDIDATE, &sess);
@@ -50,7 +50,7 @@ main(int argc, char **argv)
     if (SR_ERR_OK != rc) {
         goto cleanup;
     }
-    printf("\nValue on xpath: %s = %s\n", value->xpath, (value->data.bool_val ? "true" : "false"));
+    printf("\nValue on xpath: %s = %s\n\n", value->xpath, (value->data.bool_val ? "true" : "false"));
     sr_free_val_t(value);
 
 cleanup:
