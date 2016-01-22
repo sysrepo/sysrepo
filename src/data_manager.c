@@ -51,7 +51,7 @@ dm_module_cmp(const void *a, const void *b)
     struct lyd_node *module_a = (struct lyd_node *) a;
     struct lyd_node *module_b = (struct lyd_node *) b;
 
-    int res = strcmp(module_a->schema->name, module_b->schema->name);
+    int res = strcmp(module_a->schema->module->name, module_b->schema->module->name);
     if (res == 0) {
         return 0;
     } else if (res < 0) {
