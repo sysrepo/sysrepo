@@ -27,12 +27,16 @@
 #include <avl.h>
 #include <pthread.h>
 
+/*
+ * @brief Data manager context holding loaded schemas, data trees
+ * and corresponding locks
+ */
 typedef struct dm_ctx_s {
-    char *search_dir;
-    struct ly_ctx *ly_ctx;
-    pthread_rwlock_t lyctx_lock;
-    avl_tree_t *module_avl;
-    pthread_rwlock_t avl_lock;
+    char *search_dir;           /**< location where schemas and datatree are located */
+    struct ly_ctx *ly_ctx;      /**< libyang context holding all loaded schemas */
+    pthread_rwlock_t lyctx_lock;/**< rwlock to access ly_ctx */
+    avl_tree_t *module_avl;     /**< avl tree where loaded datatrees are stored */
+    pthread_rwlock_t avl_lock;  /**< rwlock to access module_avl */
 } dm_ctx_t;
 
 typedef struct dm_session_s {
@@ -399,17 +403,19 @@ dm_init(const char *search_dir, dm_ctx_t **dm_ctx)
     return SR_ERR_OK;
 }
 
-int
+void
 dm_cleanup(dm_ctx_t *dm_ctx)
 {
-    CHECK_NULL_ARG(dm_ctx);
-    free(dm_ctx->search_dir);
-    avl_free_tree(dm_ctx->module_avl);
-    ly_ctx_destroy(dm_ctx->ly_ctx);
-    free(dm_ctx);
-    pthread_rwlock_destroy(&dm_ctx->avl_lock);
-    pthread_rwlock_destroy(&dm_ctx->lyctx_lock);
-    return SR_ERR_OK;
+    if (NULL != dm_ctx) {
+        free(dm_ctx->search_dir);
+        if (NULL != dm_ctx->module_avl) {
+            avl_free_tree(dm_ctx->module_avl);
+        }
+        ly_ctx_destroy(dm_ctx->ly_ctx);
+        pthread_rwlock_destroy(&dm_ctx->avl_lock);
+        pthread_rwlock_destroy(&dm_ctx->lyctx_lock);
+        free(dm_ctx);
+    }
 }
 
 int

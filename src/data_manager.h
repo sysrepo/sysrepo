@@ -55,9 +55,8 @@ int dm_init(const char *search_dir, dm_ctx_t **dm_ctx);
  * @brief Frees all allocated resources by the provided Data manager context, after
  * calling this function using a session initialized in the context is invalid.
  * @param [in] dm_ctx
- * @return err_code
  */
-int dm_cleanup(dm_ctx_t *dm_ctx);
+void dm_cleanup(dm_ctx_t *dm_ctx);
 
 //TODO select datastore running/candidate
 

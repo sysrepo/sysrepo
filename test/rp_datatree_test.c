@@ -44,9 +44,8 @@ int setup(void **state){
 
 int teardown(void **state){
     dm_ctx_t *ctx = *state;
-    int rc = dm_cleanup(ctx);
-    assert_int_equal(SR_ERR_OK,rc);
-    return rc;
+    dm_cleanup(ctx);
+    return 0;
 }
 
 void createDataTree(struct ly_ctx *ctx, struct lyd_node **root){

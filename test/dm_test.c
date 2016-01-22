@@ -35,8 +35,7 @@ void dm_create_cleanup(void **state){
    rc = dm_init(TEST_DATA_DIR, &ctx);
    assert_int_equal(SR_ERR_OK,rc);
 
-   rc = dm_cleanup(ctx);
-   assert_int_equal(SR_ERR_OK,rc);
+   dm_cleanup(ctx);
 
 }
 
@@ -62,8 +61,7 @@ void dm_get_data_tree(void **state)
 
     dm_session_stop(ctx, ses_ctx);
 
-    rc = dm_cleanup(ctx);
-    assert_int_equal(SR_ERR_OK, rc);
+    dm_cleanup(ctx);
 
 }
 
