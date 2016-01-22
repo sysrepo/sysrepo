@@ -29,9 +29,22 @@
 #include "sr_common.h"
 #include "connection_manager.h"
 
-#define CL_REQUEST_TIMEOUT 2 /**< Timeout (in seconds) for waiting for a response from server by each request. */
-#define SR_LCONN_PATH_PREFIX "/tmp/sysrepo-local"  /**< Filesystem path prefix for local unix-domain connections (library mode). */
-#define SR_GET_ITEM_DEF_LIMIT 2
+/**
+ * @brief Timeout (in seconds) for waiting for a response from server by each request.
+ */
+#define CL_REQUEST_TIMEOUT 2
+
+/**
+ * @brief Number of items being fetched in one message from Sysrepo Engine by
+ * processing of sr_get_items_iter calls.
+ */
+#define CL_GET_ITEMS_FETCH_LIMIT 2
+
+/**
+ * @brief Filesystem path prefix for generating temporary socket names used
+ * for local unix-domain connections (library mode).
+ */
+#define CL_LCONN_PATH_PREFIX "/tmp/sysrepo-local"
 
 /**
  * Connection context used to identify a connection to sysrepo datastore.
@@ -80,7 +93,7 @@ typedef struct sr_val_iter_s{
 } sr_val_iter_t;
 
 static sr_conn_ctx_t *primary_connection = NULL;  /**< Global variable holding pointer to the primary connection. */
-pthread_mutex_t primary_lock = PTHREAD_MUTEX_INITIALIZER;  /**< Mutex for locking global variable ::primary_connection. */
+pthread_mutex_t primary_lock = PTHREAD_MUTEX_INITIALIZER;  /**< Mutex for locking global variable primary_connection. */
 
 /**
  * Connect the client to provided unix-domain socket.
@@ -534,7 +547,7 @@ sr_connect(const char *app_name, const bool allow_library_mode, sr_conn_ctx_t **
 
     /* connect in library mode */
     ctx->library_mode = true;
-    snprintf(socket_path, PATH_MAX, "%s-%d", SR_LCONN_PATH_PREFIX, getpid());
+    snprintf(socket_path, PATH_MAX, "%s-%d", CL_LCONN_PATH_PREFIX, getpid());
 
     /* attempt to connect to our own sysrepo engine (local engine may already exist) */
     rc = cl_socket_connect(ctx, socket_path);
@@ -852,7 +865,7 @@ sr_get_items_iter(sr_session_ctx_t *session, const char *path, bool recursive, s
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG4(session, session->conn_ctx, path, iter);
-    rc = cl_send_get_items_iter(session, path, recursive, 0, SR_GET_ITEM_DEF_LIMIT, &msg_resp);
+    rc = cl_send_get_items_iter(session, path, recursive, 0, CL_GET_ITEMS_FETCH_LIMIT, &msg_resp);
     if (SR_ERR_NOT_FOUND == rc){
         SR_LOG_DBG("No items found for xpath '%s'", path);
         goto cleanup;
@@ -924,20 +937,19 @@ sr_get_item_next(sr_session_ctx_t *session, sr_val_iter_t *iter, sr_val_t **valu
 
     CHECK_NULL_ARG3(session, iter, value);
 
-    if (0 == iter->count){
-        /*No more data to be read*/
+    if (0 == iter->count) {
+        /* No more data to be read */
         *value = NULL;
         return SR_ERR_NOT_FOUND;
     }
-    else if (iter->index < iter->count){
-        /*There are buffered data*/
+    else if (iter->index < iter->count) {
+        /* There are buffered data */
         *value = iter->buff_values[iter->index++];
         iter->offset++;
     }
-    else{
-
-        /*Fetch more items*/
-        rc = cl_send_get_items_iter(session, iter->path, iter->recursive, iter->offset, SR_GET_ITEM_DEF_LIMIT, &msg_resp);
+    else {
+        /* Fetch more items */
+        rc = cl_send_get_items_iter(session, iter->path, iter->recursive, iter->offset, CL_GET_ITEMS_FETCH_LIMIT, &msg_resp);
         if (SR_ERR_NOT_FOUND == rc){
             SR_LOG_DBG("All items has been read for path '%s'", iter->path);
             goto cleanup;
