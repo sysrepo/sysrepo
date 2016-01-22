@@ -44,6 +44,8 @@
  * however it is not effective, since each call is blocked until previous one
  * finishes. If you need fast multi-threaded access to sysrepo, use a dedicated
  * connection for each thread.
+ *
+ * @ref xp_page "Xpath" is used for node identification in data related call. 
  */
 
 #include <stdbool.h>
@@ -274,7 +276,7 @@ int sr_session_stop(sr_session_ctx_t *session);
  * permission to access it.
  *
  * @param[in] session Session context acquired with ::sr_session_start call.
- * @param[in] path XPath instance-identifier in JSON format: https://tools.ietf.org/html/draft-ietf-netmod-yang-json-02#section-6.11
+ * @param[in] path @ref xp_page "XPath" instance-identifier in JSON format: https://tools.ietf.org/html/draft-ietf-netmod-yang-json-02#section-6.11
  * @param[out] value (allocated by function)
  *
  * @return Error code (SR_ERR_OK on success).

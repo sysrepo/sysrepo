@@ -1,0 +1,61 @@
+/**
+@page xp_page Xpath for addressing
+
+The aim of this section is to describe the xpath used for identification of yang nodes in sysrepo calls. 
+The xpath identifying a node contains the names of all hierarchicaly preceeding nodes up to the model top-level node. The top-level node in xpath must be qualified with a module name. The namespace must be specified for the augment node. It is not required to specify namespace for other nodes explicitely. The xpath must start with the slash character.
+
+@section ex Examples
+@subsection container Container
+Following xpath expression identifies the @b container node inside the @b model.
+@code
+/model:container
+@endcode
+
+@subsection list List
+Identification of the particular list instance
+@code
+/model:container/list[key1='a'][key2='b']
+@endcode
+
+Identification of the list. It can be used to list all list instances.
+@code
+/model:container/list
+@endcode
+
+@subsection leaf Leaf (leaf-list)
+Identification of the leaf. All keys must be specified.
+@code
+/model:container/list[key1='a'][key2='b']/leaf
+@endcode
+
+Explicitely specified namespace for the augment node.
+@code
+/model:container/list[key1='a'][key2='b']/another-model:added-leaf
+@endcode
+
+@section gr Grammar
+Starting non terminal symbol is  <@b xp>. Rules of the context free grammar for xpath.
+@code
+<xp>    -> <nodes>
+<nodes> -> <slash><node><nodes> | eps
+<node>  -> <namespace><node_name><keys>
+<keys>  -> <LSQB><key_name><EQ><APOS><key_value><APOS><RSQB> | eps
+<namespace> -> <module_name><COLON> | eps
+@endcode
+
+@code
+<module_name> -> [_a-z][_-.a-z]*
+<node_name>   -> [_a-z][_-.a-z]*
+<key_name>    -> [_a-z][_-.a-z]*
+<key_value>   -> [_a-z][_-.a-z]*
+
+<LSQB>  -> [
+<RSQB>  -> ]
+<EQ>    -> =
+<COLON> -> :
+<APOS>  -> '
+@endcode
+@note @a eps - denotes an empty string. @a module_name, @a node_name, @a key_name and @a key_value are described using regular expression
+
+
+*/
