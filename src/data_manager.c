@@ -388,9 +388,9 @@ dm_cleanup(dm_ctx_t *dm_ctx)
     free(dm_ctx->search_dir);
     avl_free_tree(dm_ctx->module_avl);
     ly_ctx_destroy(dm_ctx->ly_ctx);
-    free(dm_ctx);
     pthread_rwlock_destroy(&dm_ctx->avl_lock);
     pthread_rwlock_destroy(&dm_ctx->lyctx_lock);
+    free(dm_ctx);
     return SR_ERR_OK;
 }
 

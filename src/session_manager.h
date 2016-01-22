@@ -26,8 +26,8 @@
 #include <stdbool.h>
 #include <sys/types.h>
 
-typedef struct cm_session_ctx_s cm_session_ctx_t;        /** Forward-declaration of Connection Manager's session context. */
-typedef struct cm_connection_ctx_s cm_connection_ctx_t;  /** Forward-declaration of Connection Manager's connection context. */
+typedef struct cm_session_ctx_s cm_session_ctx_t;        /**< Forward-declaration of Connection Manager's session context. */
+typedef struct cm_connection_ctx_s cm_connection_ctx_t;  /**< Forward-declaration of Connection Manager's connection context. */
 
 /**
  * @defgroup sm Session Manager

@@ -22,35 +22,33 @@
 #include <stdlib.h>
 #include "sysrepo.h"
 
-int main(int argc, char **argv) {
-
+int
+main(int argc, char **argv)
+{
     sr_conn_ctx_t *conn = NULL;
     sr_session_ctx_t *sess = NULL;
     sr_val_t **values = NULL;
     size_t count = 0;
     int rc = SR_ERR_OK;
-    
-    /* turn off logging*/
-    sr_logger_set_level(SR_LL_NONE, SR_LL_NONE);
 
     /* connect to sysrepo */
-    rc = sr_connect("sr_get_item_example", true, &conn);
+    rc = sr_connect("app2", true, &conn);
     if (SR_ERR_OK != rc) {
         goto cleanup;
     }
 
     /* start session */
-    rc = sr_session_start(conn, "app1", SR_DS_CANDIDATE, &sess);
+    rc = sr_session_start(conn, NULL, SR_DS_CANDIDATE, &sess);
     if (SR_ERR_OK != rc) {
         goto cleanup;
     }
 
-    /* get all list instances*/
+    /* get all list instances */
     rc = sr_get_items(sess, "/ietf-interfaces:interfaces/interface", &values, &count);
     if (SR_ERR_OK != rc) {
         goto cleanup;
     }
-    
+
     for (size_t i = 0; i<count; i++){
         puts(values[i]->xpath);
     }

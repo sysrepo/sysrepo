@@ -22,27 +22,28 @@
 #ifndef SRC_CONNECTION_MANAGER_H_
 #define SRC_CONNECTION_MANAGER_H_
 
-#include "sysrepo.pb-c.h"
-#include "session_manager.h"
-
 /**
  * @defgroup cm Connection Manager
  * @{
  *
- * @brief Connection Manager is responsible for communication between Sysrepo
- * daemon (or core engine in library mode) and sysrepo client library
- * (the application which is accessing data in sysrepo).
+ * @brief Provides the communication between applications using sysrepo
+ * (via @ref cl) and Sysrepo Engine. Acts as sysrepo connection server.
  *
- * It provides an event loop (started with ::cm_start), which handles all
- * connections and does message retrieval/delivery between client library and
- * Sysrepo Request Processor.
+ * It provides the event loop (started with ::cm_start), which handles all
+ * connections and does message retrieval/delivery between @ref cl and
+ * @ref rp. Messages are in the format of encoded (binary) Google
+ * Protocol Buffer messages, which are always prepended with 4-byte preamble
+ * containing message size.
  *
- * It can work in two modes: daemon mode, or library mode. The main distinction
- * between the two is that the event loop is executed in the main thread in
- * daemon mode (making the main thread blocked until stop is requested
- * by ::cm_stop), whereas in library mode the event loop runs in a new
- * dedicated thread (to not block caller thread).
+ * Connection Manager can work in two modes: daemon mode, or local mode.
+ * The main distinction between the two is that the event loop is executed in
+ * the main thread in daemon mode (making the main thread blocked until stop
+ * is requested by ::cm_stop), whereas in local (library( mode the event loop
+ * runs in a new dedicated thread (to not block caller thread).
  */
+
+#include "sysrepo.pb-c.h"
+#include "session_manager.h"
 
 /**
  * @brief Connection Manager context used to identify particular instance of
