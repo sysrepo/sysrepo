@@ -488,7 +488,6 @@ sm_session_get_index(const sm_ctx_t *sm_ctx, uint32_t index, sm_session_t **sess
     node = avl_at(sm_ctx->session_id_avl, index);
 
     if (NULL == node) {
-        SR_LOG_DBG("Cannot find the session at index=%"PRIu32".", index);
         return SR_ERR_NOT_FOUND;
     } else {
         *session = node->item;

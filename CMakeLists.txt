@@ -37,7 +37,7 @@ find_package(Protobuf-c REQUIRED)
 include_directories(${PROTOBUF-C_INCLUDE_DIR})
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 
-set(DM_SEARCH_DIR_V "${PROJECT_SOURCE_DIR}/test/data/" CACHE STRING "Default search path")
+set(DM_SEARCH_DIR_V "${PROJECT_SOURCE_DIR}/tests/data/" CACHE STRING "Default search path")
 
 #add subdirectories
 add_subdirectory(src)
@@ -47,13 +47,13 @@ add_subdirectory(examples)
 
 
 #Testing
-SET(ENABLE_TESTS 1 CACHE BOOL "Test enabled by default")
+SET(ENABLE_TESTS 1 CACHE BOOL "Tests enabled by default")
 if(ENABLE_TESTS)
     find_package(CMOCKA)
     if(CMOCKA_FOUND)
-        MESSAGE(STATUS "Test are enabled")
+        MESSAGE(STATUS "Tests are enabled")
         enable_testing()
-        add_subdirectory(test)
+        add_subdirectory(tests)
     else(CMOCKA_FOUND)
         MESSAGE(WARNING "Cmocka not found")
     endif(CMOCKA_FOUND)

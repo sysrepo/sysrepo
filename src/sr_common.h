@@ -1,7 +1,7 @@
 /**
  * @file sr_common.h
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
- * @brief Sysrepo common utilities.
+ * @brief Sysrepo common routines.
  *
  * @copyright
  * Copyright 2015 Cisco Systems, Inc.
@@ -21,6 +21,14 @@
 
 #ifndef SRC_SR_COMMON_H_
 #define SRC_SR_COMMON_H_
+
+/**
+ * @defgroup common Common Routines
+ * @{
+ *
+ * @brief This module contains common routines and utilities used across
+ * both sysrepo Client Library and Sysrepo Engine.
+ */
 
 #include <linux/socket.h>
 #include <sys/types.h>
@@ -350,5 +358,7 @@ Sr__DataStore sr_datastore_sr_to_gpb(const sr_datastore_t sr_ds);
  * @return Sysrepo datastore.
  */
 sr_datastore_t sr_datastore_gpb_to_sr(Sr__DataStore gpb_ds);
+
+/**@} common */
 
 #endif /* SRC_SR_COMMON_H_ */

@@ -1,22 +1,32 @@
-Sysrepo 
+sysrepo - YANG-based datastore for Unix/Linux applications (http://www.sysrepo.org)
 Copyright 2015 Copyright 2015 Cisco Systems, Inc.
 
-This product uses several libraries developed by third-parties:
+This product uses several dynamically-linked open-source libraries developed 
+by third-parties:
 
-libyang - YANG data modeling language library, open source software
+libyang - YANG data modeling language library, open-source software
 developed by CESNET, z.s.p.o., available from:
   https://github.com/CESNET/libyang/
   
-Google protocol buffers - language-neutral, platform-neutral, extensible 
-mechanism for serializing structured data, open source software developed
+Google Protocol Buffers - language-neutral, platform-neutral, extensible 
+mechanism for serializing structured data, open-source software developed
 by Google Inc., available from:
   https://github.com/google/protobuf
 
-protobuf-c - Protocol Buffers implementation in C, open source software
+protobuf-c - Protocol Buffers implementation in C, open-source software
 developed by Dave Benson and other protobuf-c authors, available from:
   https://github.com/protobuf-c/protobuf-c/
-  
-CMocka - An unit testing framework for C with support for mock objects,
-open source software developed by Andreas Schneider and Jakub Hrozek,
+
+libavl - Library with binary search tree and balanced tree library routines,
+developed by Ben Pfaff, provided under GNU Lesser General Public License, 
+available from:
+  http://adtinfo.org/
+
+libev - Library that provides high-performance event loop, open-source software 
+developed by by Marc Lehmann and Emanuele Giaquinta, available from:
+  http://software.schmorp.de/pkg/libev.html
+
+CMocka - An unit-testing framework for C with support for mock objects,
+open-source software developed by Andreas Schneider and Jakub Hrozek,
 available from:
   git://git.cryptomilk.org/projects/cmocka.git

@@ -53,8 +53,8 @@
 extern volatile uint8_t sr_ll_stderr;  /**< Holds current level of stderr debugs. */
 extern volatile uint8_t sr_ll_syslog;  /**< Holds current level of syslog debugs. */
 
-#define SR_LOG_STDERR_DEFAULT_LL SR_LL_INF  /**< Default stderr log level. */
-#define SR_LOG_SYSLOG_DEFAULT_LL SR_LL_INF  /**< Default syslog log level. */
+#define SR_LOG_STDERR_DEFAULT_LL SR_LL_NONE  /**< Default stderr log level. */
+#define SR_LOG_SYSLOG_DEFAULT_LL SR_LL_INF   /**< Default syslog log level. */
 
 #define SR_LOG__LL_STR(LL) \
     ((SR_LL_DBG == LL) ? "DBG" : \
