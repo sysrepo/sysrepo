@@ -42,5 +42,4 @@ Detailed internal architecture of sysrepo is depicted on the picture below:
 The public API towards applications and management agents is documented under 
 @ref cl module. All other modules of this documentation refer to Sysrepo Engine's
 internal modules, as depicted above.
-
 */
