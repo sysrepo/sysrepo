@@ -334,7 +334,7 @@ dm_init(const char *search_dir, dm_ctx_t **dm_ctx)
     }
     ctx->ly_ctx = ly_ctx_new(search_dir);
     if (NULL == ctx->ly_ctx) {
-        SR_LOG_ERR_MSG("Cannot allocate memory for libyang context in Data Manager.");
+        SR_LOG_ERR_MSG("Cannot initialize libyang context in Data Manager.");
         free(ctx);
         return SR_ERR_NOMEM;
     }
