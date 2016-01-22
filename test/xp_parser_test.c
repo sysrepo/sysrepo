@@ -32,6 +32,7 @@
 int setup(void **state){
     xp_loc_id_t *l;
     assert_int_equal(0, xp_char_to_loc_id(XPATH_TO_PARSE, &l));
+    xp_print_location_id(l);
     (*state) = (void *) l;
     return 0;
 }
@@ -108,6 +109,10 @@ void test1(void **state){
     printf("%s\n",second);
     free(second);
 
+    /* long expression with reallocation*/
+    xp_loc_id_t *loc_id = NULL;
+    assert_int_equal(SR_ERR_OK, xp_char_to_loc_id("/model:list[a='k1'][b='k2']/model:a[b='c'][d='e']/model:a[b='c'][d='e']/model:a[b='c'][d='e']/model:a[b='c'][d='e']/model:a[b='c'][d='e']/model:a[b='c'][d='e']/model:a[b='c'][d='e']/leaf", &loc_id));
+    xp_free_loc_id(loc_id);
 }
 
 void check_parsing(void **state){
