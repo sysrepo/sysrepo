@@ -2,7 +2,9 @@
 @page xp_page Xpath for addressing
 
 The aim of this section is to describe the xpath used for identification of yang nodes in sysrepo calls. 
-The xpath identifying a node contains the names of all hierarchicaly preceeding nodes up to the model top-level node. The top-level node in xpath must be qualified with a module name. The namespace must be specified for the augment node. It is not required to specify namespace for other nodes explicitely. The xpath must start with the slash character.
+The xpath identifying a node contains the names of all hierarchically preceeding nodes up to the model top-level node. 
+The top-level node in xpath must be qualified with a module name. The namespace must be specified for the augment node.
+It is not required to specify namespace for other nodes explicitely. The xpath must start with the slash character.
 
 @section ex Examples
 @subsection container Container
