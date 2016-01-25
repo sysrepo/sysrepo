@@ -19,7 +19,7 @@ Sysrepo can be easily integrated to management agents such as [NETCONF](https://
 ## Features
 - ability to store / retrieve YANG-modeled data elements adressed by XPath
 - data consistency and constraint enforecment according to YANG model (with help of [libyang](https://github.com/cesnet/libyang) library)
-- no single point of failure design (client library is able to prerform most of the data-access operations by itself, whithout need of contacting any system daemon)
+- no single point of failure design (client library is able to prerform most of the data-access operations also by itself, whithout the need of contacting any system daemon)
 - (TODO) full transaction and concurrency support with ACID properties
 - (TODO) notifications of subscribed applications about the changes made in the datastore
 - (TODO) ability to subscribe to notifications as a verifier and validate the changes before they are committed
