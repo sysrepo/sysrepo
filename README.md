@@ -4,7 +4,8 @@
 [![GitHub license](https://img.shields.io/github/license/sysrepo/sysrepo.svg)](https://github.com/sysrepo/sysrepo/blob/master/LICENSE)
 
 ## Status
-- Dec 2015: working on the first milestone - internal infrastructure, get-config functionality
+- January 2016: get-config functionality ready, see public API header file [inc/sysrepo.h](inc/sysrepo.h)
+- December 2015: working on the first milestone - internal infrastructure, get-config functionality
 
 ## Installation Steps
-See INSTALL.md which contains datailed installation steps.
+See [INSTALL.md](INSTALL.md) file, which contains detailed installation steps.
