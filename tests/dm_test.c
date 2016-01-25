@@ -32,7 +32,7 @@
 void dm_create_cleanup(void **state){
    int rc;
    dm_ctx_t *ctx;
-   rc = dm_init(TEST_DATA_DIR, &ctx);
+   rc = dm_init(TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx);
    assert_int_equal(SR_ERR_OK,rc);
 
    dm_cleanup(ctx);
@@ -46,7 +46,7 @@ void dm_get_data_tree(void **state)
     dm_session_t *ses_ctx;
     struct lyd_node *data_tree;
 
-    rc = dm_init(TEST_DATA_DIR, &ctx);
+    rc = dm_init(TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx);
     assert_int_equal(SR_ERR_OK, rc);
 
     dm_session_start(ctx, &ses_ctx);
