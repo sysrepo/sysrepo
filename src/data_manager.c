@@ -135,7 +135,7 @@ dm_load_schema_file(dm_ctx_t *dm_ctx, const char *dir_name, const char *file_nam
     free(schema_filename);
 
     if (NULL == fd) {
-        SR_LOG_WRN("Unable to open a schema file: %s", file_name);
+        SR_LOG_WRN("Unable to open a schema file %s: %s", file_name, strerror(errno));
         return SR_ERR_IO;
     }
     pthread_rwlock_wrlock(&dm_ctx->lyctx_lock);
@@ -171,7 +171,7 @@ dm_load_schemas(dm_ctx_t *dm_ctx)
         closedir(dir);
         return SR_ERR_OK;
     } else {
-        SR_LOG_ERR("Could not open the directory %s.", dm_ctx->schema_search_dir);
+        SR_LOG_ERR("Could not open the directory %s: %s", dm_ctx->schema_search_dir, strerror(errno));
         return EXIT_FAILURE;
     }
 }
@@ -256,7 +256,7 @@ dm_load_data_tree(dm_ctx_t *dm_ctx, const struct lys_module *module, struct lyd_
         }
         fclose(f);
     } else {
-        SR_LOG_INF("File %s couldn't be opened for reading, file probably doesn't exist", data_filename);
+        SR_LOG_INF("File %s couldn't be opened for reading: %s", data_filename, strerror(errno));
         free(data_filename);
         return SR_ERR_NOT_FOUND;
     }
@@ -348,6 +348,8 @@ int
 dm_init(const char *schema_search_dir, const char *data_search_dir, dm_ctx_t **dm_ctx)
 {
     CHECK_NULL_ARG3(schema_search_dir, data_search_dir, dm_ctx);
+
+    SR_LOG_INF("Initializing Data Manager, schema_search_dir=%s, data_search_dir=%s", schema_search_dir, data_search_dir);
 
     dm_ctx_t *ctx = NULL;
     ctx = calloc(1, sizeof(*ctx));
