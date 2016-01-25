@@ -56,33 +56,33 @@ Install required libraries:
 ```
 $ apt-get install git cmake doxygen valgrind libavl-dev libev-dev
 ```
-1. Get the source code and prepare build directory:
+1) Get the source code and prepare build directory:
 ```
 $ git clone https://github.com/sysrepo/sysrepo.git
 $ cd sysrepo
 $ mkdir build; cd build
 ```
-2. a) Configure build for testing and development (Debug build):
+2 a) Configure build for testing and development (Debug build):
 ```
 $ cmake ..
 ```
-2. b) Configure build for production use (Release build):
+2 b) Configure build for production use (Release build):
 ```
 $ cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX:PATH=/usr -DREPOSITORY_LOC:PATH=/etc/sysrepo ..
 ```
-3. Build:
+3) Build:
 ```
 $ make
 ```
-5. a) Run unit tests (applicable only to Debug build)
+4 a) Run unit tests (applicable only to Debug build)
 ```
 $ ctest
 ```
-5. b) Install (applicable only to Release build)
+4 b) Install (applicable only to Release build)
 ```
 $ make install
 ```
-6. (optional) Build Doxygen documentation:
+5) (optional) Build Doxygen documentation:
 ```
 make doc
 ```
