@@ -1,7 +1,7 @@
 /**
  * @file rp_data_tree.c
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
- * @brief 
+ * @brief
  *
  * @copyright
  * Copyright 2015 Cisco Systems, Inc.
@@ -430,21 +430,16 @@ rp_dt_copy_value(const struct lyd_node_leaf_list *leaf, LY_DATA_TYPE type, sr_va
     }
 }
 
-/**
- * @brief looks up the node in data tree. Returns first match in case of list without keys and leaf-list.
- * @param [in] data_tree
- * @param [in] loc_id
- * @param [in] allow_no_keys if set to TRUE, keys of the last list in xpath can be omitted. xpath must identify a list
- * @param [out] node
- */
 static int
-rp_dt_lookup_node(struct lyd_node *data_tree, const xp_loc_id_t *loc_id, bool allow_no_keys, struct lyd_node **node)
-{
-    CHECK_NULL_ARG3(data_tree, loc_id, node);
+rp_dt_find_deepest_match(struct lyd_node *data_tree, const xp_loc_id_t *loc_id, bool allow_no_keys, size_t *match_level, struct lyd_node **node){
+    CHECK_NULL_ARG4(data_tree, loc_id, match_level, node);
+
     struct lyd_node *curr = data_tree;
+    struct lyd_node *prev = NULL;
     size_t n = 0;
     for (; n < XP_GET_NODE_COUNT(loc_id); n++) {
         while (curr != NULL) {
+            prev = curr;
             if (NULL == curr->schema || NULL == curr->schema->name || NULL == curr->schema->module ||
                     NULL == curr->schema->module->name) {
                 SR_LOG_ERR("Missing schema information for %s at level %zu", loc_id->xpath, n);
@@ -506,7 +501,7 @@ key_mismatch:
                 if ((XP_GET_NODE_COUNT(loc_id) - 1) != n || !allow_no_keys) {
                     SR_LOG_WRN("Keys not specified for list node '%s'", curr->schema->name);
                     curr = NULL;
-                    goto match_done;
+                    return SR_ERR_INVAL_ARG;
                 }
             }
 
@@ -516,15 +511,57 @@ key_mismatch:
             }
             break;
         }
+        if (NULL == curr){
+            goto match_done;
+        }
     }
 
 match_done:
-    if (n != XP_GET_NODE_COUNT(loc_id) || NULL == curr) {
-        SR_LOG_DBG("Match of xpath %s was not completed", loc_id->xpath);
+    if (NULL == prev) {
+        /* no match found*/
         return SR_ERR_NOT_FOUND;
     }
+    else if (NULL == curr){
+        /* match was not completed return last match node */
+        *match_level = n;
+        *node = prev->parent;
+        return  *node != NULL ? SR_ERR_OK : SR_ERR_NOT_FOUND;
+    }
+    /* match completed successfully */
+    *match_level = n;
     *node = curr;
     return SR_ERR_OK;
+}
+
+/**
+ * @brief looks up the node in data tree. Returns first match in case of list without keys and leaf-list.
+ * @param [in] data_tree
+ * @param [in] loc_id
+ * @param [in] allow_no_keys if set to TRUE, keys of the last list in xpath can be omitted. xpath must identify a list
+ * @param [out] node
+ */
+static int
+rp_dt_lookup_node(struct lyd_node *data_tree, const xp_loc_id_t *loc_id, bool allow_no_keys, struct lyd_node **node)
+{
+    CHECK_NULL_ARG3(data_tree, loc_id, node);
+    size_t match_len = 0;
+
+    int rc = SR_ERR_OK;
+    rc = rp_dt_find_deepest_match(data_tree, loc_id, allow_no_keys, &match_len, node);
+    if (SR_ERR_NOT_FOUND == rc){
+        return rc;
+    } else if (SR_ERR_OK != rc){
+        SR_LOG_ERR("Find deepest match failed for '%s'", loc_id->xpath);
+        return rc;
+    }
+
+    /* check if match is complete*/
+    if (match_len != XP_GET_NODE_COUNT(loc_id)){
+        *node = NULL;
+        return SR_ERR_NOT_FOUND;
+    }
+
+    return rc;
 }
 
 /**

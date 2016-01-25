@@ -671,7 +671,7 @@ void get_node_test_found(void **state)
 #define XPATH_LIST_WITHOUT_KEY "/example-module:container/list"
     /* key values must be specified for get_node*/
     rc = rp_dt_get_node_xpath(ctx, data_tree, XPATH_LIST_WITHOUT_KEY, &node);
-    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+    assert_int_equal(SR_ERR_INVAL_ARG, rc);
 
     dm_session_stop(ctx, ses_ctx);
 
