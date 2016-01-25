@@ -37,7 +37,10 @@ find_package(Protobuf-c REQUIRED)
 include_directories(${PROTOBUF-C_INCLUDE_DIR})
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 
-set(DM_SEARCH_DIR_V "${PROJECT_SOURCE_DIR}/tests/data/" CACHE STRING "Default search path")
+# location of system repository
+set(REPOSITORY_LOC "${PROJECT_SOURCE_DIR}/tests/data/" CACHE PATH "System repository location, contains configuration schema and data files.")
+set(SCHEMA_SEARCH_DIR "${REPOSITORY_LOC}/yang/")
+set(DATA_SEARCH_DIR "${REPOSITORY_LOC}/data/")
 
 #add subdirectories
 add_subdirectory(src)
@@ -72,7 +75,18 @@ endif(DOXYGEN_FOUND)
 
 
 #install
-#install(FILES sysrepo-config.cmake DESTINATION lib)
+install (DIRECTORY DESTINATION ${REPOSITORY_LOC} DIRECTORY_PERMISSIONS
+    OWNER_READ OWNER_WRITE OWNER_EXECUTE
+    GROUP_READ GROUP_EXECUTE
+    WORLD_READ WORLD_EXECUTE)
+install (DIRECTORY DESTINATION ${SCHEMA_SEARCH_DIR} DIRECTORY_PERMISSIONS
+    OWNER_READ OWNER_WRITE OWNER_EXECUTE
+    GROUP_READ GROUP_EXECUTE
+    WORLD_READ WORLD_EXECUTE)
+install (DIRECTORY DESTINATION ${DATA_SEARCH_DIR} DIRECTORY_PERMISSIONS
+    OWNER_READ OWNER_WRITE OWNER_EXECUTE
+    GROUP_READ GROUP_WRITE GROUP_EXECUTE
+    WORLD_READ WORLD_WRITE WORLD_EXECUTE)
 
 
 find_package(PkgConfig)

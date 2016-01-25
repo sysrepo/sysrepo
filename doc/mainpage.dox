@@ -1,4 +1,5 @@
 /**
+@anchor main_page
 @mainpage About Sysrepo Project
 
 Sysrepo provides YANG-based datastore functionality for Unix/Linux applications.

@@ -45,7 +45,10 @@
  * finishes. If you need fast multi-threaded access to sysrepo, use a dedicated
  * connection for each thread.
  *
- * @ref xp_page "Xpath" is used for node identification in data related call. 
+ * @see
+ * See @ref main_page "Sysrepo Introduction" for details about sysrepo architecture.
+ * @see
+ * @ref xp_page "XPath Addressing" is used for node identification in data-related calls.
  */
 
 #include <stdbool.h>

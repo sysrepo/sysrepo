@@ -45,11 +45,12 @@ typedef struct dm_session_s dm_session_t;
 /**
  * @brief Initializes the data manager context, which will be passed in further
  * dm_session related calls.
- * @param [in] search_dir - directory where schemas and data trees are located
+ * @param [in] schema_search_dir - location where schema files are located
+ * @param [in] data_search_dir - location where data files are located
  * @param [out] dm_ctx
  * @return err_code
  */
-int dm_init(const char *search_dir, dm_ctx_t **dm_ctx);
+int dm_init(const char *schema_search_dir, const char *data_search_dir, dm_ctx_t **dm_ctx);
 
 /**
  * @brief Frees all allocated resources by the provided Data manager context, after

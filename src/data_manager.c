@@ -32,11 +32,12 @@
  * and corresponding locks
  */
 typedef struct dm_ctx_s {
-    char *search_dir;           /**< location where schemas and datatree are located */
-    struct ly_ctx *ly_ctx;      /**< libyang context holding all loaded schemas */
-    pthread_rwlock_t lyctx_lock;/**< rwlock to access ly_ctx */
-    avl_tree_t *module_avl;     /**< avl tree where loaded datatrees are stored */
-    pthread_rwlock_t avl_lock;  /**< rwlock to access module_avl */
+    char *schema_search_dir;      /**< location where schema files are located */
+    char *data_search_dir;        /**< location where data files are located */
+    struct ly_ctx *ly_ctx;        /**< libyang context holding all loaded schemas */
+    pthread_rwlock_t lyctx_lock;  /**< rwlock to access ly_ctx */
+    avl_tree_t *module_avl;       /**< avl tree where loaded datatrees are stored */
+    pthread_rwlock_t avl_lock;    /**< rwlock to access module_avl */
 } dm_ctx_t;
 
 typedef struct dm_session_s {
@@ -91,7 +92,7 @@ dm_get_data_file(const dm_ctx_t *dm_ctx, const char *module_name, char **file_na
 {
     CHECK_NULL_ARG3(dm_ctx, module_name, file_name);
     char *tmp = NULL;
-    int rc = sr_str_join(dm_ctx->search_dir, module_name, &tmp);
+    int rc = sr_str_join(dm_ctx->data_search_dir, module_name, &tmp);
     if (SR_ERR_OK == rc) {
         rc = sr_str_join(tmp, ".data", file_name);
         free(tmp);
@@ -134,7 +135,7 @@ dm_load_schema_file(dm_ctx_t *dm_ctx, const char *dir_name, const char *file_nam
     free(schema_filename);
 
     if (NULL == fd) {
-        SR_LOG_WRN("Unable to open a schema file: %s", file_name);
+        SR_LOG_WRN("Unable to open a schema file %s: %s", file_name, strerror(errno));
         return SR_ERR_IO;
     }
     pthread_rwlock_wrlock(&dm_ctx->lyctx_lock);
@@ -157,10 +158,10 @@ dm_load_schemas(dm_ctx_t *dm_ctx)
     CHECK_NULL_ARG(dm_ctx);
     DIR *dir = NULL;
     struct dirent *ent = NULL;
-    if ((dir = opendir(dm_ctx->search_dir)) != NULL) {
+    if ((dir = opendir(dm_ctx->schema_search_dir)) != NULL) {
         while ((ent = readdir(dir)) != NULL) {
             if (dm_is_schema_file(ent->d_name)) {
-                if (SR_ERR_OK != dm_load_schema_file(dm_ctx, dm_ctx->search_dir, ent->d_name)) {
+                if (SR_ERR_OK != dm_load_schema_file(dm_ctx, dm_ctx->schema_search_dir, ent->d_name)) {
                     SR_LOG_WRN("Loading schema file: %s failed.", ent->d_name);
                 } else {
                     SR_LOG_INF("Schema file %s loaded successfully", ent->d_name);
@@ -170,7 +171,7 @@ dm_load_schemas(dm_ctx_t *dm_ctx)
         closedir(dir);
         return SR_ERR_OK;
     } else {
-        SR_LOG_ERR("Could not open the directory %s.", dm_ctx->search_dir);
+        SR_LOG_ERR("Could not open the directory %s: %s", dm_ctx->schema_search_dir, strerror(errno));
         return EXIT_FAILURE;
     }
 }
@@ -255,7 +256,7 @@ dm_load_data_tree(dm_ctx_t *dm_ctx, const struct lys_module *module, struct lyd_
         }
         fclose(f);
     } else {
-        SR_LOG_INF("File %s couldn't be opened for reading, file probably doesn't exist", data_filename);
+        SR_LOG_INF("File %s couldn't be opened for reading: %s", data_filename, strerror(errno));
         free(data_filename);
         return SR_ERR_NOT_FOUND;
     }
@@ -344,9 +345,11 @@ dm_find_data_tree(dm_ctx_t *dm_ctx, const struct lys_module *module, struct lyd_
 }
 
 int
-dm_init(const char *search_dir, dm_ctx_t **dm_ctx)
+dm_init(const char *schema_search_dir, const char *data_search_dir, dm_ctx_t **dm_ctx)
 {
-    CHECK_NULL_ARG2(search_dir, dm_ctx);
+    CHECK_NULL_ARG3(schema_search_dir, data_search_dir, dm_ctx);
+
+    SR_LOG_INF("Initializing Data Manager, schema_search_dir=%s, data_search_dir=%s", schema_search_dir, data_search_dir);
 
     dm_ctx_t *ctx = NULL;
     ctx = calloc(1, sizeof(*ctx));
@@ -354,24 +357,35 @@ dm_init(const char *search_dir, dm_ctx_t **dm_ctx)
         SR_LOG_ERR_MSG("Cannot allocate memory for Data Manager.");
         return SR_ERR_NOMEM;
     }
-    ctx->ly_ctx = ly_ctx_new(search_dir);
+    ctx->ly_ctx = ly_ctx_new(schema_search_dir);
     if (NULL == ctx->ly_ctx) {
-        SR_LOG_ERR_MSG("Cannot allocate memory for libyang context in Data Manager.");
+        SR_LOG_ERR_MSG("Cannot initialize libyang context in Data Manager.");
         free(ctx);
         return SR_ERR_NOMEM;
     }
 
-    ctx->search_dir = strdup(search_dir);
-    if (NULL == ctx->search_dir) {
-        SR_LOG_ERR_MSG("Cannot allocate memory for search_dir string in Data Manager.");
+    ctx->schema_search_dir = strdup(schema_search_dir);
+    if (NULL == ctx->schema_search_dir) {
+        SR_LOG_ERR_MSG("Cannot allocate memory for schema search dir string in Data Manager.");
         ly_ctx_destroy(ctx->ly_ctx);
         free(ctx);
         return SR_ERR_NOMEM;
     }
+
+    ctx->data_search_dir = strdup(data_search_dir);
+    if (NULL == ctx->data_search_dir) {
+        SR_LOG_ERR_MSG("Cannot allocate memory for data search dir string in Data Manager.");
+        free(ctx->schema_search_dir);
+        ly_ctx_destroy(ctx->ly_ctx);
+        free(ctx);
+        return SR_ERR_NOMEM;
+    }
+
     ctx->module_avl = avl_alloc_tree(dm_module_cmp, dm_module_cleanup);
     if (NULL == ctx->module_avl) {
         SR_LOG_ERR_MSG("Cannot allocate memory for avl module in Data Manager.");
-        free(ctx->search_dir);
+        free(ctx->schema_search_dir);
+        free(ctx->data_search_dir);
         ly_ctx_destroy(ctx->ly_ctx);
         free(ctx);
         return SR_ERR_NOMEM;
@@ -407,7 +421,8 @@ void
 dm_cleanup(dm_ctx_t *dm_ctx)
 {
     if (NULL != dm_ctx) {
-        free(dm_ctx->search_dir);
+        free(dm_ctx->schema_search_dir);
+        free(dm_ctx->data_search_dir);
         if (NULL != dm_ctx->module_avl) {
             avl_free_tree(dm_ctx->module_avl);
         }

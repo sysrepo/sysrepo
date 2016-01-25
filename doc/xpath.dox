@@ -1,5 +1,5 @@
 /**
-@page xp_page Xpath for addressing
+@page xp_page XPath Addressing
 
 The aim of this section is to describe the xpath used for identification of yang nodes in sysrepo calls. 
 The xpath identifying a node contains the names of all hierarchically preceeding nodes up to the model top-level node. 

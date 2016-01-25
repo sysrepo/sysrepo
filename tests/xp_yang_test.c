@@ -30,13 +30,13 @@
 
 #include "test_data.h"
 
-#define MODULE_PATH TEST_DATA_DIR "/example-module.yin"
-#define DATA_PATH TEST_DATA_DIR "example-module.data"
+#define MODULE_PATH TEST_SCHEMA_SEARCH_DIR "/example-module.yin"
+#define DATA_PATH TEST_DATA_SEARCH_DIR "example-module.data"
 
 
 int setup(void **state){
     struct ly_ctx *ctx;
-    ctx = ly_ctx_new(TEST_DATA_DIR);
+    ctx = ly_ctx_new(TEST_DATA_SEARCH_DIR);
     const struct lys_module *module;
     FILE *fd = fopen(MODULE_PATH,"r");
     if (fd == NULL){
