@@ -200,7 +200,7 @@ rp_init(cm_ctx_t *cm_ctx, rp_ctx_t **rp_ctx_p)
         return SR_ERR_NOMEM;
     }
 
-    rc = dm_init(DM_SEARCH_DIR, &ctx->dm_ctx);
+    rc = dm_init(DM_SCHEMA_SEARCH_DIR, DM_DATA_SEARCH_DIR, &ctx->dm_ctx);
     if (SR_ERR_OK != rc){
         SR_LOG_ERR_MSG("Data manager init failed");
         free(ctx);

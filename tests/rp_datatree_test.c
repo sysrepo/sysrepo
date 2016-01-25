@@ -36,7 +36,7 @@
 int setup(void **state){
    int rc = 0;
    dm_ctx_t *ctx;
-   rc = dm_init(TEST_DATA_DIR, &ctx);
+   rc = dm_init(TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx);
    assert_int_equal(SR_ERR_OK,rc);
    *state = ctx;
    return rc;
@@ -44,9 +44,8 @@ int setup(void **state){
 
 int teardown(void **state){
     dm_ctx_t *ctx = *state;
-    int rc = dm_cleanup(ctx);
-    assert_int_equal(SR_ERR_OK,rc);
-    return rc;
+    dm_cleanup(ctx);
+    return 0;
 }
 
 void createDataTree(struct ly_ctx *ctx, struct lyd_node **root){
@@ -190,7 +189,7 @@ void createDataTreeTestModule(struct ly_ctx *ctx, struct lyd_node **root){
     assert_non_null(n);
 
     assert_int_equal(0, lyd_validate(*root, LYD_OPT_STRICT));
-    assert_int_equal(SR_ERR_OK, sr_save_data_tree_file(TEST_DATA_DIR "test-module.data", *root));
+    assert_int_equal(SR_ERR_OK, sr_save_data_tree_file(TEST_DATA_SEARCH_DIR "test-module.data", *root));
 
 
 }
@@ -234,7 +233,7 @@ void createDataTreeIETFinterfaces(struct ly_ctx *ctx, struct lyd_node **root){
     lyd_new_leaf(node, module_interfaces, "enabled", "false");
 
     assert_int_equal(0, lyd_validate(*root, LYD_OPT_STRICT));
-    assert_int_equal(SR_ERR_OK, sr_save_data_tree_file(TEST_DATA_DIR"ietf-interfaces.data", *root));
+    assert_int_equal(SR_ERR_OK, sr_save_data_tree_file(TEST_DATA_SEARCH_DIR"ietf-interfaces.data", *root));
 
 }
 

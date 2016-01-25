@@ -22,8 +22,45 @@
 #include <stdlib.h>
 #include "sysrepo.h"
 
-int main(int argc, char **argv) {
+void
+print_value(sr_val_t *value)
+{
+    printf("%s ", value->xpath);
 
+    switch (value->type) {
+    case SR_CONTAINER_T:
+    case SR_CONTAINER_PRESENCE_T:
+        printf("(container)\n");
+        break;
+    case SR_LIST_T:
+        printf("(list instance)\n");
+        break;
+    case SR_STRING_T:
+        printf("= %s\n", value->data.string_val);
+        break;
+    case SR_BOOL_T:
+        printf("= %s\n", value->data.bool_val ? "true" : "false");
+        break;
+    case SR_UINT8_T:
+        printf("= %u\n", value->data.uint8_val);
+        break;
+    case SR_UINT16_T:
+        printf("= %u\n", value->data.uint16_val);
+        break;
+    case SR_UINT32_T:
+        printf("= %u\n", value->data.uint32_val);
+        break;
+    case SR_IDENTITYREF_T:
+        printf("= %s\n", value->data.identityref_val);
+        break;
+    default:
+        printf("(unprintable)\n");
+    }
+}
+
+int
+main(int argc, char **argv)
+{
     sr_conn_ctx_t *conn = NULL;
     sr_session_ctx_t *sess = NULL;
     sr_val_t *value = NULL;
@@ -31,25 +68,25 @@ int main(int argc, char **argv) {
     int rc = SR_ERR_OK;
 
     /* connect to sysrepo */
-    rc = sr_connect("sr_get_item_example", true, &conn);
+    rc = sr_connect("app3", true, &conn);
     if (SR_ERR_OK != rc) {
         goto cleanup;
     }
 
     /* start session */
-    rc = sr_session_start(conn, "app1", SR_DS_CANDIDATE, &sess);
+    rc = sr_session_start(conn, NULL, SR_DS_CANDIDATE, &sess);
     if (SR_ERR_OK != rc) {
         goto cleanup;
     }
 
-    /* get all list instances*/
+    /* get all list instances with their content (recursive) */
     rc = sr_get_items_iter(sess, "/ietf-interfaces:interfaces/interface", true, &iter);
     if (SR_ERR_OK != rc) {
         goto cleanup;
     }
     
     while (SR_ERR_OK == sr_get_item_next(sess, iter, &value)){
-        puts(value->xpath);
+        print_value(value);
         sr_free_val_t(value);
     }
 

@@ -1,7 +1,7 @@
-set(TEST_DATA_DIR_V "${PROJECT_SOURCE_DIR}/test/data/")
+set(TEST_REPOSITORY_LOC "${PROJECT_SOURCE_DIR}/tests/data/")
 
-configure_file("${PROJECT_SOURCE_DIR}/test/data/test_data.h.in" "${PROJECT_SOURCE_DIR}/test/data/test_data.h" ESCAPE_QUOTES @ONLY) 
-include_directories ("${PROJECT_SOURCE_DIR}/src" "${PROJECT_SOURCE_DIR}/inc" "${PROJECT_SOURCE_DIR}/test/data/")
+configure_file("${PROJECT_SOURCE_DIR}/tests/data/test_data.h.in" "${PROJECT_SOURCE_DIR}/tests/data/test_data.h" ESCAPE_QUOTES @ONLY) 
+include_directories ("${PROJECT_SOURCE_DIR}/src" "${PROJECT_SOURCE_DIR}/inc" "${PROJECT_SOURCE_DIR}/tests/data/")
 
 find_program(valgrind_FOUND valgrind)
 

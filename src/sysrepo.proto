@@ -1,12 +1,41 @@
+/**
+ * @file sysreo.proto
+ * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
+ * @brief Definition of sysrepo GPB messages used as the API for the
+ * communication between sysrepo engine and sysrepo client library.
+ *
+ * @copyright
+ * Copyright 2016 Cisco Systems, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 syntax="proto2";
 package sr;
 
+/**
+ * @brief Datastore on which the configuration session will operate.
+ */
 enum DataStore {
   RUNNING = 1;
   CANDIDATE = 2;
   STARTUP = 3;
 }
 
+/**
+ * @brief Value of an item stored (or to be stored) in the datastore.
+ * Can be mapped to sr_val_t data structure from sysrepo library API.
+ */
 message Value {
   enum Types {
     LIST = 1;
@@ -57,43 +86,76 @@ message Value {
   optional uint64 uint64_val = 26;
 }
 
+/**
+ * @brief Request for starting a session. Sent by sr_session_start API call.
+ */
 message SessionStartReq {
   required string user_name = 1;
   required DataStore datastore = 2;
 }
 
+/**
+ * @brief Response to session_start request.
+ */
 message SessionStartResp {
   required uint32 session_id = 1;
 }
 
+/**
+ * @brief Request for stopping the session. Sent by sr_session_stop API call.
+ */
 message SessionStopReq {
   required uint32 session_id = 1;
 }
 
+/**
+ * @brief Response to session_stop request.
+ */
 message SessionStopResp {
   required uint32 session_id = 1;
 }
 
+/**
+ * @brief Retrieves a single data element stored under provided path.
+ * Sent by sr_get_item API call.
+ */
 message GetItemReq {
   required string path = 1;
 }
 
+/**
+ * @brief Response to get_item request.
+ */
 message GetItemResp {
   optional Value value = 1;
 }
 
+/**
+ * @brief Retrieves an array of data elements stored under provided path.
+ * Sent by sr_get_items and sr_get_items_iter API calls.
+ */
 message GetItemsReq {
   required string path = 1;
 
+  /*
+   * The options below are applicable only for sr_get_items_iter
+   * (not set by sr_get_items).
+   */
   optional bool recursive = 2;
   optional uint32 limit = 3;
   optional uint32 offset = 4;
 }
 
+/**
+ * @brief Response to get_items / sr_get_items_iter request.
+ */
 message GetItemsResp {
   repeated Value value = 1;
 }
 
+/**
+ * @brief Requested operation.
+ */
 enum Operation {
   SESSION_START = 1;
   SESSION_STOP = 2;
@@ -102,6 +164,9 @@ enum Operation {
   GET_ITEMS = 4;
 }
 
+/**
+ * @brief Request for an operation.
+ */
 message Req {
   required Operation operation = 1;
 
@@ -112,6 +177,9 @@ message Req {
   optional GetItemsReq get_items_req = 13;
 }
 
+/**
+ * @brief Response to the received request.
+ */
 message Resp {
   required Operation operation = 1;
   required uint32 result = 2;
@@ -124,14 +192,21 @@ message Resp {
   optional GetItemsResp get_items_resp = 13;
 }
 
+/**
+ * @brief Umbrella sysrepo message used for communication between sysrepo
+ * engine and client library.
+ */
 message Msg {
+  /**
+   * @brief Type of the message.
+   */
   enum MsgType {
-    REQUEST = 1;
-    RESPONSE = 2;
+    REQUEST = 1;   /**< The message is a request. */
+    RESPONSE = 2;  /**< The message is a response to the request. */
   }
 
-  required MsgType type = 1;
-  required uint32 session_id = 2;
-  optional Req request = 3;
-  optional Resp response = 4;
+  required MsgType type = 1;       /**< Indicates type of the message. */
+  required uint32 session_id = 2;  /**< Session identifier. Can be 0 (value is ignored) for session_start request. */
+  optional Req request = 3;        /**< Filled in in case of type == REQUEST. */
+  optional Resp response = 4;      /**< Filled in in case of type == RESPONSE. */
 }

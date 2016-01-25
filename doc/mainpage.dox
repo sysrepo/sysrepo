@@ -1,0 +1,46 @@
+/**
+@anchor main_page
+@mainpage About Sysrepo Project
+
+Sysrepo provides YANG-based datastore functionality for Unix/Linux applications.
+Applications can use sysrepo to store their configuration modeled by provided
+YANG model instead of using e.g. flat configuration files. Sysrepo will ensure
+data consistency of the data stored in the datastore and enforce data constraints
+defined by YANG model. Applications can use C language API of sysrepo to access
+their configuration, but the support of other programming languages is 
+planed for later too. See @ref cl module for the public API documentation.
+
+Sysrepo can be easily integrated to management agents such as NETCONF or RESTCONF
+using the same API that applications use to access their configuration 
+(see the picture below). As of now, integration to Netopeer NETCONF server 
+(https://github.com/cesnet/netopeer) is in progress. This way, applications
+that use sysrepo to store their configuration will automatically benefit from 
+ability to control the application via NETCONF.
+
+@image html high_level_architecture.png
+
+One of the key features of sysrepo is no-single-point-of-failure design. Under
+normal conditions, sysrepo client library communicates with sysrepo daemon,
+which handles all operations in the datastore. But for cases when sysrepo
+daemon is not running (e.g. it has not started / initialized yet, or it has 
+crashed for whatever reason), the client library can do most of the data-access
+functionality by itself. With this approach we can guarantee, that any 
+application will always be able to access its configuration.
+
+To address no-single-point-of-failure challenge, sysrepo consists of two main
+components - Client Library and Sysrepo Engine. Client Library provides the
+API towards applications and communicates with Sysrepo Engine, which provides 
+datastore operations and normally runs on sysrepo deamon. However, in cases that
+sysrepo daemon cannot be contacted, the Client Library initializes its own
+Sysrepo Engine instance within the application process to perform requested
+operations. When the application disconnects from sysrepo, this local
+Sysrepo Engine is cleaned up.
+
+Detailed internal architecture of sysrepo is depicted on the picture below:
+
+@image html internal_architecture.png
+
+The public API towards applications and management agents is documented under 
+@ref cl module. All other modules of this documentation refer to Sysrepo Engine's
+internal modules, as depicted above.
+*/
