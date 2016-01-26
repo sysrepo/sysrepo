@@ -1,7 +1,7 @@
 /**
  * @file data_manager.c
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
- * @brief 
+ * @brief
  *
  * @copyright
  * Copyright 2015 Cisco Systems, Inc.
@@ -344,6 +344,48 @@ dm_find_data_tree(dm_ctx_t *dm_ctx, const struct lys_module *module, struct lyd_
     return rc;
 }
 
+/**
+ * @brief Fills the schema_t from lys_module structure
+ */
+static int
+dm_fill_schema_t(dm_ctx_t *dm_ctx, dm_session_t *session, const struct lys_module *module, sr_schema_t *schema){
+    CHECK_NULL_ARG2(module, schema);
+    CHECK_NULL_ARG3(module->name, module->prefix, module->ns);
+    int rc = SR_ERR_INTERNAL;
+
+    schema->module_name = strdup(module->name);
+    schema->prefix = strdup(module->prefix);
+    schema->namespace = strdup(module->ns);
+    if (NULL == schema->module_name || NULL == schema->prefix || NULL == schema->namespace){
+        SR_LOG_ERR_MSG("Duplication of string for schema_t failed");
+        goto cleanup;
+    }
+
+    /* revision is optional*/
+    if (NULL != module->rev){
+        schema->revision = strdup(module->rev[0].date);
+        if (NULL == schema->revision){
+            SR_LOG_ERR_MSG("Duplication of revision string failed");
+            goto cleanup;
+        }
+    }
+
+    rc = dm_get_data_file(dm_ctx, module->name, &schema->file_path);
+    if (SR_ERR_OK != rc){
+        SR_LOG_ERR_MSG("Get data file name failed");
+        goto cleanup;
+    }
+    return rc;
+
+cleanup:
+    free(schema->module_name);
+    free(schema->prefix);
+    free(schema->namespace);
+    free(schema->revision);
+    free(schema->file_path);
+    return rc;
+}
+
 int
 dm_init(const char *schema_search_dir, const char *data_search_dir, dm_ctx_t **dm_ctx)
 {
@@ -400,7 +442,7 @@ dm_init(const char *schema_search_dir, const char *data_search_dir, dm_ctx_t **d
         dm_cleanup(ctx);
         return SR_ERR_INTERNAL;
     }
-    
+
     if (0 != pthread_rwlock_init(&ctx->avl_lock, &attr)){
         SR_LOG_ERR_MSG("avl rwlock init failed");
         dm_cleanup(ctx);
@@ -481,7 +523,47 @@ dm_get_datatree(dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, const char *modu
     return rc;
 }
 
-int dm_list_schemas(dm_ctx_t *dm_ctx, dm_session_t *dm_session, sr_schema_t *schemas, size_t *schema_count){
-    return SR_ERR_UNSUPPORTED;
+int
+dm_list_schemas(dm_ctx_t *dm_ctx, dm_session_t *dm_session, sr_schema_t **schemas, size_t *schema_count)
+{
+    CHECK_NULL_ARG4(dm_ctx, dm_session, schemas, schema_count);
+    size_t count = 0;
+    size_t i = 0;
+    sr_schema_t *sch = NULL;
+    int rc = SR_ERR_OK;
+    const char **names = ly_ctx_get_module_names(dm_ctx->ly_ctx);
+    if (NULL == names) {
+        *schema_count = 0;
+        *schemas = NULL;
+        return SR_ERR_OK;
+    }
+
+    while (NULL != names[count++]);
+
+    sch = calloc(count, sizeof(*sch));
+    if (NULL == sch){
+        SR_LOG_ERR_MSG("Memory allocation failed");
+        free(names);
+        return SR_ERR_NOMEM;
+    }
+
+    const struct lys_module *module = NULL;
+    i = 0;
+    while (NULL != names[i]) {
+        module = ly_ctx_get_module(dm_ctx->ly_ctx, names[i], NULL);
+        rc = dm_fill_schema_t(dm_ctx, dm_session, module, &sch[i]);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR_MSG("Filling sr_schema_t failed");
+            sr_free_schemas_t(sch, i);
+            free(names);
+            return rc;
+        }
+        i++;
+    }
+
+    *schemas = sch;
+    *schema_count = count;
+    free(names);
+    return SR_ERR_OK;
 }
 
