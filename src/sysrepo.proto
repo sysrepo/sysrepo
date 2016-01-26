@@ -87,6 +87,17 @@ message Value {
 }
 
 /**
+ * @brief Information about a schema installed in sysrepo datastore.
+ */
+message Schema {
+  required string module_name = 1;  /**< Name of the module. */
+  required string namespace = 2;    /**< Namespace of the module. */
+  required string prefix = 3;       /**< Prefix of he module. */
+  required string revision = 4;     /**< Latest revision date of the module. */
+  required string file_path = 5;    /**< Absolute path to the file with schema. */
+}
+
+/**
  * @brief Request for starting a session. Sent by sr_session_start API call.
  */
 message SessionStartReq {
@@ -154,14 +165,31 @@ message GetItemsResp {
 }
 
 /**
+ * @brief Retrieves an array of schemas installed in the sysrepo datastore.
+ * Sent by sr_list_schemas API call.
+ */
+message ListSchemasReq {
+  /* does not hold any information */
+}
+
+/**
+ * @brief Response to sr_list_schemas request.
+ */
+message ListSchemasResp {
+  repeated Schema schemas = 1;
+}
+
+/**
  * @brief Requested operation.
  */
 enum Operation {
   SESSION_START = 1;
   SESSION_STOP = 2;
 
-  GET_ITEM = 3;
-  GET_ITEMS = 4;
+  LIST_SCHEMAS = 3;
+
+  GET_ITEM = 4;
+  GET_ITEMS = 5;
 }
 
 /**
