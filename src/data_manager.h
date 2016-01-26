@@ -29,6 +29,7 @@
 
 #include "sysrepo.pb-c.h"
 #include <libyang/libyang.h>
+#include "sysrepo.h"
 
 
 
@@ -87,7 +88,15 @@ int dm_session_stop(const dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx);
  */
 int dm_get_datatree(dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, const char *module_name, struct lyd_node **data_tree);
 
-
+/**
+ * @brief Returns an array that contains information about schemas supported by sysrepo
+ * @param [in] dm_ctx
+ * @param [in] dm_session
+ * @param [out] schemas
+ * @param [out] schema_count
+ * @return err_code
+ */
+int dm_list_schemas(dm_ctx_t *dm_ctx, dm_session_t *dm_session, sr_schema_t *schemas, size_t *schema_count);
 
 /**@} Data manager*/
 #endif /* SRC_DATA_MANAGER_H_ */
