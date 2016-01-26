@@ -348,7 +348,8 @@ dm_find_data_tree(dm_ctx_t *dm_ctx, const struct lys_module *module, struct lyd_
  * @brief Fills the schema_t from lys_module structure
  */
 static int
-dm_fill_schema_t(dm_ctx_t *dm_ctx, dm_session_t *session, const struct lys_module *module, sr_schema_t *schema){
+dm_fill_schema_t(dm_ctx_t *dm_ctx, dm_session_t *session, const struct lys_module *module, sr_schema_t *schema)
+{
     CHECK_NULL_ARG2(module, schema);
     CHECK_NULL_ARG3(module->name, module->prefix, module->ns);
     int rc = SR_ERR_INTERNAL;
@@ -356,22 +357,22 @@ dm_fill_schema_t(dm_ctx_t *dm_ctx, dm_session_t *session, const struct lys_modul
     schema->module_name = strdup(module->name);
     schema->prefix = strdup(module->prefix);
     schema->namespace = strdup(module->ns);
-    if (NULL == schema->module_name || NULL == schema->prefix || NULL == schema->namespace){
+    if (NULL == schema->module_name || NULL == schema->prefix || NULL == schema->namespace) {
         SR_LOG_ERR_MSG("Duplication of string for schema_t failed");
         goto cleanup;
     }
 
     /* revision is optional*/
-    if (NULL != module->rev){
+    if (NULL != module->rev) {
         schema->revision = strdup(module->rev[0].date);
-        if (NULL == schema->revision){
+        if (NULL == schema->revision) {
             SR_LOG_ERR_MSG("Duplication of revision string failed");
             goto cleanup;
         }
     }
 
     rc = dm_get_data_file(dm_ctx, module->name, &schema->file_path);
-    if (SR_ERR_OK != rc){
+    if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Get data file name failed");
         goto cleanup;
     }
@@ -541,7 +542,7 @@ dm_list_schemas(dm_ctx_t *dm_ctx, dm_session_t *dm_session, sr_schema_t **schema
     while (NULL != names[count++]);
 
     sch = calloc(count, sizeof(*sch));
-    if (NULL == sch){
+    if (NULL == sch) {
         SR_LOG_ERR_MSG("Memory allocation failed");
         free(names);
         return SR_ERR_NOMEM;

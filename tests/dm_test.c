@@ -65,7 +65,9 @@ void dm_get_data_tree(void **state)
 
 }
 
-void dm_list_schema_test(void **state){
+void
+dm_list_schema_test(void **state)
+{
     int rc;
     dm_ctx_t *ctx;
     dm_session_t *ses_ctx;
@@ -80,7 +82,7 @@ void dm_list_schema_test(void **state){
     rc = dm_list_schemas(ctx, ses_ctx, &schemas, &count);
     assert_int_equal(SR_ERR_OK, rc);
 
-    for (size_t i = 0; i<count; i++){
+    for (size_t i = 0; i < count; i++) {
         printf("\n\nSchema #%zu:\n%s\n%s\n%s\n%s\n%s", i,
                 schemas[i].module_name,
                 schemas[i].namespace,
@@ -98,7 +100,7 @@ void dm_list_schema_test(void **state){
 
 
 int main(){
-    sr_logger_set_level(SR_LL_DBG,SR_LL_NONE);
+    sr_logger_set_level(SR_LL_DBG, SR_LL_NONE);
 
     const struct CMUnitTest tests[] = {
             cmocka_unit_test(dm_create_cleanup),
