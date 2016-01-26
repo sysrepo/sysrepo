@@ -141,6 +141,17 @@ typedef struct sr_val_s {
 } sr_val_t;
 
 /**
+ * @brief Structure that contains information about a schema supported by sysrepo
+ */
+typedef struct sr_schema_s{
+    char *module_name;      /**< name of the module */
+    char *namespace;        /**< namespace of the module used in @ref xp_page "xpath" */
+    char *prefix;           /**< prefix of the module */
+    char *revision;         /**< latest revision of the module */
+    char *file_path;        /**< path to file where the schema is stored */
+}sr_schema_t;
+
+/**
  * @brief Iterator used for accessing data nodes via ::sr_get_items_iter call.
  */
 typedef struct sr_val_iter_s sr_val_iter_t;
@@ -359,6 +370,12 @@ void sr_free_values_t(sr_val_t **values, size_t count);
  */
 void sr_free_val_iter(sr_val_iter_t *iter);
 
+/**
+ * @brief Frees schemas_t array
+ * @param [in] schemas
+ * @param [in] count
+ */
+void sr_free_schemas_t(sr_schema_t *schemas, size_t count);
 /**@} cl */
 
 #endif
