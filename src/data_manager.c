@@ -480,3 +480,8 @@ dm_get_datatree(dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, const char *modu
 
     return rc;
 }
+
+int dm_list_schema(dm_ctx_t *dm_ctx, dm_session_t *dm_session, sr_schema_t *schemas, size_t *schema_count){
+    return SR_ERR_UNSUPPORTED;
+}
+
