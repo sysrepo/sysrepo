@@ -70,13 +70,11 @@ rp_list_schemas_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session,
     }
 
     rc = dm_list_schemas(rp_ctx->dm_ctx, session->dm_session, &schemas, &schema_cnt);
-    if (SR_ERR_OK == rc){
-        size_t i = 0;
-        for (i = 0; i < schema_cnt; i++) {
-
-        }
+    if (SR_ERR_OK == rc) {
+        rc = sr_schemas_sr_to_gpb(schemas, schema_cnt, &resp->response->list_schemas_resp->schemas);
+        resp->response->list_schemas_resp->n_schemas = schema_cnt;
     }
-    free(schemas);
+    sr_free_schemas_t(schemas, schema_cnt);
 
     /* set response result code */
     resp->response->result = rc;

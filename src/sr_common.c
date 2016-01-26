@@ -839,9 +839,8 @@ sr_set_val_t_value_in_gpb(const sr_val_t *value, Sr__Value *gpb_value){
     return SR_ERR_OK;
 }
 
-
-
-int sr_copy_val_t_to_gpb(const sr_val_t *value, Sr__Value **gpb_value){
+int
+sr_copy_val_t_to_gpb(const sr_val_t *value, Sr__Value **gpb_value){
     CHECK_NULL_ARG2(value, gpb_value);
     int rc = SR_ERR_OK;
     Sr__Value *gpb;
@@ -1123,12 +1122,98 @@ sr_datastore_gpb_to_sr(Sr__DataStore gpb_ds)
 void
 sr_free_schemas_t(sr_schema_t *schemas, size_t count)
 {
-    for (size_t i = 0; i < count; i++) {
-        free(schemas[i].module_name);
-        free(schemas[i].prefix);
-        free(schemas[i].namespace);
-        free(schemas[i].revision);
-        free(schemas[i].file_path);
+    if (NULL != schemas) {
+        for (size_t i = 0; i < count; i++) {
+            free(schemas[i].module_name);
+            free(schemas[i].prefix);
+            free(schemas[i].namespace);
+            free(schemas[i].revision);
+            free(schemas[i].file_path);
+        }
+        free(schemas);
     }
-    free(schemas);
 }
+
+int
+sr_schemas_sr_to_gpb(const sr_schema_t *sr_schemas, const size_t schema_cnt, Sr__Schema ***gpb_schemas)
+{
+    Sr__Schema **schemas = NULL;
+    size_t i = 0;
+
+    CHECK_NULL_ARG2(sr_schemas, gpb_schemas);
+    if (0 == schema_cnt) {
+        *gpb_schemas = NULL;
+        return SR_ERR_OK;
+    }
+
+    schemas = calloc(schema_cnt, sizeof(*schemas));
+    if (NULL == schemas) {
+        return SR_ERR_NOMEM;
+    }
+    for (i = 0; i < schema_cnt; i++) {
+        schemas[i] = calloc(1, sizeof(**schemas));
+        if (NULL == schemas[i]) {
+            return SR_ERR_NOMEM;
+        }
+        sr__schema__init(schemas[i]);
+        if (NULL != sr_schemas[i].module_name) {
+            schemas[i]->module_name = strdup(sr_schemas[i].module_name);
+        }
+        if (NULL != sr_schemas[i].namespace) {
+            schemas[i]->ns = strdup(sr_schemas[i].namespace);
+        }
+        if (NULL != sr_schemas[i].prefix) {
+            schemas[i]->prefix = strdup(sr_schemas[i].prefix);
+        }
+        if (NULL != sr_schemas[i].revision) {
+            schemas[i]->revision = strdup(sr_schemas[i].revision);
+        }
+        if (NULL != sr_schemas[i].file_path) {
+            schemas[i]->file_path = strdup(sr_schemas[i].file_path);
+        }
+        // TODO others + checks
+    }
+
+    *gpb_schemas = schemas;
+    return SR_ERR_OK;
+}
+
+int
+sr_schemas_gpb_to_sr(const Sr__Schema **gpb_schemas, const size_t schema_cnt, sr_schema_t **sr_schemas)
+{
+    sr_schema_t *schemas = NULL;
+    size_t i = 0;
+
+    CHECK_NULL_ARG2(gpb_schemas, sr_schemas);
+    if (0 == schema_cnt) {
+        *sr_schemas = NULL;
+        return SR_ERR_OK;
+    }
+
+    schemas = calloc(schema_cnt, sizeof(*schemas));
+    if (NULL == schemas) {
+        return SR_ERR_NOMEM;
+    }
+
+    for (i = 0; i < schema_cnt; i++) {
+        if (NULL != gpb_schemas[i]->module_name) {
+            schemas[i].module_name = strdup(gpb_schemas[i]->module_name);
+        }
+        if (NULL != gpb_schemas[i]->ns) {
+            schemas[i].namespace = strdup(gpb_schemas[i]->ns);
+        }
+        if (NULL != gpb_schemas[i]->prefix) {
+            schemas[i].prefix = strdup(gpb_schemas[i]->prefix);
+        }
+        if (NULL != gpb_schemas[i]->revision) {
+            schemas[i].revision = strdup(gpb_schemas[i]->revision);
+        }
+        if (NULL != gpb_schemas[i]->file_path) {
+            schemas[i].file_path = strdup(gpb_schemas[i]->file_path);
+        }
+    }
+
+    *sr_schemas = schemas;
+    return SR_ERR_OK;
+}
+

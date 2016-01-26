@@ -360,6 +360,16 @@ Sr__DataStore sr_datastore_sr_to_gpb(const sr_datastore_t sr_ds);
  */
 sr_datastore_t sr_datastore_gpb_to_sr(Sr__DataStore gpb_ds);
 
+/**
+ * TODO
+ */
+int sr_schemas_sr_to_gpb(const sr_schema_t *sr_schemas, const size_t schema_cnt, Sr__Schema ***gpb_schemas);
+
+/**
+ * TODO
+ */
+int sr_schemas_gpb_to_sr(const Sr__Schema **gpb_schemas, const size_t schema_cnt, sr_schema_t **sr_schemas);
+
 /**@} common */
 
 #endif /* SRC_SR_COMMON_H_ */

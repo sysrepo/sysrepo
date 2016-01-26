@@ -79,7 +79,7 @@ dm_module_cleanup(void *module)
 }
 
 /**
- * @brief Creates the file_name corresponding to the module_name (schema). Function does not check if the schema name
+ * @brief Creates the data file name corresponding to the module_name (schema). Function does not check if the schema name
  * is valid. The file name is allocated on heap and needs to be freed by caller. Returns SR_ERR_OK or SR_ERR_NOMEM
  * if memory allocation failed.
  * @param [in] dm_ctx
@@ -95,6 +95,29 @@ dm_get_data_file(const dm_ctx_t *dm_ctx, const char *module_name, char **file_na
     int rc = sr_str_join(dm_ctx->data_search_dir, module_name, &tmp);
     if (SR_ERR_OK == rc) {
         rc = sr_str_join(tmp, ".data", file_name);
+        free(tmp);
+        return rc;
+    }
+    return SR_ERR_NOMEM;
+}
+
+/**
+ * @brief Creates the schema file name corresponding to the module_name (schema). Function does not check if the schema name
+ * is valid. The file name is allocated on heap and needs to be freed by caller. Returns SR_ERR_OK or SR_ERR_NOMEM
+ * if memory allocation failed.
+ * @param [in] dm_ctx
+ * @param [in] module_name
+ * @param [out] file_name
+ * @return err_code
+ */
+static int
+dm_get_schema_file(const dm_ctx_t *dm_ctx, const char *module_name, char **file_name)
+{
+    CHECK_NULL_ARG3(dm_ctx, module_name, file_name);
+    char *tmp = NULL;
+    int rc = sr_str_join(dm_ctx->schema_search_dir, module_name, &tmp);
+    if (SR_ERR_OK == rc) {
+        rc = sr_str_join(tmp, ".yang", file_name);
         free(tmp);
         return rc;
     }
@@ -371,9 +394,9 @@ dm_fill_schema_t(dm_ctx_t *dm_ctx, dm_session_t *session, const struct lys_modul
         }
     }
 
-    rc = dm_get_data_file(dm_ctx, module->name, &schema->file_path);
+    rc = dm_get_schema_file(dm_ctx, module->name, &schema->file_path);
     if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Get data file name failed");
+        SR_LOG_ERR_MSG("Get schema file name failed");
         goto cleanup;
     }
     return rc;
@@ -539,7 +562,7 @@ dm_list_schemas(dm_ctx_t *dm_ctx, dm_session_t *dm_session, sr_schema_t **schema
         return SR_ERR_OK;
     }
 
-    while (NULL != names[count++]);
+    while (NULL != names[count]) count++;
 
     sch = calloc(count, sizeof(*sch));
     if (NULL == sch) {
