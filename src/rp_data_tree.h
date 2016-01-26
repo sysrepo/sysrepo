@@ -4,7 +4,7 @@
  * @brief Functions for accessing and manipulation data trees.
  * @file rp_data_tree.h
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
- * @brief 
+ * @brief
  *
  * @copyright
  * Copyright 2015 Cisco Systems, Inc.
@@ -188,6 +188,16 @@ int rp_dt_get_values_wrapper_with_opts(dm_ctx_t *dm_ctx, dm_session_t *dm_sessio
                                        bool recursive, size_t offset, size_t limit, sr_val_t ***values, size_t *count);
 
 
+/**
+ * @brief Deletes item(s) identified by xpath
+ * @param dm_ctx
+ * @param session
+ * @param datastore
+ * @param xpath
+ * @param options
+ * @return err_code
+ */
+int rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t datastore, const char *xpath, const sr_edit_flag_t options);
 /**
  * @}
  */

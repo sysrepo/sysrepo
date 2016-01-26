@@ -1257,3 +1257,175 @@ cleanup:
     return rc;
 
 }
+
+int
+rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t datastore, const char *xpath, const sr_edit_flag_t options)
+{
+    CHECK_NULL_ARG3(dm_ctx, session, xpath);
+
+    int rc = SR_ERR_INVAL_ARG;
+    xp_loc_id_t *l = NULL;
+    struct lyd_node *data_tree = NULL;
+    struct lyd_node *node = NULL;
+    size_t level = 0;
+    char *data_tree_name = NULL;
+
+    rc = xp_char_to_loc_id(xpath, &l);
+
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Converting xpath '%s' to loc_id failed.", xpath);
+        return rc;
+    }
+
+    if (!XP_HAS_NODE_NS(l, 0)) {
+        SR_LOG_ERR("Provided xpath's root doesn't contain a namespace '%s' ", xpath);
+        goto cleanup;
+    }
+
+    data_tree_name = XP_CPY_NODE_NS(l, 0);
+    if (NULL == data_tree_name) {
+        SR_LOG_ERR("Copying module name failed for xpath '%s'", xpath);
+        goto cleanup;
+    }
+
+    rc = dm_get_datatree(dm_ctx, session, data_tree_name, &data_tree);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Getting data tree failed for xpath '%s'", xpath);
+        goto cleanup;
+    }
+
+    /*TODO validate xpath schema */
+
+    rc = rp_dt_find_deepest_match(data_tree, l, true, &level, &node);
+    if (SR_ERR_NOT_FOUND == rc) {
+        if (options & SR_EDIT_STRICT) {
+            SR_LOG_ERR("No item exists '%s' deleted with strict opt", l->xpath);
+            rc = SR_ERR_INVAL_ARG;
+            goto cleanup;
+        }
+        rc = SR_ERR_OK;
+        goto cleanup;
+    } else if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Find deepest match failed %s", l->xpath);
+        goto cleanup;
+    }
+
+    /* check if match is complete */
+    if (XP_GET_NODE_COUNT(l) != level) {
+        if (options & SR_EDIT_STRICT) {
+            SR_LOG_ERR("No item exists '%s' deleted with strict opt", l->xpath);
+            rc = SR_ERR_INVAL_ARG;
+            goto cleanup;
+        }
+        rc = SR_ERR_OK;
+        goto cleanup;
+    }
+
+
+    if (NULL == node->schema || NULL == node->schema->name) {
+        SR_LOG_ERR_MSG("Missing schema information");
+        rc = SR_ERR_INTERNAL;
+        goto cleanup;
+    }
+
+    if (node == data_tree){
+        SR_LOG_ERR_MSG("Deleting root node not supported now");
+        rc = SR_ERR_INTERNAL;
+        goto cleanup;
+    }
+
+    /* perform delete according to the node type */
+    if (node->schema->nodetype == LYS_CONTAINER) {
+        if (options & SR_EDIT_NON_RECURSIVE) {
+            SR_LOG_ERR("Item for xpath %s is container deleted with non recursive opt", l->xpath);
+            rc = SR_ERR_INVAL_ARG;
+            goto cleanup;
+        }
+        //TODO log to operation queue
+        rc = lyd_unlink(node);
+        if (0 != rc) {
+            SR_LOG_ERR("Unlinking of the node %s failed", l->xpath);
+            rc = SR_ERR_INTERNAL;
+            goto cleanup;
+        }
+        sr_free_datatree(node);
+    } else if (node->schema->nodetype == LYS_LEAF) {
+        //TODO log to operation queue
+        rc = lyd_unlink(node);
+        if (0 != rc) {
+            SR_LOG_ERR("Unlinking of the node %s failed", l->xpath);
+            rc = SR_ERR_INTERNAL;
+            goto cleanup;
+        }
+        lyd_free(node);
+    } else if (node->schema->nodetype == LYS_LEAFLIST) {
+        struct lyd_node **nodes = NULL;
+        size_t count = 0;
+        /* find all leaf-list records */
+        rc = rp_dt_get_siblings_node_by_name(node, node->schema->name, &nodes, &count);
+        if (SR_ERR_OK != rc){
+            SR_LOG_ERR("Get sibling by name failed for xpath %s ", l->xpath);
+            goto cleanup;
+        }
+
+        /* delete leaf-list nodes */
+        for (size_t i = 0; i < count; i++) {
+            //TODO log to operation queue
+            rc = lyd_unlink(nodes[i]);
+            if (0 != rc) {
+                SR_LOG_ERR("Unlinking of the node %s failed", l->xpath);
+                free(nodes);
+                rc = SR_ERR_INTERNAL;
+                goto cleanup;
+            }
+            lyd_free(nodes[i]);
+        }
+    } else if (node->schema->nodetype == LYS_LIST) {
+        if (options & SR_EDIT_NON_RECURSIVE) {
+            SR_LOG_ERR("Item for xpath %s is list deleted with non recursive opt", l->xpath);
+            rc = SR_ERR_INVAL_ARG;
+            goto cleanup;
+        }
+        size_t last_node = XP_GET_NODE_COUNT(l)-1;
+        if (0 != XP_GET_KEY_COUNT(l, last_node)){
+            /* delete list instance */
+            rc = lyd_unlink(node);
+            if (0 != rc) {
+                SR_LOG_ERR("Unlinking of the node %s failed", l->xpath);
+                rc = SR_ERR_INTERNAL;
+                goto cleanup;
+            }
+            sr_free_datatree(node);
+        }
+        else{
+            /* delete all instances */
+            struct lyd_node **nodes = NULL;
+            size_t count = 0;
+            /* find all leaf-list records*/
+            rc = rp_dt_get_siblings_node_by_name(node, node->schema->name, &nodes, &count);
+            if (SR_ERR_OK != rc) {
+                SR_LOG_ERR("Get sibling by name failed for xpath %s ", l->xpath);
+                goto cleanup;
+            }
+
+            /* delete leaf-list nodes*/
+            for (size_t i = 0; i < count; i++) {
+                //TODO log to operation queue
+                rc = lyd_unlink(nodes[i]);
+                if (0 != rc) {
+                    SR_LOG_ERR("Unlinking of the node %s failed", l->xpath);
+                    free(nodes);
+                    rc = SR_ERR_INTERNAL;
+                    goto cleanup;
+                }
+                sr_free_datatree(nodes[i]);
+            }
+        }
+    }
+
+    //TODO mark to session copy that some change has been made
+cleanup:
+    xp_free_loc_id(l);
+    free(data_tree_name);
+    return rc;
+}
