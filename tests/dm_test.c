@@ -65,11 +65,47 @@ void dm_get_data_tree(void **state)
 
 }
 
+void
+dm_list_schema_test(void **state)
+{
+    int rc;
+    dm_ctx_t *ctx;
+    dm_session_t *ses_ctx;
+    sr_schema_t *schemas;
+    size_t count;
+
+    rc = dm_init(TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    dm_session_start(ctx, &ses_ctx);
+
+    rc = dm_list_schemas(ctx, ses_ctx, &schemas, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    for (size_t i = 0; i < count; i++) {
+        printf("\n\nSchema #%zu:\n%s\n%s\n%s\n%s\n%s", i,
+                schemas[i].module_name,
+                schemas[i].namespace,
+                schemas[i].prefix,
+                schemas[i].revision,
+                schemas[i].file_path);
+    }
+
+    sr_free_schemas_t(schemas, count);
+
+    dm_session_stop(ctx, ses_ctx);
+
+    dm_cleanup(ctx);
+}
+
+
 int main(){
+    sr_logger_set_level(SR_LL_DBG, SR_LL_NONE);
 
     const struct CMUnitTest tests[] = {
             cmocka_unit_test(dm_create_cleanup),
             cmocka_unit_test(dm_get_data_tree),
+            cmocka_unit_test(dm_list_schema_test)
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

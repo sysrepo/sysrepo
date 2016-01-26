@@ -1119,3 +1119,16 @@ sr_datastore_gpb_to_sr(Sr__DataStore gpb_ds)
     }
     return SR_DS_RUNNING;
 }
+
+void
+sr_free_schemas_t(sr_schema_t *schemas, size_t count)
+{
+    for (size_t i = 0; i < count; i++) {
+        free(schemas[i].module_name);
+        free(schemas[i].prefix);
+        free(schemas[i].namespace);
+        free(schemas[i].revision);
+        free(schemas[i].file_path);
+    }
+    free(schemas);
+}

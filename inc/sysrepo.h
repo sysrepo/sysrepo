@@ -382,6 +382,12 @@ void sr_free_values_t(sr_val_t **values, size_t count);
  */
 void sr_free_val_iter(sr_val_iter_t *iter);
 
+/**
+ * @brief Frees schemas_t array
+ * @param [in] schemas
+ * @param [in] count
+ */
+void sr_free_schemas_t(sr_schema_t *schemas, size_t count);
 /**@} cl */
 
 #endif
