@@ -714,7 +714,7 @@ dm_get_datatree(dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, const char *modu
         dm_node_timestamp_t *nt = avl_node->item;
         pthread_rwlock_rdlock(&info->running_lock);
         bool changed = info->running_timestamp != nt->timestamp;
-        pthread_rwlock_rdlock(&info->running_lock);
+        pthread_rwlock_unlock(&info->running_lock);
         /* session copy is up-to date*/
         if (!changed){
             *data_tree = nt->node;
