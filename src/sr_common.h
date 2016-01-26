@@ -30,6 +30,7 @@
  * both sysrepo Client Library and Sysrepo Engine.
  */
 
+#include <stdbool.h>
 #include <linux/socket.h>
 #include <sys/types.h>
 #include <stdint.h>

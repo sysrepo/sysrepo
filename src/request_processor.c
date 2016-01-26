@@ -48,6 +48,46 @@ typedef struct rp_session_s {
 } rp_session_t;
 
 /**
+ * Processes a list_schemas request.
+ */
+static int
+rp_list_schemas_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
+{
+    Sr__Msg *resp = NULL;
+    sr_schema_t *schemas = NULL;
+    size_t schema_cnt = 0;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->list_schemas_req);
+
+    SR_LOG_DBG_MSG("Processing list_schemas request.");
+
+    /* allocate the response */
+    rc = sr_pb_resp_alloc(SR__OPERATION__LIST_SCHEMAS, session->id, &resp);
+    if (SR_ERR_OK != rc){
+        SR_LOG_ERR_MSG("Cannot allocate list_schemas response.");
+        return SR_ERR_NOMEM;
+    }
+
+    rc = dm_list_schemas(rp_ctx->dm_ctx, session->dm_session, &schemas, &schema_cnt);
+    if (SR_ERR_OK == rc){
+        size_t i = 0;
+        for (i = 0; i < schema_cnt; i++) {
+
+        }
+    }
+    free(schemas);
+
+    /* set response result code */
+    resp->response->result = rc;
+
+    /* send the response */
+    rc = cm_msg_send(rp_ctx->cm_ctx, resp);
+
+    return rc;
+}
+
+/**
  * Processes a get_item request.
  */
 static int
@@ -147,8 +187,8 @@ rp_get_items_req_process(const rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg 
     }
 
 
-    resp->response->get_items_resp->value = calloc(count, sizeof(Sr__Value *));
-    if (NULL == resp->response->get_items_resp->value){
+    resp->response->get_items_resp->values = calloc(count, sizeof(Sr__Value *));
+    if (NULL == resp->response->get_items_resp->values){
         SR_LOG_ERR_MSG("Memory allocation failed");
         rc = SR_ERR_NOMEM;
         goto cleanup;
@@ -157,16 +197,16 @@ rp_get_items_req_process(const rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg 
     /* copy value to gpb*/
     if (SR_ERR_OK == rc) {
         for (size_t i = 0; i< count; i++){
-            rc = sr_copy_val_t_to_gpb(values[i], &resp->response->get_items_resp->value[i]);
+            rc = sr_copy_val_t_to_gpb(values[i], &resp->response->get_items_resp->values[i]);
             if (SR_ERR_OK != rc) {
                 SR_LOG_ERR("Copying sr_val_t to gpb failed for xpath '%s'", xpath);
                 for (size_t j = 0; j<i; j++){
-                    sr__value__free_unpacked(resp->response->get_items_resp->value[j], NULL);
+                    sr__value__free_unpacked(resp->response->get_items_resp->values[j], NULL);
                 }
-                free(resp->response->get_items_resp->value);
+                free(resp->response->get_items_resp->values);
             }
         }
-        resp->response->get_items_resp->n_value = count;
+        resp->response->get_items_resp->n_values = count;
     }
 
 cleanup:
@@ -291,6 +331,9 @@ rp_msg_process(const rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
     if (SR__MSG__MSG_TYPE__REQUEST == msg->type) {
         /* request handling */
         switch (msg->request->operation) {
+            case SR__OPERATION__LIST_SCHEMAS:
+                rc = rp_list_schemas_req_process(rp_ctx, session, msg);
+                break;
             case SR__OPERATION__GET_ITEM:
                 rc = rp_get_item_req_process(rp_ctx, session, msg);
                 break;

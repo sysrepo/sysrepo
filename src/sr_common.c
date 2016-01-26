@@ -20,6 +20,7 @@
  */
 
 #include <stdlib.h>
+#include <stdbool.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -389,6 +390,14 @@ sr_pb_req_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__Ms
             sr__session_stop_req__init((Sr__SessionStopReq*)sub_msg);
             req->session_stop_req = (Sr__SessionStopReq*)sub_msg;
             break;
+        case SR__OPERATION__LIST_SCHEMAS:
+            sub_msg = calloc(1, sizeof(Sr__ListSchemasReq));
+            if (NULL == sub_msg) {
+                goto nomem;
+            }
+            sr__list_schemas_req__init((Sr__ListSchemasReq*)sub_msg);
+            req->list_schemas_req = (Sr__ListSchemasReq*)sub_msg;
+            break;
         case SR__OPERATION__GET_ITEM:
             sub_msg = calloc(1, sizeof(Sr__GetItemReq));
             if (NULL == sub_msg) {
@@ -465,6 +474,14 @@ sr_pb_resp_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__M
             sr__session_stop_resp__init((Sr__SessionStopResp*)sub_msg);
             resp->session_stop_resp = (Sr__SessionStopResp*)sub_msg;
             break;
+        case SR__OPERATION__LIST_SCHEMAS:
+            sub_msg = calloc(1, sizeof(Sr__ListSchemasResp));
+            if (NULL == sub_msg) {
+                goto nomem;
+            }
+            sr__list_schemas_resp__init((Sr__ListSchemasResp*)sub_msg);
+            resp->list_schemas_resp = (Sr__ListSchemasResp*)sub_msg;
+            break;
         case SR__OPERATION__GET_ITEM:
             sub_msg = calloc(1, sizeof(Sr__GetItemResp));
             if (NULL == sub_msg) {
@@ -515,6 +532,10 @@ sr_pb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__Op
                 if (NULL == msg->request->session_stop_req)
                     return SR_ERR_MALFORMED_MSG;
                 break;
+            case SR__OPERATION__LIST_SCHEMAS:
+                if (NULL == msg->request->list_schemas_req)
+                    return SR_ERR_MALFORMED_MSG;
+                break;
             case SR__OPERATION__GET_ITEM:
                 if (NULL == msg->request->get_item_req)
                     return SR_ERR_MALFORMED_MSG;
@@ -538,6 +559,10 @@ sr_pb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__Op
                 break;
             case SR__OPERATION__SESSION_STOP:
                 if (NULL == msg->response->session_stop_resp)
+                    return SR_ERR_MALFORMED_MSG;
+                break;
+            case SR__OPERATION__LIST_SCHEMAS:
+                if (NULL == msg->response->list_schemas_resp)
                     return SR_ERR_MALFORMED_MSG;
                 break;
             case SR__OPERATION__GET_ITEM:

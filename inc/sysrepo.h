@@ -141,15 +141,15 @@ typedef struct sr_val_s {
 } sr_val_t;
 
 /**
- * @brief Structure that contains information about a schema supported by sysrepo
+ * @brief Structure that contains information about a schema supported by sysrepo.
  */
-typedef struct sr_schema_s{
-    char *module_name;      /**< name of the module */
-    char *namespace;        /**< namespace of the module used in @ref xp_page "xpath" */
-    char *prefix;           /**< prefix of the module */
-    char *revision;         /**< latest revision of the module */
-    char *file_path;        /**< path to file where the schema is stored */
-}sr_schema_t;
+typedef struct sr_schema_s {
+    char *module_name;      /**< Name of the module. */
+    char *namespace;        /**< Namespace of the module used in @ref xp_page "XPath". */
+    char *prefix;           /**< Prefix of the module. */
+    char *revision;         /**< Latest revision date of the module. */
+    char *file_path;        /**< Absolute path to file where the schema is stored. */
+} sr_schema_t;
 
 /**
  * @brief Iterator used for accessing data nodes via ::sr_get_items_iter call.
@@ -279,6 +279,18 @@ int sr_session_stop(sr_session_ctx_t *session);
 ////////////////////////////////////////////////////////////////////////////////
 // Data Retrieval API
 ////////////////////////////////////////////////////////////////////////////////
+
+/**
+ * @brief Retrieves list of schemas installed in the sysrepo datastore.
+ *
+ * @param[in] session Session context acquired with ::sr_session_start call.
+ * @param[out] schemas Array of installed schemas (allocated by the function,
+ * can be freed with a single free() call).
+ * @param[out] schema_cnt Number of schemas returned in the array.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_list_schemas(sr_session_ctx_t *session, sr_schema_t **schemas, size_t *schema_cnt);
 
 /**
  * @brief Retrieves a single element stored under provided path.

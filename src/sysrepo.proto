@@ -93,8 +93,8 @@ message Schema {
   required string module_name = 1;  /**< Name of the module. */
   required string namespace = 2;    /**< Namespace of the module. */
   required string prefix = 3;       /**< Prefix of he module. */
-  required string revision = 4;     /**< Latest revision date of the module. */
-  required string file_path = 5;    /**< Absolute path to the file with schema. */
+  optional string revision = 4;     /**< Latest revision date of the module. */
+  required string file_path = 5;    /**< Absolute path to file where the schema is stored. */
 }
 
 /**
@@ -161,7 +161,7 @@ message GetItemsReq {
  * @brief Response to get_items / sr_get_items_iter request.
  */
 message GetItemsResp {
-  repeated Value value = 1;
+  repeated Value values = 1;
 }
 
 /**
@@ -201,8 +201,10 @@ message Req {
   optional SessionStartReq session_start_req = 10;
   optional SessionStopReq session_stop_req = 11;
   
-  optional GetItemReq get_item_req = 12;
-  optional GetItemsReq get_items_req = 13;
+  optional ListSchemasReq list_schemas_req = 12;
+
+  optional GetItemReq get_item_req = 13;
+  optional GetItemsReq get_items_req = 14;
 }
 
 /**
@@ -216,8 +218,10 @@ message Resp {
   optional SessionStartResp session_start_resp = 10;
   optional SessionStopResp session_stop_resp = 11;
   
-  optional GetItemResp get_item_resp = 12;
-  optional GetItemsResp get_items_resp = 13;
+  optional ListSchemasResp list_schemas_resp = 12;
+
+  optional GetItemResp get_item_resp = 13;
+  optional GetItemsResp get_items_resp = 14;
 }
 
 /**

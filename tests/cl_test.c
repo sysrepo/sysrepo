@@ -21,6 +21,7 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <stdbool.h>
 #include <setjmp.h>
 #include <cmocka.h>
 
@@ -63,7 +64,8 @@ sysrepo_teardown(void **state)
 }
 
 static void
-cl_connection_test(void **state) {
+cl_connection_test(void **state)
+{
     sr_conn_ctx_t *conn1 = NULL, *conn2 = NULL;
     sr_session_ctx_t *sess1 = NULL, *sess2 = NULL, *sess_other1 = NULL, *sess_other2 = NULL;
     int rc = 0;
@@ -115,7 +117,33 @@ cl_connection_test(void **state) {
 }
 
 static void
-cl_get_item_test(void **state) {
+cl_list_schemas_test(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+
+    sr_session_ctx_t *session = NULL;
+    sr_schema_t *schemas = NULL;
+    size_t schema_cnt = 0;
+    int rc = 0;
+
+    /* start a session */
+    rc = sr_session_start(conn, NULL, SR_DS_CANDIDATE, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_list_schemas(session, &schemas, &schema_cnt);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    free(schemas);
+
+    /* stop the session */
+    rc = sr_session_stop(session);
+    assert_int_equal(rc, SR_ERR_OK);
+}
+
+static void
+cl_get_item_test(void **state)
+{
     sr_conn_ctx_t *conn = *state;
     assert_non_null(conn);
 
@@ -176,7 +204,8 @@ cl_get_item_test(void **state) {
 }
 
 static void
-cl_get_items_test(void **state) {
+cl_get_items_test(void **state)
+{
     sr_conn_ctx_t *conn = *state;
     assert_non_null(conn);
 
@@ -234,7 +263,8 @@ cl_get_items_test(void **state) {
 }
 
 static void
-cl_get_items_iter_test(void **state) {
+cl_get_items_iter_test(void **state)
+{
     sr_conn_ctx_t *conn = *state;
     assert_non_null(conn);
 
@@ -363,12 +393,14 @@ cl_get_items_iter_test(void **state) {
 }
 
 int
-main() {
+main()
+{
     const struct CMUnitTest tests[] = {
-            cmocka_unit_test_setup_teardown(cl_connection_test, logging_setup, NULL),
-            cmocka_unit_test_setup_teardown(cl_get_item_test, sysrepo_setup, sysrepo_teardown),
-            cmocka_unit_test_setup_teardown(cl_get_items_test, sysrepo_setup, sysrepo_teardown),
-            cmocka_unit_test_setup_teardown(cl_get_items_iter_test, sysrepo_setup, sysrepo_teardown),
+            //cmocka_unit_test_setup_teardown(cl_connection_test, logging_setup, NULL),
+            cmocka_unit_test_setup_teardown(cl_list_schemas_test, sysrepo_setup, sysrepo_teardown),
+//            cmocka_unit_test_setup_teardown(cl_get_item_test, sysrepo_setup, sysrepo_teardown),
+//            cmocka_unit_test_setup_teardown(cl_get_items_test, sysrepo_setup, sysrepo_teardown),
+//            cmocka_unit_test_setup_teardown(cl_get_items_iter_test, sysrepo_setup, sysrepo_teardown),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);
