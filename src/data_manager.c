@@ -54,6 +54,7 @@ typedef struct dm_model_info_s{
 typedef struct dm_node_timestamp_s{
     struct lyd_node *node;
     time_t timestamp;
+    bool modified;
 }dm_node_timestamp_t;
 
 /**
@@ -712,12 +713,19 @@ dm_get_datatree(dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, const char *modu
     dm_node_timestamp_free(nt);
     if (NULL != avl_node) {
         dm_node_timestamp_t *nt = avl_node->item;
+        if (nt->modified) {
+            /* copy has already been changed by user */
+            *data_tree = nt->node;
+            SR_LOG_DBG("Copy of module %s has already been modified", module_name);
+            return SR_ERR_OK;
+        }
         pthread_rwlock_rdlock(&info->running_lock);
         bool changed = info->running_timestamp != nt->timestamp;
         pthread_rwlock_unlock(&info->running_lock);
         /* session copy is up-to date*/
         if (!changed){
             *data_tree = nt->node;
+            SR_LOG_DBG("Copy of module %s already loaded not modified", module_name);
             return SR_ERR_OK;
         }
     }
@@ -751,6 +759,7 @@ dm_get_datatree(dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, const char *modu
                 dm_node_timestamp_free(nt);
                 return SR_ERR_NOMEM;
             }
+            SR_LOG_DBG("Copy of module %s has been created", module_name);
             return SR_ERR_OK;
         } else {
             free(*data_tree);
