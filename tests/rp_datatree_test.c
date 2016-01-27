@@ -25,6 +25,7 @@
 #include <cmocka.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <stdbool.h>
 #include "data_manager.h"
 #include "test_data.h"
 #include "sr_common.h"
