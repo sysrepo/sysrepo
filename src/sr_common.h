@@ -392,6 +392,14 @@ int sr_schemas_sr_to_gpb(const sr_schema_t *sr_schemas, const size_t schema_cnt,
  */
 int sr_schemas_gpb_to_sr(const Sr__Schema **gpb_schemas, const size_t schema_cnt, sr_schema_t **sr_schemas);
 
+/**
+ * @brief Converts sr_val_t to string representation, used in set item
+ * @param value
+ * @param out
+ * @return
+ */
+int sr_val_to_char(const sr_val_t *value, char **out);
+
 /**@} common */
 
 #endif /* SRC_SR_COMMON_H_ */

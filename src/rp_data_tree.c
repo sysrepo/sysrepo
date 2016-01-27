@@ -1530,7 +1530,11 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t dat
     }
 
     //TODO fill this from argument sr_value_t
-    new_value = NULL;
+    rc = sr_val_to_char(value, &new_value);
+    if (SR_ERR_OK != rc){
+        SR_LOG_ERR_MSG("Copy new value to string failed");
+        goto cleanup;
+    }
     //TODO assign correct module if augment
     const struct lys_module *module = match->schema->module;
 
@@ -1545,7 +1549,7 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t dat
         lyd_free(match);
     }
 
-
+    node = match;
     for (size_t n = level; n < XP_GET_NODE_COUNT(l); n++) {
         node_name = XP_CPY_TOKEN(l, XP_GET_NODE_TOKEN(l, n));
         if (XP_HAS_NODE_NS(l,n)){
@@ -1565,7 +1569,7 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t dat
             //create container or list
             node = lyd_new(node, module, node_name);
             if (NULL == node) {
-                SR_LOG_ERR("Creating of container failed %s", l->xpath);
+                SR_LOG_ERR("Creating container or list failed %s", l->xpath);
                 //TODO remove what has been added
                 rc = SR_ERR_INTERNAL;
                 goto cleanup;

@@ -1293,3 +1293,20 @@ nomem:
     return SR_ERR_NOMEM;
 }
 
+int sr_val_to_char(const sr_val_t *value, char **out){
+    CHECK_NULL_ARG2(value, out);
+    switch(value->type){
+    case SR_STRING_T:
+        *out = strdup(value->data.string_val);
+        break;
+    default:
+        SR_LOG_ERR_MSG("Conversion of value_t to string failed");
+        *out = NULL;
+    }
+    if (NULL == *out){
+        SR_LOG_ERR("String copy failed %s", value->xpath);
+        return SR_ERR_INTERNAL;
+    }
+    return SR_ERR_OK;
+}
+

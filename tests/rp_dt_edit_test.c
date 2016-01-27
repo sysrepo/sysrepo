@@ -270,6 +270,61 @@ void delete_item_leaflist_test(void **state){
     dm_session_stop(ctx, session);
 }
 
+void set_item_leaf_test(void **state){
+    int rc = 0;
+    dm_ctx_t *ctx = *state;
+    dm_session_t *session = NULL;
+
+    /* */
+    dm_session_start(ctx, &session);
+
+    /* replace existing leaf*/
+    sr_val_t *val = NULL;
+    rc = rp_dt_get_value_wrapper(ctx, session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &val);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(val);
+
+    /* modify the value*/
+    free(val->data.string_val);
+    val->data.string_val = strdup("abcdef");
+    assert_non_null(val->data.string_val);
+
+    rc = rp_dt_set_item(ctx, session, SR_DS_CANDIDATE, val->xpath, SR_EDIT_STRICT, val);
+    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+
+    rc = rp_dt_set_item(ctx, session, SR_DS_CANDIDATE, val->xpath, SR_EDIT_DEFAULT, val);
+    assert_int_equal(SR_ERR_OK, rc);
+    sr_free_val_t(val);
+    val = NULL;
+
+    rc = rp_dt_get_value_wrapper(ctx, session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &val);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(val);
+    assert_string_equal("abcdef", val->data.string_val);
+
+    /*reuse sr_val_t insert new value*/
+    free(val->xpath);
+    val->xpath = strdup("/example-module:container/list[key1='new_key1'][key2='new_key2']/leaf");
+    assert_non_null(val->xpath);
+
+    rc = rp_dt_set_item(ctx, session, SR_DS_CANDIDATE, val->xpath, SR_EDIT_NON_RECURSIVE, val);
+    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+
+    rc = rp_dt_set_item(ctx, session, SR_DS_CANDIDATE, val->xpath, SR_EDIT_DEFAULT, val);
+    assert_int_equal(SR_ERR_OK, rc);
+    sr_free_val_t(val);
+    val = NULL;
+
+    rc = rp_dt_get_value_wrapper(ctx, session, "/example-module:container/list[key1='new_key1'][key2='new_key2']/leaf", &val);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(val);
+    assert_string_equal("abcdef", val->data.string_val);
+
+    sr_free_val_t(val);
+
+    dm_session_stop(ctx, session);
+}
+
 
 
 int main(){
@@ -281,7 +336,8 @@ int main(){
             cmocka_unit_test(delete_item_container_test),
             cmocka_unit_test(delete_item_list_test),
             cmocka_unit_test(delete_item_alllist_test),
-            cmocka_unit_test(delete_item_leaflist_test)
+            cmocka_unit_test(delete_item_leaflist_test),
+            cmocka_unit_test(set_item_leaf_test)
     };
     return cmocka_run_group_tests(tests, setup, teardown);
 }
