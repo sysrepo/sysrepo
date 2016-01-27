@@ -1128,7 +1128,7 @@ rp_dt_get_values(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp_lo
     rc = rp_dt_get_nodes(dm_ctx, data_tree, loc_id, &nodes, count);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Get nodes for xpath %s failed", loc_id->xpath);
-        return SR_ERR_INTERNAL;
+        return rc;
     }
 
     rc = rp_dt_get_values_from_nodes(nodes, *count, values);
@@ -1288,12 +1288,15 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t 
         goto cleanup;
     }
 
-    rc = dm_get_datatree(dm_ctx, session, data_tree_name, &data_tree);
+    // TODO use data store argument
+
+    dm_data_info_t *info = NULL;
+    rc = dm_get_data_info(dm_ctx, session, data_tree_name, &info);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Getting data tree failed for xpath '%s'", xpath);
         goto cleanup;
     }
-
+    data_tree = info->node;
     /*TODO validate xpath schema */
 
     rc = rp_dt_find_deepest_match(data_tree, l, true, &level, &node);
@@ -1304,6 +1307,7 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t 
             goto cleanup;
         }
         rc = SR_ERR_OK;
+        info->modified = true;
         goto cleanup;
     } else if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Find deepest match failed %s", l->xpath);
@@ -1317,6 +1321,7 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t 
             rc = SR_ERR_INVAL_ARG;
             goto cleanup;
         }
+        info->modified = true;
         rc = SR_ERR_OK;
         goto cleanup;
     }
@@ -1329,6 +1334,7 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t 
     }
 
     if (node == data_tree){
+        //TODO introduce root node of model which is present even if the data tree is empty
         SR_LOG_ERR_MSG("Deleting root node not supported now");
         rc = SR_ERR_INTERNAL;
         goto cleanup;
@@ -1380,6 +1386,7 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t 
             }
             lyd_free(nodes[i]);
         }
+        free(nodes);
     } else if (node->schema->nodetype == LYS_LIST) {
         if (options & SR_EDIT_NON_RECURSIVE) {
             SR_LOG_ERR("Item for xpath %s is list deleted with non recursive opt", l->xpath);
@@ -1420,10 +1427,12 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t 
                 }
                 sr_free_datatree(nodes[i]);
             }
+            free(nodes);
         }
     }
 
-    //TODO mark to session copy that some change has been made
+    /* mark to session copy that some change has been made */
+    info->modified = true;
 cleanup:
     xp_free_loc_id(l);
     free(data_tree_name);

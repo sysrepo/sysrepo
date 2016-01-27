@@ -197,6 +197,79 @@ void delete_item_list_test(void **state){
     dm_session_stop(ctx, session);
 }
 
+void delete_item_alllist_test(void **state){
+    int rc = 0;
+    dm_ctx_t *ctx = *state;
+    dm_session_t *session = NULL;
+
+    /* delete list*/
+    dm_session_start(ctx, &session);
+
+#define LIST_XP "/ietf-interfaces:interfaces/interface"
+
+    sr_val_t **values = NULL;
+    size_t count = 0;
+
+    /* there are three list instances*/
+    rc = rp_dt_get_values_wrapper(ctx, session, LIST_XP, &values, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    sr_free_values_t(values, count);
+
+    /* delete with non recursive should fail*/
+    rc = rp_dt_delete_item(ctx, session, SR_DS_CANDIDATE, LIST_XP, SR_EDIT_NON_RECURSIVE);
+    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+
+    /* items should remain in place*/
+    rc = rp_dt_get_values_wrapper(ctx, session, LIST_XP, &values, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    sr_free_values_t(values, count);
+
+    /* delete all list instances*/
+    rc = rp_dt_delete_item(ctx, session, SR_DS_CANDIDATE, LIST_XP, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* items should be deleted*/
+    rc = rp_dt_get_values_wrapper(ctx, session, LIST_XP, &values, &count);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+
+    /* delete non existing */
+    rc = rp_dt_delete_item(ctx, session, SR_DS_CANDIDATE, LIST_XP, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* delete non existing with strict should fail*/
+    rc = rp_dt_delete_item(ctx, session, SR_DS_CANDIDATE, LIST_XP, SR_EDIT_STRICT);
+    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+
+    dm_session_stop(ctx, session);
+}
+
+void delete_item_leaflist_test(void **state){
+    int rc = 0;
+    dm_ctx_t *ctx = *state;
+    dm_session_t *session = NULL;
+
+    /* delete list*/
+    dm_session_start(ctx, &session);
+
+#define LEAF_LIST_XP "/test-module:main/numbers"
+
+    sr_val_t **values = NULL;
+    size_t count = 0;
+    /* three leaf list items*/
+    rc = rp_dt_get_values_wrapper(ctx, session, LEAF_LIST_XP, &values, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    sr_free_values_t(values, count);
+
+    /* delete all list instances*/
+    rc = rp_dt_delete_item(ctx, session, SR_DS_CANDIDATE, LEAF_LIST_XP, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_get_values_wrapper(ctx, session, LEAF_LIST_XP, &values, &count);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+
+    dm_session_stop(ctx, session);
+}
+
 
 
 int main(){
@@ -206,7 +279,9 @@ int main(){
     const struct CMUnitTest tests[] = {
             cmocka_unit_test(delete_item_leaf_test),
             cmocka_unit_test(delete_item_container_test),
-            cmocka_unit_test(delete_item_list_test)
+            cmocka_unit_test(delete_item_list_test),
+            cmocka_unit_test(delete_item_alllist_test),
+            cmocka_unit_test(delete_item_leaflist_test)
     };
     return cmocka_run_group_tests(tests, setup, teardown);
 }

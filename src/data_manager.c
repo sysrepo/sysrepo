@@ -51,12 +51,6 @@ typedef struct dm_model_info_s{
     time_t startup_timestamp;
 }dm_model_info_t;
 
-typedef struct dm_node_timestamp_s{
-    struct lyd_node *node;
-    time_t timestamp;
-    bool modified;
-}dm_node_timestamp_t;
-
 /**
  * @brief Compares two data trees by module name
  */
@@ -65,8 +59,8 @@ dm_node_timestamp_cmp(const void *a, const void *b)
 {
     assert(a);
     assert(b);
-    dm_node_timestamp_t *node_a = (dm_node_timestamp_t *) a;
-    dm_node_timestamp_t *node_b = (dm_node_timestamp_t *) b;
+    dm_data_info_t *node_a = (dm_data_info_t *) a;
+    dm_data_info_t *node_b = (dm_data_info_t *) b;
 
     int res = strcmp(node_a->node->schema->module->name, node_b->node->schema->module->name);
     if (res == 0) {
@@ -84,7 +78,7 @@ dm_node_timestamp_cmp(const void *a, const void *b)
 static void
 dm_node_timestamp_free(void *item)
 {
-    dm_node_timestamp_t *n = (dm_node_timestamp_t *) item;
+    dm_data_info_t *n = (dm_data_info_t *) item;
     if (NULL != n) {
             SR_LOG_INF_MSG("Free node timestamp");
         sr_free_datatree(n->node);
@@ -678,9 +672,8 @@ dm_session_stop(const dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx)
 }
 
 int
-dm_get_datatree(dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, const char *module_name, struct lyd_node **data_tree)
-{
-    CHECK_NULL_ARG4(dm_ctx, dm_session_ctx, module_name, data_tree);
+dm_get_data_info(dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, const char *module_name, dm_data_info_t **info){
+    CHECK_NULL_ARG4(dm_ctx, dm_session_ctx, module_name, info);
     int rc = SR_ERR_OK;
     const struct lys_module *module = NULL;
     avl_node_t *avl_node = NULL;
@@ -692,12 +685,12 @@ dm_get_datatree(dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, const char *modu
     }
 
     /* check session copy*/
-    dm_model_info_t *info = module->data->private;
+    dm_model_info_t *m_info = module->data->private;
 
     struct lyd_node *data_node = NULL;
-    dm_node_timestamp_t *nt = NULL;
-    nt = calloc(1, sizeof(*nt));
-    if (NULL == nt){
+    dm_data_info_t *d_info = NULL;
+    d_info = calloc(1, sizeof(*d_info));
+    if (NULL == d_info){
         SR_LOG_ERR_MSG("Memory allocation failed");
         return SR_ERR_NOMEM;
     }
@@ -707,31 +700,32 @@ dm_get_datatree(dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, const char *modu
         SR_LOG_ERR_MSG("Unable to create node for lookup");
         return SR_ERR_NOMEM;
     }
-    nt->node = data_node;
+    d_info->node = data_node;
 
-    avl_node = avl_search(dm_session_ctx->running_modules, nt);
-    dm_node_timestamp_free(nt);
+    avl_node = avl_search(dm_session_ctx->running_modules, d_info);
+    dm_node_timestamp_free(d_info);
     if (NULL != avl_node) {
-        dm_node_timestamp_t *nt = avl_node->item;
-        if (nt->modified) {
+        dm_data_info_t *d_info = avl_node->item;
+        if (d_info->modified) {
             /* copy has already been changed by user */
-            *data_tree = nt->node;
+            *info = d_info;
             SR_LOG_DBG("Copy of module %s has already been modified", module_name);
             return SR_ERR_OK;
         }
-        pthread_rwlock_rdlock(&info->running_lock);
-        bool changed = info->running_timestamp != nt->timestamp;
-        pthread_rwlock_unlock(&info->running_lock);
+        pthread_rwlock_rdlock(&m_info->running_lock);
+        bool changed = m_info->running_timestamp != d_info->timestamp;
+        pthread_rwlock_unlock(&m_info->running_lock);
         /* session copy is up-to date*/
         if (!changed){
-            *data_tree = nt->node;
-            SR_LOG_DBG("Copy of module %s already loaded not modified", module_name);
+            *info = d_info;
+            SR_LOG_DBG("Copy of module %s already is up-to date", module_name);
             return SR_ERR_OK;
         }
     }
 
     /* try to create copy from dm_ctx*/
-    rc = dm_copy_data_tree(dm_ctx, module, &timestamp, data_tree);
+    struct lyd_node *data_tree = NULL;
+    rc = dm_copy_data_tree(dm_ctx, module, &timestamp, &data_tree);
     if (SR_ERR_NOT_FOUND == rc) {
         SR_LOG_DBG("Data tree for %s not found.", module_name);
         return rc;
@@ -743,31 +737,48 @@ dm_get_datatree(dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, const char *modu
     /* insert into session*/
     if (NULL != avl_node) {
         /* update session copy*/
-        dm_node_timestamp_t *nt = avl_node->item;
-        sr_free_datatree(nt->node);
-        nt->node = *data_tree;
-        nt->timestamp = timestamp;
+        dm_data_info_t *d_info = avl_node->item;
+        sr_free_datatree(d_info->node);
+        d_info->node = data_tree;
+        d_info->timestamp = timestamp;
+        *info = d_info;
     } else {
-        dm_node_timestamp_t *nt = NULL;
-        nt = calloc(1, sizeof(*nt));
-        if (NULL != nt) {
-            nt->node = *data_tree;
-            nt->timestamp = timestamp;
-            avl_node = avl_insert(dm_session_ctx->running_modules, (void *) nt);
+        dm_data_info_t *d_info = NULL;
+        d_info = calloc(1, sizeof(*d_info));
+        if (NULL != d_info) {
+            d_info->node = data_tree;
+            d_info->timestamp = timestamp;
+            avl_node = avl_insert(dm_session_ctx->running_modules, (void *) d_info);
             if (NULL == avl_node) {
                 SR_LOG_ERR("Insert into session running avl failed module %s", module_name);
-                dm_node_timestamp_free(nt);
+                dm_node_timestamp_free(d_info);
                 return SR_ERR_NOMEM;
             }
             SR_LOG_DBG("Copy of module %s has been created", module_name);
+            *info = d_info;
             return SR_ERR_OK;
         } else {
-            free(*data_tree);
+            free(data_tree);
             SR_LOG_ERR_MSG("Memory allocation failed");
             return SR_ERR_NOMEM;
         }
     }
 
+    return rc;
+}
+
+int
+dm_get_datatree(dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, const char *module_name, struct lyd_node **data_tree)
+{
+    CHECK_NULL_ARG4(dm_ctx, dm_session_ctx, module_name, data_tree);
+    int rc = SR_ERR_OK;
+    dm_data_info_t *info = NULL;
+    rc = dm_get_data_info(dm_ctx, dm_session_ctx, module_name, &info);
+    if (SR_ERR_OK != rc){
+        SR_LOG_ERR("Get data info failed for module %s", module_name);
+        return rc;
+    }
+    *data_tree = info->node;
     return rc;
 }
 
