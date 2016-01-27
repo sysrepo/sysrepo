@@ -330,7 +330,7 @@ int sr_get_item(sr_session_ctx_t *session, const char *path, sr_val_t **value);
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int sr_get_items(sr_session_ctx_t *session, const char *path, sr_val_t ***values, size_t *value_cnt);
+int sr_get_items(sr_session_ctx_t *session, const char *path, sr_val_t **values, size_t *value_cnt);
 
 /**
  * @brief Creates an iterator to access the elements under provided path.
@@ -373,7 +373,7 @@ void sr_free_val_t(sr_val_t *value);
  * @param[in] values
  * @param[in] count length of array
  */
-void sr_free_values_t(sr_val_t **values, size_t count);
+void sr_free_values_t(sr_val_t *values, size_t count);
 
 /**
  * @brief Frees values iterator.

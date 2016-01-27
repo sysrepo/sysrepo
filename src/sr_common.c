@@ -268,7 +268,8 @@ sr_libyang_type_to_sysrepo(LY_DATA_TYPE t)
 }
 
 void
-sr_free_val_t(sr_val_t *value){
+sr_free_val_t_content(sr_val_t *value)
+{
     if (NULL == value){
         return;
     }
@@ -291,26 +292,53 @@ sr_free_val_t(sr_val_t *value){
     else if (SR_BITS_T == value->type){
         free(value->data.bits_val);
     }
+}
+
+
+void
+sr_free_val_t(sr_val_t *value)
+{
+    if (NULL == value){
+        return;
+    }
+    sr_free_val_t_content(value);
     free(value);
 }
 
-void sr_free_values_t(sr_val_t **values, size_t count){
+void
+sr_free_values_t(sr_val_t *values, size_t count)
+{
     if (NULL == values){
         return;
     }
 
-    for (size_t i = 0; i < count; i++){
+    for (size_t i = 0; i < count; i++) {
+        sr_free_val_t_content(&values[i]);
+    }
+    free(values);
+}
+
+void
+sr_free_values_arr(sr_val_t **values, size_t count)
+{
+    if (NULL == values){
+        return;
+    }
+
+    for (size_t i = 0; i < count; i++) {
         sr_free_val_t(values[i]);
     }
     free(values);
 }
 
-void sr_free_values_in_range(sr_val_t **values, size_t from, size_t to){
+void
+sr_free_values_in_range(sr_val_t **values, size_t from, size_t to)
+{
     if (NULL == values){
         return;
     }
 
-    for (size_t i = from; i < to; i++){
+    for (size_t i = from; i < to; i++) {
         sr_free_val_t(values[i]);
     }
     free(values);
@@ -840,7 +868,7 @@ sr_set_val_t_value_in_gpb(const sr_val_t *value, Sr__Value *gpb_value){
 }
 
 int
-sr_copy_val_t_to_gpb(const sr_val_t *value, Sr__Value **gpb_value){
+sr_dup_val_t_to_gpb(const sr_val_t *value, Sr__Value **gpb_value){
     CHECK_NULL_ARG2(value, gpb_value);
     int rc = SR_ERR_OK;
     Sr__Value *gpb;
@@ -1051,35 +1079,47 @@ sr_set_gpb_value_in_val_t(const Sr__Value *gpb_value, sr_val_t *value){
     return SR_ERR_OK;
 }
 
-int sr_copy_gpb_to_val_t(const Sr__Value *gpb_value, sr_val_t **value){
+int
+sr_copy_gpb_to_val_t(const Sr__Value *gpb_value, sr_val_t *value)
+{
     CHECK_NULL_ARG2(gpb_value, value);
     int rc = SR_ERR_INTERNAL;
 
+    rc = sr_set_gpb_type_in_val_t(gpb_value, value);
+    if (SR_ERR_OK != rc){
+        SR_LOG_ERR_MSG("Setting type in for sr_value_t failed");
+        return rc;
+    }
+
+    rc = sr_set_gpb_value_in_val_t(gpb_value, value);
+    if (SR_ERR_OK != rc){
+        SR_LOG_ERR_MSG("Setting value in for sr_value_t failed");
+        return rc;
+    }
+
+    return rc;
+}
+
+int
+sr_dup_gpb_to_val_t(const Sr__Value *gpb_value, sr_val_t **value)
+{
+    CHECK_NULL_ARG2(gpb_value, value);
     sr_val_t *val = NULL;
+    int rc = SR_ERR_INTERNAL;
+
     val = calloc(1, sizeof(*val));
     if (NULL == val) {
-        SR_LOG_DBG_MSG("Memory allocation failed");
+        SR_LOG_ERR_MSG("Cannot allocate sr_val_t structure.");
         return SR_ERR_NOMEM;
     }
 
-    rc = sr_set_gpb_type_in_val_t(gpb_value, val);
-    if (SR_ERR_OK != rc){
-        SR_LOG_ERR_MSG("Setting type in for sr_value_t failed");
-        goto cleanup;
-    }
-
-    rc = sr_set_gpb_value_in_val_t(gpb_value, val);
-    if (SR_ERR_OK != rc){
-        SR_LOG_ERR_MSG("Setting value in for sr_value_t failed");
-        goto cleanup;
+    rc = sr_copy_gpb_to_val_t(gpb_value, val);
+    if (SR_ERR_OK != rc) {
+        free(val);
+        return rc;
     }
 
     *value = val;
-    return rc;
-
-cleanup:
-    sr_free_val_t(val);
-    *value = NULL;
     return rc;
 }
 

@@ -321,12 +321,12 @@ int sr_pb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr
 int sr_get_peer_eid(int fd, uid_t *uid, gid_t *gid);
 
 /**
- * @brief Fills gpb structure form sr_val_t.
+ * @brief Allocates and fills gpb structure form sr_val_t.
  * @param [in] value
  * @param [out] gpb_value
  * @return err_code
  */
-int sr_copy_val_t_to_gpb(const sr_val_t *value, Sr__Value **gpb_value);
+int sr_dup_val_t_to_gpb(const sr_val_t *value, Sr__Value **gpb_value);
 
 /**
  * @brief Allocates and fills sr_val_t structure from gpb.
@@ -334,7 +334,30 @@ int sr_copy_val_t_to_gpb(const sr_val_t *value, Sr__Value **gpb_value);
  * @param [out] value
  * @return err_code
  */
-int sr_copy_gpb_to_val_t(const Sr__Value *gpb_value, sr_val_t **value);
+int sr_dup_gpb_to_val_t(const Sr__Value *gpb_value, sr_val_t **value);
+
+/**
+ * @brief Fills sr_val_t structure from gpb.
+ * @param [in] gpb_value
+ * @param [out] value
+ * @return err_code
+ */
+int sr_copy_gpb_to_val_t(const Sr__Value *gpb_value, sr_val_t *value);
+
+/**
+ * @brief Frees contents of the sr_val_t structure, does not free the
+ * value structure itself.
+ */
+void sr_free_val_t_content(sr_val_t *value);
+
+/**
+ * @brief Frees array of pointers to sr_valt_t. For each element, the
+ * sr_free_val_t is called too.
+ *
+ * @param[in] values
+ * @param[in] count length of array
+ */
+void sr_free_values_arr(sr_val_t **values, size_t count);
 
 /**
  * Frees sr_val_t array, but sr_free_val_t is called only for indexes in range
