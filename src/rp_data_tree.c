@@ -1438,3 +1438,180 @@ cleanup:
     free(data_tree_name);
     return rc;
 }
+
+int
+rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t datastore, const char *xpath, const sr_edit_flag_t options, const sr_val_t *value)
+{
+    CHECK_NULL_ARG3(dm_ctx, session, xpath);
+
+    int rc = SR_ERR_INVAL_ARG;
+    struct lyd_node *data_tree = NULL;
+    struct lyd_node *match = NULL;
+    struct lyd_node *node = NULL;
+    dm_data_info_t *info = NULL;
+
+    /* to be freed during cleanup */
+    xp_loc_id_t *l = NULL;
+    struct lyd_node *created = NULL;
+    size_t level = 0;
+    char *data_tree_name = NULL;
+    char *new_value = NULL;
+    char *key_name = NULL;
+    char *key_value = NULL;
+    char *node_name = NULL;
+
+    rc = xp_char_to_loc_id(xpath, &l);
+
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Converting xpath '%s' to loc_id failed.", xpath);
+        return rc;
+    }
+
+    if (!XP_HAS_NODE_NS(l, 0)) {
+        SR_LOG_ERR("Provided xpath's root doesn't contain a namespace '%s' ", xpath);
+        goto cleanup;
+    }
+
+    data_tree_name = XP_CPY_NODE_NS(l, 0);
+    if (NULL == data_tree_name) {
+        SR_LOG_ERR("Copying module name failed for xpath '%s'", xpath);
+        goto cleanup;
+    }
+
+    // TODO use data store argument
+
+    rc = dm_get_data_info(dm_ctx, session, data_tree_name, &info);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Getting data tree failed for xpath '%s'", xpath);
+        goto cleanup;
+    }
+    data_tree = info->node;
+    /*TODO validate xpath schema check if it is a leaf or leaf-list*/
+
+    rc = rp_dt_find_deepest_match(data_tree, l, true, &level, &match);
+    if (SR_ERR_NOT_FOUND == rc) {
+        if (options & SR_EDIT_NON_RECURSIVE) {
+            SR_LOG_ERR("No some preceeding item is missing '%s' create it or omit the non recursive option", l->xpath);
+            rc = SR_ERR_INVAL_ARG;
+            goto cleanup;
+        }
+    } else if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Find deepest match failed %s", l->xpath);
+        goto cleanup;
+    }
+
+    /* check if match is complete */
+    if (XP_GET_NODE_COUNT(l) != level) {
+        if (XP_GET_NODE_COUNT(l) != (level + 1)) {
+            if (options & SR_EDIT_NON_RECURSIVE) {
+                SR_LOG_ERR("No some preceeding item is missing '%s' create it or omit the non recursive option", l->xpath);
+                rc = SR_ERR_INVAL_ARG;
+                goto cleanup;
+            }
+        }
+    } else if (options & SR_EDIT_STRICT) {
+        SR_LOG_ERR("Item exists '%s' can not be created again with strict opt", l->xpath);
+        rc = SR_ERR_INVAL_ARG;
+        goto cleanup;
+    }
+
+    if (0 == level){
+        //TODO create root node handle empty data tree
+        SR_LOG_ERR("Root node can not be created currently for xpath %s", l->xpath);
+        rc = SR_ERR_INTERNAL;
+        goto cleanup;
+    }
+
+
+    if (NULL == match->schema || NULL == match->schema->name || NULL == match->schema->module) {
+        SR_LOG_ERR_MSG("Missing schema information");
+        rc = SR_ERR_INTERNAL;
+        goto cleanup;
+    }
+
+    //TODO fill this from argument sr_value_t
+    new_value = NULL;
+    //TODO assign correct module if augment
+    const struct lys_module *module = match->schema->module;
+
+    //TODO check if only updating the value
+    if (XP_GET_NODE_COUNT(l) == level){
+        if (NULL == lyd_new_leaf(match->parent, module, match->schema->name, new_value)){
+            SR_LOG_ERR("Replacing existing leaf failed %s", l->xpath);
+            rc = SR_ERR_INTERNAL;
+            goto cleanup;
+        }
+        lyd_unlink(match);
+        lyd_free(match);
+    }
+
+
+    for (size_t n = level; n < XP_GET_NODE_COUNT(l); n++) {
+        node_name = XP_CPY_TOKEN(l, XP_GET_NODE_TOKEN(l, n));
+        if (XP_HAS_NODE_NS(l,n)){
+            //TODO find corresponding module
+        }
+
+        //check whether node is a leaf
+        if (XP_GET_NODE_COUNT(l) == (n + 1)) {
+            node = lyd_new_leaf(node, module, node_name, new_value);
+            if (NULL == node){
+                SR_LOG_ERR("Creating new leaf failed %s",l->xpath);
+                rc = SR_ERR_INTERNAL;
+                goto cleanup;
+            }
+        } else {
+            size_t key_count = XP_GET_KEY_COUNT(l, n);
+            //create container or list
+            node = lyd_new(node, module, node_name);
+            if (NULL == node) {
+                SR_LOG_ERR("Creating of container failed %s", l->xpath);
+                //TODO remove what has been added
+                rc = SR_ERR_INTERNAL;
+                goto cleanup;
+            }
+            if (key_count != 0) {
+                for (size_t k = 0; k < key_count; k++) {
+                    key_name = XP_CPY_KEY_NAME(l, n, k);
+                    key_value = XP_CPY_KEY_VALUE(l, n, k);
+                    if (NULL == key_name || NULL == key_value) {
+                        SR_LOG_ERR("Copy of key name or key value failed %s", l->xpath);
+                        rc = SR_ERR_INTERNAL;
+                        goto cleanup;
+                    }
+
+                    if (NULL == lyd_new_leaf(node, module, key_name, key_value)) {
+                        SR_LOG_ERR("Adding key leaf failed %s", l->xpath);
+                        rc = SR_ERR_INTERNAL;
+                        goto cleanup;
+                    }
+
+                    free(key_name);
+                    free(key_value);
+                    key_name = NULL;
+                    key_value = NULL;
+                }
+            }
+        }
+        if (NULL == created) {
+            created = node;
+        }
+        //TODO if the data tree was empty assign root
+        free(node_name);
+        node_name = NULL;
+    }
+cleanup:
+
+    /* mark to session copy that some change has been made */
+    info->modified = SR_ERR_OK == rc ? true : info->modified;
+
+    xp_free_loc_id(l);
+    free(data_tree_name);
+    free(new_value);
+    free(node_name);
+    if (SR_ERR_OK != rc && NULL != created){
+        lyd_unlink(created);
+        lyd_free(created);
+    }
+    return rc;
+}
