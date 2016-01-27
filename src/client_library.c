@@ -771,21 +771,6 @@ cleanup:
     return rc;
 }
 
-void
-sr_free_val_iter(sr_val_iter_t *iter){
-    if (NULL == iter){
-        return;
-    }
-    free(iter->path);
-    iter->path = NULL;
-    if (NULL != iter->buff_values) {
-        /* free items that has not been passed to user already*/
-        sr_free_values_in_range(iter->buff_values, iter->index, iter->count);
-        iter->buff_values = NULL;
-    }
-    free(iter);
-}
-
 int
 sr_get_item(sr_session_ctx_t *session, const char *path, sr_val_t **value)
 {
@@ -1058,5 +1043,20 @@ cleanup:
         sr__msg__free_unpacked(msg_resp, NULL);
     }
     return rc;
+}
+
+void
+sr_free_val_iter(sr_val_iter_t *iter){
+    if (NULL == iter){
+        return;
+    }
+    free(iter->path);
+    iter->path = NULL;
+    if (NULL != iter->buff_values) {
+        /* free items that has not been passed to user already*/
+        sr_free_values_in_range(iter->buff_values, iter->index, iter->count);
+        iter->buff_values = NULL;
+    }
+    free(iter);
 }
 

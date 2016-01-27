@@ -51,7 +51,7 @@ main(int argc, char **argv)
         goto cleanup;
     }
     printf("\nValue on xpath: %s = %s\n\n", value->xpath, (value->data.bool_val ? "true" : "false"));
-    sr_free_val_t(value);
+    sr_free_val(value);
 
 cleanup:
     if (NULL != sess) {

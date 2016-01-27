@@ -145,7 +145,7 @@ typedef struct sr_val_s {
  */
 typedef struct sr_schema_s {
     char *module_name;      /**< Name of the module. */
-    char *namespace;        /**< Namespace of the module used in @ref xp_page "XPath". */
+    char *ns;               /**< Namespace of the module used in @ref xp_page "XPath". */
     char *prefix;           /**< Prefix of the module. */
     char *revision;         /**< Latest revision date of the module. */
     char *file_path;        /**< Absolute path to file where the schema is stored. */
@@ -284,8 +284,8 @@ int sr_session_stop(sr_session_ctx_t *session);
  * @brief Retrieves list of schemas installed in the sysrepo datastore.
  *
  * @param[in] session Session context acquired with ::sr_session_start call.
- * @param[out] schemas Array of installed schemas (allocated by the function,
- * can be freed with a single free() call).
+ * @param[out] schemas Array of installed schemas information (allocated by
+ * the function, can be completely freed with ::sr_free_schemas_t call).
  * @param[out] schema_cnt Number of schemas returned in the array.
  *
  * @return Error code (SR_ERR_OK on success).
@@ -293,40 +293,59 @@ int sr_session_stop(sr_session_ctx_t *session);
 int sr_list_schemas(sr_session_ctx_t *session, sr_schema_t **schemas, size_t *schema_cnt);
 
 /**
- * @brief Retrieves a single element stored under provided path.
+ * @brief Retrieves a single data element stored under provided XPath.
  *
- * If the path identifies an empty leaf, a list or a presence container, the value has no data filled in
- * and its type is set properly (SR_LEAF_EMPTY_T / SR_LIST_T / SR_CONTAINER_PRESENCE_T). In case of leaf-list
- * only one element is returned.
- * SR_ERR_NOT_FOUND if the entity is not present in the data tree, or the user does not have read
- * permission to access it.
+ * If the path identifies an empty leaf, a list or a presence container, the value
+ * has no data filled in and its type is set properly (SR_LEAF_EMPTY_T / SR_LIST_T / SR_CONTAINER_PRESENCE_T).
+ * In case of leaf-list only one (first) element is returned, you need to use
+ * ::sr_get_items / ::sr_get_items_iter to retrieve all of them.
+ *
+ * @see @ref xp_page "XPath Addressing" documentation, or
+ * https://tools.ietf.org/html/draft-ietf-netmod-yang-json#section-6.11
+ * for XPath syntax used for identification of yang nodes in sysrepo calls.
  *
  * @param[in] session Session context acquired with ::sr_session_start call.
- * @param[in] path @ref xp_page "XPath" instance-identifier in JSON format: https://tools.ietf.org/html/draft-ietf-netmod-yang-json-02#section-6.11
- * @param[out] value (allocated by function)
+ * @param[in] path @ref xp_page "XPath" identifier of the element to be retrieved.
+ * @param[out] value Structure containing information about requested element
+ * (allocated by the function, can be freed with ::sr_free_val).
  *
- * @return Error code (SR_ERR_OK on success).
+ * @return Error code (SR_ERR_OK on success, SR_ERR_NOT_FOUND if the entity is
+ * not present in the data tree, or the user does not have read permission to access it).
  */
 int sr_get_item(sr_session_ctx_t *session, const char *path, sr_val_t **value);
 
 /**
- * @brief Returns an array of elements under provided path level.
+ * @brief Retrieves an array of data elements stored under provided path XPath
+ * (direct children of the entity specified by XPath, non-recursively).
  *
- * When called on a leaf-list, returns all leaf-list elements. 
- * When called on a list (with keys provided) or a container, returns all elements inside of the 
- * list instance / container. If there are nested containers or list entities, the value returned
- * for each of them has no data filled in and the type set properly (SR_CONTAINER_T / SR_LIST_T). 
- * These container / list values can be used for subsequent sr_get_items calls. 
- * When keys are not provided for a list, it returns all list entities, as for nested lists 
+ * When called on a leaf-list, returns all leaf-list elements. When called on
+ * a list (with keys provided) or a container, returns all direct children of the
+ * list instance / container. If there are nested containers or list entities,
+ * the value returned for each of them has no data filled in and the type set
+ * properly (SR_CONTAINER_T / SR_LIST_T). The XPaths of these container / list
+ * values can be used for subsequent sr_get_items calls. When keys are not
+ * provided for a list, it returns all list entities, as for nested lists
  * (can be used to list existing key values of a list).
- * If the user does not have read permission to access certain nodes, these won't be part of the result.
- * Empty values array may be returned if the element does not contain any data, SR_ERR_NOT_FOUND
- * will be returned if the element under provided path does not exist in the data tree.
+ *
+ * If the user does not have read permission to access certain nodes, these
+ * won't be part of the result. Empty values array may be returned if the
+ * element does not contain any data, SR_ERR_NOT_FOUND will be returned if
+ * the element under provided path does not exist in the data tree, or the
+ * user does not have read permission to access it.
+ *
+ * @see @ref xp_page "XPath Addressing" documentation, or
+ * https://tools.ietf.org/html/draft-ietf-netmod-yang-json#section-6.11
+ * for XPath syntax used for identification of yang nodes in sysrepo calls.
+ *
+ * @see ::sr_get_items_iter can be used for the same purpose as ::sr_get_items
+ * call if you expect thet ::sr_get_items could return too large data sets.
+ * ::sr_get_items_iter can also be used for recursive subtree retrieval.
  *
  * @param[in] session Session context acquired with ::sr_session_start call.
- * @param[in] path
- * @param[out] values (allocated by function)
- * @param[out] value_cnt
+ * @param[in] path @ref xp_page "XPath" identifier of the subtree to be retrieved.
+ * @param[out] values Array of structures containing information about requested
+ * data elements (allocated by the function, can be completely freed with ::sr_free_values).
+ * @param[out] value_cnt Number of returned elements in the values array.
  *
  * @return Error code (SR_ERR_OK on success).
  */
@@ -365,7 +384,7 @@ int sr_get_item_next(sr_session_ctx_t *session, sr_val_iter_t *iter, sr_val_t **
  *
  * @param[in] value
  */
-void sr_free_val_t(sr_val_t *value);
+void sr_free_val(sr_val_t *value);
 
 /**
  * @brief Frees array of sr_valt_t. For each element the sr_free_val_t is called.
@@ -373,7 +392,7 @@ void sr_free_val_t(sr_val_t *value);
  * @param[in] values
  * @param[in] count length of array
  */
-void sr_free_values_t(sr_val_t *values, size_t count);
+void sr_free_values(sr_val_t *values, size_t count);
 
 /**
  * @brief Frees values iterator.
@@ -387,7 +406,8 @@ void sr_free_val_iter(sr_val_iter_t *iter);
  * @param [in] schemas
  * @param [in] count
  */
-void sr_free_schemas_t(sr_schema_t *schemas, size_t count);
+void sr_free_schemas(sr_schema_t *schemas, size_t count);
+
 /**@} cl */
 
 #endif

@@ -294,9 +294,8 @@ sr_free_val_t_content(sr_val_t *value)
     }
 }
 
-
 void
-sr_free_val_t(sr_val_t *value)
+sr_free_val(sr_val_t *value)
 {
     if (NULL == value){
         return;
@@ -306,7 +305,7 @@ sr_free_val_t(sr_val_t *value)
 }
 
 void
-sr_free_values_t(sr_val_t *values, size_t count)
+sr_free_values(sr_val_t *values, size_t count)
 {
     if (NULL == values){
         return;
@@ -326,7 +325,7 @@ sr_free_values_arr(sr_val_t **values, size_t count)
     }
 
     for (size_t i = 0; i < count; i++) {
-        sr_free_val_t(values[i]);
+        sr_free_val(values[i]);
     }
     free(values);
 }
@@ -339,7 +338,7 @@ sr_free_values_in_range(sr_val_t **values, size_t from, size_t to)
     }
 
     for (size_t i = from; i < to; i++) {
-        sr_free_val_t(values[i]);
+        sr_free_val(values[i]);
     }
     free(values);
 }
@@ -1160,13 +1159,13 @@ sr_datastore_gpb_to_sr(Sr__DataStore gpb_ds)
 }
 
 void
-sr_free_schemas_t(sr_schema_t *schemas, size_t count)
+sr_free_schemas(sr_schema_t *schemas, size_t count)
 {
     if (NULL != schemas) {
         for (size_t i = 0; i < count; i++) {
             free(schemas[i].module_name);
             free(schemas[i].prefix);
-            free(schemas[i].namespace);
+            free(schemas[i].ns);
             free(schemas[i].revision);
             free(schemas[i].file_path);
         }
@@ -1204,8 +1203,8 @@ sr_schemas_sr_to_gpb(const sr_schema_t *sr_schemas, const size_t schema_cnt, Sr_
                 goto nomem;
             }
         }
-        if (NULL != sr_schemas[i].namespace) {
-            schemas[i]->ns = strdup(sr_schemas[i].namespace);
+        if (NULL != sr_schemas[i].ns) {
+            schemas[i]->ns = strdup(sr_schemas[i].ns);
             if (NULL == schemas[i]->ns) {
                 goto nomem;
             }
@@ -1268,8 +1267,8 @@ sr_schemas_gpb_to_sr(const Sr__Schema **gpb_schemas, const size_t schema_cnt, sr
             }
         }
         if (NULL != gpb_schemas[i]->ns) {
-            schemas[i].namespace = strdup(gpb_schemas[i]->ns);
-            if (NULL == schemas[i].namespace) {
+            schemas[i].ns = strdup(gpb_schemas[i]->ns);
+            if (NULL == schemas[i].ns) {
                 goto nomem;
             }
         }
@@ -1298,7 +1297,7 @@ sr_schemas_gpb_to_sr(const Sr__Schema **gpb_schemas, const size_t schema_cnt, sr
 
 nomem:
     SR_LOG_ERR_MSG("Cannot duplicate schema contents - not enough memory.");
-    sr_free_schemas_t(schemas, schema_cnt);
+    sr_free_schemas(schemas, schema_cnt);
     return SR_ERR_NOMEM;
 }
 

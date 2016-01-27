@@ -85,13 +85,13 @@ dm_list_schema_test(void **state)
     for (size_t i = 0; i < count; i++) {
         printf("\n\nSchema #%zu:\n%s\n%s\n%s\n%s\n%s", i,
                 schemas[i].module_name,
-                schemas[i].namespace,
+                schemas[i].ns,
                 schemas[i].prefix,
                 schemas[i].revision,
                 schemas[i].file_path);
     }
 
-    sr_free_schemas_t(schemas, count);
+    sr_free_schemas(schemas, count);
 
     dm_session_stop(ctx, ses_ctx);
 

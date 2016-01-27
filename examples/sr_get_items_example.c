@@ -54,7 +54,7 @@ main(int argc, char **argv)
         puts(values[i].xpath);
     }
     
-    sr_free_values_t(values, count);
+    sr_free_values(values, count);
 
 cleanup:
     if (NULL != sess) {

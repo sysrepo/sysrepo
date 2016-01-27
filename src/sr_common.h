@@ -257,7 +257,6 @@ void sr_free_datatree(struct lyd_node *root);
  */
 sr_type_t sr_libyang_type_to_sysrepo(LY_DATA_TYPE t);
 
-
 /**
  * @brief Converts byte buffer content to uint32_t number.
  *
