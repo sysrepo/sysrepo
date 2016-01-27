@@ -1138,7 +1138,7 @@ int
 sr_schemas_sr_to_gpb(const sr_schema_t *sr_schemas, const size_t schema_cnt, Sr__Schema ***gpb_schemas)
 {
     Sr__Schema **schemas = NULL;
-    size_t i = 0;
+    size_t i = 0, j = 0;
 
     CHECK_NULL_ARG2(sr_schemas, gpb_schemas);
     if (0 == schema_cnt) {
@@ -1148,34 +1148,58 @@ sr_schemas_sr_to_gpb(const sr_schema_t *sr_schemas, const size_t schema_cnt, Sr_
 
     schemas = calloc(schema_cnt, sizeof(*schemas));
     if (NULL == schemas) {
+        SR_LOG_ERR_MSG("Cannot allocate array of pointers to GPB schemas.");
         return SR_ERR_NOMEM;
     }
+
     for (i = 0; i < schema_cnt; i++) {
         schemas[i] = calloc(1, sizeof(**schemas));
         if (NULL == schemas[i]) {
-            return SR_ERR_NOMEM;
+            goto nomem;
         }
         sr__schema__init(schemas[i]);
         if (NULL != sr_schemas[i].module_name) {
             schemas[i]->module_name = strdup(sr_schemas[i].module_name);
+            if (NULL == schemas[i]->module_name) {
+                goto nomem;
+            }
         }
         if (NULL != sr_schemas[i].namespace) {
             schemas[i]->ns = strdup(sr_schemas[i].namespace);
+            if (NULL == schemas[i]->ns) {
+                goto nomem;
+            }
         }
         if (NULL != sr_schemas[i].prefix) {
             schemas[i]->prefix = strdup(sr_schemas[i].prefix);
+            if (NULL == schemas[i]->prefix) {
+                goto nomem;
+            }
         }
         if (NULL != sr_schemas[i].revision) {
             schemas[i]->revision = strdup(sr_schemas[i].revision);
+            if (NULL == schemas[i]->revision) {
+                goto nomem;
+            }
         }
         if (NULL != sr_schemas[i].file_path) {
             schemas[i]->file_path = strdup(sr_schemas[i].file_path);
+            if (NULL == schemas[i]->file_path) {
+                goto nomem;
+            }
         }
-        // TODO others + checks
     }
 
     *gpb_schemas = schemas;
     return SR_ERR_OK;
+
+nomem:
+    SR_LOG_ERR_MSG("Cannot allocate memory for GPB schema contents.");
+    for (j = 0; j < i; j++) {
+        sr__schema__free_unpacked(schemas[j], NULL);
+    }
+    free(schemas);
+    return SR_ERR_NOMEM;
 }
 
 int
@@ -1192,28 +1216,49 @@ sr_schemas_gpb_to_sr(const Sr__Schema **gpb_schemas, const size_t schema_cnt, sr
 
     schemas = calloc(schema_cnt, sizeof(*schemas));
     if (NULL == schemas) {
+        SR_LOG_ERR_MSG("Cannot allocate array of schemas.");
         return SR_ERR_NOMEM;
     }
 
     for (i = 0; i < schema_cnt; i++) {
         if (NULL != gpb_schemas[i]->module_name) {
             schemas[i].module_name = strdup(gpb_schemas[i]->module_name);
+            if (NULL == schemas[i].module_name) {
+                goto nomem;
+            }
         }
         if (NULL != gpb_schemas[i]->ns) {
             schemas[i].namespace = strdup(gpb_schemas[i]->ns);
+            if (NULL == schemas[i].namespace) {
+                goto nomem;
+            }
         }
         if (NULL != gpb_schemas[i]->prefix) {
             schemas[i].prefix = strdup(gpb_schemas[i]->prefix);
+            if (NULL == schemas[i].prefix) {
+                goto nomem;
+            }
         }
         if (NULL != gpb_schemas[i]->revision) {
             schemas[i].revision = strdup(gpb_schemas[i]->revision);
+            if (NULL == schemas[i].revision) {
+                goto nomem;
+            }
         }
         if (NULL != gpb_schemas[i]->file_path) {
             schemas[i].file_path = strdup(gpb_schemas[i]->file_path);
+            if (NULL == schemas[i].file_path) {
+                goto nomem;
+            }
         }
     }
 
     *sr_schemas = schemas;
     return SR_ERR_OK;
+
+nomem:
+    SR_LOG_ERR_MSG("Cannot duplicate schema contents - not enough memory.");
+    sr_free_schemas_t(schemas, schema_cnt);
+    return SR_ERR_NOMEM;
 }
 

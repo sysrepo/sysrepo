@@ -69,9 +69,14 @@ rp_list_schemas_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session,
         return SR_ERR_NOMEM;
     }
 
+    /* retrieve schemas from DM */
     rc = dm_list_schemas(rp_ctx->dm_ctx, session->dm_session, &schemas, &schema_cnt);
+
+    /* copy schemas to response */
     if (SR_ERR_OK == rc) {
         rc = sr_schemas_sr_to_gpb(schemas, schema_cnt, &resp->response->list_schemas_resp->schemas);
+    }
+    if (SR_ERR_OK == rc) {
         resp->response->list_schemas_resp->n_schemas = schema_cnt;
     }
     sr_free_schemas_t(schemas, schema_cnt);
