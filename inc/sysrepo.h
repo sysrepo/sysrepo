@@ -74,32 +74,33 @@ typedef struct sr_session_ctx_s sr_session_ctx_t;
  * @brief Possible types of an data element stored in the sysrepo datastore.
  */
 typedef enum sr_type_e {
-    /* special types */
+    /* special types that does not contain any data */
     SR_UNKNOWN_T,              /**< Element unknown to sysrepo (unsupported element). */
-    SR_LIST_T,                 /**< List instance. Does not hold any data. */
-    SR_CONTAINER_T,            /**< Container instance. Does not hold any data. */
-    SR_CONTAINER_PRESENCE_T,   /**< Presence container. Does not hold any data. */
-    SR_LEAF_EMPTY_T,           /**< Empty leaf. Does not hold any data. */
 
-    /* YANG built-in types */
-    SR_BINARY_T,
-    SR_BITS_T,
-    SR_BOOL_T,
-    SR_DECIMAL64_T,
-    SR_ENUM_T,
-    SR_IDENTITYREF_T,
-    SR_INSTANCEID_T,
-    SR_INT8_T,
-    SR_INT16_T,
-    SR_INT32_T,
-    SR_INT64_T,
-    SR_LEAFREF_T,
-    SR_STRING_T,
-    SR_UINT8_T,
-    SR_UINT16_T,
-    SR_UINT32_T,
-    SR_UINT64_T,
-    SR_UNION_T,
+    SR_LIST_T,                 /**< List instance. ([RFC 6020 sec 7.8](http://tools.ietf.org/html/rfc6020#section-7.8)) */
+    SR_CONTAINER_T,            /**< Non-presence container. ([RFC 6020 sec 7.5](http://tools.ietf.org/html/rfc6020#section-7.5)) */
+    SR_CONTAINER_PRESENCE_T,   /**< Presence container. ([RFC 6020 sec 7.5.1](http://tools.ietf.org/html/rfc6020#section-7.5.1)) */
+    SR_LEAF_EMPTY_T,           /**< A leaf that does not have any value ([RFC 6020 sec 9.11](http://tools.ietf.org/html/rfc6020#section-9.11)) */
+    SR_UNION_T,                /**< Choice of member types ([RFC 6020 sec 9.12](http://tools.ietf.org/html/rfc6020#section-9.12)) */
+
+    /* types containing some data */
+    SR_BINARY_T,       /**< Any binary data ([RFC 6020 sec 9.8](http://tools.ietf.org/html/rfc6020#section-9.8)) */
+    SR_BITS_T,         /**< A set of bits or flags ([RFC 6020 sec 9.7](http://tools.ietf.org/html/rfc6020#section-9.7)) */
+    SR_BOOL_T,         /**< A boolean value ([RFC 6020 sec 9.5](http://tools.ietf.org/html/rfc6020#section-9.5)) */
+    SR_DECIMAL64_T,    /**< 64-bit signed decimal number ([RFC 6020 sec 9.3](http://tools.ietf.org/html/rfc6020#section-9.3)) */
+    SR_ENUM_T,         /**< A string from enumerated strings list ([RFC 6020 sec 9.6](http://tools.ietf.org/html/rfc6020#section-9.6)) */
+    SR_IDENTITYREF_T,  /**< A reference to an abstract identity ([RFC 6020 sec 9.10](http://tools.ietf.org/html/rfc6020#section-9.10)) */
+    SR_INSTANCEID_T,   /**< References a data tree node ([RFC 6020 sec 9.13](http://tools.ietf.org/html/rfc6020#section-9.13)) */
+    SR_INT8_T,         /**< 8-bit signed integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
+    SR_INT16_T,        /**< 16-bit signed integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
+    SR_INT32_T,        /**< 32-bit signed integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
+    SR_INT64_T,        /**< 64-bit signed integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
+    SR_LEAFREF_T,      /**< A reference to a leaf instance ([RFC 6020 sec 9.9](http://tools.ietf.org/html/rfc6020#section-9.9)) */
+    SR_STRING_T,       /**< Human-readable string ([RFC 6020 sec 9.4](http://tools.ietf.org/html/rfc6020#section-9.4)) */
+    SR_UINT8_T,        /**< 8-bit unsigned integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
+    SR_UINT16_T,       /**< 16-bit unsigned integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
+    SR_UINT32_T,       /**< 32-bit unsigned integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
+    SR_UINT64_T,       /**< 64-bit unsigned integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
 } sr_type_t;
 
 /**
@@ -117,23 +118,23 @@ typedef struct sr_val_s {
 
     /** Data of an element (if applicable), properly set according to the type. */
     union {
-        char *binary_val;
-        char *bits_val;
-        bool bool_val;
-        int64_t decimal64_val;
-        char *enum_val;
-        char *identityref_val;
-        char *instanceid_val;
-        int8_t int8_val;
-        int16_t int16_val;
-        int32_t int32_val;
-        int64_t int64_val;
-        char *leafref_val;
-        char *string_val;
-        uint8_t uint8_val;
-        uint16_t uint16_val;
-        uint32_t uint32_val;
-        uint64_t uint64_val;
+        char *binary_val;       /**< Any binary data ([RFC 6020 sec 9.8](http://tools.ietf.org/html/rfc6020#section-9.8)) */
+        char *bits_val;         /**< A set of bits or flags ([RFC 6020 sec 9.7](http://tools.ietf.org/html/rfc6020#section-9.7)) */
+        bool bool_val;          /**< A boolean value ([RFC 6020 sec 9.5](http://tools.ietf.org/html/rfc6020#section-9.5)) */
+        int64_t decimal64_val;  /**< 64-bit signed decimal number ([RFC 6020 sec 9.3](http://tools.ietf.org/html/rfc6020#section-9.3)) */
+        char *enum_val;         /**< A string from enumerated strings list ([RFC 6020 sec 9.6](http://tools.ietf.org/html/rfc6020#section-9.6)) */
+        char *identityref_val;  /**< A reference to an abstract identity ([RFC 6020 sec 9.10](http://tools.ietf.org/html/rfc6020#section-9.10)) */
+        char *instanceid_val;   /**< References a data tree node ([RFC 6020 sec 9.13](http://tools.ietf.org/html/rfc6020#section-9.13)) */
+        int8_t int8_val;        /**< 8-bit signed integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
+        int16_t int16_val;      /**< 16-bit signed integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
+        int32_t int32_val;      /**< 32-bit signed integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
+        int64_t int64_val;      /**< 64-bit signed integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
+        char *leafref_val;      /**< A reference to a leaf instance ([RFC 6020 sec 9.9](http://tools.ietf.org/html/rfc6020#section-9.9)) */
+        char *string_val;       /**< Human-readable string ([RFC 6020 sec 9.4](http://tools.ietf.org/html/rfc6020#section-9.4)) */
+        uint8_t uint8_val;      /**< 8-bit unsigned integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
+        uint16_t uint16_val;    /**< 16-bit unsigned integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
+        uint32_t uint32_val;    /**< 32-bit unsigned integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
+        uint64_t uint64_val;    /**< 64-bit unsigned integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
     } data;
 
     /** Length of the data, applicable for those data types where the length may vary. */
@@ -285,7 +286,7 @@ int sr_session_stop(sr_session_ctx_t *session);
  *
  * @param[in] session Session context acquired with ::sr_session_start call.
  * @param[out] schemas Array of installed schemas information (allocated by
- * the function, can be completely freed with ::sr_free_schemas_t call).
+ * the function, can be completely freed with ::sr_free_schemas call).
  * @param[out] schema_cnt Number of schemas returned in the array.
  *
  * @return Error code (SR_ERR_OK on success).
@@ -305,7 +306,7 @@ int sr_list_schemas(sr_session_ctx_t *session, sr_schema_t **schemas, size_t *sc
  * for XPath syntax used for identification of yang nodes in sysrepo calls.
  *
  * @param[in] session Session context acquired with ::sr_session_start call.
- * @param[in] path @ref xp_page "XPath" identifier of the element to be retrieved.
+ * @param[in] path @ref xp_page "XPath" identifier of the data element to be retrieved.
  * @param[out] value Structure containing information about requested element
  * (allocated by the function, can be freed with ::sr_free_val).
  *
@@ -342,7 +343,7 @@ int sr_get_item(sr_session_ctx_t *session, const char *path, sr_val_t **value);
  * ::sr_get_items_iter can also be used for recursive subtree retrieval.
  *
  * @param[in] session Session context acquired with ::sr_session_start call.
- * @param[in] path @ref xp_page "XPath" identifier of the subtree to be retrieved.
+ * @param[in] path @ref xp_page "XPath" identifier of the data element to be retrieved.
  * @param[out] values Array of structures containing information about requested
  * data elements (allocated by the function, can be completely freed with ::sr_free_values).
  * @param[out] value_cnt Number of returned elements in the values array.
@@ -352,59 +353,75 @@ int sr_get_item(sr_session_ctx_t *session, const char *path, sr_val_t **value);
 int sr_get_items(sr_session_ctx_t *session, const char *path, sr_val_t **values, size_t *value_cnt);
 
 /**
- * @brief Creates an iterator to access the elements under provided path.
+ * @brief Creates an iterator for retrieving of the data elements stored under provided path.
  *
- * If the recursive flag is true, it recursively iterates over all nodes in the data tree. 
- * If the recursive is false, it iterates only over the nodes at the path level (over the values
- * that sr_get_values would return). Use this function instead of sr_get_items if you expect 
- * many data entities on the same level.  
+ * If the recursive flag is true, it recursively iterates over all nodes in the
+ * data tree, up to the tree leaves. If the recursive is false, it iterates only
+ * over the nodes at the path level (over the values that ::sr_get_items would return).
+ * You can use this function instead of ::sr_get_items if you expect many data
+ * entities on the same level.
+ *
+ * @see @ref xp_page "XPath Addressing" documentation, or
+ * https://tools.ietf.org/html/draft-ietf-netmod-yang-json#section-6.11
+ * for XPath syntax used for identification of yang nodes in sysrepo calls.
+ *
+ * @see ::sr_get_item_next for iterating over returned data elements.
  *
  * @param[in] session Session context acquired with ::sr_session_start call.
- * @param[in] path
- * @param[in] recursive
- * @param[out] iter (allocated by function)
+ * @param[in] path @ref xp_page "XPath" identifier of the data element / subtree to be retrieved.
+ * @param[in] recursive Indicates whether only the elements at the path level
+ * (recursive == false), or all nested elements (recursive == true) should be returned.
+ * @param[out] iter Iterator context that can be used to retrieve individual data
+ * elements via ::sr_get_item_next calls. Allocated by the function, should be
+ * freed with ::sr_free_val_iter.
  *
  * @return Error code (SR_ERR_OK on success).
  */
 int sr_get_items_iter(sr_session_ctx_t *session, const char *path, bool recursive, sr_val_iter_t **iter);
 
 /**
- * @brief Returns the next value from the dataset of a iterator created by sr_get_items_iter.
+ * @brief Returns the next item from the dataset of provided iterator created
+ * by ::sr_get_items_iter call.
  *
  * @param[in] session Session context acquired with ::sr_session_start call.
- * @param[in,out] iter
- * @param[out] value (allocated)
+ * @param[in,out] iter Iterator acquired with ::sr_get_items_iter call.
+ * @param[out] value Structure containing information about requested element
+ * (allocated by the function, can be freed with ::sr_free_val).
  *
- * @return Error code (SR_ERR_OK on success).
+ * @return Error code (SR_ERR_OK on success, SR_ERR_NOTFOUND in case that there
+ * are not more items in the dataset).
  */
 int sr_get_item_next(sr_session_ctx_t *session, sr_val_iter_t *iter, sr_val_t **value);
 
 /**
- * @brief Frees sr_val_t structure
+ * @brief Frees ::sr_val_t structure and all memory allocated within it.
  *
- * @param[in] value
+ * @param[in] value Value to be freed.
  */
 void sr_free_val(sr_val_t *value);
 
 /**
- * @brief Frees array of sr_valt_t. For each element the sr_free_val_t is called.
+ * @brief Frees array of ::sr_val_t structures (and all memory allocated
+ * within of each array element).
  *
- * @param[in] values
- * @param[in] count length of array
+ * @param[in] values Array of values to be freed.
+ * @param[in] count Number of elements stored in the array.
  */
 void sr_free_values(sr_val_t *values, size_t count);
 
 /**
- * @brief Frees values iterator.
+ * @brief Frees ::sr_val_iter_t iterator and all memory allocated within it.
  *
- * @param[in] iter
+ * @param[in] iter Iterator to be freed.
  */
 void sr_free_val_iter(sr_val_iter_t *iter);
 
 /**
- * @brief Frees schemas_t array
- * @param [in] schemas
- * @param [in] count
+ * @brief Frees array of ::sr_schema_t structures (and all memory allocated
+ * within of each array element).
+ *
+ * @param [in] schemas Array of schemas to be freed.
+ * @param [in] count Number of elements stored in the array.
  */
 void sr_free_schemas(sr_schema_t *schemas, size_t count);
 

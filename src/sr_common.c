@@ -25,7 +25,6 @@
 #include <sys/socket.h>
 #include <unistd.h>
 #include <arpa/inet.h>
-#include <sysrepo.h>
 
 #include "sr_common.h"
 
