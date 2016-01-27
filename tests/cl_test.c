@@ -226,7 +226,7 @@ cl_get_items_test(void **state)
     assert_non_null(conn);
 
     sr_session_ctx_t *session = NULL;
-    sr_val_t **values = NULL;
+    sr_val_t *values = NULL;
     size_t values_cnt = 0;
     int rc = 0;
 

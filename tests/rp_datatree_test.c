@@ -538,7 +538,7 @@ void get_values_opts_test(void **state) {
     for (size_t i=0; i < count; i++){
         puts(values[i]->xpath);
     }
-    sr_free_values_t(values, count);
+    sr_free_values_arr(values, count);
 
     rc = rp_dt_get_values_wrapper_with_opts(ctx, ses_ctx, &get_items_ctx, EX_CONT, true, 100, 1, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
@@ -546,7 +546,7 @@ void get_values_opts_test(void **state) {
     for (size_t i=0; i < count; i++){
         puts(values[i]->xpath);
     }
-    sr_free_values_t(values, count);
+    sr_free_values_arr(values, count);
 
 //TODO test not existing nodes, offset and limit out of range
 
