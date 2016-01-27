@@ -229,7 +229,6 @@ sr_dup_datatree(struct lyd_node *root){
     while (NULL != root) {
         next = root->next;
 
-
         n = lyd_dup(root, 1);
         /*set output node*/
         if (NULL == dup){

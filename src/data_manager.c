@@ -55,7 +55,7 @@ typedef struct dm_model_info_s{
  * @brief Compares two data trees by module name
  */
 static int
-dm_node_timestamp_cmp(const void *a, const void *b)
+dm_data_info_cmp(const void *a, const void *b)
 {
     assert(a);
     assert(b);
@@ -73,17 +73,16 @@ dm_node_timestamp_cmp(const void *a, const void *b)
 }
 
 /**
- * @brief frees the dm_node_timestamp stored in avl tree
+ * @brief frees the dm_data_info stored in avl tree
  */
 static void
-dm_node_timestamp_free(void *item)
+dm_data_info_free(void *item)
 {
-    dm_data_info_t *n = (dm_data_info_t *) item;
-    if (NULL != n) {
-            SR_LOG_INF_MSG("Free node timestamp");
-        sr_free_datatree(n->node);
+    dm_data_info_t *info = (dm_data_info_t *) item;
+    if (NULL != info) {
+        sr_free_datatree(info->node);
     }
-    free(n);
+    free(info);
 }
 
 /**
@@ -651,7 +650,7 @@ dm_session_start(const dm_ctx_t *dm_ctx, dm_session_t **dm_session_ctx)
         SR_LOG_ERR_MSG("Cannot allocate session_ctx in Data Manager.");
         return SR_ERR_NOMEM;
     }
-    session_ctx->running_modules = avl_alloc_tree(dm_node_timestamp_cmp, dm_node_timestamp_free);
+    session_ctx->running_modules = avl_alloc_tree(dm_data_info_cmp, dm_data_info_free);
     if (NULL == session_ctx->running_modules){
         SR_LOG_ERR_MSG("Avl allocation failed");
         free(session_ctx);
@@ -703,7 +702,7 @@ dm_get_data_info(dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, const char *mod
     d_info->node = data_node;
 
     avl_node = avl_search(dm_session_ctx->running_modules, d_info);
-    dm_node_timestamp_free(d_info);
+    dm_data_info_free(d_info);
     if (NULL != avl_node) {
         dm_data_info_t *d_info = avl_node->item;
         if (d_info->modified) {
@@ -751,7 +750,7 @@ dm_get_data_info(dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, const char *mod
             avl_node = avl_insert(dm_session_ctx->running_modules, (void *) d_info);
             if (NULL == avl_node) {
                 SR_LOG_ERR("Insert into session running avl failed module %s", module_name);
-                dm_node_timestamp_free(d_info);
+                dm_data_info_free(d_info);
                 return SR_ERR_NOMEM;
             }
             SR_LOG_DBG("Copy of module %s has been created", module_name);

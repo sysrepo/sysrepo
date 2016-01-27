@@ -1408,14 +1408,14 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t 
             /* delete all instances */
             struct lyd_node **nodes = NULL;
             size_t count = 0;
-            /* find all leaf-list records*/
+            /* find all list instances */
             rc = rp_dt_get_siblings_node_by_name(node, node->schema->name, &nodes, &count);
             if (SR_ERR_OK != rc) {
                 SR_LOG_ERR("Get sibling by name failed for xpath %s ", l->xpath);
                 goto cleanup;
             }
 
-            /* delete leaf-list nodes*/
+            /* delete list nodes*/
             for (size_t i = 0; i < count; i++) {
                 //TODO log to operation queue
                 rc = lyd_unlink(nodes[i]);

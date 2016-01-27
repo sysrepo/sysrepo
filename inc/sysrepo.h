@@ -191,7 +191,7 @@ typedef enum sr_edit_flag_e {
     SR_EDIT_DEFAULT = 0,        /**< recursive and non strict */
     SR_EDIT_NON_RECURSIVE = 1,  /**< if the operation is crate all preceeding nodes must exist,
                                  * if the operation is delete item must not identify list or container */
-    SR_EDIT_STRICT = 2          /**< if the operation is create item must not exisist, if the operation is delete item must exists */
+    SR_EDIT_STRICT = 2          /**< if the operation is create item must not exists, if the operation is delete item must exists */
 } sr_edit_flag_t;
 
 /**
