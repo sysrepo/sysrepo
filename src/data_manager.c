@@ -805,6 +805,17 @@ dm_get_datatree(dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, const char *modu
 }
 
 int
+dm_get_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, const struct lys_module **module){
+    CHECK_NULL_ARG3(dm_ctx, module_name, module); /* revision might be NULL*/
+    *module = ly_ctx_get_module(dm_ctx->ly_ctx, module_name, revision);
+    if (NULL == *module){
+        SR_LOG_ERR("Get module failed %s", module_name);
+        return SR_ERR_UNKNOWN_MODEL;
+    }
+    return SR_ERR_OK;
+}
+
+int
 dm_list_schemas(dm_ctx_t *dm_ctx, dm_session_t *dm_session, sr_schema_t **schemas, size_t *schema_count)
 {
     CHECK_NULL_ARG4(dm_ctx, dm_session, schemas, schema_count);

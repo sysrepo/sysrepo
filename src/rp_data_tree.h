@@ -190,24 +190,24 @@ int rp_dt_get_values_wrapper_with_opts(dm_ctx_t *dm_ctx, dm_session_t *dm_sessio
 
 /**
  * @brief Deletes item(s) identified by xpath
- * @param dm_ctx
- * @param session
- * @param datastore
- * @param xpath
- * @param options
+ * @param [in] dm_ctx
+ * @param [in] session
+ * @param [in] datastore
+ * @param [in] xpath
+ * @param [in] options
  * @return err_code
  */
 int rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t datastore, const char *xpath, const sr_edit_flag_t options);
 
 /**
- * @brief creates a leaf or leaf list node
- * @param dm_ctx
- * @param session
- * @param datastore
- * @param xpath
- * @param options
- * @param value
- * @return
+ * @brief Creates a leaf or leaf list node
+ * @param [in] dm_ctx
+ * @param [in] session
+ * @param [in] datastore
+ * @param [in] xpath
+ * @param [in] options
+ * @param [in] value
+ * @return err_code
  */
 int rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t datastore, const char *xpath, const sr_edit_flag_t options, const sr_val_t *value);
 

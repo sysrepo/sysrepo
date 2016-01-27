@@ -1333,7 +1333,7 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t 
         goto cleanup;
     }
 
-    if (node == data_tree){
+    if (node == data_tree) {
         //TODO introduce root node of model which is present even if the data tree is empty
         SR_LOG_ERR_MSG("Deleting root node not supported now");
         rc = SR_ERR_INTERNAL;
@@ -1369,7 +1369,7 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t 
         size_t count = 0;
         /* find all leaf-list records */
         rc = rp_dt_get_siblings_node_by_name(node, node->schema->name, &nodes, &count);
-        if (SR_ERR_OK != rc){
+        if (SR_ERR_OK != rc) {
             SR_LOG_ERR("Get sibling by name failed for xpath %s ", l->xpath);
             goto cleanup;
         }
@@ -1393,8 +1393,8 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t 
             rc = SR_ERR_INVAL_ARG;
             goto cleanup;
         }
-        size_t last_node = XP_GET_NODE_COUNT(l)-1;
-        if (0 != XP_GET_KEY_COUNT(l, last_node)){
+        size_t last_node = XP_GET_NODE_COUNT(l) - 1;
+        if (0 != XP_GET_KEY_COUNT(l, last_node)) {
             /* delete list instance */
             rc = lyd_unlink(node);
             if (0 != rc) {
@@ -1403,8 +1403,7 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t 
                 goto cleanup;
             }
             sr_free_datatree(node);
-        }
-        else{
+        } else {
             /* delete all instances */
             struct lyd_node **nodes = NULL;
             size_t count = 0;
@@ -1515,7 +1514,7 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t dat
         goto cleanup;
     }
 
-    if (0 == level){
+    if (0 == level) {
         //TODO create root node handle empty data tree
         SR_LOG_ERR("Root node can not be created currently for xpath %s", l->xpath);
         rc = SR_ERR_INTERNAL;
@@ -1523,24 +1522,23 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t dat
     }
 
 
-    if (NULL == match->schema || NULL == match->schema->name || NULL == match->schema->module) {
+    if (NULL == match->schema || NULL == match->schema->name || NULL == match->schema->module || NULL == match->schema->module->name) {
         SR_LOG_ERR_MSG("Missing schema information");
         rc = SR_ERR_INTERNAL;
         goto cleanup;
     }
 
-    //TODO fill this from argument sr_value_t
     rc = sr_val_to_char(value, &new_value);
-    if (SR_ERR_OK != rc){
+    if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Copy new value to string failed");
         goto cleanup;
     }
     //TODO assign correct module if augment
     const struct lys_module *module = match->schema->module;
 
-    //TODO check if only updating the value
-    if (XP_GET_NODE_COUNT(l) == level){
-        if (NULL == lyd_new_leaf(match->parent, module, match->schema->name, new_value)){
+    /* updating the value */
+    if (XP_GET_NODE_COUNT(l) == level) {
+        if (NULL == lyd_new_leaf(match->parent, module, match->schema->name, new_value)) {
             SR_LOG_ERR("Replacing existing leaf failed %s", l->xpath);
             rc = SR_ERR_INTERNAL;
             goto cleanup;
@@ -1552,15 +1550,24 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t dat
     node = match;
     for (size_t n = level; n < XP_GET_NODE_COUNT(l); n++) {
         node_name = XP_CPY_TOKEN(l, XP_GET_NODE_TOKEN(l, n));
-        if (XP_HAS_NODE_NS(l,n)){
-            //TODO find corresponding module
+        if (XP_HAS_NODE_NS(l, n) && !XP_CMP_NODE_NS(l, n, module->name)) {
+            char *module_name = XP_CPY_NODE_NS(l, n);
+            if (NULL == module_name) {
+                SR_LOG_ERR_MSG("Copy of module name failed");
+                rc = SR_ERR_INTERNAL;
+                goto cleanup;
+            }
+            rc = dm_get_module(dm_ctx, module_name, NULL, &module);
+            if (SR_ERR_OK == rc) {
+                goto cleanup;
+            }
         }
 
         //check whether node is a leaf
         if (XP_GET_NODE_COUNT(l) == (n + 1)) {
             node = lyd_new_leaf(node, module, node_name, new_value);
-            if (NULL == node){
-                SR_LOG_ERR("Creating new leaf failed %s",l->xpath);
+            if (NULL == node) {
+                SR_LOG_ERR("Creating new leaf failed %s", l->xpath);
                 rc = SR_ERR_INTERNAL;
                 goto cleanup;
             }
@@ -1570,7 +1577,6 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t dat
             node = lyd_new(node, module, node_name);
             if (NULL == node) {
                 SR_LOG_ERR("Creating container or list failed %s", l->xpath);
-                //TODO remove what has been added
                 rc = SR_ERR_INTERNAL;
                 goto cleanup;
             }
@@ -1613,7 +1619,7 @@ cleanup:
     free(data_tree_name);
     free(new_value);
     free(node_name);
-    if (SR_ERR_OK != rc && NULL != created){
+    if (SR_ERR_OK != rc && NULL != created) {
         lyd_unlink(created);
         lyd_free(created);
     }

@@ -110,6 +110,16 @@ int dm_get_data_info(dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, const char 
 int dm_get_datatree(dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, const char *module_name, struct lyd_node **data_tree);
 
 /**
+ * @brief Returns schema model from libyang context. Module might be used to validate xpath or to create data tree.
+ * @param [in] dm_ctx
+ * @param [in] module_name
+ * @param [in] revision can be NULL
+ * @param [out]module
+ * @return err_code
+ */
+int dm_get_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, const struct lys_module **module);
+
+/**
  * @brief Returns an array that contains information about schemas supported by sysrepo
  * @param [in] dm_ctx
  * @param [in] dm_session
