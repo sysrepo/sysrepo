@@ -20,6 +20,7 @@
  */
 
 #include <stdlib.h>
+#include <stdbool.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -389,6 +390,14 @@ sr_pb_req_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__Ms
             sr__session_stop_req__init((Sr__SessionStopReq*)sub_msg);
             req->session_stop_req = (Sr__SessionStopReq*)sub_msg;
             break;
+        case SR__OPERATION__LIST_SCHEMAS:
+            sub_msg = calloc(1, sizeof(Sr__ListSchemasReq));
+            if (NULL == sub_msg) {
+                goto nomem;
+            }
+            sr__list_schemas_req__init((Sr__ListSchemasReq*)sub_msg);
+            req->list_schemas_req = (Sr__ListSchemasReq*)sub_msg;
+            break;
         case SR__OPERATION__GET_ITEM:
             sub_msg = calloc(1, sizeof(Sr__GetItemReq));
             if (NULL == sub_msg) {
@@ -465,6 +474,14 @@ sr_pb_resp_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__M
             sr__session_stop_resp__init((Sr__SessionStopResp*)sub_msg);
             resp->session_stop_resp = (Sr__SessionStopResp*)sub_msg;
             break;
+        case SR__OPERATION__LIST_SCHEMAS:
+            sub_msg = calloc(1, sizeof(Sr__ListSchemasResp));
+            if (NULL == sub_msg) {
+                goto nomem;
+            }
+            sr__list_schemas_resp__init((Sr__ListSchemasResp*)sub_msg);
+            resp->list_schemas_resp = (Sr__ListSchemasResp*)sub_msg;
+            break;
         case SR__OPERATION__GET_ITEM:
             sub_msg = calloc(1, sizeof(Sr__GetItemResp));
             if (NULL == sub_msg) {
@@ -515,6 +532,10 @@ sr_pb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__Op
                 if (NULL == msg->request->session_stop_req)
                     return SR_ERR_MALFORMED_MSG;
                 break;
+            case SR__OPERATION__LIST_SCHEMAS:
+                if (NULL == msg->request->list_schemas_req)
+                    return SR_ERR_MALFORMED_MSG;
+                break;
             case SR__OPERATION__GET_ITEM:
                 if (NULL == msg->request->get_item_req)
                     return SR_ERR_MALFORMED_MSG;
@@ -538,6 +559,10 @@ sr_pb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__Op
                 break;
             case SR__OPERATION__SESSION_STOP:
                 if (NULL == msg->response->session_stop_resp)
+                    return SR_ERR_MALFORMED_MSG;
+                break;
+            case SR__OPERATION__LIST_SCHEMAS:
+                if (NULL == msg->response->list_schemas_resp)
                     return SR_ERR_MALFORMED_MSG;
                 break;
             case SR__OPERATION__GET_ITEM:
@@ -814,9 +839,8 @@ sr_set_val_t_value_in_gpb(const sr_val_t *value, Sr__Value *gpb_value){
     return SR_ERR_OK;
 }
 
-
-
-int sr_copy_val_t_to_gpb(const sr_val_t *value, Sr__Value **gpb_value){
+int
+sr_copy_val_t_to_gpb(const sr_val_t *value, Sr__Value **gpb_value){
     CHECK_NULL_ARG2(value, gpb_value);
     int rc = SR_ERR_OK;
     Sr__Value *gpb;
@@ -1098,12 +1122,143 @@ sr_datastore_gpb_to_sr(Sr__DataStore gpb_ds)
 void
 sr_free_schemas_t(sr_schema_t *schemas, size_t count)
 {
-    for (size_t i = 0; i < count; i++) {
-        free(schemas[i].module_name);
-        free(schemas[i].prefix);
-        free(schemas[i].namespace);
-        free(schemas[i].revision);
-        free(schemas[i].file_path);
+    if (NULL != schemas) {
+        for (size_t i = 0; i < count; i++) {
+            free(schemas[i].module_name);
+            free(schemas[i].prefix);
+            free(schemas[i].namespace);
+            free(schemas[i].revision);
+            free(schemas[i].file_path);
+        }
+        free(schemas);
+    }
+}
+
+int
+sr_schemas_sr_to_gpb(const sr_schema_t *sr_schemas, const size_t schema_cnt, Sr__Schema ***gpb_schemas)
+{
+    Sr__Schema **schemas = NULL;
+    size_t i = 0, j = 0;
+
+    CHECK_NULL_ARG2(sr_schemas, gpb_schemas);
+    if (0 == schema_cnt) {
+        *gpb_schemas = NULL;
+        return SR_ERR_OK;
+    }
+
+    schemas = calloc(schema_cnt, sizeof(*schemas));
+    if (NULL == schemas) {
+        SR_LOG_ERR_MSG("Cannot allocate array of pointers to GPB schemas.");
+        return SR_ERR_NOMEM;
+    }
+
+    for (i = 0; i < schema_cnt; i++) {
+        schemas[i] = calloc(1, sizeof(**schemas));
+        if (NULL == schemas[i]) {
+            goto nomem;
+        }
+        sr__schema__init(schemas[i]);
+        if (NULL != sr_schemas[i].module_name) {
+            schemas[i]->module_name = strdup(sr_schemas[i].module_name);
+            if (NULL == schemas[i]->module_name) {
+                goto nomem;
+            }
+        }
+        if (NULL != sr_schemas[i].namespace) {
+            schemas[i]->ns = strdup(sr_schemas[i].namespace);
+            if (NULL == schemas[i]->ns) {
+                goto nomem;
+            }
+        }
+        if (NULL != sr_schemas[i].prefix) {
+            schemas[i]->prefix = strdup(sr_schemas[i].prefix);
+            if (NULL == schemas[i]->prefix) {
+                goto nomem;
+            }
+        }
+        if (NULL != sr_schemas[i].revision) {
+            schemas[i]->revision = strdup(sr_schemas[i].revision);
+            if (NULL == schemas[i]->revision) {
+                goto nomem;
+            }
+        }
+        if (NULL != sr_schemas[i].file_path) {
+            schemas[i]->file_path = strdup(sr_schemas[i].file_path);
+            if (NULL == schemas[i]->file_path) {
+                goto nomem;
+            }
+        }
+    }
+
+    *gpb_schemas = schemas;
+    return SR_ERR_OK;
+
+nomem:
+    SR_LOG_ERR_MSG("Cannot allocate memory for GPB schema contents.");
+    for (j = 0; j < i; j++) {
+        sr__schema__free_unpacked(schemas[j], NULL);
     }
     free(schemas);
+    return SR_ERR_NOMEM;
 }
+
+int
+sr_schemas_gpb_to_sr(const Sr__Schema **gpb_schemas, const size_t schema_cnt, sr_schema_t **sr_schemas)
+{
+    sr_schema_t *schemas = NULL;
+    size_t i = 0;
+
+    CHECK_NULL_ARG2(gpb_schemas, sr_schemas);
+    if (0 == schema_cnt) {
+        *sr_schemas = NULL;
+        return SR_ERR_OK;
+    }
+
+    schemas = calloc(schema_cnt, sizeof(*schemas));
+    if (NULL == schemas) {
+        SR_LOG_ERR_MSG("Cannot allocate array of schemas.");
+        return SR_ERR_NOMEM;
+    }
+
+    for (i = 0; i < schema_cnt; i++) {
+        if (NULL != gpb_schemas[i]->module_name) {
+            schemas[i].module_name = strdup(gpb_schemas[i]->module_name);
+            if (NULL == schemas[i].module_name) {
+                goto nomem;
+            }
+        }
+        if (NULL != gpb_schemas[i]->ns) {
+            schemas[i].namespace = strdup(gpb_schemas[i]->ns);
+            if (NULL == schemas[i].namespace) {
+                goto nomem;
+            }
+        }
+        if (NULL != gpb_schemas[i]->prefix) {
+            schemas[i].prefix = strdup(gpb_schemas[i]->prefix);
+            if (NULL == schemas[i].prefix) {
+                goto nomem;
+            }
+        }
+        if (NULL != gpb_schemas[i]->revision) {
+            schemas[i].revision = strdup(gpb_schemas[i]->revision);
+            if (NULL == schemas[i].revision) {
+                goto nomem;
+            }
+        }
+        if (NULL != gpb_schemas[i]->file_path) {
+            schemas[i].file_path = strdup(gpb_schemas[i]->file_path);
+            if (NULL == schemas[i].file_path) {
+                goto nomem;
+            }
+        }
+    }
+
+    *sr_schemas = schemas;
+    return SR_ERR_OK;
+
+nomem:
+    SR_LOG_ERR_MSG("Cannot duplicate schema contents - not enough memory.");
+    sr_free_schemas_t(schemas, schema_cnt);
+    return SR_ERR_NOMEM;
+}
+

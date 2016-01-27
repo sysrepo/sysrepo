@@ -87,6 +87,17 @@ message Value {
 }
 
 /**
+ * @brief Information about a schema installed in sysrepo datastore.
+ */
+message Schema {
+  required string module_name = 1;  /**< Name of the module. */
+  required string ns = 2;           /**< Namespace of the module. */
+  required string prefix = 3;       /**< Prefix of he module. */
+  optional string revision = 4;     /**< Latest revision date of the module. */
+  required string file_path = 5;    /**< Absolute path to file where the schema is stored. */
+}
+
+/**
  * @brief Request for starting a session. Sent by sr_session_start API call.
  */
 message SessionStartReq {
@@ -150,7 +161,22 @@ message GetItemsReq {
  * @brief Response to get_items / sr_get_items_iter request.
  */
 message GetItemsResp {
-  repeated Value value = 1;
+  repeated Value values = 1;
+}
+
+/**
+ * @brief Retrieves an array of schemas installed in the sysrepo datastore.
+ * Sent by sr_list_schemas API call.
+ */
+message ListSchemasReq {
+  /* does not hold any information */
+}
+
+/**
+ * @brief Response to sr_list_schemas request.
+ */
+message ListSchemasResp {
+  repeated Schema schemas = 1;
 }
 
 /**
@@ -160,8 +186,10 @@ enum Operation {
   SESSION_START = 1;
   SESSION_STOP = 2;
 
-  GET_ITEM = 3;
-  GET_ITEMS = 4;
+  LIST_SCHEMAS = 3;
+
+  GET_ITEM = 4;
+  GET_ITEMS = 5;
 }
 
 /**
@@ -173,8 +201,10 @@ message Req {
   optional SessionStartReq session_start_req = 10;
   optional SessionStopReq session_stop_req = 11;
   
-  optional GetItemReq get_item_req = 12;
-  optional GetItemsReq get_items_req = 13;
+  optional ListSchemasReq list_schemas_req = 12;
+
+  optional GetItemReq get_item_req = 13;
+  optional GetItemsReq get_items_req = 14;
 }
 
 /**
@@ -188,8 +218,10 @@ message Resp {
   optional SessionStartResp session_start_resp = 10;
   optional SessionStopResp session_stop_resp = 11;
   
-  optional GetItemResp get_item_resp = 12;
-  optional GetItemsResp get_items_resp = 13;
+  optional ListSchemasResp list_schemas_resp = 12;
+
+  optional GetItemResp get_item_resp = 13;
+  optional GetItemsResp get_items_resp = 14;
 }
 
 /**

@@ -680,7 +680,8 @@ cleanup:
     return rc;
 }
 
-int sr_session_stop(sr_session_ctx_t *session)
+int
+sr_session_stop(sr_session_ctx_t *session)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
     int rc = SR_ERR_OK;
@@ -724,7 +725,54 @@ cleanup:
     return rc;
 }
 
-void sr_free_val_iter(sr_val_iter_t *iter){
+int
+sr_list_schemas(sr_session_ctx_t *session, sr_schema_t **schemas, size_t *schema_cnt)
+{
+    Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG4(session, session->conn_ctx, schemas, schema_cnt);
+
+    /* prepare list_schemas message */
+    rc = sr_pb_req_alloc(SR__OPERATION__LIST_SCHEMAS, session->id, &msg_req);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Cannot allocate list_schemas message.");
+        goto cleanup;
+    }
+
+    /* send the request and receive the response */
+    rc = cl_request_process(session->conn_ctx, msg_req, &msg_resp, SR__OPERATION__LIST_SCHEMAS);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Error by processing of list_schemas request.");
+        goto cleanup;
+    }
+
+    /* copy schemas from response to output argument */
+    rc = sr_schemas_gpb_to_sr((const Sr__Schema**)msg_resp->response->list_schemas_resp->schemas,
+            msg_resp->response->list_schemas_resp->n_schemas, schemas);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Unable to copy schemas from GPB.");
+        goto cleanup;
+    }
+    *schema_cnt = msg_resp->response->list_schemas_resp->n_schemas;
+
+    sr__msg__free_unpacked(msg_req, NULL);
+    sr__msg__free_unpacked(msg_resp, NULL);
+
+    return SR_ERR_OK;
+
+cleanup:
+    if (NULL != msg_req) {
+        sr__msg__free_unpacked(msg_req, NULL);
+    }
+    if (NULL != msg_resp) {
+        sr__msg__free_unpacked(msg_resp, NULL);
+    }
+    return rc;
+}
+
+void
+sr_free_val_iter(sr_val_iter_t *iter){
     if (NULL == iter){
         return;
     }
@@ -738,7 +786,8 @@ void sr_free_val_iter(sr_val_iter_t *iter){
     free(iter);
 }
 
-int sr_get_item(sr_session_ctx_t *session, const char *path, sr_val_t **value)
+int
+sr_get_item(sr_session_ctx_t *session, const char *path, sr_val_t **value)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
     int rc = SR_ERR_OK;
@@ -788,7 +837,8 @@ cleanup:
     return rc;
 }
 
-int sr_get_items(sr_session_ctx_t *session, const char *path, sr_val_t ***values, size_t *value_cnt)
+int
+sr_get_items(sr_session_ctx_t *session, const char *path, sr_val_t ***values, size_t *value_cnt)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
     int rc = SR_ERR_OK;
@@ -818,7 +868,7 @@ int sr_get_items(sr_session_ctx_t *session, const char *path, sr_val_t ***values
 
     /* copy the content of gpb to sr_val_t*/
     sr_val_t **vals = NULL;
-    size_t cnt = msg_resp->response->get_items_resp->n_value;
+    size_t cnt = msg_resp->response->get_items_resp->n_values;
     vals = calloc(cnt, sizeof(*vals));
     if (NULL == vals){
         SR_LOG_ERR_MSG("Memory allocation failed");
@@ -827,7 +877,7 @@ int sr_get_items(sr_session_ctx_t *session, const char *path, sr_val_t ***values
     }
 
     for (size_t i = 0; i<cnt; i++){
-        rc = sr_copy_gpb_to_val_t(msg_resp->response->get_items_resp->value[i], &vals[i]);
+        rc = sr_copy_gpb_to_val_t(msg_resp->response->get_items_resp->values[i], &vals[i]);
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR_MSG("Copying from gpb to sr_val_t failed");
             for (size_t j=0; j<i; j++){
@@ -883,7 +933,7 @@ sr_get_items_iter(sr_session_ctx_t *session, const char *path, bool recursive, s
     }
 
     it->index = 0;
-    it->count = msg_resp->response->get_items_resp->n_value;
+    it->count = msg_resp->response->get_items_resp->n_values;
 
     it->recursive = recursive;
     it->path = strdup(path);
@@ -902,7 +952,7 @@ sr_get_items_iter(sr_session_ctx_t *session, const char *path, bool recursive, s
 
     /* copy the content of gpb to sr_val_t*/
     for (size_t i = 0; i < it->count; i++){
-        rc = sr_copy_gpb_to_val_t(msg_resp->response->get_items_resp->value[i], &it->buff_values[i]);
+        rc = sr_copy_gpb_to_val_t(msg_resp->response->get_items_resp->values[i], &it->buff_values[i]);
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR_MSG("Copying from gpb to sr_val_t failed");
             sr_free_values_t(it->buff_values, i);
@@ -960,7 +1010,7 @@ sr_get_item_next(sr_session_ctx_t *session, sr_val_iter_t *iter, sr_val_t **valu
         }
 
         iter->index = 0;
-        iter->count = msg_resp->response->get_items_resp->n_value;
+        iter->count = msg_resp->response->get_items_resp->n_values;
         if (0 == iter->count){
             /*There is no more data to be read*/
             *value = NULL;
@@ -978,7 +1028,7 @@ sr_get_item_next(sr_session_ctx_t *session, sr_val_iter_t *iter, sr_val_t **valu
 
         /* copy the content of gpb to sr_val_t*/
         for (size_t i = 0; i < iter->count; i++){
-            rc = sr_copy_gpb_to_val_t(msg_resp->response->get_items_resp->value[i], &iter->buff_values[i]);
+            rc = sr_copy_gpb_to_val_t(msg_resp->response->get_items_resp->values[i], &iter->buff_values[i]);
             if (SR_ERR_OK != rc) {
                 SR_LOG_ERR_MSG("Copying from gpb to sr_val_t failed");
                 sr_free_values_t(iter->buff_values, i);

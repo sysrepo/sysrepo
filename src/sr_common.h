@@ -30,6 +30,7 @@
  * both sysrepo Client Library and Sysrepo Engine.
  */
 
+#include <stdbool.h>
 #include <linux/socket.h>
 #include <sys/types.h>
 #include <stdint.h>
@@ -358,6 +359,31 @@ Sr__DataStore sr_datastore_sr_to_gpb(const sr_datastore_t sr_ds);
  * @return Sysrepo datastore.
  */
 sr_datastore_t sr_datastore_gpb_to_sr(Sr__DataStore gpb_ds);
+
+/**
+ * @brief Converts array of sr_schema_t to an array of pointers to GPB schemas.
+ *
+ * @param [in] sr_schemas Array of sr_schema_t.
+ * @param [in] schema_cnt Number of schemas in the array.
+ * @param [out] gpb_schemas Array of pointers to GPB schemas (both pointers
+ * array and schemas are allocated by the function, should be freed with free()
+ * and sr__schema__free_unpacked function).
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_schemas_sr_to_gpb(const sr_schema_t *sr_schemas, const size_t schema_cnt, Sr__Schema ***gpb_schemas);
+
+/**
+ * @brief Converts array of pointers to GPB schemas to an array of sr_schema_t.
+ *
+ * @param [in] gpb_schemas Array of pointers to GPB schemas.
+ * @param [in] schema_cnt Number of schemas in the array.
+ * @param [out] sr_schemas Array of sr_schema_t (allocated by the function,
+ * should be freed with ::sr_free_schemas_t).
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_schemas_gpb_to_sr(const Sr__Schema **gpb_schemas, const size_t schema_cnt, sr_schema_t **sr_schemas);
 
 /**@} common */
 
