@@ -329,10 +329,9 @@ int sr_get_item(sr_session_ctx_t *session, const char *path, sr_val_t **value);
  * (can be used to list existing key values of a list).
  *
  * If the user does not have read permission to access certain nodes, these
- * won't be part of the result. Empty values array may be returned if the
- * element does not contain any data, SR_ERR_NOT_FOUND will be returned if
- * the element under provided path does not exist in the data tree, or the
- * user does not have read permission to access it.
+ * won't be part of the result. SR_ERR_NOT_FOUND will be returned if the element
+ * under provided path does not exist in the data tree, element does not contain
+ * any nested data, or the user does not have read permission to access it.
  *
  * @see @ref xp_page "XPath Addressing" documentation, or
  * https://tools.ietf.org/html/draft-ietf-netmod-yang-json#section-6.11
