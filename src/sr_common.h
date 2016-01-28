@@ -31,7 +31,6 @@
  */
 
 #include <stdbool.h>
-#include <linux/socket.h>
 #include <sys/types.h>
 #include <stdint.h>
 #include <libyang/libyang.h>
