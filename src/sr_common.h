@@ -234,7 +234,6 @@ int sr_str_ends_with(const char *str, const char *suffix);
  */
 int sr_str_join(const char *str1, const char *str2, char **result);
 
-
 /**
  * @brief Saves the data tree into file. Workaround function that adds the root element to data_tree.
  * @param [in] file_name
@@ -346,11 +345,11 @@ int sr_copy_gpb_to_val_t(const Sr__Value *gpb_value, sr_val_t *value);
  * @brief Frees contents of the sr_val_t structure, does not free the
  * value structure itself.
  */
-void sr_free_val_t_content(sr_val_t *value);
+void sr_free_val_content(sr_val_t *value);
 
 /**
- * @brief Frees array of pointers to sr_valt_t. For each element, the
- * sr_free_val_t is called too.
+ * @brief Frees array of pointers to sr_val_t. For each element, the
+ * sr_free_val is called too.
  *
  * @param[in] values
  * @param[in] count length of array
@@ -358,12 +357,12 @@ void sr_free_val_t_content(sr_val_t *value);
 void sr_free_values_arr(sr_val_t **values, size_t count);
 
 /**
- * Frees sr_val_t array, but sr_free_val_t is called only for indexes in range
+ * Frees array of pointers to sr_val_t, but sr_free_val is called only for indexes in range
  * @param [in] values
  * @param [in] from
  * @param [in] to
  */
-void sr_free_values_in_range(sr_val_t **values, const size_t from, const size_t to);
+void sr_free_values_arr_range(sr_val_t **values, const size_t from, const size_t to);
 
 /**
  * @brief Converts sysrepo datastore to GPB datastore.

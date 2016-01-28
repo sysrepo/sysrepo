@@ -267,7 +267,7 @@ sr_libyang_type_to_sysrepo(LY_DATA_TYPE t)
 }
 
 void
-sr_free_val_t_content(sr_val_t *value)
+sr_free_val_content(sr_val_t *value)
 {
     if (NULL == value){
         return;
@@ -299,7 +299,7 @@ sr_free_val(sr_val_t *value)
     if (NULL == value){
         return;
     }
-    sr_free_val_t_content(value);
+    sr_free_val_content(value);
     free(value);
 }
 
@@ -311,7 +311,7 @@ sr_free_values(sr_val_t *values, size_t count)
     }
 
     for (size_t i = 0; i < count; i++) {
-        sr_free_val_t_content(&values[i]);
+        sr_free_val_content(&values[i]);
     }
     free(values);
 }
@@ -330,7 +330,7 @@ sr_free_values_arr(sr_val_t **values, size_t count)
 }
 
 void
-sr_free_values_in_range(sr_val_t **values, size_t from, size_t to)
+sr_free_values_arr_range(sr_val_t **values, size_t from, size_t to)
 {
     if (NULL == values){
         return;

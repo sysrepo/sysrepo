@@ -867,7 +867,7 @@ sr_get_items(sr_session_ctx_t *session, const char *path, sr_val_t **values, siz
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR_MSG("Copying from gpb to sr_val_t failed");
             for (size_t j = 0; j < i; j++) {
-                sr_free_val_t_content(&vals[i]);
+                sr_free_val_content(&vals[i]);
             }
             rc = SR_ERR_INTERNAL;
             goto cleanup;
@@ -1054,7 +1054,7 @@ sr_free_val_iter(sr_val_iter_t *iter){
     iter->path = NULL;
     if (NULL != iter->buff_values) {
         /* free items that has not been passed to user already*/
-        sr_free_values_in_range(iter->buff_values, iter->index, iter->count);
+        sr_free_values_arr_range(iter->buff_values, iter->index, iter->count);
         iter->buff_values = NULL;
     }
     free(iter);
