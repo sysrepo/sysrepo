@@ -35,6 +35,8 @@ rp_setup(void **state)
     rp_ctx_t *rp_ctx = NULL;
     int rc = 0;
 
+    sr_logger_set_level(SR_LL_DBG, SR_LL_INF);
+
     rc = rp_init(NULL, &rp_ctx);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(rp_ctx);
@@ -131,7 +133,7 @@ rp_msg_neg_test(void **state)
 int
 main() {
     const struct CMUnitTest tests[] = {
-            cmocka_unit_test_setup_teardown(rp_session_test, rp_setup, rp_teardown),
+            //cmocka_unit_test_setup_teardown(rp_session_test, rp_setup, rp_teardown),
             cmocka_unit_test_setup_teardown(rp_msg_neg_test, rp_setup, rp_teardown),
     };
 

@@ -20,6 +20,7 @@
  */
 
 #include <inttypes.h>
+#include <pthread.h>
 
 #include "sr_common.h"
 #include "connection_manager.h"
@@ -27,12 +28,21 @@
 #include "dm_location.h"
 #include "rp_data_tree.h"
 
+#define RP_THREAD_COUNT 5          /**< Number of threads that RP uses for processing. */
+#define RP_INIT_REQ_QUEUE_SIZE 10  /**< Initial size of the request queue. */
+
 /**
  * @brief Structure that holds the context of an instance of Request Processor.
  */
 typedef struct rp_ctx_s {
-    cm_ctx_t *cm_ctx;  /**< Connection Manager context. */
-    dm_ctx_t *dm_ctx;  /**< Data Manager Context */
+    cm_ctx_t *cm_ctx;                        /**< Connection Manager context. */
+    dm_ctx_t *dm_ctx;                        /**< Data Manager Context. */
+
+    pthread_t thread_pool[RP_THREAD_COUNT];  /**< Thread pool. */
+
+    sr_cbuff_t *request_queue;               /**< Input request queue. */
+    pthread_mutex_t request_queue_mutex;     /**< Request queue mutex. */
+    pthread_cond_t request_queue_cv;         /**< Request queue condition variable. */
 } rp_ctx_t;
 
 /**
@@ -44,8 +54,16 @@ typedef struct rp_session_s {
     const char *effective_user;          /**< Effective user name of the client (if different to real_user). */
     sr_datastore_t datastore;            /**< Datastore selected for this session. */
     dm_session_t *dm_session;            /**< Per session data manager context */
-    rp_dt_get_items_ctx_t get_items_ctx; /**< Context for get_items_iter calls*/
+    rp_dt_get_items_ctx_t get_items_ctx; /**< Context for get_items_iter calls */
 } rp_session_t;
+
+/**
+ * @brief Request context (for storing requests inside of the request queue).
+ */
+typedef struct rp_request_s {
+    rp_session_t *session;  /**< Request Processor's session. */
+    Sr__Msg *msg;           /**< Message to be processed. */
+} rp_request_t;
 
 /**
  * Processes a list_schemas request.
@@ -227,44 +245,151 @@ cleanup:
     return rc;
 }
 
+static void *
+rp_worker_thread_execute(void *rp_ctx_p)
+{
+    if (NULL == rp_ctx_p) {
+        return NULL;
+    }
+    rp_ctx_t *rp_ctx = (rp_ctx_t*)rp_ctx_p;
+    rp_request_t req = { 0 };
+    bool dequeued = false, exit = false;
+
+    SR_LOG_DBG("Starting worker thread id=%lu.",  pthread_self());
+
+    do {
+        /* process requests while there are some */
+        do {
+            /* dequeue a request */
+            pthread_mutex_lock(&rp_ctx->request_queue_mutex);
+            dequeued = sr_cbuff_dequeue(rp_ctx->request_queue, &req);
+            pthread_mutex_unlock(&rp_ctx->request_queue_mutex);
+
+            if (dequeued) {
+                /* process the request */
+                if (NULL == req.msg || NULL == req.session) {
+                    SR_LOG_DBG("Thread id=%lu received an empty request, exiting.",  pthread_self());
+                    exit = true;
+                }
+            }
+        } while (dequeued && !exit);
+
+        if (!exit) {
+            /* wait until new request comes */
+            SR_LOG_DBG("Thread id=%lu will wait.",  pthread_self());
+
+            /* wait for a signal */
+            pthread_mutex_lock(&rp_ctx->request_queue_mutex);
+            pthread_cond_wait(&rp_ctx->request_queue_cv, &rp_ctx->request_queue_mutex);
+
+            SR_LOG_DBG("Thread id=%lu signaled.",  pthread_self());
+            pthread_mutex_unlock(&rp_ctx->request_queue_mutex);
+        }
+    } while (!exit);
+
+    SR_LOG_DBG("Worker thread id=%lu is exiting.",  pthread_self());
+
+    return NULL;
+}
+
 int
 rp_init(cm_ctx_t *cm_ctx, rp_ctx_t **rp_ctx_p)
 {
+    size_t i = 0, j = 0;
     rp_ctx_t *ctx = NULL;
+    int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG(rp_ctx_p);
 
     SR_LOG_DBG_MSG("Request Processor init started.");
 
-    int rc = SR_ERR_OK;
+    /* allocate the context */
     ctx = calloc(1, sizeof(*ctx));
     if (NULL == ctx) {
         SR_LOG_ERR_MSG("Cannot allocate memory for Request Processor context.");
         return SR_ERR_NOMEM;
     }
+    ctx->cm_ctx = cm_ctx;
 
-    rc = dm_init(DM_SCHEMA_SEARCH_DIR, DM_DATA_SEARCH_DIR, &ctx->dm_ctx);
+    /* initialize request queue */
+    rc = sr_cbuff_init(RP_INIT_REQ_QUEUE_SIZE, sizeof(rp_request_t), &ctx->request_queue);
     if (SR_ERR_OK != rc){
-        SR_LOG_ERR_MSG("Data manager init failed");
-        free(ctx);
-        return SR_ERR_NOMEM;
+        SR_LOG_ERR_MSG("RP request queue initialization failed.");
+        rc = SR_ERR_NOMEM;
+        goto cleanup;
     }
 
-    ctx->cm_ctx = cm_ctx;
-    *rp_ctx_p = ctx;
+    /* initialize Data Manager */
+    rc = dm_init(DM_SCHEMA_SEARCH_DIR, DM_DATA_SEARCH_DIR, &ctx->dm_ctx);
+    if (SR_ERR_OK != rc){
+        SR_LOG_ERR_MSG("Data Manager initialization failed.");
+        rc = SR_ERR_NOMEM;
+        goto cleanup;
+    }
 
+    /* run worker threads */
+    pthread_mutex_init(&ctx->request_queue_mutex, NULL);
+    pthread_cond_init(&ctx->request_queue_cv, NULL);
+
+    for (i = 0; i < RP_THREAD_COUNT; i++) {
+        rc = pthread_create(&ctx->thread_pool[i], NULL, rp_worker_thread_execute, ctx);
+        if (0 != rc) {
+            SR_LOG_ERR("Error by creating a new thread: %s", strerror(errno));
+            for (j = 0; j < i; j++) {
+                pthread_cancel(ctx->thread_pool[j]);
+            }
+            rc = SR_ERR_INTERNAL;
+            goto cleanup;
+        }
+    }
+
+    *rp_ctx_p = ctx;
     return SR_ERR_OK;
+
+cleanup:
+    dm_cleanup(ctx->dm_ctx);
+    sr_cbuff_cleanup(ctx->request_queue);
+    free(ctx);
+    return rc;
 }
 
 void
 rp_cleanup(rp_ctx_t *rp_ctx)
 {
-    SR_LOG_DBG_MSG("Request Processor cleanup.");
+    size_t i = 0;
+    rp_request_t req = { 0 };
+    bool dequeued = false;
+
+    SR_LOG_DBG_MSG("Request Processor cleanup started, requesting cancel of each worker thread.");
 
     if (NULL != rp_ctx) {
+
+        /* enqueue RP_THREAD_COUNT "empty" messages and send signal to all threads */
+        pthread_mutex_lock(&rp_ctx->request_queue_mutex);
+        /* dequeue all outstanding requests */
+        do {
+            dequeued = sr_cbuff_dequeue(rp_ctx->request_queue, &req);
+        } while (dequeued);
+        /* enqueue empty requests to request thread exits */
+        for (i = 0; i < RP_THREAD_COUNT; i++) {
+            sr_cbuff_enqueue(rp_ctx->request_queue, &req);
+        }
+        pthread_cond_broadcast(&rp_ctx->request_queue_cv);
+        pthread_mutex_unlock(&rp_ctx->request_queue_mutex);
+
+        /* wait for threads to exit */
+        for (i = 0; i < RP_THREAD_COUNT; i++) {
+            pthread_join(rp_ctx->thread_pool[i], NULL);
+        }
+        pthread_mutex_destroy(&rp_ctx->request_queue_mutex);
+        pthread_cond_destroy(&rp_ctx->request_queue_cv);
+
+        sr_cbuff_cleanup(rp_ctx->request_queue);
         dm_cleanup(rp_ctx->dm_ctx);
         free(rp_ctx);
     }
+
+    SR_LOG_DBG_MSG("Request Processor cleanup finished.");
 }
 
 int
