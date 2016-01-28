@@ -332,7 +332,7 @@ void ietf_interfaces_test(void **state){
     for (size_t i = 0; i < count; i++) {
         assert_int_equal(0, strncmp(INTERFACES, values[i]->xpath, strlen(INTERFACES)));
         puts(values[i]->xpath);
-        sr_free_val_t(values[i]);
+        sr_free_val(values[i]);
     }
     free(values);
 
@@ -343,7 +343,7 @@ void ietf_interfaces_test(void **state){
     for (size_t i = 0; i < count; i++) {
         assert_int_equal(0, strncmp(INTERFACE_ETH0, values[i]->xpath, strlen(INTERFACE_ETH0)));
         puts(values[i]->xpath);
-        sr_free_val_t(values[i]);
+        sr_free_val(values[i]);
     }
     free(values);
 
@@ -354,7 +354,7 @@ void ietf_interfaces_test(void **state){
     for (size_t i = 0; i < count; i++) {
         assert_int_equal(0, strncmp(INTERFACE_ETH0_IPV4, values[i]->xpath, strlen(INTERFACE_ETH0_IPV4)));
         puts(values[i]->xpath);
-        sr_free_val_t(values[i]);
+        sr_free_val(values[i]);
     }
     free(values);
 
@@ -365,7 +365,7 @@ void ietf_interfaces_test(void **state){
     for (size_t i = 0; i < count; i++) {
         assert_int_equal(0, strncmp(INTERFACE_ETH0_IPV4_IP, values[i]->xpath, strlen(INTERFACE_ETH0_IPV4_IP)));
         puts(values[i]->xpath);
-        sr_free_val_t(values[i]);
+        sr_free_val(values[i]);
     }
     free(values);
 
@@ -397,7 +397,7 @@ void get_values_test_module_test(void **state){
     assert_int_equal(SR_ENUM_T, value->type);
     assert_string_equal("maybe", value->data.enum_val);
 
-    sr_free_val_t(value);
+    sr_free_val(value);
 
     /* binary leaf*/
 #define XP_TEST_MODULE_RAW "/test-module:main/raw"
@@ -407,7 +407,7 @@ void get_values_test_module_test(void **state){
     assert_int_equal(SR_BINARY_T, value->type);
     assert_string_equal("SGVsbG8gd29ybGQh", value->data.binary_val);
 
-    sr_free_val_t(value);
+    sr_free_val(value);
 
     /*bits leaf*/
 
@@ -418,7 +418,7 @@ void get_values_test_module_test(void **state){
     assert_int_equal(SR_BITS_T, value->type);
     assert_string_equal("strict recursive", value->data.bits_val);
 
-    sr_free_val_t(value);
+    sr_free_val(value);
 
     sr_free_datatree(root);
     dm_session_stop(ctx, ses_ctx);
@@ -449,7 +449,7 @@ void get_values_test(void **state){
     for (size_t i = 0; i < count; i++) {
         assert_string_equal(XP_LEAF, values[i]->xpath);
         assert_string_equal(LEAF_VALUE, values[i]->data.string_val);
-        sr_free_val_t(values[i]);
+        sr_free_val(values[i]);
     }
     free(values);
 
@@ -459,7 +459,7 @@ void get_values_test(void **state){
     assert_int_equal(3, count);
     for (size_t i = 0; i < count; i++) {
         assert_int_equal(0, strncmp(XP_LIST_WITH_KEYS, values[i]->xpath, strlen(XP_LIST_WITH_KEYS)));
-        sr_free_val_t(values[i]);
+        sr_free_val(values[i]);
     }
     free(values);
 
@@ -469,7 +469,7 @@ void get_values_test(void **state){
     assert_int_equal(2, count);
     for (size_t i = 0; i < count; i++) {
         assert_int_equal(0, strncmp(XP_LIST_WITHOUT_KEYS, values[i]->xpath, strlen(XP_LIST_WITHOUT_KEYS)));
-        sr_free_val_t(values[i]);
+        sr_free_val(values[i]);
     }
     free(values);
 
@@ -479,7 +479,7 @@ void get_values_test(void **state){
     assert_int_equal(2, count);
     for (size_t i = 0; i < count; i++) {
         assert_int_equal(0, strncmp(XP_CONTAINER, values[i]->xpath, strlen(XP_CONTAINER)));
-        sr_free_val_t(values[i]);
+        sr_free_val(values[i]);
     }
     free(values);
 
@@ -490,7 +490,7 @@ void get_values_test(void **state){
     for (size_t i = 0; i < count; i++) {
         assert_string_equal(XP_LEAFLIST, values[i]->xpath);
         printf("Leaf list %d\n", values[i]->data.uint16_val);
-        sr_free_val_t(values[i]);
+        sr_free_val(values[i]);
     }
     free(values);
 
@@ -538,7 +538,7 @@ void get_values_opts_test(void **state) {
     for (size_t i=0; i < count; i++){
         puts(values[i]->xpath);
     }
-    sr_free_values_t(values, count);
+    sr_free_values_arr(values, count);
 
     rc = rp_dt_get_values_wrapper_with_opts(ctx, ses_ctx, &get_items_ctx, EX_CONT, true, 100, 1, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
@@ -546,7 +546,7 @@ void get_values_opts_test(void **state) {
     for (size_t i=0; i < count; i++){
         puts(values[i]->xpath);
     }
-    sr_free_values_t(values, count);
+    sr_free_values_arr(values, count);
 
 //TODO test not existing nodes, offset and limit out of range
 
@@ -578,7 +578,7 @@ void get_values_with_augments_test(void **state){
 
     for (size_t i = 0; i < count; i++) {
         assert_int_equal(0, strncmp(SM_MODULE, values[i]->xpath, strlen(SM_MODULE)));
-        sr_free_val_t(values[i]);
+        sr_free_val(values[i]);
     }
     free(values);
 
@@ -609,7 +609,7 @@ void get_value_test(void **state){
     assert_string_equal("Leaf value", value->data.string_val);
     assert_string_equal(XPATH_FOR_VALUE, value->xpath);
 
-    sr_free_val_t(value);
+    sr_free_val(value);
     xp_free_loc_id(l);
 
     /*list*/
@@ -618,7 +618,7 @@ void get_value_test(void **state){
     assert_non_null(value);
     assert_int_equal(SR_LIST_T, value->type);
     assert_string_equal(XPATH_FOR_LIST, value->xpath);
-    sr_free_val_t(value);
+    sr_free_val(value);
 
     /*container*/
 #define XPATH_FOR_CONTAINER "/example-module:container"
@@ -626,7 +626,7 @@ void get_value_test(void **state){
     assert_non_null(value);
     assert_int_equal(SR_CONTAINER_T, value->type);
     assert_string_equal(XPATH_FOR_CONTAINER, value->xpath);
-    sr_free_val_t(value);
+    sr_free_val(value);
 
     dm_session_stop(ctx, ses_ctx);
 }

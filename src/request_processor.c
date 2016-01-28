@@ -79,7 +79,7 @@ rp_list_schemas_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session,
     if (SR_ERR_OK == rc) {
         resp->response->list_schemas_resp->n_schemas = schema_cnt;
     }
-    sr_free_schemas_t(schemas, schema_cnt);
+    sr_free_schemas(schemas, schema_cnt);
 
     /* set response result code */
     resp->response->result = rc;
@@ -122,7 +122,7 @@ rp_get_item_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr_
 
     /* copy value to gpb*/
     if (SR_ERR_OK == rc){
-        rc = sr_copy_val_t_to_gpb(value, &resp->response->get_item_resp->value);
+        rc = sr_dup_val_t_to_gpb(value, &resp->response->get_item_resp->value);
         if (SR_ERR_OK != rc){
             SR_LOG_ERR("Copying sr_val_t to gpb failed for xpath '%s'", xpath);
         }
@@ -133,7 +133,7 @@ rp_get_item_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr_
 
     rc = cm_msg_send(rp_ctx->cm_ctx, resp);
 
-    sr_free_val_t(value);
+    sr_free_val(value);
 
     return rc;
 }
@@ -200,7 +200,7 @@ rp_get_items_req_process(const rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg 
     /* copy value to gpb*/
     if (SR_ERR_OK == rc) {
         for (size_t i = 0; i< count; i++){
-            rc = sr_copy_val_t_to_gpb(values[i], &resp->response->get_items_resp->values[i]);
+            rc = sr_dup_val_t_to_gpb(values[i], &resp->response->get_items_resp->values[i]);
             if (SR_ERR_OK != rc) {
                 SR_LOG_ERR("Copying sr_val_t to gpb failed for xpath '%s'", xpath);
                 for (size_t j = 0; j<i; j++){
@@ -220,7 +220,7 @@ cleanup:
 
     rc = cm_msg_send(rp_ctx->cm_ctx, resp);
     for (size_t i = 0; i< count; i++){
-        sr_free_val_t(values[i]);
+        sr_free_val(values[i]);
     }
     free(values);
 

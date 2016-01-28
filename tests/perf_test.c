@@ -86,7 +86,7 @@ perf_get_item_test(void **state) {
         assert_int_equal(rc, SR_ERR_OK);
         assert_non_null(value);
         assert_int_equal(SR_STRING_T, value->type);
-        sr_free_val_t(value);
+        sr_free_val(value);
     }
 
     /* stop the session */

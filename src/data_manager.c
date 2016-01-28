@@ -379,8 +379,8 @@ dm_fill_schema_t(dm_ctx_t *dm_ctx, dm_session_t *session, const struct lys_modul
 
     schema->module_name = strdup(module->name);
     schema->prefix = strdup(module->prefix);
-    schema->namespace = strdup(module->ns);
-    if (NULL == schema->module_name || NULL == schema->prefix || NULL == schema->namespace) {
+    schema->ns = strdup(module->ns);
+    if (NULL == schema->module_name || NULL == schema->prefix || NULL == schema->ns) {
         SR_LOG_ERR_MSG("Duplication of string for schema_t failed");
         goto cleanup;
     }
@@ -404,7 +404,7 @@ dm_fill_schema_t(dm_ctx_t *dm_ctx, dm_session_t *session, const struct lys_modul
 cleanup:
     free(schema->module_name);
     free(schema->prefix);
-    free(schema->namespace);
+    free(schema->ns);
     free(schema->revision);
     free(schema->file_path);
     return rc;
@@ -578,7 +578,7 @@ dm_list_schemas(dm_ctx_t *dm_ctx, dm_session_t *dm_session, sr_schema_t **schema
         rc = dm_fill_schema_t(dm_ctx, dm_session, module, &sch[i]);
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR_MSG("Filling sr_schema_t failed");
-            sr_free_schemas_t(sch, i);
+            sr_free_schemas(sch, i);
             free(names);
             return rc;
         }
