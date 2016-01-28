@@ -39,7 +39,7 @@ See [examples](examples) directory, which contains an example per each data-aces
 Also see our [fork of dnsmasq](https://github.com/sysrepo/dnsmasq-sysrepo) that uses sysrepo to store its configuration for short demonstration of how sysrepo can be integrated into an existing application ([see the diff](https://github.com/sysrepo/dnsmasq-sysrepo/commit/39ce80b6eae1d155af3b20f195c1e13efbc9094a)).
 
 ## Performance
-According to our measurements using 
+According to our measurements using the [performence unit-test](tests/perf_test.c), sysrepo is able to handle up to 1000 of requests per millisecond (read oeprations sent sequentially - within a single session) on a conventional laptop hardware.
 
 ## Documentation
 Client Library API, as well as all internal modules of sysrepo are extensively documented with Doxygen comments. To read the documentation, [run Doxygen build](INSTALL.md) and open the documentation index file doc/html/index.html.
