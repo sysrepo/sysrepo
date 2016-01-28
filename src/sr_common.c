@@ -26,6 +26,7 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <sysrepo.h>
+#include <inttypes.h>
 
 #include "sr_common.h"
 
@@ -1295,9 +1296,15 @@ nomem:
 
 int sr_val_to_char(const sr_val_t *value, char **out){
     CHECK_NULL_ARG2(value, out);
+    size_t len = 0;
     switch(value->type){
     case SR_STRING_T:
         *out = strdup(value->data.string_val);
+        break;
+    case SR_UINT8_T:
+        len = snprintf(NULL, 0, "%"PRIu8, value->data.uint8_val);
+        *out = calloc(len+1, sizeof(**out));
+        snprintf(*out, len+1, "%"PRIu8, value->data.uint8_val);
         break;
     default:
         SR_LOG_ERR_MSG("Conversion of value_t to string failed");

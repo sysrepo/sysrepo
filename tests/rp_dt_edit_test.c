@@ -82,6 +82,10 @@ void delete_item_leaf_test(void **state){
     rc = rp_dt_delete_item(ctx, session, SR_DS_CANDIDATE, "/example-module:container/list[key1='abc'][key2='abc']/leaf", SR_EDIT_STRICT);
     assert_int_equal(SR_ERR_INVAL_ARG, rc);
 
+    /* delete key leaf is not allowed */
+    rc = rp_dt_delete_item(ctx, session, SR_DS_CANDIDATE, "/example-module:container/list[key1='key1'][key2='key2']/key1", SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+
     dm_session_stop(ctx, session);
 }
 
@@ -275,7 +279,6 @@ void set_item_leaf_test(void **state){
     dm_ctx_t *ctx = *state;
     dm_session_t *session = NULL;
 
-    /* */
     dm_session_start(ctx, &session);
 
     /* replace existing leaf*/
@@ -302,11 +305,19 @@ void set_item_leaf_test(void **state){
     assert_non_null(val);
     assert_string_equal("abcdef", val->data.string_val);
 
-    /*reuse sr_val_t insert new value*/
+    /*reuse sr_val_t insert new value under the existing container*/
     free(val->xpath);
     val->xpath = strdup("/example-module:container/list[key1='new_key1'][key2='new_key2']/leaf");
     assert_non_null(val->xpath);
 
+    /* setting key leaf is not allowed*/
+    rc = rp_dt_set_item(ctx, session, SR_DS_CANDIDATE, "/example-module:container/list[key1='new_key1'][key2='new_key2']/key1", SR_EDIT_DEFAULT, val);
+    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+
+    rc = rp_dt_set_item(ctx, session, SR_DS_CANDIDATE, "/example-module:container/list[key1='new_key1'][key2='new_key2']/key2", SR_EDIT_DEFAULT, val);
+    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+
+    /* creating with non recursive with missing parent not*/
     rc = rp_dt_set_item(ctx, session, SR_DS_CANDIDATE, val->xpath, SR_EDIT_NON_RECURSIVE, val);
     assert_int_equal(SR_ERR_INVAL_ARG, rc);
 
@@ -325,7 +336,79 @@ void set_item_leaf_test(void **state){
     dm_session_stop(ctx, session);
 }
 
+void set_item_leaflist_test(void **state){
+    int rc = 0;
+    dm_ctx_t *ctx = *state;
+    dm_session_t *session = NULL;
 
+    dm_session_start(ctx, &session);
+
+    sr_val_t **values = NULL;
+    size_t count = 0;
+    /* three leaf list items*/
+    rc = rp_dt_get_values_wrapper(ctx, session, LEAF_LIST_XP, &values, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(3, count);
+    sr_free_values_t(values, count);
+
+    /* append new item*/
+    sr_val_t *val = NULL;
+    val = calloc(1, sizeof(*val));
+    assert_non_null(val);
+
+    val->xpath = strdup("/test-module:main/numbers");
+    assert_non_null(val->xpath);
+    val->type = SR_UINT8_T;
+    val->data.uint8_val = 99;
+
+    rc = rp_dt_set_item(ctx, session, SR_DS_CANDIDATE, val->xpath, SR_EDIT_DEFAULT, val);
+    assert_int_equal(SR_ERR_OK, rc);
+    sr_free_val_t(val);
+
+    rc = rp_dt_get_values_wrapper(ctx, session, LEAF_LIST_XP, &values, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(4, count);
+
+    assert_int_equal(SR_UINT8_T, values[3]->type);
+    assert_int_equal(99, values[3]->data.uint8_val);
+    sr_free_values_t(values, count);
+
+    dm_session_stop(ctx, session);
+}
+
+void set_item_list_test(void **state){
+    int rc = 0;
+    dm_ctx_t *ctx = *state;
+    dm_session_t *session = NULL;
+
+    dm_session_start(ctx, &session);
+
+    sr_val_t **values = NULL;
+    size_t count = 0;
+
+    /* one existing list instance */
+    rc = rp_dt_get_values_wrapper(ctx, session, "/example-module:container/list", &values, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(1, count);
+    sr_free_values_t(values, count);
+
+    rc = rp_dt_set_item(ctx, session, SR_DS_CANDIDATE, "/example-module:container/list[key1='new_key1'][key2='new_key2']", SR_EDIT_DEFAULT, NULL);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_get_values_wrapper(ctx, session, "/example-module:container/list", &values, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(2, count);
+    sr_free_values_t(values, count);
+
+    /* set existing list */
+    rc = rp_dt_set_item(ctx, session, SR_DS_CANDIDATE, "/example-module:container/list[key1='new_key1'][key2='new_key2']", SR_EDIT_DEFAULT, NULL);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_set_item(ctx, session, SR_DS_CANDIDATE, "/example-module:container/list[key1='new_key1'][key2='new_key2']", SR_EDIT_STRICT, NULL);
+    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+
+    dm_session_stop(ctx, session);
+}
 
 int main(){
 
@@ -337,7 +420,9 @@ int main(){
             cmocka_unit_test(delete_item_list_test),
             cmocka_unit_test(delete_item_alllist_test),
             cmocka_unit_test(delete_item_leaflist_test),
-            cmocka_unit_test(set_item_leaf_test)
+            cmocka_unit_test(set_item_leaf_test),
+            cmocka_unit_test(set_item_leaflist_test),
+            cmocka_unit_test(set_item_list_test)
     };
     return cmocka_run_group_tests(tests, setup, teardown);
 }

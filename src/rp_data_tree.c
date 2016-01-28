@@ -882,6 +882,31 @@ rp_dt_push_nodes_with_same_name_to_stack(rp_node_stack_t **stack, struct lyd_nod
     return rc;
 }
 
+/**
+ * @brief Checks if the node has a key with the name
+ */
+static int
+rp_dt_has_key(const struct lyd_node *node, const char *name, bool *res)
+{
+    CHECK_NULL_ARG(name);
+
+    if (NULL != node && NULL != node->schema && LYS_LIST == node->schema->nodetype) {
+        struct lys_node_list *list = (struct lys_node_list *) node->schema;
+        for (size_t k = 0; k < list->keys_size; k++) {
+            if (NULL == list->keys[k] || NULL == list->keys[k]->name) {
+                SR_LOG_ERR_MSG("Missing schema information");
+                return SR_ERR_INTERNAL;
+            }
+            if (0 == strcmp(name, list->keys[k]->name)) {
+                *res = true;
+                return SR_ERR_OK;
+            }
+        }
+    }
+    *res = false;
+    return SR_ERR_OK;
+}
+
 int
 rp_dt_get_nodes_with_opts(const dm_ctx_t *dm_ctx, dm_session_t *dm_session, rp_dt_get_items_ctx_t *get_items_ctx, struct lyd_node *data_tree,
         const xp_loc_id_t *loc_id, bool recursive, size_t offset, size_t limit, struct lyd_node ***nodes, size_t *count)
@@ -1356,6 +1381,17 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t 
         }
         sr_free_datatree(node);
     } else if (node->schema->nodetype == LYS_LEAF) {
+        bool is_key = false;
+        rc = rp_dt_has_key(node->parent, node->schema->name, &is_key);
+        if (SR_ERR_OK != rc){
+            SR_LOG_ERR_MSG("Has key failed");
+            goto cleanup;
+        }
+        if (is_key){
+            SR_LOG_ERR("Key leaf can not be delete delete the list instead %s", l->xpath);
+            rc = SR_ERR_INVAL_ARG;
+            goto cleanup;
+        }
         //TODO log to operation queue
         rc = lyd_unlink(node);
         if (0 != rc) {
@@ -1438,10 +1474,12 @@ cleanup:
     return rc;
 }
 
+
 int
 rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t datastore, const char *xpath, const sr_edit_flag_t options, const sr_val_t *value)
 {
     CHECK_NULL_ARG3(dm_ctx, session, xpath);
+    /* value can be NULL if the list is created */
 
     int rc = SR_ERR_INVAL_ARG;
     struct lyd_node *data_tree = NULL;
@@ -1458,6 +1496,7 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t dat
     char *key_name = NULL;
     char *key_value = NULL;
     char *node_name = NULL;
+    char *module_name = NULL;
 
     rc = xp_char_to_loc_id(xpath, &l);
 
@@ -1490,12 +1529,12 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t dat
     rc = rp_dt_find_deepest_match(data_tree, l, true, &level, &match);
     if (SR_ERR_NOT_FOUND == rc) {
         if (options & SR_EDIT_NON_RECURSIVE) {
-            SR_LOG_ERR("No some preceeding item is missing '%s' create it or omit the non recursive option", l->xpath);
+            SR_LOG_ERR("A preceding node is missing '%s' create it or omit the non recursive option", xpath);
             rc = SR_ERR_INVAL_ARG;
             goto cleanup;
         }
     } else if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Find deepest match failed %s", l->xpath);
+        SR_LOG_ERR("Find deepest match failed %s", xpath);
         goto cleanup;
     }
 
@@ -1503,20 +1542,20 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t dat
     if (XP_GET_NODE_COUNT(l) != level) {
         if (XP_GET_NODE_COUNT(l) != (level + 1)) {
             if (options & SR_EDIT_NON_RECURSIVE) {
-                SR_LOG_ERR("No some preceeding item is missing '%s' create it or omit the non recursive option", l->xpath);
+                SR_LOG_ERR("No some preceeding item is missing '%s' create it or omit the non recursive option", xpath);
                 rc = SR_ERR_INVAL_ARG;
                 goto cleanup;
             }
         }
     } else if (options & SR_EDIT_STRICT) {
-        SR_LOG_ERR("Item exists '%s' can not be created again with strict opt", l->xpath);
+        SR_LOG_ERR("Item exists '%s' can not be created again with strict opt", xpath);
         rc = SR_ERR_INVAL_ARG;
         goto cleanup;
     }
 
     if (0 == level) {
         //TODO create root node handle empty data tree
-        SR_LOG_ERR("Root node can not be created currently for xpath %s", l->xpath);
+        SR_LOG_ERR("Root node can not be created currently for xpath %s", xpath);
         rc = SR_ERR_INTERNAL;
         goto cleanup;
     }
@@ -1528,30 +1567,61 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t dat
         goto cleanup;
     }
 
-    rc = sr_val_to_char(value, &new_value);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Copy new value to string failed");
-        goto cleanup;
+    if (NULL != value){
+        /* if the list is being created value is NULL*/
+        rc = sr_val_to_char(value, &new_value);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR_MSG("Copy new value to string failed");
+            goto cleanup;
+        }
     }
-    //TODO assign correct module if augment
+
     const struct lys_module *module = match->schema->module;
 
     /* updating the value */
     if (XP_GET_NODE_COUNT(l) == level) {
-        if (NULL == lyd_new_leaf(match->parent, module, match->schema->name, new_value)) {
-            SR_LOG_ERR("Replacing existing leaf failed %s", l->xpath);
-            rc = SR_ERR_INTERNAL;
+        /* leaf-list append at the end */
+        if (LYS_LEAFLIST == match->schema->nodetype){
+            if (NULL == lyd_new_leaf(match->parent, module, match->schema->name, new_value)) {
+                SR_LOG_ERR("Adding leaf-list item failed %s", xpath);
+                rc = SR_ERR_INTERNAL;
+                goto cleanup;
+            }
+        }
+        else if (LYS_LEAF == match->schema->nodetype){
+            /* replacing existing key leaf is not allowed */
+            bool is_key = false;
+            rc = rp_dt_has_key(match->parent, match->schema->name, &is_key);
+            if (SR_ERR_OK != rc){
+                SR_LOG_ERR_MSG("Is key failed");
+                goto cleanup;
+            }
+            if (is_key){
+                SR_LOG_ERR("Value of the key can not be updated %s", xpath);
+                rc = SR_ERR_INVAL_ARG;
+                goto cleanup;
+            }
+            /* leaf - replace existing */
+            if (NULL == lyd_new_leaf(match->parent, module, match->schema->name, new_value)) {
+                SR_LOG_ERR("Replacing existing leaf failed %s", l->xpath);
+                rc = SR_ERR_INTERNAL;
+                goto cleanup;
+            }
+            lyd_unlink(match);
+            lyd_free(match);
+        }
+        else if (LYS_CONTAINER == match->schema->nodetype || LYS_LIST == match->schema->nodetype){
+            /* setting existing list or container - do nothing */
             goto cleanup;
         }
-        lyd_unlink(match);
-        lyd_free(match);
     }
 
     node = match;
+    /* create all preceding nodes*/
     for (size_t n = level; n < XP_GET_NODE_COUNT(l); n++) {
         node_name = XP_CPY_TOKEN(l, XP_GET_NODE_TOKEN(l, n));
         if (XP_HAS_NODE_NS(l, n) && !XP_CMP_NODE_NS(l, n, module->name)) {
-            char *module_name = XP_CPY_NODE_NS(l, n);
+            module_name = XP_CPY_NODE_NS(l, n);
             if (NULL == module_name) {
                 SR_LOG_ERR_MSG("Copy of module name failed");
                 rc = SR_ERR_INTERNAL;
@@ -1561,22 +1631,37 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t dat
             if (SR_ERR_OK == rc) {
                 goto cleanup;
             }
+            free(module_name);
+            module_name = NULL;
         }
 
-        //check whether node is a leaf
-        if (XP_GET_NODE_COUNT(l) == (n + 1)) {
+        /* check whether node is a last node in xpath */
+        if (XP_GET_NODE_COUNT(l) == (n + 1) && 0 == XP_GET_KEY_COUNT(l,n)) {
+            bool is_key = false;
+            rc = rp_dt_has_key(node, node_name, &is_key);
+            if (SR_ERR_OK != rc){
+                SR_LOG_ERR_MSG("Is key failed");
+                goto cleanup;
+            }
+            if (is_key){
+                SR_LOG_ERR("Value of the key can not be updated %s", xpath);
+                rc = SR_ERR_INVAL_ARG;
+                goto cleanup;
+            }
+            //TODO handle presence container
             node = lyd_new_leaf(node, module, node_name, new_value);
             if (NULL == node) {
-                SR_LOG_ERR("Creating new leaf failed %s", l->xpath);
+                SR_LOG_ERR("Creating new leaf failed %s", xpath);
                 rc = SR_ERR_INTERNAL;
                 goto cleanup;
             }
+
         } else {
             size_t key_count = XP_GET_KEY_COUNT(l, n);
             //create container or list
             node = lyd_new(node, module, node_name);
             if (NULL == node) {
-                SR_LOG_ERR("Creating container or list failed %s", l->xpath);
+                SR_LOG_ERR("Creating container or list failed %s", xpath);
                 rc = SR_ERR_INTERNAL;
                 goto cleanup;
             }
@@ -1585,13 +1670,13 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t dat
                     key_name = XP_CPY_KEY_NAME(l, n, k);
                     key_value = XP_CPY_KEY_VALUE(l, n, k);
                     if (NULL == key_name || NULL == key_value) {
-                        SR_LOG_ERR("Copy of key name or key value failed %s", l->xpath);
+                        SR_LOG_ERR("Copy of key name or key value failed %s", xpath);
                         rc = SR_ERR_INTERNAL;
                         goto cleanup;
                     }
 
                     if (NULL == lyd_new_leaf(node, module, key_name, key_value)) {
-                        SR_LOG_ERR("Adding key leaf failed %s", l->xpath);
+                        SR_LOG_ERR("Adding key leaf failed %s", xpath);
                         rc = SR_ERR_INTERNAL;
                         goto cleanup;
                     }
