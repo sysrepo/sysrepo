@@ -140,17 +140,17 @@ cl_list_schemas_test(void **state)
     /* check and print the schemas */
     for (i = 0; i < schema_cnt; i++) {
         assert_non_null(schemas[i].module_name);
-        assert_non_null(schemas[i].namespace);
+        assert_non_null(schemas[i].ns);
         assert_non_null(schemas[i].prefix);
         assert_non_null(schemas[i].file_path);
         printf("\nSchema #%zu:\n%s\n%s\n%s\n%s\n%s\n", i,
                 schemas[i].module_name,
-                schemas[i].namespace,
+                schemas[i].ns,
                 schemas[i].prefix,
                 schemas[i].revision,
                 schemas[i].file_path);
     }
-    sr_free_schemas_t(schemas, schema_cnt);
+    sr_free_schemas(schemas, schema_cnt);
 
     /* stop the session */
     rc = sr_session_stop(session);
@@ -195,7 +195,7 @@ cl_get_item_test(void **state)
     assert_int_equal(SR_STRING_T, value->type);
     assert_string_equal("Leaf value", value->data.string_val);
     assert_string_equal("/example-module:container/list[key1='key1'][key2='key2']/leaf", value->xpath);
-    sr_free_val_t(value);
+    sr_free_val(value);
     
     /* container */
     rc = sr_get_item(session, "/example-module:container", &value);
@@ -203,7 +203,7 @@ cl_get_item_test(void **state)
     assert_non_null(value);
     assert_int_equal(SR_CONTAINER_T, value->type);
     assert_string_equal("/example-module:container", value->xpath);
-    sr_free_val_t(value);
+    sr_free_val(value);
 
     /* list */
     rc = sr_get_item(session, "/example-module:container/list[key1='key1'][key2='key2']", &value);
@@ -211,7 +211,7 @@ cl_get_item_test(void **state)
     assert_non_null(value);
     assert_int_equal(SR_LIST_T, value->type);
     assert_string_equal("/example-module:container/list[key1='key1'][key2='key2']", value->xpath);
-    sr_free_val_t(value);
+    sr_free_val(value);
 
 
     /* stop the session */
@@ -226,7 +226,7 @@ cl_get_items_test(void **state)
     assert_non_null(conn);
 
     sr_session_ctx_t *session = NULL;
-    sr_val_t **values = NULL;
+    sr_val_t *values = NULL;
     size_t values_cnt = 0;
     int rc = 0;
 
@@ -253,25 +253,25 @@ cl_get_items_test(void **state)
     rc = sr_get_items(session, "/ietf-interfaces:interfaces", &values, &values_cnt);
     assert_int_equal(rc, SR_ERR_OK);
     assert_int_equal(3, values_cnt);
-    sr_free_values_t(values, values_cnt);
+    sr_free_values(values, values_cnt);
 
     /* list without keys */
     rc = sr_get_items(session, "/ietf-interfaces:interfaces/interface", &values, &values_cnt);
     assert_int_equal(rc, SR_ERR_OK);
     assert_int_equal(3, values_cnt);
-    sr_free_values_t(values, values_cnt);
+    sr_free_values(values, values_cnt);
 
     /* list with keys */
     rc = sr_get_items(session, "/ietf-interfaces:interfaces/interface[name='eth0']", &values, &values_cnt);
     assert_int_equal(rc, SR_ERR_OK);
     assert_int_equal(5, values_cnt);
-    sr_free_values_t(values, values_cnt);
+    sr_free_values(values, values_cnt);
 
     /* leaf-list*/
     rc = sr_get_items(session, "/test-module:main/numbers", &values, &values_cnt);
     assert_int_equal(rc, SR_ERR_OK);
     assert_int_equal(3, values_cnt);
-    sr_free_values_t(values, values_cnt);
+    sr_free_values(values, values_cnt);
 
     /* stop the session */
     rc = sr_session_stop(session);
@@ -312,7 +312,7 @@ cl_get_items_iter_test(void **state)
         }
         assert_int_equal(SR_ERR_OK, rc);
         puts(value->xpath);
-        sr_free_val_t(value);
+        sr_free_val(value);
     }
     sr_free_val_iter(it);
 
@@ -322,7 +322,7 @@ cl_get_items_iter_test(void **state)
     assert_non_null(it);
     while(SR_ERR_OK == sr_get_item_next(session, it, &value)) {
         puts(value->xpath);
-        sr_free_val_t(value);
+        sr_free_val(value);
     }
     sr_free_val_iter(it);
 
@@ -331,7 +331,7 @@ cl_get_items_iter_test(void **state)
     assert_non_null(it);
     while(SR_ERR_OK == sr_get_item_next(session, it, &value)) {
         puts(value->xpath);
-        sr_free_val_t(value);
+        sr_free_val(value);
     }
     sr_free_val_iter(it);
 
@@ -341,7 +341,7 @@ cl_get_items_iter_test(void **state)
     assert_non_null(it);
     while(SR_ERR_OK == sr_get_item_next(session, it, &value)) {
         assert_string_equal("/test-module:main/numbers", value->xpath);
-        sr_free_val_t(value);
+        sr_free_val(value);
     }
     sr_free_val_iter(it);
 
@@ -399,7 +399,7 @@ cl_get_items_iter_test(void **state)
             /* unknown node*/
             assert_true(false);
         }
-        sr_free_val_t(value);
+        sr_free_val(value);
     }
     sr_free_val_iter(it);
     

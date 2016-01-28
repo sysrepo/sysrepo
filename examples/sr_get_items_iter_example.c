@@ -87,7 +87,7 @@ main(int argc, char **argv)
     
     while (SR_ERR_OK == sr_get_item_next(sess, iter, &value)){
         print_value(value);
-        sr_free_val_t(value);
+        sr_free_val(value);
     }
 
 cleanup:

@@ -20,6 +20,7 @@
  */
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include "sysrepo.h"
 
 int
@@ -27,7 +28,7 @@ main(int argc, char **argv)
 {
     sr_conn_ctx_t *conn = NULL;
     sr_session_ctx_t *sess = NULL;
-    sr_val_t **values = NULL;
+    sr_val_t *values = NULL;
     size_t count = 0;
     int rc = SR_ERR_OK;
 
@@ -50,10 +51,10 @@ main(int argc, char **argv)
     }
 
     for (size_t i = 0; i<count; i++){
-        puts(values[i]->xpath);
+        puts(values[i].xpath);
     }
     
-    sr_free_values_t(values, count);
+    sr_free_values(values, count);
 
 cleanup:
     if (NULL != sess) {

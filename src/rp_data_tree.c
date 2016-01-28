@@ -659,7 +659,7 @@ rp_dt_get_values_from_nodes(struct lyd_node **nodes, size_t count, sr_val_t ***v
             }
             SR_LOG_ERR("Getting value from node %s failed", name);
             for (size_t j = 0; j < i; j++) {
-                sr_free_val_t(vals[j]);
+                sr_free_val(vals[j]);
             }
             free(vals);
             return SR_ERR_INTERNAL;

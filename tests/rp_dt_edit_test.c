@@ -60,7 +60,7 @@ void delete_item_leaf_test(void **state){
     rc = rp_dt_get_value_wrapper(ctx, session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &val);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);
-    sr_free_val_t(val);
+    sr_free_val(val);
 
     rc = rp_dt_delete_item(ctx, session, SR_DS_CANDIDATE, "/example-module:container/list[key1='key1'][key2='key2']/leaf", SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
@@ -102,7 +102,7 @@ void delete_item_container_test(void **state){
     rc = rp_dt_get_value_wrapper(ctx, session, CONTAINER_XP, &val);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);
-    sr_free_val_t(val);
+    sr_free_val(val);
 
     rc = rp_dt_delete_item(ctx, session, SR_DS_CANDIDATE, CONTAINER_XP, SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
@@ -123,7 +123,7 @@ void delete_item_container_test(void **state){
     rc = rp_dt_get_value_wrapper(ctx, session, CONTAINER_XP, &val);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);
-    sr_free_val_t(val);
+    sr_free_val(val);
 
     rc = rp_dt_delete_item(ctx, session, SR_DS_CANDIDATE, CONTAINER_XP , SR_EDIT_NON_RECURSIVE);
     assert_int_equal(SR_ERR_INVAL_ARG, rc);
@@ -149,17 +149,17 @@ void delete_item_list_test(void **state){
     rc = rp_dt_get_value_wrapper(ctx, session, LIST_INST1_XP, &val);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);
-    sr_free_val_t(val);
+    sr_free_val(val);
 
     rc = rp_dt_get_value_wrapper(ctx, session, LIST_INST2_XP, &val);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);
-    sr_free_val_t(val);
+    sr_free_val(val);
 
     rc = rp_dt_get_value_wrapper(ctx, session, LIST_INST3_XP, &val);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);
-    sr_free_val_t(val);
+    sr_free_val(val);
 
     /* delete on list instance*/
     rc = rp_dt_delete_item(ctx, session, SR_DS_CANDIDATE, LIST_INST1_XP, SR_EDIT_DEFAULT);
@@ -172,12 +172,12 @@ void delete_item_list_test(void **state){
     rc = rp_dt_get_value_wrapper(ctx, session, LIST_INST2_XP, &val);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);
-    sr_free_val_t(val);
+    sr_free_val(val);
 
     rc = rp_dt_get_value_wrapper(ctx, session, LIST_INST3_XP, &val);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);
-    sr_free_val_t(val);
+    sr_free_val(val);
 
     /* try to delete non existing list*/
     rc = rp_dt_delete_item(ctx, session, SR_DS_CANDIDATE, LIST_INST1_XP, SR_EDIT_DEFAULT);
@@ -193,7 +193,7 @@ void delete_item_list_test(void **state){
     rc = rp_dt_get_value_wrapper(ctx, session, LIST_INST1_XP, &val);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);
-    sr_free_val_t(val);
+    sr_free_val(val);
 
     /* list deletion with non recursive fails*/
     rc = rp_dt_delete_item(ctx, session, SR_DS_CANDIDATE, LIST_INST1_XP , SR_EDIT_NON_RECURSIVE);
@@ -217,7 +217,7 @@ void delete_item_alllist_test(void **state){
     /* there are three list instances*/
     rc = rp_dt_get_values_wrapper(ctx, session, LIST_XP, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
-    sr_free_values_t(values, count);
+    sr_free_values_arr(values, count);
 
     /* delete with non recursive should fail*/
     rc = rp_dt_delete_item(ctx, session, SR_DS_CANDIDATE, LIST_XP, SR_EDIT_NON_RECURSIVE);
@@ -226,7 +226,7 @@ void delete_item_alllist_test(void **state){
     /* items should remain in place*/
     rc = rp_dt_get_values_wrapper(ctx, session, LIST_XP, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
-    sr_free_values_t(values, count);
+    sr_free_values_arr(values, count);
 
     /* delete all list instances*/
     rc = rp_dt_delete_item(ctx, session, SR_DS_CANDIDATE, LIST_XP, SR_EDIT_DEFAULT);
@@ -262,7 +262,7 @@ void delete_item_leaflist_test(void **state){
     /* three leaf list items*/
     rc = rp_dt_get_values_wrapper(ctx, session, LEAF_LIST_XP, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
-    sr_free_values_t(values, count);
+    sr_free_values_arr(values, count);
 
     /* delete all list instances*/
     rc = rp_dt_delete_item(ctx, session, SR_DS_CANDIDATE, LEAF_LIST_XP, SR_EDIT_DEFAULT);
@@ -297,7 +297,7 @@ void set_item_leaf_test(void **state){
 
     rc = rp_dt_set_item(ctx, session, SR_DS_CANDIDATE, val->xpath, SR_EDIT_DEFAULT, val);
     assert_int_equal(SR_ERR_OK, rc);
-    sr_free_val_t(val);
+    sr_free_val(val);
     val = NULL;
 
     rc = rp_dt_get_value_wrapper(ctx, session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &val);
@@ -323,7 +323,7 @@ void set_item_leaf_test(void **state){
 
     rc = rp_dt_set_item(ctx, session, SR_DS_CANDIDATE, val->xpath, SR_EDIT_DEFAULT, val);
     assert_int_equal(SR_ERR_OK, rc);
-    sr_free_val_t(val);
+    sr_free_val(val);
     val = NULL;
 
     rc = rp_dt_get_value_wrapper(ctx, session, "/example-module:container/list[key1='new_key1'][key2='new_key2']/leaf", &val);
@@ -331,7 +331,7 @@ void set_item_leaf_test(void **state){
     assert_non_null(val);
     assert_string_equal("abcdef", val->data.string_val);
 
-    sr_free_val_t(val);
+    sr_free_val(val);
 
     dm_session_stop(ctx, session);
 }
@@ -349,7 +349,7 @@ void set_item_leaflist_test(void **state){
     rc = rp_dt_get_values_wrapper(ctx, session, LEAF_LIST_XP, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(3, count);
-    sr_free_values_t(values, count);
+    sr_free_values_arr(values, count);
 
     /* append new item*/
     sr_val_t *val = NULL;
@@ -363,7 +363,7 @@ void set_item_leaflist_test(void **state){
 
     rc = rp_dt_set_item(ctx, session, SR_DS_CANDIDATE, val->xpath, SR_EDIT_DEFAULT, val);
     assert_int_equal(SR_ERR_OK, rc);
-    sr_free_val_t(val);
+    sr_free_val(val);
 
     rc = rp_dt_get_values_wrapper(ctx, session, LEAF_LIST_XP, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
@@ -371,7 +371,7 @@ void set_item_leaflist_test(void **state){
 
     assert_int_equal(SR_UINT8_T, values[3]->type);
     assert_int_equal(99, values[3]->data.uint8_val);
-    sr_free_values_t(values, count);
+    sr_free_values_arr(values, count);
 
     dm_session_stop(ctx, session);
 }
@@ -390,7 +390,7 @@ void set_item_list_test(void **state){
     rc = rp_dt_get_values_wrapper(ctx, session, "/example-module:container/list", &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(1, count);
-    sr_free_values_t(values, count);
+    sr_free_values_arr(values, count);
 
     rc = rp_dt_set_item(ctx, session, SR_DS_CANDIDATE, "/example-module:container/list[key1='new_key1'][key2='new_key2']", SR_EDIT_DEFAULT, NULL);
     assert_int_equal(SR_ERR_OK, rc);
@@ -398,7 +398,7 @@ void set_item_list_test(void **state){
     rc = rp_dt_get_values_wrapper(ctx, session, "/example-module:container/list", &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(2, count);
-    sr_free_values_t(values, count);
+    sr_free_values_arr(values, count);
 
     /* set existing list */
     rc = rp_dt_set_item(ctx, session, SR_DS_CANDIDATE, "/example-module:container/list[key1='new_key1'][key2='new_key2']", SR_EDIT_DEFAULT, NULL);

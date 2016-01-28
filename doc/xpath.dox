@@ -4,7 +4,7 @@
 The aim of this section is to describe the xpath used for identification of yang nodes in sysrepo calls. 
 The xpath identifying a node contains the names of all hierarchically preceeding nodes up to the model top-level node. 
 The top-level node in xpath must be qualified with a module name. The namespace must be specified for the augment node.
-It is not required to specify namespace for other nodes explicitely. The xpath must start with the slash character.
+It is not required to specify namespace for other nodes explicitly. The xpath must start with the slash character.
 
 @section ex Examples
 @subsection container Container
@@ -58,6 +58,5 @@ Starting non terminal symbol is  <@b xp>. Rules of the context free grammar for 
 <APOS>  -> '
 @endcode
 @note @a eps - denotes an empty string. @a module_name, @a node_name, @a key_name and @a key_value are described using regular expression
-
 
 */
