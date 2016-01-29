@@ -431,7 +431,8 @@ rp_dt_copy_value(const struct lyd_node_leaf_list *leaf, LY_DATA_TYPE type, sr_va
 }
 
 static int
-rp_dt_find_deepest_match(struct lyd_node *data_tree, const xp_loc_id_t *loc_id, bool allow_no_keys, size_t *match_level, struct lyd_node **node){
+rp_dt_find_deepest_match(struct lyd_node *data_tree, const xp_loc_id_t *loc_id, bool allow_no_keys, size_t *match_level, struct lyd_node **node)
+{
     CHECK_NULL_ARG3(loc_id, match_level, node);
 
     if (NULL == data_tree){
@@ -1524,7 +1525,7 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t dat
     /*TODO validate xpath schema check if it is a leaf or leaf-list*/
 
     rc = rp_dt_find_deepest_match(data_tree, l, true, &level, &match);
-    if (SR_ERR_NOT_FOUND == rc) {
+    if (XP_GET_NODE_COUNT(l) != 1 && SR_ERR_NOT_FOUND == rc) {
         if (options & SR_EDIT_NON_RECURSIVE) {
             SR_LOG_ERR("A preceding node is missing '%s' create it or omit the non recursive option", xpath);
             rc = SR_ERR_INVAL_ARG;
@@ -1550,29 +1551,24 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t dat
         goto cleanup;
     }
 
-/*    if (0 == level) {
-        //TODO create root node handle empty data tree
-        SR_LOG_ERR("Root node can not be created currently for xpath %s", xpath);
-        rc = SR_ERR_INTERNAL;
-        goto cleanup;
-    }
-*/
-
-    if (NULL != match && (NULL == match->schema || NULL == match->schema->name || NULL == match->schema->module || NULL == match->schema->module->name)) {
-        SR_LOG_ERR_MSG("Missing schema information");
-        rc = SR_ERR_INTERNAL;
-        goto cleanup;
+    if (NULL != match) {
+        if (NULL == match->schema || NULL == match->schema->name || NULL == match->schema->module || NULL == match->schema->module->name) {
+            SR_LOG_ERR_MSG("Missing schema information");
+            rc = SR_ERR_INTERNAL;
+            goto cleanup;
+        }
     }
 
     if (NULL != value){
         /* if the list is being created value is NULL*/
-        rc = sr_val_to_char(value, &new_value);
+        rc = sr_val_to_str(value, &new_value);
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR_MSG("Copy new value to string failed");
             goto cleanup;
         }
     }
 
+    /* module of the node to be created*/
     const struct lys_module *module = match != NULL ? match->schema->module : info->module;
 
     /* updating the value */
@@ -1632,7 +1628,7 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t dat
             module_name = NULL;
         }
 
-        /* check whether node is a last node in xpath */
+        /* check whether node is a last node (leaf, leaflist, presence container) in xpath */
         if (XP_GET_NODE_COUNT(l) == (n + 1) && 0 == XP_GET_KEY_COUNT(l,n)) {
             bool is_key = false;
             rc = rp_dt_has_key(node, node_name, &is_key);
@@ -1641,7 +1637,7 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t dat
                 goto cleanup;
             }
             if (is_key){
-                SR_LOG_ERR("Value of the key can not be updated %s", xpath);
+                SR_LOG_ERR("Value of the key can not be set %s", xpath);
                 rc = SR_ERR_INVAL_ARG;
                 goto cleanup;
             }
@@ -1688,7 +1684,6 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t dat
         if (NULL == created) {
             created = node;
         }
-        //TODO if the data tree was empty assign root
         free(node_name);
         node_name = NULL;
     }

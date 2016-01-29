@@ -140,21 +140,21 @@ dm_is_schema_file(const char *file_name)
     CHECK_NULL_ARG(file_name);
     return sr_str_ends_with(file_name, ".yin");
 }
-
 /**
  * Initialize model_info structure
  * @param info
  * @return err_code
  */
 static int
-dm_alloc_model_info(dm_model_info_t **info){
+dm_alloc_model_info(dm_model_info_t **info)
+{
     CHECK_NULL_ARG(info);
 
     dm_model_info_t *i = NULL;
     pthread_rwlockattr_t attr;
 
     i = calloc(1, sizeof(*i));
-    if (NULL == i){
+    if (NULL == i) {
         SR_LOG_ERR_MSG("Memory allocation failed");
         return SR_ERR_NOMEM;
     }
@@ -413,23 +413,23 @@ dm_load_data_tree(dm_ctx_t *dm_ctx, const struct lys_module *module, dm_data_inf
 
     return SR_ERR_OK;
 }
-
 /**
  * @brief copies the data from dm_ctx where all datatree that have already been loaded are stored
  * @param [in] dm_ctx
  * @param [in] lookup_node
  * @param [in] model_info
- * @param [out] data_info created copy needs to be freed by caller using sr_free_datasore call.
+ * @param [out] data_info created copy needs to be freed by caller
  * @return err_code
  */
 static int
-dm_copy_from_loaded(dm_ctx_t *dm_ctx, const struct lys_module *lookup_node, dm_model_info_t *model_info, dm_data_info_t **data_info){
+dm_copy_from_loaded(dm_ctx_t *dm_ctx, const struct lys_module *lookup_node, dm_model_info_t *model_info, dm_data_info_t **data_info)
+{
     CHECK_NULL_ARG4(dm_ctx, lookup_node, model_info, data_info);
     avl_node_t *avl_node = NULL;
 
     dm_data_info_t *di = NULL;
     di = calloc(1, sizeof(*di));
-    if (NULL == di){
+    if (NULL == di) {
         SR_LOG_ERR_MSG("Memory allocation failed");
         return SR_ERR_NOMEM;
     }
@@ -448,7 +448,7 @@ dm_copy_from_loaded(dm_ctx_t *dm_ctx, const struct lys_module *lookup_node, dm_m
         di->modified = false;
         pthread_rwlock_unlock(&model_info->running_lock);
         pthread_rwlock_unlock(&dm_ctx->avl_lock);
-        if (NULL != d->node && NULL == di->node){
+        if (NULL != d->node && NULL == di->node) {
             SR_LOG_ERR_MSG("Duplication of data tree for failed");
             free(di);
             return SR_ERR_INTERNAL;

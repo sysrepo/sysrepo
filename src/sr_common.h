@@ -275,7 +275,7 @@ int sr_lyd_unlink(dm_data_info_t *data_info, struct lyd_node *node);
 struct lyd_node *sr_lyd_new(dm_data_info_t *data_info, struct lyd_node *parent, const struct lys_module *module, const char *node_name);
 
 /**
- * lyd_new wrapper handle the creation of the container or list
+ * lyd_new wrapper handle the creation of the leaf or leaflist
  * @param data_info
  * @param parent
  * @param module
@@ -448,7 +448,7 @@ int sr_schemas_gpb_to_sr(const Sr__Schema **gpb_schemas, const size_t schema_cnt
  * @param out
  * @return
  */
-int sr_val_to_char(const sr_val_t *value, char **out);
+int sr_val_to_str(const sr_val_t *value, char **out);
 
 /**@} common */
 
