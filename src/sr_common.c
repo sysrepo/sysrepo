@@ -266,6 +266,44 @@ sr_lyd_unlink(dm_data_info_t *data_info, struct lyd_node *node)
     return SR_ERR_OK;
 }
 
+struct lyd_node *
+sr_lyd_new(dm_data_info_t *data_info, struct lyd_node *parent, const struct lys_module *module, const char* node_name)
+{
+    int rc = SR_ERR_OK;
+    CHECK_NULL_ARG_NORET3(rc, data_info, module, node_name);
+    if (SR_ERR_OK != rc){
+        return NULL;
+    }
+
+    struct lyd_node *new = NULL;
+    new = lyd_new(parent, module, node_name);
+
+    if (NULL == parent && NULL == data_info->node){
+        data_info->node = new;
+    }
+
+    return new;
+}
+
+struct lyd_node *
+sr_lyd_new_leaf(dm_data_info_t *data_info, struct lyd_node *parent, const struct lys_module *module, const char *node_name, const char *value)
+{
+    int rc = SR_ERR_OK;
+    CHECK_NULL_ARG_NORET4(rc, data_info, module, node_name, value);
+    if (SR_ERR_OK != rc){
+        return NULL;
+    }
+
+    struct lyd_node *new = NULL;
+    new = lyd_new_leaf(parent, module, node_name, value);
+
+    if (NULL == parent && NULL == data_info->node){
+        data_info->node = new;
+    }
+
+    return new;
+}
+
 sr_type_t
 sr_libyang_type_to_sysrepo(LY_DATA_TYPE t)
 {

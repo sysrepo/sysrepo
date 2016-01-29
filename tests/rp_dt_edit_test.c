@@ -345,6 +345,36 @@ void set_item_leaf_test(void **state){
     sr_free_val(val);
 
     dm_session_stop(ctx, session);
+
+    dm_session_start(ctx, &session);
+
+
+    /* create item from root */
+    rc = rp_dt_get_value_wrapper(ctx, session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &val);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(val);
+
+    rc = rp_dt_delete_item(ctx, session, SR_DS_CANDIDATE, "/example-module:container", SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    sr_val_t *del = NULL;
+
+    rc = rp_dt_get_value_wrapper(ctx, session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &del);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+    assert_null(del);
+
+    rc = rp_dt_set_item(ctx, session, SR_DS_CANDIDATE, val->xpath, SR_EDIT_DEFAULT, val);
+    assert_int_equal(SR_ERR_OK, rc);
+    sr_free_val(val);
+
+
+    rc = rp_dt_get_value_wrapper(ctx, session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &val);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(val);
+    sr_free_val(val);
+
+
+    dm_session_stop(ctx, session);
 }
 
 void set_item_leaflist_test(void **state){

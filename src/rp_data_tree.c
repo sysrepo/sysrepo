@@ -432,7 +432,11 @@ rp_dt_copy_value(const struct lyd_node_leaf_list *leaf, LY_DATA_TYPE type, sr_va
 
 static int
 rp_dt_find_deepest_match(struct lyd_node *data_tree, const xp_loc_id_t *loc_id, bool allow_no_keys, size_t *match_level, struct lyd_node **node){
-    CHECK_NULL_ARG4(data_tree, loc_id, match_level, node);
+    CHECK_NULL_ARG3(loc_id, match_level, node);
+
+    if (NULL == data_tree){
+        return SR_ERR_NOT_FOUND;
+    }
 
     struct lyd_node *curr = data_tree;
     struct lyd_node *prev = NULL;
@@ -1546,15 +1550,15 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t dat
         goto cleanup;
     }
 
-    if (0 == level) {
+/*    if (0 == level) {
         //TODO create root node handle empty data tree
         SR_LOG_ERR("Root node can not be created currently for xpath %s", xpath);
         rc = SR_ERR_INTERNAL;
         goto cleanup;
     }
+*/
 
-
-    if (NULL == match->schema || NULL == match->schema->name || NULL == match->schema->module || NULL == match->schema->module->name) {
+    if (NULL != match && (NULL == match->schema || NULL == match->schema->name || NULL == match->schema->module || NULL == match->schema->module->name)) {
         SR_LOG_ERR_MSG("Missing schema information");
         rc = SR_ERR_INTERNAL;
         goto cleanup;
@@ -1569,13 +1573,13 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t dat
         }
     }
 
-    const struct lys_module *module = match->schema->module;
+    const struct lys_module *module = match != NULL ? match->schema->module : info->module;
 
     /* updating the value */
     if (XP_GET_NODE_COUNT(l) == level) {
         /* leaf-list append at the end */
         if (LYS_LEAFLIST == match->schema->nodetype){
-            if (NULL == lyd_new_leaf(match->parent, module, match->schema->name, new_value)) {
+            if (NULL == sr_lyd_new_leaf(info, match->parent, module, match->schema->name, new_value)) {
                 SR_LOG_ERR("Adding leaf-list item failed %s", xpath);
                 rc = SR_ERR_INTERNAL;
                 goto cleanup;
@@ -1595,7 +1599,7 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t dat
                 goto cleanup;
             }
             /* leaf - replace existing */
-            if (NULL == lyd_new_leaf(match->parent, module, match->schema->name, new_value)) {
+            if (NULL == sr_lyd_new_leaf(info, match->parent, module, match->schema->name, new_value)) {
                 SR_LOG_ERR("Replacing existing leaf failed %s", l->xpath);
                 rc = SR_ERR_INTERNAL;
                 goto cleanup;
@@ -1642,7 +1646,7 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t dat
                 goto cleanup;
             }
             //TODO handle presence container
-            node = lyd_new_leaf(node, module, node_name, new_value);
+            node = sr_lyd_new_leaf(info, node, module, node_name, new_value);
             if (NULL == node) {
                 SR_LOG_ERR("Creating new leaf failed %s", xpath);
                 rc = SR_ERR_INTERNAL;
@@ -1652,7 +1656,7 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t dat
         } else {
             size_t key_count = XP_GET_KEY_COUNT(l, n);
             //create container or list
-            node = lyd_new(node, module, node_name);
+            node = sr_lyd_new(info, node, module, node_name);
             if (NULL == node) {
                 SR_LOG_ERR("Creating container or list failed %s", xpath);
                 rc = SR_ERR_INTERNAL;
@@ -1668,7 +1672,7 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t dat
                         goto cleanup;
                     }
 
-                    if (NULL == lyd_new_leaf(node, module, key_name, key_value)) {
+                    if (NULL == sr_lyd_new_leaf(info, node, module, key_name, key_value)) {
                         SR_LOG_ERR("Adding key leaf failed %s", xpath);
                         rc = SR_ERR_INTERNAL;
                         goto cleanup;
