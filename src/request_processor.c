@@ -245,6 +245,48 @@ cleanup:
     return rc;
 }
 
+static int
+rp_msg_dispatch(const rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
+{
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG3(rp_ctx, session, msg);
+
+    if (SR__MSG__MSG_TYPE__REQUEST == msg->type) {
+        /* request handling */
+        switch (msg->request->operation) {
+            case SR__OPERATION__LIST_SCHEMAS:
+                rc = rp_list_schemas_req_process(rp_ctx, session, msg);
+                break;
+            case SR__OPERATION__GET_ITEM:
+                rc = rp_get_item_req_process(rp_ctx, session, msg);
+                break;
+            case SR__OPERATION__GET_ITEMS:
+                rc = rp_get_items_req_process(rp_ctx, session, msg);
+                break;
+            default:
+                SR_LOG_ERR("Unsupported request received (session id=%"PRIu32", operation=%d).",
+                        session->id, msg->request->operation);
+                rc = SR_ERR_UNSUPPORTED;
+                break;
+        }
+    } else {
+        /* response handling */
+        SR_LOG_ERR("Unsupported response received (session id=%"PRIu32", operation=%d).",
+                session->id, msg->response->operation);
+        rc = SR_ERR_UNSUPPORTED;
+    }
+
+    /* release the message */
+    sr__msg__free_unpacked(msg, NULL);
+
+    if (SR_ERR_OK != rc) {
+        SR_LOG_WRN("Error by processing of the message: %s.", sr_strerror(rc));
+    }
+
+    return rc;
+}
+
 static void *
 rp_worker_thread_execute(void *rp_ctx_p)
 {
@@ -270,6 +312,8 @@ rp_worker_thread_execute(void *rp_ctx_p)
                 if (NULL == req.msg || NULL == req.session) {
                     SR_LOG_DBG("Thread id=%lu received an empty request, exiting.",  pthread_self());
                     exit = true;
+                } else {
+                    rp_msg_dispatch(rp_ctx, req.session, req.msg); // TODO: check
                 }
             }
         } while (dequeued && !exit);
@@ -315,7 +359,6 @@ rp_init(cm_ctx_t *cm_ctx, rp_ctx_t **rp_ctx_p)
     rc = sr_cbuff_init(RP_INIT_REQ_QUEUE_SIZE, sizeof(rp_request_t), &ctx->request_queue);
     if (SR_ERR_OK != rc){
         SR_LOG_ERR_MSG("RP request queue initialization failed.");
-        rc = SR_ERR_NOMEM;
         goto cleanup;
     }
 
@@ -323,7 +366,6 @@ rp_init(cm_ctx_t *cm_ctx, rp_ctx_t **rp_ctx_p)
     rc = dm_init(DM_SCHEMA_SEARCH_DIR, DM_DATA_SEARCH_DIR, &ctx->dm_ctx);
     if (SR_ERR_OK != rc){
         SR_LOG_ERR_MSG("Data Manager initialization failed.");
-        rc = SR_ERR_NOMEM;
         goto cleanup;
     }
 
@@ -443,8 +485,9 @@ rp_session_stop(const rp_ctx_t *rp_ctx, rp_session_t *session)
 }
 
 int
-rp_msg_process(const rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
+rp_msg_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
 {
+    rp_request_t req = { 0 };
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG_NORET3(rc, rp_ctx, session, msg);
@@ -456,36 +499,15 @@ rp_msg_process(const rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
         return rc;
     }
 
-    if (SR__MSG__MSG_TYPE__REQUEST == msg->type) {
-        /* request handling */
-        switch (msg->request->operation) {
-            case SR__OPERATION__LIST_SCHEMAS:
-                rc = rp_list_schemas_req_process(rp_ctx, session, msg);
-                break;
-            case SR__OPERATION__GET_ITEM:
-                rc = rp_get_item_req_process(rp_ctx, session, msg);
-                break;
-            case SR__OPERATION__GET_ITEMS:
-                rc = rp_get_items_req_process(rp_ctx, session, msg);
-                break;
-            default:
-                SR_LOG_ERR("Unsupported request received (session id=%"PRIu32", operation=%d).",
-                        session->id, msg->request->operation);
-                rc = SR_ERR_UNSUPPORTED;
-                break;
-        }
-    } else {
-        /* response handling */
-        SR_LOG_ERR("Unsupported response received (session id=%"PRIu32", operation=%d).",
-                session->id, msg->response->operation);
-        rc = SR_ERR_UNSUPPORTED;
-    }
+    req.session = session;
+    req.msg = msg;
 
-    /* release the message */
-    sr__msg__free_unpacked(msg, NULL);
+    pthread_mutex_lock(&rp_ctx->request_queue_mutex);
 
-    if (SR_ERR_OK != rc) {
-        SR_LOG_WRN("Error by processing of the message: %s.", sr_strerror(rc));
-    }
+    sr_cbuff_enqueue(rp_ctx->request_queue, &req); // TODO check
+    pthread_cond_signal(&rp_ctx->request_queue_cv);
+
+    pthread_mutex_unlock(&rp_ctx->request_queue_mutex);
+
     return rc;
 }
