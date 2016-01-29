@@ -25,6 +25,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 #include <arpa/inet.h>
+#include <inttypes.h>
 
 #include "sr_common.h"
 
@@ -218,6 +219,89 @@ sr_free_datatree(struct lyd_node *root){
         lyd_free(root);
         root = next;
     }
+}
+
+struct lyd_node*
+sr_dup_datatree(struct lyd_node *root){
+    struct lyd_node *dup = NULL, *s = NULL, *n = NULL;
+
+    struct lyd_node *next = NULL;
+    /* loop through top-level nodes*/
+    while (NULL != root) {
+        next = root->next;
+
+        n = lyd_dup(root, 1);
+        /*set output node*/
+        if (NULL == dup){
+            dup = n;
+        }
+
+        if (NULL == s){
+            s = n;
+        }
+        else if (0 != lyd_insert_after(s, n)){
+            SR_LOG_ERR_MSG("Memory allocation failed");
+            sr_free_datatree(dup);
+            return NULL;
+        }
+        /* last appended sibling*/
+        s = n;
+
+        root = next;
+    }
+    return dup;
+}
+
+int
+sr_lyd_unlink(dm_data_info_t *data_info, struct lyd_node *node)
+{
+    CHECK_NULL_ARG2(data_info, node);
+    if (node == data_info->node){
+        data_info->node = node->next;
+    }
+    if (0 != lyd_unlink(node)){
+        SR_LOG_ERR_MSG("Node unlink failed");
+        return SR_ERR_INTERNAL;
+    }
+    return SR_ERR_OK;
+}
+
+struct lyd_node *
+sr_lyd_new(dm_data_info_t *data_info, struct lyd_node *parent, const struct lys_module *module, const char* node_name)
+{
+    int rc = SR_ERR_OK;
+    CHECK_NULL_ARG_NORET3(rc, data_info, module, node_name);
+    if (SR_ERR_OK != rc){
+        return NULL;
+    }
+
+    struct lyd_node *new = NULL;
+    new = lyd_new(parent, module, node_name);
+
+    if (NULL == parent && NULL == data_info->node){
+        data_info->node = new;
+    }
+
+    return new;
+}
+
+struct lyd_node *
+sr_lyd_new_leaf(dm_data_info_t *data_info, struct lyd_node *parent, const struct lys_module *module, const char *node_name, const char *value)
+{
+    int rc = SR_ERR_OK;
+    CHECK_NULL_ARG_NORET4(rc, data_info, module, node_name, value);
+    if (SR_ERR_OK != rc){
+        return NULL;
+    }
+
+    struct lyd_node *new = NULL;
+    new = lyd_new_leaf(parent, module, node_name, value);
+
+    if (NULL == parent && NULL == data_info->node){
+        data_info->node = new;
+    }
+
+    return new;
 }
 
 sr_type_t
@@ -1298,5 +1382,31 @@ nomem:
     SR_LOG_ERR_MSG("Cannot duplicate schema contents - not enough memory.");
     sr_free_schemas(schemas, schema_cnt);
     return SR_ERR_NOMEM;
+}
+
+int
+sr_val_to_str(const sr_val_t *value, char **out)
+{
+    CHECK_NULL_ARG2(value, out);
+    size_t len = 0;
+    switch (value->type) {
+    case SR_STRING_T:
+        *out = strdup(value->data.string_val);
+        break;
+    case SR_UINT8_T:
+        len = snprintf(NULL, 0, "%"PRIu8, value->data.uint8_val);
+        *out = calloc(len + 1, sizeof(**out));
+        snprintf(*out, len + 1, "%"PRIu8, value->data.uint8_val);
+        break;
+        //TODO other types
+    default:
+        SR_LOG_ERR_MSG("Conversion of value_t to string failed");
+        *out = NULL;
+    }
+    if (NULL == *out) {
+        SR_LOG_ERR("String copy failed %s", value->xpath);
+        return SR_ERR_INTERNAL;
+    }
+    return SR_ERR_OK;
 }
 

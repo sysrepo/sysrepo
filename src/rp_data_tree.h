@@ -4,7 +4,7 @@
  * @brief Functions for accessing and manipulation data trees.
  * @file rp_data_tree.h
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
- * @brief 
+ * @brief
  *
  * @copyright
  * Copyright 2015 Cisco Systems, Inc.
@@ -187,6 +187,30 @@ int rp_dt_get_values_wrapper(dm_ctx_t *dm_ctx, dm_session_t *dm_session, const c
 int rp_dt_get_values_wrapper_with_opts(dm_ctx_t *dm_ctx, dm_session_t *dm_session, rp_dt_get_items_ctx_t *get_items_ctx, const char *xpath,
                                        bool recursive, size_t offset, size_t limit, sr_val_t ***values, size_t *count);
 
+
+/**
+ * @brief Deletes item(s) identified by xpath. List key can not be deleted.
+ * @param [in] dm_ctx
+ * @param [in] session
+ * @param [in] datastore
+ * @param [in] xpath
+ * @param [in] options
+ * @return err_code
+ */
+int rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t datastore, const char *xpath, const sr_edit_flag_t options);
+
+/**
+ * @brief Function can create presence container, list instance, leaf, leaf-list item. If the xpath identifies leaf-list value is appended to the end
+ * of the leaf-list. Value of the list key can not be set or changed.
+ * @param [in] dm_ctx
+ * @param [in] session
+ * @param [in] datastore
+ * @param [in] xpath
+ * @param [in] options
+ * @param [in] value the value to be set (xpath inside the structure is ignored), in case of presence container or list instance is ignored can be NULL 
+ * @return err_code SR_ERR_OK on success
+ */
+int rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t datastore, const char *xpath, const sr_edit_flag_t options, const sr_val_t *value);
 
 /**
  * @}

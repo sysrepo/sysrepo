@@ -43,6 +43,17 @@ typedef struct dm_ctx_s dm_ctx_t;
  */
 typedef struct dm_session_s dm_session_t;
 
+
+/**
+ * @brief Structure holds data tree related info
+ */
+typedef struct dm_data_info_s{
+    const struct lys_module *module;    /**< pointer to schema file*/
+    struct lyd_node *node;              /**< data tree */
+    time_t timestamp;                   /**< timestamp of this copy */
+    bool modified;                      /**< flag denoting whether a change has been made*/
+}dm_data_info_t;
+
 /**
  * @brief Initializes the data manager context, which will be passed in further
  * dm_session related calls.
@@ -79,14 +90,35 @@ int dm_session_start(const dm_ctx_t *dm_ctx, dm_session_t **dm_session_ctx);
 int dm_session_stop(const dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx);
 
 /**
- * @brief Returns the data tree for the specified module. Returns SR_ERR_UNKNOWN_MODEL if the requested module does not exist.
+ * @brief Returns the structure holding data tree, timestamp and modified flag for the specified module. Returns SR_ERR_UNKNOWN_MODEL if the 
+ * requested module does not exist.
  * @param [in] dm_ctx
  * @param [in] dm_session_ctx
  * @param [in] module_name
  * @param [out] data_tree
  * @return err_code
  */
+int dm_get_data_info(dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, const char *module_name, dm_data_info_t **info);
+
+/**
+ * @brief Returns the data tree for the specified module. Returns SR_ERR_UNKNOWN_MODEL if the requested module does not exist.
+ * @param [in] dm_ctx
+ * @param [in] dm_session_ctx
+ * @param [in] module_name
+ * @param [out] data_tree - @note returned data tree should not be modified. To get editable data_tree use ::dm_get_data_info
+ * @return err_code
+ */
 int dm_get_datatree(dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, const char *module_name, struct lyd_node **data_tree);
+
+/**
+ * @brief Returns schema model from libyang context. Module might be used to validate xpath or to create data tree.
+ * @param [in] dm_ctx
+ * @param [in] module_name
+ * @param [in] revision can be NULL
+ * @param [out]module
+ * @return err_code
+ */
+int dm_get_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, const struct lys_module **module);
 
 /**
  * @brief Returns an array that contains information about schemas supported by sysrepo
