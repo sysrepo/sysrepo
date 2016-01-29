@@ -422,6 +422,10 @@ rp_cleanup(rp_ctx_t *rp_ctx)
         /* wait for threads to exit */
         for (i = 0; i < RP_THREAD_COUNT; i++) {
             pthread_join(rp_ctx->thread_pool[i], NULL);
+            /* broadcast again, there may be a thread that has not received previous one */
+            pthread_mutex_lock(&rp_ctx->request_queue_mutex);
+            pthread_cond_broadcast(&rp_ctx->request_queue_cv);
+            pthread_mutex_unlock(&rp_ctx->request_queue_mutex);
         }
         pthread_mutex_destroy(&rp_ctx->request_queue_mutex);
         pthread_cond_destroy(&rp_ctx->request_queue_cv);

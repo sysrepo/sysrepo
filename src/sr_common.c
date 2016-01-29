@@ -154,10 +154,6 @@ sr_cbuff_dequeue(sr_cbuff_t *buffer, void *item)
     buffer->head = (buffer->head + 1) % buffer->capacity;
     buffer->count--;
 
-    if (0 == buffer->count) {
-        buffer->head = 0;
-    }
-
     SR_LOG_DBG("Circular buffer dequeue, new buffer head=%zu, count=%zu.", buffer->head, buffer->count);
 
     return true;
