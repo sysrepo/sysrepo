@@ -252,6 +252,20 @@ sr_dup_datatree(struct lyd_node *root){
     return dup;
 }
 
+int
+sr_lyd_unlink(dm_data_info_t *data_info, struct lyd_node *node)
+{
+    CHECK_NULL_ARG2(data_info, node);
+    if (node == data_info->node){
+        data_info->node = node->next;
+    }
+    if (0 != lyd_unlink(node)){
+        SR_LOG_ERR_MSG("Node unlink failed");
+        return SR_ERR_INTERNAL;
+    }
+    return SR_ERR_OK;
+}
+
 sr_type_t
 sr_libyang_type_to_sysrepo(LY_DATA_TYPE t)
 {

@@ -98,6 +98,17 @@ void delete_item_container_test(void **state){
     /* delete container*/
     dm_session_start(ctx, &session);
 
+    rc = rp_dt_get_value_wrapper(ctx, session, "/example-module:container", &val);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(val);
+    sr_free_val(val);
+
+    rc = rp_dt_delete_item(ctx, session, SR_DS_CANDIDATE, "/example-module:container", SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_get_value_wrapper(ctx, session, "/example-module:container", &val);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+
 #define CONTAINER_XP "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4"
     rc = rp_dt_get_value_wrapper(ctx, session, CONTAINER_XP, &val);
     assert_int_equal(SR_ERR_OK, rc);

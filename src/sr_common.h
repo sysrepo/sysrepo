@@ -38,6 +38,7 @@
 #include "sysrepo.h"
 #include "sr_logger.h"
 #include "sysrepo.pb-c.h"
+#include "data_manager.h"
 
 /** Maximum size of a GPB message. */
 #define SR_MAX_MSG_SIZE ((SIZE_MAX < UINT32_MAX) ? SIZE_MAX : UINT32_MAX)
@@ -254,6 +255,14 @@ void sr_free_datatree(struct lyd_node *root);
  * @return duplicated datatree or NULL in case of error
  */
 struct lyd_node* sr_dup_datatree(struct lyd_node *root);
+
+/**
+ * lyd_unlink wrapper handles the unlink of the root_node
+ * @param data_info
+ * @param node - must be stored under provided data_info
+ * @return err_code
+ */
+int sr_lyd_unlink(dm_data_info_t *data_info, struct lyd_node *node);
 
 /**
  * @brief Converts libyang enum of YANG built-in types to sysrepo representation

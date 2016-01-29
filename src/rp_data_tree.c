@@ -1358,13 +1358,6 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t 
         goto cleanup;
     }
 
-    if (node == data_tree) {
-        //TODO introduce root node of model which is present even if the data tree is empty
-        SR_LOG_ERR_MSG("Deleting root node not supported now");
-        rc = SR_ERR_INTERNAL;
-        goto cleanup;
-    }
-
     /* perform delete according to the node type */
     if (node->schema->nodetype == LYS_CONTAINER) {
         if (options & SR_EDIT_NON_RECURSIVE) {
@@ -1373,7 +1366,7 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t 
             goto cleanup;
         }
         //TODO log to operation queue
-        rc = lyd_unlink(node);
+        rc = sr_lyd_unlink(info, node);
         if (0 != rc) {
             SR_LOG_ERR("Unlinking of the node %s failed", l->xpath);
             rc = SR_ERR_INTERNAL;
@@ -1393,7 +1386,7 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t 
             goto cleanup;
         }
         //TODO log to operation queue
-        rc = lyd_unlink(node);
+        rc = sr_lyd_unlink(info, node);
         if (0 != rc) {
             SR_LOG_ERR("Unlinking of the node %s failed", l->xpath);
             rc = SR_ERR_INTERNAL;
@@ -1413,7 +1406,7 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t 
         /* delete leaf-list nodes */
         for (size_t i = 0; i < count; i++) {
             //TODO log to operation queue
-            rc = lyd_unlink(nodes[i]);
+            rc = sr_lyd_unlink(info, nodes[i]);
             if (0 != rc) {
                 SR_LOG_ERR("Unlinking of the node %s failed", l->xpath);
                 free(nodes);
@@ -1432,7 +1425,7 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t 
         size_t last_node = XP_GET_NODE_COUNT(l) - 1;
         if (0 != XP_GET_KEY_COUNT(l, last_node)) {
             /* delete list instance */
-            rc = lyd_unlink(node);
+            rc = sr_lyd_unlink(info, node);
             if (0 != rc) {
                 SR_LOG_ERR("Unlinking of the node %s failed", l->xpath);
                 rc = SR_ERR_INTERNAL;
@@ -1453,7 +1446,7 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t 
             /* delete list nodes*/
             for (size_t i = 0; i < count; i++) {
                 //TODO log to operation queue
-                rc = lyd_unlink(nodes[i]);
+                rc = sr_lyd_unlink(info, nodes[i]);
                 if (0 != rc) {
                     SR_LOG_ERR("Unlinking of the node %s failed", l->xpath);
                     free(nodes);
@@ -1607,7 +1600,7 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t dat
                 rc = SR_ERR_INTERNAL;
                 goto cleanup;
             }
-            lyd_unlink(match);
+            sr_lyd_unlink(info, match);
             lyd_free(match);
         }
         else if (LYS_CONTAINER == match->schema->nodetype || LYS_LIST == match->schema->nodetype){
@@ -1705,7 +1698,7 @@ cleanup:
     free(new_value);
     free(node_name);
     if (SR_ERR_OK != rc && NULL != created) {
-        lyd_unlink(created);
+        sr_lyd_unlink(info, created);
         lyd_free(created);
     }
     return rc;
