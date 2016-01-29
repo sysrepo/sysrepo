@@ -137,7 +137,7 @@ rp_msg_neg_test(void **state)
 int
 main() {
     const struct CMUnitTest tests[] = {
-            //cmocka_unit_test_setup_teardown(rp_session_test, rp_setup, rp_teardown),
+            cmocka_unit_test_setup_teardown(rp_session_test, rp_setup, rp_teardown),
             cmocka_unit_test_setup_teardown(rp_msg_neg_test, rp_setup, rp_teardown),
     };
 
