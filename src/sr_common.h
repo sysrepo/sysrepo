@@ -38,6 +38,7 @@
 #include "sysrepo.h"
 #include "sr_logger.h"
 #include "sysrepo.pb-c.h"
+#include "data_manager.h"
 
 /** Maximum size of a GPB message. */
 #define SR_MAX_MSG_SIZE ((SIZE_MAX < UINT32_MAX) ? SIZE_MAX : UINT32_MAX)
@@ -248,6 +249,42 @@ int sr_save_data_tree_file(const char *file_name, const struct lyd_node *data_tr
  */
 void sr_free_datatree(struct lyd_node *root);
 
+/*
+ * @brief Copies the datatree pointed by root including its siblings.
+ * @param [in] root
+ * @return duplicated datatree or NULL in case of error
+ */
+struct lyd_node* sr_dup_datatree(struct lyd_node *root);
+
+/**
+ * lyd_unlink wrapper handles the unlink of the root_node
+ * @param data_info
+ * @param node - must be stored under provided data_info
+ * @return err_code
+ */
+int sr_lyd_unlink(dm_data_info_t *data_info, struct lyd_node *node);
+
+/**
+ * lyd_new wrapper handle the creation of the container or list
+ * @param data_info
+ * @param parent
+ * @param module
+ * @param node_name
+ * @return created node or NULL in case of error
+ */
+struct lyd_node *sr_lyd_new(dm_data_info_t *data_info, struct lyd_node *parent, const struct lys_module *module, const char *node_name);
+
+/**
+ * lyd_new wrapper handle the creation of the leaf or leaflist
+ * @param data_info
+ * @param parent
+ * @param module
+ * @param node_name
+ * @param value
+ * @return created node or NULL in case of error
+ */
+struct lyd_node *sr_lyd_new_leaf(dm_data_info_t *data_info, struct lyd_node *parent, const struct lys_module *module, const char *node_name, const char *value);
+
 /**
  * @brief Converts libyang enum of YANG built-in types to sysrepo representation
  * @param [in] t
@@ -404,6 +441,14 @@ int sr_schemas_sr_to_gpb(const sr_schema_t *sr_schemas, const size_t schema_cnt,
  * @return Error code (SR_ERR_OK on success).
  */
 int sr_schemas_gpb_to_sr(const Sr__Schema **gpb_schemas, const size_t schema_cnt, sr_schema_t **sr_schemas);
+
+/**
+ * @brief Converts sr_val_t to string representation, used in set item
+ * @param value
+ * @param out
+ * @return
+ */
+int sr_val_to_str(const sr_val_t *value, char **out);
 
 /**@} common */
 
