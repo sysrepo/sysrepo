@@ -48,9 +48,10 @@ typedef struct dm_session_s dm_session_t;
  * @brief Structure holds data tree related info
  */
 typedef struct dm_data_info_s{
-    struct lyd_node *node;      /**< data tree */
-    time_t timestamp;           /**< timestamp of this copy */
-    bool modified;              /**< flag denoting whether a change has been made*/
+    const struct lys_module *module;    /**< pointer to schema file*/
+    struct lyd_node *node;              /**< data tree */
+    time_t timestamp;                   /**< timestamp of this copy */
+    bool modified;                      /**< flag denoting whether a change has been made*/
 }dm_data_info_t;
 
 /**
@@ -104,7 +105,7 @@ int dm_get_data_info(dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, const char 
  * @param [in] dm_ctx
  * @param [in] dm_session_ctx
  * @param [in] module_name
- * @param [out] data_tree
+ * @param [out] data_tree - @note returned data tree should not be modified. To get editable data_tree use ::dm_get_data_info
  * @return err_code
  */
 int dm_get_datatree(dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, const char *module_name, struct lyd_node **data_tree);
