@@ -39,6 +39,7 @@ typedef struct rp_ctx_s {
     dm_ctx_t *dm_ctx;                        /**< Data Manager Context. */
 
     pthread_t thread_pool[RP_THREAD_COUNT];  /**< Thread pool. */
+    bool stop_requested;                     /**< Stopping of all threads has been requested. */
 
     sr_cbuff_t *request_queue;               /**< Input request queue. */
     pthread_mutex_t request_queue_mutex;     /**< Request queue mutex. */
@@ -53,6 +54,10 @@ typedef struct rp_session_s {
     const char *real_user;               /**< Real user name of the client. */
     const char *effective_user;          /**< Effective user name of the client (if different to real_user). */
     sr_datastore_t datastore;            /**< Datastore selected for this session. */
+    uint32_t msg_count;                  /**< Count of unprocessed messages (including waiting in queue).
+                                              Normally this should be atomic or guarded with a mutex, but since CM
+                                              guards single RP request per session, we don't implement locking here. */
+    bool stop_requested;                 /**< Session stop requested. Same as above regarding atomicity / locking. */
     dm_session_t *dm_session;            /**< Per session data manager context */
     rp_dt_get_items_ctx_t get_items_ctx; /**< Context for get_items_iter calls */
 } rp_session_t;
@@ -246,6 +251,22 @@ cleanup:
 }
 
 static int
+rp_session_cleanup(const rp_ctx_t *rp_ctx, rp_session_t *session)
+{
+    CHECK_NULL_ARG2(rp_ctx, session);
+
+    SR_LOG_DBG("RP session cleanup, session id=%"PRIu32".", session->id);
+
+    dm_session_stop(rp_ctx->dm_ctx, session->dm_session);
+
+    rp_ns_clean(&session->get_items_ctx.stack);
+    free(session->get_items_ctx.xpath);
+    free(session);
+
+    return SR_ERR_OK;
+}
+
+static int
 rp_msg_dispatch(const rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
 {
     int rc = SR_ERR_OK;
@@ -314,6 +335,11 @@ rp_worker_thread_execute(void *rp_ctx_p)
                     exit = true;
                 } else {
                     rp_msg_dispatch(rp_ctx, req.session, req.msg); // TODO: check
+                    /* update message count and release session if needed */
+                    req.session->msg_count -= 1;
+                    if (0 == req.session->msg_count && req.session->stop_requested) {
+                        rp_session_cleanup(rp_ctx, req.session);
+                    }
                 }
             }
         } while (dequeued && !exit);
@@ -324,6 +350,11 @@ rp_worker_thread_execute(void *rp_ctx_p)
 
             /* wait for a signal */
             pthread_mutex_lock(&rp_ctx->request_queue_mutex);
+            if (rp_ctx->stop_requested) {
+                /* stop has been requested, do not wait anymore */
+                pthread_mutex_unlock(&rp_ctx->request_queue_mutex);
+                break;
+            }
             pthread_cond_wait(&rp_ctx->request_queue_cv, &rp_ctx->request_queue_mutex);
 
             SR_LOG_DBG("Thread id=%lu signaled.",  pthread_self());
@@ -400,18 +431,13 @@ rp_cleanup(rp_ctx_t *rp_ctx)
 {
     size_t i = 0;
     rp_request_t req = { 0 };
-    bool dequeued = false;
 
     SR_LOG_DBG_MSG("Request Processor cleanup started, requesting cancel of each worker thread.");
 
     if (NULL != rp_ctx) {
-
         /* enqueue RP_THREAD_COUNT "empty" messages and send signal to all threads */
         pthread_mutex_lock(&rp_ctx->request_queue_mutex);
-        /* dequeue all outstanding requests */
-        do {
-            dequeued = sr_cbuff_dequeue(rp_ctx->request_queue, &req);
-        } while (dequeued);
+        rp_ctx->stop_requested = true;
         /* enqueue empty requests to request thread exits */
         for (i = 0; i < RP_THREAD_COUNT; i++) {
             sr_cbuff_enqueue(rp_ctx->request_queue, &req);
@@ -422,10 +448,6 @@ rp_cleanup(rp_ctx_t *rp_ctx)
         /* wait for threads to exit */
         for (i = 0; i < RP_THREAD_COUNT; i++) {
             pthread_join(rp_ctx->thread_pool[i], NULL);
-            /* broadcast again, there may be a thread that has not received previous one */
-            pthread_mutex_lock(&rp_ctx->request_queue_mutex);
-            pthread_cond_broadcast(&rp_ctx->request_queue_cv);
-            pthread_mutex_unlock(&rp_ctx->request_queue_mutex);
         }
         pthread_mutex_destroy(&rp_ctx->request_queue_mutex);
         pthread_cond_destroy(&rp_ctx->request_queue_cv);
@@ -479,11 +501,18 @@ rp_session_stop(const rp_ctx_t *rp_ctx, rp_session_t *session)
 
     SR_LOG_DBG("RP session stop, session id=%"PRIu32".", session->id);
 
-    dm_session_stop(rp_ctx->dm_ctx, session->dm_session);
-
-    rp_ns_clean(&session->get_items_ctx.stack);
-    free(session->get_items_ctx.xpath);
-    free(session);
+    /* sanity check - normally there should not be any unprocessed messages
+     * within the session when calling rp_session_stop */
+    if (session->msg_count > 0) {
+        /* cleanup will be called after last message has been processed so
+         * that RP can survive this unexpected situation */
+        session->stop_requested = true;
+        SR_LOG_WRN("There are some (%"PRIu32") unprocessed messages for the session id=%"PRIu32" when"
+                " session stop has been requested, this can lead to unspecified behavior - check RP caller code!!!",
+                session->msg_count, session->id);
+    } else {
+        rp_session_cleanup(rp_ctx, session);
+    }
 
     return SR_ERR_OK;
 }
@@ -501,6 +530,14 @@ rp_msg_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
             sr__msg__free_unpacked(msg, NULL);
         }
         return rc;
+    }
+
+    /* sanity check - normally there should not be any unprocessed messages
+     * within the session when calling rp_msg_process */
+    session->msg_count += 1;
+    if (session->msg_count > 1) {
+        SR_LOG_WRN("There are more than one (%"PRIu32") unprocessed messages for the session id=%"PRIu32","
+                " this can lead to unspecified behavior - check RP caller code!!!", session->msg_count, session->id);
     }
 
     req.session = session;

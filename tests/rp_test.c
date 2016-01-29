@@ -125,13 +125,9 @@ rp_msg_neg_test(void **state)
     rc = rp_msg_process(rp_ctx, session, msg);
     assert_int_equal(rc, SR_ERR_OK);
 
-    sleep(1); // TODO: should work without this
-
     /* stop the session */
     rc = rp_session_stop(rp_ctx, session);
     assert_int_equal(rc, SR_ERR_OK);
-
-    sleep(1); // TODO: should work without this
 }
 
 int
