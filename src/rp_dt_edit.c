@@ -333,7 +333,7 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t dat
     const struct lys_module *module = match != NULL ? match->schema->module : info->module;
 
     /* updating the value */
-    if (XP_GET_NODE_COUNT(l) == level) {
+    if (XP_GET_NODE_COUNT(l) == level && NULL != match) {
         /* leaf-list append at the end */
         if (LYS_LEAFLIST == match->schema->nodetype){
             if (NULL == sr_lyd_new_leaf(info, match->parent, module, match->schema->name, new_value)) {
@@ -451,12 +451,15 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t dat
 cleanup:
 
     /* mark to session copy that some change has been made */
-    info->modified = SR_ERR_OK == rc ? true : info->modified;
-
+    if (NULL != info){
+        info->modified = SR_ERR_OK == rc ? true : info->modified;
+    }
     xp_free_loc_id(l);
     free(data_tree_name);
     free(new_value);
     free(node_name);
+    free(key_value);
+    free(key_name);
     if (SR_ERR_OK != rc && NULL != created) {
         sr_lyd_unlink(info, created);
         lyd_free(created);
