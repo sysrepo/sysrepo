@@ -33,7 +33,12 @@ ADD_UNIT_TEST(sm_test)
 ADD_UNIT_TEST(cm_test)
 ADD_UNIT_TEST(dm_test)
 ADD_UNIT_TEST(rp_test)
-ADD_UNIT_TEST(rp_datatree_test)
+
+set(rp_dt_test_files
+    rp_datatree_test.c
+    dt_xpath_helpers.c
+)
+ADD_UNIT_TEST_WITH_OPTS(rp_datatree_test "${rp_dt_test_files}" "" 1)
 ADD_UNIT_TEST(rp_node_stack_test)
 ADD_UNIT_TEST(rp_dt_edit_test)
 
