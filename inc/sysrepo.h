@@ -57,7 +57,7 @@
 
 
 ////////////////////////////////////////////////////////////////////////////////
-// Typedefs and Common API
+// Common typedefs and API
 ////////////////////////////////////////////////////////////////////////////////
 
 /**
@@ -142,22 +142,6 @@ typedef struct sr_val_s {
 } sr_val_t;
 
 /**
- * @brief Structure that contains information about a schema supported by sysrepo.
- */
-typedef struct sr_schema_s {
-    char *module_name;      /**< Name of the module. */
-    char *ns;               /**< Namespace of the module used in @ref xp_page "XPath". */
-    char *prefix;           /**< Prefix of the module. */
-    char *revision;         /**< Latest revision date of the module. */
-    char *file_path;        /**< Absolute path to file where the schema is stored. */
-} sr_schema_t;
-
-/**
- * @brief Iterator used for accessing data nodes via ::sr_get_items_iter call.
- */
-typedef struct sr_val_iter_s sr_val_iter_t;
-
-/**
  * @brief Sysrepo error codes.
  */
 typedef enum sr_error_e {
@@ -184,16 +168,6 @@ typedef enum {
     SR_LL_INF,   /**< Besides errors and warnings, print some other informational messages. */
     SR_LL_DBG    /**< Print all messages including some development debug messages. */
 } sr_log_level_t;
-
-/**
- * @brief bitmask of edit operation options
- */
-typedef enum sr_edit_flag_e {
-    SR_EDIT_DEFAULT = 0,        /**< recursive and non strict */
-    SR_EDIT_NON_RECURSIVE = 1,  /**< if the operation is crate all preceeding nodes must exist,
-                                 * if the operation is delete item must not identify list or container */
-    SR_EDIT_STRICT = 2          /**< if the operation is create item must not exists, if the operation is delete item must exists */
-} sr_edit_flag_t;
 
 /**
  * @brief Returns the error message corresponding to the error code.
@@ -288,8 +262,24 @@ int sr_session_stop(sr_session_ctx_t *session);
 
 
 ////////////////////////////////////////////////////////////////////////////////
-// Data Retrieval API
+// Data Retrieval API (get / get-config functionality)
 ////////////////////////////////////////////////////////////////////////////////
+
+/**
+ * @brief Structure that contains information about a schema supported by sysrepo.
+ */
+typedef struct sr_schema_s {
+    char *module_name;      /**< Name of the module. */
+    char *ns;               /**< Namespace of the module used in @ref xp_page "XPath". */
+    char *prefix;           /**< Prefix of the module. */
+    char *revision;         /**< Latest revision date of the module. */
+    char *file_path;        /**< Absolute path to file where the schema is stored. */
+} sr_schema_t;
+
+/**
+ * @brief Iterator used for accessing data nodes via ::sr_get_items_iter call.
+ */
+typedef struct sr_val_iter_s sr_val_iter_t;
 
 /**
  * @brief Retrieves list of schemas installed in the sysrepo datastore.
@@ -401,6 +391,104 @@ int sr_get_items_iter(sr_session_ctx_t *session, const char *path, bool recursiv
  * are not more items in the dataset).
  */
 int sr_get_item_next(sr_session_ctx_t *session, sr_val_iter_t *iter, sr_val_t **value);
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Data Management API (edit-config functionality) - !!! EXPERIMENTAL !!!
+////////////////////////////////////////////////////////////////////////////////
+
+/**
+ * @brief Flags used to override default behavior of data manipulation calls.
+ */
+typedef enum sr_edit_flag_e {
+    SR_EDIT_DEFAULT = 0,        /**< Default behavior - recursive and non-strict. */
+    SR_EDIT_NON_RECURSIVE = 1,  /**< if the operation is crate all preceeding nodes must exist,
+                                     if the operation is delete item must not identify list or container */
+    SR_EDIT_STRICT = 2          /**< if the operation is create item must not exists, if the operation is delete item must exists */
+} sr_edit_flag_t;
+
+/**
+ * @brief Options overriding default behavior of data manipulation calls,
+ * can be or-ed value of any ::sr_edit_flag_t flags.
+ */
+typedef int sr_edit_options_t;
+
+typedef enum sr_move_direction_e {
+    SR_MOVE_UP = 0,
+    SR_MOVE_DOWN = 1,
+} sr_move_direction_t;
+
+/**
+ * @brief Sets the value of the leaf, leaf-list or presence container.
+ *
+ * With default options it recursively creates all missing nodes (containers and
+ * lists including their key leaves) in the path to the specified node (can be
+ * turned off with SR_EDIT_NON_RECURSIVE option). If SR_EDIT_STRICT flag is set,
+ * the node must not exist (otherwise an error is returned). Setting of a leaf-list
+ * value appends the value at the end of the leaf-list.
+ *
+ * @param[in] session Session context acquired with ::sr_session_start call.
+ * @param[in] path @ref xp_page "XPath" identifier of the data element to be set.
+ * @param[in] value Value to be set on specified path. xpath member of the
+ * ::sr_val_t structure can be NULL. Value will be copied - can be allocated on stack.
+ * @param[in] opts Options overriding default behavior of this call.
+ *
+ * @return Error code (SR_ERR_OK on success, SR_ERR_UNAUTHORIZED if the user
+ * does not have write permission to requested node).
+ */
+int sr_set_item(sr_session_ctx_t *session, const char *path, const sr_val_t *value, const sr_edit_options_t opts);
+
+/**
+ * Deletes the nodes under the speciefied path. To delete list and containers non-recursive flag must not be set.
+ * If the strict flag is set the node must exist. If the path includes the list keys, the specified list instance is deleted.
+ * If the path to list does not include keys, all instances of the list are deleted.
+ * SR_ERR_UNAUTHORIZED will be returned if the user does not have write permission to any affected node.
+ * [in] session
+ * [in] path
+ * [in] opts
+ * return err_code
+ **/
+int sr_delete_item(sr_session_ctx_t *session, char *path, sr_edit_options_t opts);
+
+/**
+ * Move the instance of a ordered list / leaf-list in specified direction.
+ * To determine current order, issue a sr_get_items call (in case of a list, without
+ * specifying keys of the list in question)
+ * [in] session
+ * [in] path
+ * [in] direction
+ * return err_code
+ */
+int sr_move_item(sr_session_ctx_t *session, char *path, sr_move_direction_t direction);
+
+/**
+ * Perform the validation of changes made in this session, but do not commit nor discard them.
+ * Provides only YANG validation, commit verify subscribers won't be notified in this case.
+ * [in] session
+ * return err_code
+ */
+int sr_validate(sr_session_ctx_t *session);
+
+/**
+ * Apply changes made in this session
+ * Note that in case that you are committing to the running datstore (via candidate,
+ * direct write to running is not allowed), you need to call sr_save_to_startup() after
+ * commit to make changes permanent after restart.
+ * [in] session
+ * return err_code
+ */
+int sr_commit(sr_session_ctx_t *session);
+
+/**
+ * Discard non-committed changes made in this session
+ * [in] session
+ * return err_code
+ */
+int sr_discard_changes(sr_session_ctx_t *session);
+
+////////////////////////////////////////////////////////////////////////////////
+// Cleanup Routines
+////////////////////////////////////////////////////////////////////////////////
 
 /**
  * @brief Frees ::sr_val_t structure and all memory allocated within it.
