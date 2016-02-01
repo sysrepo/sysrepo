@@ -21,6 +21,7 @@
 
 #include "rp_dt_edit.h"
 #include "rp_dt_lookup.h"
+#include "rp_dt_xpath.h"
 #include "sysrepo.h"
 #include "sr_common.h"
 #include "xpath_processor.h"
@@ -67,6 +68,12 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t 
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Converting xpath '%s' to loc_id failed.", xpath);
         return rc;
+    }
+
+    rc = rp_dt_validate_node_xpath(dm_ctx, l, NULL);
+    if (SR_ERR_OK != rc){
+        SR_LOG_ERR("Validation of loc_id failed %s", l->xpath);
+        goto cleanup;
     }
 
     if (!XP_HAS_NODE_NS(l, 0)) {
@@ -245,6 +252,7 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t dat
     struct lyd_node *match = NULL;
     struct lyd_node *node = NULL;
     dm_data_info_t *info = NULL;
+    struct lys_node *schema_node = NULL;
 
     /* to be freed during cleanup */
     xp_loc_id_t *l = NULL;
@@ -262,6 +270,12 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t dat
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Converting xpath '%s' to loc_id failed.", xpath);
         return rc;
+    }
+
+    rc = rp_dt_validate_node_xpath(dm_ctx, l, &schema_node);
+    if (SR_ERR_OK != rc){
+        SR_LOG_ERR("Requested node is not valid %s", xpath);
+        goto cleanup;
     }
 
     if (!XP_HAS_NODE_NS(l, 0)) {
@@ -402,8 +416,20 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t dat
                 rc = SR_ERR_INVAL_ARG;
                 goto cleanup;
             }
-            //TODO handle presence container
-            node = sr_lyd_new_leaf(info, node, module, node_name, new_value);
+
+            if (LYS_CONTAINER == schema_node->nodetype && NULL != ((struct lys_node_container *) schema_node)->presence ){
+                /* presence container */
+                node = sr_lyd_new(info, node, module, node_name);
+            }
+            else if (LYS_LEAF == schema_node->nodetype || LYS_LEAFLIST == schema_node->nodetype){
+                node = sr_lyd_new_leaf(info, node, module, node_name, new_value);
+            }
+            else {
+                SR_LOG_ERR_MSG("Request to create unsupported node type (non-presence container, list withou keys ...)");
+                rc = SR_ERR_INVAL_ARG;
+                goto cleanup;
+            }
+
             if (NULL == node) {
                 SR_LOG_ERR("Creating new leaf failed %s", xpath);
                 rc = SR_ERR_INTERNAL;

@@ -451,6 +451,38 @@ void set_item_list_test(void **state){
     dm_session_stop(ctx, session);
 }
 
+void set_item_container_test(void **state){
+    int rc = 0;
+    dm_ctx_t *ctx = *state;
+    dm_session_t *session = NULL;
+
+    dm_session_start(ctx, &session);
+
+    sr_val_t *value = NULL;
+    rc = rp_dt_get_value_wrapper(ctx, session, "/test-module:list[key='key']/wireless", &value);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+
+    rc = rp_dt_set_item(ctx, session, SR_DS_CANDIDATE, "/test-module:list[key='key']/wireless", SR_EDIT_DEFAULT, NULL);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_get_value_wrapper(ctx, session, "/test-module:list[key='key']/wireless", &value);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(value);
+    assert_int_equal(SR_CONTAINER_PRESENCE_T, value->type);
+
+    sr_free_val(value);
+
+    /* set existing does nothing*/
+    rc = rp_dt_set_item(ctx, session, SR_DS_CANDIDATE, "/test-module:list[key='key']/wireless", SR_EDIT_DEFAULT, NULL);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* set existing fails with strict opt*/
+    rc = rp_dt_set_item(ctx, session, SR_DS_CANDIDATE, "/test-module:list[key='key']/wireless", SR_EDIT_STRICT, NULL);
+    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+
+    dm_session_stop(ctx, session);
+}
+
 int main(){
 
     sr_logger_set_level(SR_LL_DBG, SR_LL_NONE);
@@ -463,7 +495,8 @@ int main(){
             cmocka_unit_test(delete_item_leaflist_test),
             cmocka_unit_test(set_item_leaf_test),
             cmocka_unit_test(set_item_leaflist_test),
-            cmocka_unit_test(set_item_list_test)
+            cmocka_unit_test(set_item_list_test),
+            cmocka_unit_test(set_item_container_test)
     };
     return cmocka_run_group_tests(tests, setup, teardown);
 }

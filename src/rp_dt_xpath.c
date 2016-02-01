@@ -277,3 +277,109 @@ rp_dt_create_xpath_for_node(const struct lyd_node *data_tree, char **xpath)
     *xpath = result;
     return SR_ERR_OK;
 }
+
+int
+rp_dt_validate_node_xpath(dm_ctx_t *dm_ctx, const xp_loc_id_t *loc_id, struct lys_node **match)
+{
+    CHECK_NULL_ARG2(dm_ctx, loc_id);
+    CHECK_NULL_ARG(loc_id->xpath);
+
+    char *module_name = NULL;
+    const struct lys_module *module = NULL;
+    struct lys_node *node = NULL;
+    int rc = SR_ERR_OK;
+
+    if (!XP_HAS_NODE_NS(loc_id,0)){
+        SR_LOG_ERR_MSG("Top level node's namespace is not specified");
+        return SR_ERR_INVAL_ARG;
+    }
+
+    module_name = XP_CPY_NODE_NS(loc_id, 0);
+    if (NULL == module_name){
+        SR_LOG_ERR_MSG("Module name copy failed");
+        return SR_ERR_INTERNAL;
+    }
+
+    rc = dm_get_module(dm_ctx, module_name, NULL, &module);
+    free(module_name);
+    if (SR_ERR_OK != rc){
+        SR_LOG_ERR_MSG("Get module failed");
+        return rc;
+    }
+
+    if (NULL == module->name){
+        SR_LOG_ERR_MSG("Missing schema information");
+        return SR_ERR_INTERNAL;
+    }
+    node = module->data;
+
+    size_t i = 0;
+    for ( ; i < XP_GET_NODE_COUNT(loc_id); i++){
+        while (NULL != node){
+            if (NULL == node->name){
+                SR_LOG_ERR_MSG("Missing schema information");
+                return SR_ERR_OK;
+            }
+
+            if (!XP_CMP_NODE(loc_id, i, node->name)){
+                node = node->next;
+                continue;
+            }
+
+            if (XP_HAS_NODE_NS(loc_id, i)){
+                if (!XP_CMP_NODE_NS(loc_id, i, node->module->name)){
+                    node = node->next;
+                    continue;
+                }
+            }
+
+            if (0 != XP_GET_KEY_COUNT(loc_id, i)){
+                if (LYS_LIST != node->nodetype){
+                    SR_LOG_ERR("Keys specified for the node that is not list %s", node->name);
+                    return SR_ERR_UNKNOWN_MODEL;
+                }
+                struct lys_node_list *list = (struct lys_node_list *) node;
+                if (list->keys_size != XP_GET_KEY_COUNT(loc_id, i)){
+                    SR_LOG_ERR("Key count does not match %s", node->name);
+                    return SR_ERR_UNKNOWN_MODEL;
+                }
+                size_t matched_keys = 0;
+                for (size_t k = 0; k < list->keys_size; k++){
+                    if (NULL == list->keys || NULL == list->keys[k] || NULL == list->keys[k]->name){
+                        return SR_ERR_INTERNAL;
+                    }
+                    for (size_t k_xp = 0; k_xp < list->keys_size; k_xp++){
+                        if (XP_CMP_KEY_NAME(loc_id, i, k_xp, list->keys[k]->name)){
+                            matched_keys++;
+                        }
+                    }
+                }
+                if (list->keys_size != matched_keys){
+                    SR_LOG_ERR("Not all keys has been matched %s", loc_id->xpath);
+                    return SR_ERR_UNKNOWN_MODEL;
+                }
+            }
+
+            /* match found*/
+            if (i != (XP_GET_NODE_COUNT(loc_id) - 1)) {
+                node = node->child;
+            }
+            break;
+        }
+
+        if (NULL == node){
+            break;
+        }
+    }
+
+    if (NULL == node){
+        SR_LOG_ERR("Request node not found in schemas %s", loc_id->xpath);
+        return SR_ERR_UNKNOWN_MODEL;
+    }
+
+    if (NULL != match) {
+        *match = node;
+    }
+
+    return rc;
+}
