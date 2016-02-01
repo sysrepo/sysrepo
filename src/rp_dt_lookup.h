@@ -40,30 +40,6 @@ typedef struct rp_dt_get_items_ctx{
     rp_node_stack_t *stack; /**< stack of nodes to be processed in depth-first walk */
 }rp_dt_get_items_ctx_t;
 
-
-/**
- * @brief Converts the xpath to loc_id and calls ::rp_dt_get_nodes internally.
- * @param [in] dm_ctx
- * @param [in] data_tree
- * @param [in] xpath
- * @param [out] nodes
- * @param [out] count
- * @return err_code
- */
-int rp_dt_get_nodes_xpath(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char *xpath, struct lyd_node ***nodes, size_t *count);
-
-
-/**
- * @brief Retrieves node from datatree based on xpath. It converts the xpath to loc_id and calls ::rp_dt_get_node internally.
- * @param [in] dm_ctx
- * @param [in] data_tree - root node of the model
- * @param [in] loc_id
- * @param [out] node
- * @return err_code
- */
-int rp_dt_get_node_xpath(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char *xpath, struct lyd_node **node);
-
-
 /**
  * @brief Returns children nodes
  * @param [in] node

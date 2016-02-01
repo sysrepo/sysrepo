@@ -285,42 +285,6 @@ rp_dt_get_values_from_nodes(struct lyd_node **nodes, size_t count, sr_val_t ***v
 }
 
 int
-rp_dt_get_value_xpath(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char *xpath, sr_val_t **value)
-{
-    CHECK_NULL_ARG4(dm_ctx, data_tree, xpath, value);
-
-    int rc = SR_ERR_OK;
-    xp_loc_id_t *l = NULL;
-    rc = xp_char_to_loc_id(xpath, &l);
-
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Converting xpath '%s' to loc_id failed.", xpath);
-        return rc;
-    }
-    rc = rp_dt_get_value(dm_ctx, data_tree, l, value);
-    xp_free_loc_id(l);
-    return rc;
-}
-
-int
-rp_dt_get_values_xpath(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char *xpath, sr_val_t ***values, size_t *count)
-{
-    CHECK_NULL_ARG5(dm_ctx, data_tree, xpath, values, count);
-
-    int rc = SR_ERR_OK;
-    xp_loc_id_t *l = NULL;
-    rc = xp_char_to_loc_id(xpath, &l);
-
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Converting xpath '%s' to loc_id failed.", xpath);
-        return rc;
-    }
-    rc = rp_dt_get_values(dm_ctx, data_tree, l, values, count);
-    xp_free_loc_id(l);
-    return rc;
-}
-
-int
 rp_dt_get_value(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp_loc_id_t *loc_id, sr_val_t **value)
 {
     CHECK_NULL_ARG4(dm_ctx, data_tree, loc_id, value);

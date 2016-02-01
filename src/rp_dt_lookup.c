@@ -60,42 +60,6 @@ rp_dt_push_nodes_with_same_name_to_stack(rp_node_stack_t **stack, struct lyd_nod
 }
 
 int
-rp_dt_get_nodes_xpath(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char *xpath, struct lyd_node ***nodes, size_t *count)
-{
-    CHECK_NULL_ARG5(dm_ctx, data_tree, xpath, nodes, count);
-
-    int rc = SR_ERR_OK;
-    xp_loc_id_t *l = NULL;
-    rc = xp_char_to_loc_id(xpath, &l);
-
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Converting xpath '%s' to loc_id failed.", xpath);
-        return rc;
-    }
-    rc = rp_dt_get_nodes(dm_ctx, data_tree, l, nodes, count);
-    xp_free_loc_id(l);
-    return rc;
-}
-
-int
-rp_dt_get_node_xpath(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char *xpath, struct lyd_node **node)
-{
-    CHECK_NULL_ARG4(dm_ctx, data_tree, xpath, node);
-
-    int rc = SR_ERR_OK;
-    xp_loc_id_t *l = NULL;
-    rc = xp_char_to_loc_id(xpath, &l);
-
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Converting xpath '%s' to loc_id failed.", xpath);
-        return rc;
-    }
-    rc = rp_dt_get_node(dm_ctx, data_tree, l, node);
-    xp_free_loc_id(l);
-    return rc;
-}
-
-int
 rp_dt_get_all_children_node(struct lyd_node *node, struct lyd_node ***nodes, size_t *count)
 {
     CHECK_NULL_ARG3(node, nodes, count);

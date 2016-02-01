@@ -31,6 +31,7 @@
 #include "sr_common.h"
 #include "rp_data_tree.h"
 #include "xpath_processor.h"
+#include "dt_xpath_helpers.h"
 
 #define LEAF_VALUE "leafV"
 

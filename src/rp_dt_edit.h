@@ -1,5 +1,5 @@
 /**
- * @defgroup rp_edit Request processor data tree edit helpers 
+ * @defgroup rp_edit Request processor data tree create, update & delete helpers 
  * @{
  * @brief 
  * @file rp_dt_edit.h

@@ -29,38 +29,6 @@
 #include "rp_dt_lookup.h"
 
 /**
- * @brief Returns the value for the specified xpath for leaf, container and list. It converts the xpath to loc_id
- * and calls ::rp_dt_get_value internally.
- * @param [in] dm_ctx
- * @param [in] data_tree
- * @param [in] xpath
- * @param [out] value
- * @return err_code
- */
-int rp_dt_get_value_xpath(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char *xpath, sr_val_t **value);
-
-/**
- * @brief Converts the xpath to loc_id and calls ::rp_dt_get_values internally.
- * @param [in] dm_ctx
- * @param [in] data_tree
- * @param [in] xpath
- * @param [out] values
- * @param [out] count
- * @return err_code
- */
-int rp_dt_get_values_xpath(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char *xpath, sr_val_t ***values, size_t *count);
-
-/**
- * @brief Returns the value for the specified location_id for leaf, container and list.
- * @param [in] dm_ctx
- * @param [in] data_tree
- * @param [in] loc_id
- * @param [out] value
- * @return err_code
- */
-int rp_dt_get_value(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp_loc_id_t *loc_id, sr_val_t **value);
-
-/**
  * @brief Retrieves all nodes corresponding to location_id using ::rp_dt_get_nodes and copy all values.
  * @param [in] dm_ctx
  * @param [in] data_tree
