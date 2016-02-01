@@ -1,8 +1,8 @@
 /**
- * @defgroup rp_dt Request Processor's Datatree Helpers
+ * @defgroup rp_xp Request Processor's xpath Helpers
  * @{
- * @brief Functions for accessing and manipulation data trees.
- * @file rp_data_tree.h
+ * @brief Functions for creating xpath.
+ * @file rp_xpath.h
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
  * @brief
  *
@@ -22,17 +22,17 @@
  * limitations under the License.
  */
 
+#ifndef SRC_RP_DT_XPATH_H_
+#define SRC_RP_DT_XPATH_H_
 
-#ifndef SRC_RP_DATA_TREE_H_
-#define SRC_RP_DATA_TREE_H_
+#include <libyang/libyang.h>
 
-#include "rp_dt_get.h"
-#include "rp_dt_edit.h"
-#include "rp_dt_lookup.h"
-#include "rp_dt_xpath.h"
-#include "rp_node_stack.h"
+/**
+ * @brief Creates xpath for the selected node.
+ */
+int rp_dt_create_xpath_for_node(const struct lyd_node *data_tree, char **xpath);
 
 /**
  * @}
  */
-#endif /* SRC_RP_DATA_TREE_H_ */
+#endif /* SRC_RP_DT_XPATH_H_ */
