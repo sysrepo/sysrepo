@@ -1,7 +1,7 @@
 set(TEST_REPOSITORY_LOC "${PROJECT_SOURCE_DIR}/tests/data/")
 
 configure_file("${PROJECT_SOURCE_DIR}/tests/data/test_data.h.in" "${PROJECT_SOURCE_DIR}/tests/data/test_data.h" ESCAPE_QUOTES @ONLY) 
-include_directories ("${PROJECT_SOURCE_DIR}/src" "${PROJECT_SOURCE_DIR}/inc" "${PROJECT_SOURCE_DIR}/tests/data/ ")
+include_directories ("${PROJECT_SOURCE_DIR}/src" "${PROJECT_SOURCE_DIR}/inc" "${PROJECT_SOURCE_DIR}/tests/data/")
 
 find_program(valgrind_FOUND valgrind)
 
@@ -35,8 +35,8 @@ ADD_UNIT_TEST(dm_test)
 ADD_UNIT_TEST(rp_test)
 
 set(rp_dt_test_files
-rp_datatree_test.c
-dt_xpath_helpers.c
+    rp_datatree_test.c
+    dt_xpath_helpers.c
 )
 ADD_UNIT_TEST_WITH_OPTS(rp_datatree_test "${rp_dt_test_files}" "" 1)
 ADD_UNIT_TEST(rp_node_stack_test)
