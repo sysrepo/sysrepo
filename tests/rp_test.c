@@ -121,7 +121,7 @@ rp_msg_neg_test(void **state)
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(msg);
 
-    /* process the message and expect UNSUPPORTED error */
+    /* process the message */
     rc = rp_msg_process(rp_ctx, session, msg);
     assert_int_equal(rc, SR_ERR_OK);
 
