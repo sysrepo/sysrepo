@@ -1284,11 +1284,17 @@ cm_msg_send(cm_ctx_t *cm_ctx, Sr__Msg *msg)
     }
 
     pthread_mutex_lock(&cm_ctx->msg_queue_mutex);
-    rc = sr_cbuff_enqueue(cm_ctx->msg_queue, &msg); // TODO err code
+    rc = sr_cbuff_enqueue(cm_ctx->msg_queue, &msg);
     pthread_mutex_unlock(&cm_ctx->msg_queue_mutex);
 
-    /* send async event to the event loop */
-    ev_async_send(cm_ctx->event_loop, &cm_ctx->msg_queue_watcher);
+    if (SR_ERR_OK == rc) {
+        /* send async event to the event loop */
+        ev_async_send(cm_ctx->event_loop, &cm_ctx->msg_queue_watcher);
+    } else {
+        /* release the message by error */
+        SR_LOG_ERR_MSG("Unable to send the message, skipping.");
+        sr__msg__free_unpacked(msg, NULL);
+    }
 
-    return SR_ERR_OK;
+    return rc;
 }

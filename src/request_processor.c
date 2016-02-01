@@ -334,7 +334,7 @@ rp_worker_thread_execute(void *rp_ctx_p)
                     SR_LOG_DBG("Thread id=%lu received an empty request, exiting.",  pthread_self());
                     exit = true;
                 } else {
-                    rp_msg_dispatch(rp_ctx, req.session, req.msg); // TODO: check
+                    rp_msg_dispatch(rp_ctx, req.session, req.msg);
                     /* update message count and release session if needed */
                     req.session->msg_count -= 1;
                     if (0 == req.session->msg_count && req.session->stop_requested) {
@@ -545,10 +545,16 @@ rp_msg_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
 
     pthread_mutex_lock(&rp_ctx->request_queue_mutex);
 
-    sr_cbuff_enqueue(rp_ctx->request_queue, &req); // TODO check
+    rc = sr_cbuff_enqueue(rp_ctx->request_queue, &req);
     pthread_cond_signal(&rp_ctx->request_queue_cv);
 
     pthread_mutex_unlock(&rp_ctx->request_queue_mutex);
+
+    if (SR_ERR_OK != rc) {
+        /* release the message by error */
+        SR_LOG_ERR_MSG("Unable to process the message, skipping.");
+        sr__msg__free_unpacked(msg, NULL);
+    }
 
     return rc;
 }
