@@ -136,10 +136,10 @@ sr_cbuff_enqueue(sr_cbuff_t *buffer, void *item)
 
     pos = (buffer->head + buffer->count) % buffer->capacity;
 
-    SR_LOG_DBG("Circular buffer enqueue to position=%zu.", pos);
-
     memcpy(((uint8_t*)buffer->data + (pos * buffer->elem_size)), item, buffer->elem_size);
     buffer->count++;
+
+    SR_LOG_DBG("Circular buffer enqueue to position=%zu, current count=%zu.", pos, buffer->count);
 
     return SR_ERR_OK;
 }

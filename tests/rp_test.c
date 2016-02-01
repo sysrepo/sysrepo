@@ -35,6 +35,8 @@ rp_setup(void **state)
     rp_ctx_t *rp_ctx = NULL;
     int rc = 0;
 
+    sr_logger_set_level(SR_LL_DBG, SR_LL_INF);
+
     rc = rp_init(NULL, &rp_ctx);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(rp_ctx);
@@ -110,9 +112,9 @@ rp_msg_neg_test(void **state)
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(msg);
 
-    /* process the message and expect UNSUPPORTED error */
+    /* process the message */
     rc = rp_msg_process(rp_ctx, session, msg);
-    assert_int_equal(rc, SR_ERR_UNSUPPORTED);
+    assert_int_equal(rc, SR_ERR_OK);
 
     /* RP does not implement session start response */
     rc = sr_pb_resp_alloc(SR__OPERATION__SESSION_START, 123456, &msg);
@@ -121,7 +123,7 @@ rp_msg_neg_test(void **state)
 
     /* process the message and expect UNSUPPORTED error */
     rc = rp_msg_process(rp_ctx, session, msg);
-    assert_int_equal(rc, SR_ERR_UNSUPPORTED);
+    assert_int_equal(rc, SR_ERR_OK);
 
     /* stop the session */
     rc = rp_session_stop(rp_ctx, session);
