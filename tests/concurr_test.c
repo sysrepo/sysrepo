@@ -69,13 +69,13 @@ sysrepo_teardown(void **state)
 }
 
 static void
-test_random_get_item(sr_session_ctx_t *session)
+test_execute_in_session(sr_session_ctx_t *session)
 {
     int rc = 0;
     sr_val_t *value = NULL;
 
     /* perform get-item requests */
-    for (size_t i = 0; i<10000; i++){
+    for (size_t i = 0; i<1000; i++) {
         /* existing leaf */
         rc = sr_get_item(session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &value);
         assert_int_equal(rc, SR_ERR_OK);
@@ -90,7 +90,7 @@ test_thread_execute_in_sess(void *sr_session_ctx_p)
 {
     sr_session_ctx_t *session = (sr_session_ctx_t*)sr_session_ctx_p;
 
-    test_random_get_item(session);
+    test_execute_in_session(session);
 
     return NULL;
 }
@@ -107,7 +107,7 @@ test_thread_execute_in_conn(void *sr_conn_ctx_p)
     rc = sr_session_start(conn, "alice", SR_DS_CANDIDATE, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
-    test_random_get_item(session);
+    test_execute_in_session(session);
 
     /* stop the session */
     rc = sr_session_stop(session);
@@ -117,7 +117,7 @@ test_thread_execute_in_conn(void *sr_conn_ctx_p)
 }
 
 static void *
-test_thread_execute_separated(void *sr_conn_ctx_p)
+test_thread_execute_separated(void *ctx)
 {
     sr_conn_ctx_t *conn = NULL;
     sr_session_ctx_t *session = NULL;
@@ -131,7 +131,7 @@ test_thread_execute_separated(void *sr_conn_ctx_p)
     rc = sr_session_start(conn, "alice", SR_DS_CANDIDATE, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
-    test_random_get_item(session);
+    test_execute_in_session(session);
 
     /* stop the session */
     rc = sr_session_stop(session);
@@ -147,7 +147,8 @@ test_thread_execute_separated(void *sr_conn_ctx_p)
  * Test concurrent requests within one session.
  */
 static void
-concurr_requests_test(void **state) {
+concurr_requests_test(void **state)
+{
     pthread_t threads[TEST_THREAD_COUNT];
     size_t i = 0;
     sr_session_ctx_t *session = NULL;
@@ -176,7 +177,8 @@ concurr_requests_test(void **state) {
  * Test concurrent sessions within one connection.
  */
 static void
-concurr_sessions_test(void **state) {
+concurr_sessions_test(void **state)
+{
     pthread_t threads[TEST_THREAD_COUNT];
     size_t i = 0;
     sr_conn_ctx_t *conn = *state;
@@ -195,7 +197,8 @@ concurr_sessions_test(void **state) {
  * Test concurrent connections.
  */
 static void
-concurr_connections_test(void **state) {
+concurr_connections_test(void **state)
+{
     pthread_t threads[TEST_THREAD_COUNT];
     size_t i = 0;
     sr_conn_ctx_t *conn = *state;
@@ -211,7 +214,8 @@ concurr_connections_test(void **state) {
 }
 
 int
-main() {
+main()
+{
     const struct CMUnitTest tests[] = {
             cmocka_unit_test_setup_teardown(concurr_requests_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(concurr_sessions_test, sysrepo_setup, sysrepo_teardown),
