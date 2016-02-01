@@ -94,10 +94,12 @@ typedef struct cm_buffer_s {
  * @brief Context used to store session-related data managed by Connection Manager.
  */
 typedef struct cm_session_ctx_s {
-    uint32_t rp_req_cnt;        /**< Number of session-related outstanding requests in Request Processor. */
-    sr_cbuff_t *request_queue;  /**< Queue of requests waiting for forwarding to Request Processor. */
-    uint32_t rp_resp_expected;  /**< Number of expected session-related responses to be forwarded to Request Processor. */
-    rp_session_t *rp_session;   /**< Request Processor's session context. */
+    uint32_t rp_req_cnt;           /**< Number of session-related outstanding requests in Request Processor. */
+    sr_cbuff_t *rp_request_queue;  /**< Queue of requests waiting for forwarding to Request Processor. */
+    uint32_t rp_resp_expected;     /**< Number of expected session-related responses to be forwarded to Request Processor. */
+    rp_session_t *rp_session;      /**< Request Processor's session context. */
+    bool stop_requested;           /**< Session-stop requested, but there are still some outstanding requests in RP.
+                                        Session will be freed as soon as the response comes from RP. */
 } cm_session_ctx_t;
 
 /**
@@ -224,7 +226,7 @@ cm_session_data_cleanup(void *session)
 {
     sm_session_t *sm_session = (sm_session_t*)session;
     if ((NULL != sm_session) && (NULL != sm_session->cm_data)) {
-        sr_cbuff_cleanup(sm_session->cm_data->request_queue);
+        sr_cbuff_cleanup(sm_session->cm_data->rp_request_queue);
         free(sm_session->cm_data);
         sm_session->cm_data = NULL;
     }
@@ -252,6 +254,7 @@ static int
 cm_conn_close(cm_ctx_t *cm_ctx, sm_connection_t *conn)
 {
     sm_session_list_t *sess = NULL;
+    bool drop_session = false;
 
     CHECK_NULL_ARG3(cm_ctx, conn, conn->cm_data);
 
@@ -266,15 +269,25 @@ cm_conn_close(cm_ctx_t *cm_ctx, sm_connection_t *conn)
     while (NULL != conn->session_list) {
         sess = conn->session_list;
         if (NULL != sess->session) {
+            drop_session = true;
             if (NULL != sess->session->cm_data) {
-                /* stop the session in Request Processor */
-                rp_session_stop(cm_ctx->rp_ctx, sess->session->cm_data->rp_session);
+                if (sess->session->cm_data->rp_req_cnt > 0) {
+                    /* there are some outstanding requests in RP, drop the session after the last response from RP comes */
+                    sess->session->cm_data->stop_requested = true;
+                    drop_session = false;
+                } else {
+                    /* stop the session in Request Processor immediately */
+                    rp_session_stop(cm_ctx->rp_ctx, sess->session->cm_data->rp_session);
+                }
             }
-            /* drop the session in Session manager */
-            sm_session_drop(cm_ctx->sm_ctx, sess->session); /* also removes from conn->session_list */
+            if (drop_session) {
+                /* drop the session in Session manager */
+                sm_session_drop(cm_ctx->sm_ctx, sess->session);
+            }
         }
     }
 
+    /* cleanup connection, pointers to the connection from outstanding sessions will be set to NULL */
     sm_connection_stop(cm_ctx->sm_ctx, conn);
 
     return SR_ERR_OK;
@@ -450,7 +463,7 @@ cm_session_start_req_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, Sr__Msg *m
 
     /* initialize session request queue */
     if (SR_ERR_OK == rc) {
-        rc = sr_cbuff_init(CM_INIT_SESS_REQ_QUEUE_SIZE, sizeof(Sr__Msg*), &session->cm_data->request_queue);
+        rc = sr_cbuff_init(CM_INIT_SESS_REQ_QUEUE_SIZE, sizeof(Sr__Msg*), &session->cm_data->rp_request_queue);
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR("Cannot initialize session request queue (session id=%"PRIu32").", session->id);
             rc = SR_ERR_NOMEM;
@@ -518,18 +531,28 @@ cm_session_stop_req_process(cm_ctx_t *cm_ctx, sm_session_t *session, Sr__Msg *ms
         }
     }
 
+    /* drop the session by defualt */
+    drop_session = true;
+
     /* stop session in Request Processor */
     if ((SR_ERR_OK == rc) && (NULL != session->cm_data)) {
-        rc = rp_session_stop(cm_ctx->rp_ctx, session->cm_data->rp_session);
+        if (session->cm_data->rp_req_cnt > 0) {
+            /* there are some outstanding requests in RP, drop the session after the last response from RP comes */
+            session->cm_data->stop_requested = true;
+            drop_session = false;
+        } else {
+            /* stop the session in Request Processor immediately */
+            rc = rp_session_stop(cm_ctx->rp_ctx, session->cm_data->rp_session);
+        }
     }
 
     if (SR_ERR_OK == rc) {
         /* set the id to response */
         msg_out->response->session_stop_resp->session_id = session->id;
-        drop_session = true;
     } else {
-        /* set the error code to response */
+        /* set the error code to response, do not drop the session */
         msg_out->response->result = rc;
+        drop_session = false;
     }
 
     /* send the response */
@@ -593,7 +616,7 @@ cm_req_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, sm_session_t *session, S
             if (session->cm_data->rp_req_cnt > 0) {
                 /* there are some outstanding requests in RP, put the message into queue */
                 SR_LOG_DBG("There are %u outstanding requests for this session, request will be processed later.", session->cm_data->rp_req_cnt);
-                rc = sr_cbuff_enqueue(session->cm_data->request_queue, &msg);
+                rc = sr_cbuff_enqueue(session->cm_data->rp_request_queue, &msg);
                 if (SR_ERR_OK != rc) {
                     goto cleanup;
                 }
@@ -971,7 +994,7 @@ cm_server_watcher_cb(struct ev_loop *loop, ev_io *w, int revents)
 }
 
 /**
- * TODO
+ * @brief Callback called by the event loop watcher when a message is enqueued into message queue.
  */
 static void
 cm_msg_enqueue_cb(struct ev_loop *loop, ev_async *w, int revents)
@@ -1017,21 +1040,31 @@ cm_msg_enqueue_cb(struct ev_loop *loop, ev_async *w, int revents)
             }
 
             /* send the message */
-            rc = cm_msg_send_session(cm_ctx, session, msg);
-            if (SR_ERR_OK != rc) {
-                SR_LOG_ERR("Unable to send the message over session (id=%"PRIu32").", msg->session_id);
+            if (!session->cm_data->stop_requested) {
+                /* only if session_stop has not been requested */
+                rc = cm_msg_send_session(cm_ctx, session, msg);
+                if (SR_ERR_OK != rc) {
+                    SR_LOG_ERR("Unable to send the message over session (id=%"PRIu32").", msg->session_id);
+                }
             }
 
             /* release the message */
             sr__msg__free_unpacked(msg, NULL);
 
-            /* if there are no outstanding session-related requests in RP and there are some requests waiting, process them */
+            /* if there are no more outstanding session-related requests in RP */
             if (0 == session->cm_data->rp_req_cnt) {
-                if (sr_cbuff_dequeue(session->cm_data->request_queue, &msg)) {
-                    session->cm_data->rp_req_cnt += 1;
-                    rc = rp_msg_process(cm_ctx->rp_ctx, session->cm_data->rp_session, msg);
-                    if (SR_ERR_OK != rc) {
-                        session->cm_data->rp_req_cnt -= 1;
+                if (session->cm_data->stop_requested) {
+                    /* session stop requested, stop it in RP and SM */
+                    rp_session_stop(cm_ctx->rp_ctx, session->cm_data->rp_session);
+                    sm_session_drop(cm_ctx->sm_ctx, session);
+                } else {
+                    /* if there are some requests waiting for to be processed, process next one */
+                    if (sr_cbuff_dequeue(session->cm_data->rp_request_queue, &msg)) {
+                        session->cm_data->rp_req_cnt += 1;
+                        rc = rp_msg_process(cm_ctx->rp_ctx, session->cm_data->rp_session, msg);
+                        if (SR_ERR_OK != rc) {
+                            session->cm_data->rp_req_cnt -= 1;
+                        }
                     }
                 }
             }
