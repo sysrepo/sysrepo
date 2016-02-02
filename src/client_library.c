@@ -1060,3 +1060,38 @@ sr_free_val_iter(sr_val_iter_t *iter){
     free(iter);
 }
 
+int
+sr_set_item(sr_session_ctx_t *session, const char *path, const sr_val_t *value, const sr_edit_options_t opts)
+{
+    return SR_ERR_UNSUPPORTED;
+}
+
+int
+sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_options_t opts)
+{
+    return SR_ERR_UNSUPPORTED;
+}
+
+int
+sr_move_item(sr_session_ctx_t *session, char *path, sr_move_direction_t direction)
+{
+    return SR_ERR_UNSUPPORTED;
+}
+
+int
+sr_validate(sr_session_ctx_t *session, char **errors, size_t *error_cnt)
+{
+    return SR_ERR_UNSUPPORTED;
+}
+
+int
+sr_commit(sr_session_ctx_t *session, char **errors, size_t *error_cnt)
+{
+    return SR_ERR_UNSUPPORTED;
+}
+
+int
+sr_discard_changes(sr_session_ctx_t *session)
+{
+    return SR_ERR_UNSUPPORTED;
+}

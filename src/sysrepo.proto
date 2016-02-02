@@ -179,6 +179,68 @@ message ListSchemasResp {
   repeated Schema schemas = 1;
 }
 
+enum EditFlag {
+  DEFAULT = 1;
+  NON_RECURSIVE = 2;
+  STRICT = 3;
+}
+
+message SetItemReq {
+  required string path = 1;
+  required Value value = 2;
+  required EditFlag options = 3;
+}
+
+message SetItemResp {
+  /* does not hold any information */
+}
+
+message DeleteItemReq {
+  required string path = 1;
+  required EditFlag options = 2;
+}
+
+message DeleteItemResp {
+  /* does not hold any information */
+}
+
+message MoveItemReq {
+  enum MoveDirection {
+    UP = 1;
+    DOWN = 2;
+  }
+  required string path = 1;
+  required MoveDirection direction = 2;
+}
+
+message MoveItemResp {
+  /* does not hold any information */
+}
+
+message ValidateReq {
+  /* does not hold any information */
+}
+
+message ValidateResp {
+  repeated string errors = 1;
+}
+
+message CommitReq {
+  /* does not hold any information */
+}
+
+message CommitResp {
+  repeated string errors = 1;
+}
+
+message DiscardChangesReq {
+  /* does not hold any information */
+}
+
+message DiscardChangesResp {
+  /* does not hold any information */
+}
+
 /**
  * @brief Requested operation.
  */
@@ -190,6 +252,14 @@ enum Operation {
 
   GET_ITEM = 4;
   GET_ITEMS = 5;
+
+  SET_ITEM = 6;
+  DELETE_ITEM = 7;
+  MOVE_ITEM = 8;
+
+  VALIDATE = 9;
+  COMMIT = 10;
+  DISCARD_CHANGES = 11;
 }
 
 /**
@@ -205,6 +275,14 @@ message Req {
 
   optional GetItemReq get_item_req = 13;
   optional GetItemsReq get_items_req = 14;
+
+  optional SetItemReq set_item_req = 15;
+  optional DeleteItemReq delete_item_req = 16;
+  optional MoveItemReq move_item_req = 17;
+
+  optional ValidateReq validate_req = 18;
+  optional CommitReq commit_req = 19;
+  optional DiscardChangesReq discard_changes_req = 20;
 }
 
 /**
@@ -222,6 +300,14 @@ message Resp {
 
   optional GetItemResp get_item_resp = 13;
   optional GetItemsResp get_items_resp = 14;
+
+  optional SetItemResp set_item_resp = 15;
+  optional DeleteItemResp delete_item_resp = 16;
+  optional MoveItemResp move_item_resp = 17;
+
+  optional ValidateResp validate_resp = 18;
+  optional CommitResp commit_resp = 19;
+  optional DiscardChangesResp discard_changes_resp = 20;
 }
 
 /**
