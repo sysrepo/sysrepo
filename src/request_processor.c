@@ -71,7 +71,7 @@ typedef struct rp_request_s {
 } rp_request_t;
 
 /**
- * Processes a list_schemas request.
+ * @brief Processes a list_schemas request.
  */
 static int
 rp_list_schemas_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
@@ -114,7 +114,7 @@ rp_list_schemas_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session,
 }
 
 /**
- * Processes a get_item request.
+ * @brief Processes a get_item request.
  */
 static int
 rp_get_item_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
@@ -162,7 +162,7 @@ rp_get_item_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr_
 }
 
 /**
- * Processes a get_items request.
+ * @brief Processes a get_items request.
  */
 static int
 rp_get_items_req_process(const rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
@@ -236,8 +236,6 @@ rp_get_items_req_process(const rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg 
     }
 
 cleanup:
-
-
     /* set response code */
     resp->response->result = rc;
 
@@ -250,22 +248,134 @@ cleanup:
     return rc;
 }
 
+/**
+ * @brief Processes a set_item request.
+ */
 static int
-rp_session_cleanup(const rp_ctx_t *rp_ctx, rp_session_t *session)
+rp_set_item_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
 {
-    CHECK_NULL_ARG2(rp_ctx, session);
+    Sr__Msg *resp = NULL;
+    char *xpath = NULL;
+    sr_val_t value = { 0 };
+    int rc = SR_ERR_OK;
 
-    SR_LOG_DBG("RP session cleanup, session id=%"PRIu32".", session->id);
+    CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->set_item_req);
 
-    dm_session_stop(rp_ctx->dm_ctx, session->dm_session);
+    SR_LOG_DBG_MSG("Processing set_item request.");
 
-    rp_ns_clean(&session->get_items_ctx.stack);
-    free(session->get_items_ctx.xpath);
-    free(session);
+    xpath = msg->request->set_item_req->path;
 
-    return SR_ERR_OK;
+    /* allocate the response */
+    rc = sr_pb_resp_alloc(SR__OPERATION__SET_ITEM, session->id, &resp);
+    if (SR_ERR_OK != rc){
+        SR_LOG_ERR_MSG("Allocation of set_item response failed.");
+        return SR_ERR_NOMEM;
+    }
+
+    /* copy the value from gpb */
+    rc = sr_copy_gpb_to_val_t(msg->request->set_item_req->value, &value);
+    if (SR_ERR_OK != rc){
+        SR_LOG_ERR("Copying gpb value to sr_val_t failed for xpath '%s'", xpath);
+    }
+
+    /* set the value in data manager */
+    if (SR_ERR_OK == rc) {
+        rc = rp_dt_set_item(rp_ctx->dm_ctx, session->dm_session, session->datastore,
+                xpath, msg->request->set_item_req->options, &value);
+        if (SR_ERR_OK != rc){
+            SR_LOG_ERR("Set item failed for '%s', session id=%"PRIu32".", xpath, session->id);
+        }
+    }
+    sr_free_val_content(&value);
+
+    /* set response code */
+    resp->response->result = rc;
+
+    /* send the response */
+    rc = cm_msg_send(rp_ctx->cm_ctx, resp);
+
+    return rc;
 }
 
+/**
+ * @brief Processes a delete_item request.
+ */
+static int
+rp_delete_item_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
+{
+    Sr__Msg *resp = NULL;
+    char *xpath = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->delete_item_req);
+
+    SR_LOG_DBG_MSG("Processing delete_item request.");
+
+    xpath = msg->request->delete_item_req->path;
+
+    /* allocate the response */
+    rc = sr_pb_resp_alloc(SR__OPERATION__DELETE_ITEM, session->id, &resp);
+    if (SR_ERR_OK != rc){
+        SR_LOG_ERR_MSG("Allocation of delete_item response failed.");
+        return SR_ERR_NOMEM;
+    }
+
+    /* delete the item in data manager */
+    rc = rp_dt_delete_item(rp_ctx->dm_ctx, session->dm_session, session->datastore,
+            xpath, msg->request->delete_item_req->options);
+    if (SR_ERR_OK != rc){
+        SR_LOG_ERR("Delete item failed for '%s', session id=%"PRIu32".", xpath, session->id);
+    }
+
+    /* set response code */
+    resp->response->result = rc;
+
+    /* send the response */
+    rc = cm_msg_send(rp_ctx->cm_ctx, resp);
+
+    return rc;
+}
+
+/**
+ * @brief Processes a move_item request.
+ */
+static int
+rp_move_item_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
+{
+    Sr__Msg *resp = NULL;
+    char *xpath = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->move_item_req);
+
+    SR_LOG_DBG_MSG("Processing move_item request.");
+
+    xpath = msg->request->move_item_req->path;
+
+    /* allocate the response */
+    rc = sr_pb_resp_alloc(SR__OPERATION__MOVE_ITEM, session->id, &resp);
+    if (SR_ERR_OK != rc){
+        SR_LOG_ERR_MSG("Allocation of move_item response failed.");
+        return SR_ERR_NOMEM;
+    }
+
+    /* TODO: move the item in data manager */
+    SR_LOG_DBG("TODO: move xpath='%s' in direction=%d",
+            xpath, sr_move_direction_gpb_to_sr( msg->request->move_item_req->direction));
+    rc = SR_ERR_UNSUPPORTED;
+
+    /* set response code */
+    resp->response->result = rc;
+
+    /* send the response */
+    rc = cm_msg_send(rp_ctx->cm_ctx, resp);
+
+    return rc;
+}
+
+/**
+ * @brief Dispatches the received message.
+ */
 static int
 rp_msg_dispatch(const rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
 {
@@ -284,6 +394,15 @@ rp_msg_dispatch(const rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
                 break;
             case SR__OPERATION__GET_ITEMS:
                 rc = rp_get_items_req_process(rp_ctx, session, msg);
+                break;
+            case SR__OPERATION__SET_ITEM:
+                rc = rp_set_item_req_process(rp_ctx, session, msg);
+                break;
+            case SR__OPERATION__DELETE_ITEM:
+                rc = rp_delete_item_req_process(rp_ctx, session, msg);
+                break;
+            case SR__OPERATION__MOVE_ITEM:
+                rc = rp_move_item_req_process(rp_ctx, session, msg);
                 break;
             default:
                 SR_LOG_ERR("Unsupported request received (session id=%"PRIu32", operation=%d).",
@@ -308,6 +427,28 @@ rp_msg_dispatch(const rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
     return rc;
 }
 
+/**
+ * @brief Cleans up the session (releases the data allocated by Request Processor).
+ */
+static int
+rp_session_cleanup(const rp_ctx_t *rp_ctx, rp_session_t *session)
+{
+    CHECK_NULL_ARG2(rp_ctx, session);
+
+    SR_LOG_DBG("RP session cleanup, session id=%"PRIu32".", session->id);
+
+    dm_session_stop(rp_ctx->dm_ctx, session->dm_session);
+
+    rp_ns_clean(&session->get_items_ctx.stack);
+    free(session->get_items_ctx.xpath);
+    free(session);
+
+    return SR_ERR_OK;
+}
+
+/**
+ * @brief Executes the work of a worker thread.
+ */
 static void *
 rp_worker_thread_execute(void *rp_ctx_p)
 {

@@ -1063,19 +1063,143 @@ sr_free_val_iter(sr_val_iter_t *iter){
 int
 sr_set_item(sr_session_ctx_t *session, const char *path, const sr_val_t *value, const sr_edit_options_t opts)
 {
-    return SR_ERR_UNSUPPORTED;
+    Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG4(session, session->conn_ctx, path, value);
+
+    /* prepare get_item message */
+    rc = sr_pb_req_alloc(SR__OPERATION__SET_ITEM, session->id, &msg_req);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Cannot allocate set_item message.");
+        goto cleanup;
+    }
+
+    /* fill in the path and options */
+    msg_req->request->set_item_req->path = strdup(path);
+    if (NULL == msg_req->request->set_item_req->path) {
+        SR_LOG_ERR_MSG("Cannot allocate set_item path.");
+        goto cleanup;
+    }
+    msg_req->request->set_item_req->options = opts;
+
+    /* duplicate the content of sr_val_t to gpb */
+    rc = sr_dup_val_t_to_gpb(value, &msg_req->request->set_item_req->value);
+    if (SR_ERR_OK != rc){
+        SR_LOG_ERR_MSG("Copying from sr_val_t to gpb failed.");
+        goto cleanup;
+    }
+
+    /* send the request and receive the response */
+    rc = cl_request_process(session->conn_ctx, msg_req, &msg_resp, SR__OPERATION__SET_ITEM);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Error by processing of set_item request.");
+        goto cleanup;
+    }
+
+    sr__msg__free_unpacked(msg_req, NULL);
+    sr__msg__free_unpacked(msg_resp, NULL);
+
+    return SR_ERR_OK;
+
+cleanup:
+    if (NULL != msg_req) {
+        sr__msg__free_unpacked(msg_req, NULL);
+    }
+    if (NULL != msg_resp) {
+        sr__msg__free_unpacked(msg_resp, NULL);
+    }
+    return rc;
 }
 
 int
 sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_options_t opts)
 {
-    return SR_ERR_UNSUPPORTED;
+    Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG3(session, session->conn_ctx, path);
+
+    /* prepare get_item message */
+    rc = sr_pb_req_alloc(SR__OPERATION__DELETE_ITEM, session->id, &msg_req);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Cannot allocate delete_item message.");
+        goto cleanup;
+    }
+
+    /* fill in the path and options */
+    msg_req->request->delete_item_req->path = strdup(path);
+    if (NULL == msg_req->request->delete_item_req->path) {
+        SR_LOG_ERR_MSG("Cannot allocate delete_item path.");
+        goto cleanup;
+    }
+    msg_req->request->delete_item_req->options = opts;
+
+    /* send the request and receive the response */
+    rc = cl_request_process(session->conn_ctx, msg_req, &msg_resp, SR__OPERATION__DELETE_ITEM);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Error by processing of delete_item request.");
+        goto cleanup;
+    }
+
+    sr__msg__free_unpacked(msg_req, NULL);
+    sr__msg__free_unpacked(msg_resp, NULL);
+
+    return SR_ERR_OK;
+
+cleanup:
+    if (NULL != msg_req) {
+        sr__msg__free_unpacked(msg_req, NULL);
+    }
+    if (NULL != msg_resp) {
+        sr__msg__free_unpacked(msg_resp, NULL);
+    }
+    return rc;
 }
 
 int
-sr_move_item(sr_session_ctx_t *session, char *path, sr_move_direction_t direction)
+sr_move_item(sr_session_ctx_t *session, const char *path, const sr_move_direction_t direction)
 {
-    return SR_ERR_UNSUPPORTED;
+    Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG3(session, session->conn_ctx, path);
+
+    /* prepare get_item message */
+    rc = sr_pb_req_alloc(SR__OPERATION__MOVE_ITEM, session->id, &msg_req);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Cannot allocate move_item message.");
+        goto cleanup;
+    }
+
+    /* fill in the path and direction */
+    msg_req->request->move_item_req->path = strdup(path);
+    if (NULL == msg_req->request->move_item_req->path) {
+        SR_LOG_ERR_MSG("Cannot allocate move_item path.");
+        goto cleanup;
+    }
+    msg_req->request->move_item_req->direction = sr_move_direction_sr_to_gpb(direction);
+
+    /* send the request and receive the response */
+    rc = cl_request_process(session->conn_ctx, msg_req, &msg_resp, SR__OPERATION__MOVE_ITEM);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Error by processing of move_item request.");
+        goto cleanup;
+    }
+
+    sr__msg__free_unpacked(msg_req, NULL);
+    sr__msg__free_unpacked(msg_resp, NULL);
+
+    return SR_ERR_OK;
+
+cleanup:
+    if (NULL != msg_req) {
+        sr__msg__free_unpacked(msg_req, NULL);
+    }
+    if (NULL != msg_resp) {
+        sr__msg__free_unpacked(msg_resp, NULL);
+    }
+    return rc;
 }
 
 int

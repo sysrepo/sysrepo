@@ -64,8 +64,6 @@ message Value {
 
   required string path = 1;
   required Types type = 2;
-  
-  optional uint32 length = 3;
 
   optional string binary_val = 10;
   optional string bits_val = 11;
@@ -179,16 +177,16 @@ message ListSchemasResp {
   repeated Schema schemas = 1;
 }
 
-enum EditFlag {
-  DEFAULT = 1;
-  NON_RECURSIVE = 2;
-  STRICT = 3;
+enum EditFlags {
+  DEFAULT = 0x00;
+  NON_RECURSIVE = 0x01;
+  STRICT = 0x02;
 }
 
 message SetItemReq {
   required string path = 1;
   required Value value = 2;
-  required EditFlag options = 3;
+  required uint32 options = 3;  /**< Bitwise OR of EditFlags */
 }
 
 message SetItemResp {
@@ -197,7 +195,7 @@ message SetItemResp {
 
 message DeleteItemReq {
   required string path = 1;
-  required EditFlag options = 2;
+  required uint32 options = 3;  /**< Bitwise OR of EditFlags */
 }
 
 message DeleteItemResp {

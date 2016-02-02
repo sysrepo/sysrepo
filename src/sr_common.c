@@ -989,12 +989,14 @@ sr_set_val_t_type_in_gpb(const sr_val_t *value, Sr__Value *gpb_value){
 
 static int
 sr_set_val_t_value_in_gpb(const sr_val_t *value, Sr__Value *gpb_value){
-    CHECK_NULL_ARG3(value, gpb_value, value->xpath);
+    CHECK_NULL_ARG2(value, gpb_value);
 
-    gpb_value->path = strdup(value->xpath);
-    if (NULL == gpb_value->path){
-        SR_LOG_ERR_MSG("Memory allocation failed");
-        return  SR_ERR_NOMEM;
+    if (NULL != value->xpath) {
+        gpb_value->path = strdup(value->xpath);
+        if (NULL == gpb_value->path){
+            SR_LOG_ERR_MSG("Memory allocation failed");
+            return  SR_ERR_NOMEM;
+        }
     }
 
     switch (value->type) {
@@ -1383,6 +1385,34 @@ sr_datastore_gpb_to_sr(Sr__DataStore gpb_ds)
             return SR_DS_RUNNING;
     }
     return SR_DS_RUNNING;
+}
+
+Sr__MoveItemReq__MoveDirection
+sr_move_direction_sr_to_gpb(sr_move_direction_t sr_direction)
+{
+    switch (sr_direction) {
+        case SR_MOVE_UP:
+            return SR__MOVE_ITEM_REQ__MOVE_DIRECTION__UP;
+            break;
+        case SR_MOVE_DOWN:
+            return SR__MOVE_ITEM_REQ__MOVE_DIRECTION__DOWN;
+            break;
+    }
+    return SR__MOVE_ITEM_REQ__MOVE_DIRECTION__UP;
+}
+
+sr_move_direction_t
+sr_move_direction_gpb_to_sr(Sr__MoveItemReq__MoveDirection gpb_direction)
+{
+    switch (gpb_direction) {
+        case SR__MOVE_ITEM_REQ__MOVE_DIRECTION__UP:
+            return SR_MOVE_UP;
+        case SR__MOVE_ITEM_REQ__MOVE_DIRECTION__DOWN:
+            return SR_MOVE_DOWN;
+        default:
+            return SR_MOVE_UP;
+    }
+    return SR_MOVE_UP;
 }
 
 void

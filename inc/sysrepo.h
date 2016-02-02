@@ -84,7 +84,7 @@ typedef enum sr_type_e {
     SR_UNION_T,                /**< Choice of member types ([RFC 6020 sec 9.12](http://tools.ietf.org/html/rfc6020#section-9.12)) */
 
     /* types containing some data */
-    SR_BINARY_T,       /**< Any binary data ([RFC 6020 sec 9.8](http://tools.ietf.org/html/rfc6020#section-9.8)) */
+    SR_BINARY_T,       /**< Base64-encoded binary data ([RFC 6020 sec 9.8](http://tools.ietf.org/html/rfc6020#section-9.8)) */
     SR_BITS_T,         /**< A set of bits or flags ([RFC 6020 sec 9.7](http://tools.ietf.org/html/rfc6020#section-9.7)) */
     SR_BOOL_T,         /**< A boolean value ([RFC 6020 sec 9.5](http://tools.ietf.org/html/rfc6020#section-9.5)) */
     SR_DECIMAL64_T,    /**< 64-bit signed decimal number ([RFC 6020 sec 9.3](http://tools.ietf.org/html/rfc6020#section-9.3)) */
@@ -119,7 +119,7 @@ typedef struct sr_val_s {
 
     /** Data of an element (if applicable), properly set according to the type. */
     union {
-        char *binary_val;       /**< Any binary data ([RFC 6020 sec 9.8](http://tools.ietf.org/html/rfc6020#section-9.8)) */
+        char *binary_val;       /**< Base64-encoded binary data ([RFC 6020 sec 9.8](http://tools.ietf.org/html/rfc6020#section-9.8)) */
         char *bits_val;         /**< A set of bits or flags ([RFC 6020 sec 9.7](http://tools.ietf.org/html/rfc6020#section-9.7)) */
         bool bool_val;          /**< A boolean value ([RFC 6020 sec 9.5](http://tools.ietf.org/html/rfc6020#section-9.5)) */
         int64_t decimal64_val;  /**< 64-bit signed decimal number ([RFC 6020 sec 9.3](http://tools.ietf.org/html/rfc6020#section-9.3)) */
@@ -137,9 +137,6 @@ typedef struct sr_val_s {
         uint32_t uint32_val;    /**< 32-bit unsigned integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
         uint64_t uint64_val;    /**< 64-bit unsigned integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
     } data;
-
-    /** Length of the data, applicable for those data types where the length may vary. */
-    uint32_t length;
 } sr_val_t;
 
 /**
@@ -425,9 +422,9 @@ typedef enum sr_edit_flag_e {
 
 /**
  * @brief Options overriding default behavior of data manipulation calls,
- * can be or-ed value of any ::sr_edit_flag_t flags.
+ * can be bitwise OR-ed value of any ::sr_edit_flag_t flags.
  */
-typedef int sr_edit_options_t;
+typedef uint32_t sr_edit_options_t;
 
 /**
  * @brief Options for specifying move direction of ::sr_move_item call.
@@ -480,12 +477,15 @@ int sr_set_item(sr_session_ctx_t *session, const char *path, const sr_val_t *val
 int sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_options_t opts);
 
 /**
- * @brief Move the instance of a ordered list / leaf-list in specified direction.
+ * @brief Move the instance of an ordered list in specified direction.
  *
  * @note Please note that this API call is experimental in this version of sysrepo and may not work properly yet.
  *
+ * @note To reorder leaf-list values, you need to delete the leaf-list and
+ * re-create it with requested order again.
+ *
  * @note To determine current order, you can issue a ::sr_get_items call
- * (in case of a list, without specifying keys of the list in question).
+ * (without specifying keys of the list in question).
  *
  * @param[in] session Session context acquired with ::sr_session_start call.
  * @param[in] path @ref xp_page "XPath" identifier of the data element to be moved.
@@ -494,7 +494,7 @@ int sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_op
  * @return Error code (SR_ERR_OK on success, SR_ERR_UNAUTHORIZED if the user
  * does not have write permission to any affected node).
  */
-int sr_move_item(sr_session_ctx_t *session, char *path, sr_move_direction_t direction);
+int sr_move_item(sr_session_ctx_t *session, const char *path, const sr_move_direction_t direction);
 
 /**
  * @brief Perform the validation of changes made in this session, but do not

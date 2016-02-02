@@ -408,6 +408,75 @@ cl_get_items_iter_test(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 }
 
+static void
+cl_set_item_test(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+
+    sr_session_ctx_t *session = NULL;
+    sr_val_t value = { 0 };
+    int rc = 0;
+
+    /* start a session */
+    rc = sr_session_start(conn, "alice", SR_DS_CANDIDATE, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* perform a set-item request */
+    value.type = SR_STRING_T;
+    value.data.string_val = "abcdefghijkl";
+    rc = sr_set_item(session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* stop the session */
+    rc = sr_session_stop(session);
+    assert_int_equal(rc, SR_ERR_OK);
+}
+
+static void
+cl_delete_item_test(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+
+    sr_session_ctx_t *session = NULL;
+    int rc = 0;
+
+    /* start a session */
+    rc = sr_session_start(conn, "alice", SR_DS_CANDIDATE, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* perform a delete-item request */
+    rc = sr_delete_item(session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* stop the session */
+    rc = sr_session_stop(session);
+    assert_int_equal(rc, SR_ERR_OK);
+}
+
+static void
+cl_move_item_test(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+
+    sr_session_ctx_t *session = NULL;
+    int rc = 0;
+
+    /* start a session */
+    rc = sr_session_start(conn, "alice", SR_DS_CANDIDATE, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* perform a delete-item request */
+    rc = sr_move_item(session, "/test-module:list[key='k1']", SR_MOVE_DOWN);
+    assert_int_equal(rc, SR_ERR_UNSUPPORTED); /* UNSUPPORTED for now */
+
+    /* stop the session */
+    rc = sr_session_stop(session);
+    assert_int_equal(rc, SR_ERR_OK);
+}
+
 int
 main()
 {
@@ -417,6 +486,9 @@ main()
             cmocka_unit_test_setup_teardown(cl_get_item_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_get_items_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_get_items_iter_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_set_item_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_delete_item_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_move_item_test, sysrepo_setup, sysrepo_teardown),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);
