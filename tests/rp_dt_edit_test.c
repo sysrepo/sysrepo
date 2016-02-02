@@ -483,6 +483,31 @@ void set_item_container_test(void **state){
     dm_session_stop(ctx, session);
 }
 
+void
+set_item_negative_test(void **state)
+{
+    int rc = 0;
+    dm_ctx_t *ctx = *state;
+    dm_session_t *session = NULL;
+
+    dm_session_start(ctx, &session);
+
+
+    rc = rp_dt_delete_item(ctx, session, SR_DS_RUNNING, "/test-module:main", SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* set non-presence container */
+    rc = rp_dt_set_item(ctx, session, SR_DS_RUNNING, "/test-module:main", SR_EDIT_DEFAULT, NULL);
+    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+
+
+    /* set list without keys*/
+    rc = rp_dt_set_item(ctx, session, SR_DS_RUNNING, "/test-module:list", SR_EDIT_DEFAULT, NULL);
+    assert_int_equal(SR_ERR_UNKNOWN_MODEL, rc);
+
+    dm_session_stop(ctx, session);
+}
+
 int main(){
 
     sr_logger_set_level(SR_LL_DBG, SR_LL_NONE);
@@ -496,7 +521,8 @@ int main(){
             cmocka_unit_test(set_item_leaf_test),
             cmocka_unit_test(set_item_leaflist_test),
             cmocka_unit_test(set_item_list_test),
-            cmocka_unit_test(set_item_container_test)
+            cmocka_unit_test(set_item_container_test),
+            cmocka_unit_test(set_item_negative_test)
     };
     return cmocka_run_group_tests(tests, setup, teardown);
 }

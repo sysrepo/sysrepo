@@ -96,7 +96,6 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t 
         goto cleanup;
     }
     data_tree = info->node;
-    /*TODO validate xpath schema */
 
     rc = rp_dt_find_deepest_match(data_tree, l, true, &level, &node);
     if (SR_ERR_NOT_FOUND == rc) {
@@ -297,11 +296,10 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t dat
         goto cleanup;
     }
     data_tree = info->node;
-    /*TODO validate xpath schema check if it is a leaf or leaf-list*/
 
     rc = rp_dt_find_deepest_match(data_tree, l, true, &level, &match);
-    if (XP_GET_NODE_COUNT(l) != 1 && SR_ERR_NOT_FOUND == rc) {
-        if (options & SR_EDIT_NON_RECURSIVE) {
+    if (SR_ERR_NOT_FOUND == rc) {
+        if (XP_GET_NODE_COUNT(l) != 1 && options & SR_EDIT_NON_RECURSIVE) {
             SR_LOG_ERR("A preceding node is missing '%s' create it or omit the non recursive option", xpath);
             rc = SR_ERR_INVAL_ARG;
             goto cleanup;
@@ -378,8 +376,17 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t dat
             sr_lyd_unlink(info, match);
             lyd_free(match);
         }
-        else if (LYS_CONTAINER == match->schema->nodetype || LYS_LIST == match->schema->nodetype){
-            /* setting existing list or container - do nothing */
+        else if (LYS_CONTAINER == match->schema->nodetype){
+            /* setting existing container - do nothing */
+            goto cleanup;
+        }
+        else if (LYS_LIST == match->schema->nodetype){
+            /* check if the set request match has keys set */
+            if (XP_GET_KEY_COUNT(l, level-1) == 0){
+                /* Set item for list can not be called without keys */
+                SR_LOG_ERR("Can not create list without keys %s", l->xpath);
+                rc = SR_ERR_UNKNOWN_MODEL;
+            }
             goto cleanup;
         }
     }
@@ -425,7 +432,7 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t dat
                 node = sr_lyd_new_leaf(info, node, module, node_name, new_value);
             }
             else {
-                SR_LOG_ERR_MSG("Request to create unsupported node type (non-presence container, list withou keys ...)");
+                SR_LOG_ERR_MSG("Request to create unsupported node type (non-presence container, list without keys ...)");
                 rc = SR_ERR_INVAL_ARG;
                 goto cleanup;
             }
