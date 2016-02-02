@@ -205,6 +205,14 @@ void delete_item_list_test(void **state){
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);
     sr_free_val(val);
+    val = NULL;
+
+    sr_val_t **values = NULL;
+    size_t cnt = 0;
+    rc = rp_dt_get_values_wrapper(ctx, session, "/example-module:container", &values, &cnt);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(1, cnt);
+    sr_free_values_arr(values, cnt);
 
     /* list deletion with non recursive fails*/
     rc = rp_dt_delete_item(ctx, session, SR_DS_CANDIDATE, LIST_INST1_XP , SR_EDIT_NON_RECURSIVE);
@@ -220,6 +228,10 @@ void delete_item_list_test(void **state){
     /* if the list contains only keys it can be deleted even with non recursive flag*/
     rc = rp_dt_delete_item(ctx, session, SR_DS_CANDIDATE, "/example-module:container/list[key1='key1'][key2='key2']" , SR_EDIT_NON_RECURSIVE);
     assert_int_equal(SR_ERR_OK, rc);
+
+    /* delete the only list instance in the container the container should be also deleted */
+    rc = rp_dt_get_value_wrapper(ctx, session, "/example-module:container", &val);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
     dm_session_stop(ctx, session);
 }

@@ -19,6 +19,8 @@
  * limitations under the License.
  */
 
+#include <unistd.h>
+
 #include "rp_dt_edit.h"
 #include "rp_dt_lookup.h"
 #include "rp_dt_xpath.h"
@@ -60,6 +62,7 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t 
     xp_loc_id_t *l = NULL;
     struct lyd_node *data_tree = NULL;
     struct lyd_node *node = NULL;
+    struct lyd_node *parent = NULL;
     size_t level = 0;
     char *data_tree_name = NULL;
 
@@ -130,6 +133,9 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t 
         rc = SR_ERR_INTERNAL;
         goto cleanup;
     }
+
+    /* save parent to delete empty containers */
+    parent = node->parent;
 
     /* perform delete according to the node type */
     if (node->schema->nodetype == LYS_CONTAINER) {
@@ -238,6 +244,20 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t 
                 sr_free_datatree(nodes[i]);
             }
             free(nodes);
+        }
+    }
+
+    /* delete all empty parent containers */
+    node = parent;
+    while (NULL != node){
+        if (NULL == node->child && LYS_CONTAINER == node->schema->nodetype){
+            parent = node->parent;
+            sr_lyd_unlink(info, node);
+            lyd_free(node);
+            node = parent;
+        }
+        else{
+            break;
         }
     }
 
