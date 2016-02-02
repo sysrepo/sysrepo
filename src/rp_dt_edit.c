@@ -363,7 +363,7 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t dat
 
     if (NULL != value){
         /* if the list is being created value is NULL*/
-        rc = sr_val_to_str(value, &new_value);
+        rc = sr_val_to_str(value, schema_node, &new_value);
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR_MSG("Copy new value to string failed");
             goto cleanup;

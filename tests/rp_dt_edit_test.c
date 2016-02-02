@@ -606,17 +606,17 @@ void delete_set_test_module_test(void **state){
 
     /* decimal 64 leaf*/
 #define XP_TEST_MODULE_DEC64 "/test-module:main/dec64"
-   /* rc = rp_dt_get_value_wrapper(ctx, session, XP_TEST_MODULE_DEC64, &value);
+    rc = rp_dt_get_value_wrapper(ctx, session, XP_TEST_MODULE_DEC64, &value);
     assert_int_equal(SR_ERR_OK, rc);
 
     assert_int_equal(SR_DECIMAL64_T, value->type);
-    assert_int_equal(985, value->data.decimal64_val);
+    assert_int_equal(9.85, value->data.decimal64_val);
 
     delete_get_set_get(ctx, session, XP_TEST_MODULE_DEC64, value, &new_set);
 
     assert_int_equal(value->data.decimal64_val, new_set->data.decimal64_val);
 
-    FREE_VARS(value, new_set);*/
+    FREE_VARS(value, new_set);
 
     /* enum leaf*/
 #define XP_TEST_MODULE_ENUM "/test-module:main/enum"

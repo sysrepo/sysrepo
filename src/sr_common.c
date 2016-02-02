@@ -1397,10 +1397,37 @@ nomem:
     return SR_ERR_NOMEM;
 }
 
+static int
+sr_dec64_to_str(double val, struct lys_node *schema_node, char **out){
+    CHECK_NULL_ARG2(schema_node, out);
+    size_t fraction_digits = 0;
+    if (LYS_LEAF == schema_node->nodetype || LYS_LEAFLIST == schema_node->nodetype){
+        struct lys_node_leaflist *l = (struct lys_node_leaflist *) schema_node;
+        fraction_digits = l->type.info.dec64.dig;
+    }
+    else{
+        SR_LOG_ERR_MSG("Node must be either leaf or leaflist");
+        return SR_ERR_INVAL_ARG;
+    }
+    /* format string for double string convertsion "%.XXf", where XX is corresponding number of fraction digits 1-18 */
+    #define MAX_FMT_LEN 5
+    char format_string [MAX_FMT_LEN] = {0,};
+    snprintf(format_string, MAX_FMT_LEN, "%%.%zuf", fraction_digits);
+
+    size_t len = snprintf(NULL, 0, format_string, val);
+    *out = calloc(len + 1, sizeof(**out));
+    if (NULL == *out){
+        SR_LOG_ERR_MSG("Memory allocation failed");
+        return SR_ERR_NOMEM;
+    }
+    snprintf(*out, len + 1, format_string, val);
+    return SR_ERR_OK;
+}
+
 int
-sr_val_to_str(const sr_val_t *value, char **out)
+sr_val_to_str(const sr_val_t *value, struct lys_node *schema_node, char **out)
 {
-    CHECK_NULL_ARG2(value, out);
+    CHECK_NULL_ARG3(value, schema_node, out);
     size_t len = 0;
     switch (value->type) {
     case SR_BINARY_T:
@@ -1413,10 +1440,7 @@ sr_val_to_str(const sr_val_t *value, char **out)
         *out = value->data.bool_val ? strdup("true") : strdup("false");
         break;
     case SR_DECIMAL64_T:
-        len = snprintf(NULL, 0, "%"PRId64, value->data.decimal64_val);
-        *out = calloc(len + 1, sizeof(**out));
-        snprintf(*out, len + 1, "%"PRId64, value->data.decimal64_val);
-        break;
+        return sr_dec64_to_str(value->data.decimal64_val, schema_node, out);
     case SR_ENUM_T:
         *out = strdup(value->data.enum_val);
         break;
