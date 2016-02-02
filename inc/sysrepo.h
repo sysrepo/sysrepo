@@ -505,10 +505,13 @@ int sr_move_item(sr_session_ctx_t *session, char *path, sr_move_direction_t dire
  * Provides only YANG validation, commit verify subscribers won't be notified in this case.
  *
  * @param[in] session Session context acquired with ::sr_session_start call.
+ * @param[in] errors Errors due which the validation has failed. NULL may be passed
+ * in if you are not interested in errors.
+ * @param[in] error_cnt Number of errors returned.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int sr_validate(sr_session_ctx_t *session);
+int sr_validate(sr_session_ctx_t *session, char **errors, size_t *error_cnt);
 
 /**
  * @brief Apply changes made in this session.
@@ -519,10 +522,13 @@ int sr_validate(sr_session_ctx_t *session);
  * need to copy the config to startup to make changes permanent after restart.
  *
  * @param[in] session Session context acquired with ::sr_session_start call.
+ * @param[in] errors Errors due which the commit has failed. NULL may be passed
+ * in if you are not interested in errors.
+ * @param[in] error_cnt Number of errors returned.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int sr_commit(sr_session_ctx_t *session);
+int sr_commit(sr_session_ctx_t *session, char **errors, size_t *error_cnt);
 
 /**
  * @brief Discard non-committed changes made in this session.
