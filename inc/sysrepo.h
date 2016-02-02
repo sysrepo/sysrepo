@@ -172,6 +172,7 @@ typedef enum sr_error_e {
     SR_ERR_MALFORMED_MSG,  /**< Malformed message. */
     SR_ERR_UNSUPPORTED,    /**< Unsupported operation requested. */
     SR_ERR_UNKNOWN_MODEL,  /**< Request includes unknown schema */
+    SR_ERR_BAD_ELEMENT,    /**< Unknown element in existing schema */
 } sr_error_t;
 
 /**

@@ -318,7 +318,7 @@ rp_dt_validate_node_xpath(dm_ctx_t *dm_ctx, const xp_loc_id_t *loc_id, struct ly
         while (NULL != node){
             if (NULL == node->name){
                 SR_LOG_ERR_MSG("Missing schema information");
-                return SR_ERR_OK;
+                return SR_ERR_INTERNAL;
             }
 
             if (!XP_CMP_NODE(loc_id, i, node->name)){
@@ -336,12 +336,12 @@ rp_dt_validate_node_xpath(dm_ctx_t *dm_ctx, const xp_loc_id_t *loc_id, struct ly
             if (0 != XP_GET_KEY_COUNT(loc_id, i)){
                 if (LYS_LIST != node->nodetype){
                     SR_LOG_ERR("Keys specified for the node that is not list %s", node->name);
-                    return SR_ERR_UNKNOWN_MODEL;
+                    return SR_ERR_BAD_ELEMENT;
                 }
                 struct lys_node_list *list = (struct lys_node_list *) node;
                 if (list->keys_size != XP_GET_KEY_COUNT(loc_id, i)){
                     SR_LOG_ERR("Key count does not match %s", node->name);
-                    return SR_ERR_UNKNOWN_MODEL;
+                    return SR_ERR_BAD_ELEMENT;
                 }
                 size_t matched_keys = 0;
                 for (size_t k = 0; k < list->keys_size; k++){
@@ -356,7 +356,7 @@ rp_dt_validate_node_xpath(dm_ctx_t *dm_ctx, const xp_loc_id_t *loc_id, struct ly
                 }
                 if (list->keys_size != matched_keys){
                     SR_LOG_ERR("Not all keys has been matched %s", loc_id->xpath);
-                    return SR_ERR_UNKNOWN_MODEL;
+                    return SR_ERR_BAD_ELEMENT;
                 }
             }
 
@@ -374,7 +374,7 @@ rp_dt_validate_node_xpath(dm_ctx_t *dm_ctx, const xp_loc_id_t *loc_id, struct ly
 
     if (NULL == node){
         SR_LOG_ERR("Request node not found in schemas %s", loc_id->xpath);
-        return SR_ERR_UNKNOWN_MODEL;
+        return SR_ERR_BAD_ELEMENT;
     }
 
     if (NULL != match) {

@@ -190,12 +190,21 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t 
         }
         free(nodes);
     } else if (node->schema->nodetype == LYS_LIST) {
-        if (options & SR_EDIT_NON_RECURSIVE) {
-            SR_LOG_ERR("Item for xpath %s is list deleted with non recursive opt", l->xpath);
-            rc = SR_ERR_INVAL_ARG;
-            goto cleanup;
-        }
         size_t last_node = XP_GET_NODE_COUNT(l) - 1;
+        if (options & SR_EDIT_NON_RECURSIVE) {
+            /* count children */
+            struct lyd_node *child = node->child;
+            size_t child_cnt = 0;
+            while (NULL != child){
+                child = child->next;
+                child_cnt++;
+            }
+            if (XP_GET_KEY_COUNT(l, last_node) != child_cnt){
+                SR_LOG_ERR("Item for xpath %s is non empty list. It can not be deleted with non recursive opt", l->xpath);
+                rc = SR_ERR_INVAL_ARG;
+                goto cleanup;
+            }
+        }
         if (0 != XP_GET_KEY_COUNT(l, last_node)) {
             /* delete list instance */
             rc = sr_lyd_unlink(info, node);
@@ -313,7 +322,7 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t dat
     if (XP_GET_NODE_COUNT(l) != level) {
         if (XP_GET_NODE_COUNT(l) != (level + 1)) {
             if (options & SR_EDIT_NON_RECURSIVE) {
-                SR_LOG_ERR("No some preceeding item is missing '%s' create it or omit the non recursive option", xpath);
+                SR_LOG_ERR("A preceding item is missing '%s' create it or omit the non recursive option", xpath);
                 rc = SR_ERR_INVAL_ARG;
                 goto cleanup;
             }
@@ -385,7 +394,7 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t dat
             if (XP_GET_KEY_COUNT(l, level-1) == 0){
                 /* Set item for list can not be called without keys */
                 SR_LOG_ERR("Can not create list without keys %s", l->xpath);
-                rc = SR_ERR_UNKNOWN_MODEL;
+                rc = SR_ERR_INVAL_ARG;
             }
             goto cleanup;
         }
@@ -445,7 +454,7 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t dat
 
         } else {
             size_t key_count = XP_GET_KEY_COUNT(l, n);
-            //create container or list
+            /* create container or list */
             node = sr_lyd_new(info, node, module, node_name);
             if (NULL == node) {
                 SR_LOG_ERR("Creating container or list failed %s", xpath);

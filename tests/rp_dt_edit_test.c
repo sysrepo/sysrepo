@@ -209,6 +209,18 @@ void delete_item_list_test(void **state){
     /* list deletion with non recursive fails*/
     rc = rp_dt_delete_item(ctx, session, SR_DS_CANDIDATE, LIST_INST1_XP , SR_EDIT_NON_RECURSIVE);
     assert_int_equal(SR_ERR_INVAL_ARG, rc);
+
+    rc = rp_dt_delete_item(ctx, session, SR_DS_CANDIDATE, "/example-module:container/list[key1='key1'][key2='key2']" , SR_EDIT_NON_RECURSIVE);
+    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+
+    /* delete the leaf, so the list contains only keys*/
+    rc = rp_dt_delete_item(ctx, session, SR_DS_CANDIDATE, "/example-module:container/list[key1='key1'][key2='key2']/leaf" , SR_EDIT_NON_RECURSIVE);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* if the list contains only keys it can be deleted even with non recursive flag*/
+    rc = rp_dt_delete_item(ctx, session, SR_DS_CANDIDATE, "/example-module:container/list[key1='key1'][key2='key2']" , SR_EDIT_NON_RECURSIVE);
+    assert_int_equal(SR_ERR_OK, rc);
+
     dm_session_stop(ctx, session);
 }
 
@@ -503,7 +515,7 @@ set_item_negative_test(void **state)
 
     /* set list without keys*/
     rc = rp_dt_set_item(ctx, session, SR_DS_RUNNING, "/test-module:list", SR_EDIT_DEFAULT, NULL);
-    assert_int_equal(SR_ERR_UNKNOWN_MODEL, rc);
+    assert_int_equal(SR_ERR_INVAL_ARG, rc);
 
     dm_session_stop(ctx, session);
 }

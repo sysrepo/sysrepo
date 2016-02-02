@@ -44,6 +44,7 @@ const char *const sr_errlist[] = {
         "Malformed message",                    /* SR_ERR_MALFORMED_MSG */
         "Operation not supported",              /* SR_ERR_UNSUPPORTED */
         "Requested schema model is not known",  /* SR_ERR_UNKNOWN_MODEL */
+        "Request contains unknown element",     /* SR_ERR_BAD_ELEMENT */
 };
 
 const char *
