@@ -1403,6 +1403,55 @@ sr_val_to_str(const sr_val_t *value, char **out)
     CHECK_NULL_ARG2(value, out);
     size_t len = 0;
     switch (value->type) {
+    case SR_BINARY_T:
+        *out = strdup(value->data.binary_val);
+        break;
+    case SR_BITS_T:
+        *out = strdup(value->data.bits_val);
+        break;
+    case SR_BOOL_T:
+        *out = value->data.bool_val ? strdup("true") : strdup("false");
+        break;
+    case SR_DECIMAL64_T:
+        len = snprintf(NULL, 0, "%"PRId64, value->data.decimal64_val);
+        *out = calloc(len + 1, sizeof(**out));
+        snprintf(*out, len + 1, "%"PRId64, value->data.decimal64_val);
+        break;
+    case SR_ENUM_T:
+        *out = strdup(value->data.enum_val);
+        break;
+    case SR_LEAF_EMPTY_T:
+        *out = strdup("");
+        break;
+    case SR_IDENTITYREF_T:
+        *out = strdup(value->data.identityref_val);
+        break;
+    case SR_INSTANCEID_T:
+        *out = strdup(value->data.instanceid_val);
+        break;
+    case SR_INT8_T:
+        len = snprintf(NULL, 0, "%"PRId8, value->data.int8_val);
+        *out = calloc(len + 1, sizeof(**out));
+        snprintf(*out, len + 1, "%"PRId8, value->data.int8_val);
+        break;
+    case SR_INT16_T:
+        len = snprintf(NULL, 0, "%"PRId16, value->data.int16_val);
+        *out = calloc(len + 1, sizeof(**out));
+        snprintf(*out, len + 1, "%"PRId16, value->data.int16_val);
+        break;
+    case SR_INT32_T:
+        len = snprintf(NULL, 0, "%"PRId32, value->data.int32_val);
+        *out = calloc(len + 1, sizeof(**out));
+        snprintf(*out, len + 1, "%"PRId32, value->data.int32_val);
+        break;
+    case SR_INT64_T:
+        len = snprintf(NULL, 0, "%"PRId64, value->data.int64_val);
+        *out = calloc(len + 1, sizeof(**out));
+        snprintf(*out, len + 1, "%"PRId64, value->data.int64_val);
+        break;
+    case SR_LEAFREF_T:
+        *out = strdup(value->data.leafref_val);
+        break;
     case SR_STRING_T:
         *out = strdup(value->data.string_val);
         break;
@@ -1411,7 +1460,21 @@ sr_val_to_str(const sr_val_t *value, char **out)
         *out = calloc(len + 1, sizeof(**out));
         snprintf(*out, len + 1, "%"PRIu8, value->data.uint8_val);
         break;
-        //TODO other types
+    case SR_UINT16_T:
+        len = snprintf(NULL, 0, "%"PRIu16, value->data.uint16_val);
+        *out = calloc(len + 1, sizeof(**out));
+        snprintf(*out, len + 1, "%"PRIu16, value->data.uint16_val);
+        break;
+    case SR_UINT32_T:
+        len = snprintf(NULL, 0, "%"PRIu32, value->data.uint32_val);
+        *out = calloc(len + 1, sizeof(**out));
+        snprintf(*out, len + 1, "%"PRIu32, value->data.uint32_val);
+        break;
+    case SR_UINT64_T:
+        len = snprintf(NULL, 0, "%"PRIu64, value->data.uint64_val);
+        *out = calloc(len + 1, sizeof(**out));
+        snprintf(*out, len + 1, "%"PRIu64, value->data.uint64_val);
+        break;
     default:
         SR_LOG_ERR_MSG("Conversion of value_t to string failed");
         *out = NULL;

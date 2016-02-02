@@ -64,6 +64,17 @@ module test-module {
     leaf empty {
       type empty;
     }
+    leaf boolean {
+      type boolean;
+    }
+    leaf string {
+      type string;
+    }
+    leaf id_ref {
+      type identityref{
+        base base_id;
+      }
+    }
     leaf-list numbers {
       type uint8;
     }
