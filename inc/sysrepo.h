@@ -80,7 +80,7 @@ typedef enum sr_type_e {
     SR_LIST_T,                 /**< List instance. ([RFC 6020 sec 7.8](http://tools.ietf.org/html/rfc6020#section-7.8)) */
     SR_CONTAINER_T,            /**< Non-presence container. ([RFC 6020 sec 7.5](http://tools.ietf.org/html/rfc6020#section-7.5)) */
     SR_CONTAINER_PRESENCE_T,   /**< Presence container. ([RFC 6020 sec 7.5.1](http://tools.ietf.org/html/rfc6020#section-7.5.1)) */
-    SR_LEAF_EMPTY_T,           /**< A leaf that does not have any value ([RFC 6020 sec 9.11](http://tools.ietf.org/html/rfc6020#section-9.11)) */
+    SR_LEAF_EMPTY_T,           /**< A leaf that does not hold any value ([RFC 6020 sec 9.11](http://tools.ietf.org/html/rfc6020#section-9.11)) */
     SR_UNION_T,                /**< Choice of member types ([RFC 6020 sec 9.12](http://tools.ietf.org/html/rfc6020#section-9.12)) */
 
     /* types containing some data */
@@ -108,8 +108,9 @@ typedef enum sr_type_e {
  */
 typedef struct sr_val_s {
     /**
-     * XPath instance-identifier of an item in JSON format, as defined at
-     * https://tools.ietf.org/html/draft-ietf-netmod-yang-json-02#section-6.11
+     * XPath identifier of the data element, as defined in
+     * @ref xp_page "XPath Addressing" documentation or at
+     * https://tools.ietf.org/html/draft-ietf-netmod-yang-json#section-6.11
      */
     char *xpath;
 
@@ -305,6 +306,10 @@ int sr_list_schemas(sr_session_ctx_t *session, sr_schema_t **schemas, size_t *sc
  * https://tools.ietf.org/html/draft-ietf-netmod-yang-json#section-6.11
  * for XPath syntax used for identification of yang nodes in sysrepo calls.
  *
+ * @see Use ::sr_get_items or ::sr_get_items_iter for retrieving larger chunks
+ * of data from the datastore. Since they retrieve the data from datastore in
+ * larger chunks, they can work much more efficiently than multiple ::sr_get_item calls.
+ *
  * @param[in] session Session context acquired with ::sr_session_start call.
  * @param[in] path @ref xp_page "XPath" identifier of the data element to be retrieved.
  * @param[out] value Structure containing information about requested element
@@ -318,6 +323,9 @@ int sr_get_item(sr_session_ctx_t *session, const char *path, sr_val_t **value);
 /**
  * @brief Retrieves an array of data elements stored under provided path XPath
  * (direct children of the entity specified by XPath, non-recursively).
+ *
+ * All data elements are transferred within one message from the datastore,
+ * which is much more efficient that calling multiple ::sr_get_item calls.
  *
  * When called on a leaf-list, returns all leaf-list elements. When called on
  * a list (with keys provided) or a container, returns all direct children of the
@@ -338,8 +346,10 @@ int sr_get_item(sr_session_ctx_t *session, const char *path, sr_val_t **value);
  * for XPath syntax used for identification of yang nodes in sysrepo calls.
  *
  * @see ::sr_get_items_iter can be used for the same purpose as ::sr_get_items
- * call if you expect thet ::sr_get_items could return too large data sets.
- * ::sr_get_items_iter can also be used for recursive subtree retrieval.
+ * call if you expect that ::sr_get_items could return too large data sets.
+ * ::sr_get_items_iter can also be used for recursive subtree retrieval. Since
+ * ::sr_get_items_iter also retrieves the data from datastore in larger chunks,
+ * in can still work very efficiently for large datasets.
  *
  * @param[in] session Session context acquired with ::sr_session_start call.
  * @param[in] path @ref xp_page "XPath" identifier of the data element to be retrieved.
@@ -357,8 +367,11 @@ int sr_get_items(sr_session_ctx_t *session, const char *path, sr_val_t **values,
  * If the recursive flag is true, it recursively iterates over all nodes in the
  * data tree, up to the tree leaves. If the recursive is false, it iterates only
  * over the nodes at the path level (over the values that ::sr_get_items would return).
- * You can use this function instead of ::sr_get_items if you expect many data
- * entities on the same level.
+ *
+ * Requested data elements are transferred from the datastore in larger chunks
+ * of pre-defined size, which is much more efficient that calling multiple
+ * ::sr_get_item calls, and may be less memory demanding than calling ::sr_get_items
+ * on very large datasets.
  *
  * @see @ref xp_page "XPath Addressing" documentation, or
  * https://tools.ietf.org/html/draft-ietf-netmod-yang-json#section-6.11
@@ -394,7 +407,7 @@ int sr_get_item_next(sr_session_ctx_t *session, sr_val_iter_t *iter, sr_val_t **
 
 
 ////////////////////////////////////////////////////////////////////////////////
-// Data Management API (edit-config functionality) - !!! EXPERIMENTAL !!!
+// Data Manipulation API (edit-config functionality) - !!! EXPERIMENTAL !!!
 ////////////////////////////////////////////////////////////////////////////////
 
 /**
@@ -402,9 +415,12 @@ int sr_get_item_next(sr_session_ctx_t *session, sr_val_iter_t *iter, sr_val_t **
  */
 typedef enum sr_edit_flag_e {
     SR_EDIT_DEFAULT = 0,        /**< Default behavior - recursive and non-strict. */
-    SR_EDIT_NON_RECURSIVE = 1,  /**< if the operation is crate all preceeding nodes must exist,
-                                     if the operation is delete item must not identify list or container */
-    SR_EDIT_STRICT = 2          /**< if the operation is create item must not exists, if the operation is delete item must exists */
+    SR_EDIT_NON_RECURSIVE = 1,  /**< Non-recursive behavior:
+                                     by ::sr_set_item, all preceding nodes (parents) of the identified element must exist,
+                                     by ::sr_delete_item xpath must not identify an non-empty list or non-empty container. */
+    SR_EDIT_STRICT = 2          /**< Strict behavior:
+                                     by ::sr_set_item the identified element must not exist (similar to netconf create operation),
+                                     by ::sr_delete_item the identified element must exist (similar to netconf delete operation). */
 } sr_edit_flag_t;
 
 /**
@@ -413,13 +429,18 @@ typedef enum sr_edit_flag_e {
  */
 typedef int sr_edit_options_t;
 
+/**
+ * @brief Options for specifying move direction of ::sr_move_item call.
+ */
 typedef enum sr_move_direction_e {
-    SR_MOVE_UP = 0,
-    SR_MOVE_DOWN = 1,
+    SR_MOVE_UP = 0,    /**< Move the specified item before its preceding sibling. */
+    SR_MOVE_DOWN = 1,  /**< Move the specified item after its following sibling. */
 } sr_move_direction_t;
 
 /**
  * @brief Sets the value of the leaf, leaf-list or presence container.
+ *
+ * @note Please note that this API call is experimental in this version of sysrepo and may not work properly yet.
  *
  * With default options it recursively creates all missing nodes (containers and
  * lists including their key leaves) in the path to the specified node (can be
@@ -434,57 +455,86 @@ typedef enum sr_move_direction_e {
  * @param[in] opts Options overriding default behavior of this call.
  *
  * @return Error code (SR_ERR_OK on success, SR_ERR_UNAUTHORIZED if the user
- * does not have write permission to requested node).
+ * does not have write permission to any affected node).
  */
 int sr_set_item(sr_session_ctx_t *session, const char *path, const sr_val_t *value, const sr_edit_options_t opts);
 
 /**
- * Deletes the nodes under the speciefied path. To delete list and containers non-recursive flag must not be set.
- * If the strict flag is set the node must exist. If the path includes the list keys, the specified list instance is deleted.
+ * @brief Deletes the nodes under the specified path.
+ *
+ * @note Please note that this API call is experimental in this version of sysrepo and may not work properly yet.
+ *
+ * To delete non-empty lists or containers SR_EDIT_NON_RECURSIVE flag must not be set.
+ * If SR_EDIT_STRICT flag is set the specified node must must exist in the datastore.
+ * If the path includes the list keys, the specified list instance is deleted.
  * If the path to list does not include keys, all instances of the list are deleted.
  * SR_ERR_UNAUTHORIZED will be returned if the user does not have write permission to any affected node.
- * [in] session
- * [in] path
- * [in] opts
- * return err_code
+ *
+ * @param[in] session Session context acquired with ::sr_session_start call.
+ * @param[in] path @ref xp_page "XPath" identifier of the data element to be deleted.
+ * @param[in] opts Options overriding default behavior of this call.
+ *
+ * @return Error code (SR_ERR_OK on success, SR_ERR_UNAUTHORIZED if the user
+ * does not have write permission to any affected node).
  **/
-int sr_delete_item(sr_session_ctx_t *session, char *path, sr_edit_options_t opts);
+int sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_options_t opts);
 
 /**
- * Move the instance of a ordered list / leaf-list in specified direction.
- * To determine current order, issue a sr_get_items call (in case of a list, without
- * specifying keys of the list in question)
- * [in] session
- * [in] path
- * [in] direction
- * return err_code
+ * @brief Move the instance of a ordered list / leaf-list in specified direction.
+ *
+ * @note Please note that this API call is experimental in this version of sysrepo and may not work properly yet.
+ *
+ * @note To determine current order, you can issue a ::sr_get_items call
+ * (in case of a list, without specifying keys of the list in question).
+ *
+ * @param[in] session Session context acquired with ::sr_session_start call.
+ * @param[in] path @ref xp_page "XPath" identifier of the data element to be moved.
+ * @param[in] direction Requested move direction.
+ *
+ * @return Error code (SR_ERR_OK on success, SR_ERR_UNAUTHORIZED if the user
+ * does not have write permission to any affected node).
  */
 int sr_move_item(sr_session_ctx_t *session, char *path, sr_move_direction_t direction);
 
 /**
- * Perform the validation of changes made in this session, but do not commit nor discard them.
+ * @brief Perform the validation of changes made in this session, but do not
+ * commit nor discard them.
+ *
+ * @note Please note that this API call is experimental in this version of sysrepo and may not work properly yet.
+ *
  * Provides only YANG validation, commit verify subscribers won't be notified in this case.
- * [in] session
- * return err_code
+ *
+ * @param[in] session Session context acquired with ::sr_session_start call.
+ *
+ * @return Error code (SR_ERR_OK on success).
  */
 int sr_validate(sr_session_ctx_t *session);
 
 /**
- * Apply changes made in this session
- * Note that in case that you are committing to the running datstore (via candidate,
- * direct write to running is not allowed), you need to call sr_save_to_startup() after
- * commit to make changes permanent after restart.
- * [in] session
- * return err_code
+ * @brief Apply changes made in this session.
+ *
+ * @note Please note that this API call is experimental in this version of sysrepo and may not work properly yet.
+ *
+ * @note Note that in case that you are committing to the running datstore, you also
+ * need to copy the config to startup to make changes permanent after restart.
+ *
+ * @param[in] session Session context acquired with ::sr_session_start call.
+ *
+ * @return Error code (SR_ERR_OK on success).
  */
 int sr_commit(sr_session_ctx_t *session);
 
 /**
- * Discard non-committed changes made in this session
- * [in] session
- * return err_code
+ * @brief Discard non-committed changes made in this session.
+ *
+ * @note Please note that this API call is experimental in this version of sysrepo and may not work properly yet.
+ *
+ * @param[in] session Session context acquired with ::sr_session_start call.
+ *
+ * @return Error code (SR_ERR_OK on success).
  */
 int sr_discard_changes(sr_session_ctx_t *session);
+
 
 ////////////////////////////////////////////////////////////////////////////////
 // Cleanup Routines
