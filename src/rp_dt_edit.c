@@ -365,6 +365,13 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t dat
             SR_LOG_ERR_MSG("Copy new value to string failed");
             goto cleanup;
         }
+    } else if ((LYS_LEAF | LYS_LEAFLIST) & schema_node->nodetype) {
+        struct lys_node_leaf *l_sch = (struct lys_node_leaf *) schema_node;
+        if (LY_TYPE_EMPTY != l_sch->type.base){
+            SR_LOG_ERR("NULL value passed %s", xpath);
+            rc = SR_ERR_INVAL_ARG;
+            goto cleanup;
+        }
     }
 
     /* module of the node to be created*/
@@ -428,7 +435,7 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t dat
                 goto cleanup;
             }
             rc = dm_get_module(dm_ctx, module_name, NULL, &module);
-            if (SR_ERR_OK == rc) {
+            if (SR_ERR_OK != rc) {
                 goto cleanup;
             }
             free(module_name);

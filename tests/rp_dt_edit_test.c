@@ -378,6 +378,10 @@ void set_item_leaf_test(void **state){
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);
 
+    /* create item with explicitly specified namespace*/
+    rc = rp_dt_set_item(ctx, session, SR_DS_STARTUP, "/example-module:container/example-module:list[key1='key11'][key2='key22']/example-module:leaf", SR_EDIT_DEFAULT, val);
+    assert_int_equal(SR_ERR_OK, rc);
+
     rc = rp_dt_delete_item(ctx, session, SR_DS_CANDIDATE, "/example-module:container", SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
@@ -396,6 +400,26 @@ void set_item_leaf_test(void **state){
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);
     sr_free_val(val);
+
+    /* create augment node */
+    sr_val_t v;
+    v.xpath = NULL;
+    v.type = SR_STRING_T;
+    v.data.string_val = strdup("abc");
+    assert_non_null(v.data.string_val);
+
+    rc = rp_dt_set_item(ctx, session, SR_DS_STARTUP, "/small-module:item/info-module:info", SR_EDIT_DEFAULT, &v);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_get_value_wrapper(ctx, session, "/small-module:item/info-module:info", &val);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(val);
+
+    assert_int_equal(v.type, val->type);
+    assert_string_equal(v.data.string_val, val->data.string_val);
+
+    sr_free_val(val);
+    sr_free_val_content(&v);
 
 
     dm_session_stop(ctx, session);
@@ -529,6 +553,17 @@ set_item_negative_test(void **state)
     rc = rp_dt_set_item(ctx, session, SR_DS_RUNNING, "/test-module:list", SR_EDIT_DEFAULT, NULL);
     assert_int_equal(SR_ERR_INVAL_ARG, rc);
 
+    rc = rp_dt_set_item(ctx, session, SR_DS_STARTUP, "^usfd&", SR_EDIT_DEFAULT, NULL);
+    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+
+    /* updating key value is not allowed */
+    rc = rp_dt_set_item(ctx, session, SR_DS_STARTUP, "/example-module:container/list[key1='key1'][key2='key2']/key1", SR_EDIT_DEFAULT, NULL);
+    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+
+    /* set item called with NULL value */
+    rc = rp_dt_set_item(ctx, session, SR_DS_STARTUP, "/example-module:container/list[key1='key1'][key2='key2']/leaf", SR_EDIT_DEFAULT, NULL);
+    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+
     dm_session_stop(ctx, session);
 }
 
@@ -555,7 +590,7 @@ void delete_get_set_get(dm_ctx_t *ctx, dm_session_t *session, const char* xpath,
 
 }
 
-void delete_set_test_module_test(void **state){
+void edit_test_module_test(void **state){
     int rc = 0;
     dm_ctx_t *ctx = *state;
     dm_session_t *session = NULL;
@@ -764,6 +799,24 @@ void delete_set_test_module_test(void **state){
 
     dm_session_stop(ctx, session);
 }
+
+void delete_negative_test(void **state){
+    int rc = 0;
+    dm_ctx_t *ctx = *state;
+    dm_session_t *session = NULL;
+
+    dm_session_start(ctx, &session);
+
+    /* invalid xpath*/
+    rc =rp_dt_delete_item(ctx, session, SR_DS_STARTUP, "^usfd&", SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+
+    rc =rp_dt_delete_item(ctx, session, SR_DS_STARTUP, "/example-module:unknown", SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
+
+    dm_session_stop(ctx, session);
+}
+
 int main(){
 
     sr_logger_set_level(SR_LL_DBG, SR_LL_NONE);
@@ -774,12 +827,13 @@ int main(){
             cmocka_unit_test(delete_item_list_test),
             cmocka_unit_test(delete_item_alllist_test),
             cmocka_unit_test(delete_item_leaflist_test),
+            cmocka_unit_test(delete_negative_test),
             cmocka_unit_test(set_item_leaf_test),
             cmocka_unit_test(set_item_leaflist_test),
             cmocka_unit_test(set_item_list_test),
             cmocka_unit_test(set_item_container_test),
             cmocka_unit_test(set_item_negative_test),
-            cmocka_unit_test(delete_set_test_module_test),
+            cmocka_unit_test(edit_test_module_test),
     };
     return cmocka_run_group_tests(tests, setup, teardown);
 }
