@@ -468,9 +468,97 @@ cl_move_item_test(void **state)
     rc = sr_session_start(conn, "alice", SR_DS_CANDIDATE, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
-    /* perform a delete-item request */
+    /* perform a move-item request */
     rc = sr_move_item(session, "/test-module:list[key='k1']", SR_MOVE_DOWN);
-    assert_int_equal(rc, SR_ERR_UNSUPPORTED); /* UNSUPPORTED for now */
+    assert_int_equal(rc, SR_ERR_UNSUPPORTED); /* TODO: UNSUPPORTED for now */
+
+    /* stop the session */
+    rc = sr_session_stop(session);
+    assert_int_equal(rc, SR_ERR_OK);
+}
+
+static void
+cl_validate_test(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+
+    sr_session_ctx_t *session = NULL;
+    int rc = 0;
+    char **errors = NULL;
+    size_t error_cnt = 0;
+
+    /* start a session */
+    rc = sr_session_start(conn, "alice", SR_DS_CANDIDATE, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* perform a validate request */
+    rc = sr_validate(session, &errors, &error_cnt);
+
+    assert_int_equal(rc, SR_ERR_VALIDATION_FAILED); /* TODO: expect validation fail for now */
+    /* print out and cleanup errors */
+    if (error_cnt > 0) {
+        for (size_t i = 0; i < error_cnt; i++) {
+            printf("Error[%zu]: %s\n", i, errors[i]);
+            free(errors[i]);
+        }
+        free(errors);
+    }
+
+    /* stop the session */
+    rc = sr_session_stop(session);
+    assert_int_equal(rc, SR_ERR_OK);
+}
+
+static void
+cl_commit_test(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+
+    sr_session_ctx_t *session = NULL;
+    int rc = 0;
+    char **errors = NULL;
+    size_t error_cnt = 0;
+
+    /* start a session */
+    rc = sr_session_start(conn, "alice", SR_DS_CANDIDATE, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* perform a commit request */
+    rc = sr_commit(session, &errors, &error_cnt);
+
+    assert_int_equal(rc, SR_ERR_COMMIT_FAILED); /* TODO: expect commit fail for now */
+    /* print out and cleanup errors */
+    if (error_cnt > 0) {
+        for (size_t i = 0; i < error_cnt; i++) {
+            printf("Error[%zu]: %s\n", i, errors[i]);
+            free(errors[i]);
+        }
+        free(errors);
+    }
+
+    /* stop the session */
+    rc = sr_session_stop(session);
+    assert_int_equal(rc, SR_ERR_OK);
+}
+
+static void
+cl_discard_changes_test(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+
+    sr_session_ctx_t *session = NULL;
+    int rc = 0;
+
+    /* start a session */
+    rc = sr_session_start(conn, "alice", SR_DS_CANDIDATE, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* perform a discard-changes request */
+    rc = sr_discard_changes(session);
+    assert_int_equal(rc, SR_ERR_UNSUPPORTED); /* TODO: UNSUPPORTED for now */
 
     /* stop the session */
     rc = sr_session_stop(session);
@@ -489,6 +577,9 @@ main()
             cmocka_unit_test_setup_teardown(cl_set_item_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_delete_item_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_move_item_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_validate_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_commit_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_discard_changes_test, sysrepo_setup, sysrepo_teardown),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);

@@ -374,6 +374,112 @@ rp_move_item_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr
 }
 
 /**
+ * @brief Processes a validate request.
+ */
+static int
+rp_validate_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
+{
+    Sr__Msg *resp = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->validate_req);
+
+    SR_LOG_DBG_MSG("Processing validate request.");
+
+    /* allocate the response */
+    rc = sr_pb_resp_alloc(SR__OPERATION__VALIDATE, session->id, &resp);
+    if (SR_ERR_OK != rc){
+        SR_LOG_ERR_MSG("Allocation of validate response failed.");
+        return SR_ERR_NOMEM;
+    }
+
+    /* TODO: run validate in data manager */
+    rc = SR_ERR_VALIDATION_FAILED;
+    /* here are just some temporary errors returned from validate to exercise the unit test */
+    resp->response->validate_resp->errors = calloc(2, sizeof(*resp->response->validate_resp->errors));
+    resp->response->validate_resp->errors[0] = strdup("Validate operation is not supported.");
+    resp->response->validate_resp->errors[1] = strdup("There are no changes within this session.");
+    resp->response->validate_resp->n_errors = 2;
+
+    /* set response code */
+    resp->response->result = rc;
+
+    /* send the response */
+    rc = cm_msg_send(rp_ctx->cm_ctx, resp);
+
+    return rc;
+}
+
+/**
+ * @brief Processes a commit request.
+ */
+static int
+rp_commit_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
+{
+    Sr__Msg *resp = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->commit_req);
+
+    SR_LOG_DBG_MSG("Processing commit request.");
+
+    /* allocate the response */
+    rc = sr_pb_resp_alloc(SR__OPERATION__COMMIT, session->id, &resp);
+    if (SR_ERR_OK != rc){
+        SR_LOG_ERR_MSG("Allocation of commit response failed.");
+        return SR_ERR_NOMEM;
+    }
+
+    /* TODO: run commit in data manager */
+    rc = SR_ERR_COMMIT_FAILED;
+    /* here are just some temporary errors returned from commit to exercise the unit test */
+    resp->response->commit_resp->errors = calloc(2, sizeof(resp->response->commit_resp->errors));
+    resp->response->commit_resp->errors[0] = strdup("Commit operation is not supported.");
+    resp->response->commit_resp->errors[1] = strdup("There are no changes within this session.");
+    resp->response->commit_resp->n_errors = 2;
+
+    /* set response code */
+    resp->response->result = rc;
+
+    /* send the response */
+    rc = cm_msg_send(rp_ctx->cm_ctx, resp);
+
+    return rc;
+}
+
+/**
+ * @brief Processes a discard_changes request.
+ */
+static int
+rp_discard_changes_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
+{
+    Sr__Msg *resp = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->discard_changes_req);
+
+    SR_LOG_DBG_MSG("Processing discard_changes request.");
+
+    /* allocate the response */
+    rc = sr_pb_resp_alloc(SR__OPERATION__DISCARD_CHANGES, session->id, &resp);
+    if (SR_ERR_OK != rc){
+        SR_LOG_ERR_MSG("Allocation of discard_changes response failed.");
+        return SR_ERR_NOMEM;
+    }
+
+    /* TODO: run discard_changes in data manager */
+    rc = SR_ERR_UNSUPPORTED;
+
+    /* set response code */
+    resp->response->result = rc;
+
+    /* send the response */
+    rc = cm_msg_send(rp_ctx->cm_ctx, resp);
+
+    return rc;
+}
+
+/**
  * @brief Dispatches the received message.
  */
 static int
@@ -403,6 +509,15 @@ rp_msg_dispatch(const rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
                 break;
             case SR__OPERATION__MOVE_ITEM:
                 rc = rp_move_item_req_process(rp_ctx, session, msg);
+                break;
+            case SR__OPERATION__VALIDATE:
+                rc = rp_validate_req_process(rp_ctx, session, msg);
+                break;
+            case SR__OPERATION__COMMIT:
+                rc = rp_commit_req_process(rp_ctx, session, msg);
+                break;
+            case SR__OPERATION__DISCARD_CHANGES:
+                rc = rp_discard_changes_req_process(rp_ctx, session, msg);
                 break;
             default:
                 SR_LOG_ERR("Unsupported request received (session id=%"PRIu32", operation=%d).",

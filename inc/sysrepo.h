@@ -143,17 +143,19 @@ typedef struct sr_val_s {
  * @brief Sysrepo error codes.
  */
 typedef enum sr_error_e {
-    SR_ERR_OK = 0,         /**< No error. */
-    SR_ERR_INVAL_ARG,      /**< Invalid argument. */
-    SR_ERR_NOMEM,          /**< Not enough memory. */
-    SR_ERR_NOT_FOUND,      /**< Item not found. */
-    SR_ERR_INTERNAL,       /**< Other internal error. */
-    SR_ERR_INIT_FAILED,    /**< Sysrepo infra initialization failed. */
-    SR_ERR_IO,             /**< Input/Output error. */
-    SR_ERR_DISCONNECT,     /**< The peer disconnected. */
-    SR_ERR_MALFORMED_MSG,  /**< Malformed message. */
-    SR_ERR_UNSUPPORTED,    /**< Unsupported operation requested. */
-    SR_ERR_UNKNOWN_MODEL,  /**< Request includes unknown schema */
+    SR_ERR_OK = 0,             /**< No error. */
+    SR_ERR_INVAL_ARG,          /**< Invalid argument. */
+    SR_ERR_NOMEM,              /**< Not enough memory. */
+    SR_ERR_NOT_FOUND,          /**< Item not found. */
+    SR_ERR_INTERNAL,           /**< Other internal error. */
+    SR_ERR_INIT_FAILED,        /**< Sysrepo infra initialization failed. */
+    SR_ERR_IO,                 /**< Input/Output error. */
+    SR_ERR_DISCONNECT,         /**< The peer disconnected. */
+    SR_ERR_MALFORMED_MSG,      /**< Malformed message. */
+    SR_ERR_UNSUPPORTED,        /**< Unsupported operation requested. */
+    SR_ERR_UNKNOWN_MODEL,      /**< Request includes unknown schema */
+    SR_ERR_VALIDATION_FAILED,  /**< Validation of the changes failed. */
+    SR_ERR_COMMIT_FAILED,      /**< Commit operation failed. */
 } sr_error_t;
 
 /**
@@ -511,7 +513,7 @@ int sr_move_item(sr_session_ctx_t *session, const char *path, const sr_move_dire
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int sr_validate(sr_session_ctx_t *session, char **errors, size_t *error_cnt);
+int sr_validate(sr_session_ctx_t *session, char ***errors, size_t *error_cnt);
 
 /**
  * @brief Apply changes made in this session.
@@ -528,7 +530,7 @@ int sr_validate(sr_session_ctx_t *session, char **errors, size_t *error_cnt);
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int sr_commit(sr_session_ctx_t *session, char **errors, size_t *error_cnt);
+int sr_commit(sr_session_ctx_t *session, char ***errors, size_t *error_cnt);
 
 /**
  * @brief Discard non-committed changes made in this session.
