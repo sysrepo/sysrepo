@@ -24,15 +24,6 @@ syntax="proto2";
 package sr;
 
 /**
- * @brief Datastore on which the configuration session will operate.
- */
-enum DataStore {
-  RUNNING = 1;
-  CANDIDATE = 2;
-  STARTUP = 3;
-}
-
-/**
  * @brief Value of an item stored (or to be stored) in the datastore.
  * Can be mapped to sr_val_t data structure from sysrepo library API.
  */
@@ -64,8 +55,6 @@ message Value {
 
   required string path = 1;
   required Types type = 2;
-  
-  optional uint32 length = 3;
 
   optional string binary_val = 10;
   optional string bits_val = 11;
@@ -86,15 +75,17 @@ message Value {
   optional uint64 uint64_val = 26;
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// Connection / Session Management
+////////////////////////////////////////////////////////////////////////////////
+
 /**
- * @brief Information about a schema installed in sysrepo datastore.
+ * @brief Datastore on which the configuration session will operate.
  */
-message Schema {
-  required string module_name = 1;  /**< Name of the module. */
-  required string ns = 2;           /**< Namespace of the module. */
-  required string prefix = 3;       /**< Prefix of he module. */
-  optional string revision = 4;     /**< Latest revision date of the module. */
-  required string file_path = 5;    /**< Absolute path to file where the schema is stored. */
+enum DataStore {
+  RUNNING = 1;
+  CANDIDATE = 2;
+  STARTUP = 3;
 }
 
 /**
@@ -124,6 +115,35 @@ message SessionStopReq {
  */
 message SessionStopResp {
   required uint32 session_id = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Data Retrieval API (get / get-config functionality)
+////////////////////////////////////////////////////////////////////////////////
+
+/**
+ * @brief Information about a schema installed in sysrepo datastore.
+ */
+message Schema {
+  required string module_name = 1;  /**< Name of the module. */
+  required string ns = 2;           /**< Namespace of the module. */
+  required string prefix = 3;       /**< Prefix of he module. */
+  optional string revision = 4;     /**< Latest revision date of the module. */
+  required string file_path = 5;    /**< Absolute path to file where the schema is stored. */
+}
+
+/**
+ * @brief Retrieves an array of schemas installed in the sysrepo datastore.
+ * Sent by sr_list_schemas API call.
+ */
+message ListSchemasReq {
+}
+
+/**
+ * @brief Response to sr_list_schemas request.
+ */
+message ListSchemasResp {
+  repeated Schema schemas = 1;
 }
 
 /**
@@ -164,20 +184,117 @@ message GetItemsResp {
   repeated Value values = 1;
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// Data Manipulation API (edit-config functionality) - !!! EXPERIMENTAL !!!
+////////////////////////////////////////////////////////////////////////////////
+
 /**
- * @brief Retrieves an array of schemas installed in the sysrepo datastore.
- * Sent by sr_list_schemas API call.
+ * @brief Flags used to override default behavior of data manipulation calls.
  */
-message ListSchemasReq {
-  /* does not hold any information */
+enum EditFlags {
+  DEFAULT = 0x00;        /**< Default behavior - recursive and non-strict. */
+  NON_RECURSIVE = 0x01;  /**< Non-recursive behavior:
+                              by ::SetItemReq, all preceding nodes (parents) of the identified element must exist,
+                              by ::DeleteItemReq xpath must not identify an non-empty list or non-empty container. */
+  STRICT = 0x02;         /**< Strict behavior:
+                              by ::SetItemReq the identified element must not exist (similar to netconf create operation),
+                              by ::DeleteItemReq the identified element must exist (similar to netconf delete operation). */
 }
 
 /**
- * @brief Response to sr_list_schemas request.
+ * @brief Sets the value of the leaf, leaf-list or presence container.
+ * Sent by sr_set_item API call.
  */
-message ListSchemasResp {
-  repeated Schema schemas = 1;
+message SetItemReq {
+  required string path = 1;
+  required Value value = 2;
+  required uint32 options = 3;  /**< Bitwise OR of EditFlags */
 }
+
+/**
+ * @brief Response to sr_set_item request.
+ */
+message SetItemResp {
+}
+
+/**
+ * @brief Deletes the nodes under the specified path.
+ * Sent by sr_delete_item API call.
+ */
+message DeleteItemReq {
+  required string path = 1;
+  required uint32 options = 3;  /**< Bitwise OR of EditFlags */
+}
+
+/**
+ * @brief Response to sr_delete_item request.
+ */
+message DeleteItemResp {
+}
+
+/**
+ * @brief Move the instance of an ordered list in specified direction.
+ * Sent by sr_move_item API call.
+ */
+message MoveItemReq {
+  enum MoveDirection {
+    UP = 1;
+    DOWN = 2;
+  }
+  required string path = 1;
+  required MoveDirection direction = 2;
+}
+
+/**
+ * @brief Response to sr_move_item request.
+ */
+message MoveItemResp {
+}
+
+/**
+ * @brief Perform the validation of changes made in current session, but do not
+ * commit nor discard them. Sent by sr_validate API call.
+ */
+message ValidateReq {
+}
+
+/**
+ * @brief Response to sr_validate request.
+ */
+message ValidateResp {
+  repeated string errors = 1;
+}
+
+/**
+ * @brief Apply changes made in current session.
+ * Sent by sr_commit API call.
+ */
+message CommitReq {
+}
+
+/**
+ * @brief Response to sr_commit request.
+ */
+message CommitResp {
+  repeated string errors = 1;
+}
+
+/**
+ * @brief Discard non-committed changes made in current session.
+ * Sent by sr_discard_changes API call.
+ */
+message DiscardChangesReq {
+}
+
+/**
+ * @brief Response to sr_discard_changes request.
+ */
+message DiscardChangesResp {
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Sysrepo Engine API umbrella messages
+////////////////////////////////////////////////////////////////////////////////
 
 /**
  * @brief Requested operation.
@@ -190,6 +307,14 @@ enum Operation {
 
   GET_ITEM = 4;
   GET_ITEMS = 5;
+
+  SET_ITEM = 6;
+  DELETE_ITEM = 7;
+  MOVE_ITEM = 8;
+
+  VALIDATE = 9;
+  COMMIT = 10;
+  DISCARD_CHANGES = 11;
 }
 
 /**
@@ -205,6 +330,14 @@ message Req {
 
   optional GetItemReq get_item_req = 13;
   optional GetItemsReq get_items_req = 14;
+
+  optional SetItemReq set_item_req = 15;
+  optional DeleteItemReq delete_item_req = 16;
+  optional MoveItemReq move_item_req = 17;
+
+  optional ValidateReq validate_req = 18;
+  optional CommitReq commit_req = 19;
+  optional DiscardChangesReq discard_changes_req = 20;
 }
 
 /**
@@ -222,6 +355,14 @@ message Resp {
 
   optional GetItemResp get_item_resp = 13;
   optional GetItemsResp get_items_resp = 14;
+
+  optional SetItemResp set_item_resp = 15;
+  optional DeleteItemResp delete_item_resp = 16;
+  optional MoveItemResp move_item_resp = 17;
+
+  optional ValidateResp validate_resp = 18;
+  optional CommitResp commit_resp = 19;
+  optional DiscardChangesResp discard_changes_resp = 20;
 }
 
 /**

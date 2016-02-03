@@ -45,6 +45,8 @@ const char *const sr_errlist[] = {
         "Operation not supported",              /* SR_ERR_UNSUPPORTED */
         "Requested schema model is not known",  /* SR_ERR_UNKNOWN_MODEL */
         "Request contains unknown element",     /* SR_ERR_BAD_ELEMENT */
+        "Validation of the changes failed",     /* SR_ERR_VALIDATION_FAILED */
+        "Commit operation failed",              /* SR_ERR_COMMIT_FAILED */
 };
 
 const char *
@@ -537,6 +539,54 @@ sr_pb_req_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__Ms
             sr__get_items_req__init((Sr__GetItemsReq*)sub_msg);
             req->get_items_req = (Sr__GetItemsReq*)sub_msg;
             break;
+        case SR__OPERATION__SET_ITEM:
+            sub_msg = calloc(1, sizeof(Sr__SetItemReq));
+            if (NULL == sub_msg) {
+                goto nomem;
+            }
+            sr__set_item_req__init((Sr__SetItemReq*)sub_msg);
+            req->set_item_req = (Sr__SetItemReq*)sub_msg;
+            break;
+        case SR__OPERATION__DELETE_ITEM:
+            sub_msg = calloc(1, sizeof(Sr__DeleteItemReq));
+            if (NULL == sub_msg) {
+                goto nomem;
+            }
+            sr__delete_item_req__init((Sr__DeleteItemReq*)sub_msg);
+            req->delete_item_req = (Sr__DeleteItemReq*)sub_msg;
+            break;
+        case SR__OPERATION__MOVE_ITEM:
+            sub_msg = calloc(1, sizeof(Sr__MoveItemReq));
+            if (NULL == sub_msg) {
+                goto nomem;
+            }
+            sr__move_item_req__init((Sr__MoveItemReq*)sub_msg);
+            req->move_item_req = (Sr__MoveItemReq*)sub_msg;
+            break;
+        case SR__OPERATION__VALIDATE:
+            sub_msg = calloc(1, sizeof(Sr__ValidateReq));
+            if (NULL == sub_msg) {
+                goto nomem;
+            }
+            sr__validate_req__init((Sr__ValidateReq*)sub_msg);
+            req->validate_req = (Sr__ValidateReq*)sub_msg;
+            break;
+        case SR__OPERATION__COMMIT:
+            sub_msg = calloc(1, sizeof(Sr__CommitReq));
+            if (NULL == sub_msg) {
+                goto nomem;
+            }
+            sr__commit_req__init((Sr__CommitReq*)sub_msg);
+            req->commit_req = (Sr__CommitReq*)sub_msg;
+            break;
+        case SR__OPERATION__DISCARD_CHANGES:
+            sub_msg = calloc(1, sizeof(Sr__DiscardChangesReq));
+            if (NULL == sub_msg) {
+                goto nomem;
+            }
+            sr__discard_changes_req__init((Sr__DiscardChangesReq*)sub_msg);
+            req->discard_changes_req = (Sr__DiscardChangesReq*)sub_msg;
+            break;
         default:
             break;
     }
@@ -621,6 +671,54 @@ sr_pb_resp_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__M
             sr__get_items_resp__init((Sr__GetItemsResp*)sub_msg);
             resp->get_items_resp = (Sr__GetItemsResp*)sub_msg;
             break;
+        case SR__OPERATION__SET_ITEM:
+            sub_msg = calloc(1, sizeof(Sr__SetItemResp));
+            if (NULL == sub_msg) {
+                goto nomem;
+            }
+            sr__set_item_resp__init((Sr__SetItemResp*)sub_msg);
+            resp->set_item_resp = (Sr__SetItemResp*)sub_msg;
+            break;
+        case SR__OPERATION__DELETE_ITEM:
+            sub_msg = calloc(1, sizeof(Sr__DeleteItemResp));
+            if (NULL == sub_msg) {
+                goto nomem;
+            }
+            sr__delete_item_resp__init((Sr__DeleteItemResp*)sub_msg);
+            resp->delete_item_resp = (Sr__DeleteItemResp*)sub_msg;
+            break;
+        case SR__OPERATION__MOVE_ITEM:
+            sub_msg = calloc(1, sizeof(Sr__MoveItemResp));
+            if (NULL == sub_msg) {
+                goto nomem;
+            }
+            sr__move_item_resp__init((Sr__MoveItemResp*)sub_msg);
+            resp->move_item_resp = (Sr__MoveItemResp*)sub_msg;
+            break;
+        case SR__OPERATION__VALIDATE:
+            sub_msg = calloc(1, sizeof(Sr__ValidateResp));
+            if (NULL == sub_msg) {
+                goto nomem;
+            }
+            sr__validate_resp__init((Sr__ValidateResp*)sub_msg);
+            resp->validate_resp = (Sr__ValidateResp*)sub_msg;
+            break;
+        case SR__OPERATION__COMMIT:
+            sub_msg = calloc(1, sizeof(Sr__CommitResp));
+            if (NULL == sub_msg) {
+                goto nomem;
+            }
+            sr__commit_resp__init((Sr__CommitResp*)sub_msg);
+            resp->commit_resp = (Sr__CommitResp*)sub_msg;
+            break;
+        case SR__OPERATION__DISCARD_CHANGES:
+            sub_msg = calloc(1, sizeof(Sr__DiscardChangesResp));
+            if (NULL == sub_msg) {
+                goto nomem;
+            }
+            sr__discard_changes_resp__init((Sr__DiscardChangesResp*)sub_msg);
+            resp->discard_changes_resp = (Sr__DiscardChangesResp*)sub_msg;
+            break;
         default:
             break;
     }
@@ -667,6 +765,30 @@ sr_pb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__Op
                 if (NULL == msg->request->get_items_req)
                     return SR_ERR_MALFORMED_MSG;
                 break;
+            case SR__OPERATION__SET_ITEM:
+                if (NULL == msg->request->set_item_req)
+                    return SR_ERR_MALFORMED_MSG;
+                break;
+            case SR__OPERATION__DELETE_ITEM:
+                if (NULL == msg->request->delete_item_req)
+                    return SR_ERR_MALFORMED_MSG;
+                break;
+            case SR__OPERATION__MOVE_ITEM:
+                if (NULL == msg->request->move_item_req)
+                    return SR_ERR_MALFORMED_MSG;
+                break;
+            case SR__OPERATION__VALIDATE:
+                if (NULL == msg->request->validate_req)
+                    return SR_ERR_MALFORMED_MSG;
+                break;
+            case SR__OPERATION__COMMIT:
+                if (NULL == msg->request->commit_req)
+                    return SR_ERR_MALFORMED_MSG;
+                break;
+            case SR__OPERATION__DISCARD_CHANGES:
+                if (NULL == msg->request->discard_changes_req)
+                    return SR_ERR_MALFORMED_MSG;
+                break;
             default:
                 return SR_ERR_MALFORMED_MSG;
         }
@@ -694,6 +816,30 @@ sr_pb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__Op
                 break;
             case SR__OPERATION__GET_ITEMS:
                 if (NULL == msg->response->get_items_resp)
+                    return SR_ERR_MALFORMED_MSG;
+                break;
+            case SR__OPERATION__SET_ITEM:
+                if (NULL == msg->response->set_item_resp)
+                    return SR_ERR_MALFORMED_MSG;
+                break;
+            case SR__OPERATION__DELETE_ITEM:
+                if (NULL == msg->response->delete_item_resp)
+                    return SR_ERR_MALFORMED_MSG;
+                break;
+            case SR__OPERATION__MOVE_ITEM:
+                if (NULL == msg->response->move_item_resp)
+                    return SR_ERR_MALFORMED_MSG;
+                break;
+            case SR__OPERATION__VALIDATE:
+                if (NULL == msg->response->validate_resp)
+                    return SR_ERR_MALFORMED_MSG;
+                break;
+            case SR__OPERATION__COMMIT:
+                if (NULL == msg->response->commit_resp)
+                    return SR_ERR_MALFORMED_MSG;
+                break;
+            case SR__OPERATION__DISCARD_CHANGES:
+                if (NULL == msg->response->discard_changes_resp)
                     return SR_ERR_MALFORMED_MSG;
                 break;
             default:
@@ -858,12 +1004,14 @@ sr_set_val_t_type_in_gpb(const sr_val_t *value, Sr__Value *gpb_value){
 
 static int
 sr_set_val_t_value_in_gpb(const sr_val_t *value, Sr__Value *gpb_value){
-    CHECK_NULL_ARG3(value, gpb_value, value->xpath);
+    CHECK_NULL_ARG2(value, gpb_value);
 
-    gpb_value->path = strdup(value->xpath);
-    if (NULL == gpb_value->path){
-        SR_LOG_ERR_MSG("Memory allocation failed");
-        return  SR_ERR_NOMEM;
+    if (NULL != value->xpath) {
+        gpb_value->path = strdup(value->xpath);
+        if (NULL == gpb_value->path){
+            SR_LOG_ERR_MSG("Memory allocation failed");
+            return  SR_ERR_NOMEM;
+        }
     }
 
     switch (value->type) {
@@ -1252,6 +1400,34 @@ sr_datastore_gpb_to_sr(Sr__DataStore gpb_ds)
             return SR_DS_RUNNING;
     }
     return SR_DS_RUNNING;
+}
+
+Sr__MoveItemReq__MoveDirection
+sr_move_direction_sr_to_gpb(sr_move_direction_t sr_direction)
+{
+    switch (sr_direction) {
+        case SR_MOVE_UP:
+            return SR__MOVE_ITEM_REQ__MOVE_DIRECTION__UP;
+            break;
+        case SR_MOVE_DOWN:
+            return SR__MOVE_ITEM_REQ__MOVE_DIRECTION__DOWN;
+            break;
+    }
+    return SR__MOVE_ITEM_REQ__MOVE_DIRECTION__UP;
+}
+
+sr_move_direction_t
+sr_move_direction_gpb_to_sr(Sr__MoveItemReq__MoveDirection gpb_direction)
+{
+    switch (gpb_direction) {
+        case SR__MOVE_ITEM_REQ__MOVE_DIRECTION__UP:
+            return SR_MOVE_UP;
+        case SR__MOVE_ITEM_REQ__MOVE_DIRECTION__DOWN:
+            return SR_MOVE_DOWN;
+        default:
+            return SR_MOVE_UP;
+    }
+    return SR_MOVE_UP;
 }
 
 void

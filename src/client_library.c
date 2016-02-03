@@ -439,8 +439,10 @@ cl_request_process(sr_conn_ctx_t *conn_ctx, Sr__Msg *msg_req, Sr__Msg **msg_resp
 
     /* check for errors */
     if (SR_ERR_OK != (*msg_resp)->response->result) {
-        /* don't log not found err*/
-        if (SR_ERR_NOT_FOUND != (*msg_resp)->response->result){
+        /* don't log expected errors */
+        if (SR_ERR_NOT_FOUND != (*msg_resp)->response->result &&
+                SR_ERR_VALIDATION_FAILED != (*msg_resp)->response->result &&
+                SR_ERR_COMMIT_FAILED != (*msg_resp)->response->result) {
             SR_LOG_ERR("Error by processing of the request conn=%p, operation=%d): %s.",
                 (void*)conn_ctx, msg_req->request->operation, (NULL != (*msg_resp)->response->error_msg) ?
                         (*msg_resp)->response->error_msg : sr_strerror((*msg_resp)->response->result));
@@ -1060,3 +1062,285 @@ sr_free_val_iter(sr_val_iter_t *iter){
     free(iter);
 }
 
+int
+sr_set_item(sr_session_ctx_t *session, const char *path, const sr_val_t *value, const sr_edit_options_t opts)
+{
+    Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG4(session, session->conn_ctx, path, value);
+
+    /* prepare get_item message */
+    rc = sr_pb_req_alloc(SR__OPERATION__SET_ITEM, session->id, &msg_req);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Cannot allocate set_item message.");
+        goto cleanup;
+    }
+
+    /* fill in the path and options */
+    msg_req->request->set_item_req->path = strdup(path);
+    if (NULL == msg_req->request->set_item_req->path) {
+        SR_LOG_ERR_MSG("Cannot allocate set_item path.");
+        goto cleanup;
+    }
+    msg_req->request->set_item_req->options = opts;
+
+    /* duplicate the content of sr_val_t to gpb */
+    rc = sr_dup_val_t_to_gpb(value, &msg_req->request->set_item_req->value);
+    if (SR_ERR_OK != rc){
+        SR_LOG_ERR_MSG("Copying from sr_val_t to gpb failed.");
+        goto cleanup;
+    }
+
+    /* send the request and receive the response */
+    rc = cl_request_process(session->conn_ctx, msg_req, &msg_resp, SR__OPERATION__SET_ITEM);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Error by processing of set_item request.");
+        goto cleanup;
+    }
+
+    sr__msg__free_unpacked(msg_req, NULL);
+    sr__msg__free_unpacked(msg_resp, NULL);
+
+    return SR_ERR_OK;
+
+cleanup:
+    if (NULL != msg_req) {
+        sr__msg__free_unpacked(msg_req, NULL);
+    }
+    if (NULL != msg_resp) {
+        sr__msg__free_unpacked(msg_resp, NULL);
+    }
+    return rc;
+}
+
+int
+sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_options_t opts)
+{
+    Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG3(session, session->conn_ctx, path);
+
+    /* prepare get_item message */
+    rc = sr_pb_req_alloc(SR__OPERATION__DELETE_ITEM, session->id, &msg_req);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Cannot allocate delete_item message.");
+        goto cleanup;
+    }
+
+    /* fill in the path and options */
+    msg_req->request->delete_item_req->path = strdup(path);
+    if (NULL == msg_req->request->delete_item_req->path) {
+        SR_LOG_ERR_MSG("Cannot allocate delete_item path.");
+        goto cleanup;
+    }
+    msg_req->request->delete_item_req->options = opts;
+
+    /* send the request and receive the response */
+    rc = cl_request_process(session->conn_ctx, msg_req, &msg_resp, SR__OPERATION__DELETE_ITEM);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Error by processing of delete_item request.");
+        goto cleanup;
+    }
+
+    sr__msg__free_unpacked(msg_req, NULL);
+    sr__msg__free_unpacked(msg_resp, NULL);
+
+    return SR_ERR_OK;
+
+cleanup:
+    if (NULL != msg_req) {
+        sr__msg__free_unpacked(msg_req, NULL);
+    }
+    if (NULL != msg_resp) {
+        sr__msg__free_unpacked(msg_resp, NULL);
+    }
+    return rc;
+}
+
+int
+sr_move_item(sr_session_ctx_t *session, const char *path, const sr_move_direction_t direction)
+{
+    Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG3(session, session->conn_ctx, path);
+
+    /* prepare get_item message */
+    rc = sr_pb_req_alloc(SR__OPERATION__MOVE_ITEM, session->id, &msg_req);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Cannot allocate move_item message.");
+        goto cleanup;
+    }
+
+    /* fill in the path and direction */
+    msg_req->request->move_item_req->path = strdup(path);
+    if (NULL == msg_req->request->move_item_req->path) {
+        SR_LOG_ERR_MSG("Cannot allocate move_item path.");
+        goto cleanup;
+    }
+    msg_req->request->move_item_req->direction = sr_move_direction_sr_to_gpb(direction);
+
+    /* send the request and receive the response */
+    rc = cl_request_process(session->conn_ctx, msg_req, &msg_resp, SR__OPERATION__MOVE_ITEM);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Error by processing of move_item request.");
+        goto cleanup;
+    }
+
+    sr__msg__free_unpacked(msg_req, NULL);
+    sr__msg__free_unpacked(msg_resp, NULL);
+
+    return SR_ERR_OK;
+
+cleanup:
+    if (NULL != msg_req) {
+        sr__msg__free_unpacked(msg_req, NULL);
+    }
+    if (NULL != msg_resp) {
+        sr__msg__free_unpacked(msg_resp, NULL);
+    }
+    return rc;
+}
+
+int
+sr_validate(sr_session_ctx_t *session, char ***errors, size_t *error_cnt)
+{
+    Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    Sr__ValidateResp *validate_resp = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG2(session, session->conn_ctx);
+
+    /* prepare validate message */
+    rc = sr_pb_req_alloc(SR__OPERATION__VALIDATE, session->id, &msg_req);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Cannot allocate validate message.");
+        goto cleanup;
+    }
+
+    /* send the request and receive the response */
+    rc = cl_request_process(session->conn_ctx, msg_req, &msg_resp, SR__OPERATION__VALIDATE);
+    if ((SR_ERR_OK != rc) && (SR_ERR_VALIDATION_FAILED != rc)) {
+        SR_LOG_ERR_MSG("Error by processing of validate request.");
+        goto cleanup;
+    }
+
+    validate_resp = msg_resp->response->validate_resp;
+    if (SR_ERR_VALIDATION_FAILED == rc) {
+        SR_LOG_ERR("Validate operation failed with %zu errors.", validate_resp->n_errors);
+    }
+
+    /* return validation errors if requested and if there are any */
+    if ((NULL != errors) && (NULL != error_cnt) && (validate_resp->n_errors > 0)) {
+        /* set errors to output arguments, GPB pointers to NULL */
+        *errors = validate_resp->errors;
+        *error_cnt = validate_resp->n_errors;
+        validate_resp->errors = NULL;
+        validate_resp->n_errors = 0;
+    }
+
+    sr__msg__free_unpacked(msg_req, NULL);
+    sr__msg__free_unpacked(msg_resp, NULL);
+
+    return rc;
+
+cleanup:
+    if (NULL != msg_req) {
+        sr__msg__free_unpacked(msg_req, NULL);
+    }
+    if (NULL != msg_resp) {
+        sr__msg__free_unpacked(msg_resp, NULL);
+    }
+    return rc;
+}
+
+int
+sr_commit(sr_session_ctx_t *session, char ***errors, size_t *error_cnt)
+{
+    Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    Sr__CommitResp *commit_resp = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG2(session, session->conn_ctx);
+
+    /* prepare commit message */
+    rc = sr_pb_req_alloc(SR__OPERATION__COMMIT, session->id, &msg_req);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Cannot allocate validate message.");
+        goto cleanup;
+    }
+
+    /* send the request and receive the response */
+    rc = cl_request_process(session->conn_ctx, msg_req, &msg_resp, SR__OPERATION__COMMIT);
+    if ((SR_ERR_OK != rc) && (SR_ERR_COMMIT_FAILED != rc)) {
+        SR_LOG_ERR_MSG("Error by processing of commit request.");
+        goto cleanup;
+    }
+
+    commit_resp = msg_resp->response->commit_resp;
+    if (SR_ERR_COMMIT_FAILED == rc) {
+        SR_LOG_ERR("Commit operation failed with %zu errors.", commit_resp->n_errors);
+    }
+
+    /* return commit errors if requested and if there are any */
+    if ((NULL != errors) && (NULL != error_cnt) && (commit_resp->n_errors > 0)) {
+        /* set errors to output arguments, GPB pointers to NULL */
+        *errors = commit_resp->errors;
+        *error_cnt = commit_resp->n_errors;
+        commit_resp->errors = NULL;
+        commit_resp->n_errors = 0;
+    }
+
+    sr__msg__free_unpacked(msg_req, NULL);
+    sr__msg__free_unpacked(msg_resp, NULL);
+
+    return rc;
+
+cleanup:
+    if (NULL != msg_req) {
+        sr__msg__free_unpacked(msg_req, NULL);
+    }
+    if (NULL != msg_resp) {
+        sr__msg__free_unpacked(msg_resp, NULL);
+    }
+    return rc;
+}
+
+int
+sr_discard_changes(sr_session_ctx_t *session)
+{
+    Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG2(session, session->conn_ctx);
+
+    /* prepare discard_changes message */
+    rc = sr_pb_req_alloc(SR__OPERATION__DISCARD_CHANGES, session->id, &msg_req);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Cannot allocate discard_changes message.");
+        goto cleanup;
+    }
+
+    /* send the request and receive the response */
+    rc = cl_request_process(session->conn_ctx, msg_req, &msg_resp, SR__OPERATION__DISCARD_CHANGES);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Error by processing of discard_changes request.");
+        goto cleanup;
+    }
+
+    sr__msg__free_unpacked(msg_req, NULL);
+    sr__msg__free_unpacked(msg_resp, NULL);
+
+    return SR_ERR_OK;
+
+cleanup:
+    if (NULL != msg_req) {
+        sr__msg__free_unpacked(msg_req, NULL);
+    }
+    if (NULL != msg_resp) {
+        sr__msg__free_unpacked(msg_resp, NULL);
+    }
+    return rc;
+}
