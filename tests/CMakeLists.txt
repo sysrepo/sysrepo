@@ -32,6 +32,7 @@ ADD_UNIT_TEST(xp_yang_test)
 ADD_UNIT_TEST(sm_test)
 ADD_UNIT_TEST(cm_test)
 ADD_UNIT_TEST(dm_test)
+ADD_UNIT_TEST(rp_dt_xpath_test)
 ADD_UNIT_TEST(rp_test)
 
 set(rp_dt_test_files
