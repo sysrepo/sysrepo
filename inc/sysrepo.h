@@ -500,7 +500,7 @@ int sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_op
 int sr_move_item(sr_session_ctx_t *session, const char *path, const sr_move_direction_t direction);
 
 /**
- * @brief Perform the validation of changes made in this session, but do not
+ * @brief Perform the validation of changes made in current session, but do not
  * commit nor discard them.
  *
  * @note Please note that this API call is experimental in this version of sysrepo and may not work properly yet.
@@ -517,7 +517,7 @@ int sr_move_item(sr_session_ctx_t *session, const char *path, const sr_move_dire
 int sr_validate(sr_session_ctx_t *session, char ***errors, size_t *error_cnt);
 
 /**
- * @brief Apply changes made in this session.
+ * @brief Apply changes made in current session.
  *
  * @note Please note that this API call is experimental in this version of sysrepo and may not work properly yet.
  *
@@ -534,7 +534,7 @@ int sr_validate(sr_session_ctx_t *session, char ***errors, size_t *error_cnt);
 int sr_commit(sr_session_ctx_t *session, char ***errors, size_t *error_cnt);
 
 /**
- * @brief Discard non-committed changes made in this session.
+ * @brief Discard non-committed changes made in current session.
  *
  * @note Please note that this API call is experimental in this version of sysrepo and may not work properly yet.
  *
