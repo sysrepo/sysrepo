@@ -19,8 +19,6 @@
  * limitations under the License.
  */
 
-#include <unistd.h>
-
 #include "rp_dt_edit.h"
 #include "rp_dt_lookup.h"
 #include "rp_dt_xpath.h"
@@ -74,7 +72,7 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t 
     }
 
     rc = rp_dt_validate_node_xpath(dm_ctx, l, NULL);
-    if (SR_ERR_OK != rc){
+    if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Validation of loc_id failed %s", l->xpath);
         goto cleanup;
     }
@@ -201,11 +199,11 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t 
             /* count children */
             struct lyd_node *child = node->child;
             size_t child_cnt = 0;
-            while (NULL != child){
+            while (NULL != child) {
                 child = child->next;
                 child_cnt++;
             }
-            if (XP_GET_KEY_COUNT(l, last_node) != child_cnt){
+            if (XP_GET_KEY_COUNT(l, last_node) != child_cnt) {
                 SR_LOG_ERR("Item for xpath %s is non empty list. It can not be deleted with non recursive opt", l->xpath);
                 rc = SR_ERR_INVAL_ARG;
                 goto cleanup;
@@ -249,14 +247,13 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t 
 
     /* delete all empty parent containers */
     node = parent;
-    while (NULL != node){
-        if (NULL == node->child && LYS_CONTAINER == node->schema->nodetype){
+    while (NULL != node) {
+        if (NULL == node->child && LYS_CONTAINER == node->schema->nodetype) {
             parent = node->parent;
             sr_lyd_unlink(info, node);
             lyd_free(node);
             node = parent;
-        }
-        else{
+        } else {
             break;
         }
     }
@@ -301,7 +298,7 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t dat
     }
 
     rc = rp_dt_validate_node_xpath(dm_ctx, l, &schema_node);
-    if (SR_ERR_OK != rc){
+    if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Requested node is not valid %s", xpath);
         goto cleanup;
     }
@@ -408,10 +405,9 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t dat
         else if (LYS_CONTAINER == match->schema->nodetype){
             /* setting existing container - do nothing */
             goto cleanup;
-        }
-        else if (LYS_LIST == match->schema->nodetype){
-            /* check if the set request match has keys set */
-            if (XP_GET_KEY_COUNT(l, level-1) == 0){
+        } else if (LYS_LIST == match->schema->nodetype) {
+            /* check if the to be set match has keys specified */
+            if (XP_GET_KEY_COUNT(l, level - 1) == 0) {
                 /* Set item for list can not be called without keys */
                 SR_LOG_ERR("Can not create list without keys %s", l->xpath);
                 rc = SR_ERR_INVAL_ARG;
@@ -456,11 +452,9 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t dat
             if (LYS_CONTAINER == schema_node->nodetype && NULL != ((struct lys_node_container *) schema_node)->presence ){
                 /* presence container */
                 node = sr_lyd_new(info, node, module, node_name);
-            }
-            else if (LYS_LEAF == schema_node->nodetype || LYS_LEAFLIST == schema_node->nodetype){
+            } else if (LYS_LEAF == schema_node->nodetype || LYS_LEAFLIST == schema_node->nodetype) {
                 node = sr_lyd_new_leaf(info, node, module, node_name, new_value);
-            }
-            else {
+            } else {
                 SR_LOG_ERR_MSG("Request to create unsupported node type (non-presence container, list without keys ...)");
                 rc = SR_ERR_INVAL_ARG;
                 goto cleanup;

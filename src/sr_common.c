@@ -279,15 +279,15 @@ sr_lyd_new(dm_data_info_t *data_info, struct lyd_node *parent, const struct lys_
     struct lyd_node *new = NULL;
     new = lyd_new(parent, module, node_name);
 
-    if (NULL == parent){
-        if (NULL == data_info->node){
+    if (NULL == parent) {
+        if (NULL == data_info->node) {
             data_info->node = new;
         } else {
             struct lyd_node *last_sibling = data_info->node;
-            while (NULL != last_sibling->next){
+            while (NULL != last_sibling->next) {
                 last_sibling = last_sibling->next;
             }
-            if (0 != lyd_insert_after(last_sibling, new)){
+            if (0 != lyd_insert_after(last_sibling, new)) {
                 SR_LOG_ERR_MSG("Append of top level node failed");
                 lyd_free(new);
                 return NULL;
@@ -1398,25 +1398,25 @@ nomem:
 }
 
 static int
-sr_dec64_to_str(double val, struct lys_node *schema_node, char **out){
+sr_dec64_to_str(double val, struct lys_node *schema_node, char **out)
+{
     CHECK_NULL_ARG2(schema_node, out);
     size_t fraction_digits = 0;
-    if (LYS_LEAF == schema_node->nodetype || LYS_LEAFLIST == schema_node->nodetype){
+    if (LYS_LEAF == schema_node->nodetype || LYS_LEAFLIST == schema_node->nodetype) {
         struct lys_node_leaflist *l = (struct lys_node_leaflist *) schema_node;
         fraction_digits = l->type.info.dec64.dig;
-    }
-    else{
+    } else {
         SR_LOG_ERR_MSG("Node must be either leaf or leaflist");
         return SR_ERR_INVAL_ARG;
     }
     /* format string for double string convertsion "%.XXf", where XX is corresponding number of fraction digits 1-18 */
-    #define MAX_FMT_LEN 5
+#define MAX_FMT_LEN 5
     char format_string [MAX_FMT_LEN] = {0,};
     snprintf(format_string, MAX_FMT_LEN, "%%.%zuf", fraction_digits);
 
     size_t len = snprintf(NULL, 0, format_string, val);
     *out = calloc(len + 1, sizeof(**out));
-    if (NULL == *out){
+    if (NULL == *out) {
         SR_LOG_ERR_MSG("Memory allocation failed");
         return SR_ERR_NOMEM;
     }
@@ -1509,4 +1509,3 @@ sr_val_to_str(const sr_val_t *value, struct lys_node *schema_node, char **out)
     }
     return SR_ERR_OK;
 }
-

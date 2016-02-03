@@ -108,7 +108,7 @@ rp_dt_copy_value(const struct lyd_node_leaf_list *leaf, LY_DATA_TYPE type, sr_va
     case LY_TYPE_DEC64:
         value->data.decimal64_val = (double) leaf->value.dec64;
         leaf_schema = (struct lys_node_leaf *) leaf->schema;
-        for (size_t i = 0; i < leaf_schema->type.info.dec64.dig; i++){
+        for (size_t i = 0; i < leaf_schema->type.info.dec64.dig; i++) {
             /* shift decimal point*/
             value->data.decimal64_val *= 0.1;
         }
