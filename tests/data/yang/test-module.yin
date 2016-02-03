@@ -69,6 +69,17 @@
     <leaf name="empty">
       <type name="empty"/>
     </leaf>
+    <leaf name="boolean">
+      <type name="boolean"/>
+    </leaf>
+    <leaf name="string">
+      <type name="string"/>
+    </leaf>
+    <leaf name="id_ref">
+      <type name="identityref">
+        <base name="base_id"/>
+      </type>
+    </leaf>
     <leaf-list name="numbers">
       <type name="uint8"/>
     </leaf-list>

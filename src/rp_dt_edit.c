@@ -21,6 +21,7 @@
 
 #include "rp_dt_edit.h"
 #include "rp_dt_lookup.h"
+#include "rp_dt_xpath.h"
 #include "sysrepo.h"
 #include "sr_common.h"
 #include "xpath_processor.h"
@@ -59,6 +60,7 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t 
     xp_loc_id_t *l = NULL;
     struct lyd_node *data_tree = NULL;
     struct lyd_node *node = NULL;
+    struct lyd_node *parent = NULL;
     size_t level = 0;
     char *data_tree_name = NULL;
 
@@ -67,6 +69,12 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t 
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Converting xpath '%s' to loc_id failed.", xpath);
         return rc;
+    }
+
+    rc = rp_dt_validate_node_xpath(dm_ctx, l, NULL);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Validation of loc_id failed %s", l->xpath);
+        goto cleanup;
     }
 
     if (!XP_HAS_NODE_NS(l, 0)) {
@@ -89,7 +97,6 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t 
         goto cleanup;
     }
     data_tree = info->node;
-    /*TODO validate xpath schema */
 
     rc = rp_dt_find_deepest_match(data_tree, l, true, &level, &node);
     if (SR_ERR_NOT_FOUND == rc) {
@@ -124,6 +131,9 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t 
         rc = SR_ERR_INTERNAL;
         goto cleanup;
     }
+
+    /* save parent to delete empty containers */
+    parent = node->parent;
 
     /* perform delete according to the node type */
     if (node->schema->nodetype == LYS_CONTAINER) {
@@ -184,12 +194,21 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t 
         }
         free(nodes);
     } else if (node->schema->nodetype == LYS_LIST) {
-        if (options & SR_EDIT_NON_RECURSIVE) {
-            SR_LOG_ERR("Item for xpath %s is list deleted with non recursive opt", l->xpath);
-            rc = SR_ERR_INVAL_ARG;
-            goto cleanup;
-        }
         size_t last_node = XP_GET_NODE_COUNT(l) - 1;
+        if (options & SR_EDIT_NON_RECURSIVE) {
+            /* count children */
+            struct lyd_node *child = node->child;
+            size_t child_cnt = 0;
+            while (NULL != child) {
+                child = child->next;
+                child_cnt++;
+            }
+            if (XP_GET_KEY_COUNT(l, last_node) != child_cnt) {
+                SR_LOG_ERR("Item for xpath %s is non empty list. It can not be deleted with non recursive opt", l->xpath);
+                rc = SR_ERR_INVAL_ARG;
+                goto cleanup;
+            }
+        }
         if (0 != XP_GET_KEY_COUNT(l, last_node)) {
             /* delete list instance */
             rc = sr_lyd_unlink(info, node);
@@ -226,6 +245,19 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t 
         }
     }
 
+    /* delete all empty parent containers */
+    node = parent;
+    while (NULL != node) {
+        if (NULL == node->child && LYS_CONTAINER == node->schema->nodetype) {
+            parent = node->parent;
+            sr_lyd_unlink(info, node);
+            lyd_free(node);
+            node = parent;
+        } else {
+            break;
+        }
+    }
+
     /* mark to session copy that some change has been made */
     info->modified = true;
 cleanup:
@@ -245,6 +277,7 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t dat
     struct lyd_node *match = NULL;
     struct lyd_node *node = NULL;
     dm_data_info_t *info = NULL;
+    struct lys_node *schema_node = NULL;
 
     /* to be freed during cleanup */
     xp_loc_id_t *l = NULL;
@@ -262,6 +295,12 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t dat
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Converting xpath '%s' to loc_id failed.", xpath);
         return rc;
+    }
+
+    rc = rp_dt_validate_node_xpath(dm_ctx, l, &schema_node);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Requested node is not valid %s", xpath);
+        goto cleanup;
     }
 
     if (!XP_HAS_NODE_NS(l, 0)) {
@@ -283,11 +322,10 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t dat
         goto cleanup;
     }
     data_tree = info->node;
-    /*TODO validate xpath schema check if it is a leaf or leaf-list*/
 
     rc = rp_dt_find_deepest_match(data_tree, l, true, &level, &match);
-    if (XP_GET_NODE_COUNT(l) != 1 && SR_ERR_NOT_FOUND == rc) {
-        if (options & SR_EDIT_NON_RECURSIVE) {
+    if (SR_ERR_NOT_FOUND == rc) {
+        if (XP_GET_NODE_COUNT(l) != 1 && options & SR_EDIT_NON_RECURSIVE) {
             SR_LOG_ERR("A preceding node is missing '%s' create it or omit the non recursive option", xpath);
             rc = SR_ERR_INVAL_ARG;
             goto cleanup;
@@ -301,7 +339,7 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t dat
     if (XP_GET_NODE_COUNT(l) != level) {
         if (XP_GET_NODE_COUNT(l) != (level + 1)) {
             if (options & SR_EDIT_NON_RECURSIVE) {
-                SR_LOG_ERR("No some preceeding item is missing '%s' create it or omit the non recursive option", xpath);
+                SR_LOG_ERR("A preceding item is missing '%s' create it or omit the non recursive option", xpath);
                 rc = SR_ERR_INVAL_ARG;
                 goto cleanup;
             }
@@ -322,7 +360,7 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t dat
 
     if (NULL != value){
         /* if the list is being created value is NULL*/
-        rc = sr_val_to_str(value, &new_value);
+        rc = sr_val_to_str(value, schema_node, &new_value);
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR_MSG("Copy new value to string failed");
             goto cleanup;
@@ -364,8 +402,16 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t dat
             sr_lyd_unlink(info, match);
             lyd_free(match);
         }
-        else if (LYS_CONTAINER == match->schema->nodetype || LYS_LIST == match->schema->nodetype){
-            /* setting existing list or container - do nothing */
+        else if (LYS_CONTAINER == match->schema->nodetype){
+            /* setting existing container - do nothing */
+            goto cleanup;
+        } else if (LYS_LIST == match->schema->nodetype) {
+            /* check if the to be set match has keys specified */
+            if (XP_GET_KEY_COUNT(l, level - 1) == 0) {
+                /* Set item for list can not be called without keys */
+                SR_LOG_ERR("Can not create list without keys %s", l->xpath);
+                rc = SR_ERR_INVAL_ARG;
+            }
             goto cleanup;
         }
     }
@@ -402,8 +448,18 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t dat
                 rc = SR_ERR_INVAL_ARG;
                 goto cleanup;
             }
-            //TODO handle presence container
-            node = sr_lyd_new_leaf(info, node, module, node_name, new_value);
+
+            if (LYS_CONTAINER == schema_node->nodetype && NULL != ((struct lys_node_container *) schema_node)->presence ){
+                /* presence container */
+                node = sr_lyd_new(info, node, module, node_name);
+            } else if (LYS_LEAF == schema_node->nodetype || LYS_LEAFLIST == schema_node->nodetype) {
+                node = sr_lyd_new_leaf(info, node, module, node_name, new_value);
+            } else {
+                SR_LOG_ERR_MSG("Request to create unsupported node type (non-presence container, list without keys ...)");
+                rc = SR_ERR_INVAL_ARG;
+                goto cleanup;
+            }
+
             if (NULL == node) {
                 SR_LOG_ERR("Creating new leaf failed %s", xpath);
                 rc = SR_ERR_INTERNAL;
@@ -412,7 +468,7 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t dat
 
         } else {
             size_t key_count = XP_GET_KEY_COUNT(l, n);
-            //create container or list
+            /* create container or list */
             node = sr_lyd_new(info, node, module, node_name);
             if (NULL == node) {
                 SR_LOG_ERR("Creating container or list failed %s", xpath);

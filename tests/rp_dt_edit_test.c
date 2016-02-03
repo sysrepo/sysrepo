@@ -205,10 +205,34 @@ void delete_item_list_test(void **state){
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);
     sr_free_val(val);
+    val = NULL;
+
+    sr_val_t **values = NULL;
+    size_t cnt = 0;
+    rc = rp_dt_get_values_wrapper(ctx, session, "/example-module:container", &values, &cnt);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(1, cnt);
+    sr_free_values_arr(values, cnt);
 
     /* list deletion with non recursive fails*/
     rc = rp_dt_delete_item(ctx, session, SR_DS_CANDIDATE, LIST_INST1_XP , SR_EDIT_NON_RECURSIVE);
     assert_int_equal(SR_ERR_INVAL_ARG, rc);
+
+    rc = rp_dt_delete_item(ctx, session, SR_DS_CANDIDATE, "/example-module:container/list[key1='key1'][key2='key2']" , SR_EDIT_NON_RECURSIVE);
+    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+
+    /* delete the leaf, so the list contains only keys*/
+    rc = rp_dt_delete_item(ctx, session, SR_DS_CANDIDATE, "/example-module:container/list[key1='key1'][key2='key2']/leaf" , SR_EDIT_NON_RECURSIVE);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* if the list contains only keys it can be deleted even with non recursive flag*/
+    rc = rp_dt_delete_item(ctx, session, SR_DS_CANDIDATE, "/example-module:container/list[key1='key1'][key2='key2']" , SR_EDIT_NON_RECURSIVE);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* delete the only list instance in the container the container should be also deleted */
+    rc = rp_dt_get_value_wrapper(ctx, session, "/example-module:container", &val);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+
     dm_session_stop(ctx, session);
 }
 
@@ -451,6 +475,295 @@ void set_item_list_test(void **state){
     dm_session_stop(ctx, session);
 }
 
+void set_item_container_test(void **state){
+    int rc = 0;
+    dm_ctx_t *ctx = *state;
+    dm_session_t *session = NULL;
+
+    dm_session_start(ctx, &session);
+
+    sr_val_t *value = NULL;
+    rc = rp_dt_get_value_wrapper(ctx, session, "/test-module:list[key='key']/wireless", &value);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+
+    rc = rp_dt_set_item(ctx, session, SR_DS_CANDIDATE, "/test-module:list[key='key']/wireless", SR_EDIT_DEFAULT, NULL);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_get_value_wrapper(ctx, session, "/test-module:list[key='key']/wireless", &value);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(value);
+    assert_int_equal(SR_CONTAINER_PRESENCE_T, value->type);
+
+    sr_free_val(value);
+
+    /* set existing does nothing*/
+    rc = rp_dt_set_item(ctx, session, SR_DS_CANDIDATE, "/test-module:list[key='key']/wireless", SR_EDIT_DEFAULT, NULL);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* set existing fails with strict opt*/
+    rc = rp_dt_set_item(ctx, session, SR_DS_CANDIDATE, "/test-module:list[key='key']/wireless", SR_EDIT_STRICT, NULL);
+    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+
+    dm_session_stop(ctx, session);
+}
+
+void
+set_item_negative_test(void **state)
+{
+    int rc = 0;
+    dm_ctx_t *ctx = *state;
+    dm_session_t *session = NULL;
+
+    dm_session_start(ctx, &session);
+
+
+    rc = rp_dt_delete_item(ctx, session, SR_DS_RUNNING, "/test-module:main", SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* set non-presence container */
+    rc = rp_dt_set_item(ctx, session, SR_DS_RUNNING, "/test-module:main", SR_EDIT_DEFAULT, NULL);
+    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+
+
+    /* set list without keys*/
+    rc = rp_dt_set_item(ctx, session, SR_DS_RUNNING, "/test-module:list", SR_EDIT_DEFAULT, NULL);
+    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+
+    dm_session_stop(ctx, session);
+}
+
+void delete_get_set_get(dm_ctx_t *ctx, dm_session_t *session, const char* xpath, const sr_val_t *value, sr_val_t **new_set)
+{
+    int rc = SR_ERR_OK;
+
+    rc = rp_dt_delete_item(ctx, session, SR_DS_STARTUP, xpath, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* verify that item has been deleted*/
+    rc = rp_dt_get_value_wrapper(ctx, session, xpath, new_set);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+    assert_null(*new_set);
+
+    /* set it */
+    rc = rp_dt_set_item(ctx, session, SR_DS_STARTUP, xpath, SR_EDIT_DEFAULT, value);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_get_value_wrapper(ctx, session, xpath, new_set);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(*new_set);
+    assert_int_equal(value->type, (*new_set)->type);
+
+}
+
+void delete_set_test_module_test(void **state){
+    int rc = 0;
+    dm_ctx_t *ctx = *state;
+    dm_session_t *session = NULL;
+    sr_val_t *value = NULL;
+    sr_val_t *new_set = NULL;
+    dm_session_start(ctx, &session);
+
+#define FREE_VARS(A, B) do{sr_free_val(A); sr_free_val(B); A = NULL; B = NULL;}while(0)
+
+
+
+    /* binary leaf*/
+#define XP_TEST_MODULE_RAW "/test-module:main/raw"
+    rc = rp_dt_get_value_wrapper(ctx, session, XP_TEST_MODULE_RAW, &value);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    assert_int_equal(SR_BINARY_T, value->type);
+    assert_string_equal("SGVsbG8gd29ybGQh", value->data.binary_val);
+
+    delete_get_set_get(ctx, session, XP_TEST_MODULE_RAW, value, &new_set);
+
+    assert_string_equal(value->data.binary_val, new_set->data.binary_val);
+    FREE_VARS(value, new_set);
+
+    /*bits leaf*/
+
+#define XP_TEST_MODULE_BITS "/test-module:main/options"
+    rc = rp_dt_get_value_wrapper(ctx, session, XP_TEST_MODULE_BITS, &value);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    assert_int_equal(SR_BITS_T, value->type);
+    assert_string_equal("strict recursive", value->data.bits_val);
+
+    delete_get_set_get(ctx, session, XP_TEST_MODULE_BITS, value, &new_set);
+    assert_string_equal(value->data.bits_val, new_set->data.bits_val);
+    FREE_VARS(value, new_set);
+
+#define XP_TEST_MODULE_BOOL "/test-module:main/boolean"
+    rc = rp_dt_get_value_wrapper(ctx, session, XP_TEST_MODULE_BOOL, &value);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    assert_int_equal(SR_BOOL_T, value->type);
+    assert_true(value->data.bool_val);
+
+    delete_get_set_get(ctx, session, XP_TEST_MODULE_BOOL, value, &new_set);
+    assert_int_equal(value->data.bool_val, new_set->data.bool_val);
+    FREE_VARS(value, new_set);
+
+    /* decimal 64 leaf*/
+#define XP_TEST_MODULE_DEC64 "/test-module:main/dec64"
+    rc = rp_dt_get_value_wrapper(ctx, session, XP_TEST_MODULE_DEC64, &value);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    assert_int_equal(SR_DECIMAL64_T, value->type);
+    assert_int_equal(9.85, value->data.decimal64_val);
+
+    delete_get_set_get(ctx, session, XP_TEST_MODULE_DEC64, value, &new_set);
+
+    assert_int_equal(value->data.decimal64_val, new_set->data.decimal64_val);
+
+    FREE_VARS(value, new_set);
+
+    /* enum leaf*/
+#define XP_TEST_MODULE_ENUM "/test-module:main/enum"
+    rc = rp_dt_get_value_wrapper(ctx, session, XP_TEST_MODULE_ENUM, &value);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    assert_int_equal(SR_ENUM_T, value->type);
+    assert_string_equal("maybe", value->data.enum_val);
+
+    delete_get_set_get(ctx, session, XP_TEST_MODULE_ENUM, value, &new_set);
+
+    assert_string_equal(value->data.enum_val, new_set->data.enum_val);
+
+    FREE_VARS(value, new_set);
+
+    /* empty */
+    #define XP_TEST_MODULE_EMPTY "/test-module:main/empty"
+    rc = rp_dt_get_value_wrapper(ctx, session, XP_TEST_MODULE_EMPTY, &value);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(SR_LEAF_EMPTY_T, value->type);
+
+    delete_get_set_get(ctx, session, XP_TEST_MODULE_EMPTY, value, &new_set);
+
+    FREE_VARS(value, new_set);
+
+    /* identity ref*/
+    #define XP_TEST_MODULE_IDREF "/test-module:main/id_ref"
+    rc = rp_dt_get_value_wrapper(ctx, session, XP_TEST_MODULE_IDREF, &value);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    assert_int_equal(SR_IDENTITYREF_T, value->type);
+    assert_string_equal("id_1", value->data.identityref_val);
+
+    delete_get_set_get(ctx, session, XP_TEST_MODULE_IDREF, value, &new_set);
+    assert_string_equal(value->data.identityref_val, new_set->data.identityref_val);
+    FREE_VARS(value, new_set);
+
+    /* int8*/
+    #define XP_TEST_MODULE_INT8 "/test-module:main/i8"
+    rc = rp_dt_get_value_wrapper(ctx, session, XP_TEST_MODULE_INT8, &value);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    assert_int_equal(SR_INT8_T, value->type);
+    assert_int_equal(8, value->data.int8_val);
+
+    delete_get_set_get(ctx, session, XP_TEST_MODULE_INT8, value, &new_set);
+    assert_int_equal(value->data.int8_val, new_set->data.int8_val);
+    FREE_VARS(value, new_set);
+
+    /* int16*/
+    #define XP_TEST_MODULE_INT16 "/test-module:main/i16"
+    rc = rp_dt_get_value_wrapper(ctx, session, XP_TEST_MODULE_INT16, &value);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    assert_int_equal(SR_INT16_T, value->type);
+    assert_int_equal(16, value->data.int16_val);
+
+    delete_get_set_get(ctx, session, XP_TEST_MODULE_INT16, value, &new_set);
+    assert_int_equal(value->data.int16_val, new_set->data.int16_val);
+    FREE_VARS(value, new_set);
+
+    /* int32*/
+    #define XP_TEST_MODULE_INT32 "/test-module:main/i32"
+    rc = rp_dt_get_value_wrapper(ctx, session, XP_TEST_MODULE_INT32, &value);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    assert_int_equal(SR_INT32_T, value->type);
+    assert_int_equal(32, value->data.int32_val);
+
+    delete_get_set_get(ctx, session, XP_TEST_MODULE_INT32, value, &new_set);
+    assert_int_equal(value->data.int32_val, new_set->data.int32_val);
+    FREE_VARS(value, new_set);
+
+    /* int64*/
+    #define XP_TEST_MODULE_INT64 "/test-module:main/i64"
+    rc = rp_dt_get_value_wrapper(ctx, session, XP_TEST_MODULE_INT64, &value);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    assert_int_equal(SR_INT64_T, value->type);
+    assert_int_equal(64, value->data.int64_val);
+
+    delete_get_set_get(ctx, session, XP_TEST_MODULE_INT64, value, &new_set);
+    assert_int_equal(value->data.int64_val, new_set->data.int64_val);
+    FREE_VARS(value, new_set);
+
+    /* string ref*/
+    #define XP_TEST_MODULE_STRING "/test-module:main/string"
+    rc = rp_dt_get_value_wrapper(ctx, session, XP_TEST_MODULE_STRING, &value);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    assert_int_equal(SR_STRING_T, value->type);
+    assert_string_equal("str", value->data.string_val);
+
+    delete_get_set_get(ctx, session, XP_TEST_MODULE_STRING, value, &new_set);
+    assert_string_equal(value->data.string_val, new_set->data.string_val);
+    FREE_VARS(value, new_set);
+
+    /* uint8*/
+    #define XP_TEST_MODULE_UINT8 "/test-module:main/ui8"
+    rc = rp_dt_get_value_wrapper(ctx, session, XP_TEST_MODULE_UINT8, &value);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    assert_int_equal(SR_UINT8_T, value->type);
+    assert_int_equal(8, value->data.uint8_val);
+
+    delete_get_set_get(ctx, session, XP_TEST_MODULE_UINT8, value, &new_set);
+    assert_int_equal(value->data.uint8_val, new_set->data.uint8_val);
+    FREE_VARS(value, new_set);
+
+    /* uint16*/
+    #define XP_TEST_MODULE_UINT16 "/test-module:main/ui16"
+    rc = rp_dt_get_value_wrapper(ctx, session, XP_TEST_MODULE_UINT16, &value);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    assert_int_equal(SR_UINT16_T, value->type);
+    assert_int_equal(16, value->data.uint16_val);
+
+    delete_get_set_get(ctx, session, XP_TEST_MODULE_UINT16, value, &new_set);
+    assert_int_equal(value->data.uint16_val, new_set->data.uint16_val);
+    FREE_VARS(value, new_set);
+
+    /* uint32*/
+    #define XP_TEST_MODULE_UINT32 "/test-module:main/ui32"
+    rc = rp_dt_get_value_wrapper(ctx, session, XP_TEST_MODULE_UINT32, &value);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    assert_int_equal(SR_UINT32_T, value->type);
+    assert_int_equal(32, value->data.uint32_val);
+
+    delete_get_set_get(ctx, session, XP_TEST_MODULE_UINT32, value, &new_set);
+    assert_int_equal(value->data.uint32_val, new_set->data.uint32_val);
+    FREE_VARS(value, new_set);
+
+    /* uint64*/
+    #define XP_TEST_MODULE_UINT64 "/test-module:main/ui64"
+    rc = rp_dt_get_value_wrapper(ctx, session, XP_TEST_MODULE_UINT64, &value);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    assert_int_equal(SR_UINT64_T, value->type);
+    assert_int_equal(64, value->data.uint64_val);
+
+    delete_get_set_get(ctx, session, XP_TEST_MODULE_UINT64, value, &new_set);
+    assert_int_equal(value->data.uint64_val, new_set->data.uint64_val);
+    FREE_VARS(value, new_set);
+
+    dm_session_stop(ctx, session);
+}
 int main(){
 
     sr_logger_set_level(SR_LL_DBG, SR_LL_NONE);
@@ -463,7 +776,10 @@ int main(){
             cmocka_unit_test(delete_item_leaflist_test),
             cmocka_unit_test(set_item_leaf_test),
             cmocka_unit_test(set_item_leaflist_test),
-            cmocka_unit_test(set_item_list_test)
+            cmocka_unit_test(set_item_list_test),
+            cmocka_unit_test(set_item_container_test),
+            cmocka_unit_test(set_item_negative_test),
+            cmocka_unit_test(delete_set_test_module_test),
     };
     return cmocka_run_group_tests(tests, setup, teardown);
 }
