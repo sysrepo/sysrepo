@@ -75,6 +75,7 @@ rp_dt_copy_value(const struct lyd_node_leaf_list *leaf, LY_DATA_TYPE type, sr_va
 {
     CHECK_NULL_ARG2(leaf, value);
     int rc = SR_ERR_OK;
+    struct lys_node_leaf *leaf_schema = NULL;
     if (NULL == leaf->schema || NULL == leaf->schema->name) {
         SR_LOG_ERR_MSG("Missing schema information");
         return SR_ERR_INTERNAL;
@@ -105,7 +106,12 @@ rp_dt_copy_value(const struct lyd_node_leaf_list *leaf, LY_DATA_TYPE type, sr_va
         value->data.bool_val = leaf->value.bln;
         return SR_ERR_OK;
     case LY_TYPE_DEC64:
-        value->data.decimal64_val = leaf->value.dec64;
+        value->data.decimal64_val = (double) leaf->value.dec64;
+        leaf_schema = (struct lys_node_leaf *) leaf->schema;
+        for (size_t i = 0; i < leaf_schema->type.info.dec64.dig; i++) {
+            /* shift decimal point*/
+            value->data.decimal64_val *= 0.1;
+        }
         return SR_ERR_OK;
     case LY_TYPE_EMPTY:
         return SR_ERR_OK;

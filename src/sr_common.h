@@ -444,11 +444,12 @@ int sr_schemas_gpb_to_sr(const Sr__Schema **gpb_schemas, const size_t schema_cnt
 
 /**
  * @brief Converts sr_val_t to string representation, used in set item
- * @param value
- * @param out
+ * @param [in] value
+ * @param [in] schema_node
+ * @param [out] out
  * @return
  */
-int sr_val_to_str(const sr_val_t *value, char **out);
+int sr_val_to_str(const sr_val_t *value, struct lys_node *schema_node, char **out);
 
 /**@} common */
 

@@ -385,6 +385,7 @@ cl_get_items_iter_test(void **state)
         }
         else if (0 == strcmp("/test-module:main/dec64", value->xpath)){
             assert_int_equal(SR_DECIMAL64_T, value->type);
+            assert_int_equal(9.85, value->data.decimal64_val);
         }
         else if (0 == strcmp("/test-module:main/options", value->xpath)){
             assert_int_equal(SR_BITS_T, value->type);
@@ -394,6 +395,15 @@ cl_get_items_iter_test(void **state)
         }
         else if (0 == strcmp("/test-module:main/enum", value->xpath)){
             assert_int_equal(SR_ENUM_T, value->type);
+        }
+        else if (0 == strcmp("/test-module:main/boolean", value->xpath)){
+            assert_int_equal(SR_BOOL_T, value->type);
+        }
+        else if (0 == strcmp("/test-module:main/id_ref", value->xpath)){
+            assert_int_equal(SR_IDENTITYREF_T, value->type);
+        }
+        else if (0 == strcmp("/test-module:main/string", value->xpath)){
+            assert_int_equal(SR_STRING_T, value->type);
         }
         else{
             /* unknown node*/

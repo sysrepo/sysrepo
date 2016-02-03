@@ -26,11 +26,22 @@
 #define SRC_RP_DT_XPATH_H_
 
 #include <libyang/libyang.h>
+#include "data_manager.h"
+#include "xpath_processor.h"
 
 /**
  * @brief Creates xpath for the selected node.
  */
 int rp_dt_create_xpath_for_node(const struct lyd_node *data_tree, char **xpath);
+
+/**
+ * @brief Validates the location_id with schema
+ * @param [in] dm_ctx
+ * @param [in] loc_id
+ * @param [out]match schema node is returned if NULL is not passed
+ * @return err_code
+ */
+int rp_dt_validate_node_xpath(dm_ctx_t *dm_ctx, const xp_loc_id_t *loc_id, struct lys_node **match);
 
 /**
  * @}

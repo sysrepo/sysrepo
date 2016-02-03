@@ -44,6 +44,7 @@ const char *const sr_errlist[] = {
         "Malformed message",                    /* SR_ERR_MALFORMED_MSG */
         "Operation not supported",              /* SR_ERR_UNSUPPORTED */
         "Requested schema model is not known",  /* SR_ERR_UNKNOWN_MODEL */
+        "Request contains unknown element",     /* SR_ERR_BAD_ELEMENT */
 };
 
 const char *
@@ -278,8 +279,20 @@ sr_lyd_new(dm_data_info_t *data_info, struct lyd_node *parent, const struct lys_
     struct lyd_node *new = NULL;
     new = lyd_new(parent, module, node_name);
 
-    if (NULL == parent && NULL == data_info->node){
-        data_info->node = new;
+    if (NULL == parent) {
+        if (NULL == data_info->node) {
+            data_info->node = new;
+        } else {
+            struct lyd_node *last_sibling = data_info->node;
+            while (NULL != last_sibling->next) {
+                last_sibling = last_sibling->next;
+            }
+            if (0 != lyd_insert_after(last_sibling, new)) {
+                SR_LOG_ERR_MSG("Append of top level node failed");
+                lyd_free(new);
+                return NULL;
+            }
+        }
     }
 
     return new;
@@ -1384,12 +1397,85 @@ nomem:
     return SR_ERR_NOMEM;
 }
 
-int
-sr_val_to_str(const sr_val_t *value, char **out)
+static int
+sr_dec64_to_str(double val, struct lys_node *schema_node, char **out)
 {
-    CHECK_NULL_ARG2(value, out);
+    CHECK_NULL_ARG2(schema_node, out);
+    size_t fraction_digits = 0;
+    if (LYS_LEAF == schema_node->nodetype || LYS_LEAFLIST == schema_node->nodetype) {
+        struct lys_node_leaflist *l = (struct lys_node_leaflist *) schema_node;
+        fraction_digits = l->type.info.dec64.dig;
+    } else {
+        SR_LOG_ERR_MSG("Node must be either leaf or leaflist");
+        return SR_ERR_INVAL_ARG;
+    }
+    /* format string for double string convertsion "%.XXf", where XX is corresponding number of fraction digits 1-18 */
+#define MAX_FMT_LEN 6
+    char format_string [MAX_FMT_LEN] = {0,};
+    snprintf(format_string, MAX_FMT_LEN, "%%.%zuf", fraction_digits);
+
+    size_t len = snprintf(NULL, 0, format_string, val);
+    *out = calloc(len + 1, sizeof(**out));
+    if (NULL == *out) {
+        SR_LOG_ERR_MSG("Memory allocation failed");
+        return SR_ERR_NOMEM;
+    }
+    snprintf(*out, len + 1, format_string, val);
+    return SR_ERR_OK;
+}
+
+int
+sr_val_to_str(const sr_val_t *value, struct lys_node *schema_node, char **out)
+{
+    CHECK_NULL_ARG3(value, schema_node, out);
     size_t len = 0;
     switch (value->type) {
+    case SR_BINARY_T:
+        *out = strdup(value->data.binary_val);
+        break;
+    case SR_BITS_T:
+        *out = strdup(value->data.bits_val);
+        break;
+    case SR_BOOL_T:
+        *out = value->data.bool_val ? strdup("true") : strdup("false");
+        break;
+    case SR_DECIMAL64_T:
+        return sr_dec64_to_str(value->data.decimal64_val, schema_node, out);
+    case SR_ENUM_T:
+        *out = strdup(value->data.enum_val);
+        break;
+    case SR_LEAF_EMPTY_T:
+        *out = strdup("");
+        break;
+    case SR_IDENTITYREF_T:
+        *out = strdup(value->data.identityref_val);
+        break;
+    case SR_INSTANCEID_T:
+        *out = strdup(value->data.instanceid_val);
+        break;
+    case SR_INT8_T:
+        len = snprintf(NULL, 0, "%"PRId8, value->data.int8_val);
+        *out = calloc(len + 1, sizeof(**out));
+        snprintf(*out, len + 1, "%"PRId8, value->data.int8_val);
+        break;
+    case SR_INT16_T:
+        len = snprintf(NULL, 0, "%"PRId16, value->data.int16_val);
+        *out = calloc(len + 1, sizeof(**out));
+        snprintf(*out, len + 1, "%"PRId16, value->data.int16_val);
+        break;
+    case SR_INT32_T:
+        len = snprintf(NULL, 0, "%"PRId32, value->data.int32_val);
+        *out = calloc(len + 1, sizeof(**out));
+        snprintf(*out, len + 1, "%"PRId32, value->data.int32_val);
+        break;
+    case SR_INT64_T:
+        len = snprintf(NULL, 0, "%"PRId64, value->data.int64_val);
+        *out = calloc(len + 1, sizeof(**out));
+        snprintf(*out, len + 1, "%"PRId64, value->data.int64_val);
+        break;
+    case SR_LEAFREF_T:
+        *out = strdup(value->data.leafref_val);
+        break;
     case SR_STRING_T:
         *out = strdup(value->data.string_val);
         break;
@@ -1398,7 +1484,21 @@ sr_val_to_str(const sr_val_t *value, char **out)
         *out = calloc(len + 1, sizeof(**out));
         snprintf(*out, len + 1, "%"PRIu8, value->data.uint8_val);
         break;
-        //TODO other types
+    case SR_UINT16_T:
+        len = snprintf(NULL, 0, "%"PRIu16, value->data.uint16_val);
+        *out = calloc(len + 1, sizeof(**out));
+        snprintf(*out, len + 1, "%"PRIu16, value->data.uint16_val);
+        break;
+    case SR_UINT32_T:
+        len = snprintf(NULL, 0, "%"PRIu32, value->data.uint32_val);
+        *out = calloc(len + 1, sizeof(**out));
+        snprintf(*out, len + 1, "%"PRIu32, value->data.uint32_val);
+        break;
+    case SR_UINT64_T:
+        len = snprintf(NULL, 0, "%"PRIu64, value->data.uint64_val);
+        *out = calloc(len + 1, sizeof(**out));
+        snprintf(*out, len + 1, "%"PRIu64, value->data.uint64_val);
+        break;
     default:
         SR_LOG_ERR_MSG("Conversion of value_t to string failed");
         *out = NULL;
@@ -1409,4 +1509,3 @@ sr_val_to_str(const sr_val_t *value, char **out)
     }
     return SR_ERR_OK;
 }
-

@@ -147,6 +147,15 @@ void createDataTreeTestModule(struct ly_ctx *ctx, struct lyd_node **root){
 
     node = lyd_new_leaf(*root, module, "empty", "");
     assert_non_null(node);
+    
+    node = lyd_new_leaf(*root, module, "boolean", "true");
+    assert_non_null(node);
+    
+    node = lyd_new_leaf(*root, module, "string", "str");
+    assert_non_null(node);
+    
+    node = lyd_new_leaf(*root, module, "id_ref", "id_1");
+    assert_non_null(node);
 
     /* leaf -list*/
     n = lyd_new_leaf(*root, module, "numbers", "1");
