@@ -1409,7 +1409,7 @@ sr_dec64_to_str(double val, struct lys_node *schema_node, char **out)
         SR_LOG_ERR_MSG("Node must be either leaf or leaflist");
         return SR_ERR_INVAL_ARG;
     }
-    /* format string for double string convertsion "%.XXf", where XX is corresponding number of fraction digits 1-18 */
+    /* format string for double string conversion "%.XXf", where XX is corresponding number of fraction digits 1-18 */
 #define MAX_FMT_LEN 6
     char format_string [MAX_FMT_LEN] = {0,};
     snprintf(format_string, MAX_FMT_LEN, "%%.%zuf", fraction_digits);
