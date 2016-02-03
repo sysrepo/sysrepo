@@ -762,10 +762,11 @@ rp_session_stop(const rp_ctx_t *rp_ctx, rp_session_t *session)
     if (session->msg_count > 0) {
         /* cleanup will be called after last message has been processed so
          * that RP can survive this unexpected situation */
-        session->stop_requested = true;
         SR_LOG_WRN("There are some (%"PRIu32") unprocessed messages for the session id=%"PRIu32" when"
                 " session stop has been requested, this can lead to unspecified behavior - check RP caller code!!!",
                 session->msg_count, session->id);
+        /* beware that this can lead to memleak if session->msg_count is already == 0 */
+        session->stop_requested = true;
     } else {
         rp_session_cleanup(rp_ctx, session);
     }
