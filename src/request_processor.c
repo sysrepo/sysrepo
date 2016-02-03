@@ -28,8 +28,12 @@
 #include "dm_location.h"
 #include "rp_data_tree.h"
 
-#define RP_THREAD_COUNT 5          /**< Number of threads that RP uses for processing. */
-#define RP_INIT_REQ_QUEUE_SIZE 10  /**< Initial size of the request queue. */
+#define RP_THREAD_COUNT 4            /**< Number of threads that RP uses for processing. */
+#define RP_INIT_REQ_QUEUE_SIZE 10    /**< Initial size of the request queue. */
+#define RP_REQ_PER_THREADS 1         /**< Number of requests that can be WAITING in queue per each thread before waking up another thread. */
+#define RP_THREAD_SPIN_LIMIT 100000  /**< Maximum number of cycles that a thread will spin before going to sleep. */
+
+static int wakeups = 0; // TODO tmp
 
 /**
  * @brief Structure that holds the context of an instance of Request Processor.
@@ -39,6 +43,7 @@ typedef struct rp_ctx_s {
     dm_ctx_t *dm_ctx;                        /**< Data Manager Context. */
 
     pthread_t thread_pool[RP_THREAD_COUNT];  /**< Thread pool. */
+    size_t active_threads;                   /**< Number of active (non-sleeping) threads. */
     bool stop_requested;                     /**< Stopping of all threads has been requested. */
 
     sr_cbuff_t *request_queue;               /**< Input request queue. */
@@ -572,12 +577,17 @@ rp_worker_thread_execute(void *rp_ctx_p)
     }
     rp_ctx_t *rp_ctx = (rp_ctx_t*)rp_ctx_p;
     rp_request_t req = { 0 };
-    bool dequeued = false, exit = false;
+    bool dequeued = false, dequeued_prev = false, exit = false;
 
     SR_LOG_DBG("Starting worker thread id=%lu.",  pthread_self());
 
+    pthread_mutex_lock(&rp_ctx->request_queue_mutex);
+    rp_ctx->active_threads++;
+    pthread_mutex_unlock(&rp_ctx->request_queue_mutex);
+
     do {
         /* process requests while there are some */
+        dequeued_prev = false;
         do {
             /* dequeue a request */
             pthread_mutex_lock(&rp_ctx->request_queue_mutex);
@@ -597,6 +607,27 @@ rp_worker_thread_execute(void *rp_ctx_p)
                         rp_session_cleanup(rp_ctx, req.session);
                     }
                 }
+                dequeued_prev = true;
+            } else {
+                /* no items in queue - spin for a while */
+                if (dequeued_prev) {
+                    /* only if the thread has actually processed something since the last wakeup */
+                    size_t count = 0;
+                    while ((0 == sr_cbuff_items_in_queue(rp_ctx->request_queue)) && (count < RP_THREAD_SPIN_LIMIT)) {
+                        count++;
+                    }
+                }
+                pthread_mutex_lock(&rp_ctx->request_queue_mutex);
+                if (0 != sr_cbuff_items_in_queue(rp_ctx->request_queue)) {
+                    /* some items are in queue - process them */
+                    pthread_mutex_unlock(&rp_ctx->request_queue_mutex);
+                    dequeued = true;
+                    continue;
+                } else {
+                    /* no items in queue - go to sleep */
+                    rp_ctx->active_threads--;
+                    pthread_mutex_unlock(&rp_ctx->request_queue_mutex);
+                }
             }
         } while (dequeued && !exit);
 
@@ -612,6 +643,7 @@ rp_worker_thread_execute(void *rp_ctx_p)
                 break;
             }
             pthread_cond_wait(&rp_ctx->request_queue_cv, &rp_ctx->request_queue_mutex);
+            rp_ctx->active_threads++;
 
             SR_LOG_DBG("Thread id=%lu signaled.",  pthread_self());
             pthread_mutex_unlock(&rp_ctx->request_queue_mutex);
@@ -771,6 +803,8 @@ rp_session_stop(const rp_ctx_t *rp_ctx, rp_session_t *session)
         rp_session_cleanup(rp_ctx, session);
     }
 
+    printf("wakeups=%d\n", wakeups);
+
     return SR_ERR_OK;
 }
 
@@ -803,7 +837,14 @@ rp_msg_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
     pthread_mutex_lock(&rp_ctx->request_queue_mutex);
 
     rc = sr_cbuff_enqueue(rp_ctx->request_queue, &req);
-    pthread_cond_signal(&rp_ctx->request_queue_cv);
+
+    /* send signal if there is no active thread ready to process the request */
+    if (0 == rp_ctx->active_threads ||
+            (((sr_cbuff_items_in_queue(rp_ctx->request_queue) / rp_ctx->active_threads) > RP_REQ_PER_THREADS) &&
+             rp_ctx->active_threads < RP_THREAD_COUNT)) {
+        wakeups++;
+        pthread_cond_signal(&rp_ctx->request_queue_cv);
+    }
 
     pthread_mutex_unlock(&rp_ctx->request_queue_mutex);
 
