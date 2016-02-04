@@ -882,3 +882,84 @@ dm_discard_changes(dm_ctx_t *dm_ctx, dm_session_t *session)
     }
     return SR_ERR_OK;
 }
+
+int
+dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, char ***errors, size_t *err_cnt)
+{
+    CHECK_NULL_ARG2(dm_ctx, session);
+    int rc = SR_ERR_OK;
+    char **err = NULL;
+    size_t e_cnt = 0;
+    //TODO send validate notifications
+
+    /* YANG validation */
+    rc = dm_validate_session_data_trees(dm_ctx, session, &err, &e_cnt);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Data validation failed");
+        *errors = err;
+        *err_cnt = e_cnt;
+        return rc;
+    }
+
+    /* TODO aquire data file lock*/
+
+    /* lock context for writing */
+    pthread_rwlock_wrlock(&dm_ctx->lyctx_lock);
+
+    size_t cnt = 0;
+    avl_node_t *node = NULL;
+    avl_node_t *sys_node = NULL;
+    while (NULL != (node = avl_at(session->running_modules, cnt))) {
+        dm_data_info_t *info = node->item;
+        if (info->modified) {
+            /* lookup data_tree in dm_ctx*/
+            dm_data_info_t search_node;
+            dm_data_info_t *original_data_info = NULL;
+            search_node.module = info->module;
+            sys_node = avl_search(dm_ctx->module_avl, &search_node);
+            if (NULL == sys_node){
+                SR_LOG_ERR("Module '%s' not found in data manager context", info->module->name);
+                pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
+                return SR_ERR_INTERNAL;
+            }
+
+            /* update data trees in dm_ctx*/
+            original_data_info = (dm_data_info_t *) sys_node->item;
+            if (info->timestamp != original_data_info->timestamp) {
+                SR_LOG_INF("Merging needs to be done for module '%s', currently just overwriting", info->module->name);
+            }
+            sr_free_datatree(original_data_info->node);
+            original_data_info->node = sr_dup_datatree(info->node);
+            if (NULL == original_data_info->node){
+                SR_LOG_ERR("Duplication of data tree %s", info->module->name);
+                pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
+                return SR_ERR_INTERNAL;
+            }
+            original_data_info->timestamp = time(NULL);
+
+            char *data_filename = NULL;
+            rc = dm_get_data_file(dm_ctx, info->module->name, &data_filename);
+            if (SR_ERR_OK != rc){
+                SR_LOG_ERR_MSG("Getting data file name failed");
+                pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
+                return rc;
+            }
+
+            rc = sr_save_data_tree_file(data_filename, original_data_info->node);
+            free(data_filename);
+            if (SR_ERR_OK != rc){
+                SR_LOG_ERR("Saving data file for module %s failed", info->module->name);
+                pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
+                return rc;
+            }
+        }
+        cnt++;
+    }
+
+    pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
+
+    /* discard changes in session in next get_data_tree call newly committed content will be loaded */
+    rc = dm_discard_changes(dm_ctx, session);
+
+    return rc;
+}

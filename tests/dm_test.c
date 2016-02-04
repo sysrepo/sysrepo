@@ -199,6 +199,42 @@ dm_discard_changes_test(void **state)
     dm_cleanup(ctx);
 }
 
+void
+dm_commit_test(void **state)
+{
+    int rc;
+    dm_ctx_t *ctx = NULL;
+    dm_session_t *ses_ctx = NULL;
+    dm_data_info_t *info = NULL;
+
+    rc = dm_init(TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = dm_session_start(ctx, &ses_ctx);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    char **errors = NULL;
+    size_t err_cnt = 0;
+    rc = dm_commit(ctx, ses_ctx, &errors, &err_cnt);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = dm_get_data_info(ctx, ses_ctx, "test-module", &info);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = dm_commit(ctx, ses_ctx, &errors, &err_cnt);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = dm_get_data_info(ctx, ses_ctx, "test-module", &info);
+    assert_int_equal(SR_ERR_OK, rc);
+    info->modified = true;
+
+    rc = dm_commit(ctx, ses_ctx, &errors, &err_cnt);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    dm_session_stop(ctx, ses_ctx);
+    dm_cleanup(ctx);
+}
+
 int main(){
     sr_logger_set_level(SR_LL_DBG, SR_LL_NONE);
 
@@ -209,6 +245,7 @@ int main(){
             cmocka_unit_test(dm_list_schema_test),
             cmocka_unit_test(dm_validate_data_trees_test),
             cmocka_unit_test(dm_discard_changes_test),
+            cmocka_unit_test(dm_commit_test),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

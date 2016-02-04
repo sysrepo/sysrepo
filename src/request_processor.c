@@ -428,13 +428,11 @@ rp_commit_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__M
         return SR_ERR_NOMEM;
     }
 
-    /* TODO: run commit in data manager */
-    rc = SR_ERR_COMMIT_FAILED;
-    /* here are just some temporary errors returned from commit to exercise the unit test */
-    resp->response->commit_resp->errors = calloc(2, sizeof(resp->response->commit_resp->errors));
-    resp->response->commit_resp->errors[0] = strdup("Commit operation is not supported.");
-    resp->response->commit_resp->errors[1] = strdup("There are no changes within this session.");
-    resp->response->commit_resp->n_errors = 2;
+    char **errors = NULL;
+    size_t err_cnt = 0;
+    rc = dm_commit(rp_ctx->dm_ctx, session->dm_session, &errors, &err_cnt);
+    resp->response->commit_resp->errors = errors;
+    resp->response->commit_resp->n_errors = err_cnt;
 
     /* set response code */
     resp->response->result = rc;

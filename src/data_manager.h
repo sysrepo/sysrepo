@@ -126,27 +126,38 @@ int dm_get_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revisio
  * @param [in] dm_session
  * @param [out] schemas
  * @param [out] schema_count
- * @return err_code
+ * @return Error code (SR_ERR_OK on success)
  */
 int dm_list_schemas(dm_ctx_t *dm_ctx, dm_session_t *dm_session, sr_schema_t **schemas, size_t *schema_count);
 
 /**
  * @brief Validates the data_trees in session
- * @param dm_ctx
- * @param session
- * @param errors
- * @param err_cnt
- * @return
+ * @param [in] dm_ctx
+ * @param [in] session
+ * @param [out] errors
+ * @param [out] err_cnt
+ * @return Error code (SR_ERR_OK on success)
  */
 int dm_validate_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, char ***errors, size_t *err_cnt);
 
 /**
- * @brief Discards the user made changes. Marks data tree in session to be overwritten in next get_da
- * @param dm_ctx
- * @param session
- * @return
+ * @brief Discards the user made changes. Marks data tree in session to be overwritten in next ::dm_get_datatree /
+ * ::dm_get_data_info call.
+ * @param [in] dm_ctx
+ * @param [in] session
+ * @return Error code (SR_ERR_OK on success)
  */
 int dm_discard_changes(dm_ctx_t *dm_ctx, dm_session_t *session);
+
+/**
+ * @brief Saves the changes into dm_ctx and write them to file system.
+ * @param [in] dm_ctx
+ * @param [in] session
+ * @param [out] errors
+ * @param [out] err_cnt
+ * @return Error code (SR_ERR_OK on success)
+ */
+int dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, char ***errors, size_t *err_cnt);
 
 /**@} Data manager*/
 #endif /* SRC_DATA_MANAGER_H_ */

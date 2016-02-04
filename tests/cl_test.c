@@ -538,7 +538,7 @@ cl_commit_test(void **state)
     /* perform a commit request */
     rc = sr_commit(session, &errors, &error_cnt);
 
-    assert_int_equal(rc, SR_ERR_COMMIT_FAILED); /* TODO: expect commit fail for now */
+    assert_int_equal(rc, SR_ERR_OK);
     /* print out and cleanup errors */
     if (error_cnt > 0) {
         for (size_t i = 0; i < error_cnt; i++) {
