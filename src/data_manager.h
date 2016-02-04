@@ -130,5 +130,23 @@ int dm_get_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revisio
  */
 int dm_list_schemas(dm_ctx_t *dm_ctx, dm_session_t *dm_session, sr_schema_t **schemas, size_t *schema_count);
 
+/**
+ * @brief Validates the data_trees in session
+ * @param dm_ctx
+ * @param session
+ * @param errors
+ * @param err_cnt
+ * @return
+ */
+int dm_validate_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, char ***errors, size_t *err_cnt);
+
+/**
+ * @brief Discards the user made changes. Marks data tree in session to be overwritten in next get_da
+ * @param dm_ctx
+ * @param session
+ * @return
+ */
+int dm_discard_changes(dm_ctx_t *dm_ctx, dm_session_t *session);
+
 /**@} Data manager*/
 #endif /* SRC_DATA_MANAGER_H_ */

@@ -393,13 +393,11 @@ rp_validate_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr_
         return SR_ERR_NOMEM;
     }
 
-    /* TODO: run validate in data manager */
-    rc = SR_ERR_VALIDATION_FAILED;
-    /* here are just some temporary errors returned from validate to exercise the unit test */
-    resp->response->validate_resp->errors = calloc(2, sizeof(*resp->response->validate_resp->errors));
-    resp->response->validate_resp->errors[0] = strdup("Validate operation is not supported.");
-    resp->response->validate_resp->errors[1] = strdup("There are no changes within this session.");
-    resp->response->validate_resp->n_errors = 2;
+    char **errors = NULL;
+    size_t err_cnt = 0;
+    rc = dm_validate_session_data_trees(rp_ctx->dm_ctx, session->dm_session, &errors, &err_cnt);
+    resp->response->validate_resp->errors = errors;
+    resp->response->validate_resp->n_errors = err_cnt;
 
     /* set response code */
     resp->response->result = rc;
@@ -467,8 +465,7 @@ rp_discard_changes_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *sessi
         return SR_ERR_NOMEM;
     }
 
-    /* TODO: run discard_changes in data manager */
-    rc = SR_ERR_UNSUPPORTED;
+    rc = dm_discard_changes(rp_ctx->dm_ctx, session->dm_session);
 
     /* set response code */
     resp->response->result = rc;

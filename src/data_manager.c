@@ -832,3 +832,53 @@ dm_list_schemas(dm_ctx_t *dm_ctx, dm_session_t *dm_session, sr_schema_t **schema
     return SR_ERR_OK;
 }
 
+int
+dm_validate_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, char ***errors, size_t *err_cnt)
+{
+    CHECK_NULL_ARG3(dm_ctx, session, errors);
+    int rc = SR_ERR_OK;
+
+    size_t cnt = 0;
+    avl_node_t *node = NULL;
+    while (NULL != (node = avl_at(session->running_modules, cnt))) {
+        dm_data_info_t *info = node->item;
+        /* loaded data trees are valid, so check only the modified ones */
+        if (info->modified) {
+            //TODO lock mutex for logging a collect error messages
+            if (NULL == info->module || NULL == info->module->name) {
+                SR_LOG_ERR_MSG("Missing schema information");
+                return SR_ERR_INTERNAL;
+            }
+            if (0 != lyd_validate(info->node, LYD_OPT_STRICT)){
+                SR_LOG_DBG("Validation failed for %s module", info->module->name);
+                rc = SR_ERR_VALIDATION_FAILED;
+            }
+            else{
+               SR_LOG_DBG("Validation succeeded for '%s' module", info->module->name);
+            }
+        }
+        cnt++;
+    }
+    return rc;
+}
+
+int
+dm_discard_changes(dm_ctx_t *dm_ctx, dm_session_t *session)
+{
+    CHECK_NULL_ARG2(dm_ctx, session);
+
+    size_t cnt = 0;
+    avl_node_t *node = NULL;
+    while (NULL != (node = avl_at(session->running_modules, cnt))) {
+        dm_data_info_t *info = node->item;
+        if (info->modified) {
+            /* changes timestamp to zero
+             * and set modified to false to discard the changes
+             * next get_data_tree/ get_data_info call will update the data tree */
+            info->modified = false;
+            info->timestamp = 0;
+        }
+        cnt++;
+    }
+    return SR_ERR_OK;
+}

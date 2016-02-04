@@ -505,7 +505,7 @@ cl_validate_test(void **state)
     /* perform a validate request */
     rc = sr_validate(session, &errors, &error_cnt);
 
-    assert_int_equal(rc, SR_ERR_VALIDATION_FAILED); /* TODO: expect validation fail for now */
+    assert_int_equal(rc, SR_ERR_OK);
     /* print out and cleanup errors */
     if (error_cnt > 0) {
         for (size_t i = 0; i < error_cnt; i++) {
@@ -568,7 +568,7 @@ cl_discard_changes_test(void **state)
 
     /* perform a discard-changes request */
     rc = sr_discard_changes(session);
-    assert_int_equal(rc, SR_ERR_UNSUPPORTED); /* TODO: UNSUPPORTED for now */
+    assert_int_equal(rc, SR_ERR_OK);
 
     /* stop the session */
     rc = sr_session_stop(session);

@@ -98,6 +98,106 @@ dm_list_schema_test(void **state)
     dm_cleanup(ctx);
 }
 
+void
+dm_validate_data_trees_test(void **state)
+{
+    int rc;
+    dm_ctx_t *ctx = NULL;
+    dm_session_t *ses_ctx = NULL;
+    struct lyd_node *node = NULL;
+    dm_data_info_t *info = NULL;
+    char **errors = NULL;
+    size_t err_cnt = 0;
+
+    rc = dm_init(TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = dm_session_start(ctx, &ses_ctx);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* test validation with no data trees copied */
+    rc = dm_validate_session_data_trees(ctx, ses_ctx, &errors, &err_cnt);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* copy a couple data trees to session*/
+    rc = dm_get_data_info(ctx, ses_ctx, "example-module", &info);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = dm_get_data_info(ctx, ses_ctx, "test-module", &info);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = dm_validate_session_data_trees(ctx, ses_ctx, &errors, &err_cnt);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* make an invalid  change */
+    info->modified = true;
+    /* already existing leaf */
+    node = sr_lyd_new_leaf(info, info->node, info->module, "i8", "42");
+    assert_non_null(node);
+
+
+    rc = dm_validate_session_data_trees(ctx, ses_ctx, &errors, &err_cnt);
+    assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
+
+    for (size_t i=0; i<err_cnt; i++) {
+        free(errors[i]);
+    }
+    free(errors);
+
+    dm_session_stop(ctx, ses_ctx);
+    dm_cleanup(ctx);
+}
+
+void
+dm_discard_changes_test(void **state)
+{
+    int rc;
+    dm_ctx_t *ctx = NULL;
+    dm_session_t *ses_ctx = NULL;
+    dm_data_info_t *info = NULL;
+
+    rc = dm_init(TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = dm_session_start(ctx, &ses_ctx);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = dm_get_data_info(ctx, ses_ctx, "test-module", &info);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = dm_discard_changes(ctx, ses_ctx);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = dm_get_data_info(ctx, ses_ctx, "test-module", &info);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* check current value */
+    assert_int_equal(8, ((struct lyd_node_leaf_list *)info->node->child->next->next->next->next)->value.int8);
+
+
+    /* change leaf i8 value */
+    info->modified = true;
+    //TODO change to lyd_change_leaf
+    ((struct lyd_node_leaf_list *)info->node->child->next->next->next->next)->value.int8 = 100;
+
+    /* we should have the value changed*/
+    rc = dm_get_data_info(ctx, ses_ctx, "test-module", &info);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    assert_int_equal(100, ((struct lyd_node_leaf_list *)info->node->child->next->next->next->next)->value.int8);
+
+    /* discard changes to get current datastore value*/
+    rc = dm_discard_changes(ctx, ses_ctx);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = dm_get_data_info(ctx, ses_ctx, "test-module", &info);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    assert_int_equal(8, ((struct lyd_node_leaf_list *)info->node->child->next->next->next->next)->value.int8);
+
+    dm_session_stop(ctx, ses_ctx);
+    dm_cleanup(ctx);
+}
 
 int main(){
     sr_logger_set_level(SR_LL_DBG, SR_LL_NONE);
@@ -105,9 +205,11 @@ int main(){
     const struct CMUnitTest tests[] = {
             cmocka_unit_test(dm_create_cleanup),
             cmocka_unit_test(dm_get_data_tree),
-            cmocka_unit_test(dm_list_schema_test)
+            cmocka_unit_test(dm_list_schema_test),
+            cmocka_unit_test(dm_list_schema_test),
+            cmocka_unit_test(dm_validate_data_trees_test),
+            cmocka_unit_test(dm_discard_changes_test),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }
-
 
