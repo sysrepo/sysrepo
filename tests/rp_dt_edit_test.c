@@ -817,6 +817,45 @@ void delete_negative_test(void **state){
     dm_session_stop(ctx, session);
 }
 
+void
+edit_validate_test(void **state)
+{
+    int rc = 0;
+    dm_ctx_t *ctx = *state;
+    dm_session_t *session = NULL;
+
+    dm_session_start(ctx, &session);
+    /*TODO must when */
+    /*TODO regexp */
+    /*TODO mandatory leaf */
+    /*TODO choice */
+    /* leaf-list unique values */
+    
+    dm_session_stop(ctx, session);
+}
+
+void
+edit_discard_changes_test(void **state)
+{
+    int rc = 0;
+    dm_ctx_t *ctx = *state;
+    dm_session_t *session = NULL;
+
+    dm_session_start(ctx, &session);
+    dm_session_stop(ctx, session);
+}
+
+void
+edit_commit_test(void **state)
+{
+    int rc = 0;
+    dm_ctx_t *ctx = *state;
+    dm_session_t *session = NULL;
+
+    dm_session_start(ctx, &session);
+    dm_session_stop(ctx, session);
+}
+
 int main(){
 
     sr_logger_set_level(SR_LL_DBG, SR_LL_NONE);
@@ -834,6 +873,9 @@ int main(){
             cmocka_unit_test(set_item_container_test),
             cmocka_unit_test(set_item_negative_test),
             cmocka_unit_test(edit_test_module_test),
+            cmocka_unit_test(edit_validate_test),
+            cmocka_unit_test(edit_discard_changes_test),
+            cmocka_unit_test(edit_commit_test),
     };
     return cmocka_run_group_tests(tests, setup, teardown);
 }
