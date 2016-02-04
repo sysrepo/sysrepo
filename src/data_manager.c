@@ -234,11 +234,14 @@ dm_load_data_tree(dm_ctx_t *dm_ctx, const struct lys_module *module, sr_datastor
             fclose(f);
             return SR_ERR_INTERNAL;
         }
-        data->timestamp = st.st_mtim;
 #ifdef __linux__
+        data->timestamp = st.st_mtim;
         SR_LOG_DBG("Loaded module %s: mtime sec=%lld nsec=%lld\n", module->name,
                 (long long) st.st_mtim.tv_sec,
                 (long long) st.st_mtim.tv_nsec);
+#else
+        data->timestamp = st.st_mtime;
+        SR_LOG_DBG("Loaded module %s: mtime sec=%lld\n", module->name, (long long) st.st_mtime);
 #endif
         data_tree = lyd_parse_fd(dm_ctx->ly_ctx, fileno(f), LYD_XML, LYD_OPT_STRICT);
         lockf(fileno(f), F_ULOCK, 0);
@@ -663,7 +666,7 @@ dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors, siz
                 SR_LOG_INF("Session copy module '%s', has not been changed since loading", info->module->name);
             }
 #else
-            if (info->timestamp != st.st_mtim) {
+            if (info->timestamp != st.st_mtime) {
                 SR_LOG_INF("Merging needs to be done for module '%s', currently just overwriting", info->module->name);
             } else {
                 /* Further check if the because we have only second precision */
