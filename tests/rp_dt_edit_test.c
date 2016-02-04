@@ -830,7 +830,27 @@ edit_validate_test(void **state)
     /*TODO mandatory leaf */
     /*TODO choice */
     /* leaf-list unique values */
-    
+    sr_val_t val;
+    val.xpath = NULL;
+    val.type = SR_UINT8_T;
+    val.data.uint8_val = 9;
+
+    rc = rp_dt_set_item(ctx, session, SR_DS_STARTUP, "/test-module:main/numbers", SR_EDIT_DEFAULT, &val);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_set_item(ctx, session, SR_DS_STARTUP, "/test-module:main/numbers", SR_EDIT_DEFAULT, &val);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    char **errors = NULL;
+    size_t e_cnt = 0;
+    rc = dm_validate_session_data_trees(ctx, session, &errors, &e_cnt);
+    assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
+
+    for (size_t i = 0; i < e_cnt; i++) {
+        free(errors[i]);
+    }
+    free(errors);
+
     dm_session_stop(ctx, session);
 }
 
@@ -839,10 +859,58 @@ edit_discard_changes_test(void **state)
 {
     int rc = 0;
     dm_ctx_t *ctx = *state;
-    dm_session_t *session = NULL;
+    dm_session_t *sessionA = NULL, *sessionB = NULL;
+    sr_val_t *valueA = NULL, *valueB = NULL;
 
-    dm_session_start(ctx, &session);
-    dm_session_stop(ctx, session);
+
+    dm_session_start(ctx, &sessionA);
+    dm_session_start(ctx, &sessionB);
+
+    /* read value in session A*/
+    rc = rp_dt_get_value_wrapper(ctx, sessionA, "/test-module:main/i64", &valueA);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(valueA);
+    assert_int_equal(64, valueA->data.int64_val);
+
+    /* read value in session B*/
+    rc = rp_dt_get_value_wrapper(ctx, sessionB, "/test-module:main/i64", &valueB);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(valueB);
+    assert_int_equal(64, valueB->data.int64_val);
+    sr_free_val(valueB);
+
+    /* update value in session A*/
+    valueA->data.int64_val = 1024;
+    rc = rp_dt_set_item(ctx, sessionA, SR_DS_STARTUP, "/test-module:main/i64", SR_EDIT_DEFAULT, valueA);
+    assert_int_equal(SR_ERR_OK, rc);
+    sr_free_val(valueA);
+
+    /* check update in session A*/
+    rc = rp_dt_get_value_wrapper(ctx, sessionA, "/test-module:main/i64", &valueA);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(valueA);
+    assert_int_equal(1024, valueA->data.int64_val);
+    sr_free_val(valueA);
+
+    /* update in sessionA should not affect value in session B*/
+    rc = rp_dt_get_value_wrapper(ctx, sessionB, "/test-module:main/i64", &valueB);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(valueB);
+    assert_int_equal(64, valueB->data.int64_val);
+    sr_free_val(valueB);
+
+    rc = dm_discard_changes(ctx, sessionA);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_get_value_wrapper(ctx, sessionA, "/test-module:main/i64", &valueA);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(valueA);
+    assert_int_equal(64, valueA->data.int64_val);
+    sr_free_val(valueA);
+
+    dm_session_stop(ctx, sessionA);
+    dm_session_stop(ctx, sessionB);
+
 }
 
 void
@@ -850,10 +918,85 @@ edit_commit_test(void **state)
 {
     int rc = 0;
     dm_ctx_t *ctx = *state;
-    dm_session_t *session = NULL;
+    dm_session_t *sessionA = NULL, *sessionB = NULL;
+    sr_val_t *valueA = NULL, *valueB = NULL;
 
-    dm_session_start(ctx, &session);
-    dm_session_stop(ctx, session);
+
+    dm_session_start(ctx, &sessionA);
+    dm_session_start(ctx, &sessionB);
+
+    /* read value in session A*/
+    rc = rp_dt_get_value_wrapper(ctx, sessionA, "/test-module:main/i64", &valueA);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(valueA);
+    assert_int_equal(64, valueA->data.int64_val);
+
+    /* read value in session B*/
+    rc = rp_dt_get_value_wrapper(ctx, sessionB, "/test-module:main/i64", &valueB);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(valueB);
+    assert_int_equal(64, valueB->data.int64_val);
+    sr_free_val(valueB);
+
+    /* update value in session A*/
+    valueA->data.int64_val = 1024;
+    rc = rp_dt_set_item(ctx, sessionA, SR_DS_STARTUP, "/test-module:main/i64", SR_EDIT_DEFAULT, valueA);
+    assert_int_equal(SR_ERR_OK, rc);
+    sr_free_val(valueA);
+
+    /* check update in session A*/
+    rc = rp_dt_get_value_wrapper(ctx, sessionA, "/test-module:main/i64", &valueA);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(valueA);
+    assert_int_equal(1024, valueA->data.int64_val);
+    sr_free_val(valueA);
+
+    /* update in sessionA should not affect value in session B*/
+    rc = rp_dt_get_value_wrapper(ctx, sessionB, "/test-module:main/i64", &valueB);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(valueB);
+    assert_int_equal(64, valueB->data.int64_val);
+    sr_free_val(valueB);
+
+    char **errors = NULL;
+    size_t e_cnt = 0;
+
+    rc = dm_commit(ctx, sessionA, &errors, &e_cnt);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_get_value_wrapper(ctx, sessionA, "/test-module:main/i64", &valueA);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(valueA);
+    assert_int_equal(1024, valueA->data.int64_val);
+    sr_free_val(valueA);
+
+    /* since the session be has not been modified it should be update after commit */
+    rc = rp_dt_get_value_wrapper(ctx, sessionB, "/test-module:main/i64", &valueB);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(valueB);
+    assert_int_equal(1024, valueB->data.int64_val);
+    sr_free_val(valueB);
+
+    dm_session_stop(ctx, sessionA);
+    dm_session_stop(ctx, sessionB);
+
+     /* check that update is permanent in new session*/
+    dm_session_start(ctx, &sessionA);
+    rc = rp_dt_get_value_wrapper(ctx, sessionA, "/test-module:main/i64", &valueA);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(valueA);
+    assert_int_equal(1024, valueA->data.int64_val);
+
+    valueA->data.int64_val = 64;
+
+    rc = rp_dt_set_item(ctx, sessionA, SR_DS_STARTUP, "/test-module:main/i64", SR_EDIT_DEFAULT, valueA);
+    assert_int_equal(SR_ERR_OK, rc);
+    sr_free_val(valueA);
+
+    rc = dm_commit(ctx, sessionA, &errors, &e_cnt);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    dm_session_stop(ctx, sessionA);
 }
 
 int main(){

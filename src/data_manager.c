@@ -935,7 +935,9 @@ dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, char ***errors, size_t *err_c
                 pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
                 return SR_ERR_INTERNAL;
             }
-            original_data_info->timestamp = time(NULL);
+            /* increment timestamp to invalidate older copies */
+            original_data_info->timestamp++;
+            ((dm_model_info_t *) original_data_info->module->data->private)->running_timestamp = original_data_info->timestamp;
 
             char *data_filename = NULL;
             rc = dm_get_data_file(dm_ctx, info->module->name, &data_filename);
