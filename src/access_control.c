@@ -146,17 +146,6 @@ ac_set_identity(const uid_t euid, const gid_t egid)
 {
     int ret = -1;
 
-    /* set uid */
-#ifdef HAVE_SETFSUID
-    ret = setfsuid(euid);
-#else
-    ret = seteuid(euid);
-#endif
-    if (-1 == ret) {
-        SR_LOG_ERR("Unable to switch effective uid: %s", strerror(errno));
-        return SR_ERR_INTERNAL;
-    }
-
     /* set gid */
 #ifdef HAVE_SETFSUID
     ret = setfsgid(egid);
@@ -165,6 +154,17 @@ ac_set_identity(const uid_t euid, const gid_t egid)
 #endif
     if (-1 == ret) {
         SR_LOG_ERR("Unable to switch effective gid: %s", strerror(errno));
+        return SR_ERR_INTERNAL;
+    }
+
+    /* set uid */
+#ifdef HAVE_SETFSUID
+    ret = setfsuid(euid);
+#else
+    ret = seteuid(euid);
+#endif
+    if (-1 == ret) {
+        SR_LOG_ERR("Unable to switch effective uid: %s", strerror(errno));
         return SR_ERR_INTERNAL;
     }
 

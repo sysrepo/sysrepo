@@ -506,8 +506,10 @@ cm_signals_test(void **state)
     assert_int_equal(rc, SR_ERR_INTERNAL);
 
     /* send signals to ourself */
+#ifdef __linux__
     kill(getpid(), SIGUSR2);
     kill(getpid(), SIGUSR1);
+#endif
 }
 
 int
