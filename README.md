@@ -4,7 +4,7 @@
 [![GitHub license](https://img.shields.io/badge/license-Apache%20license%202.0-blue.svg)](https://github.com/sysrepo/sysrepo/blob/master/LICENSE)
 
 ## Sysrepo
-Sysrepo provides [YANG](http://tools.ietf.org/html/rfc6020)-based datastore functionality for Unix/Linux applications. 
+Sysrepo is an [YANG](http://tools.ietf.org/html/rfc6020)-based configuration datastore for Unix/Linux applications. 
 
 Applications can use sysrepo to store their configuration modeled by provided YANG model instead of using e.g. flat configuration files. Sysrepo will ensure data consistency of the data stored in the datastore and enforce data constraints defined by YANG model. Applications can currently use [C language API](inc/sysrepo.h) of sysrepo Client Library to access the configuration in the datastore, but the support for other programming languages is planed for later too (since sysrepo uses [Google Protol Buffers](https://developers.google.com/protocol-buffers/) as the interface between the datastore and client library, writing of a native client library for any programing language that supports GPB is possible).
 
@@ -13,8 +13,9 @@ Sysrepo can be easily integrated to management agents such as [NETCONF](https://
 ![Sysrepo Architecture](doc/high_level_architecture.png)
 
 ## Status
-- January 2016: get-config functionality ready, see Client Library API header file [inc/sysrepo.h](inc/sysrepo.h)
-- December 2015: implementation of the first milestone started - building internal infrastructure, get-config functionality
+- February 2016: working on sysrepo daemon, data manipulation (edit-config) functionality
+- January 2016: data retrieval (get-config) functionality ready, released as sysrepo [version 0.1.0](https://github.com/sysrepo/sysrepo/releases/tag/v0.1.0)
+- December 2015: implementation started - building internal infrastructure, data retrieval (get-config) functionality
 
 ## Features
 - ability to store / retrieve YANG-modeled data elements adressed by XPath
@@ -31,7 +32,7 @@ Sysrepo can be easily integrated to management agents such as [NETCONF](https://
 - (TODO) bindings / native client libraries for other programming languages (Python, Java, ...)
 
 ## Performance
-According to our measurements using the [performence unit-test](tests/perf_test.c), sysrepo is able to handle up to 1000 of requests per millisecond (read operations sent sequentially within a single session) on a conventional laptop hardware.
+According to our measurements using the [performence unit-test](tests/perf_test.c) and [concurrency unit-test](tests/concurr_test.c), sysrepo is able to handle more than 100 000 of requests per second (100 requests per millisecond) by concurrent access and about a half of it by sequential access on a conventional laptop hardware (read operations sent in-parallel from multiple sessions / sequentially within a single session).
 
 ## Build & Installation Steps
 See [INSTALL.md](INSTALL.md) file, which contains detailed build and installation steps.
