@@ -19,6 +19,8 @@
  * limitations under the License.
  */
 
+#include <stdbool.h>
+
 #include "rp_dt_lookup.h"
 
 static int

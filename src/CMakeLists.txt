@@ -1,4 +1,4 @@
-include_directories("${PROJECT_SOURCE_DIR}/inc")
+include_directories("${PROJECT_SOURCE_DIR}/inc" "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/utils")
 
 
 #compile protobuf-c
@@ -24,8 +24,9 @@ configure_file("${PROJECT_SOURCE_DIR}/src/dm_location.h.in" "${PROJECT_SOURCE_DI
 set(SYSREPO-SOURCES
     ${GENERATED_PROTO}
     client_library.c
-    sr_common.c
-    sr_logger.c
+    utils/sr_common.c
+    utils/sr_btree.c
+    utils/sr_logger.c
 )
 
 set(SYSREPO-ENGINE-SOURCES
@@ -40,8 +41,9 @@ set(SYSREPO-ENGINE-SOURCES
     rp_node_stack.c
     data_manager.c
     xpath_processor.c
-    sr_common.c
-    sr_logger.c
+    utils/sr_common.c
+    utils/sr_btree.c
+    utils/sr_logger.c
 )
 
 set(HEADERS "${PROJECT_SOURCE_DIR}/inc/sysrepo.h")

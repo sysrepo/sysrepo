@@ -37,6 +37,8 @@
 
 #include "sysrepo.h"
 #include "sr_logger.h"
+#include "sr_btree.h"
+
 #include "sysrepo.pb-c.h"
 #include "data_manager.h"
 
