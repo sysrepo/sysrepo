@@ -222,11 +222,6 @@ sr_save_data_tree_file(const char *file_name, const struct lyd_node *data_tree)
     return SR_ERR_OK;
 }
 
-void
-sr_free_datatree(struct lyd_node *root){
-    lyd_free_withsiblings(root);
-}
-
 struct lyd_node*
 sr_dup_datatree(struct lyd_node *root){
     struct lyd_node *dup = NULL, *s = NULL, *n = NULL;
@@ -247,7 +242,7 @@ sr_dup_datatree(struct lyd_node *root){
         }
         else if (0 != lyd_insert_after(s, n)){
             SR_LOG_ERR_MSG("Memory allocation failed");
-            sr_free_datatree(dup);
+            lyd_free_withsiblings(dup);
             return NULL;
         }
         /* last appended sibling*/

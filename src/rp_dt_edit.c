@@ -149,7 +149,7 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t 
             rc = SR_ERR_INTERNAL;
             goto cleanup;
         }
-        sr_free_datatree(node);
+        lyd_free_withsiblings(node);
     } else if (node->schema->nodetype == LYS_LEAF) {
         bool is_key = false;
         rc = rp_dt_has_key(node->parent, node->schema->name, &is_key);
@@ -217,7 +217,7 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t 
                 rc = SR_ERR_INTERNAL;
                 goto cleanup;
             }
-            sr_free_datatree(node);
+            lyd_free_withsiblings(node);
         } else {
             /* delete all instances */
             struct lyd_node **nodes = NULL;
@@ -239,7 +239,7 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t 
                     rc = SR_ERR_INTERNAL;
                     goto cleanup;
                 }
-                sr_free_datatree(nodes[i]);
+                lyd_free_withsiblings(nodes[i]);
             }
             free(nodes);
         }

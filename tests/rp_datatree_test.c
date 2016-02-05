@@ -274,7 +274,7 @@ void ietf_interfaces_test(void **state){
     }
     free(values);
 
-    sr_free_datatree(root);
+    lyd_free_withsiblings(root);
     dm_session_stop(ctx, ses_ctx);
 }
 
@@ -392,7 +392,7 @@ void get_values_test(void **state){
     }
     free(values);
 
-    sr_free_datatree(root);
+    lyd_free_withsiblings(root);
 
     dm_session_stop(ctx, ses_ctx);
 }
@@ -450,7 +450,7 @@ void get_values_opts_test(void **state) {
 
     free(get_items_ctx.xpath);
     rp_ns_clean(&get_items_ctx.stack);
-    sr_free_datatree(root);
+    lyd_free_withsiblings(root);
     dm_session_stop(ctx, ses_ctx);
 }
 
@@ -481,7 +481,7 @@ void get_values_with_augments_test(void **state){
     free(values);
 
 
-    sr_free_datatree(root);
+    lyd_free_withsiblings(root);
     dm_session_stop(ctx, ses_ctx);
 }
 
@@ -600,7 +600,7 @@ void get_nodes_test(void **state){
 
     free(nodes);
 
-    sr_free_datatree(root);
+    lyd_free_withsiblings(root);
     dm_session_stop(ctx, ses_ctx);
 
 }

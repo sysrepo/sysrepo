@@ -136,7 +136,7 @@ createDataTreeTestModule()
     assert_int_equal(0, lyd_validate(r, LYD_OPT_STRICT));
     assert_int_equal(SR_ERR_OK, sr_save_data_tree_file(TEST_MODULE_DATA_FILE_NAME, r));
 
-    sr_free_datatree(r);
+    lyd_free_withsiblings(r);
 
     ly_ctx_destroy(ctx, NULL);
 

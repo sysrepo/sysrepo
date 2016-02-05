@@ -80,7 +80,7 @@ dm_data_info_free(void *item)
 {
     dm_data_info_t *info = (dm_data_info_t *) item;
     if (NULL != info) {
-        sr_free_datatree(info->node);
+        lyd_free_withsiblings(info->node);
     }
     free(info);
 }
@@ -262,36 +262,6 @@ dm_load_schemas(dm_ctx_t *dm_ctx)
     }
 }
 
-#if 0
-//will be used with edit config
-
-/**
- * @brief adds empty data tree for the specified module into dm_ctx
- * @param [in] dm_ctx
- * @param [in] module
- * @param [out] data_tree
- * @return err_code
- */
-static int
-dm_add_empty_data_tree(const dm_ctx_t *dm_ctx, const struct lys_module *module, struct lyd_node **data_tree)
-{
-    CHECK_NULL_ARG3(dm_ctx, module, data_tree);
-    *data_tree = lyd_new(NULL, module, module->data->name);
-    if (NULL == *data_tree) {
-        SR_LOG_ERR_MSG("Creating empty data tree failed");
-        return SR_ERR_INTERNAL;
-    }
-    avl_node_t *avl_node = avl_insert(dm_ctx->module_avl, *data_tree);
-    if (NULL == avl_node) {
-        SR_LOG_ERR("Insert data tree %s into avl tree failed", module->name);
-        lyd_free(*data_tree);
-        *data_tree = NULL;
-        return SR_ERR_INTERNAL;
-    }
-    return SR_ERR_OK;
-}
-#endif
-
 /**
  * Checks whether the schema of the module has been loaded
  * @param [in] dm_ctx
@@ -359,7 +329,7 @@ dm_load_data_tree(dm_ctx_t *dm_ctx, const struct lys_module *module, dm_data_inf
     if (NULL != data_tree && 0 != lyd_validate(data_tree, LYD_OPT_STRICT)) {
         SR_LOG_ERR("Loaded data tree '%s' is not valid", data_filename);
         free(data_filename);
-        sr_free_datatree(data_tree);
+        lyd_free_withsiblings(data_tree);
         free(data);
         pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
         return SR_ERR_INTERNAL;
@@ -388,7 +358,7 @@ dm_load_data_tree(dm_ctx_t *dm_ctx, const struct lys_module *module, dm_data_inf
         if (EEXIST == errno){
             /* if the node has been inserted meanwhile by someone else find it*/
             avl_node = avl_search(dm_ctx->module_avl, data);
-            sr_free_datatree(data->node);
+            lyd_free_withsiblings(data->node);
             free(data);
             if (NULL != avl_node){
                 SR_LOG_INF("Data tree '%s' has been inserted already", module->name);
@@ -402,7 +372,7 @@ dm_load_data_tree(dm_ctx_t *dm_ctx, const struct lys_module *module, dm_data_inf
         }
         else{
             SR_LOG_ERR("Insert data tree %s into avl tree failed", module->name);
-            sr_free_datatree(data->node);
+            lyd_free_withsiblings(data->node);
             free(data);
             pthread_rwlock_unlock(&dm_ctx->avl_lock);
             return SR_ERR_INTERNAL;
@@ -728,7 +698,7 @@ dm_get_data_info(dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, const char *mod
     /* insert into session*/
     if (NULL != exisiting_data_info) {
         /* update session copy*/
-        sr_free_datatree(exisiting_data_info->node);
+        lyd_free_withsiblings(exisiting_data_info->node);
         exisiting_data_info->node = di->node;
         exisiting_data_info->timestamp = di->timestamp;
         exisiting_data_info->modified = false;
@@ -918,7 +888,7 @@ dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, char ***errors, size_t *err_c
             if (info->timestamp != sys_wide_data_info->timestamp) {
                 SR_LOG_INF("Merging needs to be done for module '%s', currently just overwriting", info->module->name);
             }
-            sr_free_datatree(sys_wide_data_info->node);
+            lyd_free_withsiblings(sys_wide_data_info->node);
             sys_wide_data_info->node = sr_dup_datatree(info->node);
             if (NULL == sys_wide_data_info->node){
                 SR_LOG_ERR("Duplication of data tree %s", info->module->name);
