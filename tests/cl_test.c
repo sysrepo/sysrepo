@@ -27,6 +27,7 @@
 
 #include "sysrepo.h"
 #include "sr_common.h"
+#include "test_module_helper.h"
 
 static int
 logging_setup(void **state)
@@ -355,54 +356,54 @@ cl_get_items_iter_test(void **state)
         if (0 == strcmp("/test-module:main/numbers", value->xpath)){
             assert_int_equal(SR_UINT8_T, value->type);
         }
-        else if (0 == strcmp("/test-module:main/empty",value->xpath)){
+        else if (0 == strcmp(XP_TEST_MODULE_EMPTY,value->xpath)){
             assert_int_equal(SR_LEAF_EMPTY_T, value->type);
         }
-        else if (0 == strcmp("/test-module:main/ui64", value->xpath)){
+        else if (0 == strcmp(XP_TEST_MODULE_UINT64, value->xpath)){
             assert_int_equal(SR_UINT64_T, value->type);
-            assert_int_equal(64, value->data.uint64_val);
+            assert_int_equal(XP_TEST_MODULE_UINT64_VALUE_T, value->data.uint64_val);
         }
-        else if (0 == strcmp("/test-module:main/ui32", value->xpath)){
+        else if (0 == strcmp(XP_TEST_MODULE_UINT32, value->xpath)){
             assert_int_equal(SR_UINT32_T, value->type);
         }
-        else if (0 == strcmp("/test-module:main/ui16", value->xpath)){
+        else if (0 == strcmp(XP_TEST_MODULE_UINT16, value->xpath)){
             assert_int_equal(SR_UINT16_T, value->type);
         }
-        else if (0 == strcmp("/test-module:main/ui8", value->xpath)){
+        else if (0 == strcmp(XP_TEST_MODULE_UINT8, value->xpath)){
             assert_int_equal(SR_UINT8_T, value->type);
         }
-        else if (0 == strcmp("/test-module:main/i64", value->xpath)){
+        else if (0 == strcmp(XP_TEST_MODULE_INT64, value->xpath)){
             assert_int_equal(SR_INT64_T, value->type);
         }
-        else if (0 == strcmp("/test-module:main/i32", value->xpath)){
+        else if (0 == strcmp(XP_TEST_MODULE_INT32, value->xpath)){
             assert_int_equal(SR_INT32_T, value->type);
         }
-        else if (0 == strcmp("/test-module:main/i16", value->xpath)){
+        else if (0 == strcmp(XP_TEST_MODULE_INT16, value->xpath)){
             assert_int_equal(SR_INT16_T, value->type);
         }
-        else if (0 == strcmp("/test-module:main/i8", value->xpath)){
+        else if (0 == strcmp(XP_TEST_MODULE_INT8, value->xpath)){
             assert_int_equal(SR_INT8_T, value->type);
         }
-        else if (0 == strcmp("/test-module:main/dec64", value->xpath)){
+        else if (0 == strcmp(XP_TEST_MODULE_DEC64, value->xpath)){
             assert_int_equal(SR_DECIMAL64_T, value->type);
-            assert_int_equal(9.85, value->data.decimal64_val);
+            assert_int_equal(XP_TEST_MODULE_DEC64_VALUE_T, value->data.decimal64_val);
         }
-        else if (0 == strcmp("/test-module:main/options", value->xpath)){
+        else if (0 == strcmp(XP_TEST_MODULE_BITS, value->xpath)){
             assert_int_equal(SR_BITS_T, value->type);
         }
-        else if (0 == strcmp("/test-module:main/raw", value->xpath)){
+        else if (0 == strcmp(XP_TEST_MODULE_RAW, value->xpath)){
             assert_int_equal(SR_BINARY_T, value->type);
         }
-        else if (0 == strcmp("/test-module:main/enum", value->xpath)){
+        else if (0 == strcmp(XP_TEST_MODULE_ENUM, value->xpath)){
             assert_int_equal(SR_ENUM_T, value->type);
         }
-        else if (0 == strcmp("/test-module:main/boolean", value->xpath)){
+        else if (0 == strcmp(XP_TEST_MODULE_BOOL, value->xpath)){
             assert_int_equal(SR_BOOL_T, value->type);
         }
-        else if (0 == strcmp("/test-module:main/id_ref", value->xpath)){
+        else if (0 == strcmp(XP_TEST_MODULE_IDREF, value->xpath)){
             assert_int_equal(SR_IDENTITYREF_T, value->type);
         }
-        else if (0 == strcmp("/test-module:main/string", value->xpath)){
+        else if (0 == strcmp(XP_TEST_MODULE_STRING, value->xpath)){
             assert_int_equal(SR_STRING_T, value->type);
         }
         else{
