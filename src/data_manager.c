@@ -159,7 +159,9 @@ dm_alloc_model_info(dm_model_info_t **info)
     }
 
     pthread_rwlockattr_init(&attr);
+#if defined(__USE_GNU)
     pthread_rwlockattr_setkind_np(&attr, PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP);
+#endif
 
     if (0 != pthread_rwlock_init(&i->running_lock, &attr)) {
         SR_LOG_ERR_MSG("info rwlock initialization failed");
@@ -562,7 +564,9 @@ dm_init(const char *schema_search_dir, const char *data_search_dir, dm_ctx_t **d
 
     pthread_rwlockattr_t attr;
     pthread_rwlockattr_init(&attr);
+#if defined(__USE_GNU)
     pthread_rwlockattr_setkind_np(&attr, PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP);
+#endif
 
     if (0 != pthread_rwlock_init(&ctx->lyctx_lock, &attr)) {
         SR_LOG_ERR_MSG("lyctx mutex initialization failed");

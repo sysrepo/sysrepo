@@ -581,7 +581,7 @@ rp_worker_thread_execute(void *rp_ctx_p)
     rp_request_t req = { 0 };
     bool dequeued = false, dequeued_prev = false, exit = false;
 
-    SR_LOG_DBG("Starting worker thread id=%lu.",  pthread_self());
+    SR_LOG_DBG("Starting worker thread id=%lu.", (unsigned long)pthread_self());
 
     pthread_mutex_lock(&rp_ctx->request_queue_mutex);
     rp_ctx->active_threads++;
@@ -599,7 +599,7 @@ rp_worker_thread_execute(void *rp_ctx_p)
             if (dequeued) {
                 /* process the request */
                 if (NULL == req.msg || NULL == req.session) {
-                    SR_LOG_DBG("Thread id=%lu received an empty request, exiting.",  pthread_self());
+                    SR_LOG_DBG("Thread id=%lu received an empty request, exiting.", (unsigned long)pthread_self());
                     exit = true;
                 } else {
                     rp_msg_dispatch(rp_ctx, req.session, req.msg);
@@ -639,7 +639,7 @@ rp_worker_thread_execute(void *rp_ctx_p)
 
         if (!exit) {
             /* wait until new request comes */
-            SR_LOG_DBG("Thread id=%lu will wait.",  pthread_self());
+            SR_LOG_DBG("Thread id=%lu will wait.",  (unsigned long)pthread_self());
 
             /* wait for a signal */
             pthread_mutex_lock(&rp_ctx->request_queue_mutex);
@@ -651,12 +651,12 @@ rp_worker_thread_execute(void *rp_ctx_p)
             pthread_cond_wait(&rp_ctx->request_queue_cv, &rp_ctx->request_queue_mutex);
             rp_ctx->active_threads++;
 
-            SR_LOG_DBG("Thread id=%lu signaled.",  pthread_self());
+            SR_LOG_DBG("Thread id=%lu signaled.",  (unsigned long)pthread_self());
             pthread_mutex_unlock(&rp_ctx->request_queue_mutex);
         }
     } while (!exit);
 
-    SR_LOG_DBG("Worker thread id=%lu is exiting.",  pthread_self());
+    SR_LOG_DBG("Worker thread id=%lu is exiting.",  (unsigned long)pthread_self());
 
     return NULL;
 }
