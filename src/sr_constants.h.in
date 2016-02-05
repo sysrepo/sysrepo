@@ -1,7 +1,7 @@
 /**
- * @file dm_location.h
+ * @file sr_constants.h
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
- * @brief 
+ * @brief Sysrepo-global constants.
  *
  * @copyright
  * Copyright 2016 Cisco Systems, Inc.
@@ -20,10 +20,19 @@
  */
 
 
-#ifndef SRC_DM_LOCATION_H_IN_
-#define SRC_DM_LOCATION_H_IN_
+#ifndef SRC_SR_CONSTANTS_H_IN_
+#define SRC_SR_CONSTANTS_H_IN_
+
+/** Use libavl (1) or libredblack (0) for binary tree manipulations. */
+#define SR_BTREE_USE_AVL @USE_AVL_LIB_INT@
+
+/** Maximum size of a GPB message. */
+#define SR_MAX_MSG_SIZE ((SIZE_MAX < UINT32_MAX) ? SIZE_MAX : UINT32_MAX)
+
+/** Size of the preamble sent before each sysrepo GPB message. */
+#define SR_MSG_PREAM_SIZE sizeof(uint32_t)
 
 #define DM_SCHEMA_SEARCH_DIR "@SCHEMA_SEARCH_DIR@"
 #define DM_DATA_SEARCH_DIR "@DATA_SEARCH_DIR@"
 
-#endif /* SRC_DM_LOCATION_H_IN_ */
+#endif /* SRC_SR_CONSTANTS_H_IN_ */

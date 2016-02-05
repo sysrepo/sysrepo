@@ -22,8 +22,6 @@
 #ifndef SR_BTREE_H_
 #define SR_BTREE_H_
 
-#define SR_BTREE_USE_AVL 1
-
 typedef struct sr_btree_s sr_btree_t;
 
 typedef int (*sr_btree_compare_item_cb)(const void *, const void *);

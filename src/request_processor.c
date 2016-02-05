@@ -26,7 +26,6 @@
 #include "sr_common.h"
 #include "connection_manager.h"
 #include "data_manager.h"
-#include "dm_location.h"
 #include "rp_data_tree.h"
 
 #define RP_THREAD_COUNT 4            /**< Number of threads that RP uses for processing. */
