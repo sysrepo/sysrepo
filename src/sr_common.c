@@ -150,7 +150,7 @@ sr_cbuff_enqueue(sr_cbuff_t *buffer, void *item)
 bool
 sr_cbuff_dequeue(sr_cbuff_t *buffer, void *item)
 {
-    if (0 == buffer->count) {
+    if (NULL == buffer || 0 == buffer->count) {
         return false;
     }
 
@@ -161,6 +161,16 @@ sr_cbuff_dequeue(sr_cbuff_t *buffer, void *item)
     SR_LOG_DBG("Circular buffer dequeue, new buffer head=%zu, count=%zu.", buffer->head, buffer->count);
 
     return true;
+}
+
+size_t
+sr_cbuff_items_in_queue(sr_cbuff_t *buffer)
+{
+    if (NULL != buffer) {
+        return buffer->count;
+    } else {
+        return 0;
+    }
 }
 
 int

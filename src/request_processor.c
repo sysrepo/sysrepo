@@ -19,6 +19,7 @@
  * limitations under the License.
  */
 
+#include <time.h>
 #include <inttypes.h>
 #include <pthread.h>
 
@@ -28,8 +29,17 @@
 #include "dm_location.h"
 #include "rp_data_tree.h"
 
-#define RP_THREAD_COUNT 5          /**< Number of threads that RP uses for processing. */
-#define RP_INIT_REQ_QUEUE_SIZE 10  /**< Initial size of the request queue. */
+#define RP_THREAD_COUNT 4            /**< Number of threads that RP uses for processing. */
+#define RP_INIT_REQ_QUEUE_SIZE 10    /**< Initial size of the request queue. */
+
+/*
+ * Attributes that can significantly affect performance of the threadpool.
+ */
+#define RP_REQ_PER_THREADS 2           /**< Number of requests that can be WAITING in queue per each thread before waking up another thread. */
+#define RP_THREAD_SPIN_TIMEOUT 500000  /**< Time in nanoseconds (500000 equals to a half of a millisecond).
+                                            Enables thread spinning if a thread needs to be woken up again in less than this timeout. */
+#define RP_THREAD_SPIN_MIN 1000        /**< Minimum number of cycles that a thread will spin before going to sleep, if spin is enabled. */
+#define RP_THREAD_SPIN_MAX 1000000     /**< Maximum number of cycles that a thread can spin before going to sleep. */
 
 /**
  * @brief Structure that holds the context of an instance of Request Processor.
@@ -39,6 +49,9 @@ typedef struct rp_ctx_s {
     dm_ctx_t *dm_ctx;                        /**< Data Manager Context. */
 
     pthread_t thread_pool[RP_THREAD_COUNT];  /**< Thread pool. */
+    size_t active_threads;                   /**< Number of active (non-sleeping) threads. */
+    struct timespec last_thread_wakeup;      /**< Timestamp of the last thread wake-up event. */
+    size_t thread_spin_limit;                /**< Current limit of thread spinning before going to sleep. */
     bool stop_requested;                     /**< Stopping of all threads has been requested. */
 
     sr_cbuff_t *request_queue;               /**< Input request queue. */
@@ -54,10 +67,9 @@ typedef struct rp_session_s {
     const char *real_user;               /**< Real user name of the client. */
     const char *effective_user;          /**< Effective user name of the client (if different to real_user). */
     sr_datastore_t datastore;            /**< Datastore selected for this session. */
-    uint32_t msg_count;                  /**< Count of unprocessed messages (including waiting in queue).
-                                              Normally this should be atomic or guarded with a mutex, but since CM
-                                              guards single RP request per session, we don't implement locking here. */
-    bool stop_requested;                 /**< Session stop requested. Same as above regarding atomicity / locking. */
+    uint32_t msg_count;                  /**< Count of unprocessed messages (including waiting in queue). */
+    pthread_mutex_t msg_count_mutex;     /**< Mutex for msg_count counter. */
+    bool stop_requested;                 /**< Session stop has been requested. */
     dm_session_t *dm_session;            /**< Per session data manager context */
     rp_dt_get_items_ctx_t get_items_ctx; /**< Context for get_items_iter calls */
 } rp_session_t;
@@ -551,6 +563,7 @@ rp_session_cleanup(const rp_ctx_t *rp_ctx, rp_session_t *session)
 
     rp_ns_clean(&session->get_items_ctx.stack);
     free(session->get_items_ctx.xpath);
+    pthread_mutex_destroy(&session->msg_count_mutex);
     free(session);
 
     return SR_ERR_OK;
@@ -567,12 +580,17 @@ rp_worker_thread_execute(void *rp_ctx_p)
     }
     rp_ctx_t *rp_ctx = (rp_ctx_t*)rp_ctx_p;
     rp_request_t req = { 0 };
-    bool dequeued = false, exit = false;
+    bool dequeued = false, dequeued_prev = false, exit = false;
 
     SR_LOG_DBG("Starting worker thread id=%lu.",  pthread_self());
 
+    pthread_mutex_lock(&rp_ctx->request_queue_mutex);
+    rp_ctx->active_threads++;
+    pthread_mutex_unlock(&rp_ctx->request_queue_mutex);
+
     do {
         /* process requests while there are some */
+        dequeued_prev = false;
         do {
             /* dequeue a request */
             pthread_mutex_lock(&rp_ctx->request_queue_mutex);
@@ -587,10 +605,35 @@ rp_worker_thread_execute(void *rp_ctx_p)
                 } else {
                     rp_msg_dispatch(rp_ctx, req.session, req.msg);
                     /* update message count and release session if needed */
+                    pthread_mutex_lock(&req.session->msg_count_mutex);
                     req.session->msg_count -= 1;
                     if (0 == req.session->msg_count && req.session->stop_requested) {
+                        pthread_mutex_unlock(&req.session->msg_count_mutex);
                         rp_session_cleanup(rp_ctx, req.session);
+                    } else {
+                        pthread_mutex_unlock(&req.session->msg_count_mutex);
                     }
+                }
+                dequeued_prev = true;
+            } else {
+                /* no items in queue - spin for a while */
+                if (dequeued_prev) {
+                    /* only if the thread has actually processed something since the last wakeup */
+                    size_t count = 0;
+                    while ((0 == sr_cbuff_items_in_queue(rp_ctx->request_queue)) && (count < rp_ctx->thread_spin_limit)) {
+                        count++;
+                    }
+                }
+                pthread_mutex_lock(&rp_ctx->request_queue_mutex);
+                if (0 != sr_cbuff_items_in_queue(rp_ctx->request_queue)) {
+                    /* some items are in queue - process them */
+                    pthread_mutex_unlock(&rp_ctx->request_queue_mutex);
+                    dequeued = true;
+                    continue;
+                } else {
+                    /* no items in queue - go to sleep */
+                    rp_ctx->active_threads--;
+                    pthread_mutex_unlock(&rp_ctx->request_queue_mutex);
                 }
             }
         } while (dequeued && !exit);
@@ -607,6 +650,7 @@ rp_worker_thread_execute(void *rp_ctx_p)
                 break;
             }
             pthread_cond_wait(&rp_ctx->request_queue_cv, &rp_ctx->request_queue_mutex);
+            rp_ctx->active_threads++;
 
             SR_LOG_DBG("Thread id=%lu signaled.",  pthread_self());
             pthread_mutex_unlock(&rp_ctx->request_queue_mutex);
@@ -728,6 +772,7 @@ rp_session_start(const rp_ctx_t *rp_ctx, const char *real_user, const char *effe
         return SR_ERR_NOMEM;
     }
 
+    pthread_mutex_init(&session->msg_count_mutex, NULL);
     session->real_user = real_user;
     session->effective_user = effective_user;
     session->id = session_id;
@@ -754,15 +799,17 @@ rp_session_stop(const rp_ctx_t *rp_ctx, rp_session_t *session)
 
     /* sanity check - normally there should not be any unprocessed messages
      * within the session when calling rp_session_stop */
+    pthread_mutex_lock(&session->msg_count_mutex);
     if (session->msg_count > 0) {
         /* cleanup will be called after last message has been processed so
          * that RP can survive this unexpected situation */
         SR_LOG_WRN("There are some (%"PRIu32") unprocessed messages for the session id=%"PRIu32" when"
                 " session stop has been requested, this can lead to unspecified behavior - check RP caller code!!!",
                 session->msg_count, session->id);
-        /* beware that this can lead to memleak if session->msg_count is already == 0 */
         session->stop_requested = true;
+        pthread_mutex_unlock(&session->msg_count_mutex);
     } else {
+        pthread_mutex_unlock(&session->msg_count_mutex);
         rp_session_cleanup(rp_ctx, session);
     }
 
@@ -773,6 +820,7 @@ int
 rp_msg_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
 {
     rp_request_t req = { 0 };
+    struct timespec now = { 0 };
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG_NORET3(rc, rp_ctx, session, msg);
@@ -784,21 +832,45 @@ rp_msg_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
         return rc;
     }
 
-    /* sanity check - normally there should not be any unprocessed messages
-     * within the session when calling rp_msg_process */
+    pthread_mutex_lock(&session->msg_count_mutex);
     session->msg_count += 1;
-    if (session->msg_count > 1) {
-        SR_LOG_WRN("There are more than one (%"PRIu32") unprocessed messages for the session id=%"PRIu32","
-                " this can lead to unspecified behavior - check RP caller code!!!", session->msg_count, session->id);
-    }
+    pthread_mutex_unlock(&session->msg_count_mutex);
 
     req.session = session;
     req.msg = msg;
 
     pthread_mutex_lock(&rp_ctx->request_queue_mutex);
 
+    /* enqueue the request into buffer */
     rc = sr_cbuff_enqueue(rp_ctx->request_queue, &req);
-    pthread_cond_signal(&rp_ctx->request_queue_cv);
+
+    if (0 == rp_ctx->active_threads) {
+        /* there is no active (non-sleeping) thread - if this is happening too
+         * frequently, instruct the threads to spin before going to sleep */
+        clock_gettime(CLOCK_MONOTONIC, &now);
+        uint64_t diff = (1000000000L * (now.tv_sec - rp_ctx->last_thread_wakeup.tv_sec)) + now.tv_nsec - rp_ctx->last_thread_wakeup.tv_nsec;
+        if (diff < RP_THREAD_SPIN_TIMEOUT) {
+            /* a thread has been woken up in less than RP_THREAD_SPIN_TIMEOUT, increase the spin */
+            if (0 == rp_ctx->thread_spin_limit) {
+                /* no spin set yet, set to initial value */
+                rp_ctx->thread_spin_limit = RP_THREAD_SPIN_MIN;
+            } else if(rp_ctx->thread_spin_limit < RP_THREAD_SPIN_MAX) {
+                /* double the spin limit */
+                rp_ctx->thread_spin_limit *= 2;
+            }
+        } else {
+            /* reset spin to 0 if wakaups are not too frequent */
+            rp_ctx->thread_spin_limit = 0;
+        }
+        rp_ctx->last_thread_wakeup = now;
+    }
+
+    /* send signal if there is no active thread ready to process the request */
+    if (0 == rp_ctx->active_threads ||
+            (((sr_cbuff_items_in_queue(rp_ctx->request_queue) / rp_ctx->active_threads) > RP_REQ_PER_THREADS) &&
+             rp_ctx->active_threads < RP_THREAD_COUNT)) {
+        pthread_cond_signal(&rp_ctx->request_queue_cv);
+    }
 
     pthread_mutex_unlock(&rp_ctx->request_queue_mutex);
 

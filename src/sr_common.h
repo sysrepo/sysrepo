@@ -219,6 +219,15 @@ int sr_cbuff_enqueue(sr_cbuff_t *buffer, void *item);
 bool sr_cbuff_dequeue(sr_cbuff_t *buffer, void *item);
 
 /**
+ * @brief Return number of elements currently stored in the queue.
+ *
+ * @param[in] buffer Circular buffer queue context.
+ *
+ * @return Number of elements currently stored in the queue.
+ */
+size_t sr_cbuff_items_in_queue(sr_cbuff_t *buffer);
+
+/**
  * @brief Compares the suffix of the string, if it matches 0 is returned
  * @param [in] str
  * @param [in] suffix
