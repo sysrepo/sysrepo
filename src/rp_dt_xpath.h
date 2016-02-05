@@ -30,16 +30,25 @@
 #include "xpath_processor.h"
 
 /**
- * @brief Creates xpath for the selected node.
+ * @brief Creates xpath for the selected node. Function walks from the node
+ * up to the top-level node. Namespace is explictly specified for top level node
+ * and augment nodes.
+ * @param [in] node
+ * @param [out] xpath
+ * @return Error code (SR_ERR_OK on success)
  */
-int rp_dt_create_xpath_for_node(const struct lyd_node *data_tree, char **xpath);
+int rp_dt_create_xpath_for_node(const struct lyd_node *node, char **xpath);
 
 /**
- * @brief Validates the location_id with schema
+ * @brief Validates the location_id with schema. Functions does the following checks:
+ * - tests if the top level node's namespace is specified
+ * - tests if the model exists (if not returns SR_ERR_UNKNOWN_MODEL)
+ * - tests if the nodes exists in the model (if not returns SR_ERR_BAD_ELEMENT)
+ * - tests if the keys name and key count are valid (if not returns SR_ERR_BAD_ELEMENT) 
  * @param [in] dm_ctx
- * @param [in] loc_id
- * @param [out]match schema node is returned if NULL is not passed
- * @return err_code
+ * @param [in] loc_id input to be validated
+ * @param [out] match schema node is returned if NULL is not passed
+ * @return Error code (SR_ERR_OK on success)
  */
 int rp_dt_validate_node_xpath(dm_ctx_t *dm_ctx, const xp_loc_id_t *loc_id, struct lys_node **match);
 

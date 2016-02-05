@@ -170,9 +170,9 @@ rp_dt_create_xpath_for_list_node(const struct lyd_node *data_tree, char **xpath,
  * @brief Creates xpath for the selected node.
  */
 int
-rp_dt_create_xpath_for_node(const struct lyd_node *data_tree, char **xpath)
+rp_dt_create_xpath_for_node(const struct lyd_node *node, char **xpath)
 {
-    CHECK_NULL_ARG2(data_tree, xpath);
+    CHECK_NULL_ARG2(node, xpath);
     int rc = 0;
     char **parts = NULL;
     char *result = NULL;
@@ -181,7 +181,7 @@ rp_dt_create_xpath_for_node(const struct lyd_node *data_tree, char **xpath)
     size_t level = 0;
 
     /*find node depth*/
-    const struct lyd_node *n = data_tree;
+    const struct lyd_node *n = node;
     while (NULL != n) {
         n = n->parent;
         level++;
@@ -193,7 +193,7 @@ rp_dt_create_xpath_for_node(const struct lyd_node *data_tree, char **xpath)
     }
 
     size_t i = level - 1;
-    n = data_tree;
+    n = node;
     /*create parts of xpath */
     while (NULL != n) {
         /*append slash to all nodes except the last one*/
@@ -316,7 +316,7 @@ rp_dt_validate_node_xpath(dm_ctx_t *dm_ctx, const xp_loc_id_t *loc_id, struct ly
     size_t i = 0;
     for (; i < XP_GET_NODE_COUNT(loc_id); i++) {
         while (NULL != node) {
-            if (NULL == node->name) {
+            if (NULL == node->name || NULL == node->module->name) {
                 SR_LOG_ERR_MSG("Missing schema information");
                 return SR_ERR_INTERNAL;
             }

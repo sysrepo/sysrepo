@@ -249,12 +249,6 @@ int sr_str_join(const char *str1, const char *str2, char **result);
  */
 int sr_save_data_tree_file(const char *file_name, const struct lyd_node *data_tree);
 
-/**
- * @brief Frees datatree pointed by root including its siblings.
- * @param [in] root
- */
-void sr_free_datatree(struct lyd_node *root);
-
 /*
  * @brief Copies the datatree pointed by root including its siblings.
  * @param [in] root
