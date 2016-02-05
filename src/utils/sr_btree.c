@@ -114,12 +114,18 @@ sr_btree_insert(sr_btree_t *tree, void *item)
 #if SR_BTREE_USE_AVL
     avl_node_t *node = avl_insert(tree->avl_tree, item);
     if (NULL == node) {
-        return SR_ERR_INTERNAL;
+        if (EEXIST == errno) {
+            return SR_ERR_EXISTS;
+        } else {
+            return SR_ERR_NOMEM;
+        }
     }
 #else
     const void *tmp_item = rbsearch(item, tree->rb_tree);
     if (NULL == tmp_item) {
-        return SR_ERR_INTERNAL;
+        return SR_ERR_NOMEM;
+    } else if(tmp_item != item) {
+        return SR_ERR_EXISTS;
     }
 #endif
 

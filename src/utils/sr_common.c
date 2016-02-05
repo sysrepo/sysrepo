@@ -47,6 +47,7 @@ const char *const sr_errlist[] = {
         "Request contains unknown element",     /* SR_ERR_BAD_ELEMENT */
         "Validation of the changes failed",     /* SR_ERR_VALIDATION_FAILED */
         "Commit operation failed",              /* SR_ERR_COMMIT_FAILED */
+        "The item already exists"               /* SR_ERR_EXISTS */
 };
 
 const char *

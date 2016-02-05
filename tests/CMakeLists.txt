@@ -36,7 +36,7 @@ macro(ADD_UNIT_TEST_WITH_HELPERS TEST_NAME)
         ${HELPERS_DIR}test_module_helper.c
         )
     ADD_UNIT_TEST_WITH_OPTS(${TEST_NAME} "${t_files}" "" 1)
-endmacro(ADD_UNIT_TEST)
+endmacro(ADD_UNIT_TEST_WITH_HELPERS)
 
 ADD_UNIT_TEST(common_test)
 
