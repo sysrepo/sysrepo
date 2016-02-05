@@ -30,10 +30,12 @@
 #include "sr_common.h"
 #include "rp_data_tree.h"
 #include "xpath_processor.h"
+#include "test_module_helper.h"
 
 #define LEAF_VALUE "leafV"
 
 int setup(void **state){
+   createDataTreeTestModule();
    int rc = 0;
    dm_ctx_t *ctx;
    rc = dm_init(TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx);
@@ -600,15 +602,12 @@ void edit_test_module_test(void **state){
 
 #define FREE_VARS(A, B) do{sr_free_val(A); sr_free_val(B); A = NULL; B = NULL;}while(0)
 
-
-
     /* binary leaf*/
-#define XP_TEST_MODULE_RAW "/test-module:main/raw"
     rc = rp_dt_get_value_wrapper(ctx, session, XP_TEST_MODULE_RAW, &value);
     assert_int_equal(SR_ERR_OK, rc);
 
     assert_int_equal(SR_BINARY_T, value->type);
-    assert_string_equal("SGVsbG8gd29ybGQh", value->data.binary_val);
+    assert_string_equal(XP_TEST_MODULE_RAW_VALUE, value->data.binary_val);
 
     delete_get_set_get(ctx, session, XP_TEST_MODULE_RAW, value, &new_set);
 
@@ -617,35 +616,33 @@ void edit_test_module_test(void **state){
 
     /*bits leaf*/
 
-#define XP_TEST_MODULE_BITS "/test-module:main/options"
     rc = rp_dt_get_value_wrapper(ctx, session, XP_TEST_MODULE_BITS, &value);
     assert_int_equal(SR_ERR_OK, rc);
 
     assert_int_equal(SR_BITS_T, value->type);
-    assert_string_equal("strict recursive", value->data.bits_val);
+    assert_string_equal(XP_TEST_MODULE_BITS_VALUE, value->data.bits_val);
 
     delete_get_set_get(ctx, session, XP_TEST_MODULE_BITS, value, &new_set);
     assert_string_equal(value->data.bits_val, new_set->data.bits_val);
     FREE_VARS(value, new_set);
 
-#define XP_TEST_MODULE_BOOL "/test-module:main/boolean"
+    /* bool leaf */
     rc = rp_dt_get_value_wrapper(ctx, session, XP_TEST_MODULE_BOOL, &value);
     assert_int_equal(SR_ERR_OK, rc);
 
     assert_int_equal(SR_BOOL_T, value->type);
-    assert_true(value->data.bool_val);
+    assert_int_equal(XP_TEST_MODULE_BOOL_VALUE_T, value->data.bool_val);
 
     delete_get_set_get(ctx, session, XP_TEST_MODULE_BOOL, value, &new_set);
     assert_int_equal(value->data.bool_val, new_set->data.bool_val);
     FREE_VARS(value, new_set);
 
     /* decimal 64 leaf*/
-#define XP_TEST_MODULE_DEC64 "/test-module:main/dec64"
     rc = rp_dt_get_value_wrapper(ctx, session, XP_TEST_MODULE_DEC64, &value);
     assert_int_equal(SR_ERR_OK, rc);
 
     assert_int_equal(SR_DECIMAL64_T, value->type);
-    assert_int_equal(9.85, value->data.decimal64_val);
+    assert_int_equal(XP_TEST_MODULE_DEC64_VALUE_T, value->data.decimal64_val);
 
     delete_get_set_get(ctx, session, XP_TEST_MODULE_DEC64, value, &new_set);
 
@@ -654,12 +651,11 @@ void edit_test_module_test(void **state){
     FREE_VARS(value, new_set);
 
     /* enum leaf*/
-#define XP_TEST_MODULE_ENUM "/test-module:main/enum"
     rc = rp_dt_get_value_wrapper(ctx, session, XP_TEST_MODULE_ENUM, &value);
     assert_int_equal(SR_ERR_OK, rc);
 
     assert_int_equal(SR_ENUM_T, value->type);
-    assert_string_equal("maybe", value->data.enum_val);
+    assert_string_equal(XP_TEST_MODULE_ENUM_VALUE, value->data.enum_val);
 
     delete_get_set_get(ctx, session, XP_TEST_MODULE_ENUM, value, &new_set);
 
@@ -668,7 +664,6 @@ void edit_test_module_test(void **state){
     FREE_VARS(value, new_set);
 
     /* empty */
-    #define XP_TEST_MODULE_EMPTY "/test-module:main/empty"
     rc = rp_dt_get_value_wrapper(ctx, session, XP_TEST_MODULE_EMPTY, &value);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(SR_LEAF_EMPTY_T, value->type);
@@ -678,120 +673,110 @@ void edit_test_module_test(void **state){
     FREE_VARS(value, new_set);
 
     /* identity ref*/
-    #define XP_TEST_MODULE_IDREF "/test-module:main/id_ref"
     rc = rp_dt_get_value_wrapper(ctx, session, XP_TEST_MODULE_IDREF, &value);
     assert_int_equal(SR_ERR_OK, rc);
 
     assert_int_equal(SR_IDENTITYREF_T, value->type);
-    assert_string_equal("id_1", value->data.identityref_val);
+    assert_string_equal(XP_TEST_MODULE_IDREF_VALUE, value->data.identityref_val);
 
     delete_get_set_get(ctx, session, XP_TEST_MODULE_IDREF, value, &new_set);
     assert_string_equal(value->data.identityref_val, new_set->data.identityref_val);
     FREE_VARS(value, new_set);
 
     /* int8*/
-    #define XP_TEST_MODULE_INT8 "/test-module:main/i8"
     rc = rp_dt_get_value_wrapper(ctx, session, XP_TEST_MODULE_INT8, &value);
     assert_int_equal(SR_ERR_OK, rc);
 
     assert_int_equal(SR_INT8_T, value->type);
-    assert_int_equal(8, value->data.int8_val);
+    assert_int_equal(XP_TEST_MODULE_INT8_VALUE_T, value->data.int8_val);
 
     delete_get_set_get(ctx, session, XP_TEST_MODULE_INT8, value, &new_set);
     assert_int_equal(value->data.int8_val, new_set->data.int8_val);
     FREE_VARS(value, new_set);
 
     /* int16*/
-    #define XP_TEST_MODULE_INT16 "/test-module:main/i16"
     rc = rp_dt_get_value_wrapper(ctx, session, XP_TEST_MODULE_INT16, &value);
     assert_int_equal(SR_ERR_OK, rc);
 
     assert_int_equal(SR_INT16_T, value->type);
-    assert_int_equal(16, value->data.int16_val);
+    assert_int_equal(XP_TEST_MODULE_INT16_VALUE_T, value->data.int16_val);
 
     delete_get_set_get(ctx, session, XP_TEST_MODULE_INT16, value, &new_set);
     assert_int_equal(value->data.int16_val, new_set->data.int16_val);
     FREE_VARS(value, new_set);
 
     /* int32*/
-    #define XP_TEST_MODULE_INT32 "/test-module:main/i32"
     rc = rp_dt_get_value_wrapper(ctx, session, XP_TEST_MODULE_INT32, &value);
     assert_int_equal(SR_ERR_OK, rc);
 
     assert_int_equal(SR_INT32_T, value->type);
-    assert_int_equal(32, value->data.int32_val);
+    assert_int_equal(XP_TEST_MODULE_INT32_VALUE_T, value->data.int32_val);
 
     delete_get_set_get(ctx, session, XP_TEST_MODULE_INT32, value, &new_set);
     assert_int_equal(value->data.int32_val, new_set->data.int32_val);
     FREE_VARS(value, new_set);
 
     /* int64*/
-    #define XP_TEST_MODULE_INT64 "/test-module:main/i64"
     rc = rp_dt_get_value_wrapper(ctx, session, XP_TEST_MODULE_INT64, &value);
     assert_int_equal(SR_ERR_OK, rc);
 
     assert_int_equal(SR_INT64_T, value->type);
-    assert_int_equal(64, value->data.int64_val);
+    assert_int_equal(XP_TEST_MODULE_INT64_VALUE_T, value->data.int64_val);
 
     delete_get_set_get(ctx, session, XP_TEST_MODULE_INT64, value, &new_set);
     assert_int_equal(value->data.int64_val, new_set->data.int64_val);
     FREE_VARS(value, new_set);
 
     /* string ref*/
-    #define XP_TEST_MODULE_STRING "/test-module:main/string"
     rc = rp_dt_get_value_wrapper(ctx, session, XP_TEST_MODULE_STRING, &value);
     assert_int_equal(SR_ERR_OK, rc);
 
     assert_int_equal(SR_STRING_T, value->type);
-    assert_string_equal("str", value->data.string_val);
+    assert_string_equal(XP_TEST_MODULE_STRING_VALUE, value->data.string_val);
 
     delete_get_set_get(ctx, session, XP_TEST_MODULE_STRING, value, &new_set);
     assert_string_equal(value->data.string_val, new_set->data.string_val);
     FREE_VARS(value, new_set);
 
     /* uint8*/
-    #define XP_TEST_MODULE_UINT8 "/test-module:main/ui8"
     rc = rp_dt_get_value_wrapper(ctx, session, XP_TEST_MODULE_UINT8, &value);
     assert_int_equal(SR_ERR_OK, rc);
 
     assert_int_equal(SR_UINT8_T, value->type);
-    assert_int_equal(8, value->data.uint8_val);
+    assert_int_equal(XP_TEST_MODULE_UINT8_VALUE_T, value->data.uint8_val);
 
     delete_get_set_get(ctx, session, XP_TEST_MODULE_UINT8, value, &new_set);
     assert_int_equal(value->data.uint8_val, new_set->data.uint8_val);
     FREE_VARS(value, new_set);
 
     /* uint16*/
-    #define XP_TEST_MODULE_UINT16 "/test-module:main/ui16"
     rc = rp_dt_get_value_wrapper(ctx, session, XP_TEST_MODULE_UINT16, &value);
     assert_int_equal(SR_ERR_OK, rc);
 
     assert_int_equal(SR_UINT16_T, value->type);
-    assert_int_equal(16, value->data.uint16_val);
+    assert_int_equal(XP_TEST_MODULE_UINT16_VALUE_T, value->data.uint16_val);
 
     delete_get_set_get(ctx, session, XP_TEST_MODULE_UINT16, value, &new_set);
     assert_int_equal(value->data.uint16_val, new_set->data.uint16_val);
     FREE_VARS(value, new_set);
 
     /* uint32*/
-    #define XP_TEST_MODULE_UINT32 "/test-module:main/ui32"
     rc = rp_dt_get_value_wrapper(ctx, session, XP_TEST_MODULE_UINT32, &value);
     assert_int_equal(SR_ERR_OK, rc);
 
     assert_int_equal(SR_UINT32_T, value->type);
-    assert_int_equal(32, value->data.uint32_val);
+    assert_int_equal(XP_TEST_MODULE_UINT32_VALUE_T, value->data.uint32_val);
 
     delete_get_set_get(ctx, session, XP_TEST_MODULE_UINT32, value, &new_set);
     assert_int_equal(value->data.uint32_val, new_set->data.uint32_val);
     FREE_VARS(value, new_set);
 
     /* uint64*/
-    #define XP_TEST_MODULE_UINT64 "/test-module:main/ui64"
     rc = rp_dt_get_value_wrapper(ctx, session, XP_TEST_MODULE_UINT64, &value);
     assert_int_equal(SR_ERR_OK, rc);
 
     assert_int_equal(SR_UINT64_T, value->type);
-    assert_int_equal(64, value->data.uint64_val);
+    assert_int_equal(XP_TEST_MODULE_INT64_VALUE_T, value->data.uint64_val);
 
     delete_get_set_get(ctx, session, XP_TEST_MODULE_UINT64, value, &new_set);
     assert_int_equal(value->data.uint64_val, new_set->data.uint64_val);
@@ -867,45 +852,45 @@ edit_discard_changes_test(void **state)
     dm_session_start(ctx, &sessionB);
 
     /* read value in session A*/
-    rc = rp_dt_get_value_wrapper(ctx, sessionA, "/test-module:main/i64", &valueA);
+    rc = rp_dt_get_value_wrapper(ctx, sessionA, XP_TEST_MODULE_INT64, &valueA);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(valueA);
-    assert_int_equal(64, valueA->data.int64_val);
+    assert_int_equal(XP_TEST_MODULE_INT64_VALUE_T, valueA->data.int64_val);
 
     /* read value in session B*/
-    rc = rp_dt_get_value_wrapper(ctx, sessionB, "/test-module:main/i64", &valueB);
+    rc = rp_dt_get_value_wrapper(ctx, sessionB, XP_TEST_MODULE_INT64, &valueB);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(valueB);
-    assert_int_equal(64, valueB->data.int64_val);
+    assert_int_equal(XP_TEST_MODULE_INT64_VALUE_T, valueB->data.int64_val);
     sr_free_val(valueB);
 
     /* update value in session A*/
-    valueA->data.int64_val = 1024;
-    rc = rp_dt_set_item(ctx, sessionA, SR_DS_STARTUP, "/test-module:main/i64", SR_EDIT_DEFAULT, valueA);
+    valueA->data.int64_val = XP_TEST_MODULE_INT64_VALUE_T + 42;
+    rc = rp_dt_set_item(ctx, sessionA, SR_DS_STARTUP, XP_TEST_MODULE_INT64, SR_EDIT_DEFAULT, valueA);
     assert_int_equal(SR_ERR_OK, rc);
     sr_free_val(valueA);
 
     /* check update in session A*/
-    rc = rp_dt_get_value_wrapper(ctx, sessionA, "/test-module:main/i64", &valueA);
+    rc = rp_dt_get_value_wrapper(ctx, sessionA, XP_TEST_MODULE_INT64, &valueA);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(valueA);
-    assert_int_equal(1024, valueA->data.int64_val);
+    assert_int_equal(XP_TEST_MODULE_INT64_VALUE_T + 42, valueA->data.int64_val);
     sr_free_val(valueA);
 
     /* update in sessionA should not affect value in session B*/
-    rc = rp_dt_get_value_wrapper(ctx, sessionB, "/test-module:main/i64", &valueB);
+    rc = rp_dt_get_value_wrapper(ctx, sessionB, XP_TEST_MODULE_INT64, &valueB);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(valueB);
-    assert_int_equal(64, valueB->data.int64_val);
+    assert_int_equal(XP_TEST_MODULE_INT64_VALUE_T, valueB->data.int64_val);
     sr_free_val(valueB);
 
     rc = dm_discard_changes(ctx, sessionA);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = rp_dt_get_value_wrapper(ctx, sessionA, "/test-module:main/i64", &valueA);
+    rc = rp_dt_get_value_wrapper(ctx, sessionA, XP_TEST_MODULE_INT64, &valueA);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(valueA);
-    assert_int_equal(64, valueA->data.int64_val);
+    assert_int_equal(XP_TEST_MODULE_INT64_VALUE_T, valueA->data.int64_val);
     sr_free_val(valueA);
 
     dm_session_stop(ctx, sessionA);
@@ -926,36 +911,36 @@ edit_commit_test(void **state)
     dm_session_start(ctx, &sessionB);
 
     /* read value in session A*/
-    rc = rp_dt_get_value_wrapper(ctx, sessionA, "/test-module:main/i64", &valueA);
+    rc = rp_dt_get_value_wrapper(ctx, sessionA, XP_TEST_MODULE_INT64, &valueA);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(valueA);
-    assert_int_equal(64, valueA->data.int64_val);
+    assert_int_equal(XP_TEST_MODULE_INT64_VALUE_T, valueA->data.int64_val);
 
     /* read value in session B*/
-    rc = rp_dt_get_value_wrapper(ctx, sessionB, "/test-module:main/i64", &valueB);
+    rc = rp_dt_get_value_wrapper(ctx, sessionB, XP_TEST_MODULE_INT64, &valueB);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(valueB);
-    assert_int_equal(64, valueB->data.int64_val);
+    assert_int_equal(XP_TEST_MODULE_INT64_VALUE_T, valueB->data.int64_val);
     sr_free_val(valueB);
 
     /* update value in session A*/
-    valueA->data.int64_val = 1024;
-    rc = rp_dt_set_item(ctx, sessionA, SR_DS_STARTUP, "/test-module:main/i64", SR_EDIT_DEFAULT, valueA);
+    valueA->data.int64_val = XP_TEST_MODULE_INT64_VALUE_T + 99;
+    rc = rp_dt_set_item(ctx, sessionA, SR_DS_STARTUP, XP_TEST_MODULE_INT64, SR_EDIT_DEFAULT, valueA);
     assert_int_equal(SR_ERR_OK, rc);
     sr_free_val(valueA);
 
     /* check update in session A*/
-    rc = rp_dt_get_value_wrapper(ctx, sessionA, "/test-module:main/i64", &valueA);
+    rc = rp_dt_get_value_wrapper(ctx, sessionA, XP_TEST_MODULE_INT64, &valueA);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(valueA);
-    assert_int_equal(1024, valueA->data.int64_val);
+    assert_int_equal(XP_TEST_MODULE_INT64_VALUE_T + 99, valueA->data.int64_val);
     sr_free_val(valueA);
 
     /* update in sessionA should not affect value in session B*/
-    rc = rp_dt_get_value_wrapper(ctx, sessionB, "/test-module:main/i64", &valueB);
+    rc = rp_dt_get_value_wrapper(ctx, sessionB, XP_TEST_MODULE_INT64, &valueB);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(valueB);
-    assert_int_equal(64, valueB->data.int64_val);
+    assert_int_equal(XP_TEST_MODULE_INT64_VALUE_T, valueB->data.int64_val);
     sr_free_val(valueB);
 
     char **errors = NULL;
@@ -964,17 +949,17 @@ edit_commit_test(void **state)
     rc = dm_commit(ctx, sessionA, &errors, &e_cnt);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = rp_dt_get_value_wrapper(ctx, sessionA, "/test-module:main/i64", &valueA);
+    rc = rp_dt_get_value_wrapper(ctx, sessionA, XP_TEST_MODULE_INT64, &valueA);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(valueA);
-    assert_int_equal(1024, valueA->data.int64_val);
+    assert_int_equal(XP_TEST_MODULE_INT64_VALUE_T + 99, valueA->data.int64_val);
     sr_free_val(valueA);
 
     /* since the session be has not been modified it should be update after commit */
-    rc = rp_dt_get_value_wrapper(ctx, sessionB, "/test-module:main/i64", &valueB);
+    rc = rp_dt_get_value_wrapper(ctx, sessionB, XP_TEST_MODULE_INT64, &valueB);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(valueB);
-    assert_int_equal(1024, valueB->data.int64_val);
+    assert_int_equal(XP_TEST_MODULE_INT64_VALUE_T + 99, valueB->data.int64_val);
     sr_free_val(valueB);
 
     dm_session_stop(ctx, sessionA);
@@ -982,14 +967,14 @@ edit_commit_test(void **state)
 
      /* check that update is permanent in new session*/
     dm_session_start(ctx, &sessionA);
-    rc = rp_dt_get_value_wrapper(ctx, sessionA, "/test-module:main/i64", &valueA);
+    rc = rp_dt_get_value_wrapper(ctx, sessionA, XP_TEST_MODULE_INT64, &valueA);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(valueA);
-    assert_int_equal(1024, valueA->data.int64_val);
+    assert_int_equal(XP_TEST_MODULE_INT64_VALUE_T + 99, valueA->data.int64_val);
 
-    valueA->data.int64_val = 64;
+    valueA->data.int64_val = XP_TEST_MODULE_INT64_VALUE_T;
 
-    rc = rp_dt_set_item(ctx, sessionA, SR_DS_STARTUP, "/test-module:main/i64", SR_EDIT_DEFAULT, valueA);
+    rc = rp_dt_set_item(ctx, sessionA, SR_DS_STARTUP, XP_TEST_MODULE_INT64, SR_EDIT_DEFAULT, valueA);
     assert_int_equal(SR_ERR_OK, rc);
     sr_free_val(valueA);
 

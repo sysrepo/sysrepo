@@ -32,6 +32,7 @@
 #include "rp_data_tree.h"
 #include "xpath_processor.h"
 #include "dt_xpath_helpers.h"
+#include "test_module_helper.h"
 
 #define LEAF_VALUE "leafV"
 
@@ -95,112 +96,6 @@ void createDataTreeWithAugments(struct ly_ctx *ctx, struct lyd_node **root){
 
     module = ly_ctx_get_module(ctx, "info-module",NULL);
     lyd_new_leaf(*root, module, "info", "info 123");
-
-
-}
-
-void createDataTreeTestModule(struct ly_ctx *ctx, struct lyd_node **root){
-    struct lyd_node *node = NULL;
-    struct lyd_node *n = NULL;
-
-    const struct lys_module *module = ly_ctx_get_module(ctx, "test-module",NULL);
-    assert_non_null(module);
-
-    *root = lyd_new(NULL, module, "main");
-    assert_non_null(*root);
-    node = lyd_new_leaf(*root, module, "enum", "maybe");
-    assert_non_null(node);
-    /*Hello world!  (base64 encoded)*/
-    node = lyd_new_leaf(*root, module, "raw", "SGVsbG8gd29ybGQh");
-    assert_non_null(node);
-
-    /*Strict = 1, Recursive = 1, Loggin = 0*/
-    node = lyd_new_leaf(*root, module, "options", "strict recursive");
-    assert_non_null(node);
-
-    node = lyd_new_leaf(*root, module, "dec64", "9.85");
-    assert_non_null(node);
-
-    node = lyd_new_leaf(*root, module, "i8", "8");
-    assert_non_null(node);
-
-    node = lyd_new_leaf(*root, module, "i16", "16");
-    assert_non_null(node);
-
-    node = lyd_new_leaf(*root, module, "i32", "32");
-    assert_non_null(node);
-
-    node = lyd_new_leaf(*root, module, "i64", "64");
-    assert_non_null(node);
-
-    node = lyd_new_leaf(*root, module, "ui8", "8");
-    assert_non_null(node);
-
-    node = lyd_new_leaf(*root, module, "ui16", "16");
-    assert_non_null(node);
-
-    node = lyd_new_leaf(*root, module, "ui32", "32");
-    assert_non_null(node);
-
-    node = lyd_new_leaf(*root, module, "ui64", "64");
-    assert_non_null(node);
-
-    node = lyd_new_leaf(*root, module, "empty", "");
-    assert_non_null(node);
-    
-    node = lyd_new_leaf(*root, module, "boolean", "true");
-    assert_non_null(node);
-    
-    node = lyd_new_leaf(*root, module, "string", "str");
-    assert_non_null(node);
-    
-    node = lyd_new_leaf(*root, module, "id_ref", "id_1");
-    assert_non_null(node);
-
-    /* leaf -list*/
-    n = lyd_new_leaf(*root, module, "numbers", "1");
-    assert_non_null(n);
-
-    n = lyd_new_leaf(*root, module, "numbers", "2");
-    assert_non_null(n);
-
-    n = lyd_new_leaf(*root, module, "numbers", "42");
-    assert_non_null(n);
-
-    /* list k1*/
-    node = lyd_new(NULL, module, "list");
-    assert_non_null(node);
-    assert_int_equal(0,lyd_insert_after(*root, node));
-
-    n = lyd_new_leaf(node, module, "key", "k1");
-    assert_non_null(n);
-
-    n = lyd_new_leaf(node, module, "id_ref", "id_1");
-    assert_non_null(n);
-
-    n = lyd_new_leaf(node, module, "union", "42");
-    assert_non_null(n);
-
-    /* presence container*/
-    n = lyd_new(node, module, "wireless");
-    assert_non_null(n);
-
-    /* list k2*/
-    node = lyd_new(NULL, module, "list");
-    assert_non_null(node);
-    assert_int_equal(0, lyd_insert_after(*root, node));
-
-    n = lyd_new_leaf(node, module, "key", "k2");
-    assert_non_null(n);
-
-    n = lyd_new_leaf(node, module, "id_ref", "id_2");
-    assert_non_null(n);
-
-    n = lyd_new_leaf(node, module, "union", "infinity");
-    assert_non_null(n);
-
-    assert_int_equal(0, lyd_validate(*root, LYD_OPT_STRICT));
-    assert_int_equal(SR_ERR_OK, sr_save_data_tree_file(TEST_DATA_SEARCH_DIR "test-module.data", *root));
 
 
 }
@@ -388,19 +283,16 @@ void get_values_test_module_test(void **state){
     int rc = 0;
     dm_ctx_t *ctx = *state;
     dm_session_t *ses_ctx = NULL;
-    struct lyd_node *data_tree = NULL;
     dm_session_start(ctx, &ses_ctx);
-    rc = dm_get_datatree(ctx, ses_ctx, "example-module", &data_tree);
-    assert_int_equal(SR_ERR_OK, rc);
 
     struct lyd_node *root = NULL;
-    createDataTreeTestModule(data_tree->schema->module->ctx, &root);
+    createDataTreeTestModule();
+    dm_get_datatree(ctx, ses_ctx, "test-module", &root);
     assert_non_null(root);
 
     sr_val_t *value;
 
     /* enum leaf*/
-#define XP_TEST_MODULE_ENUM "/test-module:main/enum"
     rc = rp_dt_get_value_xpath(ctx, root, XP_TEST_MODULE_ENUM, &value);
     assert_int_equal(SR_ERR_OK, rc);
 
@@ -410,7 +302,6 @@ void get_values_test_module_test(void **state){
     sr_free_val(value);
 
     /* binary leaf*/
-#define XP_TEST_MODULE_RAW "/test-module:main/raw"
     rc = rp_dt_get_value_xpath(ctx, root, XP_TEST_MODULE_RAW, &value);
     assert_int_equal(SR_ERR_OK, rc);
 
@@ -420,8 +311,6 @@ void get_values_test_module_test(void **state){
     sr_free_val(value);
 
     /*bits leaf*/
-
-#define XP_TEST_MODULE_BITS "/test-module:main/options"
     rc = rp_dt_get_value_xpath(ctx, root, XP_TEST_MODULE_BITS, &value);
     assert_int_equal(SR_ERR_OK, rc);
 
@@ -430,7 +319,6 @@ void get_values_test_module_test(void **state){
 
     sr_free_val(value);
 
-    sr_free_datatree(root);
     dm_session_stop(ctx, ses_ctx);
 }
 

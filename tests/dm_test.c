@@ -28,6 +28,14 @@
 #include "data_manager.h"
 #include "test_data.h"
 #include "sr_common.h"
+#include "test_module_helper.h"
+
+int setup(void **state)
+{
+    /* make sure that test-module data is created */
+    createDataTreeTestModule();
+    return 0;
+}
 
 void dm_create_cleanup(void **state){
    int rc;
@@ -247,6 +255,6 @@ int main(){
             cmocka_unit_test(dm_discard_changes_test),
             cmocka_unit_test(dm_commit_test),
     };
-    return cmocka_run_group_tests(tests, NULL, NULL);
+    return cmocka_run_group_tests(tests, setup, NULL);
 }
 

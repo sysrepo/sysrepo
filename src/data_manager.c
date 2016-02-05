@@ -872,9 +872,9 @@ dm_discard_changes(dm_ctx_t *dm_ctx, dm_session_t *session)
     while (NULL != (node = avl_at(session->running_modules, cnt))) {
         dm_data_info_t *info = node->item;
         if (info->modified) {
-            /* changes timestamp to zero
+            /* invalidate timestamp
              * and set modified to false to discard the changes
-             * next get_data_tree/ get_data_info call will update the data tree */
+             * next dm_get_data_tree / dm_get_data_info call will update the data tree */
             info->modified = false;
             info->timestamp = 0;
         }
@@ -913,8 +913,8 @@ dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, char ***errors, size_t *err_c
         dm_data_info_t *info = node->item;
         if (info->modified) {
             /* lookup data_tree in dm_ctx*/
+            dm_data_info_t *sys_wide_data_info = NULL;
             dm_data_info_t search_node;
-            dm_data_info_t *original_data_info = NULL;
             search_node.module = info->module;
             sys_node = avl_search(dm_ctx->module_avl, &search_node);
             if (NULL == sys_node){
@@ -924,20 +924,20 @@ dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, char ***errors, size_t *err_c
             }
 
             /* update data trees in dm_ctx*/
-            original_data_info = (dm_data_info_t *) sys_node->item;
-            if (info->timestamp != original_data_info->timestamp) {
+            sys_wide_data_info = (dm_data_info_t *) sys_node->item;
+            if (info->timestamp != sys_wide_data_info->timestamp) {
                 SR_LOG_INF("Merging needs to be done for module '%s', currently just overwriting", info->module->name);
             }
-            sr_free_datatree(original_data_info->node);
-            original_data_info->node = sr_dup_datatree(info->node);
-            if (NULL == original_data_info->node){
+            sr_free_datatree(sys_wide_data_info->node);
+            sys_wide_data_info->node = sr_dup_datatree(info->node);
+            if (NULL == sys_wide_data_info->node){
                 SR_LOG_ERR("Duplication of data tree %s", info->module->name);
                 pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
                 return SR_ERR_INTERNAL;
             }
             /* increment timestamp to invalidate older copies */
-            original_data_info->timestamp++;
-            ((dm_model_info_t *) original_data_info->module->data->private)->running_timestamp = original_data_info->timestamp;
+            sys_wide_data_info->timestamp++;
+            ((dm_model_info_t *) sys_wide_data_info->module->data->private)->running_timestamp = sys_wide_data_info->timestamp;
 
             char *data_filename = NULL;
             rc = dm_get_data_file(dm_ctx, info->module->name, &data_filename);
@@ -947,7 +947,7 @@ dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, char ***errors, size_t *err_c
                 return rc;
             }
 
-            rc = sr_save_data_tree_file(data_filename, original_data_info->node);
+            rc = sr_save_data_tree_file(data_filename, sys_wide_data_info->node);
             free(data_filename);
             if (SR_ERR_OK != rc){
                 SR_LOG_ERR("Saving data file for module %s failed", info->module->name);
