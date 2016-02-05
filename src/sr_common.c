@@ -214,24 +214,12 @@ sr_save_data_tree_file(const char *file_name, const struct lyd_node *data_tree)
         return SR_ERR_IO;
     }
 
-    fprintf(f, "<module>");
-    if( 0 != lyd_print_file(f, data_tree, LYD_XML_FORMAT)){
+    if( 0 != lyd_print_file(f, data_tree, LYD_XML_FORMAT, LYP_WITHSIBLINGS)){
         SR_LOG_ERR("Failed to write output into %s", file_name);
         return SR_ERR_INTERNAL;
     }
-    fprintf(f, "</module>");
     fclose(f);
     return SR_ERR_OK;
-}
-
-void
-sr_free_datatree(struct lyd_node *root){
-    struct lyd_node *next = NULL;
-    while (NULL != root) {
-        next = root->next;
-        lyd_free(root);
-        root = next;
-    }
 }
 
 struct lyd_node*
@@ -254,7 +242,7 @@ sr_dup_datatree(struct lyd_node *root){
         }
         else if (0 != lyd_insert_after(s, n)){
             SR_LOG_ERR_MSG("Memory allocation failed");
-            sr_free_datatree(dup);
+            lyd_free_withsiblings(dup);
             return NULL;
         }
         /* last appended sibling*/
@@ -1595,7 +1583,7 @@ sr_dec64_to_str(double val, struct lys_node *schema_node, char **out)
         SR_LOG_ERR_MSG("Node must be either leaf or leaflist");
         return SR_ERR_INVAL_ARG;
     }
-    /* format string for double string convertsion "%.XXf", where XX is corresponding number of fraction digits 1-18 */
+    /* format string for double string conversion "%.XXf", where XX is corresponding number of fraction digits 1-18 */
 #define MAX_FMT_LEN 6
     char format_string [MAX_FMT_LEN] = {0,};
     snprintf(format_string, MAX_FMT_LEN, "%%.%zuf", fraction_digits);

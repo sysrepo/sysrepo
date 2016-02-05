@@ -149,7 +149,7 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t 
             rc = SR_ERR_INTERNAL;
             goto cleanup;
         }
-        sr_free_datatree(node);
+        lyd_free_withsiblings(node);
     } else if (node->schema->nodetype == LYS_LEAF) {
         bool is_key = false;
         rc = rp_dt_has_key(node->parent, node->schema->name, &is_key);
@@ -217,7 +217,7 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t 
                 rc = SR_ERR_INTERNAL;
                 goto cleanup;
             }
-            sr_free_datatree(node);
+            lyd_free_withsiblings(node);
         } else {
             /* delete all instances */
             struct lyd_node **nodes = NULL;
@@ -239,7 +239,7 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t 
                     rc = SR_ERR_INTERNAL;
                     goto cleanup;
                 }
-                sr_free_datatree(nodes[i]);
+                lyd_free_withsiblings(nodes[i]);
             }
             free(nodes);
         }
@@ -365,6 +365,13 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t dat
             SR_LOG_ERR_MSG("Copy new value to string failed");
             goto cleanup;
         }
+    } else if ((LYS_LEAF | LYS_LEAFLIST) & schema_node->nodetype) {
+        struct lys_node_leaf *l_sch = (struct lys_node_leaf *) schema_node;
+        if (LY_TYPE_EMPTY != l_sch->type.base){
+            SR_LOG_ERR("NULL value passed %s", xpath);
+            rc = SR_ERR_INVAL_ARG;
+            goto cleanup;
+        }
     }
 
     /* module of the node to be created*/
@@ -428,7 +435,7 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t dat
                 goto cleanup;
             }
             rc = dm_get_module(dm_ctx, module_name, NULL, &module);
-            if (SR_ERR_OK == rc) {
+            if (SR_ERR_OK != rc) {
                 goto cleanup;
             }
             free(module_name);

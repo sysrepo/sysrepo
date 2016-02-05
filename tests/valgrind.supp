@@ -1,0 +1,12 @@
+{ 
+   libyang_pthread_key_create
+   Memcheck:Leak
+   match-leak-kinds: reachable
+   fun:calloc
+   fun:ly_errno_location
+   fun:lyxml_parse_mem
+   fun:yin_read_module
+   fun:lys_parse_mem
+   fun:ly_ctx_new
+}
+

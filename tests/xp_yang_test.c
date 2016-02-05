@@ -56,7 +56,7 @@ int setup(void **state){
 int teardown(void **state){
     struct ly_ctx *ctx = *state;
 
-    ly_ctx_destroy(ctx);
+    ly_ctx_destroy(ctx, NULL);
 
 
     return 0;

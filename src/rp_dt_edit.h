@@ -28,13 +28,14 @@
 #include "data_manager.h"
 
 /**
- * @brief Deletes item(s) identified by xpath. List key can not be deleted.
+ * @brief Validates the xpath and then deletes item(s) identified by xpath.
+ * List key can not be deleted. (if attempted SR_ERR_INVAL_ARG is returned)
  * @param [in] dm_ctx
  * @param [in] session
  * @param [in] datastore
  * @param [in] xpath
  * @param [in] options
- * @return err_code
+ * @return Error code (SR_ERR_OK on success)
  */
 int rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t datastore, const char *xpath, const sr_edit_flag_t options);
 
