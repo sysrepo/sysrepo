@@ -568,34 +568,28 @@ dm_init(const char *schema_search_dir, const char *data_search_dir, dm_ctx_t **d
     ctx->ly_ctx = ly_ctx_new(schema_search_dir);
     if (NULL == ctx->ly_ctx) {
         SR_LOG_ERR_MSG("Cannot initialize libyang context in Data Manager.");
-        free(ctx);
+        dm_cleanup(ctx);
         return SR_ERR_NOMEM;
     }
 
     ctx->schema_search_dir = strdup(schema_search_dir);
     if (NULL == ctx->schema_search_dir) {
         SR_LOG_ERR_MSG("Cannot allocate memory for schema search dir string in Data Manager.");
-        ly_ctx_destroy(ctx->ly_ctx);
-        free(ctx);
+        dm_cleanup(ctx);
         return SR_ERR_NOMEM;
     }
 
     ctx->data_search_dir = strdup(data_search_dir);
     if (NULL == ctx->data_search_dir) {
         SR_LOG_ERR_MSG("Cannot allocate memory for data search dir string in Data Manager.");
-        free(ctx->schema_search_dir);
-        ly_ctx_destroy(ctx->ly_ctx);
-        free(ctx);
+        dm_cleanup(ctx);
         return SR_ERR_NOMEM;
     }
 
     ctx->module_avl = avl_alloc_tree(dm_data_info_cmp, dm_data_info_free);
     if (NULL == ctx->module_avl) {
         SR_LOG_ERR_MSG("Cannot allocate memory for avl module in Data Manager.");
-        free(ctx->schema_search_dir);
-        free(ctx->data_search_dir);
-        ly_ctx_destroy(ctx->ly_ctx);
-        free(ctx);
+        dm_cleanup(ctx);
         return SR_ERR_NOMEM;
     }
 
@@ -625,6 +619,13 @@ dm_init(const char *schema_search_dir, const char *data_search_dir, dm_ctx_t **d
     return SR_ERR_OK;
 }
 
+static void
+dm_free_lys_private_data(const struct lys_node *node, void *private){
+    if (NULL != private){
+        free(private);
+    }
+}
+
 void
 dm_cleanup(dm_ctx_t *dm_ctx)
 {
@@ -634,20 +635,9 @@ dm_cleanup(dm_ctx_t *dm_ctx)
         if (NULL != dm_ctx->module_avl) {
             avl_free_tree(dm_ctx->module_avl);
         }
-        const char **names = ly_ctx_get_module_names(dm_ctx->ly_ctx);
-        if (NULL != names) {
-            size_t i = 0;
-            const struct lys_module *module = NULL;
-            while (NULL != names[i]) {
-                module = ly_ctx_get_module(dm_ctx->ly_ctx, names[i], NULL);
-                if (NULL != module && NULL != module->data) {
-                    free(module->data->private);
-                }
-                i++;
-            }
-            free(names);
+        if (NULL != dm_ctx->ly_ctx) {
+            ly_ctx_destroy(dm_ctx->ly_ctx, dm_free_lys_private_data);
         }
-        ly_ctx_destroy(dm_ctx->ly_ctx);
         pthread_rwlock_destroy(&dm_ctx->avl_lock);
         pthread_rwlock_destroy(&dm_ctx->lyctx_lock);
         free(dm_ctx);

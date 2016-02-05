@@ -37,7 +37,7 @@ createDataTreeTestModule()
 
     ctx = ly_ctx_new(TEST_SCHEMA_SEARCH_DIR);
     assert_non_null(ctx);
-        
+
     const struct lys_module *module = ly_ctx_load_module(ctx, "test-module", NULL);
     assert_non_null(module);
 
@@ -81,13 +81,13 @@ createDataTreeTestModule()
 
     node = lyd_new_leaf(r, module, "empty", XP_TEST_MODULE_EMPTY_VALUE);
     assert_non_null(node);
-    
+
     node = lyd_new_leaf(r, module, "boolean", XP_TEST_MODULE_BOOL_VALUE);
     assert_non_null(node);
-    
+
     node = lyd_new_leaf(r, module, "string", XP_TEST_MODULE_STRING_VALUE);
     assert_non_null(node);
-    
+
     node = lyd_new_leaf(r, module, "id_ref", XP_TEST_MODULE_IDREF_VALUE);
     assert_non_null(node);
 
@@ -135,9 +135,9 @@ createDataTreeTestModule()
 
     assert_int_equal(0, lyd_validate(r, LYD_OPT_STRICT));
     assert_int_equal(SR_ERR_OK, sr_save_data_tree_file(TEST_MODULE_DATA_FILE_NAME, r));
-    
+
     sr_free_datatree(r);
-    
-    ly_ctx_destroy(ctx);
+
+    ly_ctx_destroy(ctx, NULL);
 
 }

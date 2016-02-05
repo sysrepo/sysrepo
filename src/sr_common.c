@@ -214,24 +214,17 @@ sr_save_data_tree_file(const char *file_name, const struct lyd_node *data_tree)
         return SR_ERR_IO;
     }
 
-    fprintf(f, "<module>");
-    if( 0 != lyd_print_file(f, data_tree, LYD_XML_FORMAT)){
+    if( 0 != lyd_print_file(f, data_tree, LYD_XML_FORMAT, LYP_WITHSIBLINGS)){
         SR_LOG_ERR("Failed to write output into %s", file_name);
         return SR_ERR_INTERNAL;
     }
-    fprintf(f, "</module>");
     fclose(f);
     return SR_ERR_OK;
 }
 
 void
 sr_free_datatree(struct lyd_node *root){
-    struct lyd_node *next = NULL;
-    while (NULL != root) {
-        next = root->next;
-        lyd_free(root);
-        root = next;
-    }
+    lyd_free_withsiblings(root);
 }
 
 struct lyd_node*
