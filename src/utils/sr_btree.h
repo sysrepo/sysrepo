@@ -22,23 +22,25 @@
 #ifndef SR_BTREE_H_
 #define SR_BTREE_H_
 
+#define SR_BTREE_USE_AVL 1
+
 typedef struct sr_btree_s sr_btree_t;
 
-typedef int (*sr_btree_compare_cb)(const void *, const void *);
+typedef int (*sr_btree_compare_item_cb)(const void *, const void *);
 
-typedef void (*sr_btree_freeitem_cb)(void *);
+typedef void (*sr_btree_free_item_cb)(void *);
 
 
-int sr_btree_init(sr_btree_compare_cb compare_cb, sr_btree_freeitem_cb freeitem_cb, sr_btree_t **tree);
+int sr_btree_init(sr_btree_compare_item_cb compare_item_cb, sr_btree_free_item_cb free_item_cb, sr_btree_t **tree);
 
 void sr_btree_cleanup(sr_btree_t* tree);
 
 int sr_btree_insert(sr_btree_t *tree, void *item);
 
-void sr_btree_delete(sr_btree_t *tree, const void *item);
+void sr_btree_delete(sr_btree_t *tree, void *item);
 
 void *sr_btree_search(const sr_btree_t *tree, const void *item);
 
-void *sr_btree_get_at(const sr_btree_t *tree, unsigned int index);
+void *sr_btree_get_at(sr_btree_t *tree, size_t index);
 
 #endif /* SR_BTREE_H_ */

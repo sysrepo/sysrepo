@@ -19,32 +19,63 @@
  * limitations under the License.
  */
 
-#include <avl.h>
-
 #include "sr_common.h"
 #include "sr_btree.h"
 
+#if SR_BTREE_USE_AVL
+#include <avl.h>
+#else
+#include <redblack.h>
+#endif
+
 typedef struct sr_btree_s {
-    avl_tree_t avl_tree;
-    sr_btree_compare_cb compare_cb;
-    sr_btree_freeitem_cb freeitem_cb;
+#if SR_BTREE_USE_AVL
+    avl_tree_t *avl_tree;
+#else
+    struct rbtree *rb_tree;
+    RBLIST *rb_list;
+#endif
+    sr_btree_compare_item_cb compare_item_cb;
+    sr_btree_free_item_cb free_item_cb;
 } sr_btree_t;
 
+#if !SR_BTREE_USE_AVL
+static int
+sr_redblack_compare_item_cb(const void *item1, const void *item2, const void *ctx)
+{
+    sr_btree_t *tree = (sr_btree_t*)ctx;
+    if (NULL != tree) {
+        return tree->compare_item_cb(item1, item2);
+    }
+    return 0;
+}
+#endif
+
 int
-sr_btree_init(sr_btree_compare_cb compare_cb, sr_btree_freeitem_cb freeitem_cb, sr_btree_t **tree_p)
+sr_btree_init(sr_btree_compare_item_cb compare_item_cb, sr_btree_free_item_cb free_item_cb, sr_btree_t **tree_p)
 {
     sr_btree_t *tree = NULL;
 
-    CHECK_NULL_ARG3(compare_cb, freeitem_cb, tree_p);
+    CHECK_NULL_ARG3(compare_item_cb, free_item_cb, tree_p);
 
     tree = calloc(1, sizeof(*tree));
     if (NULL == tree) {
         return SR_ERR_NOMEM;
     }
-    tree->compare_cb = compare_cb;
-    tree->freeitem_cb = freeitem_cb;
+    tree->compare_item_cb = compare_item_cb;
+    tree->free_item_cb = free_item_cb;
 
-    avl_init_tree(&tree->avl_tree, compare_cb, freeitem_cb);
+#if SR_BTREE_USE_AVL
+    tree->avl_tree = avl_alloc_tree(compare_item_cb, free_item_cb);
+    if (NULL == tree->avl_tree) {
+        return SR_ERR_NOMEM;
+    }
+#else
+    tree->rb_tree = rbinit(sr_redblack_compare_item_cb, tree);
+    if (NULL == tree->rb_tree) {
+        return SR_ERR_NOMEM;
+    }
+#endif
 
     *tree_p = tree;
     return SR_ERR_OK;
@@ -54,7 +85,24 @@ void
 sr_btree_cleanup(sr_btree_t* tree)
 {
     if (NULL != tree) {
-        avl_free_tree(&tree->avl_tree);
+#if SR_BTREE_USE_AVL
+        /* calls free item callback on each node & destroys the tree  */
+        avl_free_tree(tree->avl_tree);
+#else
+        /* call free item callback on each node */
+        RBLIST *rblist = rbopenlist(tree->rb_tree);
+        if (NULL != rblist) {
+            void *item = NULL;
+            while((item = (void*)rbreadlist(rblist))) {
+                tree->free_item_cb(item);
+            }
+            rbcloselist(rblist);
+        }
+        /* destroy the tree */
+        rbdestroy(tree->rb_tree);
+#endif
+        /* free our context */
+        free(tree);
     }
 }
 
@@ -63,20 +111,32 @@ sr_btree_insert(sr_btree_t *tree, void *item)
 {
     CHECK_NULL_ARG2(tree, item);
 
-    avl_node_t *node = avl_insert(&tree->avl_tree, item);
+#if SR_BTREE_USE_AVL
+    avl_node_t *node = avl_insert(tree->avl_tree, item);
     if (NULL == node) {
         return SR_ERR_INTERNAL;
     }
+#else
+    const void *tmp_item = rbsearch(item, tree->rb_tree);
+    if (NULL == tmp_item) {
+        return SR_ERR_INTERNAL;
+    }
+#endif
 
     return SR_ERR_OK;
 }
 
 void
-sr_btree_delete(sr_btree_t *tree, const void *item)
+sr_btree_delete(sr_btree_t *tree, void *item)
 {
     CHECK_NULL_ARG_VOID2(tree, item);
 
-    avl_delete(&tree->avl_tree, item);
+#if SR_BTREE_USE_AVL
+    avl_delete(tree->avl_tree, item);
+#else
+    rbdelete(item, tree->rb_tree);
+    tree->free_item_cb(item);
+#endif
 }
 
 void *
@@ -86,25 +146,42 @@ sr_btree_search(const sr_btree_t *tree, const void *item)
         return NULL;
     }
 
-    avl_node_t *node = avl_search(&tree->avl_tree, item);
+#if SR_BTREE_USE_AVL
+    avl_node_t *node = avl_search(tree->avl_tree, item);
     if (NULL != node) {
         return node->item;
     }
+#else
+    return (void*)rbfind(item, tree->rb_tree);
+#endif
 
     return NULL;
 }
 
 void *
-sr_btree_get_at(const sr_btree_t *tree, unsigned int index)
+sr_btree_get_at(sr_btree_t *tree, size_t index)
 {
     if (NULL == tree) {
         return NULL;
     }
 
-    avl_node_t *node = avl_at(&tree->avl_tree, index);
+#if SR_BTREE_USE_AVL
+    avl_node_t *node = avl_at(tree->avl_tree, index);
     if (NULL != node) {
         return node->item;
     }
+#else
+    if (0 == index) {
+        tree->rb_list = rbopenlist(tree->rb_tree);
+    }
+    if (NULL != tree->rb_list) {
+        void *item = (void*)rbreadlist(tree->rb_list);
+        if (NULL == item) {
+            rbcloselist(tree->rb_list);
+        }
+        return item;
+    }
+#endif
 
     return NULL;
 }

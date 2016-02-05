@@ -48,7 +48,7 @@ set(SYSREPO-ENGINE-SOURCES
 
 set(HEADERS "${PROJECT_SOURCE_DIR}/inc/sysrepo.h")
 
-#shared and static library
+# shared and static library
 add_library(sysrepo ${SYSREPO-SOURCES})
 add_library(sysrepo_so SHARED ${SYSREPO-SOURCES})
 SET_TARGET_PROPERTIES(sysrepo_so PROPERTIES
@@ -59,7 +59,11 @@ add_library(sysrepo-engine_so SHARED ${SYSREPO-ENGINE-SOURCES})
 SET_TARGET_PROPERTIES(sysrepo-engine_so PROPERTIES
               OUTPUT_NAME sysrepo-engine CLEAN_DIRECT_OUTPUT 1)
 
-set(LINK_LIBRARIES avl ev pthread protobuf-c yang)
+if(AVL_FOUND)
+    set(LINK_LIBRARIES avl ev pthread protobuf-c yang)
+else(AVL_FOUND)
+    set(LINK_LIBRARIES redblack ev pthread protobuf-c yang)
+endif(AVL_FOUND)
 
 target_link_libraries(sysrepo ${LINK_LIBRARIES} sysrepo-engine)
 target_link_libraries(sysrepo_so ${LINK_LIBRARIES} sysrepo-engine_so)

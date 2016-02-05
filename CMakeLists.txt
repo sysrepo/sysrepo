@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 2.8)
 project(sysrepo)
-set(SYSREPO_DESC "YANG based system repository")
+set(SYSREPO_DESC "YANG-based system repository")
 
 # setup version
 set(SYSREPO_MAJOR_VERSION 0)
@@ -21,7 +21,7 @@ set(CMAKE_C_FLAGS_DEBUG   "-coverage -g -O0")
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/CMakeModules/")
 
 if(NOT UNIX)
-    message(FATAL_ERROR "Only unix like systems are supported.")
+    message(FATAL_ERROR "Only Unix-like systems are supported.")
 endif()
 
 if(NOT LIB_INSTALL_DIR)
@@ -37,6 +37,19 @@ find_package(Protobuf-c REQUIRED)
 include_directories(${PROTOBUF-C_INCLUDE_DIR})
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 
+# find libavl or libredblack
+find_package(AVL)
+if(AVL_FOUND)
+    MESSAGE(STATUS "libavl will be used as binary tree minipulation library.")
+else(AVL_FOUND)
+    find_package(RedBlack)
+    if(REDBLACK_FOUND)
+        MESSAGE(STATUS "libredblack will be used as binary tree minipulation library.")
+    else(REDBLACK_FOUND)
+        MESSAGE(FATAL_ERROR "Either libavl or libredblack is required to build sysrepo.")
+    endif(REDBLACK_FOUND)
+endif(AVL_FOUND)
+
 # location of system repository
 set(REPOSITORY_LOC "${PROJECT_SOURCE_DIR}/tests/data/" CACHE PATH "System repository location, contains configuration schema and data files.")
 set(SCHEMA_SEARCH_DIR "${REPOSITORY_LOC}/yang/")
@@ -50,15 +63,15 @@ add_subdirectory(examples)
 
 
 #Testing
-SET(ENABLE_TESTS 1 CACHE BOOL "Tests enabled by default")
+SET(ENABLE_TESTS 1 CACHE BOOL "Enable unit tests.")
 if(ENABLE_TESTS)
     find_package(CMOCKA)
     if(CMOCKA_FOUND)
-        MESSAGE(STATUS "Tests are enabled")
+        MESSAGE(STATUS "CMocka found, tests are enabled.")
         enable_testing()
         add_subdirectory(tests)
     else(CMOCKA_FOUND)
-        MESSAGE(WARNING "Cmocka not found")
+        MESSAGE(WARNING "CMocka not found, tests are disabled.")
     endif(CMOCKA_FOUND)
 endif(ENABLE_TESTS)
 
