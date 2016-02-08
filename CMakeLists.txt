@@ -64,7 +64,6 @@ if(USE_AVL_LIB)
     if(AVL_FOUND)
         MESSAGE(STATUS "libavl will be used for binary tree manipulations.")
         include_directories(${AVL_INCLUDE_DIR})
-        SET(USE_AVL_LIB_INT "1")
     else(AVL_FOUND)
          MESSAGE(FATAL_ERROR "libavl cannot be found.")
     endif(AVL_FOUND)
@@ -72,7 +71,6 @@ else(USE_AVL_LIB)
     if(REDBLACK_FOUND)
         MESSAGE(STATUS "libredblack will be used for binary tree manipulations.")
         include_directories(${REDBLACK_INCLUDE_DIR})
-        SET(USE_AVL_LIB_INT "0")
     else(REDBLACK_FOUND)
          MESSAGE(FATAL_ERROR "libredblack cannot be found.")
     endif(REDBLACK_FOUND)
@@ -83,11 +81,6 @@ set(REPOSITORY_LOC "${PROJECT_SOURCE_DIR}/tests/data/" CACHE PATH "System reposi
 set(SCHEMA_SEARCH_DIR "${REPOSITORY_LOC}/yang/")
 set(DATA_SEARCH_DIR "${REPOSITORY_LOC}/data/")
 
-# add subdirectories
-add_subdirectory(src)
-add_subdirectory(inc)
-add_subdirectory(examples)
-
 # check for non-portable functions and headers
 set(CMAKE_REQUIRED_LIBRARIES pthread)
 include(CheckFunctionExists)
@@ -96,6 +89,11 @@ CHECK_FUNCTION_EXISTS(pthread_rwlockattr_setkind_np HAVE_PTHREAD_RWLOCKATTR_SETK
 CHECK_FUNCTION_EXISTS(getpeereid HAVE_GETPEEREID)
 CHECK_FUNCTION_EXISTS(getpeerucred HAVE_GETPEERUCRED)
 CHECK_INCLUDE_FILES(ucred.h HAVE_UCRED_H)
+
+# add subdirectories
+add_subdirectory(src)
+add_subdirectory(inc)
+add_subdirectory(examples)
 
 #Testing
 SET(ENABLE_TESTS 1 CACHE BOOL "Enable unit tests.")
@@ -137,7 +135,7 @@ install (DIRECTORY DESTINATION ${DATA_SEARCH_DIR} DIRECTORY_PERMISSIONS
     WORLD_READ WORLD_WRITE WORLD_EXECUTE)
 
 
-find_package(PkgConfig)
+find_package(PkgConfig QUIET)
 if(PKG_CONFIG_FOUND)
     # generate and install pkg-config file
     configure_file("libsysrepo.pc.in" "libsysrepo.pc" @ONLY)

@@ -22,14 +22,14 @@
 #include "sr_common.h"
 #include "sr_btree.h"
 
-#if SR_BTREE_USE_AVL
+#if defined(USE_AVL_LIB)
 #include <avl.h>
 #else
 #include <redblack.h>
 #endif
 
 typedef struct sr_btree_s {
-#if SR_BTREE_USE_AVL
+#if defined(USE_AVL_LIB)
     avl_tree_t *avl_tree;
 #else
     struct rbtree *rb_tree;
@@ -39,7 +39,7 @@ typedef struct sr_btree_s {
     sr_btree_free_item_cb free_item_cb;
 } sr_btree_t;
 
-#if !SR_BTREE_USE_AVL
+#if !defined(USE_AVL_LIB)
 static int
 sr_redblack_compare_item_cb(const void *item1, const void *item2, const void *ctx)
 {
@@ -65,7 +65,7 @@ sr_btree_init(sr_btree_compare_item_cb compare_item_cb, sr_btree_free_item_cb fr
     tree->compare_item_cb = compare_item_cb;
     tree->free_item_cb = free_item_cb;
 
-#if SR_BTREE_USE_AVL
+#if defined(USE_AVL_LIB)
     tree->avl_tree = avl_alloc_tree(compare_item_cb, free_item_cb);
     if (NULL == tree->avl_tree) {
         return SR_ERR_NOMEM;
@@ -85,7 +85,7 @@ void
 sr_btree_cleanup(sr_btree_t* tree)
 {
     if (NULL != tree) {
-#if SR_BTREE_USE_AVL
+#if defined(USE_AVL_LIB)
         /* calls free item callback on each node & destroys the tree  */
         avl_free_tree(tree->avl_tree);
 #else
@@ -111,7 +111,7 @@ sr_btree_insert(sr_btree_t *tree, void *item)
 {
     CHECK_NULL_ARG2(tree, item);
 
-#if SR_BTREE_USE_AVL
+#if defined(USE_AVL_LIB)
     avl_node_t *node = avl_insert(tree->avl_tree, item);
     if (NULL == node) {
         if (EEXIST == errno) {
@@ -137,7 +137,7 @@ sr_btree_delete(sr_btree_t *tree, void *item)
 {
     CHECK_NULL_ARG_VOID2(tree, item);
 
-#if SR_BTREE_USE_AVL
+#if defined(USE_AVL_LIB)
     avl_delete(tree->avl_tree, item);
 #else
     rbdelete(item, tree->rb_tree);
@@ -152,7 +152,7 @@ sr_btree_search(const sr_btree_t *tree, const void *item)
         return NULL;
     }
 
-#if SR_BTREE_USE_AVL
+#if defined(USE_AVL_LIB)
     avl_node_t *node = avl_search(tree->avl_tree, item);
     if (NULL != node) {
         return node->item;
@@ -171,7 +171,7 @@ sr_btree_get_at(sr_btree_t *tree, size_t index)
         return NULL;
     }
 
-#if SR_BTREE_USE_AVL
+#if defined(USE_AVL_LIB)
     avl_node_t *node = avl_at(tree->avl_tree, index);
     if (NULL != node) {
         return node->item;

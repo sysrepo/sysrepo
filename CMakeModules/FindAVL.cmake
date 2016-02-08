@@ -3,9 +3,11 @@
 #  AVL_LIBRARIES - The libraries needed to use libavl
 #  AVL_DEFINITIONS - Compiler switches required for using libavl
 
-find_package(PkgConfig)
-pkg_check_modules(PC_AVL QUIET avl)
-set(AVL_DEFINITIONS ${PC_AVL_CFLAGS_OTHER})
+find_package(PkgConfig QUIET)
+if(PKG_CONFIG_FOUND)
+    pkg_check_modules(PC_AVL QUIET avl)
+    set(AVL_DEFINITIONS ${PC_AVL_CFLAGS_OTHER})
+endif()
 
 find_path(AVL_INCLUDE_DIR avl.h
           HINTS ${PC_AVL_INCLUDEDIR} ${PC_AVL_INCLUDE_DIRS}
@@ -18,8 +20,6 @@ set(AVL_LIBRARIES ${AVL_LIBRARY})
 set(AVL_INCLUDE_DIRS ${AVL_INCLUDE_DIR})
 
 include(FindPackageHandleStandardArgs)
-# handle the QUIETLY and REQUIRED arguments and set AVL_FOUND to TRUE
-# if all listed variables are TRUE
 find_package_handle_standard_args(avl DEFAULT_MSG
                                   AVL_LIBRARY AVL_INCLUDE_DIR)
 

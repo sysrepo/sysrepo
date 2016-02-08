@@ -30,7 +30,7 @@
 #cmakedefine HAVE_UCRED_H
 
 /** Use libavl (1) or libredblack (0) for binary tree manipulations. */
-#define SR_BTREE_USE_AVL @USE_AVL_LIB_INT@
+#cmakedefine USE_AVL_LIB
 
 /** Maximum size of a GPB message. */
 #define SR_MAX_MSG_SIZE ((SIZE_MAX < UINT32_MAX) ? SIZE_MAX : UINT32_MAX)
