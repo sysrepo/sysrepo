@@ -816,7 +816,32 @@ edit_validate_test(void **state)
     /*TODO must when */
     dm_session_stop(ctx, session);
 
-    /*TODO regexp */
+    /* regexp */
+    dm_session_start(ctx, &session);
+
+    sr_val_t hexnumber;
+    hexnumber.xpath = NULL;
+    hexnumber.type = SR_STRING_T;
+    hexnumber.data.string_val = strdup("92FF");
+    assert_non_null(hexnumber.data.string_val);
+
+    rc = rp_dt_set_item(ctx, session, SR_DS_STARTUP, "/test-module:hexnumber", SR_EDIT_DEFAULT, &hexnumber);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = dm_validate_session_data_trees(ctx, session, &errors, &e_cnt);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    free(hexnumber.data.string_val);
+    hexnumber.data.string_val = strdup("AAZZ");
+
+    /* Regualar expresssion mismatch causes SR_ERR_INVAL_ARG*/
+    rc = rp_dt_set_item(ctx, session, SR_DS_STARTUP, "/test-module:hexnumber", SR_EDIT_DEFAULT, &hexnumber);
+    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+
+    sr_free_val_content(&hexnumber);
+
+    dm_session_stop(ctx, session);
+
     /* mandatory leaf */
     dm_session_start(ctx, &session);
 
@@ -855,6 +880,10 @@ edit_validate_test(void **state)
 
     rc = dm_validate_session_data_trees(ctx, session, &errors, &e_cnt);
     assert_int_equal(SR_ERR_OK, rc);
+
+    sr_free_val_content(&name);
+    sr_free_val_content(&lonigitude);
+    sr_free_val_content(&latitude);
 
     dm_session_stop(ctx, session);
 

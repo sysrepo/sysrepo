@@ -403,7 +403,7 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t dat
             /* leaf - replace existing */
             if (NULL == sr_lyd_new_leaf(info, match->parent, module, match->schema->name, new_value)) {
                 SR_LOG_ERR("Replacing existing leaf failed %s", l->xpath);
-                rc = SR_ERR_INTERNAL;
+                rc = ly_errno == LY_EINVAL ? SR_ERR_INVAL_ARG : SR_ERR_INTERNAL;
                 goto cleanup;
             }
             sr_lyd_unlink(info, match);
@@ -469,7 +469,7 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t dat
 
             if (NULL == node) {
                 SR_LOG_ERR("Creating new leaf failed %s", xpath);
-                rc = SR_ERR_INTERNAL;
+                rc = ly_errno == LY_EINVAL ? SR_ERR_INVAL_ARG : SR_ERR_INTERNAL;
                 goto cleanup;
             }
 
