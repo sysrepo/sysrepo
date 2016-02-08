@@ -14,7 +14,6 @@ macro(ADD_UNIT_TEST_WITH_OPTS TEST_NAME TEST_SRC LIBS USE_VALGRIND)
            add_test(${TEST_NAME}_valgrind valgrind
                 --error-exitcode=1 --read-var-info=yes
                 --leak-check=full --show-leak-kinds=all
-                --suppressions=${PROJECT_SOURCE_DIR}/tests/valgrind.supp
                 ./${TEST_NAME})
        endif(${USE_VALGRIND})
     endif(valgrind_FOUND)
@@ -34,7 +33,7 @@ macro(ADD_UNIT_TEST_WITH_HELPERS TEST_NAME)
         ${HELPERS_DIR}test_module_helper.c
         )
     ADD_UNIT_TEST_WITH_OPTS(${TEST_NAME} "${t_files}" "" 1)
-endmacro(ADD_UNIT_TEST)
+endmacro(ADD_UNIT_TEST_WITH_HELPERS)
 
 ADD_UNIT_TEST(common_test)
 
