@@ -116,4 +116,93 @@ module test-module {
     }
   }
 
+  container transfer {
+    choice how {
+        default interval;
+        case interval {
+            leaf interval {
+                type uint16;
+                default 30;
+                units minutes;
+            }
+        }
+        case daily {
+            leaf daily {
+                type empty;
+            }
+            leaf time-of-day {
+                type string;
+                units 24-hour-clock;
+                default 1am;
+            }
+        }
+        case manual {
+            leaf manual {
+                type empty;
+            }
+        }
+    }
+  }
+
+  container location {
+    leaf name {
+        type string;
+    }
+
+    leaf longitude {
+        type string;
+        mandatory true;
+    }
+
+    leaf latitude {
+        type string;
+        mandatory true;
+    }
+  }
+
+  leaf hexnumber{
+    type string {
+            length "0..4";
+            pattern "[0-9a-fA-F]*";
+        }
+  }
+
+  container interface {
+    leaf ifType {
+        type enumeration {
+          enum ethernet;
+            enum atm;
+        }
+    }
+    leaf ifMTU {
+        type uint32;
+    }
+    must "ifType != 'ethernet' or " +
+         "(ifType = 'ethernet' and ifMTU = 1500)" {
+         error-message "An ethernet MTU must be 1500";
+    }
+    must "ifType != 'atm' or " +
+         "(ifType = 'atm' and ifMTU <= 17966 and ifMTU >= 64)" {
+         error-message "An atm MTU must be  64 .. 17966";
+    }
+ }
+
+ list user {
+    description "This is a list of users in the system.";
+    ordered-by user;
+    config true;
+
+    key "name";
+
+    leaf name {
+        type string;
+    }
+    leaf type {
+        type string;
+    }
+    leaf full-name {
+        type string;
+    }
+ }
+
 }

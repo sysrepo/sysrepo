@@ -116,4 +116,88 @@
       </leaf>
     </container>
   </list>
+  <container name="transfer">
+    <choice name="how">
+      <default value="interval"/>
+      <case name="interval">
+        <leaf name="interval">
+          <type name="uint16"/>
+          <default value="30"/>
+          <units name="minutes"/>
+        </leaf>
+      </case>
+      <case name="daily">
+        <leaf name="daily">
+          <type name="empty"/>
+        </leaf>
+        <leaf name="time-of-day">
+          <type name="string"/>
+          <units name="24-hour-clock"/>
+          <default value="1am"/>
+        </leaf>
+      </case>
+      <case name="manual">
+        <leaf name="manual">
+          <type name="empty"/>
+        </leaf>
+      </case>
+    </choice>
+  </container>
+  <container name="location">
+    <leaf name="name">
+      <type name="string"/>
+    </leaf>
+    <leaf name="longitude">
+      <type name="string"/>
+      <mandatory value="true"/>
+    </leaf>
+    <leaf name="latitude">
+      <type name="string"/>
+      <mandatory value="true"/>
+    </leaf>
+  </container>
+  <leaf name="hexnumber">
+    <type name="string">
+      <length value="0..4"/>
+      <pattern value="[0-9a-fA-F]*"/>
+    </type>
+  </leaf>
+  <container name="interface">
+    <leaf name="ifType">
+      <type name="enumeration">
+        <enum name="ethernet"/>
+        <enum name="atm"/>
+      </type>
+    </leaf>
+    <leaf name="ifMTU">
+      <type name="uint32"/>
+    </leaf>
+    <must condition="ifType != 'ethernet' or (ifType = 'ethernet' and ifMTU = 1500)">
+      <error-message>
+        <value>An ethernet MTU must be 1500</value>
+      </error-message>
+    </must>
+    <must condition="ifType != 'atm' or (ifType = 'atm' and ifMTU &lt;= 17966 and ifMTU &gt;= 64)">
+      <error-message>
+        <value>An atm MTU must be  64 .. 17966</value>
+      </error-message>
+    </must>
+  </container>
+  <list name="user">
+    <description>
+      <text>This is a list of users in the system.</text>
+    </description>
+    <ordered-by value="user"/>
+    <config value="true"/>
+    <key value="name"/>
+    <leaf name="name">
+      <type name="string"/>
+    </leaf>
+    <leaf name="type">
+      <type name="string"/>
+    </leaf>
+    <leaf name="full-name">
+      <type name="string"/>
+    </leaf>
+  </list>
 </module>
