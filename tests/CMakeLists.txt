@@ -9,7 +9,7 @@ find_program(valgrind_FOUND valgrind)
 
 macro(ADD_UNIT_TEST_WITH_OPTS TEST_NAME TEST_SRC LIBS USE_VALGRIND)
     add_executable(${TEST_NAME} ${TEST_SRC})
-    target_link_libraries(${TEST_NAME} ${LIBS} sysrepo sysrepo-engine cmocka)
+    target_link_libraries(${TEST_NAME} ${LIBS} ${CMOCKA_LIBRARIES} sysrepo sysrepo-engine)
     add_test(${TEST_NAME} ${TEST_NAME})
     if(valgrind_FOUND)
        if(${USE_VALGRIND})
