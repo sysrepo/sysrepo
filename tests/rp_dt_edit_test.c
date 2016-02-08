@@ -817,8 +817,46 @@ edit_validate_test(void **state)
     dm_session_stop(ctx, session);
 
     /*TODO regexp */
-    /*TODO mandatory leaf */
+    /* mandatory leaf */
+    dm_session_start(ctx, &session);
 
+    sr_val_t name;
+    name.xpath = NULL;
+    name.type = SR_STRING_T;
+    name.data.string_val = strdup("Name");
+    assert_non_null(name.data.string_val);
+
+    rc = rp_dt_set_item(ctx, session, SR_DS_STARTUP, "/test-module:location/name", SR_EDIT_DEFAULT, &name);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = dm_validate_session_data_trees(ctx, session, &errors, &e_cnt);
+    assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
+
+    sr_val_t lonigitude;
+    lonigitude.xpath = NULL;
+    lonigitude.type = SR_STRING_T;
+    lonigitude.data.string_val = strdup("Longitude 49.45");
+    assert_non_null(lonigitude.data.string_val);
+
+    rc = rp_dt_set_item(ctx, session, SR_DS_STARTUP, "/test-module:location/longitude", SR_EDIT_DEFAULT, &lonigitude);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = dm_validate_session_data_trees(ctx, session, &errors, &e_cnt);
+    assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
+
+    sr_val_t latitude;
+    latitude.xpath = NULL;
+    latitude.type = SR_STRING_T;
+    latitude.data.string_val = strdup("Latitude 56.46");
+    assert_non_null(latitude.data.string_val);
+
+    rc = rp_dt_set_item(ctx, session, SR_DS_STARTUP, "/test-module:location/latitude", SR_EDIT_DEFAULT, &latitude);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = dm_validate_session_data_trees(ctx, session, &errors, &e_cnt);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    dm_session_stop(ctx, session);
 
     /* choice */
     dm_session_start(ctx, &session);
