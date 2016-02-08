@@ -808,13 +808,56 @@ edit_validate_test(void **state)
     int rc = 0;
     dm_ctx_t *ctx = *state;
     dm_session_t *session = NULL;
+    char **errors = NULL;
+    size_t e_cnt = 0;
+
 
     dm_session_start(ctx, &session);
     /*TODO must when */
+    dm_session_stop(ctx, session);
+
     /*TODO regexp */
     /*TODO mandatory leaf */
-    /*TODO choice */
+
+
+    /* choice */
+    dm_session_start(ctx, &session);
+    sr_val_t interval;
+    interval.xpath = NULL;
+    interval.type = SR_UINT16_T;
+    interval.data.uint16_val = 9;
+
+    rc = rp_dt_set_item(ctx, session, SR_DS_STARTUP, "/test-module:transfer/interval", SR_EDIT_DEFAULT, &interval);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    errors = NULL;
+    e_cnt = 0;
+
+    rc = dm_validate_session_data_trees(ctx, session, &errors, &e_cnt);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    sr_val_t daily;
+    daily.xpath = NULL;
+    daily.type = SR_LEAF_EMPTY_T;
+
+    rc = rp_dt_set_item(ctx, session, SR_DS_STARTUP, "/test-module:transfer/daily", SR_EDIT_DEFAULT, &daily);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    errors = NULL;
+    e_cnt = 0;
+
+    rc = dm_validate_session_data_trees(ctx, session, &errors, &e_cnt);
+    assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
+
+    for (size_t i = 0; i < e_cnt; i++) {
+        free(errors[i]);
+    }
+    free(errors);
+
+    dm_session_stop(ctx, session);
+
     /* leaf-list unique values */
+    dm_session_start(ctx, &session);
     sr_val_t val;
     val.xpath = NULL;
     val.type = SR_UINT8_T;
@@ -826,8 +869,8 @@ edit_validate_test(void **state)
     rc = rp_dt_set_item(ctx, session, SR_DS_STARTUP, "/test-module:main/numbers", SR_EDIT_DEFAULT, &val);
     assert_int_equal(SR_ERR_OK, rc);
 
-    char **errors = NULL;
-    size_t e_cnt = 0;
+    errors = NULL;
+    e_cnt = 0;
     rc = dm_validate_session_data_trees(ctx, session, &errors, &e_cnt);
     assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
 

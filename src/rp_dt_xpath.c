@@ -278,6 +278,61 @@ rp_dt_create_xpath_for_node(const struct lyd_node *node, char **xpath)
     return SR_ERR_OK;
 }
 
+/**
+ * Tries to find the node in choice subtree. On success assign the found node into match.
+ * @param [in] choice root of the choice subtree
+ * @param [in] loc_id xpath that is being match
+ * @param [in] level
+ * @param [out] match
+ * @return
+ */
+static int
+rp_dt_match_in_choice(const struct lys_node *choice, const xp_loc_id_t *loc_id, const size_t level, struct lys_node **match)
+{
+    CHECK_NULL_ARG3(choice, loc_id, match);
+    int rc = SR_ERR_OK;
+    struct lys_node *n = choice->child;
+    bool in_case = false;
+
+    while (NULL != n) {
+        if (LYS_CASE == n->nodetype) {
+            in_case = true;
+            n = n->child;
+            continue;
+        }
+        else if (LYS_CHOICE == n->nodetype) {
+            rc = rp_dt_match_in_choice(n, loc_id, level, match);
+            if (SR_ERR_NOT_FOUND == rc) {
+                n = n->next;
+                continue;
+            } else {
+                return rc;
+            }
+        }
+
+        if (!XP_CMP_NODE(loc_id, level, n->name)) {
+            if (in_case && NULL == n->next){
+                n = n->parent->next;
+                in_case = false;
+            }
+            else {
+                n = n->next;
+            }
+            continue;
+        }
+        else {
+            break;
+        }
+
+    }
+
+    if (NULL != n) {
+        *match = n;
+        return SR_ERR_OK;
+    }
+    return SR_ERR_NOT_FOUND;
+}
+
 int
 rp_dt_validate_node_xpath(dm_ctx_t *dm_ctx, const xp_loc_id_t *loc_id, struct lys_node **match)
 {
@@ -319,6 +374,18 @@ rp_dt_validate_node_xpath(dm_ctx_t *dm_ctx, const xp_loc_id_t *loc_id, struct ly
             if (NULL == node->name || NULL == node->module->name) {
                 SR_LOG_ERR_MSG("Missing schema information");
                 return SR_ERR_INTERNAL;
+            }
+
+            /* choice is represented by the node in schema tree */
+            if (LYS_CHOICE == node->nodetype){
+                rc = rp_dt_match_in_choice(node, loc_id, i, &node);
+                if (SR_ERR_NOT_FOUND == rc) {
+                    node = node->next;
+                    continue;
+                } else if (SR_ERR_OK != rc) {
+                    SR_LOG_ERR_MSG("Match in choice failed");
+                    return rc;
+                }
             }
 
             if (!XP_CMP_NODE(loc_id, i, node->name)) {
