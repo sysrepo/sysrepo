@@ -310,8 +310,20 @@ sr_lyd_new_leaf(dm_data_info_t *data_info, struct lyd_node *parent, const struct
     struct lyd_node *new = NULL;
     new = lyd_new_leaf(parent, module, node_name, value);
 
-    if (NULL == parent && NULL == data_info->node){
-        data_info->node = new;
+    if (NULL == parent) {
+        if (NULL == data_info->node) {
+            data_info->node = new;
+        } else {
+            struct lyd_node *last_sibling = data_info->node;
+            while (NULL != last_sibling->next) {
+                last_sibling = last_sibling->next;
+            }
+            if (0 != lyd_insert_after(last_sibling, new)) {
+                SR_LOG_ERR_MSG("Append of top level node failed");
+                lyd_free(new);
+                return NULL;
+            }
+        }
     }
 
     return new;

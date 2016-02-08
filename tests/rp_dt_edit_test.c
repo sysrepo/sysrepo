@@ -812,8 +812,40 @@ edit_validate_test(void **state)
     size_t e_cnt = 0;
 
 
+    /* must when */
     dm_session_start(ctx, &session);
-    /*TODO must when */
+
+    sr_val_t iftype;
+    iftype.xpath = NULL;
+    iftype.type = SR_ENUM_T;
+    iftype.data.enum_val = strdup ("ethernet");
+
+    rc = rp_dt_set_item(ctx, session, SR_DS_STARTUP, "/test-module:interface/ifType", SR_EDIT_DEFAULT, &iftype);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    sr_free_val_content(&iftype);
+
+    rc = dm_validate_session_data_trees(ctx, session, &errors, &e_cnt);
+    assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
+
+    sr_val_t mtu;
+    mtu.xpath = NULL;
+    mtu.type = SR_UINT32_T;
+    mtu.data.uint32_val = 1024;
+
+    rc = rp_dt_set_item(ctx, session, SR_DS_STARTUP, "/test-module:interface/ifMTU", SR_EDIT_DEFAULT, &mtu);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = dm_validate_session_data_trees(ctx, session, &errors, &e_cnt);
+    assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
+
+    mtu.data.uint32_val = 1500;
+    rc = rp_dt_set_item(ctx, session, SR_DS_STARTUP, "/test-module:interface/ifMTU", SR_EDIT_DEFAULT, &mtu);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = dm_validate_session_data_trees(ctx, session, &errors, &e_cnt);
+    assert_int_equal(SR_ERR_OK, rc);
+
     dm_session_stop(ctx, session);
 
     /* regexp */
@@ -834,7 +866,7 @@ edit_validate_test(void **state)
     free(hexnumber.data.string_val);
     hexnumber.data.string_val = strdup("AAZZ");
 
-    /* Regualar expresssion mismatch causes SR_ERR_INVAL_ARG*/
+    /* Regular expression mismatch causes SR_ERR_INVAL_ARG */
     rc = rp_dt_set_item(ctx, session, SR_DS_STARTUP, "/test-module:hexnumber", SR_EDIT_DEFAULT, &hexnumber);
     assert_int_equal(SR_ERR_INVAL_ARG, rc);
 
