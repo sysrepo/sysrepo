@@ -1,24 +1,25 @@
-include_directories("${PROJECT_SOURCE_DIR}/inc" "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/common")
+set(COMMON_DIR "${CMAKE_CURRENT_SOURCE_DIR}/common")
 
+include_directories("${PROJECT_SOURCE_DIR}/inc" "${CMAKE_CURRENT_SOURCE_DIR}" "${COMMON_DIR}")
 
 #compile protobuf-c
 set(PROTO_NAME sysrepo)
 set(PROTO_FILE "${CMAKE_CURRENT_SOURCE_DIR}/${PROTO_NAME}.proto")
-set(GENERATED_PROTO  "${PROTO_NAME}.pb-c.c")
+set(GENERATED_PROTO "${COMMON_DIR}/${PROTO_NAME}.pb-c.c")
 
 get_filename_component(ABS_PATH ${PROTO_FILE} PATH)
 add_custom_command(
-    OUTPUT "${CMAKE_CURRENT_SOURCE_DIR}/${PROTO_NAME}.pb-c.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/${PROTO_NAME}.pb-c.h"
+    OUTPUT "${COMMON_DIR}/${PROTO_NAME}.pb-c.c"
+    "${COMMON_DIR}/${PROTO_NAME}.pb-c.h"
    COMMAND  ${PROTOBUFC_PROTOC_EXECUTABLE}
-   ARGS --c_out  ${CMAKE_CURRENT_SOURCE_DIR} -I ${ABS_PATH} ${PROTO_FILE}
+   ARGS --c_out ${COMMON_DIR} -I ${ABS_PATH} ${PROTO_FILE}
    DEPENDS ${PROTO_FILE}
    COMMENT "Running C protocol buffer compiler on ${PROTO_FILE}"
    VERBATIM )
 
-add_custom_target(proto DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${PROTO_NAME}.pb-c.c)
+add_custom_target(proto DEPENDS ${COMMON_DIR}/${PROTO_NAME}.pb-c.c)
 
-configure_file("${CMAKE_CURRENT_SOURCE_DIR}/common/sr_constants.h.in" "${CMAKE_CURRENT_SOURCE_DIR}/common/sr_constants.h" ESCAPE_QUOTES @ONLY)
+configure_file("${COMMON_DIR}/sr_constants.h.in" "${COMMON_DIR}/sr_constants.h" ESCAPE_QUOTES @ONLY)
 
 #setup library sources
 set(SYSREPO-SOURCES
