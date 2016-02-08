@@ -2,7 +2,7 @@ set(TEST_REPOSITORY_LOC "${PROJECT_SOURCE_DIR}/tests/data/")
 
 configure_file("${PROJECT_SOURCE_DIR}/tests/data/test_data.h.in" "${PROJECT_SOURCE_DIR}/tests/data/test_data.h" ESCAPE_QUOTES @ONLY) 
 
-include_directories ("${PROJECT_SOURCE_DIR}/src" "${PROJECT_SOURCE_DIR}/src/utils" "${PROJECT_SOURCE_DIR}/inc" "${PROJECT_SOURCE_DIR}/tests/data/" "${PROJECT_SOURCE_DIR}/tests/helpers/")
+include_directories ("${PROJECT_SOURCE_DIR}/src" "${PROJECT_SOURCE_DIR}/src/common" "${PROJECT_SOURCE_DIR}/inc" "${PROJECT_SOURCE_DIR}/tests/data/" "${PROJECT_SOURCE_DIR}/tests/helpers/")
 set(HELPERS_DIR "${PROJECT_SOURCE_DIR}/tests/helpers/")
 
 find_program(valgrind_FOUND valgrind)

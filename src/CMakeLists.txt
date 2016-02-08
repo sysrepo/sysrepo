@@ -1,4 +1,4 @@
-include_directories("${PROJECT_SOURCE_DIR}/inc" "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/utils")
+include_directories("${PROJECT_SOURCE_DIR}/inc" "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/common")
 
 
 #compile protobuf-c
@@ -18,15 +18,15 @@ add_custom_command(
 
 add_custom_target(proto DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${PROTO_NAME}.pb-c.c)
 
-configure_file("${CMAKE_CURRENT_SOURCE_DIR}/sr_constants.h.in" "${CMAKE_CURRENT_SOURCE_DIR}/sr_constants.h" ESCAPE_QUOTES @ONLY)
+configure_file("${CMAKE_CURRENT_SOURCE_DIR}/common/sr_constants.h.in" "${CMAKE_CURRENT_SOURCE_DIR}/common/sr_constants.h" ESCAPE_QUOTES @ONLY)
 
 #setup library sources
 set(SYSREPO-SOURCES
     ${GENERATED_PROTO}
     client_library.c
-    utils/sr_common.c
-    utils/sr_btree.c
-    utils/sr_logger.c
+    common/sr_common.c
+    common/sr_btree.c
+    common/sr_logger.c
 )
 
 set(SYSREPO-ENGINE-SOURCES
@@ -41,9 +41,9 @@ set(SYSREPO-ENGINE-SOURCES
     rp_node_stack.c
     data_manager.c
     xpath_processor.c
-    utils/sr_common.c
-    utils/sr_btree.c
-    utils/sr_logger.c
+    common/sr_common.c
+    common/sr_btree.c
+    common/sr_logger.c
 )
 
 set(HEADERS "${PROJECT_SOURCE_DIR}/inc/sysrepo.h")
