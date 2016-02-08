@@ -23,6 +23,12 @@
 #ifndef SRC_SR_CONSTANTS_H_IN_
 #define SRC_SR_CONSTANTS_H_IN_
 
+/* Portability feature-test macros. */
+#cmakedefine HAVE_PTHREAD_RWLOCKATTR_SETKIND_NP
+#cmakedefine HAVE_GETPEEREID
+#cmakedefine HAVE_GETPEERUCRED
+#cmakedefine HAVE_UCRED_H
+
 /** Use libavl (1) or libredblack (0) for binary tree manipulations. */
 #define SR_BTREE_USE_AVL @USE_AVL_LIB_INT@
 

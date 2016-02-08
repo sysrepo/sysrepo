@@ -83,10 +83,19 @@ set(REPOSITORY_LOC "${PROJECT_SOURCE_DIR}/tests/data/" CACHE PATH "System reposi
 set(SCHEMA_SEARCH_DIR "${REPOSITORY_LOC}/yang/")
 set(DATA_SEARCH_DIR "${REPOSITORY_LOC}/data/")
 
-#add subdirectories
+# add subdirectories
 add_subdirectory(src)
 add_subdirectory(inc)
 add_subdirectory(examples)
+
+# check for non-portable functions and headers
+set(CMAKE_REQUIRED_LIBRARIES pthread)
+include(CheckFunctionExists)
+include(CheckIncludeFiles)
+CHECK_FUNCTION_EXISTS(pthread_rwlockattr_setkind_np HAVE_PTHREAD_RWLOCKATTR_SETKIND_NP)
+CHECK_FUNCTION_EXISTS(getpeereid HAVE_GETPEEREID)
+CHECK_FUNCTION_EXISTS(getpeerucred HAVE_GETPEERUCRED)
+CHECK_INCLUDE_FILES(ucred.h HAVE_UCRED_H)
 
 #Testing
 SET(ENABLE_TESTS 1 CACHE BOOL "Enable unit tests.")
