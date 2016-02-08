@@ -159,7 +159,7 @@ dm_alloc_model_info(dm_model_info_t **info)
     }
 
     pthread_rwlockattr_init(&attr);
-#if defined(__USE_GNU)
+#if defined(__linux__) && defined(__GLIBC__)
     pthread_rwlockattr_setkind_np(&attr, PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP);
 #endif
 
@@ -564,7 +564,7 @@ dm_init(const char *schema_search_dir, const char *data_search_dir, dm_ctx_t **d
 
     pthread_rwlockattr_t attr;
     pthread_rwlockattr_init(&attr);
-#if defined(__USE_GNU)
+#if defined(__linux__) && defined(__GLIBC__)
     pthread_rwlockattr_setkind_np(&attr, PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP);
 #endif
 
