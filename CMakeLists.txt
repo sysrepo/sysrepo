@@ -17,9 +17,6 @@ set(CMAKE_C_FLAGS         "${CMAKE_C_FLAGS} -Wall -Wpedantic -std=gnu11")
 set(CMAKE_C_FLAGS_RELEASE "-DNDEBUG -O2")
 set(CMAKE_C_FLAGS_DEBUG   "-coverage -g -O0")
 
-# include custom Modules
-set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/CMakeModules/")
-
 if(NOT UNIX)
     message(FATAL_ERROR "Only Unix-like systems are supported.")
 endif()
@@ -32,14 +29,26 @@ if(NOT INCLUDE_INSTALL_DIR)
     set(INCLUDE_INSTALL_DIR "include")
 endif()
 
-find_package(YANG REQUIRED)
-find_package(Protobuf-c REQUIRED)
-include_directories(${PROTOBUF-C_INCLUDE_DIR})
+# include custom Modules
+set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/CMakeModules/")
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 
-# find libavl or libredblack
+# find required libraries
+find_package(EV REQUIRED)
+include_directories(${EV_INCLUDE_DIR})
+
+find_package(YANG REQUIRED)
+include_directories(${YANG_INCLUDE_DIR})
+
+find_package(Protobuf-c REQUIRED)
+include_directories(${PROTOBUF-C_INCLUDE_DIR})
+
+# find libavl and/or libredblack
 find_package(AVL)
+include_directories(${AVL_INCLUDE_DIR})
 find_package(RedBlack)
+include_directories(${REDBLACK_INCLUDE_DIR})
+
 if(NOT DEFINED USE_AVL_LIB)
     # no preference configured, try to find libavl and then libredblack
     if(AVL_FOUND)
@@ -75,8 +84,6 @@ set(DATA_SEARCH_DIR "${REPOSITORY_LOC}/data/")
 add_subdirectory(src)
 add_subdirectory(inc)
 add_subdirectory(examples)
-
-
 
 #Testing
 SET(ENABLE_TESTS 1 CACHE BOOL "Enable unit tests.")

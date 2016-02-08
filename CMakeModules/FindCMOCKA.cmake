@@ -24,4 +24,3 @@ find_package_handle_standard_args(cmocka  DEFAULT_MSG
                                   CMOCKA_LIBRARY CMOCKA_INCLUDE_DIR)
 
 mark_as_advanced(CMOCKA_INCLUDE_DIR CMOCKA_LIBRARY )
-

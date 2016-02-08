@@ -60,9 +60,9 @@ SET_TARGET_PROPERTIES(sysrepo-engine_so PROPERTIES
               OUTPUT_NAME sysrepo-engine CLEAN_DIRECT_OUTPUT 1)
 
 if(USE_AVL_LIB)
-    set(LINK_LIBRARIES avl ev pthread protobuf-c yang)
+    set(LINK_LIBRARIES pthread ${AVL_LIBRARIES} ${EV_LIBRARIES} ${PROTOBUF-C_LIBRARIES} ${YANG_LIBRARIES})
 else(USE_AVL_LIB)
-    set(LINK_LIBRARIES redblack ev pthread protobuf-c yang)
+    set(LINK_LIBRARIES pthread ${REDBLACK_LIBRARIES} ${EV_LIBRARIES} ${PROTOBUF-C_LIBRARIES} ${YANG_LIBRARIES})
 endif(USE_AVL_LIB)
 
 target_link_libraries(sysrepo ${LINK_LIBRARIES} sysrepo-engine)
