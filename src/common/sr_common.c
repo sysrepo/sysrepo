@@ -330,6 +330,33 @@ sr_lyd_new_leaf(dm_data_info_t *data_info, struct lyd_node *parent, const struct
     return new;
 }
 
+int
+sr_lyd_insert_before(dm_data_info_t *data_info, struct lyd_node *sibling, struct lyd_node *node)
+{
+    CHECK_NULL_ARG3(data_info, sibling, node);
+
+    int rc = lyd_insert_before(sibling, node);
+    if (data_info->node == sibling) {
+        data_info->node = node;
+    }
+
+    return rc;
+}
+
+int
+sr_lyd_insert_after(dm_data_info_t *data_info, struct lyd_node *sibling, struct lyd_node *node)
+{
+    CHECK_NULL_ARG3(data_info, sibling, node);
+
+    struct lyd_node *prev = sibling->prev;
+    int rc = lyd_insert_after(sibling, node);
+    if (data_info->node == sibling) {
+        data_info->node = prev;
+    }
+
+    return rc;
+}
+
 sr_type_t
 sr_libyang_type_to_sysrepo(LY_DATA_TYPE t)
 {

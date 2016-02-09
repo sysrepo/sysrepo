@@ -533,17 +533,27 @@ cleanup:
 }
 
 static int
-rp_dt_find_closest_sibling_by_name(struct lyd_node *start_node, sr_move_direction_t direction, struct lyd_node **sibling)
+rp_dt_find_closest_sibling_by_name(dm_data_info_t *info, struct lyd_node *start_node, sr_move_direction_t direction, struct lyd_node **sibling)
 {
     CHECK_NULL_ARG2(start_node, sibling);
     CHECK_NULL_ARG2(start_node->schema, start_node->schema->name);
 
     struct lyd_node *sib = SR_MOVE_UP == direction ? start_node->prev : start_node->next;
+
+    /* node where the lookup should be stopped - first sibling in case of direction == UP */
+    struct lyd_node *stop_node = NULL != start_node->parent ? start_node->parent->child : info->node;
+    if (stop_node == start_node && direction == SR_MOVE_UP){
+        return SR_ERR_NOT_FOUND;
+    }
+
     while (NULL != sib){
         CHECK_NULL_ARG2(sib->schema, sib->schema->name);
         if (0 == strcmp(start_node->schema->name, sib->schema->name)) {
             *sibling = sib;
             return SR_ERR_OK;
+        }
+        if (stop_node == sib) {
+            break;
         }
         sib = SR_MOVE_UP == direction ? sib->prev : sib->next;
     }
@@ -614,7 +624,7 @@ rp_dt_move_list(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, sr_m
     }
 
     struct lyd_node *sibling = NULL;
-    rc = rp_dt_find_closest_sibling_by_name(match, direction, &sibling);
+    rc = rp_dt_find_closest_sibling_by_name(info, match, direction, &sibling);
     if (SR_ERR_NOT_FOUND == rc) {
         rc = SR_ERR_OK;
         goto cleanup;
@@ -626,9 +636,9 @@ rp_dt_move_list(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, sr_m
 
     //TODO handle top level
     if (SR_MOVE_UP == direction) {
-        rc = lyd_insert_before(sibling, match);
+        rc = sr_lyd_insert_before(info, sibling, match);
     } else {
-        rc = lyd_insert_after(sibling, match);
+        rc = sr_lyd_insert_after(info, sibling, match);
     }
 
     if (0 != rc) {
