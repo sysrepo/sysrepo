@@ -56,4 +56,6 @@ ADD_UNIT_TEST_WITH_HELPERS(rp_dt_edit_test)
 
 ADD_UNIT_TEST_WITH_HELPERS(cl_test)
 ADD_UNIT_TEST(concurr_test)
+ADD_UNIT_TEST_WITH_OPTS(daemon_test daemon_test.c "" 0)
 ADD_UNIT_TEST_WITH_OPTS(perf_test perf_test.c "" 0)
+
