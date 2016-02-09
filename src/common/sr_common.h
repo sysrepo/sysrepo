@@ -286,6 +286,24 @@ struct lyd_node *sr_lyd_new(dm_data_info_t *data_info, struct lyd_node *parent, 
 struct lyd_node *sr_lyd_new_leaf(dm_data_info_t *data_info, struct lyd_node *parent, const struct lys_module *module, const char *node_name, const char *value);
 
 /**
+ * @brief Insert node after sibling and fixes the pointer in dm_data_info if needed.
+ * @param [in] data_info
+ * @param [in] sibling
+ * @param [in] node
+ * @return 0 on success
+ */
+int sr_lyd_insert_after(dm_data_info_t *data_info, struct lyd_node *sibling, struct lyd_node *node);
+
+/**
+ * @brief Insert node before sibling and fixes the pointer in dm_data_info if needed.
+ * @param [in] data_info
+ * @param [in] sibling
+ * @param [in] node
+ * @return 0 on success
+ */
+int sr_lyd_insert_before(dm_data_info_t *data_info, struct lyd_node *sibling, struct lyd_node *node);
+
+/**
  * @brief Converts libyang enum of YANG built-in types to sysrepo representation
  * @param [in] t
  * @return sr_type_t

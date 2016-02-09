@@ -4,7 +4,7 @@ build/
 doc/
 tests/data/test_data.h
 src/common/sr_constants.h
-src/*.pb-c.*
+src/common/*.pb-c.*
 .idea/
 nbproject/
 CMakeCache.txt

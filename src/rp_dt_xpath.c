@@ -278,6 +278,95 @@ rp_dt_create_xpath_for_node(const struct lyd_node *node, char **xpath)
     return SR_ERR_OK;
 }
 
+/**
+ * Tries to find the node in choice subtree. On success assign the found node into match.
+ * @param [in] choice root of the choice subtree
+ * @param [in] loc_id xpath that is being match
+ * @param [in] level
+ * @param [out] match
+ * @return
+ */
+static int
+rp_dt_match_in_choice(const struct lys_node *choice, const xp_loc_id_t *loc_id, const size_t level, struct lys_node **match)
+{
+    CHECK_NULL_ARG3(choice, loc_id, match);
+    int rc = SR_ERR_OK;
+    struct lys_node *n = choice->child;
+    bool in_case = false;
+
+    while (NULL != n) {
+        if (LYS_CASE == n->nodetype) {
+            in_case = true;
+            n = n->child;
+            continue;
+        }
+        else if (LYS_CHOICE == n->nodetype) {
+            rc = rp_dt_match_in_choice(n, loc_id, level, match);
+            if (SR_ERR_NOT_FOUND == rc) {
+                n = n->next;
+                continue;
+            } else {
+                return rc;
+            }
+        }
+
+        if (!XP_CMP_NODE(loc_id, level, n->name)) {
+            if (in_case && NULL == n->next){
+                n = n->parent->next;
+                in_case = false;
+            }
+            else {
+                n = n->next;
+            }
+            continue;
+        }
+        else {
+            break;
+        }
+    }
+
+    if (NULL != n) {
+        *match = n;
+        return SR_ERR_OK;
+    }
+    return SR_ERR_NOT_FOUND;
+}
+
+/**
+ * @brief Validates list node
+ */
+static int
+rp_dt_validate_list(const struct lys_node *node, const xp_loc_id_t *loc_id, const size_t level)
+{
+    CHECK_NULL_ARG2(node, loc_id);
+
+    if (LYS_LIST != node->nodetype) {
+        SR_LOG_ERR("Keys specified for the node that is not list %s", node->name);
+        return SR_ERR_BAD_ELEMENT;
+    }
+    struct lys_node_list *list = (struct lys_node_list *) node;
+    if (list->keys_size != XP_GET_KEY_COUNT(loc_id, level)) {
+        SR_LOG_ERR("Key count does not match %s", node->name);
+        return SR_ERR_BAD_ELEMENT;
+    }
+    size_t matched_keys = 0;
+    for (size_t k = 0; k < list->keys_size; k++) {
+        if (NULL == list->keys || NULL == list->keys[k] || NULL == list->keys[k]->name) {
+            return SR_ERR_INTERNAL;
+        }
+        for (size_t k_xp = 0; k_xp < list->keys_size; k_xp++) {
+            if (XP_CMP_KEY_NAME(loc_id, level, k_xp, list->keys[k]->name)) {
+                matched_keys++;
+            }
+        }
+    }
+    if (list->keys_size != matched_keys) {
+        SR_LOG_ERR("Not all keys has been matched %s", loc_id->xpath);
+        return SR_ERR_BAD_ELEMENT;
+    }
+    return SR_ERR_OK;
+}
+
 int
 rp_dt_validate_node_xpath(dm_ctx_t *dm_ctx, const xp_loc_id_t *loc_id, struct lys_node **match)
 {
@@ -321,6 +410,18 @@ rp_dt_validate_node_xpath(dm_ctx_t *dm_ctx, const xp_loc_id_t *loc_id, struct ly
                 return SR_ERR_INTERNAL;
             }
 
+            /* choice is represented by the node in schema tree */
+            if (LYS_CHOICE == node->nodetype){
+                rc = rp_dt_match_in_choice(node, loc_id, i, &node);
+                if (SR_ERR_NOT_FOUND == rc) {
+                    node = node->next;
+                    continue;
+                } else if (SR_ERR_OK != rc) {
+                    SR_LOG_ERR_MSG("Match in choice failed");
+                    return rc;
+                }
+            }
+
             if (!XP_CMP_NODE(loc_id, i, node->name)) {
                 node = node->next;
                 continue;
@@ -334,33 +435,14 @@ rp_dt_validate_node_xpath(dm_ctx_t *dm_ctx, const xp_loc_id_t *loc_id, struct ly
             }
 
             if (0 != XP_GET_KEY_COUNT(loc_id, i)) {
-                if (LYS_LIST != node->nodetype) {
-                    SR_LOG_ERR("Keys specified for the node that is not list %s", node->name);
-                    return SR_ERR_BAD_ELEMENT;
-                }
-                struct lys_node_list *list = (struct lys_node_list *) node;
-                if (list->keys_size != XP_GET_KEY_COUNT(loc_id, i)) {
-                    SR_LOG_ERR("Key count does not match %s", node->name);
-                    return SR_ERR_BAD_ELEMENT;
-                }
-                size_t matched_keys = 0;
-                for (size_t k = 0; k < list->keys_size; k++) {
-                    if (NULL == list->keys || NULL == list->keys[k] || NULL == list->keys[k]->name) {
-                        return SR_ERR_INTERNAL;
-                    }
-                    for (size_t k_xp = 0; k_xp < list->keys_size; k_xp++) {
-                        if (XP_CMP_KEY_NAME(loc_id, i, k_xp, list->keys[k]->name)) {
-                            matched_keys++;
-                        }
-                    }
-                }
-                if (list->keys_size != matched_keys) {
-                    SR_LOG_ERR("Not all keys has been matched %s", loc_id->xpath);
-                    return SR_ERR_BAD_ELEMENT;
+                rc = rp_dt_validate_list(node, loc_id, i);
+                if (SR_ERR_OK != rc) {
+                    SR_LOG_ERR("List validation failed %s", loc_id->xpath);
+                    return rc;
                 }
             }
 
-            /* match found*/
+            /* match at the i level found*/
             if (i != (XP_GET_NODE_COUNT(loc_id) - 1)) {
                 node = node->child;
             }
@@ -368,13 +450,9 @@ rp_dt_validate_node_xpath(dm_ctx_t *dm_ctx, const xp_loc_id_t *loc_id, struct ly
         }
 
         if (NULL == node) {
-            break;
+            SR_LOG_ERR("Request node not found in schemas %s", loc_id->xpath);
+            return SR_ERR_BAD_ELEMENT;
         }
-    }
-
-    if (NULL == node) {
-        SR_LOG_ERR("Request node not found in schemas %s", loc_id->xpath);
-        return SR_ERR_BAD_ELEMENT;
     }
 
     if (NULL != match) {
