@@ -329,6 +329,8 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t dat
             SR_LOG_ERR("A preceding node is missing '%s' create it or omit the non recursive option", xpath);
             rc = SR_ERR_INVAL_ARG;
             goto cleanup;
+        } else {
+            rc = SR_ERR_OK;
         }
     } else if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Find deepest match failed %s", xpath);
@@ -403,7 +405,7 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t dat
             /* leaf - replace existing */
             if (NULL == sr_lyd_new_leaf(info, match->parent, module, match->schema->name, new_value)) {
                 SR_LOG_ERR("Replacing existing leaf failed %s", l->xpath);
-                rc = SR_ERR_INTERNAL;
+                rc = ly_errno == LY_EINVAL ? SR_ERR_INVAL_ARG : SR_ERR_INTERNAL;
                 goto cleanup;
             }
             sr_lyd_unlink(info, match);
@@ -469,7 +471,7 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t dat
 
             if (NULL == node) {
                 SR_LOG_ERR("Creating new leaf failed %s", xpath);
-                rc = SR_ERR_INTERNAL;
+                rc = ly_errno == LY_EINVAL ? SR_ERR_INVAL_ARG : SR_ERR_INTERNAL;
                 goto cleanup;
             }
 
@@ -527,5 +529,125 @@ cleanup:
         sr_lyd_unlink(info, created);
         lyd_free(created);
     }
+    return rc;
+}
+
+static int
+rp_dt_find_closest_sibling_by_name(dm_data_info_t *info, struct lyd_node *start_node, sr_move_direction_t direction, struct lyd_node **sibling)
+{
+    CHECK_NULL_ARG3(info, start_node, sibling);
+    CHECK_NULL_ARG2(start_node->schema, start_node->schema->name);
+
+    struct lyd_node *sib = SR_MOVE_UP == direction ? start_node->prev : start_node->next;
+
+    /* node where the lookup should be stopped - first sibling in case of direction == UP */
+    struct lyd_node *stop_node = NULL != start_node->parent ? start_node->parent->child : info->node;
+    if (stop_node == start_node && direction == SR_MOVE_UP){
+        return SR_ERR_NOT_FOUND;
+    }
+
+    while (NULL != sib){
+        CHECK_NULL_ARG2(sib->schema, sib->schema->name);
+        if (0 == strcmp(start_node->schema->name, sib->schema->name)) {
+            *sibling = sib;
+            return SR_ERR_OK;
+        }
+        if (stop_node == sib) {
+            break;
+        }
+        sib = SR_MOVE_UP == direction ? sib->prev : sib->next;
+    }
+    return SR_ERR_NOT_FOUND;
+}
+
+int
+rp_dt_move_list(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, sr_move_direction_t direction)
+{
+    CHECK_NULL_ARG3(dm_ctx, session, xpath);
+    int rc = SR_ERR_OK;
+    dm_data_info_t *info = NULL;
+    size_t level = 0;
+    xp_loc_id_t *l = NULL;
+    struct lys_node *schema_node = NULL;
+    struct lys_node *s_node = NULL;
+    struct lyd_node *data_tree = NULL;
+    struct lyd_node *match = NULL;
+
+    rc = xp_char_to_loc_id(xpath, &l);
+
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Converting xpath '%s' to loc_id failed.", xpath);
+        return rc;
+    }
+
+    rc = rp_dt_validate_node_xpath(dm_ctx, l, &schema_node);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Requested node is not valid %s", xpath);
+        goto cleanup;
+    }
+
+    if (LYS_LIST != schema_node->nodetype || (!(LYS_USERORDERED & schema_node->flags))) {
+        SR_LOG_ERR ("Xpath %s does not identify the user ordered list", xpath);
+        rc = SR_ERR_INVAL_ARG;
+        goto cleanup;
+    }
+
+    s_node = schema_node;
+    while (NULL != s_node->parent) {
+        s_node = s_node->parent;
+    }
+
+    // TODO use data store argument
+
+    rc = dm_get_data_info(dm_ctx, session, s_node->module->name, &info);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Getting data tree failed for xpath '%s'", xpath);
+        goto cleanup;
+    }
+    data_tree = info->node;
+
+    rc = rp_dt_find_deepest_match(data_tree, l, true, &level, &match);
+    if (SR_ERR_NOT_FOUND == rc) {
+        SR_LOG_ERR("List not found %s", xpath);
+        rc = SR_ERR_INVAL_ARG;
+        goto cleanup;
+    } else if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Find deepest match failed %s", xpath);
+        goto cleanup;
+    }
+
+    /* check if match is complete */
+    if (XP_GET_NODE_COUNT(l) != level) {
+        SR_LOG_ERR("List not found %s", xpath);
+        rc = SR_ERR_INVAL_ARG;
+        goto cleanup;
+    }
+
+    struct lyd_node *sibling = NULL;
+    rc = rp_dt_find_closest_sibling_by_name(info, match, direction, &sibling);
+    if (SR_ERR_NOT_FOUND == rc) {
+        rc = SR_ERR_OK;
+        goto cleanup;
+    }
+    else if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Find the closest sibling failed");
+        goto cleanup;
+    }
+
+    if (SR_MOVE_UP == direction) {
+        rc = sr_lyd_insert_before(info, sibling, match);
+    } else {
+        rc = sr_lyd_insert_after(info, sibling, match);
+    }
+
+    if (0 != rc) {
+        SR_LOG_ERR_MSG("Moving of the node failed");
+    }
+
+cleanup:
+    if (NULL != info){
+        info->modified = SR_ERR_OK == rc ? true : info->modified;
+    }
+    xp_free_loc_id(l);
     return rc;
 }

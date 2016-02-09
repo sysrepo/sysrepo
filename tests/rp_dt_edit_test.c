@@ -808,13 +808,155 @@ edit_validate_test(void **state)
     int rc = 0;
     dm_ctx_t *ctx = *state;
     dm_session_t *session = NULL;
+    char **errors = NULL;
+    size_t e_cnt = 0;
 
+
+    /* must when */
     dm_session_start(ctx, &session);
-    /*TODO must when */
-    /*TODO regexp */
-    /*TODO mandatory leaf */
-    /*TODO choice */
+
+    sr_val_t iftype;
+    iftype.xpath = NULL;
+    iftype.type = SR_ENUM_T;
+    iftype.data.enum_val = strdup ("ethernet");
+
+    rc = rp_dt_set_item(ctx, session, SR_DS_STARTUP, "/test-module:interface/ifType", SR_EDIT_DEFAULT, &iftype);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    sr_free_val_content(&iftype);
+
+    rc = dm_validate_session_data_trees(ctx, session, &errors, &e_cnt);
+    assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
+
+    sr_val_t mtu;
+    mtu.xpath = NULL;
+    mtu.type = SR_UINT32_T;
+    mtu.data.uint32_val = 1024;
+
+    rc = rp_dt_set_item(ctx, session, SR_DS_STARTUP, "/test-module:interface/ifMTU", SR_EDIT_DEFAULT, &mtu);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = dm_validate_session_data_trees(ctx, session, &errors, &e_cnt);
+    assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
+
+    mtu.data.uint32_val = 1500;
+    rc = rp_dt_set_item(ctx, session, SR_DS_STARTUP, "/test-module:interface/ifMTU", SR_EDIT_DEFAULT, &mtu);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = dm_validate_session_data_trees(ctx, session, &errors, &e_cnt);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    dm_session_stop(ctx, session);
+
+    /* regexp */
+    dm_session_start(ctx, &session);
+
+    sr_val_t hexnumber;
+    hexnumber.xpath = NULL;
+    hexnumber.type = SR_STRING_T;
+    hexnumber.data.string_val = strdup("92FF");
+    assert_non_null(hexnumber.data.string_val);
+
+    rc = rp_dt_set_item(ctx, session, SR_DS_STARTUP, "/test-module:hexnumber", SR_EDIT_DEFAULT, &hexnumber);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = dm_validate_session_data_trees(ctx, session, &errors, &e_cnt);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    free(hexnumber.data.string_val);
+    hexnumber.data.string_val = strdup("AAZZ");
+
+    /* Regular expression mismatch causes SR_ERR_INVAL_ARG */
+    rc = rp_dt_set_item(ctx, session, SR_DS_STARTUP, "/test-module:hexnumber", SR_EDIT_DEFAULT, &hexnumber);
+    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+
+    sr_free_val_content(&hexnumber);
+
+    dm_session_stop(ctx, session);
+
+    /* mandatory leaf */
+    dm_session_start(ctx, &session);
+
+    sr_val_t name;
+    name.xpath = NULL;
+    name.type = SR_STRING_T;
+    name.data.string_val = strdup("Name");
+    assert_non_null(name.data.string_val);
+
+    rc = rp_dt_set_item(ctx, session, SR_DS_STARTUP, "/test-module:location/name", SR_EDIT_DEFAULT, &name);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = dm_validate_session_data_trees(ctx, session, &errors, &e_cnt);
+    assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
+
+    sr_val_t lonigitude;
+    lonigitude.xpath = NULL;
+    lonigitude.type = SR_STRING_T;
+    lonigitude.data.string_val = strdup("Longitude 49.45");
+    assert_non_null(lonigitude.data.string_val);
+
+    rc = rp_dt_set_item(ctx, session, SR_DS_STARTUP, "/test-module:location/longitude", SR_EDIT_DEFAULT, &lonigitude);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = dm_validate_session_data_trees(ctx, session, &errors, &e_cnt);
+    assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
+
+    sr_val_t latitude;
+    latitude.xpath = NULL;
+    latitude.type = SR_STRING_T;
+    latitude.data.string_val = strdup("Latitude 56.46");
+    assert_non_null(latitude.data.string_val);
+
+    rc = rp_dt_set_item(ctx, session, SR_DS_STARTUP, "/test-module:location/latitude", SR_EDIT_DEFAULT, &latitude);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = dm_validate_session_data_trees(ctx, session, &errors, &e_cnt);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    sr_free_val_content(&name);
+    sr_free_val_content(&lonigitude);
+    sr_free_val_content(&latitude);
+
+    dm_session_stop(ctx, session);
+
+    /* choice */
+    dm_session_start(ctx, &session);
+    sr_val_t interval;
+    interval.xpath = NULL;
+    interval.type = SR_UINT16_T;
+    interval.data.uint16_val = 9;
+
+    rc = rp_dt_set_item(ctx, session, SR_DS_STARTUP, "/test-module:transfer/interval", SR_EDIT_DEFAULT, &interval);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    errors = NULL;
+    e_cnt = 0;
+
+    rc = dm_validate_session_data_trees(ctx, session, &errors, &e_cnt);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    sr_val_t daily;
+    daily.xpath = NULL;
+    daily.type = SR_LEAF_EMPTY_T;
+
+    rc = rp_dt_set_item(ctx, session, SR_DS_STARTUP, "/test-module:transfer/daily", SR_EDIT_DEFAULT, &daily);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    errors = NULL;
+    e_cnt = 0;
+
+    rc = dm_validate_session_data_trees(ctx, session, &errors, &e_cnt);
+    assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
+
+    for (size_t i = 0; i < e_cnt; i++) {
+        free(errors[i]);
+    }
+    free(errors);
+
+    dm_session_stop(ctx, session);
+
     /* leaf-list unique values */
+    dm_session_start(ctx, &session);
     sr_val_t val;
     val.xpath = NULL;
     val.type = SR_UINT8_T;
@@ -826,8 +968,8 @@ edit_validate_test(void **state)
     rc = rp_dt_set_item(ctx, session, SR_DS_STARTUP, "/test-module:main/numbers", SR_EDIT_DEFAULT, &val);
     assert_int_equal(SR_ERR_OK, rc);
 
-    char **errors = NULL;
-    size_t e_cnt = 0;
+    errors = NULL;
+    e_cnt = 0;
     rc = dm_validate_session_data_trees(ctx, session, &errors, &e_cnt);
     assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
 
@@ -984,6 +1126,155 @@ edit_commit_test(void **state)
     dm_session_stop(ctx, sessionA);
 }
 
+void
+edit_move_test(void **state)
+{
+    int rc = 0;
+    dm_ctx_t *ctx = *state;
+    dm_session_t *session = NULL;
+    sr_val_t **values = NULL;
+    size_t cnt = 0;
+
+    dm_session_start(ctx, &session);
+    /* existing item not list */
+    rc = rp_dt_move_list(ctx, session, "/test-module:main", SR_MOVE_UP);
+    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+
+    /* system ordered list non existing instance */
+    rc = rp_dt_move_list(ctx, session, "/test-module:list[key='asdf']", SR_MOVE_UP);
+    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+
+    /* system ordered list existing instance */
+    rc = rp_dt_move_list(ctx, session, "/test-module:list[key='k1']", SR_MOVE_UP);
+    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+
+    /* only the one instance of list */
+    rc = rp_dt_get_values_wrapper(ctx, session, "/test-module:user", &values, &cnt);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+
+    rc = rp_dt_set_item(ctx, session, SR_DS_RUNNING, "/test-module:user[name='nameA']", SR_EDIT_DEFAULT, NULL);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_move_list(ctx, session, "/test-module:user[name='nameA']", SR_MOVE_UP);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_move_list(ctx, session, "/test-module:user[name='nameA']", SR_MOVE_DOWN);
+    assert_int_equal(SR_ERR_OK, rc);
+
+
+    /* multiple instances */
+
+    rc = rp_dt_set_item(ctx, session, SR_DS_RUNNING, "/test-module:user[name='nameB']", SR_EDIT_DEFAULT, NULL);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_set_item(ctx, session, SR_DS_RUNNING, "/test-module:user[name='nameC']", SR_EDIT_DEFAULT, NULL);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_get_values_wrapper(ctx, session, "/test-module:user", &values, &cnt);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(3, cnt);
+
+    assert_string_equal("/test-module:user[name='nameA']", values[0]->xpath);
+    assert_string_equal("/test-module:user[name='nameB']", values[1]->xpath);
+    assert_string_equal("/test-module:user[name='nameC']", values[2]->xpath);
+
+    sr_free_values_arr(values, cnt);
+
+    rc = rp_dt_move_list(ctx, session, "/test-module:user[name='nameA']", SR_MOVE_DOWN);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_move_list(ctx, session, "/test-module:user[name='nameC']", SR_MOVE_UP);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_get_values_wrapper(ctx, session, "/test-module:user", &values, &cnt);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(3, cnt);
+
+    assert_string_equal("/test-module:user[name='nameB']", values[0]->xpath);
+    assert_string_equal("/test-module:user[name='nameC']", values[1]->xpath);
+    assert_string_equal("/test-module:user[name='nameA']", values[2]->xpath);
+
+    sr_free_values_arr(values, cnt);
+
+    dm_session_stop(ctx, session);
+}
+
+void
+edit_move2_test(void **state)
+{
+    int rc = 0;
+    dm_ctx_t *ctx = *state;
+    dm_session_t *session = NULL;
+    sr_val_t **values = NULL;
+    size_t cnt = 0;
+
+    dm_session_start(ctx, &session);
+
+    /* empty the data tree*/
+    rc = rp_dt_delete_item(ctx, session, SR_DS_STARTUP, "/test-module:main", SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_delete_item(ctx, session, SR_DS_STARTUP, "/test-module:list", SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_get_values_wrapper(ctx, session, "/test-module:user", &values, &cnt);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+
+    /* only one list instance in data tree */
+    rc = rp_dt_set_item(ctx, session, SR_DS_RUNNING, "/test-module:user[name='nameA']", SR_EDIT_DEFAULT, NULL);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_move_list(ctx, session, "/test-module:user[name='nameA']", SR_MOVE_UP);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_move_list(ctx, session, "/test-module:user[name='nameA']", SR_MOVE_DOWN);
+    assert_int_equal(SR_ERR_OK, rc);
+
+
+    /* multiple instances */
+
+    rc = rp_dt_set_item(ctx, session, SR_DS_RUNNING, "/test-module:user[name='nameB']", SR_EDIT_DEFAULT, NULL);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_set_item(ctx, session, SR_DS_RUNNING, "/test-module:user[name='nameC']", SR_EDIT_DEFAULT, NULL);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_get_values_wrapper(ctx, session, "/test-module:user", &values, &cnt);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(3, cnt);
+
+    assert_string_equal("/test-module:user[name='nameA']", values[0]->xpath);
+    assert_string_equal("/test-module:user[name='nameB']", values[1]->xpath);
+    assert_string_equal("/test-module:user[name='nameC']", values[2]->xpath);
+
+    sr_free_values_arr(values, cnt);
+
+    rc = rp_dt_move_list(ctx, session, "/test-module:user[name='nameA']", SR_MOVE_UP);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* TODO waiting for cestnet/libyang #19
+    rc = rp_dt_move_list(ctx, session, "/test-module:user[name='nameA']", SR_MOVE_DOWN);
+    assert_int_equal(SR_ERR_OK, rc);*/
+
+    rc = rp_dt_move_list(ctx, session, "/test-module:user[name='nameB']", SR_MOVE_UP);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_move_list(ctx, session, "/test-module:user[name='nameC']", SR_MOVE_UP);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_get_values_wrapper(ctx, session, "/test-module:user", &values, &cnt);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(3, cnt);
+
+    assert_string_equal("/test-module:user[name='nameB']", values[0]->xpath);
+    assert_string_equal("/test-module:user[name='nameC']", values[1]->xpath);
+    assert_string_equal("/test-module:user[name='nameA']", values[2]->xpath);
+
+    sr_free_values_arr(values, cnt);
+
+    dm_session_stop(ctx, session);
+}
+
 int main(){
 
     sr_logger_set_level(SR_LL_DBG, SR_LL_NONE);
@@ -1004,6 +1295,8 @@ int main(){
             cmocka_unit_test(edit_validate_test),
             cmocka_unit_test(edit_discard_changes_test),
             cmocka_unit_test(edit_commit_test),
+            cmocka_unit_test(edit_move_test),
+            cmocka_unit_test(edit_move2_test),
     };
     return cmocka_run_group_tests(tests, setup, teardown);
 }
