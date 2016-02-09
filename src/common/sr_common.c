@@ -47,6 +47,7 @@ const char *const sr_errlist[] = {
         "Request contains unknown element",     /* SR_ERR_BAD_ELEMENT */
         "Validation of the changes failed",     /* SR_ERR_VALIDATION_FAILED */
         "Commit operation failed",              /* SR_ERR_COMMIT_FAILED */
+        "The item already exists"               /* SR_ERR_EXISTS */
 };
 
 const char *
@@ -873,7 +874,10 @@ sr_get_peer_eid(int fd, uid_t *uid, gid_t *gid)
     struct ucred cred = { 0, };
     socklen_t len = sizeof(cred);
 
-    if (getsockopt(fd, SOL_SOCKET, SO_PEERCRED, &cred, &len) < 0) {
+    CHECK_NULL_ARG2(uid, gid);
+
+    if (-1 == getsockopt(fd, SOL_SOCKET, SO_PEERCRED, &cred, &len)) {
+        SR_LOG_ERR("Cannot retrieve credentials of the UNIX-domain peer: %s", strerror(errno));
         return SR_ERR_INTERNAL;
     }
     *uid = cred.uid;
@@ -893,12 +897,20 @@ sr_get_peer_eid(int fd, uid_t *uid, gid_t *gid)
 {
     ucred_t *ucred = NULL;
 
-    if (getpeerucred(fd, &ucred) == -1)
+    CHECK_NULL_ARG2(uid, gid);
+
+    if (-1 == getpeerucred(fd, &ucred)) {
+        SR_LOG_ERR("Cannot retrieve credentials of the UNIX-domain peer: %s", strerror(errno));
         return SR_ERR_INTERNAL;
-    if ((*uid = ucred_geteuid(ucred)) == -1)
+    }
+    if (-1 == (*uid = ucred_geteuid(ucred))) {
+        ucred_free(ucred);
         return SR_ERR_INTERNAL;
-    if ((*gid = ucred_getrgid(ucred)) == -1)
+    }
+    if (-1 == (*gid = ucred_getrgid(ucred))) {
+        ucred_free(ucred);
         return SR_ERR_INTERNAL;
+    }
 
     ucred_free(ucred);
     return SR_ERR_OK;
@@ -912,12 +924,15 @@ int
 sr_get_peer_eid(int fd, uid_t *uid, gid_t *gid)
 {
     int ret = 0;
-    ret = getpeereid(int fd, uid, gid);
+    ret = getpeereid(fd, uid, gid);
+
+    CHECK_NULL_ARG2(uid, gid);
 
     if (-1 == ret) {
-        return SR_ERR_OK;
-    } else {
+        SR_LOG_ERR("Cannot retrieve credentials of the UNIX-domain peer: %s", strerror(errno));
         return SR_ERR_INTERNAL;
+    } else {
+        return SR_ERR_OK;
     }
 }
 

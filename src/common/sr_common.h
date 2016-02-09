@@ -36,15 +36,12 @@
 #include <libyang/libyang.h>
 
 #include "sysrepo.h"
+#include "sr_constants.h"
 #include "sr_logger.h"
+#include "sr_btree.h"
+
 #include "sysrepo.pb-c.h"
 #include "data_manager.h"
-
-/** Maximum size of a GPB message. */
-#define SR_MAX_MSG_SIZE ((SIZE_MAX < UINT32_MAX) ? SIZE_MAX : UINT32_MAX)
-
-/** Size of the preamble sent before each sysrepo GPB message. */
-#define SR_MSG_PREAM_SIZE sizeof(uint32_t)
 
 #define CHECK_NULL_ARG__INTERNAL(ARG) \
     if (NULL == ARG) { \

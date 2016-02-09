@@ -1,11 +1,11 @@
 cmake_minimum_required(VERSION 2.8)
 project(sysrepo)
-set(SYSREPO_DESC "YANG based system repository")
+set(SYSREPO_DESC "YANG-based system repository")
 
 # setup version
 set(SYSREPO_MAJOR_VERSION 0)
 set(SYSREPO_MINOR_VERSION 1)
-set(SYSREPO_MICRO_VERSION 3)
+set(SYSREPO_MICRO_VERSION 4)
 set(SYSREPO_VERSION ${SYSREPO_MAJOR_VERSION}.${SYSREPO_MINOR_VERSION}.${SYSREPO_MICRO_VERSION})
 
 # set default build type if not specified by user
@@ -15,13 +15,10 @@ endif()
 
 set(CMAKE_C_FLAGS         "${CMAKE_C_FLAGS} -Wall -Wpedantic -std=gnu11")
 set(CMAKE_C_FLAGS_RELEASE "-DNDEBUG -O2")
-set(CMAKE_C_FLAGS_DEBUG   "-coverage -g -O0")
-
-# include custom Modules
-set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/CMakeModules/")
+set(CMAKE_C_FLAGS_DEBUG   "-g -O0")
 
 if(NOT UNIX)
-    message(FATAL_ERROR "Only unix like systems are supported.")
+    message(FATAL_ERROR "Only Unix-like systems are supported.")
 endif()
 
 if(NOT LIB_INSTALL_DIR)
@@ -32,33 +29,82 @@ if(NOT INCLUDE_INSTALL_DIR)
     set(INCLUDE_INSTALL_DIR "include")
 endif()
 
+# include custom Modules
+set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/CMakeModules/")
+include_directories(${CMAKE_CURRENT_BINARY_DIR})
+
+# find required libraries
+find_package(EV REQUIRED)
+include_directories(${EV_INCLUDE_DIR})
+
 find_package(YANG REQUIRED)
+include_directories(${YANG_INCLUDE_DIR})
+
 find_package(Protobuf-c REQUIRED)
 include_directories(${PROTOBUF-C_INCLUDE_DIR})
-include_directories(${CMAKE_CURRENT_BINARY_DIR})
+
+# find libavl and/or libredblack
+find_package(AVL)
+find_package(RedBlack)
+if((NOT AVL_FOUND) AND (NOT REDBLACK_FOUND))
+    MESSAGE(FATAL_ERROR "libavl or libredblack must be installed.")
+endif()
+
+if(NOT DEFINED USE_AVL_LIB)
+    # no preference configured, try to find libavl and then libredblack
+    if(AVL_FOUND)
+        SET(USE_AVL_LIB 1 CACHE BOOL "Use libavl (1) or libredblack (0) for binary tree manipulations.")
+    else(AVL_FOUND)
+        if(REDBLACK_FOUND)
+            SET(USE_AVL_LIB 0 CACHE BOOL "Use libavl (1) or libredblack (0) for binary tree manipulations.")
+        endif(REDBLACK_FOUND)
+    endif(AVL_FOUND)
+endif(NOT DEFINED USE_AVL_LIB)
+if(USE_AVL_LIB)
+    if(AVL_FOUND)
+        MESSAGE(STATUS "libavl will be used for binary tree manipulations.")
+        include_directories(${AVL_INCLUDE_DIR})
+    else(AVL_FOUND)
+         MESSAGE(FATAL_ERROR "libavl cannot be found.")
+    endif(AVL_FOUND)
+else(USE_AVL_LIB)
+    if(REDBLACK_FOUND)
+        MESSAGE(STATUS "libredblack will be used for binary tree manipulations.")
+        include_directories(${REDBLACK_INCLUDE_DIR})
+    else(REDBLACK_FOUND)
+         MESSAGE(FATAL_ERROR "libredblack cannot be found.")
+    endif(REDBLACK_FOUND)
+endif(USE_AVL_LIB)
 
 # location of system repository
 set(REPOSITORY_LOC "${PROJECT_SOURCE_DIR}/tests/data/" CACHE PATH "System repository location, contains configuration schema and data files.")
 set(SCHEMA_SEARCH_DIR "${REPOSITORY_LOC}/yang/")
 set(DATA_SEARCH_DIR "${REPOSITORY_LOC}/data/")
 
-#add subdirectories
+# check for non-portable functions and headers
+set(CMAKE_REQUIRED_LIBRARIES pthread)
+include(CheckFunctionExists)
+include(CheckIncludeFiles)
+CHECK_FUNCTION_EXISTS(pthread_rwlockattr_setkind_np HAVE_PTHREAD_RWLOCKATTR_SETKIND_NP)
+CHECK_FUNCTION_EXISTS(getpeereid HAVE_GETPEEREID)
+CHECK_FUNCTION_EXISTS(getpeerucred HAVE_GETPEERUCRED)
+CHECK_INCLUDE_FILES(ucred.h HAVE_UCRED_H)
+
+# add subdirectories
 add_subdirectory(src)
 add_subdirectory(inc)
 add_subdirectory(examples)
 
-
-
 #Testing
-SET(ENABLE_TESTS 1 CACHE BOOL "Tests enabled by default")
+SET(ENABLE_TESTS 1 CACHE BOOL "Enable unit tests.")
 if(ENABLE_TESTS)
     find_package(CMOCKA)
     if(CMOCKA_FOUND)
-        MESSAGE(STATUS "Tests are enabled")
+        MESSAGE(STATUS "CMocka found, tests are enabled.")
         enable_testing()
         add_subdirectory(tests)
     else(CMOCKA_FOUND)
-        MESSAGE(WARNING "Cmocka not found")
+        MESSAGE(WARNING "CMocka not found, tests are disabled.")
     endif(CMOCKA_FOUND)
 endif(ENABLE_TESTS)
 
@@ -89,7 +135,7 @@ install (DIRECTORY DESTINATION ${DATA_SEARCH_DIR} DIRECTORY_PERMISSIONS
     WORLD_READ WORLD_WRITE WORLD_EXECUTE)
 
 
-find_package(PkgConfig)
+find_package(PkgConfig QUIET)
 if(PKG_CONFIG_FOUND)
     # generate and install pkg-config file
     configure_file("libsysrepo.pc.in" "libsysrepo.pc" @ONLY)
