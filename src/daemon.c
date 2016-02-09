@@ -33,12 +33,14 @@
 
 #define SR_CHILD_INIT_TIMEOUT 2  /** Timeout to initialize the child process (in seconds) */
 
+int pidfile_fd = -1; /** File descriptor of sysrepo deamon's PID file */
+
 /**
  * @brief Signal handler used to deliver initialization result from child to
  * parent process, so that parent can exit with appropriate exit code.
  */
 static void
-child_status_handler(int signum)
+srd_child_status_handler(int signum)
 {
     switch(signum) {
         case SIGUSR1:
@@ -60,16 +62,16 @@ child_status_handler(int signum)
  * @brief Daemonize the process - fork() and instruct the child to behave as a proper daemon.
  */
 static pid_t
-sr_daemonize(void)
+srd_daemonize(void)
 {
     pid_t pid, sid;
-    int fd = -1;
+    int fd = -1, ret = 0;
     char str[NAME_MAX] = { 0 };
 
     /* register handlers for signals that we expect to receive from child process */
-    signal(SIGCHLD, child_status_handler);
-    signal(SIGUSR1, child_status_handler);
-    signal(SIGALRM, child_status_handler);
+    signal(SIGCHLD, srd_child_status_handler);
+    signal(SIGUSR1, srd_child_status_handler);
+    signal(SIGALRM, srd_child_status_handler);
 
     /* fork off the parent process. */
     pid = fork();
@@ -94,6 +96,7 @@ sr_daemonize(void)
     signal(SIGTTIN, SIG_IGN);  /* background read from tty */
     signal(SIGTTOU, SIG_IGN);  /* background write to tty */
     signal(SIGHUP, SIG_IGN);   /* hangup */
+    signal(SIGPIPE, SIG_IGN);  /* broken pipe */
 
     /* create a new session containing a single (new) process group */
     sid = setsid();
@@ -115,7 +118,7 @@ sr_daemonize(void)
        dup2(fd, STDOUT_FILENO);
        dup2(fd, STDERR_FILENO);
        if (fd > 2) {
-           close (fd);
+           close(fd);
        }
     } else {
         close(STDIN_FILENO);
@@ -129,27 +132,59 @@ sr_daemonize(void)
     /* maintain only single instance of sysrepo daemon */
 
     /* open PID file */
-    fd = open(SR_DAEMON_PID_FILE, O_RDWR | O_CREAT, 0640);
-    if (fd < 0) {
+    pidfile_fd = open(SR_DAEMON_PID_FILE, O_RDWR | O_CREAT, 0640);
+    if (pidfile_fd < 0) {
         SR_LOG_ERR("Unable to open sysrepo PID file '%s': %s.", SR_DAEMON_PID_FILE, strerror(errno));
         exit(EXIT_FAILURE);
     }
 
     /* acquire lock on the PID file */
-    if (lockf(fd, F_TLOCK, 0) < 0) {
-        SR_LOG_ERR("Unable to lock sysrepo PID file '%s': %s.", SR_DAEMON_PID_FILE, strerror(errno));
+    if (lockf(pidfile_fd, F_TLOCK, 0) < 0) {
+        if (EACCES == errno || EAGAIN == errno) {
+            SR_LOG_ERR_MSG("Another instance of sysrepo daemon is running, unable to start.");
+        } else {
+            SR_LOG_ERR("Unable to lock sysrepo PID file '%s': %s.", SR_DAEMON_PID_FILE, strerror(errno));
+        }
         exit(EXIT_FAILURE);
     }
 
     /* write PID into the PID file */
     snprintf(str, NAME_MAX, "%d\n", getpid());
-    write(fd, str, strlen(str));
+    ret = write(pidfile_fd, str, strlen(str));
+    if (-1 == ret) {
+        SR_LOG_ERR("Unable to write into sysrepo PID file '%s': %s.", SR_DAEMON_PID_FILE, strerror(errno));
+        exit(EXIT_FAILURE);
+    }
 
     /* do not close nor unlock the PID file, keep it open while the daemon is alive */
 
     return getppid(); /* return PID of the parent */
 }
 
+/**
+ * @brief Callback to be called when a signal requesting daemon termination has been received.
+ */
+static void
+srd_sigterm_cb(cm_ctx_t *cm_ctx, int signum)
+{
+    if (NULL != cm_ctx) {
+        SR_LOG_INF_MSG("Sysrepo daemon termination requested.");
+
+        /* stop the event loop in the Connection Manager */
+        cm_stop(cm_ctx);
+
+        /* close and delete the PID file */
+        if (-1 != pidfile_fd) {
+            close(pidfile_fd);
+            pidfile_fd = -1;
+        }
+        unlink(SR_DAEMON_PID_FILE);
+    }
+}
+
+/**
+ * @brief Main routine of the sysrepo daemon.
+ */
 int
 main(int argc, char* argv[])
 {
@@ -163,12 +198,22 @@ main(int argc, char* argv[])
     SR_LOG_INF_MSG("Sysrepo daemon initialization started.");
 
     /* deamonize the process */
-    parent = sr_daemonize();
+    parent = srd_daemonize();
 
     /* initialize local Connection Manager */
     rc = cm_init(CM_MODE_DAEMON, SR_DAEMON_SOCKET, &sr_cm_ctx);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Unable to initialize Connection Manager: %s.", sr_strerror(rc));
+        exit(EXIT_FAILURE);
+    }
+
+    /* install SIGTERM & SIGINT signal watchers */
+    rc = cm_watch_signal(sr_cm_ctx, SIGTERM, srd_sigterm_cb);
+    if (SR_ERR_OK == rc) {
+        rc = cm_watch_signal(sr_cm_ctx, SIGINT, srd_sigterm_cb);
+    }
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Unable to initialize signal watcher: %s.", sr_strerror(rc));
         exit(EXIT_FAILURE);
     }
 
