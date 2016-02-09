@@ -26,16 +26,50 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <signal.h>
 
 #include "sr_common.h"
 #include "connection_manager.h"
 
+#define SR_CHILD_INIT_TIMEOUT 2  /** Timeout to initialize the child process (in seconds) */
+
+/**
+ * @brief Signal handler used to deliver initialization result from child to
+ * parent process, so that parent can exit with appropriate exit code.
+ */
 static void
+child_status_handler(int signum)
+{
+    switch(signum) {
+        case SIGUSR1:
+            /* child process has initialized successfully */
+            exit(EXIT_SUCCESS);
+            break;
+        case SIGALRM:
+            /* child process has not initialized within SR_CHILD_INIT_TIMEOUT seconds */
+            exit(EXIT_FAILURE);
+            break;
+        case SIGCHLD:
+            /* child process has terminated */
+            exit(EXIT_FAILURE);
+            break;
+    }
+}
+
+/**
+ * @brief Daemonize the process - fork() and instruct the child to behave as a proper daemon.
+ */
+static pid_t
 sr_daemonize(void)
 {
     pid_t pid, sid;
-    int fd;
-    char str[NAME_MAX];
+    int fd = -1;
+    char str[NAME_MAX] = { 0 };
+
+    /* register handlers for signals that we expect to receive from child process */
+    signal(SIGCHLD, child_status_handler);
+    signal(SIGUSR1, child_status_handler);
+    signal(SIGALRM, child_status_handler);
 
     /* fork off the parent process. */
     pid = fork();
@@ -44,11 +78,22 @@ sr_daemonize(void)
         exit(EXIT_FAILURE);
     }
     if (pid > 0) {
-        /* this is the parent process, exit with success */
-        exit(EXIT_SUCCESS);
+        /* this is the parent process, wait for a signal from child */
+        alarm(SR_CHILD_INIT_TIMEOUT);
+        pause();
+        exit(EXIT_FAILURE); /* this should not be executed */
     }
 
     /* at this point we are executing as the child process */
+
+    /* ignore certain signals */
+    signal(SIGUSR1, SIG_IGN);
+    signal(SIGALRM, SIG_IGN);
+    signal(SIGCHLD, SIG_IGN);
+    signal(SIGTSTP, SIG_IGN);  /* keyboard stop */
+    signal(SIGTTIN, SIG_IGN);  /* background read from tty */
+    signal(SIGTTOU, SIG_IGN);  /* background write to tty */
+    signal(SIGHUP, SIG_IGN);   /* hangup */
 
     /* create a new session containing a single (new) process group */
     sid = setsid();
@@ -101,11 +146,14 @@ sr_daemonize(void)
     write(fd, str, strlen(str));
 
     /* do not close nor unlock the PID file, keep it open while the daemon is alive */
+
+    return getppid(); /* return PID of the parent */
 }
 
 int
 main(int argc, char* argv[])
 {
+    pid_t parent;
     int rc = SR_ERR_OK;
     cm_ctx_t *sr_cm_ctx = NULL;
 
@@ -115,7 +163,7 @@ main(int argc, char* argv[])
     SR_LOG_INF_MSG("Sysrepo daemon initialization started.");
 
     /* deamonize the process */
-    sr_daemonize();
+    parent = sr_daemonize();
 
     /* initialize local Connection Manager */
     rc = cm_init(CM_MODE_DAEMON, SR_DAEMON_SOCKET, &sr_cm_ctx);
@@ -123,6 +171,9 @@ main(int argc, char* argv[])
         SR_LOG_ERR("Unable to initialize Connection Manager: %s.", sr_strerror(rc));
         exit(EXIT_FAILURE);
     }
+
+    /* tell the parent process that we are okay */
+    kill(parent, SIGUSR1);
 
     SR_LOG_INF_MSG("Sysrepo daemon initialized successfully.");
 
