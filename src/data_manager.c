@@ -358,9 +358,9 @@ dm_load_data_tree(dm_ctx_t *dm_ctx, const struct lys_module *module, dm_data_inf
     if (SR_ERR_OK != rc) {
         if (SR_ERR_EXISTS == rc) {
             /* if the node has been inserted meanwhile by someone else find it */
+            *data_info = sr_btree_search(dm_ctx->module_btree, data);
             lyd_free_withsiblings(data->node);
             free(data);
-            *data_info = sr_btree_search(dm_ctx->module_btree, data);
             if (NULL != *data_info) {
                 SR_LOG_INF("Data tree '%s' has been inserted already", module->name);
                 pthread_rwlock_unlock(&dm_ctx->btree_lock);
