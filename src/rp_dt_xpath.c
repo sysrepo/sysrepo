@@ -323,7 +323,6 @@ rp_dt_match_in_choice(const struct lys_node *choice, const xp_loc_id_t *loc_id, 
         else {
             break;
         }
-
     }
 
     if (NULL != n) {

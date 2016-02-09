@@ -535,7 +535,7 @@ cleanup:
 static int
 rp_dt_find_closest_sibling_by_name(dm_data_info_t *info, struct lyd_node *start_node, sr_move_direction_t direction, struct lyd_node **sibling)
 {
-    CHECK_NULL_ARG2(start_node, sibling);
+    CHECK_NULL_ARG3(info, start_node, sibling);
     CHECK_NULL_ARG2(start_node->schema, start_node->schema->name);
 
     struct lyd_node *sib = SR_MOVE_UP == direction ? start_node->prev : start_node->next;
@@ -634,7 +634,6 @@ rp_dt_move_list(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, sr_m
         goto cleanup;
     }
 
-    //TODO handle top level
     if (SR_MOVE_UP == direction) {
         rc = sr_lyd_insert_before(info, sibling, match);
     } else {
@@ -644,7 +643,6 @@ rp_dt_move_list(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, sr_m
     if (0 != rc) {
         SR_LOG_ERR_MSG("Moving of the node failed");
     }
-
 
 cleanup:
     if (NULL != info){
