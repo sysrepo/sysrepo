@@ -348,10 +348,9 @@ sr_lyd_insert_after(dm_data_info_t *data_info, struct lyd_node *sibling, struct 
 {
     CHECK_NULL_ARG3(data_info, sibling, node);
 
-    struct lyd_node *prev = sibling->prev;
     int rc = lyd_insert_after(sibling, node);
-    if (data_info->node == sibling) {
-        data_info->node = prev;
+    if (data_info->node == node) {
+        data_info->node = sibling;
     }
 
     return rc;
