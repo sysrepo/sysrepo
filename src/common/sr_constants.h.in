@@ -1,7 +1,7 @@
 /**
- * @file dm_location.h
+ * @file sr_constants.h
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
- * @brief 
+ * @brief Common sysrepo constants.
  *
  * @copyright
  * Copyright 2016 Cisco Systems, Inc.
@@ -20,10 +20,28 @@
  */
 
 
-#ifndef SRC_DM_LOCATION_H_IN_
-#define SRC_DM_LOCATION_H_IN_
+#ifndef SRC_SR_CONSTANTS_H_IN_
+#define SRC_SR_CONSTANTS_H_IN_
 
+/* Portability feature-check macros. */
+#cmakedefine HAVE_PTHREAD_RWLOCKATTR_SETKIND_NP
+#cmakedefine HAVE_GETPEEREID
+#cmakedefine HAVE_GETPEERUCRED
+#cmakedefine HAVE_UCRED_H
+
+/** Use libavl (if defined) or libredblack (if not defined) for binary tree manipulations. */
+#cmakedefine USE_AVL_LIB
+
+/** Path to the directory with schemas. */
 #define DM_SCHEMA_SEARCH_DIR "@SCHEMA_SEARCH_DIR@"
+
+/** Path to the directory with data files. */
 #define DM_DATA_SEARCH_DIR "@DATA_SEARCH_DIR@"
 
-#endif /* SRC_DM_LOCATION_H_IN_ */
+/** Maximum size of a GPB message. */
+#define SR_MAX_MSG_SIZE ((SIZE_MAX < UINT32_MAX) ? SIZE_MAX : UINT32_MAX)
+
+/** Size of the preamble sent before each sysrepo GPB message. */
+#define SR_MSG_PREAM_SIZE sizeof(uint32_t)
+
+#endif /* SRC_SR_CONSTANTS_H_IN_ */

@@ -63,25 +63,24 @@ find_program(PROTOBUFC_PROTOC_EXECUTABLE
     DOC "protoc-c compiler"
 )
 
-find_package(PkgConfig)
-pkg_check_modules(PC_PROTOBUF-C QUIET protobuf-c)
-set(PROTOBUF-C_DEFINITIONS ${PC_PROTOBUF-C_CFLAGS_OTHER})
+find_package(PkgConfig QUIET)
+if(PKG_CONFIG_FOUND)
+    pkg_check_modules(PC_PROTOBUF-C QUIET protobuf-c)
+    set(PROTOBUF-C_DEFINITIONS ${PC_PROTOBUF-C_CFLAGS_OTHER})
+endif()
 
 find_path(PROTOBUF-C_INCLUDE_DIR protobuf-c/protobuf-c.h
     HINTS ${PC_PROTOBUF-C_INCLUDEDIR} ${PC_PROTOBUF-C_INCLUDE_DIRS}
-          PATH_SUFFIXES protobuf-c )
+          PATH_SUFFIXES protobuf-c)
 
 find_library(PROTOBUF-C_LIBRARY NAMES protobuf-c 
-    HINTS ${PC_PROTOBUF-C_LIBDIR} ${PC_PROTOBUF-C_LIBRARY_DIRS} )
+    HINTS ${PC_PROTOBUF-C_LIBDIR} ${PC_PROTOBUF-C_LIBRARY_DIRS})
 
 set(PROTOBUF-C_LIBRARIES ${PROTOBUF-C_LIBRARY} )
-set(PROTOBUF-C_INCLUDE_DIRS ${PROTOBUF-C_INCLUDE_DIR} )
+set(PROTOBUF-C_INCLUDE_DIRS ${PROTOBUF-C_INCLUDE_DIR})
 
 include(FindPackageHandleStandardArgs)
-# handle the QUIETLY and REQUIRED arguments and set PROTOBUF-C_FOUND to TRUE
-# if all listed variables are TRUE
 find_package_handle_standard_args(protobuf-c  DEFAULT_MSG
     PROTOBUF-C_LIBRARY PROTOBUF-C_INCLUDE_DIR)
 
-mark_as_advanced(PROTOBUF-C_INCLUDE_DIR YANG_LIBRARY )
-
+mark_as_advanced(PROTOBUF-C_INCLUDE_DIR YANG_LIBRARY)
