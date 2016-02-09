@@ -32,7 +32,8 @@
 volatile uint8_t sr_ll_stderr = SR_LOG_STDERR_DEFAULT_LL;  /**< Global variable used to store log level of stderr messages. */
 volatile uint8_t sr_ll_syslog = SR_LOG_SYSLOG_DEFAULT_LL;  /**< Global variable used to store log level of syslog messages. */
 
-#define SR_LOG_IDENTIFIER "sysrepo"  /**< Default identifier used in syslog messages. */
+#define SR_DEFAULT_LOG_IDENTIFIER "sysrepo"  /**< Default identifier used in syslog messages. */
+#define SR_DAEMON_LOG_IDENTIFIER "sysrepod"  /**< Sysrepo deamon identifier used in syslog messages. */
 
 char *syslog_identifier = NULL; /**< Global variable used to store syslog identifier. */
 
@@ -43,16 +44,21 @@ sr_logger_init(const char *app_name)
     char *identifier = NULL;
     size_t buff_size = 0;
 
-    if ((NULL != app_name) && (0 != strcmp(SR_LOG_IDENTIFIER, app_name))) {
-        buff_size = snprintf(NULL, 0, "%s-%s", SR_LOG_IDENTIFIER, app_name);
+    if ((NULL != app_name) && (0 != strcmp(SR_DEFAULT_LOG_IDENTIFIER, app_name)) &&
+            (0 != strcmp(SR_DAEMON_LOG_IDENTIFIER, app_name))) {
+        buff_size = snprintf(NULL, 0, "%s-%s", SR_DEFAULT_LOG_IDENTIFIER, app_name);
         syslog_identifier = malloc(buff_size + 1);
         if (NULL != syslog_identifier) {
-            sprintf(syslog_identifier, "%s-%s", SR_LOG_IDENTIFIER, app_name);
+            sprintf(syslog_identifier, "%s-%s", SR_DEFAULT_LOG_IDENTIFIER, app_name);
             identifier = syslog_identifier;
         }
     }
     if (NULL == identifier) {
-        identifier = SR_LOG_IDENTIFIER;
+        if ((NULL == app_name) || (0 != strcmp(SR_DAEMON_LOG_IDENTIFIER, app_name))) {
+            identifier = SR_DEFAULT_LOG_IDENTIFIER;
+        } else {
+            identifier = SR_DAEMON_LOG_IDENTIFIER;
+        }
     }
 
     openlog(identifier, LOG_CONS | LOG_PID | LOG_NDELAY, LOG_DAEMON);

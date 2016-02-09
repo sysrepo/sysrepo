@@ -544,32 +544,41 @@ sr_connect(const char *app_name, const bool allow_library_mode, sr_conn_ctx_t **
     }
     pthread_mutex_unlock(&primary_lock);
 
-    // TODO: milestone 2: attempt to connect to sysrepo daemon socket
-    SR_LOG_WRN_MSG("Sysrepo daemon not detected. Connecting to local Sysrepo Engine.");
-
-    /* connect in library mode */
-    ctx->library_mode = true;
-    snprintf(socket_path, PATH_MAX, "%s-%d", CL_LCONN_PATH_PREFIX, getpid());
-
-    /* attempt to connect to our own sysrepo engine (local engine may already exist) */
-    rc = cl_socket_connect(ctx, socket_path);
+    /* attempt to connect to sysrepo daemon socket */
+    rc = cl_socket_connect(ctx, SR_DAEMON_SOCKET);
     if (SR_ERR_OK != rc) {
-        /* initialize our own sysrepo engine and attempt to connect again */
-        SR_LOG_INF_MSG("Local Sysrepo Engine not running yet, initializing new one.");
+        if (!allow_library_mode) {
+            SR_LOG_ERR_MSG("Sysrepo daemon not detected while library mode disallowed.");
+            goto cleanup;
+        } else {
+            SR_LOG_WRN_MSG("Sysrepo daemon not detected. Connecting to local Sysrepo Engine.");
 
-        rc = cl_engine_init_local(ctx, socket_path);
-        if (SR_ERR_OK != rc) {
-            SR_LOG_ERR_MSG("Unable to start local sysrepo engine.");
-            goto cleanup;
+            /* connect in library mode */
+            ctx->library_mode = true;
+            snprintf(socket_path, PATH_MAX, "%s-%d.sock", CL_LCONN_PATH_PREFIX, getpid());
+
+            /* attempt to connect to our own sysrepo engine (local engine may already exist) */
+            rc = cl_socket_connect(ctx, socket_path);
+            if (SR_ERR_OK != rc) {
+                /* initialize our own sysrepo engine and attempt to connect again */
+                SR_LOG_INF_MSG("Local Sysrepo Engine not running yet, initializing new one.");
+
+                rc = cl_engine_init_local(ctx, socket_path);
+                if (SR_ERR_OK != rc) {
+                    SR_LOG_ERR_MSG("Unable to start local sysrepo engine.");
+                    goto cleanup;
+                }
+                rc = cl_socket_connect(ctx, socket_path);
+                if (SR_ERR_OK != rc) {
+                    SR_LOG_ERR_MSG("Unable to connect to the local sysrepo engine.");
+                    goto cleanup;
+                }
+            }
+            SR_LOG_INF("Connected to local Sysrepo Engine at socket=%s", socket_path);
         }
-        rc = cl_socket_connect(ctx, socket_path);
-        if (SR_ERR_OK != rc) {
-            SR_LOG_ERR_MSG("Unable to connect to the local sysrepo engine.");
-            goto cleanup;
-        }
+    } else {
+        SR_LOG_INF("Connected to daemon Sysrepo Engine at socket=%s", SR_DAEMON_SOCKET);
     }
-
-    SR_LOG_INF("Connected to Sysrepo Engine at socket=%s", socket_path);
 
     *conn_ctx_p = ctx;
     return SR_ERR_OK;
