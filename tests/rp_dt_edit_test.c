@@ -1126,6 +1126,79 @@ edit_commit_test(void **state)
     dm_session_stop(ctx, sessionA);
 }
 
+void
+edit_move_test(void **state)
+{
+    int rc = 0;
+    dm_ctx_t *ctx = *state;
+    dm_session_t *session = NULL;
+    sr_val_t **values = NULL;
+    size_t cnt = 0;
+
+    dm_session_start(ctx, &session);
+    /* existing item not list */
+    rc = rp_dt_move_list(ctx, session, "/test-module:main", SR_MOVE_UP);
+    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+
+    /* system ordered list non existing instance */
+    rc = rp_dt_move_list(ctx, session, "/test-module:list[key='asdf']", SR_MOVE_UP);
+    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+
+    /* system ordered list existing instance */
+    rc = rp_dt_move_list(ctx, session, "/test-module:list[key='k1']", SR_MOVE_UP);
+    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+
+    /* only the one instance of list */
+    rc = rp_dt_get_values_wrapper(ctx, session, "/test-module:user", &values, &cnt);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+
+    rc = rp_dt_set_item(ctx, session, SR_DS_RUNNING, "/test-module:user[name='nameA']", SR_EDIT_DEFAULT, NULL);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_move_list(ctx, session, "/test-module:user[name='nameA']", SR_MOVE_UP);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_move_list(ctx, session, "/test-module:user[name='nameA']", SR_MOVE_DOWN);
+    assert_int_equal(SR_ERR_OK, rc);
+
+
+    /* multiple instances */
+
+    rc = rp_dt_set_item(ctx, session, SR_DS_RUNNING, "/test-module:user[name='nameB']", SR_EDIT_DEFAULT, NULL);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_set_item(ctx, session, SR_DS_RUNNING, "/test-module:user[name='nameC']", SR_EDIT_DEFAULT, NULL);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_get_values_wrapper(ctx, session, "/test-module:user", &values, &cnt);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(3, cnt);
+
+    assert_string_equal("/test-module:user[name='nameA']", values[0]->xpath);
+    assert_string_equal("/test-module:user[name='nameB']", values[1]->xpath);
+    assert_string_equal("/test-module:user[name='nameC']", values[2]->xpath);
+
+    sr_free_values_arr(values, cnt);
+
+    rc = rp_dt_move_list(ctx, session, "/test-module:user[name='nameA']", SR_MOVE_DOWN);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_move_list(ctx, session, "/test-module:user[name='nameC']", SR_MOVE_UP);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_get_values_wrapper(ctx, session, "/test-module:user", &values, &cnt);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(3, cnt);
+
+    assert_string_equal("/test-module:user[name='nameB']", values[0]->xpath);
+    assert_string_equal("/test-module:user[name='nameC']", values[1]->xpath);
+    assert_string_equal("/test-module:user[name='nameA']", values[2]->xpath);
+
+    sr_free_values_arr(values, cnt);
+
+    dm_session_stop(ctx, session);
+}
+
 int main(){
 
     sr_logger_set_level(SR_LL_DBG, SR_LL_NONE);
@@ -1146,6 +1219,7 @@ int main(){
             cmocka_unit_test(edit_validate_test),
             cmocka_unit_test(edit_discard_changes_test),
             cmocka_unit_test(edit_commit_test),
+            cmocka_unit_test(edit_move_test),
     };
     return cmocka_run_group_tests(tests, setup, teardown);
 }
