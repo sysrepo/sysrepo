@@ -317,7 +317,9 @@ int sr_list_schemas(sr_session_ctx_t *session, sr_schema_t **schemas, size_t *sc
  * (allocated by the function, can be freed with ::sr_free_val).
  *
  * @return Error code (SR_ERR_OK on success, SR_ERR_NOT_FOUND if the entity is
- * not present in the data tree, or the user does not have read permission to access it).
+ * not present in the data tree, or the user does not have read permission to access it,
+ * SR_UNKNOWN_MODEL if the xpath references unknown model, SR_BAD_ELEMENT if the referenced
+ * node can not be found in schema).
  */
 int sr_get_item(sr_session_ctx_t *session, const char *path, sr_val_t **value);
 

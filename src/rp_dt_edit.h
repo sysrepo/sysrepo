@@ -54,6 +54,7 @@ int rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t
 
 /**
  * @brief Move the list instance into selected direction. If the list instance doesn't exists or the list is not user-ordered SR_ERR_INVAL_ARG is returned.
+ * If the list is at left-most/right-most position move UP/DOWN does nothing.
  * @param [in] dm_ctx
  * @param [in] session
  * @param [in] xpath

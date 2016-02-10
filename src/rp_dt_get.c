@@ -366,7 +366,10 @@ rp_dt_get_value_wrapper(dm_ctx_t *dm_ctx, dm_session_t *dm_session, const char *
     }
 
     rc = rp_dt_get_value(dm_ctx, data_tree, l, value);
-    if (SR_ERR_OK != rc) {
+    if (SR_ERR_NOT_FOUND == rc) {
+        rc = rp_dt_validate_node_xpath(dm_ctx, l, NULL, NULL);
+        rc = rc == SR_ERR_OK ? SR_ERR_NOT_FOUND : rc;
+    } else if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Get value failed for xpath '%s'", xpath);
     }
 
@@ -410,7 +413,10 @@ rp_dt_get_values_wrapper(dm_ctx_t *dm_ctx, dm_session_t *dm_session, const char 
     }
 
     rc = rp_dt_get_values(dm_ctx, data_tree, l, values, count);
-    if (SR_ERR_OK != rc) {
+    if (SR_ERR_NOT_FOUND == rc) {
+        rc = rp_dt_validate_node_xpath(dm_ctx, l, NULL, NULL);
+        rc = rc == SR_ERR_OK ? SR_ERR_NOT_FOUND : rc;
+    } else if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Get values failed for xpath '%s'", xpath);
     }
 
@@ -461,7 +467,10 @@ rp_dt_get_values_wrapper_with_opts(dm_ctx_t *dm_ctx, dm_session_t *dm_session, r
     }
 
     rc = rp_dt_get_values_from_nodes(nodes, *count, values);
-    if (SR_ERR_OK != rc) {
+    if (SR_ERR_NOT_FOUND == rc) {
+        rc = rp_dt_validate_node_xpath(dm_ctx, l, NULL, NULL);
+        rc = rc == SR_ERR_OK ? SR_ERR_NOT_FOUND : rc;
+    } else if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Copying values from nodes failed for xpath '%s'", l->xpath);
         goto cleanup;
     }

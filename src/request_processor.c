@@ -220,6 +220,7 @@ rp_get_items_req_process(const rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg 
     if (0 == count){
         SR_LOG_DBG("No items found for '%s', session id=%"PRIu32".", xpath, session->id);
         rc = SR_ERR_NOT_FOUND;
+        resp->response->get_items_resp->n_values = 0;
         goto cleanup;
     }
 
