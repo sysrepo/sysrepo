@@ -28,6 +28,7 @@
 #include <setjmp.h>
 #include <cmocka.h>
 #include <arpa/inet.h>
+#include <time.h>
 
 #include "sr_common.h"
 #include "connection_manager.h"
@@ -417,6 +418,7 @@ cm_buffers_test(void **state)
     uint8_t *msg_buf = NULL;
     size_t msg_size = 0;
     uint32_t session_id = 0;
+    struct timespec ts = { 0 };
 
     int fd = cm_connect_to_server();
 
@@ -437,15 +439,19 @@ cm_buffers_test(void **state)
     session_id = msg->response->session_start_resp->session_id;
     sr__msg__free_unpacked(msg, NULL);
 
-
+    /* send many get-item requests */
     for (size_t i = 0; i < 1000; i++) {
         cm_get_item_generate(session_id, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &msg_buf, &msg_size);
         cm_message_send(fd, msg_buf, msg_size);
         free(msg_buf);
     }
 
-    sleep(1);
+    /* wait for a while so that socket's output buffer will be full */
+    ts.tv_sec = 0;
+    ts.tv_nsec = 100000000L; /* 100 milliseconds */
+    nanosleep(&ts, NULL);
 
+    /* Receive all get-item responses */
     for (size_t i = 0; i < 1000; i++) {
         msg = cm_message_recv(fd);
         assert_non_null(msg);
@@ -457,6 +463,7 @@ cm_buffers_test(void **state)
         sr__msg__free_unpacked(msg, NULL);
     }
 
+    /* send many get-item requests */
     for (size_t i = 0; i < 1000; i++) {
         cm_get_item_generate(session_id, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &msg_buf, &msg_size);
         cm_message_send(fd, msg_buf, msg_size);

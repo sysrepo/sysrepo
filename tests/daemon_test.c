@@ -26,6 +26,7 @@
 #include <cmocka.h>
 #include <stdbool.h>
 #include <signal.h>
+#include <time.h>
 
 #include "sysrepo.h"
 #include "sr_common.h"
@@ -53,6 +54,7 @@ static int
 test_setup(void **state)
 {
     sr_conn_ctx_t *conn = NULL;
+    struct timespec ts = { 0 };
     int rc = SR_ERR_OK;
 
     /* connect to sysrepo, force daemon connection */
@@ -64,7 +66,10 @@ test_setup(void **state)
     if (SR_ERR_OK == rc) {
         daemon_run_before_test = true;
         daemon_kill();
-        sleep(1);
+        /* wait for the daemon to terminate */
+        ts.tv_sec = 0;
+        ts.tv_nsec = 100000000L; /* 100 milliseconds */
+        nanosleep(&ts, NULL);
     } else {
         daemon_run_before_test = false;
     }
