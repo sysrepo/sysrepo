@@ -43,7 +43,7 @@ cm_setup(void **state)
     int rc = 0;
 
     sr_logger_init("cm_test");
-    sr_logger_set_level(SR_LL_ERR, SR_LL_ERR); /* print debugs to stderr */
+    sr_logger_set_level(SR_LL_ERR, SR_LL_ERR); /* log only errors */
 
     rc = cm_init(CM_MODE_LOCAL, CM_AF_SOCKET_PATH, &ctx);
     assert_int_equal(rc, SR_ERR_OK);
