@@ -230,8 +230,12 @@ cm_server_cleanup(cm_ctx_t *cm_ctx)
 static void
 cm_session_data_cleanup(void *session)
 {
+    Sr__Msg *msg = NULL;
     sm_session_t *sm_session = (sm_session_t*)session;
     if ((NULL != sm_session) && (NULL != sm_session->cm_data)) {
+        while (sr_cbuff_dequeue(sm_session->cm_data->rp_request_queue, &msg)) {
+            sr__msg__free_unpacked(msg, NULL);
+        }
         sr_cbuff_cleanup(sm_session->cm_data->rp_request_queue);
         free(sm_session->cm_data);
         sm_session->cm_data = NULL;
@@ -370,11 +374,7 @@ cm_conn_out_buff_flush(cm_ctx_t *cm_ctx, sm_connection_t *connection)
         }
     } while ((buff_pos < buff_size) && (written > 0));
 
-    if ((0 != buff_pos) && (buff_size - buff_pos) > 0) {
-        /* move unsent data to the front of the buffer */
-        memmove(buff->data, (buff->data + buff_pos), (buff_size - buff_pos));
-        buff->pos = buff_size - buff_pos;
-    } else if(buff_size == buff_pos) {
+    if(buff_size == buff_pos) {
         /* no more data left in the buffer */
         buff->pos = 0;
     }
@@ -1232,6 +1232,7 @@ cm_cleanup(cm_ctx_t *cm_ctx)
 {
     size_t i = 0;
     sm_session_t *session = NULL;
+    Sr__Msg *msg = NULL;
     int rc = SR_ERR_OK;
 
     if (NULL != cm_ctx) {
@@ -1249,6 +1250,9 @@ cm_cleanup(cm_ctx_t *cm_ctx)
         ev_loop_destroy(cm_ctx->event_loop);
         cm_server_cleanup(cm_ctx);
 
+        while (sr_cbuff_dequeue(cm_ctx->msg_queue, &msg)) {
+            sr__msg__free_unpacked(msg, NULL);
+        }
         sr_cbuff_cleanup(cm_ctx->msg_queue);
         pthread_mutex_destroy(&cm_ctx->msg_queue_mutex);
 

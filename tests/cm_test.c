@@ -411,7 +411,7 @@ cm_session_neg_test(void **state) {
 }
 
 static void
-cm_session_buffers_test(void **state)
+cm_buffers_test(void **state)
 {
     Sr__Msg *msg = NULL;
     uint8_t *msg_buf = NULL;
@@ -457,22 +457,25 @@ cm_session_buffers_test(void **state)
         sr__msg__free_unpacked(msg, NULL);
     }
 
+    for (size_t i = 0; i < 1000; i++) {
+        cm_get_item_generate(session_id, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &msg_buf, &msg_size);
+        cm_message_send(fd, msg_buf, msg_size);
+        free(msg_buf);
+    }
+
     /* send session-stop request */
     cm_session_stop_generate(session_id, &msg_buf, &msg_size);
     cm_message_send(fd, msg_buf, msg_size);
     free(msg_buf);
 
-    /* receive the response */
-    msg = cm_message_recv(fd);
-    assert_non_null(msg);
-    assert_int_equal(msg->type, SR__MSG__MSG_TYPE__RESPONSE);
-    assert_non_null(msg->response);
-    assert_int_equal(msg->response->result, SR_ERR_OK);
-    assert_int_equal(msg->response->operation, SR__OPERATION__SESSION_STOP);
-    assert_non_null(msg->response->session_stop_resp);
-    assert_int_equal(msg->response->session_stop_resp->session_id, session_id);
+    /* let the connection manager to be stopped in teardown before reading responses */
+}
 
-    sr__msg__free_unpacked(msg, NULL);
+static void
+cm_signals_test(void **state)
+{
+    cm_ctx_t *ctx = *state;
+    assert_non_null(ctx);
 }
 
 int
@@ -480,7 +483,8 @@ main() {
     const struct CMUnitTest tests[] = {
             cmocka_unit_test_setup_teardown(cm_session_test, cm_setup, cm_teardown),
             cmocka_unit_test_setup_teardown(cm_session_neg_test, cm_setup, NULL),
-            cmocka_unit_test_setup_teardown(cm_session_buffers_test, cm_setup, cm_teardown),
+            cmocka_unit_test_setup_teardown(cm_buffers_test, cm_setup, cm_teardown),
+            cmocka_unit_test_setup_teardown(cm_signals_test, cm_setup, cm_teardown),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);
