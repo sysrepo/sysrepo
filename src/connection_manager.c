@@ -360,6 +360,7 @@ cm_conn_out_buff_flush(cm_ctx_t *cm_ctx, sm_connection_t *connection)
                 SR_LOG_DBG("fd %d would block", connection->fd);
                 /* monitor fd for writable event */
                 ev_io_start(cm_ctx->event_loop, &connection->cm_data->write_watcher);
+                break;
             } else {
                 /* error by writing - close the connection due to an error */
                 SR_LOG_ERR("Error by writing data to fd %d: %s.", connection->fd, strerror(errno));
@@ -373,7 +374,7 @@ cm_conn_out_buff_flush(cm_ctx_t *cm_ctx, sm_connection_t *connection)
         /* move unsent data to the front of the buffer */
         memmove(buff->data, (buff->data + buff_pos), (buff_size - buff_pos));
         buff->pos = buff_size - buff_pos;
-    } else {
+    } else if(buff_size == buff_pos) {
         /* no more data left in the buffer */
         buff->pos = 0;
     }
