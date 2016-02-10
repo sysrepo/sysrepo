@@ -41,14 +41,15 @@ int rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastor
 
 /**
  * @brief Function can create presence container, list instance, leaf, leaf-list item. If the xpath identifies leaf-list value is appended to the end
- * of the leaf-list. Value of the list key can not be set or changed.
+ * of the leaf-list. Value of the list key can not be set or changed. To create a list use
+ * xpath including all list keys.
  * @param [in] dm_ctx
  * @param [in] session
  * @param [in] datastore
  * @param [in] xpath
  * @param [in] options
  * @param [in] value the value to be set (xpath inside the structure is ignored), in case of presence container or list instance is ignored can be NULL
- * @return err_code SR_ERR_OK on success
+ * @return Error code (SR_ERR_OK on success)
  */
 int rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t datastore, const char *xpath, const sr_edit_flag_t options, const sr_val_t *value);
 
@@ -59,7 +60,7 @@ int rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t
  * @param [in] session
  * @param [in] xpath
  * @param [in] direction
- * @return Error code SR_ERR_OK on success.
+ * @return Error code (SR_ERR_OK on success)
  */
 int rp_dt_move_list(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, sr_move_direction_t direction);
 #endif /* RP_DT_EDIT_H */

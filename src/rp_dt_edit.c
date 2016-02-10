@@ -26,22 +26,25 @@
 #include "sr_common.h"
 #include "xpath_processor.h"
 
+/**
+ * @brief structure filled by ::rp_dt_find_deepest_match_wrapper.
+ * It includes resources for further edit request processing.
+ */
 typedef struct rp_dt_match_s {
-    xp_loc_id_t *loc_id;
-    struct lys_node *schema_node;
-    dm_data_info_t *info;
+    xp_loc_id_t *loc_id;            /**< loc_id for the request xpath doesn't (xpath for matched node might just substring of it) */
+    struct lys_node *schema_node;   /**< Matched schema node */
+    dm_data_info_t *info;           /**< Data info structure for the model pointed by loc_id */
 
-    size_t level;
-    struct lyd_node *node;
+    size_t level;                   /**< Depth of the node that has been matched */
+    struct lyd_node *node;          /**< Deepest match */
 }rp_dt_match_t;
 
 static int
 rp_dt_find_deepest_match_wrapper(dm_ctx_t *ctx, dm_session_t *session, const char * xpath, rp_dt_match_t *match)
 {
     CHECK_NULL_ARG3(ctx, session, xpath);
+    const struct lys_module *module = NULL;
     int rc = xp_char_to_loc_id(xpath, &match->loc_id);
-    const struct lys_module *module;
-
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Converting xpath '%s' to loc_id failed.", xpath);
         return rc;
@@ -55,7 +58,7 @@ rp_dt_find_deepest_match_wrapper(dm_ctx_t *ctx, dm_session_t *session, const cha
 
     // TODO use data store argument
 
-    rc = dm_get_data_info(ctx, session, module->name, &(match->info));
+    rc = dm_get_data_info(ctx, session, module->name, &match->info);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Getting data tree failed for xpath '%s'", xpath);
         goto cleanup;
@@ -94,6 +97,69 @@ rp_dt_has_key(const struct lyd_node *node, const char *name, bool *res)
     }
     *res = false;
     return SR_ERR_OK;
+}
+
+/**
+ * @brief Function creates list key nodes at the selected level and append them
+ * to the provided parent. If there are no keys at the selected level it does nothing.
+ */
+static int
+rp_dt_create_keys(rp_dt_match_t *match, struct lyd_node *parent, size_t level)
+{
+    CHECK_NULL_ARG2(match, parent);
+    size_t key_count = XP_GET_KEY_COUNT(match->loc_id, level);
+    char *key_name = NULL;
+    char *key_value = NULL;
+    if (key_count != 0) {
+        for (size_t k = 0; k < key_count; k++) {
+            key_name = XP_CPY_KEY_NAME(match->loc_id, level, k);
+            key_value = XP_CPY_KEY_VALUE(match->loc_id, level, k);
+            if (NULL == key_name || NULL == key_value) {
+                SR_LOG_ERR("Copy of key name or key value failed %s", match->loc_id->xpath);
+                goto cleanup;
+            }
+            if (NULL == sr_lyd_new_leaf(match->info, parent, parent->schema->module, key_name, key_value)) {
+                SR_LOG_ERR("Adding key leaf failed %s", match->loc_id->xpath);
+                goto cleanup;
+            }
+            free(key_name);
+            free(key_value);
+        }
+    }
+    return SR_ERR_OK;
+
+cleanup:
+    free(key_name);
+    free(key_value);
+    return SR_ERR_INTERNAL;
+}
+
+static int
+rp_dt_find_closest_sibling_by_name(dm_data_info_t *info, struct lyd_node *start_node, sr_move_direction_t direction, struct lyd_node **sibling)
+{
+    CHECK_NULL_ARG3(info, start_node, sibling);
+    CHECK_NULL_ARG2(start_node->schema, start_node->schema->name);
+
+    struct lyd_node *sib = SR_MOVE_UP == direction ? start_node->prev : start_node->next;
+
+    /* node where the lookup should be stopped - first sibling in case of direction == UP */
+    struct lyd_node *stop_node = NULL != start_node->parent ? start_node->parent->child : info->node;
+    if (stop_node == start_node && direction == SR_MOVE_UP){
+        return SR_ERR_NOT_FOUND;
+    }
+
+    while (NULL != sib){
+        CHECK_NULL_ARG2(sib->schema, sib->schema->name);
+        if (0 == strcmp(start_node->schema->name, sib->schema->name)) {
+            *sibling = sib;
+            return SR_ERR_OK;
+        }
+        if (stop_node == sib) {
+            break;
+        }
+        sib = SR_MOVE_UP == direction ? sib->prev : sib->next;
+    }
+    return SR_ERR_NOT_FOUND;
 }
 
 int
@@ -288,8 +354,6 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t dat
     /* to be freed during cleanup */
     struct lyd_node *created = NULL;
     char *new_value = NULL;
-    char *key_name = NULL;
-    char *key_value = NULL;
     char *node_name = NULL;
     char *module_name = NULL;
 
@@ -415,23 +479,22 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t dat
         }
 
         /* check whether node is a last node (leaf, leaflist, presence container) in xpath */
-        if (XP_GET_NODE_COUNT(m.loc_id) == (n + 1) && 0 == XP_GET_KEY_COUNT(m.loc_id,n)) {
-            bool is_key = false;
-            rc = rp_dt_has_key(node, node_name, &is_key);
-            if (SR_ERR_OK != rc){
-                SR_LOG_ERR_MSG("Is key failed");
-                goto cleanup;
-            }
-            if (is_key){
-                SR_LOG_ERR("Value of the key can not be set %s", xpath);
-                rc = SR_ERR_INVAL_ARG;
-                goto cleanup;
-            }
-
-            if (LYS_CONTAINER == m.schema_node->nodetype && NULL != ((struct lys_node_container *) m.schema_node)->presence ){
+        if (XP_GET_NODE_COUNT(m.loc_id) == (n + 1) && 0 == XP_GET_KEY_COUNT(m.loc_id, n)) {
+            if (LYS_CONTAINER == m.schema_node->nodetype && NULL != ((struct lys_node_container *) m.schema_node)->presence) {
                 /* presence container */
                 node = sr_lyd_new(m.info, node, module, node_name);
             } else if (LYS_LEAF == m.schema_node->nodetype || LYS_LEAFLIST == m.schema_node->nodetype) {
+                bool is_key = false;
+                rc = rp_dt_has_key(node, node_name, &is_key);
+                if (SR_ERR_OK != rc) {
+                    SR_LOG_ERR_MSG("Is key failed");
+                    goto cleanup;
+                }
+                if (is_key) {
+                    SR_LOG_ERR("Value of the key can not be set %s", xpath);
+                    rc = SR_ERR_INVAL_ARG;
+                    goto cleanup;
+                }
                 node = sr_lyd_new_leaf(m.info, node, module, node_name, new_value);
             } else {
                 SR_LOG_ERR_MSG("Request to create unsupported node type (non-presence container, list without keys ...)");
@@ -446,7 +509,6 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t dat
             }
 
         } else {
-            size_t key_count = XP_GET_KEY_COUNT(m.loc_id, n);
             /* create container or list */
             node = sr_lyd_new(m.info, node, module, node_name);
             if (NULL == node) {
@@ -454,27 +516,10 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t dat
                 rc = SR_ERR_INTERNAL;
                 goto cleanup;
             }
-            if (key_count != 0) {
-                for (size_t k = 0; k < key_count; k++) {
-                    key_name = XP_CPY_KEY_NAME(m.loc_id, n, k);
-                    key_value = XP_CPY_KEY_VALUE(m.loc_id, n, k);
-                    if (NULL == key_name || NULL == key_value) {
-                        SR_LOG_ERR("Copy of key name or key value failed %s", xpath);
-                        rc = SR_ERR_INTERNAL;
-                        goto cleanup;
-                    }
-
-                    if (NULL == sr_lyd_new_leaf(m.info, node, module, key_name, key_value)) {
-                        SR_LOG_ERR("Adding key leaf failed %s", xpath);
-                        rc = SR_ERR_INTERNAL;
-                        goto cleanup;
-                    }
-
-                    free(key_name);
-                    free(key_value);
-                    key_name = NULL;
-                    key_value = NULL;
-                }
+            rc = rp_dt_create_keys(&m, node, n);
+            if (SR_ERR_OK != rc) {
+                SR_LOG_ERR("Creating keys failed %s", xpath);
+                goto cleanup;
             }
         }
         if (NULL == created) {
@@ -492,41 +537,11 @@ cleanup:
     xp_free_loc_id(m.loc_id);
     free(new_value);
     free(node_name);
-    free(key_value);
-    free(key_name);
     if (SR_ERR_OK != rc && NULL != created) {
         sr_lyd_unlink(m.info, created);
         lyd_free(created);
     }
     return rc;
-}
-
-static int
-rp_dt_find_closest_sibling_by_name(dm_data_info_t *info, struct lyd_node *start_node, sr_move_direction_t direction, struct lyd_node **sibling)
-{
-    CHECK_NULL_ARG3(info, start_node, sibling);
-    CHECK_NULL_ARG2(start_node->schema, start_node->schema->name);
-
-    struct lyd_node *sib = SR_MOVE_UP == direction ? start_node->prev : start_node->next;
-
-    /* node where the lookup should be stopped - first sibling in case of direction == UP */
-    struct lyd_node *stop_node = NULL != start_node->parent ? start_node->parent->child : info->node;
-    if (stop_node == start_node && direction == SR_MOVE_UP){
-        return SR_ERR_NOT_FOUND;
-    }
-
-    while (NULL != sib){
-        CHECK_NULL_ARG2(sib->schema, sib->schema->name);
-        if (0 == strcmp(start_node->schema->name, sib->schema->name)) {
-            *sibling = sib;
-            return SR_ERR_OK;
-        }
-        if (stop_node == sib) {
-            break;
-        }
-        sib = SR_MOVE_UP == direction ? sib->prev : sib->next;
-    }
-    return SR_ERR_NOT_FOUND;
 }
 
 int
