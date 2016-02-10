@@ -190,6 +190,11 @@ cl_get_item_test(void **state)
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
     assert_null(value);
 
+    /* bad element in existing module*/
+    rc = sr_get_item(session, "/example-module:unknown", &value);
+    assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
+    assert_null(value);
+
     /* existing leaf */
     rc = sr_get_item(session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &value);
     assert_int_equal(rc, SR_ERR_OK);
@@ -198,7 +203,7 @@ cl_get_item_test(void **state)
     assert_string_equal("Leaf value", value->data.string_val);
     assert_string_equal("/example-module:container/list[key1='key1'][key2='key2']/leaf", value->xpath);
     sr_free_val(value);
-    
+
     /* container */
     rc = sr_get_item(session, "/example-module:container", &value);
     assert_int_equal(rc, SR_ERR_OK);
@@ -251,6 +256,10 @@ cl_get_items_test(void **state)
     rc = sr_get_items(session, "/small-module:item",  &values, &values_cnt);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
+    /* bad element in existing module*/
+    rc = sr_get_items(session, "/example-module:unknown", &values, &values_cnt);
+    assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
+
     /* container */
     rc = sr_get_items(session, "/ietf-interfaces:interfaces", &values, &values_cnt);
     assert_int_equal(rc, SR_ERR_OK);
@@ -302,6 +311,17 @@ cl_get_items_iter_test(void **state)
     rc = sr_get_items_iter(session, "^&((", true, &it);
     assert_int_equal(SR_ERR_INVAL_ARG, rc);
     assert_null(it);
+
+    /* non existing item*/
+    rc = sr_get_items_iter(session, "/small-module:item", true, &it);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(it);
+
+    rc = sr_get_item_next(session, it, &value);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+    assert_null(value);
+    sr_free_val_iter(it);
+    it = NULL;
 
     /* container */
     rc = sr_get_items_iter(session, "/example-module:container", true, &it);
@@ -414,7 +434,7 @@ cl_get_items_iter_test(void **state)
         sr_free_val(value);
     }
     sr_free_val_iter(it);
-    
+
     /* stop the session */
     rc = sr_session_stop(session);
     assert_int_equal(rc, SR_ERR_OK);

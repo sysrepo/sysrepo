@@ -907,7 +907,8 @@ sr_get_items_iter(sr_session_ctx_t *session, const char *path, bool recursive, s
     rc = cl_send_get_items_iter(session, path, recursive, 0, CL_GET_ITEMS_FETCH_LIMIT, &msg_resp);
     if (SR_ERR_NOT_FOUND == rc){
         SR_LOG_DBG("No items found for xpath '%s'", path);
-        goto cleanup;
+        /* SR_ERR_NOT_FOUND will be returned on get_item_next call */
+        rc = SR_ERR_OK;
     }
     else if (SR_ERR_OK != rc){
         SR_LOG_ERR("Sending get_items request failed '%s'", path);

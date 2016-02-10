@@ -36,7 +36,7 @@ int validate_node_wrapper(dm_ctx_t *dm_ctx, const char *xpath, struct lys_node *
     rc = xp_char_to_loc_id(xpath, &l);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = rp_dt_validate_node_xpath(dm_ctx, l, match);
+    rc = rp_dt_validate_node_xpath(dm_ctx, l, NULL, match);
     xp_free_loc_id(l);
 
     return rc;

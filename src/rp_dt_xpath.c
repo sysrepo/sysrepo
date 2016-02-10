@@ -368,7 +368,7 @@ rp_dt_validate_list(const struct lys_node *node, const xp_loc_id_t *loc_id, cons
 }
 
 int
-rp_dt_validate_node_xpath(dm_ctx_t *dm_ctx, const xp_loc_id_t *loc_id, struct lys_node **match)
+rp_dt_validate_node_xpath(dm_ctx_t *dm_ctx, const xp_loc_id_t *loc_id, const struct lys_module **matched_module, struct lys_node **match)
 {
     CHECK_NULL_ARG2(dm_ctx, loc_id);
     CHECK_NULL_ARG(loc_id->xpath);
@@ -394,6 +394,10 @@ rp_dt_validate_node_xpath(dm_ctx_t *dm_ctx, const xp_loc_id_t *loc_id, struct ly
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Get module failed");
         return rc;
+    }
+
+    if (NULL != matched_module) {
+        *matched_module = module;
     }
 
     if (NULL == module->name) {
