@@ -472,10 +472,31 @@ cm_buffers_test(void **state)
 }
 
 static void
+cm_test_signal_callback(cm_ctx_t *cm_ctx, int signum)
+{
+    assert_non_null(cm_ctx);
+    printf("Caught signal %d.\n", signum);
+}
+
+static void
 cm_signals_test(void **state)
 {
-    cm_ctx_t *ctx = *state;
-    assert_non_null(ctx);
+    int rc = 0;
+    cm_ctx_t *cm_ctx = *state;
+    assert_non_null(cm_ctx);
+
+    /* install 2 signals */
+    rc = cm_watch_signal(cm_ctx, SIGUSR1, cm_test_signal_callback);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = cm_watch_signal(cm_ctx, SIGUSR2, cm_test_signal_callback);
+    assert_int_equal(rc, SR_ERR_OK);
+    /* third signal should not be installed */
+    rc = cm_watch_signal(cm_ctx, SIGTERM, cm_test_signal_callback);
+    assert_int_equal(rc, SR_ERR_INTERNAL);
+
+    /* send signals to ourself */
+    kill(getpid(), SIGUSR2);
+    kill(getpid(), SIGUSR1);
 }
 
 int
