@@ -778,7 +778,7 @@ rp_session_start(const rp_ctx_t *rp_ctx, const char *real_user, const char *effe
     session->id = session_id;
     session->datastore = datastore;
 
-    rc = dm_session_start(rp_ctx->dm_ctx, &session->dm_session);
+    rc = dm_session_start(rp_ctx->dm_ctx, datastore, &session->dm_session);
     if (SR_ERR_OK  != rc){
         SR_LOG_ERR("Init of dm_session failed for session id=%"PRIu32".", session_id);
         free(session);

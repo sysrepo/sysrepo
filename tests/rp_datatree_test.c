@@ -219,7 +219,7 @@ void ietf_interfaces_test(void **state){
     dm_ctx_t *ctx = *state;
     dm_session_t *ses_ctx = NULL;
     struct lyd_node *data_tree = NULL;
-    dm_session_start(ctx, &ses_ctx);
+    dm_session_start(ctx, SR_DS_STARTUP, &ses_ctx);
     rc = dm_get_datatree(ctx, ses_ctx, "example-module", &data_tree);
     assert_int_equal(SR_ERR_OK, rc);
 
@@ -283,7 +283,7 @@ void get_values_test_module_test(void **state){
     int rc = 0;
     dm_ctx_t *ctx = *state;
     dm_session_t *ses_ctx = NULL;
-    dm_session_start(ctx, &ses_ctx);
+    dm_session_start(ctx, SR_DS_STARTUP, &ses_ctx);
 
     struct lyd_node *root = NULL;
     createDataTreeTestModule();
@@ -329,7 +329,7 @@ void get_values_test(void **state){
     dm_ctx_t *ctx = *state;
     dm_session_t *ses_ctx = NULL;
     struct lyd_node *data_tree = NULL;
-    dm_session_start(ctx, &ses_ctx);
+    dm_session_start(ctx, SR_DS_STARTUP, &ses_ctx);
     rc = dm_get_datatree(ctx, ses_ctx, "example-module", &data_tree);
     assert_int_equal(SR_ERR_OK, rc);
 
@@ -403,7 +403,7 @@ void get_values_opts_test(void **state) {
     dm_ctx_t *ctx = *state;
     dm_session_t *ses_ctx = NULL;
     struct lyd_node *data_tree = NULL;
-    dm_session_start(ctx, &ses_ctx);
+    dm_session_start(ctx, SR_DS_STARTUP, &ses_ctx);
     rc = dm_get_datatree(ctx, ses_ctx, "example-module", &data_tree);
     assert_int_equal(SR_ERR_OK, rc);
 
@@ -463,7 +463,7 @@ void get_values_with_augments_test(void **state){
     struct lyd_node *root = NULL;
     size_t count = 0;
     sr_val_t **values = NULL;
-    dm_session_start(ctx, &ses_ctx);
+    dm_session_start(ctx, SR_DS_STARTUP, &ses_ctx);
 
     rc = dm_get_datatree(ctx, ses_ctx, "example-module", &data_tree);
     assert_int_equal(SR_ERR_OK, rc);
@@ -490,7 +490,7 @@ void get_value_test(void **state){
     dm_ctx_t *ctx = *state;
     dm_session_t *ses_ctx = NULL;
     struct lyd_node *data_tree = NULL;
-    dm_session_start(ctx, &ses_ctx);
+    dm_session_start(ctx, SR_DS_STARTUP, &ses_ctx);
 
     /* Load from file */
     rc = dm_get_datatree(ctx, ses_ctx, "example-module", &data_tree);
@@ -536,7 +536,7 @@ void get_node_test_found(void **state)
     dm_session_t *ses_ctx = NULL;
     struct lyd_node *data_tree = NULL;
     struct lyd_node *node = NULL;
-    dm_session_start(ctx, &ses_ctx);
+    dm_session_start(ctx, SR_DS_STARTUP, &ses_ctx);
 
     /* Load from file */
     rc = dm_get_datatree(ctx, ses_ctx ,"example-module", &data_tree);
@@ -581,7 +581,7 @@ void get_nodes_test(void **state){
     dm_ctx_t *ctx = *state;
     dm_session_t *ses_ctx = NULL;
     struct lyd_node *data_tree = NULL;
-    dm_session_start(ctx, &ses_ctx);
+    dm_session_start(ctx, SR_DS_STARTUP, &ses_ctx);
     rc = dm_get_datatree(ctx, ses_ctx, "example-module", &data_tree);
     assert_int_equal(SR_ERR_OK, rc);
 
@@ -612,7 +612,7 @@ void get_node_test_not_found(void **state)
     dm_session_t *ses_ctx = NULL;
     struct lyd_node *data_tree = NULL;
     struct lyd_node *node = NULL;
-    dm_session_start(ctx, &ses_ctx);
+    dm_session_start(ctx, SR_DS_STARTUP, &ses_ctx);
 
     /* Load from file */
     rc = dm_get_datatree(ctx, ses_ctx, "example-module", &data_tree);
@@ -647,7 +647,7 @@ void get_value_wrapper_test(void **state){
     int rc = 0;
     dm_ctx_t *ctx = *state;
     dm_session_t *ses_ctx = NULL;
-    dm_session_start(ctx, &ses_ctx);
+    dm_session_start(ctx, SR_DS_STARTUP, &ses_ctx);
 
     /* unknown model*/
     sr_val_t *value = NULL;

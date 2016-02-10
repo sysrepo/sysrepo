@@ -39,8 +39,12 @@ typedef struct dm_ctx_s {
     pthread_rwlock_t btree_lock;  /**< rwlock to access module_btree */
 } dm_ctx_t;
 
+/**
+ * @brief Data manager session context
+ */
 typedef struct dm_session_s {
-    sr_btree_t *running_modules;
+    sr_datastore_t datastore;       /**< datastore to which the session is tied */
+    sr_btree_t *session_modules;    /**< binary holding session copies of data models */
 } dm_session_t;
 
 typedef struct dm_model_info_s{
@@ -616,7 +620,7 @@ dm_cleanup(dm_ctx_t *dm_ctx)
 }
 
 int
-dm_session_start(const dm_ctx_t *dm_ctx, dm_session_t **dm_session_ctx)
+dm_session_start(const dm_ctx_t *dm_ctx, const sr_datastore_t ds, dm_session_t **dm_session_ctx)
 {
     CHECK_NULL_ARG(dm_session_ctx);
 
@@ -626,8 +630,10 @@ dm_session_start(const dm_ctx_t *dm_ctx, dm_session_t **dm_session_ctx)
         SR_LOG_ERR_MSG("Cannot allocate session_ctx in Data Manager.");
         return SR_ERR_NOMEM;
     }
+    session_ctx->datastore = ds;
+
     int rc = SR_ERR_OK;
-    rc = sr_btree_init(dm_data_info_cmp, dm_data_info_free, &session_ctx->running_modules);
+    rc = sr_btree_init(dm_data_info_cmp, dm_data_info_free, &session_ctx->session_modules);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Binary tree allocation failed");
         free(session_ctx);
@@ -642,7 +648,7 @@ int
 dm_session_stop(const dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx)
 {
     CHECK_NULL_ARG2(dm_ctx, dm_session_ctx);
-    sr_btree_cleanup(dm_session_ctx->running_modules);
+    sr_btree_cleanup(dm_session_ctx->session_modules);
     free(dm_session_ctx);
     return SR_ERR_OK;
 }
@@ -664,7 +670,7 @@ dm_get_data_info(dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, const char *mod
 
     dm_data_info_t lookup_data = { 0 };
     lookup_data.module = module;
-    exisiting_data_info = sr_btree_search(dm_session_ctx->running_modules, &lookup_data);
+    exisiting_data_info = sr_btree_search(dm_session_ctx->session_modules, &lookup_data);
 
     if (NULL != exisiting_data_info) {
         if (exisiting_data_info->modified) {
@@ -705,7 +711,7 @@ dm_get_data_info(dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, const char *mod
         free(di);
         *info = exisiting_data_info;
     } else {
-            rc = sr_btree_insert(dm_session_ctx->running_modules, (void *)di);
+            rc = sr_btree_insert(dm_session_ctx->session_modules, (void *)di);
             if (SR_ERR_OK != rc) {
                 SR_LOG_ERR("Insert into session running avl failed module %s", module_name);
                 dm_data_info_free(di);
@@ -800,7 +806,7 @@ dm_validate_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, char ***
 
     size_t cnt = 0;
     dm_data_info_t *info = NULL;
-    while (NULL != (info = sr_btree_get_at(session->running_modules, cnt))) {
+    while (NULL != (info = sr_btree_get_at(session->session_modules, cnt))) {
         /* loaded data trees are valid, so check only the modified ones */
         if (info->modified) {
             //TODO lock mutex for logging a collect error messages
@@ -828,7 +834,7 @@ dm_discard_changes(dm_ctx_t *dm_ctx, dm_session_t *session)
 
     size_t cnt = 0;
     dm_data_info_t *info = NULL;
-    while (NULL != (info = sr_btree_get_at(session->running_modules, cnt))) {
+    while (NULL != (info = sr_btree_get_at(session->session_modules, cnt))) {
         if (info->modified) {
             /* invalidate timestamp
              * and set modified to false to discard the changes
@@ -866,7 +872,7 @@ dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, char ***errors, size_t *err_c
 
     size_t cnt = 0;
     dm_data_info_t *info = NULL;
-    while (NULL != (info = sr_btree_get_at(session->running_modules, cnt))) {
+    while (NULL != (info = sr_btree_get_at(session->session_modules, cnt))) {
         if (info->modified) {
             /* lookup data_tree in dm_ctx*/
             dm_data_info_t *sys_wide_data_info = NULL;

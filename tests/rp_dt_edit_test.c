@@ -57,7 +57,7 @@ void delete_item_leaf_test(void **state){
     sr_val_t *val = NULL;
 
     /* delete leaf*/
-    dm_session_start(ctx, &session);
+    dm_session_start(ctx, SR_DS_STARTUP, &session);
 
     rc = rp_dt_get_value_wrapper(ctx, session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &val);
     assert_int_equal(SR_ERR_OK, rc);
@@ -73,7 +73,7 @@ void delete_item_leaf_test(void **state){
     dm_session_stop(ctx, session);
 
     /* delete non existing leaf*/
-    dm_session_start(ctx, &session);
+    dm_session_start(ctx, SR_DS_STARTUP, &session);
     rc = rp_dt_get_value_wrapper(ctx, session, "/example-module:container/list[key1='abc'][key2='abc']/leaf", &val);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
@@ -98,7 +98,7 @@ void delete_item_container_test(void **state){
     sr_val_t *val = NULL;
 
     /* delete container*/
-    dm_session_start(ctx, &session);
+    dm_session_start(ctx, SR_DS_STARTUP, &session);
 
     rc = rp_dt_get_value_wrapper(ctx, session, "/example-module:container", &val);
     assert_int_equal(SR_ERR_OK, rc);
@@ -132,7 +132,7 @@ void delete_item_container_test(void **state){
 
     dm_session_stop(ctx, session);
 
-    dm_session_start(ctx, &session);
+    dm_session_start(ctx, SR_DS_STARTUP, &session);
     rc = rp_dt_get_value_wrapper(ctx, session, CONTAINER_XP, &val);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);
@@ -152,7 +152,7 @@ void delete_item_list_test(void **state){
     sr_val_t *val = NULL;
 
     /* delete list*/
-    dm_session_start(ctx, &session);
+    dm_session_start(ctx, SR_DS_STARTUP, &session);
 
 #define LIST_INST1_XP "/ietf-interfaces:interfaces/interface[name='eth0']"
 #define LIST_INST2_XP "/ietf-interfaces:interfaces/interface[name='eth1']"
@@ -202,7 +202,7 @@ void delete_item_list_test(void **state){
     dm_session_stop(ctx, session);
 
 
-    dm_session_start(ctx, &session);
+    dm_session_start(ctx, SR_DS_STARTUP, &session);
     rc = rp_dt_get_value_wrapper(ctx, session, LIST_INST1_XP, &val);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);
@@ -244,7 +244,7 @@ void delete_item_alllist_test(void **state){
     dm_session_t *session = NULL;
 
     /* delete list*/
-    dm_session_start(ctx, &session);
+    dm_session_start(ctx, SR_DS_STARTUP, &session);
 
 #define LIST_XP "/ietf-interfaces:interfaces/interface"
 
@@ -290,7 +290,7 @@ void delete_item_leaflist_test(void **state){
     dm_session_t *session = NULL;
 
     /* delete list*/
-    dm_session_start(ctx, &session);
+    dm_session_start(ctx, SR_DS_STARTUP, &session);
 
 #define LEAF_LIST_XP "/test-module:main/numbers"
 
@@ -316,7 +316,7 @@ void set_item_leaf_test(void **state){
     dm_ctx_t *ctx = *state;
     dm_session_t *session = NULL;
 
-    dm_session_start(ctx, &session);
+    dm_session_start(ctx, SR_DS_STARTUP, &session);
 
     /* replace existing leaf*/
     sr_val_t *val = NULL;
@@ -372,7 +372,7 @@ void set_item_leaf_test(void **state){
 
     dm_session_stop(ctx, session);
 
-    dm_session_start(ctx, &session);
+    dm_session_start(ctx, SR_DS_STARTUP, &session);
 
 
     /* create item from root */
@@ -432,7 +432,7 @@ void set_item_leaflist_test(void **state){
     dm_ctx_t *ctx = *state;
     dm_session_t *session = NULL;
 
-    dm_session_start(ctx, &session);
+    dm_session_start(ctx, SR_DS_STARTUP, &session);
 
     sr_val_t **values = NULL;
     size_t count = 0;
@@ -472,7 +472,7 @@ void set_item_list_test(void **state){
     dm_ctx_t *ctx = *state;
     dm_session_t *session = NULL;
 
-    dm_session_start(ctx, &session);
+    dm_session_start(ctx, SR_DS_STARTUP, &session);
 
     sr_val_t **values = NULL;
     size_t count = 0;
@@ -506,7 +506,7 @@ void set_item_container_test(void **state){
     dm_ctx_t *ctx = *state;
     dm_session_t *session = NULL;
 
-    dm_session_start(ctx, &session);
+    dm_session_start(ctx, SR_DS_STARTUP, &session);
 
     sr_val_t *value = NULL;
     rc = rp_dt_get_value_wrapper(ctx, session, "/test-module:list[key='key']/wireless", &value);
@@ -540,7 +540,7 @@ set_item_negative_test(void **state)
     dm_ctx_t *ctx = *state;
     dm_session_t *session = NULL;
 
-    dm_session_start(ctx, &session);
+    dm_session_start(ctx, SR_DS_STARTUP, &session);
 
 
     rc = rp_dt_delete_item(ctx, session, SR_DS_RUNNING, "/test-module:main", SR_EDIT_DEFAULT);
@@ -598,7 +598,7 @@ void edit_test_module_test(void **state){
     dm_session_t *session = NULL;
     sr_val_t *value = NULL;
     sr_val_t *new_set = NULL;
-    dm_session_start(ctx, &session);
+    dm_session_start(ctx, SR_DS_STARTUP, &session);
 
 #define FREE_VARS(A, B) do{sr_free_val(A); sr_free_val(B); A = NULL; B = NULL;}while(0)
 
@@ -790,7 +790,7 @@ void delete_negative_test(void **state){
     dm_ctx_t *ctx = *state;
     dm_session_t *session = NULL;
 
-    dm_session_start(ctx, &session);
+    dm_session_start(ctx, SR_DS_STARTUP, &session);
 
     /* invalid xpath*/
     rc =rp_dt_delete_item(ctx, session, SR_DS_STARTUP, "^usfd&", SR_EDIT_DEFAULT);
@@ -813,7 +813,7 @@ edit_validate_test(void **state)
 
 
     /* must when */
-    dm_session_start(ctx, &session);
+    dm_session_start(ctx, SR_DS_STARTUP, &session);
 
     sr_val_t iftype;
     iftype.xpath = NULL;
@@ -849,7 +849,7 @@ edit_validate_test(void **state)
     dm_session_stop(ctx, session);
 
     /* regexp */
-    dm_session_start(ctx, &session);
+    dm_session_start(ctx, SR_DS_STARTUP, &session);
 
     sr_val_t hexnumber;
     hexnumber.xpath = NULL;
@@ -875,7 +875,7 @@ edit_validate_test(void **state)
     dm_session_stop(ctx, session);
 
     /* mandatory leaf */
-    dm_session_start(ctx, &session);
+    dm_session_start(ctx, SR_DS_STARTUP, &session);
 
     sr_val_t name;
     name.xpath = NULL;
@@ -920,7 +920,7 @@ edit_validate_test(void **state)
     dm_session_stop(ctx, session);
 
     /* choice */
-    dm_session_start(ctx, &session);
+    dm_session_start(ctx, SR_DS_STARTUP, &session);
     sr_val_t interval;
     interval.xpath = NULL;
     interval.type = SR_UINT16_T;
@@ -956,7 +956,7 @@ edit_validate_test(void **state)
     dm_session_stop(ctx, session);
 
     /* leaf-list unique values */
-    dm_session_start(ctx, &session);
+    dm_session_start(ctx, SR_DS_STARTUP, &session);
     sr_val_t val;
     val.xpath = NULL;
     val.type = SR_UINT8_T;
@@ -990,8 +990,8 @@ edit_discard_changes_test(void **state)
     sr_val_t *valueA = NULL, *valueB = NULL;
 
 
-    dm_session_start(ctx, &sessionA);
-    dm_session_start(ctx, &sessionB);
+    dm_session_start(ctx, SR_DS_STARTUP, &sessionA);
+    dm_session_start(ctx, SR_DS_STARTUP, &sessionB);
 
     /* read value in session A*/
     rc = rp_dt_get_value_wrapper(ctx, sessionA, XP_TEST_MODULE_INT64, &valueA);
@@ -1049,8 +1049,8 @@ edit_commit_test(void **state)
     sr_val_t *valueA = NULL, *valueB = NULL;
 
 
-    dm_session_start(ctx, &sessionA);
-    dm_session_start(ctx, &sessionB);
+    dm_session_start(ctx, SR_DS_STARTUP, &sessionA);
+    dm_session_start(ctx, SR_DS_STARTUP, &sessionB);
 
     /* read value in session A*/
     rc = rp_dt_get_value_wrapper(ctx, sessionA, XP_TEST_MODULE_INT64, &valueA);
@@ -1108,7 +1108,7 @@ edit_commit_test(void **state)
     dm_session_stop(ctx, sessionB);
 
      /* check that update is permanent in new session*/
-    dm_session_start(ctx, &sessionA);
+    dm_session_start(ctx, SR_DS_STARTUP, &sessionA);
     rc = rp_dt_get_value_wrapper(ctx, sessionA, XP_TEST_MODULE_INT64, &valueA);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(valueA);
@@ -1135,7 +1135,7 @@ edit_move_test(void **state)
     sr_val_t **values = NULL;
     size_t cnt = 0;
 
-    dm_session_start(ctx, &session);
+    dm_session_start(ctx, SR_DS_STARTUP, &session);
     /* existing item not list */
     rc = rp_dt_move_list(ctx, session, "/test-module:main", SR_MOVE_UP);
     assert_int_equal(SR_ERR_INVAL_ARG, rc);
@@ -1208,7 +1208,7 @@ edit_move2_test(void **state)
     sr_val_t **values = NULL;
     size_t cnt = 0;
 
-    dm_session_start(ctx, &session);
+    dm_session_start(ctx, SR_DS_STARTUP, &session);
 
     /* empty the data tree*/
     rc = rp_dt_delete_item(ctx, session, SR_DS_STARTUP, "/test-module:main", SR_EDIT_DEFAULT);
