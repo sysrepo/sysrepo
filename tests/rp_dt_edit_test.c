@@ -1249,14 +1249,11 @@ edit_move2_test(void **state)
 
     sr_free_values_arr(values, cnt);
 
+    /* at the top, this move does nothing*/
     rc = rp_dt_move_list(ctx, session, "/test-module:user[name='nameA']", SR_MOVE_UP);
     assert_int_equal(SR_ERR_OK, rc);
 
-    /* TODO waiting for cestnet/libyang #19
     rc = rp_dt_move_list(ctx, session, "/test-module:user[name='nameA']", SR_MOVE_DOWN);
-    assert_int_equal(SR_ERR_OK, rc);*/
-
-    rc = rp_dt_move_list(ctx, session, "/test-module:user[name='nameB']", SR_MOVE_UP);
     assert_int_equal(SR_ERR_OK, rc);
 
     rc = rp_dt_move_list(ctx, session, "/test-module:user[name='nameC']", SR_MOVE_UP);
@@ -1268,6 +1265,25 @@ edit_move2_test(void **state)
 
     assert_string_equal("/test-module:user[name='nameB']", values[0]->xpath);
     assert_string_equal("/test-module:user[name='nameC']", values[1]->xpath);
+    assert_string_equal("/test-module:user[name='nameA']", values[2]->xpath);
+
+    sr_free_values_arr(values, cnt);
+
+    rc = rp_dt_move_list(ctx, session, "/test-module:user[name='nameB']", SR_MOVE_DOWN);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_move_list(ctx, session, "/test-module:user[name='nameA']", SR_MOVE_DOWN);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_move_list(ctx, session, "/test-module:user[name='nameC']", SR_MOVE_UP);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_get_values_wrapper(ctx, session, "/test-module:user", &values, &cnt);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(3, cnt);
+
+    assert_string_equal("/test-module:user[name='nameC']", values[0]->xpath);
+    assert_string_equal("/test-module:user[name='nameB']", values[1]->xpath);
     assert_string_equal("/test-module:user[name='nameA']", values[2]->xpath);
 
     sr_free_values_arr(values, cnt);
