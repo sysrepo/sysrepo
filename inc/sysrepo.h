@@ -197,15 +197,13 @@ void sr_logger_set_level(sr_log_level_t ll_stderr, sr_log_level_t ll_syslog);
 ////////////////////////////////////////////////////////////////////////////////
 
 /**
- * @brief Data stores that sysrepo supports.
+ * @brief Data stores that sysrepo supports. Both are editable via implicit candidate.
+ * To make changes permanent in edited datastore ::sr_commit must be issued.
  */
 typedef enum sr_datastore_e {
     SR_DS_RUNNING = 0,    /**< Currently running configuration.
-                               @note Direct writes to running are not allowed, changes need to be made via candidate. */
-    SR_DS_CANDIDATE = 1,  /**< Candidate datastore - accepts configuration changes.
-                               @note Candidate is isolated for each session (not committed changes are not visible in other sessions). */
-    SR_DS_STARTUP = 2     /**< Configuration loaded upon application startup.
-                               @note Direct writes to startup are not allowed, changes need to be made via running. */
+                               @note This datastore is supported only by an application that is subscribed for notifications.  */
+    SR_DS_STARTUP = 1     /**< Configuration loaded upon application startup. */
 } sr_datastore_t;
 
 /**

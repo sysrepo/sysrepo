@@ -88,16 +88,16 @@ cl_connection_test(void **state)
     assert_non_null(sess1);
 
     /* start few new sessions in conn 2 */
-    rc = sr_session_start(conn2, "bob1", SR_DS_CANDIDATE, &sess_other1);
+    rc = sr_session_start(conn2, "bob1", SR_DS_STARTUP, &sess_other1);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(sess_other1);
     rc = sr_session_start(conn2, "bob2", SR_DS_STARTUP, &sess_other2);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(sess_other2);
-    rc = sr_session_start(conn2, "bob3", SR_DS_CANDIDATE, &sess2);
+    rc = sr_session_start(conn2, "bob3", SR_DS_STARTUP, &sess2);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(sess2);
-    rc = sr_session_start(conn2, "bob4", SR_DS_CANDIDATE, &sess2);
+    rc = sr_session_start(conn2, "bob4", SR_DS_STARTUP, &sess2);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(sess2);
 
@@ -130,7 +130,7 @@ cl_list_schemas_test(void **state)
     int rc = 0;
 
     /* start a session */
-    rc = sr_session_start(conn, NULL, SR_DS_CANDIDATE, &session);
+    rc = sr_session_start(conn, NULL, SR_DS_STARTUP, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* list schemas request */
@@ -170,7 +170,7 @@ cl_get_item_test(void **state)
     int rc = 0;
 
     /* start a session */
-    rc = sr_session_start(conn, "alice", SR_DS_CANDIDATE, &session);
+    rc = sr_session_start(conn, "alice", SR_DS_STARTUP, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* perform a get-item request */
@@ -238,7 +238,7 @@ cl_get_items_test(void **state)
     int rc = 0;
 
     /* start a session */
-    rc = sr_session_start(conn, "alice", SR_DS_CANDIDATE, &session);
+    rc = sr_session_start(conn, "alice", SR_DS_STARTUP, &session);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(session);
 
@@ -300,7 +300,7 @@ cl_get_items_iter_test(void **state)
     int rc = 0;
 
     /* start a session */
-    rc = sr_session_start(conn, "alice", SR_DS_CANDIDATE, &session);
+    rc = sr_session_start(conn, "alice", SR_DS_STARTUP, &session);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(session);
 
@@ -451,7 +451,7 @@ cl_set_item_test(void **state)
     int rc = 0;
 
     /* start a session */
-    rc = sr_session_start(conn, "alice", SR_DS_CANDIDATE, &session);
+    rc = sr_session_start(conn, "alice", SR_DS_STARTUP, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* perform a set-item request */
@@ -475,7 +475,7 @@ cl_delete_item_test(void **state)
     int rc = 0;
 
     /* start a session */
-    rc = sr_session_start(conn, "alice", SR_DS_CANDIDATE, &session);
+    rc = sr_session_start(conn, "alice", SR_DS_STARTUP, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* perform a delete-item request */
@@ -497,7 +497,7 @@ cl_move_item_test(void **state)
     int rc = 0;
 
     /* start a session */
-    rc = sr_session_start(conn, "alice", SR_DS_CANDIDATE, &session);
+    rc = sr_session_start(conn, "alice", SR_DS_STARTUP, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* perform a move-item request */
@@ -521,7 +521,7 @@ cl_validate_test(void **state)
     size_t error_cnt = 0;
 
     /* start a session */
-    rc = sr_session_start(conn, "alice", SR_DS_CANDIDATE, &session);
+    rc = sr_session_start(conn, "alice", SR_DS_STARTUP, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* perform a validate request */
@@ -554,7 +554,7 @@ cl_commit_test(void **state)
     size_t error_cnt = 0;
 
     /* start a session */
-    rc = sr_session_start(conn, "alice", SR_DS_CANDIDATE, &session);
+    rc = sr_session_start(conn, "alice", SR_DS_STARTUP, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* perform a commit request */
@@ -585,7 +585,7 @@ cl_discard_changes_test(void **state)
     int rc = 0;
 
     /* start a session */
-    rc = sr_session_start(conn, "alice", SR_DS_CANDIDATE, &session);
+    rc = sr_session_start(conn, "alice", SR_DS_STARTUP, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* perform a discard-changes request */

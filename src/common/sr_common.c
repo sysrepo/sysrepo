@@ -1424,9 +1424,6 @@ sr_datastore_sr_to_gpb(const sr_datastore_t sr_ds)
         case SR_DS_RUNNING:
             return SR__DATA_STORE__RUNNING;
             break;
-        case SR_DS_CANDIDATE:
-            return SR__DATA_STORE__CANDIDATE;
-            break;
         case SR_DS_STARTUP:
             return SR__DATA_STORE__STARTUP;
             break;
@@ -1440,9 +1437,6 @@ sr_datastore_gpb_to_sr(Sr__DataStore gpb_ds)
     switch (gpb_ds) {
         case SR__DATA_STORE__RUNNING:
             return SR_DS_RUNNING;
-            break;
-        case SR__DATA_STORE__CANDIDATE:
-            return SR_DS_CANDIDATE;
             break;
         case SR__DATA_STORE__STARTUP:
             return SR_DS_STARTUP;

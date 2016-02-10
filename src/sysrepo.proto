@@ -84,8 +84,7 @@ message Value {
  */
 enum DataStore {
   RUNNING = 1;
-  CANDIDATE = 2;
-  STARTUP = 3;
+  STARTUP = 2;
 }
 
 /**
