@@ -5,7 +5,7 @@ set(SYSREPO_DESC "YANG-based system repository")
 # setup version
 set(SYSREPO_MAJOR_VERSION 0)
 set(SYSREPO_MINOR_VERSION 1)
-set(SYSREPO_MICRO_VERSION 4)
+set(SYSREPO_MICRO_VERSION 5)
 set(SYSREPO_VERSION ${SYSREPO_MAJOR_VERSION}.${SYSREPO_MINOR_VERSION}.${SYSREPO_MICRO_VERSION})
 
 # set default build type if not specified by user
@@ -24,7 +24,9 @@ endif()
 if(NOT LIB_INSTALL_DIR)
     set(LIB_INSTALL_DIR "lib")
 endif()
-
+if(NOT BIN_INSTALL_DIR)
+    set(BIN_INSTALL_DIR "bin")
+endif()
 if(NOT INCLUDE_INSTALL_DIR)
     set(INCLUDE_INSTALL_DIR "include")
 endif()

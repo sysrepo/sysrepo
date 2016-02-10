@@ -747,6 +747,11 @@ rp_cleanup(rp_ctx_t *rp_ctx)
         pthread_mutex_destroy(&rp_ctx->request_queue_mutex);
         pthread_cond_destroy(&rp_ctx->request_queue_cv);
 
+        while (sr_cbuff_dequeue(rp_ctx->request_queue, &req)) {
+            if (NULL != req.msg) {
+                sr__msg__free_unpacked(req.msg, NULL);
+            }
+        }
         sr_cbuff_cleanup(rp_ctx->request_queue);
         dm_cleanup(rp_ctx->dm_ctx);
         free(rp_ctx);

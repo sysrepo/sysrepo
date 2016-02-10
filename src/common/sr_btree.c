@@ -74,11 +74,13 @@ sr_btree_init(sr_btree_compare_item_cb compare_item_cb, sr_btree_free_item_cb fr
 #ifdef USE_AVL_LIB
     tree->avl_tree = avl_alloc_tree(compare_item_cb, free_item_cb);
     if (NULL == tree->avl_tree) {
+        free(tree);
         return SR_ERR_NOMEM;
     }
 #else
     tree->rb_tree = rbinit(sr_redblack_compare_item_cb, tree);
     if (NULL == tree->rb_tree) {
+        free(tree);
         return SR_ERR_NOMEM;
     }
 #endif

@@ -49,28 +49,33 @@ set(SYSREPO-ENGINE-SOURCES
 
 set(HEADERS "${PROJECT_SOURCE_DIR}/inc/sysrepo.h")
 
-# shared and static library
-add_library(sysrepo ${SYSREPO-SOURCES})
-add_library(sysrepo_so SHARED ${SYSREPO-SOURCES})
-SET_TARGET_PROPERTIES(sysrepo_so PROPERTIES
-              OUTPUT_NAME sysrepo CLEAN_DIRECT_OUTPUT 1)
-
-add_library(sysrepo-engine ${SYSREPO-ENGINE-SOURCES})
-add_library(sysrepo-engine_so SHARED ${SYSREPO-ENGINE-SOURCES})
-SET_TARGET_PROPERTIES(sysrepo-engine_so PROPERTIES
-              OUTPUT_NAME sysrepo-engine CLEAN_DIRECT_OUTPUT 1)
-
 if(USE_AVL_LIB)
     set(LINK_LIBRARIES pthread ${AVL_LIBRARIES} ${EV_LIBRARIES} ${PROTOBUF-C_LIBRARIES} ${YANG_LIBRARIES})
 else(USE_AVL_LIB)
     set(LINK_LIBRARIES pthread ${REDBLACK_LIBRARIES} ${EV_LIBRARIES} ${PROTOBUF-C_LIBRARIES} ${YANG_LIBRARIES})
 endif(USE_AVL_LIB)
 
+# sysrepo library
+add_library(sysrepo ${SYSREPO-SOURCES})
+add_library(sysrepo_so SHARED ${SYSREPO-SOURCES})
+SET_TARGET_PROPERTIES(sysrepo_so PROPERTIES
+              OUTPUT_NAME sysrepo CLEAN_DIRECT_OUTPUT 1)
 target_link_libraries(sysrepo ${LINK_LIBRARIES} sysrepo-engine)
 target_link_libraries(sysrepo_so ${LINK_LIBRARIES} sysrepo-engine_so)
+
+# sysrepo-engine library
+add_library(sysrepo-engine ${SYSREPO-ENGINE-SOURCES})
+add_library(sysrepo-engine_so SHARED ${SYSREPO-ENGINE-SOURCES})
+SET_TARGET_PROPERTIES(sysrepo-engine_so PROPERTIES
+              OUTPUT_NAME sysrepo-engine CLEAN_DIRECT_OUTPUT 1)
 target_link_libraries(sysrepo-engine ${LINK_LIBRARIES})
 target_link_libraries(sysrepo-engine_so ${LINK_LIBRARIES})
 
+# sysrepo daemon
+add_executable(sysrepod daemon.c)
+target_link_libraries(sysrepod sysrepo-engine)
+
 install(TARGETS sysrepo_so DESTINATION ${LIB_INSTALL_DIR})
 install(TARGETS sysrepo-engine_so DESTINATION ${LIB_INSTALL_DIR})
+install(TARGETS sysrepod DESTINATION ${BIN_INSTALL_DIR})
 install(FILES ${HEADERS} DESTINATION ${INCLUDE_INSTALL_DIR})
