@@ -60,6 +60,37 @@ sr_strerror(int err_code)
     }
 }
 
+const char *
+sr_operation_name(Sr__Operation operation)
+{
+    switch (operation) {
+    case SR__OPERATION__SESSION_START:
+        return "session-start";
+    case SR__OPERATION__SESSION_STOP:
+        return "session-stop";
+    case SR__OPERATION__LIST_SCHEMAS:
+        return "list-schemas";
+    case SR__OPERATION__GET_ITEM:
+        return "get-item";
+    case SR__OPERATION__GET_ITEMS:
+        return "get-items";
+    case SR__OPERATION__SET_ITEM:
+        return "set-item";
+    case SR__OPERATION__DELETE_ITEM:
+        return "delete-item";
+    case SR__OPERATION__MOVE_ITEM:
+        return "move-item";
+    case SR__OPERATION__VALIDATE:
+        return "validate";
+    case SR__OPERATION__COMMIT:
+        return "commit";
+    case SR__OPERATION__DISCARD_CHANGES:
+        return "discard-changes";
+    default:
+        return "unknown";
+    }
+}
+
 /**
  * @brief FIFO circular buffer queue context.
  */

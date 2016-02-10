@@ -167,6 +167,15 @@
     } while(0)
 
 /**
+ * @brief Returns string with name of the provided operation.
+ *
+ * @param[in] operation Sysrepo operation in GPB enum value format.
+ *
+ * @return Name of the operation (statically allocated, do not free).
+ */
+const char *sr_operation_name(Sr__Operation operation);
+
+/**
  * @brief FIFO circular buffer queue context.
  */
 typedef struct sr_cbuff_s sr_cbuff_t;
