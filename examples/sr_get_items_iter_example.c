@@ -18,6 +18,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include "sysrepo.h"
@@ -74,7 +75,7 @@ main(int argc, char **argv)
     }
 
     /* start session */
-    rc = sr_session_start(conn, NULL, SR_DS_CANDIDATE, &sess);
+    rc = sr_session_start(conn, NULL, SR_DS_STARTUP, &sess);
     if (SR_ERR_OK != rc) {
         goto cleanup;
     }
