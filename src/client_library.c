@@ -401,39 +401,39 @@ cl_request_process(sr_conn_ctx_t *conn_ctx, Sr__Msg *msg_req, Sr__Msg **msg_resp
 {
     int rc = SR_ERR_OK;
 
-    SR_LOG_DBG("Sending a request for operation=%d", expected_response_op);
+    SR_LOG_DBG("Sending %s request.", sr_operation_name(expected_response_op));
 
     pthread_mutex_lock(&conn_ctx->lock);
 
     /* send the request */
     rc = cl_message_send(conn_ctx, msg_req);
     if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Unable to send the message with request (conn=%p, operation=%d).",
-                (void*)conn_ctx, msg_req->request->operation);
+        SR_LOG_ERR("Unable to send the message with request (conn=%p, operation=%s).",
+                (void*)conn_ctx, sr_operation_name(msg_req->request->operation));
         pthread_mutex_unlock(&conn_ctx->lock);
         return rc;
     }
 
-    SR_LOG_DBG("Request for operation=%d sent, waiting for response.", expected_response_op);
+    SR_LOG_DBG("%s request sent, waiting for response.", sr_operation_name(expected_response_op));
 
     /* receive the response */
     rc = cl_message_recv(conn_ctx, msg_resp);
     if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Unable to receive the message with response (conn=%p, operation=%d).",
-                (void*)conn_ctx, msg_req->request->operation);
+        SR_LOG_ERR("Unable to receive the message with response (conn=%p, operation=%s).",
+                (void*)conn_ctx, sr_operation_name(msg_req->request->operation));
         pthread_mutex_unlock(&conn_ctx->lock);
         return rc;
     }
 
     pthread_mutex_unlock(&conn_ctx->lock);
 
-    SR_LOG_DBG("Response for operation=%d received, processing.", expected_response_op);
+    SR_LOG_DBG("%s response received, processing.", sr_operation_name(expected_response_op));
 
     /* validate the response */
     rc = sr_pb_msg_validate(*msg_resp, SR__MSG__MSG_TYPE__RESPONSE, expected_response_op);
     if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Malformed message with response received (conn=%p, operation=%d).",
-                (void*)conn_ctx, msg_req->request->operation);
+        SR_LOG_ERR("Malformed message with response received (conn=%p, operation=%s).",
+                (void*)conn_ctx, sr_operation_name(msg_req->request->operation));
         return rc;
     }
 
@@ -443,9 +443,9 @@ cl_request_process(sr_conn_ctx_t *conn_ctx, Sr__Msg *msg_req, Sr__Msg **msg_resp
         if (SR_ERR_NOT_FOUND != (*msg_resp)->response->result &&
                 SR_ERR_VALIDATION_FAILED != (*msg_resp)->response->result &&
                 SR_ERR_COMMIT_FAILED != (*msg_resp)->response->result) {
-            SR_LOG_ERR("Error by processing of the request conn=%p, operation=%d): %s.",
-                (void*)conn_ctx, msg_req->request->operation, (NULL != (*msg_resp)->response->error_msg) ?
-                        (*msg_resp)->response->error_msg : sr_strerror((*msg_resp)->response->result));
+            SR_LOG_ERR("Error by processing of the request conn=%p, operation=%s): %s.",
+                (void*)conn_ctx, sr_operation_name(msg_req->request->operation),
+                (NULL != (*msg_resp)->response->error_msg) ? (*msg_resp)->response->error_msg : sr_strerror((*msg_resp)->response->result));
         }
         return (*msg_resp)->response->result;
     }

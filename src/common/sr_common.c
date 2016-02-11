@@ -60,6 +60,37 @@ sr_strerror(int err_code)
     }
 }
 
+const char *
+sr_operation_name(Sr__Operation operation)
+{
+    switch (operation) {
+    case SR__OPERATION__SESSION_START:
+        return "session-start";
+    case SR__OPERATION__SESSION_STOP:
+        return "session-stop";
+    case SR__OPERATION__LIST_SCHEMAS:
+        return "list-schemas";
+    case SR__OPERATION__GET_ITEM:
+        return "get-item";
+    case SR__OPERATION__GET_ITEMS:
+        return "get-items";
+    case SR__OPERATION__SET_ITEM:
+        return "set-item";
+    case SR__OPERATION__DELETE_ITEM:
+        return "delete-item";
+    case SR__OPERATION__MOVE_ITEM:
+        return "move-item";
+    case SR__OPERATION__VALIDATE:
+        return "validate";
+    case SR__OPERATION__COMMIT:
+        return "commit";
+    case SR__OPERATION__DISCARD_CHANGES:
+        return "discard-changes";
+    default:
+        return "unknown";
+    }
+}
+
 /**
  * @brief FIFO circular buffer queue context.
  */
@@ -1423,12 +1454,11 @@ sr_datastore_sr_to_gpb(const sr_datastore_t sr_ds)
     switch (sr_ds) {
         case SR_DS_RUNNING:
             return SR__DATA_STORE__RUNNING;
-            break;
         case SR_DS_STARTUP:
+            /* fall through */
+        default:
             return SR__DATA_STORE__STARTUP;
-            break;
     }
-    return SR__DATA_STORE__RUNNING;
 }
 
 sr_datastore_t
@@ -1437,14 +1467,11 @@ sr_datastore_gpb_to_sr(Sr__DataStore gpb_ds)
     switch (gpb_ds) {
         case SR__DATA_STORE__RUNNING:
             return SR_DS_RUNNING;
-            break;
         case SR__DATA_STORE__STARTUP:
-            return SR_DS_STARTUP;
-            break;
+            /* fall through */
         default:
-            return SR_DS_RUNNING;
+            return SR_DS_STARTUP;
     }
-    return SR_DS_RUNNING;
 }
 
 Sr__MoveItemReq__MoveDirection
@@ -1453,12 +1480,11 @@ sr_move_direction_sr_to_gpb(sr_move_direction_t sr_direction)
     switch (sr_direction) {
         case SR_MOVE_UP:
             return SR__MOVE_ITEM_REQ__MOVE_DIRECTION__UP;
-            break;
         case SR_MOVE_DOWN:
+            /* fall through */
+        default:
             return SR__MOVE_ITEM_REQ__MOVE_DIRECTION__DOWN;
-            break;
     }
-    return SR__MOVE_ITEM_REQ__MOVE_DIRECTION__UP;
 }
 
 sr_move_direction_t
@@ -1468,11 +1494,10 @@ sr_move_direction_gpb_to_sr(Sr__MoveItemReq__MoveDirection gpb_direction)
         case SR__MOVE_ITEM_REQ__MOVE_DIRECTION__UP:
             return SR_MOVE_UP;
         case SR__MOVE_ITEM_REQ__MOVE_DIRECTION__DOWN:
-            return SR_MOVE_DOWN;
+            /* fall through */
         default:
-            return SR_MOVE_UP;
+            return SR_MOVE_DOWN;
     }
-    return SR_MOVE_UP;
 }
 
 void

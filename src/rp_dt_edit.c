@@ -357,7 +357,7 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const
 
     rc = rp_dt_find_deepest_match_wrapper(dm_ctx, session, xpath, &m);
     if (SR_ERR_NOT_FOUND == rc) {
-        if (XP_GET_NODE_COUNT(m.loc_id) != 1 && options & SR_EDIT_NON_RECURSIVE) {
+        if (XP_GET_NODE_COUNT(m.loc_id) != 1 && (options & SR_EDIT_NON_RECURSIVE)) {
             SR_LOG_ERR("A preceding node is missing '%s' create it or omit the non recursive option", xpath);
             rc = SR_ERR_INVAL_ARG;
             goto cleanup;
