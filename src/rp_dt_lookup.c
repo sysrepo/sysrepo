@@ -29,12 +29,23 @@ rp_dt_push_child_nodes_to_stack(rp_node_stack_t **stack, struct lyd_node *node)
     CHECK_NULL_ARG2(stack, node);
     int rc = SR_ERR_OK;
     struct lyd_node *n = node->child;
-    while (NULL != n) {
+    if (NULL == n) {
+        return rc;
+    }
+    /* find last child, push the child on stack in reverse order*/
+    while (NULL != n->next) {
+        n = n->next;
+    }
+
+    while (1) {
         rc = rp_ns_push(stack, n);
         if (SR_ERR_OK != rc) {
             return SR_ERR_INTERNAL;
         }
-        n = n->next;
+        if (node->child == n) {
+            break;
+        }
+        n = n->prev;
     }
     return rc;
 }
@@ -45,7 +56,12 @@ rp_dt_push_nodes_with_same_name_to_stack(rp_node_stack_t **stack, struct lyd_nod
     CHECK_NULL_ARG2(stack, node);
     int rc = SR_ERR_OK;
     struct lyd_node *n = node;
-    while (NULL != n) {
+    /* find last sibling, push them on stack in reverse order*/
+    while (NULL != n->next) {
+        n = n->next;
+    }
+
+    while (1) {
         if (NULL == n->schema || NULL == n->schema->name) {
             SR_LOG_ERR_MSG("Missing schema information");
             return SR_ERR_INTERNAL;
@@ -56,7 +72,10 @@ rp_dt_push_nodes_with_same_name_to_stack(rp_node_stack_t **stack, struct lyd_nod
                 return SR_ERR_INTERNAL;
             }
         }
-        n = n->next;
+        if (node == n) {
+            break;
+        }
+        n = n->prev;
     }
     return rc;
 }
