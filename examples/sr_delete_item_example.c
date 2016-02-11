@@ -1,7 +1,7 @@
 /**
- * @file sr_set_item_example.c
+ * @file sr_delete_item_example.c
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
- * @brief Example usage of sr_set_item_example function.
+ * @brief Example usage of sr_delete_item_example function.
  *
  * @copyright
  * Copyright 2016 Cisco Systems, Inc.
@@ -29,11 +29,10 @@ main(int argc, char **argv)
 {
     sr_conn_ctx_t *conn = NULL;
     sr_session_ctx_t *sess = NULL;
-    sr_val_t value = { 0 };
     int rc = SR_ERR_OK;
 
     /* connect to sysrepo */
-    rc = sr_connect("app3", true, &conn);
+    rc = sr_connect("app4", true, &conn);
     if (SR_ERR_OK != rc) {
         goto cleanup;
     }
@@ -44,14 +43,10 @@ main(int argc, char **argv)
         goto cleanup;
     }
 
-    /* set 'prefix-length' leaf inside of the 'address' list entry with key '172.16.0.1'
-       (list entry will be automatically created if it does not exist) */
-    value.type = SR_UINT8_T;
-    value.data.uint8_val = 24;
-    rc = sr_set_item(sess, "/ietf-interfaces:interfaces/interface[name='gigaeth0']/ietf-ip:ipv4/address[ip='172.16.0.1']/prefix-length",
-            &value, SR_EDIT_DEFAULT);
+    /* delete 'address' list entry with key '172.16.0.1' with all its content */
+    rc = sr_delete_item(sess, "/ietf-interfaces:interfaces/interface[name='gigaeth0']/ietf-ip:ipv4/address[ip='172.16.0.1']", SR_EDIT_DEFAULT);
     if (SR_ERR_OK != rc) {
-        printf("Error by sr_set_item: %s\n", sr_strerror(rc));
+        printf("Error by sr_delete_item: %s\n", sr_strerror(rc));
         goto cleanup;
     }
 
