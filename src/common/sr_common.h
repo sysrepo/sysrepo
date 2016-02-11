@@ -494,6 +494,17 @@ int sr_schemas_gpb_to_sr(const Sr__Schema **gpb_schemas, const size_t schema_cnt
  */
 int sr_val_to_str(const sr_val_t *value, struct lys_node *schema_node, char **out);
 
+/**
+ * @brief Fills error information in GPB response.
+ *
+ * @param[in,out] msg GPB message with response where the error information should be filled.
+ * @param[in] error_message Error message (can be NULL). String will be duplicated.
+ * @param[in] error_path XPath to node where error occurred (can be NULL). String will be duplicated.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_gpb_resp_fill_error(Sr__Msg *msg, const char *error_message, const char *error_path);
+
 /**@} common */
 
 #endif /* SRC_SR_COMMON_H_ */

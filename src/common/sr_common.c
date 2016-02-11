@@ -1755,3 +1755,36 @@ sr_val_to_str(const sr_val_t *value, struct lys_node *schema_node, char **out)
     }
     return SR_ERR_OK;
 }
+
+int
+sr_gpb_resp_fill_error(Sr__Msg *msg, const char *error_message, const char *error_path)
+{
+    CHECK_NULL_ARG2(msg, msg->response);
+
+    msg->response->error = calloc(1, sizeof(*msg->response->error));
+    if (NULL == msg->response->error) {
+        goto nomem;
+    }
+    sr__error__init(msg->response->error);
+    if (NULL != error_message) {
+        msg->response->error->message = strdup(error_message);
+        if (NULL == msg->response->error->message) {
+            goto nomem;
+        }
+    }
+    if (NULL != error_path) {
+        msg->response->error->path = strdup(error_path);
+        if (NULL == msg->response->error->message) {
+            goto nomem;
+        }
+    }
+    return SR_ERR_OK;
+
+nomem:
+    if (NULL != msg->response->error) {
+        sr__error__free_unpacked(msg->response->error, NULL);
+    }
+    SR_LOG_ERR_MSG("Response error allocation failed.");
+    return SR_ERR_NOMEM;
+}
+

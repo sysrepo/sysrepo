@@ -161,6 +161,14 @@ typedef enum sr_error_e {
 } sr_error_t;
 
 /**
+ * @brief Detailed sysrepo error information.
+ */
+typedef struct sr_error_info_s {
+    const char *message;  /**< Error message. */
+    const char *path;     /**< XPath to the node where the error has been discovered. */
+} sr_error_info_t;
+
+/**
  * @brief Log levels used to determine if message of certain severity should be printed.
  */
 typedef enum {
@@ -259,6 +267,16 @@ int sr_session_start(sr_conn_ctx_t *conn_ctx, const char *user_name, sr_datastor
  * @return Error code (SR_ERR_OK on success).
  */
 int sr_session_stop(sr_session_ctx_t *session);
+
+/**
+ * @brief TODO
+ */
+int sr_get_last_error(sr_session_ctx_t *session, sr_error_info_t *error_info);
+
+/**
+ * @brief TODO
+ */
+int sr_get_last_error_list(sr_session_ctx_t *session, sr_error_info_t **error_info, size_t *error_cnt);
 
 
 ////////////////////////////////////////////////////////////////////////////////

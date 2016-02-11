@@ -445,7 +445,8 @@ cl_request_process(sr_conn_ctx_t *conn_ctx, Sr__Msg *msg_req, Sr__Msg **msg_resp
                 SR_ERR_COMMIT_FAILED != (*msg_resp)->response->result) {
             SR_LOG_ERR("Error by processing of the request conn=%p, operation=%s): %s.",
                 (void*)conn_ctx, sr_operation_name(msg_req->request->operation),
-                (NULL != (*msg_resp)->response->error_msg) ? (*msg_resp)->response->error_msg : sr_strerror((*msg_resp)->response->result));
+                (NULL != (*msg_resp)->response->error && NULL != (*msg_resp)->response->error->message) ?
+                        (*msg_resp)->response->error->message : sr_strerror((*msg_resp)->response->result));
         }
         return (*msg_resp)->response->result;
     }
@@ -1096,7 +1097,7 @@ sr_set_item(sr_session_ctx_t *session, const char *path, const sr_val_t *value, 
     msg_req->request->set_item_req->options = opts;
 
     /* duplicate the content of sr_val_t to gpb */
-    if (NULL != value){
+    if (NULL != value) {
         rc = sr_dup_val_t_to_gpb(value, &msg_req->request->set_item_req->value);
         if (SR_ERR_OK != rc){
             SR_LOG_ERR_MSG("Copying from sr_val_t to gpb failed.");
@@ -1247,10 +1248,10 @@ sr_validate(sr_session_ctx_t *session, char ***errors, size_t *error_cnt)
     /* return validation errors if requested and if there are any */
     if ((NULL != errors) && (NULL != error_cnt) && (validate_resp->n_errors > 0)) {
         /* set errors to output arguments, GPB pointers to NULL */
-        *errors = validate_resp->errors;
-        *error_cnt = validate_resp->n_errors;
-        validate_resp->errors = NULL;
-        validate_resp->n_errors = 0;
+//        *errors = validate_resp->errors; // TODO
+//        *error_cnt = validate_resp->n_errors;
+//        validate_resp->errors = NULL;
+//        validate_resp->n_errors = 0;
     }
 
     sr__msg__free_unpacked(msg_req, NULL);
@@ -1299,10 +1300,10 @@ sr_commit(sr_session_ctx_t *session, char ***errors, size_t *error_cnt)
     /* return commit errors if requested and if there are any */
     if ((NULL != errors) && (NULL != error_cnt) && (commit_resp->n_errors > 0)) {
         /* set errors to output arguments, GPB pointers to NULL */
-        *errors = commit_resp->errors;
-        *error_cnt = commit_resp->n_errors;
-        commit_resp->errors = NULL;
-        commit_resp->n_errors = 0;
+//        *errors = commit_resp->errors; // TODO
+//        *error_cnt = commit_resp->n_errors;
+//        commit_resp->errors = NULL;
+//        commit_resp->n_errors = 0;
     }
 
     sr__msg__free_unpacked(msg_req, NULL);

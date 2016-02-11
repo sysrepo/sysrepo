@@ -413,8 +413,8 @@ rp_validate_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr_
     char **errors = NULL;
     size_t err_cnt = 0;
     rc = dm_validate_session_data_trees(rp_ctx->dm_ctx, session->dm_session, &errors, &err_cnt);
-    resp->response->validate_resp->errors = errors;
-    resp->response->validate_resp->n_errors = err_cnt;
+//    resp->response->validate_resp->errors = errors; // TODO
+//    resp->response->validate_resp->n_errors = err_cnt;
 
     /* set response code */
     resp->response->result = rc;
@@ -448,8 +448,8 @@ rp_commit_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__M
     char **errors = NULL;
     size_t err_cnt = 0;
     rc = dm_commit(rp_ctx->dm_ctx, session->dm_session, &errors, &err_cnt);
-    resp->response->commit_resp->errors = errors;
-    resp->response->commit_resp->n_errors = err_cnt;
+//    resp->response->commit_resp->errors = errors;  // TODO
+//    resp->response->commit_resp->n_errors = err_cnt;
 
     /* set response code */
     resp->response->result = rc;

@@ -378,7 +378,8 @@ cm_session_neg_test(void **state) {
     assert_non_null(msg->response);
     assert_int_not_equal(msg->response->result, SR_ERR_OK);
     assert_non_null(sr_strerror(msg->response->result));
-    assert_non_null(msg->response->error_msg);
+    assert_non_null(msg->response->error);
+    assert_non_null(msg->response->error->message);
     sr__msg__free_unpacked(msg, NULL);
 
     /* try sending a message with invalid type */
