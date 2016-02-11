@@ -525,18 +525,18 @@ cl_move_item_test(void **state)
     sr_free_values(values, cnt);
 
     rc = sr_move_item(session, "/test-module:user[name='nameA']", SR_MOVE_DOWN);
-    assert_int_equal(rc, SR_ERR_INVAL_ARG);
+    assert_int_equal(rc, SR_ERR_OK);
 
     rc = sr_move_item(session, "/test-module:user[name='nameC']", SR_MOVE_UP);
-    assert_int_equal(rc, SR_ERR_INVAL_ARG);
+    assert_int_equal(rc, SR_ERR_OK);
 
     rc = sr_get_items(session, "/test-module:user", &values, &cnt);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(3, cnt);
 
     assert_string_equal("/test-module:user[name='nameB']", values[0].xpath);
-    assert_string_equal("/test-module:user[name='nameA']", values[1].xpath);
-    assert_string_equal("/test-module:user[name='nameC']", values[2].xpath);
+    assert_string_equal("/test-module:user[name='nameC']", values[1].xpath);
+    assert_string_equal("/test-module:user[name='nameA']", values[2].xpath);
     sr_free_values(values, cnt);
 
     /* stop the session */
