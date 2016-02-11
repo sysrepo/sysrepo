@@ -138,6 +138,27 @@ int cm_stop(cm_ctx_t *cm_ctx);
  */
 int cm_msg_send(cm_ctx_t *cm_ctx, Sr__Msg *msg);
 
+/**
+ * @brief Callback to be called when a watched signal (registered with
+ * ::cm_watch_signal) has been caught.
+ *
+ * @param[in] cm_ctx Connection Manager context.
+ * @param[in] signum Number of the signal that has arrived.
+ */
+typedef void (*cm_signal_cb)(cm_ctx_t *cm_ctx, int signum);
+
+/**
+ * @brief Register callback which will be called when specified signal is caught
+ * and start watching for the signal.
+ *
+ * @param[in] cm_ctx Connection Manager context.
+ * @param[in] signum Number of the signal that needs to be watched.
+ * @param[in] callback Callback to be called when the signal is caught.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int cm_watch_signal(cm_ctx_t *cm_ctx, int signum, cm_signal_cb callback);
+
 /**@} cm */
 
 #endif /* SRC_CONNECTION_MANAGER_H_ */

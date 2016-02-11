@@ -48,7 +48,15 @@
  */
 
 #define SR_LOGGING_ENABLED (1)           /**< Controls whether logging is enabled. */
-#define SR_LOG_PRINT_FUNCTION_NAMES (1)  /**< Controls whether function names should be printed. */
+
+/**
+ * Controls whether function names should be printed.
+ */
+#ifdef NDEBUG
+    #define SR_LOG_PRINT_FUNCTION_NAMES (0)
+#else
+    #define SR_LOG_PRINT_FUNCTION_NAMES (1)
+#endif
 
 extern volatile uint8_t sr_ll_stderr;  /**< Holds current level of stderr debugs. */
 extern volatile uint8_t sr_ll_syslog;  /**< Holds current level of syslog debugs. */

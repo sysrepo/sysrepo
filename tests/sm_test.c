@@ -34,7 +34,7 @@ setup(void **state) {
     sm_ctx_t *ctx = NULL;
 
     sr_logger_init(NULL);
-    sr_logger_set_level(SR_LL_ERR, SR_LL_ERR); /* print only errors. */
+    sr_logger_set_level(SR_LL_DBG, SR_LL_ERR);
 
     sm_init(NULL, NULL, &ctx);
     *state = ctx;
@@ -57,6 +57,7 @@ teardown(void **state) {
  */
 static void
 session_create_drop(void **state) {
+#ifdef __linux__
     sm_ctx_t *ctx = *state;
     sm_connection_t *conn = NULL;
     sm_session_t *sess = NULL;
@@ -83,6 +84,7 @@ session_create_drop(void **state) {
     /* stop a connection */
     rc = sm_connection_stop(ctx, conn);
     assert_int_equal(rc, SR_ERR_OK);
+#endif
 }
 
 /**
@@ -91,6 +93,7 @@ session_create_drop(void **state) {
  */
 static void
 session_find_id(void **state) {
+#ifdef __linux__
     sm_ctx_t *ctx = *state;
     sm_connection_t *conn = NULL;
     sm_session_t *sess = NULL;
@@ -135,6 +138,7 @@ session_find_id(void **state) {
     /* stop the connection */
     rc = sm_connection_stop(ctx, conn);
     assert_int_equal(rc, SR_ERR_OK);
+#endif
 }
 
 /**
@@ -143,6 +147,7 @@ session_find_id(void **state) {
  */
 static void
 session_find_fd(void **state) {
+#ifdef __linux__
     sm_ctx_t *ctx = *state;
     sm_connection_t *conn = NULL;
     sm_session_t *sess = NULL;
@@ -208,6 +213,7 @@ session_find_fd(void **state) {
         cnt++;
     }
     assert_int_equal(cnt, 7);
+#endif
 }
 
 int

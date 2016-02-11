@@ -46,6 +46,8 @@
 #define CM_INIT_MSG_QUEUE_SIZE 10      /**< Initial size of the message queue. */
 #define CM_INIT_SESS_REQ_QUEUE_SIZE 2  /**< Initial size of the request queue buffer. */
 
+#define CM_MAX_SIGNAL_WATCHERS 2  /**< Maximum number of signals that Connection Manager can watch for. */
+
 /**
  * @brief Connection Manager context.
  */
@@ -79,6 +81,10 @@ typedef struct cm_ctx_s {
     ev_async stop_watcher;
     /** Watcher for message enqueue events. */
     ev_async msg_queue_watcher;
+    /** Watcher for signals. */
+    ev_signal signal_watchers[CM_MAX_SIGNAL_WATCHERS];
+    /** Callbacks called by individual signal watchers. */
+    cm_signal_cb signal_callbacks[CM_MAX_SIGNAL_WATCHERS];
 } cm_ctx_t;
 
 /**
@@ -224,8 +230,12 @@ cm_server_cleanup(cm_ctx_t *cm_ctx)
 static void
 cm_session_data_cleanup(void *session)
 {
+    Sr__Msg *msg = NULL;
     sm_session_t *sm_session = (sm_session_t*)session;
     if ((NULL != sm_session) && (NULL != sm_session->cm_data)) {
+        while (sr_cbuff_dequeue(sm_session->cm_data->rp_request_queue, &msg)) {
+            sr__msg__free_unpacked(msg, NULL);
+        }
         sr_cbuff_cleanup(sm_session->cm_data->rp_request_queue);
         free(sm_session->cm_data);
         sm_session->cm_data = NULL;
@@ -354,6 +364,7 @@ cm_conn_out_buff_flush(cm_ctx_t *cm_ctx, sm_connection_t *connection)
                 SR_LOG_DBG("fd %d would block", connection->fd);
                 /* monitor fd for writable event */
                 ev_io_start(cm_ctx->event_loop, &connection->cm_data->write_watcher);
+                break;
             } else {
                 /* error by writing - close the connection due to an error */
                 SR_LOG_ERR("Error by writing data to fd %d: %s.", connection->fd, strerror(errno));
@@ -363,11 +374,7 @@ cm_conn_out_buff_flush(cm_ctx_t *cm_ctx, sm_connection_t *connection)
         }
     } while ((buff_pos < buff_size) && (written > 0));
 
-    if ((0 != buff_pos) && (buff_size - buff_pos) > 0) {
-        /* move unsent data to the front of the buffer */
-        memmove(buff->data, (buff->data + buff_pos), (buff_size - buff_pos));
-        buff->pos = buff_size - buff_pos;
-    } else {
+    if(buff_size == buff_pos) {
         /* no more data left in the buffer */
         buff->pos = 0;
     }
@@ -1089,6 +1096,27 @@ cm_stop_cb(struct ev_loop *loop, ev_async *w, int revents)
 }
 
 /**
+ * @brief Callback called by the event loop watcher when a signal is caught.
+ */
+static void
+cm_signal_cb_internal(struct ev_loop *loop, struct ev_signal *w, int revents)
+{
+    cm_ctx_t *cm_ctx = NULL;
+
+    CHECK_NULL_ARG_VOID3(loop, w, w->data);
+    cm_ctx = (cm_ctx_t*)w->data;
+
+    SR_LOG_DBG("Signal %d caught.", w->signum);
+
+    for (size_t i = 0; i < CM_MAX_SIGNAL_WATCHERS; i++) {
+        if (cm_ctx->signal_watchers[i].signum == w->signum) {
+            /* call the callback */
+            cm_ctx->signal_callbacks[i](cm_ctx, w->signum);
+        }
+    }
+}
+
+/**
  * @brief Event loop of Connection Manager. Monitors all connections for events
  * and calls proper callback handlers for each event. This function call blocks
  * until stop is requested via async stop request.
@@ -1204,6 +1232,7 @@ cm_cleanup(cm_ctx_t *cm_ctx)
 {
     size_t i = 0;
     sm_session_t *session = NULL;
+    Sr__Msg *msg = NULL;
     int rc = SR_ERR_OK;
 
     if (NULL != cm_ctx) {
@@ -1221,6 +1250,9 @@ cm_cleanup(cm_ctx_t *cm_ctx)
         ev_loop_destroy(cm_ctx->event_loop);
         cm_server_cleanup(cm_ctx);
 
+        while (sr_cbuff_dequeue(cm_ctx->msg_queue, &msg)) {
+            sr__msg__free_unpacked(msg, NULL);
+        }
         sr_cbuff_cleanup(cm_ctx->msg_queue);
         pthread_mutex_destroy(&cm_ctx->msg_queue_mutex);
 
@@ -1297,4 +1329,22 @@ cm_msg_send(cm_ctx_t *cm_ctx, Sr__Msg *msg)
     }
 
     return rc;
+}
+
+int
+cm_watch_signal(cm_ctx_t *cm_ctx, int signum, cm_signal_cb callback)
+{
+    CHECK_NULL_ARG2(cm_ctx, callback);
+
+    for (size_t i = 0; i < CM_MAX_SIGNAL_WATCHERS; i++) {
+        if (NULL == cm_ctx->signal_callbacks[i]) {
+            /* there is still some space for a new watcher - install it */
+            cm_ctx->signal_callbacks[i] = callback;
+            ev_signal_init(&cm_ctx->signal_watchers[i], cm_signal_cb_internal, signum);
+            cm_ctx->signal_watchers[i].data = (void*)cm_ctx;
+            ev_signal_start(cm_ctx->event_loop, &cm_ctx->signal_watchers[i]);
+            return SR_ERR_OK;
+        }
+    }
+    return SR_ERR_INTERNAL; /* no space for more watchers */
 }

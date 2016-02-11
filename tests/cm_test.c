@@ -28,6 +28,7 @@
 #include <setjmp.h>
 #include <cmocka.h>
 #include <arpa/inet.h>
+#include <time.h>
 
 #include "sr_common.h"
 #include "connection_manager.h"
@@ -35,34 +36,19 @@
 
 #define CM_AF_SOCKET_PATH "/tmp/sysrepo-test"  /* unix-domain socket used for the test*/
 
-/* we need a global context to be able to implement the signal handler */
-static cm_ctx_t *ctx = NULL;
-
-static void
-signal_handle(int sig)
-{
-    cm_stop(ctx);
-}
-
 static int
 cm_setup(void **state)
 {
+    cm_ctx_t *ctx = NULL;
     int rc = 0;
 
-    sr_logger_init("cm-test");
-    sr_logger_set_level(SR_LL_DBG, SR_LL_ERR); /* print debugs to stderr */
+    sr_logger_init("cm_test");
+    sr_logger_set_level(SR_LL_ERR, SR_LL_ERR); /* log only errors */
 
     rc = cm_init(CM_MODE_LOCAL, CM_AF_SOCKET_PATH, &ctx);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(ctx);
     *state = ctx;
-
-    /* installs signal handlers (for manual testing of daemon mode) */
-    struct sigaction act;
-    memset (&act, '\0', sizeof(act));
-    act.sa_handler = &signal_handle;
-    sigaction(SIGINT, &act, NULL);
-    sigaction(SIGTERM, &act, NULL);
 
     rc = cm_start(ctx);
     assert_int_equal(rc, SR_ERR_OK);
@@ -131,8 +117,8 @@ cm_message_recv(const int fd)
     size_t msg_size = 0;
 
     /* read first 4 bytes with length of the message */
-    while (pos < 4) {
-        len = recv(fd, buf + pos, CM_BUFF_LEN - pos, 0);
+    while (pos < SR_MSG_PREAM_SIZE) {
+        len = recv(fd, buf + pos, SR_MSG_PREAM_SIZE - pos, 0);
         assert_int_not_equal(len, -1);
         if (0 == len) {
             return NULL; /* disconnect */
@@ -143,8 +129,9 @@ cm_message_recv(const int fd)
     assert_true((msg_size > 0) && (msg_size <= SR_MAX_MSG_SIZE));
 
     /* read the rest of the message */
-    while (pos < msg_size + 4) {
-        len = recv(fd, buf + pos, CM_BUFF_LEN - pos, 0);
+    pos = 0;
+    while (pos < msg_size) {
+        len = recv(fd, buf + pos, msg_size - pos, 0);
         assert_int_not_equal(len, -1);
         if (0 == len) {
             return NULL; /* disconnect */
@@ -152,7 +139,7 @@ cm_message_recv(const int fd)
         pos += len;
     }
 
-    Sr__Msg *msg = sr__msg__unpack(NULL, msg_size, (const uint8_t*)buf + 4);
+    Sr__Msg *msg = sr__msg__unpack(NULL, msg_size, (const uint8_t*)buf);
     return msg;
 }
 
@@ -203,6 +190,27 @@ cm_session_stop_generate(uint32_t session_id, uint8_t **msg_buf, size_t *msg_siz
     assert_non_null(msg->request->session_stop_req);
 
     msg->request->session_stop_req->session_id = session_id;
+
+    cm_msg_pack_to_buff(msg, msg_buf, msg_size);
+}
+
+static void
+cm_get_item_generate(uint32_t session_id, const char *xpath, uint8_t **msg_buf, size_t *msg_size)
+{
+    assert_non_null(msg_buf);
+    assert_non_null(msg_size);
+
+    Sr__Msg *msg = NULL;
+    sr_pb_req_alloc(SR__OPERATION__GET_ITEM, 0, &msg);
+    assert_non_null(msg);
+    assert_non_null(msg->request);
+    assert_non_null(msg->request->get_item_req);
+
+    msg->session_id = session_id;
+
+    if (NULL != xpath) {
+        msg->request->get_item_req->path = strdup(xpath);
+    }
 
     cm_msg_pack_to_buff(msg, msg_buf, msg_size);
 }
@@ -403,11 +411,108 @@ cm_session_neg_test(void **state) {
     close(fd2);
 }
 
+static void
+cm_buffers_test(void **state)
+{
+    Sr__Msg *msg = NULL;
+    uint8_t *msg_buf = NULL;
+    size_t msg_size = 0;
+    uint32_t session_id = 0;
+    struct timespec ts = { 0 };
+
+    int fd = cm_connect_to_server();
+
+    /* send session_start request */
+    cm_session_start_generate(NULL, &msg_buf, &msg_size);
+    cm_message_send(fd, msg_buf, msg_size);
+    free(msg_buf);
+
+    /* receive the response */
+    msg = cm_message_recv(fd);
+    assert_non_null(msg);
+    assert_int_equal(msg->type, SR__MSG__MSG_TYPE__RESPONSE);
+    assert_non_null(msg->response);
+    assert_int_equal(msg->response->result, SR_ERR_OK);
+    assert_int_equal(msg->response->operation, SR__OPERATION__SESSION_START);
+    assert_non_null(msg->response->session_start_resp);
+
+    session_id = msg->response->session_start_resp->session_id;
+    sr__msg__free_unpacked(msg, NULL);
+
+    /* send many get-item requests */
+    for (size_t i = 0; i < 1000; i++) {
+        cm_get_item_generate(session_id, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &msg_buf, &msg_size);
+        cm_message_send(fd, msg_buf, msg_size);
+        free(msg_buf);
+    }
+
+    /* wait for a while so that socket's output buffer will be full */
+    ts.tv_sec = 0;
+    ts.tv_nsec = 100000000L; /* 100 milliseconds */
+    nanosleep(&ts, NULL);
+
+    /* Receive all get-item responses */
+    for (size_t i = 0; i < 1000; i++) {
+        msg = cm_message_recv(fd);
+        assert_non_null(msg);
+        assert_int_equal(msg->type, SR__MSG__MSG_TYPE__RESPONSE);
+        assert_non_null(msg->response);
+        assert_int_equal(msg->response->result, SR_ERR_OK);
+        assert_int_equal(msg->response->operation, SR__OPERATION__GET_ITEM);
+        assert_non_null(msg->response->get_item_resp);
+        sr__msg__free_unpacked(msg, NULL);
+    }
+
+    /* send many get-item requests */
+    for (size_t i = 0; i < 1000; i++) {
+        cm_get_item_generate(session_id, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &msg_buf, &msg_size);
+        cm_message_send(fd, msg_buf, msg_size);
+        free(msg_buf);
+    }
+
+    /* send session-stop request */
+    cm_session_stop_generate(session_id, &msg_buf, &msg_size);
+    cm_message_send(fd, msg_buf, msg_size);
+    free(msg_buf);
+
+    /* let the connection manager to be stopped in teardown before reading responses */
+}
+
+static void
+cm_test_signal_callback(cm_ctx_t *cm_ctx, int signum)
+{
+    assert_non_null(cm_ctx);
+    printf("Caught signal %d.\n", signum);
+}
+
+static void
+cm_signals_test(void **state)
+{
+    int rc = 0;
+    cm_ctx_t *cm_ctx = *state;
+    assert_non_null(cm_ctx);
+
+    /* install 2 signals */
+    rc = cm_watch_signal(cm_ctx, SIGUSR1, cm_test_signal_callback);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = cm_watch_signal(cm_ctx, SIGUSR2, cm_test_signal_callback);
+    assert_int_equal(rc, SR_ERR_OK);
+    /* third signal should not be installed */
+    rc = cm_watch_signal(cm_ctx, SIGTERM, cm_test_signal_callback);
+    assert_int_equal(rc, SR_ERR_INTERNAL);
+
+    /* send signals to ourself */
+    kill(getpid(), SIGUSR2);
+    kill(getpid(), SIGUSR1);
+}
+
 int
 main() {
     const struct CMUnitTest tests[] = {
             cmocka_unit_test_setup_teardown(cm_session_test, cm_setup, cm_teardown),
             cmocka_unit_test_setup_teardown(cm_session_neg_test, cm_setup, NULL),
+            cmocka_unit_test_setup_teardown(cm_buffers_test, cm_setup, cm_teardown),
+            cmocka_unit_test_setup_teardown(cm_signals_test, cm_setup, cm_teardown),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);
