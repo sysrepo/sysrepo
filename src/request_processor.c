@@ -292,7 +292,7 @@ rp_set_item_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr_
 
     /* set the value in data manager */
     if (SR_ERR_OK == rc) {
-        rc = rp_dt_set_item(rp_ctx->dm_ctx, session->dm_session, session->datastore,
+        rc = rp_dt_set_item(rp_ctx->dm_ctx, session->dm_session,
                 xpath, msg->request->set_item_req->options, &value);
         if (SR_ERR_OK != rc){
             SR_LOG_ERR("Set item failed for '%s', session id=%"PRIu32".", xpath, session->id);
@@ -333,7 +333,7 @@ rp_delete_item_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
     }
 
     /* delete the item in data manager */
-    rc = rp_dt_delete_item(rp_ctx->dm_ctx, session->dm_session, session->datastore,
+    rc = rp_dt_delete_item(rp_ctx->dm_ctx, session->dm_session,
             xpath, msg->request->delete_item_req->options);
     if (SR_ERR_OK != rc){
         SR_LOG_ERR("Delete item failed for '%s', session id=%"PRIu32".", xpath, session->id);

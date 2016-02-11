@@ -56,8 +56,6 @@ rp_dt_find_deepest_match_wrapper(dm_ctx_t *ctx, dm_session_t *session, const cha
         goto cleanup;
     }
 
-    // TODO use data store argument
-
     rc = dm_get_data_info(ctx, session, module->name, &match->info);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Getting data tree failed for xpath '%s'", xpath);
@@ -163,7 +161,7 @@ rp_dt_find_closest_sibling_by_name(dm_data_info_t *info, struct lyd_node *start_
 }
 
 int
-rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t datastore, const char *xpath, const sr_edit_flag_t options)
+rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const sr_edit_flag_t options)
 {
     CHECK_NULL_ARG3(dm_ctx, session, xpath);
 
@@ -342,7 +340,7 @@ cleanup:
 }
 
 int
-rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t datastore, const char *xpath, const sr_edit_flag_t options, const sr_val_t *value)
+rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const sr_edit_flag_t options, const sr_val_t *value)
 {
     CHECK_NULL_ARG3(dm_ctx, session, xpath);
     /* value can be NULL if the list is created */

@@ -32,12 +32,11 @@
  * List key can not be deleted. (if attempted SR_ERR_INVAL_ARG is returned)
  * @param [in] dm_ctx
  * @param [in] session
- * @param [in] datastore
  * @param [in] xpath
  * @param [in] options
  * @return Error code (SR_ERR_OK on success)
  */
-int rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t datastore, const char *xpath, const sr_edit_flag_t options);
+int rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const sr_edit_flag_t options);
 
 /**
  * @brief Function can create presence container, list instance, leaf, leaf-list item. If the xpath identifies leaf-list value is appended to the end
@@ -45,13 +44,12 @@ int rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastor
  * xpath including all list keys.
  * @param [in] dm_ctx
  * @param [in] session
- * @param [in] datastore
  * @param [in] xpath
  * @param [in] options
  * @param [in] value the value to be set (xpath inside the structure is ignored), in case of presence container or list instance is ignored can be NULL
  * @return Error code (SR_ERR_OK on success)
  */
-int rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_datastore_t datastore, const char *xpath, const sr_edit_flag_t options, const sr_val_t *value);
+int rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const sr_edit_flag_t options, const sr_val_t *value);
 
 /**
  * @brief Move the list instance into selected direction. If the list instance doesn't exists or the list is not user-ordered SR_ERR_INVAL_ARG is returned.
