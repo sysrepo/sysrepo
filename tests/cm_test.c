@@ -173,6 +173,7 @@ cm_session_start_generate(const char *user_name, uint8_t **msg_buf, size_t *msg_
     if (NULL != user_name) {
         msg->request->session_start_req->user_name = strdup(user_name);
     }
+    msg->request->session_start_req->datastore = SR__DATA_STORE__STARTUP;
 
     cm_msg_pack_to_buff(msg, msg_buf, msg_size);
 }

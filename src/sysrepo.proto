@@ -84,8 +84,7 @@ message Value {
  */
 enum DataStore {
   RUNNING = 1;
-  CANDIDATE = 2;
-  STARTUP = 3;
+  STARTUP = 2;
 }
 
 /**
@@ -207,7 +206,7 @@ enum EditFlags {
  */
 message SetItemReq {
   required string path = 1;
-  required Value value = 2;
+  optional Value value = 2;
   required uint32 options = 3;  /**< Bitwise OR of EditFlags */
 }
 

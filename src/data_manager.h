@@ -71,15 +71,14 @@ int dm_init(const char *schema_search_dir, const char *data_search_dir, dm_ctx_t
  */
 void dm_cleanup(dm_ctx_t *dm_ctx);
 
-//TODO select datastore running/candidate
-
 /**
  * @brief Allocates resources for the session in Data manger.
  * @param [in] dm_ctx
+ * @param [in] ds
  * @param [out] dm_session_ctx
  * @return err_code
  */
-int dm_session_start(const dm_ctx_t *dm_ctx, dm_session_t **dm_session_ctx);
+int dm_session_start(const dm_ctx_t *dm_ctx, const sr_datastore_t ds, dm_session_t **dm_session_ctx);
 
 /**
  * @brief Frees resources allocated for the session.
