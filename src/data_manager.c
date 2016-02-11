@@ -26,6 +26,37 @@
 #include <dirent.h>
 #include <pthread.h>
 
+/**
+ * @brief suffix of data file for startup datastore
+ */
+#define DM_STARTUP_SUFFIX ".data"
+
+/**
+ * @brief suffix of data file for running datastore
+ */
+#define DM_RUNNING_SUFFIX ".running"
+
+/**
+ * @brief Lock the rw_lock for reading, the lock is selected according to the datastore parameter.
+ * @param [in] ds sr_datastore_t
+ * @param [in] ctx structutre that contains startup_lock and running_lock
+ */
+#define LOCK_READ_DS(DS, CTX) do{ pthread_rwlock_rdlock((DS) == SR_DS_STARTUP ? &(CTX)->startup_lock : &(CTX)->running_lock); }while(0)
+
+/**
+ * @brief Lock the rw_lock for writing, the lock is selected according to the datastore parameter.
+ * @param [in] ds sr_datastore_t
+ * @param [in] ctx structutre that contains startup_lock and running_lock
+ */
+#define LOCK_WRITE_DS(DS, CTX) do{ pthread_rwlock_wrlock((DS) == SR_DS_STARTUP ? &(CTX)->startup_lock : &(CTX)->running_lock); }while(0)
+
+/**
+ * @brief Unlocks the rw_lock, the lock is selected according to the datastore parameter.
+ * @param [in] ds sr_datastore_t
+ * @param [in] ctx structutre that contains startup_lock and running_lock
+ */
+#define UNLOCK_DS(DS, CTX) do{ pthread_rwlock_unlock((DS) == SR_DS_STARTUP ? &(CTX)->startup_lock : &(CTX)->running_lock); }while(0)
+
 /*
  * @brief Data manager context holding loaded schemas, data trees
  * and corresponding locks
@@ -35,8 +66,10 @@ typedef struct dm_ctx_s {
     char *data_search_dir;        /**< location where data files are located */
     struct ly_ctx *ly_ctx;        /**< libyang context holding all loaded schemas */
     pthread_rwlock_t lyctx_lock;  /**< rwlock to access ly_ctx */
-    sr_btree_t *module_btree;     /**< binary tree where loaded datatrees are stored */
-    pthread_rwlock_t btree_lock;  /**< rwlock to access module_btree */
+    sr_btree_t *startup_btree;      /**< binary tree where loaded startup datatrees are stored */
+    sr_btree_t *running_btree;      /**< binary tree where loaded running datatrees are stored */
+    pthread_rwlock_t startup_lock;  /**< rwlock to access  startup module_btree */
+    pthread_rwlock_t running_lock;  /**< rwlock to access running module_btree */
 } dm_ctx_t;
 
 /**
@@ -94,17 +127,19 @@ dm_data_info_free(void *item)
  * if memory allocation failed.
  * @param [in] dm_ctx
  * @param [in] module_name
+ * @param [in] ds
  * @param [out] file_name
  * @return err_code
  */
 static int
-dm_get_data_file(const dm_ctx_t *dm_ctx, const char *module_name, char **file_name)
+dm_get_data_file(const dm_ctx_t *dm_ctx, const char *module_name, const sr_datastore_t ds, char **file_name)
 {
     CHECK_NULL_ARG3(dm_ctx, module_name, file_name);
     char *tmp = NULL;
     int rc = sr_str_join(dm_ctx->data_search_dir, module_name, &tmp);
     if (SR_ERR_OK == rc) {
-        rc = sr_str_join(tmp, ".data", file_name);
+        char *suffix = SR_DS_STARTUP == ds ? DM_STARTUP_SUFFIX : DM_RUNNING_SUFFIX;
+        rc = sr_str_join(tmp, suffix, file_name);
         free(tmp);
         return rc;
     }
@@ -287,11 +322,12 @@ dm_find_module_schema(dm_ctx_t *dm_ctx, const char *module_name, const struct ly
  * @brief Loads data tree from file and adds it into dm context
  * @param [in] dm_ctx
  * @param [in] module
+ * @param [in] ds
  * @param [out] data_tree
  * @return err_code
  */
 static int
-dm_load_data_tree(dm_ctx_t *dm_ctx, const struct lys_module *module, dm_data_info_t **data_info)
+dm_load_data_tree(dm_ctx_t *dm_ctx, const struct lys_module *module, sr_datastore_t ds, dm_data_info_t **data_info)
 {
     CHECK_NULL_ARG2(dm_ctx, module);
 
@@ -299,7 +335,7 @@ dm_load_data_tree(dm_ctx_t *dm_ctx, const struct lys_module *module, dm_data_inf
     int rc = 0;
     struct lyd_node *data_tree = NULL;
     *data_info = NULL;
-    rc = dm_get_data_file(dm_ctx, module->name, &data_filename);
+    rc = dm_get_data_file(dm_ctx, module->name, ds, &data_filename);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Get data_filename failed for %s", module->name);
         return rc;
@@ -344,8 +380,11 @@ dm_load_data_tree(dm_ctx_t *dm_ctx, const struct lys_module *module, dm_data_inf
     data->modified = false;
     data->timestamp = time(NULL);
     data->node = data_tree;
-    ((dm_model_info_t *) module->data->private)->running_timestamp = data->timestamp;
-
+    if (SR_DS_STARTUP == ds) {
+        ((dm_model_info_t *) module->data->private)->startup_timestamp = data->timestamp;
+    } else {
+        ((dm_model_info_t *) module->data->private)->running_timestamp = data->timestamp;
+    }
     if (NULL == data_tree){
         SR_LOG_INF("Data file %s is empty", data_filename);
     }
@@ -356,33 +395,36 @@ dm_load_data_tree(dm_ctx_t *dm_ctx, const struct lys_module *module, dm_data_inf
 
     free(data_filename);
 
+    /* select b_tree according to the datastore argument */
+    sr_btree_t *btree = SR_DS_STARTUP == ds ? dm_ctx->startup_btree : dm_ctx->running_btree;
+
     /* insert into binary tree */
-    pthread_rwlock_wrlock(&dm_ctx->btree_lock);
-    rc = sr_btree_insert(dm_ctx->module_btree, data);
+    LOCK_WRITE_DS(ds, dm_ctx);
+    rc = sr_btree_insert(btree, data);
     if (SR_ERR_OK != rc) {
         if (SR_ERR_EXISTS == rc) {
             /* if the node has been inserted meanwhile by someone else find it */
-            *data_info = sr_btree_search(dm_ctx->module_btree, data);
+            *data_info = sr_btree_search(btree, data);
             lyd_free_withsiblings(data->node);
             free(data);
             if (NULL != *data_info) {
                 SR_LOG_INF("Data tree '%s' has been inserted already", module->name);
-                pthread_rwlock_unlock(&dm_ctx->btree_lock);
+                UNLOCK_DS(ds, dm_ctx);
                 return SR_ERR_OK;
             }
             SR_LOG_ERR("Insert data tree %s into avl tree failed", module->name);
-            pthread_rwlock_unlock(&dm_ctx->btree_lock);
+            UNLOCK_DS(ds, dm_ctx);
             return SR_ERR_INTERNAL;
         }
         else{
             SR_LOG_ERR("Insert data tree %s into avl tree failed", module->name);
             lyd_free_withsiblings(data->node);
             free(data);
-            pthread_rwlock_unlock(&dm_ctx->btree_lock);
+            UNLOCK_DS(ds, dm_ctx);
             return rc;
         }
     }
-    pthread_rwlock_unlock(&dm_ctx->btree_lock);
+    UNLOCK_DS(ds, dm_ctx);
     *data_info = data;
 
     return SR_ERR_OK;
@@ -392,11 +434,12 @@ dm_load_data_tree(dm_ctx_t *dm_ctx, const struct lys_module *module, dm_data_inf
  * @param [in] dm_ctx
  * @param [in] lookup_node
  * @param [in] model_info
+ * @param [in] ds
  * @param [out] data_info created copy needs to be freed by caller
  * @return err_code
  */
 static int
-dm_copy_from_loaded(dm_ctx_t *dm_ctx, const struct lys_module *lookup_node, dm_model_info_t *model_info, dm_data_info_t **data_info)
+dm_copy_from_loaded(dm_ctx_t *dm_ctx, const struct lys_module *lookup_node, dm_model_info_t *model_info, sr_datastore_t ds, dm_data_info_t **data_info)
 {
     CHECK_NULL_ARG4(dm_ctx, lookup_node, model_info, data_info);
 
@@ -410,16 +453,17 @@ dm_copy_from_loaded(dm_ctx_t *dm_ctx, const struct lys_module *lookup_node, dm_m
     dm_data_info_t lookup_data;
     lookup_data.module = lookup_node;
 
-    pthread_rwlock_rdlock(&dm_ctx->btree_lock);
-    pthread_rwlock_rdlock(&model_info->running_lock);
-    dm_data_info_t *d = sr_btree_search(dm_ctx->module_btree, &lookup_data);
+    LOCK_READ_DS(ds, dm_ctx);
+    LOCK_READ_DS(ds, model_info);
+    sr_btree_t *btree = SR_DS_STARTUP == ds ? dm_ctx->startup_btree : dm_ctx->running_btree;
+    dm_data_info_t *d = sr_btree_search(btree, &lookup_data);
     if (NULL != d) {
         di->node = sr_dup_datatree(d->node);
-        di->timestamp = model_info->running_timestamp;
+        di->timestamp = SR_DS_STARTUP == ds ? model_info->startup_timestamp : model_info->running_timestamp;
         di->module = d->module;
         di->modified = false;
-        pthread_rwlock_unlock(&model_info->running_lock);
-        pthread_rwlock_unlock(&dm_ctx->btree_lock);
+        UNLOCK_DS(ds, model_info);
+        UNLOCK_DS(ds, dm_ctx);
         if (NULL != d->node && NULL == di->node) {
             SR_LOG_ERR_MSG("Duplication of data tree for failed");
             free(di);
@@ -428,8 +472,8 @@ dm_copy_from_loaded(dm_ctx_t *dm_ctx, const struct lys_module *lookup_node, dm_m
         *data_info = di;
         return SR_ERR_OK;
     }
-    pthread_rwlock_unlock(&model_info->running_lock);
-    pthread_rwlock_unlock(&dm_ctx->btree_lock);
+    UNLOCK_DS(ds, model_info);
+    UNLOCK_DS(ds, dm_ctx);
     free(di);
     return SR_ERR_NOT_FOUND;
 }
@@ -438,11 +482,12 @@ dm_copy_from_loaded(dm_ctx_t *dm_ctx, const struct lys_module *lookup_node, dm_m
  * @brief Handles the process of creating the copy from dm_ctx, loads the data from file system if need
  * @param [in] dm_ctx
  * @param [in] module
+ * @param [in] ds
  * @param [out] data_info created copy needs to be freed by caller.
  * @return err_code
  */
 static int
-dm_copy_data_info(dm_ctx_t *dm_ctx, const struct lys_module *module, dm_data_info_t **data_info)
+dm_copy_data_info(dm_ctx_t *dm_ctx, const struct lys_module *module, sr_datastore_t ds, dm_data_info_t **data_info)
 {
     CHECK_NULL_ARG3(dm_ctx, module, data_info);
     CHECK_NULL_ARG3(module->name, module->data, module->data->name);
@@ -452,7 +497,7 @@ dm_copy_data_info(dm_ctx_t *dm_ctx, const struct lys_module *module, dm_data_inf
     dm_data_info_t *data = NULL;
 
     /* look up in loaded */
-    rc = dm_copy_from_loaded(dm_ctx, module, info, data_info);
+    rc = dm_copy_from_loaded(dm_ctx, module, info, ds, data_info);
     if (SR_ERR_NOT_FOUND == rc){
         SR_LOG_DBG("Data model %s is not loaded", module->name);
     } else if(SR_ERR_OK == rc){
@@ -465,7 +510,7 @@ dm_copy_data_info(dm_ctx_t *dm_ctx, const struct lys_module *module, dm_data_inf
 
 
     /* try to load data_tree to dm_ctx */
-    rc = dm_load_data_tree(dm_ctx, module, &data);
+    rc = dm_load_data_tree(dm_ctx, module, ds, &data);
     if (SR_ERR_NOT_FOUND == rc) {
         return SR_ERR_NOT_FOUND;
     } else if (SR_ERR_OK != rc) {
@@ -474,7 +519,7 @@ dm_copy_data_info(dm_ctx_t *dm_ctx, const struct lys_module *module, dm_data_inf
     }
 
     /* if the loading to dm_ctx succeed, create a copy for the session*/
-    rc = dm_copy_from_loaded(dm_ctx, module, info, data_info);
+    rc = dm_copy_from_loaded(dm_ctx, module, info, ds, data_info);
     if (SR_ERR_OK != rc){
         SR_LOG_ERR("Copy data tree from loaded failed for module %s", module->name);
     }
@@ -559,9 +604,16 @@ dm_init(const char *schema_search_dir, const char *data_search_dir, dm_ctx_t **d
         return SR_ERR_NOMEM;
     }
 
-    rc = sr_btree_init(dm_data_info_cmp, dm_data_info_free, &ctx->module_btree);
+    rc = sr_btree_init(dm_data_info_cmp, dm_data_info_free, &ctx->startup_btree);
     if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Cannot allocate memory for module binary tree in Data Manager.");
+        SR_LOG_ERR_MSG("Cannot allocate memory for startup binary tree in Data Manager.");
+        dm_cleanup(ctx);
+        return SR_ERR_NOMEM;
+    }
+
+    rc = sr_btree_init(dm_data_info_cmp, dm_data_info_free, &ctx->running_btree);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Cannot allocate memory for running binary tree in Data Manager.");
         dm_cleanup(ctx);
         return SR_ERR_NOMEM;
     }
@@ -578,7 +630,7 @@ dm_init(const char *schema_search_dir, const char *data_search_dir, dm_ctx_t **d
         return SR_ERR_INTERNAL;
     }
 
-    if (0 != pthread_rwlock_init(&ctx->btree_lock, &attr)){
+    if (0 != pthread_rwlock_init(&ctx->startup_lock, &attr)){
         SR_LOG_ERR_MSG("avl rwlock init failed");
         dm_cleanup(ctx);
         return SR_ERR_INTERNAL;
@@ -607,13 +659,17 @@ dm_cleanup(dm_ctx_t *dm_ctx)
     if (NULL != dm_ctx) {
         free(dm_ctx->schema_search_dir);
         free(dm_ctx->data_search_dir);
-        if (NULL != dm_ctx->module_btree) {
-            sr_btree_cleanup(dm_ctx->module_btree);
+        if (NULL != dm_ctx->startup_btree) {
+            sr_btree_cleanup(dm_ctx->startup_btree);
+        }
+        if (NULL != dm_ctx->running_btree) {
+            sr_btree_cleanup(dm_ctx->running_btree);
         }
         if (NULL != dm_ctx->ly_ctx) {
             ly_ctx_destroy(dm_ctx->ly_ctx, dm_free_lys_private_data);
         }
-        pthread_rwlock_destroy(&dm_ctx->btree_lock);
+        pthread_rwlock_destroy(&dm_ctx->startup_lock);
+        pthread_rwlock_destroy(&dm_ctx->running_lock);
         pthread_rwlock_destroy(&dm_ctx->lyctx_lock);
         free(dm_ctx);
     }
@@ -679,9 +735,9 @@ dm_get_data_info(dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, const char *mod
             SR_LOG_DBG("Copy of module %s has already been modified", module_name);
             return SR_ERR_OK;
         }
-        pthread_rwlock_rdlock(&m_info->running_lock);
-        bool changed = m_info->running_timestamp != exisiting_data_info->timestamp;
-        pthread_rwlock_unlock(&m_info->running_lock);
+        LOCK_READ_DS(dm_session_ctx->datastore, m_info);
+        bool changed = (SR_DS_STARTUP == dm_session_ctx->datastore ? m_info->startup_timestamp : m_info->running_timestamp) != exisiting_data_info->timestamp;
+        UNLOCK_DS(dm_session_ctx->datastore, m_info);
         /* session copy is up-to date*/
         if (!changed){
             *info = exisiting_data_info;
@@ -692,7 +748,7 @@ dm_get_data_info(dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, const char *mod
 
     /* session copy not found or not up-to date, try to create copy from dm_ctx*/
     dm_data_info_t *di = NULL;
-    rc = dm_copy_data_info(dm_ctx, module, &di);
+    rc = dm_copy_data_info(dm_ctx, module, dm_session_ctx->datastore, &di);
     if (SR_ERR_NOT_FOUND == rc) {
         SR_LOG_DBG("Data tree for %s not found.", module_name);
         return rc;
@@ -878,7 +934,8 @@ dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, char ***errors, size_t *err_c
             dm_data_info_t *sys_wide_data_info = NULL;
             dm_data_info_t search_node = { 0 };
             search_node.module = info->module;
-            sys_wide_data_info = sr_btree_search(dm_ctx->module_btree, &search_node);
+            sr_btree_t *btree = SR_DS_STARTUP == session->datastore ? dm_ctx->startup_btree : dm_ctx->running_btree;
+            sys_wide_data_info = sr_btree_search(btree, &search_node);
             if (NULL == sys_wide_data_info){
                 SR_LOG_ERR("Module '%s' not found in data manager context", info->module->name);
                 pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
@@ -898,10 +955,14 @@ dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, char ***errors, size_t *err_c
             }
             /* increment timestamp to invalidate older copies */
             sys_wide_data_info->timestamp++;
-            ((dm_model_info_t *) sys_wide_data_info->module->data->private)->running_timestamp = sys_wide_data_info->timestamp;
+            if (SR_DS_STARTUP == session->datastore) {
+                ((dm_model_info_t *) sys_wide_data_info->module->data->private)->startup_timestamp = sys_wide_data_info->timestamp;
+            } else {
+                ((dm_model_info_t *) sys_wide_data_info->module->data->private)->running_timestamp = sys_wide_data_info->timestamp;
+            }
 
             char *data_filename = NULL;
-            rc = dm_get_data_file(dm_ctx, info->module->name, &data_filename);
+            rc = dm_get_data_file(dm_ctx, info->module->name, session->datastore, &data_filename);
             if (SR_ERR_OK != rc){
                 SR_LOG_ERR_MSG("Getting data file name failed");
                 pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
