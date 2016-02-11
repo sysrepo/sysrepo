@@ -284,21 +284,29 @@ rp_set_item_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr_
         return SR_ERR_NOMEM;
     }
 
-    /* copy the value from gpb */
-    rc = sr_copy_gpb_to_val_t(msg->request->set_item_req->value, &value);
-    if (SR_ERR_OK != rc){
-        SR_LOG_ERR("Copying gpb value to sr_val_t failed for xpath '%s'", xpath);
+    if (NULL != msg->request->set_item_req->value) {
+        /* copy the value from gpb */
+        rc = sr_copy_gpb_to_val_t(msg->request->set_item_req->value, &value);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR("Copying gpb value to sr_val_t failed for xpath '%s'", xpath);
+        }
+
+        /* set the value in data manager */
+        if (SR_ERR_OK == rc) {
+            rc = rp_dt_set_item(rp_ctx->dm_ctx, session->dm_session,
+                    xpath, msg->request->set_item_req->options, &value);
+        }
+        sr_free_val_content(&value);
+    }
+    else{
+        /* when creating list or presence container value can be NULL */
+        rc = rp_dt_set_item(rp_ctx->dm_ctx, session->dm_session,
+                    xpath, msg->request->set_item_req->options, NULL);
     }
 
-    /* set the value in data manager */
-    if (SR_ERR_OK == rc) {
-        rc = rp_dt_set_item(rp_ctx->dm_ctx, session->dm_session, session->datastore,
-                xpath, msg->request->set_item_req->options, &value);
-        if (SR_ERR_OK != rc){
-            SR_LOG_ERR("Set item failed for '%s', session id=%"PRIu32".", xpath, session->id);
-        }
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Set item failed for '%s', session id=%"PRIu32".", xpath, session->id);
     }
-    sr_free_val_content(&value);
 
     /* set response code */
     resp->response->result = rc;
@@ -333,7 +341,7 @@ rp_delete_item_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
     }
 
     /* delete the item in data manager */
-    rc = rp_dt_delete_item(rp_ctx->dm_ctx, session->dm_session, session->datastore,
+    rc = rp_dt_delete_item(rp_ctx->dm_ctx, session->dm_session,
             xpath, msg->request->delete_item_req->options);
     if (SR_ERR_OK != rc){
         SR_LOG_ERR("Delete item failed for '%s', session id=%"PRIu32".", xpath, session->id);
@@ -371,10 +379,7 @@ rp_move_item_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr
         return SR_ERR_NOMEM;
     }
 
-    /* TODO: move the item in data manager */
-    SR_LOG_DBG("TODO: move xpath='%s' in direction=%d",
-            xpath, sr_move_direction_gpb_to_sr( msg->request->move_item_req->direction));
-    rc = SR_ERR_UNSUPPORTED;
+    rc = rp_dt_move_list(rp_ctx->dm_ctx, session->dm_session, xpath, sr_move_direction_gpb_to_sr( msg->request->move_item_req->direction));
 
     /* set response code */
     resp->response->result = rc;
@@ -783,7 +788,7 @@ rp_session_start(const rp_ctx_t *rp_ctx, const char *real_user, const char *effe
     session->id = session_id;
     session->datastore = datastore;
 
-    rc = dm_session_start(rp_ctx->dm_ctx, &session->dm_session);
+    rc = dm_session_start(rp_ctx->dm_ctx, datastore, &session->dm_session);
     if (SR_ERR_OK  != rc){
         SR_LOG_ERR("Init of dm_session failed for session id=%"PRIu32".", session_id);
         free(session);

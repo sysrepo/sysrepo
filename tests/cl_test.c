@@ -88,16 +88,16 @@ cl_connection_test(void **state)
     assert_non_null(sess1);
 
     /* start few new sessions in conn 2 */
-    rc = sr_session_start(conn2, "bob1", SR_DS_CANDIDATE, &sess_other1);
+    rc = sr_session_start(conn2, "bob1", SR_DS_STARTUP, &sess_other1);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(sess_other1);
     rc = sr_session_start(conn2, "bob2", SR_DS_STARTUP, &sess_other2);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(sess_other2);
-    rc = sr_session_start(conn2, "bob3", SR_DS_CANDIDATE, &sess2);
+    rc = sr_session_start(conn2, "bob3", SR_DS_STARTUP, &sess2);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(sess2);
-    rc = sr_session_start(conn2, "bob4", SR_DS_CANDIDATE, &sess2);
+    rc = sr_session_start(conn2, "bob4", SR_DS_STARTUP, &sess2);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(sess2);
 
@@ -130,7 +130,7 @@ cl_list_schemas_test(void **state)
     int rc = 0;
 
     /* start a session */
-    rc = sr_session_start(conn, NULL, SR_DS_CANDIDATE, &session);
+    rc = sr_session_start(conn, NULL, SR_DS_STARTUP, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* list schemas request */
@@ -170,7 +170,7 @@ cl_get_item_test(void **state)
     int rc = 0;
 
     /* start a session */
-    rc = sr_session_start(conn, "alice", SR_DS_CANDIDATE, &session);
+    rc = sr_session_start(conn, "alice", SR_DS_STARTUP, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* perform a get-item request */
@@ -238,7 +238,7 @@ cl_get_items_test(void **state)
     int rc = 0;
 
     /* start a session */
-    rc = sr_session_start(conn, "alice", SR_DS_CANDIDATE, &session);
+    rc = sr_session_start(conn, "alice", SR_DS_STARTUP, &session);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(session);
 
@@ -300,7 +300,7 @@ cl_get_items_iter_test(void **state)
     int rc = 0;
 
     /* start a session */
-    rc = sr_session_start(conn, "alice", SR_DS_CANDIDATE, &session);
+    rc = sr_session_start(conn, "alice", SR_DS_STARTUP, &session);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(session);
 
@@ -451,7 +451,7 @@ cl_set_item_test(void **state)
     int rc = 0;
 
     /* start a session */
-    rc = sr_session_start(conn, "alice", SR_DS_CANDIDATE, &session);
+    rc = sr_session_start(conn, "alice", SR_DS_STARTUP, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* perform a set-item request */
@@ -475,7 +475,7 @@ cl_delete_item_test(void **state)
     int rc = 0;
 
     /* start a session */
-    rc = sr_session_start(conn, "alice", SR_DS_CANDIDATE, &session);
+    rc = sr_session_start(conn, "alice", SR_DS_STARTUP, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* perform a delete-item request */
@@ -495,14 +495,49 @@ cl_move_item_test(void **state)
 
     sr_session_ctx_t *session = NULL;
     int rc = 0;
+    sr_val_t *values = NULL;
+    size_t cnt = 0;
 
     /* start a session */
-    rc = sr_session_start(conn, "alice", SR_DS_CANDIDATE, &session);
+    rc = sr_session_start(conn, "alice", SR_DS_STARTUP, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
-    /* perform a move-item request */
+    /* perform a move-item request, not user ordered list */
     rc = sr_move_item(session, "/test-module:list[key='k1']", SR_MOVE_DOWN);
-    assert_int_equal(rc, SR_ERR_UNSUPPORTED); /* TODO: UNSUPPORTED for now */
+    assert_int_equal(rc, SR_ERR_INVAL_ARG);
+
+    rc = sr_set_item(session, "/test-module:user[name='nameA']", NULL, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = sr_set_item(session, "/test-module:user[name='nameB']", NULL, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = sr_set_item(session, "/test-module:user[name='nameC']", NULL, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = sr_get_items(session, "/test-module:user", &values, &cnt);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(3, cnt);
+
+    assert_string_equal("/test-module:user[name='nameA']", values[0].xpath);
+    assert_string_equal("/test-module:user[name='nameB']", values[1].xpath);
+    assert_string_equal("/test-module:user[name='nameC']", values[2].xpath);
+    sr_free_values(values, cnt);
+
+    rc = sr_move_item(session, "/test-module:user[name='nameA']", SR_MOVE_DOWN);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_move_item(session, "/test-module:user[name='nameC']", SR_MOVE_UP);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_get_items(session, "/test-module:user", &values, &cnt);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(3, cnt);
+
+    assert_string_equal("/test-module:user[name='nameB']", values[0].xpath);
+    assert_string_equal("/test-module:user[name='nameC']", values[1].xpath);
+    assert_string_equal("/test-module:user[name='nameA']", values[2].xpath);
+    sr_free_values(values, cnt);
 
     /* stop the session */
     rc = sr_session_stop(session);
@@ -521,7 +556,7 @@ cl_validate_test(void **state)
     size_t error_cnt = 0;
 
     /* start a session */
-    rc = sr_session_start(conn, "alice", SR_DS_CANDIDATE, &session);
+    rc = sr_session_start(conn, "alice", SR_DS_STARTUP, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* perform a validate request */
@@ -554,7 +589,7 @@ cl_commit_test(void **state)
     size_t error_cnt = 0;
 
     /* start a session */
-    rc = sr_session_start(conn, "alice", SR_DS_CANDIDATE, &session);
+    rc = sr_session_start(conn, "alice", SR_DS_STARTUP, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* perform a commit request */
@@ -585,12 +620,33 @@ cl_discard_changes_test(void **state)
     int rc = 0;
 
     /* start a session */
-    rc = sr_session_start(conn, "alice", SR_DS_CANDIDATE, &session);
+    rc = sr_session_start(conn, "alice", SR_DS_STARTUP, &session);
     assert_int_equal(rc, SR_ERR_OK);
+
+    sr_val_t *values = NULL;
+    size_t cnt = 0;
+
+    rc = sr_get_items(session, "/example-module:container/list", &values, &cnt);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_int_equal(1, cnt);
+    sr_free_values(values, cnt);
+
+    rc = sr_set_item(session, "/example-module:container/list[key1='a'][key2='b']", NULL, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = sr_get_items(session, "/example-module:container/list", &values, &cnt);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_int_equal(2, cnt);
+    sr_free_values(values, cnt);
 
     /* perform a discard-changes request */
     rc = sr_discard_changes(session);
     assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_get_items(session, "/example-module:container/list", &values, &cnt);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_int_equal(1, cnt);
+    sr_free_values(values, cnt);
 
     /* stop the session */
     rc = sr_session_stop(session);

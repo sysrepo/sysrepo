@@ -1078,7 +1078,7 @@ sr_set_item(sr_session_ctx_t *session, const char *path, const sr_val_t *value, 
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG4(session, session->conn_ctx, path, value);
+    CHECK_NULL_ARG3(session, session->conn_ctx, path);
 
     /* prepare get_item message */
     rc = sr_pb_req_alloc(SR__OPERATION__SET_ITEM, session->id, &msg_req);
@@ -1096,10 +1096,12 @@ sr_set_item(sr_session_ctx_t *session, const char *path, const sr_val_t *value, 
     msg_req->request->set_item_req->options = opts;
 
     /* duplicate the content of sr_val_t to gpb */
-    rc = sr_dup_val_t_to_gpb(value, &msg_req->request->set_item_req->value);
-    if (SR_ERR_OK != rc){
-        SR_LOG_ERR_MSG("Copying from sr_val_t to gpb failed.");
-        goto cleanup;
+    if (NULL != value){
+        rc = sr_dup_val_t_to_gpb(value, &msg_req->request->set_item_req->value);
+        if (SR_ERR_OK != rc){
+            SR_LOG_ERR_MSG("Copying from sr_val_t to gpb failed.");
+            goto cleanup;
+        }
     }
 
     /* send the request and receive the response */

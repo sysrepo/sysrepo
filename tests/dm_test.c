@@ -57,7 +57,7 @@ void dm_get_data_tree(void **state)
     rc = dm_init(TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx);
     assert_int_equal(SR_ERR_OK, rc);
 
-    dm_session_start(ctx, &ses_ctx);
+    dm_session_start(ctx, SR_DS_STARTUP, &ses_ctx);
     /* Load from file */
     assert_int_equal(SR_ERR_OK, dm_get_datatree(ctx, ses_ctx ,"example-module", &data_tree));
     /* Get from avl tree */
@@ -85,7 +85,7 @@ dm_list_schema_test(void **state)
     rc = dm_init(TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx);
     assert_int_equal(SR_ERR_OK, rc);
 
-    dm_session_start(ctx, &ses_ctx);
+    dm_session_start(ctx, SR_DS_STARTUP, &ses_ctx);
 
     rc = dm_list_schemas(ctx, ses_ctx, &schemas, &count);
     assert_int_equal(SR_ERR_OK, rc);
@@ -120,7 +120,7 @@ dm_validate_data_trees_test(void **state)
     rc = dm_init(TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = dm_session_start(ctx, &ses_ctx);
+    rc = dm_session_start(ctx, SR_DS_STARTUP, &ses_ctx);
     assert_int_equal(SR_ERR_OK, rc);
 
     /* test validation with no data trees copied */
@@ -167,7 +167,7 @@ dm_discard_changes_test(void **state)
     rc = dm_init(TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = dm_session_start(ctx, &ses_ctx);
+    rc = dm_session_start(ctx, SR_DS_STARTUP, &ses_ctx);
     assert_int_equal(SR_ERR_OK, rc);
 
     rc = dm_get_data_info(ctx, ses_ctx, "test-module", &info);
@@ -218,7 +218,7 @@ dm_commit_test(void **state)
     rc = dm_init(TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = dm_session_start(ctx, &ses_ctx);
+    rc = dm_session_start(ctx, SR_DS_STARTUP, &ses_ctx);
     assert_int_equal(SR_ERR_OK, rc);
 
     char **errors = NULL;
