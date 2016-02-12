@@ -269,14 +269,42 @@ int sr_session_start(sr_conn_ctx_t *conn_ctx, const char *user_name, sr_datastor
 int sr_session_stop(sr_session_ctx_t *session);
 
 /**
- * @brief TODO
+ * @brief Retrieves detailed information about the error that has occurred
+ * during the last operation executed within provided session.
+ *
+ * If multiple errors has occurred within the last operation, only the first
+ * one is returned. This call is sufficient for all data retrieval and data
+ * manipulation functions that operate on single-item basis. For operations
+ * such as ::sr_validate or ::sr_commit where multiple errors can occur,
+ * use ::sr_get_last_errors instead.
+ *
+ * @param[in] session Session context acquired with ::sr_session_start call.
+ * @param[out] error_info Detailed error information. Be aware that
+ * returned pointer may change by the next API call executed within the provided
+ * session,  so it's not safe to use this function by concurrent access to the
+ * same session within multiple threads. Do not free or modify returned values.
+ *
+ * @return Error code of the last operation executed within provided session.
  */
-int sr_get_last_error(sr_session_ctx_t *session, sr_error_info_t *error_info);
+int sr_get_last_error(sr_session_ctx_t *session, sr_error_info_t **error_info);
 
 /**
- * @brief TODO
+ * @brief Retrieves detailed information about all errors that have occurred
+ * during the last operation executed within provided session.
+ *
+ * Use this call instead of ::sr_get_last_error by operations where multiple
+ * errors can occur, such as ::sr_validate or ::sr_commit.
+ *
+ * @param[in] session Session context acquired with ::sr_session_start call.
+ * @param[out] error_info Array of detailed error information. Be aware that
+ * returned pointer may change by the next API call executed within the provided
+ * session,  so it's not safe to use this function by concurrent access to the
+ * same session within multiple threads. Do not free or modify returned values.
+ * @param[out] error_cnt Number of errors returned in the error_info array.
+ *
+ * @return Error code of the last operation executed within provided session.
  */
-int sr_get_last_error_list(sr_session_ctx_t *session, sr_error_info_t **error_info, size_t *error_cnt);
+int sr_get_last_errors(sr_session_ctx_t *session, sr_error_info_t **error_info, size_t *error_cnt);
 
 
 ////////////////////////////////////////////////////////////////////////////////

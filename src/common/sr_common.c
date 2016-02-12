@@ -54,7 +54,7 @@ const char *
 sr_strerror(int err_code)
 {
     if (err_code >= (sizeof(sr_errlist) / (sizeof *sr_errlist))) {
-        return NULL;
+        return "Unknown error";
     } else {
         return sr_errlist[err_code];
     }

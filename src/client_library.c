@@ -67,8 +67,13 @@ typedef struct sr_conn_ctx_s {
  * Session context used to identify a configuration session.
  */
 typedef struct sr_session_ctx_s {
-    sr_conn_ctx_t *conn_ctx;  /**< Associated connection context. */
-    uint32_t id;              /**< Assigned session identifier. */
+    sr_conn_ctx_t *conn_ctx;      /**< Associated connection context. */
+    uint32_t id;                  /**< Assigned session identifier. */
+    pthread_mutex_t lock;         /**< Mutex for the session context content. */
+    sr_error_t last_error;        /**< Latest error code returned from an API call. */
+    sr_error_info_t *error_info;  /**< Array of detailed error information from last API call. */
+    size_t error_info_size;       /**< Current size of the error_info array. */
+    size_t error_cnt;             /**< Number of errors that occurred within last API call. */
 } sr_session_ctx_t;
 
 /**
@@ -96,7 +101,24 @@ static sr_conn_ctx_t *primary_connection = NULL;  /**< Global variable holding p
 pthread_mutex_t primary_lock = PTHREAD_MUTEX_INITIALIZER;  /**< Mutex for locking global variable primary_connection. */
 
 /**
- * Connect the client to provided unix-domain socket.
+ * @brief Returns provided error code and saves it in the session context.
+ * Should be called as an exit point from any publicly available API function
+ * taking the session as an argument.
+ */
+static sr_error_t
+cl_session_return(sr_session_ctx_t *session, sr_error_t error_code)
+{
+    CHECK_NULL_ARG(session);
+
+    pthread_mutex_lock(&session->lock);
+    session->last_error = error_code;
+    pthread_mutex_unlock(&session->lock);
+
+    return error_code;
+}
+
+/**
+ * @brief Connects the client to provided unix-domain socket.
  */
 static int
 cl_socket_connect(sr_conn_ctx_t *conn_ctx, const char *socket_path)
@@ -143,7 +165,7 @@ cl_socket_connect(sr_conn_ctx_t *conn_ctx, const char *socket_path)
 }
 
 /**
- * Initialize our own sysrepo engine (fallback option if sysrepo daemon is not running)
+ * @brief Initializes our own sysrepo engine (fallback option if sysrepo daemon is not running)
  */
 static int
 cl_engine_init_local(sr_conn_ctx_t *conn_ctx, const char *socket_path)
@@ -246,7 +268,7 @@ cl_conn_remove_session(sr_conn_ctx_t *connection, sr_session_ctx_t *session)
 }
 
 /**
- * Expand message buffer of a connection to fit given size, if needed.
+ * @brief Expands message buffer of a connection to fit given size, if needed.
  */
 static int
 cl_conn_msg_buf_expand(sr_conn_ctx_t *conn_ctx, size_t required_size)
@@ -269,7 +291,7 @@ cl_conn_msg_buf_expand(sr_conn_ctx_t *conn_ctx, size_t required_size)
 }
 
 /**
- * Sends a message via provided connection.
+ * @brief Sends a message via provided connection.
  */
 static int
 cl_message_send(sr_conn_ctx_t *conn_ctx, Sr__Msg *msg)
@@ -318,7 +340,7 @@ cl_message_send(sr_conn_ctx_t *conn_ctx, Sr__Msg *msg)
 }
 
 /*
- * Receive a message on provided connection (blocks until a message is received).
+ * @brief Receives a message on provided connection (blocks until a message is received).
  */
 static int
 cl_message_recv(sr_conn_ctx_t *conn_ctx, Sr__Msg **msg)
@@ -393,7 +415,7 @@ cl_message_recv(sr_conn_ctx_t *conn_ctx, Sr__Msg **msg)
 }
 
 /**
- * Process (send) the request over the connection and receive the response.
+ *@brief  Processes (sends) the request over the connection and receive the response.
  */
 static int
 cl_request_process(sr_conn_ctx_t *conn_ctx, Sr__Msg *msg_req, Sr__Msg **msg_resp,
@@ -455,7 +477,7 @@ cl_request_process(sr_conn_ctx_t *conn_ctx, Sr__Msg *msg_req, Sr__Msg **msg_resp
 }
 
 /**
- * Create get_items request with options and send it
+ * @brief Creates get_items request with options and send it
  */
 static int
 cl_send_get_items_iter(sr_session_ctx_t *session, const char *path, bool recursive, size_t offset, size_t limit, Sr__Msg **msg_resp){
@@ -588,6 +610,9 @@ cleanup:
     if ((NULL != ctx) && (NULL != ctx->local_cm)) {
         cm_cleanup(ctx->local_cm);
     }
+    if (NULL != ctx) {
+        pthread_mutex_destroy(&ctx->lock);
+    }
     free(ctx);
     return rc;
 }
@@ -642,6 +667,14 @@ sr_session_start(sr_conn_ctx_t *conn_ctx, const char *user_name, sr_datastore_t 
         goto cleanup;
     }
 
+    /* initialize session mutext */
+    rc = pthread_mutex_init(&session->lock, NULL);
+    if (0 != rc) {
+        SR_LOG_ERR_MSG("Cannot initialize session mutex.");
+        rc = SR_ERR_INIT_FAILED;
+        goto cleanup;
+    }
+
     /* prepare session_start message */
     rc = sr_pb_req_alloc(SR__OPERATION__SESSION_START, /* undefined session id */ 0, &msg_req);
     if (SR_ERR_OK != rc) {
@@ -688,6 +721,9 @@ cleanup:
     if (NULL != msg_resp) {
         sr__msg__free_unpacked(msg_resp, NULL);
     }
+    if (NULL != session) {
+        pthread_mutex_destroy(&session->lock);
+    }
     free(session);
     return rc;
 }
@@ -723,9 +759,11 @@ sr_session_stop(sr_session_ctx_t *session)
 
     sr__msg__free_unpacked(msg_req, NULL);
     sr__msg__free_unpacked(msg_resp, NULL);
+
+    pthread_mutex_destroy(&session->lock);
     free(session);
 
-    return SR_ERR_OK;
+    return SR_ERR_OK; /* do not use cl_session_return - session has been freed line above */
 
 cleanup:
     if (NULL != msg_req) {
@@ -734,7 +772,7 @@ cleanup:
     if (NULL != msg_resp) {
         sr__msg__free_unpacked(msg_resp, NULL);
     }
-    return rc;
+    return cl_session_return(session, rc);
 }
 
 int
@@ -771,7 +809,7 @@ sr_list_schemas(sr_session_ctx_t *session, sr_schema_t **schemas, size_t *schema
     sr__msg__free_unpacked(msg_req, NULL);
     sr__msg__free_unpacked(msg_resp, NULL);
 
-    return SR_ERR_OK;
+    return cl_session_return(session, SR_ERR_OK);
 
 cleanup:
     if (NULL != msg_req) {
@@ -780,7 +818,7 @@ cleanup:
     if (NULL != msg_resp) {
         sr__msg__free_unpacked(msg_resp, NULL);
     }
-    return rc;
+    return cl_session_return(session, rc);
 }
 
 int
@@ -822,7 +860,7 @@ sr_get_item(sr_session_ctx_t *session, const char *path, sr_val_t **value)
     sr__msg__free_unpacked(msg_req, NULL);
     sr__msg__free_unpacked(msg_resp, NULL);
 
-    return SR_ERR_OK;
+    return cl_session_return(session, SR_ERR_OK);
 
 cleanup:
     if (NULL != msg_req) {
@@ -831,7 +869,7 @@ cleanup:
     if (NULL != msg_resp) {
         sr__msg__free_unpacked(msg_resp, NULL);
     }
-    return rc;
+    return cl_session_return(session, rc);
 }
 
 int
@@ -892,7 +930,7 @@ sr_get_items(sr_session_ctx_t *session, const char *path, sr_val_t **values, siz
     sr__msg__free_unpacked(msg_req, NULL);
     sr__msg__free_unpacked(msg_resp, NULL);
 
-    return SR_ERR_OK;
+    return cl_session_return(session, SR_ERR_OK);
 
 cleanup:
     free(vals);
@@ -902,7 +940,7 @@ cleanup:
     if (NULL != msg_resp) {
         sr__msg__free_unpacked(msg_resp, NULL);
     }
-    return rc;
+    return cl_session_return(session, rc);
 }
 
 
@@ -965,7 +1003,7 @@ sr_get_items_iter(sr_session_ctx_t *session, const char *path, bool recursive, s
 
     sr__msg__free_unpacked(msg_resp, NULL);
 
-    return SR_ERR_OK;
+    return cl_session_return(session, SR_ERR_OK);
 
 cleanup:
     if (NULL != msg_resp) {
@@ -977,7 +1015,7 @@ cleanup:
         }
         free(it);
     }
-    return rc;
+    return cl_session_return(session, rc);
 }
 
 int
@@ -1049,13 +1087,13 @@ sr_get_item_next(sr_session_ctx_t *session, sr_val_iter_t *iter, sr_val_t **valu
         iter->offset++;
         sr__msg__free_unpacked(msg_resp, NULL);
     }
-    return SR_ERR_OK;
+    return cl_session_return(session, SR_ERR_OK);
 
 cleanup:
     if (NULL != msg_resp){
         sr__msg__free_unpacked(msg_resp, NULL);
     }
-    return rc;
+    return cl_session_return(session, rc);
 }
 
 void
@@ -1115,7 +1153,7 @@ sr_set_item(sr_session_ctx_t *session, const char *path, const sr_val_t *value, 
     sr__msg__free_unpacked(msg_req, NULL);
     sr__msg__free_unpacked(msg_resp, NULL);
 
-    return SR_ERR_OK;
+    return cl_session_return(session, SR_ERR_OK);
 
 cleanup:
     if (NULL != msg_req) {
@@ -1124,7 +1162,7 @@ cleanup:
     if (NULL != msg_resp) {
         sr__msg__free_unpacked(msg_resp, NULL);
     }
-    return rc;
+    return cl_session_return(session, rc);
 }
 
 int
@@ -1160,7 +1198,7 @@ sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_option
     sr__msg__free_unpacked(msg_req, NULL);
     sr__msg__free_unpacked(msg_resp, NULL);
 
-    return SR_ERR_OK;
+    return cl_session_return(session, SR_ERR_OK);
 
 cleanup:
     if (NULL != msg_req) {
@@ -1169,7 +1207,7 @@ cleanup:
     if (NULL != msg_resp) {
         sr__msg__free_unpacked(msg_resp, NULL);
     }
-    return rc;
+    return cl_session_return(session, rc);
 }
 
 int
@@ -1205,7 +1243,7 @@ sr_move_item(sr_session_ctx_t *session, const char *path, const sr_move_directio
     sr__msg__free_unpacked(msg_req, NULL);
     sr__msg__free_unpacked(msg_resp, NULL);
 
-    return SR_ERR_OK;
+    return cl_session_return(session, SR_ERR_OK);
 
 cleanup:
     if (NULL != msg_req) {
@@ -1214,7 +1252,7 @@ cleanup:
     if (NULL != msg_resp) {
         sr__msg__free_unpacked(msg_resp, NULL);
     }
-    return rc;
+    return cl_session_return(session, rc);
 }
 
 int
@@ -1257,7 +1295,7 @@ sr_validate(sr_session_ctx_t *session, char ***errors, size_t *error_cnt)
     sr__msg__free_unpacked(msg_req, NULL);
     sr__msg__free_unpacked(msg_resp, NULL);
 
-    return rc;
+    return cl_session_return(session, rc);
 
 cleanup:
     if (NULL != msg_req) {
@@ -1266,7 +1304,7 @@ cleanup:
     if (NULL != msg_resp) {
         sr__msg__free_unpacked(msg_resp, NULL);
     }
-    return rc;
+    return cl_session_return(session, rc);
 }
 
 int
@@ -1309,7 +1347,7 @@ sr_commit(sr_session_ctx_t *session, char ***errors, size_t *error_cnt)
     sr__msg__free_unpacked(msg_req, NULL);
     sr__msg__free_unpacked(msg_resp, NULL);
 
-    return rc;
+    return cl_session_return(session, rc);
 
 cleanup:
     if (NULL != msg_req) {
@@ -1318,7 +1356,7 @@ cleanup:
     if (NULL != msg_resp) {
         sr__msg__free_unpacked(msg_resp, NULL);
     }
-    return rc;
+    return cl_session_return(session, rc);
 }
 
 int
@@ -1346,7 +1384,7 @@ sr_discard_changes(sr_session_ctx_t *session)
     sr__msg__free_unpacked(msg_req, NULL);
     sr__msg__free_unpacked(msg_resp, NULL);
 
-    return SR_ERR_OK;
+    return cl_session_return(session, SR_ERR_OK);
 
 cleanup:
     if (NULL != msg_req) {
@@ -1355,5 +1393,47 @@ cleanup:
     if (NULL != msg_resp) {
         sr__msg__free_unpacked(msg_resp, NULL);
     }
-    return rc;
+    return cl_session_return(session, rc);
 }
+
+int
+sr_get_last_error(sr_session_ctx_t *session, sr_error_info_t **error_info)
+{
+    CHECK_NULL_ARG2(session, error_info);
+
+    if (0 == session->error_cnt) {
+        /* no detailed error information, let's create it from the last error code */
+        if (0 == session->error_info_size) {
+            session->error_info = calloc(1, sizeof(*session->error_info));
+            if (NULL == session->error_info) {
+                SR_LOG_ERR_MSG("Unable to allocate error information.");
+                return session->last_error;
+            }
+            session->error_info_size = 1;
+        }
+        session->error_info[0].message = strdup(sr_strerror(session->last_error));
+        session->error_info[0].path = NULL;
+    }
+
+    *error_info = session->error_info;
+
+    return session->last_error;
+}
+
+int
+sr_get_last_errors(sr_session_ctx_t *session, sr_error_info_t **error_info, size_t *error_cnt)
+{
+    CHECK_NULL_ARG3(session, error_info, error_cnt);
+
+    if (0 == session->error_cnt) {
+        /* no detailed error info - call sr_get_last_error to handle this */
+        *error_cnt = 1;
+        return sr_get_last_error(session, error_info);
+    }
+
+    *error_info = session->error_info;
+    *error_cnt = session->error_cnt;
+
+    return session->last_error;
+}
+
