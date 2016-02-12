@@ -167,6 +167,7 @@ cl_get_item_test(void **state)
 
     sr_session_ctx_t *session = NULL;
     sr_val_t *value = NULL;
+    sr_error_info_t *error_info = NULL;
     int rc = 0;
 
     /* start a session */
@@ -194,6 +195,12 @@ cl_get_item_test(void **state)
     rc = sr_get_item(session, "/example-module:unknown", &value);
     assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
     assert_null(value);
+
+    /* retrieve error information */
+    rc = sr_get_last_error(session, &error_info);
+    assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
+    assert_non_null(error_info);
+    assert_non_null(error_info->message);
 
     /* existing leaf */
     rc = sr_get_item(session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &value);
