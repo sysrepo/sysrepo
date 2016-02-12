@@ -547,7 +547,7 @@ rp_dt_move_list(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, sr_m
 {
     CHECK_NULL_ARG3(dm_ctx, session, xpath);
     int rc = SR_ERR_OK;
-    rp_dt_match_t match;
+    rp_dt_match_t match = {0,};
 
     rc = rp_dt_find_deepest_match_wrapper(dm_ctx, session, xpath, &match);
     if (SR_ERR_NOT_FOUND == rc) {
