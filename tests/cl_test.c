@@ -167,7 +167,6 @@ cl_get_item_test(void **state)
 
     sr_session_ctx_t *session = NULL;
     sr_val_t *value = NULL;
-    sr_error_info_t *error_info = NULL;
     int rc = 0;
 
     /* start a session */
@@ -195,12 +194,6 @@ cl_get_item_test(void **state)
     rc = sr_get_item(session, "/example-module:unknown", &value);
     assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
     assert_null(value);
-
-    /* retrieve error information */
-    rc = sr_get_last_error(session, &error_info);
-    assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
-    assert_non_null(error_info);
-    assert_non_null(error_info->message);
 
     /* existing leaf */
     rc = sr_get_item(session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &value);
@@ -660,6 +653,44 @@ cl_discard_changes_test(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 }
 
+static void
+cl_get_error_test(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+
+    sr_session_ctx_t *session = NULL;
+    sr_val_t *value = NULL;
+    sr_error_info_t *error_info = NULL;
+    size_t error_cnt = 0;
+    int rc = 0;
+
+    /* start a session */
+    rc = sr_session_start(conn, "alice", SR_DS_STARTUP, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* attemp to get item on bad element in existing module */
+    rc = sr_get_item(session, "/example-module:container/unknown", &value);
+    assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
+    assert_null(value);
+
+    /* retrieve last error information */
+    rc = sr_get_last_error(session, &error_info);
+    assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
+    assert_non_null(error_info);
+    assert_non_null(error_info->message);
+
+    /* retrieve last error information */
+    rc = sr_get_last_errors(session, &error_info, &error_cnt);
+    assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
+    assert_non_null(error_info);
+    assert_non_null(error_info[0].message);
+
+    /* stop the session */
+    rc = sr_session_stop(session);
+    assert_int_equal(rc, SR_ERR_OK);
+}
+
 int
 main()
 {
@@ -675,6 +706,7 @@ main()
             cmocka_unit_test_setup_teardown(cl_validate_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_commit_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_discard_changes_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_get_error_test, sysrepo_setup, sysrepo_teardown),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);
