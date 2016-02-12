@@ -244,7 +244,7 @@ dm_commit_test(void **state)
 }
 
 int main(){
-    sr_logger_set_level(SR_LL_DBG, SR_LL_NONE);
+    sr_set_log_level(SR_LL_DBG, SR_LL_NONE);
 
     const struct CMUnitTest tests[] = {
             cmocka_unit_test(dm_create_cleanup),

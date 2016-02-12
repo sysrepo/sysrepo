@@ -197,7 +197,7 @@ const char *sr_strerror(int err_code);
  * @param[in] ll_stderr Log level for stderr logs.
  * @param[in] ll_syslog Log level for syslog logs.
  */
-void sr_logger_set_level(sr_log_level_t ll_stderr, sr_log_level_t ll_syslog);
+void sr_set_log_level(sr_log_level_t ll_stderr, sr_log_level_t ll_syslog);
 
 
 ////////////////////////////////////////////////////////////////////////////////
