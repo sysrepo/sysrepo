@@ -55,6 +55,15 @@ typedef struct dm_data_info_s{
 }dm_data_info_t;
 
 /**
+ * @brief States of the node in running data store.
+ */
+typedef enum dm_node_state_e{
+    DM_NODE_DISABLED,               /**< Node is not enabled request return not found */
+    DM_NODE_ENABLED,                /**< Node is enabled */
+    DM_NODE_ENABLED_WITH_CHILDREN,  /**< Node is enabled and all its children are enabled too.*/
+}dm_node_state_t;
+
+/**
  * @brief Initializes the data manager context, which will be passed in further
  * dm_session related calls.
  * @param [in] schema_search_dir - location where schema files are located
@@ -158,5 +167,10 @@ int dm_discard_changes(dm_ctx_t *dm_ctx, dm_session_t *session);
  */
 int dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, char ***errors, size_t *err_cnt);
 
+bool dm_is_node_enabled(struct lys_node* node);
+
+bool dm_is_node_enabled_with_children(struct lys_node* node);
+
+bool dm_is_running_datastore_session(dm_session_t *session);
 /**@} Data manager*/
 #endif /* SRC_DATA_MANAGER_H_ */

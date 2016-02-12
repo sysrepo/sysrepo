@@ -291,12 +291,12 @@ rp_dt_get_values_from_nodes(struct lyd_node **nodes, size_t count, sr_val_t ***v
 }
 
 int
-rp_dt_get_value(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp_loc_id_t *loc_id, sr_val_t **value)
+rp_dt_get_value(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp_loc_id_t *loc_id, bool check_enabled, sr_val_t **value)
 {
     CHECK_NULL_ARG4(dm_ctx, data_tree, loc_id, value);
     int rc = 0;
     struct lyd_node *node = NULL;
-    rc = rp_dt_get_node(dm_ctx, data_tree, loc_id, &node);
+    rc = rp_dt_get_node(dm_ctx, data_tree, loc_id, check_enabled, &node);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Node not found for xpath %s", loc_id->xpath);
         return rc;
@@ -309,13 +309,13 @@ rp_dt_get_value(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp_loc
 }
 
 int
-rp_dt_get_values(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp_loc_id_t *loc_id, sr_val_t ***values, size_t *count)
+rp_dt_get_values(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp_loc_id_t *loc_id, bool check_enable, sr_val_t ***values, size_t *count)
 {
     CHECK_NULL_ARG5(dm_ctx, data_tree, loc_id, values, count);
 
     int rc = SR_ERR_OK;
     struct lyd_node **nodes = NULL;
-    rc = rp_dt_get_nodes(dm_ctx, data_tree, loc_id, &nodes, count);
+    rc = rp_dt_get_nodes(dm_ctx, data_tree, loc_id, check_enable, &nodes, count);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Get nodes for xpath %s failed", loc_id->xpath);
         return rc;
@@ -365,7 +365,7 @@ rp_dt_get_value_wrapper(dm_ctx_t *dm_ctx, dm_session_t *dm_session, const char *
         goto cleanup;
     }
 
-    rc = rp_dt_get_value(dm_ctx, data_tree, l, value);
+    rc = rp_dt_get_value(dm_ctx, data_tree, l, dm_is_running_datastore_session(dm_session), value);
     if (SR_ERR_NOT_FOUND == rc) {
         rc = rp_dt_validate_node_xpath(dm_ctx, l, NULL, NULL);
         rc = rc == SR_ERR_OK ? SR_ERR_NOT_FOUND : rc;
@@ -412,7 +412,7 @@ rp_dt_get_values_wrapper(dm_ctx_t *dm_ctx, dm_session_t *dm_session, const char 
         goto cleanup;
     }
 
-    rc = rp_dt_get_values(dm_ctx, data_tree, l, values, count);
+    rc = rp_dt_get_values(dm_ctx, data_tree, l, dm_is_running_datastore_session(dm_session), values, count);
     if (SR_ERR_NOT_FOUND == rc) {
         rc = rp_dt_validate_node_xpath(dm_ctx, l, NULL, NULL);
         rc = rc == SR_ERR_OK ? SR_ERR_NOT_FOUND : rc;

@@ -62,7 +62,7 @@ rp_dt_find_deepest_match_wrapper(dm_ctx_t *ctx, dm_session_t *session, const cha
         goto cleanup;
     }
 
-    rc = rp_dt_find_deepest_match(match->info->node, match->loc_id, true, &match->level, &match->node);
+    rc = rp_dt_find_deepest_match(match->info->node, match->loc_id, true, dm_is_running_datastore_session(session), &match->level, &match->node);
 
 cleanup:
     if (SR_ERR_OK != rc && SR_ERR_NOT_FOUND != rc) {
