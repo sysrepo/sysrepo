@@ -1757,34 +1757,81 @@ sr_val_to_str(const sr_val_t *value, struct lys_node *schema_node, char **out)
 }
 
 int
-sr_gpb_resp_fill_error(Sr__Msg *msg, const char *error_message, const char *error_path)
+sr_gpb_fill_error(const char *error_message, const char *error_path, Sr__Error **gpb_error_p)
 {
-    CHECK_NULL_ARG2(msg, msg->response);
+    Sr__Error *gpb_error = NULL;
 
-    msg->response->error = calloc(1, sizeof(*msg->response->error));
-    if (NULL == msg->response->error) {
+    CHECK_NULL_ARG(gpb_error_p);
+
+    gpb_error = calloc(1, sizeof(*gpb_error));
+    if (NULL == gpb_error) {
         goto nomem;
     }
-    sr__error__init(msg->response->error);
+    sr__error__init(gpb_error);
     if (NULL != error_message) {
-        msg->response->error->message = strdup(error_message);
-        if (NULL == msg->response->error->message) {
+        gpb_error->message = strdup(error_message);
+        if (NULL == gpb_error->message) {
             goto nomem;
         }
     }
     if (NULL != error_path) {
-        msg->response->error->path = strdup(error_path);
-        if (NULL == msg->response->error->message) {
+        gpb_error->path = strdup(error_path);
+        if (NULL == gpb_error->path) {
             goto nomem;
         }
     }
+
+    *gpb_error_p = gpb_error;
     return SR_ERR_OK;
 
 nomem:
-    if (NULL != msg->response->error) {
-        sr__error__free_unpacked(msg->response->error, NULL);
+    if (NULL != gpb_error) {
+        sr__error__free_unpacked(gpb_error, NULL);
     }
-    SR_LOG_ERR_MSG("Response error allocation failed.");
+    SR_LOG_ERR_MSG("GPB error allocation failed.");
     return SR_ERR_NOMEM;
+}
+
+int
+sr_gpb_fill_errors(sr_error_info_t *sr_errors, size_t sr_error_cnt, Sr__Error ***gpb_errors_p, size_t *gpb_error_cnt_p)
+{
+    Sr__Error **gpb_errors = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG3(sr_errors, gpb_errors_p, gpb_error_cnt_p);
+
+    gpb_errors = calloc(sr_error_cnt, sizeof(*gpb_errors));
+    if (NULL == gpb_errors) {
+        SR_LOG_ERR_MSG("GPB error array allocation failed.");
+        return SR_ERR_NOMEM;
+    }
+
+    for (size_t i = 0; i < sr_error_cnt; i++) {
+        rc = sr_gpb_fill_error(sr_errors[i].message, sr_errors[i].path, &gpb_errors[i]);
+        if (SR_ERR_OK != rc) {
+            for (size_t j = 0; j < i; j++) {
+                sr__error__free_unpacked(gpb_errors[j], NULL);
+            }
+            free(gpb_errors);
+            return rc;
+        }
+    }
+
+    *gpb_errors_p = gpb_errors;
+    *gpb_error_cnt_p = sr_error_cnt;
+
+    return SR_ERR_OK;
+}
+
+void
+sr_free_errors(sr_error_info_t *errors, size_t error_cnt)
+{
+    if (NULL != errors) {
+        for (size_t i = 0; i < error_cnt; i++) {
+            free((void*)errors[i].path);
+            free((void*)errors[i].message);
+        }
+        free(errors);
+    }
 }
 

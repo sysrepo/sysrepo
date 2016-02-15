@@ -146,8 +146,6 @@ rp_get_item_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr_
     sr_val_t *value = NULL;
     char *xpath = msg->request->get_item_req->path;
 
-    //TODO select datatree corresponding to the datastore
-
     /* get value from data manager*/
     rc = rp_dt_get_value_wrapper(rp_ctx->dm_ctx, session->dm_session, xpath, &value);
     if (SR_ERR_OK != rc){
@@ -198,8 +196,6 @@ rp_get_items_req_process(const rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg 
     bool recursive = msg->request->get_items_req->recursive;
     size_t offset = msg->request->get_items_req->offset;
     size_t limit = msg->request->get_items_req->limit;
-
-    //TODO select datatree corresponding to the datastore
 
     if (msg->request->get_items_req->has_recursive || msg->request->get_items_req->has_offset ||
             msg->request->get_items_req->has_limit){
@@ -410,14 +406,18 @@ rp_validate_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr_
         return SR_ERR_NOMEM;
     }
 
-    char **errors = NULL;
+    sr_error_info_t *errors = NULL;
     size_t err_cnt = 0;
     rc = dm_validate_session_data_trees(rp_ctx->dm_ctx, session->dm_session, &errors, &err_cnt);
-//    resp->response->validate_resp->errors = errors; // TODO
-//    resp->response->validate_resp->n_errors = err_cnt;
 
     /* set response code */
     resp->response->result = rc;
+
+    /* copy error information to GPB  (if any) */
+    if (err_cnt > 0) {
+        rc = sr_gpb_fill_errors(errors, err_cnt, &resp->response->validate_resp->errors, &resp->response->validate_resp->n_errors);
+        sr_free_errors(errors, err_cnt);
+    }
 
     /* send the response */
     rc = cm_msg_send(rp_ctx->cm_ctx, resp);
@@ -445,14 +445,18 @@ rp_commit_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__M
         return SR_ERR_NOMEM;
     }
 
-    char **errors = NULL;
+    sr_error_info_t *errors = NULL;
     size_t err_cnt = 0;
     rc = dm_commit(rp_ctx->dm_ctx, session->dm_session, &errors, &err_cnt);
-//    resp->response->commit_resp->errors = errors;  // TODO
-//    resp->response->commit_resp->n_errors = err_cnt;
 
     /* set response code */
     resp->response->result = rc;
+
+    /* copy error information to GPB  (if any) */
+    if (err_cnt > 0) {
+        rc = sr_gpb_fill_errors(errors, err_cnt, &resp->response->commit_resp->errors, &resp->response->commit_resp->n_errors);
+        sr_free_errors(errors, err_cnt);
+    }
 
     /* send the response */
     rc = cm_msg_send(rp_ctx->cm_ctx, resp);

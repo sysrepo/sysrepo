@@ -127,12 +127,21 @@ cl_session_set_error(sr_session_ctx_t *session, const char *error_message, const
     CHECK_NULL_ARG(session);
 
     if (0 == session->error_info_size) {
+        /* need to allocate the space for the error */
         session->error_info = calloc(1, sizeof(*session->error_info));
         if (NULL == session->error_info) {
             SR_LOG_ERR_MSG("Unable to allocate error information.");
             return SR_ERR_NOMEM;
         }
         session->error_info_size = 1;
+    } else {
+        /* space for the error already allocated, release old error data */
+        if (NULL != session->error_info[0].message) {
+            free((void*)session->error_info[0].message);
+        }
+        if (NULL != session->error_info[0].path) {
+            free((void*)session->error_info[0].path);
+        }
     }
     if (NULL != error_message) {
         session->error_info[0].message = strdup(error_message);
@@ -148,6 +157,45 @@ cl_session_set_error(sr_session_ctx_t *session, const char *error_message, const
             return SR_ERR_NOMEM;
         }
     }
+    session->error_cnt = 1;
+
+    return SR_ERR_OK;
+}
+
+/**
+ * @brief Set detailed error information from GPB error array into session context.
+ */
+static int
+cl_session_set_errors(sr_session_ctx_t *session, Sr__Error **errors, size_t error_cnt)
+{
+    sr_error_info_t *tmp_info = NULL;
+
+    CHECK_NULL_ARG2(session, errors);
+
+    if (session->error_info_size < error_cnt) {
+        tmp_info = realloc(session->error_info, (error_cnt * sizeof(*tmp_info)));
+        if (NULL == tmp_info) {
+            SR_LOG_ERR_MSG("Unable to allocate error information.");
+            return SR_ERR_NOMEM;
+        }
+        session->error_info = tmp_info;
+        session->error_info_size = error_cnt;
+    }
+    for (size_t i = 0; i < error_cnt; i++) {
+        if (NULL != errors[i]->message) {
+            session->error_info[i].message = strdup(errors[i]->message);
+            if (NULL == session->error_info[i].message) {
+                SR_LOG_WRN_MSG("Unable to allocate error message, will be left NULL.");
+            }
+        }
+        if (NULL != errors[i]->path) {
+            session->error_info[i].path = strdup(errors[i]->path);
+            if (NULL == session->error_info[i].message) {
+                SR_LOG_WRN_MSG("Unable to allocate error xpath, will be left NULL.");
+            }
+        }
+    }
+    session->error_cnt = error_cnt;
 
     return SR_ERR_OK;
 }
@@ -802,16 +850,8 @@ sr_session_stop(sr_session_ctx_t *session)
     sr__msg__free_unpacked(msg_req, NULL);
     sr__msg__free_unpacked(msg_resp, NULL);
 
-    for (size_t i = 0; i < session->error_info_size; i++) {
-        if (NULL != session->error_info[i].message) {
-            free((void*)session->error_info[i].message);
-        }
-        if (NULL != session->error_info[i].path) {
-            free((void*)session->error_info[i].path);
-        }
-    }
-    free(session->error_info);
 
+    sr_free_errors(session->error_info, session->error_info_size);
     pthread_mutex_destroy(&session->lock);
     free(session);
 
@@ -1350,17 +1390,13 @@ sr_validate(sr_session_ctx_t *session)
 
     validate_resp = msg_resp->response->validate_resp;
     if (SR_ERR_VALIDATION_FAILED == rc) {
-        SR_LOG_ERR("Validate operation failed with %zu errors.", validate_resp->n_errors);
-    }
+        SR_LOG_ERR("Validate operation failed with %zu error(s).", validate_resp->n_errors);
 
-    /* return validation errors if requested and if there are any */
-//    if ((NULL != errors) && (NULL != error_cnt) && (validate_resp->n_errors > 0)) {
-//        /* set errors to output arguments, GPB pointers to NULL */
-//        *errors = validate_resp->errors; // TODO
-//        *error_cnt = validate_resp->n_errors;
-//        validate_resp->errors = NULL;
-//        validate_resp->n_errors = 0;
-//    }
+        /* store validation errors within the session */
+        if (validate_resp->n_errors > 0) {
+            cl_session_set_errors(session, validate_resp->errors, validate_resp->n_errors);
+        }
+    }
 
     sr__msg__free_unpacked(msg_req, NULL);
     sr__msg__free_unpacked(msg_resp, NULL);
@@ -1404,17 +1440,13 @@ sr_commit(sr_session_ctx_t *session)
 
     commit_resp = msg_resp->response->commit_resp;
     if (SR_ERR_COMMIT_FAILED == rc) {
-        SR_LOG_ERR("Commit operation failed with %zu errors.", commit_resp->n_errors);
-    }
+        SR_LOG_ERR("Commit operation failed with %zu error(s).", commit_resp->n_errors);
 
-    /* return commit errors if requested and if there are any */
-//    if ((NULL != errors) && (NULL != error_cnt) && (commit_resp->n_errors > 0)) {
-//        /* set errors to output arguments, GPB pointers to NULL */
-//        *errors = commit_resp->errors; // TODO
-//        *error_cnt = commit_resp->n_errors;
-//        commit_resp->errors = NULL;
-//        commit_resp->n_errors = 0;
-//    }
+        /* store commit errors within the session */
+        if (commit_resp->n_errors > 0) {
+            cl_session_set_errors(session, commit_resp->errors, commit_resp->n_errors);
+        }
+    }
 
     sr__msg__free_unpacked(msg_req, NULL);
     sr__msg__free_unpacked(msg_resp, NULL);
@@ -1473,29 +1505,16 @@ cleanup:
 int
 sr_get_last_error(sr_session_ctx_t *session, const sr_error_info_t **error_info)
 {
+    int rc = SR_ERR_OK;
+
     CHECK_NULL_ARG2(session, error_info);
 
     if (0 == session->error_cnt) {
         /* no detailed error information, let's create it from the last error code */
-        if (0 == session->error_info_size) {
-            /* need to allocate the space for error */
-            session->error_info = calloc(1, sizeof(*session->error_info));
-            if (NULL == session->error_info) {
-                SR_LOG_ERR_MSG("Unable to allocate error information.");
-                return session->last_error;
-            }
-            session->error_info_size = 1;
-        } else {
-            /* space for error already allocated, release old data */
-            if (NULL != session->error_info[0].message) {
-                free((void*)session->error_info[0].message);
-            }
-            if (NULL != session->error_info[0].path) {
-                free((void*)session->error_info[0].path);
-            }
+        rc = cl_session_set_error(session, sr_strerror(session->last_error), NULL);
+        if (SR_ERR_OK != rc) {
+            return rc;
         }
-        session->error_info[0].message = strdup(sr_strerror(session->last_error));
-        session->error_info[0].path = NULL;
     }
 
     *error_info = session->error_info;
@@ -1506,12 +1525,16 @@ sr_get_last_error(sr_session_ctx_t *session, const sr_error_info_t **error_info)
 int
 sr_get_last_errors(sr_session_ctx_t *session, const sr_error_info_t **error_info, size_t *error_cnt)
 {
+    int rc = SR_ERR_OK;
+
     CHECK_NULL_ARG3(session, error_info, error_cnt);
 
     if (0 == session->error_cnt) {
-        /* no detailed error info - call sr_get_last_error to handle this */
-        *error_cnt = 1;
-        return sr_get_last_error(session, error_info);
+        /* no detailed error information, let's create it from the last error code */
+        rc = cl_session_set_error(session, sr_strerror(session->last_error), NULL);
+        if (SR_ERR_OK != rc) {
+            return rc;
+        }
     }
 
     *error_info = session->error_info;

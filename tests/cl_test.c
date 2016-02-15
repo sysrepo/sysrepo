@@ -551,7 +551,8 @@ cl_validate_test(void **state)
     assert_non_null(conn);
 
     sr_session_ctx_t *session = NULL;
-    int rc = 0;
+    int rc = SR_ERR_OK;
+    sr_val_t value = { 0 };
     const sr_error_info_t *errors = NULL;
     size_t error_cnt = 0;
 
@@ -559,16 +560,37 @@ cl_validate_test(void **state)
     rc = sr_session_start(conn, "alice", SR_DS_STARTUP, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
-    /* perform a validate request */
+    /* set some data in the container, but don't set mandatory leaves */
+    value.type = SR_STRING_T;
+    value.data.string_val = strdup("Europe/Banska Bystrica");
+    rc = sr_set_item(session, "/test-module:location/name", &value, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* perform a validate request - expect an error */
     rc = sr_validate(session);
+    assert_int_equal(rc, SR_ERR_VALIDATION_FAILED);
 
     /* print out all errors (if any) */
     rc = sr_get_last_errors(session, &errors, &error_cnt);
     if (error_cnt > 0) {
         for (size_t i = 0; i < error_cnt; i++) {
-            printf("Error[%zu]: %s : %s\n", i, errors[i].path, errors[i].message);
+            printf("Error[%zu]: %s: %s\n", i, errors[i].path, errors[i].message);
         }
     }
+
+    /* set mandatory leaf 1 */
+    value.type = SR_STRING_T;
+    value.data.string_val = strdup("48°46'N");
+    rc = sr_set_item(session, "/test-module:location/latitude", &value, SR_EDIT_DEFAULT);
+
+    /* set mandatory leaf 2 */
+    value.type = SR_STRING_T;
+    value.data.string_val = strdup("19°14'E");
+    rc = sr_set_item(session, "/test-module:location/longitude", &value, SR_EDIT_DEFAULT);
+
+    /* perform a validate request again - expect success */
+    rc = sr_validate(session);
+    assert_int_equal(rc, SR_ERR_OK);
 
     /* stop the session */
     rc = sr_session_stop(session);
@@ -582,7 +604,8 @@ cl_commit_test(void **state)
     assert_non_null(conn);
 
     sr_session_ctx_t *session = NULL;
-    int rc = 0;
+    int rc = SR_ERR_OK;
+    sr_val_t value = { 0 };
     const sr_error_info_t *errors = NULL;
     size_t error_cnt = 0;
 
@@ -590,16 +613,43 @@ cl_commit_test(void **state)
     rc = sr_session_start(conn, "alice", SR_DS_STARTUP, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
-    /* perform a commit request */
+    /* set some data in the container, but don't set mandatory leaves */
+    value.type = SR_STRING_T;
+    value.data.string_val = strdup("Europe/Banska Bystrica");
+    rc = sr_set_item(session, "/test-module:location/name", &value, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* perform a commit request - expect an error */
     rc = sr_commit(session);
+    assert_int_equal(rc, SR_ERR_COMMIT_FAILED);
 
     /* print out all errors (if any) */
     rc = sr_get_last_errors(session, &errors, &error_cnt);
     if (error_cnt > 0) {
         for (size_t i = 0; i < error_cnt; i++) {
-            printf("Error[%zu]: %s : %s\n", i, errors[i].path, errors[i].message);
+            printf("Error[%zu]: %s: %s\n", i, errors[i].path, errors[i].message);
         }
     }
+
+    /* set mandatory leaf 1 */
+    value.type = SR_STRING_T;
+    value.data.string_val = strdup("48°46'N");
+    rc = sr_set_item(session, "/test-module:location/latitude", &value, SR_EDIT_DEFAULT);
+
+    /* set mandatory leaf 2 */
+    value.type = SR_STRING_T;
+    value.data.string_val = strdup("19°14'E");
+    rc = sr_set_item(session, "/test-module:location/longitude", &value, SR_EDIT_DEFAULT);
+
+    /* perform a commit request again - expect success */
+   rc = sr_commit(session);
+   assert_int_equal(rc, SR_ERR_OK);
+
+    /* cleanup - delete added data */
+    rc = sr_delete_item(session, "/test-module:location", SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_commit(session);
+    assert_int_equal(rc, SR_ERR_OK);
 
     /* stop the session */
     rc = sr_session_stop(session);

@@ -808,7 +808,7 @@ edit_validate_test(void **state)
     int rc = 0;
     dm_ctx_t *ctx = *state;
     dm_session_t *session = NULL;
-    char **errors = NULL;
+    sr_error_info_t *errors = NULL;
     size_t e_cnt = 0;
 
 
@@ -948,10 +948,7 @@ edit_validate_test(void **state)
     rc = dm_validate_session_data_trees(ctx, session, &errors, &e_cnt);
     assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
 
-    for (size_t i = 0; i < e_cnt; i++) {
-        free(errors[i]);
-    }
-    free(errors);
+    sr_free_errors(errors, e_cnt);
 
     dm_session_stop(ctx, session);
 
@@ -973,10 +970,7 @@ edit_validate_test(void **state)
     rc = dm_validate_session_data_trees(ctx, session, &errors, &e_cnt);
     assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
 
-    for (size_t i = 0; i < e_cnt; i++) {
-        free(errors[i]);
-    }
-    free(errors);
+    sr_free_errors(errors, e_cnt);
 
     dm_session_stop(ctx, session);
 }
@@ -1085,11 +1079,12 @@ edit_commit_test(void **state)
     assert_int_equal(XP_TEST_MODULE_INT64_VALUE_T, valueB->data.int64_val);
     sr_free_val(valueB);
 
-    char **errors = NULL;
+    sr_error_info_t *errors = NULL;
     size_t e_cnt = 0;
 
     rc = dm_commit(ctx, sessionA, &errors, &e_cnt);
     assert_int_equal(SR_ERR_OK, rc);
+    sr_free_errors(errors, e_cnt);
 
     rc = rp_dt_get_value_wrapper(ctx, sessionA, XP_TEST_MODULE_INT64, &valueA);
     assert_int_equal(SR_ERR_OK, rc);
@@ -1122,6 +1117,7 @@ edit_commit_test(void **state)
 
     rc = dm_commit(ctx, sessionA, &errors, &e_cnt);
     assert_int_equal(SR_ERR_OK, rc);
+    sr_free_errors(errors, e_cnt);
 
     dm_session_stop(ctx, sessionA);
 }
