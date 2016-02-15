@@ -43,8 +43,8 @@ main(int argc, char **argv)
         goto cleanup;
     }
 
-    /* delete 'address' list entry with key '172.16.0.1' with all its content */
-    rc = sr_delete_item(sess, "/ietf-interfaces:interfaces/interface[name='gigaeth0']/ietf-ip:ipv4/address[ip='172.16.0.1']", SR_EDIT_DEFAULT);
+    /* delete 'address' list entry with key '2001:0db8:85a3:0000:0000:8a2e:0370:7334' with all its content */
+    rc = sr_delete_item(sess, "/ietf-interfaces:interfaces/interface[name='gigaeth0']/ietf-ip:ipv6/address[ip='2001:0db8:85a3:0000:0000:8a2e:0370:7334']", SR_EDIT_DEFAULT);
     if (SR_ERR_OK != rc) {
         printf("Error by sr_delete_item: %s\n", sr_strerror(rc));
         goto cleanup;
