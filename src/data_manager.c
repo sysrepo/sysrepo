@@ -262,9 +262,11 @@ dm_load_data_tree(dm_ctx_t *dm_ctx, const struct lys_module *module, sr_datastor
     }
 
     FILE *f = fopen(data_filename, "r");
-    //TODO lock file
+
     if (NULL != f) {
+        lockf(fileno(f), F_LOCK, 0);
         data_tree = lyd_parse_fd(dm_ctx->ly_ctx, fileno(f), LYD_XML, LYD_OPT_STRICT);
+        lockf(fileno(f), F_ULOCK, 0);
         if (NULL == data_tree) {
             SR_LOG_ERR("Parsing data tree from file %s failed", data_filename);
             free(data_filename);
