@@ -554,14 +554,14 @@ int sr_move_item(sr_session_ctx_t *session, const char *path, const sr_move_dire
  *
  * Provides only YANG validation, commit verify subscribers won't be notified in this case.
  *
+ * @see Use ::sr_get_last_errors to retrieve error information if the validation
+ * returned with an error.
+ *
  * @param[in] session Session context acquired with ::sr_session_start call.
- * @param[in] errors Errors due which the validation has failed. NULL may be passed
- * in if you are not interested in errors.
- * @param[in] error_cnt Number of errors returned.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int sr_validate(sr_session_ctx_t *session, char ***errors, size_t *error_cnt);
+int sr_validate(sr_session_ctx_t *session);
 
 /**
  * @brief Apply changes made in current session.
@@ -571,14 +571,14 @@ int sr_validate(sr_session_ctx_t *session, char ***errors, size_t *error_cnt);
  * @note Note that in case that you are committing to the running datstore, you also
  * need to copy the config to startup to make changes permanent after restart.
  *
+ * @see Use ::sr_get_last_errors to retrieve error information if the commit
+ * operation returned with an error.
+ *
  * @param[in] session Session context acquired with ::sr_session_start call.
- * @param[in] errors Errors due which the commit has failed. NULL may be passed
- * in if you are not interested in errors.
- * @param[in] error_cnt Number of errors returned.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int sr_commit(sr_session_ctx_t *session, char ***errors, size_t *error_cnt);
+int sr_commit(sr_session_ctx_t *session);
 
 /**
  * @brief Discard non-committed changes made in current session.

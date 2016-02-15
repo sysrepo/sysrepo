@@ -56,7 +56,7 @@ main(int argc, char **argv)
     }
 
     /* commit the changes */
-    rc = sr_commit(sess, NULL, NULL);
+    rc = sr_commit(sess);
     if (SR_ERR_OK != rc) {
         printf("Error by sr_commit: %s\n", sr_strerror(rc));
         goto cleanup;

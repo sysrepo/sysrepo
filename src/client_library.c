@@ -1324,7 +1324,7 @@ cleanup:
 }
 
 int
-sr_validate(sr_session_ctx_t *session, char ***errors, size_t *error_cnt)
+sr_validate(sr_session_ctx_t *session)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
     Sr__ValidateResp *validate_resp = NULL;
@@ -1354,13 +1354,13 @@ sr_validate(sr_session_ctx_t *session, char ***errors, size_t *error_cnt)
     }
 
     /* return validation errors if requested and if there are any */
-    if ((NULL != errors) && (NULL != error_cnt) && (validate_resp->n_errors > 0)) {
-        /* set errors to output arguments, GPB pointers to NULL */
+//    if ((NULL != errors) && (NULL != error_cnt) && (validate_resp->n_errors > 0)) {
+//        /* set errors to output arguments, GPB pointers to NULL */
 //        *errors = validate_resp->errors; // TODO
 //        *error_cnt = validate_resp->n_errors;
 //        validate_resp->errors = NULL;
 //        validate_resp->n_errors = 0;
-    }
+//    }
 
     sr__msg__free_unpacked(msg_req, NULL);
     sr__msg__free_unpacked(msg_resp, NULL);
@@ -1378,7 +1378,7 @@ cleanup:
 }
 
 int
-sr_commit(sr_session_ctx_t *session, char ***errors, size_t *error_cnt)
+sr_commit(sr_session_ctx_t *session)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
     Sr__CommitResp *commit_resp = NULL;
@@ -1408,13 +1408,13 @@ sr_commit(sr_session_ctx_t *session, char ***errors, size_t *error_cnt)
     }
 
     /* return commit errors if requested and if there are any */
-    if ((NULL != errors) && (NULL != error_cnt) && (commit_resp->n_errors > 0)) {
-        /* set errors to output arguments, GPB pointers to NULL */
+//    if ((NULL != errors) && (NULL != error_cnt) && (commit_resp->n_errors > 0)) {
+//        /* set errors to output arguments, GPB pointers to NULL */
 //        *errors = commit_resp->errors; // TODO
 //        *error_cnt = commit_resp->n_errors;
 //        commit_resp->errors = NULL;
 //        commit_resp->n_errors = 0;
-    }
+//    }
 
     sr__msg__free_unpacked(msg_req, NULL);
     sr__msg__free_unpacked(msg_resp, NULL);

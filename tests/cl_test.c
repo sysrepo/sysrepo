@@ -552,7 +552,7 @@ cl_validate_test(void **state)
 
     sr_session_ctx_t *session = NULL;
     int rc = 0;
-    char **errors = NULL;
+    const sr_error_info_t *errors = NULL;
     size_t error_cnt = 0;
 
     /* start a session */
@@ -560,16 +560,14 @@ cl_validate_test(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 
     /* perform a validate request */
-    rc = sr_validate(session, &errors, &error_cnt);
+    rc = sr_validate(session);
 
-    assert_int_equal(rc, SR_ERR_OK);
-    /* print out and cleanup errors */
+    /* print out all errors (if any) */
+    rc = sr_get_last_errors(session, &errors, &error_cnt);
     if (error_cnt > 0) {
         for (size_t i = 0; i < error_cnt; i++) {
-            printf("Error[%zu]: %s\n", i, errors[i]);
-            free(errors[i]);
+            printf("Error[%zu]: %s : %s\n", i, errors[i].path, errors[i].message);
         }
-        free(errors);
     }
 
     /* stop the session */
@@ -585,7 +583,7 @@ cl_commit_test(void **state)
 
     sr_session_ctx_t *session = NULL;
     int rc = 0;
-    char **errors = NULL;
+    const sr_error_info_t *errors = NULL;
     size_t error_cnt = 0;
 
     /* start a session */
@@ -593,16 +591,14 @@ cl_commit_test(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 
     /* perform a commit request */
-    rc = sr_commit(session, &errors, &error_cnt);
+    rc = sr_commit(session);
 
-    assert_int_equal(rc, SR_ERR_OK);
-    /* print out and cleanup errors */
+    /* print out all errors (if any) */
+    rc = sr_get_last_errors(session, &errors, &error_cnt);
     if (error_cnt > 0) {
         for (size_t i = 0; i < error_cnt; i++) {
-            printf("Error[%zu]: %s\n", i, errors[i]);
-            free(errors[i]);
+            printf("Error[%zu]: %s : %s\n", i, errors[i].path, errors[i].message);
         }
-        free(errors);
     }
 
     /* stop the session */
