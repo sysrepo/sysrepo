@@ -661,7 +661,7 @@ cl_get_error_test(void **state)
 
     sr_session_ctx_t *session = NULL;
     sr_val_t *value = NULL;
-    sr_error_info_t *error_info = NULL;
+    const sr_error_info_t *error_info = NULL;
     size_t error_cnt = 0;
     int rc = 0;
 
@@ -684,6 +684,7 @@ cl_get_error_test(void **state)
     rc = sr_get_last_errors(session, &error_info, &error_cnt);
     assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
     assert_non_null(error_info);
+    assert_int_equal(error_cnt, 1);
     assert_non_null(error_info[0].message);
 
     /* stop the session */

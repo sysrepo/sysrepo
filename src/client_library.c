@@ -1471,19 +1471,28 @@ cleanup:
 }
 
 int
-sr_get_last_error(sr_session_ctx_t *session, sr_error_info_t **error_info)
+sr_get_last_error(sr_session_ctx_t *session, const sr_error_info_t **error_info)
 {
     CHECK_NULL_ARG2(session, error_info);
 
     if (0 == session->error_cnt) {
         /* no detailed error information, let's create it from the last error code */
         if (0 == session->error_info_size) {
+            /* need to allocate the space for error */
             session->error_info = calloc(1, sizeof(*session->error_info));
             if (NULL == session->error_info) {
                 SR_LOG_ERR_MSG("Unable to allocate error information.");
                 return session->last_error;
             }
             session->error_info_size = 1;
+        } else {
+            /* space for error already allocated, release old data */
+            if (NULL != session->error_info[0].message) {
+                free((void*)session->error_info[0].message);
+            }
+            if (NULL != session->error_info[0].path) {
+                free((void*)session->error_info[0].path);
+            }
         }
         session->error_info[0].message = strdup(sr_strerror(session->last_error));
         session->error_info[0].path = NULL;
@@ -1495,7 +1504,7 @@ sr_get_last_error(sr_session_ctx_t *session, sr_error_info_t **error_info)
 }
 
 int
-sr_get_last_errors(sr_session_ctx_t *session, sr_error_info_t **error_info, size_t *error_cnt)
+sr_get_last_errors(sr_session_ctx_t *session, const sr_error_info_t **error_info, size_t *error_cnt)
 {
     CHECK_NULL_ARG3(session, error_info, error_cnt);
 

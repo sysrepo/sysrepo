@@ -286,7 +286,7 @@ int sr_session_stop(sr_session_ctx_t *session);
  *
  * @return Error code of the last operation executed within provided session.
  */
-int sr_get_last_error(sr_session_ctx_t *session, sr_error_info_t **error_info);
+int sr_get_last_error(sr_session_ctx_t *session, const sr_error_info_t **error_info);
 
 /**
  * @brief Retrieves detailed information about all errors that have occurred
@@ -304,7 +304,7 @@ int sr_get_last_error(sr_session_ctx_t *session, sr_error_info_t **error_info);
  *
  * @return Error code of the last operation executed within provided session.
  */
-int sr_get_last_errors(sr_session_ctx_t *session, sr_error_info_t **error_info, size_t *error_cnt);
+int sr_get_last_errors(sr_session_ctx_t *session, const sr_error_info_t **error_info, size_t *error_cnt);
 
 
 ////////////////////////////////////////////////////////////////////////////////
