@@ -43,7 +43,7 @@ main(int argc, char **argv)
         goto cleanup;
     }
 
-    /* delete 'address' list entry with key '172.16.0.1' with all its content */
+    /* delete 'address' list entry with key 'fe80::ab8' with all its content */
     rc = sr_delete_item(sess, "/ietf-interfaces:interfaces/interface[name='gigaeth0']/ietf-ip:ipv6/address[ip='fe80::ab8']", SR_EDIT_DEFAULT);
     if (SR_ERR_OK != rc) {
         printf("Error by sr_delete_item: %s\n", sr_strerror(rc));

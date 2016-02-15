@@ -44,7 +44,7 @@ main(int argc, char **argv)
         goto cleanup;
     }
 
-    /* set 'prefix-length' leaf inside of the 'address' list entry with key '172.16.0.1'
+    /* set 'prefix-length' leaf inside of the 'address' list entry with key 'fe80::ab8'
        (list entry will be automatically created if it does not exist) */
     value.type = SR_UINT8_T;
     value.data.uint8_val = 64;
