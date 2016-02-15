@@ -52,6 +52,7 @@ ADD_UNIT_TEST(rp_test)
 ADD_UNIT_TEST_WITH_HELPERS(rp_datatree_test)
 ADD_UNIT_TEST(rp_node_stack_test)
 ADD_UNIT_TEST_WITH_HELPERS(rp_dt_edit_test)
+ADD_UNIT_TEST_WITH_HELPERS(rp_dt_running_test)
 
 
 ADD_UNIT_TEST_WITH_HELPERS(cl_test)

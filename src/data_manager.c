@@ -27,16 +27,6 @@
 #include <pthread.h>
 
 /**
- * @brief suffix of data file for startup datastore
- */
-#define DM_STARTUP_SUFFIX ".data"
-
-/**
- * @brief suffix of data file for running datastore
- */
-#define DM_RUNNING_SUFFIX ".running"
-
-/**
  * @brief Lock the rw_lock for reading, the lock is selected according to the datastore parameter.
  * @param [in] ds sr_datastore_t
  * @param [in] ctx structutre that contains startup_lock and running_lock
@@ -80,11 +70,20 @@ typedef struct dm_session_s {
     sr_btree_t *session_modules;    /**< binary holding session copies of data models */
 } dm_session_t;
 
+/**
+ * @brief Info structure for the node holds the state of the running data store.
+ * (It will hold information about notification subscriptions.)
+ */
+typedef struct dm_node_info_s {
+    dm_node_state_t state;
+}dm_node_info_t;
+
 typedef struct dm_model_info_s{
     pthread_rwlock_t running_lock;
     time_t running_timestamp;
     pthread_rwlock_t startup_lock;
     time_t startup_timestamp;
+    dm_node_info_t *node_info;
 }dm_model_info_t;
 
 /**
@@ -649,6 +648,11 @@ dm_init(const char *schema_search_dir, const char *data_search_dir, dm_ctx_t **d
 static void
 dm_free_lys_private_data(const struct lys_node *node, void *private){
     if (NULL != private){
+        if (node == node->module->data && NULL != private) {
+            if (LYS_AUGMENT != node->nodetype) {
+                free(((dm_model_info_t *) private)->node_info);
+            }
+        }
         free(private);
     }
 }
@@ -986,4 +990,92 @@ dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, char ***errors, size_t *err_c
     rc = dm_discard_changes(dm_ctx, session);
 
     return rc;
+}
+
+static dm_node_state_t
+dm_get_node_state(struct lys_node *node)
+{
+    if (NULL == node || NULL == node->private) {
+        return DM_NODE_DISABLED;
+    }
+    dm_node_info_t *n_info = NULL;
+    if (node == node->module->data) {
+        n_info = ((dm_model_info_t *) node->private)->node_info;
+    }
+    else{
+        n_info = node->private;
+    }
+    if (NULL == n_info) {
+        return DM_NODE_DISABLED;
+    }
+    return n_info->state;
+}
+
+bool
+dm_is_node_enabled(struct lys_node* node)
+{
+    dm_node_state_t state = dm_get_node_state(node);
+    return DM_NODE_ENABLED == state || DM_NODE_ENABLED_WITH_CHILDREN == state;
+}
+
+bool
+dm_is_node_enabled_with_children(struct lys_node* node)
+{
+    return DM_NODE_ENABLED_WITH_CHILDREN == dm_get_node_state(node);
+}
+
+bool
+dm_is_enabled_check_recursively(struct lys_node *node)
+{
+    if (dm_is_node_enabled(node)) {
+        return true;
+    }
+    node = node->parent;
+    while (NULL != node) {
+        if (NULL == node->parent && LYS_AUGMENT == node->nodetype) {
+            node = ((struct lys_node_augment *) node)->target;
+            continue;
+        }
+        if (dm_is_node_enabled_with_children(node)) {
+            return true;
+        }
+        node = node->parent;
+    }
+    return false;
+}
+
+int
+dm_set_node_state(struct lys_node *node, dm_node_state_t state)
+{
+    CHECK_NULL_ARG(node);
+    dm_node_info_t **n_info = NULL;
+
+    if (node == node->module->data) {
+        if (LYS_AUGMENT == node->nodetype) {
+            n_info = (dm_node_info_t **) &node->private;
+        } else {
+            n_info = &((dm_model_info_t *) node->private)->node_info;
+        }
+    }
+    else{
+        n_info = (dm_node_info_t **) &node->private;
+    }
+    if (NULL == *n_info){
+        *n_info = calloc(1, sizeof(**n_info));
+        if (NULL == *n_info) {
+            SR_LOG_ERR_MSG("Memory allocation failed");
+            return SR_ERR_NOMEM;
+        }
+    }
+    (*n_info)->state = state;
+    return SR_ERR_OK;
+}
+
+bool
+dm_is_running_datastore_session(dm_session_t *session)
+{
+    if (NULL != session) {
+        return SR_DS_RUNNING == session->datastore;
+    }
+    return false;
 }

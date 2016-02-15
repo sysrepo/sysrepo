@@ -1,5 +1,5 @@
 /**
- * @file xpath_helpers.c
+ * @file dt_xpath_helpers.c
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
  * @brief
  *
@@ -36,7 +36,7 @@ rp_dt_get_value_xpath(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const 
         SR_LOG_ERR("Converting xpath '%s' to loc_id failed.", xpath);
         return rc;
     }
-    rc = rp_dt_get_value(dm_ctx, data_tree, l, value);
+    rc = rp_dt_get_value(dm_ctx, data_tree, l, false, value);
     xp_free_loc_id(l);
     return rc;
 }
@@ -54,7 +54,7 @@ rp_dt_get_values_xpath(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const
         SR_LOG_ERR("Converting xpath '%s' to loc_id failed.", xpath);
         return rc;
     }
-    rc = rp_dt_get_values(dm_ctx, data_tree, l, values, count);
+    rc = rp_dt_get_values(dm_ctx, data_tree, l, false, values, count);
     xp_free_loc_id(l);
     return rc;
 }
@@ -72,7 +72,7 @@ rp_dt_get_nodes_xpath(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const 
         SR_LOG_ERR("Converting xpath '%s' to loc_id failed.", xpath);
         return rc;
     }
-    rc = rp_dt_get_nodes(dm_ctx, data_tree, l, nodes, count);
+    rc = rp_dt_get_nodes(dm_ctx, data_tree, l, false, nodes, count);
     xp_free_loc_id(l);
     return rc;
 }
@@ -90,7 +90,7 @@ rp_dt_get_node_xpath(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const c
         SR_LOG_ERR("Converting xpath '%s' to loc_id failed.", xpath);
         return rc;
     }
-    rc = rp_dt_get_node(dm_ctx, data_tree, l, node);
+    rc = rp_dt_get_node(dm_ctx, data_tree, l, false, node);
     xp_free_loc_id(l);
     return rc;
 }

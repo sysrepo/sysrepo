@@ -33,11 +33,23 @@
  * @param [in] dm_ctx
  * @param [in] data_tree
  * @param [in] loc_id
+ * @param [in] check_enable
  * @param [out] values
  * @param [out] count
  * @return err_code
  */
-int rp_dt_get_values(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp_loc_id_t *loc_id, sr_val_t ***values, size_t *count);
+int rp_dt_get_values(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp_loc_id_t *loc_id, bool check_enable, sr_val_t ***values, size_t *count);
+
+/**
+ * @brief Returns the value for the specified location_id for leaf, container and list.
+ * @param [in] dm_ctx
+ * @param [in] data_tree
+ * @param [in] loc_id
+ * @param [in] check_enable
+ * @param [out] value
+ * @return err_code
+ */
+int rp_dt_get_value(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp_loc_id_t *loc_id, bool checke_enable, sr_val_t **value);
 
 /**
  * @brief Returns the value for the specified xpath. Internally converts xpath to location_id and looks up the datatree
