@@ -76,7 +76,7 @@ sr_logger_cleanup()
 }
 
 void
-sr_logger_set_level(sr_log_level_t ll_stderr, sr_log_level_t ll_syslog)
+sr_set_log_level(sr_log_level_t ll_stderr, sr_log_level_t ll_syslog)
 {
     sr_ll_stderr = ll_stderr;
     sr_ll_syslog = ll_syslog;

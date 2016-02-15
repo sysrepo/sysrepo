@@ -494,6 +494,37 @@ int sr_schemas_gpb_to_sr(const Sr__Schema **gpb_schemas, const size_t schema_cnt
  */
 int sr_val_to_str(const sr_val_t *value, struct lys_node *schema_node, char **out);
 
+/**
+ * @brief Fills detailed error information into a GPB error message.
+ *
+ * @param[in] error_message Error message (can be NULL). String will be duplicated.
+ * @param[in] error_path XPath to node where error occurred (can be NULL). String will be duplicated.
+ * @param[in,out] gpb_error GPB message where the error information should be filled in.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_gpb_fill_error(const char *error_message, const char *error_path, Sr__Error **gpb_error);
+
+/**
+ * @brief Fills detailed error information into an array of pointers to GPB error messages.
+ *
+ * @param[in] sr_errors Array of detailed error information.
+ * @param[in] sr_error_cnt Number of errors in the sr_errors array.
+ * @param[out] gpb_errors Array of pointers to GPB error messages (will be allocated).
+ * @param[out] gpb_error_cnt Number of errors set to gpb_errors array.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_gpb_fill_errors(sr_error_info_t *sr_errors, size_t sr_error_cnt, Sr__Error ***gpb_errors, size_t *gpb_error_cnt);
+
+/**
+ * @brief Frees an array of detailed error information.
+ *
+ * @param[in] sr_errors Array of detailed error information.
+ * @param[in] sr_error_cnt Number of errors in the sr_errors array.
+ */
+void sr_free_errors(sr_error_info_t *sr_errors, size_t sr_error_cnt);
+
 /**@} common */
 
 #endif /* SRC_SR_COMMON_H_ */

@@ -32,7 +32,7 @@
 static int
 logging_setup(void **state)
 {
-    sr_logger_set_level(SR_LL_DBG, SR_LL_ERR); /* print debugs to stderr */
+    sr_set_log_level(SR_LL_DBG, SR_LL_ERR); /* print debugs to stderr */
     return 0;
 }
 
@@ -551,26 +551,46 @@ cl_validate_test(void **state)
     assert_non_null(conn);
 
     sr_session_ctx_t *session = NULL;
-    int rc = 0;
-    char **errors = NULL;
+    int rc = SR_ERR_OK;
+    sr_val_t value = { 0 };
+    const sr_error_info_t *errors = NULL;
     size_t error_cnt = 0;
 
     /* start a session */
     rc = sr_session_start(conn, "alice", SR_DS_STARTUP, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
-    /* perform a validate request */
-    rc = sr_validate(session, &errors, &error_cnt);
+    /* set some data in the container, but don't set mandatory leaves */
+    value.type = SR_STRING_T;
+    value.data.string_val = "Europe/Banska Bystrica";
+    rc = sr_set_item(session, "/test-module:location/name", &value, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
 
-    assert_int_equal(rc, SR_ERR_OK);
-    /* print out and cleanup errors */
+    /* perform a validate request - expect an error */
+    rc = sr_validate(session);
+    assert_int_equal(rc, SR_ERR_VALIDATION_FAILED);
+
+    /* print out all errors (if any) */
+    rc = sr_get_last_errors(session, &errors, &error_cnt);
     if (error_cnt > 0) {
         for (size_t i = 0; i < error_cnt; i++) {
-            printf("Error[%zu]: %s\n", i, errors[i]);
-            free(errors[i]);
+            printf("Error[%zu]: %s: %s\n", i, errors[i].path, errors[i].message);
         }
-        free(errors);
     }
+
+    /* set mandatory leaf 1 */
+    value.type = SR_STRING_T;
+    value.data.string_val = "48°46'N";
+    rc = sr_set_item(session, "/test-module:location/latitude", &value, SR_EDIT_DEFAULT);
+
+    /* set mandatory leaf 2 */
+    value.type = SR_STRING_T;
+    value.data.string_val = "19°14'E";
+    rc = sr_set_item(session, "/test-module:location/longitude", &value, SR_EDIT_DEFAULT);
+
+    /* perform a validate request again - expect success */
+    rc = sr_validate(session);
+    assert_int_equal(rc, SR_ERR_OK);
 
     /* stop the session */
     rc = sr_session_stop(session);
@@ -584,26 +604,52 @@ cl_commit_test(void **state)
     assert_non_null(conn);
 
     sr_session_ctx_t *session = NULL;
-    int rc = 0;
-    char **errors = NULL;
+    int rc = SR_ERR_OK;
+    sr_val_t value = { 0 };
+    const sr_error_info_t *errors = NULL;
     size_t error_cnt = 0;
 
     /* start a session */
     rc = sr_session_start(conn, "alice", SR_DS_STARTUP, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
-    /* perform a commit request */
-    rc = sr_commit(session, &errors, &error_cnt);
+    /* set some data in the container, but don't set mandatory leaves */
+    value.type = SR_STRING_T;
+    value.data.string_val = "Europe/Banska Bystrica";
+    rc = sr_set_item(session, "/test-module:location/name", &value, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
 
-    assert_int_equal(rc, SR_ERR_OK);
-    /* print out and cleanup errors */
+    /* perform a commit request - expect an error */
+    rc = sr_commit(session);
+    assert_int_equal(rc, SR_ERR_COMMIT_FAILED);
+
+    /* print out all errors (if any) */
+    rc = sr_get_last_errors(session, &errors, &error_cnt);
     if (error_cnt > 0) {
         for (size_t i = 0; i < error_cnt; i++) {
-            printf("Error[%zu]: %s\n", i, errors[i]);
-            free(errors[i]);
+            printf("Error[%zu]: %s: %s\n", i, errors[i].path, errors[i].message);
         }
-        free(errors);
     }
+
+    /* set mandatory leaf 1 */
+    value.type = SR_STRING_T;
+    value.data.string_val = "48°46'N";
+    rc = sr_set_item(session, "/test-module:location/latitude", &value, SR_EDIT_DEFAULT);
+
+    /* set mandatory leaf 2 */
+    value.type = SR_STRING_T;
+    value.data.string_val = "19°14'E";
+    rc = sr_set_item(session, "/test-module:location/longitude", &value, SR_EDIT_DEFAULT);
+
+    /* perform a commit request again - expect success */
+   rc = sr_commit(session);
+   assert_int_equal(rc, SR_ERR_OK);
+
+    /* cleanup - delete added data */
+    rc = sr_delete_item(session, "/test-module:location", SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_commit(session);
+    assert_int_equal(rc, SR_ERR_OK);
 
     /* stop the session */
     rc = sr_session_stop(session);
@@ -653,6 +699,51 @@ cl_discard_changes_test(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 }
 
+static void
+cl_get_error_test(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+
+    sr_session_ctx_t *session = NULL;
+    sr_val_t *value = NULL;
+    const sr_error_info_t *error_info = NULL;
+    size_t error_cnt = 0;
+    int rc = 0;
+
+    /* start a session */
+    rc = sr_session_start(conn, "alice", SR_DS_STARTUP, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* retrieve last error information - no error */
+    rc = sr_get_last_error(session, &error_info);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(error_info);
+    assert_non_null(error_info->message);
+
+    /* attemp to get item on bad element in existing module */
+    rc = sr_get_item(session, "/example-module:container/unknown", &value);
+    assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
+    assert_null(value);
+
+    /* retrieve last error information */
+    rc = sr_get_last_error(session, &error_info);
+    assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
+    assert_non_null(error_info);
+    assert_non_null(error_info->message);
+
+    /* retrieve last error information */
+    rc = sr_get_last_errors(session, &error_info, &error_cnt);
+    assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
+    assert_non_null(error_info);
+    assert_int_equal(error_cnt, 1);
+    assert_non_null(error_info[0].message);
+
+    /* stop the session */
+    rc = sr_session_stop(session);
+    assert_int_equal(rc, SR_ERR_OK);
+}
+
 int
 main()
 {
@@ -668,6 +759,7 @@ main()
             cmocka_unit_test_setup_teardown(cl_validate_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_commit_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_discard_changes_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_get_error_test, sysrepo_setup, sysrepo_teardown),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);

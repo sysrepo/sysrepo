@@ -533,7 +533,7 @@ cm_session_stop_req_process(cm_ctx_t *cm_ctx, sm_session_t *session, Sr__Msg *ms
         if (session->id != msg_in->request->session_stop_req->session_id) {
             SR_LOG_ERR("Stopping of other sessions is not allowed (sess id=%"PRIu32", requested id=%"PRIu32").",
                     session->id, msg_in->request->session_stop_req->session_id);
-            msg_out->response->error_msg = strdup("Stopping of other sessions is not allowed");
+            sr_gpb_fill_error("Stopping of other sessions is not allowed", NULL, &msg_out->response->error);
             rc = SR_ERR_UNSUPPORTED;
         }
     }

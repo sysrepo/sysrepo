@@ -808,7 +808,7 @@ edit_validate_test(void **state)
     int rc = 0;
     dm_ctx_t *ctx = *state;
     dm_session_t *session = NULL;
-    char **errors = NULL;
+    sr_error_info_t *errors = NULL;
     size_t e_cnt = 0;
 
 
@@ -827,6 +827,7 @@ edit_validate_test(void **state)
 
     rc = dm_validate_session_data_trees(ctx, session, &errors, &e_cnt);
     assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
+    sr_free_errors(errors, e_cnt);
 
     sr_val_t mtu;
     mtu.xpath = NULL;
@@ -836,15 +837,23 @@ edit_validate_test(void **state)
     rc = rp_dt_set_item(ctx, session, "/test-module:interface/ifMTU", SR_EDIT_DEFAULT, &mtu);
     assert_int_equal(SR_ERR_OK, rc);
 
+    errors = NULL;
+    e_cnt = 0;
+
     rc = dm_validate_session_data_trees(ctx, session, &errors, &e_cnt);
     assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
+    sr_free_errors(errors, e_cnt);
 
     mtu.data.uint32_val = 1500;
     rc = rp_dt_set_item(ctx, session, "/test-module:interface/ifMTU", SR_EDIT_DEFAULT, &mtu);
     assert_int_equal(SR_ERR_OK, rc);
 
+    errors = NULL;
+    e_cnt = 0;
+
     rc = dm_validate_session_data_trees(ctx, session, &errors, &e_cnt);
     assert_int_equal(SR_ERR_OK, rc);
+    sr_free_errors(errors, e_cnt);
 
     dm_session_stop(ctx, session);
 
@@ -860,8 +869,12 @@ edit_validate_test(void **state)
     rc = rp_dt_set_item(ctx, session, "/test-module:hexnumber", SR_EDIT_DEFAULT, &hexnumber);
     assert_int_equal(SR_ERR_OK, rc);
 
+    errors = NULL;
+    e_cnt = 0;
+
     rc = dm_validate_session_data_trees(ctx, session, &errors, &e_cnt);
     assert_int_equal(SR_ERR_OK, rc);
+    sr_free_errors(errors, e_cnt);
 
     free(hexnumber.data.string_val);
     hexnumber.data.string_val = strdup("AAZZ");
@@ -886,8 +899,12 @@ edit_validate_test(void **state)
     rc = rp_dt_set_item(ctx, session, "/test-module:location/name", SR_EDIT_DEFAULT, &name);
     assert_int_equal(SR_ERR_OK, rc);
 
+    errors = NULL;
+    e_cnt = 0;
+
     rc = dm_validate_session_data_trees(ctx, session, &errors, &e_cnt);
     assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
+    sr_free_errors(errors, e_cnt);
 
     sr_val_t lonigitude;
     lonigitude.xpath = NULL;
@@ -898,8 +915,12 @@ edit_validate_test(void **state)
     rc = rp_dt_set_item(ctx, session, "/test-module:location/longitude", SR_EDIT_DEFAULT, &lonigitude);
     assert_int_equal(SR_ERR_OK, rc);
 
+    errors = NULL;
+    e_cnt = 0;
+
     rc = dm_validate_session_data_trees(ctx, session, &errors, &e_cnt);
     assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
+    sr_free_errors(errors, e_cnt);
 
     sr_val_t latitude;
     latitude.xpath = NULL;
@@ -910,8 +931,12 @@ edit_validate_test(void **state)
     rc = rp_dt_set_item(ctx, session, "/test-module:location/latitude", SR_EDIT_DEFAULT, &latitude);
     assert_int_equal(SR_ERR_OK, rc);
 
+    errors = NULL;
+    e_cnt = 0;
+
     rc = dm_validate_session_data_trees(ctx, session, &errors, &e_cnt);
     assert_int_equal(SR_ERR_OK, rc);
+    sr_free_errors(errors, e_cnt);
 
     sr_free_val_content(&name);
     sr_free_val_content(&lonigitude);
@@ -934,6 +959,7 @@ edit_validate_test(void **state)
 
     rc = dm_validate_session_data_trees(ctx, session, &errors, &e_cnt);
     assert_int_equal(SR_ERR_OK, rc);
+    sr_free_errors(errors, e_cnt);
 
     sr_val_t daily;
     daily.xpath = NULL;
@@ -947,11 +973,7 @@ edit_validate_test(void **state)
 
     rc = dm_validate_session_data_trees(ctx, session, &errors, &e_cnt);
     assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
-
-    for (size_t i = 0; i < e_cnt; i++) {
-        free(errors[i]);
-    }
-    free(errors);
+    sr_free_errors(errors, e_cnt);
 
     dm_session_stop(ctx, session);
 
@@ -970,13 +992,10 @@ edit_validate_test(void **state)
 
     errors = NULL;
     e_cnt = 0;
+
     rc = dm_validate_session_data_trees(ctx, session, &errors, &e_cnt);
     assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
-
-    for (size_t i = 0; i < e_cnt; i++) {
-        free(errors[i]);
-    }
-    free(errors);
+    sr_free_errors(errors, e_cnt);
 
     dm_session_stop(ctx, session);
 }
@@ -1087,11 +1106,12 @@ edit_commit_test(void **state)
     dm_session_stop(ctx, sessionB);
 
 
-    char **errors = NULL;
+    sr_error_info_t *errors = NULL;
     size_t e_cnt = 0;
 
     rc = dm_commit(ctx, sessionA, &errors, &e_cnt);
     assert_int_equal(SR_ERR_OK, rc);
+    sr_free_errors(errors, e_cnt);
 
     rc = rp_dt_get_value_wrapper(ctx, sessionA, XP_TEST_MODULE_INT64, &valueA);
     assert_int_equal(SR_ERR_OK, rc);
@@ -1125,6 +1145,7 @@ edit_commit_test(void **state)
 
     rc = dm_commit(ctx, sessionA, &errors, &e_cnt);
     assert_int_equal(SR_ERR_OK, rc);
+    sr_free_errors(errors, e_cnt);
 
     dm_session_stop(ctx, sessionA);
 }
@@ -1296,7 +1317,7 @@ edit_move2_test(void **state)
 
 int main(){
 
-    sr_logger_set_level(SR_LL_DBG, SR_LL_NONE);
+    sr_set_log_level(SR_LL_DBG, SR_LL_NONE);
 
     const struct CMUnitTest tests[] = {
             cmocka_unit_test(delete_item_leaf_test),

@@ -75,6 +75,11 @@ message Value {
   optional uint64 uint64_val = 26;
 }
 
+message Error {
+  optional string message = 1;
+  optional string path = 2;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // Connection / Session Management
 ////////////////////////////////////////////////////////////////////////////////
@@ -261,7 +266,7 @@ message ValidateReq {
  * @brief Response to sr_validate request.
  */
 message ValidateResp {
-  repeated string errors = 1;
+  repeated Error errors = 1;
 }
 
 /**
@@ -275,7 +280,7 @@ message CommitReq {
  * @brief Response to sr_commit request.
  */
 message CommitResp {
-  repeated string errors = 1;
+  repeated Error errors = 1;
 }
 
 /**
@@ -344,8 +349,8 @@ message Req {
  */
 message Resp {
   required Operation operation = 1;
-  required uint32 result = 2;
-  optional string error_msg = 3;
+  required uint32 result = 2;  /**< Result of the operation. 0 on success, non-zero values map to sr_error_t enum in sysrepo.h. */
+  optional Error error = 3;    /**< Additional error information. */
 
   optional SessionStartResp session_start_resp = 10;
   optional SessionStopResp session_stop_resp = 11;

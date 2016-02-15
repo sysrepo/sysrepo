@@ -44,11 +44,11 @@ main(int argc, char **argv)
         goto cleanup;
     }
 
-    /* set 'prefix-length' leaf inside of the 'address' list entry with key '2001:0db8:85a3:0000:0000:8a2e:0370:7334'
+    /* set 'prefix-length' leaf inside of the 'address' list entry with key 'fe80::ab8'
        (list entry will be automatically created if it does not exist) */
     value.type = SR_UINT8_T;
-    value.data.uint8_val = 116;
-    rc = sr_set_item(sess, "/ietf-interfaces:interfaces/interface[name='gigaeth0']/ietf-ip:ipv6/address[ip='2001:0db8:85a3:0000:0000:8a2e:0370:7334']/prefix-length",
+    value.data.uint8_val = 64;
+    rc = sr_set_item(sess, "/ietf-interfaces:interfaces/interface[name='gigaeth0']/ietf-ip:ipv6/address[ip='fe80::ab8']/prefix-length",
             &value, SR_EDIT_DEFAULT);
     if (SR_ERR_OK != rc) {
         printf("Error by sr_set_item: %s\n", sr_strerror(rc));
@@ -56,7 +56,7 @@ main(int argc, char **argv)
     }
 
     /* commit the changes */
-    rc = sr_commit(sess, NULL, NULL);
+    rc = sr_commit(sess);
     if (SR_ERR_OK != rc) {
         printf("Error by sr_commit: %s\n", sr_strerror(rc));
         goto cleanup;

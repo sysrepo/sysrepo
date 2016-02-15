@@ -580,7 +580,7 @@ dm_list_schemas(dm_ctx_t *dm_ctx, dm_session_t *dm_session, sr_schema_t **schema
 }
 
 int
-dm_validate_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, char ***errors, size_t *err_cnt)
+dm_validate_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors, size_t *err_cnt)
 {
     CHECK_NULL_ARG3(dm_ctx, session, errors);
     int rc = SR_ERR_OK;
@@ -597,6 +597,13 @@ dm_validate_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, char ***
             }
             if (0 != lyd_validate(info->node, LYD_OPT_STRICT)){
                 SR_LOG_DBG("Validation failed for %s module", info->module->name);
+
+                // TODO: fill-in proper errors
+                *errors = calloc(1, sizeof(**errors));
+                (*errors)[0].message = strdup("Validation failed.");
+                (*errors)[0].path = strdup(info->module->name);
+                *err_cnt = 1;
+
                 rc = SR_ERR_VALIDATION_FAILED;
             }
             else{
@@ -627,21 +634,17 @@ dm_discard_changes(dm_ctx_t *dm_ctx, dm_session_t *session)
 }
 
 int
-dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, char ***errors, size_t *err_cnt)
+dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors, size_t *err_cnt)
 {
     CHECK_NULL_ARG2(dm_ctx, session);
     int rc = SR_ERR_OK;
-    char **err = NULL;
-    size_t e_cnt = 0;
     //TODO send validate notifications
 
     /* YANG validation */
-    rc = dm_validate_session_data_trees(dm_ctx, session, &err, &e_cnt);
+    rc = dm_validate_session_data_trees(dm_ctx, session, errors, err_cnt);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Data validation failed");
-        *errors = err;
-        *err_cnt = e_cnt;
-        return rc;
+        return SR_ERR_COMMIT_FAILED;
     }
 
     /* TODO aquire data file lock*/

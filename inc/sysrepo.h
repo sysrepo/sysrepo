@@ -161,6 +161,14 @@ typedef enum sr_error_e {
 } sr_error_t;
 
 /**
+ * @brief Detailed sysrepo error information.
+ */
+typedef struct sr_error_info_s {
+    const char *message;  /**< Error message. */
+    const char *path;     /**< XPath to the node where the error has been discovered. */
+} sr_error_info_t;
+
+/**
  * @brief Log levels used to determine if message of certain severity should be printed.
  */
 typedef enum {
@@ -189,7 +197,7 @@ const char *sr_strerror(int err_code);
  * @param[in] ll_stderr Log level for stderr logs.
  * @param[in] ll_syslog Log level for syslog logs.
  */
-void sr_logger_set_level(sr_log_level_t ll_stderr, sr_log_level_t ll_syslog);
+void sr_set_log_level(sr_log_level_t ll_stderr, sr_log_level_t ll_syslog);
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -259,6 +267,44 @@ int sr_session_start(sr_conn_ctx_t *conn_ctx, const char *user_name, sr_datastor
  * @return Error code (SR_ERR_OK on success).
  */
 int sr_session_stop(sr_session_ctx_t *session);
+
+/**
+ * @brief Retrieves detailed information about the error that has occurred
+ * during the last operation executed within provided session.
+ *
+ * If multiple errors has occurred within the last operation, only the first
+ * one is returned. This call is sufficient for all data retrieval and data
+ * manipulation functions that operate on single-item basis. For operations
+ * such as ::sr_validate or ::sr_commit where multiple errors can occur,
+ * use ::sr_get_last_errors instead.
+ *
+ * @param[in] session Session context acquired with ::sr_session_start call.
+ * @param[out] error_info Detailed error information. Be aware that
+ * returned pointer may change by the next API call executed within the provided
+ * session,  so it's not safe to use this function by concurrent access to the
+ * same session within multiple threads. Do not free or modify returned values.
+ *
+ * @return Error code of the last operation executed within provided session.
+ */
+int sr_get_last_error(sr_session_ctx_t *session, const sr_error_info_t **error_info);
+
+/**
+ * @brief Retrieves detailed information about all errors that have occurred
+ * during the last operation executed within provided session.
+ *
+ * Use this call instead of ::sr_get_last_error by operations where multiple
+ * errors can occur, such as ::sr_validate or ::sr_commit.
+ *
+ * @param[in] session Session context acquired with ::sr_session_start call.
+ * @param[out] error_info Array of detailed error information. Be aware that
+ * returned pointer may change by the next API call executed within the provided
+ * session,  so it's not safe to use this function by concurrent access to the
+ * same session within multiple threads. Do not free or modify returned values.
+ * @param[out] error_cnt Number of errors returned in the error_info array.
+ *
+ * @return Error code of the last operation executed within provided session.
+ */
+int sr_get_last_errors(sr_session_ctx_t *session, const sr_error_info_t **error_info, size_t *error_cnt);
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -508,14 +554,14 @@ int sr_move_item(sr_session_ctx_t *session, const char *path, const sr_move_dire
  *
  * Provides only YANG validation, commit verify subscribers won't be notified in this case.
  *
+ * @see Use ::sr_get_last_errors to retrieve error information if the validation
+ * returned with an error.
+ *
  * @param[in] session Session context acquired with ::sr_session_start call.
- * @param[in] errors Errors due which the validation has failed. NULL may be passed
- * in if you are not interested in errors.
- * @param[in] error_cnt Number of errors returned.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int sr_validate(sr_session_ctx_t *session, char ***errors, size_t *error_cnt);
+int sr_validate(sr_session_ctx_t *session);
 
 /**
  * @brief Apply changes made in current session.
@@ -525,14 +571,14 @@ int sr_validate(sr_session_ctx_t *session, char ***errors, size_t *error_cnt);
  * @note Note that in case that you are committing to the running datstore, you also
  * need to copy the config to startup to make changes permanent after restart.
  *
+ * @see Use ::sr_get_last_errors to retrieve error information if the commit
+ * operation returned with an error.
+ *
  * @param[in] session Session context acquired with ::sr_session_start call.
- * @param[in] errors Errors due which the commit has failed. NULL may be passed
- * in if you are not interested in errors.
- * @param[in] error_cnt Number of errors returned.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int sr_commit(sr_session_ctx_t *session, char ***errors, size_t *error_cnt);
+int sr_commit(sr_session_ctx_t *session);
 
 /**
  * @brief Discard non-committed changes made in current session.
