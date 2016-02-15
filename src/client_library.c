@@ -126,11 +126,14 @@ cl_session_set_error(sr_session_ctx_t *session, const char *error_message, const
 {
     CHECK_NULL_ARG(session);
 
+    pthread_mutex_lock(&session->lock);
+
     if (0 == session->error_info_size) {
         /* need to allocate the space for the error */
         session->error_info = calloc(1, sizeof(*session->error_info));
         if (NULL == session->error_info) {
             SR_LOG_ERR_MSG("Unable to allocate error information.");
+            pthread_mutex_unlock(&session->lock);
             return SR_ERR_NOMEM;
         }
         session->error_info_size = 1;
@@ -147,6 +150,7 @@ cl_session_set_error(sr_session_ctx_t *session, const char *error_message, const
         session->error_info[0].message = strdup(error_message);
         if (NULL == session->error_info[0].message) {
             SR_LOG_ERR_MSG("Unable to allocate error message.");
+            pthread_mutex_unlock(&session->lock);
             return SR_ERR_NOMEM;
         }
     }
@@ -154,10 +158,13 @@ cl_session_set_error(sr_session_ctx_t *session, const char *error_message, const
         session->error_info[0].path = strdup(error_path);
         if (NULL == session->error_info[0].message) {
             SR_LOG_ERR_MSG("Unable to allocate error xpath.");
+            pthread_mutex_unlock(&session->lock);
             return SR_ERR_NOMEM;
         }
     }
+
     session->error_cnt = 1;
+    pthread_mutex_unlock(&session->lock);
 
     return SR_ERR_OK;
 }
@@ -172,10 +179,13 @@ cl_session_set_errors(sr_session_ctx_t *session, Sr__Error **errors, size_t erro
 
     CHECK_NULL_ARG2(session, errors);
 
+    pthread_mutex_lock(&session->lock);
+
     if (session->error_info_size < error_cnt) {
         tmp_info = realloc(session->error_info, (error_cnt * sizeof(*tmp_info)));
         if (NULL == tmp_info) {
             SR_LOG_ERR_MSG("Unable to allocate error information.");
+            pthread_mutex_unlock(&session->lock);
             return SR_ERR_NOMEM;
         }
         session->error_info = tmp_info;
@@ -195,7 +205,24 @@ cl_session_set_errors(sr_session_ctx_t *session, Sr__Error **errors, size_t erro
             }
         }
     }
+
     session->error_cnt = error_cnt;
+    pthread_mutex_unlock(&session->lock);
+
+    return SR_ERR_OK;
+}
+
+/**
+ * @brief Clear number of errors stored within the session context.
+ */
+int
+cl_session_clear_errors(sr_session_ctx_t *session)
+{
+    CHECK_NULL_ARG(session);
+
+    pthread_mutex_lock(&session->lock);
+    session->error_cnt = 0;
+    pthread_mutex_unlock(&session->lock);
 
     return SR_ERR_OK;
 }
@@ -824,7 +851,7 @@ sr_session_stop(sr_session_ctx_t *session)
 
     CHECK_NULL_ARG2(session, session->conn_ctx);
 
-    session->error_cnt = 0; /* reset number of errors */
+    cl_session_clear_errors(session);
 
     /* prepare session_stop message */
     rc = sr_pb_req_alloc(SR__OPERATION__SESSION_STOP, session->id, &msg_req);
@@ -875,7 +902,7 @@ sr_list_schemas(sr_session_ctx_t *session, sr_schema_t **schemas, size_t *schema
 
     CHECK_NULL_ARG4(session, session->conn_ctx, schemas, schema_cnt);
 
-    session->error_cnt = 0; /* reset number of errors */
+    cl_session_clear_errors(session);
 
     /* prepare list_schemas message */
     rc = sr_pb_req_alloc(SR__OPERATION__LIST_SCHEMAS, session->id, &msg_req);
@@ -923,7 +950,7 @@ sr_get_item(sr_session_ctx_t *session, const char *path, sr_val_t **value)
 
     CHECK_NULL_ARG4(session, session->conn_ctx, path, value);
 
-    session->error_cnt = 0; /* reset number of errors */
+    cl_session_clear_errors(session);
 
     /* prepare get_item message */
     rc = sr_pb_req_alloc(SR__OPERATION__GET_ITEM, session->id, &msg_req);
@@ -977,7 +1004,7 @@ sr_get_items(sr_session_ctx_t *session, const char *path, sr_val_t **values, siz
 
     CHECK_NULL_ARG5(session, session->conn_ctx, path, values, value_cnt);
 
-    session->error_cnt = 0; /* reset number of errors */
+    cl_session_clear_errors(session);
 
     /* prepare get_item message */
     rc = sr_pb_req_alloc(SR__OPERATION__GET_ITEMS, session->id, &msg_req);
@@ -1049,7 +1076,7 @@ sr_get_items_iter(sr_session_ctx_t *session, const char *path, bool recursive, s
     sr_val_iter_t *it = NULL;
     int rc = SR_ERR_OK;
 
-    session->error_cnt = 0; /* reset number of errors */
+    cl_session_clear_errors(session);
 
     CHECK_NULL_ARG4(session, session->conn_ctx, path, iter);
     rc = cl_send_get_items_iter(session, path, recursive, 0, CL_GET_ITEMS_FETCH_LIMIT, &msg_resp);
@@ -1126,7 +1153,7 @@ sr_get_item_next(sr_session_ctx_t *session, sr_val_iter_t *iter, sr_val_t **valu
 
     CHECK_NULL_ARG3(session, iter, value);
 
-    session->error_cnt = 0; /* reset number of errors */
+    cl_session_clear_errors(session);
 
     if (0 == iter->count) {
         /* No more data to be read */
@@ -1221,7 +1248,7 @@ sr_set_item(sr_session_ctx_t *session, const char *path, const sr_val_t *value, 
 
     CHECK_NULL_ARG3(session, session->conn_ctx, path);
 
-    session->error_cnt = 0; /* reset number of errors */
+    cl_session_clear_errors(session);
 
     /* prepare get_item message */
     rc = sr_pb_req_alloc(SR__OPERATION__SET_ITEM, session->id, &msg_req);
@@ -1277,7 +1304,7 @@ sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_option
 
     CHECK_NULL_ARG3(session, session->conn_ctx, path);
 
-    session->error_cnt = 0; /* reset number of errors */
+    cl_session_clear_errors(session);
 
     /* prepare get_item message */
     rc = sr_pb_req_alloc(SR__OPERATION__DELETE_ITEM, session->id, &msg_req);
@@ -1324,7 +1351,7 @@ sr_move_item(sr_session_ctx_t *session, const char *path, const sr_move_directio
 
     CHECK_NULL_ARG3(session, session->conn_ctx, path);
 
-    session->error_cnt = 0; /* reset number of errors */
+    cl_session_clear_errors(session);
 
     /* prepare get_item message */
     rc = sr_pb_req_alloc(SR__OPERATION__MOVE_ITEM, session->id, &msg_req);
@@ -1372,7 +1399,7 @@ sr_validate(sr_session_ctx_t *session)
 
     CHECK_NULL_ARG2(session, session->conn_ctx);
 
-    session->error_cnt = 0; /* reset number of errors */
+    cl_session_clear_errors(session);
 
     /* prepare validate message */
     rc = sr_pb_req_alloc(SR__OPERATION__VALIDATE, session->id, &msg_req);
@@ -1422,7 +1449,7 @@ sr_commit(sr_session_ctx_t *session)
 
     CHECK_NULL_ARG2(session, session->conn_ctx);
 
-    session->error_cnt = 0; /* reset number of errors */
+    cl_session_clear_errors(session);
 
     /* prepare commit message */
     rc = sr_pb_req_alloc(SR__OPERATION__COMMIT, session->id, &msg_req);
@@ -1471,7 +1498,7 @@ sr_discard_changes(sr_session_ctx_t *session)
 
     CHECK_NULL_ARG2(session, session->conn_ctx);
 
-    session->error_cnt = 0; /* reset number of errors */
+    cl_session_clear_errors(session);
 
     /* prepare discard_changes message */
     rc = sr_pb_req_alloc(SR__OPERATION__DISCARD_CHANGES, session->id, &msg_req);
@@ -1509,8 +1536,11 @@ sr_get_last_error(sr_session_ctx_t *session, const sr_error_info_t **error_info)
 
     CHECK_NULL_ARG2(session, error_info);
 
+    pthread_mutex_lock(&session->lock);
+
     if (0 == session->error_cnt) {
         /* no detailed error information, let's create it from the last error code */
+        pthread_mutex_unlock(&session->lock);
         rc = cl_session_set_error(session, sr_strerror(session->last_error), NULL);
         if (SR_ERR_OK != rc) {
             return rc;
@@ -1518,6 +1548,7 @@ sr_get_last_error(sr_session_ctx_t *session, const sr_error_info_t **error_info)
     }
 
     *error_info = session->error_info;
+    pthread_mutex_unlock(&session->lock);
 
     return session->last_error;
 }
@@ -1529,8 +1560,11 @@ sr_get_last_errors(sr_session_ctx_t *session, const sr_error_info_t **error_info
 
     CHECK_NULL_ARG3(session, error_info, error_cnt);
 
+    pthread_mutex_lock(&session->lock);
+
     if (0 == session->error_cnt) {
         /* no detailed error information, let's create it from the last error code */
+        pthread_mutex_unlock(&session->lock);
         rc = cl_session_set_error(session, sr_strerror(session->last_error), NULL);
         if (SR_ERR_OK != rc) {
             return rc;
@@ -1539,6 +1573,7 @@ sr_get_last_errors(sr_session_ctx_t *session, const sr_error_info_t **error_info
 
     *error_info = session->error_info;
     *error_cnt = session->error_cnt;
+    pthread_mutex_unlock(&session->lock);
 
     return session->last_error;
 }
