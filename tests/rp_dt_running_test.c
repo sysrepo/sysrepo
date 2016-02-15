@@ -90,7 +90,6 @@ enable_subtree_test(void **state)
    struct lys_node *match = NULL;
    xp_loc_id_t *l = NULL;
 
-#if 1
    rc = dm_session_start(ctx, SR_DS_RUNNING, &session);
    assert_int_equal(SR_ERR_OK, rc);
       
@@ -118,7 +117,7 @@ enable_subtree_test(void **state)
    
    xp_free_loc_id(l);
    dm_session_stop(ctx, session);
-#else  
+
    /* enable list keys implicitly */
    dm_session_start(ctx, SR_DS_RUNNING, &session);
       
@@ -150,7 +149,6 @@ enable_subtree_test(void **state)
    
    xp_free_loc_id(l);
    dm_session_stop(ctx, session);
-#endif
 }
 
 
