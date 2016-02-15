@@ -65,7 +65,7 @@ static pid_t
 srd_daemonize(void)
 {
     pid_t pid, sid;
-    int fd = -1, ret = 0;
+    int ret = 0;
     char str[NAME_MAX] = { 0 };
 
     /* register handlers for signals that we expect to receive from child process */
@@ -105,26 +105,16 @@ srd_daemonize(void)
         exit(EXIT_FAILURE);
     }
 
-    /* Change the current working directory. */
+    /* change the current working directory. */
    if ((chdir(SR_DEAMON_WORK_DIR)) < 0) {
        SR_LOG_ERR("Unable to change directory to '%s': %s.", SR_DEAMON_WORK_DIR, strerror(errno));
        exit(EXIT_FAILURE);
    }
 
-   /* connect stdin, stdout and stderr to /dev/null (or at least close them) */
-   fd = open("/dev/null", O_RDWR, 0);
-   if (fd != -1) {
-       dup2(fd, STDIN_FILENO);
-       dup2(fd, STDOUT_FILENO);
-       dup2(fd, STDERR_FILENO);
-       if (fd > 2) {
-           close(fd);
-       }
-    } else {
-        close(STDIN_FILENO);
-        close(STDOUT_FILENO);
-        close(STDERR_FILENO);
-    }
+   /* redirect standard files to /dev/null */
+    freopen( "/dev/null", "r", stdin);
+    freopen( "/dev/null", "w", stdout);
+    freopen( "/dev/null", "w", stderr);
 
     /* reset file creation mask */
     umask(0);
