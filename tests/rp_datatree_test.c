@@ -139,7 +139,7 @@ void createDataTreeIETFinterfaces(struct ly_ctx *ctx, struct lyd_node **root){
     lyd_new_leaf(node, module_interfaces, "enabled", "false");
 
     assert_int_equal(0, lyd_validate(*root, LYD_OPT_STRICT));
-    assert_int_equal(SR_ERR_OK, sr_save_data_tree_file(TEST_DATA_SEARCH_DIR"ietf-interfaces.data", *root));
+    assert_int_equal(SR_ERR_OK, sr_save_data_tree_file(TEST_DATA_SEARCH_DIR"ietf-interfaces"DM_STARTUP_SUFFIX, *root));
 
 }
 
@@ -501,7 +501,7 @@ void get_value_test(void **state){
     xp_loc_id_t *l;
 #define XPATH_FOR_VALUE "/example-module:container/list[key1='key1'][key2='key2']/leaf"
     assert_int_equal(SR_ERR_OK, xp_char_to_loc_id(XPATH_FOR_VALUE, &l));
-    assert_int_equal(SR_ERR_OK, rp_dt_get_value(ctx, data_tree, l, &value));
+    assert_int_equal(SR_ERR_OK, rp_dt_get_value(ctx, data_tree, l, false, &value));
 
     assert_int_equal(SR_STRING_T, value->type);
     assert_string_equal("Leaf value", value->data.string_val);

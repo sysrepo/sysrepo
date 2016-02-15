@@ -43,10 +43,11 @@ typedef struct rp_dt_get_items_ctx{
 /**
  * @brief Returns children nodes
  * @param [in] node
+ * @param [in] check_enable
  * @param [out] nodes
  * @param [out] count
  */
-int rp_dt_get_all_children_node(struct lyd_node *node, struct lyd_node ***nodes, size_t *count);
+int rp_dt_get_all_children_node(struct lyd_node *node, bool check_enable, struct lyd_node ***nodes, size_t *count);
 
 /**
  * Return the sibling nodes with the same name
@@ -67,11 +68,12 @@ int rp_dt_get_siblings_node_by_name(struct lyd_node *node, const char* name, str
  * @param [in] dm_ctx
  * @param [in] data_tree
  * @param [in] loc_id
+ * @param [in] check_enable
  * @param [out] nodes
  * @param [out] count
  * @return err_code
  */
-int rp_dt_get_nodes(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp_loc_id_t *loc_id, struct lyd_node ***nodes, size_t *count);
+int rp_dt_get_nodes(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp_loc_id_t *loc_id, bool check_enable, struct lyd_node ***nodes, size_t *count);
 
 /**
  * @brief Returns the nodes under specified location id. The selection of nodes can be altered using options recursive, offset, limit.
@@ -95,20 +97,22 @@ int rp_dt_get_nodes_with_opts(const dm_ctx_t *dm_ctx, dm_session_t *dm_session, 
  * @param data_tree
  * @param loc_id
  * @param allow_no_keys
+ * @param check_enable
  * @param match_level
  * @param node
  * @return 
  */
-int rp_dt_find_deepest_match(struct lyd_node *data_tree, const xp_loc_id_t *loc_id, bool allow_no_keys, size_t *match_level, struct lyd_node **node);
+int rp_dt_find_deepest_match(struct lyd_node *data_tree, const xp_loc_id_t *loc_id, bool allow_no_keys, bool check_enable, size_t *match_level, struct lyd_node **node);
 
 /**
  * @brief looks up the node in data tree. Returns first match in case of list without keys and leaf-list.
  * @param [in] data_tree
  * @param [in] loc_id
  * @param [in] allow_no_keys if set to TRUE, keys of the last list in xpath can be omitted. xpath must identify a list
+ * @param [in] check_enable
  * @param [out] node
  */
-int rp_dt_lookup_node(struct lyd_node *data_tree, const xp_loc_id_t *loc_id, bool allow_no_keys, struct lyd_node **node);
+int rp_dt_lookup_node(struct lyd_node *data_tree, const xp_loc_id_t *loc_id, bool allow_no_keys, bool check_enable, struct lyd_node **node);
 
 /**
  * @brief Retrieves node from datatree based on location_id. Location_id can identify leaf, leaf-list, container or list
@@ -116,10 +120,11 @@ int rp_dt_lookup_node(struct lyd_node *data_tree, const xp_loc_id_t *loc_id, boo
  * @param [in] dm_ctx
  * @param [in] data_tree - root node of the model
  * @param [in] loc_id
+ * @param [in] check_enable
  * @param [out] node
  * @return err_code
  */
-int rp_dt_get_node(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp_loc_id_t *loc_id, struct lyd_node **node);
+int rp_dt_get_node(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp_loc_id_t *loc_id, bool check_enable, struct lyd_node **node);
 
 #endif /* RP_DT_LOOKUP_H */
 

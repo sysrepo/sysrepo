@@ -81,7 +81,7 @@ rp_dt_push_nodes_with_same_name_to_stack(rp_node_stack_t **stack, struct lyd_nod
 }
 
 int
-rp_dt_get_all_children_node(struct lyd_node *node, struct lyd_node ***nodes, size_t *count)
+rp_dt_get_all_children_node(struct lyd_node *node, bool check_enable, struct lyd_node ***nodes, size_t *count)
 {
     CHECK_NULL_ARG3(node, nodes, count);
     /* get node count */
@@ -102,7 +102,11 @@ rp_dt_get_all_children_node(struct lyd_node *node, struct lyd_node ***nodes, siz
     n = node->child;
     cnt = 0;
     while (NULL != n) {
-        (*nodes)[cnt] = n;
+        if (check_enable){
+        
+        } else {
+            (*nodes)[cnt] = n;
+        }
         n = n->next;
         cnt++;
     }
@@ -144,7 +148,7 @@ rp_dt_get_siblings_node_by_name(struct lyd_node *node, const char* name, struct 
 }
 
 int
-rp_dt_get_nodes(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp_loc_id_t *loc_id, struct lyd_node ***nodes, size_t *count)
+rp_dt_get_nodes(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp_loc_id_t *loc_id, bool check_enable, struct lyd_node ***nodes, size_t *count)
 {
     CHECK_NULL_ARG5(dm_ctx, data_tree, loc_id, nodes, count);
 
@@ -152,7 +156,7 @@ rp_dt_get_nodes(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp_loc
     struct lyd_node *node = NULL;
     size_t last_node = 0;
 
-    rc = rp_dt_lookup_node(data_tree, loc_id, true, &node);
+    rc = rp_dt_lookup_node(data_tree, loc_id, true, check_enable, &node);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Look up failed for xpath %s", loc_id->xpath);
         return rc;
@@ -174,7 +178,7 @@ rp_dt_get_nodes(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp_loc
         (*nodes)[0] = node;
         return rc;
     case LYS_CONTAINER:
-        rc = rp_dt_get_all_children_node(node, nodes, count);
+        rc = rp_dt_get_all_children_node(node, check_enable, nodes, count);
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR("Get children nodes failed for %s", node->schema->name);
         }
@@ -184,7 +188,7 @@ rp_dt_get_nodes(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp_loc
         last_node = XP_GET_NODE_COUNT(loc_id) - 1;
         if (0 != XP_GET_KEY_COUNT(loc_id, last_node)) {
             /* return the content of the list instance*/
-            rc = rp_dt_get_all_children_node(node, nodes, count);
+            rc = rp_dt_get_all_children_node(node, check_enable, nodes, count);
             if (SR_ERR_OK != rc) {
                 SR_LOG_ERR("Get children nodes failed for %s", node->schema->name);
             }
@@ -224,7 +228,7 @@ rp_dt_get_nodes_with_opts(const dm_ctx_t *dm_ctx, dm_session_t *dm_session, rp_d
     /* check if we continue where we left */
     if (get_items_ctx->xpath == NULL || 0 != strcmp(loc_id->xpath, get_items_ctx->xpath) || get_items_ctx->recursive != recursive ||
             offset != get_items_ctx->offset) {
-        rc = rp_dt_lookup_node(data_tree, loc_id, true, &node);
+        rc = rp_dt_lookup_node(data_tree, loc_id, true, dm_is_running_datastore_session(dm_session), &node);
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR("Look up failed for xpath %s", loc_id->xpath);
             return rc;
@@ -362,7 +366,7 @@ cleanup:
 }
 
 int
-rp_dt_find_deepest_match(struct lyd_node *data_tree, const xp_loc_id_t *loc_id, bool allow_no_keys, size_t *match_level, struct lyd_node **node)
+rp_dt_find_deepest_match(struct lyd_node *data_tree, const xp_loc_id_t *loc_id, bool allow_no_keys, bool check_enable, size_t *match_level, struct lyd_node **node)
 {
     CHECK_NULL_ARG3(loc_id, match_level, node);
 
@@ -440,7 +444,13 @@ key_mismatch:
                     return SR_ERR_INVAL_ARG;
                 }
             }
-
+            if (check_enable) {
+                if (!dm_is_enabled_check_recursively(curr->schema)){
+                    SR_LOG_INF("Requested node '%s' in running data tree is not enabled", loc_id->xpath);
+                    curr = NULL;
+                    break;
+                }
+            }
             /* match found*/
             if ((XP_GET_NODE_COUNT(loc_id) - 1) != n) {
                 curr = curr->child;
@@ -470,13 +480,13 @@ match_done:
 }
 
 int
-rp_dt_lookup_node(struct lyd_node *data_tree, const xp_loc_id_t *loc_id, bool allow_no_keys, struct lyd_node **node)
+rp_dt_lookup_node(struct lyd_node *data_tree, const xp_loc_id_t *loc_id, bool allow_no_keys, bool check_enable, struct lyd_node **node)
 {
     CHECK_NULL_ARG3(data_tree, loc_id, node);
     size_t match_len = 0;
 
     int rc = SR_ERR_OK;
-    rc = rp_dt_find_deepest_match(data_tree, loc_id, allow_no_keys, &match_len, node);
+    rc = rp_dt_find_deepest_match(data_tree, loc_id, allow_no_keys, check_enable, &match_len, node);
     if (SR_ERR_NOT_FOUND == rc){
         return rc;
     } else if (SR_ERR_OK != rc){
@@ -494,8 +504,8 @@ rp_dt_lookup_node(struct lyd_node *data_tree, const xp_loc_id_t *loc_id, bool al
 }
 
 int
-rp_dt_get_node(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp_loc_id_t *loc_id, struct lyd_node **node)
+rp_dt_get_node(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp_loc_id_t *loc_id, bool check_enable, struct lyd_node **node)
 {
     CHECK_NULL_ARG4(dm_ctx, data_tree, loc_id, node);
-    return rp_dt_lookup_node(data_tree, loc_id, false, node);
+    return rp_dt_lookup_node(data_tree, loc_id, false, check_enable, node);
 }

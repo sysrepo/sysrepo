@@ -62,7 +62,7 @@ rp_dt_find_deepest_match_wrapper(dm_ctx_t *ctx, dm_session_t *session, const cha
         goto cleanup;
     }
 
-    rc = rp_dt_find_deepest_match(match->info->node, match->loc_id, true, &match->level, &match->node);
+    rc = rp_dt_find_deepest_match(match->info->node, match->loc_id, true, dm_is_running_datastore_session(session), &match->level, &match->node);
 
 cleanup:
     if (SR_ERR_OK != rc && SR_ERR_NOT_FOUND != rc) {
@@ -369,6 +369,15 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const
         goto cleanup;
     }
 
+    /* if the session is tied to running, check if the leaf is enabled*/
+    if (dm_is_running_datastore_session(session)) {
+        if (!dm_is_enabled_check_recursively(m.schema_node)) {
+            SR_LOG_ERR("Requested path '%s' is not enable in running data store", xpath);
+            rc = SR_ERR_INVAL_ARG;
+            goto cleanup;
+        }
+    }
+
     /* check if match is complete */
     if (XP_GET_NODE_COUNT(m.loc_id) != m.level) {
         if (XP_GET_NODE_COUNT(m.loc_id) != (m.level + 1)) {
@@ -547,7 +556,7 @@ rp_dt_move_list(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, sr_m
 {
     CHECK_NULL_ARG3(dm_ctx, session, xpath);
     int rc = SR_ERR_OK;
-    rp_dt_match_t match;
+    rp_dt_match_t match = {0,};
 
     rc = rp_dt_find_deepest_match_wrapper(dm_ctx, session, xpath, &match);
     if (SR_ERR_NOT_FOUND == rc) {
