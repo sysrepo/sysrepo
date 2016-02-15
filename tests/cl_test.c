@@ -562,7 +562,7 @@ cl_validate_test(void **state)
 
     /* set some data in the container, but don't set mandatory leaves */
     value.type = SR_STRING_T;
-    value.data.string_val = strdup("Europe/Banska Bystrica");
+    value.data.string_val = "Europe/Banska Bystrica";
     rc = sr_set_item(session, "/test-module:location/name", &value, SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
@@ -580,12 +580,12 @@ cl_validate_test(void **state)
 
     /* set mandatory leaf 1 */
     value.type = SR_STRING_T;
-    value.data.string_val = strdup("48°46'N");
+    value.data.string_val = "48°46'N";
     rc = sr_set_item(session, "/test-module:location/latitude", &value, SR_EDIT_DEFAULT);
 
     /* set mandatory leaf 2 */
     value.type = SR_STRING_T;
-    value.data.string_val = strdup("19°14'E");
+    value.data.string_val = "19°14'E";
     rc = sr_set_item(session, "/test-module:location/longitude", &value, SR_EDIT_DEFAULT);
 
     /* perform a validate request again - expect success */
@@ -615,7 +615,7 @@ cl_commit_test(void **state)
 
     /* set some data in the container, but don't set mandatory leaves */
     value.type = SR_STRING_T;
-    value.data.string_val = strdup("Europe/Banska Bystrica");
+    value.data.string_val = "Europe/Banska Bystrica";
     rc = sr_set_item(session, "/test-module:location/name", &value, SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
@@ -633,12 +633,12 @@ cl_commit_test(void **state)
 
     /* set mandatory leaf 1 */
     value.type = SR_STRING_T;
-    value.data.string_val = strdup("48°46'N");
+    value.data.string_val = "48°46'N";
     rc = sr_set_item(session, "/test-module:location/latitude", &value, SR_EDIT_DEFAULT);
 
     /* set mandatory leaf 2 */
     value.type = SR_STRING_T;
-    value.data.string_val = strdup("19°14'E");
+    value.data.string_val = "19°14'E";
     rc = sr_set_item(session, "/test-module:location/longitude", &value, SR_EDIT_DEFAULT);
 
     /* perform a commit request again - expect success */
