@@ -369,6 +369,15 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const
         goto cleanup;
     }
 
+    /* if the session is tied to running, check if the leaf is enabled*/
+    if (dm_is_running_datastore_session(session)) {
+        if (!dm_is_enabled_check_recursively(m.schema_node)) {
+            SR_LOG_ERR("Requested path '%s' is not enable in running data store", xpath);
+            rc = SR_ERR_INVAL_ARG;
+            goto cleanup;
+        }
+    }
+
     /* check if match is complete */
     if (XP_GET_NODE_COUNT(m.loc_id) != m.level) {
         if (XP_GET_NODE_COUNT(m.loc_id) != (m.level + 1)) {

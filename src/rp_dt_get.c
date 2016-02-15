@@ -413,14 +413,15 @@ rp_dt_get_values_wrapper(dm_ctx_t *dm_ctx, dm_session_t *dm_session, const char 
     }
 
     rc = rp_dt_get_values(dm_ctx, data_tree, l, dm_is_running_datastore_session(dm_session), values, count);
-    if (SR_ERR_NOT_FOUND == rc) {
-        rc = rp_dt_validate_node_xpath(dm_ctx, l, NULL, NULL);
-        rc = rc == SR_ERR_OK ? SR_ERR_NOT_FOUND : rc;
-    } else if (SR_ERR_OK != rc) {
+    if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Get values failed for xpath '%s'", xpath);
     }
 
 cleanup:
+    if (SR_ERR_NOT_FOUND == rc || (SR_ERR_OK == rc && 0 == count)) {
+        rc = rp_dt_validate_node_xpath(dm_ctx, l, NULL, NULL);
+        rc = rc == SR_ERR_OK ? SR_ERR_NOT_FOUND : rc;
+    }
     xp_free_loc_id(l);
     free(data_tree_name);
     return rc;

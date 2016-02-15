@@ -658,7 +658,11 @@ dm_init(const char *schema_search_dir, const char *data_search_dir, dm_ctx_t **d
 static void
 dm_free_lys_private_data(const struct lys_node *node, void *private){
     if (NULL != private){
-        //TODO free dm_node_info
+        if (node == node->module->data && NULL != private) {
+            if (LYS_AUGMENT != node->nodetype) {
+                free(((dm_model_info_t *) private)->node_info);
+            }
+        }
         free(private);
     }
 }
@@ -1036,9 +1040,12 @@ dm_is_enabled_check_recursively(struct lys_node *node)
     if (dm_is_node_enabled(node)) {
         return true;
     }
-    //TODO handle augment
     node = node->parent;
     while (NULL != node) {
+        if (NULL == node->parent && LYS_AUGMENT == node->nodetype) {
+            node = ((struct lys_node_augment *) node)->target;
+            continue;
+        }
         if (dm_is_node_enabled_with_children(node)) {
             return true;
         }
@@ -1054,10 +1061,8 @@ dm_set_node_state(struct lys_node *node, dm_node_state_t state)
     dm_node_info_t **n_info = NULL;
 
     if (node == node->module->data) {
-        //TODO fix augments first top-level node doesn't have module_info
-        if (NULL == node->private) {
-            SR_LOG_ERR_MSG("Data missing");
-            return SR_ERR_INTERNAL;
+        if (LYS_AUGMENT == node->nodetype) {
+            n_info = (dm_node_info_t **) &node->private;
         } else {
             n_info = &((dm_model_info_t *) node->private)->node_info;
         }
@@ -1065,7 +1070,7 @@ dm_set_node_state(struct lys_node *node, dm_node_state_t state)
     else{
         n_info = (dm_node_info_t **) &node->private;
     }
-    if (NULL != *n_info){
+    if (NULL == *n_info){
         *n_info = calloc(1, sizeof(**n_info));
         if (NULL == *n_info) {
             SR_LOG_ERR_MSG("Memory allocation failed");

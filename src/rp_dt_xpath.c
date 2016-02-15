@@ -465,3 +465,74 @@ rp_dt_validate_node_xpath(dm_ctx_t *dm_ctx, const xp_loc_id_t *loc_id, const str
 
     return rc;
 }
+
+
+static int
+rp_dt_enable_key_nodes(struct lys_node *node)
+{
+    CHECK_NULL_ARG(node);
+    int rc = SR_ERR_OK;
+    if (LYS_LIST == node->nodetype) {
+        /* enable list key nodes */
+        struct lys_node_list *l = (struct lys_node_list *) node;
+        for (size_t k = 0; k < l->keys_size; k++) {
+            if (!dm_is_node_enabled((struct lys_node *)l->keys[k])) {
+                rc = dm_set_node_state((struct lys_node *)l->keys[k], DM_NODE_ENABLED);
+                if (SR_ERR_OK != rc) {
+                    SR_LOG_ERR_MSG("Set node state failed");
+                    return rc;
+                }
+            }
+        }
+    }
+    return SR_ERR_OK;
+}
+
+int
+rp_dt_enable_xpath(dm_ctx_t *dm_ctx, const xp_loc_id_t *loc_id)
+{
+    CHECK_NULL_ARG3(dm_ctx, loc_id, loc_id->xpath);
+    int rc = SR_ERR_OK;
+    struct lys_node *match = NULL, *node = NULL;
+    rc = rp_dt_validate_node_xpath(dm_ctx, loc_id, NULL, &match);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Xpath validation failed %s", loc_id->xpath);
+        return rc;
+    }
+
+    if ((LYS_CONTAINER | LYS_LIST) & match->nodetype) {
+        rc = dm_set_node_state(match, DM_NODE_ENABLED_WITH_CHILDREN);
+    } else {
+        rc = dm_set_node_state(match, DM_NODE_ENABLED);
+    }
+
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Set node state failed %s", loc_id->xpath);
+        return rc;
+    }
+
+    node = match->parent;
+    while (NULL != node) {
+        if (NULL == node->parent && LYS_AUGMENT == node->nodetype) {
+            node = ((struct lys_node_augment *) node)->target;
+            continue;
+        }
+        if (!dm_is_node_enabled(node)){
+            rc = dm_set_node_state(node, DM_NODE_ENABLED);
+            if (SR_ERR_OK != rc) {
+                SR_LOG_ERR("Set node state failed %s", loc_id->xpath);
+                return rc;
+            }
+            rc = rp_dt_enable_key_nodes(node);
+            if (SR_ERR_OK != rc) {
+                SR_LOG_ERR("Enable key nodes failed %s", loc_id->xpath);
+                return rc;
+            }
+
+        }
+        node = node->parent;
+
+    }
+
+    return rc;
+}

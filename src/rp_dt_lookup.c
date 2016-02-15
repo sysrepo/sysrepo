@@ -377,7 +377,6 @@ rp_dt_find_deepest_match(struct lyd_node *data_tree, const xp_loc_id_t *loc_id, 
     struct lyd_node *curr = data_tree;
     struct lyd_node *prev = NULL;
     size_t n = 0;
-    dm_node_state_t enabled = DM_NODE_DISABLED;
     for (; n < XP_GET_NODE_COUNT(loc_id); n++) {
         while (curr != NULL) {
             prev = curr;
@@ -446,11 +445,10 @@ key_mismatch:
                 }
             }
             if (check_enable) {
-                if (!dm_is_node_enabled(curr->schema) && enabled != DM_NODE_ENABLED_WITH_CHILDREN){
+                if (!dm_is_enabled_check_recursively(curr->schema)){
+                    SR_LOG_INF("Requested node '%s' in running data tree is not enabled", loc_id->xpath);
                     curr = NULL;
                     break;
-                } else if (DM_NODE_ENABLED_WITH_CHILDREN == dm_is_node_enabled_with_children(curr->schema)){
-                    enabled = DM_NODE_ENABLED_WITH_CHILDREN;
                 }
             }
             /* match found*/
