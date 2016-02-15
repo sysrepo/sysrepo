@@ -32,6 +32,15 @@
 #include "sysrepo.h"
 
 
+/**
+ * @brief suffix of data file for startup datastore
+ */
+#define DM_STARTUP_SUFFIX ".startup"
+
+/**
+ * @brief suffix of data file for running datastore
+ */
+#define DM_RUNNING_SUFFIX ".running"
 
 /**
  * @brief Structure that holds the context of an instance of Data Manager.

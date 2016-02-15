@@ -23,8 +23,9 @@
 
 #include <libyang/libyang.h>
 #include "test_data.h"
+#include "data_manager.h"
 
-#define TEST_MODULE_DATA_FILE_NAME TEST_DATA_SEARCH_DIR "test-module.data"
+#define TEST_MODULE_DATA_FILE_NAME TEST_DATA_SEARCH_DIR "test-module" DM_STARTUP_SUFFIX
 
 /**
  * Creates test-module data tree and writes it into a file.

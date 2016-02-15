@@ -27,16 +27,6 @@
 #include <pthread.h>
 
 /**
- * @brief suffix of data file for startup datastore
- */
-#define DM_STARTUP_SUFFIX ".data"
-
-/**
- * @brief suffix of data file for running datastore
- */
-#define DM_RUNNING_SUFFIX ".running"
-
-/**
  * @brief Lock the rw_lock for reading, the lock is selected according to the datastore parameter.
  * @param [in] ds sr_datastore_t
  * @param [in] ctx structutre that contains startup_lock and running_lock
