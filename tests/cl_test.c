@@ -715,6 +715,12 @@ cl_get_error_test(void **state)
     rc = sr_session_start(conn, "alice", SR_DS_STARTUP, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
+    /* retrieve last error information - no error */
+    rc = sr_get_last_error(session, &error_info);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(error_info);
+    assert_non_null(error_info->message);
+
     /* attemp to get item on bad element in existing module */
     rc = sr_get_item(session, "/example-module:container/unknown", &value);
     assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
