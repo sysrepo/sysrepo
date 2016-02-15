@@ -1084,6 +1084,8 @@ edit_commit_test(void **state)
     assert_non_null(valueB);
     assert_int_equal(XP_TEST_MODULE_INT64_VALUE_T, valueB->data.int64_val);
     sr_free_val(valueB);
+    dm_session_stop(ctx, sessionB);
+
 
     char **errors = NULL;
     size_t e_cnt = 0;
@@ -1097,7 +1099,8 @@ edit_commit_test(void **state)
     assert_int_equal(XP_TEST_MODULE_INT64_VALUE_T + 99, valueA->data.int64_val);
     sr_free_val(valueA);
 
-    /* since the session be has not been modified it should be update after commit */
+    dm_session_start(ctx, SR_DS_STARTUP, &sessionB);
+    /* restart the session B to see changes made by commit */
     rc = rp_dt_get_value_wrapper(ctx, sessionB, XP_TEST_MODULE_INT64, &valueB);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(valueB);
