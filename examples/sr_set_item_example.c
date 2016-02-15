@@ -47,8 +47,8 @@ main(int argc, char **argv)
     /* set 'prefix-length' leaf inside of the 'address' list entry with key '172.16.0.1'
        (list entry will be automatically created if it does not exist) */
     value.type = SR_UINT8_T;
-    value.data.uint8_val = 24;
-    rc = sr_set_item(sess, "/ietf-interfaces:interfaces/interface[name='gigaeth0']/ietf-ip:ipv4/address[ip='172.16.0.1']/prefix-length",
+    value.data.uint8_val = 64;
+    rc = sr_set_item(sess, "/ietf-interfaces:interfaces/interface[name='gigaeth0']/ietf-ip:ipv6/address[ip='fe80::ab8']/prefix-length",
             &value, SR_EDIT_DEFAULT);
     if (SR_ERR_OK != rc) {
         printf("Error by sr_set_item: %s\n", sr_strerror(rc));
