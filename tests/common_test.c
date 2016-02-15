@@ -32,7 +32,7 @@
 static int
 logging_setup(void **state)
 {
-    sr_logger_set_level(SR_LL_DBG, SR_LL_ERR); /* print debugs to stderr */
+    sr_set_log_level(SR_LL_DBG, SR_LL_ERR); /* print debugs to stderr */
     return 0;
 }
 

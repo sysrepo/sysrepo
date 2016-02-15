@@ -114,7 +114,7 @@ dm_validate_data_trees_test(void **state)
     dm_session_t *ses_ctx = NULL;
     struct lyd_node *node = NULL;
     dm_data_info_t *info = NULL;
-    char **errors = NULL;
+    sr_error_info_t *errors = NULL;
     size_t err_cnt = 0;
 
     rc = dm_init(TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx);
@@ -126,6 +126,7 @@ dm_validate_data_trees_test(void **state)
     /* test validation with no data trees copied */
     rc = dm_validate_session_data_trees(ctx, ses_ctx, &errors, &err_cnt);
     assert_int_equal(SR_ERR_OK, rc);
+    sr_free_errors(errors, err_cnt);
 
     /* copy a couple data trees to session*/
     rc = dm_get_data_info(ctx, ses_ctx, "example-module", &info);
@@ -136,6 +137,7 @@ dm_validate_data_trees_test(void **state)
 
     rc = dm_validate_session_data_trees(ctx, ses_ctx, &errors, &err_cnt);
     assert_int_equal(SR_ERR_OK, rc);
+    sr_free_errors(errors, err_cnt);
 
     /* make an invalid  change */
     info->modified = true;
@@ -146,11 +148,7 @@ dm_validate_data_trees_test(void **state)
 
     rc = dm_validate_session_data_trees(ctx, ses_ctx, &errors, &err_cnt);
     assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
-
-    for (size_t i=0; i<err_cnt; i++) {
-        free(errors[i]);
-    }
-    free(errors);
+    sr_free_errors(errors, err_cnt);
 
     dm_session_stop(ctx, ses_ctx);
     dm_cleanup(ctx);
@@ -221,16 +219,18 @@ dm_commit_test(void **state)
     rc = dm_session_start(ctx, SR_DS_STARTUP, &ses_ctx);
     assert_int_equal(SR_ERR_OK, rc);
 
-    char **errors = NULL;
+    sr_error_info_t *errors = NULL;
     size_t err_cnt = 0;
     rc = dm_commit(ctx, ses_ctx, &errors, &err_cnt);
     assert_int_equal(SR_ERR_OK, rc);
+    sr_free_errors(errors, err_cnt);
 
     rc = dm_get_data_info(ctx, ses_ctx, "test-module", &info);
     assert_int_equal(SR_ERR_OK, rc);
 
     rc = dm_commit(ctx, ses_ctx, &errors, &err_cnt);
     assert_int_equal(SR_ERR_OK, rc);
+    sr_free_errors(errors, err_cnt);
 
     rc = dm_get_data_info(ctx, ses_ctx, "test-module", &info);
     assert_int_equal(SR_ERR_OK, rc);
@@ -238,13 +238,14 @@ dm_commit_test(void **state)
 
     rc = dm_commit(ctx, ses_ctx, &errors, &err_cnt);
     assert_int_equal(SR_ERR_OK, rc);
+    sr_free_errors(errors, err_cnt);
 
     dm_session_stop(ctx, ses_ctx);
     dm_cleanup(ctx);
 }
 
 int main(){
-    sr_logger_set_level(SR_LL_DBG, SR_LL_NONE);
+    sr_set_log_level(SR_LL_DBG, SR_LL_NONE);
 
     const struct CMUnitTest tests[] = {
             cmocka_unit_test(dm_create_cleanup),

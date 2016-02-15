@@ -22,6 +22,7 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <string.h>
+#include <inttypes.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <pthread.h>
@@ -67,8 +68,13 @@ typedef struct sr_conn_ctx_s {
  * Session context used to identify a configuration session.
  */
 typedef struct sr_session_ctx_s {
-    sr_conn_ctx_t *conn_ctx;  /**< Associated connection context. */
-    uint32_t id;              /**< Assigned session identifier. */
+    sr_conn_ctx_t *conn_ctx;      /**< Associated connection context. */
+    uint32_t id;                  /**< Assigned session identifier. */
+    pthread_mutex_t lock;         /**< Mutex for the session context content. */
+    sr_error_t last_error;        /**< Latest error code returned from an API call. */
+    sr_error_info_t *error_info;  /**< Array of detailed error information from last API call. */
+    size_t error_info_size;       /**< Current size of the error_info array. */
+    size_t error_cnt;             /**< Number of errors that occurred within last API call. */
 } sr_session_ctx_t;
 
 /**
@@ -96,7 +102,133 @@ static sr_conn_ctx_t *primary_connection = NULL;  /**< Global variable holding p
 pthread_mutex_t primary_lock = PTHREAD_MUTEX_INITIALIZER;  /**< Mutex for locking global variable primary_connection. */
 
 /**
- * Connect the client to provided unix-domain socket.
+ * @brief Returns provided error code and saves it in the session context.
+ * Should be called as an exit point from any publicly available API function
+ * taking the session as an argument.
+ */
+static sr_error_t
+cl_session_return(sr_session_ctx_t *session, sr_error_t error_code)
+{
+    CHECK_NULL_ARG(session);
+
+    pthread_mutex_lock(&session->lock);
+    session->last_error = error_code;
+    pthread_mutex_unlock(&session->lock);
+
+    return error_code;
+}
+
+/**
+ * @brief Set detailed error information into session context.
+ */
+static int
+cl_session_set_error(sr_session_ctx_t *session, const char *error_message, const char *error_path)
+{
+    CHECK_NULL_ARG(session);
+
+    pthread_mutex_lock(&session->lock);
+
+    if (0 == session->error_info_size) {
+        /* need to allocate the space for the error */
+        session->error_info = calloc(1, sizeof(*session->error_info));
+        if (NULL == session->error_info) {
+            SR_LOG_ERR_MSG("Unable to allocate error information.");
+            pthread_mutex_unlock(&session->lock);
+            return SR_ERR_NOMEM;
+        }
+        session->error_info_size = 1;
+    } else {
+        /* space for the error already allocated, release old error data */
+        if (NULL != session->error_info[0].message) {
+            free((void*)session->error_info[0].message);
+        }
+        if (NULL != session->error_info[0].path) {
+            free((void*)session->error_info[0].path);
+        }
+    }
+    if (NULL != error_message) {
+        session->error_info[0].message = strdup(error_message);
+        if (NULL == session->error_info[0].message) {
+            SR_LOG_ERR_MSG("Unable to allocate error message.");
+            pthread_mutex_unlock(&session->lock);
+            return SR_ERR_NOMEM;
+        }
+    }
+    if (NULL != error_path) {
+        session->error_info[0].path = strdup(error_path);
+        if (NULL == session->error_info[0].message) {
+            SR_LOG_ERR_MSG("Unable to allocate error xpath.");
+            pthread_mutex_unlock(&session->lock);
+            return SR_ERR_NOMEM;
+        }
+    }
+
+    session->error_cnt = 1;
+    pthread_mutex_unlock(&session->lock);
+
+    return SR_ERR_OK;
+}
+
+/**
+ * @brief Set detailed error information from GPB error array into session context.
+ */
+static int
+cl_session_set_errors(sr_session_ctx_t *session, Sr__Error **errors, size_t error_cnt)
+{
+    sr_error_info_t *tmp_info = NULL;
+
+    CHECK_NULL_ARG2(session, errors);
+
+    pthread_mutex_lock(&session->lock);
+
+    if (session->error_info_size < error_cnt) {
+        tmp_info = realloc(session->error_info, (error_cnt * sizeof(*tmp_info)));
+        if (NULL == tmp_info) {
+            SR_LOG_ERR_MSG("Unable to allocate error information.");
+            pthread_mutex_unlock(&session->lock);
+            return SR_ERR_NOMEM;
+        }
+        session->error_info = tmp_info;
+        session->error_info_size = error_cnt;
+    }
+    for (size_t i = 0; i < error_cnt; i++) {
+        if (NULL != errors[i]->message) {
+            session->error_info[i].message = strdup(errors[i]->message);
+            if (NULL == session->error_info[i].message) {
+                SR_LOG_WRN_MSG("Unable to allocate error message, will be left NULL.");
+            }
+        }
+        if (NULL != errors[i]->path) {
+            session->error_info[i].path = strdup(errors[i]->path);
+            if (NULL == session->error_info[i].message) {
+                SR_LOG_WRN_MSG("Unable to allocate error xpath, will be left NULL.");
+            }
+        }
+    }
+
+    session->error_cnt = error_cnt;
+    pthread_mutex_unlock(&session->lock);
+
+    return SR_ERR_OK;
+}
+
+/**
+ * @brief Clear number of errors stored within the session context.
+ */
+int
+cl_session_clear_errors(sr_session_ctx_t *session)
+{
+    CHECK_NULL_ARG(session);
+
+    pthread_mutex_lock(&session->lock);
+    session->error_cnt = 0;
+    pthread_mutex_unlock(&session->lock);
+
+    return SR_ERR_OK;
+}
+
+/**
+ * @brief Connects the client to provided unix-domain socket.
  */
 static int
 cl_socket_connect(sr_conn_ctx_t *conn_ctx, const char *socket_path)
@@ -143,7 +275,7 @@ cl_socket_connect(sr_conn_ctx_t *conn_ctx, const char *socket_path)
 }
 
 /**
- * Initialize our own sysrepo engine (fallback option if sysrepo daemon is not running)
+ * @brief Initializes our own sysrepo engine (fallback option if sysrepo daemon is not running)
  */
 static int
 cl_engine_init_local(sr_conn_ctx_t *conn_ctx, const char *socket_path)
@@ -246,7 +378,7 @@ cl_conn_remove_session(sr_conn_ctx_t *connection, sr_session_ctx_t *session)
 }
 
 /**
- * Expand message buffer of a connection to fit given size, if needed.
+ * @brief Expands message buffer of a connection to fit given size, if needed.
  */
 static int
 cl_conn_msg_buf_expand(sr_conn_ctx_t *conn_ctx, size_t required_size)
@@ -269,7 +401,7 @@ cl_conn_msg_buf_expand(sr_conn_ctx_t *conn_ctx, size_t required_size)
 }
 
 /**
- * Sends a message via provided connection.
+ * @brief Sends a message via provided connection.
  */
 static int
 cl_message_send(sr_conn_ctx_t *conn_ctx, Sr__Msg *msg)
@@ -318,7 +450,7 @@ cl_message_send(sr_conn_ctx_t *conn_ctx, Sr__Msg *msg)
 }
 
 /*
- * Receive a message on provided connection (blocks until a message is received).
+ * @brief Receives a message on provided connection (blocks until a message is received).
  */
 static int
 cl_message_recv(sr_conn_ctx_t *conn_ctx, Sr__Msg **msg)
@@ -393,68 +525,75 @@ cl_message_recv(sr_conn_ctx_t *conn_ctx, Sr__Msg **msg)
 }
 
 /**
- * Process (send) the request over the connection and receive the response.
+ *@brief  Processes (sends) the request over the connection and receive the response.
  */
 static int
-cl_request_process(sr_conn_ctx_t *conn_ctx, Sr__Msg *msg_req, Sr__Msg **msg_resp,
+cl_request_process(sr_session_ctx_t *session, Sr__Msg *msg_req, Sr__Msg **msg_resp,
         const Sr__Operation expected_response_op)
 {
     int rc = SR_ERR_OK;
 
+    CHECK_NULL_ARG4(session, session->conn_ctx, msg_req, msg_resp);
+
     SR_LOG_DBG("Sending %s request.", sr_operation_name(expected_response_op));
 
-    pthread_mutex_lock(&conn_ctx->lock);
+    pthread_mutex_lock(&session->conn_ctx->lock);
 
     /* send the request */
-    rc = cl_message_send(conn_ctx, msg_req);
+    rc = cl_message_send(session->conn_ctx, msg_req);
     if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Unable to send the message with request (conn=%p, operation=%s).",
-                (void*)conn_ctx, sr_operation_name(msg_req->request->operation));
-        pthread_mutex_unlock(&conn_ctx->lock);
+        SR_LOG_ERR("Unable to send the message with request (session id=%"PRIu32", operation=%s).",
+                session->id, sr_operation_name(msg_req->request->operation));
+        pthread_mutex_unlock(&session->conn_ctx->lock);
         return rc;
     }
 
     SR_LOG_DBG("%s request sent, waiting for response.", sr_operation_name(expected_response_op));
 
     /* receive the response */
-    rc = cl_message_recv(conn_ctx, msg_resp);
+    rc = cl_message_recv(session->conn_ctx, msg_resp);
     if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Unable to receive the message with response (conn=%p, operation=%s).",
-                (void*)conn_ctx, sr_operation_name(msg_req->request->operation));
-        pthread_mutex_unlock(&conn_ctx->lock);
+        SR_LOG_ERR("Unable to receive the message with response (session id=%"PRIu32", operation=%s).",
+                session->id, sr_operation_name(msg_req->request->operation));
+        pthread_mutex_unlock(&session->conn_ctx->lock);
         return rc;
     }
 
-    pthread_mutex_unlock(&conn_ctx->lock);
+    pthread_mutex_unlock(&session->conn_ctx->lock);
 
     SR_LOG_DBG("%s response received, processing.", sr_operation_name(expected_response_op));
 
     /* validate the response */
     rc = sr_pb_msg_validate(*msg_resp, SR__MSG__MSG_TYPE__RESPONSE, expected_response_op);
     if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Malformed message with response received (conn=%p, operation=%s).",
-                (void*)conn_ctx, sr_operation_name(msg_req->request->operation));
+        SR_LOG_ERR("Malformed message with response received (session id=%"PRIu32", operation=%s).",
+                session->id, sr_operation_name(msg_req->request->operation));
         return rc;
     }
 
     /* check for errors */
     if (SR_ERR_OK != (*msg_resp)->response->result) {
+        if (NULL != (*msg_resp)->response->error) {
+            /* set detailed error information into session */
+            rc = cl_session_set_error(session, (*msg_resp)->response->error->message, (*msg_resp)->response->error->path);
+        }
         /* don't log expected errors */
         if (SR_ERR_NOT_FOUND != (*msg_resp)->response->result &&
                 SR_ERR_VALIDATION_FAILED != (*msg_resp)->response->result &&
                 SR_ERR_COMMIT_FAILED != (*msg_resp)->response->result) {
-            SR_LOG_ERR("Error by processing of the request conn=%p, operation=%s): %s.",
-                (void*)conn_ctx, sr_operation_name(msg_req->request->operation),
-                (NULL != (*msg_resp)->response->error_msg) ? (*msg_resp)->response->error_msg : sr_strerror((*msg_resp)->response->result));
+            SR_LOG_ERR("Error by processing of the request (session id=%"PRIu32", operation=%s): %s.",
+                    session->id, sr_operation_name(msg_req->request->operation),
+                (NULL != (*msg_resp)->response->error && NULL != (*msg_resp)->response->error->message) ?
+                        (*msg_resp)->response->error->message : sr_strerror((*msg_resp)->response->result));
         }
         return (*msg_resp)->response->result;
     }
 
-    return SR_ERR_OK;
+    return rc;
 }
 
 /**
- * Create get_items request with options and send it
+ * @brief Creates get_items request with options and send it
  */
 static int
 cl_send_get_items_iter(sr_session_ctx_t *session, const char *path, bool recursive, size_t offset, size_t limit, Sr__Msg **msg_resp){
@@ -486,7 +625,7 @@ cl_send_get_items_iter(sr_session_ctx_t *session, const char *path, bool recursi
 
 
     /* send the request and receive the response */
-    rc = cl_request_process(session->conn_ctx, msg_req, msg_resp, SR__OPERATION__GET_ITEMS);
+    rc = cl_request_process(session, msg_req, msg_resp, SR__OPERATION__GET_ITEMS);
     if (SR_ERR_NOT_FOUND == rc){
         goto cleanup;
     }
@@ -587,6 +726,9 @@ cleanup:
     if ((NULL != ctx) && (NULL != ctx->local_cm)) {
         cm_cleanup(ctx->local_cm);
     }
+    if (NULL != ctx) {
+        pthread_mutex_destroy(&ctx->lock);
+    }
     free(ctx);
     return rc;
 }
@@ -640,6 +782,15 @@ sr_session_start(sr_conn_ctx_t *conn_ctx, const char *user_name, sr_datastore_t 
         rc = SR_ERR_NOMEM;
         goto cleanup;
     }
+    session->conn_ctx = conn_ctx;
+
+    /* initialize session mutext */
+    rc = pthread_mutex_init(&session->lock, NULL);
+    if (0 != rc) {
+        SR_LOG_ERR_MSG("Cannot initialize session mutex.");
+        rc = SR_ERR_INIT_FAILED;
+        goto cleanup;
+    }
 
     /* prepare session_start message */
     rc = sr_pb_req_alloc(SR__OPERATION__SESSION_START, /* undefined session id */ 0, &msg_req);
@@ -659,7 +810,7 @@ sr_session_start(sr_conn_ctx_t *conn_ctx, const char *user_name, sr_datastore_t 
     }
 
     /* send the request and receive the response */
-    rc = cl_request_process(conn_ctx, msg_req, &msg_resp, SR__OPERATION__SESSION_START);
+    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__SESSION_START);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Error by processing of session_stop request.");
         goto cleanup;
@@ -675,9 +826,7 @@ sr_session_start(sr_conn_ctx_t *conn_ctx, const char *user_name, sr_datastore_t 
         SR_LOG_WRN_MSG("Error by adding the session to the connection session list.");
     }
 
-    session->conn_ctx = conn_ctx;
     *session_p = session;
-
     return SR_ERR_OK;
 
 cleanup:
@@ -686,6 +835,9 @@ cleanup:
     }
     if (NULL != msg_resp) {
         sr__msg__free_unpacked(msg_resp, NULL);
+    }
+    if (NULL != session) {
+        pthread_mutex_destroy(&session->lock);
     }
     free(session);
     return rc;
@@ -699,6 +851,8 @@ sr_session_stop(sr_session_ctx_t *session)
 
     CHECK_NULL_ARG2(session, session->conn_ctx);
 
+    cl_session_clear_errors(session);
+
     /* prepare session_stop message */
     rc = sr_pb_req_alloc(SR__OPERATION__SESSION_STOP, session->id, &msg_req);
     if (SR_ERR_OK != rc) {
@@ -708,7 +862,7 @@ sr_session_stop(sr_session_ctx_t *session)
     msg_req->request->session_stop_req->session_id = session->id;
 
     /* send the request and receive the response */
-    rc = cl_request_process(session->conn_ctx, msg_req, &msg_resp, SR__OPERATION__SESSION_STOP);
+    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__SESSION_STOP);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Error by processing of session_stop request.");
         goto cleanup;
@@ -722,9 +876,13 @@ sr_session_stop(sr_session_ctx_t *session)
 
     sr__msg__free_unpacked(msg_req, NULL);
     sr__msg__free_unpacked(msg_resp, NULL);
+
+
+    sr_free_errors(session->error_info, session->error_info_size);
+    pthread_mutex_destroy(&session->lock);
     free(session);
 
-    return SR_ERR_OK;
+    return SR_ERR_OK; /* do not use cl_session_return - session has been freed line above */
 
 cleanup:
     if (NULL != msg_req) {
@@ -733,7 +891,7 @@ cleanup:
     if (NULL != msg_resp) {
         sr__msg__free_unpacked(msg_resp, NULL);
     }
-    return rc;
+    return cl_session_return(session, rc);
 }
 
 int
@@ -744,6 +902,8 @@ sr_list_schemas(sr_session_ctx_t *session, sr_schema_t **schemas, size_t *schema
 
     CHECK_NULL_ARG4(session, session->conn_ctx, schemas, schema_cnt);
 
+    cl_session_clear_errors(session);
+
     /* prepare list_schemas message */
     rc = sr_pb_req_alloc(SR__OPERATION__LIST_SCHEMAS, session->id, &msg_req);
     if (SR_ERR_OK != rc) {
@@ -752,7 +912,7 @@ sr_list_schemas(sr_session_ctx_t *session, sr_schema_t **schemas, size_t *schema
     }
 
     /* send the request and receive the response */
-    rc = cl_request_process(session->conn_ctx, msg_req, &msg_resp, SR__OPERATION__LIST_SCHEMAS);
+    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__LIST_SCHEMAS);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Error by processing of list_schemas request.");
         goto cleanup;
@@ -770,7 +930,7 @@ sr_list_schemas(sr_session_ctx_t *session, sr_schema_t **schemas, size_t *schema
     sr__msg__free_unpacked(msg_req, NULL);
     sr__msg__free_unpacked(msg_resp, NULL);
 
-    return SR_ERR_OK;
+    return cl_session_return(session, SR_ERR_OK);
 
 cleanup:
     if (NULL != msg_req) {
@@ -779,7 +939,7 @@ cleanup:
     if (NULL != msg_resp) {
         sr__msg__free_unpacked(msg_resp, NULL);
     }
-    return rc;
+    return cl_session_return(session, rc);
 }
 
 int
@@ -789,6 +949,8 @@ sr_get_item(sr_session_ctx_t *session, const char *path, sr_val_t **value)
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG4(session, session->conn_ctx, path, value);
+
+    cl_session_clear_errors(session);
 
     /* prepare get_item message */
     rc = sr_pb_req_alloc(SR__OPERATION__GET_ITEM, session->id, &msg_req);
@@ -805,7 +967,7 @@ sr_get_item(sr_session_ctx_t *session, const char *path, sr_val_t **value)
     }
 
     /* send the request and receive the response */
-    rc = cl_request_process(session->conn_ctx, msg_req, &msg_resp, SR__OPERATION__GET_ITEM);
+    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__GET_ITEM);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Error by processing of get_item request.");
         goto cleanup;
@@ -821,7 +983,7 @@ sr_get_item(sr_session_ctx_t *session, const char *path, sr_val_t **value)
     sr__msg__free_unpacked(msg_req, NULL);
     sr__msg__free_unpacked(msg_resp, NULL);
 
-    return SR_ERR_OK;
+    return cl_session_return(session, SR_ERR_OK);
 
 cleanup:
     if (NULL != msg_req) {
@@ -830,7 +992,7 @@ cleanup:
     if (NULL != msg_resp) {
         sr__msg__free_unpacked(msg_resp, NULL);
     }
-    return rc;
+    return cl_session_return(session, rc);
 }
 
 int
@@ -841,6 +1003,8 @@ sr_get_items(sr_session_ctx_t *session, const char *path, sr_val_t **values, siz
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG5(session, session->conn_ctx, path, values, value_cnt);
+
+    cl_session_clear_errors(session);
 
     /* prepare get_item message */
     rc = sr_pb_req_alloc(SR__OPERATION__GET_ITEMS, session->id, &msg_req);
@@ -857,7 +1021,7 @@ sr_get_items(sr_session_ctx_t *session, const char *path, sr_val_t **values, siz
     }
 
     /* send the request and receive the response */
-    rc = cl_request_process(session->conn_ctx, msg_req, &msg_resp, SR__OPERATION__GET_ITEMS);
+    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__GET_ITEMS);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Error by processing of get_items request.");
         goto cleanup;
@@ -891,7 +1055,7 @@ sr_get_items(sr_session_ctx_t *session, const char *path, sr_val_t **values, siz
     sr__msg__free_unpacked(msg_req, NULL);
     sr__msg__free_unpacked(msg_resp, NULL);
 
-    return SR_ERR_OK;
+    return cl_session_return(session, SR_ERR_OK);
 
 cleanup:
     free(vals);
@@ -901,7 +1065,7 @@ cleanup:
     if (NULL != msg_resp) {
         sr__msg__free_unpacked(msg_resp, NULL);
     }
-    return rc;
+    return cl_session_return(session, rc);
 }
 
 
@@ -911,6 +1075,8 @@ sr_get_items_iter(sr_session_ctx_t *session, const char *path, bool recursive, s
     Sr__Msg *msg_resp = NULL;
     sr_val_iter_t *it = NULL;
     int rc = SR_ERR_OK;
+
+    cl_session_clear_errors(session);
 
     CHECK_NULL_ARG4(session, session->conn_ctx, path, iter);
     rc = cl_send_get_items_iter(session, path, recursive, 0, CL_GET_ITEMS_FETCH_LIMIT, &msg_resp);
@@ -964,7 +1130,7 @@ sr_get_items_iter(sr_session_ctx_t *session, const char *path, bool recursive, s
 
     sr__msg__free_unpacked(msg_resp, NULL);
 
-    return SR_ERR_OK;
+    return cl_session_return(session, SR_ERR_OK);
 
 cleanup:
     if (NULL != msg_resp) {
@@ -976,7 +1142,7 @@ cleanup:
         }
         free(it);
     }
-    return rc;
+    return cl_session_return(session, rc);
 }
 
 int
@@ -986,6 +1152,8 @@ sr_get_item_next(sr_session_ctx_t *session, sr_val_iter_t *iter, sr_val_t **valu
     Sr__Msg *msg_resp = NULL;
 
     CHECK_NULL_ARG3(session, iter, value);
+
+    cl_session_clear_errors(session);
 
     if (0 == iter->count) {
         /* No more data to be read */
@@ -1048,13 +1216,13 @@ sr_get_item_next(sr_session_ctx_t *session, sr_val_iter_t *iter, sr_val_t **valu
         iter->offset++;
         sr__msg__free_unpacked(msg_resp, NULL);
     }
-    return SR_ERR_OK;
+    return cl_session_return(session, SR_ERR_OK);
 
 cleanup:
     if (NULL != msg_resp){
         sr__msg__free_unpacked(msg_resp, NULL);
     }
-    return rc;
+    return cl_session_return(session, rc);
 }
 
 void
@@ -1080,6 +1248,8 @@ sr_set_item(sr_session_ctx_t *session, const char *path, const sr_val_t *value, 
 
     CHECK_NULL_ARG3(session, session->conn_ctx, path);
 
+    cl_session_clear_errors(session);
+
     /* prepare get_item message */
     rc = sr_pb_req_alloc(SR__OPERATION__SET_ITEM, session->id, &msg_req);
     if (SR_ERR_OK != rc) {
@@ -1096,7 +1266,7 @@ sr_set_item(sr_session_ctx_t *session, const char *path, const sr_val_t *value, 
     msg_req->request->set_item_req->options = opts;
 
     /* duplicate the content of sr_val_t to gpb */
-    if (NULL != value){
+    if (NULL != value) {
         rc = sr_dup_val_t_to_gpb(value, &msg_req->request->set_item_req->value);
         if (SR_ERR_OK != rc){
             SR_LOG_ERR_MSG("Copying from sr_val_t to gpb failed.");
@@ -1105,7 +1275,7 @@ sr_set_item(sr_session_ctx_t *session, const char *path, const sr_val_t *value, 
     }
 
     /* send the request and receive the response */
-    rc = cl_request_process(session->conn_ctx, msg_req, &msg_resp, SR__OPERATION__SET_ITEM);
+    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__SET_ITEM);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Error by processing of set_item request.");
         goto cleanup;
@@ -1114,7 +1284,7 @@ sr_set_item(sr_session_ctx_t *session, const char *path, const sr_val_t *value, 
     sr__msg__free_unpacked(msg_req, NULL);
     sr__msg__free_unpacked(msg_resp, NULL);
 
-    return SR_ERR_OK;
+    return cl_session_return(session, SR_ERR_OK);
 
 cleanup:
     if (NULL != msg_req) {
@@ -1123,7 +1293,7 @@ cleanup:
     if (NULL != msg_resp) {
         sr__msg__free_unpacked(msg_resp, NULL);
     }
-    return rc;
+    return cl_session_return(session, rc);
 }
 
 int
@@ -1133,6 +1303,8 @@ sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_option
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG3(session, session->conn_ctx, path);
+
+    cl_session_clear_errors(session);
 
     /* prepare get_item message */
     rc = sr_pb_req_alloc(SR__OPERATION__DELETE_ITEM, session->id, &msg_req);
@@ -1150,7 +1322,7 @@ sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_option
     msg_req->request->delete_item_req->options = opts;
 
     /* send the request and receive the response */
-    rc = cl_request_process(session->conn_ctx, msg_req, &msg_resp, SR__OPERATION__DELETE_ITEM);
+    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__DELETE_ITEM);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Error by processing of delete_item request.");
         goto cleanup;
@@ -1159,7 +1331,7 @@ sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_option
     sr__msg__free_unpacked(msg_req, NULL);
     sr__msg__free_unpacked(msg_resp, NULL);
 
-    return SR_ERR_OK;
+    return cl_session_return(session, SR_ERR_OK);
 
 cleanup:
     if (NULL != msg_req) {
@@ -1168,7 +1340,7 @@ cleanup:
     if (NULL != msg_resp) {
         sr__msg__free_unpacked(msg_resp, NULL);
     }
-    return rc;
+    return cl_session_return(session, rc);
 }
 
 int
@@ -1178,6 +1350,8 @@ sr_move_item(sr_session_ctx_t *session, const char *path, const sr_move_directio
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG3(session, session->conn_ctx, path);
+
+    cl_session_clear_errors(session);
 
     /* prepare get_item message */
     rc = sr_pb_req_alloc(SR__OPERATION__MOVE_ITEM, session->id, &msg_req);
@@ -1195,7 +1369,7 @@ sr_move_item(sr_session_ctx_t *session, const char *path, const sr_move_directio
     msg_req->request->move_item_req->direction = sr_move_direction_sr_to_gpb(direction);
 
     /* send the request and receive the response */
-    rc = cl_request_process(session->conn_ctx, msg_req, &msg_resp, SR__OPERATION__MOVE_ITEM);
+    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__MOVE_ITEM);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Error by processing of move_item request.");
         goto cleanup;
@@ -1204,7 +1378,7 @@ sr_move_item(sr_session_ctx_t *session, const char *path, const sr_move_directio
     sr__msg__free_unpacked(msg_req, NULL);
     sr__msg__free_unpacked(msg_resp, NULL);
 
-    return SR_ERR_OK;
+    return cl_session_return(session, SR_ERR_OK);
 
 cleanup:
     if (NULL != msg_req) {
@@ -1213,17 +1387,19 @@ cleanup:
     if (NULL != msg_resp) {
         sr__msg__free_unpacked(msg_resp, NULL);
     }
-    return rc;
+    return cl_session_return(session, rc);
 }
 
 int
-sr_validate(sr_session_ctx_t *session, char ***errors, size_t *error_cnt)
+sr_validate(sr_session_ctx_t *session)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
     Sr__ValidateResp *validate_resp = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG2(session, session->conn_ctx);
+
+    cl_session_clear_errors(session);
 
     /* prepare validate message */
     rc = sr_pb_req_alloc(SR__OPERATION__VALIDATE, session->id, &msg_req);
@@ -1233,7 +1409,7 @@ sr_validate(sr_session_ctx_t *session, char ***errors, size_t *error_cnt)
     }
 
     /* send the request and receive the response */
-    rc = cl_request_process(session->conn_ctx, msg_req, &msg_resp, SR__OPERATION__VALIDATE);
+    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__VALIDATE);
     if ((SR_ERR_OK != rc) && (SR_ERR_VALIDATION_FAILED != rc)) {
         SR_LOG_ERR_MSG("Error by processing of validate request.");
         goto cleanup;
@@ -1241,22 +1417,18 @@ sr_validate(sr_session_ctx_t *session, char ***errors, size_t *error_cnt)
 
     validate_resp = msg_resp->response->validate_resp;
     if (SR_ERR_VALIDATION_FAILED == rc) {
-        SR_LOG_ERR("Validate operation failed with %zu errors.", validate_resp->n_errors);
-    }
+        SR_LOG_ERR("Validate operation failed with %zu error(s).", validate_resp->n_errors);
 
-    /* return validation errors if requested and if there are any */
-    if ((NULL != errors) && (NULL != error_cnt) && (validate_resp->n_errors > 0)) {
-        /* set errors to output arguments, GPB pointers to NULL */
-        *errors = validate_resp->errors;
-        *error_cnt = validate_resp->n_errors;
-        validate_resp->errors = NULL;
-        validate_resp->n_errors = 0;
+        /* store validation errors within the session */
+        if (validate_resp->n_errors > 0) {
+            cl_session_set_errors(session, validate_resp->errors, validate_resp->n_errors);
+        }
     }
 
     sr__msg__free_unpacked(msg_req, NULL);
     sr__msg__free_unpacked(msg_resp, NULL);
 
-    return rc;
+    return cl_session_return(session, rc);
 
 cleanup:
     if (NULL != msg_req) {
@@ -1265,17 +1437,19 @@ cleanup:
     if (NULL != msg_resp) {
         sr__msg__free_unpacked(msg_resp, NULL);
     }
-    return rc;
+    return cl_session_return(session, rc);
 }
 
 int
-sr_commit(sr_session_ctx_t *session, char ***errors, size_t *error_cnt)
+sr_commit(sr_session_ctx_t *session)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
     Sr__CommitResp *commit_resp = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG2(session, session->conn_ctx);
+
+    cl_session_clear_errors(session);
 
     /* prepare commit message */
     rc = sr_pb_req_alloc(SR__OPERATION__COMMIT, session->id, &msg_req);
@@ -1285,7 +1459,7 @@ sr_commit(sr_session_ctx_t *session, char ***errors, size_t *error_cnt)
     }
 
     /* send the request and receive the response */
-    rc = cl_request_process(session->conn_ctx, msg_req, &msg_resp, SR__OPERATION__COMMIT);
+    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__COMMIT);
     if ((SR_ERR_OK != rc) && (SR_ERR_COMMIT_FAILED != rc)) {
         SR_LOG_ERR_MSG("Error by processing of commit request.");
         goto cleanup;
@@ -1293,22 +1467,18 @@ sr_commit(sr_session_ctx_t *session, char ***errors, size_t *error_cnt)
 
     commit_resp = msg_resp->response->commit_resp;
     if (SR_ERR_COMMIT_FAILED == rc) {
-        SR_LOG_ERR("Commit operation failed with %zu errors.", commit_resp->n_errors);
-    }
+        SR_LOG_ERR("Commit operation failed with %zu error(s).", commit_resp->n_errors);
 
-    /* return commit errors if requested and if there are any */
-    if ((NULL != errors) && (NULL != error_cnt) && (commit_resp->n_errors > 0)) {
-        /* set errors to output arguments, GPB pointers to NULL */
-        *errors = commit_resp->errors;
-        *error_cnt = commit_resp->n_errors;
-        commit_resp->errors = NULL;
-        commit_resp->n_errors = 0;
+        /* store commit errors within the session */
+        if (commit_resp->n_errors > 0) {
+            cl_session_set_errors(session, commit_resp->errors, commit_resp->n_errors);
+        }
     }
 
     sr__msg__free_unpacked(msg_req, NULL);
     sr__msg__free_unpacked(msg_resp, NULL);
 
-    return rc;
+    return cl_session_return(session, rc);
 
 cleanup:
     if (NULL != msg_req) {
@@ -1317,7 +1487,7 @@ cleanup:
     if (NULL != msg_resp) {
         sr__msg__free_unpacked(msg_resp, NULL);
     }
-    return rc;
+    return cl_session_return(session, rc);
 }
 
 int
@@ -1328,6 +1498,8 @@ sr_discard_changes(sr_session_ctx_t *session)
 
     CHECK_NULL_ARG2(session, session->conn_ctx);
 
+    cl_session_clear_errors(session);
+
     /* prepare discard_changes message */
     rc = sr_pb_req_alloc(SR__OPERATION__DISCARD_CHANGES, session->id, &msg_req);
     if (SR_ERR_OK != rc) {
@@ -1336,7 +1508,7 @@ sr_discard_changes(sr_session_ctx_t *session)
     }
 
     /* send the request and receive the response */
-    rc = cl_request_process(session->conn_ctx, msg_req, &msg_resp, SR__OPERATION__DISCARD_CHANGES);
+    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__DISCARD_CHANGES);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Error by processing of discard_changes request.");
         goto cleanup;
@@ -1345,7 +1517,7 @@ sr_discard_changes(sr_session_ctx_t *session)
     sr__msg__free_unpacked(msg_req, NULL);
     sr__msg__free_unpacked(msg_resp, NULL);
 
-    return SR_ERR_OK;
+    return cl_session_return(session, SR_ERR_OK);
 
 cleanup:
     if (NULL != msg_req) {
@@ -1354,5 +1526,55 @@ cleanup:
     if (NULL != msg_resp) {
         sr__msg__free_unpacked(msg_resp, NULL);
     }
-    return rc;
+    return cl_session_return(session, rc);
 }
+
+int
+sr_get_last_error(sr_session_ctx_t *session, const sr_error_info_t **error_info)
+{
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG2(session, error_info);
+
+    pthread_mutex_lock(&session->lock);
+
+    if (0 == session->error_cnt) {
+        /* no detailed error information, let's create it from the last error code */
+        pthread_mutex_unlock(&session->lock);
+        rc = cl_session_set_error(session, sr_strerror(session->last_error), NULL);
+        if (SR_ERR_OK != rc) {
+            return rc;
+        }
+    }
+
+    *error_info = session->error_info;
+    pthread_mutex_unlock(&session->lock);
+
+    return session->last_error;
+}
+
+int
+sr_get_last_errors(sr_session_ctx_t *session, const sr_error_info_t **error_info, size_t *error_cnt)
+{
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG3(session, error_info, error_cnt);
+
+    pthread_mutex_lock(&session->lock);
+
+    if (0 == session->error_cnt) {
+        /* no detailed error information, let's create it from the last error code */
+        pthread_mutex_unlock(&session->lock);
+        rc = cl_session_set_error(session, sr_strerror(session->last_error), NULL);
+        if (SR_ERR_OK != rc) {
+            return rc;
+        }
+    }
+
+    *error_info = session->error_info;
+    *error_cnt = session->error_cnt;
+    pthread_mutex_unlock(&session->lock);
+
+    return session->last_error;
+}
+

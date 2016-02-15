@@ -155,7 +155,7 @@ int dm_list_schemas(dm_ctx_t *dm_ctx, dm_session_t *dm_session, sr_schema_t **sc
  * @param [out] err_cnt
  * @return Error code (SR_ERR_OK on success)
  */
-int dm_validate_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, char ***errors, size_t *err_cnt);
+int dm_validate_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors, size_t *err_cnt);
 
 /**
  * @brief Discards the user made changes. Marks data tree in session to be overwritten in next ::dm_get_datatree /
@@ -174,7 +174,7 @@ int dm_discard_changes(dm_ctx_t *dm_ctx, dm_session_t *session);
  * @param [out] err_cnt
  * @return Error code (SR_ERR_OK on success)
  */
-int dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, char ***errors, size_t *err_cnt);
+int dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors, size_t *err_cnt);
 
 /**
  *
