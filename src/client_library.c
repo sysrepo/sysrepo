@@ -156,7 +156,7 @@ cl_session_set_error(sr_session_ctx_t *session, const char *error_message, const
     }
     if (NULL != error_path) {
         session->error_info[0].path = strdup(error_path);
-        if (NULL == session->error_info[0].message) {
+        if (NULL == session->error_info[0].path) {
             SR_LOG_ERR_MSG("Unable to allocate error xpath.");
             pthread_mutex_unlock(&session->lock);
             return SR_ERR_NOMEM;
@@ -200,7 +200,7 @@ cl_session_set_errors(sr_session_ctx_t *session, Sr__Error **errors, size_t erro
         }
         if (NULL != errors[i]->path) {
             session->error_info[i].path = strdup(errors[i]->path);
-            if (NULL == session->error_info[i].message) {
+            if (NULL == session->error_info[i].path) {
                 SR_LOG_WRN_MSG("Unable to allocate error xpath, will be left NULL.");
             }
         }
