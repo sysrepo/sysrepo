@@ -158,6 +158,7 @@ typedef enum sr_error_e {
     SR_ERR_VALIDATION_FAILED,  /**< Validation of the changes failed. */
     SR_ERR_COMMIT_FAILED,      /**< Commit operation failed. */
     SR_ERR_EXISTS,             /**< Item already exists. */
+    SR_ERR_UNAUTHORIZED,       /**< Operation not authorized. */
 } sr_error_t;
 
 /**

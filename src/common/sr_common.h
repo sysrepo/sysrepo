@@ -370,8 +370,8 @@ int sr_pb_resp_alloc(const Sr__Operation operation, const uint32_t session_id, S
 int sr_pb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__Operation operation);
 
 /**
- * @brief Portable way to retrieve effective user ID and group ID of the
- * other end of a unix-domain socket.
+ * @brief Portable way to retrieve effective user ID and effective group ID of
+ * the other end of a unix-domain socket.
  *
  * @param[in] fd File descriptor of a socket.
  * @param[out] uid User ID of the other end.

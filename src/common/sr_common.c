@@ -47,7 +47,8 @@ const char *const sr_errlist[] = {
         "Request contains unknown element",     /* SR_ERR_BAD_ELEMENT */
         "Validation of the changes failed",     /* SR_ERR_VALIDATION_FAILED */
         "Commit operation failed",              /* SR_ERR_COMMIT_FAILED */
-        "The item already exists"               /* SR_ERR_EXISTS */
+        "The item already exists",              /* SR_ERR_EXISTS */
+        "Operation not authorized",             /* SR_ERR_UNAUTHORIZED */
 };
 
 const char *
@@ -976,7 +977,7 @@ sr_get_peer_eid(int fd, uid_t *uid, gid_t *gid)
         ucred_free(ucred);
         return SR_ERR_INTERNAL;
     }
-    if (-1 == (*gid = ucred_getrgid(ucred))) {
+    if (-1 == (*gid = ucred_getegid(ucred))) {
         ucred_free(ucred);
         return SR_ERR_INTERNAL;
     }

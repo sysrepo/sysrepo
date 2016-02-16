@@ -73,7 +73,7 @@ session_create_drop(void **state) {
     assert_non_null(conn);
 
     /* create one session */
-    rc = sm_session_create(ctx, conn, "root", NULL, &sess);
+    rc = sm_session_create(ctx, conn, NULL, &sess);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(sess);
 
@@ -111,7 +111,7 @@ session_find_id(void **state) {
     /* create 100 sessions */
     size_t i = 0;
     for (i = 0; i < 100; i ++) {
-        rc = sm_session_create(ctx, conn, "root", "bob", &sess);
+        rc = sm_session_create(ctx, conn, NULL, &sess);
         assert_int_equal(rc, SR_ERR_OK);
         assert_non_null(sess);
     }
@@ -165,7 +165,7 @@ session_find_fd(void **state) {
             assert_int_equal(rc, SR_ERR_OK);
             assert_non_null(conn);
         }
-        rc = sm_session_create(ctx, conn, "root", "bob", &sess);
+        rc = sm_session_create(ctx, conn, NULL, &sess);
         assert_int_equal(rc, SR_ERR_OK);
         assert_non_null(sess);
     }
