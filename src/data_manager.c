@@ -21,6 +21,8 @@
 
 #include "data_manager.h"
 #include "sr_common.h"
+#include <sys/types.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <dirent.h>
@@ -265,6 +267,21 @@ dm_load_data_tree(dm_ctx_t *dm_ctx, const struct lys_module *module, sr_datastor
 
     if (NULL != f) {
         lockf(fileno(f), F_LOCK, 0);
+        struct stat st = {0};
+        int rc = stat(data_filename, &st);
+        if (-1 == rc) {
+            SR_LOG_ERR_MSG("Stat failed");
+            free(data_filename);
+            free(data);
+            fclose(f);
+            return SR_ERR_INTERNAL;
+        }
+        data->timestamp = st.st_mtim;
+#ifdef __linux__
+        SR_LOG_DBG("Loaded module %s: mtime sec=%lld nsec=%lld\n", module->name,
+               (long long) st.st_mtim.tv_sec,
+               (long long) st.st_mtim.tv_nsec);
+#endif
         data_tree = lyd_parse_fd(dm_ctx->ly_ctx, fileno(f), LYD_XML, LYD_OPT_STRICT);
         lockf(fileno(f), F_ULOCK, 0);
         if (NULL == data_tree) {
@@ -290,7 +307,6 @@ dm_load_data_tree(dm_ctx_t *dm_ctx, const struct lys_module *module, sr_datastor
 
     data->module = module;
     data->modified = false;
-    data->timestamp = time(NULL);
     data->node = data_tree;
 
     if (NULL == data_tree){
@@ -657,12 +673,6 @@ dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors, siz
     dm_data_info_t *info = NULL;
     while (NULL != (info = sr_btree_get_at(session->session_modules, cnt))) {
         if (info->modified) {
-
-            /* TODO compare timestamp of the session copy and filesystem files */
-            /*if (info->timestamp != file_system->timestamp) {
-                SR_LOG_INF("Merging needs to be done for module '%s', currently just overwriting", info->module->name);
-            }*/
-
             char *data_filename = NULL;
             rc = dm_get_data_file(dm_ctx, info->module->name, session->datastore, &data_filename);
             if (SR_ERR_OK != rc){
@@ -670,8 +680,46 @@ dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors, siz
                 pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
                 return rc;
             }
+            struct stat st = {0};
+            int rc = stat(data_filename, &st);
+            if (-1 == rc) {
+                SR_LOG_ERR_MSG("Stat failed");
+                free(data_filename);
+                return SR_ERR_INTERNAL;
+            }
+            FILE *f = fopen(data_filename, "w");
+            if (NULL == f){
+                SR_LOG_ERR("Failed to open file %s", data_filename);
+                pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
+                free(data_filename);
+                return SR_ERR_IO;
+            }
+            lockf(fileno(f), F_LOCK, 0);
 
-            rc = sr_save_data_tree_file(data_filename, info->node);
+
+#ifdef __linux__
+            if ((info->timestamp.tv_sec != st.st_mtim.tv_sec)
+             || (info->timestamp.tv_nsec != st.st_mtim.tv_nsec)) {
+                SR_LOG_INF("Merging needs to be done for module '%s', currently just overwriting", info->module->name);
+            }
+            else {
+                SR_LOG_INF("Session copy module '%s', has not been changed since loading", info->module->name);
+            }
+#else
+            if (info->timestamp != st.st_mtim) {
+                SR_LOG_INF("Merging needs to be done for module '%s', currently just overwriting", info->module->name);
+            }
+            else{
+                /* Further check if the because we have only second precision */
+            }
+#endif
+            if (0 != lyd_print_file(f, info->node, LYD_XML_FORMAT, LYP_WITHSIBLINGS)) {
+                SR_LOG_ERR("Failed to write output into %s", data_filename);
+                return SR_ERR_INTERNAL;
+            }
+            lockf(fileno(f), F_ULOCK, 0);
+            fclose(f);
+
             free(data_filename);
             if (SR_ERR_OK != rc){
                 SR_LOG_ERR("Saving data file for module %s failed", info->module->name);
