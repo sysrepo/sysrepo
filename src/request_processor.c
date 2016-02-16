@@ -415,7 +415,7 @@ rp_validate_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr_
 
     /* copy error information to GPB  (if any) */
     if (err_cnt > 0) {
-        rc = sr_gpb_fill_errors(errors, err_cnt, &resp->response->validate_resp->errors, &resp->response->validate_resp->n_errors);
+        sr_gpb_fill_errors(errors, err_cnt, &resp->response->validate_resp->errors, &resp->response->validate_resp->n_errors);
         sr_free_errors(errors, err_cnt);
     }
 
@@ -454,7 +454,7 @@ rp_commit_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__M
 
     /* copy error information to GPB  (if any) */
     if (err_cnt > 0) {
-        rc = sr_gpb_fill_errors(errors, err_cnt, &resp->response->commit_resp->errors, &resp->response->commit_resp->n_errors);
+        sr_gpb_fill_errors(errors, err_cnt, &resp->response->commit_resp->errors, &resp->response->commit_resp->n_errors);
         sr_free_errors(errors, err_cnt);
     }
 
