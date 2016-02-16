@@ -80,6 +80,34 @@ rp_dt_push_nodes_with_same_name_to_stack(rp_node_stack_t **stack, struct lyd_nod
     return rc;
 }
 
+static int
+rp_dt_push_sibling_nodes_to_stack(rp_node_stack_t **stack, struct lyd_node *node){
+   CHECK_NULL_ARG2(stack, node);
+    int rc = SR_ERR_OK;
+    struct lyd_node *n = node;
+    /* find last sibling, push them on stack in reverse order*/
+    while (NULL != n->next) {
+        n = n->next;
+    }
+
+    while (1) {
+        if (NULL == n->schema || NULL == n->schema->name) {
+            SR_LOG_ERR_MSG("Missing schema information");
+            return SR_ERR_INTERNAL;
+        }
+        rc = rp_ns_push(stack, n);
+        if (SR_ERR_OK != rc) {
+            return SR_ERR_INTERNAL;
+        }
+
+        if (node == n) {
+            break;
+        }
+        n = n->prev;
+    }
+    return rc;
+}
+
 int
 rp_dt_get_all_children_node(struct lyd_node *node, bool check_enable, struct lyd_node ***nodes, size_t *count)
 {
@@ -103,7 +131,7 @@ rp_dt_get_all_children_node(struct lyd_node *node, bool check_enable, struct lyd
     cnt = 0;
     while (NULL != n) {
         if (check_enable){
-        
+
         } else {
             (*nodes)[cnt] = n;
         }
@@ -148,6 +176,40 @@ rp_dt_get_siblings_node_by_name(struct lyd_node *node, const char* name, struct 
 }
 
 int
+rp_dt_get_all_siblings(struct lyd_node *node, bool check_enable, struct lyd_node ***nodes, size_t *count)
+{
+    CHECK_NULL_ARG3(node, nodes, count);
+    CHECK_NULL_ARG2(node->schema, node->schema->name);
+    size_t cnt = 0;
+    struct lyd_node *n = node;
+    while (NULL != n) {
+        CHECK_NULL_ARG2(n->schema, n->schema->name);
+        if (!check_enable || dm_is_enabled_check_recursively(n->schema)) {
+            cnt++;
+        }
+        n = n->next;
+    }
+
+    *count = cnt;
+    *nodes = calloc(cnt, sizeof(**nodes));
+    if (NULL == *nodes) {
+        SR_LOG_ERR_MSG("Memory allocation failed");
+        return SR_ERR_NOMEM;
+    }
+
+    n = node;
+    cnt = 0;
+    while (NULL != n) {
+        if (!check_enable || dm_is_enabled_check_recursively(n->schema)) {
+          (*nodes)[cnt] = n;
+          cnt++;
+        }
+        n = n->next;
+    }
+    return SR_ERR_OK;
+}
+
+int
 rp_dt_get_nodes(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp_loc_id_t *loc_id, bool check_enable, struct lyd_node ***nodes, size_t *count)
 {
     CHECK_NULL_ARG5(dm_ctx, data_tree, loc_id, nodes, count);
@@ -165,6 +227,14 @@ rp_dt_get_nodes(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp_loc
     if (NULL == node->schema || NULL == node->schema->name) {
         SR_LOG_ERR("Missing schema information for node %s", loc_id->xpath);
         return SR_ERR_INTERNAL;
+    }
+
+    if (XP_IS_MODULE_XPATH(loc_id)) {
+        rc = rp_dt_get_all_siblings(node, check_enable, nodes, count);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR("Get all siblings failed for %s", loc_id->xpath);
+        }
+        return rc;
     }
 
     switch (node->schema->nodetype) {
@@ -250,49 +320,57 @@ rp_dt_get_nodes_with_opts(const dm_ctx_t *dm_ctx, dm_session_t *dm_session, rp_d
         get_items_ctx->recursive = recursive;
 
 
-        /*initially push nodes to stack */
-        size_t last_node = 0;
-        switch (node->schema->nodetype) {
-        case LYS_LEAF:
-            rc = rp_ns_push(&get_items_ctx->stack, node);
+        /*initialy push nodes to stack */
+        if (XP_IS_MODULE_XPATH(loc_id)) {
+            rc = rp_dt_push_sibling_nodes_to_stack(&get_items_ctx->stack, data_tree);
             if (SR_ERR_OK != rc) {
+                SR_LOG_ERR_MSG("Push sibling nodes to stack failed");
                 return SR_ERR_INTERNAL;
             }
-            break;
-        case LYS_CONTAINER:
-            rc = rp_dt_push_child_nodes_to_stack(&get_items_ctx->stack, node);
-            if (SR_ERR_OK != rc) {
-                SR_LOG_ERR_MSG("Push child nodes to stack failed");
-                return SR_ERR_INTERNAL;
-            }
-            break;
-        case LYS_LIST:
-            last_node = XP_GET_NODE_COUNT(loc_id) - 1;
-            if (0 != XP_GET_KEY_COUNT(loc_id, last_node)) {
+        } else {
+            size_t last_node = 0;
+            switch (node->schema->nodetype) {
+            case LYS_LEAF:
+                rc = rp_ns_push(&get_items_ctx->stack, node);
+                if (SR_ERR_OK != rc) {
+                    return SR_ERR_INTERNAL;
+                }
+                break;
+            case LYS_CONTAINER:
                 rc = rp_dt_push_child_nodes_to_stack(&get_items_ctx->stack, node);
                 if (SR_ERR_OK != rc) {
                     SR_LOG_ERR_MSG("Push child nodes to stack failed");
                     return SR_ERR_INTERNAL;
                 }
                 break;
-            } else {
+            case LYS_LIST:
+                last_node = XP_GET_NODE_COUNT(loc_id) - 1;
+                if (0 != XP_GET_KEY_COUNT(loc_id, last_node)) {
+                    rc = rp_dt_push_child_nodes_to_stack(&get_items_ctx->stack, node);
+                    if (SR_ERR_OK != rc) {
+                        SR_LOG_ERR_MSG("Push child nodes to stack failed");
+                        return SR_ERR_INTERNAL;
+                    }
+                    break;
+                } else {
+                    rc = rp_dt_push_nodes_with_same_name_to_stack(&get_items_ctx->stack, node);
+                    if (SR_ERR_OK != rc) {
+                        SR_LOG_ERR_MSG("Push nodes to stack failed");
+                        return SR_ERR_INTERNAL;
+                    }
+                }
+                break;
+            case LYS_LEAFLIST:
                 rc = rp_dt_push_nodes_with_same_name_to_stack(&get_items_ctx->stack, node);
                 if (SR_ERR_OK != rc) {
                     SR_LOG_ERR_MSG("Push nodes to stack failed");
                     return SR_ERR_INTERNAL;
                 }
-            }
-            break;
-        case LYS_LEAFLIST:
-            rc = rp_dt_push_nodes_with_same_name_to_stack(&get_items_ctx->stack, node);
-            if (SR_ERR_OK != rc) {
-                SR_LOG_ERR_MSG("Push nodes to stack failed");
+                break;
+            default:
+                SR_LOG_ERR("Unsupported node type for xpath %s", loc_id->xpath);
                 return SR_ERR_INTERNAL;
             }
-            break;
-        default:
-            SR_LOG_ERR("Unsupported node type for xpath %s", loc_id->xpath);
-            return SR_ERR_INTERNAL;
         }
         SR_LOG_DBG_MSG("Cache miss in get_nodes_with_opts");
 
@@ -372,6 +450,11 @@ rp_dt_find_deepest_match(struct lyd_node *data_tree, const xp_loc_id_t *loc_id, 
 
     if (NULL == data_tree){
         return SR_ERR_NOT_FOUND;
+    }
+    if (XP_IS_MODULE_XPATH(loc_id)) {
+        *match_level = 0;
+        *node = data_tree;
+        return SR_ERR_OK;
     }
 
     struct lyd_node *curr = data_tree;
@@ -507,5 +590,10 @@ int
 rp_dt_get_node(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp_loc_id_t *loc_id, bool check_enable, struct lyd_node **node)
 {
     CHECK_NULL_ARG4(dm_ctx, data_tree, loc_id, node);
+    CHECK_NULL_ARG(loc_id->xpath);
+    if (XP_IS_MODULE_XPATH(loc_id)) {
+        SR_LOG_ERR("Module xpath %s can not be use in get_node call", loc_id->xpath);
+        return SR_ERR_INVAL_ARG;
+    }
     return rp_dt_lookup_node(data_tree, loc_id, false, check_enable, node);
 }

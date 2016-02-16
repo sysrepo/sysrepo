@@ -63,6 +63,9 @@ no_subscription_test(void **state)
    rc = rp_dt_get_values_wrapper(ctx, session, "/test-module:containera", &values, &count);
    assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
 
+   rc = rp_dt_get_values_wrapper(ctx, session, "/test-module:", &values, &count);
+   assert_int_equal(SR_ERR_NOT_FOUND, rc);
+
    rc = rp_dt_get_values_wrapper(ctx, session, "/test-module:main", &values, &count);
    assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
@@ -145,7 +148,6 @@ enable_subtree_test(void **state)
 
    /* container*/
    assert_true(dm_is_node_enabled(match->parent->parent));
-
 
    xp_free_loc_id(l);
    dm_session_stop(ctx, session);

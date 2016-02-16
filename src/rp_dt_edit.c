@@ -62,6 +62,11 @@ rp_dt_find_deepest_match_wrapper(dm_ctx_t *ctx, dm_session_t *session, const cha
         goto cleanup;
     }
 
+    if (XP_IS_MODULE_XPATH(match->loc_id)){
+        /* do not match particular node if the xpath identifies the module */
+        goto cleanup;
+    }
+
     rc = rp_dt_find_deepest_match(match->info->node, match->loc_id, true, dm_is_running_datastore_session(session), &match->level, &match->node);
 
 cleanup:
@@ -183,6 +188,44 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, co
         goto cleanup;
     } else if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Find deepest match failed %s", xpath);
+        goto cleanup;
+    }
+
+    if (XP_IS_MODULE_XPATH(match.loc_id)) {
+        if ((options & SR_EDIT_NON_RECURSIVE)) {
+            SR_LOG_ERR("Delete for module xpath '%s' can not be called with non recursive", xpath);
+            rc = SR_ERR_INVAL_ARG;
+            goto cleanup;
+        }
+
+        struct lyd_node **nodes = NULL;
+        size_t count = 0;
+        /* find all top level nodes records */
+        rc = rp_dt_get_all_siblings(match.info->node, dm_is_running_datastore_session(session), &nodes, &count);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR("Get all siblings failed for xpath %s ", xpath);
+            goto cleanup;
+        }
+
+        if ((options & SR_EDIT_STRICT) && count == 0) {
+            SR_LOG_ERR("No item exists '%s' deleted with strict opt", xpath);
+            rc = SR_ERR_INVAL_ARG;
+            free(nodes);
+            goto cleanup;
+        }
+
+        /* delete leaf-list nodes */
+        for (size_t i = 0; i < count; i++) {
+            rc = sr_lyd_unlink(match.info, nodes[i]);
+            if (0 != rc) {
+                SR_LOG_ERR("Unlinking of the node %s failed", xpath);
+                free(nodes);
+                rc = SR_ERR_INTERNAL;
+                goto cleanup;
+            }
+            lyd_free(nodes[i]);
+        }
+        free(nodes);
         goto cleanup;
     }
 
@@ -331,9 +374,11 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, co
         }
     }
 
-    /* mark to session copy that some change has been made */
-    match.info->modified = true;
 cleanup:
+    if (NULL != match.info) {
+        /* mark to session copy that some change has been made */
+        match.info->modified = SR_ERR_OK == rc ? true : match.info->modified;
+    }
     xp_free_loc_id(match.loc_id);
     free(data_tree_name);
     return rc;
@@ -369,6 +414,11 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const
         goto cleanup;
     }
 
+    if (XP_IS_MODULE_XPATH(m.loc_id)) {
+        SR_LOG_ERR("Module xpath %s can not be used wit set item operation", m.loc_id->xpath);
+        rc = SR_ERR_INVAL_ARG;
+        goto cleanup;
+    }
     /* if the session is tied to running, check if the leaf is enabled*/
     if (dm_is_running_datastore_session(session)) {
         if (!dm_is_enabled_check_recursively(m.schema_node)) {
@@ -565,6 +615,12 @@ rp_dt_move_list(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, sr_m
         goto cleanup;
     } else if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Find deepest match failed %s", xpath);
+        goto cleanup;
+    }
+
+    if (XP_IS_MODULE_XPATH(match.loc_id)) {
+        SR_LOG_ERR("Module xpath %s can not be used wit set item operation", match.loc_id->xpath);
+        rc = SR_ERR_INVAL_ARG;
         goto cleanup;
     }
 

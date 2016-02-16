@@ -60,6 +60,16 @@ int rp_dt_get_all_children_node(struct lyd_node *node, bool check_enable, struct
 int rp_dt_get_siblings_node_by_name(struct lyd_node *node, const char* name, struct lyd_node ***nodes, size_t *count);
 
 /**
+ * @brief Returns all sibling nodes
+ * @param [in] node
+ * @param [in] check_enable
+ * @param [out] nodes
+ * @param [out] count
+ * @return Error code (SR_ERR_OK on success)
+ */
+int rp_dt_get_all_siblings(struct lyd_node *node, bool check_enable, struct lyd_node ***nodes, size_t *count);
+
+/**
  * @brief Returns nodes under specified location_id. For leaf returns the same as rp_dt_get_node. If location_id identifies
  * the container returns its children. If the location_id identifies the list instance and all key values are defined
  * the children of the list instance is returned. If the location_id identifies the list and key values for the last list
