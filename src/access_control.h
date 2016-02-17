@@ -26,7 +26,7 @@
 
 typedef enum ac_operation_e {
     AC_OPER_READ,
-    AC_OPER_WRITE,
+    AC_OPER_READ_WRITE,
 } ac_operation_t;
 
 typedef struct ac_ucred_s {

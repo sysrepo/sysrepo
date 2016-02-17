@@ -65,10 +65,10 @@ typedef enum ac_permission_e {
  * @brief Access control information tied to individual YANG modules.
  */
 typedef struct ac_module_info_s {
-    const char *module_name;           /**< Name of the module. */
-    const xp_loc_id_t *loc_id;         /**< XPath location id, used only for fast lookup by node location id. */
-    ac_permission_t read_permission;   /**< Read permission is granted. */
-    ac_permission_t write_premission;  /**< Read & write permissions are granted. */
+    const char *module_name;                 /**< Name of the module. */
+    const xp_loc_id_t *loc_id;              /**< XPath location id, used only for fast lookup by node location id. */
+    ac_permission_t read_permission;        /**< Read permission is granted. */
+    ac_permission_t read_write_permission;  /**< Read & write permissions are granted. */
 } ac_module_info_t;
 
 /**
@@ -273,13 +273,46 @@ ac_session_cleanup(ac_session_t *session)
 int
 ac_check_node_permissions(const ac_session_t *session, const xp_loc_id_t *node_xpath, const ac_operation_t operation)
 {
-    ac_module_info_t module_info = {0,};
+    ac_module_info_t lookup_info = {0,};
+    ac_module_info_t *module_info = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG2(session, node_xpath);
 
-    module_info.loc_id = node_xpath;
-    sr_btree_search(session->module_info_btree, &module_info);
+    lookup_info.loc_id = node_xpath;
+    module_info = sr_btree_search(session->module_info_btree, &lookup_info);
+    if (NULL != module_info) {
+        /* found match in cache, try to check from cache */
+        if (AC_OPER_READ == operation && AC_PERMISSION_UNKNOWN != module_info->read_permission) {
+            if (AC_PERMISSION_ALLOWED == module_info->read_permission) {
+                return SR_ERR_OK;
+            } else {
+                return SR_ERR_UNAUTHORIZED;
+            }
+        }
+        if (AC_OPER_READ_WRITE == operation && AC_PERMISSION_UNKNOWN != module_info->read_write_permission) {
+            if (AC_PERMISSION_ALLOWED == module_info->read_write_permission) {
+                return SR_ERR_OK;
+            } else {
+                return SR_ERR_UNAUTHORIZED;
+            }
+        }
+    } else {
+        /* match in cache not found, create new entry */
+        module_info = calloc(1, sizeof(*module_info));
+        if (NULL == module_info) {
+            SR_LOG_ERR_MSG("Cannot allocate module access control info entry.");
+            return SR_ERR_NOMEM;
+        }
+        rc = sr_btree_insert(session->module_info_btree, module_info);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR_MSG("Cannot insert new entry into binary tree for module access control info.");
+            free(module_info);
+            return SR_ERR_INTERNAL;
+        }
+    }
+
+    /* do the check */
 
     return SR_ERR_OK;
 }
