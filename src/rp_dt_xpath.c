@@ -336,18 +336,18 @@ rp_dt_match_in_choice(const struct lys_node *choice, const xp_loc_id_t *loc_id, 
  * @brief Validates list node
  */
 static int
-rp_dt_validate_list(const struct lys_node *node, const xp_loc_id_t *loc_id, const size_t level)
+rp_dt_validate_list(dm_session_t *session, const struct lys_node *node, const xp_loc_id_t *loc_id, const size_t level)
 {
-    CHECK_NULL_ARG2(node, loc_id);
+    CHECK_NULL_ARG3(session, node, loc_id);
 
     if (LYS_LIST != node->nodetype) {
         SR_LOG_ERR("Keys specified for the node that is not list %s", node->name);
-        return SR_ERR_BAD_ELEMENT;
+        return dm_report_error(session, "Keys specified for the node that is not list", loc_id, level, SR_ERR_BAD_ELEMENT);
     }
     struct lys_node_list *list = (struct lys_node_list *) node;
     if (list->keys_size != XP_GET_KEY_COUNT(loc_id, level)) {
         SR_LOG_ERR("Key count does not match %s", node->name);
-        return SR_ERR_BAD_ELEMENT;
+        return dm_report_error(session, "Number of keys specified does not match", loc_id, level, SR_ERR_BAD_ELEMENT);
     }
     size_t matched_keys = 0;
     for (size_t k = 0; k < list->keys_size; k++) {
@@ -368,9 +368,9 @@ rp_dt_validate_list(const struct lys_node *node, const xp_loc_id_t *loc_id, cons
 }
 
 int
-rp_dt_validate_node_xpath(dm_ctx_t *dm_ctx, const xp_loc_id_t *loc_id, const struct lys_module **matched_module, struct lys_node **match)
+rp_dt_validate_node_xpath(dm_ctx_t *dm_ctx, dm_session_t *session, const xp_loc_id_t *loc_id, const struct lys_module **matched_module, struct lys_node **match)
 {
-    CHECK_NULL_ARG2(dm_ctx, loc_id);
+    CHECK_NULL_ARG3(dm_ctx, session, loc_id);
     CHECK_NULL_ARG(loc_id->xpath);
 
     char *module_name = NULL;
@@ -386,6 +386,9 @@ rp_dt_validate_node_xpath(dm_ctx_t *dm_ctx, const xp_loc_id_t *loc_id, const str
 
     rc = dm_get_module(dm_ctx, module_name, NULL, &module);
     free(module_name);
+    if (SR_ERR_UNKNOWN_MODEL == rc) {
+        return dm_report_error(session, "Xpath contains unknown model", loc_id, 0, rc);
+    }
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Get module failed");
         return rc;
@@ -430,20 +433,31 @@ rp_dt_validate_node_xpath(dm_ctx_t *dm_ctx, const xp_loc_id_t *loc_id, const str
                 }
             }
 
-            if (!XP_CMP_NODE(loc_id, i, node->name)) {
-                node = node->next;
-                continue;
-            }
-
             if (XP_HAS_NODE_NS(loc_id, i)) {
                 if (!XP_CMP_NODE_NS(loc_id, i, node->module->name)) {
+                    const struct lys_module *m = NULL;
+                    char *module_name = XP_CPY_NODE_NS(loc_id, i);
+                    if (NULL == module_name) {
+                        SR_LOG_ERR_MSG("Module name duplication failed");
+                        return SR_ERR_INTERNAL;
+                    }
+                    rc = dm_get_module(dm_ctx, module_name,NULL, &m);
+                    free(module_name);
+                    if (SR_ERR_UNKNOWN_MODEL == rc) {
+                        return dm_report_error(session, "Unknown model", loc_id, i, SR_ERR_UNKNOWN_MODEL);
+                    }
                     node = node->next;
                     continue;
                 }
             }
 
+            if (!XP_CMP_NODE(loc_id, i, node->name)) {
+                node = node->next;
+                continue;
+            }
+
             if (0 != XP_GET_KEY_COUNT(loc_id, i)) {
-                rc = rp_dt_validate_list(node, loc_id, i);
+                rc = rp_dt_validate_list(session, node, loc_id, i);
                 if (SR_ERR_OK != rc) {
                     SR_LOG_ERR("List validation failed %s", loc_id->xpath);
                     return rc;
@@ -459,7 +473,7 @@ rp_dt_validate_node_xpath(dm_ctx_t *dm_ctx, const xp_loc_id_t *loc_id, const str
 
         if (NULL == node) {
             SR_LOG_ERR("Request node not found in schemas %s", loc_id->xpath);
-            return SR_ERR_BAD_ELEMENT;
+            return dm_report_error(session, "Unknown element", loc_id, i, SR_ERR_BAD_ELEMENT);
         }
     }
 
@@ -493,12 +507,12 @@ rp_dt_enable_key_nodes(struct lys_node *node)
 }
 
 int
-rp_dt_enable_xpath(dm_ctx_t *dm_ctx, const xp_loc_id_t *loc_id)
+rp_dt_enable_xpath(dm_ctx_t *dm_ctx, dm_session_t *session, const xp_loc_id_t *loc_id)
 {
-    CHECK_NULL_ARG3(dm_ctx, loc_id, loc_id->xpath);
+    CHECK_NULL_ARG4(dm_ctx, session, loc_id, loc_id->xpath);
     int rc = SR_ERR_OK;
     struct lys_node *match = NULL, *node = NULL;
-    rc = rp_dt_validate_node_xpath(dm_ctx, loc_id, NULL, &match);
+    rc = rp_dt_validate_node_xpath(dm_ctx, session, loc_id, NULL, &match);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Xpath validation failed %s", loc_id->xpath);
         return rc;

@@ -21,6 +21,7 @@
 
 #include "data_manager.h"
 #include "sr_common.h"
+#include "xpath_processor.h"
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -451,7 +452,7 @@ dm_session_start(const dm_ctx_t *dm_ctx, const sr_datastore_t ds, dm_session_t *
     CHECK_NULL_ARG(dm_session_ctx);
 
     dm_session_t *session_ctx = NULL;
-    session_ctx = malloc(sizeof(*session_ctx));
+    session_ctx = calloc(1, sizeof(*session_ctx));
     if (NULL == session_ctx) {
         SR_LOG_ERR_MSG("Cannot allocate session_ctx in Data Manager.");
         return SR_ERR_NOMEM;
@@ -758,6 +759,63 @@ dm_clear_session_errors(dm_session_t *session)
         session->error_xpath = NULL;
     }
 }
+
+int
+dm_report_error(dm_session_t *session, const char *msg, const xp_loc_id_t *loc_id, size_t level, int rc)
+{
+    if (NULL == session) {
+        return SR_ERR_INTERNAL;
+    }
+
+    if (NULL != msg) {
+        if (NULL != session->error_msg) {
+            SR_LOG_WRN("Overwriting session error message %s", session->error_msg);
+            free(session->error_msg);
+        }
+        session->error_msg = strdup (msg);
+        if (NULL == session->error_msg) {
+            SR_LOG_ERR_MSG("Error message duplication failed");
+            return SR_ERR_INTERNAL;
+        }
+    }
+
+    if (NULL != loc_id) {
+        if (NULL != session->error_xpath) {
+            SR_LOG_WRN("Overwriting session error xpath %s", session->error_xpath);
+            free(session->error_xpath);
+        }
+        session->error_xpath = XP_CPY_UP_TO_NODE(loc_id, level);
+        if (NULL == session->error_xpath) {
+            SR_LOG_ERR_MSG("Error xpath duplication failed");
+            return SR_ERR_INTERNAL;
+        }
+    }
+
+    return rc;
+}
+
+bool
+dm_has_error(dm_session_t *session)
+{
+    if (NULL == session){
+        return false;
+    }
+    return NULL != session->error_msg || NULL != session->error_xpath;
+}
+
+int
+dm_copy_errors(dm_session_t *session, char **error_msg, char **err_xpath)
+{
+    CHECK_NULL_ARG3(session, error_msg, err_xpath);
+    *error_msg = strdup(session->error_msg);
+    *err_xpath = strdup(session->error_xpath);
+    if ((NULL != session->error_msg && NULL == *error_msg) || (NULL != session->error_xpath && NULL == *err_xpath)){
+        SR_LOG_ERR_MSG("Error duplication failed");
+        return SR_ERR_INTERNAL;
+    }
+    return SR_ERR_OK;
+}
+
 
 static dm_node_state_t
 dm_get_node_state(struct lys_node *node)

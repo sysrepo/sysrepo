@@ -32,6 +32,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include "sysrepo.h"
+#include "xpath_processor.h"
 
 
 /**
@@ -187,6 +188,37 @@ int dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors,
  * @param [in] session
  */
 void dm_clear_session_errors(dm_session_t *session);
+
+/**
+ * @brief Report an error and store into the session. Return provided error code or
+ * SR_ERR_INTERNAL if something failed during the process of storing the error.
+ * Error xpath is filled from provided xp_loc_id, level specify what portion of the
+ * xpath should be copied.
+ * @param [in] session
+ * @param [in] msg
+ * @param [in] loc_id
+ * @param [in] level
+ * @param [in] rc
+ * @return rc or SR_ERR_INTERNAL
+ */
+int dm_report_error(dm_session_t *session, const char *msg, const xp_loc_id_t *loc_id, size_t level, int rc);
+
+/**
+ * @brief Checks if the session contains an error
+ * @param [in] session
+ * @return
+ */
+bool dm_has_error(dm_session_t *session);
+
+/**
+ * @brief Copies the error message and error xpath to the provided variables.
+ * @param [in] session
+ * @param [out] error_msg
+ * @param [out] err_xpath
+ * @return Error code (SR_ERR_OK on success)
+ */
+int dm_copy_errors(dm_session_t *session, char **error_msg, char **err_xpath);
+
 /**
  *
  * @param node

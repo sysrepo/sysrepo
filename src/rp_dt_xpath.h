@@ -46,22 +46,24 @@ int rp_dt_create_xpath_for_node(const struct lyd_node *node, char **xpath);
  * - tests if the nodes exists in the model (if not returns SR_ERR_BAD_ELEMENT)
  * - tests if the keys name and key count are valid (if not returns SR_ERR_BAD_ELEMENT) 
  * @param [in] dm_ctx
+ * @param [in] session
  * @param [in] loc_id input to be validated
  * @param [out] module pointer to the module where the xpath is pointing (in case of augment, augmented module)
  * @param [out] match schema node is returned if NULL is not passed
  * @return Error code (SR_ERR_OK on success)
  */
-int rp_dt_validate_node_xpath(dm_ctx_t *dm_ctx, const xp_loc_id_t *loc_id, const struct lys_module **matched_module, struct lys_node **match);
+int rp_dt_validate_node_xpath(dm_ctx_t *dm_ctx, dm_session_t *session, const xp_loc_id_t *loc_id, const struct lys_module **matched_module, struct lys_node **match);
 
 /**
  * @brief Enables the subtree specified by xpath in running data store. Until then, data retrieval calls return
  * SR_ERR_NOT_FOUND and no edit like calls can be made for the specified xpath and the nodes underneath.
  * @param [in] dm_ctx
+ * @param [in] dm_session
  * @param [in] loc_id
  * @return Error code (SR_ERR_OK on success)
  */
 int
-rp_dt_enable_xpath(dm_ctx_t *dm_ctx, const xp_loc_id_t *xpath);
+rp_dt_enable_xpath(dm_ctx_t *dm_ctx, dm_session_t *session, const xp_loc_id_t *xpath);
 
 /**
  * @}

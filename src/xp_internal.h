@@ -65,6 +65,10 @@ typedef enum xp_token_e{
 /**@brief Returns the length of the ORD-th token. ORD must be in a valid range. */
 #define XP_GET_TOKEN_LENGTH(L,ORD) ((L)->positions[ORD+1] - (L)->positions[ORD])
 
+/**@brief Returns the length up to the ORD-th token. ORD must be in a valid range. */
+#define XP_GET_UP_TO_TOKEN_LENGTH(L,ORD) ((L)->positions[ORD+1] - (L)->positions[0])
+
+
 /**@brief Returns the copied content of the ORD-th token . ORD must be in a valid range. */
 #define XP_CPY_TOKEN(L,ORD) (strndup(XP_GET_TOKEN_START(L,ORD),XP_GET_TOKEN_LENGTH(L,ORD)))
 

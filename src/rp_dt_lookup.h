@@ -28,6 +28,7 @@
 #include <libyang/libyang.h>
 #include "xpath_processor.h"
 #include "rp_node_stack.h"
+#include "data_manager.h"
 
 
 /**

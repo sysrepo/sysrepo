@@ -28,6 +28,7 @@
 #include <inttypes.h>
 
 #include "sr_common.h"
+#include "data_manager.h"
 
 /**
  * Sysrepo error descriptions.

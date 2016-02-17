@@ -50,7 +50,7 @@ rp_dt_find_deepest_match_wrapper(dm_ctx_t *ctx, dm_session_t *session, const cha
         return rc;
     }
 
-    rc = rp_dt_validate_node_xpath(ctx, match->loc_id, &module, &match->schema_node);
+    rc = rp_dt_validate_node_xpath(ctx, session, match->loc_id, &module, &match->schema_node);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Requested node is not valid %s", xpath);
         goto cleanup;

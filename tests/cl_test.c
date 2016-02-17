@@ -191,9 +191,13 @@ cl_get_item_test(void **state)
     assert_null(value);
 
     /* bad element in existing module*/
-    rc = sr_get_item(session, "/example-module:unknown", &value);
+    rc = sr_get_item(session, "/example-module:unknown/next", &value);
     assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
     assert_null(value);
+
+    const sr_error_info_t *err = NULL;
+    sr_get_last_error(session, &err);
+    assert_string_equal("/example-module:unknown", err->path);
 
     /* existing leaf */
     rc = sr_get_item(session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &value);
