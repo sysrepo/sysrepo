@@ -503,10 +503,7 @@ dm_get_data_info(dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, const char *mod
     /* session copy not found load it from file system */
     dm_data_info_t *di = NULL;
     rc = dm_load_data_tree(dm_ctx, module, dm_session_ctx->datastore, &di);
-    if (SR_ERR_NOT_FOUND == rc) {
-        SR_LOG_DBG("Data tree for %s not found.", module_name);
-        return rc;
-    } else if (SR_ERR_OK != rc) {
+    if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Getting data tree for %s failed.", module_name);
         return rc;
     }
