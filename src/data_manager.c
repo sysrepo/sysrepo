@@ -45,6 +45,8 @@ typedef struct dm_ctx_s {
 typedef struct dm_session_s {
     sr_datastore_t datastore;       /**< datastore to which the session is tied */
     sr_btree_t *session_modules;    /**< binary holding session copies of data models */
+    char *error_msg;                /**< description of the last error */
+    char *error_xpath;              /**< xpath of the last error if applicable */
 } dm_session_t;
 
 /**
@@ -467,13 +469,14 @@ dm_session_start(const dm_ctx_t *dm_ctx, const sr_datastore_t ds, dm_session_t *
 
     return SR_ERR_OK;
 }
-
 int
-dm_session_stop(const dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx)
+dm_session_stop(const dm_ctx_t *dm_ctx, dm_session_t *session)
 {
-    CHECK_NULL_ARG2(dm_ctx, dm_session_ctx);
-    sr_btree_cleanup(dm_session_ctx->session_modules);
-    free(dm_session_ctx);
+    CHECK_NULL_ARG2(dm_ctx, session);
+    sr_btree_cleanup(session->session_modules);
+    free(session->error_msg);
+    free(session->error_xpath);
+    free(session);
     return SR_ERR_OK;
 }
 
@@ -739,6 +742,24 @@ dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors, siz
     rc = dm_discard_changes(dm_ctx, session);
 
     return rc;
+}
+
+void
+dm_clear_session_errors(dm_session_t *session)
+{
+    if (NULL == session){
+        return;
+    }
+
+    if (NULL != session->error_msg) {
+        free(session->error_msg);
+        session->error_msg = NULL;
+    }
+
+    if (NULL != session->error_xpath) {
+        free(session->error_xpath);
+        session->error_xpath = NULL;
+    }
 }
 
 static dm_node_state_t
