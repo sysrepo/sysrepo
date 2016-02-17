@@ -61,9 +61,9 @@ void rp_dt_validate_fail(void **state)
     int rc = 0;
     dm_ctx_t *ctx = *state;
 
-    /* without namesapce*/
-    rc = validate_node_wrapper(ctx, "/container", NULL);
-    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+    /* unknown model */
+    rc = validate_node_wrapper(ctx, "/unknown-module:", NULL);
+    assert_int_equal(SR_ERR_UNKNOWN_MODEL, rc);
 
     /* unknown model */
     rc = validate_node_wrapper(ctx, "/unknown-model:container", NULL);
@@ -98,6 +98,10 @@ void rp_dt_validate_ok(void **state)
 {
     int rc = 0;
     dm_ctx_t *ctx = *state;
+
+    /* module */
+    rc = validate_node_wrapper(ctx, "/example-module:", NULL);
+    assert_int_equal(SR_ERR_OK, rc);
 
     /* container */
     rc = validate_node_wrapper(ctx, "/example-module:container", NULL);

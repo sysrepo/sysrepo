@@ -245,11 +245,13 @@ sr_save_data_tree_file(const char *file_name, const struct lyd_node *data_tree)
         SR_LOG_ERR("Failed to open file %s", file_name);
         return SR_ERR_IO;
     }
+    lockf(fileno(f), F_LOCK, 0);
 
     if( 0 != lyd_print_file(f, data_tree, LYD_XML_FORMAT, LYP_WITHSIBLINGS)){
         SR_LOG_ERR("Failed to write output into %s", file_name);
         return SR_ERR_INTERNAL;
     }
+    lockf(fileno(f), F_ULOCK, 0);
     fclose(f);
     return SR_ERR_OK;
 }

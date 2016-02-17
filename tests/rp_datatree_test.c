@@ -1,7 +1,7 @@
 /**
  * @file rp_datatree_test.c
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
- * @brief 
+ * @brief
  *
  * @copyright
  * Copyright 2015 Cisco Systems, Inc.
@@ -339,6 +339,15 @@ void get_values_test(void **state){
 
     sr_val_t **values;
     size_t count;
+    #define XP_MODULE "/example-module:"
+    rc = rp_dt_get_values_xpath(ctx, root, XP_MODULE, &values, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(4, count); /*container + 3 leaf-list instances */
+    for (size_t i = 0; i < count; i++) {
+        puts(values[i]->xpath);
+        sr_free_val(values[i]);
+    }
+    free(values);
 
 #define XP_LEAF "/example-module:container/list[key1='key1'][key2='key2']/leaf"
     rc = rp_dt_get_values_xpath(ctx, root, XP_LEAF, &values, &count);
@@ -446,7 +455,14 @@ void get_values_opts_test(void **state) {
     }
     sr_free_values_arr(values, count);
 
-//TODO test not existing nodes, offset and limit out of range
+
+    rc = rp_dt_get_values_wrapper_with_opts(ctx, ses_ctx, &get_items_ctx, "/example-module:", true, 0, 10, &values, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_string_equal("/example-module:", get_items_ctx.xpath);
+    for (size_t i=0; i < count; i++){
+        puts(values[i]->xpath);
+    }
+    sr_free_values_arr(values, count);
 
     free(get_items_ctx.xpath);
     rp_ns_clean(&get_items_ctx.stack);
@@ -496,6 +512,8 @@ void get_value_test(void **state){
     rc = dm_get_datatree(ctx, ses_ctx, "example-module", &data_tree);
     assert_int_equal(SR_ERR_OK, rc);
     sr_val_t *value = NULL;
+
+    assert_int_equal(SR_ERR_INVAL_ARG, rp_dt_get_value_xpath(ctx, data_tree, "/example-module:", &value));
 
     /*leaf*/
     xp_loc_id_t *l;

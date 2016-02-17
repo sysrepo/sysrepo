@@ -238,6 +238,35 @@ void delete_item_list_test(void **state){
     dm_session_stop(ctx, session);
 }
 
+void delete_whole_module_test(void **state)
+{
+    int rc = 0;
+    dm_ctx_t *ctx = *state;
+    dm_session_t *session = NULL;
+
+    /* delete whole module */
+    dm_session_start(ctx, SR_DS_STARTUP, &session);
+
+    /* module xpath must be called with non recursive*/
+    rc = rp_dt_delete_item(ctx, session, "/test-module:", SR_EDIT_NON_RECURSIVE);
+    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+
+    rc = rp_dt_delete_item(ctx, session, "/test-module:", SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* data tree is already empty can not be called with strict*/
+    rc = rp_dt_delete_item(ctx, session, "/test-module:", SR_EDIT_STRICT);
+    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+
+    sr_val_t **values = NULL;
+    size_t cnt = 0;
+    rc = rp_dt_get_values_wrapper(ctx, session, "/test-module:", &values, &cnt);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+    assert_int_equal(0, cnt);
+
+    dm_session_stop(ctx, session);
+}
+
 void delete_item_alllist_test(void **state){
     int rc = 0;
     dm_ctx_t *ctx = *state;
@@ -542,6 +571,9 @@ set_item_negative_test(void **state)
 
     dm_session_start(ctx, SR_DS_STARTUP, &session);
 
+    /* set module xpath */
+    rc = rp_dt_set_item(ctx, session, "/test-module:", SR_EDIT_DEFAULT, NULL);
+    assert_int_equal(SR_ERR_INVAL_ARG, rc);
 
     rc = rp_dt_delete_item(ctx, session, "/test-module:main", SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
@@ -1103,6 +1135,8 @@ edit_commit_test(void **state)
     assert_non_null(valueB);
     assert_int_equal(XP_TEST_MODULE_INT64_VALUE_T, valueB->data.int64_val);
     sr_free_val(valueB);
+    dm_session_stop(ctx, sessionB);
+
 
     sr_error_info_t *errors = NULL;
     size_t e_cnt = 0;
@@ -1117,7 +1151,8 @@ edit_commit_test(void **state)
     assert_int_equal(XP_TEST_MODULE_INT64_VALUE_T + 99, valueA->data.int64_val);
     sr_free_val(valueA);
 
-    /* since the session be has not been modified it should be update after commit */
+    dm_session_start(ctx, SR_DS_STARTUP, &sessionB);
+    /* restart the session B to see changes made by commit */
     rc = rp_dt_get_value_wrapper(ctx, sessionB, XP_TEST_MODULE_INT64, &valueB);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(valueB);
@@ -1157,6 +1192,10 @@ edit_move_test(void **state)
     size_t cnt = 0;
 
     dm_session_start(ctx, SR_DS_STARTUP, &session);
+    /* module xpath */
+    rc = rp_dt_move_list(ctx, session, "/test-module:", SR_MOVE_UP);
+    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+
     /* existing item not list */
     rc = rp_dt_move_list(ctx, session, "/test-module:main", SR_MOVE_UP);
     assert_int_equal(SR_ERR_INVAL_ARG, rc);
@@ -1322,6 +1361,7 @@ int main(){
             cmocka_unit_test(delete_item_list_test),
             cmocka_unit_test(delete_item_alllist_test),
             cmocka_unit_test(delete_item_leaflist_test),
+            cmocka_unit_test(delete_whole_module_test),
             cmocka_unit_test(delete_negative_test),
             cmocka_unit_test(set_item_leaf_test),
             cmocka_unit_test(set_item_leaflist_test),

@@ -74,6 +74,7 @@ int xp_node_key_count(const xp_loc_id_t *l, const size_t node);
  */
 sr_error_t xp_print_location_id(const xp_loc_id_t *l);
 
+#define XP_IS_MODULE_XPATH(L) ((XP_MODULE_XPATH_TOKEN_COUNT == (L)->cnt) && (T_SLASH == XP_GET_TOKEN(L,0)) && (T_NS == XP_GET_TOKEN(L,1)) && (T_COLON == XP_GET_TOKEN(L,2)))
 //NODES
 /**@brief Returns the node count
  * @param [in] L pointer to ::xp_loc_id_t
@@ -134,6 +135,13 @@ sr_error_t xp_print_location_id(const xp_loc_id_t *l);
  * @param [in] NODE index of node
  */
 #define XP_CPY_NODE_NS(L,NODE) XP_CPY_TOKEN(L,XP_GET_NODE_NS_INDEX(L,NODE))
+
+
+/**
+ * @brief Returns the copied content of the first namespace
+ * @param [in] L pointer to ::xp_loc_id_t
+ */
+#define XP_CPY_FIRST_NS(L) XP_CPY_TOKEN(L, 1)
 
 /**@brief String compare of node's namespace
  * @param [in] L pointer to ::xp_loc_id_t

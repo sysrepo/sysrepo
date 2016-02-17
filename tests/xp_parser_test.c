@@ -98,6 +98,15 @@ void check_keys(void **state){
 
 }
 
+void check_module_xpath(void **state){
+    sr_set_log_level(SR_LL_DBG, SR_LL_NONE);
+    xp_loc_id_t *xp = NULL;
+
+    assert_int_equal(0,xp_char_to_loc_id("/module-name:", &xp));
+    assert_true(XP_IS_MODULE_XPATH(xp));
+    xp_free_loc_id(xp);
+}
+
 void test1(void **state){
     xp_loc_id_t *l = (xp_loc_id_t *) *state;
 
@@ -118,8 +127,11 @@ void test1(void **state){
 void check_parsing(void **state){
    xp_loc_id_t *l;
    assert_int_not_equal(0,xp_char_to_loc_id("abc", &l));
+   /*without namespace*/
+   assert_int_not_equal(0,xp_char_to_loc_id("/abc", &l));
    /* path must not end with slash */
    assert_int_not_equal(0,xp_char_to_loc_id("/model:leaf/", &l));
+   assert_int_not_equal(0,xp_char_to_loc_id("/model:container/bad:", &l));
 
    assert_int_not_equal(0,xp_char_to_loc_id("//container", &l));
    assert_int_not_equal(0,xp_char_to_loc_id("/ns:cont/list[", &l));
@@ -158,6 +170,7 @@ int main(){
             cmocka_unit_test_setup_teardown(check_ns, setup, teardown),
             cmocka_unit_test_setup_teardown(check_keys, setup, teardown),
             cmocka_unit_test(check_parsing),
+            cmocka_unit_test(check_module_xpath),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);
