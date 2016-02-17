@@ -279,6 +279,11 @@ ac_check_node_permissions(const ac_session_t *session, const xp_loc_id_t *node_x
 
     CHECK_NULL_ARG2(session, node_xpath);
 
+    if (!XP_HAS_NODE_NS(node_xpath, 0)) {
+        SR_LOG_ERR("Incorrect xpath '%s': missing namespace of the top element.", node_xpath->xpath);
+        return SR_ERR_INVAL_ARG;
+    }
+
     lookup_info.loc_id = node_xpath;
     module_info = sr_btree_search(session->module_info_btree, &lookup_info);
     if (NULL != module_info) {
@@ -304,6 +309,11 @@ ac_check_node_permissions(const ac_session_t *session, const xp_loc_id_t *node_x
             SR_LOG_ERR_MSG("Cannot allocate module access control info entry.");
             return SR_ERR_NOMEM;
         }
+        module_info->module_name = XP_CPY_NODE_NS(node_xpath, 0);
+        if (NULL == module_info->module_name) {
+            SR_LOG_ERR_MSG("Cannot duplicate module name.");
+            return SR_ERR_NOMEM;
+        }
         rc = sr_btree_insert(session->module_info_btree, module_info);
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR_MSG("Cannot insert new entry into binary tree for module access control info.");
@@ -313,21 +323,29 @@ ac_check_node_permissions(const ac_session_t *session, const xp_loc_id_t *node_x
     }
 
     /* do the check */
+    rc = ac_check_file_permissions(session, "/etc/passwd", operation); // TODO filename from module name
 
-    return SR_ERR_OK;
+    /* save the result in the cache */
+    if (AC_OPER_READ == operation) {
+        module_info->read_permission = (SR_ERR_OK == rc) ? AC_PERMISSION_ALLOWED : AC_PERMISSION_DENIED;
+    } else {
+        module_info->read_write_permission = (SR_ERR_OK == rc) ? AC_PERMISSION_ALLOWED : AC_PERMISSION_DENIED;
+    }
+
+    return rc;
 }
 
 int
-ac_check_file_permissions(const ac_ctx_t *ac_ctx, const ac_ucred_t *user_credentials,
-        const char *file_name, const ac_operation_t operation)
+ac_check_file_permissions(const ac_session_t *session, const char *file_name, const ac_operation_t operation)
 {
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG3(ac_ctx, user_credentials, file_name);
+    CHECK_NULL_ARG4(session, session->ac_ctx, session->user_credentials, file_name);
 
-    if (!ac_ctx->priviledged_process) {
+    if (!session->ac_ctx->priviledged_process) {
         /* sysrepo engine DOES NOT run within a privileged process */
-        if ((user_credentials->r_uid != ac_ctx->proc_euid) || (user_credentials->r_gid != ac_ctx->proc_egid)) {
+        if ((session->user_credentials->r_uid != session->ac_ctx->proc_euid) ||
+                (session->user_credentials->r_gid != session->ac_ctx->proc_egid)) {
             /* credentials mismatch - unauthorized */
             SR_LOG_ERR_MSG("Sysrepo Engine runs within an unprivileged process and user credentials do not "
                     "match with the process ones.");
@@ -336,7 +354,7 @@ ac_check_file_permissions(const ac_ctx_t *ac_ctx, const ac_ucred_t *user_credent
         /* check the access with the current identity */
         rc = ac_check_file_access(file_name, operation);
         if (SR_ERR_OK != rc) {
-            SR_LOG_ERR("User '%s' not authorized for %s access to the file '%s'.", user_credentials->r_username,
+            SR_LOG_ERR("User '%s' not authorized for %s access to the file '%s'.", session->user_credentials->r_username,
                     (AC_OPER_READ == operation ? "read" : "write"), file_name);
         }
         return rc;
@@ -344,21 +362,23 @@ ac_check_file_permissions(const ac_ctx_t *ac_ctx, const ac_ucred_t *user_credent
 
     /* sysrepo engine runs within a privileged process */
 
-    if (0 != user_credentials->r_uid) {
+    if (0 != session->user_credentials->r_uid) {
         /* real uid of the peer is not a root, check the permissions with real user identity */
-        rc = ac_check_file_access_with_eid(ac_ctx, file_name, operation, user_credentials->r_uid, user_credentials->r_gid);
+        rc = ac_check_file_access_with_eid(session->ac_ctx, file_name, operation,
+                session->user_credentials->r_uid, session->user_credentials->r_gid);
         if (SR_ERR_OK != rc) {
-            SR_LOG_ERR("User '%s' not authorized for %s access to the file '%s'.", user_credentials->r_username,
+            SR_LOG_ERR("User '%s' not authorized for %s access to the file '%s'.", session->user_credentials->r_username,
                     (AC_OPER_READ == operation ? "read" : "write"), file_name);
             return rc;
         }
     }
 
-    if (NULL != user_credentials->e_username) {
+    if (NULL != session->user_credentials->e_username) {
         /* effective username was set, check the permissions with effective user identity */
-        rc = ac_check_file_access_with_eid(ac_ctx, file_name, operation, user_credentials->e_uid, user_credentials->e_gid);
+        rc = ac_check_file_access_with_eid(session->ac_ctx, file_name, operation,
+                session->user_credentials->e_uid, session->user_credentials->e_gid);
         if (SR_ERR_OK != rc) {
-            SR_LOG_ERR("User '%s' not authorized for %s access to the file '%s'.", user_credentials->e_username,
+            SR_LOG_ERR("User '%s' not authorized for %s access to the file '%s'.", session->user_credentials->e_username,
                     (AC_OPER_READ == operation ? "read" : "write"), file_name);
             return rc;
         }

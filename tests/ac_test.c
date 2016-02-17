@@ -38,11 +38,20 @@ logging_setup(void **state)
     return 0;
 }
 
+static int
+logging_cleanup(void **state)
+{
+    sr_logger_cleanup();
+
+    return 0;
+}
+
 static void
 ac_test1(void **state)
 {
     ac_ctx_t *ctx = NULL;
     ac_session_t *session = NULL;
+    xp_loc_id_t *loc_id = NULL;
     int rc = SR_ERR_OK;
 
     ac_ucred_t credentials = { 0 };
@@ -59,7 +68,19 @@ ac_test1(void **state)
     rc = ac_session_init(ctx, &credentials, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = ac_check_file_permissions(ctx, &credentials, "/etc/passwd", AC_OPER_READ);
+    rc = xp_char_to_loc_id("/example-module:container/leaf", &loc_id);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = ac_check_node_permissions(session, loc_id, AC_OPER_READ);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = ac_check_node_permissions(session, loc_id, AC_OPER_READ);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    xp_free_loc_id(loc_id);
+    loc_id = NULL;
+
+    rc = ac_check_file_permissions(session, "/etc/passwd", AC_OPER_READ);
     assert_int_equal(rc, SR_ERR_OK);
 
     ac_session_cleanup(session);
@@ -69,7 +90,7 @@ ac_test1(void **state)
 int
 main() {
     const struct CMUnitTest tests[] = {
-            cmocka_unit_test_setup_teardown(ac_test1, logging_setup, NULL),
+            cmocka_unit_test_setup_teardown(ac_test1, logging_setup, logging_cleanup),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);
