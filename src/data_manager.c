@@ -716,6 +716,8 @@ dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors, siz
 #endif
             if (0 != lyd_print_file(f, info->node, LYD_XML_FORMAT, LYP_WITHSIBLINGS)) {
                 SR_LOG_ERR("Failed to write output into %s", data_filename);
+                pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
+                free(data_filename);
                 return SR_ERR_INTERNAL;
             }
             lockf(fileno(f), F_ULOCK, 0);

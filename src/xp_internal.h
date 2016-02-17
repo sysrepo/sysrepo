@@ -43,7 +43,7 @@ typedef enum xp_token_e{
 }xp_token_t;
 
 /**
- * @brief Number of token in xpath for module T_SLASH, T_NS T_COLON, T_ZERO
+ * @brief Number of token in xpath for module T_SLASH, T_NS, T_COLON, T_ZERO
  * e.g: "/module:"
  */
 #define XP_MODULE_XPATH_TOKEN_COUNT 4
