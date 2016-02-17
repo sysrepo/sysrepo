@@ -1,7 +1,7 @@
 /**
  * @file access_control.h
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
- * @brief Sysrepo Access Control module.
+ * @brief Sysrepo Access Control module API.
  *
  * @copyright
  * Copyright 2016 Cisco Systems, Inc.

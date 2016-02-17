@@ -1,7 +1,7 @@
 /**
  * @file access_control.c
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
- * @brief TODO
+ * @brief Sysrepo Access Control module implementation.
  *
  * @copyright
  * Copyright 2016 Cisco Systems, Inc.
@@ -112,6 +112,9 @@ ac_module_info_free_cb(void *item)
     free(info);
 }
 
+/**
+ * @brief Checks if the current user is able to access provided file for specified operation.
+ */
 static int
 ac_check_file_access(const char *file_name, const ac_operation_t operation)
 {
@@ -135,6 +138,9 @@ ac_check_file_access(const char *file_name, const ac_operation_t operation)
     return SR_ERR_OK;
 }
 
+/**
+ * @brief Sets identity of current thread / process to given effective uid and gid.
+ */
 static int
 ac_set_identity(const uid_t euid, const gid_t egid)
 {
@@ -165,6 +171,9 @@ ac_set_identity(const uid_t euid, const gid_t egid)
     return SR_ERR_OK;
 }
 
+/**
+ * @brief Checks if provided uid and gid can access provided file for specified operation.
+ */
 static int
 ac_check_file_access_with_eid(ac_ctx_t *ac_ctx, const char *file_name,
         const ac_operation_t operation, const uid_t euid, const gid_t egid)
