@@ -422,6 +422,7 @@ rp_dt_validate_node_xpath(dm_ctx_t *dm_ctx, const xp_loc_id_t *loc_id, const str
                 rc = rp_dt_match_in_choice(node, loc_id, i, &node);
                 if (SR_ERR_NOT_FOUND == rc) {
                     node = node->next;
+                    rc = SR_ERR_OK;
                     continue;
                 } else if (SR_ERR_OK != rc) {
                     SR_LOG_ERR_MSG("Match in choice failed");
