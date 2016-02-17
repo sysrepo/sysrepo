@@ -46,16 +46,16 @@ int ac_init(ac_ctx_t **ac_ctx);
 
 void ac_cleanup(ac_ctx_t *ac_ctx);
 
-int ac_session_init(const ac_ctx_t *ac_ctx, const ac_ucred_t *user_credentials, ac_session_t **session);
+int ac_session_init(ac_ctx_t *ac_ctx, const ac_ucred_t *user_credentials, ac_session_t **session);
 
 void ac_session_cleanup(ac_session_t *session);
 
-int ac_check_node_permissions(const ac_session_t *session, const xp_loc_id_t *node_xpath, const ac_operation_t operation);
+int ac_check_node_permissions(ac_session_t *session, const xp_loc_id_t *node_xpath, const ac_operation_t operation);
 
-int ac_check_file_permissions(const ac_session_t *session, const char *file_name, const ac_operation_t operation);
+int ac_check_file_permissions(ac_session_t *session, const char *file_name, const ac_operation_t operation);
 
-int ac_set_user_identity(const ac_ctx_t *ac_ctx, const ac_ucred_t *user_credentials);
+int ac_set_user_identity(ac_ctx_t *ac_ctx, const ac_ucred_t *user_credentials);
 
-int ac_unset_user_identity(const ac_ctx_t *ac_ctx, const ac_ucred_t *user_credentials);
+int ac_unset_user_identity(ac_ctx_t *ac_ctx);
 
 #endif /* ACCESS_CONTROL_H_ */

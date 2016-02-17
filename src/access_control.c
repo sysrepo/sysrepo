@@ -47,7 +47,7 @@ typedef struct ac_ctx_s {
  * @brief Access Control session context.
  */
 typedef struct ac_session_s {
-    const ac_ctx_t *ac_ctx;              /**< Access Control module context. */
+    ac_ctx_t *ac_ctx;                    /**< Access Control module context. */
     const ac_ucred_t *user_credentials;  /**< Credentials of the user. */
     sr_btree_t *module_info_btree;       /**< User access control information tied to individual modules. */
 } ac_session_t;
@@ -136,7 +136,7 @@ ac_check_file_access(const char *file_name, const ac_operation_t operation)
 }
 
 static int
-ac_set_identity(uid_t euid, gid_t egid)
+ac_set_identity(const uid_t euid, const gid_t egid)
 {
     int ret = -1;
 
@@ -166,8 +166,8 @@ ac_set_identity(uid_t euid, gid_t egid)
 }
 
 static int
-ac_check_file_access_with_eid(const ac_ctx_t *ac_ctx, const char *file_name,
-        const ac_operation_t operation, uid_t euid, gid_t egid)
+ac_check_file_access_with_eid(ac_ctx_t *ac_ctx, const char *file_name,
+        const ac_operation_t operation, const uid_t euid, const gid_t egid)
 {
     int rc = SR_ERR_OK, rc_tmp = SR_ERR_OK;
 
@@ -233,7 +233,7 @@ ac_cleanup(ac_ctx_t *ac_ctx)
 }
 
 int
-ac_session_init(const ac_ctx_t *ac_ctx, const ac_ucred_t *user_credentials, ac_session_t **session_p)
+ac_session_init(ac_ctx_t *ac_ctx, const ac_ucred_t *user_credentials, ac_session_t **session_p)
 {
     ac_session_t *session = NULL;
     int rc = SR_ERR_OK;
@@ -271,7 +271,7 @@ ac_session_cleanup(ac_session_t *session)
 }
 
 int
-ac_check_node_permissions(const ac_session_t *session, const xp_loc_id_t *node_xpath, const ac_operation_t operation)
+ac_check_node_permissions(ac_session_t *session, const xp_loc_id_t *node_xpath, const ac_operation_t operation)
 {
     ac_module_info_t lookup_info = {0,};
     ac_module_info_t *module_info = NULL;
@@ -336,7 +336,7 @@ ac_check_node_permissions(const ac_session_t *session, const xp_loc_id_t *node_x
 }
 
 int
-ac_check_file_permissions(const ac_session_t *session, const char *file_name, const ac_operation_t operation)
+ac_check_file_permissions(ac_session_t *session, const char *file_name, const ac_operation_t operation)
 {
     int rc = SR_ERR_OK;
 
@@ -388,7 +388,7 @@ ac_check_file_permissions(const ac_session_t *session, const char *file_name, co
 }
 
 int
-ac_set_user_identity(const ac_ctx_t *ac_ctx, const ac_ucred_t *user_credentials)
+ac_set_user_identity(ac_ctx_t *ac_ctx, const ac_ucred_t *user_credentials)
 {
     int rc = SR_ERR_OK;
 
@@ -418,11 +418,11 @@ ac_set_user_identity(const ac_ctx_t *ac_ctx, const ac_ucred_t *user_credentials)
 }
 
 int
-ac_unset_user_identity(const ac_ctx_t *ac_ctx, const ac_ucred_t *user_credentials)
+ac_unset_user_identity(ac_ctx_t *ac_ctx)
 {
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG2(ac_ctx, user_credentials);
+    CHECK_NULL_ARG(ac_ctx);
 
     if (!ac_ctx->priviledged_process) {
         /* sysrepo engine DOES NOT run within a privileged process - skip identity switch */
