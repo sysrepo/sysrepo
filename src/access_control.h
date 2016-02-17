@@ -36,12 +36,17 @@ typedef struct ac_ucred_s {
     gid_t e_gid;
 } ac_ucred_t;
 
-typedef struct rp_session_s rp_session_t;
+typedef struct ac_ctx_s ac_ctx_t;
 
-int ac_check_module_permissions(rp_session_t rp_session, const char *module_name, ac_operation_t operation);
+int ac_init(ac_ctx_t **ac_ctx);
 
-int ac_set_user_identity(rp_session_t rp_session);
+void ac_cleanup(ac_ctx_t *ac_ctx);
 
-int ac_unset_user_identity(rp_session_t rp_session);
+int ac_check_file_permissions(const ac_ctx_t *ac_ctx, const ac_ucred_t *user_credentials,
+        const char *file_name, const ac_operation_t operation);
+
+int ac_set_user_identity(const ac_ctx_t *ac_ctx, const ac_ucred_t *user_credentials);
+
+int ac_unset_user_identity(const ac_ctx_t *ac_ctx, const ac_ucred_t *user_credentials);
 
 #endif /* ACCESS_CONTROL_H_ */
