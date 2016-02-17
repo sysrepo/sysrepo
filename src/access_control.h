@@ -22,6 +22,8 @@
 #ifndef ACCESS_CONTROL_H_
 #define ACCESS_CONTROL_H_
 
+#include "xpath_processor.h"
+
 typedef enum ac_operation_e {
     AC_OPER_READ,
     AC_OPER_WRITE,
@@ -38,9 +40,17 @@ typedef struct ac_ucred_s {
 
 typedef struct ac_ctx_s ac_ctx_t;
 
+typedef struct ac_session_s ac_session_t;
+
 int ac_init(ac_ctx_t **ac_ctx);
 
 void ac_cleanup(ac_ctx_t *ac_ctx);
+
+int ac_session_init(const ac_ctx_t *ac_ctx, const ac_ucred_t *user_credentials, ac_session_t **session);
+
+void ac_session_cleanup(ac_session_t *session);
+
+int ac_check_node_permissions(const ac_session_t *session, const xp_loc_id_t *node_xpath, const ac_operation_t operation);
 
 int ac_check_file_permissions(const ac_ctx_t *ac_ctx, const ac_ucred_t *user_credentials,
         const char *file_name, const ac_operation_t operation);

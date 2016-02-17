@@ -152,15 +152,15 @@ void check_ietf_interfaces_int_values(sr_val_t **values, size_t count){
         xp_loc_id_t *loc_id = NULL;
         sr_val_t *v = values[i];
         assert_int_equal(SR_ERR_OK, xp_char_to_loc_id(v->xpath, &loc_id));
-        if (XP_CMP_NODE(loc_id, XP_GET_NODE_COUNT(loc_id)-1, "name")){
+        if (XP_EQ_NODE(loc_id, XP_GET_NODE_COUNT(loc_id)-1, "name")){
             assert_int_equal(SR_STRING_T, v->type);
             assert_string_equal("eth0", v->data.string_val);
         }
-        else if (XP_CMP_NODE(loc_id, XP_GET_NODE_COUNT(loc_id)-1, "type")){
+        else if (XP_EQ_NODE(loc_id, XP_GET_NODE_COUNT(loc_id)-1, "type")){
             assert_int_equal(SR_IDENTITYREF_T, v->type);
             assert_string_equal("ethernetCsmacd", v->data.identityref_val);
         }
-        else if (XP_CMP_NODE(loc_id, XP_GET_NODE_COUNT(loc_id)-1, "enabled")){
+        else if (XP_EQ_NODE(loc_id, XP_GET_NODE_COUNT(loc_id)-1, "enabled")){
             assert_int_equal(SR_BOOL_T, v->type);
             assert_true(v->data.bool_val);
         }
@@ -177,15 +177,15 @@ void check_ietf_interfaces_ipv4_values(sr_val_t **values, size_t count){
          xp_loc_id_t *loc_id = NULL;
          sr_val_t *v = values[i];
          assert_int_equal(SR_ERR_OK, xp_char_to_loc_id(v->xpath, &loc_id));
-         if (XP_CMP_NODE(loc_id, XP_GET_NODE_COUNT(loc_id)-1, "enabled")){
+         if (XP_EQ_NODE(loc_id, XP_GET_NODE_COUNT(loc_id)-1, "enabled")){
              assert_int_equal(SR_BOOL_T, v->type);
              assert_true(v->data.bool_val);
          }
-         else if (XP_CMP_NODE(loc_id, XP_GET_NODE_COUNT(loc_id)-1, "mtu")){
+         else if (XP_EQ_NODE(loc_id, XP_GET_NODE_COUNT(loc_id)-1, "mtu")){
              assert_int_equal(SR_UINT16_T, v->type);
              assert_int_equal(1500, v->data.uint32_val);
          }
-         else if (XP_CMP_NODE(loc_id, XP_GET_NODE_COUNT(loc_id)-1, "address")){
+         else if (XP_EQ_NODE(loc_id, XP_GET_NODE_COUNT(loc_id)-1, "address")){
              assert_int_equal(SR_LIST_T, v->type);
          }
          xp_free_loc_id(loc_id);
@@ -202,11 +202,11 @@ void check_ietf_interfaces_addr_values(sr_val_t **values, size_t count){
         xp_loc_id_t *loc_id = NULL;
         sr_val_t *v = values[i];
         assert_int_equal(SR_ERR_OK, xp_char_to_loc_id(v->xpath, &loc_id));
-        if (XP_CMP_NODE(loc_id, XP_GET_NODE_COUNT(loc_id)-1, "ip")){
+        if (XP_EQ_NODE(loc_id, XP_GET_NODE_COUNT(loc_id)-1, "ip")){
             assert_int_equal(SR_STRING_T, v->type);
             assert_string_equal("192.168.2.100", v->data.string_val);
         }
-        else if (XP_CMP_NODE(loc_id, XP_GET_NODE_COUNT(loc_id)-1, "prefix-length")){
+        else if (XP_EQ_NODE(loc_id, XP_GET_NODE_COUNT(loc_id)-1, "prefix-length")){
             assert_int_equal(SR_UINT8_T, v->type);
             assert_int_equal(24, v->data.uint8_val);
         }

@@ -36,14 +36,14 @@
 /**
  * @brief The structure indexing xPath
  */
-typedef struct xp_loc_id_s{
+typedef struct xp_loc_id_s {
     xp_token_t *tokens; /**< The array of tokens type that can be found in the ::xp_loc_id_s#xpath */
     size_t *positions;  /**< Positions of ::xp_loc_id_s#tokens in ::xp_loc_id_s#xpath string */
     size_t cnt;         /**< Token count */
     size_t *node_index; /**< Positions of the ::T_NODE tokens in ::xp_loc_id_s#tokens */
     size_t node_count;  /**< Length of the ::xp_loc_id_s#node_index array*/
     char *xpath;        /**< xPath string value */
-}xp_loc_id_t;
+} xp_loc_id_t;
 
 /**
  * @brief Transforms the xpath string to xp_loc_id structure for
@@ -105,9 +105,9 @@ sr_error_t xp_print_location_id(const xp_loc_id_t *l);
  * @param [in] L pointer to ::xp_loc_id_t
  * @param [in] ORD index of node
  * @param [in] VAL to be compare with
- * @return comparison result same as strncmp
+ * @return true if nodes names are equal, false otherwise
  * */
-#define XP_CMP_NODE(L,ORD,VAL) XP_CMP_TOKEN_STR(L,XP_GET_NODE_TOKEN(L,ORD),VAL)
+#define XP_EQ_NODE(L,ORD,VAL) XP_EQ_TOKEN_STR(L,XP_GET_NODE_TOKEN(L,ORD),VAL)
 
 
 //NAMESPACE
@@ -139,6 +139,15 @@ sr_error_t xp_print_location_id(const xp_loc_id_t *l);
  * @param [in] L pointer to ::xp_loc_id_t
  * @param [in] NODE index of node
  * @param [in] VAL value to be compared with
+ * @return true if node namespaces are equal, false otherwise
+ */
+#define XP_EQ_NODE_NS(L,NODE,VAL) XP_EQ_TOKEN_STR(L,XP_GET_NODE_NS_INDEX(L,NODE),VAL)
+
+/**@brief String compare of node's namespace
+ * @param [in] L pointer to ::xp_loc_id_t
+ * @param [in] NODE index of node
+ * @param [in] VAL value to be compared with
+ * @return return value of strncmp
  */
 #define XP_CMP_NODE_NS(L,NODE,VAL) XP_CMP_TOKEN_STR(L,XP_GET_NODE_NS_INDEX(L,NODE),VAL)
 
@@ -173,8 +182,9 @@ sr_error_t xp_print_location_id(const xp_loc_id_t *l);
  * @param [in] L pointer to ::xp_loc_id_t
  * @param [in] NODE index of node
  * @param [in] K key index
+ * @return true if key names are equal, false otherwise
  */
-#define XP_CMP_KEY_NAME(L,NODE,K,VAL) XP_CMP_TOKEN_STR(L,XP_GET_KEY_NAME_INDEX(L,NODE,K),VAL)
+#define XP_EQ_KEY_NAME(L,NODE,K,VAL) XP_EQ_TOKEN_STR(L,XP_GET_KEY_NAME_INDEX(L,NODE,K),VAL)
 
 /**@brief Returns the copied content of the NODE's K'th keyname
  * @param [in] L pointer to ::xp_loc_id_t
@@ -201,8 +211,9 @@ sr_error_t xp_print_location_id(const xp_loc_id_t *l);
  * @param [in] L pointer to ::xp_loc_id_t
  * @param [in] NODE index of node
  * @param [in] K key index
+ * @return true if key values are equal, false otherwise
  */
-#define XP_CMP_KEY_VALUE(L,NODE,K,VAL) XP_CMP_TOKEN_STR(L,XP_GET_KEY_VALUE_INDEX(L,NODE,K),VAL)
+#define XP_EQ_KEY_VALUE(L,NODE,K,VAL) XP_EQ_TOKEN_STR(L,XP_GET_KEY_VALUE_INDEX(L,NODE,K),VAL)
 
 /**@brief Returns the copied content of the NODE's K'th keyvalue
  * @param [in] L pointer to ::xp_loc_id_t

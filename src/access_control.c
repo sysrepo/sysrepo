@@ -23,6 +23,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <pthread.h>
+#include <stdbool.h>
 
 #include "sr_common.h"
 #include "request_processor.h"
@@ -41,6 +42,75 @@ typedef struct ac_ctx_s {
     gid_t proc_egid;           /**< Effective gid of the process at the time of initialization. */
     pthread_mutex_t lock;      /**< Context lock. Used for mutual exclusion if we are changing process-wide settings. */
 } ac_ctx_t;
+
+/**
+ * @brief Access Control session context.
+ */
+typedef struct ac_session_s {
+    const ac_ctx_t *ac_ctx;              /**< Access Control module context. */
+    const ac_ucred_t *user_credentials;  /**< Credentials of the user. */
+    sr_btree_t *module_info_btree;       /**< User access control information tied to individual modules. */
+} ac_session_t;
+
+/**
+ * @brief Permission level of a controlled element.
+ */
+typedef enum ac_permission_e {
+    AC_PERMISSION_UNKNOWN,  /**< Permission not known. */
+    AC_PERMISSION_ALLOWED,  /**< Access allowed. */
+    AC_PERMISSION_DENIED,   /**< Access denied. */
+} ac_permission_t;
+
+/**
+ * @brief Access control information tied to individual YANG modules.
+ */
+typedef struct ac_module_info_s {
+    const char *module_name;           /**< Name of the module. */
+    const xp_loc_id_t *loc_id;         /**< XPath location id, used only for fast lookup by node location id. */
+    ac_permission_t read_permission;   /**< Read permission is granted. */
+    ac_permission_t write_premission;  /**< Read & write permissions are granted. */
+} ac_module_info_t;
+
+/**
+ * @brief Compares two ac_module_info_t structures stored in the binary tree.
+ */
+static int
+ac_module_info_cmp_cb(const void *a, const void *b)
+{
+    assert(a);
+    assert(b);
+    ac_module_info_t *info_a = (ac_module_info_t *) a;
+    ac_module_info_t *info_b = (ac_module_info_t *) b;
+    int res = 0;
+
+    if (NULL != info_a->loc_id) {
+        res = XP_CMP_NODE_NS(info_a->loc_id, 0, info_b->module_name);
+    } else if (NULL != info_b->loc_id) {
+        res = XP_CMP_NODE_NS(info_b->loc_id, 0, info_a->module_name);
+    } else {
+        res = strcmp(info_a->module_name, info_b->module_name);
+    }
+    if (res == 0) {
+        return 0;
+    } else if (res < 0) {
+        return -1;
+    } else {
+        return 1;
+    }
+}
+
+/**
+ * @brief Frees ac_module_info_t stored in the binary tree.
+ */
+static void
+ac_module_info_free_cb(void *item)
+{
+    ac_module_info_t *info = (ac_module_info_t *) item;
+    if (NULL != info) {
+        free((void*)info->module_name);
+    }
+    free(info);
+}
 
 static int
 ac_check_file_access(const char *file_name, const ac_operation_t operation)
@@ -130,6 +200,7 @@ ac_init(ac_ctx_t **ac_ctx)
 
     CHECK_NULL_ARG(ac_ctx);
 
+    /* allocate and initialize the context */
     ctx = calloc(1, sizeof(*ctx));
     if (NULL == ctx) {
         SR_LOG_ERR_MSG("Unable to allocate Access Control module context.");
@@ -137,9 +208,11 @@ ac_init(ac_ctx_t **ac_ctx)
     }
     pthread_mutex_init(&ctx->lock, NULL);
 
+    /* save current euid and egid */
     ctx->proc_euid = geteuid();
     ctx->proc_egid = getegid();
 
+    /* determine if this is a privileged process */
     if (0 == geteuid()) {
         ctx->priviledged_process = true;
     } else {
@@ -160,6 +233,58 @@ ac_cleanup(ac_ctx_t *ac_ctx)
 }
 
 int
+ac_session_init(const ac_ctx_t *ac_ctx, const ac_ucred_t *user_credentials, ac_session_t **session_p)
+{
+    ac_session_t *session = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG3(ac_ctx, user_credentials, session_p);
+
+    /* allocate the context and set passsed values */
+    session = calloc(1, sizeof(*session));
+    if (NULL == session) {
+        SR_LOG_ERR_MSG("Cannot allocate Access cCntrol module session.");
+        return SR_ERR_NOMEM;
+    }
+    session->ac_ctx = ac_ctx;
+    session->user_credentials = user_credentials;
+
+    /* initialize binary tree for fast module info lookup */
+    rc = sr_btree_init(ac_module_info_cmp_cb, ac_module_info_free_cb, &session->module_info_btree);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Cannot allocate binary tree for module access control info.");
+        free(session);
+        return rc;
+    }
+
+    *session_p = session;
+    return SR_ERR_OK;
+}
+
+void
+ac_session_cleanup(ac_session_t *session)
+{
+    if (NULL != session) {
+        sr_btree_cleanup(session->module_info_btree);
+        free(session);
+    }
+}
+
+int
+ac_check_node_permissions(const ac_session_t *session, const xp_loc_id_t *node_xpath, const ac_operation_t operation)
+{
+    ac_module_info_t module_info = {0,};
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG2(session, node_xpath);
+
+    module_info.loc_id = node_xpath;
+    sr_btree_search(session->module_info_btree, &module_info);
+
+    return SR_ERR_OK;
+}
+
+int
 ac_check_file_permissions(const ac_ctx_t *ac_ctx, const ac_ucred_t *user_credentials,
         const char *file_name, const ac_operation_t operation)
 {
@@ -171,7 +296,8 @@ ac_check_file_permissions(const ac_ctx_t *ac_ctx, const ac_ucred_t *user_credent
         /* sysrepo engine DOES NOT run within a privileged process */
         if ((user_credentials->r_uid != ac_ctx->proc_euid) || (user_credentials->r_gid != ac_ctx->proc_egid)) {
             /* credentials mismatch - unauthorized */
-            SR_LOG_ERR_MSG("Sysrepo runs within an unprivileged process and user credentials do not match with the process ones.");
+            SR_LOG_ERR_MSG("Sysrepo Engine runs within an unprivileged process and user credentials do not "
+                    "match with the process ones.");
             return SR_ERR_UNAUTHORIZED;
         }
         /* check the access with the current identity */

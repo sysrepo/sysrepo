@@ -159,7 +159,7 @@ void xpath_sch_match(void **state){
     int n = 0;
     for(; n < XP_GET_NODE_COUNT(l);n++){
         while(node != NULL) {
-            if (XP_CMP_NODE(l, n, node->name)) {
+            if (XP_EQ_NODE(l, n, node->name)) {
                 if(node->child!=NULL) {
                     node = node->child;
                 }

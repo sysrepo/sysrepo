@@ -310,7 +310,7 @@ rp_dt_match_in_choice(const struct lys_node *choice, const xp_loc_id_t *loc_id, 
             }
         }
 
-        if (!XP_CMP_NODE(loc_id, level, n->name)) {
+        if (!XP_EQ_NODE(loc_id, level, n->name)) {
             if (in_case && NULL == n->next){
                 n = n->parent->next;
                 in_case = false;
@@ -355,7 +355,7 @@ rp_dt_validate_list(const struct lys_node *node, const xp_loc_id_t *loc_id, cons
             return SR_ERR_INTERNAL;
         }
         for (size_t k_xp = 0; k_xp < list->keys_size; k_xp++) {
-            if (XP_CMP_KEY_NAME(loc_id, level, k_xp, list->keys[k]->name)) {
+            if (XP_EQ_KEY_NAME(loc_id, level, k_xp, list->keys[k]->name)) {
                 matched_keys++;
             }
         }
@@ -426,13 +426,13 @@ rp_dt_validate_node_xpath(dm_ctx_t *dm_ctx, const xp_loc_id_t *loc_id, const str
                 }
             }
 
-            if (!XP_CMP_NODE(loc_id, i, node->name)) {
+            if (!XP_EQ_NODE(loc_id, i, node->name)) {
                 node = node->next;
                 continue;
             }
 
             if (XP_HAS_NODE_NS(loc_id, i)) {
-                if (!XP_CMP_NODE_NS(loc_id, i, node->module->name)) {
+                if (!XP_EQ_NODE_NS(loc_id, i, node->module->name)) {
                     node = node->next;
                     continue;
                 }

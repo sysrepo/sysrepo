@@ -387,13 +387,13 @@ rp_dt_find_deepest_match(struct lyd_node *data_tree, const xp_loc_id_t *loc_id, 
             }
 
             /* check node name*/
-            if (!XP_CMP_NODE(loc_id, n, curr->schema->name)) {
+            if (!XP_EQ_NODE(loc_id, n, curr->schema->name)) {
                 curr = curr->next;
                 continue;
             }
             /* check namespace*/
             if (XP_HAS_NODE_NS(loc_id, n)) {
-                if (!XP_CMP_NODE_NS(loc_id, n, curr->schema->module->name)) {
+                if (!XP_EQ_NODE_NS(loc_id, n, curr->schema->module->name)) {
                     curr = curr->next;
                     continue;
                 }
@@ -418,9 +418,9 @@ rp_dt_find_deepest_match(struct lyd_node *data_tree, const xp_loc_id_t *loc_id, 
                 /* match keys*/
                 while (c != NULL && matched_key != XP_GET_KEY_COUNT(loc_id, n)) {
                     for (int k = 0; k < XP_GET_KEY_COUNT(loc_id, n); k++) {
-                        if (XP_CMP_KEY_NAME(loc_id, n, k, c->schema->name)) {
+                        if (XP_EQ_KEY_NAME(loc_id, n, k, c->schema->name)) {
                             struct lyd_node_leaf_list *leaf = (struct lyd_node_leaf_list *) c;
-                            if (XP_CMP_KEY_VALUE(loc_id, n, k, leaf->value_str)) {
+                            if (XP_EQ_KEY_VALUE(loc_id, n, k, leaf->value_str)) {
                                 matched_key++;
                                 break;
                             } else {

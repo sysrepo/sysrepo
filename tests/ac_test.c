@@ -42,6 +42,7 @@ static void
 ac_test1(void **state)
 {
     ac_ctx_t *ctx = NULL;
+    ac_session_t *session = NULL;
     int rc = SR_ERR_OK;
 
     ac_ucred_t credentials = { 0 };
@@ -55,9 +56,13 @@ ac_test1(void **state)
     rc = ac_init(&ctx);
     assert_int_equal(rc, SR_ERR_OK);
 
+    rc = ac_session_init(ctx, &credentials, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
     rc = ac_check_file_permissions(ctx, &credentials, "/etc/passwd", AC_OPER_READ);
     assert_int_equal(rc, SR_ERR_OK);
 
+    ac_session_cleanup(session);
     ac_cleanup(ctx);
 }
 
