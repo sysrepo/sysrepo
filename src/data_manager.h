@@ -183,6 +183,11 @@ int dm_discard_changes(dm_ctx_t *dm_ctx, dm_session_t *session);
 int dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors, size_t *err_cnt);
 
 /**
+ * @brief Frees memory allocated for error and error xpath stored in session.
+ * @param [in] session
+ */
+void dm_clear_session_errors(dm_session_t *session);
+/**
  *
  * @param node
  * @return True if state of the node is DM_NODE_ENABLED or DM_NODE_ENABLED_WITH_CHILDREN, false otherwise.
