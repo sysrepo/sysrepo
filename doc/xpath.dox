@@ -35,14 +35,22 @@ Explicitely specified namespace for the augment node.
 /model:container/list[key1='a'][key2='b']/another-model:added-leaf
 @endcode
 
+@subsection module Whole module
+Following xpath expression can be used to retrieve all nodes in a @b module.
+@code
+/model:
+@endcode
+
 @section gr Grammar
 Starting non terminal symbol is  <@b xp>. Rules of the context free grammar for xpath.
 @code
-<xp>    -> <nodes>
+<xp>    -> <required_ns>
+<xp>    -> <required_ns><node_name><keys><nodes>
 <nodes> -> <slash><node><nodes> | eps
 <node>  -> <namespace><node_name><keys>
 <keys>  -> <LSQB><key_name><EQ><APOS><key_value><APOS><RSQB> | eps
 <namespace> -> <module_name><COLON> | eps
+<required_ns> -> <slash><module_name><COLON>
 @endcode
 
 @code

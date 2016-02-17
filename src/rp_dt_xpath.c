@@ -378,12 +378,7 @@ rp_dt_validate_node_xpath(dm_ctx_t *dm_ctx, const xp_loc_id_t *loc_id, const str
     struct lys_node *node = NULL;
     int rc = SR_ERR_OK;
 
-    if (!XP_HAS_NODE_NS(loc_id, 0)) {
-        SR_LOG_ERR_MSG("Top level node's namespace is not specified");
-        return SR_ERR_INVAL_ARG;
-    }
-
-    module_name = XP_CPY_NODE_NS(loc_id, 0);
+    module_name = XP_CPY_FIRST_NS(loc_id);
     if (NULL == module_name) {
         SR_LOG_ERR_MSG("Module name copy failed");
         return SR_ERR_INTERNAL;
@@ -403,6 +398,14 @@ rp_dt_validate_node_xpath(dm_ctx_t *dm_ctx, const xp_loc_id_t *loc_id, const str
     if (NULL == module->name) {
         SR_LOG_ERR_MSG("Missing schema information");
         return SR_ERR_INTERNAL;
+    }
+
+    if (XP_IS_MODULE_XPATH(loc_id)){
+        SR_LOG_DBG("Module xpath %s, do not match node", loc_id->xpath);
+        if (NULL != match) {
+            *match = NULL;
+        }
+        return SR_ERR_OK;
     }
     node = module->data;
 

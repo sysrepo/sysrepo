@@ -348,12 +348,13 @@ rp_dt_get_value_wrapper(dm_ctx_t *dm_ctx, dm_session_t *dm_session, const char *
         return rc;
     }
 
-    if (!XP_HAS_NODE_NS(l, 0)) {
-        SR_LOG_ERR("Provided xpath '%s' doesn't contain namespace on the root node", xpath);
+    if (XP_IS_MODULE_XPATH(l)) {
+        SR_LOG_ERR("Module xpath %s can not be used for get_value request", xpath);
+        rc = SR_ERR_INVAL_ARG;
         goto cleanup;
     }
 
-    data_tree_name = XP_CPY_NODE_NS(l, 0);
+    data_tree_name = XP_CPY_FIRST_NS(l);
     if (NULL == data_tree_name) {
         SR_LOG_ERR("Copying module name failed for xpath '%s'", xpath);
         goto cleanup;
@@ -365,7 +366,7 @@ rp_dt_get_value_wrapper(dm_ctx_t *dm_ctx, dm_session_t *dm_session, const char *
         goto cleanup;
     }
 
-    rc = rp_dt_get_value(dm_ctx, data_tree, l, dm_is_running_datastore_session(dm_session), value);
+    rc = rp_dt_get_value(dm_ctx, data_tree, l, dm_is_running_ds_session(dm_session), value);
     if (SR_ERR_NOT_FOUND == rc) {
         rc = rp_dt_validate_node_xpath(dm_ctx, l, NULL, NULL);
         rc = rc == SR_ERR_OK ? SR_ERR_NOT_FOUND : rc;
@@ -395,12 +396,7 @@ rp_dt_get_values_wrapper(dm_ctx_t *dm_ctx, dm_session_t *dm_session, const char 
         return rc;
     }
 
-    if (!XP_HAS_NODE_NS(l, 0)) {
-        SR_LOG_ERR("Provided xpath '%s' doesn't containt namespace on the root node", xpath);
-        goto cleanup;
-    }
-
-    data_tree_name = XP_CPY_NODE_NS(l, 0);
+    data_tree_name = XP_CPY_FIRST_NS(l);
     if (NULL == data_tree_name) {
         SR_LOG_ERR("Copying module name failed for xpath '%s'", xpath);
         goto cleanup;
@@ -412,7 +408,7 @@ rp_dt_get_values_wrapper(dm_ctx_t *dm_ctx, dm_session_t *dm_session, const char 
         goto cleanup;
     }
 
-    rc = rp_dt_get_values(dm_ctx, data_tree, l, dm_is_running_datastore_session(dm_session), values, count);
+    rc = rp_dt_get_values(dm_ctx, data_tree, l, dm_is_running_ds_session(dm_session), values, count);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Get values failed for xpath '%s'", xpath);
     }
@@ -444,12 +440,7 @@ rp_dt_get_values_wrapper_with_opts(dm_ctx_t *dm_ctx, dm_session_t *dm_session, r
         return rc;
     }
 
-    if (!XP_HAS_NODE_NS(l, 0)) {
-        SR_LOG_ERR("Provided xpath's root doesn't contain a namespace '%s' ", xpath);
-        goto cleanup;
-    }
-
-    data_tree_name = XP_CPY_NODE_NS(l, 0);
+    data_tree_name = XP_CPY_FIRST_NS(l);
     if (NULL == data_tree_name) {
         SR_LOG_ERR("Copying module name failed for xpath '%s'", xpath);
         goto cleanup;

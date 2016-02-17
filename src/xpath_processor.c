@@ -115,6 +115,11 @@ xp_validate_token_order(xp_token_t *tokens, size_t token_count, size_t *err_toke
     xp_token_t t = tokens[0];
     if (t != T_SLASH)
         return SR_ERR_INVAL_ARG;
+    if (token_count > 1 && T_NS != tokens[1]) {
+        /* leading slash must be followed by T_NS token*/
+        *err_token = 1;
+        return SR_ERR_INVAL_ARG;
+    }
     int i;
     for (i = 1; i < token_count; i++) {
         t = tokens[i];
@@ -185,7 +190,7 @@ xp_validate_token_order(xp_token_t *tokens, size_t token_count, size_t *err_toke
             }
             break;
         case T_COLON:
-            if (t == T_NODE) {
+            if (t == T_NODE || (t == T_ZERO && (XP_MODULE_XPATH_TOKEN_COUNT-1) == i)) {
                 curr = t;
             } else {
                 *err_token = i;
@@ -462,7 +467,7 @@ xp_char_to_loc_id(const char *xpath, xp_loc_id_t **loc)
     l->tokens = realloc(tokens, cnt * sizeof(*tokens));
     l->positions = realloc(positions, cnt * sizeof(*positions));
     l->node_index = realloc(node_index, node_count * sizeof(*node_index));
-    if (NULL == l->tokens || NULL == l->positions || NULL == l->node_index) {
+    if (NULL == l->tokens || NULL == l->positions || (NULL == l->node_index && 0 != node_count)) {
         SR_LOG_ERR_MSG("Memory allocation failed");
         xp_free_loc_id(l);
         rc = SR_ERR_NOMEM;

@@ -1,0 +1,33 @@
+/**
+
+@page ds Data stores
+
+Each session created in sysrepo is tied to a datastore (either startup or running).
+A data tree is loaded into session when the first request came. Then all following
+requests use the loaded copy. Discard changes will remove loaded data trees
+in session.
+
+
+Do not let session opened for the whole application life. If
+other session changed the data, your long-term opened session
+would not be up-to date.
+
+To have the most actual data use it in the way like this:
+
+-# start session
+-# do some requests
+-# close the session
+
+@section rs Running data store
+
+A model is enabled in running datastore when an application 
+subscribe for the notifications. (Currently, notifications are not implemented yet rp_dt_enable_xpath must be called to enable a subtree) At the moment of the subscription
+the sysrepo checks whether a part of the model has been already enabled.
+If not the data tree is copied from the startup datastore into running and the
+subtree identified by the xpath used for subscription is marked as enabled. 
+If a different subscription for the model has already been made
+only the enable marking is done.
+
+
+
+*/
