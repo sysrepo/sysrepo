@@ -67,7 +67,7 @@ rp_dt_find_deepest_match_wrapper(dm_ctx_t *ctx, dm_session_t *session, const cha
         goto cleanup;
     }
 
-    rc = rp_dt_find_deepest_match(match->info->node, match->loc_id, true, dm_is_running_datastore_session(session), &match->level, &match->node);
+    rc = rp_dt_find_deepest_match(match->info->node, match->loc_id, true, dm_is_running_ds_session(session), &match->level, &match->node);
 
 cleanup:
     if (SR_ERR_OK != rc && SR_ERR_NOT_FOUND != rc) {
@@ -201,7 +201,7 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, co
         struct lyd_node **nodes = NULL;
         size_t count = 0;
         /* find all top level nodes records */
-        rc = rp_dt_get_all_siblings(match.info->node, dm_is_running_datastore_session(session), &nodes, &count);
+        rc = rp_dt_get_all_siblings(match.info->node, dm_is_running_ds_session(session), &nodes, &count);
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR("Get all siblings failed for xpath %s ", xpath);
             goto cleanup;
@@ -214,7 +214,7 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, co
             goto cleanup;
         }
 
-        /* delete leaf-list nodes */
+        /* delete all nodes */
         for (size_t i = 0; i < count; i++) {
             rc = sr_lyd_unlink(match.info, nodes[i]);
             if (0 != rc) {
@@ -420,7 +420,7 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const
         goto cleanup;
     }
     /* if the session is tied to running, check if the leaf is enabled*/
-    if (dm_is_running_datastore_session(session)) {
+    if (dm_is_running_ds_session(session)) {
         if (!dm_is_enabled_check_recursively(m.schema_node)) {
             SR_LOG_ERR("Requested path '%s' is not enable in running data store", xpath);
             rc = SR_ERR_INVAL_ARG;

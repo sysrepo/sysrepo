@@ -366,7 +366,7 @@ rp_dt_get_value_wrapper(dm_ctx_t *dm_ctx, dm_session_t *dm_session, const char *
         goto cleanup;
     }
 
-    rc = rp_dt_get_value(dm_ctx, data_tree, l, dm_is_running_datastore_session(dm_session), value);
+    rc = rp_dt_get_value(dm_ctx, data_tree, l, dm_is_running_ds_session(dm_session), value);
     if (SR_ERR_NOT_FOUND == rc) {
         rc = rp_dt_validate_node_xpath(dm_ctx, l, NULL, NULL);
         rc = rc == SR_ERR_OK ? SR_ERR_NOT_FOUND : rc;
@@ -408,7 +408,7 @@ rp_dt_get_values_wrapper(dm_ctx_t *dm_ctx, dm_session_t *dm_session, const char 
         goto cleanup;
     }
 
-    rc = rp_dt_get_values(dm_ctx, data_tree, l, dm_is_running_datastore_session(dm_session), values, count);
+    rc = rp_dt_get_values(dm_ctx, data_tree, l, dm_is_running_ds_session(dm_session), values, count);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Get values failed for xpath '%s'", xpath);
     }

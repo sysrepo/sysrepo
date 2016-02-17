@@ -216,7 +216,7 @@ int dm_set_node_state(struct lys_node *node, dm_node_state_t state);
  * @param session
  * @return
  */
-bool dm_is_running_datastore_session(dm_session_t *session);
+bool dm_is_running_ds_session(dm_session_t *session);
 
 /**@} Data manager*/
 #endif /* SRC_DATA_MANAGER_H_ */

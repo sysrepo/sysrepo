@@ -685,6 +685,7 @@ dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors, siz
             if (-1 == rc) {
                 SR_LOG_ERR_MSG("Stat failed");
                 free(data_filename);
+                pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
                 return SR_ERR_INTERNAL;
             }
             FILE *f = fopen(data_filename, "w");
@@ -801,7 +802,7 @@ dm_set_node_state(struct lys_node *node, dm_node_state_t state)
 }
 
 bool
-dm_is_running_datastore_session(dm_session_t *session)
+dm_is_running_ds_session(dm_session_t *session)
 {
     if (NULL != session) {
         return SR_DS_RUNNING == session->datastore;

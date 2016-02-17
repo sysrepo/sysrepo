@@ -24,7 +24,7 @@
 #include "rp_dt_lookup.h"
 
 static int
-rp_dt_push_child_nodes_to_stack(rp_node_stack_t **stack, struct lyd_node *node)
+rp_dt_push_child_nodes_to_stack(rp_node_stack_t **stack, bool check_enable, struct lyd_node *node)
 {
     CHECK_NULL_ARG2(stack, node);
     int rc = SR_ERR_OK;
@@ -38,9 +38,11 @@ rp_dt_push_child_nodes_to_stack(rp_node_stack_t **stack, struct lyd_node *node)
     }
 
     while (1) {
-        rc = rp_ns_push(stack, n);
-        if (SR_ERR_OK != rc) {
-            return SR_ERR_INTERNAL;
+        if (!check_enable || dm_is_enabled_check_recursively(n->schema)){
+            rc = rp_ns_push(stack, n);
+            if (SR_ERR_OK != rc) {
+                return SR_ERR_INTERNAL;
+            }
         }
         if (node->child == n) {
             break;
@@ -81,7 +83,7 @@ rp_dt_push_nodes_with_same_name_to_stack(rp_node_stack_t **stack, struct lyd_nod
 }
 
 static int
-rp_dt_push_sibling_nodes_to_stack(rp_node_stack_t **stack, struct lyd_node *node){
+rp_dt_push_all_sibling_nodes_to_stack(rp_node_stack_t **stack, bool check_enable, struct lyd_node *node){
    CHECK_NULL_ARG2(stack, node);
     int rc = SR_ERR_OK;
     struct lyd_node *n = node;
@@ -95,9 +97,11 @@ rp_dt_push_sibling_nodes_to_stack(rp_node_stack_t **stack, struct lyd_node *node
             SR_LOG_ERR_MSG("Missing schema information");
             return SR_ERR_INTERNAL;
         }
-        rc = rp_ns_push(stack, n);
-        if (SR_ERR_OK != rc) {
-            return SR_ERR_INTERNAL;
+        if (!check_enable || dm_is_enabled_check_recursively(n->schema)) {
+            rc = rp_ns_push(stack, n);
+            if (SR_ERR_OK != rc) {
+                return SR_ERR_INTERNAL;
+            }
         }
 
         if (node == n) {
@@ -117,7 +121,9 @@ rp_dt_get_all_children_node(struct lyd_node *node, bool check_enable, struct lyd
     struct lyd_node *n = node->child;
     while (NULL != n) {
         n = n->next;
-        cnt++;
+        if (!check_enable || dm_is_enabled_check_recursively(n->schema)){
+            cnt++;
+        }
     }
 
     *count = cnt;
@@ -130,13 +136,11 @@ rp_dt_get_all_children_node(struct lyd_node *node, bool check_enable, struct lyd
     n = node->child;
     cnt = 0;
     while (NULL != n) {
-        if (check_enable){
-
-        } else {
+        if (!check_enable || dm_is_enabled_check_recursively(n->schema)){
             (*nodes)[cnt] = n;
+            cnt++;
         }
         n = n->next;
-        cnt++;
     }
     return SR_ERR_OK;
 }
@@ -201,8 +205,8 @@ rp_dt_get_all_siblings(struct lyd_node *node, bool check_enable, struct lyd_node
     cnt = 0;
     while (NULL != n) {
         if (!check_enable || dm_is_enabled_check_recursively(n->schema)) {
-          (*nodes)[cnt] = n;
-          cnt++;
+            (*nodes)[cnt] = n;
+            cnt++;
         }
         n = n->next;
     }
@@ -298,7 +302,7 @@ rp_dt_get_nodes_with_opts(const dm_ctx_t *dm_ctx, dm_session_t *dm_session, rp_d
     /* check if we continue where we left */
     if (get_items_ctx->xpath == NULL || 0 != strcmp(loc_id->xpath, get_items_ctx->xpath) || get_items_ctx->recursive != recursive ||
             offset != get_items_ctx->offset) {
-        rc = rp_dt_lookup_node(data_tree, loc_id, true, dm_is_running_datastore_session(dm_session), &node);
+        rc = rp_dt_lookup_node(data_tree, loc_id, true, dm_is_running_ds_session(dm_session), &node);
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR("Look up failed for xpath %s", loc_id->xpath);
             return rc;
@@ -322,7 +326,7 @@ rp_dt_get_nodes_with_opts(const dm_ctx_t *dm_ctx, dm_session_t *dm_session, rp_d
 
         /*initialy push nodes to stack */
         if (XP_IS_MODULE_XPATH(loc_id)) {
-            rc = rp_dt_push_sibling_nodes_to_stack(&get_items_ctx->stack, data_tree);
+            rc = rp_dt_push_all_sibling_nodes_to_stack(&get_items_ctx->stack, dm_is_running_ds_session(dm_session), data_tree);
             if (SR_ERR_OK != rc) {
                 SR_LOG_ERR_MSG("Push sibling nodes to stack failed");
                 return SR_ERR_INTERNAL;
@@ -337,7 +341,7 @@ rp_dt_get_nodes_with_opts(const dm_ctx_t *dm_ctx, dm_session_t *dm_session, rp_d
                 }
                 break;
             case LYS_CONTAINER:
-                rc = rp_dt_push_child_nodes_to_stack(&get_items_ctx->stack, node);
+                rc = rp_dt_push_child_nodes_to_stack(&get_items_ctx->stack, dm_is_running_ds_session(dm_session), node);
                 if (SR_ERR_OK != rc) {
                     SR_LOG_ERR_MSG("Push child nodes to stack failed");
                     return SR_ERR_INTERNAL;
@@ -346,7 +350,7 @@ rp_dt_get_nodes_with_opts(const dm_ctx_t *dm_ctx, dm_session_t *dm_session, rp_d
             case LYS_LIST:
                 last_node = XP_GET_NODE_COUNT(loc_id) - 1;
                 if (0 != XP_GET_KEY_COUNT(loc_id, last_node)) {
-                    rc = rp_dt_push_child_nodes_to_stack(&get_items_ctx->stack, node);
+                    rc = rp_dt_push_child_nodes_to_stack(&get_items_ctx->stack, dm_is_running_ds_session(dm_session), node);
                     if (SR_ERR_OK != rc) {
                         SR_LOG_ERR_MSG("Push child nodes to stack failed");
                         return SR_ERR_INTERNAL;
@@ -410,7 +414,7 @@ rp_dt_get_nodes_with_opts(const dm_ctx_t *dm_ctx, dm_session_t *dm_session, rp_d
         case LYS_LIST: /* fall through */
         case LYS_CONTAINER:
             if (get_items_ctx->recursive) {
-                rc = rp_dt_push_child_nodes_to_stack(&get_items_ctx->stack, item->node);
+                rc = rp_dt_push_child_nodes_to_stack(&get_items_ctx->stack, dm_is_running_ds_session(dm_session), item->node);
                 if (SR_ERR_OK != rc) {
                     SR_LOG_ERR_MSG("Push child nodes to stack failed");
                     goto cleanup;
