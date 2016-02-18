@@ -1,7 +1,7 @@
 /**
- * @defgroup rp_get Request processor data tree helpers for get functionality 
+ * @defgroup rp_get Request processor's data tree get helpers
  * @{
- * @brief 
+ * @brief Function for retrieving values from data trees.
  * @file rp_dt_get.h
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
  *
@@ -43,7 +43,7 @@ int rp_dt_get_values(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const x
 
 /**
  * @brief Returns the value for the specified location_id for leaf, container and list.
- * If the provided location id identifies the whole moduel SR_ERR_INVAL_ARG is returned.
+ * If the provided location id identifies the whole module SR_ERR_INVAL_ARG is returned.
  * @param [in] dm_ctx
  * @param [in] data_tree
  * @param [in] loc_id

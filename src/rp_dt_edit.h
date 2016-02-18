@@ -1,7 +1,7 @@
 /**
- * @defgroup rp_edit Request processor data tree create, update & delete helpers
+ * @defgroup rp_edit Request processor's data tree edit helpers
  * @{
- * @brief
+ * @brief Function that can create, modify delete nodes or move lists.
  * @file rp_dt_edit.h
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
  *
@@ -45,7 +45,7 @@ int rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath
  * @param [in] dm_ctx
  * @param [in] session
  * @param [in] xpath
- * @param [in] options If the node can not be created because of the option SR_ERR_INVAL_ARG is returned
+ * @param [in] options If the node can not be created because of the option SR_ERR_DATA_EXISTS or SR_ERR_DATA_MISSING is returned
  * @param [in] value the value to be set (xpath inside the structure is ignored), in case of presence container or list instance is ignored can be NULL
  * @return Error code (SR_ERR_OK on success) SR_ERR_DATA_MISSING, SR_ERR_DATA_EXISTS, SR_ERR_UNKNOWN_MODEL, SR_ERR_BAD_ELEMENT
  */

@@ -1,5 +1,5 @@
 /**
- * @defgroup rp_lu Request processor look up functions
+ * @defgroup rp_lu Request processor's look up functions
  * @{
  * @brief Set of functions retrieving nodes from provided data tree according to
  * the location id.
@@ -96,7 +96,7 @@ int rp_dt_get_nodes(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp
 
 /**
  * @brief Returns the nodes under specified location id. The selection of nodes can be altered using options recursive, offset, limit.
- * At the beginning, the nodes are push to stack according to the location id (the pushed content is the same as the result of ::rp_dt_get_nodes). Next
+ * At the beginning, the nodes are pushed to stack according to the location id (the pushed content is the same as the result of ::rp_dt_get_nodes). Next
  * offset items is skipped. Then nodes are popped from stack and returned. Firs two
  * steps (pushing to stack, skipping) nodes can be skipped if saved state in get_items_ctx
  * correspond to the request.
@@ -107,7 +107,7 @@ int rp_dt_get_nodes(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp
  * @param [in] data_tree
  * @param [in] loc_id
  * @param [in] recursive - flag defining whether nodes of the subtrees should be included
- * @param [in] offset - how many nodes should be skipped at the beginning of the result
+ * @param [in] offset - how many nodes should be skipped at the beginning of the selection
  * @param [in] limit - maximum number of nodes that could be returned
  * @param [out] nodes
  * @param [out] count the length of returned nodes array

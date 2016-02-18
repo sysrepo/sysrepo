@@ -32,7 +32,6 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include "sysrepo.h"
-#include "xpath_processor.h"
 
 
 /**
