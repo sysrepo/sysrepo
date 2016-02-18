@@ -342,12 +342,12 @@ rp_dt_validate_list(dm_session_t *session, const struct lys_node *node, const xp
 
     if (LYS_LIST != node->nodetype) {
         SR_LOG_ERR("Keys specified for the node that is not list %s", node->name);
-        return dm_report_error(session, "Keys specified for the node that is not list", loc_id, level, SR_ERR_BAD_ELEMENT);
+        return dm_report_error(session, "Keys specified for the node that is not list", XP_CPY_UP_TO_NODE(loc_id, level), SR_ERR_BAD_ELEMENT);
     }
     struct lys_node_list *list = (struct lys_node_list *) node;
     if (list->keys_size != XP_GET_KEY_COUNT(loc_id, level)) {
         SR_LOG_ERR("Key count does not match %s", node->name);
-        return dm_report_error(session, "Number of keys specified does not match", loc_id, level, SR_ERR_BAD_ELEMENT);
+        return dm_report_error(session, "Number of keys specified does not match the schema", XP_CPY_UP_TO_NODE(loc_id, level), SR_ERR_BAD_ELEMENT);
     }
     size_t matched_keys = 0;
     for (size_t k = 0; k < list->keys_size; k++) {
@@ -362,7 +362,7 @@ rp_dt_validate_list(dm_session_t *session, const struct lys_node *node, const xp
     }
     if (list->keys_size != matched_keys) {
         SR_LOG_ERR("Not all keys has been matched %s", loc_id->xpath);
-        return SR_ERR_BAD_ELEMENT;
+        return dm_report_error(session, "Not all keys has been matched", XP_CPY_UP_TO_NODE(loc_id, level), SR_ERR_BAD_ELEMENT);
     }
     return SR_ERR_OK;
 }
@@ -387,7 +387,7 @@ rp_dt_validate_node_xpath(dm_ctx_t *dm_ctx, dm_session_t *session, const xp_loc_
     rc = dm_get_module(dm_ctx, module_name, NULL, &module);
     free(module_name);
     if (SR_ERR_UNKNOWN_MODEL == rc) {
-        return dm_report_error(session, "Xpath contains unknown model", loc_id, 0, rc);
+        return dm_report_error(session, NULL, XP_CPY_UP_TO_NODE(loc_id, 0), rc);
     }
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Get module failed");
@@ -444,7 +444,7 @@ rp_dt_validate_node_xpath(dm_ctx_t *dm_ctx, dm_session_t *session, const xp_loc_
                     rc = dm_get_module(dm_ctx, module_name,NULL, &m);
                     free(module_name);
                     if (SR_ERR_UNKNOWN_MODEL == rc) {
-                        return dm_report_error(session, "Unknown model", loc_id, i, SR_ERR_UNKNOWN_MODEL);
+                        return dm_report_error(session, NULL, XP_CPY_UP_TO_NODE(loc_id, i), SR_ERR_UNKNOWN_MODEL);
                     }
                     node = node->next;
                     continue;
@@ -473,7 +473,7 @@ rp_dt_validate_node_xpath(dm_ctx_t *dm_ctx, dm_session_t *session, const xp_loc_
 
         if (NULL == node) {
             SR_LOG_ERR("Request node not found in schemas %s", loc_id->xpath);
-            return dm_report_error(session, "Unknown element", loc_id, i, SR_ERR_BAD_ELEMENT);
+            return dm_report_error(session, NULL, XP_CPY_UP_TO_NODE(loc_id, i), SR_ERR_BAD_ELEMENT);
         }
     }
 

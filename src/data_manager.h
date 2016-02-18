@@ -195,18 +195,17 @@ void dm_clear_session_errors(dm_session_t *session);
  * Error xpath is filled from provided xp_loc_id, level specify what portion of the
  * xpath should be copied.
  * @param [in] session
- * @param [in] msg
- * @param [in] loc_id
- * @param [in] level
+ * @param [in] msg - if NULL is passed error message will be generated according to the error code
+ * @param [in] err_path - expects allocated path, will be freed by dm_report_error
  * @param [in] rc
  * @return rc or SR_ERR_INTERNAL
  */
-int dm_report_error(dm_session_t *session, const char *msg, const xp_loc_id_t *loc_id, size_t level, int rc);
+int dm_report_error(dm_session_t *session, const char *msg, char *err_path, int rc);
 
 /**
  * @brief Checks if the session contains an error
  * @param [in] session
- * @return
+ * @return True if the session contains an error, false otherwise.
  */
 bool dm_has_error(dm_session_t *session);
 

@@ -404,7 +404,7 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const
     if (SR_ERR_NOT_FOUND == rc) {
         if (XP_GET_NODE_COUNT(m.loc_id) != 1 && (options & SR_EDIT_NON_RECURSIVE)) {
             SR_LOG_ERR("A preceding node is missing '%s' create it or omit the non recursive option", xpath);
-            rc = SR_ERR_INVAL_ARG;
+            rc = dm_report_error(session, "A preceding node is missing", XP_CPY_UP_TO_NODE(m.loc_id, 0), SR_ERR_INVAL_ARG);
             goto cleanup;
         } else {
             rc = SR_ERR_OK;
@@ -423,7 +423,7 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const
     if (dm_is_running_ds_session(session)) {
         if (!dm_is_enabled_check_recursively(m.schema_node)) {
             SR_LOG_ERR("Requested path '%s' is not enable in running data store", xpath);
-            rc = SR_ERR_INVAL_ARG;
+            rc = dm_report_error(session, "Requested path is not enable in running datastore", strdup(m.loc_id->xpath), SR_ERR_INVAL_ARG);
             goto cleanup;
         }
     }
@@ -433,13 +433,13 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const
         if (XP_GET_NODE_COUNT(m.loc_id) != (m.level + 1)) {
             if (options & SR_EDIT_NON_RECURSIVE) {
                 SR_LOG_ERR("A preceding item is missing '%s' create it or omit the non recursive option", xpath);
-                rc = SR_ERR_INVAL_ARG;
+                rc = dm_report_error(session, "A preceding node is missing", XP_CPY_UP_TO_NODE(m.loc_id, m.level-1), SR_ERR_INVAL_ARG);
                 goto cleanup;
             }
         }
     } else if (options & SR_EDIT_STRICT) {
         SR_LOG_ERR("Item exists '%s' can not be created again with strict opt", xpath);
-        rc = SR_ERR_INVAL_ARG;
+        rc = dm_report_error(session, "Item exists", strdup(m.loc_id->xpath), SR_ERR_INVAL_ARG);
         goto cleanup;
     }
 
@@ -490,7 +490,7 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const
             }
             if (is_key){
                 SR_LOG_ERR("Value of the key can not be updated %s", xpath);
-                rc = SR_ERR_INVAL_ARG;
+                rc = dm_report_error(session, "Value of the key node can not be update", strdup(xpath), SR_ERR_INVAL_ARG);
                 goto cleanup;
             }
             /* leaf - replace existing */
@@ -549,7 +549,7 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const
                 }
                 if (is_key) {
                     SR_LOG_ERR("Value of the key can not be set %s", xpath);
-                    rc = SR_ERR_INVAL_ARG;
+                    rc = dm_report_error(session, "Value of the key can not be set", XP_CPY_UP_TO_NODE(m.loc_id, n), SR_ERR_INVAL_ARG);
                     goto cleanup;
                 }
                 node = sr_lyd_new_leaf(m.info, node, module, node_name, new_value);

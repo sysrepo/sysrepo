@@ -21,7 +21,6 @@
 
 #include "data_manager.h"
 #include "sr_common.h"
-#include "xpath_processor.h"
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -475,8 +474,7 @@ dm_session_stop(const dm_ctx_t *dm_ctx, dm_session_t *session)
 {
     CHECK_NULL_ARG2(dm_ctx, session);
     sr_btree_cleanup(session->session_modules);
-    free(session->error_msg);
-    free(session->error_xpath);
+    dm_clear_session_errors(session);
     free(session);
     return SR_ERR_OK;
 }
@@ -761,34 +759,35 @@ dm_clear_session_errors(dm_session_t *session)
 }
 
 int
-dm_report_error(dm_session_t *session, const char *msg, const xp_loc_id_t *loc_id, size_t level, int rc)
+dm_report_error(dm_session_t *session, const char *msg, char *err_path, int rc)
 {
     if (NULL == session) {
         return SR_ERR_INTERNAL;
     }
 
-    if (NULL != msg) {
-        if (NULL != session->error_msg) {
-            SR_LOG_WRN("Overwriting session error message %s", session->error_msg);
-            free(session->error_msg);
-        }
-        session->error_msg = strdup (msg);
-        if (NULL == session->error_msg) {
-            SR_LOG_ERR_MSG("Error message duplication failed");
-            return SR_ERR_INTERNAL;
-        }
+    /* if NULL is provided, message will be generated according to the error code*/
+    if (NULL == msg) {
+        msg = sr_strerror(rc);
     }
 
-    if (NULL != loc_id) {
-        if (NULL != session->error_xpath) {
-            SR_LOG_WRN("Overwriting session error xpath %s", session->error_xpath);
-            free(session->error_xpath);
-        }
-        session->error_xpath = XP_CPY_UP_TO_NODE(loc_id, level);
-        if (NULL == session->error_xpath) {
-            SR_LOG_ERR_MSG("Error xpath duplication failed");
-            return SR_ERR_INTERNAL;
-        }
+    if (NULL != session->error_msg) {
+        SR_LOG_WRN("Overwriting session error message %s", session->error_msg);
+        free(session->error_msg);
+    }
+    session->error_msg = strdup(msg);
+    if (NULL == session->error_msg) {
+        SR_LOG_ERR_MSG("Error message duplication failed");
+        free(err_path);
+        return SR_ERR_INTERNAL;
+    }
+
+    if (NULL != session->error_xpath) {
+        SR_LOG_WRN("Overwriting session error xpath %s", session->error_xpath);
+        free(session->error_xpath);
+    }
+    session->error_xpath = err_path;
+    if (NULL == session->error_xpath) {
+        SR_LOG_WRN_MSG("Error xpath passed to dm_report is NULL");
     }
 
     return rc;
@@ -807,8 +806,12 @@ int
 dm_copy_errors(dm_session_t *session, char **error_msg, char **err_xpath)
 {
     CHECK_NULL_ARG3(session, error_msg, err_xpath);
-    *error_msg = strdup(session->error_msg);
-    *err_xpath = strdup(session->error_xpath);
+    if (NULL != session->error_msg) {
+        *error_msg = strdup(session->error_msg);
+    }
+    if (NULL != session->error_xpath) {
+        *err_xpath = strdup(session->error_xpath);
+    }
     if ((NULL != session->error_msg && NULL == *error_msg) || (NULL != session->error_xpath && NULL == *err_xpath)){
         SR_LOG_ERR_MSG("Error duplication failed");
         return SR_ERR_INTERNAL;
