@@ -31,6 +31,9 @@
 #include "access_control.h"
 #include "test_module_helper.h"
 
+/**
+ * @brief Test setup routine.
+ */
 static int
 ac_test_setup(void **state)
 {
@@ -38,12 +41,15 @@ ac_test_setup(void **state)
     sr_logger_init("ac_test");
 
     unlink(TEST_MODULE_DATA_FILE_NAME);
-    umask(S_IWGRP | S_IWOTH);
+    umask(S_IWGRP | S_IRGRP | S_IWOTH | S_IROTH);
     createDataTreeTestModule();
 
     return 0;
 }
 
+/**
+ * @brief Test teardown routine.
+ */
 static int
 ac_test_teardown(void **state)
 {
@@ -54,6 +60,9 @@ ac_test_teardown(void **state)
     return 0;
 }
 
+/**
+ * @brief Test authorization features when running as an unprivileged process.
+ */
 static void
 ac_test_unpriviledged(void **state)
 {
@@ -109,6 +118,9 @@ ac_test_unpriviledged(void **state)
     ac_cleanup(ctx);
 }
 
+/**
+ * @brief Test authorization features when running as a privileged process.
+ */
 static void
 ac_test_priviledged(void **state)
 {
@@ -174,11 +186,16 @@ ac_test_priviledged(void **state)
 
     /* credentials 2 */
     rc = ac_check_node_permissions(session2, loc_id, AC_OPER_READ);
-    assert_int_equal(rc, SR_ERR_OK);
+    assert_int_equal(rc, (proc_sudo ? SR_ERR_UNAUTHORIZED : SR_ERR_OK));
     rc = ac_check_node_permissions(session2, loc_id, AC_OPER_READ_WRITE);
     assert_int_equal(rc, (proc_sudo ? SR_ERR_UNAUTHORIZED : SR_ERR_OK));
 
     /* credentials 3 */
+    rc = ac_check_node_permissions(session3, loc_id, AC_OPER_READ);
+    assert_int_equal(rc, (proc_sudo ? SR_ERR_UNAUTHORIZED : SR_ERR_OK));
+    rc = ac_check_node_permissions(session3, loc_id, AC_OPER_READ);
+    assert_int_equal(rc, (proc_sudo ? SR_ERR_UNAUTHORIZED : SR_ERR_OK));
+
     rc = ac_check_node_permissions(session3, loc_id, AC_OPER_READ_WRITE);
     assert_int_equal(rc, (proc_sudo ? SR_ERR_UNAUTHORIZED : SR_ERR_OK));
     rc = ac_check_node_permissions(session3, loc_id, AC_OPER_READ_WRITE);
@@ -207,6 +224,9 @@ ac_test_priviledged(void **state)
     ac_cleanup(ctx);
 }
 
+/**
+ * @brief Test identity switching. Can be executed from both privileged an unprivileged processes.
+ */
 static void
 ac_test_identity_switch(void **state)
 {
@@ -294,6 +314,9 @@ ac_test_identity_switch(void **state)
     ac_cleanup(ctx);
 }
 
+/**
+ * @brief Negative authorization tests. Can be executed from both privileged an unprivileged processes.
+ */
 static void
 ac_test_negative(void **state)
 {

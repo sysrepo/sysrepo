@@ -159,7 +159,13 @@ sr_error_t xp_print_location_id(const xp_loc_id_t *l);
  */
 #define XP_CMP_NODE_NS(L,NODE,VAL) XP_CMP_TOKEN_STR(L,XP_GET_NODE_NS_INDEX(L,NODE),VAL)
 
+/**
+ * @briefString compare of the first namespace
+ * @param [in] VAL value to be compared with
+ * @return return value of strncmp
+ */
 #define XP_CMP_FIRST_NS(L,VAL) XP_CMP_TOKEN_STR(L,1,VAL)
+
 
 //KEYS
 /**@brief Returns the number of the keys for the node
