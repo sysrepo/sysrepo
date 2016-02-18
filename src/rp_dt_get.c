@@ -30,6 +30,7 @@
  * Functions copies the bits into string
  * @param [in] leaf - data tree node from the bits will be copied
  * @param [out] dest - space separated set bit field
+ * @return Error code (SR_ERR_OK on success)
  */
 static int
 rp_dt_copy_bits(const struct lyd_node_leaf_list *leaf, char **dest)
@@ -70,6 +71,13 @@ rp_dt_copy_bits(const struct lyd_node_leaf_list *leaf, char **dest)
     return SR_ERR_OK;
 }
 
+/**
+ * @brief Copies value from lyd_node to the sr_val_t.
+ * @param [in] leaf input which is copied
+ * @param [in] type
+ * @param [in] value where the content is copied to
+ * @return Error code (SR_ERR_OK on success)
+ */
 static int
 rp_dt_copy_value(const struct lyd_node_leaf_list *leaf, LY_DATA_TYPE type, sr_val_t *value)
 {
@@ -188,7 +196,7 @@ rp_dt_copy_value(const struct lyd_node_leaf_list *leaf, LY_DATA_TYPE type, sr_va
  * @brief Fills sr_val_t from lyd_node structure. It fills xpath and copies the value.
  * @param [in] node
  * @param [out] value
- * @return err_code
+ * @return Error code (SR_ERR_OK on success)
  */
 static int
 rp_dt_get_value_from_node(struct lyd_node *node, sr_val_t **value)
@@ -256,7 +264,11 @@ rp_dt_get_value_from_node(struct lyd_node *node, sr_val_t **value)
 }
 
 /**
- * Fills the values from the array of nodes
+ * @brief Fills the values from the array of nodes.
+ * @param [in] nodes
+ * @param [in] count
+ * @param [out] values
+ * @return Error code (SR_ERR_OK on success)
  */
 static int
 rp_dt_get_values_from_nodes(struct lyd_node **nodes, size_t count, sr_val_t ***values)
