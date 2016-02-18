@@ -271,12 +271,80 @@ ac_test_identity_switch(void **state)
     ac_cleanup(ctx);
 }
 
+static void
+ac_test_negative(void **state)
+{
+    ac_ctx_t *ctx = NULL;
+    ac_session_t *session = NULL;
+    xp_loc_id_t *loc_id = NULL;
+    int rc = SR_ERR_OK;
+
+    /* set real user to current user */
+    ac_ucred_t credentials = { 0 };
+    credentials.r_username = getenv("USER");
+    credentials.r_uid = getuid();
+    credentials.r_gid = getgid();
+
+    /* init */
+    rc = ac_init(&ctx);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = ac_session_init(ctx, &credentials, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* non-existing module */
+    rc = xp_char_to_loc_id("/non-existing-module:main/string", &loc_id);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = ac_check_node_permissions(session, loc_id, AC_OPER_READ);
+    assert_int_equal(rc, SR_ERR_NOT_FOUND);
+    xp_free_loc_id(loc_id);
+
+    /* try only namespace */
+    rc = xp_char_to_loc_id("/non-existing-module:", &loc_id);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = ac_check_node_permissions(session, loc_id, AC_OPER_READ);
+    assert_int_equal(rc, SR_ERR_NOT_FOUND);
+    xp_free_loc_id(loc_id);
+
+    /* mess up the location id */
+    rc = xp_char_to_loc_id("/non-existing-module:main/string", &loc_id);
+    assert_int_equal(rc, SR_ERR_OK);
+    loc_id->tokens[1] = T_NODE; /* change namespace token type */
+    rc = ac_check_node_permissions(session, loc_id, AC_OPER_READ);
+    assert_int_equal(rc, SR_ERR_INVAL_ARG);
+    xp_free_loc_id(loc_id);
+
+    if (0 != getuid()) {
+        /* negative tests only for unprivileged users */
+        rc = xp_char_to_loc_id(XP_TEST_MODULE_STRING, &loc_id);
+        assert_int_equal(rc, SR_ERR_OK);
+
+        /* set uid of different user to real user credentials - UNAUTHORIZED */
+        credentials.r_uid = 0;
+        rc = ac_check_node_permissions(session, loc_id, AC_OPER_READ);
+        assert_int_equal(rc, SR_ERR_UNSUPPORTED);
+
+        credentials.r_uid = getuid(); /* reset to original value */
+
+        /* set some uid of different user to effective user credentials - UNAUTHORIZED */
+        credentials.e_username = "nobody";
+        rc = ac_check_node_permissions(session, loc_id, AC_OPER_READ);
+        assert_int_equal(rc, SR_ERR_UNSUPPORTED);
+
+        xp_free_loc_id(loc_id);
+    }
+
+    /* cleanup */
+    ac_session_cleanup(session);
+    ac_cleanup(ctx);
+}
+
 int
 main() {
     const struct CMUnitTest tests[] = {
             cmocka_unit_test_setup_teardown(ac_test_unpriviledged, ac_test_setup, ac_test_teardown),
             cmocka_unit_test_setup_teardown(ac_test_priviledged, ac_test_setup, ac_test_teardown),
             cmocka_unit_test_setup_teardown(ac_test_identity_switch, ac_test_setup, ac_test_teardown),
+            cmocka_unit_test_setup_teardown(ac_test_negative, ac_test_setup, ac_test_teardown),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);

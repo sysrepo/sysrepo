@@ -159,6 +159,8 @@ sr_error_t xp_print_location_id(const xp_loc_id_t *l);
  */
 #define XP_CMP_NODE_NS(L,NODE,VAL) XP_CMP_TOKEN_STR(L,XP_GET_NODE_NS_INDEX(L,NODE),VAL)
 
+#define XP_CMP_FIRST_NS(L,VAL) XP_CMP_TOKEN_STR(L,1,VAL)
+
 //KEYS
 /**@brief Returns the number of the keys for the node
  * @param [in] L pointer to ::xp_loc_id_t
