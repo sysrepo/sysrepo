@@ -111,7 +111,7 @@ static void
 ac_test_priviledged(void **state)
 {
     ac_ctx_t *ctx = NULL;
-    ac_session_t *session1 = NULL, *session2 = NULL;
+    ac_session_t *session1 = NULL, *session2 = NULL, *session3 = NULL;
     xp_loc_id_t *loc_id = NULL;
     int rc = SR_ERR_OK;
 
@@ -126,14 +126,28 @@ ac_test_priviledged(void **state)
     credentials1.r_uid = getuid();
     credentials1.r_gid = getgid();
 
-    /* set real user to current user */
+    /* set effective user to sudo parent user (if possible) */
     ac_ucred_t credentials2 = { 0 };
     credentials2.r_username = getenv("USER");
     credentials2.r_uid = getuid();
     credentials2.r_gid = getgid();
-    credentials2.e_username = getenv("SUDO_USER");
-    credentials2.e_uid = atoi(getenv("SUDO_UID"));
-    credentials2.e_gid = atoi(getenv("SUDO_GID"));
+    if (NULL != getenv("SUDO_USER")) {
+        credentials2.e_username = getenv("SUDO_USER");
+        credentials2.e_uid = atoi(getenv("SUDO_UID"));
+        credentials2.e_gid = atoi(getenv("SUDO_GID"));
+    }
+
+    /* set real user to sudo parent user (if possible) */
+    ac_ucred_t credentials3 = { 0 };
+    if (NULL != getenv("SUDO_USER")) {
+        credentials3.r_username = getenv("SUDO_USER");
+        credentials3.r_uid = atoi(getenv("SUDO_UID"));
+        credentials3.r_gid = atoi(getenv("SUDO_GID"));
+    } else {
+        credentials3.r_username = getenv("USER");
+        credentials3.r_uid = getuid();
+        credentials3.r_gid = getgid();
+    }
 
     /* init */
     rc = ac_init(&ctx);
@@ -141,6 +155,8 @@ ac_test_priviledged(void **state)
     rc = ac_session_init(ctx, &credentials1, &session1);
     assert_int_equal(rc, SR_ERR_OK);
     rc = ac_session_init(ctx, &credentials2, &session2);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = ac_session_init(ctx, &credentials2, &session3);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* node permission checks */
@@ -157,7 +173,13 @@ ac_test_priviledged(void **state)
     rc = ac_check_node_permissions(session2, loc_id, AC_OPER_READ);
     assert_int_equal(rc, SR_ERR_OK);
     rc = ac_check_node_permissions(session2, loc_id, AC_OPER_READ_WRITE);
-    assert_int_equal(rc, SR_ERR_UNAUTHORIZED);
+    assert_int_equal(rc, (credentials2.e_username != NULL ? SR_ERR_UNAUTHORIZED : SR_ERR_OK));
+
+    /* credentials 3 */
+    rc = ac_check_node_permissions(session3, loc_id, AC_OPER_READ_WRITE);
+    assert_int_equal(rc, (credentials3.r_uid != 0 ? SR_ERR_UNAUTHORIZED : SR_ERR_OK));
+    rc = ac_check_node_permissions(session3, loc_id, AC_OPER_READ_WRITE);
+    assert_int_equal(rc, (credentials3.r_uid != 0 ? SR_ERR_UNAUTHORIZED : SR_ERR_OK));
 
     xp_free_loc_id(loc_id);
 
@@ -173,10 +195,43 @@ ac_test_priviledged(void **state)
     rc = ac_check_file_permissions(session2, "/etc/passwd", AC_OPER_READ);
     assert_int_equal(rc, SR_ERR_OK);
     rc = ac_check_file_permissions(session2, "/etc/passwd", AC_OPER_READ_WRITE);
-    assert_int_equal(rc, SR_ERR_UNAUTHORIZED);
+    assert_int_equal(rc, (credentials2.e_username != NULL ? SR_ERR_UNAUTHORIZED : SR_ERR_OK));
 
     /* cleanup */
     ac_session_cleanup(session1);
+    ac_session_cleanup(session2);
+    ac_session_cleanup(session3);
+    ac_cleanup(ctx);
+}
+
+static void
+ac_test_identity_switch(void **state)
+{
+    ac_ctx_t *ctx = NULL;
+    int rc = SR_ERR_OK;
+
+    /* init */
+    rc = ac_init(&ctx);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* set effective user to sudo parent user (if possible) */
+    ac_ucred_t credentials2 = { 0 };
+    credentials2.r_username = getenv("USER");
+    credentials2.r_uid = getuid();
+    credentials2.r_gid = getgid();
+    if (NULL != getenv("SUDO_USER")) {
+        credentials2.e_username = getenv("SUDO_USER");
+        credentials2.e_uid = atoi(getenv("SUDO_UID"));
+        credentials2.e_gid = atoi(getenv("SUDO_GID"));
+    }
+
+    rc = ac_set_user_identity(ctx, &credentials2);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = ac_unset_user_identity(ctx);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* cleanup */
     ac_cleanup(ctx);
 }
 
@@ -185,6 +240,7 @@ main() {
     const struct CMUnitTest tests[] = {
             cmocka_unit_test_setup_teardown(ac_test_unpriviledged, ac_test_setup, ac_test_teardown),
             cmocka_unit_test_setup_teardown(ac_test_priviledged, ac_test_setup, ac_test_teardown),
+            cmocka_unit_test_setup_teardown(ac_test_identity_switch, ac_test_setup, ac_test_teardown),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);
