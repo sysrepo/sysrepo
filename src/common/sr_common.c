@@ -1839,9 +1839,9 @@ sr_free_errors(sr_error_info_t *errors, size_t error_cnt)
 }
 
 int
-sr_get_data_file_name(const dm_ctx_t *dm_ctx, const char *module_name, const sr_datastore_t ds, char **file_name)
+sr_get_data_file_name(const char *module_name, const sr_datastore_t ds, char **file_name)
 {
-    CHECK_NULL_ARG3(dm_ctx, module_name, file_name);
+    CHECK_NULL_ARG2(module_name, file_name);
     char *tmp = NULL;
     int rc = sr_str_join(SR_DATA_SEARCH_DIR, module_name, &tmp);
     if (SR_ERR_OK == rc) {
@@ -1854,9 +1854,9 @@ sr_get_data_file_name(const dm_ctx_t *dm_ctx, const char *module_name, const sr_
 }
 
 int
-sr_get_schema_file_name(const dm_ctx_t *dm_ctx, const char *module_name, char **file_name)
+sr_get_schema_file_name(const char *module_name, char **file_name)
 {
-    CHECK_NULL_ARG3(dm_ctx, module_name, file_name);
+    CHECK_NULL_ARG2(module_name, file_name);
     char *tmp = NULL;
     int rc = sr_str_join(SR_SCHEMA_SEARCH_DIR, module_name, &tmp);
     if (SR_ERR_OK == rc) {

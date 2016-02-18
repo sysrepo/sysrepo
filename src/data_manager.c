@@ -201,7 +201,7 @@ dm_load_data_tree(dm_ctx_t *dm_ctx, const struct lys_module *module, sr_datastor
     int rc = 0;
     struct lyd_node *data_tree = NULL;
     *data_info = NULL;
-    rc = sr_get_data_file_name(dm_ctx, module->name, ds, &data_filename);
+    rc = sr_get_data_file_name(module->name, ds, &data_filename);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Get data_filename failed for %s", module->name);
         return rc;
@@ -302,7 +302,7 @@ dm_fill_schema_t(dm_ctx_t *dm_ctx, dm_session_t *session, const struct lys_modul
         }
     }
 
-    rc = sr_get_schema_file_name(dm_ctx, module->name, &schema->file_path);
+    rc = sr_get_schema_file_name(module->name, &schema->file_path);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Get schema file name failed");
         goto cleanup;
@@ -623,7 +623,7 @@ dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors, siz
     while (NULL != (info = sr_btree_get_at(session->session_modules, cnt))) {
         if (info->modified) {
             char *data_filename = NULL;
-            rc = sr_get_data_file_name(dm_ctx, info->module->name, session->datastore, &data_filename);
+            rc = sr_get_data_file_name(info->module->name, session->datastore, &data_filename);
             if (SR_ERR_OK != rc){
                 SR_LOG_ERR_MSG("Getting data file name failed");
                 pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
