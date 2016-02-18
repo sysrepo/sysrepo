@@ -45,6 +45,8 @@ typedef struct dm_ctx_s {
 typedef struct dm_session_s {
     sr_datastore_t datastore;       /**< datastore to which the session is tied */
     sr_btree_t *session_modules;    /**< binary holding session copies of data models */
+    char *error_msg;                /**< description of the last error */
+    char *error_xpath;              /**< xpath of the last error if applicable */
 } dm_session_t;
 
 /**
@@ -53,7 +55,7 @@ typedef struct dm_session_s {
  */
 typedef struct dm_node_info_s {
     dm_node_state_t state;
-}dm_node_info_t;
+} dm_node_info_t;
 
 /**
  * @brief Compares two data trees by module name
@@ -90,7 +92,8 @@ dm_data_info_free(void *item)
 }
 
 /**
- * @brief Check whether the file_name corresponds to the schema file. Returns 1 if it does, 0 otherwise.
+ * @brief Check whether the file_name corresponds to the schema file.
+ * @return 1 if it does, 0 otherwise.
  */
 static int
 dm_is_schema_file(const char *file_name)
@@ -99,7 +102,6 @@ dm_is_schema_file(const char *file_name)
     return sr_str_ends_with(file_name, SR_SCHEMA_YIN_FILE_EXT);
 }
 
-
 /**
  * @brief Loads the schema file into the context. The path for loading file is specified as concatenation of dir_name
  * and file_name. Function returns SR_ERR_OK if loading was successful. It might return SR_ERR_IO if the file can not
@@ -107,7 +109,7 @@ dm_is_schema_file(const char *file_name)
  * @param [in] dm_ctx
  * @param [in] dir_name
  * @param [in] file_name
- * @return err_code
+ * @return Error code (SR_ERR_OK on success)
  */
 static int
 dm_load_schema_file(dm_ctx_t *dm_ctx, const char *dir_name, const char *file_name)
@@ -142,7 +144,10 @@ dm_load_schema_file(dm_ctx_t *dm_ctx, const char *dir_name, const char *file_nam
 }
 
 /**
- * @brief Loops through the specified directory and tries to load schema files from it.
+ * @brief Loops through the specified directory (dm_ctx->schema_search_dir) and tries to load schema files from it.
+ * Schemas that can not be loaded are skipped.
+ * @param [in] dm_ctx
+ * @return Error code (SR_ERR_OK on success), SR_ERR_IO if the directory can not be opened
  */
 static int
 dm_load_schemas(dm_ctx_t *dm_ctx)
@@ -164,7 +169,7 @@ dm_load_schemas(dm_ctx_t *dm_ctx)
         return SR_ERR_OK;
     } else {
         SR_LOG_ERR("Could not open the directory %s: %s", dm_ctx->schema_search_dir, strerror(errno));
-        return EXIT_FAILURE;
+        return SR_ERR_IO;
     }
 }
 
@@ -172,7 +177,7 @@ dm_load_schemas(dm_ctx_t *dm_ctx)
  * Checks whether the schema of the module has been loaded
  * @param [in] dm_ctx
  * @param [in] module_name
- * @return err_code
+ * @return Error code (SR_ERR_OK on success), SR_ERR_UNKNOWN_MODEL
  */
 static int
 dm_find_module_schema(dm_ctx_t *dm_ctx, const char *module_name, const struct lys_module **module)
@@ -185,12 +190,13 @@ dm_find_module_schema(dm_ctx_t *dm_ctx, const char *module_name, const struct ly
 }
 
 /**
- * @brief Loads data tree from file and adds it into dm context
+ * @brief Loads data tree from file. Module and datastore argument are used to
+ * determine the file name.
  * @param [in] dm_ctx
  * @param [in] module
  * @param [in] ds
- * @param [out] data_tree
- * @return err_code
+ * @param [out] data_info
+ * @return Error code (SR_ERR_OK on success), SR_ERR_INTERAL if the parsing of the data tree fails.
  */
 static int
 dm_load_data_tree(dm_ctx_t *dm_ctx, const struct lys_module *module, sr_datastore_t ds, dm_data_info_t **data_info)
@@ -209,7 +215,7 @@ dm_load_data_tree(dm_ctx_t *dm_ctx, const struct lys_module *module, sr_datastor
 
     dm_data_info_t *data = NULL;
     data = calloc(1, sizeof(*data));
-    if (NULL == data){
+    if (NULL == data) {
         SR_LOG_ERR_MSG("Memory allocation failed");
         free(data_filename);
         return SR_ERR_NOMEM;
@@ -231,8 +237,8 @@ dm_load_data_tree(dm_ctx_t *dm_ctx, const struct lys_module *module, sr_datastor
         data->timestamp = st.st_mtim;
 #ifdef __linux__
         SR_LOG_DBG("Loaded module %s: mtime sec=%lld nsec=%lld\n", module->name,
-               (long long) st.st_mtim.tv_sec,
-               (long long) st.st_mtim.tv_nsec);
+                (long long) st.st_mtim.tv_sec,
+                (long long) st.st_mtim.tv_nsec);
 #endif
         data_tree = lyd_parse_fd(dm_ctx->ly_ctx, fileno(f), LYD_XML, LYD_OPT_STRICT);
         lockf(fileno(f), F_ULOCK, 0);
@@ -261,10 +267,9 @@ dm_load_data_tree(dm_ctx_t *dm_ctx, const struct lys_module *module, sr_datastor
     data->modified = false;
     data->node = data_tree;
 
-    if (NULL == data_tree){
+    if (NULL == data_tree) {
         SR_LOG_INF("Data file %s is empty", data_filename);
-    }
-    else{
+    } else {
         SR_LOG_INF("Data file %s loaded successfully", data_filename);
     }
 
@@ -277,6 +282,7 @@ dm_load_data_tree(dm_ctx_t *dm_ctx, const struct lys_module *module, sr_datastor
 
 /**
  * @brief Fills the schema_t from lys_module structure
+ * @return Error code (SR_ERR_OK on success), SR_ERR_INTERNAL in case of string duplication failure
  */
 static int
 dm_fill_schema_t(dm_ctx_t *dm_ctx, dm_session_t *session, const struct lys_module *module, sr_schema_t *schema)
@@ -375,8 +381,9 @@ dm_init(const char *schema_search_dir, const char *data_search_dir, dm_ctx_t **d
 }
 
 static void
-dm_free_lys_private_data(const struct lys_node *node, void *private){
-    if (NULL != private){
+dm_free_lys_private_data(const struct lys_node *node, void *private)
+{
+    if (NULL != private) {
         free(private);
     }
 }
@@ -401,7 +408,7 @@ dm_session_start(const dm_ctx_t *dm_ctx, const sr_datastore_t ds, dm_session_t *
     CHECK_NULL_ARG(dm_session_ctx);
 
     dm_session_t *session_ctx = NULL;
-    session_ctx = malloc(sizeof(*session_ctx));
+    session_ctx = calloc(1, sizeof(*session_ctx));
     if (NULL == session_ctx) {
         SR_LOG_ERR_MSG("Cannot allocate session_ctx in Data Manager.");
         return SR_ERR_NOMEM;
@@ -421,11 +428,12 @@ dm_session_start(const dm_ctx_t *dm_ctx, const sr_datastore_t ds, dm_session_t *
 }
 
 int
-dm_session_stop(const dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx)
+dm_session_stop(const dm_ctx_t *dm_ctx, dm_session_t *session)
 {
-    CHECK_NULL_ARG2(dm_ctx, dm_session_ctx);
-    sr_btree_cleanup(dm_session_ctx->session_modules);
-    free(dm_session_ctx);
+    CHECK_NULL_ARG2(dm_ctx, session);
+    sr_btree_cleanup(session->session_modules);
+    dm_clear_session_errors(session);
+    free(session);
     return SR_ERR_OK;
 }
 
@@ -478,22 +486,23 @@ dm_get_datatree(dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, const char *modu
     int rc = SR_ERR_OK;
     dm_data_info_t *info = NULL;
     rc = dm_get_data_info(dm_ctx, dm_session_ctx, module_name, &info);
-    if (SR_ERR_OK != rc){
+    if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Get data info failed for module %s", module_name);
         return rc;
     }
     *data_tree = info->node;
-    if (NULL == info->node){
+    if (NULL == info->node) {
         return SR_ERR_NOT_FOUND;
     }
     return rc;
 }
 
 int
-dm_get_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, const struct lys_module **module){
+dm_get_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, const struct lys_module **module)
+{
     CHECK_NULL_ARG3(dm_ctx, module_name, module); /* revision might be NULL*/
     *module = ly_ctx_get_module(dm_ctx->ly_ctx, module_name, revision);
-    if (NULL == *module){
+    if (NULL == *module) {
         SR_LOG_ERR("Get module failed %s", module_name);
         return SR_ERR_UNKNOWN_MODEL;
     }
@@ -560,7 +569,7 @@ dm_validate_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error
                 SR_LOG_ERR_MSG("Missing schema information");
                 return SR_ERR_INTERNAL;
             }
-            if (0 != lyd_validate(info->node, LYD_OPT_STRICT)){
+            if (0 != lyd_validate(info->node, LYD_OPT_STRICT)) {
                 SR_LOG_DBG("Validation failed for %s module", info->module->name);
 
                 // TODO: fill-in proper errors
@@ -570,9 +579,8 @@ dm_validate_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error
                 *err_cnt = 1;
 
                 rc = SR_ERR_VALIDATION_FAILED;
-            }
-            else{
-               SR_LOG_DBG("Validation succeeded for '%s' module", info->module->name);
+            } else {
+                SR_LOG_DBG("Validation succeeded for '%s' module", info->module->name);
             }
         }
         cnt++;
@@ -624,7 +632,7 @@ dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors, siz
         if (info->modified) {
             char *data_filename = NULL;
             rc = sr_get_data_file_name(info->module->name, session->datastore, &data_filename);
-            if (SR_ERR_OK != rc){
+            if (SR_ERR_OK != rc) {
                 SR_LOG_ERR_MSG("Getting data file name failed");
                 pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
                 return rc;
@@ -638,7 +646,7 @@ dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors, siz
                 return SR_ERR_INTERNAL;
             }
             FILE *f = fopen(data_filename, "w");
-            if (NULL == f){
+            if (NULL == f) {
                 SR_LOG_ERR("Failed to open file %s", data_filename);
                 pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
                 free(data_filename);
@@ -649,17 +657,15 @@ dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors, siz
 
 #ifdef __linux__
             if ((info->timestamp.tv_sec != st.st_mtim.tv_sec)
-             || (info->timestamp.tv_nsec != st.st_mtim.tv_nsec)) {
+                    || (info->timestamp.tv_nsec != st.st_mtim.tv_nsec)) {
                 SR_LOG_INF("Merging needs to be done for module '%s', currently just overwriting", info->module->name);
-            }
-            else {
+            } else {
                 SR_LOG_INF("Session copy module '%s', has not been changed since loading", info->module->name);
             }
 #else
             if (info->timestamp != st.st_mtim) {
                 SR_LOG_INF("Merging needs to be done for module '%s', currently just overwriting", info->module->name);
-            }
-            else{
+            } else {
                 /* Further check if the because we have only second precision */
             }
 #endif
@@ -673,7 +679,7 @@ dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors, siz
             fclose(f);
 
             free(data_filename);
-            if (SR_ERR_OK != rc){
+            if (SR_ERR_OK != rc) {
                 SR_LOG_ERR("Saving data file for module %s failed", info->module->name);
                 pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
                 return rc;
@@ -690,6 +696,89 @@ dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors, siz
     return rc;
 }
 
+void
+dm_clear_session_errors(dm_session_t *session)
+{
+    if (NULL == session) {
+        return;
+    }
+
+    if (NULL != session->error_msg) {
+        free(session->error_msg);
+        session->error_msg = NULL;
+    }
+
+    if (NULL != session->error_xpath) {
+        free(session->error_xpath);
+        session->error_xpath = NULL;
+    }
+}
+
+int
+dm_report_error(dm_session_t *session, const char *msg, char *err_path, int rc)
+{
+    if (NULL == session) {
+        return SR_ERR_INTERNAL;
+    }
+
+    /* if NULL is provided, message will be generated according to the error code*/
+    if (NULL == msg) {
+        msg = sr_strerror(rc);
+    }
+
+    if (NULL != session->error_msg) {
+        SR_LOG_WRN("Overwriting session error message %s", session->error_msg);
+        free(session->error_msg);
+    }
+    session->error_msg = strdup(msg);
+    if (NULL == session->error_msg) {
+        SR_LOG_ERR_MSG("Error message duplication failed");
+        free(err_path);
+        return SR_ERR_INTERNAL;
+    }
+
+    if (NULL != session->error_xpath) {
+        SR_LOG_WRN("Overwriting session error xpath %s", session->error_xpath);
+        free(session->error_xpath);
+    }
+    session->error_xpath = err_path;
+    if (NULL == session->error_xpath) {
+        SR_LOG_WRN_MSG("Error xpath passed to dm_report is NULL");
+    }
+
+    return rc;
+}
+
+bool
+dm_has_error(dm_session_t *session)
+{
+    if (NULL == session) {
+        return false;
+    }
+    return NULL != session->error_msg || NULL != session->error_xpath;
+}
+
+int
+dm_copy_errors(dm_session_t *session, char **error_msg, char **err_xpath)
+{
+    CHECK_NULL_ARG3(session, error_msg, err_xpath);
+    if (NULL != session->error_msg) {
+        *error_msg = strdup(session->error_msg);
+    }
+    if (NULL != session->error_xpath) {
+        *err_xpath = strdup(session->error_xpath);
+    }
+    if ((NULL != session->error_msg && NULL == *error_msg) || (NULL != session->error_xpath && NULL == *err_xpath)) {
+        SR_LOG_ERR_MSG("Error duplication failed");
+        return SR_ERR_INTERNAL;
+    }
+    return SR_ERR_OK;
+}
+
+/**
+ * @brief Returns the state of node. If the NULL is provided as an argument
+ * DM_NODE_DISABLED is returned.
+ */
 static dm_node_state_t
 dm_get_node_state(struct lys_node *node)
 {
@@ -741,7 +830,7 @@ int
 dm_set_node_state(struct lys_node *node, dm_node_state_t state)
 {
     CHECK_NULL_ARG(node);
-    if (NULL == node->private){
+    if (NULL == node->private) {
         node->private = calloc(1, sizeof(dm_node_info_t));
         if (NULL == node->private) {
             SR_LOG_ERR_MSG("Memory allocation failed");

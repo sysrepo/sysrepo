@@ -30,6 +30,7 @@
  * Functions copies the bits into string
  * @param [in] leaf - data tree node from the bits will be copied
  * @param [out] dest - space separated set bit field
+ * @return Error code (SR_ERR_OK on success)
  */
 static int
 rp_dt_copy_bits(const struct lyd_node_leaf_list *leaf, char **dest)
@@ -70,6 +71,13 @@ rp_dt_copy_bits(const struct lyd_node_leaf_list *leaf, char **dest)
     return SR_ERR_OK;
 }
 
+/**
+ * @brief Copies value from lyd_node to the sr_val_t.
+ * @param [in] leaf input which is copied
+ * @param [in] type
+ * @param [in] value where the content is copied to
+ * @return Error code (SR_ERR_OK on success)
+ */
 static int
 rp_dt_copy_value(const struct lyd_node_leaf_list *leaf, LY_DATA_TYPE type, sr_val_t *value)
 {
@@ -188,7 +196,7 @@ rp_dt_copy_value(const struct lyd_node_leaf_list *leaf, LY_DATA_TYPE type, sr_va
  * @brief Fills sr_val_t from lyd_node structure. It fills xpath and copies the value.
  * @param [in] node
  * @param [out] value
- * @return err_code
+ * @return Error code (SR_ERR_OK on success)
  */
 static int
 rp_dt_get_value_from_node(struct lyd_node *node, sr_val_t **value)
@@ -256,7 +264,11 @@ rp_dt_get_value_from_node(struct lyd_node *node, sr_val_t **value)
 }
 
 /**
- * Fills the values from the array of nodes
+ * @brief Fills the values from the array of nodes.
+ * @param [in] nodes
+ * @param [in] count
+ * @param [out] values
+ * @return Error code (SR_ERR_OK on success)
  */
 static int
 rp_dt_get_values_from_nodes(struct lyd_node **nodes, size_t count, sr_val_t ***values)
@@ -294,9 +306,15 @@ int
 rp_dt_get_value(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp_loc_id_t *loc_id, bool check_enabled, sr_val_t **value)
 {
     CHECK_NULL_ARG4(dm_ctx, data_tree, loc_id, value);
+    CHECK_NULL_ARG(loc_id->xpath);
     int rc = 0;
     struct lyd_node *node = NULL;
-    rc = rp_dt_get_node(dm_ctx, data_tree, loc_id, check_enabled, &node);
+    if (XP_IS_MODULE_XPATH(loc_id)) {
+        SR_LOG_ERR("Module xpath %s can not be use in get_node call", loc_id->xpath);
+        return SR_ERR_INVAL_ARG;
+    }
+
+    rc = rp_dt_lookup_node(data_tree, loc_id, false, check_enabled, &node);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Node not found for xpath %s", loc_id->xpath);
         return rc;
@@ -368,7 +386,7 @@ rp_dt_get_value_wrapper(dm_ctx_t *dm_ctx, dm_session_t *dm_session, const char *
 
     rc = rp_dt_get_value(dm_ctx, data_tree, l, dm_is_running_ds_session(dm_session), value);
     if (SR_ERR_NOT_FOUND == rc) {
-        rc = rp_dt_validate_node_xpath(dm_ctx, l, NULL, NULL);
+        rc = rp_dt_validate_node_xpath(dm_ctx, dm_session, l, NULL, NULL);
         rc = rc == SR_ERR_OK ? SR_ERR_NOT_FOUND : rc;
     } else if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Get value failed for xpath '%s'", xpath);
@@ -415,7 +433,7 @@ rp_dt_get_values_wrapper(dm_ctx_t *dm_ctx, dm_session_t *dm_session, const char 
 
 cleanup:
     if (SR_ERR_NOT_FOUND == rc || (SR_ERR_OK == rc && 0 == count)) {
-        rc = rp_dt_validate_node_xpath(dm_ctx, l, NULL, NULL);
+        rc = rp_dt_validate_node_xpath(dm_ctx, dm_session, l, NULL, NULL);
         rc = rc == SR_ERR_OK ? SR_ERR_NOT_FOUND : rc;
     }
     xp_free_loc_id(l);
@@ -460,7 +478,7 @@ rp_dt_get_values_wrapper_with_opts(dm_ctx_t *dm_ctx, dm_session_t *dm_session, r
 
     rc = rp_dt_get_values_from_nodes(nodes, *count, values);
     if (SR_ERR_NOT_FOUND == rc) {
-        rc = rp_dt_validate_node_xpath(dm_ctx, l, NULL, NULL);
+        rc = rp_dt_validate_node_xpath(dm_ctx, dm_session, l, NULL, NULL);
         rc = rc == SR_ERR_OK ? SR_ERR_NOT_FOUND : rc;
     } else if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Copying values from nodes failed for xpath '%s'", l->xpath);

@@ -23,6 +23,14 @@
 
 #include "rp_dt_lookup.h"
 
+/**
+ * @brief Pushes all children nodes to the stack. If the check enable is set
+ * to true pushes only the nodes that are enabled.
+ * @param [in] stack
+ * @param [in] check_enable
+ * @param [in] node
+ * @return Error code (SR_ERR_OK on success)
+ */
 static int
 rp_dt_push_child_nodes_to_stack(rp_node_stack_t **stack, bool check_enable, struct lyd_node *node)
 {
@@ -52,6 +60,14 @@ rp_dt_push_child_nodes_to_stack(rp_node_stack_t **stack, bool check_enable, stru
     return rc;
 }
 
+/**
+ * @brief Pushes the nodes with same name as provided node to the stack. Used
+ * for list and leaf-list nodes.
+ * If the check enable is set to true pushes only the nodes that are enabled.
+ * @param [in] stack
+ * @param [in] node
+ * @return Error code (SR_ERR_OK on success)
+ */
 static int
 rp_dt_push_nodes_with_same_name_to_stack(rp_node_stack_t **stack, struct lyd_node *node)
 {
@@ -82,6 +98,14 @@ rp_dt_push_nodes_with_same_name_to_stack(rp_node_stack_t **stack, struct lyd_nod
     return rc;
 }
 
+/**
+ * @brief Pushes the sibling nodes to the stack. Used for whole module xpath.
+ * If the check enable is set to true pushes only the nodes that are enabled.
+ * @param [in] stack
+ * @param [in] check_enable
+ * @param [in] node
+ * @return Error code (SR_ERR_OK on success)
+ */
 static int
 rp_dt_push_all_sibling_nodes_to_stack(rp_node_stack_t **stack, bool check_enable, struct lyd_node *node){
    CHECK_NULL_ARG2(stack, node);
@@ -396,7 +420,6 @@ rp_dt_get_nodes_with_opts(const dm_ctx_t *dm_ctx, dm_session_t *dm_session, rp_d
 
     /* process stack*/
     rp_node_stack_t *item;
-    size_t i = 0; /*index into returned nodes*/
     while (cnt < limit) {
         if (rp_ns_is_empty(&get_items_ctx->stack)) {
             break;
@@ -428,8 +451,7 @@ rp_dt_get_nodes_with_opts(const dm_ctx_t *dm_ctx, dm_session_t *dm_session, rp_d
 
         /* append node to result if it is in chosen range*/
         if (index >= offset) {
-            (*nodes)[i++] = item->node;
-            cnt++;
+            (*nodes)[cnt++] = item->node;
         }
         free(item);
         item = NULL;
@@ -437,9 +459,14 @@ rp_dt_get_nodes_with_opts(const dm_ctx_t *dm_ctx, dm_session_t *dm_session, rp_d
     }
     /* mark the index where the processing stopped*/
     get_items_ctx->offset = index;
-    *count = cnt;
-    return SR_ERR_OK;
-
+    if (0 == cnt){
+        free(*nodes);
+        *nodes = NULL;
+        return SR_ERR_NOT_FOUND;
+    } else {
+        *count = cnt;
+        return SR_ERR_OK;
+    }
 cleanup:
     free(*nodes);
     *nodes = NULL;
@@ -588,16 +615,4 @@ rp_dt_lookup_node(struct lyd_node *data_tree, const xp_loc_id_t *loc_id, bool al
     }
 
     return rc;
-}
-
-int
-rp_dt_get_node(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp_loc_id_t *loc_id, bool check_enable, struct lyd_node **node)
-{
-    CHECK_NULL_ARG4(dm_ctx, data_tree, loc_id, node);
-    CHECK_NULL_ARG(loc_id->xpath);
-    if (XP_IS_MODULE_XPATH(loc_id)) {
-        SR_LOG_ERR("Module xpath %s can not be use in get_node call", loc_id->xpath);
-        return SR_ERR_INVAL_ARG;
-    }
-    return rp_dt_lookup_node(data_tree, loc_id, false, check_enable, node);
 }

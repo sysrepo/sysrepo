@@ -39,6 +39,16 @@ typedef struct rp_dt_match_s {
     struct lyd_node *node;          /**< Deepest match */
 }rp_dt_match_t;
 
+/**
+ * @brief Fills the rp_dt_match_t structure. Converts xpath to location id, validates xpath,
+ * and calls ::rp_dt_find_deepest_match. If the xpath identifies whole module matching
+ * is not done only match->info is set.
+ * @param [in] ctx
+ * @param [in] session
+ * @param [in] xpath
+ * @param [in] match
+ * @return Error code (SR_ERR_OK on success), SR_ERR_NOT_FOUND, SR_ERR_UNKNOWN_MODEL, SR_ERR_BAD_ELEMENT
+ */
 static int
 rp_dt_find_deepest_match_wrapper(dm_ctx_t *ctx, dm_session_t *session, const char * xpath, rp_dt_match_t *match)
 {
@@ -50,7 +60,7 @@ rp_dt_find_deepest_match_wrapper(dm_ctx_t *ctx, dm_session_t *session, const cha
         return rc;
     }
 
-    rc = rp_dt_validate_node_xpath(ctx, match->loc_id, &module, &match->schema_node);
+    rc = rp_dt_validate_node_xpath(ctx, session, match->loc_id, &module, &match->schema_node);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Requested node is not valid %s", xpath);
         goto cleanup;
@@ -64,6 +74,9 @@ rp_dt_find_deepest_match_wrapper(dm_ctx_t *ctx, dm_session_t *session, const cha
 
     if (XP_IS_MODULE_XPATH(match->loc_id)){
         /* do not match particular node if the xpath identifies the module */
+        if (NULL == match->info->node){
+            rc = SR_ERR_NOT_FOUND;
+        }
         goto cleanup;
     }
 
@@ -78,7 +91,11 @@ cleanup:
 }
 
 /**
- * @brief Checks if the node has a key with the name
+ * @brief Checks if the node has a key with the name and sets res.
+ * @param [in] node
+ * @param [in] name
+ * @param [out] res
+ * @return Error code (SR_ERR_OK on success)
  */
 static int
 rp_dt_has_key(const struct lyd_node *node, const char *name, bool *res)
@@ -105,6 +122,10 @@ rp_dt_has_key(const struct lyd_node *node, const char *name, bool *res)
 /**
  * @brief Function creates list key nodes at the selected level and append them
  * to the provided parent. If there are no keys at the selected level it does nothing.
+ * @param [in] match
+ * @param [in] parent
+ * @param [in] level
+ * @return Error code (SR_ERR_OK on success)
  */
 static int
 rp_dt_create_keys(rp_dt_match_t *match, struct lyd_node *parent, size_t level)
@@ -137,6 +158,14 @@ cleanup:
     return SR_ERR_INTERNAL;
 }
 
+/**
+ * @brief Looks up the first sibling in specified direction with the name same as provide.
+ * @param [in] info
+ * @param [in] start_node
+ * @param [in] direction
+ * @param [out] sibling
+ * @return Error code (SR_ERR_OK on success) SR_ERR_NOT_FOUND
+ */
 static int
 rp_dt_find_closest_sibling_by_name(dm_data_info_t *info, struct lyd_node *start_node, sr_move_direction_t direction, struct lyd_node **sibling)
 {
@@ -180,7 +209,7 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, co
     if (SR_ERR_NOT_FOUND == rc) {
         if (options & SR_EDIT_STRICT) {
             SR_LOG_ERR("No item exists '%s' deleted with strict opt", xpath);
-            rc = SR_ERR_INVAL_ARG;
+            rc = dm_report_error(session, NULL, strdup(xpath), SR_ERR_DATA_MISSING);
             goto cleanup;
         }
         rc = SR_ERR_OK;
@@ -194,7 +223,7 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, co
     if (XP_IS_MODULE_XPATH(match.loc_id)) {
         if ((options & SR_EDIT_NON_RECURSIVE)) {
             SR_LOG_ERR("Delete for module xpath '%s' can not be called with non recursive", xpath);
-            rc = SR_ERR_INVAL_ARG;
+            rc = dm_report_error(session, "Delete whole module can not be performed with non recursive flag", strdup(xpath), SR_ERR_DATA_EXISTS);
             goto cleanup;
         }
 
@@ -209,7 +238,7 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, co
 
         if ((options & SR_EDIT_STRICT) && count == 0) {
             SR_LOG_ERR("No item exists '%s' deleted with strict opt", xpath);
-            rc = SR_ERR_INVAL_ARG;
+            rc = dm_report_error(session, NULL, strdup(xpath), SR_ERR_DATA_MISSING);
             free(nodes);
             goto cleanup;
         }
@@ -233,7 +262,7 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, co
     if (XP_GET_NODE_COUNT(match.loc_id) != match.level) {
         if (options & SR_EDIT_STRICT) {
             SR_LOG_ERR("No item exists '%s' deleted with strict opt", xpath);
-            rc = SR_ERR_INVAL_ARG;
+            rc = dm_report_error(session, NULL, strdup(xpath), SR_ERR_DATA_MISSING);
             goto cleanup;
         }
         match.info->modified = true;
@@ -255,7 +284,7 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, co
     if (match.node->schema->nodetype == LYS_CONTAINER) {
         if (options & SR_EDIT_NON_RECURSIVE) {
             SR_LOG_ERR("Item for xpath %s is container deleted with non recursive opt", xpath);
-            rc = SR_ERR_INVAL_ARG;
+            rc = dm_report_error(session, "Node contains children node, can not be deleted with non recursive option", strdup(xpath), SR_ERR_DATA_EXISTS);
             goto cleanup;
         }
         //TODO log to operation queue
@@ -275,7 +304,7 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, co
         }
         if (is_key){
             SR_LOG_ERR("Key leaf can not be delete delete the list instead %s", xpath);
-            rc = SR_ERR_INVAL_ARG;
+            rc = dm_report_error(session, "List key can not be deleted", strdup(xpath), SR_ERR_INVAL_ARG);
             goto cleanup;
         }
         //TODO log to operation queue
@@ -321,7 +350,7 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, co
             }
             if (XP_GET_KEY_COUNT(match.loc_id, last_node) != child_cnt) {
                 SR_LOG_ERR("Item for xpath %s is non empty list. It can not be deleted with non recursive opt", xpath);
-                rc = SR_ERR_INVAL_ARG;
+                rc = dm_report_error(session, "Node contains children node, can not be deleted with non recursive option", strdup(xpath), SR_ERR_DATA_EXISTS);
                 goto cleanup;
             }
         }
@@ -404,7 +433,7 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const
     if (SR_ERR_NOT_FOUND == rc) {
         if (XP_GET_NODE_COUNT(m.loc_id) != 1 && (options & SR_EDIT_NON_RECURSIVE)) {
             SR_LOG_ERR("A preceding node is missing '%s' create it or omit the non recursive option", xpath);
-            rc = SR_ERR_INVAL_ARG;
+            rc = dm_report_error(session, "A preceding node is missing", XP_CPY_UP_TO_NODE(m.loc_id, 0), SR_ERR_DATA_MISSING);
             goto cleanup;
         } else {
             rc = SR_ERR_OK;
@@ -423,7 +452,7 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const
     if (dm_is_running_ds_session(session)) {
         if (!dm_is_enabled_check_recursively(m.schema_node)) {
             SR_LOG_ERR("Requested path '%s' is not enable in running data store", xpath);
-            rc = SR_ERR_INVAL_ARG;
+            rc = dm_report_error(session, "Requested path is not enable in running datastore", strdup(m.loc_id->xpath), SR_ERR_INVAL_ARG);
             goto cleanup;
         }
     }
@@ -433,13 +462,13 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const
         if (XP_GET_NODE_COUNT(m.loc_id) != (m.level + 1)) {
             if (options & SR_EDIT_NON_RECURSIVE) {
                 SR_LOG_ERR("A preceding item is missing '%s' create it or omit the non recursive option", xpath);
-                rc = SR_ERR_INVAL_ARG;
+                rc = dm_report_error(session, "A preceding node is missing", XP_CPY_UP_TO_NODE(m.loc_id, m.level-1), SR_ERR_DATA_MISSING);
                 goto cleanup;
             }
         }
     } else if (options & SR_EDIT_STRICT) {
         SR_LOG_ERR("Item exists '%s' can not be created again with strict opt", xpath);
-        rc = SR_ERR_INVAL_ARG;
+        rc = dm_report_error(session, NULL, strdup(m.loc_id->xpath), SR_ERR_DATA_EXISTS);
         goto cleanup;
     }
 
@@ -490,7 +519,7 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const
             }
             if (is_key){
                 SR_LOG_ERR("Value of the key can not be updated %s", xpath);
-                rc = SR_ERR_INVAL_ARG;
+                rc = dm_report_error(session, "Value of the key node can not be update", strdup(xpath), SR_ERR_INVAL_ARG);
                 goto cleanup;
             }
             /* leaf - replace existing */
@@ -549,7 +578,7 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const
                 }
                 if (is_key) {
                     SR_LOG_ERR("Value of the key can not be set %s", xpath);
-                    rc = SR_ERR_INVAL_ARG;
+                    rc = dm_report_error(session, "Value of the key can not be set", XP_CPY_UP_TO_NODE(m.loc_id, n), SR_ERR_INVAL_ARG);
                     goto cleanup;
                 }
                 node = sr_lyd_new_leaf(m.info, node, module, node_name, new_value);

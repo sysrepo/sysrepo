@@ -74,7 +74,19 @@ int xp_node_key_count(const xp_loc_id_t *l, const size_t node);
  */
 sr_error_t xp_print_location_id(const xp_loc_id_t *l);
 
+/**
+ * @brief Returns true if the provided xpath identifies the whole moduel
+ * @param [in] L pointer to ::xp_loc_id_t
+ */
 #define XP_IS_MODULE_XPATH(L) ((XP_MODULE_XPATH_TOKEN_COUNT == (L)->cnt) && (T_SLASH == XP_GET_TOKEN(L,0)) && (T_NS == XP_GET_TOKEN(L,1)) && (T_COLON == XP_GET_TOKEN(L,2)))
+
+/**
+ * @brief Returns the copy of the xpath up to the node. If the provided location id identifies whole module the whole xpath is duplicated
+ * @param [in] L pointer to ::xp_loc_id_t
+ * @param [in] ORD index of node
+ */
+#define XP_CPY_UP_TO_NODE(L, ORD) (XP_IS_MODULE_XPATH(L) ? strdup((L)->xpath) : strndup((L)->xpath, XP_GET_UP_TO_TOKEN_LENGTH(L, XP_GET_NODE_TOKEN(L, ORD))))
+
 //NODES
 /**@brief Returns the node count
  * @param [in] L pointer to ::xp_loc_id_t

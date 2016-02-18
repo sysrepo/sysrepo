@@ -99,11 +99,11 @@ enable_subtree_test(void **state)
    rc = xp_char_to_loc_id("/ietf-interfaces:interfaces/interface/ietf-ip:ipv4/address", &l);
    assert_int_equal(SR_ERR_OK, rc);
 
-   rc = rp_dt_enable_xpath(ctx, l);
+   rc = rp_dt_enable_xpath(ctx, session, l);
    assert_int_equal(SR_ERR_OK, rc);
 
 
-   rc = rp_dt_validate_node_xpath(ctx, l, &module, &match);
+   rc = rp_dt_validate_node_xpath(ctx, session, l, &module, &match);
    assert_int_equal(SR_ERR_OK, rc);
 
    /* check address node */
@@ -115,7 +115,7 @@ enable_subtree_test(void **state)
    /* check ietf-interfaces:interfaces */
    assert_true(dm_is_node_enabled(module->data));
 
-   rc = rp_dt_enable_xpath(ctx, l);
+   rc = rp_dt_enable_xpath(ctx, session, l);
    assert_int_equal(SR_ERR_OK, rc);
 
    xp_free_loc_id(l);
@@ -128,12 +128,12 @@ enable_subtree_test(void **state)
    rc = xp_char_to_loc_id("/example-module:container/list/leaf", &l);
    assert_int_equal(SR_ERR_OK, rc);
 
-   rc = rp_dt_enable_xpath(ctx, l);
+   rc = rp_dt_enable_xpath(ctx, session, l);
    assert_int_equal(SR_ERR_OK, rc);
 
    module = NULL;
    match = NULL;
-   rc = rp_dt_validate_node_xpath(ctx, l, &module, &match);
+   rc = rp_dt_validate_node_xpath(ctx, session, l, &module, &match);
    assert_int_equal(SR_ERR_OK, rc);
 
    /* check leaf node */
@@ -178,7 +178,7 @@ edit_enabled(void **state)
    rc = xp_char_to_loc_id("/example-module:container/list/leaf", &l);
    assert_int_equal(SR_ERR_OK, rc);
 
-   rc = rp_dt_enable_xpath(ctx, l);
+   rc = rp_dt_enable_xpath(ctx, session, l);
    assert_int_equal(SR_ERR_OK, rc);
 
    rc = rp_dt_set_item(ctx, session, "/example-module:container/list[key1='a'][key2='b']/leaf", SR_EDIT_DEFAULT, &val);

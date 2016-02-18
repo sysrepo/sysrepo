@@ -41,7 +41,6 @@
 #include "sr_btree.h"
 
 #include "sysrepo.pb-c.h"
-#include "data_manager.h"
 
 #define CHECK_NULL_ARG__INTERNAL(ARG) \
     if (NULL == ARG) { \
@@ -264,6 +263,9 @@ int sr_save_data_tree_file(const char *file_name, const struct lyd_node *data_tr
  * @return duplicated datatree or NULL in case of error
  */
 struct lyd_node* sr_dup_datatree(struct lyd_node *root);
+
+/* forward declaration */
+typedef struct dm_data_info_s dm_data_info_t;
 
 /**
  * lyd_unlink wrapper handles the unlink of the root_node

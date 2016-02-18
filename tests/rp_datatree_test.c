@@ -448,13 +448,8 @@ void get_values_opts_test(void **state) {
     sr_free_values_arr(values, count);
 
     rc = rp_dt_get_values_wrapper_with_opts(ctx, ses_ctx, &get_items_ctx, EX_CONT, true, 100, 1, &values, &count);
-    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
     assert_string_equal(EX_CONT, get_items_ctx.xpath);
-    for (size_t i=0; i < count; i++){
-        puts(values[i]->xpath);
-    }
-    sr_free_values_arr(values, count);
-
 
     rc = rp_dt_get_values_wrapper_with_opts(ctx, ses_ctx, &get_items_ctx, "/example-module:", true, 0, 10, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);

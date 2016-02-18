@@ -163,6 +163,19 @@ void check_parsing(void **state){
 
 }
 
+void
+cpy_up_to_node_test(void **state)
+{
+    xp_loc_id_t *l = NULL;
+    assert_int_equal(0, xp_char_to_loc_id("/module:container/list[key1='a'][key2='b']/leaf",&l));
+
+    char *up_to_cont = XP_CPY_UP_TO_NODE(l, 0);
+    assert_non_null(up_to_cont);
+    assert_string_equal(up_to_cont,"/module:container");
+    free(up_to_cont);
+    xp_free_loc_id(l);
+}
+
 int main(){
 
     const struct CMUnitTest tests[] = {
@@ -173,6 +186,7 @@ int main(){
             cmocka_unit_test_setup_teardown(check_keys, setup, teardown),
             cmocka_unit_test(check_parsing),
             cmocka_unit_test(check_module_xpath),
+            cmocka_unit_test(cpy_up_to_node_test),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);

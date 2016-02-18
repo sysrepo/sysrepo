@@ -141,9 +141,11 @@ cl_session_set_error(sr_session_ctx_t *session, const char *error_message, const
         /* space for the error already allocated, release old error data */
         if (NULL != session->error_info[0].message) {
             free((void*)session->error_info[0].message);
+            session->error_info[0].message = NULL;
         }
         if (NULL != session->error_info[0].path) {
             free((void*)session->error_info[0].path);
+            session->error_info[0].path = NULL;
         }
     }
     if (NULL != error_message) {
