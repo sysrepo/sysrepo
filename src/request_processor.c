@@ -124,6 +124,26 @@ rp_list_schemas_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session,
     return rc;
 }
 
+static int
+rp_report_errors(Sr__Msg *msg, dm_session_t *dm_session)
+{
+    CHECK_NULL_ARG2(msg, dm_session);
+    int rc = SR_ERR_OK;
+
+    if (!dm_has_error(dm_session)){
+        return SR_ERR_OK;
+    }
+
+    msg->response->error = calloc(1, sizeof(Sr__Error));
+    if (NULL == msg->response->error){
+        SR_LOG_ERR_MSG("Memory allocation failed");
+        return SR_ERR_NOMEM;
+    }
+    sr__error__init(msg->response->error);
+    rc = dm_copy_errors(dm_session, &msg->response->error->message, &msg->response->error->path);
+    return rc;
+}
+
 /**
  * @brief Processes a get_item request.
  */
@@ -162,6 +182,11 @@ rp_get_item_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr_
 
     /* set response code */
     resp->response->result = rc;
+
+    rc = rp_report_errors(resp, session->dm_session);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Copying errors to gpb failed");
+    }
 
     rc = cm_msg_send(rp_ctx->cm_ctx, resp);
 
@@ -247,6 +272,11 @@ cleanup:
     /* set response code */
     resp->response->result = rc;
 
+    rc = rp_report_errors(resp, session->dm_session);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Copying errors to gpb failed");
+    }
+
     rc = cm_msg_send(rp_ctx->cm_ctx, resp);
     for (size_t i = 0; i< count; i++){
         sr_free_val(values[i]);
@@ -307,6 +337,11 @@ rp_set_item_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr_
     /* set response code */
     resp->response->result = rc;
 
+    rc = rp_report_errors(resp, session->dm_session);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Copying errors to gpb failed");
+    }
+
     /* send the response */
     rc = cm_msg_send(rp_ctx->cm_ctx, resp);
 
@@ -346,6 +381,11 @@ rp_delete_item_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
     /* set response code */
     resp->response->result = rc;
 
+    rc = rp_report_errors(resp, session->dm_session);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Copying errors to gpb failed");
+    }
+
     /* send the response */
     rc = cm_msg_send(rp_ctx->cm_ctx, resp);
 
@@ -379,6 +419,11 @@ rp_move_item_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr
 
     /* set response code */
     resp->response->result = rc;
+
+    rc = rp_report_errors(resp, session->dm_session);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Copying errors to gpb failed");
+    }
 
     /* send the response */
     rc = cm_msg_send(rp_ctx->cm_ctx, resp);
@@ -489,6 +534,11 @@ rp_discard_changes_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *sessi
     /* set response code */
     resp->response->result = rc;
 
+    rc = rp_report_errors(resp, session->dm_session);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Copying errors to gpb failed");
+    }
+
     /* send the response */
     rc = cm_msg_send(rp_ctx->cm_ctx, resp);
 
@@ -506,6 +556,7 @@ rp_msg_dispatch(const rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
     CHECK_NULL_ARG3(rp_ctx, session, msg);
 
     if (SR__MSG__MSG_TYPE__REQUEST == msg->type) {
+        dm_clear_session_errors(session->dm_session);
         /* request handling */
         switch (msg->request->operation) {
             case SR__OPERATION__LIST_SCHEMAS:

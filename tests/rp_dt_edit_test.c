@@ -82,7 +82,7 @@ void delete_item_leaf_test(void **state){
 
     /* deleting non existing leaf with strict should fail*/
     rc = rp_dt_delete_item(ctx, session, "/example-module:container/list[key1='abc'][key2='abc']/leaf", SR_EDIT_STRICT);
-    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+    assert_int_equal(SR_ERR_DATA_MISSING, rc);
 
     /* delete key leaf is not allowed */
     rc = rp_dt_delete_item(ctx, session, "/example-module:container/list[key1='key1'][key2='key2']/key1", SR_EDIT_DEFAULT);
@@ -128,7 +128,7 @@ void delete_item_container_test(void **state){
     assert_int_equal(SR_ERR_OK, rc);
 
     rc = rp_dt_delete_item(ctx, session, CONTAINER_XP , SR_EDIT_STRICT);
-    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+    assert_int_equal(SR_ERR_DATA_MISSING, rc);
 
     dm_session_stop(ctx, session);
 
@@ -139,7 +139,7 @@ void delete_item_container_test(void **state){
     sr_free_val(val);
 
     rc = rp_dt_delete_item(ctx, session, CONTAINER_XP , SR_EDIT_NON_RECURSIVE);
-    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+    assert_int_equal(SR_ERR_DATA_EXISTS, rc);
 
     dm_session_stop(ctx, session);
 }
@@ -197,7 +197,7 @@ void delete_item_list_test(void **state){
     assert_int_equal(SR_ERR_OK, rc);
 
     rc = rp_dt_delete_item(ctx, session, LIST_INST1_XP, SR_EDIT_STRICT);
-    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+    assert_int_equal(SR_ERR_DATA_MISSING, rc);
 
     dm_session_stop(ctx, session);
 
@@ -218,10 +218,10 @@ void delete_item_list_test(void **state){
 
     /* list deletion with non recursive fails*/
     rc = rp_dt_delete_item(ctx, session, LIST_INST1_XP , SR_EDIT_NON_RECURSIVE);
-    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+    assert_int_equal(SR_ERR_DATA_EXISTS, rc);
 
     rc = rp_dt_delete_item(ctx, session, "/example-module:container/list[key1='key1'][key2='key2']" , SR_EDIT_NON_RECURSIVE);
-    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+    assert_int_equal(SR_ERR_DATA_EXISTS, rc);
 
     /* delete the leaf, so the list contains only keys*/
     rc = rp_dt_delete_item(ctx, session, "/example-module:container/list[key1='key1'][key2='key2']/leaf" , SR_EDIT_NON_RECURSIVE);
@@ -247,16 +247,16 @@ void delete_whole_module_test(void **state)
     /* delete whole module */
     dm_session_start(ctx, SR_DS_STARTUP, &session);
 
-    /* module xpath must be called with non recursive*/
+    /* module xpath must not be called with non recursive*/
     rc = rp_dt_delete_item(ctx, session, "/test-module:", SR_EDIT_NON_RECURSIVE);
-    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+    assert_int_equal(SR_ERR_DATA_EXISTS, rc);
 
     rc = rp_dt_delete_item(ctx, session, "/test-module:", SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
     /* data tree is already empty can not be called with strict*/
     rc = rp_dt_delete_item(ctx, session, "/test-module:", SR_EDIT_STRICT);
-    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+    assert_int_equal(SR_ERR_DATA_MISSING, rc);
 
     sr_val_t **values = NULL;
     size_t cnt = 0;
@@ -287,7 +287,7 @@ void delete_item_alllist_test(void **state){
 
     /* delete with non recursive should fail*/
     rc = rp_dt_delete_item(ctx, session, LIST_XP, SR_EDIT_NON_RECURSIVE);
-    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+    assert_int_equal(SR_ERR_DATA_EXISTS, rc);
 
     /* items should remain in place*/
     rc = rp_dt_get_values_wrapper(ctx, session, LIST_XP, &values, &count);
@@ -308,7 +308,7 @@ void delete_item_alllist_test(void **state){
 
     /* delete non existing with strict should fail*/
     rc = rp_dt_delete_item(ctx, session, LIST_XP, SR_EDIT_STRICT);
-    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+    assert_int_equal(SR_ERR_DATA_MISSING, rc);
 
     dm_session_stop(ctx, session);
 }
@@ -358,8 +358,9 @@ void set_item_leaf_test(void **state){
     val->data.string_val = strdup("abcdef");
     assert_non_null(val->data.string_val);
 
+    /* existing leaf */
     rc = rp_dt_set_item(ctx, session, val->xpath, SR_EDIT_STRICT, val);
-    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+    assert_int_equal(SR_ERR_DATA_EXISTS, rc);
 
     rc = rp_dt_set_item(ctx, session, val->xpath, SR_EDIT_DEFAULT, val);
     assert_int_equal(SR_ERR_OK, rc);
@@ -385,7 +386,7 @@ void set_item_leaf_test(void **state){
 
     /* creating with non recursive with missing parent not*/
     rc = rp_dt_set_item(ctx, session, val->xpath, SR_EDIT_NON_RECURSIVE, val);
-    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+    assert_int_equal(SR_ERR_DATA_MISSING, rc);
 
     rc = rp_dt_set_item(ctx, session, val->xpath, SR_EDIT_DEFAULT, val);
     assert_int_equal(SR_ERR_OK, rc);
@@ -525,7 +526,7 @@ void set_item_list_test(void **state){
     assert_int_equal(SR_ERR_OK, rc);
 
     rc = rp_dt_set_item(ctx, session, "/example-module:container/list[key1='new_key1'][key2='new_key2']", SR_EDIT_STRICT, NULL);
-    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+    assert_int_equal(SR_ERR_DATA_EXISTS, rc);
 
     dm_session_stop(ctx, session);
 }
@@ -557,7 +558,7 @@ void set_item_container_test(void **state){
 
     /* set existing fails with strict opt*/
     rc = rp_dt_set_item(ctx, session, "/test-module:list[key='key']/wireless", SR_EDIT_STRICT, NULL);
-    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+    assert_int_equal(SR_ERR_DATA_EXISTS, rc);
 
     dm_session_stop(ctx, session);
 }
