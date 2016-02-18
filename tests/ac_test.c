@@ -222,14 +222,14 @@ ac_test_identity_switch(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 
     /* set effective user to sudo parent user (if possible) */
-    ac_ucred_t credentials2 = { 0 };
-    credentials2.r_username = getenv("USER");
-    credentials2.r_uid = getuid();
-    credentials2.r_gid = getgid();
+    ac_ucred_t credentials1 = { 0 };
+    credentials1.r_username = getenv("USER");
+    credentials1.r_uid = getuid();
+    credentials1.r_gid = getgid();
     if (proc_sudo) {
-        credentials2.e_username = getenv("SUDO_USER");
-        credentials2.e_uid = atoi(getenv("SUDO_UID"));
-        credentials2.e_gid = atoi(getenv("SUDO_GID"));
+        credentials1.e_username = getenv("SUDO_USER");
+        credentials1.e_uid = atoi(getenv("SUDO_UID"));
+        credentials1.e_gid = atoi(getenv("SUDO_GID"));
     }
 
     /* make sure we can access passwd as expected */
@@ -242,7 +242,7 @@ ac_test_identity_switch(void **state)
     close(fd);
 
     /* switch identity */
-    rc = ac_set_user_identity(ctx, &credentials2);
+    rc = ac_set_user_identity(ctx, &credentials1);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* check access */
@@ -267,6 +267,28 @@ ac_test_identity_switch(void **state)
         assert_int_equal(fd, -1);
     }
     close(fd);
+
+    if (proc_sudo) {
+        /* try this only if running under sudo */
+
+        /* set real user to sudo parent user */
+        ac_ucred_t credentials2 = { 0 };
+        credentials2.r_username = getenv("SUDO_USER");
+        credentials2.r_uid = atoi(getenv("SUDO_UID"));
+        credentials2.r_gid = atoi(getenv("SUDO_GID"));
+
+        /* switch identity to credentials2 */
+        rc = ac_set_user_identity(ctx, &credentials2);
+        assert_int_equal(rc, SR_ERR_OK);
+
+        /* check access - expect error */
+        fd = open("/etc/passwd", O_RDWR);
+        assert_int_equal(fd, -1);
+
+        /* switch identity back */
+        rc = ac_unset_user_identity(ctx);
+        assert_int_equal(rc, SR_ERR_OK);
+    }
 
     /* cleanup */
     ac_cleanup(ctx);
@@ -300,7 +322,7 @@ ac_test_negative(void **state)
     xp_free_loc_id(loc_id);
 
     /* try only namespace */
-    rc = xp_char_to_loc_id("/non-existing-module:", &loc_id);
+    rc = xp_char_to_loc_id("/another-non-existing-module:", &loc_id);
     assert_int_equal(rc, SR_ERR_OK);
     rc = ac_check_node_permissions(session, loc_id, AC_OPER_READ);
     assert_int_equal(rc, SR_ERR_NOT_FOUND);
