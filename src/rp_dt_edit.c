@@ -39,6 +39,16 @@ typedef struct rp_dt_match_s {
     struct lyd_node *node;          /**< Deepest match */
 }rp_dt_match_t;
 
+/**
+ * @brief Fills the rp_dt_match_t structure. Converts xpath to location id, validates xpath,
+ * and calls ::rp_dt_find_deepest_match. If the xpath identifies whole module matching
+ * is not done only match->info is set.
+ * @param [in] ctx
+ * @param [in] session
+ * @param [in] xpath
+ * @param [in] match
+ * @return Error code (SR_ERR_OK on success), SR_ERR_NOT_FOUND, SR_ERR_UNKNOWN_MODEL, SR_ERR_BAD_ELEMENT
+ */
 static int
 rp_dt_find_deepest_match_wrapper(dm_ctx_t *ctx, dm_session_t *session, const char * xpath, rp_dt_match_t *match)
 {
@@ -78,7 +88,11 @@ cleanup:
 }
 
 /**
- * @brief Checks if the node has a key with the name
+ * @brief Checks if the node has a key with the name and sets res.
+ * @param [in] node
+ * @param [in] name
+ * @param [out] res
+ * @return Error code (SR_ERR_OK on success)
  */
 static int
 rp_dt_has_key(const struct lyd_node *node, const char *name, bool *res)
@@ -105,6 +119,10 @@ rp_dt_has_key(const struct lyd_node *node, const char *name, bool *res)
 /**
  * @brief Function creates list key nodes at the selected level and append them
  * to the provided parent. If there are no keys at the selected level it does nothing.
+ * @param [in] match
+ * @param [in] parent
+ * @param [in] level
+ * @return Error code (SR_ERR_OK on success)
  */
 static int
 rp_dt_create_keys(rp_dt_match_t *match, struct lyd_node *parent, size_t level)
@@ -137,6 +155,14 @@ cleanup:
     return SR_ERR_INTERNAL;
 }
 
+/**
+ * @brief Looks up the first sibling in specified direction with the name same as provide.
+ * @param [in] info
+ * @param [in] start_node
+ * @param [in] direction
+ * @param [out] sibling
+ * @return Error code (SR_ERR_OK on success) SR_ERR_NOT_FOUND
+ */
 static int
 rp_dt_find_closest_sibling_by_name(dm_data_info_t *info, struct lyd_node *start_node, sr_move_direction_t direction, struct lyd_node **sibling)
 {

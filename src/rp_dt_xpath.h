@@ -40,7 +40,8 @@
 int rp_dt_create_xpath_for_node(const struct lyd_node *node, char **xpath);
 
 /**
- * @brief Validates the location_id with schema. Functions does the following checks:
+ * @brief Validates the location_id with schema. If the provided xpath identifies whole
+ * module it only validates if the module exists. For other xpaths, functions does the following checks:
  * - tests if the top level node's namespace is specified
  * - tests if the model exists (if not returns SR_ERR_UNKNOWN_MODEL)
  * - tests if the nodes exists in the model (if not returns SR_ERR_BAD_ELEMENT)
@@ -50,7 +51,7 @@ int rp_dt_create_xpath_for_node(const struct lyd_node *node, char **xpath);
  * @param [in] loc_id input to be validated
  * @param [out] module pointer to the module where the xpath is pointing (in case of augment, augmented module)
  * @param [out] match schema node is returned if NULL is not passed
- * @return Error code (SR_ERR_OK on success)
+ * @return Error code (SR_ERR_OK on success) SR_ERR_UNKNOWN_MODEL, SR_ERR_BAD_ELEMENT
  */
 int rp_dt_validate_node_xpath(dm_ctx_t *dm_ctx, dm_session_t *session, const xp_loc_id_t *loc_id, const struct lys_module **matched_module, struct lys_node **match);
 
