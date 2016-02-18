@@ -284,6 +284,7 @@ ac_check_node_permissions(ac_session_t *session, const xp_loc_id_t *node_xpath, 
 {
     ac_module_info_t lookup_info = {0,};
     ac_module_info_t *module_info = NULL;
+    char *file_name = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG2(session, node_xpath);
@@ -332,7 +333,13 @@ ac_check_node_permissions(ac_session_t *session, const xp_loc_id_t *node_xpath, 
     }
 
     /* do the check */
-    rc = ac_check_file_permissions(session, "/etc/passwd", operation); // TODO filename from module name
+    rc = sr_get_data_file_name(module_info->module_name, SR_DS_STARTUP, &file_name);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Retrieving data file name failed.");
+        return rc;
+    }
+    rc = ac_check_file_permissions(session, file_name, operation);
+    free(file_name);
 
     /* save the result in the cache */
     if (AC_OPER_READ == operation) {
@@ -365,6 +372,11 @@ ac_check_file_permissions(ac_session_t *session, const char *file_name, const ac
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR("User '%s' not authorized for %s access to the file '%s'.", session->user_credentials->r_username,
                     (AC_OPER_READ == operation ? "read" : "write"), file_name);
+        }
+        if (NULL != session->user_credentials->e_username) {
+            SR_LOG_ERR_MSG("Sysrepo Engine runs within an unprivileged process and effective user has been provided, "
+                    "unable to check effective user permissions.");
+            return SR_ERR_UNAUTHORIZED;
         }
         return rc;
     }

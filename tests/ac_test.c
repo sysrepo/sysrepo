@@ -28,6 +28,7 @@
 
 #include "sr_common.h"
 #include "access_control.h"
+#include "test_module_helper.h"
 
 static int
 logging_setup(void **state)
@@ -47,42 +48,120 @@ logging_cleanup(void **state)
 }
 
 static void
-ac_test1(void **state)
+ac_test_unpriviledged(void **state)
 {
     ac_ctx_t *ctx = NULL;
     ac_session_t *session = NULL;
     xp_loc_id_t *loc_id = NULL;
     int rc = SR_ERR_OK;
 
+    if (0 == getuid()) {
+        /* run the test only for unprivileged user */
+        return;
+    }
+
+    /* set real user to current user */
     ac_ucred_t credentials = { 0 };
     credentials.r_username = getenv("USER");
     credentials.r_uid = getuid();
     credentials.r_gid = getgid();
-//    credentials.e_username = "rasto";
-//    credentials.e_uid = 1000;
-//    credentials.e_gid = 1000;
 
+    /* init */
     rc = ac_init(&ctx);
     assert_int_equal(rc, SR_ERR_OK);
-
     rc = ac_session_init(ctx, &credentials, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = xp_char_to_loc_id("/example-module:container/leaf", &loc_id);
+    /* node permission checks */
+    rc = xp_char_to_loc_id(XP_TEST_MODULE_STRING, &loc_id);
     assert_int_equal(rc, SR_ERR_OK);
 
     rc = ac_check_node_permissions(session, loc_id, AC_OPER_READ);
     assert_int_equal(rc, SR_ERR_OK);
 
+    rc = ac_check_node_permissions(session, loc_id, AC_OPER_READ_WRITE);
+    assert_int_equal(rc, SR_ERR_OK);
+
     rc = ac_check_node_permissions(session, loc_id, AC_OPER_READ);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = ac_check_node_permissions(session, loc_id, AC_OPER_READ_WRITE);
     assert_int_equal(rc, SR_ERR_OK);
 
     xp_free_loc_id(loc_id);
-    loc_id = NULL;
 
+    /* file permission checks */
     rc = ac_check_file_permissions(session, "/etc/passwd", AC_OPER_READ);
     assert_int_equal(rc, SR_ERR_OK);
 
+    rc = ac_check_file_permissions(session, "/etc/passwd", AC_OPER_READ_WRITE);
+    assert_int_equal(rc, SR_ERR_UNAUTHORIZED);
+
+    /* cleanup */
+    ac_session_cleanup(session);
+    ac_cleanup(ctx);
+}
+
+static void
+ac_test_priviledged(void **state)
+{
+    ac_ctx_t *ctx = NULL;
+    ac_session_t *session = NULL;
+    xp_loc_id_t *loc_id = NULL;
+    int rc = SR_ERR_OK;
+
+    if (0 != getuid()) {
+        /* run the test only for privileged user */
+        return;
+    }
+
+    /* set real user to current user */
+    ac_ucred_t credentials1 = { 0 };
+    credentials1.r_username = getenv("USER");
+    credentials1.r_uid = getuid();
+    credentials1.r_gid = getgid();
+
+    /* set real user to current user */
+    ac_ucred_t credentials2 = { 0 };
+    credentials2.r_username = getenv("USER");
+    credentials2.r_uid = getuid();
+    credentials2.r_gid = getgid();
+    credentials2.e_username = getenv("SUDO_USER");
+    credentials2.e_uid = getenv("SUDO_UID");
+    credentials2.e_gid = getenv("SUDO_GID");
+
+    /* init */
+    rc = ac_init(&ctx);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = ac_session_init(ctx, &credentials1, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* node permission checks */
+    rc = xp_char_to_loc_id(XP_TEST_MODULE_STRING, &loc_id);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = ac_check_node_permissions(session, loc_id, AC_OPER_READ);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = ac_check_node_permissions(session, loc_id, AC_OPER_READ_WRITE);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = ac_check_node_permissions(session, loc_id, AC_OPER_READ);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = ac_check_node_permissions(session, loc_id, AC_OPER_READ_WRITE);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    xp_free_loc_id(loc_id);
+
+    /* file permission checks */
+    rc = ac_check_file_permissions(session, "/etc/passwd", AC_OPER_READ);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = ac_check_file_permissions(session, "/etc/passwd", AC_OPER_READ_WRITE);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* cleanup */
     ac_session_cleanup(session);
     ac_cleanup(ctx);
 }
@@ -90,7 +169,8 @@ ac_test1(void **state)
 int
 main() {
     const struct CMUnitTest tests[] = {
-            cmocka_unit_test_setup_teardown(ac_test1, logging_setup, logging_cleanup),
+            cmocka_unit_test_setup_teardown(ac_test_unpriviledged, logging_setup, logging_cleanup),
+            cmocka_unit_test_setup_teardown(ac_test_priviledged, logging_setup, logging_cleanup),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);
