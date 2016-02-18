@@ -1,7 +1,7 @@
 /**
  * @defgroup rp_xp Request Processor's xpath Helpers
  * @{
- * @brief Functions for creating xpath.
+ * @brief Functions for creating and validating xpath.
  * @file rp_xpath.h
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
  * @brief

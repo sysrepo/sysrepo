@@ -294,9 +294,15 @@ int
 rp_dt_get_value(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp_loc_id_t *loc_id, bool check_enabled, sr_val_t **value)
 {
     CHECK_NULL_ARG4(dm_ctx, data_tree, loc_id, value);
+    CHECK_NULL_ARG(loc_id->xpath);
     int rc = 0;
     struct lyd_node *node = NULL;
-    rc = rp_dt_get_node(dm_ctx, data_tree, loc_id, check_enabled, &node);
+    if (XP_IS_MODULE_XPATH(loc_id)) {
+        SR_LOG_ERR("Module xpath %s can not be use in get_node call", loc_id->xpath);
+        return SR_ERR_INVAL_ARG;
+    }
+
+    rc = rp_dt_lookup_node(data_tree, loc_id, false, check_enabled, &node);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Node not found for xpath %s", loc_id->xpath);
         return rc;
