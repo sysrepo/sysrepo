@@ -30,8 +30,8 @@
 #include "data_manager.h"
 #include "test_data.h"
 
-#define MODULE_PATH TEST_SCHEMA_SEARCH_DIR "/example-module.yin"
-#define DATA_PATH TEST_DATA_SEARCH_DIR "example-module" DM_STARTUP_SUFFIX
+#define MODULE_PATH TEST_SCHEMA_SEARCH_DIR "example-module" SR_SCHEMA_YIN_FILE_EXT
+#define DATA_PATH TEST_DATA_SEARCH_DIR "example-module" SR_STARTUP_FILE_EXT
 
 
 int setup(void **state){

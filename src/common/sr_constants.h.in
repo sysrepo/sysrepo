@@ -34,10 +34,22 @@
 #cmakedefine USE_AVL_LIB
 
 /** Path to the directory with schemas. */
-#define DM_SCHEMA_SEARCH_DIR "@SCHEMA_SEARCH_DIR@"
+#define SR_SCHEMA_SEARCH_DIR "@SCHEMA_SEARCH_DIR@"
 
 /** Path to the directory with data files. */
-#define DM_DATA_SEARCH_DIR "@DATA_SEARCH_DIR@"
+#define SR_DATA_SEARCH_DIR "@DATA_SEARCH_DIR@"
+
+/** File extension of data files for startup datastore */
+#define SR_STARTUP_FILE_EXT ".startup"
+
+/** File extension of data files for running datastore */
+#define SR_RUNNING_FILE_EXT ".running"
+
+/** File extension of YANG schema files */
+#define SR_SCHEMA_YANG_FILE_EXT ".yang"
+
+/** File extension of YIN schema files */
+#define SR_SCHEMA_YIN_FILE_EXT ".yin"
 
 /** Sysrepo daemon working directory. */
 #define SR_DEAMON_WORK_DIR "/"

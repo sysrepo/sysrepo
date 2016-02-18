@@ -525,6 +525,29 @@ int sr_gpb_fill_errors(sr_error_info_t *sr_errors, size_t sr_error_cnt, Sr__Erro
  */
 void sr_free_errors(sr_error_info_t *sr_errors, size_t sr_error_cnt);
 
+/**
+ * @brief Creates the data file name corresponding to the module_name (schema). Function does not check if the schema name
+ * is valid. The file name is allocated on heap and needs to be freed by caller. Returns SR_ERR_OK or SR_ERR_NOMEM
+ * if memory allocation failed.
+ * @param [in] dm_ctx
+ * @param [in] module_name
+ * @param [in] ds
+ * @param [out] file_name
+ * @return err_code
+ */
+int sr_get_data_file_name(const dm_ctx_t *dm_ctx, const char *module_name, const sr_datastore_t ds, char **file_name);
+
+/**
+ * @brief Creates the schema file name corresponding to the module_name (schema). Function does not check if the schema name
+ * is valid. The file name is allocated on heap and needs to be freed by caller. Returns SR_ERR_OK or SR_ERR_NOMEM
+ * if memory allocation failed.
+ * @param [in] dm_ctx
+ * @param [in] module_name
+ * @param [out] file_name
+ * @return err_code
+ */
+int sr_get_schema_file_name(const dm_ctx_t *dm_ctx, const char *module_name, char **file_name);
+
 /**@} common */
 
 #endif /* SRC_SR_COMMON_H_ */

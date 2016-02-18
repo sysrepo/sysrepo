@@ -697,7 +697,7 @@ rp_init(cm_ctx_t *cm_ctx, rp_ctx_t **rp_ctx_p)
     }
 
     /* initialize Data Manager */
-    rc = dm_init(DM_SCHEMA_SEARCH_DIR, DM_DATA_SEARCH_DIR, &ctx->dm_ctx);
+    rc = dm_init(SR_SCHEMA_SEARCH_DIR, SR_DATA_SEARCH_DIR, &ctx->dm_ctx);
     if (SR_ERR_OK != rc){
         SR_LOG_ERR_MSG("Data Manager initialization failed.");
         goto cleanup;

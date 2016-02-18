@@ -1838,3 +1838,32 @@ sr_free_errors(sr_error_info_t *errors, size_t error_cnt)
     }
 }
 
+int
+sr_get_data_file_name(const dm_ctx_t *dm_ctx, const char *module_name, const sr_datastore_t ds, char **file_name)
+{
+    CHECK_NULL_ARG3(dm_ctx, module_name, file_name);
+    char *tmp = NULL;
+    int rc = sr_str_join(SR_DATA_SEARCH_DIR, module_name, &tmp);
+    if (SR_ERR_OK == rc) {
+        char *suffix = SR_DS_STARTUP == ds ? SR_STARTUP_FILE_EXT : SR_RUNNING_FILE_EXT;
+        rc = sr_str_join(tmp, suffix, file_name);
+        free(tmp);
+        return rc;
+    }
+    return SR_ERR_NOMEM;
+}
+
+int
+sr_get_schema_file_name(const dm_ctx_t *dm_ctx, const char *module_name, char **file_name)
+{
+    CHECK_NULL_ARG3(dm_ctx, module_name, file_name);
+    char *tmp = NULL;
+    int rc = sr_str_join(SR_SCHEMA_SEARCH_DIR, module_name, &tmp);
+    if (SR_ERR_OK == rc) {
+        rc = sr_str_join(tmp, SR_SCHEMA_YANG_FILE_EXT, file_name);
+        free(tmp);
+        return rc;
+    }
+    return SR_ERR_NOMEM;
+}
+

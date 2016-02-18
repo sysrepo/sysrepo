@@ -158,7 +158,7 @@ edit_enabled(void **state)
 {
    int rc = 0;
    dm_ctx_t *ctx = NULL;
-   rc = dm_init(DM_SCHEMA_SEARCH_DIR, DM_DATA_SEARCH_DIR, &ctx);
+   rc = dm_init(SR_SCHEMA_SEARCH_DIR, SR_DATA_SEARCH_DIR, &ctx);
    assert_int_equal(SR_ERR_OK, rc);
 
    dm_session_t *session = NULL;

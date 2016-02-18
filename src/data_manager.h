@@ -33,17 +33,6 @@
 #include <sys/stat.h>
 #include "sysrepo.h"
 
-
-/**
- * @brief suffix of data file for startup datastore
- */
-#define DM_STARTUP_SUFFIX ".startup"
-
-/**
- * @brief suffix of data file for running datastore
- */
-#define DM_RUNNING_SUFFIX ".running"
-
 /**
  * @brief Structure that holds the context of an instance of Data Manager.
  */
@@ -53,7 +42,6 @@ typedef struct dm_ctx_s dm_ctx_t;
  * @brief Structure that holds Data Manager's per-session context.
  */
 typedef struct dm_session_s dm_session_t;
-
 
 /**
  * @brief Structure holds data tree related info
