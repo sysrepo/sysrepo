@@ -33,8 +33,8 @@
  * @param [in] dm_ctx
  * @param [in] session
  * @param [in] xpath
- * @param [in] options If the nodes can not be delete because of the option SR_ERR_INVAL_ARG is returned
- * @return Error code (SR_ERR_OK on success) SR_ERR_UNKNOWN_MODEL, SR_ERR_BAD_ELEMENT
+ * @param [in] options If the nodes can not be delete because of the option SR_ERR_DATA_MISSING or SR_ERR_DATA_EXISTS is returned
+ * @return Error code (SR_ERR_OK on success) SR_ERR_DATA_MISSING, SR_ERR_DATA_EXISTS, SR_ERR_UNKNOWN_MODEL, SR_ERR_BAD_ELEMENT
  */
 int rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const sr_edit_flag_t options);
 
@@ -47,7 +47,7 @@ int rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath
  * @param [in] xpath
  * @param [in] options If the node can not be created because of the option SR_ERR_INVAL_ARG is returned
  * @param [in] value the value to be set (xpath inside the structure is ignored), in case of presence container or list instance is ignored can be NULL
- * @return Error code (SR_ERR_OK on success) SR_ERR_UNKNOWN_MODEL, SR_ERR_BAD_ELEMENT
+ * @return Error code (SR_ERR_OK on success) SR_ERR_DATA_MISSING, SR_ERR_DATA_EXISTS, SR_ERR_UNKNOWN_MODEL, SR_ERR_BAD_ELEMENT
  */
 int rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const sr_edit_flag_t options, const sr_val_t *value);
 
