@@ -600,6 +600,16 @@ set_item_negative_test(void **state)
     assert_int_equal(SR_ERR_INVAL_ARG, rc);
 
     dm_session_stop(ctx, session);
+
+    dm_session_start(ctx, SR_DS_STARTUP, &session);
+
+    rc = rp_dt_delete_item(ctx, session, "/example-module:", SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_set_item(ctx, session, "/example-module:container/list[key1='key1'][key2='key2']", SR_EDIT_NON_RECURSIVE, NULL);
+    assert_int_equal(SR_ERR_DATA_MISSING, rc);
+
+    dm_session_stop(ctx, session);
 }
 
 void delete_get_set_get(dm_ctx_t *ctx, dm_session_t *session, const char* xpath, const sr_val_t *value, sr_val_t **new_set)

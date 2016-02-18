@@ -236,13 +236,6 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, co
             goto cleanup;
         }
 
-        if ((options & SR_EDIT_STRICT) && count == 0) {
-            SR_LOG_ERR("No item exists '%s' deleted with strict opt", xpath);
-            rc = dm_report_error(session, NULL, strdup(xpath), SR_ERR_DATA_MISSING);
-            free(nodes);
-            goto cleanup;
-        }
-
         /* delete all nodes */
         for (size_t i = 0; i < count; i++) {
             rc = sr_lyd_unlink(match.info, nodes[i]);
