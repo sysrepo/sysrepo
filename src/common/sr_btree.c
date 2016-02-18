@@ -123,7 +123,7 @@ sr_btree_insert(sr_btree_t *tree, void *item)
     avl_node_t *node = avl_insert(tree->avl_tree, item);
     if (NULL == node) {
         if (EEXIST == errno) {
-            return SR_ERR_EXISTS;
+            return SR_ERR_DATA_EXISTS;
         } else {
             return SR_ERR_NOMEM;
         }
@@ -133,7 +133,7 @@ sr_btree_insert(sr_btree_t *tree, void *item)
     if (NULL == tmp_item) {
         return SR_ERR_NOMEM;
     } else if(tmp_item != item) {
-        return SR_ERR_EXISTS;
+        return SR_ERR_DATA_EXISTS;
     }
 #endif
 

@@ -28,6 +28,7 @@
 #include <inttypes.h>
 
 #include "sr_common.h"
+#include "data_manager.h"
 
 /**
  * Sysrepo error descriptions.
@@ -47,7 +48,8 @@ const char *const sr_errlist[] = {
         "Request contains unknown element",     /* SR_ERR_BAD_ELEMENT */
         "Validation of the changes failed",     /* SR_ERR_VALIDATION_FAILED */
         "Commit operation failed",              /* SR_ERR_COMMIT_FAILED */
-        "The item already exists"               /* SR_ERR_EXISTS */
+        "The item already exists",              /* SR_ERR_DATA_EXISTS */
+        "The item expected to exist is missing" /* SR_ERR_DATA_MISSING */
 };
 
 const char *

@@ -33,21 +33,21 @@
  * @param [in] dm_ctx
  * @param [in] session
  * @param [in] xpath
- * @param [in] options
- * @return Error code (SR_ERR_OK on success)
+ * @param [in] options If the nodes can not be delete because of the option SR_ERR_DATA_MISSING or SR_ERR_DATA_EXISTS is returned
+ * @return Error code (SR_ERR_OK on success) SR_ERR_DATA_MISSING, SR_ERR_DATA_EXISTS, SR_ERR_UNKNOWN_MODEL, SR_ERR_BAD_ELEMENT
  */
 int rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const sr_edit_flag_t options);
 
 /**
- * @brief Function can create presence container, list instance, leaf, leaf-list item. If the xpath identifies leaf-list value is appended to the end
+ * @brief Function validates the xpath and then creates presence container, list instance, leaf, leaf-list item. If the xpath identifies leaf-list value is appended to the end
  * of the leaf-list. Value of the list key can not be set or changed. To create a list use
  * xpath including all list keys.
  * @param [in] dm_ctx
  * @param [in] session
  * @param [in] xpath
- * @param [in] options
+ * @param [in] options If the node can not be created because of the option SR_ERR_INVAL_ARG is returned
  * @param [in] value the value to be set (xpath inside the structure is ignored), in case of presence container or list instance is ignored can be NULL
- * @return Error code (SR_ERR_OK on success)
+ * @return Error code (SR_ERR_OK on success) SR_ERR_DATA_MISSING, SR_ERR_DATA_EXISTS, SR_ERR_UNKNOWN_MODEL, SR_ERR_BAD_ELEMENT
  */
 int rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const sr_edit_flag_t options, const sr_val_t *value);
 
@@ -58,7 +58,7 @@ int rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, c
  * @param [in] session
  * @param [in] xpath
  * @param [in] direction
- * @return Error code (SR_ERR_OK on success)
+ * @return Error code (SR_ERR_OK on success) SR_ERR_UNKNOWN_MODEL, SR_ERR_BAD_ELEMENT
  */
 int rp_dt_move_list(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, sr_move_direction_t direction);
 #endif /* RP_DT_EDIT_H */

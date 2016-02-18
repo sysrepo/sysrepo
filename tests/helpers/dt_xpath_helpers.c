@@ -78,6 +78,18 @@ rp_dt_get_nodes_xpath(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const 
 }
 
 int
+rp_dt_get_node(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp_loc_id_t *loc_id, bool check_enable, struct lyd_node **node)
+{
+    CHECK_NULL_ARG4(dm_ctx, data_tree, loc_id, node);
+    CHECK_NULL_ARG(loc_id->xpath);
+    if (XP_IS_MODULE_XPATH(loc_id)) {
+        SR_LOG_ERR("Module xpath %s can not be use in get_node call", loc_id->xpath);
+        return SR_ERR_INVAL_ARG;
+    }
+    return rp_dt_lookup_node(data_tree, loc_id, false, check_enable, node);
+}
+
+int
 rp_dt_get_node_xpath(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char *xpath, struct lyd_node **node)
 {
     CHECK_NULL_ARG4(dm_ctx, data_tree, xpath, node);
