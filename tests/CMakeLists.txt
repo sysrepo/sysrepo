@@ -37,7 +37,7 @@ macro(ADD_UNIT_TEST_WITH_HELPERS TEST_NAME)
     ADD_UNIT_TEST_WITH_OPTS(${TEST_NAME} "${t_files}" "" 1)
 endmacro(ADD_UNIT_TEST_WITH_HELPERS)
 
-ADD_UNIT_TEST(ac_test)
+ADD_UNIT_TEST_WITH_HELPERS(ac_test)
 ADD_UNIT_TEST(common_test)
 
 ADD_UNIT_TEST(xp_parser_test)
