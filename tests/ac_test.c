@@ -25,6 +25,7 @@
 #include <sys/socket.h>
 #include <setjmp.h>
 #include <cmocka.h>
+#include <fcntl.h>
 
 #include "sr_common.h"
 #include "access_control.h"
@@ -119,6 +120,7 @@ ac_test_priviledged(void **state)
         /* run the test only for privileged user */
         return;
     }
+    bool proc_sudo = (NULL != getenv("SUDO_USER")); /* running under sudo */
 
     /* set real user to current user */
     ac_ucred_t credentials1 = { 0 };
@@ -131,7 +133,7 @@ ac_test_priviledged(void **state)
     credentials2.r_username = getenv("USER");
     credentials2.r_uid = getuid();
     credentials2.r_gid = getgid();
-    if (NULL != getenv("SUDO_USER")) {
+    if (proc_sudo) {
         credentials2.e_username = getenv("SUDO_USER");
         credentials2.e_uid = atoi(getenv("SUDO_UID"));
         credentials2.e_gid = atoi(getenv("SUDO_GID"));
@@ -139,7 +141,7 @@ ac_test_priviledged(void **state)
 
     /* set real user to sudo parent user (if possible) */
     ac_ucred_t credentials3 = { 0 };
-    if (NULL != getenv("SUDO_USER")) {
+    if (proc_sudo) {
         credentials3.r_username = getenv("SUDO_USER");
         credentials3.r_uid = atoi(getenv("SUDO_UID"));
         credentials3.r_gid = atoi(getenv("SUDO_GID"));
@@ -156,7 +158,7 @@ ac_test_priviledged(void **state)
     assert_int_equal(rc, SR_ERR_OK);
     rc = ac_session_init(ctx, &credentials2, &session2);
     assert_int_equal(rc, SR_ERR_OK);
-    rc = ac_session_init(ctx, &credentials2, &session3);
+    rc = ac_session_init(ctx, &credentials3, &session3);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* node permission checks */
@@ -173,13 +175,13 @@ ac_test_priviledged(void **state)
     rc = ac_check_node_permissions(session2, loc_id, AC_OPER_READ);
     assert_int_equal(rc, SR_ERR_OK);
     rc = ac_check_node_permissions(session2, loc_id, AC_OPER_READ_WRITE);
-    assert_int_equal(rc, (credentials2.e_username != NULL ? SR_ERR_UNAUTHORIZED : SR_ERR_OK));
+    assert_int_equal(rc, (proc_sudo ? SR_ERR_UNAUTHORIZED : SR_ERR_OK));
 
     /* credentials 3 */
     rc = ac_check_node_permissions(session3, loc_id, AC_OPER_READ_WRITE);
-    assert_int_equal(rc, (credentials3.r_uid != 0 ? SR_ERR_UNAUTHORIZED : SR_ERR_OK));
+    assert_int_equal(rc, (proc_sudo ? SR_ERR_UNAUTHORIZED : SR_ERR_OK));
     rc = ac_check_node_permissions(session3, loc_id, AC_OPER_READ_WRITE);
-    assert_int_equal(rc, (credentials3.r_uid != 0 ? SR_ERR_UNAUTHORIZED : SR_ERR_OK));
+    assert_int_equal(rc, (proc_sudo ? SR_ERR_UNAUTHORIZED : SR_ERR_OK));
 
     xp_free_loc_id(loc_id);
 
@@ -195,7 +197,7 @@ ac_test_priviledged(void **state)
     rc = ac_check_file_permissions(session2, "/etc/passwd", AC_OPER_READ);
     assert_int_equal(rc, SR_ERR_OK);
     rc = ac_check_file_permissions(session2, "/etc/passwd", AC_OPER_READ_WRITE);
-    assert_int_equal(rc, (credentials2.e_username != NULL ? SR_ERR_UNAUTHORIZED : SR_ERR_OK));
+    assert_int_equal(rc, (proc_sudo ? SR_ERR_UNAUTHORIZED : SR_ERR_OK));
 
     /* cleanup */
     ac_session_cleanup(session1);
@@ -208,7 +210,11 @@ static void
 ac_test_identity_switch(void **state)
 {
     ac_ctx_t *ctx = NULL;
+    int fd = -1;
     int rc = SR_ERR_OK;
+
+    bool proc_priviledged = (getuid() == 0); /* running as privileged user */
+    bool proc_sudo = (NULL != getenv("SUDO_USER")); /* running under sudo */
 
     /* init */
     rc = ac_init(&ctx);
@@ -219,17 +225,47 @@ ac_test_identity_switch(void **state)
     credentials2.r_username = getenv("USER");
     credentials2.r_uid = getuid();
     credentials2.r_gid = getgid();
-    if (NULL != getenv("SUDO_USER")) {
+    if (proc_sudo) {
         credentials2.e_username = getenv("SUDO_USER");
         credentials2.e_uid = atoi(getenv("SUDO_UID"));
         credentials2.e_gid = atoi(getenv("SUDO_GID"));
     }
 
+    /* make sure we can access passwd as expected */
+    fd = open("/etc/passwd", O_RDWR);
+    if (proc_priviledged) {
+        assert_int_not_equal(fd, -1);
+    } else {
+        assert_int_equal(fd, -1);
+    }
+    close(fd);
+
+    /* switch identity */
     rc = ac_set_user_identity(ctx, &credentials2);
     assert_int_equal(rc, SR_ERR_OK);
 
+    /* check access */
+    fd = open("/etc/passwd", O_RDWR);
+    if (!proc_priviledged || proc_sudo) {
+        /* not privileged, or identity switched (in case of sudo) - expect error */
+        assert_int_equal(fd, -1);
+    } else {
+        /* privileged but ot sudo - expect success */
+        assert_int_not_equal(fd, -1);
+    }
+
+    /* switch identity back */
     rc = ac_unset_user_identity(ctx);
     assert_int_equal(rc, SR_ERR_OK);
+
+    /* make sure we can access passwd as before switching */
+    fd = open("/etc/passwd", O_RDWR);
+    if (proc_priviledged) {
+        assert_int_not_equal(fd, -1);
+    } else {
+        assert_int_equal(fd, -1);
+    }
+    close(fd);
 
     /* cleanup */
     ac_cleanup(ctx);
