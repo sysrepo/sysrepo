@@ -38,6 +38,7 @@ ac_test_setup(void **state)
     sr_logger_init("ac_test");
 
     unlink(TEST_MODULE_DATA_FILE_NAME);
+    umask(S_IWGRP | S_IWOTH);
     createDataTreeTestModule();
 
     return 0;
