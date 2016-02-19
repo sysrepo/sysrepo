@@ -333,7 +333,7 @@ ac_check_node_permissions(ac_session_t *session, const xp_loc_id_t *node_xpath, 
     }
 
     /* do the check */
-    rc = sr_get_data_file_name(module_info->module_name, SR_DS_STARTUP, &file_name);
+    rc = sr_get_data_file_name(SR_DATA_SEARCH_DIR, module_info->module_name, SR_DS_STARTUP, &file_name);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Retrieving data file name failed.");
         return rc;
