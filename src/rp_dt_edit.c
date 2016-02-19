@@ -549,7 +549,7 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const
     /* create all preceding nodes*/
     for (size_t n = m.level; n < XP_GET_NODE_COUNT(m.loc_id); n++) {
         node_name = XP_CPY_TOKEN(m.loc_id, XP_GET_NODE_TOKEN(m.loc_id, n));
-        if (XP_HAS_NODE_NS(m.loc_id, n) && !XP_CMP_NODE_NS(m.loc_id, n, module->name)) {
+        if (XP_HAS_NODE_NS(m.loc_id, n) && !XP_EQ_NODE_NS(m.loc_id, n, module->name)) {
             module_name = XP_CPY_NODE_NS(m.loc_id, n);
             if (NULL == module_name) {
                 SR_LOG_ERR_MSG("Copy of module name failed");

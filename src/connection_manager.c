@@ -32,7 +32,6 @@
 #include <pthread.h>
 #include <signal.h>
 #include <arpa/inet.h>
-#include <pwd.h>
 #include <ev.h>
 
 #include "sr_common.h"
@@ -432,7 +431,6 @@ static int
 cm_session_start_req_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, Sr__Msg *msg_in)
 {
     sm_session_t *session = NULL;
-    struct passwd *pws = NULL;
     Sr__Msg *msg = NULL;
     int rc = SR_ERR_OK;
 
@@ -440,12 +438,8 @@ cm_session_start_req_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, Sr__Msg *m
 
     SR_LOG_DBG("Processing session_start request (conn=%p).", (void*)conn);
 
-    /* retrieve real user name */
-    pws = getpwuid(conn->uid);
-
     /* create the session in SM */
-    rc = sm_session_create(cm_ctx->sm_ctx, conn, pws->pw_name,
-            msg_in->request->session_start_req->user_name, &session);
+    rc = sm_session_create(cm_ctx->sm_ctx, conn, msg_in->request->session_start_req->user_name, &session);
     if ((SR_ERR_OK != rc) || (NULL == session)) {
         SR_LOG_ERR("Unable to create the session in Session Manager (conn=%p).", (void*)conn);
         return rc;
@@ -479,7 +473,7 @@ cm_session_start_req_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, Sr__Msg *m
 
     /* start session in Request Processor */
     if (SR_ERR_OK == rc) {
-        rc = rp_session_start(cm_ctx->rp_ctx, session->real_user, session->effective_user, session->id,
+        rc = rp_session_start(cm_ctx->rp_ctx,  session->id, &session->credentials,
                 sr_datastore_gpb_to_sr(msg_in->request->session_start_req->datastore), &session->cm_data->rp_session);
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR("Cannot start Request Processor session (conn=%p).", (void*)conn);

@@ -225,7 +225,7 @@ session_start_stop(int fd)
     uint32_t session_id = 0;
 
     /* send session_start request */
-    cm_session_start_generate("alice", &msg_buf, &msg_size);
+    cm_session_start_generate("nobody", &msg_buf, &msg_size);
     cm_message_send(fd, msg_buf, msg_size);
     free(msg_buf);
 
@@ -318,7 +318,7 @@ cm_session_neg_test(void **state) {
 
     /* try to stop session via another connection */
     /* session_start request */
-    cm_session_start_generate("alice", &msg_buf, &msg_size);
+    cm_session_start_generate("nobody", &msg_buf, &msg_size);
     cm_message_send(fd1, msg_buf, msg_size);
     free(msg_buf);
     /* receive the response */
@@ -342,7 +342,7 @@ cm_session_neg_test(void **state) {
 
     /* try sending a response */
     /* session_start request */
-    cm_session_start_generate("alice", &msg_buf, &msg_size);
+    cm_session_start_generate("nobody", &msg_buf, &msg_size);
     cm_message_send(fd2, msg_buf, msg_size);
     free(msg_buf);
     /* receive the response */

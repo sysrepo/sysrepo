@@ -26,8 +26,11 @@
 #include <string.h>
 #include <assert.h>
 #include <time.h>
+#include <pwd.h>
+#include <sys/types.h>
 
 #include "sr_common.h"
+#include "access_control.h"
 #include "session_manager.h"
 
 #define SM_SESSION_ID_INVALID 0         /**< Invalid value of session id. */
@@ -97,8 +100,8 @@ sm_session_cleanup(void *session)
 {
     if (NULL != session) {
         sm_session_t *sm_session = (sm_session_t *)session;
-        free((void*)sm_session->real_user);
-        free((void*)sm_session->effective_user);
+        free((void*)sm_session->credentials.r_username);
+        free((void*)sm_session->credentials.e_username);
         /* cleanup Connection Manager-related data */
         if ((NULL != sm_session->sm_ctx) && (NULL != sm_session->sm_ctx->session_cleanup_cb)) {
             sm_session->sm_ctx->session_cleanup_cb(sm_session);
@@ -283,7 +286,7 @@ sm_connection_start(const sm_ctx_t *sm_ctx, const sm_connection_type_t type, con
     connection->type = type;
     connection->fd = fd;
 
-    /* set peer's uid and gid */
+    /* set peer's effective uid and gid */
     rc = sr_get_peer_eid(fd, &connection->uid, &connection->gid);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Cannot retrieve uid and gid of the peer.");
@@ -330,9 +333,10 @@ sm_connection_stop(const sm_ctx_t *sm_ctx,  sm_connection_t *connection)
 
 int
 sm_session_create(const sm_ctx_t *sm_ctx, sm_connection_t *connection,
-        const char *real_user, const char *effective_user, sm_session_t **session_p)
+        const char *effective_user, sm_session_t **session_p)
 {
     sm_session_t *session = NULL;
+    struct passwd *pws = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG2(sm_ctx, session_p);
@@ -346,20 +350,39 @@ sm_session_create(const sm_ctx_t *sm_ctx, sm_connection_t *connection,
     }
     session->sm_ctx = (sm_ctx_t*)sm_ctx;
 
-    /* duplicate and set user names */
-    session->real_user = strdup(real_user);
-    if (NULL == session->real_user) {
+    /* save real user credentials */
+    pws = getpwuid(connection->uid);
+    if (NULL == pws) {
+        SR_LOG_ERR("Cannot retrieve credentials of the real user: %s", strerror(errno));
+        rc = SR_ERR_INTERNAL;
+        goto cleanup;
+    }
+    session->credentials.r_username = strdup(pws->pw_name);
+    if (NULL == session->credentials.r_username) {
         SR_LOG_ERR_MSG("Cannot allocate memory for real user name.");
         rc = SR_ERR_NOMEM;
         goto cleanup;
     }
+    session->credentials.r_uid = connection->uid;
+    session->credentials.r_gid = connection->gid;
+
+    /* save effective user credentials */
     if (NULL != effective_user) {
-        session->effective_user = strdup(effective_user);
-        if (NULL == session->effective_user) {
+        errno = 0;
+        pws = getpwnam(effective_user);
+        if (NULL == pws) {
+            SR_LOG_ERR("Cannot retrieve credentials of the effective user (%s): Invalid username?", effective_user);
+            rc = SR_ERR_INVAL_ARG;
+            goto cleanup;
+        }
+        session->credentials.e_username = strdup(effective_user);
+        if (NULL == session->credentials.e_username) {
             SR_LOG_ERR_MSG("Cannot allocate memory for effective user name.");
             rc = SR_ERR_NOMEM;
             goto cleanup;
         }
+        session->credentials.e_uid = pws->pw_uid;
+        session->credentials.e_gid = pws->pw_gid;
     }
 
     /* generate unused random session_id */
@@ -393,7 +416,7 @@ sm_session_create(const sm_ctx_t *sm_ctx, sm_connection_t *connection,
     }
 
     SR_LOG_INF("New session created successfully, real user=%s, effective user=%s, "
-            "session id=%"PRIu32".", real_user, effective_user, session->id);
+            "session id=%"PRIu32".", session->credentials.r_username, session->credentials.e_username, session->id);
 
     *session_p = session;
     return rc;

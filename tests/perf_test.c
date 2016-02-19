@@ -74,7 +74,7 @@ perf_get_item_test(void **state) {
     int rc = 0;
 
     /* start a session */
-    rc = sr_session_start(conn, "alice", SR_DS_STARTUP, &session);
+    rc = sr_session_start(conn, NULL, SR_DS_STARTUP, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* perform a get-item request */

@@ -22,6 +22,7 @@
 #ifndef REQUEST_PROCESSOR_H_
 #define REQUEST_PROCESSOR_H_
 
+#include "access_control.h"
 #include "connection_manager.h"
 #include "sysrepo.pb-c.h"
 
@@ -83,16 +84,15 @@ void rp_cleanup(rp_ctx_t *rp_ctx);
  * context, so it is needed to NOT free them until ::rp_session_stop is called.
  *
  * @param[in] rp_ctx Request Processor context.
- * @param[in] real_user Real user name of the client.
- * @param[in] effective_user Effective user name of the client.
  * @param[in] session_id Unique session identifier assigned by Session Manager.
+ * @param[in] user_credentials Credentials of the user who this session belongs to.
  * @param[in] datastore Datastore selected for this configuration session.
  * @param[out] session Session context used for subsequent RP calls.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int rp_session_start(const rp_ctx_t *rp_ctx, const char *real_user, const char *effective_user,
-        const uint32_t session_id, const sr_datastore_t datastore, rp_session_t **session);
+int rp_session_start(const rp_ctx_t *rp_ctx, const uint32_t session_id,
+        const ac_ucred_t *user_credentials, const sr_datastore_t datastore, rp_session_t **session);
 
 /**
  * Stops a Request Processor session.

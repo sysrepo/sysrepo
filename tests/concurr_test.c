@@ -104,7 +104,7 @@ test_thread_execute_in_conn(void *sr_conn_ctx_p)
     int rc = 0;
 
     /* start a session */
-    rc = sr_session_start(conn, "alice", SR_DS_STARTUP, &session);
+    rc = sr_session_start(conn, NULL, SR_DS_STARTUP, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
     test_execute_in_session(session);
@@ -128,7 +128,7 @@ test_thread_execute_separated(void *ctx)
     assert_int_equal(rc, SR_ERR_OK);
 
     /* start a session */
-    rc = sr_session_start(conn, "alice", SR_DS_STARTUP, &session);
+    rc = sr_session_start(conn, NULL, SR_DS_STARTUP, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
     test_execute_in_session(session);
@@ -158,7 +158,7 @@ concurr_requests_test(void **state)
     assert_non_null(state);
 
     /* start a session */
-   rc = sr_session_start(conn, "alice", SR_DS_STARTUP, &session);
+   rc = sr_session_start(conn, NULL, SR_DS_STARTUP, &session);
    assert_int_equal(rc, SR_ERR_OK);
 
     for (i = 0; i < TEST_THREAD_COUNT; i++) {

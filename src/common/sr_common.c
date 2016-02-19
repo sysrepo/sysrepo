@@ -50,6 +50,7 @@ const char *const sr_errlist[] = {
         "Commit operation failed",              /* SR_ERR_COMMIT_FAILED */
         "The item already exists",              /* SR_ERR_DATA_EXISTS */
         "The item expected to exist is missing" /* SR_ERR_DATA_MISSING */
+        "Operation not authorized",             /* SR_ERR_UNAUTHORIZED */
 };
 
 const char *
@@ -980,7 +981,7 @@ sr_get_peer_eid(int fd, uid_t *uid, gid_t *gid)
         ucred_free(ucred);
         return SR_ERR_INTERNAL;
     }
-    if (-1 == (*gid = ucred_getrgid(ucred))) {
+    if (-1 == (*gid = ucred_getegid(ucred))) {
         ucred_free(ucred);
         return SR_ERR_INTERNAL;
     }
@@ -1837,5 +1838,34 @@ sr_free_errors(sr_error_info_t *errors, size_t error_cnt)
         }
         free(errors);
     }
+}
+
+int
+sr_get_data_file_name(const char *module_name, const sr_datastore_t ds, char **file_name)
+{
+    CHECK_NULL_ARG2(module_name, file_name);
+    char *tmp = NULL;
+    int rc = sr_str_join(SR_DATA_SEARCH_DIR, module_name, &tmp);
+    if (SR_ERR_OK == rc) {
+        char *suffix = SR_DS_STARTUP == ds ? SR_STARTUP_FILE_EXT : SR_RUNNING_FILE_EXT;
+        rc = sr_str_join(tmp, suffix, file_name);
+        free(tmp);
+        return rc;
+    }
+    return SR_ERR_NOMEM;
+}
+
+int
+sr_get_schema_file_name(const char *module_name, char **file_name)
+{
+    CHECK_NULL_ARG2(module_name, file_name);
+    char *tmp = NULL;
+    int rc = sr_str_join(SR_SCHEMA_SEARCH_DIR, module_name, &tmp);
+    if (SR_ERR_OK == rc) {
+        rc = sr_str_join(tmp, SR_SCHEMA_YANG_FILE_EXT, file_name);
+        free(tmp);
+        return rc;
+    }
+    return SR_ERR_NOMEM;
 }
 
