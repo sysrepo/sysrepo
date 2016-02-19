@@ -322,6 +322,7 @@ ac_check_node_permissions(ac_session_t *session, const xp_loc_id_t *node_xpath, 
         module_info->module_name = XP_CPY_FIRST_NS(node_xpath);
         if (NULL == module_info->module_name) {
             SR_LOG_ERR_MSG("Cannot duplicate module name.");
+            free(module_info);
             return SR_ERR_NOMEM;
         }
         rc = sr_btree_insert(session->module_info_btree, module_info);
