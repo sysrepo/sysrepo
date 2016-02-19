@@ -55,11 +55,11 @@ void check_nodes(void **state){
     xp_loc_id_t *l = (xp_loc_id_t *) *state;
     assert_true(XP_GET_NODE_COUNT(l)  == 3);
 
-    assert_true(XP_CMP_NODE(l,0,"container"));
-    assert_true(XP_CMP_NODE(l,1,"list"));
-    assert_true(XP_CMP_NODE(l,2,"leaf"));
+    assert_true(XP_EQ_NODE(l,0,"container"));
+    assert_true(XP_EQ_NODE(l,1,"list"));
+    assert_true(XP_EQ_NODE(l,2,"leaf"));
 
-    assert_false(XP_CMP_NODE(l,0,"asfadsf"));
+    assert_false(XP_EQ_NODE(l,0,"asfadsf"));
 
 }
 
@@ -68,8 +68,10 @@ void check_ns(void **state){
 
     assert_true(XP_HAS_NODE_NS(l,0));
     assert_int_equal(1,XP_GET_NODE_NS_INDEX(l,0));
-    assert_true(XP_CMP_NODE_NS(l,0,"model"));
-    assert_false(XP_CMP_NODE_NS(l,0,"asfaafafa"));
+    assert_true(XP_EQ_NODE_NS(l,0,"model"));
+    assert_false(XP_EQ_NODE_NS(l,0,"asfaafafa"));
+    assert_true(XP_CMP_NODE_NS(l,0,"model") == 0);
+    assert_false(XP_CMP_NODE_NS(l,0,"asfaafafa") == 0);
     assert_false(XP_HAS_NODE_NS(l,1));
 
 }
@@ -81,8 +83,8 @@ void check_keys(void **state){
 
     assert_true(XP_HAS_KEY_NAMES(l,1));
 
-    assert_true(XP_CMP_KEY_NAME(l,1,0,"k1"));
-    assert_true(XP_CMP_KEY_VALUE(l,1,0,"key1"));
+    assert_true(XP_EQ_KEY_NAME(l,1,0,"k1"));
+    assert_true(XP_EQ_KEY_VALUE(l,1,0,"key1"));
 
     char *keyVal = XP_CPY_TOKEN(l,XP_GET_KEY_VALUE_INDEX(l,1,0));
     char *keyName = XP_CPY_TOKEN(l,XP_GET_KEY_NAME_INDEX(l,1,0));
@@ -93,8 +95,8 @@ void check_keys(void **state){
     free(keyName);
     free(keyVal);
 
-    assert_true(XP_CMP_KEY_NAME(l,1,1,"k2"));
-    assert_true(XP_CMP_KEY_VALUE(l,1,1,"key2"));
+    assert_true(XP_EQ_KEY_NAME(l,1,1,"k2"));
+    assert_true(XP_EQ_KEY_VALUE(l,1,1,"key2"));
 
 }
 

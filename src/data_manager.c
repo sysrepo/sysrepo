@@ -92,54 +92,6 @@ dm_data_info_free(void *item)
 }
 
 /**
- * @brief Creates the data file name corresponding to the module_name (schema). Function does not check if the schema name
- * is valid. The file name is allocated on heap and needs to be freed by caller. Returns SR_ERR_OK or SR_ERR_NOMEM
- * if memory allocation failed.
- * @param [in] dm_ctx
- * @param [in] module_name
- * @param [in] ds
- * @param [out] file_name
- * @return Error code (SR_ERR_OK on success)
- */
-static int
-dm_get_data_file(const dm_ctx_t *dm_ctx, const char *module_name, const sr_datastore_t ds, char **file_name)
-{
-    CHECK_NULL_ARG3(dm_ctx, module_name, file_name);
-    char *tmp = NULL;
-    int rc = sr_str_join(dm_ctx->data_search_dir, module_name, &tmp);
-    if (SR_ERR_OK == rc) {
-        char *suffix = SR_DS_STARTUP == ds ? DM_STARTUP_SUFFIX : DM_RUNNING_SUFFIX;
-        rc = sr_str_join(tmp, suffix, file_name);
-        free(tmp);
-        return rc;
-    }
-    return SR_ERR_NOMEM;
-}
-
-/**
- * @brief Creates the schema file name corresponding to the module_name (schema). Function does not check if the schema name
- * is valid. The file name is allocated on heap and needs to be freed by caller. Returns SR_ERR_OK or SR_ERR_NOMEM
- * if memory allocation failed.
- * @param [in] dm_ctx
- * @param [in] module_name
- * @param [out] file_name
- * @return Error code (SR_ERR_OK on success)
- */
-static int
-dm_get_schema_file(const dm_ctx_t *dm_ctx, const char *module_name, char **file_name)
-{
-    CHECK_NULL_ARG3(dm_ctx, module_name, file_name);
-    char *tmp = NULL;
-    int rc = sr_str_join(dm_ctx->schema_search_dir, module_name, &tmp);
-    if (SR_ERR_OK == rc) {
-        rc = sr_str_join(tmp, ".yang", file_name);
-        free(tmp);
-        return rc;
-    }
-    return SR_ERR_NOMEM;
-}
-
-/**
  * @brief Check whether the file_name corresponds to the schema file.
  * @return 1 if it does, 0 otherwise.
  */
@@ -147,7 +99,7 @@ static int
 dm_is_schema_file(const char *file_name)
 {
     CHECK_NULL_ARG(file_name);
-    return sr_str_ends_with(file_name, ".yin");
+    return sr_str_ends_with(file_name, SR_SCHEMA_YIN_FILE_EXT);
 }
 
 /**
@@ -255,7 +207,7 @@ dm_load_data_tree(dm_ctx_t *dm_ctx, const struct lys_module *module, sr_datastor
     int rc = 0;
     struct lyd_node *data_tree = NULL;
     *data_info = NULL;
-    rc = dm_get_data_file(dm_ctx, module->name, ds, &data_filename);
+    rc = sr_get_data_file_name(module->name, ds, &data_filename);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Get data_filename failed for %s", module->name);
         return rc;
@@ -356,7 +308,7 @@ dm_fill_schema_t(dm_ctx_t *dm_ctx, dm_session_t *session, const struct lys_modul
         }
     }
 
-    rc = dm_get_schema_file(dm_ctx, module->name, &schema->file_path);
+    rc = sr_get_schema_file_name(module->name, &schema->file_path);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Get schema file name failed");
         goto cleanup;
@@ -685,7 +637,7 @@ dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors, siz
     while (NULL != (info = sr_btree_get_at(session->session_modules, cnt))) {
         if (info->modified) {
             char *data_filename = NULL;
-            rc = dm_get_data_file(dm_ctx, info->module->name, session->datastore, &data_filename);
+            rc = sr_get_data_file_name(info->module->name, session->datastore, &data_filename);
             if (SR_ERR_OK != rc) {
                 SR_LOG_ERR_MSG("Getting data file name failed");
                 pthread_rwlock_unlock(&dm_ctx->lyctx_lock);

@@ -116,8 +116,8 @@ srd_daemonize(void)
     freopen( "/dev/null", "w", stdout);
     freopen( "/dev/null", "w", stderr);
 
-    /* reset file creation mask */
-    umask(0);
+    /* set file creation mask */
+    umask(S_IWGRP | S_IWOTH);
 
     /* maintain only single instance of sysrepo daemon */
 

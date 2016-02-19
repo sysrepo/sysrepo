@@ -63,8 +63,7 @@ typedef struct rp_ctx_s {
  */
 typedef struct rp_session_s {
     uint32_t id;                         /**< Assigned session id. */
-    const char *real_user;               /**< Real user name of the client. */
-    const char *effective_user;          /**< Effective user name of the client (if different to real_user). */
+    const ac_ucred_t *user_credentials;  /**< Credentials of the user who the session belongs to. */
     sr_datastore_t datastore;            /**< Datastore selected for this session. */
     uint32_t msg_count;                  /**< Count of unprocessed messages (including waiting in queue). */
     pthread_mutex_t msg_count_mutex;     /**< Mutex for msg_count counter. */
@@ -749,7 +748,7 @@ rp_init(cm_ctx_t *cm_ctx, rp_ctx_t **rp_ctx_p)
     }
 
     /* initialize Data Manager */
-    rc = dm_init(DM_SCHEMA_SEARCH_DIR, DM_DATA_SEARCH_DIR, &ctx->dm_ctx);
+    rc = dm_init(SR_SCHEMA_SEARCH_DIR, SR_DATA_SEARCH_DIR, &ctx->dm_ctx);
     if (SR_ERR_OK != rc){
         SR_LOG_ERR_MSG("Data Manager initialization failed.");
         goto cleanup;
@@ -821,8 +820,8 @@ rp_cleanup(rp_ctx_t *rp_ctx)
 }
 
 int
-rp_session_start(const rp_ctx_t *rp_ctx, const char *real_user, const char *effective_user,
-        const uint32_t session_id, const sr_datastore_t datastore, rp_session_t **session_p)
+rp_session_start(const rp_ctx_t *rp_ctx, const uint32_t session_id,
+        const ac_ucred_t *user_credentials, const sr_datastore_t datastore, rp_session_t **session_p)
 {
     rp_session_t *session = NULL;
     int rc = SR_ERR_OK;
@@ -838,8 +837,7 @@ rp_session_start(const rp_ctx_t *rp_ctx, const char *real_user, const char *effe
     }
 
     pthread_mutex_init(&session->msg_count_mutex, NULL);
-    session->real_user = real_user;
-    session->effective_user = effective_user;
+    session->user_credentials = user_credentials;
     session->id = session_id;
     session->datastore = datastore;
 

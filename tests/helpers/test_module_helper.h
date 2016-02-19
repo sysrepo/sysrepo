@@ -25,7 +25,7 @@
 #include "test_data.h"
 #include "data_manager.h"
 
-#define TEST_MODULE_DATA_FILE_NAME TEST_DATA_SEARCH_DIR "test-module" DM_STARTUP_SUFFIX
+#define TEST_MODULE_DATA_FILE_NAME TEST_DATA_SEARCH_DIR "test-module" SR_STARTUP_FILE_EXT
 
 /**
  * Creates test-module data tree and writes it into a file.

@@ -372,8 +372,8 @@ int sr_pb_resp_alloc(const Sr__Operation operation, const uint32_t session_id, S
 int sr_pb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__Operation operation);
 
 /**
- * @brief Portable way to retrieve effective user ID and group ID of the
- * other end of a unix-domain socket.
+ * @brief Portable way to retrieve effective user ID and effective group ID of
+ * the other end of a unix-domain socket.
  *
  * @param[in] fd File descriptor of a socket.
  * @param[out] uid User ID of the other end.
@@ -526,6 +526,27 @@ int sr_gpb_fill_errors(sr_error_info_t *sr_errors, size_t sr_error_cnt, Sr__Erro
  * @param[in] sr_error_cnt Number of errors in the sr_errors array.
  */
 void sr_free_errors(sr_error_info_t *sr_errors, size_t sr_error_cnt);
+
+/**
+ * @brief Creates the data file name corresponding to the module_name (schema). Function does not check if the schema name
+ * is valid. The file name is allocated on heap and needs to be freed by caller. Returns SR_ERR_OK or SR_ERR_NOMEM
+ * if memory allocation failed.
+ * @param [in] module_name
+ * @param [in] ds
+ * @param [out] file_name
+ * @return err_code
+ */
+int sr_get_data_file_name(const char *module_name, const sr_datastore_t ds, char **file_name);
+
+/**
+ * @brief Creates the schema file name corresponding to the module_name (schema). Function does not check if the schema name
+ * is valid. The file name is allocated on heap and needs to be freed by caller. Returns SR_ERR_OK or SR_ERR_NOMEM
+ * if memory allocation failed.
+ * @param [in] module_name
+ * @param [out] file_name
+ * @return err_code
+ */
+int sr_get_schema_file_name(const char *module_name, char **file_name);
 
 /**@} common */
 
