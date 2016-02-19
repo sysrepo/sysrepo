@@ -29,6 +29,7 @@
 #cmakedefine HAVE_GETPEERUCRED
 #cmakedefine HAVE_UCRED_H
 #cmakedefine HAVE_SETFSUID
+#cmakedefine HAVE_STAT_ST_MTIM
 
 /** Use libavl (if defined) or libredblack (if not defined) for binary tree manipulations. */
 #cmakedefine USE_AVL_LIB

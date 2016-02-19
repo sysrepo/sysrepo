@@ -87,11 +87,13 @@ set(DATA_SEARCH_DIR "${REPOSITORY_LOC}/data/")
 set(CMAKE_REQUIRED_LIBRARIES pthread)
 include(CheckFunctionExists)
 include(CheckIncludeFiles)
+include(CheckStructHasMember)
 CHECK_FUNCTION_EXISTS(pthread_rwlockattr_setkind_np HAVE_PTHREAD_RWLOCKATTR_SETKIND_NP)
 CHECK_FUNCTION_EXISTS(getpeereid HAVE_GETPEEREID)
 CHECK_FUNCTION_EXISTS(getpeerucred HAVE_GETPEERUCRED)
 CHECK_INCLUDE_FILES(ucred.h HAVE_UCRED_H)
 CHECK_FUNCTION_EXISTS(setfsuid HAVE_SETFSUID)
+CHECK_STRUCT_HAS_MEMBER("struct stat" st_mtim "sys/stat.h" HAVE_STAT_ST_MTIM)
 
 # add subdirectories
 add_subdirectory(src)

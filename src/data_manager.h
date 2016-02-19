@@ -33,6 +33,8 @@
 #include <sys/stat.h>
 #include "sysrepo.h"
 
+#include "sr_common.h"
+
 /**
  * @brief Structure that holds the context of an instance of Data Manager.
  */
@@ -49,7 +51,7 @@ typedef struct dm_session_s dm_session_t;
 typedef struct dm_data_info_s{
     const struct lys_module *module;    /**< pointer to schema file*/
     struct lyd_node *node;              /**< data tree */
-#if defined __linux__
+#ifdef HAVE_STAT_ST_MTIM
     struct timespec timestamp;          /**< timestamp of this copy */
 #else
     time_t timestamp;                   /**< timestamp of this copy */
