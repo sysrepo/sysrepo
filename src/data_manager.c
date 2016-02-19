@@ -604,10 +604,11 @@ dm_list_schemas(dm_ctx_t *dm_ctx, dm_session_t *dm_session, sr_schema_t **schema
 int
 dm_validate_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors, size_t *err_cnt)
 {
-    CHECK_NULL_ARG3(dm_ctx, session, errors);
+    CHECK_NULL_ARG4(dm_ctx, session, errors, err_cnt);
     int rc = SR_ERR_OK;
 
     size_t cnt = 0;
+    *err_cnt = 0;
     dm_data_info_t *info = NULL;
     while (NULL != (info = sr_btree_get_at(session->session_modules, cnt))) {
         /* loaded data trees are valid, so check only the modified ones */
@@ -615,16 +616,21 @@ dm_validate_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error
             //TODO lock mutex for logging a collect error messages
             if (NULL == info->module || NULL == info->module->name) {
                 SR_LOG_ERR_MSG("Missing schema information");
+                sr_free_errors(*errors, *err_cnt);
                 return SR_ERR_INTERNAL;
             }
             if (0 != lyd_validate(info->node, LYD_OPT_STRICT)) {
                 SR_LOG_DBG("Validation failed for %s module", info->module->name);
-
-                // TODO: fill-in proper errors
-                *errors = calloc(1, sizeof(**errors));
-                (*errors)[0].message = strdup("Validation failed.");
-                (*errors)[0].path = strdup(info->module->name);
-                *err_cnt = 1;
+                (*err_cnt)++;
+                sr_error_info_t *tmp_err = realloc(*errors, *err_cnt * sizeof(**errors));
+                if (NULL == tmp_err){
+                    SR_LOG_ERR_MSG("Memory allocation failed");
+                    sr_free_errors(*errors, *err_cnt - 1);
+                    return SR_ERR_NOMEM;
+                }
+                *errors = tmp_err;
+                (*errors)[(*err_cnt)-1].message = strdup(ly_errmsg());
+                (*errors)[(*err_cnt)-1].path = strdup(ly_errpath());
 
                 rc = SR_ERR_VALIDATION_FAILED;
             } else {

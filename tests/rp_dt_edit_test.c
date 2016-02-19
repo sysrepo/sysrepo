@@ -867,9 +867,12 @@ edit_validate_test(void **state)
     assert_int_equal(SR_ERR_OK, rc);
 
     sr_free_val_content(&iftype);
-
     rc = dm_validate_session_data_trees(ctx, session, &errors, &e_cnt);
     assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
+    assert_int_equal(1, e_cnt);
+    assert_string_equal("Must condition \"ifType != 'ethernet' or (ifType = 'ethernet' and ifMTU = 1500)\" not satisfied.", errors[0].message);
+    assert_string_equal("/test-module:interface", errors[0].path);
+
     sr_free_errors(errors, e_cnt);
 
     sr_val_t mtu;
@@ -963,6 +966,9 @@ edit_validate_test(void **state)
 
     rc = dm_validate_session_data_trees(ctx, session, &errors, &e_cnt);
     assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
+    assert_int_equal(1, e_cnt);
+    assert_string_equal("Missing required element \"latitude\" in \"location\".", errors[0].message);
+    assert_string_equal("/test-module:location", errors[0].path);
     sr_free_errors(errors, e_cnt);
 
     sr_val_t latitude;
@@ -1038,9 +1044,46 @@ edit_validate_test(void **state)
 
     rc = dm_validate_session_data_trees(ctx, session, &errors, &e_cnt);
     assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
+    assert_int_equal(1, e_cnt);
+    assert_string_equal("Instances of \"numbers\" list are not unique.", errors[0].message);
+    assert_string_equal("/test-module:main/numbers", errors[0].path);
     sr_free_errors(errors, e_cnt);
 
     dm_session_stop(ctx, session);
+
+    /* multiple errors */
+    dm_session_start(ctx, SR_DS_STARTUP, &session);
+    val.xpath = NULL;
+    val.type = SR_UINT8_T;
+    val.data.uint8_val = 9;
+
+    rc = rp_dt_set_item(ctx, session, "/test-module:main/numbers", SR_EDIT_DEFAULT, &val);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_set_item(ctx, session, "/test-module:main/numbers", SR_EDIT_DEFAULT, &val);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_set_item(ctx, session, "/example-module:number", SR_EDIT_DEFAULT, &val);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_set_item(ctx, session, "/example-module:number", SR_EDIT_DEFAULT, &val);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    errors = NULL;
+    e_cnt = 0;
+
+    rc = dm_validate_session_data_trees(ctx, session, &errors, &e_cnt);
+    assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
+    assert_int_equal(2, e_cnt);
+    assert_string_equal("Instances of \"number\" list are not unique.", errors[0].message);
+    assert_string_equal("/example-module:number", errors[0].path);
+
+    assert_string_equal("Instances of \"numbers\" list are not unique.", errors[1].message);
+    assert_string_equal("/test-module:main/numbers", errors[1].path);
+    sr_free_errors(errors, e_cnt);
+
+    dm_session_stop(ctx, session);
+
 }
 
 void
