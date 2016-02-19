@@ -234,7 +234,7 @@ dm_load_data_tree(dm_ctx_t *dm_ctx, const struct lys_module *module, sr_datastor
             fclose(f);
             return SR_ERR_INTERNAL;
         }
-#ifdef __linux__
+#ifdef HAVE_STAT_ST_MTIM
         data->timestamp = st.st_mtim;
         SR_LOG_DBG("Loaded module %s: mtime sec=%lld nsec=%lld\n", module->name,
                 (long long) st.st_mtim.tv_sec,
@@ -658,7 +658,7 @@ dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors, siz
             lockf(fileno(f), F_LOCK, 0);
 
 
-#ifdef __linux__
+#ifdef HAVE_STAT_ST_MTIM
             if ((info->timestamp.tv_sec != st.st_mtim.tv_sec)
                     || (info->timestamp.tv_nsec != st.st_mtim.tv_nsec)) {
                 SR_LOG_INF("Merging needs to be done for module '%s', currently just overwriting", info->module->name);
