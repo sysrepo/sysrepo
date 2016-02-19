@@ -32,6 +32,7 @@ set(SYSREPO-SOURCES
 
 set(SYSREPO-ENGINE-SOURCES
     ${GENERATED_PROTO}
+    access_control.c
     connection_manager.c
     session_manager.c
     request_processor.c

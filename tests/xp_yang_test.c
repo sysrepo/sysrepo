@@ -30,8 +30,8 @@
 #include "data_manager.h"
 #include "test_data.h"
 
-#define MODULE_PATH TEST_SCHEMA_SEARCH_DIR "/example-module.yin"
-#define DATA_PATH TEST_DATA_SEARCH_DIR "example-module" DM_STARTUP_SUFFIX
+#define MODULE_PATH TEST_SCHEMA_SEARCH_DIR "example-module" SR_SCHEMA_YIN_FILE_EXT
+#define DATA_PATH TEST_DATA_SEARCH_DIR "example-module" SR_STARTUP_FILE_EXT
 
 
 int setup(void **state){
@@ -159,7 +159,7 @@ void xpath_sch_match(void **state){
     int n = 0;
     for(; n < XP_GET_NODE_COUNT(l);n++){
         while(node != NULL) {
-            if (XP_CMP_NODE(l, n, node->name)) {
+            if (XP_EQ_NODE(l, n, node->name)) {
                 if(node->child!=NULL) {
                     node = node->child;
                 }

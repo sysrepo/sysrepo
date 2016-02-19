@@ -96,8 +96,9 @@ enum DataStore {
  * @brief Request for starting a session. Sent by sr_session_start API call.
  */
 message SessionStartReq {
-  required string user_name = 1;
-  required DataStore datastore = 2;
+  required DataStore datastore = 1;
+  optional string user_name = 2;
+
 }
 
 /**

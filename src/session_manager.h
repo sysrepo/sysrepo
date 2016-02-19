@@ -26,6 +26,8 @@
 #include <stdbool.h>
 #include <sys/types.h>
 
+#include "access_control.h"
+
 typedef struct cm_session_ctx_s cm_session_ctx_t;        /**< Forward-declaration of Connection Manager's session context. */
 typedef struct cm_connection_ctx_s cm_connection_ctx_t;  /**< Forward-declaration of Connection Manager's connection context. */
 
@@ -62,11 +64,10 @@ typedef struct sm_session_s {
     uint32_t id;                         /**< Auto-generated unique session ID (do not modify it). */
     struct sm_connection_s *connection;  /**< Connection associated with this session. */
 
-    const char *real_user;               /**< Real user name of the other side. */
-    const char *effective_user;          /**< Effective user name of the other side (if different to real_user). */
-
     sm_ctx_t *sm_ctx;                    /**< Associated Session Manager context. */
     cm_session_ctx_t *cm_data;           /**< Connection Manager-related data. */
+
+    ac_ucred_t credentials;              /**< Credentials of the peer. */
 } sm_session_t;
 
 /**
@@ -166,14 +167,13 @@ int sm_connection_stop(const sm_ctx_t *sm_ctx,  sm_connection_t *connection);
  *
  * @param[in] sm_ctx Session Manager context.
  * @param[in] connection Connection where the session belongs.
- * @param[in] real_user Real user name of the other side.
  * @param[in] effective_user Effective user name of the other side.
  * @param[out] session Allocated and initialized session context.
  *
  * @return Error code (SR_ERR_OK on success).
  */
 int sm_session_create(const sm_ctx_t *sm_ctx, sm_connection_t *connection,
-        const char *real_user, const char *effective_user, sm_session_t **session);
+        const char *effective_user, sm_session_t **session);
 
 /**
  * @brief Drops the session.
