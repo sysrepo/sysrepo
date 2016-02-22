@@ -32,11 +32,11 @@
  * List key can not be deleted. (if attempted SR_ERR_INVAL_ARG is returned)
  * @param [in] dm_ctx
  * @param [in] session
- * @param [in] xpath
+ * @param [in] loc_id
  * @param [in] options If the nodes can not be delete because of the option SR_ERR_DATA_MISSING or SR_ERR_DATA_EXISTS is returned
  * @return Error code (SR_ERR_OK on success) SR_ERR_DATA_MISSING, SR_ERR_DATA_EXISTS, SR_ERR_UNKNOWN_MODEL, SR_ERR_BAD_ELEMENT
  */
-int rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const sr_edit_flag_t options);
+int rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const xp_loc_id_t *loc_id, const sr_edit_flag_t options);
 
 /**
  * @brief Function validates the xpath and then creates presence container, list instance, leaf, leaf-list item. If the xpath identifies leaf-list value is appended to the end
@@ -49,7 +49,7 @@ int rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath
  * @param [in] value the value to be set (xpath inside the structure is ignored), in case of presence container or list instance is ignored can be NULL
  * @return Error code (SR_ERR_OK on success) SR_ERR_DATA_MISSING, SR_ERR_DATA_EXISTS, SR_ERR_UNKNOWN_MODEL, SR_ERR_BAD_ELEMENT
  */
-int rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const sr_edit_flag_t options, const sr_val_t *value);
+int rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const xp_loc_id_t *loc_id, const sr_edit_flag_t options, const sr_val_t *value);
 
 /**
  * @brief Move the list instance into selected direction. If the list instance doesn't exists or the list is not user-ordered SR_ERR_INVAL_ARG is returned.
@@ -60,7 +60,38 @@ int rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, c
  * @param [in] direction
  * @return Error code (SR_ERR_OK on success) SR_ERR_UNKNOWN_MODEL, SR_ERR_BAD_ELEMENT
  */
-int rp_dt_move_list(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, sr_move_direction_t direction);
+int rp_dt_move_list(dm_ctx_t *dm_ctx, dm_session_t *session, const xp_loc_id_t *loc_id, sr_move_direction_t direction);
+
+/**
+ * @brief Wraps ::rp_dt_move_list call, in case of success logs the operation to the session's operation list.
+ * @param [in] dm_ctx
+ * @param [in] session
+ * @param [in] xpath
+ * @param [in] direction
+ * @return Error code (SR_ERR_OK on success)
+ */
+int rp_dt_move_list_wrapper(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, sr_move_direction_t direction);
+
+/**
+ * @brief Wraps ::rp_dt_set_item call. In case of success logs the operation to the session's operation list.
+ * @param [in] dm_ctx
+ * @param [in] session
+ * @param [in] xpath
+ * @param [in] val
+ * @param [in] opt
+ * @return Error code (SR_ERR_OK on success)
+ */
+int rp_dt_set_item_wrapper(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, sr_val_t *val, sr_edit_options_t opt);
+
+/**
+ * @brief Wraps ::rp_dt_delete_item call. In in case of success logs the operation to the session's operation list.
+ * @param [in] dm_ctx
+ * @param [in] session
+ * @param [in] xpath
+ * @param [in] opts
+ * @return Error code (SR_ERR_OK on success)
+ */
+int rp_dt_delete_item_wrapper(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, sr_edit_options_t opts);
 #endif /* RP_DT_EDIT_H */
 
 /**

@@ -40,14 +40,14 @@ typedef struct dm_ctx_s {
 } dm_ctx_t;
 
 /**
- * @brief Data manager session context
+ * @brief Structure that holds Data Manager's per-session context.
  */
 typedef struct dm_session_s {
     sr_datastore_t datastore;       /**< datastore to which the session is tied */
     sr_btree_t *session_modules;    /**< binary holding session copies of data models */
     char *error_msg;                /**< description of the last error */
     char *error_xpath;              /**< xpath of the last error if applicable */
-    dm_sess_op_t *operations;        /**< list of operations performed in this session */
+    dm_sess_op_t *operations;       /**< list of operations performed in this session */
     size_t oper_count;              /**< number of performed operation */
     size_t oper_size;               /**< number of allocated operations */
 } dm_session_t;
@@ -379,11 +379,7 @@ int
 dm_add_operation(dm_session_t *session, dm_operation_t op, xp_loc_id_t *loc_id, sr_val_t *val, sr_edit_options_t opts)
 {
     int rc = SR_ERR_OK;
-    CHECK_NULL_ARG_NORET2(rc, session, loc_id);
-    if (DM_SET_OP == op && NULL == val){
-        SR_LOG_ERR_MSG("NULL value passed with set operation");
-        rc = SR_ERR_INVAL_ARG;
-    }
+    CHECK_NULL_ARG_NORET2(rc, session, loc_id); /* value can be NULL*/
     if (SR_ERR_OK != rc) {
         goto cleanup;
     }

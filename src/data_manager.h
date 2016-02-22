@@ -69,6 +69,9 @@ typedef enum dm_node_state_e{
     DM_NODE_ENABLED_WITH_CHILDREN,  /**< Node is enabled and all its children are enabled too.*/
 }dm_node_state_t;
 
+/**
+ * @brief Kind of operation that can be logged to session's operation list
+ */
 typedef enum dm_operation_e {
     DM_SET_OP,
     DM_DELETE_OP,
@@ -76,11 +79,14 @@ typedef enum dm_operation_e {
     DM_MOVE_DOWN_OP
 } dm_operation_t;
 
+/**
+ * @brief Structure holding information about operation performed.
+ */
 typedef struct dm_sess_op_s{
-    dm_operation_t op;
-    xp_loc_id_t *loc_id;
-    sr_val_t *val;
-    sr_edit_options_t options;
+    dm_operation_t op;          /**< Operation kind*/
+    xp_loc_id_t *loc_id;        /**< Location id */
+    sr_val_t *val;              /**< Value to perform operation with, can be NULL*/
+    sr_edit_options_t options;  /**< Operation edit options */
 }dm_sess_op_t;
 
 /**
