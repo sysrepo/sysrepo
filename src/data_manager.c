@@ -568,7 +568,6 @@ dm_validate_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error
     while (NULL != (info = sr_btree_get_at(session->session_modules, cnt))) {
         /* loaded data trees are valid, so check only the modified ones */
         if (info->modified) {
-            //TODO lock mutex for logging a collect error messages
             if (NULL == info->module || NULL == info->module->name) {
                 SR_LOG_ERR_MSG("Missing schema information");
                 sr_free_errors(*errors, *err_cnt);
