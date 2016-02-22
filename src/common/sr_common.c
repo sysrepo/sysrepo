@@ -998,10 +998,10 @@ int
 sr_get_peer_eid(int fd, uid_t *uid, gid_t *gid)
 {
     int ret = 0;
-    ret = getpeereid(fd, uid, gid);
 
     CHECK_NULL_ARG2(uid, gid);
 
+    ret = getpeereid(fd, uid, gid);
     if (-1 == ret) {
         SR_LOG_ERR("Cannot retrieve credentials of the UNIX-domain peer: %s", strerror(errno));
         return SR_ERR_INTERNAL;
