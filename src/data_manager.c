@@ -47,6 +47,9 @@ typedef struct dm_session_s {
     sr_btree_t *session_modules;    /**< binary holding session copies of data models */
     char *error_msg;                /**< description of the last error */
     char *error_xpath;              /**< xpath of the last error if applicable */
+    dm_sess_op_t *operations;        /**< list of operations performed in this session */
+    size_t oper_count;              /**< number of performed operation */
+    size_t oper_size;               /**< number of allocated operations */
 } dm_session_t;
 
 /**
@@ -327,6 +330,231 @@ cleanup:
     return rc;
 }
 
+static void
+dm_free_lys_private_data(const struct lys_node *node, void *private)
+{
+    if (NULL != private) {
+        free(private);
+    }
+}
+
+static void
+dm_free_sess_op(dm_sess_op_t *op)
+{
+    if (NULL == op) {
+        return;
+    }
+    xp_free_loc_id(op->loc_id);
+    sr_free_val(op->val);
+}
+
+static void
+dm_free_sess_operations(dm_sess_op_t *ops, size_t count)
+{
+    for (size_t i = 0; i < count; i++) {
+        dm_free_sess_op(&ops[i]);
+    }
+    free(ops);
+}
+
+/**
+ * @brief Returns the state of node. If the NULL is provided as an argument
+ * DM_NODE_DISABLED is returned.
+ */
+static dm_node_state_t
+dm_get_node_state(struct lys_node *node)
+{
+    if (NULL == node || NULL == node->private) {
+        return DM_NODE_DISABLED;
+    }
+    dm_node_info_t *n_info = (dm_node_info_t *) node->private;
+
+    if (NULL == n_info) {
+        return DM_NODE_DISABLED;
+    }
+    return n_info->state;
+}
+
+int
+dm_add_operation(dm_session_t *session, dm_operation_t op, xp_loc_id_t *loc_id, sr_val_t *val, sr_edit_options_t opts)
+{
+    int rc = SR_ERR_OK;
+    CHECK_NULL_ARG_NORET2(rc, session, loc_id);
+    if (DM_SET_OP == op && NULL == val){
+        SR_LOG_ERR_MSG("NULL value passed with set operation");
+        rc = SR_ERR_INVAL_ARG;
+    }
+    if (SR_ERR_OK != rc) {
+        goto cleanup;
+    }
+
+    if (NULL == session->operations){
+        session->oper_size = 1;
+        session->operations = calloc(session->oper_size, sizeof(*session->operations));
+        if (NULL == session->operations){
+            SR_LOG_ERR_MSG("Memory allocation failed");
+            rc = SR_ERR_NOMEM;
+            goto cleanup;
+        }
+    } else if (session->oper_count == session->oper_size){
+        session->oper_size *= 2;
+        dm_sess_op_t *tmp_op = realloc(session->operations, session->oper_size * sizeof(*session->operations));
+        if (NULL == tmp_op){
+            SR_LOG_ERR_MSG("Memory allocation failed");
+            rc = SR_ERR_NOMEM;
+            goto cleanup;
+        }
+        session->operations = tmp_op;
+    }
+    session->operations[session->oper_count].op = op;
+    session->operations[session->oper_count].loc_id = loc_id;
+    session->operations[session->oper_count].val = val;
+    session->operations[session->oper_count].options = opts;
+
+    session->oper_count++;
+    return rc;
+cleanup:
+    xp_free_loc_id(loc_id);
+    sr_free_val(val);
+    return rc;
+}
+
+void
+dm_clear_session_errors(dm_session_t *session)
+{
+    if (NULL == session) {
+        return;
+    }
+
+    if (NULL != session->error_msg) {
+        free(session->error_msg);
+        session->error_msg = NULL;
+    }
+
+    if (NULL != session->error_xpath) {
+        free(session->error_xpath);
+        session->error_xpath = NULL;
+    }
+}
+
+int
+dm_report_error(dm_session_t *session, const char *msg, char *err_path, int rc)
+{
+    if (NULL == session) {
+        return SR_ERR_INTERNAL;
+    }
+
+    /* if NULL is provided, message will be generated according to the error code*/
+    if (NULL == msg) {
+        msg = sr_strerror(rc);
+    }
+
+    if (NULL != session->error_msg) {
+        SR_LOG_WRN("Overwriting session error message %s", session->error_msg);
+        free(session->error_msg);
+    }
+    session->error_msg = strdup(msg);
+    if (NULL == session->error_msg) {
+        SR_LOG_ERR_MSG("Error message duplication failed");
+        free(err_path);
+        return SR_ERR_INTERNAL;
+    }
+
+    if (NULL != session->error_xpath) {
+        SR_LOG_WRN("Overwriting session error xpath %s", session->error_xpath);
+        free(session->error_xpath);
+    }
+    session->error_xpath = err_path;
+    if (NULL == session->error_xpath) {
+        SR_LOG_WRN_MSG("Error xpath passed to dm_report is NULL");
+    }
+
+    return rc;
+}
+
+bool
+dm_has_error(dm_session_t *session)
+{
+    if (NULL == session) {
+        return false;
+    }
+    return NULL != session->error_msg || NULL != session->error_xpath;
+}
+
+int
+dm_copy_errors(dm_session_t *session, char **error_msg, char **err_xpath)
+{
+    CHECK_NULL_ARG3(session, error_msg, err_xpath);
+    if (NULL != session->error_msg) {
+        *error_msg = strdup(session->error_msg);
+    }
+    if (NULL != session->error_xpath) {
+        *err_xpath = strdup(session->error_xpath);
+    }
+    if ((NULL != session->error_msg && NULL == *error_msg) || (NULL != session->error_xpath && NULL == *err_xpath)) {
+        SR_LOG_ERR_MSG("Error duplication failed");
+        return SR_ERR_INTERNAL;
+    }
+    return SR_ERR_OK;
+}
+
+bool
+dm_is_node_enabled(struct lys_node* node)
+{
+    dm_node_state_t state = dm_get_node_state(node);
+    return DM_NODE_ENABLED == state || DM_NODE_ENABLED_WITH_CHILDREN == state;
+}
+
+bool
+dm_is_node_enabled_with_children(struct lys_node* node)
+{
+    return DM_NODE_ENABLED_WITH_CHILDREN == dm_get_node_state(node);
+}
+
+bool
+dm_is_enabled_check_recursively(struct lys_node *node)
+{
+    if (dm_is_node_enabled(node)) {
+        return true;
+    }
+    node = node->parent;
+    while (NULL != node) {
+        if (NULL == node->parent && LYS_AUGMENT == node->nodetype) {
+            node = ((struct lys_node_augment *) node)->target;
+            continue;
+        }
+        if (dm_is_node_enabled_with_children(node)) {
+            return true;
+        }
+        node = node->parent;
+    }
+    return false;
+}
+
+int
+dm_set_node_state(struct lys_node *node, dm_node_state_t state)
+{
+    CHECK_NULL_ARG(node);
+    if (NULL == node->private) {
+        node->private = calloc(1, sizeof(dm_node_info_t));
+        if (NULL == node->private) {
+            SR_LOG_ERR_MSG("Memory allocation failed");
+            return SR_ERR_NOMEM;
+        }
+    }
+    ((dm_node_info_t *) node->private)->state = state;
+    return SR_ERR_OK;
+}
+
+bool
+dm_is_running_ds_session(dm_session_t *session)
+{
+    if (NULL != session) {
+        return SR_DS_RUNNING == session->datastore;
+    }
+    return false;
+}
+
 int
 dm_init(const char *schema_search_dir, const char *data_search_dir, dm_ctx_t **dm_ctx)
 {
@@ -383,14 +611,6 @@ dm_init(const char *schema_search_dir, const char *data_search_dir, dm_ctx_t **d
     return SR_ERR_OK;
 }
 
-static void
-dm_free_lys_private_data(const struct lys_node *node, void *private)
-{
-    if (NULL != private) {
-        free(private);
-    }
-}
-
 void
 dm_cleanup(dm_ctx_t *dm_ctx)
 {
@@ -436,6 +656,7 @@ dm_session_stop(const dm_ctx_t *dm_ctx, dm_session_t *session)
     CHECK_NULL_ARG2(dm_ctx, session);
     sr_btree_cleanup(session->session_modules);
     dm_clear_session_errors(session);
+    dm_free_sess_operations(session->operations, session->oper_count);
     free(session);
     return SR_ERR_OK;
 }
@@ -702,158 +923,4 @@ dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors, siz
     rc = dm_discard_changes(dm_ctx, session);
 
     return rc;
-}
-
-void
-dm_clear_session_errors(dm_session_t *session)
-{
-    if (NULL == session) {
-        return;
-    }
-
-    if (NULL != session->error_msg) {
-        free(session->error_msg);
-        session->error_msg = NULL;
-    }
-
-    if (NULL != session->error_xpath) {
-        free(session->error_xpath);
-        session->error_xpath = NULL;
-    }
-}
-
-int
-dm_report_error(dm_session_t *session, const char *msg, char *err_path, int rc)
-{
-    if (NULL == session) {
-        return SR_ERR_INTERNAL;
-    }
-
-    /* if NULL is provided, message will be generated according to the error code*/
-    if (NULL == msg) {
-        msg = sr_strerror(rc);
-    }
-
-    if (NULL != session->error_msg) {
-        SR_LOG_WRN("Overwriting session error message %s", session->error_msg);
-        free(session->error_msg);
-    }
-    session->error_msg = strdup(msg);
-    if (NULL == session->error_msg) {
-        SR_LOG_ERR_MSG("Error message duplication failed");
-        free(err_path);
-        return SR_ERR_INTERNAL;
-    }
-
-    if (NULL != session->error_xpath) {
-        SR_LOG_WRN("Overwriting session error xpath %s", session->error_xpath);
-        free(session->error_xpath);
-    }
-    session->error_xpath = err_path;
-    if (NULL == session->error_xpath) {
-        SR_LOG_WRN_MSG("Error xpath passed to dm_report is NULL");
-    }
-
-    return rc;
-}
-
-bool
-dm_has_error(dm_session_t *session)
-{
-    if (NULL == session) {
-        return false;
-    }
-    return NULL != session->error_msg || NULL != session->error_xpath;
-}
-
-int
-dm_copy_errors(dm_session_t *session, char **error_msg, char **err_xpath)
-{
-    CHECK_NULL_ARG3(session, error_msg, err_xpath);
-    if (NULL != session->error_msg) {
-        *error_msg = strdup(session->error_msg);
-    }
-    if (NULL != session->error_xpath) {
-        *err_xpath = strdup(session->error_xpath);
-    }
-    if ((NULL != session->error_msg && NULL == *error_msg) || (NULL != session->error_xpath && NULL == *err_xpath)) {
-        SR_LOG_ERR_MSG("Error duplication failed");
-        return SR_ERR_INTERNAL;
-    }
-    return SR_ERR_OK;
-}
-
-/**
- * @brief Returns the state of node. If the NULL is provided as an argument
- * DM_NODE_DISABLED is returned.
- */
-static dm_node_state_t
-dm_get_node_state(struct lys_node *node)
-{
-    if (NULL == node || NULL == node->private) {
-        return DM_NODE_DISABLED;
-    }
-    dm_node_info_t *n_info = (dm_node_info_t *) node->private;
-
-    if (NULL == n_info) {
-        return DM_NODE_DISABLED;
-    }
-    return n_info->state;
-}
-
-bool
-dm_is_node_enabled(struct lys_node* node)
-{
-    dm_node_state_t state = dm_get_node_state(node);
-    return DM_NODE_ENABLED == state || DM_NODE_ENABLED_WITH_CHILDREN == state;
-}
-
-bool
-dm_is_node_enabled_with_children(struct lys_node* node)
-{
-    return DM_NODE_ENABLED_WITH_CHILDREN == dm_get_node_state(node);
-}
-
-bool
-dm_is_enabled_check_recursively(struct lys_node *node)
-{
-    if (dm_is_node_enabled(node)) {
-        return true;
-    }
-    node = node->parent;
-    while (NULL != node) {
-        if (NULL == node->parent && LYS_AUGMENT == node->nodetype) {
-            node = ((struct lys_node_augment *) node)->target;
-            continue;
-        }
-        if (dm_is_node_enabled_with_children(node)) {
-            return true;
-        }
-        node = node->parent;
-    }
-    return false;
-}
-
-int
-dm_set_node_state(struct lys_node *node, dm_node_state_t state)
-{
-    CHECK_NULL_ARG(node);
-    if (NULL == node->private) {
-        node->private = calloc(1, sizeof(dm_node_info_t));
-        if (NULL == node->private) {
-            SR_LOG_ERR_MSG("Memory allocation failed");
-            return SR_ERR_NOMEM;
-        }
-    }
-    ((dm_node_info_t *) node->private)->state = state;
-    return SR_ERR_OK;
-}
-
-bool
-dm_is_running_ds_session(dm_session_t *session)
-{
-    if (NULL != session) {
-        return SR_DS_RUNNING == session->datastore;
-    }
-    return false;
 }
