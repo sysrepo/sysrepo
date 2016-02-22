@@ -227,11 +227,10 @@ rp_dt_get_value_from_node(struct lyd_node *node, sr_val_t **value)
 
         val->type = sr_libyang_type_to_sysrepo(data_leaf->value_type);
 
-        if (SR_ERR_OK != rp_dt_copy_value(data_leaf, data_leaf->value_type, val)) {
+        rc = rp_dt_copy_value(data_leaf, data_leaf->value_type, val);
+        if (SR_ERR_OK != rc) {
             SR_LOG_ERR_MSG("Copying of value failed");
-            free(val->xpath);
-            free(val);
-            return SR_ERR_INTERNAL;
+            goto cleanup;
         }
         break;
     case LYS_CONTAINER:
@@ -246,21 +245,27 @@ rp_dt_get_value_from_node(struct lyd_node *node, sr_val_t **value)
 
         val->type = sr_libyang_type_to_sysrepo(data_leaf->value_type);
 
-        if (SR_ERR_OK != rp_dt_copy_value(data_leaf, data_leaf->value_type, val)) {
+        rc = rp_dt_copy_value(data_leaf, data_leaf->value_type, val);
+        if (SR_ERR_OK != rc) {
             SR_LOG_ERR_MSG("Copying of value failed");
-            free(val->xpath);
-            free(val);
-            return SR_ERR_INTERNAL;
+            goto cleanup;
         }
         break;
     default:
         SR_LOG_WRN_MSG("Get value is not implemented for this node type");
-        free(val->xpath);
-        free(val);
-        return SR_ERR_INTERNAL;
+        rc = SR_ERR_INTERNAL;
+        goto cleanup;
     }
     *value = val;
     return SR_ERR_OK;
+
+cleanup:
+    free(xpath);
+    if (NULL != val){
+        free(val->xpath);
+    }
+    free(val);
+    return rc;
 }
 
 /**

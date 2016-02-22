@@ -667,6 +667,11 @@ void get_value_wrapper_test(void **state){
     rc = rp_dt_get_value_wrapper(ctx, ses_ctx, "/non-existing:abc", &value);
     assert_int_equal(SR_ERR_UNKNOWN_MODEL, rc);
 
+    /* whole model xpath*/
+    value = NULL;
+    rc = rp_dt_get_value_wrapper(ctx, ses_ctx, "/test-module:", &value);
+    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+
     /* not existing data tree*/
     rc = rp_dt_get_value_wrapper(ctx, ses_ctx, "/small-module:item", &value);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
