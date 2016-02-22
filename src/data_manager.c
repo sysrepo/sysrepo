@@ -367,7 +367,9 @@ dm_init(const char *schema_search_dir, const char *data_search_dir, dm_ctx_t **d
     pthread_rwlockattr_setkind_np(&attr, PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP);
 #endif
 
-    if (0 != pthread_rwlock_init(&ctx->lyctx_lock, &attr)) {
+    int ret = pthread_rwlock_init(&ctx->lyctx_lock, &attr);
+    pthread_rwlockattr_destroy(&attr);
+    if (0 != ret) {
         SR_LOG_ERR_MSG("lyctx mutex initialization failed");
         dm_cleanup(ctx);
         return SR_ERR_INTERNAL;
