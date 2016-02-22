@@ -260,11 +260,7 @@ rp_dt_get_value_from_node(struct lyd_node *node, sr_val_t **value)
     return SR_ERR_OK;
 
 cleanup:
-    free(xpath);
-    if (NULL != val){
-        free(val->xpath);
-    }
-    free(val);
+    sr_free_val(val);
     return rc;
 }
 
