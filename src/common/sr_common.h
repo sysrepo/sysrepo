@@ -528,25 +528,33 @@ int sr_gpb_fill_errors(sr_error_info_t *sr_errors, size_t sr_error_cnt, Sr__Erro
 void sr_free_errors(sr_error_info_t *sr_errors, size_t sr_error_cnt);
 
 /**
- * @brief Creates the data file name corresponding to the module_name (schema). Function does not check if the schema name
- * is valid. The file name is allocated on heap and needs to be freed by caller. Returns SR_ERR_OK or SR_ERR_NOMEM
- * if memory allocation failed.
- * @param [in] module_name
- * @param [in] ds
- * @param [out] file_name
- * @return err_code
+ * @brief Creates the data file name corresponding to the module_name (schema).
+ *
+ * Function does not check if the schema name is valid. The file name is
+ * allocated on heap and needs to be freed by caller.
+ *
+ * @param[in] data_search_dir Path to the directory with data files.
+ * @param[in] module_name Name of the module.
+ * @param[in] ds Datastore that needs to be accessed.
+ * @param[out] file_name Allocated file path to the data file.
+ *
+ * @return err_code (SR_ERR_OK on success, SR_ERR_NOMEM if memory allocation failed).
  */
-int sr_get_data_file_name(const char *module_name, const sr_datastore_t ds, char **file_name);
+int sr_get_data_file_name(const char *data_search_dir, const char *module_name, const sr_datastore_t ds, char **file_name);
 
 /**
- * @brief Creates the schema file name corresponding to the module_name (schema). Function does not check if the schema name
- * is valid. The file name is allocated on heap and needs to be freed by caller. Returns SR_ERR_OK or SR_ERR_NOMEM
- * if memory allocation failed.
- * @param [in] module_name
- * @param [out] file_name
- * @return err_code
+ * @brief Creates the schema file name corresponding to the module_name (schema).
+ *
+ * Function does not check if the schema name is valid. The file name is
+ * allocated on heap and needs to be freed by caller.
+ *
+ * @param[in] schema_search_dir Path to the directory with schema files.
+ * @param[in] module_name Name of the module.
+ * @param[out] file_name Allocated file path to the schema file.
+ *
+ * @return err_code (SR_ERR_OK on success, SR_ERR_NOMEM if memory allocation failed).
  */
-int sr_get_schema_file_name(const char *module_name, char **file_name);
+int sr_get_schema_file_name(const char *schema_search_dir, const char *module_name, char **file_name);
 
 /**@} common */
 
