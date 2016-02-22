@@ -213,7 +213,6 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, co
             goto cleanup;
         }
         rc = SR_ERR_OK;
-        match.info->modified = true;
         goto cleanup;
     } else if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Find deepest match failed %s", xpath);
@@ -264,7 +263,7 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, co
     }
 
 
-    if (NULL == match.node->schema || NULL == match.node->schema->name) {
+    if (NULL == match.node || NULL == match.node->schema || NULL == match.node->schema->name) {
         SR_LOG_ERR_MSG("Missing schema information");
         rc = SR_ERR_INTERNAL;
         goto cleanup;
@@ -427,6 +426,10 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const
         if (XP_GET_NODE_COUNT(m.loc_id) != 1 && (options & SR_EDIT_NON_RECURSIVE)) {
             SR_LOG_ERR("A preceding node is missing '%s' create it or omit the non recursive option", xpath);
             rc = dm_report_error(session, "A preceding node is missing", XP_CPY_UP_TO_NODE(m.loc_id, 0), SR_ERR_DATA_MISSING);
+            goto cleanup;
+        } else if (NULL == m.info){
+            SR_LOG_ERR_MSG("Data info has not been set");
+            rc = SR_ERR_INTERNAL;
             goto cleanup;
         } else {
             rc = SR_ERR_OK;
