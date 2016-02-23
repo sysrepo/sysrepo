@@ -374,7 +374,6 @@ static void
 dm_free_sess_operations(dm_sess_op_t *ops, size_t count)
 {
     if (NULL == ops){
-        SR_LOG_WRN_MSG("Call free sess operation with count greater than 0 a NULL passed");
         return;
     }
 
@@ -869,6 +868,8 @@ dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors, siz
 {
     CHECK_NULL_ARG2(dm_ctx, session);
     int rc = SR_ERR_OK;
+    SR_LOG_DBG_MSG("Commit: process stared");
+
     //TODO send validate notifications
 
     /* YANG validation */
@@ -877,6 +878,7 @@ dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors, siz
         SR_LOG_ERR_MSG("Data validation failed");
         return SR_ERR_COMMIT_FAILED;
     }
+    SR_LOG_DBG_MSG("Commit: validation succeeded");
 
     /* TODO aquire data file lock*/
     /* TODO commit file lock to avoid deadlock when two commits - library, daemon mode*/
@@ -895,7 +897,7 @@ dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors, siz
         i++;
     }
 
-    SR_LOG_DBG("In the session there are %zu / %zu modified models \n", modif_count, i);
+    SR_LOG_DBG("Commit: In the session there are %zu / %zu modified models \n", modif_count, i);
 
     if (0 == modif_count) {
         SR_LOG_DBG_MSG("No model modified");
@@ -921,6 +923,8 @@ dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors, siz
     rc = dm_session_start(dm_ctx, session->datastore, &commit_session);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Commit session initialization failed");
+        free(files);
+        free(existed);
         return rc;
     }
 
@@ -933,7 +937,8 @@ dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors, siz
             rc = sr_get_data_file_name(dm_ctx->data_search_dir, info->module->name, session->datastore, &file_name);
             if (SR_ERR_OK != rc) {
                 SR_LOG_ERR_MSG("Get data file name failed");
-                return rc;
+                modif_count = count;
+                goto cleanup;
             }
             files[count] = fopen(file_name, "r+");
             if (NULL == files[count]) {
@@ -941,7 +946,9 @@ dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors, siz
                 files[count] = fopen(file_name, "w");
                 if (NULL == files[count]) {
                     SR_LOG_DBG("File %s can not be opened with 'w'", file_name);
-                    return SR_ERR_UNAUTHORIZED;
+                    rc = SR_ERR_UNAUTHORIZED;
+                    modif_count = count;
+                    goto cleanup;
                 }
             } else {
                 existed[count] = true;
@@ -952,13 +959,15 @@ dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors, siz
             rc = dm_load_data_tree_file(dm_ctx, existed[count] ? files[count] : NULL, file_name, info->module, &di);
             if (SR_ERR_OK != rc) {
                 SR_LOG_ERR_MSG("Loading data file failed");
-                return rc;
+                modif_count = count+1; /* file at index count is already opened*/
+                goto cleanup;
             }
             rc = sr_btree_insert(commit_session->session_modules, (void *) di);
             if (SR_ERR_OK != rc) {
                 SR_LOG_ERR("Insert into commit session avl failed module %s", info->module->name);
                 dm_data_info_free(di);
-                return rc;
+                modif_count = count+1; /* file at index count is already opened*/
+                goto cleanup;
             }
             free(file_name);
 
@@ -966,29 +975,33 @@ dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors, siz
         }
         i++;
     }
+    SR_LOG_DBG_MSG("Commit: all modified models loaded successfully");
 
     /* replay operations */
     rc = rp_dt_replay_operations(dm_ctx, commit_session, session->operations, session->oper_count);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Replay of operations failed");
-        return SR_ERR_COMMIT_FAILED;
+        rc = SR_ERR_COMMIT_FAILED;
+        goto cleanup;
     }
+    SR_LOG_DBG_MSG("Commit: replay of operation succeeded");
 
     /* validate files */
     rc = dm_validate_session_data_trees(dm_ctx, commit_session, errors, err_cnt);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Validation after merging failed");
-        return SR_ERR_COMMIT_FAILED;
+        rc = SR_ERR_COMMIT_FAILED;
+        goto cleanup;
     }
+    SR_LOG_DBG_MSG("Commit: merged models validation succeeded");
 
     /* empty existing files */
-    for (i=0; i< modif_count; i++) {
+    for (i=0; i < modif_count; i++) {
         if (existed[i]) {
             ftruncate(fileno(files[i]), 0);
             fseek(files[i], 0, SEEK_SET);
         }
     }
-
 
     /* write data trees and close files */
     count = 0;
@@ -1000,25 +1013,34 @@ dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors, siz
             merged_info = sr_btree_search(commit_session->session_modules, info);
             if (NULL == merged_info) {
                 SR_LOG_ERR("Merged data info %s not found", info->module->name);
-                return SR_ERR_INTERNAL;
+                rc = SR_ERR_INTERNAL;
+                continue;
             }
             if (0 != lyd_print_file(files[count], merged_info->node, LYD_XML_FORMAT, LYP_WITHSIBLINGS)) {
                 SR_LOG_ERR("Failed to write output for %s", info->module->name);
-                return SR_ERR_INTERNAL;
+                rc = SR_ERR_INTERNAL;
             }
-            lockf(fileno(files[count]), F_ULOCK, 0);
-            fclose(files[count]);
             count++;
         }
         i++;
+    }
+
+cleanup:
+
+    /* close files*/
+    for (i=0; i < modif_count; i++) {
+        lockf(fileno(files[i]), F_ULOCK, 0);
+        fclose(files[i]);
     }
 
     free(files);
     free(existed);
     dm_session_stop(dm_ctx, commit_session);
 
-    /* discard changes in session in next get_data_tree call newly committed content will be loaded */
-    rc = dm_discard_changes(dm_ctx, session);
-
+    if (SR_ERR_OK == rc){
+        /* discard changes in session in next get_data_tree call newly committed content will be loaded */
+        rc = dm_discard_changes(dm_ctx, session);
+        SR_LOG_DBG_MSG("Commit: finished successfully");
+    }
     return rc;
 }
