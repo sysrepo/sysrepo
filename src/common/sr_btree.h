@@ -42,7 +42,7 @@ typedef void (*sr_btree_free_item_cb)(void *);
  * by provided compare function and released by provided cleanup function.
  *
  * @param[in] compare_item_cb Callback function to compare two items.
- * @param[in] sr_btree_free_item_cb Callback function to release an item.
+ * @param[in] free_item_cb Callback function to release an item.
  * @param[out] tree Binary tree context that can be used for subsequent tree manipulation calls.
  *
  * @return Error code (SR_ERR_OK on success).
@@ -103,7 +103,7 @@ void *sr_btree_search(const sr_btree_t *tree, const void *item);
  * Any Other usage may lead to unexpected behavior.
  *
  * @param[in] tree Binary tree context acquired with ::sr_btree_init.
- * @param[in] item Index of an item.
+ * @param[in] index Index of an item.
  *
  * @return The item with given index, NULL if the item with given index does not exist.
  */
