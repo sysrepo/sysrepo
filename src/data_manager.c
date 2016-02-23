@@ -28,6 +28,8 @@
 #include <stdlib.h>
 #include <dirent.h>
 #include <pthread.h>
+#include <fcntl.h>
+
 
 /*
  * @brief Data manager context holding loaded schemas, data trees
@@ -38,6 +40,7 @@ typedef struct dm_ctx_s {
     char *data_search_dir;        /**< location where data files are located */
     struct ly_ctx *ly_ctx;        /**< libyang context holding all loaded schemas */
     pthread_rwlock_t lyctx_lock;  /**< rwlock to access ly_ctx */
+    pthread_mutex_t commit_lock;  /**< lock to synchronize commit in this instance */
 } dm_ctx_t;
 
 /**
@@ -617,22 +620,28 @@ dm_init(const char *schema_search_dir, const char *data_search_dir, dm_ctx_t **d
     pthread_rwlockattr_setkind_np(&attr, PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP);
 #endif
 
-    int ret = pthread_rwlock_init(&ctx->lyctx_lock, &attr);
+    int rc = pthread_rwlock_init(&ctx->lyctx_lock, &attr);
     pthread_rwlockattr_destroy(&attr);
-    if (0 != ret) {
+    if (0 != rc) {
         SR_LOG_ERR_MSG("lyctx mutex initialization failed");
         dm_cleanup(ctx);
         return SR_ERR_INTERNAL;
     }
 
-    *dm_ctx = ctx;
-    int res = dm_load_schemas(ctx);
-    if (SR_ERR_OK != res) {
+    rc = pthread_mutex_init(&ctx->commit_lock, NULL);
+    if (0 != rc) {
+        SR_LOG_ERR_MSG("Pthread mutex init failed");
         dm_cleanup(ctx);
-        return res;
+        return SR_ERR_INTERNAL;
     }
 
-    return SR_ERR_OK;
+    *dm_ctx = ctx;
+    rc = dm_load_schemas(ctx);
+    if (SR_ERR_OK != rc) {
+        dm_cleanup(ctx);
+    }
+
+    return rc;
 }
 
 void
@@ -644,6 +653,7 @@ dm_cleanup(dm_ctx_t *dm_ctx)
         if (NULL != dm_ctx->ly_ctx) {
             ly_ctx_destroy(dm_ctx->ly_ctx, dm_free_lys_private_data);
         }
+        pthread_mutex_destroy(&dm_ctx->commit_lock);
         pthread_rwlock_destroy(&dm_ctx->lyctx_lock);
         free(dm_ctx);
     }
@@ -876,15 +886,12 @@ dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors, siz
     rc = dm_validate_session_data_trees(dm_ctx, session, errors, err_cnt);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Data validation failed");
-        return SR_ERR_COMMIT_FAILED;
+        return SR_ERR_VALIDATION_FAILED;
     }
     SR_LOG_DBG_MSG("Commit: validation succeeded");
 
-    /* TODO aquire data file lock*/
-    /* TODO commit file lock to avoid deadlock when two commits - library, daemon mode*/
-
     /* lock context for writing */
-    //pthread_rwlock_wrlock(&dm_ctx->lyctx_lock);
+    pthread_mutex_lock(&dm_ctx->commit_lock);
 
     size_t i = 0;
     size_t modif_count = 0;
@@ -901,9 +908,11 @@ dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors, siz
 
     if (0 == modif_count) {
         SR_LOG_DBG_MSG("No model modified");
+        pthread_mutex_unlock(&dm_ctx->commit_lock);
         return SR_ERR_OK;
     } else if (0 == session->oper_count) {
         SR_LOG_WRN_MSG("No operation logged, however data tree marked as modified");
+        pthread_mutex_unlock(&dm_ctx->commit_lock);
         return SR_ERR_OK;
     }
 
@@ -915,6 +924,7 @@ dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors, siz
         SR_LOG_ERR_MSG("Memory allocation failed");
         free(files);
         free(existed);
+        pthread_mutex_unlock(&dm_ctx->commit_lock);
         return SR_ERR_NOMEM;
     }
 
@@ -925,6 +935,7 @@ dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors, siz
         SR_LOG_ERR_MSG("Commit session initialization failed");
         free(files);
         free(existed);
+        pthread_mutex_unlock(&dm_ctx->commit_lock);
         return rc;
     }
 
@@ -948,12 +959,22 @@ dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors, siz
                     SR_LOG_DBG("File %s can not be opened with 'w'", file_name);
                     rc = SR_ERR_UNAUTHORIZED;
                     modif_count = count;
+                    free(file_name);
                     goto cleanup;
                 }
             } else {
                 existed[count] = true;
             }
-            lockf(fileno(files[count]), F_LOCK, 0);
+            if (lockf(fileno(files[count]), F_TLOCK, 0) < 0) {
+                if (EACCES == errno || EAGAIN == errno) {
+                    SR_LOG_ERR("Unable to lock file %s", file_name);
+                } else {
+                    SR_LOG_ERR("Locking of file '%s': %s.", file_name, strerror(errno));
+                }
+                modif_count = count+1;
+                rc = SR_ERR_COMMIT_FAILED;
+                goto cleanup;
+            }
             dm_data_info_t *di = NULL;
             /* if the file existed pass FILE 'r+', otherwise pass NULL because there is 'w' stream already */
             rc = dm_load_data_tree_file(dm_ctx, existed[count] ? files[count] : NULL, file_name, info->module, &di);
@@ -981,7 +1002,6 @@ dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors, siz
     rc = rp_dt_replay_operations(dm_ctx, commit_session, session->operations, session->oper_count);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Replay of operations failed");
-        rc = SR_ERR_COMMIT_FAILED;
         goto cleanup;
     }
     SR_LOG_DBG_MSG("Commit: replay of operation succeeded");
@@ -990,7 +1010,7 @@ dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors, siz
     rc = dm_validate_session_data_trees(dm_ctx, commit_session, errors, err_cnt);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Validation after merging failed");
-        rc = SR_ERR_COMMIT_FAILED;
+        rc = SR_ERR_VALIDATION_FAILED;
         goto cleanup;
     }
     SR_LOG_DBG_MSG("Commit: merged models validation succeeded");
@@ -1029,7 +1049,6 @@ cleanup:
 
     /* close files*/
     for (i=0; i < modif_count; i++) {
-        lockf(fileno(files[i]), F_ULOCK, 0);
         fclose(files[i]);
     }
 
@@ -1042,5 +1061,6 @@ cleanup:
         rc = dm_discard_changes(dm_ctx, session);
         SR_LOG_DBG_MSG("Commit: finished successfully");
     }
+    pthread_mutex_unlock(&dm_ctx->commit_lock);
     return rc;
 }
