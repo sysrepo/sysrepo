@@ -1247,6 +1247,35 @@ edit_commit_test(void **state)
 }
 
 void
+edit_commit2_test(void **state)
+{
+    int rc = 0;
+    dm_ctx_t *ctx = *state;
+    dm_session_t *session = NULL, *sessionB = NULL;
+    dm_session_start(ctx, SR_DS_STARTUP, &session);
+    dm_session_start(ctx, SR_DS_STARTUP, &sessionB);
+
+    rc = rp_dt_delete_item_wrapper(ctx, session, "/test-module:main", SR_EDIT_STRICT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_delete_item_wrapper(ctx, sessionB, "/test-module:main", SR_EDIT_STRICT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    sr_error_info_t *errors = NULL;
+    size_t e_cnt = 0;
+    rc = dm_commit(ctx, session, &errors, &e_cnt);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /*this commit should failed because main container is already deleted */
+    rc = dm_commit(ctx, sessionB, &errors, &e_cnt);
+    assert_int_equal(SR_ERR_DATA_MISSING, rc);
+    sr_free_errors(errors, e_cnt);
+
+    dm_session_stop(ctx, session);
+    dm_session_stop(ctx, sessionB);
+}
+
+void
 edit_move_test(void **state)
 {
     int rc = 0;
@@ -1493,6 +1522,7 @@ int main(){
             cmocka_unit_test(edit_commit_test),
             cmocka_unit_test(edit_move_test),
             cmocka_unit_test(edit_move2_test),
+            cmocka_unit_test(edit_commit2_test),
     };
     return cmocka_run_group_tests(tests, setup, teardown);
 }

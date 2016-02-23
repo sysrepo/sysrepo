@@ -192,7 +192,7 @@ int dm_discard_changes(dm_ctx_t *dm_ctx, dm_session_t *session);
  * @param [in] session
  * @param [out] errors
  * @param [out] err_cnt
- * @return Error code (SR_ERR_OK on success), SR_ERR_COMMIT_FAILED, SR_ERR_IO
+ * @return Error code (SR_ERR_OK on success), SR_ERR_COMMIT_FAILED, SR_ERR_VALIDATION_FAILED, SR_ERR_IO
  */
 int dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors, size_t *err_cnt);
 
