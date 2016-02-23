@@ -92,6 +92,18 @@ int rp_dt_set_item_wrapper(dm_ctx_t *dm_ctx, dm_session_t *session, const char *
  * @return Error code (SR_ERR_OK on success)
  */
 int rp_dt_delete_item_wrapper(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, sr_edit_options_t opts);
+
+/**
+ * @brief Perform the list of provided operations on the session. Stops
+ * on the first error.
+ * @param [in] ctx
+ * @param [in] session
+ * @param [in] operations
+ * @param [in] count
+ * @return Error code (SR_ERR_OK on success)
+ */
+int rp_dt_replay_operations(dm_ctx_t *ctx, dm_session_t *session, dm_sess_op_t *operations, size_t count);
+
 #endif /* RP_DT_EDIT_H */
 
 /**

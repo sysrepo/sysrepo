@@ -108,6 +108,16 @@ rp_dt_get_node_xpath(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const c
     return rc;
 }
 
+/**
+ * Beware: doesn't log the operation to the session won't be permanent
+ * even after commit
+ * @param [in] ctx
+ * @param [in] session
+ * @param [in] xpath
+ * @param [in] opts
+ * @param [in] val
+ * @return Error code (SR_ERR_OK on success)
+ */
 int
 rp_dt_set_item_xpath(dm_ctx_t *ctx, dm_session_t *session, const char *xpath, sr_edit_options_t opts, sr_val_t *val)
 {

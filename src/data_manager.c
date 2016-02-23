@@ -21,6 +21,7 @@
 
 #include "data_manager.h"
 #include "sr_common.h"
+#include "rp_dt_edit.h"
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -193,48 +194,35 @@ dm_find_module_schema(dm_ctx_t *dm_ctx, const char *module_name, const struct ly
 }
 
 /**
- * @brief Loads data tree from file. Module and datastore argument are used to
- * determine the file name.
+ * @brief Tries to load data tree from provided opened file.
  * @param [in] dm_ctx
+ * @param [in] file to be read from, function does not close it
+ * If NULL passed data info with empty data will be created
  * @param [in] module
- * @param [in] ds
- * @param [out] data_info
- * @return Error code (SR_ERR_OK on success), SR_ERR_INTERAL if the parsing of the data tree fails.
+ * @param [in] data_info
+ * @return Error code (SR_ERR_OK on success)
  */
 static int
-dm_load_data_tree(dm_ctx_t *dm_ctx, const struct lys_module *module, sr_datastore_t ds, dm_data_info_t **data_info)
+dm_load_data_tree_file(dm_ctx_t *dm_ctx, FILE *file, const char *data_filename, const struct lys_module *module, dm_data_info_t **data_info)
 {
-    CHECK_NULL_ARG2(dm_ctx, module);
-
-    char *data_filename = NULL;
-    int rc = 0;
+    CHECK_NULL_ARG4(dm_ctx, module, data_filename, data_info);
+    int rc = SR_ERR_OK;
     struct lyd_node *data_tree = NULL;
     *data_info = NULL;
-    rc = sr_get_data_file_name(dm_ctx->data_search_dir, module->name, ds, &data_filename);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Get data_filename failed for %s", module->name);
-        return rc;
-    }
 
     dm_data_info_t *data = NULL;
     data = calloc(1, sizeof(*data));
     if (NULL == data) {
         SR_LOG_ERR_MSG("Memory allocation failed");
-        free(data_filename);
         return SR_ERR_NOMEM;
     }
 
-    FILE *f = fopen(data_filename, "r");
-
-    if (NULL != f) {
-        lockf(fileno(f), F_LOCK, 0);
+    if (NULL != file) {
         struct stat st = {0};
-        int rc = stat(data_filename, &st);
+        rc = stat(data_filename, &st);
         if (-1 == rc) {
             SR_LOG_ERR_MSG("Stat failed");
-            free(data_filename);
             free(data);
-            fclose(f);
             return SR_ERR_INTERNAL;
         }
 #ifdef HAVE_STAT_ST_MTIM
@@ -246,24 +234,19 @@ dm_load_data_tree(dm_ctx_t *dm_ctx, const struct lys_module *module, sr_datastor
         data->timestamp = st.st_mtime;
         SR_LOG_DBG("Loaded module %s: mtime sec=%lld\n", module->name, (long long) st.st_mtime);
 #endif
-        data_tree = lyd_parse_fd(dm_ctx->ly_ctx, fileno(f), LYD_XML, LYD_OPT_STRICT);
-        lockf(fileno(f), F_ULOCK, 0);
+        data_tree = lyd_parse_fd(dm_ctx->ly_ctx, fileno(file), LYD_XML, LYD_OPT_STRICT);
         if (NULL == data_tree) {
             SR_LOG_ERR("Parsing data tree from file %s failed", data_filename);
-            free(data_filename);
             free(data);
-            fclose(f);
             return SR_ERR_INTERNAL;
         }
-        fclose(f);
     } else {
-        SR_LOG_INF("File %s couldn't be opened for reading: %s", data_filename, strerror(errno));
+        SR_LOG_INF("File %s couldn't be opened for reading", data_filename);
     }
 
     /* if the data tree is loaded, validate it*/
     if (NULL != data_tree && 0 != lyd_validate(data_tree, LYD_OPT_STRICT)) {
         SR_LOG_ERR("Loaded data tree '%s' is not valid", data_filename);
-        free(data_filename);
         lyd_free_withsiblings(data_tree);
         free(data);
         return SR_ERR_INTERNAL;
@@ -279,11 +262,50 @@ dm_load_data_tree(dm_ctx_t *dm_ctx, const struct lys_module *module, sr_datastor
         SR_LOG_INF("Data file %s loaded successfully", data_filename);
     }
 
-    free(data_filename);
-
     *data_info = data;
 
-    return SR_ERR_OK;
+    return rc;
+}
+/**
+ * @brief Loads data tree from file. Module and datastore argument are used to
+ * determine the file name.
+ * @param [in] dm_ctx
+ * @param [in] module
+ * @param [in] ds
+ * @param [out] data_info
+ * @return Error code (SR_ERR_OK on success), SR_ERR_INTERAL if the parsing of the data tree fails.
+ */
+static int
+dm_load_data_tree(dm_ctx_t *dm_ctx, const struct lys_module *module, sr_datastore_t ds, dm_data_info_t **data_info)
+{
+    CHECK_NULL_ARG2(dm_ctx, module);
+
+    char *data_filename = NULL;
+    int rc = 0;
+    *data_info = NULL;
+    rc = sr_get_data_file_name(dm_ctx->data_search_dir, module->name, ds, &data_filename);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Get data_filename failed for %s", module->name);
+        return rc;
+    }
+
+
+    FILE *f = fopen(data_filename, "r");
+
+    if (NULL != f) {
+        lockf(fileno(f), F_LOCK, 0);
+    }
+
+    rc = dm_load_data_tree_file(dm_ctx, f, data_filename, module, data_info);
+
+    if (NULL != f) {
+        lockf(fileno(f), F_ULOCK, 0);
+        fclose(f);
+    }
+
+    free(data_filename);
+
+    return rc;
 }
 
 /**
@@ -351,6 +373,11 @@ dm_free_sess_op(dm_sess_op_t *op)
 static void
 dm_free_sess_operations(dm_sess_op_t *ops, size_t count)
 {
+    if (NULL == ops){
+        SR_LOG_WRN_MSG("Call free sess operation with count greater than 0 a NULL passed");
+        return;
+    }
+
     for (size_t i = 0; i < count; i++) {
         dm_free_sess_op(&ops[i]);
     }
@@ -829,6 +856,10 @@ dm_discard_changes(dm_ctx_t *dm_ctx, dm_session_t *session)
         SR_LOG_ERR_MSG("Binary tree allocation failed");
         return SR_ERR_NOMEM;
     }
+    dm_free_sess_operations(session->operations, session->oper_count);
+    session->operations = NULL;
+    session->oper_count = 0;
+    session->oper_size  = 0;
 
     return SR_ERR_OK;
 }
@@ -851,71 +882,140 @@ dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors, siz
     /* TODO commit file lock to avoid deadlock when two commits - library, daemon mode*/
 
     /* lock context for writing */
-    pthread_rwlock_wrlock(&dm_ctx->lyctx_lock);
+    //pthread_rwlock_wrlock(&dm_ctx->lyctx_lock);
 
-    size_t cnt = 0;
+    size_t i = 0;
+    size_t modif_count = 0;
     dm_data_info_t *info = NULL;
-    while (NULL != (info = sr_btree_get_at(session->session_modules, cnt))) {
+    /* count modified files */
+    while (NULL != (info = sr_btree_get_at(session->session_modules, i))) {
         if (info->modified) {
-            char *data_filename = NULL;
-            rc = sr_get_data_file_name(dm_ctx->data_search_dir, info->module->name, session->datastore, &data_filename);
-            if (SR_ERR_OK != rc) {
-                SR_LOG_ERR_MSG("Getting data file name failed");
-                pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
-                return rc;
-            }
-            struct stat st = {0};
-            int rc = stat(data_filename, &st);
-            if (-1 == rc) {
-                SR_LOG_ERR_MSG("Stat failed");
-                free(data_filename);
-                pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
-                return SR_ERR_INTERNAL;
-            }
-            FILE *f = fopen(data_filename, "w");
-            if (NULL == f) {
-                SR_LOG_ERR("Failed to open file %s", data_filename);
-                pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
-                free(data_filename);
-                return SR_ERR_IO;
-            }
-            lockf(fileno(f), F_LOCK, 0);
-
-
-#ifdef HAVE_STAT_ST_MTIM
-            if ((info->timestamp.tv_sec != st.st_mtim.tv_sec)
-                    || (info->timestamp.tv_nsec != st.st_mtim.tv_nsec)) {
-                SR_LOG_INF("Merging needs to be done for module '%s', currently just overwriting", info->module->name);
-            } else {
-                SR_LOG_INF("Session copy module '%s', has not been changed since loading", info->module->name);
-            }
-#else
-            if (info->timestamp != st.st_mtime) {
-                SR_LOG_INF("Merging needs to be done for module '%s', currently just overwriting", info->module->name);
-            } else {
-                /* Further check if the because we have only second precision */
-            }
-#endif
-            if (0 != lyd_print_file(f, info->node, LYD_XML_FORMAT, LYP_WITHSIBLINGS)) {
-                SR_LOG_ERR("Failed to write output into %s", data_filename);
-                pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
-                free(data_filename);
-                return SR_ERR_INTERNAL;
-            }
-            lockf(fileno(f), F_ULOCK, 0);
-            fclose(f);
-
-            free(data_filename);
-            if (SR_ERR_OK != rc) {
-                SR_LOG_ERR("Saving data file for module %s failed", info->module->name);
-                pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
-                return rc;
-            }
+            modif_count++;
         }
-        cnt++;
+        i++;
     }
 
-    pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
+    SR_LOG_DBG("In the session there are %zu / %zu modified models \n", modif_count, i);
+
+    if (0 == modif_count) {
+        SR_LOG_DBG_MSG("No model modified");
+        return SR_ERR_OK;
+    } else if (0 == session->oper_count) {
+        SR_LOG_WRN_MSG("No operation logged, however data tree marked as modified");
+        return SR_ERR_OK;
+    }
+
+    FILE **files = NULL;
+    bool *existed = NULL;
+    files = calloc(modif_count, sizeof(*files));
+    existed = calloc(modif_count, sizeof(*existed));
+    if(NULL == files || NULL == existed){
+        SR_LOG_ERR_MSG("Memory allocation failed");
+        free(files);
+        free(existed);
+        return SR_ERR_NOMEM;
+    }
+
+    /* create commit session*/
+    dm_session_t *commit_session = NULL;
+    rc = dm_session_start(dm_ctx, session->datastore, &commit_session);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Commit session initialization failed");
+        return rc;
+    }
+
+    /* open all files */
+    size_t count = 0;
+    i = 0;
+    while (NULL != (info = sr_btree_get_at(session->session_modules, i))) {
+        if (info->modified) {
+            char * file_name = NULL;
+            rc = sr_get_data_file_name(dm_ctx->data_search_dir, info->module->name, session->datastore, &file_name);
+            if (SR_ERR_OK != rc) {
+                SR_LOG_ERR_MSG("Get data file name failed");
+                return rc;
+            }
+            files[count] = fopen(file_name, "r+");
+            if (NULL == files[count]) {
+                SR_LOG_DBG("File %s can not be opened with 'r+'", file_name);
+                files[count] = fopen(file_name, "w");
+                if (NULL == files[count]) {
+                    SR_LOG_DBG("File %s can not be opened with 'w'", file_name);
+                    return SR_ERR_UNAUTHORIZED;
+                }
+            } else {
+                existed[count] = true;
+            }
+            lockf(fileno(files[count]), F_LOCK, 0);
+            dm_data_info_t *di = NULL;
+            /* if the file existed pass FILE 'r+', otherwise pass NULL because there is 'w' stream already */
+            rc = dm_load_data_tree_file(dm_ctx, existed[count] ? files[count] : NULL, file_name, info->module, &di);
+            if (SR_ERR_OK != rc) {
+                SR_LOG_ERR_MSG("Loading data file failed");
+                return rc;
+            }
+            rc = sr_btree_insert(commit_session->session_modules, (void *) di);
+            if (SR_ERR_OK != rc) {
+                SR_LOG_ERR("Insert into commit session avl failed module %s", info->module->name);
+                dm_data_info_free(di);
+                return rc;
+            }
+            free(file_name);
+
+            count++;
+        }
+        i++;
+    }
+
+    /* replay operations */
+    rc = rp_dt_replay_operations(dm_ctx, commit_session, session->operations, session->oper_count);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Replay of operations failed");
+        return SR_ERR_COMMIT_FAILED;
+    }
+
+    /* validate files */
+    rc = dm_validate_session_data_trees(dm_ctx, commit_session, errors, err_cnt);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Validation after merging failed");
+        return SR_ERR_COMMIT_FAILED;
+    }
+
+    /* empty existing files */
+    for (i=0; i< modif_count; i++) {
+        if (existed[i]) {
+            ftruncate(fileno(files[i]), 0);
+            fseek(files[i], 0, SEEK_SET);
+        }
+    }
+
+
+    /* write data trees and close files */
+    count = 0;
+    i = 0;
+    dm_data_info_t *merged_info = NULL;
+    while (NULL != (info = sr_btree_get_at(session->session_modules, i))) {
+        if (info->modified) {
+            /* get merged info */
+            merged_info = sr_btree_search(commit_session->session_modules, info);
+            if (NULL == merged_info) {
+                SR_LOG_ERR("Merged data info %s not found", info->module->name);
+                return SR_ERR_INTERNAL;
+            }
+            if (0 != lyd_print_file(files[count], merged_info->node, LYD_XML_FORMAT, LYP_WITHSIBLINGS)) {
+                SR_LOG_ERR("Failed to write output for %s", info->module->name);
+                return SR_ERR_INTERNAL;
+            }
+            lockf(fileno(files[count]), F_ULOCK, 0);
+            fclose(files[count]);
+            count++;
+        }
+        i++;
+    }
+
+    free(files);
+    free(existed);
+    dm_session_stop(dm_ctx, commit_session);
 
     /* discard changes in session in next get_data_tree call newly committed content will be loaded */
     rc = dm_discard_changes(dm_ctx, session);

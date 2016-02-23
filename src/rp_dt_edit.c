@@ -765,3 +765,34 @@ cleanup:
     xp_free_loc_id(loc_id);
     return rc;
 }
+int
+rp_dt_replay_operations(dm_ctx_t *ctx, dm_session_t *session, dm_sess_op_t *operations, size_t count)
+{
+    CHECK_NULL_ARG3(ctx, session, operations);
+    int rc = SR_ERR_OK;
+
+    for (size_t i = 0; i < count; i++) {
+        dm_sess_op_t *op = &operations[i];
+        switch (op->op) {
+        case DM_SET_OP:
+            rc = rp_dt_set_item(ctx, session, op->loc_id, op->options, op->val);
+            break;
+        case DM_DELETE_OP:
+            rc = rp_dt_delete_item(ctx, session, op->loc_id, op->options);
+            break;
+        case DM_MOVE_DOWN_OP:
+            rc = rp_dt_move_list(ctx, session, op->loc_id, SR_MOVE_DOWN);
+            break;
+        case DM_MOVE_UP_OP:
+            rc = rp_dt_move_list(ctx, session, op->loc_id, SR_MOVE_UP);
+            break;
+        }
+
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR("Replay of operation %zu / %zu failed", i, count);
+            return rc;
+        }
+    }
+
+    return rc;
+}

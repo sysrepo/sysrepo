@@ -1184,9 +1184,8 @@ edit_commit_test(void **state)
 
     /* update value in session A*/
     valueA->data.int64_val = XP_TEST_MODULE_INT64_VALUE_T + 99;
-    rc = rp_dt_set_item_xpath(ctx, sessionA, XP_TEST_MODULE_INT64, SR_EDIT_DEFAULT, valueA);
+    rc = rp_dt_set_item_wrapper(ctx, sessionA, XP_TEST_MODULE_INT64, valueA, SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
-    sr_free_val(valueA);
 
     /* check update in session A*/
     rc = rp_dt_get_value_wrapper(ctx, sessionA, XP_TEST_MODULE_INT64, &valueA);
@@ -1237,9 +1236,8 @@ edit_commit_test(void **state)
 
     valueA->data.int64_val = XP_TEST_MODULE_INT64_VALUE_T;
 
-    rc = rp_dt_set_item_xpath(ctx, sessionA, XP_TEST_MODULE_INT64, SR_EDIT_DEFAULT, valueA);
+    rc = rp_dt_set_item_wrapper(ctx, sessionA, XP_TEST_MODULE_INT64, valueA, SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
-    sr_free_val(valueA);
 
     rc = dm_commit(ctx, sessionA, &errors, &e_cnt);
     assert_int_equal(SR_ERR_OK, rc);
