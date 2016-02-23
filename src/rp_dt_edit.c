@@ -765,6 +765,7 @@ cleanup:
     xp_free_loc_id(loc_id);
     return rc;
 }
+
 int
 rp_dt_replay_operations(dm_ctx_t *ctx, dm_session_t *session, dm_sess_op_t *operations, size_t count)
 {
