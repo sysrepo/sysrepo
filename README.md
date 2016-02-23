@@ -19,9 +19,10 @@ Sysrepo can be easily integrated to management agents such as [NETCONF](https://
 
 ## Features
 - ability to store / retrieve YANG-modeled data elements adressed by XPath
+- startup and running configuration datastore with implicit candidate capability
 - data consistency and constraints enforecment according to YANG model (with help of [libyang](https://github.com/cesnet/libyang) library)
 - no single point of failure design (client library is able to instantiate its own sysrepo engine and prerform most of the data-access operations also by itself, whithout the need of contacting system-wide daemon)
-- (TODO) full transaction and concurrency support with ACID properties
+- (TODO) full transaction and concurrency support, conforming all ACID properties (Atomicity, Consistency, Isolation, Durability)
 - (TODO) notifications of subscribed applications about the changes made in the datastore
 - (TODO) ability to subscribe to notifications as a verifier and validate the changes before they are committed
 - (TODO) plugins infrastructure for applications / services that cannot use sysrepo as the datastoren, but still want to be manageable via sysrepo
@@ -32,7 +33,7 @@ Sysrepo can be easily integrated to management agents such as [NETCONF](https://
 - (TODO) bindings / native client libraries for other programming languages (Python, Java, ...)
 
 ## Performance
-According to our measurements using the [performence unit-test](tests/perf_test.c) and [concurrency unit-test](tests/concurr_test.c), sysrepo is able to handle more than 100 000 of requests per second (100 requests per millisecond) by concurrent access and about a half of it by sequential access on a conventional laptop hardware (read operations sent in-parallel from multiple sessions / sequentially within a single session).
+According to our measurements using the [performance unit-test](tests/perf_test.c) and [concurrency unit-test](tests/concurr_test.c), sysrepo is able to handle more than 100 000 of requests per second (100 requests per millisecond) by concurrent access and about a half of it by sequential access on a conventional laptop hardware (read operations sent in-parallel from multiple sessions / sequentially within a single session).
 
 ## Build & Installation Steps
 See [INSTALL.md](INSTALL.md) file, which contains detailed build and installation steps.
@@ -43,7 +44,7 @@ See [examples](examples) directory, which contains an example per each data-aces
 Also see our [fork of dnsmasq](https://github.com/sysrepo/dnsmasq-sysrepo) that uses sysrepo to store its configuration for short demonstration of how sysrepo can be integrated into an existing application ([see the diff](https://github.com/sysrepo/dnsmasq-sysrepo/commit/39ce80b6eae1d155af3b20f195c1e13efbc9094a)).
 
 ## Documentation
-Client Library API, as well as all internal modules of sysrepo are extensively documented with Doxygen comments. To read the documentation, [run Doxygen build](INSTALL.md) and open the documentation index file doc/html/index.html.
+Client Library API, as well as all internal modules of sysrepo are documented with Doxygen comments. To read the documentation, you can navigate to the [nigthly build of documentation on sysrepo.org](http://www.sysrepo.org/static/doc/html/), or [build your own copy](INSTALL.md) of the documentation.
 
 ## Other Resources
 - [Sysrepo Project WIKI](http://www.sysrepo.org/)
