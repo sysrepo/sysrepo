@@ -107,31 +107,32 @@ cm_message_send(const int fd, const void *msg_buf, const size_t msg_size)
     assert_int_not_equal(rc, -1);
 }
 
-#define CM_BUFF_LEN 4096
-
 static Sr__Msg *
 cm_message_recv(const int fd)
 {
-    uint8_t buf[CM_BUFF_LEN] = { 0, };
+    uint8_t buf1[SR_MSG_PREAM_SIZE] = { 0, }, *buf2 = NULL;
     size_t len = 0, pos = 0;
     size_t msg_size = 0;
 
     /* read first 4 bytes with length of the message */
     while (pos < SR_MSG_PREAM_SIZE) {
-        len = recv(fd, buf + pos, SR_MSG_PREAM_SIZE - pos, 0);
+        len = recv(fd, buf1 + pos, SR_MSG_PREAM_SIZE - pos, 0);
         assert_int_not_equal(len, -1);
         if (0 == len) {
             return NULL; /* disconnect */
         }
         pos += len;
     }
-    msg_size = sr_buff_to_uint32(buf);
+    msg_size = sr_buff_to_uint32(buf1);
     assert_true((msg_size > 0) && (msg_size <= SR_MAX_MSG_SIZE));
+
+    buf2 = calloc(msg_size, sizeof(*buf2));
+    assert_non_null(buf2);
 
     /* read the rest of the message */
     pos = 0;
     while (pos < msg_size) {
-        len = recv(fd, buf + pos, msg_size - pos, 0);
+        len = recv(fd, buf2 + pos, msg_size - pos, 0);
         assert_int_not_equal(len, -1);
         if (0 == len) {
             return NULL; /* disconnect */
@@ -139,7 +140,8 @@ cm_message_recv(const int fd)
         pos += len;
     }
 
-    Sr__Msg *msg = sr__msg__unpack(NULL, msg_size, (const uint8_t*)buf);
+    Sr__Msg *msg = sr__msg__unpack(NULL, msg_size, (const uint8_t*)buf2);
+    free(buf2);
     return msg;
 }
 
@@ -504,8 +506,10 @@ cm_signals_test(void **state)
     assert_int_equal(rc, SR_ERR_INTERNAL);
 
     /* send signals to ourself */
+#ifdef __linux__
     kill(getpid(), SIGUSR2);
     kill(getpid(), SIGUSR1);
+#endif
 }
 
 int

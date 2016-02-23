@@ -114,6 +114,7 @@ typedef struct cm_connection_ctx_s {
     cm_ctx_t *cm_ctx;      /**< Connection manager context assigned to this connection. */
     cm_buffer_t in_buff;   /**< Input buffer. If not empty, there is some received data to be processed. */
     cm_buffer_t out_buff;  /**< Output buffer. If not empty, there is some data to be sent when receiver is ready. */
+    size_t out_buff_start; /**< Position where the unsent data start in the output buffer. */
     ev_io read_watcher;    /**< Watcher for readable events on connection's socket. */
     ev_io write_watcher;   /**< Watcher for writable events on connection's socket. */
 } cm_connection_ctx_t;
@@ -347,7 +348,7 @@ cm_conn_out_buff_flush(cm_ctx_t *cm_ctx, sm_connection_t *connection)
 
     buff = &connection->cm_data->out_buff;
     buff_size = buff->pos;
-    buff_pos = 0;
+    buff_pos = connection->cm_data->out_buff_start;
 
     SR_LOG_DBG("Sending %zu bytes of data.", (buff_size - buff_pos));
 
@@ -361,6 +362,8 @@ cm_conn_out_buff_flush(cm_ctx_t *cm_ctx, sm_connection_t *connection)
             if ((EWOULDBLOCK == errno) || (EAGAIN == errno)) {
                 /* no more data can be sent now */
                 SR_LOG_DBG("fd %d would block", connection->fd);
+                /* mark the position where the unsent data start */
+                connection->cm_data->out_buff_start = buff_pos;
                 /* monitor fd for writable event */
                 ev_io_start(cm_ctx->event_loop, &connection->cm_data->write_watcher);
                 break;
@@ -373,9 +376,10 @@ cm_conn_out_buff_flush(cm_ctx_t *cm_ctx, sm_connection_t *connection)
         }
     } while ((buff_pos < buff_size) && (written > 0));
 
-    if(buff_size == buff_pos) {
+    if (buff_size == buff_pos) {
         /* no more data left in the buffer */
         buff->pos = 0;
+        connection->cm_data->out_buff_start = 0;
     }
 
     return rc;

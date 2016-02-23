@@ -380,6 +380,19 @@ cl_conn_remove_session(sr_conn_ctx_t *connection, sr_session_ctx_t *session)
 }
 
 /**
+ * @brief Cleans up a client library -local session.
+ */
+static void
+cl_session_cleanup(sr_session_ctx_t *session)
+{
+    if (NULL != session) {
+        sr_free_errors(session->error_info, session->error_info_size);
+        pthread_mutex_destroy(&session->lock);
+        free(session);
+    }
+}
+
+/**
  * @brief Expands message buffer of a connection to fit given size, if needed.
  */
 static int
@@ -757,7 +770,7 @@ sr_disconnect(sr_conn_ctx_t *conn_ctx)
         while (NULL != session) {
             tmp = session;
             session = session->next;
-            free(tmp->session);
+            cl_session_cleanup(tmp->session);
             free(tmp);
         }
 
@@ -880,11 +893,9 @@ sr_session_stop(sr_session_ctx_t *session)
     sr__msg__free_unpacked(msg_resp, NULL);
 
 
-    sr_free_errors(session->error_info, session->error_info_size);
-    pthread_mutex_destroy(&session->lock);
-    free(session);
+    cl_session_cleanup(session);
 
-    return SR_ERR_OK; /* do not use cl_session_return - session has been freed line above */
+    return SR_ERR_OK; /* do not use cl_session_return - session has been freed one line above */
 
 cleanup:
     if (NULL != msg_req) {
