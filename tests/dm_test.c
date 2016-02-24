@@ -275,6 +275,16 @@ dm_add_operation_test(void **state)
     rc = dm_add_operation(ses_ctx, DM_DELETE_OP, l2, NULL, SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
+    sr_val_t *val1 = NULL;
+    val1 = calloc(1, sizeof(*val1));
+    assert_null(val1);
+    val1->type = SR_STRING_T;
+    val1->data.string_val = strdup("abc");
+
+    /* NULL passed in loc_id argument, val1 should be freed */
+    rc = dm_add_operation(ses_ctx, DM_SET_OP, NULL, val1, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+
     dm_session_stop(ctx, ses_ctx);
 
 }

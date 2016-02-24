@@ -187,7 +187,19 @@ int dm_validate_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, sr_e
 int dm_discard_changes(dm_ctx_t *dm_ctx, dm_session_t *session);
 
 /**
- * @brief Saves the changes to the file system.
+ * @brief Saves the changes made in the session to the file system. To make sure that only one commit
+ * can be in progress at the same time commit_lock in dm_ctx is used. To solve potential
+ * conflict with sysrepo library, each individual data file is locked. In case of
+ * failure to lock data file, the commit process is stopped and SR_ERR_COMMIT_FAILED is returned.
+ * The commit process can be divided into 5 steps:
+ * - validation of modified data trees (in case of error SR_ERR_VALIDATION_FAILED is returned),
+ * after successful validation commit_lock is acquired.
+ * - initialization of the commit session where all modified models are loaded
+ * from file system
+ * - operation made in session are applied to the commit session
+ * - validate commit_session's data trees because the merge of the session changes
+ * may cause invalidity
+ * - write commit session's data trees to the file system
  * @param [in] dm_ctx
  * @param [in] session
  * @param [out] errors
@@ -198,7 +210,7 @@ int dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors,
 
 /**
  * @brief Logs operation into session operation list. The operation list is used
- * during the commit.
+ * during the commit. Passed allocated arguments are freed in case of error also.
  * @param [in] session
  * @param [in] op
  * @param [in] loc_id - must be allocated, will be freed with operation list

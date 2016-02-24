@@ -292,7 +292,6 @@ dm_load_data_tree(dm_ctx_t *dm_ctx, const struct lys_module *module, sr_datastor
         return rc;
     }
 
-
     FILE *f = fopen(data_filename, "r");
 
     if (NULL != f) {
@@ -307,7 +306,6 @@ dm_load_data_tree(dm_ctx_t *dm_ctx, const struct lys_module *module, sr_datastor
     }
 
     free(data_filename);
-
     return rc;
 }
 
@@ -944,7 +942,7 @@ dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors, siz
     i = 0;
     while (NULL != (info = sr_btree_get_at(session->session_modules, i))) {
         if (info->modified) {
-            char * file_name = NULL;
+            char *file_name = NULL;
             rc = sr_get_data_file_name(dm_ctx->data_search_dir, info->module->name, session->datastore, &file_name);
             if (SR_ERR_OK != rc) {
                 SR_LOG_ERR_MSG("Get data file name failed");
