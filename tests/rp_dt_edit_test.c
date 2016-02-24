@@ -1553,25 +1553,29 @@ operation_logging_test(void **state)
    assert_int_equal(DM_SET_OP, session->operations[session->oper_count-1].op);
 
    rc = rp_dt_set_item_wrapper(ctx, session, "/test-module:user[name='nameX']", NULL, SR_EDIT_DEFAULT);
-   assert_int_equal(SR_ERR_INVAL_ARG, rc);
-   assert_int_equal(1, session->oper_count);
+   assert_int_equal(SR_ERR_OK, rc);
+   assert_int_equal(2, session->oper_count);
 
    /* move */
    rc = rp_dt_move_list_wrapper(ctx, session, "/test-module:user[name='nameC']", SR_MOVE_UP);
    assert_int_equal(SR_ERR_OK, rc);
-   assert_int_equal(2, session->oper_count);
+   assert_int_equal(3, session->oper_count);
    assert_int_equal(DM_MOVE_UP_OP, session->operations[session->oper_count-1].op);
+
+   rc = rp_dt_move_list_wrapper(ctx, session, "/test-module:!^", SR_MOVE_UP);
+   assert_int_equal(SR_ERR_INVAL_ARG, rc);
+   assert_int_equal(3, session->oper_count);
 
    /* delete */
    rc = rp_dt_delete_item_wrapper(ctx, session, "/test-module:user[name='nameC']", SR_EDIT_DEFAULT);
    assert_int_equal(SR_ERR_OK, rc);
-   assert_int_equal(3, session->oper_count);
+   assert_int_equal(4, session->oper_count);
    assert_int_equal(DM_DELETE_OP, session->operations[session->oper_count-1].op);
 
    /* unsuccessful operation should not be logged */
    rc = rp_dt_move_list_wrapper(ctx, session, "/test-module:user[name='nameC']", SR_MOVE_UP);
    assert_int_equal(SR_ERR_INVAL_ARG, rc);
-   assert_int_equal(3, session->oper_count);
+   assert_int_equal(4, session->oper_count);
 
    dm_session_stop(ctx, session);
 }
@@ -1603,6 +1607,7 @@ int main(){
             cmocka_unit_test(edit_commit2_test),
             cmocka_unit_test(edit_commit3_test),
             cmocka_unit_test(edit_commit4_test),
+            cmocka_unit_test(operation_logging_test),
     };
     return cmocka_run_group_tests(tests, setup, teardown);
 }

@@ -687,16 +687,17 @@ rp_dt_move_list_wrapper(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpa
         return rc;
     }
 
-    rc = rp_dt_move_list(dm_ctx, session, loc_id, direction);
-    if (SR_ERR_OK != rc){
-        SR_LOG_ERR_MSG("List move failed");
-        goto cleanup;
-    }
-
     rc = dm_add_operation(session, direction == SR_MOVE_UP ? DM_MOVE_UP_OP: DM_MOVE_DOWN_OP ,loc_id, NULL, 0);
     if (SR_ERR_OK != rc){
         /* loc id is freed by dm_add_operation */
         SR_LOG_ERR_MSG("Adding operation to session op list failed");
+        goto cleanup;
+    }
+
+    rc = rp_dt_move_list(dm_ctx, session, loc_id, direction);
+    if (SR_ERR_OK != rc){
+        SR_LOG_ERR_MSG("List move failed");
+        dm_remove_last_operation(session);
     }
     return rc;
 
@@ -717,16 +718,17 @@ rp_dt_set_item_wrapper(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpat
         goto cleanup;
     }
 
-    rc = rp_dt_set_item(dm_ctx, session, loc_id, opt, val);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Set item failed");
-        goto cleanup;
-    }
-
     rc = dm_add_operation(session, DM_SET_OP, loc_id, val, opt);
     if (SR_ERR_OK != rc){
         /* loc id and val is freed by dm_add_operation */
         SR_LOG_ERR_MSG("Adding operation to session op list failed");
+        goto cleanup;
+    }
+
+    rc = rp_dt_set_item(dm_ctx, session, loc_id, opt, val);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Set item failed");
+        dm_remove_last_operation(session);
     }
     return rc;
 
@@ -748,16 +750,17 @@ rp_dt_delete_item_wrapper(dm_ctx_t *dm_ctx, dm_session_t *session, const char *x
         return rc;
     }
 
-    rc = rp_dt_delete_item(dm_ctx, session, loc_id, opts);
-    if (SR_ERR_OK != rc){
-        SR_LOG_ERR_MSG("List move failed");
-        goto cleanup;
-    }
-
     rc = dm_add_operation(session, DM_DELETE_OP, loc_id, NULL, opts);
     if (SR_ERR_OK != rc){
         /* loc id is freed by dm_add_operation */
         SR_LOG_ERR_MSG("Adding operation to session op list failed");
+        goto cleanup;
+    }
+
+    rc = rp_dt_delete_item(dm_ctx, session, loc_id, opts);
+    if (SR_ERR_OK != rc){
+        SR_LOG_ERR_MSG("List move failed");
+        dm_remove_last_operation(session);
     }
     return rc;
 

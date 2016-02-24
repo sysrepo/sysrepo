@@ -221,6 +221,7 @@ dm_load_data_tree_file(dm_ctx_t *dm_ctx, FILE *file, const char *data_filename, 
     }
 
     if (NULL != file) {
+#ifdef HAVE_STAT_ST_MTIM
         struct stat st = {0};
         rc = stat(data_filename, &st);
         if (-1 == rc) {
@@ -228,14 +229,10 @@ dm_load_data_tree_file(dm_ctx_t *dm_ctx, FILE *file, const char *data_filename, 
             free(data);
             return SR_ERR_INTERNAL;
         }
-#ifdef HAVE_STAT_ST_MTIM
         data->timestamp = st.st_mtim;
         SR_LOG_DBG("Loaded module %s: mtime sec=%lld nsec=%lld\n", module->name,
                 (long long) st.st_mtim.tv_sec,
                 (long long) st.st_mtim.tv_nsec);
-#else
-        data->timestamp = st.st_mtime;
-        SR_LOG_DBG("Loaded module %s: mtime sec=%lld\n", module->name, (long long) st.st_mtime);
 #endif
         data_tree = lyd_parse_fd(dm_ctx->ly_ctx, fileno(file), LYD_XML, LYD_OPT_STRICT);
         if (NULL == data_tree) {
@@ -440,6 +437,18 @@ cleanup:
     xp_free_loc_id(loc_id);
     sr_free_val(val);
     return rc;
+}
+
+void
+dm_remove_last_operation(dm_session_t *session)
+{
+    CHECK_NULL_ARG_VOID(session);
+    if (session->oper_count > 0) {
+        session->oper_count--;
+        dm_free_sess_op(&session->operations[session->oper_count]);
+        session->operations[session->oper_count].loc_id = NULL;
+        session->operations[session->oper_count].val = NULL;
+    }
 }
 
 void
