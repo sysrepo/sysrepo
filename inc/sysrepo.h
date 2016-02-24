@@ -261,9 +261,6 @@ void sr_disconnect(sr_conn_ctx_t *conn_ctx);
  * @brief Starts a new configuration session.
  *
  * @param[in] conn_ctx Connection context acquired with ::sr_connect call.
- * @param[in] user_name Effective user name used to authorize the access to
- * datastore (in addition to automatically-detected real user name). If not
- * provided, only automatically-detected real user name will be used for authorization.
  * @param[in] datastore Datastore on which all sysrepo functions within this
  * session will operate. Functionality of some sysrepo calls does not depend on
  * datastore. If your session will contain just calls like these, you can pass
@@ -273,7 +270,36 @@ void sr_disconnect(sr_conn_ctx_t *conn_ctx);
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int sr_session_start(sr_conn_ctx_t *conn_ctx, const char *user_name, sr_datastore_t datastore, sr_session_ctx_t **session);
+int sr_session_start(sr_conn_ctx_t *conn_ctx, sr_datastore_t datastore, sr_session_ctx_t **session);
+
+/**
+ * @brief Starts a new configuration session on behalf of a different user.
+ *
+ * This call is intended for northbound access to sysrepo from management
+ * applications, that need sysrepo to authorize the operations not only
+ * against the user under which the management application is running, but
+ * also against another user (e.g. user that connected to the management application).
+ *
+ * @note Be aware that authorization of specified user may fail with an unexpected
+ * SR_ERR_UNAUTHORIZED errors in case that the client library uses its own
+ * Sysrepo Engine at the moment and your process in not running under root
+ * privileges. To prevent this situation, consider specifying
+ * SR_CONN_DAEMON_REQUIRED flag by ::sr_connect call or using ::sr_session_start
+ * instead of this function.
+ *
+ * @param[in] conn_ctx Connection context acquired with ::sr_connect call.
+ * @param[in] user_name Effective user name used to authorize the access to
+ * datastore (in addition to automatically-detected real user name).
+ * @param[in] datastore Datastore on which all sysrepo functions within this
+ * session will operate. Functionality of some sysrepo calls does not depend on
+ * datastore. If your session will contain just calls like these, you can pass
+ * any valid value (e.g. SR_RUNNING).
+ * @param[out] session Session context that can be used for subsequent API
+ * calls (automatically allocated, can be released by calling ::sr_session_stop).
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_session_start_user(sr_conn_ctx_t *conn_ctx, const char *user_name, sr_datastore_t datastore, sr_session_ctx_t **session);
 
 /**
  * @brief Stops current session and releases resources tied to the session.

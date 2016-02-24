@@ -791,7 +791,13 @@ sr_disconnect(sr_conn_ctx_t *conn_ctx)
 }
 
 int
-sr_session_start(sr_conn_ctx_t *conn_ctx, const char *user_name, sr_datastore_t datastore, sr_session_ctx_t **session_p)
+sr_session_start(sr_conn_ctx_t *conn_ctx, sr_datastore_t datastore, sr_session_ctx_t **session_p)
+{
+    return sr_session_start_user(conn_ctx, NULL, datastore, session_p);
+}
+
+int
+sr_session_start_user(sr_conn_ctx_t *conn_ctx, const char *user_name, sr_datastore_t datastore, sr_session_ctx_t **session_p)
 {
     sr_session_ctx_t *session = NULL;
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
