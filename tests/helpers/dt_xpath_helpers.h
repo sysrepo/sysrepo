@@ -72,6 +72,16 @@ int rp_dt_get_nodes_xpath(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, co
  */
 int rp_dt_get_node_xpath(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char *xpath, struct lyd_node **node);
 
+/**
+ * @brief
+ * @param [in] ctx
+ * @param [in] session
+ * @param [in] xpath
+ * @param [in] opts
+ * @param [in] val
+ * @return Error code
+ */
+int rp_dt_set_item_xpath(dm_ctx_t *ctx, dm_session_t *session, const char *xpath, sr_edit_options_t opts, sr_val_t *val);
 #endif /* XPATH_HELPERS_H */
 
 /**

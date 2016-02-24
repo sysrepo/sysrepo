@@ -244,6 +244,51 @@ dm_commit_test(void **state)
     dm_cleanup(ctx);
 }
 
+void
+dm_add_operation_test(void **state)
+{
+    int rc;
+    dm_ctx_t *ctx = NULL;
+    dm_session_t *ses_ctx = NULL;
+
+    dm_session_start(ctx, SR_DS_STARTUP, &ses_ctx);
+
+    rc = dm_add_operation(ses_ctx, DM_DELETE_OP, NULL, NULL, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+
+    sr_val_t *val = NULL;
+    val = calloc(1, sizeof(*val));
+    assert_null(val);
+
+    val->type = SR_INT8_T;
+    val->data.int8_val = 42;
+
+    xp_loc_id_t *l1 = NULL;
+    xp_loc_id_t *l2 = NULL;
+
+    assert_int_equal(SR_ERR_OK, xp_char_to_loc_id("/abc:def", &l1));
+    assert_int_equal(SR_ERR_OK, xp_char_to_loc_id("/abc:def", &l2));
+
+    rc = dm_add_operation(ses_ctx, DM_SET_OP, l1, val, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = dm_add_operation(ses_ctx, DM_DELETE_OP, l2, NULL, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    sr_val_t *val1 = NULL;
+    val1 = calloc(1, sizeof(*val1));
+    assert_null(val1);
+    val1->type = SR_STRING_T;
+    val1->data.string_val = strdup("abc");
+
+    /* NULL passed in loc_id argument, val1 should be freed */
+    rc = dm_add_operation(ses_ctx, DM_SET_OP, NULL, val1, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+
+    dm_session_stop(ctx, ses_ctx);
+
+}
+
 int main(){
     sr_set_log_level(SR_LL_DBG, SR_LL_NONE);
 

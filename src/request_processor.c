@@ -293,7 +293,7 @@ rp_set_item_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr_
 {
     Sr__Msg *resp = NULL;
     char *xpath = NULL;
-    sr_val_t value = { 0 };
+    sr_val_t *value = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->set_item_req);
@@ -306,27 +306,29 @@ rp_set_item_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr_
     rc = sr_pb_resp_alloc(SR__OPERATION__SET_ITEM, session->id, &resp);
     if (SR_ERR_OK != rc){
         SR_LOG_ERR_MSG("Allocation of set_item response failed.");
+        free(value);
         return SR_ERR_NOMEM;
     }
 
     if (NULL != msg->request->set_item_req->value) {
         /* copy the value from gpb */
-        rc = sr_copy_gpb_to_val_t(msg->request->set_item_req->value, &value);
+        value = calloc(1, sizeof(*value));
+        rc = sr_copy_gpb_to_val_t(msg->request->set_item_req->value, value);
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR("Copying gpb value to sr_val_t failed for xpath '%s'", xpath);
+            free(value);
         }
 
         /* set the value in data manager */
         if (SR_ERR_OK == rc) {
-            rc = rp_dt_set_item(rp_ctx->dm_ctx, session->dm_session,
-                    xpath, msg->request->set_item_req->options, &value);
+            rc = rp_dt_set_item_wrapper(rp_ctx->dm_ctx, session->dm_session,
+                    xpath, value, msg->request->set_item_req->options);
         }
-        sr_free_val_content(&value);
     }
     else{
         /* when creating list or presence container value can be NULL */
-        rc = rp_dt_set_item(rp_ctx->dm_ctx, session->dm_session,
-                    xpath, msg->request->set_item_req->options, NULL);
+        rc = rp_dt_set_item_wrapper(rp_ctx->dm_ctx, session->dm_session,
+                    xpath, NULL, msg->request->set_item_req->options);
     }
 
     if (SR_ERR_OK != rc) {
@@ -371,7 +373,7 @@ rp_delete_item_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
     }
 
     /* delete the item in data manager */
-    rc = rp_dt_delete_item(rp_ctx->dm_ctx, session->dm_session,
+    rc = rp_dt_delete_item_wrapper(rp_ctx->dm_ctx, session->dm_session,
             xpath, msg->request->delete_item_req->options);
     if (SR_ERR_OK != rc){
         SR_LOG_ERR("Delete item failed for '%s', session id=%"PRIu32".", xpath, session->id);
@@ -414,7 +416,7 @@ rp_move_item_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr
         return SR_ERR_NOMEM;
     }
 
-    rc = rp_dt_move_list(rp_ctx->dm_ctx, session->dm_session, xpath, sr_move_direction_gpb_to_sr( msg->request->move_item_req->direction));
+    rc = rp_dt_move_list_wrapper(rp_ctx->dm_ctx, session->dm_session, xpath, sr_move_direction_gpb_to_sr( msg->request->move_item_req->direction));
 
     /* set response code */
     resp->response->result = rc;

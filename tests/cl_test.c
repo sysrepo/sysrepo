@@ -625,7 +625,7 @@ cl_commit_test(void **state)
 
     /* perform a commit request - expect an error */
     rc = sr_commit(session);
-    assert_int_equal(rc, SR_ERR_COMMIT_FAILED);
+    assert_int_equal(rc, SR_ERR_VALIDATION_FAILED);
 
     /* print out all errors (if any) */
     rc = sr_get_last_errors(session, &errors, &error_cnt);
