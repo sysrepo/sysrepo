@@ -199,14 +199,14 @@ dm_find_module_schema(dm_ctx_t *dm_ctx, const char *module_name, const struct ly
 /**
  * @brief Tries to load data tree from provided opened file.
  * @param [in] dm_ctx
- * @param [in] file to be read from, function does not close it
+ * @param [in] fd to be read from, function does not close it
  * If NULL passed data info with empty data will be created
  * @param [in] module
  * @param [in] data_info
  * @return Error code (SR_ERR_OK on success)
  */
 static int
-dm_load_data_tree_file(dm_ctx_t *dm_ctx, FILE *file, const char *data_filename, const struct lys_module *module, dm_data_info_t **data_info)
+dm_load_data_tree_file(dm_ctx_t *dm_ctx, int fd, const char *data_filename, const struct lys_module *module, dm_data_info_t **data_info)
 {
     CHECK_NULL_ARG4(dm_ctx, module, data_filename, data_info);
     int rc = SR_ERR_OK;
@@ -220,7 +220,7 @@ dm_load_data_tree_file(dm_ctx_t *dm_ctx, FILE *file, const char *data_filename, 
         return SR_ERR_NOMEM;
     }
 
-    if (NULL != file) {
+    if (-1 != fd) {
 #ifdef HAVE_STAT_ST_MTIM
         struct stat st = {0};
         rc = stat(data_filename, &st);
@@ -234,14 +234,12 @@ dm_load_data_tree_file(dm_ctx_t *dm_ctx, FILE *file, const char *data_filename, 
                 (long long) st.st_mtim.tv_sec,
                 (long long) st.st_mtim.tv_nsec);
 #endif
-        data_tree = lyd_parse_fd(dm_ctx->ly_ctx, fileno(file), LYD_XML, LYD_OPT_STRICT);
+        data_tree = lyd_parse_fd(dm_ctx->ly_ctx, fd, LYD_XML, LYD_OPT_STRICT);
         if (NULL == data_tree) {
             SR_LOG_ERR("Parsing data tree from file %s failed", data_filename);
             free(data);
             return SR_ERR_INTERNAL;
         }
-    } else {
-        SR_LOG_INF("File %s couldn't be opened for reading", data_filename);
     }
 
     /* if the data tree is loaded, validate it*/
@@ -289,17 +287,23 @@ dm_load_data_tree(dm_ctx_t *dm_ctx, const struct lys_module *module, sr_datastor
         return rc;
     }
 
-    FILE *f = fopen(data_filename, "r");
+    int fd = open(data_filename, O_RDONLY);
 
-    if (NULL != f) {
-        lockf(fileno(f), F_LOCK, 0);
+    if (-1 != fd) {
+        lockf(fd, F_LOCK, 0);
+    } else if (ENOENT == errno) {
+        SR_LOG_DBG("Data file %s does not exist, creating empty data tree", data_filename);
+    } else if (EACCES == errno) {
+        SR_LOG_DBG("Data file %s can't be read because of access rights", data_filename);
+        free(data_filename);
+        return SR_ERR_UNAUTHORIZED;
     }
 
-    rc = dm_load_data_tree_file(dm_ctx, f, data_filename, module, data_info);
+    rc = dm_load_data_tree_file(dm_ctx, fd, data_filename, module, data_info);
 
-    if (NULL != f) {
-        lockf(fileno(f), F_ULOCK, 0);
-        fclose(f);
+    if (-1 != fd) {
+        lockf(fd, F_ULOCK, 0);
+        close(fd);
     }
 
     free(data_filename);
@@ -923,13 +927,13 @@ dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors, siz
         return SR_ERR_OK;
     }
 
-    FILE **files = NULL;
+    int *fds = NULL;
     bool *existed = NULL;
-    files = calloc(modif_count, sizeof(*files));
+    fds = calloc(modif_count, sizeof(*fds));
     existed = calloc(modif_count, sizeof(*existed));
-    if(NULL == files || NULL == existed){
+    if(NULL == fds || NULL == existed){
         SR_LOG_ERR_MSG("Memory allocation failed");
-        free(files);
+        free(fds);
         free(existed);
         pthread_mutex_unlock(&dm_ctx->commit_lock);
         return SR_ERR_NOMEM;
@@ -940,7 +944,7 @@ dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors, siz
     rc = dm_session_start(dm_ctx, session->datastore, &commit_session);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Commit session initialization failed");
-        free(files);
+        free(fds);
         free(existed);
         pthread_mutex_unlock(&dm_ctx->commit_lock);
         return rc;
@@ -958,26 +962,33 @@ dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors, siz
                 modif_count = count;
                 goto cleanup;
             }
-            files[count] = fopen(file_name, "r+");
-            if (NULL == files[count]) {
-                SR_LOG_DBG("File %s can not be opened with 'r+'", file_name);
-                files[count] = fopen(file_name, "w");
-                if (NULL == files[count]) {
-                    SR_LOG_DBG("File %s can not be opened with 'w'", file_name);
+            fds[count] = open(file_name, O_RDWR);
+            if (-1 == fds[count]) {
+                SR_LOG_DBG("File %s can not be opened for read write", file_name);
+                if (EACCES == errno) {
+                    SR_LOG_ERR("File %s can not be opened because of authorization", file_name);
                     rc = SR_ERR_UNAUTHORIZED;
                     modif_count = count;
                     free(file_name);
                     goto cleanup;
                 }
+
+                if (ENOENT == errno) {
+                    SR_LOG_DBG("File %s does not exist, trying to create an empty one", file_name);
+                    fds[count] = open(file_name, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
+                    if (-1 == fds[count]) {
+                        SR_LOG_ERR("File %s can not be opened because of authorization", file_name);
+                        rc = SR_ERR_IO;
+                        modif_count = count;
+                        free(file_name);
+                        goto cleanup;
+                    }
+                }
             } else {
                 existed[count] = true;
             }
-            if (lockf(fileno(files[count]), F_TLOCK, 0) < 0) {
-                if (EACCES == errno || EAGAIN == errno) {
-                    SR_LOG_ERR("Unable to lock file %s", file_name);
-                } else {
-                    SR_LOG_ERR("Locking of file '%s': %s.", file_name, strerror(errno));
-                }
+            if (lockf(fds[count], F_TLOCK, 0) < 0) {
+                SR_LOG_ERR("Locking of file '%s': %s.", file_name, strerror(errno));
                 modif_count = count+1;
                 rc = SR_ERR_COMMIT_FAILED;
                 free(file_name);
@@ -985,7 +996,7 @@ dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors, siz
             }
             dm_data_info_t *di = NULL;
             /* if the file existed pass FILE 'r+', otherwise pass NULL because there is 'w' stream already */
-            rc = dm_load_data_tree_file(dm_ctx, existed[count] ? files[count] : NULL, file_name, info->module, &di);
+            rc = dm_load_data_tree_file(dm_ctx, existed[count] ? fds[count] : -1, file_name, info->module, &di);
             if (SR_ERR_OK != rc) {
                 SR_LOG_ERR_MSG("Loading data file failed");
                 modif_count = count+1; /* file at index count is already opened*/
@@ -1026,8 +1037,7 @@ dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors, siz
     /* empty existing files */
     for (i=0; i < modif_count; i++) {
         if (existed[i]) {
-            ftruncate(fileno(files[i]), 0);
-            fseek(files[i], 0, SEEK_SET);
+            ftruncate(fds[i], 0);
         }
     }
 
@@ -1044,7 +1054,7 @@ dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors, siz
                 rc = SR_ERR_INTERNAL;
                 continue;
             }
-            if (0 != lyd_print_file(files[count], merged_info->node, LYD_XML_FORMAT, LYP_WITHSIBLINGS)) {
+            if (0 != lyd_print_fd(fds[count], merged_info->node, LYD_XML_FORMAT, LYP_WITHSIBLINGS)) {
                 SR_LOG_ERR("Failed to write output for %s", info->module->name);
                 rc = SR_ERR_INTERNAL;
             }
@@ -1057,10 +1067,10 @@ cleanup:
 
     /* close files*/
     for (i=0; i < modif_count; i++) {
-        fclose(files[i]);
+        close(fds[i]);
     }
 
-    free(files);
+    free(fds);
     free(existed);
     dm_session_stop(dm_ctx, commit_session);
 
