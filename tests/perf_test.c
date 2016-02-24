@@ -43,7 +43,7 @@ sysrepo_setup(void **state)
     logging_setup(state);
 
     /* connect to sysrepo */
-    rc = sr_connect("perf_test", true, &conn);
+    rc = sr_connect("perf_test", SR_CONN_DEFAULT, &conn);
     assert_int_equal(rc, SR_ERR_OK);
 
     *state = (void*)conn;

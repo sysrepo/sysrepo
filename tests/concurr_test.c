@@ -49,7 +49,7 @@ sysrepo_setup(void **state)
     logging_setup(state);
 
     /* connect to sysrepo */
-    rc = sr_connect("concurr_test", true, &conn);
+    rc = sr_connect("concurr_test", SR_CONN_DEFAULT, &conn);
     assert_int_equal(rc, SR_ERR_OK);
 
     *state = (void*)conn;
@@ -124,7 +124,7 @@ test_thread_execute_separated(void *ctx)
     int rc = 0;
 
     /* connect to sysrepo */
-    rc = sr_connect("concurr_test", true, &conn);
+    rc = sr_connect("concurr_test", SR_CONN_DEFAULT, &conn);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* start a session */

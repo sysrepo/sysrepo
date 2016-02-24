@@ -46,7 +46,7 @@ sysrepo_setup(void **state)
     logging_setup(state);
 
     /* connect to sysrepo */
-    rc = sr_connect("cl_test", true, &conn);
+    rc = sr_connect("cl_test", SR_CONN_DEFAULT, &conn);
     assert_int_equal(rc, SR_ERR_OK);
 
     *state = (void*)conn;
@@ -73,12 +73,12 @@ cl_connection_test(void **state)
     int rc = 0;
 
     /* connect to sysrepo - conn 1 */
-    rc = sr_connect("cl_test", true, &conn1);
+    rc = sr_connect("cl_test", SR_CONN_DEFAULT, &conn1);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(conn1);
 
     /* connect to sysrepo - conn 2 */
-    rc = sr_connect("cl_test", true, &conn2);
+    rc = sr_connect("cl_test", SR_CONN_DEFAULT, &conn2);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(conn2);
 

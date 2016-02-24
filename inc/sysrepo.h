@@ -207,6 +207,24 @@ void sr_set_log_level(sr_log_level_t ll_stderr, sr_log_level_t ll_syslog);
 ////////////////////////////////////////////////////////////////////////////////
 
 /**
+ * @brief Flags used to override default connection handling by ::sr_connect call.
+ */
+typedef enum sr_conn_flag_e {
+    SR_CONN_DEFAULT = 0,          /**< Default behavior - instantiate library-local Sysrepo Engine if
+                                       the connection to sysrepo daemon is not possible. */
+    SR_CONN_DAEMON_REQUIRED = 1,  /**< Require daemon connection - do not instantiate library-local Sysrepo Engine
+                                       if the library cannot connect to the sysrepo daemon  (and return an error instead). */
+    SR_CONN_DAEMON_START = 2,     /**< If sysrepo daemon is not running, and SR_CONN_DAEMON_REQUIRED was specified,
+                                       start it (only if the process calling ::sr_connect is running under root privileges). */
+} sr_conn_flag_t;
+
+/**
+ * @brief Options overriding default connection handling by ::sr_connect call,
+ * can be bitwise OR-ed value of any ::sr_conn_flag_t flags.
+ */
+typedef uint32_t sr_conn_options_t;
+
+/**
  * @brief Data stores that sysrepo supports. Both are editable via implicit candidate.
  * To make changes permanent in edited datastore ::sr_commit must be issued.
  */
@@ -221,17 +239,13 @@ typedef enum sr_datastore_e {
  *
  * @param[in] app_name Name of the application connecting to the datastore
  * (can be static string). Used only for accounting purposes.
- * @param[in] allow_library_mode Flag which indicates if the application wants
- * to allow local (library) mode in case that sysrepo daemon is not running.
- * If set to FALSE and the library cannot connect to the deamon, an error will
- * be returned. Otherwise library will initialize its own Sysrepo Engine if the
- * connection to daemon is not possible (but only once per application process).
+ * @param[in] opts Options overriding default connection handling by this call.
  * @param[out] conn_ctx Connection context that can be used for subsequent API
  * calls (automatically allocated, can be released by calling ::sr_disconnect).
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int sr_connect(const char *app_name, const bool allow_library_mode, sr_conn_ctx_t **conn_ctx);
+int sr_connect(const char *app_name, const sr_conn_options_t opts, sr_conn_ctx_t **conn_ctx);
 
 /**
  * @brief Disconnects from the sysrepo datastore (Sysrepo Engine).

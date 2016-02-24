@@ -34,7 +34,7 @@ main(int argc, char **argv)
     int rc = SR_ERR_OK;
 
     /* connect to sysrepo */
-    rc = sr_connect("app2", true, &conn);
+    rc = sr_connect("app2", SR_CONN_DEFAULT, &conn);
     if (SR_ERR_OK != rc) {
         goto cleanup;
     }

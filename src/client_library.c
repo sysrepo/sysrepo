@@ -661,7 +661,7 @@ cl_send_get_items_iter(sr_session_ctx_t *session, const char *path, bool recursi
 }
 
 int
-sr_connect(const char *app_name, const bool allow_library_mode, sr_conn_ctx_t **conn_ctx_p)
+sr_connect(const char *app_name, const sr_conn_options_t opts, sr_conn_ctx_t **conn_ctx_p)
 {
     sr_conn_ctx_t *ctx = NULL;
     int rc = SR_ERR_OK;
@@ -701,8 +701,17 @@ sr_connect(const char *app_name, const bool allow_library_mode, sr_conn_ctx_t **
     /* attempt to connect to sysrepo daemon socket */
     rc = cl_socket_connect(ctx, SR_DAEMON_SOCKET);
     if (SR_ERR_OK != rc) {
-        if (!allow_library_mode) {
+        if (opts & SR_CONN_DAEMON_REQUIRED) {
             SR_LOG_ERR_MSG("Sysrepo daemon not detected while library mode disallowed.");
+            if ((opts & SR_CONN_DAEMON_START) && (0 == getuid())) {
+                /* sysrepo daemon start requested and process is running under root privileges */
+                int ret = system("sysrepod");
+                if (0 == ret) {
+                    SR_LOG_INF_MSG("Sysrepo daemon has been started.");
+                } else {
+                    SR_LOG_WRN("Unable to start sysrepo daemon, error code=%d.", ret);
+                }
+            }
             goto cleanup;
         } else {
             SR_LOG_WRN_MSG("Sysrepo daemon not detected. Connecting to local Sysrepo Engine.");

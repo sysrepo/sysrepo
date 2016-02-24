@@ -35,7 +35,7 @@ main(int argc, char **argv)
     sr_set_log_level(SR_LL_DBG, SR_LL_INF);
 
     /* connect to sysrepo */
-    rc = sr_connect("app1", true, &conn);
+    rc = sr_connect("app1", SR_CONN_DEFAULT, &conn);
     if (SR_ERR_OK != rc) {
         goto cleanup;
     }
