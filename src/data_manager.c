@@ -980,6 +980,7 @@ dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors, siz
                 }
                 modif_count = count+1;
                 rc = SR_ERR_COMMIT_FAILED;
+                free(file_name);
                 goto cleanup;
             }
             dm_data_info_t *di = NULL;
