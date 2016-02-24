@@ -25,6 +25,7 @@
 #include <cmocka.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <unistd.h>
 #include "data_manager.h"
 #include "test_data.h"
 #include "sr_common.h"
@@ -1289,12 +1290,12 @@ edit_commit3_test(void **state)
     sr_val_t *v1 = NULL;
     sr_val_t *v2 = NULL;
 
-    v1 = calloc(1, sizeof(v1));
+    v1 = calloc(1, sizeof(*v1));
     assert_non_null(v1);
     v1->type = SR_UINT8_T;
     v1->data.uint8_val = 42;
 
-    v2 = calloc(1, sizeof(v2));
+    v2 = calloc(1, sizeof(*v2));
     assert_non_null(v2);
     v2->type = SR_UINT8_T;
     v2->data.uint8_val = 42;
@@ -1318,6 +1319,38 @@ edit_commit3_test(void **state)
 
     dm_session_stop(ctx, session);
     dm_session_stop(ctx, sessionB);
+}
+
+void
+edit_commit4_test(void **state)
+{
+    unlink(TEST_MODULE_DATA_FILE_NAME);
+    /* empty data file */
+    int rc = 0;
+    dm_ctx_t *ctx = *state;
+    dm_session_t *session = NULL;
+
+    dm_session_start(ctx, SR_DS_STARTUP, &session);
+
+    sr_val_t *v = NULL;
+    v = calloc(1, sizeof(*v));
+    assert_non_null(v);
+
+    v->type = SR_ENUM_T;
+    v->data.enum_val = strdup("yes");
+    assert_non_null(v->data.enum_val);
+
+    rc = rp_dt_set_item_wrapper(ctx, session, "/test-module:main/enum", v, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    sr_error_info_t *errors = NULL;
+    size_t e_cnt = 0;
+    rc = dm_commit(ctx, session, &errors, &e_cnt);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    dm_session_stop(ctx, session);
+
+    createDataTreeTestModule();
 }
 
 void
@@ -1569,6 +1602,7 @@ int main(){
             cmocka_unit_test(edit_move2_test),
             cmocka_unit_test(edit_commit2_test),
             cmocka_unit_test(edit_commit3_test),
+            cmocka_unit_test(edit_commit4_test),
     };
     return cmocka_run_group_tests(tests, setup, teardown);
 }
