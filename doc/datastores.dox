@@ -1,6 +1,6 @@
 /**
 
-@page ds Datastores & Sessions
+@page ds_page Datastores & Sessions
 
 Sysrepo supports \b startup and \b running configuration datastores. Each configuration 
 session created in sysrepo is permanently tied to only one of them.
@@ -18,9 +18,9 @@ or service supports at least this datastore.
 
 
 @section rds Running Datastore
-Running datastore contains the configuration and state data of a running application
-or service. If the application is not running at the moment for whatever reason,
-it will have no data in the running datastore.
+Running datastore contains currently applied configuration and state data 
+of a running application or service. If the application is not running at the 
+moment for whatever reason, it will have no data in the running datastore.
 
 Not all applications support this datastore. If an application does not support running
 datastore, it won't have any data in it, regardless of whether it is running or not.
@@ -50,13 +50,13 @@ cannot be merged. To prevent this situation, the client should always use
 locking capabilities of sysrepo in multi-user environments.
 
 Cached data will be released and the session will start operate on fresh data
-after any of following requests: ::sr_commit, ::sr_discard_changes, ::sr_session_refresh.
+after any of following requests: ::sr_commit, ::sr_discard_changes, ::sr_session_data_refresh.
 
 Due to the above, the lifetime of a configuration session should be limited to the
 sequence of data access / manipulation calls needed to perform a single task
 (e.g. to load startup data of an application, or to process one edit-config request 
 from NETCONF client). If your application needs longer session lifetime, use
-::sr_session_refresh each time when you expect that the data in the datastore may 
-have been changed in the meantime.
+::sr_session_data_refresh each time when you expect that the data in the 
+datastore may have been changed in the meantime.
 
 */

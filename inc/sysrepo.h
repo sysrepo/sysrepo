@@ -227,11 +227,12 @@ typedef uint32_t sr_conn_options_t;
 /**
  * @brief Data stores that sysrepo supports. Both are editable via implicit candidate.
  * To make changes permanent in edited datastore ::sr_commit must be issued.
+ * @see @ref ds_page "Datastores & Sessions" information page.
  */
 typedef enum sr_datastore_e {
-    SR_DS_RUNNING = 0,    /**< Currently running configuration.
-                               @note This datastore is supported only by an application that is subscribed for notifications.  */
-    SR_DS_STARTUP = 1     /**< Configuration loaded upon application startup. */
+    SR_DS_STARTUP = 0,    /**< Contains configuration data that should be loaded by the controlled application when it starts. */
+    SR_DS_RUNNING = 1,    /**< Contains currently applied configuration and state data of a running application.
+                               @note This datastore is supported only by applications that subscribe for notifications about the changes made in the datastore. */
 } sr_datastore_t;
 
 /**
@@ -260,6 +261,8 @@ void sr_disconnect(sr_conn_ctx_t *conn_ctx);
 /**
  * @brief Starts a new configuration session.
  *
+ * @see @ref ds_page "Datastores & Sessions" for more information about datastores and sessions.
+ *
  * @param[in] conn_ctx Connection context acquired with ::sr_connect call.
  * @param[in] datastore Datastore on which all sysrepo functions within this
  * session will operate. Functionality of some sysrepo calls does not depend on
@@ -280,12 +283,13 @@ int sr_session_start(sr_conn_ctx_t *conn_ctx, sr_datastore_t datastore, sr_sessi
  * against the user under which the management application is running, but
  * also against another user (e.g. user that connected to the management application).
  *
- * @note Be aware that authorization of specified user may fail with an unexpected
- * SR_ERR_UNAUTHORIZED errors in case that the client library uses its own
- * Sysrepo Engine at the moment and your process in not running under root
- * privileges. To prevent this situation, consider specifying
- * SR_CONN_DAEMON_REQUIRED flag by ::sr_connect call or using ::sr_session_start
- * instead of this function.
+ * @note Be aware that authorization of specified user may fail with unexpected
+ * errors in case that the client library uses its own Sysrepo Engine at the
+ * moment and your process in not running under root privileges. To prevent
+ * this situation, consider specifying SR_CONN_DAEMON_REQUIRED flag by
+ * ::sr_connect call or using ::sr_session_start instead of this function.
+ *
+ * @see @ref ds_page "Datastores & Sessions" for more information about datastores and sessions.
  *
  * @param[in] conn_ctx Connection context acquired with ::sr_connect call.
  * @param[in] user_name Effective user name used to authorize the access to
@@ -309,6 +313,26 @@ int sr_session_start_user(sr_conn_ctx_t *conn_ctx, const char *user_name, sr_dat
  * @return Error code (SR_ERR_OK on success).
  */
 int sr_session_stop(sr_session_ctx_t *session);
+
+/**
+ * @brief Refreshes cached data within the session and starts operating on fresh
+ * data loaded from the datastore.
+ *
+ * Call this function in case that you leave session open for longer time period
+ * and you expect that the data in the datastore may have been changed since
+ * last data (re)load (which occurs by ::sr_session_start, ::sr_commit and
+ * ::sr_discard_changes).
+ *
+ * @see @ref ds_page "Datastores & Sessions" for information about session data caching.
+ *
+ * @note In current implementation, this function call discards any non-committed
+ * changes within the session (it has the same effect as ::sr_discard_changes).
+ *
+ * @param[in] session Session context acquired with ::sr_session_start call.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_session_data_refresh(sr_session_ctx_t *session);
 
 /**
  * @brief Retrieves detailed information about the error that has occurred

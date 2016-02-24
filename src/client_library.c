@@ -907,10 +907,48 @@ sr_session_stop(sr_session_ctx_t *session)
     sr__msg__free_unpacked(msg_req, NULL);
     sr__msg__free_unpacked(msg_resp, NULL);
 
-
     cl_session_cleanup(session);
 
     return SR_ERR_OK; /* do not use cl_session_return - session has been freed one line above */
+
+cleanup:
+    if (NULL != msg_req) {
+        sr__msg__free_unpacked(msg_req, NULL);
+    }
+    if (NULL != msg_resp) {
+        sr__msg__free_unpacked(msg_resp, NULL);
+    }
+    return cl_session_return(session, rc);
+}
+
+int
+sr_session_data_refresh(sr_session_ctx_t *session)
+{
+    Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG2(session, session->conn_ctx);
+
+    cl_session_clear_errors(session);
+
+    /* prepare session_stop message */
+    rc = sr_pb_req_alloc(SR__OPERATION__SESSION_DATA_REFRESH, session->id, &msg_req);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Cannot allocate session_data_refresh message.");
+        goto cleanup;
+    }
+
+    /* send the request and receive the response */
+    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__SESSION_DATA_REFRESH);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Error by processing of session_data_refresh request.");
+        goto cleanup;
+    }
+
+    sr__msg__free_unpacked(msg_req, NULL);
+    sr__msg__free_unpacked(msg_resp, NULL);
+
+    return cl_session_return(session, SR_ERR_OK);
 
 cleanup:
     if (NULL != msg_req) {
