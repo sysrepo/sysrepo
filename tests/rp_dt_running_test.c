@@ -30,6 +30,7 @@
 #include "rp_data_tree.h"
 #include "test_data.h"
 #include "test_module_helper.h"
+#include "dt_xpath_helpers.h"
 
 int setup(void **state){
    createDataTreeTestModule();
@@ -69,13 +70,13 @@ no_subscription_test(void **state)
    rc = rp_dt_get_values_wrapper(ctx, session, "/test-module:main", &values, &count);
    assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
-   rc = rp_dt_delete_item(ctx, session, "/test-module:main", SR_EDIT_DEFAULT);
+   rc = rp_dt_delete_item_wrapper(ctx, session, "/test-module:main", SR_EDIT_DEFAULT);
    assert_int_equal(SR_ERR_OK, rc);
 
    sr_val_t value = {0,};
    value.type = SR_INT8_T;
    value.data.int8_val = 42;
-   rc = rp_dt_set_item(ctx, session, "/test-module:main/i8", SR_EDIT_DEFAULT, &value);
+   rc = rp_dt_set_item_xpath(ctx, session, "/test-module:main/i8", SR_EDIT_DEFAULT, &value);
    assert_int_equal(SR_ERR_INVAL_ARG, rc);
 
    dm_session_stop(ctx, session);
@@ -172,7 +173,7 @@ edit_enabled(void **state)
    val.data.string_val = strdup("abc");
 
 
-   rc = rp_dt_set_item(ctx, session, "/example-module:container/list[key1='a'][key2='b']/leaf", SR_EDIT_DEFAULT, &val);
+   rc = rp_dt_set_item_xpath(ctx, session, "/example-module:container/list[key1='a'][key2='b']/leaf", SR_EDIT_DEFAULT, &val);
    assert_int_equal(SR_ERR_INVAL_ARG, rc);
 
    rc = xp_char_to_loc_id("/example-module:container/list/leaf", &l);
@@ -181,7 +182,7 @@ edit_enabled(void **state)
    rc = rp_dt_enable_xpath(ctx, session, l);
    assert_int_equal(SR_ERR_OK, rc);
 
-   rc = rp_dt_set_item(ctx, session, "/example-module:container/list[key1='a'][key2='b']/leaf", SR_EDIT_DEFAULT, &val);
+   rc = rp_dt_set_item_xpath(ctx, session, "/example-module:container/list[key1='a'][key2='b']/leaf", SR_EDIT_DEFAULT, &val);
    assert_int_equal(SR_ERR_OK, rc);
 
 

@@ -21,6 +21,7 @@
 
 #include "dt_xpath_helpers.h"
 #include "rp_dt_get.h"
+#include "rp_dt_edit.h"
 #include "sr_common.h"
 
 int
@@ -104,5 +105,30 @@ rp_dt_get_node_xpath(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const c
     }
     rc = rp_dt_get_node(dm_ctx, data_tree, l, false, node);
     xp_free_loc_id(l);
+    return rc;
+}
+
+/**
+ * Beware: doesn't log the operation to the session won't be permanent
+ * even after commit
+ * @param [in] ctx
+ * @param [in] session
+ * @param [in] xpath
+ * @param [in] opts
+ * @param [in] val
+ * @return Error code (SR_ERR_OK on success)
+ */
+int
+rp_dt_set_item_xpath(dm_ctx_t *ctx, dm_session_t *session, const char *xpath, sr_edit_options_t opts, sr_val_t *val)
+{
+    int rc = SR_ERR_OK;
+    xp_loc_id_t *loc_id = NULL;
+    rc = xp_char_to_loc_id(xpath, &loc_id);
+    if(SR_ERR_OK != rc) {
+        return rc;
+    }
+
+    rc = rp_dt_set_item(ctx, session, loc_id, opts, val);
+    xp_free_loc_id(loc_id);
     return rc;
 }
