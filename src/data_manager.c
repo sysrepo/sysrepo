@@ -878,7 +878,7 @@ dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors, siz
 {
     CHECK_NULL_ARG2(dm_ctx, session);
     int rc = SR_ERR_OK;
-    SR_LOG_DBG_MSG("Commit: process stared");
+    SR_LOG_DBG_MSG("Commit (1/6): process stared");
 
     //TODO send validate notifications
 
@@ -888,7 +888,7 @@ dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors, siz
         SR_LOG_ERR_MSG("Data validation failed");
         return SR_ERR_VALIDATION_FAILED;
     }
-    SR_LOG_DBG_MSG("Commit: validation succeeded");
+    SR_LOG_DBG_MSG("Commit (2/6): validation succeeded");
 
     /* lock context for writing */
     pthread_mutex_lock(&dm_ctx->commit_lock);
@@ -907,7 +907,7 @@ dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors, siz
     SR_LOG_DBG("Commit: In the session there are %zu / %zu modified models \n", modif_count, i);
 
     if (0 == modif_count) {
-        SR_LOG_DBG_MSG("No model modified");
+        SR_LOG_DBG_MSG("Commit: Finished - no model modified");
         pthread_mutex_unlock(&dm_ctx->commit_lock);
         return SR_ERR_OK;
     } else if (0 == session->oper_count) {
@@ -996,7 +996,7 @@ dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors, siz
         }
         i++;
     }
-    SR_LOG_DBG_MSG("Commit: all modified models loaded successfully");
+    SR_LOG_DBG_MSG("Commit (3/6): all modified models loaded successfully");
 
     /* replay operations */
     rc = rp_dt_replay_operations(dm_ctx, commit_session, session->operations, session->oper_count);
@@ -1004,7 +1004,7 @@ dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors, siz
         SR_LOG_ERR_MSG("Replay of operations failed");
         goto cleanup;
     }
-    SR_LOG_DBG_MSG("Commit: replay of operation succeeded");
+    SR_LOG_DBG_MSG("Commit (4/6): replay of operation succeeded");
 
     /* validate files */
     rc = dm_validate_session_data_trees(dm_ctx, commit_session, errors, err_cnt);
@@ -1013,7 +1013,7 @@ dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors, siz
         rc = SR_ERR_VALIDATION_FAILED;
         goto cleanup;
     }
-    SR_LOG_DBG_MSG("Commit: merged models validation succeeded");
+    SR_LOG_DBG_MSG("Commit (5/6): merged models validation succeeded");
 
     /* empty existing files */
     for (i=0; i < modif_count; i++) {
@@ -1059,7 +1059,7 @@ cleanup:
     if (SR_ERR_OK == rc){
         /* discard changes in session in next get_data_tree call newly committed content will be loaded */
         rc = dm_discard_changes(dm_ctx, session);
-        SR_LOG_DBG_MSG("Commit: finished successfully");
+        SR_LOG_DBG_MSG("Commit (6/6): finished successfully");
     }
     pthread_mutex_unlock(&dm_ctx->commit_lock);
     return rc;

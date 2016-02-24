@@ -1249,6 +1249,7 @@ edit_commit_test(void **state)
 void
 edit_commit2_test(void **state)
 {
+    /* replay of operations fails */
     int rc = 0;
     dm_ctx_t *ctx = *state;
     dm_session_t *session = NULL, *sessionB = NULL;
@@ -1269,6 +1270,50 @@ edit_commit2_test(void **state)
     /*this commit should failed because main container is already deleted */
     rc = dm_commit(ctx, sessionB, &errors, &e_cnt);
     assert_int_equal(SR_ERR_DATA_MISSING, rc);
+    sr_free_errors(errors, e_cnt);
+
+    dm_session_stop(ctx, session);
+    dm_session_stop(ctx, sessionB);
+}
+
+void
+edit_commit3_test(void **state)
+{
+    /* validation after replay fails*/
+    int rc = 0;
+    dm_ctx_t *ctx = *state;
+    dm_session_t *session = NULL, *sessionB = NULL;
+    dm_session_start(ctx, SR_DS_STARTUP, &session);
+    dm_session_start(ctx, SR_DS_STARTUP, &sessionB);
+
+    sr_val_t *v1 = NULL;
+    sr_val_t *v2 = NULL;
+
+    v1 = calloc(1, sizeof(v1));
+    assert_non_null(v1);
+    v1->type = SR_UINT8_T;
+    v1->data.uint8_val = 42;
+
+    v2 = calloc(1, sizeof(v2));
+    assert_non_null(v2);
+    v2->type = SR_UINT8_T;
+    v2->data.uint8_val = 42;
+
+    rc = rp_dt_set_item_wrapper(ctx, session, "/test-module:main/numbers", v1, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_set_item_wrapper(ctx, sessionB, "/test-module:main/numbers", v2, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    sr_error_info_t *errors = NULL;
+    size_t e_cnt = 0;
+
+    rc = dm_commit(ctx, session, &errors, &e_cnt);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* the leaf-list value was committed during the first commit */
+    rc = dm_commit(ctx, sessionB, &errors, &e_cnt);
+    assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
     sr_free_errors(errors, e_cnt);
 
     dm_session_stop(ctx, session);
@@ -1523,6 +1568,7 @@ int main(){
             cmocka_unit_test(edit_move_test),
             cmocka_unit_test(edit_move2_test),
             cmocka_unit_test(edit_commit2_test),
+            cmocka_unit_test(edit_commit3_test),
     };
     return cmocka_run_group_tests(tests, setup, teardown);
 }
