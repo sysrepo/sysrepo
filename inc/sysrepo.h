@@ -191,32 +191,30 @@ typedef enum {
 } sr_log_level_t;
 
 /**
- * @brief Sets logging level of stderr logs and syslog logs.
+ * @brief Enables / disables / changes log level (verbosity) of logging to
+ * standard error output.
  *
- * When connected to sysrepo daemon, this affects only logging of Client Library.
- * In library mode, this settings affect also local Sysrepo Engine logging.
- *
- * @param[in] ll_stderr Log level for stderr logs.
- * @param[in] ll_syslog Log level for syslog logs.
- */
-
-/**
- * @brief
+ * @param[in] log_level requested log level (verbosity).
  */
 void sr_log_stderr(sr_log_level_t log_level);
 
 /**
- * @brief
+ * @brief Enables / disables / changes log level (verbosity) of logging to system log.
+ *
+ * @note Please note that enabling logging into syslog will overwrite your syslog
+ * connection settings (calls openlog), if you are connected to syslog already.
+ *
+ * @param[in] log_level requested log level (verbosity).
  */
 void sr_log_syslog(sr_log_level_t log_level);
 
 /**
- * @brief
+ * @brief Callback to be called when a log entry is populated.
  */
 typedef void (*sr_log_cb)(sr_log_level_t level, const char *message);
 
 /**
- * @brief
+ * @brief Sets callback that will be called when a log entry is populated.
  */
 void sr_log_set_cb(sr_log_cb log_callback);
 
