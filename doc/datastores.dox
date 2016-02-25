@@ -50,13 +50,13 @@ cannot be merged. To prevent this situation, the client should always use
 locking capabilities of sysrepo in multi-user environments.
 
 Cached data will be released and the session will start operate on fresh data
-after any of following requests: ::sr_commit, ::sr_discard_changes, ::sr_session_data_refresh.
+after any of following requests: ::sr_commit, ::sr_discard_changes, ::sr_session_refresh.
 
 Due to the above, the lifetime of a configuration session should be limited to the
 sequence of data access / manipulation calls needed to perform a single task
 (e.g. to load startup data of an application, or to process one edit-config request 
 from NETCONF client). If your application needs longer session lifetime, use
-::sr_session_data_refresh each time when you expect that the data in the 
+::sr_session_refresh each time when you expect that the data in the 
 datastore may have been changed in the meantime.
 
 */

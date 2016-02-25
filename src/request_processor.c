@@ -553,17 +553,17 @@ rp_discard_changes_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *sessi
  * @brief Processes a session_data_refresh request.
  */
 static int
-rp_session_data_refresh_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
+rp_session_refresh_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
 {
     Sr__Msg *resp = NULL;
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->session_data_refresh_req);
+    CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->session_refresh_req);
 
     SR_LOG_DBG_MSG("Processing session_data_refresh request.");
 
     /* allocate the response */
-    rc = sr_pb_resp_alloc(SR__OPERATION__SESSION_DATA_REFRESH, session->id, &resp);
+    rc = sr_pb_resp_alloc(SR__OPERATION__SESSION_REFRESH, session->id, &resp);
     if (SR_ERR_OK != rc){
         SR_LOG_ERR_MSG("Allocation of session_data_refresh response failed.");
         return SR_ERR_NOMEM;
@@ -627,8 +627,8 @@ rp_msg_dispatch(const rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
             case SR__OPERATION__DISCARD_CHANGES:
                 rc = rp_discard_changes_req_process(rp_ctx, session, msg);
                 break;
-            case SR__OPERATION__SESSION_DATA_REFRESH:
-                rc = rp_session_data_refresh_req_process(rp_ctx, session, msg);
+            case SR__OPERATION__SESSION_REFRESH:
+                rc = rp_session_refresh_req_process(rp_ctx, session, msg);
                 break;
             default:
                 SR_LOG_ERR("Unsupported request received (session id=%"PRIu32", operation=%d).",

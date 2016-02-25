@@ -922,7 +922,7 @@ cleanup:
 }
 
 int
-sr_session_data_refresh(sr_session_ctx_t *session)
+sr_session_refresh(sr_session_ctx_t *session)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
     int rc = SR_ERR_OK;
@@ -932,14 +932,14 @@ sr_session_data_refresh(sr_session_ctx_t *session)
     cl_session_clear_errors(session);
 
     /* prepare session_stop message */
-    rc = sr_pb_req_alloc(SR__OPERATION__SESSION_DATA_REFRESH, session->id, &msg_req);
+    rc = sr_pb_req_alloc(SR__OPERATION__SESSION_REFRESH, session->id, &msg_req);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Cannot allocate session_data_refresh message.");
         goto cleanup;
     }
 
     /* send the request and receive the response */
-    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__SESSION_DATA_REFRESH);
+    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__SESSION_REFRESH);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Error by processing of session_data_refresh request.");
         goto cleanup;

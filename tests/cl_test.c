@@ -102,7 +102,7 @@ cl_connection_test(void **state)
     assert_non_null(sess2);
 
     /* try session_data_refresh */
-    rc = sr_session_data_refresh(sess1);
+    rc = sr_session_refresh(sess1);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* stop the session 1 */

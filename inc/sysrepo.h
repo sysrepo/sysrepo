@@ -315,8 +315,8 @@ int sr_session_start_user(sr_conn_ctx_t *conn_ctx, const char *user_name, sr_dat
 int sr_session_stop(sr_session_ctx_t *session);
 
 /**
- * @brief Refreshes cached data within the session and starts operating on fresh
- * data loaded from the datastore.
+ * @brief Refreshes configuration data cached within the session and starts
+ * operating on fresh data loaded from the datastore.
  *
  * Call this function in case that you leave session open for longer time period
  * and you expect that the data in the datastore may have been changed since
@@ -332,7 +332,7 @@ int sr_session_stop(sr_session_ctx_t *session);
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int sr_session_data_refresh(sr_session_ctx_t *session);
+int sr_session_refresh(sr_session_ctx_t *session);
 
 /**
  * @brief Retrieves detailed information about the error that has occurred

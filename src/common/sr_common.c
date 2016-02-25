@@ -89,8 +89,8 @@ sr_operation_name(Sr__Operation operation)
         return "commit";
     case SR__OPERATION__DISCARD_CHANGES:
         return "discard-changes";
-    case SR__OPERATION__SESSION_DATA_REFRESH:
-        return "session-data-refresh";
+    case SR__OPERATION__SESSION_REFRESH:
+        return "session-refresh";
     default:
         return "unknown";
     }
@@ -590,13 +590,13 @@ sr_pb_req_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__Ms
             sr__session_stop_req__init((Sr__SessionStopReq*)sub_msg);
             req->session_stop_req = (Sr__SessionStopReq*)sub_msg;
             break;
-        case SR__OPERATION__SESSION_DATA_REFRESH:
-            sub_msg = calloc(1, sizeof(Sr__SessionDataRefreshReq));
+        case SR__OPERATION__SESSION_REFRESH:
+            sub_msg = calloc(1, sizeof(Sr__SessionRefreshReq));
             if (NULL == sub_msg) {
                 goto nomem;
             }
-            sr__session_data_refresh_req__init((Sr__SessionDataRefreshReq*)sub_msg);
-            req->session_data_refresh_req = (Sr__SessionDataRefreshReq*)sub_msg;
+            sr__session_refresh_req__init((Sr__SessionRefreshReq*)sub_msg);
+            req->session_refresh_req = (Sr__SessionRefreshReq*)sub_msg;
             break;
         case SR__OPERATION__LIST_SCHEMAS:
             sub_msg = calloc(1, sizeof(Sr__ListSchemasReq));
@@ -730,13 +730,13 @@ sr_pb_resp_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__M
             sr__session_stop_resp__init((Sr__SessionStopResp*)sub_msg);
             resp->session_stop_resp = (Sr__SessionStopResp*)sub_msg;
             break;
-        case SR__OPERATION__SESSION_DATA_REFRESH:
-           sub_msg = calloc(1, sizeof(Sr__SessionDataRefreshResp));
+        case SR__OPERATION__SESSION_REFRESH:
+           sub_msg = calloc(1, sizeof(Sr__SessionRefreshResp));
            if (NULL == sub_msg) {
                goto nomem;
            }
-           sr__session_data_refresh_resp__init((Sr__SessionDataRefreshResp*)sub_msg);
-           resp->session_data_refresh_resp = (Sr__SessionDataRefreshResp*)sub_msg;
+           sr__session_refresh_resp__init((Sr__SessionRefreshResp*)sub_msg);
+           resp->session_refresh_resp = (Sr__SessionRefreshResp*)sub_msg;
            break;
         case SR__OPERATION__LIST_SCHEMAS:
             sub_msg = calloc(1, sizeof(Sr__ListSchemasResp));
@@ -844,8 +844,8 @@ sr_pb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__Op
                 if (NULL == msg->request->session_stop_req)
                     return SR_ERR_MALFORMED_MSG;
                 break;
-            case SR__OPERATION__SESSION_DATA_REFRESH:
-                if (NULL == msg->request->session_data_refresh_req)
+            case SR__OPERATION__SESSION_REFRESH:
+                if (NULL == msg->request->session_refresh_req)
                     return SR_ERR_MALFORMED_MSG;
                 break;
             case SR__OPERATION__LIST_SCHEMAS:
@@ -901,8 +901,8 @@ sr_pb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__Op
                 if (NULL == msg->response->session_stop_resp)
                     return SR_ERR_MALFORMED_MSG;
                 break;
-            case SR__OPERATION__SESSION_DATA_REFRESH:
-                if (NULL == msg->response->session_data_refresh_resp)
+            case SR__OPERATION__SESSION_REFRESH:
+                if (NULL == msg->response->session_refresh_resp)
                     return SR_ERR_MALFORMED_MSG;
                 break;
             case SR__OPERATION__LIST_SCHEMAS:

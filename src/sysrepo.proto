@@ -123,16 +123,16 @@ message SessionStopResp {
 }
 
 /**
- * @brief Refreshes cached data within the session.
+ * @brief Refreshes configuration data cached within the session.
  * Sent by sr_session_data_refresh API call.
  */
-message SessionDataRefreshReq {
+message SessionRefreshReq {
 }
 
 /**
  * @brief Response to sr_session_data_refresh request.
  */
-message SessionDataRefreshResp {
+message SessionRefreshResp {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -320,7 +320,7 @@ message DiscardChangesResp {
 enum Operation {
   SESSION_START = 10;
   SESSION_STOP = 11;
-  SESSION_DATA_REFRESH = 12;
+  SESSION_REFRESH = 12;
 
   LIST_SCHEMAS = 20;
   GET_ITEM = 21;
@@ -343,7 +343,7 @@ message Req {
 
   optional SessionStartReq session_start_req = 10;
   optional SessionStopReq session_stop_req = 11;
-  optional SessionDataRefreshReq session_data_refresh_req = 12;
+  optional SessionRefreshReq session_refresh_req = 12;
   
   optional ListSchemasReq list_schemas_req = 20;
   optional GetItemReq get_item_req = 21;
@@ -368,7 +368,7 @@ message Resp {
 
   optional SessionStartResp session_start_resp = 10;
   optional SessionStopResp session_stop_resp = 11;
-  optional SessionDataRefreshResp session_data_refresh_resp = 12;
+  optional SessionRefreshResp session_refresh_resp = 12;
   
   optional ListSchemasResp list_schemas_resp = 20;
   optional GetItemResp get_item_resp = 21;
