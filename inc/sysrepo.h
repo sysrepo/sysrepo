@@ -199,7 +199,16 @@ typedef enum {
  * @param[in] ll_stderr Log level for stderr logs.
  * @param[in] ll_syslog Log level for syslog logs.
  */
-void sr_log_set_level(sr_log_level_t ll_stderr, sr_log_level_t ll_syslog);
+
+/**
+ * @brief
+ */
+void sr_log_stderr(sr_log_level_t log_level);
+
+/**
+ * @brief
+ */
+void sr_log_syslog(sr_log_level_t log_level);
 
 /**
  * @brief

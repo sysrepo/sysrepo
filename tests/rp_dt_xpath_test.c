@@ -227,7 +227,7 @@ check_error_reporting(void **state)
 }
 
 int main(){
-    sr_log_set_level(SR_LL_ERR, SR_LL_NONE);
+    sr_log_stderr(SR_LL_ERR);
 
     const struct CMUnitTest tests[] = {
             cmocka_unit_test_setup_teardown(rp_dt_validate_ok, setup, teardown),

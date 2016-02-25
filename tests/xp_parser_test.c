@@ -101,7 +101,7 @@ void check_keys(void **state){
 }
 
 void check_module_xpath(void **state){
-    sr_log_set_level(SR_LL_DBG, SR_LL_NONE);
+    sr_log_stderr(SR_LL_DBG);
     xp_loc_id_t *xp = NULL;
 
     assert_int_equal(0,xp_char_to_loc_id("/module-name:", &xp));

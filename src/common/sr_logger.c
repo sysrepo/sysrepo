@@ -105,15 +105,24 @@ sr_logger_cleanup()
 }
 
 void
-sr_log_set_level(sr_log_level_t ll_stderr, sr_log_level_t ll_syslog)
+sr_log_stderr(sr_log_level_t log_level)
 {
 #if SR_LOGGING_ENABLED
-    sr_ll_stderr = ll_stderr;
-    sr_ll_syslog = ll_syslog;
+    sr_ll_stderr = log_level;
 
-    SR_LOG_DBG("Setting log level of stderr logs to %d, syslog logs to %d.", ll_stderr, ll_syslog);
+    SR_LOG_DBG("Setting log level for stderr logs to %d.", log_level);
+#endif
+}
 
-    if ((SR_LL_NONE != ll_syslog) && !sr_syslog_enabled) {
+void
+sr_log_syslog(sr_log_level_t log_level)
+{
+#if SR_LOGGING_ENABLED
+    sr_ll_syslog = log_level;
+
+    SR_LOG_DBG("Setting log level for syslog logs to %d.", log_level);
+
+    if ((SR_LL_NONE != log_level) && !sr_syslog_enabled) {
         if (NULL == sr_syslog_identifier) {
             sr_logger_init(NULL);
         }

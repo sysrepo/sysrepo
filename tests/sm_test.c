@@ -34,7 +34,7 @@ setup(void **state) {
     sm_ctx_t *ctx = NULL;
 
     sr_logger_init("sm_test");
-    sr_log_set_level(SR_LL_DBG, SR_LL_NONE);
+    sr_log_stderr(SR_LL_DBG);
 
     sm_init(NULL, NULL, &ctx);
     *state = ctx;

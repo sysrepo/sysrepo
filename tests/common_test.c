@@ -33,7 +33,7 @@ static int
 logging_setup(void **state)
 {
     sr_logger_init("common_test");
-    sr_log_set_level(SR_LL_DBG, SR_LL_NONE); /* print debugs to stderr */
+    sr_log_stderr(SR_LL_DBG);
 
     return 0;
 }

@@ -40,7 +40,9 @@ sysrepo_setup(void **state)
     putenv("CMOCKA_TEST_ABORT=1");
 
     sr_logger_init(NULL);
-    sr_log_set_level(SR_LL_NONE, SR_LL_NONE); /* turn off all logging */
+    /* turn off all logging */
+    sr_log_stderr(SR_LL_NONE);
+    sr_log_syslog(SR_LL_NONE);
 
     /* connect to sysrepo */
     rc = sr_connect("concurr_test", SR_CONN_DEFAULT, &conn);
