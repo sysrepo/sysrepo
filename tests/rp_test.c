@@ -36,7 +36,8 @@ rp_setup(void **state)
     rp_ctx_t *rp_ctx = NULL;
     int rc = 0;
 
-    sr_set_log_level(SR_LL_DBG, SR_LL_INF);
+    sr_logger_init("rp_test");
+    sr_set_log_level(SR_LL_DBG, SR_LL_NONE);
 
     rc = rp_init(NULL, &rp_ctx);
     assert_int_equal(rc, SR_ERR_OK);
@@ -53,6 +54,7 @@ rp_teardown(void **state)
     assert_non_null(rp_ctx);
 
     rp_cleanup(rp_ctx);
+    sr_logger_cleanup();
 
     return 0;
 }

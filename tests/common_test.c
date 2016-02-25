@@ -32,7 +32,17 @@
 static int
 logging_setup(void **state)
 {
-    sr_set_log_level(SR_LL_DBG, SR_LL_ERR); /* print debugs to stderr */
+    sr_logger_init("common_test");
+    sr_set_log_level(SR_LL_DBG, SR_LL_NONE); /* print debugs to stderr */
+
+    return 0;
+}
+
+static int
+logging_cleanup(void **state)
+{
+    sr_logger_cleanup();
+
     return 0;
 }
 
@@ -179,9 +189,9 @@ circular_buffer_test3(void **state)
 int
 main() {
     const struct CMUnitTest tests[] = {
-            cmocka_unit_test_setup_teardown(circular_buffer_test1, logging_setup, NULL),
-            cmocka_unit_test_setup_teardown(circular_buffer_test2, logging_setup, NULL),
-            cmocka_unit_test_setup_teardown(circular_buffer_test3, logging_setup, NULL),
+            cmocka_unit_test_setup_teardown(circular_buffer_test1, logging_setup, logging_cleanup),
+            cmocka_unit_test_setup_teardown(circular_buffer_test2, logging_setup, logging_cleanup),
+            cmocka_unit_test_setup_teardown(circular_buffer_test3, logging_setup, logging_cleanup),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);

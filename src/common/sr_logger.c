@@ -22,6 +22,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <stdbool.h>
 #include <errno.h>
 #include <string.h>
 #include <syslog.h>
@@ -29,39 +30,39 @@
 #include "sr_common.h"
 #include "sr_logger.h"
 
-volatile uint8_t sr_ll_stderr = SR_LOG_STDERR_DEFAULT_LL;  /**< Global variable used to store log level of stderr messages. */
-volatile uint8_t sr_ll_syslog = SR_LOG_SYSLOG_DEFAULT_LL;  /**< Global variable used to store log level of syslog messages. */
-
 #define SR_DEFAULT_LOG_IDENTIFIER "sysrepo"  /**< Default identifier used in syslog messages. */
 #define SR_DAEMON_LOG_IDENTIFIER "sysrepod"  /**< Sysrepo deamon identifier used in syslog messages. */
 
-char *syslog_identifier = NULL; /**< Global variable used to store syslog identifier. */
+volatile uint8_t sr_ll_stderr = SR_LL_NONE;  /**< Global variable used to store log level of stderr messages. */
+volatile uint8_t sr_ll_syslog = SR_LL_NONE;  /**< Global variable used to store log level of syslog messages. */
+
+static volatile bool sr_syslog_enabled = false;     /**< Global variable used to mark if the syslog initialization (openlog) has been done. */
+static volatile char *sr_syslog_identifier = NULL;  /**< Global variable used to store syslog identifier. */
 
 void
 sr_logger_init(const char *app_name)
 {
 #if SR_LOGGING_ENABLED
-    char *identifier = NULL;
     size_t buff_size = 0;
-
+    if (NULL != sr_syslog_identifier) {
+        free((char*)sr_syslog_identifier);
+        sr_syslog_identifier = NULL;
+    }
     if ((NULL != app_name) && (0 != strcmp(SR_DEFAULT_LOG_IDENTIFIER, app_name)) &&
             (0 != strcmp(SR_DAEMON_LOG_IDENTIFIER, app_name))) {
         buff_size = snprintf(NULL, 0, "%s-%s", SR_DEFAULT_LOG_IDENTIFIER, app_name);
-        syslog_identifier = malloc(buff_size + 1);
-        if (NULL != syslog_identifier) {
-            sprintf(syslog_identifier, "%s-%s", SR_DEFAULT_LOG_IDENTIFIER, app_name);
-            identifier = syslog_identifier;
+        sr_syslog_identifier = malloc(buff_size + 1);
+        if (NULL != sr_syslog_identifier) {
+            sprintf((char*)sr_syslog_identifier, "%s-%s", SR_DEFAULT_LOG_IDENTIFIER, app_name);
         }
     }
-    if (NULL == identifier) {
+    if (NULL == sr_syslog_identifier) {
         if ((NULL == app_name) || (0 != strcmp(SR_DAEMON_LOG_IDENTIFIER, app_name))) {
-            identifier = SR_DEFAULT_LOG_IDENTIFIER;
+            sr_syslog_identifier = strdup(SR_DEFAULT_LOG_IDENTIFIER);
         } else {
-            identifier = SR_DAEMON_LOG_IDENTIFIER;
+            sr_syslog_identifier = strdup(SR_DAEMON_LOG_IDENTIFIER);
         }
     }
-
-    openlog(identifier, LOG_CONS | LOG_PID | LOG_NDELAY, LOG_DAEMON);
 #endif
 }
 
@@ -70,14 +71,31 @@ sr_logger_cleanup()
 {
 #if SR_LOGGING_ENABLED
     fflush(stderr);
-    closelog();
-    free(syslog_identifier);
+    if (sr_syslog_enabled) {
+        closelog();
+        sr_syslog_enabled = false;
+    }
+    free((char*)sr_syslog_identifier);
+    sr_syslog_identifier = NULL;
 #endif
 }
 
 void
 sr_set_log_level(sr_log_level_t ll_stderr, sr_log_level_t ll_syslog)
 {
+#if SR_LOGGING_ENABLED
     sr_ll_stderr = ll_stderr;
     sr_ll_syslog = ll_syslog;
+
+    SR_LOG_DBG("Setting log level of stderr logs to %d, syslog logs to %d.", ll_stderr, ll_syslog);
+
+    if ((SR_LL_NONE != ll_syslog) && !sr_syslog_enabled) {
+        if (NULL == sr_syslog_identifier) {
+            sr_logger_init(NULL);
+        }
+        openlog((char*)sr_syslog_identifier, LOG_CONS | LOG_PID | LOG_NDELAY, LOG_DAEMON);
+        sr_syslog_enabled = true;
+        SR_LOG_DBG_MSG("Opening the connection to system logger (syslog).");
+    }
+#endif
 }

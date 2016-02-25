@@ -201,6 +201,8 @@ const char *sr_strerror(int err_code);
  */
 void sr_set_log_level(sr_log_level_t ll_stderr, sr_log_level_t ll_syslog);
 
+void sr_set_log_cb(); // TODO
+
 
 ////////////////////////////////////////////////////////////////////////////////
 // Connection / Session Management

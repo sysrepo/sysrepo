@@ -98,8 +98,8 @@ typedef struct sr_val_iter_s{
     size_t count;                   /**< number of element currently buffered */
 } sr_val_iter_t;
 
-static sr_conn_ctx_t *primary_connection = NULL;  /**< Global variable holding pointer to the primary connection. */
-pthread_mutex_t primary_lock = PTHREAD_MUTEX_INITIALIZER;  /**< Mutex for locking global variable primary_connection. */
+static sr_conn_ctx_t *primary_connection = NULL;                  /**< Global variable holding pointer to the primary connection. */
+static pthread_mutex_t primary_lock = PTHREAD_MUTEX_INITIALIZER;  /**< Mutex for locking global variable primary_connection. */
 
 /**
  * @brief Returns provided error code and saves it in the session context.
@@ -771,7 +771,10 @@ sr_disconnect(sr_conn_ctx_t *conn_ctx)
 
         if (conn_ctx->primary) {
             /* destroy global resources */
+            pthread_mutex_lock(&primary_lock);
             sr_logger_cleanup();
+            primary_connection = NULL;
+            pthread_mutex_unlock(&primary_lock);
         }
 
         /* destroy all sessions */

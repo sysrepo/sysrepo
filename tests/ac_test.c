@@ -37,8 +37,8 @@
 static int
 ac_test_setup(void **state)
 {
-    sr_set_log_level(SR_LL_DBG, SR_LL_ERR); /* print debugs to stderr */
     sr_logger_init("ac_test");
+    sr_set_log_level(SR_LL_DBG, SR_LL_NONE); /* print debugs to stderr */
 
     unlink(TEST_MODULE_DATA_FILE_NAME);
     umask(S_IWGRP | S_IRGRP | S_IWOTH | S_IROTH);
