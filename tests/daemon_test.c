@@ -58,7 +58,7 @@ test_setup(void **state)
     int rc = SR_ERR_OK;
 
     /* connect to sysrepo, force daemon connection */
-    rc = sr_connect("daemon_test", false, &conn);
+    rc = sr_connect("daemon_test", SR_CONN_DAEMON_REQUIRED, &conn);
     sr_disconnect(conn);
     assert_true(SR_ERR_OK == rc || SR_ERR_DISCONNECT == rc);
 
@@ -99,7 +99,7 @@ sysrepo_daemon_test(void **state)
     assert_int_equal(ret, 0);
 
     /* connect to sysrepo, force daemon connection */
-    rc = sr_connect("daemon_test", false, &conn);
+    rc = sr_connect("daemon_test", SR_CONN_DAEMON_REQUIRED, &conn);
     assert_true(SR_ERR_OK == rc);
 
     /* disconnect */

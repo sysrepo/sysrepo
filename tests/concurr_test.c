@@ -49,7 +49,7 @@ sysrepo_setup(void **state)
     logging_setup(state);
 
     /* connect to sysrepo */
-    rc = sr_connect("concurr_test", true, &conn);
+    rc = sr_connect("concurr_test", SR_CONN_DEFAULT, &conn);
     assert_int_equal(rc, SR_ERR_OK);
 
     *state = (void*)conn;
@@ -104,7 +104,7 @@ test_thread_execute_in_conn(void *sr_conn_ctx_p)
     int rc = 0;
 
     /* start a session */
-    rc = sr_session_start(conn, NULL, SR_DS_STARTUP, &session);
+    rc = sr_session_start(conn, SR_DS_STARTUP, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
     test_execute_in_session(session);
@@ -124,11 +124,11 @@ test_thread_execute_separated(void *ctx)
     int rc = 0;
 
     /* connect to sysrepo */
-    rc = sr_connect("concurr_test", true, &conn);
+    rc = sr_connect("concurr_test", SR_CONN_DEFAULT, &conn);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* start a session */
-    rc = sr_session_start(conn, NULL, SR_DS_STARTUP, &session);
+    rc = sr_session_start(conn, SR_DS_STARTUP, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
     test_execute_in_session(session);
@@ -158,7 +158,7 @@ concurr_requests_test(void **state)
     assert_non_null(state);
 
     /* start a session */
-   rc = sr_session_start(conn, NULL, SR_DS_STARTUP, &session);
+   rc = sr_session_start(conn, SR_DS_STARTUP, &session);
    assert_int_equal(rc, SR_ERR_OK);
 
     for (i = 0; i < TEST_THREAD_COUNT; i++) {

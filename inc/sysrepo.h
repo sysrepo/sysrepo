@@ -207,13 +207,32 @@ void sr_set_log_level(sr_log_level_t ll_stderr, sr_log_level_t ll_syslog);
 ////////////////////////////////////////////////////////////////////////////////
 
 /**
+ * @brief Flags used to override default connection handling by ::sr_connect call.
+ */
+typedef enum sr_conn_flag_e {
+    SR_CONN_DEFAULT = 0,          /**< Default behavior - instantiate library-local Sysrepo Engine if
+                                       the connection to sysrepo daemon is not possible. */
+    SR_CONN_DAEMON_REQUIRED = 1,  /**< Require daemon connection - do not instantiate library-local Sysrepo Engine
+                                       if the library cannot connect to the sysrepo daemon  (and return an error instead). */
+    SR_CONN_DAEMON_START = 2,     /**< If sysrepo daemon is not running, and SR_CONN_DAEMON_REQUIRED was specified,
+                                       start it (only if the process calling ::sr_connect is running under root privileges). */
+} sr_conn_flag_t;
+
+/**
+ * @brief Options overriding default connection handling by ::sr_connect call,
+ * can be bitwise OR-ed value of any ::sr_conn_flag_t flags.
+ */
+typedef uint32_t sr_conn_options_t;
+
+/**
  * @brief Data stores that sysrepo supports. Both are editable via implicit candidate.
  * To make changes permanent in edited datastore ::sr_commit must be issued.
+ * @see @ref ds_page "Datastores & Sessions" information page.
  */
 typedef enum sr_datastore_e {
-    SR_DS_RUNNING = 0,    /**< Currently running configuration.
-                               @note This datastore is supported only by an application that is subscribed for notifications.  */
-    SR_DS_STARTUP = 1     /**< Configuration loaded upon application startup. */
+    SR_DS_STARTUP = 0,    /**< Contains configuration data that should be loaded by the controlled application when it starts. */
+    SR_DS_RUNNING = 1,    /**< Contains currently applied configuration and state data of a running application.
+                               @note This datastore is supported only by applications that subscribe for notifications about the changes made in the datastore. */
 } sr_datastore_t;
 
 /**
@@ -221,17 +240,13 @@ typedef enum sr_datastore_e {
  *
  * @param[in] app_name Name of the application connecting to the datastore
  * (can be static string). Used only for accounting purposes.
- * @param[in] allow_library_mode Flag which indicates if the application wants
- * to allow local (library) mode in case that sysrepo daemon is not running.
- * If set to FALSE and the library cannot connect to the deamon, an error will
- * be returned. Otherwise library will initialize its own Sysrepo Engine if the
- * connection to daemon is not possible (but only once per application process).
+ * @param[in] opts Options overriding default connection handling by this call.
  * @param[out] conn_ctx Connection context that can be used for subsequent API
  * calls (automatically allocated, can be released by calling ::sr_disconnect).
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int sr_connect(const char *app_name, const bool allow_library_mode, sr_conn_ctx_t **conn_ctx);
+int sr_connect(const char *app_name, const sr_conn_options_t opts, sr_conn_ctx_t **conn_ctx);
 
 /**
  * @brief Disconnects from the sysrepo datastore (Sysrepo Engine).
@@ -246,10 +261,9 @@ void sr_disconnect(sr_conn_ctx_t *conn_ctx);
 /**
  * @brief Starts a new configuration session.
  *
+ * @see @ref ds_page "Datastores & Sessions" for more information about datastores and sessions.
+ *
  * @param[in] conn_ctx Connection context acquired with ::sr_connect call.
- * @param[in] user_name Effective user name used to authorize the access to
- * datastore (in addition to automatically-detected real user name). If not
- * provided, only automatically-detected real user name will be used for authorization.
  * @param[in] datastore Datastore on which all sysrepo functions within this
  * session will operate. Functionality of some sysrepo calls does not depend on
  * datastore. If your session will contain just calls like these, you can pass
@@ -259,7 +273,37 @@ void sr_disconnect(sr_conn_ctx_t *conn_ctx);
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int sr_session_start(sr_conn_ctx_t *conn_ctx, const char *user_name, sr_datastore_t datastore, sr_session_ctx_t **session);
+int sr_session_start(sr_conn_ctx_t *conn_ctx, sr_datastore_t datastore, sr_session_ctx_t **session);
+
+/**
+ * @brief Starts a new configuration session on behalf of a different user.
+ *
+ * This call is intended for northbound access to sysrepo from management
+ * applications, that need sysrepo to authorize the operations not only
+ * against the user under which the management application is running, but
+ * also against another user (e.g. user that connected to the management application).
+ *
+ * @note Be aware that authorization of specified user may fail with unexpected
+ * errors in case that the client library uses its own Sysrepo Engine at the
+ * moment and your process in not running under root privileges. To prevent
+ * this situation, consider specifying SR_CONN_DAEMON_REQUIRED flag by
+ * ::sr_connect call or using ::sr_session_start instead of this function.
+ *
+ * @see @ref ds_page "Datastores & Sessions" for more information about datastores and sessions.
+ *
+ * @param[in] conn_ctx Connection context acquired with ::sr_connect call.
+ * @param[in] user_name Effective user name used to authorize the access to
+ * datastore (in addition to automatically-detected real user name).
+ * @param[in] datastore Datastore on which all sysrepo functions within this
+ * session will operate. Functionality of some sysrepo calls does not depend on
+ * datastore. If your session will contain just calls like these, you can pass
+ * any valid value (e.g. SR_RUNNING).
+ * @param[out] session Session context that can be used for subsequent API
+ * calls (automatically allocated, can be released by calling ::sr_session_stop).
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_session_start_user(sr_conn_ctx_t *conn_ctx, const char *user_name, sr_datastore_t datastore, sr_session_ctx_t **session);
 
 /**
  * @brief Stops current session and releases resources tied to the session.
@@ -269,6 +313,26 @@ int sr_session_start(sr_conn_ctx_t *conn_ctx, const char *user_name, sr_datastor
  * @return Error code (SR_ERR_OK on success).
  */
 int sr_session_stop(sr_session_ctx_t *session);
+
+/**
+ * @brief Refreshes configuration data cached within the session and starts
+ * operating on fresh data loaded from the datastore.
+ *
+ * Call this function in case that you leave session open for longer time period
+ * and you expect that the data in the datastore may have been changed since
+ * last data (re)load (which occurs by ::sr_session_start, ::sr_commit and
+ * ::sr_discard_changes).
+ *
+ * @see @ref ds_page "Datastores & Sessions" for information about session data caching.
+ *
+ * @note In current implementation, this function call discards any non-committed
+ * changes within the session (it has the same effect as ::sr_discard_changes).
+ *
+ * @param[in] session Session context acquired with ::sr_session_start call.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_session_refresh(sr_session_ctx_t *session);
 
 /**
  * @brief Retrieves detailed information about the error that has occurred

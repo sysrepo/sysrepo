@@ -32,13 +32,13 @@ main(int argc, char **argv)
     int rc = SR_ERR_OK;
 
     /* connect to sysrepo */
-    rc = sr_connect("app4", true, &conn);
+    rc = sr_connect("app4", SR_CONN_DEFAULT, &conn);
     if (SR_ERR_OK != rc) {
         goto cleanup;
     }
 
     /* start session */
-    rc = sr_session_start(conn, NULL, SR_DS_STARTUP, &sess);
+    rc = sr_session_start(conn, SR_DS_STARTUP, &sess);
     if (SR_ERR_OK != rc) {
         goto cleanup;
     }

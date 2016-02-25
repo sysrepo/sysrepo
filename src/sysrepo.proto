@@ -88,8 +88,8 @@ message Error {
  * @brief Datastore on which the configuration session will operate.
  */
 enum DataStore {
-  RUNNING = 1;
-  STARTUP = 2;
+  STARTUP = 1;
+  RUNNING = 2;
 }
 
 /**
@@ -120,6 +120,19 @@ message SessionStopReq {
  */
 message SessionStopResp {
   required uint32 session_id = 1;
+}
+
+/**
+ * @brief Refreshes configuration data cached within the session.
+ * Sent by sr_session_data_refresh API call.
+ */
+message SessionRefreshReq {
+}
+
+/**
+ * @brief Response to sr_session_data_refresh request.
+ */
+message SessionRefreshResp {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -305,21 +318,21 @@ message DiscardChangesResp {
  * @brief Requested operation.
  */
 enum Operation {
-  SESSION_START = 1;
-  SESSION_STOP = 2;
+  SESSION_START = 10;
+  SESSION_STOP = 11;
+  SESSION_REFRESH = 12;
 
-  LIST_SCHEMAS = 3;
+  LIST_SCHEMAS = 20;
+  GET_ITEM = 21;
+  GET_ITEMS = 22;
 
-  GET_ITEM = 4;
-  GET_ITEMS = 5;
+  SET_ITEM = 30;
+  DELETE_ITEM = 31;
+  MOVE_ITEM = 32;
 
-  SET_ITEM = 6;
-  DELETE_ITEM = 7;
-  MOVE_ITEM = 8;
-
-  VALIDATE = 9;
-  COMMIT = 10;
-  DISCARD_CHANGES = 11;
+  VALIDATE = 40;
+  COMMIT = 41;
+  DISCARD_CHANGES = 42;
 }
 
 /**
@@ -330,19 +343,19 @@ message Req {
 
   optional SessionStartReq session_start_req = 10;
   optional SessionStopReq session_stop_req = 11;
+  optional SessionRefreshReq session_refresh_req = 12;
   
-  optional ListSchemasReq list_schemas_req = 12;
+  optional ListSchemasReq list_schemas_req = 20;
+  optional GetItemReq get_item_req = 21;
+  optional GetItemsReq get_items_req = 22;
 
-  optional GetItemReq get_item_req = 13;
-  optional GetItemsReq get_items_req = 14;
+  optional SetItemReq set_item_req = 30;
+  optional DeleteItemReq delete_item_req = 31;
+  optional MoveItemReq move_item_req = 32;
 
-  optional SetItemReq set_item_req = 15;
-  optional DeleteItemReq delete_item_req = 16;
-  optional MoveItemReq move_item_req = 17;
-
-  optional ValidateReq validate_req = 18;
-  optional CommitReq commit_req = 19;
-  optional DiscardChangesReq discard_changes_req = 20;
+  optional ValidateReq validate_req = 40;
+  optional CommitReq commit_req = 41;
+  optional DiscardChangesReq discard_changes_req = 42;
 }
 
 /**
@@ -355,19 +368,19 @@ message Resp {
 
   optional SessionStartResp session_start_resp = 10;
   optional SessionStopResp session_stop_resp = 11;
+  optional SessionRefreshResp session_refresh_resp = 12;
   
-  optional ListSchemasResp list_schemas_resp = 12;
+  optional ListSchemasResp list_schemas_resp = 20;
+  optional GetItemResp get_item_resp = 21;
+  optional GetItemsResp get_items_resp = 22;
 
-  optional GetItemResp get_item_resp = 13;
-  optional GetItemsResp get_items_resp = 14;
+  optional SetItemResp set_item_resp = 30;
+  optional DeleteItemResp delete_item_resp = 31;
+  optional MoveItemResp move_item_resp = 32;
 
-  optional SetItemResp set_item_resp = 15;
-  optional DeleteItemResp delete_item_resp = 16;
-  optional MoveItemResp move_item_resp = 17;
-
-  optional ValidateResp validate_resp = 18;
-  optional CommitResp commit_resp = 19;
-  optional DiscardChangesResp discard_changes_resp = 20;
+  optional ValidateResp validate_resp = 40;
+  optional CommitResp commit_resp = 41;
+  optional DiscardChangesResp discard_changes_resp = 42;
 }
 
 /**

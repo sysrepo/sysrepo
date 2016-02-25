@@ -31,9 +31,9 @@
 #include "sr_common.h"
 #include "connection_manager.h"
 
-#define SR_CHILD_INIT_TIMEOUT 2  /** Timeout to initialize the child process (in seconds) */
+#define SR_CHILD_INIT_TIMEOUT 2  /**< Timeout to initialize the child process (in seconds) */
 
-int pidfile_fd = -1; /** File descriptor of sysrepo deamon's PID file */
+int pidfile_fd = -1; /**< File descriptor of sysrepo deamon's PID file */
 
 /**
  * @brief Signal handler used to deliver initialization result from child to
