@@ -225,6 +225,7 @@ main(int argc, char* argv[])
     cm_cleanup(sr_cm_ctx);
 
     SR_LOG_INF_MSG("Sysrepo daemon terminated.");
+    sr_logger_cleanup();
 
     return 0;
 }
