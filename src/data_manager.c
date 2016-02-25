@@ -953,6 +953,14 @@ dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors, siz
     /* open all files */
     size_t count = 0;
     i = 0;
+    #ifdef HAVE_STAT_ST_MTIM
+    struct ly_set *matched_timestamp = ly_set_new();
+    if (NULL == matched_timestamp) {
+        SR_LOG_ERR_MSG("Not modified set initialization failed");
+        rc = SR_ERR_INTERNAL;
+        goto cleanup;
+    }
+    #endif
     while (NULL != (info = sr_btree_get_at(session->session_modules, i))) {
         if (info->modified) {
             char *file_name = NULL;
@@ -995,13 +1003,59 @@ dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors, siz
                 goto cleanup;
             }
             dm_data_info_t *di = NULL;
-            /* if the file existed pass FILE 'r+', otherwise pass NULL because there is 'w' stream already */
+            #ifdef HAVE_STAT_ST_MTIM
+                struct stat st = {0};
+                rc = stat(file_name, &st);
+                if (-1 == rc) {
+                    SR_LOG_ERR_MSG("Stat failed");
+                    free(file_name);
+                    rc = SR_ERR_INTERNAL;
+                    modif_count = count + 1;
+                    goto cleanup;
+                }
+                if (info->timestamp.tv_sec == st.st_mtim.tv_sec &&
+                        info->timestamp.tv_nsec == st.st_mtim.tv_nsec) {
+                    SR_LOG_DBG("Loaded module %s: mtime sec=%lld nsec=%lld\n", info->module->name,
+                (long long) st.st_mtim.tv_sec,
+                (long long) st.st_mtim.tv_nsec);
+                    SR_LOG_DBG("Timestamp for the model %s matches, ops will be skipped", info->module->name);
+                    rc = ly_set_add(matched_timestamp, (void *) info->module->name);
+                    if (0 != rc){
+                        SR_LOG_ERR_MSG("Adding to ly set failed");
+                        free(file_name);
+                        rc = SR_ERR_INTERNAL;
+                        modif_count = count + 1;
+                        goto cleanup;
+                    }
+                    di = calloc(1, sizeof(*di));
+                    if (NULL == di) {
+                        SR_LOG_ERR_MSG("Memory allocation failed");
+                        free(file_name);
+                        rc = SR_ERR_NOMEM;
+                        modif_count = count + 1;
+                        goto cleanup;
+                    }
+                    di->node = sr_dup_datatree(info->node);
+                    if (NULL == di->node) {
+                        SR_LOG_ERR_MSG("Data tree duplication failed");
+                        free(file_name);
+                        rc = SR_ERR_INTERNAL;
+                        modif_count = count + 1;
+                        goto cleanup;
+                    }
+                    di->module = info->module;
+                } else {
+            #endif
+            /* if the file existed pass FILE 'r+', otherwise pass -1 because there is 'w' fd already */
             rc = dm_load_data_tree_file(dm_ctx, existed[count] ? fds[count] : -1, file_name, info->module, &di);
             if (SR_ERR_OK != rc) {
                 SR_LOG_ERR_MSG("Loading data file failed");
                 modif_count = count+1; /* file at index count is already opened*/
                 goto cleanup;
             }
+            #ifdef HAVE_STAT_ST_MTIM
+                }
+            #endif
             rc = sr_btree_insert(commit_session->session_modules, (void *) di);
             if (SR_ERR_OK != rc) {
                 SR_LOG_ERR("Insert into commit session avl failed module %s", info->module->name);
@@ -1018,7 +1072,11 @@ dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors, siz
     SR_LOG_DBG_MSG("Commit (3/6): all modified models loaded successfully");
 
     /* replay operations */
-    rc = rp_dt_replay_operations(dm_ctx, commit_session, session->operations, session->oper_count);
+    rc = rp_dt_replay_operations(dm_ctx, commit_session, session->operations, session->oper_count
+                #ifdef HAVE_STAT_ST_MTIM
+                ,matched_timestamp
+                #endif
+            );
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Replay of operations failed");
         goto cleanup;
@@ -1058,10 +1116,29 @@ dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors, siz
                 SR_LOG_ERR("Failed to write output for %s", info->module->name);
                 rc = SR_ERR_INTERNAL;
             }
+            #ifdef HAVE_STAT_ST_MTIM
+            /* if we skipped the merging, make sure that modification time is updated */
+            for (unsigned int m = 0; m < matched_timestamp->number; m++){
+                if (0 == strcmp(info->module->name, (char *) matched_timestamp->set[m])){
+                    info->timestamp.tv_nsec++;
+                    struct timespec times[2];
+                    times[0] = info->timestamp;
+                    times[1] = info->timestamp;
+                    if (0 != futimens(fds[count], times)){
+                        SR_LOG_ERR_MSG("Time update failed");
+                        rc = SR_ERR_INTERNAL;
+                    }
+                    break;
+                }
+            }
+            #endif
             count++;
         }
         i++;
     }
+    #ifdef HAVE_STAT_ST_MTIM
+    ly_set_free(matched_timestamp);
+    #endif
 
 cleanup:
 

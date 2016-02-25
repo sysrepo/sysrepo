@@ -770,13 +770,30 @@ cleanup:
 }
 
 int
-rp_dt_replay_operations(dm_ctx_t *ctx, dm_session_t *session, dm_sess_op_t *operations, size_t count)
+rp_dt_replay_operations(dm_ctx_t *ctx, dm_session_t *session, dm_sess_op_t *operations, size_t count
+                #ifdef HAVE_STAT_ST_MTIM
+, struct ly_set *matched_ts
+#endif
+)
 {
     CHECK_NULL_ARG3(ctx, session, operations);
     int rc = SR_ERR_OK;
 
     for (size_t i = 0; i < count; i++) {
         dm_sess_op_t *op = &operations[i];
+        #ifdef HAVE_STAT_ST_MTIM
+        bool match = false;
+            for (unsigned int m = 0; m < matched_ts->number; m++){
+                if (0 == XP_CMP_FIRST_NS(op->loc_id, (char *) matched_ts->set[m])){
+                    SR_LOG_DBG("Skipping op for model %s", (char *) matched_ts->set[m]);
+                    match = true;
+                    break;
+                }
+            }
+        if (match){
+            continue;
+        }
+        #endif
         switch (op->op) {
         case DM_SET_OP:
             rc = rp_dt_set_item(ctx, session, op->loc_id, op->options, op->val);
