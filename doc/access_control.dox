@@ -1,0 +1,54 @@
+/**
+
+@page ac_page Access Control
+
+The primary authorization mechanism of sysrepo operations relies on file access 
+permissions set on the data files. Sysrepo automatically discovers user credentials
+(UID and GID) of the process that is using the client library and permits the 
+operation only if the user has sufficient permissions on manipulated data file.
+
+To prevent privilege escalation and TOCTOU race conditions, sysrepo always 
+changes its filesystem UID and GID (on Linux) or effective UID and GID (on Unixes) 
+to the IDs of the process that is using the client library before accessing any data file. 
+
+@section ifp Initial data file permissions
+It is recommended to create at least empty data file and set the needed file 
+permissions on it as part of the installation process of a new YANG model into 
+sysrepo. Otherwise sysrepo creates the data file automatically by the first 
+commit into the data model, with following file permissions:
+- Owner user and group will be set according to UID and GID of the process 
+that is using the client library. If that user is root and ::sr_session_start_user
+has been used to start the session (see @ref user), sysrepo will use UID and GID
+of specified user instead.
+- The data file will be created with umask 022 in case that the client library 
+is connected to the sysrepo daemon, or with umask of the process that is using 
+the client library when not connected to the daemon.
+
+@section user Starting sessions on behalf of a different user
+Northbound access to sysrepo from management applications (such as NETCONF or 
+RESTCONF server), may need sysrepo to authorize the operations not only
+against the user under which the management application is running, but also 
+against another user (e.g. user that is connected to the management application).
+To support this requirement, sysrepo offers ::sr_session_start_user call that
+can be used insead of ::sr_session_start. The ::sr_session_start_user call takes 
+one additional argument - effective user name used to authorize the access to
+the datastore in addition to automatically-detected real user name.
+
+@note Be aware that authorization of specified user may fail with unexpected
+errors in case that the client library uses its own Sysrepo Engine at the
+moment and your process in not running under root privileges. To prevent
+this situation, consider specifying SR_CONN_DAEMON_REQUIRED flag by
+::sr_connect call.
+
+@section nacm NETCONF Access Control Model 
+NETCONF Access Control Model will be implemented later to allow northbound 
+management applications (such as NETCONF or RESTCONF server) to serve more 
+granular access control rules to remote management users than implicit sysrepo 
+rules per YANG-model (on data file level).
+
+Of course, these rules will be more like "virtual", and really should be used only
+for remote management authorization, since any local process will still be able
+to manipulate the data file in any way regardless of the NACM rules configured for it, 
+given that it has sufficient permissions on data file level.
+
+*/
