@@ -1579,7 +1579,7 @@ operation_logging_test(void **state)
 
 int main(){
 
-    sr_set_log_level(SR_LL_DBG, SR_LL_NONE);
+    sr_log_set_level(SR_LL_DBG, SR_LL_NONE);
 
     const struct CMUnitTest tests[] = {
             cmocka_unit_test(delete_item_leaf_test),

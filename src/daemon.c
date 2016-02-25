@@ -183,7 +183,7 @@ main(int argc, char* argv[])
     cm_ctx_t *sr_cm_ctx = NULL;
 
     sr_logger_init("sysrepod");
-    sr_set_log_level(SR_LL_NONE, SR_LL_INF);
+    sr_log_set_level(SR_LL_NONE, SR_LL_INF);
 
     SR_LOG_INF_MSG("Sysrepo daemon initialization started.");
 

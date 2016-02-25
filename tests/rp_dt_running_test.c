@@ -201,7 +201,7 @@ edit_enabled(void **state)
 
 int
 main() {
-    sr_set_log_level(SR_LL_ERR, SR_LL_NONE);
+    sr_log_set_level(SR_LL_ERR, SR_LL_NONE);
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(no_subscription_test),
         cmocka_unit_test(enable_subtree_test),

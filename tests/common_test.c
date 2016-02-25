@@ -33,7 +33,7 @@ static int
 logging_setup(void **state)
 {
     sr_logger_init("common_test");
-    sr_set_log_level(SR_LL_DBG, SR_LL_NONE); /* print debugs to stderr */
+    sr_log_set_level(SR_LL_DBG, SR_LL_NONE); /* print debugs to stderr */
 
     return 0;
 }
@@ -186,12 +186,33 @@ circular_buffer_test3(void **state)
     sr_cbuff_cleanup(buffer);
 }
 
+/*
+ * Callback to be called for each entry to be logged in logger_callback_test.
+ */
+void
+log_callback(sr_log_level_t level, const char *message) {
+    printf("LOG level=%d: %s\n", level, message);
+}
+
+/*
+ * Tests logging into callback function.
+ */
+static void
+logger_callback_test(void **state)
+{
+    sr_log_set_cb(log_callback);
+
+    SR_LOG_DBG("Testing logging callback %d, %d, %d, %s", 5, 4, 3, "...");
+    SR_LOG_INF("Testing logging callback %d, %d, %d, %s", 2, 1, 0, "GO!");
+}
+
 int
 main() {
     const struct CMUnitTest tests[] = {
             cmocka_unit_test_setup_teardown(circular_buffer_test1, logging_setup, logging_cleanup),
             cmocka_unit_test_setup_teardown(circular_buffer_test2, logging_setup, logging_cleanup),
             cmocka_unit_test_setup_teardown(circular_buffer_test3, logging_setup, logging_cleanup),
+            cmocka_unit_test_setup_teardown(logger_callback_test, logging_setup, logging_cleanup),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);

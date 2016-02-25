@@ -58,8 +58,11 @@
     #define SR_LOG_PRINT_FUNCTION_NAMES (1)
 #endif
 
-extern volatile uint8_t sr_ll_stderr;  /**< Holds current level of stderr debugs. */
-extern volatile uint8_t sr_ll_syslog;  /**< Holds current level of syslog debugs. */
+extern volatile uint8_t sr_ll_stderr;       /**< Holds current level of stderr debugs. */
+extern volatile uint8_t sr_ll_syslog;       /**< Holds current level of syslog debugs. */
+extern volatile sr_log_cb sr_log_callback;  /**< Holds pointer to logging callback, if set. */
+
+void sr_log_to_cb(sr_log_level_t level, const char *format, ...);
 
 #define SR_LOG__LL_STR(LL) \
     ((SR_LL_DBG == LL) ? "DBG" : \
@@ -78,11 +81,15 @@ extern volatile uint8_t sr_ll_syslog;  /**< Holds current level of syslog debugs
         syslog(SR_LOG__LL_FACILITY(LL), "[%s] (%s:%d) " MSG, SR_LOG__LL_STR(LL), __FUNCTION__, __LINE__, __VA_ARGS__);
 #define SR_LOG__STDERR(LL, MSG, ...) \
         fprintf(stderr, "[%s] (%s:%d) " MSG "\n", SR_LOG__LL_STR(LL), __FUNCTION__, __LINE__, __VA_ARGS__);
+#define SR_LOG__CALLBACK(LL, MSG, ...) \
+        sr_log_to_cb(LL, "(%s:%d) " MSG, __FUNCTION__, __LINE__, __VA_ARGS__);
 #else
 #define SR_LOG__SYSLOG(LL, MSG, ...) \
         syslog(SR_LOG__LL_FACILITY(LL), "[%s] " MSG, SR_LOG__LL_STR(LL), __VA_ARGS__);
 #define SR_LOG__STDERR(LL, MSG, ...) \
         fprintf(stderr, "[%s] " MSG "\n", SR_LOG__LL_STR(LL), __VA_ARGS__);
+#define SR_LOG__CALLBACK(LL, MSG, ...) \
+        sr_log_to_cb(LL, MSG, __VA_ARGS__);
 #endif
 
 #define SR_LOG__INTERNAL(LL, MSG, ...) \
@@ -91,6 +98,8 @@ extern volatile uint8_t sr_ll_syslog;  /**< Holds current level of syslog debugs
             SR_LOG__STDERR(LL, MSG, __VA_ARGS__) \
         if (sr_ll_syslog >= LL) \
             SR_LOG__SYSLOG(LL, MSG, __VA_ARGS__) \
+        if (NULL != sr_log_callback) \
+            SR_LOG__CALLBACK(LL, MSG, __VA_ARGS__) \
     } while(0)
 
 #if SR_LOGGING_ENABLED

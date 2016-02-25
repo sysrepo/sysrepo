@@ -171,6 +171,15 @@ typedef struct sr_error_info_s {
 } sr_error_info_t;
 
 /**
+ * @brief Returns the error message corresponding to the error code.
+ *
+ * @param[in] err_code Error code.
+ *
+ * @return Error message (statically allocated, do not free).
+ */
+const char *sr_strerror(int err_code);
+
+/**
  * @brief Log levels used to determine if message of certain severity should be printed.
  */
 typedef enum {
@@ -182,15 +191,6 @@ typedef enum {
 } sr_log_level_t;
 
 /**
- * @brief Returns the error message corresponding to the error code.
- *
- * @param[in] err_code Error code.
- *
- * @return Error message (statically allocated, do not free).
- */
-const char *sr_strerror(int err_code);
-
-/**
  * @brief Sets logging level of stderr logs and syslog logs.
  *
  * When connected to sysrepo daemon, this affects only logging of Client Library.
@@ -199,9 +199,17 @@ const char *sr_strerror(int err_code);
  * @param[in] ll_stderr Log level for stderr logs.
  * @param[in] ll_syslog Log level for syslog logs.
  */
-void sr_set_log_level(sr_log_level_t ll_stderr, sr_log_level_t ll_syslog);
+void sr_log_set_level(sr_log_level_t ll_stderr, sr_log_level_t ll_syslog);
 
-void sr_set_log_cb(); // TODO
+/**
+ * @brief
+ */
+typedef void (*sr_log_cb)(sr_log_level_t level, const char *message);
+
+/**
+ * @brief
+ */
+void sr_log_set_cb(sr_log_cb log_callback);
 
 
 ////////////////////////////////////////////////////////////////////////////////
