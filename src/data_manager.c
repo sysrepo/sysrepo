@@ -60,11 +60,13 @@ typedef struct dm_session_s {
  * @brief
  */
 typedef struct dm_commit_context_s {
-    dm_session_t session;
+    dm_session_t *session;
     int *fds;
     bool *existed;
+    size_t modif_count; /*number of modified models fds to be closed*/
+#ifdef HAVE_STAT_ST_MTIM
     struct ly_set *up_to_date_models;
-    size_t modif_count;
+#endif
 } dm_commit_context_t;
 /**
  * @brief Info structure for the node holds the state of the running data store.
@@ -705,15 +707,14 @@ dm_session_start(const dm_ctx_t *dm_ctx, const sr_datastore_t ds, dm_session_t *
     return SR_ERR_OK;
 }
 
-int
+void
 dm_session_stop(const dm_ctx_t *dm_ctx, dm_session_t *session)
 {
-    CHECK_NULL_ARG2(dm_ctx, session);
+    CHECK_NULL_ARG_VOID2(dm_ctx, session);
     sr_btree_cleanup(session->session_modules);
     dm_clear_session_errors(session);
     dm_free_sess_operations(session->operations, session->oper_count);
     free(session);
-    return SR_ERR_OK;
 }
 
 int
@@ -894,38 +895,91 @@ dm_discard_changes(dm_ctx_t *dm_ctx, dm_session_t *session)
     return SR_ERR_OK;
 }
 
-static int
-dm_commit_count_modified_models(dm_session_t *session, int **fds, bool **existed, size_t *modif_count)
+/**
+ * @breif Frees all resources allocated in commit context closes
+ * modif_count of files.
+ */
+void
+dm_free_commit_context(dm_ctx_t *dm_ctx, dm_commit_context_t *c_ctx)
 {
-    CHECK_NULL_ARG4(session, fds, existed, modif_count);
+    CHECK_NULL_ARG_VOID(c_ctx);
+    for (size_t i = 0; i < c_ctx->modif_count; i++) {
+        close(c_ctx->fds[i]);
+    }
+    free(c_ctx->fds);
+    free(c_ctx->existed);
+#ifdef HAVE_STAT_ST_MTIM
+    ly_set_free(c_ctx->up_to_date_models);
+    c_ctx->up_to_date_models = NULL;
+#endif
+    c_ctx->fds = NULL;
+    c_ctx->existed = NULL;
+    c_ctx->modif_count = 0;
+
+    dm_session_stop(dm_ctx, c_ctx->session);
+}
+
+/**
+ * @brief Counts modified models and allocates structures used during commit process if the
+ * number of modified models is greater than zero. In case of error all allocated resources
+ * are cleaned up.
+ * @param [in] dm_ctx
+ * @param [in] session
+ * @param [in] c_ctx
+ * @return Error code (SR_ERR_OK on success)
+ */
+static int
+dm_commit_prepare_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t *c_ctx)
+{
+    CHECK_NULL_ARG2(session, c_ctx);
     dm_data_info_t *info = NULL;
     size_t i = 0;
-    *modif_count = 0;
+    int rc = SR_ERR_OK;
+    c_ctx->modif_count = 0;
     /* count modified files */
     while (NULL != (info = sr_btree_get_at(session->session_modules, i))) {
         if (info->modified) {
-            (*modif_count)++;
+            c_ctx->modif_count++;
         }
         i++;
     }
 
-    SR_LOG_DBG("Commit: In the session there are %zu / %zu modified models \n", *modif_count, i);
+    SR_LOG_DBG("Commit: In the session there are %zu / %zu modified models \n", c_ctx->modif_count, i);
 
-    if (0 == session->oper_count && 0 != (*modif_count)) {
+    if (0 == session->oper_count && 0 != c_ctx->modif_count) {
         SR_LOG_WRN_MSG("No operation logged, however data tree marked as modified");
-        *modif_count = 0;
+        c_ctx->modif_count = 0;
         return SR_ERR_OK;
     }
 
-    *fds = calloc(*modif_count, sizeof(**fds));
-    *existed = calloc(*modif_count, sizeof(**existed));
-    if(NULL == fds || NULL == existed){
+    c_ctx->fds = calloc(c_ctx->modif_count, sizeof(*c_ctx->fds));
+    c_ctx->existed = calloc(c_ctx->modif_count, sizeof(*c_ctx->existed));
+    if(NULL == c_ctx->fds || NULL == c_ctx->existed){
         SR_LOG_ERR_MSG("Memory allocation failed");
-        free(fds);
-        free(existed);
-        return SR_ERR_NOMEM;
+        rc = SR_ERR_NOMEM;
+        goto cleanup;
     }
-    return SR_ERR_OK;
+
+    /* create commit session*/
+    rc = dm_session_start(dm_ctx, session->datastore, &c_ctx->session);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Commit session initialization failed");
+        goto cleanup;
+    }
+
+#ifdef HAVE_STAT_ST_MTIM
+    c_ctx->up_to_date_models = ly_set_new();
+    if (NULL == c_ctx->up_to_date_models) {
+        SR_LOG_ERR_MSG("Not modified set initialization failed");
+        rc = SR_ERR_INTERNAL;
+        goto cleanup;
+    }
+#endif
+    return rc;
+
+cleanup:
+    dm_free_commit_context(dm_ctx, c_ctx);
+    return rc;
 }
 /**
  * @brief Loads the data tree which has been modified in the session to the commit session. If the session copy has
@@ -940,30 +994,19 @@ dm_commit_count_modified_models(dm_session_t *session, int **fds, bool **existed
  * @return Error code (SR_ERR_OK on success)
  */
 static int
-dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm_session_t *commit_session, int *fds, bool *existed
-#ifdef HAVE_STAT_ST_MTIM
-, struct ly_set **up_to_date
-#endif
-)
+dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm_commit_context_t *c_ctx)
 {
-    CHECK_NULL_ARG5(dm_ctx, session, commit_session, fds, existed);
+    CHECK_NULL_ARG(c_ctx);
+    CHECK_NULL_ARG5(dm_ctx, session, c_ctx->session, c_ctx->fds, c_ctx->existed);
 #ifdef HAVE_STAT_ST_MTIM
-    CHECK_NULL_ARG(up_to_date);
+    CHECK_NULL_ARG(c_ctx->up_to_date_models);
 #endif
     dm_data_info_t *info = NULL;
-    size_t modif_count = 0; /* number of fds to be closed */
     size_t i = 0;
     size_t count = 0;
     int rc = SR_ERR_OK;
     char *file_name = NULL;
-#ifdef HAVE_STAT_ST_MTIM
-    *up_to_date = ly_set_new();
-    if (NULL == *up_to_date) {
-        SR_LOG_ERR_MSG("Not modified set initialization failed");
-        rc = SR_ERR_INTERNAL;
-        goto cleanup;
-    }
-#endif
+    c_ctx->modif_count = 0; /* how many file descriptors should be closed on cleanup */
 
     while (NULL != (info = sr_btree_get_at(session->session_modules, i))) {
         if (info->modified) {
@@ -972,8 +1015,8 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
                 SR_LOG_ERR_MSG("Get data file name failed");
                 goto cleanup;
             }
-            fds[count] = open(file_name, O_RDWR);
-            if (-1 == fds[count]) {
+            c_ctx->fds[count] = open(file_name, O_RDWR);
+            if (-1 == c_ctx->fds[count]) {
                 SR_LOG_DBG("File %s can not be opened for read write", file_name);
                 if (EACCES == errno) {
                     SR_LOG_ERR("File %s can not be opened because of authorization", file_name);
@@ -983,18 +1026,19 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
 
                 if (ENOENT == errno) {
                     SR_LOG_DBG("File %s does not exist, trying to create an empty one", file_name);
-                    fds[count] = open(file_name, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
-                    if (-1 == fds[count]) {
+                    c_ctx->fds[count] = open(file_name, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
+                    if (-1 == c_ctx->fds[count]) {
                         SR_LOG_ERR("File %s can not be created", file_name);
                         rc = SR_ERR_IO;
                         goto cleanup;
                     }
                 }
             } else {
-                existed[count] = true;
+                c_ctx->existed[count] = true;
             }
-            modif_count++;
-            if (lockf(fds[count], F_TLOCK, 0) < 0) {
+            /* file was opened successfully increment the number of files to be closed */
+            c_ctx->modif_count++;
+            if (lockf(c_ctx->fds[count], F_TLOCK, 0) < 0) {
                 SR_LOG_ERR("Locking of file '%s': %s.", file_name, strerror(errno));
                 rc = SR_ERR_COMMIT_FAILED;
                 goto cleanup;
@@ -1014,7 +1058,7 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
                         (long long) st.st_mtim.tv_sec,
                         (long long) st.st_mtim.tv_nsec);
                 SR_LOG_DBG("Timestamp for the model %s matches, ops will be skipped", info->module->name);
-                rc = ly_set_add(*up_to_date, (void *) info->module->name);
+                rc = ly_set_add(c_ctx->up_to_date_models, (void *) info->module->name);
                 if (0 != rc) {
                     SR_LOG_ERR_MSG("Adding to ly set failed");
                     rc = SR_ERR_INTERNAL;
@@ -1036,7 +1080,7 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
             } else {
 #endif
                 /* if the file existed pass FILE 'r+', otherwise pass -1 because there is 'w' fd already */
-                rc = dm_load_data_tree_file(dm_ctx, existed[count] ? fds[count] : -1, file_name, info->module, &di);
+                rc = dm_load_data_tree_file(dm_ctx, c_ctx->existed[count] ? c_ctx->fds[count] : -1, file_name, info->module, &di);
                 if (SR_ERR_OK != rc) {
                     SR_LOG_ERR_MSG("Loading data file failed");
                     goto cleanup;
@@ -1044,13 +1088,14 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
 #ifdef HAVE_STAT_ST_MTIM
             }
 #endif
-            rc = sr_btree_insert(commit_session->session_modules, (void *) di);
+            rc = sr_btree_insert(c_ctx->session->session_modules, (void *) di);
             if (SR_ERR_OK != rc) {
                 SR_LOG_ERR("Insert into commit session avl failed module %s", info->module->name);
                 dm_data_info_free(di);
                 goto cleanup;
             }
             free(file_name);
+            file_name = NULL;
 
             count++;
         }
@@ -1060,11 +1105,70 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
     return rc;
 
 cleanup:
-    for (i = 0; i < modif_count; i++){
-        close(fds[i]);
-    }
+    dm_free_commit_context(dm_ctx, c_ctx);
     free(file_name);
-    ly_set_free(*up_to_date);
+    return rc;
+}
+
+/**
+ * @brief Writes the data trees from commit session stored in commit context into the files.
+ * In case of error tries to countinue. Does not do a cleanup.
+ * @param [in] session
+ * @param [in] c_ctx
+ * @return Error code (SR_ERR_OK on success)
+ */
+static int
+dm_commit_write_files(dm_session_t *session, dm_commit_context_t *c_ctx)
+{
+    CHECK_NULL_ARG2(session, c_ctx);
+    int rc = SR_ERR_OK;
+    size_t i = 0;
+    size_t count = 0;
+    dm_data_info_t *info = NULL;
+
+    /* empty existing files */
+    for (i=0; i < c_ctx->modif_count; i++) {
+        if (c_ctx->existed[i]) {
+            ftruncate(c_ctx->fds[i], 0);
+        }
+    }
+
+    /* write data trees */
+    i = 0;
+    dm_data_info_t *merged_info = NULL;
+    while (NULL != (info = sr_btree_get_at(session->session_modules, i))) {
+        if (info->modified) {
+            /* get merged info */
+            merged_info = sr_btree_search(c_ctx->session->session_modules, info);
+            if (NULL == merged_info) {
+                SR_LOG_ERR("Merged data info %s not found", info->module->name);
+                rc = SR_ERR_INTERNAL;
+                continue;
+            }
+            if (0 != lyd_print_fd(c_ctx->fds[count], merged_info->node, LYD_XML_FORMAT, LYP_WITHSIBLINGS)) {
+                SR_LOG_ERR("Failed to write output for %s", info->module->name);
+                rc = SR_ERR_INTERNAL;
+            }
+#ifdef HAVE_STAT_ST_MTIM
+            /* if we skipped the merging, make sure that modification time is updated */
+            for (unsigned int m = 0; m < c_ctx->up_to_date_models->number; m++) {
+                if (0 == strcmp(info->module->name, (char *) c_ctx->up_to_date_models->set[m])) {
+                    info->timestamp.tv_nsec++;
+                    struct timespec times[2];
+                    times[0] = info->timestamp;
+                    times[1] = info->timestamp;
+                    if (0 != futimens(c_ctx->fds[count], times)) {
+                        SR_LOG_ERR_MSG("Time update failed");
+                        rc = SR_ERR_INTERNAL;
+                    }
+                    break;
+                }
+            }
+#endif
+            count++;
+        }
+        i++;
+    }
     return rc;
 }
 
@@ -1073,18 +1177,7 @@ dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors, siz
 {
     CHECK_NULL_ARG2(dm_ctx, session);
     int rc = SR_ERR_OK;
-    size_t i = 0;                   /* counter through session's model copies */
-    size_t count = 0;               /* counter through modified models */
-    size_t modif_count = 0;         /* number of modified data trees */
-    size_t files_to_be_closed = 0;  /* number of files to be closed */
-
-    dm_data_info_t *info = NULL;
-    dm_session_t *commit_session = NULL;
-    int *fds = NULL;
-    bool *existed = NULL;
-#ifdef HAVE_STAT_ST_MTIM
-    struct ly_set *matched_timestamp = NULL;
-#endif
+    dm_commit_context_t commit_ctx = {0, };
 
     SR_LOG_DBG_MSG("Commit (1/6): process stared");
 
@@ -1101,43 +1194,30 @@ dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors, siz
     /* lock context for writing */
     pthread_mutex_lock(&dm_ctx->commit_lock);
 
-    rc = dm_commit_count_modified_models(session, &fds, &existed, &modif_count);
+    rc = dm_commit_prepare_context(dm_ctx, session, &commit_ctx);
     if (SR_ERR_OK != rc) {
         SR_LOG_DBG_MSG("Commit: Finished - no model modified");
         pthread_mutex_unlock(&dm_ctx->commit_lock);
         return rc;
-    } else if (0 == modif_count) {
+    } else if (0 == commit_ctx.modif_count) {
         SR_LOG_WRN_MSG("No modification found");
+        dm_free_commit_context(dm_ctx, &commit_ctx);
         pthread_mutex_unlock(&dm_ctx->commit_lock);
         return SR_ERR_OK;
     }
 
-    /* create commit session*/
-    rc = dm_session_start(dm_ctx, session->datastore, &commit_session);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Commit session initialization failed");
-        goto cleanup;
-    }
-
     /* open all files */
-    rc = dm_commit_load_modified_models(dm_ctx, session, commit_session, fds, existed
-#ifdef HAVE_STAT_ST_MTIM
-            , &matched_timestamp
-#endif
-    );
+    rc = dm_commit_load_modified_models(dm_ctx, session, &commit_ctx);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Loading of modified models failed");
         goto cleanup;
     }
     SR_LOG_DBG_MSG("Commit (3/6): all modified models loaded successfully");
 
-    /* all files has been successfully opened, close them all in cleanup */
-    files_to_be_closed = modif_count;
-
     /* replay operations */
-    rc = rp_dt_replay_operations(dm_ctx, commit_session, session->operations, session->oper_count
+    rc = rp_dt_replay_operations(dm_ctx, commit_ctx.session, session->operations, session->oper_count
 #ifdef HAVE_STAT_ST_MTIM
-            , matched_timestamp
+            , commit_ctx.up_to_date_models
 #endif
             );
     if (SR_ERR_OK != rc) {
@@ -1147,7 +1227,7 @@ dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors, siz
     SR_LOG_DBG_MSG("Commit (4/6): replay of operation succeeded");
 
     /* validate data trees after merge */
-    rc = dm_validate_session_data_trees(dm_ctx, commit_session, errors, err_cnt);
+    rc = dm_validate_session_data_trees(dm_ctx, commit_ctx.session, errors, err_cnt);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Validation after merging failed");
         rc = SR_ERR_VALIDATION_FAILED;
@@ -1155,64 +1235,10 @@ dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors, siz
     }
     SR_LOG_DBG_MSG("Commit (5/6): merged models validation succeeded");
 
-    /* empty existing files */
-    for (i=0; i < modif_count; i++) {
-        if (existed[i]) {
-            ftruncate(fds[i], 0);
-        }
-    }
-
-    /* write data trees */
-    count = 0;
-    i = 0;
-    dm_data_info_t *merged_info = NULL;
-    while (NULL != (info = sr_btree_get_at(session->session_modules, i))) {
-        if (info->modified) {
-            /* get merged info */
-            merged_info = sr_btree_search(commit_session->session_modules, info);
-            if (NULL == merged_info) {
-                SR_LOG_ERR("Merged data info %s not found", info->module->name);
-                rc = SR_ERR_INTERNAL;
-                continue;
-            }
-            if (0 != lyd_print_fd(fds[count], merged_info->node, LYD_XML_FORMAT, LYP_WITHSIBLINGS)) {
-                SR_LOG_ERR("Failed to write output for %s", info->module->name);
-                rc = SR_ERR_INTERNAL;
-            }
-#ifdef HAVE_STAT_ST_MTIM
-            /* if we skipped the merging, make sure that modification time is updated */
-            for (unsigned int m = 0; m < matched_timestamp->number; m++) {
-                if (0 == strcmp(info->module->name, (char *) matched_timestamp->set[m])) {
-                    info->timestamp.tv_nsec++;
-                    struct timespec times[2];
-                    times[0] = info->timestamp;
-                    times[1] = info->timestamp;
-                    if (0 != futimens(fds[count], times)) {
-                        SR_LOG_ERR_MSG("Time update failed");
-                        rc = SR_ERR_INTERNAL;
-                    }
-                    break;
-                }
-            }
-#endif
-            count++;
-        }
-        i++;
-    }
+    rc = dm_commit_write_files(session, &commit_ctx);
 
 cleanup:
-    #ifdef HAVE_STAT_ST_MTIM
-    ly_set_free(matched_timestamp);
-    #endif
-
-    /* close files*/
-    for (i=0; i < files_to_be_closed; i++) {
-        close(fds[i]);
-    }
-
-    free(fds);
-    free(existed);
-    dm_session_stop(dm_ctx, commit_session);
+    dm_free_commit_context(dm_ctx, &commit_ctx);
 
     if (SR_ERR_OK == rc){
         /* discard changes in session in next get_data_tree call newly committed content will be loaded */

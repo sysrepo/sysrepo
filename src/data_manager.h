@@ -117,9 +117,9 @@ int dm_session_start(const dm_ctx_t *dm_ctx, const sr_datastore_t ds, dm_session
  * @brief Frees resources allocated for the session.
  * @param [in] dm_ctx
  * @param [in] dm_session_ctx
- * @return Error code (SR_ERR_OK on success)
+ * @return
  */
-int dm_session_stop(const dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx);
+void dm_session_stop(const dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx);
 
 /**
  * @brief Returns the structure holding data tree, timestamp and modified flag for the specified module.
