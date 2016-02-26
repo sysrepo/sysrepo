@@ -57,15 +57,15 @@ typedef struct dm_session_s {
 } dm_session_t;
 
 /**
- * @brief
+ * @brief Structure holding information used during commit process
  */
 typedef struct dm_commit_context_s {
-    dm_session_t *session;
-    int *fds;
-    bool *existed;
-    size_t modif_count; /*number of modified models fds to be closed*/
+    dm_session_t *session;      /**< session where mereged (user changes + file system state) data trees are stored */
+    int *fds;                   /**< opened file descriptors */
+    bool *existed;              /**< flag wheter the file for the filedesriptor existed (and should be truncated) before commit*/
+    size_t modif_count;         /**< number of modified models fds to be closed*/
 #ifdef HAVE_STAT_ST_MTIM
-    struct ly_set *up_to_date_models;
+    struct ly_set *up_to_date_models; /**< set of module names where the timestamp of the session copy is equal to file system timestamp */
 #endif
 } dm_commit_context_t;
 /**
@@ -1202,11 +1202,11 @@ dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors, siz
 
     rc = dm_commit_prepare_context(dm_ctx, session, &commit_ctx);
     if (SR_ERR_OK != rc) {
-        SR_LOG_DBG_MSG("Commit: Finished - no model modified");
+        SR_LOG_ERR_MSG("commit prepare context failed");
         pthread_mutex_unlock(&dm_ctx->commit_lock);
         return rc;
     } else if (0 == commit_ctx.modif_count) {
-        SR_LOG_WRN_MSG("No modification found");
+        SR_LOG_DBG_MSG("Commit: Finished - no model modified");
         dm_free_commit_context(dm_ctx, &commit_ctx);
         pthread_mutex_unlock(&dm_ctx->commit_lock);
         return SR_ERR_OK;
