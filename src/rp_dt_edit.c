@@ -691,7 +691,7 @@ rp_dt_move_list_wrapper(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpa
     if (SR_ERR_OK != rc){
         /* loc id is freed by dm_add_operation */
         SR_LOG_ERR_MSG("Adding operation to session op list failed");
-        goto cleanup;
+        return rc;
     }
 
     rc = rp_dt_move_list(dm_ctx, session, loc_id, direction);
@@ -701,9 +701,6 @@ rp_dt_move_list_wrapper(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpa
     }
     return rc;
 
-cleanup:
-    xp_free_loc_id(loc_id);
-    return rc;
 }
 
 int
@@ -715,14 +712,15 @@ rp_dt_set_item_wrapper(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpat
     rc = xp_char_to_loc_id(xpath, &loc_id);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Converting xpath '%s' to loc_id failed.", xpath);
-        goto cleanup;
+        sr_free_val(val);
+        return rc;
     }
 
     rc = dm_add_operation(session, DM_SET_OP, loc_id, val, opt);
     if (SR_ERR_OK != rc){
         /* loc id and val is freed by dm_add_operation */
         SR_LOG_ERR_MSG("Adding operation to session op list failed");
-        goto cleanup;
+        return rc;
     }
 
     rc = rp_dt_set_item(dm_ctx, session, loc_id, opt, val);
@@ -730,11 +728,6 @@ rp_dt_set_item_wrapper(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpat
         SR_LOG_ERR_MSG("Set item failed");
         dm_remove_last_operation(session);
     }
-    return rc;
-
-cleanup:
-    xp_free_loc_id(loc_id);
-    sr_free_val(val);
     return rc;
 }
 
@@ -754,7 +747,7 @@ rp_dt_delete_item_wrapper(dm_ctx_t *dm_ctx, dm_session_t *session, const char *x
     if (SR_ERR_OK != rc){
         /* loc id is freed by dm_add_operation */
         SR_LOG_ERR_MSG("Adding operation to session op list failed");
-        goto cleanup;
+        return rc;
     }
 
     rc = rp_dt_delete_item(dm_ctx, session, loc_id, opts);
@@ -762,10 +755,6 @@ rp_dt_delete_item_wrapper(dm_ctx_t *dm_ctx, dm_session_t *session, const char *x
         SR_LOG_ERR_MSG("List move failed");
         dm_remove_last_operation(session);
     }
-    return rc;
-
-cleanup:
-    xp_free_loc_id(loc_id);
     return rc;
 }
 

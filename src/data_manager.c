@@ -923,6 +923,7 @@ dm_free_commit_context(dm_ctx_t *dm_ctx, dm_commit_context_t *c_ctx)
     c_ctx->modif_count = 0;
 
     dm_session_stop(dm_ctx, c_ctx->session);
+    c_ctx->session = NULL;
 }
 
 /**
@@ -1080,6 +1081,7 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
                 if (NULL == di->node) {
                     SR_LOG_ERR_MSG("Data tree duplication failed");
                     rc = SR_ERR_INTERNAL;
+                    dm_data_info_free(di);
                     goto cleanup;
                 }
                 di->module = info->module;
