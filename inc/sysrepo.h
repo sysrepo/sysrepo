@@ -194,12 +194,20 @@ typedef enum {
  * @brief Enables / disables / changes log level (verbosity) of logging to
  * standard error output.
  *
+ * By default, logging to stderr is disabled. Setting log level to any value
+ * other than SR_LL_NONE enables the logging to stderr. Setting log level
+ * back to SR_LL_NONE disables the logging to stderr.
+ *
  * @param[in] log_level requested log level (verbosity).
  */
 void sr_log_stderr(sr_log_level_t log_level);
 
 /**
  * @brief Enables / disables / changes log level (verbosity) of logging to system log.
+ *
+ * By default, logging into syslog is disabled. Setting log level to any value
+ * other than SR_LL_NONE enables the logging into syslog. Setting log level
+ * back to SR_LL_NONE disables the logging into syslog.
  *
  * @note Please note that enabling logging into syslog will overwrite your syslog
  * connection settings (calls openlog), if you are connected to syslog already.
@@ -209,12 +217,18 @@ void sr_log_stderr(sr_log_level_t log_level);
 void sr_log_syslog(sr_log_level_t log_level);
 
 /**
- * @brief Callback to be called when a log entry is populated.
+ * @brief Sets callback that will be called when a log entry would be populated.
+ *
+ * @param[in] level Verbosity level of the log entry.
+ * @param[in] message Message of the log entry.
  */
 typedef void (*sr_log_cb)(sr_log_level_t level, const char *message);
 
 /**
- * @brief Sets callback that will be called when a log entry is populated.
+ * @brief Sets callback that will be called when a log entry would be populated.
+ * Callback will be called for each message with any log level.
+ *
+ * @param[in] log_callback Callback to be called when a log entry would populated.
  */
 void sr_log_set_cb(sr_log_cb log_callback);
 

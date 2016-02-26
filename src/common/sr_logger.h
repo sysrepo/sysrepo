@@ -32,22 +32,28 @@
  * @defgroup logger Logger
  * @{
  *
- * @brief Logger module allows logging of messages with various severities to stderr and/or syslog.
+ * @brief Logger module allows logging of messages with various severities into
+ * stderr, syslog, or into specified function callback.
  *
- * To filter messages according to their severities, set desired log level via ::sr_logger_set_level function.
- * If no specific log level is configured, default log levels will be used (defined as
- * ::SR_LOG_STDERR_DEFAULT_LL and ::SR_LOG_SYSLOG_DEFAULT_LL).
+ * By default, no logging is enabled. You can selectively enable the logging
+ * to stderr (::sr_log_stderr) or into syslog (::sr_log_syslog) with specified
+ * verbosity level, or setup a callback that will be called for each log entry
+ * that would be populated (or combine all three options).
  *
- * Since syslog does not allow opening more connections to system logger per application,
- * this module is global for the application (call ::sr_logger_init and ::sr_logger_cleanup only
- * once in the lifetime of the application).
+ * Please note that enabling logging into syslog will overwrite your syslog
+ * connection settings (calls openlog), if you are connected to syslog already.
  *
- * Logs in syslog will be identified as application "sysrepo" in case that provided
- * app_name argument of ::sr_logger_init will be NULL, or as "sysrepo-app_name" if some string
- * will be provided (see ::sr_logger_init).
+ * Since syslog does not allow opening more connections to system logger per
+ * application, this module is global for the application (call ::sr_logger_init
+ * and ::sr_logger_cleanup only once in the lifetime of the application.
+ *
+ * Logs in syslog will be identified as application "sysrepo" in case that
+ * provided app_name argument of ::sr_logger_init will be NULL, or as
+ * "sysrepo-app_name" if some string will be provided (see ::sr_logger_init).
+ * Logs of sysrepo daemon will be identified as "sysrepod".
  */
 
-#define SR_LOGGING_ENABLED (1)           /**< Controls whether logging is enabled. */
+#define SR_LOGGING_ENABLED (1)  /**< Controls whether logging is enabled. */
 
 /**
  * Controls whether function names should be printed.
@@ -138,15 +144,19 @@ void sr_log_to_cb(sr_log_level_t level, const char *format, ...);
 /**
  * @brief Initializes Sysrepo logging subsystem.
  *
- * @param[in] app_name Name of the application using Sysrepo, used to identify the logs in syslog.
- * Prefix "sysrepo-" will be prepended to the application name. Can be NULL for sysrepo deamon / core library,
- * in that case, logs will be identified as "sysrepo". The string will be duped and automatically
- * released upon sr_logger_cleanup call.
+ * @note Needs to be called only once per the application life-time.
+ *
+ * @param[in] app_name Name of the application using Sysrepo, used to identify
+ * the logs in syslog. Prefix "sysrepo-" will be prepended to the application name.
+ * Can be NULL, in that case, logs will be identified as "sysrepo". The string
+ * will be duped and automatically released upon ::sr_logger_cleanup call.
  */
 void sr_logger_init(const char *app_name);
 
 /**
  * @brief Cleans up Sysrepo logging subsystem.
+ *
+ * @note Needs to be called only once per the application life-time.
  */
 void sr_logger_cleanup();
 
