@@ -54,8 +54,6 @@ typedef struct dm_data_info_s{
     struct lyd_node *node;              /**< data tree */
 #ifdef HAVE_STAT_ST_MTIM
     struct timespec timestamp;          /**< timestamp of this copy */
-#else
-    time_t timestamp;                   /**< timestamp of this copy */
 #endif
     bool modified;                      /**< flag denoting whether a change has been made*/
 }dm_data_info_t;
@@ -119,9 +117,9 @@ int dm_session_start(const dm_ctx_t *dm_ctx, const sr_datastore_t ds, dm_session
  * @brief Frees resources allocated for the session.
  * @param [in] dm_ctx
  * @param [in] dm_session_ctx
- * @return Error code (SR_ERR_OK on success)
+ * @return
  */
-int dm_session_stop(const dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx);
+void dm_session_stop(const dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx);
 
 /**
  * @brief Returns the structure holding data tree, timestamp and modified flag for the specified module.
@@ -219,6 +217,13 @@ int dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors,
  * @return Error code (SR_ERR_OK on success)
  */
 int dm_add_operation(dm_session_t *session, dm_operation_t op, xp_loc_id_t *loc_id, sr_val_t *val, sr_edit_options_t opts);
+
+/**
+ * @brief Removes last logged operation in session
+ * @param [in] session
+ */
+void dm_remove_last_operation(dm_session_t *session);
+
 /**
  * @brief Frees memory allocated for error and error xpath stored in session.
  * @param [in] session
