@@ -28,22 +28,17 @@
 #include "sr_common.h"
 
 static int
-logging_setup(void **state)
-{
-    sr_set_log_level(SR_LL_NONE, SR_LL_NONE); /* turn off all logging */
-    return 0;
-}
-
-static int
 sysrepo_setup(void **state)
 {
     sr_conn_ctx_t *conn = NULL;
     int rc = SR_ERR_OK;
 
-    logging_setup(state);
+    /* turn off all logging */
+    sr_log_stderr(SR_LL_NONE);
+    sr_log_syslog(SR_LL_NONE);
 
     /* connect to sysrepo */
-    rc = sr_connect("perf_test", true, &conn);
+    rc = sr_connect("perf_test", SR_CONN_DEFAULT, &conn);
     assert_int_equal(rc, SR_ERR_OK);
 
     *state = (void*)conn;
@@ -74,7 +69,7 @@ perf_get_item_test(void **state) {
     int rc = 0;
 
     /* start a session */
-    rc = sr_session_start(conn, NULL, SR_DS_STARTUP, &session);
+    rc = sr_session_start(conn, SR_DS_STARTUP, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* perform a get-item request */

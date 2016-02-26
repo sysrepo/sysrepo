@@ -22,6 +22,18 @@
 #ifndef ACCESS_CONTROL_H_
 #define ACCESS_CONTROL_H_
 
+/**
+ * @defgroup ac Access Control Module
+ * @{
+ *
+ * @brief Provides authorization of requested datastore operations and an option
+ * to temporarily switch the identity of the process according to the provided
+ * user credentials.
+ *
+ * For authorization purposes, ACM temporarily switches filesystem UID and GID
+ * on Linux, or effective UID and GID on non-Linux platforms.
+ */
+
 #include "xpath_processor.h"
 
 /**
@@ -132,7 +144,7 @@ int ac_check_file_permissions(ac_session_t *session, const char *file_name, cons
  * is called. Therefore it is very important to always call ::ac_unset_user_identity
  * and to call it as soon as possible.
  *
- * @param[in] sm_ctx Access Control module context acquired by ::ac_init call.
+ * @param[in] ac_ctx Access Control module context acquired by ::ac_init call.
  * @param[in] user_credentials Credentials of a sysrepo user.
  *
  * @return Error code (SR_ERR_OK on success).
@@ -143,10 +155,12 @@ int ac_set_user_identity(ac_ctx_t *ac_ctx, const ac_ucred_t *user_credentials);
  * @brief Unsets user identity previously set by ::ac_set_user_identity back
  * to the process identity saved at the time of ::ac_init.
  *
- * @param[in] sm_ctx Access Control module context acquired by ::ac_init call.
+ * @param[in] ac_ctx Access Control module context acquired by ::ac_init call.
  *
  * @return Error code (SR_ERR_OK on success).
  */
 int ac_unset_user_identity(ac_ctx_t *ac_ctx);
+
+/**@} ac */
 
 #endif /* ACCESS_CONTROL_H_ */

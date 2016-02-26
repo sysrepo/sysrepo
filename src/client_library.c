@@ -98,8 +98,8 @@ typedef struct sr_val_iter_s{
     size_t count;                   /**< number of element currently buffered */
 } sr_val_iter_t;
 
-static sr_conn_ctx_t *primary_connection = NULL;  /**< Global variable holding pointer to the primary connection. */
-pthread_mutex_t primary_lock = PTHREAD_MUTEX_INITIALIZER;  /**< Mutex for locking global variable primary_connection. */
+static sr_conn_ctx_t *primary_connection = NULL;                  /**< Global variable holding pointer to the primary connection. */
+static pthread_mutex_t primary_lock = PTHREAD_MUTEX_INITIALIZER;  /**< Mutex for locking global variable primary_connection. */
 
 /**
  * @brief Returns provided error code and saves it in the session context.
@@ -661,7 +661,7 @@ cl_send_get_items_iter(sr_session_ctx_t *session, const char *path, bool recursi
 }
 
 int
-sr_connect(const char *app_name, const bool allow_library_mode, sr_conn_ctx_t **conn_ctx_p)
+sr_connect(const char *app_name, const sr_conn_options_t opts, sr_conn_ctx_t **conn_ctx_p)
 {
     sr_conn_ctx_t *ctx = NULL;
     int rc = SR_ERR_OK;
@@ -701,8 +701,17 @@ sr_connect(const char *app_name, const bool allow_library_mode, sr_conn_ctx_t **
     /* attempt to connect to sysrepo daemon socket */
     rc = cl_socket_connect(ctx, SR_DAEMON_SOCKET);
     if (SR_ERR_OK != rc) {
-        if (!allow_library_mode) {
+        if (opts & SR_CONN_DAEMON_REQUIRED) {
             SR_LOG_ERR_MSG("Sysrepo daemon not detected while library mode disallowed.");
+            if ((opts & SR_CONN_DAEMON_START) && (0 == getuid())) {
+                /* sysrepo daemon start requested and process is running under root privileges */
+                int ret = system("sysrepod");
+                if (0 == ret) {
+                    SR_LOG_INF_MSG("Sysrepo daemon has been started.");
+                } else {
+                    SR_LOG_WRN("Unable to start sysrepo daemon, error code=%d.", ret);
+                }
+            }
             goto cleanup;
         } else {
             SR_LOG_WRN_MSG("Sysrepo daemon not detected. Connecting to local Sysrepo Engine.");
@@ -762,7 +771,10 @@ sr_disconnect(sr_conn_ctx_t *conn_ctx)
 
         if (conn_ctx->primary) {
             /* destroy global resources */
+            pthread_mutex_lock(&primary_lock);
             sr_logger_cleanup();
+            primary_connection = NULL;
+            pthread_mutex_unlock(&primary_lock);
         }
 
         /* destroy all sessions */
@@ -782,7 +794,13 @@ sr_disconnect(sr_conn_ctx_t *conn_ctx)
 }
 
 int
-sr_session_start(sr_conn_ctx_t *conn_ctx, const char *user_name, sr_datastore_t datastore, sr_session_ctx_t **session_p)
+sr_session_start(sr_conn_ctx_t *conn_ctx, sr_datastore_t datastore, sr_session_ctx_t **session_p)
+{
+    return sr_session_start_user(conn_ctx, NULL, datastore, session_p);
+}
+
+int
+sr_session_start_user(sr_conn_ctx_t *conn_ctx, const char *user_name, sr_datastore_t datastore, sr_session_ctx_t **session_p)
 {
     sr_session_ctx_t *session = NULL;
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
@@ -892,10 +910,48 @@ sr_session_stop(sr_session_ctx_t *session)
     sr__msg__free_unpacked(msg_req, NULL);
     sr__msg__free_unpacked(msg_resp, NULL);
 
-
     cl_session_cleanup(session);
 
     return SR_ERR_OK; /* do not use cl_session_return - session has been freed one line above */
+
+cleanup:
+    if (NULL != msg_req) {
+        sr__msg__free_unpacked(msg_req, NULL);
+    }
+    if (NULL != msg_resp) {
+        sr__msg__free_unpacked(msg_resp, NULL);
+    }
+    return cl_session_return(session, rc);
+}
+
+int
+sr_session_refresh(sr_session_ctx_t *session)
+{
+    Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG2(session, session->conn_ctx);
+
+    cl_session_clear_errors(session);
+
+    /* prepare session_stop message */
+    rc = sr_pb_req_alloc(SR__OPERATION__SESSION_REFRESH, session->id, &msg_req);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Cannot allocate session_data_refresh message.");
+        goto cleanup;
+    }
+
+    /* send the request and receive the response */
+    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__SESSION_REFRESH);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Error by processing of session_data_refresh request.");
+        goto cleanup;
+    }
+
+    sr__msg__free_unpacked(msg_req, NULL);
+    sr__msg__free_unpacked(msg_resp, NULL);
+
+    return cl_session_return(session, SR_ERR_OK);
 
 cleanup:
     if (NULL != msg_req) {

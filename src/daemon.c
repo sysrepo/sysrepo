@@ -31,9 +31,9 @@
 #include "sr_common.h"
 #include "connection_manager.h"
 
-#define SR_CHILD_INIT_TIMEOUT 2  /** Timeout to initialize the child process (in seconds) */
+#define SR_CHILD_INIT_TIMEOUT 2  /**< Timeout to initialize the child process (in seconds) */
 
-int pidfile_fd = -1; /** File descriptor of sysrepo deamon's PID file */
+int pidfile_fd = -1; /**< File descriptor of sysrepo deamon's PID file */
 
 /**
  * @brief Signal handler used to deliver initialization result from child to
@@ -183,7 +183,8 @@ main(int argc, char* argv[])
     cm_ctx_t *sr_cm_ctx = NULL;
 
     sr_logger_init("sysrepod");
-    sr_set_log_level(SR_LL_NONE, SR_LL_INF);
+    sr_log_stderr(SR_LL_NONE);
+    sr_log_syslog(SR_LL_INF);
 
     SR_LOG_INF_MSG("Sysrepo daemon initialization started.");
 
@@ -224,6 +225,7 @@ main(int argc, char* argv[])
     cm_cleanup(sr_cm_ctx);
 
     SR_LOG_INF_MSG("Sysrepo daemon terminated.");
+    sr_logger_cleanup();
 
     return 0;
 }

@@ -81,6 +81,29 @@ typedef struct rp_request_s {
 } rp_request_t;
 
 /**
+ * @brief Copy errors saved in the Data Manager session into the GPB response.
+ */
+static int
+rp_resp_fill_errors(Sr__Msg *msg, dm_session_t *dm_session)
+{
+    CHECK_NULL_ARG2(msg, dm_session);
+    int rc = SR_ERR_OK;
+
+    if (!dm_has_error(dm_session)){
+        return SR_ERR_OK;
+    }
+
+    msg->response->error = calloc(1, sizeof(Sr__Error));
+    if (NULL == msg->response->error){
+        SR_LOG_ERR_MSG("Memory allocation failed");
+        return SR_ERR_NOMEM;
+    }
+    sr__error__init(msg->response->error);
+    rc = dm_copy_errors(dm_session, &msg->response->error->message, &msg->response->error->path);
+    return rc;
+}
+
+/**
  * @brief Processes a list_schemas request.
  */
 static int
@@ -123,26 +146,6 @@ rp_list_schemas_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session,
     return rc;
 }
 
-static int
-rp_report_errors(Sr__Msg *msg, dm_session_t *dm_session)
-{
-    CHECK_NULL_ARG2(msg, dm_session);
-    int rc = SR_ERR_OK;
-
-    if (!dm_has_error(dm_session)){
-        return SR_ERR_OK;
-    }
-
-    msg->response->error = calloc(1, sizeof(Sr__Error));
-    if (NULL == msg->response->error){
-        SR_LOG_ERR_MSG("Memory allocation failed");
-        return SR_ERR_NOMEM;
-    }
-    sr__error__init(msg->response->error);
-    rc = dm_copy_errors(dm_session, &msg->response->error->message, &msg->response->error->path);
-    return rc;
-}
-
 /**
  * @brief Processes a get_item request.
  */
@@ -182,7 +185,7 @@ rp_get_item_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr_
     /* set response code */
     resp->response->result = rc;
 
-    rc = rp_report_errors(resp, session->dm_session);
+    rc = rp_resp_fill_errors(resp, session->dm_session);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Copying errors to gpb failed");
     }
@@ -271,7 +274,7 @@ cleanup:
     /* set response code */
     resp->response->result = rc;
 
-    rc = rp_report_errors(resp, session->dm_session);
+    rc = rp_resp_fill_errors(resp, session->dm_session);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Copying errors to gpb failed");
     }
@@ -338,7 +341,7 @@ rp_set_item_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr_
     /* set response code */
     resp->response->result = rc;
 
-    rc = rp_report_errors(resp, session->dm_session);
+    rc = rp_resp_fill_errors(resp, session->dm_session);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Copying errors to gpb failed");
     }
@@ -382,7 +385,7 @@ rp_delete_item_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
     /* set response code */
     resp->response->result = rc;
 
-    rc = rp_report_errors(resp, session->dm_session);
+    rc = rp_resp_fill_errors(resp, session->dm_session);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Copying errors to gpb failed");
     }
@@ -421,7 +424,7 @@ rp_move_item_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr
     /* set response code */
     resp->response->result = rc;
 
-    rc = rp_report_errors(resp, session->dm_session);
+    rc = rp_resp_fill_errors(resp, session->dm_session);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Copying errors to gpb failed");
     }
@@ -535,7 +538,44 @@ rp_discard_changes_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *sessi
     /* set response code */
     resp->response->result = rc;
 
-    rc = rp_report_errors(resp, session->dm_session);
+    rc = rp_resp_fill_errors(resp, session->dm_session);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Copying errors to gpb failed");
+    }
+
+    /* send the response */
+    rc = cm_msg_send(rp_ctx->cm_ctx, resp);
+
+    return rc;
+}
+
+/**
+ * @brief Processes a session_data_refresh request.
+ */
+static int
+rp_session_refresh_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
+{
+    Sr__Msg *resp = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->session_refresh_req);
+
+    SR_LOG_DBG_MSG("Processing session_data_refresh request.");
+
+    /* allocate the response */
+    rc = sr_pb_resp_alloc(SR__OPERATION__SESSION_REFRESH, session->id, &resp);
+    if (SR_ERR_OK != rc){
+        SR_LOG_ERR_MSG("Allocation of session_data_refresh response failed.");
+        return SR_ERR_NOMEM;
+    }
+
+    // TODO: implement proper data refresh with not discarding unchanged datatrees
+    rc = dm_discard_changes(rp_ctx->dm_ctx, session->dm_session);
+
+    /* set response code */
+    resp->response->result = rc;
+
+    rc = rp_resp_fill_errors(resp, session->dm_session);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Copying errors to gpb failed");
     }
@@ -586,6 +626,9 @@ rp_msg_dispatch(const rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
                 break;
             case SR__OPERATION__DISCARD_CHANGES:
                 rc = rp_discard_changes_req_process(rp_ctx, session, msg);
+                break;
+            case SR__OPERATION__SESSION_REFRESH:
+                rc = rp_session_refresh_req_process(rp_ctx, session, msg);
                 break;
             default:
                 SR_LOG_ERR("Unsupported request received (session id=%"PRIu32", operation=%d).",

@@ -31,13 +31,6 @@
 #define TEST_THREAD_COUNT 10
 
 static int
-logging_setup(void **state)
-{
-    sr_set_log_level(SR_LL_NONE, SR_LL_NONE); /* turn off all logging */
-    return 0;
-}
-
-static int
 sysrepo_setup(void **state)
 {
     sr_conn_ctx_t *conn = NULL;
@@ -46,10 +39,13 @@ sysrepo_setup(void **state)
     /* abort if test fails (needed for tests with multiple threads) */
     putenv("CMOCKA_TEST_ABORT=1");
 
-    logging_setup(state);
+    sr_logger_init(NULL);
+    /* turn off all logging */
+    sr_log_stderr(SR_LL_NONE);
+    sr_log_syslog(SR_LL_NONE);
 
     /* connect to sysrepo */
-    rc = sr_connect("concurr_test", true, &conn);
+    rc = sr_connect("concurr_test", SR_CONN_DEFAULT, &conn);
     assert_int_equal(rc, SR_ERR_OK);
 
     *state = (void*)conn;
@@ -64,6 +60,8 @@ sysrepo_teardown(void **state)
 
     /* disconnect from sysrepo */
     sr_disconnect(conn);
+
+    sr_logger_cleanup();
 
     return 0;
 }
@@ -104,7 +102,7 @@ test_thread_execute_in_conn(void *sr_conn_ctx_p)
     int rc = 0;
 
     /* start a session */
-    rc = sr_session_start(conn, NULL, SR_DS_STARTUP, &session);
+    rc = sr_session_start(conn, SR_DS_STARTUP, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
     test_execute_in_session(session);
@@ -124,11 +122,11 @@ test_thread_execute_separated(void *ctx)
     int rc = 0;
 
     /* connect to sysrepo */
-    rc = sr_connect("concurr_test", true, &conn);
+    rc = sr_connect("concurr_test", SR_CONN_DEFAULT, &conn);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* start a session */
-    rc = sr_session_start(conn, NULL, SR_DS_STARTUP, &session);
+    rc = sr_session_start(conn, SR_DS_STARTUP, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
     test_execute_in_session(session);
@@ -158,7 +156,7 @@ concurr_requests_test(void **state)
     assert_non_null(state);
 
     /* start a session */
-   rc = sr_session_start(conn, NULL, SR_DS_STARTUP, &session);
+   rc = sr_session_start(conn, SR_DS_STARTUP, &session);
    assert_int_equal(rc, SR_ERR_OK);
 
     for (i = 0; i < TEST_THREAD_COUNT; i++) {

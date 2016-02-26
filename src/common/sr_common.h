@@ -481,7 +481,7 @@ int sr_schemas_sr_to_gpb(const sr_schema_t *sr_schemas, const size_t schema_cnt,
  * @param [in] gpb_schemas Array of pointers to GPB schemas.
  * @param [in] schema_cnt Number of schemas in the array.
  * @param [out] sr_schemas Array of sr_schema_t (allocated by the function,
- * should be freed with ::sr_free_schemas_t).
+ * should be freed with ::sr_free_schemas).
  *
  * @return Error code (SR_ERR_OK on success).
  */
