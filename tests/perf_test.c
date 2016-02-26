@@ -28,19 +28,14 @@
 #include "sr_common.h"
 
 static int
-logging_setup(void **state)
-{
-    sr_set_log_level(SR_LL_NONE, SR_LL_NONE); /* turn off all logging */
-    return 0;
-}
-
-static int
 sysrepo_setup(void **state)
 {
     sr_conn_ctx_t *conn = NULL;
     int rc = SR_ERR_OK;
 
-    logging_setup(state);
+    /* turn off all logging */
+    sr_log_stderr(SR_LL_NONE);
+    sr_log_syslog(SR_LL_NONE);
 
     /* connect to sysrepo */
     rc = sr_connect("perf_test", SR_CONN_DEFAULT, &conn);

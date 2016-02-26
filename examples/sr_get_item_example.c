@@ -31,8 +31,8 @@ main(int argc, char **argv)
     sr_val_t *value = NULL;
     int rc = SR_ERR_OK;
     
-    /* turn on debug logging to stderr - to see what's happening behind :) */
-    sr_set_log_level(SR_LL_DBG, SR_LL_INF);
+    /* turn on debug logging to stderr - to see what's happening behind the scenes */
+    sr_log_stderr(SR_LL_DBG);
 
     /* connect to sysrepo */
     rc = sr_connect("app1", SR_CONN_DEFAULT, &conn);

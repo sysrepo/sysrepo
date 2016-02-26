@@ -171,6 +171,15 @@ typedef struct sr_error_info_s {
 } sr_error_info_t;
 
 /**
+ * @brief Returns the error message corresponding to the error code.
+ *
+ * @param[in] err_code Error code.
+ *
+ * @return Error message (statically allocated, do not free).
+ */
+const char *sr_strerror(int err_code);
+
+/**
  * @brief Log levels used to determine if message of certain severity should be printed.
  */
 typedef enum {
@@ -182,24 +191,46 @@ typedef enum {
 } sr_log_level_t;
 
 /**
- * @brief Returns the error message corresponding to the error code.
+ * @brief Enables / disables / changes log level (verbosity) of logging to
+ * standard error output.
  *
- * @param[in] err_code Error code.
+ * By default, logging to stderr is disabled. Setting log level to any value
+ * other than SR_LL_NONE enables the logging to stderr. Setting log level
+ * back to SR_LL_NONE disables the logging to stderr.
  *
- * @return Error message (statically allocated, do not free).
+ * @param[in] log_level requested log level (verbosity).
  */
-const char *sr_strerror(int err_code);
+void sr_log_stderr(sr_log_level_t log_level);
 
 /**
- * @brief Sets logging level of stderr logs and syslog logs.
+ * @brief Enables / disables / changes log level (verbosity) of logging to system log.
  *
- * When connected to sysrepo daemon, this affects only logging of Client Library.
- * In library mode, this settings affect also local Sysrepo Engine logging.
+ * By default, logging into syslog is disabled. Setting log level to any value
+ * other than SR_LL_NONE enables the logging into syslog. Setting log level
+ * back to SR_LL_NONE disables the logging into syslog.
  *
- * @param[in] ll_stderr Log level for stderr logs.
- * @param[in] ll_syslog Log level for syslog logs.
+ * @note Please note that enabling logging into syslog will overwrite your syslog
+ * connection settings (calls openlog), if you are connected to syslog already.
+ *
+ * @param[in] log_level requested log level (verbosity).
  */
-void sr_set_log_level(sr_log_level_t ll_stderr, sr_log_level_t ll_syslog);
+void sr_log_syslog(sr_log_level_t log_level);
+
+/**
+ * @brief Sets callback that will be called when a log entry would be populated.
+ *
+ * @param[in] level Verbosity level of the log entry.
+ * @param[in] message Message of the log entry.
+ */
+typedef void (*sr_log_cb)(sr_log_level_t level, const char *message);
+
+/**
+ * @brief Sets callback that will be called when a log entry would be populated.
+ * Callback will be called for each message with any log level.
+ *
+ * @param[in] log_callback Callback to be called when a log entry would populated.
+ */
+void sr_log_set_cb(sr_log_cb log_callback);
 
 
 ////////////////////////////////////////////////////////////////////////////////

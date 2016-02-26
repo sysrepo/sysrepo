@@ -183,7 +183,8 @@ main(int argc, char* argv[])
     cm_ctx_t *sr_cm_ctx = NULL;
 
     sr_logger_init("sysrepod");
-    sr_set_log_level(SR_LL_NONE, SR_LL_INF);
+    sr_log_stderr(SR_LL_NONE);
+    sr_log_syslog(SR_LL_INF);
 
     SR_LOG_INF_MSG("Sysrepo daemon initialization started.");
 
@@ -224,6 +225,7 @@ main(int argc, char* argv[])
     cm_cleanup(sr_cm_ctx);
 
     SR_LOG_INF_MSG("Sysrepo daemon terminated.");
+    sr_logger_cleanup();
 
     return 0;
 }

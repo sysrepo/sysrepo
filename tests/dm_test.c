@@ -290,7 +290,7 @@ dm_add_operation_test(void **state)
 }
 
 int main(){
-    sr_set_log_level(SR_LL_DBG, SR_LL_NONE);
+    sr_log_stderr(SR_LL_DBG);
 
     const struct CMUnitTest tests[] = {
             cmocka_unit_test(dm_create_cleanup),
