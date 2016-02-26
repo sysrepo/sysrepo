@@ -91,12 +91,13 @@ dm_list_schema_test(void **state)
     assert_int_equal(SR_ERR_OK, rc);
 
     for (size_t i = 0; i < count; i++) {
-        printf("\n\nSchema #%zu:\n%s\n%s\n%s\n%s\n%s", i,
+        printf("\n\nSchema #%zu:\n%s\n%s\n%s\n%s\n%s\n%s", i,
                 schemas[i].module_name,
                 schemas[i].ns,
                 schemas[i].prefix,
                 schemas[i].revision,
-                schemas[i].file_path);
+                schemas[i].file_path_yang,
+                schemas[i].file_path_yin);
     }
 
     sr_free_schemas(schemas, count);

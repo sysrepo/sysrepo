@@ -550,11 +550,12 @@ int sr_get_data_file_name(const char *data_search_dir, const char *module_name, 
  *
  * @param[in] schema_search_dir Path to the directory with schema files.
  * @param[in] module_name Name of the module.
+ * @param[in] yang_format flag whether yang or yin filename should be created
  * @param[out] file_name Allocated file path to the schema file.
  *
  * @return err_code (SR_ERR_OK on success, SR_ERR_NOMEM if memory allocation failed).
  */
-int sr_get_schema_file_name(const char *schema_search_dir, const char *module_name, char **file_name);
+int sr_get_schema_file_name(const char *schema_search_dir, const char *module_name, bool yang_format, char **file_name);
 
 /**@} common */
 

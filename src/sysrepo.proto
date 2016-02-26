@@ -130,11 +130,12 @@ message SessionStopResp {
  * @brief Information about a schema installed in sysrepo datastore.
  */
 message Schema {
-  required string module_name = 1;  /**< Name of the module. */
-  required string ns = 2;           /**< Namespace of the module. */
-  required string prefix = 3;       /**< Prefix of he module. */
-  optional string revision = 4;     /**< Latest revision date of the module. */
-  required string file_path = 5;    /**< Absolute path to file where the schema is stored. */
+  required string module_name = 1;      /**< Name of the module. */
+  required string ns = 2;               /**< Namespace of the module. */
+  required string prefix = 3;           /**< Prefix of he module. */
+  optional string revision = 4;         /**< Latest revision date of the module. */
+  optional string file_path_yang = 5;   /**< Absolute path to file where the schema is stored (YANG format). */
+  optional string file_path_yin  = 6;   /**< Absolute path to file where the schema is stored (.yin format). */
 }
 
 /**
