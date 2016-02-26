@@ -31,7 +31,8 @@
 #include "sr_common.h"
 #include "connection_manager.h"
 
-#define SR_CHILD_INIT_TIMEOUT 2  /**< Timeout to initialize the child process (in seconds) */
+#define SR_DEFAULT_DEAMON_LOG_LEVEL SR_LL_INF  /**< Default log level of sysrepo daemon. */
+#define SR_CHILD_INIT_TIMEOUT 2                /**< Timeout to initialize the child process (in seconds) */
 
 int pidfile_fd = -1; /**< File descriptor of sysrepo deamon's PID file */
 
@@ -59,14 +60,50 @@ srd_child_status_handler(int signum)
 }
 
 /**
+ * @brief Maintains only single instance of sysrepo daemon by opening and
+ * locking the PID file.
+ */
+static void
+srd_check_single_instance()
+{
+    char str[NAME_MAX] = { 0 };
+    int ret = 0;
+
+    /* open PID file */
+    pidfile_fd = open(SR_DAEMON_PID_FILE, O_RDWR | O_CREAT, 0640);
+    if (pidfile_fd < 0) {
+        SR_LOG_ERR("Unable to open sysrepo PID file '%s': %s.", SR_DAEMON_PID_FILE, strerror(errno));
+        exit(EXIT_FAILURE);
+    }
+
+    /* acquire lock on the PID file */
+    if (lockf(pidfile_fd, F_TLOCK, 0) < 0) {
+        if (EACCES == errno || EAGAIN == errno) {
+            SR_LOG_ERR_MSG("Another instance of sysrepo daemon is running, unable to start.");
+        } else {
+            SR_LOG_ERR("Unable to lock sysrepo PID file '%s': %s.", SR_DAEMON_PID_FILE, strerror(errno));
+        }
+        exit(EXIT_FAILURE);
+    }
+
+    /* write PID into the PID file */
+    snprintf(str, NAME_MAX, "%d\n", getpid());
+    ret = write(pidfile_fd, str, strlen(str));
+    if (-1 == ret) {
+        SR_LOG_ERR("Unable to write into sysrepo PID file '%s': %s.", SR_DAEMON_PID_FILE, strerror(errno));
+        exit(EXIT_FAILURE);
+    }
+
+    /* do not close nor unlock the PID file, keep it open while the daemon is alive */
+}
+
+/**
  * @brief Daemonize the process - fork() and instruct the child to behave as a proper daemon.
  */
 static pid_t
 srd_daemonize(void)
 {
     pid_t pid, sid;
-    int ret = 0;
-    char str[NAME_MAX] = { 0 };
 
     /* register handlers for signals that we expect to receive from child process */
     signal(SIGCHLD, srd_child_status_handler);
@@ -116,34 +153,7 @@ srd_daemonize(void)
     freopen("/dev/null", "w", stdout);
     freopen("/dev/null", "w", stderr);
 
-    /* maintain only single instance of sysrepo daemon */
-
-    /* open PID file */
-    pidfile_fd = open(SR_DAEMON_PID_FILE, O_RDWR | O_CREAT, 0640);
-    if (pidfile_fd < 0) {
-        SR_LOG_ERR("Unable to open sysrepo PID file '%s': %s.", SR_DAEMON_PID_FILE, strerror(errno));
-        exit(EXIT_FAILURE);
-    }
-
-    /* acquire lock on the PID file */
-    if (lockf(pidfile_fd, F_TLOCK, 0) < 0) {
-        if (EACCES == errno || EAGAIN == errno) {
-            SR_LOG_ERR_MSG("Another instance of sysrepo daemon is running, unable to start.");
-        } else {
-            SR_LOG_ERR("Unable to lock sysrepo PID file '%s': %s.", SR_DAEMON_PID_FILE, strerror(errno));
-        }
-        exit(EXIT_FAILURE);
-    }
-
-    /* write PID into the PID file */
-    snprintf(str, NAME_MAX, "%d\n", getpid());
-    ret = write(pidfile_fd, str, strlen(str));
-    if (-1 == ret) {
-        SR_LOG_ERR("Unable to write into sysrepo PID file '%s': %s.", SR_DAEMON_PID_FILE, strerror(errno));
-        exit(EXIT_FAILURE);
-    }
-
-    /* do not close nor unlock the PID file, keep it open while the daemon is alive */
+    srd_check_single_instance();
 
     return getppid(); /* return PID of the parent */
 }
@@ -155,7 +165,7 @@ static void
 srd_sigterm_cb(cm_ctx_t *cm_ctx, int signum)
 {
     if (NULL != cm_ctx) {
-        SR_LOG_INF_MSG("Sysrepo daemon termination requested.");
+        SR_LOG_INF("Sysrepo daemon termination requested by %s signal.", (SIGTERM == signum ? "SIGTERM" : "SIGINT"));
 
         /* stop the event loop in the Connection Manager */
         cm_stop(cm_ctx);
@@ -170,6 +180,26 @@ srd_sigterm_cb(cm_ctx_t *cm_ctx, int signum)
 }
 
 /**
+ * @brief Prints daemon usage help.
+ */
+static void
+srd_print_usage()
+{
+    printf("sysrepod - sysrepo daemon, version %s\n\n", SR_VERSION);
+    printf("Usage:\n");
+    printf("  sysrepod [-h] [-d] [-v <level>]\n\n");
+    printf("Options:\n");
+    printf("  -h\t\tPrints this usage help.\n");
+    printf("  -d\t\tDebug mode - daemon will run in the foreground and print logs to stderr instead of syslog.\n");
+    printf("  -v <level>\tSets verbosity level of logging:\n");
+    printf("\t\t\t0 = all logging turned off\n");
+    printf("\t\t\t1 = log only error messages\n");
+    printf("\t\t\t2 = log error and warning messages\n");
+    printf("\t\t\t3 = (default) log error, warning and informational messages\n");
+    printf("\t\t\t4 = log everything, including development debug messages\n");
+}
+
+/**
  * @brief Main routine of the sysrepo daemon.
  */
 int
@@ -179,14 +209,49 @@ main(int argc, char* argv[])
     int rc = SR_ERR_OK;
     cm_ctx_t *sr_cm_ctx = NULL;
 
+    int c = 0;
+    bool debug_mode = false;
+    int verb_level = -1;
+
+    while ((c = getopt (argc, argv, "hdv:")) != -1) {
+        switch (c) {
+            case 'd':
+                debug_mode = true;
+                break;
+            case 'v':
+                verb_level = atoi(optarg);
+                break;
+            default:
+                srd_print_usage();
+                return 0;
+        }
+    }
+
+    /* init logger and set log levels */
     sr_logger_init("sysrepod");
-    sr_log_stderr(SR_LL_NONE);
-    sr_log_syslog(SR_LL_INF);
+    if (debug_mode) {
+        sr_log_stderr(SR_DEFAULT_DEAMON_LOG_LEVEL);
+        sr_log_syslog(SR_LL_NONE);
+    } else {
+        sr_log_stderr(SR_LL_NONE);
+        sr_log_syslog(SR_DEFAULT_DEAMON_LOG_LEVEL);
+    }
+    if ((-1 != verb_level) && (verb_level >= SR_LL_NONE) && (verb_level <= SR_LL_DBG)) {
+        if (debug_mode) {
+            sr_log_stderr(verb_level);
+        } else {
+            sr_log_syslog(verb_level);
+        }
+    }
 
     SR_LOG_INF_MSG("Sysrepo daemon initialization started.");
 
     /* deamonize the process */
-    parent = srd_daemonize();
+    if (!debug_mode) {
+        parent = srd_daemonize();
+    } else {
+        srd_check_single_instance();
+    }
 
     /* set file creation mask */
     umask(S_IWGRP | S_IWOTH);

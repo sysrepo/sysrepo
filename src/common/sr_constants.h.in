@@ -23,6 +23,9 @@
 #ifndef SRC_SR_CONSTANTS_H_IN_
 #define SRC_SR_CONSTANTS_H_IN_
 
+/** Current version of sysrepo. */
+#define SR_VERSION "@SYSREPO_VERSION@"
+
 /* Portability feature-check macros. */
 #cmakedefine HAVE_PTHREAD_RWLOCKATTR_SETKIND_NP
 #cmakedefine HAVE_GETPEEREID
