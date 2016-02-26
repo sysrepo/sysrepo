@@ -141,17 +141,9 @@ dm_load_schema_file(dm_ctx_t *dm_ctx, const char *dir_name, const char *file_nam
         return SR_ERR_NOMEM;
     }
 
-    FILE *fd = fopen(schema_filename, "r");
-    free(schema_filename);
-
-    if (NULL == fd) {
-        SR_LOG_WRN("Unable to open a schema file %s: %s", file_name, strerror(errno));
-        return SR_ERR_IO;
-    }
-
     pthread_rwlock_wrlock(&dm_ctx->lyctx_lock);
-    module = lys_parse_fd(dm_ctx->ly_ctx, fileno(fd), LYS_IN_YIN);
-    fclose(fd);
+    module = lys_parse_path(dm_ctx->ly_ctx, schema_filename, LYS_IN_YIN);
+    free(schema_filename);
     if (module == NULL) {
         SR_LOG_WRN("Unable to parse a schema file: %s", file_name);
         pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
