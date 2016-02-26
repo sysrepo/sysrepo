@@ -1540,7 +1540,8 @@ sr_free_schemas(sr_schema_t *schemas, size_t count)
             free(schemas[i].prefix);
             free(schemas[i].ns);
             free(schemas[i].revision);
-            free(schemas[i].file_path);
+            free(schemas[i].file_path_yang);
+            free(schemas[i].file_path_yin);
         }
         free(schemas);
     }
@@ -1594,9 +1595,15 @@ sr_schemas_sr_to_gpb(const sr_schema_t *sr_schemas, const size_t schema_cnt, Sr_
                 goto nomem;
             }
         }
-        if (NULL != sr_schemas[i].file_path) {
-            schemas[i]->file_path = strdup(sr_schemas[i].file_path);
-            if (NULL == schemas[i]->file_path) {
+        if (NULL != sr_schemas[i].file_path_yang) {
+            schemas[i]->file_path_yang = strdup(sr_schemas[i].file_path_yang);
+            if (NULL == schemas[i]->file_path_yang) {
+                goto nomem;
+            }
+        }
+        if (NULL != sr_schemas[i].file_path_yin) {
+            schemas[i]->file_path_yin = strdup(sr_schemas[i].file_path_yin);
+            if (NULL == schemas[i]->file_path_yin) {
                 goto nomem;
             }
         }
@@ -1657,9 +1664,15 @@ sr_schemas_gpb_to_sr(const Sr__Schema **gpb_schemas, const size_t schema_cnt, sr
                 goto nomem;
             }
         }
-        if (NULL != gpb_schemas[i]->file_path) {
-            schemas[i].file_path = strdup(gpb_schemas[i]->file_path);
-            if (NULL == schemas[i].file_path) {
+        if (NULL != gpb_schemas[i]->file_path_yang) {
+            schemas[i].file_path_yang = strdup(gpb_schemas[i]->file_path_yang);
+            if (NULL == schemas[i].file_path_yang) {
+                goto nomem;
+            }
+        }
+        if (NULL != gpb_schemas[i]->file_path_yin) {
+            schemas[i].file_path_yin = strdup(gpb_schemas[i]->file_path_yin);
+            if (NULL == schemas[i].file_path_yin) {
                 goto nomem;
             }
         }
@@ -1882,13 +1895,13 @@ sr_get_data_file_name(const char *data_search_dir, const char *module_name, cons
 }
 
 int
-sr_get_schema_file_name(const char *schema_search_dir, const char *module_name, char **file_name)
+sr_get_schema_file_name(const char *schema_search_dir, const char *module_name, bool yang_format, char **file_name)
 {
     CHECK_NULL_ARG2(module_name, file_name);
     char *tmp = NULL;
     int rc = sr_str_join(schema_search_dir, module_name, &tmp);
     if (SR_ERR_OK == rc) {
-        rc = sr_str_join(tmp, SR_SCHEMA_YANG_FILE_EXT, file_name);
+        rc = sr_str_join(tmp, yang_format ? SR_SCHEMA_YANG_FILE_EXT : SR_SCHEMA_YIN_FILE_EXT, file_name);
         free(tmp);
         return rc;
     }

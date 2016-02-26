@@ -416,7 +416,8 @@ typedef struct sr_schema_s {
     char *ns;               /**< Namespace of the module used in @ref xp_page "XPath". */
     char *prefix;           /**< Prefix of the module. */
     char *revision;         /**< Latest revision date of the module. */
-    char *file_path;        /**< Absolute path to file where the schema is stored. */
+    char *file_path_yang;   /**< Absolute path to file where the schema is stored (YANG format). */
+    char *file_path_yin;    /**< Absolute path to file where the schema is stored (.yin format). */
 } sr_schema_t;
 
 /**
