@@ -112,12 +112,9 @@ srd_daemonize(void)
    }
 
    /* redirect standard files to /dev/null */
-    freopen( "/dev/null", "r", stdin);
-    freopen( "/dev/null", "w", stdout);
-    freopen( "/dev/null", "w", stderr);
-
-    /* set file creation mask */
-    umask(S_IWGRP | S_IWOTH);
+    freopen("/dev/null", "r", stdin);
+    freopen("/dev/null", "w", stdout);
+    freopen("/dev/null", "w", stderr);
 
     /* maintain only single instance of sysrepo daemon */
 
@@ -190,6 +187,9 @@ main(int argc, char* argv[])
 
     /* deamonize the process */
     parent = srd_daemonize();
+
+    /* set file creation mask */
+    umask(S_IWGRP | S_IWOTH);
 
     /* initialize local Connection Manager */
     rc = cm_init(CM_MODE_DAEMON, SR_DAEMON_SOCKET, &sr_cm_ctx);
