@@ -168,7 +168,7 @@ sr_log_to_cb(sr_log_level_t level, const char *format, ...)
         pthread_once(&sr_log_buff_create_key_once, sr_log_buff_create_key);
         msg_buff = pthread_getspecific(sr_log_buff_key);
         if (NULL == msg_buff) {
-            msg_buff = calloc(SR_LOG_MSG_SIZE, sizeof(char*));
+            msg_buff = calloc(SR_LOG_MSG_SIZE, sizeof(*msg_buff));
             pthread_setspecific(sr_log_buff_key, msg_buff);
         }
         /* print the message into buffer and call callback */
