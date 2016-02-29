@@ -23,22 +23,22 @@
 #define RP_DT_CONTEXT_HELPER_H_
 
 /**
- * @brief
+ * @brief Creates testing RP context.
  */
 void test_rp_ctx_create(rp_ctx_t **rp_ctx_p);
 
 /**
- * @brief
+ * @brief Cleans up testing RP context.
  */
 void test_rp_ctx_cleanup(rp_ctx_t *ctx);
 
 /**
- * @brief
+ * @brief Creates testing RP session.
  */
 void test_rp_sesssion_create(rp_ctx_t *rp_ctx, sr_datastore_t datastore, rp_session_t **rp_session_p);
 
 /**
- * @brief
+ * @brief Cleans up testing RP context.
  */
 void test_rp_session_cleanup(rp_ctx_t *ctx, rp_session_t *session);
 

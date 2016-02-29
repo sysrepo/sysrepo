@@ -340,6 +340,12 @@ ac_check_node_permissions(ac_session_t *session, const xp_loc_id_t *node_xpath, 
         return rc;
     }
     rc = ac_check_file_permissions(session, file_name, operation);
+
+    if (SR_ERR_NOT_FOUND == rc) {
+        /* there is nothing to check if the file does not exist - return OK */
+        SR_LOG_WRN("Data file '%s' not found, considering as authorized.", file_name);
+        rc = SR_ERR_OK;
+    }
     free(file_name);
 
     /* save correct results in the cache */

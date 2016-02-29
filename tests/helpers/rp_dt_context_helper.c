@@ -60,14 +60,16 @@ void
 test_rp_sesssion_create(rp_ctx_t *rp_ctx, sr_datastore_t datastore, rp_session_t **rp_session_p)
 {
     rp_session_t *session = NULL;
-    ac_ucred_t credentials = { 0 };
+    ac_ucred_t *credentials = NULL;
     int rc = SR_ERR_OK;
 
-    credentials.r_username = getenv("USER");
-    credentials.r_uid = getuid();
-    credentials.r_gid = getgid();
+    credentials = calloc(1, sizeof(*credentials));
 
-    rc = rp_session_start(rp_ctx, 123456, &credentials, datastore, &session);
+    credentials->r_username = getenv("USER");
+    credentials->r_uid = getuid();
+    credentials->r_gid = getgid();
+
+    rc = rp_session_start(rp_ctx, 123456, credentials, datastore, &session);
     assert_int_equal(SR_ERR_OK, rc);
 
     *rp_session_p = session;
@@ -76,5 +78,8 @@ test_rp_sesssion_create(rp_ctx_t *rp_ctx, sr_datastore_t datastore, rp_session_t
 void
 test_rp_session_cleanup(rp_ctx_t *ctx, rp_session_t *session)
 {
-    rp_session_stop(ctx, session);
+    if (NULL != session) {
+        free((void*)session->user_credentials);
+        rp_session_stop(ctx, session);
+    }
 }

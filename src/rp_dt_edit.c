@@ -24,6 +24,7 @@
 #include "rp_dt_xpath.h"
 #include "sysrepo.h"
 #include "sr_common.h"
+#include "access_control.h"
 #include "xpath_processor.h"
 
 /**
@@ -688,6 +689,13 @@ rp_dt_move_list_wrapper(rp_ctx_t *rp_ctx, rp_session_t *session, const char *xpa
         return rc;
     }
 
+    rc = ac_check_node_permissions(session->ac_session, loc_id, AC_OPER_READ_WRITE);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Access control check failed for xpath '%s'", xpath);
+        xp_free_loc_id(loc_id);
+        return rc;
+    }
+
     rc = dm_add_operation(session->dm_session, direction == SR_MOVE_UP ? DM_MOVE_UP_OP: DM_MOVE_DOWN_OP ,loc_id, NULL, 0);
     if (SR_ERR_OK != rc){
         /* loc id is freed by dm_add_operation */
@@ -718,6 +726,14 @@ rp_dt_set_item_wrapper(rp_ctx_t *rp_ctx, rp_session_t *session, const char *xpat
         return rc;
     }
 
+    rc = ac_check_node_permissions(session->ac_session, loc_id, AC_OPER_READ_WRITE);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Access control check failed for xpath '%s'", xpath);
+        xp_free_loc_id(loc_id);
+        sr_free_val(val);
+        return rc;
+    }
+
     rc = dm_add_operation(session->dm_session, DM_SET_OP, loc_id, val, opt);
     if (SR_ERR_OK != rc){
         /* loc id and val is freed by dm_add_operation */
@@ -743,6 +759,13 @@ rp_dt_delete_item_wrapper(rp_ctx_t *rp_ctx, rp_session_t *session, const char *x
     rc = xp_char_to_loc_id(xpath, &loc_id);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Converting xpath '%s' to loc_id failed.", xpath);
+        return rc;
+    }
+
+    rc = ac_check_node_permissions(session->ac_session, loc_id, AC_OPER_READ_WRITE);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Access control check failed for xpath '%s'", xpath);
+        xp_free_loc_id(loc_id);
         return rc;
     }
 

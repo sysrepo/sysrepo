@@ -341,14 +341,14 @@ ac_test_negative(void **state)
     rc = xp_char_to_loc_id("/non-existing-module:main/string", &loc_id);
     assert_int_equal(rc, SR_ERR_OK);
     rc = ac_check_node_permissions(session, loc_id, AC_OPER_READ);
-    assert_int_equal(rc, SR_ERR_NOT_FOUND);
+    assert_int_equal(rc, SR_ERR_OK);
     xp_free_loc_id(loc_id);
 
     /* try only namespace */
     rc = xp_char_to_loc_id("/another-non-existing-module:", &loc_id);
     assert_int_equal(rc, SR_ERR_OK);
     rc = ac_check_node_permissions(session, loc_id, AC_OPER_READ);
-    assert_int_equal(rc, SR_ERR_NOT_FOUND);
+    assert_int_equal(rc, SR_ERR_OK);
     xp_free_loc_id(loc_id);
 
     /* mess up the location id */

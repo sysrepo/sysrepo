@@ -23,6 +23,7 @@
 #include "sysrepo.h"
 #include "sr_common.h"
 
+#include "access_control.h"
 #include "xpath_processor.h"
 #include "rp_internal.h"
 #include "rp_dt_get.h"
@@ -376,6 +377,12 @@ rp_dt_get_value_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char *
         goto cleanup;
     }
 
+    rc = ac_check_node_permissions(rp_session->ac_session, l, AC_OPER_READ);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Access control check failed for xpath '%s'", xpath);
+        goto cleanup;
+    }
+
     data_tree_name = XP_CPY_FIRST_NS(l);
     if (NULL == data_tree_name) {
         SR_LOG_ERR("Copying module name failed for xpath '%s'", xpath);
@@ -425,6 +432,12 @@ rp_dt_get_values_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char 
         goto cleanup;
     }
 
+    rc = ac_check_node_permissions(rp_session->ac_session, l, AC_OPER_READ);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Access control check failed for xpath '%s'", xpath);
+        goto cleanup;
+    }
+
     rc = dm_get_datatree(rp_ctx->dm_ctx, rp_session->dm_session, data_tree_name, &data_tree);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Getting data tree failed for xpath '%s'", xpath);
@@ -468,6 +481,12 @@ rp_dt_get_values_wrapper_with_opts(rp_ctx_t *rp_ctx, rp_session_t *rp_session, r
     data_tree_name = XP_CPY_FIRST_NS(l);
     if (NULL == data_tree_name) {
         SR_LOG_ERR("Copying module name failed for xpath '%s'", xpath);
+        goto cleanup;
+    }
+
+    rc = ac_check_node_permissions(rp_session->ac_session, l, AC_OPER_READ);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Access control check failed for xpath '%s'", xpath);
         goto cleanup;
     }
 
