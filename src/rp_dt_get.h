@@ -25,6 +25,7 @@
 #ifndef RP_DT_GET_H
 #define RP_DT_GET_H
 
+#include "request_processor.h"
 #include "xpath_processor.h"
 #include "rp_dt_lookup.h"
 
@@ -56,31 +57,31 @@ int rp_dt_get_value(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp
 /**
  * @brief Returns the value for the specified xpath. Internally converts xpath to location_id and call ::rp_dt_get_value.
  * The xpath is validated.
- * @param [in] dm_ctx
- * @param [in] dm_session
+ * @param [in] rp_ctx
+ * @param [in] rp_session
  * @param [in] xpath
  * @param [out] value
  * @return Error code (SR_ERR_OK on success), SR_ERR_NOT_FOUND, SR_ERR_UNKNOWN_MODEL, SR_ERR_BAD_ELEMENT
  */
-int rp_dt_get_value_wrapper(dm_ctx_t *dm_ctx, dm_session_t *dm_session, const char *xpath, sr_val_t **value);
+int rp_dt_get_value_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char *xpath, sr_val_t **value);
 
 /**
  * @brief Returns the values for the specified xpath. Internally converts xpath to location_id and 
  * calls ::rp_dt_get_values.
- * @param [in] dm_ctx
- * @param [in] dm_session
+ * @param [in] rp_ctx
+ * @param [in] rp_session
  * @param [in] xpath
  * @param [out] values
  * @param [out] count
  * @return Error code (SR_ERR_OK on success), SR_ERR_NOT_FOUND, SR_ERR_UNKNOWN_MODEL, SR_ERR_BAD_ELEMENT
  */
-int rp_dt_get_values_wrapper(dm_ctx_t *dm_ctx, dm_session_t *dm_session, const char *xpath, sr_val_t ***values, size_t *count);
+int rp_dt_get_values_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char *xpath, sr_val_t ***values, size_t *count);
 
 /**
  * @brief Returns the values for the specified xpath. Internally converts xpath to location_id and calls ::rp_dt_get_nodes_with_opts 
  * and ::rp_dt_get_values_from_nodes. The selection of returned valued can be specified by recursive, limit and offset.
- * @param [in] dm_ctx
- * @param [in] dm_session
+ * @param [in] rp_ctx
+ * @param [in] rp_session
  * @param [in] get_items_ctx
  * @param [in] xpath
  * @param [in] recursive - include all nodes under the selected xpath
@@ -89,7 +90,7 @@ int rp_dt_get_values_wrapper(dm_ctx_t *dm_ctx, dm_session_t *dm_session, const c
  * @param [out] values
  * @param [out] count
  */
-int rp_dt_get_values_wrapper_with_opts(dm_ctx_t *dm_ctx, dm_session_t *dm_session, rp_dt_get_items_ctx_t *get_items_ctx, const char *xpath,
+int rp_dt_get_values_wrapper_with_opts(rp_ctx_t *rp_ctx, rp_session_t *rp_session, rp_dt_get_items_ctx_t *get_items_ctx, const char *xpath,
                                        bool recursive, size_t offset, size_t limit, sr_val_t ***values, size_t *count);
 
 #endif /* RP_DT_GET_H */

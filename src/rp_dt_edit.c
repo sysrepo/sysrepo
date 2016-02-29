@@ -676,9 +676,10 @@ cleanup:
 }
 
 int
-rp_dt_move_list_wrapper(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, sr_move_direction_t direction)
+rp_dt_move_list_wrapper(rp_ctx_t *rp_ctx, rp_session_t *session, const char *xpath, sr_move_direction_t direction)
 {
-    CHECK_NULL_ARG3(dm_ctx, session, xpath);
+    CHECK_NULL_ARG5(rp_ctx, rp_ctx->dm_ctx, session, session->dm_session, xpath);
+
     int rc = SR_ERR_OK;
     xp_loc_id_t *loc_id = NULL;
     rc = xp_char_to_loc_id(xpath, &loc_id);
@@ -687,26 +688,27 @@ rp_dt_move_list_wrapper(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpa
         return rc;
     }
 
-    rc = dm_add_operation(session, direction == SR_MOVE_UP ? DM_MOVE_UP_OP: DM_MOVE_DOWN_OP ,loc_id, NULL, 0);
+    rc = dm_add_operation(session->dm_session, direction == SR_MOVE_UP ? DM_MOVE_UP_OP: DM_MOVE_DOWN_OP ,loc_id, NULL, 0);
     if (SR_ERR_OK != rc){
         /* loc id is freed by dm_add_operation */
         SR_LOG_ERR_MSG("Adding operation to session op list failed");
         return rc;
     }
 
-    rc = rp_dt_move_list(dm_ctx, session, loc_id, direction);
+    rc = rp_dt_move_list(rp_ctx->dm_ctx, session->dm_session, loc_id, direction);
     if (SR_ERR_OK != rc){
         SR_LOG_ERR_MSG("List move failed");
-        dm_remove_last_operation(session);
+        dm_remove_last_operation(session->dm_session);
     }
     return rc;
 
 }
 
 int
-rp_dt_set_item_wrapper(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, sr_val_t *val, sr_edit_options_t opt)
+rp_dt_set_item_wrapper(rp_ctx_t *rp_ctx, rp_session_t *session, const char *xpath, sr_val_t *val, sr_edit_options_t opt)
 {
-    CHECK_NULL_ARG3(dm_ctx, session, xpath);
+    CHECK_NULL_ARG5(rp_ctx, rp_ctx->dm_ctx, session, session->dm_session, xpath);
+
     int rc = SR_ERR_OK;
     xp_loc_id_t *loc_id = NULL;
     rc = xp_char_to_loc_id(xpath, &loc_id);
@@ -716,25 +718,26 @@ rp_dt_set_item_wrapper(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpat
         return rc;
     }
 
-    rc = dm_add_operation(session, DM_SET_OP, loc_id, val, opt);
+    rc = dm_add_operation(session->dm_session, DM_SET_OP, loc_id, val, opt);
     if (SR_ERR_OK != rc){
         /* loc id and val is freed by dm_add_operation */
         SR_LOG_ERR_MSG("Adding operation to session op list failed");
         return rc;
     }
 
-    rc = rp_dt_set_item(dm_ctx, session, loc_id, opt, val);
+    rc = rp_dt_set_item(rp_ctx->dm_ctx, session->dm_session, loc_id, opt, val);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Set item failed");
-        dm_remove_last_operation(session);
+        dm_remove_last_operation(session->dm_session);
     }
     return rc;
 }
 
 int
-rp_dt_delete_item_wrapper(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, sr_edit_options_t opts)
+rp_dt_delete_item_wrapper(rp_ctx_t *rp_ctx, rp_session_t *session, const char *xpath, sr_edit_options_t opts)
 {
-    CHECK_NULL_ARG3(dm_ctx, session, xpath);
+    CHECK_NULL_ARG5(rp_ctx, rp_ctx->dm_ctx, session, session->dm_session, xpath);
+
     int rc = SR_ERR_OK;
     xp_loc_id_t *loc_id = NULL;
     rc = xp_char_to_loc_id(xpath, &loc_id);
@@ -743,17 +746,17 @@ rp_dt_delete_item_wrapper(dm_ctx_t *dm_ctx, dm_session_t *session, const char *x
         return rc;
     }
 
-    rc = dm_add_operation(session, DM_DELETE_OP, loc_id, NULL, opts);
+    rc = dm_add_operation(session->dm_session, DM_DELETE_OP, loc_id, NULL, opts);
     if (SR_ERR_OK != rc){
         /* loc id is freed by dm_add_operation */
         SR_LOG_ERR_MSG("Adding operation to session op list failed");
         return rc;
     }
 
-    rc = rp_dt_delete_item(dm_ctx, session, loc_id, opts);
+    rc = rp_dt_delete_item(rp_ctx->dm_ctx, session->dm_session, loc_id, opts);
     if (SR_ERR_OK != rc){
         SR_LOG_ERR_MSG("List move failed");
-        dm_remove_last_operation(session);
+        dm_remove_last_operation(session->dm_session);
     }
     return rc;
 }

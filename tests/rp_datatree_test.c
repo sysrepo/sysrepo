@@ -33,21 +33,19 @@
 #include "xpath_processor.h"
 #include "dt_xpath_helpers.h"
 #include "test_module_helper.h"
+#include "rp_dt_context_helper.h"
+#include "rp_internal.h"
 
 #define LEAF_VALUE "leafV"
 
 int setup(void **state){
-   int rc = 0;
-   dm_ctx_t *ctx;
-   rc = dm_init(TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx);
-   assert_int_equal(SR_ERR_OK,rc);
-   *state = ctx;
-   return rc;
+   test_rp_ctx_create((rp_ctx_t**)state);
+   return 0;
 }
 
 int teardown(void **state){
-    dm_ctx_t *ctx = *state;
-    dm_cleanup(ctx);
+    rp_ctx_t *ctx = *state;
+    test_rp_ctx_cleanup(ctx);
     return 0;
 }
 
@@ -216,7 +214,8 @@ void check_ietf_interfaces_addr_values(sr_val_t **values, size_t count){
 
 void ietf_interfaces_test(void **state){
     int rc = 0;
-    dm_ctx_t *ctx = *state;
+    rp_ctx_t *rp_ctx = *state;
+    dm_ctx_t *ctx = rp_ctx->dm_ctx;
     dm_session_t *ses_ctx = NULL;
     struct lyd_node *data_tree = NULL;
     dm_session_start(ctx, SR_DS_STARTUP, &ses_ctx);
@@ -281,7 +280,8 @@ void ietf_interfaces_test(void **state){
 
 void get_values_test_module_test(void **state){
     int rc = 0;
-    dm_ctx_t *ctx = *state;
+    rp_ctx_t *rp_ctx = *state;
+    dm_ctx_t *ctx = rp_ctx->dm_ctx;
     dm_session_t *ses_ctx = NULL;
     dm_session_start(ctx, SR_DS_STARTUP, &ses_ctx);
 
@@ -326,7 +326,8 @@ void get_values_test_module_test(void **state){
 
 void get_values_test(void **state){
     int rc = 0;
-    dm_ctx_t *ctx = *state;
+    rp_ctx_t *rp_ctx = *state;
+    dm_ctx_t *ctx = rp_ctx->dm_ctx;
     dm_session_t *ses_ctx = NULL;
     struct lyd_node *data_tree = NULL;
     dm_session_start(ctx, SR_DS_STARTUP, &ses_ctx);
@@ -409,11 +410,12 @@ void get_values_test(void **state){
 
 void get_values_opts_test(void **state) {
     int rc = 0;
-    dm_ctx_t *ctx = *state;
-    dm_session_t *ses_ctx = NULL;
+    rp_ctx_t *ctx = *state;
+    rp_session_t *ses_ctx = NULL;
     struct lyd_node *data_tree = NULL;
-    dm_session_start(ctx, SR_DS_STARTUP, &ses_ctx);
-    rc = dm_get_datatree(ctx, ses_ctx, "example-module", &data_tree);
+
+    test_rp_sesssion_create(ctx, SR_DS_STARTUP, &ses_ctx);
+    rc = dm_get_datatree(ctx->dm_ctx, ses_ctx->dm_session, "example-module", &data_tree);
     assert_int_equal(SR_ERR_OK, rc);
 
     struct lyd_node *root = NULL;
@@ -432,7 +434,7 @@ void get_values_opts_test(void **state) {
     xp_loc_id_t *l;
     assert_int_equal(SR_ERR_OK, xp_char_to_loc_id(EX_CONT, &l));
     struct lyd_node **nodes = NULL;
-    rc = rp_dt_get_nodes_with_opts(ctx,ses_ctx, &get_items_ctx, root, l, true, 0, 3, &nodes, &count);
+    rc = rp_dt_get_nodes_with_opts(ctx->dm_ctx, ses_ctx->dm_session, &get_items_ctx, root, l, true, 0, 3, &nodes, &count);
     assert_int_equal(SR_ERR_OK, rc);
 
     free(nodes);
@@ -462,13 +464,15 @@ void get_values_opts_test(void **state) {
     free(get_items_ctx.xpath);
     rp_ns_clean(&get_items_ctx.stack);
     lyd_free_withsiblings(root);
-    dm_session_stop(ctx, ses_ctx);
+
+    test_rp_session_cleanup(ctx, ses_ctx);
 }
 
 
 void get_values_with_augments_test(void **state){
     int rc = 0;
-    dm_ctx_t *ctx = *state;
+    rp_ctx_t *rp_ctx = *state;
+    dm_ctx_t *ctx = rp_ctx->dm_ctx;
     dm_session_t *ses_ctx = NULL;
     struct lyd_node *data_tree = NULL;
     struct lyd_node *root = NULL;
@@ -498,7 +502,8 @@ void get_values_with_augments_test(void **state){
 
 void get_value_test(void **state){
     int rc = 0;
-    dm_ctx_t *ctx = *state;
+    rp_ctx_t *rp_ctx = *state;
+    dm_ctx_t *ctx = rp_ctx->dm_ctx;
     dm_session_t *ses_ctx = NULL;
     struct lyd_node *data_tree = NULL;
     dm_session_start(ctx, SR_DS_STARTUP, &ses_ctx);
@@ -545,7 +550,8 @@ void get_value_test(void **state){
 void get_node_test_found(void **state)
 {
     int rc = 0;
-    dm_ctx_t *ctx = *state;
+    rp_ctx_t *rp_ctx = *state;
+    dm_ctx_t *ctx = rp_ctx->dm_ctx;
     dm_session_t *ses_ctx = NULL;
     struct lyd_node *data_tree = NULL;
     struct lyd_node *node = NULL;
@@ -591,7 +597,8 @@ void get_node_test_found(void **state)
 
 void get_nodes_test(void **state){
     int rc = 0;
-    dm_ctx_t *ctx = *state;
+    rp_ctx_t *rp_ctx = *state;
+    dm_ctx_t *ctx = rp_ctx->dm_ctx;
     dm_session_t *ses_ctx = NULL;
     struct lyd_node *data_tree = NULL;
     dm_session_start(ctx, SR_DS_STARTUP, &ses_ctx);
@@ -621,7 +628,8 @@ void get_nodes_test(void **state){
 void get_node_test_not_found(void **state)
 {
     int rc = 0;
-    dm_ctx_t *ctx = *state;
+    rp_ctx_t *rp_ctx = *state;
+    dm_ctx_t *ctx = rp_ctx->dm_ctx;
     dm_session_t *ses_ctx = NULL;
     struct lyd_node *data_tree = NULL;
     struct lyd_node *node = NULL;
@@ -658,9 +666,9 @@ void get_node_test_not_found(void **state)
 
 void get_value_wrapper_test(void **state){
     int rc = 0;
-    dm_ctx_t *ctx = *state;
-    dm_session_t *ses_ctx = NULL;
-    dm_session_start(ctx, SR_DS_STARTUP, &ses_ctx);
+    rp_ctx_t *ctx = *state;
+    rp_session_t *ses_ctx = NULL;
+    test_rp_sesssion_create(ctx, SR_DS_STARTUP, &ses_ctx);
 
     /* unknown model*/
     sr_val_t *value = NULL;
@@ -680,7 +688,7 @@ void get_value_wrapper_test(void **state){
     rc = rp_dt_get_value_wrapper(ctx, ses_ctx, "/example-module:container/list[key1='abc'][key2='def']", &value);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
-    dm_session_stop(ctx, ses_ctx);
+    test_rp_session_cleanup(ctx, ses_ctx);
 }
 
 int main(){

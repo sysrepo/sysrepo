@@ -25,6 +25,7 @@
 #ifndef RP_DT_EDIT_H
 #define RP_DT_EDIT_H
 
+#include "request_processor.h"
 #include "data_manager.h"
 
 /**
@@ -64,34 +65,34 @@ int rp_dt_move_list(dm_ctx_t *dm_ctx, dm_session_t *session, const xp_loc_id_t *
 
 /**
  * @brief Wraps ::rp_dt_move_list call, in case of success logs the operation to the session's operation list.
- * @param [in] dm_ctx
+ * @param [in] rp_ctx
  * @param [in] session
  * @param [in] xpath
  * @param [in] direction
  * @return Error code (SR_ERR_OK on success)
  */
-int rp_dt_move_list_wrapper(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, sr_move_direction_t direction);
+int rp_dt_move_list_wrapper(rp_ctx_t *rp_ctx, rp_session_t *session, const char *xpath, sr_move_direction_t direction);
 
 /**
  * @brief Wraps ::rp_dt_set_item call. In case of success logs the operation to the session's operation list.
- * @param [in] dm_ctx
+ * @param [in] rp_ctx
  * @param [in] session
  * @param [in] xpath
  * @param [in] val
  * @param [in] opt
  * @return Error code (SR_ERR_OK on success)
  */
-int rp_dt_set_item_wrapper(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, sr_val_t *val, sr_edit_options_t opt);
+int rp_dt_set_item_wrapper(rp_ctx_t *rp_ctx, rp_session_t *session, const char *xpath, sr_val_t *val, sr_edit_options_t opt);
 
 /**
  * @brief Wraps ::rp_dt_delete_item call. In in case of success logs the operation to the session's operation list.
- * @param [in] dm_ctx
+ * @param [in] rp_ctx
  * @param [in] session
  * @param [in] xpath
  * @param [in] opts
  * @return Error code (SR_ERR_OK on success)
  */
-int rp_dt_delete_item_wrapper(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, sr_edit_options_t opts);
+int rp_dt_delete_item_wrapper(rp_ctx_t *rp_ctx, rp_session_t *session, const char *xpath, sr_edit_options_t opts);
 
 /**
  * @brief Perform the list of provided operations on the session. Stops

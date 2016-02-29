@@ -32,6 +32,7 @@ macro(ADD_UNIT_TEST_WITH_HELPERS TEST_NAME)
      set(t_files
         ${TEST_NAME}.c
         ${HELPERS_DIR}dt_xpath_helpers.c
+        ${HELPERS_DIR}rp_dt_context_helper.c
         ${HELPERS_DIR}test_module_helper.c
         )
     ADD_UNIT_TEST_WITH_OPTS(${TEST_NAME} "${t_files}" "" 1)
