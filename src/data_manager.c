@@ -19,9 +19,6 @@
  * limitations under the License.
  */
 
-#include "data_manager.h"
-#include "sr_common.h"
-#include "rp_dt_edit.h"
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -30,12 +27,17 @@
 #include <pthread.h>
 #include <fcntl.h>
 
+#include "data_manager.h"
+#include "sr_common.h"
+#include "rp_dt_edit.h"
+#include "access_control.h"
 
 /*
  * @brief Data manager context holding loaded schemas, data trees
  * and corresponding locks
  */
 typedef struct dm_ctx_s {
+    ac_ctx_t *ac_ctx;             /**< Access Control module context */
     char *schema_search_dir;      /**< location where schema files are located */
     char *data_search_dir;        /**< location where data files are located */
     struct ly_ctx *ly_ctx;        /**< libyang context holding all loaded schemas */
@@ -47,13 +49,14 @@ typedef struct dm_ctx_s {
  * @brief Structure that holds Data Manager's per-session context.
  */
 typedef struct dm_session_s {
-    sr_datastore_t datastore;       /**< datastore to which the session is tied */
-    sr_btree_t *session_modules;    /**< binary holding session copies of data models */
-    char *error_msg;                /**< description of the last error */
-    char *error_xpath;              /**< xpath of the last error if applicable */
-    dm_sess_op_t *operations;       /**< list of operations performed in this session */
-    size_t oper_count;              /**< number of performed operation */
-    size_t oper_size;               /**< number of allocated operations */
+    sr_datastore_t datastore;           /**< datastore to which the session is tied */
+    const ac_ucred_t *user_credentails; /**< credentials of the user who this session belongs to */
+    sr_btree_t *session_modules;        /**< binary holding session copies of data models */
+    char *error_msg;                    /**< description of the last error */
+    char *error_xpath;                  /**< xpath of the last error if applicable */
+    dm_sess_op_t *operations;           /**< list of operations performed in this session */
+    size_t oper_count;                  /**< number of performed operation */
+    size_t oper_size;                   /**< number of allocated operations */
 } dm_session_t;
 
 /**
@@ -272,13 +275,14 @@ dm_load_data_tree_file(dm_ctx_t *dm_ctx, int fd, const char *data_filename, cons
  * @brief Loads data tree from file. Module and datastore argument are used to
  * determine the file name.
  * @param [in] dm_ctx
+ * @param [in] dm_session_ctx
  * @param [in] module
  * @param [in] ds
  * @param [out] data_info
  * @return Error code (SR_ERR_OK on success), SR_ERR_INTERAL if the parsing of the data tree fails.
  */
 static int
-dm_load_data_tree(dm_ctx_t *dm_ctx, const struct lys_module *module, sr_datastore_t ds, dm_data_info_t **data_info)
+dm_load_data_tree(dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, const struct lys_module *module, sr_datastore_t ds, dm_data_info_t **data_info)
 {
     CHECK_NULL_ARG2(dm_ctx, module);
 
@@ -291,7 +295,11 @@ dm_load_data_tree(dm_ctx_t *dm_ctx, const struct lys_module *module, sr_datastor
         return rc;
     }
 
+    ac_set_user_identity(dm_ctx->ac_ctx, dm_session_ctx->user_credentails);
+
     int fd = open(data_filename, O_RDONLY);
+
+    ac_unset_user_identity(dm_ctx->ac_ctx);
 
     if (-1 != fd) {
         lockf(fd, F_LOCK, 0);
@@ -610,7 +618,7 @@ dm_is_running_ds_session(dm_session_t *session)
 }
 
 int
-dm_init(const char *schema_search_dir, const char *data_search_dir, dm_ctx_t **dm_ctx)
+dm_init(ac_ctx_t *ac_ctx, const char *schema_search_dir, const char *data_search_dir, dm_ctx_t **dm_ctx)
 {
     CHECK_NULL_ARG3(schema_search_dir, data_search_dir, dm_ctx);
 
@@ -622,6 +630,8 @@ dm_init(const char *schema_search_dir, const char *data_search_dir, dm_ctx_t **d
         SR_LOG_ERR_MSG("Cannot allocate memory for Data Manager.");
         return SR_ERR_NOMEM;
     }
+    ctx->ac_ctx = ac_ctx;
+
     ctx->ly_ctx = ly_ctx_new(schema_search_dir);
     if (NULL == ctx->ly_ctx) {
         SR_LOG_ERR_MSG("Cannot initialize libyang context in Data Manager.");
@@ -689,7 +699,7 @@ dm_cleanup(dm_ctx_t *dm_ctx)
 }
 
 int
-dm_session_start(const dm_ctx_t *dm_ctx, const sr_datastore_t ds, dm_session_t **dm_session_ctx)
+dm_session_start(const dm_ctx_t *dm_ctx, const ac_ucred_t *user_credentials, const sr_datastore_t ds, dm_session_t **dm_session_ctx)
 {
     CHECK_NULL_ARG(dm_session_ctx);
 
@@ -699,6 +709,7 @@ dm_session_start(const dm_ctx_t *dm_ctx, const sr_datastore_t ds, dm_session_t *
         SR_LOG_ERR_MSG("Cannot allocate session_ctx in Data Manager.");
         return SR_ERR_NOMEM;
     }
+    session_ctx->user_credentails = user_credentials;
     session_ctx->datastore = ds;
 
     int rc = SR_ERR_OK;
@@ -748,7 +759,7 @@ dm_get_data_info(dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, const char *mod
 
     /* session copy not found load it from file system */
     dm_data_info_t *di = NULL;
-    rc = dm_load_data_tree(dm_ctx, module, dm_session_ctx->datastore, &di);
+    rc = dm_load_data_tree(dm_ctx, dm_session_ctx, module, dm_session_ctx->datastore, &di);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Getting data tree for %s failed.", module_name);
         return rc;
@@ -967,8 +978,8 @@ dm_commit_prepare_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_con
         goto cleanup;
     }
 
-    /* create commit session*/
-    rc = dm_session_start(dm_ctx, session->datastore, &c_ctx->session);
+    /* create commit session */
+    rc = dm_session_start(dm_ctx, session->user_credentails, session->datastore, &c_ctx->session);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Commit session initialization failed");
         goto cleanup;
@@ -1022,7 +1033,9 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
                 SR_LOG_ERR_MSG("Get data file name failed");
                 goto cleanup;
             }
+            ac_set_user_identity(dm_ctx->ac_ctx, session->user_credentails);
             c_ctx->fds[count] = open(file_name, O_RDWR);
+            ac_unset_user_identity(dm_ctx->ac_ctx);
             if (-1 == c_ctx->fds[count]) {
                 SR_LOG_DBG("File %s can not be opened for read write", file_name);
                 if (EACCES == errno) {
@@ -1033,7 +1046,9 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
 
                 if (ENOENT == errno) {
                     SR_LOG_DBG("File %s does not exist, trying to create an empty one", file_name);
+                    ac_set_user_identity(dm_ctx->ac_ctx, session->user_credentails);
                     c_ctx->fds[count] = open(file_name, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
+                    ac_unset_user_identity(dm_ctx->ac_ctx);
                     if (-1 == c_ctx->fds[count]) {
                         SR_LOG_ERR("File %s can not be created", file_name);
                         rc = SR_ERR_IO;

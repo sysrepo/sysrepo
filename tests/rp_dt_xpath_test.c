@@ -45,7 +45,7 @@ int validate_node_wrapper(dm_ctx_t *dm_ctx, dm_session_t *session, const char *x
 int setup(void **state){
     int rc = 0;
     dm_ctx_t *ctx = NULL;
-    rc = dm_init(TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx);
+    rc = dm_init(NULL, TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx);
     *state = ctx;
     return rc;
 }
@@ -61,7 +61,7 @@ void rp_dt_validate_fail(void **state)
     int rc = 0;
     dm_ctx_t *ctx = *state;
     dm_session_t *session = NULL;
-    dm_session_start(ctx, SR_DS_STARTUP, &session);
+    dm_session_start(ctx, NULL, SR_DS_STARTUP, &session);
 
     /* unknown model */
     rc = validate_node_wrapper(ctx, session, "/unknown-module:", NULL);
@@ -103,7 +103,7 @@ void rp_dt_validate_ok(void **state)
     int rc = 0;
     dm_ctx_t *ctx = *state;
     dm_session_t *session = NULL;
-    dm_session_start(ctx, SR_DS_STARTUP, &session);
+    dm_session_start(ctx, NULL, SR_DS_STARTUP, &session);
 
     /* module */
     rc = validate_node_wrapper(ctx, session, "/example-module:", NULL);
@@ -154,7 +154,7 @@ check_error_reporting(void **state)
     int rc = 0;
     dm_ctx_t *ctx = *state;
     dm_session_t *session = NULL;
-    dm_session_start(ctx, SR_DS_STARTUP, &session);
+    dm_session_start(ctx, NULL, SR_DS_STARTUP, &session);
 
     rc = validate_node_wrapper(ctx, session, "/example-module:", NULL);
     assert_int_equal(SR_ERR_OK, rc);

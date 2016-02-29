@@ -40,13 +40,14 @@
 
 /* Must be updated with data_manager.c*/
 typedef struct dm_session_s {
-    sr_datastore_t datastore;       /**< datastore to which the session is tied */
-    sr_btree_t *session_modules;    /**< binary holding session copies of data models */
-    char *error_msg;                /**< description of the last error */
-    char *error_xpath;              /**< xpath of the last error if applicable */
-    dm_sess_op_t *operations;       /**< list of operations performed in this session */
-    size_t oper_count;              /**< number of performed operation */
-    size_t oper_size;               /**< number of allocated operations */
+    sr_datastore_t datastore;           /**< datastore to which the session is tied */
+    const ac_ucred_t *user_credentails; /**< credentials of the user who this session belongs to */
+    sr_btree_t *session_modules;        /**< binary holding session copies of data models */
+    char *error_msg;                    /**< description of the last error */
+    char *error_xpath;                  /**< xpath of the last error if applicable */
+    dm_sess_op_t *operations;           /**< list of operations performed in this session */
+    size_t oper_count;                  /**< number of performed operation */
+    size_t oper_size;                   /**< number of allocated operations */
 } dm_session_t;
 
 int setup(void **state){

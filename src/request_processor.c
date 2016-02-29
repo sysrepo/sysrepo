@@ -768,7 +768,7 @@ rp_init(cm_ctx_t *cm_ctx, rp_ctx_t **rp_ctx_p)
     }
 
     /* initialize Data Manager */
-    rc = dm_init(SR_SCHEMA_SEARCH_DIR, SR_DATA_SEARCH_DIR, &ctx->dm_ctx);
+    rc = dm_init(ctx->ac_ctx, SR_SCHEMA_SEARCH_DIR, SR_DATA_SEARCH_DIR, &ctx->dm_ctx);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Data Manager initialization failed.");
         goto cleanup;
@@ -870,7 +870,7 @@ rp_session_start(const rp_ctx_t *rp_ctx, const uint32_t session_id,
         return rc;
     }
 
-    rc = dm_session_start(rp_ctx->dm_ctx, datastore, &session->dm_session);
+    rc = dm_session_start(rp_ctx->dm_ctx, user_credentials, datastore, &session->dm_session);
     if (SR_ERR_OK  != rc) {
         SR_LOG_ERR("Init of dm_session failed for session id=%"PRIu32".", session_id);
         rp_session_cleanup(rp_ctx, session);

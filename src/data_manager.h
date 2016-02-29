@@ -34,6 +34,7 @@
 #include "sysrepo.h"
 
 #include "sr_common.h"
+#include "access_control.h"
 #include "xpath_processor.h"
 
 /**
@@ -90,12 +91,13 @@ typedef struct dm_sess_op_s{
 /**
  * @brief Initializes the data manager context, which will be passed in further
  * data manager related calls.
+ * @param [in] ac_ctx_t - Acccess Control module context
  * @param [in] schema_search_dir - location where schema files are located
  * @param [in] data_search_dir - location where data files are located
  * @param [out] dm_ctx
  * @return Error code (SR_ERR_OK on success), SR_ERR_IO
  */
-int dm_init(const char *schema_search_dir, const char *data_search_dir, dm_ctx_t **dm_ctx);
+int dm_init(ac_ctx_t *ac_ctx, const char *schema_search_dir, const char *data_search_dir, dm_ctx_t **dm_ctx);
 
 /**
  * @brief Frees all allocated resources by the provided Data manager context, after
@@ -107,11 +109,12 @@ void dm_cleanup(dm_ctx_t *dm_ctx);
 /**
  * @brief Allocates resources for the session in Data manger.
  * @param [in] dm_ctx
+ * @param [in] user_credentials credentials of the user who this session belongs to
  * @param [in] ds - datastore to which the session is tied.
  * @param [out] dm_session_ctx
  * @return Error code (SR_ERR_OK on success)
  */
-int dm_session_start(const dm_ctx_t *dm_ctx, const sr_datastore_t ds, dm_session_t **dm_session_ctx);
+int dm_session_start(const dm_ctx_t *dm_ctx, const ac_ucred_t *user_credentials, const sr_datastore_t ds, dm_session_t **dm_session_ctx);
 
 /**
  * @brief Frees resources allocated for the session.

@@ -42,7 +42,7 @@ test_rp_ctx_create(rp_ctx_t **rp_ctx_p)
     rc = ac_init(&ctx->ac_ctx);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = dm_init(TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx->dm_ctx);
+    rc = dm_init(ctx->ac_ctx, TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx->dm_ctx);
     assert_int_equal(SR_ERR_OK, rc);
 
     *rp_ctx_p = ctx;
