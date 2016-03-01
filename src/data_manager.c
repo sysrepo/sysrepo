@@ -71,6 +71,7 @@ typedef struct dm_commit_context_s {
     struct ly_set *up_to_date_models; /**< set of module names where the timestamp of the session copy is equal to file system timestamp */
 #endif
 } dm_commit_context_t;
+
 /**
  * @brief Info structure for the node holds the state of the running data store.
  * (It will hold information about notification subscriptions.)
@@ -913,7 +914,7 @@ dm_discard_changes(dm_ctx_t *dm_ctx, dm_session_t *session)
 }
 
 /**
- * @breif Frees all resources allocated in commit context closes
+ * @brief Frees all resources allocated in commit context closes
  * modif_count of files.
  */
 void
@@ -1026,6 +1027,8 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
     char *file_name = NULL;
     c_ctx->modif_count = 0; /* how many file descriptors should be closed on cleanup */
 
+    ac_set_user_identity(dm_ctx->ac_ctx, session->user_credentails);
+
     while (NULL != (info = sr_btree_get_at(session->session_modules, i))) {
         if (info->modified) {
             rc = sr_get_data_file_name(dm_ctx->data_search_dir, info->module->name, session->datastore, &file_name);
@@ -1033,9 +1036,7 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
                 SR_LOG_ERR_MSG("Get data file name failed");
                 goto cleanup;
             }
-            ac_set_user_identity(dm_ctx->ac_ctx, session->user_credentails);
             c_ctx->fds[count] = open(file_name, O_RDWR);
-            ac_unset_user_identity(dm_ctx->ac_ctx);
             if (-1 == c_ctx->fds[count]) {
                 SR_LOG_DBG("File %s can not be opened for read write", file_name);
                 if (EACCES == errno) {
@@ -1046,9 +1047,7 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
 
                 if (ENOENT == errno) {
                     SR_LOG_DBG("File %s does not exist, trying to create an empty one", file_name);
-                    ac_set_user_identity(dm_ctx->ac_ctx, session->user_credentails);
                     c_ctx->fds[count] = open(file_name, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
-                    ac_unset_user_identity(dm_ctx->ac_ctx);
                     if (-1 == c_ctx->fds[count]) {
                         SR_LOG_ERR("File %s can not be created", file_name);
                         rc = SR_ERR_IO;
@@ -1125,9 +1124,12 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
         i++;
     }
 
+    ac_unset_user_identity(dm_ctx->ac_ctx);
+
     return rc;
 
 cleanup:
+    ac_unset_user_identity(dm_ctx->ac_ctx);
     dm_free_commit_context(dm_ctx, c_ctx);
     free(file_name);
     return rc;
