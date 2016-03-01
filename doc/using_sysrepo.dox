@@ -1,0 +1,119 @@
+/**
+
+@page usage Using Sysrepo
+
+By installation, two main parts of sysrepo are installed on the system:
+the **sysrepo library** (a.k.a @ref cl or libsysrepo) and the **sysrepo daemon**
+(a.k.a. sysrepod). See @ref libsysrepo and @ref sysrepod for more details about
+these components.
+
+The third important part of the sysrepo installation is the <b>repository directory</b>.
+It is basically a common filesystem directory where all YANG models and 
+corresponding  data files of all applications that use sysrepo as their 
+datastore are located. See @ref adding_yangs for information on how to use this directory.
+
+@section libsysrepo Using sysrepo library in your application
+Sysrepo library is an interface between sysrepo datastore and northbound and 
+southbound applications. To use it, you need to link `libsysrepo` to your 
+application and include sysrepo public header file in the source that needs to use it.
+
+Access to the sysrepo datastore is connection- and session- oriented. Before 
+calling any data access/manipulation API, one needs to connect to the datastore 
+via ::sr_connect and open a session via ::sr_session_start.
+
+Following C code illustrates the minimal example of including sysrepo header file,
+opening of a connection and a configuration session and retrieving a single data leaf value:
+
+~~~~~~~~~~~~~~~{.c}
+#include <sysrepo.h>
+
+...
+
+sr_conn_ctx_t *conn = NULL;
+sr_connect("application_name", SR_CONN_DEFAULT, &conn);
+
+sr_session_ctx_t *sess = NULL;
+sr_session_start(conn, SR_DS_STARTUP, &sess);
+
+sr_val_t *value = NULL;
+sr_get_item(sess, "/ietf-interfaces:interfaces/interface[name='eth0']/enabled", &value);
+
+...
+
+~~~~~~~~~~~~~~~
+
+See [examples directory](https://github.com/sysrepo/sysrepo/tree/master/examples) 
+for more usage examples and @ref cl documentation for the full description of the API.
+
+@section adding_yangs Adding a new YANG model into the repository
+The repository directory contains all YANG models and corresponding  data files 
+of all applications that use sysrepo as their datastore. The usual location of 
+the repository directory is `/etc/sysrepo/`, the yang models are located in its `yang` 
+subdirectory and the data files in its `data` subdirectory. The location of the 
+repository directory can be changed with `REPOSITORY_LOC` cmake option by building 
+sysrepo (see `Install.md` file for detailed installation instructions).
+
+When adding a new application that will be using a new YANG model, you need to
+place the new **yang file** and **yin file** into `yang` subdirectory
+(e.g. `/etc/sysrepo/yang/`). The yin file can be generated out of the yang using
+pyang tool as follows:
+
+~~~~~~~~~~~~~~~
+pyang -f yin ietf-interfaces.yang > ietf-interfaces.yin
+~~~~~~~~~~~~~~~
+
+The yang and yin files normally need to be readable by any user and do not 
+need to be writeable by anyone else than your application, or by root (sysrepo
+do not write to them).
+
+After restarting the sysrepo deamon (if it was running), the new data model is
+ready to be used. When first data will be written into it, sysrepo automatically
+creates its data file in `data` subdirectory (e.g. `/etc/sysrepo/data/`) with
+the file permissions as described on @ref ac_page page. If you need to define 
+any other file permissions on the data file, you can create an empty data file
+with desired file permissions as part of the installation process.
+
+@section sysrepod Starting sysrepo daemon
+Sysrepo deamon provides the functionality of the datastore on the system (executes 
+the system-wide Sysrepo Engine) and should normally be automatically started by 
+system startup. However, auto-start is not configured by cmake install operation 
+and you need to configure it yourself, accroding to the guidelines of your system.
+
+Sysrepo deamon can be started by executing following command:
+~~~~~~~~~~~~~~~
+sysrepod
+~~~~~~~~~~~~~~~
+
+The daemon accepts several arguments for specifying log verbosity level or for 
+debugging. You can display them by executing `sysrepod -h`
+~~~~~~~~~~~~~~~
+$ sysrepod -h
+sysrepod - sysrepo daemon, version 0.1.12
+
+Usage:
+  sysrepod [-h] [-d] [-v <level>]
+
+Options:
+  -h            Prints this usage help.
+  -d            Debug mode - daemon will run in the foreground and print logs to stderr instead of syslog.
+  -v <level>    Sets verbosity level of logging:
+                    0 = all logging turned off
+                    1 = log only error messages
+                    2 = log error and warning messages
+                    3 = (default) log error, warning and informational messages
+                    4 = log everything, including development debug messages
+~~~~~~~~~~~~~~~
+
+It needs to be noted that the no-single-point-of-failure design of sysrepo does 
+not require the presence of sysrepo daemon on the system. In that case, the client
+library initializes its own Sysrepo Engine instance within the application 
+process to perform requested operations. When the application disconnects from 
+sysrepo, this local Sysrepo Engine is cleaned up.
+
+However, having one system-wide sysrepo daemon saves a lot of resources 
+that would be wasted by frequent init and cleanup procedures of local Sysrepo
+Engines by access from multiple sysrepo clients, as well as offers better 
+concurrency control. Therefore it is vital to have system-wide sysrepo daemon
+running when possible.
+
+*/
