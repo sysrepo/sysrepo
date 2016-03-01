@@ -32,45 +32,53 @@ On Mac OS X:
 
 ## Installation of required libraries from sources
 
-###CMocka
-(for unit-tests only)
-```
-$ git clone git://git.cryptomilk.org/projects/cmocka.git
-$ cd cmocka
-$ git checkout tags/cmocka-1.0.1
-$ mkdir build; cd build
-$ cmake -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_BUILD_TYPE=Debug ..
-$ make
-# make install
-```
-
-###LibYang
+### libyang
 ```
 # apt-get install libpcre3-dev
 $ git clone https://github.com/CESNET/libyang.git
 $ cd libyang; mkdir build; cd build
-$ cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr ..
+$ cmake ..
 $ make
 # make install
 ```
 
-###Google protocol buffers
+### Google Protocol Buffers
 ```
 # apt-get install autoconf libtool
 $ git clone https://github.com/google/protobuf.git
 $ cd protobuf
 $ ./autogen.sh
-$ ./configure --prefix=/usr
+$ ./configure
 $ make
 # make install
 ```
 
-###Protobuf-c
+### protobuf-c
 ```
 $ git clone https://github.com/protobuf-c/protobuf-c.git
 $ cd protobuf-c
 $ ./autogen.sh && ./configure --prefix=/usr 
 $ make 
+# make install
+```
+
+## libredblack
+```
+$ git clone https://github.com/sysrepo/libredblack.git
+$ cd libredblack
+$ ./configure
+$ make
+# make install
+```
+
+### CMocka
+```
+$ git clone git://git.cryptomilk.org/projects/cmocka.git
+$ cd cmocka
+$ git checkout tags/cmocka-1.0.1
+$ mkdir build; cd build
+$ cmake -DCMAKE_BUILD_TYPE=Debug ..
+$ make
 # make install
 ```
 
