@@ -1,5 +1,36 @@
-## Before install
-Install following libraries that sysrepo depends on:
+## Requirements
+
+#### Build tools:
+- compiler: gcc or clang
+- build automation tools: make + [cmake](https://cmake.org/)
+
+#### Required libraries:
+- [libyang](https://github.com/CESNET/libyang)
+- [Google Protocol Buffers](https://github.com/google/protobuf)
+- [protobuf-c](https://github.com/protobuf-c/protobuf-c)
+- [libev](http://software.schmorp.de/pkg/libev.html)
+- [libredblack](http://libredblack.sourceforge.net/) or [GNU libavl](http://adtinfo.org/) (either of these two)
+
+#### Optional tools for running tests and building documentation:
+- [CMocka](https://cmocka.org/)
+- [valgrind](http://valgrind.org/)
+- [doxygen](www.doxygen.org)
+
+
+#### Installation of required libraries:
+On Debian-like Linux distributions:
+- `apt-get install cmake libev-dev libavl-dev`
+- libyang, Google Protocol Buffers and protobuf-c need to be installed from sources
+
+On FreBSD:
+- `pkg install cmake protobuf protobuf-c libev libredblack`
+- libyang needs to be installed from sources
+
+On Mac OS X:
+- `brew cmake protobuf protobuf-c libev`
+- libyang and libredblack need to be installed from sources
+
+## Installation of required libraries from sources
 
 ###CMocka
 (for unit-tests only)
@@ -43,12 +74,8 @@ $ make
 # make install
 ```
 
-## How to build
-Install required libraries:
-```
-$ apt-get install git cmake doxygen valgrind libavl-dev libev-dev
-```
-1) Get the source code and prepare build directory:
+## Building sysrepo
+1) Get the source code and prepare the build directory:
 ```
 $ git clone https://github.com/sysrepo/sysrepo.git
 $ cd sysrepo
@@ -60,7 +87,7 @@ $ cmake ..
 ```
 2 b) Configure build for production use (Release build):
 ```
-$ cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX:PATH=/usr -DREPOSITORY_LOC:PATH=/etc/sysrepo ..
+$ cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX:PATH=/usr ..
 ```
 3) Build:
 ```
