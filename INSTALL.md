@@ -133,11 +133,10 @@ Sysrepo stores all YANG models and corresponding data files in so-named *reposit
 ## Using sysrepo
 By installation, two main parts of sysrepo are installed on the system: **sysrepo library** and **sysrepo daemon**.
 
-#### Linking libsysrepo to your application
+#### Using sysrepo library in your application
 Sysrepo library is an interface between sysrepo datastore and northbound and southbound applications. To use it, you need to link `libsysrepo` to your application and include sysrepo public header file in the source that needs to use it:
 ```
 #include <sysrepo.h>
-
 ...
 sr_conn_ctx_t *conn = NULL;
 sr_connect("application_name", SR_CONN_DEFAULT, &conn);
@@ -145,10 +144,10 @@ sr_connect("application_name", SR_CONN_DEFAULT, &conn);
 ```
 See [examples directory](examples/) for more usage examples.
 
-#### Starting sysrepo Daemon
+#### Starting sysrepo daemon
 Sysrepo deamon provides the functionality of the datastore on the system and should normally be automatically started by system startup. However, auto-start is not configured by cmake install operation and you need to configure it yourself, accroding to the guidelines of your system.
 
-Sysrepo deamon can be started by following command:
+Sysrepo deamon can be started by executing following command:
 ```
 sysrepod
 ```
@@ -162,12 +161,12 @@ Usage:
   sysrepod [-h] [-d] [-v <level>]
 
 Options:
-  -h		      Prints this usage help.
-  -d		      Debug mode - daemon will run in the foreground and print logs to stderr instead of syslog.
-  -v <level>	Sets verbosity level of logging:
-			          0 = all logging turned off
-			          1 = log only error messages
-			          2 = log error and warning messages
-			          3 = (default) log error, warning and informational messages
-			          4 = log everything, including development debug messages
+  -h            Prints this usage help.
+  -d            Debug mode - daemon will run in the foreground and print logs to stderr instead of syslog.
+  -v <level>    Sets verbosity level of logging:
+                    0 = all logging turned off
+                    1 = log only error messages
+                    2 = log error and warning messages
+                    3 = (default) log error, warning and informational messages
+                    4 = log everything, including development debug messages
 ```
