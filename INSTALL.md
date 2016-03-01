@@ -32,7 +32,7 @@ On Mac OS X:
 
 ## Installation of required libraries from sources
 
-#### LibYang
+#### LibYang:
 ```
 # apt-get install libpcre3-dev
 $ git clone https://github.com/CESNET/libyang.git
@@ -42,7 +42,7 @@ $ make
 # make install
 ```
 
-#### Google Protocol Buffers
+#### Google Protocol Buffers:
 ```
 # apt-get install autoconf libtool
 $ git clone https://github.com/google/protobuf.git
@@ -53,7 +53,7 @@ $ make
 # make install
 ```
 
-#### Protobuf-c
+#### Protobuf-c:
 ```
 $ git clone https://github.com/protobuf-c/protobuf-c.git
 $ cd protobuf-c
@@ -62,7 +62,7 @@ $ make
 # make install
 ```
 
-#### libredblack
+#### libredblack:
 ```
 $ git clone https://github.com/sysrepo/libredblack.git
 $ cd libredblack
@@ -71,7 +71,7 @@ $ make
 # make install
 ```
 
-#### CMocka
+#### CMocka:
 ```
 $ git clone git://git.cryptomilk.org/projects/cmocka.git
 $ cd cmocka
@@ -95,7 +95,7 @@ $ cmake ..
 ```
 2 b) Configure build for production use (Release build):
 ```
-$ cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX:PATH=/usr ..
+$ cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX:PATH=/usr -DREPOSITORY_LOC:PATH=/etc/sysrepo ..
 ```
 3) Build:
 ```
@@ -113,3 +113,16 @@ $ make install
 ```
 make doc
 ```
+
+## Useful CMake options:
+#### Changing build mode:
+Sysrepo supports two build modes:
+- Debug (default) - generates the library and executables with the debug information and disables any compiler optimizations of the code
+- Release - generates the library and executables for the production use, without any debug information and with compiler optimization of the code enabled
+To change the build mode use `CMAKE_BUILD_TYPE` variable as follows: `cmake -DCMAKE_BUILD_TYPE=Release ..`
+
+#### Changing install path
+To change the location where the library, headers and any other files are installed (default is `/usr/local`), use CMAKE_INSTALL_PREFIX variable as follows: `cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr ..`
+
+#### Changing repository location
+Sysrepo stores all YANG models and corresponding data files in so named repository location. By default, the repository location is set to `tests/data/` (relatively to the directory from which the cmake command is executed). However for production use, we suggest to use some standard location, such as `/etc/sysrepo/` using `REPOSITORY_LOC` variable as follws: `cmake -DREPOSITORY_LOC:PATH=/etc/sysrepo ..`
