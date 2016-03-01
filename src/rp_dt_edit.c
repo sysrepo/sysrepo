@@ -26,6 +26,8 @@
 #include "sr_common.h"
 #include "access_control.h"
 #include "xpath_processor.h"
+#include <pthread.h>
+
 
 /**
  * @brief structure filled by ::rp_dt_find_deepest_match_wrapper.
@@ -784,8 +786,19 @@ rp_dt_delete_item_wrapper(rp_ctx_t *rp_ctx, rp_session_t *session, const char *x
     return rc;
 }
 
-int
-rp_dt_replay_operations(dm_ctx_t *ctx, dm_session_t *session, dm_sess_op_t *operations, size_t count
+/**
+ * @brief Perform the list of provided operations on the session. Stops
+ * on the first error.
+ * @param [in] ctx
+ * @param [in] session
+ * @param [in] operations
+ * @param [in] count
+ * @param [in] matched_ts - set of model's name where the current modify timestamp
+ * matches the timestamp of the session copy. Operation for this models skipped.
+ * @return Error code (SR_ERR_OK on success)
+ */
+static int
+rp_dt_replay_operations(dm_ctx_t *ctx, dm_session_t *session, const dm_sess_op_t *operations, size_t count
                 #ifdef HAVE_STAT_ST_MTIM
 , struct ly_set *matched_ts
 #endif
@@ -795,7 +808,7 @@ rp_dt_replay_operations(dm_ctx_t *ctx, dm_session_t *session, dm_sess_op_t *oper
     int rc = SR_ERR_OK;
 
     for (size_t i = 0; i < count; i++) {
-        dm_sess_op_t *op = &operations[i];
+        const dm_sess_op_t *op = &operations[i];
         #ifdef HAVE_STAT_ST_MTIM
         bool match = false;
             for (unsigned int m = 0; m < matched_ts->number; m++){
@@ -830,5 +843,82 @@ rp_dt_replay_operations(dm_ctx_t *ctx, dm_session_t *session, dm_sess_op_t *oper
         }
     }
 
+    return rc;
+}
+
+int
+rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, sr_error_info_t **errors, size_t *err_cnt)
+{
+    CHECK_NULL_ARG2(rp_ctx, session);
+    int rc = SR_ERR_OK;
+    dm_commit_context_t *commit_ctx = NULL;
+
+    SR_LOG_DBG_MSG("Commit (1/6): process stared");
+
+    //TODO send validate notifications
+
+    /* YANG validation */
+    rc = dm_validate_session_data_trees(rp_ctx->dm_ctx, session->dm_session, errors, err_cnt);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Data validation failed");
+        return SR_ERR_VALIDATION_FAILED;
+    }
+    SR_LOG_DBG_MSG("Commit (2/6): validation succeeded");
+
+    /* lock context for writing */
+    pthread_mutex_lock(&rp_ctx->commit_lock);
+
+    rc = dm_commit_prepare_context(rp_ctx->dm_ctx, session->dm_session, &commit_ctx);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("commit prepare context failed");
+        pthread_mutex_unlock(&rp_ctx->commit_lock);
+        return rc;
+    } else if (0 == commit_ctx->modif_count) {
+        SR_LOG_DBG_MSG("Commit: Finished - no model modified");
+        dm_free_commit_context(rp_ctx->dm_ctx, commit_ctx);
+        pthread_mutex_unlock(&rp_ctx->commit_lock);
+        return SR_ERR_OK;
+    }
+
+    /* open all files */
+    rc = dm_commit_load_modified_models(rp_ctx->dm_ctx, session->dm_session, commit_ctx);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Loading of modified models failed");
+        goto cleanup;
+    }
+    SR_LOG_DBG_MSG("Commit (3/6): all modified models loaded successfully");
+
+    /* replay operations */
+    rc = rp_dt_replay_operations(rp_ctx->dm_ctx, commit_ctx->session, commit_ctx->operations, commit_ctx->oper_count
+#ifdef HAVE_STAT_ST_MTIM
+            , commit_ctx->up_to_date_models
+#endif
+            );
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Replay of operations failed");
+        goto cleanup;
+    }
+    SR_LOG_DBG_MSG("Commit (4/6): replay of operation succeeded");
+
+    /* validate data trees after merge */
+    rc = dm_validate_session_data_trees(rp_ctx->dm_ctx, commit_ctx->session, errors, err_cnt);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Validation after merging failed");
+        rc = SR_ERR_VALIDATION_FAILED;
+        goto cleanup;
+    }
+    SR_LOG_DBG_MSG("Commit (5/6): merged models validation succeeded");
+
+    rc = dm_commit_write_files(session->dm_session, commit_ctx);
+
+cleanup:
+    dm_free_commit_context(rp_ctx->dm_ctx, commit_ctx);
+
+    if (SR_ERR_OK == rc){
+        /* discard changes in session in next get_data_tree call newly committed content will be loaded */
+        rc = dm_discard_changes(rp_ctx->dm_ctx, session->dm_session);
+        SR_LOG_DBG_MSG("Commit (6/6): finished successfully");
+    }
+    pthread_mutex_unlock(&rp_ctx->commit_lock);
     return rc;
 }
