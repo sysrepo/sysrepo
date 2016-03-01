@@ -32,6 +32,7 @@ macro(ADD_UNIT_TEST_WITH_HELPERS TEST_NAME)
      set(t_files
         ${TEST_NAME}.c
         ${HELPERS_DIR}dt_xpath_helpers.c
+        ${HELPERS_DIR}rp_dt_context_helper.c
         ${HELPERS_DIR}test_module_helper.c
         )
     ADD_UNIT_TEST_WITH_OPTS(${TEST_NAME} "${t_files}" "" 1)
@@ -58,6 +59,6 @@ ADD_UNIT_TEST_WITH_HELPERS(rp_dt_running_test)
 
 ADD_UNIT_TEST_WITH_HELPERS(cl_test)
 ADD_UNIT_TEST(concurr_test)
-ADD_UNIT_TEST_WITH_OPTS(daemon_test daemon_test.c "" 0)
 ADD_UNIT_TEST_WITH_OPTS(perf_test perf_test.c "" 0)
+ADD_UNIT_TEST_WITH_OPTS(daemon_test daemon_test.c "" 0)
 

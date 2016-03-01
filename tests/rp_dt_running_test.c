@@ -31,20 +31,17 @@
 #include "test_data.h"
 #include "test_module_helper.h"
 #include "dt_xpath_helpers.h"
+#include "rp_dt_context_helper.h"
+#include "rp_internal.h"
 
 int setup(void **state){
-   createDataTreeTestModule();
-   int rc = 0;
-   dm_ctx_t *ctx;
-   rc = dm_init(TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx);
-   assert_int_equal(SR_ERR_OK,rc);
-   *state = ctx;
-   return rc;
+   test_rp_ctx_create((rp_ctx_t**)state);
+   return 0;
 }
 
 int teardown(void **state){
-    dm_ctx_t *ctx = *state;
-    dm_cleanup(ctx);
+    rp_ctx_t *ctx = *state;
+    test_rp_ctx_cleanup(ctx);
     return 0;
 }
 
@@ -52,11 +49,10 @@ void
 no_subscription_test(void **state)
 {
     int rc = 0;
-   dm_ctx_t *ctx = *state;
-   dm_session_t *session = NULL;
+   rp_ctx_t *ctx = *state;
+   rp_session_t *session = NULL;
     //no enable subtree has been called all request should return SR_ERR_NOT_FOUND
-   rc = dm_session_start(ctx, SR_DS_RUNNING, &session);
-   assert_int_equal(SR_ERR_OK, rc);
+   test_rp_sesssion_create(ctx, SR_DS_RUNNING, &session);
 
    sr_val_t **values = NULL;
    size_t count = 0;
@@ -76,10 +72,10 @@ no_subscription_test(void **state)
    sr_val_t value = {0,};
    value.type = SR_INT8_T;
    value.data.int8_val = 42;
-   rc = rp_dt_set_item_xpath(ctx, session, "/test-module:main/i8", SR_EDIT_DEFAULT, &value);
+   rc = rp_dt_set_item_xpath(ctx->dm_ctx, session->dm_session, "/test-module:main/i8", SR_EDIT_DEFAULT, &value);
    assert_int_equal(SR_ERR_INVAL_ARG, rc);
 
-   dm_session_stop(ctx, session);
+   test_rp_session_cleanup(ctx, session);
 }
 
 
@@ -88,23 +84,22 @@ enable_subtree_test(void **state)
 {
 
    int rc = 0;
-   dm_ctx_t *ctx = *state;
-   dm_session_t *session = NULL;
+   rp_ctx_t *ctx = *state;
+   rp_session_t *session = NULL;
    const struct lys_module *module = NULL;
    struct lys_node *match = NULL;
    xp_loc_id_t *l = NULL;
 
-   rc = dm_session_start(ctx, SR_DS_RUNNING, &session);
-   assert_int_equal(SR_ERR_OK, rc);
+   test_rp_sesssion_create(ctx, SR_DS_RUNNING, &session);
 
    rc = xp_char_to_loc_id("/ietf-interfaces:interfaces/interface/ietf-ip:ipv4/address", &l);
    assert_int_equal(SR_ERR_OK, rc);
 
-   rc = rp_dt_enable_xpath(ctx, session, l);
+   rc = rp_dt_enable_xpath(ctx->dm_ctx, session->dm_session, l);
    assert_int_equal(SR_ERR_OK, rc);
 
 
-   rc = rp_dt_validate_node_xpath(ctx, session, l, &module, &match);
+   rc = rp_dt_validate_node_xpath(ctx->dm_ctx, session->dm_session, l, &module, &match);
    assert_int_equal(SR_ERR_OK, rc);
 
    /* check address node */
@@ -116,25 +111,25 @@ enable_subtree_test(void **state)
    /* check ietf-interfaces:interfaces */
    assert_true(dm_is_node_enabled(module->data));
 
-   rc = rp_dt_enable_xpath(ctx, session, l);
+   rc = rp_dt_enable_xpath(ctx->dm_ctx, session->dm_session, l);
    assert_int_equal(SR_ERR_OK, rc);
 
    xp_free_loc_id(l);
-   dm_session_stop(ctx, session);
+   test_rp_session_cleanup(ctx, session);
 
    /* enable list keys implicitly */
-   dm_session_start(ctx, SR_DS_RUNNING, &session);
+   test_rp_sesssion_create(ctx, SR_DS_RUNNING, &session);
 
    l = NULL;
    rc = xp_char_to_loc_id("/example-module:container/list/leaf", &l);
    assert_int_equal(SR_ERR_OK, rc);
 
-   rc = rp_dt_enable_xpath(ctx, session, l);
+   rc = rp_dt_enable_xpath(ctx->dm_ctx, session->dm_session, l);
    assert_int_equal(SR_ERR_OK, rc);
 
    module = NULL;
    match = NULL;
-   rc = rp_dt_validate_node_xpath(ctx, session, l, &module, &match);
+   rc = rp_dt_validate_node_xpath(ctx->dm_ctx, session->dm_session, l, &module, &match);
    assert_int_equal(SR_ERR_OK, rc);
 
    /* check leaf node */
@@ -151,38 +146,33 @@ enable_subtree_test(void **state)
    assert_true(dm_is_node_enabled(match->parent->parent));
 
    xp_free_loc_id(l);
-   dm_session_stop(ctx, session);
+   test_rp_session_cleanup(ctx, session);
 }
 
 void
 edit_enabled(void **state)
 {
    int rc = 0;
-   dm_ctx_t *ctx = NULL;
-   rc = dm_init(SR_SCHEMA_SEARCH_DIR, SR_DATA_SEARCH_DIR, &ctx);
-   assert_int_equal(SR_ERR_OK, rc);
-
-   dm_session_t *session = NULL;
+   rp_ctx_t *ctx = *state;
+   rp_session_t *session = NULL;
    xp_loc_id_t *l = NULL;
 
-   rc = dm_session_start(ctx, SR_DS_RUNNING, &session);
-   assert_int_equal(SR_ERR_OK, rc);
+   test_rp_sesssion_create(ctx, SR_DS_RUNNING, &session);
 
    sr_val_t val = {0,};
    val.type = SR_STRING_T;
    val.data.string_val = strdup("abc");
 
-
-   rc = rp_dt_set_item_xpath(ctx, session, "/example-module:container/list[key1='a'][key2='b']/leaf", SR_EDIT_DEFAULT, &val);
+   rc = rp_dt_set_item_xpath(ctx->dm_ctx, session->dm_session, "/example-module:container/list[key1='a'][key2='b']/leaf", SR_EDIT_DEFAULT, &val);
    assert_int_equal(SR_ERR_INVAL_ARG, rc);
 
    rc = xp_char_to_loc_id("/example-module:container/list/leaf", &l);
    assert_int_equal(SR_ERR_OK, rc);
 
-   rc = rp_dt_enable_xpath(ctx, session, l);
+   rc = rp_dt_enable_xpath(ctx->dm_ctx, session->dm_session, l);
    assert_int_equal(SR_ERR_OK, rc);
 
-   rc = rp_dt_set_item_xpath(ctx, session, "/example-module:container/list[key1='a'][key2='b']/leaf", SR_EDIT_DEFAULT, &val);
+   rc = rp_dt_set_item_xpath(ctx->dm_ctx, session->dm_session, "/example-module:container/list[key1='a'][key2='b']/leaf", SR_EDIT_DEFAULT, &val);
    assert_int_equal(SR_ERR_OK, rc);
 
 
@@ -195,18 +185,18 @@ edit_enabled(void **state)
    sr_free_val_content(&val);
    sr_free_val(v);
    xp_free_loc_id(l);
-   dm_session_stop(ctx, session);
-   dm_cleanup(ctx);
+   test_rp_session_cleanup(ctx, session);
 }
 
 int
 main() {
     sr_log_stderr(SR_LL_ERR);
+
     const struct CMUnitTest tests[] = {
-        cmocka_unit_test(no_subscription_test),
-        cmocka_unit_test(enable_subtree_test),
-        cmocka_unit_test(edit_enabled),
+            cmocka_unit_test_setup_teardown(no_subscription_test, setup, teardown),
+            cmocka_unit_test_setup_teardown(enable_subtree_test, setup, teardown),
+            cmocka_unit_test_setup_teardown(edit_enabled, setup, teardown),
     };
 
-    return cmocka_run_group_tests(tests, setup, teardown);
+    return cmocka_run_group_tests(tests, NULL, NULL);
 }

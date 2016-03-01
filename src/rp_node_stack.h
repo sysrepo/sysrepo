@@ -25,12 +25,13 @@
 #ifndef SRC_RP_NODE_STACK_H_
 #define SRC_RP_NODE_STACK_H_
 
+#include <libyang/libyang.h>
 #include "sr_common.h"
 
 typedef struct rp_node_stack_s{
     struct lyd_node *node;
     struct rp_node_stack_s *next;
-}rp_node_stack_t;
+} rp_node_stack_t;
 
 /**
  * @brief Allocates and pushes an item to the stack

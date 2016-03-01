@@ -24,11 +24,12 @@
 #include <pthread.h>
 
 #include "sr_common.h"
+#include "access_control.h"
 #include "connection_manager.h"
 #include "data_manager.h"
+#include "rp_internal.h"
 #include "rp_data_tree.h"
 
-#define RP_THREAD_COUNT 4            /**< Number of threads that RP uses for processing. */
 #define RP_INIT_REQ_QUEUE_SIZE 10    /**< Initial size of the request queue. */
 
 /*
@@ -39,38 +40,6 @@
                                             Enables thread spinning if a thread needs to be woken up again in less than this timeout. */
 #define RP_THREAD_SPIN_MIN 1000        /**< Minimum number of cycles that a thread will spin before going to sleep, if spin is enabled. */
 #define RP_THREAD_SPIN_MAX 1000000     /**< Maximum number of cycles that a thread can spin before going to sleep. */
-
-/**
- * @brief Structure that holds the context of an instance of Request Processor.
- */
-typedef struct rp_ctx_s {
-    cm_ctx_t *cm_ctx;                        /**< Connection Manager context. */
-    dm_ctx_t *dm_ctx;                        /**< Data Manager Context. */
-
-    pthread_t thread_pool[RP_THREAD_COUNT];  /**< Thread pool. */
-    size_t active_threads;                   /**< Number of active (non-sleeping) threads. */
-    struct timespec last_thread_wakeup;      /**< Timestamp of the last thread wake-up event. */
-    size_t thread_spin_limit;                /**< Current limit of thread spinning before going to sleep. */
-    bool stop_requested;                     /**< Stopping of all threads has been requested. */
-
-    sr_cbuff_t *request_queue;               /**< Input request queue. */
-    pthread_mutex_t request_queue_mutex;     /**< Request queue mutex. */
-    pthread_cond_t request_queue_cv;         /**< Request queue condition variable. */
-} rp_ctx_t;
-
-/**
- * @brief Structure that holds Request Processor's per-session context.
- */
-typedef struct rp_session_s {
-    uint32_t id;                         /**< Assigned session id. */
-    const ac_ucred_t *user_credentials;  /**< Credentials of the user who the session belongs to. */
-    sr_datastore_t datastore;            /**< Datastore selected for this session. */
-    uint32_t msg_count;                  /**< Count of unprocessed messages (including waiting in queue). */
-    pthread_mutex_t msg_count_mutex;     /**< Mutex for msg_count counter. */
-    bool stop_requested;                 /**< Session stop has been requested. */
-    dm_session_t *dm_session;            /**< Per session data manager context */
-    rp_dt_get_items_ctx_t get_items_ctx; /**< Context for get_items_iter calls */
-} rp_session_t;
 
 /**
  * @brief Request context (for storing requests inside of the request queue).
@@ -150,7 +119,7 @@ rp_list_schemas_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session,
  * @brief Processes a get_item request.
  */
 static int
-rp_get_item_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
+rp_get_item_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
 {
     int rc = SR_ERR_OK;
 
@@ -168,14 +137,14 @@ rp_get_item_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr_
     sr_val_t *value = NULL;
     char *xpath = msg->request->get_item_req->path;
 
-    /* get value from data manager*/
-    rc = rp_dt_get_value_wrapper(rp_ctx->dm_ctx, session->dm_session, xpath, &value);
-    if (SR_ERR_OK != rc){
+    /* get value from data manager */
+    rc = rp_dt_get_value_wrapper(rp_ctx, session, xpath, &value);
+    if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Get item failed for '%s', session id=%"PRIu32".", xpath, session->id);
     }
 
-    /* copy value to gpb*/
-    if (SR_ERR_OK == rc){
+    /* copy value to gpb */
+    if (SR_ERR_OK == rc) {
         rc = sr_dup_val_t_to_gpb(value, &resp->response->get_item_resp->value);
         if (SR_ERR_OK != rc){
             SR_LOG_ERR("Copying sr_val_t to gpb failed for xpath '%s'", xpath);
@@ -201,7 +170,7 @@ rp_get_item_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr_
  * @brief Processes a get_items request.
  */
 static int
-rp_get_items_req_process(const rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
+rp_get_items_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
 {
     int rc = SR_ERR_OK;
 
@@ -227,11 +196,11 @@ rp_get_items_req_process(const rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg 
     if (msg->request->get_items_req->has_recursive || msg->request->get_items_req->has_offset ||
             msg->request->get_items_req->has_limit){
 
-        rc = rp_dt_get_values_wrapper_with_opts(rp_ctx->dm_ctx, session->dm_session, &session->get_items_ctx, xpath,
+        rc = rp_dt_get_values_wrapper_with_opts(rp_ctx, session, &session->get_items_ctx, xpath,
         recursive, offset, limit, &values, &count);
     }
     else {
-        rc = rp_dt_get_values_wrapper(rp_ctx->dm_ctx, session->dm_session, xpath, &values, &count);
+        rc = rp_dt_get_values_wrapper(rp_ctx, session, xpath, &values, &count);
     }
 
     if (SR_ERR_OK != rc) {
@@ -292,7 +261,7 @@ cleanup:
  * @brief Processes a set_item request.
  */
 static int
-rp_set_item_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
+rp_set_item_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
 {
     Sr__Msg *resp = NULL;
     char *xpath = NULL;
@@ -324,14 +293,12 @@ rp_set_item_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr_
 
         /* set the value in data manager */
         if (SR_ERR_OK == rc) {
-            rc = rp_dt_set_item_wrapper(rp_ctx->dm_ctx, session->dm_session,
-                    xpath, value, msg->request->set_item_req->options);
+            rc = rp_dt_set_item_wrapper(rp_ctx, session, xpath, value, msg->request->set_item_req->options);
         }
     }
     else{
         /* when creating list or presence container value can be NULL */
-        rc = rp_dt_set_item_wrapper(rp_ctx->dm_ctx, session->dm_session,
-                    xpath, NULL, msg->request->set_item_req->options);
+        rc = rp_dt_set_item_wrapper(rp_ctx, session, xpath, NULL, msg->request->set_item_req->options);
     }
 
     if (SR_ERR_OK != rc) {
@@ -356,7 +323,7 @@ rp_set_item_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr_
  * @brief Processes a delete_item request.
  */
 static int
-rp_delete_item_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
+rp_delete_item_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
 {
     Sr__Msg *resp = NULL;
     char *xpath = NULL;
@@ -376,8 +343,7 @@ rp_delete_item_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
     }
 
     /* delete the item in data manager */
-    rc = rp_dt_delete_item_wrapper(rp_ctx->dm_ctx, session->dm_session,
-            xpath, msg->request->delete_item_req->options);
+    rc = rp_dt_delete_item_wrapper(rp_ctx, session, xpath, msg->request->delete_item_req->options);
     if (SR_ERR_OK != rc){
         SR_LOG_ERR("Delete item failed for '%s', session id=%"PRIu32".", xpath, session->id);
     }
@@ -400,7 +366,7 @@ rp_delete_item_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
  * @brief Processes a move_item request.
  */
 static int
-rp_move_item_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
+rp_move_item_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
 {
     Sr__Msg *resp = NULL;
     char *xpath = NULL;
@@ -419,7 +385,8 @@ rp_move_item_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr
         return SR_ERR_NOMEM;
     }
 
-    rc = rp_dt_move_list_wrapper(rp_ctx->dm_ctx, session->dm_session, xpath, sr_move_direction_gpb_to_sr( msg->request->move_item_req->direction));
+    rc = rp_dt_move_list_wrapper(rp_ctx, session, xpath,
+            sr_move_direction_gpb_to_sr(msg->request->move_item_req->direction));
 
     /* set response code */
     resp->response->result = rc;
@@ -590,7 +557,7 @@ rp_session_refresh_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *sessi
  * @brief Dispatches the received message.
  */
 static int
-rp_msg_dispatch(const rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
+rp_msg_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
 {
     int rc = SR_ERR_OK;
 
@@ -664,6 +631,7 @@ rp_session_cleanup(const rp_ctx_t *rp_ctx, rp_session_t *session)
     SR_LOG_DBG("RP session cleanup, session id=%"PRIu32".", session->id);
 
     dm_session_stop(rp_ctx->dm_ctx, session->dm_session);
+    ac_session_cleanup(session->ac_session);
 
     rp_ns_clean(&session->get_items_ctx.stack);
     free(session->get_items_ctx.xpath);
@@ -785,16 +753,23 @@ rp_init(cm_ctx_t *cm_ctx, rp_ctx_t **rp_ctx_p)
     }
     ctx->cm_ctx = cm_ctx;
 
+    /* initialize access control module */
+    rc = ac_init(&ctx->ac_ctx);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Access Control module initialization failed.");
+        goto cleanup;
+    }
+
     /* initialize request queue */
     rc = sr_cbuff_init(RP_INIT_REQ_QUEUE_SIZE, sizeof(rp_request_t), &ctx->request_queue);
-    if (SR_ERR_OK != rc){
+    if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("RP request queue initialization failed.");
         goto cleanup;
     }
 
     /* initialize Data Manager */
-    rc = dm_init(SR_SCHEMA_SEARCH_DIR, SR_DATA_SEARCH_DIR, &ctx->dm_ctx);
-    if (SR_ERR_OK != rc){
+    rc = dm_init(ctx->ac_ctx, SR_SCHEMA_SEARCH_DIR, SR_DATA_SEARCH_DIR, &ctx->dm_ctx);
+    if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Data Manager initialization failed.");
         goto cleanup;
     }
@@ -821,6 +796,7 @@ rp_init(cm_ctx_t *cm_ctx, rp_ctx_t **rp_ctx_p)
 cleanup:
     dm_cleanup(ctx->dm_ctx);
     sr_cbuff_cleanup(ctx->request_queue);
+    ac_cleanup(ctx->ac_ctx);
     free(ctx);
     return rc;
 }
@@ -858,6 +834,7 @@ rp_cleanup(rp_ctx_t *rp_ctx)
         }
         sr_cbuff_cleanup(rp_ctx->request_queue);
         dm_cleanup(rp_ctx->dm_ctx);
+        ac_cleanup(rp_ctx->ac_ctx);
         free(rp_ctx);
     }
 
@@ -886,10 +863,17 @@ rp_session_start(const rp_ctx_t *rp_ctx, const uint32_t session_id,
     session->id = session_id;
     session->datastore = datastore;
 
-    rc = dm_session_start(rp_ctx->dm_ctx, datastore, &session->dm_session);
-    if (SR_ERR_OK  != rc){
+    rc = ac_session_init(rp_ctx->ac_ctx, user_credentials, &session->ac_session);
+    if (SR_ERR_OK  != rc) {
+        SR_LOG_ERR("Access Control session init failed for session id=%"PRIu32".", session_id);
+        rp_session_cleanup(rp_ctx, session);
+        return rc;
+    }
+
+    rc = dm_session_start(rp_ctx->dm_ctx, user_credentials, datastore, &session->dm_session);
+    if (SR_ERR_OK  != rc) {
         SR_LOG_ERR("Init of dm_session failed for session id=%"PRIu32".", session_id);
-        free(session);
+        rp_session_cleanup(rp_ctx, session);
         return rc;
     }
 
