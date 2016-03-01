@@ -32,7 +32,7 @@ On Mac OS X:
 
 ## Installation of required libraries from sources
 
-### libyang
+#### LibYang
 ```
 # apt-get install libpcre3-dev
 $ git clone https://github.com/CESNET/libyang.git
@@ -42,7 +42,7 @@ $ make
 # make install
 ```
 
-### Google Protocol Buffers
+#### Google Protocol Buffers
 ```
 # apt-get install autoconf libtool
 $ git clone https://github.com/google/protobuf.git
@@ -53,7 +53,7 @@ $ make
 # make install
 ```
 
-### protobuf-c
+#### Protobuf-c
 ```
 $ git clone https://github.com/protobuf-c/protobuf-c.git
 $ cd protobuf-c
@@ -62,7 +62,7 @@ $ make
 # make install
 ```
 
-## libredblack
+#### libredblack
 ```
 $ git clone https://github.com/sysrepo/libredblack.git
 $ cd libredblack
@@ -71,7 +71,7 @@ $ make
 # make install
 ```
 
-### CMocka
+#### CMocka
 ```
 $ git clone git://git.cryptomilk.org/projects/cmocka.git
 $ cd cmocka
