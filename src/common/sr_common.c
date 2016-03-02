@@ -1768,6 +1768,7 @@ sr_schemas_gpb_to_sr(const Sr__Schema **gpb_schemas, const size_t schema_cnt, sr
                     goto nomem;
                 }
             }
+            schemas[i].rev_count++; /* use incrementation to be freed correctly in case of error*/
         }
 
         schemas[i].submodules = calloc(gpb_schemas[i]->n_submodules, sizeof(*schemas[i].submodules));
@@ -1785,7 +1786,7 @@ sr_schemas_gpb_to_sr(const Sr__Schema **gpb_schemas, const size_t schema_cnt, sr
             if (NULL == schemas[i].submodules[s].revisions) {
                 goto nomem;
             }
-            for (size_t r = 0; r < gpb_schemas[i]->n_revisions; r++) {
+            for (size_t r = 0; r < gpb_schemas[i]->submodules[s]->n_revisions; r++) {
                 if (NULL != gpb_schemas[i]->submodules[s]->revisions[r]->revision) {
                     schemas[i].submodules[s].revisions[r].revision = strdup(gpb_schemas[i]->submodules[s]->revisions[r]->revision);
                     if (NULL == schemas[i].submodules[s].revisions[r].revision) {
@@ -1804,7 +1805,9 @@ sr_schemas_gpb_to_sr(const Sr__Schema **gpb_schemas, const size_t schema_cnt, sr
                         goto nomem;
                     }
                 }
+                schemas[i].submodules[s].rev_count++;
             }
+            schemas[i].submodule_count++;
         }
 
     }
