@@ -1,0 +1,37 @@
+module module-a {
+  namespace "ns:yang:module-a";
+  prefix moda;
+
+  include sub-a-one {
+    revision-date 2016-02-10;
+  }
+  include sub-a-two;
+
+  organization
+    "organization";
+  contact
+    "contact@example.com";
+  description
+    "example yang module";
+
+  revision 2016-02-10 {
+    description
+      "new leaf and updated submodule";
+  }
+  revision 2016-02-02 {
+    description
+      "init revision.";
+  }
+
+  container cont_a {
+    leaf l_a {
+      type string;
+    }
+    leaf l_new {
+      type string;
+    }
+    uses one;
+    uses two;
+  }
+}
+

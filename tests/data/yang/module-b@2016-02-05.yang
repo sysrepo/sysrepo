@@ -1,0 +1,28 @@
+module module-b {
+  namespace "ns:yang:module-b";
+  prefix modb;
+
+  import module-a {
+     prefix 'a';
+     revision-date "2016-02-02";
+  }
+
+  organization
+    "organization";
+  contact
+    "contact@example.com";
+  description
+    "example yang module";
+
+  revision 2016-02-05 {
+    description
+      "init revision.";
+  }
+
+  container cont_b {
+    leaf l_b {
+      type string;
+    }
+    uses a:one;
+  }
+}

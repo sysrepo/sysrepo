@@ -1,0 +1,37 @@
+submodule sub-a-one {
+  belongs-to module-a {
+    prefix moda;
+  }
+
+  organization
+    "organization";
+  contact
+    "contact@example.com";
+  description
+    "example yang module";
+
+  revision 2016-02-10 {
+    description
+      "add another container";
+  }
+  revision 2016-02-02 {
+    description
+      "Initial revision.";
+  }
+
+  grouping one {
+    container something {
+      leaf an-integer {
+        type int32;
+      }
+      leaf a-string {
+        type string;
+      }
+    }
+    container something2 {
+      leaf sth {
+        type string;
+      }
+    }
+  }
+}

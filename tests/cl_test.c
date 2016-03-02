@@ -148,13 +148,10 @@ cl_list_schemas_test(void **state)
         assert_non_null(schemas[i].module_name);
         assert_non_null(schemas[i].ns);
         assert_non_null(schemas[i].prefix);
-        printf("\nSchema #%zu:\n%s\n%s\n%s\n%s\n%s\n%s", i,
+        printf("\nSchema #%zu:\n%s\n%s\n%s\n", i,
                 schemas[i].module_name,
                 schemas[i].ns,
-                schemas[i].prefix,
-                schemas[i].revision,
-                schemas[i].file_path_yang,
-                schemas[i].file_path_yin);
+                schemas[i].prefix);
     }
     sr_free_schemas(schemas, schema_cnt);
 

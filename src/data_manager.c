@@ -308,7 +308,7 @@ dm_load_data_tree(dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, const struct l
     free(data_filename);
     return rc;
 }
-
+#if 0
 /**
  * @brief Fills the schema_t from lys_module structure
  * @return Error code (SR_ERR_OK on success), SR_ERR_INTERNAL in case of string duplication failure
@@ -366,7 +366,7 @@ cleanup:
     free(schema->file_path_yin);
     return rc;
 }
-
+#endif
 static void
 dm_free_lys_private_data(const struct lys_node *node, void *private)
 {
@@ -785,13 +785,174 @@ dm_get_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, c
     return SR_ERR_OK;
 }
 
+static int
+dm_list_rev_file(dm_ctx_t *dm_ctx, const char *module_name, const char *rev_date, sr_sch_revision_t *rev)
+{
+    CHECK_NULL_ARG3(dm_ctx, module_name, rev);
+    int rc = SR_ERR_OK;
+
+    if (NULL != rev_date){
+        rev->revision = strdup(rev_date);
+        if (NULL == rev->revision) {
+            SR_LOG_ERR_MSG("Duplication of revision string failed");
+            goto cleanup;
+        }
+    }
+
+    rc = sr_get_schema_file_name(dm_ctx->schema_search_dir, module_name, rev_date, true, &rev->file_path_yang);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Get schema file name failed");
+        goto cleanup;
+    }
+    rc = sr_get_schema_file_name(dm_ctx->schema_search_dir, module_name, rev_date, false, &rev->file_path_yin);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Get schema file name failed");
+        goto cleanup;
+    }
+    if (-1 == access(rev->file_path_yang, F_OK)) {
+        free(rev->file_path_yang);
+        rev->file_path_yang = NULL;
+    }
+    if (-1 == access(rev->file_path_yin, F_OK)) {
+        free(rev->file_path_yin);
+        rev->file_path_yin = NULL;
+    }
+    return rc;
+
+cleanup:
+    free(rev->revision);
+    free(rev->file_path_yang);
+    free(rev->file_path_yin);
+    return rc;
+}
+/**
+ * @brief Fills the schema_t structure for one module all its revisions and submodules
+ * @param [in] dm_ctx
+ * @param [in] module
+ * @param [in] schs
+ * @return Error code (SR_ERR_OK on success)
+ */
+static int
+dm_list_module(dm_ctx_t *dm_ctx, const struct lys_module *module, sr_schema_t *schema)
+{
+    CHECK_NULL_ARG3(dm_ctx, module, schema);
+
+    CHECK_NULL_ARG3(module->name, module->prefix, module->ns);
+    int rc = SR_ERR_INTERNAL;
+    const char **submodules = NULL;
+
+    schema->module_name = strdup(module->name);
+    schema->prefix = strdup(module->prefix);
+    schema->ns = strdup(module->ns);
+    if (NULL == schema->module_name || NULL == schema->prefix || NULL == schema->ns) {
+        SR_LOG_ERR_MSG("Duplication of string for schema_t failed");
+        goto cleanup;
+    }
+
+    /* if there is no revision specified, allocate one rev structure
+     * where the file with default rev will be stored */
+    schema->revisions = calloc(0 != module->rev_size ? module->rev_size : 1, sizeof(*schema->revisions));
+    if (NULL == schema->revisions) {
+        SR_LOG_ERR_MSG("Memory allocation failed");
+        rc = SR_ERR_NOMEM;
+        goto cleanup;
+    }
+
+    /* loop through all module revisions */
+    for (uint8_t r = 0; r < module->rev_size; r++) {
+        rc = dm_list_rev_file(dm_ctx, module->name, module->rev[r].date, &schema->revisions[r]);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR("List rev file failed module %s", module->name);
+            schema->rev_count = r;
+            goto cleanup;
+        }
+    }
+    schema->rev_count = module->rev_size;
+
+    /* module without revision */
+    if (0 == schema->rev_count) {
+        rc = dm_list_rev_file(dm_ctx, module->name, NULL, &schema->revisions[0]);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR("List rev file failed module %s", module->name);
+            goto cleanup;
+        }
+        schema->rev_count = 1;
+    }
+    submodules = ly_ctx_get_submodule_names(dm_ctx->ly_ctx, module->name);
+    if (NULL == submodules) {
+        schema->submodule_count = 0;
+        return SR_ERR_OK;
+    }
+    size_t sub_count = 0;
+
+    while (NULL != submodules[sub_count]) sub_count++;
+
+    schema->submodule_count = sub_count;
+
+    schema->submodules = calloc(sub_count, sizeof(*schema->submodules));
+    if (NULL == schema->submodules) {
+        SR_LOG_ERR_MSG("Memory allocation failed");
+        rc = SR_ERR_NOMEM;
+        goto cleanup;
+    }
+
+    for (size_t s = 0; s < sub_count; s++){
+        schema->submodules[s].submodule_name = strdup(submodules[s]);
+        if (NULL == schema->submodules[s].submodule_name){
+            SR_LOG_ERR_MSG("String duplication failed");
+            rc = SR_ERR_INTERNAL;
+            goto cleanup;
+        }
+        const struct lys_submodule *sub = ly_ctx_get_submodule(module, submodules[s], NULL);
+        if (NULL == sub){
+            SR_LOG_ERR_MSG("Submodule not found");
+            rc = SR_ERR_INTERNAL;
+            goto cleanup;
+        }
+
+        schema->submodules[s].revisions = calloc(0 != sub->rev_size ? sub->rev_size : 1, sizeof(*schema->submodules->revisions));
+        if (NULL == schema->submodules[s].revisions) {
+            SR_LOG_ERR_MSG("Memory allocation failed");
+            rc = SR_ERR_NOMEM;
+            goto cleanup;
+        }
+        /* loop through all submodule revisions */
+        for (uint8_t r = 0; r < sub->rev_size; r++) {
+            rc = dm_list_rev_file(dm_ctx, submodules[s], sub->rev[r].date, &schema->submodules[s].revisions[r]);
+            if (SR_ERR_OK != rc) {
+                SR_LOG_ERR("List rev file failed module %s", module->name);
+                schema->rev_count = r;
+                goto cleanup;
+            }
+        }
+        schema->submodules[s].rev_count = sub->rev_size;
+
+        /* submodule without revision */
+        if (0 == schema->submodules[s].rev_count) {
+            rc = dm_list_rev_file(dm_ctx, submodules[s], NULL, &schema->revisions[0]);
+            if (SR_ERR_OK != rc) {
+                SR_LOG_ERR("List rev file failed module %s", submodules[s]);
+                goto cleanup;
+            }
+            schema->submodules[s].rev_count = 1;
+        }
+    }
+    free(submodules);
+    return rc;
+
+cleanup:
+    free(submodules);
+    sr_free_schema(schema);
+    return rc;
+}
+
 int
 dm_list_schemas(dm_ctx_t *dm_ctx, dm_session_t *dm_session, sr_schema_t **schemas, size_t *schema_count)
 {
     CHECK_NULL_ARG4(dm_ctx, dm_session, schemas, schema_count);
-    size_t count = 0;
     size_t i = 0;
     sr_schema_t *sch = NULL;
+    size_t count = 0;
     int rc = SR_ERR_OK;
     const char **names = ly_ctx_get_module_names(dm_ctx->ly_ctx);
     if (NULL == names) {
@@ -813,11 +974,11 @@ dm_list_schemas(dm_ctx_t *dm_ctx, dm_session_t *dm_session, sr_schema_t **schema
     i = 0;
     while (NULL != names[i]) {
         module = ly_ctx_get_module(dm_ctx->ly_ctx, names[i], NULL);
-        rc = dm_fill_schema_t(dm_ctx, dm_session, module, &sch[i]);
+        rc = dm_list_module(dm_ctx, module, &sch[i]);
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR_MSG("Filling sr_schema_t failed");
-            sr_free_schemas(sch, i);
             free(names);
+            sr_free_schemas(sch, i);
             return rc;
         }
         i++;
