@@ -585,8 +585,6 @@ typedef enum sr_move_direction_e {
 /**
  * @brief Sets the value of the leaf, leaf-list or presence container.
  *
- * @note Please note that this API call is experimental in this version of sysrepo and may not work properly yet.
- *
  * With default options it recursively creates all missing nodes (containers and
  * lists including their key leaves) in the path to the specified node (can be
  * turned off with SR_EDIT_NON_RECURSIVE option). If SR_EDIT_STRICT flag is set,
@@ -607,8 +605,6 @@ int sr_set_item(sr_session_ctx_t *session, const char *path, const sr_val_t *val
 /**
  * @brief Deletes the nodes under the specified path.
  *
- * @note Please note that this API call is experimental in this version of sysrepo and may not work properly yet.
- *
  * To delete non-empty lists or containers SR_EDIT_NON_RECURSIVE flag must not be set.
  * If SR_EDIT_STRICT flag is set the specified node must must exist in the datastore.
  * If the path includes the list keys, the specified list instance is deleted.
@@ -626,8 +622,6 @@ int sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_op
 
 /**
  * @brief Move the instance of an ordered list in specified direction.
- *
- * @note Please note that this API call is experimental in this version of sysrepo and may not work properly yet.
  *
  * @note To reorder leaf-list values, you need to delete the leaf-list and
  * re-create it with requested order again.
@@ -648,8 +642,6 @@ int sr_move_item(sr_session_ctx_t *session, const char *path, const sr_move_dire
  * @brief Perform the validation of changes made in current session, but do not
  * commit nor discard them.
  *
- * @note Please note that this API call is experimental in this version of sysrepo and may not work properly yet.
- *
  * Provides only YANG validation, commit verify subscribers won't be notified in this case.
  *
  * @see Use ::sr_get_last_errors to retrieve error information if the validation
@@ -663,8 +655,6 @@ int sr_validate(sr_session_ctx_t *session);
 
 /**
  * @brief Apply changes made in current session.
- *
- * @note Please note that this API call is experimental in this version of sysrepo and may not work properly yet.
  *
  * @note Note that in case that you are committing to the running datstore, you also
  * need to copy the config to startup to make changes permanent after restart.
@@ -681,13 +671,86 @@ int sr_commit(sr_session_ctx_t *session);
 /**
  * @brief Discard non-committed changes made in current session.
  *
+ * @param[in] session Session context acquired with ::sr_session_start call.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_discard_changes(sr_session_ctx_t *session);
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Locking API - !!! EXPERIMENTAL !!!
+////////////////////////////////////////////////////////////////////////////////
+
+/**
+ * @brief Locks the datastore which the session is tied to.
+ *
+ * All data models within the datastore will be locked for writing until
+ * ::sr_unlock_datastore is called or until the session is stopped or terminated
+ * for any reason.
+ *
+ * The lock operation will not be allowed if the user does not have sufficient
+ * permissions for writing into each of the data models in the datastore.
+ *
+ * @note Please note that this API call is experimental in this version of sysrepo and may not work properly yet.
+ *
+ * @param[in] session Session context acquired with ::sr_session_start call.
+ *
+ * @return Error code (SR_ERR_OK on success, SR_ERR_UNAUTHORIZED if the user
+ * does not have sufficient permissions to lock any of the models in the datastore).
+ */
+int sr_lock_datastore(sr_session_ctx_t *session);
+
+/**
+ * @brief Unlocks the datastore which the session is tied to.
+ *
+ * All data models within the datastore will be unlocked if they were locked
+ * by this session.
+ *
  * @note Please note that this API call is experimental in this version of sysrepo and may not work properly yet.
  *
  * @param[in] session Session context acquired with ::sr_session_start call.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int sr_discard_changes(sr_session_ctx_t *session);
+int sr_unlock_datastore(sr_session_ctx_t *session);
+
+/**
+ * @brief Locks specified data model within the datastore which the session
+ * is tied to.
+ *
+ * Specified data model will be locked for writing in the datastore until
+ * ::sr_unlock_datastore is called or until the session is stopped or terminated
+ * for any reason.
+ *
+ * The lock operation will not be allowed if the user does not have sufficient
+ * permissions for writing into the specified data model.
+ *
+ * @note Please note that this API call is experimental in this version of sysrepo and may not work properly yet.
+ *
+ * @param[in] session Session context acquired with ::sr_session_start call.
+ * @param[in] model_name Name of the model to be locked.
+ *
+ * @return Error code (SR_ERR_OK on success, SR_ERR_UNAUTHORIZED if the user
+ * does not have sufficient permissions to lock specified data model).
+ */
+int sr_lock_model(sr_session_ctx_t *session, const char *model_name);
+
+/**
+ * @brief Unlocks specified data model within the datastore which the session
+ * is tied to.
+ *
+ * Specified data model will be unlocked if was locked in the datastore
+ * by this session.
+ *
+ * @note Please note that this API call is experimental in this version of sysrepo and may not work properly yet.
+ *
+ * @param[in] session Session context acquired with ::sr_session_start call.
+ * @param[in] model_name Name of the model to be unlocked.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_unlock_model(sr_session_ctx_t *session, const char *model_name);
 
 
 ////////////////////////////////////////////////////////////////////////////////

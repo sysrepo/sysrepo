@@ -1599,6 +1599,30 @@ cleanup:
 }
 
 int
+sr_lock_datastore(sr_session_ctx_t *session)
+{
+    return SR_ERR_UNSUPPORTED;
+}
+
+int
+sr_unlock_datastore(sr_session_ctx_t *session)
+{
+    return SR_ERR_UNSUPPORTED;
+}
+
+int
+sr_lock_model(sr_session_ctx_t *session, const char *model_name)
+{
+    return SR_ERR_UNSUPPORTED;
+}
+
+int
+sr_unlock_model(sr_session_ctx_t *session, const char *model_name)
+{
+    return SR_ERR_UNSUPPORTED;
+}
+
+int
 sr_get_last_error(sr_session_ctx_t *session, const sr_error_info_t **error_info)
 {
     int rc = SR_ERR_OK;
