@@ -105,7 +105,7 @@ dm_list_schema_test(void **state)
         for (size_t s = 0; s < schemas[i].submodule_count; s++) {
             printf("\t%s\n", schemas[i].submodules[s].submodule_name);
             for (size_t r = 0; r < schemas[i].submodules[s].rev_count; r++) {
-               printf("\t\t%s\n\t%s\n\t%s\n\n",
+               printf("\t\t%s\n\t\t%s\n\t\t%s\n\n",
                        schemas[i].submodules[s].revisions[r].revision,
                        schemas[i].submodules[s].revisions[r].file_path_yang,
                        schemas[i].submodules[s].revisions[r].file_path_yin);
