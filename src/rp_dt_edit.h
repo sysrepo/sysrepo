@@ -96,7 +96,7 @@ int rp_dt_delete_item_wrapper(rp_ctx_t *rp_ctx, rp_session_t *session, const cha
 
 /**
  * @brief Saves the changes made in the session to the file system. To make sure that only one commit
- * can be in progress at the same time commit_lock in dm_ctx is used. To solve potential
+ * can be in progress at the same time commit_lock in rp_ctx is used. To solve potential
  * conflict with sysrepo library, each individual data file is locked. In case of
  * failure to lock data file, the commit process is stopped and SR_ERR_COMMIT_FAILED is returned.
  * The commit process can be divided into 5 steps:

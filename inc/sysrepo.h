@@ -422,23 +422,23 @@ typedef struct sr_sch_revision_s {
  */
 typedef struct sr_sch_submodule_s {
     char *submodule_name;          /**< Submodule name */
-    sr_sch_revision_t *revisions;  /**< Revisions of the submodule*/
-    size_t rev_count;              /**< Number of sumodule revisions*/
+    sr_sch_revision_t *revisions;  /**< Revisions of the submodule */
+    size_t rev_count;              /**< Number of sumodule revisions */
 } sr_sch_submodule_t;
 
 /**
  * @brief Structure that contains information about a module supported by sysrepo.
  */
 typedef struct sr_schema_s {
-    char *module_name;      /**< Name of the module. */
-    char *ns;               /**< Namespace of the module used in @ref xp_page "XPath". */
-    char *prefix;           /**< Prefix of the module. */
+    char *module_name;               /**< Name of the module. */
+    char *ns;                        /**< Namespace of the module used in @ref xp_page "XPath". */
+    char *prefix;                    /**< Prefix of the module. */
 
     sr_sch_revision_t *revisions;    /**< Revisions of the module */
-    size_t rev_count;
+    size_t rev_count;                /**< Number of module's revisions */
 
-    sr_sch_submodule_t *submodules;   /**< Array of submodules */
-    size_t submodule_count;
+    sr_sch_submodule_t *submodules;  /**< Array of submodules */
+    size_t submodule_count;          /**< Number of module's submodules */
 } sr_schema_t;
 
 /**

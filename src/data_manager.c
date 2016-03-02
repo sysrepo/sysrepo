@@ -308,65 +308,7 @@ dm_load_data_tree(dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, const struct l
     free(data_filename);
     return rc;
 }
-#if 0
-/**
- * @brief Fills the schema_t from lys_module structure
- * @return Error code (SR_ERR_OK on success), SR_ERR_INTERNAL in case of string duplication failure
- */
-static int
-dm_fill_schema_t(dm_ctx_t *dm_ctx, dm_session_t *session, const struct lys_module *module, sr_schema_t *schema)
-{
-    CHECK_NULL_ARG2(module, schema);
-    CHECK_NULL_ARG3(module->name, module->prefix, module->ns);
-    int rc = SR_ERR_INTERNAL;
 
-    schema->module_name = strdup(module->name);
-    schema->prefix = strdup(module->prefix);
-    schema->ns = strdup(module->ns);
-    if (NULL == schema->module_name || NULL == schema->prefix || NULL == schema->ns) {
-        SR_LOG_ERR_MSG("Duplication of string for schema_t failed");
-        goto cleanup;
-    }
-
-    /* revision is optional*/
-    if (NULL != module->rev) {
-        schema->revision = strdup(module->rev[0].date);
-        if (NULL == schema->revision) {
-            SR_LOG_ERR_MSG("Duplication of revision string failed");
-            goto cleanup;
-        }
-    }
-
-    rc = sr_get_schema_file_name(dm_ctx->schema_search_dir, module->name, true, &schema->file_path_yang);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Get schema file name failed");
-        goto cleanup;
-    }
-    rc = sr_get_schema_file_name(dm_ctx->schema_search_dir, module->name, false, &schema->file_path_yin);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Get schema file name failed");
-        goto cleanup;
-    }
-    if (-1 == access(schema->file_path_yang, F_OK)) {
-        free(schema->file_path_yang);
-        schema->file_path_yang = NULL;
-    }
-    if (-1 == access(schema->file_path_yin, F_OK)) {
-        free(schema->file_path_yin);
-        schema->file_path_yin = NULL;
-    }
-    return rc;
-
-cleanup:
-    free(schema->module_name);
-    free(schema->prefix);
-    free(schema->ns);
-    free(schema->revision);
-    free(schema->file_path_yang);
-    free(schema->file_path_yin);
-    return rc;
-}
-#endif
 static void
 dm_free_lys_private_data(const struct lys_node *node, void *private)
 {
