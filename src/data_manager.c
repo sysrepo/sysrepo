@@ -405,10 +405,10 @@ dm_free_sess_operations(dm_sess_op_t *ops, size_t count)
 static dm_node_state_t
 dm_get_node_state(struct lys_node *node)
 {
-    if (NULL == node || NULL == node->private) {
+    if (NULL == node || NULL == node->priv) {
         return DM_NODE_DISABLED;
     }
-    dm_node_info_t *n_info = (dm_node_info_t *) node->private;
+    dm_node_info_t *n_info = (dm_node_info_t *) node->priv;
 
     if (NULL == n_info) {
         return DM_NODE_DISABLED;
@@ -584,14 +584,14 @@ int
 dm_set_node_state(struct lys_node *node, dm_node_state_t state)
 {
     CHECK_NULL_ARG(node);
-    if (NULL == node->private) {
-        node->private = calloc(1, sizeof(dm_node_info_t));
-        if (NULL == node->private) {
+    if (NULL == node->priv) {
+        node->priv = calloc(1, sizeof(dm_node_info_t));
+        if (NULL == node->priv) {
             SR_LOG_ERR_MSG("Memory allocation failed");
             return SR_ERR_NOMEM;
         }
     }
-    ((dm_node_info_t *) node->private)->state = state;
+    ((dm_node_info_t *) node->priv)->state = state;
     return SR_ERR_OK;
 }
 
