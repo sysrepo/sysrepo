@@ -554,6 +554,78 @@ rp_session_refresh_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *sessi
 }
 
 /**
+ * @brief Processes a lock request.
+ */
+static int
+rp_lock_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
+{
+    Sr__Msg *resp = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->lock_req);
+
+    SR_LOG_DBG_MSG("Processing lock request.");
+
+    /* allocate the response */
+    rc = sr_pb_resp_alloc(SR__OPERATION__LOCK, session->id, &resp);
+    if (SR_ERR_OK != rc){
+        SR_LOG_ERR_MSG("Allocation of lock response failed.");
+        return SR_ERR_NOMEM;
+    }
+
+    // TODO: implement lock in DM
+
+    /* set response code */
+    resp->response->result = rc;
+
+    rc = rp_resp_fill_errors(resp, session->dm_session);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Copying errors to gpb failed");
+    }
+
+    /* send the response */
+    rc = cm_msg_send(rp_ctx->cm_ctx, resp);
+
+    return rc;
+}
+
+/**
+ * @brief Processes an unlock request.
+ */
+static int
+rp_unlock_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
+{
+    Sr__Msg *resp = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->unlock_req);
+
+    SR_LOG_DBG_MSG("Processing unlock request.");
+
+    /* allocate the response */
+    rc = sr_pb_resp_alloc(SR__OPERATION__UNLOCK, session->id, &resp);
+    if (SR_ERR_OK != rc){
+        SR_LOG_ERR_MSG("Allocation of unlock response failed.");
+        return SR_ERR_NOMEM;
+    }
+
+    // TODO: implement unlock in DM
+
+    /* set response code */
+    resp->response->result = rc;
+
+    rc = rp_resp_fill_errors(resp, session->dm_session);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Copying errors to gpb failed");
+    }
+
+    /* send the response */
+    rc = cm_msg_send(rp_ctx->cm_ctx, resp);
+
+    return rc;
+}
+
+/**
  * @brief Dispatches the received message.
  */
 static int
@@ -596,6 +668,12 @@ rp_msg_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
                 break;
             case SR__OPERATION__SESSION_REFRESH:
                 rc = rp_session_refresh_req_process(rp_ctx, session, msg);
+                break;
+            case SR__OPERATION__LOCK:
+                rc = rp_lock_req_process(rp_ctx, session, msg);
+                break;
+            case SR__OPERATION__UNLOCK:
+                rc = rp_unlock_req_process(rp_ctx, session, msg);
                 break;
             default:
                 SR_LOG_ERR("Unsupported request received (session id=%"PRIu32", operation=%d).",

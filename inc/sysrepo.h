@@ -716,41 +716,41 @@ int sr_lock_datastore(sr_session_ctx_t *session);
 int sr_unlock_datastore(sr_session_ctx_t *session);
 
 /**
- * @brief Locks specified data model within the datastore which the session
+ * @brief Locks specified data module within the datastore which the session
  * is tied to.
  *
- * Specified data model will be locked for writing in the datastore until
- * ::sr_unlock_datastore is called or until the session is stopped or terminated
+ * Specified data module will be locked for writing in the datastore until
+ * ::sr_unlock_module is called or until the session is stopped or terminated
  * for any reason.
  *
  * The lock operation will not be allowed if the user does not have sufficient
- * permissions for writing into the specified data model.
+ * permissions for writing into the specified data module.
  *
  * @note Please note that this API call is experimental in this version of sysrepo and may not work properly yet.
  *
  * @param[in] session Session context acquired with ::sr_session_start call.
- * @param[in] model_name Name of the model to be locked.
+ * @param[in] module_name Name of the module to be locked.
  *
  * @return Error code (SR_ERR_OK on success, SR_ERR_UNAUTHORIZED if the user
- * does not have sufficient permissions to lock specified data model).
+ * does not have sufficient permissions to lock specified data module).
  */
-int sr_lock_model(sr_session_ctx_t *session, const char *model_name);
+int sr_lock_module(sr_session_ctx_t *session, const char *module_name);
 
 /**
- * @brief Unlocks specified data model within the datastore which the session
+ * @brief Unlocks specified data module within the datastore which the session
  * is tied to.
  *
- * Specified data model will be unlocked if was locked in the datastore
+ * Specified data module will be unlocked if was locked in the datastore
  * by this session.
  *
  * @note Please note that this API call is experimental in this version of sysrepo and may not work properly yet.
  *
  * @param[in] session Session context acquired with ::sr_session_start call.
- * @param[in] model_name Name of the model to be unlocked.
+ * @param[in] module_name Name of the module to be unlocked.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int sr_unlock_model(sr_session_ctx_t *session, const char *model_name);
+int sr_unlock_module(sr_session_ctx_t *session, const char *module_name);
 
 
 ////////////////////////////////////////////////////////////////////////////////

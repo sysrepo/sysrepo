@@ -1601,25 +1601,111 @@ cleanup:
 int
 sr_lock_datastore(sr_session_ctx_t *session)
 {
-    return SR_ERR_UNSUPPORTED;
+    return sr_lock_module(session, NULL);
 }
 
 int
 sr_unlock_datastore(sr_session_ctx_t *session)
 {
-    return SR_ERR_UNSUPPORTED;
+    return sr_unlock_module(session, NULL);
 }
 
 int
-sr_lock_model(sr_session_ctx_t *session, const char *model_name)
+sr_lock_module(sr_session_ctx_t *session, const char *module_name)
 {
-    return SR_ERR_UNSUPPORTED;
+    Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG2(session, session->conn_ctx);
+
+    cl_session_clear_errors(session);
+
+    /* prepare lock message */
+    rc = sr_pb_req_alloc(SR__OPERATION__LOCK, session->id, &msg_req);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Cannot allocate lock message.");
+        goto cleanup;
+    }
+
+    /* fill-in model name (if provided) */
+    if (NULL != module_name) {
+        msg_req->request->lock_req->module_name = strdup(module_name);
+        if (NULL == msg_req->request->lock_req->module_name) {
+            SR_LOG_ERR_MSG("Could not duplicate module name.");
+            rc = SR_ERR_NOMEM;
+            goto cleanup;
+        }
+    }
+
+    /* send the request and receive the response */
+    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__LOCK);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Error by processing of lock request.");
+        goto cleanup;
+    }
+
+    sr__msg__free_unpacked(msg_req, NULL);
+    sr__msg__free_unpacked(msg_resp, NULL);
+
+    return cl_session_return(session, SR_ERR_OK);
+
+cleanup:
+    if (NULL != msg_req) {
+        sr__msg__free_unpacked(msg_req, NULL);
+    }
+    if (NULL != msg_resp) {
+        sr__msg__free_unpacked(msg_resp, NULL);
+    }
+    return cl_session_return(session, rc);
 }
 
 int
-sr_unlock_model(sr_session_ctx_t *session, const char *model_name)
+sr_unlock_module(sr_session_ctx_t *session, const char *module_name)
 {
-    return SR_ERR_UNSUPPORTED;
+    Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG2(session, session->conn_ctx);
+
+    cl_session_clear_errors(session);
+
+    /* prepare lock message */
+    rc = sr_pb_req_alloc(SR__OPERATION__UNLOCK, session->id, &msg_req);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Cannot allocate unlock message.");
+        goto cleanup;
+    }
+
+    /* fill-in model name (if provided) */
+    if (NULL != module_name) {
+        msg_req->request->unlock_req->module_name = strdup(module_name);
+        if (NULL == msg_req->request->unlock_req->module_name) {
+            SR_LOG_ERR_MSG("Could not duplicate module name.");
+            rc = SR_ERR_NOMEM;
+            goto cleanup;
+        }
+    }
+
+    /* send the request and receive the response */
+    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__UNLOCK);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Error by processing of unlock request.");
+        goto cleanup;
+    }
+
+    sr__msg__free_unpacked(msg_req, NULL);
+    sr__msg__free_unpacked(msg_resp, NULL);
+
+    return cl_session_return(session, SR_ERR_OK);
+
+cleanup:
+    if (NULL != msg_req) {
+        sr__msg__free_unpacked(msg_req, NULL);
+    }
+    if (NULL != msg_resp) {
+        sr__msg__free_unpacked(msg_resp, NULL);
+    }
+    return cl_session_return(session, rc);
 }
 
 int

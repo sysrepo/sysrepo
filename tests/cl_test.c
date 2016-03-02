@@ -708,6 +708,48 @@ cl_discard_changes_test(void **state)
 }
 
 static void
+cl_locking_test(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+
+    sr_session_ctx_t *sessionA = NULL, *sessionB = NULL;
+    int rc = 0;
+
+    /* start 2 sessions */
+    rc = sr_session_start(conn, SR_DS_STARTUP, &sessionA);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_session_start(conn, SR_DS_STARTUP, &sessionB);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* lock datastore in session A */
+    rc = sr_lock_datastore(sessionA);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    // TODO: try locking in session B and expect error
+
+    /* unlock the datastore */
+    rc = sr_unlock_datastore(sessionA);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* lock a module in session A */
+    rc = sr_lock_module(sessionA, "example-module");
+    assert_int_equal(rc, SR_ERR_OK);
+
+    // TODO: try locking module and whole ds in session B and expect error
+
+    /* unlock the module */
+    rc = sr_unlock_module(sessionA, "example-module");
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* stop the sessions */
+    rc = sr_session_stop(sessionA);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_session_stop(sessionB);
+    assert_int_equal(rc, SR_ERR_OK);
+}
+
+static void
 cl_get_error_test(void **state)
 {
     sr_conn_ctx_t *conn = *state;
@@ -767,6 +809,7 @@ main()
             cmocka_unit_test_setup_teardown(cl_validate_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_commit_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_discard_changes_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_locking_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_get_error_test, sysrepo_setup, sysrepo_teardown),
     };
 

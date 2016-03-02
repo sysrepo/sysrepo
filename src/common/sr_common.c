@@ -71,6 +71,8 @@ sr_operation_name(Sr__Operation operation)
         return "session-start";
     case SR__OPERATION__SESSION_STOP:
         return "session-stop";
+    case SR__OPERATION__SESSION_REFRESH:
+        return "session-refresh";
     case SR__OPERATION__LIST_SCHEMAS:
         return "list-schemas";
     case SR__OPERATION__GET_ITEM:
@@ -89,8 +91,10 @@ sr_operation_name(Sr__Operation operation)
         return "commit";
     case SR__OPERATION__DISCARD_CHANGES:
         return "discard-changes";
-    case SR__OPERATION__SESSION_REFRESH:
-        return "session-refresh";
+    case SR__OPERATION__LOCK:
+        return "lock";
+    case SR__OPERATION__UNLOCK:
+        return "unlock";
     default:
         return "unknown";
     }
@@ -670,6 +674,22 @@ sr_pb_req_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__Ms
             sr__discard_changes_req__init((Sr__DiscardChangesReq*)sub_msg);
             req->discard_changes_req = (Sr__DiscardChangesReq*)sub_msg;
             break;
+        case SR__OPERATION__LOCK:
+            sub_msg = calloc(1, sizeof(Sr__LockReq));
+            if (NULL == sub_msg) {
+                goto nomem;
+            }
+            sr__lock_req__init((Sr__LockReq*)sub_msg);
+            req->lock_req = (Sr__LockReq*)sub_msg;
+            break;
+        case SR__OPERATION__UNLOCK:
+            sub_msg = calloc(1, sizeof(Sr__UnlockReq));
+            if (NULL == sub_msg) {
+                goto nomem;
+            }
+            sr__unlock_req__init((Sr__UnlockReq*)sub_msg);
+            req->unlock_req = (Sr__UnlockReq*)sub_msg;
+            break;
         default:
             break;
     }
@@ -810,6 +830,22 @@ sr_pb_resp_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__M
             sr__discard_changes_resp__init((Sr__DiscardChangesResp*)sub_msg);
             resp->discard_changes_resp = (Sr__DiscardChangesResp*)sub_msg;
             break;
+        case SR__OPERATION__LOCK:
+            sub_msg = calloc(1, sizeof(Sr__LockResp));
+            if (NULL == sub_msg) {
+                goto nomem;
+            }
+            sr__lock_resp__init((Sr__LockResp*)sub_msg);
+            resp->lock_resp = (Sr__LockResp*)sub_msg;
+            break;
+        case SR__OPERATION__UNLOCK:
+            sub_msg = calloc(1, sizeof(Sr__UnlockResp));
+            if (NULL == sub_msg) {
+                goto nomem;
+            }
+            sr__unlock_resp__init((Sr__UnlockResp*)sub_msg);
+            resp->unlock_resp = (Sr__UnlockResp*)sub_msg;
+            break;
         default:
             break;
     }
@@ -884,6 +920,14 @@ sr_pb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__Op
                 if (NULL == msg->request->discard_changes_req)
                     return SR_ERR_MALFORMED_MSG;
                 break;
+            case SR__OPERATION__LOCK:
+                if (NULL == msg->request->lock_req)
+                    return SR_ERR_MALFORMED_MSG;
+                break;
+            case SR__OPERATION__UNLOCK:
+                if (NULL == msg->request->unlock_req)
+                    return SR_ERR_MALFORMED_MSG;
+                break;
             default:
                 return SR_ERR_MALFORMED_MSG;
         }
@@ -939,6 +983,14 @@ sr_pb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__Op
                 break;
             case SR__OPERATION__DISCARD_CHANGES:
                 if (NULL == msg->response->discard_changes_resp)
+                    return SR_ERR_MALFORMED_MSG;
+                break;
+            case SR__OPERATION__LOCK:
+                if (NULL == msg->response->lock_resp)
+                    return SR_ERR_MALFORMED_MSG;
+                break;
+            case SR__OPERATION__UNLOCK:
+                if (NULL == msg->response->unlock_resp)
                     return SR_ERR_MALFORMED_MSG;
                 break;
             default:

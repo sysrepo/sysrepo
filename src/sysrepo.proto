@@ -311,6 +311,40 @@ message DiscardChangesReq {
 message DiscardChangesResp {
 }
 
+
+////////////////////////////////////////////////////////////////////////////////
+// Locking API - !!! EXPERIMENTAL !!!
+////////////////////////////////////////////////////////////////////////////////
+
+/**
+ * @brief Locks specified data model or the datastore which the session is tied to.
+ * Sent by sr_lock_datastore and sr_lock_model API calls.
+ */
+message LockReq {
+  optional string module_name = 1;  /**< If module name is not set, LockReq locks whole datastore. */
+}
+
+/**
+ * @brief Response to sr_lock_datastore or sr_lock_model request.
+ */
+message LockResp {
+}
+
+/**
+ * @brief Unlocks specified data model or the datastore which the session is tied to.
+ * Sent by sr_unlock_datastore and sr_unlock_model API calls.
+ */
+message UnlockReq {
+  optional string module_name = 1;  /**< If module name is not set, UnlockReq unlocks whole datastore. */
+}
+
+/**
+ * @brief Response to sr_lock_datastore or sr_lock_model request.
+ */
+message UnlockResp {
+}
+
+
 ////////////////////////////////////////////////////////////////////////////////
 // Sysrepo Engine API umbrella messages
 ////////////////////////////////////////////////////////////////////////////////
@@ -334,6 +368,9 @@ enum Operation {
   VALIDATE = 40;
   COMMIT = 41;
   DISCARD_CHANGES = 42;
+
+  LOCK = 50;
+  UNLOCK = 51;
 }
 
 /**
@@ -357,6 +394,9 @@ message Req {
   optional ValidateReq validate_req = 40;
   optional CommitReq commit_req = 41;
   optional DiscardChangesReq discard_changes_req = 42;
+
+  optional LockReq lock_req = 50;
+  optional UnlockReq unlock_req = 51;
 }
 
 /**
@@ -382,6 +422,9 @@ message Resp {
   optional ValidateResp validate_resp = 40;
   optional CommitResp commit_resp = 41;
   optional DiscardChangesResp discard_changes_resp = 42;
+
+  optional LockResp lock_resp = 50;
+  optional UnlockResp unlock_resp = 51;
 }
 
 /**
