@@ -26,6 +26,7 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <inttypes.h>
+#include <fcntl.h>
 
 #include "sr_common.h"
 #include "data_manager.h"
@@ -51,6 +52,7 @@ const char *const sr_errlist[] = {
         "The item already exists",              /* SR_ERR_DATA_EXISTS */
         "The item expected to exist is missing",/* SR_ERR_DATA_MISSING */
         "Operation not authorized",             /* SR_ERR_UNAUTHORIZED */
+        "Requested resource is already locked", /* SR_ERR_LOCKED */
 };
 
 const char *
@@ -71,8 +73,12 @@ sr_operation_name(Sr__Operation operation)
         return "session-start";
     case SR__OPERATION__SESSION_STOP:
         return "session-stop";
+    case SR__OPERATION__SESSION_REFRESH:
+        return "session-refresh";
     case SR__OPERATION__LIST_SCHEMAS:
         return "list-schemas";
+    case SR__OPERATION__GET_SCHEMA:
+        return "get-schema";
     case SR__OPERATION__GET_ITEM:
         return "get-item";
     case SR__OPERATION__GET_ITEMS:
@@ -89,8 +95,10 @@ sr_operation_name(Sr__Operation operation)
         return "commit";
     case SR__OPERATION__DISCARD_CHANGES:
         return "discard-changes";
-    case SR__OPERATION__SESSION_REFRESH:
-        return "session-refresh";
+    case SR__OPERATION__LOCK:
+        return "lock";
+    case SR__OPERATION__UNLOCK:
+        return "unlock";
     default:
         return "unknown";
     }
@@ -606,6 +614,14 @@ sr_pb_req_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__Ms
             sr__list_schemas_req__init((Sr__ListSchemasReq*)sub_msg);
             req->list_schemas_req = (Sr__ListSchemasReq*)sub_msg;
             break;
+        case SR__OPERATION__GET_SCHEMA:
+            sub_msg = calloc(1, sizeof(Sr__GetSchemaReq));
+            if (NULL == sub_msg) {
+                goto nomem;
+            }
+            sr__get_schema_req__init((Sr__GetSchemaReq*)sub_msg);
+            req->get_schema_req = (Sr__GetSchemaReq*)sub_msg;
+            break;
         case SR__OPERATION__GET_ITEM:
             sub_msg = calloc(1, sizeof(Sr__GetItemReq));
             if (NULL == sub_msg) {
@@ -669,6 +685,22 @@ sr_pb_req_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__Ms
             }
             sr__discard_changes_req__init((Sr__DiscardChangesReq*)sub_msg);
             req->discard_changes_req = (Sr__DiscardChangesReq*)sub_msg;
+            break;
+        case SR__OPERATION__LOCK:
+            sub_msg = calloc(1, sizeof(Sr__LockReq));
+            if (NULL == sub_msg) {
+                goto nomem;
+            }
+            sr__lock_req__init((Sr__LockReq*)sub_msg);
+            req->lock_req = (Sr__LockReq*)sub_msg;
+            break;
+        case SR__OPERATION__UNLOCK:
+            sub_msg = calloc(1, sizeof(Sr__UnlockReq));
+            if (NULL == sub_msg) {
+                goto nomem;
+            }
+            sr__unlock_req__init((Sr__UnlockReq*)sub_msg);
+            req->unlock_req = (Sr__UnlockReq*)sub_msg;
             break;
         default:
             break;
@@ -746,6 +778,14 @@ sr_pb_resp_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__M
             sr__list_schemas_resp__init((Sr__ListSchemasResp*)sub_msg);
             resp->list_schemas_resp = (Sr__ListSchemasResp*)sub_msg;
             break;
+        case SR__OPERATION__GET_SCHEMA:
+            sub_msg = calloc(1, sizeof(Sr__GetSchemaResp));
+            if (NULL == sub_msg) {
+                goto nomem;
+            }
+            sr__get_schema_resp__init((Sr__GetSchemaResp*)sub_msg);
+            resp->get_schema_resp = (Sr__GetSchemaResp*)sub_msg;
+            break;
         case SR__OPERATION__GET_ITEM:
             sub_msg = calloc(1, sizeof(Sr__GetItemResp));
             if (NULL == sub_msg) {
@@ -810,6 +850,22 @@ sr_pb_resp_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__M
             sr__discard_changes_resp__init((Sr__DiscardChangesResp*)sub_msg);
             resp->discard_changes_resp = (Sr__DiscardChangesResp*)sub_msg;
             break;
+        case SR__OPERATION__LOCK:
+            sub_msg = calloc(1, sizeof(Sr__LockResp));
+            if (NULL == sub_msg) {
+                goto nomem;
+            }
+            sr__lock_resp__init((Sr__LockResp*)sub_msg);
+            resp->lock_resp = (Sr__LockResp*)sub_msg;
+            break;
+        case SR__OPERATION__UNLOCK:
+            sub_msg = calloc(1, sizeof(Sr__UnlockResp));
+            if (NULL == sub_msg) {
+                goto nomem;
+            }
+            sr__unlock_resp__init((Sr__UnlockResp*)sub_msg);
+            resp->unlock_resp = (Sr__UnlockResp*)sub_msg;
+            break;
         default:
             break;
     }
@@ -852,6 +908,10 @@ sr_pb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__Op
                 if (NULL == msg->request->list_schemas_req)
                     return SR_ERR_MALFORMED_MSG;
                 break;
+            case SR__OPERATION__GET_SCHEMA:
+                if (NULL == msg->request->get_schema_req)
+                    return SR_ERR_MALFORMED_MSG;
+                break;
             case SR__OPERATION__GET_ITEM:
                 if (NULL == msg->request->get_item_req)
                     return SR_ERR_MALFORMED_MSG;
@@ -884,6 +944,14 @@ sr_pb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__Op
                 if (NULL == msg->request->discard_changes_req)
                     return SR_ERR_MALFORMED_MSG;
                 break;
+            case SR__OPERATION__LOCK:
+                if (NULL == msg->request->lock_req)
+                    return SR_ERR_MALFORMED_MSG;
+                break;
+            case SR__OPERATION__UNLOCK:
+                if (NULL == msg->request->unlock_req)
+                    return SR_ERR_MALFORMED_MSG;
+                break;
             default:
                 return SR_ERR_MALFORMED_MSG;
         }
@@ -907,6 +975,10 @@ sr_pb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__Op
                 break;
             case SR__OPERATION__LIST_SCHEMAS:
                 if (NULL == msg->response->list_schemas_resp)
+                    return SR_ERR_MALFORMED_MSG;
+                break;
+            case SR__OPERATION__GET_SCHEMA:
+                if (NULL == msg->response->get_schema_resp)
                     return SR_ERR_MALFORMED_MSG;
                 break;
             case SR__OPERATION__GET_ITEM:
@@ -939,6 +1011,14 @@ sr_pb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__Op
                 break;
             case SR__OPERATION__DISCARD_CHANGES:
                 if (NULL == msg->response->discard_changes_resp)
+                    return SR_ERR_MALFORMED_MSG;
+                break;
+            case SR__OPERATION__LOCK:
+                if (NULL == msg->response->lock_resp)
+                    return SR_ERR_MALFORMED_MSG;
+                break;
+            case SR__OPERATION__UNLOCK:
+                if (NULL == msg->response->unlock_resp)
                     return SR_ERR_MALFORMED_MSG;
                 break;
             default:
@@ -1534,21 +1614,21 @@ sr_move_direction_gpb_to_sr(Sr__MoveItemReq__MoveDirection gpb_direction)
 void sr_free_schema(sr_schema_t *schema)
 {
     if (NULL != schema) {
-        free(schema->module_name);
-        free(schema->prefix);
-        free(schema->ns);
+        free((void*)schema->module_name);
+        free((void*)schema->prefix);
+        free((void*)schema->ns);
         for (size_t i = 0; i < schema->rev_count; i++) {
-            free(schema->revisions[i].revision);
-            free(schema->revisions[i].file_path_yin);
-            free(schema->revisions[i].file_path_yang);
+            free((void*)schema->revisions[i].revision);
+            free((void*)schema->revisions[i].file_path_yin);
+            free((void*)schema->revisions[i].file_path_yang);
         }
         free(schema->revisions);
         for (size_t s = 0; s < schema->submodule_count; s++){
-            free(schema->submodules[s].submodule_name);
+            free((void*)schema->submodules[s].submodule_name);
             for (size_t r = 0; r < schema->submodules[s].rev_count; r++) {
-                free(schema->submodules[s].revisions[r].revision);
-                free(schema->submodules[s].revisions[r].file_path_yin);
-                free(schema->submodules[s].revisions[r].file_path_yang);
+                free((void*)schema->submodules[s].revisions[r].revision);
+                free((void*)schema->submodules[s].revisions[r].file_path_yin);
+                free((void*)schema->submodules[s].revisions[r].file_path_yang);
             }
             free(schema->submodules[s].revisions);
         }
@@ -2056,3 +2136,48 @@ sr_get_schema_file_name(const char *schema_search_dir, const char *module_name, 
     return SR_ERR_NOMEM;
 }
 
+static int
+sr_lock_fd_internal(int fd, bool lock, bool write, bool wait)
+{
+    int ret = -1;
+    struct flock fl = { 0, };
+
+    if (lock) {
+        /* lock */
+        fl.l_type = write ? F_WRLCK : F_RDLCK;
+    } else {
+        /* unlock */
+        fl.l_type = F_UNLCK;
+    }
+    fl.l_whence = SEEK_SET; /* from the beginning */
+    fl.l_start = 0;         /* with offset 0*/
+    fl.l_len = 0;           /* to EOF */
+    fl.l_pid = getpid();
+
+    /* set the lock, waiting if requested and necessary */
+    ret = fcntl(fd, wait ? F_SETLKW : F_SETLK, &fl);
+
+    if (-1 == ret) {
+        SR_LOG_WRN("Unable to acquire the lock on fd %d: %s", fd, strerror(errno));
+        if (!wait && (EAGAIN == errno || EACCES == errno)) {
+            /* already locked by someone else */
+            return SR_ERR_LOCKED;
+        } else {
+            return SR_ERR_INTERNAL;
+        }
+    }
+
+    return SR_ERR_OK;
+}
+
+int
+sr_lock_fd(int fd, bool write, bool wait)
+{
+    return sr_lock_fd_internal(fd, true, write, wait);
+}
+
+int
+sr_unlock_fd(int fd)
+{
+    return sr_lock_fd_internal(fd, false, false, false);
+}

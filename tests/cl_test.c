@@ -174,6 +174,57 @@ cl_list_schemas_test(void **state)
 }
 
 static void
+cl_get_schema_test(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+
+    sr_session_ctx_t *session = NULL;
+    char *schema_content = NULL;
+    int rc = 0;
+
+    /* start a session */
+    rc = sr_session_start(conn, SR_DS_STARTUP, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* get schema for specified module, latest revision */
+    rc = sr_get_schema(session, "module-a", NULL, NULL, &schema_content);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_non_null(schema_content);
+    printf("%.100s\n", schema_content);
+    free(schema_content);
+    schema_content = NULL;
+
+    /* get schema for specified module and revision */
+    rc = sr_get_schema(session, "module-a", NULL, "2016-02-02", &schema_content);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_non_null(schema_content);
+    printf("%.100s\n", schema_content);
+    free(schema_content);
+    schema_content = NULL;
+
+    /* get schema for specified submodule, latest revision */
+    rc = sr_get_schema(session, "module-a", "sub-a-one", NULL, &schema_content);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_non_null(schema_content);
+    printf("%.100s\n", schema_content);
+    free(schema_content);
+    schema_content = NULL;
+
+    /* get schema for specified submodule and revision */
+    rc = sr_get_schema(session, "module-a", "sub-a-one", "2016-02-02", &schema_content);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_non_null(schema_content);
+    printf("%.100s\n", schema_content);
+    free(schema_content);
+    schema_content = NULL;
+
+    /* stop the session */
+    rc = sr_session_stop(session);
+    assert_int_equal(rc, SR_ERR_OK);
+}
+
+static void
 cl_get_item_test(void **state)
 {
     sr_conn_ctx_t *conn = *state;
@@ -718,6 +769,48 @@ cl_discard_changes_test(void **state)
 }
 
 static void
+cl_locking_test(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+
+    sr_session_ctx_t *sessionA = NULL, *sessionB = NULL;
+    int rc = 0;
+
+    /* start 2 sessions */
+    rc = sr_session_start(conn, SR_DS_STARTUP, &sessionA);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_session_start(conn, SR_DS_STARTUP, &sessionB);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* lock datastore in session A */
+    rc = sr_lock_datastore(sessionA);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    // TODO: try locking in session B and expect error
+
+    /* unlock the datastore */
+    rc = sr_unlock_datastore(sessionA);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* lock a module in session A */
+    rc = sr_lock_module(sessionA, "example-module");
+    assert_int_equal(rc, SR_ERR_OK);
+
+    // TODO: try locking module and whole ds in session B and expect error
+
+    /* unlock the module */
+    rc = sr_unlock_module(sessionA, "example-module");
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* stop the sessions */
+    rc = sr_session_stop(sessionA);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_session_stop(sessionB);
+    assert_int_equal(rc, SR_ERR_OK);
+}
+
+static void
 cl_get_error_test(void **state)
 {
     sr_conn_ctx_t *conn = *state;
@@ -768,6 +861,7 @@ main()
     const struct CMUnitTest tests[] = {
             cmocka_unit_test_setup_teardown(cl_connection_test, logging_setup, NULL),
             cmocka_unit_test_setup_teardown(cl_list_schemas_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_get_schema_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_get_item_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_get_items_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_get_items_iter_test, sysrepo_setup, sysrepo_teardown),
@@ -777,6 +871,7 @@ main()
             cmocka_unit_test_setup_teardown(cl_validate_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_commit_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_discard_changes_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_locking_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_get_error_test, sysrepo_setup, sysrepo_teardown),
     };
 

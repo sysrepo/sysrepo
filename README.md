@@ -8,11 +8,12 @@ Sysrepo is an [YANG](http://tools.ietf.org/html/rfc6020)-based configuration dat
 
 Applications can use sysrepo to store their configuration modeled by provided YANG model instead of using e.g. flat configuration files. Sysrepo will ensure data consistency of the data stored in the datastore and enforce data constraints defined by YANG model. Applications can currently use [C language API](inc/sysrepo.h) of sysrepo Client Library to access the configuration in the datastore, but the support for other programming languages is planed for later too (since sysrepo uses [Google Protol Buffers](https://developers.google.com/protocol-buffers/) as the interface between the datastore and client library, writing of a native client library for any programing language that supports GPB is possible).
 
-Sysrepo can be easily integrated to management agents such as [NETCONF](https://tools.ietf.org/html/rfc6241) or [RESTCONF](https://tools.ietf.org/html/draft-ietf-netconf-restconf) servers, using the same client library API that applications use to access their configuration. As of now, integration to [Netopeer NETCONF server](https://github.com/cesnet/netopeer) is in progress. This way, applications that use sysrepo to store their configuration will automatically benefit from ability to control the application via NETCONF.
+Sysrepo can be easily integrated to management agents such as [NETCONF](https://tools.ietf.org/html/rfc6241) or [RESTCONF](https://tools.ietf.org/html/draft-ietf-netconf-restconf) servers, using the same client library API that applications use to access their configuration. As of now, integration to [Netopeer 2 NETCONF server](https://github.com/CESNET/Netopeer2) is in progress. This way, applications that use sysrepo to store their configuration will automatically benefit from ability to control the application via NETCONF.
 
 ![Sysrepo Architecture](doc/high_level_architecture.png)
 
 ## Status
+- March 2016: syrepo daemon and data manipulation (edit-config) functionality ready, working on full concurrency and locking support
 - February 2016: working on sysrepo daemon, data manipulation (edit-config) functionality
 - January 2016: data retrieval (get-config) functionality ready, released as sysrepo [version 0.1.0](https://github.com/sysrepo/sysrepo/releases/tag/v0.1.0)
 - December 2015: implementation started - building internal infrastructure, data retrieval (get-config) functionality
@@ -49,6 +50,6 @@ Client Library API, as well as all internal modules of sysrepo are documented wi
 ## Other Resources
 - [Sysrepo Project WIKI](http://www.sysrepo.org/)
 - CESNET's [libyang](https://github.com/cesnet/libyang) YANG toolkit
-- CESNET's [Netopeer](https://github.com/cesnet/netopeer) NETCONF Toolset
+- CESNET's [Netopeer 2](https://github.com/CESNET/Netopeer2) NETCONF Toolset
 - [RFC 6020](http://tools.ietf.org/html/rfc6020) (YANG Data Modeling Language)
 - [RFC 6241](https://tools.ietf.org/html/rfc6241) (Network Configuration Protocol - NETCONF)

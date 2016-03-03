@@ -116,6 +116,38 @@ rp_list_schemas_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session,
 }
 
 /**
+ * @brief Processes a get_schema request.
+ */
+static int
+rp_get_schema_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
+{
+    Sr__Msg *resp = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->get_schema_req);
+
+    SR_LOG_DBG_MSG("Processing get_schema request.");
+
+    /* allocate the response */
+    rc = sr_pb_resp_alloc(SR__OPERATION__GET_SCHEMA, session->id, &resp);
+    if (SR_ERR_OK != rc){
+        SR_LOG_ERR_MSG("Cannot allocate get_schema response.");
+        return SR_ERR_NOMEM;
+    }
+
+    // TODO: retrieve schema content from DM
+    resp->response->get_schema_resp->schema_content = strdup("real schema content will be here...");
+
+    /* set response result code */
+    resp->response->result = rc;
+
+    /* send the response */
+    rc = cm_msg_send(rp_ctx->cm_ctx, resp);
+
+    return rc;
+}
+
+/**
  * @brief Processes a get_item request.
  */
 static int
@@ -554,6 +586,91 @@ rp_session_refresh_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *sessi
 }
 
 /**
+ * @brief Processes a lock request.
+ */
+static int
+rp_lock_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
+{
+    Sr__Msg *resp = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->lock_req);
+
+    SR_LOG_DBG_MSG("Processing lock request.");
+
+    /* allocate the response */
+    rc = sr_pb_resp_alloc(SR__OPERATION__LOCK, session->id, &resp);
+    if (SR_ERR_OK != rc){
+        SR_LOG_ERR_MSG("Allocation of lock response failed.");
+        return SR_ERR_NOMEM;
+    }
+
+    // TODO: implement lock in DM
+    if (NULL != msg->request->lock_req->module_name) {
+        /* module-level lock */
+
+        // switch identity, open the file for write (may return unauthorized),
+        // call fcntl(fd, F_SETLKW, &lock); on the data file (may return already locked)
+    } else {
+        /* datastore-level lock */
+
+        // check if datastore-level lock has been acquired in the session (DM or RP),
+        // if not, switch identity and try to lock all files in the ds that we can open.
+        // If any of them is not successful, unlock everything we locked and return error.
+        // otherwise mark datastore-level lock in the session (DM or RP) and return success
+    }
+
+    /* set response code */
+    resp->response->result = rc;
+
+    rc = rp_resp_fill_errors(resp, session->dm_session);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Copying errors to gpb failed");
+    }
+
+    /* send the response */
+    rc = cm_msg_send(rp_ctx->cm_ctx, resp);
+
+    return rc;
+}
+
+/**
+ * @brief Processes an unlock request.
+ */
+static int
+rp_unlock_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
+{
+    Sr__Msg *resp = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->unlock_req);
+
+    SR_LOG_DBG_MSG("Processing unlock request.");
+
+    /* allocate the response */
+    rc = sr_pb_resp_alloc(SR__OPERATION__UNLOCK, session->id, &resp);
+    if (SR_ERR_OK != rc){
+        SR_LOG_ERR_MSG("Allocation of unlock response failed.");
+        return SR_ERR_NOMEM;
+    }
+
+    // TODO: implement unlock in DM
+
+    /* set response code */
+    resp->response->result = rc;
+
+    rc = rp_resp_fill_errors(resp, session->dm_session);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Copying errors to gpb failed");
+    }
+
+    /* send the response */
+    rc = cm_msg_send(rp_ctx->cm_ctx, resp);
+
+    return rc;
+}
+
+/**
  * @brief Dispatches the received message.
  */
 static int
@@ -569,6 +686,9 @@ rp_msg_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
         switch (msg->request->operation) {
             case SR__OPERATION__LIST_SCHEMAS:
                 rc = rp_list_schemas_req_process(rp_ctx, session, msg);
+                break;
+            case SR__OPERATION__GET_SCHEMA:
+                rc = rp_get_schema_req_process(rp_ctx, session, msg);
                 break;
             case SR__OPERATION__GET_ITEM:
                 rc = rp_get_item_req_process(rp_ctx, session, msg);
@@ -596,6 +716,12 @@ rp_msg_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
                 break;
             case SR__OPERATION__SESSION_REFRESH:
                 rc = rp_session_refresh_req_process(rp_ctx, session, msg);
+                break;
+            case SR__OPERATION__LOCK:
+                rc = rp_lock_req_process(rp_ctx, session, msg);
+                break;
+            case SR__OPERATION__UNLOCK:
+                rc = rp_unlock_req_process(rp_ctx, session, msg);
                 break;
             default:
                 SR_LOG_ERR("Unsupported request received (session id=%"PRIu32", operation=%d).",

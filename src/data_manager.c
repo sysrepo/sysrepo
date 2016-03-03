@@ -289,7 +289,8 @@ dm_load_data_tree(dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, const struct l
     ac_unset_user_identity(dm_ctx->ac_ctx);
 
     if (-1 != fd) {
-        lockf(fd, F_LOCK, 0);
+        /* lock, read-only, blocking */
+        sr_lock_fd(fd, false, true);
     } else if (ENOENT == errno) {
         SR_LOG_DBG("Data file %s does not exist, creating empty data tree", data_filename);
     } else if (EACCES == errno) {
@@ -301,7 +302,7 @@ dm_load_data_tree(dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, const struct l
     rc = dm_load_data_tree_file(dm_ctx, fd, data_filename, module, data_info);
 
     if (-1 != fd) {
-        lockf(fd, F_ULOCK, 0);
+        sr_unlock_fd(fd);
         close(fd);
     }
 
@@ -741,30 +742,30 @@ dm_list_rev_file(dm_ctx_t *dm_ctx, const char *module_name, const char *rev_date
         }
     }
 
-    rc = sr_get_schema_file_name(dm_ctx->schema_search_dir, module_name, rev_date, true, &rev->file_path_yang);
+    rc = sr_get_schema_file_name(dm_ctx->schema_search_dir, module_name, rev_date, true, (char**)&rev->file_path_yang);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Get schema file name failed");
         goto cleanup;
     }
-    rc = sr_get_schema_file_name(dm_ctx->schema_search_dir, module_name, rev_date, false, &rev->file_path_yin);
+    rc = sr_get_schema_file_name(dm_ctx->schema_search_dir, module_name, rev_date, false, (char**)&rev->file_path_yin);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Get schema file name failed");
         goto cleanup;
     }
     if (-1 == access(rev->file_path_yang, F_OK)) {
-        free(rev->file_path_yang);
+        free((void*)rev->file_path_yang);
         rev->file_path_yang = NULL;
     }
     if (-1 == access(rev->file_path_yin, F_OK)) {
-        free(rev->file_path_yin);
+        free((void*)rev->file_path_yin);
         rev->file_path_yin = NULL;
     }
     return rc;
 
 cleanup:
-    free(rev->revision);
-    free(rev->file_path_yang);
-    free(rev->file_path_yin);
+    free((void*)rev->revision);
+    free((void*)rev->file_path_yang);
+    free((void*)rev->file_path_yin);
     return rc;
 }
 /**
@@ -1130,8 +1131,10 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
             }
             /* file was opened successfully increment the number of files to be closed */
             c_ctx->modif_count++;
-            if (lockf(c_ctx->fds[count], F_TLOCK, 0) < 0) {
-                SR_LOG_ERR("Locking of file '%s': %s.", file_name, strerror(errno));
+            /* try to lock for write, non-blocking */
+            rc = sr_lock_fd(c_ctx->fds[count], true, false);
+            if (SR_ERR_OK != rc) {
+                SR_LOG_ERR("Locking of file '%s' failed: %s.", file_name, sr_strerror(rc));
                 rc = SR_ERR_COMMIT_FAILED;
                 goto cleanup;
             }

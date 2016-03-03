@@ -564,6 +564,35 @@ int sr_get_schema_file_name(const char *schema_search_dir, const char *module_na
  */
 void sr_free_schema(sr_schema_t *schema);
 
+/**
+ * @brief Sets advisory inter-process file lock.
+ *
+ * Call close() or ::sr_unlock_fd to unlock an previously acquired lock.
+ *
+ * @note Multiple locks within the same process are allowed and considered as
+ * re-initialization of the previous lock (won't fail nor block).
+ *
+ * @param[in] fd Descriptor of the file to be locked.
+ * @param[in] write TRUE if you are requesting a lock for writing to the file,
+ * FALSE if you are requesting a lock just for reading.
+ * @param[in] TRUE If you want this function to block until lock is acquired,
+ * FALSE if you want this function to return an error if the lock cannot be acquired.
+ *
+ * @return err_code (SR_ERR_OK on success, SR_ERR_LOCKED if wait was set to
+ * false and the lock cannot be acquired).
+ */
+int sr_lock_fd(int fd, bool write, bool wait);
+
+/**
+ * @brief Removes advisory inter-process file lock previously acquired by
+ * ::sr_lock_fd.
+ *
+ * @param[in] fd Descriptor of the file to be unlocked.
+ *
+ * @return err_code (SR_ERR_OK on success).
+ */
+int sr_unlock_fd(int fd);
+
 /**@} common */
 
 #endif /* SRC_SR_COMMON_H_ */
