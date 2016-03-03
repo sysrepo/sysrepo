@@ -574,6 +574,19 @@ rp_lock_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg
     }
 
     // TODO: implement lock in DM
+    if (NULL != msg->request->lock_req->module_name) {
+        /* module-level lock */
+
+        // switch identity, open the file for write (may return unauthorized),
+        // call fcntl(fd, F_SETLKW, &lock); on the data file (may return already locked)
+    } else {
+        /* datastore-level lock */
+
+        // check if datastore-level lock has been acquired in the session (DM or RP),
+        // if not, switch identity and try to lock all files in the ds that we can open.
+        // If any of them is not successful, unlock everything we locked and return error.
+        // otherwise mark datastore-level lock in the session (DM or RP) and return success
+    }
 
     /* set response code */
     resp->response->result = rc;

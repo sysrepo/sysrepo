@@ -303,7 +303,8 @@ dm_load_data_tree(dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, const struct l
     ac_unset_user_identity(dm_ctx->ac_ctx);
 
     if (-1 != fd) {
-        lockf(fd, F_LOCK, 0);
+        /* lock, read-only, blocking */
+        sr_lock_fd(fd, false, true);
     } else if (ENOENT == errno) {
         SR_LOG_DBG("Data file %s does not exist, creating empty data tree", data_filename);
     } else if (EACCES == errno) {
@@ -315,7 +316,7 @@ dm_load_data_tree(dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, const struct l
     rc = dm_load_data_tree_file(dm_ctx, fd, data_filename, module, data_info);
 
     if (-1 != fd) {
-        lockf(fd, F_ULOCK, 0);
+        sr_unlock_fd(fd);
         close(fd);
     }
 
@@ -1059,8 +1060,10 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
             }
             /* file was opened successfully increment the number of files to be closed */
             c_ctx->modif_count++;
-            if (lockf(c_ctx->fds[count], F_TLOCK, 0) < 0) {
-                SR_LOG_ERR("Locking of file '%s': %s.", file_name, strerror(errno));
+            /* try to lock for write, non-blocking */
+            rc = sr_lock_fd(c_ctx->fds[count], true, false);
+            if (SR_ERR_OK != rc) {
+                SR_LOG_ERR("Locking of file '%s' failed: %s.", file_name, sr_strerror(rc));
                 rc = SR_ERR_COMMIT_FAILED;
                 goto cleanup;
             }

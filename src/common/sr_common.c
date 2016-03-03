@@ -26,6 +26,7 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <inttypes.h>
+#include <fcntl.h>
 
 #include "sr_common.h"
 #include "data_manager.h"
@@ -51,6 +52,7 @@ const char *const sr_errlist[] = {
         "The item already exists",              /* SR_ERR_DATA_EXISTS */
         "The item expected to exist is missing",/* SR_ERR_DATA_MISSING */
         "Operation not authorized",             /* SR_ERR_UNAUTHORIZED */
+        "Requested resource is already locked", /* SR_ERR_LOCKED */
 };
 
 const char *
@@ -1960,3 +1962,48 @@ sr_get_schema_file_name(const char *schema_search_dir, const char *module_name, 
     return SR_ERR_NOMEM;
 }
 
+static int
+sr_lock_fd_internal(int fd, bool lock, bool write, bool wait)
+{
+    int ret = -1;
+    struct flock fl = { 0, };
+
+    if (lock) {
+        /* lock */
+        fl.l_type = write ? F_WRLCK : F_RDLCK;
+    } else {
+        /* unlock */
+        fl.l_type = F_UNLCK;
+    }
+    fl.l_whence = SEEK_SET; /* from the beginning */
+    fl.l_start = 0;         /* with offset 0*/
+    fl.l_len = 0;           /* to EOF */
+    fl.l_pid = getpid();
+
+    /* set the lock, waiting if requested and necessary */
+    ret = fcntl(fd, wait ? F_SETLKW : F_SETLK, &fl);
+
+    if (-1 == ret) {
+        SR_LOG_WRN("Unable to acquire the lock on fd %d: %s", fd, strerror(errno));
+        if (!wait && (EAGAIN == errno || EACCES == errno)) {
+            /* already locked by someone else */
+            return SR_ERR_LOCKED;
+        } else {
+            return SR_ERR_INTERNAL;
+        }
+    }
+
+    return SR_ERR_OK;
+}
+
+int
+sr_lock_fd(int fd, bool write, bool wait)
+{
+    return sr_lock_fd_internal(fd, true, write, wait);
+}
+
+int
+sr_unlock_fd(int fd)
+{
+    return sr_lock_fd_internal(fd, false, false, false);
+}

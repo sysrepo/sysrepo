@@ -160,6 +160,7 @@ typedef enum sr_error_e {
     SR_ERR_DATA_EXISTS,        /**< Item already exists. */
     SR_ERR_DATA_MISSING,       /**< Item does not exists. */
     SR_ERR_UNAUTHORIZED,       /**< Operation not authorized. */
+    SR_ERR_LOCKED,             /**< Requested resource is already locked. */
 } sr_error_t;
 
 /**
