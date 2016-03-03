@@ -794,6 +794,27 @@ int sr_unlock_module(sr_session_ctx_t *session, const char *module_name);
 
 
 ////////////////////////////////////////////////////////////////////////////////
+// Data module handling API - !!! EXPERIMENTAL !!!
+////////////////////////////////////////////////////////////////////////////////
+
+typedef struct sr_subscription_ctx_s sr_subscription_ctx_t;
+
+int sr_feature_enable(sr_session_ctx_t *session, const char *module_name, const char *feature_name, bool enable);
+
+typedef int (*sr_feature_enable_cb)(const char *module_name, const char *feature_name, bool enable, void *private_ctx);
+
+typedef int (*sr_module_enable_cb)(const char *module_name, bool enable, void *private_ctx);
+
+int sr_feature_enable_subscribe(sr_session_ctx_t *session, sr_feature_enable_cb callback, void *private_ctx,
+        sr_subscription_ctx_t **subscribtion);
+
+int sr_module_enable_subscribe(sr_session_ctx_t *session, sr_module_enable_cb callback, void *private_ctx,
+        sr_subscription_ctx_t **subscribtion);
+
+int sr_unsubscribe(sr_subscription_ctx_t *subscribtion);
+
+
+////////////////////////////////////////////////////////////////////////////////
 // Cleanup Routines
 ////////////////////////////////////////////////////////////////////////////////
 

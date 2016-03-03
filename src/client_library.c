@@ -1083,6 +1083,60 @@ cleanup:
 }
 
 int
+sr_feature_enable(sr_session_ctx_t *session, const char *module_name, const char *feature_name, bool enable)
+{
+    Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG4(session, session->conn_ctx, module_name, feature_name);
+
+    cl_session_clear_errors(session);
+
+    /* prepare feature_enable message */
+    rc = sr_pb_req_alloc(SR__OPERATION__FEATURE_ENABLE, session->id, &msg_req);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Cannot allocate feature_enable message.");
+        goto cleanup;
+    }
+
+    /* set arguments */
+    msg_req->request->feature_enable_req->module_name = strdup(module_name);
+    if (NULL == msg_req->request->feature_enable_req->module_name) {
+        SR_LOG_ERR_MSG("Cannot duplicate module name.");
+        rc = SR_ERR_NOMEM;
+        goto cleanup;
+    }
+    msg_req->request->feature_enable_req->feature_name = strdup(feature_name);
+    if (NULL == msg_req->request->feature_enable_req->feature_name) {
+        SR_LOG_ERR_MSG("Cannot feature name.");
+        rc = SR_ERR_NOMEM;
+        goto cleanup;
+    }
+    msg_req->request->feature_enable_req->enable = enable;
+
+    /* send the request and receive the response */
+    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__FEATURE_ENABLE);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Error by processing of feature_enable request.");
+        goto cleanup;
+    }
+
+    sr__msg__free_unpacked(msg_req, NULL);
+    sr__msg__free_unpacked(msg_resp, NULL);
+
+    return cl_session_return(session, SR_ERR_OK);
+
+cleanup:
+    if (NULL != msg_req) {
+        sr__msg__free_unpacked(msg_req, NULL);
+    }
+    if (NULL != msg_resp) {
+        sr__msg__free_unpacked(msg_resp, NULL);
+    }
+    return cl_session_return(session, rc);
+}
+
+int
 sr_get_item(sr_session_ctx_t *session, const char *path, sr_val_t **value)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
@@ -1830,4 +1884,3 @@ sr_get_last_errors(sr_session_ctx_t *session, const sr_error_info_t **error_info
 
     return session->last_error;
 }
-
