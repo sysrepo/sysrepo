@@ -934,6 +934,44 @@ dm_list_schemas(dm_ctx_t *dm_ctx, dm_session_t *dm_session, sr_schema_t **schema
 }
 
 int
+dm_get_schema(dm_ctx_t *dm_ctx, const char *module_name, const char *submodule_name, const char *rev_date, char **schema)
+{
+    CHECK_NULL_ARG2(dm_ctx, module_name);
+    int rc = SR_ERR_OK;
+
+    const struct lys_module *module = ly_ctx_get_module(dm_ctx->ly_ctx, module_name, NULL == submodule_name ? rev_date : NULL);
+    if (NULL == module) {
+        SR_LOG_ERR("Module %s with revision %s was not found", module_name, NULL == submodule_name ? rev_date : NULL);
+        return SR_ERR_NOT_FOUND;
+    }
+
+    if (NULL == submodule_name){
+        /* module*/
+        rc = lys_print_mem(schema, module, LYS_OUT_YIN, NULL);
+        if (0 != rc) {
+            SR_LOG_ERR("Module %s print failed.", module->name);
+            return SR_ERR_INTERNAL;
+        }
+        return SR_ERR_OK;
+    }
+
+    /* submodule */
+    const struct lys_submodule *submodule = ly_ctx_get_submodule(module, submodule_name, rev_date);
+    if (NULL == submodule) {
+        SR_LOG_ERR("Submodule %s of module %s was not found.", submodule_name, module_name);
+        return SR_ERR_NOT_FOUND;
+    }
+
+    rc = lys_print_mem(schema, (const struct lys_module *) submodule, LYS_OUT_YIN, NULL);
+    if (0 != rc) {
+        SR_LOG_ERR("Submodule %s print failed.", submodule->name);
+        return SR_ERR_INTERNAL;
+    }
+    return SR_ERR_OK;
+
+}
+
+int
 dm_validate_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors, size_t *err_cnt)
 {
     CHECK_NULL_ARG4(dm_ctx, session, errors, err_cnt);
