@@ -77,6 +77,8 @@ sr_operation_name(Sr__Operation operation)
         return "session-refresh";
     case SR__OPERATION__LIST_SCHEMAS:
         return "list-schemas";
+    case SR__OPERATION__GET_SCHEMA:
+        return "get-schema";
     case SR__OPERATION__GET_ITEM:
         return "get-item";
     case SR__OPERATION__GET_ITEMS:
@@ -612,6 +614,14 @@ sr_pb_req_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__Ms
             sr__list_schemas_req__init((Sr__ListSchemasReq*)sub_msg);
             req->list_schemas_req = (Sr__ListSchemasReq*)sub_msg;
             break;
+        case SR__OPERATION__GET_SCHEMA:
+            sub_msg = calloc(1, sizeof(Sr__GetSchemaReq));
+            if (NULL == sub_msg) {
+                goto nomem;
+            }
+            sr__get_schema_req__init((Sr__GetSchemaReq*)sub_msg);
+            req->get_schema_req = (Sr__GetSchemaReq*)sub_msg;
+            break;
         case SR__OPERATION__GET_ITEM:
             sub_msg = calloc(1, sizeof(Sr__GetItemReq));
             if (NULL == sub_msg) {
@@ -768,6 +778,14 @@ sr_pb_resp_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__M
             sr__list_schemas_resp__init((Sr__ListSchemasResp*)sub_msg);
             resp->list_schemas_resp = (Sr__ListSchemasResp*)sub_msg;
             break;
+        case SR__OPERATION__GET_SCHEMA:
+            sub_msg = calloc(1, sizeof(Sr__GetSchemaResp));
+            if (NULL == sub_msg) {
+                goto nomem;
+            }
+            sr__get_schema_resp__init((Sr__GetSchemaResp*)sub_msg);
+            resp->get_schema_resp = (Sr__GetSchemaResp*)sub_msg;
+            break;
         case SR__OPERATION__GET_ITEM:
             sub_msg = calloc(1, sizeof(Sr__GetItemResp));
             if (NULL == sub_msg) {
@@ -890,6 +908,10 @@ sr_pb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__Op
                 if (NULL == msg->request->list_schemas_req)
                     return SR_ERR_MALFORMED_MSG;
                 break;
+            case SR__OPERATION__GET_SCHEMA:
+                if (NULL == msg->request->get_schema_req)
+                    return SR_ERR_MALFORMED_MSG;
+                break;
             case SR__OPERATION__GET_ITEM:
                 if (NULL == msg->request->get_item_req)
                     return SR_ERR_MALFORMED_MSG;
@@ -953,6 +975,10 @@ sr_pb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__Op
                 break;
             case SR__OPERATION__LIST_SCHEMAS:
                 if (NULL == msg->response->list_schemas_resp)
+                    return SR_ERR_MALFORMED_MSG;
+                break;
+            case SR__OPERATION__GET_SCHEMA:
+                if (NULL == msg->response->get_schema_resp)
                     return SR_ERR_MALFORMED_MSG;
                 break;
             case SR__OPERATION__GET_ITEM:
@@ -1588,21 +1614,21 @@ sr_move_direction_gpb_to_sr(Sr__MoveItemReq__MoveDirection gpb_direction)
 void sr_free_schema(sr_schema_t *schema)
 {
     if (NULL != schema) {
-        free(schema->module_name);
-        free(schema->prefix);
-        free(schema->ns);
+        free((void*)schema->module_name);
+        free((void*)schema->prefix);
+        free((void*)schema->ns);
         for (size_t i = 0; i < schema->rev_count; i++) {
-            free(schema->revisions[i].revision);
-            free(schema->revisions[i].file_path_yin);
-            free(schema->revisions[i].file_path_yang);
+            free((void*)schema->revisions[i].revision);
+            free((void*)schema->revisions[i].file_path_yin);
+            free((void*)schema->revisions[i].file_path_yang);
         }
         free(schema->revisions);
         for (size_t s = 0; s < schema->submodule_count; s++){
-            free(schema->submodules[s].submodule_name);
+            free((void*)schema->submodules[s].submodule_name);
             for (size_t r = 0; r < schema->submodules[s].rev_count; r++) {
-                free(schema->submodules[s].revisions[r].revision);
-                free(schema->submodules[s].revisions[r].file_path_yin);
-                free(schema->submodules[s].revisions[r].file_path_yang);
+                free((void*)schema->submodules[s].revisions[r].revision);
+                free((void*)schema->submodules[s].revisions[r].file_path_yin);
+                free((void*)schema->submodules[s].revisions[r].file_path_yang);
             }
             free(schema->submodules[s].revisions);
         }

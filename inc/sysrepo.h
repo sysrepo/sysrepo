@@ -410,36 +410,36 @@ int sr_get_last_errors(sr_session_ctx_t *session, const sr_error_info_t **error_
 ////////////////////////////////////////////////////////////////////////////////
 
 /**
- * @brief Structure that contains information about one particular schema file supported by sysrepo.
+ * @brief Structure that contains information about one particular schema file installed in sysrepo.
  */
 typedef struct sr_sch_revision_s {
-    char *revision;         /**< Revision of the module/submodule. */
-    char *file_path_yang;   /**< Absolute path to file where the module/submodule is stored (YANG format). */
-    char *file_path_yin;    /**< Absolute path to file where the module/submodule is stored (.yin format). */
+    const char *revision;         /**< Revision of the module/submodule. */
+    const char *file_path_yang;   /**< Absolute path to file where the module/submodule is stored (YANG format). */
+    const char *file_path_yin;    /**< Absolute path to file where the module/submodule is stored (.yin format). */
 } sr_sch_revision_t;
 
 /**
- * @brief Informations about submodules
+ * @brief Structure that contains information about submodules of a module installed in sysrepo.
  */
 typedef struct sr_sch_submodule_s {
-    char *submodule_name;          /**< Submodule name */
-    sr_sch_revision_t *revisions;  /**< Revisions of the submodule */
-    size_t rev_count;              /**< Number of sumodule revisions */
+    const char *submodule_name;    /**< Submodule name. */
+    sr_sch_revision_t *revisions;  /**< Revisions of the submodule. */
+    size_t rev_count;              /**< Number of sumodule's revisions. */
 } sr_sch_submodule_t;
 
 /**
- * @brief Structure that contains information about a module supported by sysrepo.
+ * @brief Structure that contains information about a module installed in sysrepo.
  */
 typedef struct sr_schema_s {
-    char *module_name;               /**< Name of the module. */
-    char *ns;                        /**< Namespace of the module used in @ref xp_page "XPath". */
-    char *prefix;                    /**< Prefix of the module. */
+    const char *module_name;         /**< Name of the module. */
+    const char *ns;                  /**< Namespace of the module used in @ref xp_page "XPath". */
+    const char *prefix;              /**< Prefix of the module. */
 
-    sr_sch_revision_t *revisions;    /**< Revisions of the module */
-    size_t rev_count;                /**< Number of module's revisions */
+    sr_sch_revision_t *revisions;    /**< Array of all installed revisions of the module. */
+    size_t rev_count;                /**< Number of module's revisions. */
 
-    sr_sch_submodule_t *submodules;  /**< Array of submodules */
-    size_t submodule_count;          /**< Number of module's submodules */
+    sr_sch_submodule_t *submodules;  /**< Array of all installed submodules of the module. */
+    size_t submodule_count;          /**< Number of module's submodules. */
 } sr_schema_t;
 
 /**
@@ -458,6 +458,24 @@ typedef struct sr_val_iter_s sr_val_iter_t;
  * @return Error code (SR_ERR_OK on success).
  */
 int sr_list_schemas(sr_session_ctx_t *session, sr_schema_t **schemas, size_t *schema_cnt);
+
+/**
+ * @brief Retrieves the content of specified schema file.
+ *
+ * @param[in] session Session context acquired with ::sr_session_start call.
+ * @param[in] module_name Name of the requested module.
+ * @param[in] module_name Name of the requested submodule. Pass NULL if you are
+ * requesting the content of the main module.
+ * @param[in] revision Requested revision of the module / submodule. If NULL
+ * is passed, the latest revision will be returned.
+ * @param[out] schema_content Content of the specified schema file. Automatically
+ * allocated by the function, should be freed by the caller.
+ *
+ * @return Error code (SR_ERR_OK on success, SR_ERR_NOTFOUND if specified schema
+ * file cannot be found in sysrepo repository).
+ */
+int sr_get_schema(sr_session_ctx_t *session, const char *module_name, const char *submodule_name,
+        const char *revision, char **schema_content);
 
 /**
  * @brief Retrieves a single data element stored under provided XPath.

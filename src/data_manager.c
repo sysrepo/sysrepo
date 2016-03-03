@@ -742,30 +742,30 @@ dm_list_rev_file(dm_ctx_t *dm_ctx, const char *module_name, const char *rev_date
         }
     }
 
-    rc = sr_get_schema_file_name(dm_ctx->schema_search_dir, module_name, rev_date, true, &rev->file_path_yang);
+    rc = sr_get_schema_file_name(dm_ctx->schema_search_dir, module_name, rev_date, true, (char**)&rev->file_path_yang);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Get schema file name failed");
         goto cleanup;
     }
-    rc = sr_get_schema_file_name(dm_ctx->schema_search_dir, module_name, rev_date, false, &rev->file_path_yin);
+    rc = sr_get_schema_file_name(dm_ctx->schema_search_dir, module_name, rev_date, false, (char**)&rev->file_path_yin);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Get schema file name failed");
         goto cleanup;
     }
     if (-1 == access(rev->file_path_yang, F_OK)) {
-        free(rev->file_path_yang);
+        free((void*)rev->file_path_yang);
         rev->file_path_yang = NULL;
     }
     if (-1 == access(rev->file_path_yin, F_OK)) {
-        free(rev->file_path_yin);
+        free((void*)rev->file_path_yin);
         rev->file_path_yin = NULL;
     }
     return rc;
 
 cleanup:
-    free(rev->revision);
-    free(rev->file_path_yang);
-    free(rev->file_path_yin);
+    free((void*)rev->revision);
+    free((void*)rev->file_path_yang);
+    free((void*)rev->file_path_yin);
     return rc;
 }
 /**

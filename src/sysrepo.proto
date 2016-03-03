@@ -176,6 +176,23 @@ message ListSchemasResp {
 }
 
 /**
+ * @brief Retrieves the content of specified schema file.
+ * Sent by sr_get_schema API call.
+ */
+message GetSchemaReq {
+  required string module_name = 1;
+  optional string submodule_name = 2;
+  optional string revision = 3;
+}
+
+/**
+ * @brief Response to sr_get_schema request.
+ */
+message GetSchemaResp {
+  required string schema_content = 1;
+}
+
+/**
  * @brief Retrieves a single data element stored under provided path.
  * Sent by sr_get_item API call.
  */
@@ -368,8 +385,9 @@ enum Operation {
   SESSION_REFRESH = 12;
 
   LIST_SCHEMAS = 20;
-  GET_ITEM = 21;
-  GET_ITEMS = 22;
+  GET_SCHEMA = 21;
+  GET_ITEM = 22;
+  GET_ITEMS = 23;
 
   SET_ITEM = 30;
   DELETE_ITEM = 31;
@@ -394,8 +412,9 @@ message Req {
   optional SessionRefreshReq session_refresh_req = 12;
 
   optional ListSchemasReq list_schemas_req = 20;
-  optional GetItemReq get_item_req = 21;
-  optional GetItemsReq get_items_req = 22;
+  optional GetSchemaReq get_schema_req = 21;
+  optional GetItemReq get_item_req = 22;
+  optional GetItemsReq get_items_req = 23;
 
   optional SetItemReq set_item_req = 30;
   optional DeleteItemReq delete_item_req = 31;
@@ -422,8 +441,9 @@ message Resp {
   optional SessionRefreshResp session_refresh_resp = 12;
 
   optional ListSchemasResp list_schemas_resp = 20;
-  optional GetItemResp get_item_resp = 21;
-  optional GetItemsResp get_items_resp = 22;
+  optional GetSchemaResp get_schema_resp = 21;
+  optional GetItemResp get_item_resp = 22;
+  optional GetItemsResp get_items_resp = 23;
 
   optional SetItemResp set_item_resp = 30;
   optional DeleteItemResp delete_item_resp = 31;

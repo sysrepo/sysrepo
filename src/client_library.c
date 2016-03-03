@@ -838,6 +838,7 @@ sr_session_start_user(sr_conn_ctx_t *conn_ctx, const char *user_name, sr_datasto
         msg_req->request->session_start_req->user_name = strdup(user_name);
         if (NULL == msg_req->request->session_start_req->user_name) {
             SR_LOG_ERR_MSG("Cannot duplicate user name for session_start message.");
+            rc = SR_ERR_NOMEM;
             goto cleanup;
         }
     }
@@ -1012,6 +1013,76 @@ cleanup:
 }
 
 int
+sr_get_schema(sr_session_ctx_t *session, const char *module_name, const char *submodule_name,
+        const char *revision, char **schema_content)
+{
+    Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG4(session, session->conn_ctx, module_name, schema_content);
+
+    cl_session_clear_errors(session);
+
+    /* prepare get_schema message */
+    rc = sr_pb_req_alloc(SR__OPERATION__GET_SCHEMA, session->id, &msg_req);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Cannot allocate get_schema message.");
+        goto cleanup;
+    }
+
+    /* set arguments */
+    msg_req->request->get_schema_req->module_name = strdup(module_name);
+    if (NULL == msg_req->request->get_schema_req->module_name) {
+        SR_LOG_ERR_MSG("Cannot duplicate module name.");
+        rc = SR_ERR_NOMEM;
+        goto cleanup;
+    }
+    if (NULL != submodule_name) {
+        msg_req->request->get_schema_req->submodule_name = strdup(submodule_name);
+        if (NULL == msg_req->request->get_schema_req->submodule_name) {
+            SR_LOG_ERR_MSG("Cannot duplicate submodule name.");
+            rc = SR_ERR_NOMEM;
+            goto cleanup;
+        }
+    }
+    if(NULL != revision) {
+        msg_req->request->get_schema_req->revision = strdup(revision);
+        if (NULL == msg_req->request->get_schema_req->revision) {
+            SR_LOG_ERR_MSG("Cannot duplicate schema revision.");
+            rc = SR_ERR_NOMEM;
+            goto cleanup;
+        }
+    }
+
+    /* send the request and receive the response */
+    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__GET_SCHEMA);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Error by processing of get_schema request.");
+        goto cleanup;
+    }
+
+    /* move pointers to schema content, so we don't need to duplicate the memory */
+    if (NULL != msg_resp->response->get_schema_resp->schema_content) {
+        *schema_content = msg_resp->response->get_schema_resp->schema_content;
+        msg_resp->response->get_schema_resp->schema_content = NULL;
+    }
+
+    sr__msg__free_unpacked(msg_req, NULL);
+    sr__msg__free_unpacked(msg_resp, NULL);
+
+    return cl_session_return(session, SR_ERR_OK);
+
+cleanup:
+    if (NULL != msg_req) {
+        sr__msg__free_unpacked(msg_req, NULL);
+    }
+    if (NULL != msg_resp) {
+        sr__msg__free_unpacked(msg_resp, NULL);
+    }
+    return cl_session_return(session, rc);
+}
+
+int
 sr_get_item(sr_session_ctx_t *session, const char *path, sr_val_t **value)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
@@ -1025,6 +1096,7 @@ sr_get_item(sr_session_ctx_t *session, const char *path, sr_val_t **value)
     rc = sr_pb_req_alloc(SR__OPERATION__GET_ITEM, session->id, &msg_req);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Cannot allocate get_item message.");
+        rc = SR_ERR_NOMEM;
         goto cleanup;
     }
 
@@ -1032,6 +1104,7 @@ sr_get_item(sr_session_ctx_t *session, const char *path, sr_val_t **value)
     msg_req->request->get_item_req->path = strdup(path);
     if (NULL == msg_req->request->get_item_req->path) {
         SR_LOG_ERR_MSG("Cannot allocate get_item path.");
+        rc = SR_ERR_NOMEM;
         goto cleanup;
     }
 
@@ -1086,6 +1159,7 @@ sr_get_items(sr_session_ctx_t *session, const char *path, sr_val_t **values, siz
     msg_req->request->get_items_req->path = strdup(path);
     if (NULL == msg_req->request->get_items_req->path) {
         SR_LOG_ERR_MSG("Cannot allocate get_items path.");
+        rc = SR_ERR_NOMEM;
         goto cleanup;
     }
 
@@ -1173,7 +1247,7 @@ sr_get_items_iter(sr_session_ctx_t *session, const char *path, bool recursive, s
     it->path = strdup(path);
     if (NULL == it->path){
         SR_LOG_ERR_MSG("Duplication of path failed");
-        rc = SR_ERR_INTERNAL;
+        rc = SR_ERR_NOMEM;
         goto cleanup;
     }
 
@@ -1228,21 +1302,18 @@ sr_get_item_next(sr_session_ctx_t *session, sr_val_iter_t *iter, sr_val_t **valu
         /* No more data to be read */
         *value = NULL;
         return SR_ERR_NOT_FOUND;
-    }
-    else if (iter->index < iter->count) {
+    } else if (iter->index < iter->count) {
         /* There are buffered data */
         *value = iter->buff_values[iter->index++];
         iter->offset++;
-    }
-    else {
+    } else {
         /* Fetch more items */
         rc = cl_send_get_items_iter(session, iter->path, iter->recursive, iter->offset,
                 CL_GET_ITEMS_FETCH_LIMIT, &msg_resp);
         if (SR_ERR_NOT_FOUND == rc){
             SR_LOG_DBG("All items has been read for path '%s'", iter->path);
             goto cleanup;
-        }
-        else if (SR_ERR_OK != rc){
+        } else if (SR_ERR_OK != rc){
             SR_LOG_ERR("Fetching more items failed '%s'", iter->path);
             goto cleanup;
         }
@@ -1330,6 +1401,7 @@ sr_set_item(sr_session_ctx_t *session, const char *path, const sr_val_t *value, 
     msg_req->request->set_item_req->path = strdup(path);
     if (NULL == msg_req->request->set_item_req->path) {
         SR_LOG_ERR_MSG("Cannot allocate set_item path.");
+        rc = SR_ERR_NOMEM;
         goto cleanup;
     }
     msg_req->request->set_item_req->options = opts;
@@ -1386,6 +1458,7 @@ sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_option
     msg_req->request->delete_item_req->path = strdup(path);
     if (NULL == msg_req->request->delete_item_req->path) {
         SR_LOG_ERR_MSG("Cannot allocate delete_item path.");
+        rc = SR_ERR_NOMEM;
         goto cleanup;
     }
     msg_req->request->delete_item_req->options = opts;
@@ -1433,6 +1506,7 @@ sr_move_item(sr_session_ctx_t *session, const char *path, const sr_move_directio
     msg_req->request->move_item_req->path = strdup(path);
     if (NULL == msg_req->request->move_item_req->path) {
         SR_LOG_ERR_MSG("Cannot allocate move_item path.");
+        rc = SR_ERR_NOMEM;
         goto cleanup;
     }
     msg_req->request->move_item_req->direction = sr_move_direction_sr_to_gpb(direction);

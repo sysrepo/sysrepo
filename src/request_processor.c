@@ -116,6 +116,38 @@ rp_list_schemas_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session,
 }
 
 /**
+ * @brief Processes a get_schema request.
+ */
+static int
+rp_get_schema_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
+{
+    Sr__Msg *resp = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->get_schema_req);
+
+    SR_LOG_DBG_MSG("Processing get_schema request.");
+
+    /* allocate the response */
+    rc = sr_pb_resp_alloc(SR__OPERATION__GET_SCHEMA, session->id, &resp);
+    if (SR_ERR_OK != rc){
+        SR_LOG_ERR_MSG("Cannot allocate get_schema response.");
+        return SR_ERR_NOMEM;
+    }
+
+    // TODO: retrieve schema content from DM
+    resp->response->get_schema_resp->schema_content = strdup("real schema content will be here...");
+
+    /* set response result code */
+    resp->response->result = rc;
+
+    /* send the response */
+    rc = cm_msg_send(rp_ctx->cm_ctx, resp);
+
+    return rc;
+}
+
+/**
  * @brief Processes a get_item request.
  */
 static int
@@ -654,6 +686,9 @@ rp_msg_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
         switch (msg->request->operation) {
             case SR__OPERATION__LIST_SCHEMAS:
                 rc = rp_list_schemas_req_process(rp_ctx, session, msg);
+                break;
+            case SR__OPERATION__GET_SCHEMA:
+                rc = rp_get_schema_req_process(rp_ctx, session, msg);
                 break;
             case SR__OPERATION__GET_ITEM:
                 rc = rp_get_item_req_process(rp_ctx, session, msg);
