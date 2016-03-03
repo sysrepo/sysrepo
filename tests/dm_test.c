@@ -121,6 +121,80 @@ dm_list_schema_test(void **state)
 }
 
 void
+dm_get_schema_test(void **state)
+{
+    int rc;
+    dm_ctx_t *ctx;
+    char *schema = NULL;
+
+    rc = dm_init(NULL, TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* module latest revision */
+    rc = dm_get_schema(ctx, "module-a", NULL, NULL, &schema);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(schema);
+    free(schema);
+
+    /* module selected revision */
+    rc = dm_get_schema(ctx, "module-a", NULL, "2016-02-02", &schema);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(schema);
+    free(schema);
+
+    /* submodule latest revision */
+    rc = dm_get_schema(ctx, "module-a", "sub-a-one", NULL, &schema);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(schema);
+    free(schema);
+
+    /* submodule selected revision */
+    /*rc = dm_get_schema(ctx, "module-a", "sub-a-one", "2016-02-10", &schema);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(schema);
+    free(schema);*/
+
+    dm_cleanup(ctx);
+
+}
+
+void
+dm_get_schema_negative_test(void **state)
+{
+
+    int rc;
+    dm_ctx_t *ctx;
+    char *schema = NULL;
+
+    rc = dm_init(NULL, TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* unknown module */
+    rc = dm_get_schema(ctx, "unknown", NULL, NULL, &schema);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+    assert_null(schema);
+
+
+    /* module unknown revision */
+    rc = dm_get_schema(ctx, "module-a", NULL, "2018-02-02", &schema);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+    assert_null(schema);
+
+
+    /* unknown submodule */
+    rc = dm_get_schema(ctx, "module-a", "sub-unknown", NULL, &schema);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+    assert_null(schema);
+
+    /* submodule unknown revision */
+    rc = dm_get_schema(ctx, "module-a", "sub-a-one", "2018-02-10", &schema);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+    assert_null(schema);
+
+    dm_cleanup(ctx);
+}
+
+void
 dm_validate_data_trees_test(void **state)
 {
     int rc;
@@ -271,9 +345,10 @@ int main(){
             cmocka_unit_test(dm_create_cleanup),
             cmocka_unit_test(dm_get_data_tree),
             cmocka_unit_test(dm_list_schema_test),
-            cmocka_unit_test(dm_list_schema_test),
             cmocka_unit_test(dm_validate_data_trees_test),
             cmocka_unit_test(dm_discard_changes_test),
+            cmocka_unit_test(dm_get_schema_test),
+            cmocka_unit_test(dm_get_schema_negative_test),
     };
     return cmocka_run_group_tests(tests, setup, NULL);
 }

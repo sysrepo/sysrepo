@@ -191,7 +191,7 @@ cl_get_schema_test(void **state)
     rc = sr_get_schema(session, "module-a", NULL, NULL, &schema_content);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(schema_content);
-    printf("%.100s\n", schema_content);
+    printf("%s\n", schema_content);
     free(schema_content);
     schema_content = NULL;
 
@@ -199,7 +199,7 @@ cl_get_schema_test(void **state)
     rc = sr_get_schema(session, "module-a", NULL, "2016-02-02", &schema_content);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(schema_content);
-    printf("%.100s\n", schema_content);
+    printf("%s\n", schema_content);
     free(schema_content);
     schema_content = NULL;
 
@@ -207,17 +207,18 @@ cl_get_schema_test(void **state)
     rc = sr_get_schema(session, "module-a", "sub-a-one", NULL, &schema_content);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(schema_content);
-    printf("%.100s\n", schema_content);
+    printf("%s\n", schema_content);
     free(schema_content);
     schema_content = NULL;
 
-    /* get schema for specified submodule and revision */
+    /* TODO: waiting for ly_ctx_get_submodule revision support
+     * get schema for specified submodule and revision
     rc = sr_get_schema(session, "module-a", "sub-a-one", "2016-02-02", &schema_content);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(schema_content);
     printf("%.100s\n", schema_content);
     free(schema_content);
-    schema_content = NULL;
+    schema_content = NULL;*/
 
     /* stop the session */
     rc = sr_session_stop(session);

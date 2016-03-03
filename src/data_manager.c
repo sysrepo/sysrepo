@@ -830,8 +830,6 @@ dm_list_module(dm_ctx_t *dm_ctx, const struct lys_module *module, sr_schema_t *s
 
     while (NULL != submodules[sub_count]) sub_count++;
 
-    schema->submodule_count = sub_count;
-
     schema->submodules = calloc(sub_count, sizeof(*schema->submodules));
     if (NULL == schema->submodules) {
         SR_LOG_ERR_MSG("Memory allocation failed");
@@ -879,6 +877,7 @@ dm_list_module(dm_ctx_t *dm_ctx, const struct lys_module *module, sr_schema_t *s
             }
             schema->submodules[s].rev_count = 1;
         }
+        schema->submodule_count++;
     }
     free(submodules);
     return rc;
@@ -931,6 +930,44 @@ dm_list_schemas(dm_ctx_t *dm_ctx, dm_session_t *dm_session, sr_schema_t **schema
     *schema_count = count;
     free(names);
     return SR_ERR_OK;
+}
+
+int
+dm_get_schema(dm_ctx_t *dm_ctx, const char *module_name, const char *submodule_name, const char *rev_date, char **schema)
+{
+    CHECK_NULL_ARG2(dm_ctx, module_name);
+    int rc = SR_ERR_OK;
+
+    const struct lys_module *module = ly_ctx_get_module(dm_ctx->ly_ctx, module_name, NULL == submodule_name ? rev_date : NULL);
+    if (NULL == module) {
+        SR_LOG_ERR("Module %s with revision %s was not found", module_name, NULL == submodule_name ? rev_date : NULL);
+        return SR_ERR_NOT_FOUND;
+    }
+
+    if (NULL == submodule_name){
+        /* module*/
+        rc = lys_print_mem(schema, module, LYS_OUT_YIN, NULL);
+        if (0 != rc) {
+            SR_LOG_ERR("Module %s print failed.", module->name);
+            return SR_ERR_INTERNAL;
+        }
+        return SR_ERR_OK;
+    }
+
+    /* submodule */
+    const struct lys_submodule *submodule = ly_ctx_get_submodule(module, submodule_name, rev_date);
+    if (NULL == submodule) {
+        SR_LOG_ERR("Submodule %s of module %s was not found.", submodule_name, module_name);
+        return SR_ERR_NOT_FOUND;
+    }
+
+    rc = lys_print_mem(schema, (const struct lys_module *) submodule, LYS_OUT_YIN, NULL);
+    if (0 != rc) {
+        SR_LOG_ERR("Submodule %s print failed.", submodule->name);
+        return SR_ERR_INTERNAL;
+    }
+    return SR_ERR_OK;
+
 }
 
 int
@@ -1204,7 +1241,6 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
 
 cleanup:
     ac_unset_user_identity(dm_ctx->ac_ctx);
-    dm_free_commit_context(dm_ctx, c_ctx);
     free(file_name);
     return rc;
 }
