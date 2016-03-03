@@ -806,12 +806,12 @@ typedef int (*sr_feature_enable_cb)(const char *module_name, const char *feature
 typedef int (*sr_module_enable_cb)(const char *module_name, bool enable, void *private_ctx);
 
 int sr_feature_enable_subscribe(sr_session_ctx_t *session, sr_feature_enable_cb callback, void *private_ctx,
-        sr_subscription_ctx_t **subscribtion);
+        sr_subscription_ctx_t **subscription);
 
 int sr_module_enable_subscribe(sr_session_ctx_t *session, sr_module_enable_cb callback, void *private_ctx,
-        sr_subscription_ctx_t **subscribtion);
+        sr_subscription_ctx_t **subscription);
 
-int sr_unsubscribe(sr_subscription_ctx_t *subscribtion);
+int sr_unsubscribe(sr_subscription_ctx_t *subscription);
 
 
 ////////////////////////////////////////////////////////////////////////////////

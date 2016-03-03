@@ -52,8 +52,6 @@
  */
 typedef struct sr_conn_ctx_s {
     int fd;                                  /**< File descriptor of the connection. */
-    bool primary;                            /**< Primary connection. Handles all resources allocated only
-                                                  once per process (first connection is always primary). */
     pthread_mutex_t lock;                    /**< Mutex of the connection to guarantee that requests on the
                                                   same connection are processed serially (one after another). */
     uint8_t *msg_buf;                        /**< Buffer used for sending / receiving messages. */
@@ -88,7 +86,7 @@ typedef struct sr_session_list_s {
 /**
  * Structure holding data for iterative access to items
  */
-typedef struct sr_val_iter_s{
+typedef struct sr_val_iter_s {
     char *path;                     /**< xpath of the request */
     bool recursive;                 /**< flag denoting whether child subtrees should be iterated */
     size_t offset;                  /**< offset where the next data should be read */
@@ -98,8 +96,14 @@ typedef struct sr_val_iter_s{
     size_t count;                   /**< number of element currently buffered */
 } sr_val_iter_t;
 
-static sr_conn_ctx_t *primary_connection = NULL;                  /**< Global variable holding pointer to the primary connection. */
-static pthread_mutex_t primary_lock = PTHREAD_MUTEX_INITIALIZER;  /**< Mutex for locking global variable primary_connection. */
+typedef struct sr_subscription_ctx_s {
+    uint32_t subscription_id;
+
+} sr_subscription_ctx_t;
+
+static int connections_cnt = 0;
+static int subscriptions_cnt = 0;
+static pthread_mutex_t global_lock = PTHREAD_MUTEX_INITIALIZER;  /**< Mutex for locking global variable primary_connection. */
 
 /**
  * @brief Returns provided error code and saves it in the session context.
@@ -687,16 +691,14 @@ sr_connect(const char *app_name, const sr_conn_options_t opts, sr_conn_ctx_t **c
         goto cleanup;
     }
 
-    /* check if this is the primary connection */
-    pthread_mutex_lock(&primary_lock);
-    if (NULL == primary_connection) {
-        /* this is the first connection - set as primary */
-        primary_connection = ctx;
-        ctx->primary = true;
-        /* initialize logging */
+    /* check if this is the first connection */
+    pthread_mutex_lock(&global_lock);
+    if (0 == connections_cnt) {
+        /* this is the first connection - initialize logging */
         sr_logger_init(app_name);
     }
-    pthread_mutex_unlock(&primary_lock);
+    connections_cnt++;
+    pthread_mutex_unlock(&global_lock);
 
     /* attempt to connect to sysrepo daemon socket */
     rc = cl_socket_connect(ctx, SR_DAEMON_SOCKET);
@@ -769,13 +771,13 @@ sr_disconnect(sr_conn_ctx_t *conn_ctx)
             cm_cleanup(conn_ctx->local_cm);
         }
 
-        if (conn_ctx->primary) {
-            /* destroy global resources */
-            pthread_mutex_lock(&primary_lock);
+        pthread_mutex_lock(&global_lock);
+        connections_cnt--;
+        if ((0 == subscriptions_cnt) && (0 == connections_cnt)) {
+            /* destroy library-global resources */
             sr_logger_cleanup();
-            primary_connection = NULL;
-            pthread_mutex_unlock(&primary_lock);
         }
+        pthread_mutex_unlock(&global_lock);
 
         /* destroy all sessions */
         session = conn_ctx->session_list;
@@ -1883,4 +1885,38 @@ sr_get_last_errors(sr_session_ctx_t *session, const sr_error_info_t **error_info
     pthread_mutex_unlock(&session->lock);
 
     return session->last_error;
+}
+
+int
+sr_feature_enable_subscribe(sr_session_ctx_t *session, sr_feature_enable_cb callback, void *private_ctx,
+        sr_subscription_ctx_t **subscription)
+{
+    /* check if this is the first subscription */
+    pthread_mutex_lock(&global_lock);
+    if (0 == subscriptions_cnt) {
+        /* this is the first subscription - initialize unix-domain socket for subscriptions */
+        // TODO
+    }
+    subscriptions_cnt++;
+    pthread_mutex_unlock(&global_lock);
+
+    return SR_ERR_OK;
+}
+
+int
+sr_unsubscribe(sr_subscription_ctx_t *subscription)
+{
+    pthread_mutex_lock(&global_lock);
+    subscriptions_cnt--;
+    if (0 == subscriptions_cnt) {
+        /* this is the last subscription - destroy unix-domain socket for subscriptions */
+        // TODO
+    }
+    if ((0 == subscriptions_cnt) && (0 == connections_cnt)) {
+        /* destroy library-global resources */
+        sr_logger_cleanup();
+    }
+    pthread_mutex_unlock(&global_lock);
+
+    return SR_ERR_OK;
 }
