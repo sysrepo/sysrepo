@@ -274,7 +274,9 @@ main(int argc, char* argv[])
     }
 
     /* tell the parent process that we are okay */
-    kill(parent, SIGUSR1);
+    if (!debug_mode) {
+        kill(parent, SIGUSR1);
+    }
 
     SR_LOG_INF_MSG("Sysrepo daemon initialized successfully.");
 
