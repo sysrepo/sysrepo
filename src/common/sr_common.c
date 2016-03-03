@@ -2124,6 +2124,7 @@ sr_get_schema_file_name(const char *schema_search_dir, const char *module_name, 
             return rc;
         }
         free(tmp);
+        tmp = NULL;
         rc = sr_str_join(tmp2, rev_date, &tmp);
         free(tmp2);
     }

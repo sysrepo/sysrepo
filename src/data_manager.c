@@ -830,8 +830,6 @@ dm_list_module(dm_ctx_t *dm_ctx, const struct lys_module *module, sr_schema_t *s
 
     while (NULL != submodules[sub_count]) sub_count++;
 
-    schema->submodule_count = sub_count;
-
     schema->submodules = calloc(sub_count, sizeof(*schema->submodules));
     if (NULL == schema->submodules) {
         SR_LOG_ERR_MSG("Memory allocation failed");
@@ -879,6 +877,7 @@ dm_list_module(dm_ctx_t *dm_ctx, const struct lys_module *module, sr_schema_t *s
             }
             schema->submodules[s].rev_count = 1;
         }
+        schema->submodule_count++;
     }
     free(submodules);
     return rc;
@@ -1242,7 +1241,6 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
 
 cleanup:
     ac_unset_user_identity(dm_ctx->ac_ctx);
-    dm_free_commit_context(dm_ctx, c_ctx);
     free(file_name);
     return rc;
 }
