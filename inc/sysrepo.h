@@ -409,15 +409,36 @@ int sr_get_last_errors(sr_session_ctx_t *session, const sr_error_info_t **error_
 ////////////////////////////////////////////////////////////////////////////////
 
 /**
- * @brief Structure that contains information about a schema supported by sysrepo.
+ * @brief Structure that contains information about one particular schema file supported by sysrepo.
+ */
+typedef struct sr_sch_revision_s {
+    char *revision;         /**< Revision of the module/submodule. */
+    char *file_path_yang;   /**< Absolute path to file where the module/submodule is stored (YANG format). */
+    char *file_path_yin;    /**< Absolute path to file where the module/submodule is stored (.yin format). */
+} sr_sch_revision_t;
+
+/**
+ * @brief Informations about submodules
+ */
+typedef struct sr_sch_submodule_s {
+    char *submodule_name;          /**< Submodule name */
+    sr_sch_revision_t *revisions;  /**< Revisions of the submodule */
+    size_t rev_count;              /**< Number of sumodule revisions */
+} sr_sch_submodule_t;
+
+/**
+ * @brief Structure that contains information about a module supported by sysrepo.
  */
 typedef struct sr_schema_s {
-    char *module_name;      /**< Name of the module. */
-    char *ns;               /**< Namespace of the module used in @ref xp_page "XPath". */
-    char *prefix;           /**< Prefix of the module. */
-    char *revision;         /**< Latest revision date of the module. */
-    char *file_path_yang;   /**< Absolute path to file where the schema is stored (YANG format). */
-    char *file_path_yin;    /**< Absolute path to file where the schema is stored (.yin format). */
+    char *module_name;               /**< Name of the module. */
+    char *ns;                        /**< Namespace of the module used in @ref xp_page "XPath". */
+    char *prefix;                    /**< Prefix of the module. */
+
+    sr_sch_revision_t *revisions;    /**< Revisions of the module */
+    size_t rev_count;                /**< Number of module's revisions */
+
+    sr_sch_submodule_t *submodules;  /**< Array of submodules */
+    size_t submodule_count;          /**< Number of module's submodules */
 } sr_schema_t;
 
 /**

@@ -91,13 +91,26 @@ dm_list_schema_test(void **state)
     assert_int_equal(SR_ERR_OK, rc);
 
     for (size_t i = 0; i < count; i++) {
-        printf("\n\nSchema #%zu:\n%s\n%s\n%s\n%s\n%s\n%s", i,
+        printf("\n\nSchema #%zu:\n%s\n%s\n%s\n", i,
                 schemas[i].module_name,
                 schemas[i].ns,
-                schemas[i].prefix,
-                schemas[i].revision,
-                schemas[i].file_path_yang,
-                schemas[i].file_path_yin);
+                schemas[i].prefix);
+        for (size_t r = 0; r < schemas[i].rev_count; r++) {
+            printf("\t%s\n\t%s\n\t%s\n\n",
+                    schemas[i].revisions[r].revision,
+                    schemas[i].revisions[r].file_path_yang,
+                    schemas[i].revisions[r].file_path_yin);
+        }
+
+        for (size_t s = 0; s < schemas[i].submodule_count; s++) {
+            printf("\t%s\n", schemas[i].submodules[s].submodule_name);
+            for (size_t r = 0; r < schemas[i].submodules[s].rev_count; r++) {
+               printf("\t\t%s\n\t\t%s\n\t\t%s\n\n",
+                       schemas[i].submodules[s].revisions[r].revision,
+                       schemas[i].submodules[s].revisions[r].file_path_yang,
+                       schemas[i].submodules[s].revisions[r].file_path_yin);
+            }
+        }
     }
 
     sr_free_schemas(schemas, count);
@@ -207,45 +220,6 @@ dm_discard_changes_test(void **state)
 }
 
 void
-dm_commit_test(void **state)
-{
-    int rc;
-    dm_ctx_t *ctx = NULL;
-    dm_session_t *ses_ctx = NULL;
-    dm_data_info_t *info = NULL;
-
-    rc = dm_init(NULL, TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx);
-    assert_int_equal(SR_ERR_OK, rc);
-
-    rc = dm_session_start(ctx, NULL, SR_DS_STARTUP, &ses_ctx);
-    assert_int_equal(SR_ERR_OK, rc);
-
-    sr_error_info_t *errors = NULL;
-    size_t err_cnt = 0;
-    rc = dm_commit(ctx, ses_ctx, &errors, &err_cnt);
-    assert_int_equal(SR_ERR_OK, rc);
-    sr_free_errors(errors, err_cnt);
-
-    rc = dm_get_data_info(ctx, ses_ctx, "test-module", &info);
-    assert_int_equal(SR_ERR_OK, rc);
-
-    rc = dm_commit(ctx, ses_ctx, &errors, &err_cnt);
-    assert_int_equal(SR_ERR_OK, rc);
-    sr_free_errors(errors, err_cnt);
-
-    rc = dm_get_data_info(ctx, ses_ctx, "test-module", &info);
-    assert_int_equal(SR_ERR_OK, rc);
-    info->modified = true;
-
-    rc = dm_commit(ctx, ses_ctx, &errors, &err_cnt);
-    assert_int_equal(SR_ERR_OK, rc);
-    sr_free_errors(errors, err_cnt);
-
-    dm_session_stop(ctx, ses_ctx);
-    dm_cleanup(ctx);
-}
-
-void
 dm_add_operation_test(void **state)
 {
     int rc;
@@ -300,7 +274,6 @@ int main(){
             cmocka_unit_test(dm_list_schema_test),
             cmocka_unit_test(dm_validate_data_trees_test),
             cmocka_unit_test(dm_discard_changes_test),
-            cmocka_unit_test(dm_commit_test),
     };
     return cmocka_run_group_tests(tests, setup, NULL);
 }

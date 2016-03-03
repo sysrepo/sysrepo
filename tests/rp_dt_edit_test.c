@@ -51,6 +51,7 @@ typedef struct dm_session_s {
 } dm_session_t;
 
 int setup(void **state){
+    createDataTreeTestModule();
    test_rp_ctx_create((rp_ctx_t**)state);
    return 0;
 }
@@ -1156,6 +1157,42 @@ edit_discard_changes_test(void **state)
 }
 
 void
+empty_commit_test(void **state)
+{
+    int rc = 0;
+    rp_ctx_t *ctx = *state;
+    rp_session_t *session = NULL;
+    dm_data_info_t *info = NULL;
+    test_rp_sesssion_create(ctx, SR_DS_STARTUP, &session);
+
+    /* no session copy made*/
+    sr_error_info_t *errors = NULL;
+    size_t err_cnt = 0;
+    rc = rp_dt_commit(ctx, session, &errors, &err_cnt);
+    assert_int_equal(SR_ERR_OK, rc);
+    sr_free_errors(errors, err_cnt);
+
+    /* not modified session copy */
+    rc = dm_get_data_info(ctx->dm_ctx, session->dm_session, "test-module", &info);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_commit(ctx, session, &errors, &err_cnt);
+    assert_int_equal(SR_ERR_OK, rc);
+    sr_free_errors(errors, err_cnt);
+
+    rc = dm_get_data_info(ctx->dm_ctx, session->dm_session, "test-module", &info);
+    assert_int_equal(SR_ERR_OK, rc);
+    info->modified = true;
+
+    rc = rp_dt_commit(ctx, session, &errors, &err_cnt);
+    assert_int_equal(SR_ERR_OK, rc);
+    sr_free_errors(errors, err_cnt);
+
+    test_rp_session_cleanup(ctx, session);
+}
+
+
+void
 edit_commit_test(void **state)
 {
     int rc = 0;
@@ -1203,7 +1240,7 @@ edit_commit_test(void **state)
     sr_error_info_t *errors = NULL;
     size_t e_cnt = 0;
 
-    rc = dm_commit(ctx->dm_ctx, sessionA->dm_session, &errors, &e_cnt);
+    rc = rp_dt_commit(ctx, sessionA, &errors, &e_cnt);
     assert_int_equal(SR_ERR_OK, rc);
     sr_free_errors(errors, e_cnt);
 
@@ -1236,7 +1273,7 @@ edit_commit_test(void **state)
     rc = rp_dt_set_item_wrapper(ctx, sessionA, XP_TEST_MODULE_INT64, valueA, SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = dm_commit(ctx->dm_ctx, sessionA->dm_session, &errors, &e_cnt);
+    rc = rp_dt_commit(ctx, sessionA, &errors, &e_cnt);
     assert_int_equal(SR_ERR_OK, rc);
     sr_free_errors(errors, e_cnt);
 
@@ -1262,11 +1299,11 @@ edit_commit2_test(void **state)
 
     sr_error_info_t *errors = NULL;
     size_t e_cnt = 0;
-    rc = dm_commit(ctx->dm_ctx, session->dm_session, &errors, &e_cnt);
+    rc = rp_dt_commit(ctx, session, &errors, &e_cnt);
     assert_int_equal(SR_ERR_OK, rc);
 
     /*this commit should failed because main container is already deleted */
-    rc = dm_commit(ctx->dm_ctx, sessionB->dm_session, &errors, &e_cnt);
+    rc = rp_dt_commit(ctx, sessionB, &errors, &e_cnt);
     assert_int_equal(SR_ERR_DATA_MISSING, rc);
     sr_free_errors(errors, e_cnt);
 
@@ -1307,11 +1344,11 @@ edit_commit3_test(void **state)
     sr_error_info_t *errors = NULL;
     size_t e_cnt = 0;
 
-    rc = dm_commit(ctx->dm_ctx, session->dm_session, &errors, &e_cnt);
+    rc = rp_dt_commit(ctx, session, &errors, &e_cnt);
     assert_int_equal(SR_ERR_OK, rc);
 
     /* the leaf-list value was committed during the first commit */
-    rc = dm_commit(ctx->dm_ctx, sessionB->dm_session, &errors, &e_cnt);
+    rc = rp_dt_commit(ctx, sessionB, &errors, &e_cnt);
     assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
     sr_free_errors(errors, e_cnt);
 
@@ -1343,7 +1380,7 @@ edit_commit4_test(void **state)
 
     sr_error_info_t *errors = NULL;
     size_t e_cnt = 0;
-    rc = dm_commit(ctx->dm_ctx, session->dm_session, &errors, &e_cnt);
+    rc = rp_dt_commit(ctx, session, &errors, &e_cnt);
     assert_int_equal(SR_ERR_OK, rc);
 
     test_rp_session_cleanup(ctx, session);
@@ -1599,6 +1636,7 @@ int main(){
             cmocka_unit_test(edit_test_module_test),
             cmocka_unit_test(edit_validate_test),
             cmocka_unit_test(edit_discard_changes_test),
+            cmocka_unit_test(empty_commit_test),
             cmocka_unit_test(edit_commit_test),
             cmocka_unit_test(edit_move_test),
             cmocka_unit_test(edit_move2_test),

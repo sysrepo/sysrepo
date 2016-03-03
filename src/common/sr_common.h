@@ -548,14 +548,21 @@ int sr_get_data_file_name(const char *data_search_dir, const char *module_name, 
  * Function does not check if the schema name is valid. The file name is
  * allocated on heap and needs to be freed by caller.
  *
- * @param[in] schema_search_dir Path to the directory with schema files.
- * @param[in] module_name Name of the module.
- * @param[in] yang_format flag whether yang or yin filename should be created
- * @param[out] file_name Allocated file path to the schema file.
+ * @param [in] schema_search_dir Path to the directory with schema files.
+ * @param [in] module_name Name of the module.
+ * @param [in] rev_date if set '@' rev_date is added to the filename
+ * @param [in] yang_format flag whether yang or yin filename should be created
+ * @param [out] file_name Allocated file path to the schema file.
  *
  * @return err_code (SR_ERR_OK on success, SR_ERR_NOMEM if memory allocation failed).
  */
-int sr_get_schema_file_name(const char *schema_search_dir, const char *module_name, bool yang_format, char **file_name);
+int sr_get_schema_file_name(const char *schema_search_dir, const char *module_name, const char *rev_date, bool yang_format, char **file_name);
+
+/**
+ * @brief Frees the content of sr_schema_t structure
+ * @param [in] schema
+ */
+void sr_free_schema(sr_schema_t *schema);
 
 /**@} common */
 

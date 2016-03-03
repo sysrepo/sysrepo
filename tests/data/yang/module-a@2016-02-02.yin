@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<module name="module-a"
+        xmlns="urn:ietf:params:xml:ns:yang:yin:1"
+        xmlns:moda="ns:yang:module-a">
+  <namespace uri="ns:yang:module-a"/>
+  <prefix value="moda"/>
+  <include module="sub-a-one">
+    <revision-date date="2016-02-02"/>
+  </include>
+  <include module="sub-a-two">
+    <revision-date date="2016-02-02"/>
+  </include>
+  <organization>
+    <text>organization</text>
+  </organization>
+  <contact>
+    <text>contact@example.com</text>
+  </contact>
+  <description>
+    <text>example yang module</text>
+  </description>
+  <revision date="2016-02-02">
+    <description>
+      <text>init revision.</text>
+    </description>
+  </revision>
+  <container name="cont_a">
+    <leaf name="l_a">
+      <type name="string"/>
+    </leaf>
+    <uses name="one"/>
+    <uses name="two"/>
+  </container>
+</module>

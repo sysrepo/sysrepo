@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<submodule name="sub-a-one"
+           xmlns="urn:ietf:params:xml:ns:yang:yin:1"
+           xmlns:moda="ns:yang:module-a">
+  <belongs-to module="module-a">
+    <prefix value="moda"/>
+  </belongs-to>
+  <organization>
+    <text>organization</text>
+  </organization>
+  <contact>
+    <text>contact@example.com</text>
+  </contact>
+  <description>
+    <text>example yang module</text>
+  </description>
+  <revision date="2016-02-02">
+    <description>
+      <text>Initial revision.</text>
+    </description>
+  </revision>
+  <grouping name="one">
+    <container name="something">
+      <leaf name="an-integer">
+        <type name="int32"/>
+      </leaf>
+      <leaf name="a-string">
+        <type name="string"/>
+      </leaf>
+    </container>
+  </grouping>
+</submodule>

@@ -145,16 +145,26 @@ cl_list_schemas_test(void **state)
 
     /* check and print the schemas */
     for (i = 0; i < schema_cnt; i++) {
-        assert_non_null(schemas[i].module_name);
-        assert_non_null(schemas[i].ns);
-        assert_non_null(schemas[i].prefix);
-        printf("\nSchema #%zu:\n%s\n%s\n%s\n%s\n%s\n%s", i,
+        printf("\n\nSchema #%zu:\n%s\n%s\n%s\n", i,
                 schemas[i].module_name,
                 schemas[i].ns,
-                schemas[i].prefix,
-                schemas[i].revision,
-                schemas[i].file_path_yang,
-                schemas[i].file_path_yin);
+                schemas[i].prefix);
+        for (size_t r = 0; r < schemas[i].rev_count; r++) {
+            printf("\t%s\n\t%s\n\t%s\n\n",
+                    schemas[i].revisions[r].revision,
+                    schemas[i].revisions[r].file_path_yang,
+                    schemas[i].revisions[r].file_path_yin);
+        }
+
+        for (size_t s = 0; s < schemas[i].submodule_count; s++) {
+            printf("\t%s\n", schemas[i].submodules[s].submodule_name);
+            for (size_t r = 0; r < schemas[i].submodules[s].rev_count; r++) {
+               printf("\t\t%s\n\t\t%s\n\t\t%s\n\n",
+                       schemas[i].submodules[s].revisions[r].revision,
+                       schemas[i].submodules[s].revisions[r].file_path_yang,
+                       schemas[i].submodules[s].revisions[r].file_path_yin);
+            }
+        }
     }
     sr_free_schemas(schemas, schema_cnt);
 

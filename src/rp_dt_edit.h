@@ -95,22 +95,26 @@ int rp_dt_set_item_wrapper(rp_ctx_t *rp_ctx, rp_session_t *session, const char *
 int rp_dt_delete_item_wrapper(rp_ctx_t *rp_ctx, rp_session_t *session, const char *xpath, sr_edit_options_t opts);
 
 /**
- * @brief Perform the list of provided operations on the session. Stops
- * on the first error.
- * @param [in] ctx
+ * @brief Saves the changes made in the session to the file system. To make sure that only one commit
+ * can be in progress at the same time commit_lock in rp_ctx is used. To solve potential
+ * conflict with sysrepo library, each individual data file is locked. In case of
+ * failure to lock data file, the commit process is stopped and SR_ERR_COMMIT_FAILED is returned.
+ * The commit process can be divided into 5 steps:
+ * - validation of modified data trees (in case of error SR_ERR_VALIDATION_FAILED is returned),
+ * after successful validation commit_lock is acquired.
+ * - initialization of the commit session where all modified models are loaded
+ * from file system
+ * - operation made in session are applied to the commit session
+ * - validate commit_session's data trees because the merge of the session changes
+ * may cause invalidity
+ * - write commit session's data trees to the file system
+ * @param [in] rp_ctx
  * @param [in] session
- * @param [in] operations
- * @param [in] count
- * @param [in] matched_ts - set of model's name where the current modify timestamp
- * matches the timestamp of the session copy. Operation for this models skipped.
- * @return Error code (SR_ERR_OK on success)
+ * @param [out] errors
+ * @param [out] err_cnt
+ * @return Error code (SR_ERR_OK on success), SR_ERR_COMMIT_FAILED, SR_ERR_VALIDATION_FAILED, SR_ERR_IO
  */
-int rp_dt_replay_operations(dm_ctx_t *ctx, dm_session_t *session, dm_sess_op_t *operations, size_t count
-#ifdef HAVE_STAT_ST_MTIM
-, struct ly_set *matched_ts
-#endif
-);
-
+int rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, sr_error_info_t **errors, size_t *err_cnt);
 #endif /* RP_DT_EDIT_H */
 
 /**
