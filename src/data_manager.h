@@ -89,6 +89,21 @@ typedef struct dm_sess_op_s{
 }dm_sess_op_t;
 
 /**
+ * @brief Structure holding information used during commit process
+ */
+typedef struct dm_commit_context_s {
+    dm_session_t *session;      /**< session where mereged (user changes + file system state) data trees are stored */
+    int *fds;                   /**< opened file descriptors */
+    bool *existed;              /**< flag wheter the file for the filedesriptor existed (and should be truncated) before commit*/
+    size_t modif_count;         /**< number of modified models fds to be closed*/
+#ifdef HAVE_STAT_ST_MTIM
+    struct ly_set *up_to_date_models; /**< set of module names where the timestamp of the session copy is equal to file system timestamp */
+#endif
+    const dm_sess_op_t *operations;   /**< pointer to the list of operations performed in session to be commited */
+    size_t oper_count;                /**< number of operation in the operations list */
+} dm_commit_context_t;
+
+/**
  * @brief Initializes the data manager context, which will be passed in further
  * data manager related calls.
  * @param [in] ac_ctx_t - Acccess Control module context
@@ -188,26 +203,44 @@ int dm_validate_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, sr_e
 int dm_discard_changes(dm_ctx_t *dm_ctx, dm_session_t *session);
 
 /**
- * @brief Saves the changes made in the session to the file system. To make sure that only one commit
- * can be in progress at the same time commit_lock in dm_ctx is used. To solve potential
- * conflict with sysrepo library, each individual data file is locked. In case of
- * failure to lock data file, the commit process is stopped and SR_ERR_COMMIT_FAILED is returned.
- * The commit process can be divided into 5 steps:
- * - validation of modified data trees (in case of error SR_ERR_VALIDATION_FAILED is returned),
- * after successful validation commit_lock is acquired.
- * - initialization of the commit session where all modified models are loaded
- * from file system
- * - operation made in session are applied to the commit session
- * - validate commit_session's data trees because the merge of the session changes
- * may cause invalidity
- * - write commit session's data trees to the file system
+ * @brief Counts modified models and allocates structures used during commit process if the
+ * number of modified models is greater than zero. In case of error all allocated resources
+ * are cleaned up.
  * @param [in] dm_ctx
  * @param [in] session
- * @param [out] errors
- * @param [out] err_cnt
- * @return Error code (SR_ERR_OK on success), SR_ERR_COMMIT_FAILED, SR_ERR_VALIDATION_FAILED, SR_ERR_IO
+ * @param [out] c_ctx
+ * @return Error code (SR_ERR_OK on success)
  */
-int dm_commit(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors, size_t *err_cnt);
+int dm_commit_prepare_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t **c_ctx);
+
+/**
+ * @brief Loads the data tree which has been modified in the session to the commit session. If the session copy has
+ * the same timestamp as the file system file it is copied otherwise it is loaded from file.
+ * In case of error all files are closed.
+ * @param [in] dm_ctx
+ * @param [in] session
+ * @param [in] commit_session - session where the data models are loaded (either from file or copied from session)
+ * @param [in] fds - array where file descriptor of opened files will be stored
+ * @param [in] existed - array where the true is set if the file existed
+ * @param [out] up_to_date
+ * @return Error code (SR_ERR_OK on success)
+ */
+int dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm_commit_context_t *c_ctx);
+
+/**
+ * @brief Writes the data trees from commit session stored in commit context into the files.
+ * In case of error tries to continue. Does not do a cleanup.
+ * @param [in] session to be committed
+ * @param [in] c_ctx
+ * @return Error code (SR_ERR_OK on success)
+ */
+int dm_commit_write_files(dm_session_t *session, dm_commit_context_t *c_ctx);
+
+/**
+ * @brief Frees all resources allocated in commit context closes
+ * modif_count of files.
+ */
+void dm_free_commit_context(dm_ctx_t *dm_ctx, dm_commit_context_t *c_ctx);
 
 /**
  * @brief Logs operation into session operation list. The operation list is used

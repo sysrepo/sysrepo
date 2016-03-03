@@ -445,7 +445,7 @@ rp_validate_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr_
  * @brief Processes a commit request.
  */
 static int
-rp_commit_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
+rp_commit_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
 {
     Sr__Msg *resp = NULL;
     int rc = SR_ERR_OK;
@@ -463,7 +463,7 @@ rp_commit_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__M
 
     sr_error_info_t *errors = NULL;
     size_t err_cnt = 0;
-    rc = dm_commit(rp_ctx->dm_ctx, session->dm_session, &errors, &err_cnt);
+    rc = rp_dt_commit(rp_ctx, session, &errors, &err_cnt);
 
     /* set response code */
     resp->response->result = rc;
@@ -858,6 +858,12 @@ rp_init(cm_ctx_t *cm_ctx, rp_ctx_t **rp_ctx_p)
         goto cleanup;
     }
 
+    rc = pthread_mutex_init(&ctx->commit_lock, NULL);
+    if (0 != rc) {
+        SR_LOG_ERR_MSG("Commit mutex init failed");
+        goto cleanup;
+    }
+
     /* initialize Data Manager */
     rc = dm_init(ctx->ac_ctx, SR_SCHEMA_SEARCH_DIR, SR_DATA_SEARCH_DIR, &ctx->dm_ctx);
     if (SR_ERR_OK != rc) {
@@ -923,6 +929,7 @@ rp_cleanup(rp_ctx_t *rp_ctx)
                 sr__msg__free_unpacked(req.msg, NULL);
             }
         }
+        pthread_mutex_destroy(&rp_ctx->commit_lock);
         sr_cbuff_cleanup(rp_ctx->request_queue);
         dm_cleanup(rp_ctx->dm_ctx);
         ac_cleanup(rp_ctx->ac_ctx);

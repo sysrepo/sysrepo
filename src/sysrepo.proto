@@ -139,16 +139,26 @@ message SessionRefreshResp {
 // Data Retrieval API (get / get-config functionality)
 ////////////////////////////////////////////////////////////////////////////////
 
+message Schema_rev {
+  optional string revision = 1;         /**< Latest revision date of the module. */
+  optional string file_path_yang = 2;   /**< Absolute path to file where the schema is stored (YANG format). */
+  optional string file_path_yin  = 3;   /**< Absolute path to file where the schema is stored (.yin format). */
+}
+
+message Schema_submodule {
+  required string submodule_name = 1;   /**< Submodule name */
+  repeated Schema_rev revisions = 2;    /**< Revisions of the submodule */
+}
 /**
  * @brief Information about a schema installed in sysrepo datastore.
  */
 message Schema {
-  required string module_name = 1;      /**< Name of the module. */
-  required string ns = 2;               /**< Namespace of the module. */
-  required string prefix = 3;           /**< Prefix of he module. */
-  optional string revision = 4;         /**< Latest revision date of the module. */
-  optional string file_path_yang = 5;   /**< Absolute path to file where the schema is stored (YANG format). */
-  optional string file_path_yin  = 6;   /**< Absolute path to file where the schema is stored (.yin format). */
+  required string module_name = 1;           /**< Name of the module. */
+  required string ns = 2;                    /**< Namespace of the module. */
+  required string prefix = 3;                /**< Prefix of he module. */
+
+  repeated Schema_rev revisions = 4;         /**< Revisions of the module*/
+  repeated Schema_submodule submodules = 5;  /**< Submodules */
 }
 
 /**
@@ -382,7 +392,7 @@ message Req {
   optional SessionStartReq session_start_req = 10;
   optional SessionStopReq session_stop_req = 11;
   optional SessionRefreshReq session_refresh_req = 12;
-  
+
   optional ListSchemasReq list_schemas_req = 20;
   optional GetItemReq get_item_req = 21;
   optional GetItemsReq get_items_req = 22;
@@ -410,7 +420,7 @@ message Resp {
   optional SessionStartResp session_start_resp = 10;
   optional SessionStopResp session_stop_resp = 11;
   optional SessionRefreshResp session_refresh_resp = 12;
-  
+
   optional ListSchemasResp list_schemas_resp = 20;
   optional GetItemResp get_item_resp = 21;
   optional GetItemsResp get_items_resp = 22;
