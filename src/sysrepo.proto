@@ -373,6 +373,29 @@ message UnlockResp {
 
 
 ////////////////////////////////////////////////////////////////////////////////
+// Data modules handling API - !!! EXPERIMENTAL !!!
+////////////////////////////////////////////////////////////////////////////////
+
+message FeatureEnableReq {
+  required string module_name = 1;
+  required string feature_name = 2;
+  required bool enable = 3;
+}
+
+message FeatureEnableResp {
+}
+
+message ModuleEnableReq {
+  optional string module_name = 1;
+  optional string revision = 2;
+  required bool enable = 3;
+}
+
+message ModuleEnableResp {
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
 // Sysrepo Engine API umbrella messages
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -386,19 +409,22 @@ enum Operation {
 
   LIST_SCHEMAS = 20;
   GET_SCHEMA = 21;
-  GET_ITEM = 22;
-  GET_ITEMS = 23;
+  FEATURE_ENABLE = 22;
+  MODULE_ENABLE = 23;
 
-  SET_ITEM = 30;
-  DELETE_ITEM = 31;
-  MOVE_ITEM = 32;
+  GET_ITEM = 30;
+  GET_ITEMS = 31;
 
-  VALIDATE = 40;
-  COMMIT = 41;
-  DISCARD_CHANGES = 42;
+  SET_ITEM = 40;
+  DELETE_ITEM = 41;
+  MOVE_ITEM = 42;
 
-  LOCK = 50;
-  UNLOCK = 51;
+  VALIDATE = 50;
+  COMMIT = 51;
+  DISCARD_CHANGES = 52;
+
+  LOCK = 60;
+  UNLOCK = 61;
 }
 
 /**
@@ -413,19 +439,22 @@ message Req {
 
   optional ListSchemasReq list_schemas_req = 20;
   optional GetSchemaReq get_schema_req = 21;
-  optional GetItemReq get_item_req = 22;
-  optional GetItemsReq get_items_req = 23;
+  optional FeatureEnableReq feature_enable_req = 22;
+  optional ModuleEnableReq module_enable_req = 23;
 
-  optional SetItemReq set_item_req = 30;
-  optional DeleteItemReq delete_item_req = 31;
-  optional MoveItemReq move_item_req = 32;
+  optional GetItemReq get_item_req = 30;
+  optional GetItemsReq get_items_req = 31;
 
-  optional ValidateReq validate_req = 40;
-  optional CommitReq commit_req = 41;
-  optional DiscardChangesReq discard_changes_req = 42;
+  optional SetItemReq set_item_req = 40;
+  optional DeleteItemReq delete_item_req = 41;
+  optional MoveItemReq move_item_req = 42;
 
-  optional LockReq lock_req = 50;
-  optional UnlockReq unlock_req = 51;
+  optional ValidateReq validate_req = 50;
+  optional CommitReq commit_req = 51;
+  optional DiscardChangesReq discard_changes_req = 52;
+
+  optional LockReq lock_req = 60;
+  optional UnlockReq unlock_req = 61;
 }
 
 /**
@@ -442,19 +471,22 @@ message Resp {
 
   optional ListSchemasResp list_schemas_resp = 20;
   optional GetSchemaResp get_schema_resp = 21;
-  optional GetItemResp get_item_resp = 22;
-  optional GetItemsResp get_items_resp = 23;
+  optional FeatureEnableResp feature_enable_resp = 22;
+  optional ModuleEnableResp module_enable_resp = 23;
 
-  optional SetItemResp set_item_resp = 30;
-  optional DeleteItemResp delete_item_resp = 31;
-  optional MoveItemResp move_item_resp = 32;
+  optional GetItemResp get_item_resp = 30;
+  optional GetItemsResp get_items_resp = 31;
 
-  optional ValidateResp validate_resp = 40;
-  optional CommitResp commit_resp = 41;
-  optional DiscardChangesResp discard_changes_resp = 42;
+  optional SetItemResp set_item_resp = 40;
+  optional DeleteItemResp delete_item_resp = 41;
+  optional MoveItemResp move_item_resp = 42;
 
-  optional LockResp lock_resp = 50;
-  optional UnlockResp unlock_resp = 51;
+  optional ValidateResp validate_resp = 50;
+  optional CommitResp commit_resp = 51;
+  optional DiscardChangesResp discard_changes_resp = 52;
+
+  optional LockResp lock_resp = 60;
+  optional UnlockResp unlock_resp = 61;
 }
 
 /**

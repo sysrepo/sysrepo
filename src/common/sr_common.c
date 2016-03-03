@@ -79,6 +79,10 @@ sr_operation_name(Sr__Operation operation)
         return "list-schemas";
     case SR__OPERATION__GET_SCHEMA:
         return "get-schema";
+    case SR__OPERATION__FEATURE_ENABLE:
+        return "feature-enable";
+    case SR__OPERATION__MODULE_ENABLE:
+        return "module-enable";
     case SR__OPERATION__GET_ITEM:
         return "get-item";
     case SR__OPERATION__GET_ITEMS:
@@ -622,6 +626,22 @@ sr_pb_req_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__Ms
             sr__get_schema_req__init((Sr__GetSchemaReq*)sub_msg);
             req->get_schema_req = (Sr__GetSchemaReq*)sub_msg;
             break;
+        case SR__OPERATION__FEATURE_ENABLE:
+            sub_msg = calloc(1, sizeof(Sr__FeatureEnableReq));
+            if (NULL == sub_msg) {
+                goto nomem;
+            }
+            sr__feature_enable_req__init((Sr__FeatureEnableReq*)sub_msg);
+            req->feature_enable_req = (Sr__FeatureEnableReq*)sub_msg;
+            break;
+        case SR__OPERATION__MODULE_ENABLE:
+            sub_msg = calloc(1, sizeof(Sr__ModuleEnableReq));
+            if (NULL == sub_msg) {
+                goto nomem;
+            }
+            sr__module_enable_req__init((Sr__ModuleEnableReq*)sub_msg);
+            req->module_enable_req = (Sr__ModuleEnableReq*)sub_msg;
+            break;
         case SR__OPERATION__GET_ITEM:
             sub_msg = calloc(1, sizeof(Sr__GetItemReq));
             if (NULL == sub_msg) {
@@ -794,6 +814,22 @@ sr_pb_resp_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__M
             sr__get_item_resp__init((Sr__GetItemResp*)sub_msg);
             resp->get_item_resp = (Sr__GetItemResp*)sub_msg;
             break;
+        case SR__OPERATION__FEATURE_ENABLE:
+            sub_msg = calloc(1, sizeof(Sr__FeatureEnableResp));
+            if (NULL == sub_msg) {
+                goto nomem;
+            }
+            sr__feature_enable_resp__init((Sr__FeatureEnableResp*)sub_msg);
+            resp->feature_enable_resp = (Sr__FeatureEnableResp*)sub_msg;
+            break;
+        case SR__OPERATION__MODULE_ENABLE:
+            sub_msg = calloc(1, sizeof(Sr__ModuleEnableResp));
+            if (NULL == sub_msg) {
+                goto nomem;
+            }
+            sr__module_enable_resp__init((Sr__ModuleEnableResp*)sub_msg);
+            resp->module_enable_resp = (Sr__ModuleEnableResp*)sub_msg;
+            break;
         case SR__OPERATION__GET_ITEMS:
             sub_msg = calloc(1, sizeof(Sr__GetItemsResp));
             if (NULL == sub_msg) {
@@ -910,6 +946,14 @@ sr_pb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__Op
                 break;
             case SR__OPERATION__GET_SCHEMA:
                 if (NULL == msg->request->get_schema_req)
+                    return SR_ERR_MALFORMED_MSG;
+                break;
+            case SR__OPERATION__FEATURE_ENABLE:
+                if (NULL == msg->request->feature_enable_req)
+                    return SR_ERR_MALFORMED_MSG;
+                break;
+            case SR__OPERATION__MODULE_ENABLE:
+                if (NULL == msg->request->module_enable_req)
                     return SR_ERR_MALFORMED_MSG;
                 break;
             case SR__OPERATION__GET_ITEM:
