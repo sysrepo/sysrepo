@@ -2225,3 +2225,23 @@ sr_unlock_fd(int fd)
 {
     return sr_lock_fd_internal(fd, false, false, false);
 }
+
+int
+sr_fd_set_nonblock(int fd)
+{
+    int flags = 0, rc = 0;
+
+    flags = fcntl(fd, F_GETFL, 0);
+    if (-1 == flags) {
+        SR_LOG_WRN("Socket fcntl error (skipped): %s", strerror(errno));
+        flags = 0;
+    }
+    rc = fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+    if (-1 == rc) {
+        SR_LOG_ERR("Socket fcntl error: %s", strerror(errno));
+        return SR_ERR_INTERNAL;
+    }
+
+    return SR_ERR_OK;
+}
+

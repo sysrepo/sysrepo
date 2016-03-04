@@ -22,6 +22,10 @@
 #ifndef CL_SUBSCRIPTIONS_H_
 #define CL_SUBSCRIPTIONS_H_
 
+typedef struct cl_sm_ctx_s cl_sm_ctx_t;
 
+int cl_sm_init(cl_sm_ctx_t **sm_ctx);
+
+void cl_sm_cleanup(cl_sm_ctx_t *sm_ctx);
 
 #endif /* CL_SUBSCRIPTIONS_H_ */

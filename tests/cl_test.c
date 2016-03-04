@@ -855,6 +855,31 @@ cl_get_error_test(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 }
 
+static void
+cl_subscription_test(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+
+    sr_session_ctx_t *session = NULL;
+    sr_subscription_ctx_t *subscription = NULL;
+    int rc = SR_ERR_OK;
+
+    /* start a session */
+    rc = sr_session_start(conn, SR_DS_STARTUP, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_feature_enable_subscribe(session, NULL, NULL, NULL);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* stop the session */
+    rc = sr_session_stop(session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_unsubscribe(subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+}
+
 int
 main()
 {
@@ -873,6 +898,7 @@ main()
             cmocka_unit_test_setup_teardown(cl_discard_changes_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_locking_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_get_error_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_subscription_test, sysrepo_setup, sysrepo_teardown),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);

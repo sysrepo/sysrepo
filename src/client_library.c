@@ -29,6 +29,7 @@
 
 #include "sr_common.h"
 #include "connection_manager.h"
+#include "cl_subscriptions.h"
 
 /**
  * @brief Timeout (in seconds) for waiting for a response from server by each request.
@@ -104,6 +105,7 @@ typedef struct sr_subscription_ctx_s {
 static int connections_cnt = 0;
 static int subscriptions_cnt = 0;
 static pthread_mutex_t global_lock = PTHREAD_MUTEX_INITIALIZER;  /**< Mutex for locking global variable primary_connection. */
+static cl_sm_ctx_t *cl_sm_ctx = NULL;
 
 /**
  * @brief Returns provided error code and saves it in the session context.
@@ -1891,26 +1893,32 @@ int
 sr_feature_enable_subscribe(sr_session_ctx_t *session, sr_feature_enable_cb callback, void *private_ctx,
         sr_subscription_ctx_t **subscription)
 {
+    int rc = SR_ERR_OK;
+
+    //CHECK_NULL_ARG3(session, callback, subscription);
+
     /* check if this is the first subscription */
     pthread_mutex_lock(&global_lock);
     if (0 == subscriptions_cnt) {
-        /* this is the first subscription - initialize unix-domain socket for subscriptions */
-        // TODO
+        /* this is the first subscription - initialize subscription manager */
+        rc = cl_sm_init(&cl_sm_ctx);
     }
     subscriptions_cnt++;
     pthread_mutex_unlock(&global_lock);
 
-    return SR_ERR_OK;
+    return rc;
 }
 
 int
 sr_unsubscribe(sr_subscription_ctx_t *subscription)
 {
+    //CHECK_NULL_ARG(subscription);
+
     pthread_mutex_lock(&global_lock);
     subscriptions_cnt--;
     if (0 == subscriptions_cnt) {
-        /* this is the last subscription - destroy unix-domain socket for subscriptions */
-        // TODO
+        /* this is the last subscription - destroy subscription manager */
+        cl_sm_cleanup(cl_sm_ctx);
     }
     if ((0 == subscriptions_cnt) && (0 == connections_cnt)) {
         /* destroy library-global resources */
