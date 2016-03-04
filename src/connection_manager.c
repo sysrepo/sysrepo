@@ -120,28 +120,6 @@ typedef struct cm_connection_ctx_s {
 } cm_connection_ctx_t;
 
 /**
- * @brief Sets the file descriptor to non-blocking I/O mode.
- */
-static int
-cm_fd_set_nonblock(int fd)
-{
-    int flags = 0, rc = 0;
-
-    flags = fcntl(fd, F_GETFL, 0);
-    if (-1 == flags) {
-        SR_LOG_WRN("Socket fcntl error (skipped): %s", strerror(errno));
-        flags = 0;
-    }
-    rc = fcntl(fd, F_SETFL, flags | O_NONBLOCK);
-    if (-1 == rc) {
-        SR_LOG_ERR("Socket fcntl error: %s", strerror(errno));
-        return SR_ERR_INTERNAL;
-    }
-
-    return SR_ERR_OK;
-}
-
-/**
  * @brief Initializes unix-domain socket server.
  */
 static int
@@ -162,7 +140,7 @@ cm_server_init(cm_ctx_t *cm_ctx, const char *socket_path)
         goto cleanup;
     }
 
-    rc = cm_fd_set_nonblock(fd);
+    rc = sr_fd_set_nonblock(fd);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Cannot set socket to nonblocking mode.");
         rc = SR_ERR_INIT_FAILED;
@@ -955,7 +933,7 @@ cm_server_watcher_cb(struct ev_loop *loop, ev_io *w, int revents)
             /* accepted the new connection */
             SR_LOG_DBG("New client connection on fd %d", clnt_fd);
             /* set to nonblocking mode */
-            rc = cm_fd_set_nonblock(clnt_fd);
+            rc = sr_fd_set_nonblock(clnt_fd);
             if (SR_ERR_OK != rc) {
                 SR_LOG_ERR("Cannot set fd=%d to nonblocking mode.", clnt_fd);
                 close(clnt_fd);
@@ -1198,7 +1176,7 @@ cm_init(const cm_connection_mode_t mode, const char *socket_path, cm_ctx_t **cm_
     /* initialize event loop */
     /* According to our measurements, EPOLL backend is significantly slower for
      * fewer file descriptors, so we are disabling it for now. */
-    ctx->event_loop = ev_default_loop((EVBACKEND_ALL ^ EVBACKEND_EPOLL) | EVFLAG_NOENV);
+    ctx->event_loop = ev_loop_new((EVBACKEND_ALL ^ EVBACKEND_EPOLL) | EVFLAG_NOENV);
 
     /* initialize event watcher for unix-domain server socket */
     ev_io_init(&ctx->server_watcher, cm_server_watcher_cb, ctx->listen_socket_fd, EV_READ);
@@ -1275,6 +1253,7 @@ cm_start(cm_ctx_t *cm_ctx)
                 cm_event_loop_threaded, cm_ctx);
         if (0 != rc) {
             SR_LOG_ERR("Error by creating a new thread: %s", strerror(errno));
+            rc = SR_ERR_INTERNAL;
         }
     }
 

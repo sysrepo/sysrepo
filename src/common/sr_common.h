@@ -593,6 +593,15 @@ int sr_lock_fd(int fd, bool write, bool wait);
  */
 int sr_unlock_fd(int fd);
 
+/**
+ * @brief Sets the file descriptor to non-blocking I/O mode.
+ *
+ * @param[in] fd File descriptor.
+ *
+ * @return err_code (SR_ERR_OK on success).
+ */
+int sr_fd_set_nonblock(int fd);
+
 /**@} common */
 
 #endif /* SRC_SR_COMMON_H_ */
