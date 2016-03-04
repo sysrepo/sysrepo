@@ -67,6 +67,17 @@ typedef struct dm_node_info_s {
 } dm_node_info_t;
 
 /**
+ * @brief Minimal nanosecond difference between current time and modification timestamp.
+ * To allow optimized commit - if timestamp of the file system file and session copy matches
+ * overwrite the data file.
+ *
+ * If this constant were 0 we could lose some changes in 1.read 2.read 1.comit 2.commit scenario.
+ * Because the file can be read and write with the same timestamp.
+ * See edit_commit_test2 and edit_commit_test3.
+ */
+#define NANOSEC_THRESHOLD 10000000
+
+/**
  * @brief Compares two data trees by module name
  */
 static int
@@ -1184,8 +1195,23 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
                 rc = SR_ERR_INTERNAL;
                 goto cleanup;
             }
+            struct timespec now;
+            clock_gettime(CLOCK_REALTIME_COARSE, &now);
+            SR_LOG_DBG("Loaded module %s: mtime sec=%lld nsec=%lld\n", info->module->name,
+                        (long long) st.st_mtim.tv_sec,
+                        (long long) st.st_mtim.tv_nsec);
+            SR_LOG_DBG("Current time: mtime sec=%lld nsec=%lld\n",
+                        (long long) now.tv_sec,
+                        (long long) now.tv_nsec);
+            SR_LOG_DBG("Nanosec diff: %lld", (long long) difftime(now.tv_nsec, st.st_mtim.tv_nsec));
+            /* check if we do optimized commit - skipping the merge of changes just overwrite the datafile
+             * Conditions:
+             *  - modification date of the the session copy and data file must match
+             *  - at least NANOSEC_THRESHOULD has elapsed since loading the file
+             */
             if (info->timestamp.tv_sec == st.st_mtim.tv_sec &&
-                    info->timestamp.tv_nsec == st.st_mtim.tv_nsec) {
+                    info->timestamp.tv_nsec == st.st_mtim.tv_nsec
+                    && (now.tv_sec != st.st_mtim.tv_sec || difftime(now.tv_nsec, st.st_mtim.tv_nsec) > NANOSEC_THRESHOLD)) {
                 SR_LOG_DBG("Loaded module %s: mtime sec=%lld nsec=%lld\n", info->module->name,
                         (long long) st.st_mtim.tv_sec,
                         (long long) st.st_mtim.tv_nsec);
@@ -1277,22 +1303,6 @@ dm_commit_write_files(dm_session_t *session, dm_commit_context_t *c_ctx)
                 SR_LOG_ERR("Failed to write output for %s", info->module->name);
                 rc = SR_ERR_INTERNAL;
             }
-#ifdef HAVE_STAT_ST_MTIM
-            /* if we skipped the merging, make sure that modification time is updated */
-            for (unsigned int m = 0; m < c_ctx->up_to_date_models->number; m++) {
-                if (0 == strcmp(info->module->name, (char *) c_ctx->up_to_date_models->set[m])) {
-                    info->timestamp.tv_nsec++;
-                    struct timespec times[2];
-                    times[0] = info->timestamp;
-                    times[1] = info->timestamp;
-                    if (0 != futimens(c_ctx->fds[count], times)) {
-                        SR_LOG_ERR_MSG("Time update failed");
-                        rc = SR_ERR_INTERNAL;
-                    }
-                    break;
-                }
-            }
-#endif
             count++;
         }
         i++;
