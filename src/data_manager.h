@@ -188,12 +188,13 @@ int dm_list_schemas(dm_ctx_t *dm_ctx, dm_session_t *dm_session, sr_schema_t **sc
  * is allocated and must be freed by caller
  * @param [in] dm_ctx
  * @param [in] module_name
- * @param [in] submodule_name To retrieve the content of module NULL can be passed
- * @param [in] rev_date If submodule name is specified the revision of the submodule otherwise revision of the module
+ * @param [in] module_revision if NULL is passed the latest revision is returned
+ * @param [in] submodule_name To retrieve the content of module NULL can be passed,
+ * corresponding revision is selected according to the module revision.
  * @param [out] schema
  * @return Error code (SR_ERR_OK on success), SR_ERR_NOT_FOUND if the module/submodule or corresponding revision can not be found
  */
-int dm_get_schema(dm_ctx_t *dm_ctx, const char *module_name, const char *submodule_name, const char *rev_date, char **schema);
+int dm_get_schema(dm_ctx_t *dm_ctx, const char *module_name, const char *module_revision, const char *submodule_name, char **schema);
 
 /**
  * @brief Validates the data_trees in session.

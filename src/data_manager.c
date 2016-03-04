@@ -71,7 +71,7 @@ typedef struct dm_node_info_s {
  * To allow optimized commit - if timestamp of the file system file and session copy matches
  * overwrite the data file.
  *
- * If this constant were 0 we could lose some changes in 1.read 2.read 1.comit 2.commit scenario.
+ * If this constant were 0 we could lose some changes in 1.read 2.read 1.commit 2.commit scenario.
  * Because the file can be read and write with the same timestamp.
  * See edit_commit_test2 and edit_commit_test3.
  */
@@ -944,14 +944,14 @@ dm_list_schemas(dm_ctx_t *dm_ctx, dm_session_t *dm_session, sr_schema_t **schema
 }
 
 int
-dm_get_schema(dm_ctx_t *dm_ctx, const char *module_name, const char *submodule_name, const char *rev_date, char **schema)
+dm_get_schema(dm_ctx_t *dm_ctx, const char *module_name, const char *module_revision, const char *submodule_name, char **schema)
 {
     CHECK_NULL_ARG2(dm_ctx, module_name);
     int rc = SR_ERR_OK;
 
-    const struct lys_module *module = ly_ctx_get_module(dm_ctx->ly_ctx, module_name, NULL == submodule_name ? rev_date : NULL);
+    const struct lys_module *module = ly_ctx_get_module(dm_ctx->ly_ctx, module_name, module_revision);
     if (NULL == module) {
-        SR_LOG_ERR("Module %s with revision %s was not found", module_name, NULL == submodule_name ? rev_date : NULL);
+        SR_LOG_ERR("Module %s with revision %s was not found", module_name, module_revision);
         return SR_ERR_NOT_FOUND;
     }
 
@@ -966,7 +966,7 @@ dm_get_schema(dm_ctx_t *dm_ctx, const char *module_name, const char *submodule_n
     }
 
     /* submodule */
-    const struct lys_submodule *submodule = ly_ctx_get_submodule(module, submodule_name, rev_date);
+    const struct lys_submodule *submodule = ly_ctx_get_submodule(module, submodule_name, NULL);
     if (NULL == submodule) {
         SR_LOG_ERR("Submodule %s of module %s was not found.", submodule_name, module_name);
         return SR_ERR_NOT_FOUND;
