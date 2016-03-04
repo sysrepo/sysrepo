@@ -443,6 +443,13 @@ typedef struct sr_schema_s {
 } sr_schema_t;
 
 /**
+ * @brief Format types of ::sr_get_schema result
+ */
+typedef enum sr_format_e {
+    SR_YANG,                         /**< YANG format */
+    SR_YIN                           /**< YIN format */
+}sr_format_t;
+/**
  * @brief Iterator used for accessing data nodes via ::sr_get_items_iter call.
  */
 typedef struct sr_val_iter_s sr_val_iter_t;
@@ -468,6 +475,7 @@ int sr_list_schemas(sr_session_ctx_t *session, sr_schema_t **schemas, size_t *sc
  * is passed, the latest revision will be returned.
  * @param[in] submodule_name Name of the requested submodule. Pass NULL if you are
  * requesting the content of the main module.
+ * @param[in] format of the returned schema
  * @param[out] schema_content Content of the specified schema file. Automatically
  * allocated by the function, should be freed by the caller.
  *
@@ -475,7 +483,7 @@ int sr_list_schemas(sr_session_ctx_t *session, sr_schema_t **schemas, size_t *sc
  * file cannot be found in sysrepo repository).
  */
 int sr_get_schema(sr_session_ctx_t *session, const char *module_name, const char *revision,
-         const char *submodule_name, char **schema_content);
+         const char *submodule_name, sr_format_t format, char **schema_content);
 
 /**
  * @brief Retrieves a single data element stored under provided XPath.

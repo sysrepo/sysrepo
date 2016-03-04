@@ -140,6 +140,7 @@ rp_get_schema_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, S
             msg->request->get_schema_req->module_name,
             msg->request->get_schema_req->revision,
             msg->request->get_schema_req->submodule_name,
+            msg->request->get_schema_req->yang_format,
             &resp->response->get_schema_resp->schema_content);
 
     /* send the response */

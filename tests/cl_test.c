@@ -188,7 +188,15 @@ cl_get_schema_test(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 
     /* get schema for specified module, latest revision */
-    rc = sr_get_schema(session, "module-a", NULL, NULL, &schema_content);
+    rc = sr_get_schema(session, "module-a", NULL, NULL, SR_YANG, &schema_content);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_non_null(schema_content);
+    printf("%s\n", schema_content);
+    free(schema_content);
+    schema_content = NULL;
+
+    /* get schema for specified module, latest revision YIN format*/
+    rc = sr_get_schema(session, "module-a", NULL, NULL, SR_YIN, &schema_content);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(schema_content);
     printf("%s\n", schema_content);
@@ -196,7 +204,7 @@ cl_get_schema_test(void **state)
     schema_content = NULL;
 
     /* get schema for specified module and revision */
-    rc = sr_get_schema(session, "module-a", "2016-02-02", NULL, &schema_content);
+    rc = sr_get_schema(session, "module-a", "2016-02-02", NULL, SR_YANG, &schema_content);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(schema_content);
     printf("%s\n", schema_content);
@@ -204,7 +212,7 @@ cl_get_schema_test(void **state)
     schema_content = NULL;
 
     /* get schema for specified submodule, latest revision */
-    rc = sr_get_schema(session, "module-a",  NULL, "sub-a-one", &schema_content);
+    rc = sr_get_schema(session, "module-a",  NULL, "sub-a-one", SR_YANG, &schema_content);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(schema_content);
     printf("%s\n", schema_content);
@@ -213,7 +221,7 @@ cl_get_schema_test(void **state)
 
 
     /* get schema for specified submodule and revision */
-    rc = sr_get_schema(session, "module-a", "2016-02-02", "sub-a-one", &schema_content);
+    rc = sr_get_schema(session, "module-a", "2016-02-02", "sub-a-one", SR_YANG, &schema_content);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(schema_content);
     printf("%.100s\n", schema_content);

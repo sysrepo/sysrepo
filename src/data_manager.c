@@ -944,7 +944,7 @@ dm_list_schemas(dm_ctx_t *dm_ctx, dm_session_t *dm_session, sr_schema_t **schema
 }
 
 int
-dm_get_schema(dm_ctx_t *dm_ctx, const char *module_name, const char *module_revision, const char *submodule_name, char **schema)
+dm_get_schema(dm_ctx_t *dm_ctx, const char *module_name, const char *module_revision, const char *submodule_name, bool yang_format, char **schema)
 {
     CHECK_NULL_ARG2(dm_ctx, module_name);
     int rc = SR_ERR_OK;
@@ -957,7 +957,7 @@ dm_get_schema(dm_ctx_t *dm_ctx, const char *module_name, const char *module_revi
 
     if (NULL == submodule_name){
         /* module*/
-        rc = lys_print_mem(schema, module, LYS_OUT_YIN, NULL);
+        rc = lys_print_mem(schema, module, yang_format ? LYS_OUT_YANG: LYS_OUT_YIN, NULL);
         if (0 != rc) {
             SR_LOG_ERR("Module %s print failed.", module->name);
             return SR_ERR_INTERNAL;
@@ -972,7 +972,7 @@ dm_get_schema(dm_ctx_t *dm_ctx, const char *module_name, const char *module_revi
         return SR_ERR_NOT_FOUND;
     }
 
-    rc = lys_print_mem(schema, (const struct lys_module *) submodule, LYS_OUT_YIN, NULL);
+    rc = lys_print_mem(schema, (const struct lys_module *) submodule, yang_format ? LYS_OUT_YANG: LYS_OUT_YIN, NULL);
     if (0 != rc) {
         SR_LOG_ERR("Submodule %s print failed.", submodule->name);
         return SR_ERR_INTERNAL;

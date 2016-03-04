@@ -183,6 +183,7 @@ message GetSchemaReq {
   required string module_name = 1;
   optional string revision = 2;
   optional string submodule_name = 3;
+  required bool yang_format = 4;
 }
 
 /**

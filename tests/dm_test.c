@@ -131,25 +131,31 @@ dm_get_schema_test(void **state)
     assert_int_equal(SR_ERR_OK, rc);
 
     /* module latest revision */
-    rc = dm_get_schema(ctx, "module-a", NULL, NULL, &schema);
+    rc = dm_get_schema(ctx, "module-a", NULL, NULL, true, &schema);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(schema);
+    free(schema);
+
+    /* module latest revision  yin format*/
+    rc = dm_get_schema(ctx, "module-a", NULL, NULL, false, &schema);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(schema);
     free(schema);
 
     /* module selected revision */
-    rc = dm_get_schema(ctx, "module-a", "2016-02-02", NULL, &schema);
+    rc = dm_get_schema(ctx, "module-a", "2016-02-02", NULL, true, &schema);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(schema);
     free(schema);
 
     /* submodule latest revision */
-    rc = dm_get_schema(ctx, "module-a", NULL, "sub-a-one", &schema);
+    rc = dm_get_schema(ctx, "module-a", NULL, "sub-a-one", true, &schema);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(schema);
     free(schema);
 
     /* submodule selected revision */
-    rc = dm_get_schema(ctx, "module-a", "2016-02-02", "sub-a-one", &schema);
+    rc = dm_get_schema(ctx, "module-a", "2016-02-02", "sub-a-one", true, &schema);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(schema);
     free(schema);
@@ -170,24 +176,24 @@ dm_get_schema_negative_test(void **state)
     assert_int_equal(SR_ERR_OK, rc);
 
     /* unknown module */
-    rc = dm_get_schema(ctx, "unknown", NULL, NULL, &schema);
+    rc = dm_get_schema(ctx, "unknown", NULL, NULL, true, &schema);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
     assert_null(schema);
 
 
     /* module unknown revision */
-    rc = dm_get_schema(ctx, "module-a", "2018-02-02", NULL, &schema);
+    rc = dm_get_schema(ctx, "module-a", "2018-02-02", NULL, true, &schema);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
     assert_null(schema);
 
 
     /* unknown submodule */
-    rc = dm_get_schema(ctx, "module-a", NULL, "sub-unknown", &schema);
+    rc = dm_get_schema(ctx, "module-a", NULL, "sub-unknown", true, &schema);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
     assert_null(schema);
 
     /* submodule unknown revision */
-    rc = dm_get_schema(ctx, "module-a", "2018-02-10", "sub-a-one", &schema);
+    rc = dm_get_schema(ctx, "module-a", "2018-02-10", "sub-a-one", true, &schema);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
     assert_null(schema);
 
