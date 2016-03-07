@@ -149,21 +149,18 @@ cl_list_schemas_test(void **state)
                 schemas[i].module_name,
                 schemas[i].ns,
                 schemas[i].prefix);
-        for (size_t r = 0; r < schemas[i].rev_count; r++) {
-            printf("\t%s\n\t%s\n\t%s\n\n",
-                    schemas[i].revisions[r].revision,
-                    schemas[i].revisions[r].file_path_yang,
-                    schemas[i].revisions[r].file_path_yin);
-        }
+            printf("%s\n\t%s\n\t%s\n\n",
+                    schemas[i].revision.revision,
+                    schemas[i].revision.file_path_yang,
+                    schemas[i].revision.file_path_yin);
 
         for (size_t s = 0; s < schemas[i].submodule_count; s++) {
             printf("\t%s\n", schemas[i].submodules[s].submodule_name);
-            for (size_t r = 0; r < schemas[i].submodules[s].rev_count; r++) {
-               printf("\t\t%s\n\t\t%s\n\t\t%s\n\n",
-                       schemas[i].submodules[s].revisions[r].revision,
-                       schemas[i].submodules[s].revisions[r].file_path_yang,
-                       schemas[i].submodules[s].revisions[r].file_path_yin);
-            }
+               printf("\t%s\n\t\t%s\n\t\t%s\n\n",
+                       schemas[i].submodules[s].revision.revision,
+                       schemas[i].submodules[s].revision.file_path_yang,
+                       schemas[i].submodules[s].revision.file_path_yin);
+
         }
     }
     sr_free_schemas(schemas, schema_cnt);
@@ -188,7 +185,7 @@ cl_get_schema_test(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 
     /* get schema for specified module, latest revision */
-    rc = sr_get_schema(session, "module-a", NULL, NULL, SR_YANG, &schema_content);
+    rc = sr_get_schema(session, "module-a", NULL, NULL, SR_SCHEMA_YANG, &schema_content);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(schema_content);
     printf("%s\n", schema_content);
@@ -196,7 +193,7 @@ cl_get_schema_test(void **state)
     schema_content = NULL;
 
     /* get schema for specified module, latest revision YIN format*/
-    rc = sr_get_schema(session, "module-a", NULL, NULL, SR_YIN, &schema_content);
+    rc = sr_get_schema(session, "module-a", NULL, NULL, SR_SCHEMA_YIN, &schema_content);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(schema_content);
     printf("%s\n", schema_content);
@@ -204,7 +201,7 @@ cl_get_schema_test(void **state)
     schema_content = NULL;
 
     /* get schema for specified module and revision */
-    rc = sr_get_schema(session, "module-a", "2016-02-02", NULL, SR_YANG, &schema_content);
+    rc = sr_get_schema(session, "module-a", "2016-02-02", NULL, SR_SCHEMA_YANG, &schema_content);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(schema_content);
     printf("%s\n", schema_content);
@@ -212,7 +209,7 @@ cl_get_schema_test(void **state)
     schema_content = NULL;
 
     /* get schema for specified submodule, latest revision */
-    rc = sr_get_schema(session, "module-a",  NULL, "sub-a-one", SR_YANG, &schema_content);
+    rc = sr_get_schema(session, "module-a",  NULL, "sub-a-one", SR_SCHEMA_YANG, &schema_content);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(schema_content);
     printf("%s\n", schema_content);
@@ -221,7 +218,7 @@ cl_get_schema_test(void **state)
 
 
     /* get schema for specified submodule and revision */
-    rc = sr_get_schema(session, "module-a", "2016-02-02", "sub-a-one", SR_YANG, &schema_content);
+    rc = sr_get_schema(session, "module-a", "2016-02-02", "sub-a-one", SR_SCHEMA_YANG, &schema_content);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(schema_content);
     printf("%.100s\n", schema_content);

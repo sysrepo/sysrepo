@@ -423,8 +423,7 @@ typedef struct sr_sch_revision_s {
  */
 typedef struct sr_sch_submodule_s {
     const char *submodule_name;    /**< Submodule name. */
-    sr_sch_revision_t *revisions;  /**< Revisions of the submodule. */
-    size_t rev_count;              /**< Number of sumodule's revisions. */
+    sr_sch_revision_t revision;    /**< Revision of the submodule. */
 } sr_sch_submodule_t;
 
 /**
@@ -435,8 +434,7 @@ typedef struct sr_schema_s {
     const char *ns;                  /**< Namespace of the module used in @ref xp_page "XPath". */
     const char *prefix;              /**< Prefix of the module. */
 
-    sr_sch_revision_t *revisions;    /**< Array of all installed revisions of the module. */
-    size_t rev_count;                /**< Number of module's revisions. */
+    sr_sch_revision_t revision;      /**< Revision the module. */
 
     sr_sch_submodule_t *submodules;  /**< Array of all installed submodules of the module. */
     size_t submodule_count;          /**< Number of module's submodules. */
@@ -445,10 +443,10 @@ typedef struct sr_schema_s {
 /**
  * @brief Format types of ::sr_get_schema result
  */
-typedef enum sr_format_e {
-    SR_YANG,                         /**< YANG format */
-    SR_YIN                           /**< YIN format */
-}sr_format_t;
+typedef enum sr_schema_format_e {
+    SR_SCHEMA_YANG,                         /**< YANG format */
+    SR_SCHEMA_YIN                           /**< YIN format */
+}sr_schema_format_t;
 /**
  * @brief Iterator used for accessing data nodes via ::sr_get_items_iter call.
  */
@@ -483,7 +481,7 @@ int sr_list_schemas(sr_session_ctx_t *session, sr_schema_t **schemas, size_t *sc
  * file cannot be found in sysrepo repository).
  */
 int sr_get_schema(sr_session_ctx_t *session, const char *module_name, const char *revision,
-         const char *submodule_name, sr_format_t format, char **schema_content);
+         const char *submodule_name, sr_schema_format_t format, char **schema_content);
 
 /**
  * @brief Retrieves a single data element stored under provided XPath.

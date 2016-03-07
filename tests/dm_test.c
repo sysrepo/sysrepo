@@ -85,7 +85,8 @@ dm_list_schema_test(void **state)
     rc = dm_init(NULL, TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx);
     assert_int_equal(SR_ERR_OK, rc);
 
-    dm_session_start(ctx, NULL, SR_DS_STARTUP, &ses_ctx);
+    rc = dm_session_start(ctx, NULL, SR_DS_STARTUP, &ses_ctx);
+    assert_int_equal(SR_ERR_OK, rc);
 
     rc = dm_list_schemas(ctx, ses_ctx, &schemas, &count);
     assert_int_equal(SR_ERR_OK, rc);
@@ -95,21 +96,20 @@ dm_list_schema_test(void **state)
                 schemas[i].module_name,
                 schemas[i].ns,
                 schemas[i].prefix);
-        for (size_t r = 0; r < schemas[i].rev_count; r++) {
             printf("\t%s\n\t%s\n\t%s\n\n",
-                    schemas[i].revisions[r].revision,
-                    schemas[i].revisions[r].file_path_yang,
-                    schemas[i].revisions[r].file_path_yin);
-        }
+                    schemas[i].revision.revision,
+                    schemas[i].revision.file_path_yang,
+                    schemas[i].revision.file_path_yin);
+
 
         for (size_t s = 0; s < schemas[i].submodule_count; s++) {
             printf("\t%s\n", schemas[i].submodules[s].submodule_name);
-            for (size_t r = 0; r < schemas[i].submodules[s].rev_count; r++) {
+
                printf("\t\t%s\n\t\t%s\n\t\t%s\n\n",
-                       schemas[i].submodules[s].revisions[r].revision,
-                       schemas[i].submodules[s].revisions[r].file_path_yang,
-                       schemas[i].submodules[s].revisions[r].file_path_yin);
-            }
+                       schemas[i].submodules[s].revision.revision,
+                       schemas[i].submodules[s].revision.file_path_yang,
+                       schemas[i].submodules[s].revision.file_path_yin);
+
         }
     }
 
