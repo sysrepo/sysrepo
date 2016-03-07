@@ -869,7 +869,7 @@ cl_subscription_test(void **state)
     rc = sr_session_start(conn, SR_DS_STARTUP, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = sr_feature_enable_subscribe(session, NULL, NULL, NULL);
+    rc = sr_feature_install_subscribe(session, NULL, NULL, NULL);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* stop the session */

@@ -1890,7 +1890,7 @@ sr_get_last_errors(sr_session_ctx_t *session, const sr_error_info_t **error_info
 }
 
 int
-sr_feature_enable_subscribe(sr_session_ctx_t *session, sr_feature_enable_cb callback, void *private_ctx,
+sr_feature_install_subscribe(sr_session_ctx_t *session, sr_feature_install_cb callback, void *private_ctx,
         sr_subscription_ctx_t **subscription)
 {
     int rc = SR_ERR_OK;
