@@ -1,7 +1,7 @@
 /**
  * @file cl_subscriptions.h
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
- * @brief TODO
+ * @brief Client Library's Subscription Manager API.
  *
  * @copyright
  * Copyright 2016 Cisco Systems, Inc.
