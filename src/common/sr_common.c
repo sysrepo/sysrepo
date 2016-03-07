@@ -79,10 +79,10 @@ sr_operation_name(Sr__Operation operation)
         return "list-schemas";
     case SR__OPERATION__GET_SCHEMA:
         return "get-schema";
+    case SR__OPERATION__MODULE_INSTALL:
+        return "module-install";
     case SR__OPERATION__FEATURE_ENABLE:
         return "feature-enable";
-    case SR__OPERATION__MODULE_ENABLE:
-        return "module-enable";
     case SR__OPERATION__GET_ITEM:
         return "get-item";
     case SR__OPERATION__GET_ITEMS:
@@ -634,13 +634,13 @@ sr_pb_req_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__Ms
             sr__feature_enable_req__init((Sr__FeatureEnableReq*)sub_msg);
             req->feature_enable_req = (Sr__FeatureEnableReq*)sub_msg;
             break;
-        case SR__OPERATION__MODULE_ENABLE:
-            sub_msg = calloc(1, sizeof(Sr__ModuleEnableReq));
+        case SR__OPERATION__MODULE_INSTALL:
+            sub_msg = calloc(1, sizeof(Sr__ModuleInstallReq));
             if (NULL == sub_msg) {
                 goto nomem;
             }
-            sr__module_enable_req__init((Sr__ModuleEnableReq*)sub_msg);
-            req->module_enable_req = (Sr__ModuleEnableReq*)sub_msg;
+            sr__module_install_req__init((Sr__ModuleInstallReq*)sub_msg);
+            req->module_install_req = (Sr__ModuleInstallReq*)sub_msg;
             break;
         case SR__OPERATION__GET_ITEM:
             sub_msg = calloc(1, sizeof(Sr__GetItemReq));
@@ -822,13 +822,13 @@ sr_pb_resp_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__M
             sr__feature_enable_resp__init((Sr__FeatureEnableResp*)sub_msg);
             resp->feature_enable_resp = (Sr__FeatureEnableResp*)sub_msg;
             break;
-        case SR__OPERATION__MODULE_ENABLE:
-            sub_msg = calloc(1, sizeof(Sr__ModuleEnableResp));
+        case SR__OPERATION__MODULE_INSTALL:
+            sub_msg = calloc(1, sizeof(Sr__ModuleInstallResp));
             if (NULL == sub_msg) {
                 goto nomem;
             }
-            sr__module_enable_resp__init((Sr__ModuleEnableResp*)sub_msg);
-            resp->module_enable_resp = (Sr__ModuleEnableResp*)sub_msg;
+            sr__module_install_resp__init((Sr__ModuleInstallResp*)sub_msg);
+            resp->module_install_resp = (Sr__ModuleInstallResp*)sub_msg;
             break;
         case SR__OPERATION__GET_ITEMS:
             sub_msg = calloc(1, sizeof(Sr__GetItemsResp));
@@ -952,8 +952,8 @@ sr_pb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__Op
                 if (NULL == msg->request->feature_enable_req)
                     return SR_ERR_MALFORMED_MSG;
                 break;
-            case SR__OPERATION__MODULE_ENABLE:
-                if (NULL == msg->request->module_enable_req)
+            case SR__OPERATION__MODULE_INSTALL:
+                if (NULL == msg->request->module_install_req)
                     return SR_ERR_MALFORMED_MSG;
                 break;
             case SR__OPERATION__GET_ITEM:

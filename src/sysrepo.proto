@@ -376,22 +376,22 @@ message UnlockResp {
 // Data modules handling API - !!! EXPERIMENTAL !!!
 ////////////////////////////////////////////////////////////////////////////////
 
+message ModuleInstallReq {
+  optional string module_name = 1;
+  optional string revision = 2;
+  required bool installed = 3;
+}
+
+message ModuleInstallResp {
+}
+
 message FeatureEnableReq {
   required string module_name = 1;
   required string feature_name = 2;
-  required bool enable = 3;
+  required bool enabled = 3;
 }
 
 message FeatureEnableResp {
-}
-
-message ModuleEnableReq {
-  optional string module_name = 1;
-  optional string revision = 2;
-  required bool enable = 3;
-}
-
-message ModuleEnableResp {
 }
 
 
@@ -409,8 +409,8 @@ enum Operation {
 
   LIST_SCHEMAS = 20;
   GET_SCHEMA = 21;
-  FEATURE_ENABLE = 22;
-  MODULE_ENABLE = 23;
+  MODULE_INSTALL = 22;
+  FEATURE_ENABLE = 23;
 
   GET_ITEM = 30;
   GET_ITEMS = 31;
@@ -439,8 +439,8 @@ message Req {
 
   optional ListSchemasReq list_schemas_req = 20;
   optional GetSchemaReq get_schema_req = 21;
-  optional FeatureEnableReq feature_enable_req = 22;
-  optional ModuleEnableReq module_enable_req = 23;
+  optional ModuleInstallReq module_install_req = 22;
+  optional FeatureEnableReq feature_enable_req = 23;
 
   optional GetItemReq get_item_req = 30;
   optional GetItemsReq get_items_req = 31;
@@ -471,8 +471,8 @@ message Resp {
 
   optional ListSchemasResp list_schemas_resp = 20;
   optional GetSchemaResp get_schema_resp = 21;
-  optional FeatureEnableResp feature_enable_resp = 22;
-  optional ModuleEnableResp module_enable_resp = 23;
+  optional ModuleInstallResp module_install_resp = 22;
+  optional FeatureEnableResp feature_enable_resp = 23;
 
   optional GetItemResp get_item_resp = 30;
   optional GetItemsResp get_items_resp = 31;
