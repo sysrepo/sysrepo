@@ -805,14 +805,14 @@ int sr_unlock_module(sr_session_ctx_t *session, const char *module_name);
 
 typedef struct sr_subscription_ctx_s sr_subscription_ctx_t;
 
-typedef int (*sr_module_install_cb)(const char *module_name, bool activate, void *private_ctx);
+typedef int (*sr_module_install_cb)(const char *module_name, bool installed, void *private_ctx);
 
-typedef int (*sr_feature_install_cb)(const char *module_name, const char *feature_name, bool activate, void *private_ctx);
+typedef int (*sr_feature_enable_cb)(const char *module_name, const char *feature_name, bool enabled, void *private_ctx);
 
 int sr_module_install_subscribe(sr_session_ctx_t *session, sr_module_install_cb callback, void *private_ctx,
         sr_subscription_ctx_t **subscription);
 
-int sr_feature_install_subscribe(sr_session_ctx_t *session, sr_feature_install_cb callback, void *private_ctx,
+int sr_feature_enable_subscribe(sr_session_ctx_t *session, sr_feature_enable_cb callback, void *private_ctx,
         sr_subscription_ctx_t **subscription);
 
 int sr_unsubscribe(sr_subscription_ctx_t *subscription);
