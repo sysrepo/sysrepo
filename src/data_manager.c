@@ -901,6 +901,8 @@ dm_list_schemas(dm_ctx_t *dm_ctx, dm_session_t *dm_session, sr_schema_t **schema
     CHECK_NULL_ARG4(dm_ctx, dm_session, schemas, schema_count);
     sr_schema_t *sch = NULL;
     int rc = SR_ERR_OK;
+    *schemas = NULL;
+    *schema_count = 0;
 
     struct lyd_node *info = ly_ctx_info(dm_ctx->ly_ctx);
     if (NULL == info) {
@@ -911,42 +913,61 @@ dm_list_schemas(dm_ctx_t *dm_ctx, dm_session_t *dm_session, sr_schema_t **schema
     struct ly_set *modules = lyd_get_node(info, "/ietf-yang-library:modules-state/module/name");
     if (NULL == modules) {
         SR_LOG_ERR_MSG ("Error during module listing");
-        return SR_ERR_INTERNAL;
+        rc = SR_ERR_INTERNAL;
+        goto cleanup;
     } else if (0 == modules->number) {
-        *schemas = NULL;
-        *schema_count = 0;
-        ly_set_free(modules);
-        return SR_ERR_OK;
+        goto cleanup;
     }
 
     sch = calloc(modules->number, sizeof(*sch));
     if (NULL == sch) {
         SR_LOG_ERR_MSG("Memory allocation failed");
-        ly_set_free(modules);
-        return SR_ERR_NOMEM;
+        rc = SR_ERR_NOMEM;
+        goto cleanup;
     }
 
     size_t with_files = 0;
     for (unsigned int i = 0; i < modules->number; i++) {
         const char *revision = dm_get_module_revision(modules->dset[i]->parent);
         const char *module_name = ((struct lyd_node_leaf_list *) modules->dset[i])->value_str;
-        SR_LOG_DBG("List module %d: %s %s", i, module_name, revision);
         rc = dm_list_module(dm_ctx, module_name, revision, &sch[i]);
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR_MSG("Filling sr_schema_t failed");
-            ly_set_free(modules);
             sr_free_schemas(sch, i);
-            return rc;
+            goto cleanup;
         }
         if (NULL != sch[i].revision.file_path_yang || NULL != sch[i].revision.file_path_yin) {
             with_files++;
         }
     }
 
-    *schemas = sch;
-    *schema_count = modules->number;
+
+    /* return only files where we can locate schema files */
+    *schemas = calloc(with_files, sizeof(**schemas));
+    if (NULL == schemas) {
+        SR_LOG_ERR_MSG("Memory allocation failed");
+        rc = SR_ERR_NOMEM;
+        goto cleanup;
+    }
+    *schema_count = with_files;
+
+    size_t index = 0;
+    for (size_t m = 0; m < modules->number; m++){
+        if (NULL != sch[m].revision.file_path_yang || NULL != sch[m].revision.file_path_yin) {
+            (*schemas)[index] = sch[m];
+            index++;
+        }
+        else{
+            sr_free_schema(&sch[m]);
+        }
+    }
+    free(sch);
+
+cleanup:
     ly_set_free(modules);
-    return SR_ERR_OK;
+    lyd_free_withsiblings(info);
+    return rc;
+
 }
 
 int
