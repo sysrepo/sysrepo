@@ -739,7 +739,7 @@ rp_subscribe_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr
     }
 
     // TODO: implements subscription manager
-    tmp_subs_dst = msg->request->subscribe_req->destination;
+    tmp_subs_dst = strdup(msg->request->subscribe_req->destination);
     tmp_subs_id = msg->request->subscribe_req->subscription_id;
 
     /* set response code */

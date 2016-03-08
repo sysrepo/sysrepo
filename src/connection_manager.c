@@ -127,7 +127,7 @@ cm_server_init(cm_ctx_t *cm_ctx, const char *socket_path)
 {
     int fd = -1;
     int rc = SR_ERR_OK;
-    struct sockaddr_un addr;
+    struct sockaddr_un addr = { 0, };
 
     CHECK_NULL_ARG2(cm_ctx, socket_path);
 
@@ -155,7 +155,6 @@ cm_server_init(cm_ctx_t *cm_ctx, const char *socket_path)
     }
     unlink(socket_path);
 
-    memset(&addr, 0, sizeof(addr));
     addr.sun_family = AF_UNIX;
     strncpy(addr.sun_path, socket_path, sizeof(addr.sun_path)-1);
 
@@ -367,15 +366,15 @@ cm_conn_out_buff_flush(cm_ctx_t *cm_ctx, sm_connection_t *connection)
  * @brief Sends a message to the recipient identified by session context.
  */
 static int
-cm_msg_send_session(cm_ctx_t *cm_ctx, sm_session_t *session, Sr__Msg *msg)
+cm_msg_send_connection(cm_ctx_t *cm_ctx, sm_connection_t *connection, Sr__Msg *msg)
 {
     cm_buffer_t *buff = NULL;
     size_t msg_size = 0;
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG5(cm_ctx, session, session->connection, session->connection->cm_data, msg);
+    CHECK_NULL_ARG4(cm_ctx, connection, connection->cm_data, msg);
 
-    buff = &session->connection->cm_data->out_buff;
+    buff = &connection->cm_data->out_buff;
 
     /* find out required message size */
     msg_size = sr__msg__get_packed_size(msg);
@@ -385,7 +384,7 @@ cm_msg_send_session(cm_ctx_t *cm_ctx, sm_session_t *session, Sr__Msg *msg)
     }
 
     /* expand the buffer if needed */
-    rc = cm_conn_buffer_expand(session->connection, buff, SR_MSG_PREAM_SIZE + msg_size);
+    rc = cm_conn_buffer_expand(connection, buff, SR_MSG_PREAM_SIZE + msg_size);
 
     if (SR_ERR_OK == rc) {
         /* write the pramble */
@@ -397,9 +396,9 @@ cm_msg_send_session(cm_ctx_t *cm_ctx, sm_session_t *session, Sr__Msg *msg)
         buff->pos += msg_size;
 
         /* flush the buffer */
-        rc = cm_conn_out_buff_flush(cm_ctx, session->connection);
-        if ((session->connection->close_requested) || (SR_ERR_OK != rc)) {
-            cm_conn_close(cm_ctx, session->connection);
+        rc = cm_conn_out_buff_flush(cm_ctx, connection);
+        if ((connection->close_requested) || (SR_ERR_OK != rc)) {
+            cm_conn_close(cm_ctx, connection);
         }
     }
 
@@ -472,7 +471,7 @@ cm_session_start_req_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, Sr__Msg *m
     }
 
     /* send the response */
-    rc = cm_msg_send_session(cm_ctx, session, msg);
+    rc = cm_msg_send_connection(cm_ctx, session->connection, msg);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Unable to send session_start response (conn=%p).", (void*)conn);
     }
@@ -539,7 +538,7 @@ cm_session_stop_req_process(cm_ctx_t *cm_ctx, sm_session_t *session, Sr__Msg *ms
     }
 
     /* send the response */
-    rc = cm_msg_send_session(cm_ctx, session, msg_out);
+    rc = cm_msg_send_connection(cm_ctx, session->connection, msg_out);
     if (SR_ERR_OK != rc) {
         SR_LOG_WRN("Unable to send session_stop response via session id=%"PRIu32".", session->id);
     }
@@ -979,7 +978,65 @@ cm_server_watcher_cb(struct ev_loop *loop, ev_io *w, int revents)
 static int
 cm_out_notif_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
 {
+    int fd = -1;
+    struct sockaddr_un addr = { 0, };
+    sm_connection_t *connection = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG2(cm_ctx, msg);
+
     SR_LOG_DBG_MSG("Sending a new notification.");
+
+    // TODO: lookup for already existing connection
+
+    /* prepare a socket */
+    fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (-1 == fd) {
+        SR_LOG_ERR("Unable to create a new socket (socket=%s)", msg->notification->destination);
+        return SR_ERR_INTERNAL;
+    }
+
+    /* set socket to nonblocking mode */
+    rc = sr_fd_set_nonblock(fd);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Cannot set socket to nonblocking mode.");
+        return SR_ERR_INTERNAL;
+    }
+
+    /* start a new connection in session manager */
+    rc = sm_connection_start(cm_ctx->sm_ctx, CM_AF_UNIX_SERVER, fd, &connection);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Cannot start connection in Session manager (fd=%d).", fd);
+        return SR_ERR_INTERNAL;
+    }
+
+    /* initialize connection watchers */
+    rc = cm_conn_watcher_init(cm_ctx, connection);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Cannot initialize watcher for fd=%d.", fd);
+        return SR_ERR_INTERNAL;
+    }
+
+    /* connect to server */
+    addr.sun_family = AF_UNIX;
+    strncpy(addr.sun_path, msg->notification->destination, sizeof(addr.sun_path)-1);
+
+    rc = connect(fd, (struct sockaddr*)&addr, sizeof(addr));
+    if (-1 == rc) {
+        if (EINPROGRESS == errno) {
+            // TODO: monitor socket for writing
+        } else {
+            SR_LOG_ERR("Unable to connect to notification socket=%s: %s", msg->notification->destination, strerror(errno));
+            close(fd);
+            return SR_ERR_DISCONNECT;
+            // TODO: remove subscriptions?
+        }
+    }
+
+    // TODO: create a session??
+
+    /* send the message */
+    rc = cm_msg_send_connection(cm_ctx, connection, msg);
 
     sr__msg__free_unpacked(msg, NULL);
     return SR_ERR_OK;
@@ -990,6 +1047,8 @@ cm_out_msg_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
 {
     sm_session_t *session = NULL;
     int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG2(cm_ctx, msg);
 
     /* find the session */
     rc = sm_session_find_id(cm_ctx->sm_ctx, msg->session_id, &session);
@@ -1018,7 +1077,7 @@ cm_out_msg_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
     /* send the message */
     if (!session->cm_data->stop_requested) {
         /* only if session_stop has not been requested */
-        rc = cm_msg_send_session(cm_ctx, session, msg);
+        rc = cm_msg_send_connection(cm_ctx, session->connection, msg);
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR("Unable to send the message over session (id=%"PRIu32").", msg->session_id);
         }

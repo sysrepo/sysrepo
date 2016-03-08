@@ -121,10 +121,6 @@ cl_sm_connection_cleanup(void *connection_p)
 
     if (NULL != connection_p) {
         conn = (cl_sm_conn_ctx_t *)connection_p;
-        if ((NULL != conn->sm_ctx) && (NULL != conn->read_watcher.data)) {
-            /* stop the read watcher if it is in use */
-            ev_io_stop(conn->sm_ctx->event_loop, &conn->read_watcher);
-        }
         free(conn->in_buff.data);
         free(conn->out_buff.data);
         free(conn);
@@ -169,6 +165,11 @@ cl_sm_connection_remove(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn)
 {
 
     CHECK_NULL_ARG2(sm_ctx, conn);
+
+    if (NULL != conn->read_watcher.data) {
+        /* if read watcher was set, stop it */
+        ev_io_stop(conn->sm_ctx->event_loop, &conn->read_watcher);
+    }
 
     sr_btree_delete(sm_ctx->fd_btree, conn); /* sm_connection_cleanup auto-invoked */
 
@@ -321,6 +322,7 @@ cl_sm_conn_msg_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, uint8_t *msg
         goto cleanup;
     }
 
+    SR_LOG_INF("NOTIFICATION: %d", msg->notification->subscription_id);
     // TODO: find matching subscription, process the notification / request
 
     sr__msg__free_unpacked(msg, NULL);
@@ -395,7 +397,7 @@ cl_sm_conn_in_buff_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn)
 static int
 cl_sm_fd_read_data(cl_sm_ctx_t *sm_ctx, int fd)
 {
-    cl_sm_conn_ctx_t *tmp_conn = { 0, };
+    cl_sm_conn_ctx_t tmp_conn = { 0, };
     cl_sm_conn_ctx_t *conn = NULL;
     cl_sm_buffer_t *buff = NULL;
     int bytes = 0;
@@ -404,9 +406,9 @@ cl_sm_fd_read_data(cl_sm_ctx_t *sm_ctx, int fd)
     CHECK_NULL_ARG(sm_ctx);
 
     /* find matching connection context */
-    tmp_conn->fd = fd;
+    tmp_conn.fd = fd;
     conn = sr_btree_search(sm_ctx->fd_btree, &tmp_conn);
-    if (NULL == tmp_conn) {
+    if (NULL == conn) {
         SR_LOG_ERR("Invalid file descriptor fd=%d, matching subscription connection not found.", fd);
         return SR_ERR_INVAL_ARG;
     }

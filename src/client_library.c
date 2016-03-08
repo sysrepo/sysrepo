@@ -252,7 +252,7 @@ cl_socket_connect(sr_conn_ctx_t *conn_ctx, const char *socket_path)
     /* prepare a socket */
     fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (-1 == fd) {
-        SR_LOG_ERR("Unable to create a new socket (socket=%s)", socket_path);
+        SR_LOG_ERR("Unable to create a new socket=%s: %s", socket_path, strerror(errno));
         return SR_ERR_INTERNAL;
     }
 
@@ -263,7 +263,7 @@ cl_socket_connect(sr_conn_ctx_t *conn_ctx, const char *socket_path)
     /* connect to server */
     rc = connect(fd, (struct sockaddr*)&addr, sizeof(addr));
     if (-1 == rc) {
-        SR_LOG_DBG("Unable to connect to socket (socket=%s)", socket_path);
+        SR_LOG_DBG("Unable to connect to socket=%s: %s", socket_path, strerror(errno));
         close(fd);
         return SR_ERR_DISCONNECT;
     }
@@ -273,7 +273,7 @@ cl_socket_connect(sr_conn_ctx_t *conn_ctx, const char *socket_path)
     tv.tv_usec = 0;
     rc = setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, (char *)&tv, sizeof(tv));
     if (-1 == rc) {
-        SR_LOG_ERR("Unable to set timeout for socket operations (socket=%s)", socket_path);
+        SR_LOG_ERR("Unable to set timeout for socket operations on socket=%s: %s", socket_path, strerror(errno));
         close(fd);
         return SR_ERR_DISCONNECT;
     }
