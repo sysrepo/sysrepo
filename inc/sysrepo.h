@@ -813,7 +813,7 @@ int sr_unsubscribe(sr_subscription_ctx_t *subscription);
 
 
 // TODO - move from public header to protected one
-int sr_feature_install(const char *module_name, const char *feature_name, bool activate);
+int sr_feature_enable(sr_session_ctx_t *session, const char *module_name, const char *feature_name, bool enabled);
 
 
 ////////////////////////////////////////////////////////////////////////////////
