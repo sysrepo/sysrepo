@@ -669,3 +669,4 @@ cl_sm_subscribe(cl_sm_ctx_t *sm_ctx, char **destination, uint32_t *subscription_
 
     return SR_ERR_OK;
 }
+
