@@ -85,7 +85,8 @@ dm_list_schema_test(void **state)
     rc = dm_init(NULL, TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx);
     assert_int_equal(SR_ERR_OK, rc);
 
-    dm_session_start(ctx, NULL, SR_DS_STARTUP, &ses_ctx);
+    rc = dm_session_start(ctx, NULL, SR_DS_STARTUP, &ses_ctx);
+    assert_int_equal(SR_ERR_OK, rc);
 
     rc = dm_list_schemas(ctx, ses_ctx, &schemas, &count);
     assert_int_equal(SR_ERR_OK, rc);
@@ -95,27 +96,106 @@ dm_list_schema_test(void **state)
                 schemas[i].module_name,
                 schemas[i].ns,
                 schemas[i].prefix);
-        for (size_t r = 0; r < schemas[i].rev_count; r++) {
             printf("\t%s\n\t%s\n\t%s\n\n",
-                    schemas[i].revisions[r].revision,
-                    schemas[i].revisions[r].file_path_yang,
-                    schemas[i].revisions[r].file_path_yin);
-        }
+                    schemas[i].revision.revision,
+                    schemas[i].revision.file_path_yang,
+                    schemas[i].revision.file_path_yin);
+
 
         for (size_t s = 0; s < schemas[i].submodule_count; s++) {
             printf("\t%s\n", schemas[i].submodules[s].submodule_name);
-            for (size_t r = 0; r < schemas[i].submodules[s].rev_count; r++) {
+
                printf("\t\t%s\n\t\t%s\n\t\t%s\n\n",
-                       schemas[i].submodules[s].revisions[r].revision,
-                       schemas[i].submodules[s].revisions[r].file_path_yang,
-                       schemas[i].submodules[s].revisions[r].file_path_yin);
-            }
+                       schemas[i].submodules[s].revision.revision,
+                       schemas[i].submodules[s].revision.file_path_yang,
+                       schemas[i].submodules[s].revision.file_path_yin);
+
         }
     }
 
     sr_free_schemas(schemas, count);
 
     dm_session_stop(ctx, ses_ctx);
+
+    dm_cleanup(ctx);
+}
+
+void
+dm_get_schema_test(void **state)
+{
+    int rc;
+    dm_ctx_t *ctx;
+    char *schema = NULL;
+
+    rc = dm_init(NULL, TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* module latest revision */
+    rc = dm_get_schema(ctx, "module-a", NULL, NULL, true, &schema);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(schema);
+    free(schema);
+
+    /* module latest revision  yin format*/
+    rc = dm_get_schema(ctx, "module-a", NULL, NULL, false, &schema);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(schema);
+    free(schema);
+
+    /* module selected revision */
+    rc = dm_get_schema(ctx, "module-a", "2016-02-02", NULL, true, &schema);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(schema);
+    free(schema);
+
+    /* submodule latest revision */
+    rc = dm_get_schema(ctx, "module-a", NULL, "sub-a-one", true, &schema);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(schema);
+    free(schema);
+
+    /* submodule selected revision */
+    rc = dm_get_schema(ctx, "module-a", "2016-02-02", "sub-a-one", true, &schema);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(schema);
+    free(schema);
+
+    dm_cleanup(ctx);
+
+}
+
+void
+dm_get_schema_negative_test(void **state)
+{
+
+    int rc;
+    dm_ctx_t *ctx;
+    char *schema = NULL;
+
+    rc = dm_init(NULL, TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* unknown module */
+    rc = dm_get_schema(ctx, "unknown", NULL, NULL, true, &schema);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+    assert_null(schema);
+
+
+    /* module unknown revision */
+    rc = dm_get_schema(ctx, "module-a", "2018-02-02", NULL, true, &schema);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+    assert_null(schema);
+
+
+    /* unknown submodule */
+    rc = dm_get_schema(ctx, "module-a", NULL, "sub-unknown", true, &schema);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+    assert_null(schema);
+
+    /* submodule unknown revision */
+    rc = dm_get_schema(ctx, "module-a", "2018-02-10", "sub-a-one", true, &schema);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+    assert_null(schema);
 
     dm_cleanup(ctx);
 }
@@ -271,9 +351,10 @@ int main(){
             cmocka_unit_test(dm_create_cleanup),
             cmocka_unit_test(dm_get_data_tree),
             cmocka_unit_test(dm_list_schema_test),
-            cmocka_unit_test(dm_list_schema_test),
             cmocka_unit_test(dm_validate_data_trees_test),
             cmocka_unit_test(dm_discard_changes_test),
+            cmocka_unit_test(dm_get_schema_test),
+            cmocka_unit_test(dm_get_schema_negative_test),
     };
     return cmocka_run_group_tests(tests, setup, NULL);
 }

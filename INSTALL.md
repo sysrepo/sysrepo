@@ -76,7 +76,6 @@ $ make
 ```
 $ git clone git://git.cryptomilk.org/projects/cmocka.git
 $ cd cmocka
-$ git checkout tags/cmocka-1.0.1
 $ mkdir build; cd build
 $ cmake -DCMAKE_BUILD_TYPE=Debug ..
 $ make

@@ -1013,8 +1013,8 @@ cleanup:
 }
 
 int
-sr_get_schema(sr_session_ctx_t *session, const char *module_name, const char *submodule_name,
-        const char *revision, char **schema_content)
+sr_get_schema(sr_session_ctx_t *session, const char *module_name, const char *module_revision,
+        const char *submodule_name, sr_schema_format_t format, char **schema_content)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
     int rc = SR_ERR_OK;
@@ -1045,14 +1045,15 @@ sr_get_schema(sr_session_ctx_t *session, const char *module_name, const char *su
             goto cleanup;
         }
     }
-    if(NULL != revision) {
-        msg_req->request->get_schema_req->revision = strdup(revision);
+    if(NULL != module_revision) {
+        msg_req->request->get_schema_req->revision = strdup(module_revision);
         if (NULL == msg_req->request->get_schema_req->revision) {
             SR_LOG_ERR_MSG("Cannot duplicate schema revision.");
             rc = SR_ERR_NOMEM;
             goto cleanup;
         }
     }
+    msg_req->request->get_schema_req->yang_format = (format == SR_SCHEMA_YANG);
 
     /* send the request and receive the response */
     rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__GET_SCHEMA);

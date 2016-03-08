@@ -26,6 +26,7 @@
 #include <dirent.h>
 #include <pthread.h>
 #include <fcntl.h>
+#include <libyang/libyang.h>
 
 #include "data_manager.h"
 #include "sr_common.h"
@@ -65,6 +66,17 @@ typedef struct dm_session_s {
 typedef struct dm_node_info_s {
     dm_node_state_t state;
 } dm_node_info_t;
+
+/**
+ * @brief Minimal nanosecond difference between current time and modification timestamp.
+ * To allow optimized commit - if timestamp of the file system file and session copy matches
+ * overwrite the data file.
+ *
+ * If this constant were 0 we could lose some changes in 1.read 2.read 1.commit 2.commit scenario.
+ * Because the file can be read and write with the same timestamp.
+ * See edit_commit_test2 and edit_commit_test3.
+ */
+#define NANOSEC_THRESHOLD 10000000
 
 /**
  * @brief Compares two data trees by module name
@@ -776,13 +788,22 @@ cleanup:
  * @return Error code (SR_ERR_OK on success)
  */
 static int
-dm_list_module(dm_ctx_t *dm_ctx, const struct lys_module *module, sr_schema_t *schema)
+dm_list_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, sr_schema_t *schema)
 {
-    CHECK_NULL_ARG3(dm_ctx, module, schema);
+    CHECK_NULL_ARG3(dm_ctx, module_name, schema);
 
-    CHECK_NULL_ARG3(module->name, module->prefix, module->ns);
     int rc = SR_ERR_INTERNAL;
     const char **submodules = NULL;
+
+    const struct lys_module *module = ly_ctx_get_module(dm_ctx->ly_ctx, module_name, revision);
+    if (NULL == module) {
+        SR_LOG_ERR("Module %s at revision %s not found", module_name, revision);
+        return SR_ERR_INTERNAL;
+    }
+    if (NULL == module_name || NULL == module->prefix || NULL == module->ns) {
+        SR_LOG_ERR_MSG("Schema information missing");
+        return SR_ERR_INTERNAL;
+    }
 
     schema->module_name = strdup(module->name);
     schema->prefix = strdup(module->prefix);
@@ -792,35 +813,14 @@ dm_list_module(dm_ctx_t *dm_ctx, const struct lys_module *module, sr_schema_t *s
         goto cleanup;
     }
 
-    /* if there is no revision specified, allocate one rev structure
-     * where the file with default rev will be stored */
-    schema->revisions = calloc(0 != module->rev_size ? module->rev_size : 1, sizeof(*schema->revisions));
-    if (NULL == schema->revisions) {
-        SR_LOG_ERR_MSG("Memory allocation failed");
-        rc = SR_ERR_NOMEM;
+
+    rc = dm_list_rev_file(dm_ctx, module_name, revision, &schema->revision);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("List rev file failed module %s", module->name);
         goto cleanup;
     }
 
-    /* loop through all module revisions */
-    for (uint8_t r = 0; r < module->rev_size; r++) {
-        rc = dm_list_rev_file(dm_ctx, module->name, module->rev[r].date, &schema->revisions[r]);
-        if (SR_ERR_OK != rc) {
-            SR_LOG_ERR("List rev file failed module %s", module->name);
-            schema->rev_count = r;
-            goto cleanup;
-        }
-    }
-    schema->rev_count = module->rev_size;
 
-    /* module without revision */
-    if (0 == schema->rev_count) {
-        rc = dm_list_rev_file(dm_ctx, module->name, NULL, &schema->revisions[0]);
-        if (SR_ERR_OK != rc) {
-            SR_LOG_ERR("List rev file failed module %s", module->name);
-            goto cleanup;
-        }
-        schema->rev_count = 1;
-    }
     submodules = ly_ctx_get_submodule_names(dm_ctx->ly_ctx, module->name);
     if (NULL == submodules) {
         schema->submodule_count = 0;
@@ -829,8 +829,6 @@ dm_list_module(dm_ctx_t *dm_ctx, const struct lys_module *module, sr_schema_t *s
     size_t sub_count = 0;
 
     while (NULL != submodules[sub_count]) sub_count++;
-
-    schema->submodule_count = sub_count;
 
     schema->submodules = calloc(sub_count, sizeof(*schema->submodules));
     if (NULL == schema->submodules) {
@@ -846,39 +844,20 @@ dm_list_module(dm_ctx_t *dm_ctx, const struct lys_module *module, sr_schema_t *s
             rc = SR_ERR_INTERNAL;
             goto cleanup;
         }
-        const struct lys_submodule *sub = ly_ctx_get_submodule(module, submodules[s], NULL);
+        const struct lys_submodule *sub = ly_ctx_get_submodule(dm_ctx->ly_ctx, module_name, revision, submodules[s]);
         if (NULL == sub){
             SR_LOG_ERR_MSG("Submodule not found");
             rc = SR_ERR_INTERNAL;
             goto cleanup;
         }
 
-        schema->submodules[s].revisions = calloc(0 != sub->rev_size ? sub->rev_size : 1, sizeof(*schema->submodules->revisions));
-        if (NULL == schema->submodules[s].revisions) {
-            SR_LOG_ERR_MSG("Memory allocation failed");
-            rc = SR_ERR_NOMEM;
+        rc = dm_list_rev_file(dm_ctx, submodules[s], sub->rev[0].date, &schema->submodules[s].revision);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR("List rev file failed module %s", module->name);
             goto cleanup;
         }
-        /* loop through all submodule revisions */
-        for (uint8_t r = 0; r < sub->rev_size; r++) {
-            rc = dm_list_rev_file(dm_ctx, submodules[s], sub->rev[r].date, &schema->submodules[s].revisions[r]);
-            if (SR_ERR_OK != rc) {
-                SR_LOG_ERR("List rev file failed module %s", module->name);
-                schema->rev_count = r;
-                goto cleanup;
-            }
-        }
-        schema->submodules[s].rev_count = sub->rev_size;
 
-        /* submodule without revision */
-        if (0 == schema->submodules[s].rev_count) {
-            rc = dm_list_rev_file(dm_ctx, submodules[s], NULL, &schema->revisions[0]);
-            if (SR_ERR_OK != rc) {
-                SR_LOG_ERR("List rev file failed module %s", submodules[s]);
-                goto cleanup;
-            }
-            schema->submodules[s].rev_count = 1;
-        }
+        schema->submodule_count++;
     }
     free(submodules);
     return rc;
@@ -889,48 +868,144 @@ cleanup:
     return rc;
 }
 
+static const char *
+dm_get_module_revision(struct lyd_node *module)
+{
+    int rc = 0;
+    const char *result = NULL;
+    CHECK_NULL_ARG_NORET(rc, module);
+    if (0 != rc) {
+        return NULL;
+    }
+    struct ly_set *rev = lyd_get_node(module, "revision");
+    if (NULL == rev) {
+        SR_LOG_ERR_MSG("Getting module revision failed");
+        return NULL;
+    }
+    if (0 == rev->number){
+        ly_set_free(rev);
+    } else {
+        result = ((struct lyd_node_leaf_list *)rev->dset[0])->value_str;
+        if (0 == strcmp(result,"")){
+            result = NULL;
+        }
+    }
+    ly_set_free(rev);
+    return result;
+
+}
+
 int
 dm_list_schemas(dm_ctx_t *dm_ctx, dm_session_t *dm_session, sr_schema_t **schemas, size_t *schema_count)
 {
     CHECK_NULL_ARG4(dm_ctx, dm_session, schemas, schema_count);
-    size_t i = 0;
     sr_schema_t *sch = NULL;
-    size_t count = 0;
     int rc = SR_ERR_OK;
-    const char **names = ly_ctx_get_module_names(dm_ctx->ly_ctx);
-    if (NULL == names) {
-        *schema_count = 0;
-        *schemas = NULL;
+    *schemas = NULL;
+    *schema_count = 0;
+
+    struct lyd_node *info = ly_ctx_info(dm_ctx->ly_ctx);
+    if (NULL == info) {
+        SR_LOG_ERR("No info data found %d", ly_errno);
+        return SR_ERR_INTERNAL;
+    }
+
+    struct ly_set *modules = lyd_get_node(info, "/ietf-yang-library:modules-state/module/name");
+    if (NULL == modules) {
+        SR_LOG_ERR_MSG ("Error during module listing");
+        rc = SR_ERR_INTERNAL;
+        goto cleanup;
+    } else if (0 == modules->number) {
+        goto cleanup;
+    }
+
+    sch = calloc(modules->number, sizeof(*sch));
+    if (NULL == sch) {
+        SR_LOG_ERR_MSG("Memory allocation failed");
+        rc = SR_ERR_NOMEM;
+        goto cleanup;
+    }
+
+    size_t with_files = 0;
+    for (unsigned int i = 0; i < modules->number; i++) {
+        const char *revision = dm_get_module_revision(modules->dset[i]->parent);
+        const char *module_name = ((struct lyd_node_leaf_list *) modules->dset[i])->value_str;
+        rc = dm_list_module(dm_ctx, module_name, revision, &sch[i]);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR_MSG("Filling sr_schema_t failed");
+            sr_free_schemas(sch, i);
+            goto cleanup;
+        }
+        if (NULL != sch[i].revision.file_path_yang || NULL != sch[i].revision.file_path_yin) {
+            with_files++;
+        }
+    }
+
+
+    /* return only files where we can locate schema files */
+    *schemas = calloc(with_files, sizeof(**schemas));
+    if (NULL == schemas) {
+        SR_LOG_ERR_MSG("Memory allocation failed");
+        rc = SR_ERR_NOMEM;
+        goto cleanup;
+    }
+    *schema_count = with_files;
+
+    size_t index = 0;
+    for (size_t m = 0; m < modules->number; m++){
+        if (NULL != sch[m].revision.file_path_yang || NULL != sch[m].revision.file_path_yin) {
+            (*schemas)[index] = sch[m];
+            index++;
+        }
+        else{
+            sr_free_schema(&sch[m]);
+        }
+    }
+    free(sch);
+
+cleanup:
+    ly_set_free(modules);
+    lyd_free_withsiblings(info);
+    return rc;
+
+}
+
+int
+dm_get_schema(dm_ctx_t *dm_ctx, const char *module_name, const char *module_revision, const char *submodule_name, bool yang_format, char **schema)
+{
+    CHECK_NULL_ARG2(dm_ctx, module_name);
+    int rc = SR_ERR_OK;
+
+    const struct lys_module *module = ly_ctx_get_module(dm_ctx->ly_ctx, module_name, module_revision);
+    if (NULL == module) {
+        SR_LOG_ERR("Module %s with revision %s was not found", module_name, module_revision);
+        return SR_ERR_NOT_FOUND;
+    }
+
+    if (NULL == submodule_name){
+        /* module*/
+        rc = lys_print_mem(schema, module, yang_format ? LYS_OUT_YANG: LYS_OUT_YIN, NULL);
+        if (0 != rc) {
+            SR_LOG_ERR("Module %s print failed.", module->name);
+            return SR_ERR_INTERNAL;
+        }
         return SR_ERR_OK;
     }
 
-    while (NULL != names[count]) count++;
-
-    sch = calloc(count, sizeof(*sch));
-    if (NULL == sch) {
-        SR_LOG_ERR_MSG("Memory allocation failed");
-        free(names);
-        return SR_ERR_NOMEM;
+    /* submodule */
+    const struct lys_submodule *submodule = ly_ctx_get_submodule(dm_ctx->ly_ctx, module_name, module_revision, submodule_name);
+    if (NULL == submodule) {
+        SR_LOG_ERR("Submodule %s of module %s (%s) was not found.", submodule_name, module_name, module_revision);
+        return SR_ERR_NOT_FOUND;
     }
 
-    const struct lys_module *module = NULL;
-    i = 0;
-    while (NULL != names[i]) {
-        module = ly_ctx_get_module(dm_ctx->ly_ctx, names[i], NULL);
-        rc = dm_list_module(dm_ctx, module, &sch[i]);
-        if (SR_ERR_OK != rc) {
-            SR_LOG_ERR_MSG("Filling sr_schema_t failed");
-            free(names);
-            sr_free_schemas(sch, i);
-            return rc;
-        }
-        i++;
+    rc = lys_print_mem(schema, (const struct lys_module *) submodule, yang_format ? LYS_OUT_YANG: LYS_OUT_YIN, NULL);
+    if (0 != rc) {
+        SR_LOG_ERR("Submodule %s print failed.", submodule->name);
+        return SR_ERR_INTERNAL;
     }
-
-    *schemas = sch;
-    *schema_count = count;
-    free(names);
     return SR_ERR_OK;
+
 }
 
 int
@@ -1147,8 +1222,23 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
                 rc = SR_ERR_INTERNAL;
                 goto cleanup;
             }
+            struct timespec now;
+            clock_gettime(CLOCK_REALTIME_COARSE, &now);
+            SR_LOG_DBG("Loaded module %s: mtime sec=%lld nsec=%lld\n", info->module->name,
+                        (long long) st.st_mtim.tv_sec,
+                        (long long) st.st_mtim.tv_nsec);
+            SR_LOG_DBG("Current time: mtime sec=%lld nsec=%lld\n",
+                        (long long) now.tv_sec,
+                        (long long) now.tv_nsec);
+            SR_LOG_DBG("Nanosec diff: %lld", (long long) difftime(now.tv_nsec, st.st_mtim.tv_nsec));
+            /* check if we do optimized commit - skipping the merge of changes just overwrite the datafile
+             * Conditions:
+             *  - modification date of the the session copy and data file must match
+             *  - at least NANOSEC_THRESHOULD has elapsed since loading the file
+             */
             if (info->timestamp.tv_sec == st.st_mtim.tv_sec &&
-                    info->timestamp.tv_nsec == st.st_mtim.tv_nsec) {
+                    info->timestamp.tv_nsec == st.st_mtim.tv_nsec
+                    && (now.tv_sec != st.st_mtim.tv_sec || difftime(now.tv_nsec, st.st_mtim.tv_nsec) > NANOSEC_THRESHOLD)) {
                 SR_LOG_DBG("Loaded module %s: mtime sec=%lld nsec=%lld\n", info->module->name,
                         (long long) st.st_mtim.tv_sec,
                         (long long) st.st_mtim.tv_nsec);
@@ -1204,7 +1294,6 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
 
 cleanup:
     ac_unset_user_identity(dm_ctx->ac_ctx);
-    dm_free_commit_context(dm_ctx, c_ctx);
     free(file_name);
     return rc;
 }
@@ -1241,22 +1330,6 @@ dm_commit_write_files(dm_session_t *session, dm_commit_context_t *c_ctx)
                 SR_LOG_ERR("Failed to write output for %s", info->module->name);
                 rc = SR_ERR_INTERNAL;
             }
-#ifdef HAVE_STAT_ST_MTIM
-            /* if we skipped the merging, make sure that modification time is updated */
-            for (unsigned int m = 0; m < c_ctx->up_to_date_models->number; m++) {
-                if (0 == strcmp(info->module->name, (char *) c_ctx->up_to_date_models->set[m])) {
-                    info->timestamp.tv_nsec++;
-                    struct timespec times[2];
-                    times[0] = info->timestamp;
-                    times[1] = info->timestamp;
-                    if (0 != futimens(c_ctx->fds[count], times)) {
-                        SR_LOG_ERR_MSG("Time update failed");
-                        rc = SR_ERR_INTERNAL;
-                    }
-                    break;
-                }
-            }
-#endif
             count++;
         }
         i++;

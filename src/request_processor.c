@@ -135,11 +135,13 @@ rp_get_schema_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, S
         return SR_ERR_NOMEM;
     }
 
-    // TODO: retrieve schema content from DM
-    resp->response->get_schema_resp->schema_content = strdup("real schema content will be here...");
-
     /* set response result code */
-    resp->response->result = rc;
+    resp->response->result = dm_get_schema(rp_ctx->dm_ctx,
+            msg->request->get_schema_req->module_name,
+            msg->request->get_schema_req->revision,
+            msg->request->get_schema_req->submodule_name,
+            msg->request->get_schema_req->yang_format,
+            &resp->response->get_schema_resp->schema_content);
 
     /* send the response */
     rc = cm_msg_send(rp_ctx->cm_ctx, resp);
