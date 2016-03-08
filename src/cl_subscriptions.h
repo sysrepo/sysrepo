@@ -28,4 +28,6 @@ int cl_sm_init(cl_sm_ctx_t **sm_ctx);
 
 void cl_sm_cleanup(cl_sm_ctx_t *sm_ctx);
 
+int cl_sm_subscribe(cl_sm_ctx_t *sm_ctx, char **destination, uint32_t *subscription_id);
+
 #endif /* CL_SUBSCRIPTIONS_H_ */

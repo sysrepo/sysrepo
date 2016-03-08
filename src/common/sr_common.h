@@ -361,6 +361,19 @@ int sr_pb_req_alloc(const Sr__Operation operation, const uint32_t session_id, Sr
 int sr_pb_resp_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__Msg **msg);
 
 /**
+ * @brief Allocates and initializes GPB notification message.
+ *
+ * @param[in] event TODO
+ * @param[in] destination
+ * @param[in] subscription_id
+ * @param[out] msg GPB message.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_pb_notif_alloc(const Sr__NotificationEvent event, const char *destination,
+        const uint32_t subscription_id, Sr__Msg **msg_p);
+
+/**
  * @brief Validates the message according to excepted message type and operation.
  *
  * @param[in] msg Unpacked message.

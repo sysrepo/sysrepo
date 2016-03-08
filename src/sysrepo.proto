@@ -395,13 +395,13 @@ message FeatureEnableReq {
 message FeatureEnableResp {
 }
 
-enum SubscriptionType {
-  MODULE_INSTALL_SUBSCRIPTION = 1;
-  FEATURE_ENABLE_SUBSCRIPTION = 2;
+enum NotificationEvent {
+  MODULE_INSTALL_EVENT = 1;
+  FEATURE_ENABLE_EVENT = 2;
 }
 
 message SubscribeReq {
-  required SubscriptionType type = 1;
+  required NotificationEvent event = 1;
   required string destination = 2;
   required uint32 subscription_id = 3;
 
@@ -409,8 +409,6 @@ message SubscribeReq {
 }
 
 message SubscribeResp {
-  required SubscriptionType type = 1;
-  required uint32 subscription_id = 2;
 }
 
 
@@ -451,7 +449,7 @@ enum Operation {
 /**
  * @brief Request for an operation.
  */
-message Req {
+message Request {
   required Operation operation = 1;
 
   optional SessionStartReq session_start_req = 10;
@@ -483,7 +481,7 @@ message Req {
 /**
  * @brief Response to the received request.
  */
-message Resp {
+message Response {
   required Operation operation = 1;
   required uint32 result = 2;  /**< Result of the operation. 0 on success, non-zero values map to sr_error_t enum in sysrepo.h. */
   optional Error error = 3;    /**< Additional error information. */
@@ -514,6 +512,12 @@ message Resp {
   optional SubscribeResp subscribe_resp = 70;
 }
 
+message Notification {
+  required NotificationEvent event = 1;
+  required string destination = 2;
+  required uint32 subscription_id = 3;
+}
+
 /**
  * @brief Umbrella sysrepo message used for communication between sysrepo
  * engine and client library.
@@ -523,12 +527,15 @@ message Msg {
    * @brief Type of the message.
    */
   enum MsgType {
-    REQUEST = 1;   /**< The message is a request. */
-    RESPONSE = 2;  /**< The message is a response to the request. */
+    REQUEST = 1;       /**< The message is a request. */
+    RESPONSE = 2;      /**< The message is a response to the request. */
+    NOTIFICATION = 3;  /**< The message is a notification. */
   }
 
-  required MsgType type = 1;       /**< Indicates type of the message. */
-  required uint32 session_id = 2;  /**< Session identifier. Can be 0 (value is ignored) for session_start request. */
-  optional Req request = 3;        /**< Filled in in case of type == REQUEST. */
-  optional Resp response = 4;      /**< Filled in in case of type == RESPONSE. */
+  required MsgType type = 1;               /**< Indicates type of the message. */
+  required uint32 session_id = 2;          /**< Session identifier. Can be 0 (value is ignored) for session_start request. */
+
+  optional Request request = 3;            /**< Filled in in case of type == REQUEST. */
+  optional Response response = 4;          /**< Filled in in case of type == RESPONSE. */
+  optional Notification notification = 5;  /**< Filled in in case of type == NOTIFICATION. */
 }

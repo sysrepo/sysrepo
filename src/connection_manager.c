@@ -976,6 +976,78 @@ cm_server_watcher_cb(struct ev_loop *loop, ev_io *w, int revents)
     } while (-1 != clnt_fd); /* accept returns -1 when there are no more connections to accept */
 }
 
+static int
+cm_out_notif_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
+{
+    SR_LOG_DBG_MSG("Sending a new notification.");
+
+    sr__msg__free_unpacked(msg, NULL);
+    return SR_ERR_OK;
+}
+
+static int
+cm_out_msg_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
+{
+    sm_session_t *session = NULL;
+    int rc = SR_ERR_OK;
+
+    /* find the session */
+    rc = sm_session_find_id(cm_ctx->sm_ctx, msg->session_id, &session);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Unable to find the session matching with id specified in the message "
+                "(id=%"PRIu32").", msg->session_id);
+        sr__msg__free_unpacked(msg, NULL);
+        return SR_ERR_INTERNAL;
+    }
+
+    if ((NULL == session) || (NULL == session->cm_data)) {
+        SR_LOG_ERR("invalid session context - NULL value detected (id=%"PRIu32").", msg->session_id);
+        sr__msg__free_unpacked(msg, NULL);
+        return SR_ERR_INTERNAL;
+    }
+
+    /* update counters of session-related requests in RP */
+    if (SR__MSG__MSG_TYPE__RESPONSE == msg->type) {
+        if (session->cm_data->rp_req_cnt > 0) {
+            session->cm_data->rp_req_cnt -= 1;
+        }
+    } else if (SR__MSG__MSG_TYPE__REQUEST == msg->type) {
+        session->cm_data->rp_resp_expected += 1;
+    }
+
+    /* send the message */
+    if (!session->cm_data->stop_requested) {
+        /* only if session_stop has not been requested */
+        rc = cm_msg_send_session(cm_ctx, session, msg);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR("Unable to send the message over session (id=%"PRIu32").", msg->session_id);
+        }
+    }
+
+    /* release the message */
+    sr__msg__free_unpacked(msg, NULL);
+
+    /* if there are no more outstanding session-related requests in RP */
+    if (0 == session->cm_data->rp_req_cnt) {
+        if (session->cm_data->stop_requested) {
+            /* session stop requested, stop it in RP and SM */
+            rp_session_stop(cm_ctx->rp_ctx, session->cm_data->rp_session);
+            sm_session_drop(cm_ctx->sm_ctx, session);
+        } else {
+            /* if there are some requests waiting for to be processed, process next one */
+            if (sr_cbuff_dequeue(session->cm_data->rp_request_queue, &msg)) {
+                session->cm_data->rp_req_cnt += 1;
+                rc = rp_msg_process(cm_ctx->rp_ctx, session->cm_data->rp_session, msg);
+                if (SR_ERR_OK != rc) {
+                    session->cm_data->rp_req_cnt -= 1;
+                }
+            }
+        }
+    }
+
+    return rc;
+}
+
 /**
  * @brief Callback called by the event loop watcher when a message is enqueued into message queue.
  */
@@ -984,13 +1056,11 @@ cm_msg_enqueue_cb(struct ev_loop *loop, ev_async *w, int revents)
 {
     cm_ctx_t *cm_ctx = NULL;
     bool dequeued = false;
-    int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG_VOID2(w, w->data);
     cm_ctx = (cm_ctx_t*)w->data;
 
     do {
-        sm_session_t *session = NULL;
         Sr__Msg *msg = NULL;
 
         pthread_mutex_lock(&cm_ctx->msg_queue_mutex);
@@ -998,58 +1068,12 @@ cm_msg_enqueue_cb(struct ev_loop *loop, ev_async *w, int revents)
         pthread_mutex_unlock(&cm_ctx->msg_queue_mutex);
 
         if (dequeued) {
-            /* find the session */
-            rc = sm_session_find_id(cm_ctx->sm_ctx, msg->session_id, &session);
-            if (SR_ERR_OK != rc) {
-                SR_LOG_ERR("Unable to find the session matching with id specified in the message "
-                        "(id=%"PRIu32").", msg->session_id);
-                sr__msg__free_unpacked(msg, NULL);
-                continue;
-            }
-
-            if ((NULL == session) || (NULL == session->cm_data)) {
-                SR_LOG_ERR("invalid session context - NULL value detected (id=%"PRIu32").", msg->session_id);
-                sr__msg__free_unpacked(msg, NULL);
-                continue;
-            }
-
-            /* update counters of session-related requests in RP */
-            if (SR__MSG__MSG_TYPE__RESPONSE == msg->type) {
-                if (session->cm_data->rp_req_cnt > 0) {
-                    session->cm_data->rp_req_cnt -= 1;
-                }
-            } else if (SR__MSG__MSG_TYPE__REQUEST == msg->type) {
-                session->cm_data->rp_resp_expected += 1;
-            }
-
-            /* send the message */
-            if (!session->cm_data->stop_requested) {
-                /* only if session_stop has not been requested */
-                rc = cm_msg_send_session(cm_ctx, session, msg);
-                if (SR_ERR_OK != rc) {
-                    SR_LOG_ERR("Unable to send the message over session (id=%"PRIu32").", msg->session_id);
-                }
-            }
-
-            /* release the message */
-            sr__msg__free_unpacked(msg, NULL);
-
-            /* if there are no more outstanding session-related requests in RP */
-            if (0 == session->cm_data->rp_req_cnt) {
-                if (session->cm_data->stop_requested) {
-                    /* session stop requested, stop it in RP and SM */
-                    rp_session_stop(cm_ctx->rp_ctx, session->cm_data->rp_session);
-                    sm_session_drop(cm_ctx->sm_ctx, session);
-                } else {
-                    /* if there are some requests waiting for to be processed, process next one */
-                    if (sr_cbuff_dequeue(session->cm_data->rp_request_queue, &msg)) {
-                        session->cm_data->rp_req_cnt += 1;
-                        rc = rp_msg_process(cm_ctx->rp_ctx, session->cm_data->rp_session, msg);
-                        if (SR_ERR_OK != rc) {
-                            session->cm_data->rp_req_cnt -= 1;
-                        }
-                    }
-                }
+            if (SR__MSG__MSG_TYPE__NOTIFICATION == msg->type) {
+                /* process as a notification */
+                cm_out_notif_process(cm_ctx, msg);
+            } else {
+                /* process as a normal message */
+                cm_out_msg_process(cm_ctx, msg);
             }
         }
     } while (dequeued);

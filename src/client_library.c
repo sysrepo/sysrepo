@@ -1088,60 +1088,6 @@ cleanup:
 }
 
 int
-sr_feature_enable(sr_session_ctx_t *session, const char *module_name, const char *feature_name, bool enabled)
-{
-    Sr__Msg *msg_req = NULL, *msg_resp = NULL;
-    int rc = SR_ERR_OK;
-
-    CHECK_NULL_ARG4(session, session->conn_ctx, module_name, feature_name);
-
-    cl_session_clear_errors(session);
-
-    /* prepare feature_enable message */
-    rc = sr_pb_req_alloc(SR__OPERATION__FEATURE_ENABLE, session->id, &msg_req);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Cannot allocate feature_enable message.");
-        goto cleanup;
-    }
-
-    /* set arguments */
-    msg_req->request->feature_enable_req->module_name = strdup(module_name);
-    if (NULL == msg_req->request->feature_enable_req->module_name) {
-        SR_LOG_ERR_MSG("Cannot duplicate module name.");
-        rc = SR_ERR_NOMEM;
-        goto cleanup;
-    }
-    msg_req->request->feature_enable_req->feature_name = strdup(feature_name);
-    if (NULL == msg_req->request->feature_enable_req->feature_name) {
-        SR_LOG_ERR_MSG("Cannot feature name.");
-        rc = SR_ERR_NOMEM;
-        goto cleanup;
-    }
-    msg_req->request->feature_enable_req->enabled = enabled;
-
-    /* send the request and receive the response */
-    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__FEATURE_ENABLE);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Error by processing of feature_enable request.");
-        goto cleanup;
-    }
-
-    sr__msg__free_unpacked(msg_req, NULL);
-    sr__msg__free_unpacked(msg_resp, NULL);
-
-    return cl_session_return(session, SR_ERR_OK);
-
-cleanup:
-    if (NULL != msg_req) {
-        sr__msg__free_unpacked(msg_req, NULL);
-    }
-    if (NULL != msg_resp) {
-        sr__msg__free_unpacked(msg_resp, NULL);
-    }
-    return cl_session_return(session, rc);
-}
-
-int
 sr_get_item(sr_session_ctx_t *session, const char *path, sr_val_t **value)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
@@ -1894,11 +1840,16 @@ int
 sr_feature_enable_subscribe(sr_session_ctx_t *session, sr_feature_enable_cb callback, void *private_ctx,
         sr_subscription_ctx_t **subscription)
 {
+    Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    char *destination = NULL;
+    uint32_t subscription_id = 0;
     int rc = SR_ERR_OK;
 
-    //CHECK_NULL_ARG3(session, callback, subscription);
+    //CHECK_NULL_ARG3(session, callback, subscription); // TODO
 
-    /* check if this is the first subscription */
+    cl_session_clear_errors(session);
+
+    /* check if this is the first subscription, if yes, initialize subscription manager */
     pthread_mutex_lock(&global_lock);
     if (0 == subscriptions_cnt) {
         /* this is the first subscription - initialize subscription manager */
@@ -1907,7 +1858,53 @@ sr_feature_enable_subscribe(sr_session_ctx_t *session, sr_feature_enable_cb call
     subscriptions_cnt++;
     pthread_mutex_unlock(&global_lock);
 
-    return rc;
+    /* prepare subscribe message */
+    rc = sr_pb_req_alloc(SR__OPERATION__SUBSCRIBE, session->id, &msg_req);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Cannot allocate subscribe message.");
+        goto cleanup;
+    }
+
+    /* subscribe */
+    pthread_mutex_lock(&global_lock);
+    rc = cl_sm_subscribe(cl_sm_ctx, &destination, &subscription_id);
+    pthread_mutex_unlock(&global_lock);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Error by initialization of the subscription.");
+        goto cleanup;
+    }
+
+    /* fill-in subscription details */
+    msg_req->request->subscribe_req->destination = strdup(destination);
+    if (NULL == msg_req->request->subscribe_req->destination) {
+        SR_LOG_ERR_MSG("Error by duplication of the subscription destination.");
+        rc = SR_ERR_NOMEM;
+        goto cleanup;
+    }
+    msg_req->request->subscribe_req->subscription_id = subscription_id;
+    msg_req->request->subscribe_req->event = SR__NOTIFICATION_EVENT__FEATURE_ENABLE_EVENT;
+
+    /* send the request and receive the response */
+    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__SUBSCRIBE);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Error by processing of subscribe request.");
+        goto cleanup;
+    }
+
+    sr__msg__free_unpacked(msg_req, NULL);
+    sr__msg__free_unpacked(msg_resp, NULL);
+
+    return cl_session_return(session, SR_ERR_OK);
+
+cleanup:
+    // TODO
+    if (NULL != msg_req) {
+        sr__msg__free_unpacked(msg_req, NULL);
+    }
+    if (NULL != msg_resp) {
+        sr__msg__free_unpacked(msg_resp, NULL);
+    }
+    return cl_session_return(session, rc);
 }
 
 int
@@ -1928,4 +1925,58 @@ sr_unsubscribe(sr_subscription_ctx_t *subscription)
     pthread_mutex_unlock(&global_lock);
 
     return SR_ERR_OK;
+}
+
+int
+sr_feature_enable(sr_session_ctx_t *session, const char *module_name, const char *feature_name, bool enabled)
+{
+    Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG4(session, session->conn_ctx, module_name, feature_name);
+
+    cl_session_clear_errors(session);
+
+    /* prepare feature_enable message */
+    rc = sr_pb_req_alloc(SR__OPERATION__FEATURE_ENABLE, session->id, &msg_req);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Cannot allocate feature_enable message.");
+        goto cleanup;
+    }
+
+    /* set arguments */
+    msg_req->request->feature_enable_req->module_name = strdup(module_name);
+    if (NULL == msg_req->request->feature_enable_req->module_name) {
+        SR_LOG_ERR_MSG("Cannot duplicate module name.");
+        rc = SR_ERR_NOMEM;
+        goto cleanup;
+    }
+    msg_req->request->feature_enable_req->feature_name = strdup(feature_name);
+    if (NULL == msg_req->request->feature_enable_req->feature_name) {
+        SR_LOG_ERR_MSG("Cannot feature name.");
+        rc = SR_ERR_NOMEM;
+        goto cleanup;
+    }
+    msg_req->request->feature_enable_req->enabled = enabled;
+
+    /* send the request and receive the response */
+    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__FEATURE_ENABLE);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Error by processing of feature_enable request.");
+        goto cleanup;
+    }
+
+    sr__msg__free_unpacked(msg_req, NULL);
+    sr__msg__free_unpacked(msg_resp, NULL);
+
+    return cl_session_return(session, SR_ERR_OK);
+
+cleanup:
+    if (NULL != msg_req) {
+        sr__msg__free_unpacked(msg_req, NULL);
+    }
+    if (NULL != msg_resp) {
+        sr__msg__free_unpacked(msg_resp, NULL);
+    }
+    return cl_session_return(session, rc);
 }

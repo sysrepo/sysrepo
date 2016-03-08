@@ -103,6 +103,8 @@ sr_operation_name(Sr__Operation operation)
         return "lock";
     case SR__OPERATION__UNLOCK:
         return "unlock";
+    case SR__OPERATION__SUBSCRIBE:
+        return "subscribe";
     default:
         return "unknown";
     }
@@ -561,7 +563,7 @@ int
 sr_pb_req_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__Msg **msg_p)
 {
     Sr__Msg *msg = NULL;
-    Sr__Req *req = NULL;
+    Sr__Request *req = NULL;
     ProtobufCMessage *sub_msg = NULL;
 
     CHECK_NULL_ARG(msg_p);
@@ -580,7 +582,7 @@ sr_pb_req_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__Ms
     if (NULL == req) {
         goto nomem;
     }
-    sr__req__init(req);
+    sr__request__init(req);
     msg->request = req;
     req->operation = operation;
 
@@ -722,6 +724,14 @@ sr_pb_req_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__Ms
             sr__unlock_req__init((Sr__UnlockReq*)sub_msg);
             req->unlock_req = (Sr__UnlockReq*)sub_msg;
             break;
+        case SR__OPERATION__SUBSCRIBE:
+            sub_msg = calloc(1, sizeof(Sr__SubscribeReq));
+            if (NULL == sub_msg) {
+                goto nomem;
+            }
+            sr__subscribe_req__init((Sr__SubscribeReq*)sub_msg);
+            req->subscribe_req = (Sr__SubscribeReq*)sub_msg;
+            break;
         default:
             break;
     }
@@ -731,9 +741,9 @@ sr_pb_req_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__Ms
 
 nomem:
     SR_LOG_ERR_MSG("Cannot allocate PB message - not enough memory.");
-    free(msg);
-    free(req);
-
+    if (NULL != msg) {
+        sr__msg__free_unpacked(msg, NULL);
+    }
     return SR_ERR_NOMEM;
 }
 
@@ -741,7 +751,7 @@ int
 sr_pb_resp_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__Msg **msg_p)
 {
     Sr__Msg *msg = NULL;
-    Sr__Resp *resp = NULL;
+    Sr__Response *resp = NULL;
     ProtobufCMessage *sub_msg = NULL;
     CHECK_NULL_ARG(msg_p);
 
@@ -759,7 +769,7 @@ sr_pb_resp_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__M
     if (NULL == resp) {
         goto nomem;
     }
-    sr__resp__init(resp);
+    sr__response__init(resp);
     msg->response = resp;
     resp->operation = operation;
     resp->result = SR_ERR_OK;
@@ -902,6 +912,14 @@ sr_pb_resp_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__M
             sr__unlock_resp__init((Sr__UnlockResp*)sub_msg);
             resp->unlock_resp = (Sr__UnlockResp*)sub_msg;
             break;
+        case SR__OPERATION__SUBSCRIBE:
+            sub_msg = calloc(1, sizeof(Sr__SubscribeResp));
+            if (NULL == sub_msg) {
+                goto nomem;
+            }
+            sr__subscribe_resp__init((Sr__SubscribeResp*)sub_msg);
+            resp->subscribe_resp = (Sr__SubscribeResp*)sub_msg;
+            break;
         default:
             break;
     }
@@ -911,11 +929,55 @@ sr_pb_resp_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__M
 
 nomem:
     SR_LOG_ERR_MSG("Cannot allocate PB message - not enough memory.");
-    free(msg);
-    free(resp);
-
+    if (NULL != msg) {
+        sr__msg__free_unpacked(msg, NULL);
+    }
     return SR_ERR_NOMEM;
 }
+
+int
+sr_pb_notif_alloc(const Sr__NotificationEvent event, const char *destination, const uint32_t subscription_id, Sr__Msg **msg_p)
+{
+    Sr__Msg *msg = NULL;
+    Sr__Notification *notif = NULL;
+    CHECK_NULL_ARG(msg_p);
+
+    /* initialize Sr__Msg */
+    msg = calloc(1, sizeof(*msg));
+    if (NULL == msg) {
+        goto nomem;
+    }
+    sr__msg__init(msg);
+    msg->type = SR__MSG__MSG_TYPE__NOTIFICATION;
+    msg->session_id = 0;
+
+    /* initialize Sr__Notification */
+    notif = calloc(1, sizeof(*notif));
+    if (NULL == notif) {
+        goto nomem;
+    }
+    sr__notification__init(notif);
+    msg->notification = notif;
+
+    notif->event = event;
+    notif->subscription_id = subscription_id;
+
+    notif->destination = strdup(destination);
+    if (NULL == notif->destination) {
+        goto nomem;
+    }
+
+    *msg_p = msg;
+    return SR_ERR_OK;
+
+nomem:
+    SR_LOG_ERR_MSG("Cannot allocate PB message - not enough memory.");
+    if (NULL != msg) {
+        sr__msg__free_unpacked(msg, NULL);
+    }
+    return SR_ERR_NOMEM;
+}
+
 
 int
 sr_pb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__Operation operation)
@@ -996,6 +1058,10 @@ sr_pb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__Op
                 if (NULL == msg->request->unlock_req)
                     return SR_ERR_MALFORMED_MSG;
                 break;
+            case SR__OPERATION__SUBSCRIBE:
+                if (NULL == msg->request->subscribe_req)
+                    return SR_ERR_MALFORMED_MSG;
+                break;
             default:
                 return SR_ERR_MALFORMED_MSG;
         }
@@ -1023,6 +1089,14 @@ sr_pb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__Op
                 break;
             case SR__OPERATION__GET_SCHEMA:
                 if (NULL == msg->response->get_schema_resp)
+                    return SR_ERR_MALFORMED_MSG;
+                break;
+            case SR__OPERATION__FEATURE_ENABLE:
+                if (NULL == msg->response->feature_enable_resp)
+                    return SR_ERR_MALFORMED_MSG;
+                break;
+            case SR__OPERATION__MODULE_INSTALL:
+                if (NULL == msg->response->module_install_resp)
                     return SR_ERR_MALFORMED_MSG;
                 break;
             case SR__OPERATION__GET_ITEM:
@@ -1063,6 +1137,10 @@ sr_pb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__Op
                 break;
             case SR__OPERATION__UNLOCK:
                 if (NULL == msg->response->unlock_resp)
+                    return SR_ERR_MALFORMED_MSG;
+                break;
+            case SR__OPERATION__SUBSCRIBE:
+                if (NULL == msg->response->subscribe_resp)
                     return SR_ERR_MALFORMED_MSG;
                 break;
             default:

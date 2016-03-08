@@ -187,12 +187,12 @@ cl_sm_server_init(cl_sm_ctx_t *sm_ctx)
 
     /* generate socket path */
     path_len = snprintf(NULL, 0, "%s-%d.sock", CL_SUBSCRIPTIONS_PATH_PREFIX, getpid());
-    sm_ctx->socket_path = calloc(path_len, sizeof(*sm_ctx->socket_path));
+    sm_ctx->socket_path = calloc(path_len + 1, sizeof(*sm_ctx->socket_path));
     if (NULL == sm_ctx->socket_path) {
         SR_LOG_ERR_MSG("Unable to allocate socket path string.");
         return SR_ERR_NOMEM;
     }
-    snprintf(sm_ctx->socket_path, path_len, "%s-%d.sock", CL_SUBSCRIPTIONS_PATH_PREFIX, getpid());
+    snprintf(sm_ctx->socket_path, path_len + 1, "%s-%d.sock", CL_SUBSCRIPTIONS_PATH_PREFIX, getpid());
     unlink(sm_ctx->socket_path);
 
     SR_LOG_DBG("Initializing sysrepo subscription server at socket=%s", sm_ctx->socket_path);
@@ -657,4 +657,15 @@ cl_sm_cleanup(cl_sm_ctx_t *sm_ctx)
     free(sm_ctx);
 
     SR_LOG_INF_MSG("Client Subscription Manager successfully destroyed.");
+}
+
+int
+cl_sm_subscribe(cl_sm_ctx_t *sm_ctx, char **destination, uint32_t *subscription_id)
+{
+    CHECK_NULL_ARG3(sm_ctx, destination, subscription_id);
+
+    *destination = sm_ctx->socket_path;
+    *subscription_id = 12345; // TODO assign real subscription id
+
+    return SR_ERR_OK;
 }
