@@ -252,7 +252,7 @@ cl_socket_connect(sr_conn_ctx_t *conn_ctx, const char *socket_path)
     /* prepare a socket */
     fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (-1 == fd) {
-        SR_LOG_ERR("Unable to create a new socket=%s: %s", socket_path, strerror(errno));
+        SR_LOG_ERR("Unable to create a new socket: %s", strerror(errno));
         return SR_ERR_INTERNAL;
     }
 

@@ -976,10 +976,75 @@ cm_server_watcher_cb(struct ev_loop *loop, ev_io *w, int revents)
 }
 
 static int
-cm_out_notif_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
+cm_notif_conn_create(cm_ctx_t *cm_ctx, const char *socket_path, sm_connection_t **connection_p)
 {
     int fd = -1;
     struct sockaddr_un addr = { 0, };
+    sm_connection_t *connection = NULL;
+    int rc = SR_ERR_OK;
+
+    /* prepare a socket */
+    fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (-1 == fd) {
+        SR_LOG_ERR("Unable to create a new socket: %s", strerror(errno));
+        return SR_ERR_INTERNAL;
+    }
+
+    /* set socket to nonblocking mode */
+    rc = sr_fd_set_nonblock(fd);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Cannot set socket to nonblocking mode.");
+        rc = SR_ERR_INTERNAL;
+        goto cleanup;
+    }
+
+    /* start a new connection in session manager */
+    rc = sm_connection_start(cm_ctx->sm_ctx, CM_AF_UNIX_SERVER, fd, &connection);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Cannot start connection in Session manager (fd=%d).", fd);
+        rc = SR_ERR_INTERNAL;
+        goto cleanup;
+    }
+
+    /* initialize connection watchers */
+    rc = cm_conn_watcher_init(cm_ctx, connection);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Cannot initialize watcher for fd=%d.", fd);
+        rc = SR_ERR_INTERNAL;
+        goto cleanup;
+    }
+
+    /* connect to server */
+    addr.sun_family = AF_UNIX;
+    strncpy(addr.sun_path, socket_path, sizeof(addr.sun_path)-1);
+
+    rc = connect(fd, (struct sockaddr*)&addr, sizeof(addr));
+    if (-1 == rc) {
+        if (EINPROGRESS == errno) {
+            // TODO: monitor socket for writing and send message later
+        } else {
+            SR_LOG_ERR("Unable to connect to notification socket=%s: %s", socket_path, strerror(errno));
+            rc = SR_ERR_DISCONNECT;
+            goto cleanup;
+        }
+    }
+
+    *connection_p = connection;
+    return SR_ERR_OK;
+
+cleanup:
+    if (NULL != connection) {
+        sm_connection_stop(cm_ctx->sm_ctx, connection);
+    }
+    close(fd);
+    return rc;
+}
+
+static int
+cm_out_notif_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
+{
+
+
     sm_connection_t *connection = NULL;
     int rc = SR_ERR_OK;
 
@@ -989,48 +1054,10 @@ cm_out_notif_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
 
     // TODO: lookup for already existing connection
 
-    /* prepare a socket */
-    fd = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (-1 == fd) {
-        SR_LOG_ERR("Unable to create a new socket (socket=%s)", msg->notification->destination);
-        return SR_ERR_INTERNAL;
-    }
-
-    /* set socket to nonblocking mode */
-    rc = sr_fd_set_nonblock(fd);
+    rc = cm_notif_conn_create(cm_ctx, msg->notification->destination, &connection);
     if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Cannot set socket to nonblocking mode.");
-        return SR_ERR_INTERNAL;
-    }
-
-    /* start a new connection in session manager */
-    rc = sm_connection_start(cm_ctx->sm_ctx, CM_AF_UNIX_SERVER, fd, &connection);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Cannot start connection in Session manager (fd=%d).", fd);
-        return SR_ERR_INTERNAL;
-    }
-
-    /* initialize connection watchers */
-    rc = cm_conn_watcher_init(cm_ctx, connection);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Cannot initialize watcher for fd=%d.", fd);
-        return SR_ERR_INTERNAL;
-    }
-
-    /* connect to server */
-    addr.sun_family = AF_UNIX;
-    strncpy(addr.sun_path, msg->notification->destination, sizeof(addr.sun_path)-1);
-
-    rc = connect(fd, (struct sockaddr*)&addr, sizeof(addr));
-    if (-1 == rc) {
-        if (EINPROGRESS == errno) {
-            // TODO: monitor socket for writing
-        } else {
-            SR_LOG_ERR("Unable to connect to notification socket=%s: %s", msg->notification->destination, strerror(errno));
-            close(fd);
-            return SR_ERR_DISCONNECT;
-            // TODO: remove subscriptions?
-        }
+        return rc;
+        // TODO: remove subscriptions?
     }
 
     // TODO: create a session??
@@ -1039,6 +1066,7 @@ cm_out_notif_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
     rc = cm_msg_send_connection(cm_ctx, connection, msg);
 
     sr__msg__free_unpacked(msg, NULL);
+
     return SR_ERR_OK;
 }
 
