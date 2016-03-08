@@ -12,6 +12,7 @@ compiler:
 branches:
   only:
     - master
+    - coverity
 
 before_install:
   - sudo apt-get update -qq
