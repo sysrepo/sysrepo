@@ -1661,20 +1661,14 @@ void sr_free_schema(sr_schema_t *schema)
         free((void*)schema->module_name);
         free((void*)schema->prefix);
         free((void*)schema->ns);
-        for (size_t i = 0; i < schema->rev_count; i++) {
-            free((void*)schema->revisions[i].revision);
-            free((void*)schema->revisions[i].file_path_yin);
-            free((void*)schema->revisions[i].file_path_yang);
-        }
-        free(schema->revisions);
+        free((void*)schema->revision.revision);
+        free((void*)schema->revision.file_path_yin);
+        free((void*)schema->revision.file_path_yang);
         for (size_t s = 0; s < schema->submodule_count; s++){
             free((void*)schema->submodules[s].submodule_name);
-            for (size_t r = 0; r < schema->submodules[s].rev_count; r++) {
-                free((void*)schema->submodules[s].revisions[r].revision);
-                free((void*)schema->submodules[s].revisions[r].file_path_yin);
-                free((void*)schema->submodules[s].revisions[r].file_path_yang);
-            }
-            free(schema->submodules[s].revisions);
+            free((void*)schema->submodules[s].revision.revision);
+            free((void*)schema->submodules[s].revision.file_path_yin);
+            free((void*)schema->submodules[s].revision.file_path_yang);
         }
         free(schema->submodules);
     }
@@ -1734,37 +1728,30 @@ sr_schemas_sr_to_gpb(const sr_schema_t *sr_schemas, const size_t schema_cnt, Sr_
             }
         }
 
-        schemas[i]->revisions = calloc(sr_schemas[i].rev_count, sizeof(*schemas[i]->revisions));
-        if (NULL == schemas[i]->revisions) {
+        schemas[i]->revision = calloc(1, sizeof (*schemas[i]->revision));
+        if (NULL == schemas[i]->revision) {
             goto nomem;
         }
-        schemas[i]->n_revisions = sr_schemas[i].rev_count;
-
-        for (size_t r = 0; r < sr_schemas[i].rev_count; r++){
-            schemas[i]->revisions[r] = calloc(1, sizeof(**schemas[i]->revisions));
-            if (NULL == schemas[i]->revisions[r]){
+        sr__schema_rev__init(schemas[i]->revision);
+        if (NULL != sr_schemas[i].revision.revision) {
+            schemas[i]->revision->revision = strdup(sr_schemas[i].revision.revision);
+            if (NULL == schemas[i]->revision->revision) {
                 goto nomem;
             }
-            sr__schema_rev__init(schemas[i]->revisions[r]);
-            if (NULL != sr_schemas[i].revisions[r].revision) {
-                schemas[i]->revisions[r]->revision = strdup(sr_schemas[i].revisions[r].revision);
-                if (NULL == schemas[i]->revisions[r]->revision) {
-                    goto nomem;
-                }
-            }
-            if (NULL != sr_schemas[i].revisions[r].file_path_yang) {
-                schemas[i]->revisions[r]->file_path_yang = strdup(sr_schemas[i].revisions[r].file_path_yang);
-                if (NULL == schemas[i]->revisions[r]->file_path_yang) {
-                    goto nomem;
-                }
-            }
-            if (NULL != sr_schemas[i].revisions[r].file_path_yin) {
-                schemas[i]->revisions[r]->file_path_yin = strdup(sr_schemas[i].revisions[r].file_path_yin);
-                if (NULL == schemas[i]->revisions[r]->file_path_yin) {
-                    goto nomem;
-                }
+        }
+        if (NULL != sr_schemas[i].revision.file_path_yang) {
+            schemas[i]->revision->file_path_yang = strdup(sr_schemas[i].revision.file_path_yang);
+            if (NULL == schemas[i]->revision->file_path_yang) {
+                goto nomem;
             }
         }
+        if (NULL != sr_schemas[i].revision.file_path_yin) {
+            schemas[i]->revision->file_path_yin = strdup(sr_schemas[i].revision.file_path_yin);
+            if (NULL == schemas[i]->revision->file_path_yin) {
+                goto nomem;
+            }
+        }
+
 
         schemas[i]->submodules = calloc(sr_schemas[i].submodule_count, sizeof(*schemas[i]->submodules));
         if (NULL == schemas[i]->submodules){
@@ -1773,7 +1760,7 @@ sr_schemas_sr_to_gpb(const sr_schema_t *sr_schemas, const size_t schema_cnt, Sr_
         schemas[i]->n_submodules = sr_schemas[i].submodule_count;
 
         for (size_t s = 0; s < sr_schemas[i].submodule_count; s++) {
-            schemas[i]->submodules[s] = calloc(1, sizeof(*schemas[i]->submodules[s]));
+            schemas[i]->submodules[s] = calloc(1, sizeof (*schemas[i]->submodules[s]));
             if (NULL == schemas[i]->submodules[s]) {
                 goto nomem;
             }
@@ -1785,37 +1772,30 @@ sr_schemas_sr_to_gpb(const sr_schema_t *sr_schemas, const size_t schema_cnt, Sr_
                 }
             }
 
-            schemas[i]->submodules[s]->revisions = calloc(sr_schemas[i].submodules[s].rev_count, sizeof(*schemas[i]->submodules[s]->revisions));
-            if (NULL == schemas[i]->submodules[s]->revisions) {
+            schemas[i]->submodules[s]->revision = calloc(1, sizeof (*schemas[i]->submodules[s]->revision));
+            if (NULL == schemas[i]->submodules[s]->revision) {
                 goto nomem;
             }
-            schemas[i]->submodules[s]->n_revisions = sr_schemas[i].submodules[s].rev_count;
-
-            for (size_t r = 0; r < sr_schemas[i].submodules[s].rev_count; r++){
-                schemas[i]->submodules[s]->revisions[r] = calloc(1, sizeof(*schemas[i]->submodules[s]->revisions[r]));
-                if (NULL == schemas[i]->submodules[s]->revisions[r]){
+            sr__schema_rev__init(schemas[i]->submodules[s]->revision);
+            if (NULL != sr_schemas[i].submodules[s].revision.revision) {
+                schemas[i]->submodules[s]->revision->revision = strdup(sr_schemas[i].submodules[s].revision.revision);
+                if (NULL == schemas[i]->submodules[s]->revision->revision) {
                     goto nomem;
                 }
-                sr__schema_rev__init(schemas[i]->submodules[s]->revisions[r]);
-                if (NULL != sr_schemas[i].submodules[s].revisions[r].revision) {
-                    schemas[i]->submodules[s]->revisions[r]->revision = strdup(sr_schemas[i].submodules[s].revisions[r].revision);
-                    if (NULL == schemas[i]->submodules[s]->revisions[r]->revision) {
-                        goto nomem;
-                    }
-                }
-                if (NULL != sr_schemas[i].submodules[s].revisions[r].file_path_yang) {
-                    schemas[i]->submodules[s]->revisions[r]->file_path_yang = strdup(sr_schemas[i].submodules[s].revisions[r].file_path_yang);
-                    if (NULL == schemas[i]->submodules[s]->revisions[r]->file_path_yang) {
-                        goto nomem;
-                    }
-                }
-                if (NULL != sr_schemas[i].submodules[s].revisions[r].file_path_yin) {
-                    schemas[i]->submodules[s]->revisions[r]->file_path_yin = strdup(sr_schemas[i].submodules[s].revisions[r].file_path_yin);
-                    if (NULL == schemas[i]->submodules[s]->revisions[r]->file_path_yin) {
-                        goto nomem;
-                    }
+            }
+            if (NULL != sr_schemas[i].submodules[s].revision.file_path_yang) {
+                schemas[i]->submodules[s]->revision->file_path_yang = strdup(sr_schemas[i].submodules[s].revision.file_path_yang);
+                if (NULL == schemas[i]->submodules[s]->revision->file_path_yang) {
+                    goto nomem;
                 }
             }
+            if (NULL != sr_schemas[i].submodules[s].revision.file_path_yin) {
+                schemas[i]->submodules[s]->revision->file_path_yin = strdup(sr_schemas[i].submodules[s].revision.file_path_yin);
+                if (NULL == schemas[i]->submodules[s]->revision->file_path_yin) {
+                    goto nomem;
+                }
+            }
+
         }
     }
 
@@ -1869,68 +1849,57 @@ sr_schemas_gpb_to_sr(const Sr__Schema **gpb_schemas, const size_t schema_cnt, sr
             }
         }
 
-        schemas[i].revisions = calloc(gpb_schemas[i]->n_revisions, sizeof(*schemas[i].revisions));
-        if (NULL == schemas[i].revisions) {
-            goto nomem;
+        if (NULL != gpb_schemas[i]->revision->revision) {
+            schemas[i].revision.revision = strdup(gpb_schemas[i]->revision->revision);
+            if (NULL == schemas[i].revision.revision) {
+                goto nomem;
+            }
         }
-        for (size_t r = 0; r < gpb_schemas[i]->n_revisions; r++) {
-            if (NULL != gpb_schemas[i]->revisions[r]->revision) {
-                schemas[i].revisions[r].revision = strdup(gpb_schemas[i]->revisions[r]->revision);
-                if (NULL == schemas[i].revisions[r].revision) {
-                    goto nomem;
-                }
+        if (NULL != gpb_schemas[i]->revision->file_path_yang) {
+            schemas[i].revision.file_path_yang = strdup(gpb_schemas[i]->revision->file_path_yang);
+            if (NULL == schemas[i].revision.file_path_yang) {
+                goto nomem;
             }
-            if (NULL != gpb_schemas[i]->revisions[r]->file_path_yang) {
-                schemas[i].revisions[r].file_path_yang = strdup(gpb_schemas[i]->revisions[r]->file_path_yang);
-                if (NULL == schemas[i].revisions[r].file_path_yang) {
-                    goto nomem;
-                }
-            }
-            if (NULL != gpb_schemas[i]->revisions[r]->file_path_yin) {
-                schemas[i].revisions[r].file_path_yin = strdup(gpb_schemas[i]->revisions[r]->file_path_yin);
-                if (NULL == schemas[i].revisions[r].file_path_yin) {
-                    goto nomem;
-                }
-            }
-            schemas[i].rev_count++; /* use incrementation to be freed correctly in case of error*/
         }
+        if (NULL != gpb_schemas[i]->revision->file_path_yin) {
+            schemas[i].revision.file_path_yin = strdup(gpb_schemas[i]->revision->file_path_yin);
+            if (NULL == schemas[i].revision.file_path_yin) {
+                goto nomem;
+            }
+        }
+
 
         schemas[i].submodules = calloc(gpb_schemas[i]->n_submodules, sizeof(*schemas[i].submodules));
         if (NULL == schemas[i].submodules) {
             goto nomem;
         }
         for (size_t s = 0; s < gpb_schemas[i]->n_submodules; s++) {
-            if (NULL != gpb_schemas[i]->submodules[s]->submodule_name){
+            if (NULL != gpb_schemas[i]->submodules[s]->submodule_name) {
                 schemas[i].submodules[s].submodule_name = strdup(gpb_schemas[i]->submodules[s]->submodule_name);
                 if (NULL == schemas[i].submodules[s].submodule_name) {
                     goto nomem;
                 }
             }
-            schemas[i].submodules[s].revisions = calloc(gpb_schemas[i]->submodules[s]->n_revisions, sizeof(*schemas[i].submodules[s].revisions));
-            if (NULL == schemas[i].submodules[s].revisions) {
-                goto nomem;
+
+            if (NULL != gpb_schemas[i]->submodules[s]->revision->revision) {
+                schemas[i].submodules[s].revision.revision = strdup(gpb_schemas[i]->submodules[s]->revision->revision);
+                if (NULL == schemas[i].submodules[s].revision.revision) {
+                    goto nomem;
+                }
             }
-            for (size_t r = 0; r < gpb_schemas[i]->submodules[s]->n_revisions; r++) {
-                if (NULL != gpb_schemas[i]->submodules[s]->revisions[r]->revision) {
-                    schemas[i].submodules[s].revisions[r].revision = strdup(gpb_schemas[i]->submodules[s]->revisions[r]->revision);
-                    if (NULL == schemas[i].submodules[s].revisions[r].revision) {
-                        goto nomem;
-                    }
+            if (NULL != gpb_schemas[i]->submodules[s]->revision->file_path_yang) {
+                schemas[i].submodules[s].revision.file_path_yang = strdup(gpb_schemas[i]->submodules[s]->revision->file_path_yang);
+                if (NULL == schemas[i].submodules[s].revision.file_path_yang) {
+                    goto nomem;
                 }
-                if (NULL != gpb_schemas[i]->submodules[s]->revisions[r]->file_path_yang) {
-                    schemas[i].submodules[s].revisions[r].file_path_yang = strdup(gpb_schemas[i]->submodules[s]->revisions[r]->file_path_yang);
-                    if (NULL == schemas[i].submodules[s].revisions[r].file_path_yang) {
-                        goto nomem;
-                    }
-                }
-                if (NULL != gpb_schemas[i]->submodules[s]->revisions[r]->file_path_yin) {
-                    schemas[i].submodules[s].revisions[r].file_path_yin = strdup(gpb_schemas[i]->submodules[s]->revisions[r]->file_path_yin);
-                    if (NULL == schemas[i].submodules[s].revisions[r].file_path_yin) {
-                        goto nomem;
-                    }
-                }
-                schemas[i].submodules[s].rev_count++;
             }
+            if (NULL != gpb_schemas[i]->submodules[s]->revision->file_path_yin) {
+                schemas[i].submodules[s].revision.file_path_yin = strdup(gpb_schemas[i]->submodules[s]->revision->file_path_yin);
+                if (NULL == schemas[i].submodules[s].revision.file_path_yin) {
+                    goto nomem;
+                }
+            }
+
             schemas[i].submodule_count++;
         }
 

@@ -147,7 +147,7 @@ message Schema_rev {
 
 message Schema_submodule {
   required string submodule_name = 1;   /**< Submodule name */
-  repeated Schema_rev revisions = 2;    /**< Revisions of the submodule */
+  required Schema_rev revision = 2;     /**< Revision of the submodule */
 }
 /**
  * @brief Information about a schema installed in sysrepo datastore.
@@ -157,7 +157,7 @@ message Schema {
   required string ns = 2;                    /**< Namespace of the module. */
   required string prefix = 3;                /**< Prefix of he module. */
 
-  repeated Schema_rev revisions = 4;         /**< Revisions of the module*/
+  required Schema_rev revision = 4;          /**< Revision of the module*/
   repeated Schema_submodule submodules = 5;  /**< Submodules */
 }
 
