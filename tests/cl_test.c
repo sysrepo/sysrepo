@@ -878,6 +878,9 @@ cl_subscription_test(void **state)
     rc = sr_feature_enable_subscribe(session, NULL, NULL, NULL);
     assert_int_equal(rc, SR_ERR_OK);
 
+    rc = sr_feature_enable(session, "example-module", "ifconfig", true);
+    assert_int_equal(rc, SR_ERR_OK);
+
     /* stop the session */
     rc = sr_session_stop(session);
     assert_int_equal(rc, SR_ERR_OK);

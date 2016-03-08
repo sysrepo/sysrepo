@@ -395,6 +395,24 @@ message FeatureEnableReq {
 message FeatureEnableResp {
 }
 
+enum SubscriptionType {
+  MODULE_INSTALL_SUBSCRIPTION = 1;
+  FEATURE_ENABLE_SUBSCRIPTION = 2;
+}
+
+message SubscribeReq {
+  required SubscriptionType type = 1;
+  required string destination = 2;
+  required uint32 subscription_id = 3;
+
+  optional string path = 4;
+}
+
+message SubscribeResp {
+  required SubscriptionType type = 1;
+  required uint32 subscription_id = 2;
+}
+
 
 ////////////////////////////////////////////////////////////////////////////////
 // Sysrepo Engine API umbrella messages
@@ -426,6 +444,8 @@ enum Operation {
 
   LOCK = 60;
   UNLOCK = 61;
+
+  SUBSCRIBE = 70;
 }
 
 /**
@@ -456,6 +476,8 @@ message Req {
 
   optional LockReq lock_req = 60;
   optional UnlockReq unlock_req = 61;
+
+  optional SubscribeReq subscribe_req = 70;
 }
 
 /**
@@ -488,6 +510,8 @@ message Resp {
 
   optional LockResp lock_resp = 60;
   optional UnlockResp unlock_resp = 61;
+
+  optional SubscribeResp subscribe_resp = 70;
 }
 
 /**
