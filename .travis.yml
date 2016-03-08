@@ -43,7 +43,7 @@ before_install:
   - cd ..
 
 script:
-  - mkdir build && cd build && cmake -DCMAKE_C_FLAGS="-Werror -coverage" .. && make -j2 && ctest -V && sudo tests/ac_test
+  - mkdir build ; cd build ; cmake -DCMAKE_C_FLAGS="-Werror -coverage" .. && make -j2 && ctest -V && sudo tests/ac_test
 
 after_success:
   - if [ "$CC" = "gcc" ]; then codecov; fi
@@ -59,6 +59,6 @@ addons:
       name: "sysrepo/sysrepo"
       description: "Build submitted via Travis CI"
     notification_email: raszabo@cisco.com
-    build_command_prepend: "mkdir build ; cd build ; cmake .. ; make clean"
+    build_command_prepend: "mkdir build ; cd build ; cmake .. && make clean"
     build_command:   "make -j 2"
     branch_pattern: coverity
