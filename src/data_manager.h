@@ -184,6 +184,20 @@ int dm_get_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revisio
 int dm_list_schemas(dm_ctx_t *dm_ctx, dm_session_t *dm_session, sr_schema_t **schemas, size_t *schema_count);
 
 /**
+ * @brief Returns the content of the module or submodule. Currently in yin format. Output schema argument
+ * is allocated and must be freed by caller
+ * @param [in] dm_ctx
+ * @param [in] module_name
+ * @param [in] module_revision if NULL is passed the latest revision is returned
+ * @param [in] submodule_name To retrieve the content of module NULL can be passed,
+ * corresponding revision is selected according to the module revision.
+ * @param [in] yang_format
+ * @param [out] schema
+ * @return Error code (SR_ERR_OK on success), SR_ERR_NOT_FOUND if the module/submodule or corresponding revision can not be found
+ */
+int dm_get_schema(dm_ctx_t *dm_ctx, const char *module_name, const char *module_revision, const char *submodule_name, bool yang_format, char **schema);
+
+/**
  * @brief Validates the data_trees in session.
  * @param [in] dm_ctx
  * @param [in] session
