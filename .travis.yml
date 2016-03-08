@@ -49,14 +49,15 @@ after_success:
 
 env:
   global:
-    # COVERITY_SCAN_TOKEN
-    secure: RCZKKJbSgtqiQnLfjHscGK38UqR6ZRkh+zHfknhqTvHmTR5ghGzNkTnNRYKGy294YfF12+qVhKB+CXlFlgbliw8w2i8+RxVd9MWy2lZLQogDE3cBGR8tGal0v/dIWTUmh9zBw1M5fR6n4vn7D8VNPBbeqoThYzDaPv+I3Odcq0azoId7ahGkqUdvchy3WPunGnpUWeTmvnFsNEmaYgNIj4WjY6VglHMDLU9BPZRTyNR0pdtJzZ3KOQTXQXAI2xxwrXmu1cDIz4HsOQo+c5paPnozd2Sa7h3UwfG8tqxdeYn8jW+7EuYrdZWxgcbzAoZkuURqzERsFEjFHPwzn4q97FK50qeG2XjP4KPQEwbdOYr8Hgz2ISTr7ouOoKBj7P78sBbQKbMPq2xFxg+YH8SUAet/UowCsWARH/DSquuTCckirQb//bD22m8zTbLZqg/KnR7R0OoYwQr0LnTwSusZ5eRNluja5UHb8yB5PXekGBjv2VpHomN9myBlDR2Lm+2A1tbGWiMXRa2HfeGXRNGr26UWoNuXHzuadkUe+/dnfk1Fx+PaFxt2hkiO51/KdngWG101RXJZmMTurk+3/btPOLOB2IIZBNA/r5h2VJm2lwq/NmEm96AM72w5wwsGf2/q0V2ihQdCNfOTeNy7KQIU9Oxe5o5lCD2CI+HvCI0vXnk=
+   # COVERITY_SCAN_TOKEN
+   - secure: "dV/BjJUU5YLYVJk58qmbKjUoORZ7ipQzmMVsqGAgcNzpPxsYyL7c6+vvLhNPNE4oiYEUvB9f2yIE+gu6Tt1BIlm2lVzPfR4E9ArOhufzJ+8VYwYj9P9m9vZTL433t5RG4dyVVxCgo6HG7Sebp5qF4gH+bpwdFiKS2lvtwJ0h3zAMVALoE0nZDhiykrJfRpKfpb2qiWqxaxFK9syn2hwb7oOWQlBj2q21EJXUY4aPcK6a5SHfAORKcGl49Z7qR46GGpv9YKVqlNqyczRQB2krKPiHtVU0QdwI+7snG2sDYU8sOqZ5ppFuzXiARkYSuqHufnZYn0w4U2F7MIIXg8rIBh1r3NOAbM8bAlRGWKx+qptNBdHKzdkrzJFhRVOEE9wi9YhvY2IqtPLxQ1HUMeqsDXM+Vk1ZkzwSw1dIHMPWzb4pKKnoIaDZppxYZVx84lHVO7oceJ7zLwv/x/l+4MyHbqz1OXsGE8IxVMGlJSVT7TnmQd5bQ80Jc3tT4nWbqFEy6KRpCwhvvTR8z0RsSECc6V9+rDATYFWWzfZxl/zLB8tKOkiaPjH/C1Hmq8Om58wZ+PHaJKnkwMcT24iCXpi3sjyHWDlgUUdekJBVPUchyIqIcXEsKE6pFsbr5USyZFX+mD8p8+r14KRiW8nJRoVxB3EktSXiHvXFU8E4Qo6uJKs="
 
 addons:
   coverity_scan:
     project:
       name: "sysrepo/sysrepo"
+      description: "Build submitted via Travis CI"
     notification_email: raszabo@cisco.com
     build_command_prepend: "mkdir build ; cd build ; cmake .. ; make clean"
-    build_command:   "make"
+    build_command:   "make -j 2"
     branch_pattern: coverity
