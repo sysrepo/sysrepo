@@ -48,10 +48,12 @@ typedef struct dm_session_s {
     dm_sess_op_t *operations;           /**< list of operations performed in this session */
     size_t oper_count;                  /**< number of performed operation */
     size_t oper_size;                   /**< number of allocated operations */
+    struct ly_set *locked_files;        /**< set of filename that are locked by this session */
+    bool holds_ds_lock;               /**< flags if the session holds ds lock*/
 } dm_session_t;
 
 int setup(void **state){
-    createDataTreeTestModule();
+   createDataTreeTestModule();
    test_rp_ctx_create((rp_ctx_t**)state);
    return 0;
 }
@@ -1615,6 +1617,52 @@ operation_logging_test(void **state)
    test_rp_session_cleanup(ctx, session);
 }
 
+void
+lock_commit_test(void **state)
+{
+   int rc = 0;
+   rp_ctx_t *ctx = *state;
+   rp_session_t *sessionA = NULL, *sessionB = NULL;
+
+   test_rp_sesssion_create(ctx, SR_DS_STARTUP, &sessionA);
+   test_rp_sesssion_create(ctx, SR_DS_STARTUP, &sessionB);
+
+   /* lock example module in A*/
+   rc = dm_lock_module(ctx->dm_ctx, sessionA->dm_session, "test-module");
+   assert_int_equal(SR_ERR_OK, rc);
+
+   /* do some changes in A */
+   rc = rp_dt_set_item_wrapper(ctx, sessionA, "/example-module:container/list[key1='key1'][key2='key2']", NULL, SR_EDIT_DEFAULT);
+   assert_int_equal(SR_ERR_OK, rc);
+
+   rc = rp_dt_delete_item_wrapper(ctx, sessionA, "/test-module:list", SR_EDIT_DEFAULT);
+   assert_int_equal(SR_ERR_OK, rc);
+
+   /* lock something in B */
+   rc = dm_lock_module(ctx->dm_ctx, sessionB->dm_session, "example-module");
+   assert_int_equal(SR_ERR_OK, rc);
+
+   /* commit A should fail */
+   size_t e_cnt = 0;
+   sr_error_info_t *errors = NULL;
+   rc = rp_dt_commit(ctx, sessionA, &errors, &e_cnt);
+   assert_int_equal(SR_ERR_LOCKED, rc);
+
+   /* unlock B */
+   rc = dm_unlock_module(ctx->dm_ctx, sessionB->dm_session, "example-module");
+   assert_int_equal(SR_ERR_OK, rc);
+
+   /* commit A should succeed */
+   rc = rp_dt_commit(ctx, sessionA, &errors, &e_cnt);
+   assert_int_equal(SR_ERR_OK, rc);
+
+   /* should be still locked even after commit */
+   rc = dm_lock_module(ctx->dm_ctx, sessionB->dm_session, "test-module");
+   assert_int_equal(SR_ERR_LOCKED, rc);
+
+   test_rp_session_cleanup(ctx, sessionA);
+   test_rp_session_cleanup(ctx, sessionB);
+}
 
 int main(){
 
@@ -1644,6 +1692,7 @@ int main(){
             cmocka_unit_test(edit_commit3_test),
             cmocka_unit_test(edit_commit4_test),
             cmocka_unit_test(operation_logging_test),
+            cmocka_unit_test(lock_commit_test),
     };
     return cmocka_run_group_tests(tests, setup, teardown);
 }

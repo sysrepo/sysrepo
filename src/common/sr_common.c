@@ -2122,6 +2122,19 @@ sr_get_data_file_name(const char *data_search_dir, const char *module_name, cons
 }
 
 int
+sr_get_lock_data_file_name(const char *data_search_dir, const char *module_name, const sr_datastore_t ds, char **file_name)
+{
+    CHECK_NULL_ARG3(data_search_dir, module_name, file_name);
+    char *tmp = NULL;
+    int rc = sr_get_data_file_name(data_search_dir, module_name, ds, &tmp);
+    if (SR_ERR_OK == rc){
+        rc = sr_str_join(tmp, SR_LOCK_FILE_EXT, file_name);
+        free(tmp);
+    }
+    return rc;
+}
+
+int
 sr_get_schema_file_name(const char *schema_search_dir, const char *module_name, const char *rev_date, bool yang_format, char **file_name)
 {
     CHECK_NULL_ARG2(module_name, file_name);

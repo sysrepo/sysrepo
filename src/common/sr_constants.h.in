@@ -49,6 +49,9 @@
 /** File extension of data files for running datastore */
 #define SR_RUNNING_FILE_EXT ".running"
 
+/** File extension of data lock files */
+#define SR_LOCK_FILE_EXT ".lock"
+
 /** File extension of YANG schema files */
 #define SR_SCHEMA_YANG_FILE_EXT ".yang"
 
