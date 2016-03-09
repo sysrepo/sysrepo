@@ -819,6 +819,10 @@ cl_locking_test(void **state)
     rc = sr_unlock_module(sessionA, "example-module");
     assert_int_equal(rc, SR_ERR_OK);
 
+    /* try to lock unknown module */
+    rc = sr_lock_module(sessionB, "unknown-module");
+    assert_int_equal(rc, SR_ERR_UNKNOWN_MODEL);
+
     /* stop the sessions */
     rc = sr_session_stop(sessionA);
     assert_int_equal(rc, SR_ERR_OK);

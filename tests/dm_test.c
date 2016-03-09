@@ -306,6 +306,9 @@ dm_add_operation_test(void **state)
     dm_ctx_t *ctx = NULL;
     dm_session_t *ses_ctx = NULL;
 
+    rc = dm_init(NULL, TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx);
+    assert_int_equal(SR_ERR_OK, rc);
+
     dm_session_start(ctx, NULL, SR_DS_STARTUP, &ses_ctx);
 
     rc = dm_add_operation(ses_ctx, DM_DELETE_OP, NULL, NULL, SR_EDIT_DEFAULT);
@@ -313,7 +316,7 @@ dm_add_operation_test(void **state)
 
     sr_val_t *val = NULL;
     val = calloc(1, sizeof(*val));
-    assert_null(val);
+    assert_non_null(val);
 
     val->type = SR_INT8_T;
     val->data.int8_val = 42;
@@ -332,7 +335,7 @@ dm_add_operation_test(void **state)
 
     sr_val_t *val1 = NULL;
     val1 = calloc(1, sizeof(*val1));
-    assert_null(val1);
+    assert_non_null(val1);
     val1->type = SR_STRING_T;
     val1->data.string_val = strdup("abc");
 
@@ -341,7 +344,36 @@ dm_add_operation_test(void **state)
     assert_int_equal(SR_ERR_INVAL_ARG, rc);
 
     dm_session_stop(ctx, ses_ctx);
+    dm_cleanup(ctx);
 
+}
+
+void
+dm_locking_test(void **state)
+{
+   int rc;
+   dm_ctx_t *ctx = NULL;
+   dm_session_t *sessionA = NULL, *sessionB = NULL;
+
+   rc = dm_init(NULL, TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx);
+   assert_int_equal(SR_ERR_OK, rc);
+
+   dm_session_start(ctx, NULL, SR_DS_STARTUP, &sessionA);
+   dm_session_start(ctx, NULL, SR_DS_STARTUP, &sessionB);
+
+   rc = dm_lock_module(ctx, sessionA, "example-module");
+   assert_int_equal(SR_ERR_OK, rc);
+
+   rc = dm_lock_module(ctx, sessionB, "example-module");
+   assert_int_equal(SR_ERR_LOCKED, rc);
+
+   /* automatically release lock by session stop */
+   dm_session_stop(ctx, sessionA);
+
+   rc = dm_lock_module(ctx, sessionB, "example-module");
+   assert_int_equal(SR_ERR_OK, rc);
+   dm_session_stop(ctx, sessionB);
+   dm_cleanup(ctx);
 }
 
 int main(){
@@ -355,6 +387,8 @@ int main(){
             cmocka_unit_test(dm_discard_changes_test),
             cmocka_unit_test(dm_get_schema_test),
             cmocka_unit_test(dm_get_schema_negative_test),
+            cmocka_unit_test(dm_add_operation_test),
+            cmocka_unit_test(dm_locking_test),
     };
     return cmocka_run_group_tests(tests, setup, NULL);
 }

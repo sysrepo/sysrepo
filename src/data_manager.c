@@ -60,7 +60,7 @@ typedef struct dm_ctx_s {
     char *data_search_dir;        /**< location where data files are located */
     struct ly_ctx *ly_ctx;        /**< libyang context holding all loaded schemas */
     pthread_rwlock_t lyctx_lock;  /**< rwlock to access ly_ctx */
-    dm_lock_ctx_t lock_ctx;      /**< lock context for lock/unlock/commit operations */
+    dm_lock_ctx_t lock_ctx;       /**< lock context for lock/unlock/commit operations */
 } dm_ctx_t;
 
 /**
@@ -968,11 +968,7 @@ dm_session_stop(dm_ctx_t *dm_ctx, dm_session_t *session)
 {
     CHECK_NULL_ARG_VOID2(dm_ctx, session);
     if (NULL != session->locked_files) {
-        while (session->locked_files->number > 0){
-            dm_unlock_file(&dm_ctx->lock_ctx, (char *) session->locked_files->set[0]);
-            free(session->locked_files->set[0]);
-            ly_set_rm_index(session->locked_files, 0);
-        }
+        dm_unlock_datastore(dm_ctx, session);
         ly_set_free(session->locked_files);
     }
     sr_btree_cleanup(session->session_modules);
@@ -1486,6 +1482,17 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
     int rc = SR_ERR_OK;
     char *file_name = NULL;
     c_ctx->modif_count = 0; /* how many file descriptors should be closed on cleanup */
+
+    while (NULL != (info = sr_btree_get_at(session->session_modules, i++))) {
+        if (info->modified) {
+            rc = dm_lock_module(dm_ctx, c_ctx->session, (char *) info->module->name);
+            if (SR_ERR_OK != rc) {
+                SR_LOG_ERR("Module %s can not be locked", info->module->name);
+                return rc;
+            }
+        }
+    }
+    i = 0;
 
     ac_set_user_identity(dm_ctx->ac_ctx, session->user_credentails);
 
