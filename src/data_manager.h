@@ -137,7 +137,7 @@ int dm_session_start(const dm_ctx_t *dm_ctx, const ac_ucred_t *user_credentials,
  * @param [in] dm_session_ctx
  * @return
  */
-void dm_session_stop(const dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx);
+void dm_session_stop(dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx);
 
 /**
  * @brief Returns the structure holding data tree, timestamp and modified flag for the specified module.
@@ -343,5 +343,28 @@ int dm_set_node_state(struct lys_node *node, dm_node_state_t state);
  */
 bool dm_is_running_ds_session(dm_session_t *session);
 
+/**
+ * @brief Locks the module with exclusive lock. When the module is locked, the module
+ * can be changed only by the session holding lock.
+ * @param [in] dm_ctx
+ * @param [in] session
+ * @param [in] modul_name
+ * @return Error code (SR_ERR_OK on success), SR_ERR_LOCKED if the module is locked
+ * by other session, SR_ERR_UNAUTHORIZED if the file can no be locked because of permissions.
+ */
+int dm_lock_module(dm_ctx_t *dm_ctx, dm_session_t *session, char *modul_name);
+
+/**
+ * @brief 
+ * @param [in] dm_ctx
+ * @param [in] session
+ * @param [in] modul_name
+ * @return Error code (SR_ERR_OK on success)
+ */
+int dm_unlock_module(dm_ctx_t *dm_ctx, dm_session_t *session, char *modul_name);
+
+int dm_lock_datastore(dm_ctx_t *dm_ctx, dm_session_t *session);
+
+int dm_unlock_datastore(dm_ctx_t *dm_ctx, dm_session_t *session);
 /**@} Data manager*/
 #endif /* SRC_DATA_MANAGER_H_ */

@@ -793,7 +793,12 @@ cl_locking_test(void **state)
     rc = sr_lock_datastore(sessionA);
     assert_int_equal(rc, SR_ERR_OK);
 
-    // TODO: try locking in session B and expect error
+    /* try locking in session B and expect error */
+    rc = sr_lock_module(sessionB, "example-module");
+    assert_int_equal(rc, SR_ERR_LOCKED);
+
+    rc = sr_lock_datastore(sessionB);
+    assert_int_equal(rc, SR_ERR_LOCKED);
 
     /* unlock the datastore */
     rc = sr_unlock_datastore(sessionA);
@@ -803,7 +808,12 @@ cl_locking_test(void **state)
     rc = sr_lock_module(sessionA, "example-module");
     assert_int_equal(rc, SR_ERR_OK);
 
-    // TODO: try locking module and whole ds in session B and expect error
+    /* try locking module and whole ds in session B and expect error */
+    rc = sr_lock_module(sessionB, "example-module");
+    assert_int_equal(rc, SR_ERR_LOCKED);
+
+    rc = sr_lock_datastore(sessionB);
+    assert_int_equal(rc, SR_ERR_LOCKED);
 
     /* unlock the module */
     rc = sr_unlock_module(sessionA, "example-module");

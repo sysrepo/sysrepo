@@ -33,6 +33,23 @@
 #include "rp_dt_edit.h"
 #include "access_control.h"
 
+/**
+ * @brief Helper structure for advisory locking. Holds
+ * binary tree with filename -> fd maping.
+ */
+typedef struct dm_lock_ctx_s {
+    sr_btree_t *lock_files;       /**< Binary tree of lock files for fast look up by file name*/
+    pthread_mutex_t mutex;        /**< Mutex for exclusive access to binary tree */
+}dm_lock_ctx_t;
+
+/**
+ * @brief The item of the lock_files binary tree in dm_lock_ctx_t
+ */
+typedef struct dm_lock_item_s {
+    char *filename;               /**< File name of the lockfile*/
+    int fd;                       /**< File descriptor of the file */
+}dm_lock_item_t;
+
 /*
  * @brief Data manager context holding loaded schemas, data trees
  * and corresponding locks
@@ -43,6 +60,7 @@ typedef struct dm_ctx_s {
     char *data_search_dir;        /**< location where data files are located */
     struct ly_ctx *ly_ctx;        /**< libyang context holding all loaded schemas */
     pthread_rwlock_t lyctx_lock;  /**< rwlock to access ly_ctx */
+    dm_lock_ctx_t lock_ctx;      /**< lock context for lock/unlock/commit operations */
 } dm_ctx_t;
 
 /**
@@ -57,6 +75,7 @@ typedef struct dm_session_s {
     dm_sess_op_t *operations;           /**< list of operations performed in this session */
     size_t oper_count;                  /**< number of performed operation */
     size_t oper_size;                   /**< number of allocated operations */
+    struct ly_set *locked_files;        /**< set of filename that are locked by this session */
 } dm_session_t;
 
 /**
@@ -98,6 +117,28 @@ dm_data_info_cmp(const void *a, const void *b)
         return 1;
     }
 }
+
+/**
+ * @param item
+ */
+static int
+dm_compare_lock_item(const void *a, const void *b)
+{
+    assert(a);
+    assert(b);
+    dm_lock_item_t *item_a = (dm_lock_item_t *) a;
+    dm_lock_item_t *item_b = (dm_lock_item_t *) b;
+
+    int res = strcmp(item_a->filename, item_b->filename);
+    if (res == 0) {
+        return 0;
+    } else if (res < 0) {
+        return -1;
+    } else {
+        return 1;
+    }
+}
+
 
 /**
  * @brief frees the dm_data_info stored in binary tree
@@ -353,6 +394,240 @@ dm_free_sess_operations(dm_sess_op_t *ops, size_t count)
     free(ops);
 }
 
+static void
+dm_free_lock_item(void *lock_item)
+{
+    CHECK_NULL_ARG_VOID(lock_item);
+    dm_lock_item_t *li = (dm_lock_item_t *) lock_item;
+    free(li->filename);
+    if (-1 != li->fd) {
+        close(li->fd);
+    }
+    free(li);
+}
+
+static int
+dm_lock_file(dm_lock_ctx_t *lock_ctx, char *filename)
+{
+    CHECK_NULL_ARG2(lock_ctx, filename);
+    int rc = SR_ERR_OK;
+    dm_lock_item_t lookup_item = {0,};
+    dm_lock_item_t *found_item = NULL;
+    lookup_item.filename = filename;
+
+    pthread_mutex_lock(&lock_ctx->mutex);
+
+    found_item = sr_btree_search(lock_ctx->lock_files, &lookup_item);
+    if (NULL == found_item) {
+       found_item = calloc(1, sizeof(*found_item));
+       if (NULL == found_item) {
+           SR_LOG_ERR_MSG("Memory allocation failed");
+           rc = SR_ERR_NOMEM;
+           goto cleanup;
+       }
+
+       found_item->fd = -1;
+       found_item->filename = strdup(filename);
+       if (NULL == found_item->filename) {
+           SR_LOG_ERR_MSG("Filename duplication failed");
+           free(found_item);
+           rc = SR_ERR_INTERNAL;
+           goto cleanup;
+       }
+
+       rc = sr_btree_insert(lock_ctx->lock_files, found_item);
+       if (SR_ERR_OK != rc){
+           SR_LOG_ERR_MSG("Adding to binary tree failed");
+           dm_free_lock_item(found_item);
+           goto cleanup;
+       }
+    }
+
+    if (-1 == found_item->fd) {
+        found_item->fd = open(filename, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
+        if (-1 == found_item->fd) {
+            if (EACCES == errno) {
+                SR_LOG_ERR("File %s can not be locked because of permissions", filename);
+                rc = SR_ERR_UNAUTHORIZED;
+                goto cleanup;
+            }
+        }
+        rc = sr_lock_fd(found_item->fd, true, false);
+        if (SR_ERR_OK == rc) {
+            SR_LOG_DBG("File %s has been unlocked", filename);
+        }
+    } else {
+        rc = SR_ERR_LOCKED;
+        SR_LOG_INF("File %s is already locked", filename);
+    }
+
+cleanup:
+    pthread_mutex_unlock(&lock_ctx->mutex);
+    return rc;
+}
+
+static int
+dm_unlock_file(dm_lock_ctx_t *lock_ctx, char *filename)
+{
+    CHECK_NULL_ARG2(lock_ctx, filename);
+    int rc = SR_ERR_OK;
+    dm_lock_item_t lookup_item = {0,};
+    dm_lock_item_t *found_item = NULL;
+    lookup_item.filename = filename;
+
+    pthread_mutex_lock(&lock_ctx->mutex);
+
+    found_item = sr_btree_search(lock_ctx->lock_files, &lookup_item);
+    if (NULL == found_item || -1 == found_item->fd) {
+        SR_LOG_ERR("File %s has not been locked in this context", filename);
+        rc = SR_ERR_INVAL_ARG;
+        goto cleanup;
+    }
+    close(found_item->fd);
+    found_item->fd = -1;
+    SR_LOG_DBG("File %s has been unlocked", filename);
+
+cleanup:
+    pthread_mutex_unlock(&lock_ctx->mutex);
+    return rc;
+}
+
+int
+dm_lock_module(dm_ctx_t *dm_ctx, dm_session_t *session, char *modul_name)
+{
+    CHECK_NULL_ARG3(dm_ctx, session, modul_name);
+    int rc = SR_ERR_OK;
+    char *lock_file = NULL;
+
+    /* check if module name is valid */
+
+    rc = sr_get_lock_data_file_name(dm_ctx->data_search_dir, modul_name, session->datastore, &lock_file);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Lock file name can not be created");
+        return rc;
+    }
+
+    /* check if already locked */
+    for (size_t i = 0; i < session->locked_files->number; i++) {
+        if (0 == strcmp(lock_file, (char *)session->locked_files->set[i])){
+            SR_LOG_INF("File %s is already by this session", lock_file);
+            free(lock_file);
+            return rc;
+        }
+    }
+
+    /* switch identity */
+    ac_set_user_identity(dm_ctx->ac_ctx, session->user_credentails);
+
+    rc = dm_lock_file(&dm_ctx->lock_ctx, lock_file);
+
+    /* switch identity back */
+    ac_unset_user_identity(dm_ctx->ac_ctx);
+
+    /* log information about locked model */
+    if (SR_ERR_OK != rc){
+        free(lock_file);
+    } else {
+        ly_set_add(session->locked_files, lock_file);
+    }
+    return rc;
+}
+
+int
+dm_unlock_module(dm_ctx_t *dm_ctx, dm_session_t *session, char *modul_name)
+{
+    CHECK_NULL_ARG3(dm_ctx, session, modul_name);
+    int rc = SR_ERR_OK;
+    char *lock_file = NULL;
+    size_t i = 0;
+
+    rc = sr_get_lock_data_file_name(dm_ctx->data_search_dir, modul_name, session->datastore, &lock_file);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Lock file name can not be created");
+        return rc;
+    }
+
+    /* check if already locked */
+    bool found = false;
+    for (i = 0; i < session->locked_files->number; i++) {
+        if (0 == strcmp(lock_file, (char *)session->locked_files->set[i])){
+            found = true;
+            break;
+        }
+    }
+
+    if (!found) {
+        SR_LOG_ERR("File %s has not been locked in this context", lock_file);
+        rc = SR_ERR_INVAL_ARG;
+    } else {
+        rc = dm_unlock_file(&dm_ctx->lock_ctx, lock_file);
+        free(session->locked_files->set[i]);
+        ly_set_rm_index(session->locked_files, i);
+    }
+
+    free(lock_file);
+    return rc;
+}
+
+
+int
+dm_lock_datastore(dm_ctx_t *dm_ctx, dm_session_t *session)
+{
+    CHECK_NULL_ARG2(dm_ctx, session);
+    int rc = SR_ERR_OK;
+    sr_schema_t *schemas = NULL;
+    size_t schema_count = 0;
+
+    struct ly_set *locked = ly_set_new();
+    if (NULL == locked) {
+        SR_LOG_ERR_MSG("Memory allocation failed");
+        return SR_ERR_NOMEM;
+    }
+
+    rc = dm_list_schemas(dm_ctx, session, &schemas, &schema_count);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("List schemas failed");
+        goto cleanup;
+    }
+
+
+    for (size_t i = 0; i < schema_count; i++) {
+        rc = dm_lock_module(dm_ctx, session, (char *) schemas[i].module_name);
+        if (SR_ERR_OK != rc) {
+            if (SR_ERR_UNAUTHORIZED == rc){
+                SR_LOG_INF("Not allowed to lock %s, skipping", schemas[i].module_name);
+                continue;
+            } else if (SR_ERR_LOCKED == rc) {
+                SR_LOG_ERR("Model %s is already locked by other session", schemas[i].module_name);
+            }
+            for (size_t l = 0; l < locked->number; l++) {
+                dm_unlock_module(dm_ctx, session, (char *) locked->set[l]);
+            }
+            goto cleanup;
+        }
+        SR_LOG_DBG("Module %s locked", schemas[i].module_name);
+        ly_set_add(locked, (char *) schemas[i].module_name);
+    }
+cleanup:
+    sr_free_schemas(schemas, schema_count);
+    ly_set_free(locked);
+    return rc;
+}
+
+//TODO: return code if no model is locked
+int
+dm_unlock_datastore(dm_ctx_t *dm_ctx, dm_session_t *session)
+{
+    CHECK_NULL_ARG2(dm_ctx, session);
+
+    while (session->locked_files->number > 0){
+        dm_unlock_file(&dm_ctx->lock_ctx, (char *) session->locked_files->set[0]);
+        free(session->locked_files->set[0]);
+        ly_set_rm_index(session->locked_files, 0);
+    }
+    return SR_ERR_OK;
+}
+
 /**
  * @brief Returns the state of node. If the NULL is provided as an argument
  * DM_NODE_DISABLED is returned.
@@ -567,6 +842,7 @@ dm_init(ac_ctx_t *ac_ctx, const char *schema_search_dir, const char *data_search
     SR_LOG_INF("Initializing Data Manager, schema_search_dir=%s, data_search_dir=%s", schema_search_dir, data_search_dir);
 
     dm_ctx_t *ctx = NULL;
+    int rc = SR_ERR_OK;
     ctx = calloc(1, sizeof(*ctx));
     if (NULL == ctx) {
         SR_LOG_ERR_MSG("Cannot allocate memory for Data Manager.");
@@ -595,13 +871,21 @@ dm_init(ac_ctx_t *ac_ctx, const char *schema_search_dir, const char *data_search
         return SR_ERR_NOMEM;
     }
 
+
+    pthread_mutex_init(&ctx->lock_ctx.mutex, NULL);
+    rc = sr_btree_init(dm_compare_lock_item, dm_free_lock_item, &ctx->lock_ctx.lock_files);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Creating of lock files binary tree failed");
+        dm_cleanup(ctx);
+        return rc;
+    }
     pthread_rwlockattr_t attr;
     pthread_rwlockattr_init(&attr);
 #if defined(HAVE_PTHREAD_RWLOCKATTR_SETKIND_NP)
     pthread_rwlockattr_setkind_np(&attr, PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP);
 #endif
 
-    int rc = pthread_rwlock_init(&ctx->lyctx_lock, &attr);
+    rc = pthread_rwlock_init(&ctx->lyctx_lock, &attr);
     pthread_rwlockattr_destroy(&attr);
     if (0 != rc) {
         SR_LOG_ERR_MSG("lyctx mutex initialization failed");
@@ -628,6 +912,10 @@ dm_cleanup(dm_ctx_t *dm_ctx)
             ly_ctx_destroy(dm_ctx->ly_ctx, dm_free_lys_private_data);
         }
         pthread_rwlock_destroy(&dm_ctx->lyctx_lock);
+        if (NULL != dm_ctx->lock_ctx.lock_files) {
+            sr_btree_cleanup(dm_ctx->lock_ctx.lock_files);
+        }
+        pthread_mutex_destroy(&dm_ctx->lock_ctx.mutex);
         free(dm_ctx);
     }
 }
@@ -653,15 +941,30 @@ dm_session_start(const dm_ctx_t *dm_ctx, const ac_ucred_t *user_credentials, con
         free(session_ctx);
         return SR_ERR_NOMEM;
     }
+    session_ctx->locked_files = ly_set_new();
+    if (NULL == session_ctx->locked_files) {
+        SR_LOG_ERR_MSG("Locked file set init failed");
+        sr_btree_cleanup(session_ctx->session_modules);
+        free(session_ctx);
+        return SR_ERR_INTERNAL;
+    }
     *dm_session_ctx = session_ctx;
 
     return SR_ERR_OK;
 }
 
 void
-dm_session_stop(const dm_ctx_t *dm_ctx, dm_session_t *session)
+dm_session_stop(dm_ctx_t *dm_ctx, dm_session_t *session)
 {
     CHECK_NULL_ARG_VOID2(dm_ctx, session);
+    if (NULL != session->locked_files) {
+        while (session->locked_files->number > 0){
+            dm_unlock_file(&dm_ctx->lock_ctx, (char *) session->locked_files->set[0]);
+            free(session->locked_files->set[0]);
+            ly_set_rm_index(session->locked_files, 0);
+        }
+        ly_set_free(session->locked_files);
+    }
     sr_btree_cleanup(session->session_modules);
     dm_clear_session_errors(session);
     dm_free_sess_operations(session->operations, session->oper_count);
