@@ -411,6 +411,13 @@ dm_free_lock_item(void *lock_item)
     free(li);
 }
 
+/**
+ * @brief Locks a file based on provided file name.
+ * @param [in] lock_ctx
+ * @param [in] filename
+ * @return Error code (SR_ERR_OK on success), SR_ERR_LOCKED if the file is already locked,
+ * SR_ERR_UNATHORIZED if the file can not be locked because of the permission.
+ */
 static int
 dm_lock_file(dm_lock_ctx_t *lock_ctx, char *filename)
 {
@@ -471,6 +478,13 @@ cleanup:
     return rc;
 }
 
+/**
+ * @brief Unlocks the file based on the filename
+ * @param [in] lock_ctx
+ * @param [in] filename
+ * @return Error code (SR_ERR_OK on success) SR_ERR_INVAL_ARG if the
+ * file had not been locked in provided context
+ */
 static int
 dm_unlock_file(dm_lock_ctx_t *lock_ctx, char *filename)
 {
@@ -624,7 +638,6 @@ cleanup:
     return rc;
 }
 
-//TODO: return code if no model is locked
 int
 dm_unlock_datastore(dm_ctx_t *dm_ctx, dm_session_t *session)
 {
@@ -1486,6 +1499,10 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
     while (NULL != (info = sr_btree_get_at(session->session_modules, i++))) {
         if (info->modified) {
             rc = dm_lock_module(dm_ctx, c_ctx->session, (char *) info->module->name);
+            if (SR_ERR_LOCKED == rc) {
+                /* check if the lock is hold by session that issued commit */
+                rc = dm_lock_module(dm_ctx, (dm_session_t *) session, (char *) info->module->name);
+            }
             if (SR_ERR_OK != rc) {
                 SR_LOG_ERR("Module %s can not be locked", info->module->name);
                 return rc;

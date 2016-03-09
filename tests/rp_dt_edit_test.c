@@ -1625,6 +1625,10 @@ lock_commit_test(void **state)
    test_rp_sesssion_create(ctx, SR_DS_STARTUP, &sessionA);
    test_rp_sesssion_create(ctx, SR_DS_STARTUP, &sessionB);
 
+   /* lock example module in A*/
+   rc = dm_lock_module(ctx->dm_ctx, sessionA->dm_session, "test-module");
+   assert_int_equal(SR_ERR_OK, rc);
+
    /* do some changes in A */
    rc = rp_dt_set_item_wrapper(ctx, sessionA, "/example-module:container/list[key1='key1'][key2='key2']", NULL, SR_EDIT_DEFAULT);
    assert_int_equal(SR_ERR_OK, rc);
@@ -1636,7 +1640,7 @@ lock_commit_test(void **state)
    rc = dm_lock_module(ctx->dm_ctx, sessionB->dm_session, "example-module");
    assert_int_equal(SR_ERR_OK, rc);
 
-   /* commit B should fail */
+   /* commit A should fail */
    size_t e_cnt = 0;
    sr_error_info_t *errors = NULL;
    rc = rp_dt_commit(ctx, sessionA, &errors, &e_cnt);
@@ -1649,6 +1653,10 @@ lock_commit_test(void **state)
    /* commit A should succeed */
    rc = rp_dt_commit(ctx, sessionA, &errors, &e_cnt);
    assert_int_equal(SR_ERR_OK, rc);
+
+   /* should be still locked even after commit */
+   rc = dm_lock_module(ctx->dm_ctx, sessionB->dm_session, "test-module");
+   assert_int_equal(SR_ERR_LOCKED, rc);
 
    test_rp_session_cleanup(ctx, sessionA);
    test_rp_session_cleanup(ctx, sessionB);

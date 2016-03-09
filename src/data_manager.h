@@ -344,27 +344,45 @@ int dm_set_node_state(struct lys_node *node, dm_node_state_t state);
 bool dm_is_running_ds_session(dm_session_t *session);
 
 /**
- * @brief Locks the module with exclusive lock. When the module is locked, the module
- * can be changed only by the session holding lock.
+ * @brief Locks the module with exclusive lock in provided dm_ctx_t. When the module is locked, the changes
+ * can be committed only by the session holding lock. Function does the
+ * identity switch.
+ *
+ * If the model is already locked by the session SR_ERR_OK is returned.
  * @param [in] dm_ctx
  * @param [in] session
- * @param [in] modul_name
+ * @param [in] module_name
  * @return Error code (SR_ERR_OK on success), SR_ERR_LOCKED if the module is locked
  * by other session, SR_ERR_UNAUTHORIZED if the file can no be locked because of permissions.
  */
-int dm_lock_module(dm_ctx_t *dm_ctx, dm_session_t *session, char *modul_name);
+int dm_lock_module(dm_ctx_t *dm_ctx, dm_session_t *session, char *module_name);
 
 /**
- * @brief 
+ * @brief Releases the lock.
  * @param [in] dm_ctx
  * @param [in] session
  * @param [in] modul_name
- * @return Error code (SR_ERR_OK on success)
+ * @return Error code (SR_ERR_OK on success), SR_ERR_INVAL_ARG if the module is not
+ * locked by the session
  */
 int dm_unlock_module(dm_ctx_t *dm_ctx, dm_session_t *session, char *modul_name);
 
+/**
+ * @brief Acquires locks for all models. If the module can not be locked
+ * because of permission it is skipped. In any locking failed no module
+ * is locked by dm_lock_data_store.
+ * @param [in] dm_ctx
+ * @param [in] session
+ * @return Error code (SR_ERR_OK on success)
+ */
 int dm_lock_datastore(dm_ctx_t *dm_ctx, dm_session_t *session);
 
+/**
+ * @brief Releases all locks hold by the session
+ * @param [in] dm_ctx
+ * @param [in] session
+ * @return Error code (SR_ERR_OK on success)
+ */
 int dm_unlock_datastore(dm_ctx_t *dm_ctx, dm_session_t *session);
 /**@} Data manager*/
 #endif /* SRC_DATA_MANAGER_H_ */
