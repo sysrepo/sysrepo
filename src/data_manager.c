@@ -38,7 +38,7 @@
  * binary tree with filename -> fd maping.
  */
 typedef struct dm_lock_ctx_s {
-    sr_btree_t *lock_files;       /**< Binary tree of lock files for fast look up by file name*/
+    sr_btree_t *lock_files;       /**< Binary tree of lock files for fast look up by file name */
     pthread_mutex_t mutex;        /**< Mutex for exclusive access to binary tree */
 }dm_lock_ctx_t;
 
@@ -46,7 +46,7 @@ typedef struct dm_lock_ctx_s {
  * @brief The item of the lock_files binary tree in dm_lock_ctx_t
  */
 typedef struct dm_lock_item_s {
-    char *filename;               /**< File name of the lockfile*/
+    char *filename;               /**< File name of the lockfile */
     int fd;                       /**< File descriptor of the file */
 }dm_lock_item_t;
 
@@ -231,16 +231,21 @@ dm_load_schemas(dm_ctx_t *dm_ctx)
  * Checks whether the schema of the module has been loaded
  * @param [in] dm_ctx
  * @param [in] module_name
+ * @param [out] module NULL can be passed
  * @return Error code (SR_ERR_OK on success), SR_ERR_UNKNOWN_MODEL
  */
 static int
 dm_find_module_schema(dm_ctx_t *dm_ctx, const char *module_name, const struct lys_module **module)
 {
     CHECK_NULL_ARG2(dm_ctx, module_name);
+    const struct lys_module *m = NULL;
     pthread_rwlock_rdlock(&dm_ctx->lyctx_lock);
-    *module = ly_ctx_get_module(dm_ctx->ly_ctx, module_name, NULL);
+    m = ly_ctx_get_module(dm_ctx->ly_ctx, module_name, NULL);
     pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
-    return *module == NULL ? SR_ERR_UNKNOWN_MODEL : SR_ERR_OK;
+    if (NULL != module) {
+        *module = m;
+    }
+    return m == NULL ? SR_ERR_UNKNOWN_MODEL : SR_ERR_OK;
 }
 
 /**
@@ -500,6 +505,11 @@ dm_lock_module(dm_ctx_t *dm_ctx, dm_session_t *session, char *modul_name)
     char *lock_file = NULL;
 
     /* check if module name is valid */
+    rc = dm_find_module_schema(dm_ctx, modul_name, NULL);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Unknown module %s to lock", modul_name);
+        return rc;
+    }
 
     rc = sr_get_lock_data_file_name(dm_ctx->data_search_dir, modul_name, session->datastore, &lock_file);
     if (SR_ERR_OK != rc) {
