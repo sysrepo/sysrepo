@@ -48,6 +48,8 @@ typedef struct dm_session_s {
     dm_sess_op_t *operations;           /**< list of operations performed in this session */
     size_t oper_count;                  /**< number of performed operation */
     size_t oper_size;                   /**< number of allocated operations */
+    struct ly_set *locked_files;        /**< set of filename that are locked by this session */
+    bool holds_ds_lock;               /**< flags if the session holds ds lock*/
 } dm_session_t;
 
 int setup(void **state){

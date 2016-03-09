@@ -61,6 +61,7 @@ typedef struct dm_ctx_s {
     struct ly_ctx *ly_ctx;        /**< libyang context holding all loaded schemas */
     pthread_rwlock_t lyctx_lock;  /**< rwlock to access ly_ctx */
     dm_lock_ctx_t lock_ctx;       /**< lock context for lock/unlock/commit operations */
+    pthread_mutex_t ds_lock;      /**< Data store lock mutex */
 } dm_ctx_t;
 
 /**
@@ -76,6 +77,7 @@ typedef struct dm_session_s {
     size_t oper_count;                  /**< number of performed operation */
     size_t oper_size;                   /**< number of allocated operations */
     struct ly_set *locked_files;        /**< set of filename that are locked by this session */
+    bool holds_ds_lock;                 /**< flags if the session holds ds lock*/
 } dm_session_t;
 
 /**
@@ -119,7 +121,7 @@ dm_data_info_cmp(const void *a, const void *b)
 }
 
 /**
- * @param item
+ * @brief Compare two lock items
  */
 static int
 dm_compare_lock_item(const void *a, const void *b)
@@ -466,7 +468,7 @@ dm_lock_file(dm_lock_ctx_t *lock_ctx, char *filename)
         }
         rc = sr_lock_fd(found_item->fd, true, false);
         if (SR_ERR_OK == rc) {
-            SR_LOG_DBG("File %s has been unlocked", filename);
+            SR_LOG_DBG("File %s has been locked", filename);
         }
     } else {
         rc = SR_ERR_LOCKED;
@@ -531,7 +533,7 @@ dm_lock_module(dm_ctx_t *dm_ctx, dm_session_t *session, char *modul_name)
         return rc;
     }
 
-    /* check if already locked */
+    /* check if already locked by this session */
     for (size_t i = 0; i < session->locked_files->number; i++) {
         if (0 == strcmp(lock_file, (char *)session->locked_files->set[i])){
             SR_LOG_INF("File %s is already by this session", lock_file);
@@ -614,6 +616,12 @@ dm_lock_datastore(dm_ctx_t *dm_ctx, dm_session_t *session)
         goto cleanup;
     }
 
+    if (0 != pthread_mutex_trylock(&dm_ctx->ds_lock)){
+        SR_LOG_ERR_MSG("Datastore locked hold by other session");
+        rc = SR_ERR_LOCKED;
+        goto cleanup;
+    }
+    session->holds_ds_lock = true;
 
     for (size_t i = 0; i < schema_count; i++) {
         rc = dm_lock_module(dm_ctx, session, (char *) schemas[i].module_name);
@@ -627,6 +635,8 @@ dm_lock_datastore(dm_ctx_t *dm_ctx, dm_session_t *session)
             for (size_t l = 0; l < locked->number; l++) {
                 dm_unlock_module(dm_ctx, session, (char *) locked->set[l]);
             }
+            pthread_mutex_unlock(&dm_ctx->ds_lock);
+            session->holds_ds_lock = false;
             goto cleanup;
         }
         SR_LOG_DBG("Module %s locked", schemas[i].module_name);
@@ -647,6 +657,10 @@ dm_unlock_datastore(dm_ctx_t *dm_ctx, dm_session_t *session)
         dm_unlock_file(&dm_ctx->lock_ctx, (char *) session->locked_files->set[0]);
         free(session->locked_files->set[0]);
         ly_set_rm_index(session->locked_files, 0);
+    }
+    if (session->holds_ds_lock){
+        pthread_mutex_unlock(&dm_ctx->ds_lock);
+        session->holds_ds_lock = false;
     }
     return SR_ERR_OK;
 }
@@ -894,6 +908,7 @@ dm_init(ac_ctx_t *ac_ctx, const char *schema_search_dir, const char *data_search
         return SR_ERR_NOMEM;
     }
 
+    pthread_mutex_init(&ctx->ds_lock, NULL);
 
     pthread_mutex_init(&ctx->lock_ctx.mutex, NULL);
     rc = sr_btree_init(dm_compare_lock_item, dm_free_lock_item, &ctx->lock_ctx.lock_files);
@@ -939,6 +954,7 @@ dm_cleanup(dm_ctx_t *dm_ctx)
             sr_btree_cleanup(dm_ctx->lock_ctx.lock_files);
         }
         pthread_mutex_destroy(&dm_ctx->lock_ctx.mutex);
+        pthread_mutex_destroy(&dm_ctx->ds_lock);
         free(dm_ctx);
     }
 }
