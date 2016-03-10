@@ -382,6 +382,7 @@ cl_sm_conn_msg_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, uint8_t *msg
     switch (msg->notification->event) {
         case SR__NOTIFICATION_EVENT__MODULE_INSTALL_EV:
             if (SR_MODULE_INSTALL_EVENT == subscription->event_type) {
+                SR_LOG_DBG("Calling module-install callback for subscription id=%"PRIu32".", subscription->id);
                 subscription->callback.module_install_cb(
                         msg->notification->module_install_notif->module_name,
                         msg->notification->module_install_notif->revision,
@@ -391,6 +392,7 @@ cl_sm_conn_msg_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, uint8_t *msg
             break;
         case SR__NOTIFICATION_EVENT__FEATURE_ENABLE_EV:
             if (SR_FEATURE_ENABLE_EVENT == subscription->event_type) {
+                SR_LOG_DBG("Calling feature-enable callback for subscription id=%"PRIu32".", subscription->id);
                 subscription->callback.feature_enable_cb(
                         msg->notification->feature_enable_notif->module_name,
                         msg->notification->feature_enable_notif->feature_name,
