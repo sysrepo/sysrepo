@@ -32,6 +32,7 @@
 #include <arpa/inet.h>
 #include <ev.h>
 
+#include "cl_subscriptions.h"
 #include "sr_common.h"
 
 #define CL_SM_IN_BUFF_MIN_SPACE 512  /**< Minimal empty space in the input buffer. */
@@ -662,13 +663,28 @@ cl_sm_cleanup(cl_sm_ctx_t *sm_ctx)
 }
 
 int
-cl_sm_subscribe(cl_sm_ctx_t *sm_ctx, char **destination, uint32_t *subscription_id)
+cl_sm_subscription_init(cl_sm_ctx_t *sm_ctx, char **destination, sr_subscription_ctx_t **subscription_p)
 {
-    CHECK_NULL_ARG3(sm_ctx, destination, subscription_id);
+    sr_subscription_ctx_t *subscription = NULL;
+
+    CHECK_NULL_ARG3(sm_ctx, destination, subscription_p);
+
+    subscription = calloc(1, sizeof(*subscription));
+    if (NULL == subscription) {
+        return SR_ERR_NOMEM;
+    }
+
+    subscription->id = 12345; // TODO assign real subscription id
 
     *destination = sm_ctx->socket_path;
-    *subscription_id = 12345; // TODO assign real subscription id
-
+    *subscription_p = subscription;
     return SR_ERR_OK;
 }
 
+void
+cl_sm_subscription_cleanup(sr_subscription_ctx_t *subscription)
+{
+    if (NULL != subscription) {
+        free(subscription);
+    }
+}

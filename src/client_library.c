@@ -97,11 +97,6 @@ typedef struct sr_val_iter_s {
     size_t count;                   /**< number of element currently buffered */
 } sr_val_iter_t;
 
-typedef struct sr_subscription_ctx_s {
-    uint32_t subscription_id;
-
-} sr_subscription_ctx_t;
-
 static int connections_cnt = 0;
 static int subscriptions_cnt = 0;
 static pthread_mutex_t global_lock = PTHREAD_MUTEX_INITIALIZER;  /**< Mutex for locking global variable primary_connection. */
@@ -1838,14 +1833,14 @@ sr_get_last_errors(sr_session_ctx_t *session, const sr_error_info_t **error_info
 
 int
 sr_feature_enable_subscribe(sr_session_ctx_t *session, sr_feature_enable_cb callback, void *private_ctx,
-        sr_subscription_ctx_t **subscription)
+        sr_subscription_ctx_t **subscription_p)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    sr_subscription_ctx_t *subscription = NULL;
     char *destination = NULL;
-    uint32_t subscription_id = 0;
     int rc = SR_ERR_OK;
 
-    //CHECK_NULL_ARG3(session, callback, subscription); // TODO
+    CHECK_NULL_ARG3(session, callback, subscription_p);
 
     cl_session_clear_errors(session);
 
@@ -1865,14 +1860,17 @@ sr_feature_enable_subscribe(sr_session_ctx_t *session, sr_feature_enable_cb call
         goto cleanup;
     }
 
-    /* subscribe */
+    /* initialize subscription ctx */
     pthread_mutex_lock(&global_lock);
-    rc = cl_sm_subscribe(cl_sm_ctx, &destination, &subscription_id);
+    rc = cl_sm_subscription_init(cl_sm_ctx, &destination, &subscription);
     pthread_mutex_unlock(&global_lock);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Error by initialization of the subscription.");
         goto cleanup;
     }
+    subscription->event_type = SR_FEATURE_ENABLE_EVENT;
+    subscription->callback.feature_enable_cb = callback;
+    subscription->private_ctx = private_ctx;
 
     /* fill-in subscription details */
     msg_req->request->subscribe_req->destination = strdup(destination);
@@ -1881,7 +1879,7 @@ sr_feature_enable_subscribe(sr_session_ctx_t *session, sr_feature_enable_cb call
         rc = SR_ERR_NOMEM;
         goto cleanup;
     }
-    msg_req->request->subscribe_req->subscription_id = subscription_id;
+    msg_req->request->subscribe_req->subscription_id = subscription->id;
     msg_req->request->subscribe_req->event = SR__NOTIFICATION_EVENT__FEATURE_ENABLE_EVENT;
 
     /* send the request and receive the response */
@@ -1894,10 +1892,11 @@ sr_feature_enable_subscribe(sr_session_ctx_t *session, sr_feature_enable_cb call
     sr__msg__free_unpacked(msg_req, NULL);
     sr__msg__free_unpacked(msg_resp, NULL);
 
+    *subscription_p = subscription;
     return cl_session_return(session, SR_ERR_OK);
 
 cleanup:
-    // TODO
+    sr_unsubscribe(subscription);
     if (NULL != msg_req) {
         sr__msg__free_unpacked(msg_req, NULL);
     }
@@ -1910,7 +1909,7 @@ cleanup:
 int
 sr_unsubscribe(sr_subscription_ctx_t *subscription)
 {
-    //CHECK_NULL_ARG(subscription);
+    CHECK_NULL_ARG(subscription);
 
     pthread_mutex_lock(&global_lock);
     subscriptions_cnt--;
@@ -1923,6 +1922,8 @@ sr_unsubscribe(sr_subscription_ctx_t *subscription)
         sr_logger_cleanup();
     }
     pthread_mutex_unlock(&global_lock);
+
+    cl_sm_subscription_cleanup(subscription);
 
     return SR_ERR_OK;
 }

@@ -863,6 +863,12 @@ cl_get_error_test(void **state)
 }
 
 static void
+test_feature_enable_cb(const char *module_name, const char *feature_name, bool enabled, void *private_ctx)
+{
+    printf("Feature %s %s in module %s\n", feature_name, enabled ? "enabled" : "disabled", module_name);
+}
+
+static void
 cl_subscription_test(void **state)
 {
     sr_conn_ctx_t *conn = *state;
@@ -876,7 +882,7 @@ cl_subscription_test(void **state)
     rc = sr_session_start(conn, SR_DS_STARTUP, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = sr_feature_enable_subscribe(session, NULL, NULL, NULL);
+    rc = sr_feature_enable_subscribe(session, test_feature_enable_cb, NULL, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
     rc = sr_feature_enable(session, "example-module", "ifconfig", true);
