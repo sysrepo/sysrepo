@@ -629,13 +629,14 @@ typedef enum sr_move_direction_e {
 } sr_move_direction_t;
 
 /**
- * @brief Sets the value of the leaf, leaf-list or presence container.
+ * @brief Sets the value of the leaf, leaf-list, list or presence container.
  *
  * With default options it recursively creates all missing nodes (containers and
  * lists including their key leaves) in the path to the specified node (can be
  * turned off with SR_EDIT_NON_RECURSIVE option). If SR_EDIT_STRICT flag is set,
  * the node must not exist (otherwise an error is returned). Setting of a leaf-list
- * value appends the value at the end of the leaf-list.
+ * value appends the value at the end of the leaf-list. To create a list use
+ * xpath with key values included and pass NULL as value argument.
  *
  * @param[in] session Session context acquired with ::sr_session_start call.
  * @param[in] path @ref xp_page "XPath" identifier of the data element to be set.
