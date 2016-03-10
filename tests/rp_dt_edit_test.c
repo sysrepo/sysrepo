@@ -1236,7 +1236,6 @@ edit_commit_test(void **state)
     assert_non_null(valueB);
     assert_int_equal(XP_TEST_MODULE_INT64_VALUE_T, valueB->data.int64_val);
     sr_free_val(valueB);
-    test_rp_session_cleanup(ctx, sessionB);
 
 
     sr_error_info_t *errors = NULL;
@@ -1252,8 +1251,10 @@ edit_commit_test(void **state)
     assert_int_equal(XP_TEST_MODULE_INT64_VALUE_T + 99, valueA->data.int64_val);
     sr_free_val(valueA);
 
-    test_rp_sesssion_create(ctx, SR_DS_STARTUP, &sessionB);
-    /* restart the session B to see changes made by commit */
+    /* refresh the session B to see changes made by commit */
+    rc = rp_dt_refresh_session(ctx, sessionB, &errors, &e_cnt);
+    assert_int_equal(rc, SR_ERR_OK);
+
     rc = rp_dt_get_value_wrapper(ctx, sessionB, XP_TEST_MODULE_INT64, &valueB);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(valueB);

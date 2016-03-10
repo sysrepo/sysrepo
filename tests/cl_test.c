@@ -831,6 +831,100 @@ cl_locking_test(void **state)
 }
 
 static void
+cl_refresh_session(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+
+    sr_session_ctx_t *sessionA = NULL, *sessionB = NULL;
+    sr_val_t valA = {0,};
+    sr_val_t *valB = NULL;
+    const sr_error_info_t *error_info = NULL;
+    size_t error_cnt = 0;
+    int rc = 0;
+
+    /* start two session */
+    rc = sr_session_start(conn, SR_DS_STARTUP, &sessionA);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_session_start(conn, SR_DS_STARTUP, &sessionB);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* Perform 4 operation in session A */
+
+    /*op 1*/
+    valA.type = SR_UINT8_T;
+    valA.data.uint8_val = 26;
+    valA.xpath = NULL;
+
+    rc = sr_set_item(sessionA, XP_TEST_MODULE_UINT8, &valA, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+    sr_free_val_content(&valA);
+
+    /*op 2*/
+    rc = sr_set_item(sessionA, "/test-module:list[key='abc']", NULL, SR_EDIT_STRICT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /*op 3*/
+    rc = sr_set_item(sessionA, "/test-module:list[key='def']", NULL, SR_EDIT_STRICT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+
+    /*op 4*/
+    valA.type = SR_UINT64_T;
+    valA.data.uint64_val = 999;
+    valA.xpath = NULL;
+
+    rc = sr_set_item(sessionA, XP_TEST_MODULE_UINT64, &valA, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+    sr_free_val_content(&valA);
+
+    /* Perform two operation that conflicts with 2nd 3rd open in A */
+
+    rc = sr_set_item(sessionB, "/test-module:list[key='abc']", NULL, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = sr_set_item(sessionB, "/test-module:list[key='def']", NULL, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* commit session B */
+    rc = sr_commit(sessionB);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* Session refresh of A should end with error but op 1 and 4 stay in place */
+    rc = sr_session_refresh(sessionA);
+    assert_int_equal(SR_ERR_INTERNAL, rc);
+
+    sr_get_last_errors(sessionA, &error_info, &error_cnt);
+    for (size_t i=0; i<error_cnt; i++) {
+        printf("%s:\n\t%s\n", error_info[i].message, error_info[i].path);
+    }
+
+    /* commit session A*/
+    rc = sr_commit(sessionA);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* check that op 1 and 4 stayed in place */
+    rc = sr_session_refresh(sessionB);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = sr_get_item(sessionB, XP_TEST_MODULE_UINT8, &valB);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(valB);
+    assert_int_equal(26, valB->data.uint8_val);
+    sr_free_val(valB);
+
+    rc = sr_get_item(sessionB, XP_TEST_MODULE_UINT64, &valB);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(valB);
+    assert_int_equal(999, valB->data.uint64_val);
+    sr_free_val(valB);
+
+    rc = sr_session_stop(sessionA);
+    rc = sr_session_stop(sessionB);
+
+}
+
+static void
 cl_get_error_test(void **state)
 {
     sr_conn_ctx_t *conn = *state;
@@ -852,7 +946,7 @@ cl_get_error_test(void **state)
     assert_non_null(error_info);
     assert_non_null(error_info->message);
 
-    /* attemp to get item on bad element in existing module */
+    /* attempt to get item on bad element in existing module */
     rc = sr_get_item(session, "/example-module:container/unknown", &value);
     assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
     assert_null(value);
@@ -893,6 +987,7 @@ main()
             cmocka_unit_test_setup_teardown(cl_discard_changes_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_locking_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_get_error_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_refresh_session, sysrepo_setup, sysrepo_teardown),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);
