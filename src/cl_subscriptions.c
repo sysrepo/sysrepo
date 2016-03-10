@@ -38,6 +38,9 @@
 #define CL_SM_IN_BUFF_MIN_SPACE 512  /**< Minimal empty space in the input buffer. */
 #define CL_SM_BUFF_ALLOC_CHUNK 1024  /**< Chunk size for buffer expansions. */
 
+#define CL_SM_SUBSCRIPTION_ID_INVALID 0         /**< Invalid value of subscription id. */
+#define CL_SM_SUBSCRIPTION_ID_MAX_ATTEMPTS 100  /**< Maximum number of attempts to generate unused random subscription id. */
+
 /**
  * @brief Filesystem path prefix for generating temporary socket names used for
  * unix-domain connections between remote sysrepo engines and subscription manager.
@@ -55,6 +58,9 @@ typedef struct cl_sm_ctx_s {
     /** Binary tree used for fast connection context lookup by file descriptor. */
     sr_btree_t *fd_btree;
     
+    /** Binary tree used for fast subscription lookup by id */
+    sr_btree_t *subscriptions_btree;
+
     /* Thread where Subscription Manger's event loop runs. */
     pthread_t event_loop_thread;
     /** Event loop context. */
@@ -89,6 +95,44 @@ typedef struct cl_sm_conn_ctx_s {
 } cl_sm_conn_ctx_t;
 
 /**
+ * @brief Compares two subscriptions by their id
+ * (used by lookups in the binary tree).
+ */
+static int
+cl_sm_subscription_cmp_id(const void *a, const void *b)
+{
+    assert(a);
+    assert(b);
+    sr_subscription_ctx_t *subs_a = (sr_subscription_ctx_t*)a;
+    sr_subscription_ctx_t *subs_b = (sr_subscription_ctx_t*)b;
+
+    if (subs_a->id == subs_b->id) {
+        return 0;
+    } else if (subs_a->id < subs_b->id) {
+        return -1;
+    } else {
+        return 1;
+    }
+}
+
+/**
+ * @brief Cleans up a subscription entry.
+ * Releases all resources held Subscription Manager.
+ * @note Called automatically when a node from the binary tree is removed
+ * (which is also when the tree itself is being destroyed).
+ */
+static void
+cl_sm_subscription_cleanup_internal(void *subscription_p)
+{
+    sr_subscription_ctx_t *subscirption = NULL;
+
+    if (NULL != subscription_p) {
+        subscirption = (sr_subscription_ctx_t *)subscirption;
+        free(subscirption);
+    }
+}
+
+/**
  * @brief Compares two connections by file descriptors
  * (used by lookups in fd binary tree).
  */
@@ -111,7 +155,7 @@ cl_sm_connection_cmp_fd(const void *a, const void *b)
 
 /**
  * @brief Cleans up a connection entry. Releases all resources held in connection
- * context by Subscription Manager (via provided callback).
+ * context by Subscription Manager.
  * @note Called automatically when a node from fd binary tree is removed
  * (which is also when the tree itself is being destroyed).
  */
@@ -304,6 +348,8 @@ static int
 cl_sm_conn_msg_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, uint8_t *msg_data, size_t msg_size)
 {
     Sr__Msg *msg = NULL;
+    sr_subscription_ctx_t *subscription = NULL;
+    sr_subscription_ctx_t subscription_lookup = { 0, };
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG3(sm_ctx, conn, msg_data);
@@ -315,16 +361,47 @@ cl_sm_conn_msg_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, uint8_t *msg
         return SR_ERR_INTERNAL;
     }
 
-    /* NULL check according to message type */
-    if (((SR__MSG__MSG_TYPE__REQUEST == msg->type) && (NULL == msg->request)) ||
-            ((SR__MSG__MSG_TYPE__RESPONSE == msg->type) && (NULL == msg->response))) {
-        SR_LOG_ERR("Message with NULL payload received (conn=%p).", (void*)conn);
+    /* check the message */
+    if ((SR__MSG__MSG_TYPE__NOTIFICATION != msg->type) || (NULL == msg->notification)) {
+        SR_LOG_ERR("Invalid or unexpected message received (conn=%p).", (void*)conn);
         rc = SR_ERR_INVAL_ARG;
         goto cleanup;
     }
 
-    SR_LOG_INF("NOTIFICATION: %d", msg->notification->subscription_id);
-    // TODO: find matching subscription, process the notification / request
+    SR_LOG_DBG("Received a notification for subscription id=%"PRIu32".", msg->notification->subscription_id);
+
+    /* find the subscription according to id */
+    subscription_lookup.id = msg->notification->subscription_id;
+    subscription = sr_btree_search(sm_ctx->subscriptions_btree, &subscription_lookup);
+    if (NULL == subscription) {
+        SR_LOG_ERR("No matching subscription for subscription id=%"PRIu32".", msg->notification->subscription_id);
+        rc = SR_ERR_INVAL_ARG;
+        goto cleanup;
+    }
+
+    switch (msg->notification->event) {
+        case SR__NOTIFICATION_EVENT__MODULE_INSTALL_EV:
+            if (SR_MODULE_INSTALL_EVENT == subscription->event_type) {
+                subscription->callback.module_install_cb(
+                        msg->notification->module_install_notif->module_name,
+                        msg->notification->module_install_notif->revision,
+                        msg->notification->module_install_notif->installed,
+                        subscription->private_ctx);
+            }
+            break;
+        case SR__NOTIFICATION_EVENT__FEATURE_ENABLE_EV:
+            if (SR_FEATURE_ENABLE_EVENT == subscription->event_type) {
+                subscription->callback.feature_enable_cb(
+                        msg->notification->feature_enable_notif->module_name,
+                        msg->notification->feature_enable_notif->feature_name,
+                        msg->notification->feature_enable_notif->enabled,
+                        subscription->private_ctx);
+            }
+            break;
+        default:
+            SR_LOG_ERR("Unknown notification event received on subscription id=%"PRIu32".", subscription->id);
+            rc = SR_ERR_INVAL_ARG;
+    }
 
     sr__msg__free_unpacked(msg, NULL);
 
@@ -599,6 +676,13 @@ cl_sm_init(cl_sm_ctx_t **sm_ctx_p)
         goto cleanup;
     }
 
+    /* create binary tree for fast subscription lookup by id */
+    rc = sr_btree_init(cl_sm_subscription_cmp_id, cl_sm_subscription_cleanup_internal, &ctx->subscriptions_btree);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Cannot allocate binary tree for subscription IDs.");
+        goto cleanup;
+    }
+
     /* initialize unix-domain server */
     rc = cl_sm_server_init(ctx);
     if (SR_ERR_OK != rc) {
@@ -638,6 +722,7 @@ cleanup:
             ev_loop_destroy(ctx->event_loop);
         }
         cl_sm_server_cleanup(ctx);
+        sr_btree_cleanup(ctx->subscriptions_btree);
         sr_btree_cleanup(ctx->fd_btree);
         free(ctx);
     }
@@ -655,6 +740,7 @@ cl_sm_cleanup(cl_sm_ctx_t *sm_ctx)
     ev_loop_destroy(sm_ctx->event_loop);
     cl_sm_server_cleanup(sm_ctx);
 
+    sr_btree_cleanup(sm_ctx->subscriptions_btree);
     sr_btree_cleanup(sm_ctx->fd_btree);
 
     free(sm_ctx);
@@ -666,6 +752,7 @@ int
 cl_sm_subscription_init(cl_sm_ctx_t *sm_ctx, char **destination, sr_subscription_ctx_t **subscription_p)
 {
     sr_subscription_ctx_t *subscription = NULL;
+    int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG3(sm_ctx, destination, subscription_p);
 
@@ -673,18 +760,44 @@ cl_sm_subscription_init(cl_sm_ctx_t *sm_ctx, char **destination, sr_subscription
     if (NULL == subscription) {
         return SR_ERR_NOMEM;
     }
+    subscription->sm_ctx = sm_ctx;
 
-    subscription->id = 12345; // TODO assign real subscription id
+    /* generate unused random subscription id */
+    size_t attempts = 0;
+    do {
+        subscription->id = rand();
+        if (NULL != sr_btree_search(sm_ctx->subscriptions_btree, subscription)) {
+            subscription->id = CL_SM_SUBSCRIPTION_ID_INVALID;
+        }
+        if (++attempts > CL_SM_SUBSCRIPTION_ID_MAX_ATTEMPTS) {
+            SR_LOG_ERR_MSG("Unable to generate an unique subscription id.");
+            rc = SR_ERR_INTERNAL;
+            goto cleanup;
+        }
+    } while (CL_SM_SUBSCRIPTION_ID_INVALID == subscription->id);
+
+    /* insert the subscription into the binary tree */
+    rc = sr_btree_insert(sm_ctx->subscriptions_btree, subscription);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Cannot insert new entry into subscription binary tree (duplicate id?).");
+        rc = SR_ERR_INTERNAL;
+        goto cleanup;
+    }
 
     *destination = sm_ctx->socket_path;
     *subscription_p = subscription;
     return SR_ERR_OK;
+
+cleanup:
+    cl_sm_subscription_cleanup_internal(subscription);
+    return rc;
 }
 
 void
 cl_sm_subscription_cleanup(sr_subscription_ctx_t *subscription)
 {
-    if (NULL != subscription) {
-        free(subscription);
-    }
+    CHECK_NULL_ARG_VOID2(subscription, subscription->sm_ctx);
+
+    /* sm_connection_cleanup will be auto-invoked */
+    sr_btree_delete(subscription->sm_ctx->subscriptions_btree, subscription);
 }

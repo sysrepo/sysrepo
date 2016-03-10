@@ -940,7 +940,9 @@ sr_pb_notif_alloc(const Sr__NotificationEvent event, const char *destination, co
 {
     Sr__Msg *msg = NULL;
     Sr__Notification *notif = NULL;
-    CHECK_NULL_ARG(msg_p);
+    ProtobufCMessage *sub_msg = NULL;
+
+    CHECK_NULL_ARG2(destination, msg_p);
 
     /* initialize Sr__Msg */
     msg = calloc(1, sizeof(*msg));
@@ -967,6 +969,28 @@ sr_pb_notif_alloc(const Sr__NotificationEvent event, const char *destination, co
         goto nomem;
     }
 
+    /* initialize sub-message */
+    switch (event) {
+        case SR__NOTIFICATION_EVENT__MODULE_INSTALL_EV:
+            sub_msg = calloc(1, sizeof(Sr__ModuleInstallNotification));
+            if (NULL == sub_msg) {
+                goto nomem;
+            }
+            sr__module_install_notification__init((Sr__ModuleInstallNotification*)sub_msg);
+            notif->module_install_notif = (Sr__ModuleInstallNotification*)sub_msg;
+            break;
+        case SR__NOTIFICATION_EVENT__FEATURE_ENABLE_EV:
+            sub_msg = calloc(1, sizeof(Sr__FeatureEnableNotification));
+            if (NULL == sub_msg) {
+                goto nomem;
+            }
+            sr__feature_enable_notification__init((Sr__FeatureEnableNotification*)sub_msg);
+            notif->feature_enable_notif = (Sr__FeatureEnableNotification*)sub_msg;
+            break;
+        default:
+            break;
+    }
+
     *msg_p = msg;
     return SR_ERR_OK;
 
@@ -977,7 +1001,6 @@ nomem:
     }
     return SR_ERR_NOMEM;
 }
-
 
 int
 sr_pb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__Operation operation)

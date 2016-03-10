@@ -181,14 +181,20 @@ rp_feature_enable_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *sessio
     /* send the response */
     rc = cm_msg_send(rp_ctx->cm_ctx, resp);
 
-    /* send the notification */
+    /* prepare the notification */
     // TODO: send from notification manager
-    rc = sr_pb_notif_alloc(SR__NOTIFICATION_EVENT__FEATURE_ENABLE_EVENT,
+    rc = sr_pb_notif_alloc(SR__NOTIFICATION_EVENT__FEATURE_ENABLE_EV,
             tmp_subs_dst, tmp_subs_id, &notif);
     if (SR_ERR_OK != rc){
         SR_LOG_ERR_MSG("Cannot allocate feature_enable notification.");
         return SR_ERR_NOMEM;
     }
+
+    notif->notification->feature_enable_notif->module_name = strdup(msg->request->feature_enable_req->module_name);
+    notif->notification->feature_enable_notif->feature_name = strdup(msg->request->feature_enable_req->feature_name);
+    notif->notification->feature_enable_notif->enabled = msg->request->feature_enable_req->enabled;
+
+    /* send the notification */
     rc = cm_msg_send(rp_ctx->cm_ctx, notif);
 
     return rc;

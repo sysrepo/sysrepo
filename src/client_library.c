@@ -1880,7 +1880,7 @@ sr_feature_enable_subscribe(sr_session_ctx_t *session, sr_feature_enable_cb call
         goto cleanup;
     }
     msg_req->request->subscribe_req->subscription_id = subscription->id;
-    msg_req->request->subscribe_req->event = SR__NOTIFICATION_EVENT__FEATURE_ENABLE_EVENT;
+    msg_req->request->subscribe_req->event = SR__NOTIFICATION_EVENT__FEATURE_ENABLE_EV;
 
     /* send the request and receive the response */
     rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__SUBSCRIBE);
@@ -1912,6 +1912,8 @@ sr_unsubscribe(sr_subscription_ctx_t *subscription)
     CHECK_NULL_ARG(subscription);
 
     pthread_mutex_lock(&global_lock);
+    cl_sm_subscription_cleanup(subscription);
+
     subscriptions_cnt--;
     if (0 == subscriptions_cnt) {
         /* this is the last subscription - destroy subscription manager */
@@ -1922,8 +1924,6 @@ sr_unsubscribe(sr_subscription_ctx_t *subscription)
         sr_logger_cleanup();
     }
     pthread_mutex_unlock(&global_lock);
-
-    cl_sm_subscription_cleanup(subscription);
 
     return SR_ERR_OK;
 }

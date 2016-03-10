@@ -865,7 +865,7 @@ cl_get_error_test(void **state)
 static void
 test_feature_enable_cb(const char *module_name, const char *feature_name, bool enabled, void *private_ctx)
 {
-    printf("Feature %s %s in module %s\n", feature_name, enabled ? "enabled" : "disabled", module_name);
+    printf("Feature '%s' %s in module '%s'.\n", feature_name, enabled ? "enabled" : "disabled", module_name);
 }
 
 static void

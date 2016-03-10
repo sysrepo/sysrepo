@@ -39,11 +39,14 @@ typedef enum sr_notification_event_e {
  */
 typedef struct sr_subscription_ctx_s {
     uint32_t id;
+
     sr_notification_event_t event_type;
     union {
         sr_feature_enable_cb feature_enable_cb;
         sr_module_install_cb module_install_cb;
     } callback;
+
+    cl_sm_ctx_t *sm_ctx;
     void *private_ctx;
 } sr_subscription_ctx_t;
 

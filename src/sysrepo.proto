@@ -396,8 +396,8 @@ message FeatureEnableResp {
 }
 
 enum NotificationEvent {
-  MODULE_INSTALL_EVENT = 1;
-  FEATURE_ENABLE_EVENT = 2;
+  MODULE_INSTALL_EV = 1;
+  FEATURE_ENABLE_EV = 2;
 }
 
 message SubscribeReq {
@@ -411,6 +411,17 @@ message SubscribeReq {
 message SubscribeResp {
 }
 
+message ModuleInstallNotification {
+  optional string module_name = 1;
+  optional string revision = 2;
+  required bool installed = 3;
+}
+
+message FeatureEnableNotification {
+  required string module_name = 1;
+  required string feature_name = 2;
+  required bool enabled = 3;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 // Sysrepo Engine API umbrella messages
@@ -512,10 +523,16 @@ message Response {
   optional SubscribeResp subscribe_resp = 70;
 }
 
+/**
+ * @brief Notification about an event that occurred in the datastore.
+ */
 message Notification {
   required NotificationEvent event = 1;
   required string destination = 2;
   required uint32 subscription_id = 3;
+
+  optional ModuleInstallNotification module_install_notif = 10;
+  optional FeatureEnableNotification feature_enable_notif = 11;
 }
 
 /**
