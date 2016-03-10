@@ -22,8 +22,12 @@
 #ifndef CL_SUBSCRIPTIONS_H_
 #define CL_SUBSCRIPTIONS_H_
 
+#include <pthread.h>
 #include "sysrepo.h"
 
+/*
+ * TODO
+ */
 typedef struct cl_sm_ctx_s cl_sm_ctx_t;
 
 /**

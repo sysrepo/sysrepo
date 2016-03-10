@@ -1861,9 +1861,7 @@ sr_feature_enable_subscribe(sr_session_ctx_t *session, sr_feature_enable_cb call
     }
 
     /* initialize subscription ctx */
-    pthread_mutex_lock(&global_lock);
     rc = cl_sm_subscription_init(cl_sm_ctx, &destination, &subscription);
-    pthread_mutex_unlock(&global_lock);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Error by initialization of the subscription.");
         goto cleanup;
@@ -1911,9 +1909,9 @@ sr_unsubscribe(sr_subscription_ctx_t *subscription)
 {
     CHECK_NULL_ARG(subscription);
 
-    pthread_mutex_lock(&global_lock);
     cl_sm_subscription_cleanup(subscription);
 
+    pthread_mutex_lock(&global_lock);
     subscriptions_cnt--;
     if (0 == subscriptions_cnt) {
         /* this is the last subscription - destroy subscription manager */

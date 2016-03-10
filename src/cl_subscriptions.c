@@ -58,8 +58,10 @@ typedef struct cl_sm_ctx_s {
     /** Binary tree used for fast connection context lookup by file descriptor. */
     sr_btree_t *fd_btree;
     
-    /** Binary tree used for fast subscription lookup by id */
+    /** Binary tree used for fast subscription lookup by id. */
     sr_btree_t *subscriptions_btree;
+    /** Lock for the subscriptions binary tree. */
+    pthread_mutex_t subscriptions_lock;
 
     /* Thread where Subscription Manger's event loop runs. */
     pthread_t event_loop_thread;
@@ -370,6 +372,8 @@ cl_sm_conn_msg_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, uint8_t *msg
 
     SR_LOG_DBG("Received a notification for subscription id=%"PRIu32".", msg->notification->subscription_id);
 
+    pthread_mutex_lock(&sm_ctx->subscriptions_lock);
+
     /* find the subscription according to id */
     subscription_lookup.id = msg->notification->subscription_id;
     subscription = sr_btree_search(sm_ctx->subscriptions_btree, &subscription_lookup);
@@ -404,6 +408,8 @@ cl_sm_conn_msg_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, uint8_t *msg
             SR_LOG_ERR("Unknown notification event received on subscription id=%"PRIu32".", subscription->id);
             rc = SR_ERR_INVAL_ARG;
     }
+
+    pthread_mutex_unlock(&sm_ctx->subscriptions_lock);
 
     sr__msg__free_unpacked(msg, NULL);
 
@@ -685,6 +691,14 @@ cl_sm_init(cl_sm_ctx_t **sm_ctx_p)
         goto cleanup;
     }
 
+    /* initialize the mutex for subscriptions */
+    rc = pthread_mutex_init(&ctx->subscriptions_lock, NULL);
+    if (0 != rc) {
+        SR_LOG_ERR_MSG("Cannot initialize subscriptions btree mutex.");
+        rc = SR_ERR_INIT_FAILED;
+        goto cleanup;
+    }
+
     /* initialize unix-domain server */
     rc = cl_sm_server_init(ctx);
     if (SR_ERR_OK != rc) {
@@ -724,6 +738,7 @@ cleanup:
             ev_loop_destroy(ctx->event_loop);
         }
         cl_sm_server_cleanup(ctx);
+        pthread_mutex_destroy(&ctx->subscriptions_lock);
         sr_btree_cleanup(ctx->subscriptions_btree);
         sr_btree_cleanup(ctx->fd_btree);
         free(ctx);
@@ -742,6 +757,7 @@ cl_sm_cleanup(cl_sm_ctx_t *sm_ctx)
     ev_loop_destroy(sm_ctx->event_loop);
     cl_sm_server_cleanup(sm_ctx);
 
+    pthread_mutex_destroy(&sm_ctx->subscriptions_lock);
     sr_btree_cleanup(sm_ctx->subscriptions_btree);
     sr_btree_cleanup(sm_ctx->fd_btree);
 
@@ -764,6 +780,8 @@ cl_sm_subscription_init(cl_sm_ctx_t *sm_ctx, char **destination, sr_subscription
     }
     subscription->sm_ctx = sm_ctx;
 
+    pthread_mutex_lock(&sm_ctx->subscriptions_lock);
+
     /* generate unused random subscription id */
     size_t attempts = 0;
     do {
@@ -774,12 +792,16 @@ cl_sm_subscription_init(cl_sm_ctx_t *sm_ctx, char **destination, sr_subscription
         if (++attempts > CL_SM_SUBSCRIPTION_ID_MAX_ATTEMPTS) {
             SR_LOG_ERR_MSG("Unable to generate an unique subscription id.");
             rc = SR_ERR_INTERNAL;
+            pthread_mutex_unlock(&sm_ctx->subscriptions_lock);
             goto cleanup;
         }
     } while (CL_SM_SUBSCRIPTION_ID_INVALID == subscription->id);
 
     /* insert the subscription into the binary tree */
     rc = sr_btree_insert(sm_ctx->subscriptions_btree, subscription);
+
+    pthread_mutex_unlock(&sm_ctx->subscriptions_lock);
+
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Cannot insert new entry into subscription binary tree (duplicate id?).");
         rc = SR_ERR_INTERNAL;
@@ -798,8 +820,16 @@ cleanup:
 void
 cl_sm_subscription_cleanup(sr_subscription_ctx_t *subscription)
 {
+    cl_sm_ctx_t *sm_ctx = NULL;
+
     CHECK_NULL_ARG_VOID2(subscription, subscription->sm_ctx);
 
+    sm_ctx = subscription->sm_ctx;
+
+    pthread_mutex_lock(&sm_ctx->subscriptions_lock);
+
     /* sm_connection_cleanup will be auto-invoked */
-    sr_btree_delete(subscription->sm_ctx->subscriptions_btree, subscription);
+    sr_btree_delete(sm_ctx->subscriptions_btree, subscription);
+
+    pthread_mutex_unlock(&sm_ctx->subscriptions_lock);
 }
