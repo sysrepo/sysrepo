@@ -124,11 +124,11 @@ cl_sm_subscription_cmp_id(const void *a, const void *b)
 static void
 cl_sm_subscription_cleanup_internal(void *subscription_p)
 {
-    sr_subscription_ctx_t *subscirption = NULL;
+    sr_subscription_ctx_t *subscription = NULL;
 
     if (NULL != subscription_p) {
-        subscirption = (sr_subscription_ctx_t *)subscirption;
-        free(subscirption);
+        subscription = (sr_subscription_ctx_t *)subscription_p;
+        free(subscription);
     }
 }
 
