@@ -725,6 +725,8 @@ cl_sm_init(cl_sm_ctx_t **sm_ctx_p)
         goto cleanup;
     }
 
+    srand(time(NULL));
+
     /* initialize event loop */
     /* According to our measurements, EPOLL backend is significantly slower for
      * fewer file descriptors, so we are disabling it for now. */

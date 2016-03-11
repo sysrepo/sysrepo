@@ -976,7 +976,7 @@ cm_server_watcher_cb(struct ev_loop *loop, ev_io *w, int revents)
 }
 
 /**
- * @brief
+ * @brief Creates a new connection to the notification destination address.
  */
 static int
 cm_notif_conn_create(cm_ctx_t *cm_ctx, const char *socket_path, sm_connection_t **connection_p)
@@ -1005,6 +1005,14 @@ cm_notif_conn_create(cm_ctx_t *cm_ctx, const char *socket_path, sm_connection_t 
     rc = sm_connection_start(cm_ctx->sm_ctx, CM_AF_UNIX_SERVER, fd, &connection);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Cannot start connection in Session manager (fd=%d).", fd);
+        rc = SR_ERR_INTERNAL;
+        goto cleanup;
+    }
+
+    /* assign socket path as destination address */
+    rc = sm_connection_assign_dst(cm_ctx->sm_ctx, connection, socket_path);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Cannot assign socket path to the connection (fd=%d).", fd);
         rc = SR_ERR_INTERNAL;
         goto cleanup;
     }
@@ -1043,24 +1051,33 @@ cleanup:
     return rc;
 }
 
+/**
+ * @brief Processes an outgoing notification (notification to be sent to the client library).
+ */
 static int
 cm_out_notif_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
 {
-
-
     sm_connection_t *connection = NULL;
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG2(cm_ctx, msg);
+    CHECK_NULL_ARG3(cm_ctx, msg, msg->notification);
 
     SR_LOG_DBG_MSG("Sending a new notification.");
 
-    // TODO: lookup for already existing connection
-
-    rc = cm_notif_conn_create(cm_ctx, msg->notification->destination, &connection);
-    if (SR_ERR_OK != rc) {
-        return rc;
-        // TODO: remove subscriptions?
+    /* get a connection to the notification destination */
+    rc = sm_connection_find_dst(cm_ctx->sm_ctx, msg->notification->destination, &connection);
+    if (SR_ERR_OK == rc) {
+        /* a connection to the destination already exists - reuse */
+        SR_LOG_DBG("Reusing existing connection on fd=%d for the notification destination '%s'",
+                connection->fd, msg->notification->destination);
+    } else {
+        /* connection to that destination does not exist - connect */
+        SR_LOG_DBG("Creating a new connection for the notification destination '%s'", msg->notification->destination);
+        rc = cm_notif_conn_create(cm_ctx, msg->notification->destination, &connection);
+        if (SR_ERR_OK != rc) {
+            return rc;
+            // TODO: remove subscriptions?
+        }
     }
 
     // TODO: create a session??
@@ -1073,6 +1090,9 @@ cm_out_notif_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
     return SR_ERR_OK;
 }
 
+/**
+ * @brief Processes an outgoing message (message to be sent to the client library).
+ */
 static int
 cm_out_msg_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
 {

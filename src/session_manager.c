@@ -43,8 +43,9 @@
 typedef struct sm_ctx_s {
     sm_cleanup_cb session_cleanup_cb;     /**< Callback called by session cleanup. */
     sm_cleanup_cb connection_cleanup_cb;  /**< Callback called by connection cleanup. */
-    sr_btree_t *session_id_btree;         /**< binary tree for fast session lookup by id. */
-    sr_btree_t *connection_fd_btree;      /**< binary tree for fast connection lookup by file descriptor. */
+    sr_btree_t *session_id_btree;         /**< Binary tree for fast session lookup by id. */
+    sr_btree_t *connection_fd_btree;      /**< Binary tree for fast connection lookup by file descriptor. */
+    sr_btree_t *connection_dst_btree;     /**< Binary tree for fast connection lookup by destination address. */
 } sm_ctx_t;
 
 /**
@@ -83,6 +84,33 @@ sm_connection_cmp_fd(const void *a, const void *b)
     if (conn_a->fd == conn_b->fd) {
         return 0;
     } else if (conn_a->fd < conn_b->fd) {
+        return -1;
+    } else {
+        return 1;
+    }
+}
+
+/**
+ * @brief Compares two connections by associated destination addresses
+ * (used by lookups in fd binary tree).
+ */
+static int
+sm_connection_cmp_dst(const void *a, const void *b)
+{
+    assert(a);
+    assert(b);
+    sm_connection_t *conn_a = (sm_connection_t*)a;
+    sm_connection_t *conn_b = (sm_connection_t*)b;
+
+    int res = 0;
+
+    assert(conn_a->dst_address);
+    assert(conn_b->dst_address);
+
+    res = strcmp(conn_a->dst_address, conn_b->dst_address);
+    if (res == 0) {
+        return 0;
+    } else if (res < 0) {
         return -1;
     } else {
         return 1;
@@ -134,6 +162,7 @@ sm_connection_cleanup(void *connection_p)
         if ((NULL != connection->sm_ctx) && (NULL != connection->sm_ctx->connection_cleanup_cb)) {
             connection->sm_ctx->connection_cleanup_cb(connection);
         }
+        free((void*)connection->dst_address);
         free(connection);
     }
 }
@@ -239,6 +268,14 @@ sm_init(sm_cleanup_cb session_cleanup_cb, sm_cleanup_cb connection_cleanup_cb, s
         goto cleanup;
     }
 
+    /* create binary tree for fast connection lookup by fd,
+     * with automatic cleanup when the connection is removed from tree */
+    rc = sr_btree_init(sm_connection_cmp_dst, NULL, &ctx->connection_dst_btree);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Cannot allocate binary tree for connection destinations.");
+        goto cleanup;
+    }
+
     srand(time(NULL));
 
     SR_LOG_DBG("Session Manager initialized successfully, ctx=%p.", (void*)ctx);
@@ -262,6 +299,9 @@ sm_cleanup(sm_ctx_t *sm_ctx)
         }
         if (NULL != sm_ctx->connection_fd_btree) {
             sr_btree_cleanup(sm_ctx->connection_fd_btree);
+        }
+        if (NULL != sm_ctx->connection_dst_btree) {
+            sr_btree_cleanup(sm_ctx->connection_dst_btree);
         }
         free(sm_ctx);
     }
@@ -311,7 +351,7 @@ sm_connection_start(const sm_ctx_t *sm_ctx, const sm_connection_type_t type, con
 }
 
 int
-sm_connection_stop(const sm_ctx_t *sm_ctx,  sm_connection_t *connection)
+sm_connection_stop(const sm_ctx_t *sm_ctx, sm_connection_t *connection)
 {
     sm_session_list_t *tmp = NULL;
 
@@ -326,6 +366,7 @@ sm_connection_stop(const sm_ctx_t *sm_ctx,  sm_connection_t *connection)
         tmp = tmp->next;
     }
 
+    sr_btree_delete(sm_ctx->connection_dst_btree, connection);
     sr_btree_delete(sm_ctx->connection_fd_btree, connection); /* sm_connection_cleanup auto-invoked */
 
     return SR_ERR_OK;
@@ -484,6 +525,45 @@ sm_connection_find_fd(const sm_ctx_t *sm_ctx, const int fd, sm_connection_t **co
 
     if (NULL == *connection) {
         SR_LOG_WRN("Cannot find the connection with fd=%d.", fd);
+        return SR_ERR_NOT_FOUND;
+    }
+    return SR_ERR_OK;
+}
+
+int
+sm_connection_assign_dst(const sm_ctx_t *sm_ctx, sm_connection_t *connection, const char *dst_address)
+{
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG3(sm_ctx, connection, dst_address);
+
+    connection->dst_address = strdup(dst_address);
+    if (NULL == connection->dst_address) {
+        SR_LOG_ERR_MSG("Cannot duplicate destination address.");
+        return SR_ERR_NOMEM;
+    }
+
+    /* insert connection into binary tree for fast lookup by destination address */
+    rc = sr_btree_insert(sm_ctx->connection_dst_btree, connection);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Cannot insert new entry into fd binary tree (duplicate destination address?).");
+    }
+
+    return rc;
+}
+
+int
+sm_connection_find_dst(const sm_ctx_t *sm_ctx, const char *dst_address, sm_connection_t **connection)
+{
+    sm_connection_t tmp_conn = { 0, };
+
+    CHECK_NULL_ARG3(sm_ctx, dst_address, connection);
+
+    tmp_conn.dst_address = dst_address;
+    *connection = sr_btree_search(sm_ctx->connection_dst_btree, &tmp_conn);
+
+    if (NULL == *connection) {
+        SR_LOG_DBG("Cannot find the connection with dst_address address='%s'.", dst_address);
         return SR_ERR_NOT_FOUND;
     }
     return SR_ERR_OK;
