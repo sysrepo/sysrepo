@@ -133,6 +133,7 @@ message SessionRefreshReq {
  * @brief Response to sr_session_data_refresh request.
  */
 message SessionRefreshResp {
+  repeated Error errors = 1;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

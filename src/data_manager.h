@@ -83,6 +83,7 @@ typedef enum dm_operation_e {
  */
 typedef struct dm_sess_op_s{
     dm_operation_t op;          /**< Operation kind*/
+    bool has_error;             /**< Flag if the operation should be performed during commit*/
     xp_loc_id_t *loc_id;        /**< Location id */
     sr_val_t *val;              /**< Value to perform operation with, can be NULL*/
     sr_edit_options_t options;  /**< Operation edit options */
@@ -96,11 +97,9 @@ typedef struct dm_commit_context_s {
     int *fds;                   /**< opened file descriptors */
     bool *existed;              /**< flag wheter the file for the filedesriptor existed (and should be truncated) before commit*/
     size_t modif_count;         /**< number of modified models fds to be closed*/
-#ifdef HAVE_STAT_ST_MTIM
     struct ly_set *up_to_date_models; /**< set of module names where the timestamp of the session copy is equal to file system timestamp */
-#endif
-    const dm_sess_op_t *operations;   /**< pointer to the list of operations performed in session to be commited */
-    size_t oper_count;                /**< number of operation in the operations list */
+    dm_sess_op_t *operations;   /**< pointer to the list of operations performed in session to be commited */
+    size_t oper_count;          /**< number of operation in the operations list */
 } dm_commit_context_t;
 
 /**
@@ -217,6 +216,19 @@ int dm_validate_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, sr_e
 int dm_discard_changes(dm_ctx_t *dm_ctx, dm_session_t *session);
 
 /**
+ * @brief Removes the session copies of the data trees that are not up to date.
+ * Subsequent calls will load the fresh state.
+ *
+ * @param [in] dm_ctx
+ * @param [in] session to be updated
+ * @param [out] up_to_date_models Set of model names that are up to date an operation
+ * can applied on them can be skipped
+ *
+ * @return Error code (SR_ERR_OK on success)
+ */
+int dm_update_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, struct ly_set **up_to_date_models);
+
+/**
  * @brief Counts modified models and allocates structures used during commit process if the
  * number of modified models is greater than zero. In case of error all allocated resources
  * are cleaned up.
@@ -273,6 +285,20 @@ int dm_add_operation(dm_session_t *session, dm_operation_t op, xp_loc_id_t *loc_
  * @param [in] session
  */
 void dm_remove_last_operation(dm_session_t *session);
+
+/**
+ * @brief Return the operation of the session
+ * @param [in] session
+ * @param [out] ops
+ * @param [out] count
+ */
+void dm_get_session_operations(dm_session_t *session, dm_sess_op_t **ops, size_t *count);
+
+/**
+ * @brief Deletes the operations from session that are marked with error flag
+ * @param [in] session
+ */
+void dm_remove_operations_with_error(dm_session_t *session);
 
 /**
  * @brief Frees memory allocated for error and error xpath stored in session.

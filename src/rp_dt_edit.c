@@ -27,6 +27,7 @@
 #include "access_control.h"
 #include "xpath_processor.h"
 #include <pthread.h>
+#include <libyang/libyang.h>
 
 
 /**
@@ -788,32 +789,35 @@ rp_dt_delete_item_wrapper(rp_ctx_t *rp_ctx, rp_session_t *session, const char *x
 
 /**
  * @brief Perform the list of provided operations on the session. Stops
- * on the first error.
+ * on the first error, if continue on error is false. If the continue on error
+ * is set to true, operation is marked with has_error flag.
  * @param [in] ctx
  * @param [in] session
  * @param [in] operations
  * @param [in] count
- * @param [in] matched_ts - set of model's name where the current modify timestamp
+ * @param [in] continue_on_error flag denoting whether replay should be stopped on first error
+ * @param [in] models_to_skip - set of model's name where the current modify timestamp
  * matches the timestamp of the session copy. Operation for this models skipped.
  * @return Error code (SR_ERR_OK on success)
  */
 static int
-rp_dt_replay_operations(dm_ctx_t *ctx, dm_session_t *session, const dm_sess_op_t *operations, size_t count
-                #ifdef HAVE_STAT_ST_MTIM
-, struct ly_set *matched_ts
-#endif
-)
+rp_dt_replay_operations(dm_ctx_t *ctx, dm_session_t *session, dm_sess_op_t *operations, size_t count,
+        bool continue_on_error, struct ly_set *models_to_skip)
 {
     CHECK_NULL_ARG3(ctx, session, operations);
     int rc = SR_ERR_OK;
+    bool err_occured = false; /* flag used in case of continue_on_err */
 
     for (size_t i = 0; i < count; i++) {
-        const dm_sess_op_t *op = &operations[i];
-        #ifdef HAVE_STAT_ST_MTIM
+        dm_sess_op_t *op = &operations[i];
+        if (op->has_error) {
+            continue;
+        }
+        /* check if the operation should be skipped */
         bool match = false;
-            for (unsigned int m = 0; m < matched_ts->number; m++){
-                if (0 == XP_CMP_FIRST_NS(op->loc_id, (char *) matched_ts->set[m])){
-                    SR_LOG_DBG("Skipping op for model %s", (char *) matched_ts->set[m]);
+            for (unsigned int m = 0; m < models_to_skip->number; m++){
+                if (0 == XP_CMP_FIRST_NS(op->loc_id, (char *) models_to_skip->set[m])){
+                    SR_LOG_DBG("Skipping op for model %s", (char *) models_to_skip->set[m]);
                     match = true;
                     break;
                 }
@@ -821,7 +825,7 @@ rp_dt_replay_operations(dm_ctx_t *ctx, dm_session_t *session, const dm_sess_op_t
         if (match){
             continue;
         }
-        #endif
+
         switch (op->op) {
         case DM_SET_OP:
             rc = rp_dt_set_item(ctx, session, op->loc_id, op->options, op->val);
@@ -839,11 +843,19 @@ rp_dt_replay_operations(dm_ctx_t *ctx, dm_session_t *session, const dm_sess_op_t
 
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR("Replay of operation %zu / %zu failed", i, count);
-            return rc;
+            if (!continue_on_error){
+                return rc;
+            } else {
+                op->has_error = true;
+                err_occured = true;
+            }
         }
     }
-
-    return rc;
+    if (continue_on_error && err_occured){
+        return SR_ERR_INTERNAL;
+    } else{
+        return rc;
+    }
 }
 
 int
@@ -889,11 +901,8 @@ rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, sr_error_info_t **errors, 
     SR_LOG_DBG_MSG("Commit (3/6): all modified models loaded successfully");
 
     /* replay operations */
-    rc = rp_dt_replay_operations(rp_ctx->dm_ctx, commit_ctx->session, commit_ctx->operations, commit_ctx->oper_count
-#ifdef HAVE_STAT_ST_MTIM
-            , commit_ctx->up_to_date_models
-#endif
-            );
+    rc = rp_dt_replay_operations(rp_ctx->dm_ctx, commit_ctx->session, commit_ctx->operations,
+            commit_ctx->oper_count, false, commit_ctx->up_to_date_models);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Replay of operations failed");
         goto cleanup;
@@ -920,5 +929,82 @@ cleanup:
         SR_LOG_DBG_MSG("Commit (6/6): finished successfully");
     }
     pthread_mutex_unlock(&rp_ctx->commit_lock);
+    return rc;
+}
+
+static void
+rp_dt_create_refresh_errors(const dm_sess_op_t *ops, size_t op_count, sr_error_info_t **errors, size_t *err_cnt)
+{
+    CHECK_NULL_ARG_VOID3(ops, errors, err_cnt);
+    for (size_t i = 0; i < op_count; i++) {
+        const dm_sess_op_t *op = &ops[i];
+        if (!op->has_error) {
+            continue;
+        }
+        sr_error_info_t *tmp_err = realloc(*errors, (*err_cnt +1)* sizeof (**errors));
+        if (NULL == tmp_err) {
+            SR_LOG_ERR_MSG("Memory allocation failed");
+            return;
+        }
+        *errors = tmp_err;
+        switch (op->op) {
+            case DM_SET_OP:
+                (*errors)[*err_cnt].message = strdup("SET operation can not be merged with current datastore state");
+                break;
+            case DM_DELETE_OP:
+                (*errors)[*err_cnt].message = strdup("DELETE Operation can not be merged with current datastore state");
+                break;
+            case DM_MOVE_DOWN_OP:
+            case DM_MOVE_UP_OP:
+                (*errors)[*err_cnt].message = strdup("MOVE Operation can not be merged with current datastore state");
+                break;
+            default:
+                (*errors)[*err_cnt].message = strdup("An operation can not be merged with current datastore state");
+        }
+        (*errors)[*err_cnt].path = strdup(op->loc_id->xpath);
+        (*err_cnt)++;
+    }
+}
+
+int
+rp_dt_refresh_session(rp_ctx_t *rp_ctx, rp_session_t *session, sr_error_info_t **errors, size_t *err_cnt)
+{
+    CHECK_NULL_ARG2(rp_ctx, session);
+    int rc = SR_ERR_OK;
+    struct ly_set *up_to_date = NULL;
+    dm_sess_op_t *ops = NULL;
+    size_t op_count = 0;
+    *err_cnt = 0;
+    *errors = NULL;
+
+    /* update models and retrieve list of data models-to be skipped in replay */
+    rc = dm_update_session_data_trees(rp_ctx->dm_ctx, session->dm_session, &up_to_date);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Update of data trees failed");
+        return rc;
+    }
+
+    dm_get_session_operations(session->dm_session, &ops, &op_count);
+
+    if (0 == op_count) {
+        SR_LOG_INF_MSG("No operation has been performed on this session so far");
+        goto cleanup;
+    }
+
+    /* replay operations continue on error */
+    rc = rp_dt_replay_operations(rp_ctx->dm_ctx, session->dm_session,
+                ops, op_count, true, up_to_date);
+
+    if (SR_ERR_OK != rc) {
+        /* report errors for the ops that could not be performed */
+        rp_dt_create_refresh_errors(ops, op_count, errors, err_cnt);
+        /* remove operations that has an error */
+        dm_remove_operations_with_error(session->dm_session);
+        /* generate errors and remove ops with error */
+        SR_LOG_ERR_MSG("Replay of some operations failed");
+    }
+    SR_LOG_DBG_MSG("End of session refresh");
+cleanup:
+    ly_set_free(up_to_date);
     return rc;
 }

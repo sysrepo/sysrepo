@@ -115,6 +115,19 @@ int rp_dt_delete_item_wrapper(rp_ctx_t *rp_ctx, rp_session_t *session, const cha
  * @return Error code (SR_ERR_OK on success), SR_ERR_COMMIT_FAILED, SR_ERR_VALIDATION_FAILED, SR_ERR_IO
  */
 int rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, sr_error_info_t **errors, size_t *err_cnt);
+
+/**
+ * @brief Tries to merge the current state of session with the file system change.
+ * Changes that can not be merged with current data store state are skipped and
+ * corresponding operations are deleted from session.
+ * @param [in] rp_ctx
+ * @param [in] session
+ * @param [out] errors
+ * @param [out] err_cnt
+ * @return Error code (SR_ERR_OK on success) SR_ERR_INTERNAL if some operation can not
+ * be merged
+ */
+int rp_dt_refresh_session(rp_ctx_t *rp_ctx, rp_session_t *session, sr_error_info_t **errors, size_t *err_cnt);
 #endif /* RP_DT_EDIT_H */
 
 /**

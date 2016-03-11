@@ -554,7 +554,7 @@ rp_discard_changes_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *sessi
  * @brief Processes a session_data_refresh request.
  */
 static int
-rp_session_refresh_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
+rp_session_refresh_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
 {
     Sr__Msg *resp = NULL;
     int rc = SR_ERR_OK;
@@ -570,15 +570,18 @@ rp_session_refresh_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *sessi
         return SR_ERR_NOMEM;
     }
 
-    // TODO: implement proper data refresh with not discarding unchanged datatrees
-    rc = dm_discard_changes(rp_ctx->dm_ctx, session->dm_session);
+    sr_error_info_t *errors = NULL;
+    size_t err_cnt = 0;
+
+    rc = rp_dt_refresh_session(rp_ctx, session, &errors, &err_cnt);
 
     /* set response code */
     resp->response->result = rc;
 
-    rc = rp_resp_fill_errors(resp, session->dm_session);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Copying errors to gpb failed");
+    /* copy error information to GPB  (if any) */
+    if (err_cnt > 0) {
+        sr_gpb_fill_errors(errors, err_cnt, &resp->response->session_refresh_resp->errors, &resp->response->session_refresh_resp->n_errors);
+        sr_free_errors(errors, err_cnt);
     }
 
     /* send the response */
