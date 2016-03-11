@@ -1426,6 +1426,47 @@ dm_discard_changes(dm_ctx_t *dm_ctx, dm_session_t *session)
     return SR_ERR_OK;
 }
 
+static int
+dm_is_info_copy_uptodate(const char *file_name, const dm_data_info_t *info, bool *res)
+{
+    CHECK_NULL_ARG(info);
+    int rc;
+#ifdef HAVE_STAT_ST_MTIM
+        struct stat st = {0};
+        rc = stat(file_name, &st);
+        if (-1 == rc) {
+            SR_LOG_ERR_MSG("Stat failed");
+            return SR_ERR_INTERNAL;
+        }
+        struct timespec now;
+        clock_gettime(CLOCK_REALTIME, &now);
+        SR_LOG_DBG("Session copy %s: mtime sec=%lld nsec=%lld\n", info->module->name,
+                (long long) info->timestamp.tv_sec,
+                (long long) info->timestamp.tv_nsec);
+        SR_LOG_DBG("Loaded module %s: mtime sec=%lld nsec=%lld\n", info->module->name,
+                (long long) st.st_mtim.tv_sec,
+                (long long) st.st_mtim.tv_nsec);
+        SR_LOG_DBG("Current time: mtime sec=%lld nsec=%lld\n",
+                (long long) now.tv_sec,
+                (long long) now.tv_nsec);
+        /* check if we should update session copy conditions
+         * is the negation of the optimized commit */
+        if (info->timestamp.tv_sec != st.st_mtim.tv_sec ||
+            info->timestamp.tv_nsec != st.st_mtim.tv_nsec ||
+            (now.tv_sec == st.st_mtim.tv_sec && difftime(now.tv_nsec, st.st_mtim.tv_nsec) < NANOSEC_THRESHOLD)) {
+            SR_LOG_DBG("Module %s will be refreshed", info->module->name);
+            *res = false;
+
+        } else {
+            *res = true;
+        }
+#else
+        return false;
+#endif
+        return SR_ERR_OK;
+
+}
+
 int
 dm_update_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, struct ly_set **up_to_date_models)
 {
@@ -1468,42 +1509,22 @@ dm_update_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, struct ly_
         /*  to lock for read, blocking */
         rc = sr_lock_fd(fd, false, false);
 
-#ifdef HAVE_STAT_ST_MTIM
-        struct stat st = {0};
-        rc = stat(file_name, &st);
-        if (-1 == rc) {
-            SR_LOG_ERR_MSG("Stat failed");
-            rc = SR_ERR_INTERNAL;
+        bool copy_uptodate = false;
+        rc = dm_is_info_copy_uptodate(file_name, info, &copy_uptodate);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR_MSG("File up to date check failed");
             close(fd);
             goto cleanup;
         }
-        struct timespec now;
-        clock_gettime(CLOCK_REALTIME, &now);
-        SR_LOG_DBG("Session copy %s: mtime sec=%lld nsec=%lld\n", info->module->name,
-                (long long) info->timestamp.tv_sec,
-                (long long) info->timestamp.tv_nsec);
-        SR_LOG_DBG("Loaded module %s: mtime sec=%lld nsec=%lld\n", info->module->name,
-                (long long) st.st_mtim.tv_sec,
-                (long long) st.st_mtim.tv_nsec);
-        SR_LOG_DBG("Current time: mtime sec=%lld nsec=%lld\n",
-                (long long) now.tv_sec,
-                (long long) now.tv_nsec);
-        /* check if we should update session copy conditions
-         * is the negation of the optimized commit */
-        if (info->timestamp.tv_sec != st.st_mtim.tv_sec ||
-                info->timestamp.tv_nsec != st.st_mtim.tv_nsec ||
-                (now.tv_sec == st.st_mtim.tv_sec && difftime(now.tv_nsec, st.st_mtim.tv_nsec) < NANOSEC_THRESHOLD)) {
-            SR_LOG_DBG("Module %s will be refreshed", info->module->name);
-            ly_set_add(to_be_refreshed, info);
 
-        } else {
+        if (copy_uptodate) {
             if (info->modified) {
                 ly_set_add(up_to_date, (void *) info->module->name);
             }
+        } else {
+            SR_LOG_DBG("Module %s will be refreshed", info->module->name);
+            ly_set_add(to_be_refreshed, info);
         }
-#else
-    ly_set_add(to_be_refreshed, info);
-#endif
         free(file_name);
         file_name = NULL;
         close(fd);
@@ -1631,9 +1652,7 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
 {
     CHECK_NULL_ARG(c_ctx);
     CHECK_NULL_ARG5(dm_ctx, session, c_ctx->session, c_ctx->fds, c_ctx->existed);
-#ifdef HAVE_STAT_ST_MTIM
     CHECK_NULL_ARG(c_ctx->up_to_date_models);
-#endif
     dm_data_info_t *info = NULL;
     size_t i = 0;
     size_t count = 0;
@@ -1658,116 +1677,96 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
 
     ac_set_user_identity(dm_ctx->ac_ctx, session->user_credentails);
 
-    while (NULL != (info = sr_btree_get_at(session->session_modules, i))) {
-        if (info->modified) {
-            rc = sr_get_data_file_name(dm_ctx->data_search_dir, info->module->name, session->datastore, &file_name);
-            if (SR_ERR_OK != rc) {
-                SR_LOG_ERR_MSG("Get data file name failed");
+    while (NULL != (info = sr_btree_get_at(session->session_modules, i++))) {
+        if (!info->modified) {
+            continue;
+        }
+        rc = sr_get_data_file_name(dm_ctx->data_search_dir, info->module->name, session->datastore, &file_name);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR_MSG("Get data file name failed");
+            goto cleanup;
+        }
+
+        c_ctx->fds[count] = open(file_name, O_RDWR);
+        if (-1 == c_ctx->fds[count]) {
+            SR_LOG_DBG("File %s can not be opened for read write", file_name);
+            if (EACCES == errno) {
+                SR_LOG_ERR("File %s can not be opened because of authorization", file_name);
+                rc = SR_ERR_UNAUTHORIZED;
                 goto cleanup;
             }
-            c_ctx->fds[count] = open(file_name, O_RDWR);
-            if (-1 == c_ctx->fds[count]) {
-                SR_LOG_DBG("File %s can not be opened for read write", file_name);
-                if (EACCES == errno) {
-                    SR_LOG_ERR("File %s can not be opened because of authorization", file_name);
-                    rc = SR_ERR_UNAUTHORIZED;
+
+            if (ENOENT == errno) {
+                SR_LOG_DBG("File %s does not exist, trying to create an empty one", file_name);
+                c_ctx->fds[count] = open(file_name, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
+                if (-1 == c_ctx->fds[count]) {
+                    SR_LOG_ERR("File %s can not be created", file_name);
+                    rc = SR_ERR_IO;
                     goto cleanup;
                 }
+            }
+        } else {
+            c_ctx->existed[count] = true;
+        }
+        /* file was opened successfully increment the number of files to be closed */
+        c_ctx->modif_count++;
+        /* try to lock for write, non-blocking */
+        rc = sr_lock_fd(c_ctx->fds[count], true, false);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR("Locking of file '%s' failed: %s.", file_name, sr_strerror(rc));
+            rc = SR_ERR_COMMIT_FAILED;
+            goto cleanup;
+        }
+        dm_data_info_t *di = NULL;
 
-                if (ENOENT == errno) {
-                    SR_LOG_DBG("File %s does not exist, trying to create an empty one", file_name);
-                    c_ctx->fds[count] = open(file_name, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
-                    if (-1 == c_ctx->fds[count]) {
-                        SR_LOG_ERR("File %s can not be created", file_name);
-                        rc = SR_ERR_IO;
-                        goto cleanup;
-                    }
-                }
-            } else {
-                c_ctx->existed[count] = true;
-            }
-            /* file was opened successfully increment the number of files to be closed */
-            c_ctx->modif_count++;
-            /* try to lock for write, non-blocking */
-            rc = sr_lock_fd(c_ctx->fds[count], true, false);
-            if (SR_ERR_OK != rc) {
-                SR_LOG_ERR("Locking of file '%s' failed: %s.", file_name, sr_strerror(rc));
-                rc = SR_ERR_COMMIT_FAILED;
-                goto cleanup;
-            }
-            dm_data_info_t *di = NULL;
-#ifdef HAVE_STAT_ST_MTIM
-            struct stat st = {0};
-            rc = stat(file_name, &st);
-            if (-1 == rc) {
-                SR_LOG_ERR_MSG("Stat failed");
+        bool copy_uptodate = false;
+        rc = dm_is_info_copy_uptodate(file_name, info, &copy_uptodate);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR_MSG("File up to date check failed");
+            goto cleanup;
+        }
+
+        if (copy_uptodate) {
+            SR_LOG_DBG("Timestamp for the model %s matches, ops will be skipped", info->module->name);
+            rc = ly_set_add(c_ctx->up_to_date_models, (void *) info->module->name);
+            if (0 != rc) {
+                SR_LOG_ERR_MSG("Adding to ly set failed");
                 rc = SR_ERR_INTERNAL;
                 goto cleanup;
             }
-            struct timespec now;
-            clock_gettime(CLOCK_REALTIME, &now);
-            SR_LOG_DBG("Loaded module %s: mtime sec=%lld nsec=%lld\n", info->module->name,
-                        (long long) st.st_mtim.tv_sec,
-                        (long long) st.st_mtim.tv_nsec);
-            SR_LOG_DBG("Current time: mtime sec=%lld nsec=%lld\n",
-                        (long long) now.tv_sec,
-                        (long long) now.tv_nsec);
-            SR_LOG_DBG("Nanosec diff: %lld", (long long) difftime(now.tv_nsec, st.st_mtim.tv_nsec));
-            /* check if we do optimized commit - skipping the merge of changes just overwrite the datafile
-             * Conditions:
-             *  - modification date of the the session copy and data file must match
-             *  - at least NANOSEC_THRESHOULD has elapsed since loading the file
-             */
-            if (info->timestamp.tv_sec == st.st_mtim.tv_sec &&
-                    info->timestamp.tv_nsec == st.st_mtim.tv_nsec
-                    && (now.tv_sec != st.st_mtim.tv_sec || difftime(now.tv_nsec, st.st_mtim.tv_nsec) > NANOSEC_THRESHOLD)) {
-                SR_LOG_DBG("Loaded module %s: mtime sec=%lld nsec=%lld\n", info->module->name,
-                        (long long) st.st_mtim.tv_sec,
-                        (long long) st.st_mtim.tv_nsec);
-                SR_LOG_DBG("Timestamp for the model %s matches, ops will be skipped", info->module->name);
-                rc = ly_set_add(c_ctx->up_to_date_models, (void *) info->module->name);
-                if (0 != rc) {
-                    SR_LOG_ERR_MSG("Adding to ly set failed");
-                    rc = SR_ERR_INTERNAL;
-                    goto cleanup;
-                }
-                di = calloc(1, sizeof(*di));
-                if (NULL == di) {
-                    SR_LOG_ERR_MSG("Memory allocation failed");
-                    rc = SR_ERR_NOMEM;
-                    goto cleanup;
-                }
-                di->node = sr_dup_datatree(info->node);
-                if (NULL == di->node) {
-                    SR_LOG_ERR_MSG("Data tree duplication failed");
-                    rc = SR_ERR_INTERNAL;
-                    dm_data_info_free(di);
-                    goto cleanup;
-                }
-                di->module = info->module;
-            } else {
-#endif
-                /* if the file existed pass FILE 'r+', otherwise pass -1 because there is 'w' fd already */
-                rc = dm_load_data_tree_file(dm_ctx, c_ctx->existed[count] ? c_ctx->fds[count] : -1, file_name, info->module, &di);
-                if (SR_ERR_OK != rc) {
-                    SR_LOG_ERR_MSG("Loading data file failed");
-                    goto cleanup;
-                }
-#ifdef HAVE_STAT_ST_MTIM
+            di = calloc(1, sizeof (*di));
+            if (NULL == di) {
+                SR_LOG_ERR_MSG("Memory allocation failed");
+                rc = SR_ERR_NOMEM;
+                goto cleanup;
             }
-#endif
-            rc = sr_btree_insert(c_ctx->session->session_modules, (void *) di);
-            if (SR_ERR_OK != rc) {
-                SR_LOG_ERR("Insert into commit session avl failed module %s", info->module->name);
+            di->node = sr_dup_datatree(info->node);
+            if (NULL == di->node) {
+                SR_LOG_ERR_MSG("Data tree duplication failed");
+                rc = SR_ERR_INTERNAL;
                 dm_data_info_free(di);
                 goto cleanup;
             }
-            free(file_name);
-            file_name = NULL;
-
-            count++;
+            di->module = info->module;
+        } else {
+            /* if the file existed pass FILE 'r+', otherwise pass -1 because there is 'w' fd already */
+            rc = dm_load_data_tree_file(dm_ctx, c_ctx->existed[count] ? c_ctx->fds[count] : -1, file_name, info->module, &di);
+            if (SR_ERR_OK != rc) {
+                SR_LOG_ERR_MSG("Loading data file failed");
+                goto cleanup;
+            }
         }
-        i++;
+
+        rc = sr_btree_insert(c_ctx->session->session_modules, (void *) di);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR("Insert into commit session avl failed module %s", info->module->name);
+            dm_data_info_free(di);
+            goto cleanup;
+        }
+        free(file_name);
+        file_name = NULL;
+
+        count++;
     }
 
     ac_unset_user_identity(dm_ctx->ac_ctx);
