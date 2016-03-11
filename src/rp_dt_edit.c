@@ -930,6 +930,40 @@ cleanup:
     return rc;
 }
 
+static void
+rp_dt_create_refresh_errors(const dm_sess_op_t *ops, size_t op_count, sr_error_info_t **errors, size_t *err_cnt)
+{
+    CHECK_NULL_ARG_VOID3(ops, errors, err_cnt);
+    for (size_t i = 0; i < op_count; i++) {
+        const dm_sess_op_t *op = &ops[i];
+        if (!op->has_error) {
+            continue;
+        }
+        sr_error_info_t *tmp_err = realloc(*errors, (*err_cnt +1)* sizeof (**errors));
+        if (NULL == tmp_err) {
+            SR_LOG_ERR_MSG("Memory allocation failed");
+            return;
+        }
+        *errors = tmp_err;
+        switch (op->op) {
+            case DM_SET_OP:
+                (*errors)[*err_cnt].message = strdup("SET operation can not be merged with current datastore state");
+                break;
+            case DM_DELETE_OP:
+                (*errors)[*err_cnt].message = strdup("DELETE Operation can not be merged with current datastore state");
+                break;
+            case DM_MOVE_DOWN_OP:
+            case DM_MOVE_UP_OP:
+                (*errors)[*err_cnt].message = strdup("MOVE Operation can not be merged with current datastore state");
+                break;
+            default:
+                (*errors)[*err_cnt].message = strdup("An operation can not be merged with current datastore state");
+        }
+        (*errors)[*err_cnt].path = strdup(op->loc_id->xpath);
+        (*err_cnt)++;
+    }
+}
+
 int
 rp_dt_refresh_session(rp_ctx_t *rp_ctx, rp_session_t *session, sr_error_info_t **errors, size_t *err_cnt)
 {
@@ -961,21 +995,7 @@ rp_dt_refresh_session(rp_ctx_t *rp_ctx, rp_session_t *session, sr_error_info_t *
 
     if (SR_ERR_OK != rc) {
         /* report errors for the ops that could not be performed */
-        for (size_t i = 0; i < op_count; i++) {
-            dm_sess_op_t *op = &ops[i];
-            if (op->has_error) {
-                (*err_cnt)++;
-                sr_error_info_t *tmp_err = realloc(*errors, *err_cnt * sizeof (**errors));
-                if (NULL == tmp_err) {
-                    SR_LOG_ERR_MSG("Memory allocation failed");
-                    sr_free_errors(*errors, *err_cnt - 1);
-                    return SR_ERR_NOMEM;
-                }
-                *errors = tmp_err;
-                (*errors)[(*err_cnt) - 1].message = strdup("Operation can be merged with current datastore state");
-                (*errors)[(*err_cnt) - 1].path = strdup(op->loc_id->xpath);
-            }
-        }
+        rp_dt_create_refresh_errors(ops, op_count, errors, err_cnt);
         /* remove operations that has an error */
         dm_remove_operations_with_error(session->dm_session);
         /* generate errors and remove ops with error */

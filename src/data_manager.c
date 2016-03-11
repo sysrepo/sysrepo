@@ -1488,7 +1488,6 @@ dm_update_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, struct ly_
         SR_LOG_DBG("Current time: mtime sec=%lld nsec=%lld\n",
                 (long long) now.tv_sec,
                 (long long) now.tv_nsec);
-        SR_LOG_DBG("!!!REFRESH:Nanosec diff: %lld", (long long) difftime(now.tv_nsec, st.st_mtim.tv_nsec));
         /* check if we should update session copy conditions
          * is the negation of the optimized commit */
         if (info->timestamp.tv_sec != st.st_mtim.tv_sec ||
@@ -1502,6 +1501,8 @@ dm_update_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, struct ly_
                 ly_set_add(up_to_date, (void *) info->module->name);
             }
         }
+#else
+    ly_set_add(to_be_refreshed, info);
 #endif
         free(file_name);
         file_name = NULL;
