@@ -1461,7 +1461,7 @@ dm_is_info_copy_uptodate(const char *file_name, const dm_data_info_t *info, bool
             *res = true;
         }
 #else
-        return false;
+        *res = false;
 #endif
         return SR_ERR_OK;
 
