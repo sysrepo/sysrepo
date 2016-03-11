@@ -1492,7 +1492,10 @@ dm_update_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, struct ly_
             SR_LOG_ERR_MSG("Get data file name failed");
             goto cleanup;
         }
+        ac_set_user_identity(dm_ctx->ac_ctx, session->user_credentails);
         fd = open(file_name, O_RDONLY);
+        ac_unset_user_identity(dm_ctx->ac_ctx);
+
         if (-1 == fd) {
             SR_LOG_DBG("File %s can not be opened for read write", file_name);
             if (EACCES == errno) {
