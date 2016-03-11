@@ -95,6 +95,8 @@ typedef struct sm_connection_s {
     sm_session_list_t *session_list;  /**< List of sessions associated to the connection. */
 
     int fd;                           /**< File descriptor of the connection. */
+    const char *destination;          /**< Address of the destination by type == CM_AF_UNIX_SERVER */
+
     uid_t uid;                        /**< Peer's effective user ID. */
     gid_t gid;                        /**< Peer's effective group ID. */
     bool close_requested;             /**< Connection close requested. */

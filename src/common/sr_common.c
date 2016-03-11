@@ -1012,6 +1012,9 @@ sr_pb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__Op
         if (NULL == msg->request) {
             return SR_ERR_MALFORMED_MSG;
         }
+        if (msg->request->operation != operation) {
+            return SR_ERR_MALFORMED_MSG;
+        }
         switch (operation) {
             case SR__OPERATION__SESSION_START:
                 if (NULL == msg->request->session_start_req)
@@ -1093,6 +1096,9 @@ sr_pb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__Op
         if (NULL == msg->response) {
             return SR_ERR_MALFORMED_MSG;
         }
+        if (msg->response->operation != operation) {
+            return SR_ERR_MALFORMED_MSG;
+        }
         switch (operation) {
             case SR__OPERATION__SESSION_START:
                 if (NULL == msg->response->session_start_resp)
@@ -1171,6 +1177,37 @@ sr_pb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__Op
         }
     } else {
         /* unknown operation */
+        return SR_ERR_MALFORMED_MSG;
+    }
+
+    return SR_ERR_OK;
+}
+
+int
+sr_pb_msg_validate_notif(const Sr__Msg *msg, const Sr__NotificationEvent event)
+{
+    CHECK_NULL_ARG(msg);
+
+    if (SR__MSG__MSG_TYPE__NOTIFICATION == msg->type) {
+        if (NULL == msg->notification) {
+            return SR_ERR_MALFORMED_MSG;
+        }
+        if (msg->notification->event != event) {
+            return SR_ERR_MALFORMED_MSG;
+        }
+        switch (event) {
+            case SR__NOTIFICATION_EVENT__MODULE_INSTALL_EV:
+                if (NULL == msg->notification->module_install_notif)
+                    return SR_ERR_MALFORMED_MSG;
+                break;
+            case SR__NOTIFICATION_EVENT__FEATURE_ENABLE_EV:
+                if (NULL == msg->notification->feature_enable_notif)
+                    return SR_ERR_MALFORMED_MSG;
+                break;
+            default:
+                return SR_ERR_MALFORMED_MSG;
+        }
+    } else {
         return SR_ERR_MALFORMED_MSG;
     }
 

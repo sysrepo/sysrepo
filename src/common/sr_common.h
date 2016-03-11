@@ -363,9 +363,9 @@ int sr_pb_resp_alloc(const Sr__Operation operation, const uint32_t session_id, S
 /**
  * @brief Allocates and initializes GPB notification message.
  *
- * @param[in] event TODO
- * @param[in] destination
- * @param[in] subscription_id
+ * @param[in] event Notification event type.
+ * @param[in] destination Destination (socket path) of the notification.
+ * @param[in] subscription_id CLient-local subscription identifier.
  * @param[out] msg GPB message.
  *
  * @return Error code (SR_ERR_OK on success).
@@ -383,6 +383,16 @@ int sr_pb_notif_alloc(const Sr__NotificationEvent event, const char *destination
  * @return Error code (SR_ERR_OK on success).
  */
 int sr_pb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__Operation operation);
+
+/**
+ * @brief Validates the notification message according to excepted notification event.
+ *
+ * @param[in] msg Unpacked message.
+ * @param[in] event Expected notification event.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_pb_msg_validate_notif(const Sr__Msg *msg, const Sr__NotificationEvent event);
 
 /**
  * @brief Portable way to retrieve effective user ID and effective group ID of

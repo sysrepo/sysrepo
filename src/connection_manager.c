@@ -975,6 +975,9 @@ cm_server_watcher_cb(struct ev_loop *loop, ev_io *w, int revents)
     } while (-1 != clnt_fd); /* accept returns -1 when there are no more connections to accept */
 }
 
+/**
+ * @brief
+ */
 static int
 cm_notif_conn_create(cm_ctx_t *cm_ctx, const char *socket_path, sm_connection_t **connection_p)
 {

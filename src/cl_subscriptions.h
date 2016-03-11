@@ -54,12 +54,24 @@ typedef struct sr_subscription_ctx_s {
     void *private_ctx;
 } sr_subscription_ctx_t;
 
+/**
+ * @brief Initializes a Subscription Manager instance.
+ */
 int cl_sm_init(cl_sm_ctx_t **sm_ctx);
 
+/**
+ * @brief Cleans up the Subscription Manager.
+ */
 void cl_sm_cleanup(cl_sm_ctx_t *sm_ctx);
 
+/**
+ * @brief Initializes a new subscription.
+ */
 int cl_sm_subscription_init(cl_sm_ctx_t *sm_ctx, char **destination, sr_subscription_ctx_t **subscription_p);
 
+/**
+ * @brief Cleans up a subscription.
+ */
 void cl_sm_subscription_cleanup(sr_subscription_ctx_t *subscription);
 
 #endif /* CL_SUBSCRIPTIONS_H_ */
