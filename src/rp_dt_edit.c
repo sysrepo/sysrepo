@@ -789,12 +789,14 @@ rp_dt_delete_item_wrapper(rp_ctx_t *rp_ctx, rp_session_t *session, const char *x
 
 /**
  * @brief Perform the list of provided operations on the session. Stops
- * on the first error.
+ * on the first error, if continue on error is false. If the continue on error
+ * is set to true, operation is marked with has_error flag.
  * @param [in] ctx
  * @param [in] session
  * @param [in] operations
  * @param [in] count
- * @param [in] matched_ts - set of model's name where the current modify timestamp
+ * @param [in] continue_on_error flag denoting whether replay should be stopped on first error
+ * @param [in] models_to_skip - set of model's name where the current modify timestamp
  * matches the timestamp of the session copy. Operation for this models skipped.
  * @return Error code (SR_ERR_OK on success)
  */

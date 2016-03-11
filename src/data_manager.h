@@ -294,7 +294,12 @@ void dm_remove_last_operation(dm_session_t *session);
  */
 void dm_get_session_operations(dm_session_t *session, dm_sess_op_t **ops, size_t *count);
 
+/**
+ * @brief Deletes the operations from session that are marked with error flag
+ * @param [in] session
+ */
 void dm_remove_operations_with_error(dm_session_t *session);
+
 /**
  * @brief Frees memory allocated for error and error xpath stored in session.
  * @param [in] session
