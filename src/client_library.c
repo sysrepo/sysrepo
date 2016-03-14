@@ -1,7 +1,7 @@
 /**
  * @file client_library.c
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
- * @brief Sysrepo client library (public API) implementation.
+ * @brief Sysrepo client library (public + non-public API) implementation.
  *
  * @copyright
  * Copyright 2016 Cisco Systems, Inc.

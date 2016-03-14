@@ -27,6 +27,8 @@
 #include <cmocka.h>
 
 #include "sysrepo.h"
+#include "client_library.h"
+
 #include "sr_common.h"
 #include "test_module_helper.h"
 

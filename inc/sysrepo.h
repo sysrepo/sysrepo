@@ -1,7 +1,7 @@
 /**
  * @file sysrepo.h
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
- * @brief Sysrepo client library API.
+ * @brief Sysrepo Client Library public API.
  *
  * @copyright
  * Copyright 2015 Cisco Systems, Inc.
@@ -598,7 +598,7 @@ int sr_get_item_next(sr_session_ctx_t *session, sr_val_iter_t *iter, sr_val_t **
 
 
 ////////////////////////////////////////////////////////////////////////////////
-// Data Manipulation API (edit-config functionality) - !!! EXPERIMENTAL !!!
+// Data Manipulation API (edit-config functionality)
 ////////////////////////////////////////////////////////////////////////////////
 
 /**
@@ -725,7 +725,7 @@ int sr_discard_changes(sr_session_ctx_t *session);
 
 
 ////////////////////////////////////////////////////////////////////////////////
-// Locking API - !!! EXPERIMENTAL !!!
+// Locking API
 ////////////////////////////////////////////////////////////////////////////////
 
 /**
@@ -737,8 +737,6 @@ int sr_discard_changes(sr_session_ctx_t *session);
  *
  * The lock operation will not be allowed if the user does not have sufficient
  * permissions for writing into each of the data models in the datastore.
- *
- * @note Please note that this API call is experimental in this version of sysrepo and may not work properly yet.
  *
  * @param[in] session Session context acquired with ::sr_session_start call.
  *
@@ -752,8 +750,6 @@ int sr_lock_datastore(sr_session_ctx_t *session);
  *
  * All data models within the datastore will be unlocked if they were locked
  * by this session.
- *
- * @note Please note that this API call is experimental in this version of sysrepo and may not work properly yet.
  *
  * @param[in] session Session context acquired with ::sr_session_start call.
  *
@@ -772,8 +768,6 @@ int sr_unlock_datastore(sr_session_ctx_t *session);
  * The lock operation will not be allowed if the user does not have sufficient
  * permissions for writing into the specified data module.
  *
- * @note Please note that this API call is experimental in this version of sysrepo and may not work properly yet.
- *
  * @param[in] session Session context acquired with ::sr_session_start call.
  * @param[in] module_name Name of the module to be locked.
  *
@@ -788,8 +782,6 @@ int sr_lock_module(sr_session_ctx_t *session, const char *module_name);
  *
  * Specified data module will be unlocked if was locked in the datastore
  * by this session.
- *
- * @note Please note that this API call is experimental in this version of sysrepo and may not work properly yet.
  *
  * @param[in] session Session context acquired with ::sr_session_start call.
  * @param[in] module_name Name of the module to be unlocked.
@@ -816,12 +808,6 @@ int sr_feature_enable_subscribe(sr_session_ctx_t *session, sr_feature_enable_cb 
         sr_subscription_ctx_t **subscription);
 
 int sr_unsubscribe(sr_subscription_ctx_t *subscription);
-
-
-// TODO - move from public header to protected one
-int sr_module_install(sr_session_ctx_t *session, const char *module_name, const char *revision, bool installed);
-
-int sr_feature_enable(sr_session_ctx_t *session, const char *module_name, const char *feature_name, bool enabled);
 
 
 ////////////////////////////////////////////////////////////////////////////////
