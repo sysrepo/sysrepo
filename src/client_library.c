@@ -1982,6 +1982,8 @@ sr_unsubscribe(sr_subscription_ctx_t *subscription)
 {
     CHECK_NULL_ARG(subscription);
 
+    // TODO: send unsubscribe message
+
     cl_sm_subscription_cleanup(subscription);
 
     pthread_mutex_lock(&global_lock);
