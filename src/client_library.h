@@ -23,12 +23,30 @@
 #define CLIENT_LIBRARY_H_
 
 /**
+ * @brief Notify sysrepo engine about the installation/removal of an YANG module
+ * in the repository directory and instruct it to start/stop using it.
  *
+ * @param[in] session Session context acquired with ::sr_session_start call.
+ * @param[in] module_name Name of the module to be installed/removed.
+ * @param[in] revision Revision to be installed/removed.
+ * @param[in] installed Pass TRUE if the module should be installed, FALSE
+ * if it should be removed.
+ *
+ * @return Error code (SR_ERR_OK on success).
  */
 int sr_module_install(sr_session_ctx_t *session, const char *module_name, const char *revision, bool installed);
 
 /**
+ * @brief Notify sysrepo engine about the change in the state of YANG features
+ * of an YANG module.
  *
+ * @param[in] session Session context acquired with ::sr_session_start call.
+ * @param[in] module_name Name of the module where the feature is defined.
+ * @param[in] feature_name Name of the feature to be enabled or disabled.
+ * @param[in] enabled Pass TRUE if the feature shall be enabled, FALSE if it
+ * shall be disabled.
+ *
+ * @return Error code (SR_ERR_OK on success).
  */
 int sr_feature_enable(sr_session_ctx_t *session, const char *module_name, const char *feature_name, bool enabled);
 
