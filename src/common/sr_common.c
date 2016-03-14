@@ -79,10 +79,10 @@ sr_operation_name(Sr__Operation operation)
         return "list-schemas";
     case SR__OPERATION__GET_SCHEMA:
         return "get-schema";
+    case SR__OPERATION__MODULE_INSTALL:
+        return "module-install";
     case SR__OPERATION__FEATURE_ENABLE:
         return "feature-enable";
-    case SR__OPERATION__MODULE_ENABLE:
-        return "module-enable";
     case SR__OPERATION__GET_ITEM:
         return "get-item";
     case SR__OPERATION__GET_ITEMS:
@@ -103,6 +103,8 @@ sr_operation_name(Sr__Operation operation)
         return "lock";
     case SR__OPERATION__UNLOCK:
         return "unlock";
+    case SR__OPERATION__SUBSCRIBE:
+        return "subscribe";
     default:
         return "unknown";
     }
@@ -561,7 +563,7 @@ int
 sr_pb_req_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__Msg **msg_p)
 {
     Sr__Msg *msg = NULL;
-    Sr__Req *req = NULL;
+    Sr__Request *req = NULL;
     ProtobufCMessage *sub_msg = NULL;
 
     CHECK_NULL_ARG(msg_p);
@@ -580,7 +582,7 @@ sr_pb_req_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__Ms
     if (NULL == req) {
         goto nomem;
     }
-    sr__req__init(req);
+    sr__request__init(req);
     msg->request = req;
     req->operation = operation;
 
@@ -634,13 +636,13 @@ sr_pb_req_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__Ms
             sr__feature_enable_req__init((Sr__FeatureEnableReq*)sub_msg);
             req->feature_enable_req = (Sr__FeatureEnableReq*)sub_msg;
             break;
-        case SR__OPERATION__MODULE_ENABLE:
-            sub_msg = calloc(1, sizeof(Sr__ModuleEnableReq));
+        case SR__OPERATION__MODULE_INSTALL:
+            sub_msg = calloc(1, sizeof(Sr__ModuleInstallReq));
             if (NULL == sub_msg) {
                 goto nomem;
             }
-            sr__module_enable_req__init((Sr__ModuleEnableReq*)sub_msg);
-            req->module_enable_req = (Sr__ModuleEnableReq*)sub_msg;
+            sr__module_install_req__init((Sr__ModuleInstallReq*)sub_msg);
+            req->module_install_req = (Sr__ModuleInstallReq*)sub_msg;
             break;
         case SR__OPERATION__GET_ITEM:
             sub_msg = calloc(1, sizeof(Sr__GetItemReq));
@@ -722,6 +724,14 @@ sr_pb_req_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__Ms
             sr__unlock_req__init((Sr__UnlockReq*)sub_msg);
             req->unlock_req = (Sr__UnlockReq*)sub_msg;
             break;
+        case SR__OPERATION__SUBSCRIBE:
+            sub_msg = calloc(1, sizeof(Sr__SubscribeReq));
+            if (NULL == sub_msg) {
+                goto nomem;
+            }
+            sr__subscribe_req__init((Sr__SubscribeReq*)sub_msg);
+            req->subscribe_req = (Sr__SubscribeReq*)sub_msg;
+            break;
         default:
             break;
     }
@@ -731,9 +741,9 @@ sr_pb_req_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__Ms
 
 nomem:
     SR_LOG_ERR_MSG("Cannot allocate PB message - not enough memory.");
-    free(msg);
-    free(req);
-
+    if (NULL != msg) {
+        sr__msg__free_unpacked(msg, NULL);
+    }
     return SR_ERR_NOMEM;
 }
 
@@ -741,7 +751,7 @@ int
 sr_pb_resp_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__Msg **msg_p)
 {
     Sr__Msg *msg = NULL;
-    Sr__Resp *resp = NULL;
+    Sr__Response *resp = NULL;
     ProtobufCMessage *sub_msg = NULL;
     CHECK_NULL_ARG(msg_p);
 
@@ -759,7 +769,7 @@ sr_pb_resp_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__M
     if (NULL == resp) {
         goto nomem;
     }
-    sr__resp__init(resp);
+    sr__response__init(resp);
     msg->response = resp;
     resp->operation = operation;
     resp->result = SR_ERR_OK;
@@ -822,13 +832,13 @@ sr_pb_resp_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__M
             sr__feature_enable_resp__init((Sr__FeatureEnableResp*)sub_msg);
             resp->feature_enable_resp = (Sr__FeatureEnableResp*)sub_msg;
             break;
-        case SR__OPERATION__MODULE_ENABLE:
-            sub_msg = calloc(1, sizeof(Sr__ModuleEnableResp));
+        case SR__OPERATION__MODULE_INSTALL:
+            sub_msg = calloc(1, sizeof(Sr__ModuleInstallResp));
             if (NULL == sub_msg) {
                 goto nomem;
             }
-            sr__module_enable_resp__init((Sr__ModuleEnableResp*)sub_msg);
-            resp->module_enable_resp = (Sr__ModuleEnableResp*)sub_msg;
+            sr__module_install_resp__init((Sr__ModuleInstallResp*)sub_msg);
+            resp->module_install_resp = (Sr__ModuleInstallResp*)sub_msg;
             break;
         case SR__OPERATION__GET_ITEMS:
             sub_msg = calloc(1, sizeof(Sr__GetItemsResp));
@@ -902,6 +912,14 @@ sr_pb_resp_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__M
             sr__unlock_resp__init((Sr__UnlockResp*)sub_msg);
             resp->unlock_resp = (Sr__UnlockResp*)sub_msg;
             break;
+        case SR__OPERATION__SUBSCRIBE:
+            sub_msg = calloc(1, sizeof(Sr__SubscribeResp));
+            if (NULL == sub_msg) {
+                goto nomem;
+            }
+            sr__subscribe_resp__init((Sr__SubscribeResp*)sub_msg);
+            resp->subscribe_resp = (Sr__SubscribeResp*)sub_msg;
+            break;
         default:
             break;
     }
@@ -911,9 +929,76 @@ sr_pb_resp_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__M
 
 nomem:
     SR_LOG_ERR_MSG("Cannot allocate PB message - not enough memory.");
-    free(msg);
-    free(resp);
+    if (NULL != msg) {
+        sr__msg__free_unpacked(msg, NULL);
+    }
+    return SR_ERR_NOMEM;
+}
 
+int
+sr_pb_notif_alloc(const Sr__NotificationEvent event, const char *destination, const uint32_t subscription_id, Sr__Msg **msg_p)
+{
+    Sr__Msg *msg = NULL;
+    Sr__Notification *notif = NULL;
+    ProtobufCMessage *sub_msg = NULL;
+
+    CHECK_NULL_ARG2(destination, msg_p);
+
+    /* initialize Sr__Msg */
+    msg = calloc(1, sizeof(*msg));
+    if (NULL == msg) {
+        goto nomem;
+    }
+    sr__msg__init(msg);
+    msg->type = SR__MSG__MSG_TYPE__NOTIFICATION;
+    msg->session_id = 0;
+
+    /* initialize Sr__Notification */
+    notif = calloc(1, sizeof(*notif));
+    if (NULL == notif) {
+        goto nomem;
+    }
+    sr__notification__init(notif);
+    msg->notification = notif;
+
+    notif->event = event;
+    notif->subscription_id = subscription_id;
+
+    notif->destination = strdup(destination);
+    if (NULL == notif->destination) {
+        goto nomem;
+    }
+
+    /* initialize sub-message */
+    switch (event) {
+        case SR__NOTIFICATION_EVENT__MODULE_INSTALL_EV:
+            sub_msg = calloc(1, sizeof(Sr__ModuleInstallNotification));
+            if (NULL == sub_msg) {
+                goto nomem;
+            }
+            sr__module_install_notification__init((Sr__ModuleInstallNotification*)sub_msg);
+            notif->module_install_notif = (Sr__ModuleInstallNotification*)sub_msg;
+            break;
+        case SR__NOTIFICATION_EVENT__FEATURE_ENABLE_EV:
+            sub_msg = calloc(1, sizeof(Sr__FeatureEnableNotification));
+            if (NULL == sub_msg) {
+                goto nomem;
+            }
+            sr__feature_enable_notification__init((Sr__FeatureEnableNotification*)sub_msg);
+            notif->feature_enable_notif = (Sr__FeatureEnableNotification*)sub_msg;
+            break;
+        default:
+            break;
+    }
+
+    *msg_p = msg;
+    return SR_ERR_OK;
+
+nomem:
+    SR_LOG_ERR_MSG("Cannot allocate PB message - not enough memory.");
+    if (NULL != msg) {
+        sr__msg__free_unpacked(msg, NULL);
+    }
     return SR_ERR_NOMEM;
 }
 
@@ -925,6 +1010,9 @@ sr_pb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__Op
     if (SR__MSG__MSG_TYPE__REQUEST == type) {
         /* request */
         if (NULL == msg->request) {
+            return SR_ERR_MALFORMED_MSG;
+        }
+        if (msg->request->operation != operation) {
             return SR_ERR_MALFORMED_MSG;
         }
         switch (operation) {
@@ -952,8 +1040,8 @@ sr_pb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__Op
                 if (NULL == msg->request->feature_enable_req)
                     return SR_ERR_MALFORMED_MSG;
                 break;
-            case SR__OPERATION__MODULE_ENABLE:
-                if (NULL == msg->request->module_enable_req)
+            case SR__OPERATION__MODULE_INSTALL:
+                if (NULL == msg->request->module_install_req)
                     return SR_ERR_MALFORMED_MSG;
                 break;
             case SR__OPERATION__GET_ITEM:
@@ -996,12 +1084,19 @@ sr_pb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__Op
                 if (NULL == msg->request->unlock_req)
                     return SR_ERR_MALFORMED_MSG;
                 break;
+            case SR__OPERATION__SUBSCRIBE:
+                if (NULL == msg->request->subscribe_req)
+                    return SR_ERR_MALFORMED_MSG;
+                break;
             default:
                 return SR_ERR_MALFORMED_MSG;
         }
     } else if (SR__MSG__MSG_TYPE__RESPONSE == type) {
         /* response */
         if (NULL == msg->response) {
+            return SR_ERR_MALFORMED_MSG;
+        }
+        if (msg->response->operation != operation) {
             return SR_ERR_MALFORMED_MSG;
         }
         switch (operation) {
@@ -1023,6 +1118,14 @@ sr_pb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__Op
                 break;
             case SR__OPERATION__GET_SCHEMA:
                 if (NULL == msg->response->get_schema_resp)
+                    return SR_ERR_MALFORMED_MSG;
+                break;
+            case SR__OPERATION__FEATURE_ENABLE:
+                if (NULL == msg->response->feature_enable_resp)
+                    return SR_ERR_MALFORMED_MSG;
+                break;
+            case SR__OPERATION__MODULE_INSTALL:
+                if (NULL == msg->response->module_install_resp)
                     return SR_ERR_MALFORMED_MSG;
                 break;
             case SR__OPERATION__GET_ITEM:
@@ -1065,11 +1168,46 @@ sr_pb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__Op
                 if (NULL == msg->response->unlock_resp)
                     return SR_ERR_MALFORMED_MSG;
                 break;
+            case SR__OPERATION__SUBSCRIBE:
+                if (NULL == msg->response->subscribe_resp)
+                    return SR_ERR_MALFORMED_MSG;
+                break;
             default:
                 return SR_ERR_MALFORMED_MSG;
         }
     } else {
         /* unknown operation */
+        return SR_ERR_MALFORMED_MSG;
+    }
+
+    return SR_ERR_OK;
+}
+
+int
+sr_pb_msg_validate_notif(const Sr__Msg *msg, const Sr__NotificationEvent event)
+{
+    CHECK_NULL_ARG(msg);
+
+    if (SR__MSG__MSG_TYPE__NOTIFICATION == msg->type) {
+        if (NULL == msg->notification) {
+            return SR_ERR_MALFORMED_MSG;
+        }
+        if (msg->notification->event != event) {
+            return SR_ERR_MALFORMED_MSG;
+        }
+        switch (event) {
+            case SR__NOTIFICATION_EVENT__MODULE_INSTALL_EV:
+                if (NULL == msg->notification->module_install_notif)
+                    return SR_ERR_MALFORMED_MSG;
+                break;
+            case SR__NOTIFICATION_EVENT__FEATURE_ENABLE_EV:
+                if (NULL == msg->notification->feature_enable_notif)
+                    return SR_ERR_MALFORMED_MSG;
+                break;
+            default:
+                return SR_ERR_MALFORMED_MSG;
+        }
+    } else {
         return SR_ERR_MALFORMED_MSG;
     }
 
@@ -2208,3 +2346,23 @@ sr_unlock_fd(int fd)
 {
     return sr_lock_fd_internal(fd, false, false, false);
 }
+
+int
+sr_fd_set_nonblock(int fd)
+{
+    int flags = 0, rc = 0;
+
+    flags = fcntl(fd, F_GETFL, 0);
+    if (-1 == flags) {
+        SR_LOG_WRN("Socket fcntl error (skipped): %s", strerror(errno));
+        flags = 0;
+    }
+    rc = fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+    if (-1 == rc) {
+        SR_LOG_ERR("Socket fcntl error: %s", strerror(errno));
+        return SR_ERR_INTERNAL;
+    }
+
+    return SR_ERR_OK;
+}
+

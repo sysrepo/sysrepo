@@ -165,6 +165,31 @@
         CHECK_NULL_ARG_NORET__INTERNAL(RC, ARG5) \
     } while(0)
 
+#define CHECK_NULL_NOMEM_RETURN(ARG) \
+    do { \
+        if (NULL == ARG) { \
+            SR_LOG_ERR("Unable to allocate memory in %s", __FUNCTION__); \
+            return SR_ERR_NOMEM; \
+        } \
+    } while(0)
+
+#define CHECK_NULL_NOMEM_ERROR(ARG, ERROR) \
+    do { \
+        if (NULL == ARG) { \
+            SR_LOG_ERR("Unable to allocate memory in %s", __FUNCTION__); \
+            ERROR = SR_ERR_NOMEM; \
+        } \
+    } while(0)
+
+#define CHECK_NULL_NOMEM_GOTO(ARG, ERROR, LABEL) \
+    do { \
+        if (NULL == ARG) { \
+            SR_LOG_ERR("Unable to allocate memory in %s", __FUNCTION__); \
+            ERROR = SR_ERR_NOMEM; \
+            goto LABEL; \
+        } \
+    } while(0)
+
 /**
  * @brief Returns string with name of the provided operation.
  *
@@ -361,6 +386,19 @@ int sr_pb_req_alloc(const Sr__Operation operation, const uint32_t session_id, Sr
 int sr_pb_resp_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__Msg **msg);
 
 /**
+ * @brief Allocates and initializes GPB notification message.
+ *
+ * @param[in] event Notification event type.
+ * @param[in] destination Destination (socket path) of the notification.
+ * @param[in] subscription_id CLient-local subscription identifier.
+ * @param[out] msg GPB message.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_pb_notif_alloc(const Sr__NotificationEvent event, const char *destination,
+        const uint32_t subscription_id, Sr__Msg **msg_p);
+
+/**
  * @brief Validates the message according to excepted message type and operation.
  *
  * @param[in] msg Unpacked message.
@@ -370,6 +408,16 @@ int sr_pb_resp_alloc(const Sr__Operation operation, const uint32_t session_id, S
  * @return Error code (SR_ERR_OK on success).
  */
 int sr_pb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__Operation operation);
+
+/**
+ * @brief Validates the notification message according to excepted notification event.
+ *
+ * @param[in] msg Unpacked message.
+ * @param[in] event Expected notification event.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_pb_msg_validate_notif(const Sr__Msg *msg, const Sr__NotificationEvent event);
 
 /**
  * @brief Portable way to retrieve effective user ID and effective group ID of
@@ -603,6 +651,15 @@ int sr_lock_fd(int fd, bool write, bool wait);
  * @return err_code (SR_ERR_OK on success).
  */
 int sr_unlock_fd(int fd);
+
+/**
+ * @brief Sets the file descriptor to non-blocking I/O mode.
+ *
+ * @param[in] fd File descriptor.
+ *
+ * @return err_code (SR_ERR_OK on success).
+ */
+int sr_fd_set_nonblock(int fd);
 
 /**@} common */
 

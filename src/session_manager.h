@@ -95,6 +95,8 @@ typedef struct sm_connection_s {
     sm_session_list_t *session_list;  /**< List of sessions associated to the connection. */
 
     int fd;                           /**< File descriptor of the connection. */
+    const char *dst_address;          /**< Address of the destination by type == CM_AF_UNIX_SERVER */
+
     uid_t uid;                        /**< Peer's effective user ID. */
     gid_t gid;                        /**< Peer's effective group ID. */
     bool close_requested;             /**< Connection close requested. */
@@ -215,6 +217,16 @@ int sm_session_find_id(const sm_ctx_t *sm_ctx, uint32_t session_id, sm_session_t
  * matching to fd cannot be found).
  */
 int sm_connection_find_fd(const sm_ctx_t *sm_ctx, const int fd, sm_connection_t **connection);
+
+/**
+ * TODO
+ */
+int sm_connection_assign_dst(const sm_ctx_t *sm_ctx, sm_connection_t *connection, const char *dst_address);
+
+/**
+ * TODO
+ */
+int sm_connection_find_dst(const sm_ctx_t *sm_ctx, const char *dst_address, sm_connection_t **connection);
 
 /**
  * @brief Returns session context at given index (position) in a list (starting
