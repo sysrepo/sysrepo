@@ -23,7 +23,9 @@
 #define CL_SUBSCRIPTIONS_H_
 
 #include <pthread.h>
+
 #include "sysrepo.h"
+#include "sr_common.h"
 
 /*
  * TODO
@@ -33,18 +35,10 @@ typedef struct cl_sm_ctx_s cl_sm_ctx_t;
 /**
  * TODO
  */
-typedef enum sr_notification_event_e {
-    SR_MODULE_INSTALL_EVENT,
-    SR_FEATURE_ENABLE_EVENT,
-} sr_notification_event_t;
-
-/**
- * TODO
- */
 typedef struct sr_subscription_ctx_s {
     uint32_t id;
 
-    sr_notification_event_t event_type;
+    Sr__NotificationEvent event_type;
     union {
         sr_feature_enable_cb feature_enable_cb;
         sr_module_install_cb module_install_cb;

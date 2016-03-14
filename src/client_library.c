@@ -661,6 +661,62 @@ cl_send_get_items_iter(sr_session_ctx_t *session, const char *path, bool recursi
     return rc;
 }
 
+static int
+cl_subscribtion_init(sr_session_ctx_t *session, Sr__NotificationEvent event_type, void *private_ctx,
+        sr_subscription_ctx_t **subscription_p, Sr__Msg **msg_req_p)
+{
+    Sr__Msg *msg_req = NULL;
+    sr_subscription_ctx_t *subscription = NULL;
+    char *destination = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG3(session, subscription_p, msg_req_p);
+
+    /* check if this is the first subscription, if yes, initialize subscription manager */
+    pthread_mutex_lock(&global_lock);
+    if (0 == subscriptions_cnt) {
+        /* this is the first subscription - initialize subscription manager */
+        rc = cl_sm_init(&cl_sm_ctx);
+    }
+    subscriptions_cnt++;
+    pthread_mutex_unlock(&global_lock);
+
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Cannot initialize Client Subscription Manager.");
+        return rc;
+    }
+
+    /* prepare subscribe message */
+    rc = sr_pb_req_alloc(SR__OPERATION__SUBSCRIBE, session->id, &msg_req);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Cannot allocate subscribe message.");
+        return rc;
+    }
+
+    /* initialize subscription ctx */
+    rc = cl_sm_subscription_init(cl_sm_ctx, &destination, &subscription);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Error by initialization of the subscription in the Subscription Manager.");
+        return rc;
+    }
+    subscription->event_type = event_type;
+    subscription->private_ctx = private_ctx;
+
+    /* fill-in subscription details into GPB message */
+    msg_req->request->subscribe_req->destination = strdup(destination);
+    if (NULL == msg_req->request->subscribe_req->destination) {
+        SR_LOG_ERR_MSG("Error by duplication of the subscription destination.");
+        return SR_ERR_NOMEM;
+    }
+    msg_req->request->subscribe_req->subscription_id = subscription->id;
+    msg_req->request->subscribe_req->event = event_type;
+
+    *subscription_p = subscription;
+    *msg_req_p = msg_req;
+
+    return rc;
+}
+
 int
 sr_connect(const char *app_name, const sr_conn_options_t opts, sr_conn_ctx_t **conn_ctx_p)
 {
@@ -1832,53 +1888,70 @@ sr_get_last_errors(sr_session_ctx_t *session, const sr_error_info_t **error_info
 }
 
 int
-sr_feature_enable_subscribe(sr_session_ctx_t *session, sr_feature_enable_cb callback, void *private_ctx,
+sr_module_install_subscribe(sr_session_ctx_t *session, sr_module_install_cb callback, void *private_ctx,
         sr_subscription_ctx_t **subscription_p)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
     sr_subscription_ctx_t *subscription = NULL;
-    char *destination = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG3(session, callback, subscription_p);
 
     cl_session_clear_errors(session);
 
-    /* check if this is the first subscription, if yes, initialize subscription manager */
-    pthread_mutex_lock(&global_lock);
-    if (0 == subscriptions_cnt) {
-        /* this is the first subscription - initialize subscription manager */
-        rc = cl_sm_init(&cl_sm_ctx);
-    }
-    subscriptions_cnt++;
-    pthread_mutex_unlock(&global_lock);
-
-    /* prepare subscribe message */
-    rc = sr_pb_req_alloc(SR__OPERATION__SUBSCRIBE, session->id, &msg_req);
+    /* Initialize the subscription */
+    rc = cl_subscribtion_init(session, SR__NOTIFICATION_EVENT__MODULE_INSTALL_EV,
+            private_ctx, &subscription, &msg_req);
     if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Cannot allocate subscribe message.");
+        SR_LOG_ERR_MSG("Error by initialization of the subscription in the client library.");
+        goto cleanup;
+    }
+    subscription->callback.module_install_cb = callback;
+
+    /* send the request and receive the response */
+    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__SUBSCRIBE);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Error by processing of subscribe request.");
         goto cleanup;
     }
 
-    /* initialize subscription ctx */
-    rc = cl_sm_subscription_init(cl_sm_ctx, &destination, &subscription);
+    sr__msg__free_unpacked(msg_req, NULL);
+    sr__msg__free_unpacked(msg_resp, NULL);
+
+    *subscription_p = subscription;
+    return cl_session_return(session, SR_ERR_OK);
+
+cleanup:
+    sr_unsubscribe(subscription);
+    if (NULL != msg_req) {
+        sr__msg__free_unpacked(msg_req, NULL);
+    }
+    if (NULL != msg_resp) {
+        sr__msg__free_unpacked(msg_resp, NULL);
+    }
+    return cl_session_return(session, rc);
+}
+
+int
+sr_feature_enable_subscribe(sr_session_ctx_t *session, sr_feature_enable_cb callback, void *private_ctx,
+        sr_subscription_ctx_t **subscription_p)
+{
+    Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    sr_subscription_ctx_t *subscription = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG3(session, callback, subscription_p);
+
+    cl_session_clear_errors(session);
+
+    /* Initialize the subscription */
+    rc = cl_subscribtion_init(session, SR__NOTIFICATION_EVENT__FEATURE_ENABLE_EV,
+            private_ctx, &subscription, &msg_req);
     if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Error by initialization of the subscription.");
+        SR_LOG_ERR_MSG("Error by initialization of the subscription in the client library.");
         goto cleanup;
     }
-    subscription->event_type = SR_FEATURE_ENABLE_EVENT;
     subscription->callback.feature_enable_cb = callback;
-    subscription->private_ctx = private_ctx;
-
-    /* fill-in subscription details */
-    msg_req->request->subscribe_req->destination = strdup(destination);
-    if (NULL == msg_req->request->subscribe_req->destination) {
-        SR_LOG_ERR_MSG("Error by duplication of the subscription destination.");
-        rc = SR_ERR_NOMEM;
-        goto cleanup;
-    }
-    msg_req->request->subscribe_req->subscription_id = subscription->id;
-    msg_req->request->subscribe_req->event = SR__NOTIFICATION_EVENT__FEATURE_ENABLE_EV;
 
     /* send the request and receive the response */
     rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__SUBSCRIBE);
@@ -1927,6 +2000,60 @@ sr_unsubscribe(sr_subscription_ctx_t *subscription)
 }
 
 int
+sr_module_install(sr_session_ctx_t *session, const char *module_name, const char *revision, bool installed)
+{
+    Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG4(session, session->conn_ctx, module_name, revision);
+
+    cl_session_clear_errors(session);
+
+    /* prepare module_install message */
+    rc = sr_pb_req_alloc(SR__OPERATION__MODULE_INSTALL, session->id, &msg_req);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Cannot allocate module_install message.");
+        goto cleanup;
+    }
+
+    /* set arguments */
+    msg_req->request->module_install_req->module_name = strdup(module_name);
+    if (NULL == msg_req->request->module_install_req->module_name) {
+        SR_LOG_ERR_MSG("Cannot duplicate module name.");
+        rc = SR_ERR_NOMEM;
+        goto cleanup;
+    }
+    msg_req->request->module_install_req->revision = strdup(revision);
+    if (NULL == msg_req->request->module_install_req->revision) {
+        SR_LOG_ERR_MSG("Cannot duplicate revision string.");
+        rc = SR_ERR_NOMEM;
+        goto cleanup;
+    }
+    msg_req->request->module_install_req->installed = installed;
+
+    /* send the request and receive the response */
+    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__MODULE_INSTALL);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Error by processing of module_install request.");
+        goto cleanup;
+    }
+
+    sr__msg__free_unpacked(msg_req, NULL);
+    sr__msg__free_unpacked(msg_resp, NULL);
+
+    return cl_session_return(session, SR_ERR_OK);
+
+cleanup:
+    if (NULL != msg_req) {
+        sr__msg__free_unpacked(msg_req, NULL);
+    }
+    if (NULL != msg_resp) {
+        sr__msg__free_unpacked(msg_resp, NULL);
+    }
+    return cl_session_return(session, rc);
+}
+
+int
 sr_feature_enable(sr_session_ctx_t *session, const char *module_name, const char *feature_name, bool enabled)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
@@ -1952,7 +2079,7 @@ sr_feature_enable(sr_session_ctx_t *session, const char *module_name, const char
     }
     msg_req->request->feature_enable_req->feature_name = strdup(feature_name);
     if (NULL == msg_req->request->feature_enable_req->feature_name) {
-        SR_LOG_ERR_MSG("Cannot feature name.");
+        SR_LOG_ERR_MSG("Cannot duplicate feature name.");
         rc = SR_ERR_NOMEM;
         goto cleanup;
     }
@@ -1979,4 +2106,3 @@ cleanup:
     }
     return cl_session_return(session, rc);
 }
-

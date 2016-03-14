@@ -165,6 +165,31 @@
         CHECK_NULL_ARG_NORET__INTERNAL(RC, ARG5) \
     } while(0)
 
+#define CHECK_NULL_NOMEM_RETURN(ARG) \
+    do { \
+        if (NULL == ARG) { \
+            SR_LOG_ERR("Unable to allocate memory in %s", __FUNCTION__); \
+            return SR_ERR_NOMEM; \
+        } \
+    } while(0)
+
+#define CHECK_NULL_NOMEM_ERROR(ARG, ERROR) \
+    do { \
+        if (NULL == ARG) { \
+            SR_LOG_ERR("Unable to allocate memory in %s", __FUNCTION__); \
+            ERROR = SR_ERR_NOMEM; \
+        } \
+    } while(0)
+
+#define CHECK_NULL_NOMEM_GOTO(ARG, ERROR, LABEL) \
+    do { \
+        if (NULL == ARG) { \
+            SR_LOG_ERR("Unable to allocate memory in %s", __FUNCTION__); \
+            ERROR = SR_ERR_NOMEM; \
+            goto LABEL; \
+        } \
+    } while(0)
+
 /**
  * @brief Returns string with name of the provided operation.
  *

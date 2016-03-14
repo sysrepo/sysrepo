@@ -344,22 +344,6 @@ cl_sm_conn_buffer_expand(const cl_sm_conn_ctx_t *conn, cl_sm_buffer_t *buff, siz
 }
 
 /**
- * @brief Converts sysrepo notification event type to GPB notification event type.
- */
-static Sr__NotificationEvent
-cl_sm_notif_event_sr_to_gpb(sr_notification_event_t event)
-{
-    switch (event) {
-        case SR_MODULE_INSTALL_EVENT:
-            return SR__NOTIFICATION_EVENT__MODULE_INSTALL_EV;
-        case SR_FEATURE_ENABLE_EVENT:
-            /* fall through */
-        default:
-            return SR__NOTIFICATION_EVENT__FEATURE_ENABLE_EV;
-    }
-}
-
-/**
  * @brief Processes a message received on the connection.
  */
 static int
@@ -400,7 +384,7 @@ cl_sm_conn_msg_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, uint8_t *msg
     }
 
     /* validate the message according to the subscription type */
-    rc = sr_pb_msg_validate_notif(msg, cl_sm_notif_event_sr_to_gpb(subscription->event_type));
+    rc = sr_pb_msg_validate_notif(msg, subscription->event_type);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Received notification message is not valid for subscription id=%"PRIu32".", subscription->id);
         rc = SR_ERR_INVAL_ARG;
@@ -408,7 +392,7 @@ cl_sm_conn_msg_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, uint8_t *msg
     }
 
     switch (subscription->event_type) {
-        case SR_MODULE_INSTALL_EVENT:
+        case SR__NOTIFICATION_EVENT__MODULE_INSTALL_EV:
             SR_LOG_DBG("Calling module-install callback for subscription id=%"PRIu32".", subscription->id);
             subscription->callback.module_install_cb(
                     msg->notification->module_install_notif->module_name,
@@ -416,7 +400,7 @@ cl_sm_conn_msg_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, uint8_t *msg
                     msg->notification->module_install_notif->installed,
                     subscription->private_ctx);
             break;
-        case SR_FEATURE_ENABLE_EVENT:
+        case SR__NOTIFICATION_EVENT__FEATURE_ENABLE_EV:
             SR_LOG_DBG("Calling feature-enable callback for subscription id=%"PRIu32".", subscription->id);
             subscription->callback.feature_enable_cb(
                     msg->notification->feature_enable_notif->module_name,
