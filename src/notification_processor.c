@@ -22,6 +22,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <inttypes.h>
+#include <pthread.h>
 
 #include "sr_common.h"
 #include "rp_internal.h"
@@ -40,22 +41,33 @@ typedef struct np_subscription_s {
  * @brief Notification Processor context.
  */
 typedef struct np_ctx_s {
-    rp_ctx_t *rp_ctx;                   /**< Request Processor context. */
-    np_subscription_t **subscriptions;  /**< List of active subscriptions. */
-    size_t subscription_cnt;            /**< Number of active subscriptions. */
+    rp_ctx_t *rp_ctx;                     /**< Request Processor context. */
+    np_subscription_t **subscriptions;    /**< List of active subscriptions. */
+    size_t subscription_cnt;              /**< Number of active subscriptions. */
+    pthread_rwlock_t subscriptions_lock;  /**< Read-write lock for subscriptions list. */
 } np_ctx_t;
 
 int
 np_init(rp_ctx_t *rp_ctx, np_ctx_t **np_ctx_p)
 {
     np_ctx_t *ctx = NULL;
+    int rc = 0;
 
     CHECK_NULL_ARG2(rp_ctx, np_ctx_p);
 
+    /* allocate the context */
     ctx = calloc(1, sizeof(*ctx));
     CHECK_NULL_NOMEM_RETURN(ctx);
 
     ctx->rp_ctx = rp_ctx;
+
+    /* initialize subscriptions lock */
+    rc = pthread_rwlock_init(&ctx->subscriptions_lock, NULL);
+    if (0 != rc) {
+        SR_LOG_ERR_MSG("Subscriptions lock initialization failed.");
+        free(ctx);
+        return SR_ERR_INTERNAL;
+    }
 
     *np_ctx_p = ctx;
     return SR_ERR_OK;
@@ -69,6 +81,7 @@ np_cleanup(np_ctx_t *np_ctx)
         free(np_ctx->subscriptions[i]);
     }
     free(np_ctx->subscriptions);
+    pthread_rwlock_destroy(&np_ctx->subscriptions_lock);
     free(np_ctx);
 }
 
@@ -91,12 +104,19 @@ np_notification_subscribe(np_ctx_t *np_ctx, Sr__NotificationEvent event_type, co
     CHECK_NULL_NOMEM_GOTO(subscription->dst_address, rc, cleanup);
 
     /* put the new entry into subscription list */
+    pthread_rwlock_wrlock(&np_ctx->subscriptions_lock);
     subscriptions_tmp = realloc(np_ctx->subscriptions, (np_ctx->subscription_cnt + 1) * sizeof(*subscriptions_tmp));
-    CHECK_NULL_NOMEM_GOTO(subscriptions_tmp, rc, cleanup);
+    CHECK_NULL_NOMEM_ERROR(subscriptions_tmp, rc);
 
-    np_ctx->subscriptions = subscriptions_tmp;
-    np_ctx->subscriptions[np_ctx->subscription_cnt] = subscription;
-    np_ctx->subscription_cnt += 1;
+    if (SR_ERR_OK == rc) {
+        np_ctx->subscriptions = subscriptions_tmp;
+        np_ctx->subscriptions[np_ctx->subscription_cnt] = subscription;
+        np_ctx->subscription_cnt += 1;
+        pthread_rwlock_unlock(&np_ctx->subscriptions_lock);
+    } else {
+        pthread_rwlock_unlock(&np_ctx->subscriptions_lock);
+        goto cleanup;
+    }
 
     return SR_ERR_OK;
 
@@ -130,11 +150,13 @@ np_notification_unsubscribe(np_ctx_t *np_ctx, Sr__NotificationEvent event_type, 
     }
 
     /* remove the subscription from array */
+    pthread_rwlock_wrlock(&np_ctx->subscriptions_lock);
     if (np_ctx->subscription_cnt > (i + 1)) {
         memmove(np_ctx->subscriptions + i, np_ctx->subscriptions + i + 1,
                 (np_ctx->subscription_cnt - i - 1) * sizeof(*subscription));
     }
     np_ctx->subscription_cnt -= 1;
+    pthread_rwlock_unlock(&np_ctx->subscriptions_lock);
 
     return SR_ERR_OK;
 }
@@ -146,6 +168,8 @@ np_module_install_notify(np_ctx_t *np_ctx, const char *module_name, const char *
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG3(np_ctx, module_name, revision);
+
+    pthread_rwlock_rdlock(&np_ctx->subscriptions_lock);
 
     for (size_t i = 0; i < np_ctx->subscription_cnt; i++) {
         if (SR__NOTIFICATION_EVENT__MODULE_INSTALL_EV == np_ctx->subscriptions[i]->event_type) {
@@ -171,6 +195,8 @@ np_module_install_notify(np_ctx_t *np_ctx, const char *module_name, const char *
         }
     }
 
+    pthread_rwlock_unlock(&np_ctx->subscriptions_lock);
+
     return rc;
 }
 
@@ -181,6 +207,8 @@ np_feature_enable_notify(np_ctx_t *np_ctx, const char *module_name, const char *
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG3(np_ctx, module_name, feature_name);
+
+    pthread_rwlock_rdlock(&np_ctx->subscriptions_lock);
 
     for (size_t i = 0; i < np_ctx->subscription_cnt; i++) {
         if (SR__NOTIFICATION_EVENT__FEATURE_ENABLE_EV == np_ctx->subscriptions[i]->event_type) {
@@ -205,6 +233,8 @@ np_feature_enable_notify(np_ctx_t *np_ctx, const char *module_name, const char *
             }
         }
     }
+
+    pthread_rwlock_unlock(&np_ctx->subscriptions_lock);
 
     return rc;
 }
