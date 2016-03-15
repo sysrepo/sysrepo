@@ -69,6 +69,8 @@ np_init(rp_ctx_t *rp_ctx, np_ctx_t **np_ctx_p)
         return SR_ERR_INTERNAL;
     }
 
+    SR_LOG_DBG_MSG("Notification Processor initialized successfully.");
+
     *np_ctx_p = ctx;
     return SR_ERR_OK;
 }
@@ -76,6 +78,8 @@ np_init(rp_ctx_t *rp_ctx, np_ctx_t **np_ctx_p)
 void
 np_cleanup(np_ctx_t *np_ctx)
 {
+    SR_LOG_DBG_MSG("Notification Processor cleanup requested.");
+
     for (size_t i = 0; i < np_ctx->subscription_cnt; i++) {
         free((void*)np_ctx->subscriptions[i]->dst_address);
         free(np_ctx->subscriptions[i]);
@@ -93,6 +97,8 @@ np_notification_subscribe(np_ctx_t *np_ctx, Sr__NotificationEvent event_type, co
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG2(np_ctx, dst_address);
+
+    SR_LOG_DBG("Notification subscribe: event=%d, dst_address='%s', dst_id=%"PRIu32".", event_type, dst_address, dst_id);
 
     /* prepare new subscription entry */
     subscription = calloc(1, sizeof(*subscription));
@@ -136,6 +142,8 @@ np_notification_unsubscribe(np_ctx_t *np_ctx, Sr__NotificationEvent event_type, 
 
     CHECK_NULL_ARG2(np_ctx, dst_address);
 
+    SR_LOG_DBG("Notification unsubscribe: event=%d, dst_address='%s', dst_id=%"PRIu32".", event_type, dst_address, dst_id);
+
     /* find matching subscription */
     for (i = 0; i < np_ctx->subscription_cnt; i++) {
         if ((np_ctx->subscriptions[i]->event_type == event_type) && (np_ctx->subscriptions[i]->dst_id == dst_id) &&
@@ -174,6 +182,9 @@ np_module_install_notify(np_ctx_t *np_ctx, const char *module_name, const char *
 
     CHECK_NULL_ARG3(np_ctx, module_name, revision);
 
+    SR_LOG_DBG("Sending module-install notifications, module_name='%s', revision='%s', installed=%d.",
+            module_name, revision, installed);
+
     pthread_rwlock_rdlock(&np_ctx->subscriptions_lock);
 
     for (size_t i = 0; i < np_ctx->subscription_cnt; i++) {
@@ -193,6 +204,8 @@ np_module_install_notify(np_ctx_t *np_ctx, const char *module_name, const char *
             }
             /* send the notification */
             if (SR_ERR_OK == rc) {
+                SR_LOG_DBG("Sending a module-install notification to the destination address='%s', id=%"PRIu32".",
+                        np_ctx->subscriptions[i]->dst_address, np_ctx->subscriptions[i]->dst_id);
                 rc = cm_msg_send(np_ctx->rp_ctx->cm_ctx, notif);
             } else {
                 break;
@@ -213,6 +226,9 @@ np_feature_enable_notify(np_ctx_t *np_ctx, const char *module_name, const char *
 
     CHECK_NULL_ARG3(np_ctx, module_name, feature_name);
 
+    SR_LOG_DBG("Sending feature-enable notifications, module_name='%s', feature_name='%s', enabled=%d.",
+                module_name, feature_name, enabled);
+
     pthread_rwlock_rdlock(&np_ctx->subscriptions_lock);
 
     for (size_t i = 0; i < np_ctx->subscription_cnt; i++) {
@@ -232,6 +248,8 @@ np_feature_enable_notify(np_ctx_t *np_ctx, const char *module_name, const char *
             }
             /* send the notification */
             if (SR_ERR_OK == rc) {
+                SR_LOG_DBG("Sending a feature-enable notification to the destination address='%s', id=%"PRIu32".",
+                        np_ctx->subscriptions[i]->dst_address, np_ctx->subscriptions[i]->dst_id);
                 rc = cm_msg_send(np_ctx->rp_ctx->cm_ctx, notif);
             } else {
                 break;

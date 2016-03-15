@@ -81,6 +81,10 @@ np_notification_subscribe_test(void **state)
     rc = np_notification_unsubscribe(rp_ctx->np_ctx, SR__NOTIFICATION_EVENT__MODULE_INSTALL_EV, "addr2", 123);
     assert_int_equal(rc, SR_ERR_OK);
 
+    /* try to unsibscribe for non-existing subscription */
+    rc = np_notification_unsubscribe(rp_ctx->np_ctx, SR__NOTIFICATION_EVENT__MODULE_INSTALL_EV, "addr1", 789);
+    assert_int_equal(rc, SR_ERR_INVAL_ARG);
+
     // TODO: call notify with mock object for cm_msg_send()
 //    rc = np_module_install_notify(rp_ctx->np_ctx, "example-module", "2016-03-05", true);
 //    assert_int_equal(rc, SR_ERR_OK);
