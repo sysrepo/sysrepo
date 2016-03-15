@@ -1,7 +1,7 @@
 /**
  * @file notification_processor.c
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
- * @brief TODO
+ * @brief Sysrepo Notification Processor implementation.
  *
  * @copyright
  * Copyright 2016 Cisco Systems, Inc.
@@ -27,16 +27,22 @@
 #include "rp_internal.h"
 #include "notification_processor.h"
 
+/**
+ * @brief Notification subscription information.
+ */
 typedef struct np_subscription_s {
-    const char *dst_address;
-    uint32_t dst_id;
-    Sr__NotificationEvent event_type;
+    const char *dst_address;           /**< Destination address where the notification should be delivered. */
+    uint32_t dst_id;                   /**< Destination ID of the subscription (used locally, in the client library). */
+    Sr__NotificationEvent event_type;  /**< Type of the event that this subscription subscribes to.  */
 } np_subscription_t;
 
+/**
+ * @brief Notification Processor context.
+ */
 typedef struct np_ctx_s {
-    rp_ctx_t *rp_ctx;
-    np_subscription_t **subscriptions;
-    size_t subscription_cnt;
+    rp_ctx_t *rp_ctx;                   /**< Request Processor context. */
+    np_subscription_t **subscriptions;  /**< List of active subscriptions. */
+    size_t subscription_cnt;            /**< Number of active subscriptions. */
 } np_ctx_t;
 
 int

@@ -219,12 +219,27 @@ int sm_session_find_id(const sm_ctx_t *sm_ctx, uint32_t session_id, sm_session_t
 int sm_connection_find_fd(const sm_ctx_t *sm_ctx, const int fd, sm_connection_t **connection);
 
 /**
- * TODO
+ * @brief Assigns destination address to a connection, to enable fast connection
+ * lookup by destination address (::sm_connection_find_dst).
+ *
+ * @param[in] sm_ctx Session Manager context.
+ * @param[in] connection Connection context which should be tied with provided destination address.
+ * @param[in] dst_address Destination address string.
+ *
+ *  @return Error code (SR_ERR_OK on success).
  */
 int sm_connection_assign_dst(const sm_ctx_t *sm_ctx, sm_connection_t *connection, const char *dst_address);
 
 /**
- * TODO
+ * @brief Finds session context associated to provided destination address
+ * (previously assigned to the connection by ::sm_connection_assign_dst).
+ *
+ * @param[in] sm_ctx Session Manager context.
+ * @param[in] dst_address Destination address string.
+ * @param[out] connection Connection context matching with provided destination address.
+ *
+ * @return Error code (SR_ERR_OK on success, SR_ERR_NOT_FOUND if the connection
+ * matching to the destination address cannot be found).
  */
 int sm_connection_find_dst(const sm_ctx_t *sm_ctx, const char *dst_address, sm_connection_t **connection);
 

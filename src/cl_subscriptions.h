@@ -27,8 +27,8 @@
 #include "sysrepo.h"
 #include "sr_common.h"
 
-/*
- * TODO
+/**
+ * @brief Client Subscription manager context.
  */
 typedef struct cl_sm_ctx_s cl_sm_ctx_t;
 

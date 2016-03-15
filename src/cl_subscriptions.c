@@ -48,7 +48,7 @@
 #define CL_SUBSCRIPTIONS_PATH_PREFIX "/tmp/sysrepo-subscriptions"
 
 /**
- * @brief Subscription manager context.
+ * @brief Client Subscription Manager context.
  */
 typedef struct cl_sm_ctx_s {
     /** Path where unix-domain server for notifications is binded to. */
