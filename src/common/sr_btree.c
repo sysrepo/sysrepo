@@ -109,6 +109,9 @@ sr_btree_cleanup(sr_btree_t* tree)
             }
         }
         /* destroy the tree */
+        if (NULL != tree->rb_list) {
+            rbcloselist(tree->rb_list);
+        }
         rbdestroy(tree->rb_tree);
 #endif
         /* free our context */
@@ -190,12 +193,16 @@ sr_btree_get_at(sr_btree_t *tree, size_t index)
     }
 #else
     if (0 == index) {
+        if (NULL != tree->rb_list) {
+            rbcloselist(tree->rb_list);
+        }
         tree->rb_list = rbopenlist(tree->rb_tree);
     }
     if (NULL != tree->rb_list) {
         void *item = (void*)rbreadlist(tree->rb_list);
         if (NULL == item) {
             rbcloselist(tree->rb_list);
+            tree->rb_list = NULL;
         }
         return item;
     }
