@@ -995,7 +995,7 @@ cl_subscription_test(void **state)
     assert_non_null(conn);
 
     sr_session_ctx_t *session = NULL;
-    sr_subscription_ctx_t *subscription = NULL;
+    sr_subscription_ctx_t *subscription1 = NULL, *subscription2 = NULL;
     int callback_called = 0;
     int rc = SR_ERR_OK;
 
@@ -1003,10 +1003,10 @@ cl_subscription_test(void **state)
     rc = sr_session_start(conn, SR_DS_STARTUP, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = sr_module_install_subscribe(session, test_module_install_cb, &callback_called, &subscription);
+    rc = sr_module_install_subscribe(session, test_module_install_cb, &callback_called, &subscription1);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = sr_feature_enable_subscribe(session, test_feature_enable_cb, &callback_called, &subscription);
+    rc = sr_feature_enable_subscribe(session, test_feature_enable_cb, &callback_called, &subscription2);
     assert_int_equal(rc, SR_ERR_OK);
 
     rc = sr_module_install(session, "example-module", "2016-03-05", true);
@@ -1029,7 +1029,10 @@ cl_subscription_test(void **state)
     }
     assert_true(callback_called);
 
-    rc = sr_unsubscribe(subscription);
+    rc = sr_unsubscribe(subscription1);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_unsubscribe(subscription2);
     assert_int_equal(rc, SR_ERR_OK);
 }
 
