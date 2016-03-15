@@ -141,6 +141,7 @@ np_notification_unsubscribe(np_ctx_t *np_ctx, Sr__NotificationEvent event_type, 
         if ((np_ctx->subscriptions[i]->event_type == event_type) && (np_ctx->subscriptions[i]->dst_id == dst_id) &&
                 (0 == strcmp(np_ctx->subscriptions[i]->dst_address, dst_address))) {
             subscription = np_ctx->subscriptions[i];
+            break;
         }
     }
 
@@ -153,10 +154,14 @@ np_notification_unsubscribe(np_ctx_t *np_ctx, Sr__NotificationEvent event_type, 
     pthread_rwlock_wrlock(&np_ctx->subscriptions_lock);
     if (np_ctx->subscription_cnt > (i + 1)) {
         memmove(np_ctx->subscriptions + i, np_ctx->subscriptions + i + 1,
-                (np_ctx->subscription_cnt - i - 1) * sizeof(*subscription));
+                (np_ctx->subscription_cnt - i - 1) * sizeof(*np_ctx->subscriptions));
     }
     np_ctx->subscription_cnt -= 1;
     pthread_rwlock_unlock(&np_ctx->subscriptions_lock);
+
+    /* release the subscription */
+    free((void*)subscription->dst_address);
+    free(subscription);
 
     return SR_ERR_OK;
 }
