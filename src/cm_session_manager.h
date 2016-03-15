@@ -1,7 +1,7 @@
 /**
- * @file session_manager.h
+ * @file cm_session_manager.h
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
- * @brief API of Sysrepo Engine's Session Manager.
+ * @brief API of Connection Manager's Session Manager.
  *
  * @copyright
  * Copyright 2015 Cisco Systems, Inc.
@@ -19,8 +19,8 @@
  * limitations under the License.
  */
 
-#ifndef SESSION_MANAGER_H_
-#define SESSION_MANAGER_H_
+#ifndef CM_SESSION_MANAGER_H_
+#define CM_SESSION_MANAGER_H_
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -32,7 +32,7 @@ typedef struct cm_session_ctx_s cm_session_ctx_t;        /**< Forward-declaratio
 typedef struct cm_connection_ctx_s cm_connection_ctx_t;  /**< Forward-declaration of Connection Manager's connection context. */
 
 /**
- * @defgroup sm Session Manager
+ * @defgroup sm Connection Manager's Session Manager
  * @{
  *
  * @brief Session manager tracks information about all active sysrepo sessions
@@ -261,4 +261,4 @@ int sm_session_get_index(const sm_ctx_t *sm_ctx, uint32_t index, sm_session_t **
 
 /**@} sm */
 
-#endif /* SESSION_MANAGER_H_ */
+#endif /* CM_SESSION_MANAGER_H_ */

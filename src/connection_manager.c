@@ -35,7 +35,7 @@
 #include <ev.h>
 
 #include "sr_common.h"
-#include "session_manager.h"
+#include "cm_session_manager.h"
 #include "request_processor.h"
 #include "connection_manager.h"
 

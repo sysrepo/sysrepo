@@ -44,8 +44,8 @@ ADD_UNIT_TEST(common_test)
 ADD_UNIT_TEST(xp_parser_test)
 ADD_UNIT_TEST(xp_yang_test)
 
-ADD_UNIT_TEST(sm_test)
 ADD_UNIT_TEST(cm_test)
+ADD_UNIT_TEST(cm_sm_test)
 
 ADD_UNIT_TEST_WITH_HELPERS(dm_test)
 ADD_UNIT_TEST(rp_dt_xpath_test)

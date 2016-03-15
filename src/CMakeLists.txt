@@ -35,7 +35,7 @@ set(SYSREPO-ENGINE-SOURCES
     ${GENERATED_PROTO}
     access_control.c
     connection_manager.c
-    session_manager.c
+    cm_session_manager.c
     request_processor.c
     rp_dt_xpath.c
     rp_dt_lookup.c

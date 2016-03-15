@@ -973,11 +973,19 @@ cl_get_error_test(void **state)
 }
 
 static void
+test_module_install_cb(const char *module_name, const char *revision, bool installed, void *private_ctx)
+{
+    int *callback_called = (int*)private_ctx;
+    *callback_called += 1;
+    printf("Module '%s' revision '%s' has been %s.\n", module_name, revision, installed ? "installed" : "uninstalled");
+}
+
+static void
 test_feature_enable_cb(const char *module_name, const char *feature_name, bool enabled, void *private_ctx)
 {
     int *callback_called = (int*)private_ctx;
     *callback_called += 1;
-    printf("Feature '%s' %s in module '%s'.\n", feature_name, enabled ? "enabled" : "disabled", module_name);
+    printf("Feature '%s' has been %s in module '%s'.\n", feature_name, enabled ? "enabled" : "disabled", module_name);
 }
 
 static void
@@ -995,7 +1003,13 @@ cl_subscription_test(void **state)
     rc = sr_session_start(conn, SR_DS_STARTUP, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
+    rc = sr_module_install_subscribe(session, test_module_install_cb, &callback_called, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
     rc = sr_feature_enable_subscribe(session, test_feature_enable_cb, &callback_called, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_module_install(session, "example-module", "2016-03-05", true);
     assert_int_equal(rc, SR_ERR_OK);
 
     rc = sr_feature_enable(session, "example-module", "ifconfig", true);
@@ -1010,7 +1024,7 @@ cl_subscription_test(void **state)
 
     /* wait for callback or timeout after 100 ms */
     for (size_t i = 0; i < 100; i++) {
-        if (callback_called >= 2) break;
+        if (callback_called >= 3) break;
         usleep(1000); /* 1 ms */
     }
     assert_true(callback_called);

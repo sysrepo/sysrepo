@@ -1,7 +1,7 @@
 /**
- * @file session_manager.c
+ * @file cm_session_manager.c
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
- * @brief Implementation of Sysrepo Engine's Session Manager.
+ * @brief Implementation of Connection Manager's Session Manager.
  *
  * @copyright
  * Copyright 2015 Cisco Systems, Inc.
@@ -31,7 +31,7 @@
 
 #include "sr_common.h"
 #include "access_control.h"
-#include "session_manager.h"
+#include "cm_session_manager.h"
 
 #define SM_SESSION_ID_INVALID 0         /**< Invalid value of session id. */
 #define SM_SESSION_ID_MAX_ATTEMPTS 100  /**< Maximum number of attempts to generate unused random session id. */
