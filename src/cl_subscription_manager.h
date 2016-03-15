@@ -1,5 +1,5 @@
 /**
- * @file cl_subscriptions.h
+ * @file cl_subscription_manager.h
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
  * @brief Client Library's Subscription Manager API.
  *

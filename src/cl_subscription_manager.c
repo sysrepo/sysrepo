@@ -1,5 +1,5 @@
 /**
- * @file cl_subscriptions.c
+ * @file cl_subscription_manager.c
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
  * @brief Client Library's Subscription Manager implementation.
  *
@@ -32,7 +32,7 @@
 #include <arpa/inet.h>
 #include <ev.h>
 
-#include "cl_subscriptions.h"
+#include "cl_subscription_manager.h"
 #include "sr_common.h"
 
 #define CL_SM_IN_BUFF_MIN_SPACE 512  /**< Minimal empty space in the input buffer. */

@@ -357,9 +357,6 @@ int sr_session_stop(sr_session_ctx_t *session);
  *
  * @see @ref ds_page "Datastores & Sessions" for information about session data caching.
  *
- * @note In current implementation, this function call discards any non-committed
- * changes within the session (it has the same effect as ::sr_discard_changes).
- *
  * @param[in] session Session context acquired with ::sr_session_start call.
  *
  * @return Error code (SR_ERR_OK on success).

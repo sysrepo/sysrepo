@@ -29,7 +29,7 @@
 
 #include "sr_common.h"
 #include "connection_manager.h"
-#include "cl_subscriptions.h"
+#include "cl_subscription_manager.h"
 
 /**
  * @brief Timeout (in seconds) for waiting for a response from server by each request.
