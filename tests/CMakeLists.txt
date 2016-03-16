@@ -8,7 +8,7 @@ set(HELPERS_DIR "${PROJECT_SOURCE_DIR}/tests/helpers/")
 find_program(valgrind_FOUND valgrind)
 
 macro(ADD_UNIT_TEST_WITH_OPTS TEST_NAME TEST_SRC LIBS USE_VALGRIND WRAP_FUNCTION)
-    if (WRAP_FUNCTION STREQUAL "")
+    if ("${WRAP_FUNCTION}" STREQUAL "")
         set(test_link_flags "")
     else()
         set(test_link_flags "-Wl,--wrap,${WRAP_FUNCTION}")
