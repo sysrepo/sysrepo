@@ -208,6 +208,7 @@ np_module_install_notify(np_ctx_t *np_ctx, const char *module_name, const char *
                         np_ctx->subscriptions[i]->dst_address, np_ctx->subscriptions[i]->dst_id);
                 rc = cm_msg_send(np_ctx->rp_ctx->cm_ctx, notif);
             } else {
+                sr__msg__free_unpacked(notif, NULL);
                 break;
             }
         }
@@ -252,6 +253,7 @@ np_feature_enable_notify(np_ctx_t *np_ctx, const char *module_name, const char *
                         np_ctx->subscriptions[i]->dst_address, np_ctx->subscriptions[i]->dst_id);
                 rc = cm_msg_send(np_ctx->rp_ctx->cm_ctx, notif);
             } else {
+                sr__msg__free_unpacked(notif, NULL);
                 break;
             }
         }

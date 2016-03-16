@@ -378,6 +378,7 @@ cl_sm_conn_msg_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, uint8_t *msg
     subscription_lookup.id = msg->notification->subscription_id;
     subscription = sr_btree_search(sm_ctx->subscriptions_btree, &subscription_lookup);
     if (NULL == subscription) {
+        pthread_mutex_unlock(&sm_ctx->subscriptions_lock);
         SR_LOG_ERR("No matching subscription for subscription id=%"PRIu32".", msg->notification->subscription_id);
         rc = SR_ERR_INVAL_ARG;
         goto cleanup;
@@ -386,6 +387,7 @@ cl_sm_conn_msg_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, uint8_t *msg
     /* validate the message according to the subscription type */
     rc = sr_pb_msg_validate_notif(msg, subscription->event_type);
     if (SR_ERR_OK != rc) {
+        pthread_mutex_unlock(&sm_ctx->subscriptions_lock);
         SR_LOG_ERR("Received notification message is not valid for subscription id=%"PRIu32".", subscription->id);
         rc = SR_ERR_INVAL_ARG;
         goto cleanup;

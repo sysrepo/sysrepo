@@ -706,6 +706,7 @@ cl_subscribtion_init(sr_session_ctx_t *session, Sr__NotificationEvent event_type
     msg_req->request->subscribe_req->destination = strdup(destination);
     if (NULL == msg_req->request->subscribe_req->destination) {
         SR_LOG_ERR_MSG("Error by duplication of the subscription destination.");
+        sr__msg__free_unpacked(msg_req, NULL);
         return SR_ERR_NOMEM;
     }
     msg_req->request->subscribe_req->subscription_id = subscription->id;
