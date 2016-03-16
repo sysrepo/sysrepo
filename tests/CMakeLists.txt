@@ -62,3 +62,11 @@ ADD_UNIT_TEST(concurr_test)
 ADD_UNIT_TEST_WITH_OPTS(perf_test perf_test.c "" 0)
 ADD_UNIT_TEST_WITH_OPTS(daemon_test daemon_test.c "" 0)
 
+FIND_PACKAGE(PythonInterp)
+if (PYTHONINTERP_FOUND)
+add_test(NAME python_test
+  COMMAND ${PYTHON_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/python/get_item.py
+  "${CMAKE_BINARY_DIR}/swig"
+)
+endif()
