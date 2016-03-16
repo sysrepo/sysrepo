@@ -1,7 +1,7 @@
 /**
- * @file session_manager.h
+ * @file cm_session_manager.h
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
- * @brief API of Sysrepo Engine's Session Manager.
+ * @brief API of Connection Manager's Session Manager.
  *
  * @copyright
  * Copyright 2015 Cisco Systems, Inc.
@@ -19,8 +19,8 @@
  * limitations under the License.
  */
 
-#ifndef SESSION_MANAGER_H_
-#define SESSION_MANAGER_H_
+#ifndef CM_SESSION_MANAGER_H_
+#define CM_SESSION_MANAGER_H_
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -32,7 +32,7 @@ typedef struct cm_session_ctx_s cm_session_ctx_t;        /**< Forward-declaratio
 typedef struct cm_connection_ctx_s cm_connection_ctx_t;  /**< Forward-declaration of Connection Manager's connection context. */
 
 /**
- * @defgroup sm Session Manager
+ * @defgroup sm Connection Manager's Session Manager
  * @{
  *
  * @brief Session manager tracks information about all active sysrepo sessions
@@ -95,6 +95,8 @@ typedef struct sm_connection_s {
     sm_session_list_t *session_list;  /**< List of sessions associated to the connection. */
 
     int fd;                           /**< File descriptor of the connection. */
+    const char *dst_address;          /**< Address of the destination by type == CM_AF_UNIX_SERVER */
+
     uid_t uid;                        /**< Peer's effective user ID. */
     gid_t gid;                        /**< Peer's effective group ID. */
     bool close_requested;             /**< Connection close requested. */
@@ -217,6 +219,31 @@ int sm_session_find_id(const sm_ctx_t *sm_ctx, uint32_t session_id, sm_session_t
 int sm_connection_find_fd(const sm_ctx_t *sm_ctx, const int fd, sm_connection_t **connection);
 
 /**
+ * @brief Assigns destination address to a connection, to enable fast connection
+ * lookup by destination address (::sm_connection_find_dst).
+ *
+ * @param[in] sm_ctx Session Manager context.
+ * @param[in] connection Connection context which should be tied with provided destination address.
+ * @param[in] dst_address Destination address string.
+ *
+ *  @return Error code (SR_ERR_OK on success).
+ */
+int sm_connection_assign_dst(const sm_ctx_t *sm_ctx, sm_connection_t *connection, const char *dst_address);
+
+/**
+ * @brief Finds session context associated to provided destination address
+ * (previously assigned to the connection by ::sm_connection_assign_dst).
+ *
+ * @param[in] sm_ctx Session Manager context.
+ * @param[in] dst_address Destination address string.
+ * @param[out] connection Connection context matching with provided destination address.
+ *
+ * @return Error code (SR_ERR_OK on success, SR_ERR_NOT_FOUND if the connection
+ * matching to the destination address cannot be found).
+ */
+int sm_connection_find_dst(const sm_ctx_t *sm_ctx, const char *dst_address, sm_connection_t **connection);
+
+/**
  * @brief Returns session context at given index (position) in a list (starting
  * from index 0, in increments of 1).
  *
@@ -234,4 +261,4 @@ int sm_session_get_index(const sm_ctx_t *sm_ctx, uint32_t index, sm_session_t **
 
 /**@} sm */
 
-#endif /* SESSION_MANAGER_H_ */
+#endif /* CM_SESSION_MANAGER_H_ */

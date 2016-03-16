@@ -1,7 +1,7 @@
 /**
  * @file client_library.c
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
- * @brief Sysrepo client library (public API) implementation.
+ * @brief Sysrepo client library (public + non-public API) implementation.
  *
  * @copyright
  * Copyright 2016 Cisco Systems, Inc.
@@ -29,6 +29,7 @@
 
 #include "sr_common.h"
 #include "connection_manager.h"
+#include "cl_subscription_manager.h"
 
 /**
  * @brief Timeout (in seconds) for waiting for a response from server by each request.
@@ -52,8 +53,6 @@
  */
 typedef struct sr_conn_ctx_s {
     int fd;                                  /**< File descriptor of the connection. */
-    bool primary;                            /**< Primary connection. Handles all resources allocated only
-                                                  once per process (first connection is always primary). */
     pthread_mutex_t lock;                    /**< Mutex of the connection to guarantee that requests on the
                                                   same connection are processed serially (one after another). */
     uint8_t *msg_buf;                        /**< Buffer used for sending / receiving messages. */
@@ -88,7 +87,7 @@ typedef struct sr_session_list_s {
 /**
  * Structure holding data for iterative access to items
  */
-typedef struct sr_val_iter_s{
+typedef struct sr_val_iter_s {
     char *path;                     /**< xpath of the request */
     bool recursive;                 /**< flag denoting whether child subtrees should be iterated */
     size_t offset;                  /**< offset where the next data should be read */
@@ -98,8 +97,10 @@ typedef struct sr_val_iter_s{
     size_t count;                   /**< number of element currently buffered */
 } sr_val_iter_t;
 
-static sr_conn_ctx_t *primary_connection = NULL;                  /**< Global variable holding pointer to the primary connection. */
-static pthread_mutex_t primary_lock = PTHREAD_MUTEX_INITIALIZER;  /**< Mutex for locking global variable primary_connection. */
+static int connections_cnt = 0;
+static int subscriptions_cnt = 0;
+static pthread_mutex_t global_lock = PTHREAD_MUTEX_INITIALIZER;  /**< Mutex for locking global variable primary_connection. */
+static cl_sm_ctx_t *cl_sm_ctx = NULL;
 
 /**
  * @brief Returns provided error code and saves it in the session context.
@@ -246,7 +247,7 @@ cl_socket_connect(sr_conn_ctx_t *conn_ctx, const char *socket_path)
     /* prepare a socket */
     fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (-1 == fd) {
-        SR_LOG_ERR("Unable to create a new socket (socket=%s)", socket_path);
+        SR_LOG_ERR("Unable to create a new socket: %s", strerror(errno));
         return SR_ERR_INTERNAL;
     }
 
@@ -257,7 +258,7 @@ cl_socket_connect(sr_conn_ctx_t *conn_ctx, const char *socket_path)
     /* connect to server */
     rc = connect(fd, (struct sockaddr*)&addr, sizeof(addr));
     if (-1 == rc) {
-        SR_LOG_DBG("Unable to connect to socket (socket=%s)", socket_path);
+        SR_LOG_DBG("Unable to connect to socket=%s: %s", socket_path, strerror(errno));
         close(fd);
         return SR_ERR_DISCONNECT;
     }
@@ -267,7 +268,7 @@ cl_socket_connect(sr_conn_ctx_t *conn_ctx, const char *socket_path)
     tv.tv_usec = 0;
     rc = setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, (char *)&tv, sizeof(tv));
     if (-1 == rc) {
-        SR_LOG_ERR("Unable to set timeout for socket operations (socket=%s)", socket_path);
+        SR_LOG_ERR("Unable to set timeout for socket operations on socket=%s: %s", socket_path, strerror(errno));
         close(fd);
         return SR_ERR_DISCONNECT;
     }
@@ -660,6 +661,62 @@ cl_send_get_items_iter(sr_session_ctx_t *session, const char *path, bool recursi
     return rc;
 }
 
+static int
+cl_subscribtion_init(sr_session_ctx_t *session, Sr__NotificationEvent event_type, void *private_ctx,
+        sr_subscription_ctx_t **subscription_p, Sr__Msg **msg_req_p)
+{
+    Sr__Msg *msg_req = NULL;
+    sr_subscription_ctx_t *subscription = NULL;
+    char *destination = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG3(session, subscription_p, msg_req_p);
+
+    /* check if this is the first subscription, if yes, initialize subscription manager */
+    pthread_mutex_lock(&global_lock);
+    if (0 == subscriptions_cnt) {
+        /* this is the first subscription - initialize subscription manager */
+        rc = cl_sm_init(&cl_sm_ctx);
+    }
+    subscriptions_cnt++;
+    pthread_mutex_unlock(&global_lock);
+
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Cannot initialize Client Subscription Manager.");
+        return rc;
+    }
+
+    /* prepare subscribe message */
+    rc = sr_pb_req_alloc(SR__OPERATION__SUBSCRIBE, session->id, &msg_req);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Cannot allocate subscribe message.");
+        return rc;
+    }
+
+    /* initialize subscription ctx */
+    rc = cl_sm_subscription_init(cl_sm_ctx, &destination, &subscription);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Error by initialization of the subscription in the Subscription Manager.");
+        return rc;
+    }
+    subscription->event_type = event_type;
+    subscription->private_ctx = private_ctx;
+
+    /* fill-in subscription details into GPB message */
+    msg_req->request->subscribe_req->destination = strdup(destination);
+    if (NULL == msg_req->request->subscribe_req->destination) {
+        SR_LOG_ERR_MSG("Error by duplication of the subscription destination.");
+        return SR_ERR_NOMEM;
+    }
+    msg_req->request->subscribe_req->subscription_id = subscription->id;
+    msg_req->request->subscribe_req->event = event_type;
+
+    *subscription_p = subscription;
+    *msg_req_p = msg_req;
+
+    return rc;
+}
+
 int
 sr_connect(const char *app_name, const sr_conn_options_t opts, sr_conn_ctx_t **conn_ctx_p)
 {
@@ -687,16 +744,14 @@ sr_connect(const char *app_name, const sr_conn_options_t opts, sr_conn_ctx_t **c
         goto cleanup;
     }
 
-    /* check if this is the primary connection */
-    pthread_mutex_lock(&primary_lock);
-    if (NULL == primary_connection) {
-        /* this is the first connection - set as primary */
-        primary_connection = ctx;
-        ctx->primary = true;
-        /* initialize logging */
+    /* check if this is the first connection */
+    pthread_mutex_lock(&global_lock);
+    if (0 == connections_cnt) {
+        /* this is the first connection - initialize logging */
         sr_logger_init(app_name);
     }
-    pthread_mutex_unlock(&primary_lock);
+    connections_cnt++;
+    pthread_mutex_unlock(&global_lock);
 
     /* attempt to connect to sysrepo daemon socket */
     rc = cl_socket_connect(ctx, SR_DAEMON_SOCKET);
@@ -769,13 +824,13 @@ sr_disconnect(sr_conn_ctx_t *conn_ctx)
             cm_cleanup(conn_ctx->local_cm);
         }
 
-        if (conn_ctx->primary) {
-            /* destroy global resources */
-            pthread_mutex_lock(&primary_lock);
+        pthread_mutex_lock(&global_lock);
+        connections_cnt--;
+        if ((0 == subscriptions_cnt) && (0 == connections_cnt)) {
+            /* destroy library-global resources */
             sr_logger_cleanup();
-            primary_connection = NULL;
-            pthread_mutex_unlock(&primary_lock);
         }
+        pthread_mutex_unlock(&global_lock);
 
         /* destroy all sessions */
         session = conn_ctx->session_list;
@@ -1066,60 +1121,6 @@ sr_get_schema(sr_session_ctx_t *session, const char *module_name, const char *mo
     if (NULL != msg_resp->response->get_schema_resp->schema_content) {
         *schema_content = msg_resp->response->get_schema_resp->schema_content;
         msg_resp->response->get_schema_resp->schema_content = NULL;
-    }
-
-    sr__msg__free_unpacked(msg_req, NULL);
-    sr__msg__free_unpacked(msg_resp, NULL);
-
-    return cl_session_return(session, SR_ERR_OK);
-
-cleanup:
-    if (NULL != msg_req) {
-        sr__msg__free_unpacked(msg_req, NULL);
-    }
-    if (NULL != msg_resp) {
-        sr__msg__free_unpacked(msg_resp, NULL);
-    }
-    return cl_session_return(session, rc);
-}
-
-int
-sr_feature_enable(sr_session_ctx_t *session, const char *module_name, const char *feature_name, bool enable)
-{
-    Sr__Msg *msg_req = NULL, *msg_resp = NULL;
-    int rc = SR_ERR_OK;
-
-    CHECK_NULL_ARG4(session, session->conn_ctx, module_name, feature_name);
-
-    cl_session_clear_errors(session);
-
-    /* prepare feature_enable message */
-    rc = sr_pb_req_alloc(SR__OPERATION__FEATURE_ENABLE, session->id, &msg_req);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Cannot allocate feature_enable message.");
-        goto cleanup;
-    }
-
-    /* set arguments */
-    msg_req->request->feature_enable_req->module_name = strdup(module_name);
-    if (NULL == msg_req->request->feature_enable_req->module_name) {
-        SR_LOG_ERR_MSG("Cannot duplicate module name.");
-        rc = SR_ERR_NOMEM;
-        goto cleanup;
-    }
-    msg_req->request->feature_enable_req->feature_name = strdup(feature_name);
-    if (NULL == msg_req->request->feature_enable_req->feature_name) {
-        SR_LOG_ERR_MSG("Cannot feature name.");
-        rc = SR_ERR_NOMEM;
-        goto cleanup;
-    }
-    msg_req->request->feature_enable_req->enable = enable;
-
-    /* send the request and receive the response */
-    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__FEATURE_ENABLE);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Error by processing of feature_enable request.");
-        goto cleanup;
     }
 
     sr__msg__free_unpacked(msg_req, NULL);
@@ -1884,4 +1885,226 @@ sr_get_last_errors(sr_session_ctx_t *session, const sr_error_info_t **error_info
     pthread_mutex_unlock(&session->lock);
 
     return session->last_error;
+}
+
+int
+sr_module_install_subscribe(sr_session_ctx_t *session, sr_module_install_cb callback, void *private_ctx,
+        sr_subscription_ctx_t **subscription_p)
+{
+    Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    sr_subscription_ctx_t *subscription = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG3(session, callback, subscription_p);
+
+    cl_session_clear_errors(session);
+
+    /* Initialize the subscription */
+    rc = cl_subscribtion_init(session, SR__NOTIFICATION_EVENT__MODULE_INSTALL_EV,
+            private_ctx, &subscription, &msg_req);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Error by initialization of the subscription in the client library.");
+        goto cleanup;
+    }
+    subscription->callback.module_install_cb = callback;
+
+    /* send the request and receive the response */
+    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__SUBSCRIBE);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Error by processing of subscribe request.");
+        goto cleanup;
+    }
+
+    sr__msg__free_unpacked(msg_req, NULL);
+    sr__msg__free_unpacked(msg_resp, NULL);
+
+    *subscription_p = subscription;
+    return cl_session_return(session, SR_ERR_OK);
+
+cleanup:
+    sr_unsubscribe(subscription);
+    if (NULL != msg_req) {
+        sr__msg__free_unpacked(msg_req, NULL);
+    }
+    if (NULL != msg_resp) {
+        sr__msg__free_unpacked(msg_resp, NULL);
+    }
+    return cl_session_return(session, rc);
+}
+
+int
+sr_feature_enable_subscribe(sr_session_ctx_t *session, sr_feature_enable_cb callback, void *private_ctx,
+        sr_subscription_ctx_t **subscription_p)
+{
+    Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    sr_subscription_ctx_t *subscription = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG3(session, callback, subscription_p);
+
+    cl_session_clear_errors(session);
+
+    /* Initialize the subscription */
+    rc = cl_subscribtion_init(session, SR__NOTIFICATION_EVENT__FEATURE_ENABLE_EV,
+            private_ctx, &subscription, &msg_req);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Error by initialization of the subscription in the client library.");
+        goto cleanup;
+    }
+    subscription->callback.feature_enable_cb = callback;
+
+    /* send the request and receive the response */
+    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__SUBSCRIBE);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Error by processing of subscribe request.");
+        goto cleanup;
+    }
+
+    sr__msg__free_unpacked(msg_req, NULL);
+    sr__msg__free_unpacked(msg_resp, NULL);
+
+    *subscription_p = subscription;
+    return cl_session_return(session, SR_ERR_OK);
+
+cleanup:
+    sr_unsubscribe(subscription);
+    if (NULL != msg_req) {
+        sr__msg__free_unpacked(msg_req, NULL);
+    }
+    if (NULL != msg_resp) {
+        sr__msg__free_unpacked(msg_resp, NULL);
+    }
+    return cl_session_return(session, rc);
+}
+
+int
+sr_unsubscribe(sr_subscription_ctx_t *subscription)
+{
+    CHECK_NULL_ARG(subscription);
+
+    // TODO: send unsubscribe message
+
+    cl_sm_subscription_cleanup(subscription);
+
+    pthread_mutex_lock(&global_lock);
+    subscriptions_cnt--;
+    if (0 == subscriptions_cnt) {
+        /* this is the last subscription - destroy subscription manager */
+        cl_sm_cleanup(cl_sm_ctx);
+    }
+    if ((0 == subscriptions_cnt) && (0 == connections_cnt)) {
+        /* destroy library-global resources */
+        sr_logger_cleanup();
+    }
+    pthread_mutex_unlock(&global_lock);
+
+    return SR_ERR_OK;
+}
+
+int
+sr_module_install(sr_session_ctx_t *session, const char *module_name, const char *revision, bool installed)
+{
+    Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG4(session, session->conn_ctx, module_name, revision);
+
+    cl_session_clear_errors(session);
+
+    /* prepare module_install message */
+    rc = sr_pb_req_alloc(SR__OPERATION__MODULE_INSTALL, session->id, &msg_req);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Cannot allocate module_install message.");
+        goto cleanup;
+    }
+
+    /* set arguments */
+    msg_req->request->module_install_req->module_name = strdup(module_name);
+    if (NULL == msg_req->request->module_install_req->module_name) {
+        SR_LOG_ERR_MSG("Cannot duplicate module name.");
+        rc = SR_ERR_NOMEM;
+        goto cleanup;
+    }
+    msg_req->request->module_install_req->revision = strdup(revision);
+    if (NULL == msg_req->request->module_install_req->revision) {
+        SR_LOG_ERR_MSG("Cannot duplicate revision string.");
+        rc = SR_ERR_NOMEM;
+        goto cleanup;
+    }
+    msg_req->request->module_install_req->installed = installed;
+
+    /* send the request and receive the response */
+    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__MODULE_INSTALL);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Error by processing of module_install request.");
+        goto cleanup;
+    }
+
+    sr__msg__free_unpacked(msg_req, NULL);
+    sr__msg__free_unpacked(msg_resp, NULL);
+
+    return cl_session_return(session, SR_ERR_OK);
+
+cleanup:
+    if (NULL != msg_req) {
+        sr__msg__free_unpacked(msg_req, NULL);
+    }
+    if (NULL != msg_resp) {
+        sr__msg__free_unpacked(msg_resp, NULL);
+    }
+    return cl_session_return(session, rc);
+}
+
+int
+sr_feature_enable(sr_session_ctx_t *session, const char *module_name, const char *feature_name, bool enabled)
+{
+    Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG4(session, session->conn_ctx, module_name, feature_name);
+
+    cl_session_clear_errors(session);
+
+    /* prepare feature_enable message */
+    rc = sr_pb_req_alloc(SR__OPERATION__FEATURE_ENABLE, session->id, &msg_req);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Cannot allocate feature_enable message.");
+        goto cleanup;
+    }
+
+    /* set arguments */
+    msg_req->request->feature_enable_req->module_name = strdup(module_name);
+    if (NULL == msg_req->request->feature_enable_req->module_name) {
+        SR_LOG_ERR_MSG("Cannot duplicate module name.");
+        rc = SR_ERR_NOMEM;
+        goto cleanup;
+    }
+    msg_req->request->feature_enable_req->feature_name = strdup(feature_name);
+    if (NULL == msg_req->request->feature_enable_req->feature_name) {
+        SR_LOG_ERR_MSG("Cannot duplicate feature name.");
+        rc = SR_ERR_NOMEM;
+        goto cleanup;
+    }
+    msg_req->request->feature_enable_req->enabled = enabled;
+
+    /* send the request and receive the response */
+    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__FEATURE_ENABLE);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Error by processing of feature_enable request.");
+        goto cleanup;
+    }
+
+    sr__msg__free_unpacked(msg_req, NULL);
+    sr__msg__free_unpacked(msg_resp, NULL);
+
+    return cl_session_return(session, SR_ERR_OK);
+
+cleanup:
+    if (NULL != msg_req) {
+        sr__msg__free_unpacked(msg_req, NULL);
+    }
+    if (NULL != msg_resp) {
+        sr__msg__free_unpacked(msg_resp, NULL);
+    }
+    return cl_session_return(session, rc);
 }

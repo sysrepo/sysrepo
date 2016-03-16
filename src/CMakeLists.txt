@@ -25,6 +25,7 @@ configure_file("${COMMON_DIR}/sr_constants.h.in" "${COMMON_DIR}/sr_constants.h" 
 set(SYSREPO-SOURCES
     ${GENERATED_PROTO}
     client_library.c
+    cl_subscription_manager.c
     common/sr_common.c
     common/sr_btree.c
     common/sr_logger.c
@@ -34,7 +35,7 @@ set(SYSREPO-ENGINE-SOURCES
     ${GENERATED_PROTO}
     access_control.c
     connection_manager.c
-    session_manager.c
+    cm_session_manager.c
     request_processor.c
     rp_dt_xpath.c
     rp_dt_lookup.c
@@ -42,6 +43,7 @@ set(SYSREPO-ENGINE-SOURCES
     rp_dt_edit.c
     rp_node_stack.c
     data_manager.c
+    notification_processor.c
     xpath_processor.c
     common/sr_common.c
     common/sr_btree.c

@@ -1,7 +1,7 @@
 /**
- * @file sm_test.c
+ * @file cm_sm_test.c
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
- * @brief Session Manager unit tests.
+ * @brief Connection Manager's Session Manager unit tests.
  *
  * @copyright
  * Copyright 2015 Cisco Systems, Inc.
@@ -27,7 +27,7 @@
 #include <cmocka.h>
 
 #include "sr_common.h"
-#include "session_manager.h"
+#include "cm_session_manager.h"
 
 static int
 setup(void **state) {

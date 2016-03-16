@@ -12,8 +12,8 @@ planed for later too. See @ref cl module for the public API documentation.
 
 Sysrepo can be easily integrated to management agents such as NETCONF or RESTCONF
 using the same API that applications use to access their configuration 
-(see the picture below). As of now, integration to Netopeer NETCONF server 
-(https://github.com/cesnet/netopeer) is in progress. This way, applications
+(see the picture below). As of now, integration to Netopeer 2 NETCONF server 
+(https://github.com/CESNET/Netopeer2) is in progress. This way, applications
 that use sysrepo to store their configuration will automatically benefit from 
 ability to control the application via NETCONF.
 

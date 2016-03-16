@@ -378,24 +378,51 @@ message UnlockResp {
 // Data modules handling API - !!! EXPERIMENTAL !!!
 ////////////////////////////////////////////////////////////////////////////////
 
+message ModuleInstallReq {
+  optional string module_name = 1;
+  optional string revision = 2;
+  required bool installed = 3;
+}
+
+message ModuleInstallResp {
+}
+
 message FeatureEnableReq {
   required string module_name = 1;
   required string feature_name = 2;
-  required bool enable = 3;
+  required bool enabled = 3;
 }
 
 message FeatureEnableResp {
 }
 
-message ModuleEnableReq {
+enum NotificationEvent {
+  MODULE_INSTALL_EV = 1;
+  FEATURE_ENABLE_EV = 2;
+}
+
+message SubscribeReq {
+  required NotificationEvent event = 1;
+  required string destination = 2;
+  required uint32 subscription_id = 3;
+
+  optional string path = 4;
+}
+
+message SubscribeResp {
+}
+
+message ModuleInstallNotification {
   optional string module_name = 1;
   optional string revision = 2;
-  required bool enable = 3;
+  required bool installed = 3;
 }
 
-message ModuleEnableResp {
+message FeatureEnableNotification {
+  required string module_name = 1;
+  required string feature_name = 2;
+  required bool enabled = 3;
 }
-
 
 ////////////////////////////////////////////////////////////////////////////////
 // Sysrepo Engine API umbrella messages
@@ -411,8 +438,8 @@ enum Operation {
 
   LIST_SCHEMAS = 20;
   GET_SCHEMA = 21;
-  FEATURE_ENABLE = 22;
-  MODULE_ENABLE = 23;
+  MODULE_INSTALL = 22;
+  FEATURE_ENABLE = 23;
 
   GET_ITEM = 30;
   GET_ITEMS = 31;
@@ -427,12 +454,14 @@ enum Operation {
 
   LOCK = 60;
   UNLOCK = 61;
+
+  SUBSCRIBE = 70;
 }
 
 /**
  * @brief Request for an operation.
  */
-message Req {
+message Request {
   required Operation operation = 1;
 
   optional SessionStartReq session_start_req = 10;
@@ -441,8 +470,8 @@ message Req {
 
   optional ListSchemasReq list_schemas_req = 20;
   optional GetSchemaReq get_schema_req = 21;
-  optional FeatureEnableReq feature_enable_req = 22;
-  optional ModuleEnableReq module_enable_req = 23;
+  optional ModuleInstallReq module_install_req = 22;
+  optional FeatureEnableReq feature_enable_req = 23;
 
   optional GetItemReq get_item_req = 30;
   optional GetItemsReq get_items_req = 31;
@@ -457,12 +486,14 @@ message Req {
 
   optional LockReq lock_req = 60;
   optional UnlockReq unlock_req = 61;
+
+  optional SubscribeReq subscribe_req = 70;
 }
 
 /**
  * @brief Response to the received request.
  */
-message Resp {
+message Response {
   required Operation operation = 1;
   required uint32 result = 2;  /**< Result of the operation. 0 on success, non-zero values map to sr_error_t enum in sysrepo.h. */
   optional Error error = 3;    /**< Additional error information. */
@@ -473,8 +504,8 @@ message Resp {
 
   optional ListSchemasResp list_schemas_resp = 20;
   optional GetSchemaResp get_schema_resp = 21;
-  optional FeatureEnableResp feature_enable_resp = 22;
-  optional ModuleEnableResp module_enable_resp = 23;
+  optional ModuleInstallResp module_install_resp = 22;
+  optional FeatureEnableResp feature_enable_resp = 23;
 
   optional GetItemResp get_item_resp = 30;
   optional GetItemsResp get_items_resp = 31;
@@ -489,6 +520,20 @@ message Resp {
 
   optional LockResp lock_resp = 60;
   optional UnlockResp unlock_resp = 61;
+
+  optional SubscribeResp subscribe_resp = 70;
+}
+
+/**
+ * @brief Notification about an event that occurred in the datastore.
+ */
+message Notification {
+  required NotificationEvent event = 1;
+  required string destination = 2;
+  required uint32 subscription_id = 3;
+
+  optional ModuleInstallNotification module_install_notif = 10;
+  optional FeatureEnableNotification feature_enable_notif = 11;
 }
 
 /**
@@ -500,12 +545,15 @@ message Msg {
    * @brief Type of the message.
    */
   enum MsgType {
-    REQUEST = 1;   /**< The message is a request. */
-    RESPONSE = 2;  /**< The message is a response to the request. */
+    REQUEST = 1;       /**< The message is a request. */
+    RESPONSE = 2;      /**< The message is a response to the request. */
+    NOTIFICATION = 3;  /**< The message is a notification. */
   }
 
-  required MsgType type = 1;       /**< Indicates type of the message. */
-  required uint32 session_id = 2;  /**< Session identifier. Can be 0 (value is ignored) for session_start request. */
-  optional Req request = 3;        /**< Filled in in case of type == REQUEST. */
-  optional Resp response = 4;      /**< Filled in in case of type == RESPONSE. */
+  required MsgType type = 1;               /**< Indicates type of the message. */
+  required uint32 session_id = 2;          /**< Session identifier. Can be 0 (value is ignored) for session_start request. */
+
+  optional Request request = 3;            /**< Filled in in case of type == REQUEST. */
+  optional Response response = 4;          /**< Filled in in case of type == RESPONSE. */
+  optional Notification notification = 5;  /**< Filled in in case of type == NOTIFICATION. */
 }
