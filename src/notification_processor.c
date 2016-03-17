@@ -83,6 +83,7 @@ np_cleanup(np_ctx_t *np_ctx)
 
     for (size_t i = 0; i < np_ctx->subscription_cnt; i++) {
         free((void*)np_ctx->subscriptions[i]->dst_address);
+        free((void*)np_ctx->subscriptions[i]->path);
         free(np_ctx->subscriptions[i]);
     }
     free(np_ctx->subscriptions);
