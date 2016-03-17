@@ -55,10 +55,10 @@ typedef struct cl_sm_ctx_s {
     char *socket_path;
     /** Socket descriptor used to listen & accept new unix-domain connections. */
     int listen_socket_fd;
-    /** Binary tree used for fast connection context lookup by file descriptor. */
+    /** Binary tree used for fast notification connection lookup by file descriptor. */
     sr_btree_t *fd_btree;
     
-    /** Binary tree of data connections to sysrepo. */
+    /** Binary tree of data connections to sysrepo, organized by destination socket address. */
     sr_btree_t *data_connection_btree;
 
     /** Binary tree used for fast subscription lookup by id. */
@@ -87,7 +87,7 @@ typedef struct cl_sm_buffer_s {
 } cl_sm_buffer_t;
 
 /**
- * @brief Context of a connection to Subscription Manger's unix-domain server.
+ * @brief Context of a notification connection to Subscription Manger's unix-domain server.
  */
 typedef struct cl_sm_conn_ctx_s {
     cl_sm_ctx_t *sm_ctx;      /**< Pointer to Subscription Manger context. */

@@ -1119,7 +1119,7 @@ cm_out_notif_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
 
     if (NULL == connection->session_list) {
         /* create a new notification session */
-        rc = cm_session_start_internal(cm_ctx, connection, NULL, SR__DATA_STORE__RUNNING, true, &session);
+        rc = cm_session_start_internal(cm_ctx, connection, NULL, SR_DS_RUNNING, true, &session);
         if (SR_ERR_OK != rc) {
             return rc;
             // TODO: remove subscriptions?
