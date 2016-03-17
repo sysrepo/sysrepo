@@ -1134,6 +1134,7 @@ cm_out_notif_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
 
     /* send the message */
     rc = cm_msg_send_connection(cm_ctx, connection, msg);
+    // TODO: remove subscription by disconnect
 
     sr__msg__free_unpacked(msg, NULL);
 

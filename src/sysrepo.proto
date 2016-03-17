@@ -418,6 +418,11 @@ message SubscribeReq {
 message SubscribeResp {
 }
 
+message UnSubscribeReq {
+  required string destination = 2;
+  required uint32 subscription_id = 3;
+}
+
 message ModuleInstallNotification {
   optional string module_name = 1;
   optional string revision = 2;
@@ -432,7 +437,6 @@ message FeatureEnableNotification {
 
 message ModuleChangeNotification {
   required string module_name = 1;
-  required DataStore datastore = 2;
 }
 
 

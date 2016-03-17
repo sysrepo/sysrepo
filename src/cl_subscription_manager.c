@@ -527,7 +527,6 @@ cl_sm_conn_msg_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, uint8_t *msg
             subscription->callback.module_change_cb(
                     data_session,
                     msg->notification->module_change_notif->module_name,
-                    sr_datastore_gpb_to_sr(msg->notification->module_change_notif->datastore),
                     subscription->private_ctx);
             break;
         default:
