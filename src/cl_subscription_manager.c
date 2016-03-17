@@ -58,6 +58,9 @@ typedef struct cl_sm_ctx_s {
     /** Binary tree used for fast connection context lookup by file descriptor. */
     sr_btree_t *fd_btree;
     
+    /** Binary tree of data connections to sysrepo. */
+    sr_btree_t *data_connection_btree;
+
     /** Binary tree used for fast subscription lookup by id. */
     sr_btree_t *subscriptions_btree;
     /** Lock for the subscriptions binary tree. */
@@ -370,7 +373,8 @@ cl_sm_conn_msg_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, uint8_t *msg
         goto cleanup;
     }
 
-    SR_LOG_DBG("Received a notification for subscription id=%"PRIu32".", msg->notification->subscription_id);
+    SR_LOG_DBG("Received a notification for subscription id=%"PRIu32" (source address='%s', session id=%"PRIu32").",
+            msg->notification->subscription_id, msg->notification->source_address, msg->session_id);
 
     pthread_mutex_lock(&sm_ctx->subscriptions_lock);
 

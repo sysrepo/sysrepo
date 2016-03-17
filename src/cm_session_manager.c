@@ -327,11 +327,13 @@ sm_connection_start(const sm_ctx_t *sm_ctx, const sm_connection_type_t type, con
     connection->fd = fd;
 
     /* set peer's effective uid and gid */
-    rc = sr_get_peer_eid(fd, &connection->uid, &connection->gid);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Cannot retrieve uid and gid of the peer.");
-        free(connection);
-        return SR_ERR_INTERNAL;
+    if (CM_AF_UNIX_SERVER != type) {
+        rc = sr_get_peer_eid(fd, &connection->uid, &connection->gid);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR_MSG("Cannot retrieve uid and gid of the peer.");
+            free(connection);
+            return SR_ERR_INTERNAL;
+        }
     }
 
     /* insert connection into binary tree for fast lookup by fd */

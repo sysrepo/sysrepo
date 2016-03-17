@@ -26,6 +26,7 @@ set(SYSREPO-SOURCES
     ${GENERATED_PROTO}
     client_library.c
     cl_subscription_manager.c
+    cl_common.c
     common/sr_common.c
     common/sr_btree.c
     common/sr_logger.c

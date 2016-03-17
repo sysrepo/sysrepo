@@ -964,8 +964,8 @@ sr_pb_notif_alloc(const Sr__NotificationEvent event, const char *destination, co
     notif->event = event;
     notif->subscription_id = subscription_id;
 
-    notif->destination = strdup(destination);
-    if (NULL == notif->destination) {
+    notif->destination_address = strdup(destination);
+    if (NULL == notif->destination_address) {
         goto nomem;
     }
 

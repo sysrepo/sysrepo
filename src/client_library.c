@@ -29,12 +29,9 @@
 
 #include "sr_common.h"
 #include "connection_manager.h"
-#include "cl_subscription_manager.h"
 
-/**
- * @brief Timeout (in seconds) for waiting for a response from server by each request.
- */
-#define CL_REQUEST_TIMEOUT 2
+#include "cl_subscription_manager.h"
+#include "cl_common.h"
 
 /**
  * @brief Number of items being fetched in one message from Sysrepo Engine by
@@ -47,42 +44,6 @@
  * for local unix-domain connections (library mode).
  */
 #define CL_LCONN_PATH_PREFIX "/tmp/sysrepo-local"
-
-/**
- * Connection context used to identify a connection to sysrepo datastore.
- */
-typedef struct sr_conn_ctx_s {
-    int fd;                                  /**< File descriptor of the connection. */
-    pthread_mutex_t lock;                    /**< Mutex of the connection to guarantee that requests on the
-                                                  same connection are processed serially (one after another). */
-    uint8_t *msg_buf;                        /**< Buffer used for sending / receiving messages. */
-    size_t msg_buf_size;                     /**< Length of the message buffer. */
-    struct sr_session_list_s *session_list;  /**< Linked-list of associated sessions. */
-    bool library_mode;                       /**< Determine if we are connected to sysrepo daemon
-                                                  or our own sysrepo engine (library mode). */
-    cm_ctx_t *local_cm;                      /**< Local Connection Manager in case of library mode. */
-} sr_conn_ctx_t;
-
-/**
- * Session context used to identify a configuration session.
- */
-typedef struct sr_session_ctx_s {
-    sr_conn_ctx_t *conn_ctx;      /**< Associated connection context. */
-    uint32_t id;                  /**< Assigned session identifier. */
-    pthread_mutex_t lock;         /**< Mutex for the session context content. */
-    sr_error_t last_error;        /**< Latest error code returned from an API call. */
-    sr_error_info_t *error_info;  /**< Array of detailed error information from last API call. */
-    size_t error_info_size;       /**< Current size of the error_info array. */
-    size_t error_cnt;             /**< Number of errors that occurred within last API call. */
-} sr_session_ctx_t;
-
-/**
- * Linked-list of sessions.
- */
-typedef struct sr_session_list_s {
-    sr_session_ctx_t *session;       /**< Session context. */
-    struct sr_session_list_s *next;  /**< Next element in the linked-list. */
-} sr_session_list_t;
 
 /**
  * Structure holding data for iterative access to items
@@ -231,53 +192,6 @@ cl_session_clear_errors(sr_session_ctx_t *session)
 }
 
 /**
- * @brief Connects the client to provided unix-domain socket.
- */
-static int
-cl_socket_connect(sr_conn_ctx_t *conn_ctx, const char *socket_path)
-{
-    struct sockaddr_un addr;
-    struct timeval tv = { 0, };
-    int fd = -1, rc = -1;
-
-    CHECK_NULL_ARG2(socket_path, socket_path);
-
-    SR_LOG_DBG("Connecting to socket=%s", socket_path);
-
-    /* prepare a socket */
-    fd = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (-1 == fd) {
-        SR_LOG_ERR("Unable to create a new socket: %s", strerror(errno));
-        return SR_ERR_INTERNAL;
-    }
-
-    memset(&addr, 0, sizeof(addr));
-    addr.sun_family = AF_UNIX;
-    strncpy(addr.sun_path, socket_path, sizeof(addr.sun_path)-1);
-
-    /* connect to server */
-    rc = connect(fd, (struct sockaddr*)&addr, sizeof(addr));
-    if (-1 == rc) {
-        SR_LOG_DBG("Unable to connect to socket=%s: %s", socket_path, strerror(errno));
-        close(fd);
-        return SR_ERR_DISCONNECT;
-    }
-
-    /* set timeout for receive operation */
-    tv.tv_sec = CL_REQUEST_TIMEOUT;
-    tv.tv_usec = 0;
-    rc = setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, (char *)&tv, sizeof(tv));
-    if (-1 == rc) {
-        SR_LOG_ERR("Unable to set timeout for socket operations on socket=%s: %s", socket_path, strerror(errno));
-        close(fd);
-        return SR_ERR_DISCONNECT;
-    }
-
-    conn_ctx->fd = fd;
-    return SR_ERR_OK;
-}
-
-/**
  * @brief Initializes our own sysrepo engine (fallback option if sysrepo daemon is not running)
  */
 static int
@@ -302,95 +216,6 @@ cl_engine_init_local(sr_conn_ctx_t *conn_ctx, const char *socket_path)
     }
 
     return rc;
-}
-
-/**
- * @brief Adds a new session to the session list of the connection.
- */
-static int
-cl_conn_add_session(sr_conn_ctx_t *connection, sr_session_ctx_t *session)
-{
-    sr_session_list_t *session_item = NULL, *tmp = NULL;
-
-    CHECK_NULL_ARG2(connection, session);
-
-    session_item = calloc(1, sizeof(*session_item));
-    if (NULL == session_item) {
-        SR_LOG_ERR_MSG("Cannot allocate memory for new session list entry.");
-        return SR_ERR_NOMEM;
-    }
-    session_item->session = session;
-
-    pthread_mutex_lock(&connection->lock);
-
-    /* append session entry at the end of list */
-    if (NULL == connection->session_list) {
-        connection->session_list = session_item;
-    } else {
-        tmp = connection->session_list;
-        while (NULL != tmp->next) {
-            tmp = tmp->next;
-        }
-        tmp->next = session_item;
-    }
-
-    pthread_mutex_unlock(&connection->lock);
-
-    return SR_ERR_OK;
-}
-
-/**
- * @brief Removes a session from the session list of the connection.
- */
-static int
-cl_conn_remove_session(sr_conn_ctx_t *connection, sr_session_ctx_t *session)
-{
-    sr_session_list_t *tmp = NULL, *prev = NULL;
-
-    CHECK_NULL_ARG2(connection, session);
-
-    pthread_mutex_lock(&connection->lock);
-
-    /* find matching session in linked list */
-    tmp = connection->session_list;
-    while ((NULL != tmp) && (tmp->session != session)) {
-        prev = tmp;
-        tmp = tmp->next;
-    }
-
-    /* remove the session from linked-list */
-    if (NULL != tmp) {
-        if (NULL != prev) {
-            /* tmp is NOT the first item in list - skip it */
-            prev->next = tmp->next;
-        } else if (NULL != tmp->next) {
-            /* tmp is the first, but not last item in list - skip it */
-            connection->session_list = tmp->next;
-        } else {
-            /* tmp is the only item in the list */
-            connection->session_list = NULL;
-        }
-        free(tmp);
-    } else {
-        SR_LOG_WRN("Session %p not found in session list of connection.", (void*)session);
-    }
-
-    pthread_mutex_unlock(&connection->lock);
-
-    return SR_ERR_OK;
-}
-
-/**
- * @brief Cleans up a client library -local session.
- */
-static void
-cl_session_cleanup(sr_session_ctx_t *session)
-{
-    if (NULL != session) {
-        sr_free_errors(session->error_info, session->error_info_size);
-        pthread_mutex_destroy(&session->lock);
-        free(session);
-    }
 }
 
 /**
@@ -721,7 +546,7 @@ cl_subscribtion_init(sr_session_ctx_t *session, Sr__NotificationEvent event_type
 int
 sr_connect(const char *app_name, const sr_conn_options_t opts, sr_conn_ctx_t **conn_ctx_p)
 {
-    sr_conn_ctx_t *ctx = NULL;
+    sr_conn_ctx_t *connection = NULL;
     int rc = SR_ERR_OK;
     char socket_path[PATH_MAX] = { 0, };
 
@@ -729,20 +554,10 @@ sr_connect(const char *app_name, const sr_conn_options_t opts, sr_conn_ctx_t **c
 
     SR_LOG_DBG_MSG("Connecting to Sysrepo Engine.");
 
-    /* initialize the context */
-    ctx = calloc(1, sizeof(*ctx));
-    if (NULL == ctx) {
-        SR_LOG_ERR_MSG("Cannot allocate memory for connection context.");
-        rc = SR_ERR_NOMEM;
-        goto cleanup;
-    }
-
-    /* init connection mutext */
-    rc = pthread_mutex_init(&ctx->lock, NULL);
-    if (0 != rc) {
-        SR_LOG_ERR_MSG("Cannot initialize connection mutex.");
-        rc = SR_ERR_INIT_FAILED;
-        goto cleanup;
+    /* create the connection */
+    rc = cl_connection_create(&connection);
+    if (SR_ERR_OK != rc) {
+        return rc;
     }
 
     /* check if this is the first connection */
@@ -755,7 +570,7 @@ sr_connect(const char *app_name, const sr_conn_options_t opts, sr_conn_ctx_t **c
     pthread_mutex_unlock(&global_lock);
 
     /* attempt to connect to sysrepo daemon socket */
-    rc = cl_socket_connect(ctx, SR_DAEMON_SOCKET);
+    rc = cl_socket_connect(connection, SR_DAEMON_SOCKET);
     if (SR_ERR_OK != rc) {
         if (opts & SR_CONN_DAEMON_REQUIRED) {
             SR_LOG_ERR_MSG("Sysrepo daemon not detected while library mode disallowed.");
@@ -773,21 +588,21 @@ sr_connect(const char *app_name, const sr_conn_options_t opts, sr_conn_ctx_t **c
             SR_LOG_WRN_MSG("Sysrepo daemon not detected. Connecting to local Sysrepo Engine.");
 
             /* connect in library mode */
-            ctx->library_mode = true;
+            connection->library_mode = true;
             snprintf(socket_path, PATH_MAX, "%s-%d.sock", CL_LCONN_PATH_PREFIX, getpid());
 
             /* attempt to connect to our own sysrepo engine (local engine may already exist) */
-            rc = cl_socket_connect(ctx, socket_path);
+            rc = cl_socket_connect(connection, socket_path);
             if (SR_ERR_OK != rc) {
                 /* initialize our own sysrepo engine and attempt to connect again */
                 SR_LOG_INF_MSG("Local Sysrepo Engine not running yet, initializing new one.");
 
-                rc = cl_engine_init_local(ctx, socket_path);
+                rc = cl_engine_init_local(connection, socket_path);
                 if (SR_ERR_OK != rc) {
                     SR_LOG_ERR_MSG("Unable to start local sysrepo engine.");
                     goto cleanup;
                 }
-                rc = cl_socket_connect(ctx, socket_path);
+                rc = cl_socket_connect(connection, socket_path);
                 if (SR_ERR_OK != rc) {
                     SR_LOG_ERR_MSG("Unable to connect to the local sysrepo engine.");
                     goto cleanup;
@@ -799,25 +614,20 @@ sr_connect(const char *app_name, const sr_conn_options_t opts, sr_conn_ctx_t **c
         SR_LOG_INF("Connected to daemon Sysrepo Engine at socket=%s", SR_DAEMON_SOCKET);
     }
 
-    *conn_ctx_p = ctx;
+    *conn_ctx_p = connection;
     return SR_ERR_OK;
 
 cleanup:
-    if ((NULL != ctx) && (NULL != ctx->local_cm)) {
-        cm_cleanup(ctx->local_cm);
+    if ((NULL != connection) && (NULL != connection->local_cm)) {
+        cm_cleanup(connection->local_cm);
     }
-    if (NULL != ctx) {
-        pthread_mutex_destroy(&ctx->lock);
-    }
-    free(ctx);
+    cl_connection_cleanup(connection);
     return rc;
 }
 
 void
 sr_disconnect(sr_conn_ctx_t *conn_ctx)
 {
-    sr_session_list_t *session = NULL, *tmp = NULL;
-
     if (NULL != conn_ctx) {
         if (NULL != conn_ctx->local_cm) {
             /* destroy our own sysrepo engine */
@@ -833,19 +643,7 @@ sr_disconnect(sr_conn_ctx_t *conn_ctx)
         }
         pthread_mutex_unlock(&global_lock);
 
-        /* destroy all sessions */
-        session = conn_ctx->session_list;
-        while (NULL != session) {
-            tmp = session;
-            session = session->next;
-            cl_session_cleanup(tmp->session);
-            free(tmp);
-        }
-
-        pthread_mutex_destroy(&conn_ctx->lock);
-        free(conn_ctx->msg_buf);
-        close(conn_ctx->fd);
-        free(conn_ctx);
+        cl_connection_cleanup(conn_ctx);
     }
 }
 
@@ -864,21 +662,10 @@ sr_session_start_user(sr_conn_ctx_t *conn_ctx, const char *user_name, sr_datasto
 
     CHECK_NULL_ARG2(conn_ctx, session_p);
 
-    /* initialize session context */
-    session = calloc(1, sizeof(*session));
-    if (NULL == session) {
-        SR_LOG_ERR_MSG("Cannot allocate memory for session context.");
-        rc = SR_ERR_NOMEM;
-        goto cleanup;
-    }
-    session->conn_ctx = conn_ctx;
-
-    /* initialize session mutext */
-    rc = pthread_mutex_init(&session->lock, NULL);
-    if (0 != rc) {
-        SR_LOG_ERR_MSG("Cannot initialize session mutex.");
-        rc = SR_ERR_INIT_FAILED;
-        goto cleanup;
+    /* create a new session */
+    rc = cl_session_create(conn_ctx, &session);
+    if (SR_ERR_OK != rc) {
+        return rc;
     }
 
     /* prepare session_start message */
@@ -910,12 +697,6 @@ sr_session_start_user(sr_conn_ctx_t *conn_ctx, const char *user_name, sr_datasto
     sr__msg__free_unpacked(msg_req, NULL);
     sr__msg__free_unpacked(msg_resp, NULL);
 
-    /* store the session the in connection */
-    rc = cl_conn_add_session(conn_ctx, session);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_WRN_MSG("Error by adding the session to the connection session list.");
-    }
-
     *session_p = session;
     return SR_ERR_OK;
 
@@ -926,10 +707,7 @@ cleanup:
     if (NULL != msg_resp) {
         sr__msg__free_unpacked(msg_resp, NULL);
     }
-    if (NULL != session) {
-        pthread_mutex_destroy(&session->lock);
-    }
-    free(session);
+    cl_session_cleanup(session);
     return rc;
 }
 
@@ -956,12 +734,6 @@ sr_session_stop(sr_session_ctx_t *session)
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Error by processing of session_stop request.");
         goto cleanup;
-    }
-
-    /* remove the session from connection */
-    rc = cl_conn_remove_session(session->conn_ctx, session);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_WRN_MSG("Error by removing the session from the connection session list.");
     }
 
     sr__msg__free_unpacked(msg_req, NULL);
