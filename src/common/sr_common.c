@@ -987,6 +987,14 @@ sr_pb_notif_alloc(const Sr__NotificationEvent event, const char *destination, co
             sr__feature_enable_notification__init((Sr__FeatureEnableNotification*)sub_msg);
             notif->feature_enable_notif = (Sr__FeatureEnableNotification*)sub_msg;
             break;
+        case SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV:
+            sub_msg = calloc(1, sizeof(Sr__ModuleChangeNotification));
+            if (NULL == sub_msg) {
+                goto nomem;
+            }
+            sr__module_change_notification__init((Sr__ModuleChangeNotification*)sub_msg);
+            notif->module_change_notif = (Sr__ModuleChangeNotification*)sub_msg;
+            break;
         default:
             break;
     }
@@ -1202,6 +1210,10 @@ sr_pb_msg_validate_notif(const Sr__Msg *msg, const Sr__NotificationEvent event)
                 break;
             case SR__NOTIFICATION_EVENT__FEATURE_ENABLE_EV:
                 if (NULL == msg->notification->feature_enable_notif)
+                    return SR_ERR_MALFORMED_MSG;
+                break;
+            case SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV:
+                if (NULL == msg->notification->module_change_notif)
                     return SR_ERR_MALFORMED_MSG;
                 break;
             default:

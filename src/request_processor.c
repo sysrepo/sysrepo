@@ -772,7 +772,7 @@ rp_subscribe_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr
     }
 
     /* subscribe to the notification */
-    rc = np_notification_subscribe(rp_ctx->np_ctx, msg->request->subscribe_req->event,
+    rc = np_notification_subscribe(rp_ctx->np_ctx, msg->request->subscribe_req->event, msg->request->subscribe_req->path,
             msg->request->subscribe_req->destination, msg->request->subscribe_req->subscription_id);
 
     /* set response code */

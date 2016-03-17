@@ -34,6 +34,7 @@
 
 #include "cl_subscription_manager.h"
 #include "sr_common.h"
+#include "cl_common.h"
 
 #define CL_SM_IN_BUFF_MIN_SPACE 512  /**< Minimal empty space in the input buffer. */
 #define CL_SM_BUFF_ALLOC_CHUNK 1024  /**< Chunk size for buffer expansions. */
@@ -135,6 +136,44 @@ cl_sm_subscription_cleanup_internal(void *subscription_p)
         subscription = (sr_subscription_ctx_t *)subscription_p;
         free(subscription);
     }
+}
+
+/**
+ * @brief Compares two data connections by associated destination addresses
+ * (used by lookups in data connection binary tree).
+ */
+static int
+cl_sm_data_connection_cmp_dst(const void *a, const void *b)
+{
+    assert(a);
+    assert(b);
+    sr_conn_ctx_t *conn_a = (sr_conn_ctx_t*)a;
+    sr_conn_ctx_t *conn_b = (sr_conn_ctx_t*)b;
+
+    int res = 0;
+
+    assert(conn_a->dst_address);
+    assert(conn_b->dst_address);
+
+    res = strcmp(conn_a->dst_address, conn_b->dst_address);
+    if (res == 0) {
+        return 0;
+    } else if (res < 0) {
+        return -1;
+    } else {
+        return 1;
+    }
+}
+
+/**
+ * @brief Cleans up a data connection entry.
+ * @note Called automatically when a node from the binary tree is removed
+ * (which is also when the tree itself is being destroyed).
+ */
+static void
+cl_sm_data_connection_cleanup(void *connection)
+{
+    cl_connection_cleanup(connection);
 }
 
 /**
@@ -347,6 +386,65 @@ cl_sm_conn_buffer_expand(const cl_sm_conn_ctx_t *conn, cl_sm_buffer_t *buff, siz
 }
 
 /**
+ * @brief Get (prepare) configuration session that can be used from notification callback.
+ */
+static int
+cl_sm_get_data_session(cl_sm_ctx_t *sm_ctx, const char *source_address, uint32_t session_id,
+        sr_session_ctx_t **config_session_p)
+{
+    sr_conn_ctx_t *connection = NULL;
+    sr_conn_ctx_t connection_lookup = { 0, };
+    sr_session_list_t *session_entry = NULL;
+    sr_session_ctx_t *session = NULL;
+    int rc = SR_ERR_OK;
+
+    /* find a connection matching with provided address */
+    connection_lookup.dst_address = source_address;
+    connection = sr_btree_search(sm_ctx->data_connection_btree, &connection_lookup);
+    if (NULL == connection) {
+        /* connection not found, create a new one */
+        SR_LOG_DBG("Connecting to the notification originator at '%s'.", source_address);
+        rc = cl_connection_create(&connection);
+        if (SR_ERR_OK == rc) {
+            connection->dst_address = strdup(source_address);
+            CHECK_NULL_NOMEM_ERROR(connection->dst_address, rc);
+        }
+        if (SR_ERR_OK == rc) {
+            rc = cl_socket_connect(connection, connection->dst_address);
+        }
+        if (SR_ERR_OK == rc) {
+            rc = sr_btree_insert(sm_ctx->data_connection_btree, connection);
+        }
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR("Unable to connect to the notification originator at '%s'.", source_address);
+            cl_connection_cleanup(connection);
+            return rc;
+        }
+    }
+
+    /* find a session matching with provided id */
+    session_entry = connection->session_list;
+    while (NULL != session_entry) {
+        if ((NULL != session_entry->session) && (session_entry->session->id == session_id)) {
+            session = session_entry->session;
+            break;
+        }
+        session_entry = session_entry->next;
+    }
+    if (NULL == session) {
+        /* session not found, create a new one */
+        SR_LOG_DBG("Creating a new data session at '%s', session id=%"PRIu32".", source_address, session_id);
+        rc = cl_session_create(connection, &session);
+        if (SR_ERR_OK == rc) {
+            session->id = session_id;
+        }
+    }
+
+    *config_session_p = session;
+    return rc;
+}
+
+/**
  * @brief Processes a message received on the connection.
  */
 static int
@@ -355,6 +453,7 @@ cl_sm_conn_msg_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, uint8_t *msg
     Sr__Msg *msg = NULL;
     sr_subscription_ctx_t *subscription = NULL;
     sr_subscription_ctx_t subscription_lookup = { 0, };
+    sr_session_ctx_t *data_session = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG3(sm_ctx, conn, msg_data);
@@ -397,6 +496,15 @@ cl_sm_conn_msg_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, uint8_t *msg
         goto cleanup;
     }
 
+    /* get data session that can be used from notification callback */
+    rc = cl_sm_get_data_session(sm_ctx, msg->notification->source_address, msg->session_id, &data_session);
+    if (SR_ERR_OK != rc) {
+        pthread_mutex_unlock(&sm_ctx->subscriptions_lock);
+        SR_LOG_ERR("Unable to get configuration session for address='%s', session id=%"PRIu32".",
+                msg->notification->source_address, msg->session_id);
+        goto cleanup;
+    }
+
     switch (subscription->event_type) {
         case SR__NOTIFICATION_EVENT__MODULE_INSTALL_EV:
             SR_LOG_DBG("Calling module-install callback for subscription id=%"PRIu32".", subscription->id);
@@ -412,6 +520,14 @@ cl_sm_conn_msg_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, uint8_t *msg
                     msg->notification->feature_enable_notif->module_name,
                     msg->notification->feature_enable_notif->feature_name,
                     msg->notification->feature_enable_notif->enabled,
+                    subscription->private_ctx);
+            break;
+        case SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV:
+            SR_LOG_DBG("Calling module-change callback for subscription id=%"PRIu32".", subscription->id);
+            subscription->callback.module_change_cb(
+                    data_session,
+                    msg->notification->module_change_notif->module_name,
+                    sr_datastore_gpb_to_sr(msg->notification->module_change_notif->datastore),
                     subscription->private_ctx);
             break;
         default:
@@ -701,6 +817,13 @@ cl_sm_init(cl_sm_ctx_t **sm_ctx_p)
         goto cleanup;
     }
 
+    /* create binary tree for fast data connection lookup by destination (socket) string */
+    rc = sr_btree_init(cl_sm_data_connection_cmp_dst, cl_sm_data_connection_cleanup, &ctx->data_connection_btree);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Cannot allocate binary tree for data connections.");
+        goto cleanup;
+    }
+
     /* initialize the mutex for subscriptions */
     rc = pthread_mutex_init(&ctx->subscriptions_lock, NULL);
     if (0 != rc) {
@@ -751,6 +874,7 @@ cleanup:
         }
         cl_sm_server_cleanup(ctx);
         pthread_mutex_destroy(&ctx->subscriptions_lock);
+        sr_btree_cleanup(ctx->data_connection_btree);
         sr_btree_cleanup(ctx->subscriptions_btree);
         sr_btree_cleanup(ctx->fd_btree);
         free(ctx);
@@ -770,6 +894,7 @@ cl_sm_cleanup(cl_sm_ctx_t *sm_ctx)
     cl_sm_server_cleanup(sm_ctx);
 
     pthread_mutex_destroy(&sm_ctx->subscriptions_lock);
+    sr_btree_cleanup(sm_ctx->data_connection_btree);
     sr_btree_cleanup(sm_ctx->subscriptions_btree);
     sr_btree_cleanup(sm_ctx->fd_btree);
 

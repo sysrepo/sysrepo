@@ -121,6 +121,8 @@ cl_connection_create(sr_conn_ctx_t **conn_ctx_p)
         return SR_ERR_INIT_FAILED;
     }
 
+    connection->fd = -1;
+
     *conn_ctx_p = connection;
     return SR_ERR_OK;
 }
@@ -141,7 +143,10 @@ cl_connection_cleanup(sr_conn_ctx_t *conn_ctx)
 
         pthread_mutex_destroy(&conn_ctx->lock);
         free(conn_ctx->msg_buf);
-        close(conn_ctx->fd);
+        free((void*)conn_ctx->dst_address);
+        if (-1 != conn_ctx->fd) {
+            close(conn_ctx->fd);
+        }
         free(conn_ctx);
     }
 }

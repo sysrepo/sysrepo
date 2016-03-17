@@ -81,13 +81,16 @@ np_notification_subscribe_test(void **state)
     assert_non_null(np_ctx);
 
     /* create some subscriptions */
-    rc = np_notification_subscribe(np_ctx, SR__NOTIFICATION_EVENT__MODULE_INSTALL_EV, "addr1", 123);
+    rc = np_notification_subscribe(np_ctx, SR__NOTIFICATION_EVENT__MODULE_INSTALL_EV, NULL, "addr1", 123);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = np_notification_subscribe(np_ctx, SR__NOTIFICATION_EVENT__MODULE_INSTALL_EV, "addr2", 123);
+    rc = np_notification_subscribe(np_ctx, SR__NOTIFICATION_EVENT__MODULE_INSTALL_EV, NULL, "addr2", 123);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = np_notification_subscribe(np_ctx, SR__NOTIFICATION_EVENT__FEATURE_ENABLE_EV, "addr1", 456);
+    rc = np_notification_subscribe(np_ctx, SR__NOTIFICATION_EVENT__FEATURE_ENABLE_EV, NULL, "addr1", 456);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = np_notification_subscribe(np_ctx, SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV, "example-module", "addr2", 456);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* unsibscribe from one of them */
@@ -104,6 +107,10 @@ np_notification_subscribe_test(void **state)
 
     /* feature enable notify */
     rc = np_feature_enable_notify(np_ctx, "example-module", "ifconfig", true);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* module change notify */
+    rc = np_module_change_notify(np_ctx, "example-module");
     assert_int_equal(rc, SR_ERR_OK);
 }
 

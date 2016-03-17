@@ -49,6 +49,7 @@ typedef struct sr_subscription_ctx_s {
     union {
         sr_feature_enable_cb feature_enable_cb;  /**< Callback to be called by feature enable/disable event. */
         sr_module_install_cb module_install_cb;  /**< Callback to be called by module (un)install event. */
+        sr_module_change_cb module_change_cb;    /**< Callback to be called by module change event. */
     } callback;
     cl_sm_ctx_t *sm_ctx;                         /**< Associated Subscription Manager context. */
     void *private_ctx;                           /**< Private context pointer, opaque to sysrepo. */

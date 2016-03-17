@@ -396,9 +396,15 @@ message FeatureEnableReq {
 message FeatureEnableResp {
 }
 
+
+////////////////////////////////////////////////////////////////////////////////
+// Notification API - !!! EXPERIMENTAL !!!
+////////////////////////////////////////////////////////////////////////////////
+
 enum NotificationEvent {
   MODULE_INSTALL_EV = 1;
   FEATURE_ENABLE_EV = 2;
+  MODULE_CHANGE_EV = 3;
 }
 
 message SubscribeReq {
@@ -423,6 +429,12 @@ message FeatureEnableNotification {
   required string feature_name = 2;
   required bool enabled = 3;
 }
+
+message ModuleChangeNotification {
+  required string module_name = 1;
+  required DataStore datastore = 2;
+}
+
 
 ////////////////////////////////////////////////////////////////////////////////
 // Sysrepo Engine API umbrella messages
@@ -535,6 +547,7 @@ message Notification {
 
   optional ModuleInstallNotification module_install_notif = 10;
   optional FeatureEnableNotification feature_enable_notif = 11;
+  optional ModuleChangeNotification module_change_notif = 12;
 }
 
 /**

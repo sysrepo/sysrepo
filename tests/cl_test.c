@@ -989,13 +989,22 @@ test_feature_enable_cb(const char *module_name, const char *feature_name, bool e
 }
 
 static void
-cl_subscription_test(void **state)
+test_module_change_cb(sr_session_ctx_t *session, const char *module_name, void *private_ctx)
+{
+    int *callback_called = (int*)private_ctx;
+    *callback_called += 1;
+    printf("Some data within the module '%s' has changed.\n", module_name);
+    // TODO: try to read something from the session
+}
+
+static void
+cl_notification_test(void **state)
 {
     sr_conn_ctx_t *conn = *state;
     assert_non_null(conn);
 
     sr_session_ctx_t *session = NULL;
-    sr_subscription_ctx_t *subscription1 = NULL, *subscription2 = NULL;
+    sr_subscription_ctx_t *subscription1 = NULL, *subscription2 = NULL, *subscription3 = NULL;
     int callback_called = 0;
     int rc = SR_ERR_OK;
 
@@ -1009,6 +1018,9 @@ cl_subscription_test(void **state)
     rc = sr_feature_enable_subscribe(session, test_feature_enable_cb, &callback_called, &subscription2);
     assert_int_equal(rc, SR_ERR_OK);
 
+    rc = sr_module_change_subscribe(session, "example-module", test_module_change_cb, &callback_called, &subscription3);
+    assert_int_equal(rc, SR_ERR_OK);
+
     rc = sr_module_install(session, "example-module", "2016-03-05", true);
     assert_int_equal(rc, SR_ERR_OK);
 
@@ -1017,6 +1029,8 @@ cl_subscription_test(void **state)
 
     rc = sr_feature_enable(session, "example-module", "others", true);
     assert_int_equal(rc, SR_ERR_OK);
+
+    // TODO: change & commit something, expect module change callback
 
     /* stop the session */
     rc = sr_session_stop(session);
@@ -1033,6 +1047,9 @@ cl_subscription_test(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 
     rc = sr_unsubscribe(subscription2);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_unsubscribe(subscription3);
     assert_int_equal(rc, SR_ERR_OK);
 }
 
@@ -1055,7 +1072,7 @@ main()
             cmocka_unit_test_setup_teardown(cl_locking_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_get_error_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_refresh_session, sysrepo_setup, sysrepo_teardown),
-            cmocka_unit_test_setup_teardown(cl_subscription_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_notification_test, sysrepo_setup, sysrepo_teardown),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);
