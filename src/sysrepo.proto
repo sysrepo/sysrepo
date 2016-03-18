@@ -98,7 +98,7 @@ enum DataStore {
 message SessionStartReq {
   required DataStore datastore = 1;
   optional string user_name = 2;
-
+  required bool notification_session = 3;
 }
 
 /**
@@ -396,20 +396,34 @@ message FeatureEnableReq {
 message FeatureEnableResp {
 }
 
+
+////////////////////////////////////////////////////////////////////////////////
+// Notification API - !!! EXPERIMENTAL !!!
+////////////////////////////////////////////////////////////////////////////////
+
 enum NotificationEvent {
   MODULE_INSTALL_EV = 1;
   FEATURE_ENABLE_EV = 2;
+  MODULE_CHANGE_EV = 3;
 }
 
 message SubscribeReq {
-  required NotificationEvent event = 1;
-  required string destination = 2;
-  required uint32 subscription_id = 3;
+  required string destination = 1;
+  required uint32 subscription_id = 2;
 
+  required NotificationEvent event = 3;
   optional string path = 4;
 }
 
 message SubscribeResp {
+}
+
+message UnsubscribeReq {
+  required string destination = 1;
+  required uint32 subscription_id = 2;
+}
+
+message UnsubscribeResp {
 }
 
 message ModuleInstallNotification {
@@ -423,6 +437,11 @@ message FeatureEnableNotification {
   required string feature_name = 2;
   required bool enabled = 3;
 }
+
+message ModuleChangeNotification {
+  required string module_name = 1;
+}
+
 
 ////////////////////////////////////////////////////////////////////////////////
 // Sysrepo Engine API umbrella messages
@@ -456,6 +475,7 @@ enum Operation {
   UNLOCK = 61;
 
   SUBSCRIBE = 70;
+  UNSUBSCRIBE = 71;
 }
 
 /**
@@ -488,6 +508,7 @@ message Request {
   optional UnlockReq unlock_req = 61;
 
   optional SubscribeReq subscribe_req = 70;
+  optional UnsubscribeReq unsubscribe_req = 71;
 }
 
 /**
@@ -522,6 +543,7 @@ message Response {
   optional UnlockResp unlock_resp = 61;
 
   optional SubscribeResp subscribe_resp = 70;
+  optional UnsubscribeResp unsubscribe_resp = 71;
 }
 
 /**
@@ -529,11 +551,13 @@ message Response {
  */
 message Notification {
   required NotificationEvent event = 1;
-  required string destination = 2;
-  required uint32 subscription_id = 3;
+  required string destination_address = 2;
+  required string source_address = 3;
+  required uint32 subscription_id = 4;
 
   optional ModuleInstallNotification module_install_notif = 10;
   optional FeatureEnableNotification feature_enable_notif = 11;
+  optional ModuleChangeNotification module_change_notif = 12;
 }
 
 /**

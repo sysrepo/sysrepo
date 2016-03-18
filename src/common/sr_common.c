@@ -105,6 +105,8 @@ sr_operation_name(Sr__Operation operation)
         return "unlock";
     case SR__OPERATION__SUBSCRIBE:
         return "subscribe";
+    case SR__OPERATION__UNSUBSCRIBE:
+        return "unsubscribe";
     default:
         return "unknown";
     }
@@ -732,6 +734,14 @@ sr_pb_req_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__Ms
             sr__subscribe_req__init((Sr__SubscribeReq*)sub_msg);
             req->subscribe_req = (Sr__SubscribeReq*)sub_msg;
             break;
+        case SR__OPERATION__UNSUBSCRIBE:
+            sub_msg = calloc(1, sizeof(Sr__UnsubscribeReq));
+            if (NULL == sub_msg) {
+                goto nomem;
+            }
+            sr__unsubscribe_req__init((Sr__UnsubscribeReq*)sub_msg);
+            req->unsubscribe_req = (Sr__UnsubscribeReq*)sub_msg;
+            break;
         default:
             break;
     }
@@ -920,6 +930,14 @@ sr_pb_resp_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__M
             sr__subscribe_resp__init((Sr__SubscribeResp*)sub_msg);
             resp->subscribe_resp = (Sr__SubscribeResp*)sub_msg;
             break;
+        case SR__OPERATION__UNSUBSCRIBE:
+            sub_msg = calloc(1, sizeof(Sr__UnsubscribeResp));
+            if (NULL == sub_msg) {
+                goto nomem;
+            }
+            sr__unsubscribe_resp__init((Sr__UnsubscribeResp*)sub_msg);
+            resp->unsubscribe_resp = (Sr__UnsubscribeResp*)sub_msg;
+            break;
         default:
             break;
     }
@@ -964,8 +982,8 @@ sr_pb_notif_alloc(const Sr__NotificationEvent event, const char *destination, co
     notif->event = event;
     notif->subscription_id = subscription_id;
 
-    notif->destination = strdup(destination);
-    if (NULL == notif->destination) {
+    notif->destination_address = strdup(destination);
+    if (NULL == notif->destination_address) {
         goto nomem;
     }
 
@@ -986,6 +1004,14 @@ sr_pb_notif_alloc(const Sr__NotificationEvent event, const char *destination, co
             }
             sr__feature_enable_notification__init((Sr__FeatureEnableNotification*)sub_msg);
             notif->feature_enable_notif = (Sr__FeatureEnableNotification*)sub_msg;
+            break;
+        case SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV:
+            sub_msg = calloc(1, sizeof(Sr__ModuleChangeNotification));
+            if (NULL == sub_msg) {
+                goto nomem;
+            }
+            sr__module_change_notification__init((Sr__ModuleChangeNotification*)sub_msg);
+            notif->module_change_notif = (Sr__ModuleChangeNotification*)sub_msg;
             break;
         default:
             break;
@@ -1088,6 +1114,10 @@ sr_pb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__Op
                 if (NULL == msg->request->subscribe_req)
                     return SR_ERR_MALFORMED_MSG;
                 break;
+            case SR__OPERATION__UNSUBSCRIBE:
+                if (NULL == msg->request->unsubscribe_req)
+                    return SR_ERR_MALFORMED_MSG;
+                break;
             default:
                 return SR_ERR_MALFORMED_MSG;
         }
@@ -1172,6 +1202,10 @@ sr_pb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__Op
                 if (NULL == msg->response->subscribe_resp)
                     return SR_ERR_MALFORMED_MSG;
                 break;
+            case SR__OPERATION__UNSUBSCRIBE:
+                if (NULL == msg->response->unsubscribe_resp)
+                    return SR_ERR_MALFORMED_MSG;
+                break;
             default:
                 return SR_ERR_MALFORMED_MSG;
         }
@@ -1202,6 +1236,10 @@ sr_pb_msg_validate_notif(const Sr__Msg *msg, const Sr__NotificationEvent event)
                 break;
             case SR__NOTIFICATION_EVENT__FEATURE_ENABLE_EV:
                 if (NULL == msg->notification->feature_enable_notif)
+                    return SR_ERR_MALFORMED_MSG;
+                break;
+            case SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV:
+                if (NULL == msg->notification->module_change_notif)
                     return SR_ERR_MALFORMED_MSG;
                 break;
             default:

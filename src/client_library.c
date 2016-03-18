@@ -29,12 +29,9 @@
 
 #include "sr_common.h"
 #include "connection_manager.h"
-#include "cl_subscription_manager.h"
 
-/**
- * @brief Timeout (in seconds) for waiting for a response from server by each request.
- */
-#define CL_REQUEST_TIMEOUT 2
+#include "cl_subscription_manager.h"
+#include "cl_common.h"
 
 /**
  * @brief Number of items being fetched in one message from Sysrepo Engine by
@@ -47,42 +44,6 @@
  * for local unix-domain connections (library mode).
  */
 #define CL_LCONN_PATH_PREFIX "/tmp/sysrepo-local"
-
-/**
- * Connection context used to identify a connection to sysrepo datastore.
- */
-typedef struct sr_conn_ctx_s {
-    int fd;                                  /**< File descriptor of the connection. */
-    pthread_mutex_t lock;                    /**< Mutex of the connection to guarantee that requests on the
-                                                  same connection are processed serially (one after another). */
-    uint8_t *msg_buf;                        /**< Buffer used for sending / receiving messages. */
-    size_t msg_buf_size;                     /**< Length of the message buffer. */
-    struct sr_session_list_s *session_list;  /**< Linked-list of associated sessions. */
-    bool library_mode;                       /**< Determine if we are connected to sysrepo daemon
-                                                  or our own sysrepo engine (library mode). */
-    cm_ctx_t *local_cm;                      /**< Local Connection Manager in case of library mode. */
-} sr_conn_ctx_t;
-
-/**
- * Session context used to identify a configuration session.
- */
-typedef struct sr_session_ctx_s {
-    sr_conn_ctx_t *conn_ctx;      /**< Associated connection context. */
-    uint32_t id;                  /**< Assigned session identifier. */
-    pthread_mutex_t lock;         /**< Mutex for the session context content. */
-    sr_error_t last_error;        /**< Latest error code returned from an API call. */
-    sr_error_info_t *error_info;  /**< Array of detailed error information from last API call. */
-    size_t error_info_size;       /**< Current size of the error_info array. */
-    size_t error_cnt;             /**< Number of errors that occurred within last API call. */
-} sr_session_ctx_t;
-
-/**
- * Linked-list of sessions.
- */
-typedef struct sr_session_list_s {
-    sr_session_ctx_t *session;       /**< Session context. */
-    struct sr_session_list_s *next;  /**< Next element in the linked-list. */
-} sr_session_list_t;
 
 /**
  * Structure holding data for iterative access to items
@@ -101,181 +62,6 @@ static int connections_cnt = 0;
 static int subscriptions_cnt = 0;
 static pthread_mutex_t global_lock = PTHREAD_MUTEX_INITIALIZER;  /**< Mutex for locking global variable primary_connection. */
 static cl_sm_ctx_t *cl_sm_ctx = NULL;
-
-/**
- * @brief Returns provided error code and saves it in the session context.
- * Should be called as an exit point from any publicly available API function
- * taking the session as an argument.
- */
-static sr_error_t
-cl_session_return(sr_session_ctx_t *session, sr_error_t error_code)
-{
-    CHECK_NULL_ARG(session);
-
-    pthread_mutex_lock(&session->lock);
-    session->last_error = error_code;
-    pthread_mutex_unlock(&session->lock);
-
-    return error_code;
-}
-
-/**
- * @brief Set detailed error information into session context.
- */
-static int
-cl_session_set_error(sr_session_ctx_t *session, const char *error_message, const char *error_path)
-{
-    CHECK_NULL_ARG(session);
-
-    pthread_mutex_lock(&session->lock);
-
-    if (0 == session->error_info_size) {
-        /* need to allocate the space for the error */
-        session->error_info = calloc(1, sizeof(*session->error_info));
-        if (NULL == session->error_info) {
-            SR_LOG_ERR_MSG("Unable to allocate error information.");
-            pthread_mutex_unlock(&session->lock);
-            return SR_ERR_NOMEM;
-        }
-        session->error_info_size = 1;
-    } else {
-        /* space for the error already allocated, release old error data */
-        if (NULL != session->error_info[0].message) {
-            free((void*)session->error_info[0].message);
-            session->error_info[0].message = NULL;
-        }
-        if (NULL != session->error_info[0].path) {
-            free((void*)session->error_info[0].path);
-            session->error_info[0].path = NULL;
-        }
-    }
-    if (NULL != error_message) {
-        session->error_info[0].message = strdup(error_message);
-        if (NULL == session->error_info[0].message) {
-            SR_LOG_ERR_MSG("Unable to allocate error message.");
-            pthread_mutex_unlock(&session->lock);
-            return SR_ERR_NOMEM;
-        }
-    }
-    if (NULL != error_path) {
-        session->error_info[0].path = strdup(error_path);
-        if (NULL == session->error_info[0].path) {
-            SR_LOG_ERR_MSG("Unable to allocate error xpath.");
-            pthread_mutex_unlock(&session->lock);
-            return SR_ERR_NOMEM;
-        }
-    }
-
-    session->error_cnt = 1;
-    pthread_mutex_unlock(&session->lock);
-
-    return SR_ERR_OK;
-}
-
-/**
- * @brief Set detailed error information from GPB error array into session context.
- */
-static int
-cl_session_set_errors(sr_session_ctx_t *session, Sr__Error **errors, size_t error_cnt)
-{
-    sr_error_info_t *tmp_info = NULL;
-
-    CHECK_NULL_ARG2(session, errors);
-
-    pthread_mutex_lock(&session->lock);
-
-    if (session->error_info_size < error_cnt) {
-        tmp_info = realloc(session->error_info, (error_cnt * sizeof(*tmp_info)));
-        if (NULL == tmp_info) {
-            SR_LOG_ERR_MSG("Unable to allocate error information.");
-            pthread_mutex_unlock(&session->lock);
-            return SR_ERR_NOMEM;
-        }
-        session->error_info = tmp_info;
-        session->error_info_size = error_cnt;
-    }
-    for (size_t i = 0; i < error_cnt; i++) {
-        if (NULL != errors[i]->message) {
-            session->error_info[i].message = strdup(errors[i]->message);
-            if (NULL == session->error_info[i].message) {
-                SR_LOG_WRN_MSG("Unable to allocate error message, will be left NULL.");
-            }
-        }
-        if (NULL != errors[i]->path) {
-            session->error_info[i].path = strdup(errors[i]->path);
-            if (NULL == session->error_info[i].path) {
-                SR_LOG_WRN_MSG("Unable to allocate error xpath, will be left NULL.");
-            }
-        }
-    }
-
-    session->error_cnt = error_cnt;
-    pthread_mutex_unlock(&session->lock);
-
-    return SR_ERR_OK;
-}
-
-/**
- * @brief Clear number of errors stored within the session context.
- */
-int
-cl_session_clear_errors(sr_session_ctx_t *session)
-{
-    CHECK_NULL_ARG(session);
-
-    pthread_mutex_lock(&session->lock);
-    session->error_cnt = 0;
-    pthread_mutex_unlock(&session->lock);
-
-    return SR_ERR_OK;
-}
-
-/**
- * @brief Connects the client to provided unix-domain socket.
- */
-static int
-cl_socket_connect(sr_conn_ctx_t *conn_ctx, const char *socket_path)
-{
-    struct sockaddr_un addr;
-    struct timeval tv = { 0, };
-    int fd = -1, rc = -1;
-
-    CHECK_NULL_ARG2(socket_path, socket_path);
-
-    SR_LOG_DBG("Connecting to socket=%s", socket_path);
-
-    /* prepare a socket */
-    fd = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (-1 == fd) {
-        SR_LOG_ERR("Unable to create a new socket: %s", strerror(errno));
-        return SR_ERR_INTERNAL;
-    }
-
-    memset(&addr, 0, sizeof(addr));
-    addr.sun_family = AF_UNIX;
-    strncpy(addr.sun_path, socket_path, sizeof(addr.sun_path)-1);
-
-    /* connect to server */
-    rc = connect(fd, (struct sockaddr*)&addr, sizeof(addr));
-    if (-1 == rc) {
-        SR_LOG_DBG("Unable to connect to socket=%s: %s", socket_path, strerror(errno));
-        close(fd);
-        return SR_ERR_DISCONNECT;
-    }
-
-    /* set timeout for receive operation */
-    tv.tv_sec = CL_REQUEST_TIMEOUT;
-    tv.tv_usec = 0;
-    rc = setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, (char *)&tv, sizeof(tv));
-    if (-1 == rc) {
-        SR_LOG_ERR("Unable to set timeout for socket operations on socket=%s: %s", socket_path, strerror(errno));
-        close(fd);
-        return SR_ERR_DISCONNECT;
-    }
-
-    conn_ctx->fd = fd;
-    return SR_ERR_OK;
-}
 
 /**
  * @brief Initializes our own sysrepo engine (fallback option if sysrepo daemon is not running)
@@ -299,310 +85,6 @@ cl_engine_init_local(sr_conn_ctx_t *conn_ctx, const char *socket_path)
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Unable to start local Connection Manager.");
         return rc;
-    }
-
-    return rc;
-}
-
-/**
- * @brief Adds a new session to the session list of the connection.
- */
-static int
-cl_conn_add_session(sr_conn_ctx_t *connection, sr_session_ctx_t *session)
-{
-    sr_session_list_t *session_item = NULL, *tmp = NULL;
-
-    CHECK_NULL_ARG2(connection, session);
-
-    session_item = calloc(1, sizeof(*session_item));
-    if (NULL == session_item) {
-        SR_LOG_ERR_MSG("Cannot allocate memory for new session list entry.");
-        return SR_ERR_NOMEM;
-    }
-    session_item->session = session;
-
-    pthread_mutex_lock(&connection->lock);
-
-    /* append session entry at the end of list */
-    if (NULL == connection->session_list) {
-        connection->session_list = session_item;
-    } else {
-        tmp = connection->session_list;
-        while (NULL != tmp->next) {
-            tmp = tmp->next;
-        }
-        tmp->next = session_item;
-    }
-
-    pthread_mutex_unlock(&connection->lock);
-
-    return SR_ERR_OK;
-}
-
-/**
- * @brief Removes a session from the session list of the connection.
- */
-static int
-cl_conn_remove_session(sr_conn_ctx_t *connection, sr_session_ctx_t *session)
-{
-    sr_session_list_t *tmp = NULL, *prev = NULL;
-
-    CHECK_NULL_ARG2(connection, session);
-
-    pthread_mutex_lock(&connection->lock);
-
-    /* find matching session in linked list */
-    tmp = connection->session_list;
-    while ((NULL != tmp) && (tmp->session != session)) {
-        prev = tmp;
-        tmp = tmp->next;
-    }
-
-    /* remove the session from linked-list */
-    if (NULL != tmp) {
-        if (NULL != prev) {
-            /* tmp is NOT the first item in list - skip it */
-            prev->next = tmp->next;
-        } else if (NULL != tmp->next) {
-            /* tmp is the first, but not last item in list - skip it */
-            connection->session_list = tmp->next;
-        } else {
-            /* tmp is the only item in the list */
-            connection->session_list = NULL;
-        }
-        free(tmp);
-    } else {
-        SR_LOG_WRN("Session %p not found in session list of connection.", (void*)session);
-    }
-
-    pthread_mutex_unlock(&connection->lock);
-
-    return SR_ERR_OK;
-}
-
-/**
- * @brief Cleans up a client library -local session.
- */
-static void
-cl_session_cleanup(sr_session_ctx_t *session)
-{
-    if (NULL != session) {
-        sr_free_errors(session->error_info, session->error_info_size);
-        pthread_mutex_destroy(&session->lock);
-        free(session);
-    }
-}
-
-/**
- * @brief Expands message buffer of a connection to fit given size, if needed.
- */
-static int
-cl_conn_msg_buf_expand(sr_conn_ctx_t *conn_ctx, size_t required_size)
-{
-    uint8_t *tmp = NULL;
-
-    CHECK_NULL_ARG(conn_ctx);
-
-    if (conn_ctx->msg_buf_size < required_size) {
-        tmp = realloc(conn_ctx->msg_buf, required_size * sizeof(*tmp));
-        if (NULL == tmp) {
-            SR_LOG_ERR("Unable to expand message buffer of connection=%p.", (void*)conn_ctx);
-            return SR_ERR_NOMEM;
-        }
-        conn_ctx->msg_buf = tmp;
-        conn_ctx->msg_buf_size = required_size;
-    }
-
-    return SR_ERR_OK;
-}
-
-/**
- * @brief Sends a message via provided connection.
- */
-static int
-cl_message_send(sr_conn_ctx_t *conn_ctx, Sr__Msg *msg)
-{
-    size_t msg_size = 0;
-    int pos = 0, sent = 0;
-    int rc = SR_ERR_OK;
-
-    CHECK_NULL_ARG2(conn_ctx, msg);
-
-    /* find out required message size */
-    msg_size = sr__msg__get_packed_size(msg);
-    if ((msg_size <= 0) || (msg_size > SR_MAX_MSG_SIZE)) {
-        SR_LOG_ERR("Unable to send the message of size %zuB.", msg_size);
-        return SR_ERR_INTERNAL;
-    }
-
-    /* expand the buffer if needed */
-    rc = cl_conn_msg_buf_expand(conn_ctx, msg_size + SR_MSG_PREAM_SIZE);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Cannot expand buffer for the message.");
-        return rc;
-    }
-
-    /* write 4-byte length */
-    sr_uint32_to_buff(msg_size, conn_ctx->msg_buf);
-
-    /* pack the message */
-    sr__msg__pack(msg, (conn_ctx->msg_buf + SR_MSG_PREAM_SIZE));
-
-    /* send the message */
-    do {
-        sent = send(conn_ctx->fd, (conn_ctx->msg_buf + pos), (msg_size + SR_MSG_PREAM_SIZE - pos), 0);
-        if (sent > 0) {
-            pos += sent;
-        } else {
-            if (errno == EINTR) {
-                continue;
-            }
-            SR_LOG_ERR("Error by sending of the message: %s.", strerror(errno));
-            return SR_ERR_DISCONNECT;
-        }
-    } while ((pos < (msg_size + SR_MSG_PREAM_SIZE)) && (sent > 0));
-
-    return SR_ERR_OK;
-}
-
-/*
- * @brief Receives a message on provided connection (blocks until a message is received).
- */
-static int
-cl_message_recv(sr_conn_ctx_t *conn_ctx, Sr__Msg **msg)
-{
-    size_t len = 0, pos = 0;
-    size_t msg_size = 0;
-    int rc = 0;
-
-    /* expand the buffer if needed */
-    rc = cl_conn_msg_buf_expand(conn_ctx, SR_MSG_PREAM_SIZE);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Cannot expand buffer for the message.");
-        return rc;
-    }
-
-    /* read at least first 4 bytes with length of the message */
-    while (pos < SR_MSG_PREAM_SIZE) {
-        len = recv(conn_ctx->fd, conn_ctx->msg_buf, conn_ctx->msg_buf_size, 0);
-        if (-1 == len) {
-            if (errno == EINTR) {
-                continue;
-            }
-            SR_LOG_ERR("Error by receiving of the message: %s.", strerror(errno));
-            return SR_ERR_MALFORMED_MSG;
-        }
-        if (0 == len) {
-            SR_LOG_ERR_MSG("Sysrepo server disconnected.");
-            return SR_ERR_DISCONNECT;
-        }
-        pos += len;
-    }
-    msg_size = sr_buff_to_uint32(conn_ctx->msg_buf);
-
-    /* check message size bounds */
-    if ((msg_size <= 0) || (msg_size > SR_MAX_MSG_SIZE)) {
-        SR_LOG_ERR("Invalid message size in the message preamble (%zu).", msg_size);
-        return SR_ERR_MALFORMED_MSG;
-    }
-
-    /* expand the buffer if needed */
-    rc = cl_conn_msg_buf_expand(conn_ctx, (msg_size + SR_MSG_PREAM_SIZE));
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Cannot expand buffer for the message.");
-        return rc;
-    }
-
-    /* read the rest of the message */
-    while (pos < (msg_size + SR_MSG_PREAM_SIZE)) {
-        len = recv(conn_ctx->fd, (conn_ctx->msg_buf + pos), (conn_ctx->msg_buf_size - pos), 0);
-        if (-1 == len) {
-            if (errno == EINTR) {
-                continue;
-            }
-            SR_LOG_ERR("Error by receiving of the message: %s.", strerror(errno));
-            return SR_ERR_MALFORMED_MSG;
-        }
-        if (0 == len) {
-            SR_LOG_ERR_MSG("Sysrepo server disconnected.");
-            return SR_ERR_DISCONNECT;
-        }
-        pos += len;
-    }
-
-    /* unpack the message */
-    *msg = sr__msg__unpack(NULL, msg_size, (const uint8_t*)(conn_ctx->msg_buf + SR_MSG_PREAM_SIZE));
-    if (NULL == *msg) {
-        SR_LOG_ERR_MSG("Malformed message received.");
-        return SR_ERR_MALFORMED_MSG;
-    }
-
-    return SR_ERR_OK;
-}
-
-/**
- *@brief  Processes (sends) the request over the connection and receive the response.
- */
-static int
-cl_request_process(sr_session_ctx_t *session, Sr__Msg *msg_req, Sr__Msg **msg_resp,
-        const Sr__Operation expected_response_op)
-{
-    int rc = SR_ERR_OK;
-
-    CHECK_NULL_ARG4(session, session->conn_ctx, msg_req, msg_resp);
-
-    SR_LOG_DBG("Sending %s request.", sr_operation_name(expected_response_op));
-
-    pthread_mutex_lock(&session->conn_ctx->lock);
-
-    /* send the request */
-    rc = cl_message_send(session->conn_ctx, msg_req);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Unable to send the message with request (session id=%"PRIu32", operation=%s).",
-                session->id, sr_operation_name(msg_req->request->operation));
-        pthread_mutex_unlock(&session->conn_ctx->lock);
-        return rc;
-    }
-
-    SR_LOG_DBG("%s request sent, waiting for response.", sr_operation_name(expected_response_op));
-
-    /* receive the response */
-    rc = cl_message_recv(session->conn_ctx, msg_resp);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Unable to receive the message with response (session id=%"PRIu32", operation=%s).",
-                session->id, sr_operation_name(msg_req->request->operation));
-        pthread_mutex_unlock(&session->conn_ctx->lock);
-        return rc;
-    }
-
-    pthread_mutex_unlock(&session->conn_ctx->lock);
-
-    SR_LOG_DBG("%s response received, processing.", sr_operation_name(expected_response_op));
-
-    /* validate the response */
-    rc = sr_pb_msg_validate(*msg_resp, SR__MSG__MSG_TYPE__RESPONSE, expected_response_op);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Malformed message with response received (session id=%"PRIu32", operation=%s).",
-                session->id, sr_operation_name(msg_req->request->operation));
-        return rc;
-    }
-
-    /* check for errors */
-    if (SR_ERR_OK != (*msg_resp)->response->result) {
-        if (NULL != (*msg_resp)->response->error) {
-            /* set detailed error information into session */
-            rc = cl_session_set_error(session, (*msg_resp)->response->error->message, (*msg_resp)->response->error->path);
-        }
-        /* don't log expected errors */
-        if (SR_ERR_NOT_FOUND != (*msg_resp)->response->result &&
-                SR_ERR_VALIDATION_FAILED != (*msg_resp)->response->result &&
-                SR_ERR_COMMIT_FAILED != (*msg_resp)->response->result) {
-            SR_LOG_ERR("Error by processing of the request (session id=%"PRIu32", operation=%s): %s.",
-                    session->id, sr_operation_name(msg_req->request->operation),
-                (NULL != (*msg_resp)->response->error && NULL != (*msg_resp)->response->error->message) ?
-                        (*msg_resp)->response->error->message : sr_strerror((*msg_resp)->response->result));
-        }
-        return (*msg_resp)->response->result;
     }
 
     return rc;
@@ -667,7 +149,6 @@ cl_subscribtion_init(sr_session_ctx_t *session, Sr__NotificationEvent event_type
 {
     Sr__Msg *msg_req = NULL;
     sr_subscription_ctx_t *subscription = NULL;
-    char *destination = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG3(session, subscription_p, msg_req_p);
@@ -694,7 +175,7 @@ cl_subscribtion_init(sr_session_ctx_t *session, Sr__NotificationEvent event_type
     }
 
     /* initialize subscription ctx */
-    rc = cl_sm_subscription_init(cl_sm_ctx, &destination, &subscription);
+    rc = cl_sm_subscription_init(cl_sm_ctx, &subscription);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Error by initialization of the subscription in the Subscription Manager.");
         return rc;
@@ -703,9 +184,10 @@ cl_subscribtion_init(sr_session_ctx_t *session, Sr__NotificationEvent event_type
     subscription->private_ctx = private_ctx;
 
     /* fill-in subscription details into GPB message */
-    msg_req->request->subscribe_req->destination = strdup(destination);
+    msg_req->request->subscribe_req->destination = strdup(subscription->delivery_address);
     if (NULL == msg_req->request->subscribe_req->destination) {
         SR_LOG_ERR_MSG("Error by duplication of the subscription destination.");
+        sr__msg__free_unpacked(msg_req, NULL);
         return SR_ERR_NOMEM;
     }
     msg_req->request->subscribe_req->subscription_id = subscription->id;
@@ -720,7 +202,7 @@ cl_subscribtion_init(sr_session_ctx_t *session, Sr__NotificationEvent event_type
 int
 sr_connect(const char *app_name, const sr_conn_options_t opts, sr_conn_ctx_t **conn_ctx_p)
 {
-    sr_conn_ctx_t *ctx = NULL;
+    sr_conn_ctx_t *connection = NULL;
     int rc = SR_ERR_OK;
     char socket_path[PATH_MAX] = { 0, };
 
@@ -728,20 +210,10 @@ sr_connect(const char *app_name, const sr_conn_options_t opts, sr_conn_ctx_t **c
 
     SR_LOG_DBG_MSG("Connecting to Sysrepo Engine.");
 
-    /* initialize the context */
-    ctx = calloc(1, sizeof(*ctx));
-    if (NULL == ctx) {
-        SR_LOG_ERR_MSG("Cannot allocate memory for connection context.");
-        rc = SR_ERR_NOMEM;
-        goto cleanup;
-    }
-
-    /* init connection mutext */
-    rc = pthread_mutex_init(&ctx->lock, NULL);
-    if (0 != rc) {
-        SR_LOG_ERR_MSG("Cannot initialize connection mutex.");
-        rc = SR_ERR_INIT_FAILED;
-        goto cleanup;
+    /* create the connection */
+    rc = cl_connection_create(&connection);
+    if (SR_ERR_OK != rc) {
+        return rc;
     }
 
     /* check if this is the first connection */
@@ -754,7 +226,7 @@ sr_connect(const char *app_name, const sr_conn_options_t opts, sr_conn_ctx_t **c
     pthread_mutex_unlock(&global_lock);
 
     /* attempt to connect to sysrepo daemon socket */
-    rc = cl_socket_connect(ctx, SR_DAEMON_SOCKET);
+    rc = cl_socket_connect(connection, SR_DAEMON_SOCKET);
     if (SR_ERR_OK != rc) {
         if (opts & SR_CONN_DAEMON_REQUIRED) {
             SR_LOG_ERR_MSG("Sysrepo daemon not detected while library mode disallowed.");
@@ -772,21 +244,21 @@ sr_connect(const char *app_name, const sr_conn_options_t opts, sr_conn_ctx_t **c
             SR_LOG_WRN_MSG("Sysrepo daemon not detected. Connecting to local Sysrepo Engine.");
 
             /* connect in library mode */
-            ctx->library_mode = true;
+            connection->library_mode = true;
             snprintf(socket_path, PATH_MAX, "%s-%d.sock", CL_LCONN_PATH_PREFIX, getpid());
 
             /* attempt to connect to our own sysrepo engine (local engine may already exist) */
-            rc = cl_socket_connect(ctx, socket_path);
+            rc = cl_socket_connect(connection, socket_path);
             if (SR_ERR_OK != rc) {
                 /* initialize our own sysrepo engine and attempt to connect again */
                 SR_LOG_INF_MSG("Local Sysrepo Engine not running yet, initializing new one.");
 
-                rc = cl_engine_init_local(ctx, socket_path);
+                rc = cl_engine_init_local(connection, socket_path);
                 if (SR_ERR_OK != rc) {
                     SR_LOG_ERR_MSG("Unable to start local sysrepo engine.");
                     goto cleanup;
                 }
-                rc = cl_socket_connect(ctx, socket_path);
+                rc = cl_socket_connect(connection, socket_path);
                 if (SR_ERR_OK != rc) {
                     SR_LOG_ERR_MSG("Unable to connect to the local sysrepo engine.");
                     goto cleanup;
@@ -798,25 +270,20 @@ sr_connect(const char *app_name, const sr_conn_options_t opts, sr_conn_ctx_t **c
         SR_LOG_INF("Connected to daemon Sysrepo Engine at socket=%s", SR_DAEMON_SOCKET);
     }
 
-    *conn_ctx_p = ctx;
+    *conn_ctx_p = connection;
     return SR_ERR_OK;
 
 cleanup:
-    if ((NULL != ctx) && (NULL != ctx->local_cm)) {
-        cm_cleanup(ctx->local_cm);
+    if ((NULL != connection) && (NULL != connection->local_cm)) {
+        cm_cleanup(connection->local_cm);
     }
-    if (NULL != ctx) {
-        pthread_mutex_destroy(&ctx->lock);
-    }
-    free(ctx);
+    cl_connection_cleanup(connection);
     return rc;
 }
 
 void
 sr_disconnect(sr_conn_ctx_t *conn_ctx)
 {
-    sr_session_list_t *session = NULL, *tmp = NULL;
-
     if (NULL != conn_ctx) {
         if (NULL != conn_ctx->local_cm) {
             /* destroy our own sysrepo engine */
@@ -832,19 +299,7 @@ sr_disconnect(sr_conn_ctx_t *conn_ctx)
         }
         pthread_mutex_unlock(&global_lock);
 
-        /* destroy all sessions */
-        session = conn_ctx->session_list;
-        while (NULL != session) {
-            tmp = session;
-            session = session->next;
-            cl_session_cleanup(tmp->session);
-            free(tmp);
-        }
-
-        pthread_mutex_destroy(&conn_ctx->lock);
-        free(conn_ctx->msg_buf);
-        close(conn_ctx->fd);
-        free(conn_ctx);
+        cl_connection_cleanup(conn_ctx);
     }
 }
 
@@ -863,21 +318,10 @@ sr_session_start_user(sr_conn_ctx_t *conn_ctx, const char *user_name, sr_datasto
 
     CHECK_NULL_ARG2(conn_ctx, session_p);
 
-    /* initialize session context */
-    session = calloc(1, sizeof(*session));
-    if (NULL == session) {
-        SR_LOG_ERR_MSG("Cannot allocate memory for session context.");
-        rc = SR_ERR_NOMEM;
-        goto cleanup;
-    }
-    session->conn_ctx = conn_ctx;
-
-    /* initialize session mutext */
-    rc = pthread_mutex_init(&session->lock, NULL);
-    if (0 != rc) {
-        SR_LOG_ERR_MSG("Cannot initialize session mutex.");
-        rc = SR_ERR_INIT_FAILED;
-        goto cleanup;
+    /* create a new session */
+    rc = cl_session_create(conn_ctx, &session);
+    if (SR_ERR_OK != rc) {
+        return rc;
     }
 
     /* prepare session_start message */
@@ -886,6 +330,7 @@ sr_session_start_user(sr_conn_ctx_t *conn_ctx, const char *user_name, sr_datasto
         SR_LOG_ERR_MSG("Cannot allocate session_start message.");
         goto cleanup;
     }
+    msg_req->request->session_start_req->notification_session = false;
     msg_req->request->session_start_req->datastore = sr_datastore_sr_to_gpb(datastore);
 
     /* set user name if provided */
@@ -901,19 +346,13 @@ sr_session_start_user(sr_conn_ctx_t *conn_ctx, const char *user_name, sr_datasto
     /* send the request and receive the response */
     rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__SESSION_START);
     if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Error by processing of session_stop request.");
+        SR_LOG_ERR_MSG("Error by processing of session_start request.");
         goto cleanup;
     }
 
     session->id = msg_resp->response->session_start_resp->session_id;
     sr__msg__free_unpacked(msg_req, NULL);
     sr__msg__free_unpacked(msg_resp, NULL);
-
-    /* store the session the in connection */
-    rc = cl_conn_add_session(conn_ctx, session);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_WRN_MSG("Error by adding the session to the connection session list.");
-    }
 
     *session_p = session;
     return SR_ERR_OK;
@@ -925,10 +364,7 @@ cleanup:
     if (NULL != msg_resp) {
         sr__msg__free_unpacked(msg_resp, NULL);
     }
-    if (NULL != session) {
-        pthread_mutex_destroy(&session->lock);
-    }
-    free(session);
+    cl_session_cleanup(session);
     return rc;
 }
 
@@ -955,12 +391,6 @@ sr_session_stop(sr_session_ctx_t *session)
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Error by processing of session_stop request.");
         goto cleanup;
-    }
-
-    /* remove the session from connection */
-    rc = cl_conn_remove_session(session->conn_ctx, session);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_WRN_MSG("Error by removing the session from the connection session list.");
     }
 
     sr__msg__free_unpacked(msg_req, NULL);
@@ -1978,14 +1408,100 @@ cleanup:
 }
 
 int
+sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, sr_module_change_cb callback,
+        void *private_ctx, sr_subscription_ctx_t **subscription_p)
+{
+    Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    sr_subscription_ctx_t *subscription = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG4(session, module_name, callback, subscription_p);
+
+    cl_session_clear_errors(session);
+
+    /* Initialize the subscription */
+    rc = cl_subscribtion_init(session, SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV,
+            private_ctx, &subscription, &msg_req);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Error by initialization of the subscription in the client library.");
+        goto cleanup;
+    }
+    subscription->callback.module_change_cb = callback;
+
+    msg_req->request->subscribe_req->path = strdup(module_name);
+    CHECK_NULL_NOMEM_GOTO(msg_req->request->subscribe_req->path, rc, cleanup);
+
+    /* send the request and receive the response */
+    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__SUBSCRIBE);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Error by processing of subscribe request.");
+        goto cleanup;
+    }
+
+    sr__msg__free_unpacked(msg_req, NULL);
+    sr__msg__free_unpacked(msg_resp, NULL);
+
+    *subscription_p = subscription;
+    return cl_session_return(session, SR_ERR_OK);
+
+cleanup:
+    sr_unsubscribe(subscription);
+    if (NULL != msg_req) {
+        sr__msg__free_unpacked(msg_req, NULL);
+    }
+    if (NULL != msg_resp) {
+        sr__msg__free_unpacked(msg_resp, NULL);
+    }
+    return cl_session_return(session, rc);
+}
+
+int
 sr_unsubscribe(sr_subscription_ctx_t *subscription)
 {
+    Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    sr_conn_ctx_t *connection = NULL;
+    sr_session_ctx_t *session = NULL;
+    int rc = SR_ERR_OK;
+
     CHECK_NULL_ARG(subscription);
 
-    // TODO: send unsubscribe message
+    /* get the session */
+    if (NULL != subscription->data_session) {
+        /* use the session from the subscription */
+        session = subscription->data_session;
+    } else {
+        /* create a temporary connection and session */
+        rc = sr_connect("tmp-conn-unsubscribe", SR_CONN_DEFAULT, &connection);
+        if (SR_ERR_OK == rc) {
+            rc = sr_session_start(connection, SR_DS_STARTUP, &session);
+        }
+        if (SR_ERR_OK != rc) {
+            sr_disconnect(connection);
+            return rc;
+        }
+    }
 
+    /* prepare unsubscribe message */
+    rc = sr_pb_req_alloc(SR__OPERATION__UNSUBSCRIBE, session->id, &msg_req);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Cannot allocate unsubscribe message.");
+        goto cleanup;
+    }
+
+    msg_req->request->unsubscribe_req->destination = strdup(subscription->delivery_address);
+    msg_req->request->unsubscribe_req->subscription_id = subscription->id;
+
+    /* send the request and receive the response */
+    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__UNSUBSCRIBE);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Error by processing of unsubscribe request.");
+        goto cleanup;
+    }
+
+    /* cleanup the subscription */
     cl_sm_subscription_cleanup(subscription);
 
+    /* global resources cleanup */
     pthread_mutex_lock(&global_lock);
     subscriptions_cnt--;
     if (0 == subscriptions_cnt) {
@@ -1998,7 +1514,17 @@ sr_unsubscribe(sr_subscription_ctx_t *subscription)
     }
     pthread_mutex_unlock(&global_lock);
 
-    return SR_ERR_OK;
+cleanup:
+    if (NULL != msg_req) {
+        sr__msg__free_unpacked(msg_req, NULL);
+    }
+    if (NULL != msg_resp) {
+        sr__msg__free_unpacked(msg_resp, NULL);
+    }
+    if (NULL != connection) {
+        sr_disconnect(connection);
+    }
+    return rc;
 }
 
 int

@@ -21,17 +21,25 @@ add_custom_target(proto DEPENDS ${COMMON_DIR}/${PROTO_NAME}.pb-c.c)
 
 configure_file("${COMMON_DIR}/sr_constants.h.in" "${COMMON_DIR}/sr_constants.h" ESCAPE_QUOTES @ONLY)
 
-#setup library sources
-set(SYSREPO-SOURCES
-    ${GENERATED_PROTO}
-    client_library.c
-    cl_subscription_manager.c
+# common sources
+set (COMMON_SOURCES
     common/sr_common.c
     common/sr_btree.c
     common/sr_logger.c
 )
 
-set(SYSREPO-ENGINE-SOURCES
+# client library sources
+set(SYSREPO_SOURCES
+    ${COMMON_SOURCES}
+    ${GENERATED_PROTO}
+    client_library.c
+    cl_subscription_manager.c
+    cl_common.c
+)
+
+# sysrepo engine sources
+set(SYSREPO_ENGINE_SOURCES
+    ${COMMON_SOURCES}
     ${GENERATED_PROTO}
     access_control.c
     connection_manager.c
@@ -45,9 +53,6 @@ set(SYSREPO-ENGINE-SOURCES
     data_manager.c
     notification_processor.c
     xpath_processor.c
-    common/sr_common.c
-    common/sr_btree.c
-    common/sr_logger.c
 )
 
 set(HEADERS "${PROJECT_SOURCE_DIR}/inc/sysrepo.h")
@@ -59,16 +64,16 @@ else(USE_AVL_LIB)
 endif(USE_AVL_LIB)
 
 # sysrepo library
-add_library(sysrepo ${SYSREPO-SOURCES})
-add_library(sysrepo_so SHARED ${SYSREPO-SOURCES})
+add_library(sysrepo ${SYSREPO_SOURCES})
+add_library(sysrepo_so SHARED ${SYSREPO_SOURCES})
 SET_TARGET_PROPERTIES(sysrepo_so PROPERTIES
               OUTPUT_NAME sysrepo CLEAN_DIRECT_OUTPUT 1)
 target_link_libraries(sysrepo ${LINK_LIBRARIES} sysrepo-engine)
 target_link_libraries(sysrepo_so ${LINK_LIBRARIES} sysrepo-engine_so)
 
 # sysrepo-engine library
-add_library(sysrepo-engine ${SYSREPO-ENGINE-SOURCES})
-add_library(sysrepo-engine_so SHARED ${SYSREPO-ENGINE-SOURCES})
+add_library(sysrepo-engine ${SYSREPO_ENGINE_SOURCES})
+add_library(sysrepo-engine_so SHARED ${SYSREPO_ENGINE_SOURCES})
 SET_TARGET_PROPERTIES(sysrepo-engine_so PROPERTIES
               OUTPUT_NAME sysrepo-engine CLEAN_DIRECT_OUTPUT 1)
 target_link_libraries(sysrepo-engine ${LINK_LIBRARIES})

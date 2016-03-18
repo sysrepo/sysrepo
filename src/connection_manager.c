@@ -406,34 +406,24 @@ cm_msg_send_connection(cm_ctx_t *cm_ctx, sm_connection_t *connection, Sr__Msg *m
 }
 
 /**
- * @brief Processes a session start request.
+ * @brief Starts a session in Session manager and Request Processor.
  */
 static int
-cm_session_start_req_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, Sr__Msg *msg_in)
+cm_session_start_internal(cm_ctx_t *cm_ctx, sm_connection_t *conn, const char *effective_user,
+        sr_datastore_t datastore, bool notification_session, sm_session_t **session_p)
 {
     sm_session_t *session = NULL;
-    Sr__Msg *msg = NULL;
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG5(cm_ctx, conn, msg_in, msg_in->request, msg_in->request->session_start_req);
+    CHECK_NULL_ARG3(cm_ctx, conn, session_p);
 
-    SR_LOG_DBG("Processing session_start request (conn=%p).", (void*)conn);
+    SR_LOG_DBG("Starting a new %s session.", notification_session ? "notification" : "configuration");
 
     /* create the session in SM */
-    rc = sm_session_create(cm_ctx->sm_ctx, conn, msg_in->request->session_start_req->user_name, &session);
+    rc = sm_session_create(cm_ctx->sm_ctx, conn, effective_user, &session);
     if ((SR_ERR_OK != rc) || (NULL == session)) {
         SR_LOG_ERR("Unable to create the session in Session Manager (conn=%p).", (void*)conn);
         return rc;
-    }
-
-    /* prepare the response */
-    rc = sr_pb_resp_alloc(SR__OPERATION__SESSION_START, session->id, &msg);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Cannot allocate the response for session_start request (conn=%p).", (void*)conn);
-        if (NULL != session) {
-            sm_session_drop(cm_ctx->sm_ctx, session);
-        }
-        return SR_ERR_NOMEM;
     }
 
     /* prepare CM session data */
@@ -454,19 +444,54 @@ cm_session_start_req_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, Sr__Msg *m
 
     /* start session in Request Processor */
     if (SR_ERR_OK == rc) {
-        rc = rp_session_start(cm_ctx->rp_ctx,  session->id, &session->credentials,
-                sr_datastore_gpb_to_sr(msg_in->request->session_start_req->datastore), &session->cm_data->rp_session);
+        rc = rp_session_start(cm_ctx->rp_ctx,  session->id, &session->credentials,  datastore,
+                notification_session, &session->cm_data->rp_session);
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR("Cannot start Request Processor session (conn=%p).", (void*)conn);
         }
     }
 
+    if (SR_ERR_OK != rc) {
+        sm_session_drop(cm_ctx->sm_ctx, session);
+    } else {
+        *session_p = session;
+    }
+
+    return rc;
+}
+
+/**
+ * @brief Processes a session start request.
+ */
+static int
+cm_session_start_req_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, Sr__Msg *msg_in)
+{
+    sm_session_t *session = NULL;
+    Sr__Msg *msg = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG5(cm_ctx, conn, msg_in, msg_in->request, msg_in->request->session_start_req);
+
+    SR_LOG_DBG("Processing session_start request (conn=%p).", (void*)conn);
+
+    /* prepare the response */
+    rc = sr_pb_resp_alloc(SR__OPERATION__SESSION_START, 0, &msg);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Cannot allocate the response for session_start request (conn=%p).", (void*)conn);
+        return SR_ERR_NOMEM;
+    }
+
+    /* start the session */
+    rc = cm_session_start_internal(cm_ctx, conn, msg_in->request->session_start_req->user_name,
+            sr_datastore_gpb_to_sr(msg_in->request->session_start_req->datastore),
+            msg_in->request->session_start_req->notification_session, &session);
+
     if (SR_ERR_OK == rc) {
         /* set the id to response */
+        msg->session_id = session->id;
         msg->response->session_start_resp->session_id = session->id;
     } else {
         /* set the error code to response */
-        sm_session_drop(cm_ctx->sm_ctx, session);
         msg->response->result = rc;
     }
 
@@ -1040,6 +1065,14 @@ cm_notif_conn_create(cm_ctx_t *cm_ctx, const char *socket_path, sm_connection_t 
         }
     }
 
+    /* set correct connection IDs - must be called after connect */
+    rc = sr_get_peer_eid(fd, &connection->uid, &connection->gid);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Cannot retrieve uid and gid of the peer.");
+        free(connection);
+        return SR_ERR_INTERNAL;
+    }
+
     *connection_p = connection;
     return SR_ERR_OK;
 
@@ -1064,26 +1097,29 @@ cm_out_notif_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
 
     SR_LOG_DBG_MSG("Sending a new notification.");
 
+    /* fill-in source address */
+    msg->notification->source_address = strdup(cm_ctx->server_socket_path);
+    CHECK_NULL_NOMEM_RETURN(msg->notification->source_address);
+
     /* get a connection to the notification destination */
-    rc = sm_connection_find_dst(cm_ctx->sm_ctx, msg->notification->destination, &connection);
+    rc = sm_connection_find_dst(cm_ctx->sm_ctx, msg->notification->destination_address, &connection);
     if (SR_ERR_OK == rc) {
         /* a connection to the destination already exists - reuse */
         SR_LOG_DBG("Reusing existing connection on fd=%d for the notification destination '%s'",
-                connection->fd, msg->notification->destination);
+                connection->fd, msg->notification->destination_address);
     } else {
         /* connection to that destination does not exist - connect */
-        SR_LOG_DBG("Creating a new connection for the notification destination '%s'", msg->notification->destination);
-        rc = cm_notif_conn_create(cm_ctx, msg->notification->destination, &connection);
+        SR_LOG_DBG("Creating a new connection for the notification destination '%s'", msg->notification->destination_address);
+        rc = cm_notif_conn_create(cm_ctx, msg->notification->destination_address, &connection);
         if (SR_ERR_OK != rc) {
             return rc;
             // TODO: remove subscriptions?
         }
     }
 
-    // TODO: create a session??
-
     /* send the message */
     rc = cm_msg_send_connection(cm_ctx, connection, msg);
+    // TODO: remove subscription by disconnect
 
     sr__msg__free_unpacked(msg, NULL);
 

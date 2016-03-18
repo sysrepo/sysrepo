@@ -772,8 +772,46 @@ rp_subscribe_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr
     }
 
     /* subscribe to the notification */
-    rc = np_notification_subscribe(rp_ctx->np_ctx, msg->request->subscribe_req->event,
+    rc = np_notification_subscribe(rp_ctx->np_ctx, msg->request->subscribe_req->event, msg->request->subscribe_req->path,
             msg->request->subscribe_req->destination, msg->request->subscribe_req->subscription_id);
+
+    /* set response code */
+    resp->response->result = rc;
+
+    rc = rp_resp_fill_errors(resp, session->dm_session);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Copying errors to gpb failed");
+    }
+
+    /* send the response */
+    rc = cm_msg_send(rp_ctx->cm_ctx, resp);
+
+    return rc;
+}
+
+/**
+ * @brief Processes an unsubscribe request.
+ */
+static int
+rp_unsubscribe_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
+{
+    Sr__Msg *resp = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->unsubscribe_req);
+
+    SR_LOG_DBG_MSG("Processing unsubscribe request.");
+
+    /* allocate the response */
+    rc = sr_pb_resp_alloc(SR__OPERATION__UNSUBSCRIBE, session->id, &resp);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Allocation of unsubscribe response failed.");
+        return SR_ERR_NOMEM;
+    }
+
+    /* unsubscribe from the notifications */
+    rc = np_notification_unsubscribe(rp_ctx->np_ctx, msg->request->unsubscribe_req->destination,
+            msg->request->unsubscribe_req->subscription_id);
 
     /* set response code */
     resp->response->result = rc;
@@ -798,6 +836,18 @@ rp_msg_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG3(rp_ctx, session, msg);
+
+    /* whitelist only some operations for notification sessions */
+    if (session->notification_session) {
+        if ((SR__OPERATION__GET_ITEM != msg->request->operation) &&
+                (SR__OPERATION__GET_ITEMS != msg->request->operation) &&
+                (SR__OPERATION__UNSUBSCRIBE != msg->request->operation)) {
+            SR_LOG_ERR("Unsupported operation for notification session (session id=%"PRIu32", operation=%d).",
+                    session->id, msg->response->operation);
+            sr__msg__free_unpacked(msg, NULL);
+            return SR_ERR_UNSUPPORTED;
+        }
+    }
 
     if (SR__MSG__MSG_TYPE__REQUEST == msg->type) {
         dm_clear_session_errors(session->dm_session);
@@ -850,6 +900,9 @@ rp_msg_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
                 break;
             case SR__OPERATION__SUBSCRIBE:
                 rc = rp_subscribe_req_process(rp_ctx, session, msg);
+                break;
+            case SR__OPERATION__UNSUBSCRIBE:
+                rc = rp_unsubscribe_req_process(rp_ctx, session, msg);
                 break;
             default:
                 SR_LOG_ERR("Unsupported request received (session id=%"PRIu32", operation=%d).",
@@ -1112,8 +1165,8 @@ rp_cleanup(rp_ctx_t *rp_ctx)
 }
 
 int
-rp_session_start(const rp_ctx_t *rp_ctx, const uint32_t session_id,
-        const ac_ucred_t *user_credentials, const sr_datastore_t datastore, rp_session_t **session_p)
+rp_session_start(const rp_ctx_t *rp_ctx, const uint32_t session_id, const ac_ucred_t *user_credentials,
+        const sr_datastore_t datastore, const bool notification_session, rp_session_t **session_p)
 {
     rp_session_t *session = NULL;
     int rc = SR_ERR_OK;
@@ -1132,6 +1185,7 @@ rp_session_start(const rp_ctx_t *rp_ctx, const uint32_t session_id,
     session->user_credentials = user_credentials;
     session->id = session_id;
     session->datastore = datastore;
+    session->notification_session = notification_session;
 
     rc = ac_session_init(rp_ctx->ac_ctx, user_credentials, &session->ac_session);
     if (SR_ERR_OK  != rc) {
