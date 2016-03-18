@@ -43,7 +43,7 @@
  */
 
 #include "sysrepo.pb-c.h"
-#include "session_manager.h"
+#include "cm_session_manager.h"
 
 /**
  * @brief Connection Manager context used to identify particular instance of

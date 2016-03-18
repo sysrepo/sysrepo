@@ -44,8 +44,8 @@ ADD_UNIT_TEST(common_test)
 ADD_UNIT_TEST(xp_parser_test)
 ADD_UNIT_TEST(xp_yang_test)
 
-ADD_UNIT_TEST(sm_test)
 ADD_UNIT_TEST(cm_test)
+ADD_UNIT_TEST(cm_sm_test)
 
 ADD_UNIT_TEST_WITH_HELPERS(dm_test)
 ADD_UNIT_TEST(rp_dt_xpath_test)
@@ -56,6 +56,7 @@ ADD_UNIT_TEST(rp_node_stack_test)
 ADD_UNIT_TEST_WITH_HELPERS(rp_dt_edit_test)
 ADD_UNIT_TEST_WITH_HELPERS(rp_dt_running_test)
 
+ADD_UNIT_TEST_WITH_HELPERS(np_test)
 
 ADD_UNIT_TEST_WITH_HELPERS(cl_test)
 ADD_UNIT_TEST(concurr_test)

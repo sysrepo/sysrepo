@@ -62,7 +62,7 @@ sr_btree_init(sr_btree_compare_item_cb compare_item_cb, sr_btree_free_item_cb fr
 {
     sr_btree_t *tree = NULL;
 
-    CHECK_NULL_ARG3(compare_item_cb, free_item_cb, tree_p);
+    CHECK_NULL_ARG2(compare_item_cb, tree_p);
 
     tree = calloc(1, sizeof(*tree));
     if (NULL == tree) {
@@ -98,15 +98,20 @@ sr_btree_cleanup(sr_btree_t* tree)
         avl_free_tree(tree->avl_tree);
 #else
         /* call free item callback on each node */
-        RBLIST *rblist = rbopenlist(tree->rb_tree);
-        if (NULL != rblist) {
-            void *item = NULL;
-            while((item = (void*)rbreadlist(rblist))) {
-                tree->free_item_cb(item);
+        if (NULL != tree->free_item_cb) {
+            RBLIST *rblist = rbopenlist(tree->rb_tree);
+            if (NULL != rblist) {
+                void *item = NULL;
+                while((item = (void*)rbreadlist(rblist))) {
+                    tree->free_item_cb(item);
+                }
+                rbcloselist(rblist);
             }
-            rbcloselist(rblist);
         }
         /* destroy the tree */
+        if (NULL != tree->rb_list) {
+            rbcloselist(tree->rb_list);
+        }
         rbdestroy(tree->rb_tree);
 #endif
         /* free our context */
@@ -149,7 +154,9 @@ sr_btree_delete(sr_btree_t *tree, void *item)
     avl_delete(tree->avl_tree, item);
 #else
     rbdelete(item, tree->rb_tree);
-    tree->free_item_cb(item);
+    if (NULL != tree->free_item_cb) {
+        tree->free_item_cb(item);
+    }
 #endif
 }
 
@@ -186,12 +193,16 @@ sr_btree_get_at(sr_btree_t *tree, size_t index)
     }
 #else
     if (0 == index) {
+        if (NULL != tree->rb_list) {
+            rbcloselist(tree->rb_list);
+        }
         tree->rb_list = rbopenlist(tree->rb_tree);
     }
     if (NULL != tree->rb_list) {
         void *item = (void*)rbreadlist(tree->rb_list);
         if (NULL == item) {
             rbcloselist(tree->rb_list);
+            tree->rb_list = NULL;
         }
         return item;
     }

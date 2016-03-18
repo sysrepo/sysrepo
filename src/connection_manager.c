@@ -35,7 +35,7 @@
 #include <ev.h>
 
 #include "sr_common.h"
-#include "session_manager.h"
+#include "cm_session_manager.h"
 #include "request_processor.h"
 #include "connection_manager.h"
 
@@ -90,9 +90,10 @@ typedef struct cm_ctx_s {
  * @brief Buffer of raw data received from / to be sent to the other side.
  */
 typedef struct cm_buffer_s {
-    uint8_t *data;  /**< data of the buffer */
+    uint8_t *data;  /**< Data of the buffer. */
     size_t size;    /**< Current size of the buffer. */
-    size_t pos;     /**< Current position in the buffer */
+    size_t start;   /**< Position where the useful data start. */
+    size_t pos;     /**< Current position in the buffer. */
 } cm_buffer_t;
 
 /**
@@ -114,32 +115,9 @@ typedef struct cm_connection_ctx_s {
     cm_ctx_t *cm_ctx;      /**< Connection manager context assigned to this connection. */
     cm_buffer_t in_buff;   /**< Input buffer. If not empty, there is some received data to be processed. */
     cm_buffer_t out_buff;  /**< Output buffer. If not empty, there is some data to be sent when receiver is ready. */
-    size_t out_buff_start; /**< Position where the unsent data start in the output buffer. */
     ev_io read_watcher;    /**< Watcher for readable events on connection's socket. */
     ev_io write_watcher;   /**< Watcher for writable events on connection's socket. */
 } cm_connection_ctx_t;
-
-/**
- * @brief Sets the file descriptor to non-blocking I/O mode.
- */
-static int
-cm_fd_set_nonblock(int fd)
-{
-    int flags = 0, rc = 0;
-
-    flags = fcntl(fd, F_GETFL, 0);
-    if (-1 == flags) {
-        SR_LOG_WRN("Socket fcntl error (skipped): %s", strerror(errno));
-        flags = 0;
-    }
-    rc = fcntl(fd, F_SETFL, flags | O_NONBLOCK);
-    if (-1 == rc) {
-        SR_LOG_ERR("Socket fcntl error: %s", strerror(errno));
-        return SR_ERR_INTERNAL;
-    }
-
-    return SR_ERR_OK;
-}
 
 /**
  * @brief Initializes unix-domain socket server.
@@ -149,7 +127,7 @@ cm_server_init(cm_ctx_t *cm_ctx, const char *socket_path)
 {
     int fd = -1;
     int rc = SR_ERR_OK;
-    struct sockaddr_un addr;
+    struct sockaddr_un addr = { 0, };
 
     CHECK_NULL_ARG2(cm_ctx, socket_path);
 
@@ -162,7 +140,7 @@ cm_server_init(cm_ctx_t *cm_ctx, const char *socket_path)
         goto cleanup;
     }
 
-    rc = cm_fd_set_nonblock(fd);
+    rc = sr_fd_set_nonblock(fd);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Cannot set socket to nonblocking mode.");
         rc = SR_ERR_INIT_FAILED;
@@ -177,7 +155,6 @@ cm_server_init(cm_ctx_t *cm_ctx, const char *socket_path)
     }
     unlink(socket_path);
 
-    memset(&addr, 0, sizeof(addr));
     addr.sun_family = AF_UNIX;
     strncpy(addr.sun_path, socket_path, sizeof(addr.sun_path)-1);
 
@@ -348,7 +325,7 @@ cm_conn_out_buff_flush(cm_ctx_t *cm_ctx, sm_connection_t *connection)
 
     buff = &connection->cm_data->out_buff;
     buff_size = buff->pos;
-    buff_pos = connection->cm_data->out_buff_start;
+    buff_pos = connection->cm_data->out_buff.start;
 
     SR_LOG_DBG("Sending %zu bytes of data.", (buff_size - buff_pos));
 
@@ -363,7 +340,7 @@ cm_conn_out_buff_flush(cm_ctx_t *cm_ctx, sm_connection_t *connection)
                 /* no more data can be sent now */
                 SR_LOG_DBG("fd %d would block", connection->fd);
                 /* mark the position where the unsent data start */
-                connection->cm_data->out_buff_start = buff_pos;
+                connection->cm_data->out_buff.start = buff_pos;
                 /* monitor fd for writable event */
                 ev_io_start(cm_ctx->event_loop, &connection->cm_data->write_watcher);
                 break;
@@ -379,7 +356,7 @@ cm_conn_out_buff_flush(cm_ctx_t *cm_ctx, sm_connection_t *connection)
     if (buff_size == buff_pos) {
         /* no more data left in the buffer */
         buff->pos = 0;
-        connection->cm_data->out_buff_start = 0;
+        connection->cm_data->out_buff.start = 0;
     }
 
     return rc;
@@ -389,15 +366,15 @@ cm_conn_out_buff_flush(cm_ctx_t *cm_ctx, sm_connection_t *connection)
  * @brief Sends a message to the recipient identified by session context.
  */
 static int
-cm_msg_send_session(cm_ctx_t *cm_ctx, sm_session_t *session, Sr__Msg *msg)
+cm_msg_send_connection(cm_ctx_t *cm_ctx, sm_connection_t *connection, Sr__Msg *msg)
 {
     cm_buffer_t *buff = NULL;
     size_t msg_size = 0;
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG5(cm_ctx, session, session->connection, session->connection->cm_data, msg);
+    CHECK_NULL_ARG4(cm_ctx, connection, connection->cm_data, msg);
 
-    buff = &session->connection->cm_data->out_buff;
+    buff = &connection->cm_data->out_buff;
 
     /* find out required message size */
     msg_size = sr__msg__get_packed_size(msg);
@@ -407,7 +384,7 @@ cm_msg_send_session(cm_ctx_t *cm_ctx, sm_session_t *session, Sr__Msg *msg)
     }
 
     /* expand the buffer if needed */
-    rc = cm_conn_buffer_expand(session->connection, buff, SR_MSG_PREAM_SIZE + msg_size);
+    rc = cm_conn_buffer_expand(connection, buff, SR_MSG_PREAM_SIZE + msg_size);
 
     if (SR_ERR_OK == rc) {
         /* write the pramble */
@@ -419,9 +396,9 @@ cm_msg_send_session(cm_ctx_t *cm_ctx, sm_session_t *session, Sr__Msg *msg)
         buff->pos += msg_size;
 
         /* flush the buffer */
-        rc = cm_conn_out_buff_flush(cm_ctx, session->connection);
-        if ((session->connection->close_requested) || (SR_ERR_OK != rc)) {
-            cm_conn_close(cm_ctx, session->connection);
+        rc = cm_conn_out_buff_flush(cm_ctx, connection);
+        if ((connection->close_requested) || (SR_ERR_OK != rc)) {
+            cm_conn_close(cm_ctx, connection);
         }
     }
 
@@ -494,7 +471,7 @@ cm_session_start_req_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, Sr__Msg *m
     }
 
     /* send the response */
-    rc = cm_msg_send_session(cm_ctx, session, msg);
+    rc = cm_msg_send_connection(cm_ctx, session->connection, msg);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Unable to send session_start response (conn=%p).", (void*)conn);
     }
@@ -561,7 +538,7 @@ cm_session_stop_req_process(cm_ctx_t *cm_ctx, sm_session_t *session, Sr__Msg *ms
     }
 
     /* send the response */
-    rc = cm_msg_send_session(cm_ctx, session, msg_out);
+    rc = cm_msg_send_connection(cm_ctx, session->connection, msg_out);
     if (SR_ERR_OK != rc) {
         SR_LOG_WRN("Unable to send session_stop response via session id=%"PRIu32".", session->id);
     }
@@ -581,7 +558,7 @@ cm_session_stop_req_process(cm_ctx_t *cm_ctx, sm_session_t *session, Sr__Msg *ms
 }
 
 /**
- * Process a request from client.
+ * @brief Processes a request from client.
  */
 static int
 cm_req_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, sm_session_t *session, Sr__Msg *msg)
@@ -645,7 +622,7 @@ cleanup:
 }
 
 /**
- * Process a response from client.
+ * @brief Processes a response from client.
  */
 static int
 cm_resp_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, sm_session_t *session, Sr__Msg *msg)
@@ -686,7 +663,7 @@ cleanup:
 }
 
 /**
- * Process a message received on connection.
+ * @brief Processes a message received on connection.
  */
 static int
 cm_conn_msg_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, uint8_t *msg_data, size_t msg_size)
@@ -750,7 +727,7 @@ cleanup:
 }
 
 /**
- * Process the content of input buffer of a connection.
+ * @brief Processes the content of input buffer of a connection.
  */
 static int
 cm_conn_in_buff_process(cm_ctx_t *cm_ctx, sm_connection_t *conn)
@@ -838,8 +815,8 @@ cm_conn_read_cb(struct ev_loop *loop, ev_io *w, int revents)
         /* receive data */
         bytes = recv(conn->fd, (buff->data + buff->pos), (buff->size - buff->pos), 0);
         if (bytes > 0) {
-            /* recieved "bytes" bytes of data */
-            SR_LOG_DBG("%d bytes of data recieved on fd %d", bytes, conn->fd);
+            /* Received "bytes" bytes of data */
+            SR_LOG_DBG("%d bytes of data received on fd %d", bytes, conn->fd);
             buff->pos += bytes;
         } else if (0 == bytes) {
             /* connection closed by the other side */
@@ -955,7 +932,7 @@ cm_server_watcher_cb(struct ev_loop *loop, ev_io *w, int revents)
             /* accepted the new connection */
             SR_LOG_DBG("New client connection on fd %d", clnt_fd);
             /* set to nonblocking mode */
-            rc = cm_fd_set_nonblock(clnt_fd);
+            rc = sr_fd_set_nonblock(clnt_fd);
             if (SR_ERR_OK != rc) {
                 SR_LOG_ERR("Cannot set fd=%d to nonblocking mode.", clnt_fd);
                 close(clnt_fd);
@@ -999,6 +976,189 @@ cm_server_watcher_cb(struct ev_loop *loop, ev_io *w, int revents)
 }
 
 /**
+ * @brief Creates a new connection to the notification destination address.
+ */
+static int
+cm_notif_conn_create(cm_ctx_t *cm_ctx, const char *socket_path, sm_connection_t **connection_p)
+{
+    int fd = -1;
+    struct sockaddr_un addr = { 0, };
+    sm_connection_t *connection = NULL;
+    int rc = SR_ERR_OK;
+
+    /* prepare a socket */
+    fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (-1 == fd) {
+        SR_LOG_ERR("Unable to create a new socket: %s", strerror(errno));
+        return SR_ERR_INTERNAL;
+    }
+
+    /* set socket to nonblocking mode */
+    rc = sr_fd_set_nonblock(fd);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Cannot set socket to nonblocking mode.");
+        rc = SR_ERR_INTERNAL;
+        goto cleanup;
+    }
+
+    /* start a new connection in session manager */
+    rc = sm_connection_start(cm_ctx->sm_ctx, CM_AF_UNIX_SERVER, fd, &connection);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Cannot start connection in Session manager (fd=%d).", fd);
+        rc = SR_ERR_INTERNAL;
+        goto cleanup;
+    }
+
+    /* assign socket path as destination address */
+    rc = sm_connection_assign_dst(cm_ctx->sm_ctx, connection, socket_path);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Cannot assign socket path to the connection (fd=%d).", fd);
+        rc = SR_ERR_INTERNAL;
+        goto cleanup;
+    }
+
+    /* initialize connection watchers */
+    rc = cm_conn_watcher_init(cm_ctx, connection);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Cannot initialize watcher for fd=%d.", fd);
+        rc = SR_ERR_INTERNAL;
+        goto cleanup;
+    }
+
+    /* connect to server */
+    addr.sun_family = AF_UNIX;
+    strncpy(addr.sun_path, socket_path, sizeof(addr.sun_path)-1);
+
+    rc = connect(fd, (struct sockaddr*)&addr, sizeof(addr));
+    if (-1 == rc) {
+        if (EINPROGRESS == errno) {
+            // TODO: monitor socket for writing and send message later
+        } else {
+            SR_LOG_ERR("Unable to connect to notification socket=%s: %s", socket_path, strerror(errno));
+            rc = SR_ERR_DISCONNECT;
+            goto cleanup;
+        }
+    }
+
+    *connection_p = connection;
+    return SR_ERR_OK;
+
+cleanup:
+    if (NULL != connection) {
+        sm_connection_stop(cm_ctx->sm_ctx, connection);
+    }
+    close(fd);
+    return rc;
+}
+
+/**
+ * @brief Processes an outgoing notification (notification to be sent to the client library).
+ */
+static int
+cm_out_notif_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
+{
+    sm_connection_t *connection = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG3(cm_ctx, msg, msg->notification);
+
+    SR_LOG_DBG_MSG("Sending a new notification.");
+
+    /* get a connection to the notification destination */
+    rc = sm_connection_find_dst(cm_ctx->sm_ctx, msg->notification->destination, &connection);
+    if (SR_ERR_OK == rc) {
+        /* a connection to the destination already exists - reuse */
+        SR_LOG_DBG("Reusing existing connection on fd=%d for the notification destination '%s'",
+                connection->fd, msg->notification->destination);
+    } else {
+        /* connection to that destination does not exist - connect */
+        SR_LOG_DBG("Creating a new connection for the notification destination '%s'", msg->notification->destination);
+        rc = cm_notif_conn_create(cm_ctx, msg->notification->destination, &connection);
+        if (SR_ERR_OK != rc) {
+            return rc;
+            // TODO: remove subscriptions?
+        }
+    }
+
+    // TODO: create a session??
+
+    /* send the message */
+    rc = cm_msg_send_connection(cm_ctx, connection, msg);
+
+    sr__msg__free_unpacked(msg, NULL);
+
+    return SR_ERR_OK;
+}
+
+/**
+ * @brief Processes an outgoing message (message to be sent to the client library).
+ */
+static int
+cm_out_msg_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
+{
+    sm_session_t *session = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG2(cm_ctx, msg);
+
+    /* find the session */
+    rc = sm_session_find_id(cm_ctx->sm_ctx, msg->session_id, &session);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Unable to find the session matching with id specified in the message "
+                "(id=%"PRIu32").", msg->session_id);
+        sr__msg__free_unpacked(msg, NULL);
+        return SR_ERR_INTERNAL;
+    }
+
+    if ((NULL == session) || (NULL == session->cm_data)) {
+        SR_LOG_ERR("invalid session context - NULL value detected (id=%"PRIu32").", msg->session_id);
+        sr__msg__free_unpacked(msg, NULL);
+        return SR_ERR_INTERNAL;
+    }
+
+    /* update counters of session-related requests in RP */
+    if (SR__MSG__MSG_TYPE__RESPONSE == msg->type) {
+        if (session->cm_data->rp_req_cnt > 0) {
+            session->cm_data->rp_req_cnt -= 1;
+        }
+    } else if (SR__MSG__MSG_TYPE__REQUEST == msg->type) {
+        session->cm_data->rp_resp_expected += 1;
+    }
+
+    /* send the message */
+    if (!session->cm_data->stop_requested) {
+        /* only if session_stop has not been requested */
+        rc = cm_msg_send_connection(cm_ctx, session->connection, msg);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR("Unable to send the message over session (id=%"PRIu32").", msg->session_id);
+        }
+    }
+
+    /* release the message */
+    sr__msg__free_unpacked(msg, NULL);
+
+    /* if there are no more outstanding session-related requests in RP */
+    if (0 == session->cm_data->rp_req_cnt) {
+        if (session->cm_data->stop_requested) {
+            /* session stop requested, stop it in RP and SM */
+            rp_session_stop(cm_ctx->rp_ctx, session->cm_data->rp_session);
+            sm_session_drop(cm_ctx->sm_ctx, session);
+        } else {
+            /* if there are some requests waiting for to be processed, process next one */
+            if (sr_cbuff_dequeue(session->cm_data->rp_request_queue, &msg)) {
+                session->cm_data->rp_req_cnt += 1;
+                rc = rp_msg_process(cm_ctx->rp_ctx, session->cm_data->rp_session, msg);
+                if (SR_ERR_OK != rc) {
+                    session->cm_data->rp_req_cnt -= 1;
+                }
+            }
+        }
+    }
+
+    return rc;
+}
+
+/**
  * @brief Callback called by the event loop watcher when a message is enqueued into message queue.
  */
 static void
@@ -1006,13 +1166,11 @@ cm_msg_enqueue_cb(struct ev_loop *loop, ev_async *w, int revents)
 {
     cm_ctx_t *cm_ctx = NULL;
     bool dequeued = false;
-    int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG_VOID2(w, w->data);
     cm_ctx = (cm_ctx_t*)w->data;
 
     do {
-        sm_session_t *session = NULL;
         Sr__Msg *msg = NULL;
 
         pthread_mutex_lock(&cm_ctx->msg_queue_mutex);
@@ -1020,58 +1178,12 @@ cm_msg_enqueue_cb(struct ev_loop *loop, ev_async *w, int revents)
         pthread_mutex_unlock(&cm_ctx->msg_queue_mutex);
 
         if (dequeued) {
-            /* find the session */
-            rc = sm_session_find_id(cm_ctx->sm_ctx, msg->session_id, &session);
-            if (SR_ERR_OK != rc) {
-                SR_LOG_ERR("Unable to find the session matching with id specified in the message "
-                        "(id=%"PRIu32").", msg->session_id);
-                sr__msg__free_unpacked(msg, NULL);
-                continue;
-            }
-
-            if ((NULL == session) || (NULL == session->cm_data)) {
-                SR_LOG_ERR("invalid session context - NULL value detected (id=%"PRIu32").", msg->session_id);
-                sr__msg__free_unpacked(msg, NULL);
-                continue;
-            }
-
-            /* update counters of session-related requests in RP */
-            if (SR__MSG__MSG_TYPE__RESPONSE == msg->type) {
-                if (session->cm_data->rp_req_cnt > 0) {
-                    session->cm_data->rp_req_cnt -= 1;
-                }
-            } else if (SR__MSG__MSG_TYPE__REQUEST == msg->type) {
-                session->cm_data->rp_resp_expected += 1;
-            }
-
-            /* send the message */
-            if (!session->cm_data->stop_requested) {
-                /* only if session_stop has not been requested */
-                rc = cm_msg_send_session(cm_ctx, session, msg);
-                if (SR_ERR_OK != rc) {
-                    SR_LOG_ERR("Unable to send the message over session (id=%"PRIu32").", msg->session_id);
-                }
-            }
-
-            /* release the message */
-            sr__msg__free_unpacked(msg, NULL);
-
-            /* if there are no more outstanding session-related requests in RP */
-            if (0 == session->cm_data->rp_req_cnt) {
-                if (session->cm_data->stop_requested) {
-                    /* session stop requested, stop it in RP and SM */
-                    rp_session_stop(cm_ctx->rp_ctx, session->cm_data->rp_session);
-                    sm_session_drop(cm_ctx->sm_ctx, session);
-                } else {
-                    /* if there are some requests waiting for to be processed, process next one */
-                    if (sr_cbuff_dequeue(session->cm_data->rp_request_queue, &msg)) {
-                        session->cm_data->rp_req_cnt += 1;
-                        rc = rp_msg_process(cm_ctx->rp_ctx, session->cm_data->rp_session, msg);
-                        if (SR_ERR_OK != rc) {
-                            session->cm_data->rp_req_cnt -= 1;
-                        }
-                    }
-                }
+            if (SR__MSG__MSG_TYPE__NOTIFICATION == msg->type) {
+                /* process as a notification */
+                cm_out_notif_process(cm_ctx, msg);
+            } else {
+                /* process as a normal message */
+                cm_out_msg_process(cm_ctx, msg);
             }
         }
     } while (dequeued);
@@ -1198,7 +1310,7 @@ cm_init(const cm_connection_mode_t mode, const char *socket_path, cm_ctx_t **cm_
     /* initialize event loop */
     /* According to our measurements, EPOLL backend is significantly slower for
      * fewer file descriptors, so we are disabling it for now. */
-    ctx->event_loop = ev_default_loop((EVBACKEND_ALL ^ EVBACKEND_EPOLL) | EVFLAG_NOENV);
+    ctx->event_loop = ev_loop_new((EVBACKEND_ALL ^ EVBACKEND_EPOLL) | EVFLAG_NOENV);
 
     /* initialize event watcher for unix-domain server socket */
     ev_io_init(&ctx->server_watcher, cm_server_watcher_cb, ctx->listen_socket_fd, EV_READ);
@@ -1275,6 +1387,7 @@ cm_start(cm_ctx_t *cm_ctx)
                 cm_event_loop_threaded, cm_ctx);
         if (0 != rc) {
             SR_LOG_ERR("Error by creating a new thread: %s", strerror(errno));
+            rc = SR_ERR_INTERNAL;
         }
     }
 
