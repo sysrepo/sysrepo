@@ -8,7 +8,7 @@ def connect():
    try:
       sr.sr_connect('def', 1)
    except RuntimeError as e:
-      print("Exception catched as expected") 
+      print("Exception catched as expected")
       return
    print("This should not be printed")
 
@@ -39,6 +39,12 @@ def getItems():
       print(v.xpath)
       print(v.type)
       print('======')   
+
+   item = sr.sr_val_t()
+   item.xpath = "/example-module:container/list[key1='abc'][key2='def']"
+   item.type = sr.SR_STRING_T
+   item.data.string_value = "abv"
+   sr.sr_set_item(session, item.xpath, item, sr.SR_EDIT_DEFAULT)
 
    sr.sr_session_stop(session)
    sr.sr_disconnect(c) 

@@ -1,5 +1,6 @@
 *~
 *.o
+*.pyc
 build/
 doc/
 tests/data/test_data.h
