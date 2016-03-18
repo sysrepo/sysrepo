@@ -72,13 +72,12 @@ int np_notification_subscribe(np_ctx_t *np_ctx, Sr__NotificationEvent event_type
  * @brief Unsubscribe the client from notifications on specified event.
  *
  * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
- * @param[in] event_type Type of the event to unsubscribe.
  * @param[in] dst_address Destination address of the subscriber.
  * @param[in] dst_id Destination subscription ID.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int np_notification_unsubscribe(np_ctx_t *np_ctx, Sr__NotificationEvent event_type, const char *dst_address, uint32_t dst_id);
+int np_notification_unsubscribe(np_ctx_t *np_ctx, const char *dst_address, uint32_t dst_id);
 
 /**
  * @brief Notify all subscribers about the module (un)installation event.

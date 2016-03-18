@@ -69,7 +69,7 @@ test_rp_sesssion_create(rp_ctx_t *rp_ctx, sr_datastore_t datastore, rp_session_t
     credentials->r_uid = getuid();
     credentials->r_gid = getgid();
 
-    rc = rp_session_start(rp_ctx, 123456, credentials, datastore, &session);
+    rc = rp_session_start(rp_ctx, 123456, credentials, datastore, false, &session);
     assert_int_equal(SR_ERR_OK, rc);
 
     *rp_session_p = session;

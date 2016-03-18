@@ -389,14 +389,24 @@ cl_sm_conn_buffer_expand(const cl_sm_conn_ctx_t *conn, cl_sm_buffer_t *buff, siz
  * @brief Get (prepare) configuration session that can be used from notification callback.
  */
 static int
-cl_sm_get_data_session(cl_sm_ctx_t *sm_ctx, const char *source_address, uint32_t session_id,
-        sr_session_ctx_t **config_session_p)
+cl_sm_get_data_session(cl_sm_ctx_t *sm_ctx, sr_subscription_ctx_t *subscription,
+        const char *source_address, sr_session_ctx_t **config_session_p)
 {
     sr_conn_ctx_t *connection = NULL;
     sr_conn_ctx_t connection_lookup = { 0, };
-    sr_session_list_t *session_entry = NULL;
     sr_session_ctx_t *session = NULL;
+    Sr__Msg *msg_req = NULL, *msg_resp = NULL;
     int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG4(sm_ctx, subscription, source_address, config_session_p);
+
+    if ((NULL != subscription->data_session) &&
+            (NULL != subscription->data_session->conn_ctx) && (NULL != subscription->data_session->conn_ctx->dst_address) &&
+            (0 == strcmp(subscription->data_session->conn_ctx->dst_address, source_address))) {
+        /* use already existing session stored within the subscription */
+        *config_session_p = subscription->data_session;
+        return SR_ERR_OK;
+    }
 
     /* find a connection matching with provided address */
     connection_lookup.dst_address = source_address;
@@ -422,24 +432,40 @@ cl_sm_get_data_session(cl_sm_ctx_t *sm_ctx, const char *source_address, uint32_t
         }
     }
 
-    /* find a session matching with provided id */
-    session_entry = connection->session_list;
-    while (NULL != session_entry) {
-        if ((NULL != session_entry->session) && (session_entry->session->id == session_id)) {
-            session = session_entry->session;
-            break;
-        }
-        session_entry = session_entry->next;
+    /* try to retrieve the session from the connection */
+    if (NULL != connection->session_list) {
+        session = connection->session_list->session;
     }
     if (NULL == session) {
         /* session not found, create a new one */
-        SR_LOG_DBG("Creating a new data session at '%s', session id=%"PRIu32".", source_address, session_id);
+        SR_LOG_DBG("Creating a new data session at '%s'.", source_address);
         rc = cl_session_create(connection, &session);
-        if (SR_ERR_OK == rc) {
-            session->id = session_id;
+
+        /* prepare session_start message */
+        rc = sr_pb_req_alloc(SR__OPERATION__SESSION_START, /* undefined session id */ 0, &msg_req);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR_MSG("Cannot allocate session_start message.");
+            cl_session_cleanup(session);
+            return rc;
         }
+        msg_req->request->session_start_req->notification_session = true;
+        msg_req->request->session_start_req->datastore = SR_DS_RUNNING;
+
+        /* send the request and receive the response */
+        rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__SESSION_START);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR_MSG("Error by processing of session_start request.");
+            sr__msg__free_unpacked(msg_req, NULL);
+            cl_session_cleanup(session);
+            return rc;
+        }
+
+        session->id = msg_resp->response->session_start_resp->session_id;
+        sr__msg__free_unpacked(msg_req, NULL);
+        sr__msg__free_unpacked(msg_resp, NULL);
     }
 
+    subscription->data_session = session;
     *config_session_p = session;
     return rc;
 }
@@ -472,8 +498,8 @@ cl_sm_conn_msg_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, uint8_t *msg
         goto cleanup;
     }
 
-    SR_LOG_DBG("Received a notification for subscription id=%"PRIu32" (source address='%s', session id=%"PRIu32").",
-            msg->notification->subscription_id, msg->notification->source_address, msg->session_id);
+    SR_LOG_DBG("Received a notification for subscription id=%"PRIu32" (source address='%s').",
+            msg->notification->subscription_id, msg->notification->source_address);
 
     pthread_mutex_lock(&sm_ctx->subscriptions_lock);
 
@@ -497,11 +523,10 @@ cl_sm_conn_msg_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, uint8_t *msg
     }
 
     /* get data session that can be used from notification callback */
-    rc = cl_sm_get_data_session(sm_ctx, msg->notification->source_address, msg->session_id, &data_session);
+    rc = cl_sm_get_data_session(sm_ctx, subscription, msg->notification->source_address, &data_session);
     if (SR_ERR_OK != rc) {
         pthread_mutex_unlock(&sm_ctx->subscriptions_lock);
-        SR_LOG_ERR("Unable to get configuration session for address='%s', session id=%"PRIu32".",
-                msg->notification->source_address, msg->session_id);
+        SR_LOG_ERR("Unable to get configuration session for address='%s'.", msg->notification->source_address);
         goto cleanup;
     }
 
@@ -903,12 +928,12 @@ cl_sm_cleanup(cl_sm_ctx_t *sm_ctx)
 }
 
 int
-cl_sm_subscription_init(cl_sm_ctx_t *sm_ctx, char **destination, sr_subscription_ctx_t **subscription_p)
+cl_sm_subscription_init(cl_sm_ctx_t *sm_ctx, sr_subscription_ctx_t **subscription_p)
 {
     sr_subscription_ctx_t *subscription = NULL;
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG3(sm_ctx, destination, subscription_p);
+    CHECK_NULL_ARG2(sm_ctx, subscription_p);
 
     subscription = calloc(1, sizeof(*subscription));
     if (NULL == subscription) {
@@ -944,7 +969,7 @@ cl_sm_subscription_init(cl_sm_ctx_t *sm_ctx, char **destination, sr_subscription
         goto cleanup;
     }
 
-    *destination = sm_ctx->socket_path;
+    subscription->delivery_address = sm_ctx->socket_path;
     *subscription_p = subscription;
     return SR_ERR_OK;
 

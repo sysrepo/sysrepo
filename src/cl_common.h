@@ -1,7 +1,7 @@
 /**
  * @file cl_common.h
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
- * @brief TODO
+ * @brief Common Client Library routines API.
  *
  * @copyright
  * Copyright 2016 Cisco Systems, Inc.
@@ -70,28 +70,104 @@ typedef struct sr_session_list_s {
 } sr_session_list_t;
 
 /**
- * @brief TODO
+ * @brief Creates a new client library -local connection.
+ *
+ * @param[out] conn_ctx Allocated connection context.
+ *
+ * @return Error code (SR_ERR_OK on success).
  */
 int cl_connection_create(sr_conn_ctx_t **conn_ctx);
 
 /**
- * @brief
+ * @brief Cleans up a client library -local connection.
+ *
+ * @param[in] conn_ctx Connection context acquired by ::cl_connection_create call.
  */
 void cl_connection_cleanup(sr_conn_ctx_t *conn_ctx);
 
 /**
- * @brief
+ * @brief Creates a new client library -local session.
+ *
+ * @param[in] conn_ctx Connection context acquired by ::cl_connection_create call.
+ * @param[out] session Allocated session context.
+ *
+ * @return Error code (SR_ERR_OK on success).
  */
 int cl_session_create(sr_conn_ctx_t *conn_ctx, sr_session_ctx_t **session);
 
 /**
  * @brief Cleans up a client library -local session.
+ *
+ * @param[in] session Session context acquired by ::cl_session_create call.
  */
 void cl_session_cleanup(sr_session_ctx_t *session);
 
 /**
  * @brief Connects the client to provided unix-domain socket.
+ *
+ * @param[in] conn_ctx Connection context acquired by ::cl_connection_create call.
+ * @param[in] socket_path Destination unix-domain socket path.
+ *
+ * @return Error code (SR_ERR_OK on success).
  */
 int cl_socket_connect(sr_conn_ctx_t *conn_ctx, const char *socket_path);
+
+/**
+ * @brief Processes (sends) the request over the connection and receive the response.
+ *
+ * @param[in] session Session context acquired by ::cl_session_create call.
+ * @param[in] msg_req GPB message with the request to be sent.
+ * @param[out] msg_resp GPB message with the response.
+ * @param[in] expected_response_op Expected message type of the response.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int cl_request_process(sr_session_ctx_t *session, Sr__Msg *msg_req, Sr__Msg **msg_resp,
+        const Sr__Operation expected_response_op);
+
+/**
+ * @brief Sets detailed error information into session context.
+ *
+ * @param[in] session Session context acquired by ::cl_session_create call.
+ * @param[in] error_message Error message.
+ * @param[in] error_path XPath to the node where the error has occurred.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int cl_session_set_error(sr_session_ctx_t *session, const char *error_message, const char *error_path);
+
+/**
+ * @brief Sets detailed error information from GPB error array into session context.
+ *
+ * @param[in] session Session context acquired by ::cl_session_create call.
+ * @param[in] errors Array of pointers to GPB error messages.
+ * @param[in] error_cnt Number of GPB error messages.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int cl_session_set_errors(sr_session_ctx_t *session, Sr__Error **errors, size_t error_cnt);
+
+/**
+ * @brief Clears number of errors stored within the session context.
+ *
+ * @param[in] session Session context acquired by ::cl_session_create call.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int cl_session_clear_errors(sr_session_ctx_t *session);
+
+/**
+ * @brief Returns provided error code and saves it as the last error that
+ * has occurred within the session context.
+ *
+ * Should be called as an exit point from any publicly available API function
+ * taking the session as an argument.
+ *
+ * @param[in] session Session context acquired by ::cl_session_create call.
+ * @param[in] error_code Error to be returned.
+ *
+ * @return Error code as provided to the error_code input argument.
+ */
+sr_error_t cl_session_return(sr_session_ctx_t *session, sr_error_t error_code);
 
 #endif /* CL_COMMON_H_ */

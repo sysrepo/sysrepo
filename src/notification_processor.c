@@ -144,18 +144,18 @@ cleanup:
 }
 
 int
-np_notification_unsubscribe(np_ctx_t *np_ctx, Sr__NotificationEvent event_type, const char *dst_address, uint32_t dst_id)
+np_notification_unsubscribe(np_ctx_t *np_ctx, const char *dst_address, uint32_t dst_id)
 {
     np_subscription_t *subscription = NULL;
     size_t i = 0;
 
     CHECK_NULL_ARG2(np_ctx, dst_address);
 
-    SR_LOG_DBG("Notification unsubscribe: event=%d, dst_address='%s', dst_id=%"PRIu32".", event_type, dst_address, dst_id);
+    SR_LOG_DBG("Notification unsubscribe: dst_address='%s', dst_id=%"PRIu32".", dst_address, dst_id);
 
     /* find matching subscription */
     for (i = 0; i < np_ctx->subscription_cnt; i++) {
-        if ((np_ctx->subscriptions[i]->event_type == event_type) && (np_ctx->subscriptions[i]->dst_id == dst_id) &&
+        if ((np_ctx->subscriptions[i]->dst_id == dst_id) &&
                 (0 == strcmp(np_ctx->subscriptions[i]->dst_address, dst_address))) {
             subscription = np_ctx->subscriptions[i];
             break;

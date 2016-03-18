@@ -44,6 +44,7 @@ typedef struct cl_sm_ctx_s cl_sm_ctx_t;
  * @brief Sysrepo subscription context.
  */
 typedef struct sr_subscription_ctx_s {
+    const char *delivery_address;                /**< Address where the notification messages should be delivered. */
     uint32_t id;                                 /**< Library-local subscription identifier. */
     Sr__NotificationEvent event_type;            /**< Type of the notification event subscribed to. */
     union {
@@ -52,6 +53,7 @@ typedef struct sr_subscription_ctx_s {
         sr_module_change_cb module_change_cb;    /**< Callback to be called by module change event. */
     } callback;
     cl_sm_ctx_t *sm_ctx;                         /**< Associated Subscription Manager context. */
+    sr_session_ctx_t *data_session;              /**< Pointer to a data session that can be used from notification callbacks. */
     void *private_ctx;                           /**< Private context pointer, opaque to sysrepo. */
 } sr_subscription_ctx_t;
 
@@ -75,14 +77,12 @@ void cl_sm_cleanup(cl_sm_ctx_t *sm_ctx);
  * @brief Initializes a new subscription.
  *
  * @param[in] sm_ctx Subscription Manager context acquired by ::cl_sm_init call.
- * @param[out] destination Pointer to a string that contains destination address
- * (socket path) where notification should be delivered. Do not free.
  * @param[out] subscription Allocated subscription context. Release by
  * ::cl_sm_subscription_cleanup call.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int cl_sm_subscription_init(cl_sm_ctx_t *sm_ctx, char **destination, sr_subscription_ctx_t **subscription);
+int cl_sm_subscription_init(cl_sm_ctx_t *sm_ctx, sr_subscription_ctx_t **subscription);
 
 /**
  * @brief Cleans up a subscription.

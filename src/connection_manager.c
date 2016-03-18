@@ -417,7 +417,7 @@ cm_session_start_internal(cm_ctx_t *cm_ctx, sm_connection_t *conn, const char *e
 
     CHECK_NULL_ARG3(cm_ctx, conn, session_p);
 
-    SR_LOG_DBG("Starting a new %s session.", notification_session ? "notification" : "configuration.");
+    SR_LOG_DBG("Starting a new %s session.", notification_session ? "notification" : "configuration");
 
     /* create the session in SM */
     rc = sm_session_create(cm_ctx->sm_ctx, conn, effective_user, &session);
@@ -445,7 +445,7 @@ cm_session_start_internal(cm_ctx_t *cm_ctx, sm_connection_t *conn, const char *e
     /* start session in Request Processor */
     if (SR_ERR_OK == rc) {
         rc = rp_session_start(cm_ctx->rp_ctx,  session->id, &session->credentials,  datastore,
-                &session->cm_data->rp_session);
+                notification_session, &session->cm_data->rp_session);
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR("Cannot start Request Processor session (conn=%p).", (void*)conn);
         }
@@ -483,7 +483,8 @@ cm_session_start_req_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, Sr__Msg *m
 
     /* start the session */
     rc = cm_session_start_internal(cm_ctx, conn, msg_in->request->session_start_req->user_name,
-            sr_datastore_gpb_to_sr(msg_in->request->session_start_req->datastore), false, &session);
+            sr_datastore_gpb_to_sr(msg_in->request->session_start_req->datastore),
+            msg_in->request->session_start_req->notification_session, &session);
 
     if (SR_ERR_OK == rc) {
         /* set the id to response */
@@ -1090,7 +1091,6 @@ static int
 cm_out_notif_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
 {
     sm_connection_t *connection = NULL;
-    sm_session_t *session = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG3(cm_ctx, msg, msg->notification);
@@ -1116,21 +1116,6 @@ cm_out_notif_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
             // TODO: remove subscriptions?
         }
     }
-
-    if (NULL == connection->session_list) {
-        /* create a new notification session */
-        rc = cm_session_start_internal(cm_ctx, connection, NULL, SR_DS_RUNNING, true, &session);
-        if (SR_ERR_OK != rc) {
-            return rc;
-            // TODO: remove subscriptions?
-        }
-    } else {
-        /* use existing session */
-        session = connection->session_list->session;
-    }
-
-    /* set the session id properly */
-    msg->session_id = session->id;
 
     /* send the message */
     rc = cm_msg_send_connection(cm_ctx, connection, msg);

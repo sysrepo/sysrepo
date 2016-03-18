@@ -98,7 +98,7 @@ enum DataStore {
 message SessionStartReq {
   required DataStore datastore = 1;
   optional string user_name = 2;
-
+  required bool notification_session = 3;
 }
 
 /**
@@ -408,19 +408,22 @@ enum NotificationEvent {
 }
 
 message SubscribeReq {
-  required NotificationEvent event = 1;
-  required string destination = 2;
-  required uint32 subscription_id = 3;
+  required string destination = 1;
+  required uint32 subscription_id = 2;
 
+  required NotificationEvent event = 3;
   optional string path = 4;
 }
 
 message SubscribeResp {
 }
 
-message UnSubscribeReq {
-  required string destination = 2;
-  required uint32 subscription_id = 3;
+message UnsubscribeReq {
+  required string destination = 1;
+  required uint32 subscription_id = 2;
+}
+
+message UnsubscribeResp {
 }
 
 message ModuleInstallNotification {
@@ -472,6 +475,7 @@ enum Operation {
   UNLOCK = 61;
 
   SUBSCRIBE = 70;
+  UNSUBSCRIBE = 71;
 }
 
 /**
@@ -504,6 +508,7 @@ message Request {
   optional UnlockReq unlock_req = 61;
 
   optional SubscribeReq subscribe_req = 70;
+  optional UnsubscribeReq unsubscribe_req = 71;
 }
 
 /**
@@ -538,6 +543,7 @@ message Response {
   optional UnlockResp unlock_resp = 61;
 
   optional SubscribeResp subscribe_resp = 70;
+  optional UnsubscribeResp unsubscribe_resp = 71;
 }
 
 /**
