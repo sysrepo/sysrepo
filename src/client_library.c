@@ -1533,7 +1533,7 @@ sr_module_install(sr_session_ctx_t *session, const char *module_name, const char
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG4(session, session->conn_ctx, module_name, revision);
+    CHECK_NULL_ARG3(session, session->conn_ctx, module_name);
 
     cl_session_clear_errors(session);
 
@@ -1551,11 +1551,13 @@ sr_module_install(sr_session_ctx_t *session, const char *module_name, const char
         rc = SR_ERR_NOMEM;
         goto cleanup;
     }
-    msg_req->request->module_install_req->revision = strdup(revision);
-    if (NULL == msg_req->request->module_install_req->revision) {
-        SR_LOG_ERR_MSG("Cannot duplicate revision string.");
-        rc = SR_ERR_NOMEM;
-        goto cleanup;
+    if (NULL != revision){
+        msg_req->request->module_install_req->revision = strdup(revision);
+        if (NULL == msg_req->request->module_install_req->revision) {
+            SR_LOG_ERR_MSG("Cannot duplicate revision string.");
+            rc = SR_ERR_NOMEM;
+            goto cleanup;
+        }
     }
     msg_req->request->module_install_req->installed = installed;
 
