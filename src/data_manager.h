@@ -410,5 +410,16 @@ int dm_lock_datastore(dm_ctx_t *dm_ctx, dm_session_t *session);
  * @return Error code (SR_ERR_OK on success)
  */
 int dm_unlock_datastore(dm_ctx_t *dm_ctx, dm_session_t *session);
+
+/**
+ * @brief Enables or disables the feature state in the module.
+ * @param [in] dm_ctx
+ * @param [in] module_name
+ * @param [in] feature_name
+ * @param [in] enable
+ * @return Error code (SR_ERR_OK on success), SR_ERR_UNKNONW_MODEL, SR_ERR_INVAL_ARG if the module
+ * doesn't contain the feature.
+ */
+int dm_feature_enable(dm_ctx_t *dm_ctx, const char *module_name, const char *feature_name, bool enable);
 /**@} Data manager*/
 #endif /* SRC_DATA_MANAGER_H_ */

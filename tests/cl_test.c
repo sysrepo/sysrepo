@@ -1024,11 +1024,14 @@ cl_notification_test(void **state)
     rc = sr_module_install(session, "example-module", "2016-03-05", true);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = sr_feature_enable(session, "example-module", "ifconfig", true);
+    rc = sr_feature_enable(session, "ietf-interfaces", "pre-provisioning", true);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = sr_feature_enable(session, "example-module", "others", true);
-    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_feature_enable(session, "unknown-module", "unknown", true);
+    assert_int_equal(rc, SR_ERR_UNKNOWN_MODEL);
+
+    rc = sr_feature_enable(session, "example-module", "unknown", true);
+    assert_int_equal(rc, SR_ERR_INVAL_ARG);
 
     // TODO: change & commit something, expect module change callback
 

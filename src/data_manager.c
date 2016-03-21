@@ -1820,3 +1820,21 @@ dm_commit_write_files(dm_session_t *session, dm_commit_context_t *c_ctx)
     }
     return rc;
 }
+
+int
+dm_feature_enable(dm_ctx_t *dm_ctx, const char *module_name, const char *feature_name, bool enable)
+{
+    CHECK_NULL_ARG3(dm_ctx, module_name, feature_name);
+    int rc = SR_ERR_OK;
+
+    const struct lys_module *module = ly_ctx_get_module(dm_ctx->ly_ctx, module_name, NULL);
+    if (NULL == module){
+        SR_LOG_ERR("Module %s was not found", module_name);
+        return SR_ERR_UNKNOWN_MODEL;
+    }
+    rc = enable ? lys_features_enable(module, feature_name) : lys_features_disable(module, feature_name);
+    if (1 == rc) {
+        SR_LOG_ERR("Unknown feature %s in model %s", feature_name, module_name);
+    }
+    return rc;
+}

@@ -208,8 +208,9 @@ rp_feature_enable_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *sessio
         return SR_ERR_NOMEM;
     }
 
-    // TODO: enable the feature in the DM
-    oper_rc = SR_ERR_OK; // this should be the return code from DM
+    Sr__FeatureEnableReq *req = msg->request->feature_enable_req;
+    /* enable the feature in the DM */
+    oper_rc = dm_feature_enable(rp_ctx->dm_ctx, req->module_name, req->feature_name, req->enabled);
 
     /* set response code */
     resp->response->result = oper_rc;
