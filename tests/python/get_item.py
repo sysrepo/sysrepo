@@ -41,9 +41,10 @@ def getItems():
       print('======')   
 
    item = sr.sr_val_t()
-   item.xpath = "/example-module:container/list[key1='abc'][key2='def']"
+   item.xpath = "/example-module:container/list[key1='abc'][key2='def']/leaf"
+   print (item.xpath)
    item.type = sr.SR_STRING_T
-   item.data.string_value = "abv"
+   item.data.string_val = "abc"
    sr.sr_set_item(session, item.xpath, item, sr.SR_EDIT_DEFAULT)
 
    sr.sr_session_stop(session)
@@ -62,7 +63,7 @@ def listSchemas():
    
 
 if __name__ == "__main__":
-   connect()
-   getItem()
+   #connect()
+   #getItem()
    getItems()
-   listSchemas()
+   #listSchemas()

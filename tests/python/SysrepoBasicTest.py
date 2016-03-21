@@ -28,19 +28,18 @@ class SysrepoBasicTest(unittest.TestCase):
         session = Session(self.s, SysrepoWrappers.SR_DS_STARTUP)
         schemas = session.list_schemas()
 
-    def test_setitem(self):
+    def test_set_item(self):
         session = Session(self.s, SysrepoWrappers.SR_DS_STARTUP)
         xpath = "/example-module:container/list[key1='abc'][key2='def']/leaf"
         value = "Hey hou"
         item = SysrepoWrappers.sr_val_t()
         item.xpath = xpath
         item.type = SysrepoWrappers.SR_STRING_T
-        item.data.string_value = value
+        item.data.string_val = value
         session.set_item(item.xpath, item, SysrepoWrappers.SR_EDIT_DEFAULT)
         new_value = session.get_item(xpath)
         self.assertEqual(new_value.type, SysrepoWrappers.SR_STRING_T)
-        self.assertEqual(new_value.data.string_value, value)
-        print value
+        self.assertEqual(new_value.data.string_val, value)
 
 if __name__ == '__main__':
     unittest.main()
