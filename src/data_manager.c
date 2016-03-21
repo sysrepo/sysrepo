@@ -1500,13 +1500,13 @@ dm_update_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, struct ly_
             SR_LOG_DBG("File %s can not be opened for read write", file_name);
             if (EACCES == errno) {
                 SR_LOG_WRN("File %s can not be opened because of authorization", file_name);
-                continue;
-            }
-
-            if (ENOENT == errno) {
+            } else if (ENOENT == errno) {
                 SR_LOG_DBG("File %s does not exist, trying to create an empty one", file_name);
-                continue;
             }
+            /* skip data trees that was not successfully opened */
+            free(file_name);
+            file_name = NULL;
+            continue;
         }
 
         /*  to lock for read, blocking */
