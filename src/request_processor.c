@@ -170,8 +170,10 @@ rp_module_install_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *sessio
         return SR_ERR_NOMEM;
     }
 
-    // TODO: install the module in the DM
-    oper_rc = SR_ERR_OK; // this should be the return code from DM
+    /* install the module in the DM */
+    oper_rc = dm_install_module(rp_ctx->dm_ctx,
+            msg->request->module_install_req->module_name,
+            msg->request->module_install_req->revision);
 
     /* set response code */
     resp->response->result = oper_rc;

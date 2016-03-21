@@ -421,5 +421,16 @@ int dm_unlock_datastore(dm_ctx_t *dm_ctx, dm_session_t *session);
  * doesn't contain the feature.
  */
 int dm_feature_enable(dm_ctx_t *dm_ctx, const char *module_name, const char *feature_name, bool enable);
+
+/**
+ * @brief Tries to load the schema with specified revision
+ * @param [in] dm_ctx
+ * @param [in] module_name
+ * @param [in] revision
+ * @return Error code (SR_ERR_OK on success), SR_ERR_NOT_FOUND if module
+ * is not loaded successfully
+ */
+int dm_install_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision);
+
 /**@} Data manager*/
 #endif /* SRC_DATA_MANAGER_H_ */
