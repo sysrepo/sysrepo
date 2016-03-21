@@ -852,6 +852,23 @@ rp_msg_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
 
     if (SR__MSG__MSG_TYPE__REQUEST == msg->type) {
         dm_clear_session_errors(session->dm_session);
+        /* acquire lock for operation accessing data */
+        switch (msg->request->operation) {
+            case SR__OPERATION__GET_ITEM:
+            case SR__OPERATION__GET_ITEMS:
+            case SR__OPERATION__SET_ITEM:
+            case SR__OPERATION__DELETE_ITEM:
+            case SR__OPERATION__MOVE_ITEM:
+            case SR__OPERATION__SESSION_REFRESH:
+                pthread_rwlock_rdlock(&rp_ctx->commit_lock);
+		break;
+            case SR__OPERATION__COMMIT:
+                pthread_rwlock_wrlock(&rp_ctx->commit_lock);
+                break;
+            default:
+                break;
+        }
+
         /* request handling */
         switch (msg->request->operation) {
             case SR__OPERATION__LIST_SCHEMAS:
@@ -909,6 +926,21 @@ rp_msg_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
                 SR_LOG_ERR("Unsupported request received (session id=%"PRIu32", operation=%d).",
                         session->id, msg->request->operation);
                 rc = SR_ERR_UNSUPPORTED;
+                break;
+        }
+
+        /* release lock*/
+        switch (msg->request->operation) {
+            case SR__OPERATION__GET_ITEM:
+            case SR__OPERATION__GET_ITEMS:
+            case SR__OPERATION__SET_ITEM:
+            case SR__OPERATION__DELETE_ITEM:
+            case SR__OPERATION__MOVE_ITEM:
+            case SR__OPERATION__SESSION_REFRESH:
+            case SR__OPERATION__COMMIT:
+                pthread_rwlock_unlock(&rp_ctx->commit_lock);
+                break;
+            default:
                 break;
         }
     } else {
@@ -1075,9 +1107,15 @@ rp_init(cm_ctx_t *cm_ctx, rp_ctx_t **rp_ctx_p)
         goto cleanup;
     }
 
-    rc = pthread_mutex_init(&ctx->commit_lock, NULL);
+    pthread_rwlockattr_t attr;
+    pthread_rwlockattr_init(&attr);
+#if defined(HAVE_PTHREAD_RWLOCKATTR_SETKIND_NP)
+    pthread_rwlockattr_setkind_np(&attr, PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP);
+#endif
+    rc = pthread_rwlock_init(&ctx->commit_lock, &attr);
+    pthread_rwlockattr_destroy(&attr);
     if (0 != rc) {
-        SR_LOG_ERR_MSG("Commit mutex init failed");
+        SR_LOG_ERR_MSG("commit rwlock initialization failed");
         goto cleanup;
     }
 
@@ -1154,7 +1192,7 @@ rp_cleanup(rp_ctx_t *rp_ctx)
                 sr__msg__free_unpacked(req.msg, NULL);
             }
         }
-        pthread_mutex_destroy(&rp_ctx->commit_lock);
+        pthread_rwlock_destroy(&rp_ctx->commit_lock);
         sr_cbuff_cleanup(rp_ctx->request_queue);
         np_cleanup(rp_ctx->np_ctx);
         dm_cleanup(rp_ctx->dm_ctx);
