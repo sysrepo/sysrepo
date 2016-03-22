@@ -1024,8 +1024,8 @@ cl_notification_test(void **state)
     rc = sr_module_install(session, "example-module", NULL, true);
     assert_int_equal(rc, SR_ERR_OK);
 
-    /*rc = sr_module_install(session, "example-module", "2016-05-03", true);
-    assert_int_equal(rc, SR_ERR_NOT_FOUND);*/
+    rc = sr_module_install(session, "example-module", "2016-05-03", true);
+    assert_int_equal(rc, SR_ERR_NOT_FOUND);
 
     rc = sr_feature_enable(session, "ietf-interfaces", "pre-provisioning", true);
     assert_int_equal(rc, SR_ERR_OK);
