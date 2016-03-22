@@ -100,7 +100,5 @@ class SysrepoBasicTest(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             self.session.validate()
 
-
-
 if __name__ == '__main__':
     unittest.main()
