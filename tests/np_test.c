@@ -32,30 +32,41 @@
 static int
 test_setup(void **state)
 {
-    rp_ctx_t *rp_ctx = NULL;
+    static rp_ctx_t rp_ctx = { 0, }; /* fake rp ctx */
+    np_ctx_t *np_ctx = NULL;
     int rc = SR_ERR_OK;
 
     sr_logger_init("np_test");
     sr_log_stderr(SR_LL_DBG);
 
-    rc = rp_init(NULL, &rp_ctx);
+    rc = np_init(&rp_ctx, &np_ctx);
     assert_int_equal(rc, SR_ERR_OK);
-    assert_non_null(rp_ctx);
+    assert_non_null(np_ctx);
 
-    *state = rp_ctx;
+    *state = np_ctx;
     return 0;
 }
 
 static int
 test_teardown(void **state)
 {
-    rp_ctx_t *rp_ctx = *state;
-    assert_non_null(rp_ctx);
+    np_ctx_t *np_ctx = *state;
+    assert_non_null(np_ctx);
 
-    rp_cleanup(rp_ctx);
+    np_cleanup(np_ctx);
     sr_logger_cleanup();
 
     return 0;
+}
+
+int
+__wrap_cm_msg_send(cm_ctx_t *cm_ctx, Sr__Msg *msg)
+{
+    printf("'Sending' the message...\n");
+
+    sr__msg__free_unpacked(msg, NULL);
+
+    return SR_ERR_OK;
 }
 
 /*
@@ -66,30 +77,42 @@ np_notification_subscribe_test(void **state)
 {
     int rc = SR_ERR_OK;
 
-    rp_ctx_t *rp_ctx = *state;
-    assert_non_null(rp_ctx);
+    np_ctx_t *np_ctx = *state;
+    assert_non_null(np_ctx);
 
-    rc = np_notification_subscribe(rp_ctx->np_ctx, SR__NOTIFICATION_EVENT__MODULE_INSTALL_EV, "addr1", 123);
+    /* create some subscriptions */
+    rc = np_notification_subscribe(np_ctx, SR__NOTIFICATION_EVENT__MODULE_INSTALL_EV, NULL, "addr1", 123);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = np_notification_subscribe(rp_ctx->np_ctx, SR__NOTIFICATION_EVENT__MODULE_INSTALL_EV, "addr2", 123);
+    rc = np_notification_subscribe(np_ctx, SR__NOTIFICATION_EVENT__MODULE_INSTALL_EV, NULL, "addr2", 123);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = np_notification_subscribe(rp_ctx->np_ctx, SR__NOTIFICATION_EVENT__MODULE_INSTALL_EV, "addr1", 456);
+    rc = np_notification_subscribe(np_ctx, SR__NOTIFICATION_EVENT__FEATURE_ENABLE_EV, NULL, "addr1", 456);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = np_notification_unsubscribe(rp_ctx->np_ctx, SR__NOTIFICATION_EVENT__MODULE_INSTALL_EV, "addr2", 123);
+    rc = np_notification_subscribe(np_ctx, SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV, "example-module", "addr2", 456);
     assert_int_equal(rc, SR_ERR_OK);
 
-    /* try to unsibscribe for non-existing subscription */
-    rc = np_notification_unsubscribe(rp_ctx->np_ctx, SR__NOTIFICATION_EVENT__MODULE_INSTALL_EV, "addr1", 789);
+    /* unsibscribe from one of them */
+    rc = np_notification_unsubscribe(np_ctx, "addr2", 123);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* try to unsibscribe from non-existing subscription */
+    rc = np_notification_unsubscribe(np_ctx, "addr1", 789);
     assert_int_equal(rc, SR_ERR_INVAL_ARG);
 
-    // TODO: call notify with mock object for cm_msg_send()
-//    rc = np_module_install_notify(rp_ctx->np_ctx, "example-module", "2016-03-05", true);
-//    assert_int_equal(rc, SR_ERR_OK);
-}
+    /* module install notify */
+    rc = np_module_install_notify(np_ctx, "example-module", "2016-03-05", true);
+    assert_int_equal(rc, SR_ERR_OK);
 
+    /* feature enable notify */
+    rc = np_feature_enable_notify(np_ctx, "example-module", "ifconfig", true);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* module change notify */
+    rc = np_module_change_notify(np_ctx, "example-module");
+    assert_int_equal(rc, SR_ERR_OK);
+}
 
 int
 main() {

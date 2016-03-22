@@ -59,24 +59,25 @@ void np_cleanup(np_ctx_t *np_ctx);
  *
  * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
  * @param[in] event_type Type of the event to subscribe.
+ * @param[in] path Path to the subtree where the subscription is active (if applicable).
  * @param[in] dst_address Destination address of the subscriber.
  * @param[in] dst_id Destination subscription ID.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int np_notification_subscribe(np_ctx_t *np_ctx, Sr__NotificationEvent event_type, const char *dst_address, uint32_t dst_id);
+int np_notification_subscribe(np_ctx_t *np_ctx, Sr__NotificationEvent event_type, const char *path,
+        const char *dst_address, uint32_t dst_id);
 
 /**
  * @brief Unsubscribe the client from notifications on specified event.
  *
  * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
- * @param[in] event_type Type of the event to unsubscribe.
  * @param[in] dst_address Destination address of the subscriber.
  * @param[in] dst_id Destination subscription ID.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int np_notification_unsubscribe(np_ctx_t *np_ctx, Sr__NotificationEvent event_type, const char *dst_address, uint32_t dst_id);
+int np_notification_unsubscribe(np_ctx_t *np_ctx, const char *dst_address, uint32_t dst_id);
 
 /**
  * @brief Notify all subscribers about the module (un)installation event.
@@ -101,6 +102,16 @@ int np_module_install_notify(np_ctx_t *np_ctx, const char *module_name, const ch
  * @return Error code (SR_ERR_OK on success).
  */
 int np_feature_enable_notify(np_ctx_t *np_ctx, const char *module_name, const char *feature_name, bool enabled);
+
+/**
+ * @brief Notify all subscribers about the change of data within a module.
+ *
+ * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
+ * @param[in] module_name Name of the module where the change has occurred.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int np_module_change_notify(np_ctx_t *np_ctx, const char *module_name);
 
 /**@} np */
 

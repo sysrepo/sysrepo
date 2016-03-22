@@ -49,7 +49,7 @@ typedef struct rp_ctx_s {
     pthread_mutex_t request_queue_mutex;     /**< Request queue mutex. */
     pthread_cond_t request_queue_cv;         /**< Request queue condition variable. */
 
-    pthread_mutex_t commit_lock;             /**< Lock to synchronize commit in this instance */
+    pthread_rwlock_t commit_lock;            /**< Lock to synchronize commit in this instance */
 } rp_ctx_t;
 
 /**
@@ -69,6 +69,7 @@ typedef struct rp_session_s {
     uint32_t id;                         /**< Assigned session id. */
     const ac_ucred_t *user_credentials;  /**< Credentials of the user who the session belongs to. */
     sr_datastore_t datastore;            /**< Datastore selected for this session. */
+    bool notification_session;           /**< Flag that determines whether this is a special notification session or a normal session. */
     uint32_t msg_count;                  /**< Count of unprocessed messages (including waiting in queue). */
     pthread_mutex_t msg_count_mutex;     /**< Mutex for msg_count counter. */
     bool stop_requested;                 /**< Session stop has been requested. */

@@ -32,9 +32,10 @@
  * @brief Notification subscription information.
  */
 typedef struct np_subscription_s {
+    Sr__NotificationEvent event_type;  /**< Type of the event that this subscription subscribes to.  */
+    const char *path;                  /**< Path to the subtree where the subscription is active (if applicable). */
     const char *dst_address;           /**< Destination address where the notification should be delivered. */
     uint32_t dst_id;                   /**< Destination ID of the subscription (used locally, in the client library). */
-    Sr__NotificationEvent event_type;  /**< Type of the event that this subscription subscribes to.  */
 } np_subscription_t;
 
 /**
@@ -82,6 +83,7 @@ np_cleanup(np_ctx_t *np_ctx)
 
     for (size_t i = 0; i < np_ctx->subscription_cnt; i++) {
         free((void*)np_ctx->subscriptions[i]->dst_address);
+        free((void*)np_ctx->subscriptions[i]->path);
         free(np_ctx->subscriptions[i]);
     }
     free(np_ctx->subscriptions);
@@ -90,7 +92,8 @@ np_cleanup(np_ctx_t *np_ctx)
 }
 
 int
-np_notification_subscribe(np_ctx_t *np_ctx, Sr__NotificationEvent event_type, const char *dst_address, uint32_t dst_id)
+np_notification_subscribe(np_ctx_t *np_ctx, Sr__NotificationEvent event_type, const char *path,
+        const char *dst_address, uint32_t dst_id)
 {
     np_subscription_t *subscription = NULL;
     np_subscription_t **subscriptions_tmp = NULL;
@@ -105,6 +108,11 @@ np_notification_subscribe(np_ctx_t *np_ctx, Sr__NotificationEvent event_type, co
     CHECK_NULL_NOMEM_RETURN(subscription);
 
     subscription->event_type = event_type;
+    if (NULL != path) {
+        subscription->path = strdup(path);
+        CHECK_NULL_NOMEM_GOTO(subscription->path, rc, cleanup);
+    }
+
     subscription->dst_id = dst_id;
     subscription->dst_address = strdup(dst_address);
     CHECK_NULL_NOMEM_GOTO(subscription->dst_address, rc, cleanup);
@@ -129,24 +137,25 @@ np_notification_subscribe(np_ctx_t *np_ctx, Sr__NotificationEvent event_type, co
 cleanup:
     if (NULL != subscription) {
         free((void*)subscription->dst_address);
+        free((void*)subscription->path);
         free(subscription);
     }
     return rc;
 }
 
 int
-np_notification_unsubscribe(np_ctx_t *np_ctx, Sr__NotificationEvent event_type, const char *dst_address, uint32_t dst_id)
+np_notification_unsubscribe(np_ctx_t *np_ctx, const char *dst_address, uint32_t dst_id)
 {
     np_subscription_t *subscription = NULL;
     size_t i = 0;
 
     CHECK_NULL_ARG2(np_ctx, dst_address);
 
-    SR_LOG_DBG("Notification unsubscribe: event=%d, dst_address='%s', dst_id=%"PRIu32".", event_type, dst_address, dst_id);
+    SR_LOG_DBG("Notification unsubscribe: dst_address='%s', dst_id=%"PRIu32".", dst_address, dst_id);
 
     /* find matching subscription */
     for (i = 0; i < np_ctx->subscription_cnt; i++) {
-        if ((np_ctx->subscriptions[i]->event_type == event_type) && (np_ctx->subscriptions[i]->dst_id == dst_id) &&
+        if ((np_ctx->subscriptions[i]->dst_id == dst_id) &&
                 (0 == strcmp(np_ctx->subscriptions[i]->dst_address, dst_address))) {
             subscription = np_ctx->subscriptions[i];
             break;
@@ -169,6 +178,7 @@ np_notification_unsubscribe(np_ctx_t *np_ctx, Sr__NotificationEvent event_type, 
 
     /* release the subscription */
     free((void*)subscription->dst_address);
+    free((void*)subscription->path);
     free(subscription);
 
     return SR_ERR_OK;
@@ -208,6 +218,7 @@ np_module_install_notify(np_ctx_t *np_ctx, const char *module_name, const char *
                         np_ctx->subscriptions[i]->dst_address, np_ctx->subscriptions[i]->dst_id);
                 rc = cm_msg_send(np_ctx->rp_ctx->cm_ctx, notif);
             } else {
+                sr__msg__free_unpacked(notif, NULL);
                 break;
             }
         }
@@ -252,6 +263,47 @@ np_feature_enable_notify(np_ctx_t *np_ctx, const char *module_name, const char *
                         np_ctx->subscriptions[i]->dst_address, np_ctx->subscriptions[i]->dst_id);
                 rc = cm_msg_send(np_ctx->rp_ctx->cm_ctx, notif);
             } else {
+                sr__msg__free_unpacked(notif, NULL);
+                break;
+            }
+        }
+    }
+
+    pthread_rwlock_unlock(&np_ctx->subscriptions_lock);
+
+    return rc;
+}
+
+int
+np_module_change_notify(np_ctx_t *np_ctx, const char *module_name)
+{
+    Sr__Msg *notif = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG2(np_ctx, module_name);
+
+    SR_LOG_DBG("Sending module-change notifications, module_name='%s'.", module_name);
+
+    pthread_rwlock_rdlock(&np_ctx->subscriptions_lock);
+
+    for (size_t i = 0; i < np_ctx->subscription_cnt; i++) {
+        if ((SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV == np_ctx->subscriptions[i]->event_type) &&
+                (NULL != np_ctx->subscriptions[i]->path) && (0 == strcmp(np_ctx->subscriptions[i]->path, module_name))) {
+            /* allocate the notification */
+            rc = sr_pb_notif_alloc(SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV,
+                    np_ctx->subscriptions[i]->dst_address, np_ctx->subscriptions[i]->dst_id, &notif);
+            /* fill-in notification details */
+            if (SR_ERR_OK == rc) {
+                notif->notification->module_change_notif->module_name = strdup(module_name);
+                CHECK_NULL_NOMEM_ERROR(notif->notification->module_change_notif->module_name, rc);
+            }
+            /* send the notification */
+            if (SR_ERR_OK == rc) {
+                SR_LOG_DBG("Sending a module-change notification to the destination address='%s', id=%"PRIu32".",
+                        np_ctx->subscriptions[i]->dst_address, np_ctx->subscriptions[i]->dst_id);
+                rc = cm_msg_send(np_ctx->rp_ctx->cm_ctx, notif);
+            } else {
+                sr__msg__free_unpacked(notif, NULL);
                 break;
             }
         }

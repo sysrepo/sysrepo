@@ -170,8 +170,10 @@ rp_module_install_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *sessio
         return SR_ERR_NOMEM;
     }
 
-    // TODO: install the module in the DM
-    oper_rc = SR_ERR_OK; // this should be the return code from DM
+    /* install the module in the DM */
+    oper_rc = dm_install_module(rp_ctx->dm_ctx,
+            msg->request->module_install_req->module_name,
+            msg->request->module_install_req->revision);
 
     /* set response code */
     resp->response->result = oper_rc;
@@ -208,8 +210,9 @@ rp_feature_enable_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *sessio
         return SR_ERR_NOMEM;
     }
 
-    // TODO: enable the feature in the DM
-    oper_rc = SR_ERR_OK; // this should be the return code from DM
+    Sr__FeatureEnableReq *req = msg->request->feature_enable_req;
+    /* enable the feature in the DM */
+    oper_rc = dm_feature_enable(rp_ctx->dm_ctx, req->module_name, req->feature_name, req->enabled);
 
     /* set response code */
     resp->response->result = oper_rc;
@@ -580,7 +583,7 @@ rp_commit_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
     resp->response->result = rc;
 
     /* copy error information to GPB  (if any) */
-    if (err_cnt > 0) {
+    if (NULL != errors) {
         sr_gpb_fill_errors(errors, err_cnt, &resp->response->commit_resp->errors, &resp->response->commit_resp->n_errors);
         sr_free_errors(errors, err_cnt);
     }
@@ -772,8 +775,46 @@ rp_subscribe_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr
     }
 
     /* subscribe to the notification */
-    rc = np_notification_subscribe(rp_ctx->np_ctx, msg->request->subscribe_req->event,
+    rc = np_notification_subscribe(rp_ctx->np_ctx, msg->request->subscribe_req->event, msg->request->subscribe_req->path,
             msg->request->subscribe_req->destination, msg->request->subscribe_req->subscription_id);
+
+    /* set response code */
+    resp->response->result = rc;
+
+    rc = rp_resp_fill_errors(resp, session->dm_session);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Copying errors to gpb failed");
+    }
+
+    /* send the response */
+    rc = cm_msg_send(rp_ctx->cm_ctx, resp);
+
+    return rc;
+}
+
+/**
+ * @brief Processes an unsubscribe request.
+ */
+static int
+rp_unsubscribe_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
+{
+    Sr__Msg *resp = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->unsubscribe_req);
+
+    SR_LOG_DBG_MSG("Processing unsubscribe request.");
+
+    /* allocate the response */
+    rc = sr_pb_resp_alloc(SR__OPERATION__UNSUBSCRIBE, session->id, &resp);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Allocation of unsubscribe response failed.");
+        return SR_ERR_NOMEM;
+    }
+
+    /* unsubscribe from the notifications */
+    rc = np_notification_unsubscribe(rp_ctx->np_ctx, msg->request->unsubscribe_req->destination,
+            msg->request->unsubscribe_req->subscription_id);
 
     /* set response code */
     resp->response->result = rc;
@@ -799,8 +840,37 @@ rp_msg_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
 
     CHECK_NULL_ARG3(rp_ctx, session, msg);
 
+    /* whitelist only some operations for notification sessions */
+    if (session->notification_session) {
+        if ((SR__OPERATION__GET_ITEM != msg->request->operation) &&
+                (SR__OPERATION__GET_ITEMS != msg->request->operation) &&
+                (SR__OPERATION__UNSUBSCRIBE != msg->request->operation)) {
+            SR_LOG_ERR("Unsupported operation for notification session (session id=%"PRIu32", operation=%d).",
+                    session->id, msg->response->operation);
+            sr__msg__free_unpacked(msg, NULL);
+            return SR_ERR_UNSUPPORTED;
+        }
+    }
+
     if (SR__MSG__MSG_TYPE__REQUEST == msg->type) {
         dm_clear_session_errors(session->dm_session);
+        /* acquire lock for operation accessing data */
+        switch (msg->request->operation) {
+            case SR__OPERATION__GET_ITEM:
+            case SR__OPERATION__GET_ITEMS:
+            case SR__OPERATION__SET_ITEM:
+            case SR__OPERATION__DELETE_ITEM:
+            case SR__OPERATION__MOVE_ITEM:
+            case SR__OPERATION__SESSION_REFRESH:
+                pthread_rwlock_rdlock(&rp_ctx->commit_lock);
+		break;
+            case SR__OPERATION__COMMIT:
+                pthread_rwlock_wrlock(&rp_ctx->commit_lock);
+                break;
+            default:
+                break;
+        }
+
         /* request handling */
         switch (msg->request->operation) {
             case SR__OPERATION__LIST_SCHEMAS:
@@ -851,10 +921,28 @@ rp_msg_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
             case SR__OPERATION__SUBSCRIBE:
                 rc = rp_subscribe_req_process(rp_ctx, session, msg);
                 break;
+            case SR__OPERATION__UNSUBSCRIBE:
+                rc = rp_unsubscribe_req_process(rp_ctx, session, msg);
+                break;
             default:
                 SR_LOG_ERR("Unsupported request received (session id=%"PRIu32", operation=%d).",
                         session->id, msg->request->operation);
                 rc = SR_ERR_UNSUPPORTED;
+                break;
+        }
+
+        /* release lock*/
+        switch (msg->request->operation) {
+            case SR__OPERATION__GET_ITEM:
+            case SR__OPERATION__GET_ITEMS:
+            case SR__OPERATION__SET_ITEM:
+            case SR__OPERATION__DELETE_ITEM:
+            case SR__OPERATION__MOVE_ITEM:
+            case SR__OPERATION__SESSION_REFRESH:
+            case SR__OPERATION__COMMIT:
+                pthread_rwlock_unlock(&rp_ctx->commit_lock);
+                break;
+            default:
                 break;
         }
     } else {
@@ -1021,9 +1109,15 @@ rp_init(cm_ctx_t *cm_ctx, rp_ctx_t **rp_ctx_p)
         goto cleanup;
     }
 
-    rc = pthread_mutex_init(&ctx->commit_lock, NULL);
+    pthread_rwlockattr_t attr;
+    pthread_rwlockattr_init(&attr);
+#if defined(HAVE_PTHREAD_RWLOCKATTR_SETKIND_NP)
+    pthread_rwlockattr_setkind_np(&attr, PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP);
+#endif
+    rc = pthread_rwlock_init(&ctx->commit_lock, &attr);
+    pthread_rwlockattr_destroy(&attr);
     if (0 != rc) {
-        SR_LOG_ERR_MSG("Commit mutex init failed");
+        SR_LOG_ERR_MSG("commit rwlock initialization failed");
         goto cleanup;
     }
 
@@ -1100,7 +1194,7 @@ rp_cleanup(rp_ctx_t *rp_ctx)
                 sr__msg__free_unpacked(req.msg, NULL);
             }
         }
-        pthread_mutex_destroy(&rp_ctx->commit_lock);
+        pthread_rwlock_destroy(&rp_ctx->commit_lock);
         sr_cbuff_cleanup(rp_ctx->request_queue);
         np_cleanup(rp_ctx->np_ctx);
         dm_cleanup(rp_ctx->dm_ctx);
@@ -1112,8 +1206,8 @@ rp_cleanup(rp_ctx_t *rp_ctx)
 }
 
 int
-rp_session_start(const rp_ctx_t *rp_ctx, const uint32_t session_id,
-        const ac_ucred_t *user_credentials, const sr_datastore_t datastore, rp_session_t **session_p)
+rp_session_start(const rp_ctx_t *rp_ctx, const uint32_t session_id, const ac_ucred_t *user_credentials,
+        const sr_datastore_t datastore, const bool notification_session, rp_session_t **session_p)
 {
     rp_session_t *session = NULL;
     int rc = SR_ERR_OK;
@@ -1132,6 +1226,7 @@ rp_session_start(const rp_ctx_t *rp_ctx, const uint32_t session_id,
     session->user_credentials = user_credentials;
     session->id = session_id;
     session->datastore = datastore;
+    session->notification_session = notification_session;
 
     rc = ac_session_init(rp_ctx->ac_ctx, user_credentials, &session->ac_session);
     if (SR_ERR_OK  != rc) {

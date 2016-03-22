@@ -1500,13 +1500,13 @@ dm_update_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, struct ly_
             SR_LOG_DBG("File %s can not be opened for read write", file_name);
             if (EACCES == errno) {
                 SR_LOG_WRN("File %s can not be opened because of authorization", file_name);
-                continue;
-            }
-
-            if (ENOENT == errno) {
+            } else if (ENOENT == errno) {
                 SR_LOG_DBG("File %s does not exist, trying to create an empty one", file_name);
-                continue;
             }
+            /* skip data trees that was not successfully opened */
+            free(file_name);
+            file_name = NULL;
+            continue;
         }
 
         /*  to lock for read, blocking */
@@ -1819,4 +1819,35 @@ dm_commit_write_files(dm_session_t *session, dm_commit_context_t *c_ctx)
         i++;
     }
     return rc;
+}
+
+int
+dm_feature_enable(dm_ctx_t *dm_ctx, const char *module_name, const char *feature_name, bool enable)
+{
+    CHECK_NULL_ARG3(dm_ctx, module_name, feature_name);
+    int rc = SR_ERR_OK;
+
+    const struct lys_module *module = ly_ctx_get_module(dm_ctx->ly_ctx, module_name, NULL);
+    if (NULL == module){
+        SR_LOG_ERR("Module %s was not found", module_name);
+        return SR_ERR_UNKNOWN_MODEL;
+    }
+    rc = enable ? lys_features_enable(module, feature_name) : lys_features_disable(module, feature_name);
+    if (1 == rc) {
+        SR_LOG_ERR("Unknown feature %s in model %s", feature_name, module_name);
+    }
+    return rc;
+}
+
+int
+dm_install_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision)
+{
+    CHECK_NULL_ARG2(dm_ctx, module_name);
+    const struct lys_module *module = ly_ctx_load_module(dm_ctx->ly_ctx, module_name, revision);
+    if (NULL == module) {
+        SR_LOG_ERR("Module %s with revision %s was not found", module_name, revision);
+        return SR_ERR_NOT_FOUND;
+    } else {
+        return SR_ERR_OK;
+    }
 }

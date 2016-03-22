@@ -162,7 +162,11 @@ sm_connection_cleanup(void *connection_p)
         if ((NULL != connection->sm_ctx) && (NULL != connection->sm_ctx->connection_cleanup_cb)) {
             connection->sm_ctx->connection_cleanup_cb(connection);
         }
-        free((void*)connection->dst_address);
+        /* if dst address is present, delete also from dst address tree */
+        if (NULL != connection->dst_address) {
+            sr_btree_delete(connection->sm_ctx->connection_dst_btree, connection);
+            free((void*)connection->dst_address);
+        }
         free(connection);
     }
 }
@@ -327,11 +331,13 @@ sm_connection_start(const sm_ctx_t *sm_ctx, const sm_connection_type_t type, con
     connection->fd = fd;
 
     /* set peer's effective uid and gid */
-    rc = sr_get_peer_eid(fd, &connection->uid, &connection->gid);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Cannot retrieve uid and gid of the peer.");
-        free(connection);
-        return SR_ERR_INTERNAL;
+    if (CM_AF_UNIX_SERVER != type) {
+        rc = sr_get_peer_eid(fd, &connection->uid, &connection->gid);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR_MSG("Cannot retrieve uid and gid of the peer.");
+            free(connection);
+            return SR_ERR_INTERNAL;
+        }
     }
 
     /* insert connection into binary tree for fast lookup by fd */
@@ -366,7 +372,6 @@ sm_connection_stop(const sm_ctx_t *sm_ctx, sm_connection_t *connection)
         tmp = tmp->next;
     }
 
-    sr_btree_delete(sm_ctx->connection_dst_btree, connection);
     sr_btree_delete(sm_ctx->connection_fd_btree, connection); /* sm_connection_cleanup auto-invoked */
 
     return SR_ERR_OK;
