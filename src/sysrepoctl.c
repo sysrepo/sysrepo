@@ -146,21 +146,29 @@ srctl_data_files_alter(const char *module_name, const char *revision_date, const
     if (NULL != revision_date) {
         snprintf(cmd, PATH_MAX, "%s %s%s@%s%s", command, SR_DATA_SEARCH_DIR, module_name, revision_date, SR_STARTUP_FILE_EXT);
         ret = system(cmd);
+        if (0 != ret) return ret;
         snprintf(cmd, PATH_MAX, "%s %s%s@%s%s", command, SR_DATA_SEARCH_DIR, module_name, revision_date, SR_RUNNING_FILE_EXT);
         ret = system(cmd);
+        if (0 != ret) return ret;
         snprintf(cmd, PATH_MAX, "%s %s%s@%s%s%s", command, SR_DATA_SEARCH_DIR, module_name, revision_date, SR_STARTUP_FILE_EXT, SR_LOCK_FILE_EXT);
         ret = system(cmd);
+        if (0 != ret) return ret;
         snprintf(cmd, PATH_MAX, "%s %s%s@%s%s%s", command, SR_DATA_SEARCH_DIR, module_name, revision_date, SR_RUNNING_FILE_EXT, SR_LOCK_FILE_EXT);
         ret = system(cmd);
+        if (0 != ret) return ret;
     } else {
         snprintf(cmd, PATH_MAX, "%s %s%s%s", command, SR_DATA_SEARCH_DIR, module_name, SR_STARTUP_FILE_EXT);
         ret = system(cmd);
+        if (0 != ret) return ret;
         snprintf(cmd, PATH_MAX, "%s %s%s%s", command, SR_DATA_SEARCH_DIR, module_name, SR_RUNNING_FILE_EXT);
         ret = system(cmd);
+        if (0 != ret) return ret;
         snprintf(cmd, PATH_MAX, "%s %s%s%s%s", command, SR_DATA_SEARCH_DIR, module_name, SR_STARTUP_FILE_EXT, SR_LOCK_FILE_EXT);
         ret = system(cmd);
+        if (0 != ret) return ret;
         snprintf(cmd, PATH_MAX, "%s %s%s%s%s", command, SR_DATA_SEARCH_DIR, module_name, SR_RUNNING_FILE_EXT, SR_LOCK_FILE_EXT);
         ret = system(cmd);
+        if (0 != ret) return ret;
     }
 
     return ret;
@@ -232,6 +240,9 @@ srctl_install(const char *yang, const char *yin, const char *owner, const char *
 
     printf("Generating data files ...\n");
     ret = srctl_data_files_alter(module_name, revision_date, "touch");
+    if (0 != ret) {
+        goto fail;
+    }
 
     printf("Notifying sysrepo about the change ...\n");
     ret = srctl_get_session(&connection, &session);

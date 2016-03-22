@@ -208,7 +208,7 @@ np_module_install_notify(np_ctx_t *np_ctx, const char *module_name, const char *
                 notif->notification->module_install_notif->module_name = strdup(module_name);
                 CHECK_NULL_NOMEM_ERROR(notif->notification->module_install_notif->module_name, rc);
             }
-            if (SR_ERR_OK == rc) {
+            if (SR_ERR_OK == rc && NULL != revision) {
                 notif->notification->module_install_notif->revision = strdup(revision);
                 CHECK_NULL_NOMEM_ERROR(notif->notification->module_install_notif->revision, rc);
             }
