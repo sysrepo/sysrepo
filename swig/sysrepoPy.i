@@ -11,6 +11,14 @@
 #include "../inc/sysrepo.h"
 %}
 
+/* Fix uint32_t in sr_val_t data union */
+%typemap(in) int32_t {
+   $1 = PyInt_AsLong($input);
+}
+%typemap(out) int32_t {
+   $result = PyInt_FromLong($1);
+}
+
 /* sr_connect */
 %newobject sr_connect;
 %delobject sr_disconnect;

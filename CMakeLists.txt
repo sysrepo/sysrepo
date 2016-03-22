@@ -144,7 +144,7 @@ if (SWIG_FOUND)
         add_custom_command(
           TARGET ${SWIG_MODULE_${PYTHON_SWIG_BINDING}_REAL_NAME}
           POST_BUILD
-          COMMAND mv "${CMAKE_CURRENT_BINARY_DIR}/_${PYTHON_SWIG_BINDING}.so" "${CMAKE_CURRENT_BINARY_DIR}/swig/"
+          COMMAND cp "${CMAKE_CURRENT_BINARY_DIR}/_${PYTHON_SWIG_BINDING}.so" "${CMAKE_CURRENT_BINARY_DIR}/swig/"
         )
     else ()
         MESSAGE(WARNING "Python libs not found, python binding will no be generated.")
