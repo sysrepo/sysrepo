@@ -190,7 +190,7 @@ np_module_install_notify(np_ctx_t *np_ctx, const char *module_name, const char *
     Sr__Msg *notif = NULL;
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG3(np_ctx, module_name, revision);
+    CHECK_NULL_ARG2(np_ctx, module_name);
 
     SR_LOG_DBG("Sending module-install notifications, module_name='%s', revision='%s', installed=%d.",
             module_name, revision, installed);

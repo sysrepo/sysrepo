@@ -85,7 +85,7 @@ target_link_libraries(sysrepod sysrepo-engine)
 
 # sysrepo ctl tool
 add_executable(sysrepoctl sysrepoctl.c)
-target_link_libraries(sysrepoctl sysrepo)
+target_link_libraries(sysrepoctl sysrepo ${YANG_LIBRARIES})
 
 install(TARGETS sysrepo_so DESTINATION ${LIB_INSTALL_DIR})
 install(TARGETS sysrepo-engine_so DESTINATION ${LIB_INSTALL_DIR})
