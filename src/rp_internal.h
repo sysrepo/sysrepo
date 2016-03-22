@@ -49,7 +49,7 @@ typedef struct rp_ctx_s {
     pthread_mutex_t request_queue_mutex;     /**< Request queue mutex. */
     pthread_cond_t request_queue_cv;         /**< Request queue condition variable. */
 
-    pthread_mutex_t commit_lock;             /**< Lock to synchronize commit in this instance */
+    pthread_rwlock_t commit_lock;            /**< Lock to synchronize commit in this instance */
 } rp_ctx_t;
 
 /**

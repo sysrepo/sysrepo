@@ -877,18 +877,14 @@ rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, sr_error_info_t **errors, 
     }
     SR_LOG_DBG_MSG("Commit (2/6): validation succeeded");
 
-    /* lock context for writing */
-    pthread_mutex_lock(&rp_ctx->commit_lock);
 
     rc = dm_commit_prepare_context(rp_ctx->dm_ctx, session->dm_session, &commit_ctx);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("commit prepare context failed");
-        pthread_mutex_unlock(&rp_ctx->commit_lock);
         return rc;
     } else if (0 == commit_ctx->modif_count) {
         SR_LOG_DBG_MSG("Commit: Finished - no model modified");
         dm_free_commit_context(rp_ctx->dm_ctx, commit_ctx);
-        pthread_mutex_unlock(&rp_ctx->commit_lock);
         return SR_ERR_OK;
     }
 
@@ -928,7 +924,6 @@ cleanup:
         rc = dm_discard_changes(rp_ctx->dm_ctx, session->dm_session);
         SR_LOG_DBG_MSG("Commit (6/6): finished successfully");
     }
-    pthread_mutex_unlock(&rp_ctx->commit_lock);
     return rc;
 }
 
