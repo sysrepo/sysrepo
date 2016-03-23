@@ -178,6 +178,7 @@ cl_subscribtion_init(sr_session_ctx_t *session, Sr__NotificationEvent event_type
     rc = cl_sm_subscription_init(cl_sm_ctx, &subscription);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Error by initialization of the subscription in the Subscription Manager.");
+        sr__msg__free_unpacked(msg_req, NULL);
         return rc;
     }
     subscription->event_type = event_type;
@@ -1551,7 +1552,7 @@ sr_module_install(sr_session_ctx_t *session, const char *module_name, const char
         rc = SR_ERR_NOMEM;
         goto cleanup;
     }
-    if (NULL != revision){
+    if (NULL != revision) {
         msg_req->request->module_install_req->revision = strdup(revision);
         if (NULL == msg_req->request->module_install_req->revision) {
             SR_LOG_ERR_MSG("Cannot duplicate revision string.");

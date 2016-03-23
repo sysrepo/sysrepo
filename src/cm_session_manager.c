@@ -158,14 +158,16 @@ sm_connection_cleanup(void *connection_p)
             session = session->next;
             free(tmp);
         }
-        /* cleanup Connection Manager-related data */
-        if ((NULL != connection->sm_ctx) && (NULL != connection->sm_ctx->connection_cleanup_cb)) {
-            connection->sm_ctx->connection_cleanup_cb(connection);
-        }
-        /* if dst address is present, delete also from dst address tree */
-        if (NULL != connection->dst_address) {
-            sr_btree_delete(connection->sm_ctx->connection_dst_btree, connection);
-            free((void*)connection->dst_address);
+        if (NULL != connection->sm_ctx) {
+            /* cleanup Connection Manager-related data */
+            if (NULL != connection->sm_ctx->connection_cleanup_cb) {
+                connection->sm_ctx->connection_cleanup_cb(connection);
+            }
+            /* if dst address is present, delete also from dst address tree */
+            if (NULL != connection->dst_address) {
+                sr_btree_delete(connection->sm_ctx->connection_dst_btree, connection);
+                free((void*)connection->dst_address);
+            }
         }
         free(connection);
     }
