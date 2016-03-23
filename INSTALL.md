@@ -16,6 +16,9 @@
 - [valgrind](http://valgrind.org/)
 - [doxygen](www.doxygen.org)
 
+#### Bindings for other languages:
+[swig](http://www.swig.org/) must be installed. Bindigs are generated during `make` phase.
+- Python bindings require python-dev to be installed.
 
 #### Installation of required libraries:
 On Debian-like Linux distributions:
