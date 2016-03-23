@@ -72,3 +72,15 @@ class Session:
 
     def commit(self):
         sr.sr_commit(self.session)
+
+    def lock_datastore(self):
+        sr.sr_lock_datastore(self.session)
+
+    def unlock_datastore(self):
+        sr.sr_unlock_datastore(self.session)
+
+    def lock_module(self, module_name):
+        sr.sr_lock_module(self.session, module_name)
+
+    def unlock_module(self, module_name):
+        sr.sr_unlock_module(self.session, module_name)
