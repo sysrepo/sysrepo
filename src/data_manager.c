@@ -470,6 +470,9 @@ dm_lock_file(dm_lock_ctx_t *lock_ctx, char *filename)
         rc = sr_lock_fd(found_item->fd, true, false);
         if (SR_ERR_OK == rc) {
             SR_LOG_DBG("File %s has been locked", filename);
+        } else {
+            close(found_item->fd);
+            found_item->fd = -1;
         }
     } else {
         rc = SR_ERR_LOCKED;
