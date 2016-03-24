@@ -36,29 +36,39 @@ class TestManager:
         self.next_steps = []
         self.proc_ids = []
 
-    def add_tester(self, scenario):
-        self.testers.append(scenario)
+    def add_tester(self, tester):
+        self.testers.append(tester)
 
-    def run(self):
-        """Execute tester steps"""
-        id = 0
-
-        #create process for each tester
-        for ts in self.testers:
+    def start_processes(self, rand_sleep):
+        """create process for each tester"""
+        for id in range(len(self.testers)):
             self.process_done.release()
             next_s = self.manager.Semaphore(0)
 
-            p = Process(target=ts.run, args=(self.process_done, next_s, True, self.lock, id, self.queue))
+            p = Process(target=self.testers[id].run, args=(self.process_done, next_s, rand_sleep, self.lock, id, self.queue))
             self.proc_ids.append(p)
             self.next_steps.append(next_s)
             p.start()
-            id +=1
+
+    def wait_for_processes(self):
+        """wait for all process to finish"""
+        for p in self.proc_ids:
+            p.join()
+            p.terminate()
+
+        self.lock.acquire()
+        print("end")
+        self.lock.release()
+
+    def run(self, rand_sleep=True):
+        """Execute tester steps"""
+        self.start_processes(rand_sleep)
 
         step = 0
         will_continue = range(len(self.next_steps))
         wait_for = range(len(self.next_steps))
         while True:
-            print("=================== TestManager step ", step, wait_for)
+            print "=================== TestManager step", step, "testers:",wait_for
             for _ in wait_for:
                 self.process_done.acquire()
                 if step > 0:
@@ -66,7 +76,7 @@ class TestManager:
                     print ("Received ", proc, status)
                     if status == True:
                         will_continue.append(proc)
-                    elif isinstance(status, RuntimeError):
+                    elif isinstance(status, BaseException):
                         for p in self.proc_ids:
                             p.terminate()
                         raise status
@@ -81,10 +91,5 @@ class TestManager:
             will_continue = []
             step += 1
 
-        #wait for all process to finish
-        for p in self.proc_ids:
-            p.join()
+        self.wait_for_processes()
 
-        self.lock.acquire()
-        print("end")
-        self.lock.release()

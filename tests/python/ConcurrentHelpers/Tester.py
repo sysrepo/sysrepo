@@ -35,7 +35,6 @@ class Tester(unittest.TestCase):
     """
     def __init__(self):
         super(Tester, self).__init__()
-        self._current_step = 0
         self.steps = []
 
     def setup(self):
@@ -50,23 +49,28 @@ class Tester(unittest.TestCase):
         """Checks whether there is a step to be executed"""
         return self._current_step < (len(self.steps))
 
-    def run(self, done = None, next_step= None, rand_sleep=False, lock=None, id=-1, queue = None):
-        """Executes the tester steps
+    def print_with_lock(self, *args):
+        if self.lock is not None:
+            self.lock.acquire()
+            print args
+            self.lock.release()
+        else:
+            print args
 
-            Arguments:
-                done        (Semaphore) - to be acquired before step execution
-                next_step   (Semaphore) - to be released on step completion
-                rand_sleep  (bool)      - flag whether sleep before each step
-                id          (int)       - identification used for queue message
-                queue       (Queue)     - message for notification whether there is a step to be executed
-        """
-        self.setup()
+    def run_sync(self, done, next_step, rand_sleep, id, queue):
+        """run steps in sync with other tester and inform test manager"""
+        #empty steps check
+        if len(self.steps) == 0:
+            next_step.acquire()
+            queue.put((id, False))
+            done.release()
+
         for step in range(len(self.steps)):
             err = None
             next_step.acquire()
             if rand_sleep:
                 time.sleep(randint(1,1000)*0.00001)
-            print 'Step: ', step, ", pid: ", os.getpid()
+            self.print_with_lock('Step: ', step, ", pid: ", os.getpid())
 
             try:
                 #step execution
@@ -84,6 +88,30 @@ class Tester(unittest.TestCase):
                     queue.put((id, False))
                 done.release()
 
+    def run_without_sync(self):
+        """run steps independently"""
+        for step in range(len(self.steps)):
+            self.steps[step]()
+
+    def run(self, done = None, next_step= None, rand_sleep=False, lock=None, id=-1, queue = None):
+        """Executes the tester steps
+
+            Arguments:
+                done        (Semaphore) - to be acquired before step execution
+                next_step   (Semaphore) - to be released on step completion
+                rand_sleep  (bool)      - flag whether sleep before each step
+                lock        (Lock)      - stdout synchronization
+                id          (int)       - identification used for queue messages
+                queue       (Queue)     - message for notification whether there is a step to be executed
+        """
+        self.setup()
+        self.lock = lock
+        self._current_step = 0
+
+        if done is not None and next_step is not None and queue is not None:
+            self.run_sync(done, next_step, rand_sleep, id, queue)
+        else:
+            self.run_without_sync()
 
     def waitStep(self):
         """Step that can be used by tester, to do nothing"""

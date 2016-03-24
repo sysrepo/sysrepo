@@ -19,53 +19,6 @@ __license__ = "Apache 2.0"
 from ConcurrentHelpers import *
 from SysrepoWrappers import *
 
-class User1(Tester):
-    def __init__(self):
-        super(User1, self).__init__()
-
-    def setup(self):
-        self.sr = Sysrepo("User1", SR_CONN_DEFAULT)
-        self.session = Session(self.sr, SR_DS_STARTUP)
-
-        self.add_step(self.lockStep)
-        self.add_step(self.waitStep)
-        self.add_step(self.unlockStep)
-
-
-    def lockStep(self):
-        self.session.lock_datastore()
-
-    def unlockStep(self):
-        self.session.unlock_datastore()
-        print("Unlocking")
-
-class User2(Tester):
-    def __init__(self):
-        super(User2, self).__init__()
-
-    def setup(self):
-        self.sr = Sysrepo("User2", SR_CONN_DEFAULT)
-        self.session = Session(self.sr, SR_DS_STARTUP)
-        self.sr.log_stderr(SR_LL_INF)
-
-        self.add_step(self.waitStep)
-        self.add_step(self.lockFailStep)
-        self.add_step(self.waitStep)
-        self.add_step(self.lockStep)
-        self.add_step(self.unlockStep)
-
-    def sleepStep(self):
-        time.sleep(5)
-
-    def lockStep(self):
-        self.session.lock_datastore()
-
-    def lockFailStep(self):
-        with self.assertRaises(RuntimeError):
-            self.session.lock_datastore()
-
-    def unlockStep(self):
-        self.session.unlock_datastore()
 
 class LockUser(Tester):
     def __init__(self, name="LockUser"):
@@ -87,12 +40,26 @@ class LockUser(Tester):
     def unlockStep(self):
         self.session.unlock_datastore()
 
+
+class User2(LockUser):
+    def __init__(self, name):
+        super(User2, self).__init__()
+
+    def setup(self):
+        super(User2, self).setup()
+
+        self.add_step(self.waitStep)
+        self.add_step(self.lockFailStep)
+        self.add_step(self.waitStep)
+        self.add_step(self.lockStep)
+        self.add_step(self.unlockStep)
+
+
 class LockingTest(unittest.TestCase):
 
     def test_abc(self):
         self.assertTrue(True)
 
-    #@unittest.skip(False)
     def test_ConcurrentLocking(self):
         tm = TestManager()
 
@@ -102,8 +69,7 @@ class LockingTest(unittest.TestCase):
         first.add_step(first.unlockStep)
         tm.add_tester(first)
 
-        #tm.add_tester(User1())
-        tm.add_tester(User2())
+        tm.add_tester(User2("Second"))
         tm.run()
 
 if __name__ == '__main__':
