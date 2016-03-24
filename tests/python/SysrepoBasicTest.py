@@ -15,6 +15,7 @@ __license__ = "Apache 2.0"
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import unittest
+import TestModule
 from SysrepoWrappers import *
 
 
@@ -22,6 +23,7 @@ class SysrepoBasicTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(self):
+        TestModule.create_test_module()
         self.s = Sysrepo("abc", SR_CONN_DEFAULT)
 
     def setUp(self):

@@ -25,6 +25,7 @@ class Session:
             self.session = sr.sr_session_start(sysrepo.connection, datastore)
         else:
             self.session = sr.sr_session_start_user(sysrepo.connection, user_name, datastore)
+        self.sr = sysrepo #store sr reference to be freed in valid order
 
     def __del__(self):
         sr.sr_session_stop(self.session)

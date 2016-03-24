@@ -19,7 +19,7 @@ import sysrepoPy as sr
 
 class Sysrepo:
 
-    def __init__(self, app_name, options):
+    def __init__(self, app_name, options = sr.SR_CONN_DEFAULT):
         self.connection = sr.sr_connect(app_name, options)
 
     def __del__(self):

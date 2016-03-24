@@ -2137,6 +2137,7 @@ sr_val_to_str(const sr_val_t *value, struct lys_node *schema_node, char **out)
     case SR_ENUM_T:
         *out = strdup(value->data.enum_val);
         break;
+    case SR_CONTAINER_PRESENCE_T:
     case SR_LEAF_EMPTY_T:
         *out = strdup("");
         break;

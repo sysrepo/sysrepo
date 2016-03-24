@@ -27,7 +27,7 @@ class Value(object):
         self._cObject = sr.sr_val_t()
         if xpath is not None:
             self.xpath = xpath
-        if leaf_type is not None and value is not None:
+        if leaf_type is not None:
             self.value = (leaf_type, value)
 
     @property
