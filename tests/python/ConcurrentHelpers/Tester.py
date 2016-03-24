@@ -41,9 +41,9 @@ class Tester(unittest.TestCase):
         """Method executed before steps"""
         pass
 
-    def add_step(self, step):
+    def add_step(self, step, *args):
         """Adds the step to the end of the list"""
-        self.steps.append(step)
+        self.steps.append((step, args))
 
     def has_next(self):
         """Checks whether there is a step to be executed"""
@@ -74,7 +74,11 @@ class Tester(unittest.TestCase):
 
             try:
                 #step execution
-                self.steps[step]()
+                step, args = self.steps[step]
+                if len(args) != 0:
+                    step(*args)
+                else:
+                    step()
             except Exception as e:
                 err = e
             finally:

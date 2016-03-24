@@ -40,6 +40,17 @@ class LockUser(Tester):
     def unlockStep(self):
         self.session.unlock_datastore()
 
+    def lockModelStep(self, module_name):
+        self.session.lock_module(module_name)
+
+    def lockFailModelStep(self, module_name):
+        with self.assertRaises(RuntimeError):
+            self.session.lock_module(module_name)
+
+    def unlockModelStep(self, module_name):
+        self.session.unlock_module(module_name)
+
+
 
 class User2(LockUser):
     def __init__(self, name):
@@ -60,7 +71,7 @@ class LockingTest(unittest.TestCase):
     def test_abc(self):
         self.assertTrue(True)
 
-    def test_ConcurrentLocking(self):
+    def test_ConcurrentDataStoreLocking(self):
         tm = TestManager()
 
         first = LockUser("First")
@@ -70,6 +81,28 @@ class LockingTest(unittest.TestCase):
         tm.add_tester(first)
 
         tm.add_tester(User2("Second"))
+        tm.run()
+
+    def test_ConcurrentModelLocking(self):
+        tm = TestManager()
+
+        first = LockUser("First")
+        second = LockUser("Second")
+
+        first.add_step(first.lockModelStep, "example-module")
+        second.add_step(second.waitStep)
+
+        first.add_step(first.waitStep)
+        second.add_step(second.lockFailModelStep, "example-module")
+
+        first.add_step(first.unlockModelStep, "example-module")
+        second.add_step(second.waitStep)
+
+        second.add_step(second.lockModelStep, "example-module")
+        second.add_step(second.unlockModelStep, "example-module")
+
+        tm.add_tester(first)
+        tm.add_tester(second)
         tm.run()
 
 if __name__ == '__main__':
