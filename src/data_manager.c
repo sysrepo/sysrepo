@@ -1176,6 +1176,32 @@ dm_list_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, 
         goto cleanup;
     }
 
+    uint8_t *state = NULL;
+    size_t feature_cnt = 0;
+    size_t enabled = 0;
+    const char **features = lys_features_list(module, &state);
+
+    while (NULL != features[feature_cnt]) feature_cnt++;
+
+    for (size_t i = 0; i<feature_cnt; i++) {
+        if (state[i]==1) {
+            enabled++;
+        }
+    }
+
+    if (feature_cnt > 0) {
+        schema->enabled_features = calloc(feature_cnt, sizeof(*schema->enabled_features));
+        CHECK_NULL_NOMEM_GOTO(schema->enabled_features, rc, cleanup);
+        for (size_t i = 0; i<feature_cnt; i++) {
+            if (state[i] == 1) {
+                schema->enabled_features[schema->enabled_feature_cnt] = strdup(features[i]);
+                CHECK_NULL_NOMEM_GOTO(schema->enabled_features[schema->enabled_feature_cnt], rc, cleanup);
+                schema->enabled_feature_cnt++;
+            }
+        }
+    }
+    free(features);
+    free(state);
 
     submodules = ly_ctx_get_submodule_names(dm_ctx->ly_ctx, module->name);
     if (NULL == submodules) {
@@ -1187,19 +1213,11 @@ dm_list_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, 
     while (NULL != submodules[sub_count]) sub_count++;
 
     schema->submodules = calloc(sub_count, sizeof(*schema->submodules));
-    if (NULL == schema->submodules) {
-        SR_LOG_ERR_MSG("Memory allocation failed");
-        rc = SR_ERR_NOMEM;
-        goto cleanup;
-    }
+    CHECK_NULL_NOMEM_GOTO(schema->submodules, rc, cleanup);
 
     for (size_t s = 0; s < sub_count; s++){
         schema->submodules[s].submodule_name = strdup(submodules[s]);
-        if (NULL == schema->submodules[s].submodule_name){
-            SR_LOG_ERR_MSG("String duplication failed");
-            rc = SR_ERR_INTERNAL;
-            goto cleanup;
-        }
+        CHECK_NULL_NOMEM_GOTO(schema->submodules[s].submodule_name, rc, cleanup);
         const struct lys_submodule *sub = ly_ctx_get_submodule(dm_ctx->ly_ctx, module_name, revision, submodules[s]);
         if (NULL == sub){
             SR_LOG_ERR_MSG("Submodule not found");

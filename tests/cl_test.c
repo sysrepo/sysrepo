@@ -25,6 +25,7 @@
 #include <stdbool.h>
 #include <setjmp.h>
 #include <cmocka.h>
+#include <string.h>
 
 #include "sysrepo.h"
 #include "client_library.h"
@@ -165,6 +166,8 @@ cl_list_schemas_test(void **state)
                        schemas[i].submodules[s].revision.file_path_yin);
 
         }
+        /* all features are disabled by default */
+        assert_int_equal(0, schemas[i].enabled_feature_cnt);
     }
     sr_free_schemas(schemas, schema_cnt);
 
@@ -1029,6 +1032,21 @@ cl_notification_test(void **state)
 
     rc = sr_feature_enable(session, "ietf-interfaces", "pre-provisioning", true);
     assert_int_equal(rc, SR_ERR_OK);
+
+    size_t schema_cnt = 0;
+    sr_schema_t *schemas = NULL;
+    rc = sr_list_schemas(session, &schemas, &schema_cnt);
+    assert_int_equal(rc, SR_ERR_OK);
+    for (size_t s = 0; s < schema_cnt; s++) {
+        if (0 == strcmp("ietf-interfaces", schemas[s].module_name)){
+            assert_int_equal(1, schemas[s].enabled_feature_cnt);
+            assert_string_equal("pre-provisioning", schemas[s].enabled_features[0]);
+        } else {
+            assert_int_equal(0, schemas[s].enabled_feature_cnt);
+        }
+    }
+
+    sr_free_schemas(schemas, schema_cnt);
 
     rc = sr_feature_enable(session, "unknown-module", "unknown", true);
     assert_int_equal(rc, SR_ERR_UNKNOWN_MODEL);

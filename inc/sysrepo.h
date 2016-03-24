@@ -435,6 +435,9 @@ typedef struct sr_schema_s {
 
     sr_sch_submodule_t *submodules;  /**< Array of all installed submodules of the module. */
     size_t submodule_count;          /**< Number of module's submodules. */
+
+    char **enabled_features;         /**< Array of enabled features */
+    size_t enabled_feature_cnt;      /**< Number of enabled feature */
 } sr_schema_t;
 
 /**
