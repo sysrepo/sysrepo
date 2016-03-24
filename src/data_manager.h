@@ -423,7 +423,8 @@ int dm_unlock_datastore(dm_ctx_t *dm_ctx, dm_session_t *session);
 int dm_feature_enable(dm_ctx_t *dm_ctx, const char *module_name, const char *feature_name, bool enable);
 
 /**
- * @brief Tries to load the schema with specified revision
+ * @brief Tries to load the schema with specified revision. If the module has been
+ * uninstalled before sysrepo restart is required and SR_ERR_INTERNAL returned.
  * @param [in] dm_ctx
  * @param [in] module_name
  * @param [in] revision
@@ -432,5 +433,13 @@ int dm_feature_enable(dm_ctx_t *dm_ctx, const char *module_name, const char *fea
  */
 int dm_install_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision);
 
+/**
+ * @brief Disables module
+ * @param [in] dm_ctx
+ * @param [in] module_name
+ * @param [in] revision
+ * @return Error code (SR_ERR_OK on success)
+ */
+int dm_uninstall_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision);
 /**@} Data manager*/
 #endif /* SRC_DATA_MANAGER_H_ */
