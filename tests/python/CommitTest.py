@@ -18,25 +18,33 @@ __license__ = "Apache 2.0"
 
 from ConcurrentHelpers import *
 from SysrepoWrappers import *
+import TestModule
 
-
-class User2(SysrepoTester):
-    def __init__(self, name):
-        super(User2, self).__init__()
-
+class CommitTester(SysrepoTester):
     def setup(self):
-        super(User2, self).setup()
+        super(CommitTester, self).setup()
+        self.add_step(self.setItemStep)
+        self.add_step(self.commitFailStep)
+        self.add_step(self.checkItemStep)
+        self.add_step(self.commitStep)
+        self.add_step(self.checkItemStep)
 
-        self.add_step(self.waitStep)
-        self.add_step(self.lockFailStep)
-        self.add_step(self.waitStep)
-        self.add_step(self.lockStep)
-        self.add_step(self.unlockStep)
+    def setItemStep(self):
+        v = Value("/test-module:main/i8", SR_UINT8_T, 99)
+        self.session.set_item(v.xpath, v)
+
+    def checkItemStep(self):
+        v = self.session.get_item("/test-module:main/i8")
+        self.assertEqual(99, v.value)
 
 
-class LockingTest(unittest.TestCase):
+class CommitTest(unittest.TestCase):
 
-    def test_ConcurrentDataStoreLocking(self):
+    @classmethod
+    def setUpClass(self):
+        TestModule.create_test_module()
+
+    def test_CommitAndDsLock(self):
         tm = TestManager()
 
         first = SysrepoTester("First")
@@ -45,33 +53,12 @@ class LockingTest(unittest.TestCase):
         first.add_step(first.unlockStep)
         tm.add_tester(first)
 
-        tm.add_tester(User2("Second"))
+        tm.add_tester(CommitTester("Second"))
         tm.run()
 
-    def test_ConcurrentModelLocking(self):
-        tm = TestManager()
-
-        first = SysrepoTester("First")
-        second = SysrepoTester("Second")
-
-        first.add_step(first.lockModelStep, "example-module")
-        second.add_step(second.waitStep)
-
-        first.add_step(first.waitStep)
-        second.add_step(second.lockFailModelStep, "example-module")
-
-        first.add_step(first.unlockModelStep, "example-module")
-        second.add_step(second.waitStep)
-
-        second.add_step(second.lockModelStep, "example-module")
-        second.add_step(second.unlockModelStep, "example-module")
-
-        tm.add_tester(first)
-        tm.add_tester(second)
-        tm.run()
 
 if __name__ == '__main__':
-    suite = unittest.TestLoader().loadTestsFromTestCase(LockingTest)
+    suite = unittest.TestLoader().loadTestsFromTestCase(CommitTest)
     result = unittest.TextTestRunner(verbosity=2).run(suite)
     if result.wasSuccessful():
         sys.exit(0)

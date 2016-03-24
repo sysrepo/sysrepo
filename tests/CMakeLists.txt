@@ -85,4 +85,10 @@ if (SWIG_FOUND AND PYTHONLIBS_FOUND AND PYTHONINTERP_FOUND)
       COMMAND ${PYTHON_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/python/LockingTest.py
     )
+    add_test(NAME python_commit
+      #set work dir to load generated swig python binding
+      WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/swig"
+      COMMAND ${PYTHON_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/python/CommitTest.py
+    )
 endif()
