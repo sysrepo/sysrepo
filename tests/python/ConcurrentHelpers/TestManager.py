@@ -68,7 +68,7 @@ class TestManager:
         will_continue = range(len(self.next_steps))
         wait_for = range(len(self.next_steps))
         while True:
-            print "=================== TestManager step", step, "testers:",wait_for
+            print "=================== TestManager step", step, "testers:", wait_for
             for _ in wait_for:
                 self.process_done.acquire()
                 if step > 0:

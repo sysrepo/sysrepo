@@ -50,12 +50,20 @@ class Tester(unittest.TestCase):
         return self._current_step < (len(self.steps))
 
     def print_with_lock(self, *args):
+        """Print to stdout with acquired lock"""
         if self.lock is not None:
             self.lock.acquire()
             print args
             self.lock.release()
         else:
             print args
+
+    def execute_step(self, index):
+        step, args = self.steps[index]
+        if len(args) != 0:
+            step(*args)
+        else:
+            step()
 
     def run_sync(self, done, next_step, rand_sleep, id, queue):
         """run steps in sync with other tester and inform test manager"""
@@ -73,12 +81,7 @@ class Tester(unittest.TestCase):
             self.print_with_lock('Step: ', step, ", pid: ", os.getpid())
 
             try:
-                #step execution
-                step, args = self.steps[step]
-                if len(args) != 0:
-                    step(*args)
-                else:
-                    step()
+                self.execute_step(step)
             except Exception as e:
                 err = e
             finally:
@@ -95,7 +98,7 @@ class Tester(unittest.TestCase):
     def run_without_sync(self):
         """run steps independently"""
         for step in range(len(self.steps)):
-            self.steps[step]()
+            self.execute_step(step)
 
     def run(self, done = None, next_step= None, rand_sleep=False, lock=None, id=-1, queue = None):
         """Executes the tester steps

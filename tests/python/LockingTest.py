@@ -68,9 +68,6 @@ class User2(LockUser):
 
 class LockingTest(unittest.TestCase):
 
-    def test_abc(self):
-        self.assertTrue(True)
-
     def test_ConcurrentDataStoreLocking(self):
         tm = TestManager()
 
