@@ -171,7 +171,12 @@ rp_module_install_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *sessio
     }
 
     /* install the module in the DM */
-    oper_rc = dm_install_module(rp_ctx->dm_ctx,
+    oper_rc = msg->request->module_install_req->installed ?
+            dm_install_module(rp_ctx->dm_ctx,
+            msg->request->module_install_req->module_name,
+            msg->request->module_install_req->revision)
+            :
+            dm_uninstall_module(rp_ctx->dm_ctx,
             msg->request->module_install_req->module_name,
             msg->request->module_install_req->revision);
 

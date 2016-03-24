@@ -1054,6 +1054,17 @@ cl_notification_test(void **state)
     rc = sr_feature_enable(session, "example-module", "unknown", true);
     assert_int_equal(rc, SR_ERR_INVAL_ARG);
 
+    rc = sr_module_install(session, "example-module", "2016-05-03", false);
+    assert_int_equal(rc, SR_ERR_NOT_FOUND);
+
+    /* BEWARE: sysrepo must be restarted to access example-module again */
+    rc = sr_module_install(session, "example-module", NULL, false);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* after module uninstallation all subsequent operation return UNKOWN_MODEL */
+    rc = sr_lock_module(session, "example-module");
+    assert_int_equal(rc, SR_ERR_UNKNOWN_MODEL);
+
     // TODO: change & commit something, expect module change callback
 
     /* stop the session */
