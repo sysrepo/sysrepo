@@ -11,6 +11,9 @@
 #include "sysrepo.h"
 %}
 
+/* Filter out 'Setting a const char * variable may leak memory' warnings */
+%warnfilter(451);
+
 /* Fix uint32_t in sr_val_t data union */
 %typemap(in) int32_t {
    $1 = PyInt_AsLong($input);
