@@ -160,6 +160,8 @@ message Schema {
 
   required Schema_rev revision = 4;          /**< Revision of the module*/
   repeated Schema_submodule submodules = 5;  /**< Submodules */
+
+  repeated string enabled_features = 6;       /**< Features enabled for the module */
 }
 
 /**

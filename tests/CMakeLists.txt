@@ -68,3 +68,27 @@ ADD_UNIT_TEST(concurr_test)
 ADD_UNIT_TEST_WITH_OPTS(perf_test perf_test.c "" 0 "")
 ADD_UNIT_TEST_WITH_OPTS(daemon_test daemon_test.c "" 0 "")
 
+FIND_PACKAGE(PythonInterp)
+FIND_PACKAGE(SWIG)
+FIND_PACKAGE(PythonLibs 2)
+
+if (SWIG_FOUND AND PYTHONLIBS_FOUND AND PYTHONINTERP_FOUND)
+    add_test(NAME python_basic_test
+      #set work dir to load generated swig python binding
+      WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/swig"
+      COMMAND ${PYTHON_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/python/SysrepoBasicTest.py
+    )
+    add_test(NAME python_locking
+      #set work dir to load generated swig python binding
+      WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/swig"
+      COMMAND ${PYTHON_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/python/LockingTest.py
+    )
+    add_test(NAME python_commit
+      #set work dir to load generated swig python binding
+      WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/swig"
+      COMMAND ${PYTHON_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/python/CommitTest.py
+    )
+endif()

@@ -27,6 +27,7 @@
 #include <pthread.h>
 #include <fcntl.h>
 #include <libyang/libyang.h>
+#include <string.h>
 
 #include "data_manager.h"
 #include "sr_common.h"
@@ -63,6 +64,7 @@ typedef struct dm_ctx_s {
     dm_lock_ctx_t lock_ctx;       /**< lock context for lock/unlock/commit operations */
     bool ds_lock;                 /**< Flag if the ds lock is hold by a session*/
     pthread_mutex_t ds_lock_mutex;/**< Data store lock mutex */
+    struct ly_set *disabled_sch;  /**< Set of schema that has been disabled */
 } dm_ctx_t;
 
 /**
@@ -230,6 +232,21 @@ dm_load_schemas(dm_ctx_t *dm_ctx)
     }
 }
 
+static bool
+dm_is_module_disabled(dm_ctx_t *dm_ctx, const char *module_name)
+{
+    if (NULL == dm_ctx || NULL == module_name) {
+        return true;
+    }
+
+    for (size_t i = 0; i < dm_ctx->disabled_sch->number; i++) {
+        if (0 == strcmp((char *) dm_ctx->disabled_sch->set[i], module_name)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /**
  * Checks whether the schema of the module has been loaded
  * @param [in] dm_ctx
@@ -248,7 +265,7 @@ dm_find_module_schema(dm_ctx_t *dm_ctx, const char *module_name, const struct ly
     if (NULL != module) {
         *module = m;
     }
-    return m == NULL ? SR_ERR_UNKNOWN_MODEL : SR_ERR_OK;
+    return m == NULL || dm_is_module_disabled(dm_ctx, module_name) ? SR_ERR_UNKNOWN_MODEL : SR_ERR_OK;
 }
 
 /**
@@ -470,6 +487,9 @@ dm_lock_file(dm_lock_ctx_t *lock_ctx, char *filename)
         rc = sr_lock_fd(found_item->fd, true, false);
         if (SR_ERR_OK == rc) {
             SR_LOG_DBG("File %s has been locked", filename);
+        } else {
+            close(found_item->fd);
+            found_item->fd = -1;
         }
     } else {
         rc = SR_ERR_LOCKED;
@@ -899,35 +919,22 @@ dm_init(ac_ctx_t *ac_ctx, const char *schema_search_dir, const char *data_search
     dm_ctx_t *ctx = NULL;
     int rc = SR_ERR_OK;
     ctx = calloc(1, sizeof(*ctx));
-    if (NULL == ctx) {
-        SR_LOG_ERR_MSG("Cannot allocate memory for Data Manager.");
-        return SR_ERR_NOMEM;
-    }
+    CHECK_NULL_NOMEM_GOTO(ctx, rc, cleanup);
     ctx->ac_ctx = ac_ctx;
 
     ctx->ly_ctx = ly_ctx_new(schema_search_dir);
-    if (NULL == ctx->ly_ctx) {
-        SR_LOG_ERR_MSG("Cannot initialize libyang context in Data Manager.");
-        dm_cleanup(ctx);
-        return SR_ERR_NOMEM;
-    }
+    CHECK_NULL_NOMEM_GOTO(ctx->ly_ctx, rc, cleanup);
 
     ctx->schema_search_dir = strdup(schema_search_dir);
-    if (NULL == ctx->schema_search_dir) {
-        SR_LOG_ERR_MSG("Cannot allocate memory for schema search dir string in Data Manager.");
-        dm_cleanup(ctx);
-        return SR_ERR_NOMEM;
-    }
+    CHECK_NULL_NOMEM_GOTO(ctx->schema_search_dir, rc, cleanup);
 
     ctx->data_search_dir = strdup(data_search_dir);
-    if (NULL == ctx->data_search_dir) {
-        SR_LOG_ERR_MSG("Cannot allocate memory for data search dir string in Data Manager.");
-        dm_cleanup(ctx);
-        return SR_ERR_NOMEM;
-    }
+    CHECK_NULL_NOMEM_GOTO(ctx->data_search_dir, rc, cleanup);
+
+    ctx->disabled_sch = ly_set_new();
+    CHECK_NULL_NOMEM_GOTO(ctx->disabled_sch, rc, cleanup);
 
     pthread_mutex_init(&ctx->ds_lock_mutex, NULL);
-
     pthread_mutex_init(&ctx->lock_ctx.mutex, NULL);
     rc = sr_btree_init(dm_compare_lock_item, dm_free_lock_item, &ctx->lock_ctx.lock_files);
     if (SR_ERR_OK != rc) {
@@ -956,6 +963,11 @@ dm_init(ac_ctx_t *ac_ctx, const char *schema_search_dir, const char *data_search
     }
 
     return rc;
+
+cleanup:
+    dm_cleanup(ctx);
+    return rc;
+
 }
 
 void
@@ -973,6 +985,7 @@ dm_cleanup(dm_ctx_t *dm_ctx)
         }
         pthread_mutex_destroy(&dm_ctx->lock_ctx.mutex);
         pthread_mutex_destroy(&dm_ctx->ds_lock_mutex);
+        ly_set_free(dm_ctx->disabled_sch);
         free(dm_ctx);
     }
 }
@@ -1176,6 +1189,32 @@ dm_list_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, 
         goto cleanup;
     }
 
+    uint8_t *state = NULL;
+    size_t feature_cnt = 0;
+    size_t enabled = 0;
+    const char **features = lys_features_list(module, &state);
+
+    while (NULL != features[feature_cnt]) feature_cnt++;
+
+    for (size_t i = 0; i<feature_cnt; i++) {
+        if (state[i]==1) {
+            enabled++;
+        }
+    }
+
+    if (feature_cnt > 0) {
+        schema->enabled_features = calloc(feature_cnt, sizeof(*schema->enabled_features));
+        CHECK_NULL_NOMEM_GOTO(schema->enabled_features, rc, cleanup);
+        for (size_t i = 0; i<feature_cnt; i++) {
+            if (state[i] == 1) {
+                schema->enabled_features[schema->enabled_feature_cnt] = strdup(features[i]);
+                CHECK_NULL_NOMEM_GOTO(schema->enabled_features[schema->enabled_feature_cnt], rc, cleanup);
+                schema->enabled_feature_cnt++;
+            }
+        }
+    }
+    free(features);
+    free(state);
 
     submodules = ly_ctx_get_submodule_names(dm_ctx->ly_ctx, module->name);
     if (NULL == submodules) {
@@ -1187,19 +1226,11 @@ dm_list_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, 
     while (NULL != submodules[sub_count]) sub_count++;
 
     schema->submodules = calloc(sub_count, sizeof(*schema->submodules));
-    if (NULL == schema->submodules) {
-        SR_LOG_ERR_MSG("Memory allocation failed");
-        rc = SR_ERR_NOMEM;
-        goto cleanup;
-    }
+    CHECK_NULL_NOMEM_GOTO(schema->submodules, rc, cleanup);
 
     for (size_t s = 0; s < sub_count; s++){
         schema->submodules[s].submodule_name = strdup(submodules[s]);
-        if (NULL == schema->submodules[s].submodule_name){
-            SR_LOG_ERR_MSG("String duplication failed");
-            rc = SR_ERR_INTERNAL;
-            goto cleanup;
-        }
+        CHECK_NULL_NOMEM_GOTO(schema->submodules[s].submodule_name, rc, cleanup);
         const struct lys_submodule *sub = ly_ctx_get_submodule(dm_ctx->ly_ctx, module_name, revision, submodules[s]);
         if (NULL == sub){
             SR_LOG_ERR_MSG("Submodule not found");
@@ -1286,6 +1317,10 @@ dm_list_schemas(dm_ctx_t *dm_ctx, dm_session_t *dm_session, sr_schema_t **schema
     for (unsigned int i = 0; i < modules->number; i++) {
         const char *revision = dm_get_module_revision(modules->dset[i]->parent);
         const char *module_name = ((struct lyd_node_leaf_list *) modules->dset[i])->value_str;
+        if (dm_is_module_disabled(dm_ctx, module_name)){
+            SR_LOG_WRN("Module %s is disabled and will not be included in list schema", module_name);
+            continue;
+        }
         rc = dm_list_module(dm_ctx, module_name, revision, &sch[i]);
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR_MSG("Filling sr_schema_t failed");
@@ -1843,11 +1878,30 @@ int
 dm_install_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision)
 {
     CHECK_NULL_ARG2(dm_ctx, module_name);
+    /* if module is disabled require sysrepo restart to its reinstall*/
+    if (dm_is_module_disabled(dm_ctx, module_name)) {
+        SR_LOG_WRN("To install module %s sysrepo must be restarted", module_name);
+        return SR_ERR_INTERNAL;
+    }
     const struct lys_module *module = ly_ctx_load_module(dm_ctx->ly_ctx, module_name, revision);
     if (NULL == module) {
         SR_LOG_ERR("Module %s with revision %s was not found", module_name, revision);
         return SR_ERR_NOT_FOUND;
     } else {
+        return SR_ERR_OK;
+    }
+}
+
+int
+dm_uninstall_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision)
+{
+    CHECK_NULL_ARG2(dm_ctx, module_name);
+    const struct lys_module *module = ly_ctx_get_module(dm_ctx->ly_ctx, module_name, revision);
+    if (NULL == module) {
+        SR_LOG_ERR("Module %s with revision %s was not found", module_name, revision);
+        return SR_ERR_NOT_FOUND;
+    } else {
+        ly_set_add(dm_ctx->disabled_sch, (void *) module->name);
         return SR_ERR_OK;
     }
 }

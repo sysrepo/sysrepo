@@ -1847,6 +1847,10 @@ void sr_free_schema(sr_schema_t *schema)
             free((void*)schema->submodules[s].revision.file_path_yang);
         }
         free(schema->submodules);
+        for (size_t f = 0; f < schema->enabled_feature_cnt; f++) {
+            free(schema->enabled_features[f]);
+        }
+        free(schema->enabled_features);
     }
 }
 
@@ -1928,6 +1932,19 @@ sr_schemas_sr_to_gpb(const sr_schema_t *sr_schemas, const size_t schema_cnt, Sr_
             }
         }
 
+        schemas[i]->enabled_features = calloc(sr_schemas[i].enabled_feature_cnt, sizeof(*schemas[i]->enabled_features));
+        if (NULL == schemas[i]->enabled_features) {
+            goto nomem;
+        }
+        for (size_t f = 0; f < sr_schemas[i].enabled_feature_cnt; f++) {
+            if (NULL != sr_schemas[i].enabled_features[f]){
+                schemas[i]->enabled_features[f] = strdup(sr_schemas[i].enabled_features[f]);
+                if (NULL == schemas[i]->enabled_features[f]) {
+                    goto nomem;
+                }
+            }
+            schemas[i]->n_enabled_features++;
+        }
 
         schemas[i]->submodules = calloc(sr_schemas[i].submodule_count, sizeof(*schemas[i]->submodules));
         if (NULL == schemas[i]->submodules){
@@ -2044,6 +2061,19 @@ sr_schemas_gpb_to_sr(const Sr__Schema **gpb_schemas, const size_t schema_cnt, sr
             }
         }
 
+        schemas[i].enabled_features = calloc(gpb_schemas[i]->n_enabled_features, sizeof(*schemas[i].enabled_features));
+        if (NULL == schemas[i].enabled_features) {
+            goto nomem;
+        }
+        for (size_t f = 0; f < gpb_schemas[i]->n_enabled_features; f++){
+            if (NULL != gpb_schemas[i]->enabled_features[f]) {
+                schemas[i].enabled_features[f] = strdup(gpb_schemas[i]->enabled_features[f]);
+                if (NULL == schemas[i].enabled_features[f]) {
+                    goto nomem;
+                }
+            }
+            schemas[i].enabled_feature_cnt++;
+        }
 
         schemas[i].submodules = calloc(gpb_schemas[i]->n_submodules, sizeof(*schemas[i].submodules));
         if (NULL == schemas[i].submodules) {
@@ -2137,6 +2167,7 @@ sr_val_to_str(const sr_val_t *value, struct lys_node *schema_node, char **out)
     case SR_ENUM_T:
         *out = strdup(value->data.enum_val);
         break;
+    case SR_CONTAINER_PRESENCE_T:
     case SR_LEAF_EMPTY_T:
         *out = strdup("");
         break;

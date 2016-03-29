@@ -171,7 +171,12 @@ rp_module_install_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *sessio
     }
 
     /* install the module in the DM */
-    oper_rc = dm_install_module(rp_ctx->dm_ctx,
+    oper_rc = msg->request->module_install_req->installed ?
+            dm_install_module(rp_ctx->dm_ctx,
+            msg->request->module_install_req->module_name,
+            msg->request->module_install_req->revision)
+            :
+            dm_uninstall_module(rp_ctx->dm_ctx,
             msg->request->module_install_req->module_name,
             msg->request->module_install_req->revision);
 
@@ -583,7 +588,7 @@ rp_commit_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
     resp->response->result = rc;
 
     /* copy error information to GPB  (if any) */
-    if (NULL != errors) {
+    if (err_cnt > 0) {
         sr_gpb_fill_errors(errors, err_cnt, &resp->response->commit_resp->errors, &resp->response->commit_resp->n_errors);
         sr_free_errors(errors, err_cnt);
     }
@@ -659,7 +664,7 @@ rp_session_refresh_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg 
     resp->response->result = rc;
 
     /* copy error information to GPB  (if any) */
-    if (err_cnt > 0) {
+    if (NULL != errors) {
         sr_gpb_fill_errors(errors, err_cnt, &resp->response->session_refresh_resp->errors, &resp->response->session_refresh_resp->n_errors);
         sr_free_errors(errors, err_cnt);
     }
