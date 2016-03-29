@@ -147,7 +147,7 @@ if (SWIG_FOUND)
           COMMAND cp "${CMAKE_CURRENT_BINARY_DIR}/_${PYTHON_SWIG_BINDING}.so" "${CMAKE_CURRENT_BINARY_DIR}/swig/"
         )
     else ()
-        MESSAGE(WARNING "Python libs not found, python binding will no be generated.")
+        MESSAGE(WARNING "Python libs not found, python bindings will not be generated.")
     endif()
 
     #FIND_PACKAGE(JNI REQUIRED)
@@ -173,7 +173,7 @@ install (DIRECTORY DESTINATION ${DATA_SEARCH_DIR} DIRECTORY_PERMISSIONS
     GROUP_READ GROUP_WRITE GROUP_EXECUTE
     WORLD_READ WORLD_WRITE WORLD_EXECUTE)
 
-if ( PYTHONINTERP_FOUND)
+if (SWIG_FOUND AND PYTHONLIBS_FOUND AND PYTHONINTERP_FOUND)
     #install python bindings
     execute_process ( COMMAND ${PYTHON_EXECUTABLE} -c
                 "from distutils import sysconfig; print( sysconfig.get_python_lib( plat_specific=True, prefix='${CMAKE_INSTALL_PREFIX}' ) )"
