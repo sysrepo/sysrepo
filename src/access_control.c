@@ -24,6 +24,7 @@
 #include <fcntl.h>
 #include <pthread.h>
 #include <stdbool.h>
+#include <assert.h>
 
 #include "sr_common.h"
 #include "request_processor.h"

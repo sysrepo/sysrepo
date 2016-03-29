@@ -479,10 +479,13 @@ dm_lock_file(dm_lock_ctx_t *lock_ctx, char *filename)
         found_item->fd = open(filename, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
         if (-1 == found_item->fd) {
             if (EACCES == errno) {
-                SR_LOG_ERR("File %s can not be locked because of permissions", filename);
+                SR_LOG_ERR("Insufficient permissions to lock the file '%s'", filename);
                 rc = SR_ERR_UNAUTHORIZED;
-                goto cleanup;
+            } else {
+                SR_LOG_ERR("Error by opening the file '%s': %s", filename, strerror(errno));
+                rc = SR_ERR_INTERNAL;
             }
+            goto cleanup;
         }
         rc = sr_lock_fd(found_item->fd, true, false);
         if (SR_ERR_OK == rc) {
