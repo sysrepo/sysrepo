@@ -62,6 +62,7 @@ ADD_UNIT_TEST_WITH_HELPERS(rp_dt_edit_test)
 ADD_UNIT_TEST_WITH_HELPERS(rp_dt_running_test)
 
 ADD_UNIT_TEST_WITH_OPTS(np_test np_test.c "" 1 "cm_msg_send")
+ADD_UNIT_TEST(pm_test)
 
 ADD_UNIT_TEST_WITH_HELPERS(cl_test)
 ADD_UNIT_TEST(concurr_test)
