@@ -8,7 +8,7 @@
 
 %{
 /* Includes the header in the wrapper code */
-#include "sysrepo.h"
+#include <sysrepo.h>
 %}
 
 /* Filter out 'Setting a const char * variable may leak memory' warnings */
