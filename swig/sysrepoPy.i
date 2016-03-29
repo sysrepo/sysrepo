@@ -8,7 +8,7 @@
 
 %{
 /* Includes the header in the wrapper code */
-#include <sysrepo.h>
+#include "sysrepo.h"
 %}
 
 /* Fix uint32_t in sr_val_t data union */
