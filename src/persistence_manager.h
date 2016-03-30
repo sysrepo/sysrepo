@@ -22,6 +22,8 @@
 #ifndef PERSISTENCE_MANAGER_H_
 #define PERSISTENCE_MANAGER_H_
 
+#include "access_control.h"
+
 /**
  * @brief Persistence Manager context.
  */
@@ -34,7 +36,7 @@ typedef struct pm_ctx_s pm_ctx_t;
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int pm_init(const char *schema_search_dir, pm_ctx_t **pm_ctx);
+int pm_init(ac_ctx_t *ac_ctx, const char *schema_search_dir, const char *data_search_dir, pm_ctx_t **pm_ctx);
 
 /**
  * @brief Cleans up the Persistence Manager instance.
@@ -42,5 +44,15 @@ int pm_init(const char *schema_search_dir, pm_ctx_t **pm_ctx);
  * @param[in] pm_ctx Persistence Manager context acquired by ::pm_init call.
  */
 void pm_cleanup(pm_ctx_t *pm_ctx);
+
+/**
+ * TODO
+ */
+int pm_feature_enable(pm_ctx_t *pm_ctx, ac_ucred_t *user_cred, const char *module_name, const char *feature_name, bool enable);
+
+/**
+ * TODO
+ */
+int pm_get_features(pm_ctx_t *pm_ctx, ac_ucred_t *user_cred, const char *module_name, char *features, size_t feature_cnt);
 
 #endif /* PERSISTENCE_MANAGER_H_ */

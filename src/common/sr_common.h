@@ -587,6 +587,16 @@ void sr_free_errors(sr_error_info_t *sr_errors, size_t sr_error_cnt);
 int sr_get_lock_data_file_name(const char *data_search_dir, const char *module_name, const sr_datastore_t ds, char **file_name);
 
 /**
+ * @brief Creates the file name of the persistent data file.
+ *
+ * @param [in] data_search_dir Path to the directory with data files
+ * @param [in] module_name Name of the module
+ * @param [out] file_name Allocated file path
+ * @return Error code (SR_ERR_OK on success)
+ */
+int sr_get_persist_data_file_name(const char *data_search_dir, const char *module_name, char **file_name);
+
+/**
  * @brief Creates the data file name corresponding to the module_name (schema).
  *
  * Function does not check if the schema name is valid. The file name is

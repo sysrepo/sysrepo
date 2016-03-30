@@ -476,7 +476,7 @@ dm_lock_file(dm_lock_ctx_t *lock_ctx, char *filename)
     }
 
     if (-1 == found_item->fd) {
-        found_item->fd = open(filename, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
+        found_item->fd = open(filename, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
         if (-1 == found_item->fd) {
             if (EACCES == errno) {
                 SR_LOG_ERR("Insufficient permissions to lock the file '%s'", filename);
@@ -1739,7 +1739,7 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
 
             if (ENOENT == errno) {
                 SR_LOG_DBG("File %s does not exist, trying to create an empty one", file_name);
-                c_ctx->fds[count] = open(file_name, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
+                c_ctx->fds[count] = open(file_name, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
                 if (-1 == c_ctx->fds[count]) {
                     SR_LOG_ERR("File %s can not be created", file_name);
                     rc = SR_ERR_IO;

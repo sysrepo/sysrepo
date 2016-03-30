@@ -52,6 +52,9 @@
 /** File extension of data lock files */
 #define SR_LOCK_FILE_EXT ".lock"
 
+/** File extension of persistent data files */
+#define SR_PERSIST_FILE_EXT ".persist"
+
 /** File extension of YANG schema files */
 #define SR_SCHEMA_YANG_FILE_EXT ".yang"
 
