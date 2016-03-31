@@ -1008,6 +1008,7 @@ edit_validate_test(void **state)
     test_rp_session_cleanup(ctx, session);
 
     /* choice */
+/**WAITING FOR LIBYANG FIX
     test_rp_sesssion_create(ctx, SR_DS_STARTUP, &session);
     sr_val_t interval;
     interval.xpath = NULL;
@@ -1039,7 +1040,7 @@ edit_validate_test(void **state)
     sr_free_errors(errors, e_cnt);
 
     test_rp_session_cleanup(ctx, session);
-
+*/
     /* leaf-list unique values */
     test_rp_sesssion_create(ctx, SR_DS_STARTUP, &session);
     sr_val_t val;

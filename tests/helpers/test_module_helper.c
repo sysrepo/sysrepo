@@ -133,7 +133,7 @@ createDataTreeTestModule()
     n = lyd_new_leaf(node, module, "union", "infinity");
     assert_non_null(n);
 
-    assert_int_equal(0, lyd_validate(r, LYD_OPT_STRICT));
+    assert_int_equal(0, lyd_validate(&r, LYD_OPT_STRICT | LYD_OPT_CONFIG));
     assert_int_equal(SR_ERR_OK, sr_save_data_tree_file(TEST_MODULE_DATA_FILE_NAME, r));
 
     lyd_free_withsiblings(r);
