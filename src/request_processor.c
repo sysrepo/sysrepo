@@ -216,8 +216,19 @@ rp_feature_enable_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *sessio
     }
 
     Sr__FeatureEnableReq *req = msg->request->feature_enable_req;
+
     /* enable the feature in the DM */
     oper_rc = dm_feature_enable(rp_ctx->dm_ctx, req->module_name, req->feature_name, req->enabled);
+
+    /* enable the feature in persistent data */
+    if (SR_ERR_OK == oper_rc) {
+        oper_rc = pm_feature_enable(rp_ctx->pm_ctx, session->user_credentials,
+                req->module_name, req->feature_name, req->enabled);
+        if (SR_ERR_OK != oper_rc) {
+            /* rollback of the change in DM */
+            dm_feature_enable(rp_ctx->dm_ctx, req->module_name, req->feature_name, !req->enabled);
+        }
+    }
 
     /* set response code */
     resp->response->result = oper_rc;
@@ -1126,17 +1137,24 @@ rp_init(cm_ctx_t *cm_ctx, rp_ctx_t **rp_ctx_p)
         goto cleanup;
     }
 
-    /* initialize Data Manager */
-    rc = dm_init(ctx->ac_ctx, SR_SCHEMA_SEARCH_DIR, SR_DATA_SEARCH_DIR, &ctx->dm_ctx);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Data Manager initialization failed.");
-        goto cleanup;
-    }
-
     /* initialize Notification Processor */
     rc = np_init(ctx, &ctx->np_ctx);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Notification Processor initialization failed.");
+        goto cleanup;
+    }
+
+    /* initialize Persistence Manager */
+    rc = pm_init(ctx->ac_ctx, SR_INTERNAL_SCHEMA_SEARCH_DIR, SR_DATA_SEARCH_DIR, &ctx->pm_ctx);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Persistence Manager initialization failed.");
+        goto cleanup;
+    }
+
+    /* initialize Data Manager */
+    rc = dm_init(ctx->ac_ctx, SR_SCHEMA_SEARCH_DIR, SR_DATA_SEARCH_DIR, &ctx->dm_ctx);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Data Manager initialization failed.");
         goto cleanup;
     }
 
@@ -1160,10 +1178,11 @@ rp_init(cm_ctx_t *cm_ctx, rp_ctx_t **rp_ctx_p)
     return SR_ERR_OK;
 
 cleanup:
-    np_cleanup(ctx->np_ctx);
     dm_cleanup(ctx->dm_ctx);
-    sr_cbuff_cleanup(ctx->request_queue);
+    np_cleanup(ctx->np_ctx);
+    pm_cleanup(ctx->pm_ctx);
     ac_cleanup(ctx->ac_ctx);
+    sr_cbuff_cleanup(ctx->request_queue);
     free(ctx);
     return rc;
 }
@@ -1200,10 +1219,11 @@ rp_cleanup(rp_ctx_t *rp_ctx)
             }
         }
         pthread_rwlock_destroy(&rp_ctx->commit_lock);
-        sr_cbuff_cleanup(rp_ctx->request_queue);
-        np_cleanup(rp_ctx->np_ctx);
         dm_cleanup(rp_ctx->dm_ctx);
+        np_cleanup(rp_ctx->np_ctx);
+        pm_cleanup(rp_ctx->pm_ctx);
         ac_cleanup(rp_ctx->ac_ctx);
+        sr_cbuff_cleanup(rp_ctx->request_queue);
         free(rp_ctx);
     }
 

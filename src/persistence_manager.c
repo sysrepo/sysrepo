@@ -106,7 +106,7 @@ pm_create_data_tree(pm_ctx_t *pm_ctx, const char *module_name, struct lyd_node *
  * @brief Loads the data tree of persistent data file tied to specified YANG module.
  */
 static int
-pm_load_data_tree(pm_ctx_t *pm_ctx, ac_ucred_t *user_cred, const char *module_name,  const char *data_filename,
+pm_load_data_tree(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *module_name,  const char *data_filename,
         bool read_only, int *fd_p, struct lyd_node **data_tree)
 {
     int fd = -1;
@@ -228,7 +228,7 @@ pm_cleanup(pm_ctx_t *pm_ctx)
 }
 
 int
-pm_feature_enable(pm_ctx_t *pm_ctx, ac_ucred_t *user_cred, const char *module_name,
+pm_feature_enable(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *module_name,
         const char *feature_name, bool enable)
 {
     char *data_filename = NULL;
@@ -319,7 +319,7 @@ cleanup:
 }
 
 int
-pm_get_features(pm_ctx_t *pm_ctx, ac_ucred_t *user_cred, const char *module_name,
+pm_get_features(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *module_name,
         char ***features_p, size_t *feature_cnt_p)
 {
     char *data_filename = NULL;

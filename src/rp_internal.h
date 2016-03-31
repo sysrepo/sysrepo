@@ -27,6 +27,7 @@
 #include "rp_node_stack.h"
 #include "data_manager.h"
 #include "notification_processor.h"
+#include "persistence_manager.h"
 
 #define RP_THREAD_COUNT 4  /**< Number of threads that RP uses for processing. */
 
@@ -38,6 +39,7 @@ typedef struct rp_ctx_s {
     ac_ctx_t *ac_ctx;                        /**< Access Control module context. */
     dm_ctx_t *dm_ctx;                        /**< Data Manager Context. */
     np_ctx_t *np_ctx;                        /**< Notification Processor context. */
+    pm_ctx_t *pm_ctx;                        /**< Persistence Manager context. */
 
     pthread_t thread_pool[RP_THREAD_COUNT];  /**< Thread pool. */
     size_t active_threads;                   /**< Number of active (non-sleeping) threads. */

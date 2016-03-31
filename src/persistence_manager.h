@@ -68,7 +68,7 @@ void pm_cleanup(pm_ctx_t *pm_ctx);
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int pm_feature_enable(pm_ctx_t *pm_ctx, ac_ucred_t *user_cred, const char *module_name,
+int pm_feature_enable(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *module_name,
         const char *feature_name, bool enable);
 
 /**
@@ -82,7 +82,7 @@ int pm_feature_enable(pm_ctx_t *pm_ctx, ac_ucred_t *user_cred, const char *modul
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int pm_get_features(pm_ctx_t *pm_ctx, ac_ucred_t *user_cred, const char *module_name,
+int pm_get_features(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *module_name,
         char ***features, size_t *feature_cnt);
 
 /**@} pm */
