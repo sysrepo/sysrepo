@@ -491,6 +491,7 @@ dm_lock_file(dm_lock_ctx_t *lock_ctx, char *filename)
         if (SR_ERR_OK == rc) {
             SR_LOG_DBG("File %s has been locked", filename);
         } else {
+            SR_LOG_INF("File %s locked by other process", filename);
             close(found_item->fd);
             found_item->fd = -1;
         }
