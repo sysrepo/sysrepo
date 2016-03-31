@@ -22,6 +22,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
+#include <stdbool.h>
 #include <sys/types.h>
 #include <setjmp.h>
 #include <cmocka.h>
@@ -56,7 +57,7 @@ test_setup(void **state)
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(test_ctx->ac_ctx);
 
-    rc = pm_init(test_ctx->ac_ctx, SR_SCHEMA_SEARCH_DIR, SR_DATA_SEARCH_DIR, &test_ctx->pm_ctx);
+    rc = pm_init(test_ctx->ac_ctx, SR_INTERNAL_SCHEMA_SEARCH_DIR, SR_DATA_SEARCH_DIR, &test_ctx->pm_ctx);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(test_ctx->pm_ctx);
 
@@ -79,21 +80,46 @@ test_teardown(void **state)
     return 0;
 }
 
-
 static void
-pm_test(void **state)
+pm_feature_test(void **state)
 {
     test_ctx_t *test_ctx = *state;
+    char **features = NULL;
+    size_t feature_cnt = 0;
+    int rc = SR_ERR_OK;
 
-    pm_feature_enable(test_ctx->pm_ctx, &test_ctx->user_cred, "example-module", "feature1", true);
+    rc = pm_feature_enable(test_ctx->pm_ctx, &test_ctx->user_cred, "example-module", "featureX", true);
+    assert_int_equal(SR_ERR_OK, rc);
 
-    pm_feature_enable(test_ctx->pm_ctx, &test_ctx->user_cred, "example-module", "featureX", true);
+    rc = pm_feature_enable(test_ctx->pm_ctx, &test_ctx->user_cred, "example-module", "featureY", true);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = pm_feature_enable(test_ctx->pm_ctx, &test_ctx->user_cred, "example-module", "featureX", true);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = pm_get_features(test_ctx->pm_ctx, &test_ctx->user_cred, "example-module", &features, &feature_cnt);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_true(feature_cnt >= 2);
+    for (size_t i = 0; i < feature_cnt; i++) {
+        printf("Found enabled feature: %s\n", features[i]);
+        free(features[i]);
+    }
+    free(features);
+
+    rc = pm_feature_enable(test_ctx->pm_ctx, &test_ctx->user_cred, "example-module", "featureX", false);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = pm_feature_enable(test_ctx->pm_ctx, &test_ctx->user_cred, "example-module", "featureY", false);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = pm_feature_enable(test_ctx->pm_ctx, &test_ctx->user_cred, "example-module", "featureX", false);
+    assert_int_equal(SR_ERR_OK, rc);
 }
 
 int
 main() {
     const struct CMUnitTest tests[] = {
-            cmocka_unit_test_setup_teardown(pm_test, test_setup, test_teardown),
+            cmocka_unit_test_setup_teardown(pm_feature_test, test_setup, test_teardown),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);

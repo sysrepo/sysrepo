@@ -1,7 +1,7 @@
 /**
  * @file persistence_manager.h
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
- * @brief TODO
+ * @brief Sysrepo's Persistence Manager API.
  *
  * @copyright
  * Copyright 2016 Cisco Systems, Inc.
@@ -25,6 +25,15 @@
 #include "access_control.h"
 
 /**
+ * @defgroup pm Persistence Manager
+ * @{
+ *
+ * @brief Persistence Manager is responsible for storing YANG module-related data
+ * that should survive the exit of the Sysrepo Engine, such as enabled features,
+ * or active notification subscriptions.
+ */
+
+/**
  * @brief Persistence Manager context.
  */
 typedef struct pm_ctx_s pm_ctx_t;
@@ -32,6 +41,9 @@ typedef struct pm_ctx_s pm_ctx_t;
 /**
  * @brief Initializes a Persistence Manager instance.
  *
+ * @param[in] ac_ctx Access Control module context.
+ * @param[in] schema_search_dir Directory containing PM's YANG module schema.
+ * @param[in] data_search_dir Directory containing the data files.
  * @param[out] np_ctx Allocated Persistence Manager context that can be used in subsequent PM API calls.
  *
  * @return Error code (SR_ERR_OK on success).
@@ -46,13 +58,33 @@ int pm_init(ac_ctx_t *ac_ctx, const char *schema_search_dir, const char *data_se
 void pm_cleanup(pm_ctx_t *pm_ctx);
 
 /**
- * TODO
+ * @brief Enables/disables the feature in module's persistent storage.
+ *
+ * @param[in] pm_ctx Persistence Manager context acquired by ::pm_init call.
+ * @param[in] user_cred User credentials.
+ * @param[in] module_name Name of the module.
+ * @param[in] feature_name Name of the feature to be enabled/disabled.
+ * @param[in] enable TRUE by enabling, FALSE by disabling the feature.
+ *
+ * @return Error code (SR_ERR_OK on success).
  */
-int pm_feature_enable(pm_ctx_t *pm_ctx, ac_ucred_t *user_cred, const char *module_name, const char *feature_name, bool enable);
+int pm_feature_enable(pm_ctx_t *pm_ctx, ac_ucred_t *user_cred, const char *module_name,
+        const char *feature_name, bool enable);
 
 /**
- * TODO
+ * @brief Returns the array of features that should be enabled in specified module.
+ *
+ * @param[in] pm_ctx Persistence Manager context acquired by ::pm_init call.
+ * @param[in] user_cred User credentials.
+ * @param[in] module_name Name of the module.
+ * @param[out] features Array of features that should be enabled.
+ * @param[out] feature_cnt Number of features in returned array.
+ *
+ * @return Error code (SR_ERR_OK on success).
  */
-int pm_get_features(pm_ctx_t *pm_ctx, ac_ucred_t *user_cred, const char *module_name, char *features, size_t feature_cnt);
+int pm_get_features(pm_ctx_t *pm_ctx, ac_ucred_t *user_cred, const char *module_name,
+        char ***features, size_t *feature_cnt);
+
+/**@} pm */
 
 #endif /* PERSISTENCE_MANAGER_H_ */

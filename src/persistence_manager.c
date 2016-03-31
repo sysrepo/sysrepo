@@ -1,7 +1,7 @@
 /**
  * @file persistence_manager.c
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
- * @brief TODO
+ * @brief Sysrepo's Persistence Manager implementation.
  *
  * @copyright
  * Copyright 2016 Cisco Systems, Inc.
@@ -31,78 +31,24 @@
 #include "access_control.h"
 #include "persistence_manager.h"
 
-#define PM_SCHEMA_FILE "sysrepo-persistent-data.yin"
+#define PM_SCHEMA_FILE            "sysrepo-persistent-data.yin"
 
 #define PM_MODULE_NODE_NAME       "module"
 #define PM_MODULE_NAME_NODE_NAME  "module-name"
 #define PM_FEATURE_NODE_NAME      "enabled-features"
 
 /**
- * TODO
+ * @brief Persistence Manager context.
  */
 typedef struct pm_ctx_s {
     ac_ctx_t *ac_ctx;                 /**< Access Control module context. */
-    struct ly_ctx *ly_ctx;            /**< libyang context holding all loaded schemas. */
-    const struct lys_module *schema;
-    const char *data_search_dir;
+    struct ly_ctx *ly_ctx;            /**< libyang context used locally in PM. */
+    const struct lys_module *schema;  /**< Schema tree of sysrepo-persistent-data YANG. */
+    const char *data_search_dir;      /**< Directory containing the data files. */
 } pm_ctx_t;
 
-int
-pm_init(ac_ctx_t *ac_ctx, const char *schema_search_dir, const char *data_search_dir, pm_ctx_t **pm_ctx)
-{
-    pm_ctx_t *ctx = NULL;
-    char *schema_filename = NULL;
-    int rc = SR_ERR_OK;
-
-    CHECK_NULL_ARG4(ac_ctx, schema_search_dir, data_search_dir, pm_ctx);
-
-    /* allocate and initialize the context */
-    ctx = calloc(1, sizeof(*ctx));
-    CHECK_NULL_NOMEM_GOTO(ctx, rc, cleanup);
-
-    ctx->ac_ctx = ac_ctx;
-    ctx->data_search_dir = strdup(data_search_dir);
-    CHECK_NULL_NOMEM_GOTO(ctx->data_search_dir, rc, cleanup);
-
-    /* initialize libyang and persist files schema */
-    ctx->ly_ctx = ly_ctx_new(schema_search_dir);
-    CHECK_NULL_NOMEM_GOTO(ctx->ly_ctx, rc, cleanup);
-
-    rc = sr_str_join(schema_search_dir, PM_SCHEMA_FILE, &schema_filename);
-    if (SR_ERR_OK != rc) {
-        goto cleanup;
-    }
-
-    ctx->schema = lys_parse_path(ctx->ly_ctx, schema_filename, LYS_IN_YIN);
-    free(schema_filename);
-    if (ctx->schema == NULL) {
-        SR_LOG_WRN("Unable to parse the schema file '%s': %s", PM_SCHEMA_FILE, ly_errmsg());
-        rc = SR_ERR_INTERNAL;
-        goto cleanup;
-    }
-
-    *pm_ctx = ctx;
-    return SR_ERR_OK;
-
-cleanup:
-    pm_cleanup(ctx);
-    return rc;
-}
-
-void
-pm_cleanup(pm_ctx_t *pm_ctx)
-{
-    if (NULL != pm_ctx) {
-        if (NULL != pm_ctx->ly_ctx) {
-            ly_ctx_destroy(pm_ctx->ly_ctx, NULL);
-        }
-        free((void*)pm_ctx->data_search_dir);
-        free(pm_ctx);
-    }
-}
-
 /**
- * TODO
+ * @brief Saves the data tree into the file specified by file descriptor.
  */
 static int
 pm_save_data_tree(pm_ctx_t *pm_ctx, int fd, struct lyd_node *data_tree)
@@ -127,11 +73,13 @@ pm_save_data_tree(pm_ctx_t *pm_ctx, int fd, struct lyd_node *data_tree)
     return rc;
 }
 
+/**
+ * @brief Creates a new data tree of persistent data tied to specified YANG module.
+ */
 static int
 pm_create_data_tree(pm_ctx_t *pm_ctx, const char *module_name, struct lyd_node **data_tree)
 {
     struct lyd_node *root_node = NULL, *new_node = NULL;
-    int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG3(pm_ctx, module_name, data_tree);
 
@@ -141,21 +89,21 @@ pm_create_data_tree(pm_ctx_t *pm_ctx, const char *module_name, struct lyd_node *
     root_node = lyd_new(NULL, pm_ctx->schema, PM_MODULE_NODE_NAME);
     if (NULL == root_node) {
         SR_LOG_ERR("Unable to create a new 'module' node in persist data tree for '%s'.", module_name);
-        rc = SR_ERR_INTERNAL;
+        return SR_ERR_INTERNAL;
     }
     new_node = lyd_new_leaf(root_node, pm_ctx->schema, PM_MODULE_NAME_NODE_NAME, module_name);
     if (NULL == new_node) {
         SR_LOG_ERR("Unable to create a new 'module-name' node in persist data tree for '%s'.", module_name);
-        rc = SR_ERR_INTERNAL;
+        lyd_free(root_node);
+        return SR_ERR_INTERNAL;
     }
 
     *data_tree = root_node;
-    // TODO: err checks
-    return rc;
+    return SR_ERR_OK;
 }
 
 /**
- * TODO
+ * @brief Loads the data tree of persistent data file tied to specified YANG module.
  */
 static int
 pm_load_data_tree(pm_ctx_t *pm_ctx, ac_ucred_t *user_cred, const char *module_name,  const char *data_filename,
@@ -199,7 +147,7 @@ pm_load_data_tree(pm_ctx_t *pm_ctx, ac_ucred_t *user_cred, const char *module_na
         }
     }
 
-    /* load the data tree */
+    /* lock & load the data tree */
     sr_lock_fd(fd, (read_only ? false : true), true);
 
     if (NULL == *data_tree) {
@@ -213,9 +161,11 @@ pm_load_data_tree(pm_ctx_t *pm_ctx, ac_ucred_t *user_cred, const char *module_na
     }
 
     if (read_only || NULL == fd_p) {
+        /* unlock and close fd in case of read_only has been requested */
         sr_unlock_fd(fd);
         close(fd);
     } else {
+        /* return open fd to locked file otherwise */
         *fd_p = fd;
     }
 
@@ -223,13 +173,69 @@ pm_load_data_tree(pm_ctx_t *pm_ctx, ac_ucred_t *user_cred, const char *module_na
 }
 
 int
-pm_feature_enable(pm_ctx_t *pm_ctx, ac_ucred_t *user_cred, const char *module_name, const char *feature_name, bool enable)
+pm_init(ac_ctx_t *ac_ctx, const char *schema_search_dir, const char *data_search_dir, pm_ctx_t **pm_ctx)
+{
+    pm_ctx_t *ctx = NULL;
+    char *schema_filename = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG4(ac_ctx, schema_search_dir, data_search_dir, pm_ctx);
+
+    /* allocate and initialize the context */
+    ctx = calloc(1, sizeof(*ctx));
+    CHECK_NULL_NOMEM_GOTO(ctx, rc, cleanup);
+
+    ctx->ac_ctx = ac_ctx;
+    ctx->data_search_dir = strdup(data_search_dir);
+    CHECK_NULL_NOMEM_GOTO(ctx->data_search_dir, rc, cleanup);
+
+    /* initialize libyang */
+    ctx->ly_ctx = ly_ctx_new(schema_search_dir);
+    CHECK_NULL_NOMEM_GOTO(ctx->ly_ctx, rc, cleanup);
+
+    rc = sr_str_join(schema_search_dir, PM_SCHEMA_FILE, &schema_filename);
+    if (SR_ERR_OK != rc) {
+        goto cleanup;
+    }
+
+    /* load persist files schema to context */
+    ctx->schema = lys_parse_path(ctx->ly_ctx, schema_filename, LYS_IN_YIN);
+    free(schema_filename);
+    if (ctx->schema == NULL) {
+        SR_LOG_WRN("Unable to parse the schema file '%s': %s", PM_SCHEMA_FILE, ly_errmsg());
+        rc = SR_ERR_INTERNAL;
+        goto cleanup;
+    }
+
+    *pm_ctx = ctx;
+    return SR_ERR_OK;
+
+cleanup:
+    pm_cleanup(ctx);
+    return rc;
+}
+
+void
+pm_cleanup(pm_ctx_t *pm_ctx)
+{
+    if (NULL != pm_ctx) {
+        if (NULL != pm_ctx->ly_ctx) {
+            ly_ctx_destroy(pm_ctx->ly_ctx, NULL);
+        }
+        free((void*)pm_ctx->data_search_dir);
+        free(pm_ctx);
+    }
+}
+
+int
+pm_feature_enable(pm_ctx_t *pm_ctx, ac_ucred_t *user_cred, const char *module_name,
+        const char *feature_name, bool enable)
 {
     char *data_filename = NULL;
-    struct lyd_node *data_tree = NULL, *new_node = NULL;
+    struct lyd_node *data_tree = NULL, *new_node = NULL, *curr = NULL;
     int fd = -1;
     bool skip = false;
-    int rc = SR_ERR_OK;
+    int rc = SR_ERR_OK, ret = 0;
 
     /* get persist file path */
     rc = sr_get_persist_data_file_name(pm_ctx->data_search_dir, module_name, &data_filename);
@@ -240,21 +246,26 @@ pm_feature_enable(pm_ctx_t *pm_ctx, ac_ucred_t *user_cred, const char *module_na
 
     /* load the data tree from persist file */
     rc = pm_load_data_tree(pm_ctx, user_cred, module_name, data_filename, false, &fd, &data_tree);
-    if (SR_ERR_OK != rc || NULL == data_tree) {
+    if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Unable to load persist data tree for module '%s'.", module_name);
         goto cleanup;
     }
 
-    struct lyd_node *curr = data_tree->child;
+    curr = data_tree->child;
 
+    /* find matching feature node (if exists) */
     while (curr != NULL) {
-        /* check node name*/
-        // TODO nullchecks
-        if (0 == strcmp(PM_FEATURE_NODE_NAME, curr->schema->name)) {
+        if ((NULL != curr->schema) && (NULL != curr->schema->name) &&
+                (0 == strcmp(PM_FEATURE_NODE_NAME, curr->schema->name))) {
+            /* this is a feature leaf-list node */
             struct lyd_node_leaf_list *data_leaf = (struct lyd_node_leaf_list *)curr;
-            if (0 == strcmp(feature_name, data_leaf->value.string)) {
-                SR_LOG_DBG("Feature '%s' already enabled in '%s'.", feature_name, module_name);
-                skip = true;
+            if ((NULL != data_leaf) && (NULL != data_leaf->value.string) &&
+                    (0 == strcmp(data_leaf->value.string, feature_name))) {
+                /* feature name matches */
+                if (enable) {
+                    SR_LOG_DBG("Feature '%s' already enabled in '%s' persist file.", feature_name, module_name);
+                    skip = true;
+                }
                 break;
             }
         }
@@ -262,14 +273,35 @@ pm_feature_enable(pm_ctx_t *pm_ctx, ac_ucred_t *user_cred, const char *module_na
     }
 
     if (!skip) {
-        // TODO: remove operation
-        new_node = lyd_new_leaf(data_tree, pm_ctx->schema, PM_FEATURE_NODE_NAME, feature_name);
-        if (NULL == new_node) {
-            SR_LOG_ERR("Unable to create a new feature node in persist data tree for '%s'.", module_name);
-            rc = SR_ERR_INTERNAL;
+        if (enable) {
+            /* enable the feature */
+            new_node = lyd_new_leaf(data_tree, pm_ctx->schema, PM_FEATURE_NODE_NAME, feature_name);
+            if (NULL == new_node) {
+                SR_LOG_ERR("Unable to create a new feature node in persist data tree for '%s'.", module_name);
+                rc = SR_ERR_INTERNAL;
+            } else {
+                SR_LOG_DBG("Feature '%s' successfully enabled in '%s' persist file.", feature_name, module_name);
+            }
+        } else {
+            /* disable the feature */
+            if (NULL == curr) {
+                SR_LOG_DBG("Feature '%s' already disabled in '%s' persist file.", feature_name, module_name);
+                skip = true;
+            } else {
+                ret = lyd_unlink(curr);
+                if (0 != ret) {
+                    SR_LOG_ERR("Unable to unlink the feature node in persist data tree for '%s'.", module_name);
+                    rc = SR_ERR_INTERNAL;
+                } else {
+                    lyd_free(curr);
+                    SR_LOG_DBG("Feature '%s' successfully disabled in '%s' persist file.", feature_name, module_name);
+                }
+            }
         }
-
-        rc = pm_save_data_tree(pm_ctx, fd, data_tree);
+        /* save the changes */
+        if (!skip) {
+            rc = pm_save_data_tree(pm_ctx, fd, data_tree);
+        }
     }
 
 cleanup:
@@ -287,7 +319,64 @@ cleanup:
 }
 
 int
-pm_get_features(pm_ctx_t *pm_ctx, ac_ucred_t *user_cred, const char *module_name, char *features, size_t feature_cnt)
+pm_get_features(pm_ctx_t *pm_ctx, ac_ucred_t *user_cred, const char *module_name,
+        char ***features_p, size_t *feature_cnt_p)
 {
-    return SR_ERR_OK;
+    char *data_filename = NULL;
+    struct lyd_node *data_tree = NULL, *curr = NULL;
+    char **features = NULL, **tmp = NULL;
+    size_t feature_cnt = 0;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG5(pm_ctx, user_cred, module_name, features_p, feature_cnt_p);
+
+    /* get persist file path */
+    rc = sr_get_persist_data_file_name(pm_ctx->data_search_dir, module_name, &data_filename);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Unable to compose persist data file name for '%s'.", module_name);
+        return rc;
+    }
+
+    /* load the data tree from persist file */
+    rc = pm_load_data_tree(pm_ctx, user_cred, module_name, data_filename, true, NULL, &data_tree);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Unable to load persist data tree for module '%s'.", module_name);
+        goto cleanup;
+    }
+
+    curr = data_tree->child;
+
+    /* find feature nodes (if exist) */
+    while (curr != NULL) {
+        if ((NULL != curr->schema) && (NULL != curr->schema->name) &&
+                (0 == strcmp(PM_FEATURE_NODE_NAME, curr->schema->name))) {
+            /* this is a feature leaf-list node */
+            struct lyd_node_leaf_list *data_leaf = (struct lyd_node_leaf_list *)curr;
+            if ((NULL != data_leaf) && (NULL != data_leaf->value.string)) {
+                tmp = realloc(features, (feature_cnt + 1) * sizeof(*features));
+                CHECK_NULL_NOMEM_GOTO(tmp, rc, cleanup);
+                features = tmp;
+                features[feature_cnt] = strdup(data_leaf->value.string);
+                CHECK_NULL_NOMEM_GOTO(features[feature_cnt], rc, cleanup);
+                feature_cnt++;
+            }
+        }
+        curr = curr->next;
+    }
+
+    SR_LOG_DBG("Returning %zu features enabled in '%s' persist file.", feature_cnt, module_name);
+
+    *features_p = features;
+    *feature_cnt_p = feature_cnt;
+
+cleanup:
+    if (NULL != data_tree) {
+        lyd_free_withsiblings(data_tree);
+    }
+    free(data_filename);
+
+    if (SR_ERR_OK != rc) {
+        free(features);
+    }
+    return rc;
 }

@@ -82,6 +82,7 @@ endif(USE_AVL_LIB)
 set(REPOSITORY_LOC "${PROJECT_SOURCE_DIR}/tests/data/" CACHE PATH "System repository location, contains configuration schema and data files.")
 set(SCHEMA_SEARCH_DIR "${REPOSITORY_LOC}/yang/")
 set(DATA_SEARCH_DIR "${REPOSITORY_LOC}/data/")
+set(INTERNAL_SCHEMA_SEARCH_DIR "${REPOSITORY_LOC}/internal/yang/")
 
 # check for non-portable functions and headers
 set(CMAKE_REQUIRED_LIBRARIES pthread)
@@ -159,7 +160,7 @@ if (SWIG_FOUND)
 endif(SWIG_FOUND)
 
 
-#install
+# install repository directories
 install (DIRECTORY DESTINATION ${REPOSITORY_LOC} DIRECTORY_PERMISSIONS
     OWNER_READ OWNER_WRITE OWNER_EXECUTE
     GROUP_READ GROUP_EXECUTE
@@ -173,6 +174,11 @@ install (DIRECTORY DESTINATION ${DATA_SEARCH_DIR} DIRECTORY_PERMISSIONS
     GROUP_READ GROUP_WRITE GROUP_EXECUTE
     WORLD_READ WORLD_WRITE WORLD_EXECUTE)
 
+# install internal YANGs
+install (FILES ${PROJECT_SOURCE_DIR}/yang/sysrepo-persistent-data.yin DESTINATION ${INTERNAL_SCHEMA_SEARCH_DIR})
+install (FILES ${PROJECT_SOURCE_DIR}/yang/sysrepo-persistent-data.yang DESTINATION ${INTERNAL_SCHEMA_SEARCH_DIR})
+
+# install swig bindings
 if (SWIG_FOUND AND PYTHONLIBS_FOUND AND PYTHONINTERP_FOUND)
     #install python bindings
     execute_process ( COMMAND ${PYTHON_EXECUTABLE} -c
