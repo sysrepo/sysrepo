@@ -38,7 +38,7 @@ before_install:
   - cd ..
 
 script:
-  - mkdir build ; cd build ; cmake -DCMAKE_C_FLAGS="-Werror -coverage" .. && make -j2 && ctest 
+  - mkdir build ; cd build ; cmake -DCMAKE_C_FLAGS="-Werror -coverage" .. && make -j2 && ctest -V
 
 after_success:
   - if [ "$CC" = "gcc" ]; then codecov; fi
