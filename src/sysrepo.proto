@@ -93,12 +93,22 @@ enum DataStore {
 }
 
 /**
+ * @brief Flags used to override default session handling.
+ */
+enum SessionFlags {
+  SESS_DEFAULT      = 0x00;   /**< Default (normal) session behavior. */
+  SESS_CONFIG_ONLY  = 0x01;   /**< Session will process only configuration data (e.g. sysrepo won't
+                                   return any state data by ::sr_get_items / ::sr_get_items_iter calls). */
+  SESS_NOTIFICATION = 0x400;  /**< Notification session (internal type of session). */
+}
+
+/**
  * @brief Request for starting a session. Sent by sr_session_start API call.
  */
 message SessionStartReq {
   required DataStore datastore = 1;
   optional string user_name = 2;
-  required bool notification_session = 3;
+  required uint32 options = 3;
 }
 
 /**
@@ -242,13 +252,13 @@ message GetItemsResp {
  * @brief Flags used to override default behavior of data manipulation calls.
  */
 enum EditFlags {
-  DEFAULT = 0x00;        /**< Default behavior - recursive and non-strict. */
-  NON_RECURSIVE = 0x01;  /**< Non-recursive behavior:
-                              by ::SetItemReq, all preceding nodes (parents) of the identified element must exist,
-                              by ::DeleteItemReq xpath must not identify an non-empty list or non-empty container. */
-  STRICT = 0x02;         /**< Strict behavior:
-                              by ::SetItemReq the identified element must not exist (similar to netconf create operation),
-                              by ::DeleteItemReq the identified element must exist (similar to netconf delete operation). */
+  EDIT_DEFAULT       = 0x00;  /**< Default behavior - recursive and non-strict. */
+  EDIT_NON_RECURSIVE = 0x01;  /**< Non-recursive behavior:
+                                   by ::SetItemReq, all preceding nodes (parents) of the identified element must exist,
+                                   by ::DeleteItemReq xpath must not identify an non-empty list or non-empty container. */
+  EDIT_STRICT        = 0x02;  /**< Strict behavior:
+                                   by ::SetItemReq the identified element must not exist (similar to netconf create operation),
+                                   by ::DeleteItemReq the identified element must exist (similar to netconf delete operation). */
 }
 
 /**

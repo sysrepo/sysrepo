@@ -62,11 +62,19 @@ ADD_UNIT_TEST_WITH_HELPERS(rp_dt_edit_test)
 ADD_UNIT_TEST_WITH_HELPERS(rp_dt_running_test)
 
 ADD_UNIT_TEST_WITH_OPTS(np_test np_test.c "" 1 "cm_msg_send")
+ADD_UNIT_TEST(pm_test)
 
 ADD_UNIT_TEST_WITH_HELPERS(cl_test)
 ADD_UNIT_TEST(concurr_test)
 ADD_UNIT_TEST_WITH_OPTS(perf_test perf_test.c "" 0 "")
 ADD_UNIT_TEST_WITH_OPTS(daemon_test daemon_test.c "" 0 "")
+
+# copy internal yangs to tests data dir
+add_custom_command(
+  TARGET pm_test POST_BUILD
+  COMMAND mkdir -p "${TEST_REPOSITORY_LOC}internal/yang/"
+  COMMAND cp "${PROJECT_SOURCE_DIR}/yang/sysrepo-persistent-data.*" "${TEST_REPOSITORY_LOC}internal/yang/"
+)
 
 FIND_PACKAGE(PythonInterp)
 FIND_PACKAGE(SWIG)

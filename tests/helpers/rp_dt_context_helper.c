@@ -30,6 +30,9 @@
 #include "rp_data_tree.h"
 #include "rp_internal.h"
 
+#include "notification_processor.h"
+#include "persistence_manager.h"
+
 void
 test_rp_ctx_create(rp_ctx_t **rp_ctx_p)
 {
@@ -42,7 +45,13 @@ test_rp_ctx_create(rp_ctx_t **rp_ctx_p)
     rc = ac_init(&ctx->ac_ctx);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = dm_init(ctx->ac_ctx, TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx->dm_ctx);
+    rc = np_init(ctx, &ctx->np_ctx);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = pm_init(ctx->ac_ctx, TEST_INTERNAL_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx->pm_ctx);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = dm_init(ctx->ac_ctx, ctx->np_ctx, ctx->pm_ctx, TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx->dm_ctx);
     assert_int_equal(SR_ERR_OK, rc);
 
     *rp_ctx_p = ctx;
@@ -51,6 +60,8 @@ test_rp_ctx_create(rp_ctx_t **rp_ctx_p)
 void
 test_rp_ctx_cleanup(rp_ctx_t *ctx)
 {
+    pm_cleanup(ctx->pm_ctx);
+    np_cleanup(ctx->np_ctx);
     ac_cleanup(ctx->ac_ctx);
     dm_cleanup(ctx->dm_ctx);
     free(ctx);

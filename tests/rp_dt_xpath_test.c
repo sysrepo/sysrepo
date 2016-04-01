@@ -45,7 +45,7 @@ int validate_node_wrapper(dm_ctx_t *dm_ctx, dm_session_t *session, const char *x
 int setup(void **state){
     int rc = 0;
     dm_ctx_t *ctx = NULL;
-    rc = dm_init(NULL, TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx);
+    rc = dm_init(NULL, NULL, NULL, TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx);
     *state = ctx;
     return rc;
 }

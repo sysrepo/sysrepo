@@ -216,8 +216,19 @@ rp_feature_enable_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *sessio
     }
 
     Sr__FeatureEnableReq *req = msg->request->feature_enable_req;
+
     /* enable the feature in the DM */
     oper_rc = dm_feature_enable(rp_ctx->dm_ctx, req->module_name, req->feature_name, req->enabled);
+
+    /* enable the feature in persistent data */
+    if (SR_ERR_OK == oper_rc) {
+        oper_rc = pm_feature_enable(rp_ctx->pm_ctx, session->user_credentials,
+                req->module_name, req->feature_name, req->enabled);
+        if (SR_ERR_OK != oper_rc) {
+            /* rollback of the change in DM */
+            dm_feature_enable(rp_ctx->dm_ctx, req->module_name, req->feature_name, !req->enabled);
+        }
+    }
 
     /* set response code */
     resp->response->result = oper_rc;
@@ -846,7 +857,7 @@ rp_msg_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
     CHECK_NULL_ARG3(rp_ctx, session, msg);
 
     /* whitelist only some operations for notification sessions */
-    if (session->notification_session) {
+    if (session->options & SR__SESSION_FLAGS__SESS_NOTIFICATION) {
         if ((SR__OPERATION__GET_ITEM != msg->request->operation) &&
                 (SR__OPERATION__GET_ITEMS != msg->request->operation) &&
                 (SR__OPERATION__UNSUBSCRIBE != msg->request->operation)) {
@@ -1126,17 +1137,24 @@ rp_init(cm_ctx_t *cm_ctx, rp_ctx_t **rp_ctx_p)
         goto cleanup;
     }
 
-    /* initialize Data Manager */
-    rc = dm_init(ctx->ac_ctx, SR_SCHEMA_SEARCH_DIR, SR_DATA_SEARCH_DIR, &ctx->dm_ctx);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Data Manager initialization failed.");
-        goto cleanup;
-    }
-
     /* initialize Notification Processor */
     rc = np_init(ctx, &ctx->np_ctx);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Notification Processor initialization failed.");
+        goto cleanup;
+    }
+
+    /* initialize Persistence Manager */
+    rc = pm_init(ctx->ac_ctx, SR_INTERNAL_SCHEMA_SEARCH_DIR, SR_DATA_SEARCH_DIR, &ctx->pm_ctx);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Persistence Manager initialization failed.");
+        goto cleanup;
+    }
+
+    /* initialize Data Manager */
+    rc = dm_init(ctx->ac_ctx, ctx->np_ctx, ctx->pm_ctx, SR_SCHEMA_SEARCH_DIR, SR_DATA_SEARCH_DIR, &ctx->dm_ctx);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Data Manager initialization failed.");
         goto cleanup;
     }
 
@@ -1160,10 +1178,11 @@ rp_init(cm_ctx_t *cm_ctx, rp_ctx_t **rp_ctx_p)
     return SR_ERR_OK;
 
 cleanup:
-    np_cleanup(ctx->np_ctx);
     dm_cleanup(ctx->dm_ctx);
-    sr_cbuff_cleanup(ctx->request_queue);
+    np_cleanup(ctx->np_ctx);
+    pm_cleanup(ctx->pm_ctx);
     ac_cleanup(ctx->ac_ctx);
+    sr_cbuff_cleanup(ctx->request_queue);
     free(ctx);
     return rc;
 }
@@ -1200,10 +1219,11 @@ rp_cleanup(rp_ctx_t *rp_ctx)
             }
         }
         pthread_rwlock_destroy(&rp_ctx->commit_lock);
-        sr_cbuff_cleanup(rp_ctx->request_queue);
-        np_cleanup(rp_ctx->np_ctx);
         dm_cleanup(rp_ctx->dm_ctx);
+        np_cleanup(rp_ctx->np_ctx);
+        pm_cleanup(rp_ctx->pm_ctx);
         ac_cleanup(rp_ctx->ac_ctx);
+        sr_cbuff_cleanup(rp_ctx->request_queue);
         free(rp_ctx);
     }
 
@@ -1212,7 +1232,7 @@ rp_cleanup(rp_ctx_t *rp_ctx)
 
 int
 rp_session_start(const rp_ctx_t *rp_ctx, const uint32_t session_id, const ac_ucred_t *user_credentials,
-        const sr_datastore_t datastore, const bool notification_session, rp_session_t **session_p)
+        const sr_datastore_t datastore, const uint32_t session_options, rp_session_t **session_p)
 {
     rp_session_t *session = NULL;
     int rc = SR_ERR_OK;
@@ -1231,7 +1251,7 @@ rp_session_start(const rp_ctx_t *rp_ctx, const uint32_t session_id, const ac_ucr
     session->user_credentials = user_credentials;
     session->id = session_id;
     session->datastore = datastore;
-    session->notification_session = notification_session;
+    session->options = session_options;
 
     rc = ac_session_init(rp_ctx->ac_ctx, user_credentials, &session->ac_session);
     if (SR_ERR_OK  != rc) {

@@ -87,21 +87,21 @@ cl_connection_test(void **state)
     assert_non_null(conn2);
 
     /* start a new session in conn 1 */
-    rc = sr_session_start(conn1, SR_DS_RUNNING, &sess1);
+    rc = sr_session_start(conn1, SR_DS_RUNNING, SR_SESS_DEFAULT, &sess1);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(sess1);
 
     /* start few new sessions in conn 2 */
-    rc = sr_session_start(conn2, SR_DS_STARTUP, &sess_other1);
+    rc = sr_session_start(conn2, SR_DS_STARTUP, SR_SESS_DEFAULT, &sess_other1);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(sess_other1);
-    rc = sr_session_start(conn2, SR_DS_STARTUP, &sess_other2);
+    rc = sr_session_start(conn2, SR_DS_STARTUP, SR_SESS_DEFAULT, &sess_other2);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(sess_other2);
-    rc = sr_session_start(conn2, SR_DS_STARTUP, &sess2);
+    rc = sr_session_start(conn2, SR_DS_STARTUP, SR_SESS_DEFAULT, &sess2);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(sess2);
-    rc = sr_session_start(conn2, SR_DS_STARTUP, &sess2);
+    rc = sr_session_start(conn2, SR_DS_STARTUP, SR_SESS_DEFAULT, &sess2);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(sess2);
 
@@ -134,11 +134,11 @@ cl_list_schemas_test(void **state)
 
     sr_session_ctx_t *session = NULL;
     sr_schema_t *schemas = NULL;
-    size_t schema_cnt = 0, i = 0;
+    size_t schema_cnt = 0, i = 0, j = 0;
     int rc = 0;
 
     /* start a session */
-    rc = sr_session_start(conn, SR_DS_STARTUP, &session);
+    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* list schemas request */
@@ -166,8 +166,10 @@ cl_list_schemas_test(void **state)
                        schemas[i].submodules[s].revision.file_path_yin);
 
         }
-        /* all features are disabled by default */
-        assert_int_equal(0, schemas[i].enabled_feature_cnt);
+        /* print enabled features */
+        for (j = 0; j < schemas[i].enabled_feature_cnt; j++) {
+            printf("\tEnabled feature: %s\n", schemas[i].enabled_features[j]);
+        }
     }
     sr_free_schemas(schemas, schema_cnt);
 
@@ -187,7 +189,7 @@ cl_get_schema_test(void **state)
     int rc = 0;
 
     /* start a session */
-    rc = sr_session_start(conn, SR_DS_STARTUP, &session);
+    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* get schema for specified module, latest revision */
@@ -247,7 +249,7 @@ cl_get_item_test(void **state)
     int rc = 0;
 
     /* start a session */
-    rc = sr_session_start(conn, SR_DS_STARTUP, &session);
+    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* perform a get-item request */
@@ -319,7 +321,7 @@ cl_get_items_test(void **state)
     int rc = 0;
 
     /* start a session */
-    rc = sr_session_start(conn, SR_DS_STARTUP, &session);
+    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &session);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(session);
 
@@ -381,7 +383,7 @@ cl_get_items_iter_test(void **state)
     int rc = 0;
 
     /* start a session */
-    rc = sr_session_start(conn, SR_DS_STARTUP, &session);
+    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &session);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(session);
 
@@ -532,7 +534,7 @@ cl_set_item_test(void **state)
     int rc = 0;
 
     /* start a session */
-    rc = sr_session_start(conn, SR_DS_STARTUP, &session);
+    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* perform a set-item request */
@@ -556,7 +558,7 @@ cl_delete_item_test(void **state)
     int rc = 0;
 
     /* start a session */
-    rc = sr_session_start(conn, SR_DS_STARTUP, &session);
+    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* perform a delete-item request */
@@ -580,7 +582,7 @@ cl_move_item_test(void **state)
     size_t cnt = 0;
 
     /* start a session */
-    rc = sr_session_start(conn, SR_DS_STARTUP, &session);
+    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* perform a move-item request, not user ordered list */
@@ -638,7 +640,7 @@ cl_validate_test(void **state)
     size_t error_cnt = 0;
 
     /* start a session */
-    rc = sr_session_start(conn, SR_DS_STARTUP, &session);
+    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* set some data in the container, but don't set mandatory leaves */
@@ -691,7 +693,7 @@ cl_commit_test(void **state)
     size_t error_cnt = 0;
 
     /* start a session */
-    rc = sr_session_start(conn, SR_DS_STARTUP, &session);
+    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* set some data in the container, but don't set mandatory leaves */
@@ -747,7 +749,7 @@ cl_discard_changes_test(void **state)
     int rc = 0;
 
     /* start a session */
-    rc = sr_session_start(conn, SR_DS_STARTUP, &session);
+    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
     sr_val_t *values = NULL;
@@ -790,9 +792,9 @@ cl_locking_test(void **state)
     int rc = 0;
 
     /* start 2 sessions */
-    rc = sr_session_start(conn, SR_DS_STARTUP, &sessionA);
+    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &sessionA);
     assert_int_equal(rc, SR_ERR_OK);
-    rc = sr_session_start(conn, SR_DS_STARTUP, &sessionB);
+    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &sessionB);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* lock datastore in session A */
@@ -850,9 +852,9 @@ cl_refresh_session(void **state)
     int rc = 0;
 
     /* start two session */
-    rc = sr_session_start(conn, SR_DS_STARTUP, &sessionA);
+    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &sessionA);
     assert_int_equal(rc, SR_ERR_OK);
-    rc = sr_session_start(conn, SR_DS_STARTUP, &sessionB);
+    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &sessionB);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* Perform 4 operation in session A */
@@ -943,7 +945,7 @@ cl_get_error_test(void **state)
     int rc = 0;
 
     /* start a session */
-    rc = sr_session_start(conn, SR_DS_STARTUP, &session);
+    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* retrieve last error information - no error */
@@ -1012,7 +1014,7 @@ cl_notification_test(void **state)
     int rc = SR_ERR_OK;
 
     /* start a session */
-    rc = sr_session_start(conn, SR_DS_STARTUP, &session);
+    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
     rc = sr_module_install_subscribe(session, test_module_install_cb, &callback_called, &subscription1);
