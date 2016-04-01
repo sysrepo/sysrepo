@@ -138,38 +138,26 @@ srctl_get_yin_path(const char *module_name, const char *revision_date, char *yin
 }
 
 static int
-srctl_data_files_alter(const char *module_name, const char *revision_date, const char *command)
+srctl_data_files_alter(const char *module_name, const char *command)
 {
     char cmd[PATH_MAX] = { 0, };
     int ret = 0;
 
-    if (NULL != revision_date) {
-        snprintf(cmd, PATH_MAX, "%s %s%s@%s%s", command, SR_DATA_SEARCH_DIR, module_name, revision_date, SR_STARTUP_FILE_EXT);
-        ret = system(cmd);
-        if (0 != ret) return ret;
-        snprintf(cmd, PATH_MAX, "%s %s%s@%s%s", command, SR_DATA_SEARCH_DIR, module_name, revision_date, SR_RUNNING_FILE_EXT);
-        ret = system(cmd);
-        if (0 != ret) return ret;
-        snprintf(cmd, PATH_MAX, "%s %s%s@%s%s%s", command, SR_DATA_SEARCH_DIR, module_name, revision_date, SR_STARTUP_FILE_EXT, SR_LOCK_FILE_EXT);
-        ret = system(cmd);
-        if (0 != ret) return ret;
-        snprintf(cmd, PATH_MAX, "%s %s%s@%s%s%s", command, SR_DATA_SEARCH_DIR, module_name, revision_date, SR_RUNNING_FILE_EXT, SR_LOCK_FILE_EXT);
-        ret = system(cmd);
-        if (0 != ret) return ret;
-    } else {
-        snprintf(cmd, PATH_MAX, "%s %s%s%s", command, SR_DATA_SEARCH_DIR, module_name, SR_STARTUP_FILE_EXT);
-        ret = system(cmd);
-        if (0 != ret) return ret;
-        snprintf(cmd, PATH_MAX, "%s %s%s%s", command, SR_DATA_SEARCH_DIR, module_name, SR_RUNNING_FILE_EXT);
-        ret = system(cmd);
-        if (0 != ret) return ret;
-        snprintf(cmd, PATH_MAX, "%s %s%s%s%s", command, SR_DATA_SEARCH_DIR, module_name, SR_STARTUP_FILE_EXT, SR_LOCK_FILE_EXT);
-        ret = system(cmd);
-        if (0 != ret) return ret;
-        snprintf(cmd, PATH_MAX, "%s %s%s%s%s", command, SR_DATA_SEARCH_DIR, module_name, SR_RUNNING_FILE_EXT, SR_LOCK_FILE_EXT);
-        ret = system(cmd);
-        if (0 != ret) return ret;
-    }
+    snprintf(cmd, PATH_MAX, "%s %s%s%s", command, SR_DATA_SEARCH_DIR, module_name, SR_STARTUP_FILE_EXT);
+    ret = system(cmd);
+    if (0 != ret) return ret;
+    snprintf(cmd, PATH_MAX, "%s %s%s%s", command, SR_DATA_SEARCH_DIR, module_name, SR_RUNNING_FILE_EXT);
+    ret = system(cmd);
+    if (0 != ret) return ret;
+    snprintf(cmd, PATH_MAX, "%s %s%s%s%s", command, SR_DATA_SEARCH_DIR, module_name, SR_STARTUP_FILE_EXT, SR_LOCK_FILE_EXT);
+    ret = system(cmd);
+    if (0 != ret) return ret;
+    snprintf(cmd, PATH_MAX, "%s %s%s%s%s", command, SR_DATA_SEARCH_DIR, module_name, SR_RUNNING_FILE_EXT, SR_LOCK_FILE_EXT);
+    ret = system(cmd);
+    if (0 != ret) return ret;
+    snprintf(cmd, PATH_MAX, "%s %s%s%s", command, SR_DATA_SEARCH_DIR, module_name, SR_PERSIST_FILE_EXT);
+    ret = system(cmd);
+    if (0 != ret) return ret;
 
     return ret;
 }
@@ -239,7 +227,7 @@ srctl_install(const char *yang, const char *yin, const char *owner, const char *
     }
 
     printf("Generating data files ...\n");
-    ret = srctl_data_files_alter(module_name, revision_date, "touch");
+    ret = srctl_data_files_alter(module_name, "touch");
     if (0 != ret) {
         goto fail;
     }
@@ -268,7 +256,7 @@ fail:
         sr_disconnect(connection);
     }
     if (NULL != module_name) {
-        srctl_data_files_alter(module_name, revision_date, "rm -f");
+        srctl_data_files_alter(module_name, "rm -f");
     }
     if ('\0' != yang_dst[0]) {
         snprintf(cmd, PATH_MAX, "rm -f %s", yang_dst);
@@ -324,7 +312,7 @@ srctl_uninstall(const char *module, const char *revision)
 
     /* delete data files */
     printf("Deleting data files ...\n");
-    srctl_data_files_alter(module, revision, "rm");
+    srctl_data_files_alter(module, "rm");
 
     return EXIT_SUCCESS;
 }

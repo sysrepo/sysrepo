@@ -70,10 +70,10 @@ ADD_UNIT_TEST_WITH_OPTS(perf_test perf_test.c "" 0 "")
 ADD_UNIT_TEST_WITH_OPTS(daemon_test daemon_test.c "" 0 "")
 
 # copy internal yangs to tests data dir
-add_custom_command(
-  TARGET pm_test POST_BUILD
+execute_process(
   COMMAND mkdir -p "${TEST_REPOSITORY_LOC}internal/yang/"
   COMMAND cp "${PROJECT_SOURCE_DIR}/yang/sysrepo-persistent-data.*" "${TEST_REPOSITORY_LOC}internal/yang/"
+  ERROR_QUIET
 )
 
 FIND_PACKAGE(PythonInterp)
