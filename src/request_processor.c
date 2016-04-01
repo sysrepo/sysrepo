@@ -857,7 +857,7 @@ rp_msg_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
     CHECK_NULL_ARG3(rp_ctx, session, msg);
 
     /* whitelist only some operations for notification sessions */
-    if (session->notification_session) {
+    if (session->options & SR__SESSION_FLAGS__SESS_NOTIFICATION) {
         if ((SR__OPERATION__GET_ITEM != msg->request->operation) &&
                 (SR__OPERATION__GET_ITEMS != msg->request->operation) &&
                 (SR__OPERATION__UNSUBSCRIBE != msg->request->operation)) {
@@ -1232,7 +1232,7 @@ rp_cleanup(rp_ctx_t *rp_ctx)
 
 int
 rp_session_start(const rp_ctx_t *rp_ctx, const uint32_t session_id, const ac_ucred_t *user_credentials,
-        const sr_datastore_t datastore, const bool notification_session, rp_session_t **session_p)
+        const sr_datastore_t datastore, const uint32_t session_options, rp_session_t **session_p)
 {
     rp_session_t *session = NULL;
     int rc = SR_ERR_OK;
@@ -1251,7 +1251,7 @@ rp_session_start(const rp_ctx_t *rp_ctx, const uint32_t session_id, const ac_ucr
     session->user_credentials = user_credentials;
     session->id = session_id;
     session->datastore = datastore;
-    session->notification_session = notification_session;
+    session->options = session_options;
 
     rc = ac_session_init(rp_ctx->ac_ctx, user_credentials, &session->ac_session);
     if (SR_ERR_OK  != rc) {

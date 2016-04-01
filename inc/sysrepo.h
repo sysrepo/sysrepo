@@ -257,6 +257,22 @@ typedef enum sr_conn_flag_e {
 typedef uint32_t sr_conn_options_t;
 
 /**
+ * @brief Flags used to override default session handling (used by ::sr_session_start
+ * and ::sr_session_start_user calls).
+ */
+typedef enum sr_session_flag_e {
+    SR_SESS_DEFAULT = 0,      /**< Default (normal) session behavior. */
+    SR_SESS_CONFIG_ONLY = 1,  /**< Session will process only configuration data (e.g. sysrepo won't
+                                   return any state data by ::sr_get_items / ::sr_get_items_iter calls). */
+} sr_session_flag_t;
+
+/**
+ * @brief Options overriding default connection session handling,
+ * can be bitwise OR-ed value of any ::sr_session_flag_t flags.
+ */
+typedef uint32_t sr_conn_options_t;
+
+/**
  * @brief Data stores that sysrepo supports. Both are editable via implicit candidate.
  * To make changes permanent in edited datastore ::sr_commit must be issued.
  * @see @ref ds_page "Datastores & Sessions" information page.
@@ -300,12 +316,14 @@ void sr_disconnect(sr_conn_ctx_t *conn_ctx);
  * session will operate. Functionality of some sysrepo calls does not depend on
  * datastore. If your session will contain just calls like these, you can pass
  * any valid value (e.g. SR_RUNNING).
+ * @param[in] opts Options overriding default session handling.
  * @param[out] session Session context that can be used for subsequent API
  * calls (automatically allocated, can be released by calling ::sr_session_stop).
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int sr_session_start(sr_conn_ctx_t *conn_ctx, sr_datastore_t datastore, sr_session_ctx_t **session);
+int sr_session_start(sr_conn_ctx_t *conn_ctx, const sr_datastore_t datastore,
+        const sr_conn_options_t opts, sr_session_ctx_t **session);
 
 /**
  * @brief Starts a new configuration session on behalf of a different user.
@@ -330,12 +348,14 @@ int sr_session_start(sr_conn_ctx_t *conn_ctx, sr_datastore_t datastore, sr_sessi
  * session will operate. Functionality of some sysrepo calls does not depend on
  * datastore. If your session will contain just calls like these, you can pass
  * any valid value (e.g. SR_RUNNING).
+ * @param[in] opts Options overriding default session handling.
  * @param[out] session Session context that can be used for subsequent API
  * calls (automatically allocated, can be released by calling ::sr_session_stop).
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int sr_session_start_user(sr_conn_ctx_t *conn_ctx, const char *user_name, sr_datastore_t datastore, sr_session_ctx_t **session);
+int sr_session_start_user(sr_conn_ctx_t *conn_ctx, const char *user_name, const sr_datastore_t datastore,
+        const sr_conn_options_t opts, sr_session_ctx_t **session);
 
 /**
  * @brief Stops current session and releases resources tied to the session.

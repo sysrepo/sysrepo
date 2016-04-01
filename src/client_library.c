@@ -305,13 +305,15 @@ sr_disconnect(sr_conn_ctx_t *conn_ctx)
 }
 
 int
-sr_session_start(sr_conn_ctx_t *conn_ctx, sr_datastore_t datastore, sr_session_ctx_t **session_p)
+sr_session_start(sr_conn_ctx_t *conn_ctx, sr_datastore_t datastore,
+        const sr_conn_options_t opts, sr_session_ctx_t **session_p)
 {
-    return sr_session_start_user(conn_ctx, NULL, datastore, session_p);
+    return sr_session_start_user(conn_ctx, NULL, datastore, opts, session_p);
 }
 
 int
-sr_session_start_user(sr_conn_ctx_t *conn_ctx, const char *user_name, sr_datastore_t datastore, sr_session_ctx_t **session_p)
+sr_session_start_user(sr_conn_ctx_t *conn_ctx, const char *user_name, sr_datastore_t datastore,
+        const sr_conn_options_t opts, sr_session_ctx_t **session_p)
 {
     sr_session_ctx_t *session = NULL;
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
@@ -331,7 +333,7 @@ sr_session_start_user(sr_conn_ctx_t *conn_ctx, const char *user_name, sr_datasto
         SR_LOG_ERR_MSG("Cannot allocate session_start message.");
         goto cleanup;
     }
-    msg_req->request->session_start_req->notification_session = false;
+    msg_req->request->session_start_req->options = opts;
     msg_req->request->session_start_req->datastore = sr_datastore_sr_to_gpb(datastore);
 
     /* set user name if provided */
@@ -1474,7 +1476,7 @@ sr_unsubscribe(sr_subscription_ctx_t *subscription)
         /* create a temporary connection and session */
         rc = sr_connect("tmp-conn-unsubscribe", SR_CONN_DEFAULT, &connection);
         if (SR_ERR_OK == rc) {
-            rc = sr_session_start(connection, SR_DS_STARTUP, &session);
+            rc = sr_session_start(connection, SR_DS_STARTUP, SR_SESS_DEFAULT, &session);
         }
         if (SR_ERR_OK != rc) {
             sr_disconnect(connection);
