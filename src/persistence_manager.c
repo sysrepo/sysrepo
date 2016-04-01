@@ -134,10 +134,17 @@ pm_load_data_tree(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *mod
             } else {
                 /* create the data tree */
                 rc = pm_create_data_tree(pm_ctx, module_name, data_tree);
-                /* create the file */
-                ac_set_user_identity(pm_ctx->ac_ctx, user_cred);
-                fd = open(data_filename, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
-                ac_unset_user_identity(pm_ctx->ac_ctx);
+                if (SR_ERR_OK == rc) {
+                    /* create the file */
+                    ac_set_user_identity(pm_ctx->ac_ctx, user_cred);
+                    fd = open(data_filename, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
+                    ac_unset_user_identity(pm_ctx->ac_ctx);
+                    if (-1 == fd) {
+                        SR_LOG_ERR("Unable to create new persist data file '%s': %s", data_filename, strerror(errno));
+                        lyd_free_withsiblings(*data_tree);
+                        rc = SR_ERR_INTERNAL;
+                    }
+                }
             }
         } else if (EACCES == errno) {
             SR_LOG_ERR("Insufficient permissions to access persist data file '%s'.", data_filename);
