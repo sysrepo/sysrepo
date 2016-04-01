@@ -136,7 +136,7 @@ void createDataTreeIETFinterfaces(struct ly_ctx *ctx, struct lyd_node **root){
     lyd_new_leaf(node, module_interfaces, "type", "ethernetCsmacd");
     lyd_new_leaf(node, module_interfaces, "enabled", "false");
 
-    assert_int_equal(0, lyd_validate(*root, LYD_OPT_STRICT));
+    assert_int_equal(0, lyd_validate(root, LYD_OPT_STRICT | LYD_OPT_CONFIG));
     assert_int_equal(SR_ERR_OK, sr_save_data_tree_file(TEST_DATA_SEARCH_DIR"ietf-interfaces"SR_STARTUP_FILE_EXT, *root));
 
 }

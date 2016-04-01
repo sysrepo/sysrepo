@@ -1034,8 +1034,9 @@ edit_validate_test(void **state)
     errors = NULL;
     e_cnt = 0;
 
+    /* Validation should pass because libyang automatically overwrites nodes from different choice alternative */
     rc = dm_validate_session_data_trees(ctx->dm_ctx, session->dm_session, &errors, &e_cnt);
-    assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
+    assert_int_equal(SR_ERR_OK, rc);
     sr_free_errors(errors, e_cnt);
 
     test_rp_session_cleanup(ctx, session);
