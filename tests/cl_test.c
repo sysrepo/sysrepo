@@ -134,7 +134,7 @@ cl_list_schemas_test(void **state)
 
     sr_session_ctx_t *session = NULL;
     sr_schema_t *schemas = NULL;
-    size_t schema_cnt = 0, i = 0;
+    size_t schema_cnt = 0, i = 0, j = 0;
     int rc = 0;
 
     /* start a session */
@@ -166,8 +166,10 @@ cl_list_schemas_test(void **state)
                        schemas[i].submodules[s].revision.file_path_yin);
 
         }
-        /* all features are disabled by default */
-        assert_int_equal(0, schemas[i].enabled_feature_cnt);
+        /* print enabled features */
+        for (j = 0; j < schemas[i].enabled_feature_cnt; j++) {
+            printf("\tEnabled feature: %s\n", schemas[i].enabled_features[j]);
+        }
     }
     sr_free_schemas(schemas, schema_cnt);
 

@@ -75,15 +75,13 @@ int pm_feature_enable(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char 
  * @brief Returns the array of features that should be enabled in specified module.
  *
  * @param[in] pm_ctx Persistence Manager context acquired by ::pm_init call.
- * @param[in] user_cred User credentials.
  * @param[in] module_name Name of the module.
  * @param[out] features Array of features that should be enabled.
  * @param[out] feature_cnt Number of features in returned array.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int pm_get_features(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *module_name,
-        char ***features, size_t *feature_cnt);
+int pm_get_features(pm_ctx_t *pm_ctx, const char *module_name, char ***features, size_t *feature_cnt);
 
 /**@} pm */
 

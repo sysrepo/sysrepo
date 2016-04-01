@@ -112,14 +112,18 @@ pm_load_data_tree(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *mod
     int fd = -1;
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG4(pm_ctx, user_cred, data_filename, data_tree);
+    CHECK_NULL_ARG3(pm_ctx, data_filename, data_tree);
 
     /* open the file as the proper user */
-    ac_set_user_identity(pm_ctx->ac_ctx, user_cred);
+    if (NULL != user_cred) {
+        ac_set_user_identity(pm_ctx->ac_ctx, user_cred);
+    }
 
     fd = open(data_filename, (read_only ? O_RDONLY : O_RDWR));
 
-    ac_unset_user_identity(pm_ctx->ac_ctx);
+    if (NULL != user_cred) {
+        ac_unset_user_identity(pm_ctx->ac_ctx);
+    }
 
     if (-1 == fd) {
         /* error by open */
@@ -319,8 +323,7 @@ cleanup:
 }
 
 int
-pm_get_features(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *module_name,
-        char ***features_p, size_t *feature_cnt_p)
+pm_get_features(pm_ctx_t *pm_ctx, const char *module_name, char ***features_p, size_t *feature_cnt_p)
 {
     char *data_filename = NULL;
     struct lyd_node *data_tree = NULL, *curr = NULL;
@@ -328,7 +331,7 @@ pm_get_features(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *modul
     size_t feature_cnt = 0;
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG5(pm_ctx, user_cred, module_name, features_p, feature_cnt_p);
+    CHECK_NULL_ARG4(pm_ctx, module_name, features_p, feature_cnt_p);
 
     /* get persist file path */
     rc = sr_get_persist_data_file_name(pm_ctx->data_search_dir, module_name, &data_filename);
@@ -338,9 +341,9 @@ pm_get_features(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *modul
     }
 
     /* load the data tree from persist file */
-    rc = pm_load_data_tree(pm_ctx, user_cred, module_name, data_filename, true, NULL, &data_tree);
+    rc = pm_load_data_tree(pm_ctx, NULL, module_name, data_filename, true, NULL, &data_tree);
     if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Unable to load persist data tree for module '%s'.", module_name);
+        SR_LOG_WRN("Unable to load persist data tree for module '%s'.", module_name);
         goto cleanup;
     }
 

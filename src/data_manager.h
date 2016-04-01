@@ -445,5 +445,6 @@ int dm_install_module(dm_ctx_t *dm_ctx, const char *module_name, const char *rev
  * @return Error code (SR_ERR_OK on success)
  */
 int dm_uninstall_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision);
+
 /**@} Data manager*/
 #endif /* SRC_DATA_MANAGER_H_ */

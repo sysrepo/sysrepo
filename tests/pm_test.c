@@ -99,7 +99,7 @@ pm_feature_test(void **state)
     rc = pm_feature_enable(test_ctx->pm_ctx, &test_ctx->user_cred, "example-module", "featureX", true);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = pm_get_features(test_ctx->pm_ctx, &test_ctx->user_cred, "example-module", &features, &feature_cnt);
+    rc = pm_get_features(test_ctx->pm_ctx, "example-module", &features, &feature_cnt);
     assert_int_equal(SR_ERR_OK, rc);
     assert_true(feature_cnt >= 2);
     for (size_t i = 0; i < feature_cnt; i++) {
