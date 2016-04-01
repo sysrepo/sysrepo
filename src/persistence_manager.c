@@ -61,7 +61,7 @@ pm_save_data_tree(pm_ctx_t *pm_ctx, int fd, struct lyd_node *data_tree)
     ftruncate(fd, 0);
 
     /* print data tree to file */
-    rc = lyd_print_fd(fd, data_tree, LYD_XML_FORMAT, LYP_WITHSIBLINGS);
+    rc = lyd_print_fd(fd, data_tree, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT);
     if (0 != rc) {
         SR_LOG_ERR("Saving persist data tree failed: %s", ly_errmsg());
         rc = SR_ERR_INTERNAL;

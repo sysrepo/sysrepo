@@ -10,3 +10,4 @@ src/common/*.pb-c.*
 nbproject/
 CMakeCache.txt
 tests/data/data/*.data
+tests/data/internal/*
