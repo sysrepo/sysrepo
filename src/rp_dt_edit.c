@@ -816,8 +816,8 @@ rp_dt_replay_operations(dm_ctx_t *ctx, dm_session_t *session, dm_sess_op_t *oper
         /* check if the operation should be skipped */
         bool match = false;
             for (unsigned int m = 0; m < models_to_skip->number; m++){
-                if (0 == XP_CMP_FIRST_NS(op->loc_id, (char *) models_to_skip->set[m])){
-                    SR_LOG_DBG("Skipping op for model %s", (char *) models_to_skip->set[m]);
+                if (0 == XP_CMP_FIRST_NS(op->loc_id, (char *) models_to_skip->set.g[m])){
+                    SR_LOG_DBG("Skipping op for model %s", (char *) models_to_skip->set.g[m]);
                     match = true;
                     break;
                 }
