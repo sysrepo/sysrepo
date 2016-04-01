@@ -33,6 +33,8 @@
 #include "sr_common.h"
 #include "rp_dt_edit.h"
 #include "access_control.h"
+#include "notification_processor.h"
+#include "persistence_manager.h"
 
 /**
  * @brief Helper structure for advisory locking. Holds
@@ -57,6 +59,8 @@ typedef struct dm_lock_item_s {
  */
 typedef struct dm_ctx_s {
     ac_ctx_t *ac_ctx;             /**< Access Control module context */
+    np_ctx_t *np_ctx;             /**< Notification Processor context */
+    pm_ctx_t *pm_ctx;             /**< Persistence Manager context */
     char *schema_search_dir;      /**< location where schema files are located */
     char *data_search_dir;        /**< location where data files are located */
     struct ly_ctx *ly_ctx;        /**< libyang context holding all loaded schemas */
@@ -913,7 +917,8 @@ dm_is_running_ds_session(dm_session_t *session)
 }
 
 int
-dm_init(ac_ctx_t *ac_ctx, const char *schema_search_dir, const char *data_search_dir, dm_ctx_t **dm_ctx)
+dm_init(ac_ctx_t *ac_ctx, np_ctx_t *np_ctx, pm_ctx_t *pm_ctx,
+        const char *schema_search_dir, const char *data_search_dir, dm_ctx_t **dm_ctx)
 {
     CHECK_NULL_ARG3(schema_search_dir, data_search_dir, dm_ctx);
 
@@ -924,6 +929,8 @@ dm_init(ac_ctx_t *ac_ctx, const char *schema_search_dir, const char *data_search
     ctx = calloc(1, sizeof(*ctx));
     CHECK_NULL_NOMEM_GOTO(ctx, rc, cleanup);
     ctx->ac_ctx = ac_ctx;
+    ctx->np_ctx = np_ctx;
+    ctx->pm_ctx = pm_ctx;
 
     ctx->ly_ctx = ly_ctx_new(schema_search_dir);
     CHECK_NULL_NOMEM_GOTO(ctx->ly_ctx, rc, cleanup);

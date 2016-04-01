@@ -31,6 +31,8 @@
 #include "access_control.h"
 #include "persistence_manager.h"
 
+#include "test_data.h"
+
 typedef struct test_ctx_s {
     ac_ctx_t *ac_ctx;
     pm_ctx_t *pm_ctx;
@@ -57,7 +59,7 @@ test_setup(void **state)
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(test_ctx->ac_ctx);
 
-    rc = pm_init(test_ctx->ac_ctx, SR_INTERNAL_SCHEMA_SEARCH_DIR, SR_DATA_SEARCH_DIR, &test_ctx->pm_ctx);
+    rc = pm_init(test_ctx->ac_ctx,  TEST_INTERNAL_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &test_ctx->pm_ctx);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(test_ctx->pm_ctx);
 
