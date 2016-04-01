@@ -35,7 +35,7 @@ class CommitTester(SysrepoTester):
 
     def checkItemStep(self):
         v = self.session.get_item("/test-module:main/i8")
-        self.assertEqual(99, v.value)
+        self.tc.assertEqual(99, v.value)
 
 
 class CommitTest(unittest.TestCase):
@@ -58,10 +58,5 @@ class CommitTest(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    suite = unittest.TestLoader().loadTestsFromTestCase(CommitTest)
-    result = unittest.TextTestRunner(verbosity=2).run(suite)
-    if result.wasSuccessful():
-        sys.exit(0)
-    else:
-        sys.exit(1)
+    unittest.main()
 

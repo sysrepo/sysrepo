@@ -34,7 +34,7 @@ class SysrepoTester(Tester):
         self.session.lock_datastore()
 
     def lockFailStep(self):
-        with self.assertRaises(RuntimeError):
+        with self.tc.assertRaises(RuntimeError):
             self.session.lock_datastore()
 
     def unlockStep(self):
@@ -44,14 +44,14 @@ class SysrepoTester(Tester):
         self.session.lock_module(module_name)
 
     def lockFailModelStep(self, module_name):
-        with self.assertRaises(RuntimeError):
+        with self.tc.assertRaises(RuntimeError):
             self.session.lock_module(module_name)
 
     def unlockModelStep(self, module_name):
         self.session.unlock_module(module_name)
 
     def commitFailStep(self):
-        with self.assertRaises(RuntimeError):
+        with self.tc.assertRaises(RuntimeError):
             self.session.commit()
 
     def commitStep(self):
