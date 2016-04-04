@@ -72,9 +72,16 @@ ADD_UNIT_TEST_WITH_OPTS(daemon_test daemon_test.c "" 0 "")
 # copy internal yangs to tests data dir
 execute_process(
   COMMAND mkdir -p "${TEST_REPOSITORY_LOC}internal/yang/"
-  COMMAND cp "${PROJECT_SOURCE_DIR}/yang/sysrepo-persistent-data.*" "${TEST_REPOSITORY_LOC}internal/yang/"
-  ERROR_QUIET
+  COMMAND cp "${PROJECT_SOURCE_DIR}/yang/sysrepo-persistent-data.yang" "${TEST_REPOSITORY_LOC}internal/yang/"
+  COMMAND cp "${PROJECT_SOURCE_DIR}/yang/sysrepo-persistent-data.yin" "${TEST_REPOSITORY_LOC}internal/yang/"
+  RESULT_VARIABLE ret_var
+  OUTPUT_VARIABLE output_var
+  ERROR_VARIABLE error_var
 )
+
+message("ret_var='${ret_var}'")
+message("output_var='${output_var}'")
+message("error_var='${error_var}'")
 
 FIND_PACKAGE(PythonInterp)
 FIND_PACKAGE(SWIG)
