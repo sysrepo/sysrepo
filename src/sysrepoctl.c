@@ -25,6 +25,7 @@
 #include <getopt.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <dirent.h>
 #include <libyang/libyang.h>
 
 #include "sr_common.h"
@@ -61,11 +62,47 @@ srctl_report_error(sr_session_ctx_t *session, int rc)
 static int
 srctl_list_modules()
 {
+    sr_conn_ctx_t *connection = NULL;
+    sr_session_ctx_t *session = NULL;
+    sr_schema_t *schemas = NULL;
+    size_t schema_cnt = 0;
+    int rc = SR_ERR_OK;
+
     printf("Sysrepo schema directory: %s\n", SR_SCHEMA_SEARCH_DIR);
     printf("Sysrepo data directory:   %s\n", SR_DATA_SEARCH_DIR);
 
-    // TODO
-    printf("This operation is not yet implemented.\n");
+    rc = srctl_get_session(&connection, &session);
+
+    if (SR_ERR_OK == rc) {
+        rc = sr_list_schemas(session, &schemas, &schema_cnt);
+    }
+
+    printf("\n%-30s| %-11s| %-30s| %s\n", "Module Name", "Revision", "Submodules", "Enabled Features");
+    printf("---------------------------------------------------------------------------------------------\n");
+
+    if (SR_ERR_OK == rc) {
+        for (size_t i = 0; i < schema_cnt; i++) {
+            printf("%-30s| %-11s|", schemas[i].module_name,
+                    NULL == schemas[i].revision.revision ? "" : schemas[i].revision.revision);
+            size_t printed = 0;
+            for (size_t j = 0; j < schemas[i].submodule_count; j++) {
+                printed += printf(" %s", schemas[i].submodules[j].submodule_name);
+            }
+            for (size_t j = printed; j <= 30; j++) printf(" ");
+            printf("|");
+            for (size_t j = 0; j < schemas[i].enabled_feature_cnt; j++) {
+                printf(" %s", schemas[i].enabled_features[j]);
+            }
+            printf("\n");
+        }
+        printf("\n");
+        sr_free_schemas(schemas, schema_cnt);
+        rc = EXIT_SUCCESS;
+    } else {
+        srctl_report_error(session, rc);
+        rc = EXIT_FAILURE;
+    }
+    sr_disconnect(connection);
 
     return EXIT_SUCCESS;
 }
@@ -138,28 +175,28 @@ srctl_get_yin_path(const char *module_name, const char *revision_date, char *yin
 }
 
 static int
-srctl_data_files_alter(const char *module_name, const char *command)
+srctl_data_files_alter(const char *module_name, const char *command, bool continue_on_error)
 {
     char cmd[PATH_MAX] = { 0, };
-    int ret = 0;
+    int ret = 0, last_err = 0;
 
     snprintf(cmd, PATH_MAX, "%s %s%s%s", command, SR_DATA_SEARCH_DIR, module_name, SR_STARTUP_FILE_EXT);
     ret = system(cmd);
-    if (0 != ret) return ret;
+    if (0 != ret) { if (continue_on_error) last_err = ret; else return ret; }
     snprintf(cmd, PATH_MAX, "%s %s%s%s", command, SR_DATA_SEARCH_DIR, module_name, SR_RUNNING_FILE_EXT);
     ret = system(cmd);
-    if (0 != ret) return ret;
+    if (0 != ret) { if (continue_on_error) last_err = ret; else return ret; }
     snprintf(cmd, PATH_MAX, "%s %s%s%s%s", command, SR_DATA_SEARCH_DIR, module_name, SR_STARTUP_FILE_EXT, SR_LOCK_FILE_EXT);
     ret = system(cmd);
-    if (0 != ret) return ret;
+    if (0 != ret) { if (continue_on_error) last_err = ret; else return ret; }
     snprintf(cmd, PATH_MAX, "%s %s%s%s%s", command, SR_DATA_SEARCH_DIR, module_name, SR_RUNNING_FILE_EXT, SR_LOCK_FILE_EXT);
     ret = system(cmd);
-    if (0 != ret) return ret;
+    if (0 != ret) { if (continue_on_error) last_err = ret; else return ret; }
     snprintf(cmd, PATH_MAX, "%s %s%s%s", command, SR_DATA_SEARCH_DIR, module_name, SR_PERSIST_FILE_EXT);
     ret = system(cmd);
-    if (0 != ret) return ret;
+    if (0 != ret) { if (continue_on_error) last_err = ret; else return ret; }
 
-    return ret;
+    return last_err;
 }
 
 static int
@@ -227,7 +264,7 @@ srctl_install(const char *yang, const char *yin, const char *owner, const char *
     }
 
     printf("Generating data files ...\n");
-    ret = srctl_data_files_alter(module_name, "touch");
+    ret = srctl_data_files_alter(module_name, "touch", false);
     if (0 != ret) {
         goto fail;
     }
@@ -251,12 +288,12 @@ srctl_install(const char *yang, const char *yin, const char *owner, const char *
     return EXIT_SUCCESS;
 
 fail:
-    printf("Install operation cancelled.\n");
+    fprintf(stderr, "Install operation cancelled.\n");
     if (NULL != connection) {
         sr_disconnect(connection);
     }
     if (NULL != module_name) {
-        srctl_data_files_alter(module_name, "rm -f");
+        srctl_data_files_alter(module_name, "rm -f", true);
     }
     if ('\0' != yang_dst[0]) {
         snprintf(cmd, PATH_MAX, "rm -f %s", yang_dst);
@@ -299,20 +336,22 @@ srctl_uninstall(const char *module, const char *revision)
     }
     sr_disconnect(connection);
 
-    /* delete YANG and YIN file */
-    srctl_get_yang_path(module, revision, yang_dst, PATH_MAX);
-    printf("Deleting the YANG file %s ...\n", yang_dst);
-    snprintf(cmd, PATH_MAX, "rm %s", yang_dst);
-    system(cmd);
+    if (EXIT_FAILURE != ret) {
+        /* delete YANG and YIN file */
+        srctl_get_yang_path(module, revision, yang_dst, PATH_MAX);
+        printf("Deleting the YANG file %s ...\n", yang_dst);
+        snprintf(cmd, PATH_MAX, "rm %s", yang_dst);
+        system(cmd);
 
-    srctl_get_yin_path(module, revision, yin_dst, PATH_MAX);
-    printf("Deleting the YIN file %s ...\n", yin_dst);
-    snprintf(cmd, PATH_MAX, "rm %s", yin_dst);
-    system(cmd);
+        srctl_get_yin_path(module, revision, yin_dst, PATH_MAX);
+        printf("Deleting the YIN file %s ...\n", yin_dst);
+        snprintf(cmd, PATH_MAX, "rm %s", yin_dst);
+        system(cmd);
 
-    /* delete data files */
-    printf("Deleting data files ...\n");
-    srctl_data_files_alter(module, "rm");
+        /* delete data files */
+        printf("Deleting data files ...\n");
+        srctl_data_files_alter(module, "rm", true);
+    }
 
     return EXIT_SUCCESS;
 }
@@ -320,16 +359,32 @@ srctl_uninstall(const char *module, const char *revision)
 static int
 srctl_change(const char *module, const char *revision, const char *owner, const char *permissions)
 {
+    char cmd[PATH_MAX] = { 0, };
+    int ret = 0;
+
     if (NULL == module) {
         fprintf(stderr, "Error: Module must be specified for --change operation.\n");
         exit(EXIT_FAILURE);
     }
     printf("Changing the module '%s'.\n", module);
 
-    // TODO
-    printf("This operation is not yet implemented.\n");
+    if (NULL != owner) {
+        snprintf(cmd, PATH_MAX, "chown %s", owner);
+        ret = srctl_data_files_alter(module, cmd, true);
+    } else if (NULL != permissions) {
+        snprintf(cmd, PATH_MAX, "chmod %s", permissions);
+        ret = srctl_data_files_alter(module, cmd, true);
+    } else {
+        fprintf(stderr, "Either --owner or --permissions option must be specified for --change operation.\n");
+        return EXIT_FAILURE;
+    }
 
-    return EXIT_SUCCESS;
+    if (0 != ret) {
+        fprintf(stderr, "Some part of the change operation failed, see the logs above.\n");
+        return EXIT_FAILURE;
+    } else {
+        return EXIT_SUCCESS;
+    }
 }
 
 static int
@@ -394,8 +449,8 @@ srctl_print_help()
     printf("  -n, --yin              Path to the file with schema in YIN format (--install operation).\n");
     printf("  -m, --module           Name of the module to be operated on (--uninstall, --change, --feature-enable, --feature-disable operations).\n");
     printf("  -r, --revision         Revision of the module to be operated on (--uninstall, --change operations).\n");
-    printf("  -o, --owner            Owner user and/or group of the data module (--install, --change operations).\n");
-    printf("  -p, --permissions      Access permissions of the data module (--install, --change operations).\n");
+    printf("  -o, --owner            Owner user and group of the module's data in chown format (--install, --change operations).\n");
+    printf("  -p, --permissions      Access permissions of the module's data in chmod format (--install, --change operations).\n");
     printf("\n");
     printf("Examples:\n");
     printf("  1) Install a new module by specifying YANG file, ownership and access permissions:\n");
