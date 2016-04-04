@@ -25,7 +25,8 @@
 #include <getopt.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <dirent.h>
+#include <pwd.h>
+#include <grp.h>
 #include <libyang/libyang.h>
 
 #include "sr_common.h"
@@ -59,6 +60,44 @@ srctl_report_error(sr_session_ctx_t *session, int rc)
     }
 }
 
+static void
+srctl_print_module_owner(const char *module_name, char *buff)
+{
+    char file_name[PATH_MAX] = { 0, };
+    struct stat info;
+    int ret = 0;
+
+    snprintf(file_name, PATH_MAX, "%s%s%s", SR_DATA_SEARCH_DIR, module_name, SR_STARTUP_FILE_EXT);
+
+    ret = stat(file_name, &info);
+    if (0 == ret) {
+        struct passwd *pw = getpwuid(info.st_uid);
+        struct group  *gr = getgrgid(info.st_gid);
+        snprintf(buff, PATH_MAX, "%s:%s", pw->pw_name, gr->gr_name);
+    } else {
+        snprintf(buff, PATH_MAX, " ");
+    }
+}
+
+static void
+srctl_print_module_permissions(const char *module_name, char *buff)
+{
+    char file_name[PATH_MAX] = { 0, };
+    struct stat info;
+    int statchmod = 0;
+    int ret = 0;
+
+    snprintf(file_name, PATH_MAX, "%s%s%s", SR_DATA_SEARCH_DIR, module_name, SR_STARTUP_FILE_EXT);
+
+    ret = stat(file_name, &info);
+    if (0 == ret) {
+        statchmod = info.st_mode & (S_IRWXU | S_IRWXG | S_IRWXO);
+        snprintf(buff, PATH_MAX, "%o", statchmod);
+    } else {
+        snprintf(buff, PATH_MAX, " ");
+    }
+}
+
 static int
 srctl_list_modules()
 {
@@ -66,6 +105,7 @@ srctl_list_modules()
     sr_session_ctx_t *session = NULL;
     sr_schema_t *schemas = NULL;
     size_t schema_cnt = 0;
+    char buff[PATH_MAX] = { 0, };
     int rc = SR_ERR_OK;
 
     printf("Sysrepo schema directory: %s\n", SR_SCHEMA_SEARCH_DIR);
@@ -77,18 +117,27 @@ srctl_list_modules()
         rc = sr_list_schemas(session, &schemas, &schema_cnt);
     }
 
-    printf("\n%-30s| %-11s| %-30s| %s\n", "Module Name", "Revision", "Submodules", "Enabled Features");
-    printf("---------------------------------------------------------------------------------------------\n");
+    printf("\n%-30s| %-11s| %-20s| %-12s| %-30s| %s\n",
+            "Module Name", "Revision", "Data Owner", "Permissions", "Submodules", "Enabled Features");
+    printf("---------------------------------------------------------------------------------------------------------------------------------\n");
 
     if (SR_ERR_OK == rc) {
         for (size_t i = 0; i < schema_cnt; i++) {
-            printf("%-30s| %-11s|", schemas[i].module_name,
-                    NULL == schemas[i].revision.revision ? "" : schemas[i].revision.revision);
+            printf("%-30s| %-11s| ", schemas[i].module_name,
+                    (NULL == schemas[i].revision.revision ? "" : schemas[i].revision.revision));
+            /* print owner */
+            srctl_print_module_owner(schemas[i].module_name, buff);
+            printf("%-20s| ", buff);
+            /* print permissions */
+            srctl_print_module_permissions(schemas[i].module_name, buff);
+            printf("%-12s| ", buff);
+            /* print submodules */
             size_t printed = 0;
             for (size_t j = 0; j < schemas[i].submodule_count; j++) {
                 printed += printf(" %s", schemas[i].submodules[j].submodule_name);
             }
-            for (size_t j = printed; j <= 30; j++) printf(" ");
+            for (size_t j = printed; j < 30; j++) printf(" ");
+            /* print enabled features */
             printf("|");
             for (size_t j = 0; j < schemas[i].enabled_feature_cnt; j++) {
                 printf(" %s", schemas[i].enabled_features[j]);
@@ -380,7 +429,7 @@ srctl_change(const char *module, const char *revision, const char *owner, const 
     }
 
     if (0 != ret) {
-        fprintf(stderr, "Some part of the change operation failed, see the logs above.\n");
+        fprintf(stderr, "Some part of the change operation failed, see the errors above.\n");
         return EXIT_FAILURE;
     } else {
         return EXIT_SUCCESS;
