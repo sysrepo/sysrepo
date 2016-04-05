@@ -94,7 +94,7 @@ int rp_dt_get_nodes(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp
  * @param [in] get_items_ctx - cache that can speed up the request. If the
  * subsequent nodes are requested.
  * @param [in] data_tree
- * @param [in] loc_id
+ * @param [in] xpath
  * @param [in] recursive - flag defining whether nodes of the subtrees should be included
  * @param [in] offset - how many nodes should be skipped at the beginning of the selection
  * @param [in] limit - maximum number of nodes that could be returned
@@ -102,7 +102,7 @@ int rp_dt_get_nodes(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp
  * @param [out] count the length of returned nodes array
  * @return Error code (SR_ERR_OK on success), SR_ERR_NOT_FOUND
  */
-int rp_dt_get_nodes_with_opts(const dm_ctx_t *dm_ctx, dm_session_t *dm_session, rp_dt_get_items_ctx_t *get_items_ctx, struct lyd_node *data_tree, const xp_loc_id_t *loc_id,
+int rp_dt_get_nodes_with_opts(const dm_ctx_t *dm_ctx, dm_session_t *dm_session, rp_dt_get_items_ctx_t *get_items_ctx, struct lyd_node *data_tree, const char *xpath,
                                   bool recursive, size_t offset, size_t limit, struct lyd_node ***nodes, size_t *count);
 
 /**
@@ -133,6 +133,10 @@ int rp_dt_find_deepest_match(struct lyd_node *data_tree, const xp_loc_id_t *loc_
  * @return Error code (SR_ERR_OK on success), SR_ERR_NOT_FOUND if match is not found
  */
 int rp_dt_lookup_node(struct lyd_node *data_tree, const xp_loc_id_t *loc_id, bool allow_no_keys, bool check_enable, struct lyd_node **node);
+
+int rp_dt_find_node(struct lyd_node *data_tree, const char *xpath, bool check_enable, struct lyd_node **node);
+
+int rp_dt_find_nodes(struct lyd_node *data_tree, const char *xpath, bool check_enable, struct ly_set **nodes);
 
 #endif /* RP_DT_LOOKUP_H */
 

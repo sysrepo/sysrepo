@@ -58,7 +58,7 @@ rp_dt_find_deepest_match_wrapper(dm_ctx_t *ctx, dm_session_t *session, const xp_
     CHECK_NULL_ARG4(ctx, session, loc_id, loc_id->xpath);
     const struct lys_module *module = NULL;
 
-    int rc = rp_dt_validate_node_xpath(ctx, session, loc_id, &module, &match->schema_node);
+    int rc = rp_dt_validate_node_xpath(ctx, session, loc_id->xpath, &module, &match->schema_node);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Requested node is not valid %s", loc_id->xpath);
         goto cleanup;
@@ -191,208 +191,76 @@ rp_dt_find_closest_sibling_by_name(dm_data_info_t *info, struct lyd_node *start_
 }
 
 int
-rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const xp_loc_id_t *loc_id, const sr_edit_flag_t options)
+rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const sr_edit_flag_t options)
 {
-    CHECK_NULL_ARG4(dm_ctx, session, loc_id, loc_id->xpath);
+    CHECK_NULL_ARG3(dm_ctx, session, xpath);
 
     int rc = SR_ERR_INVAL_ARG;
-    struct lyd_node *node = NULL;
-    struct lyd_node *parent = NULL;
-    char *data_tree_name = NULL;
-    rp_dt_match_t match = {0,};
-
-    rc = rp_dt_find_deepest_match_wrapper(dm_ctx, session, loc_id, &match);
-    if (SR_ERR_NOT_FOUND == rc) {
-        if (options & SR_EDIT_STRICT) {
-            SR_LOG_ERR("No item exists '%s' deleted with strict opt", loc_id->xpath);
-            rc = dm_report_error(session, NULL, strdup(loc_id->xpath), SR_ERR_DATA_MISSING);
-            goto cleanup;
-        }
-        rc = SR_ERR_OK;
-        goto cleanup;
-    } else if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Find deepest match failed %s", loc_id->xpath);
-        goto cleanup;
+    const struct lys_module *module = NULL;
+    dm_data_info_t *info = NULL;
+    struct ly_set *nodes = NULL;
+    
+    rc = rp_dt_validate_node_xpath(dm_ctx, session, xpath, &module, NULL);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Requested node is not valid %s", xpath);
+        return rc;
     }
 
-    if (XP_IS_MODULE_XPATH(loc_id)) {
-        if ((options & SR_EDIT_NON_RECURSIVE)) {
-            SR_LOG_ERR("Delete for module xpath '%s' can not be called with non recursive", loc_id->xpath);
-            rc = dm_report_error(session, "Delete whole module can not be performed with non recursive flag", strdup(loc_id->xpath), SR_ERR_DATA_EXISTS);
+    rc = dm_get_data_info(dm_ctx, session, module->name, &info);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Getting data tree failed for xpath '%s'", xpath);
+        return rc;
+    }
+
+    //find nodes
+    rc = rp_dt_find_nodes(info->node, xpath, dm_is_running_ds_session(session), &nodes);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Find nodes failed %s", xpath);
+        return rc;       
+    }
+    
+    //check flags check if node is a 
+    //TODO: list key
+    if (SR_EDIT_STRICT & options) {
+        if (0 == nodes->number) {
+            SR_LOG_ERR("No nodes to be deleted with strict option %s", xpath);
+            rc = SR_ERR_INVAL_ARG;
             goto cleanup;
         }
-
-        struct lyd_node **nodes = NULL;
-        size_t count = 0;
-        /* find all top level nodes records */
-        rc = rp_dt_get_all_siblings(match.info->node, dm_is_running_ds_session(session), &nodes, &count);
-        if (SR_ERR_OK != rc) {
-            SR_LOG_ERR("Get all siblings failed for xpath %s ", loc_id->xpath);
-            goto cleanup;
-        }
-
-        /* delete all nodes */
-        for (size_t i = 0; i < count; i++) {
-            rc = sr_lyd_unlink(match.info, nodes[i]);
-            if (0 != rc) {
-                SR_LOG_ERR("Unlinking of the node %s failed", loc_id->xpath);
-                free(nodes);
-                rc = SR_ERR_INTERNAL;
+    }
+    
+    if (SR_EDIT_NON_RECURSIVE & options) {
+        for (size_t i = 0; i < nodes->number; i++) {
+            if (nodes->set.d[i]->schema->nodetype & (LYS_LIST | LYS_CONTAINER)) {
+                SR_LOG_ERR("List of the nodes to be deleted contains list or container with non recursive opt %s", xpath);
+                rc = SR_ERR_INVAL_ARG;
                 goto cleanup;
             }
-            lyd_free(nodes[i]);
         }
-        free(nodes);
-        goto cleanup;
     }
-
-    /* check if match is complete */
-    if (XP_GET_NODE_COUNT(loc_id) != match.level) {
-        if (options & SR_EDIT_STRICT) {
-            SR_LOG_ERR("No item exists '%s' deleted with strict opt", loc_id->xpath);
-            rc = dm_report_error(session, NULL, strdup(loc_id->xpath), SR_ERR_DATA_MISSING);
-            goto cleanup;
-        }
-        match.info->modified = true;
-        rc = SR_ERR_OK;
-        goto cleanup;
-    }
-
-
-    if (NULL == match.node || NULL == match.node->schema || NULL == match.node->schema->name) {
-        SR_LOG_ERR_MSG("Missing schema information");
-        rc = SR_ERR_INTERNAL;
-        goto cleanup;
-    }
-
-    /* save parent to delete empty containers */
-    parent = match.node->parent;
-
-    /* perform delete according to the node type */
-    if (match.node->schema->nodetype == LYS_CONTAINER) {
-        if (options & SR_EDIT_NON_RECURSIVE) {
-            SR_LOG_ERR("Item for xpath %s is container deleted with non recursive opt", loc_id->xpath);
-            rc = dm_report_error(session, "Node contains children node, can not be deleted with non recursive option", strdup(loc_id->xpath), SR_ERR_DATA_EXISTS);
-            goto cleanup;
-        }
-        rc = sr_lyd_unlink(match.info, match.node);
+    
+    //delete nodes
+    for (size_t i = 0; i < nodes->number; i++) {
+        rc = sr_lyd_unlink(info, nodes->set.d[i]);
         if (0 != rc) {
-            SR_LOG_ERR("Unlinking of the node %s failed", loc_id->xpath);
+            SR_LOG_ERR("Unlinking of the node %s failed", xpath);
             rc = SR_ERR_INTERNAL;
             goto cleanup;
         }
-        lyd_free_withsiblings(match.node);
-    } else if (match.node->schema->nodetype == LYS_LEAF) {
-        bool is_key = false;
-        rc = rp_dt_has_key(match.node->parent, match.node->schema->name, &is_key);
-        if (SR_ERR_OK != rc){
-            SR_LOG_ERR_MSG("Has key failed");
-            goto cleanup;
-        }
-        if (is_key){
-            SR_LOG_ERR("Key leaf can not be delete delete the list instead %s", loc_id->xpath);
-            rc = dm_report_error(session, "List key can not be deleted", strdup(loc_id->xpath), SR_ERR_INVAL_ARG);
-            goto cleanup;
-        }
-        rc = sr_lyd_unlink(match.info, match.node);
-        if (0 != rc) {
-            SR_LOG_ERR("Unlinking of the node %s failed", loc_id->xpath);
-            rc = SR_ERR_INTERNAL;
-            goto cleanup;
-        }
-        lyd_free(match.node);
-    } else if (match.node->schema->nodetype == LYS_LEAFLIST) {
-        struct lyd_node **nodes = NULL;
-        size_t count = 0;
-        /* find all leaf-list records */
-        rc = rp_dt_get_siblings_node_by_name(match.node, match.node->schema->name, &nodes, &count);
-        if (SR_ERR_OK != rc) {
-            SR_LOG_ERR("Get sibling by name failed for xpath %s ", loc_id->xpath);
-            goto cleanup;
-        }
-
-        /* delete leaf-list nodes */
-        for (size_t i = 0; i < count; i++) {
-            rc = sr_lyd_unlink(match.info, nodes[i]);
-            if (0 != rc) {
-                SR_LOG_ERR("Unlinking of the node %s failed", loc_id->xpath);
-                free(nodes);
-                rc = SR_ERR_INTERNAL;
-                goto cleanup;
-            }
-            lyd_free(nodes[i]);
-        }
-        free(nodes);
-    } else if (match.node->schema->nodetype == LYS_LIST) {
-        size_t last_node = XP_GET_NODE_COUNT(loc_id) - 1;
-        if (options & SR_EDIT_NON_RECURSIVE) {
-            /* count children */
-            struct lyd_node *child = match.node->child;
-            size_t child_cnt = 0;
-            while (NULL != child) {
-                child = child->next;
-                child_cnt++;
-            }
-            if (XP_GET_KEY_COUNT(loc_id, last_node) != child_cnt) {
-                SR_LOG_ERR("Item for xpath %s is non empty list. It can not be deleted with non recursive opt", loc_id->xpath);
-                rc = dm_report_error(session, "Node contains children node, can not be deleted with non recursive option", strdup(loc_id->xpath), SR_ERR_DATA_EXISTS);
-                goto cleanup;
-            }
-        }
-        if (0 != XP_GET_KEY_COUNT(loc_id, last_node)) {
-            /* delete list instance */
-            rc = sr_lyd_unlink(match.info, match.node);
-            if (0 != rc) {
-                SR_LOG_ERR("Unlinking of the node %s failed", loc_id->xpath);
-                rc = SR_ERR_INTERNAL;
-                goto cleanup;
-            }
-            lyd_free_withsiblings(match.node);
-        } else {
-            /* delete all instances */
-            struct lyd_node **nodes = NULL;
-            size_t count = 0;
-            /* find all list instances */
-            rc = rp_dt_get_siblings_node_by_name(match.node, match.node->schema->name, &nodes, &count);
-            if (SR_ERR_OK != rc) {
-                SR_LOG_ERR("Get sibling by name failed for xpath %s ", loc_id->xpath);
-                goto cleanup;
-            }
-
-            /* delete list nodes*/
-            for (size_t i = 0; i < count; i++) {
-                rc = sr_lyd_unlink(match.info, nodes[i]);
-                if (0 != rc) {
-                    SR_LOG_ERR("Unlinking of the node %s failed", loc_id->xpath);
-                    free(nodes);
-                    rc = SR_ERR_INTERNAL;
-                    goto cleanup;
-                }
-                lyd_free_withsiblings(nodes[i]);
-            }
-            free(nodes);
-        }
+        // TODO remove empty container/list
     }
-
-    /* delete all empty parent containers */
-    node = parent;
-    while (NULL != node) {
-        if (NULL == node->child && LYS_CONTAINER == node->schema->nodetype) {
-            parent = node->parent;
-            sr_lyd_unlink(match.info, node);
-            lyd_free(node);
-            node = parent;
-        } else {
-            break;
-        }
+    
+    for (size_t i = 0; i < nodes->number; i++) {
+        lyd_free_withsiblings(nodes->set.d[i]);
     }
-
+    
 cleanup:
-    if (NULL != match.info) {
+
+    ly_set_free(nodes);
+    if (NULL != info) {
         /* mark to session copy that some change has been made */
-        match.info->modified = SR_ERR_OK == rc ? true : match.info->modified;
+        info->modified = SR_ERR_OK == rc ? true : info->modified;
     }
-    free(data_tree_name);
     return rc;
 }
 
@@ -692,7 +560,7 @@ rp_dt_move_list_wrapper(rp_ctx_t *rp_ctx, rp_session_t *session, const char *xpa
         return rc;
     }
 
-    rc = ac_check_node_permissions(session->ac_session, loc_id, AC_OPER_READ_WRITE);
+    rc = ac_check_node_permissions(session->ac_session, xpath, AC_OPER_READ_WRITE);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Access control check failed for xpath '%s'", xpath);
         xp_free_loc_id(loc_id);
@@ -728,7 +596,7 @@ rp_dt_set_item_wrapper(rp_ctx_t *rp_ctx, rp_session_t *session, const char *xpat
         sr_free_val(val);
         return rc;
     }
-
+#if 0
     rc = ac_check_node_permissions(session->ac_session, loc_id, AC_OPER_READ_WRITE);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Access control check failed for xpath '%s'", xpath);
@@ -736,7 +604,7 @@ rp_dt_set_item_wrapper(rp_ctx_t *rp_ctx, rp_session_t *session, const char *xpat
         sr_free_val(val);
         return rc;
     }
-
+#endif
     rc = dm_add_operation(session->dm_session, DM_SET_OP, loc_id, val, opt);
     if (SR_ERR_OK != rc){
         /* loc id and val is freed by dm_add_operation */
@@ -758,17 +626,16 @@ rp_dt_delete_item_wrapper(rp_ctx_t *rp_ctx, rp_session_t *session, const char *x
     CHECK_NULL_ARG5(rp_ctx, rp_ctx->dm_ctx, session, session->dm_session, xpath);
 
     int rc = SR_ERR_OK;
-    xp_loc_id_t *loc_id = NULL;
+    /*xp_loc_id_t *loc_id = NULL;
     rc = xp_char_to_loc_id(xpath, &loc_id);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Converting xpath '%s' to loc_id failed.", xpath);
         return rc;
-    }
+    }*/
 
-    rc = ac_check_node_permissions(session->ac_session, loc_id, AC_OPER_READ_WRITE);
+    rc = ac_check_node_permissions(session->ac_session, xpath, AC_OPER_READ_WRITE);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Access control check failed for xpath '%s'", xpath);
-        xp_free_loc_id(loc_id);
         return rc;
     }
 
@@ -779,7 +646,7 @@ rp_dt_delete_item_wrapper(rp_ctx_t *rp_ctx, rp_session_t *session, const char *x
         return rc;
     }
 
-    rc = rp_dt_delete_item(rp_ctx->dm_ctx, session->dm_session, loc_id, opts);
+    rc = rp_dt_delete_item(rp_ctx->dm_ctx, session->dm_session, xpath, opts);
     if (SR_ERR_OK != rc){
         SR_LOG_ERR_MSG("List move failed");
         dm_remove_last_operation(session->dm_session);

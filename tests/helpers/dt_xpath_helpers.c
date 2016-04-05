@@ -37,7 +37,7 @@ rp_dt_get_value_xpath(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const 
         SR_LOG_ERR("Converting xpath '%s' to loc_id failed.", xpath);
         return rc;
     }
-    rc = rp_dt_get_value(dm_ctx, data_tree, l, false, value);
+    rc = rp_dt_get_value(dm_ctx, data_tree, xpath, false, value);
     xp_free_loc_id(l);
     return rc;
 }
@@ -55,7 +55,7 @@ rp_dt_get_values_xpath(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const
         SR_LOG_ERR("Converting xpath '%s' to loc_id failed.", xpath);
         return rc;
     }
-    rc = rp_dt_get_values(dm_ctx, data_tree, l, false, values, count);
+    rc = rp_dt_get_values(dm_ctx, data_tree, xpath, false, values, count);
     xp_free_loc_id(l);
     return rc;
 }

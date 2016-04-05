@@ -60,7 +60,7 @@ no_subscription_test(void **state)
    rc = rp_dt_get_values_wrapper(ctx, session, "/test-module:containera", &values, &count);
    assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
 
-   rc = rp_dt_get_values_wrapper(ctx, session, "/test-module:", &values, &count);
+   rc = rp_dt_get_values_wrapper(ctx, session, "/test-module:*", &values, &count);
    assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
    rc = rp_dt_get_values_wrapper(ctx, session, "/test-module:main", &values, &count);
@@ -99,7 +99,7 @@ enable_subtree_test(void **state)
    assert_int_equal(SR_ERR_OK, rc);
 
 
-   rc = rp_dt_validate_node_xpath(ctx->dm_ctx, session->dm_session, l, &module, &match);
+   rc = rp_dt_validate_node_xpath(ctx->dm_ctx, session->dm_session, l->xpath, &module, &match);
    assert_int_equal(SR_ERR_OK, rc);
 
    /* check address node */
@@ -129,7 +129,7 @@ enable_subtree_test(void **state)
 
    module = NULL;
    match = NULL;
-   rc = rp_dt_validate_node_xpath(ctx->dm_ctx, session->dm_session, l, &module, &match);
+   rc = rp_dt_validate_node_xpath(ctx->dm_ctx, session->dm_session, l->xpath, &module, &match);
    assert_int_equal(SR_ERR_OK, rc);
 
    /* check leaf node */

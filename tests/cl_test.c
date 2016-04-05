@@ -36,7 +36,7 @@
 static int
 logging_setup(void **state)
 {
-    sr_log_stderr(SR_LL_DBG);
+    //sr_log_stderr(SR_LL_DBG);
     return 0;
 }
 
@@ -274,6 +274,7 @@ cl_get_item_test(void **state)
 
     const sr_error_info_t *err = NULL;
     sr_get_last_error(session, &err);
+    assert_non_null(err->path);
     assert_string_equal("/example-module:unknown", err->path);
 
     /* existing leaf */
@@ -342,7 +343,7 @@ cl_get_items_test(void **state)
     assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
 
     /* container */
-    rc = sr_get_items(session, "/ietf-interfaces:interfaces", &values, &values_cnt);
+    rc = sr_get_items(session, "/ietf-interfaces:interfaces/*", &values, &values_cnt);
     assert_int_equal(rc, SR_ERR_OK);
     assert_int_equal(3, values_cnt);
     sr_free_values(values, values_cnt);
@@ -354,7 +355,7 @@ cl_get_items_test(void **state)
     sr_free_values(values, values_cnt);
 
     /* list with keys */
-    rc = sr_get_items(session, "/ietf-interfaces:interfaces/interface[name='eth0']", &values, &values_cnt);
+    rc = sr_get_items(session, "/ietf-interfaces:interfaces/interface[name='eth0']/*", &values, &values_cnt);
     assert_int_equal(rc, SR_ERR_OK);
     assert_int_equal(5, values_cnt);
     sr_free_values(values, values_cnt);
@@ -450,7 +451,7 @@ cl_get_items_iter_test(void **state)
 
 
     /* all supported data types*/
-    rc = sr_get_items_iter(session, "/test-module:main", true, &it);
+    rc = sr_get_items_iter(session, "/test-module:main/*", true, &it);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(it);
     while(SR_ERR_OK == sr_get_item_next(session, it, &value)) {
@@ -1097,7 +1098,7 @@ main()
             cmocka_unit_test_setup_teardown(cl_get_schema_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_get_item_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_get_items_test, sysrepo_setup, sysrepo_teardown),
-            cmocka_unit_test_setup_teardown(cl_get_items_iter_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_get_items_iter_test, sysrepo_setup, sysrepo_teardown),           
             cmocka_unit_test_setup_teardown(cl_set_item_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_delete_item_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_move_item_test, sysrepo_setup, sysrepo_teardown),

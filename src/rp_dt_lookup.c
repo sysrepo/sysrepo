@@ -238,6 +238,53 @@ rp_dt_get_all_siblings(struct lyd_node *node, bool check_enable, struct lyd_node
 }
 
 int
+rp_dt_find_nodes(struct lyd_node *data_tree, const char *xpath, bool check_enable, struct ly_set **nodes)
+{
+    CHECK_NULL_ARG3(data_tree, xpath, nodes);
+    struct ly_set *res = lyd_get_node(data_tree, xpath);
+    if (NULL == res){
+        SR_LOG_ERR_MSG("Lyd get node failed");
+        return LY_EINVAL == ly_errno || LY_EVALID == ly_errno ? SR_ERR_INVAL_ARG : SR_ERR_INTERNAL;
+    }
+    
+    if (check_enable) {
+        for (size_t i = 0; i < res->number; i++) {
+            if (!dm_is_enabled_check_recursively(res->set.d[i]->schema)) {
+                ly_set_rm_index(res, i);
+                i--; /* last item was moved to the index of remove node */
+            }
+        }
+    }
+    
+    if (0 == res->number) {
+        ly_set_free(res);
+        return SR_ERR_NOT_FOUND;
+    }
+    *nodes = res;
+    return SR_ERR_OK;
+}
+
+int
+rp_dt_find_node(struct lyd_node *data_tree, const char *xpath, bool check_enable, struct lyd_node **node)
+{
+    CHECK_NULL_ARG3(data_tree, xpath, node);
+    int rc = SR_ERR_OK;
+    struct ly_set *res = NULL;
+    rc = rp_dt_find_nodes(data_tree, xpath, check_enable, &res);
+    if (SR_ERR_OK != rc) {
+        return rc;
+    } else if (1 != res->number) {
+        SR_LOG_ERR("Xpath %s matches more than one node", xpath);
+        rc = SR_ERR_INVAL_ARG;
+    } else{
+        *node = res->set.d[0];
+    }
+    ly_set_free(res);
+    return rc;
+}
+
+
+int
 rp_dt_get_nodes(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp_loc_id_t *loc_id, bool check_enable, struct lyd_node ***nodes, size_t *count)
 {
     CHECK_NULL_ARG5(dm_ctx, data_tree, loc_id, nodes, count);
@@ -245,7 +292,25 @@ rp_dt_get_nodes(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp_loc
     int rc = SR_ERR_OK;
     struct lyd_node *node = NULL;
     size_t last_node = 0;
+    
+    struct ly_set *set = NULL;
+    rc = rp_dt_find_nodes(data_tree, loc_id->xpath, check_enable, &set);
+    if (SR_ERR_OK != rc) {
+        return rc;
+    }
+    
+    *nodes = calloc(set->number, sizeof(**nodes));
+    CHECK_NULL_NOMEM_GOTO(nodes, rc, cleanup);
+    for (size_t i = 0; i < set->number; i++) {
+        (*nodes)[i] = set->set.d[i];
+    }
+    *count = set->number;
+cleanup:
+    ly_set_free(set);
+    return rc;
 
+    
+    
     rc = rp_dt_lookup_node(data_tree, loc_id, true, check_enable, &node);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Look up failed for xpath %s", loc_id->xpath);
@@ -313,33 +378,29 @@ rp_dt_get_nodes(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp_loc
 
 int
 rp_dt_get_nodes_with_opts(const dm_ctx_t *dm_ctx, dm_session_t *dm_session, rp_dt_get_items_ctx_t *get_items_ctx, struct lyd_node *data_tree,
-        const xp_loc_id_t *loc_id, bool recursive, size_t offset, size_t limit, struct lyd_node ***nodes, size_t *count)
+        const char *xpath, bool recursive, size_t offset, size_t limit, struct lyd_node ***nodes, size_t *count)
 {
-    CHECK_NULL_ARG5(dm_ctx, dm_session, get_items_ctx, data_tree, loc_id);
-    CHECK_NULL_ARG3(nodes, count, loc_id->xpath);
+    CHECK_NULL_ARG5(dm_ctx, dm_session, get_items_ctx, data_tree, xpath);
+    CHECK_NULL_ARG2(nodes, count);
 
     int rc = SR_ERR_OK;
-    struct lyd_node *node = NULL;
     bool cache_hit = false;
 
-    SR_LOG_DBG("Get_nodes opts with args: %s %zu %zu %d", loc_id->xpath, limit, offset, recursive);
+    SR_LOG_DBG("Get_nodes opts with args: %s %zu %zu %d", xpath, limit, offset, recursive);
     /* check if we continue where we left */
-    if (get_items_ctx->xpath == NULL || 0 != strcmp(loc_id->xpath, get_items_ctx->xpath) || get_items_ctx->recursive != recursive ||
+    if (get_items_ctx->xpath == NULL || 0 != strcmp(xpath, get_items_ctx->xpath) || get_items_ctx->recursive != recursive ||
             offset != get_items_ctx->offset) {
-        rc = rp_dt_lookup_node(data_tree, loc_id, true, dm_is_running_ds_session(dm_session), &node);
+        ly_set_free(get_items_ctx->nodes);
+        get_items_ctx->nodes = NULL;
+        rc = rp_dt_find_nodes(data_tree, xpath, dm_is_running_ds_session(dm_session), &get_items_ctx->nodes);
+       
         if (SR_ERR_OK != rc) {
-            SR_LOG_ERR("Look up failed for xpath %s", loc_id->xpath);
+            SR_LOG_ERR("Look up failed for xpath %s",xpath);
             return rc;
         }
 
-        if (NULL == node->schema || NULL == node->schema->name) {
-            SR_LOG_ERR("Missing schema information for node %s", loc_id->xpath);
-            return SR_ERR_INTERNAL;
-        }
-        rp_ns_clean(&get_items_ctx->stack);
         free(get_items_ctx->xpath);
-
-        get_items_ctx->xpath = strdup(loc_id->xpath);
+        get_items_ctx->xpath = strdup(xpath);
         if (NULL == get_items_ctx->xpath) {
             SR_LOG_ERR_MSG("String duplication failed");
             return SR_ERR_INTERNAL;
@@ -349,7 +410,7 @@ rp_dt_get_nodes_with_opts(const dm_ctx_t *dm_ctx, dm_session_t *dm_session, rp_d
 
 
         /*initialy push nodes to stack */
-        if (XP_IS_MODULE_XPATH(loc_id)) {
+        /*if (XP_IS_MODULE_XPATH(loc_id)) {
             rc = rp_dt_push_all_sibling_nodes_to_stack(&get_items_ctx->stack, dm_is_running_ds_session(dm_session), data_tree);
             if (SR_ERR_OK != rc) {
                 SR_LOG_ERR_MSG("Push sibling nodes to stack failed");
@@ -399,7 +460,7 @@ rp_dt_get_nodes_with_opts(const dm_ctx_t *dm_ctx, dm_session_t *dm_session, rp_d
                 SR_LOG_ERR("Unsupported node type for xpath %s", loc_id->xpath);
                 return SR_ERR_INTERNAL;
             }
-        }
+        }*/
         SR_LOG_DBG_MSG("Cache miss in get_nodes_with_opts");
 
     } else {
@@ -414,47 +475,18 @@ rp_dt_get_nodes_with_opts(const dm_ctx_t *dm_ctx, dm_session_t *dm_session, rp_d
 
     /*allocate nodes*/
     *nodes = calloc(limit, sizeof(**nodes));
-    if (NULL == *nodes) {
-        return SR_ERR_NOMEM;
-    }
+    CHECK_NULL_NOMEM_RETURN(*nodes);
 
     /* process stack*/
-    rp_node_stack_t *item;
+    
     while (cnt < limit) {
-        if (rp_ns_is_empty(&get_items_ctx->stack)) {
+        if (index >= get_items_ctx->nodes->number) {
             break;
         }
-
-        rp_ns_pop(&get_items_ctx->stack, &item);
-        if (NULL == item || NULL == item->node || NULL == item->node->schema) {
-            SR_LOG_ERR_MSG("Stack item doesn't contain a node or schema is missing");
-            goto cleanup;
-        }
-        switch (item->node->schema->nodetype) {
-        case LYS_LEAF: /* fall through */
-        case LYS_LEAFLIST:
-            break;
-        case LYS_LIST: /* fall through */
-        case LYS_CONTAINER:
-            if (get_items_ctx->recursive) {
-                rc = rp_dt_push_child_nodes_to_stack(&get_items_ctx->stack, dm_is_running_ds_session(dm_session), item->node);
-                if (SR_ERR_OK != rc) {
-                    SR_LOG_ERR_MSG("Push child nodes to stack failed");
-                    goto cleanup;
-                }
-            }
-            break;
-        default:
-            SR_LOG_ERR("Unsupported node type for xpath %s", loc_id->xpath);
-            goto cleanup;
-        }
-
         /* append node to result if it is in chosen range*/
         if (index >= offset) {
-            (*nodes)[cnt++] = item->node;
+            (*nodes)[cnt++] = get_items_ctx->nodes->set.d[index];
         }
-        free(item);
-        item = NULL;
         index++;
     }
     /* mark the index where the processing stopped*/
@@ -467,11 +499,6 @@ rp_dt_get_nodes_with_opts(const dm_ctx_t *dm_ctx, dm_session_t *dm_session, rp_d
         *count = cnt;
         return SR_ERR_OK;
     }
-cleanup:
-    free(*nodes);
-    *nodes = NULL;
-    return SR_ERR_INTERNAL;
-
 }
 
 int
@@ -600,6 +627,9 @@ rp_dt_lookup_node(struct lyd_node *data_tree, const xp_loc_id_t *loc_id, bool al
     size_t match_len = 0;
 
     int rc = SR_ERR_OK;
+    rc = rp_dt_find_node(data_tree, loc_id->xpath, check_enable, node);
+    return rc;
+    
     rc = rp_dt_find_deepest_match(data_tree, loc_id, allow_no_keys, check_enable, &match_len, node);
     if (SR_ERR_NOT_FOUND == rc){
         return rc;

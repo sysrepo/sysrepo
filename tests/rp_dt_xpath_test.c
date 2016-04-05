@@ -32,13 +32,9 @@
 
 int validate_node_wrapper(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, struct lys_node **match){
     int rc = SR_ERR_OK;
-    xp_loc_id_t *l = NULL;
-    rc = xp_char_to_loc_id(xpath, &l);
-    assert_int_equal(SR_ERR_OK, rc);
-
-    rc = rp_dt_validate_node_xpath(dm_ctx, session, l, NULL, match);
-    xp_free_loc_id(l);
-
+    
+    rc = rp_dt_validate_node_xpath(dm_ctx, session, xpath, NULL, match);
+    
     return rc;
 }
 
@@ -87,10 +83,7 @@ void rp_dt_validate_fail(void **state)
     rc = validate_node_wrapper(ctx, session, "/example-module:container/list[key1='a'][asf='sf']", NULL);
     assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
 
-    /* key count does not match */
-    rc = validate_node_wrapper(ctx, session, "/example-module:container/list[key1='a']", NULL);
-    assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
-
+    
     /* key count does not match */
     rc = validate_node_wrapper(ctx, session, "/example-module:container/list[key1='a'][key2='b'][unkn='as']", NULL);
     assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
@@ -104,11 +97,11 @@ void rp_dt_validate_ok(void **state)
     dm_ctx_t *ctx = *state;
     dm_session_t *session = NULL;
     dm_session_start(ctx, NULL, SR_DS_STARTUP, &session);
-
+#if 0
     /* module */
-    rc = validate_node_wrapper(ctx, session, "/example-module:", NULL);
+    rc = validate_node_wrapper(ctx, session, "/example-module:*", NULL);
     assert_int_equal(SR_ERR_OK, rc);
-
+#endif
     /* container */
     rc = validate_node_wrapper(ctx, session, "/example-module:container", NULL);
     assert_int_equal(SR_ERR_OK, rc);
@@ -131,6 +124,10 @@ void rp_dt_validate_ok(void **state)
     assert_int_equal(SR_ERR_OK, rc);
 
     rc = validate_node_wrapper(ctx, session, "/test-module:list[key='faaasdfsd']", NULL);
+    assert_int_equal(SR_ERR_OK, rc);
+    
+    /* only one key specified */
+    rc = validate_node_wrapper(ctx, session, "/example-module:container/list[key1='a']", NULL);
     assert_int_equal(SR_ERR_OK, rc);
 
     /* leaf */
@@ -156,22 +153,23 @@ check_error_reporting(void **state)
     dm_session_t *session = NULL;
     dm_session_start(ctx, NULL, SR_DS_STARTUP, &session);
 
-    rc = validate_node_wrapper(ctx, session, "/example-module:", NULL);
+#if 0
+    rc = validate_node_wrapper(ctx, session, "/example-module:*", NULL);
     assert_int_equal(SR_ERR_OK, rc);
-
+#endif
     assert_false(dm_has_error(session));
 
     /* unknown element */
     rc = validate_node_wrapper(ctx, session, "/example-module:container/unknown/unknown2", NULL);
     assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
 
+    assert_true(dm_has_error(session));
     char *err_msg = NULL;
     char *err_xpath = NULL;
     rc = dm_copy_errors(session, &err_msg, &err_xpath);
     assert_int_equal(SR_ERR_OK, rc);
     assert_string_equal("/example-module:container/unknown", err_xpath);
 
-    assert_true(dm_has_error(session));
     free(err_msg);
     free(err_xpath);
 

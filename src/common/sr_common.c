@@ -2435,3 +2435,40 @@ sr_fd_set_nonblock(int fd)
     return SR_ERR_OK;
 }
 
+int
+sr_copy_first_ns(const char *xpath, char **namespace)
+{
+    CHECK_NULL_ARG2(xpath, namespace);
+    
+    char *colon_pos = strchr(xpath, ':');
+    if (xpath[0] != '/' || NULL == colon_pos) {
+        return SR_ERR_INVAL_ARG;
+    }
+    *namespace = strndup(xpath + 1, (colon_pos - xpath -1));
+    CHECK_NULL_NOMEM_RETURN(*namespace);
+    return SR_ERR_OK;
+}
+
+int
+sr_cmp_first_ns(const char *xpath, const char *ns)
+{
+    size_t cmp_len = 0;
+    
+    if (NULL == xpath || xpath[0] != '/') {
+        xpath = "";
+    }
+    else {
+        char *colon_pos = strchr(xpath, ':');
+        if (NULL != colon_pos) {
+            cmp_len = colon_pos - xpath -1;
+            xpath++; /* skip leading slash */
+        }
+    }
+    
+    if (NULL == ns) {
+        ns = "";
+    }
+    
+    return strncmp(xpath, ns, cmp_len);
+    
+}

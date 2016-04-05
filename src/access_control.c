@@ -67,7 +67,7 @@ typedef enum ac_permission_e {
  */
 typedef struct ac_module_info_s {
     const char *module_name;                 /**< Name of the module. */
-    const xp_loc_id_t *loc_id;              /**< XPath location id, used only for fast lookup by node location id. */
+    const char *xpath;                      /**< XPath used only for fast lookup. */
     ac_permission_t read_permission;        /**< Read permission is granted. */
     ac_permission_t read_write_permission;  /**< Read & write permissions are granted. */
 } ac_module_info_t;
@@ -84,10 +84,10 @@ ac_module_info_cmp_cb(const void *a, const void *b)
     ac_module_info_t *info_b = (ac_module_info_t *) b;
     int res = 0;
 
-    if (NULL != info_a->loc_id) {
-        res = XP_CMP_FIRST_NS(info_a->loc_id, info_b->module_name);
-    } else if (NULL != info_b->loc_id) {
-        res = XP_CMP_FIRST_NS(info_b->loc_id, info_a->module_name);
+    if (NULL != info_a->xpath) {
+        res = sr_cmp_first_ns(info_a->xpath, info_b->module_name);
+    } else if (NULL != info_b->xpath) {
+        res = sr_cmp_first_ns(info_b->xpath, info_a->module_name);
     } else {
         res = strcmp(info_a->module_name, info_b->module_name);
     }
@@ -281,7 +281,7 @@ ac_session_cleanup(ac_session_t *session)
 }
 
 int
-ac_check_node_permissions(ac_session_t *session, const xp_loc_id_t *node_xpath, const ac_operation_t operation)
+ac_check_node_permissions(ac_session_t *session, const char *node_xpath, const ac_operation_t operation)
 {
     ac_module_info_t lookup_info = {0,};
     ac_module_info_t *module_info = NULL;
@@ -290,12 +290,7 @@ ac_check_node_permissions(ac_session_t *session, const xp_loc_id_t *node_xpath, 
 
     CHECK_NULL_ARG2(session, node_xpath);
 
-    if (!XP_IS_MODULE_XPATH(node_xpath) && !XP_HAS_NODE_NS(node_xpath, 0)) {
-        SR_LOG_ERR("Incorrect xpath '%s': missing namespace of the top element.", node_xpath->xpath);
-        return SR_ERR_INVAL_ARG;
-    }
-
-    lookup_info.loc_id = node_xpath;
+    lookup_info.xpath = node_xpath;
     module_info = sr_btree_search(session->module_info_btree, &lookup_info);
     if (NULL != module_info) {
         /* found match in cache, try to check from cache */
@@ -320,11 +315,11 @@ ac_check_node_permissions(ac_session_t *session, const xp_loc_id_t *node_xpath, 
             SR_LOG_ERR_MSG("Cannot allocate module access control info entry.");
             return SR_ERR_NOMEM;
         }
-        module_info->module_name = XP_CPY_FIRST_NS(node_xpath);
-        if (NULL == module_info->module_name) {
+        rc = sr_copy_first_ns(node_xpath, (char **) &module_info->module_name);
+        if (SR_ERR_OK != rc) {
             SR_LOG_ERR_MSG("Cannot duplicate module name.");
             free(module_info);
-            return SR_ERR_NOMEM;
+            return rc;
         }
         rc = sr_btree_insert(session->module_info_btree, module_info);
         if (SR_ERR_OK != rc) {

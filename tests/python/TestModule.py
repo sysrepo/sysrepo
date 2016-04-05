@@ -69,7 +69,7 @@ def create_test_module():
     sr = Sysrepo("test-module")
 
     session = Session(sr, SR_DS_STARTUP)
-    session.delete_item("/test-module:")
+    session.delete_item("/test-module:*")
 
     v = Value(XP_TEST_MODULE_ENUM, SR_ENUM_T, XP_TEST_MODULE_ENUM_VALUE)
     session.set_item(v.xpath, v)

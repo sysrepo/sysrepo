@@ -980,7 +980,7 @@ rp_session_cleanup(const rp_ctx_t *rp_ctx, rp_session_t *session)
     dm_session_stop(rp_ctx->dm_ctx, session->dm_session);
     ac_session_cleanup(session->ac_session);
 
-    rp_ns_clean(&session->get_items_ctx.stack);
+    ly_set_free(session->get_items_ctx.nodes);
     free(session->get_items_ctx.xpath);
     pthread_mutex_destroy(&session->msg_count_mutex);
     free(session);
