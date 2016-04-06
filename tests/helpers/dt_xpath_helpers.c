@@ -121,14 +121,6 @@ rp_dt_get_node_xpath(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const c
 int
 rp_dt_set_item_xpath(dm_ctx_t *ctx, dm_session_t *session, const char *xpath, sr_edit_options_t opts, sr_val_t *val)
 {
-    int rc = SR_ERR_OK;
-    xp_loc_id_t *loc_id = NULL;
-    rc = xp_char_to_loc_id(xpath, &loc_id);
-    if(SR_ERR_OK != rc) {
-        return rc;
-    }
+    return rp_dt_set_item(ctx, session, xpath, opts, val);
 
-    rc = rp_dt_set_item(ctx, session, loc_id, opts, val);
-    xp_free_loc_id(loc_id);
-    return rc;
 }

@@ -384,6 +384,25 @@ sr_lyd_new_leaf(dm_data_info_t *data_info, struct lyd_node *parent, const struct
     return new;
 }
 
+struct lyd_node *
+sr_lyd_new_path(dm_data_info_t *data_info, struct ly_ctx *ctx, const char *path, const char *value, int options)
+{
+    int rc = SR_ERR_OK;
+    CHECK_NULL_ARG_NORET2(rc, data_info, path);
+    if (SR_ERR_OK != rc){
+        return NULL;
+    }
+
+    struct lyd_node *new = NULL;
+    new = lyd_new_path(data_info->node, ctx, path, value, options);
+
+    if (NULL == data_info->node) {
+        data_info->node = new;
+    }
+
+    return new;
+}
+
 int
 sr_lyd_insert_before(dm_data_info_t *data_info, struct lyd_node *sibling, struct lyd_node *node)
 {

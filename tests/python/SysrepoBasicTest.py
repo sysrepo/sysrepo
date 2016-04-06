@@ -23,6 +23,7 @@ class SysrepoBasicTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(self):
+        Sysrepo.log_stderr(SR_LL_DBG)
         TestModule.create_test_module()
         self.s = Sysrepo("abc", SR_CONN_DEFAULT)
 
@@ -98,9 +99,8 @@ class SysrepoBasicTest(unittest.TestCase):
 
     def test_validate(self):
         v = Value("/test-module:main/numbers", SR_UINT8_T, 42)
-        self.session.set_item(v.xpath,v)
         with self.assertRaises(RuntimeError):
-            self.session.validate()
+            self.session.set_item(v.xpath, v, SR_EDIT_STRICT)
 
 if __name__ == '__main__':
     unittest.main()

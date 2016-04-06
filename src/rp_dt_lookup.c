@@ -240,7 +240,10 @@ rp_dt_get_all_siblings(struct lyd_node *node, bool check_enable, struct lyd_node
 int
 rp_dt_find_nodes(struct lyd_node *data_tree, const char *xpath, bool check_enable, struct ly_set **nodes)
 {
-    CHECK_NULL_ARG3(data_tree, xpath, nodes);
+    CHECK_NULL_ARG2(xpath, nodes);
+    if (NULL == data_tree) {
+        return SR_ERR_NOT_FOUND;
+    }
     struct ly_set *res = lyd_get_node(data_tree, xpath);
     if (NULL == res){
         SR_LOG_ERR_MSG("Lyd get node failed");
@@ -267,7 +270,10 @@ rp_dt_find_nodes(struct lyd_node *data_tree, const char *xpath, bool check_enabl
 int
 rp_dt_find_node(struct lyd_node *data_tree, const char *xpath, bool check_enable, struct lyd_node **node)
 {
-    CHECK_NULL_ARG3(data_tree, xpath, node);
+    CHECK_NULL_ARG2(xpath, node);
+    if (NULL == data_tree) {
+        return SR_ERR_NOT_FOUND;
+    }
     int rc = SR_ERR_OK;
     struct ly_set *res = NULL;
     rc = rp_dt_find_nodes(data_tree, xpath, check_enable, &res);

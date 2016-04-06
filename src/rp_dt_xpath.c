@@ -372,24 +372,76 @@ rp_dt_validate_node_xpath(dm_ctx_t *dm_ctx, dm_session_t *session, const char *x
 {
     CHECK_NULL_ARG3(dm_ctx, session, xpath);
     int rc = SR_ERR_OK;
-    
+
     char *namespace = NULL;
+    char *xp_copy = NULL;
+    size_t xp_len = 0;
     rc = sr_copy_first_ns(xpath, &namespace);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Namespace copy failed");
         return rc;
     }
-    
+
     const struct lys_module *module = NULL;
     rc = dm_get_module(dm_ctx, namespace, NULL, &module);
+    if (SR_ERR_UNKNOWN_MODEL == rc) {
+        rc = dm_report_error(session, NULL, strdup(xpath), rc);
+    }
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Get module %s failed", namespace);
         free(namespace);
         return rc;
     }
+    if (NULL != matched_module) {
+        *matched_module = module;
+    }
     free(namespace);
-    
-    const struct lys_node *sch_node = ly_ctx_get_node(module->ctx, NULL, xpath);
+
+    xp_copy = strdup(xpath);
+    CHECK_NULL_NOMEM_RETURN(xp_copy);
+    xp_len = strlen(xp_copy);
+
+    while (0 < (xp_len = strlen(xp_copy))) {
+        if ('*' == xp_copy[xp_len-1]) {
+            xp_copy[xp_len-1] = 0;
+            xp_len--;
+        } else {
+            break;
+        }
+
+        if ('/' == xp_copy[xp_len-1]) {
+            xp_copy[xp_len-1] = 0;
+            xp_len--;
+        }
+        if (':' == xp_copy[xp_len-1]) {
+            xp_copy[xp_len-1] = 0;
+            xp_len--;
+            char *last_slash = rindex(xp_copy, '/');
+            if (NULL == last_slash && '\0' != last_slash[1]) {
+                free(xp_copy);
+                return SR_ERR_INVAL_ARG;
+            }
+
+            namespace = strdup(last_slash+1); /* do not copy leading slash */
+            const struct lys_module *tmp_module = NULL;
+            rc = dm_get_module(dm_ctx, namespace, NULL, &tmp_module);
+            if (SR_ERR_OK != rc) {
+                SR_LOG_ERR("Get module %s failed", namespace);
+                free(namespace);
+                free(xp_copy);
+                return rc;
+            }
+            free(namespace);
+            *last_slash = 0;
+        }
+    }
+    if (0 == xp_len) {
+        free(xp_copy);
+        return SR_ERR_OK;
+    }
+
+    const struct lys_node *sch_node = ly_ctx_get_node(module->ctx, NULL, xp_copy);
+    free(xp_copy);
     if (NULL != sch_node){
         if (NULL != match) {
             *match = (struct lys_node *) sch_node;
@@ -399,15 +451,15 @@ rp_dt_validate_node_xpath(dm_ctx_t *dm_ctx, dm_session_t *session, const char *x
         }
         return SR_ERR_OK;
     } else if (0 == strncmp("Schema node not found", ly_errmsg(), strlen("Schema node not found"))){
-        return SR_ERR_BAD_ELEMENT;
+        return dm_report_error(session, ly_errmsg(), strdup(xpath), SR_ERR_BAD_ELEMENT);
     } else if (0 == strncmp("Unexpected character(s) '['", ly_errmsg(), strlen("Unexpected character(s) '['"))) {
-        return SR_ERR_BAD_ELEMENT;
+        return dm_report_error(session, ly_errmsg(), strdup(xpath), SR_ERR_BAD_ELEMENT);
     } else if (0 == strncmp("List key not found or on incorrect position", ly_errmsg(), strlen("List key not found or on incorrect position"))) {
-        return SR_ERR_BAD_ELEMENT;
+        return dm_report_error(session, ly_errmsg(), strdup(xpath), SR_ERR_BAD_ELEMENT);
     } else if (0 == strncmp("Module not found", ly_errmsg(), strlen("Module not found"))){
-        return SR_ERR_UNKNOWN_MODEL;
-    } else {    
-        return SR_ERR_INVAL_ARG;
+        return dm_report_error(session, ly_errmsg(), strdup(xpath), SR_ERR_UNKNOWN_MODEL);
+    } else {
+        return dm_report_error(session, ly_errmsg(), strdup(xpath), SR_ERR_INVAL_ARG);
     }
 /*
     char *module_name = NULL;
@@ -545,14 +597,14 @@ rp_dt_enable_key_nodes(struct lys_node *node)
 }
 
 int
-rp_dt_enable_xpath(dm_ctx_t *dm_ctx, dm_session_t *session, const xp_loc_id_t *loc_id)
+rp_dt_enable_xpath(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath)
 {
-    CHECK_NULL_ARG4(dm_ctx, session, loc_id, loc_id->xpath);
+    CHECK_NULL_ARG3(dm_ctx, session, xpath);
     int rc = SR_ERR_OK;
     struct lys_node *match = NULL, *node = NULL;
-    rc = rp_dt_validate_node_xpath(dm_ctx, session, loc_id->xpath, NULL, &match);
+    rc = rp_dt_validate_node_xpath(dm_ctx, session, xpath, NULL, &match);
     if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Xpath validation failed %s", loc_id->xpath);
+        SR_LOG_ERR("Xpath validation failed %s", xpath);
         return rc;
     }
 
@@ -563,7 +615,7 @@ rp_dt_enable_xpath(dm_ctx_t *dm_ctx, dm_session_t *session, const xp_loc_id_t *l
     }
 
     if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Set node state failed %s", loc_id->xpath);
+        SR_LOG_ERR("Set node state failed %s", xpath);
         return rc;
     }
 
@@ -576,12 +628,12 @@ rp_dt_enable_xpath(dm_ctx_t *dm_ctx, dm_session_t *session, const xp_loc_id_t *l
         if (!dm_is_node_enabled(node)){
             rc = dm_set_node_state(node, DM_NODE_ENABLED);
             if (SR_ERR_OK != rc) {
-                SR_LOG_ERR("Set node state failed %s", loc_id->xpath);
+                SR_LOG_ERR("Set node state failed %s", xpath);
                 return rc;
             }
             rc = rp_dt_enable_key_nodes(node);
             if (SR_ERR_OK != rc) {
-                SR_LOG_ERR("Enable key nodes failed %s", loc_id->xpath);
+                SR_LOG_ERR("Enable key nodes failed %s", xpath);
                 return rc;
             }
 

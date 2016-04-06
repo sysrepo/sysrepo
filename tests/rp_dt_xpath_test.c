@@ -153,22 +153,23 @@ check_error_reporting(void **state)
     dm_session_t *session = NULL;
     dm_session_start(ctx, NULL, SR_DS_STARTUP, &session);
 
-#if 0
+
     rc = validate_node_wrapper(ctx, session, "/example-module:*", NULL);
     assert_int_equal(SR_ERR_OK, rc);
-#endif
+
     assert_false(dm_has_error(session));
 
     /* unknown element */
     rc = validate_node_wrapper(ctx, session, "/example-module:container/unknown/unknown2", NULL);
     assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
-
-    assert_true(dm_has_error(session));
     char *err_msg = NULL;
     char *err_xpath = NULL;
+
+    assert_true(dm_has_error(session));
     rc = dm_copy_errors(session, &err_msg, &err_xpath);
     assert_int_equal(SR_ERR_OK, rc);
-    assert_string_equal("/example-module:container/unknown", err_xpath);
+    assert_string_equal("Schema node not found (unknown/unknown2).", err_msg);
+    assert_string_equal("/example-module:container/unknown/unknown2", err_xpath);
 
     free(err_msg);
     free(err_xpath);
@@ -183,7 +184,7 @@ check_error_reporting(void **state)
     err_xpath = NULL;
     rc = dm_copy_errors(session, &err_msg, &err_xpath);
     assert_int_equal(SR_ERR_OK, rc);
-    assert_string_equal("/unknown-model:container", err_xpath);
+    assert_string_equal("/unknown-model:container/list", err_xpath);
 
     assert_true(dm_has_error(session));
     free(err_msg);
@@ -193,8 +194,9 @@ check_error_reporting(void **state)
 
     /* unknown augment*/
     rc = validate_node_wrapper(ctx, session, "/example-module:container/unknown-augment:unknown", NULL);
+#if 0
     assert_int_equal(SR_ERR_UNKNOWN_MODEL, rc);
-
+#endif
     err_msg = NULL;
     err_xpath = NULL;
     rc = dm_copy_errors(session, &err_msg, &err_xpath);
@@ -209,17 +211,7 @@ check_error_reporting(void **state)
 
     /* missing key for list*/
     rc = validate_node_wrapper(ctx, session, "/example-module:container/list[key1='a']/leaf", NULL);
-    assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
-
-    err_msg = NULL;
-    err_xpath = NULL;
-    rc = dm_copy_errors(session, &err_msg, &err_xpath);
     assert_int_equal(SR_ERR_OK, rc);
-    assert_string_equal("/example-module:container/list", err_xpath);
-
-    assert_true(dm_has_error(session));
-    free(err_msg);
-    free(err_xpath);
 
     dm_session_stop(ctx, session);
 }

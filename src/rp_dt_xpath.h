@@ -60,11 +60,11 @@ int rp_dt_validate_node_xpath(dm_ctx_t *dm_ctx, dm_session_t *session, const cha
  * SR_ERR_NOT_FOUND and no edit like calls can be made for the specified xpath and the nodes underneath.
  * @param [in] dm_ctx
  * @param [in] dm_session
- * @param [in] loc_id
+ * @param [in] xpath
  * @return Error code (SR_ERR_OK on success)
  */
 int
-rp_dt_enable_xpath(dm_ctx_t *dm_ctx, dm_session_t *session, const xp_loc_id_t *xpath);
+rp_dt_enable_xpath(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath);
 
 /**
  * @}
