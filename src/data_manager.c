@@ -307,7 +307,7 @@ dm_load_data_tree_file(dm_ctx_t *dm_ctx, int fd, const char *data_filename, cons
                 (long long) st.st_mtim.tv_nsec);
 #endif
         data_tree = lyd_parse_fd(dm_ctx->ly_ctx, fd, LYD_XML, LYD_OPT_STRICT | LYD_OPT_CONFIG);
-        if (NULL == data_tree) {
+        if (NULL == data_tree && LY_SUCCESS != ly_errno) {
             SR_LOG_ERR("Parsing data tree from file %s failed", data_filename);
             free(data);
             return SR_ERR_INTERNAL;
@@ -1782,7 +1782,7 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
                 goto cleanup;
             }
             di->node = sr_dup_datatree(info->node);
-            if (NULL == di->node) {
+            if (NULL != info->node && NULL == di->node) {
                 SR_LOG_ERR_MSG("Data tree duplication failed");
                 rc = SR_ERR_INTERNAL;
                 dm_data_info_free(di);
