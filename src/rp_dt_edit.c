@@ -133,6 +133,46 @@ rp_dt_has_key(const struct lyd_node *node, const char *name, bool *res)
 }
 
 /**
+ * @brief Checks whether node can be deleted. Node can not be delete if it is a list key
+ * and the list content is not deleted.
+ */
+static int
+rp_dt_check_node_deletion(struct lyd_node *node, struct ly_set *delete_nodes, bool *can_be_removed)
+{
+    CHECK_NULL_ARG3(node, delete_nodes, can_be_removed);
+    int rc = SR_ERR_OK;
+    if (NULL != node->schema &&
+            LYS_LEAF == node->schema->nodetype) {
+            bool is_key = false;
+            rc = rp_dt_has_key(node->parent, node->schema->name, &is_key);
+            if (SR_ERR_OK != rc){
+                SR_LOG_ERR_MSG("Has key failed");
+                return rc;
+            }
+            if (is_key){
+                //check if the whole list is to be deleted
+                struct lyd_node *iter = NULL;
+                LY_TREE_FOR(node->parent->child, iter){
+                    bool found = false;
+                    for(size_t j = 0; j < delete_nodes->number; j++) {
+                        if (iter == delete_nodes->set.d[j]) {
+                            found = true;
+                            break;
+                        }
+                    }
+                    if (!found) {
+                        *can_be_removed = false;
+                        return rc;
+                    }
+                }
+
+            }
+        }
+    *can_be_removed = true;
+    return rc;
+}
+
+/**
  * @brief Checks whether all list's children are key nodes. In that case it can be remove
  * even with non-recursive flag.
  */
@@ -272,36 +312,18 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, co
         return rc;
     }
 
-    //check flags check if node is a
-    //TODO: list key
+    /* list key can be deleted only when the whole list is deleted */
     for (size_t i = 0; i < nodes->number; i++) {
-        if (NULL != nodes->set.d[i]->schema &&
-            LYS_LEAF == nodes->set.d[i]->schema->nodetype) {
-            bool is_key = false;
-            rc = rp_dt_has_key(nodes->set.d[i]->parent, nodes->set.d[i]->schema->name, &is_key);
-            if (SR_ERR_OK != rc){
-                SR_LOG_ERR_MSG("Has key failed");
-                goto cleanup;
-            }
-            if (is_key){
-                SR_LOG_ERR("Key leaf can not be delete delete the list instead %s", xpath);
-                //check if the whole list is to be deleted
-                struct lyd_node *iter = NULL;
-                LY_TREE_FOR(nodes->set.d[i]->parent->child, iter){
-                    bool found = false;
-                    for(size_t j = 0; j < nodes->number; j++) {
-                        if (iter == nodes->set.d[j]) {
-                            found = true;
-                            break;
-                        }
-                    }
-                    if (!found) {
-                        rc = dm_report_error(session, "List key can not be deleted", strdup(xpath), SR_ERR_INVAL_ARG);
-                        goto cleanup;
-                    }
-                }
-
-            }
+        bool can_be_deleted = false;
+        rc = rp_dt_check_node_deletion(nodes->set.d[i], nodes, &can_be_deleted);
+        if (SR_ERR_OK != rc){
+            SR_LOG_ERR("Check node deletion failed %s", xpath);
+            goto cleanup;
+        }
+        if (!can_be_deleted) {
+            SR_LOG_ERR("Key leaf can not be delete delete the list instead %s", xpath);
+            rc = dm_report_error(session, "List key can not be deleted", strdup(xpath), SR_ERR_INVAL_ARG);
+            goto cleanup;
         }
     }
 
@@ -316,7 +338,7 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, co
             }
         }
     }
-    
+
     parents = ly_set_new();
     CHECK_NULL_NOMEM_GOTO(parents, rc, cleanup);
 
@@ -395,30 +417,33 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const
     dm_data_info_t *info = NULL;
     struct lyd_node *node = NULL;
 
-    //validate
+    /* validate xpath */
     rc = rp_dt_validate_node_xpath(dm_ctx, session, xpath, &module, &sch_node);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Requested node is not valid %s", xpath);
         return rc;
     }
 
-    //get data tree
+    /* get data tree to be update */
     rc = dm_get_data_info(dm_ctx, session, module->name, &info);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Getting data tree failed for xpath '%s'", xpath);
         return rc;
     }
 
+    /* check if node is enabled */
     if (dm_is_running_ds_session(session) && !dm_is_enabled_check_recursively(sch_node)) {
         SR_LOG_ERR("The node is not enabled in running datastore %s", xpath);
         return SR_ERR_INVAL_ARG;
     }
 
+    /* non-presence container can not be created */
     if (LYS_CONTAINER == sch_node->nodetype && NULL == ((struct lys_node_container *) sch_node)->presence) {
         SR_LOG_ERR("Non presence container can not be created %s", xpath);
         return SR_ERR_INVAL_ARG;
     }
 
+    /* key node can not be created, create list instead*/
     if (LYS_LEAF == sch_node->nodetype) {
         bool is_key = false;
         rc = rp_dt_has_sch_key(sch_node->parent, sch_node->name, &is_key);
@@ -432,21 +457,20 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const
         }
     }
 
-    //transform sr_val_t to string
+    /* transform new value from sr_val_t to string */
     if (NULL != value){
-        /* if the list is being created value is NULL*/
         rc = sr_val_to_str(value, sch_node, &new_value);
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR_MSG("Copy new value to string failed");
             return rc;
         }
     } else if (!((LYS_CONTAINER | LYS_LIST) & sch_node->nodetype)) {
+        /* value can be NULL only if  container or list is being created */
         SR_LOG_ERR_MSG("Argument value not passed");
         return SR_ERR_INVAL_ARG;
     }
 
-
-
+    /* create or update */
     int flags = (SR_EDIT_STRICT & options) ? 0 : LYD_PATH_OPT_UPDATE;
     node = sr_lyd_new_path(info, module->ctx, xpath, new_value, flags);
     if (NULL == node && LY_SUCCESS != ly_errno) {
@@ -460,14 +484,11 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const
         }
     }
 
-    //lyd_new_path
     free(new_value);
     if (NULL != info){
         info->modified = SR_ERR_OK == rc ? true : info->modified;
     }
     return rc;
-
-
 }
 
 int
@@ -494,17 +515,15 @@ rp_dt_move_list(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, sr_m
     rc = rp_dt_find_node(info->node, xpath, dm_is_running_ds_session(session), &node);
     if (SR_ERR_NOT_FOUND == rc) {
         SR_LOG_ERR("List not found %s", xpath);
-        rc = SR_ERR_INVAL_ARG;
-        goto cleanup;
+        return SR_ERR_INVAL_ARG;
     } else if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Find deepest match failed %s", xpath);
-        goto cleanup;
+        SR_LOG_ERR("Find node failed %s", xpath);
+        return rc;
     }
 
     if (LYS_LIST != node->schema->nodetype || (!(LYS_USERORDERED & node->schema->flags))) {
         SR_LOG_ERR ("Xpath %s does not identify the user ordered list", xpath);
-        rc = SR_ERR_INVAL_ARG;
-        goto cleanup;
+        return SR_ERR_INVAL_ARG;
     }
 
     struct lyd_node *sibling = NULL;
@@ -515,7 +534,7 @@ rp_dt_move_list(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, sr_m
     }
     else if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Find the closest sibling failed");
-        goto cleanup;
+        return rc;
     }
 
     if (SR_MOVE_UP == direction) {
@@ -541,23 +560,15 @@ rp_dt_move_list_wrapper(rp_ctx_t *rp_ctx, rp_session_t *session, const char *xpa
     CHECK_NULL_ARG5(rp_ctx, rp_ctx->dm_ctx, session, session->dm_session, xpath);
 
     int rc = SR_ERR_OK;
-    /*xp_loc_id_t *loc_id = NULL;
-    rc = xp_char_to_loc_id(xpath, &loc_id);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Converting xpath '%s' to loc_id failed.", xpath);
-        return rc;
-    }*/
 
     rc = ac_check_node_permissions(session->ac_session, xpath, AC_OPER_READ_WRITE);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Access control check failed for xpath '%s'", xpath);
-        //xp_free_loc_id(loc_id);
         return rc;
     }
 
-    rc = dm_add_operation(session->dm_session, direction == SR_MOVE_UP ? DM_MOVE_UP_OP: DM_MOVE_DOWN_OP ,xpath, NULL, 0);
+    rc = dm_add_operation(session->dm_session, direction == SR_MOVE_UP ? DM_MOVE_UP_OP: DM_MOVE_DOWN_OP, xpath, NULL, 0);
     if (SR_ERR_OK != rc){
-        /* loc id is freed by dm_add_operation */
         SR_LOG_ERR_MSG("Adding operation to session op list failed");
         return rc;
     }
@@ -577,25 +588,17 @@ rp_dt_set_item_wrapper(rp_ctx_t *rp_ctx, rp_session_t *session, const char *xpat
     CHECK_NULL_ARG5(rp_ctx, rp_ctx->dm_ctx, session, session->dm_session, xpath);
 
     int rc = SR_ERR_OK;
-    /*xp_loc_id_t *loc_id = NULL;
-    rc = xp_char_to_loc_id(xpath, &loc_id);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Converting xpath '%s' to loc_id failed.", xpath);
-        sr_free_val(val);
-        return rc;
-    }*/
 
     rc = ac_check_node_permissions(session->ac_session, xpath, AC_OPER_READ_WRITE);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Access control check failed for xpath '%s'", xpath);
-        //xp_free_loc_id(loc_id);
         sr_free_val(val);
         return rc;
     }
 
     rc = dm_add_operation(session->dm_session, DM_SET_OP, xpath, val, opt);
     if (SR_ERR_OK != rc){
-        /* loc id and val is freed by dm_add_operation */
+        /* val is freed by dm_add_operation */
         SR_LOG_ERR_MSG("Adding operation to session op list failed");
         return rc;
     }
@@ -612,14 +615,7 @@ int
 rp_dt_delete_item_wrapper(rp_ctx_t *rp_ctx, rp_session_t *session, const char *xpath, sr_edit_options_t opts)
 {
     CHECK_NULL_ARG5(rp_ctx, rp_ctx->dm_ctx, session, session->dm_session, xpath);
-
     int rc = SR_ERR_OK;
-    /*xp_loc_id_t *loc_id = NULL;
-    rc = xp_char_to_loc_id(xpath, &loc_id);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Converting xpath '%s' to loc_id failed.", xpath);
-        return rc;
-    }*/
 
     rc = ac_check_node_permissions(session->ac_session, xpath, AC_OPER_READ_WRITE);
     if (SR_ERR_OK != rc) {
@@ -629,7 +625,6 @@ rp_dt_delete_item_wrapper(rp_ctx_t *rp_ctx, rp_session_t *session, const char *x
 
     rc = dm_add_operation(session->dm_session, DM_DELETE_OP, xpath, NULL, opts);
     if (SR_ERR_OK != rc){
-        /* loc id is freed by dm_add_operation */
         SR_LOG_ERR_MSG("Adding operation to session op list failed");
         return rc;
     }

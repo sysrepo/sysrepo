@@ -333,7 +333,6 @@ rp_dt_get_values(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char 
     int rc = SR_ERR_OK;
     struct lyd_node **nodes = NULL;
     
-    //rc = rp_dt_get_nodes(dm_ctx, data_tree, loc_id, check_enable, &nodes, count);
     struct ly_set *set = NULL;
     rc = rp_dt_find_nodes(data_tree, xpath, check_enable, &set);
     if (SR_ERR_OK != rc) {
@@ -347,11 +346,11 @@ rp_dt_get_values(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char 
     }
     *count = set->number;
     rc = rp_dt_get_values_from_nodes(nodes, *count, values);
-/*
+
     if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Copying values from nodes failed for xpath '%s'", loc_id->xpath);
+        SR_LOG_ERR("Copying values from nodes failed for xpath '%s'", xpath);
         return rc;
-    }*/
+    }
 cleanup:
         
     ly_set_free(set);

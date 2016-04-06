@@ -31,6 +31,7 @@
 /**
  * @brief Validates the xpath and then deletes item(s) identified by xpath.
  * List key can not be deleted. (if attempted SR_ERR_INVAL_ARG is returned)
+ * Non-empty list and container can not be deleted with SR_EDIT_NON_RECURSIVE flag
  * @param [in] dm_ctx
  * @param [in] session
  * @param [in] xpath
@@ -40,8 +41,8 @@
 int rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const sr_edit_flag_t options);
 
 /**
- * @brief Function validates the xpath and then creates presence container, list instance, leaf, leaf-list item. If the xpath identifies leaf-list value is appended to the end
- * of the leaf-list. Value of the list key can not be set or changed. To create a list use
+ * @brief Function validates the xpath and then creates presence container, list instance, leaf, leaf-list item. If the xpath identifies leaf-list value
+ * it is appended to the end of the leaf-list. Value of the list key can not be set or changed. To create a list use
  * xpath including all list keys.
  * @param [in] dm_ctx
  * @param [in] session

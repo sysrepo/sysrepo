@@ -249,7 +249,7 @@ rp_dt_find_nodes(struct lyd_node *data_tree, const char *xpath, bool check_enabl
         SR_LOG_ERR_MSG("Lyd get node failed");
         return LY_EINVAL == ly_errno || LY_EVALID == ly_errno ? SR_ERR_INVAL_ARG : SR_ERR_INTERNAL;
     }
-    
+
     if (check_enable) {
         for (size_t i = 0; i < res->number; i++) {
             if (!dm_is_enabled_check_recursively(res->set.d[i]->schema)) {
@@ -258,7 +258,7 @@ rp_dt_find_nodes(struct lyd_node *data_tree, const char *xpath, bool check_enabl
             }
         }
     }
-    
+
     if (0 == res->number) {
         ly_set_free(res);
         return SR_ERR_NOT_FOUND;
@@ -298,13 +298,13 @@ rp_dt_get_nodes(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp_loc
     int rc = SR_ERR_OK;
     struct lyd_node *node = NULL;
     size_t last_node = 0;
-    
+
     struct ly_set *set = NULL;
     rc = rp_dt_find_nodes(data_tree, loc_id->xpath, check_enable, &set);
     if (SR_ERR_OK != rc) {
         return rc;
     }
-    
+
     *nodes = calloc(set->number, sizeof(**nodes));
     CHECK_NULL_NOMEM_GOTO(nodes, rc, cleanup);
     for (size_t i = 0; i < set->number; i++) {
@@ -315,71 +315,7 @@ cleanup:
     ly_set_free(set);
     return rc;
 
-    
-    
-    rc = rp_dt_lookup_node(data_tree, loc_id, true, check_enable, &node);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Look up failed for xpath %s", loc_id->xpath);
-        return rc;
-    }
 
-    if (NULL == node->schema || NULL == node->schema->name) {
-        SR_LOG_ERR("Missing schema information for node %s", loc_id->xpath);
-        return SR_ERR_INTERNAL;
-    }
-
-    if (XP_IS_MODULE_XPATH(loc_id)) {
-        rc = rp_dt_get_all_siblings(node, check_enable, nodes, count);
-        if (SR_ERR_OK != rc) {
-            SR_LOG_ERR("Get all siblings failed for %s", loc_id->xpath);
-        }
-        return rc;
-    }
-
-    switch (node->schema->nodetype) {
-    case LYS_LEAF:
-        *count = 1;
-        *nodes = calloc(*count, sizeof(**nodes));
-        if (NULL == *nodes) {
-            SR_LOG_ERR_MSG("Memory allocation failed");
-            return SR_ERR_NOMEM;
-        }
-        (*nodes)[0] = node;
-        return rc;
-    case LYS_CONTAINER:
-        rc = rp_dt_get_all_children_node(node, check_enable, nodes, count);
-        if (SR_ERR_OK != rc) {
-            SR_LOG_ERR("Get children nodes failed for %s", node->schema->name);
-        }
-        return rc;
-    case LYS_LIST:
-        /* check if the key values is specified */
-        last_node = XP_GET_NODE_COUNT(loc_id) - 1;
-        if (0 != XP_GET_KEY_COUNT(loc_id, last_node)) {
-            /* return the content of the list instance*/
-            rc = rp_dt_get_all_children_node(node, check_enable, nodes, count);
-            if (SR_ERR_OK != rc) {
-                SR_LOG_ERR("Get children nodes failed for %s", node->schema->name);
-            }
-        } else {
-            /* return all list instance*/
-            rc = rp_dt_get_siblings_node_by_name(node, node->schema->name, nodes, count);
-            if (SR_ERR_OK != rc) {
-                SR_LOG_ERR("Get list instance failed for %s", node->schema->name);
-            }
-        }
-        return rc;
-    case LYS_LEAFLIST:
-        rc = rp_dt_get_siblings_node_by_name(node, node->schema->name, nodes, count);
-        if (SR_ERR_OK != rc) {
-            SR_LOG_ERR("Get leaf-list members failed for %s", node->schema->name);
-        }
-        return rc;
-    default:
-        SR_LOG_ERR("Unsupported node type for xpath %s", loc_id->xpath);
-        return SR_ERR_INTERNAL;
-    }
-    return SR_ERR_INTERNAL;
 }
 
 int
@@ -399,7 +335,7 @@ rp_dt_get_nodes_with_opts(const dm_ctx_t *dm_ctx, dm_session_t *dm_session, rp_d
         ly_set_free(get_items_ctx->nodes);
         get_items_ctx->nodes = NULL;
         rc = rp_dt_find_nodes(data_tree, xpath, dm_is_running_ds_session(dm_session), &get_items_ctx->nodes);
-       
+
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR("Look up failed for xpath %s",xpath);
             return rc;
@@ -414,59 +350,6 @@ rp_dt_get_nodes_with_opts(const dm_ctx_t *dm_ctx, dm_session_t *dm_session, rp_d
         get_items_ctx->offset = offset;
         get_items_ctx->recursive = recursive;
 
-
-        /*initialy push nodes to stack */
-        /*if (XP_IS_MODULE_XPATH(loc_id)) {
-            rc = rp_dt_push_all_sibling_nodes_to_stack(&get_items_ctx->stack, dm_is_running_ds_session(dm_session), data_tree);
-            if (SR_ERR_OK != rc) {
-                SR_LOG_ERR_MSG("Push sibling nodes to stack failed");
-                return SR_ERR_INTERNAL;
-            }
-        } else {
-            size_t last_node = 0;
-            switch (node->schema->nodetype) {
-            case LYS_LEAF:
-                rc = rp_ns_push(&get_items_ctx->stack, node);
-                if (SR_ERR_OK != rc) {
-                    return SR_ERR_INTERNAL;
-                }
-                break;
-            case LYS_CONTAINER:
-                rc = rp_dt_push_child_nodes_to_stack(&get_items_ctx->stack, dm_is_running_ds_session(dm_session), node);
-                if (SR_ERR_OK != rc) {
-                    SR_LOG_ERR_MSG("Push child nodes to stack failed");
-                    return SR_ERR_INTERNAL;
-                }
-                break;
-            case LYS_LIST:
-                last_node = XP_GET_NODE_COUNT(loc_id) - 1;
-                if (0 != XP_GET_KEY_COUNT(loc_id, last_node)) {
-                    rc = rp_dt_push_child_nodes_to_stack(&get_items_ctx->stack, dm_is_running_ds_session(dm_session), node);
-                    if (SR_ERR_OK != rc) {
-                        SR_LOG_ERR_MSG("Push child nodes to stack failed");
-                        return SR_ERR_INTERNAL;
-                    }
-                    break;
-                } else {
-                    rc = rp_dt_push_nodes_with_same_name_to_stack(&get_items_ctx->stack, node);
-                    if (SR_ERR_OK != rc) {
-                        SR_LOG_ERR_MSG("Push nodes to stack failed");
-                        return SR_ERR_INTERNAL;
-                    }
-                }
-                break;
-            case LYS_LEAFLIST:
-                rc = rp_dt_push_nodes_with_same_name_to_stack(&get_items_ctx->stack, node);
-                if (SR_ERR_OK != rc) {
-                    SR_LOG_ERR_MSG("Push nodes to stack failed");
-                    return SR_ERR_INTERNAL;
-                }
-                break;
-            default:
-                SR_LOG_ERR("Unsupported node type for xpath %s", loc_id->xpath);
-                return SR_ERR_INTERNAL;
-            }
-        }*/
         SR_LOG_DBG_MSG("Cache miss in get_nodes_with_opts");
 
     } else {
@@ -484,7 +367,7 @@ rp_dt_get_nodes_with_opts(const dm_ctx_t *dm_ctx, dm_session_t *dm_session, rp_d
     CHECK_NULL_NOMEM_RETURN(*nodes);
 
     /* process stack*/
-    
+
     while (cnt < limit) {
         if (index >= get_items_ctx->nodes->number) {
             break;
@@ -635,20 +518,6 @@ rp_dt_lookup_node(struct lyd_node *data_tree, const xp_loc_id_t *loc_id, bool al
     int rc = SR_ERR_OK;
     rc = rp_dt_find_node(data_tree, loc_id->xpath, check_enable, node);
     return rc;
-    
-    rc = rp_dt_find_deepest_match(data_tree, loc_id, allow_no_keys, check_enable, &match_len, node);
-    if (SR_ERR_NOT_FOUND == rc){
-        return rc;
-    } else if (SR_ERR_OK != rc){
-        SR_LOG_ERR("Find deepest match failed for '%s'", loc_id->xpath);
-        return rc;
-    }
 
-    /* check if match is complete*/
-    if (match_len != XP_GET_NODE_COUNT(loc_id)){
-        *node = NULL;
-        return SR_ERR_NOT_FOUND;
-    }
 
-    return rc;
 }
