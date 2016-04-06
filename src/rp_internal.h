@@ -27,6 +27,7 @@
 #include "rp_node_stack.h"
 #include "data_manager.h"
 #include "notification_processor.h"
+#include "persistence_manager.h"
 
 #define RP_THREAD_COUNT 4  /**< Number of threads that RP uses for processing. */
 
@@ -38,6 +39,7 @@ typedef struct rp_ctx_s {
     ac_ctx_t *ac_ctx;                        /**< Access Control module context. */
     dm_ctx_t *dm_ctx;                        /**< Data Manager Context. */
     np_ctx_t *np_ctx;                        /**< Notification Processor context. */
+    pm_ctx_t *pm_ctx;                        /**< Persistence Manager context. */
 
     pthread_t thread_pool[RP_THREAD_COUNT];  /**< Thread pool. */
     size_t active_threads;                   /**< Number of active (non-sleeping) threads. */
@@ -69,7 +71,7 @@ typedef struct rp_session_s {
     uint32_t id;                         /**< Assigned session id. */
     const ac_ucred_t *user_credentials;  /**< Credentials of the user who the session belongs to. */
     sr_datastore_t datastore;            /**< Datastore selected for this session. */
-    bool notification_session;           /**< Flag that determines whether this is a special notification session or a normal session. */
+    uint32_t options;                   /**< Session options used to override default session behavior. */
     uint32_t msg_count;                  /**< Count of unprocessed messages (including waiting in queue). */
     pthread_mutex_t msg_count_mutex;     /**< Mutex for msg_count counter. */
     bool stop_requested;                 /**< Session stop has been requested. */

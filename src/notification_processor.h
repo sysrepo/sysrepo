@@ -41,7 +41,7 @@ typedef struct np_ctx_s np_ctx_t;
  * @brief Initializes a Notification Processor instance.
  *
  * @param[in] rp_ctx Request Processor context.
- * @param[out] np_ctx Allocated Notification Processorcontext that can be used in subsequent NP API calls.
+ * @param[out] np_ctx Allocated Notification Processor context that can be used in subsequent NP API calls.
  *
  * @return Error code (SR_ERR_OK on success).
  */

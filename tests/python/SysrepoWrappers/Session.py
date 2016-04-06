@@ -20,11 +20,11 @@ from Value import Value
 
 class Session:
 
-    def __init__(self, sysrepo, datastore, user_name=None):
+    def __init__(self, sysrepo, datastore, user_name=None, options = sr.SR_SESS_DEFAULT):
         if user_name is None:
-            self.session = sr.sr_session_start(sysrepo.connection, datastore)
+            self.session = sr.sr_session_start(sysrepo.connection, datastore, options)
         else:
-            self.session = sr.sr_session_start_user(sysrepo.connection, user_name, datastore)
+            self.session = sr.sr_session_start_user(sysrepo.connection, user_name, datastore, options)
         self.sr = sysrepo #store sr reference to be freed in valid order
 
     def __del__(self):

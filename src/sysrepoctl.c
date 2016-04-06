@@ -37,7 +37,7 @@ srctl_get_session(sr_conn_ctx_t **connection_p, sr_session_ctx_t **session_p)
 
     rc = sr_connect("sysrepoctl", SR_CONN_DEFAULT, connection_p);
     if (SR_ERR_OK == rc) {
-        rc = sr_session_start(*connection_p, SR_DS_STARTUP, session_p);
+        rc = sr_session_start(*connection_p, SR_DS_STARTUP, SR_SESS_DEFAULT, session_p);
     }
 
     if (SR_ERR_OK != rc) {

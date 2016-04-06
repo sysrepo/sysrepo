@@ -39,7 +39,7 @@ main(int argc, char **argv)
     }
 
     /* start session */
-    rc = sr_session_start(conn, SR_DS_STARTUP, &sess);
+    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &sess);
     if (SR_ERR_OK != rc) {
         goto cleanup;
     }
