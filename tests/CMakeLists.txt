@@ -1,4 +1,4 @@
-set(TEST_REPOSITORY_LOC "${PROJECT_SOURCE_DIR}/tests/data/")
+set(TEST_REPOSITORY_LOC "${CMAKE_BINARY_DIR}/repository/")
 
 configure_file("${PROJECT_SOURCE_DIR}/tests/data/test_data.h.in" "${PROJECT_SOURCE_DIR}/tests/data/test_data.h" ESCAPE_QUOTES @ONLY) 
 
@@ -43,8 +43,8 @@ macro(ADD_UNIT_TEST_WITH_HELPERS TEST_NAME)
     ADD_UNIT_TEST_WITH_OPTS(${TEST_NAME} "${t_files}" "" 1 "")
 endmacro(ADD_UNIT_TEST_WITH_HELPERS)
 
-ADD_UNIT_TEST_WITH_HELPERS(ac_test)
 ADD_UNIT_TEST(common_test)
+ADD_UNIT_TEST_WITH_HELPERS(ac_test)
 
 ADD_UNIT_TEST(xp_parser_test)
 ADD_UNIT_TEST(xp_yang_test)
@@ -69,13 +69,33 @@ ADD_UNIT_TEST(concurr_test)
 ADD_UNIT_TEST_WITH_OPTS(perf_test perf_test.c "" 0 "")
 ADD_UNIT_TEST_WITH_OPTS(daemon_test daemon_test.c "" 0 "")
 
-# copy internal yangs to tests data dir
-execute_process(
-  COMMAND mkdir -p "${TEST_REPOSITORY_LOC}internal/yang/"
+# create test repository directories and copy internal schemas
+EXECUTE_PROCESS(
+  COMMAND mkdir -p "${TEST_REPOSITORY_LOC}/yang/" "${TEST_REPOSITORY_LOC}/data/" "${TEST_REPOSITORY_LOC}internal/yang/"
   COMMAND cp "${PROJECT_SOURCE_DIR}/yang/sysrepo-persistent-data.yang" "${TEST_REPOSITORY_LOC}internal/yang/"
   COMMAND cp "${PROJECT_SOURCE_DIR}/yang/sysrepo-persistent-data.yin" "${TEST_REPOSITORY_LOC}internal/yang/"
   ERROR_QUIET
 )
+
+# install testing YANG modules
+macro(INSTALL_TEST_MODULE MODULE_NAME)
+    ADD_CUSTOM_COMMAND(
+        TARGET common_test
+        POST_BUILD
+        COMMAND ${CMAKE_BINARY_DIR}/src/sysrepoctl --install --yang=${PROJECT_SOURCE_DIR}/tests/data/yang/${MODULE_NAME}.yang --yin=${PROJECT_SOURCE_DIR}/tests/data/yang/${MODULE_NAME}.yin
+        VERBATIM
+    )
+endmacro(INSTALL_TEST_MODULE)
+
+INSTALL_TEST_MODULE("example-module")
+INSTALL_TEST_MODULE("test-module")
+INSTALL_TEST_MODULE("small-module")
+INSTALL_TEST_MODULE("info-module")
+INSTALL_TEST_MODULE("module-a@2016-02-02")
+INSTALL_TEST_MODULE("module-a@2016-02-10")
+INSTALL_TEST_MODULE("module-b@2016-02-05")
+INSTALL_TEST_MODULE("ietf-interfaces@2014-05-08")
+INSTALL_TEST_MODULE("ietf-ip@2014-06-16")
 
 FIND_PACKAGE(PythonInterp)
 FIND_PACKAGE(SWIG)

@@ -79,7 +79,7 @@ else(USE_AVL_LIB)
 endif(USE_AVL_LIB)
 
 # location of system repository
-set(REPOSITORY_LOC "${PROJECT_SOURCE_DIR}/tests/data/" CACHE PATH "System repository location, contains configuration schema and data files.")
+set(REPOSITORY_LOC "${CMAKE_BINARY_DIR}/repository/" CACHE PATH "System repository location, contains configuration schema and data files.")
 set(SCHEMA_SEARCH_DIR "${REPOSITORY_LOC}/yang/")
 set(DATA_SEARCH_DIR "${REPOSITORY_LOC}/data/")
 set(INTERNAL_SCHEMA_SEARCH_DIR "${REPOSITORY_LOC}/internal/yang/")
@@ -171,8 +171,8 @@ install (DIRECTORY DESTINATION ${SCHEMA_SEARCH_DIR} DIRECTORY_PERMISSIONS
     WORLD_READ WORLD_EXECUTE)
 install (DIRECTORY DESTINATION ${DATA_SEARCH_DIR} DIRECTORY_PERMISSIONS
     OWNER_READ OWNER_WRITE OWNER_EXECUTE
-    GROUP_READ GROUP_WRITE GROUP_EXECUTE
-    WORLD_READ WORLD_WRITE WORLD_EXECUTE)
+    GROUP_READ GROUP_EXECUTE
+    WORLD_READ WORLD_EXECUTE)
 
 # install internal YANGs
 install (FILES ${PROJECT_SOURCE_DIR}/yang/sysrepo-persistent-data.yin DESTINATION ${INTERNAL_SCHEMA_SEARCH_DIR})

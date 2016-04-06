@@ -405,13 +405,17 @@ srctl_schema_install(struct ly_ctx *ly_ctx, const char *yang_src, const char *yi
 
     /* install dependent YANG and YIN files */
     for (size_t i = 0; i < module->inc_size; i++) {
-        printf("Resolving dependency: '%s' includes '%s' ...\n", *module_name, module->inc[i].submodule->name);
+        printf("Resolving dependency: '%s' includes '%s'...\n", *module_name, module->inc[i].submodule->name);
         yang_name = srctl_yang_filepath_from_yin(module->inc[i].submodule->filepath);
         ret = srctl_schema_install(ly_ctx, yang_name, module->inc[i].submodule->filepath,
                 (const struct lys_module *)module->inc[i].submodule, &tmp_name, &tmp_rev);
         free((void*)yang_name);
     }
     for (size_t i = 0; i < module->imp_size; i++) {
+        if (NULL == module->imp[i].module->filepath) {
+            /* skip libyang's internal modules */
+            continue;
+        }
         printf("Resolving dependency: '%s' imports '%s' ...\n", *module_name, module->imp[i].module->name);
         yang_name = srctl_yang_filepath_from_yin(module->imp[i].module->filepath);
         ret = srctl_schema_install(ly_ctx, yang_name, module->imp[i].module->filepath,
@@ -888,7 +892,7 @@ srctl_print_help()
     printf("  4) Dump startup datastore data of a YANG module into a file in XML format:\n");
     printf("     sysrepoctl --dump=xml --module=ietf-interfaces > dump_file.txt\n\n");
     printf("  5) Import startup datastore data of a YANG module from a file in XML format:\n");
-    printf("     sysrepoctl --dump=xml --module=ietf-interfaces < dump_file.txt\n\n");
+    printf("     sysrepoctl --import=xml --module=ietf-interfaces < dump_file.txt\n\n");
 
     return 0;
 }

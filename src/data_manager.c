@@ -327,8 +327,8 @@ dm_load_data_tree_file(dm_ctx_t *dm_ctx, int fd, const char *data_filename, cons
                 (long long) st.st_mtim.tv_nsec);
 #endif
         data_tree = lyd_parse_fd(dm_ctx->ly_ctx, fd, LYD_XML, LYD_OPT_STRICT | LYD_OPT_CONFIG);
-        if (NULL == data_tree) {
-            SR_LOG_ERR("Parsing data tree from file %s failed", data_filename);
+        if (NULL == data_tree && LY_SUCCESS != ly_errno) {
+            SR_LOG_ERR("Parsing data tree from file %s failed: %s", data_filename, ly_errmsg());
             free(data);
             return SR_ERR_INTERNAL;
         }

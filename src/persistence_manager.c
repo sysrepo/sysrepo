@@ -163,7 +163,7 @@ pm_load_data_tree(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *mod
 
     if (NULL == *data_tree) {
         *data_tree = lyd_parse_fd(pm_ctx->ly_ctx, fd, LYD_XML, LYD_OPT_STRICT | LYD_OPT_CONFIG);
-        if (NULL == *data_tree) {
+        if (NULL == *data_tree && LY_SUCCESS != ly_errno) {
             SR_LOG_ERR("Parsing persist data from file '%s' failed: %s", data_filename, ly_errmsg());
             rc = SR_ERR_INTERNAL;
         } else {
@@ -262,6 +262,13 @@ pm_feature_enable(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *mod
         goto cleanup;
     }
 
+    if (NULL == data_tree) {
+        /* create the data tree if it's NULL */
+        rc = pm_create_data_tree(pm_ctx, module_name, &data_tree);
+        if (SR_ERR_OK != rc) {
+            goto cleanup;
+        }
+    }
     curr = data_tree->child;
 
     /* find matching feature node (if exists) */
@@ -351,6 +358,13 @@ pm_get_features(pm_ctx_t *pm_ctx, const char *module_name, char ***features_p, s
     rc = pm_load_data_tree(pm_ctx, NULL, module_name, data_filename, true, NULL, &data_tree);
     if (SR_ERR_OK != rc) {
         SR_LOG_WRN("Unable to load persist data tree for module '%s'.", module_name);
+        goto cleanup;
+    }
+
+    if (NULL == data_tree) {
+        /* empty data file */
+        *features_p = NULL;
+        *feature_cnt_p = 0;
         goto cleanup;
     }
 
