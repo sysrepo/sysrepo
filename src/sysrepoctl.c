@@ -26,6 +26,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <dirent.h>
+#include <fcntl.h>
 #include <pwd.h>
 #include <grp.h>
 #include <libyang/libyang.h>
@@ -449,7 +450,7 @@ srctl_install(const char *yang, const char *yin, const char *owner, const char *
         fprintf(stderr, "Error: YANG file must be specified for --install operation.\n");
         goto fail;
     }
-    printf("Installing a new module from YANG file '%s' ....\n", yang);
+    printf("Installing a new module from YANG file '%s' ...\n", yang);
 
     if (NULL == search_dir) {
         search_dir = srctl_get_dirname((NULL != yang) ? yang : yin);
@@ -728,6 +729,119 @@ srctl_feature_change(const char *module, const char *feature_name, bool enable)
     return rc;
 }
 
+static void
+srctl_ly_log_cb(LY_LOG_LEVEL level, const char *msg, const char *path)
+{
+    return;
+}
+
+static int
+srctl_ly_init(struct ly_ctx **ly_ctx)
+{
+    DIR *dp;
+    struct dirent *ep;
+    char *ext = NULL, schema_filename[PATH_MAX] = { 0, };
+
+    *ly_ctx = ly_ctx_new(SR_SCHEMA_SEARCH_DIR);
+    if (NULL == *ly_ctx) {
+        fprintf(stderr, "Error: Unable to initialize libyang context: %s.\n", ly_errmsg());
+        return EXIT_FAILURE;
+    }
+    ly_set_log_clb(srctl_ly_log_cb, 0);
+
+    dp = opendir(SR_SCHEMA_SEARCH_DIR);
+    if (NULL == dp) {
+        fprintf(stderr, "Error by opening schema directory: %s.\n", strerror(errno));
+        return EXIT_FAILURE;
+    }
+    while (NULL != (ep = readdir(dp))) {
+        ext = strrchr(ep->d_name, '.');
+        if (NULL != ext && 0 == strcmp(ext, ".yin")) {
+            snprintf(schema_filename, PATH_MAX, "%s%s", SR_SCHEMA_SEARCH_DIR, ep->d_name);
+            lys_parse_path(*ly_ctx, schema_filename, LYS_IN_YIN);
+        }
+    }
+
+    return EXIT_SUCCESS;
+}
+
+static int
+srctl_dump_import(const char *module, const char *format, bool dump)
+{
+    struct ly_ctx *ly_ctx = NULL;
+    struct lyd_node *data_tree = NULL;
+    char data_filename[PATH_MAX] = { 0, };
+    int fd = 0, ret = 0;
+    LYD_FORMAT dump_format = LYD_XML;
+
+    if (NULL == module) {
+        fprintf(stderr, "Error: Module must be specified for --dump operation.\n");
+        exit(EXIT_FAILURE);
+    }
+    if (NULL != format) {
+        if (0 == strcmp(format, "xml")) {
+            dump_format = LYD_XML;
+        } else if (0 == strcmp(format, "json")) {
+            dump_format = LYD_JSON;
+        } else {
+            fprintf(stderr, "Error: Unknown dump format specified: '%s'.\n", format);
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    ret = srctl_ly_init(&ly_ctx);
+    if (EXIT_SUCCESS != ret) {
+        return ret;
+    }
+
+    snprintf(data_filename, PATH_MAX, "%s%s%s", SR_DATA_SEARCH_DIR, module, SR_STARTUP_FILE_EXT);
+
+    fd = open(data_filename, dump ? O_RDONLY : (O_WRONLY | O_TRUNC));
+    if (-1 == fd) {
+        fprintf(stderr, "Error: Unable to open the data file '%s': %s.\n", data_filename, strerror(errno));
+        return EXIT_FAILURE;
+    }
+    sr_lock_fd(fd, false, true);
+
+    if (dump) {
+        /* dump data */
+        data_tree = lyd_parse_fd(ly_ctx, fd, LYD_XML, LYD_OPT_STRICT | LYD_OPT_CONFIG);
+        if (NULL == data_tree) {
+            fprintf(stderr, "Error: Unable to parse the data file '%s': %s.\n", data_filename, ly_errmsg());
+            ret = EXIT_FAILURE;
+        } else {
+            ret = lyd_print_fd(STDOUT_FILENO, data_tree, dump_format, LYP_WITHSIBLINGS | LYP_FORMAT);
+            if (0 != ret) {
+                fprintf(stderr, "Error: Unable to print the data: %s.\n", ly_errmsg());
+                ret = EXIT_FAILURE;
+            } else {
+                ret = EXIT_SUCCESS;
+            }
+        }
+    } else {
+        /* import data */
+        data_tree = lyd_parse_fd(ly_ctx, STDIN_FILENO, dump_format, LYD_OPT_STRICT | LYD_OPT_CONFIG);
+        if (NULL == data_tree) {
+            fprintf(stderr, "Error: Unable to parse the data: %s.\n", ly_errmsg());
+            ret = EXIT_FAILURE;
+        } else {
+            ret = lyd_print_fd(fd, data_tree, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT);
+            if (0 != ret) {
+                fprintf(stderr, "Error: Unable to print the data to file '%s': %s.\n", data_filename, ly_errmsg());
+                ret = EXIT_FAILURE;
+            } else {
+                ret = EXIT_SUCCESS;
+            }
+        }
+    }
+
+    sr_unlock_fd(fd);
+    close(fd);
+    ly_ctx_destroy(ly_ctx, NULL);
+
+    return ret;
+}
+
 static int
 srctl_print_version()
 {
@@ -747,16 +861,18 @@ srctl_print_help()
     printf("  -h, --help             Prints usage help.\n");
     printf("  -v, --version          Prints version.\n");
     printf("  -l, --list             Lists YANG modules installed in sysrepo.\n");
-    printf("  -i, --install          Installs specified schema into sysrepo (at least --yang must be specified).\n");
-    printf("  -u, --uninstall        Uninstalls specified schema from sysrepo (at least --module must be specified).\n");
-    printf("  -c, --change           Changes specified module in sysrepo (at least --module must be specified).\n");
-    printf("  -e, --feature-enable   Enables a feature within a module in sysrepo (at least --module must be specified).\n");
-    printf("  -d, --feature-disable  Disables a feature within a module in sysrepo (at least --module must be specified).\n");
+    printf("  -i, --install          Installs specified schema into sysrepo (--yang must be specified).\n");
+    printf("  -u, --uninstall        Uninstalls specified schema from sysrepo (--module must be specified).\n");
+    printf("  -c, --change           Changes specified module in sysrepo (--module must be specified).\n");
+    printf("  -e, --feature-enable   Enables a feature within a module in sysrepo (feature name is the argument, --module must be specified).\n");
+    printf("  -d, --feature-disable  Disables a feature within a module in sysrepo (feature name is the argument, --module must be specified).\n");
+    printf("  -x, --dump             Dumps startup datastore data of specified module (argument speciefies the format: xml or json, --module must be specified).\n");
+    printf("  -t, --import           Imports data of specified module into startup datastore (argument speciefies the format: xml or json, --module must be specified).\n");
     printf("\n");
     printf("Available other-options:\n");
     printf("  -g, --yang             Path to the file with schema in YANG format (--install operation).\n");
     printf("  -n, --yin              Path to the file with schema in YIN format (--install operation).\n");
-    printf("  -m, --module           Name of the module to be operated on (--uninstall, --change, --feature-enable, --feature-disable operations).\n");
+    printf("  -m, --module           Name of the module to be operated on (--uninstall, --change, --feature-enable, --feature-disable, --dump, --import operations).\n");
     printf("  -r, --revision         Revision of the module to be operated on (--uninstall operation).\n");
     printf("  -o, --owner            Owner user and group of the module's data in chown format (--install, --change operations).\n");
     printf("  -p, --permissions      Access permissions of the module's data in chmod format (--install, --change operations).\n");
@@ -769,6 +885,10 @@ srctl_print_help()
     printf("     sysrepoctl --change --module=ietf-interfaces --owner=admin:admin --permissions=644\n\n");
     printf("  3) Enable a feature within a YANG module:\n");
     printf("     sysrepoctl --feature-enable=if-mib --module=ietf-interfaces\n\n");
+    printf("  4) Dump startup datastore data of a YANG module into a file in XML format:\n");
+    printf("     sysrepoctl --dump=xml --module=ietf-interfaces > dump_file.txt\n\n");
+    printf("  5) Import startup datastore data of a YANG module from a file in XML format:\n");
+    printf("     sysrepoctl --dump=xml --module=ietf-interfaces < dump_file.txt\n\n");
 
     return 0;
 }
@@ -780,7 +900,7 @@ int
 main(int argc, char* argv[])
 {
     int c = 0, operation = 0, rc = 0;
-    char *feature_name = NULL;
+    char *feature_name = NULL, *dump_format = NULL;
     char *yang = NULL, *yin = NULL, *module = NULL, *revision = NULL;
     char *owner = NULL, *permissions = NULL;
     char *search_dir = NULL;
@@ -794,6 +914,8 @@ main(int argc, char* argv[])
        { "change",          no_argument,       NULL, 'c' },
        { "feature-enable",  required_argument, NULL, 'e' },
        { "feature-disable", required_argument, NULL, 'd' },
+       { "dump",            optional_argument, NULL, 'x' },
+       { "import",          optional_argument, NULL, 't' },
 
        { "yang",            required_argument, NULL, 'g' },
        { "yin",             required_argument, NULL, 'n' },
@@ -806,7 +928,7 @@ main(int argc, char* argv[])
        { 0, 0, 0, 0 }
     };
 
-    while ((c = getopt_long(argc, argv, "hvliuce:d:g:n:m:r:o:p:s:W;", longopts, NULL)) != -1) {
+    while ((c = getopt_long(argc, argv, "hvliuce:d:x:t:g:n:m:r:o:p:s:W;", longopts, NULL)) != -1) {
         switch (c) {
             case 'h':
                 srctl_print_help();
@@ -826,6 +948,11 @@ main(int argc, char* argv[])
             case 'd':
                 operation = c;
                 feature_name = optarg;
+                break;
+            case 'x':
+            case 't':
+                operation = c;
+                dump_format = optarg;
                 break;
             case 'g':
                 yang = optarg;
@@ -879,6 +1006,12 @@ main(int argc, char* argv[])
             break;
         case 'd':
             rc = srctl_feature_change(module, feature_name, false);
+            break;
+        case 'x':
+            rc = srctl_dump_import(module, dump_format, true);
+            break;
+        case 't':
+            rc = srctl_dump_import(module, dump_format, false);
             break;
         default:
             rc = srctl_print_help();
