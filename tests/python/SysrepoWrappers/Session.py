@@ -48,8 +48,8 @@ class Session:
     def get_items(self, path):
         return map(lambda v: Value(cobj=v),sr.sr_get_items(self.session, path))
 
-    def get_items_iter(self, path, recursive):
-        return sr.sr_get_items_iter(self.session, path, recursive)
+    def get_items_iter(self, path):
+        return sr.sr_get_items_iter(self.session, path)
 
     def get_item_next(self, iter):
         return Value(cobj=sr.sr_get_item_next(self.session, iter))

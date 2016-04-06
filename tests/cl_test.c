@@ -390,12 +390,12 @@ cl_get_items_iter_test(void **state)
     sr_val_iter_t *it = NULL;
 
     /* illegal xpath */
-    rc = sr_get_items_iter(session, "^&((", true, &it);
+    rc = sr_get_items_iter(session, "^&((", &it);
     assert_int_equal(SR_ERR_INVAL_ARG, rc);
     assert_null(it);
 
     /* non existing item*/
-    rc = sr_get_items_iter(session, "/small-module:item", true, &it);
+    rc = sr_get_items_iter(session, "/small-module:item", &it);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(it);
 
@@ -406,7 +406,7 @@ cl_get_items_iter_test(void **state)
     it = NULL;
 
     /* container */
-    rc = sr_get_items_iter(session, "/example-module:container", true, &it);
+    rc = sr_get_items_iter(session, "/example-module:container", &it);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(it);
     for (int i = 0; i < 6; i++) {
@@ -421,7 +421,7 @@ cl_get_items_iter_test(void **state)
     sr_free_val_iter(it);
 
     /* list */
-    rc = sr_get_items_iter(session, "/test-module:list[key='k1']", true, &it);
+    rc = sr_get_items_iter(session, "/test-module:list[key='k1']", &it);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(it);
     while(SR_ERR_OK == sr_get_item_next(session, it, &value)) {
@@ -430,7 +430,7 @@ cl_get_items_iter_test(void **state)
     }
     sr_free_val_iter(it);
 
-    rc = sr_get_items_iter(session, "/test-module:list", false, &it);
+    rc = sr_get_items_iter(session, "/test-module:list", &it);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(it);
     while(SR_ERR_OK == sr_get_item_next(session, it, &value)) {
@@ -440,7 +440,7 @@ cl_get_items_iter_test(void **state)
     sr_free_val_iter(it);
 
     /* leaf-list*/
-    rc = sr_get_items_iter(session, "/test-module:main/numbers", true, &it);
+    rc = sr_get_items_iter(session, "/test-module:main/numbers", &it);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(it);
     while(SR_ERR_OK == sr_get_item_next(session, it, &value)) {
@@ -451,7 +451,7 @@ cl_get_items_iter_test(void **state)
 
 
     /* all supported data types*/
-    rc = sr_get_items_iter(session, "/test-module:main/*", true, &it);
+    rc = sr_get_items_iter(session, "/test-module:main//*", &it);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(it);
     while(SR_ERR_OK == sr_get_item_next(session, it, &value)) {

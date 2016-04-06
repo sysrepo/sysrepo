@@ -555,10 +555,6 @@ int sr_get_items(sr_session_ctx_t *session, const char *path, sr_val_t **values,
 /**
  * @brief Creates an iterator for retrieving of the data elements stored under provided path.
  *
- * If the recursive flag is true, it recursively iterates over all nodes in the
- * data tree, up to the tree leaves. If the recursive is false, it iterates only
- * over the nodes at the path level (over the values that ::sr_get_items would return).
- *
  * Requested data elements are transferred from the datastore in larger chunks
  * of pre-defined size, which is much more efficient that calling multiple
  * ::sr_get_item calls, and may be less memory demanding than calling ::sr_get_items
@@ -572,15 +568,13 @@ int sr_get_items(sr_session_ctx_t *session, const char *path, sr_val_t **values,
  *
  * @param[in] session Session context acquired with ::sr_session_start call.
  * @param[in] path @ref xp_page "XPath" identifier of the data element / subtree to be retrieved.
- * @param[in] recursive Indicates whether only the elements at the path level
- * (recursive == false), or all nested elements (recursive == true) should be returned.
  * @param[out] iter Iterator context that can be used to retrieve individual data
  * elements via ::sr_get_item_next calls. Allocated by the function, should be
  * freed with ::sr_free_val_iter.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int sr_get_items_iter(sr_session_ctx_t *session, const char *path, bool recursive, sr_val_iter_t **iter);
+int sr_get_items_iter(sr_session_ctx_t *session, const char *path, sr_val_iter_t **iter);
 
 /**
  * @brief Returns the next item from the dataset of provided iterator created

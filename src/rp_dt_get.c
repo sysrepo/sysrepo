@@ -441,7 +441,7 @@ cleanup:
 
 int
 rp_dt_get_values_wrapper_with_opts(rp_ctx_t *rp_ctx, rp_session_t *rp_session, rp_dt_get_items_ctx_t *get_items_ctx, const char *xpath,
-        bool recursive, size_t offset, size_t limit, sr_val_t ***values, size_t *count)
+        size_t offset, size_t limit, sr_val_t ***values, size_t *count)
 {
     CHECK_NULL_ARG5(rp_ctx, rp_ctx->dm_ctx, rp_session, rp_session->dm_session, get_items_ctx);
     CHECK_NULL_ARG3(xpath, values, count);
@@ -469,7 +469,7 @@ rp_dt_get_values_wrapper_with_opts(rp_ctx_t *rp_ctx, rp_session_t *rp_session, r
         goto cleanup;
     }
 
-    rc = rp_dt_get_nodes_with_opts(rp_ctx->dm_ctx, rp_session->dm_session, get_items_ctx, data_tree, xpath, recursive, offset, limit, &nodes, count);
+    rc = rp_dt_get_nodes_with_opts(rp_ctx->dm_ctx, rp_session->dm_session, get_items_ctx, data_tree, xpath, offset, limit, &nodes, count);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Get nodes for xpath %s failed", xpath);
         goto cleanup;

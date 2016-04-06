@@ -428,19 +428,18 @@ void get_values_opts_test(void **state) {
     get_items_ctx.nodes = NULL;
     get_items_ctx.xpath = NULL;
     get_items_ctx.offset = 0;
-    get_items_ctx.recursive =true;
 
 #define EX_CONT "/example-module:container"
     xp_loc_id_t *l;
     assert_int_equal(SR_ERR_OK, xp_char_to_loc_id(EX_CONT, &l));
     struct lyd_node **nodes = NULL;
-    rc = rp_dt_get_nodes_with_opts(ctx->dm_ctx, ses_ctx->dm_session, &get_items_ctx, root, EX_CONT, true, 0, 3, &nodes, &count);
+    rc = rp_dt_get_nodes_with_opts(ctx->dm_ctx, ses_ctx->dm_session, &get_items_ctx, root, EX_CONT, 0, 3, &nodes, &count);
     assert_int_equal(SR_ERR_OK, rc);
 
     free(nodes);
     xp_free_loc_id(l);
 
-    rc = rp_dt_get_values_wrapper_with_opts(ctx, ses_ctx, &get_items_ctx, EX_CONT, true, 0, 1, &values, &count);
+    rc = rp_dt_get_values_wrapper_with_opts(ctx, ses_ctx, &get_items_ctx, EX_CONT, 0, 1, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
     assert_string_equal(EX_CONT, get_items_ctx.xpath);
     assert_int_equal(1, get_items_ctx.offset);
@@ -449,11 +448,11 @@ void get_values_opts_test(void **state) {
     }
     sr_free_values_arr(values, count);
 
-    rc = rp_dt_get_values_wrapper_with_opts(ctx, ses_ctx, &get_items_ctx, EX_CONT, true, 100, 1, &values, &count);
+    rc = rp_dt_get_values_wrapper_with_opts(ctx, ses_ctx, &get_items_ctx, EX_CONT, 100, 1, &values, &count);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
     assert_string_equal(EX_CONT, get_items_ctx.xpath);
 
-    rc = rp_dt_get_values_wrapper_with_opts(ctx, ses_ctx, &get_items_ctx, "/example-module:*", true, 0, 10, &values, &count);
+    rc = rp_dt_get_values_wrapper_with_opts(ctx, ses_ctx, &get_items_ctx, "/example-module:*", 0, 10, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
     assert_string_equal("/example-module:*", get_items_ctx.xpath);
     for (size_t i=0; i < count; i++){

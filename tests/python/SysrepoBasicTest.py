@@ -52,7 +52,7 @@ class SysrepoBasicTest(unittest.TestCase):
             self.assertRegexpMatches(v.xpath, "/test-module:main*")
 
     def test_get_items_iter(self):
-        iter = self.session.get_items_iter("/test-module:main", True)
+        iter = self.session.get_items_iter("/test-module:main//*")
         while True:
             try:
                 item = self.session.get_item_next(iter)

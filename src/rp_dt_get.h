@@ -84,14 +84,13 @@ int rp_dt_get_values_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const c
  * @param [in] rp_session
  * @param [in] get_items_ctx
  * @param [in] xpath
- * @param [in] recursive - include all nodes under the selected xpath
  * @param [in] offset - return the values with index and above
  * @param [in] limit - the maximum count of values that can be returned
  * @param [out] values
  * @param [out] count
  */
 int rp_dt_get_values_wrapper_with_opts(rp_ctx_t *rp_ctx, rp_session_t *rp_session, rp_dt_get_items_ctx_t *get_items_ctx, const char *xpath,
-                                       bool recursive, size_t offset, size_t limit, sr_val_t ***values, size_t *count);
+                                       size_t offset, size_t limit, sr_val_t ***values, size_t *count);
 
 #endif /* RP_DT_GET_H */
 

@@ -81,7 +81,7 @@ main(int argc, char **argv)
     }
 
     /* get all list instances with their content (recursive) */
-    rc = sr_get_items_iter(sess, "/ietf-interfaces:interfaces/interface", true, &iter);
+    rc = sr_get_items_iter(sess, "/ietf-interfaces:interfaces/interface//*", &iter);
     if (SR_ERR_OK != rc) {
         goto cleanup;
     }

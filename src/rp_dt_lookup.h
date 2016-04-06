@@ -95,7 +95,6 @@ int rp_dt_get_nodes(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp
  * subsequent nodes are requested.
  * @param [in] data_tree
  * @param [in] xpath
- * @param [in] recursive - flag defining whether nodes of the subtrees should be included
  * @param [in] offset - how many nodes should be skipped at the beginning of the selection
  * @param [in] limit - maximum number of nodes that could be returned
  * @param [out] nodes
@@ -103,7 +102,7 @@ int rp_dt_get_nodes(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp
  * @return Error code (SR_ERR_OK on success), SR_ERR_NOT_FOUND
  */
 int rp_dt_get_nodes_with_opts(const dm_ctx_t *dm_ctx, dm_session_t *dm_session, rp_dt_get_items_ctx_t *get_items_ctx, struct lyd_node *data_tree, const char *xpath,
-                                  bool recursive, size_t offset, size_t limit, struct lyd_node ***nodes, size_t *count);
+                              size_t offset, size_t limit, struct lyd_node ***nodes, size_t *count);
 
 /**
  * @brief Tries to find a match as deep as possible in provided data tree.

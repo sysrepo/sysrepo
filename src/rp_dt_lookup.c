@@ -320,7 +320,7 @@ cleanup:
 
 int
 rp_dt_get_nodes_with_opts(const dm_ctx_t *dm_ctx, dm_session_t *dm_session, rp_dt_get_items_ctx_t *get_items_ctx, struct lyd_node *data_tree,
-        const char *xpath, bool recursive, size_t offset, size_t limit, struct lyd_node ***nodes, size_t *count)
+        const char *xpath, size_t offset, size_t limit, struct lyd_node ***nodes, size_t *count)
 {
     CHECK_NULL_ARG5(dm_ctx, dm_session, get_items_ctx, data_tree, xpath);
     CHECK_NULL_ARG2(nodes, count);
@@ -328,9 +328,9 @@ rp_dt_get_nodes_with_opts(const dm_ctx_t *dm_ctx, dm_session_t *dm_session, rp_d
     int rc = SR_ERR_OK;
     bool cache_hit = false;
 
-    SR_LOG_DBG("Get_nodes opts with args: %s %zu %zu %d", xpath, limit, offset, recursive);
+    SR_LOG_DBG("Get_nodes opts with args: %s %zu %zu", xpath, limit, offset);
     /* check if we continue where we left */
-    if (get_items_ctx->xpath == NULL || 0 != strcmp(xpath, get_items_ctx->xpath) || get_items_ctx->recursive != recursive ||
+    if (get_items_ctx->xpath == NULL || 0 != strcmp(xpath, get_items_ctx->xpath) ||
             offset != get_items_ctx->offset) {
         ly_set_free(get_items_ctx->nodes);
         get_items_ctx->nodes = NULL;
@@ -348,7 +348,6 @@ rp_dt_get_nodes_with_opts(const dm_ctx_t *dm_ctx, dm_session_t *dm_session, rp_d
             return SR_ERR_INTERNAL;
         }
         get_items_ctx->offset = offset;
-        get_items_ctx->recursive = recursive;
 
         SR_LOG_DBG_MSG("Cache miss in get_nodes_with_opts");
 

@@ -57,7 +57,6 @@ typedef struct rp_ctx_s {
  */
 typedef struct rp_dt_get_items_ctx {
     char *xpath;            /**< xpath of the request*/
-    bool recursive;         /**< flag denotes if the subtrees should be part of the response*/
     size_t offset;          /**< index of the node to be processed */
     struct ly_set *nodes;   /**< nodes to be iterated through */
 } rp_dt_get_items_ctx_t;
