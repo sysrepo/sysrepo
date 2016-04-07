@@ -168,7 +168,7 @@ check_error_reporting(void **state)
     assert_true(dm_has_error(session));
     rc = dm_copy_errors(session, &err_msg, &err_xpath);
     assert_int_equal(SR_ERR_OK, rc);
-    assert_string_equal("Schema node not found (unknown/unknown2).", err_msg);
+    assert_string_equal("Schema node not found.", err_msg);
     assert_string_equal("/example-module:container/unknown/unknown2", err_xpath);
 
     free(err_msg);

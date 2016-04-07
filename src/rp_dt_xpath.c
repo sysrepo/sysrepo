@@ -292,31 +292,21 @@ rp_dt_find_in_choice(dm_session_t *session, const char *xpath, const char *trimm
 {
     CHECK_NULL_ARG5(session, xpath, trimmed_xpath, module, match);
     /* libyang err_msg is used to parse the match and unmatch part */
-#define LY_ERR_MSG_PART1 "Schema node not found ("
-#define LY_ERR_MSG_PART2 ")."
     int rc = SR_ERR_BAD_ELEMENT;
     char *unmatch_part = NULL;
 
-    char *xp_copy = strdup(xpath);
+    char *xp_copy = strdup(ly_errpath());
     CHECK_NULL_NOMEM_RETURN(xp_copy);
+    char *last_slash = rindex(xp_copy, '/');
+    CHECK_NULL_NOMEM_RETURN(last_slash);
+    *last_slash = 0;
 
     char *err_msg = strdup(ly_errmsg());
     CHECK_NULL_NOMEM_RETURN(err_msg);
 
-    char *unmatch_index = strstr(ly_errmsg(), "Schema node not found (");
-    if (NULL == unmatch_index) {
-        goto not_matched;
-    }
-
     /* split xpath into unmatched part and the part that may contain a choice */
-    size_t len = strlen(ly_errmsg()) - strlen(LY_ERR_MSG_PART1) - strlen(LY_ERR_MSG_PART2);
-    unmatch_part = strndup(ly_errmsg() + strlen(LY_ERR_MSG_PART1), len);
+    unmatch_part = strdup(trimmed_xpath + strlen(xp_copy)+1);
     CHECK_NULL_NOMEM_RETURN(unmatch_part);
-
-    if (strlen(xp_copy) <= strlen(unmatch_part)) {
-        goto not_matched;
-    }
-    xp_copy[strlen(xp_copy) - strlen(unmatch_part)-1] = 0;
 
     const struct lys_node *node = ly_ctx_get_node(module->ctx, NULL, xp_copy);
     if (NULL == node) {
@@ -466,13 +456,13 @@ rp_dt_validate_node_xpath(dm_ctx_t *dm_ctx, dm_session_t *session, const char *x
             break;
         case LYVE_PATH_INCHAR:
         case LYVE_PATH_INKEY:
-            rc = dm_report_error(session, ly_errmsg(), strdup(xpath), SR_ERR_BAD_ELEMENT);
+            rc = dm_report_error(session, ly_errmsg(), strdup(ly_errpath()), SR_ERR_BAD_ELEMENT);
             break;
         case LYVE_PATH_INMOD:
-            rc = dm_report_error(session, ly_errmsg(), strdup(xpath), SR_ERR_UNKNOWN_MODEL);
+            rc = dm_report_error(session, ly_errmsg(), strdup(ly_errpath()), SR_ERR_UNKNOWN_MODEL);
             break;
         default:
-            rc = dm_report_error(session, ly_errmsg(), strdup(xpath), SR_ERR_INVAL_ARG);
+            rc = dm_report_error(session, ly_errmsg(), strdup(ly_errpath()), SR_ERR_INVAL_ARG);
         }
     }
     free(xp_copy);
