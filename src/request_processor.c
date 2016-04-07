@@ -322,7 +322,7 @@ rp_get_items_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
     size_t offset = msg->request->get_items_req->offset;
     size_t limit = msg->request->get_items_req->limit;
 
-    if (msg->request->get_items_req->has_recursive || msg->request->get_items_req->has_offset ||
+    if (msg->request->get_items_req->has_offset ||
             msg->request->get_items_req->has_limit){
 
         rc = rp_dt_get_values_wrapper_with_opts(rp_ctx, session, &session->get_items_ctx, xpath,
