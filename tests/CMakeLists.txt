@@ -76,7 +76,8 @@ if("${TEST_REPOSITORY_LOC}" STREQUAL "${REPOSITORY_LOC}")
     ADD_UNIT_TEST(concurr_test)
     ADD_UNIT_TEST_WITH_OPTS(perf_test perf_test.c "" 0 "")
     ADD_UNIT_TEST_WITH_OPTS(daemon_test daemon_test.c "" 0 "")
-    
+    ADD_UNIT_TEST_WITH_OPTS(sysrepoctl_test sysrepoctl_test.c "" 0 "")
+
     # Python tests
     FIND_PACKAGE(PythonInterp)
     FIND_PACKAGE(SWIG)

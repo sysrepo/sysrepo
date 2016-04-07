@@ -888,7 +888,7 @@ srctl_print_help()
     printf("  -r, --revision         Revision of the module to be operated on (--uninstall operation).\n");
     printf("  -o, --owner            Owner user and group of the module's data in chown format (--install, --change operations).\n");
     printf("  -p, --permissions      Access permissions of the module's data in chmod format (--install, --change operations).\n");
-    printf("  -s, --search-dir       Directory to search for included/imported modules. Defaults to the location of the main file. (--install operation).\n");
+    printf("  -s, --search-dir       Directory to search for included/imported modules. Defaults to the directory with the YANG file being installed. (--install operation).\n");
     printf("\n");
     printf("Examples:\n");
     printf("  1) Install a new module by specifying YANG file, ownership and access permissions:\n");
