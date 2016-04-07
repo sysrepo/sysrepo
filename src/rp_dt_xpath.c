@@ -278,10 +278,20 @@ rp_dt_create_xpath_for_node(const struct lyd_node *node, char **xpath)
     return SR_ERR_OK;
 }
 
+/**
+ * @brief Tries to match lys_node including choice nodes
+ * @param [in] session
+ * @param [in] xpath
+ * @param [in] trimmed_xpath
+ * @param [in] module
+ * @param [out] match
+ * @return Error code (SR_ERR_OK on success)
+ */
 static int
-rp_dt_check_choice(dm_session_t *session, const char *xpath, const char *trimmed_xpath, const struct lys_module *module, struct lys_node **match)
+rp_dt_find_in_choice(dm_session_t *session, const char *xpath, const char *trimmed_xpath, const struct lys_module *module, struct lys_node **match)
 {
     CHECK_NULL_ARG5(session, xpath, trimmed_xpath, module, match);
+    /* libyang err_msg is used to parse the match and unmatch part */
 #define LY_ERR_MSG_PART1 "Schema node not found ("
 #define LY_ERR_MSG_PART2 ")."
     int rc = SR_ERR_BAD_ELEMENT;
@@ -297,14 +307,17 @@ rp_dt_check_choice(dm_session_t *session, const char *xpath, const char *trimmed
     if (NULL == unmatch_index) {
         goto not_matched;
     }
+
+    /* split xpath into unmatched part and the part that may contain a choice */
     size_t len = strlen(ly_errmsg()) - strlen(LY_ERR_MSG_PART1) - strlen(LY_ERR_MSG_PART2);
     unmatch_part = strndup(ly_errmsg() + strlen(LY_ERR_MSG_PART1), len);
     CHECK_NULL_NOMEM_RETURN(unmatch_part);
+
     if (strlen(xp_copy) <= strlen(unmatch_part)) {
         goto not_matched;
     }
     xp_copy[strlen(xp_copy) - strlen(unmatch_part)-1] = 0;
-    puts(xp_copy);
+
     const struct lys_node *node = ly_ctx_get_node(module->ctx, NULL, xp_copy);
     if (NULL == node) {
         goto not_matched;
@@ -331,39 +344,24 @@ not_matched:
     return rc;
 }
 
-int
-rp_dt_validate_node_xpath(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const struct lys_module **matched_module, struct lys_node **match)
+/**
+ * @brief Removes some trailing characters from xpath validateable by ly_ctx_get_node
+ * @param [in] dm_ctx
+ * @param [in] xpath
+ * @param [out] trimmed
+ * @return Error code (SR_ERR_OK on success)
+ */
+static int
+rp_dt_trim_xpath(dm_ctx_t *dm_ctx, const char *xpath, char **trimmed)
 {
-    CHECK_NULL_ARG3(dm_ctx, session, xpath);
+    CHECK_NULL_ARG3(dm_ctx, xpath, trimmed);
     int rc = SR_ERR_OK;
-
-    char *namespace = NULL;
     char *xp_copy = NULL;
+    char *namespace = NULL;
     size_t xp_len = 0;
-    rc = sr_copy_first_ns(xpath, &namespace);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Namespace copy failed");
-        return rc;
-    }
-
-    const struct lys_module *module = NULL;
-    rc = dm_get_module(dm_ctx, namespace, NULL, &module);
-    if (SR_ERR_UNKNOWN_MODEL == rc) {
-        rc = dm_report_error(session, NULL, strdup(xpath), rc);
-    }
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Get module %s failed", namespace);
-        free(namespace);
-        return rc;
-    }
-    if (NULL != matched_module) {
-        *matched_module = module;
-    }
-    free(namespace);
 
     xp_copy = strdup(xpath);
     CHECK_NULL_NOMEM_RETURN(xp_copy);
-    xp_len = strlen(xp_copy);
 
     /* remove trailing '*:/' */
     bool change = false;
@@ -406,6 +404,47 @@ rp_dt_validate_node_xpath(dm_ctx_t *dm_ctx, dm_session_t *session, const char *x
             break;
         }
     }
+    *trimmed = xp_copy;
+    return rc;
+}
+
+int
+rp_dt_validate_node_xpath(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const struct lys_module **matched_module, struct lys_node **match)
+{
+    CHECK_NULL_ARG3(dm_ctx, session, xpath);
+    int rc = SR_ERR_OK;
+
+    char *namespace = NULL;
+    char *xp_copy = NULL;
+    size_t xp_len = 0;
+    rc = sr_copy_first_ns(xpath, &namespace);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Namespace copy failed");
+        return rc;
+    }
+
+    const struct lys_module *module = NULL;
+    rc = dm_get_module(dm_ctx, namespace, NULL, &module);
+    if (SR_ERR_UNKNOWN_MODEL == rc) {
+        rc = dm_report_error(session, NULL, strdup(xpath), rc);
+    }
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Get module %s failed", namespace);
+        free(namespace);
+        return rc;
+    }
+    if (NULL != matched_module) {
+        *matched_module = module;
+    }
+    free(namespace);
+
+    rc = rp_dt_trim_xpath(dm_ctx, xpath, &xp_copy);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Error while xpath trim %s", xpath);
+        return rc;
+    }
+
+    xp_len = strlen(xp_copy);
     if (0 == xp_len) {
         free(xp_copy);
         return SR_ERR_OK;
@@ -416,16 +455,11 @@ rp_dt_validate_node_xpath(dm_ctx_t *dm_ctx, dm_session_t *session, const char *x
         if (NULL != match) {
             *match = (struct lys_node *) sch_node;
         }
-        if (NULL != matched_module) {
-            *matched_module = module;
-        }
-        free(xp_copy);
-        return SR_ERR_OK;
     } else {
         switch (ly_vecode) {
         case LYVE_PATH_INNODE:
-            //check choice
-            rc = rp_dt_check_choice(session, xpath, xp_copy, module, (struct lys_node **)&sch_node);
+            /* ly_ctx_get_node is not able to locate nodes inside the choice */
+            rc = rp_dt_find_in_choice(session, xpath, xp_copy, module, (struct lys_node **)&sch_node);
             if (NULL != match) {
                 *match = (struct lys_node *) sch_node;
             }
@@ -440,9 +474,9 @@ rp_dt_validate_node_xpath(dm_ctx_t *dm_ctx, dm_session_t *session, const char *x
         default:
             rc = dm_report_error(session, ly_errmsg(), strdup(xpath), SR_ERR_INVAL_ARG);
         }
-        free(xp_copy);
-        return rc;
     }
+    free(xp_copy);
+    return rc;
 }
 
 
