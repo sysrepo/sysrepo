@@ -3,10 +3,11 @@ set(TEST_SCHEMA_SEARCH_DIR "${TEST_REPOSITORY_LOC}/yang/")
 set(TEST_DATA_SEARCH_DIR "${TEST_REPOSITORY_LOC}/data/")
 set(TEST_INTERNAL_SCHEMA_SEARCH_DIR "${TEST_REPOSITORY_LOC}/internal/yang/")
 
-configure_file("${PROJECT_SOURCE_DIR}/tests/data/test_data.h.in" "${PROJECT_SOURCE_DIR}/tests/data/test_data.h" ESCAPE_QUOTES @ONLY) 
+set(TEST_HELPERS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/helpers/")
 
-include_directories ("${PROJECT_SOURCE_DIR}/src" "${PROJECT_SOURCE_DIR}/src/common" "${PROJECT_SOURCE_DIR}/inc" "${PROJECT_SOURCE_DIR}/tests/data/" "${PROJECT_SOURCE_DIR}/tests/helpers/")
-set(HELPERS_DIR "${PROJECT_SOURCE_DIR}/tests/helpers/")
+configure_file("${TEST_HELPERS_DIR}/test_data.h.in" "${TEST_HELPERS_DIR}/test_data.h" ESCAPE_QUOTES @ONLY) 
+
+include_directories ("${PROJECT_SOURCE_DIR}/src" "${PROJECT_SOURCE_DIR}/src/common" "${PROJECT_SOURCE_DIR}/inc" "${TEST_HELPERS_DIR}")
 
 find_program(valgrind_FOUND valgrind)
 
@@ -39,9 +40,9 @@ endmacro(ADD_UNIT_TEST)
 macro(ADD_UNIT_TEST_WITH_HELPERS TEST_NAME)
      set(t_files
         ${TEST_NAME}.c
-        ${HELPERS_DIR}dt_xpath_helpers.c
-        ${HELPERS_DIR}rp_dt_context_helper.c
-        ${HELPERS_DIR}test_module_helper.c
+        ${TEST_HELPERS_DIR}dt_xpath_helpers.c
+        ${TEST_HELPERS_DIR}rp_dt_context_helper.c
+        ${TEST_HELPERS_DIR}test_module_helper.c
         )
     ADD_UNIT_TEST_WITH_OPTS(${TEST_NAME} "${t_files}" "" 1 "")
 endmacro(ADD_UNIT_TEST_WITH_HELPERS)
@@ -85,10 +86,10 @@ macro(INSTALL_YANG_MODULE MODULE_NAME)
     ADD_CUSTOM_COMMAND(
         TARGET common_test
         POST_BUILD
-        COMMAND ${CMAKE_BINARY_DIR}/src/sysrepoctl --install --yang=${CMAKE_CURRENT_SOURCE_DIR }/yang/${MODULE_NAME}.yang --yin=${CMAKE_CURRENT_SOURCE_DIR}/yang/${MODULE_NAME}.yin
+        COMMAND ${CMAKE_BINARY_DIR}/src/sysrepoctl --install --yang=${CMAKE_CURRENT_SOURCE_DIR}/yang/${MODULE_NAME}.yang --yin=${CMAKE_CURRENT_SOURCE_DIR}/yang/${MODULE_NAME}.yin
         VERBATIM
     )
-endmacro(INSTALL_TEST_MODULE)
+endmacro(INSTALL_YANG_MODULE)
 
 INSTALL_YANG_MODULE("example-module")
 INSTALL_YANG_MODULE("test-module")
