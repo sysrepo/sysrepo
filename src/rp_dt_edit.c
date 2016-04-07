@@ -487,6 +487,7 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const
            if (NULL == res ||0 == res->number) {
                SR_LOG_ERR("A preceding node is missing '%s' create it or omit the non recursive option", xpath);
                ly_set_free(res);
+               free(new_value);
                return dm_report_error(session, "A preceding node is missing", strdup(xpath), SR_ERR_DATA_MISSING);
            }
            ly_set_free(res);

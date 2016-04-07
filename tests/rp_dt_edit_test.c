@@ -1055,19 +1055,20 @@ edit_validate_test(void **state)
     rc = rp_dt_set_item_xpath(ctx->dm_ctx, session->dm_session, "/test-module:main/numbers", SR_EDIT_DEFAULT, &val);
     assert_int_equal(SR_ERR_OK, rc);
 
+    rc = rp_dt_set_item_xpath(ctx->dm_ctx, session->dm_session, "/test-module:main/numbers", SR_EDIT_STRICT, &val);
+    assert_int_equal(SR_ERR_DATA_EXISTS, rc);
+
     errors = NULL;
     e_cnt = 0;
 
+    /* validation pass because lyd_new path doesn't add duplicate leaf-list */
     rc = dm_validate_session_data_trees(ctx->dm_ctx, session->dm_session, &errors, &e_cnt);
-    assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
-    assert_int_equal(1, e_cnt);
-    assert_string_equal("Instances of \"numbers\" list are not unique.", errors[0].message);
-    assert_string_equal("/test-module:main/numbers", errors[0].path);
-    sr_free_errors(errors, e_cnt);
+    assert_int_equal(SR_ERR_OK, rc);
 
     test_rp_session_cleanup(ctx, session);
 
     /* multiple errors */
+#if 0
     test_rp_sesssion_create(ctx, SR_DS_STARTUP, &session);
     val.xpath = NULL;
     val.type = SR_UINT8_T;
@@ -1099,7 +1100,7 @@ edit_validate_test(void **state)
     sr_free_errors(errors, e_cnt);
 
     test_rp_session_cleanup(ctx, session);
-
+#endif
 }
 
 void
@@ -1685,7 +1686,7 @@ int main(){
             cmocka_unit_test(set_item_container_test),
             cmocka_unit_test(set_item_negative_test),
             cmocka_unit_test(edit_test_module_test),
-            //cmocka_unit_test(edit_validate_test),
+            cmocka_unit_test(edit_validate_test),
             cmocka_unit_test(edit_discard_changes_test),
             cmocka_unit_test(empty_commit_test),
             cmocka_unit_test(edit_commit_test),
