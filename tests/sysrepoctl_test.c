@@ -41,7 +41,7 @@ sysrepoctl_test(void **state)
     assert_int_equal(ret, 0);
 
     /* version */
-    ret = system("../src/sysrepoctl -h");
+    ret = system("../src/sysrepoctl -v");
     assert_int_equal(ret, 0);
 
     /* list */

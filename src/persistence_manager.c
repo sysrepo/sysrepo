@@ -202,7 +202,11 @@ pm_init(ac_ctx_t *ac_ctx, const char *schema_search_dir, const char *data_search
 
     /* initialize libyang */
     ctx->ly_ctx = ly_ctx_new(schema_search_dir);
-    CHECK_NULL_NOMEM_GOTO(ctx->ly_ctx, rc, cleanup);
+    if (NULL == ctx->ly_ctx) {
+        SR_LOG_ERR("libyang initialization failed: %s", ly_errmsg());
+        rc = SR_ERR_INIT_FAILED;
+        goto cleanup;
+    }
 
     rc = sr_str_join(schema_search_dir, PM_SCHEMA_FILE, &schema_filename);
     if (SR_ERR_OK != rc) {
