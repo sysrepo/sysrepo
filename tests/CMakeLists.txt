@@ -1,4 +1,7 @@
 set(TEST_REPOSITORY_LOC "${CMAKE_BINARY_DIR}/repository/")
+set(TEST_SCHEMA_SEARCH_DIR "${TEST_REPOSITORY_LOC}/yang/")
+set(TEST_DATA_SEARCH_DIR "${TEST_REPOSITORY_LOC}/data/")
+set(TEST_INTERNAL_SCHEMA_SEARCH_DIR "${TEST_REPOSITORY_LOC}/internal/yang/")
 
 configure_file("${PROJECT_SOURCE_DIR}/tests/data/test_data.h.in" "${PROJECT_SOURCE_DIR}/tests/data/test_data.h" ESCAPE_QUOTES @ONLY) 
 
@@ -71,32 +74,32 @@ ADD_UNIT_TEST_WITH_OPTS(daemon_test daemon_test.c "" 0 "")
 
 # create test repository directories and copy internal schemas
 EXECUTE_PROCESS(
-  COMMAND mkdir -p "${TEST_REPOSITORY_LOC}/yang/" "${TEST_REPOSITORY_LOC}/data/" "${TEST_REPOSITORY_LOC}internal/yang/"
-  COMMAND cp "${PROJECT_SOURCE_DIR}/yang/sysrepo-persistent-data.yang" "${TEST_REPOSITORY_LOC}internal/yang/"
-  COMMAND cp "${PROJECT_SOURCE_DIR}/yang/sysrepo-persistent-data.yin" "${TEST_REPOSITORY_LOC}internal/yang/"
+  COMMAND mkdir -p "${TEST_SCHEMA_SEARCH_DIR}" "${TEST_DATA_SEARCH_DIR}" "${TEST_INTERNAL_SCHEMA_SEARCH_DIR}"
+  COMMAND cp "${PROJECT_SOURCE_DIR}/yang/sysrepo-persistent-data.yang" "${TEST_INTERNAL_SCHEMA_SEARCH_DIR}"
+  COMMAND cp "${PROJECT_SOURCE_DIR}/yang/sysrepo-persistent-data.yin" "${TEST_INTERNAL_SCHEMA_SEARCH_DIR}"
   ERROR_QUIET
 )
 
 # install testing YANG modules
-macro(INSTALL_TEST_MODULE MODULE_NAME)
+macro(INSTALL_YANG_MODULE MODULE_NAME)
     ADD_CUSTOM_COMMAND(
         TARGET common_test
         POST_BUILD
-        COMMAND ${CMAKE_BINARY_DIR}/src/sysrepoctl --install --yang=${PROJECT_SOURCE_DIR}/tests/data/yang/${MODULE_NAME}.yang --yin=${PROJECT_SOURCE_DIR}/tests/data/yang/${MODULE_NAME}.yin
+        COMMAND ${CMAKE_BINARY_DIR}/src/sysrepoctl --install --yang=${CMAKE_CURRENT_SOURCE_DIR }/yang/${MODULE_NAME}.yang --yin=${CMAKE_CURRENT_SOURCE_DIR}/yang/${MODULE_NAME}.yin
         VERBATIM
     )
 endmacro(INSTALL_TEST_MODULE)
 
-INSTALL_TEST_MODULE("example-module")
-INSTALL_TEST_MODULE("test-module")
-INSTALL_TEST_MODULE("small-module")
-INSTALL_TEST_MODULE("info-module")
-INSTALL_TEST_MODULE("module-a@2016-02-02")
-INSTALL_TEST_MODULE("module-a@2016-02-10")
-INSTALL_TEST_MODULE("module-b@2016-02-05")
-INSTALL_TEST_MODULE("iana-if-type")
-INSTALL_TEST_MODULE("ietf-interfaces@2014-05-08")
-INSTALL_TEST_MODULE("ietf-ip@2014-06-16")
+INSTALL_YANG_MODULE("example-module")
+INSTALL_YANG_MODULE("test-module")
+INSTALL_YANG_MODULE("small-module")
+INSTALL_YANG_MODULE("info-module")
+INSTALL_YANG_MODULE("module-a@2016-02-02")
+INSTALL_YANG_MODULE("module-a@2016-02-10")
+INSTALL_YANG_MODULE("module-b@2016-02-05")
+INSTALL_YANG_MODULE("iana-if-type")
+INSTALL_YANG_MODULE("ietf-interfaces@2014-05-08")
+INSTALL_YANG_MODULE("ietf-ip@2014-06-16")
 
 FIND_PACKAGE(PythonInterp)
 FIND_PACKAGE(SWIG)
