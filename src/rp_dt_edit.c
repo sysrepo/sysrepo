@@ -424,6 +424,11 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const
         return rc;
     }
 
+    if (NULL == sch_node) {
+        SR_LOG_ERR("Node can not be created or update %s", xpath);
+        return SR_ERR_INVAL_ARG;
+    }
+
     /* get data tree to be update */
     rc = dm_get_data_info(dm_ctx, session, module->name, &info);
     if (SR_ERR_OK != rc) {
@@ -470,8 +475,28 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const
         return SR_ERR_INVAL_ARG;
     }
 
-    /* create or update */
+    /* non-recursive flag */
+    if (SR_EDIT_NON_RECURSIVE & options) {
+        if (NULL != sch_node->parent) {
+           char *last_slash = rindex(xpath, '/');
+           CHECK_NULL_NOMEM_RETURN(last_slash);
+           char *parent_node = strndup(xpath, last_slash-xpath-1);
+           CHECK_NULL_NOMEM_RETURN(parent_node);
+           struct ly_set *res = lyd_get_node(info->node, parent_node);
+           free(parent_node);
+           if (NULL == res ||0 == res->number) {
+               SR_LOG_ERR("A preceding node is missing '%s' create it or omit the non recursive option", xpath);
+               ly_set_free(res);
+               return dm_report_error(session, "A preceding node is missing", strdup(xpath), SR_ERR_DATA_MISSING);
+           }
+           ly_set_free(res);
+        }
+    }
+
+    /* strict flag */
     int flags = (SR_EDIT_STRICT & options) ? 0 : LYD_PATH_OPT_UPDATE;
+
+    /* create or update */
     node = sr_lyd_new_path(info, module->ctx, xpath, new_value, flags);
     if (NULL == node && LY_SUCCESS != ly_errno) {
         SR_LOG_ERR("Setting of item failed %s %d", xpath, ly_vecode);

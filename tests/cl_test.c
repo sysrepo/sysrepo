@@ -451,7 +451,7 @@ cl_get_items_iter_test(void **state)
     }
     sr_free_val_iter(it);
 
-
+    sr_log_stderr(SR_LL_DBG);
     /* all supported data types*/
     rc = sr_get_items_iter(session, "/test-module:main//*", &it);
     assert_int_equal(rc, SR_ERR_OK);

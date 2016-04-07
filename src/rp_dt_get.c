@@ -476,15 +476,15 @@ rp_dt_get_values_wrapper_with_opts(rp_ctx_t *rp_ctx, rp_session_t *rp_session, r
     }
 
     rc = rp_dt_get_values_from_nodes(nodes, *count, values);
+cleanup:
     if (SR_ERR_NOT_FOUND == rc) {
         rc = rp_dt_validate_node_xpath(rp_ctx->dm_ctx, rp_session->dm_session, xpath, NULL, NULL);
         rc = rc == SR_ERR_OK ? SR_ERR_NOT_FOUND : rc;
     } else if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Copying values from nodes failed for xpath '%s'", xpath);
-        goto cleanup;
+        //goto cleanup;
     }
 
-cleanup:
     free(nodes);
     free(data_tree_name);
     return rc;

@@ -399,10 +399,10 @@ void set_item_leaf_test(void **state){
     assert_int_equal(SR_ERR_INVAL_ARG, rc);
 
     /* creating with non recursive with missing parent not*/
-#if 0
+
     rc = rp_dt_set_item_xpath(ctx->dm_ctx, session->dm_session, val->xpath, SR_EDIT_NON_RECURSIVE, val);
     assert_int_equal(SR_ERR_DATA_MISSING, rc);
-#endif
+
     rc = rp_dt_set_item_xpath(ctx->dm_ctx, session->dm_session, val->xpath, SR_EDIT_DEFAULT, val);
     assert_int_equal(SR_ERR_OK, rc);
     sr_free_val(val);
@@ -619,10 +619,10 @@ set_item_negative_test(void **state)
 
     rc = rp_dt_delete_item_wrapper(ctx, session, "/example-module:*", SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
-#if 0
+
     rc = rp_dt_set_item_xpath(ctx->dm_ctx, session->dm_session, "/example-module:container/list[key1='key1'][key2='key2']", SR_EDIT_NON_RECURSIVE, NULL);
     assert_int_equal(SR_ERR_DATA_MISSING, rc);
-#endif
+
     test_rp_session_cleanup(ctx, session);
 }
 
@@ -1603,7 +1603,7 @@ operation_logging_test(void **state)
    assert_int_equal(DM_MOVE_UP_OP, session->dm_session->operations[session->dm_session->oper_count-1].op);
 
    rc = rp_dt_move_list_wrapper(ctx, session, "/test-module:!^", SR_MOVE_UP);
-   assert_int_equal(SR_ERR_INVAL_ARG, rc);
+   assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
    assert_int_equal(3, session->dm_session->oper_count);
 
    /* delete */
@@ -1689,8 +1689,8 @@ int main(){
             cmocka_unit_test(edit_discard_changes_test),
             cmocka_unit_test(empty_commit_test),
             cmocka_unit_test(edit_commit_test),
-            //cmocka_unit_test(edit_move_test),
-            //cmocka_unit_test(edit_move2_test),
+            cmocka_unit_test(edit_move_test),
+            cmocka_unit_test(edit_move2_test),
             cmocka_unit_test(edit_commit2_test),
             cmocka_unit_test(edit_commit3_test),
             cmocka_unit_test(edit_commit4_test),

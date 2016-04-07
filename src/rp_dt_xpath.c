@@ -401,17 +401,19 @@ rp_dt_validate_node_xpath(dm_ctx_t *dm_ctx, dm_session_t *session, const char *x
     CHECK_NULL_NOMEM_RETURN(xp_copy);
     xp_len = strlen(xp_copy);
 
+    bool change = false;
     while (0 < (xp_len = strlen(xp_copy))) {
+        change = false;
         if ('*' == xp_copy[xp_len-1]) {
             xp_copy[xp_len-1] = 0;
             xp_len--;
-        } else {
-            break;
+            change = true;
         }
 
         if ('/' == xp_copy[xp_len-1]) {
             xp_copy[xp_len-1] = 0;
             xp_len--;
+            change = true;
         }
         if (':' == xp_copy[xp_len-1]) {
             xp_copy[xp_len-1] = 0;
@@ -433,6 +435,10 @@ rp_dt_validate_node_xpath(dm_ctx_t *dm_ctx, dm_session_t *session, const char *x
             }
             free(namespace);
             *last_slash = 0;
+            change = true;
+        }
+        if (!change) {
+            break;
         }
     }
     if (0 == xp_len) {
@@ -450,16 +456,17 @@ rp_dt_validate_node_xpath(dm_ctx_t *dm_ctx, dm_session_t *session, const char *x
             *matched_module = module;
         }
         return SR_ERR_OK;
-    } else if (0 == strncmp("Schema node not found", ly_errmsg(), strlen("Schema node not found"))){
-        return dm_report_error(session, ly_errmsg(), strdup(xpath), SR_ERR_BAD_ELEMENT);
-    } else if (0 == strncmp("Unexpected character(s) '['", ly_errmsg(), strlen("Unexpected character(s) '['"))) {
-        return dm_report_error(session, ly_errmsg(), strdup(xpath), SR_ERR_BAD_ELEMENT);
-    } else if (0 == strncmp("List key not found or on incorrect position", ly_errmsg(), strlen("List key not found or on incorrect position"))) {
-        return dm_report_error(session, ly_errmsg(), strdup(xpath), SR_ERR_BAD_ELEMENT);
-    } else if (0 == strncmp("Module not found", ly_errmsg(), strlen("Module not found"))){
-        return dm_report_error(session, ly_errmsg(), strdup(xpath), SR_ERR_UNKNOWN_MODEL);
     } else {
-        return dm_report_error(session, ly_errmsg(), strdup(xpath), SR_ERR_INVAL_ARG);
+        switch (ly_vecode) {
+        case LYVE_PATH_INNODE:
+        case LYVE_PATH_INCHAR:
+        case LYVE_PATH_INKEY:
+            return dm_report_error(session, ly_errmsg(), strdup(xpath), SR_ERR_BAD_ELEMENT);
+        case LYVE_PATH_INMOD:
+            return dm_report_error(session, ly_errmsg(), strdup(xpath), SR_ERR_UNKNOWN_MODEL);
+        default:
+            return dm_report_error(session, ly_errmsg(), strdup(xpath), SR_ERR_INVAL_ARG);
+        }
     }
 /*
     char *module_name = NULL;
