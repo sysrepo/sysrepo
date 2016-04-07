@@ -278,100 +278,8 @@ rp_dt_create_xpath_for_node(const struct lyd_node *node, char **xpath)
     return SR_ERR_OK;
 }
 
-/**
- * Tries to find the node in choice subtree. On success assign the found node into match.
- * @param [in] choice root of the choice subtree
- * @param [in] xpath rest to be match
- * @param [in] level
- * @param [out] match
- * @return
- */
-
 static int
-rp_dt_match_in_choice(const struct lys_node *choice, const char *xpath, struct lys_node **match)
-{
-    CHECK_NULL_ARG3(choice, xpath, match);
-    int rc = SR_ERR_OK;
-    struct lys_node *n = choice->child;
-    bool in_case = false;
-
-    while (NULL != n) {
-        if (LYS_CASE == n->nodetype) {
-            in_case = true;
-            n = n->child;
-            continue;
-        }
-        else if (LYS_CHOICE == n->nodetype) {
-            rc = rp_dt_match_in_choice(choice, xpath, match);
-            if (SR_ERR_NOT_FOUND == rc) {
-                n = n->next;
-                continue;
-            } else {
-                return rc;
-            }
-        }
-
-        *match = ly_ctx_get_node(choice->module->ctx, choice, xpath);
-        if (NULL == *match){
-            if (in_case && NULL == n->next){
-                n = n->parent->next;
-                in_case = false;
-            }
-            else {
-                n = n->next;
-            }
-            continue;
-        }
-        else {
-            puts("Found");
-            break;
-        }
-    }
-
-    if (NULL != n) {
-        *match = n;
-        return SR_ERR_OK;
-    }
-    return SR_ERR_NOT_FOUND;
-}
-
-/**
- * @brief Validates list node
- */
-static int
-rp_dt_validate_list(dm_session_t *session, const struct lys_node *node, const xp_loc_id_t *loc_id, const size_t level)
-{
-    CHECK_NULL_ARG3(session, node, loc_id);
-
-    if (LYS_LIST != node->nodetype) {
-        SR_LOG_ERR("Keys specified for the node that is not list %s", node->name);
-        return dm_report_error(session, "Keys specified for the node that is not list", XP_CPY_UP_TO_NODE(loc_id, level), SR_ERR_BAD_ELEMENT);
-    }
-    struct lys_node_list *list = (struct lys_node_list *) node;
-    if (list->keys_size != XP_GET_KEY_COUNT(loc_id, level)) {
-        SR_LOG_ERR("Key count does not match %s", node->name);
-        return dm_report_error(session, "Number of keys specified does not match the schema", XP_CPY_UP_TO_NODE(loc_id, level), SR_ERR_BAD_ELEMENT);
-    }
-    size_t matched_keys = 0;
-    for (size_t k = 0; k < list->keys_size; k++) {
-        if (NULL == list->keys || NULL == list->keys[k] || NULL == list->keys[k]->name) {
-            return SR_ERR_INTERNAL;
-        }
-        for (size_t k_xp = 0; k_xp < list->keys_size; k_xp++) {
-            if (XP_EQ_KEY_NAME(loc_id, level, k_xp, list->keys[k]->name)) {
-                matched_keys++;
-            }
-        }
-    }
-    if (list->keys_size != matched_keys) {
-        SR_LOG_ERR("Not all keys has been matched %s", loc_id->xpath);
-        return dm_report_error(session, "Not all keys has been matched", XP_CPY_UP_TO_NODE(loc_id, level), SR_ERR_BAD_ELEMENT);
-    }
-    return SR_ERR_OK;
-}
-
-static int
-rp_dt_check_choice(dm_session_t *session, const char *xpath, const char *trimmed_xpath, const struct lys_module *module, const struct lys_node **match)
+rp_dt_check_choice(dm_session_t *session, const char *xpath, const char *trimmed_xpath, const struct lys_module *module, struct lys_node **match)
 {
     CHECK_NULL_ARG5(session, xpath, trimmed_xpath, module, match);
 #define LY_ERR_MSG_PART1 "Schema node not found ("
@@ -405,7 +313,7 @@ rp_dt_check_choice(dm_session_t *session, const char *xpath, const char *trimmed
     LY_TREE_FOR(node->child, iter) {
         if (LYS_CHOICE == iter->nodetype) {
             /* TODO choice in choice */
-            *match = ly_ctx_get_node(module->ctx, iter, unmatch_part);
+            *match = (struct lys_node *) ly_ctx_get_node(module->ctx, iter, unmatch_part);
             if (NULL != *match) {
                 rc = SR_ERR_OK;
             }
@@ -517,9 +425,9 @@ rp_dt_validate_node_xpath(dm_ctx_t *dm_ctx, dm_session_t *session, const char *x
         switch (ly_vecode) {
         case LYVE_PATH_INNODE:
             //check choice
-            rc = rp_dt_check_choice(session, xpath, xp_copy, module, &sch_node);
+            rc = rp_dt_check_choice(session, xpath, xp_copy, module, (struct lys_node **)&sch_node);
             if (NULL != match) {
-                *match = sch_node;
+                *match = (struct lys_node *) sch_node;
             }
             break;
         case LYVE_PATH_INCHAR:

@@ -43,49 +43,6 @@ typedef struct rp_dt_match_s {
 }rp_dt_match_t;
 
 /**
- * @brief Fills the rp_dt_match_t structure. Converts xpath to location id, validates xpath,
- * and calls ::rp_dt_find_deepest_match. If the xpath identifies whole module matching
- * is not done only match->info is set.
- * @param [in] ctx
- * @param [in] session
- * @param [in] loc_id
- * @param [in] match
- * @return Error code (SR_ERR_OK on success), SR_ERR_NOT_FOUND, SR_ERR_UNKNOWN_MODEL, SR_ERR_BAD_ELEMENT
- */
-static int
-rp_dt_find_deepest_match_wrapper(dm_ctx_t *ctx, dm_session_t *session, const xp_loc_id_t *loc_id, rp_dt_match_t *match)
-{
-    CHECK_NULL_ARG4(ctx, session, loc_id, loc_id->xpath);
-    const struct lys_module *module = NULL;
-
-    int rc = rp_dt_validate_node_xpath(ctx, session, loc_id->xpath, &module, &match->schema_node);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Requested node is not valid %s", loc_id->xpath);
-        goto cleanup;
-    }
-
-    rc = dm_get_data_info(ctx, session, module->name, &match->info);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Getting data tree failed for xpath '%s'", loc_id->xpath);
-        goto cleanup;
-    }
-
-    if (XP_IS_MODULE_XPATH(loc_id)){
-        /* do not match particular node if the xpath identifies the module */
-        if (NULL == match->info->node){
-            rc = SR_ERR_NOT_FOUND;
-        }
-        goto cleanup;
-    }
-
-    rc = rp_dt_find_deepest_match(match->info->node, loc_id, true, dm_is_running_ds_session(session), &match->level, &match->node);
-
-cleanup:
-
-    return rc;
-}
-
-/**
  * @brief Chcecks if the schema node has a key node with the specified name
  * @param [in] node
  * @param [in] name
@@ -196,46 +153,6 @@ rp_dt_has_only_keys(const struct lyd_node *node)
         return child_cnt == list->keys_size;
     }
     return false;
-}
-
-/**
- * @brief Function creates list key nodes at the selected level and append them
- * to the provided parent. If there are no keys at the selected level it does nothing.
- * @param [in] match
- * @param [in] loc_id
- * @param [in] parent
- * @param [in] level
- * @return Error code (SR_ERR_OK on success)
- */
-static int
-rp_dt_create_keys(rp_dt_match_t *match, const xp_loc_id_t *loc_id, struct lyd_node *parent, size_t level)
-{
-    CHECK_NULL_ARG3(match, parent, loc_id);
-    size_t key_count = XP_GET_KEY_COUNT(loc_id, level);
-    char *key_name = NULL;
-    char *key_value = NULL;
-    if (key_count != 0) {
-        for (size_t k = 0; k < key_count; k++) {
-            key_name = XP_CPY_KEY_NAME(loc_id, level, k);
-            key_value = XP_CPY_KEY_VALUE(loc_id, level, k);
-            if (NULL == key_name || NULL == key_value) {
-                SR_LOG_ERR("Copy of key name or key value failed %s", loc_id->xpath);
-                goto cleanup;
-            }
-            if (NULL == sr_lyd_new_leaf(match->info, parent, parent->schema->module, key_name, key_value)) {
-                SR_LOG_ERR("Adding key leaf failed %s", loc_id->xpath);
-                goto cleanup;
-            }
-            free(key_name);
-            free(key_value);
-        }
-    }
-    return SR_ERR_OK;
-
-cleanup:
-    free(key_name);
-    free(key_value);
-    return SR_ERR_INTERNAL;
 }
 
 /**

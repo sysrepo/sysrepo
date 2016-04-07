@@ -23,119 +23,6 @@
 
 #include "rp_dt_lookup.h"
 
-/**
- * @brief Pushes all children nodes to the stack. If the check enable is set
- * to true pushes only the nodes that are enabled.
- * @param [in] stack
- * @param [in] check_enable
- * @param [in] node
- * @return Error code (SR_ERR_OK on success)
- */
-static int
-rp_dt_push_child_nodes_to_stack(rp_node_stack_t **stack, bool check_enable, struct lyd_node *node)
-{
-    CHECK_NULL_ARG2(stack, node);
-    int rc = SR_ERR_OK;
-    struct lyd_node *n = node->child;
-    if (NULL == n) {
-        return rc;
-    }
-    /* find last child, push the child on stack in reverse order*/
-    while (NULL != n->next) {
-        n = n->next;
-    }
-
-    while (1) {
-        if (!check_enable || dm_is_enabled_check_recursively(n->schema)){
-            rc = rp_ns_push(stack, n);
-            if (SR_ERR_OK != rc) {
-                return SR_ERR_INTERNAL;
-            }
-        }
-        if (node->child == n) {
-            break;
-        }
-        n = n->prev;
-    }
-    return rc;
-}
-
-/**
- * @brief Pushes the nodes with same name as provided node to the stack. Used
- * for list and leaf-list nodes.
- * If the check enable is set to true pushes only the nodes that are enabled.
- * @param [in] stack
- * @param [in] node
- * @return Error code (SR_ERR_OK on success)
- */
-static int
-rp_dt_push_nodes_with_same_name_to_stack(rp_node_stack_t **stack, struct lyd_node *node)
-{
-    CHECK_NULL_ARG2(stack, node);
-    int rc = SR_ERR_OK;
-    struct lyd_node *n = node;
-    /* find last sibling, push them on stack in reverse order*/
-    while (NULL != n->next) {
-        n = n->next;
-    }
-
-    while (1) {
-        if (NULL == n->schema || NULL == n->schema->name) {
-            SR_LOG_ERR_MSG("Missing schema information");
-            return SR_ERR_INTERNAL;
-        }
-        if (0 == strcmp(node->schema->name, n->schema->name)) {
-            rc = rp_ns_push(stack, n);
-            if (SR_ERR_OK != rc) {
-                return SR_ERR_INTERNAL;
-            }
-        }
-        if (node == n) {
-            break;
-        }
-        n = n->prev;
-    }
-    return rc;
-}
-
-/**
- * @brief Pushes the sibling nodes to the stack. Used for whole module xpath.
- * If the check enable is set to true pushes only the nodes that are enabled.
- * @param [in] stack
- * @param [in] check_enable
- * @param [in] node
- * @return Error code (SR_ERR_OK on success)
- */
-static int
-rp_dt_push_all_sibling_nodes_to_stack(rp_node_stack_t **stack, bool check_enable, struct lyd_node *node){
-   CHECK_NULL_ARG2(stack, node);
-    int rc = SR_ERR_OK;
-    struct lyd_node *n = node;
-    /* find last sibling, push them on stack in reverse order*/
-    while (NULL != n->next) {
-        n = n->next;
-    }
-
-    while (1) {
-        if (NULL == n->schema || NULL == n->schema->name) {
-            SR_LOG_ERR_MSG("Missing schema information");
-            return SR_ERR_INTERNAL;
-        }
-        if (!check_enable || dm_is_enabled_check_recursively(n->schema)) {
-            rc = rp_ns_push(stack, n);
-            if (SR_ERR_OK != rc) {
-                return SR_ERR_INTERNAL;
-            }
-        }
-
-        if (node == n) {
-            break;
-        }
-        n = n->prev;
-    }
-    return rc;
-}
-
 int
 rp_dt_get_all_children_node(struct lyd_node *node, bool check_enable, struct lyd_node ***nodes, size_t *count)
 {
@@ -296,8 +183,6 @@ rp_dt_get_nodes(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp_loc
     CHECK_NULL_ARG5(dm_ctx, data_tree, loc_id, nodes, count);
 
     int rc = SR_ERR_OK;
-    struct lyd_node *node = NULL;
-    size_t last_node = 0;
 
     struct ly_set *set = NULL;
     rc = rp_dt_find_nodes(data_tree, loc_id->xpath, check_enable, &set);
@@ -512,7 +397,6 @@ int
 rp_dt_lookup_node(struct lyd_node *data_tree, const xp_loc_id_t *loc_id, bool allow_no_keys, bool check_enable, struct lyd_node **node)
 {
     CHECK_NULL_ARG3(data_tree, loc_id, node);
-    size_t match_len = 0;
 
     int rc = SR_ERR_OK;
     rc = rp_dt_find_node(data_tree, loc_id->xpath, check_enable, node);
