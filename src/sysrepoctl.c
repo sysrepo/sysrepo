@@ -276,7 +276,7 @@ srctl_yin_generate(const char *search_dir, const char *dst_dir, const char *yang
         snprintf(yin_file, len + 1, "%s%s.yin", dst_dir, file_base_name);
     }
 
-    if (-1 == access(yin_file, F_OK )) {
+    if (-1 == access(yin_file, F_OK)) {
         snprintf(command, PATH_MAX, "pyang --path=%s --no-path-recurse --format=yin --output=%s %s",
                 search_dir, yin_file, yang_file);
         printf("Generating YIN from '%s' ...\n", yang_file);
@@ -378,7 +378,8 @@ srctl_schema_install(struct ly_ctx *ly_ctx, const char *yang_src, const char *yi
         module = module_in;
     } else {
         /* load the module into libyang ctx to get module information */
-        module = lys_parse_path(ly_ctx, yin_src, LYS_IN_YIN);
+        module = lys_parse_path(ly_ctx, (NULL != yin_src) ? yin_src : yang_src,
+                (NULL != yin_src) ? LYS_IN_YIN : LYS_IN_YANG);
         if (NULL == module) {
             fprintf(stderr, "Error: Unable to load the module by libyang.\n");
             goto fail;
@@ -389,22 +390,30 @@ srctl_schema_install(struct ly_ctx *ly_ctx, const char *yang_src, const char *yi
         *revision_date = module->rev[0].date;
     }
 
-    /* install YANG */
-    srctl_get_yang_path(*module_name, *revision_date, yang_dst, PATH_MAX);
-    printf("Installing the YANG file to '%s' ...\n", yang_dst);
-    snprintf(cmd, PATH_MAX, "cp -u %s %s", yang_src, yang_dst);
-    ret = system(cmd);
-    if (0 != ret) {
-        goto fail;
+    if (NULL != yang_src) {
+        /* install YANG */
+        if (-1 != access(yang_src, F_OK)) {
+            srctl_get_yang_path(*module_name, *revision_date, yang_dst, PATH_MAX);
+            printf("Installing the YANG file to '%s' ...\n", yang_dst);
+            snprintf(cmd, PATH_MAX, "cp -u %s %s", yang_src, yang_dst);
+            ret = system(cmd);
+            if (0 != ret) {
+                goto fail;
+            }
+        }
     }
 
-    /* install YIN */
-    srctl_get_yin_path(*module_name, *revision_date, yin_dst, PATH_MAX);
-    printf("Installing the YIN file to '%s' ...\n", yin_dst);
-    snprintf(cmd, PATH_MAX, "cp -u %s %s", yin_src, yin_dst);
-    ret = system(cmd);
-    if (0 != ret) {
-        goto fail;
+    if (NULL != yin_src) {
+        /* install YIN */
+        if (-1 != access(yin_src, F_OK)) {
+            srctl_get_yin_path(*module_name, *revision_date, yin_dst, PATH_MAX);
+            printf("Installing the YIN file to '%s' ...\n", yin_dst);
+            snprintf(cmd, PATH_MAX, "cp -u %s %s", yin_src, yin_dst);
+            ret = system(cmd);
+            if (0 != ret) {
+                goto fail;
+            }
+        }
     }
 
     /* install dependent YANG and YIN files */
@@ -454,8 +463,8 @@ srctl_install(const char *yang, const char *yin, const char *owner, const char *
     bool local_search_dir = false;
     int ret = 0;
 
-    if (NULL == yang) {
-        fprintf(stderr, "Error: YANG file must be specified for --install operation.\n");
+    if (NULL == yang && NULL == yin) {
+        fprintf(stderr, "Error: Either YANG or YIN file must be specified for --install operation.\n");
         goto fail;
     }
     printf("Installing a new module from YANG file '%s' ...\n", yang);
@@ -818,7 +827,7 @@ srctl_dump_import(const char *module, const char *format, bool dump)
     if (dump) {
         /* dump data */
         data_tree = lyd_parse_fd(ly_ctx, fd, LYD_XML, LYD_OPT_STRICT | LYD_OPT_CONFIG);
-        if (NULL == data_tree) {
+        if (NULL == data_tree && LY_SUCCESS != ly_errno) {
             fprintf(stderr, "Error: Unable to parse the data file '%s': %s.\n", data_filename, ly_errmsg());
             ret = EXIT_FAILURE;
         } else {
@@ -833,7 +842,7 @@ srctl_dump_import(const char *module, const char *format, bool dump)
     } else {
         /* import data */
         data_tree = lyd_parse_fd(ly_ctx, STDIN_FILENO, dump_format, LYD_OPT_STRICT | LYD_OPT_CONFIG);
-        if (NULL == data_tree) {
+        if (NULL == data_tree && LY_SUCCESS != ly_errno) {
             fprintf(stderr, "Error: Unable to parse the data: %s.\n", ly_errmsg());
             ret = EXIT_FAILURE;
         } else {
@@ -873,7 +882,7 @@ srctl_print_help()
     printf("  -h, --help             Prints usage help.\n");
     printf("  -v, --version          Prints version.\n");
     printf("  -l, --list             Lists YANG modules installed in sysrepo.\n");
-    printf("  -i, --install          Installs specified schema into sysrepo (--yang must be specified).\n");
+    printf("  -i, --install          Installs specified schema into sysrepo (--yang or --yin must be specified).\n");
     printf("  -u, --uninstall        Uninstalls specified schema from sysrepo (--module must be specified).\n");
     printf("  -c, --change           Changes specified module in sysrepo (--module must be specified).\n");
     printf("  -e, --feature-enable   Enables a feature within a module in sysrepo (feature name is the argument, --module must be specified).\n");
