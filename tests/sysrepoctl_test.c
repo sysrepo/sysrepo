@@ -36,6 +36,8 @@ sysrepoctl_test(void **state)
 {
     int ret = 0;
 
+    // TODO: verify that individual changes within this test has actually occured
+
     /* version */
     ret = system("../src/sysrepoctl -v");
     assert_int_equal(ret, 0);
@@ -46,6 +48,34 @@ sysrepoctl_test(void **state)
 
     /* list */
     ret = system("../src/sysrepoctl -l");
+    assert_int_equal(ret, 0);
+
+    /* dump */
+    ret = system("../src/sysrepoctl --dump=xml --module=ietf-interfaces > /tmp/ietf-interfaces.xml");
+    assert_int_equal(ret, 0);
+
+    /* uninstall */
+    ret = system("../src/sysrepoctl --uninstall --module=ietf-interfaces");
+    assert_int_equal(ret, 0);
+
+    /* install */
+    ret = system("../src/sysrepoctl --install --yang=../../tests/yang/ietf-interfaces@2014-05-08.yang --yin=../../tests/yang/ietf-interfaces@2014-05-08.yin");
+    assert_int_equal(ret, 0);
+
+    /* change */
+    ret = system("../src/sysrepoctl --change --module=ietf-interfaces --permissions=644");
+    assert_int_equal(ret, 0);
+
+    /* feature-enable */
+    ret = system("../src/sysrepoctl --feature-enable=if-mib --module=ietf-interfaces");
+    assert_int_equal(ret, 0);
+
+    /* feature-disable */
+    ret = system("../src/sysrepoctl --feature-disable=if-mib --module=ietf-interfaces");
+    assert_int_equal(ret, 0);
+
+    /* import */
+    ret = system("../src/sysrepoctl --import=xml --module=ietf-interfaces < /tmp/ietf-interfaces.xml");
     assert_int_equal(ret, 0);
 }
 
