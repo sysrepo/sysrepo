@@ -36,12 +36,12 @@ sysrepoctl_test(void **state)
 {
     int ret = 0;
 
-    /* help */
-    ret = system("../src/sysrepoctl -h");
-    assert_int_equal(ret, 0);
-
     /* version */
     ret = system("../src/sysrepoctl -v");
+    assert_int_equal(ret, 0);
+
+    /* help */
+    ret = system("../src/sysrepoctl -h");
     assert_int_equal(ret, 0);
 
     /* list */

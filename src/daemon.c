@@ -192,7 +192,7 @@ srd_print_version()
  * @brief Prints daemon usage help.
  */
 static void
-srd_print_usage()
+srd_print_help()
 {
     srd_print_version();
 
@@ -228,6 +228,7 @@ main(int argc, char* argv[])
         switch (c) {
             case 'v':
                 srd_print_version();
+                return 0;
                 break;
             case 'd':
                 debug_mode = true;
@@ -236,7 +237,7 @@ main(int argc, char* argv[])
                 log_level = atoi(optarg);
                 break;
             default:
-                srd_print_usage();
+                srd_print_help();
                 return 0;
         }
     }
