@@ -52,6 +52,7 @@ set(SYSREPO_ENGINE_SOURCES
     rp_node_stack.c
     data_manager.c
     notification_processor.c
+    persistence_manager.c
     xpath_processor.c
 )
 

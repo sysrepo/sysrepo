@@ -448,7 +448,7 @@ cl_sm_get_data_session(cl_sm_ctx_t *sm_ctx, sr_subscription_ctx_t *subscription,
             cl_session_cleanup(session);
             return rc;
         }
-        msg_req->request->session_start_req->notification_session = true;
+        msg_req->request->session_start_req->options = SR__SESSION_FLAGS__SESS_NOTIFICATION;
         msg_req->request->session_start_req->datastore = SR__DATA_STORE__RUNNING;
 
         /* send the request and receive the response */

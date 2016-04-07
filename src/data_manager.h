@@ -34,7 +34,8 @@
 #include "sysrepo.h"
 
 #include "sr_common.h"
-#include "access_control.h"
+#include "notification_processor.h"
+#include "persistence_manager.h"
 #include "xpath_processor.h"
 
 /**
@@ -105,13 +106,16 @@ typedef struct dm_commit_context_s {
 /**
  * @brief Initializes the data manager context, which will be passed in further
  * data manager related calls.
- * @param [in] ac_ctx_t - Acccess Control module context
+ * @param [in] ac_ctx_t Acccess Control module context
+ * @param [in] np_ctx Notification Processor context
+ * @param [in] pm_ctx Persistence Manager context
  * @param [in] schema_search_dir - location where schema files are located
  * @param [in] data_search_dir - location where data files are located
  * @param [out] dm_ctx
  * @return Error code (SR_ERR_OK on success), SR_ERR_IO
  */
-int dm_init(ac_ctx_t *ac_ctx, const char *schema_search_dir, const char *data_search_dir, dm_ctx_t **dm_ctx);
+int dm_init(ac_ctx_t *ac_ctx, np_ctx_t *np_ctx, pm_ctx_t *pm_ctx,
+        const char *schema_search_dir, const char *data_search_dir, dm_ctx_t **dm_ctx);
 
 /**
  * @brief Frees all allocated resources by the provided Data manager context, after
@@ -441,5 +445,6 @@ int dm_install_module(dm_ctx_t *dm_ctx, const char *module_name, const char *rev
  * @return Error code (SR_ERR_OK on success)
  */
 int dm_uninstall_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision);
+
 /**@} Data manager*/
 #endif /* SRC_DATA_MANAGER_H_ */

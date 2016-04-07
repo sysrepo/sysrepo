@@ -1,0 +1,92 @@
+module sysrepo-persistent-data {
+
+  yang-version 1;
+
+  namespace "urn:ietf:params:xml:ns:yang:sysrepo-persistent-data";
+
+  prefix srpd;
+
+  organization "sysrepo.org";
+
+  contact
+    "sysrepo-devel@sysrepo.org";
+
+  description
+    "Persistent data that sysrepo stores for each data module. Used only
+      internally by Sysrepo Engine.";
+
+  revision "2016-03-30" {
+    description "initial revision";
+  }
+
+  identity subscription-type {
+    description "Type of the subscription to a YANG module enabled in sysrepo.";
+  }
+
+  identity module-install {
+    base subscription-type;
+    description "Subscription for events triggered by installation or
+      uninstallation of a YANG module in sysrepo.";
+  }
+
+  identity feature-enable {
+    base subscription-type;
+    description "Subscription for events triggered by enabling or disabling of
+      a feature within a YANG module in sysrepo.";
+  }
+
+  identity leaf-change {
+    base subscription-type;
+    description "Subscription for events triggered by a change in subscribed
+      YANG leaf.";
+  }
+
+  identity subtree-change {
+    base subscription-type;
+    description "Subscription for events triggered by a change in subscribed
+      YANG subtree.";
+  }
+
+  list module {
+    key "module-name";
+    description "Module-specific persistent data maintained by sysrepo.";
+
+    leaf module-name {
+      type string;
+      description "Name of the YANG module.";
+    }
+
+    leaf-list enabled-features {
+      type string;
+      description "Features of the YANG module that are currently enabled in
+        sysrepo.";
+    }
+
+    list subscriptions {
+      key "type destination-address destination-id";
+      description "A subscription instance.";
+
+      leaf type {
+        type identityref {
+          base subscription-type;
+        }
+        description "Type of the subscription.";
+      }
+
+      leaf destination-address {
+        type string;
+        description "Destination address for notification delivery.";
+      }
+
+      leaf destination-id {
+        type uint32;
+        description "Destination-local subscription identifier.";
+      }
+
+      leaf subtree-path {
+        type string;
+        description "Path of the subtree where the subscription is active.";
+      }
+    }
+  }
+}
