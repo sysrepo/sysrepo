@@ -79,10 +79,11 @@ else(USE_AVL_LIB)
 endif(USE_AVL_LIB)
 
 # location of system repository
-set(REPOSITORY_LOC "${CMAKE_BINARY_DIR}/repository/" CACHE PATH "System repository location, contains configuration schema and data files.")
+set(REPOSITORY_LOC "${CMAKE_BINARY_DIR}/repository" CACHE PATH "System repository location, contains configuration schema and data files.")
 set(SCHEMA_SEARCH_DIR "${REPOSITORY_LOC}/yang/")
 set(DATA_SEARCH_DIR "${REPOSITORY_LOC}/data/")
 set(INTERNAL_SCHEMA_SEARCH_DIR "${REPOSITORY_LOC}/internal/yang/")
+MESSAGE(STATUS "sysrepo repository location is: ${REPOSITORY_LOC}")
 
 # check for non-portable functions and headers
 set(CMAKE_REQUIRED_LIBRARIES pthread)

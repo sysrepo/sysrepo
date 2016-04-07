@@ -34,6 +34,10 @@
 #include "sr_common.h"
 #include "client_library.h"
 
+static char *srctl_schema_search_dir = SR_SCHEMA_SEARCH_DIR;
+static char *srctl_data_search_dir = SR_DATA_SEARCH_DIR;
+static bool custom_repository = false;
+
 static int
 srctl_get_session(sr_conn_ctx_t **connection_p, sr_session_ctx_t **session_p)
 {
@@ -69,7 +73,7 @@ srctl_print_module_owner(const char *module_name, char *buff)
     struct stat info;
     int ret = 0;
 
-    snprintf(file_name, PATH_MAX, "%s%s%s", SR_DATA_SEARCH_DIR, module_name, SR_STARTUP_FILE_EXT);
+    snprintf(file_name, PATH_MAX, "%s%s%s", srctl_data_search_dir, module_name, SR_STARTUP_FILE_EXT);
 
     ret = stat(file_name, &info);
     if (0 == ret) {
@@ -89,7 +93,7 @@ srctl_print_module_permissions(const char *module_name, char *buff)
     int statchmod = 0;
     int ret = 0;
 
-    snprintf(file_name, PATH_MAX, "%s%s%s", SR_DATA_SEARCH_DIR, module_name, SR_STARTUP_FILE_EXT);
+    snprintf(file_name, PATH_MAX, "%s%s%s", srctl_data_search_dir, module_name, SR_STARTUP_FILE_EXT);
 
     ret = stat(file_name, &info);
     if (0 == ret) {
@@ -300,9 +304,9 @@ static void
 srctl_get_yang_path(const char *module_name, const char *revision_date, char *yang_path, size_t path_max_len)
 {
     if (NULL != revision_date) {
-        snprintf(yang_path, path_max_len, "%s%s@%s%s", SR_SCHEMA_SEARCH_DIR, module_name, revision_date, SR_SCHEMA_YANG_FILE_EXT);
+        snprintf(yang_path, path_max_len, "%s%s@%s%s", srctl_schema_search_dir, module_name, revision_date, SR_SCHEMA_YANG_FILE_EXT);
     } else {
-        snprintf(yang_path, path_max_len, "%s%s%s", SR_SCHEMA_SEARCH_DIR, module_name, SR_SCHEMA_YANG_FILE_EXT);
+        snprintf(yang_path, path_max_len, "%s%s%s", srctl_schema_search_dir, module_name, SR_SCHEMA_YANG_FILE_EXT);
     }
 }
 
@@ -310,9 +314,9 @@ static void
 srctl_get_yin_path(const char *module_name, const char *revision_date, char *yin_path, size_t path_max_len)
 {
     if (NULL != revision_date) {
-        snprintf(yin_path, PATH_MAX, "%s%s@%s%s", SR_SCHEMA_SEARCH_DIR, module_name, revision_date, SR_SCHEMA_YIN_FILE_EXT);
+        snprintf(yin_path, PATH_MAX, "%s%s@%s%s", srctl_schema_search_dir, module_name, revision_date, SR_SCHEMA_YIN_FILE_EXT);
     } else {
-        snprintf(yin_path, PATH_MAX, "%s%s%s", SR_SCHEMA_SEARCH_DIR, module_name, SR_SCHEMA_YIN_FILE_EXT);
+        snprintf(yin_path, PATH_MAX, "%s%s%s", srctl_schema_search_dir, module_name, SR_SCHEMA_YIN_FILE_EXT);
     }
 }
 
@@ -324,19 +328,19 @@ srctl_data_files_alter(const char *module_name, const char *command, bool contin
 
     // TODO: check for locks
 
-    snprintf(cmd, PATH_MAX, "%s %s%s%s", command, SR_DATA_SEARCH_DIR, module_name, SR_STARTUP_FILE_EXT);
+    snprintf(cmd, PATH_MAX, "%s %s%s%s", command, srctl_data_search_dir, module_name, SR_STARTUP_FILE_EXT);
     ret = system(cmd);
     if (0 != ret) { if (continue_on_error) last_err = ret; else return ret; }
-    snprintf(cmd, PATH_MAX, "%s %s%s%s", command, SR_DATA_SEARCH_DIR, module_name, SR_RUNNING_FILE_EXT);
+    snprintf(cmd, PATH_MAX, "%s %s%s%s", command, srctl_data_search_dir, module_name, SR_RUNNING_FILE_EXT);
     ret = system(cmd);
     if (0 != ret) { if (continue_on_error) last_err = ret; else return ret; }
-    snprintf(cmd, PATH_MAX, "%s %s%s%s%s", command, SR_DATA_SEARCH_DIR, module_name, SR_STARTUP_FILE_EXT, SR_LOCK_FILE_EXT);
+    snprintf(cmd, PATH_MAX, "%s %s%s%s%s", command, srctl_data_search_dir, module_name, SR_STARTUP_FILE_EXT, SR_LOCK_FILE_EXT);
     ret = system(cmd);
     if (0 != ret) { if (continue_on_error) last_err = ret; else return ret; }
-    snprintf(cmd, PATH_MAX, "%s %s%s%s%s", command, SR_DATA_SEARCH_DIR, module_name, SR_RUNNING_FILE_EXT, SR_LOCK_FILE_EXT);
+    snprintf(cmd, PATH_MAX, "%s %s%s%s%s", command, srctl_data_search_dir, module_name, SR_RUNNING_FILE_EXT, SR_LOCK_FILE_EXT);
     ret = system(cmd);
     if (0 != ret) { if (continue_on_error) last_err = ret; else return ret; }
-    snprintf(cmd, PATH_MAX, "%s %s%s%s", command, SR_DATA_SEARCH_DIR, module_name, SR_PERSIST_FILE_EXT);
+    snprintf(cmd, PATH_MAX, "%s %s%s%s", command, srctl_data_search_dir, module_name, SR_PERSIST_FILE_EXT);
     ret = system(cmd);
     if (0 != ret) { if (continue_on_error) last_err = ret; else return ret; }
 
@@ -506,16 +510,18 @@ srctl_install(const char *yang, const char *yin, const char *owner, const char *
         ret = srctl_data_files_alter(module_name, cmd, true);
     }
 
-    printf("Notifying sysrepo about the change ...\n");
-    ret = srctl_get_session(&connection, &session);
-    if (SR_ERR_OK == ret) {
-        ret = sr_module_install(session, module_name, revision_date, true);
-    }
-    if (SR_ERR_OK == ret) {
-        printf("Install operation completed successfully.\n");
-    } else {
-        srctl_report_error(session, ret);
-        goto fail;
+    if (!custom_repository) {
+        printf("Notifying sysrepo about the change ...\n");
+        ret = srctl_get_session(&connection, &session);
+        if (SR_ERR_OK == ret) {
+            ret = sr_module_install(session, module_name, revision_date, true);
+        }
+        if (SR_ERR_OK == ret) {
+            printf("Install operation completed successfully.\n");
+        } else {
+            srctl_report_error(session, ret);
+            goto fail;
+        }
     }
 
     ret = EXIT_SUCCESS;
@@ -596,7 +602,7 @@ srctl_schema_uninstall(struct ly_ctx *ly_ctx, const char *module_name, const cha
         ret = srctl_schema_file_uninstall(ly_ctx, schema_file);
     } else {
         /* delete module's YANG and YIN files of all revisions */
-        dp = opendir(SR_SCHEMA_SEARCH_DIR);
+        dp = opendir(srctl_schema_search_dir);
         if (NULL == dp) {
             fprintf(stderr, "Error: %s.\n", strerror(errno));
             return EXIT_FAILURE;
@@ -605,7 +611,7 @@ srctl_schema_uninstall(struct ly_ctx *ly_ctx, const char *module_name, const cha
             if (0 == strncmp(ep->d_name, module_name, strlen(module_name))) {
                 ext = strrchr(ep->d_name, '.');
                 if (NULL != ext && 0 == strcmp(ext, ".yin")) {
-                    snprintf(schema_file, PATH_MAX, "%s%s", SR_SCHEMA_SEARCH_DIR, ep->d_name);
+                    snprintf(schema_file, PATH_MAX, "%s%s", srctl_schema_search_dir, ep->d_name);
                     ret = srctl_schema_file_uninstall(ly_ctx, schema_file);
                 }
             }
@@ -630,7 +636,7 @@ srctl_uninstall(const char *module, const char *revision)
     printf("Uninstalling the module '%s'.\n", module);
 
     /* init libyang context */
-    ly_ctx = ly_ctx_new(SR_SCHEMA_SEARCH_DIR);
+    ly_ctx = ly_ctx_new(srctl_schema_search_dir);
     if (NULL == ly_ctx) {
         fprintf(stderr, "Error: Unable to initialize libyang context: %s.\n", ly_errmsg());
         return EXIT_FAILURE;
@@ -643,17 +649,19 @@ srctl_uninstall(const char *module, const char *revision)
         return EXIT_FAILURE;
     }
 
-    /* disable in sysrepo */
-    ret = srctl_get_session(&connection, &session);
-    if (SR_ERR_OK == ret) {
-        ret = sr_module_install(session, module, revision, false);
-    }
-    if (SR_ERR_OK != ret && SR_ERR_NOT_FOUND != ret) {
-        srctl_report_error(session, ret);
+    if (!custom_repository) {
+        /* disable in sysrepo */
+        ret = srctl_get_session(&connection, &session);
+        if (SR_ERR_OK == ret) {
+            ret = sr_module_install(session, module, revision, false);
+        }
+        if (SR_ERR_OK != ret && SR_ERR_NOT_FOUND != ret) {
+            srctl_report_error(session, ret);
+            sr_disconnect(connection);
+            return EXIT_FAILURE;
+        }
         sr_disconnect(connection);
-        return EXIT_FAILURE;
     }
-    sr_disconnect(connection);
 
     /* delete data files */
     printf("Deleting data files ...\n");
@@ -746,14 +754,14 @@ srctl_ly_init(struct ly_ctx **ly_ctx)
     struct dirent *ep;
     char *ext = NULL, schema_filename[PATH_MAX] = { 0, };
 
-    *ly_ctx = ly_ctx_new(SR_SCHEMA_SEARCH_DIR);
+    *ly_ctx = ly_ctx_new(srctl_schema_search_dir);
     if (NULL == *ly_ctx) {
         fprintf(stderr, "Error: Unable to initialize libyang context: %s.\n", ly_errmsg());
         return EXIT_FAILURE;
     }
     ly_set_log_clb(srctl_ly_log_cb, 0);
 
-    dp = opendir(SR_SCHEMA_SEARCH_DIR);
+    dp = opendir(srctl_schema_search_dir);
     if (NULL == dp) {
         fprintf(stderr, "Error by opening schema directory: %s.\n", strerror(errno));
         return EXIT_FAILURE;
@@ -761,7 +769,7 @@ srctl_ly_init(struct ly_ctx **ly_ctx)
     while (NULL != (ep = readdir(dp))) {
         ext = strrchr(ep->d_name, '.');
         if (NULL != ext && 0 == strcmp(ext, ".yin")) {
-            snprintf(schema_filename, PATH_MAX, "%s%s", SR_SCHEMA_SEARCH_DIR, ep->d_name);
+            snprintf(schema_filename, PATH_MAX, "%s%s", srctl_schema_search_dir, ep->d_name);
             lys_parse_path(*ly_ctx, schema_filename, LYS_IN_YIN);
         }
     }
@@ -798,7 +806,7 @@ srctl_dump_import(const char *module, const char *format, bool dump)
         return ret;
     }
 
-    snprintf(data_filename, PATH_MAX, "%s%s%s", SR_DATA_SEARCH_DIR, module, SR_STARTUP_FILE_EXT);
+    snprintf(data_filename, PATH_MAX, "%s%s%s", srctl_data_search_dir, module, SR_STARTUP_FILE_EXT);
 
     fd = open(data_filename, dump ? O_RDONLY : (O_WRONLY | O_TRUNC));
     if (-1 == fd) {
@@ -908,6 +916,7 @@ main(int argc, char* argv[])
     char *yang = NULL, *yin = NULL, *module = NULL, *revision = NULL;
     char *owner = NULL, *permissions = NULL;
     char *search_dir = NULL;
+    char local_schema_search_dir[PATH_MAX] = { 0, }, local_data_search_dir[PATH_MAX] = { 0, };
 
     struct option longopts[] = {
        { "help",            no_argument,       NULL, 'h' },
@@ -932,7 +941,7 @@ main(int argc, char* argv[])
        { 0, 0, 0, 0 }
     };
 
-    while ((c = getopt_long(argc, argv, "hvliuce:d:x:t:g:n:m:r:o:p:s:W;", longopts, NULL)) != -1) {
+    while ((c = getopt_long(argc, argv, "hvliuce:d:x:t:g:n:m:r:o:p:s:0:W;", longopts, NULL)) != -1) {
         switch (c) {
             case 'h':
                 srctl_print_help();
@@ -978,6 +987,16 @@ main(int argc, char* argv[])
                 break;
             case 's':
                 search_dir = optarg;
+                break;
+            case '0':
+                /* 'hidden' option - custom repository location */
+                strncpy(local_schema_search_dir, optarg, PATH_MAX - 6);
+                strncpy(local_data_search_dir, optarg, PATH_MAX - 6);
+                strcat(local_schema_search_dir, "/yang/");
+                strcat(local_data_search_dir, "/data/");
+                srctl_schema_search_dir = local_schema_search_dir;
+                srctl_data_search_dir = local_data_search_dir;
+                custom_repository = true;
                 break;
             case ':':
                 /* missing option argument */
