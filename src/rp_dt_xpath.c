@@ -293,7 +293,7 @@ rp_dt_find_in_choice(dm_session_t *session, const char *xpath, const char *trimm
     /* libyang err_msg is used to parse the match and unmatch part */
     int rc = SR_ERR_BAD_ELEMENT;
     char *unmatch_part = NULL;
-
+    char *err_msg = NULL;
     char *xp_copy = strdup(ly_errpath());
     CHECK_NULL_NOMEM_RETURN(xp_copy);
     char *last_slash = rindex(xp_copy, '/');
@@ -302,7 +302,7 @@ rp_dt_find_in_choice(dm_session_t *session, const char *xpath, const char *trimm
     }
     *last_slash = 0;
 
-    char *err_msg = strdup(ly_errmsg());
+    err_msg = strdup(ly_errmsg());
     CHECK_NULL_NOMEM_GOTO(err_msg, rc, not_matched);
 
     /* split xpath into unmatched part and the part that may contain a choice */
