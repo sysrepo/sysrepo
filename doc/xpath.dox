@@ -14,6 +14,18 @@ Following xpath expression identifies the @b container node inside the @b model.
 /model:container
 @endcode
 
+To retrieve all children (nodes with parent node /model:container) element use
+@code
+/model:container/*
+@endcode
+
+If you want to retrieve all nodes in container subtree, including deeper levels
+use:
+@code
+/model:container//*
+@endcode
+
+
 @subsection list List
 Identification of the particular list instance
 @code
@@ -37,35 +49,9 @@ Explicitely specified namespace for the augment node.
 @endcode
 
 @subsection module Whole module
-Following xpath expression can be used to retrieve all nodes in a @b module.
+Following xpath expression can be used to retrieve all top-level nodes in a @b module.
 @code
-/model:
+/model:*
 @endcode
-
-@section gr Grammar
-Starting non terminal symbol is  <@b xp>. Rules of the context free grammar for xpath.
-@code
-<xp>    -> <required_ns>
-<xp>    -> <required_ns><node_name><keys><nodes>
-<nodes> -> <slash><node><nodes> | eps
-<node>  -> <namespace><node_name><keys>
-<keys>  -> <LSQB><key_name><EQ><APOS><key_value><APOS><RSQB> | eps
-<namespace> -> <module_name><COLON> | eps
-<required_ns> -> <slash><module_name><COLON>
-@endcode
-
-@code
-<module_name> -> [_a-z][_-.a-z]*
-<node_name>   -> [_a-z][_-.a-z]*
-<key_name>    -> [_a-z][_-.a-z]*
-<key_value>   -> [_a-z][_-.a-z]*
-
-<LSQB>  -> [
-<RSQB>  -> ]
-<EQ>    -> =
-<COLON> -> :
-<APOS>  -> '
-@endcode
-@note @a eps - denotes an empty string. @a module_name, @a node_name, @a key_name and @a key_value are described using regular expression
 
 */

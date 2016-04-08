@@ -5,7 +5,7 @@ set(SYSREPO_DESC "YANG-based system repository")
 # setup version
 set(SYSREPO_MAJOR_VERSION 0)
 set(SYSREPO_MINOR_VERSION 1)
-set(SYSREPO_MICRO_VERSION 16)
+set(SYSREPO_MICRO_VERSION 18)
 set(SYSREPO_VERSION ${SYSREPO_MAJOR_VERSION}.${SYSREPO_MINOR_VERSION}.${SYSREPO_MICRO_VERSION})
 
 # set default build type if not specified by user
@@ -79,10 +79,11 @@ else(USE_AVL_LIB)
 endif(USE_AVL_LIB)
 
 # location of system repository
-set(REPOSITORY_LOC "${PROJECT_SOURCE_DIR}/tests/data/" CACHE PATH "System repository location, contains configuration schema and data files.")
+set(REPOSITORY_LOC "${CMAKE_BINARY_DIR}/repository" CACHE PATH "System repository location, contains configuration schema and data files.")
 set(SCHEMA_SEARCH_DIR "${REPOSITORY_LOC}/yang/")
 set(DATA_SEARCH_DIR "${REPOSITORY_LOC}/data/")
 set(INTERNAL_SCHEMA_SEARCH_DIR "${REPOSITORY_LOC}/internal/yang/")
+MESSAGE(STATUS "sysrepo repository location is: ${REPOSITORY_LOC}")
 
 # check for non-portable functions and headers
 set(CMAKE_REQUIRED_LIBRARIES pthread)
@@ -171,8 +172,8 @@ install (DIRECTORY DESTINATION ${SCHEMA_SEARCH_DIR} DIRECTORY_PERMISSIONS
     WORLD_READ WORLD_EXECUTE)
 install (DIRECTORY DESTINATION ${DATA_SEARCH_DIR} DIRECTORY_PERMISSIONS
     OWNER_READ OWNER_WRITE OWNER_EXECUTE
-    GROUP_READ GROUP_WRITE GROUP_EXECUTE
-    WORLD_READ WORLD_WRITE WORLD_EXECUTE)
+    GROUP_READ GROUP_EXECUTE
+    WORLD_READ WORLD_EXECUTE)
 
 # install internal YANGs
 install (FILES ${PROJECT_SOURCE_DIR}/yang/sysrepo-persistent-data.yin DESTINATION ${INTERNAL_SCHEMA_SEARCH_DIR})

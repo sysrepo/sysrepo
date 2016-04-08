@@ -1,9 +1,13 @@
-set(TEST_REPOSITORY_LOC "${PROJECT_SOURCE_DIR}/tests/data/")
+set(TEST_REPOSITORY_LOC "${CMAKE_BINARY_DIR}/repository")
+set(TEST_SCHEMA_SEARCH_DIR "${TEST_REPOSITORY_LOC}/yang/")
+set(TEST_DATA_SEARCH_DIR "${TEST_REPOSITORY_LOC}/data/")
+set(TEST_INTERNAL_SCHEMA_SEARCH_DIR "${TEST_REPOSITORY_LOC}/internal/yang/")
 
-configure_file("${PROJECT_SOURCE_DIR}/tests/data/test_data.h.in" "${PROJECT_SOURCE_DIR}/tests/data/test_data.h" ESCAPE_QUOTES @ONLY) 
+set(TEST_HELPERS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/helpers/")
 
-include_directories ("${PROJECT_SOURCE_DIR}/src" "${PROJECT_SOURCE_DIR}/src/common" "${PROJECT_SOURCE_DIR}/inc" "${PROJECT_SOURCE_DIR}/tests/data/" "${PROJECT_SOURCE_DIR}/tests/helpers/")
-set(HELPERS_DIR "${PROJECT_SOURCE_DIR}/tests/helpers/")
+configure_file("${TEST_HELPERS_DIR}/test_data.h.in" "${TEST_HELPERS_DIR}/test_data.h" ESCAPE_QUOTES @ONLY) 
+
+include_directories ("${PROJECT_SOURCE_DIR}/src" "${PROJECT_SOURCE_DIR}/src/common" "${PROJECT_SOURCE_DIR}/inc" "${TEST_HELPERS_DIR}")
 
 find_program(valgrind_FOUND valgrind)
 
@@ -33,70 +37,104 @@ endmacro(ADD_UNIT_TEST)
 
 
 #Create test target source with helper functions included 
+
 macro(ADD_UNIT_TEST_WITH_HELPERS TEST_NAME)
-     set(t_files
-        ${TEST_NAME}.c
-        ${HELPERS_DIR}dt_xpath_helpers.c
-        ${HELPERS_DIR}rp_dt_context_helper.c
-        ${HELPERS_DIR}test_module_helper.c
-        )
-    ADD_UNIT_TEST_WITH_OPTS(${TEST_NAME} "${t_files}" "" 1 "")
+    ADD_UNIT_TEST_WITH_HELPERS_VALGRIND(${TEST_NAME} 1)
 endmacro(ADD_UNIT_TEST_WITH_HELPERS)
 
-ADD_UNIT_TEST_WITH_HELPERS(ac_test)
+macro(ADD_UNIT_TEST_WITH_HELPERS_VALGRIND TEST_NAME VALG)
+    set(t_files
+        ${TEST_NAME}.c
+        ${TEST_HELPERS_DIR}dt_xpath_helpers.c
+        ${TEST_HELPERS_DIR}rp_dt_context_helper.c
+        ${TEST_HELPERS_DIR}test_module_helper.c
+        )
+    ADD_UNIT_TEST_WITH_OPTS(${TEST_NAME} "${t_files}" "" ${VALG} "")
+endmacro(ADD_UNIT_TEST_WITH_HELPERS_VALGRIND)
+
+
 ADD_UNIT_TEST(common_test)
+ADD_UNIT_TEST_WITH_HELPERS(ac_test)
 
-ADD_UNIT_TEST(xp_parser_test)
-ADD_UNIT_TEST(xp_yang_test)
-
-ADD_UNIT_TEST(cm_test)
 ADD_UNIT_TEST(cm_sm_test)
-
-ADD_UNIT_TEST_WITH_HELPERS(dm_test)
-ADD_UNIT_TEST(rp_dt_xpath_test)
-ADD_UNIT_TEST(rp_test)
-
-ADD_UNIT_TEST_WITH_HELPERS(rp_datatree_test)
-ADD_UNIT_TEST(rp_node_stack_test)
-ADD_UNIT_TEST_WITH_HELPERS(rp_dt_edit_test)
-ADD_UNIT_TEST_WITH_HELPERS(rp_dt_running_test)
-
 ADD_UNIT_TEST_WITH_OPTS(np_test np_test.c "" 1 "cm_msg_send")
 ADD_UNIT_TEST(pm_test)
 
-ADD_UNIT_TEST_WITH_HELPERS(cl_test)
-ADD_UNIT_TEST(concurr_test)
-ADD_UNIT_TEST_WITH_OPTS(perf_test perf_test.c "" 0 "")
-ADD_UNIT_TEST_WITH_OPTS(daemon_test daemon_test.c "" 0 "")
+ADD_UNIT_TEST_WITH_HELPERS(dm_test)
 
-# copy internal yangs to tests data dir
-add_custom_command(
-  TARGET pm_test POST_BUILD
-  COMMAND mkdir -p "${TEST_REPOSITORY_LOC}internal/yang/"
-  COMMAND cp "${PROJECT_SOURCE_DIR}/yang/sysrepo-persistent-data.*" "${TEST_REPOSITORY_LOC}internal/yang/"
+ADD_UNIT_TEST(rp_dt_xpath_test)
+ADD_UNIT_TEST_WITH_HELPERS(rp_datatree_test)
+ADD_UNIT_TEST_WITH_HELPERS(rp_dt_edit_test)
+ADD_UNIT_TEST_WITH_HELPERS(rp_dt_running_test)
+
+if("${TEST_REPOSITORY_LOC}" STREQUAL "${REPOSITORY_LOC}")
+    # end-to-end tests that work only if test repository location equals to 
+    # global procject's repository location
+    
+    ADD_UNIT_TEST_WITH_HELPERS(cm_test)
+    ADD_UNIT_TEST(rp_test)
+    
+    ADD_UNIT_TEST_WITH_HELPERS(cl_test)
+    ADD_UNIT_TEST_WITH_HELPERS(concurr_test)
+    ADD_UNIT_TEST_WITH_HELPERS_VALGRIND(perf_test 0)
+    ADD_UNIT_TEST_WITH_OPTS(daemon_test daemon_test.c "" 0 "")
+    ADD_UNIT_TEST_WITH_OPTS(sysrepoctl_test sysrepoctl_test.c "" 0 "")
+
+    # Python tests
+    FIND_PACKAGE(PythonInterp)
+    FIND_PACKAGE(SWIG)
+    FIND_PACKAGE(PythonLibs 2)
+    
+    if (SWIG_FOUND AND PYTHONLIBS_FOUND AND PYTHONINTERP_FOUND)
+        add_test(NAME python_basic_test
+          #set work dir to load generated swig python binding
+          WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/swig"
+          COMMAND ${PYTHON_EXECUTABLE}
+            ${CMAKE_CURRENT_SOURCE_DIR}/python/SysrepoBasicTest.py
+        )
+        add_test(NAME python_locking
+          #set work dir to load generated swig python binding
+          WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/swig"
+          COMMAND ${PYTHON_EXECUTABLE}
+            ${CMAKE_CURRENT_SOURCE_DIR}/python/LockingTest.py
+        )
+        add_test(NAME python_commit
+          #set work dir to load generated swig python binding
+          WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/swig"
+          COMMAND ${PYTHON_EXECUTABLE}
+            ${CMAKE_CURRENT_SOURCE_DIR}/python/CommitTest.py
+        )
+    endif()
+else()
+    message(STATUS "Test repostory location differs to system repository location, some tests will be disabled.")
+endif()
+
+
+# create test repository directories and copy internal schemas
+EXECUTE_PROCESS(
+  COMMAND mkdir -p "${TEST_SCHEMA_SEARCH_DIR}" "${TEST_DATA_SEARCH_DIR}" "${TEST_INTERNAL_SCHEMA_SEARCH_DIR}"
+  COMMAND cp "${PROJECT_SOURCE_DIR}/yang/sysrepo-persistent-data.yang" "${TEST_INTERNAL_SCHEMA_SEARCH_DIR}"
+  COMMAND cp "${PROJECT_SOURCE_DIR}/yang/sysrepo-persistent-data.yin" "${TEST_INTERNAL_SCHEMA_SEARCH_DIR}"
+  ERROR_QUIET
 )
 
-FIND_PACKAGE(PythonInterp)
-FIND_PACKAGE(SWIG)
-FIND_PACKAGE(PythonLibs 2)
+# install testing YANG modules
+macro(INSTALL_YANG_MODULE MODULE_NAME)
+    ADD_CUSTOM_COMMAND(
+        TARGET common_test
+        POST_BUILD
+        COMMAND ${CMAKE_BINARY_DIR}/src/sysrepoctl --install --yang=${CMAKE_CURRENT_SOURCE_DIR}/yang/${MODULE_NAME}.yang --yin=${CMAKE_CURRENT_SOURCE_DIR}/yang/${MODULE_NAME}.yin -0 ${TEST_REPOSITORY_LOC} > /dev/null
+        VERBATIM
+    )
+endmacro(INSTALL_YANG_MODULE)
 
-if (SWIG_FOUND AND PYTHONLIBS_FOUND AND PYTHONINTERP_FOUND)
-    add_test(NAME python_basic_test
-      #set work dir to load generated swig python binding
-      WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/swig"
-      COMMAND ${PYTHON_EXECUTABLE}
-        ${CMAKE_CURRENT_SOURCE_DIR}/python/SysrepoBasicTest.py
-    )
-    add_test(NAME python_locking
-      #set work dir to load generated swig python binding
-      WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/swig"
-      COMMAND ${PYTHON_EXECUTABLE}
-        ${CMAKE_CURRENT_SOURCE_DIR}/python/LockingTest.py
-    )
-    add_test(NAME python_commit
-      #set work dir to load generated swig python binding
-      WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/swig"
-      COMMAND ${PYTHON_EXECUTABLE}
-        ${CMAKE_CURRENT_SOURCE_DIR}/python/CommitTest.py
-    )
-endif()
+INSTALL_YANG_MODULE("example-module")
+INSTALL_YANG_MODULE("test-module")
+INSTALL_YANG_MODULE("small-module")
+INSTALL_YANG_MODULE("info-module")
+INSTALL_YANG_MODULE("module-a@2016-02-02")
+INSTALL_YANG_MODULE("module-a@2016-02-10")
+INSTALL_YANG_MODULE("module-b@2016-02-05")
+INSTALL_YANG_MODULE("iana-if-type")
+INSTALL_YANG_MODULE("ietf-interfaces@2014-05-08")
+INSTALL_YANG_MODULE("ietf-ip@2014-06-16")

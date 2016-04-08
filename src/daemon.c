@@ -180,18 +180,29 @@ srd_sigterm_cb(cm_ctx_t *cm_ctx, int signum)
 }
 
 /**
+ * @brief Prints daemon version.
+ */
+static void
+srd_print_version()
+{
+    printf("sysrepod - sysrepo daemon, version %s\n\n", SR_VERSION);
+}
+
+/**
  * @brief Prints daemon usage help.
  */
 static void
-srd_print_usage()
+srd_print_help()
 {
-    printf("sysrepod - sysrepo daemon, version %s\n\n", SR_VERSION);
+    srd_print_version();
+
     printf("Usage:\n");
-    printf("  sysrepod [-h] [-d] [-v <level>]\n\n");
+    printf("  sysrepod [-h] [-v] [-d] [-l <level>]\n\n");
     printf("Options:\n");
-    printf("  -h\t\tPrints this usage help.\n");
+    printf("  -h\t\tPrints usage help.\n");
+    printf("  -v\t\tPrints version.\n");
     printf("  -d\t\tDebug mode - daemon will run in the foreground and print logs to stderr instead of syslog.\n");
-    printf("  -v <level>\tSets verbosity level of logging:\n");
+    printf("  -l <level>\tSets verbosity level of logging:\n");
     printf("\t\t\t0 = all logging turned off\n");
     printf("\t\t\t1 = log only error messages\n");
     printf("\t\t\t2 = log error and warning messages\n");
@@ -211,18 +222,22 @@ main(int argc, char* argv[])
 
     int c = 0;
     bool debug_mode = false;
-    int verb_level = -1;
+    int log_level = -1;
 
-    while ((c = getopt (argc, argv, "hdv:")) != -1) {
+    while ((c = getopt (argc, argv, "hvdl:")) != -1) {
         switch (c) {
+            case 'v':
+                srd_print_version();
+                return 0;
+                break;
             case 'd':
                 debug_mode = true;
                 break;
-            case 'v':
-                verb_level = atoi(optarg);
+            case 'l':
+                log_level = atoi(optarg);
                 break;
             default:
-                srd_print_usage();
+                srd_print_help();
                 return 0;
         }
     }
@@ -236,11 +251,11 @@ main(int argc, char* argv[])
         sr_log_stderr(SR_LL_NONE);
         sr_log_syslog(SR_DEFAULT_DEAMON_LOG_LEVEL);
     }
-    if ((-1 != verb_level) && (verb_level >= SR_LL_NONE) && (verb_level <= SR_LL_DBG)) {
+    if ((-1 != log_level) && (log_level >= SR_LL_NONE) && (log_level <= SR_LL_DBG)) {
         if (debug_mode) {
-            sr_log_stderr(verb_level);
+            sr_log_stderr(log_level);
         } else {
-            sr_log_syslog(verb_level);
+            sr_log_syslog(log_level);
         }
     }
 

@@ -384,6 +384,25 @@ sr_lyd_new_leaf(dm_data_info_t *data_info, struct lyd_node *parent, const struct
     return new;
 }
 
+struct lyd_node *
+sr_lyd_new_path(dm_data_info_t *data_info, struct ly_ctx *ctx, const char *path, const char *value, int options)
+{
+    int rc = SR_ERR_OK;
+    CHECK_NULL_ARG_NORET2(rc, data_info, path);
+    if (SR_ERR_OK != rc){
+        return NULL;
+    }
+
+    struct lyd_node *new = NULL;
+    new = lyd_new_path(data_info->node, ctx, path, value, options);
+
+    if (NULL == data_info->node) {
+        data_info->node = new;
+    }
+
+    return new;
+}
+
 int
 sr_lyd_insert_before(dm_data_info_t *data_info, struct lyd_node *sibling, struct lyd_node *node)
 {
@@ -2449,3 +2468,40 @@ sr_fd_set_nonblock(int fd)
     return SR_ERR_OK;
 }
 
+int
+sr_copy_first_ns(const char *xpath, char **namespace)
+{
+    CHECK_NULL_ARG2(xpath, namespace);
+    
+    char *colon_pos = strchr(xpath, ':');
+    if (xpath[0] != '/' || NULL == colon_pos) {
+        return SR_ERR_INVAL_ARG;
+    }
+    *namespace = strndup(xpath + 1, (colon_pos - xpath -1));
+    CHECK_NULL_NOMEM_RETURN(*namespace);
+    return SR_ERR_OK;
+}
+
+int
+sr_cmp_first_ns(const char *xpath, const char *ns)
+{
+    size_t cmp_len = 0;
+    
+    if (NULL == xpath || xpath[0] != '/') {
+        xpath = "";
+    }
+    else {
+        char *colon_pos = strchr(xpath, ':');
+        if (NULL != colon_pos) {
+            cmp_len = colon_pos - xpath -1;
+            xpath++; /* skip leading slash */
+        }
+    }
+    
+    if (NULL == ns) {
+        ns = "";
+    }
+    
+    return strncmp(xpath, ns, cmp_len);
+    
+}

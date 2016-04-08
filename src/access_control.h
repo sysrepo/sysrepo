@@ -34,7 +34,7 @@
  * on Linux, or effective UID and GID on non-Linux platforms.
  */
 
-#include "xpath_processor.h"
+#include "sr_common.h"
 
 /**
  * @brief Operation to be authorized.
@@ -117,7 +117,7 @@ void ac_session_cleanup(ac_session_t *session);
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int ac_check_node_permissions(ac_session_t *session, const xp_loc_id_t *node_xpath, const ac_operation_t operation);
+int ac_check_node_permissions(ac_session_t *session, const char *node_xpath, const ac_operation_t operation);
 
 /**
  * @brief Check if the user of given session has the permission to perform

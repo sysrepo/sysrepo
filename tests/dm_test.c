@@ -34,6 +34,7 @@ int setup(void **state)
 {
     /* make sure that test-module data is created */
     createDataTreeTestModule();
+    createDataTreeExampleModule();
     return 0;
 }
 
@@ -321,16 +322,10 @@ dm_add_operation_test(void **state)
     val->type = SR_INT8_T;
     val->data.int8_val = 42;
 
-    xp_loc_id_t *l1 = NULL;
-    xp_loc_id_t *l2 = NULL;
-
-    assert_int_equal(SR_ERR_OK, xp_char_to_loc_id("/abc:def", &l1));
-    assert_int_equal(SR_ERR_OK, xp_char_to_loc_id("/abc:def", &l2));
-
-    rc = dm_add_operation(ses_ctx, DM_SET_OP, l1, val, SR_EDIT_DEFAULT);
+    rc = dm_add_operation(ses_ctx, DM_SET_OP, "/abc:def", val, SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = dm_add_operation(ses_ctx, DM_DELETE_OP, l2, NULL, SR_EDIT_DEFAULT);
+    rc = dm_add_operation(ses_ctx, DM_DELETE_OP, "/abc:def", NULL, SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
     sr_val_t *val1 = NULL;

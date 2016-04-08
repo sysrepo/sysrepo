@@ -327,8 +327,8 @@ dm_load_data_tree_file(dm_ctx_t *dm_ctx, int fd, const char *data_filename, cons
                 (long long) st.st_mtim.tv_nsec);
 #endif
         data_tree = lyd_parse_fd(dm_ctx->ly_ctx, fd, LYD_XML, LYD_OPT_STRICT | LYD_OPT_CONFIG);
-        if (NULL == data_tree) {
-            SR_LOG_ERR("Parsing data tree from file %s failed", data_filename);
+        if (NULL == data_tree && LY_SUCCESS != ly_errno) {
+            SR_LOG_ERR("Parsing data tree from file %s failed: %s", data_filename, ly_errmsg());
             free(data);
             return SR_ERR_INTERNAL;
         }
@@ -422,7 +422,7 @@ dm_free_sess_op(dm_sess_op_t *op)
     if (NULL == op) {
         return;
     }
-    xp_free_loc_id(op->loc_id);
+    free(op->xpath);
     sr_free_val(op->val);
 }
 
@@ -556,6 +556,17 @@ dm_unlock_file(dm_lock_ctx_t *lock_ctx, char *filename)
 cleanup:
     pthread_mutex_unlock(&lock_ctx->mutex);
     return rc;
+}
+
+/**
+ * @brief Logging callback called from libyang for each log entry.
+ */
+static void
+dm_ly_log_cb(LY_LOG_LEVEL level, const char *msg, const char *path)
+{
+    if (LY_LLERR == level) {
+        SR_LOG_DBG("libyang error: %s", msg);
+    }
 }
 
 int
@@ -737,10 +748,10 @@ dm_get_node_state(struct lys_node *node)
 }
 
 int
-dm_add_operation(dm_session_t *session, dm_operation_t op, xp_loc_id_t *loc_id, sr_val_t *val, sr_edit_options_t opts)
+dm_add_operation(dm_session_t *session, dm_operation_t op, const char *xpath, sr_val_t *val, sr_edit_options_t opts)
 {
     int rc = SR_ERR_OK;
-    CHECK_NULL_ARG_NORET2(rc, session, loc_id); /* value can be NULL*/
+    CHECK_NULL_ARG_NORET2(rc, session, xpath); /* value can be NULL*/
     if (SR_ERR_OK != rc) {
         goto cleanup;
     }
@@ -765,14 +776,13 @@ dm_add_operation(dm_session_t *session, dm_operation_t op, xp_loc_id_t *loc_id, 
     }
     session->operations[session->oper_count].op = op;
     session->operations[session->oper_count].has_error = false;
-    session->operations[session->oper_count].loc_id = loc_id;
+    session->operations[session->oper_count].xpath = strdup(xpath);
+    CHECK_NULL_NOMEM_GOTO(session->operations[session->oper_count].xpath, rc, cleanup);
     session->operations[session->oper_count].val = val;
     session->operations[session->oper_count].options = opts;
-
     session->oper_count++;
     return rc;
 cleanup:
-    xp_free_loc_id(loc_id);
     sr_free_val(val);
     return rc;
 }
@@ -784,7 +794,7 @@ dm_remove_last_operation(dm_session_t *session)
     if (session->oper_count > 0) {
         session->oper_count--;
         dm_free_sess_op(&session->operations[session->oper_count]);
-        session->operations[session->oper_count].loc_id = NULL;
+        session->operations[session->oper_count].xpath = NULL;
         session->operations[session->oper_count].val = NULL;
     }
 }
@@ -951,6 +961,8 @@ dm_init(ac_ctx_t *ac_ctx, np_ctx_t *np_ctx, pm_ctx_t *pm_ctx,
 
     ctx->ly_ctx = ly_ctx_new(schema_search_dir);
     CHECK_NULL_NOMEM_GOTO(ctx->ly_ctx, rc, cleanup);
+
+    ly_set_log_clb(dm_ly_log_cb, 1);
 
     ctx->schema_search_dir = strdup(schema_search_dir);
     CHECK_NULL_NOMEM_GOTO(ctx->schema_search_dir, rc, cleanup);
@@ -1443,7 +1455,7 @@ dm_validate_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error
                 sr_free_errors(*errors, *err_cnt);
                 return SR_ERR_INTERNAL;
             }
-            if (0 != lyd_validate(&info->node, LYD_OPT_STRICT | LYD_OPT_NOAUTODEL | LYD_OPT_CONFIG)) {
+            if (NULL != info->node && 0 != lyd_validate(&info->node, LYD_OPT_STRICT | LYD_OPT_NOAUTODEL | LYD_OPT_CONFIG)) {
                 SR_LOG_DBG("Validation failed for %s module", info->module->name);
                 (*err_cnt)++;
                 sr_error_info_t *tmp_err = realloc(*errors, *err_cnt * sizeof(**errors));
@@ -1806,7 +1818,7 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
                 goto cleanup;
             }
             di->node = sr_dup_datatree(info->node);
-            if (NULL == di->node) {
+            if (NULL != info->node && NULL == di->node) {
                 SR_LOG_ERR_MSG("Data tree duplication failed");
                 rc = SR_ERR_INTERNAL;
                 dm_data_info_free(di);

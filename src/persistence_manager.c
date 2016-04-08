@@ -134,10 +134,17 @@ pm_load_data_tree(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *mod
             } else {
                 /* create the data tree */
                 rc = pm_create_data_tree(pm_ctx, module_name, data_tree);
-                /* create the file */
-                ac_set_user_identity(pm_ctx->ac_ctx, user_cred);
-                fd = open(data_filename, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
-                ac_unset_user_identity(pm_ctx->ac_ctx);
+                if (SR_ERR_OK == rc) {
+                    /* create the file */
+                    ac_set_user_identity(pm_ctx->ac_ctx, user_cred);
+                    fd = open(data_filename, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
+                    ac_unset_user_identity(pm_ctx->ac_ctx);
+                    if (-1 == fd) {
+                        SR_LOG_ERR("Unable to create new persist data file '%s': %s", data_filename, strerror(errno));
+                        lyd_free_withsiblings(*data_tree);
+                        rc = SR_ERR_INTERNAL;
+                    }
+                }
             }
         } else if (EACCES == errno) {
             SR_LOG_ERR("Insufficient permissions to access persist data file '%s'.", data_filename);
@@ -156,7 +163,7 @@ pm_load_data_tree(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *mod
 
     if (NULL == *data_tree) {
         *data_tree = lyd_parse_fd(pm_ctx->ly_ctx, fd, LYD_XML, LYD_OPT_STRICT | LYD_OPT_CONFIG);
-        if (NULL == *data_tree) {
+        if (NULL == *data_tree && LY_SUCCESS != ly_errno) {
             SR_LOG_ERR("Parsing persist data from file '%s' failed: %s", data_filename, ly_errmsg());
             rc = SR_ERR_INTERNAL;
         } else {
@@ -174,6 +181,17 @@ pm_load_data_tree(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *mod
     }
 
     return rc;
+}
+
+/**
+ * @brief Logging callback called from libyang for each log entry.
+ */
+static void
+pm_ly_log_cb(LY_LOG_LEVEL level, const char *msg, const char *path)
+{
+    if (LY_LLERR == level) {
+        SR_LOG_DBG("libyang error: %s", msg);
+    }
 }
 
 int
@@ -195,7 +213,13 @@ pm_init(ac_ctx_t *ac_ctx, const char *schema_search_dir, const char *data_search
 
     /* initialize libyang */
     ctx->ly_ctx = ly_ctx_new(schema_search_dir);
-    CHECK_NULL_NOMEM_GOTO(ctx->ly_ctx, rc, cleanup);
+    if (NULL == ctx->ly_ctx) {
+        SR_LOG_ERR("libyang initialization failed: %s", ly_errmsg());
+        rc = SR_ERR_INIT_FAILED;
+        goto cleanup;
+    }
+
+    ly_set_log_clb(pm_ly_log_cb, 0);
 
     rc = sr_str_join(schema_search_dir, PM_SCHEMA_FILE, &schema_filename);
     if (SR_ERR_OK != rc) {
@@ -255,6 +279,13 @@ pm_feature_enable(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *mod
         goto cleanup;
     }
 
+    if (NULL == data_tree) {
+        /* create the data tree if it's NULL */
+        rc = pm_create_data_tree(pm_ctx, module_name, &data_tree);
+        if (SR_ERR_OK != rc) {
+            goto cleanup;
+        }
+    }
     curr = data_tree->child;
 
     /* find matching feature node (if exists) */
@@ -344,6 +375,13 @@ pm_get_features(pm_ctx_t *pm_ctx, const char *module_name, char ***features_p, s
     rc = pm_load_data_tree(pm_ctx, NULL, module_name, data_filename, true, NULL, &data_tree);
     if (SR_ERR_OK != rc) {
         SR_LOG_WRN("Unable to load persist data tree for module '%s'.", module_name);
+        goto cleanup;
+    }
+
+    if (NULL == data_tree) {
+        /* empty data file */
+        *features_p = NULL;
+        *feature_cnt_p = 0;
         goto cleanup;
     }
 
