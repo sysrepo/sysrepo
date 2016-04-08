@@ -558,6 +558,17 @@ cleanup:
     return rc;
 }
 
+/**
+ * @brief Logging callback called from libyang for each log entry.
+ */
+static void
+dm_ly_log_cb(LY_LOG_LEVEL level, const char *msg, const char *path)
+{
+    if (LY_LLERR == level) {
+        SR_LOG_DBG("libyang error: %s", msg);
+    }
+}
+
 int
 dm_lock_module(dm_ctx_t *dm_ctx, dm_session_t *session, char *modul_name)
 {
@@ -951,6 +962,8 @@ dm_init(ac_ctx_t *ac_ctx, np_ctx_t *np_ctx, pm_ctx_t *pm_ctx,
 
     ctx->ly_ctx = ly_ctx_new(schema_search_dir);
     CHECK_NULL_NOMEM_GOTO(ctx->ly_ctx, rc, cleanup);
+
+    ly_set_log_clb(dm_ly_log_cb, 0);
 
     ctx->schema_search_dir = strdup(schema_search_dir);
     CHECK_NULL_NOMEM_GOTO(ctx->schema_search_dir, rc, cleanup);

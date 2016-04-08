@@ -183,6 +183,17 @@ pm_load_data_tree(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *mod
     return rc;
 }
 
+/**
+ * @brief Logging callback called from libyang for each log entry.
+ */
+static void
+pm_ly_log_cb(LY_LOG_LEVEL level, const char *msg, const char *path)
+{
+    if (LY_LLERR == level) {
+        SR_LOG_DBG("libyang error: %s", msg);
+    }
+}
+
 int
 pm_init(ac_ctx_t *ac_ctx, const char *schema_search_dir, const char *data_search_dir, pm_ctx_t **pm_ctx)
 {
@@ -207,6 +218,8 @@ pm_init(ac_ctx_t *ac_ctx, const char *schema_search_dir, const char *data_search
         rc = SR_ERR_INIT_FAILED;
         goto cleanup;
     }
+
+    ly_set_log_clb(pm_ly_log_cb, 0);
 
     rc = sr_str_join(schema_search_dir, PM_SCHEMA_FILE, &schema_filename);
     if (SR_ERR_OK != rc) {
