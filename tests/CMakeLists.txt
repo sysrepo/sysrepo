@@ -33,23 +33,26 @@ endmacro(ADD_UNIT_TEST)
 
 
 #Create test target source with helper functions included 
+
 macro(ADD_UNIT_TEST_WITH_HELPERS TEST_NAME)
-     set(t_files
+    ADD_UNIT_TEST_WITH_HELPERS_VALGRIND(${TEST_NAME} 1)
+endmacro(ADD_UNIT_TEST_WITH_HELPERS)
+
+macro(ADD_UNIT_TEST_WITH_HELPERS_VALGRIND TEST_NAME VALG)
+    set(t_files
         ${TEST_NAME}.c
         ${HELPERS_DIR}dt_xpath_helpers.c
         ${HELPERS_DIR}rp_dt_context_helper.c
         ${HELPERS_DIR}test_module_helper.c
         )
-    ADD_UNIT_TEST_WITH_OPTS(${TEST_NAME} "${t_files}" "" 1 "")
-endmacro(ADD_UNIT_TEST_WITH_HELPERS)
+    ADD_UNIT_TEST_WITH_OPTS(${TEST_NAME} "${t_files}" "" ${VALG} "")
+endmacro(ADD_UNIT_TEST_WITH_HELPERS_VALGRIND)
+
 
 ADD_UNIT_TEST_WITH_HELPERS(ac_test)
 ADD_UNIT_TEST(common_test)
 
-ADD_UNIT_TEST(xp_parser_test)
-ADD_UNIT_TEST(xp_yang_test)
-
-ADD_UNIT_TEST(cm_test)
+ADD_UNIT_TEST_WITH_HELPERS(cm_test)
 ADD_UNIT_TEST(cm_sm_test)
 
 ADD_UNIT_TEST_WITH_HELPERS(dm_test)
@@ -57,7 +60,6 @@ ADD_UNIT_TEST(rp_dt_xpath_test)
 ADD_UNIT_TEST(rp_test)
 
 ADD_UNIT_TEST_WITH_HELPERS(rp_datatree_test)
-ADD_UNIT_TEST(rp_node_stack_test)
 ADD_UNIT_TEST_WITH_HELPERS(rp_dt_edit_test)
 ADD_UNIT_TEST_WITH_HELPERS(rp_dt_running_test)
 
@@ -65,8 +67,8 @@ ADD_UNIT_TEST_WITH_OPTS(np_test np_test.c "" 1 "cm_msg_send")
 ADD_UNIT_TEST(pm_test)
 
 ADD_UNIT_TEST_WITH_HELPERS(cl_test)
-ADD_UNIT_TEST(concurr_test)
-ADD_UNIT_TEST_WITH_OPTS(perf_test perf_test.c "" 0 "")
+ADD_UNIT_TEST_WITH_HELPERS(concurr_test)
+ADD_UNIT_TEST_WITH_HELPERS_VALGRIND(perf_test 0)
 ADD_UNIT_TEST_WITH_OPTS(daemon_test daemon_test.c "" 0 "")
 
 # copy internal yangs to tests data dir

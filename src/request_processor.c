@@ -319,15 +319,14 @@ rp_get_items_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
     sr_val_t **values = NULL;
     size_t count = 0;
     char *xpath = msg->request->get_items_req->path;
-    bool recursive = msg->request->get_items_req->recursive;
     size_t offset = msg->request->get_items_req->offset;
     size_t limit = msg->request->get_items_req->limit;
 
-    if (msg->request->get_items_req->has_recursive || msg->request->get_items_req->has_offset ||
+    if (msg->request->get_items_req->has_offset ||
             msg->request->get_items_req->has_limit){
 
         rc = rp_dt_get_values_wrapper_with_opts(rp_ctx, session, &session->get_items_ctx, xpath,
-        recursive, offset, limit, &values, &count);
+                                                offset, limit, &values, &count);
     }
     else {
         rc = rp_dt_get_values_wrapper(rp_ctx, session, xpath, &values, &count);
@@ -991,7 +990,7 @@ rp_session_cleanup(const rp_ctx_t *rp_ctx, rp_session_t *session)
     dm_session_stop(rp_ctx->dm_ctx, session->dm_session);
     ac_session_cleanup(session->ac_session);
 
-    rp_ns_clean(&session->get_items_ctx.stack);
+    ly_set_free(session->get_items_ctx.nodes);
     free(session->get_items_ctx.xpath);
     pthread_mutex_destroy(&session->msg_count_mutex);
     free(session);

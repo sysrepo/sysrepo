@@ -28,11 +28,14 @@
 #include "sysrepo.h"
 #include "sr_common.h"
 
+#include "test_module_helper.h"
+
 #define TEST_THREAD_COUNT 10
 
 static int
 sysrepo_setup(void **state)
 {
+    createDataTreeExampleModule();
     sr_conn_ctx_t *conn = NULL;
     int rc = SR_ERR_OK;
 

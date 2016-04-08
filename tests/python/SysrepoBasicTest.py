@@ -51,7 +51,7 @@ class SysrepoBasicTest(unittest.TestCase):
             self.assertRegexpMatches(v.xpath, "/test-module:main*")
 
     def test_get_items_iter(self):
-        iter = self.session.get_items_iter("/test-module:main", True)
+        iter = self.session.get_items_iter("/test-module:main//*")
         while True:
             try:
                 item = self.session.get_item_next(iter)
@@ -98,9 +98,19 @@ class SysrepoBasicTest(unittest.TestCase):
 
     def test_validate(self):
         v = Value("/test-module:main/numbers", SR_UINT8_T, 42)
-        self.session.set_item(v.xpath,v)
         with self.assertRaises(RuntimeError):
-            self.session.validate()
+            self.session.set_item(v.xpath, v, SR_EDIT_STRICT)
+
+    def test_commit_empty(self):
+        TestModule.create_test_module()
+        sr = Sysrepo("name")
+        session = Session(sr, SR_DS_STARTUP)
+        session.delete_item("/test-module:*")
+        session.commit()
+        with self.assertRaises(RuntimeError):
+            self.session.get_item("/test-module:main")
+        TestModule.create_test_module()
+
 
 if __name__ == '__main__':
     unittest.main()

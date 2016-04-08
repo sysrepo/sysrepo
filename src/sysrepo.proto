@@ -232,9 +232,8 @@ message GetItemsReq {
    * The options below are applicable only for sr_get_items_iter
    * (not set by sr_get_items).
    */
-  optional bool recursive = 2;
-  optional uint32 limit = 3;
-  optional uint32 offset = 4;
+  optional uint32 limit = 2;
+  optional uint32 offset = 3;
 }
 
 /**

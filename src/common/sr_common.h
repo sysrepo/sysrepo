@@ -322,6 +322,17 @@ struct lyd_node *sr_lyd_new(dm_data_info_t *data_info, struct lyd_node *parent, 
 struct lyd_node *sr_lyd_new_leaf(dm_data_info_t *data_info, struct lyd_node *parent, const struct lys_module *module, const char *node_name, const char *value);
 
 /**
+ * @brief Call lyd_new_path if the data info does not contain a node attaches the created node.
+ * @param [in] data_info
+ * @param [in] ctx
+ * @param [in] path
+ * @param [in] value
+ * @param [in] options
+ * @return same as libyang's lyd_new_path
+ */
+struct lyd_node *sr_lyd_new_path(dm_data_info_t *data_info, struct ly_ctx *ctx, const char *path, const char *value, int options);
+
+/**
  * @brief Insert node after sibling and fixes the pointer in dm_data_info if needed.
  * @param [in] data_info
  * @param [in] sibling
@@ -670,6 +681,24 @@ int sr_unlock_fd(int fd);
  * @return err_code (SR_ERR_OK on success).
  */
 int sr_fd_set_nonblock(int fd);
+
+/**
+ * @brief Copies the first string from the beginning of the xpath up to the first colon,
+ * that represents the name of the data file.
+ * @param [in] xpath
+ * @param [out] namespace
+ * @return Error code (SR_ERR_OK on success)
+ */
+int sr_copy_first_ns(const char *xpath, char **namespace);
+
+/**
+ * @brief Compares the first namespace of the xpath. If an argument is NULL
+ * or does not conatain a namespace it is replaced by an empty string.
+ * @param [in] xpath
+ * @param [in] ns
+ * @return same as strcmp function
+ */
+int sr_cmp_first_ns(const char *xpath, const char *ns);
 
 /**@} common */
 

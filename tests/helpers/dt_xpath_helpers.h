@@ -27,7 +27,6 @@
 
 #include <libyang/libyang.h>
 #include "data_manager.h"
-#include "xpath_processor.h"
 
 /**
  * @brief Returns the value for the specified xpath for leaf, container and list. It converts the xpath to loc_id
