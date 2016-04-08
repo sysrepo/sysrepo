@@ -316,7 +316,7 @@ srctl_yin_generate(const char *search_dir, const char *dst_dir, const char *yang
         snprintf(command, PATH_MAX, "cp %s %s", yang_file, dst_dir);
         ret = system(command);
         if (0 != ret) {
-            fprintf(stderr, "Error: Unable to install the YIN file to '%s': %s.\n", dst_dir, strerror(errno));
+            fprintf(stderr, "Error: Unable to install the YIN file to '%s'.\n", dst_dir);
             free(yin_file);
             yin_file = NULL;
         }
@@ -443,7 +443,7 @@ srctl_schema_install(struct ly_ctx *ly_ctx, const char *yang_src, const char *yi
             snprintf(cmd, PATH_MAX, "cp -u %s %s", yang_src, yang_dst);
             ret = system(cmd);
             if (0 != ret) {
-                fprintf(stderr, "Error: Unable to install the YANG file: %s.\n", strerror(errno));
+                fprintf(stderr, "Error: Unable to install the YANG file to '%s'.\n", yang_dst);
                 goto fail;
             }
         }
@@ -458,7 +458,7 @@ srctl_schema_install(struct ly_ctx *ly_ctx, const char *yang_src, const char *yi
             snprintf(cmd, PATH_MAX, "cp -u %s %s", yin_src, yin_dst);
             ret = system(cmd);
             if (0 != ret) {
-                fprintf(stderr, "Error: Unable to install the YIN file: %s.\n", strerror(errno));
+                fprintf(stderr, "Error: Unable to install the YIN file to '%s'.\n", yin_dst);
                 goto fail;
             }
         }
@@ -638,93 +638,112 @@ cleanup:
     return rc;
 }
 
-
 /**
- * TODO
+ * @brief Deletes the schema files.
  */
 static int
 srctl_schema_file_delete(const char *schema_file)
 {
     char cmd[PATH_MAX] = { 0, };
     const char *yang_file = NULL;
+    int ret = 0, rc = SR_ERR_OK;
 
     printf("Deleting the YIN file %s ...\n", schema_file);
     snprintf(cmd, PATH_MAX, "rm %s", schema_file);
-    system(cmd);
+    ret = system(cmd);
+    if (0 != ret) {
+        fprintf(stderr, "Error: Unable to delete the YIN file '%s'.\n", schema_file);
+        rc = SR_ERR_INTERNAL;
+    }
 
     yang_file = srctl_yang_filepath_from_yin_filepath(schema_file);
-    printf("Deleting the YANG file %s ...\n", yang_file);
-    snprintf(cmd, PATH_MAX, "rm %s", yang_file);
-    system(cmd);
+    if (-1 != access(yang_file, F_OK)) {
+        printf("Deleting the YANG file %s ...\n", yang_file);
+        snprintf(cmd, PATH_MAX, "rm %s", yang_file);
+        ret = system(cmd);
+        if (0 != ret) {
+            fprintf(stderr, "Error: Unable to delete the YANG file '%s'.\n", yang_file);
+            rc = SR_ERR_INTERNAL;
+        }
+    }
     free((void*)yang_file);
 
-    return EXIT_SUCCESS;
+    return rc;
 }
 
+/**
+ * @brief Uninstalls the schema file and all submodules referenced from the schema.
+ */
 static int
 srctl_schema_file_uninstall(struct ly_ctx *ly_ctx, const char *schema_file)
 {
     const struct lys_module *module = NULL;
-    int ret = 0;
+    int rc = SR_ERR_OK;
 
     /* delete all submodules */
     module = lys_parse_path(ly_ctx, schema_file, LYS_IN_YIN);
     if (NULL != module) {
         for (size_t i = 0; i < module->inc_size; i++) {
-            ret = srctl_schema_file_delete(module->inc[i].submodule->filepath);
+            rc = srctl_schema_file_delete(module->inc[i].submodule->filepath);
         }
     }
 
     /* delete the main module */
-    ret = srctl_schema_file_delete(schema_file);
+    rc = srctl_schema_file_delete(schema_file);
 
-    return ret;
+    return rc;
 }
 
+/**
+ * @brief Uninstalls a schema identified by module name and revision date.
+ */
 static int
 srctl_schema_uninstall(struct ly_ctx *ly_ctx, const char *module_name, const char *revision_date)
 {
     char schema_file[PATH_MAX] = { 0, }, *ext = NULL;
     DIR *dp;
     struct dirent *ep;
-    int ret = 0;
+    int rc = SR_ERR_OK;
 
     if (NULL != revision_date) {
         /* delete module's YANG and YIN files of specified revision */
         srctl_get_yin_path(module_name, revision_date, schema_file, PATH_MAX);
-        ret = srctl_schema_file_uninstall(ly_ctx, schema_file);
+        rc = srctl_schema_file_uninstall(ly_ctx, schema_file);
     } else {
         /* delete module's YANG and YIN files of all revisions */
         dp = opendir(srctl_schema_search_dir);
         if (NULL == dp) {
             fprintf(stderr, "Error: %s.\n", strerror(errno));
-            return EXIT_FAILURE;
+            return SR_ERR_INTERNAL;
         }
         while (NULL != (ep = readdir(dp))) {
             if (0 == strncmp(ep->d_name, module_name, strlen(module_name))) {
                 ext = strrchr(ep->d_name, '.');
                 if (NULL != ext && 0 == strcmp(ext, ".yin")) {
                     snprintf(schema_file, PATH_MAX, "%s%s", srctl_schema_search_dir, ep->d_name);
-                    ret = srctl_schema_file_uninstall(ly_ctx, schema_file);
+                    rc = srctl_schema_file_uninstall(ly_ctx, schema_file);
                 }
             }
         }
     }
 
-    return ret;
+    return rc;
 }
 
+/**
+ * @brief Performs the --uninstall operation.
+ */
 static int
 srctl_uninstall(const char *module, const char *revision)
 {
     sr_conn_ctx_t *connection = NULL;
     sr_session_ctx_t *session = NULL;
     struct ly_ctx *ly_ctx = NULL;
-    int ret = SR_ERR_OK;
+    int ret = 0, rc = SR_ERR_OK;
 
     if (NULL == module) {
         fprintf(stderr, "Error: Module must be specified for --uninstall operation.\n");
-        exit(EXIT_FAILURE);
+        return SR_ERR_INVAL_ARG;
     }
     printf("Uninstalling the module '%s'.\n", module);
 
@@ -732,26 +751,26 @@ srctl_uninstall(const char *module, const char *revision)
     ly_ctx = ly_ctx_new(srctl_schema_search_dir);
     if (NULL == ly_ctx) {
         fprintf(stderr, "Error: Unable to initialize libyang context: %s.\n", ly_errmsg());
-        return EXIT_FAILURE;
+        return SR_ERR_INIT_FAILED;
     }
 
     /* delete schema files */
-    ret = srctl_schema_uninstall(ly_ctx, module, revision);
-    if (EXIT_FAILURE == ret) {
+    rc = srctl_schema_uninstall(ly_ctx, module, revision);
+    if (SR_ERR_OK != rc) {
         fprintf(stderr, "Error: Unable to uninstall schemas.\n");
-        return EXIT_FAILURE;
+        return rc;
     }
 
     if (!custom_repository) {
         /* disable in sysrepo */
-        ret = srctl_open_session(&connection, &session);
-        if (SR_ERR_OK == ret) {
-            ret = sr_module_install(session, module, revision, false);
+        rc = srctl_open_session(&connection, &session);
+        if (SR_ERR_OK == rc) {
+            rc = sr_module_install(session, module, revision, false);
         }
-        if (SR_ERR_OK != ret && SR_ERR_NOT_FOUND != ret) {
-            srctl_report_error(session, ret);
+        if (SR_ERR_OK != rc && SR_ERR_NOT_FOUND != rc) {
+            srctl_report_error(session, rc);
             sr_disconnect(connection);
-            return EXIT_FAILURE;
+            return rc;
         }
         sr_disconnect(connection);
     }
@@ -759,50 +778,57 @@ srctl_uninstall(const char *module, const char *revision)
     /* delete data files */
     printf("Deleting data files ...\n");
     // TODO: lock data file, fail if it is already locked
+
     ret = srctl_data_files_alter(module, "rm", true);
-    if (EXIT_FAILURE == ret) {
+    if (0 != ret) {
         fprintf(stderr, "Error: Unable to delete data files. However, schemas has been successfully uninstalled.\n");
-        return EXIT_FAILURE;
+        return SR_ERR_INTERNAL;
     }
 
     printf("Operation completed successfully.\n");
 
-    return EXIT_SUCCESS;
+    return SR_ERR_OK;
 }
 
+/**
+ * @brief Performs the --change operation.
+ */
 static int
 srctl_change(const char *module, const char *revision, const char *owner, const char *permissions)
 {
     char cmd[PATH_MAX] = { 0, };
-    int ret = 0;
+    int ret1 = 0, ret2 = 0;
 
     if (NULL == module) {
         fprintf(stderr, "Error: Module must be specified for --change operation.\n");
-        exit(EXIT_FAILURE);
+        return SR_ERR_INVAL_ARG;
     }
     if (NULL == owner && NULL == permissions) {
         fprintf(stderr, "Either --owner or --permissions option must be specified for --change operation.\n");
-        return EXIT_FAILURE;
+        return SR_ERR_INVAL_ARG;
     }
     printf("Changing the module '%s'.\n", module);
 
     if (NULL != owner) {
         snprintf(cmd, PATH_MAX, "chown %s", owner);
-        ret = srctl_data_files_alter(module, cmd, true);
+        ret1 = srctl_data_files_alter(module, cmd, true);
     }
     if (NULL != permissions) {
         snprintf(cmd, PATH_MAX, "chmod %s", permissions);
-        ret = srctl_data_files_alter(module, cmd, true);
+        ret2 = srctl_data_files_alter(module, cmd, true);
     }
 
-    if (0 != ret) {
+    if (0 != ret1 || 0 != ret2) {
         fprintf(stderr, "Some part of the change operation failed, see the errors above.\n");
-        return EXIT_FAILURE;
+        return SR_ERR_INTERNAL;
     } else {
-        return EXIT_SUCCESS;
+        return SR_ERR_OK;
     }
 }
 
+/**
+ * @brief Performs the --feature-enable or --feature-disable operation.
+ */
 static int
 srctl_feature_change(const char *module, const char *feature_name, bool enable)
 {
@@ -813,7 +839,7 @@ srctl_feature_change(const char *module, const char *feature_name, bool enable)
     if (NULL == module) {
         fprintf(stderr, "Error: Module must be specified for --%s operation.\n",
                 enable ? "feature-enable" : "feature-disable");
-        exit(EXIT_FAILURE);
+        return SR_ERR_INVAL_ARG;
     }
     printf("%s feature '%s' in the module '%s'.\n", enable ? "Enabling" : "Disabling", feature_name, module);
 
@@ -851,14 +877,14 @@ srctl_ly_init(struct ly_ctx **ly_ctx)
     *ly_ctx = ly_ctx_new(srctl_schema_search_dir);
     if (NULL == *ly_ctx) {
         fprintf(stderr, "Error: Unable to initialize libyang context: %s.\n", ly_errmsg());
-        return EXIT_FAILURE;
+        return SR_ERR_INVAL_ARG;
     }
     ly_set_log_clb(srctl_ly_log_cb, 0);
 
     dp = opendir(srctl_schema_search_dir);
     if (NULL == dp) {
         fprintf(stderr, "Error by opening schema directory: %s.\n", strerror(errno));
-        return EXIT_FAILURE;
+        return SR_ERR_INVAL_ARG;
     }
     while (NULL != (ep = readdir(dp))) {
         ext = strrchr(ep->d_name, '.');
