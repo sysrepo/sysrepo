@@ -962,7 +962,7 @@ dm_init(ac_ctx_t *ac_ctx, np_ctx_t *np_ctx, pm_ctx_t *pm_ctx,
     ctx->ly_ctx = ly_ctx_new(schema_search_dir);
     CHECK_NULL_NOMEM_GOTO(ctx->ly_ctx, rc, cleanup);
 
-    ly_set_log_clb(dm_ly_log_cb, 0);
+    ly_set_log_clb(dm_ly_log_cb, 1);
 
     ctx->schema_search_dir = strdup(schema_search_dir);
     CHECK_NULL_NOMEM_GOTO(ctx->schema_search_dir, rc, cleanup);
