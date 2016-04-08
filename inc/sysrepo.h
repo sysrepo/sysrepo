@@ -504,12 +504,11 @@ int sr_get_schema(sr_session_ctx_t *session, const char *module_name, const char
          const char *submodule_name, sr_schema_format_t format, char **schema_content);
 
 /**
- * @brief Retrieves a single data element stored under provided XPath.
+ * @brief Retrieves a single data element stored under provided XPath. If multiple
+ * nodes matches the xpath SR_ERR_INVAL_ARG is returned.
  *
- * If the path identifies an empty leaf, a list or a presence container, the value
- * has no data filled in and its type is set properly (SR_LEAF_EMPTY_T / SR_LIST_T / SR_CONTAINER_PRESENCE_T).
- * In case of leaf-list only one (first) element is returned, you need to use
- * ::sr_get_items / ::sr_get_items_iter to retrieve all of them.
+ * If the path identifies an empty leaf, a list or a container, the value
+ * has no data filled in and its type is set properly (SR_LEAF_EMPTY_T / SR_LIST_T / SR_CONTAINER_T / SR_CONTAINER_PRESENCE_T).
  *
  * @see @ref xp_page "XPath Addressing" documentation, or
  * https://tools.ietf.org/html/draft-ietf-netmod-yang-json#section-6.11
@@ -532,25 +531,14 @@ int sr_get_schema(sr_session_ctx_t *session, const char *module_name, const char
 int sr_get_item(sr_session_ctx_t *session, const char *path, sr_val_t **value);
 
 /**
- * @brief Retrieves an array of data elements stored under provided path XPath
- * (direct children of the entity specified by XPath, non-recursively).
+ * @brief Retrieves an array of data elements matching provided XPath
  *
  * All data elements are transferred within one message from the datastore,
  * which is much more efficient that calling multiple ::sr_get_item calls.
  *
- * When called on a leaf-list, returns all leaf-list elements. When called on
- * a list (with keys provided) or a container, returns all direct children of the
- * list instance / container. If there are nested containers or list entities,
- * the value returned for each of them has no data filled in and the type set
- * properly (SR_CONTAINER_T / SR_LIST_T). The XPaths of these container / list
- * values can be used for subsequent sr_get_items calls. When keys are not
- * provided for a list, it returns all list entities, as for nested lists
- * (can be used to list existing key values of a list).
- *
  * If the user does not have read permission to access certain nodes, these
- * won't be part of the result. SR_ERR_NOT_FOUND will be returned if the element
- * under provided path does not exist in the data tree, element does not contain
- * any nested data, or the user does not have read permission to access it.
+ * won't be part of the result. SR_ERR_NOT_FOUND will be returned if there are
+ * no nodes match xpath in the data tree, or the user does not have read permission to access them.
  *
  * @see @ref xp_page "XPath Addressing" documentation, or
  * https://tools.ietf.org/html/draft-ietf-netmod-yang-json#section-6.11
@@ -558,8 +546,7 @@ int sr_get_item(sr_session_ctx_t *session, const char *path, sr_val_t **value);
  *
  * @see ::sr_get_items_iter can be used for the same purpose as ::sr_get_items
  * call if you expect that ::sr_get_items could return too large data sets.
- * ::sr_get_items_iter can also be used for recursive subtree retrieval. Since
- * ::sr_get_items_iter also retrieves the data from datastore in larger chunks,
+ * Since ::sr_get_items_iter also retrieves the data from datastore in larger chunks,
  * in can still work very efficiently for large datasets.
  *
  * @param[in] session Session context acquired with ::sr_session_start call.
@@ -605,7 +592,7 @@ int sr_get_items_iter(sr_session_ctx_t *session, const char *path, sr_val_iter_t
  * @param[out] value Structure containing information about requested element
  * (allocated by the function, can be freed with ::sr_free_val).
  *
- * @return Error code (SR_ERR_OK on success, SR_ERR_NOTFOUND in case that there
+ * @return Error code (SR_ERR_OK on success, SR_ERR_NOT_FOUND in case that there
  * are not more items in the dataset).
  */
 int sr_get_item_next(sr_session_ctx_t *session, sr_val_iter_t *iter, sr_val_t **value);
