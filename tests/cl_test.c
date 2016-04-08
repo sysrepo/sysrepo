@@ -44,6 +44,7 @@ static int
 sysrepo_setup(void **state)
 {
     createDataTreeTestModule();
+    createDataTreeExampleModule();
     sr_conn_ctx_t *conn = NULL;
     int rc = SR_ERR_OK;
 

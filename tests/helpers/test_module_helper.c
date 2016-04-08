@@ -151,7 +151,7 @@ createDataTreeExampleModule()
     ctx = ly_ctx_new(TEST_SCHEMA_SEARCH_DIR);
     assert_non_null(ctx);
 
-    const struct lys_module *module = ly_ctx_load_module(ctx, "test-module", NULL);
+    const struct lys_module *module = ly_ctx_load_module(ctx, "example-module", NULL);
     assert_non_null(module);
 
 #define XPATH "/example-module:container/list[key1='key1'][key2='key2']/leaf"

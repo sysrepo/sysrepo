@@ -38,6 +38,7 @@
 #define LEAF_VALUE "leafV"
 
 int setup(void **state){
+   createDataTreeExampleModule();
    test_rp_ctx_create((rp_ctx_t**)state);
    return 0;
 }

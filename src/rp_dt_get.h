@@ -29,7 +29,7 @@
 #include "rp_dt_lookup.h"
 
 /**
- * @brief Retrieves all nodes corresponding to location_id using ::rp_dt_get_nodes and copy all values
+ * @brief Retrieves all nodes matching xpath using ::rp_dt_get_nodes and copy all values
  * using ::rp_dt_get_values_from_nodes.
  * @param [in] dm_ctx
  * @param [in] data_tree
@@ -42,8 +42,8 @@
 int rp_dt_get_values(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char *xpath, bool check_enable, sr_val_t ***values, size_t *count);
 
 /**
- * @brief Returns the value for the specified location_id for leaf, container and list.
- * If the provided location id identifies the whole module SR_ERR_INVAL_ARG is returned.
+ * @brief Returns the value for the specified xpath. If more than one node matching xpath,
+ * SR_ERR_INVAL_ARG is returned.
  * @param [in] dm_ctx
  * @param [in] data_tree
  * @param [in] xpath
@@ -54,8 +54,7 @@ int rp_dt_get_values(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const c
 int rp_dt_get_value(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char *xpath, bool checke_enable, sr_val_t **value);
 
 /**
- * @brief Returns the value for the specified xpath. Internally converts xpath to location_id and call ::rp_dt_get_value.
- * The xpath is validated.
+ * @brief Returns the value for the specified xpath.
  * @param [in] rp_ctx
  * @param [in] rp_session
  * @param [in] xpath
@@ -65,8 +64,7 @@ int rp_dt_get_value(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const ch
 int rp_dt_get_value_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char *xpath, sr_val_t **value);
 
 /**
- * @brief Returns the values for the specified xpath. Internally converts xpath to location_id and 
- * calls ::rp_dt_get_values.
+ * @brief Returns the values for the specified xpath.
  * @param [in] rp_ctx
  * @param [in] rp_session
  * @param [in] xpath
@@ -77,8 +75,8 @@ int rp_dt_get_value_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const ch
 int rp_dt_get_values_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char *xpath, sr_val_t ***values, size_t *count);
 
 /**
- * @brief Returns the values for the specified xpath. Internally converts xpath to location_id and calls ::rp_dt_get_nodes_with_opts 
- * and ::rp_dt_get_values_from_nodes. The selection of returned valued can be specified by recursive, limit and offset.
+ * @brief Returns the values for the specified xpath. Internally calls ::rp_dt_get_nodes_with_opts 
+ * and ::rp_dt_get_values_from_nodes. The selection of returned valued can be specified by limit and offset.
  * @param [in] rp_ctx
  * @param [in] rp_session
  * @param [in] get_items_ctx

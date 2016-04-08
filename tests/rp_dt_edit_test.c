@@ -52,9 +52,10 @@ typedef struct dm_session_s {
 } dm_session_t;
 
 int setup(void **state){
-   createDataTreeTestModule();
-   test_rp_ctx_create((rp_ctx_t**)state);
-   return 0;
+    createDataTreeExampleModule();
+    createDataTreeTestModule();
+    test_rp_ctx_create((rp_ctx_t**)state);
+    return 0;
 }
 
 int teardown(void **state){
