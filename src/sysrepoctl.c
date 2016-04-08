@@ -295,9 +295,10 @@ srctl_yin_generate(const char *search_dir, const char *dst_dir, const char *yang
 
     len = snprintf(NULL, 0, "%s%s.yin", dst_dir, file_base_name);
     yin_file = calloc(len + 1, sizeof(*yin_file));
-    if (NULL != yin_file) {
-        snprintf(yin_file, len + 1, "%s%s.yin", dst_dir, file_base_name);
+    if (NULL == yin_file) {
+        return NULL;
     }
+    snprintf(yin_file, len + 1, "%s%s.yin", dst_dir, file_base_name);
 
     if (-1 == access(yin_file, F_OK)) {
         /* if the yin does not already exists */
@@ -398,7 +399,7 @@ srctl_yang_filepath_from_yin_filepath(const char *yin_filepath)
         strcpy((char*)yang_filepath, yin_filepath);
         dot = strrchr(yang_filepath, '.');
         if (NULL != dot) {
-            strncpy(dot, ".yang", 5);
+            strncpy(dot, ".yang", 6);
         }
     }
 
@@ -602,10 +603,10 @@ srctl_install(const char *yang, const char *yin, const char *owner, const char *
     if (!custom_repository) {
         printf("Notifying sysrepo about the change ...\n");
         rc = srctl_open_session(&connection, &session);
-        if (SR_ERR_OK == ret) {
+        if (SR_ERR_OK == rc) {
             rc = sr_module_install(session, module_name, revision_date, true);
         }
-        if (SR_ERR_OK != ret) {
+        if (SR_ERR_OK != rc) {
             srctl_report_error(session, rc);
             goto fail;
         }
@@ -649,7 +650,7 @@ srctl_schema_file_delete(const char *schema_file)
     int ret = 0, rc = SR_ERR_OK;
 
     printf("Deleting the YIN file %s ...\n", schema_file);
-    snprintf(cmd, PATH_MAX, "rm %s", schema_file);
+    snprintf(cmd, PATH_MAX, "rm -f %s", schema_file);
     ret = system(cmd);
     if (0 != ret) {
         fprintf(stderr, "Error: Unable to delete the YIN file '%s'.\n", schema_file);
@@ -659,7 +660,7 @@ srctl_schema_file_delete(const char *schema_file)
     yang_file = srctl_yang_filepath_from_yin_filepath(schema_file);
     if (-1 != access(yang_file, F_OK)) {
         printf("Deleting the YANG file %s ...\n", yang_file);
-        snprintf(cmd, PATH_MAX, "rm %s", yang_file);
+        snprintf(cmd, PATH_MAX, "rm -f %s", yang_file);
         ret = system(cmd);
         if (0 != ret) {
             fprintf(stderr, "Error: Unable to delete the YANG file '%s'.\n", yang_file);
@@ -685,6 +686,9 @@ srctl_schema_file_uninstall(struct ly_ctx *ly_ctx, const char *schema_file)
     if (NULL != module) {
         for (size_t i = 0; i < module->inc_size; i++) {
             rc = srctl_schema_file_delete(module->inc[i].submodule->filepath);
+            if (SR_ERR_OK != rc) {
+                fprintf(stderr, "Warning: Submodule cleanup was unsccessfull, continuing.\n");
+            }
         }
     }
 
@@ -725,6 +729,7 @@ srctl_schema_uninstall(struct ly_ctx *ly_ctx, const char *module_name, const cha
                 }
             }
         }
+        closedir(dp);
     }
 
     return rc;
@@ -779,7 +784,7 @@ srctl_uninstall(const char *module, const char *revision)
     printf("Deleting data files ...\n");
     // TODO: lock data file, fail if it is already locked
 
-    ret = srctl_data_files_alter(module, "rm", true);
+    ret = srctl_data_files_alter(module, "rm -f", true);
     if (0 != ret) {
         fprintf(stderr, "Error: Unable to delete data files. However, schemas has been successfully uninstalled.\n");
         return SR_ERR_INTERNAL;
@@ -807,7 +812,7 @@ srctl_change(const char *module, const char *revision, const char *owner, const 
         fprintf(stderr, "Either --owner or --permissions option must be specified for --change operation.\n");
         return SR_ERR_INVAL_ARG;
     }
-    printf("Changing the module '%s'.\n", module);
+    printf("Changing ownership/permissions of the module '%s'.\n", module);
 
     if (NULL != owner) {
         snprintf(cmd, PATH_MAX, "chown %s", owner);
@@ -822,6 +827,7 @@ srctl_change(const char *module, const char *revision, const char *owner, const 
         fprintf(stderr, "Some part of the change operation failed, see the errors above.\n");
         return SR_ERR_INTERNAL;
     } else {
+        printf("Operation completed successfully.\n");
         return SR_ERR_OK;
     }
 }

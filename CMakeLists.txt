@@ -5,7 +5,7 @@ set(SYSREPO_DESC "YANG-based system repository")
 # setup version
 set(SYSREPO_MAJOR_VERSION 0)
 set(SYSREPO_MINOR_VERSION 1)
-set(SYSREPO_MICRO_VERSION 18)
+set(SYSREPO_MICRO_VERSION 19)
 set(SYSREPO_VERSION ${SYSREPO_MAJOR_VERSION}.${SYSREPO_MINOR_VERSION}.${SYSREPO_MICRO_VERSION})
 
 # set default build type if not specified by user
@@ -178,6 +178,14 @@ install (DIRECTORY DESTINATION ${DATA_SEARCH_DIR} DIRECTORY_PERMISSIONS
 # install internal YANGs
 install (FILES ${PROJECT_SOURCE_DIR}/yang/sysrepo-persistent-data.yin DESTINATION ${INTERNAL_SCHEMA_SEARCH_DIR})
 install (FILES ${PROJECT_SOURCE_DIR}/yang/sysrepo-persistent-data.yang DESTINATION ${INTERNAL_SCHEMA_SEARCH_DIR})
+
+# install turing machine model
+set(CMD "${CMAKE_BINARY_DIR}/src/sysrepoctl --install --yang=${CMAKE_CURRENT_SOURCE_DIR}/yang/turing-machine.yang --yin=${CMAKE_CURRENT_SOURCE_DIR}/yang/turing-machine.yin")
+install(CODE "execute_process(COMMAND ${CMD} OUTPUT_QUIET)")
+
+# import data into turing machine model
+set(CMD "${CMAKE_BINARY_DIR}/src/sysrepoctl --import=xml --module=turing-machine")
+install(CODE "execute_process(COMMAND ${CMD} OUTPUT_QUIET INPUT_FILE ${CMAKE_CURRENT_SOURCE_DIR}/yang/turing-machine-data.xml)")
 
 # install swig bindings
 if (SWIG_FOUND AND PYTHONLIBS_FOUND AND PYTHONINTERP_FOUND)
