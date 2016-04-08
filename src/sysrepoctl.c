@@ -851,22 +851,26 @@ srctl_feature_change(const char *module, const char *feature_name, bool enable)
 
     if (SR_ERR_OK == rc) {
         printf("Operation completed successfully.\n");
-        rc = EXIT_SUCCESS;
     } else {
         srctl_report_error(session, rc);
-        rc = EXIT_FAILURE;
     }
     sr_disconnect(connection);
 
     return rc;
 }
 
+/**
+ * @brief Logging callback called from libyang for each log entry.
+ */
 static void
 srctl_ly_log_cb(LY_LOG_LEVEL level, const char *msg, const char *path)
 {
     return;
 }
 
+/**
+ * @brief Initializes libyang ctx with all schemas installed in sysrepo.
+ */
 static int
 srctl_ly_init(struct ly_ctx **ly_ctx)
 {
@@ -894,21 +898,24 @@ srctl_ly_init(struct ly_ctx **ly_ctx)
         }
     }
 
-    return EXIT_SUCCESS;
+    return SR_ERR_OK;
 }
 
+/**
+ * @brief Performs the --dump and --import operations.
+ */
 static int
 srctl_dump_import(const char *module, const char *format, bool dump)
 {
     struct ly_ctx *ly_ctx = NULL;
     struct lyd_node *data_tree = NULL;
     char data_filename[PATH_MAX] = { 0, };
-    int fd = 0, ret = 0;
+    int fd = 0, ret = 0, rc = SR_ERR_OK;
     LYD_FORMAT dump_format = LYD_XML;
 
     if (NULL == module) {
         fprintf(stderr, "Error: Module must be specified for --dump operation.\n");
-        exit(EXIT_FAILURE);
+        return SR_ERR_INVAL_ARG;
     }
     if (NULL != format) {
         if (0 == strcmp(format, "xml")) {
@@ -917,13 +924,13 @@ srctl_dump_import(const char *module, const char *format, bool dump)
             dump_format = LYD_JSON;
         } else {
             fprintf(stderr, "Error: Unknown dump format specified: '%s'.\n", format);
-            exit(EXIT_FAILURE);
+            return SR_ERR_INVAL_ARG;
         }
     }
 
-    ret = srctl_ly_init(&ly_ctx);
-    if (EXIT_SUCCESS != ret) {
-        return ret;
+    rc = srctl_ly_init(&ly_ctx);
+    if (SR_ERR_OK != rc) {
+        return rc;
     }
 
     snprintf(data_filename, PATH_MAX, "%s%s%s", srctl_data_search_dir, module, SR_STARTUP_FILE_EXT);
@@ -931,7 +938,8 @@ srctl_dump_import(const char *module, const char *format, bool dump)
     fd = open(data_filename, dump ? O_RDONLY : (O_WRONLY | O_TRUNC));
     if (-1 == fd) {
         fprintf(stderr, "Error: Unable to open the data file '%s': %s.\n", data_filename, strerror(errno));
-        return EXIT_FAILURE;
+        ly_ctx_destroy(ly_ctx, NULL);
+        return SR_ERR_INVAL_ARG;
     }
     sr_lock_fd(fd, false, true);
 
@@ -940,14 +948,12 @@ srctl_dump_import(const char *module, const char *format, bool dump)
         data_tree = lyd_parse_fd(ly_ctx, fd, LYD_XML, LYD_OPT_STRICT | LYD_OPT_CONFIG);
         if (NULL == data_tree && LY_SUCCESS != ly_errno) {
             fprintf(stderr, "Error: Unable to parse the data file '%s': %s.\n", data_filename, ly_errmsg());
-            ret = EXIT_FAILURE;
+            rc = SR_ERR_INTERNAL;
         } else {
             ret = lyd_print_fd(STDOUT_FILENO, data_tree, dump_format, LYP_WITHSIBLINGS | LYP_FORMAT);
             if (0 != ret) {
                 fprintf(stderr, "Error: Unable to print the data: %s.\n", ly_errmsg());
-                ret = EXIT_FAILURE;
-            } else {
-                ret = EXIT_SUCCESS;
+                rc = SR_ERR_INTERNAL;
             }
         }
     } else {
@@ -955,14 +961,12 @@ srctl_dump_import(const char *module, const char *format, bool dump)
         data_tree = lyd_parse_fd(ly_ctx, STDIN_FILENO, dump_format, LYD_OPT_STRICT | LYD_OPT_CONFIG);
         if (NULL == data_tree && LY_SUCCESS != ly_errno) {
             fprintf(stderr, "Error: Unable to parse the data: %s.\n", ly_errmsg());
-            ret = EXIT_FAILURE;
+            rc = SR_ERR_INTERNAL;
         } else {
             ret = lyd_print_fd(fd, data_tree, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT);
             if (0 != ret) {
                 fprintf(stderr, "Error: Unable to print the data to file '%s': %s.\n", data_filename, ly_errmsg());
-                ret = EXIT_FAILURE;
-            } else {
-                ret = EXIT_SUCCESS;
+                rc = SR_ERR_INTERNAL;
             }
         }
     }
