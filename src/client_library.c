@@ -474,11 +474,13 @@ sr_list_schemas(sr_session_ctx_t *session, sr_schema_t **schemas, size_t *schema
     }
 
     /* copy schemas from response to output argument */
-    rc = sr_schemas_gpb_to_sr((const Sr__Schema**)msg_resp->response->list_schemas_resp->schemas,
-            msg_resp->response->list_schemas_resp->n_schemas, schemas);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Unable to copy schemas from GPB.");
-        goto cleanup;
+    if (0 != msg_resp->response->list_schemas_resp->n_schemas) {
+        rc = sr_schemas_gpb_to_sr((const Sr__Schema**)msg_resp->response->list_schemas_resp->schemas,
+                msg_resp->response->list_schemas_resp->n_schemas, schemas);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR_MSG("Unable to copy schemas from GPB.");
+            goto cleanup;
+        }
     }
     *schema_cnt = msg_resp->response->list_schemas_resp->n_schemas;
 
