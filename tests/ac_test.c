@@ -68,7 +68,6 @@ ac_test_unpriviledged(void **state)
 {
     ac_ctx_t *ctx = NULL;
     ac_session_t *session = NULL;
-    xp_loc_id_t *loc_id = NULL;
     int rc = SR_ERR_OK;
 
     if (0 == getuid()) {
@@ -89,8 +88,6 @@ ac_test_unpriviledged(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 
     /* node permission checks */
-    rc = xp_char_to_loc_id(XP_TEST_MODULE_STRING, &loc_id);
-    assert_int_equal(rc, SR_ERR_OK);
 
     /* attempt 1 */
     rc = ac_check_node_permissions(session, XP_TEST_MODULE_STRING, AC_OPER_READ);
@@ -104,7 +101,6 @@ ac_test_unpriviledged(void **state)
     rc = ac_check_node_permissions(session, XP_TEST_MODULE_STRING, AC_OPER_READ_WRITE);
     assert_int_equal(rc, SR_ERR_OK);
 
-    xp_free_loc_id(loc_id);
 
     /* file permission checks */
     rc = ac_check_file_permissions(session, "/etc/passwd", AC_OPER_READ);
@@ -126,7 +122,6 @@ ac_test_priviledged(void **state)
 {
     ac_ctx_t *ctx = NULL;
     ac_session_t *session1 = NULL, *session2 = NULL, *session3 = NULL;
-    xp_loc_id_t *loc_id = NULL;
     int rc = SR_ERR_OK;
 
     if (0 != getuid()) {
@@ -175,8 +170,6 @@ ac_test_priviledged(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 
     /* node permission checks */
-    rc = xp_char_to_loc_id(XP_TEST_MODULE_STRING, &loc_id);
-    assert_int_equal(rc, SR_ERR_OK);
 
     /* credentials 1 */
     rc = ac_check_node_permissions(session1, XP_TEST_MODULE_STRING, AC_OPER_READ);
@@ -201,7 +194,6 @@ ac_test_priviledged(void **state)
     rc = ac_check_node_permissions(session3, XP_TEST_MODULE_STRING, AC_OPER_READ_WRITE);
     assert_int_equal(rc, (proc_sudo ? SR_ERR_UNAUTHORIZED : SR_ERR_OK));
 
-    xp_free_loc_id(loc_id);
 
     /* file permission checks */
 
@@ -322,7 +314,6 @@ ac_test_negative(void **state)
 {
     ac_ctx_t *ctx = NULL;
     ac_session_t *session = NULL;
-    xp_loc_id_t *loc_id = NULL;
     int rc = SR_ERR_OK;
 
     /* set real user to current user */
@@ -338,31 +329,15 @@ ac_test_negative(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 
     /* non-existing module */
-    rc = xp_char_to_loc_id("/non-existing-module:main/string", &loc_id);
-    assert_int_equal(rc, SR_ERR_OK);
     rc = ac_check_node_permissions(session, "/non-existing-module:main/string", AC_OPER_READ);
     assert_int_equal(rc, SR_ERR_OK);
-    xp_free_loc_id(loc_id);
 
     /* try only namespace */
-    rc = xp_char_to_loc_id("/another-non-existing-module:", &loc_id);
-    assert_int_equal(rc, SR_ERR_OK);
     rc = ac_check_node_permissions(session, "/another-non-existing-module:", AC_OPER_READ);
     assert_int_equal(rc, SR_ERR_OK);
-    xp_free_loc_id(loc_id);
-
-    /* mess up the location id */
-    /*rc = xp_char_to_loc_id("/non-existing-module:main/string", &loc_id);
-    assert_int_equal(rc, SR_ERR_OK);
-    loc_id->tokens[1] = T_NODE; 
-    rc = ac_check_node_permissions(session, "/non-existing-module:main/string", AC_OPER_READ);
-    assert_int_equal(rc, SR_ERR_INVAL_ARG);
-    xp_free_loc_id(loc_id);*/
 
     if (0 != getuid()) {
         /* negative tests only for unprivileged users */
-        rc = xp_char_to_loc_id(XP_TEST_MODULE_STRING, &loc_id);
-        assert_int_equal(rc, SR_ERR_OK);
 
         /* set uid of different user to real user credentials - UNAUTHORIZED */
         credentials.r_uid = 0;
@@ -376,7 +351,6 @@ ac_test_negative(void **state)
         rc = ac_check_node_permissions(session, XP_TEST_MODULE_STRING, AC_OPER_READ);
         assert_int_equal(rc, SR_ERR_UNSUPPORTED);
 
-        xp_free_loc_id(loc_id);
     }
 
     /* cleanup */

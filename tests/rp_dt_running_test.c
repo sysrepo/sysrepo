@@ -88,12 +88,8 @@ enable_subtree_test(void **state)
    rp_session_t *session = NULL;
    const struct lys_module *module = NULL;
    struct lys_node *match = NULL;
-   xp_loc_id_t *l = NULL;
 
    test_rp_sesssion_create(ctx, SR_DS_RUNNING, &session);
-
-   rc = xp_char_to_loc_id("/ietf-interfaces:interfaces/interface/ietf-ip:ipv4/address", &l);
-   assert_int_equal(SR_ERR_OK, rc);
 
    rc = rp_dt_enable_xpath(ctx->dm_ctx, session->dm_session, "/ietf-interfaces:interfaces/interface/ietf-ip:ipv4/address");
    assert_int_equal(SR_ERR_OK, rc);
@@ -114,15 +110,10 @@ enable_subtree_test(void **state)
    rc = rp_dt_enable_xpath(ctx->dm_ctx, session->dm_session, "/ietf-interfaces:interfaces/interface/ietf-ip:ipv4/address");
    assert_int_equal(SR_ERR_OK, rc);
 
-   xp_free_loc_id(l);
    test_rp_session_cleanup(ctx, session);
 
    /* enable list keys implicitly */
    test_rp_sesssion_create(ctx, SR_DS_RUNNING, &session);
-
-   l = NULL;
-   rc = xp_char_to_loc_id("/example-module:container/list/leaf", &l);
-   assert_int_equal(SR_ERR_OK, rc);
 
    rc = rp_dt_enable_xpath(ctx->dm_ctx, session->dm_session, "/example-module:container/list/leaf");
    assert_int_equal(SR_ERR_OK, rc);
@@ -145,7 +136,6 @@ enable_subtree_test(void **state)
    /* container*/
    assert_true(dm_is_node_enabled(match->parent->parent));
 
-   xp_free_loc_id(l);
    test_rp_session_cleanup(ctx, session);
 }
 
@@ -155,7 +145,6 @@ edit_enabled(void **state)
    int rc = 0;
    rp_ctx_t *ctx = *state;
    rp_session_t *session = NULL;
-   xp_loc_id_t *l = NULL;
 
    test_rp_sesssion_create(ctx, SR_DS_RUNNING, &session);
 
@@ -165,9 +154,6 @@ edit_enabled(void **state)
 
    rc = rp_dt_set_item_xpath(ctx->dm_ctx, session->dm_session, "/example-module:container/list[key1='a'][key2='b']/leaf", SR_EDIT_DEFAULT, &val);
    assert_int_equal(SR_ERR_INVAL_ARG, rc);
-
-   rc = xp_char_to_loc_id("/example-module:container/list/leaf", &l);
-   assert_int_equal(SR_ERR_OK, rc);
 
    rc = rp_dt_enable_xpath(ctx->dm_ctx, session->dm_session, "/example-module:container/list/leaf");
    assert_int_equal(SR_ERR_OK, rc);
@@ -184,7 +170,6 @@ edit_enabled(void **state)
 
    sr_free_val_content(&val);
    sr_free_val(v);
-   xp_free_loc_id(l);
    test_rp_session_cleanup(ctx, session);
 }
 

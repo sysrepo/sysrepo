@@ -46,9 +46,6 @@ endmacro(ADD_UNIT_TEST_WITH_HELPERS)
 ADD_UNIT_TEST_WITH_HELPERS(ac_test)
 ADD_UNIT_TEST(common_test)
 
-ADD_UNIT_TEST(xp_parser_test)
-ADD_UNIT_TEST(xp_yang_test)
-
 ADD_UNIT_TEST(cm_test)
 ADD_UNIT_TEST(cm_sm_test)
 

@@ -26,11 +26,17 @@
 #include "data_manager.h"
 
 #define TEST_MODULE_DATA_FILE_NAME TEST_DATA_SEARCH_DIR "test-module" SR_STARTUP_FILE_EXT
+#define EXAMPLE_MODULE_DATA_FILE_NAME TEST_DATA_SEARCH_DIR "example-module" SR_STARTUP_FILE_EXT
 
 /**
  * Creates test-module data tree and writes it into a file.
  */
 void createDataTreeTestModule();
+
+/**
+ * Creates example-module data tree and writes it into a file.
+ */
+void createDataTreeExampleModule();
 
 #define XP_TEST_MODULE_ENUM "/test-module:main/enum"
 #define XP_TEST_MODULE_ENUM_VALUE "maybe"

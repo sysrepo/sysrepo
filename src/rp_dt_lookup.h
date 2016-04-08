@@ -66,22 +66,16 @@ int rp_dt_get_siblings_node_by_name(struct lyd_node *node, const char* name, str
 int rp_dt_get_all_siblings(struct lyd_node *node, bool check_enable, struct lyd_node ***nodes, size_t *count);
 
 /**
- * @brief Returns nodes under specified location_id. If location_id identifies
- * the container returns its children (if the request container is presence and contains
- * no children SR_ERR_OK is returned and returned count is 0).
- * If the location_id identifies the list instance and all key values are defined
- * the children of the list instance is returned. If the location_id identifies the list and key values for the last list
- * are omitted, all instances of the list are returned. If the location_id identifies leaf-list all its members
- * are returned. If the module xpath is provided it returns top level nodes.
+ * @brief Returns nodes matching the xpath.
  * @param [in] dm_ctx
  * @param [in] data_tree
- * @param [in] loc_id
+ * @param [in] xpath
  * @param [in] check_enable
  * @param [out] nodes
  * @param [out] count
  * @return Error code (SR_ERR_OK on success), SR_ERR_NOT_FOUND
  */
-int rp_dt_get_nodes(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp_loc_id_t *loc_id, bool check_enable, struct lyd_node ***nodes, size_t *count);
+int rp_dt_get_nodes(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char *xpath, bool check_enable, struct lyd_node ***nodes, size_t *count);
 
 /**
  * @brief Returns the nodes under specified location id. The selection of nodes can be altered using options recursive, offset, limit.
@@ -125,13 +119,13 @@ int rp_dt_find_deepest_match(struct lyd_node *data_tree, const xp_loc_id_t *loc_
 /**
  * @brief Looks up the exact match of node in data tree. Internally uses ::rp_dt_find_deepest_match.
  * @param [in] data_tree
- * @param [in] loc_id
+ * @param [in] xpath
  * @param [in] allow_no_keys if set to TRUE, keys of the last list in xpath can be omitted. xpath must identify a list
  * @param [in] check_enable
  * @param [out] node
  * @return Error code (SR_ERR_OK on success), SR_ERR_NOT_FOUND if match is not found
  */
-int rp_dt_lookup_node(struct lyd_node *data_tree, const xp_loc_id_t *loc_id, bool allow_no_keys, bool check_enable, struct lyd_node **node);
+int rp_dt_lookup_node(struct lyd_node *data_tree, const char *xpath, bool allow_no_keys, bool check_enable, struct lyd_node **node);
 
 int rp_dt_find_node(struct lyd_node *data_tree, const char *xpath, bool check_enable, struct lyd_node **node);
 
