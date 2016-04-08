@@ -422,7 +422,7 @@ void get_values_opts_test(void **state) {
 
 #define EX_CONT "/example-module:container//*"
     struct lyd_node **nodes = NULL;
-    rc = rp_dt_get_nodes_with_opts(ctx->dm_ctx, ses_ctx->dm_session, &get_items_ctx, root, EX_CONT, 0, 3, &nodes, &count);
+    rc = rp_dt_find_nodes_with_opts(ctx->dm_ctx, ses_ctx->dm_session, &get_items_ctx, root, EX_CONT, 0, 3, &nodes, &count);
 
     free(nodes);
 

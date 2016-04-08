@@ -37,15 +37,33 @@ rp_dt_get_values_xpath(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const
 }
 
 int
-rp_dt_get_nodes_xpath(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char *xpath, struct lyd_node ***nodes, size_t *count)
-{
-    return rp_dt_get_nodes(dm_ctx, data_tree, xpath, false, nodes, count);
+rp_dt_get_nodes_xpath(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char *xpath, struct lyd_node ***nodes, size_t *count) {
+
+    CHECK_NULL_ARG5(dm_ctx, data_tree, xpath, nodes, count);
+
+    int rc = SR_ERR_OK;
+
+    struct ly_set *set = NULL;
+    rc = rp_dt_find_nodes(data_tree, xpath, false, &set);
+    if (SR_ERR_OK != rc) {
+        return rc;
+    }
+
+    *nodes = calloc(set->number, sizeof (**nodes));
+    CHECK_NULL_NOMEM_GOTO(nodes, rc, cleanup);
+    for (size_t i = 0; i < set->number; i++) {
+        (*nodes)[i] = set->set.d[i];
+    }
+    *count = set->number;
+cleanup:
+    ly_set_free(set);
+    return rc;
 }
 
 int
 rp_dt_get_node(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char *xpath, bool check_enable, struct lyd_node **node)
 {
-    return rp_dt_lookup_node(data_tree, xpath, false, check_enable, node);
+    return rp_dt_find_node(data_tree, xpath, check_enable, node);
 }
 
 int

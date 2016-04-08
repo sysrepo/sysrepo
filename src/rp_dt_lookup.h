@@ -31,57 +31,10 @@
 #include "rp_internal.h"
 
 /**
- * @brief Returns all children nodes. If check_enable is set to True returns
- * only the nodes that are enabled.
- * @param [in] node
- * @param [in] check_enable
- * @param [out] nodes
- * @param [out] count
- * @return Error code (SR_ERR_OK on success)
- */
-int rp_dt_get_all_children_node(struct lyd_node *node, bool check_enable, struct lyd_node ***nodes, size_t *count);
-
-/**
- * Return the sibling nodes same name as provided node to the stack. Used
- * for list and leaf-list nodes. If check_enable is set to True returns
- * only the nodes that are enabled.
- * @param [in] node
- * @param [in] name
- * @param [out] nodes
- * @param [out] count
- * @return Error code (SR_ERR_OK on success)
- */
-int rp_dt_get_siblings_node_by_name(struct lyd_node *node, const char* name, struct lyd_node ***nodes, size_t *count);
-
-/**
- * @brief Returns all the sibling nodes to the stack. Used for whole module xpath.
- * If check_enable is set to True returns only the nodes that are enabled.
- * @param [in] node
- * @param [in] check_enable
- * @param [out] nodes
- * @param [out] count
- * @return Error code (SR_ERR_OK on success)
- */
-int rp_dt_get_all_siblings(struct lyd_node *node, bool check_enable, struct lyd_node ***nodes, size_t *count);
-
-/**
- * @brief Returns nodes matching the xpath.
- * @param [in] dm_ctx
- * @param [in] data_tree
- * @param [in] xpath
- * @param [in] check_enable
- * @param [out] nodes
- * @param [out] count
- * @return Error code (SR_ERR_OK on success), SR_ERR_NOT_FOUND
- */
-int rp_dt_get_nodes(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char *xpath, bool check_enable, struct lyd_node ***nodes, size_t *count);
-
-/**
- * @brief Returns the nodes under specified location id. The selection of nodes can be altered using options recursive, offset, limit.
- * At the beginning, the nodes are pushed to stack according to the location id (the pushed content is the same as the result of ::rp_dt_get_nodes). Next
- * offset items is skipped. Then nodes are popped from stack and returned. Firs two
- * steps (pushing to stack, skipping) nodes can be skipped if saved state in get_items_ctx
- * correspond to the request.
+ * @brief Returns the nodes matching xpath. The selection of nodes can be altered using options offset and limit.
+ * At the beginning, the nodes are looked up using ::rp_dt_find_nodes. Next
+ * offset items are skipped. Then sr_val_t structures are filled from nodes. Nodes look up can
+ * be skipped if saved state in get_items_ctx correspond to the request.
  * @param [in] dm_ctx
  * @param [in] dm_session
  * @param [in] get_items_ctx - cache that can speed up the request. If the
@@ -94,22 +47,28 @@ int rp_dt_get_nodes(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const ch
  * @param [out] count the length of returned nodes array
  * @return Error code (SR_ERR_OK on success), SR_ERR_NOT_FOUND
  */
-int rp_dt_get_nodes_with_opts(const dm_ctx_t *dm_ctx, dm_session_t *dm_session, rp_dt_get_items_ctx_t *get_items_ctx, struct lyd_node *data_tree, const char *xpath,
+int rp_dt_find_nodes_with_opts(const dm_ctx_t *dm_ctx, dm_session_t *dm_session, rp_dt_get_items_ctx_t *get_items_ctx, struct lyd_node *data_tree, const char *xpath,
                               size_t offset, size_t limit, struct lyd_node ***nodes, size_t *count);
 
 /**
- * @brief Looks up the exact match of node in data tree. Internally uses ::rp_dt_find_deepest_match.
+ * @brief Looks up the node matching xpath. If there are more than one node in result
+ * SR_ERR_INVAL_ARG is returned.
  * @param [in] data_tree
  * @param [in] xpath
- * @param [in] allow_no_keys if set to TRUE, keys of the last list in xpath can be omitted. xpath must identify a list
  * @param [in] check_enable
  * @param [out] node
- * @return Error code (SR_ERR_OK on success), SR_ERR_NOT_FOUND if match is not found
+ * @return Error code (SR_ERR_OK on success)
  */
-int rp_dt_lookup_node(struct lyd_node *data_tree, const char *xpath, bool allow_no_keys, bool check_enable, struct lyd_node **node);
-
 int rp_dt_find_node(struct lyd_node *data_tree, const char *xpath, bool check_enable, struct lyd_node **node);
 
+/**
+ * @brief Looks up the nodes matching xpath.
+ * @param [in] data_tree
+ * @param [in] xpath
+ * @param [in] check_enable
+ * @param [out] nodes
+ * @return Error code (SR_ERR_OK on success)
+ */
 int rp_dt_find_nodes(struct lyd_node *data_tree, const char *xpath, bool check_enable, struct ly_set **nodes);
 
 #endif /* RP_DT_LOOKUP_H */
