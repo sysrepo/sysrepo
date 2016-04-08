@@ -34,6 +34,7 @@ int setup(void **state)
 {
     /* make sure that test-module data is created */
     createDataTreeTestModule();
+    createDataTreeExampleModule();
     return 0;
 }
 

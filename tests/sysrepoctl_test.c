@@ -34,6 +34,7 @@
 static void
 sysrepoctl_test(void **state)
 {
+    char cmd[PATH_MAX] = { 0, };
     int ret = 0;
 
     // TODO: verify that individual changes within this test has actually occured
@@ -59,11 +60,15 @@ sysrepoctl_test(void **state)
     assert_int_equal(ret, 0);
 
     /* install */
-    ret = system("../src/sysrepoctl --install --yang=../../tests/yang/ietf-interfaces@2014-05-08.yang --yin=../../tests/yang/ietf-interfaces@2014-05-08.yin");
+    snprintf(cmd, PATH_MAX, "../src/sysrepoctl --install --yang=../../tests/yang/ietf-interfaces@2014-05-08.yang "
+            "--owner=%s --permissions=644", getenv("USER"));
+    ret = system(cmd);
     assert_int_equal(ret, 0);
 
     /* change */
-    ret = system("../src/sysrepoctl --change --module=ietf-interfaces --permissions=644");
+    snprintf(cmd, PATH_MAX, "../src/sysrepoctl --change --module=ietf-interfaces --owner=%s --permissions=644",
+            getenv("USER"));
+    ret = system(cmd);
     assert_int_equal(ret, 0);
 
     /* feature-enable */
