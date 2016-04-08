@@ -1,0 +1,213 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<module name="turing-machine"
+        xmlns="urn:ietf:params:xml:ns:yang:yin:1"
+        xmlns:tm="http://example.net/turing-machine">
+  <namespace uri="http://example.net/turing-machine"/>
+  <prefix value="tm"/>
+  <description>
+    <text>Data model for the Turing Machine.</text>
+  </description>
+  <revision date="2013-12-27">
+    <description>
+      <text>Initial revision.</text>
+    </description>
+  </revision>
+  <typedef name="tape-symbol">
+    <type name="string">
+      <length value="0..1"/>
+    </type>
+    <description>
+      <text>Type of symbols appearing in tape cells.
+
+A blank is represented as an empty string where necessary.</text>
+    </description>
+  </typedef>
+  <typedef name="cell-index">
+    <type name="int64"/>
+    <description>
+      <text>Type for indexing tape cells.</text>
+    </description>
+  </typedef>
+  <typedef name="state-index">
+    <type name="uint16"/>
+    <description>
+      <text>Type for indexing states of the control unit.</text>
+    </description>
+  </typedef>
+  <typedef name="head-dir">
+    <type name="enumeration">
+      <enum name="left"/>
+      <enum name="right"/>
+    </type>
+    <default value="right"/>
+    <description>
+      <text>Possible directions for moving the read/write head, one cell
+to the left or right (default).</text>
+    </description>
+  </typedef>
+  <grouping name="tape-cells">
+    <description>
+      <text>The tape of the Turing Machine is represented as a sparse
+array.</text>
+    </description>
+    <list name="cell">
+      <key value="coord"/>
+      <description>
+        <text>List of non-blank cells.</text>
+      </description>
+      <leaf name="coord">
+        <type name="cell-index"/>
+        <description>
+          <text>Coordinate (index) of the tape cell.</text>
+        </description>
+      </leaf>
+      <leaf name="symbol">
+        <type name="tape-symbol">
+          <length value="1"/>
+        </type>
+        <description>
+          <text>Symbol appearing in the tape cell.
+
+Blank (empty string) is not allowed here because the
+'cell' list only contains non-blank cells.</text>
+        </description>
+      </leaf>
+    </list>
+  </grouping>
+  <container name="turing-machine">
+    <description>
+      <text>State data and configuration of a Turing Machine.</text>
+    </description>
+    <leaf name="state">
+      <type name="state-index"/>
+      <config value="false"/>
+      <mandatory value="true"/>
+      <description>
+        <text>Current state of the control unit.
+
+The initial state is 0.</text>
+      </description>
+    </leaf>
+    <leaf name="head-position">
+      <type name="cell-index"/>
+      <config value="false"/>
+      <mandatory value="true"/>
+      <description>
+        <text>Position of tape read/write head.</text>
+      </description>
+    </leaf>
+    <container name="tape">
+      <config value="false"/>
+      <description>
+        <text>The contents of the tape.</text>
+      </description>
+      <uses name="tape-cells"/>
+    </container>
+    <container name="transition-function">
+      <description>
+        <text>The Turing Machine is configured by specifying the
+transition function.</text>
+      </description>
+      <list name="delta">
+        <key value="label"/>
+        <unique tag="input/state input/symbol"/>
+        <description>
+          <text>The list of transition rules.</text>
+        </description>
+        <leaf name="label">
+          <type name="string"/>
+          <description>
+            <text>An arbitrary label of the transition rule.</text>
+          </description>
+        </leaf>
+        <container name="input">
+          <description>
+            <text>Input parameters (arguments) of the transition rule.</text>
+          </description>
+          <leaf name="state">
+            <type name="state-index"/>
+            <mandatory value="true"/>
+            <description>
+              <text>Current state of the control unit.</text>
+            </description>
+          </leaf>
+          <leaf name="symbol">
+            <type name="tape-symbol"/>
+            <mandatory value="true"/>
+            <description>
+              <text>Symbol read from the tape cell.</text>
+            </description>
+          </leaf>
+        </container>
+        <container name="output">
+          <description>
+            <text>Output values of the transition rule.</text>
+          </description>
+          <leaf name="state">
+            <type name="state-index"/>
+            <description>
+              <text>New state of the control unit. If this leaf is not
+present, the state doesn't change.</text>
+            </description>
+          </leaf>
+          <leaf name="symbol">
+            <type name="tape-symbol"/>
+            <description>
+              <text>Symbol to be written to the tape cell. If this leaf is
+not present, the symbol doesn't change.</text>
+            </description>
+          </leaf>
+          <leaf name="head-move">
+            <type name="head-dir"/>
+            <description>
+              <text>Move the head one cell to the left or right</text>
+            </description>
+          </leaf>
+        </container>
+      </list>
+    </container>
+  </container>
+  <rpc name="initialize">
+    <description>
+      <text>Initialize the Turing Machine as follows:
+
+1. Put the control unit into the initial state (0).
+
+2. Move the read/write head to the tape cell with coordinate
+   zero.
+
+3. Write the string from the 'tape-content' input parameter to
+   the tape, character by character, starting at cell 0. The
+   tape is othewise empty.</text>
+    </description>
+    <input>
+      <leaf name="tape-content">
+        <type name="string"/>
+        <default value=""/>
+        <description>
+          <text>The string with which the tape shall be initialized. The
+leftmost symbol will be at tape coordinate 0.</text>
+        </description>
+      </leaf>
+    </input>
+  </rpc>
+  <rpc name="run">
+    <description>
+      <text>Start the Turing Machine operation.</text>
+    </description>
+  </rpc>
+  <notification name="halted">
+    <description>
+      <text>The Turing Machine has halted. This means that there is no
+transition rule for the current state and tape symbol.</text>
+    </description>
+    <leaf name="state">
+      <type name="state-index"/>
+      <mandatory value="true"/>
+      <description>
+        <text>The state of the control unit in which the machine has
+halted.</text>
+      </description>
+    </leaf>
+  </notification>
+</module>

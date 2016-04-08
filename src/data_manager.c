@@ -328,7 +328,7 @@ dm_load_data_tree_file(dm_ctx_t *dm_ctx, int fd, const char *data_filename, cons
 #endif
         data_tree = lyd_parse_fd(dm_ctx->ly_ctx, fd, LYD_XML, LYD_OPT_STRICT | LYD_OPT_CONFIG);
         if (NULL == data_tree && LY_SUCCESS != ly_errno) {
-            SR_LOG_ERR("Parsing data tree from file %s failed", data_filename);
+            SR_LOG_ERR("Parsing data tree from file %s failed: %s", data_filename, ly_errmsg());
             free(data);
             return SR_ERR_INTERNAL;
         }
@@ -556,6 +556,17 @@ dm_unlock_file(dm_lock_ctx_t *lock_ctx, char *filename)
 cleanup:
     pthread_mutex_unlock(&lock_ctx->mutex);
     return rc;
+}
+
+/**
+ * @brief Logging callback called from libyang for each log entry.
+ */
+static void
+dm_ly_log_cb(LY_LOG_LEVEL level, const char *msg, const char *path)
+{
+    if (LY_LLERR == level) {
+        SR_LOG_DBG("libyang error: %s", msg);
+    }
 }
 
 int
@@ -950,6 +961,8 @@ dm_init(ac_ctx_t *ac_ctx, np_ctx_t *np_ctx, pm_ctx_t *pm_ctx,
 
     ctx->ly_ctx = ly_ctx_new(schema_search_dir);
     CHECK_NULL_NOMEM_GOTO(ctx->ly_ctx, rc, cleanup);
+
+    ly_set_log_clb(dm_ly_log_cb, 1);
 
     ctx->schema_search_dir = strdup(schema_search_dir);
     CHECK_NULL_NOMEM_GOTO(ctx->schema_search_dir, rc, cleanup);

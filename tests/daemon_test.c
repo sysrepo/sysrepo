@@ -94,6 +94,14 @@ sysrepo_daemon_test(void **state)
     sr_conn_ctx_t *conn = NULL;
     int rc = SR_ERR_OK, ret = 0;
 
+    /* print version */
+    ret = system("../src/sysrepod -v");
+    assert_int_equal(ret, 0);
+
+    /* print help */
+    ret = system("../src/sysrepod -h");
+    assert_int_equal(ret, 0);
+
     /* start the daemon */
     ret = system("../src/sysrepod");
     assert_int_equal(ret, 0);

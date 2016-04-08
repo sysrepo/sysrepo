@@ -3,10 +3,9 @@
 *.pyc
 build/
 doc/
-tests/data/test_data.h
-tests/data/internal/*
 src/common/sr_constants.h
 src/common/*.pb-c.*
+tests/helpers/test_data.h
 .idea/
 nbproject/
 CMakeCache.txt
