@@ -395,9 +395,9 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const
     if (SR_EDIT_NON_RECURSIVE & options) {
         if (NULL != sch_node->parent) {
            char *last_slash = rindex(xpath, '/');
-           CHECK_NULL_NOMEM_RETURN(last_slash);
+           CHECK_NULL_NOMEM_GOTO(last_slash, rc, cleanup);
            char *parent_node = strndup(xpath, last_slash-xpath-1);
-           CHECK_NULL_NOMEM_RETURN(parent_node);
+           CHECK_NULL_NOMEM_GOTO(parent_node, rc, cleanup);
            struct ly_set *res = lyd_get_node(info->node, parent_node);
            free(parent_node);
            if (NULL == res ||0 == res->number) {
@@ -425,7 +425,7 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const
             rc = SR_ERR_INTERNAL;
         }
     }
-
+cleanup:
     free(new_value);
     if (NULL != info){
         info->modified = SR_ERR_OK == rc ? true : info->modified;

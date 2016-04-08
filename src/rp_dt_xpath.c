@@ -334,7 +334,7 @@ not_matched:
 }
 
 /**
- * @brief Removes some trailing characters from xpath validateable by ly_ctx_get_node
+ * @brief Removes trailing characters from xpath to make it validateable by ly_ctx_get_node
  * @param [in] dm_ctx
  * @param [in] xpath
  * @param [out] trimmed

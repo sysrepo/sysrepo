@@ -372,7 +372,7 @@ rp_dt_get_value_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char *
         SR_LOG_ERR("Access control check failed for xpath '%s'", xpath);
         goto cleanup;
     }
-    
+
     rc = sr_copy_first_ns(xpath, &data_tree_name);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Copying module name failed for xpath '%s'", xpath);

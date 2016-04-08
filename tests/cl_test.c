@@ -36,7 +36,7 @@
 static int
 logging_setup(void **state)
 {
-    //sr_log_stderr(SR_LL_DBG);
+    sr_log_stderr(SR_LL_DBG);
     return 0;
 }
 
@@ -409,7 +409,7 @@ cl_get_items_iter_test(void **state)
     it = NULL;
 
     /* container */
-    rc = sr_get_items_iter(session, "/example-module:container", &it);
+    rc = sr_get_items_iter(session, "/example-module:container/*", &it);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(it);
     for (int i = 0; i < 6; i++) {
@@ -424,7 +424,7 @@ cl_get_items_iter_test(void **state)
     sr_free_val_iter(it);
 
     /* list */
-    rc = sr_get_items_iter(session, "/test-module:list[key='k1']", &it);
+    rc = sr_get_items_iter(session, "/test-module:list[key='k1']/*", &it);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(it);
     while(SR_ERR_OK == sr_get_item_next(session, it, &value)) {
@@ -452,7 +452,6 @@ cl_get_items_iter_test(void **state)
     }
     sr_free_val_iter(it);
 
-    sr_log_stderr(SR_LL_DBG);
     /* all supported data types*/
     rc = sr_get_items_iter(session, "/test-module:main//*", &it);
     assert_int_equal(rc, SR_ERR_OK);
@@ -1101,7 +1100,7 @@ main()
             cmocka_unit_test_setup_teardown(cl_get_schema_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_get_item_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_get_items_test, sysrepo_setup, sysrepo_teardown),
-            cmocka_unit_test_setup_teardown(cl_get_items_iter_test, sysrepo_setup, sysrepo_teardown),           
+            cmocka_unit_test_setup_teardown(cl_get_items_iter_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_set_item_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_delete_item_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_move_item_test, sysrepo_setup, sysrepo_teardown),
