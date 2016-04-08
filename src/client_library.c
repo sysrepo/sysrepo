@@ -50,7 +50,6 @@
  */
 typedef struct sr_val_iter_s {
     char *path;                     /**< xpath of the request */
-    bool recursive;                 /**< flag denoting whether child subtrees should be iterated */
     size_t offset;                  /**< offset where the next data should be read */
     size_t limit;                   /**< how many items should be read */
     sr_val_t **buff_values;         /**< buffered values */
@@ -94,7 +93,7 @@ cl_engine_init_local(sr_conn_ctx_t *conn_ctx, const char *socket_path)
  * @brief Creates get_items request with options and send it
  */
 static int
-cl_send_get_items_iter(sr_session_ctx_t *session, const char *path, bool recursive, size_t offset, size_t limit, Sr__Msg **msg_resp){
+cl_send_get_items_iter(sr_session_ctx_t *session, const char *path, size_t offset, size_t limit, Sr__Msg **msg_resp){
     Sr__Msg *msg_req = NULL;
     int rc = SR_ERR_OK;
 
@@ -116,8 +115,6 @@ cl_send_get_items_iter(sr_session_ctx_t *session, const char *path, bool recursi
     }
     msg_req->request->get_items_req->limit = limit;
     msg_req->request->get_items_req->offset = offset;
-    msg_req->request->get_items_req->recursive =recursive;
-    msg_req->request->get_items_req->has_recursive = true;
     msg_req->request->get_items_req->has_limit = true;
     msg_req->request->get_items_req->has_offset = true;
 
@@ -702,7 +699,7 @@ cleanup:
 
 
 int
-sr_get_items_iter(sr_session_ctx_t *session, const char *path, bool recursive, sr_val_iter_t **iter)
+sr_get_items_iter(sr_session_ctx_t *session, const char *path, sr_val_iter_t **iter)
 {
     Sr__Msg *msg_resp = NULL;
     sr_val_iter_t *it = NULL;
@@ -711,7 +708,7 @@ sr_get_items_iter(sr_session_ctx_t *session, const char *path, bool recursive, s
     cl_session_clear_errors(session);
 
     CHECK_NULL_ARG4(session, session->conn_ctx, path, iter);
-    rc = cl_send_get_items_iter(session, path, recursive, 0, CL_GET_ITEMS_FETCH_LIMIT, &msg_resp);
+    rc = cl_send_get_items_iter(session, path, 0, CL_GET_ITEMS_FETCH_LIMIT, &msg_resp);
     if (SR_ERR_NOT_FOUND == rc){
         SR_LOG_DBG("No items found for xpath '%s'", path);
         /* SR_ERR_NOT_FOUND will be returned on get_item_next call */
@@ -732,7 +729,6 @@ sr_get_items_iter(sr_session_ctx_t *session, const char *path, bool recursive, s
     it->index = 0;
     it->count = msg_resp->response->get_items_resp->n_values;
 
-    it->recursive = recursive;
     it->path = strdup(path);
     if (NULL == it->path){
         SR_LOG_ERR_MSG("Duplication of path failed");
@@ -797,7 +793,7 @@ sr_get_item_next(sr_session_ctx_t *session, sr_val_iter_t *iter, sr_val_t **valu
         iter->offset++;
     } else {
         /* Fetch more items */
-        rc = cl_send_get_items_iter(session, iter->path, iter->recursive, iter->offset,
+        rc = cl_send_get_items_iter(session, iter->path, iter->offset,
                 CL_GET_ITEMS_FETCH_LIMIT, &msg_resp);
         if (SR_ERR_NOT_FOUND == rc){
             SR_LOG_DBG("All items has been read for path '%s'", iter->path);

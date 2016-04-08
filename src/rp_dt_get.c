@@ -24,7 +24,6 @@
 #include "sr_common.h"
 
 #include "access_control.h"
-#include "xpath_processor.h"
 #include "rp_internal.h"
 #include "rp_dt_get.h"
 #include "rp_dt_xpath.h"
@@ -307,50 +306,54 @@ rp_dt_get_values_from_nodes(struct lyd_node **nodes, size_t count, sr_val_t ***v
 }
 
 int
-rp_dt_get_value(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp_loc_id_t *loc_id, bool check_enabled, sr_val_t **value)
+rp_dt_get_value(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char *xpath, bool check_enabled, sr_val_t **value)
 {
-    CHECK_NULL_ARG4(dm_ctx, data_tree, loc_id, value);
-    CHECK_NULL_ARG(loc_id->xpath);
+    CHECK_NULL_ARG4(dm_ctx, data_tree, xpath, value);
     int rc = 0;
     struct lyd_node *node = NULL;
-    if (XP_IS_MODULE_XPATH(loc_id)) {
-        SR_LOG_ERR("Module xpath %s can not be use in get_node call", loc_id->xpath);
-        return SR_ERR_INVAL_ARG;
-    }
 
-    rc = rp_dt_lookup_node(data_tree, loc_id, false, check_enabled, &node);
+    rc = rp_dt_find_node(data_tree, xpath, check_enabled, &node);
     if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Node not found for xpath %s", loc_id->xpath);
+        SR_LOG_ERR("Node not found for xpath %s", xpath);
         return rc;
     }
     rc = rp_dt_get_value_from_node(node, value);
     if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Get value from node failed for xpath %s", loc_id->xpath);
+        SR_LOG_ERR("Get value from node failed for xpath %s", xpath);
     }
     return rc;
 }
 
 int
-rp_dt_get_values(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const xp_loc_id_t *loc_id, bool check_enable, sr_val_t ***values, size_t *count)
+rp_dt_get_values(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char *xpath, bool check_enable, sr_val_t ***values, size_t *count)
 {
-    CHECK_NULL_ARG5(dm_ctx, data_tree, loc_id, values, count);
+    CHECK_NULL_ARG5(dm_ctx, data_tree, xpath, values, count);
 
     int rc = SR_ERR_OK;
     struct lyd_node **nodes = NULL;
-    rc = rp_dt_get_nodes(dm_ctx, data_tree, loc_id, check_enable, &nodes, count);
+    
+    struct ly_set *set = NULL;
+    rc = rp_dt_find_nodes(data_tree, xpath, check_enable, &set);
     if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Get nodes for xpath %s failed", loc_id->xpath);
+        SR_LOG_ERR("Get nodes for xpath %s failed", xpath);
         return rc;
     }
-
+    nodes = calloc(set->number, sizeof(*nodes));
+    CHECK_NULL_NOMEM_GOTO(nodes, rc, cleanup);
+    for (size_t i = 0; i < set->number; i++) {
+        nodes[i] = set->set.d[i];
+    }
+    *count = set->number;
     rc = rp_dt_get_values_from_nodes(nodes, *count, values);
-    free(nodes);
 
     if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Copying values from nodes failed for xpath '%s'", loc_id->xpath);
+        SR_LOG_ERR("Copying values from nodes failed for xpath '%s'", xpath);
         return rc;
     }
-
+cleanup:
+        
+    ly_set_free(set);
+    free(nodes);
     return SR_ERR_OK;
 }
 
@@ -361,30 +364,17 @@ rp_dt_get_value_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char *
     CHECK_NULL_ARG2(xpath, value);
 
     int rc = SR_ERR_INVAL_ARG;
-    xp_loc_id_t *l = NULL;
     struct lyd_node *data_tree = NULL;
     char *data_tree_name = NULL;
-    rc = xp_char_to_loc_id(xpath, &l);
-
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Converting xpath '%s' to loc_id failed.", xpath);
-        return rc;
-    }
-
-    if (XP_IS_MODULE_XPATH(l)) {
-        SR_LOG_ERR("Module xpath %s can not be used for get_value request", xpath);
-        rc = SR_ERR_INVAL_ARG;
-        goto cleanup;
-    }
-
-    rc = ac_check_node_permissions(rp_session->ac_session, l, AC_OPER_READ);
+    
+    rc = ac_check_node_permissions(rp_session->ac_session, xpath, AC_OPER_READ);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Access control check failed for xpath '%s'", xpath);
         goto cleanup;
     }
 
-    data_tree_name = XP_CPY_FIRST_NS(l);
-    if (NULL == data_tree_name) {
+    rc = sr_copy_first_ns(xpath, &data_tree_name);
+    if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Copying module name failed for xpath '%s'", xpath);
         goto cleanup;
     }
@@ -395,16 +385,15 @@ rp_dt_get_value_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char *
         goto cleanup;
     }
 
-    rc = rp_dt_get_value(rp_ctx->dm_ctx, data_tree, l, dm_is_running_ds_session(rp_session->dm_session), value);
+    rc = rp_dt_get_value(rp_ctx->dm_ctx, data_tree, xpath, dm_is_running_ds_session(rp_session->dm_session), value);
+cleanup:
     if (SR_ERR_NOT_FOUND == rc) {
-        rc = rp_dt_validate_node_xpath(rp_ctx->dm_ctx, rp_session->dm_session, l, NULL, NULL);
+        rc = rp_dt_validate_node_xpath(rp_ctx->dm_ctx, rp_session->dm_session, xpath, NULL, NULL);
         rc = rc == SR_ERR_OK ? SR_ERR_NOT_FOUND : rc;
     } else if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Get value failed for xpath '%s'", xpath);
     }
 
-cleanup:
-    xp_free_loc_id(l);
     free(data_tree_name);
     return rc;
 }
@@ -416,75 +405,58 @@ rp_dt_get_values_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char 
     CHECK_NULL_ARG3(xpath, values, count);
 
     int rc = SR_ERR_INVAL_ARG;
-    xp_loc_id_t *l = NULL;
     struct lyd_node *data_tree = NULL;
     char *data_tree_name = NULL;
-    rc = xp_char_to_loc_id(xpath, &l);
 
+    rc = sr_copy_first_ns(xpath, &data_tree_name);
     if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Converting xpath '%s' to loc_id failed.", xpath);
-        return rc;
-    }
-
-    data_tree_name = XP_CPY_FIRST_NS(l);
-    if (NULL == data_tree_name) {
         SR_LOG_ERR("Copying module name failed for xpath '%s'", xpath);
         goto cleanup;
     }
-
-    rc = ac_check_node_permissions(rp_session->ac_session, l, AC_OPER_READ);
+    rc = ac_check_node_permissions(rp_session->ac_session, xpath, AC_OPER_READ);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Access control check failed for xpath '%s'", xpath);
         goto cleanup;
     }
-
     rc = dm_get_datatree(rp_ctx->dm_ctx, rp_session->dm_session, data_tree_name, &data_tree);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Getting data tree failed for xpath '%s'", xpath);
         goto cleanup;
     }
 
-    rc = rp_dt_get_values(rp_ctx->dm_ctx, data_tree, l, dm_is_running_ds_session(rp_session->dm_session), values, count);
+    rc = rp_dt_get_values(rp_ctx->dm_ctx, data_tree, xpath, dm_is_running_ds_session(rp_session->dm_session), values, count);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Get values failed for xpath '%s'", xpath);
     }
 
 cleanup:
     if (SR_ERR_NOT_FOUND == rc || (SR_ERR_OK == rc && 0 == count)) {
-        rc = rp_dt_validate_node_xpath(rp_ctx->dm_ctx, rp_session->dm_session, l, NULL, NULL);
+        rc = rp_dt_validate_node_xpath(rp_ctx->dm_ctx, rp_session->dm_session, xpath, NULL, NULL);
         rc = rc == SR_ERR_OK ? SR_ERR_NOT_FOUND : rc;
     }
-    xp_free_loc_id(l);
     free(data_tree_name);
     return rc;
 }
 
 int
 rp_dt_get_values_wrapper_with_opts(rp_ctx_t *rp_ctx, rp_session_t *rp_session, rp_dt_get_items_ctx_t *get_items_ctx, const char *xpath,
-        bool recursive, size_t offset, size_t limit, sr_val_t ***values, size_t *count)
+        size_t offset, size_t limit, sr_val_t ***values, size_t *count)
 {
     CHECK_NULL_ARG5(rp_ctx, rp_ctx->dm_ctx, rp_session, rp_session->dm_session, get_items_ctx);
     CHECK_NULL_ARG3(xpath, values, count);
 
     int rc = SR_ERR_INVAL_ARG;
-    xp_loc_id_t *l = NULL;
     struct lyd_node *data_tree = NULL;
     struct lyd_node **nodes = NULL;
     char *data_tree_name = NULL;
-    rc = xp_char_to_loc_id(xpath, &l);
 
+    rc = sr_copy_first_ns(xpath, &data_tree_name);
     if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Converting xpath '%s' to loc_id failed.", xpath);
-        return rc;
-    }
-
-    data_tree_name = XP_CPY_FIRST_NS(l);
-    if (NULL == data_tree_name) {
         SR_LOG_ERR("Copying module name failed for xpath '%s'", xpath);
         goto cleanup;
     }
 
-    rc = ac_check_node_permissions(rp_session->ac_session, l, AC_OPER_READ);
+    rc = ac_check_node_permissions(rp_session->ac_session, xpath, AC_OPER_READ);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Access control check failed for xpath '%s'", xpath);
         goto cleanup;
@@ -496,24 +468,23 @@ rp_dt_get_values_wrapper_with_opts(rp_ctx_t *rp_ctx, rp_session_t *rp_session, r
         goto cleanup;
     }
 
-    rc = rp_dt_get_nodes_with_opts(rp_ctx->dm_ctx, rp_session->dm_session, get_items_ctx, data_tree, l, recursive, offset, limit, &nodes, count);
+    rc = rp_dt_find_nodes_with_opts(rp_ctx->dm_ctx, rp_session->dm_session, get_items_ctx, data_tree, xpath, offset, limit, &nodes, count);
     if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Get nodes for xpath %s failed", l->xpath);
+        SR_LOG_ERR("Get nodes for xpath %s failed", xpath);
         goto cleanup;
     }
 
     rc = rp_dt_get_values_from_nodes(nodes, *count, values);
+cleanup:
     if (SR_ERR_NOT_FOUND == rc) {
-        rc = rp_dt_validate_node_xpath(rp_ctx->dm_ctx, rp_session->dm_session, l, NULL, NULL);
+        rc = rp_dt_validate_node_xpath(rp_ctx->dm_ctx, rp_session->dm_session, xpath, NULL, NULL);
         rc = rc == SR_ERR_OK ? SR_ERR_NOT_FOUND : rc;
     } else if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Copying values from nodes failed for xpath '%s'", l->xpath);
-        goto cleanup;
+        SR_LOG_ERR("Copying values from nodes failed for xpath '%s'", xpath);
+        //goto cleanup;
     }
 
-cleanup:
     free(nodes);
-    xp_free_loc_id(l);
     free(data_tree_name);
     return rc;
 

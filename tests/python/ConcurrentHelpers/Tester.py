@@ -21,7 +21,7 @@ import os, time
 import unittest
 
 
-class Tester(unittest.TestCase):
+class Tester(object):
     """
     Class instance simulates the steps executed by tester.
 
@@ -34,7 +34,7 @@ class Tester(unittest.TestCase):
 
     """
     def __init__(self):
-        super(Tester, self).__init__()
+        self.tc = unittest.TestCase('__init__')
         self.steps = []
 
     def setup(self):

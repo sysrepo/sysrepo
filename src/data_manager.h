@@ -36,7 +36,6 @@
 #include "sr_common.h"
 #include "notification_processor.h"
 #include "persistence_manager.h"
-#include "xpath_processor.h"
 
 /**
  * @brief Structure that holds the context of an instance of Data Manager.
@@ -85,7 +84,7 @@ typedef enum dm_operation_e {
 typedef struct dm_sess_op_s{
     dm_operation_t op;          /**< Operation kind*/
     bool has_error;             /**< Flag if the operation should be performed during commit*/
-    xp_loc_id_t *loc_id;        /**< Location id */
+    char *xpath;                /**< Xpath */
     sr_val_t *val;              /**< Value to perform operation with, can be NULL*/
     sr_edit_options_t options;  /**< Operation edit options */
 }dm_sess_op_t;
@@ -277,12 +276,12 @@ void dm_free_commit_context(dm_ctx_t *dm_ctx, dm_commit_context_t *c_ctx);
  * during the commit. Passed allocated arguments are freed in case of error also.
  * @param [in] session
  * @param [in] op
- * @param [in] loc_id - must be allocated, will be freed with operation list
+ * @param [in] xpath
  * @param [in] val - must be allocated, will be free with operation list
  * @param [in] opts
  * @return Error code (SR_ERR_OK on success)
  */
-int dm_add_operation(dm_session_t *session, dm_operation_t op, xp_loc_id_t *loc_id, sr_val_t *val, sr_edit_options_t opts);
+int dm_add_operation(dm_session_t *session, dm_operation_t op, const char *xpath, sr_val_t *val, sr_edit_options_t opts);
 
 /**
  * @brief Removes last logged operation in session

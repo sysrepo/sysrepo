@@ -34,11 +34,14 @@
 #include "connection_manager.h"
 #include "sysrepo.pb-c.h"
 
+#include "test_module_helper.h"
+
 #define CM_AF_SOCKET_PATH "/tmp/sysrepo-test"  /* unix-domain socket used for the test*/
 
 static int
 cm_setup(void **state)
 {
+    createDataTreeExampleModule();
     cm_ctx_t *ctx = NULL;
     int rc = 0;
 

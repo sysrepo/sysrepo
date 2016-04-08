@@ -37,15 +37,21 @@ endmacro(ADD_UNIT_TEST)
 
 
 #Create test target source with helper functions included 
+
 macro(ADD_UNIT_TEST_WITH_HELPERS TEST_NAME)
-     set(t_files
+    ADD_UNIT_TEST_WITH_HELPERS_VALGRIND(${TEST_NAME} 1)
+endmacro(ADD_UNIT_TEST_WITH_HELPERS)
+
+macro(ADD_UNIT_TEST_WITH_HELPERS_VALGRIND TEST_NAME VALG)
+    set(t_files
         ${TEST_NAME}.c
         ${TEST_HELPERS_DIR}dt_xpath_helpers.c
         ${TEST_HELPERS_DIR}rp_dt_context_helper.c
         ${TEST_HELPERS_DIR}test_module_helper.c
         )
-    ADD_UNIT_TEST_WITH_OPTS(${TEST_NAME} "${t_files}" "" 1 "")
-endmacro(ADD_UNIT_TEST_WITH_HELPERS)
+    ADD_UNIT_TEST_WITH_OPTS(${TEST_NAME} "${t_files}" "" ${VALG} "")
+endmacro(ADD_UNIT_TEST_WITH_HELPERS_VALGRIND)
+
 
 ADD_UNIT_TEST(common_test)
 ADD_UNIT_TEST_WITH_HELPERS(ac_test)
@@ -61,7 +67,6 @@ ADD_UNIT_TEST_WITH_HELPERS(dm_test)
 
 ADD_UNIT_TEST(rp_dt_xpath_test)
 ADD_UNIT_TEST_WITH_HELPERS(rp_datatree_test)
-ADD_UNIT_TEST(rp_node_stack_test)
 ADD_UNIT_TEST_WITH_HELPERS(rp_dt_edit_test)
 ADD_UNIT_TEST_WITH_HELPERS(rp_dt_running_test)
 
@@ -74,7 +79,7 @@ if("${TEST_REPOSITORY_LOC}" STREQUAL "${REPOSITORY_LOC}")
     
     ADD_UNIT_TEST_WITH_HELPERS(cl_test)
     ADD_UNIT_TEST(concurr_test)
-    ADD_UNIT_TEST_WITH_OPTS(perf_test perf_test.c "" 0 "")
+    ADD_UNIT_TEST_WITH_HELPERS_VALGRIND(perf_test 0)
     ADD_UNIT_TEST_WITH_OPTS(daemon_test daemon_test.c "" 0 "")
     ADD_UNIT_TEST_WITH_OPTS(sysrepoctl_test sysrepoctl_test.c "" 0 "")
 
@@ -106,6 +111,7 @@ if("${TEST_REPOSITORY_LOC}" STREQUAL "${REPOSITORY_LOC}")
 else()
     message(STATUS "Test repostory location differs to system repository location, some tests will be disabled.")
 endif()
+
 
 # create test repository directories and copy internal schemas
 EXECUTE_PROCESS(

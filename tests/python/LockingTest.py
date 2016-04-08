@@ -71,10 +71,5 @@ class LockingTest(unittest.TestCase):
         tm.run()
 
 if __name__ == '__main__':
-    suite = unittest.TestLoader().loadTestsFromTestCase(LockingTest)
-    result = unittest.TextTestRunner(verbosity=2).run(suite)
-    if result.wasSuccessful():
-        sys.exit(0)
-    else:
-        sys.exit(1)
+    unittest.main()
 
