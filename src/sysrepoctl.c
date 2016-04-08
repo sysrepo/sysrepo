@@ -904,6 +904,7 @@ srctl_ly_init(struct ly_ctx **ly_ctx)
             lys_parse_path(*ly_ctx, schema_filename, LYS_IN_YIN);
         }
     }
+    closedir(dp);
 
     return SR_ERR_OK;
 }
