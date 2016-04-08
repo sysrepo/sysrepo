@@ -24,7 +24,6 @@
 
 #include "connection_manager.h"
 #include "access_control.h"
-#include "rp_node_stack.h"
 #include "data_manager.h"
 #include "notification_processor.h"
 #include "persistence_manager.h"

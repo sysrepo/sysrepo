@@ -30,7 +30,6 @@
 #include "rp_dt_edit.h"
 #include "rp_dt_lookup.h"
 #include "rp_dt_xpath.h"
-#include "rp_node_stack.h"
 
 /**
  * @}

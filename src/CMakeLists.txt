@@ -49,7 +49,6 @@ set(SYSREPO_ENGINE_SOURCES
     rp_dt_lookup.c
     rp_dt_get.c
     rp_dt_edit.c
-    rp_node_stack.c
     data_manager.c
     notification_processor.c
     persistence_manager.c
