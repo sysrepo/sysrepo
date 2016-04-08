@@ -296,6 +296,7 @@ srctl_yin_generate(const char *search_dir, const char *dst_dir, const char *yang
     len = snprintf(NULL, 0, "%s%s.yin", dst_dir, file_base_name);
     yin_file = calloc(len + 1, sizeof(*yin_file));
     if (NULL == yin_file) {
+        free(file_base_name);
         return NULL;
     }
     snprintf(yin_file, len + 1, "%s%s.yin", dst_dir, file_base_name);
