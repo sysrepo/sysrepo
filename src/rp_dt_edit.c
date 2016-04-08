@@ -312,10 +312,8 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, co
 cleanup:
     ly_set_free(parents);
     ly_set_free(nodes);
-    if (NULL != info) {
-        /* mark to session copy that some change has been made */
-        info->modified = SR_ERR_OK == rc ? true : info->modified;
-    }
+    /* mark to session copy that some change has been made */
+    info->modified = SR_ERR_OK == rc ? true : info->modified;
     return rc;
 }
 
@@ -490,9 +488,7 @@ rp_dt_move_list(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, sr_m
     }
 
 cleanup:
-    if (NULL != info){
-        info->modified = SR_ERR_OK == rc ? true : info->modified;
-    }
+    info->modified = SR_ERR_OK == rc ? true : info->modified;
     return rc;
 }
 

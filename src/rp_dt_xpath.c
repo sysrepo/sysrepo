@@ -293,19 +293,21 @@ rp_dt_find_in_choice(dm_session_t *session, const char *xpath, const char *trimm
     /* libyang err_msg is used to parse the match and unmatch part */
     int rc = SR_ERR_BAD_ELEMENT;
     char *unmatch_part = NULL;
-
+    char *err_msg = NULL;
     char *xp_copy = strdup(ly_errpath());
     CHECK_NULL_NOMEM_RETURN(xp_copy);
     char *last_slash = rindex(xp_copy, '/');
-    CHECK_NULL_NOMEM_RETURN(last_slash);
+    if (NULL == last_slash) {
+        goto not_matched;
+    }
     *last_slash = 0;
 
-    char *err_msg = strdup(ly_errmsg());
-    CHECK_NULL_NOMEM_RETURN(err_msg);
+    err_msg = strdup(ly_errmsg());
+    CHECK_NULL_NOMEM_GOTO(err_msg, rc, not_matched);
 
     /* split xpath into unmatched part and the part that may contain a choice */
     unmatch_part = strdup(trimmed_xpath + strlen(xp_copy)+1);
-    CHECK_NULL_NOMEM_RETURN(unmatch_part);
+    CHECK_NULL_NOMEM_GOTO(unmatch_part, rc, not_matched);
 
     const struct lys_node *node = ly_ctx_get_node(module->ctx, NULL, xp_copy);
     if (NULL == node) {
@@ -371,7 +373,7 @@ rp_dt_trim_xpath(dm_ctx_t *dm_ctx, const char *xpath, char **trimmed)
             xp_copy[xp_len-1] = 0;
             xp_len--;
             char *last_slash = rindex(xp_copy, '/');
-            if (NULL == last_slash && '\0' != last_slash[1]) {
+            if (NULL == last_slash || xp_len < 1) {
                 free(xp_copy);
                 return SR_ERR_INVAL_ARG;
             }
