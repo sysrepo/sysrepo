@@ -25,7 +25,6 @@
 #include "sysrepo.h"
 #include "sr_common.h"
 #include "access_control.h"
-#include "xpath_processor.h"
 #include <pthread.h>
 #include <libyang/libyang.h>
 

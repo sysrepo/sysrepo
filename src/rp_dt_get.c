@@ -24,7 +24,6 @@
 #include "sr_common.h"
 
 #include "access_control.h"
-#include "xpath_processor.h"
 #include "rp_internal.h"
 #include "rp_dt_get.h"
 #include "rp_dt_xpath.h"

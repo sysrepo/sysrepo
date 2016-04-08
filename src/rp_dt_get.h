@@ -26,7 +26,6 @@
 #define RP_DT_GET_H
 
 #include "request_processor.h"
-#include "xpath_processor.h"
 #include "rp_dt_lookup.h"
 
 /**

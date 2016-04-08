@@ -20,7 +20,6 @@
  */
 
 #include "rp_dt_xpath.h"
-#include "xpath_processor.h"
 #include "sr_common.h"
 
 /**

@@ -36,7 +36,6 @@
 #include "sr_common.h"
 #include "notification_processor.h"
 #include "persistence_manager.h"
-#include "xpath_processor.h"
 
 /**
  * @brief Structure that holds the context of an instance of Data Manager.

@@ -27,7 +27,6 @@
 
 #include <libyang/libyang.h>
 #include "data_manager.h"
-#include "xpath_processor.h"
 
 /**
  * @brief Creates xpath for the selected node. Function walks from the node

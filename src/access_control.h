@@ -34,7 +34,7 @@
  * on Linux, or effective UID and GID on non-Linux platforms.
  */
 
-#include "xpath_processor.h"
+#include "sr_common.h"
 
 /**
  * @brief Operation to be authorized.

@@ -30,7 +30,6 @@
 #include "test_data.h"
 #include "sr_common.h"
 #include "rp_data_tree.h"
-#include "xpath_processor.h"
 #include "dt_xpath_helpers.h"
 #include "test_module_helper.h"
 #include "rp_dt_context_helper.h"
