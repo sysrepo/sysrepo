@@ -44,7 +44,7 @@ typedef struct pm_ctx_s pm_ctx_t;
  * @param[in] ac_ctx Access Control module context.
  * @param[in] schema_search_dir Directory containing PM's YANG module schema.
  * @param[in] data_search_dir Directory containing the data files.
- * @param[out] np_ctx Allocated Persistence Manager context that can be used in subsequent PM API calls.
+ * @param[out] pm_ctx Allocated Persistence Manager context that can be used in subsequent PM API calls.
  *
  * @return Error code (SR_ERR_OK on success).
  */

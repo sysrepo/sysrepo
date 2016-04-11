@@ -53,7 +53,7 @@ typedef struct dm_lock_item_s {
     int fd;                       /**< File descriptor of the file */
 }dm_lock_item_t;
 
-/*
+/**
  * @brief Data manager context holding loaded schemas, data trees
  * and corresponding locks
  */
@@ -1893,6 +1893,28 @@ dm_commit_write_files(dm_session_t *session, dm_commit_context_t *c_ctx)
         i++;
     }
     return rc;
+}
+
+int
+dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t *c_ctx)
+{
+    CHECK_NULL_ARG3(dm_ctx, session, c_ctx);
+    int rc = SR_ERR_OK;
+    size_t i = 0;
+    dm_data_info_t *info = NULL;
+
+    i = 0;
+    while (NULL != (info = sr_btree_get_at(session->session_modules, i))) {
+        if (info->modified) {
+            rc = np_module_change_notify(dm_ctx->np_ctx, info->module->name);
+            if (SR_ERR_OK != rc) {
+                SR_LOG_WRN("Unable to send notifications about the changes made in the '%s' module.", info->module->name);
+            }
+        }
+        i++;
+    }
+
+    return SR_ERR_OK;
 }
 
 int
