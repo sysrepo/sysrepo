@@ -2,15 +2,84 @@
 
 @page usage Using Sysrepo
 
-By installation, two main parts of sysrepo are installed on the system:
-the **sysrepo library** (a.k.a @ref cl or libsysrepo) and the **sysrepo daemon**
-(a.k.a. sysrepod). See @ref libsysrepo and @ref sysrepod for more details about
+By installation, three main parts of sysrepo are installed on the system:
+the **sysrepo control tool** (a.k.a. sysrepoctl), the **sysrepo library**
+(a.k.a @ref cl or libsysrepo) and the **sysrepo daemon** (a.k.a. sysrepod).
+See @ref sysrepoctl, @ref libsysrepo and @ref sysrepod for more details about
 these components.
 
-The third important part of the sysrepo installation is the <b>repository directory</b>.
-It is basically a common filesystem directory where all YANG models and 
-corresponding  data files of all applications that use sysrepo as their 
-datastore are located. See @ref adding_yangs for information on how to use this directory.
+An important setting of a sysrepo installation is the location of 
+<b>repository directory</b>. It is basically a common filesystem directory 
+where all YANG models and corresponding  data files of all applications that 
+use sysrepo as their datastore are located. It can be set by specifying 
+`REPOSITORY_LOC` cmake option and it is most commonly set to `/etc/sysrepo`.
+
+
+@section sysrepoctl Using sysrepoctl tool
+sysrepoctl is a tool for the management of YANG modules installed in sysrepo.
+It can be used for installing of new YANG modules to sysrepo, uninstalling 
+existing ones, listing current state of installed modules, enabling / disabling
+of YANG features within the module, changing access permissions, or dumping and 
+importing data from / to sysrepo. Detailed usage of the tool can be displayed by 
+executing sysrepoctl -h.
+
+@subsection sysrepoctl_install Installing and uninstalling of YANG modules to / from sysrepo
+To list currently installed YANG modules, issue the `sysrepoctl -l` command. If
+you need to install a new YANG module, use `sysrepoctl --install` command, providing
+either YANG or YIN schema of the module to be installed. If the new module
+depends on any other modules (e.g. includes or imports another module), all
+dependent schemas must be located in the same directoy as the schema being installed,
+or in the directory specified by `--search-dir` option. All dependent modules
+will be automatically installed (if not installed already). 
+
+Example of the install operation:
+~~~~~~~~~~~~~~~
+sysrepoctl --install --yang=/home/user/ietf-interfaces.yang 
+~~~~~~~~~~~~~~~
+Newly installed module can be used immediately after executing `sysrepoctl --install`
+command, restart of the sysrepo daemon is not needed.
+
+@subsection sysrepoctl_permissions Specifying module access permissions
+By default, the owner user and group of a module installed by sysrepoctl tool
+will be set to the UID and GID of the user who executed the sysrepoctl tool, 
+with the access permissions defined by default umask settings (e.g. 644 for 
+the root user on most Linux distributions). To overcome this defualt behavior,
+you can specify `--owner` and `--pemissions` options by install operation, e.g.:
+~~~~~~~~~~~~~~~
+sysrepoctl --install --yang=/home/user/ietf-interfaces.yang --owner=admin:admin --permissions=664
+~~~~~~~~~~~~~~~
+
+To change the currently set owner and/or permissions, you can use `sysrepoctl --change`
+command as follows:
+~~~~~~~~~~~~~~~
+sysrepoctl --change --module=ietf-interfaces --owner=admin:admin --permissions=644
+~~~~~~~~~~~~~~~
+You can issue the `sysrepoctl -l` command to check currently set access permissions 
+of individual modules installed in sysrepo. See @ref ac_page page for more 
+information on access control in sysrepo.
+
+@subsection sysrepoctl_features Enabling / disabling YANG featues of a module
+YANG models can contain several conditional sections that can be enabled or disabled 
+in control of the device enabling or disabling so-called "features"
+(see [section 5.6.2 of RFC 6020](https://tools.ietf.org/html/rfc6020#section-5.6.2))).
+In sysrepo, these features can be turned on and off by `--feature-enable` and 
+`--feature-disable` options of `sysrepoctl`, e.g.:
+~~~~~~~~~~~~~~~
+sysrepoctl --feature-enable=if-mib --module=ietf-interfaces
+~~~~~~~~~~~~~~~
+The changes in enabled features are persistent (do not reset by sysrepo or system reload).
+
+@subsection sysrepoctl_dump Dumping and importing data from / to sysrepo
+Contents of the startup datastore can be easilly dumped (e.g. for backup purposes)
+and imported (e.g. for initail data import, or data recovery purposes) by 
+`sysrepoctl --dump` and `sysrepoctl --import` commands, e.g.:
+~~~~~~~~~~~~~~~
+sysrepoctl --dump=xml --module=ietf-interfaces > dump_file.txt
+sysrepoctl --import=xml --module=ietf-interfaces < dump_file.txt
+~~~~~~~~~~~~~~~
+Please note that `--import` completly overwrites the content of startup datastore
+belonging to specified module (existing content will be definitely lost).
+Sysrepo currently supports two dump & import formats: XML and JSON.
 
 @section libsysrepo Using sysrepo library in your application
 Sysrepo library is an interface between sysrepo datastore and northbound and 
@@ -45,33 +114,6 @@ sr_get_item(sess, "/ietf-interfaces:interfaces/interface[name='eth0']/enabled", 
 See [examples directory](https://github.com/sysrepo/sysrepo/tree/master/examples) 
 for more usage examples and @ref cl documentation for the full description of the API.
 
-@section adding_yangs Adding a new YANG model into the repository
-The repository directory contains all YANG models and corresponding  data files 
-of all applications that use sysrepo as their datastore. The usual location of 
-the repository directory is `/etc/sysrepo/`, the yang models are located in its `yang` 
-subdirectory and the data files in its `data` subdirectory. The location of the 
-repository directory can be changed with `REPOSITORY_LOC` cmake option by building 
-sysrepo (see `Install.md` file for detailed installation instructions).
-
-When adding a new application that will be using a new YANG model, you need to
-place the new **yang file** and **yin file** into `yang` subdirectory
-(e.g. `/etc/sysrepo/yang/`). The yin file can be generated out of the yang using
-pyang tool as follows:
-
-~~~~~~~~~~~~~~~
-pyang -f yin ietf-interfaces.yang > ietf-interfaces.yin
-~~~~~~~~~~~~~~~
-
-The yang and yin files normally need to be readable by any user and do not 
-need to be writeable by anyone else than your application, or by root (sysrepo
-do not write to them).
-
-After restarting the sysrepo deamon (if it was running), the new data model is
-ready to be used. When first data will be written into it, sysrepo automatically
-creates its data file in `data` subdirectory (e.g. `/etc/sysrepo/data/`) with
-the file permissions as described on @ref ac_page page. If you need to define 
-any other file permissions on the data file, you can create an empty data file
-with desired file permissions as part of the installation process.
 
 @section sysrepod Starting sysrepo daemon
 Sysrepo deamon provides the functionality of the datastore on the system (executes 
@@ -87,21 +129,21 @@ sysrepod
 The daemon accepts several arguments for specifying log verbosity level or for 
 debugging. You can display them by executing `sysrepod -h`
 ~~~~~~~~~~~~~~~
-$ sysrepod -h
-sysrepod - sysrepo daemon, version 0.1.12
+sysrepod - sysrepo daemon, version 0.1.18
 
 Usage:
-  sysrepod [-h] [-d] [-v <level>]
+  sysrepod [-h] [-v] [-d] [-l <level>]
 
 Options:
-  -h            Prints this usage help.
-  -d            Debug mode - daemon will run in the foreground and print logs to stderr instead of syslog.
-  -v <level>    Sets verbosity level of logging:
-                    0 = all logging turned off
-                    1 = log only error messages
-                    2 = log error and warning messages
-                    3 = (default) log error, warning and informational messages
-                    4 = log everything, including development debug messages
+  -h          Prints usage help.
+  -v          Prints version.
+  -d          Debug mode - daemon will run in the foreground and print logs to stderr instead of syslog.
+  -l <level>  Sets verbosity level of logging:
+                      0 = all logging turned off
+                      1 = log only error messages
+                      2 = log error and warning messages
+                      3 = (default) log error, warning and informational messages
+                      4 = log everything, including development debug messages
 ~~~~~~~~~~~~~~~
 
 It needs to be noted that the no-single-point-of-failure design of sysrepo does 

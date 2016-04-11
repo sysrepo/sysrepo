@@ -12,10 +12,13 @@ changes its filesystem UID and GID (on Linux) or effective UID and GID (on Unixe
 to the IDs of the process that is using the client library before accessing any data file. 
 
 @section ifp Initial data file permissions
-It is recommended to create at least empty data file and set the needed file 
-permissions on it as part of the installation process of a new YANG model into 
-sysrepo. Otherwise sysrepo creates the data file automatically by the first 
-commit into the data model, with following file permissions:
+It is recommended to use `sysrepoctl` tool (see @ref sysrepoctl) for installing
+new YANG modules to sysrepo and initial access control setup.
+
+If `sysrepoctl` hasn't been used for installing of a module and there is no existing 
+data file (an therefore no existing access control rules) for it, sysrepo creates 
+the data file automatically by the first  commit into the data model, with 
+following file permissions:
 - Owner user and group will be set according to UID and GID of the process 
 that is using the client library. If that user is root and ::sr_session_start_user
 has been used to start the session (see @ref user), sysrepo will use UID and GID

@@ -133,7 +133,32 @@ Sysrepo stores all YANG models and corresponding data files in so-named *reposit
 
 
 ## Using sysrepo
-By installation, two main parts of sysrepo are installed on the system: **sysrepo library** and **sysrepo daemon**.
+By installation, three main parts of sysrepo are installed on the system: **sysrepoctl tool**, **sysrepo library** and **sysrepo daemon**.
+
+#### Using sysrepoctl tool
+sysrepoctl is a tool for the management of YANG modules installed in sysrepo. It can be used for installing of new YANG modules to sysrepo, uninstalling existing ones, listing current state of installed modules, enabling / disabling of YANG features within the module, changing access permissions, or dumping and importing data from / to sysrepo.
+Detailed usage of the tool can be displayed by executing `sysrepoctl -h`. Here are some examples of the usage:
+
+Install a new module by specifying YANG file, ownership and access permissions:
+
+`sysrepoctl --install --yang=/home/user/ietf-interfaces.yang --owner=admin:admin --permissions=644`
+
+Change the ownership and permissions of an existing YANG module:
+
+`sysrepoctl --change --module=ietf-interfaces --owner=admin:admin --permissions=644`
+
+Enable a feature within a YANG module:
+
+`sysrepoctl --feature-enable=if-mib --module=ietf-interfaces`
+
+Dump startup datastore data of a YANG module into a file in XML format:
+
+`sysrepoctl --dump=xml --module=ietf-interfaces > dump_file.txt`
+
+Import startup datastore data of a YANG module from a file in XML format:
+
+`sysrepoctl --import=xml --module=ietf-interfaces < dump_file.txt`
+
 
 #### Using sysrepo library in your application
 Sysrepo library is an interface between sysrepo datastore and northbound and southbound applications. To use it, you need to link `libsysrepo` to your application and include sysrepo public header file in the source that needs to use it:
