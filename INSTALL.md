@@ -136,8 +136,8 @@ Sysrepo stores all YANG models and corresponding data files in so-named *reposit
 By installation, three main parts of sysrepo are installed on the system: **sysrepoctl tool**, **sysrepo library** and **sysrepo daemon**.
 
 #### Using sysrepoctl tool
-sysrepoctl is a tool for the management of YANG modules installed in sysrepo. One can use it to install a new module to sysrepo, uninstall existing ones, listing current state of installed modules, enabling / disabling of YANG features within the module, changing access permissions, or dumping and importing data from / to sysrepo.
-Detailed usege of the tool can be desplayed by executing `sysrepoctl -h`. Here are some examples of the usage:
+sysrepoctl is a tool for the management of YANG modules installed in sysrepo. It can be used for installing of new YANG modules to sysrepo, uninstalling existing ones, listing current state of installed modules, enabling / disabling of YANG features within the module, changing access permissions, or dumping and importing data from / to sysrepo.
+Detailed usage of the tool can be displayed by executing `sysrepoctl -h`. Here are some examples of the usage:
 
 Install a new module by specifying YANG file, ownership and access permissions:
 
