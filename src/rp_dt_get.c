@@ -316,7 +316,9 @@ rp_dt_get_value(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char *
 
     rc = rp_dt_find_node(data_tree, xpath, check_enabled, &node);
     if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Node not found for xpath %s", xpath);
+        if (SR_ERR_NOT_FOUND != rc) {
+            SR_LOG_ERR("Find node failed (%d) xpath %s", rc, xpath);
+        }
         return rc;
     }
     rc = rp_dt_get_value_from_node(node, value);
@@ -336,7 +338,9 @@ rp_dt_get_values(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char 
     struct ly_set *nodes = NULL;
     rc = rp_dt_find_nodes(data_tree, xpath, check_enable, &nodes);
     if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Get nodes for xpath %s failed", xpath);
+        if (SR_ERR_NOT_FOUND != rc) {
+            SR_LOG_ERR("Get nodes for xpath %s failed (%d)", xpath, rc);
+        }
         return rc;
     }
 
@@ -374,7 +378,9 @@ rp_dt_get_value_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char *
 
     rc = dm_get_datatree(rp_ctx->dm_ctx, rp_session->dm_session, data_tree_name, &data_tree);
     if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Getting data tree failed for xpath '%s'", xpath);
+        if (SR_ERR_NOT_FOUND != rc) {
+            SR_LOG_ERR("Getting data tree failed (%d) for xpath '%s'", rc, xpath);
+        }
         goto cleanup;
     }
 
@@ -413,7 +419,9 @@ rp_dt_get_values_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char 
     }
     rc = dm_get_datatree(rp_ctx->dm_ctx, rp_session->dm_session, data_tree_name, &data_tree);
     if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Getting data tree failed for xpath '%s'", xpath);
+        if (SR_ERR_NOT_FOUND != rc) {
+            SR_LOG_ERR("Getting data tree failed (%d) for xpath '%s'", rc, xpath);
+        }
         goto cleanup;
     }
 
@@ -457,13 +465,17 @@ rp_dt_get_values_wrapper_with_opts(rp_ctx_t *rp_ctx, rp_session_t *rp_session, r
 
     rc = dm_get_datatree(rp_ctx->dm_ctx, rp_session->dm_session, data_tree_name, &data_tree);
     if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Getting data tree failed for xpath '%s'", xpath);
+        if (SR_ERR_NOT_FOUND != rc) {
+            SR_LOG_ERR("Getting data tree failed (%d) for xpath '%s'", rc, xpath);
+        }
         goto cleanup;
     }
 
     rc = rp_dt_find_nodes_with_opts(rp_ctx->dm_ctx, rp_session->dm_session, get_items_ctx, data_tree, xpath, offset, limit, &nodes);
     if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Get nodes for xpath %s failed", xpath);
+        if (SR_ERR_NOT_FOUND != rc) {
+            SR_LOG_ERR("Get nodes for xpath %s failed (%d)", xpath, rc);
+        }
         goto cleanup;
     }
     *count = nodes->number;
