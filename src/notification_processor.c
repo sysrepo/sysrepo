@@ -29,16 +29,6 @@
 #include "notification_processor.h"
 
 /**
- * @brief Notification subscription information.
- */
-typedef struct np_subscription_s {
-    Sr__NotificationEvent event_type;  /**< Type of the event that this subscription subscribes to.  */
-    const char *path;                  /**< Path to the subtree where the subscription is active (if applicable). */
-    const char *dst_address;           /**< Destination address where the notification should be delivered. */
-    uint32_t dst_id;                   /**< Destination ID of the subscription (used locally, in the client library). */
-} np_subscription_t;
-
-/**
  * @brief Notification Processor context.
  */
 typedef struct np_ctx_s {
