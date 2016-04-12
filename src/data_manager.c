@@ -319,7 +319,7 @@ dm_load_data_tree_file(dm_ctx_t *dm_ctx, int fd, const char *data_filename, cons
             return SR_ERR_INTERNAL;
         }
         data->timestamp = st.st_mtim;
-        SR_LOG_DBG("Loaded module %s: mtime sec=%lld nsec=%lld\n", module->name,
+        SR_LOG_DBG("Loaded module %s: mtime sec=%lld nsec=%lld", module->name,
                 (long long) st.st_mtim.tv_sec,
                 (long long) st.st_mtim.tv_nsec);
 #endif
@@ -1441,13 +1441,13 @@ dm_is_info_copy_uptodate(const char *file_name, const dm_data_info_t *info, bool
         }
         struct timespec now;
         clock_gettime(CLOCK_REALTIME, &now);
-        SR_LOG_DBG("Session copy %s: mtime sec=%lld nsec=%lld\n", info->module->name,
+        SR_LOG_DBG("Session copy %s: mtime sec=%lld nsec=%lld", info->module->name,
                 (long long) info->timestamp.tv_sec,
                 (long long) info->timestamp.tv_nsec);
-        SR_LOG_DBG("Loaded module %s: mtime sec=%lld nsec=%lld\n", info->module->name,
+        SR_LOG_DBG("Loaded module %s: mtime sec=%lld nsec=%lld", info->module->name,
                 (long long) st.st_mtim.tv_sec,
                 (long long) st.st_mtim.tv_nsec);
-        SR_LOG_DBG("Current time: mtime sec=%lld nsec=%lld\n",
+        SR_LOG_DBG("Current time: mtime sec=%lld nsec=%lld",
                 (long long) now.tv_sec,
                 (long long) now.tv_nsec);
         /* check if we should update session copy conditions
@@ -1600,7 +1600,7 @@ dm_commit_prepare_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_con
         i++;
     }
 
-    SR_LOG_DBG("Commit: In the session there are %zu / %zu modified models \n", c_ctx->modif_count, i);
+    SR_LOG_DBG("Commit: In the session there are %zu / %zu modified models", c_ctx->modif_count, i);
 
     if (0 == session->oper_count && 0 != c_ctx->modif_count) {
         SR_LOG_WRN_MSG("No operation logged, however data tree marked as modified");
@@ -1936,7 +1936,7 @@ dm_copy_config(dm_ctx_t *dm_ctx, dm_session_t *session, const struct ly_set *mod
         CHECK_RC_MSG_GOTO(rc, cleanup, "Get data file name failed");
 
         ac_set_user_identity(dm_ctx->ac_ctx, session->user_credentails);
-        fds[opened_files] = open(file_name, O_RDWR);
+        fds[opened_files] = open(file_name, O_RDWR | O_TRUNC);
         ac_unset_user_identity(dm_ctx->ac_ctx);
         if (-1 == fds[opened_files]) {
             SR_LOG_ERR("File %s can not be opened", file_name);

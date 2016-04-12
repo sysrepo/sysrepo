@@ -1477,6 +1477,8 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, s
     }
     subscription->callback.module_change_cb = callback;
 
+    msg_req->request->subscribe_req->event = SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV;
+    msg_req->request->subscribe_req->has_enable_running = true;
     msg_req->request->subscribe_req->enable_running = enable_running;
     msg_req->request->subscribe_req->path = strdup(module_name);
     CHECK_NULL_NOMEM_GOTO(msg_req->request->subscribe_req->path, rc, cleanup);

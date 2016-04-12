@@ -665,7 +665,10 @@ rp_copy_config_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
         return SR_ERR_NOMEM;
     }
 
-    // TODO copy-config in DM
+    /* copy module content in DM */
+    rc = dm_copy_module(rp_ctx->dm_ctx, session->dm_session, msg->request->copy_config_req->module_name,
+            sr_datastore_gpb_to_sr(msg->request->copy_config_req->src_datastore),
+            sr_datastore_gpb_to_sr(msg->request->copy_config_req->dst_datastore));
 
     /* set response code */
     resp->response->result = rc;
@@ -812,6 +815,8 @@ static int
 rp_subscribe_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
 {
     Sr__Msg *resp = NULL;
+    Sr__SubscribeReq *subscribe_req = NULL;
+    struct lys_module *module = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->subscribe_req);
@@ -824,10 +829,30 @@ rp_subscribe_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr
         SR_LOG_ERR_MSG("Allocation of subscribe response failed.");
         return SR_ERR_NOMEM;
     }
+    subscribe_req = msg->request->subscribe_req;
 
     /* subscribe to the notification */
-    rc = np_notification_subscribe(rp_ctx->np_ctx, msg->request->subscribe_req->event, msg->request->subscribe_req->path,
-            msg->request->subscribe_req->destination, msg->request->subscribe_req->subscription_id);
+    rc = np_notification_subscribe(rp_ctx->np_ctx, subscribe_req->event, subscribe_req->path,
+            subscribe_req->destination, subscribe_req->subscription_id);
+
+    if (SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV == subscribe_req->event &&
+            subscribe_req->enable_running) {
+        /* enable the module in running config */
+        bool module_enabled = false;
+        rc = dm_has_enabled_subtree(rp_ctx->dm_ctx, subscribe_req->path, &module, &module_enabled);
+        if (SR_ERR_OK == rc && !module_enabled) {
+            rc = dm_copy_module(rp_ctx->dm_ctx, session->dm_session, subscribe_req->path, SR_DS_STARTUP, SR_DS_RUNNING);
+        }
+        struct lys_node *node = module->data;
+        while (NULL != node) {
+            if ((LYS_CONTAINER | LYS_LIST) & node->nodetype) {
+                char xpath[PATH_MAX] = { 0, };
+                snprintf(xpath, PATH_MAX, "/%s:%s", node->module->name, node->name);
+                rc = rp_dt_enable_xpath(rp_ctx->dm_ctx, session->dm_session, xpath);
+            }
+            node = node->next;
+       }
+    }
 
     /* set response code */
     resp->response->result = rc;

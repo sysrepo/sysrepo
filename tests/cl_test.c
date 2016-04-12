@@ -1006,7 +1006,6 @@ test_module_change_cb(sr_session_ctx_t *session, const char *module_name, void *
 
     rc = sr_get_item(session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &value);
     assert_int_equal(rc, SR_ERR_OK);
-    assert_string_equal(value->data.string_val, "notification_test");
 
     printf("New value for '%s' = '%s'\n", value->xpath, value->data.string_val);
     sr_free_val(value);
@@ -1116,7 +1115,7 @@ cl_copy_config_test(void **state)
     sr_session_ctx_t *session_startup = NULL, *session_running = NULL;
     sr_subscription_ctx_t *subscription = NULL;
     int callback_called = 0;
-    //sr_val_t value = { 0, }, *val = NULL;
+    sr_val_t value = { 0, }, *val = NULL;
     int rc = SR_ERR_OK;
 
     /* start sessions */
@@ -1130,12 +1129,11 @@ cl_copy_config_test(void **state)
                true, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
-    // TODO: uncomment
-//    /* edit config in running */
-//    value.type = SR_STRING_T;
-//    value.data.string_val = "copy_config_test";
-//    rc = sr_set_item(session_running, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &value, SR_EDIT_DEFAULT);
-//    assert_int_equal(rc, SR_ERR_OK);
+    /* edit config in running */
+    value.type = SR_STRING_T;
+    value.data.string_val = "copy_config_test";
+    rc = sr_set_item(session_running, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
 
     /* commit */
     rc = sr_commit(session_running);
@@ -1144,10 +1142,11 @@ cl_copy_config_test(void **state)
     rc = sr_copy_config(session_startup, "example-module", SR_DS_RUNNING, SR_DS_STARTUP);
     assert_int_equal(rc, SR_ERR_OK);
 
-//    /* get-config from startup */
-//    rc = sr_get_item(session_startup, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &val);
-//    assert_int_equal(rc, SR_ERR_OK);
-//    assert_string_equal(val->data.string_val, "copy_config_test");
+    /* get-config from startup */
+    rc = sr_get_item(session_startup, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &val);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_string_equal(val->data.string_val, "copy_config_test");
+    sr_free_val(val);
 
     /* stop the sessions */
     rc = sr_session_stop(session_startup);

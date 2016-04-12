@@ -449,7 +449,7 @@ cl_sm_get_data_session(cl_sm_ctx_t *sm_ctx, sr_subscription_ctx_t *subscription,
             return rc;
         }
         msg_req->request->session_start_req->options = SR__SESSION_FLAGS__SESS_NOTIFICATION;
-        msg_req->request->session_start_req->datastore = SR__DATA_STORE__STARTUP; // TODO change to running
+        msg_req->request->session_start_req->datastore = SR__DATA_STORE__RUNNING;
 
         /* send the request and receive the response */
         rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__SESSION_START);
