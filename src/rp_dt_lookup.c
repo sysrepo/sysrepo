@@ -78,10 +78,10 @@ rp_dt_find_node(struct lyd_node *data_tree, const char *xpath, bool check_enable
 
 int
 rp_dt_find_nodes_with_opts(const dm_ctx_t *dm_ctx, dm_session_t *dm_session, rp_dt_get_items_ctx_t *get_items_ctx, struct lyd_node *data_tree,
-        const char *xpath, size_t offset, size_t limit, struct lyd_node ***nodes, size_t *count)
+        const char *xpath, size_t offset, size_t limit, struct ly_set **nodes)
 {
     CHECK_NULL_ARG5(dm_ctx, dm_session, get_items_ctx, data_tree, xpath);
-    CHECK_NULL_ARG2(nodes, count);
+    CHECK_NULL_ARG(nodes);
 
     int rc = SR_ERR_OK;
     bool cache_hit = false;
@@ -120,7 +120,7 @@ rp_dt_find_nodes_with_opts(const dm_ctx_t *dm_ctx, dm_session_t *dm_session, rp_
     size_t index = cache_hit ? get_items_ctx->offset : 0;
 
     /*allocate nodes*/
-    *nodes = calloc(limit, sizeof(**nodes));
+    *nodes = ly_set_new();
     CHECK_NULL_NOMEM_RETURN(*nodes);
 
     /* selection from matched nodes */
@@ -130,18 +130,23 @@ rp_dt_find_nodes_with_opts(const dm_ctx_t *dm_ctx, dm_session_t *dm_session, rp_
         }
         /* append node to result if it is in chosen range*/
         if (index >= offset) {
-            (*nodes)[cnt++] = get_items_ctx->nodes->set.d[index];
+            if (0 != ly_set_add(*nodes, get_items_ctx->nodes->set.d[index])){
+                SR_LOG_ERR_MSG("Adding to the result nodes failed");
+                ly_set_free(*nodes);
+                *nodes = NULL;
+                return SR_ERR_INTERNAL;
+            }
+            cnt++;
         }
     }
 
     /* mark the index where the processing stopped*/
     get_items_ctx->offset = index;
     if (0 == cnt){
-        free(*nodes);
+        ly_set_free(*nodes);
         *nodes = NULL;
         return SR_ERR_NOT_FOUND;
     } else {
-        *count = cnt;
         return SR_ERR_OK;
     }
 }

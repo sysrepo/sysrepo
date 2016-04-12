@@ -267,30 +267,32 @@ cleanup:
 }
 
 /**
- * @brief Fills the values from the array of nodes.
+ * @brief Fills the values from the array of nodes. The length of the
+ * values array is equal to the count of the nodes in nodes set
  * @param [in] nodes
- * @param [in] count
  * @param [out] values
  * @return Error code (SR_ERR_OK on success)
  */
 static int
-rp_dt_get_values_from_nodes(struct lyd_node **nodes, size_t count, sr_val_t ***values)
+rp_dt_get_values_from_nodes(struct ly_set *nodes, sr_val_t ***values)
 {
     CHECK_NULL_ARG2(nodes, values);
     int rc = SR_ERR_OK;
     sr_val_t **vals = NULL;
-    vals = calloc(count, sizeof(*vals));
+    struct lyd_node *node = NULL;
+    vals = calloc(nodes->number, sizeof(*vals));
     if (NULL == vals) {
         SR_LOG_ERR_MSG("Memory allocation failed");
         return SR_ERR_NOMEM;
     }
 
-    for (size_t i = 0; i < count; i++) {
-        rc = rp_dt_get_value_from_node(nodes[i], &vals[i]);
+    for (size_t i = 0; i < nodes->number; i++) {
+        node = nodes->set.d[i];
+        rc = rp_dt_get_value_from_node(node, &vals[i]);
         if (SR_ERR_OK != rc) {
             const char *name = "";
-            if (NULL != nodes[i] && NULL != nodes[i]->schema && NULL != nodes[i]->schema->name) {
-                name = nodes[i]->schema->name;
+            if (NULL != node && NULL != node->schema && NULL != node->schema->name) {
+                name = node->schema->name;
             }
             SR_LOG_ERR("Getting value from node %s failed", name);
             for (size_t j = 0; j < i; j++) {
@@ -314,7 +316,9 @@ rp_dt_get_value(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char *
 
     rc = rp_dt_find_node(data_tree, xpath, check_enabled, &node);
     if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Node not found for xpath %s", xpath);
+        if (SR_ERR_NOT_FOUND != rc) {
+            SR_LOG_ERR("Find node failed (%d) xpath %s", rc, xpath);
+        }
         return rc;
     }
     rc = rp_dt_get_value_from_node(node, value);
@@ -330,29 +334,23 @@ rp_dt_get_values(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char 
     CHECK_NULL_ARG5(dm_ctx, data_tree, xpath, values, count);
 
     int rc = SR_ERR_OK;
-    struct lyd_node **nodes = NULL;
-    
-    struct ly_set *set = NULL;
-    rc = rp_dt_find_nodes(data_tree, xpath, check_enable, &set);
+
+    struct ly_set *nodes = NULL;
+    rc = rp_dt_find_nodes(data_tree, xpath, check_enable, &nodes);
     if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Get nodes for xpath %s failed", xpath);
+        if (SR_ERR_NOT_FOUND != rc) {
+            SR_LOG_ERR("Get nodes for xpath %s failed (%d)", xpath, rc);
+        }
         return rc;
     }
-    nodes = calloc(set->number, sizeof(*nodes));
-    CHECK_NULL_NOMEM_GOTO(nodes, rc, cleanup);
-    for (size_t i = 0; i < set->number; i++) {
-        nodes[i] = set->set.d[i];
-    }
-    *count = set->number;
-    rc = rp_dt_get_values_from_nodes(nodes, *count, values);
 
+    *count = nodes->number;
+    rc = rp_dt_get_values_from_nodes(nodes, values);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Copying values from nodes failed for xpath '%s'", xpath);
     }
-cleanup:
-        
-    ly_set_free(set);
-    free(nodes);
+
+    ly_set_free(nodes);
     return SR_ERR_OK;
 }
 
@@ -365,7 +363,7 @@ rp_dt_get_value_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char *
     int rc = SR_ERR_INVAL_ARG;
     struct lyd_node *data_tree = NULL;
     char *data_tree_name = NULL;
-    
+
     rc = ac_check_node_permissions(rp_session->ac_session, xpath, AC_OPER_READ);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Access control check failed for xpath '%s'", xpath);
@@ -380,7 +378,9 @@ rp_dt_get_value_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char *
 
     rc = dm_get_datatree(rp_ctx->dm_ctx, rp_session->dm_session, data_tree_name, &data_tree);
     if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Getting data tree failed for xpath '%s'", xpath);
+        if (SR_ERR_NOT_FOUND != rc) {
+            SR_LOG_ERR("Getting data tree failed (%d) for xpath '%s'", rc, xpath);
+        }
         goto cleanup;
     }
 
@@ -419,7 +419,9 @@ rp_dt_get_values_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char 
     }
     rc = dm_get_datatree(rp_ctx->dm_ctx, rp_session->dm_session, data_tree_name, &data_tree);
     if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Getting data tree failed for xpath '%s'", xpath);
+        if (SR_ERR_NOT_FOUND != rc) {
+            SR_LOG_ERR("Getting data tree failed (%d) for xpath '%s'", rc, xpath);
+        }
         goto cleanup;
     }
 
@@ -446,7 +448,7 @@ rp_dt_get_values_wrapper_with_opts(rp_ctx_t *rp_ctx, rp_session_t *rp_session, r
 
     int rc = SR_ERR_INVAL_ARG;
     struct lyd_node *data_tree = NULL;
-    struct lyd_node **nodes = NULL;
+    struct ly_set *nodes = NULL;
     char *data_tree_name = NULL;
 
     rc = sr_copy_first_ns(xpath, &data_tree_name);
@@ -463,27 +465,31 @@ rp_dt_get_values_wrapper_with_opts(rp_ctx_t *rp_ctx, rp_session_t *rp_session, r
 
     rc = dm_get_datatree(rp_ctx->dm_ctx, rp_session->dm_session, data_tree_name, &data_tree);
     if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Getting data tree failed for xpath '%s'", xpath);
+        if (SR_ERR_NOT_FOUND != rc) {
+            SR_LOG_ERR("Getting data tree failed (%d) for xpath '%s'", rc, xpath);
+        }
         goto cleanup;
     }
 
-    rc = rp_dt_find_nodes_with_opts(rp_ctx->dm_ctx, rp_session->dm_session, get_items_ctx, data_tree, xpath, offset, limit, &nodes, count);
+    rc = rp_dt_find_nodes_with_opts(rp_ctx->dm_ctx, rp_session->dm_session, get_items_ctx, data_tree, xpath, offset, limit, &nodes);
     if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Get nodes for xpath %s failed", xpath);
+        if (SR_ERR_NOT_FOUND != rc) {
+            SR_LOG_ERR("Get nodes for xpath %s failed (%d)", xpath, rc);
+        }
         goto cleanup;
     }
+    *count = nodes->number;
 
-    rc = rp_dt_get_values_from_nodes(nodes, *count, values);
+    rc = rp_dt_get_values_from_nodes(nodes, values);
 cleanup:
     if (SR_ERR_NOT_FOUND == rc) {
         rc = rp_dt_validate_node_xpath(rp_ctx->dm_ctx, rp_session->dm_session, xpath, NULL, NULL);
         rc = rc == SR_ERR_OK ? SR_ERR_NOT_FOUND : rc;
     } else if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Copying values from nodes failed for xpath '%s'", xpath);
-        //goto cleanup;
     }
 
-    free(nodes);
+    ly_set_free(nodes);
     free(data_tree_name);
     return rc;
 
