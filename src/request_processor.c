@@ -646,6 +646,42 @@ rp_discard_changes_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *sessi
 }
 
 /**
+ * @brief Processes a discard_changes request.
+ */
+static int
+rp_copy_config_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
+{
+    Sr__Msg *resp = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->copy_config_req);
+
+    SR_LOG_DBG_MSG("Processing copy_config request.");
+
+    /* allocate the response */
+    rc = sr_pb_resp_alloc(SR__OPERATION__COPY_CONFIG, session->id, &resp);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Allocation of copy_config response failed.");
+        return SR_ERR_NOMEM;
+    }
+
+    // TODO copy-config in DM
+
+    /* set response code */
+    resp->response->result = rc;
+
+    rc = rp_resp_fill_errors(resp, session->dm_session);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Copying errors to gpb failed");
+    }
+
+    /* send the response */
+    rc = cm_msg_send(rp_ctx->cm_ctx, resp);
+
+    return rc;
+}
+
+/**
  * @brief Processes a session_data_refresh request.
  */
 static int
@@ -923,6 +959,9 @@ rp_msg_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
                 break;
             case SR__OPERATION__DISCARD_CHANGES:
                 rc = rp_discard_changes_req_process(rp_ctx, session, msg);
+                break;
+            case SR__OPERATION__COPY_CONFIG:
+                rc = rp_copy_config_req_process(rp_ctx, session, msg);
                 break;
             case SR__OPERATION__SESSION_REFRESH:
                 rc = rp_session_refresh_req_process(rp_ctx, session, msg);

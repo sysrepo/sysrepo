@@ -725,6 +725,29 @@ int sr_commit(sr_session_ctx_t *session);
  */
 int sr_discard_changes(sr_session_ctx_t *session);
 
+/**
+ * @brief Replaces an entire configuration datastore  with the contents of
+ * another complete configuration datastore. If the module is specified, limits
+ * the copy operation only to one specified module. If it's not specified,
+ * the operation is performed on all modules that are currently active in the
+ * source datastore.
+ *
+ * If the target datastore exists, it is overwritten. Otherwise, a new one is created.
+ *
+ * @note In the current implementation, running configuration datastore is not
+ * supported as the destination datastore.
+ *
+ * @param[in] session Session context acquired with ::sr_session_start call.
+ * @param[in] module_name If specified, only limits the copy operation only to
+ * one specified module.
+ * @param[in] src_datastore Source datastore.
+ * @param[in] dst_datastore Destination datastore.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_copy_config(sr_session_ctx_t *session, const char *module_name,
+        sr_datastore_t src_datastore, sr_datastore_t dst_datastore);
+
 
 ////////////////////////////////////////////////////////////////////////////////
 // Locking API
@@ -797,23 +820,47 @@ int sr_unlock_module(sr_session_ctx_t *session, const char *module_name);
 // Notification API - !!! EXPERIMENTAL !!!
 ////////////////////////////////////////////////////////////////////////////////
 
+/**
+ * @brief
+ */
 typedef struct sr_subscription_ctx_s sr_subscription_ctx_t;
 
+/**
+ * @brief
+ */
 typedef void (*sr_module_install_cb)(const char *module_name, const char *revision, bool installed, void *private_ctx);
 
+/**
+ * @brief
+ */
 typedef void (*sr_feature_enable_cb)(const char *module_name, const char *feature_name, bool enabled, void *private_ctx);
 
+/**
+ * @brief
+ */
 typedef void (*sr_module_change_cb)(sr_session_ctx_t *session, const char *module_name, void *private_ctx);
 
+/**
+ * @brief
+ */
 int sr_module_install_subscribe(sr_session_ctx_t *session, sr_module_install_cb callback, void *private_ctx,
         sr_subscription_ctx_t **subscription);
 
+/**
+ * @brief
+ */
 int sr_feature_enable_subscribe(sr_session_ctx_t *session, sr_feature_enable_cb callback, void *private_ctx,
         sr_subscription_ctx_t **subscription);
 
+/**
+ * @brief
+ */
 int sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, sr_module_change_cb callback,
-        void *private_ctx, sr_subscription_ctx_t **subscription);
+        void *private_ctx, bool enable_running, sr_subscription_ctx_t **subscription);
 
+/**
+ * @brief
+ */
 int sr_unsubscribe(sr_subscription_ctx_t *subscription);
 
 

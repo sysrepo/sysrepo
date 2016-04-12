@@ -109,7 +109,7 @@ main(int argc, char **argv)
     print_current_config(session);
 
     /* subscribe for changes in running config */
-    rc = sr_module_change_subscribe(session, "ietf-interfaces", module_change_cb, NULL, &subscription);
+    rc = sr_module_change_subscribe(session, "ietf-interfaces", module_change_cb, NULL, true, &subscription);
     if (SR_ERR_OK != rc) {
         goto cleanup;
     }

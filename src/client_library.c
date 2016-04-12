@@ -1160,6 +1160,54 @@ cleanup:
 }
 
 int
+sr_copy_config(sr_session_ctx_t *session, const char *module_name,
+        sr_datastore_t src_datastore, sr_datastore_t dst_datastore)
+{
+    Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG2(session, session->conn_ctx);
+
+    cl_session_clear_errors(session);
+
+    /* prepare copy_config message */
+    rc = sr_pb_req_alloc(SR__OPERATION__COPY_CONFIG, session->id, &msg_req);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Cannot allocate copy_config message.");
+        goto cleanup;
+    }
+
+    /* set the message content */
+    msg_req->request->copy_config_req->src_datastore = sr_datastore_sr_to_gpb(src_datastore);
+    msg_req->request->copy_config_req->dst_datastore = sr_datastore_sr_to_gpb(dst_datastore);
+    if (NULL != module_name) {
+        msg_req->request->copy_config_req->module_name = strdup(module_name);
+        CHECK_NULL_NOMEM_GOTO(msg_req->request->copy_config_req->module_name, rc, cleanup);
+    }
+
+    /* send the request and receive the response */
+    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__COPY_CONFIG);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Error by processing of copy_config request.");
+        goto cleanup;
+    }
+
+    sr__msg__free_unpacked(msg_req, NULL);
+    sr__msg__free_unpacked(msg_resp, NULL);
+
+    return cl_session_return(session, SR_ERR_OK);
+
+cleanup:
+    if (NULL != msg_req) {
+        sr__msg__free_unpacked(msg_req, NULL);
+    }
+    if (NULL != msg_resp) {
+        sr__msg__free_unpacked(msg_resp, NULL);
+    }
+    return cl_session_return(session, rc);
+}
+
+int
 sr_lock_datastore(sr_session_ctx_t *session)
 {
     return sr_lock_module(session, NULL);
@@ -1410,7 +1458,7 @@ cleanup:
 
 int
 sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, sr_module_change_cb callback,
-        void *private_ctx, sr_subscription_ctx_t **subscription_p)
+        void *private_ctx, bool enable_running, sr_subscription_ctx_t **subscription_p)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
     sr_subscription_ctx_t *subscription = NULL;
@@ -1429,6 +1477,7 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, s
     }
     subscription->callback.module_change_cb = callback;
 
+    msg_req->request->subscribe_req->enable_running = enable_running;
     msg_req->request->subscribe_req->path = strdup(module_name);
     CHECK_NULL_NOMEM_GOTO(msg_req->request->subscribe_req->path, rc, cleanup);
 

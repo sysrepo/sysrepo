@@ -586,23 +586,20 @@ sr_pb_req_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__Ms
     Sr__Msg *msg = NULL;
     Sr__Request *req = NULL;
     ProtobufCMessage *sub_msg = NULL;
+    int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG(msg_p);
 
     /* initialize Sr__Msg */
     msg = calloc(1, sizeof(*msg));
-    if (NULL == msg) {
-        goto nomem;
-    }
+    CHECK_NULL_NOMEM_GOTO(msg, rc, error);
     sr__msg__init(msg);
     msg->type = SR__MSG__MSG_TYPE__REQUEST;
     msg->session_id = session_id;
 
     /* initialize Sr__Resp */
     req = calloc(1, sizeof(*req));
-    if (NULL == req) {
-        goto nomem;
-    }
+    CHECK_NULL_NOMEM_GOTO(req, rc, error);
     sr__request__init(req);
     msg->request = req;
     req->operation = operation;
@@ -611,153 +608,121 @@ sr_pb_req_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__Ms
     switch (operation) {
         case SR__OPERATION__SESSION_START:
             sub_msg = calloc(1, sizeof(Sr__SessionStartReq));
-            if (NULL == sub_msg) {
-                goto nomem;
-            }
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__session_start_req__init((Sr__SessionStartReq*)sub_msg);
             req->session_start_req = (Sr__SessionStartReq*)sub_msg;
             break;
         case SR__OPERATION__SESSION_STOP:
             sub_msg = calloc(1, sizeof(Sr__SessionStopReq));
-            if (NULL == sub_msg) {
-                goto nomem;
-            }
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__session_stop_req__init((Sr__SessionStopReq*)sub_msg);
             req->session_stop_req = (Sr__SessionStopReq*)sub_msg;
             break;
         case SR__OPERATION__SESSION_REFRESH:
             sub_msg = calloc(1, sizeof(Sr__SessionRefreshReq));
-            if (NULL == sub_msg) {
-                goto nomem;
-            }
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__session_refresh_req__init((Sr__SessionRefreshReq*)sub_msg);
             req->session_refresh_req = (Sr__SessionRefreshReq*)sub_msg;
             break;
         case SR__OPERATION__LIST_SCHEMAS:
             sub_msg = calloc(1, sizeof(Sr__ListSchemasReq));
-            if (NULL == sub_msg) {
-                goto nomem;
-            }
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__list_schemas_req__init((Sr__ListSchemasReq*)sub_msg);
             req->list_schemas_req = (Sr__ListSchemasReq*)sub_msg;
             break;
         case SR__OPERATION__GET_SCHEMA:
             sub_msg = calloc(1, sizeof(Sr__GetSchemaReq));
-            if (NULL == sub_msg) {
-                goto nomem;
-            }
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__get_schema_req__init((Sr__GetSchemaReq*)sub_msg);
             req->get_schema_req = (Sr__GetSchemaReq*)sub_msg;
             break;
         case SR__OPERATION__FEATURE_ENABLE:
             sub_msg = calloc(1, sizeof(Sr__FeatureEnableReq));
-            if (NULL == sub_msg) {
-                goto nomem;
-            }
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__feature_enable_req__init((Sr__FeatureEnableReq*)sub_msg);
             req->feature_enable_req = (Sr__FeatureEnableReq*)sub_msg;
             break;
         case SR__OPERATION__MODULE_INSTALL:
             sub_msg = calloc(1, sizeof(Sr__ModuleInstallReq));
-            if (NULL == sub_msg) {
-                goto nomem;
-            }
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__module_install_req__init((Sr__ModuleInstallReq*)sub_msg);
             req->module_install_req = (Sr__ModuleInstallReq*)sub_msg;
             break;
         case SR__OPERATION__GET_ITEM:
             sub_msg = calloc(1, sizeof(Sr__GetItemReq));
-            if (NULL == sub_msg) {
-                goto nomem;
-            }
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__get_item_req__init((Sr__GetItemReq*)sub_msg);
             req->get_item_req = (Sr__GetItemReq*)sub_msg;
             break;
         case SR__OPERATION__GET_ITEMS:
             sub_msg = calloc(1, sizeof(Sr__GetItemsReq));
-            if (NULL == sub_msg) {
-                goto nomem;
-            }
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__get_items_req__init((Sr__GetItemsReq*)sub_msg);
             req->get_items_req = (Sr__GetItemsReq*)sub_msg;
             break;
         case SR__OPERATION__SET_ITEM:
             sub_msg = calloc(1, sizeof(Sr__SetItemReq));
-            if (NULL == sub_msg) {
-                goto nomem;
-            }
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__set_item_req__init((Sr__SetItemReq*)sub_msg);
             req->set_item_req = (Sr__SetItemReq*)sub_msg;
             break;
         case SR__OPERATION__DELETE_ITEM:
             sub_msg = calloc(1, sizeof(Sr__DeleteItemReq));
-            if (NULL == sub_msg) {
-                goto nomem;
-            }
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__delete_item_req__init((Sr__DeleteItemReq*)sub_msg);
             req->delete_item_req = (Sr__DeleteItemReq*)sub_msg;
             break;
         case SR__OPERATION__MOVE_ITEM:
             sub_msg = calloc(1, sizeof(Sr__MoveItemReq));
-            if (NULL == sub_msg) {
-                goto nomem;
-            }
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__move_item_req__init((Sr__MoveItemReq*)sub_msg);
             req->move_item_req = (Sr__MoveItemReq*)sub_msg;
             break;
         case SR__OPERATION__VALIDATE:
             sub_msg = calloc(1, sizeof(Sr__ValidateReq));
-            if (NULL == sub_msg) {
-                goto nomem;
-            }
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__validate_req__init((Sr__ValidateReq*)sub_msg);
             req->validate_req = (Sr__ValidateReq*)sub_msg;
             break;
         case SR__OPERATION__COMMIT:
             sub_msg = calloc(1, sizeof(Sr__CommitReq));
-            if (NULL == sub_msg) {
-                goto nomem;
-            }
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__commit_req__init((Sr__CommitReq*)sub_msg);
             req->commit_req = (Sr__CommitReq*)sub_msg;
             break;
         case SR__OPERATION__DISCARD_CHANGES:
             sub_msg = calloc(1, sizeof(Sr__DiscardChangesReq));
-            if (NULL == sub_msg) {
-                goto nomem;
-            }
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__discard_changes_req__init((Sr__DiscardChangesReq*)sub_msg);
             req->discard_changes_req = (Sr__DiscardChangesReq*)sub_msg;
             break;
+        case SR__OPERATION__COPY_CONFIG:
+            sub_msg = calloc(1, sizeof(Sr__CopyConfigReq));
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
+            sr__copy_config_req__init((Sr__CopyConfigReq*)sub_msg);
+            req->copy_config_req = (Sr__CopyConfigReq*)sub_msg;
+            break;
         case SR__OPERATION__LOCK:
             sub_msg = calloc(1, sizeof(Sr__LockReq));
-            if (NULL == sub_msg) {
-                goto nomem;
-            }
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__lock_req__init((Sr__LockReq*)sub_msg);
             req->lock_req = (Sr__LockReq*)sub_msg;
             break;
         case SR__OPERATION__UNLOCK:
             sub_msg = calloc(1, sizeof(Sr__UnlockReq));
-            if (NULL == sub_msg) {
-                goto nomem;
-            }
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__unlock_req__init((Sr__UnlockReq*)sub_msg);
             req->unlock_req = (Sr__UnlockReq*)sub_msg;
             break;
         case SR__OPERATION__SUBSCRIBE:
             sub_msg = calloc(1, sizeof(Sr__SubscribeReq));
-            if (NULL == sub_msg) {
-                goto nomem;
-            }
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__subscribe_req__init((Sr__SubscribeReq*)sub_msg);
             req->subscribe_req = (Sr__SubscribeReq*)sub_msg;
             break;
         case SR__OPERATION__UNSUBSCRIBE:
             sub_msg = calloc(1, sizeof(Sr__UnsubscribeReq));
-            if (NULL == sub_msg) {
-                goto nomem;
-            }
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__unsubscribe_req__init((Sr__UnsubscribeReq*)sub_msg);
             req->unsubscribe_req = (Sr__UnsubscribeReq*)sub_msg;
             break;
@@ -768,12 +733,11 @@ sr_pb_req_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__Ms
     *msg_p = msg;
     return SR_ERR_OK;
 
-nomem:
-    SR_LOG_ERR_MSG("Cannot allocate PB message - not enough memory.");
+error:
     if (NULL != msg) {
         sr__msg__free_unpacked(msg, NULL);
     }
-    return SR_ERR_NOMEM;
+    return rc;
 }
 
 int
@@ -782,22 +746,20 @@ sr_pb_resp_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__M
     Sr__Msg *msg = NULL;
     Sr__Response *resp = NULL;
     ProtobufCMessage *sub_msg = NULL;
+    int rc = SR_ERR_OK;
+
     CHECK_NULL_ARG(msg_p);
 
     /* initialize Sr__Msg */
     msg = calloc(1, sizeof(*msg));
-    if (NULL == msg) {
-        goto nomem;
-    }
+    CHECK_NULL_NOMEM_GOTO(msg, rc, error);
     sr__msg__init(msg);
     msg->type = SR__MSG__MSG_TYPE__RESPONSE;
     msg->session_id = session_id;
 
     /* initialize Sr__Resp */
     resp = calloc(1, sizeof(*resp));
-    if (NULL == resp) {
-        goto nomem;
-    }
+    CHECK_NULL_NOMEM_GOTO(resp, rc, error);
     sr__response__init(resp);
     msg->response = resp;
     resp->operation = operation;
@@ -807,153 +769,121 @@ sr_pb_resp_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__M
     switch (operation) {
         case SR__OPERATION__SESSION_START:
             sub_msg = calloc(1, sizeof(Sr__SessionStartResp));
-            if (NULL == sub_msg) {
-                goto nomem;
-            }
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__session_start_resp__init((Sr__SessionStartResp*)sub_msg);
             resp->session_start_resp = (Sr__SessionStartResp*)sub_msg;
             break;
         case SR__OPERATION__SESSION_STOP:
             sub_msg = calloc(1, sizeof(Sr__SessionStopResp));
-            if (NULL == sub_msg) {
-                goto nomem;
-            }
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__session_stop_resp__init((Sr__SessionStopResp*)sub_msg);
             resp->session_stop_resp = (Sr__SessionStopResp*)sub_msg;
             break;
         case SR__OPERATION__SESSION_REFRESH:
            sub_msg = calloc(1, sizeof(Sr__SessionRefreshResp));
-           if (NULL == sub_msg) {
-               goto nomem;
-           }
+           CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
            sr__session_refresh_resp__init((Sr__SessionRefreshResp*)sub_msg);
            resp->session_refresh_resp = (Sr__SessionRefreshResp*)sub_msg;
            break;
         case SR__OPERATION__LIST_SCHEMAS:
             sub_msg = calloc(1, sizeof(Sr__ListSchemasResp));
-            if (NULL == sub_msg) {
-                goto nomem;
-            }
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__list_schemas_resp__init((Sr__ListSchemasResp*)sub_msg);
             resp->list_schemas_resp = (Sr__ListSchemasResp*)sub_msg;
             break;
         case SR__OPERATION__GET_SCHEMA:
             sub_msg = calloc(1, sizeof(Sr__GetSchemaResp));
-            if (NULL == sub_msg) {
-                goto nomem;
-            }
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__get_schema_resp__init((Sr__GetSchemaResp*)sub_msg);
             resp->get_schema_resp = (Sr__GetSchemaResp*)sub_msg;
             break;
         case SR__OPERATION__GET_ITEM:
             sub_msg = calloc(1, sizeof(Sr__GetItemResp));
-            if (NULL == sub_msg) {
-                goto nomem;
-            }
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__get_item_resp__init((Sr__GetItemResp*)sub_msg);
             resp->get_item_resp = (Sr__GetItemResp*)sub_msg;
             break;
         case SR__OPERATION__FEATURE_ENABLE:
             sub_msg = calloc(1, sizeof(Sr__FeatureEnableResp));
-            if (NULL == sub_msg) {
-                goto nomem;
-            }
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__feature_enable_resp__init((Sr__FeatureEnableResp*)sub_msg);
             resp->feature_enable_resp = (Sr__FeatureEnableResp*)sub_msg;
             break;
         case SR__OPERATION__MODULE_INSTALL:
             sub_msg = calloc(1, sizeof(Sr__ModuleInstallResp));
-            if (NULL == sub_msg) {
-                goto nomem;
-            }
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__module_install_resp__init((Sr__ModuleInstallResp*)sub_msg);
             resp->module_install_resp = (Sr__ModuleInstallResp*)sub_msg;
             break;
         case SR__OPERATION__GET_ITEMS:
             sub_msg = calloc(1, sizeof(Sr__GetItemsResp));
-            if (NULL == sub_msg) {
-                goto nomem;
-            }
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__get_items_resp__init((Sr__GetItemsResp*)sub_msg);
             resp->get_items_resp = (Sr__GetItemsResp*)sub_msg;
             break;
         case SR__OPERATION__SET_ITEM:
             sub_msg = calloc(1, sizeof(Sr__SetItemResp));
-            if (NULL == sub_msg) {
-                goto nomem;
-            }
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__set_item_resp__init((Sr__SetItemResp*)sub_msg);
             resp->set_item_resp = (Sr__SetItemResp*)sub_msg;
             break;
         case SR__OPERATION__DELETE_ITEM:
             sub_msg = calloc(1, sizeof(Sr__DeleteItemResp));
-            if (NULL == sub_msg) {
-                goto nomem;
-            }
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__delete_item_resp__init((Sr__DeleteItemResp*)sub_msg);
             resp->delete_item_resp = (Sr__DeleteItemResp*)sub_msg;
             break;
         case SR__OPERATION__MOVE_ITEM:
             sub_msg = calloc(1, sizeof(Sr__MoveItemResp));
-            if (NULL == sub_msg) {
-                goto nomem;
-            }
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__move_item_resp__init((Sr__MoveItemResp*)sub_msg);
             resp->move_item_resp = (Sr__MoveItemResp*)sub_msg;
             break;
         case SR__OPERATION__VALIDATE:
             sub_msg = calloc(1, sizeof(Sr__ValidateResp));
-            if (NULL == sub_msg) {
-                goto nomem;
-            }
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__validate_resp__init((Sr__ValidateResp*)sub_msg);
             resp->validate_resp = (Sr__ValidateResp*)sub_msg;
             break;
         case SR__OPERATION__COMMIT:
             sub_msg = calloc(1, sizeof(Sr__CommitResp));
-            if (NULL == sub_msg) {
-                goto nomem;
-            }
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__commit_resp__init((Sr__CommitResp*)sub_msg);
             resp->commit_resp = (Sr__CommitResp*)sub_msg;
             break;
         case SR__OPERATION__DISCARD_CHANGES:
             sub_msg = calloc(1, sizeof(Sr__DiscardChangesResp));
-            if (NULL == sub_msg) {
-                goto nomem;
-            }
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__discard_changes_resp__init((Sr__DiscardChangesResp*)sub_msg);
             resp->discard_changes_resp = (Sr__DiscardChangesResp*)sub_msg;
             break;
+        case SR__OPERATION__COPY_CONFIG:
+            sub_msg = calloc(1, sizeof(Sr__CopyConfigResp));
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
+            sr__copy_config_resp__init((Sr__CopyConfigResp*)sub_msg);
+            resp->copy_config_resp = (Sr__CopyConfigResp*)sub_msg;
+            break;
         case SR__OPERATION__LOCK:
             sub_msg = calloc(1, sizeof(Sr__LockResp));
-            if (NULL == sub_msg) {
-                goto nomem;
-            }
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__lock_resp__init((Sr__LockResp*)sub_msg);
             resp->lock_resp = (Sr__LockResp*)sub_msg;
             break;
         case SR__OPERATION__UNLOCK:
             sub_msg = calloc(1, sizeof(Sr__UnlockResp));
-            if (NULL == sub_msg) {
-                goto nomem;
-            }
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__unlock_resp__init((Sr__UnlockResp*)sub_msg);
             resp->unlock_resp = (Sr__UnlockResp*)sub_msg;
             break;
         case SR__OPERATION__SUBSCRIBE:
             sub_msg = calloc(1, sizeof(Sr__SubscribeResp));
-            if (NULL == sub_msg) {
-                goto nomem;
-            }
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__subscribe_resp__init((Sr__SubscribeResp*)sub_msg);
             resp->subscribe_resp = (Sr__SubscribeResp*)sub_msg;
             break;
         case SR__OPERATION__UNSUBSCRIBE:
             sub_msg = calloc(1, sizeof(Sr__UnsubscribeResp));
-            if (NULL == sub_msg) {
-                goto nomem;
-            }
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__unsubscribe_resp__init((Sr__UnsubscribeResp*)sub_msg);
             resp->unsubscribe_resp = (Sr__UnsubscribeResp*)sub_msg;
             break;
@@ -964,12 +894,11 @@ sr_pb_resp_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__M
     *msg_p = msg;
     return SR_ERR_OK;
 
-nomem:
-    SR_LOG_ERR_MSG("Cannot allocate PB message - not enough memory.");
+error:
     if (NULL != msg) {
         sr__msg__free_unpacked(msg, NULL);
     }
-    return SR_ERR_NOMEM;
+    return rc;
 }
 
 int
@@ -978,23 +907,20 @@ sr_pb_notif_alloc(const Sr__NotificationEvent event, const char *destination, co
     Sr__Msg *msg = NULL;
     Sr__Notification *notif = NULL;
     ProtobufCMessage *sub_msg = NULL;
+    int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG2(destination, msg_p);
 
     /* initialize Sr__Msg */
     msg = calloc(1, sizeof(*msg));
-    if (NULL == msg) {
-        goto nomem;
-    }
+    CHECK_NULL_NOMEM_GOTO(msg, rc, error);
     sr__msg__init(msg);
     msg->type = SR__MSG__MSG_TYPE__NOTIFICATION;
     msg->session_id = 0;
 
     /* initialize Sr__Notification */
     notif = calloc(1, sizeof(*notif));
-    if (NULL == notif) {
-        goto nomem;
-    }
+    CHECK_NULL_NOMEM_GOTO(notif, rc, error);
     sr__notification__init(notif);
     msg->notification = notif;
 
@@ -1002,33 +928,25 @@ sr_pb_notif_alloc(const Sr__NotificationEvent event, const char *destination, co
     notif->subscription_id = subscription_id;
 
     notif->destination_address = strdup(destination);
-    if (NULL == notif->destination_address) {
-        goto nomem;
-    }
+    CHECK_NULL_NOMEM_GOTO(notif->destination_address, rc, error);
 
     /* initialize sub-message */
     switch (event) {
         case SR__NOTIFICATION_EVENT__MODULE_INSTALL_EV:
             sub_msg = calloc(1, sizeof(Sr__ModuleInstallNotification));
-            if (NULL == sub_msg) {
-                goto nomem;
-            }
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__module_install_notification__init((Sr__ModuleInstallNotification*)sub_msg);
             notif->module_install_notif = (Sr__ModuleInstallNotification*)sub_msg;
             break;
         case SR__NOTIFICATION_EVENT__FEATURE_ENABLE_EV:
             sub_msg = calloc(1, sizeof(Sr__FeatureEnableNotification));
-            if (NULL == sub_msg) {
-                goto nomem;
-            }
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__feature_enable_notification__init((Sr__FeatureEnableNotification*)sub_msg);
             notif->feature_enable_notif = (Sr__FeatureEnableNotification*)sub_msg;
             break;
         case SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV:
             sub_msg = calloc(1, sizeof(Sr__ModuleChangeNotification));
-            if (NULL == sub_msg) {
-                goto nomem;
-            }
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__module_change_notification__init((Sr__ModuleChangeNotification*)sub_msg);
             notif->module_change_notif = (Sr__ModuleChangeNotification*)sub_msg;
             break;
@@ -1039,12 +957,11 @@ sr_pb_notif_alloc(const Sr__NotificationEvent event, const char *destination, co
     *msg_p = msg;
     return SR_ERR_OK;
 
-nomem:
-    SR_LOG_ERR_MSG("Cannot allocate PB message - not enough memory.");
+error:
     if (NULL != msg) {
         sr__msg__free_unpacked(msg, NULL);
     }
-    return SR_ERR_NOMEM;
+    return rc;
 }
 
 int
@@ -1119,6 +1036,10 @@ sr_pb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__Op
                 break;
             case SR__OPERATION__DISCARD_CHANGES:
                 if (NULL == msg->request->discard_changes_req)
+                    return SR_ERR_MALFORMED_MSG;
+                break;
+            case SR__OPERATION__COPY_CONFIG:
+                if (NULL == msg->request->copy_config_req)
                     return SR_ERR_MALFORMED_MSG;
                 break;
             case SR__OPERATION__LOCK:
@@ -1207,6 +1128,10 @@ sr_pb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__Op
                 break;
             case SR__OPERATION__DISCARD_CHANGES:
                 if (NULL == msg->response->discard_changes_resp)
+                    return SR_ERR_MALFORMED_MSG;
+                break;
+            case SR__OPERATION__COPY_CONFIG:
+                if (NULL == msg->response->copy_config_resp)
                     return SR_ERR_MALFORMED_MSG;
                 break;
             case SR__OPERATION__LOCK:

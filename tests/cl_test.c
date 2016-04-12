@@ -1034,7 +1034,8 @@ cl_notification_test(void **state)
     rc = sr_feature_enable_subscribe(session, test_feature_enable_cb, &callback_called, &subscription2);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = sr_module_change_subscribe(session, "example-module", test_module_change_cb, &callback_called, &subscription3);
+    rc = sr_module_change_subscribe(session, "example-module", test_module_change_cb, &callback_called,
+            true, &subscription3);
     assert_int_equal(rc, SR_ERR_OK);
 
     rc = sr_module_install(session, "example-module", NULL, true);
