@@ -421,10 +421,10 @@ void get_values_opts_test(void **state) {
     get_items_ctx.offset = 0;
 
 #define EX_CONT "/example-module:container//*"
-    struct lyd_node **nodes = NULL;
-    rc = rp_dt_find_nodes_with_opts(ctx->dm_ctx, ses_ctx->dm_session, &get_items_ctx, root, EX_CONT, 0, 3, &nodes, &count);
-
-    free(nodes);
+    struct ly_set *nodes = NULL;
+    rc = rp_dt_find_nodes_with_opts(ctx->dm_ctx, ses_ctx->dm_session, &get_items_ctx, root, EX_CONT, 0, 3, &nodes);
+    assert_int_equal(rc, SR_ERR_OK);
+    ly_set_free(nodes);
 
     rc = rp_dt_get_values_wrapper_with_opts(ctx, ses_ctx, &get_items_ctx, EX_CONT, 0, 1, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
