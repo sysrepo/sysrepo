@@ -99,6 +99,8 @@ sr_operation_name(Sr__Operation operation)
         return "commit";
     case SR__OPERATION__DISCARD_CHANGES:
         return "discard-changes";
+    case SR__OPERATION__COPY_CONFIG:
+        return "copy-config";
     case SR__OPERATION__LOCK:
         return "lock";
     case SR__OPERATION__UNLOCK:

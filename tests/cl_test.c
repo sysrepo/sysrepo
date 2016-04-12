@@ -1107,6 +1107,55 @@ cl_notification_test(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 }
 
+static void
+cl_copy_config_test(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+
+    sr_session_ctx_t *session_startup = NULL, *session_running = NULL;
+    sr_subscription_ctx_t *subscription = NULL;
+    int callback_called = 0;
+    //sr_val_t value = { 0, }, *val = NULL;
+    int rc = SR_ERR_OK;
+
+    /* start sessions */
+    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &session_startup);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &session_running);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* enable running DS for example-module */
+    rc = sr_module_change_subscribe(session_startup, "example-module", test_module_change_cb, &callback_called,
+               true, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    // TODO: uncomment
+//    /* edit config in running */
+//    value.type = SR_STRING_T;
+//    value.data.string_val = "copy_config_test";
+//    rc = sr_set_item(session_running, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &value, SR_EDIT_DEFAULT);
+//    assert_int_equal(rc, SR_ERR_OK);
+
+    /* commit */
+    rc = sr_commit(session_running);
+
+    /* copy-config */
+    rc = sr_copy_config(session_startup, "example-module", SR_DS_RUNNING, SR_DS_STARTUP);
+    assert_int_equal(rc, SR_ERR_OK);
+
+//    /* get-config from startup */
+//    rc = sr_get_item(session_startup, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &val);
+//    assert_int_equal(rc, SR_ERR_OK);
+//    assert_string_equal(val->data.string_val, "copy_config_test");
+
+    /* stop the sessions */
+    rc = sr_session_stop(session_startup);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_session_stop(session_running);
+    assert_int_equal(rc, SR_ERR_OK);
+}
+
 int
 main()
 {
@@ -1127,6 +1176,7 @@ main()
             cmocka_unit_test_setup_teardown(cl_get_error_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_refresh_session, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_notification_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_copy_config_test, sysrepo_setup, sysrepo_teardown),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);
