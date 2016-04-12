@@ -378,7 +378,7 @@ dm_copy_module_test(void **state)
 {
    int rc = SR_ERR_OK;
    dm_ctx_t *ctx = NULL;
-   dm_session_t *sessionA = NULL, *sessionB = NULL;
+   dm_session_t *sessionA = NULL;
 
    rc = dm_init(NULL, NULL, NULL, TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx);
    assert_int_equal(SR_ERR_OK, rc);
@@ -395,11 +395,7 @@ dm_copy_module_test(void **state)
    rc = dm_copy_all_models(ctx, sessionA, SR_DS_STARTUP, SR_DS_RUNNING);
    assert_int_equal(SR_ERR_OK, rc);
 
-   rc = dm_session_start(ctx, NULL, SR_DS_RUNNING, &sessionB);
-   assert_int_equal(SR_ERR_OK, rc);
-
    dm_session_stop(ctx, sessionA);
-   dm_session_stop(ctx, sessionB);
    dm_cleanup(ctx);
 }
 

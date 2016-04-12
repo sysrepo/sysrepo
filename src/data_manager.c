@@ -1951,10 +1951,7 @@ dm_has_enabled_subtree(dm_ctx_t *ctx, const char *module_name, struct lys_module
    int rc = SR_ERR_OK;
    const struct lys_module *mod = NULL;
    rc = dm_get_module(ctx, module_name, NULL, &mod);
-   if (SR_ERR_OK != rc) {
-      SR_LOG_ERR_MSG("Get module failed");
-      return rc;
-   }
+   CHECK_RC_MSG_RETURN(rc, "Get module failed");
 
    *res = false;
    struct lys_node *node = mod->data;
