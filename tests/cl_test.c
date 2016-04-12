@@ -1154,6 +1154,9 @@ cl_copy_config_test(void **state)
     assert_int_equal(rc, SR_ERR_OK);
     rc = sr_session_stop(session_running);
     assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_unsubscribe(subscription);
+    assert_int_equal(rc, SR_ERR_OK);
 }
 
 int
