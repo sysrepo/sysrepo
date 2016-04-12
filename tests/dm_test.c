@@ -29,6 +29,8 @@
 #include "test_data.h"
 #include "sr_common.h"
 #include "test_module_helper.h"
+#include "rp_dt_lookup.h"
+#include "rp_dt_xpath.h"
 
 int setup(void **state)
 {
@@ -371,6 +373,32 @@ dm_locking_test(void **state)
    dm_cleanup(ctx);
 }
 
+void
+dm_copy_module_test(void **state)
+{
+   int rc = SR_ERR_OK;
+   dm_ctx_t *ctx = NULL;
+   dm_session_t *sessionA = NULL;
+
+   rc = dm_init(NULL, NULL, NULL, TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx);
+   assert_int_equal(SR_ERR_OK, rc);
+
+   rc = dm_session_start(ctx, NULL, SR_DS_STARTUP, &sessionA);
+   assert_int_equal(SR_ERR_OK, rc);
+
+   rc = dm_copy_module(ctx, sessionA, "example-module", SR_DS_STARTUP, SR_DS_RUNNING);
+   assert_int_equal(SR_ERR_OK, rc);
+
+   rc = rp_dt_enable_xpath(ctx, sessionA, "/test-module:main");
+   assert_int_equal(SR_ERR_OK, rc);
+
+   rc = dm_copy_all_models(ctx, sessionA, SR_DS_STARTUP, SR_DS_RUNNING);
+   assert_int_equal(SR_ERR_OK, rc);
+
+   dm_session_stop(ctx, sessionA);
+   dm_cleanup(ctx);
+}
+
 int main(){
     sr_log_stderr(SR_LL_DBG);
 
@@ -384,6 +412,7 @@ int main(){
             cmocka_unit_test(dm_get_schema_negative_test),
             cmocka_unit_test(dm_add_operation_test),
             cmocka_unit_test(dm_locking_test),
+            cmocka_unit_test(dm_copy_module_test),
     };
     return cmocka_run_group_tests(tests, setup, NULL);
 }
