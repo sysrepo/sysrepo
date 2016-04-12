@@ -1963,3 +1963,184 @@ dm_uninstall_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revis
     pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
     return rc;
 }
+
+static int
+dm_copy_config(dm_ctx_t *dm_ctx, dm_session_t *session, const struct ly_set *modules, sr_datastore_t src, sr_datastore_t dst)
+{
+    CHECK_NULL_ARG2(dm_ctx, session);
+    int rc = SR_ERR_OK;
+    dm_session_t *src_session = NULL;
+    dm_session_t *dst_session = NULL;
+    struct lys_module *module = NULL;
+    dm_data_info_t **src_infos = NULL;
+    size_t opened_files = 0;
+    char *file_name = NULL;
+    int *fds = NULL;
+
+    if (src == dst || 0 == modules->number){
+        return rc;
+    }
+
+    src_infos = calloc(modules->number, sizeof(*src_infos));
+    CHECK_NULL_NOMEM_GOTO(src_infos, rc, cleanup);
+    fds = calloc(modules->number, sizeof(*fds));
+    CHECK_NULL_NOMEM_GOTO(fds, rc, cleanup);
+
+    /* create source session */
+    rc = dm_session_start(dm_ctx, session->user_credentails, src, &src_session);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Creating of temporary session failed");
+
+    /* create destination session */
+    rc = dm_session_start(dm_ctx, session->user_credentails, dst, &dst_session);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Creating of temporary session failed");
+
+    for (size_t i = 0; i < modules->number; i++){
+        module = (struct lys_module *) modules->set.g[i];
+        /* lock module in source ds */
+        rc = dm_lock_module(dm_ctx, src_session, (char *) module->name);
+        if (SR_ERR_LOCKED == rc && src == session->datastore) {
+            /* check if the lock is hold by session that issued copy-config */
+            rc = dm_lock_module(dm_ctx, session, (char *) module->name);
+        }
+        CHECK_RC_LOG_GOTO(rc, cleanup, "Module %s can not be locked in source datastore", module->name);
+
+        /* lock module in destination */
+        rc = dm_lock_module(dm_ctx, dst_session, (char *) module->name);
+        if (SR_ERR_LOCKED == rc && dst == session->datastore) {
+            /* check if the lock is hold by session that issued copy-config */
+            rc = dm_lock_module(dm_ctx, session, (char *) module->name);
+        }
+        CHECK_RC_LOG_GOTO(rc, cleanup, "Module %s can not be locked in destination datastore", module->name);
+
+        /* load data tree to be copied*/
+        rc = dm_get_data_info(dm_ctx, src_session, module->name, &(src_infos[i]));
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Get data info failed");
+
+        /* create data file name */
+        rc = sr_get_data_file_name(dm_ctx->data_search_dir, module->name, dst_session->datastore, &file_name);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Get data file name failed");
+
+        ac_set_user_identity(dm_ctx->ac_ctx, session->user_credentails);
+        fds[opened_files] = open(file_name, O_RDWR);
+        ac_unset_user_identity(dm_ctx->ac_ctx);
+        if (-1 == fds[opened_files]) {
+            SR_LOG_ERR("File %s can not be opened", file_name);
+            free(file_name);
+            goto cleanup;
+        }
+        opened_files++;
+        free(file_name);
+    }
+
+    for (size_t i = 0; i < modules->number; i++) {
+        /* write dest file*/
+        if (0 != lyd_print_fd(fds[i], src_infos[i]->node, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT)){
+            SR_LOG_ERR("Copy of module %s failed", module->name);
+            rc = SR_ERR_INTERNAL;
+        }
+    }
+
+cleanup:
+    dm_session_stop(dm_ctx, src_session);
+    dm_session_stop(dm_ctx, dst_session);
+    for (size_t i = 0; i < opened_files; i++){
+        close(fds[i]);
+    }
+    free(fds);
+    free(src_infos);
+    return rc;
+}
+
+int
+dm_has_enabled_subtree(dm_ctx_t *ctx, const char *module_name, struct lys_module **module, bool *res)
+{
+   CHECK_NULL_ARG3(ctx, module_name, res);
+   int rc = SR_ERR_OK;
+   const struct lys_module *mod = NULL;
+   rc = dm_get_module(ctx, module_name, NULL, &mod);
+   if (SR_ERR_OK != rc) {
+      SR_LOG_ERR_MSG("Get module failed");
+      return rc;
+   }
+
+   *res = false;
+   struct lys_node *node = mod->data;
+   while (NULL != node) {
+       if (dm_is_enabled_check_recursively(node)){
+           *res = true;
+           break;
+       }
+       node = node->next;
+   }
+   if (NULL != module) {
+       *module = (struct lys_module *) mod;
+   }
+
+   return rc;
+}
+
+int
+dm_copy_module(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module_name, sr_datastore_t src, sr_datastore_t dst)
+{
+    CHECK_NULL_ARG3(dm_ctx, session, module_name);
+    struct ly_set *module_set = NULL;
+    const struct lys_module *module = NULL;
+    int rc = SR_ERR_OK;
+
+    module_set = ly_set_new();
+    CHECK_NULL_NOMEM_RETURN(module_set);
+
+    rc = dm_get_module(dm_ctx, module_name, NULL, &module);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "dm_get_module failed");
+
+    if (0 != ly_set_add(module_set, (struct lys_module *) module)){
+        SR_LOG_ERR_MSG("ly_set_add failed");
+        goto cleanup;
+    }
+
+    rc = dm_copy_config(dm_ctx, session, module_set, src, dst);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Dm copy config failed");
+
+cleanup:
+    ly_set_free(module_set);
+    return rc;
+}
+
+int
+dm_copy_all_models(dm_ctx_t *dm_ctx, dm_session_t *session, sr_datastore_t src, sr_datastore_t dst)
+{
+    CHECK_NULL_ARG2(dm_ctx, session);
+    struct ly_set *enabled_modules = NULL;
+    sr_schema_t *schemas = NULL;
+    size_t count = 0;
+    struct lys_module *module = NULL;
+    int rc = SR_ERR_OK;
+
+    enabled_modules = ly_set_new();
+    CHECK_NULL_NOMEM_RETURN(enabled_modules);
+
+    rc = dm_list_schemas(dm_ctx, session, &schemas, &count);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "List schemas failed");
+
+    /* find enable subtrees */
+    for (size_t i = 0; i < count; i++) {
+        bool enabled = false;
+        rc = dm_has_enabled_subtree(dm_ctx, schemas[i].module_name, &module, &enabled);
+        CHECK_RC_LOG_GOTO(rc, cleanup, "Has enabled subtree failed %s", schemas[i].module_name);
+
+        if (!enabled) {
+            continue;
+        }
+        if (0 != ly_set_add(enabled_modules, module)){
+            SR_LOG_ERR_MSG("ly_set_add failed");
+            goto cleanup;
+        }
+    }
+    rc = dm_copy_config(dm_ctx, session, enabled_modules, src, dst);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Dm copy config failed");
+
+cleanup:
+    ly_set_free(enabled_modules);
+    sr_free_schemas(schemas, count);
+    return rc;
+}

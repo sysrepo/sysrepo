@@ -190,6 +190,38 @@
         } \
     } while(0)
 
+#define CHECK_RC_MSG_RETURN(RC, MSG) \
+    do { \
+        if (SR_ERR_OK != RC) { \
+            SR_LOG_ERR_MSG(MSG); \
+            return RC; \
+        } \
+    } while(0)
+
+#define CHECK_RC_LOG_RETURN(RC, MSG, ...) \
+    do { \
+        if (SR_ERR_OK != RC) { \
+            SR_LOG_ERR(MSG, __VA_ARGS__); \
+            return RC; \
+        } \
+    } while(0)
+
+#define CHECK_RC_MSG_GOTO(RC, LABEL, MSG) \
+    do { \
+        if (SR_ERR_OK != RC) { \
+            SR_LOG_ERR_MSG(MSG); \
+            goto LABEL; \
+        } \
+    } while(0)
+
+#define CHECK_RC_LOG_GOTO(RC, LABEL, MSG, ...) \
+    do { \
+        if (SR_ERR_OK != RC) { \
+            SR_LOG_ERR(MSG, __VA_ARGS__); \
+            goto LABEL; \
+        } \
+    } while(0)
+
 /**
  * @brief Returns string with name of the provided operation.
  *
