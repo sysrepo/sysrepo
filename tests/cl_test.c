@@ -997,10 +997,19 @@ test_feature_enable_cb(const char *module_name, const char *feature_name, bool e
 static void
 test_module_change_cb(sr_session_ctx_t *session, const char *module_name, void *private_ctx)
 {
+    sr_val_t *value = NULL;
+    int rc = SR_ERR_OK;
+
     int *callback_called = (int*)private_ctx;
     *callback_called += 1;
     printf("Some data within the module '%s' has changed.\n", module_name);
-    // TODO: try to read something from the session
+
+    rc = sr_get_item(session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &value);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_string_equal(value->data.string_val, "notification_test");
+
+    printf("New value for '%s' = '%s'\n", value->xpath, value->data.string_val);
+    sr_free_val(value);
 }
 
 static void
@@ -1012,6 +1021,7 @@ cl_notification_test(void **state)
     sr_session_ctx_t *session = NULL;
     sr_subscription_ctx_t *subscription1 = NULL, *subscription2 = NULL, *subscription3 = NULL;
     int callback_called = 0;
+    sr_val_t value = { 0, };
     int rc = SR_ERR_OK;
 
     /* start a session */
@@ -1030,12 +1040,26 @@ cl_notification_test(void **state)
     rc = sr_module_install(session, "example-module", NULL, true);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = sr_module_install(session, "example-module", "2016-05-03", true);
-    assert_int_equal(rc, SR_ERR_NOT_FOUND);
-
     rc = sr_feature_enable(session, "ietf-interfaces", "pre-provisioning", true);
     assert_int_equal(rc, SR_ERR_OK);
 
+    // change & commit something, expect module change callback
+    /* perform a set-item request */
+    value.type = SR_STRING_T;
+    value.data.string_val = "notification_test";
+    rc = sr_set_item(session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    /* commit */
+    rc = sr_commit(session);
+
+    /* wait for all callbacks or timeout after 100 ms */
+    for (size_t i = 0; i < 100; i++) {
+        if (callback_called >= 3) break;
+        usleep(1000); /* 1 ms */
+    }
+    assert_true(callback_called >= 3);
+
+    /* validate changes in modules and features using list-schemas */
     size_t schema_cnt = 0;
     sr_schema_t *schemas = NULL;
     rc = sr_list_schemas(session, &schemas, &schema_cnt);
@@ -1048,9 +1072,9 @@ cl_notification_test(void **state)
             assert_int_equal(0, schemas[s].enabled_feature_cnt);
         }
     }
-
     sr_free_schemas(schemas, schema_cnt);
 
+    /* some negative tests */
     rc = sr_feature_enable(session, "unknown-module", "unknown", true);
     assert_int_equal(rc, SR_ERR_UNKNOWN_MODEL);
 
@@ -1068,18 +1092,9 @@ cl_notification_test(void **state)
     rc = sr_lock_module(session, "example-module");
     assert_int_equal(rc, SR_ERR_UNKNOWN_MODEL);
 
-    // TODO: change & commit something, expect module change callback
-
     /* stop the session */
     rc = sr_session_stop(session);
     assert_int_equal(rc, SR_ERR_OK);
-
-    /* wait for callback or timeout after 100 ms */
-    for (size_t i = 0; i < 100; i++) {
-        if (callback_called >= 3) break;
-        usleep(1000); /* 1 ms */
-    }
-    assert_true(callback_called);
 
     rc = sr_unsubscribe(subscription1);
     assert_int_equal(rc, SR_ERR_OK);

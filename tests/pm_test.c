@@ -1,7 +1,7 @@
 /**
  * @file pm_test.c
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
- * @brief TODO
+ * @brief Persistence Manager unit tests.
  *
  * @copyright
  * Copyright 2016 Cisco Systems, Inc.
