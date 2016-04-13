@@ -54,4 +54,9 @@ Following xpath expression can be used to retrieve all top-level nodes in a @b m
 /model:*
 @endcode
 
+If you want to retrieve all nodes in a @b module, including deeper levels (recursively) use:
+@code
+/model:*//*
+@endcode
+
 */

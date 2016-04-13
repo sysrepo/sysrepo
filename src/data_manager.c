@@ -53,7 +53,7 @@ typedef struct dm_lock_item_s {
     int fd;                       /**< File descriptor of the file */
 }dm_lock_item_t;
 
-/*
+/**
  * @brief Data manager context holding loaded schemas, data trees
  * and corresponding locks
  */
@@ -319,7 +319,7 @@ dm_load_data_tree_file(dm_ctx_t *dm_ctx, int fd, const char *data_filename, cons
             return SR_ERR_INTERNAL;
         }
         data->timestamp = st.st_mtim;
-        SR_LOG_DBG("Loaded module %s: mtime sec=%lld nsec=%lld\n", module->name,
+        SR_LOG_DBG("Loaded module %s: mtime sec=%lld nsec=%lld", module->name,
                 (long long) st.st_mtim.tv_sec,
                 (long long) st.st_mtim.tv_nsec);
 #endif
@@ -1396,7 +1396,7 @@ dm_validate_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error
                 }
                 *errors = tmp_err;
                 (*errors)[(*err_cnt)-1].message = strdup(ly_errmsg());
-                (*errors)[(*err_cnt)-1].path = strdup(ly_errpath());
+                (*errors)[(*err_cnt)-1].xpath = strdup(ly_errpath());
 
                 rc = SR_ERR_VALIDATION_FAILED;
             } else {
@@ -1441,13 +1441,13 @@ dm_is_info_copy_uptodate(const char *file_name, const dm_data_info_t *info, bool
         }
         struct timespec now;
         clock_gettime(CLOCK_REALTIME, &now);
-        SR_LOG_DBG("Session copy %s: mtime sec=%lld nsec=%lld\n", info->module->name,
+        SR_LOG_DBG("Session copy %s: mtime sec=%lld nsec=%lld", info->module->name,
                 (long long) info->timestamp.tv_sec,
                 (long long) info->timestamp.tv_nsec);
-        SR_LOG_DBG("Loaded module %s: mtime sec=%lld nsec=%lld\n", info->module->name,
+        SR_LOG_DBG("Loaded module %s: mtime sec=%lld nsec=%lld", info->module->name,
                 (long long) st.st_mtim.tv_sec,
                 (long long) st.st_mtim.tv_nsec);
-        SR_LOG_DBG("Current time: mtime sec=%lld nsec=%lld\n",
+        SR_LOG_DBG("Current time: mtime sec=%lld nsec=%lld",
                 (long long) now.tv_sec,
                 (long long) now.tv_nsec);
         /* check if we should update session copy conditions
@@ -1600,7 +1600,7 @@ dm_commit_prepare_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_con
         i++;
     }
 
-    SR_LOG_DBG("Commit: In the session there are %zu / %zu modified models \n", c_ctx->modif_count, i);
+    SR_LOG_DBG("Commit: In the session there are %zu / %zu modified models", c_ctx->modif_count, i);
 
     if (0 == session->oper_count && 0 != c_ctx->modif_count) {
         SR_LOG_WRN_MSG("No operation logged, however data tree marked as modified");
@@ -1791,6 +1791,31 @@ dm_commit_write_files(dm_session_t *session, dm_commit_context_t *c_ctx)
 }
 
 int
+dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t *c_ctx)
+{
+    CHECK_NULL_ARG3(dm_ctx, session, c_ctx);
+    int rc = SR_ERR_OK;
+    size_t i = 0;
+    dm_data_info_t *info = NULL;
+
+    if (SR_DS_RUNNING == session->datastore) {
+        SR_LOG_DBG_MSG("Sending notifications about the changes made in running datastore...");
+        i = 0;
+        while (NULL != (info = sr_btree_get_at(session->session_modules, i))) {
+            if (info->modified) {
+                rc = np_module_change_notify(dm_ctx->np_ctx, info->module->name);
+                if (SR_ERR_OK != rc) {
+                    SR_LOG_WRN("Unable to send notifications about the changes made in the '%s' module.", info->module->name);
+                }
+            }
+            i++;
+        }
+    }
+
+    return SR_ERR_OK;
+}
+
+int
 dm_feature_enable(dm_ctx_t *dm_ctx, const char *module_name, const char *feature_name, bool enable)
 {
     CHECK_NULL_ARG3(dm_ctx, module_name, feature_name);
@@ -1916,7 +1941,7 @@ dm_copy_config(dm_ctx_t *dm_ctx, dm_session_t *session, const struct ly_set *mod
         CHECK_RC_MSG_GOTO(rc, cleanup, "Get data file name failed");
 
         ac_set_user_identity(dm_ctx->ac_ctx, session->user_credentails);
-        fds[opened_files] = open(file_name, O_RDWR);
+        fds[opened_files] = open(file_name, O_RDWR | O_TRUNC);
         ac_unset_user_identity(dm_ctx->ac_ctx);
         if (-1 == fds[opened_files]) {
             SR_LOG_ERR("File %s can not be opened", file_name);

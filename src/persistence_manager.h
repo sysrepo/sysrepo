@@ -23,6 +23,7 @@
 #define PERSISTENCE_MANAGER_H_
 
 #include "access_control.h"
+#include "notification_processor.h"
 
 /**
  * @defgroup pm Persistence Manager
@@ -44,7 +45,7 @@ typedef struct pm_ctx_s pm_ctx_t;
  * @param[in] ac_ctx Access Control module context.
  * @param[in] schema_search_dir Directory containing PM's YANG module schema.
  * @param[in] data_search_dir Directory containing the data files.
- * @param[out] np_ctx Allocated Persistence Manager context that can be used in subsequent PM API calls.
+ * @param[out] pm_ctx Allocated Persistence Manager context that can be used in subsequent PM API calls.
  *
  * @return Error code (SR_ERR_OK on success).
  */
@@ -82,6 +83,18 @@ int pm_feature_enable(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char 
  * @return Error code (SR_ERR_OK on success).
  */
 int pm_get_features(pm_ctx_t *pm_ctx, const char *module_name, char ***features, size_t *feature_cnt);
+
+/**
+ * TODO
+ */
+int pm_subscribe(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const np_subscription_t *subscription,
+        const bool subscribe);
+
+/**
+ * TODO
+ */
+int pm_get_subscriptions(pm_ctx_t *pm_ctx, Sr__NotificationEvent event_type, np_subscription_t **subscriptions,
+        size_t *subscription_cnt);
 
 /**@} pm */
 

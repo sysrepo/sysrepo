@@ -69,7 +69,7 @@ rp_resp_fill_errors(Sr__Msg *msg, dm_session_t *dm_session)
         return SR_ERR_NOMEM;
     }
     sr__error__init(msg->response->error);
-    rc = dm_copy_errors(dm_session, &msg->response->error->message, &msg->response->error->path);
+    rc = dm_copy_errors(dm_session, &msg->response->error->message, &msg->response->error->xpath);
     return rc;
 }
 
@@ -265,7 +265,7 @@ rp_get_item_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
     }
 
     sr_val_t *value = NULL;
-    char *xpath = msg->request->get_item_req->path;
+    char *xpath = msg->request->get_item_req->xpath;
 
     /* get value from data manager */
     rc = rp_dt_get_value_wrapper(rp_ctx, session, xpath, &value);
@@ -318,7 +318,7 @@ rp_get_items_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
 
     sr_val_t **values = NULL;
     size_t count = 0;
-    char *xpath = msg->request->get_items_req->path;
+    char *xpath = msg->request->get_items_req->xpath;
     size_t offset = msg->request->get_items_req->offset;
     size_t limit = msg->request->get_items_req->limit;
 
@@ -401,7 +401,7 @@ rp_set_item_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
 
     SR_LOG_DBG_MSG("Processing set_item request.");
 
-    xpath = msg->request->set_item_req->path;
+    xpath = msg->request->set_item_req->xpath;
 
     /* allocate the response */
     rc = sr_pb_resp_alloc(SR__OPERATION__SET_ITEM, session->id, &resp);
@@ -462,7 +462,7 @@ rp_delete_item_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg
 
     SR_LOG_DBG_MSG("Processing delete_item request.");
 
-    xpath = msg->request->delete_item_req->path;
+    xpath = msg->request->delete_item_req->xpath;
 
     /* allocate the response */
     rc = sr_pb_resp_alloc(SR__OPERATION__DELETE_ITEM, session->id, &resp);
@@ -505,7 +505,7 @@ rp_move_item_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
 
     SR_LOG_DBG_MSG("Processing move_item request.");
 
-    xpath = msg->request->move_item_req->path;
+    xpath = msg->request->move_item_req->xpath;
 
     /* allocate the response */
     rc = sr_pb_resp_alloc(SR__OPERATION__MOVE_ITEM, session->id, &resp);
@@ -630,6 +630,45 @@ rp_discard_changes_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *sessi
     }
 
     rc = dm_discard_changes(rp_ctx->dm_ctx, session->dm_session);
+
+    /* set response code */
+    resp->response->result = rc;
+
+    rc = rp_resp_fill_errors(resp, session->dm_session);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Copying errors to gpb failed");
+    }
+
+    /* send the response */
+    rc = cm_msg_send(rp_ctx->cm_ctx, resp);
+
+    return rc;
+}
+
+/**
+ * @brief Processes a discard_changes request.
+ */
+static int
+rp_copy_config_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
+{
+    Sr__Msg *resp = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->copy_config_req);
+
+    SR_LOG_DBG_MSG("Processing copy_config request.");
+
+    /* allocate the response */
+    rc = sr_pb_resp_alloc(SR__OPERATION__COPY_CONFIG, session->id, &resp);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Allocation of copy_config response failed.");
+        return SR_ERR_NOMEM;
+    }
+
+    /* copy module content in DM */
+    rc = dm_copy_module(rp_ctx->dm_ctx, session->dm_session, msg->request->copy_config_req->module_name,
+            sr_datastore_gpb_to_sr(msg->request->copy_config_req->src_datastore),
+            sr_datastore_gpb_to_sr(msg->request->copy_config_req->dst_datastore));
 
     /* set response code */
     resp->response->result = rc;
@@ -776,6 +815,9 @@ static int
 rp_subscribe_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
 {
     Sr__Msg *resp = NULL;
+    Sr__SubscribeReq *subscribe_req = NULL;
+    struct lys_module *module = NULL;
+    char xpath[PATH_MAX] = { 0, };
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->subscribe_req);
@@ -788,10 +830,36 @@ rp_subscribe_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr
         SR_LOG_ERR_MSG("Allocation of subscribe response failed.");
         return SR_ERR_NOMEM;
     }
+    subscribe_req = msg->request->subscribe_req;
 
     /* subscribe to the notification */
-    rc = np_notification_subscribe(rp_ctx->np_ctx, msg->request->subscribe_req->event, msg->request->subscribe_req->path,
-            msg->request->subscribe_req->destination, msg->request->subscribe_req->subscription_id);
+    rc = np_notification_subscribe(rp_ctx->np_ctx, subscribe_req->event, subscribe_req->xpath,
+            subscribe_req->destination, subscribe_req->subscription_id);
+
+    if (SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV == subscribe_req->event &&
+            subscribe_req->enable_running) {
+        /* enable the module in running config */
+        bool module_enabled = false;
+        rc = dm_has_enabled_subtree(rp_ctx->dm_ctx, subscribe_req->xpath, &module, &module_enabled);
+        if (SR_ERR_OK == rc && !module_enabled) {
+            /* if not already enabled, copy the data from startup */
+            rc = dm_copy_module(rp_ctx->dm_ctx, session->dm_session, subscribe_req->xpath, SR_DS_STARTUP, SR_DS_RUNNING);
+        }
+        if (SR_ERR_OK == rc) {
+            /* enable each subtree within the module */
+            struct lys_node *node = module->data;
+            while (NULL != node) {
+                if ((LYS_CONTAINER | LYS_LIST | LYS_LEAF | LYS_LEAFLIST) & node->nodetype) {
+                    snprintf(xpath, PATH_MAX, "/%s:%s", node->module->name, node->name);
+                    rc = rp_dt_enable_xpath(rp_ctx->dm_ctx, session->dm_session, xpath);
+                    if (SR_ERR_OK != rc) {
+                        break;
+                    }
+                }
+                node = node->next;
+            }
+        }
+    }
 
     /* set response code */
     resp->response->result = rc;
@@ -923,6 +991,9 @@ rp_msg_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
                 break;
             case SR__OPERATION__DISCARD_CHANGES:
                 rc = rp_discard_changes_req_process(rp_ctx, session, msg);
+                break;
+            case SR__OPERATION__COPY_CONFIG:
+                rc = rp_copy_config_req_process(rp_ctx, session, msg);
                 break;
             case SR__OPERATION__SESSION_REFRESH:
                 rc = rp_session_refresh_req_process(rp_ctx, session, msg);

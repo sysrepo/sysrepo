@@ -53,7 +53,7 @@ message Value {
     UINT64 = 26;
   }
 
-  required string path = 1;
+  required string xpath = 1;
   required Types type = 2;
 
   optional string binary_val = 10;
@@ -77,7 +77,7 @@ message Value {
 
 message Error {
   optional string message = 1;
-  optional string path = 2;
+  optional string xpath = 2;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -211,7 +211,7 @@ message GetSchemaResp {
  * Sent by sr_get_item API call.
  */
 message GetItemReq {
-  required string path = 1;
+  required string xpath = 1;
 }
 
 /**
@@ -226,7 +226,7 @@ message GetItemResp {
  * Sent by sr_get_items and sr_get_items_iter API calls.
  */
 message GetItemsReq {
-  required string path = 1;
+  required string xpath = 1;
 
   /*
    * The options below are applicable only for sr_get_items_iter
@@ -244,7 +244,7 @@ message GetItemsResp {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// Data Manipulation API (edit-config functionality) - !!! EXPERIMENTAL !!!
+// Data Manipulation API (edit-config functionality)
 ////////////////////////////////////////////////////////////////////////////////
 
 /**
@@ -265,7 +265,7 @@ enum EditFlags {
  * Sent by sr_set_item API call.
  */
 message SetItemReq {
-  required string path = 1;
+  required string xpath = 1;
   optional Value value = 2;
   required uint32 options = 3;  /**< Bitwise OR of EditFlags */
 }
@@ -277,11 +277,11 @@ message SetItemResp {
 }
 
 /**
- * @brief Deletes the nodes under the specified path.
+ * @brief Deletes the nodes under the specified xpath.
  * Sent by sr_delete_item API call.
  */
 message DeleteItemReq {
-  required string path = 1;
+  required string xpath = 1;
   required uint32 options = 3;  /**< Bitwise OR of EditFlags */
 }
 
@@ -300,7 +300,7 @@ message MoveItemReq {
     UP = 1;
     DOWN = 2;
   }
-  required string path = 1;
+  required string xpath = 1;
   required MoveDirection direction = 2;
 }
 
@@ -351,9 +351,25 @@ message DiscardChangesReq {
 message DiscardChangesResp {
 }
 
+/**
+ * @brief Replaces an entire configuration datastore  with the contents of
+ * another complete configuration datastore. Sent by sr_copy_config request.
+ */
+message CopyConfigReq {
+  required DataStore src_datastore = 1;
+  required DataStore dst_datastore = 2;
+  optional string module_name = 3;  /**< If not specified, the operation is performed on all
+                                         modules that are currently active in the source datastore */
+}
+
+/**
+ * @brief Response to sr_copy_config request.
+ */
+message CopyConfigResp {
+}
 
 ////////////////////////////////////////////////////////////////////////////////
-// Locking API - !!! EXPERIMENTAL !!!
+// Locking API
 ////////////////////////////////////////////////////////////////////////////////
 
 /**
@@ -386,24 +402,38 @@ message UnlockResp {
 
 
 ////////////////////////////////////////////////////////////////////////////////
-// Data modules handling API - !!! EXPERIMENTAL !!!
+// Data modules handling API - internal, not exposed to the public API
 ////////////////////////////////////////////////////////////////////////////////
 
+/**
+ * @brief Requests installation / uinstallation of specified YANG model.
+ * Sent by sr_module_install internal API calls.
+ */
 message ModuleInstallReq {
   optional string module_name = 1;
   optional string revision = 2;
   required bool installed = 3;
 }
 
+/**
+ * @brief Response to sr_module_install request.
+ */
 message ModuleInstallResp {
 }
 
+/**
+ * @brief Requests enabling / disabling of specified YANG feature within the
+ * YANG model. Sent by sr_feature_enable internal API calls.
+ */
 message FeatureEnableReq {
   required string module_name = 1;
   required string feature_name = 2;
   required bool enabled = 3;
 }
 
+/**
+ * @brief Response to sr_feature_enable request.
+ */
 message FeatureEnableResp {
 }
 
@@ -423,7 +453,8 @@ message SubscribeReq {
   required uint32 subscription_id = 2;
 
   required NotificationEvent event = 3;
-  optional string path = 4;
+  optional string xpath = 4;
+  optional bool enable_running = 5;
 }
 
 message SubscribeResp {
@@ -481,6 +512,7 @@ enum Operation {
   VALIDATE = 50;
   COMMIT = 51;
   DISCARD_CHANGES = 52;
+  COPY_CONFIG = 53;
 
   LOCK = 60;
   UNLOCK = 61;
@@ -514,6 +546,7 @@ message Request {
   optional ValidateReq validate_req = 50;
   optional CommitReq commit_req = 51;
   optional DiscardChangesReq discard_changes_req = 52;
+  optional CopyConfigReq copy_config_req = 53;
 
   optional LockReq lock_req = 60;
   optional UnlockReq unlock_req = 61;
@@ -549,6 +582,7 @@ message Response {
   optional ValidateResp validate_resp = 50;
   optional CommitResp commit_resp = 51;
   optional DiscardChangesResp discard_changes_resp = 52;
+  optional CopyConfigResp copy_config_resp = 53;
 
   optional LockResp lock_resp = 60;
   optional UnlockResp unlock_resp = 61;

@@ -653,7 +653,7 @@ rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, sr_error_info_t **errors, 
     int rc = SR_ERR_OK;
     dm_commit_context_t *commit_ctx = NULL;
 
-    SR_LOG_DBG_MSG("Commit (1/6): process stared");
+    SR_LOG_DBG_MSG("Commit (1/7): process stared");
 
     //TODO send validate notifications
 
@@ -663,7 +663,7 @@ rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, sr_error_info_t **errors, 
         SR_LOG_ERR_MSG("Data validation failed");
         return SR_ERR_VALIDATION_FAILED;
     }
-    SR_LOG_DBG_MSG("Commit (2/6): validation succeeded");
+    SR_LOG_DBG_MSG("Commit (2/7): validation succeeded");
 
 
     rc = dm_commit_prepare_context(rp_ctx->dm_ctx, session->dm_session, &commit_ctx);
@@ -682,7 +682,7 @@ rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, sr_error_info_t **errors, 
         SR_LOG_ERR_MSG("Loading of modified models failed");
         goto cleanup;
     }
-    SR_LOG_DBG_MSG("Commit (3/6): all modified models loaded successfully");
+    SR_LOG_DBG_MSG("Commit (3/7): all modified models loaded successfully");
 
     /* replay operations */
     rc = rp_dt_replay_operations(rp_ctx->dm_ctx, commit_ctx->session, commit_ctx->operations,
@@ -691,7 +691,7 @@ rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, sr_error_info_t **errors, 
         SR_LOG_ERR_MSG("Replay of operations failed");
         goto cleanup;
     }
-    SR_LOG_DBG_MSG("Commit (4/6): replay of operation succeeded");
+    SR_LOG_DBG_MSG("Commit (4/7): replay of operation succeeded");
 
     /* validate data trees after merge */
     rc = dm_validate_session_data_trees(rp_ctx->dm_ctx, commit_ctx->session, errors, err_cnt);
@@ -700,9 +700,13 @@ rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, sr_error_info_t **errors, 
         rc = SR_ERR_VALIDATION_FAILED;
         goto cleanup;
     }
-    SR_LOG_DBG_MSG("Commit (5/6): merged models validation succeeded");
+    SR_LOG_DBG_MSG("Commit (5/7): merged models validation succeeded");
 
     rc = dm_commit_write_files(session->dm_session, commit_ctx);
+
+    SR_LOG_DBG_MSG("Commit (6/7): data write succeeded");
+
+    rc = dm_commit_notify(rp_ctx->dm_ctx, session->dm_session, commit_ctx);
 
 cleanup:
     dm_free_commit_context(rp_ctx->dm_ctx, commit_ctx);
@@ -710,7 +714,7 @@ cleanup:
     if (SR_ERR_OK == rc){
         /* discard changes in session in next get_data_tree call newly committed content will be loaded */
         rc = dm_discard_changes(rp_ctx->dm_ctx, session->dm_session);
-        SR_LOG_DBG_MSG("Commit (6/6): finished successfully");
+        SR_LOG_DBG_MSG("Commit (7/7): finished successfully");
     }
     return rc;
 }
@@ -744,7 +748,7 @@ rp_dt_create_refresh_errors(const dm_sess_op_t *ops, size_t op_count, sr_error_i
             default:
                 (*errors)[*err_cnt].message = strdup("An operation can not be merged with current datastore state");
         }
-        (*errors)[*err_cnt].path = strdup(op->xpath);
+        (*errors)[*err_cnt].xpath = strdup(op->xpath);
         (*err_cnt)++;
     }
 }
