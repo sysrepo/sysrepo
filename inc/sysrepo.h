@@ -161,6 +161,7 @@ typedef enum sr_error_e {
     SR_ERR_DATA_MISSING,       /**< Item does not exists. */
     SR_ERR_UNAUTHORIZED,       /**< Operation not authorized. */
     SR_ERR_LOCKED,             /**< Requested resource is already locked. */
+    SR_ERR_TIME_OUT,           /**< Time out has expired. */
 } sr_error_t;
 
 /**
@@ -539,6 +540,9 @@ int sr_get_item(sr_session_ctx_t *session, const char *xpath, sr_val_t **value);
  * If the user does not have read permission to access certain nodes, these
  * won't be part of the result. SR_ERR_NOT_FOUND will be returned if there are
  * no nodes match xpath in the data tree, or the user does not have read permission to access them.
+ *
+ * If the response contains too many elements time out may be exceeded, SR_ERR_TIME_OUT
+ * will be returned, use ::sr_get_items_iter.
  *
  * @see @ref xp_page "XPath Addressing" documentation, or
  * https://tools.ietf.org/html/draft-ietf-netmod-yang-json#section-6.11

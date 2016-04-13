@@ -53,6 +53,7 @@ const char *const sr_errlist[] = {
         "The item expected to exist is missing",/* SR_ERR_DATA_MISSING */
         "Operation not authorized",             /* SR_ERR_UNAUTHORIZED */
         "Requested resource is already locked", /* SR_ERR_LOCKED */
+        "Time out has expired"                  /* SR_ERR_TIME_OUT */
 };
 
 const char *

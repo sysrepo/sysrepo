@@ -45,7 +45,6 @@ endmacro(ADD_UNIT_TEST_WITH_HELPERS)
 macro(ADD_UNIT_TEST_WITH_HELPERS_VALGRIND TEST_NAME VALG)
     set(t_files
         ${TEST_NAME}.c
-        ${TEST_HELPERS_DIR}dt_xpath_helpers.c
         ${TEST_HELPERS_DIR}rp_dt_context_helper.c
         ${TEST_HELPERS_DIR}test_module_helper.c
         )
@@ -103,6 +102,12 @@ if("${TEST_REPOSITORY_LOC}" STREQUAL "${REPOSITORY_LOC}")
           WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/swig"
           COMMAND ${PYTHON_EXECUTABLE}
             ${CMAKE_CURRENT_SOURCE_DIR}/python/CommitTest.py
+        )
+        add_test(NAME python_perf_test
+          #set work dir to load generated swig python binding
+          WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/swig"
+          COMMAND ${PYTHON_EXECUTABLE}
+            ${CMAKE_CURRENT_SOURCE_DIR}/python/PerfTest.py
         )
     endif()
 else()

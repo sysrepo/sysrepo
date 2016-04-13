@@ -199,6 +199,10 @@ cl_message_recv(sr_conn_ctx_t *conn_ctx, Sr__Msg **msg)
             if (errno == EINTR) {
                 continue;
             }
+            if (EAGAIN == errno || EWOULDBLOCK == errno) {
+                SR_LOG_ERR_MSG("While waiting for a response, time out has expired.");
+                return SR_ERR_TIME_OUT;
+            }
             SR_LOG_ERR("Error by receiving of the message: %s.", strerror(errno));
             return SR_ERR_MALFORMED_MSG;
         }
@@ -390,12 +394,22 @@ cl_request_process(sr_session_ctx_t *session, Sr__Msg *msg_req, Sr__Msg **msg_re
         const Sr__Operation expected_response_op)
 {
     int rc = SR_ERR_OK;
+    struct timeval tv = { 0, };
 
     CHECK_NULL_ARG4(session, session->conn_ctx, msg_req, msg_resp);
 
     SR_LOG_DBG("Sending %s request.", sr_operation_name(expected_response_op));
 
     pthread_mutex_lock(&session->conn_ctx->lock);
+    /* some operation may take more time, raise the timeout */
+    if (SR__OPERATION__COMMIT == expected_response_op) {
+        tv.tv_sec = CL_REQUEST_LONG_TIMEOUT;
+        tv.tv_usec = 0;
+        rc = setsockopt(session->conn_ctx->fd, SOL_SOCKET, SO_RCVTIMEO, (char *)&tv, sizeof(tv));
+        if (-1 == rc) {
+            SR_LOG_WRN("Unable to set timeout for socket operations: %s", strerror(errno));
+        }
+    }
 
     /* send the request */
     rc = cl_message_send(session->conn_ctx, msg_req);
@@ -415,6 +429,15 @@ cl_request_process(sr_session_ctx_t *session, Sr__Msg *msg_req, Sr__Msg **msg_re
                 session->id, sr_operation_name(msg_req->request->operation));
         pthread_mutex_unlock(&session->conn_ctx->lock);
         return rc;
+    }
+
+    /* change socket timeout to the standard value*/
+    if (SR__OPERATION__COMMIT == expected_response_op) {
+        tv.tv_sec = CL_REQUEST_TIMEOUT;
+        rc = setsockopt(session->conn_ctx->fd, SOL_SOCKET, SO_RCVTIMEO, (char *)&tv, sizeof(tv));
+        if (-1 == rc) {
+            SR_LOG_WRN("Unable to set timeout for socket operations: %s", strerror(errno));
+        }
     }
 
     pthread_mutex_unlock(&session->conn_ctx->lock);

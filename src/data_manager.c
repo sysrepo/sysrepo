@@ -1780,6 +1780,8 @@ dm_commit_write_files(dm_session_t *session, dm_commit_context_t *c_ctx)
             if (0 != lyd_print_fd(c_ctx->fds[count], merged_info->node, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT)) {
                 SR_LOG_ERR("Failed to write output for %s", info->module->name);
                 rc = SR_ERR_INTERNAL;
+            } else{
+                SR_LOG_DBG("Data written for model %s", info->module->name);
             }
             count++;
         }

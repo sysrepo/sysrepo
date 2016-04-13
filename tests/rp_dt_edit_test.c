@@ -31,7 +31,6 @@
 #include "sr_common.h"
 #include "rp_data_tree.h"
 #include "test_module_helper.h"
-#include "dt_xpath_helpers.h"
 #include "rp_dt_context_helper.h"
 #include "rp_internal.h"
 
@@ -373,10 +372,10 @@ void set_item_leaf_test(void **state){
     assert_non_null(val->data.string_val);
 
     /* existing leaf */
-    rc = rp_dt_set_item_xpath(ctx->dm_ctx, session->dm_session, val->xpath, SR_EDIT_STRICT, val);
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, val->xpath, SR_EDIT_STRICT, val);
     assert_int_equal(SR_ERR_DATA_EXISTS, rc);
 
-    rc = rp_dt_set_item_xpath(ctx->dm_ctx, session->dm_session, val->xpath, SR_EDIT_DEFAULT, val);
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, val->xpath, SR_EDIT_DEFAULT, val);
     assert_int_equal(SR_ERR_OK, rc);
     sr_free_val(val);
     val = NULL;
@@ -392,18 +391,18 @@ void set_item_leaf_test(void **state){
     assert_non_null(val->xpath);
 
     /* setting key leaf is not allowed*/
-    rc = rp_dt_set_item_xpath(ctx->dm_ctx, session->dm_session, "/example-module:container/list[key1='new_key1'][key2='new_key2']/key1", SR_EDIT_DEFAULT, val);
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/example-module:container/list[key1='new_key1'][key2='new_key2']/key1", SR_EDIT_DEFAULT, val);
     assert_int_equal(SR_ERR_INVAL_ARG, rc);
 
-    rc = rp_dt_set_item_xpath(ctx->dm_ctx, session->dm_session, "/example-module:container/list[key1='new_key1'][key2='new_key2']/key2", SR_EDIT_DEFAULT, val);
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/example-module:container/list[key1='new_key1'][key2='new_key2']/key2", SR_EDIT_DEFAULT, val);
     assert_int_equal(SR_ERR_INVAL_ARG, rc);
 
     /* creating with non recursive with missing parent not*/
 
-    rc = rp_dt_set_item_xpath(ctx->dm_ctx, session->dm_session, val->xpath, SR_EDIT_NON_RECURSIVE, val);
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, val->xpath, SR_EDIT_NON_RECURSIVE, val);
     assert_int_equal(SR_ERR_DATA_MISSING, rc);
 
-    rc = rp_dt_set_item_xpath(ctx->dm_ctx, session->dm_session, val->xpath, SR_EDIT_DEFAULT, val);
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, val->xpath, SR_EDIT_DEFAULT, val);
     assert_int_equal(SR_ERR_OK, rc);
     sr_free_val(val);
     val = NULL;
@@ -426,7 +425,7 @@ void set_item_leaf_test(void **state){
     assert_non_null(val);
 
     /* create item with explicitly specified namespace*/
-    rc = rp_dt_set_item_xpath(ctx->dm_ctx, session->dm_session, "/example-module:container/example-module:list[key1='key11'][key2='key22']/example-module:leaf", SR_EDIT_DEFAULT, val);
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/example-module:container/example-module:list[key1='key11'][key2='key22']/example-module:leaf", SR_EDIT_DEFAULT, val);
     assert_int_equal(SR_ERR_OK, rc);
 
     rc = rp_dt_delete_item_wrapper(ctx, session, "/example-module:container", SR_EDIT_DEFAULT);
@@ -438,7 +437,7 @@ void set_item_leaf_test(void **state){
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
     assert_null(del);
 
-    rc = rp_dt_set_item_xpath(ctx->dm_ctx, session->dm_session, val->xpath, SR_EDIT_DEFAULT, val);
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, val->xpath, SR_EDIT_DEFAULT, val);
     assert_int_equal(SR_ERR_OK, rc);
     sr_free_val(val);
 
@@ -455,7 +454,7 @@ void set_item_leaf_test(void **state){
     v.data.string_val = strdup("abc");
     assert_non_null(v.data.string_val);
 
-    rc = rp_dt_set_item_xpath(ctx->dm_ctx, session->dm_session, "/small-module:item/info-module:info", SR_EDIT_DEFAULT, &v);
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/small-module:item/info-module:info", SR_EDIT_DEFAULT, &v);
     assert_int_equal(SR_ERR_OK, rc);
 
     rc = rp_dt_get_value_wrapper(ctx, session, "/small-module:item/info-module:info", &val);
@@ -496,7 +495,7 @@ void set_item_leaflist_test(void **state){
     val->type = SR_UINT8_T;
     val->data.uint8_val = 99;
 
-    rc = rp_dt_set_item_xpath(ctx->dm_ctx, session->dm_session, val->xpath, SR_EDIT_DEFAULT, val);
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, val->xpath, SR_EDIT_DEFAULT, val);
     assert_int_equal(SR_ERR_OK, rc);
     sr_free_val(val);
 
@@ -527,7 +526,7 @@ void set_item_list_test(void **state){
     assert_int_equal(1, count);
     sr_free_values_arr(values, count);
 
-    rc = rp_dt_set_item_xpath(ctx->dm_ctx, session->dm_session, "/example-module:container/list[key1='new_key1'][key2='new_key2']", SR_EDIT_DEFAULT, NULL);
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/example-module:container/list[key1='new_key1'][key2='new_key2']", SR_EDIT_DEFAULT, NULL);
     assert_int_equal(SR_ERR_OK, rc);
 
     rc = rp_dt_get_values_wrapper(ctx, session, "/example-module:container/list", &values, &count);
@@ -536,10 +535,10 @@ void set_item_list_test(void **state){
     sr_free_values_arr(values, count);
 
     /* set existing list */
-    rc = rp_dt_set_item_xpath(ctx->dm_ctx, session->dm_session, "/example-module:container/list[key1='new_key1'][key2='new_key2']", SR_EDIT_DEFAULT, NULL);
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/example-module:container/list[key1='new_key1'][key2='new_key2']", SR_EDIT_DEFAULT, NULL);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = rp_dt_set_item_xpath(ctx->dm_ctx, session->dm_session, "/example-module:container/list[key1='new_key1'][key2='new_key2']", SR_EDIT_STRICT, NULL);
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/example-module:container/list[key1='new_key1'][key2='new_key2']", SR_EDIT_STRICT, NULL);
     assert_int_equal(SR_ERR_DATA_EXISTS, rc);
 
     test_rp_session_cleanup(ctx, session);
@@ -556,7 +555,7 @@ void set_item_container_test(void **state){
     rc = rp_dt_get_value_wrapper(ctx, session, "/test-module:list[key='key']/wireless", &value);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
-    rc = rp_dt_set_item_xpath(ctx->dm_ctx, session->dm_session, "/test-module:list[key='key']/wireless", SR_EDIT_DEFAULT, NULL);
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/test-module:list[key='key']/wireless", SR_EDIT_DEFAULT, NULL);
     assert_int_equal(SR_ERR_OK, rc);
 
     rc = rp_dt_get_value_wrapper(ctx, session, "/test-module:list[key='key']/wireless", &value);
@@ -567,11 +566,11 @@ void set_item_container_test(void **state){
     sr_free_val(value);
 
     /* set existing does nothing*/
-    rc = rp_dt_set_item_xpath(ctx->dm_ctx, session->dm_session, "/test-module:list[key='key']/wireless", SR_EDIT_DEFAULT, NULL);
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/test-module:list[key='key']/wireless", SR_EDIT_DEFAULT, NULL);
     assert_int_equal(SR_ERR_OK, rc);
 
     /* set existing fails with strict opt*/
-    rc = rp_dt_set_item_xpath(ctx->dm_ctx, session->dm_session, "/test-module:list[key='key']/wireless", SR_EDIT_STRICT, NULL);
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/test-module:list[key='key']/wireless", SR_EDIT_STRICT, NULL);
     assert_int_equal(SR_ERR_DATA_EXISTS, rc);
 
     test_rp_session_cleanup(ctx, session);
@@ -587,30 +586,30 @@ set_item_negative_test(void **state)
     test_rp_sesssion_create(ctx, SR_DS_STARTUP, &session);
 
     /* set module xpath */
-    rc = rp_dt_set_item_xpath(ctx->dm_ctx, session->dm_session, "/test-module:", SR_EDIT_DEFAULT, NULL);
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/test-module:", SR_EDIT_DEFAULT, NULL);
     assert_int_equal(SR_ERR_INVAL_ARG, rc);
 
     rc = rp_dt_delete_item_wrapper(ctx, session, "/test-module:main", SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
     /* set non-presence container */
-    rc = rp_dt_set_item_xpath(ctx->dm_ctx, session->dm_session, "/test-module:main", SR_EDIT_DEFAULT, NULL);
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/test-module:main", SR_EDIT_DEFAULT, NULL);
     assert_int_equal(SR_ERR_INVAL_ARG, rc);
 
 #if 0
     /* set list without keys*/
-    rc = rp_dt_set_item_xpath(ctx->dm_ctx, session->dm_session, "/test-module:list", SR_EDIT_DEFAULT, NULL);
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/test-module:list", SR_EDIT_DEFAULT, NULL);
     assert_int_equal(SR_ERR_INVAL_ARG, rc);
 #endif
-    rc = rp_dt_set_item_xpath(ctx->dm_ctx, session->dm_session, "^usfd&", SR_EDIT_DEFAULT, NULL);
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "^usfd&", SR_EDIT_DEFAULT, NULL);
     assert_int_equal(SR_ERR_INVAL_ARG, rc);
 
     /* updating key value is not allowed */
-    rc = rp_dt_set_item_xpath(ctx->dm_ctx, session->dm_session, "/example-module:container/list[key1='key1'][key2='key2']/key1", SR_EDIT_DEFAULT, NULL);
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/example-module:container/list[key1='key1'][key2='key2']/key1", SR_EDIT_DEFAULT, NULL);
     assert_int_equal(SR_ERR_INVAL_ARG, rc);
 
     /* set item called with NULL value */
-    rc = rp_dt_set_item_xpath(ctx->dm_ctx, session->dm_session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", SR_EDIT_DEFAULT, NULL);
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", SR_EDIT_DEFAULT, NULL);
     assert_int_equal(SR_ERR_INVAL_ARG, rc);
 
     test_rp_session_cleanup(ctx, session);
@@ -620,7 +619,7 @@ set_item_negative_test(void **state)
     rc = rp_dt_delete_item_wrapper(ctx, session, "/example-module:*", SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = rp_dt_set_item_xpath(ctx->dm_ctx, session->dm_session, "/example-module:container/list[key1='key1'][key2='key2']", SR_EDIT_NON_RECURSIVE, NULL);
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/example-module:container/list[key1='key1'][key2='key2']", SR_EDIT_NON_RECURSIVE, NULL);
     assert_int_equal(SR_ERR_DATA_MISSING, rc);
 
     test_rp_session_cleanup(ctx, session);
@@ -639,7 +638,7 @@ void delete_get_set_get(rp_ctx_t *ctx, rp_session_t *session, const char* xpath,
     assert_null(*new_set);
 
     /* set it */
-    rc = rp_dt_set_item_xpath(ctx->dm_ctx, session->dm_session, xpath, SR_EDIT_DEFAULT, value);
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, xpath, SR_EDIT_DEFAULT, value);
     assert_int_equal(SR_ERR_OK, rc);
 
     rc = rp_dt_get_value_wrapper(ctx, session, xpath, new_set);
@@ -878,7 +877,7 @@ edit_validate_test(void **state)
     iftype.type = SR_ENUM_T;
     iftype.data.enum_val = strdup ("ethernet");
 
-    rc = rp_dt_set_item_xpath(ctx->dm_ctx, session->dm_session, "/test-module:interface/ifType", SR_EDIT_DEFAULT, &iftype);
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/test-module:interface/ifType", SR_EDIT_DEFAULT, &iftype);
     assert_int_equal(SR_ERR_OK, rc);
 
     sr_free_val_content(&iftype);
@@ -895,7 +894,7 @@ edit_validate_test(void **state)
     mtu.type = SR_UINT32_T;
     mtu.data.uint32_val = 1024;
 
-    rc = rp_dt_set_item_xpath(ctx->dm_ctx, session->dm_session, "/test-module:interface/ifMTU", SR_EDIT_DEFAULT, &mtu);
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/test-module:interface/ifMTU", SR_EDIT_DEFAULT, &mtu);
     assert_int_equal(SR_ERR_OK, rc);
 
     errors = NULL;
@@ -906,7 +905,7 @@ edit_validate_test(void **state)
     sr_free_errors(errors, e_cnt);
 
     mtu.data.uint32_val = 1500;
-    rc = rp_dt_set_item_xpath(ctx->dm_ctx, session->dm_session, "/test-module:interface/ifMTU", SR_EDIT_DEFAULT, &mtu);
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/test-module:interface/ifMTU", SR_EDIT_DEFAULT, &mtu);
     assert_int_equal(SR_ERR_OK, rc);
 
     errors = NULL;
@@ -927,7 +926,7 @@ edit_validate_test(void **state)
     hexnumber.data.string_val = strdup("92FF");
     assert_non_null(hexnumber.data.string_val);
 
-    rc = rp_dt_set_item_xpath(ctx->dm_ctx, session->dm_session, "/test-module:hexnumber", SR_EDIT_DEFAULT, &hexnumber);
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/test-module:hexnumber", SR_EDIT_DEFAULT, &hexnumber);
     assert_int_equal(SR_ERR_OK, rc);
 
     errors = NULL;
@@ -941,7 +940,7 @@ edit_validate_test(void **state)
     hexnumber.data.string_val = strdup("AAZZ");
 
     /* Regular expression mismatch causes SR_ERR_INVAL_ARG */
-    rc = rp_dt_set_item_xpath(ctx->dm_ctx, session->dm_session, "/test-module:hexnumber", SR_EDIT_DEFAULT, &hexnumber);
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/test-module:hexnumber", SR_EDIT_DEFAULT, &hexnumber);
     assert_int_equal(SR_ERR_INVAL_ARG, rc);
 
     sr_free_val_content(&hexnumber);
@@ -957,7 +956,7 @@ edit_validate_test(void **state)
     name.data.string_val = strdup("Name");
     assert_non_null(name.data.string_val);
 
-    rc = rp_dt_set_item_xpath(ctx->dm_ctx, session->dm_session, "/test-module:location/name", SR_EDIT_DEFAULT, &name);
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/test-module:location/name", SR_EDIT_DEFAULT, &name);
     assert_int_equal(SR_ERR_OK, rc);
 
     errors = NULL;
@@ -973,7 +972,7 @@ edit_validate_test(void **state)
     lonigitude.data.string_val = strdup("Longitude 49.45");
     assert_non_null(lonigitude.data.string_val);
 
-    rc = rp_dt_set_item_xpath(ctx->dm_ctx, session->dm_session, "/test-module:location/longitude", SR_EDIT_DEFAULT, &lonigitude);
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/test-module:location/longitude", SR_EDIT_DEFAULT, &lonigitude);
     assert_int_equal(SR_ERR_OK, rc);
 
     errors = NULL;
@@ -992,7 +991,7 @@ edit_validate_test(void **state)
     latitude.data.string_val = strdup("Latitude 56.46");
     assert_non_null(latitude.data.string_val);
 
-    rc = rp_dt_set_item_xpath(ctx->dm_ctx, session->dm_session, "/test-module:location/latitude", SR_EDIT_DEFAULT, &latitude);
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/test-module:location/latitude", SR_EDIT_DEFAULT, &latitude);
     assert_int_equal(SR_ERR_OK, rc);
 
     errors = NULL;
@@ -1015,7 +1014,7 @@ edit_validate_test(void **state)
     interval.type = SR_UINT16_T;
     interval.data.uint16_val = 9;
 
-    rc = rp_dt_set_item_xpath(ctx->dm_ctx, session->dm_session, "/test-module:transfer/interval", SR_EDIT_DEFAULT, &interval);
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/test-module:transfer/interval", SR_EDIT_DEFAULT, &interval);
     assert_int_equal(SR_ERR_OK, rc);
 
     errors = NULL;
@@ -1029,7 +1028,7 @@ edit_validate_test(void **state)
     daily.xpath = NULL;
     daily.type = SR_LEAF_EMPTY_T;
 
-    rc = rp_dt_set_item_xpath(ctx->dm_ctx, session->dm_session, "/test-module:transfer/daily", SR_EDIT_DEFAULT, &daily);
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/test-module:transfer/daily", SR_EDIT_DEFAULT, &daily);
     assert_int_equal(SR_ERR_OK, rc);
 
     errors = NULL;
@@ -1049,13 +1048,13 @@ edit_validate_test(void **state)
     val.type = SR_UINT8_T;
     val.data.uint8_val = 9;
 
-    rc = rp_dt_set_item_xpath(ctx->dm_ctx, session->dm_session, "/test-module:main/numbers", SR_EDIT_DEFAULT, &val);
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/test-module:main/numbers", SR_EDIT_DEFAULT, &val);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = rp_dt_set_item_xpath(ctx->dm_ctx, session->dm_session, "/test-module:main/numbers", SR_EDIT_DEFAULT, &val);
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/test-module:main/numbers", SR_EDIT_DEFAULT, &val);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = rp_dt_set_item_xpath(ctx->dm_ctx, session->dm_session, "/test-module:main/numbers", SR_EDIT_STRICT, &val);
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/test-module:main/numbers", SR_EDIT_STRICT, &val);
     assert_int_equal(SR_ERR_DATA_EXISTS, rc);
 
     errors = NULL;
@@ -1074,16 +1073,16 @@ edit_validate_test(void **state)
     val.type = SR_UINT8_T;
     val.data.uint8_val = 9;
 
-    rc = rp_dt_set_item_xpath(ctx->dm_ctx, session->dm_session, "/test-module:main/numbers", SR_EDIT_DEFAULT, &val);
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/test-module:main/numbers", SR_EDIT_DEFAULT, &val);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = rp_dt_set_item_xpath(ctx->dm_ctx, session->dm_session, "/test-module:main/numbers", SR_EDIT_DEFAULT, &val);
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/test-module:main/numbers", SR_EDIT_DEFAULT, &val);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = rp_dt_set_item_xpath(ctx->dm_ctx, session->dm_session, "/example-module:number", SR_EDIT_DEFAULT, &val);
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/example-module:number", SR_EDIT_DEFAULT, &val);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = rp_dt_set_item_xpath(ctx->dm_ctx, session->dm_session, "/example-module:number", SR_EDIT_DEFAULT, &val);
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/example-module:number", SR_EDIT_DEFAULT, &val);
     assert_int_equal(SR_ERR_OK, rc);
 
     errors = NULL;
@@ -1129,7 +1128,7 @@ edit_discard_changes_test(void **state)
 
     /* update value in session A*/
     valueA->data.int64_val = XP_TEST_MODULE_INT64_VALUE_T + 42;
-    rc = rp_dt_set_item_xpath(ctx->dm_ctx, sessionA->dm_session, XP_TEST_MODULE_INT64, SR_EDIT_DEFAULT, valueA);
+    rc = rp_dt_set_item(ctx->dm_ctx, sessionA->dm_session, XP_TEST_MODULE_INT64, SR_EDIT_DEFAULT, valueA);
     assert_int_equal(SR_ERR_OK, rc);
     sr_free_val(valueA);
 
@@ -1425,7 +1424,7 @@ edit_move_test(void **state)
     rc = rp_dt_get_values_wrapper(ctx, session, "/test-module:user", &values, &cnt);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
-    rc = rp_dt_set_item_xpath(ctx->dm_ctx, session->dm_session, "/test-module:user[name='nameA']", SR_EDIT_DEFAULT, NULL);
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/test-module:user[name='nameA']", SR_EDIT_DEFAULT, NULL);
     assert_int_equal(SR_ERR_OK, rc);
 
     rc = rp_dt_move_list_wrapper(ctx, session, "/test-module:user[name='nameA']", SR_MOVE_UP);
@@ -1437,10 +1436,10 @@ edit_move_test(void **state)
 
     /* multiple instances */
 
-    rc = rp_dt_set_item_xpath(ctx->dm_ctx, session->dm_session, "/test-module:user[name='nameB']", SR_EDIT_DEFAULT, NULL);
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/test-module:user[name='nameB']", SR_EDIT_DEFAULT, NULL);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = rp_dt_set_item_xpath(ctx->dm_ctx, session->dm_session, "/test-module:user[name='nameC']", SR_EDIT_DEFAULT, NULL);
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/test-module:user[name='nameC']", SR_EDIT_DEFAULT, NULL);
     assert_int_equal(SR_ERR_OK, rc);
 
     rc = rp_dt_get_values_wrapper(ctx, session, "/test-module:user", &values, &cnt);
@@ -1494,7 +1493,7 @@ edit_move2_test(void **state)
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
     /* only one list instance in data tree */
-    rc = rp_dt_set_item_xpath(ctx->dm_ctx, session->dm_session, "/test-module:user[name='nameA']", SR_EDIT_DEFAULT, NULL);
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/test-module:user[name='nameA']", SR_EDIT_DEFAULT, NULL);
     assert_int_equal(SR_ERR_OK, rc);
 
     rc = rp_dt_move_list_wrapper(ctx, session, "/test-module:user[name='nameA']", SR_MOVE_UP);
@@ -1506,10 +1505,10 @@ edit_move2_test(void **state)
 
     /* multiple instances */
 
-    rc = rp_dt_set_item_xpath(ctx->dm_ctx, session->dm_session, "/test-module:user[name='nameB']", SR_EDIT_DEFAULT, NULL);
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/test-module:user[name='nameB']", SR_EDIT_DEFAULT, NULL);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = rp_dt_set_item_xpath(ctx->dm_ctx, session->dm_session, "/test-module:user[name='nameC']", SR_EDIT_DEFAULT, NULL);
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/test-module:user[name='nameC']", SR_EDIT_DEFAULT, NULL);
     assert_int_equal(SR_ERR_OK, rc);
 
     rc = rp_dt_get_values_wrapper(ctx, session, "/test-module:user", &values, &cnt);

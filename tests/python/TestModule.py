@@ -136,6 +136,15 @@ def create_test_module():
 
     session.commit()
 
+def create_example_module():
+    sr = Sysrepo("test-module")
+
+    session = Session(sr, SR_DS_STARTUP)
+    session.delete_item("/example-module:*")
+    v = Value("/example-module:container/list[key1='key1'][key2='key2']/leaf", SR_STRING_T, "Leaf value")
+    session.set_item(v.xpath, v)
+    session.commit()
+
 
 if __name__ == "__main__":
     create_test_module()
