@@ -435,12 +435,12 @@ cl_request_process(sr_session_ctx_t *session, Sr__Msg *msg_req, Sr__Msg **msg_re
             /* set detailed error information into session */
             rc = cl_session_set_error(session, (*msg_resp)->response->error->message, (*msg_resp)->response->error->xpath);
         }
-        /* don't log expected errors */
+        /* log the error (except expected ones) */
         if (SR_ERR_NOT_FOUND != (*msg_resp)->response->result &&
                 SR_ERR_VALIDATION_FAILED != (*msg_resp)->response->result &&
                 SR_ERR_COMMIT_FAILED != (*msg_resp)->response->result) {
-            SR_LOG_ERR("Error by processing of the request (session id=%"PRIu32", operation=%s): %s.",
-                    session->id, sr_operation_name(msg_req->request->operation),
+            SR_LOG_ERR("Error by processing of the %s request (session id=%"PRIu32"): %s.",
+                    sr_operation_name(msg_req->request->operation), session->id,
                 (NULL != (*msg_resp)->response->error && NULL != (*msg_resp)->response->error->message) ?
                         (*msg_resp)->response->error->message : sr_strerror((*msg_resp)->response->result));
         }
