@@ -274,6 +274,7 @@ cl_sm_server_init(cl_sm_ctx_t *sm_ctx)
     int path_len = 0, fd = -1;
     int rc = SR_ERR_OK;
     struct sockaddr_un addr;
+    mode_t old_umask = 0;
 
     /* generate socket path */
     path_len = snprintf(NULL, 0, "%s-%d.sock", CL_SUBSCRIPTIONS_PATH_PREFIX, getpid());
@@ -303,17 +304,21 @@ cl_sm_server_init(cl_sm_ctx_t *sm_ctx)
         goto cleanup;
     }
 
-    /* bind and listen */
     memset(&addr, 0, sizeof(addr));
     addr.sun_family = AF_UNIX;
     strncpy(addr.sun_path, sm_ctx->socket_path, sizeof(addr.sun_path)-1);
 
+    /* create the unix-domain socket writable to anyone */
+    old_umask = umask(0);
     rc = bind(fd, (struct sockaddr*)&addr, sizeof(addr));
+    umask(old_umask);
+
     if (-1 == rc) {
         SR_LOG_ERR("Socket bind error: %s", strerror(errno));
         rc = SR_ERR_INIT_FAILED;
         goto cleanup;
     }
+
     rc = listen(fd, SOMAXCONN);
     if (-1 == rc) {
         SR_LOG_ERR("Socket listen error: %s", strerror(errno));

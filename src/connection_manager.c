@@ -128,6 +128,7 @@ cm_server_init(cm_ctx_t *cm_ctx, const char *socket_path)
     int fd = -1;
     int rc = SR_ERR_OK;
     struct sockaddr_un addr = { 0, };
+    mode_t old_umask = 0;
 
     CHECK_NULL_ARG2(cm_ctx, socket_path);
 
@@ -158,7 +159,11 @@ cm_server_init(cm_ctx_t *cm_ctx, const char *socket_path)
     addr.sun_family = AF_UNIX;
     strncpy(addr.sun_path, socket_path, sizeof(addr.sun_path)-1);
 
+    /* create the unix-domain socket writable to anyone */
+    old_umask = umask(0);
     rc = bind(fd, (struct sockaddr*)&addr, sizeof(addr));
+    umask(old_umask);
+
     if (-1 == rc) {
         SR_LOG_ERR("Socket bind error: %s", strerror(errno));
         rc = SR_ERR_INIT_FAILED;
