@@ -266,6 +266,16 @@ int dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session
 int dm_commit_write_files(dm_session_t *session, dm_commit_context_t *c_ctx);
 
 /**
+ * @brief Notifies about the changes made within the running commit. It is
+ * a post-commit notification - failure do not cause the commit to fail.
+ * @param [in] dm_ctx
+ * @param [in] session
+ * @param [in] c_ctx
+ * @return Error code (SR_ERR_OK on success)
+ */
+int dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t *c_ctx);
+
+/**
  * @brief Frees all resources allocated in commit context closes
  * modif_count of files.
  */

@@ -215,7 +215,7 @@ cm_get_item_generate(uint32_t session_id, const char *xpath, uint8_t **msg_buf, 
     msg->session_id = session_id;
 
     if (NULL != xpath) {
-        msg->request->get_item_req->path = strdup(xpath);
+        msg->request->get_item_req->xpath = strdup(xpath);
     }
 
     cm_msg_pack_to_buff(msg, msg_buf, msg_size);

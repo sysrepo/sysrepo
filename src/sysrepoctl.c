@@ -1,7 +1,7 @@
 /**
  * @file sysrepoctl.c
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
- * @brief TODO
+ * @brief Sysrepo contol tool (sysrepoctl) implementation.
  *
  * @copyright
  * Copyright 2016 Cisco Systems, Inc.
