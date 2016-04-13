@@ -45,7 +45,6 @@ endmacro(ADD_UNIT_TEST_WITH_HELPERS)
 macro(ADD_UNIT_TEST_WITH_HELPERS_VALGRIND TEST_NAME VALG)
     set(t_files
         ${TEST_NAME}.c
-        ${TEST_HELPERS_DIR}dt_xpath_helpers.c
         ${TEST_HELPERS_DIR}rp_dt_context_helper.c
         ${TEST_HELPERS_DIR}test_module_helper.c
         )
