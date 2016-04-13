@@ -849,7 +849,7 @@ rp_subscribe_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr
             /* enable each subtree within the module */
             struct lys_node *node = module->data;
             while (NULL != node) {
-                if ((LYS_CONTAINER | LYS_LIST) & node->nodetype) {
+                if ((LYS_CONTAINER | LYS_LIST | LYS_LEAF | LYS_LEAFLIST) & node->nodetype) {
                     snprintf(xpath, PATH_MAX, "/%s:%s", node->module->name, node->name);
                     rc = rp_dt_enable_xpath(rp_ctx->dm_ctx, session->dm_session, xpath);
                     if (SR_ERR_OK != rc) {
