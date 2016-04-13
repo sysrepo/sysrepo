@@ -1796,15 +1796,18 @@ dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t *c
     size_t i = 0;
     dm_data_info_t *info = NULL;
 
-    i = 0;
-    while (NULL != (info = sr_btree_get_at(session->session_modules, i))) {
-        if (info->modified) {
-            rc = np_module_change_notify(dm_ctx->np_ctx, info->module->name);
-            if (SR_ERR_OK != rc) {
-                SR_LOG_WRN("Unable to send notifications about the changes made in the '%s' module.", info->module->name);
+    if (SR_DS_RUNNING == session->datastore) {
+        SR_LOG_DBG_MSG("Sending notifications about the changes made in running datastore...");
+        i = 0;
+        while (NULL != (info = sr_btree_get_at(session->session_modules, i))) {
+            if (info->modified) {
+                rc = np_module_change_notify(dm_ctx->np_ctx, info->module->name);
+                if (SR_ERR_OK != rc) {
+                    SR_LOG_WRN("Unable to send notifications about the changes made in the '%s' module.", info->module->name);
+                }
             }
+            i++;
         }
-        i++;
     }
 
     return SR_ERR_OK;

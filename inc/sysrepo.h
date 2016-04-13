@@ -821,45 +821,107 @@ int sr_unlock_module(sr_session_ctx_t *session, const char *module_name);
 ////////////////////////////////////////////////////////////////////////////////
 
 /**
- * @brief
+ * @brief Sysrepo subscription context returned from sr_*_subscribe calls,
+ * can be released by ::sr_unsubscribe call.
  */
 typedef struct sr_subscription_ctx_s sr_subscription_ctx_t;
 
 /**
- * @brief
- */
-typedef void (*sr_module_install_cb)(const char *module_name, const char *revision, bool installed, void *private_ctx);
-
-/**
- * @brief
- */
-typedef void (*sr_feature_enable_cb)(const char *module_name, const char *feature_name, bool enabled, void *private_ctx);
-
-/**
- * @brief
+ * @brief Callback to be called by the event of changing any running datastore
+ * content within a module. Subscribe to it by ::sr_module_change_subscribe call.
+ *
+ * @param[in] session Automatically-created session that can be used for
+ * obtaining changed data (e.g. with ::sr_get_item, ::sr_get_items or
+ * ::sr_get_items_iter calls). Do not stop this session.
+ * @param[in] module_name Name of the module where the change has occurred.
+ * @param[in] private_ctx Private context opaque to sysrepo, as passed to
+ * ::sr_module_change_subscribe call.
  */
 typedef void (*sr_module_change_cb)(sr_session_ctx_t *session, const char *module_name, void *private_ctx);
 
 /**
- * @brief
+ * @brief Callback to be called by the event of installation / uninstallation
+ * of a new module into sysrepo. Subscribe to it by ::sr_module_install_subscribe call.
+ *
+ * @param[in] module_name Name of the newly installed / uinstalled module.
+ * @param[in] revision Revision of the newly installed module (if specified
+ * within the YANG model).
+ * @param[in] installed TRUE if the module has been installed, FALSE if uninstalled.
+ * @param[in] private_ctx Private context opaque to sysrepo, as passed to
+ * ::sr_module_install_subscribe call.
+ */
+typedef void (*sr_module_install_cb)(const char *module_name, const char *revision, bool installed, void *private_ctx);
+
+/**
+ * @brief Callback to be called by the event of enabling / disabling of
+ * a YANG feature within a module. Subscribe to it by ::sr_feature_enable_subscribe call.
+ *
+ * @param[in] module_name Name of the module where the feature has been enabled / disabled.
+ * @param[in] feature_name Name of the feature that has been enabled / disabled.
+ * @param[in] enabled TRU if the feature has been enabled, FALSE if disabled.
+ * @param[in] private_ctx Private context opaque to sysrepo, as passed to
+ * ::sr_feature_enable_subscribe call.
+ */
+typedef void (*sr_feature_enable_cb)(const char *module_name, const char *feature_name, bool enabled, void *private_ctx);
+
+/**
+ * @brief Subscribes for notifications about the changes in any running datastore
+ * content within specified module.
+ *
+ * @param[in] session Session context acquired with ::sr_session_start call.
+ * @param[in] module_name Module name of the interest for change notifications.
+ * @param[in] enable_running TRUE if this subscription should enable the contents
+ * of the module in the running datastore (if the application subscribing to the
+ * event is the "owner" of the data), FALSE otherwise (e.g. if you are just
+ * interested in the changes of other application's data).
+ * @param[in] callback Callback to be called when the event occurs.
+ * @param[in] private_ctx Private context passed to the callback function, opaque to sysrepo.
+ * @param[out] subscription Subscription context that can be passed to ::sr_unsubscribe.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, bool enable_running,
+        sr_module_change_cb callback, void *private_ctx, sr_subscription_ctx_t **subscription);
+
+/**
+ * @brief Subscribes for notifications about installation / uninstallation
+ * of a new module into sysrepo.
+ *
+ * Mainly intended for northbound management applications that need to be
+ * always aware of all active modules installed in sysrepo.
+ *
+ * @param[in] session Session context acquired with ::sr_session_start call.
+ * @param[in] callback Callback to be called when the event occurs.
+ * @param[in] private_ctx Private context passed to the callback function, opaque to sysrepo.
+ * @param[out] subscription Subscription context that can be passed to ::sr_unsubscribe.
+ *
+ * @return Error code (SR_ERR_OK on success).
  */
 int sr_module_install_subscribe(sr_session_ctx_t *session, sr_module_install_cb callback, void *private_ctx,
         sr_subscription_ctx_t **subscription);
 
 /**
- * @brief
+ * @brief Subscribes for notifications about enabling / disabling of
+ * a YANG feature within a module.
+ *
+ * Mainly intended for northbound management applications that need to be
+ * always aware of all active features within the modules installed in sysrepo.
+ *
+ * @param[in] session Session context acquired with ::sr_session_start call.
+ * @param[in] callback Callback to be called when the event occurs.
+ * @param[in] private_ctx Private context passed to the callback function, opaque to sysrepo.
+ * @param[out] subscription Subscription context that can be passed to ::sr_unsubscribe.
+ *
+ * @return Error code (SR_ERR_OK on success).
  */
 int sr_feature_enable_subscribe(sr_session_ctx_t *session, sr_feature_enable_cb callback, void *private_ctx,
         sr_subscription_ctx_t **subscription);
 
 /**
- * @brief
- */
-int sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, sr_module_change_cb callback,
-        void *private_ctx, bool enable_running, sr_subscription_ctx_t **subscription);
-
-/**
- * @brief
+ * @brief Unsubscribes from a subscription acquired by any of sr_*_subscribe
+ * calls and releases all subscription-related data.
+ *
+ * @return Error code (SR_ERR_OK on success).
  */
 int sr_unsubscribe(sr_subscription_ctx_t *subscription);
 

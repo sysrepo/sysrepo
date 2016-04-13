@@ -1457,8 +1457,8 @@ cleanup:
 }
 
 int
-sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, sr_module_change_cb callback,
-        void *private_ctx, bool enable_running, sr_subscription_ctx_t **subscription_p)
+sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, bool enable_running,
+        sr_module_change_cb callback, void *private_ctx, sr_subscription_ctx_t **subscription_p)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
     sr_subscription_ctx_t *subscription = NULL;

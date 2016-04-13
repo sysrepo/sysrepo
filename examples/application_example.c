@@ -81,7 +81,7 @@ print_current_config(sr_session_ctx_t *session)
 static void
 module_change_cb(sr_session_ctx_t *session, const char *module_name, void *private_ctx)
 {
-    printf("\n\n ========== CONFIG HAS CHANGED, CURRENT CONFIG: ==========\n\n");
+    printf("\n\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: ==========\n\n");
     print_current_config(session);
 }
 
@@ -94,7 +94,7 @@ main(int argc, char **argv)
     int rc = SR_ERR_OK;
 
     /* connect to sysrepo */
-    rc = sr_connect("app2", SR_CONN_DEFAULT, &connection);
+    rc = sr_connect("example_application", SR_CONN_DEFAULT, &connection);
     if (SR_ERR_OK != rc) {
         goto cleanup;
     }
@@ -106,13 +106,16 @@ main(int argc, char **argv)
     }
 
     /* read startup config */
+    printf("\n\n ========== READING STARTUP CONFIG: ==========\n\n");
     print_current_config(session);
 
     /* subscribe for changes in running config */
-    rc = sr_module_change_subscribe(session, "ietf-interfaces", module_change_cb, NULL, true, &subscription);
+    rc = sr_module_change_subscribe(session, "ietf-interfaces", true, module_change_cb, NULL, &subscription);
     if (SR_ERR_OK != rc) {
         goto cleanup;
     }
+
+    printf("\n\n ========== STARTUP CONFIG APPLIED AS RUNNING ==========\n\n");
 
     while (1) {
         /* do some work... */

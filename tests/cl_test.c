@@ -1024,7 +1024,7 @@ cl_notification_test(void **state)
     int rc = SR_ERR_OK;
 
     /* start a session */
-    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &session);
+    rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
     rc = sr_module_install_subscribe(session, test_module_install_cb, &callback_called, &subscription1);
@@ -1033,8 +1033,8 @@ cl_notification_test(void **state)
     rc = sr_feature_enable_subscribe(session, test_feature_enable_cb, &callback_called, &subscription2);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = sr_module_change_subscribe(session, "example-module", test_module_change_cb, &callback_called,
-            true, &subscription3);
+    rc = sr_module_change_subscribe(session, "example-module", true,
+            test_module_change_cb, &callback_called, &subscription3);
     assert_int_equal(rc, SR_ERR_OK);
 
     rc = sr_module_install(session, "example-module", NULL, true);
@@ -1125,8 +1125,8 @@ cl_copy_config_test(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 
     /* enable running DS for example-module */
-    rc = sr_module_change_subscribe(session_startup, "example-module", test_module_change_cb, &callback_called,
-               true, &subscription);
+    rc = sr_module_change_subscribe(session_startup, "example-module", true,
+            test_module_change_cb, &callback_called, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* edit config in running */

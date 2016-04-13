@@ -817,6 +817,7 @@ rp_subscribe_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr
     Sr__Msg *resp = NULL;
     Sr__SubscribeReq *subscribe_req = NULL;
     struct lys_module *module = NULL;
+    char xpath[PATH_MAX] = { 0, };
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->subscribe_req);
@@ -841,17 +842,23 @@ rp_subscribe_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr
         bool module_enabled = false;
         rc = dm_has_enabled_subtree(rp_ctx->dm_ctx, subscribe_req->path, &module, &module_enabled);
         if (SR_ERR_OK == rc && !module_enabled) {
+            /* if not already enabled, copy the data from startup */
             rc = dm_copy_module(rp_ctx->dm_ctx, session->dm_session, subscribe_req->path, SR_DS_STARTUP, SR_DS_RUNNING);
         }
-        struct lys_node *node = module->data;
-        while (NULL != node) {
-            if ((LYS_CONTAINER | LYS_LIST) & node->nodetype) {
-                char xpath[PATH_MAX] = { 0, };
-                snprintf(xpath, PATH_MAX, "/%s:%s", node->module->name, node->name);
-                rc = rp_dt_enable_xpath(rp_ctx->dm_ctx, session->dm_session, xpath);
+        if (SR_ERR_OK == rc) {
+            /* enable each subtree within the module */
+            struct lys_node *node = module->data;
+            while (NULL != node) {
+                if ((LYS_CONTAINER | LYS_LIST) & node->nodetype) {
+                    snprintf(xpath, PATH_MAX, "/%s:%s", node->module->name, node->name);
+                    rc = rp_dt_enable_xpath(rp_ctx->dm_ctx, session->dm_session, xpath);
+                    if (SR_ERR_OK != rc) {
+                        break;
+                    }
+                }
+                node = node->next;
             }
-            node = node->next;
-       }
+        }
     }
 
     /* set response code */
