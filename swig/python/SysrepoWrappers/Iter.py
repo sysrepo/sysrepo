@@ -45,4 +45,3 @@ class Iter(object):
             return v
         else:
             return self.session.get_item_next(self.iter)
-

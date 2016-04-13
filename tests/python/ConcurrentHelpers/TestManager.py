@@ -92,4 +92,3 @@ class TestManager:
             step += 1
 
         self.wait_for_processes()
-
