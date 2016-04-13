@@ -17,6 +17,7 @@ __license__ = "Apache 2.0"
 
 import sysrepoPy as sr
 from Value import Value
+from Iter import Iter
 
 class Session:
 
@@ -49,10 +50,13 @@ class Session:
         return map(lambda v: Value(cobj=v),sr.sr_get_items(self.session, path))
 
     def get_items_iter(self, path):
-        return sr.sr_get_items_iter(self.session, path)
+        return Iter(self, sr.sr_get_items_iter(self.session, path))
 
     def get_item_next(self, iter):
-        return Value(cobj=sr.sr_get_item_next(self.session, iter))
+        if isinstance(iter, Iter):
+            return Value(cobj=sr.sr_get_item_next(self.session, iter.iter))
+        else:
+            return Value(cobj=sr.sr_get_item_next(self.session, iter))
 
     def set_item(self, path, value, options=sr.SR_EDIT_DEFAULT):
         if isinstance(value, Value):

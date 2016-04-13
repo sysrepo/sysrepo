@@ -30,7 +30,6 @@
 #include "test_data.h"
 #include "sr_common.h"
 #include "rp_data_tree.h"
-#include "dt_xpath_helpers.h"
 #include "test_module_helper.h"
 #include "rp_dt_context_helper.h"
 #include "rp_internal.h"
@@ -232,7 +231,7 @@ void ietf_interfaces_test(void **state){
     free(values);
 
 #define INTERFACE_ETH0 "/ietf-interfaces:interfaces/interface[name='eth0']"
-    rc = rp_dt_get_values_xpath(ctx, root, INTERFACE_ETH0, &values, &count);
+    rc = rp_dt_get_values(ctx, root, INTERFACE_ETH0, false, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
     check_ietf_interfaces_int_values(values, count);
     for (size_t i = 0; i < count; i++) {
@@ -243,7 +242,7 @@ void ietf_interfaces_test(void **state){
     free(values);
 
 #define INTERFACE_ETH0_IPV4 "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4"
-    rc = rp_dt_get_values_xpath(ctx, root, INTERFACE_ETH0_IPV4, &values, &count);
+    rc = rp_dt_get_values(ctx, root, INTERFACE_ETH0_IPV4, false, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
     check_ietf_interfaces_ipv4_values(values, count);
     for (size_t i = 0; i < count; i++) {
@@ -254,7 +253,7 @@ void ietf_interfaces_test(void **state){
     free(values);
 
 #define INTERFACE_ETH0_IPV4_IP "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/address[ip='192.168.2.100']"
-    rc = rp_dt_get_values_xpath(ctx, root, INTERFACE_ETH0_IPV4_IP, &values, &count);
+    rc = rp_dt_get_values(ctx, root, INTERFACE_ETH0_IPV4_IP, false, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
     check_ietf_interfaces_addr_values(values, count);
     for (size_t i = 0; i < count; i++) {
@@ -284,7 +283,7 @@ void get_values_test_module_test(void **state){
     sr_val_t *value;
 
     /* enum leaf*/
-    rc = rp_dt_get_value_xpath(ctx, root, XP_TEST_MODULE_ENUM, &value);
+    rc = rp_dt_get_value(ctx, root, XP_TEST_MODULE_ENUM, false, &value);
     assert_int_equal(SR_ERR_OK, rc);
 
     assert_int_equal(SR_ENUM_T, value->type);
@@ -293,7 +292,7 @@ void get_values_test_module_test(void **state){
     sr_free_val(value);
 
     /* binary leaf*/
-    rc = rp_dt_get_value_xpath(ctx, root, XP_TEST_MODULE_RAW, &value);
+    rc = rp_dt_get_value(ctx, root, XP_TEST_MODULE_RAW, false, &value);
     assert_int_equal(SR_ERR_OK, rc);
 
     assert_int_equal(SR_BINARY_T, value->type);
@@ -302,7 +301,7 @@ void get_values_test_module_test(void **state){
     sr_free_val(value);
 
     /*bits leaf*/
-    rc = rp_dt_get_value_xpath(ctx, root, XP_TEST_MODULE_BITS, &value);
+    rc = rp_dt_get_value(ctx, root, XP_TEST_MODULE_BITS, false, &value);
     assert_int_equal(SR_ERR_OK, rc);
 
     assert_int_equal(SR_BITS_T, value->type);
@@ -342,7 +341,7 @@ void get_values_test(void **state){
     free(values);
 
 #define XP_LEAF "/example-module:container/list[key1='key1'][key2='key2']/leaf"
-    rc = rp_dt_get_values_xpath(ctx, root, XP_LEAF, &values, &count);
+    rc = rp_dt_get_values(ctx, root, XP_LEAF, false, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(1, count);
     for (size_t i = 0; i < count; i++) {
@@ -363,7 +362,7 @@ void get_values_test(void **state){
     free(values);
 
 #define XP_LIST_WITHOUT_KEYS "/example-module:container/list"
-    rc = rp_dt_get_values_xpath(ctx, root, XP_LIST_WITHOUT_KEYS, &values, &count);
+    rc = rp_dt_get_values(ctx, root, XP_LIST_WITHOUT_KEYS, false, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(2, count);
     for (size_t i = 0; i < count; i++) {
@@ -373,7 +372,7 @@ void get_values_test(void **state){
     free(values);
 
 #define XP_CONTAINER "/example-module:container"
-    rc = rp_dt_get_values_xpath(ctx, root, XP_LIST_WITHOUT_KEYS, &values, &count);
+    rc = rp_dt_get_values(ctx, root, XP_LIST_WITHOUT_KEYS, false, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(2, count);
     for (size_t i = 0; i < count; i++) {
@@ -383,7 +382,7 @@ void get_values_test(void **state){
     free(values);
 
 #define XP_LEAFLIST "/example-module:number"
-    rc = rp_dt_get_values_xpath(ctx, root, XP_LEAFLIST, &values, &count);
+    rc = rp_dt_get_values(ctx, root, XP_LEAFLIST, false, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(3, count);
     for (size_t i = 0; i < count; i++) {
@@ -513,7 +512,7 @@ void get_value_test(void **state){
 
     /*list*/
 #define XPATH_FOR_LIST "/example-module:container/list[key1='key1'][key2='key2']"
-    assert_int_equal(SR_ERR_OK, rp_dt_get_value_xpath(ctx, data_tree, XPATH_FOR_LIST, &value));
+    assert_int_equal(SR_ERR_OK, rp_dt_get_value(ctx, data_tree, XPATH_FOR_LIST, false, &value));
     assert_non_null(value);
     assert_int_equal(SR_LIST_T, value->type);
     assert_string_equal(XPATH_FOR_LIST, value->xpath);
@@ -521,7 +520,7 @@ void get_value_test(void **state){
 
     /*container*/
 #define XPATH_FOR_CONTAINER "/example-module:container"
-    assert_int_equal(SR_ERR_OK, rp_dt_get_value_xpath(ctx, data_tree, "/example-module:container", &value));
+    assert_int_equal(SR_ERR_OK, rp_dt_get_value(ctx, data_tree, "/example-module:container", false, &value));
     assert_non_null(value);
     assert_int_equal(SR_CONTAINER_T, value->type);
     assert_string_equal(XPATH_FOR_CONTAINER, value->xpath);
@@ -545,26 +544,26 @@ void get_node_test_found(void **state)
     assert_int_equal(SR_ERR_OK, rc);
 
 #define XPATH "/example-module:container/list[key1='key1'][key2='key2']/leaf"
-    rc = rp_dt_get_node_xpath(ctx, data_tree, XPATH, &node);
+    rc = rp_dt_find_node(data_tree, XPATH, false, &node);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(node);
     assert_string_equal("leaf", node->schema->name);
 
 /* if key names are specified the order does not matter*/
 #define XPATH2 "/example-module:container/list[key2='key2'][key1='key1']/leaf"
-    rc = rp_dt_get_node_xpath(ctx, data_tree, XPATH2, &node);
+    rc = rp_dt_find_node(data_tree, XPATH2, false, &node);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(node);
     assert_string_equal("leaf", node->schema->name);
 
 #define XPATH_CONT "/example-module:container"
-    rc = rp_dt_get_node_xpath(ctx, data_tree, XPATH_CONT, &node);
+    rc = rp_dt_find_node(data_tree, XPATH_CONT, false, &node);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(node);
     assert_string_equal("container", node->schema->name);
 
 #define XPATH_LIST "/example-module:container/list[key1='key1'][key2='key2']"
-    rc = rp_dt_get_node_xpath(ctx, data_tree, XPATH_LIST, &node);
+    rc = rp_dt_find_node(data_tree, XPATH_LIST, false, &node);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(node);
     assert_string_equal("list", node->schema->name);
@@ -626,23 +625,23 @@ void get_node_test_not_found(void **state)
 
     /* non existing nodes*/
 #define XPATH_UNKNOWN1 "/example-module:abc"
-    rc = rp_dt_get_node_xpath(ctx, data_tree, XPATH_UNKNOWN1, &node);
+    rc = rp_dt_find_node(data_tree, XPATH_UNKNOWN1, false, &node);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
 #define XPATH_UNKNOWN2 "/example-module:container/a"
-    rc = rp_dt_get_node_xpath(ctx, data_tree, XPATH_UNKNOWN2, &node);
+    rc = rp_dt_find_node(data_tree, XPATH_UNKNOWN2, false, &node);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
 #define XPATH_UNKNOWN3 "/example-module:container/list[key1='key1'][key2='key2']/abc"
-    rc = rp_dt_get_node_xpath(ctx, data_tree, XPATH_UNKNOWN3, &node);
+    rc = rp_dt_find_node(data_tree, XPATH_UNKNOWN3, false, &node);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
     /* non matching key values*/
 #define XPATH_NF "/example-module:container/list[key1='k1'][key2='k2']/leaf"
-    rc = rp_dt_get_node_xpath(ctx, data_tree, XPATH_NF, &node);
+    rc = rp_dt_find_node(data_tree, XPATH_NF, false, &node);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
     /* missing key*/
 #define XPATH_INV "/example-module:container/list[key1='key1']/leaf"
-    rc = rp_dt_get_node_xpath(ctx, data_tree, XPATH_INV, &node);
+    rc = rp_dt_find_node(data_tree, XPATH_INV, false, &node);
     assert_int_equal(SR_ERR_OK, rc);
 
     dm_session_stop(ctx, ses_ctx);
