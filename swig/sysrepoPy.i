@@ -32,6 +32,7 @@
 %newobject sr_get_item;
 /* sr_get_items_iter */
 %newobject sr_get_items_iter;
+%delobject sr_free_val_iter;
 /* sr_get_schema */
 %newobject sr_get_schema;
 

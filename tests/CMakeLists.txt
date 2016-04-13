@@ -104,6 +104,12 @@ if("${TEST_REPOSITORY_LOC}" STREQUAL "${REPOSITORY_LOC}")
           COMMAND ${PYTHON_EXECUTABLE}
             ${CMAKE_CURRENT_SOURCE_DIR}/python/CommitTest.py
         )
+        add_test(NAME python_perf_test
+          #set work dir to load generated swig python binding
+          WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/swig"
+          COMMAND ${PYTHON_EXECUTABLE}
+            ${CMAKE_CURRENT_SOURCE_DIR}/python/PerfTest.py
+        )
     endif()
 else()
     message(STATUS "Test repostory location differs to system repository location, some tests will be disabled.")
