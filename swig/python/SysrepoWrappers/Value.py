@@ -132,5 +132,3 @@ class Value(object):
     @property
     def cobject(self):
         return self._cObject
-
-

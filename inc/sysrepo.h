@@ -486,7 +486,8 @@ typedef struct sr_val_iter_s sr_val_iter_t;
 int sr_list_schemas(sr_session_ctx_t *session, sr_schema_t **schemas, size_t *schema_cnt);
 
 /**
- * @brief Retrieves the content of specified schema file.
+ * @brief Retrieves the content of specified schema file. If the module
+ * can not be found SR_ERR_NOT_FOUND is returned.
  *
  * @param[in] session Session context acquired with ::sr_session_start call.
  * @param[in] module_name Name of the requested module.
@@ -498,8 +499,7 @@ int sr_list_schemas(sr_session_ctx_t *session, sr_schema_t **schemas, size_t *sc
  * @param[out] schema_content Content of the specified schema file. Automatically
  * allocated by the function, should be freed by the caller.
  *
- * @return Error code (SR_ERR_OK on success, SR_ERR_NOTFOUND if specified schema
- * file cannot be found in sysrepo repository).
+ * @return Error code (SR_ERR_OK on success).
  */
 int sr_get_schema(sr_session_ctx_t *session, const char *module_name, const char *revision,
          const char *submodule_name, sr_schema_format_t format, char **schema_content);
@@ -524,10 +524,7 @@ int sr_get_schema(sr_session_ctx_t *session, const char *module_name, const char
  * @param[out] value Structure containing information about requested element
  * (allocated by the function, can be freed with ::sr_free_val).
  *
- * @return Error code (SR_ERR_OK on success, SR_ERR_NOT_FOUND if the entity is
- * not present in the data tree, or the user does not have read permission to access it,
- * SR_UNKNOWN_MODEL if the xpath references unknown model, SR_BAD_ELEMENT if the referenced
- * node can not be found in schema).
+ * @return Error code (SR_ERR_OK on success)
  */
 int sr_get_item(sr_session_ctx_t *session, const char *xpath, sr_val_t **value);
 
@@ -589,15 +586,14 @@ int sr_get_items_iter(sr_session_ctx_t *session, const char *xpath, sr_val_iter_
 
 /**
  * @brief Returns the next item from the dataset of provided iterator created
- * by ::sr_get_items_iter call.
+ * by ::sr_get_items_iter call. If there is no item left SR_ERR_NOT_FOUND is returned.
  *
  * @param[in] session Session context acquired with ::sr_session_start call.
  * @param[in,out] iter Iterator acquired with ::sr_get_items_iter call.
  * @param[out] value Structure containing information about requested element
  * (allocated by the function, can be freed with ::sr_free_val).
  *
- * @return Error code (SR_ERR_OK on success, SR_ERR_NOT_FOUND in case that there
- * are not more items in the dataset).
+ * @return Error code (SR_ERR_OK on success).
  */
 int sr_get_item_next(sr_session_ctx_t *session, sr_val_iter_t *iter, sr_val_t **value);
 
@@ -649,8 +645,7 @@ typedef enum sr_move_direction_e {
  * ::sr_val_t structure can be NULL. Value will be copied - can be allocated on stack.
  * @param[in] opts Options overriding default behavior of this call.
  *
- * @return Error code (SR_ERR_OK on success, SR_ERR_UNAUTHORIZED if the user
- * does not have write permission to any affected node).
+ * @return Error code (SR_ERR_OK on success).
  */
 int sr_set_item(sr_session_ctx_t *session, const char *xpath, const sr_val_t *value, const sr_edit_options_t opts);
 
@@ -667,8 +662,7 @@ int sr_set_item(sr_session_ctx_t *session, const char *xpath, const sr_val_t *va
  * @param[in] xpath @ref xp_page "XPath" identifier of the data element to be deleted.
  * @param[in] opts Options overriding default behavior of this call.
  *
- * @return Error code (SR_ERR_OK on success, SR_ERR_UNAUTHORIZED if the user
- * does not have write permission to any affected node).
+ * @return Error code (SR_ERR_OK on success).
  **/
 int sr_delete_item(sr_session_ctx_t *session, const char *xpath, const sr_edit_options_t opts);
 
@@ -685,8 +679,7 @@ int sr_delete_item(sr_session_ctx_t *session, const char *xpath, const sr_edit_o
  * @param[in] xpath @ref xp_page "XPath" identifier of the data element to be moved.
  * @param[in] direction Requested move direction.
  *
- * @return Error code (SR_ERR_OK on success, SR_ERR_UNAUTHORIZED if the user
- * does not have write permission to any affected node).
+ * @return Error code (SR_ERR_OK on success).
  */
 int sr_move_item(sr_session_ctx_t *session, const char *xpath, const sr_move_direction_t direction);
 
@@ -758,7 +751,8 @@ int sr_copy_config(sr_session_ctx_t *session, const char *module_name,
 ////////////////////////////////////////////////////////////////////////////////
 
 /**
- * @brief Locks the datastore which the session is tied to.
+ * @brief Locks the datastore which the session is tied to. If there is
+ * a module locked by the other session SR_ERR_LOCKED is returned.
  *
  * All data models within the datastore will be locked for writing until
  * ::sr_unlock_datastore is called or until the session is stopped or terminated
@@ -769,8 +763,7 @@ int sr_copy_config(sr_session_ctx_t *session, const char *module_name,
  *
  * @param[in] session Session context acquired with ::sr_session_start call.
  *
- * @return Error code (SR_ERR_OK on success, SR_ERR_UNAUTHORIZED if the user
- * does not have sufficient permissions to lock any of the models in the datastore).
+ * @return Error code (SR_ERR_OK on success).
  */
 int sr_lock_datastore(sr_session_ctx_t *session);
 
@@ -800,8 +793,7 @@ int sr_unlock_datastore(sr_session_ctx_t *session);
  * @param[in] session Session context acquired with ::sr_session_start call.
  * @param[in] module_name Name of the module to be locked.
  *
- * @return Error code (SR_ERR_OK on success, SR_ERR_UNAUTHORIZED if the user
- * does not have sufficient permissions to lock specified data module).
+ * @return Error code (SR_ERR_OK on success).
  */
 int sr_lock_module(sr_session_ctx_t *session, const char *module_name);
 

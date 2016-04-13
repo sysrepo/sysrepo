@@ -1321,9 +1321,9 @@ dm_list_schemas(dm_ctx_t *dm_ctx, dm_session_t *dm_session, sr_schema_t **schema
             sr_free_schema(&sch[m]);
         }
     }
-    free(sch);
 
 cleanup:
+    free(sch);
     ly_set_free(modules);
     lyd_free_withsiblings(info);
     return rc;

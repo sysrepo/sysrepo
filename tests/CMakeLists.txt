@@ -85,30 +85,16 @@ if("${TEST_REPOSITORY_LOC}" STREQUAL "${REPOSITORY_LOC}")
     FIND_PACKAGE(PythonLibs 2)
     
     if (SWIG_FOUND AND PYTHONLIBS_FOUND AND PYTHONINTERP_FOUND)
-        add_test(NAME python_basic_test
-          #set work dir to load generated swig python binding
-          WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/swig"
-          COMMAND ${PYTHON_EXECUTABLE}
-            ${CMAKE_CURRENT_SOURCE_DIR}/python/SysrepoBasicTest.py
-        )
-        add_test(NAME python_locking
-          #set work dir to load generated swig python binding
-          WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/swig"
-          COMMAND ${PYTHON_EXECUTABLE}
-            ${CMAKE_CURRENT_SOURCE_DIR}/python/LockingTest.py
-        )
-        add_test(NAME python_commit
-          #set work dir to load generated swig python binding
-          WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/swig"
-          COMMAND ${PYTHON_EXECUTABLE}
-            ${CMAKE_CURRENT_SOURCE_DIR}/python/CommitTest.py
-        )
-        add_test(NAME python_perf_test
-          #set work dir to load generated swig python binding
-          WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/swig"
-          COMMAND ${PYTHON_EXECUTABLE}
-            ${CMAKE_CURRENT_SOURCE_DIR}/python/PerfTest.py
-        )
+        macro(ADD_PYTHON_TEST TEST_NAME)
+            add_test(NAME python_${TEST_NAME}
+                COMMAND sh ${CMAKE_CURRENT_SOURCE_DIR}/run_python_test.sh "${CMAKE_BINARY_DIR}/swig/python:${PROJECT_SOURCE_DIR}/swig/python" ${PYTHON_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/python/${TEST_NAME}.py
+            )
+        endmacro(ADD_PYTHON_TEST)
+        ADD_PYTHON_TEST(SysrepoBasicTest)
+        ADD_PYTHON_TEST(LockingTest)
+        ADD_PYTHON_TEST(CommitTest)
+        ADD_PYTHON_TEST(PerfTest)
     endif()
 else()
     message(STATUS "Test repostory location differs to system repository location, some tests will be disabled.")
