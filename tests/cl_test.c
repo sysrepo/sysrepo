@@ -277,8 +277,8 @@ cl_get_item_test(void **state)
 
     const sr_error_info_t *err = NULL;
     sr_get_last_error(session, &err);
-    assert_non_null(err->path);
-    assert_string_equal("/example-module:unknown/next", err->path);
+    assert_non_null(err->xpath);
+    assert_string_equal("/example-module:unknown/next", err->xpath);
 
     /* existing leaf */
     rc = sr_get_item(session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &value);
@@ -658,7 +658,7 @@ cl_validate_test(void **state)
     rc = sr_get_last_errors(session, &errors, &error_cnt);
     if (error_cnt > 0) {
         for (size_t i = 0; i < error_cnt; i++) {
-            printf("Error[%zu]: %s: %s\n", i, errors[i].path, errors[i].message);
+            printf("Error[%zu]: %s: %s\n", i, errors[i].xpath, errors[i].message);
         }
     }
 
@@ -711,7 +711,7 @@ cl_commit_test(void **state)
     rc = sr_get_last_errors(session, &errors, &error_cnt);
     if (error_cnt > 0) {
         for (size_t i = 0; i < error_cnt; i++) {
-            printf("Error[%zu]: %s: %s\n", i, errors[i].path, errors[i].message);
+            printf("Error[%zu]: %s: %s\n", i, errors[i].xpath, errors[i].message);
         }
     }
 
@@ -905,7 +905,7 @@ cl_refresh_session(void **state)
 
     sr_get_last_errors(sessionA, &error_info, &error_cnt);
     for (size_t i=0; i<error_cnt; i++) {
-        printf("%s:\n\t%s\n", error_info[i].message, error_info[i].path);
+        printf("%s:\n\t%s\n", error_info[i].message, error_info[i].xpath);
     }
 
     /* commit session A*/

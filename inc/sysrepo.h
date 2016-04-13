@@ -168,7 +168,7 @@ typedef enum sr_error_e {
  */
 typedef struct sr_error_info_s {
     const char *message;  /**< Error message. */
-    const char *path;     /**< XPath to the node where the error has been discovered. */
+    const char *xpath;    /**< XPath to the node where the error has been discovered. */
 } sr_error_info_t;
 
 /**
@@ -507,7 +507,7 @@ int sr_get_schema(sr_session_ctx_t *session, const char *module_name, const char
  * @brief Retrieves a single data element stored under provided XPath. If multiple
  * nodes matches the xpath SR_ERR_INVAL_ARG is returned.
  *
- * If the path identifies an empty leaf, a list or a container, the value
+ * If the xpath identifies an empty leaf, a list or a container, the value
  * has no data filled in and its type is set properly (SR_LEAF_EMPTY_T / SR_LIST_T / SR_CONTAINER_T / SR_CONTAINER_PRESENCE_T).
  *
  * @see @ref xp_page "XPath Addressing" documentation, or
@@ -519,7 +519,7 @@ int sr_get_schema(sr_session_ctx_t *session, const char *module_name, const char
  * larger chunks, they can work much more efficiently than multiple ::sr_get_item calls.
  *
  * @param[in] session Session context acquired with ::sr_session_start call.
- * @param[in] path @ref xp_page "XPath" identifier of the data element to be retrieved.
+ * @param[in] xpath @ref xp_page "XPath" identifier of the data element to be retrieved.
  * @param[out] value Structure containing information about requested element
  * (allocated by the function, can be freed with ::sr_free_val).
  *
@@ -528,7 +528,7 @@ int sr_get_schema(sr_session_ctx_t *session, const char *module_name, const char
  * SR_UNKNOWN_MODEL if the xpath references unknown model, SR_BAD_ELEMENT if the referenced
  * node can not be found in schema).
  */
-int sr_get_item(sr_session_ctx_t *session, const char *path, sr_val_t **value);
+int sr_get_item(sr_session_ctx_t *session, const char *xpath, sr_val_t **value);
 
 /**
  * @brief Retrieves an array of data elements matching provided XPath
@@ -550,17 +550,17 @@ int sr_get_item(sr_session_ctx_t *session, const char *path, sr_val_t **value);
  * in can still work very efficiently for large datasets.
  *
  * @param[in] session Session context acquired with ::sr_session_start call.
- * @param[in] path @ref xp_page "XPath" identifier of the data element to be retrieved.
+ * @param[in] xpath @ref xp_page "XPath" identifier of the data element to be retrieved.
  * @param[out] values Array of structures containing information about requested
  * data elements (allocated by the function, can be completely freed with ::sr_free_values).
  * @param[out] value_cnt Number of returned elements in the values array.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int sr_get_items(sr_session_ctx_t *session, const char *path, sr_val_t **values, size_t *value_cnt);
+int sr_get_items(sr_session_ctx_t *session, const char *xpath, sr_val_t **values, size_t *value_cnt);
 
 /**
- * @brief Creates an iterator for retrieving of the data elements stored under provided path.
+ * @brief Creates an iterator for retrieving of the data elements stored under provided xpath.
  *
  * Requested data elements are transferred from the datastore in larger chunks
  * of pre-defined size, which is much more efficient that calling multiple
@@ -574,14 +574,14 @@ int sr_get_items(sr_session_ctx_t *session, const char *path, sr_val_t **values,
  * @see ::sr_get_item_next for iterating over returned data elements.
  *
  * @param[in] session Session context acquired with ::sr_session_start call.
- * @param[in] path @ref xp_page "XPath" identifier of the data element / subtree to be retrieved.
+ * @param[in] xpath @ref xp_page "XPath" identifier of the data element / subtree to be retrieved.
  * @param[out] iter Iterator context that can be used to retrieve individual data
  * elements via ::sr_get_item_next calls. Allocated by the function, should be
  * freed with ::sr_free_val_iter.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int sr_get_items_iter(sr_session_ctx_t *session, const char *path, sr_val_iter_t **iter);
+int sr_get_items_iter(sr_session_ctx_t *session, const char *xpath, sr_val_iter_t **iter);
 
 /**
  * @brief Returns the next item from the dataset of provided iterator created
@@ -633,40 +633,40 @@ typedef enum sr_move_direction_e {
  * @brief Sets the value of the leaf, leaf-list, list or presence container.
  *
  * With default options it recursively creates all missing nodes (containers and
- * lists including their key leaves) in the path to the specified node (can be
+ * lists including their key leaves) in the xpath to the specified node (can be
  * turned off with SR_EDIT_NON_RECURSIVE option). If SR_EDIT_STRICT flag is set,
  * the node must not exist (otherwise an error is returned). Setting of a leaf-list
  * value appends the value at the end of the leaf-list. To create a list use
  * xpath with key values included and pass NULL as value argument.
  *
  * @param[in] session Session context acquired with ::sr_session_start call.
- * @param[in] path @ref xp_page "XPath" identifier of the data element to be set.
- * @param[in] value Value to be set on specified path. xpath member of the
+ * @param[in] xpath @ref xp_page "XPath" identifier of the data element to be set.
+ * @param[in] value Value to be set on specified xpath. xpath member of the
  * ::sr_val_t structure can be NULL. Value will be copied - can be allocated on stack.
  * @param[in] opts Options overriding default behavior of this call.
  *
  * @return Error code (SR_ERR_OK on success, SR_ERR_UNAUTHORIZED if the user
  * does not have write permission to any affected node).
  */
-int sr_set_item(sr_session_ctx_t *session, const char *path, const sr_val_t *value, const sr_edit_options_t opts);
+int sr_set_item(sr_session_ctx_t *session, const char *xpath, const sr_val_t *value, const sr_edit_options_t opts);
 
 /**
- * @brief Deletes the nodes under the specified path.
+ * @brief Deletes the nodes under the specified xpath.
  *
  * To delete non-empty lists or containers SR_EDIT_NON_RECURSIVE flag must not be set.
  * If SR_EDIT_STRICT flag is set the specified node must must exist in the datastore.
- * If the path includes the list keys, the specified list instance is deleted.
- * If the path to list does not include keys, all instances of the list are deleted.
+ * If the xpath includes the list keys, the specified list instance is deleted.
+ * If the xpath to list does not include keys, all instances of the list are deleted.
  * SR_ERR_UNAUTHORIZED will be returned if the user does not have write permission to any affected node.
  *
  * @param[in] session Session context acquired with ::sr_session_start call.
- * @param[in] path @ref xp_page "XPath" identifier of the data element to be deleted.
+ * @param[in] xpath @ref xp_page "XPath" identifier of the data element to be deleted.
  * @param[in] opts Options overriding default behavior of this call.
  *
  * @return Error code (SR_ERR_OK on success, SR_ERR_UNAUTHORIZED if the user
  * does not have write permission to any affected node).
  **/
-int sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_options_t opts);
+int sr_delete_item(sr_session_ctx_t *session, const char *xpath, const sr_edit_options_t opts);
 
 /**
  * @brief Move the instance of an ordered list in specified direction.
@@ -678,13 +678,13 @@ int sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_op
  * (without specifying keys of the list in question).
  *
  * @param[in] session Session context acquired with ::sr_session_start call.
- * @param[in] path @ref xp_page "XPath" identifier of the data element to be moved.
+ * @param[in] xpath @ref xp_page "XPath" identifier of the data element to be moved.
  * @param[in] direction Requested move direction.
  *
  * @return Error code (SR_ERR_OK on success, SR_ERR_UNAUTHORIZED if the user
  * does not have write permission to any affected node).
  */
-int sr_move_item(sr_session_ctx_t *session, const char *path, const sr_move_direction_t direction);
+int sr_move_item(sr_session_ctx_t *session, const char *xpath, const sr_move_direction_t direction);
 
 /**
  * @brief Perform the validation of changes made in current session, but do not

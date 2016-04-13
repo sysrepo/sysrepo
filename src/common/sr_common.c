@@ -1366,8 +1366,8 @@ sr_set_val_t_value_in_gpb(const sr_val_t *value, Sr__Value *gpb_value){
     CHECK_NULL_ARG2(value, gpb_value);
 
     if (NULL != value->xpath) {
-        gpb_value->path = strdup(value->xpath);
-        if (NULL == gpb_value->path){
+        gpb_value->xpath = strdup(value->xpath);
+        if (NULL == gpb_value->xpath){
             SR_LOG_ERR_MSG("Memory allocation failed");
             return  SR_ERR_NOMEM;
         }
@@ -1581,9 +1581,9 @@ sr_set_gpb_type_in_val_t(const Sr__Value *gpb_value, sr_val_t *value){
 
 static int
 sr_set_gpb_value_in_val_t(const Sr__Value *gpb_value, sr_val_t *value){
-    CHECK_NULL_ARG3(value, gpb_value, gpb_value->path);
+    CHECK_NULL_ARG3(value, gpb_value, gpb_value->xpath);
 
-    value->xpath = strdup(gpb_value->path);
+    value->xpath = strdup(gpb_value->xpath);
     if (NULL == value->xpath){
         SR_LOG_ERR_MSG("Memory allocation failed");
         return  SR_ERR_NOMEM;
@@ -2199,8 +2199,8 @@ sr_gpb_fill_error(const char *error_message, const char *error_path, Sr__Error *
         }
     }
     if (NULL != error_path) {
-        gpb_error->path = strdup(error_path);
-        if (NULL == gpb_error->path) {
+        gpb_error->xpath = strdup(error_path);
+        if (NULL == gpb_error->xpath) {
             goto nomem;
         }
     }
@@ -2231,7 +2231,7 @@ sr_gpb_fill_errors(sr_error_info_t *sr_errors, size_t sr_error_cnt, Sr__Error **
     }
 
     for (size_t i = 0; i < sr_error_cnt; i++) {
-        rc = sr_gpb_fill_error(sr_errors[i].message, sr_errors[i].path, &gpb_errors[i]);
+        rc = sr_gpb_fill_error(sr_errors[i].message, sr_errors[i].xpath, &gpb_errors[i]);
         if (SR_ERR_OK != rc) {
             for (size_t j = 0; j < i; j++) {
                 sr__error__free_unpacked(gpb_errors[j], NULL);
@@ -2252,7 +2252,7 @@ sr_free_errors(sr_error_info_t *errors, size_t error_cnt)
 {
     if (NULL != errors) {
         for (size_t i = 0; i < error_cnt; i++) {
-            free((void*)errors[i].path);
+            free((void*)errors[i].xpath);
             free((void*)errors[i].message);
         }
         free(errors);

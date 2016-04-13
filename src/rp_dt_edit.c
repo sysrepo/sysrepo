@@ -748,7 +748,7 @@ rp_dt_create_refresh_errors(const dm_sess_op_t *ops, size_t op_count, sr_error_i
             default:
                 (*errors)[*err_cnt].message = strdup("An operation can not be merged with current datastore state");
         }
-        (*errors)[*err_cnt].path = strdup(op->xpath);
+        (*errors)[*err_cnt].xpath = strdup(op->xpath);
         (*err_cnt)++;
     }
 }

@@ -69,7 +69,7 @@ rp_resp_fill_errors(Sr__Msg *msg, dm_session_t *dm_session)
         return SR_ERR_NOMEM;
     }
     sr__error__init(msg->response->error);
-    rc = dm_copy_errors(dm_session, &msg->response->error->message, &msg->response->error->path);
+    rc = dm_copy_errors(dm_session, &msg->response->error->message, &msg->response->error->xpath);
     return rc;
 }
 
@@ -265,7 +265,7 @@ rp_get_item_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
     }
 
     sr_val_t *value = NULL;
-    char *xpath = msg->request->get_item_req->path;
+    char *xpath = msg->request->get_item_req->xpath;
 
     /* get value from data manager */
     rc = rp_dt_get_value_wrapper(rp_ctx, session, xpath, &value);
@@ -318,7 +318,7 @@ rp_get_items_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
 
     sr_val_t **values = NULL;
     size_t count = 0;
-    char *xpath = msg->request->get_items_req->path;
+    char *xpath = msg->request->get_items_req->xpath;
     size_t offset = msg->request->get_items_req->offset;
     size_t limit = msg->request->get_items_req->limit;
 
@@ -401,7 +401,7 @@ rp_set_item_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
 
     SR_LOG_DBG_MSG("Processing set_item request.");
 
-    xpath = msg->request->set_item_req->path;
+    xpath = msg->request->set_item_req->xpath;
 
     /* allocate the response */
     rc = sr_pb_resp_alloc(SR__OPERATION__SET_ITEM, session->id, &resp);
@@ -462,7 +462,7 @@ rp_delete_item_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg
 
     SR_LOG_DBG_MSG("Processing delete_item request.");
 
-    xpath = msg->request->delete_item_req->path;
+    xpath = msg->request->delete_item_req->xpath;
 
     /* allocate the response */
     rc = sr_pb_resp_alloc(SR__OPERATION__DELETE_ITEM, session->id, &resp);
@@ -505,7 +505,7 @@ rp_move_item_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
 
     SR_LOG_DBG_MSG("Processing move_item request.");
 
-    xpath = msg->request->move_item_req->path;
+    xpath = msg->request->move_item_req->xpath;
 
     /* allocate the response */
     rc = sr_pb_resp_alloc(SR__OPERATION__MOVE_ITEM, session->id, &resp);
@@ -833,17 +833,17 @@ rp_subscribe_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr
     subscribe_req = msg->request->subscribe_req;
 
     /* subscribe to the notification */
-    rc = np_notification_subscribe(rp_ctx->np_ctx, subscribe_req->event, subscribe_req->path,
+    rc = np_notification_subscribe(rp_ctx->np_ctx, subscribe_req->event, subscribe_req->xpath,
             subscribe_req->destination, subscribe_req->subscription_id);
 
     if (SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV == subscribe_req->event &&
             subscribe_req->enable_running) {
         /* enable the module in running config */
         bool module_enabled = false;
-        rc = dm_has_enabled_subtree(rp_ctx->dm_ctx, subscribe_req->path, &module, &module_enabled);
+        rc = dm_has_enabled_subtree(rp_ctx->dm_ctx, subscribe_req->xpath, &module, &module_enabled);
         if (SR_ERR_OK == rc && !module_enabled) {
             /* if not already enabled, copy the data from startup */
-            rc = dm_copy_module(rp_ctx->dm_ctx, session->dm_session, subscribe_req->path, SR_DS_STARTUP, SR_DS_RUNNING);
+            rc = dm_copy_module(rp_ctx->dm_ctx, session->dm_session, subscribe_req->xpath, SR_DS_STARTUP, SR_DS_RUNNING);
         }
         if (SR_ERR_OK == rc) {
             /* enable each subtree within the module */

@@ -49,7 +49,7 @@
  * Structure holding data for iterative access to items
  */
 typedef struct sr_val_iter_s {
-    char *path;                     /**< xpath of the request */
+    char *xpath;                     /**< xpath of the request */
     size_t offset;                  /**< offset where the next data should be read */
     size_t limit;                   /**< how many items should be read */
     sr_val_t **buff_values;         /**< buffered values */
@@ -93,11 +93,11 @@ cl_engine_init_local(sr_conn_ctx_t *conn_ctx, const char *socket_path)
  * @brief Creates get_items request with options and send it
  */
 static int
-cl_send_get_items_iter(sr_session_ctx_t *session, const char *path, size_t offset, size_t limit, Sr__Msg **msg_resp){
+cl_send_get_items_iter(sr_session_ctx_t *session, const char *xpath, size_t offset, size_t limit, Sr__Msg **msg_resp){
     Sr__Msg *msg_req = NULL;
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG4(session, session->conn_ctx, path, msg_resp);
+    CHECK_NULL_ARG4(session, session->conn_ctx, xpath, msg_resp);
 
     /* prepare get_item message */
     rc = sr_pb_req_alloc(SR__OPERATION__GET_ITEMS, session->id, &msg_req);
@@ -107,9 +107,9 @@ cl_send_get_items_iter(sr_session_ctx_t *session, const char *path, size_t offse
     }
 
     /* fill in the path */
-    msg_req->request->get_items_req->path = strdup(path);
-    if (NULL == msg_req->request->get_items_req->path) {
-        SR_LOG_ERR_MSG("Cannot allocate get_items path.");
+    msg_req->request->get_items_req->xpath = strdup(xpath);
+    if (NULL == msg_req->request->get_items_req->xpath) {
+        SR_LOG_ERR_MSG("Cannot allocate get_items xpath.");
         rc = SR_ERR_NOMEM;
         goto cleanup;
     }
@@ -571,12 +571,12 @@ cleanup:
 }
 
 int
-sr_get_item(sr_session_ctx_t *session, const char *path, sr_val_t **value)
+sr_get_item(sr_session_ctx_t *session, const char *xpath, sr_val_t **value)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG4(session, session->conn_ctx, path, value);
+    CHECK_NULL_ARG4(session, session->conn_ctx, xpath, value);
 
     cl_session_clear_errors(session);
 
@@ -589,9 +589,9 @@ sr_get_item(sr_session_ctx_t *session, const char *path, sr_val_t **value)
     }
 
     /* fill in the path */
-    msg_req->request->get_item_req->path = strdup(path);
-    if (NULL == msg_req->request->get_item_req->path) {
-        SR_LOG_ERR_MSG("Cannot allocate get_item path.");
+    msg_req->request->get_item_req->xpath = strdup(xpath);
+    if (NULL == msg_req->request->get_item_req->xpath) {
+        SR_LOG_ERR_MSG("Cannot allocate get_item xpath.");
         rc = SR_ERR_NOMEM;
         goto cleanup;
     }
@@ -626,13 +626,13 @@ cleanup:
 }
 
 int
-sr_get_items(sr_session_ctx_t *session, const char *path, sr_val_t **values, size_t *value_cnt)
+sr_get_items(sr_session_ctx_t *session, const char *xpath, sr_val_t **values, size_t *value_cnt)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
     sr_val_t *vals = NULL;
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG5(session, session->conn_ctx, path, values, value_cnt);
+    CHECK_NULL_ARG5(session, session->conn_ctx, xpath, values, value_cnt);
 
     cl_session_clear_errors(session);
 
@@ -644,9 +644,9 @@ sr_get_items(sr_session_ctx_t *session, const char *path, sr_val_t **values, siz
     }
 
     /* fill in the path */
-    msg_req->request->get_items_req->path = strdup(path);
-    if (NULL == msg_req->request->get_items_req->path) {
-        SR_LOG_ERR_MSG("Cannot allocate get_items path.");
+    msg_req->request->get_items_req->xpath = strdup(xpath);
+    if (NULL == msg_req->request->get_items_req->xpath) {
+        SR_LOG_ERR_MSG("Cannot allocate get_items xpath.");
         rc = SR_ERR_NOMEM;
         goto cleanup;
     }
@@ -701,7 +701,7 @@ cleanup:
 
 
 int
-sr_get_items_iter(sr_session_ctx_t *session, const char *path, sr_val_iter_t **iter)
+sr_get_items_iter(sr_session_ctx_t *session, const char *xpath, sr_val_iter_t **iter)
 {
     Sr__Msg *msg_resp = NULL;
     sr_val_iter_t *it = NULL;
@@ -709,15 +709,15 @@ sr_get_items_iter(sr_session_ctx_t *session, const char *path, sr_val_iter_t **i
 
     cl_session_clear_errors(session);
 
-    CHECK_NULL_ARG4(session, session->conn_ctx, path, iter);
-    rc = cl_send_get_items_iter(session, path, 0, CL_GET_ITEMS_FETCH_LIMIT, &msg_resp);
+    CHECK_NULL_ARG4(session, session->conn_ctx, xpath, iter);
+    rc = cl_send_get_items_iter(session, xpath, 0, CL_GET_ITEMS_FETCH_LIMIT, &msg_resp);
     if (SR_ERR_NOT_FOUND == rc){
-        SR_LOG_DBG("No items found for xpath '%s'", path);
+        SR_LOG_DBG("No items found for xpath '%s'", xpath);
         /* SR_ERR_NOT_FOUND will be returned on get_item_next call */
         rc = SR_ERR_OK;
     }
     else if (SR_ERR_OK != rc){
-        SR_LOG_ERR("Sending get_items request failed '%s'", path);
+        SR_LOG_ERR("Sending get_items request failed '%s'", xpath);
         goto cleanup;
     }
 
@@ -731,9 +731,9 @@ sr_get_items_iter(sr_session_ctx_t *session, const char *path, sr_val_iter_t **i
     it->index = 0;
     it->count = msg_resp->response->get_items_resp->n_values;
 
-    it->path = strdup(path);
-    if (NULL == it->path){
-        SR_LOG_ERR_MSG("Duplication of path failed");
+    it->xpath = strdup(xpath);
+    if (NULL == it->xpath){
+        SR_LOG_ERR_MSG("Duplication of xpath failed");
         rc = SR_ERR_NOMEM;
         goto cleanup;
     }
@@ -767,8 +767,8 @@ cleanup:
         sr__msg__free_unpacked(msg_resp, NULL);
     }
     if (NULL != it){
-        if (NULL != it->path){
-            free(it->path);
+        if (NULL != it->xpath){
+            free(it->xpath);
         }
         free(it);
     }
@@ -795,13 +795,13 @@ sr_get_item_next(sr_session_ctx_t *session, sr_val_iter_t *iter, sr_val_t **valu
         iter->offset++;
     } else {
         /* Fetch more items */
-        rc = cl_send_get_items_iter(session, iter->path, iter->offset,
+        rc = cl_send_get_items_iter(session, iter->xpath, iter->offset,
                 CL_GET_ITEMS_FETCH_LIMIT, &msg_resp);
         if (SR_ERR_NOT_FOUND == rc){
-            SR_LOG_DBG("All items has been read for path '%s'", iter->path);
+            SR_LOG_DBG("All items has been red for xpath '%s'", iter->xpath);
             goto cleanup;
         } else if (SR_ERR_OK != rc){
-            SR_LOG_ERR("Fetching more items failed '%s'", iter->path);
+            SR_LOG_ERR("Fetching more items failed '%s'", iter->xpath);
             goto cleanup;
         }
 
@@ -857,8 +857,8 @@ sr_free_val_iter(sr_val_iter_t *iter){
     if (NULL == iter){
         return;
     }
-    free(iter->path);
-    iter->path = NULL;
+    free(iter->xpath);
+    iter->xpath = NULL;
     if (NULL != iter->buff_values) {
         /* free items that has not been passed to user already*/
         sr_free_values_arr_range(iter->buff_values, iter->index, iter->count);
@@ -868,12 +868,12 @@ sr_free_val_iter(sr_val_iter_t *iter){
 }
 
 int
-sr_set_item(sr_session_ctx_t *session, const char *path, const sr_val_t *value, const sr_edit_options_t opts)
+sr_set_item(sr_session_ctx_t *session, const char *xpath, const sr_val_t *value, const sr_edit_options_t opts)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG3(session, session->conn_ctx, path);
+    CHECK_NULL_ARG3(session, session->conn_ctx, xpath);
 
     cl_session_clear_errors(session);
 
@@ -885,9 +885,9 @@ sr_set_item(sr_session_ctx_t *session, const char *path, const sr_val_t *value, 
     }
 
     /* fill in the path and options */
-    msg_req->request->set_item_req->path = strdup(path);
-    if (NULL == msg_req->request->set_item_req->path) {
-        SR_LOG_ERR_MSG("Cannot allocate set_item path.");
+    msg_req->request->set_item_req->xpath = strdup(xpath);
+    if (NULL == msg_req->request->set_item_req->xpath) {
+        SR_LOG_ERR_MSG("Cannot allocate set_item xpath.");
         rc = SR_ERR_NOMEM;
         goto cleanup;
     }
@@ -925,12 +925,12 @@ cleanup:
 }
 
 int
-sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_options_t opts)
+sr_delete_item(sr_session_ctx_t *session, const char *xpath, const sr_edit_options_t opts)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG3(session, session->conn_ctx, path);
+    CHECK_NULL_ARG3(session, session->conn_ctx, xpath);
 
     cl_session_clear_errors(session);
 
@@ -942,9 +942,9 @@ sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_option
     }
 
     /* fill in the path and options */
-    msg_req->request->delete_item_req->path = strdup(path);
-    if (NULL == msg_req->request->delete_item_req->path) {
-        SR_LOG_ERR_MSG("Cannot allocate delete_item path.");
+    msg_req->request->delete_item_req->xpath = strdup(xpath);
+    if (NULL == msg_req->request->delete_item_req->xpath) {
+        SR_LOG_ERR_MSG("Cannot allocate delete_item xpath.");
         rc = SR_ERR_NOMEM;
         goto cleanup;
     }
@@ -973,12 +973,12 @@ cleanup:
 }
 
 int
-sr_move_item(sr_session_ctx_t *session, const char *path, const sr_move_direction_t direction)
+sr_move_item(sr_session_ctx_t *session, const char *xpath, const sr_move_direction_t direction)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG3(session, session->conn_ctx, path);
+    CHECK_NULL_ARG3(session, session->conn_ctx, xpath);
 
     cl_session_clear_errors(session);
 
@@ -990,9 +990,9 @@ sr_move_item(sr_session_ctx_t *session, const char *path, const sr_move_directio
     }
 
     /* fill in the path and direction */
-    msg_req->request->move_item_req->path = strdup(path);
-    if (NULL == msg_req->request->move_item_req->path) {
-        SR_LOG_ERR_MSG("Cannot allocate move_item path.");
+    msg_req->request->move_item_req->xpath = strdup(xpath);
+    if (NULL == msg_req->request->move_item_req->xpath) {
+        SR_LOG_ERR_MSG("Cannot allocate move_item xpath.");
         rc = SR_ERR_NOMEM;
         goto cleanup;
     }
@@ -1480,8 +1480,8 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, b
     msg_req->request->subscribe_req->event = SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV;
     msg_req->request->subscribe_req->has_enable_running = true;
     msg_req->request->subscribe_req->enable_running = enable_running;
-    msg_req->request->subscribe_req->path = strdup(module_name);
-    CHECK_NULL_NOMEM_GOTO(msg_req->request->subscribe_req->path, rc, cleanup);
+    msg_req->request->subscribe_req->xpath = strdup(module_name);
+    CHECK_NULL_NOMEM_GOTO(msg_req->request->subscribe_req->xpath, rc, cleanup);
 
     /* send the request and receive the response */
     rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__SUBSCRIBE);

@@ -1396,7 +1396,7 @@ dm_validate_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error
                 }
                 *errors = tmp_err;
                 (*errors)[(*err_cnt)-1].message = strdup(ly_errmsg());
-                (*errors)[(*err_cnt)-1].path = strdup(ly_errpath());
+                (*errors)[(*err_cnt)-1].xpath = strdup(ly_errpath());
 
                 rc = SR_ERR_VALIDATION_FAILED;
             } else {
