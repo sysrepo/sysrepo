@@ -270,7 +270,9 @@ rp_get_item_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
     /* get value from data manager */
     rc = rp_dt_get_value_wrapper(rp_ctx, session, xpath, &value);
     if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Get item failed for '%s', session id=%"PRIu32".", xpath, session->id);
+        if (SR_ERR_NOT_FOUND != rc) {
+            SR_LOG_ERR("Get item failed for '%s', session id=%"PRIu32".", xpath, session->id);
+        }
     }
 
     /* copy value to gpb */
@@ -333,18 +335,12 @@ rp_get_items_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
     }
 
     if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Get items failed for '%s', session id=%"PRIu32".", xpath, session->id);
+        if (SR_ERR_NOT_FOUND != rc) {
+            SR_LOG_ERR("Get items failed for '%s', session id=%"PRIu32".", xpath, session->id);
+        }
         goto cleanup;
     }
     SR_LOG_DBG("%zu items found for '%s', session id=%"PRIu32".", count, xpath, session->id);
-
-    if (0 == count){
-        SR_LOG_DBG("No items found for '%s', session id=%"PRIu32".", xpath, session->id);
-        rc = SR_ERR_NOT_FOUND;
-        resp->response->get_items_resp->n_values = 0;
-        goto cleanup;
-    }
-
 
     resp->response->get_items_resp->values = calloc(count, sizeof(Sr__Value *));
     if (NULL == resp->response->get_items_resp->values){
