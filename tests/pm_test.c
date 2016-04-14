@@ -90,13 +90,13 @@ pm_feature_test(void **state)
     size_t feature_cnt = 0;
     int rc = SR_ERR_OK;
 
-    rc = pm_feature_enable(test_ctx->pm_ctx, &test_ctx->user_cred, "example-module", "featureX", true);
+    rc = pm_save_feature_state(test_ctx->pm_ctx, &test_ctx->user_cred, "example-module", "featureX", true);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = pm_feature_enable(test_ctx->pm_ctx, &test_ctx->user_cred, "example-module", "featureY", true);
+    rc = pm_save_feature_state(test_ctx->pm_ctx, &test_ctx->user_cred, "example-module", "featureY", true);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = pm_feature_enable(test_ctx->pm_ctx, &test_ctx->user_cred, "example-module", "featureX", true);
+    rc = pm_save_feature_state(test_ctx->pm_ctx, &test_ctx->user_cred, "example-module", "featureX", true);
     assert_int_equal(SR_ERR_OK, rc);
 
     rc = pm_get_features(test_ctx->pm_ctx, "example-module", &features, &feature_cnt);
@@ -108,13 +108,13 @@ pm_feature_test(void **state)
     }
     free(features);
 
-    rc = pm_feature_enable(test_ctx->pm_ctx, &test_ctx->user_cred, "example-module", "featureX", false);
+    rc = pm_save_feature_state(test_ctx->pm_ctx, &test_ctx->user_cred, "example-module", "featureX", false);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = pm_feature_enable(test_ctx->pm_ctx, &test_ctx->user_cred, "example-module", "featureY", false);
+    rc = pm_save_feature_state(test_ctx->pm_ctx, &test_ctx->user_cred, "example-module", "featureY", false);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = pm_feature_enable(test_ctx->pm_ctx, &test_ctx->user_cred, "example-module", "featureX", false);
+    rc = pm_save_feature_state(test_ctx->pm_ctx, &test_ctx->user_cred, "example-module", "featureX", false);
     assert_int_equal(SR_ERR_OK, rc);
 }
 

@@ -222,7 +222,7 @@ rp_feature_enable_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *sessio
 
     /* enable the feature in persistent data */
     if (SR_ERR_OK == oper_rc) {
-        oper_rc = pm_feature_enable(rp_ctx->pm_ctx, session->user_credentials,
+        oper_rc = pm_save_feature_state(rp_ctx->pm_ctx, session->user_credentials,
                 req->module_name, req->feature_name, req->enabled);
         if (SR_ERR_OK != oper_rc) {
             /* rollback of the change in DM */

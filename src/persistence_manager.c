@@ -112,7 +112,7 @@ pm_load_data_tree(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *mod
     int fd = -1;
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG3(pm_ctx, data_filename, data_tree);
+    CHECK_NULL_ARG5(pm_ctx, user_cred, module_name, data_filename, data_tree);
 
     /* open the file as the proper user */
     if (NULL != user_cred) {
@@ -256,7 +256,7 @@ pm_cleanup(pm_ctx_t *pm_ctx)
 }
 
 int
-pm_feature_enable(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *module_name,
+pm_save_feature_state(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *module_name,
         const char *feature_name, bool enable)
 {
     char *data_filename = NULL;
@@ -264,6 +264,8 @@ pm_feature_enable(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *mod
     int fd = -1;
     bool skip = false;
     int rc = SR_ERR_OK, ret = 0;
+
+    CHECK_NULL_ARG4(pm_ctx, user_cred, module_name, feature_name);
 
     /* get persist file path */
     rc = sr_get_persist_data_file_name(pm_ctx->data_search_dir, module_name, &data_filename);
@@ -419,5 +421,27 @@ cleanup:
     if (SR_ERR_OK != rc) {
         free(features);
     }
+    return rc;
+}
+
+int
+pm_save_subscribtion_state(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *module_name,
+        const np_subscription_t *subscription, const bool subscribe)
+{
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG3(pm_ctx, user_cred, subscription);
+
+    return rc;
+}
+
+int
+pm_get_subscriptions(pm_ctx_t *pm_ctx, const char *module_name, Sr__NotificationEvent event_type,
+        np_subscription_t **subscriptions, size_t *subscription_cnt)
+{
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG3(pm_ctx, subscriptions, subscription_cnt);
+
     return rc;
 }

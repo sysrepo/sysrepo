@@ -69,15 +69,15 @@ void pm_cleanup(pm_ctx_t *pm_ctx);
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int pm_feature_enable(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *module_name,
+int pm_save_feature_state(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *module_name,
         const char *feature_name, bool enable);
 
 /**
- * @brief Returns the array of features that should be enabled in specified module.
+ * @brief Returns the array of enabled features in module's persistent storage.
  *
  * @param[in] pm_ctx Persistence Manager context acquired by ::pm_init call.
  * @param[in] module_name Name of the module.
- * @param[out] features Array of features that should be enabled.
+ * @param[out] features Array of enabled features.
  * @param[out] feature_cnt Number of features in returned array.
  *
  * @return Error code (SR_ERR_OK on success).
@@ -85,16 +85,32 @@ int pm_feature_enable(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char 
 int pm_get_features(pm_ctx_t *pm_ctx, const char *module_name, char ***features, size_t *feature_cnt);
 
 /**
- * TODO
+ * @brief Saves/deletes the subscription in module's persistent storage.
+ *
+ * @param[in] pm_ctx Persistence Manager context acquired by ::pm_init call.
+ * @param[in] user_cred User credentials.
+ * @param[in] module_name Name of the module.
+ * @param[in] subscription Subscription to be saved.
+ * @param[in] subscribe TRUE if the subscription should be added, FALSE if removed.
+ *
+ * @return Error code (SR_ERR_OK on success).
  */
-int pm_subscribe(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const np_subscription_t *subscription,
-        const bool subscribe);
+int pm_save_subscribtion_state(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *module_name,
+        const np_subscription_t *subscription, const bool subscribe);
 
 /**
- * TODO
+ * @brief Returns the array of active subscriptions of given type in module's persistent storage.
+ *
+ * @param[in] pm_ctx Persistence Manager context acquired by ::pm_init call.
+ * @param[in] module_name Name of the module.
+ * @param[in] event_type Type of the subscription.
+ * @param[out] subscriptions Array of the active subscriptions.
+ * @param[out] subscription_cnt Number of subscriptions in returned array.
+ *
+ * @return Error code (SR_ERR_OK on success).
  */
-int pm_get_subscriptions(pm_ctx_t *pm_ctx, Sr__NotificationEvent event_type, np_subscription_t **subscriptions,
-        size_t *subscription_cnt);
+int pm_get_subscriptions(pm_ctx_t *pm_ctx, const char *module_name, Sr__NotificationEvent event_type,
+        np_subscription_t **subscriptions, size_t *subscription_cnt);
 
 /**@} pm */
 
