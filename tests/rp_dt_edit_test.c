@@ -1667,6 +1667,40 @@ lock_commit_test(void **state)
    test_rp_session_cleanup(ctx, sessionB);
 }
 
+
+void
+empty_string_leaf_test(void **state)
+{
+   int rc = 0;
+   rp_ctx_t *ctx = *state;
+   rp_session_t *sessionA = NULL, *sessionB = NULL;
+
+   test_rp_sesssion_create(ctx, SR_DS_STARTUP, &sessionA);
+   test_rp_sesssion_create(ctx, SR_DS_STARTUP, &sessionB);
+
+   sr_val_t *v = NULL;
+   v = calloc(1, sizeof(*v));
+   assert_non_null(v);
+   v->type = SR_STRING_T;
+
+   rc = rp_dt_set_item_wrapper(ctx, sessionA, "/test-module:main/string", v, SR_EDIT_DEFAULT);
+   assert_int_equal(SR_ERR_OK, rc);
+
+   size_t e_cnt = 0;
+   sr_error_info_t *errors = NULL;
+   rc = rp_dt_commit(ctx, sessionA, &errors, &e_cnt);
+   assert_int_equal(SR_ERR_OK, rc);
+
+   sr_val_t *retrieved = NULL;
+   rc = rp_dt_get_value_wrapper(ctx, sessionB, "/test-module:main/string", &retrieved);
+   assert_int_equal(SR_ERR_OK, rc);
+
+   sr_free_val(retrieved);
+
+   test_rp_session_cleanup(ctx, sessionA);
+   test_rp_session_cleanup(ctx, sessionB);
+}
+
 int main(){
 
     sr_log_stderr(SR_LL_DBG);
@@ -1696,6 +1730,7 @@ int main(){
             cmocka_unit_test(edit_commit4_test),
             cmocka_unit_test(operation_logging_test),
             cmocka_unit_test(lock_commit_test),
+            cmocka_unit_test(empty_string_leaf_test),
     };
     return cmocka_run_group_tests(tests, setup, teardown);
 }

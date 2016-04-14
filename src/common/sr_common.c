@@ -2101,10 +2101,14 @@ sr_val_to_str(const sr_val_t *value, struct lys_node *schema_node, char **out)
     size_t len = 0;
     switch (value->type) {
     case SR_BINARY_T:
-        *out = strdup(value->data.binary_val);
+        if (NULL != value->data.binary_val) {
+            *out = strdup(value->data.binary_val);
+        }
         break;
     case SR_BITS_T:
-        *out = strdup(value->data.bits_val);
+        if (NULL != value->data.bits_val) {
+            *out = strdup(value->data.bits_val);
+        }
         break;
     case SR_BOOL_T:
         *out = value->data.bool_val ? strdup("true") : strdup("false");
@@ -2112,17 +2116,23 @@ sr_val_to_str(const sr_val_t *value, struct lys_node *schema_node, char **out)
     case SR_DECIMAL64_T:
         return sr_dec64_to_str(value->data.decimal64_val, schema_node, out);
     case SR_ENUM_T:
-        *out = strdup(value->data.enum_val);
+        if (NULL != value->data.enum_val) {
+            *out = strdup(value->data.enum_val);
+        }
         break;
     case SR_CONTAINER_PRESENCE_T:
     case SR_LEAF_EMPTY_T:
         *out = strdup("");
         break;
     case SR_IDENTITYREF_T:
-        *out = strdup(value->data.identityref_val);
+        if (NULL != value->data.identityref_val) {
+            *out = strdup(value->data.identityref_val);
+        }
         break;
     case SR_INSTANCEID_T:
-        *out = strdup(value->data.instanceid_val);
+        if (NULL != value->data.instanceid_val) {
+            *out = strdup(value->data.instanceid_val);
+        }
         break;
     case SR_INT8_T:
         len = snprintf(NULL, 0, "%"PRId8, value->data.int8_val);
@@ -2145,10 +2155,17 @@ sr_val_to_str(const sr_val_t *value, struct lys_node *schema_node, char **out)
         snprintf(*out, len + 1, "%"PRId64, value->data.int64_val);
         break;
     case SR_LEAFREF_T:
-        *out = strdup(value->data.leafref_val);
+        if (NULL != value->data.leafref_val) {
+            *out = strdup(value->data.leafref_val);
+        }
         break;
     case SR_STRING_T:
-        *out = strdup(value->data.string_val);
+        if (NULL != value->data.string_val){
+            *out = strdup(value->data.string_val);
+        } else {
+            *out = NULL;
+            return SR_ERR_OK;
+        }
         break;
     case SR_UINT8_T:
         len = snprintf(NULL, 0, "%"PRIu8, value->data.uint8_val);

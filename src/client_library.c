@@ -619,6 +619,7 @@ sr_get_items_iter(sr_session_ctx_t *session, const char *xpath, sr_val_iter_t **
 
     it->index = 0;
     it->count = msg_resp->response->get_items_resp->n_values;
+    it->offset = it->count;
 
     it->xpath = strdup(xpath);
     CHECK_NULL_NOMEM_GOTO(it->xpath, rc, cleanup);
@@ -673,7 +674,6 @@ sr_get_item_next(sr_session_ctx_t *session, sr_val_iter_t *iter, sr_val_t **valu
     } else if (iter->index < iter->count) {
         /* There are buffered data */
         *value = iter->buff_values[iter->index++];
-        iter->offset++;
     } else {
         /* Fetch more items */
         rc = cl_send_get_items_iter(session, iter->xpath, iter->offset,
@@ -714,7 +714,7 @@ sr_get_item_next(sr_session_ctx_t *session, sr_val_iter_t *iter, sr_val_t **valu
             }
         }
         *value = iter->buff_values[iter->index++];
-        iter->offset++;
+        iter->offset+=received_cnt;
         sr__msg__free_unpacked(msg_resp, NULL);
     }
     return cl_session_return(session, SR_ERR_OK);
