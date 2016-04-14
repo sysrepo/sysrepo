@@ -112,7 +112,7 @@ pm_load_data_tree(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *mod
     int fd = -1;
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG5(pm_ctx, user_cred, module_name, data_filename, data_tree);
+    CHECK_NULL_ARG4(pm_ctx, module_name, data_filename, data_tree);
 
     /* open the file as the proper user */
     if (NULL != user_cred) {
