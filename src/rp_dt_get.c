@@ -154,10 +154,12 @@ rp_dt_copy_value(const struct lyd_node_leaf_list *leaf, LY_DATA_TYPE type, sr_va
         }
         return SR_ERR_INTERNAL;
     case LY_TYPE_STRING:
-        value->data.string_val = strdup(leaf->value.string);
-        if (NULL == value->data.string_val) {
-            SR_LOG_ERR_MSG("String duplication failed");
-            return SR_ERR_NOMEM;
+        if (NULL != leaf->value.string) {
+            value->data.string_val = strdup(leaf->value.string);
+            if (NULL == value->data.string_val) {
+                SR_LOG_ERR_MSG("String duplication failed");
+                return SR_ERR_NOMEM;
+            }
         }
         return SR_ERR_OK;
     case LY_TYPE_UNION:
