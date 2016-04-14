@@ -301,6 +301,9 @@ pm_save_feature_state(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char 
     rc = pm_save_data_tree(pm_ctx, fd, data_tree);
 
 cleanup:
+    if (NULL != node_set) {
+        ly_set_free(node_set);
+    }
     if (NULL != data_tree) {
         lyd_free_withsiblings(data_tree);
     }

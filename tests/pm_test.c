@@ -97,7 +97,7 @@ pm_feature_test(void **state)
     assert_int_equal(SR_ERR_OK, rc);
 
     rc = pm_save_feature_state(test_ctx->pm_ctx, &test_ctx->user_cred, "example-module", "featureX", true);
-    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(SR_ERR_DATA_EXISTS, rc);
 
     rc = pm_get_features(test_ctx->pm_ctx, "example-module", &features, &feature_cnt);
     assert_int_equal(SR_ERR_OK, rc);
@@ -115,7 +115,7 @@ pm_feature_test(void **state)
     assert_int_equal(SR_ERR_OK, rc);
 
     rc = pm_save_feature_state(test_ctx->pm_ctx, &test_ctx->user_cred, "example-module", "featureX", false);
-    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(SR_ERR_DATA_MISSING, rc);
 }
 
 int
