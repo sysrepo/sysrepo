@@ -33,6 +33,7 @@
 
 #define PM_SCHEMA_FILE            "sysrepo-persistent-data.yin"
 
+// TODO: remove
 #define PM_MODULE_NODE_NAME       "module"
 #define PM_MODULE_NAME_NODE_NAME  "module-name"
 #define PM_FEATURE_NODE_NAME      "enabled-features"
@@ -74,35 +75,6 @@ pm_save_data_tree(pm_ctx_t *pm_ctx, int fd, struct lyd_node *data_tree)
 }
 
 /**
- * @brief Creates a new data tree of persistent data tied to specified YANG module.
- */
-static int
-pm_create_data_tree(pm_ctx_t *pm_ctx, const char *module_name, struct lyd_node **data_tree)
-{
-    struct lyd_node *root_node = NULL, *new_node = NULL;
-
-    CHECK_NULL_ARG3(pm_ctx, module_name, data_tree);
-
-    SR_LOG_DBG("Creating new persist data tree for module '%s'.", module_name);
-
-    /* set initial content */
-    root_node = lyd_new(NULL, pm_ctx->schema, PM_MODULE_NODE_NAME);
-    if (NULL == root_node) {
-        SR_LOG_ERR("Unable to create a new 'module' node in persist data tree for '%s'.", module_name);
-        return SR_ERR_INTERNAL;
-    }
-    new_node = lyd_new_leaf(root_node, pm_ctx->schema, PM_MODULE_NAME_NODE_NAME, module_name);
-    if (NULL == new_node) {
-        SR_LOG_ERR("Unable to create a new 'module-name' node in persist data tree for '%s'.", module_name);
-        lyd_free(root_node);
-        return SR_ERR_INTERNAL;
-    }
-
-    *data_tree = root_node;
-    return SR_ERR_OK;
-}
-
-/**
  * @brief Loads the data tree of persistent data file tied to specified YANG module.
  */
 static int
@@ -132,18 +104,13 @@ pm_load_data_tree(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *mod
             if (read_only) {
                 rc = SR_ERR_DATA_MISSING;
             } else {
-                /* create the data tree */
-                rc = pm_create_data_tree(pm_ctx, module_name, data_tree);
-                if (SR_ERR_OK == rc) {
-                    /* create the file */
-                    ac_set_user_identity(pm_ctx->ac_ctx, user_cred);
-                    fd = open(data_filename, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
-                    ac_unset_user_identity(pm_ctx->ac_ctx);
-                    if (-1 == fd) {
-                        SR_LOG_ERR("Unable to create new persist data file '%s': %s", data_filename, strerror(errno));
-                        lyd_free_withsiblings(*data_tree);
-                        rc = SR_ERR_INTERNAL;
-                    }
+                /* create new persist file */
+                ac_set_user_identity(pm_ctx->ac_ctx, user_cred);
+                fd = open(data_filename, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
+                ac_unset_user_identity(pm_ctx->ac_ctx);
+                if (-1 == fd) {
+                    SR_LOG_ERR("Unable to create new persist data file '%s': %s", data_filename, strerror(errno));
+                    rc = SR_ERR_INTERNAL;
                 }
             }
         } else if (EACCES == errno) {
@@ -161,14 +128,12 @@ pm_load_data_tree(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *mod
     /* lock & load the data tree */
     sr_lock_fd(fd, (read_only ? false : true), true);
 
-    if (NULL == *data_tree) {
-        *data_tree = lyd_parse_fd(pm_ctx->ly_ctx, fd, LYD_XML, LYD_OPT_STRICT | LYD_OPT_CONFIG);
-        if (NULL == *data_tree && LY_SUCCESS != ly_errno) {
-            SR_LOG_ERR("Parsing persist data from file '%s' failed: %s", data_filename, ly_errmsg());
-            rc = SR_ERR_INTERNAL;
-        } else {
-            SR_LOG_DBG("Persist data successfully loaded from file '%s'.", data_filename);
-        }
+    *data_tree = lyd_parse_fd(pm_ctx->ly_ctx, fd, LYD_XML, LYD_OPT_STRICT | LYD_OPT_CONFIG);
+    if (NULL == *data_tree && LY_SUCCESS != ly_errno) {
+        SR_LOG_ERR("Parsing persist data from file '%s' failed: %s", data_filename, ly_errmsg());
+        rc = SR_ERR_INTERNAL;
+    } else {
+        SR_LOG_DBG("Persist data successfully loaded from file '%s'.", data_filename);
     }
 
     if (read_only || NULL == fd_p) {
@@ -260,9 +225,10 @@ pm_save_feature_state(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char 
         const char *feature_name, bool enable)
 {
     char *data_filename = NULL;
-    struct lyd_node *data_tree = NULL, *new_node = NULL, *curr = NULL;
+    char xpath[PATH_MAX] = { 0, };
+    struct lyd_node *data_tree = NULL, *new_node = NULL;
+    struct ly_set *node_set = NULL;
     int fd = -1;
-    bool skip = false;
     int rc = SR_ERR_OK, ret = 0;
 
     CHECK_NULL_ARG4(pm_ctx, user_cred, module_name, feature_name);
@@ -281,65 +247,58 @@ pm_save_feature_state(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char 
         goto cleanup;
     }
 
-    if (NULL == data_tree) {
-        /* create the data tree if it's NULL */
-        rc = pm_create_data_tree(pm_ctx, module_name, &data_tree);
-        if (SR_ERR_OK != rc) {
+    if (NULL == data_tree && !enable) {
+        SR_LOG_ERR("Persist data tree for module '%s' is empty.", module_name);
+        rc = SR_ERR_DATA_MISSING;
+        goto cleanup;
+    }
+
+    if (enable) {
+        /* enable the feature */
+        snprintf(xpath, PATH_MAX, "/sysrepo-persistent-data:module[name='%s']/enabled-features", module_name);
+        new_node = lyd_new_path(data_tree, pm_ctx->ly_ctx, xpath, feature_name, 0);
+        if (NULL == data_tree) {
+            /* if the new data tree has been just created */
+            data_tree = new_node;
+        }
+
+        if (NULL == new_node) {
+            SR_LOG_ERR("Unable to create a new feature node in persist data tree for '%s': %s.", module_name, ly_errmsg());
+            rc = SR_ERR_DATA_EXISTS;
+            goto cleanup;
+        } else {
+            SR_LOG_DBG("Feature '%s' successfully enabled in '%s' persist data tree.", feature_name, module_name);
+        }
+    } else {
+        /* disable the feature */
+        snprintf(xpath, PATH_MAX, "/sysrepo-persistent-data:module[name='%s']/enabled-features[text()='%s']",
+                module_name, feature_name);
+        node_set = lyd_get_node(data_tree, xpath);
+
+        if (NULL == node_set || LY_SUCCESS != ly_errno) {
+            SR_LOG_ERR("Unable to find feature node in persist data tree for '%s': %s.", module_name, ly_errmsg());
+            rc = SR_ERR_INTERNAL;
             goto cleanup;
         }
-    }
-    curr = data_tree->child;
-
-    /* find matching feature node (if exists) */
-    while (curr != NULL) {
-        if ((NULL != curr->schema) && (NULL != curr->schema->name) &&
-                (0 == strcmp(PM_FEATURE_NODE_NAME, curr->schema->name))) {
-            /* this is a feature leaf-list node */
-            struct lyd_node_leaf_list *data_leaf = (struct lyd_node_leaf_list *)curr;
-            if ((NULL != data_leaf) && (NULL != data_leaf->value.string) &&
-                    (0 == strcmp(data_leaf->value.string, feature_name))) {
-                /* feature name matches */
-                if (enable) {
-                    SR_LOG_DBG("Feature '%s' already enabled in '%s' persist file.", feature_name, module_name);
-                    skip = true;
-                }
-                break;
-            }
-        }
-        curr = curr->next;
-    }
-
-    if (!skip) {
-        if (enable) {
-            /* enable the feature */
-            new_node = lyd_new_leaf(data_tree, pm_ctx->schema, PM_FEATURE_NODE_NAME, feature_name);
-            if (NULL == new_node) {
-                SR_LOG_ERR("Unable to create a new feature node in persist data tree for '%s'.", module_name);
-                rc = SR_ERR_INTERNAL;
-            } else {
-                SR_LOG_DBG("Feature '%s' successfully enabled in '%s' persist file.", feature_name, module_name);
-            }
+        if (1 != node_set->number) {
+            SR_LOG_ERR("Feature '%s' already disabled in '%s' persist data tree.", feature_name, module_name);
+            rc = SR_ERR_DATA_MISSING;
+            goto cleanup;
         } else {
-            /* disable the feature */
-            if (NULL == curr) {
-                SR_LOG_DBG("Feature '%s' already disabled in '%s' persist file.", feature_name, module_name);
-                skip = true;
+            ret = lyd_unlink(node_set->set.d[0]);
+            if (0 != ret) {
+                SR_LOG_ERR("Unable to unlink the feature node in persist data tree for '%s'.", module_name);
+                rc = SR_ERR_INTERNAL;
+                goto cleanup;
             } else {
-                ret = lyd_unlink(curr);
-                if (0 != ret) {
-                    SR_LOG_ERR("Unable to unlink the feature node in persist data tree for '%s'.", module_name);
-                    rc = SR_ERR_INTERNAL;
-                } else {
-                    lyd_free(curr);
-                    SR_LOG_DBG("Feature '%s' successfully disabled in '%s' persist file.", feature_name, module_name);
-                }
+                lyd_free(node_set->set.d[0]);
+                SR_LOG_DBG("Feature '%s' successfully disabled in '%s' persist file.", feature_name, module_name);
             }
         }
-        /* save the changes */
-        if (!skip) {
-            rc = pm_save_data_tree(pm_ctx, fd, data_tree);
-        }
     }
+
+    /* save the changes */
+    rc = pm_save_data_tree(pm_ctx, fd, data_tree);
 
 cleanup:
     if (NULL != data_tree) {

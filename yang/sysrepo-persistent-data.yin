@@ -54,11 +54,11 @@ YANG subtree.</text>
     </description>
   </identity>
   <list name="module">
-    <key value="module-name"/>
+    <key value="name"/>
     <description>
       <text>Module-specific persistent data maintained by sysrepo.</text>
     </description>
-    <leaf name="module-name">
+    <leaf name="name">
       <type name="string"/>
       <description>
         <text>Name of the YANG module.</text>
@@ -96,10 +96,10 @@ sysrepo.</text>
           <text>Destination-local subscription identifier.</text>
         </description>
       </leaf>
-      <leaf name="subtree-path">
+      <leaf name="xpath">
         <type name="string"/>
         <description>
-          <text>Path of the subtree where the subscription is active.</text>
+          <text>XPath of the subtree where the subscription is active.</text>
         </description>
       </leaf>
     </list>

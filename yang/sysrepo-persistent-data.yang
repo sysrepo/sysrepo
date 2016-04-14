@@ -48,10 +48,10 @@ module sysrepo-persistent-data {
   }
 
   list module {
-    key "module-name";
+    key "name";
     description "Module-specific persistent data maintained by sysrepo.";
 
-    leaf module-name {
+    leaf name {
       type string;
       description "Name of the YANG module.";
     }
@@ -83,9 +83,9 @@ module sysrepo-persistent-data {
         description "Destination-local subscription identifier.";
       }
 
-      leaf subtree-path {
+      leaf xpath {
         type string;
-        description "Path of the subtree where the subscription is active.";
+        description "XPath of the subtree where the subscription is active.";
       }
     }
   }
