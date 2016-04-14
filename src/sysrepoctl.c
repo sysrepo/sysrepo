@@ -1052,7 +1052,7 @@ main(int argc, char* argv[])
     char *search_dir = NULL;
     char local_schema_search_dir[PATH_MAX] = { 0, }, local_data_search_dir[PATH_MAX] = { 0, };
     int rc = SR_ERR_OK;
-sr_log_stderr(SR_LL_DBG);
+
     struct option longopts[] = {
        { "help",            no_argument,       NULL, 'h' },
        { "version",         no_argument,       NULL, 'v' },
