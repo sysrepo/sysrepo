@@ -705,6 +705,9 @@ get_nodes_with_opts_cache_missed_test(void **state)
     rc = rp_dt_get_values_wrapper_with_opts(ctx, ses_ctx, &get_items_ctx, "/test-module:list[key='k1']/*", 4, 2, &values, &count);
     assert_int_equal(rc, SR_ERR_NOT_FOUND);
 
+    free(get_items_ctx.xpath);
+    ly_set_free(get_items_ctx.nodes);
+
     test_rp_session_cleanup(ctx, ses_ctx);
 }
 
