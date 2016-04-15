@@ -23,6 +23,7 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <stdbool.h>
+#include <inttypes.h>
 #include <sys/types.h>
 #include <setjmp.h>
 #include <cmocka.h>
@@ -118,10 +119,58 @@ pm_feature_test(void **state)
     assert_int_equal(SR_ERR_DATA_MISSING, rc);
 }
 
+static void
+pm_subscription_test(void **state)
+{
+    test_ctx_t *test_ctx = *state;
+    np_subscription_t *subscriptions = NULL;
+    size_t subscription_cnt = 0;
+    int rc = SR_ERR_OK;
+
+    np_subscription_t subscription = { 0, };
+    subscription.dst_address = "/tmp/test-subscription-address.sock";
+    subscription.dst_id = 123456789;
+
+    subscription.event_type = SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV;
+    rc = pm_save_subscribtion_state(test_ctx->pm_ctx, &test_ctx->user_cred, "example-module", &subscription, true);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    subscription.event_type = SR__NOTIFICATION_EVENT__FEATURE_ENABLE_EV;
+    rc = pm_save_subscribtion_state(test_ctx->pm_ctx, &test_ctx->user_cred, "example-module", &subscription, true);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    subscription.event_type = SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV;
+    rc = pm_save_subscribtion_state(test_ctx->pm_ctx, &test_ctx->user_cred, "example-module", &subscription, true);
+    assert_int_equal(SR_ERR_DATA_EXISTS, rc);
+
+    rc = pm_get_subscriptions(test_ctx->pm_ctx, "example-module", SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV,
+            &subscriptions, &subscription_cnt);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_true(subscription_cnt >= 1);
+    for (size_t i = 0; i < subscription_cnt; i++) {
+        printf("Found subscription: %s @ %"PRIu32"\n", subscriptions[i].dst_address, subscriptions[i].dst_id);
+        free((void*)subscriptions[i].dst_address);
+    }
+    free(subscriptions);
+
+    subscription.event_type = SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV;
+    rc = pm_save_subscribtion_state(test_ctx->pm_ctx, &test_ctx->user_cred, "example-module", &subscription, false);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    subscription.event_type = SR__NOTIFICATION_EVENT__FEATURE_ENABLE_EV;
+    rc = pm_save_subscribtion_state(test_ctx->pm_ctx, &test_ctx->user_cred, "example-module", &subscription, false);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    subscription.event_type = SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV;
+    rc = pm_save_subscribtion_state(test_ctx->pm_ctx, &test_ctx->user_cred, "example-module", &subscription, false);
+    assert_int_equal(SR_ERR_DATA_MISSING, rc);
+}
+
 int
 main() {
     const struct CMUnitTest tests[] = {
             cmocka_unit_test_setup_teardown(pm_feature_test, test_setup, test_teardown),
+            cmocka_unit_test_setup_teardown(pm_subscription_test, test_setup, test_teardown),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);
