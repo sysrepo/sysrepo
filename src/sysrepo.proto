@@ -296,12 +296,15 @@ message DeleteItemResp {
  * Sent by sr_move_item API call.
  */
 message MoveItemReq {
-  enum MoveDirection {
-    UP = 1;
-    DOWN = 2;
+  enum MovePosition {
+    BEFORE = 1;
+    AFTER = 2;
+    FIRST = 3;
+    LAST = 4;
   }
   required string xpath = 1;
-  required MoveDirection direction = 2;
+  required MovePosition position = 2;
+  optional string relative_item = 3;
 }
 
 /**

@@ -1405,19 +1405,19 @@ edit_move_test(void **state)
     test_rp_sesssion_create(ctx, SR_DS_STARTUP, &session);
 
     /* module xpath */
-    rc = rp_dt_move_list_wrapper(ctx, session, "/test-module:", SR_MOVE_UP);
+    rc = rp_dt_move_list_wrapper(ctx, session, "/test-module:", SR_MOVE_LAST, NULL);
     assert_int_equal(SR_ERR_INVAL_ARG, rc);
 
     /* existing item not list */
-    rc = rp_dt_move_list_wrapper(ctx, session, "/test-module:main", SR_MOVE_UP);
+    rc = rp_dt_move_list_wrapper(ctx, session, "/test-module:main", SR_MOVE_BEFORE, "/test-module:list[key='asdf']");
     assert_int_equal(SR_ERR_INVAL_ARG, rc);
 
     /* system ordered list non existing instance */
-    rc = rp_dt_move_list_wrapper(ctx, session, "/test-module:list[key='asdf']", SR_MOVE_UP);
+    rc = rp_dt_move_list_wrapper(ctx, session, "/test-module:list[key='asdf']", SR_MOVE_FIRST, NULL);
     assert_int_equal(SR_ERR_INVAL_ARG, rc);
 
     /* system ordered list existing instance */
-    rc = rp_dt_move_list_wrapper(ctx, session, "/test-module:list[key='k1']", SR_MOVE_UP);
+    rc = rp_dt_move_list_wrapper(ctx, session, "/test-module:list[key='k1']", SR_MOVE_LAST, NULL);
     assert_int_equal(SR_ERR_INVAL_ARG, rc);
 
     /* only the one instance of list */
@@ -1427,10 +1427,10 @@ edit_move_test(void **state)
     rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/test-module:user[name='nameA']", SR_EDIT_DEFAULT, NULL);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = rp_dt_move_list_wrapper(ctx, session, "/test-module:user[name='nameA']", SR_MOVE_UP);
+    rc = rp_dt_move_list_wrapper(ctx, session, "/test-module:user[name='nameA']", SR_MOVE_FIRST, NULL);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = rp_dt_move_list_wrapper(ctx, session, "/test-module:user[name='nameA']", SR_MOVE_DOWN);
+    rc = rp_dt_move_list_wrapper(ctx, session, "/test-module:user[name='nameA']", SR_MOVE_LAST, NULL);
     assert_int_equal(SR_ERR_OK, rc);
 
 
@@ -1452,10 +1452,10 @@ edit_move_test(void **state)
 
     sr_free_values_arr(values, cnt);
 
-    rc = rp_dt_move_list_wrapper(ctx, session, "/test-module:user[name='nameA']", SR_MOVE_DOWN);
+    rc = rp_dt_move_list_wrapper(ctx, session, "/test-module:user[name='nameA']", SR_MOVE_AFTER, "/test-module:user[name='nameB']");
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = rp_dt_move_list_wrapper(ctx, session, "/test-module:user[name='nameC']", SR_MOVE_UP);
+    rc = rp_dt_move_list_wrapper(ctx, session, "/test-module:user[name='nameC']", SR_MOVE_BEFORE, "/test-module:user[name='nameA']");
     assert_int_equal(SR_ERR_OK, rc);
 
     rc = rp_dt_get_values_wrapper(ctx, session, "/test-module:user", &values, &cnt);
@@ -1496,10 +1496,10 @@ edit_move2_test(void **state)
     rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/test-module:user[name='nameA']", SR_EDIT_DEFAULT, NULL);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = rp_dt_move_list_wrapper(ctx, session, "/test-module:user[name='nameA']", SR_MOVE_UP);
+    rc = rp_dt_move_list_wrapper(ctx, session, "/test-module:user[name='nameA']", SR_MOVE_FIRST, NULL);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = rp_dt_move_list_wrapper(ctx, session, "/test-module:user[name='nameA']", SR_MOVE_DOWN);
+    rc = rp_dt_move_list_wrapper(ctx, session, "/test-module:user[name='nameA']", SR_MOVE_LAST, NULL);
     assert_int_equal(SR_ERR_OK, rc);
 
 
@@ -1522,13 +1522,13 @@ edit_move2_test(void **state)
     sr_free_values_arr(values, cnt);
 
     /* at the top, this move does nothing*/
-    rc = rp_dt_move_list_wrapper(ctx, session, "/test-module:user[name='nameA']", SR_MOVE_UP);
+    rc = rp_dt_move_list_wrapper(ctx, session, "/test-module:user[name='nameB']", SR_MOVE_FIRST, NULL);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = rp_dt_move_list_wrapper(ctx, session, "/test-module:user[name='nameA']", SR_MOVE_DOWN);
+    rc = rp_dt_move_list_wrapper(ctx, session, "/test-module:user[name='nameA']", SR_MOVE_LAST, NULL);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = rp_dt_move_list_wrapper(ctx, session, "/test-module:user[name='nameC']", SR_MOVE_UP);
+    rc = rp_dt_move_list_wrapper(ctx, session, "/test-module:user[name='nameC']", SR_MOVE_BEFORE, "/test-module:user[name='nameA']");
     assert_int_equal(SR_ERR_OK, rc);
 
     rc = rp_dt_get_values_wrapper(ctx, session, "/test-module:user", &values, &cnt);
@@ -1541,22 +1541,22 @@ edit_move2_test(void **state)
 
     sr_free_values_arr(values, cnt);
 
-    rc = rp_dt_move_list_wrapper(ctx, session, "/test-module:user[name='nameB']", SR_MOVE_DOWN);
+    rc = rp_dt_move_list_wrapper(ctx, session, "/test-module:user[name='nameB']", SR_MOVE_AFTER, "/test-module:user[name='nameB']" );
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = rp_dt_move_list_wrapper(ctx, session, "/test-module:user[name='nameA']", SR_MOVE_DOWN);
+    rc = rp_dt_move_list_wrapper(ctx, session, "/test-module:user[name='nameC']", SR_MOVE_FIRST, NULL);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = rp_dt_move_list_wrapper(ctx, session, "/test-module:user[name='nameC']", SR_MOVE_UP);
+    rc = rp_dt_move_list_wrapper(ctx, session, "/test-module:user[name='nameA']", SR_MOVE_FIRST, NULL);
     assert_int_equal(SR_ERR_OK, rc);
 
     rc = rp_dt_get_values_wrapper(ctx, session, "/test-module:user", &values, &cnt);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(3, cnt);
 
-    assert_string_equal("/test-module:user[name='nameC']", values[0]->xpath);
-    assert_string_equal("/test-module:user[name='nameB']", values[1]->xpath);
-    assert_string_equal("/test-module:user[name='nameA']", values[2]->xpath);
+    assert_string_equal("/test-module:user[name='nameA']", values[0]->xpath);
+    assert_string_equal("/test-module:user[name='nameC']", values[1]->xpath);
+    assert_string_equal("/test-module:user[name='nameB']", values[2]->xpath);
 
     sr_free_values_arr(values, cnt);
 
@@ -1597,12 +1597,12 @@ operation_logging_test(void **state)
    assert_int_equal(2, session->dm_session->oper_count);
 
    /* move */
-   rc = rp_dt_move_list_wrapper(ctx, session, "/test-module:user[name='nameC']", SR_MOVE_UP);
+   rc = rp_dt_move_list_wrapper(ctx, session, "/test-module:user[name='nameX']", SR_MOVE_LAST, NULL);
    assert_int_equal(SR_ERR_OK, rc);
    assert_int_equal(3, session->dm_session->oper_count);
-   assert_int_equal(DM_MOVE_UP_OP, session->dm_session->operations[session->dm_session->oper_count-1].op);
+   assert_int_equal(DM_MOVE_OP, session->dm_session->operations[session->dm_session->oper_count-1].op);
 
-   rc = rp_dt_move_list_wrapper(ctx, session, "/test-module:!^", SR_MOVE_UP);
+   rc = rp_dt_move_list_wrapper(ctx, session, "/test-module:!^", SR_MOVE_BEFORE, "/test-module:user[name='nameC']");
    assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
    assert_int_equal(3, session->dm_session->oper_count);
 
@@ -1613,7 +1613,7 @@ operation_logging_test(void **state)
    assert_int_equal(DM_DELETE_OP, session->dm_session->operations[session->dm_session->oper_count-1].op);
 
    /* unsuccessful operation should not be logged */
-   rc = rp_dt_move_list_wrapper(ctx, session, "/test-module:user[name='nameC']", SR_MOVE_UP);
+   rc = rp_dt_move_list_wrapper(ctx, session, "/test-module:user[name='nameC']", SR_MOVE_AFTER, "/test-module:user[name='nameC']");
    assert_int_equal(SR_ERR_INVAL_ARG, rc);
    assert_int_equal(4, session->dm_session->oper_count);
 

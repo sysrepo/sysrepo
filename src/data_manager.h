@@ -74,8 +74,7 @@ typedef enum dm_node_state_e{
 typedef enum dm_operation_e {
     DM_SET_OP,
     DM_DELETE_OP,
-    DM_MOVE_UP_OP,
-    DM_MOVE_DOWN_OP
+    DM_MOVE_OP,
 } dm_operation_t;
 
 /**
@@ -85,8 +84,19 @@ typedef struct dm_sess_op_s{
     dm_operation_t op;          /**< Operation kind*/
     bool has_error;             /**< Flag if the operation should be performed during commit*/
     char *xpath;                /**< Xpath */
-    sr_val_t *val;              /**< Value to perform operation with, can be NULL*/
-    sr_edit_options_t options;  /**< Operation edit options */
+    union {
+        struct set{
+            sr_val_t *val;              /**< Value to perform operation with, can be NULL*/
+            sr_edit_options_t options;  /**< Operation edit options */
+        } set;
+        struct del{
+            sr_edit_options_t options;  /**< Operation edit options */
+        } del;
+        struct mov{
+            sr_move_position_t position; /**< Position */
+            char *relative_item;         /**< Xpath of item used for relative moves*/
+        }mov;
+    }detail;
 }dm_sess_op_t;
 
 /**
@@ -289,9 +299,11 @@ void dm_free_commit_context(dm_ctx_t *dm_ctx, dm_commit_context_t *c_ctx);
  * @param [in] xpath
  * @param [in] val - must be allocated, will be free with operation list
  * @param [in] opts
+ * @param [in] position - applicable only with move operation
+ * @param [in] relative_item - option of move operation
  * @return Error code (SR_ERR_OK on success)
  */
-int dm_add_operation(dm_session_t *session, dm_operation_t op, const char *xpath, sr_val_t *val, sr_edit_options_t opts);
+int dm_add_operation(dm_session_t *session, dm_operation_t op, const char *xpath, sr_val_t *val, sr_edit_options_t opts, sr_move_position_t pos, const char *rel_item);
 
 /**
  * @brief Removes last logged operation in session

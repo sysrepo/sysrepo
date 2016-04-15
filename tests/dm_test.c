@@ -314,7 +314,7 @@ dm_add_operation_test(void **state)
 
     dm_session_start(ctx, NULL, SR_DS_STARTUP, &ses_ctx);
 
-    rc = dm_add_operation(ses_ctx, DM_DELETE_OP, NULL, NULL, SR_EDIT_DEFAULT);
+    rc = dm_add_operation(ses_ctx, DM_DELETE_OP, NULL, NULL, SR_EDIT_DEFAULT, 0, NULL);
     assert_int_equal(SR_ERR_INVAL_ARG, rc);
 
     sr_val_t *val = NULL;
@@ -324,10 +324,10 @@ dm_add_operation_test(void **state)
     val->type = SR_INT8_T;
     val->data.int8_val = 42;
 
-    rc = dm_add_operation(ses_ctx, DM_SET_OP, "/abc:def", val, SR_EDIT_DEFAULT);
+    rc = dm_add_operation(ses_ctx, DM_SET_OP, "/abc:def", val, SR_EDIT_DEFAULT, 0, NULL);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = dm_add_operation(ses_ctx, DM_DELETE_OP, "/abc:def", NULL, SR_EDIT_DEFAULT);
+    rc = dm_add_operation(ses_ctx, DM_DELETE_OP, "/abc:def", NULL, SR_EDIT_DEFAULT, 0, NULL);
     assert_int_equal(SR_ERR_OK, rc);
 
     sr_val_t *val1 = NULL;
@@ -337,7 +337,7 @@ dm_add_operation_test(void **state)
     val1->data.string_val = strdup("abc");
 
     /* NULL passed in loc_id argument, val1 should be freed */
-    rc = dm_add_operation(ses_ctx, DM_SET_OP, NULL, val1, SR_EDIT_DEFAULT);
+    rc = dm_add_operation(ses_ctx, DM_SET_OP, NULL, val1, SR_EDIT_DEFAULT, 0, NULL);
     assert_int_equal(SR_ERR_INVAL_ARG, rc);
 
     dm_session_stop(ctx, ses_ctx);

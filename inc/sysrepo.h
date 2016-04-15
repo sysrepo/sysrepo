@@ -624,10 +624,12 @@ typedef uint32_t sr_edit_options_t;
 /**
  * @brief Options for specifying move direction of ::sr_move_item call.
  */
-typedef enum sr_move_direction_e {
-    SR_MOVE_UP = 0,    /**< Move the specified item before its preceding sibling. */
-    SR_MOVE_DOWN = 1,  /**< Move the specified item after its following sibling. */
-} sr_move_direction_t;
+typedef enum sr_move_position_e {
+    SR_MOVE_BEFORE = 0,    /**< Move the specified item before the selected sibling. */
+    SR_MOVE_AFTER = 1,     /**< Move the specified item after the selected. */
+    SR_MOVE_FIRST = 2,     /**< Move the specified item to the position of the first child. */
+    SR_MOVE_LAST = 3,      /**< Move the specified item to the position of the last child. */
+} sr_move_position_t;
 
 /**
  * @brief Sets the value of the leaf, leaf-list, list or presence container.
@@ -667,21 +669,22 @@ int sr_set_item(sr_session_ctx_t *session, const char *xpath, const sr_val_t *va
 int sr_delete_item(sr_session_ctx_t *session, const char *xpath, const sr_edit_options_t opts);
 
 /**
- * @brief Move the instance of an ordered list in specified direction.
+ * @brief Move the instance of an user-ordered list or leaf-list to the specified position.
  *
- * @note To reorder leaf-list values, you need to delete the leaf-list and
- * re-create it with requested order again.
- *
+ * Item can be move to the first or last position or positioned relatively
+ * to its sibling.
  * @note To determine current order, you can issue a ::sr_get_items call
  * (without specifying keys of the list in question).
  *
  * @param[in] session Session context acquired with ::sr_session_start call.
  * @param[in] xpath @ref xp_page "XPath" identifier of the data element to be moved.
- * @param[in] direction Requested move direction.
+ * @param[in] postion Requested move direction.
+ * @param[in] relative item xpath identifier of the data element that is used
+ * to determine relative position, used only if position argument is SR_MOVE_BEFORE or SR_MOVE_AFTER
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int sr_move_item(sr_session_ctx_t *session, const char *xpath, const sr_move_direction_t direction);
+int sr_move_item(sr_session_ctx_t *session, const char *xpath, const sr_move_position_t position, const char *relative_item);
 
 /**
  * @brief Perform the validation of changes made in current session, but do not

@@ -162,8 +162,9 @@ rp_dt_has_only_keys(const struct lyd_node *node)
  * @param [out] sibling
  * @return Error code (SR_ERR_OK on success) SR_ERR_NOT_FOUND
  */
+#if 0
 static int
-rp_dt_find_closest_sibling_by_name(dm_data_info_t *info, struct lyd_node *start_node, sr_move_direction_t direction, struct lyd_node **sibling)
+rp_dt_find_closest_sibling_by_name(dm_data_info_t *info, struct lyd_node *start_node, sr_move_position_t direction, struct lyd_node **sibling)
 {
     CHECK_NULL_ARG3(info, start_node, sibling);
     CHECK_NULL_ARG2(start_node->schema, start_node->schema->name);
@@ -189,6 +190,7 @@ rp_dt_find_closest_sibling_by_name(dm_data_info_t *info, struct lyd_node *start_
     }
     return SR_ERR_NOT_FOUND;
 }
+#endif
 
 int
 rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const sr_edit_flag_t options)
@@ -432,11 +434,12 @@ cleanup:
 }
 
 int
-rp_dt_move_list(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, sr_move_direction_t direction)
+rp_dt_move_list(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, sr_move_position_t position, const char *relative_item)
 {
     CHECK_NULL_ARG3(dm_ctx, session, xpath);
     int rc = SR_ERR_OK;
     struct lyd_node *node = NULL;
+    struct lyd_node *sibling = NULL;
     const struct lys_module *module = NULL;
     dm_data_info_t *info = NULL;
 
@@ -461,25 +464,50 @@ rp_dt_move_list(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, sr_m
         return rc;
     }
 
-    if (LYS_LIST != node->schema->nodetype || (!(LYS_USERORDERED & node->schema->flags))) {
-        SR_LOG_ERR ("Xpath %s does not identify the user ordered list", xpath);
+    if (!((LYS_LIST | LYS_LEAFLIST) & node->schema->nodetype) || (!(LYS_USERORDERED & node->schema->flags))) {
+        SR_LOG_ERR ("Xpath %s does not identify the user ordered list or leaf-list", xpath);
         return SR_ERR_INVAL_ARG;
     }
 
-    struct lyd_node *sibling = NULL;
-    rc = rp_dt_find_closest_sibling_by_name(info, node, direction, &sibling);
-    if (SR_ERR_NOT_FOUND == rc) {
-        rc = SR_ERR_OK;
-        goto cleanup;
-    }
-    else if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Find the closest sibling failed");
-        return rc;
+    if ((SR_MOVE_AFTER == position || SR_MOVE_BEFORE == position) && NULL != relative_item) {
+        rc = rp_dt_find_node(info->node, relative_item, dm_is_running_ds_session(session), &sibling);
+        if (SR_ERR_NOT_FOUND == rc) {
+            rc = dm_report_error(session, "Relative item for move operation not found", strdup(relative_item), SR_ERR_INVAL_ARG);
+            goto cleanup;
+        }
+        else if (SR_ERR_OK != rc) {
+            SR_LOG_ERR_MSG("Find the closest sibling failed");
+            return rc;
+        }
+    } else {
+        struct ly_set *siblings = lyd_get_node2(info->node, node->schema);
+
+        if (NULL == siblings || 0 == siblings->number) {
+            SR_LOG_ERR_MSG("No siblings found");
+            return SR_ERR_INVAL_ARG;
+        }
+        if (SR_MOVE_FIRST == position) {
+            sibling = siblings->set.d[0];
+        } else if (SR_MOVE_LAST == position) {
+            sibling = siblings->set.d[siblings->number -1];
+        }
+        ly_set_free(siblings);
     }
 
-    if (SR_MOVE_UP == direction) {
+    if (NULL != sibling) {
+        if (!((LYS_LIST | LYS_LEAFLIST) & sibling->schema->nodetype) || (!(LYS_USERORDERED & sibling->schema->flags)) || (node->schema != sibling->schema)) {
+            SR_LOG_ERR ("Xpath %s does not identify the user ordered list or leaf-list", xpath);
+            return SR_ERR_INVAL_ARG;
+        }
+    }
+
+    if (SR_MOVE_FIRST == position) {
         rc = sr_lyd_insert_before(info, sibling, node);
-    } else {
+    } else if (SR_MOVE_LAST == position) {
+        rc = sr_lyd_insert_after(info, sibling, node);
+    } else if (SR_MOVE_BEFORE == position) {
+        rc = sr_lyd_insert_before(info, sibling, node);
+    } else if (SR_MOVE_AFTER == position) {
         rc = sr_lyd_insert_after(info, sibling, node);
     }
 
@@ -493,7 +521,7 @@ cleanup:
 }
 
 int
-rp_dt_move_list_wrapper(rp_ctx_t *rp_ctx, rp_session_t *session, const char *xpath, sr_move_direction_t direction)
+rp_dt_move_list_wrapper(rp_ctx_t *rp_ctx, rp_session_t *session, const char *xpath, sr_move_position_t position, const char *relative_item)
 {
     CHECK_NULL_ARG5(rp_ctx, rp_ctx->dm_ctx, session, session->dm_session, xpath);
 
@@ -505,13 +533,13 @@ rp_dt_move_list_wrapper(rp_ctx_t *rp_ctx, rp_session_t *session, const char *xpa
         return rc;
     }
 
-    rc = dm_add_operation(session->dm_session, direction == SR_MOVE_UP ? DM_MOVE_UP_OP: DM_MOVE_DOWN_OP, xpath, NULL, 0);
+    rc = dm_add_operation(session->dm_session, DM_MOVE_OP, xpath, NULL, 0, position, relative_item);
     if (SR_ERR_OK != rc){
         SR_LOG_ERR_MSG("Adding operation to session op list failed");
         return rc;
     }
 
-    rc = rp_dt_move_list(rp_ctx->dm_ctx, session->dm_session, xpath, direction);
+    rc = rp_dt_move_list(rp_ctx->dm_ctx, session->dm_session, xpath, position, relative_item);
     if (SR_ERR_OK != rc){
         SR_LOG_ERR_MSG("List move failed");
         dm_remove_last_operation(session->dm_session);
@@ -534,7 +562,7 @@ rp_dt_set_item_wrapper(rp_ctx_t *rp_ctx, rp_session_t *session, const char *xpat
         return rc;
     }
 
-    rc = dm_add_operation(session->dm_session, DM_SET_OP, xpath, val, opt);
+    rc = dm_add_operation(session->dm_session, DM_SET_OP, xpath, val, opt, 0, NULL);
     if (SR_ERR_OK != rc){
         /* val is freed by dm_add_operation */
         SR_LOG_ERR_MSG("Adding operation to session op list failed");
@@ -561,7 +589,7 @@ rp_dt_delete_item_wrapper(rp_ctx_t *rp_ctx, rp_session_t *session, const char *x
         return rc;
     }
 
-    rc = dm_add_operation(session->dm_session, DM_DELETE_OP, xpath, NULL, opts);
+    rc = dm_add_operation(session->dm_session, DM_DELETE_OP, xpath, NULL, opts, 0, NULL);
     if (SR_ERR_OK != rc){
         SR_LOG_ERR_MSG("Adding operation to session op list failed");
         return rc;
@@ -616,16 +644,13 @@ rp_dt_replay_operations(dm_ctx_t *ctx, dm_session_t *session, dm_sess_op_t *oper
 
         switch (op->op) {
         case DM_SET_OP:
-            rc = rp_dt_set_item(ctx, session, op->xpath, op->options, op->val);
+            rc = rp_dt_set_item(ctx, session, op->xpath, op->detail.set.options, op->detail.set.val);
             break;
         case DM_DELETE_OP:
-            rc = rp_dt_delete_item(ctx, session, op->xpath, op->options);
+            rc = rp_dt_delete_item(ctx, session, op->xpath, op->detail.del.options);
             break;
-        case DM_MOVE_DOWN_OP:
-            rc = rp_dt_move_list(ctx, session, op->xpath, SR_MOVE_DOWN);
-            break;
-        case DM_MOVE_UP_OP:
-            rc = rp_dt_move_list(ctx, session, op->xpath, SR_MOVE_UP);
+        case DM_MOVE_OP:
+            rc = rp_dt_move_list(ctx, session, op->xpath, op->detail.mov.position, op->detail.mov.relative_item);
             break;
         }
 
@@ -741,8 +766,7 @@ rp_dt_create_refresh_errors(const dm_sess_op_t *ops, size_t op_count, sr_error_i
             case DM_DELETE_OP:
                 (*errors)[*err_cnt].message = strdup("DELETE Operation can not be merged with current datastore state");
                 break;
-            case DM_MOVE_DOWN_OP:
-            case DM_MOVE_UP_OP:
+            case DM_MOVE_OP:
                 (*errors)[*err_cnt].message = strdup("MOVE Operation can not be merged with current datastore state");
                 break;
             default:
