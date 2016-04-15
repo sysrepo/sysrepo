@@ -115,9 +115,7 @@ pm_load_data_tree(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *mod
             SR_LOG_ERR("Unable to open persist data file '%s': %s.", data_filename, strerror(errno));
             rc = SR_ERR_INTERNAL;
         }
-        if (SR_ERR_OK != rc) {
-            return rc;
-        }
+        CHECK_RC_LOG_RETURN(rc, "Persist data tree load for '%s' has failed.", module_name);
     }
 
     /* lock & load the data tree */
@@ -172,6 +170,9 @@ pm_event_gpb_to_str(Sr__NotificationEvent event)
     }
 }
 
+/**
+ * @brief Converts notification event type string to its GPB enum representation.
+ */
 static Sr__NotificationEvent
 pm_event_str_to_gpb(const char *event_name)
 {
@@ -222,7 +223,7 @@ pm_init(ac_ctx_t *ac_ctx, const char *schema_search_dir, const char *data_search
     /* load persist files schema to context */
     ctx->schema = lys_parse_path(ctx->ly_ctx, schema_filename, LYS_IN_YIN);
     free(schema_filename);
-    if (ctx->schema == NULL) {
+    if (NULL == ctx->schema) {
         SR_LOG_WRN("Unable to parse the schema file '%s': %s", PM_SCHEMA_FILE, ly_errmsg());
         rc = SR_ERR_INTERNAL;
         goto cleanup;
@@ -263,17 +264,11 @@ pm_save_feature_state(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char 
 
     /* get persist file path */
     rc = sr_get_persist_data_file_name(pm_ctx->data_search_dir, module_name, &data_filename);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Unable to compose persist data file name for '%s'.", module_name);
-        return rc;
-    }
+    CHECK_RC_LOG_RETURN(rc, "Unable to compose persist data file name for '%s'.", module_name);
 
     /* load the data tree from persist file */
     rc = pm_load_data_tree(pm_ctx, user_cred, module_name, data_filename, false, &fd, &data_tree);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Unable to load persist data tree for module '%s'.", module_name);
-        goto cleanup;
-    }
+    CHECK_RC_LOG_RETURN(rc, "Unable to load persist data tree for module '%s'.", module_name);
 
     if (NULL == data_tree && !enable) {
         SR_LOG_ERR("Persist data tree for module '%s' is empty.", module_name);
@@ -361,17 +356,11 @@ pm_get_features(pm_ctx_t *pm_ctx, const char *module_name, char ***features_p, s
 
     /* get persist file path */
     rc = sr_get_persist_data_file_name(pm_ctx->data_search_dir, module_name, &data_filename);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Unable to compose persist data file name for '%s'.", module_name);
-        return rc;
-    }
+    CHECK_RC_LOG_RETURN(rc, "Unable to compose persist data file name for '%s'.", module_name);
 
     /* load the data tree from persist file */
     rc = pm_load_data_tree(pm_ctx, NULL, module_name, data_filename, true, NULL, &data_tree);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_WRN("Unable to load persist data tree for module '%s'.", module_name);
-        goto cleanup;
-    }
+    CHECK_RC_LOG_RETURN(rc, "Unable to load persist data tree for module '%s'.", module_name);
 
     if (NULL == data_tree) {
         /* empty data file */
@@ -435,17 +424,11 @@ pm_save_subscribtion_state(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const 
 
     /* get persist file path */
     rc = sr_get_persist_data_file_name(pm_ctx->data_search_dir, module_name, &data_filename);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Unable to compose persist data file name for '%s'.", module_name);
-        return rc;
-    }
+    CHECK_RC_LOG_RETURN(rc, "Unable to compose persist data file name for '%s'.", module_name);
 
     /* load the data tree from persist file */
     rc = pm_load_data_tree(pm_ctx, user_cred, module_name, data_filename, false, &fd, &data_tree);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Unable to load persist data tree for module '%s'.", module_name);
-        goto cleanup;
-    }
+    CHECK_RC_LOG_RETURN(rc, "Unable to load persist data tree for module '%s'.", module_name);
 
     if (NULL == data_tree && !subscribe) {
         SR_LOG_ERR("Persist data tree for module '%s' is empty.", module_name);
@@ -536,17 +519,11 @@ pm_get_subscriptions(pm_ctx_t *pm_ctx, const char *module_name, Sr__Notification
 
     /* get persist file path */
     rc = sr_get_persist_data_file_name(pm_ctx->data_search_dir, module_name, &data_filename);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Unable to compose persist data file name for '%s'.", module_name);
-        return rc;
-    }
+    CHECK_RC_LOG_RETURN(rc, "Unable to compose persist data file name for '%s'.", module_name);
 
     /* load the data tree from persist file */
     rc = pm_load_data_tree(pm_ctx, NULL, module_name, data_filename, true, NULL, &data_tree);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_WRN("Unable to load persist data tree for module '%s'.", module_name);
-        goto cleanup;
-    }
+    CHECK_RC_LOG_RETURN(rc, "Unable to load persist data tree for module '%s'.", module_name);
 
     if (NULL == data_tree) {
         /* empty data file */
