@@ -33,6 +33,14 @@
 
 #define PM_SCHEMA_FILE "sysrepo-persistent-data.yin"  /**< Schema of module's persistent data. */
 
+#define PM_XPATH_MODULE           "/sysrepo-persistent-data:module[name='%s']"
+
+#define PM_XPATH_FEATURES         PM_XPATH_MODULE "/enabled-features/feature-name"
+#define PM_XPATH_FEATURES_BY_NAME PM_XPATH_MODULE "/enabled-features/feature-name[text()='%s']"
+
+#define PM_XPATH_SUBSCRIPTIONS         PM_XPATH_MODULE "/subscriptions/subscription[type='%s'][destination-address='%s'][destination-id='%"PRIu32"']"
+#define PM_XPATH_SUBSCRIPTIONS_BY_TYPE PM_XPATH_MODULE "/subscriptions/subscription[type='%s']"
+
 /**
  * @brief Persistence Manager context.
  */
@@ -200,6 +208,91 @@ pm_event_str_to_gpb(const char *event_name)
     return _SR__NOTIFICATION_EVENT_IS_INT_SIZE;
 }
 
+/**
+ * TODO
+ */
+static int
+pm_save_persistent_data(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *module_name,
+        bool add, const char *xpath, const char *value)
+{
+    char *data_filename = NULL;
+    struct lyd_node *data_tree = NULL, *new_node = NULL;
+    struct ly_set *node_set = NULL;
+    int fd = -1;
+    int rc = SR_ERR_OK, ret = 0;
+
+    CHECK_NULL_ARG4(pm_ctx, user_cred, module_name, xpath);
+
+    /* get persist file path */
+    rc = sr_get_persist_data_file_name(pm_ctx->data_search_dir, module_name, &data_filename);
+    CHECK_RC_LOG_RETURN(rc, "Unable to compose persist data file name for '%s'.", module_name);
+
+    /* load the data tree from persist file */
+    rc = pm_load_data_tree(pm_ctx, user_cred, module_name, data_filename, false, &fd, &data_tree);
+    CHECK_RC_LOG_RETURN(rc, "Unable to load persist data tree for module '%s'.", module_name);
+
+    if (NULL == data_tree && !add) {
+        SR_LOG_ERR("Persist data tree for module '%s' is empty.", module_name);
+        rc = SR_ERR_DATA_MISSING;
+        goto cleanup;
+    }
+
+    if (add) {
+        /* add persistent data */
+        new_node = lyd_new_path(data_tree, pm_ctx->ly_ctx, xpath, value, 0);
+        if (NULL == data_tree) {
+            /* if the new data tree has been just created */
+            data_tree = new_node;
+        }
+        if (NULL == new_node) {
+            SR_LOG_ERR("Unable to add new persistent data (module=%s, xpath=%s): %s.", module_name, xpath, ly_errmsg());
+            rc = SR_ERR_DATA_EXISTS;
+            goto cleanup;
+        }
+    } else {
+        /* delete persistent data*/
+        node_set = lyd_get_node(data_tree, xpath);
+        if (NULL == node_set || LY_SUCCESS != ly_errno) {
+            SR_LOG_ERR("Unable to find requested persistent data (module=%s, xpath=%s): %s.", module_name, xpath, ly_errmsg());
+            rc = SR_ERR_INTERNAL;
+            goto cleanup;
+        }
+        if (1 != node_set->number) {
+            SR_LOG_ERR("Specified persistent data already exist (module=%s, xpath=%s).", module_name, xpath);
+            rc = SR_ERR_DATA_MISSING;
+            goto cleanup;
+        } else {
+            ret = lyd_unlink(node_set->set.d[0]);
+            if (0 != ret) {
+                SR_LOG_ERR("Unable to delete persistent data (module=%s, xpath=%s): %s.", module_name, xpath, ly_errmsg());
+                rc = SR_ERR_INTERNAL;
+                goto cleanup;
+            } else {
+                lyd_free(node_set->set.d[0]);
+            }
+        }
+    }
+
+    /* save the changes */
+    rc = pm_save_data_tree(pm_ctx, fd, data_tree);
+
+cleanup:
+    if (NULL != node_set) {
+        ly_set_free(node_set);
+    }
+    if (NULL != data_tree) {
+        lyd_free_withsiblings(data_tree);
+    }
+    free(data_filename);
+
+    if (-1 != fd) {
+        sr_unlock_fd(fd);
+        close(fd);
+    }
+
+    return rc;
+}
+
 int
 pm_init(ac_ctx_t *ac_ctx, const char *schema_search_dir, const char *data_search_dir, pm_ctx_t **pm_ctx)
 {
@@ -265,88 +358,29 @@ int
 pm_save_feature_state(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *module_name,
         const char *feature_name, bool enable)
 {
-    char *data_filename = NULL;
     char xpath[PATH_MAX] = { 0, };
-    struct lyd_node *data_tree = NULL, *new_node = NULL;
-    struct ly_set *node_set = NULL;
-    int fd = -1;
-    int rc = SR_ERR_OK, ret = 0;
+    int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG4(pm_ctx, user_cred, module_name, feature_name);
 
-    /* get persist file path */
-    rc = sr_get_persist_data_file_name(pm_ctx->data_search_dir, module_name, &data_filename);
-    CHECK_RC_LOG_RETURN(rc, "Unable to compose persist data file name for '%s'.", module_name);
-
-    /* load the data tree from persist file */
-    rc = pm_load_data_tree(pm_ctx, user_cred, module_name, data_filename, false, &fd, &data_tree);
-    CHECK_RC_LOG_RETURN(rc, "Unable to load persist data tree for module '%s'.", module_name);
-
-    if (NULL == data_tree && !enable) {
-        SR_LOG_ERR("Persist data tree for module '%s' is empty.", module_name);
-        rc = SR_ERR_DATA_MISSING;
-        goto cleanup;
-    }
-
     if (enable) {
         /* enable the feature */
-        snprintf(xpath, PATH_MAX, "/sysrepo-persistent-data:module[name='%s']/enabled-features/feature-name", module_name);
-        new_node = lyd_new_path(data_tree, pm_ctx->ly_ctx, xpath, feature_name, 0);
-        if (NULL == data_tree) {
-            /* if the new data tree has been just created */
-            data_tree = new_node;
-        }
+        snprintf(xpath, PATH_MAX, PM_XPATH_FEATURES, module_name);
 
-        if (NULL == new_node) {
-            SR_LOG_ERR("Unable to create a new feature node in persist data tree for '%s': %s.", module_name, ly_errmsg());
-            rc = SR_ERR_DATA_EXISTS;
-            goto cleanup;
-        } else {
+        rc = pm_save_persistent_data(pm_ctx, user_cred, module_name, true, xpath, feature_name);
+
+        if (SR_ERR_OK == rc) {
             SR_LOG_DBG("Feature '%s' successfully enabled in '%s' persist data tree.", feature_name, module_name);
         }
     } else {
         /* disable the feature */
-        snprintf(xpath, PATH_MAX, "/sysrepo-persistent-data:module[name='%s']/enabled-features/feature-name[text()='%s']",
-                module_name, feature_name);
-        node_set = lyd_get_node(data_tree, xpath);
+        snprintf(xpath, PATH_MAX, PM_XPATH_FEATURES_BY_NAME, module_name, feature_name);
 
-        if (NULL == node_set || LY_SUCCESS != ly_errno) {
-            SR_LOG_ERR("Unable to find feature node in persist data tree for '%s': %s.", module_name, ly_errmsg());
-            rc = SR_ERR_INTERNAL;
-            goto cleanup;
+        rc = pm_save_persistent_data(pm_ctx, user_cred, module_name, false, xpath, NULL);
+
+        if (SR_ERR_OK == rc) {
+            SR_LOG_DBG("Feature '%s' successfully disabled in '%s' persist file.", feature_name, module_name);
         }
-        if (1 != node_set->number) {
-            SR_LOG_ERR("Feature '%s' already disabled in '%s' persist data tree.", feature_name, module_name);
-            rc = SR_ERR_DATA_MISSING;
-            goto cleanup;
-        } else {
-            ret = lyd_unlink(node_set->set.d[0]);
-            if (0 != ret) {
-                SR_LOG_ERR("Unable to unlink the feature node in persist data tree for '%s'.", module_name);
-                rc = SR_ERR_INTERNAL;
-                goto cleanup;
-            } else {
-                lyd_free(node_set->set.d[0]);
-                SR_LOG_DBG("Feature '%s' successfully disabled in '%s' persist file.", feature_name, module_name);
-            }
-        }
-    }
-
-    /* save the changes */
-    rc = pm_save_data_tree(pm_ctx, fd, data_tree);
-
-cleanup:
-    if (NULL != node_set) {
-        ly_set_free(node_set);
-    }
-    if (NULL != data_tree) {
-        lyd_free_withsiblings(data_tree);
-    }
-    free(data_filename);
-
-    if (-1 != fd) {
-        sr_unlock_fd(fd);
-        close(fd);
     }
 
     return rc;
@@ -381,7 +415,7 @@ pm_get_features(pm_ctx_t *pm_ctx, const char *module_name, char ***features_p, s
         goto cleanup;
     }
 
-    snprintf(xpath, PATH_MAX, "/sysrepo-persistent-data:module[name='%s']/enabled-features/feature-name", module_name);
+    snprintf(xpath, PATH_MAX, PM_XPATH_FEATURES, module_name);
     node_set = lyd_get_node(data_tree, xpath);
 
     if (NULL != node_set && node_set->number > 0) {
@@ -425,92 +459,30 @@ int
 pm_save_subscribtion_state(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *module_name,
         const np_subscription_t *subscription, const bool subscribe)
 {
-    char *data_filename = NULL;
     char xpath[PATH_MAX] = { 0, };
-    struct lyd_node *data_tree = NULL, *new_node = NULL;
-    struct ly_set *node_set = NULL;
-    int fd = -1;
-    int rc = SR_ERR_OK, ret = 0;
+    int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG3(pm_ctx, user_cred, subscription);
+    CHECK_NULL_ARG4(pm_ctx, user_cred, module_name, subscription);
 
-    /* get persist file path */
-    rc = sr_get_persist_data_file_name(pm_ctx->data_search_dir, module_name, &data_filename);
-    CHECK_RC_LOG_RETURN(rc, "Unable to compose persist data file name for '%s'.", module_name);
-
-    /* load the data tree from persist file */
-    rc = pm_load_data_tree(pm_ctx, user_cred, module_name, data_filename, false, &fd, &data_tree);
-    CHECK_RC_LOG_RETURN(rc, "Unable to load persist data tree for module '%s'.", module_name);
-
-    if (NULL == data_tree && !subscribe) {
-        SR_LOG_ERR("Persist data tree for module '%s' is empty.", module_name);
-        rc = SR_ERR_DATA_MISSING;
-        goto cleanup;
-    }
+    snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTIONS, module_name,
+            pm_event_gpb_to_str(subscription->event_type), subscription->dst_address, subscription->dst_id);
 
     if (subscribe) {
         /* add the subscription */
-        snprintf(xpath, PATH_MAX,
-                "/sysrepo-persistent-data:module[name='%s']/subscriptions/subscription[type='%s'][destination-address='%s'][destination-id='%"PRIu32"']",
-                module_name, pm_event_gpb_to_str(subscription->event_type), subscription->dst_address, subscription->dst_id);
-        new_node = lyd_new_path(data_tree, pm_ctx->ly_ctx, xpath, NULL, 0);
-        if (NULL == data_tree) {
-            /* if the new data tree has been just created */
-            data_tree = new_node;
-        }
+        rc = pm_save_persistent_data(pm_ctx, user_cred, module_name, true, xpath, NULL);
 
-        if (NULL == new_node) {
-            SR_LOG_ERR("Unable to create a new subscription entry in persist data tree for '%s': %s.", module_name, ly_errmsg());
-            rc = SR_ERR_DATA_EXISTS;
-            goto cleanup;
-        } else {
+        if (SR_ERR_OK == rc) {
             SR_LOG_DBG("Subscription entry successfully added into '%s' persist data tree.", module_name);
         }
     } else {
         /* remove the subscription */
-        snprintf(xpath, PATH_MAX,
-                "/sysrepo-persistent-data:module[name='%s']/subscriptions/subscription[type='%s'][destination-address='%s'][destination-id='%"PRIu32"']",
-                module_name, pm_event_gpb_to_str(subscription->event_type), subscription->dst_address, subscription->dst_id);
-        node_set = lyd_get_node(data_tree, xpath);
+        rc = pm_save_persistent_data(pm_ctx, user_cred, module_name, false, xpath, NULL);
 
-        if (NULL == node_set || LY_SUCCESS != ly_errno) {
-            SR_LOG_ERR("Unable to find subscription entry in persist data tree for '%s': %s.", module_name, ly_errmsg());
-            rc = SR_ERR_INTERNAL;
-            goto cleanup;
-        }
-        if (1 != node_set->number) {
-            SR_LOG_ERR("Subscription does not exist in '%s' persist data tree.", module_name);
-            rc = SR_ERR_DATA_MISSING;
-            goto cleanup;
-        } else {
-            ret = lyd_unlink(node_set->set.d[0]);
-            if (0 != ret) {
-                SR_LOG_ERR("Unable to unlink the subscription entry in persist data tree for '%s'.", module_name);
-                rc = SR_ERR_INTERNAL;
-                goto cleanup;
-            } else {
-                lyd_free(node_set->set.d[0]);
-                SR_LOG_DBG("Subscription entry successfully removed from '%s' persist file.", module_name);
-            }
+        if (SR_ERR_OK == rc) {
+            SR_LOG_DBG("Subscription entry successfully removed from '%s' persist file.", module_name);
         }
     }
 
-    /* save the changes */
-    rc = pm_save_data_tree(pm_ctx, fd, data_tree);
-
-cleanup:
-    if (NULL != node_set) {
-        ly_set_free(node_set);
-    }
-    if (NULL != data_tree) {
-        lyd_free_withsiblings(data_tree);
-    }
-    free(data_filename);
-
-    if (-1 != fd) {
-        sr_unlock_fd(fd);
-        close(fd);
-    }
     return rc;
 }
 
@@ -544,8 +516,7 @@ pm_get_subscriptions(pm_ctx_t *pm_ctx, const char *module_name, Sr__Notification
         goto cleanup;
     }
 
-    snprintf(xpath, PATH_MAX, "/sysrepo-persistent-data:module[name='%s']/subscriptions/subscription[type='%s']",
-            module_name, pm_event_gpb_to_str(event_type));
+    snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTIONS_BY_TYPE, module_name, pm_event_gpb_to_str(event_type));
     node_set = lyd_get_node(data_tree, xpath);
 
     if (NULL != node_set && node_set->number > 0) {
