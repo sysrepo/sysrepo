@@ -42,7 +42,7 @@ typedef struct rp_dt_match_s {
 }rp_dt_match_t;
 
 /**
- * @brief Chcecks if the schema node has a key node with the specified name
+ * @brief Checks if the schema node has a key node with the specified name
  * @param [in] node
  * @param [in] name
  * @param [out] res
@@ -182,7 +182,7 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, co
     if (SR_ERR_NOT_FOUND == rc ) {
         if (SR_EDIT_STRICT & options) {
             SR_LOG_ERR("No nodes to be deleted with strict option %s", xpath);
-            return SR_ERR_DATA_MISSING;
+            return dm_report_error(session, NULL, strdup(xpath), SR_ERR_DATA_MISSING);
         } else {
             return SR_ERR_OK;
         }
@@ -213,7 +213,7 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, co
             if ((nodes->set.d[i]->schema->nodetype & (LYS_LIST | LYS_CONTAINER)) &&
                  !rp_dt_has_only_keys(nodes->set.d[i])) {
                 SR_LOG_ERR("List of the nodes to be deleted contains list or container with non recursive opt %s", xpath);
-                rc = SR_ERR_DATA_EXISTS;
+                rc = dm_report_error(session, NULL, strdup(xpath), SR_ERR_DATA_EXISTS);
                 goto cleanup;
             }
         }
