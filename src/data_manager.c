@@ -417,8 +417,11 @@ dm_free_sess_op(dm_sess_op_t *op)
         return;
     }
     free(op->xpath);
-    if (DM_SET_OP == op->op){
+    if (DM_SET_OP == op->op) {
         sr_free_val(op->detail.set.val);
+    } else if (DM_MOVE_OP == op->op) {
+        free(op->detail.mov.relative_item);
+        op->detail.mov.relative_item = NULL;
     }
 }
 
@@ -757,6 +760,8 @@ dm_add_operation(dm_session_t *session, dm_operation_t op, const char *xpath, sr
         if (NULL != rel_item){
             session->operations[session->oper_count].detail.mov.relative_item = strdup(rel_item);
             CHECK_NULL_NOMEM_GOTO(session->operations[session->oper_count].detail.mov.relative_item, rc, cleanup);
+        } else {
+            session->operations[session->oper_count].detail.mov.relative_item = NULL;
         }
     }
 
