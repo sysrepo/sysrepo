@@ -224,7 +224,7 @@ pm_save_persistent_data(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const cha
             goto cleanup;
         }
         if (1 != node_set->number) {
-            SR_LOG_ERR("Specified persistent data already exist (module=%s, xpath=%s).", module_name, xpath);
+            SR_LOG_ERR("Specified persistent data does not exist (module=%s, xpath=%s).", module_name, xpath);
             rc = SR_ERR_DATA_MISSING;
             goto cleanup;
         } else {

@@ -126,6 +126,12 @@ np_notification_subscribe_test(void **state)
             "addr2", 456, "example-module", NULL);
     assert_int_equal(rc, SR_ERR_OK);
 
+    /* try to subscribe again for the same */
+
+    rc = np_notification_subscribe(np_ctx, &test_ctx->user_cred, SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV,
+            "addr2", 456, "example-module", NULL);
+    assert_int_equal(rc, SR_ERR_DATA_EXISTS);
+
     /* unsubscribe from one of them */
     rc = np_notification_unsubscribe(np_ctx, &test_ctx->user_cred, SR__NOTIFICATION_EVENT__MODULE_INSTALL_EV,
             "addr2", 123, NULL);
@@ -135,6 +141,16 @@ np_notification_subscribe_test(void **state)
     rc = np_notification_unsubscribe(np_ctx, &test_ctx->user_cred, SR__NOTIFICATION_EVENT__MODULE_INSTALL_EV,
             "addr1", 789, NULL);
     assert_int_equal(rc, SR_ERR_INVAL_ARG);
+
+    /* try to unsubscribe from module-change subscription without specifying module name */
+    rc = np_notification_unsubscribe(np_ctx, &test_ctx->user_cred, SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV,
+            "addr2", 456, NULL);
+    assert_int_equal(rc, SR_ERR_INVAL_ARG);
+
+    /* try to unsubscribe from module-change subscription with bad id */
+    rc = np_notification_unsubscribe(np_ctx, &test_ctx->user_cred, SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV,
+            "addr2", 0, "example-module");
+    assert_int_equal(rc, SR_ERR_DATA_MISSING);
 
     /* module install notify */
     rc = np_module_install_notify(np_ctx, "example-module", "2016-03-05", true);
