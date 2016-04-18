@@ -1564,6 +1564,94 @@ edit_move2_test(void **state)
 }
 
 void
+edit_move3_test(void **state)
+{
+    int rc = 0;
+    rp_ctx_t *ctx = *state;
+    rp_session_t *session = NULL;
+    sr_val_t **values = NULL;
+    size_t cnt = 0;
+
+    test_rp_sesssion_create(ctx, SR_DS_STARTUP, &session);
+
+    /* empty the data tree*/
+    rc = rp_dt_delete_item_wrapper(ctx, session, "/test-module:main", SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_delete_item_wrapper(ctx, session, "/test-module:list", SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_get_values_wrapper(ctx, session, "/test-module:user", &values, &cnt);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+
+    rc = rp_dt_get_values_wrapper(ctx, session, "/test-module:ordered-numbers", &values, &cnt);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+
+    /* add some ordered leaf-list entries */
+    sr_val_t *v = NULL;
+    v = calloc(1, sizeof(*v));
+    assert_non_null(v);
+    v->type = SR_UINT8_T;
+    v->xpath = strdup("/test-module:ordered-numbers");
+    v->data.uint8_val = 1;
+
+    rc = rp_dt_set_item_wrapper(ctx, session, v->xpath, v, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    v = calloc(1, sizeof(*v));
+    assert_non_null(v);
+    v->type = SR_UINT8_T;
+    v->xpath = strdup("/test-module:ordered-numbers");
+    v->data.uint8_val = 2;
+    rc = rp_dt_set_item_wrapper(ctx, session, v->xpath, v, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    v = calloc(1, sizeof(*v));
+    assert_non_null(v);
+    v->type = SR_UINT8_T;
+    v->xpath = strdup("/test-module:ordered-numbers");
+    v->data.uint8_val = 9;
+    rc = rp_dt_set_item_wrapper(ctx, session, v->xpath, v, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_get_values_wrapper(ctx, session, "/test-module:ordered-numbers", &values, &cnt);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(3, cnt);
+
+    assert_int_equal(1, values[0]->data.uint8_val);
+    assert_int_equal(2, values[1]->data.uint8_val);
+    assert_int_equal(9, values[2]->data.uint8_val);
+
+    sr_free_values_arr(values, cnt);
+
+    rc = rp_dt_move_list_wrapper(ctx, session, "/test-module:ordered-numbers[.='9']", SR_MOVE_FIRST, NULL);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_get_values_wrapper(ctx, session, "/test-module:ordered-numbers", &values, &cnt);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(3, cnt);
+
+    assert_int_equal(9, values[0]->data.uint8_val);
+    assert_int_equal(1, values[1]->data.uint8_val);
+    assert_int_equal(2, values[2]->data.uint8_val);
+
+    sr_free_values_arr(values, cnt);
+
+    /* move with different node */
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/test-module:user[name='nameA']", SR_EDIT_DEFAULT, NULL);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_move_list_wrapper(ctx, session, "/test-module:ordered-numbers[.='9']", SR_MOVE_AFTER, "/test-module:user[name='nameA']");
+    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+
+    /* relative item invalid node */
+    rc = rp_dt_move_list_wrapper(ctx, session, "/test-module:ordered-numbers[.='9']", SR_MOVE_AFTER, "/test-module:main");
+    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+
+    test_rp_session_cleanup(ctx, session);
+}
+
+void
 operation_logging_test(void **state)
 {
    int rc = 0;
@@ -1725,6 +1813,7 @@ int main(){
             cmocka_unit_test(edit_commit_test),
             cmocka_unit_test(edit_move_test),
             cmocka_unit_test(edit_move2_test),
+            cmocka_unit_test(edit_move3_test),
             cmocka_unit_test(edit_commit2_test),
             cmocka_unit_test(edit_commit3_test),
             cmocka_unit_test(edit_commit4_test),

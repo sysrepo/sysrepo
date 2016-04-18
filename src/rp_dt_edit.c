@@ -494,11 +494,9 @@ rp_dt_move_list(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, sr_m
         ly_set_free(siblings);
     }
 
-    if (NULL != sibling) {
-        if (!((LYS_LIST | LYS_LEAFLIST) & sibling->schema->nodetype) || (!(LYS_USERORDERED & sibling->schema->flags)) || (node->schema != sibling->schema)) {
-            SR_LOG_ERR ("Xpath %s does not identify the user ordered list or leaf-list", xpath);
-            return SR_ERR_INVAL_ARG;
-        }
+    if (NULL == sibling || !((LYS_LIST | LYS_LEAFLIST) & sibling->schema->nodetype) || (!(LYS_USERORDERED & sibling->schema->flags)) || (node->schema != sibling->schema)) {
+        SR_LOG_ERR ("Xpath %s does not identify the user ordered list or leaf-list or sibling node", xpath);
+        return SR_ERR_INVAL_ARG;
     }
 
     if (SR_MOVE_FIRST == position) {
