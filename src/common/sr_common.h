@@ -543,7 +543,7 @@ sr_datastore_t sr_datastore_gpb_to_sr(Sr__DataStore gpb_ds);
  * @param[in] sr_direction Sysrepo move direction.
  * @return GPB move direction.
  */
-Sr__MoveItemReq__MoveDirection sr_move_direction_sr_to_gpb(sr_move_direction_t sr_direction);
+Sr__MoveItemReq__MovePosition sr_move_position_sr_to_gpb(sr_move_position_t sr_direction);
 
 /**
  * @brief Converts GPB move direction to sysrepo move direction.
@@ -551,7 +551,7 @@ Sr__MoveItemReq__MoveDirection sr_move_direction_sr_to_gpb(sr_move_direction_t s
  * @param[in] gpb_direction GPB move direction.
  * @return Sysrepo move direction.
  */
-sr_move_direction_t sr_move_direction_gpb_to_sr(Sr__MoveItemReq__MoveDirection gpb_direction);
+sr_move_position_t sr_move_direction_gpb_to_sr(Sr__MoveItemReq__MovePosition gpb_direction);
 
 /**
  * @brief Converts array of sr_schema_t to an array of pointers to GPB schemas.

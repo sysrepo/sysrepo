@@ -1752,29 +1752,37 @@ sr_datastore_gpb_to_sr(Sr__DataStore gpb_ds)
     }
 }
 
-Sr__MoveItemReq__MoveDirection
-sr_move_direction_sr_to_gpb(sr_move_direction_t sr_direction)
+Sr__MoveItemReq__MovePosition
+sr_move_position_sr_to_gpb(sr_move_position_t sr_position)
 {
-    switch (sr_direction) {
-        case SR_MOVE_UP:
-            return SR__MOVE_ITEM_REQ__MOVE_DIRECTION__UP;
-        case SR_MOVE_DOWN:
+    switch (sr_position) {
+        case SR_MOVE_BEFORE:
+            return SR__MOVE_ITEM_REQ__MOVE_POSITION__BEFORE;
+        case SR_MOVE_AFTER:
+            return SR__MOVE_ITEM_REQ__MOVE_POSITION__AFTER;
+        case SR_MOVE_FIRST:
+            return SR__MOVE_ITEM_REQ__MOVE_POSITION__FIRST;
+        case SR_MOVE_LAST:
             /* fall through */
         default:
-            return SR__MOVE_ITEM_REQ__MOVE_DIRECTION__DOWN;
+            return SR__MOVE_ITEM_REQ__MOVE_POSITION__LAST;
     }
 }
 
-sr_move_direction_t
-sr_move_direction_gpb_to_sr(Sr__MoveItemReq__MoveDirection gpb_direction)
+sr_move_position_t
+sr_move_direction_gpb_to_sr(Sr__MoveItemReq__MovePosition gpb_position)
 {
-    switch (gpb_direction) {
-        case SR__MOVE_ITEM_REQ__MOVE_DIRECTION__UP:
-            return SR_MOVE_UP;
-        case SR__MOVE_ITEM_REQ__MOVE_DIRECTION__DOWN:
+    switch (gpb_position) {
+        case SR__MOVE_ITEM_REQ__MOVE_POSITION__BEFORE:
+            return SR_MOVE_BEFORE;
+        case SR__MOVE_ITEM_REQ__MOVE_POSITION__AFTER:
+            return SR_MOVE_AFTER;
+        case SR__MOVE_ITEM_REQ__MOVE_POSITION__FIRST:
+            return SR_MOVE_FIRST;
+        case SR__MOVE_ITEM_REQ__MOVE_POSITION__LAST:
             /* fall through */
         default:
-            return SR_MOVE_DOWN;
+            return SR_MOVE_LAST;
     }
 }
 

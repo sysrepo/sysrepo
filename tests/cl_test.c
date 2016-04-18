@@ -587,7 +587,7 @@ cl_move_item_test(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 
     /* perform a move-item request, not user ordered list */
-    rc = sr_move_item(session, "/test-module:list[key='k1']", SR_MOVE_DOWN);
+    rc = sr_move_item(session, "/test-module:list[key='k1']", SR_MOVE_FIRST, NULL);
     assert_int_equal(rc, SR_ERR_INVAL_ARG);
 
     rc = sr_set_item(session, "/test-module:user[name='nameA']", NULL, SR_EDIT_DEFAULT);
@@ -608,10 +608,10 @@ cl_move_item_test(void **state)
     assert_string_equal("/test-module:user[name='nameC']", values[2].xpath);
     sr_free_values(values, cnt);
 
-    rc = sr_move_item(session, "/test-module:user[name='nameA']", SR_MOVE_DOWN);
+    rc = sr_move_item(session, "/test-module:user[name='nameA']", SR_MOVE_LAST, NULL);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = sr_move_item(session, "/test-module:user[name='nameC']", SR_MOVE_UP);
+    rc = sr_move_item(session, "/test-module:user[name='nameC']", SR_MOVE_BEFORE, "/test-module:user[name='nameA']");
     assert_int_equal(rc, SR_ERR_OK);
 
     rc = sr_get_items(session, "/test-module:user", &values, &cnt);

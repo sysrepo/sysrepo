@@ -417,7 +417,12 @@ dm_free_sess_op(dm_sess_op_t *op)
         return;
     }
     free(op->xpath);
-    sr_free_val(op->val);
+    if (DM_SET_OP == op->op) {
+        sr_free_val(op->detail.set.val);
+    } else if (DM_MOVE_OP == op->op) {
+        free(op->detail.mov.relative_item);
+        op->detail.mov.relative_item = NULL;
+    }
 }
 
 static void
@@ -723,7 +728,7 @@ dm_get_node_state(struct lys_node *node)
 }
 
 int
-dm_add_operation(dm_session_t *session, dm_operation_t op, const char *xpath, sr_val_t *val, sr_edit_options_t opts)
+dm_add_operation(dm_session_t *session, dm_operation_t op, const char *xpath, sr_val_t *val, sr_edit_options_t opts, sr_move_position_t pos, const char *rel_item)
 {
     int rc = SR_ERR_OK;
     CHECK_NULL_ARG_NORET2(rc, session, xpath); /* value can be NULL*/
@@ -745,8 +750,21 @@ dm_add_operation(dm_session_t *session, dm_operation_t op, const char *xpath, sr
     session->operations[session->oper_count].has_error = false;
     session->operations[session->oper_count].xpath = strdup(xpath);
     CHECK_NULL_NOMEM_GOTO(session->operations[session->oper_count].xpath, rc, cleanup);
-    session->operations[session->oper_count].val = val;
-    session->operations[session->oper_count].options = opts;
+    if (DM_SET_OP == op) {
+        session->operations[session->oper_count].detail.set.val = val;
+        session->operations[session->oper_count].detail.set.options = opts;
+    } else if (DM_DELETE_OP == op) {
+        session->operations[session->oper_count].detail.del.options = opts;
+    } else if (DM_MOVE_OP == op){
+        session->operations[session->oper_count].detail.mov.position = pos;
+        if (NULL != rel_item){
+            session->operations[session->oper_count].detail.mov.relative_item = strdup(rel_item);
+            CHECK_NULL_NOMEM_GOTO(session->operations[session->oper_count].detail.mov.relative_item, rc, cleanup);
+        } else {
+            session->operations[session->oper_count].detail.mov.relative_item = NULL;
+        }
+    }
+
     session->oper_count++;
     return rc;
 cleanup:
@@ -762,7 +780,7 @@ dm_remove_last_operation(dm_session_t *session)
         session->oper_count--;
         dm_free_sess_op(&session->operations[session->oper_count]);
         session->operations[session->oper_count].xpath = NULL;
-        session->operations[session->oper_count].val = NULL;
+        session->operations[session->oper_count].detail.set.val = NULL;
     }
 }
 

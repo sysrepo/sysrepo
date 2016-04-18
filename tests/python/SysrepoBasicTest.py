@@ -89,7 +89,7 @@ class SysrepoBasicTest(unittest.TestCase):
         for i in range(0, len(lists)):
             self.assertEqual(items[i].xpath, lists[i])
 
-        self.session.move_item(lists[1], SR_MOVE_UP)
+        self.session.move_item(lists[1], sr.SR_MOVE_FIRST)
         lists.insert(0, lists.pop(1))
 
         items = self.session.get_items("/test-module:user")

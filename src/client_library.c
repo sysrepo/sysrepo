@@ -826,7 +826,7 @@ cleanup:
 }
 
 int
-sr_move_item(sr_session_ctx_t *session, const char *xpath, const sr_move_direction_t direction)
+sr_move_item(sr_session_ctx_t *session, const char *xpath, const sr_move_position_t position, const char *relative_item)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
     int rc = SR_ERR_OK;
@@ -843,7 +843,12 @@ sr_move_item(sr_session_ctx_t *session, const char *xpath, const sr_move_directi
     msg_req->request->move_item_req->xpath = strdup(xpath);
     CHECK_NULL_NOMEM_GOTO(msg_req->request->move_item_req->xpath, rc, cleanup);
 
-    msg_req->request->move_item_req->direction = sr_move_direction_sr_to_gpb(direction);
+    msg_req->request->move_item_req->position = sr_move_position_sr_to_gpb(position);
+
+    if (NULL != relative_item) {
+        msg_req->request->move_item_req->relative_item = strdup(relative_item);
+        CHECK_NULL_NOMEM_GOTO(msg_req->request->move_item_req->relative_item, rc, cleanup);
+    }
 
     /* send the request and receive the response */
     rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__MOVE_ITEM);

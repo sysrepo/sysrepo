@@ -336,6 +336,44 @@ not_matched:
 }
 
 /**
+ * @brief If the xpath identifies leaf-list instance it is not matched by rp_dt_validate_node_xpath.
+ * The function tries to remove last characters identifying the leaf-list instance
+ * and match a node.
+ */
+static int
+rp_dt_find_leaflist(dm_session_t *session, const char *xpath, char *xp_copy, const struct lys_module *module, struct lys_node **match)
+{
+    CHECK_NULL_ARG5(session, xpath, xp_copy, module, match);
+    int rc = SR_ERR_BAD_ELEMENT;
+    char *err_msg = NULL;
+
+    err_msg = strdup(ly_errmsg());
+    CHECK_NULL_NOMEM_GOTO(err_msg, rc, not_matched);
+
+    char *last_slash = rindex(xp_copy, '/');
+    if (NULL == last_slash) {
+        goto not_matched;
+    }
+
+    char *leaf_list = strstr(last_slash, "[.='");
+    if (NULL == leaf_list) {
+        goto not_matched;
+    }
+    *leaf_list = 0;
+
+    *match = (struct lys_node *) ly_ctx_get_node(module->ctx, NULL, xp_copy);
+    if (NULL != match) {
+        rc = SR_ERR_OK;
+    }
+
+not_matched:
+    if (SR_ERR_OK != rc){
+        rc = dm_report_error(session, err_msg, strdup(xpath), SR_ERR_BAD_ELEMENT);
+    }
+    free(err_msg);
+    return rc;
+}
+/**
  * @brief Removes trailing characters from xpath to make it validateable by ly_ctx_get_node
  * @param [in] dm_ctx
  * @param [in] xpath
@@ -456,6 +494,11 @@ rp_dt_validate_node_xpath(dm_ctx_t *dm_ctx, dm_session_t *session, const char *x
             }
             break;
         case LYVE_PATH_INCHAR:
+            rc = rp_dt_find_leaflist(session, xpath, xp_copy, module, (struct lys_node **)&sch_node);
+            if (NULL != match) {
+                *match = (struct lys_node *) sch_node;
+            }
+            break;
         case LYVE_PATH_INKEY:
             rc = dm_report_error(session, ly_errmsg(), strdup(ly_errpath()), SR_ERR_BAD_ELEMENT);
             break;
