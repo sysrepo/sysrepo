@@ -154,44 +154,6 @@ rp_dt_has_only_keys(const struct lyd_node *node)
     return false;
 }
 
-/**
- * @brief Looks up the first sibling in specified direction with the name same as provide.
- * @param [in] info
- * @param [in] start_node
- * @param [in] direction
- * @param [out] sibling
- * @return Error code (SR_ERR_OK on success) SR_ERR_NOT_FOUND
- */
-#if 0
-static int
-rp_dt_find_closest_sibling_by_name(dm_data_info_t *info, struct lyd_node *start_node, sr_move_position_t direction, struct lyd_node **sibling)
-{
-    CHECK_NULL_ARG3(info, start_node, sibling);
-    CHECK_NULL_ARG2(start_node->schema, start_node->schema->name);
-
-    struct lyd_node *sib = SR_MOVE_UP == direction ? start_node->prev : start_node->next;
-
-    /* node where the lookup should be stopped - first sibling in case of direction == UP */
-    struct lyd_node *stop_node = NULL != start_node->parent ? start_node->parent->child : info->node;
-    if (stop_node == start_node && direction == SR_MOVE_UP){
-        return SR_ERR_NOT_FOUND;
-    }
-
-    while (NULL != sib){
-        CHECK_NULL_ARG2(sib->schema, sib->schema->name);
-        if (0 == strcmp(start_node->schema->name, sib->schema->name)) {
-            *sibling = sib;
-            return SR_ERR_OK;
-        }
-        if (stop_node == sib) {
-            break;
-        }
-        sib = SR_MOVE_UP == direction ? sib->prev : sib->next;
-    }
-    return SR_ERR_NOT_FOUND;
-}
-#endif
-
 int
 rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const sr_edit_flag_t options)
 {
