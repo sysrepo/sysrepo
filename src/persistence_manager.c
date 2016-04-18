@@ -49,12 +49,17 @@ typedef struct pm_ctx_s {
 static int
 pm_save_data_tree(pm_ctx_t *pm_ctx, int fd, struct lyd_node *data_tree)
 {
+    int ret = 0;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG2(pm_ctx, data_tree);
 
     /* empty file content */
-    ftruncate(fd, 0);
+    ret = ftruncate(fd, 0);
+    if (0 != ret) {
+        SR_LOG_ERR("File truncate failed: %s", strerror(errno));
+        rc = SR_ERR_INTERNAL;
+    }
 
     /* print data tree to file */
     rc = lyd_print_fd(fd, data_tree, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT);
@@ -64,6 +69,13 @@ pm_save_data_tree(pm_ctx_t *pm_ctx, int fd, struct lyd_node *data_tree)
     } else {
         SR_LOG_DBG_MSG("Persist data tree successfully saved.");
         rc = SR_ERR_OK;
+    }
+
+    /* flush in-core data to the disc */
+    ret = fdatasync(fd);
+    if (0 != ret) {
+        SR_LOG_ERR("File synchronization failed: %s", strerror(errno));
+        rc = SR_ERR_INTERNAL;
     }
 
     return rc;

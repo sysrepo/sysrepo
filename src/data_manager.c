@@ -1754,16 +1754,10 @@ dm_commit_write_files(dm_session_t *session, dm_commit_context_t *c_ctx)
 {
     CHECK_NULL_ARG2(session, c_ctx);
     int rc = SR_ERR_OK;
+    int ret = 0;
     size_t i = 0;
     size_t count = 0;
     dm_data_info_t *info = NULL;
-
-    /* empty existing files */
-    for (i=0; i < c_ctx->modif_count; i++) {
-        if (c_ctx->existed[i]) {
-            ftruncate(c_ctx->fds[i], 0);
-        }
-    }
 
     /* write data trees */
     i = 0;
@@ -1777,11 +1771,20 @@ dm_commit_write_files(dm_session_t *session, dm_commit_context_t *c_ctx)
                 rc = SR_ERR_INTERNAL;
                 continue;
             }
-            if (0 != lyd_print_fd(c_ctx->fds[count], merged_info->node, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT)) {
-                SR_LOG_ERR("Failed to write output for %s", info->module->name);
+            ret = ftruncate(c_ctx->fds[count], 0);
+            if (0 == ret) {
+                ly_errno = LY_SUCCESS;
+                ret = lyd_print_fd(c_ctx->fds[count], merged_info->node, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT);
+            }
+            if (0 == ret) {
+                ret = fsync(c_ctx->fds[count]);
+            }
+            if (0 != ret) {
+                SR_LOG_ERR("Failed to write data of '%s' module: %s", info->module->name,
+                        (ly_errno != LY_SUCCESS) ? ly_errmsg() : strerror(errno));
                 rc = SR_ERR_INTERNAL;
-            } else{
-                SR_LOG_DBG("Data written for model %s", info->module->name);
+            } else {
+                SR_LOG_DBG("Data successfully written for module '%s'", info->module->name);
             }
             count++;
         }
