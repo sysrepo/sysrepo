@@ -829,17 +829,19 @@ rp_subscribe_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr
     subscribe_req = msg->request->subscribe_req;
 
     /* subscribe to the notification */
-    rc = np_notification_subscribe(rp_ctx->np_ctx, subscribe_req->event, subscribe_req->xpath,
-            subscribe_req->destination, subscribe_req->subscription_id);
+    rc = np_notification_subscribe(rp_ctx->np_ctx, session->user_credentials, subscribe_req->event,
+            subscribe_req->destination, subscribe_req->subscription_id,
+            subscribe_req->module_name, subscribe_req->xpath);
 
     if (SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV == subscribe_req->event &&
             subscribe_req->enable_running) {
         /* enable the module in running config */
         bool module_enabled = false;
-        rc = dm_has_enabled_subtree(rp_ctx->dm_ctx, subscribe_req->xpath, &module, &module_enabled);
+        rc = dm_has_enabled_subtree(rp_ctx->dm_ctx, subscribe_req->module_name, &module, &module_enabled);
         if (SR_ERR_OK == rc && !module_enabled) {
             /* if not already enabled, copy the data from startup */
-            rc = dm_copy_module(rp_ctx->dm_ctx, session->dm_session, subscribe_req->xpath, SR_DS_STARTUP, SR_DS_RUNNING);
+            rc = dm_copy_module(rp_ctx->dm_ctx, session->dm_session, subscribe_req->module_name,
+                    SR_DS_STARTUP, SR_DS_RUNNING);
         }
         if (SR_ERR_OK == rc) {
             /* enable each subtree within the module */
@@ -892,8 +894,9 @@ rp_unsubscribe_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
     }
 
     /* unsubscribe from the notifications */
-    rc = np_notification_unsubscribe(rp_ctx->np_ctx, msg->request->unsubscribe_req->destination,
-            msg->request->unsubscribe_req->subscription_id);
+    rc = np_notification_unsubscribe(rp_ctx->np_ctx, session->user_credentials, msg->request->unsubscribe_req->event,
+            msg->request->unsubscribe_req->destination, msg->request->unsubscribe_req->subscription_id,
+            msg->request->unsubscribe_req->module_name);
 
     /* set response code */
     resp->response->result = rc;

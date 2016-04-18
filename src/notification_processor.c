@@ -73,7 +73,7 @@ np_cleanup(np_ctx_t *np_ctx)
 
     for (size_t i = 0; i < np_ctx->subscription_cnt; i++) {
         free((void*)np_ctx->subscriptions[i]->dst_address);
-        free((void*)np_ctx->subscriptions[i]->path);
+        free((void*)np_ctx->subscriptions[i]->xpath);
         free(np_ctx->subscriptions[i]);
     }
     free(np_ctx->subscriptions);
@@ -82,14 +82,14 @@ np_cleanup(np_ctx_t *np_ctx)
 }
 
 int
-np_notification_subscribe(np_ctx_t *np_ctx, Sr__NotificationEvent event_type, const char *path,
-        const char *dst_address, uint32_t dst_id)
+np_notification_subscribe(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, Sr__NotificationEvent event_type,
+        const char *dst_address, uint32_t dst_id, const char *module_name, const char *xpath)
 {
     np_subscription_t *subscription = NULL;
     np_subscription_t **subscriptions_tmp = NULL;
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG2(np_ctx, dst_address);
+    CHECK_NULL_ARG3(np_ctx, np_ctx->rp_ctx, dst_address);
 
     SR_LOG_DBG("Notification subscribe: event=%d, dst_address='%s', dst_id=%"PRIu32".", event_type, dst_address, dst_id);
 
@@ -98,28 +98,37 @@ np_notification_subscribe(np_ctx_t *np_ctx, Sr__NotificationEvent event_type, co
     CHECK_NULL_NOMEM_RETURN(subscription);
 
     subscription->event_type = event_type;
-    if (NULL != path) {
-        subscription->path = strdup(path);
-        CHECK_NULL_NOMEM_GOTO(subscription->path, rc, cleanup);
+    if (NULL != xpath) {
+        subscription->xpath = strdup(xpath);
+        CHECK_NULL_NOMEM_GOTO(subscription->xpath, rc, cleanup);
     }
 
     subscription->dst_id = dst_id;
     subscription->dst_address = strdup(dst_address);
     CHECK_NULL_NOMEM_GOTO(subscription->dst_address, rc, cleanup);
 
-    /* put the new entry into subscription list */
-    pthread_rwlock_wrlock(&np_ctx->subscriptions_lock);
-    subscriptions_tmp = realloc(np_ctx->subscriptions, (np_ctx->subscription_cnt + 1) * sizeof(*subscriptions_tmp));
-    CHECK_NULL_NOMEM_ERROR(subscriptions_tmp, rc);
+    /* save the new subscription */
+    if (SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV == event_type) {
+        /* add the subscription to module's persistent data */
+        rc = pm_save_subscribtion_state(np_ctx->rp_ctx->pm_ctx, user_cred, module_name, subscription, true);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to save the subscription into persistent data file.");
 
-    if (SR_ERR_OK == rc) {
-        np_ctx->subscriptions = subscriptions_tmp;
-        np_ctx->subscriptions[np_ctx->subscription_cnt] = subscription;
-        np_ctx->subscription_cnt += 1;
-        pthread_rwlock_unlock(&np_ctx->subscriptions_lock);
+        goto cleanup; /* subscription not needed anymore */
     } else {
-        pthread_rwlock_unlock(&np_ctx->subscriptions_lock);
-        goto cleanup;
+        /* add the subscription to in-memory subscription list */
+        pthread_rwlock_wrlock(&np_ctx->subscriptions_lock);
+        subscriptions_tmp = realloc(np_ctx->subscriptions, (np_ctx->subscription_cnt + 1) * sizeof(*subscriptions_tmp));
+        CHECK_NULL_NOMEM_ERROR(subscriptions_tmp, rc);
+
+        if (SR_ERR_OK == rc) {
+            np_ctx->subscriptions = subscriptions_tmp;
+            np_ctx->subscriptions[np_ctx->subscription_cnt] = subscription;
+            np_ctx->subscription_cnt += 1;
+            pthread_rwlock_unlock(&np_ctx->subscriptions_lock);
+        } else {
+            pthread_rwlock_unlock(&np_ctx->subscriptions_lock);
+            goto cleanup;
+        }
     }
 
     return SR_ERR_OK;
@@ -127,51 +136,62 @@ np_notification_subscribe(np_ctx_t *np_ctx, Sr__NotificationEvent event_type, co
 cleanup:
     if (NULL != subscription) {
         free((void*)subscription->dst_address);
-        free((void*)subscription->path);
+        free((void*)subscription->xpath);
         free(subscription);
     }
     return rc;
 }
 
 int
-np_notification_unsubscribe(np_ctx_t *np_ctx, const char *dst_address, uint32_t dst_id)
+np_notification_unsubscribe(np_ctx_t *np_ctx,  const ac_ucred_t *user_cred, Sr__NotificationEvent event_type,
+        const char *dst_address, uint32_t dst_id, const char *module_name)
 {
-    np_subscription_t *subscription = NULL;
+    np_subscription_t *subscription = NULL, subscription_lookup = { 0, };
     size_t i = 0;
+    int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG2(np_ctx, dst_address);
 
     SR_LOG_DBG("Notification unsubscribe: dst_address='%s', dst_id=%"PRIu32".", dst_address, dst_id);
 
-    /* find matching subscription */
-    for (i = 0; i < np_ctx->subscription_cnt; i++) {
-        if ((np_ctx->subscriptions[i]->dst_id == dst_id) &&
-                (0 == strcmp(np_ctx->subscriptions[i]->dst_address, dst_address))) {
-            subscription = np_ctx->subscriptions[i];
-            break;
+    if (SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV == event_type) {
+        /* remove the subscription to module's persistent data */
+        subscription_lookup.dst_address = dst_address;
+        subscription_lookup.dst_id = dst_id;
+        subscription_lookup.event_type = event_type;
+        rc = pm_save_subscribtion_state(np_ctx->rp_ctx->pm_ctx, user_cred, module_name, &subscription_lookup, false);
+    } else {
+        /* remove the subscription from in-memory subscription list */
+
+        /* find matching subscription */
+        for (i = 0; i < np_ctx->subscription_cnt; i++) {
+            if ((np_ctx->subscriptions[i]->dst_id == dst_id) &&
+                    (0 == strcmp(np_ctx->subscriptions[i]->dst_address, dst_address))) {
+                subscription = np_ctx->subscriptions[i];
+                break;
+            }
         }
+        if (NULL == subscription) {
+            SR_LOG_ERR("Subscription matching with dst_address='%s' and dst_id=%"PRIu32" not found.", dst_address, dst_id);
+            return SR_ERR_INVAL_ARG;
+        }
+
+        /* remove the subscription from array */
+        pthread_rwlock_wrlock(&np_ctx->subscriptions_lock);
+        if (np_ctx->subscription_cnt > (i + 1)) {
+            memmove(np_ctx->subscriptions + i, np_ctx->subscriptions + i + 1,
+                    (np_ctx->subscription_cnt - i - 1) * sizeof(*np_ctx->subscriptions));
+        }
+        np_ctx->subscription_cnt -= 1;
+        pthread_rwlock_unlock(&np_ctx->subscriptions_lock);
+
+        /* release the subscription */
+        free((void*)subscription->dst_address);
+        free((void*)subscription->xpath);
+        free(subscription);
     }
 
-    if (NULL == subscription) {
-        SR_LOG_ERR("Subscription matching with dst_address='%s' and dst_id=%"PRIu32" not found.", dst_address, dst_id);
-        return SR_ERR_INVAL_ARG;
-    }
-
-    /* remove the subscription from array */
-    pthread_rwlock_wrlock(&np_ctx->subscriptions_lock);
-    if (np_ctx->subscription_cnt > (i + 1)) {
-        memmove(np_ctx->subscriptions + i, np_ctx->subscriptions + i + 1,
-                (np_ctx->subscription_cnt - i - 1) * sizeof(*np_ctx->subscriptions));
-    }
-    np_ctx->subscription_cnt -= 1;
-    pthread_rwlock_unlock(&np_ctx->subscriptions_lock);
-
-    /* release the subscription */
-    free((void*)subscription->dst_address);
-    free((void*)subscription->path);
-    free(subscription);
-
-    return SR_ERR_OK;
+    return rc;
 }
 
 int
@@ -267,6 +287,8 @@ np_feature_enable_notify(np_ctx_t *np_ctx, const char *module_name, const char *
 int
 np_module_change_notify(np_ctx_t *np_ctx, const char *module_name)
 {
+    np_subscription_t *subscriptions = NULL;
+    size_t subscription_cnt = 0;
     Sr__Msg *notif = NULL;
     int rc = SR_ERR_OK;
 
@@ -274,32 +296,33 @@ np_module_change_notify(np_ctx_t *np_ctx, const char *module_name)
 
     SR_LOG_DBG("Sending module-change notifications, module_name='%s'.", module_name);
 
-    pthread_rwlock_rdlock(&np_ctx->subscriptions_lock);
+    rc = pm_get_subscriptions(np_ctx->rp_ctx->pm_ctx, module_name, SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV,
+            &subscriptions, &subscription_cnt);
 
-    for (size_t i = 0; i < np_ctx->subscription_cnt; i++) {
-        if ((SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV == np_ctx->subscriptions[i]->event_type) &&
-                (NULL != np_ctx->subscriptions[i]->path) && (0 == strcmp(np_ctx->subscriptions[i]->path, module_name))) {
-            /* allocate the notification */
-            rc = sr_pb_notif_alloc(SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV,
-                    np_ctx->subscriptions[i]->dst_address, np_ctx->subscriptions[i]->dst_id, &notif);
-            /* fill-in notification details */
-            if (SR_ERR_OK == rc) {
-                notif->notification->module_change_notif->module_name = strdup(module_name);
-                CHECK_NULL_NOMEM_ERROR(notif->notification->module_change_notif->module_name, rc);
-            }
-            /* send the notification */
-            if (SR_ERR_OK == rc) {
-                SR_LOG_DBG("Sending a module-change notification to the destination address='%s', id=%"PRIu32".",
-                        np_ctx->subscriptions[i]->dst_address, np_ctx->subscriptions[i]->dst_id);
-                rc = cm_msg_send(np_ctx->rp_ctx->cm_ctx, notif);
-            } else {
-                sr__msg__free_unpacked(notif, NULL);
-                break;
-            }
+    for (size_t i = 0; i < subscription_cnt; i++) {
+        /* allocate the notification */
+        rc = sr_pb_notif_alloc(SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV,
+                subscriptions[i].dst_address, subscriptions[i].dst_id, &notif);
+        /* fill-in notification details */
+        if (SR_ERR_OK == rc) {
+            notif->notification->module_change_notif->module_name = strdup(module_name);
+            CHECK_NULL_NOMEM_ERROR(notif->notification->module_change_notif->module_name, rc);
+        }
+        /* send the notification */
+        if (SR_ERR_OK == rc) {
+            SR_LOG_DBG("Sending a module-change notification to the destination address='%s', id=%"PRIu32".",
+                    subscriptions[i].dst_address, subscriptions[i].dst_id);
+            rc = cm_msg_send(np_ctx->rp_ctx->cm_ctx, notif);
+        } else {
+            sr__msg__free_unpacked(notif, NULL);
+            break;
         }
     }
 
-    pthread_rwlock_unlock(&np_ctx->subscriptions_lock);
+    for (size_t i = 0; i < subscription_cnt; i++) {
+        free((void*)subscriptions[i].dst_address);
+    }
+    free(subscriptions);
 
     return rc;
 }

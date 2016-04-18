@@ -134,6 +134,7 @@ cl_sm_subscription_cleanup_internal(void *subscription_p)
 
     if (NULL != subscription_p) {
         subscription = (sr_subscription_ctx_t *)subscription_p;
+        free((void*)subscription->module_name);
         free(subscription);
     }
 }
@@ -994,7 +995,7 @@ cl_sm_subscription_cleanup(sr_subscription_ctx_t *subscription)
 
     pthread_mutex_lock(&sm_ctx->subscriptions_lock);
 
-    /* sm_connection_cleanup will be auto-invoked */
+    /* cl_sm_subscription_cleanup_internal will be auto-invoked */
     sr_btree_delete(sm_ctx->subscriptions_btree, subscription);
 
     pthread_mutex_unlock(&sm_ctx->subscriptions_lock);

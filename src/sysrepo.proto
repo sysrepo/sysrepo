@@ -449,20 +449,26 @@ enum NotificationEvent {
 }
 
 message SubscribeReq {
-  required string destination = 1;
-  required uint32 subscription_id = 2;
+  required NotificationEvent event = 1;
 
-  required NotificationEvent event = 3;
-  optional string xpath = 4;
-  optional bool enable_running = 5;
+  required string destination = 2;
+  required uint32 subscription_id = 3;
+
+  optional string module_name = 4;
+  optional string xpath = 5;
+  optional bool enable_running = 6;
 }
 
 message SubscribeResp {
 }
 
 message UnsubscribeReq {
-  required string destination = 1;
-  required uint32 subscription_id = 2;
+  required NotificationEvent event = 1;
+
+  required string destination = 2;
+  required uint32 subscription_id = 3;
+
+  optional string module_name = 4;
 }
 
 message UnsubscribeResp {

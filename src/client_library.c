@@ -126,8 +126,8 @@ cleanup:
  * @brief Initializes a new subscription.
  */
 static int
-cl_subscribtion_init(sr_session_ctx_t *session, Sr__NotificationEvent event_type, void *private_ctx,
-        sr_subscription_ctx_t **subscription_p, Sr__Msg **msg_req_p)
+cl_subscribtion_init(sr_session_ctx_t *session, Sr__NotificationEvent event_type, const char *module_name,
+        void *private_ctx, sr_subscription_ctx_t **subscription_p, Sr__Msg **msg_req_p)
 {
     Sr__Msg *msg_req = NULL;
     sr_subscription_ctx_t *subscription = NULL;
@@ -156,6 +156,10 @@ cl_subscribtion_init(sr_session_ctx_t *session, Sr__NotificationEvent event_type
 
     subscription->event_type = event_type;
     subscription->private_ctx = private_ctx;
+    if (NULL != module_name) {
+        subscription->module_name = strdup(module_name);
+        CHECK_NULL_NOMEM_GOTO(subscription->module_name, rc, cleanup);
+    }
 
     /* fill-in subscription details into GPB message */
     msg_req->request->subscribe_req->destination = strdup(subscription->delivery_address);
@@ -1185,7 +1189,7 @@ sr_module_install_subscribe(sr_session_ctx_t *session, sr_module_install_cb call
     cl_session_clear_errors(session);
 
     /* Initialize the subscription */
-    rc = cl_subscribtion_init(session, SR__NOTIFICATION_EVENT__MODULE_INSTALL_EV,
+    rc = cl_subscribtion_init(session, SR__NOTIFICATION_EVENT__MODULE_INSTALL_EV, NULL,
             private_ctx, &subscription, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by initialization of the subscription in the client library.");
 
@@ -1225,7 +1229,7 @@ sr_feature_enable_subscribe(sr_session_ctx_t *session, sr_feature_enable_cb call
     cl_session_clear_errors(session);
 
     /* Initialize the subscription */
-    rc = cl_subscribtion_init(session, SR__NOTIFICATION_EVENT__FEATURE_ENABLE_EV,
+    rc = cl_subscribtion_init(session, SR__NOTIFICATION_EVENT__FEATURE_ENABLE_EV, NULL,
             private_ctx, &subscription, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by initialization of the subscription in the client library.");
 
@@ -1265,7 +1269,7 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, b
     cl_session_clear_errors(session);
 
     /* Initialize the subscription */
-    rc = cl_subscribtion_init(session, SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV,
+    rc = cl_subscribtion_init(session, SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV, module_name,
             private_ctx, &subscription, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by initialization of the subscription in the client library.");
 
@@ -1274,8 +1278,8 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, b
     msg_req->request->subscribe_req->event = SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV;
     msg_req->request->subscribe_req->has_enable_running = true;
     msg_req->request->subscribe_req->enable_running = enable_running;
-    msg_req->request->subscribe_req->xpath = strdup(module_name);
-    CHECK_NULL_NOMEM_GOTO(msg_req->request->subscribe_req->xpath, rc, cleanup);
+    msg_req->request->subscribe_req->module_name = strdup(module_name);
+    CHECK_NULL_NOMEM_GOTO(msg_req->request->subscribe_req->module_name, rc, cleanup);
 
     /* send the request and receive the response */
     rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__SUBSCRIBE);
@@ -1328,8 +1332,16 @@ sr_unsubscribe(sr_subscription_ctx_t *subscription)
     rc = sr_pb_req_alloc(SR__OPERATION__UNSUBSCRIBE, session->id, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate unsubscribe message.");
 
+    msg_req->request->unsubscribe_req->event = subscription->event_type;
+
     msg_req->request->unsubscribe_req->destination = strdup(subscription->delivery_address);
+    CHECK_NULL_NOMEM_GOTO(msg_req->request->unsubscribe_req->destination, rc, cleanup);
     msg_req->request->unsubscribe_req->subscription_id = subscription->id;
+
+    if (NULL != subscription->module_name) {
+        msg_req->request->unsubscribe_req->module_name = strdup(subscription->module_name);
+        CHECK_NULL_NOMEM_GOTO(msg_req->request->unsubscribe_req->module_name, rc, cleanup);
+    }
 
     /* send the request and receive the response */
     rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__UNSUBSCRIBE);

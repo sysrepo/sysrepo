@@ -554,6 +554,22 @@ Sr__MoveItemReq__MoveDirection sr_move_direction_sr_to_gpb(sr_move_direction_t s
 sr_move_direction_t sr_move_direction_gpb_to_sr(Sr__MoveItemReq__MoveDirection gpb_direction);
 
 /**
+ * @brief Converts GPB notification event type to its string representation.
+ *
+ * @param[in] event GPB event type.
+ * @return Pointer to statically allocated string with the event name.
+ */
+char *sr_event_gpb_to_str(Sr__NotificationEvent event);
+
+/**
+ * @brief Converts notification event type string to its GPB enum representation.
+ *
+ * @param[in] event_name String name of the event.
+ * @return GPB event type.
+ */
+Sr__NotificationEvent sr_event_str_to_gpb(const char *event_name);
+
+/**
  * @brief Converts array of sr_schema_t to an array of pointers to GPB schemas.
  *
  * @param [in] sr_schemas Array of sr_schema_t.

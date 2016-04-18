@@ -1778,6 +1778,36 @@ sr_move_direction_gpb_to_sr(Sr__MoveItemReq__MoveDirection gpb_direction)
     }
 }
 
+char *
+sr_event_gpb_to_str(Sr__NotificationEvent event)
+{
+    switch (event) {
+    case SR__NOTIFICATION_EVENT__MODULE_INSTALL_EV:
+        return "module-install";
+    case SR__NOTIFICATION_EVENT__FEATURE_ENABLE_EV:
+        return "feature-enable";
+    case SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV:
+        return "module-change";
+    default:
+        return "unknown";
+    }
+}
+
+Sr__NotificationEvent
+sr_event_str_to_gpb(const char *event_name)
+{
+    if (0 == strcmp(event_name, "module-install")) {
+        return SR__NOTIFICATION_EVENT__MODULE_INSTALL_EV;
+    }
+    if (0 == strcmp(event_name, "feature-enable")) {
+        return SR__NOTIFICATION_EVENT__FEATURE_ENABLE_EV;
+    }
+    if (0 == strcmp(event_name, "module-change")) {
+        return SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV;
+    }
+    return _SR__NOTIFICATION_EVENT_IS_INT_SIZE;
+}
+
 void sr_free_schema(sr_schema_t *schema)
 {
     if (NULL != schema) {

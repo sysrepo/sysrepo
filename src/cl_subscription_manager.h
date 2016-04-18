@@ -44,9 +44,10 @@ typedef struct cl_sm_ctx_s cl_sm_ctx_t;
  * @brief Sysrepo subscription context.
  */
 typedef struct sr_subscription_ctx_s {
+    Sr__NotificationEvent event_type;            /**< Type of the notification event subscribed to. */
     const char *delivery_address;                /**< Address where the notification messages should be delivered. */
     uint32_t id;                                 /**< Library-local subscription identifier. */
-    Sr__NotificationEvent event_type;            /**< Type of the notification event subscribed to. */
+    const char *module_name;                     /**< Name of the YANG module witch the subscription is tied to.*/
     union {
         sr_feature_enable_cb feature_enable_cb;  /**< Callback to be called by feature enable/disable event. */
         sr_module_install_cb module_install_cb;  /**< Callback to be called by module (un)install event. */

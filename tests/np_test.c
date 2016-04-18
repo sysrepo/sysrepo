@@ -21,6 +21,7 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <unistd.h>
 #include <setjmp.h>
 #include <cmocka.h>
 
@@ -28,32 +29,59 @@
 #include "request_processor.h"
 #include "notification_processor.h"
 #include "rp_internal.h"
+#include "access_control.h"
+#include "persistence_manager.h"
+
+#include "test_data.h"
+
+typedef struct test_ctx_s {
+    rp_ctx_t rp_ctx;      /**< fake rp ctx */
+    ac_ucred_t user_cred; /**< user credentials */
+} test_ctx_t;
 
 static int
 test_setup(void **state)
 {
-    static rp_ctx_t rp_ctx = { 0, }; /* fake rp ctx */
-    np_ctx_t *np_ctx = NULL;
+    test_ctx_t *test_ctx = NULL;
     int rc = SR_ERR_OK;
 
     sr_logger_init("np_test");
     sr_log_stderr(SR_LL_DBG);
 
-    rc = np_init(&rp_ctx, &np_ctx);
-    assert_int_equal(rc, SR_ERR_OK);
-    assert_non_null(np_ctx);
+    test_ctx = calloc(1, sizeof(*test_ctx));
+    assert_non_null(test_ctx);
 
-    *state = np_ctx;
+    test_ctx->user_cred.r_username = getenv("USER");
+    test_ctx->user_cred.r_uid = getuid();
+    test_ctx->user_cred.r_gid = getgid();
+
+    rc = ac_init(&test_ctx->rp_ctx.ac_ctx);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(test_ctx->rp_ctx.ac_ctx);
+
+    rc = pm_init(test_ctx->rp_ctx.ac_ctx,  TEST_INTERNAL_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &test_ctx->rp_ctx.pm_ctx);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_non_null(test_ctx->rp_ctx.pm_ctx);
+
+    rc = np_init(&test_ctx->rp_ctx, &test_ctx->rp_ctx.np_ctx);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_non_null(test_ctx->rp_ctx.np_ctx);
+
+    *state = test_ctx;
     return 0;
 }
 
 static int
 test_teardown(void **state)
 {
-    np_ctx_t *np_ctx = *state;
-    assert_non_null(np_ctx);
+    test_ctx_t *test_ctx = *state;
+    assert_non_null(test_ctx);
 
-    np_cleanup(np_ctx);
+    np_cleanup(test_ctx->rp_ctx.np_ctx);
+    pm_cleanup(test_ctx->rp_ctx.pm_ctx);
+    ac_cleanup(test_ctx->rp_ctx.ac_ctx);
+
+    free(test_ctx);
     sr_logger_cleanup();
 
     return 0;
@@ -76,29 +104,36 @@ static void
 np_notification_subscribe_test(void **state)
 {
     int rc = SR_ERR_OK;
-
-    np_ctx_t *np_ctx = *state;
+    test_ctx_t *test_ctx = *state;
+    assert_non_null(test_ctx);
+    np_ctx_t *np_ctx = test_ctx->rp_ctx.np_ctx;
     assert_non_null(np_ctx);
 
     /* create some subscriptions */
-    rc = np_notification_subscribe(np_ctx, SR__NOTIFICATION_EVENT__MODULE_INSTALL_EV, NULL, "addr1", 123);
+    rc = np_notification_subscribe(np_ctx, &test_ctx->user_cred, SR__NOTIFICATION_EVENT__MODULE_INSTALL_EV,
+            "addr1", 123, NULL, NULL);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = np_notification_subscribe(np_ctx, SR__NOTIFICATION_EVENT__MODULE_INSTALL_EV, NULL, "addr2", 123);
+    rc = np_notification_subscribe(np_ctx, &test_ctx->user_cred, SR__NOTIFICATION_EVENT__MODULE_INSTALL_EV,
+            "addr2", 123, NULL, NULL);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = np_notification_subscribe(np_ctx, SR__NOTIFICATION_EVENT__FEATURE_ENABLE_EV, NULL, "addr1", 456);
+    rc = np_notification_subscribe(np_ctx, &test_ctx->user_cred, SR__NOTIFICATION_EVENT__FEATURE_ENABLE_EV,
+            "addr1", 456, NULL, NULL);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = np_notification_subscribe(np_ctx, SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV, "example-module", "addr2", 456);
+    rc = np_notification_subscribe(np_ctx, &test_ctx->user_cred, SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV,
+            "addr2", 456, "example-module", NULL);
     assert_int_equal(rc, SR_ERR_OK);
 
-    /* unsibscribe from one of them */
-    rc = np_notification_unsubscribe(np_ctx, "addr2", 123);
+    /* unsubscribe from one of them */
+    rc = np_notification_unsubscribe(np_ctx, &test_ctx->user_cred, SR__NOTIFICATION_EVENT__MODULE_INSTALL_EV,
+            "addr2", 123, NULL);
     assert_int_equal(rc, SR_ERR_OK);
 
-    /* try to unsibscribe from non-existing subscription */
-    rc = np_notification_unsubscribe(np_ctx, "addr1", 789);
+    /* try to unsubscribe from non-existing subscription */
+    rc = np_notification_unsubscribe(np_ctx, &test_ctx->user_cred, SR__NOTIFICATION_EVENT__MODULE_INSTALL_EV,
+            "addr1", 789, NULL);
     assert_int_equal(rc, SR_ERR_INVAL_ARG);
 
     /* module install notify */
@@ -111,6 +146,11 @@ np_notification_subscribe_test(void **state)
 
     /* module change notify */
     rc = np_module_change_notify(np_ctx, "example-module");
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* unsubscribe from persistent one */
+    rc = np_notification_unsubscribe(np_ctx, &test_ctx->user_cred, SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV,
+            "addr2", 456, "example-module");
     assert_int_equal(rc, SR_ERR_OK);
 }
 

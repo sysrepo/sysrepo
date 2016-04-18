@@ -38,8 +38,9 @@
 #define PM_XPATH_FEATURES         PM_XPATH_MODULE "/enabled-features/feature-name"
 #define PM_XPATH_FEATURES_BY_NAME PM_XPATH_MODULE "/enabled-features/feature-name[text()='%s']"
 
-#define PM_XPATH_SUBSCRIPTIONS         PM_XPATH_MODULE "/subscriptions/subscription[type='%s'][destination-address='%s'][destination-id='%"PRIu32"']"
-#define PM_XPATH_SUBSCRIPTIONS_BY_TYPE PM_XPATH_MODULE "/subscriptions/subscription[type='%s']"
+#define PM_XPATH_SUBSCRIPTIONS           PM_XPATH_MODULE "/subscriptions/subscription[type='%s'][destination-address='%s'][destination-id='%"PRIu32"']"
+#define PM_XPATH_SUBSCRIPTIONS_BY_TYPE   PM_XPATH_MODULE "/subscriptions/subscription[type='%s']"
+#define PM_XPATH_SUBSCRIPTIONS_BY_DST_ID PM_XPATH_MODULE "/subscriptions/subscription[destination-address='%s'][destination-id='%"PRIu32"']"
 
 /**
  * @brief Persistence Manager context.
@@ -173,43 +174,8 @@ pm_ly_log_cb(LY_LOG_LEVEL level, const char *msg, const char *path)
 }
 
 /**
- * @brief Converts notification event type to its string representation.
- */
-static char *
-pm_event_gpb_to_str(Sr__NotificationEvent event)
-{
-    switch (event) {
-    case SR__NOTIFICATION_EVENT__MODULE_INSTALL_EV:
-        return "module-install";
-    case SR__NOTIFICATION_EVENT__FEATURE_ENABLE_EV:
-        return "feature-enable";
-    case SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV:
-        return "module-change";
-    default:
-        return "unknown";
-    }
-}
-
-/**
- * @brief Converts notification event type string to its GPB enum representation.
- */
-static Sr__NotificationEvent
-pm_event_str_to_gpb(const char *event_name)
-{
-    if (0 == strcmp(event_name, "module-install")) {
-        return SR__NOTIFICATION_EVENT__MODULE_INSTALL_EV;
-    }
-    if (0 == strcmp(event_name, "feature-enable")) {
-        return SR__NOTIFICATION_EVENT__FEATURE_ENABLE_EV;
-    }
-    if (0 == strcmp(event_name, "module-change")) {
-        return SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV;
-    }
-    return _SR__NOTIFICATION_EVENT_IS_INT_SIZE;
-}
-
-/**
- * TODO
+ * @brief Saves/deletes provided data on provided xpath location within the
+ * persistent data file of a module.
  */
 static int
 pm_save_persistent_data(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *module_name,
@@ -250,7 +216,7 @@ pm_save_persistent_data(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const cha
             goto cleanup;
         }
     } else {
-        /* delete persistent data*/
+        /* delete persistent data */
         node_set = lyd_get_node(data_tree, xpath);
         if (NULL == node_set || LY_SUCCESS != ly_errno) {
             SR_LOG_ERR("Unable to find requested persistent data (module=%s, xpath=%s): %s.", module_name, xpath, ly_errmsg());
@@ -465,7 +431,7 @@ pm_save_subscribtion_state(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const 
     CHECK_NULL_ARG4(pm_ctx, user_cred, module_name, subscription);
 
     snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTIONS, module_name,
-            pm_event_gpb_to_str(subscription->event_type), subscription->dst_address, subscription->dst_id);
+            sr_event_gpb_to_str(subscription->event_type), subscription->dst_address, subscription->dst_id);
 
     if (subscribe) {
         /* add the subscription */
@@ -516,7 +482,7 @@ pm_get_subscriptions(pm_ctx_t *pm_ctx, const char *module_name, Sr__Notification
         goto cleanup;
     }
 
-    snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTIONS_BY_TYPE, module_name, pm_event_gpb_to_str(event_type));
+    snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTIONS_BY_TYPE, module_name, sr_event_gpb_to_str(event_type));
     node_set = lyd_get_node(data_tree, xpath);
 
     if (NULL != node_set && node_set->number > 0) {
@@ -529,7 +495,7 @@ pm_get_subscriptions(pm_ctx_t *pm_ctx, const char *module_name, Sr__Notification
                 if (NULL != node->schema->name) {
                     node_ll = (struct lyd_node_leaf_list*)node;
                     if (NULL != node_ll->value_str && 0 == strcmp(node->schema->name, "type")) {
-                        subscriptions[subscription_cnt].event_type = pm_event_str_to_gpb(node_ll->value_str);
+                        subscriptions[subscription_cnt].event_type = sr_event_str_to_gpb(node_ll->value_str);
                     }
                     if (NULL != node_ll->value_str && 0 == strcmp(node->schema->name, "destination-address")) {
                         subscriptions[subscription_cnt].dst_address = strdup(node_ll->value_str);
