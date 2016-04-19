@@ -913,6 +913,23 @@ rp_unsubscribe_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
 }
 
 /**
+ * @brief Processes an unsubscribe-destination internal request.
+ */
+static int
+rp_unsubscribe_destination_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
+{
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG4(rp_ctx, msg, msg->internal_request, msg->internal_request->unsubscribe_dst_req);
+
+    SR_LOG_DBG_MSG("Processing unsubscribe destination request.");
+
+    // TODO: call np
+
+    return rc;
+}
+
+/**
  * @brief Dispatches the received message.
  */
 static int
@@ -920,10 +937,17 @@ rp_msg_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
 {
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG3(rp_ctx, session, msg);
+    CHECK_NULL_ARG2(rp_ctx, msg);
+
+    /* NULL session is only allowed for internal messages */
+    if ((NULL == session) && (SR__MSG__MSG_TYPE__INTERNAL_REQUEST != msg->type)) {
+        SR_LOG_ERR("Session argument of the message  to be processed is NULL (operation=%d).",
+                msg->response->operation);
+        return SR_ERR_INVAL_ARG;
+    }
 
     /* whitelist only some operations for notification sessions */
-    if (session->options & SR__SESSION_FLAGS__SESS_NOTIFICATION) {
+    if ((NULL != session) && (session->options & SR__SESSION_FLAGS__SESS_NOTIFICATION)) {
         if ((SR__OPERATION__GET_ITEM != msg->request->operation) &&
                 (SR__OPERATION__GET_ITEMS != msg->request->operation) &&
                 (SR__OPERATION__UNSUBSCRIBE != msg->request->operation)) {
@@ -945,7 +969,7 @@ rp_msg_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
             case SR__OPERATION__MOVE_ITEM:
             case SR__OPERATION__SESSION_REFRESH:
                 pthread_rwlock_rdlock(&rp_ctx->commit_lock);
-		break;
+                break;
             case SR__OPERATION__COMMIT:
                 pthread_rwlock_wrlock(&rp_ctx->commit_lock);
                 break;
@@ -1030,9 +1054,19 @@ rp_msg_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
             default:
                 break;
         }
+    } else if (SR__MSG__MSG_TYPE__INTERNAL_REQUEST == msg->type) {
+        /* internal request handling */
+        switch (msg->internal_request->operation) {
+            case SR__OPERATION__UNSUBSCRIBE_DESTINATION:
+                rc = rp_unsubscribe_destination_req_process(rp_ctx, session, msg);
+                break;
+            default:
+                SR_LOG_ERR("Unsupported internal request received (operation=%d).", msg->request->operation);
+                rc = SR_ERR_UNSUPPORTED;
+                break;
+        }
     } else {
-        /* response handling */
-        SR_LOG_ERR("Unsupported response received (session id=%"PRIu32", operation=%d).",
+        SR_LOG_ERR("Unsupported message received (session id=%"PRIu32", operation=%d).",
                 session->id, msg->response->operation);
         rc = SR_ERR_UNSUPPORTED;
     }
@@ -1098,19 +1132,21 @@ rp_worker_thread_execute(void *rp_ctx_p)
 
             if (dequeued) {
                 /* process the request */
-                if (NULL == req.msg || NULL == req.session) {
+                if (NULL == req.msg) {
                     SR_LOG_DBG("Thread id=%lu received an empty request, exiting.", (unsigned long)pthread_self());
                     exit = true;
                 } else {
                     rp_msg_dispatch(rp_ctx, req.session, req.msg);
-                    /* update message count and release session if needed */
-                    pthread_mutex_lock(&req.session->msg_count_mutex);
-                    req.session->msg_count -= 1;
-                    if (0 == req.session->msg_count && req.session->stop_requested) {
-                        pthread_mutex_unlock(&req.session->msg_count_mutex);
-                        rp_session_cleanup(rp_ctx, req.session);
-                    } else {
-                        pthread_mutex_unlock(&req.session->msg_count_mutex);
+                    if (NULL != req.session) {
+                        /* update message count and release session if needed */
+                        pthread_mutex_lock(&req.session->msg_count_mutex);
+                        req.session->msg_count -= 1;
+                        if (0 == req.session->msg_count && req.session->stop_requested) {
+                            pthread_mutex_unlock(&req.session->msg_count_mutex);
+                            rp_session_cleanup(rp_ctx, req.session);
+                        } else {
+                            pthread_mutex_unlock(&req.session->msg_count_mutex);
+                        }
                     }
                 }
                 dequeued_prev = true;
@@ -1374,7 +1410,7 @@ rp_msg_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
     struct timespec now = { 0 };
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG_NORET3(rc, rp_ctx, session, msg);
+    CHECK_NULL_ARG_NORET2(rc, rp_ctx, msg);
 
     if (SR_ERR_OK != rc) {
         if (NULL != msg) {
@@ -1383,9 +1419,11 @@ rp_msg_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
         return rc;
     }
 
-    pthread_mutex_lock(&session->msg_count_mutex);
-    session->msg_count += 1;
-    pthread_mutex_unlock(&session->msg_count_mutex);
+    if (NULL != session) {
+        pthread_mutex_lock(&session->msg_count_mutex);
+        session->msg_count += 1;
+        pthread_mutex_unlock(&session->msg_count_mutex);
+    }
 
     req.session = session;
     req.msg = msg;

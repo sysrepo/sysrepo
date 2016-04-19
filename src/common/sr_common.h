@@ -442,6 +442,16 @@ int sr_pb_notif_alloc(const Sr__NotificationEvent event, const char *destination
         const uint32_t subscription_id, Sr__Msg **msg_p);
 
 /**
+ * @brief Allocates and initializes GPB internal request message.
+ *
+ * @param[in] operation Requested operation.
+ * @param[out] msg GPB message.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_pb_internal_req_alloc(const Sr__Operation operation, Sr__Msg **msg_p);
+
+/**
  * @brief Validates the message according to excepted message type and operation.
  *
  * @param[in] msg Unpacked message.

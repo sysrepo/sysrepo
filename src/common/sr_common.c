@@ -968,6 +968,52 @@ error:
 }
 
 int
+sr_pb_internal_req_alloc(const Sr__Operation operation, Sr__Msg **msg_p)
+{
+    Sr__Msg *msg = NULL;
+    Sr__InternalRequest *req = NULL;
+    ProtobufCMessage *sub_msg = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG(msg_p);
+
+    /* initialize Sr__Msg */
+    msg = calloc(1, sizeof(*msg));
+    CHECK_NULL_NOMEM_GOTO(msg, rc, error);
+    sr__msg__init(msg);
+    msg->type = SR__MSG__MSG_TYPE__INTERNAL_REQUEST;
+    msg->session_id = 0;
+
+    /* initialize Sr__InternalRequest */
+    req = calloc(1, sizeof(*req));
+    CHECK_NULL_NOMEM_GOTO(req, rc, error);
+    sr__internal_request__init(req);
+    msg->internal_request = req;
+    req->operation = operation;
+
+    /* initialize sub-message */
+    switch (operation) {
+        case SR__OPERATION__UNSUBSCRIBE_DESTINATION:
+            sub_msg = calloc(1, sizeof(Sr__UnsubscribeDestinationReq));
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
+            sr__unsubscribe_destination_req__init((Sr__UnsubscribeDestinationReq*)sub_msg);
+            req->unsubscribe_dst_req = (Sr__UnsubscribeDestinationReq*)sub_msg;
+            break;
+        default:
+            break;
+    }
+
+    *msg_p = msg;
+    return SR_ERR_OK;
+
+error:
+    if (NULL != msg) {
+        sr__msg__free_unpacked(msg, NULL);
+    }
+    return rc;
+}
+
+int
 sr_pb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__Operation operation)
 {
     CHECK_NULL_ARG(msg);

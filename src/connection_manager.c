@@ -1092,6 +1092,39 @@ cleanup:
 }
 
 /**
+ * @brief Request removal of subscriptions with the delivery address specified in destination_address.
+ */
+static int
+cm_notif_unsubscribe_destination(cm_ctx_t *cm_ctx, const char *destination_address)
+{
+    Sr__Msg *msg_req = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG2(cm_ctx, destination_address);
+
+    SR_LOG_DBG("Requesting removal of subscriptions on the destination '%s'.", destination_address);
+
+    rc = sr_pb_internal_req_alloc(SR__OPERATION__UNSUBSCRIBE_DESTINATION, &msg_req);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
+
+    msg_req->internal_request->unsubscribe_dst_req->destination = strdup(destination_address);
+    CHECK_NULL_NOMEM_GOTO(msg_req->internal_request->unsubscribe_dst_req->destination, rc, cleanup);
+
+    rc = rp_msg_process(cm_ctx->rp_ctx, NULL, msg_req);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Unable to remove subscriptions on the destination '%s'.", destination_address);
+    }
+
+    return rc;
+
+cleanup:
+    if (NULL != msg_req) {
+        sr__msg__free_unpacked(msg_req, NULL);
+    }
+    return rc;
+}
+
+/**
  * @brief Processes an outgoing notification (notification to be sent to the client library).
  */
 static int
@@ -1118,19 +1151,21 @@ cm_out_notif_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
         /* connection to that destination does not exist - connect */
         SR_LOG_DBG("Creating a new connection for the notification destination '%s'", msg->notification->destination_address);
         rc = cm_notif_conn_create(cm_ctx, msg->notification->destination_address, &connection);
-        if (SR_ERR_OK != rc) {
-            return rc;
-            // TODO: remove subscriptions?
-        }
     }
 
     /* send the message */
-    rc = cm_msg_send_connection(cm_ctx, connection, msg);
-    // TODO: remove subscription by disconnect
+    if (SR_ERR_OK == rc) {
+        rc = cm_msg_send_connection(cm_ctx, connection, msg);
+    }
+
+    if (SR_ERR_OK != rc) {
+        /* by error, remove subscriptions on this destination */
+        cm_notif_unsubscribe_destination(cm_ctx, msg->notification->destination_address);
+    }
 
     sr__msg__free_unpacked(msg, NULL);
 
-    return SR_ERR_OK;
+    return rc;
 }
 
 /**
