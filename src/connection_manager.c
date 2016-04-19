@@ -248,13 +248,14 @@ cm_conn_close(cm_ctx_t *cm_ctx, sm_connection_t *conn)
     sm_session_list_t *sess = NULL;
     bool drop_session = false;
 
-    CHECK_NULL_ARG3(cm_ctx, conn, conn->cm_data);
+    CHECK_NULL_ARG2(cm_ctx, conn);
 
     SR_LOG_INF("Closing the connection %p.", (void*)conn);
 
-    ev_io_stop(cm_ctx->event_loop, &conn->cm_data->read_watcher);
-    ev_io_stop(cm_ctx->event_loop, &conn->cm_data->write_watcher);
-
+    if (NULL != conn->cm_data) {
+        ev_io_stop(cm_ctx->event_loop, &conn->cm_data->read_watcher);
+        ev_io_stop(cm_ctx->event_loop, &conn->cm_data->write_watcher);
+    }
     close(conn->fd);
 
     /* close all sessions assigned to this connection */
@@ -1083,9 +1084,10 @@ cm_notif_conn_create(cm_ctx_t *cm_ctx, const char *socket_path, sm_connection_t 
 
 cleanup:
     if (NULL != connection) {
-        sm_connection_stop(cm_ctx->sm_ctx, connection);
+        cm_conn_close(cm_ctx, connection);
+    } else if (-1 != fd) {
+        close(fd);
     }
-    close(fd);
     return rc;
 }
 

@@ -492,6 +492,15 @@ message ModuleChangeNotification {
 
 
 ////////////////////////////////////////////////////////////////////////////////
+// Sysrepo Engine internal messages
+////////////////////////////////////////////////////////////////////////////////
+
+message UnsubscribeAllReq {
+  required string destination = 1;
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
 // Sysrepo Engine API umbrella messages
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -525,6 +534,8 @@ enum Operation {
 
   SUBSCRIBE = 70;
   UNSUBSCRIBE = 71;
+
+  UNSUBSCRIBE_ALL = 101;
 }
 
 /**
@@ -611,6 +622,12 @@ message Notification {
   optional ModuleChangeNotification module_change_notif = 12;
 }
 
+message InternalRequest {
+  required Operation operation = 1;
+
+  optional UnsubscribeAllReq unsubscribe_all_req = 10;
+}
+
 /**
  * @brief Umbrella sysrepo message used for communication between sysrepo
  * engine and client library.
@@ -623,12 +640,14 @@ message Msg {
     REQUEST = 1;       /**< The message is a request. */
     RESPONSE = 2;      /**< The message is a response to the request. */
     NOTIFICATION = 3;  /**< The message is a notification. */
+    INTERNAL = 4;      /**< The message is an internal one, should not be used from the public API. */
   }
 
-  required MsgType type = 1;               /**< Indicates type of the message. */
-  required uint32 session_id = 2;          /**< Session identifier. Can be 0 (value is ignored) for session_start request. */
+  required MsgType type = 1;                      /**< Indicates type of the message. */
+  required uint32 session_id = 2;                 /**< Session identifier. Can be 0 (value is ignored) for session_start request. */
 
-  optional Request request = 3;            /**< Filled in in case of type == REQUEST. */
-  optional Response response = 4;          /**< Filled in in case of type == RESPONSE. */
-  optional Notification notification = 5;  /**< Filled in in case of type == NOTIFICATION. */
+  optional Request request = 3;                   /**< Filled in in case of type == REQUEST. */
+  optional Response response = 4;                 /**< Filled in in case of type == RESPONSE. */
+  optional Notification notification = 5;         /**< Filled in in case of type == NOTIFICATION. */
+  optional InternalRequest internal_request = 6;  /**< Filled in in case of type == INTERNAL. */
 }
