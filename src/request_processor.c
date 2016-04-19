@@ -495,6 +495,7 @@ rp_move_item_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
 {
     Sr__Msg *resp = NULL;
     char *xpath = NULL;
+    char *relative_item = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->move_item_req);
@@ -502,6 +503,7 @@ rp_move_item_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
     SR_LOG_DBG_MSG("Processing move_item request.");
 
     xpath = msg->request->move_item_req->xpath;
+    relative_item = msg->request->move_item_req->relative_item;
 
     /* allocate the response */
     rc = sr_pb_resp_alloc(SR__OPERATION__MOVE_ITEM, session->id, &resp);
@@ -511,7 +513,7 @@ rp_move_item_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
     }
 
     rc = rp_dt_move_list_wrapper(rp_ctx, session, xpath,
-            sr_move_direction_gpb_to_sr(msg->request->move_item_req->direction));
+            sr_move_direction_gpb_to_sr(msg->request->move_item_req->position), relative_item);
 
     /* set response code */
     resp->response->result = rc;

@@ -66,8 +66,8 @@ class Session:
     def delete_item(self, path, options=sr.SR_EDIT_DEFAULT):
         sr.sr_delete_item(self.session, path, options)
 
-    def move_item(self, path, direction):
-        sr.sr_move_item(self.session, path, direction)
+    def move_item(self, path, position, relativeItem=None):
+        sr.sr_move_item(self.session, path, position, relativeItem)
 
     def refresh(self):
         sr.sr_session_refresh(self.session)

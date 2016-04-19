@@ -95,7 +95,11 @@ rp_dt_find_nodes_with_opts(const dm_ctx_t *dm_ctx, dm_session_t *dm_session, rp_
         rc = rp_dt_find_nodes(data_tree, xpath, dm_is_running_ds_session(dm_session), &get_items_ctx->nodes);
 
         if (SR_ERR_OK != rc) {
-            SR_LOG_ERR("Look up failed for xpath %s",xpath);
+            if (SR_ERR_NOT_FOUND != rc) {
+                SR_LOG_ERR("Look up failed for xpath %s", xpath);
+            }
+            free(get_items_ctx->xpath);
+            get_items_ctx->xpath = NULL;
             return rc;
         }
 

@@ -417,7 +417,12 @@ dm_free_sess_op(dm_sess_op_t *op)
         return;
     }
     free(op->xpath);
-    sr_free_val(op->val);
+    if (DM_SET_OP == op->op) {
+        sr_free_val(op->detail.set.val);
+    } else if (DM_MOVE_OP == op->op) {
+        free(op->detail.mov.relative_item);
+        op->detail.mov.relative_item = NULL;
+    }
 }
 
 static void
@@ -649,7 +654,7 @@ dm_lock_datastore(dm_ctx_t *dm_ctx, dm_session_t *session)
 
     pthread_mutex_lock(&dm_ctx->ds_lock_mutex);
     if (dm_ctx->ds_lock) {
-        SR_LOG_ERR_MSG("Datastore locked hold by other session");
+        SR_LOG_ERR_MSG("Datastore lock is hold by other session");
         rc = SR_ERR_LOCKED;
         pthread_mutex_unlock(&dm_ctx->ds_lock_mutex);
         goto cleanup;
@@ -723,7 +728,7 @@ dm_get_node_state(struct lys_node *node)
 }
 
 int
-dm_add_operation(dm_session_t *session, dm_operation_t op, const char *xpath, sr_val_t *val, sr_edit_options_t opts)
+dm_add_operation(dm_session_t *session, dm_operation_t op, const char *xpath, sr_val_t *val, sr_edit_options_t opts, sr_move_position_t pos, const char *rel_item)
 {
     int rc = SR_ERR_OK;
     CHECK_NULL_ARG_NORET2(rc, session, xpath); /* value can be NULL*/
@@ -745,8 +750,21 @@ dm_add_operation(dm_session_t *session, dm_operation_t op, const char *xpath, sr
     session->operations[session->oper_count].has_error = false;
     session->operations[session->oper_count].xpath = strdup(xpath);
     CHECK_NULL_NOMEM_GOTO(session->operations[session->oper_count].xpath, rc, cleanup);
-    session->operations[session->oper_count].val = val;
-    session->operations[session->oper_count].options = opts;
+    if (DM_SET_OP == op) {
+        session->operations[session->oper_count].detail.set.val = val;
+        session->operations[session->oper_count].detail.set.options = opts;
+    } else if (DM_DELETE_OP == op) {
+        session->operations[session->oper_count].detail.del.options = opts;
+    } else if (DM_MOVE_OP == op){
+        session->operations[session->oper_count].detail.mov.position = pos;
+        if (NULL != rel_item){
+            session->operations[session->oper_count].detail.mov.relative_item = strdup(rel_item);
+            CHECK_NULL_NOMEM_GOTO(session->operations[session->oper_count].detail.mov.relative_item, rc, cleanup);
+        } else {
+            session->operations[session->oper_count].detail.mov.relative_item = NULL;
+        }
+    }
+
     session->oper_count++;
     return rc;
 cleanup:
@@ -762,7 +780,7 @@ dm_remove_last_operation(dm_session_t *session)
         session->oper_count--;
         dm_free_sess_op(&session->operations[session->oper_count]);
         session->operations[session->oper_count].xpath = NULL;
-        session->operations[session->oper_count].val = NULL;
+        session->operations[session->oper_count].detail.set.val = NULL;
     }
 }
 
@@ -1263,7 +1281,6 @@ int
 dm_list_schemas(dm_ctx_t *dm_ctx, dm_session_t *dm_session, sr_schema_t **schemas, size_t *schema_count)
 {
     CHECK_NULL_ARG4(dm_ctx, dm_session, schemas, schema_count);
-    sr_schema_t *sch = NULL;
     int rc = SR_ERR_OK;
     *schemas = NULL;
     *schema_count = 0;
@@ -1283,10 +1300,9 @@ dm_list_schemas(dm_ctx_t *dm_ctx, dm_session_t *dm_session, sr_schema_t **schema
         goto cleanup;
     }
 
-    sch = calloc(modules->number, sizeof(*sch));
-    CHECK_NULL_NOMEM_GOTO(sch, rc, cleanup);
+    *schemas = calloc(modules->number, sizeof(**schemas));
+    CHECK_NULL_NOMEM_GOTO(*schemas, rc, cleanup);
 
-    size_t with_files = 0;
     for (unsigned int i = 0; i < modules->number; i++) {
         const char *revision = dm_get_module_revision(modules->set.d[i]->parent);
         const char *module_name = ((struct lyd_node_leaf_list *) modules->set.d[i])->value_str;
@@ -1294,40 +1310,32 @@ dm_list_schemas(dm_ctx_t *dm_ctx, dm_session_t *dm_session, sr_schema_t **schema
             SR_LOG_WRN("Module %s is disabled and will not be included in list schema", module_name);
             continue;
         }
-        rc = dm_list_module(dm_ctx, module_name, revision, &sch[i]);
-        if (SR_ERR_OK != rc) {
-            SR_LOG_ERR_MSG("Filling sr_schema_t failed");
-            sr_free_schemas(sch, i);
-            goto cleanup;
-        }
-        if (NULL != sch[i].revision.file_path_yang || NULL != sch[i].revision.file_path_yin) {
-            with_files++;
-        }
+        rc = dm_list_module(dm_ctx, module_name, revision, &(*schemas)[*schema_count]);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Filling sr_schema_t failed");
+        (*schema_count)++;
     }
 
-
     /* return only files where we can locate schema files */
-    *schemas = calloc(with_files, sizeof(**schemas));
-    CHECK_NULL_NOMEM_GOTO(*schemas, rc, cleanup);
-    *schema_count = with_files;
-
-    size_t index = 0;
-    for (size_t m = 0; m < modules->number; m++){
-        if (NULL != sch[m].revision.file_path_yang || NULL != sch[m].revision.file_path_yin) {
-            (*schemas)[index] = sch[m];
-            index++;
-        }
-        else{
-            sr_free_schema(&sch[m]);
+    for (int i = *schema_count - 1; i >= 0 ; i--) {
+        sr_schema_t *s = &((*schemas)[i]);
+        if (NULL == s->revision.file_path_yang && NULL == s->revision.file_path_yin){
+            sr_free_schema(s);
+            memmove(&(*schemas)[i],
+                    &(*schemas)[i+1],
+                    (*schema_count - i - 1) * sizeof(*s));
+            (*schema_count)--;
         }
     }
 
 cleanup:
-    free(sch);
+    if (SR_ERR_OK != rc) {
+       sr_free_schemas(*schemas, *schema_count);
+       *schemas = NULL;
+       *schema_count = 0;
+    }
     ly_set_free(modules);
     lyd_free_withsiblings(info);
     return rc;
-
 }
 
 int

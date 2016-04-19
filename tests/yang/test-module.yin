@@ -200,4 +200,8 @@
       <type name="string"/>
     </leaf>
   </list>
+  <leaf-list name="ordered-numbers">
+    <ordered-by value="user"/>
+    <type name="uint8"/>
+  </leaf-list>
 </module>

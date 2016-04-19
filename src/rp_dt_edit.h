@@ -55,24 +55,25 @@ int rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, c
 
 /**
  * @brief Move the list instance into selected direction. If the list instance doesn't exists or the list is not user-ordered SR_ERR_INVAL_ARG is returned.
- * If the list is at left-most/right-most position move UP/DOWN does nothing.
  * @param [in] dm_ctx
  * @param [in] session
  * @param [in] xpath
- * @param [in] direction
+ * @param [in] position
+ * @param [in] relative_item
  * @return Error code (SR_ERR_OK on success) SR_ERR_UNKNOWN_MODEL, SR_ERR_BAD_ELEMENT
  */
-int rp_dt_move_list(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, sr_move_direction_t direction);
+int rp_dt_move_list(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, sr_move_position_t position, const char *relative_item);
 
 /**
  * @brief Wraps ::rp_dt_move_list call, in case of success logs the operation to the session's operation list.
  * @param [in] rp_ctx
  * @param [in] session
  * @param [in] xpath
- * @param [in] direction
+ * @param [in] position
+ * @param [in] relative_item
  * @return Error code (SR_ERR_OK on success)
  */
-int rp_dt_move_list_wrapper(rp_ctx_t *rp_ctx, rp_session_t *session, const char *xpath, sr_move_direction_t direction);
+int rp_dt_move_list_wrapper(rp_ctx_t *rp_ctx, rp_session_t *session, const char *xpath, sr_move_position_t position, const char *relative_item);
 
 /**
  * @brief Wraps ::rp_dt_set_item call. In case of success logs the operation to the session's operation list.
