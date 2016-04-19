@@ -98,10 +98,54 @@ __wrap_cm_msg_send(cm_ctx_t *cm_ctx, Sr__Msg *msg)
 }
 
 /*
- * Test notification subscribe and unsubscribe.
+ * Test temporary subscriptions.
  */
 static void
-np_notification_subscribe_test(void **state)
+np_tmp_subscription_test(void **state)
+{
+
+    int rc = SR_ERR_OK;
+    test_ctx_t *test_ctx = *state;
+    assert_non_null(test_ctx);
+    np_ctx_t *np_ctx = test_ctx->rp_ctx.np_ctx;
+    assert_non_null(np_ctx);
+
+    /* create subscription 1 */
+    rc = np_notification_subscribe(np_ctx, &test_ctx->user_cred, SR__NOTIFICATION_EVENT__MODULE_INSTALL_EV,
+            "addr1", 123, NULL, NULL);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* create subscription 2 */
+    rc = np_notification_subscribe(np_ctx, &test_ctx->user_cred, SR__NOTIFICATION_EVENT__MODULE_INSTALL_EV,
+            "addr2", 123, NULL, NULL);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* create subscription 3 */
+    rc = np_notification_subscribe(np_ctx, &test_ctx->user_cred, SR__NOTIFICATION_EVENT__FEATURE_ENABLE_EV,
+            "addr1", 456, NULL, NULL);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* module install notify */
+    rc = np_module_install_notify(np_ctx, "example-module", "2016-03-05", true);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* unsubscribe from one of them */
+    rc = np_notification_unsubscribe(np_ctx, &test_ctx->user_cred, SR__NOTIFICATION_EVENT__MODULE_INSTALL_EV,
+            "addr2", 123, NULL);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* feature enable notify */
+    rc = np_feature_enable_notify(np_ctx, "example-module", "ifconfig", true);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* do not unsubscribe (test automatic cleanup) */
+}
+
+/*
+ * Test persistent subscriptions.
+ */
+static void
+np_persistent_subscription_test(void **state)
 {
     int rc = SR_ERR_OK;
     test_ctx_t *test_ctx = *state;
@@ -109,62 +153,109 @@ np_notification_subscribe_test(void **state)
     np_ctx_t *np_ctx = test_ctx->rp_ctx.np_ctx;
     assert_non_null(np_ctx);
 
-    /* create some subscriptions */
-    rc = np_notification_subscribe(np_ctx, &test_ctx->user_cred, SR__NOTIFICATION_EVENT__MODULE_INSTALL_EV,
-            "addr1", 123, NULL, NULL);
+    /* create subscription to example-module @ addr1 */
+    rc = np_notification_subscribe(np_ctx, &test_ctx->user_cred, SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV,
+            "addr1", 123, "example-module", NULL);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = np_notification_subscribe(np_ctx, &test_ctx->user_cred, SR__NOTIFICATION_EVENT__MODULE_INSTALL_EV,
-            "addr2", 123, NULL, NULL);
+    /* create subscription to test-module @ addr1 */
+    rc = np_notification_subscribe(np_ctx, &test_ctx->user_cred, SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV,
+            "addr1", 456, "test-module", NULL);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = np_notification_subscribe(np_ctx, &test_ctx->user_cred, SR__NOTIFICATION_EVENT__FEATURE_ENABLE_EV,
-            "addr1", 456, NULL, NULL);
+    /* create subscription to small-module @ addr1 */
+    rc = np_notification_subscribe(np_ctx, &test_ctx->user_cred, SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV,
+            "addr1", 789, "small-module", NULL);
     assert_int_equal(rc, SR_ERR_OK);
 
+    /* create subscription to example-module @ addr2 */
+    rc = np_notification_subscribe(np_ctx, &test_ctx->user_cred, SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV,
+            "addr2", 123, "example-module", NULL);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* create subscription to test-module @ addr2 */
+    rc = np_notification_subscribe(np_ctx, &test_ctx->user_cred, SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV,
+            "addr2", 456, "test-module", NULL);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* module change notify 1 */
+    rc = np_module_change_notify(np_ctx, "example-module");
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* module change notify 2 */
+    rc = np_module_change_notify(np_ctx, "small-module");
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* unsubscribe */
+    rc = np_notification_unsubscribe(np_ctx, &test_ctx->user_cred, SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV,
+            "addr1", 123, "example-module");
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = np_notification_unsubscribe(np_ctx, &test_ctx->user_cred, SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV,
+            "addr1", 789, "small-module");
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = np_notification_unsubscribe(np_ctx, &test_ctx->user_cred, SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV,
+            "addr1", 456, "test-module");
+    assert_int_equal(rc, SR_ERR_OK);
+
+rc = np_notification_unsubscribe(np_ctx, &test_ctx->user_cred, SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV,
+            "addr2", 456, "test-module");
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = np_notification_unsubscribe(np_ctx, &test_ctx->user_cred, SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV,
+            "addr2", 123, "example-module");
+    assert_int_equal(rc, SR_ERR_OK);
+}
+
+/*
+ * Negative subscriptions test.
+ */
+static void
+np_negative_subscription_test(void **state)
+{
+    int rc = SR_ERR_OK;
+    test_ctx_t *test_ctx = *state;
+    assert_non_null(test_ctx);
+    np_ctx_t *np_ctx = test_ctx->rp_ctx.np_ctx;
+    assert_non_null(np_ctx);
+
+    /* subscribe */
     rc = np_notification_subscribe(np_ctx, &test_ctx->user_cred, SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV,
             "addr2", 456, "example-module", NULL);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* try to subscribe again for the same */
-
     rc = np_notification_subscribe(np_ctx, &test_ctx->user_cred, SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV,
             "addr2", 456, "example-module", NULL);
     assert_int_equal(rc, SR_ERR_DATA_EXISTS);
-
-    /* unsubscribe from one of them */
-    rc = np_notification_unsubscribe(np_ctx, &test_ctx->user_cred, SR__NOTIFICATION_EVENT__MODULE_INSTALL_EV,
-            "addr2", 123, NULL);
-    assert_int_equal(rc, SR_ERR_OK);
-
-    /* try to unsubscribe from non-existing subscription */
-    rc = np_notification_unsubscribe(np_ctx, &test_ctx->user_cred, SR__NOTIFICATION_EVENT__MODULE_INSTALL_EV,
-            "addr1", 789, NULL);
-    assert_int_equal(rc, SR_ERR_INVAL_ARG);
 
     /* try to unsubscribe from module-change subscription without specifying module name */
     rc = np_notification_unsubscribe(np_ctx, &test_ctx->user_cred, SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV,
             "addr2", 456, NULL);
     assert_int_equal(rc, SR_ERR_INVAL_ARG);
 
+    /* try to unsubscribe from module-change subscription without dst address */
+    rc = np_notification_unsubscribe(np_ctx, &test_ctx->user_cred, SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV,
+            NULL, 456, "example-module");
+    assert_int_equal(rc, SR_ERR_INVAL_ARG);
+
+    /* try to unsubscribe from module-change subscription with bad dst address */
+    rc = np_notification_unsubscribe(np_ctx, &test_ctx->user_cred, SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV,
+            "nonexisting", 456, "example-module");
+    assert_int_equal(rc, SR_ERR_DATA_MISSING);
+
     /* try to unsubscribe from module-change subscription with bad id */
     rc = np_notification_unsubscribe(np_ctx, &test_ctx->user_cred, SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV,
             "addr2", 0, "example-module");
     assert_int_equal(rc, SR_ERR_DATA_MISSING);
 
-    /* module install notify */
-    rc = np_module_install_notify(np_ctx, "example-module", "2016-03-05", true);
-    assert_int_equal(rc, SR_ERR_OK);
+    /* try to unsubscribe from module-change subscription with bad module name */
+    rc = np_notification_unsubscribe(np_ctx, &test_ctx->user_cred, SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV,
+            "nonexisting", 456, "nonexisting-module");
+    assert_int_equal(rc, SR_ERR_DATA_MISSING);
 
-    /* feature enable notify */
-    rc = np_feature_enable_notify(np_ctx, "example-module", "ifconfig", true);
-    assert_int_equal(rc, SR_ERR_OK);
-
-    /* module change notify */
-    rc = np_module_change_notify(np_ctx, "example-module");
-    assert_int_equal(rc, SR_ERR_OK);
-
-    /* unsubscribe from persistent one */
+    /* unsubscribe */
     rc = np_notification_unsubscribe(np_ctx, &test_ctx->user_cred, SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV,
             "addr2", 456, "example-module");
     assert_int_equal(rc, SR_ERR_OK);
@@ -173,7 +264,9 @@ np_notification_subscribe_test(void **state)
 int
 main() {
     const struct CMUnitTest tests[] = {
-            cmocka_unit_test_setup_teardown(np_notification_subscribe_test, test_setup, test_teardown),
+            cmocka_unit_test_setup_teardown(np_tmp_subscription_test, test_setup, test_teardown),
+            cmocka_unit_test_setup_teardown(np_persistent_subscription_test, test_setup, test_teardown),
+            cmocka_unit_test_setup_teardown(np_negative_subscription_test, test_setup, test_teardown),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);

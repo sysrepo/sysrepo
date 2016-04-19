@@ -222,6 +222,40 @@
         } \
     } while(0)
 
+#define CHECK_ZERO_MSG_RETURN(RET, ERROR, MSG) \
+    do { \
+        if (0 != RET) { \
+            SR_LOG_ERR_MSG(MSG); \
+            return ERROR; \
+        } \
+    } while(0)
+
+#define CHECK_ZERO_LOG_RETURN(RET, ERROR, MSG, ...) \
+    do { \
+        if (0 != RET) { \
+            SR_LOG_ERR(MSG, __VA_ARGS__); \
+            return ERROR; \
+        } \
+    } while(0)
+
+#define CHECK_ZERO_MSG_GOTO(RET, RC, ERROR, LABEL, MSG) \
+    do { \
+        if (0 != RET) { \
+            SR_LOG_ERR_MSG(MSG); \
+            RC = ERROR; \
+            goto LABEL; \
+        } \
+    } while(0)
+
+#define CHECK_ZERO_LOG_GOTO(RET, RC, ERROR, LABEL, MSG, ...) \
+    do { \
+        if (0 != RC) { \
+            SR_LOG_ERR(MSG, __VA_ARGS__); \
+            RC = ERROR; \
+            goto LABEL; \
+        } \
+    } while(0)
+
 /**
  * @brief Returns string with name of the provided operation.
  *

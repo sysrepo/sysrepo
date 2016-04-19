@@ -29,20 +29,171 @@
 #include "notification_processor.h"
 
 /**
+ * @brief Information about a notification destination.
+ */
+typedef struct np_dst_info_s {
+    const char *dst_address;        /**< Destination address. */
+    char **subscribed_modules;      /**< Array of module names which the destination has subscriptions for. */
+    size_t subscribed_modules_cnt;  /**< Number of the modules with subscriptions. */
+} np_dst_info_t;
+
+/**
  * @brief Notification Processor context.
  */
 typedef struct np_ctx_s {
     rp_ctx_t *rp_ctx;                     /**< Request Processor context. */
-    np_subscription_t **subscriptions;    /**< List of active subscriptions. */
-    size_t subscription_cnt;              /**< Number of active subscriptions. */
-    pthread_rwlock_t subscriptions_lock;  /**< Read-write lock for subscriptions list. */
+    np_subscription_t **subscriptions;    /**< List of active non-persistent subscriptions. */
+    size_t subscription_cnt;              /**< Number of active non-persistent subscriptions. */
+    sr_btree_t *dst_info_btree;           /**< Binary tree used for fast destination info lookup. */
+    pthread_rwlock_t lock;                /**< Read-write lock for the context. */
 } np_ctx_t;
+
+/**
+ * @brief Compares two notification destination information structures by
+ * associated destination addresses (used by lookups in binary tree).
+ */
+static int
+np_dst_info_cmp(const void *a, const void *b)
+{
+    assert(a);
+    assert(b);
+    np_dst_info_t *dst_info_a = (np_dst_info_t*)a;
+    np_dst_info_t *dst_info_b = (np_dst_info_t*)b;
+
+    int res = 0;
+
+    assert(dst_info_a->dst_address);
+    assert(dst_info_b->dst_address);
+
+    res = strcmp(dst_info_b->dst_address, dst_info_b->dst_address);
+    if (res == 0) {
+        return 0;
+    } else if (res < 0) {
+        return -1;
+    } else {
+        return 1;
+    }
+}
+
+/**
+ * @brief Cleans up a notification destination information structure.
+ * @note Called automatically when a node from the binary tree is removed
+ * (which is also when the tree itself is being destroyed).
+ */
+static void
+np_dst_info_cleanup(void *dst_info_p)
+{
+    np_dst_info_t *dst_info = NULL;
+
+    if (NULL != dst_info_p) {
+        dst_info = (np_dst_info_t *)dst_info_p;
+        for (size_t i = 0; i < dst_info->subscribed_modules_cnt; i++) {
+            free(dst_info->subscribed_modules[i]);
+        }
+        free(dst_info->subscribed_modules);
+        free((void*)dst_info->dst_address);
+        free(dst_info);
+    }
+}
+
+/**
+ * TODO
+ */
+static int
+np_dst_info_insert(np_ctx_t *np_ctx, const char *dst_address, const char *module_name)
+{
+    np_dst_info_t info_lookup = { 0, }, *info = NULL;
+    char **tmp = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG3(np_ctx, dst_address, module_name);
+
+    info_lookup.dst_address = dst_address;
+    info = sr_btree_search(np_ctx->dst_info_btree, &info_lookup);
+
+    /* find info entry matching with the destination */
+    if (NULL == info) {
+        /* info entry not found, create new one */
+        info = calloc(1, sizeof(*info));
+        CHECK_NULL_NOMEM_RETURN(info);
+
+        info->dst_address = strdup(dst_address);
+        CHECK_NULL_NOMEM_GOTO(info->dst_address, rc, cleanup);
+
+        rc = sr_btree_insert(np_ctx->dst_info_btree, info);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to insert new info entry into btree.");
+    }
+
+    for (size_t i = 0; i < info->subscribed_modules_cnt; i++) {
+        if (0 == strcmp(info->subscribed_modules[i], module_name)) {
+            /* module name already exists within the info entry */
+            return SR_ERR_OK;
+        }
+    }
+
+    /* add the module into info entry */
+    tmp = realloc(info->subscribed_modules, (info->subscribed_modules_cnt + 1) * sizeof(*tmp));
+    CHECK_NULL_NOMEM_RETURN(tmp);
+    info->subscribed_modules = tmp;
+
+    info->subscribed_modules[info->subscribed_modules_cnt] = strdup(module_name);
+    CHECK_NULL_NOMEM_RETURN(info->subscribed_modules[info->subscribed_modules_cnt]);
+    info->subscribed_modules_cnt++;
+
+    return SR_ERR_OK;
+
+cleanup:
+    free((char*)info->dst_address);
+    free(info);
+    return rc;
+}
+
+/**
+ * TODO
+ */
+static int
+np_dst_info_remove(np_ctx_t *np_ctx, const char *dst_address, const char *module_name)
+{
+    np_dst_info_t info_lookup = { 0, }, *info = NULL;
+
+    info_lookup.dst_address = dst_address;
+
+    if (NULL == module_name) {
+        /* remove whole destination info entry */
+        sr_btree_delete(np_ctx->dst_info_btree, &info_lookup);
+        return SR_ERR_OK;
+    }
+
+    /* remove specified module name */
+    info = sr_btree_search(np_ctx->dst_info_btree, &info_lookup);
+    if (NULL != info) {
+        if (1 == info->subscribed_modules_cnt) {
+            /* last module - remove whole destination info entry */
+            sr_btree_delete(np_ctx->dst_info_btree, &info_lookup);
+        } else {
+            for (size_t i = 0; i < info->subscribed_modules_cnt; i++) {
+                if (0 == strcmp(info->subscribed_modules[i], module_name)) {
+                    /* remove this module from info entry */
+                    if (i < (info->subscribed_modules_cnt - 1)) {
+                        memmove(info->subscribed_modules + i,
+                                info->subscribed_modules + i + 1,
+                                (info->subscribed_modules_cnt - i - 1) * sizeof(*info->subscribed_modules));
+                    }
+                    info->subscribed_modules_cnt--;
+                    break;
+                }
+            }
+        }
+    }
+
+    return SR_ERR_OK;
+}
 
 int
 np_init(rp_ctx_t *rp_ctx, np_ctx_t **np_ctx_p)
 {
     np_ctx_t *ctx = NULL;
-    int rc = 0;
+    int rc = 0, ret = 0;
 
     CHECK_NULL_ARG2(rp_ctx, np_ctx_p);
 
@@ -52,18 +203,22 @@ np_init(rp_ctx_t *rp_ctx, np_ctx_t **np_ctx_p)
 
     ctx->rp_ctx = rp_ctx;
 
+    /* init binary tree for fast destination info lookup */
+    rc = sr_btree_init(np_dst_info_cmp, np_dst_info_cleanup, &ctx->dst_info_btree);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate binary tree for destination info lookup.");
+
     /* initialize subscriptions lock */
-    rc = pthread_rwlock_init(&ctx->subscriptions_lock, NULL);
-    if (0 != rc) {
-        SR_LOG_ERR_MSG("Subscriptions lock initialization failed.");
-        free(ctx);
-        return SR_ERR_INTERNAL;
-    }
+    ret = pthread_rwlock_init(&ctx->lock, NULL);
+    CHECK_ZERO_MSG_GOTO(ret, rc, SR_ERR_INTERNAL, cleanup, "Subscriptions lock initialization failed.");
 
     SR_LOG_DBG_MSG("Notification Processor initialized successfully.");
 
     *np_ctx_p = ctx;
     return SR_ERR_OK;
+
+cleanup:
+    np_cleanup(ctx);
+    return rc;
 }
 
 void
@@ -71,14 +226,17 @@ np_cleanup(np_ctx_t *np_ctx)
 {
     SR_LOG_DBG_MSG("Notification Processor cleanup requested.");
 
-    for (size_t i = 0; i < np_ctx->subscription_cnt; i++) {
-        free((void*)np_ctx->subscriptions[i]->dst_address);
-        free((void*)np_ctx->subscriptions[i]->xpath);
-        free(np_ctx->subscriptions[i]);
+    if (NULL != np_ctx) {
+        for (size_t i = 0; i < np_ctx->subscription_cnt; i++) {
+            free((void*)np_ctx->subscriptions[i]->dst_address);
+            free((void*)np_ctx->subscriptions[i]->xpath);
+            free(np_ctx->subscriptions[i]);
+        }
+        free(np_ctx->subscriptions);
+        sr_btree_cleanup(np_ctx->dst_info_btree);
+        pthread_rwlock_destroy(&np_ctx->lock);
+        free(np_ctx);
     }
-    free(np_ctx->subscriptions);
-    pthread_rwlock_destroy(&np_ctx->subscriptions_lock);
-    free(np_ctx);
 }
 
 int
@@ -110,13 +268,16 @@ np_notification_subscribe(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, Sr__Not
     /* save the new subscription */
     if (SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV == event_type) {
         /* add the subscription to module's persistent data */
+        rc = np_dst_info_insert(np_ctx, dst_address, module_name);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to update notification destination info.");
+
         rc = pm_save_subscribtion_state(np_ctx->rp_ctx->pm_ctx, user_cred, module_name, subscription, true);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to save the subscription into persistent data file.");
 
         goto cleanup; /* subscription not needed anymore */
     } else {
         /* add the subscription to in-memory subscription list */
-        pthread_rwlock_wrlock(&np_ctx->subscriptions_lock);
+        pthread_rwlock_wrlock(&np_ctx->lock);
         subscriptions_tmp = realloc(np_ctx->subscriptions, (np_ctx->subscription_cnt + 1) * sizeof(*subscriptions_tmp));
         CHECK_NULL_NOMEM_ERROR(subscriptions_tmp, rc);
 
@@ -124,9 +285,9 @@ np_notification_subscribe(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, Sr__Not
             np_ctx->subscriptions = subscriptions_tmp;
             np_ctx->subscriptions[np_ctx->subscription_cnt] = subscription;
             np_ctx->subscription_cnt += 1;
-            pthread_rwlock_unlock(&np_ctx->subscriptions_lock);
+            pthread_rwlock_unlock(&np_ctx->lock);
         } else {
-            pthread_rwlock_unlock(&np_ctx->subscriptions_lock);
+            pthread_rwlock_unlock(&np_ctx->lock);
             goto cleanup;
         }
     }
@@ -135,6 +296,7 @@ np_notification_subscribe(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, Sr__Not
 
 cleanup:
     if (NULL != subscription) {
+        np_dst_info_remove(np_ctx, dst_address, module_name);
         free((void*)subscription->dst_address);
         free((void*)subscription->xpath);
         free(subscription);
@@ -160,6 +322,9 @@ np_notification_unsubscribe(np_ctx_t *np_ctx,  const ac_ucred_t *user_cred, Sr__
         subscription_lookup.dst_id = dst_id;
         subscription_lookup.event_type = event_type;
         rc = pm_save_subscribtion_state(np_ctx->rp_ctx->pm_ctx, user_cred, module_name, &subscription_lookup, false);
+        if (SR_ERR_OK == rc) {
+            rc = np_dst_info_remove(np_ctx, dst_address, module_name);
+        }
     } else {
         /* remove the subscription from in-memory subscription list */
 
@@ -177,13 +342,13 @@ np_notification_unsubscribe(np_ctx_t *np_ctx,  const ac_ucred_t *user_cred, Sr__
         }
 
         /* remove the subscription from array */
-        pthread_rwlock_wrlock(&np_ctx->subscriptions_lock);
+        pthread_rwlock_wrlock(&np_ctx->lock);
         if (np_ctx->subscription_cnt > (i + 1)) {
             memmove(np_ctx->subscriptions + i, np_ctx->subscriptions + i + 1,
                     (np_ctx->subscription_cnt - i - 1) * sizeof(*np_ctx->subscriptions));
         }
         np_ctx->subscription_cnt -= 1;
-        pthread_rwlock_unlock(&np_ctx->subscriptions_lock);
+        pthread_rwlock_unlock(&np_ctx->lock);
 
         /* release the subscription */
         free((void*)subscription->dst_address);
@@ -205,7 +370,7 @@ np_module_install_notify(np_ctx_t *np_ctx, const char *module_name, const char *
     SR_LOG_DBG("Sending module-install notifications, module_name='%s', revision='%s', installed=%d.",
             module_name, revision, installed);
 
-    pthread_rwlock_rdlock(&np_ctx->subscriptions_lock);
+    pthread_rwlock_rdlock(&np_ctx->lock);
 
     for (size_t i = 0; i < np_ctx->subscription_cnt; i++) {
         if (SR__NOTIFICATION_EVENT__MODULE_INSTALL_EV == np_ctx->subscriptions[i]->event_type) {
@@ -234,7 +399,7 @@ np_module_install_notify(np_ctx_t *np_ctx, const char *module_name, const char *
         }
     }
 
-    pthread_rwlock_unlock(&np_ctx->subscriptions_lock);
+    pthread_rwlock_unlock(&np_ctx->lock);
 
     return rc;
 }
@@ -250,7 +415,7 @@ np_feature_enable_notify(np_ctx_t *np_ctx, const char *module_name, const char *
     SR_LOG_DBG("Sending feature-enable notifications, module_name='%s', feature_name='%s', enabled=%d.",
                 module_name, feature_name, enabled);
 
-    pthread_rwlock_rdlock(&np_ctx->subscriptions_lock);
+    pthread_rwlock_rdlock(&np_ctx->lock);
 
     for (size_t i = 0; i < np_ctx->subscription_cnt; i++) {
         if (SR__NOTIFICATION_EVENT__FEATURE_ENABLE_EV == np_ctx->subscriptions[i]->event_type) {
@@ -279,7 +444,7 @@ np_feature_enable_notify(np_ctx_t *np_ctx, const char *module_name, const char *
         }
     }
 
-    pthread_rwlock_unlock(&np_ctx->subscriptions_lock);
+    pthread_rwlock_unlock(&np_ctx->lock);
 
     return rc;
 }
