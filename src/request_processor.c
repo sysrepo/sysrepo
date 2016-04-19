@@ -943,8 +943,8 @@ rp_msg_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
 
     /* NULL session is only allowed for internal messages */
     if ((NULL == session) && (SR__MSG__MSG_TYPE__INTERNAL_REQUEST != msg->type)) {
-        SR_LOG_ERR("Session argument of the message  to be processed is NULL (operation=%d).",
-                msg->response->operation);
+        SR_LOG_ERR("Session argument of the message  to be processed is NULL (type=%d).", msg->type);
+        sr__msg__free_unpacked(msg, NULL);
         return SR_ERR_INVAL_ARG;
     }
 
