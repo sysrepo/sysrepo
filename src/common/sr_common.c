@@ -110,6 +110,8 @@ sr_operation_name(Sr__Operation operation)
         return "subscribe";
     case SR__OPERATION__UNSUBSCRIBE:
         return "unsubscribe";
+    case SR__OPERATION__UNSUBSCRIBE_DESTINATION:
+        return "unsubscribe-destination";
     default:
         return "unknown";
     }
@@ -953,6 +955,9 @@ sr_pb_notif_alloc(const Sr__NotificationEvent event, const char *destination, co
             sr__module_change_notification__init((Sr__ModuleChangeNotification*)sub_msg);
             notif->module_change_notif = (Sr__ModuleChangeNotification*)sub_msg;
             break;
+        case SR__NOTIFICATION_EVENT__HELLO_EV:
+            /* no sub-message */
+            break;
         default:
             break;
     }
@@ -1219,10 +1224,11 @@ sr_pb_msg_validate_notif(const Sr__Msg *msg, const Sr__NotificationEvent event)
         if (NULL == msg->notification) {
             return SR_ERR_MALFORMED_MSG;
         }
-        if (msg->notification->event != event) {
+        if ((msg->notification->event != SR__NOTIFICATION_EVENT__HELLO_EV) &&
+                (msg->notification->event != event)) {
             return SR_ERR_MALFORMED_MSG;
         }
-        switch (event) {
+        switch (msg->notification->event) {
             case SR__NOTIFICATION_EVENT__MODULE_INSTALL_EV:
                 if (NULL == msg->notification->module_install_notif)
                     return SR_ERR_MALFORMED_MSG;
@@ -1234,6 +1240,8 @@ sr_pb_msg_validate_notif(const Sr__Msg *msg, const Sr__NotificationEvent event)
             case SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV:
                 if (NULL == msg->notification->module_change_notif)
                     return SR_ERR_MALFORMED_MSG;
+                break;
+            case SR__NOTIFICATION_EVENT__HELLO_EV:
                 break;
             default:
                 return SR_ERR_MALFORMED_MSG;
@@ -1842,6 +1850,8 @@ sr_event_gpb_to_str(Sr__NotificationEvent event)
         return "feature-enable";
     case SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV:
         return "module-change";
+    case SR__NOTIFICATION_EVENT__HELLO_EV:
+        return "hello";
     default:
         return "unknown";
     }

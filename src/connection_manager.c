@@ -250,7 +250,7 @@ cm_notif_unsubscribe_destination(cm_ctx_t *cm_ctx, const char *destination_addre
 
     CHECK_NULL_ARG2(cm_ctx, destination_address);
 
-    SR_LOG_DBG("Requesting removal of subscriptions to the destination '%s'.", destination_address);
+    SR_LOG_DBG("Requesting removal of subscriptions for the destination '%s'.", destination_address);
 
     rc = sr_pb_internal_req_alloc(SR__OPERATION__UNSUBSCRIBE_DESTINATION, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
@@ -260,7 +260,7 @@ cm_notif_unsubscribe_destination(cm_ctx_t *cm_ctx, const char *destination_addre
 
     rc = rp_msg_process(cm_ctx->rp_ctx, NULL, msg_req);
     if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Unable to remove subscriptions to the destination '%s'.", destination_address);
+        SR_LOG_ERR("Unable to remove subscriptions for the destination '%s'.", destination_address);
     }
 
     return rc;
@@ -315,6 +315,7 @@ cm_conn_close(cm_ctx_t *cm_ctx, sm_connection_t *conn)
 
     if (CM_AF_UNIX_SERVER == conn->type && NULL != conn->dst_address) {
         /* this was a notification connection, remove the subscriptions for that destination */
+        SR_LOG_DBG("Notification server at '%s' has disconnected.", conn->dst_address);
         cm_notif_unsubscribe_destination(cm_ctx, conn->dst_address);
     }
 

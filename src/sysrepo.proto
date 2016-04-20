@@ -449,6 +449,8 @@ enum NotificationEvent {
   MODULE_INSTALL_EV = 1;
   FEATURE_ENABLE_EV = 2;
   MODULE_CHANGE_EV = 3;
+
+  HELLO_EV = 10;           /**< Used only internally to test for inactive notification subscriptions. */
 }
 
 message SubscribeReq {

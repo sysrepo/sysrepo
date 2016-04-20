@@ -529,14 +529,16 @@ cl_sm_conn_msg_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, uint8_t *msg
     }
 
     /* get data session that can be used from notification callback */
-    rc = cl_sm_get_data_session(sm_ctx, subscription, msg->notification->source_address, &data_session);
-    if (SR_ERR_OK != rc) {
-        pthread_mutex_unlock(&sm_ctx->subscriptions_lock);
-        SR_LOG_ERR("Unable to get configuration session for address='%s'.", msg->notification->source_address);
-        goto cleanup;
+    if (SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV == msg->notification->event) {
+        rc = cl_sm_get_data_session(sm_ctx, subscription, msg->notification->source_address, &data_session);
+        if (SR_ERR_OK != rc) {
+            pthread_mutex_unlock(&sm_ctx->subscriptions_lock);
+            SR_LOG_ERR("Unable to get configuration session for address='%s'.", msg->notification->source_address);
+            goto cleanup;
+        }
     }
 
-    switch (subscription->event_type) {
+    switch (msg->notification->event) {
         case SR__NOTIFICATION_EVENT__MODULE_INSTALL_EV:
             SR_LOG_DBG("Calling module-install callback for subscription id=%"PRIu32".", subscription->id);
             subscription->callback.module_install_cb(
@@ -559,6 +561,9 @@ cl_sm_conn_msg_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, uint8_t *msg
                     data_session,
                     msg->notification->module_change_notif->module_name,
                     subscription->private_ctx);
+            break;
+        case SR__NOTIFICATION_EVENT__HELLO_EV:
+            SR_LOG_DBG("HELLO notification received on subscription id=%"PRIu32".", subscription->id);
             break;
         default:
             SR_LOG_ERR("Unknown notification event received on subscription id=%"PRIu32".", subscription->id);

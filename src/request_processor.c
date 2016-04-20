@@ -812,7 +812,7 @@ rp_unlock_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__M
 static int
 rp_subscribe_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
 {
-    Sr__Msg *resp = NULL;
+    Sr__Msg *resp = NULL, *notif = NULL;
     Sr__SubscribeReq *subscribe_req = NULL;
     struct lys_module *module = NULL;
     char xpath[PATH_MAX] = { 0, };
@@ -871,6 +871,17 @@ rp_subscribe_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr
 
     /* send the response */
     rc = cm_msg_send(rp_ctx->cm_ctx, resp);
+
+    if (SR_ERR_OK == rc) {
+        /* send initial HELLO notification to test the subscription */
+        SR_LOG_DBG("Sending initial HELLO notification to '%s' @ %"PRIu32".",
+                subscribe_req->destination, subscribe_req->subscription_id);
+        rc = sr_pb_notif_alloc(SR__NOTIFICATION_EVENT__HELLO_EV,
+                subscribe_req->destination, subscribe_req->subscription_id, &notif);
+        if (SR_ERR_OK == rc) {
+            rc = cm_msg_send(rp_ctx->cm_ctx, notif);
+        }
+    }
 
     return rc;
 }
