@@ -97,7 +97,13 @@ int np_notification_unsubscribe(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, S
         const char *dst_address, uint32_t dst_id, const char *module_name);
 
 /**
- * @brief TODO
+ * @brief Unsubscribe the client from all notifications to be delivered on
+ * specified destination address.
+ *
+ * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
+ * @param[in] dst_address Notification delivery destination address.
+ *
+ * @return Error code (SR_ERR_OK on success).
  */
 int np_unsubscribe_destination(np_ctx_t *np_ctx, const char *dst_address);
 

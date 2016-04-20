@@ -226,7 +226,7 @@ pm_save_persistent_data(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const cha
             goto cleanup;
         }
         if (0 == node_set->number) {
-            SR_LOG_ERR("Requested persistent data is missing (module=%s, xpath=%s): %s.", module_name, xpath, ly_errmsg());
+            SR_LOG_ERR("Requested persistent data is missing (module=%s, xpath=%s).", module_name, xpath);
             rc = SR_ERR_DATA_MISSING;
             goto cleanup;
         }
@@ -456,7 +456,7 @@ pm_save_subscribtion_state(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const 
 }
 
 int
-pm_remove_subscriptions_for_destination(pm_ctx_t *pm_ctx, const char *module_name, const char *dst_address)
+pm_delete_subscriptions_for_destination(pm_ctx_t *pm_ctx, const char *module_name, const char *dst_address)
 {
     char xpath[PATH_MAX] = { 0, };
     int rc = SR_ERR_OK;

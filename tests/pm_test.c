@@ -128,8 +128,10 @@ pm_subscription_test(void **state)
     int rc = SR_ERR_OK;
 
     np_subscription_t subscription = { 0, };
-    subscription.dst_address = "/tmp/test-subscription-address.sock";
     subscription.dst_id = 123456789;
+
+    /* create subscriptions for destination 1 */
+    subscription.dst_address = "/tmp/test-subscription-address1.sock";
 
     subscription.event_type = SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV;
     rc = pm_save_subscribtion_state(test_ctx->pm_ctx, &test_ctx->user_cred, "example-module", &subscription, true);
@@ -143,6 +145,18 @@ pm_subscription_test(void **state)
     rc = pm_save_subscribtion_state(test_ctx->pm_ctx, &test_ctx->user_cred, "example-module", &subscription, true);
     assert_int_equal(SR_ERR_DATA_EXISTS, rc);
 
+    /* create subscriptions for destination 2 */
+    subscription.dst_address = "/tmp/test-subscription-address2.sock";
+
+    subscription.event_type = SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV;
+    rc = pm_save_subscribtion_state(test_ctx->pm_ctx, &test_ctx->user_cred, "example-module", &subscription, true);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    subscription.event_type = SR__NOTIFICATION_EVENT__FEATURE_ENABLE_EV;
+    rc = pm_save_subscribtion_state(test_ctx->pm_ctx, &test_ctx->user_cred, "example-module", &subscription, true);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* retrieve active subscriptions */
     rc = pm_get_subscriptions(test_ctx->pm_ctx, "example-module", SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV,
             &subscriptions, &subscription_cnt);
     assert_int_equal(SR_ERR_OK, rc);
@@ -153,6 +167,8 @@ pm_subscription_test(void **state)
     }
     free(subscriptions);
 
+    /* remove subscriptions for destination 1 */
+    subscription.dst_address = "/tmp/test-subscription-address1.sock";
     subscription.event_type = SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV;
     rc = pm_save_subscribtion_state(test_ctx->pm_ctx, &test_ctx->user_cred, "example-module", &subscription, false);
     assert_int_equal(SR_ERR_OK, rc);
@@ -164,6 +180,10 @@ pm_subscription_test(void **state)
     subscription.event_type = SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV;
     rc = pm_save_subscribtion_state(test_ctx->pm_ctx, &test_ctx->user_cred, "example-module", &subscription, false);
     assert_int_equal(SR_ERR_DATA_MISSING, rc);
+
+    /* remove subscriptions for destination 2 */
+    rc = pm_delete_subscriptions_for_destination(test_ctx->pm_ctx, "example-module", "/tmp/test-subscription-address2.sock");
+    assert_int_equal(SR_ERR_OK, rc);
 }
 
 int

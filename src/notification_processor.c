@@ -97,7 +97,7 @@ np_dst_info_cleanup(void *dst_info_p)
 }
 
 /**
- * TODO
+ * @brief Adds information about notification destination into NP context.
  */
 static int
 np_dst_info_insert(np_ctx_t *np_ctx, const char *dst_address, const char *module_name)
@@ -166,7 +166,7 @@ cleanup:
 }
 
 /**
- * TODO
+ * @brief Removes information about notification destination from NP context.
  */
 static int
 np_dst_info_remove(np_ctx_t *np_ctx, const char *dst_address, const char *module_name)
@@ -402,7 +402,7 @@ np_unsubscribe_destination(np_ctx_t *np_ctx, const char *dst_address)
         for (size_t i = 0; i < info->subscribed_modules_cnt; i++) {
             SR_LOG_DBG("Removing subscriptions for destination '%s' from '%s'.", dst_address,
                     info->subscribed_modules[i]);
-            rc = pm_remove_subscriptions_for_destination(np_ctx->rp_ctx->pm_ctx,
+            rc = pm_delete_subscriptions_for_destination(np_ctx->rp_ctx->pm_ctx,
                     info->subscribed_modules[i], dst_address);
             CHECK_RC_LOG_RETURN(rc, "Unable to remove subscriptions for destination '%s' from '%s'.", dst_address,
                     info->subscribed_modules[i]);

@@ -99,9 +99,16 @@ int pm_save_subscribtion_state(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, co
         const np_subscription_t *subscription, const bool subscribe);
 
 /**
- * @brief TODO
+ * @brief Deletes all subscriptions in module's persistent storage that are to be
+ * delivered to specified destination address.
+ *
+ * @param[in] pm_ctx Persistence Manager context acquired by ::pm_init call.
+ * @param[in] module_name Name of the module.
+ * @param[in] dst_address Notification delivery destination address.
+ *
+ * @return Error code (SR_ERR_OK on success).
  */
-int pm_remove_subscriptions_for_destination(pm_ctx_t *pm_ctx, const char *module_name, const char *dst_address);
+int pm_delete_subscriptions_for_destination(pm_ctx_t *pm_ctx, const char *module_name, const char *dst_address);
 
 /**
  * @brief Returns the array of active subscriptions of given type in module's persistent storage.
