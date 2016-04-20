@@ -926,7 +926,7 @@ rp_unsubscribe_destination_req_process(const rp_ctx_t *rp_ctx, const rp_session_
 
     SR_LOG_DBG_MSG("Processing unsubscribe destination request.");
 
-    // TODO: call np
+    rc = np_unsubscribe_destination(rp_ctx->np_ctx, msg->internal_request->unsubscribe_dst_req->destination);
 
     return rc;
 }

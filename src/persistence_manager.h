@@ -99,6 +99,11 @@ int pm_save_subscribtion_state(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, co
         const np_subscription_t *subscription, const bool subscribe);
 
 /**
+ * @brief TODO
+ */
+int pm_remove_subscriptions_for_destination(pm_ctx_t *pm_ctx, const char *module_name, const char *dst_address);
+
+/**
  * @brief Returns the array of active subscriptions of given type in module's persistent storage.
  *
  * @param[in] pm_ctx Persistence Manager context acquired by ::pm_init call.

@@ -65,8 +65,8 @@ np_dst_info_cmp(const void *a, const void *b)
     assert(dst_info_a->dst_address);
     assert(dst_info_b->dst_address);
 
-    res = strcmp(dst_info_b->dst_address, dst_info_b->dst_address);
-    if (res == 0) {
+    res = strcmp(dst_info_a->dst_address, dst_info_b->dst_address);
+    if (0 == res) {
         return 0;
     } else if (res < 0) {
         return -1;
@@ -102,49 +102,66 @@ np_dst_info_cleanup(void *dst_info_p)
 static int
 np_dst_info_insert(np_ctx_t *np_ctx, const char *dst_address, const char *module_name)
 {
-    np_dst_info_t info_lookup = { 0, }, *info = NULL;
+    np_dst_info_t info_lookup = { 0, }, *info = NULL, *new_info = NULL;
     char **tmp = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG3(np_ctx, dst_address, module_name);
 
+    pthread_rwlock_rdlock(&np_ctx->lock);
+
+    /* find info entry matching with the destination */
     info_lookup.dst_address = dst_address;
     info = sr_btree_search(np_ctx->dst_info_btree, &info_lookup);
 
-    /* find info entry matching with the destination */
-    if (NULL == info) {
-        /* info entry not found, create new one */
-        info = calloc(1, sizeof(*info));
-        CHECK_NULL_NOMEM_RETURN(info);
-
-        info->dst_address = strdup(dst_address);
-        CHECK_NULL_NOMEM_GOTO(info->dst_address, rc, cleanup);
-
-        rc = sr_btree_insert(np_ctx->dst_info_btree, info);
-        CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to insert new info entry into btree.");
+    if (NULL != info) {
+        /* info entry found */
+        for (size_t i = 0; i < info->subscribed_modules_cnt; i++) {
+            if (0 == strcmp(info->subscribed_modules[i], module_name)) {
+                /* module name already exists within the info entry, no update needed */
+                pthread_rwlock_unlock(&np_ctx->lock);
+                return SR_ERR_OK;
+            }
+        }
     }
 
-    for (size_t i = 0; i < info->subscribed_modules_cnt; i++) {
-        if (0 == strcmp(info->subscribed_modules[i], module_name)) {
-            /* module name already exists within the info entry */
-            return SR_ERR_OK;
-        }
+    /* info update is required */
+    pthread_rwlock_unlock(&np_ctx->lock);
+    pthread_rwlock_wrlock(&np_ctx->lock);
+
+    if (NULL == info) {
+        /* info entry not found, create new one */
+        new_info = calloc(1, sizeof(*new_info));
+        CHECK_NULL_NOMEM_GOTO(new_info, rc, cleanup);
+
+        new_info->dst_address = strdup(dst_address);
+        CHECK_NULL_NOMEM_GOTO(new_info->dst_address, rc, cleanup);
+
+        rc = sr_btree_insert(np_ctx->dst_info_btree, new_info);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to insert new info entry into btree.");
+        info = new_info;
     }
 
     /* add the module into info entry */
     tmp = realloc(info->subscribed_modules, (info->subscribed_modules_cnt + 1) * sizeof(*tmp));
-    CHECK_NULL_NOMEM_RETURN(tmp);
+    CHECK_NULL_NOMEM_GOTO(tmp, rc, cleanup);
     info->subscribed_modules = tmp;
 
     info->subscribed_modules[info->subscribed_modules_cnt] = strdup(module_name);
-    CHECK_NULL_NOMEM_RETURN(info->subscribed_modules[info->subscribed_modules_cnt]);
+    CHECK_NULL_NOMEM_GOTO(info->subscribed_modules[info->subscribed_modules_cnt], rc, cleanup);
     info->subscribed_modules_cnt++;
 
+    pthread_rwlock_unlock(&np_ctx->lock);
     return SR_ERR_OK;
 
 cleanup:
-    free((char*)info->dst_address);
-    free(info);
+    if (NULL != new_info) {
+        sr_btree_delete(np_ctx->dst_info_btree, new_info);
+        free((char*)new_info->dst_address);
+        free((char*)new_info->subscribed_modules);
+        free(new_info);
+    }
+    pthread_rwlock_unlock(&np_ctx->lock);
     return rc;
 }
 
@@ -155,6 +172,8 @@ static int
 np_dst_info_remove(np_ctx_t *np_ctx, const char *dst_address, const char *module_name)
 {
     np_dst_info_t info_lookup = { 0, }, *info = NULL;
+
+    CHECK_NULL_ARG2(np_ctx, dst_address);
 
     info_lookup.dst_address = dst_address;
 
@@ -296,7 +315,9 @@ np_notification_subscribe(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, Sr__Not
 
 cleanup:
     if (NULL != subscription) {
+        pthread_rwlock_wrlock(&np_ctx->lock);
         np_dst_info_remove(np_ctx, dst_address, module_name);
+        pthread_rwlock_unlock(&np_ctx->lock);
         free((void*)subscription->dst_address);
         free((void*)subscription->xpath);
         free(subscription);
@@ -323,7 +344,9 @@ np_notification_unsubscribe(np_ctx_t *np_ctx,  const ac_ucred_t *user_cred, Sr__
         subscription_lookup.event_type = event_type;
         rc = pm_save_subscribtion_state(np_ctx->rp_ctx->pm_ctx, user_cred, module_name, &subscription_lookup, false);
         if (SR_ERR_OK == rc) {
+            pthread_rwlock_wrlock(&np_ctx->lock);
             rc = np_dst_info_remove(np_ctx, dst_address, module_name);
+            pthread_rwlock_unlock(&np_ctx->lock);
         }
     } else {
         /* remove the subscription from in-memory subscription list */
@@ -355,6 +378,35 @@ np_notification_unsubscribe(np_ctx_t *np_ctx,  const ac_ucred_t *user_cred, Sr__
         free((void*)subscription->xpath);
         free(subscription);
     }
+
+    return rc;
+}
+
+int
+np_unsubscribe_destination(np_ctx_t *np_ctx, const char *dst_address)
+{
+    np_dst_info_t info_lookup = { 0, }, *info = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG2(np_ctx, dst_address);
+
+    pthread_rwlock_wrlock(&np_ctx->lock);
+
+    info_lookup.dst_address = dst_address;
+    info = sr_btree_search(np_ctx->dst_info_btree, &info_lookup);
+    if (NULL != info) {
+        for (size_t i = 0; i < info->subscribed_modules_cnt; i++) {
+            SR_LOG_DBG("Removing subscriptions for destination '%s' from '%s'.", dst_address,
+                    info->subscribed_modules[i]);
+            rc = pm_remove_subscriptions_for_destination(np_ctx->rp_ctx->pm_ctx,
+                    info->subscribed_modules[i], dst_address);
+            CHECK_RC_LOG_RETURN(rc, "Unable to remove subscriptions for destination '%s' from '%s'.", dst_address,
+                    info->subscribed_modules[i]);
+        }
+        np_dst_info_remove(np_ctx, dst_address, NULL);
+    }
+
+    pthread_rwlock_unlock(&np_ctx->lock);
 
     return rc;
 }
@@ -472,6 +524,10 @@ np_module_change_notify(np_ctx_t *np_ctx, const char *module_name)
         if (SR_ERR_OK == rc) {
             notif->notification->module_change_notif->module_name = strdup(module_name);
             CHECK_NULL_NOMEM_ERROR(notif->notification->module_change_notif->module_name, rc);
+        }
+        /* save notification destination info */
+        if (SR_ERR_OK == rc) {
+            rc = np_dst_info_insert(np_ctx, subscriptions[i].dst_address, module_name);
         }
         /* send the notification */
         if (SR_ERR_OK == rc) {

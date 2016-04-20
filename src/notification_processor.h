@@ -97,6 +97,11 @@ int np_notification_unsubscribe(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, S
         const char *dst_address, uint32_t dst_id, const char *module_name);
 
 /**
+ * @brief TODO
+ */
+int np_unsubscribe_destination(np_ctx_t *np_ctx, const char *dst_address);
+
+/**
  * @brief Notify all subscribers about the module (un)installation event.
  *
  * @param[in] np_ctx Notification Processor context acquired by ::np_init call.

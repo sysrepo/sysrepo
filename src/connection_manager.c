@@ -240,6 +240,39 @@ cm_connection_data_cleanup(void *connection)
 }
 
 /**
+ * @brief Request removal of subscriptions with the delivery address specified in destination_address.
+ */
+static int
+cm_notif_unsubscribe_destination(cm_ctx_t *cm_ctx, const char *destination_address)
+{
+    Sr__Msg *msg_req = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG2(cm_ctx, destination_address);
+
+    SR_LOG_DBG("Requesting removal of subscriptions to the destination '%s'.", destination_address);
+
+    rc = sr_pb_internal_req_alloc(SR__OPERATION__UNSUBSCRIBE_DESTINATION, &msg_req);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
+
+    msg_req->internal_request->unsubscribe_dst_req->destination = strdup(destination_address);
+    CHECK_NULL_NOMEM_GOTO(msg_req->internal_request->unsubscribe_dst_req->destination, rc, cleanup);
+
+    rc = rp_msg_process(cm_ctx->rp_ctx, NULL, msg_req);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Unable to remove subscriptions to the destination '%s'.", destination_address);
+    }
+
+    return rc;
+
+cleanup:
+    if (NULL != msg_req) {
+        sr__msg__free_unpacked(msg_req, NULL);
+    }
+    return rc;
+}
+
+/**
  * @brief Close the connection inside of Connection Manager and Request Processor.
  */
 static int
@@ -278,6 +311,11 @@ cm_conn_close(cm_ctx_t *cm_ctx, sm_connection_t *conn)
                 sm_session_drop(cm_ctx->sm_ctx, sess->session);
             }
         }
+    }
+
+    if (CM_AF_UNIX_SERVER == conn->type && NULL != conn->dst_address) {
+        /* this was a notification connection, remove the subscriptions for that destination */
+        cm_notif_unsubscribe_destination(cm_ctx, conn->dst_address);
     }
 
     /* cleanup connection, pointers to the connection from outstanding sessions will be set to NULL */
@@ -1087,39 +1125,6 @@ cleanup:
         cm_conn_close(cm_ctx, connection);
     } else if (-1 != fd) {
         close(fd);
-    }
-    return rc;
-}
-
-/**
- * @brief Request removal of subscriptions with the delivery address specified in destination_address.
- */
-static int
-cm_notif_unsubscribe_destination(cm_ctx_t *cm_ctx, const char *destination_address)
-{
-    Sr__Msg *msg_req = NULL;
-    int rc = SR_ERR_OK;
-
-    CHECK_NULL_ARG2(cm_ctx, destination_address);
-
-    SR_LOG_DBG("Requesting removal of subscriptions on the destination '%s'.", destination_address);
-
-    rc = sr_pb_internal_req_alloc(SR__OPERATION__UNSUBSCRIBE_DESTINATION, &msg_req);
-    CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
-
-    msg_req->internal_request->unsubscribe_dst_req->destination = strdup(destination_address);
-    CHECK_NULL_NOMEM_GOTO(msg_req->internal_request->unsubscribe_dst_req->destination, rc, cleanup);
-
-    rc = rp_msg_process(cm_ctx->rp_ctx, NULL, msg_req);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Unable to remove subscriptions on the destination '%s'.", destination_address);
-    }
-
-    return rc;
-
-cleanup:
-    if (NULL != msg_req) {
-        sr__msg__free_unpacked(msg_req, NULL);
     }
     return rc;
 }

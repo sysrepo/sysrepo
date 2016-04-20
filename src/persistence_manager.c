@@ -38,9 +38,11 @@
 #define PM_XPATH_FEATURES         PM_XPATH_MODULE "/enabled-features/feature-name"
 #define PM_XPATH_FEATURES_BY_NAME PM_XPATH_MODULE "/enabled-features/feature-name[text()='%s']"
 
-#define PM_XPATH_SUBSCRIPTIONS           PM_XPATH_MODULE "/subscriptions/subscription[type='%s'][destination-address='%s'][destination-id='%"PRIu32"']"
-#define PM_XPATH_SUBSCRIPTIONS_BY_TYPE   PM_XPATH_MODULE "/subscriptions/subscription[type='%s']"
-#define PM_XPATH_SUBSCRIPTIONS_BY_DST_ID PM_XPATH_MODULE "/subscriptions/subscription[destination-address='%s'][destination-id='%"PRIu32"']"
+#define PM_XPATH_SUBSCRIPTIONS             PM_XPATH_MODULE "/subscriptions/subscription[type='%s'][destination-address='%s'][destination-id='%"PRIu32"']"
+#define PM_XPATH_SUBSCRIPTIONS_BY_TYPE     PM_XPATH_MODULE "/subscriptions/subscription[type='%s']"
+#define PM_XPATH_SUBSCRIPTIONS_BY_DST_ID   PM_XPATH_MODULE "/subscriptions/subscription[destination-address='%s'][destination-id='%"PRIu32"']"
+#define PM_XPATH_SUBSCRIPTIONS_BY_DST_ADDR PM_XPATH_MODULE "/subscriptions/subscription[destination-address='%s']"
+
 
 /**
  * @brief Persistence Manager context.
@@ -187,7 +189,7 @@ pm_save_persistent_data(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const cha
     int fd = -1;
     int rc = SR_ERR_OK, ret = 0;
 
-    CHECK_NULL_ARG4(pm_ctx, user_cred, module_name, xpath);
+    CHECK_NULL_ARG3(pm_ctx, module_name, xpath);
 
     /* get persist file path */
     rc = sr_get_persist_data_file_name(pm_ctx->data_search_dir, module_name, &data_filename);
@@ -223,18 +225,14 @@ pm_save_persistent_data(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const cha
             rc = SR_ERR_INTERNAL;
             goto cleanup;
         }
-        if (1 != node_set->number) {
-            SR_LOG_ERR("Specified persistent data does not exist (module=%s, xpath=%s).", module_name, xpath);
-            rc = SR_ERR_DATA_MISSING;
-            goto cleanup;
-        } else {
-            ret = lyd_unlink(node_set->set.d[0]);
+        for (size_t i = 0; i < node_set->number; i++) {
+            ret = lyd_unlink(node_set->set.d[i]);
             if (0 != ret) {
                 SR_LOG_ERR("Unable to delete persistent data (module=%s, xpath=%s): %s.", module_name, xpath, ly_errmsg());
                 rc = SR_ERR_INTERNAL;
                 goto cleanup;
             } else {
-                lyd_free(node_set->set.d[0]);
+                lyd_free(node_set->set.d[i]);
             }
         }
     }
@@ -447,6 +445,27 @@ pm_save_subscribtion_state(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const 
         if (SR_ERR_OK == rc) {
             SR_LOG_DBG("Subscription entry successfully removed from '%s' persist file.", module_name);
         }
+    }
+
+    return rc;
+}
+
+int
+pm_remove_subscriptions_for_destination(pm_ctx_t *pm_ctx, const char *module_name, const char *dst_address)
+{
+    char xpath[PATH_MAX] = { 0, };
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG3(pm_ctx, module_name, dst_address);
+
+    snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTIONS_BY_DST_ADDR, module_name, dst_address);
+
+    /* remove the subscriptions */
+    rc = pm_save_persistent_data(pm_ctx, NULL, module_name, false, xpath, NULL);
+
+    if (SR_ERR_OK == rc) {
+        SR_LOG_DBG("Subscription entries for destination '%s' successfully removed from '%s' persist file.",
+                dst_address, module_name);
     }
 
     return rc;
