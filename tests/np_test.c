@@ -183,6 +183,10 @@ np_persistent_subscription_test(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 
     /* module change notify 2 */
+    rc = np_module_change_notify(np_ctx, "test-module");
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* module change notify 3 */
     rc = np_module_change_notify(np_ctx, "small-module");
     assert_int_equal(rc, SR_ERR_OK);
 
@@ -199,7 +203,7 @@ np_persistent_subscription_test(void **state)
             "addr1", 456, "test-module");
     assert_int_equal(rc, SR_ERR_OK);
 
-rc = np_notification_unsubscribe(np_ctx, &test_ctx->user_cred, SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV,
+    rc = np_notification_unsubscribe(np_ctx, &test_ctx->user_cred, SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV,
             "addr2", 456, "test-module");
     assert_int_equal(rc, SR_ERR_OK);
 

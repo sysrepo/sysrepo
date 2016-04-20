@@ -190,9 +190,11 @@ np_dst_info_remove(np_ctx_t *np_ctx, const char *dst_address, const char *module
             /* last module - remove whole destination info entry */
             sr_btree_delete(np_ctx->dst_info_btree, &info_lookup);
         } else {
+            /* not last module - remove only the matching module name */
             for (size_t i = 0; i < info->subscribed_modules_cnt; i++) {
                 if (0 == strcmp(info->subscribed_modules[i], module_name)) {
                     /* remove this module from info entry */
+                    free((void*)info->subscribed_modules[i]);
                     if (i < (info->subscribed_modules_cnt - 1)) {
                         memmove(info->subscribed_modules + i,
                                 info->subscribed_modules + i + 1,
@@ -315,9 +317,11 @@ np_notification_subscribe(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, Sr__Not
 
 cleanup:
     if (NULL != subscription) {
-        pthread_rwlock_wrlock(&np_ctx->lock);
-        np_dst_info_remove(np_ctx, dst_address, module_name);
-        pthread_rwlock_unlock(&np_ctx->lock);
+        if (SR_ERR_OK != rc) {
+            pthread_rwlock_wrlock(&np_ctx->lock);
+            np_dst_info_remove(np_ctx, dst_address, module_name);
+            pthread_rwlock_unlock(&np_ctx->lock);
+        }
         free((void*)subscription->dst_address);
         free((void*)subscription->xpath);
         free(subscription);

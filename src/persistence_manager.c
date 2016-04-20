@@ -225,6 +225,11 @@ pm_save_persistent_data(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const cha
             rc = SR_ERR_INTERNAL;
             goto cleanup;
         }
+        if (0 == node_set->number) {
+            SR_LOG_ERR("Requested persistent data is missing (module=%s, xpath=%s): %s.", module_name, xpath, ly_errmsg());
+            rc = SR_ERR_DATA_MISSING;
+            goto cleanup;
+        }
         for (size_t i = 0; i < node_set->number; i++) {
             ret = lyd_unlink(node_set->set.d[i]);
             if (0 != ret) {
