@@ -145,6 +145,7 @@ module test-module {
   }
 
   container location {
+    presence true;
     leaf name {
         type string;
     }
