@@ -884,7 +884,7 @@ edit_validate_test(void **state)
     rc = dm_validate_session_data_trees(ctx->dm_ctx, session->dm_session, &errors, &e_cnt);
     assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
     assert_int_equal(1, e_cnt);
-    assert_string_equal("Must condition \"ifType != 'ethernet' or (ifType = 'ethernet' and ifMTU = 1500)\" not satisfied.", errors[0].message);
+    assert_string_equal("An ethernet MTU must be 1500", errors[0].message);
     //assert_string_equal("/test-module:interface", errors[0].path);
 
     sr_free_errors(errors, e_cnt);
@@ -982,7 +982,7 @@ edit_validate_test(void **state)
     assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
     assert_int_equal(1, e_cnt);
     assert_string_equal("Missing required element \"latitude\" in \"location\".", errors[0].message);
-    assert_string_equal("/test-module:location/latitude", errors[0].xpath);
+    assert_string_equal("/test-module:location", errors[0].xpath);
     sr_free_errors(errors, e_cnt);
 
     sr_val_t latitude;

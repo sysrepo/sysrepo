@@ -1163,7 +1163,6 @@ dm_list_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, 
     CHECK_NULL_ARG3(dm_ctx, module_name, schema);
 
     int rc = SR_ERR_INTERNAL;
-    const char **submodules = NULL;
 
     const struct lys_module *module = ly_ctx_get_module(dm_ctx->ly_ctx, module_name, revision);
     if (NULL == module) {
@@ -1214,38 +1213,27 @@ dm_list_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, 
     free(features);
     free(state);
 
-    submodules = ly_ctx_get_submodule_names(dm_ctx->ly_ctx, module->name);
-    if (NULL == submodules) {
-        schema->submodule_count = 0;
-        return SR_ERR_OK;
-    }
-    size_t sub_count = 0;
-
-    while (NULL != submodules[sub_count]) sub_count++;
-
-    schema->submodules = calloc(sub_count, sizeof(*schema->submodules));
+    schema->submodules = calloc(module->inc_size, sizeof(*schema->submodules));
     CHECK_NULL_NOMEM_GOTO(schema->submodules, rc, cleanup);
 
-    for (size_t s = 0; s < sub_count; s++){
-        schema->submodules[s].submodule_name = strdup(submodules[s]);
-        CHECK_NULL_NOMEM_GOTO(schema->submodules[s].submodule_name, rc, cleanup);
-        const struct lys_submodule *sub = ly_ctx_get_submodule(dm_ctx->ly_ctx, module_name, revision, submodules[s]);
-        if (NULL == sub){
-            SR_LOG_ERR_MSG("Submodule not found");
+    for (size_t s = 0; s < module->inc_size; s++){
+        const struct lys_submodule *sub = module->inc[s].submodule;
+        if (NULL == sub->name) {
+            SR_LOG_ERR_MSG("Missing schema information");
             rc = SR_ERR_INTERNAL;
             goto cleanup;
         }
+        schema->submodules[s].submodule_name = strdup(sub->name);
+        CHECK_NULL_NOMEM_GOTO(schema->submodules[s].submodule_name, rc, cleanup);
 
-        rc = dm_list_rev_file(dm_ctx, submodules[s], sub->rev[0].date, &schema->submodules[s].revision);
+        rc = dm_list_rev_file(dm_ctx, sub->name, sub->rev[0].date, &schema->submodules[s].revision);
         CHECK_RC_LOG_GOTO(rc, cleanup, "List rev file failed module %s", module->name);
 
         schema->submodule_count++;
     }
-    free(submodules);
     return rc;
 
 cleanup:
-    free(submodules);
     sr_free_schema(schema);
     return rc;
 }
@@ -1361,7 +1349,7 @@ dm_get_schema(dm_ctx_t *dm_ctx, const char *module_name, const char *module_revi
     }
 
     /* submodule */
-    const struct lys_submodule *submodule = ly_ctx_get_submodule(dm_ctx->ly_ctx, module_name, module_revision, submodule_name);
+    const struct lys_submodule *submodule = ly_ctx_get_submodule2(module, submodule_name);
     if (NULL == submodule) {
         SR_LOG_ERR("Submodule %s of module %s (%s) was not found.", submodule_name, module_name, module_revision);
         return SR_ERR_NOT_FOUND;

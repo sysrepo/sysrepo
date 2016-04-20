@@ -381,7 +381,7 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const
         SR_LOG_ERR("Setting of item failed %s %d", xpath, ly_vecode);
         if (LYVE_PATH_EXISTS == ly_vecode) {
             rc = SR_ERR_DATA_EXISTS;
-        } else if (LYVE_INVAL == ly_vecode) {
+        } else if (LY_EVALID == ly_errno) {
             rc = SR_ERR_INVAL_ARG;
         } else {
             rc = SR_ERR_INTERNAL;
