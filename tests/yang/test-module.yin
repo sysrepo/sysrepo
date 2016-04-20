@@ -144,6 +144,7 @@
     </choice>
   </container>
   <container name="location">
+    <presence value="true"/>
     <leaf name="name">
       <type name="string"/>
     </leaf>
