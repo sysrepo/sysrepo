@@ -55,6 +55,7 @@ message Value {
 
   required string xpath = 1;
   required Types type = 2;
+  required bool dflt = 3;
 
   optional string binary_val = 10;
   optional string bits_val = 11;

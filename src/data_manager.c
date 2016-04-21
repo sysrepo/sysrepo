@@ -332,7 +332,7 @@ dm_load_data_tree_file(dm_ctx_t *dm_ctx, int fd, const char *data_filename, cons
     }
 
     /* if the data tree is loaded, validate it*/
-    if (NULL != data_tree && 0 != lyd_validate(&data_tree, LYD_OPT_STRICT | LYD_OPT_CONFIG)) {
+    if (NULL != data_tree && 0 != lyd_validate(&data_tree, LYD_OPT_STRICT | LYD_OPT_CONFIG | LYD_WD_IMPL_TAG)) {
         SR_LOG_ERR("Loaded data tree '%s' is not valid", data_filename);
         lyd_free_withsiblings(data_tree);
         free(data);
@@ -1773,6 +1773,7 @@ dm_commit_write_files(dm_session_t *session, dm_commit_context_t *c_ctx)
                 rc = SR_ERR_INTERNAL;
                 continue;
             }
+            lyd_wd_cleanup(&merged_info->node, 0);
             if (0 != lyd_print_fd(c_ctx->fds[count], merged_info->node, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT)) {
                 SR_LOG_ERR("Failed to write output for %s", info->module->name);
                 rc = SR_ERR_INTERNAL;
