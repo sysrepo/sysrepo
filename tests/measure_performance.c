@@ -30,6 +30,17 @@
 #include "sysrepo.h"
 #include "test_module_helper.h"
 
+/* Constants defining how many times the operation is performed to compute an average ops/sec */
+
+/**@brief all operations except commit */
+#define OP_COUNT 50000
+
+/**@brief used with larger data files */
+#define OP_COUNT_LOW 30000
+
+/**@brief constant for commit operation */
+#define OP_COUNT_COMMIT 1000
+
 /* Computes diff of two timeval structures
  * @see http://www.gnu.org/software/libc/manual/html_node/Elapsed-Time.html
  */
@@ -410,14 +421,13 @@ void test_perf(test_t *ts, int test_count, const char *title,  int selection)
 int
 main (int argc, char **argv)
 {
-#define OP_COUNT 50000
     test_t tests[] = {
         {perf_get_item_test, "Get item one leaf", OP_COUNT, sysrepo_setup, sysrepo_teardown},
         {perf_get_item_first_test, "Get item first", OP_COUNT, sysrepo_setup, sysrepo_teardown},
         {perf_get_item_with_data_load_test, "Get item incl session start", OP_COUNT, sysrepo_setup, sysrepo_teardown},
         {perf_get_items_test, "Get items all list", OP_COUNT, sysrepo_setup, sysrepo_teardown},
         {perf_get_items_iter_test, "Get items iter all list", OP_COUNT, sysrepo_setup, sysrepo_teardown},
-        {perf_commit_test, "Commit one leaf change", 1000, sysrepo_setup, sysrepo_teardown},
+        {perf_commit_test, "Commit one leaf change", OP_COUNT_COMMIT, sysrepo_setup, sysrepo_teardown},
         {perf_libyang_get_node, "Libyang get one node", OP_COUNT, libyang_setup, libyang_teardown},
         {perf_libyang_get_all_list, "Libyang get all list", OP_COUNT, libyang_setup, libyang_teardown},
     };
@@ -440,7 +450,7 @@ main (int argc, char **argv)
 
     /* decrease the number of performed operation on larger file*/
     for (size_t i = 0; i<test_count; i++){
-        tests[i].op_count = 30000;
+        tests[i].op_count = OP_COUNT_LOW;
     }
 
     /* 100 list instances*/
