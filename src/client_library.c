@@ -37,7 +37,7 @@
  * @brief Number of items being fetched in one message from Sysrepo Engine by
  * processing of sr_get_items_iter calls.
  */
-#define CL_GET_ITEMS_FETCH_LIMIT 2
+#define CL_GET_ITEMS_FETCH_LIMIT 100
 
 /**
  * @brief Filesystem path prefix for generating temporary socket names used
