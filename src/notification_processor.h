@@ -46,6 +46,7 @@ typedef struct np_subscription_s {
     const char *dst_address;           /**< Destination address where the notification should be delivered. */
     uint32_t dst_id;                   /**< Destination ID of the subscription (used locally, in the client library). */
     const char *xpath;                 /**< XPath to the subtree where the subscription is active (if applicable). */
+    bool enable_running;               /**< TRUE if the subscription enables specified subtree in the running datastore. */
 } np_subscription_t;
 
 /**
@@ -75,11 +76,12 @@ void np_cleanup(np_ctx_t *np_ctx);
  * @param[in] dst_id Destination subscription ID.
  * @param[in] module_name Name of the module which the subscription is active in (if applicable).
  * @param[in] path XPath to the subtree where the subscription is active (if applicable).
+ * @param[in] enable_running TRUE if the subscription enables specified subtree in the running datastore.
  *
  * @return Error code (SR_ERR_OK on success).
  */
 int np_notification_subscribe(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, Sr__NotificationEvent event_type,
-        const char *dst_address, uint32_t dst_id, const char *module_name, const char *xpath);
+        const char *dst_address, uint32_t dst_id, const char *module_name, const char *xpath, const bool enable_running);
 
 /**
  * @brief Unsubscribe the client from notifications on specified event.

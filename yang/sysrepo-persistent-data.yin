@@ -118,6 +118,13 @@ sysrepo.</text>
             <text>XPath of the subtree where the subscription is active.</text>
           </description>
         </leaf>
+        <leaf name="enable-running">
+          <type name="empty"/>
+          <description>
+            <text>If set, the subscription enables specified subtree in
+the running datastore.</text>
+          </description>
+        </leaf>
       </list>
     </container>
   </list>

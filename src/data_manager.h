@@ -479,6 +479,15 @@ int dm_uninstall_module(dm_ctx_t *dm_ctx, const char *module_name, const char *r
 int dm_has_enabled_subtree(dm_ctx_t *ctx, const char *module_name, struct lys_module **module, bool *res);
 
 /**
+ * @brief Enables module in running datastore (including copying of the startup data into running).
+ * @param [in] ctx DM context.
+ * @param [in] session DM session.
+ * @param [in] module_name Name of the module to be enabled.
+ * @return Error code (SR_ERR_OK on success)
+ */
+int dm_enable_module_runnig(dm_ctx_t *ctx, dm_session_t *session, const char *module_name);
+
+/**
  * @brief Copies the content of the module from one datastore to the another.
  * @param [in] dm_ctx
  * @param [in] session
@@ -498,5 +507,6 @@ int dm_copy_module(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module_n
  * @return Error code (SR_ERR_OK on success)
  */
 int dm_copy_all_models(dm_ctx_t *dm_ctx, dm_session_t *session, sr_datastore_t src, sr_datastore_t dst);
+
 /**@} Data manager*/
 #endif /* SRC_DATA_MANAGER_H_ */

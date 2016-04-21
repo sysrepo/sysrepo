@@ -33,16 +33,20 @@
 
 #define PM_SCHEMA_FILE "sysrepo-persistent-data.yin"  /**< Schema of module's persistent data. */
 
-#define PM_XPATH_MODULE           "/sysrepo-persistent-data:module[name='%s']"
+#define PM_XPATH_MODULE                      "/sysrepo-persistent-data:module[name='%s']"
 
-#define PM_XPATH_FEATURES         PM_XPATH_MODULE "/enabled-features/feature-name"
-#define PM_XPATH_FEATURES_BY_NAME PM_XPATH_MODULE "/enabled-features/feature-name[text()='%s']"
+#define PM_XPATH_FEATURES                     PM_XPATH_MODULE "/enabled-features/feature-name"
+#define PM_XPATH_FEATURES_BY_NAME             PM_XPATH_MODULE "/enabled-features/feature-name[.='%s']"
 
-#define PM_XPATH_SUBSCRIPTIONS             PM_XPATH_MODULE "/subscriptions/subscription[type='%s'][destination-address='%s'][destination-id='%"PRIu32"']"
-#define PM_XPATH_SUBSCRIPTIONS_BY_TYPE     PM_XPATH_MODULE "/subscriptions/subscription[type='%s']"
-#define PM_XPATH_SUBSCRIPTIONS_BY_DST_ID   PM_XPATH_MODULE "/subscriptions/subscription[destination-address='%s'][destination-id='%"PRIu32"']"
-#define PM_XPATH_SUBSCRIPTIONS_BY_DST_ADDR PM_XPATH_MODULE "/subscriptions/subscription[destination-address='%s']"
+#define PM_XPATH_SUBSCRIPTION_LIST            PM_XPATH_MODULE "/subscriptions/subscription"
 
+#define PM_XPATH_SUBSCRIPTION                 PM_XPATH_SUBSCRIPTION_LIST "[type='%s'][destination-address='%s'][destination-id='%"PRIu32"']"
+#define PM_XPATH_SUBSCRIPTION_ENABLE_RUNNING  PM_XPATH_SUBSCRIPTION      "/enable-running"
+
+#define PM_XPATH_SUBSCRIPTIONS_BY_TYPE        PM_XPATH_SUBSCRIPTION_LIST "[type='%s']"
+#define PM_XPATH_SUBSCRIPTIONS_BY_DST_ADDR    PM_XPATH_SUBSCRIPTION_LIST "[destination-address='%s']"
+#define PM_XPATH_SUBSCRIPTIONS_BY_DST_ID      PM_XPATH_SUBSCRIPTION_LIST "[destination-address='%s'][destination-id='%"PRIu32"']"
+#define PM_XPATH_SUBSCRIPTIONS_WITH_E_RUNNING PM_XPATH_SUBSCRIPTION_LIST "[enable-running=true()]"
 
 /**
  * @brief Persistence Manager context.
@@ -356,7 +360,8 @@ pm_save_feature_state(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char 
 }
 
 int
-pm_get_features(pm_ctx_t *pm_ctx, const char *module_name, char ***features_p, size_t *feature_cnt_p)
+pm_get_module_info(pm_ctx_t *pm_ctx, const char *module_name,
+        bool *running_enabled, char ***features_p, size_t *feature_cnt_p)
 {
     char *data_filename = NULL;
     char xpath[PATH_MAX] = { 0, };
@@ -369,6 +374,10 @@ pm_get_features(pm_ctx_t *pm_ctx, const char *module_name, char ***features_p, s
 
     CHECK_NULL_ARG4(pm_ctx, module_name, features_p, feature_cnt_p);
 
+    *features_p = NULL;
+    *feature_cnt_p = 0;
+    *running_enabled = false;
+
     /* get persist file path */
     rc = sr_get_persist_data_file_name(pm_ctx->data_search_dir, module_name, &data_filename);
     CHECK_RC_LOG_RETURN(rc, "Unable to compose persist data file name for '%s'.", module_name);
@@ -379,8 +388,6 @@ pm_get_features(pm_ctx_t *pm_ctx, const char *module_name, char ***features_p, s
 
     if (NULL == data_tree) {
         /* empty data file */
-        *features_p = NULL;
-        *feature_cnt_p = 0;
         goto cleanup;
     }
 
@@ -400,8 +407,18 @@ pm_get_features(pm_ctx_t *pm_ctx, const char *module_name, char ***features_p, s
             }
         }
     }
+    if (NULL != node_set) {
+        ly_set_free(node_set);
+    }
 
-    SR_LOG_DBG("Returning %zu features enabled in '%s' persist file.", feature_cnt, module_name);
+    snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTIONS_WITH_E_RUNNING, module_name);
+    node_set = lyd_get_node(data_tree, xpath);
+    if (NULL != node_set && node_set->number > 0) {
+        *running_enabled = true;
+    }
+
+    SR_LOG_DBG("Returning info from '%s' persist file: running ds %s, %zu features enabled.",
+            module_name, (*running_enabled ? "enabled" : "disabled"), feature_cnt);
 
     *features_p = features;
     *feature_cnt_p = feature_cnt;
@@ -433,11 +450,15 @@ pm_save_subscribtion_state(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const 
 
     CHECK_NULL_ARG4(pm_ctx, user_cred, module_name, subscription);
 
-    snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTIONS, module_name,
-            sr_event_gpb_to_str(subscription->event_type), subscription->dst_address, subscription->dst_id);
-
     if (subscribe) {
         /* add the subscription */
+        if (subscription->enable_running) {
+            snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTION_ENABLE_RUNNING, module_name,
+                    sr_event_gpb_to_str(subscription->event_type), subscription->dst_address, subscription->dst_id);
+        } else {
+            snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTION, module_name,
+                    sr_event_gpb_to_str(subscription->event_type), subscription->dst_address, subscription->dst_id);
+        }
         rc = pm_save_persistent_data(pm_ctx, user_cred, module_name, true, xpath, NULL);
 
         if (SR_ERR_OK == rc) {
@@ -445,6 +466,9 @@ pm_save_subscribtion_state(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const 
         }
     } else {
         /* remove the subscription */
+        snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTION, module_name,
+                sr_event_gpb_to_str(subscription->event_type), subscription->dst_address, subscription->dst_id);
+
         rc = pm_save_persistent_data(pm_ctx, user_cred, module_name, false, xpath, NULL);
 
         if (SR_ERR_OK == rc) {

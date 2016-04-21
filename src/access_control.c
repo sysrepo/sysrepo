@@ -420,26 +420,28 @@ ac_set_user_identity(ac_ctx_t *ac_ctx, const ac_ucred_t *user_credentials)
 {
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG2(ac_ctx, user_credentials);
+    CHECK_NULL_ARG(ac_ctx);
 
-    if (!ac_ctx->priviledged_process) {
-        /* sysrepo engine DOES NOT run within a privileged process - skip identity switch */
-        return SR_ERR_OK;
-    }
+    if (NULL != user_credentials) {
+        if (!ac_ctx->priviledged_process) {
+            /* sysrepo engine DOES NOT run within a privileged process - skip identity switch */
+            return SR_ERR_OK;
+        }
 
 #ifndef HAVE_SETFSUID
     pthread_mutex_lock(&ac_ctx->lock);
 #endif
 
-    if (0 == user_credentials->r_uid) {
-        /* real user-id is root */
-        if (NULL != user_credentials->e_username) {
-            /* effective username was set, change identity to effective */
-            rc = ac_set_identity(user_credentials->e_uid, user_credentials->e_gid);
+        if (0 == user_credentials->r_uid) {
+            /* real user-id is root */
+            if (NULL != user_credentials->e_username) {
+                /* effective username was set, change identity to effective */
+                rc = ac_set_identity(user_credentials->e_uid, user_credentials->e_gid);
+            }
+        } else {
+            /* real user-id is non-root, change identity to real */
+            rc = ac_set_identity(user_credentials->r_uid, user_credentials->r_gid);
         }
-    } else {
-        /* real user-id is non-root, change identity to real */
-        rc = ac_set_identity(user_credentials->r_uid, user_credentials->r_gid);
     }
 
     return rc;

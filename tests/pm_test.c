@@ -89,6 +89,7 @@ pm_feature_test(void **state)
     test_ctx_t *test_ctx = *state;
     char **features = NULL;
     size_t feature_cnt = 0;
+    bool running_enabled = false;
     int rc = SR_ERR_OK;
 
     rc = pm_save_feature_state(test_ctx->pm_ctx, &test_ctx->user_cred, "example-module", "featureX", true);
@@ -100,8 +101,9 @@ pm_feature_test(void **state)
     rc = pm_save_feature_state(test_ctx->pm_ctx, &test_ctx->user_cred, "example-module", "featureX", true);
     assert_int_equal(SR_ERR_DATA_EXISTS, rc);
 
-    rc = pm_get_features(test_ctx->pm_ctx, "example-module", &features, &feature_cnt);
+    rc = pm_get_module_info(test_ctx->pm_ctx, "example-module", &running_enabled, &features, &feature_cnt);
     assert_int_equal(SR_ERR_OK, rc);
+    assert_false(running_enabled);
     assert_true(feature_cnt >= 2);
     for (size_t i = 0; i < feature_cnt; i++) {
         printf("Found enabled feature: %s\n", features[i]);
@@ -125,6 +127,9 @@ pm_subscription_test(void **state)
     test_ctx_t *test_ctx = *state;
     np_subscription_t *subscriptions = NULL;
     size_t subscription_cnt = 0;
+    char **features = NULL;
+    size_t feature_cnt = 0;
+    bool running_enabled = false;
     int rc = SR_ERR_OK;
 
     np_subscription_t subscription = { 0, };
@@ -134,7 +139,9 @@ pm_subscription_test(void **state)
     subscription.dst_address = "/tmp/test-subscription-address1.sock";
 
     subscription.event_type = SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV;
+    subscription.enable_running = true;
     rc = pm_save_subscribtion_state(test_ctx->pm_ctx, &test_ctx->user_cred, "example-module", &subscription, true);
+    subscription.enable_running = false;
     assert_int_equal(SR_ERR_OK, rc);
 
     subscription.event_type = SR__NOTIFICATION_EVENT__FEATURE_ENABLE_EV;
@@ -167,6 +174,11 @@ pm_subscription_test(void **state)
     }
     free(subscriptions);
 
+    /* retrieve module info */
+    rc = pm_get_module_info(test_ctx->pm_ctx, "example-module", &running_enabled, &features, &feature_cnt);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_true(running_enabled);
+
     /* remove subscriptions for destination 1 */
     subscription.dst_address = "/tmp/test-subscription-address1.sock";
     subscription.event_type = SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV;
@@ -184,6 +196,11 @@ pm_subscription_test(void **state)
     /* remove subscriptions for destination 2 */
     rc = pm_delete_subscriptions_for_destination(test_ctx->pm_ctx, "example-module", "/tmp/test-subscription-address2.sock");
     assert_int_equal(SR_ERR_OK, rc);
+
+    /* retrieve module info */
+    rc = pm_get_module_info(test_ctx->pm_ctx, "example-module", &running_enabled, &features, &feature_cnt);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_false(running_enabled);
 }
 
 int

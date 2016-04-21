@@ -100,6 +100,12 @@ module sysrepo-persistent-data {
           type string;
           description "XPath of the subtree where the subscription is active.";
         }
+
+        leaf enable-running {
+          type empty;
+          description "If set, the subscription enables specified subtree in
+          the running datastore.";
+        }
       }
     }
   }

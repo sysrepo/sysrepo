@@ -262,7 +262,7 @@ np_cleanup(np_ctx_t *np_ctx)
 
 int
 np_notification_subscribe(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, Sr__NotificationEvent event_type,
-        const char *dst_address, uint32_t dst_id, const char *module_name, const char *xpath)
+        const char *dst_address, uint32_t dst_id, const char *module_name, const char *xpath, const bool enable_running)
 {
     np_subscription_t *subscription = NULL;
     np_subscription_t **subscriptions_tmp = NULL;
@@ -285,6 +285,7 @@ np_notification_subscribe(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, Sr__Not
     subscription->dst_id = dst_id;
     subscription->dst_address = strdup(dst_address);
     CHECK_NULL_NOMEM_GOTO(subscription->dst_address, rc, cleanup);
+    subscription->enable_running = enable_running;
 
     /* save the new subscription */
     if (SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV == event_type) {

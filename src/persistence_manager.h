@@ -77,12 +77,14 @@ int pm_save_feature_state(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const c
  *
  * @param[in] pm_ctx Persistence Manager context acquired by ::pm_init call.
  * @param[in] module_name Name of the module.
+ * @param[out] running_enabled TRUE if running datastore is enabled by some of the subscriptions.
  * @param[out] features Array of enabled features.
  * @param[out] feature_cnt Number of features in returned array.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int pm_get_features(pm_ctx_t *pm_ctx, const char *module_name, char ***features, size_t *feature_cnt);
+int pm_get_module_info(pm_ctx_t *pm_ctx, const char *module_name,
+        bool *running_enabled, char ***features, size_t *feature_cnt);
 
 /**
  * @brief Saves/deletes the subscription in module's persistent storage.

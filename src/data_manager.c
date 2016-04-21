@@ -32,6 +32,7 @@
 #include "data_manager.h"
 #include "sr_common.h"
 #include "rp_dt_edit.h"
+#include "rp_dt_xpath.h"
 #include "access_control.h"
 #include "notification_processor.h"
 #include "persistence_manager.h"
@@ -76,7 +77,7 @@ typedef struct dm_ctx_s {
  */
 typedef struct dm_session_s {
     sr_datastore_t datastore;           /**< datastore to which the session is tied */
-    const ac_ucred_t *user_credentails; /**< credentials of the user who this session belongs to */
+    const ac_ucred_t *user_credentials; /**< credentials of the user who this session belongs to */
     sr_btree_t *session_modules;        /**< binary holding session copies of data models */
     char *error_msg;                    /**< description of the last error */
     char *error_xpath;                  /**< xpath of the last error if applicable */
@@ -188,12 +189,17 @@ dm_load_schema_file(dm_ctx_t *dm_ctx, const char *dir_name, const char *file_nam
     CHECK_NULL_ARG3(dm_ctx, dir_name, file_name);
     const struct lys_module *module = NULL;
     char *schema_filename = NULL;
-    int rc = sr_str_join(dir_name, file_name, &schema_filename);
+    char **features = NULL;
+    size_t feature_cnt = 0;
+    bool running_enabled = false;
+    int rc = SR_ERR_OK;
+
+    rc = sr_str_join(dir_name, file_name, &schema_filename);
     if (SR_ERR_OK != rc) {
         return SR_ERR_NOMEM;
     }
 
-    /* load data tree */
+    /* load schema tree */
     pthread_rwlock_wrlock(&dm_ctx->lyctx_lock);
     module = lys_parse_path(dm_ctx->ly_ctx, schema_filename, LYS_IN_YIN);
     free(schema_filename);
@@ -204,11 +210,10 @@ dm_load_schema_file(dm_ctx_t *dm_ctx, const char *dir_name, const char *file_nam
     }
     pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
 
-    /* activate enabled features */
-    char **features = NULL;
-    size_t feature_cnt = 0;
-    rc = pm_get_features(dm_ctx->pm_ctx, module->name, &features, &feature_cnt);
+    /* load module's persistent data */
+    rc = pm_get_module_info(dm_ctx->pm_ctx, module->name, &running_enabled, &features, &feature_cnt);
     if (SR_ERR_OK == rc) {
+        /* enable active features */
         for (size_t i = 0; i < feature_cnt; i++) {
             rc = dm_feature_enable(dm_ctx, module->name, features[i], true);
             if (SR_ERR_OK != rc) {
@@ -217,6 +222,10 @@ dm_load_schema_file(dm_ctx_t *dm_ctx, const char *dir_name, const char *file_nam
             free(features[i]);
         }
         free(features);
+    }
+    if (SR_ERR_OK == rc && running_enabled) {
+        /* enable running datastore */
+        rc = dm_enable_module_runnig(dm_ctx, NULL, module->name);// TODO
     }
 
     return SR_ERR_OK;
@@ -374,7 +383,7 @@ dm_load_data_tree(dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, const struct l
     rc = sr_get_data_file_name(dm_ctx->data_search_dir, module->name, ds, &data_filename);
     CHECK_RC_LOG_RETURN(rc, "Get data_filename failed for %s", module->name);
 
-    ac_set_user_identity(dm_ctx->ac_ctx, dm_session_ctx->user_credentails);
+    ac_set_user_identity(dm_ctx->ac_ctx, dm_session_ctx->user_credentials);
 
     int fd = open(data_filename, O_RDONLY);
 
@@ -588,7 +597,7 @@ dm_lock_module(dm_ctx_t *dm_ctx, dm_session_t *session, char *modul_name)
     }
 
     /* switch identity */
-    ac_set_user_identity(dm_ctx->ac_ctx, session->user_credentails);
+    ac_set_user_identity(dm_ctx->ac_ctx, session->user_credentials);
 
     rc = dm_lock_file(&dm_ctx->lock_ctx, lock_file);
 
@@ -1015,7 +1024,7 @@ dm_session_start(const dm_ctx_t *dm_ctx, const ac_ucred_t *user_credentials, con
     dm_session_t *session_ctx = NULL;
     session_ctx = calloc(1, sizeof(*session_ctx));
     CHECK_NULL_NOMEM_RETURN(session_ctx);
-    session_ctx->user_credentails = user_credentials;
+    session_ctx->user_credentials = user_credentials;
     session_ctx->datastore = ds;
 
     int rc = SR_ERR_OK;
@@ -1483,7 +1492,7 @@ dm_update_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, struct ly_
     while (NULL != (info = sr_btree_get_at(session->session_modules, i++))) {
         rc = sr_get_data_file_name(dm_ctx->data_search_dir, info->module->name, session->datastore, &file_name);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Get data file name failed");
-        ac_set_user_identity(dm_ctx->ac_ctx, session->user_credentails);
+        ac_set_user_identity(dm_ctx->ac_ctx, session->user_credentials);
         fd = open(file_name, O_RDONLY);
         ac_unset_user_identity(dm_ctx->ac_ctx);
 
@@ -1611,7 +1620,7 @@ dm_commit_prepare_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_con
     CHECK_NULL_NOMEM_GOTO(c_ctx->existed, rc, cleanup);
 
     /* create commit session */
-    rc = dm_session_start(dm_ctx, session->user_credentails, session->datastore, &c_ctx->session);
+    rc = dm_session_start(dm_ctx, session->user_credentials, session->datastore, &c_ctx->session);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Commit session initialization failed");
 
     c_ctx->up_to_date_models = ly_set_new();
@@ -1654,7 +1663,7 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
     }
     i = 0;
 
-    ac_set_user_identity(dm_ctx->ac_ctx, session->user_credentails);
+    ac_set_user_identity(dm_ctx->ac_ctx, session->user_credentials);
 
     while (NULL != (info = sr_btree_get_at(session->session_modules, i++))) {
         if (!info->modified) {
@@ -1886,7 +1895,7 @@ dm_uninstall_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revis
 static int
 dm_copy_config(dm_ctx_t *dm_ctx, dm_session_t *session, const struct ly_set *modules, sr_datastore_t src, sr_datastore_t dst)
 {
-    CHECK_NULL_ARG2(dm_ctx, session);
+    CHECK_NULL_ARG2(dm_ctx, modules);
     int rc = SR_ERR_OK;
     dm_session_t *src_session = NULL;
     dm_session_t *dst_session = NULL;
@@ -1906,18 +1915,18 @@ dm_copy_config(dm_ctx_t *dm_ctx, dm_session_t *session, const struct ly_set *mod
     CHECK_NULL_NOMEM_GOTO(fds, rc, cleanup);
 
     /* create source session */
-    rc = dm_session_start(dm_ctx, session->user_credentails, src, &src_session);
+    rc = dm_session_start(dm_ctx, (session != NULL ? session->user_credentials : NULL), src, &src_session);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Creating of temporary session failed");
 
     /* create destination session */
-    rc = dm_session_start(dm_ctx, session->user_credentails, dst, &dst_session);
+    rc = dm_session_start(dm_ctx, (session != NULL ? session->user_credentials : NULL), dst, &dst_session);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Creating of temporary session failed");
 
     for (size_t i = 0; i < modules->number; i++){
         module = (struct lys_module *) modules->set.g[i];
         /* lock module in source ds */
         rc = dm_lock_module(dm_ctx, src_session, (char *) module->name);
-        if (SR_ERR_LOCKED == rc && src == session->datastore) {
+        if (SR_ERR_LOCKED == rc && NULL != session && src == session->datastore) {
             /* check if the lock is hold by session that issued copy-config */
             rc = dm_lock_module(dm_ctx, session, (char *) module->name);
         }
@@ -1925,7 +1934,7 @@ dm_copy_config(dm_ctx_t *dm_ctx, dm_session_t *session, const struct ly_set *mod
 
         /* lock module in destination */
         rc = dm_lock_module(dm_ctx, dst_session, (char *) module->name);
-        if (SR_ERR_LOCKED == rc && dst == session->datastore) {
+        if (SR_ERR_LOCKED == rc && NULL != session && dst == session->datastore) {
             /* check if the lock is hold by session that issued copy-config */
             rc = dm_lock_module(dm_ctx, session, (char *) module->name);
         }
@@ -1939,9 +1948,13 @@ dm_copy_config(dm_ctx_t *dm_ctx, dm_session_t *session, const struct ly_set *mod
         rc = sr_get_data_file_name(dm_ctx->data_search_dir, module->name, dst_session->datastore, &file_name);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Get data file name failed");
 
-        ac_set_user_identity(dm_ctx->ac_ctx, session->user_credentails);
+        if (NULL != session) {
+            ac_set_user_identity(dm_ctx->ac_ctx, session->user_credentials);
+        }
         fds[opened_files] = open(file_name, O_RDWR | O_TRUNC);
-        ac_unset_user_identity(dm_ctx->ac_ctx);
+        if (NULL != session) {
+            ac_unset_user_identity(dm_ctx->ac_ctx);
+        }
         if (-1 == fds[opened_files]) {
             SR_LOG_ERR("File %s can not be opened", file_name);
             free(file_name);
@@ -1996,9 +2009,40 @@ dm_has_enabled_subtree(dm_ctx_t *ctx, const char *module_name, struct lys_module
 }
 
 int
+dm_enable_module_runnig(dm_ctx_t *ctx, dm_session_t *session, const char *module_name)
+{
+    CHECK_NULL_ARG2(ctx, module_name);
+    struct lys_module *module = NULL;
+    bool module_enabled = false;
+    char xpath[PATH_MAX] = { 0, };
+    int rc = SR_ERR_OK;
+
+    rc = dm_has_enabled_subtree(ctx, module_name, &module, &module_enabled);
+    if (SR_ERR_OK == rc && !module_enabled) {
+        /* if not already enabled, copy the data from startup */
+        rc = dm_copy_module(ctx, session, module_name, SR_DS_STARTUP, SR_DS_RUNNING);
+    }
+    if (SR_ERR_OK == rc) {
+        /* enable each subtree within the module */
+        struct lys_node *node = module->data;
+        while (NULL != node) {
+            if ((LYS_CONTAINER | LYS_LIST | LYS_LEAF | LYS_LEAFLIST) & node->nodetype) {
+                snprintf(xpath, PATH_MAX, "/%s:%s", node->module->name, node->name);
+                rc = rp_dt_enable_xpath(ctx, session, xpath);
+                if (SR_ERR_OK != rc) {
+                    break;
+                }
+            }
+            node = node->next;
+        }
+    }
+    return rc;
+}
+
+int
 dm_copy_module(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module_name, sr_datastore_t src, sr_datastore_t dst)
 {
-    CHECK_NULL_ARG3(dm_ctx, session, module_name);
+    CHECK_NULL_ARG2(dm_ctx, module_name);
     struct ly_set *module_set = NULL;
     const struct lys_module *module = NULL;
     int rc = SR_ERR_OK;

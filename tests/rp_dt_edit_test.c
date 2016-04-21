@@ -39,7 +39,7 @@
 /* Must be updated with data_manager.c*/
 typedef struct dm_session_s {
     sr_datastore_t datastore;           /**< datastore to which the session is tied */
-    const ac_ucred_t *user_credentails; /**< credentials of the user who this session belongs to */
+    const ac_ucred_t *user_credentials; /**< credentials of the user who this session belongs to */
     sr_btree_t *session_modules;        /**< binary holding session copies of data models */
     char *error_msg;                    /**< description of the last error */
     char *error_xpath;                  /**< xpath of the last error if applicable */

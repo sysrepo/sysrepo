@@ -814,8 +814,6 @@ rp_subscribe_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr
 {
     Sr__Msg *resp = NULL, *notif = NULL;
     Sr__SubscribeReq *subscribe_req = NULL;
-    struct lys_module *module = NULL;
-    char xpath[PATH_MAX] = { 0, };
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->subscribe_req);
@@ -833,32 +831,12 @@ rp_subscribe_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr
     /* subscribe to the notification */
     rc = np_notification_subscribe(rp_ctx->np_ctx, session->user_credentials, subscribe_req->event,
             subscribe_req->destination, subscribe_req->subscription_id,
-            subscribe_req->module_name, subscribe_req->xpath);
+            subscribe_req->module_name, subscribe_req->xpath, subscribe_req->enable_running);
 
-    if (SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV == subscribe_req->event &&
-            subscribe_req->enable_running) {
+    if ((SR_ERR_OK == rc) &&
+            (SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV == subscribe_req->event) && (subscribe_req->enable_running)) {
         /* enable the module in running config */
-        bool module_enabled = false;
-        rc = dm_has_enabled_subtree(rp_ctx->dm_ctx, subscribe_req->module_name, &module, &module_enabled);
-        if (SR_ERR_OK == rc && !module_enabled) {
-            /* if not already enabled, copy the data from startup */
-            rc = dm_copy_module(rp_ctx->dm_ctx, session->dm_session, subscribe_req->module_name,
-                    SR_DS_STARTUP, SR_DS_RUNNING);
-        }
-        if (SR_ERR_OK == rc) {
-            /* enable each subtree within the module */
-            struct lys_node *node = module->data;
-            while (NULL != node) {
-                if ((LYS_CONTAINER | LYS_LIST | LYS_LEAF | LYS_LEAFLIST) & node->nodetype) {
-                    snprintf(xpath, PATH_MAX, "/%s:%s", node->module->name, node->name);
-                    rc = rp_dt_enable_xpath(rp_ctx->dm_ctx, session->dm_session, xpath);
-                    if (SR_ERR_OK != rc) {
-                        break;
-                    }
-                }
-                node = node->next;
-            }
-        }
+        rc = dm_enable_module_runnig(rp_ctx->dm_ctx, session->dm_session, subscribe_req->module_name);
     }
 
     /* set response code */
