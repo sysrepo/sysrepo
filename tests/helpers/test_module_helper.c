@@ -163,3 +163,36 @@ createDataTreeExampleModule()
     lyd_free_withsiblings(root);
     ly_ctx_destroy(ctx, NULL);
 }
+
+void
+createDataTreeLargeExampleModule(int list_count)
+{
+    struct ly_ctx *ctx = NULL;
+    struct lyd_node *root = NULL, *node = NULL;
+
+    ctx = ly_ctx_new(TEST_SCHEMA_SEARCH_DIR);
+    assert_non_null(ctx);
+
+    const struct lys_module *module = ly_ctx_load_module(ctx, "example-module", NULL);
+    assert_non_null(module);
+
+#define MAX_XP_LEN 100
+    const char *template = "/example-module:container/list[key1='k1%d'][key2='k2%d']/leaf";
+    char xpath[MAX_XP_LEN] = {0,};
+
+
+    for (int i = 0; i < list_count; i++){
+        snprintf(xpath, MAX_XP_LEN, template, i, i);
+        node = lyd_new_path(root, ctx, xpath, "Leaf value", 0);
+        if (NULL == root) {
+            root = node;
+        }
+    }
+    lyd_new_path(root, ctx, "/example-module:container/list[key1='key1'][key2='key2']/leaf", "Leaf value", 0);
+
+    assert_int_equal(0, lyd_validate(&root, LYD_OPT_STRICT | LYD_OPT_CONFIG));
+    assert_int_equal(SR_ERR_OK, sr_save_data_tree_file(EXAMPLE_MODULE_DATA_FILE_NAME, root));
+
+    lyd_free_withsiblings(root);
+    ly_ctx_destroy(ctx, NULL);
+}

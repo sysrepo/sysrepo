@@ -37,10 +37,12 @@ rp_dt_find_nodes(struct lyd_node *data_tree, const char *xpath, bool check_enabl
     }
 
     if (check_enable) {
-        for (size_t i = 0; i < res->number; i++) {
+        for (int i = res->number - 1; i>=0; i--) {
             if (!dm_is_enabled_check_recursively(res->set.d[i]->schema)) {
-                ly_set_rm_index(res, i);
-                i--; /* last item was moved to the index of remove node */
+                memmove(&res->set.d[i],
+                    &res->set.d[i+1],
+                    (res->number - i - 1) * sizeof(*res->set.d));
+                res->number--;
             }
         }
     }
