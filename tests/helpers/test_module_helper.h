@@ -38,6 +38,11 @@ void createDataTreeTestModule();
  */
 void createDataTreeExampleModule();
 
+/**
+ * Creates example-module data tree with thousands instances of a list.
+ */
+void createDataTreeLargeExampleModule();
+
 #define XP_TEST_MODULE_ENUM "/test-module:main/enum"
 #define XP_TEST_MODULE_ENUM_VALUE "maybe"
 
