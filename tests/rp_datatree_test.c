@@ -711,6 +711,120 @@ get_nodes_with_opts_cache_missed_test(void **state)
     test_rp_session_cleanup(ctx, ses_ctx);
 }
 
+void
+default_nodes_test(void **state)
+{
+    int rc = 0;
+    rp_ctx_t *ctx = *state;
+    rp_session_t *ses_ctx = NULL;
+
+    test_rp_sesssion_create(ctx, SR_DS_STARTUP, &ses_ctx);
+    sr_val_t *val = NULL;
+    sr_error_info_t *errors = NULL;
+    size_t e_cnt = 0;
+
+    rc = rp_dt_delete_item_wrapper(ctx, ses_ctx, "/test-module:with_def", SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+    rc = rp_dt_commit(ctx, ses_ctx, &errors, &e_cnt);
+    assert_int_equal(SR_ERR_OK, rc);
+
+
+    /* leaf without default value */
+    rc = rp_dt_get_value_wrapper(ctx, ses_ctx, "/test-module:main/string", &val);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(val);
+    assert_false(val->dflt);
+    sr_free_val(val);
+
+    /* list with default value */
+    rc = rp_dt_set_item_wrapper(ctx, ses_ctx, "/test-module:with_def[name='withdef']", NULL, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_get_value_wrapper(ctx, ses_ctx, "/test-module:with_def[name='withdef']/num", &val);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(val);
+    assert_true(val->dflt);
+    sr_free_val(val);
+
+    /* list with non-default value */
+    sr_val_t *v = NULL;
+    v = calloc(1, sizeof(*v));
+    assert_non_null(v);
+    v->type = SR_INT8_T;
+    v->data.int8_val = 9;
+
+    rc = rp_dt_set_item_wrapper(ctx, ses_ctx, "/test-module:with_def[name='withother']/num", v, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_get_value_wrapper(ctx, ses_ctx, "/test-module:with_def[name='withother']/num", &val);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(val);
+    assert_false(val->dflt);
+    sr_free_val(val);
+
+    /* list with explicitly set default value */
+    v = NULL;
+    v = calloc(1, sizeof(*v));
+    assert_non_null(v);
+    v->type = SR_INT8_T;
+    v->data.int8_val = 0;
+
+    rc = rp_dt_set_item_wrapper(ctx, ses_ctx, "/test-module:with_def[name='withexpl']/num", v, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_get_value_wrapper(ctx, ses_ctx, "/test-module:with_def[name='withexpl']/num", &val);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(val);
+    assert_false(val->dflt);
+    sr_free_val(val);
+
+    rc = rp_dt_commit(ctx, ses_ctx, &errors, &e_cnt);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* check after commit */
+    rc = rp_dt_get_value_wrapper(ctx, ses_ctx, "/test-module:with_def[name='withdef']/num", &val);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(val);
+    assert_true(val->dflt);
+    sr_free_val(val);
+
+    rc = rp_dt_get_value_wrapper(ctx, ses_ctx, "/test-module:with_def[name='withother']/num", &val);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(val);
+    assert_false(val->dflt);
+    sr_free_val(val);
+
+    rc = rp_dt_get_value_wrapper(ctx, ses_ctx, "/test-module:with_def[name='withexpl']/num", &val);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(val);
+    assert_false(val->dflt);
+    sr_free_val(val);
+
+    /* explicitly overwrite default*/
+    v = NULL;
+    v = calloc(1, sizeof(*v));
+    assert_non_null(v);
+    v->type = SR_INT8_T;
+    v->data.int8_val = 0;
+
+    rc = rp_dt_set_item_wrapper(ctx, ses_ctx, "/test-module:with_def[name='withdef']/num", v, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_get_value_wrapper(ctx, ses_ctx, "/test-module:with_def[name='withdef']/num", &val);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(val);
+    assert_false(val->dflt);
+    sr_free_val(val);
+
+    /* clean up*/
+    rc = rp_dt_delete_item_wrapper(ctx, ses_ctx, "/test-module:with_def", SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+    rc = rp_dt_commit(ctx, ses_ctx, &errors, &e_cnt);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    test_rp_session_cleanup(ctx, ses_ctx);
+}
+
 int main(){
 
     const struct CMUnitTest tests[] = {
@@ -725,6 +839,7 @@ int main(){
             cmocka_unit_test(get_values_opts_test),
             cmocka_unit_test(get_value_wrapper_test),
             cmocka_unit_test(get_nodes_with_opts_cache_missed_test),
+            cmocka_unit_test(default_nodes_test),
     };
     return cmocka_run_group_tests(tests, setup, teardown);
 }

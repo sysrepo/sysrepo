@@ -228,6 +228,7 @@ rp_dt_get_value_from_node(struct lyd_node *node, sr_val_t **value)
     switch (node->schema->nodetype) {
     case LYS_LEAF:
         data_leaf = (struct lyd_node_leaf_list *) node;
+        val->dflt = node->dflt;
 
         val->type = sr_libyang_type_to_sysrepo(data_leaf->value_type);
 

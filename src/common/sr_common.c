@@ -1374,6 +1374,7 @@ sr_set_val_t_value_in_gpb(const sr_val_t *value, Sr__Value *gpb_value){
         }
     }
 
+    gpb_value->dflt = value->dflt;
     switch (value->type) {
     case SR_LIST_T:
     case SR_CONTAINER_T:
@@ -1589,6 +1590,7 @@ sr_set_gpb_value_in_val_t(const Sr__Value *gpb_value, sr_val_t *value){
         SR_LOG_ERR_MSG("Memory allocation failed");
         return  SR_ERR_NOMEM;
     }
+    value->dflt = gpb_value->dflt;
 
     switch (gpb_value->type) {
     case SR__VALUE__TYPES__LIST:
@@ -2425,7 +2427,7 @@ int
 sr_copy_first_ns(const char *xpath, char **namespace)
 {
     CHECK_NULL_ARG2(xpath, namespace);
-    
+
     char *colon_pos = strchr(xpath, ':');
     if (xpath[0] != '/' || NULL == colon_pos) {
         return SR_ERR_INVAL_ARG;
@@ -2439,7 +2441,7 @@ int
 sr_cmp_first_ns(const char *xpath, const char *ns)
 {
     size_t cmp_len = 0;
-    
+
     if (NULL == xpath || xpath[0] != '/') {
         xpath = "";
     }
@@ -2450,11 +2452,11 @@ sr_cmp_first_ns(const char *xpath, const char *ns)
             xpath++; /* skip leading slash */
         }
     }
-    
+
     if (NULL == ns) {
         ns = "";
     }
-    
+
     return strncmp(xpath, ns, cmp_len);
-    
+
 }
