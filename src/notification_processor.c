@@ -26,6 +26,7 @@
 
 #include "sr_common.h"
 #include "rp_internal.h"
+#include "persistence_manager.h"
 #include "notification_processor.h"
 
 /**

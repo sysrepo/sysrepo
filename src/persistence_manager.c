@@ -186,7 +186,7 @@ pm_ly_log_cb(LY_LOG_LEVEL level, const char *msg, const char *path)
  */
 static int
 pm_save_persistent_data(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *module_name,
-        bool add, const char *xpath, const char *value)
+        bool add, const char *xpath, const char *value, struct lyd_node **data_tree_p)
 {
     char *data_filename = NULL;
     struct lyd_node *data_tree = NULL, *new_node = NULL;
@@ -247,8 +247,15 @@ pm_save_persistent_data(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const cha
         }
     }
 
-    /* save the changes */
+    /* save the changes to the persist file */
     rc = pm_save_data_tree(pm_ctx, fd, data_tree);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to save persist data tree.");
+
+    /* if data tree was requested, do not free and return it */
+    if (NULL != data_tree_p) {
+        *data_tree_p = data_tree;
+        data_tree = NULL;
+    }
 
 cleanup:
     if (NULL != node_set) {
@@ -373,7 +380,7 @@ pm_save_feature_state(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char 
         /* enable the feature */
         snprintf(xpath, PATH_MAX, PM_XPATH_FEATURES, module_name);
 
-        rc = pm_save_persistent_data(pm_ctx, user_cred, module_name, true, xpath, feature_name);
+        rc = pm_save_persistent_data(pm_ctx, user_cred, module_name, true, xpath, feature_name, NULL);
 
         if (SR_ERR_OK == rc) {
             SR_LOG_DBG("Feature '%s' successfully enabled in '%s' persist data tree.", feature_name, module_name);
@@ -382,7 +389,7 @@ pm_save_feature_state(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char 
         /* disable the feature */
         snprintf(xpath, PATH_MAX, PM_XPATH_FEATURES_BY_NAME, module_name, feature_name);
 
-        rc = pm_save_persistent_data(pm_ctx, user_cred, module_name, false, xpath, NULL);
+        rc = pm_save_persistent_data(pm_ctx, user_cred, module_name, false, xpath, NULL, NULL);
 
         if (SR_ERR_OK == rc) {
             SR_LOG_DBG("Feature '%s' successfully disabled in '%s' persist file.", feature_name, module_name);
@@ -502,7 +509,7 @@ pm_save_subscribtion_state(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const 
             snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTION, module_name,
                     sr_event_gpb_to_str(subscription->event_type), subscription->dst_address, subscription->dst_id);
         }
-        rc = pm_save_persistent_data(pm_ctx, user_cred, module_name, true, xpath, NULL);
+        rc = pm_save_persistent_data(pm_ctx, user_cred, module_name, true, xpath, NULL, NULL);
 
         if (SR_ERR_OK == rc) {
             SR_LOG_DBG("Subscription entry successfully added into '%s' persist data tree.", module_name);
@@ -512,7 +519,7 @@ pm_save_subscribtion_state(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const 
         snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTION, module_name,
                 sr_event_gpb_to_str(subscription->event_type), subscription->dst_address, subscription->dst_id);
 
-        rc = pm_save_persistent_data(pm_ctx, user_cred, module_name, false, xpath, NULL);
+        rc = pm_save_persistent_data(pm_ctx, user_cred, module_name, false, xpath, NULL, /* TODO */NULL);
 
         if (SR_ERR_OK == rc) {
             SR_LOG_DBG("Subscription entry successfully removed from '%s' persist file.", module_name);
@@ -533,7 +540,7 @@ pm_delete_subscriptions_for_destination(pm_ctx_t *pm_ctx, const char *module_nam
     snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTIONS_BY_DST_ADDR, module_name, dst_address);
 
     /* remove the subscriptions */
-    rc = pm_save_persistent_data(pm_ctx, NULL, module_name, false, xpath, NULL);
+    rc = pm_save_persistent_data(pm_ctx, NULL, module_name, false, xpath, NULL, /* TODO */NULL);
 
     if (SR_ERR_OK == rc) {
         SR_LOG_DBG("Subscription entries for destination '%s' successfully removed from '%s' persist file.",
