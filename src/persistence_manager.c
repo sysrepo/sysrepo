@@ -29,6 +29,7 @@
 
 #include "sr_common.h"
 #include "access_control.h"
+#include "rp_internal.h"
 #include "persistence_manager.h"
 
 #define PM_SCHEMA_FILE "sysrepo-persistent-data.yin"  /**< Schema of module's persistent data. */
@@ -52,7 +53,7 @@
  * @brief Persistence Manager context.
  */
 typedef struct pm_ctx_s {
-    ac_ctx_t *ac_ctx;                 /**< Access Control module context. */
+    rp_ctx_t *rp_ctx;                 /**< Request Processor context. */
     struct ly_ctx *ly_ctx;            /**< libyang context used locally in PM. */
     const struct lys_module *schema;  /**< Schema tree of sysrepo-persistent-data YANG. */
     const char *data_search_dir;      /**< Directory containing the data files. */
@@ -106,17 +107,17 @@ pm_load_data_tree(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *mod
     int fd = -1;
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG4(pm_ctx, module_name, data_filename, data_tree);
+    CHECK_NULL_ARG5(pm_ctx, pm_ctx->rp_ctx, module_name, data_filename, data_tree);
 
     /* open the file as the proper user */
     if (NULL != user_cred) {
-        ac_set_user_identity(pm_ctx->ac_ctx, user_cred);
+        ac_set_user_identity(pm_ctx->rp_ctx->ac_ctx, user_cred);
     }
 
     fd = open(data_filename, (read_only ? O_RDONLY : O_RDWR));
 
     if (NULL != user_cred) {
-        ac_unset_user_identity(pm_ctx->ac_ctx);
+        ac_unset_user_identity(pm_ctx->rp_ctx->ac_ctx);
     }
 
     if (-1 == fd) {
@@ -127,9 +128,9 @@ pm_load_data_tree(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *mod
                 rc = SR_ERR_DATA_MISSING;
             } else {
                 /* create new persist file */
-                ac_set_user_identity(pm_ctx->ac_ctx, user_cred);
+                ac_set_user_identity(pm_ctx->rp_ctx->ac_ctx, user_cred);
                 fd = open(data_filename, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
-                ac_unset_user_identity(pm_ctx->ac_ctx);
+                ac_unset_user_identity(pm_ctx->rp_ctx->ac_ctx);
                 if (-1 == fd) {
                     SR_LOG_ERR("Unable to create new persist data file '%s': %s", data_filename, strerror(errno));
                     rc = SR_ERR_INTERNAL;
@@ -266,20 +267,52 @@ cleanup:
     return rc;
 }
 
+/**
+ * @brief Fills subscription details from libyang's list instance to subscription structure.
+ */
+static int
+pm_subscription_entry_fill(struct lyd_node *node, np_subscription_t *subscription)
+{
+    struct lyd_node_leaf_list *node_ll = NULL;
+
+    CHECK_NULL_ARG(subscription);
+
+    while (NULL != node) {
+        if (NULL != node->schema->name) {
+            node_ll = (struct lyd_node_leaf_list*)node;
+            if (NULL != node_ll->value_str && 0 == strcmp(node->schema->name, "type")) {
+                subscription->event_type = sr_event_str_to_gpb(node_ll->value_str);
+            }
+            if (NULL != node_ll->value_str && 0 == strcmp(node->schema->name, "destination-address")) {
+                subscription->dst_address = strdup(node_ll->value_str);
+                CHECK_NULL_NOMEM_RETURN(subscription->dst_address);
+            }
+            if (NULL != node_ll->value_str && 0 == strcmp(node->schema->name, "destination-id")) {
+                subscription->dst_id = atoi(node_ll->value_str);
+            }
+            if (0 == strcmp(node->schema->name, "enable-running")) {
+                subscription->enable_running = true;
+            }
+            node = node->next;
+        }
+    }
+    return SR_ERR_OK;
+}
+
 int
-pm_init(ac_ctx_t *ac_ctx, const char *schema_search_dir, const char *data_search_dir, pm_ctx_t **pm_ctx)
+pm_init(rp_ctx_t *rp_ctx, const char *schema_search_dir, const char *data_search_dir, pm_ctx_t **pm_ctx)
 {
     pm_ctx_t *ctx = NULL;
     char *schema_filename = NULL;
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG4(ac_ctx, schema_search_dir, data_search_dir, pm_ctx);
+    CHECK_NULL_ARG4(rp_ctx, schema_search_dir, data_search_dir, pm_ctx);
 
     /* allocate and initialize the context */
     ctx = calloc(1, sizeof(*ctx));
     CHECK_NULL_NOMEM_GOTO(ctx, rc, cleanup);
 
-    ctx->ac_ctx = ac_ctx;
+    ctx->rp_ctx = rp_ctx;
     ctx->data_search_dir = strdup(data_search_dir);
     CHECK_NULL_NOMEM_GOTO(ctx->data_search_dir, rc, cleanup);
 
@@ -370,6 +403,7 @@ pm_get_module_info(pm_ctx_t *pm_ctx, const char *module_name,
     char **features = NULL;
     const char *feature_name = NULL;
     size_t feature_cnt = 0;
+    np_subscription_t subscription = { 0, };
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG4(pm_ctx, module_name, features_p, feature_cnt_p);
@@ -415,6 +449,15 @@ pm_get_module_info(pm_ctx_t *pm_ctx, const char *module_name,
     node_set = lyd_get_node(data_tree, xpath);
     if (NULL != node_set && node_set->number > 0) {
         *running_enabled = true;
+
+        /* send HELLO notifications to verify that these subscriptions are still alive */
+        for (size_t i = 0; i < node_set->number; i++) {
+            rc = pm_subscription_entry_fill(node_set->set.d[i]->child, &subscription);
+            if (SR_ERR_OK == rc) {
+                rc = np_hello_notify(pm_ctx->rp_ctx->np_ctx, module_name, subscription.dst_address, subscription.dst_id);
+            }
+            free((void*)subscription.dst_address);
+        }
     }
 
     SR_LOG_DBG("Returning info from '%s' persist file: running ds %s, %zu features enabled.",
@@ -506,9 +549,8 @@ pm_get_subscriptions(pm_ctx_t *pm_ctx, const char *module_name, Sr__Notification
 {
     char *data_filename = NULL;
     char xpath[PATH_MAX] = { 0, };
-    struct lyd_node *data_tree = NULL, *node = NULL;
+    struct lyd_node *data_tree = NULL;
     struct ly_set *node_set = NULL;
-    struct lyd_node_leaf_list *node_ll = NULL;
     np_subscription_t *subscriptions = NULL;
     size_t subscription_cnt = 0;
     int rc = SR_ERR_OK;
@@ -538,23 +580,8 @@ pm_get_subscriptions(pm_ctx_t *pm_ctx, const char *module_name, Sr__Notification
         CHECK_NULL_NOMEM_GOTO(subscriptions, rc, cleanup);
 
         for (size_t i = 0; i < node_set->number; i++) {
-            node = node_set->set.d[i]->child;
-            while (NULL != node) {
-                if (NULL != node->schema->name) {
-                    node_ll = (struct lyd_node_leaf_list*)node;
-                    if (NULL != node_ll->value_str && 0 == strcmp(node->schema->name, "type")) {
-                        subscriptions[subscription_cnt].event_type = sr_event_str_to_gpb(node_ll->value_str);
-                    }
-                    if (NULL != node_ll->value_str && 0 == strcmp(node->schema->name, "destination-address")) {
-                        subscriptions[subscription_cnt].dst_address = strdup(node_ll->value_str);
-                        CHECK_NULL_NOMEM_GOTO(subscriptions[subscription_cnt].dst_address, rc, cleanup);
-                    }
-                    if (NULL != node_ll->value_str && 0 == strcmp(node->schema->name, "destination-id")) {
-                        subscriptions[subscription_cnt].dst_id = atoi(node_ll->value_str);
-                    }
-                    node = node->next;
-                }
-            }
+            rc = pm_subscription_entry_fill(node_set->set.d[i]->child, &subscriptions[subscription_cnt]);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to fill subscription details.");
             subscription_cnt++;
         }
     }

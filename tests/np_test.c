@@ -59,7 +59,7 @@ test_setup(void **state)
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(test_ctx->rp_ctx.ac_ctx);
 
-    rc = pm_init(test_ctx->rp_ctx.ac_ctx,  TEST_INTERNAL_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &test_ctx->rp_ctx.pm_ctx);
+    rc = pm_init(&test_ctx->rp_ctx,  TEST_INTERNAL_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &test_ctx->rp_ctx.pm_ctx);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(test_ctx->rp_ctx.pm_ctx);
 
@@ -261,12 +261,30 @@ np_negative_subscription_test(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 }
 
+/*
+ * Hello notification test.
+ */
+static void
+np_hello_notify_test(void **state)
+{
+    int rc = SR_ERR_OK;
+    test_ctx_t *test_ctx = *state;
+    assert_non_null(test_ctx);
+    np_ctx_t *np_ctx = test_ctx->rp_ctx.np_ctx;
+    assert_non_null(np_ctx);
+
+    rc = np_hello_notify(np_ctx, "example-module", "/tmp/test-adddress.sock", 12345);
+    assert_int_equal(rc, SR_ERR_OK);
+}
+
 int
 main() {
     const struct CMUnitTest tests[] = {
             cmocka_unit_test_setup_teardown(np_tmp_subscription_test, test_setup, test_teardown),
             cmocka_unit_test_setup_teardown(np_persistent_subscription_test, test_setup, test_teardown),
             cmocka_unit_test_setup_teardown(np_negative_subscription_test, test_setup, test_teardown),
+            cmocka_unit_test_setup_teardown(np_hello_notify_test, test_setup, test_teardown),
+
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);

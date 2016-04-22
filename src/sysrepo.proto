@@ -620,7 +620,8 @@ message Notification {
   required NotificationEvent event = 1;
   required string destination_address = 2;
   required string source_address = 3;
-  required uint32 subscription_id = 4;
+  required uint32 source_pid = 4;
+  required uint32 subscription_id = 5;
 
   optional ModuleInstallNotification module_install_notif = 10;
   optional FeatureEnableNotification feature_enable_notif = 11;

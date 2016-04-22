@@ -42,14 +42,14 @@ typedef struct pm_ctx_s pm_ctx_t;
 /**
  * @brief Initializes a Persistence Manager instance.
  *
- * @param[in] ac_ctx Access Control module context.
+ * @param[in] rp_ctx Request Processor context.
  * @param[in] schema_search_dir Directory containing PM's YANG module schema.
  * @param[in] data_search_dir Directory containing the data files.
  * @param[out] pm_ctx Allocated Persistence Manager context that can be used in subsequent PM API calls.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int pm_init(ac_ctx_t *ac_ctx, const char *schema_search_dir, const char *data_search_dir, pm_ctx_t **pm_ctx);
+int pm_init(rp_ctx_t *rp_ctx, const char *schema_search_dir, const char *data_search_dir, pm_ctx_t **pm_ctx);
 
 /**
  * @brief Cleans up the Persistence Manager instance.

@@ -812,7 +812,7 @@ rp_unlock_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__M
 static int
 rp_subscribe_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
 {
-    Sr__Msg *resp = NULL, *notif = NULL;
+    Sr__Msg *resp = NULL;
     Sr__SubscribeReq *subscribe_req = NULL;
     int rc = SR_ERR_OK;
 
@@ -836,7 +836,7 @@ rp_subscribe_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr
     if ((SR_ERR_OK == rc) &&
             (SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV == subscribe_req->event) && (subscribe_req->enable_running)) {
         /* enable the module in running config */
-        rc = dm_enable_module_runnig(rp_ctx->dm_ctx, session->dm_session, subscribe_req->module_name);
+        rc = dm_enable_module_runnig(rp_ctx->dm_ctx, session->dm_session, subscribe_req->module_name, NULL);
     }
 
     /* set response code */
@@ -852,13 +852,8 @@ rp_subscribe_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr
 
     if (SR_ERR_OK == rc) {
         /* send initial HELLO notification to test the subscription */
-        SR_LOG_DBG("Sending initial HELLO notification to '%s' @ %"PRIu32".",
+        rc = np_hello_notify(rp_ctx->np_ctx, subscribe_req->module_name,
                 subscribe_req->destination, subscribe_req->subscription_id);
-        rc = sr_pb_notif_alloc(SR__NOTIFICATION_EVENT__HELLO_EV,
-                subscribe_req->destination, subscribe_req->subscription_id, &notif);
-        if (SR_ERR_OK == rc) {
-            rc = cm_msg_send(rp_ctx->cm_ctx, notif);
-        }
     }
 
     return rc;
@@ -1241,7 +1236,7 @@ rp_init(cm_ctx_t *cm_ctx, rp_ctx_t **rp_ctx_p)
     }
 
     /* initialize Persistence Manager */
-    rc = pm_init(ctx->ac_ctx, SR_INTERNAL_SCHEMA_SEARCH_DIR, SR_DATA_SEARCH_DIR, &ctx->pm_ctx);
+    rc = pm_init(ctx, SR_INTERNAL_SCHEMA_SEARCH_DIR, SR_DATA_SEARCH_DIR, &ctx->pm_ctx);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Persistence Manager initialization failed.");
         goto cleanup;

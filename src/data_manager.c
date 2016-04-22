@@ -225,7 +225,7 @@ dm_load_schema_file(dm_ctx_t *dm_ctx, const char *dir_name, const char *file_nam
     }
     if (SR_ERR_OK == rc && running_enabled) {
         /* enable running datastore */
-        rc = dm_enable_module_runnig(dm_ctx, NULL, module->name);// TODO
+        rc = dm_enable_module_runnig(dm_ctx, NULL, module->name, module);
     }
 
     return SR_ERR_OK;
@@ -1984,7 +1984,7 @@ cleanup:
 }
 
 int
-dm_has_enabled_subtree(dm_ctx_t *ctx, const char *module_name, struct lys_module **module, bool *res)
+dm_has_enabled_subtree(dm_ctx_t *ctx, const char *module_name, const struct lys_module **module, bool *res)
 {
    CHECK_NULL_ARG3(ctx, module_name, res);
    int rc = SR_ERR_OK;
@@ -2009,21 +2009,19 @@ dm_has_enabled_subtree(dm_ctx_t *ctx, const char *module_name, struct lys_module
 }
 
 int
-dm_enable_module_runnig(dm_ctx_t *ctx, dm_session_t *session, const char *module_name)
+dm_enable_module_runnig(dm_ctx_t *ctx, dm_session_t *session, const char *module_name, const struct lys_module *module)
 {
     CHECK_NULL_ARG2(ctx, module_name);
-    struct lys_module *module = NULL;
     bool module_enabled = false;
     char xpath[PATH_MAX] = { 0, };
     int rc = SR_ERR_OK;
 
-    rc = dm_has_enabled_subtree(ctx, module_name, &module, &module_enabled);
-    if (SR_ERR_OK == rc && !module_enabled) {
-        /* if not already enabled, copy the data from startup */
-        rc = dm_copy_module(ctx, session, module_name, SR_DS_STARTUP, SR_DS_RUNNING);
+    if (NULL == module) {
+        /* if module is not known, get it and check if it is already enabled */
+        rc = dm_has_enabled_subtree(ctx, module_name, &module, &module_enabled);
     }
-    if (SR_ERR_OK == rc) {
-        /* enable each subtree within the module */
+    if (SR_ERR_OK == rc && !module_enabled) {
+        /* f not already enabled, enable each subtree within the module */
         struct lys_node *node = module->data;
         while (NULL != node) {
             if ((LYS_CONTAINER | LYS_LIST | LYS_LEAF | LYS_LEAFLIST) & node->nodetype) {
@@ -2035,6 +2033,10 @@ dm_enable_module_runnig(dm_ctx_t *ctx, dm_session_t *session, const char *module
             }
             node = node->next;
         }
+    }
+    if (SR_ERR_OK == rc && !module_enabled) {
+        /* if not already enabled, copy the data from startup */
+        rc = dm_copy_module(ctx, session, module_name, SR_DS_STARTUP, SR_DS_RUNNING);
     }
     return rc;
 }
@@ -2073,7 +2075,7 @@ dm_copy_all_models(dm_ctx_t *dm_ctx, dm_session_t *session, sr_datastore_t src, 
     struct ly_set *enabled_modules = NULL;
     sr_schema_t *schemas = NULL;
     size_t count = 0;
-    struct lys_module *module = NULL;
+    const struct lys_module *module = NULL;
     int rc = SR_ERR_OK;
 
     enabled_modules = ly_set_new();
@@ -2091,7 +2093,7 @@ dm_copy_all_models(dm_ctx_t *dm_ctx, dm_session_t *session, sr_datastore_t src, 
         if (!enabled) {
             continue;
         }
-        if (0 != ly_set_add(enabled_modules, module)){
+        if (0 != ly_set_add(enabled_modules, (struct lys_module *)module)) {
             SR_LOG_ERR_MSG("ly_set_add failed");
             goto cleanup;
         }

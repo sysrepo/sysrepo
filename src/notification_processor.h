@@ -143,6 +143,18 @@ int np_feature_enable_notify(np_ctx_t *np_ctx, const char *module_name, const ch
  */
 int np_module_change_notify(np_ctx_t *np_ctx, const char *module_name);
 
+/**
+ * @brief Tests the subscription by sending of a hello notification.
+ *
+ * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
+ * @param[in] module_name Name of the module where the subscription is active.
+ * @param[in] dst_address Destination address of the subscriber.
+ * @param[in] dst_id Destination subscription ID.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int np_hello_notify(np_ctx_t *np_ctx, const char *module_name, const char *dst_address, uint32_t dst_id);
+
 /**@} np */
 
 #endif /* NOTIFICATION_PROCESSOR_H_ */

@@ -11,14 +11,25 @@ include_directories ("${PROJECT_SOURCE_DIR}/src" "${PROJECT_SOURCE_DIR}/src/comm
 
 find_program(valgrind_FOUND valgrind)
 
-macro(ADD_UNIT_TEST_WITH_OPTS TEST_NAME TEST_SRC LIBS USE_VALGRIND WRAP_FUNCTION)
+macro(ADD_UNIT_TEST_WITH_OPTS TEST_NAME USE_HELPERS USE_VALGRIND WRAP_FUNCTION)
+    if(${USE_HELPERS})
+        set(TEST_SRC
+            ${TEST_NAME}.c
+            ${TEST_HELPERS_DIR}rp_dt_context_helper.c
+            ${TEST_HELPERS_DIR}test_module_helper.c
+            )
+    else()
+        set(TEST_SRC
+            ${TEST_NAME}.c
+            )
+    endif()
     if ("${WRAP_FUNCTION}" STREQUAL "")
         set(test_link_flags "")
     else()
         set(test_link_flags "-Wl,--wrap,${WRAP_FUNCTION}")
     endif()
     add_executable(${TEST_NAME} ${TEST_SRC})
-    target_link_libraries(${TEST_NAME} ${LIBS} ${CMOCKA_LIBRARIES} sysrepo sysrepo-engine ${test_link_flags})
+    target_link_libraries(${TEST_NAME} ${CMOCKA_LIBRARIES} sysrepo sysrepo-engine ${test_link_flags})
     add_test(${TEST_NAME} ${TEST_NAME})
     if(valgrind_FOUND)
        if(${USE_VALGRIND})
@@ -31,53 +42,37 @@ macro(ADD_UNIT_TEST_WITH_OPTS TEST_NAME TEST_SRC LIBS USE_VALGRIND WRAP_FUNCTION
 endmacro(ADD_UNIT_TEST_WITH_OPTS)
 
 #Create default test target source file is derived from test name and valgrind is on
-macro(ADD_UNIT_TEST TEST_NAME)
-    ADD_UNIT_TEST_WITH_OPTS(${TEST_NAME} ${TEST_NAME}.c "" 1 "")
+macro(ADD_UNIT_TEST TEST_NAME USE_HELPERS)
+    ADD_UNIT_TEST_WITH_OPTS(${TEST_NAME} ${USE_HELPERS} 1 "")
 endmacro(ADD_UNIT_TEST)
 
 
-#Create test target source with helper functions included 
+ADD_UNIT_TEST(common_test 0)
+ADD_UNIT_TEST(ac_test 1)
 
-macro(ADD_UNIT_TEST_WITH_HELPERS TEST_NAME)
-    ADD_UNIT_TEST_WITH_HELPERS_VALGRIND(${TEST_NAME} 1)
-endmacro(ADD_UNIT_TEST_WITH_HELPERS)
+ADD_UNIT_TEST(cm_sm_test 0)
+ADD_UNIT_TEST_WITH_OPTS(np_test 0 1 "cm_msg_send")
+ADD_UNIT_TEST_WITH_OPTS(pm_test 1 1 "cm_msg_send")
 
-macro(ADD_UNIT_TEST_WITH_HELPERS_VALGRIND TEST_NAME VALG)
-    set(t_files
-        ${TEST_NAME}.c
-        ${TEST_HELPERS_DIR}rp_dt_context_helper.c
-        ${TEST_HELPERS_DIR}test_module_helper.c
-        )
-    ADD_UNIT_TEST_WITH_OPTS(${TEST_NAME} "${t_files}" "" ${VALG} "")
-endmacro(ADD_UNIT_TEST_WITH_HELPERS_VALGRIND)
+ADD_UNIT_TEST(dm_test 1)
 
-
-ADD_UNIT_TEST(common_test)
-ADD_UNIT_TEST_WITH_HELPERS(ac_test)
-
-ADD_UNIT_TEST(cm_sm_test)
-ADD_UNIT_TEST_WITH_OPTS(np_test np_test.c "" 1 "cm_msg_send")
-ADD_UNIT_TEST(pm_test)
-
-ADD_UNIT_TEST_WITH_HELPERS(dm_test)
-
-ADD_UNIT_TEST(rp_dt_xpath_test)
-ADD_UNIT_TEST_WITH_HELPERS(rp_datatree_test)
-ADD_UNIT_TEST_WITH_HELPERS(rp_dt_edit_test)
-ADD_UNIT_TEST_WITH_HELPERS(rp_dt_running_test)
+ADD_UNIT_TEST(rp_dt_xpath_test 0)
+ADD_UNIT_TEST(rp_datatree_test 1)
+ADD_UNIT_TEST(rp_dt_edit_test 1)
+ADD_UNIT_TEST(rp_dt_running_test 1)
 
 if("${TEST_REPOSITORY_LOC}" STREQUAL "${REPOSITORY_LOC}")
     # end-to-end tests that work only if test repository location equals to 
     # global procject's repository location
     
-    ADD_UNIT_TEST_WITH_HELPERS(cm_test)
-    ADD_UNIT_TEST(rp_test)
+    ADD_UNIT_TEST(cm_test 1)
+    ADD_UNIT_TEST(rp_test 0)
     
-    ADD_UNIT_TEST_WITH_HELPERS(cl_test)
-    ADD_UNIT_TEST_WITH_HELPERS(concurr_test)
-    ADD_UNIT_TEST_WITH_HELPERS_VALGRIND(perf_test 0)
-    ADD_UNIT_TEST_WITH_OPTS(daemon_test daemon_test.c "" 0 "")
-    ADD_UNIT_TEST_WITH_OPTS(sysrepoctl_test sysrepoctl_test.c "" 0 "")
+    ADD_UNIT_TEST(cl_test 1)
+    ADD_UNIT_TEST(concurr_test 1)
+    ADD_UNIT_TEST_WITH_OPTS(perf_test 1 0 "")
+    ADD_UNIT_TEST_WITH_OPTS(daemon_test 0 0 "")
+    ADD_UNIT_TEST_WITH_OPTS(sysrepoctl_test 0 0 "")
 
     # Python tests
     FIND_PACKAGE(PythonInterp)

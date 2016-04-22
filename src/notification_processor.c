@@ -552,3 +552,27 @@ np_module_change_notify(np_ctx_t *np_ctx, const char *module_name)
 
     return rc;
 }
+
+int
+np_hello_notify(np_ctx_t *np_ctx, const char *module_name, const char *dst_address, uint32_t dst_id)
+{
+    Sr__Msg *notif = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG4(np_ctx, np_ctx->rp_ctx, module_name, dst_address);
+
+    SR_LOG_DBG("Sending HELLO notification to '%s' @ %"PRIu32".", dst_address, dst_id);
+
+    rc = sr_pb_notif_alloc(SR__NOTIFICATION_EVENT__HELLO_EV, dst_address, dst_id, &notif);
+
+    if (SR_ERR_OK == rc) {
+        /* save notification destination info */
+        rc = np_dst_info_insert(np_ctx, dst_address, module_name);
+    }
+    if (SR_ERR_OK == rc) {
+        /* send the message */
+        rc = cm_msg_send(np_ctx->rp_ctx->cm_ctx, notif);
+    }
+
+    return rc;
+}

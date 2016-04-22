@@ -1146,6 +1146,7 @@ cm_out_notif_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
     /* fill-in source address */
     msg->notification->source_address = strdup(cm_ctx->server_socket_path);
     CHECK_NULL_NOMEM_RETURN(msg->notification->source_address);
+    msg->notification->source_pid = (uint32_t)getpid();
 
     /* get a connection to the notification destination */
     rc = sm_connection_find_dst(cm_ctx->sm_ctx, msg->notification->destination_address, &connection);
@@ -1384,13 +1385,6 @@ cm_init(const cm_connection_mode_t mode, const char *socket_path, cm_ctx_t **cm_
         goto cleanup;
     }
 
-    /* initialize Request Processor */
-    rc = rp_init(ctx, &ctx->rp_ctx);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Cannot initialize Request Processor.");
-        goto cleanup;
-    }
-
     /* initialize event loop */
     /* According to our measurements, EPOLL backend is significantly slower for
      * fewer file descriptors, so we are disabling it for now. */
@@ -1410,6 +1404,13 @@ cm_init(const cm_connection_mode_t mode, const char *socket_path, cm_ctx_t **cm_
     ev_async_init(&ctx->msg_queue_watcher, cm_msg_enqueue_cb);
     ctx->msg_queue_watcher.data = (void*)ctx;
     ev_async_start(ctx->event_loop, &ctx->msg_queue_watcher);
+
+    /* initialize Request Processor */
+    rc = rp_init(ctx, &ctx->rp_ctx);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Cannot initialize Request Processor.");
+        goto cleanup;
+    }
 
     SR_LOG_DBG_MSG("Connection Manager initialized successfully.");
 
