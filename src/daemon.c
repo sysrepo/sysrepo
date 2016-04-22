@@ -98,6 +98,22 @@ srd_check_single_instance()
 }
 
 /**
+ * @brief Ignores certain signals that sysrepo daemon should not care of.
+ */
+static void
+srd_ignore_signals()
+{
+    signal(SIGUSR1, SIG_IGN);
+    signal(SIGALRM, SIG_IGN);
+    signal(SIGCHLD, SIG_IGN);
+    signal(SIGTSTP, SIG_IGN);  /* keyboard stop */
+    signal(SIGTTIN, SIG_IGN);  /* background read from tty */
+    signal(SIGTTOU, SIG_IGN);  /* background write to tty */
+    signal(SIGHUP, SIG_IGN);   /* hangup */
+    signal(SIGPIPE, SIG_IGN);  /* broken pipe */
+}
+
+/**
  * @brief Daemonize the process - fork() and instruct the child to behave as a proper daemon.
  */
 static pid_t
@@ -126,14 +142,7 @@ srd_daemonize(void)
     /* at this point we are executing as the child process */
 
     /* ignore certain signals */
-    signal(SIGUSR1, SIG_IGN);
-    signal(SIGALRM, SIG_IGN);
-    signal(SIGCHLD, SIG_IGN);
-    signal(SIGTSTP, SIG_IGN);  /* keyboard stop */
-    signal(SIGTTIN, SIG_IGN);  /* background read from tty */
-    signal(SIGTTOU, SIG_IGN);  /* background write to tty */
-    signal(SIGHUP, SIG_IGN);   /* hangup */
-    signal(SIGPIPE, SIG_IGN);  /* broken pipe */
+    srd_ignore_signals();
 
     /* create a new session containing a single (new) process group */
     sid = setsid();
@@ -266,6 +275,7 @@ main(int argc, char* argv[])
         parent = srd_daemonize();
     } else {
         srd_check_single_instance();
+        srd_ignore_signals();
     }
 
     /* set file creation mask */

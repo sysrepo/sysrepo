@@ -696,9 +696,11 @@ rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, sr_error_info_t **errors, 
 
     rc = dm_commit_write_files(session->dm_session, commit_ctx);
 
-    SR_LOG_DBG_MSG("Commit (6/7): data write succeeded");
+    if (SR_ERR_OK == rc) {
+        SR_LOG_DBG_MSG("Commit (6/7): data write succeeded");
 
-    rc = dm_commit_notify(rp_ctx->dm_ctx, session->dm_session, commit_ctx);
+        rc = dm_commit_notify(rp_ctx->dm_ctx, session->dm_session, commit_ctx);
+    }
 
 cleanup:
     dm_free_commit_context(rp_ctx->dm_ctx, commit_ctx);

@@ -22,7 +22,8 @@
 #ifndef NOTIFICATION_PROCESSOR_H_
 #define NOTIFICATION_PROCESSOR_H_
 
-typedef struct rp_ctx_s rp_ctx_t; /**< Forward-declarion of Request Processor context. */
+typedef struct rp_ctx_s rp_ctx_t;     /**< Forward-declaration of Request Processor context. */
+typedef struct ac_ucred_s ac_ucred_t; /**< Forward-declaration of user credentials context. */
 
 /**
  * @defgroup np Notification Processor
@@ -42,9 +43,10 @@ typedef struct np_ctx_s np_ctx_t;
  */
 typedef struct np_subscription_s {
     Sr__NotificationEvent event_type;  /**< Type of the event that this subscription subscribes to.  */
-    const char *path;                  /**< Path to the subtree where the subscription is active (if applicable). */
     const char *dst_address;           /**< Destination address where the notification should be delivered. */
     uint32_t dst_id;                   /**< Destination ID of the subscription (used locally, in the client library). */
+    const char *xpath;                 /**< XPath to the subtree where the subscription is active (if applicable). */
+    bool enable_running;               /**< TRUE if the subscription enables specified subtree in the running datastore. */
 } np_subscription_t;
 
 /**
@@ -68,26 +70,44 @@ void np_cleanup(np_ctx_t *np_ctx);
  * @brief Subscribe the client to notifications on specified event.
  *
  * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
+ * @param[in] user_cred User credentials.
  * @param[in] event_type Type of the event to subscribe.
- * @param[in] path Path to the subtree where the subscription is active (if applicable).
  * @param[in] dst_address Destination address of the subscriber.
  * @param[in] dst_id Destination subscription ID.
+ * @param[in] module_name Name of the module which the subscription is active in (if applicable).
+ * @param[in] path XPath to the subtree where the subscription is active (if applicable).
+ * @param[in] enable_running TRUE if the subscription enables specified subtree in the running datastore.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int np_notification_subscribe(np_ctx_t *np_ctx, Sr__NotificationEvent event_type, const char *path,
-        const char *dst_address, uint32_t dst_id);
+int np_notification_subscribe(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, Sr__NotificationEvent event_type,
+        const char *dst_address, uint32_t dst_id, const char *module_name, const char *xpath, const bool enable_running);
 
 /**
  * @brief Unsubscribe the client from notifications on specified event.
  *
  * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
+ * @param[in] user_cred User credentials.
+ * @param[in] event_type  Type of the event of the subscription.
  * @param[in] dst_address Destination address of the subscriber.
  * @param[in] dst_id Destination subscription ID.
+ * @param[in] module_name Name of the module which the subscription is active in (if applicable).
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int np_notification_unsubscribe(np_ctx_t *np_ctx, const char *dst_address, uint32_t dst_id);
+int np_notification_unsubscribe(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, Sr__NotificationEvent event_type,
+        const char *dst_address, uint32_t dst_id, const char *module_name);
+
+/**
+ * @brief Unsubscribe the client from all notifications to be delivered on
+ * specified destination address.
+ *
+ * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
+ * @param[in] dst_address Notification delivery destination address.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int np_unsubscribe_destination(np_ctx_t *np_ctx, const char *dst_address);
 
 /**
  * @brief Notify all subscribers about the module (un)installation event.
@@ -122,6 +142,18 @@ int np_feature_enable_notify(np_ctx_t *np_ctx, const char *module_name, const ch
  * @return Error code (SR_ERR_OK on success).
  */
 int np_module_change_notify(np_ctx_t *np_ctx, const char *module_name);
+
+/**
+ * @brief Tests the subscription by sending of a hello notification.
+ *
+ * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
+ * @param[in] module_name Name of the module where the subscription is active.
+ * @param[in] dst_address Destination address of the subscriber.
+ * @param[in] dst_id Destination subscription ID.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int np_hello_notify(np_ctx_t *np_ctx, const char *module_name, const char *dst_address, uint32_t dst_id);
 
 /**@} np */
 
