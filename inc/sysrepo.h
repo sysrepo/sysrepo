@@ -117,6 +117,9 @@ typedef struct sr_val_s {
     /** Type of an element. */
     sr_type_t type;
 
+    /** Flag for default node (applicable only for leaves) */
+    bool dflt;
+
     /** Data of an element (if applicable), properly set according to the type. */
     union {
         char *binary_val;       /**< Base64-encoded binary data ([RFC 6020 sec 9.8](http://tools.ietf.org/html/rfc6020#section-9.8)) */

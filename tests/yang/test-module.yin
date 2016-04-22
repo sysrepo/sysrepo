@@ -205,4 +205,15 @@
     <ordered-by value="user"/>
     <type name="uint8"/>
   </leaf-list>
+  <list name="with_def">
+    <config value="true"/>
+    <key value="name"/>
+    <leaf name="name">
+      <type name="string"/>
+    </leaf>
+    <leaf name="num">
+      <type name="int8"/>
+      <default value="0"/>
+    </leaf>
+  </list>
 </module>

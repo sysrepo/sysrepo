@@ -11,6 +11,7 @@ include_directories ("${PROJECT_SOURCE_DIR}/src" "${PROJECT_SOURCE_DIR}/src/comm
 
 find_program(valgrind_FOUND valgrind)
 
+# create test target with specified options
 macro(ADD_UNIT_TEST_WITH_OPTS TEST_NAME USE_HELPERS USE_VALGRIND WRAP_FUNCTION)
     if(${USE_HELPERS})
         set(TEST_SRC
@@ -41,7 +42,7 @@ macro(ADD_UNIT_TEST_WITH_OPTS TEST_NAME USE_HELPERS USE_VALGRIND WRAP_FUNCTION)
     endif(valgrind_FOUND)
 endmacro(ADD_UNIT_TEST_WITH_OPTS)
 
-#Create default test target source file is derived from test name and valgrind is on
+# create default test target with valgrind is on
 macro(ADD_UNIT_TEST TEST_NAME USE_HELPERS)
     ADD_UNIT_TEST_WITH_OPTS(${TEST_NAME} ${USE_HELPERS} 1 "")
 endmacro(ADD_UNIT_TEST)
