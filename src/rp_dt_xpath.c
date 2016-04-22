@@ -502,16 +502,22 @@ rp_dt_validate_node_xpath(dm_ctx_t *dm_ctx, dm_session_t *session, const char *x
         case LYVE_PATH_INKEY:
             if (NULL != session) {
                 rc = dm_report_error(session, ly_errmsg(), strdup(ly_errpath()), SR_ERR_BAD_ELEMENT);
+            } else {
+                rc = SR_ERR_BAD_ELEMENT;
             }
             break;
         case LYVE_PATH_INMOD:
             if (NULL != session) {
                 rc = dm_report_error(session, ly_errmsg(), strdup(ly_errpath()), SR_ERR_UNKNOWN_MODEL);
+            } else {
+                rc = SR_ERR_UNKNOWN_MODEL;
             }
             break;
         default:
             if (NULL != session) {
                 rc = dm_report_error(session, ly_errmsg(), strdup(ly_errpath()), SR_ERR_INVAL_ARG);
+            } else {
+                rc = SR_ERR_INVAL_ARG;
             }
         }
     }
