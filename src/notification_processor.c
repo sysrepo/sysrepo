@@ -573,6 +573,8 @@ np_hello_notify(np_ctx_t *np_ctx, const char *module_name, const char *dst_addre
     if (SR_ERR_OK == rc) {
         /* send the message */
         rc = cm_msg_send(np_ctx->rp_ctx->cm_ctx, notif);
+    } else {
+        sr__msg__free_unpacked(notif, NULL);
     }
 
     return rc;

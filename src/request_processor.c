@@ -1188,7 +1188,7 @@ rp_init(cm_ctx_t *cm_ctx, rp_ctx_t **rp_ctx_p)
 {
     size_t i = 0, j = 0;
     rp_ctx_t *ctx = NULL;
-    int rc = SR_ERR_OK;
+    int ret = 0, rc = SR_ERR_OK;
 
     CHECK_NULL_ARG(rp_ctx_p);
 
@@ -1221,12 +1221,9 @@ rp_init(cm_ctx_t *cm_ctx, rp_ctx_t **rp_ctx_p)
 #if defined(HAVE_PTHREAD_RWLOCKATTR_SETKIND_NP)
     pthread_rwlockattr_setkind_np(&attr, PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP);
 #endif
-    rc = pthread_rwlock_init(&ctx->commit_lock, &attr);
+    ret = pthread_rwlock_init(&ctx->commit_lock, &attr);
     pthread_rwlockattr_destroy(&attr);
-    if (0 != rc) {
-        SR_LOG_ERR_MSG("commit rwlock initialization failed");
-        goto cleanup;
-    }
+    CHECK_ZERO_MSG_GOTO(ret, rc, SR_ERR_INIT_FAILED, cleanup, "Commit rwlock initialization failed.");
 
     /* initialize Notification Processor */
     rc = np_init(ctx, &ctx->np_ctx);

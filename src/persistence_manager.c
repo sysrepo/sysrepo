@@ -66,35 +66,24 @@ static int
 pm_save_data_tree(pm_ctx_t *pm_ctx, int fd, struct lyd_node *data_tree)
 {
     int ret = 0;
-    int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG2(pm_ctx, data_tree);
 
     /* empty file content */
     ret = ftruncate(fd, 0);
-    if (0 != ret) {
-        SR_LOG_ERR("File truncate failed: %s", strerror(errno));
-        rc = SR_ERR_INTERNAL;
-    }
+    CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "File truncate failed: %s", strerror(errno));
 
     /* print data tree to file */
-    rc = lyd_print_fd(fd, data_tree, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT);
-    if (0 != rc) {
-        SR_LOG_ERR("Saving persist data tree failed: %s", ly_errmsg());
-        rc = SR_ERR_INTERNAL;
-    } else {
-        SR_LOG_DBG_MSG("Persist data tree successfully saved.");
-        rc = SR_ERR_OK;
-    }
+    ret = lyd_print_fd(fd, data_tree, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT);
+    CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "Saving persist data tree failed: %s", ly_errmsg());
 
     /* flush in-core data to the disc */
     ret = fdatasync(fd);
-    if (0 != ret) {
-        SR_LOG_ERR("File synchronization failed: %s", strerror(errno));
-        rc = SR_ERR_INTERNAL;
-    }
+    CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "File synchronization failed: %s", strerror(errno));
 
-    return rc;
+    SR_LOG_DBG_MSG("Persist data tree successfully saved.");
+
+    return SR_ERR_OK;
 }
 
 /**
@@ -191,8 +180,8 @@ pm_save_persistent_data(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const cha
     char *data_filename = NULL;
     struct lyd_node *data_tree = NULL, *new_node = NULL;
     struct ly_set *node_set = NULL;
-    int fd = -1;
-    int rc = SR_ERR_OK, ret = 0;
+    int fd = -1, ret = 0;
+    int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG3(pm_ctx, module_name, xpath);
 
@@ -202,7 +191,7 @@ pm_save_persistent_data(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const cha
 
     /* load the data tree from persist file */
     rc = pm_load_data_tree(pm_ctx, user_cred, module_name, data_filename, false, &fd, &data_tree);
-    CHECK_RC_LOG_RETURN(rc, "Unable to load persist data tree for module '%s'.", module_name);
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to load persist data tree for module '%s'.", module_name);
 
     if (NULL == data_tree && !add) {
         SR_LOG_ERR("Persist data tree for module '%s' is empty.", module_name);
@@ -237,13 +226,9 @@ pm_save_persistent_data(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const cha
         }
         for (size_t i = 0; i < node_set->number; i++) {
             ret = lyd_unlink(node_set->set.d[i]);
-            if (0 != ret) {
-                SR_LOG_ERR("Unable to delete persistent data (module=%s, xpath=%s): %s.", module_name, xpath, ly_errmsg());
-                rc = SR_ERR_INTERNAL;
-                goto cleanup;
-            } else {
-                lyd_free(node_set->set.d[i]);
-            }
+            CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_INTERNAL, cleanup,
+                    "Unable to delete persistent data (module=%s, xpath=%s): %s.", module_name, xpath, ly_errmsg());
+            lyd_free(node_set->set.d[i]);
         }
     }
 
