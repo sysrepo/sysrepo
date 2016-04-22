@@ -940,9 +940,11 @@ cl_get_error_test(void **state)
     assert_non_null(conn);
 
     sr_session_ctx_t *session = NULL;
-    sr_val_t *value = NULL;
     const sr_error_info_t *error_info = NULL;
+#if 0
     size_t error_cnt = 0;
+    sr_val_t *value = NULL;
+#endif
     int rc = 0;
 
     /* start a session */
