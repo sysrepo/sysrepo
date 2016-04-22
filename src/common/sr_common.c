@@ -110,6 +110,8 @@ sr_operation_name(Sr__Operation operation)
         return "subscribe";
     case SR__OPERATION__UNSUBSCRIBE:
         return "unsubscribe";
+    case SR__OPERATION__UNSUBSCRIBE_DESTINATION:
+        return "unsubscribe-destination";
     default:
         return "unknown";
     }
@@ -953,6 +955,55 @@ sr_pb_notif_alloc(const Sr__NotificationEvent event, const char *destination, co
             sr__module_change_notification__init((Sr__ModuleChangeNotification*)sub_msg);
             notif->module_change_notif = (Sr__ModuleChangeNotification*)sub_msg;
             break;
+        case SR__NOTIFICATION_EVENT__HELLO_EV:
+            /* no sub-message */
+            break;
+        default:
+            break;
+    }
+
+    *msg_p = msg;
+    return SR_ERR_OK;
+
+error:
+    if (NULL != msg) {
+        sr__msg__free_unpacked(msg, NULL);
+    }
+    return rc;
+}
+
+int
+sr_pb_internal_req_alloc(const Sr__Operation operation, Sr__Msg **msg_p)
+{
+    Sr__Msg *msg = NULL;
+    Sr__InternalRequest *req = NULL;
+    ProtobufCMessage *sub_msg = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG(msg_p);
+
+    /* initialize Sr__Msg */
+    msg = calloc(1, sizeof(*msg));
+    CHECK_NULL_NOMEM_GOTO(msg, rc, error);
+    sr__msg__init(msg);
+    msg->type = SR__MSG__MSG_TYPE__INTERNAL_REQUEST;
+    msg->session_id = 0;
+
+    /* initialize Sr__InternalRequest */
+    req = calloc(1, sizeof(*req));
+    CHECK_NULL_NOMEM_GOTO(req, rc, error);
+    sr__internal_request__init(req);
+    msg->internal_request = req;
+    req->operation = operation;
+
+    /* initialize sub-message */
+    switch (operation) {
+        case SR__OPERATION__UNSUBSCRIBE_DESTINATION:
+            sub_msg = calloc(1, sizeof(Sr__UnsubscribeDestinationReq));
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
+            sr__unsubscribe_destination_req__init((Sr__UnsubscribeDestinationReq*)sub_msg);
+            req->unsubscribe_dst_req = (Sr__UnsubscribeDestinationReq*)sub_msg;
+            break;
         default:
             break;
     }
@@ -1173,10 +1224,11 @@ sr_pb_msg_validate_notif(const Sr__Msg *msg, const Sr__NotificationEvent event)
         if (NULL == msg->notification) {
             return SR_ERR_MALFORMED_MSG;
         }
-        if (msg->notification->event != event) {
+        if ((msg->notification->event != SR__NOTIFICATION_EVENT__HELLO_EV) &&
+                (msg->notification->event != event)) {
             return SR_ERR_MALFORMED_MSG;
         }
-        switch (event) {
+        switch (msg->notification->event) {
             case SR__NOTIFICATION_EVENT__MODULE_INSTALL_EV:
                 if (NULL == msg->notification->module_install_notif)
                     return SR_ERR_MALFORMED_MSG;
@@ -1188,6 +1240,8 @@ sr_pb_msg_validate_notif(const Sr__Msg *msg, const Sr__NotificationEvent event)
             case SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV:
                 if (NULL == msg->notification->module_change_notif)
                     return SR_ERR_MALFORMED_MSG;
+                break;
+            case SR__NOTIFICATION_EVENT__HELLO_EV:
                 break;
             default:
                 return SR_ERR_MALFORMED_MSG;
@@ -1786,6 +1840,38 @@ sr_move_direction_gpb_to_sr(Sr__MoveItemReq__MovePosition gpb_position)
         default:
             return SR_MOVE_LAST;
     }
+}
+
+char *
+sr_event_gpb_to_str(Sr__NotificationEvent event)
+{
+    switch (event) {
+    case SR__NOTIFICATION_EVENT__MODULE_INSTALL_EV:
+        return "module-install";
+    case SR__NOTIFICATION_EVENT__FEATURE_ENABLE_EV:
+        return "feature-enable";
+    case SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV:
+        return "module-change";
+    case SR__NOTIFICATION_EVENT__HELLO_EV:
+        return "hello";
+    default:
+        return "unknown";
+    }
+}
+
+Sr__NotificationEvent
+sr_event_str_to_gpb(const char *event_name)
+{
+    if (0 == strcmp(event_name, "module-install")) {
+        return SR__NOTIFICATION_EVENT__MODULE_INSTALL_EV;
+    }
+    if (0 == strcmp(event_name, "feature-enable")) {
+        return SR__NOTIFICATION_EVENT__FEATURE_ENABLE_EV;
+    }
+    if (0 == strcmp(event_name, "module-change")) {
+        return SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV;
+    }
+    return _SR__NOTIFICATION_EVENT_IS_INT_SIZE;
 }
 
 void sr_free_schema(sr_schema_t *schema)

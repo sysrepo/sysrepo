@@ -134,6 +134,7 @@ cl_sm_subscription_cleanup_internal(void *subscription_p)
 
     if (NULL != subscription_p) {
         subscription = (sr_subscription_ctx_t *)subscription_p;
+        free((void*)subscription->module_name);
         free(subscription);
     }
 }
@@ -395,7 +396,7 @@ cl_sm_conn_buffer_expand(const cl_sm_conn_ctx_t *conn, cl_sm_buffer_t *buff, siz
  */
 static int
 cl_sm_get_data_session(cl_sm_ctx_t *sm_ctx, sr_subscription_ctx_t *subscription,
-        const char *source_address, sr_session_ctx_t **config_session_p)
+        const char *source_address, uint32_t source_pid, sr_session_ctx_t **config_session_p)
 {
     sr_conn_ctx_t *connection = NULL;
     sr_conn_ctx_t connection_lookup = { 0, };
@@ -407,7 +408,8 @@ cl_sm_get_data_session(cl_sm_ctx_t *sm_ctx, sr_subscription_ctx_t *subscription,
 
     if ((NULL != subscription->data_session) &&
             (NULL != subscription->data_session->conn_ctx) && (NULL != subscription->data_session->conn_ctx->dst_address) &&
-            (0 == strcmp(subscription->data_session->conn_ctx->dst_address, source_address))) {
+            (0 == strcmp(subscription->data_session->conn_ctx->dst_address, source_address)) &&
+            (subscription->data_session->conn_ctx->dst_pid == source_pid)) {
         /* use already existing session stored within the subscription */
         *config_session_p = subscription->data_session;
         return SR_ERR_OK;
@@ -416,12 +418,21 @@ cl_sm_get_data_session(cl_sm_ctx_t *sm_ctx, sr_subscription_ctx_t *subscription,
     /* find a connection matching with provided address */
     connection_lookup.dst_address = source_address;
     connection = sr_btree_search(sm_ctx->data_connection_btree, &connection_lookup);
+
+    if (NULL != connection && connection->dst_pid != source_pid) {
+        /* new PID on the destination address - reconnect */
+        SR_LOG_DBG("New PID on the destination address '%s' - reconnect.", source_address);
+        sr_btree_delete(sm_ctx->data_connection_btree, connection);
+        connection = NULL;
+    }
+
     if (NULL == connection) {
         /* connection not found, create a new one */
         SR_LOG_DBG("Connecting to the notification originator at '%s'.", source_address);
         rc = cl_connection_create(&connection);
         if (SR_ERR_OK == rc) {
             connection->dst_address = strdup(source_address);
+            connection->dst_pid = source_pid;
             CHECK_NULL_NOMEM_ERROR(connection->dst_address, rc);
         }
         if (SR_ERR_OK == rc) {
@@ -528,14 +539,17 @@ cl_sm_conn_msg_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, uint8_t *msg
     }
 
     /* get data session that can be used from notification callback */
-    rc = cl_sm_get_data_session(sm_ctx, subscription, msg->notification->source_address, &data_session);
-    if (SR_ERR_OK != rc) {
-        pthread_mutex_unlock(&sm_ctx->subscriptions_lock);
-        SR_LOG_ERR("Unable to get configuration session for address='%s'.", msg->notification->source_address);
-        goto cleanup;
+    if (SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV == msg->notification->event) {
+        rc = cl_sm_get_data_session(sm_ctx, subscription, msg->notification->source_address,
+                msg->notification->source_pid, &data_session);
+        if (SR_ERR_OK != rc) {
+            pthread_mutex_unlock(&sm_ctx->subscriptions_lock);
+            SR_LOG_ERR("Unable to get configuration session for address='%s'.", msg->notification->source_address);
+            goto cleanup;
+        }
     }
 
-    switch (subscription->event_type) {
+    switch (msg->notification->event) {
         case SR__NOTIFICATION_EVENT__MODULE_INSTALL_EV:
             SR_LOG_DBG("Calling module-install callback for subscription id=%"PRIu32".", subscription->id);
             subscription->callback.module_install_cb(
@@ -558,6 +572,9 @@ cl_sm_conn_msg_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, uint8_t *msg
                     data_session,
                     msg->notification->module_change_notif->module_name,
                     subscription->private_ctx);
+            break;
+        case SR__NOTIFICATION_EVENT__HELLO_EV:
+            SR_LOG_DBG("HELLO notification received on subscription id=%"PRIu32".", subscription->id);
             break;
         default:
             SR_LOG_ERR("Unknown notification event received on subscription id=%"PRIu32".", subscription->id);
@@ -994,7 +1011,7 @@ cl_sm_subscription_cleanup(sr_subscription_ctx_t *subscription)
 
     pthread_mutex_lock(&sm_ctx->subscriptions_lock);
 
-    /* sm_connection_cleanup will be auto-invoked */
+    /* cl_sm_subscription_cleanup_internal will be auto-invoked */
     sr_btree_delete(sm_ctx->subscriptions_btree, subscription);
 
     pthread_mutex_unlock(&sm_ctx->subscriptions_lock);

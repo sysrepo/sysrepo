@@ -126,8 +126,8 @@ cleanup:
  * @brief Initializes a new subscription.
  */
 static int
-cl_subscribtion_init(sr_session_ctx_t *session, Sr__NotificationEvent event_type, void *private_ctx,
-        sr_subscription_ctx_t **subscription_p, Sr__Msg **msg_req_p)
+cl_subscribtion_init(sr_session_ctx_t *session, Sr__NotificationEvent event_type, const char *module_name,
+        void *private_ctx, sr_subscription_ctx_t **subscription_p, Sr__Msg **msg_req_p)
 {
     Sr__Msg *msg_req = NULL;
     sr_subscription_ctx_t *subscription = NULL;
@@ -156,6 +156,10 @@ cl_subscribtion_init(sr_session_ctx_t *session, Sr__NotificationEvent event_type
 
     subscription->event_type = event_type;
     subscription->private_ctx = private_ctx;
+    if (NULL != module_name) {
+        subscription->module_name = strdup(module_name);
+        CHECK_NULL_NOMEM_GOTO(subscription->module_name, rc, cleanup);
+    }
 
     /* fill-in subscription details into GPB message */
     msg_req->request->subscribe_req->destination = strdup(subscription->delivery_address);
@@ -309,7 +313,7 @@ sr_session_start_user(sr_conn_ctx_t *conn_ctx, const char *user_name, sr_datasto
 
     /* send the request and receive the response */
     rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__SESSION_START);
-    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by procession of the request.");
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
     session->id = msg_resp->response->session_start_resp->session_id;
     sr__msg__free_unpacked(msg_req, NULL);
@@ -347,7 +351,7 @@ sr_session_stop(sr_session_ctx_t *session)
 
     /* send the request and receive the response */
     rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__SESSION_STOP);
-    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by procession of the request.");
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
     sr__msg__free_unpacked(msg_req, NULL);
     sr__msg__free_unpacked(msg_resp, NULL);
@@ -382,7 +386,7 @@ sr_session_refresh(sr_session_ctx_t *session)
 
     /* send the request and receive the response */
     rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__SESSION_REFRESH);
-    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by procession of the request.");
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
     sr__msg__free_unpacked(msg_req, NULL);
     sr__msg__free_unpacked(msg_resp, NULL);
@@ -415,7 +419,7 @@ sr_list_schemas(sr_session_ctx_t *session, sr_schema_t **schemas, size_t *schema
 
     /* send the request and receive the response */
     rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__LIST_SCHEMAS);
-    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by procession of the request.");
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
     /* copy schemas from response to output argument */
     if (0 != msg_resp->response->list_schemas_resp->n_schemas) {
@@ -470,7 +474,7 @@ sr_get_schema(sr_session_ctx_t *session, const char *module_name, const char *mo
 
     /* send the request and receive the response */
     rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__GET_SCHEMA);
-    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by procession of the request.");
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
     /* move pointers to schema content, so we don't need to duplicate the memory */
     if (NULL != msg_resp->response->get_schema_resp->schema_content) {
@@ -513,7 +517,7 @@ sr_get_item(sr_session_ctx_t *session, const char *xpath, sr_val_t **value)
 
     /* send the request and receive the response */
     rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__GET_ITEM);
-    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by procession of the request.");
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
     /* duplicate the content of gpb to sr_val_t */
     rc = sr_dup_gpb_to_val_t(msg_resp->response->get_item_resp->value, value);
@@ -555,7 +559,7 @@ sr_get_items(sr_session_ctx_t *session, const char *xpath, sr_val_t **values, si
 
     /* send the request and receive the response */
     rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__GET_ITEMS);
-    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by procession of the request.");
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
     /* allocate the array of sr_val_t */
     size_t cnt = msg_resp->response->get_items_resp->n_values;
@@ -769,7 +773,7 @@ sr_set_item(sr_session_ctx_t *session, const char *xpath, const sr_val_t *value,
 
     /* send the request and receive the response */
     rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__SET_ITEM);
-    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by procession of the request.");
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
     sr__msg__free_unpacked(msg_req, NULL);
     sr__msg__free_unpacked(msg_resp, NULL);
@@ -808,7 +812,7 @@ sr_delete_item(sr_session_ctx_t *session, const char *xpath, const sr_edit_optio
 
     /* send the request and receive the response */
     rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__DELETE_ITEM);
-    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by procession of the request.");
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
     sr__msg__free_unpacked(msg_req, NULL);
     sr__msg__free_unpacked(msg_resp, NULL);
@@ -852,7 +856,7 @@ sr_move_item(sr_session_ctx_t *session, const char *xpath, const sr_move_positio
 
     /* send the request and receive the response */
     rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__MOVE_ITEM);
-    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by procession of the request.");
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
     sr__msg__free_unpacked(msg_req, NULL);
     sr__msg__free_unpacked(msg_resp, NULL);
@@ -979,7 +983,7 @@ sr_discard_changes(sr_session_ctx_t *session)
 
     /* send the request and receive the response */
     rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__DISCARD_CHANGES);
-    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by procession of the request.");
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
     sr__msg__free_unpacked(msg_req, NULL);
     sr__msg__free_unpacked(msg_resp, NULL);
@@ -1021,7 +1025,7 @@ sr_copy_config(sr_session_ctx_t *session, const char *module_name,
 
     /* send the request and receive the response */
     rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__COPY_CONFIG);
-    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by procession of the request.");
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
     sr__msg__free_unpacked(msg_req, NULL);
     sr__msg__free_unpacked(msg_resp, NULL);
@@ -1072,7 +1076,7 @@ sr_lock_module(sr_session_ctx_t *session, const char *module_name)
 
     /* send the request and receive the response */
     rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__LOCK);
-    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by procession of the request.");
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
     sr__msg__free_unpacked(msg_req, NULL);
     sr__msg__free_unpacked(msg_resp, NULL);
@@ -1111,7 +1115,7 @@ sr_unlock_module(sr_session_ctx_t *session, const char *module_name)
 
     /* send the request and receive the response */
     rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__UNLOCK);
-    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by procession of the request.");
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
     sr__msg__free_unpacked(msg_req, NULL);
     sr__msg__free_unpacked(msg_resp, NULL);
@@ -1190,7 +1194,7 @@ sr_module_install_subscribe(sr_session_ctx_t *session, sr_module_install_cb call
     cl_session_clear_errors(session);
 
     /* Initialize the subscription */
-    rc = cl_subscribtion_init(session, SR__NOTIFICATION_EVENT__MODULE_INSTALL_EV,
+    rc = cl_subscribtion_init(session, SR__NOTIFICATION_EVENT__MODULE_INSTALL_EV, NULL,
             private_ctx, &subscription, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by initialization of the subscription in the client library.");
 
@@ -1198,7 +1202,7 @@ sr_module_install_subscribe(sr_session_ctx_t *session, sr_module_install_cb call
 
     /* send the request and receive the response */
     rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__SUBSCRIBE);
-    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by procession of the request.");
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
     sr__msg__free_unpacked(msg_req, NULL);
     sr__msg__free_unpacked(msg_resp, NULL);
@@ -1230,7 +1234,7 @@ sr_feature_enable_subscribe(sr_session_ctx_t *session, sr_feature_enable_cb call
     cl_session_clear_errors(session);
 
     /* Initialize the subscription */
-    rc = cl_subscribtion_init(session, SR__NOTIFICATION_EVENT__FEATURE_ENABLE_EV,
+    rc = cl_subscribtion_init(session, SR__NOTIFICATION_EVENT__FEATURE_ENABLE_EV, NULL,
             private_ctx, &subscription, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by initialization of the subscription in the client library.");
 
@@ -1238,7 +1242,7 @@ sr_feature_enable_subscribe(sr_session_ctx_t *session, sr_feature_enable_cb call
 
     /* send the request and receive the response */
     rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__SUBSCRIBE);
-    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by procession of the request.");
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
     sr__msg__free_unpacked(msg_req, NULL);
     sr__msg__free_unpacked(msg_resp, NULL);
@@ -1270,7 +1274,7 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, b
     cl_session_clear_errors(session);
 
     /* Initialize the subscription */
-    rc = cl_subscribtion_init(session, SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV,
+    rc = cl_subscribtion_init(session, SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV, module_name,
             private_ctx, &subscription, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by initialization of the subscription in the client library.");
 
@@ -1279,12 +1283,12 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, b
     msg_req->request->subscribe_req->event = SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV;
     msg_req->request->subscribe_req->has_enable_running = true;
     msg_req->request->subscribe_req->enable_running = enable_running;
-    msg_req->request->subscribe_req->xpath = strdup(module_name);
-    CHECK_NULL_NOMEM_GOTO(msg_req->request->subscribe_req->xpath, rc, cleanup);
+    msg_req->request->subscribe_req->module_name = strdup(module_name);
+    CHECK_NULL_NOMEM_GOTO(msg_req->request->subscribe_req->module_name, rc, cleanup);
 
     /* send the request and receive the response */
     rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__SUBSCRIBE);
-    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by procession of the request.");
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
     sr__msg__free_unpacked(msg_req, NULL);
     sr__msg__free_unpacked(msg_resp, NULL);
@@ -1333,12 +1337,20 @@ sr_unsubscribe(sr_subscription_ctx_t *subscription)
     rc = sr_pb_req_alloc(SR__OPERATION__UNSUBSCRIBE, session->id, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate unsubscribe message.");
 
+    msg_req->request->unsubscribe_req->event = subscription->event_type;
+
     msg_req->request->unsubscribe_req->destination = strdup(subscription->delivery_address);
+    CHECK_NULL_NOMEM_GOTO(msg_req->request->unsubscribe_req->destination, rc, cleanup);
     msg_req->request->unsubscribe_req->subscription_id = subscription->id;
+
+    if (NULL != subscription->module_name) {
+        msg_req->request->unsubscribe_req->module_name = strdup(subscription->module_name);
+        CHECK_NULL_NOMEM_GOTO(msg_req->request->unsubscribe_req->module_name, rc, cleanup);
+    }
 
     /* send the request and receive the response */
     rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__UNSUBSCRIBE);
-    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by procession of the request.");
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
     /* cleanup the subscription */
     cl_sm_subscription_cleanup(subscription);
@@ -1395,7 +1407,7 @@ sr_module_install(sr_session_ctx_t *session, const char *module_name, const char
 
     /* send the request and receive the response */
     rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__MODULE_INSTALL);
-    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by procession of the request.");
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
     sr__msg__free_unpacked(msg_req, NULL);
     sr__msg__free_unpacked(msg_resp, NULL);
@@ -1437,7 +1449,7 @@ sr_feature_enable(sr_session_ctx_t *session, const char *module_name, const char
 
     /* send the request and receive the response */
     rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__FEATURE_ENABLE);
-    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by procession of the request.");
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
     sr__msg__free_unpacked(msg_req, NULL);
     sr__msg__free_unpacked(msg_resp, NULL);

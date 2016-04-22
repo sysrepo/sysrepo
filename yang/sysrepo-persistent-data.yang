@@ -40,6 +40,12 @@ module sysrepo-persistent-data {
     description "Subscription for events triggered by a change in subscribed
       YANG leaf.";
   }
+  
+  identity module-change {
+    base subscription-type;
+    description "Subscription for events triggered by a change in subscribed
+      YANG module.";
+  }
 
   identity subtree-change {
     base subscription-type;
@@ -48,44 +54,58 @@ module sysrepo-persistent-data {
   }
 
   list module {
-    key "module-name";
+    key "name";
     description "Module-specific persistent data maintained by sysrepo.";
 
-    leaf module-name {
+    leaf name {
       type string;
       description "Name of the YANG module.";
     }
 
-    leaf-list enabled-features {
-      type string;
+    container enabled-features {
       description "Features of the YANG module that are currently enabled in
         sysrepo.";
+
+      leaf-list feature-name {
+        type string;
+        description "Name of a feature that is currently enabled in sysrepo.";
+      }
     }
 
-    list subscriptions {
-      key "type destination-address destination-id";
-      description "A subscription instance.";
+    container subscriptions {
+      description "Active notification subscriptions of a module.";
 
-      leaf type {
-        type identityref {
-          base subscription-type;
+      list subscription {
+        key "type destination-address destination-id";
+        description "A subscription instance.";
+
+        leaf type {
+          type identityref {
+            base subscription-type;
+          }
+          description "Type of the subscription.";
         }
-        description "Type of the subscription.";
-      }
 
-      leaf destination-address {
-        type string;
-        description "Destination address for notification delivery.";
-      }
+        leaf destination-address {
+          type string;
+          description "Destination address for notification delivery.";
+        }
 
-      leaf destination-id {
-        type uint32;
-        description "Destination-local subscription identifier.";
-      }
+        leaf destination-id {
+          type uint32;
+          description "Destination-local subscription identifier.";
+        }
 
-      leaf subtree-path {
-        type string;
-        description "Path of the subtree where the subscription is active.";
+        leaf xpath {
+          type string;
+          description "XPath of the subtree where the subscription is active.";
+        }
+
+        leaf enable-running {
+          type empty;
+          description "If set, the subscription enables specified subtree in
+          the running datastore.";
+        }
       }
     }
   }

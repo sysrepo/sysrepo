@@ -42,14 +42,14 @@ typedef struct pm_ctx_s pm_ctx_t;
 /**
  * @brief Initializes a Persistence Manager instance.
  *
- * @param[in] ac_ctx Access Control module context.
+ * @param[in] rp_ctx Request Processor context.
  * @param[in] schema_search_dir Directory containing PM's YANG module schema.
  * @param[in] data_search_dir Directory containing the data files.
  * @param[out] pm_ctx Allocated Persistence Manager context that can be used in subsequent PM API calls.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int pm_init(ac_ctx_t *ac_ctx, const char *schema_search_dir, const char *data_search_dir, pm_ctx_t **pm_ctx);
+int pm_init(rp_ctx_t *rp_ctx, const char *schema_search_dir, const char *data_search_dir, pm_ctx_t **pm_ctx);
 
 /**
  * @brief Cleans up the Persistence Manager instance.
@@ -69,32 +69,62 @@ void pm_cleanup(pm_ctx_t *pm_ctx);
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int pm_feature_enable(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *module_name,
+int pm_save_feature_state(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *module_name,
         const char *feature_name, bool enable);
 
 /**
- * @brief Returns the array of features that should be enabled in specified module.
+ * @brief Returns the array of enabled features in module's persistent storage.
  *
  * @param[in] pm_ctx Persistence Manager context acquired by ::pm_init call.
  * @param[in] module_name Name of the module.
- * @param[out] features Array of features that should be enabled.
+ * @param[out] running_enabled TRUE if running datastore is enabled by some of the subscriptions.
+ * @param[out] features Array of enabled features.
  * @param[out] feature_cnt Number of features in returned array.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int pm_get_features(pm_ctx_t *pm_ctx, const char *module_name, char ***features, size_t *feature_cnt);
+int pm_get_module_info(pm_ctx_t *pm_ctx, const char *module_name,
+        bool *running_enabled, char ***features, size_t *feature_cnt);
 
 /**
- * TODO
+ * @brief Saves/deletes the subscription in module's persistent storage.
+ *
+ * @param[in] pm_ctx Persistence Manager context acquired by ::pm_init call.
+ * @param[in] user_cred User credentials.
+ * @param[in] module_name Name of the module.
+ * @param[in] subscription Subscription to be saved.
+ * @param[in] subscribe TRUE if the subscription should be added, FALSE if removed.
+ *
+ * @return Error code (SR_ERR_OK on success).
  */
-int pm_subscribe(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const np_subscription_t *subscription,
-        const bool subscribe);
+int pm_save_subscribtion_state(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *module_name,
+        const np_subscription_t *subscription, const bool subscribe);
 
 /**
- * TODO
+ * @brief Deletes all subscriptions in module's persistent storage that are to be
+ * delivered to specified destination address.
+ *
+ * @param[in] pm_ctx Persistence Manager context acquired by ::pm_init call.
+ * @param[in] module_name Name of the module.
+ * @param[in] dst_address Notification delivery destination address.
+ *
+ * @return Error code (SR_ERR_OK on success).
  */
-int pm_get_subscriptions(pm_ctx_t *pm_ctx, Sr__NotificationEvent event_type, np_subscription_t **subscriptions,
-        size_t *subscription_cnt);
+int pm_delete_subscriptions_for_destination(pm_ctx_t *pm_ctx, const char *module_name, const char *dst_address);
+
+/**
+ * @brief Returns the array of active subscriptions of given type in module's persistent storage.
+ *
+ * @param[in] pm_ctx Persistence Manager context acquired by ::pm_init call.
+ * @param[in] module_name Name of the module.
+ * @param[in] event_type Type of the subscription.
+ * @param[out] subscriptions Array of the active subscriptions.
+ * @param[out] subscription_cnt Number of subscriptions in returned array.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int pm_get_subscriptions(pm_ctx_t *pm_ctx, const char *module_name, Sr__NotificationEvent event_type,
+        np_subscription_t **subscriptions, size_t *subscription_cnt);
 
 /**@} pm */
 

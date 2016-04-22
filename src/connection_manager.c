@@ -240,6 +240,39 @@ cm_connection_data_cleanup(void *connection)
 }
 
 /**
+ * @brief Request removal of subscriptions with the delivery address specified in destination_address.
+ */
+static int
+cm_notif_unsubscribe_destination(cm_ctx_t *cm_ctx, const char *destination_address)
+{
+    Sr__Msg *msg_req = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG2(cm_ctx, destination_address);
+
+    SR_LOG_DBG("Requesting removal of subscriptions for the destination '%s'.", destination_address);
+
+    rc = sr_pb_internal_req_alloc(SR__OPERATION__UNSUBSCRIBE_DESTINATION, &msg_req);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
+
+    msg_req->internal_request->unsubscribe_dst_req->destination = strdup(destination_address);
+    CHECK_NULL_NOMEM_GOTO(msg_req->internal_request->unsubscribe_dst_req->destination, rc, cleanup);
+
+    rc = rp_msg_process(cm_ctx->rp_ctx, NULL, msg_req);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Unable to remove subscriptions for the destination '%s'.", destination_address);
+    }
+
+    return rc;
+
+cleanup:
+    if (NULL != msg_req) {
+        sr__msg__free_unpacked(msg_req, NULL);
+    }
+    return rc;
+}
+
+/**
  * @brief Close the connection inside of Connection Manager and Request Processor.
  */
 static int
@@ -248,13 +281,14 @@ cm_conn_close(cm_ctx_t *cm_ctx, sm_connection_t *conn)
     sm_session_list_t *sess = NULL;
     bool drop_session = false;
 
-    CHECK_NULL_ARG3(cm_ctx, conn, conn->cm_data);
+    CHECK_NULL_ARG2(cm_ctx, conn);
 
     SR_LOG_INF("Closing the connection %p.", (void*)conn);
 
-    ev_io_stop(cm_ctx->event_loop, &conn->cm_data->read_watcher);
-    ev_io_stop(cm_ctx->event_loop, &conn->cm_data->write_watcher);
-
+    if (NULL != conn->cm_data) {
+        ev_io_stop(cm_ctx->event_loop, &conn->cm_data->read_watcher);
+        ev_io_stop(cm_ctx->event_loop, &conn->cm_data->write_watcher);
+    }
     close(conn->fd);
 
     /* close all sessions assigned to this connection */
@@ -277,6 +311,12 @@ cm_conn_close(cm_ctx_t *cm_ctx, sm_connection_t *conn)
                 sm_session_drop(cm_ctx->sm_ctx, sess->session);
             }
         }
+    }
+
+    if (CM_AF_UNIX_SERVER == conn->type && NULL != conn->dst_address) {
+        /* this was a notification connection, remove the subscriptions for that destination */
+        SR_LOG_DBG("Notification server at '%s' has disconnected.", conn->dst_address);
+        cm_notif_unsubscribe_destination(cm_ctx, conn->dst_address);
     }
 
     /* cleanup connection, pointers to the connection from outstanding sessions will be set to NULL */
@@ -1083,9 +1123,10 @@ cm_notif_conn_create(cm_ctx_t *cm_ctx, const char *socket_path, sm_connection_t 
 
 cleanup:
     if (NULL != connection) {
-        sm_connection_stop(cm_ctx->sm_ctx, connection);
+        cm_conn_close(cm_ctx, connection);
+    } else if (-1 != fd) {
+        close(fd);
     }
-    close(fd);
     return rc;
 }
 
@@ -1105,6 +1146,7 @@ cm_out_notif_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
     /* fill-in source address */
     msg->notification->source_address = strdup(cm_ctx->server_socket_path);
     CHECK_NULL_NOMEM_RETURN(msg->notification->source_address);
+    msg->notification->source_pid = (uint32_t)getpid();
 
     /* get a connection to the notification destination */
     rc = sm_connection_find_dst(cm_ctx->sm_ctx, msg->notification->destination_address, &connection);
@@ -1116,19 +1158,21 @@ cm_out_notif_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
         /* connection to that destination does not exist - connect */
         SR_LOG_DBG("Creating a new connection for the notification destination '%s'", msg->notification->destination_address);
         rc = cm_notif_conn_create(cm_ctx, msg->notification->destination_address, &connection);
-        if (SR_ERR_OK != rc) {
-            return rc;
-            // TODO: remove subscriptions?
-        }
     }
 
     /* send the message */
-    rc = cm_msg_send_connection(cm_ctx, connection, msg);
-    // TODO: remove subscription by disconnect
+    if (SR_ERR_OK == rc) {
+        rc = cm_msg_send_connection(cm_ctx, connection, msg);
+    }
+
+    if (SR_ERR_OK != rc) {
+        /* by error, remove subscriptions on this destination */
+        cm_notif_unsubscribe_destination(cm_ctx, msg->notification->destination_address);
+    }
 
     sr__msg__free_unpacked(msg, NULL);
 
-    return SR_ERR_OK;
+    return rc;
 }
 
 /**
@@ -1341,13 +1385,6 @@ cm_init(const cm_connection_mode_t mode, const char *socket_path, cm_ctx_t **cm_
         goto cleanup;
     }
 
-    /* initialize Request Processor */
-    rc = rp_init(ctx, &ctx->rp_ctx);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Cannot initialize Request Processor.");
-        goto cleanup;
-    }
-
     /* initialize event loop */
     /* According to our measurements, EPOLL backend is significantly slower for
      * fewer file descriptors, so we are disabling it for now. */
@@ -1367,6 +1404,13 @@ cm_init(const cm_connection_mode_t mode, const char *socket_path, cm_ctx_t **cm_
     ev_async_init(&ctx->msg_queue_watcher, cm_msg_enqueue_cb);
     ctx->msg_queue_watcher.data = (void*)ctx;
     ev_async_start(ctx->event_loop, &ctx->msg_queue_watcher);
+
+    /* initialize Request Processor */
+    rc = rp_init(ctx, &ctx->rp_ctx);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Cannot initialize Request Processor.");
+        goto cleanup;
+    }
 
     SR_LOG_DBG_MSG("Connection Manager initialized successfully.");
 

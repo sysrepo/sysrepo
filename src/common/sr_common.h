@@ -222,6 +222,40 @@
         } \
     } while(0)
 
+#define CHECK_ZERO_MSG_RETURN(RET, ERROR, MSG) \
+    do { \
+        if (0 != RET) { \
+            SR_LOG_ERR_MSG(MSG); \
+            return ERROR; \
+        } \
+    } while(0)
+
+#define CHECK_ZERO_LOG_RETURN(RET, ERROR, MSG, ...) \
+    do { \
+        if (0 != RET) { \
+            SR_LOG_ERR(MSG, __VA_ARGS__); \
+            return ERROR; \
+        } \
+    } while(0)
+
+#define CHECK_ZERO_MSG_GOTO(RET, RC, ERROR, LABEL, MSG) \
+    do { \
+        if (0 != RET) { \
+            SR_LOG_ERR_MSG(MSG); \
+            RC = ERROR; \
+            goto LABEL; \
+        } \
+    } while(0)
+
+#define CHECK_ZERO_LOG_GOTO(RET, RC, ERROR, LABEL, MSG, ...) \
+    do { \
+        if (0 != RC) { \
+            SR_LOG_ERR(MSG, __VA_ARGS__); \
+            RC = ERROR; \
+            goto LABEL; \
+        } \
+    } while(0)
+
 /**
  * @brief Returns string with name of the provided operation.
  *
@@ -442,6 +476,16 @@ int sr_pb_notif_alloc(const Sr__NotificationEvent event, const char *destination
         const uint32_t subscription_id, Sr__Msg **msg_p);
 
 /**
+ * @brief Allocates and initializes GPB internal request message.
+ *
+ * @param[in] operation Requested operation.
+ * @param[out] msg GPB message.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_pb_internal_req_alloc(const Sr__Operation operation, Sr__Msg **msg_p);
+
+/**
  * @brief Validates the message according to excepted message type and operation.
  *
  * @param[in] msg Unpacked message.
@@ -552,6 +596,22 @@ Sr__MoveItemReq__MovePosition sr_move_position_sr_to_gpb(sr_move_position_t sr_d
  * @return Sysrepo move direction.
  */
 sr_move_position_t sr_move_direction_gpb_to_sr(Sr__MoveItemReq__MovePosition gpb_direction);
+
+/**
+ * @brief Converts GPB notification event type to its string representation.
+ *
+ * @param[in] event GPB event type.
+ * @return Pointer to statically allocated string with the event name.
+ */
+char *sr_event_gpb_to_str(Sr__NotificationEvent event);
+
+/**
+ * @brief Converts notification event type string to its GPB enum representation.
+ *
+ * @param[in] event_name String name of the event.
+ * @return GPB event type.
+ */
+Sr__NotificationEvent sr_event_str_to_gpb(const char *event_name);
 
 /**
  * @brief Converts array of sr_schema_t to an array of pointers to GPB schemas.

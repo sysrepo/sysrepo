@@ -44,6 +44,8 @@ typedef struct cm_ctx_s cm_ctx_t;
 typedef struct sr_conn_ctx_s {
     int fd;                                  /**< File descriptor of the connection. */
     const char *dst_address;                 /**< Destination socket address. */
+    uint32_t dst_pid;                        /**< Destination PID (used only to to guarantee that there is
+                                                  still the same process at the dst_address). */
     pthread_mutex_t lock;                    /**< Mutex of the connection to guarantee that requests on the
                                                   same connection are processed serially (one after another). */
     uint8_t *msg_buf;                        /**< Buffer used for sending / receiving messages. */

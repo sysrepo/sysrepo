@@ -289,7 +289,7 @@ rp_dt_create_xpath_for_node(const struct lyd_node *node, char **xpath)
 static int
 rp_dt_find_in_choice(dm_session_t *session, const char *xpath, const char *trimmed_xpath, const struct lys_module *module, struct lys_node **match)
 {
-    CHECK_NULL_ARG5(session, xpath, trimmed_xpath, module, match);
+    CHECK_NULL_ARG4(xpath, trimmed_xpath, module, match);
     /* libyang err_msg is used to parse the match and unmatch part */
     int rc = SR_ERR_BAD_ELEMENT;
     char *unmatch_part = NULL;
@@ -328,7 +328,7 @@ rp_dt_find_in_choice(dm_session_t *session, const char *xpath, const char *trimm
 not_matched:
     free(xp_copy);
     free(unmatch_part);
-    if (SR_ERR_OK != rc){
+    if (SR_ERR_OK != rc && NULL != session) {
         rc = dm_report_error(session, err_msg, strdup(xpath), SR_ERR_BAD_ELEMENT);
     }
     free(err_msg);
@@ -343,7 +343,7 @@ not_matched:
 static int
 rp_dt_find_leaflist(dm_session_t *session, const char *xpath, char *xp_copy, const struct lys_module *module, struct lys_node **match)
 {
-    CHECK_NULL_ARG5(session, xpath, xp_copy, module, match);
+    CHECK_NULL_ARG4(xpath, xp_copy, module, match);
     int rc = SR_ERR_BAD_ELEMENT;
     char *err_msg = NULL;
 
@@ -367,7 +367,7 @@ rp_dt_find_leaflist(dm_session_t *session, const char *xpath, char *xp_copy, con
     }
 
 not_matched:
-    if (SR_ERR_OK != rc){
+    if (SR_ERR_OK != rc && NULL != session) {
         rc = dm_report_error(session, err_msg, strdup(xpath), SR_ERR_BAD_ELEMENT);
     }
     free(err_msg);
@@ -440,7 +440,7 @@ rp_dt_trim_xpath(dm_ctx_t *dm_ctx, const char *xpath, char **trimmed)
 int
 rp_dt_validate_node_xpath(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const struct lys_module **matched_module, struct lys_node **match)
 {
-    CHECK_NULL_ARG3(dm_ctx, session, xpath);
+    CHECK_NULL_ARG2(dm_ctx, xpath);
     int rc = SR_ERR_OK;
 
     char *namespace = NULL;
@@ -454,7 +454,7 @@ rp_dt_validate_node_xpath(dm_ctx_t *dm_ctx, dm_session_t *session, const char *x
 
     const struct lys_module *module = NULL;
     rc = dm_get_module(dm_ctx, namespace, NULL, &module);
-    if (SR_ERR_UNKNOWN_MODEL == rc) {
+    if (SR_ERR_UNKNOWN_MODEL == rc && NULL != session) {
         rc = dm_report_error(session, NULL, strdup(xpath), rc);
     }
     if (SR_ERR_OK != rc) {
@@ -500,13 +500,25 @@ rp_dt_validate_node_xpath(dm_ctx_t *dm_ctx, dm_session_t *session, const char *x
             }
             break;
         case LYVE_PATH_INKEY:
-            rc = dm_report_error(session, ly_errmsg(), strdup(ly_errpath()), SR_ERR_BAD_ELEMENT);
+            if (NULL != session) {
+                rc = dm_report_error(session, ly_errmsg(), strdup(ly_errpath()), SR_ERR_BAD_ELEMENT);
+            } else {
+                rc = SR_ERR_BAD_ELEMENT;
+            }
             break;
         case LYVE_PATH_INMOD:
-            rc = dm_report_error(session, ly_errmsg(), strdup(ly_errpath()), SR_ERR_UNKNOWN_MODEL);
+            if (NULL != session) {
+                rc = dm_report_error(session, ly_errmsg(), strdup(ly_errpath()), SR_ERR_UNKNOWN_MODEL);
+            } else {
+                rc = SR_ERR_UNKNOWN_MODEL;
+            }
             break;
         default:
-            rc = dm_report_error(session, ly_errmsg(), strdup(ly_errpath()), SR_ERR_INVAL_ARG);
+            if (NULL != session) {
+                rc = dm_report_error(session, ly_errmsg(), strdup(ly_errpath()), SR_ERR_INVAL_ARG);
+            } else {
+                rc = SR_ERR_INVAL_ARG;
+            }
         }
     }
     free(xp_copy);
@@ -538,7 +550,7 @@ rp_dt_enable_key_nodes(struct lys_node *node)
 int
 rp_dt_enable_xpath(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath)
 {
-    CHECK_NULL_ARG3(dm_ctx, session, xpath);
+    CHECK_NULL_ARG2(dm_ctx, xpath);
     int rc = SR_ERR_OK;
     struct lys_node *match = NULL, *node = NULL;
     rc = rp_dt_validate_node_xpath(dm_ctx, session, xpath, NULL, &match);

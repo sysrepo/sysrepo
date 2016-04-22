@@ -1043,22 +1043,6 @@ cl_notification_test(void **state)
     rc = sr_feature_enable(session, "ietf-interfaces", "pre-provisioning", true);
     assert_int_equal(rc, SR_ERR_OK);
 
-    // change & commit something, expect module change callback
-    /* perform a set-item request */
-    value.type = SR_STRING_T;
-    value.data.string_val = "notification_test";
-    rc = sr_set_item(session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &value, SR_EDIT_DEFAULT);
-    assert_int_equal(rc, SR_ERR_OK);
-    /* commit */
-    rc = sr_commit(session);
-
-    /* wait for all callbacks or timeout after 100 ms */
-    for (size_t i = 0; i < 100; i++) {
-        if (callback_called >= 3) break;
-        usleep(1000); /* 1 ms */
-    }
-    assert_true(callback_called >= 3);
-
     /* validate changes in modules and features using list-schemas */
     size_t schema_cnt = 0;
     sr_schema_t *schemas = NULL;
@@ -1073,6 +1057,25 @@ cl_notification_test(void **state)
         }
     }
     sr_free_schemas(schemas, schema_cnt);
+
+    rc = sr_feature_enable(session, "ietf-interfaces", "pre-provisioning", false);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    // change & commit something, expect module change callback
+    /* perform a set-item request */
+    value.type = SR_STRING_T;
+    value.data.string_val = "notification_test";
+    rc = sr_set_item(session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    /* commit */
+    rc = sr_commit(session);
+
+    /* wait for all callbacks or timeout after 100 ms */
+    for (size_t i = 0; i < 100; i++) {
+        if (callback_called >= 4) break;
+        usleep(1000); /* 1 ms */
+    }
+    assert_true(callback_called >= 4);
 
     /* some negative tests */
     rc = sr_feature_enable(session, "unknown-module", "unknown", true);

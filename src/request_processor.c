@@ -222,7 +222,7 @@ rp_feature_enable_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *sessio
 
     /* enable the feature in persistent data */
     if (SR_ERR_OK == oper_rc) {
-        oper_rc = pm_feature_enable(rp_ctx->pm_ctx, session->user_credentials,
+        oper_rc = pm_save_feature_state(rp_ctx->pm_ctx, session->user_credentials,
                 req->module_name, req->feature_name, req->enabled);
         if (SR_ERR_OK != oper_rc) {
             /* rollback of the change in DM */
@@ -814,8 +814,6 @@ rp_subscribe_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr
 {
     Sr__Msg *resp = NULL;
     Sr__SubscribeReq *subscribe_req = NULL;
-    struct lys_module *module = NULL;
-    char xpath[PATH_MAX] = { 0, };
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->subscribe_req);
@@ -831,32 +829,14 @@ rp_subscribe_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr
     subscribe_req = msg->request->subscribe_req;
 
     /* subscribe to the notification */
-    rc = np_notification_subscribe(rp_ctx->np_ctx, subscribe_req->event, subscribe_req->xpath,
-            subscribe_req->destination, subscribe_req->subscription_id);
+    rc = np_notification_subscribe(rp_ctx->np_ctx, session->user_credentials, subscribe_req->event,
+            subscribe_req->destination, subscribe_req->subscription_id,
+            subscribe_req->module_name, subscribe_req->xpath, subscribe_req->enable_running);
 
-    if (SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV == subscribe_req->event &&
-            subscribe_req->enable_running) {
+    if ((SR_ERR_OK == rc) &&
+            (SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV == subscribe_req->event) && (subscribe_req->enable_running)) {
         /* enable the module in running config */
-        bool module_enabled = false;
-        rc = dm_has_enabled_subtree(rp_ctx->dm_ctx, subscribe_req->xpath, &module, &module_enabled);
-        if (SR_ERR_OK == rc && !module_enabled) {
-            /* if not already enabled, copy the data from startup */
-            rc = dm_copy_module(rp_ctx->dm_ctx, session->dm_session, subscribe_req->xpath, SR_DS_STARTUP, SR_DS_RUNNING);
-        }
-        if (SR_ERR_OK == rc) {
-            /* enable each subtree within the module */
-            struct lys_node *node = module->data;
-            while (NULL != node) {
-                if ((LYS_CONTAINER | LYS_LIST | LYS_LEAF | LYS_LEAFLIST) & node->nodetype) {
-                    snprintf(xpath, PATH_MAX, "/%s:%s", node->module->name, node->name);
-                    rc = rp_dt_enable_xpath(rp_ctx->dm_ctx, session->dm_session, xpath);
-                    if (SR_ERR_OK != rc) {
-                        break;
-                    }
-                }
-                node = node->next;
-            }
-        }
+        rc = dm_enable_module_runnig(rp_ctx->dm_ctx, session->dm_session, subscribe_req->module_name, NULL);
     }
 
     /* set response code */
@@ -869,6 +849,12 @@ rp_subscribe_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr
 
     /* send the response */
     rc = cm_msg_send(rp_ctx->cm_ctx, resp);
+
+    if (SR_ERR_OK == rc) {
+        /* send initial HELLO notification to test the subscription */
+        rc = np_hello_notify(rp_ctx->np_ctx, subscribe_req->module_name,
+                subscribe_req->destination, subscribe_req->subscription_id);
+    }
 
     return rc;
 }
@@ -894,8 +880,9 @@ rp_unsubscribe_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
     }
 
     /* unsubscribe from the notifications */
-    rc = np_notification_unsubscribe(rp_ctx->np_ctx, msg->request->unsubscribe_req->destination,
-            msg->request->unsubscribe_req->subscription_id);
+    rc = np_notification_unsubscribe(rp_ctx->np_ctx, session->user_credentials, msg->request->unsubscribe_req->event,
+            msg->request->unsubscribe_req->destination, msg->request->unsubscribe_req->subscription_id,
+            msg->request->unsubscribe_req->module_name);
 
     /* set response code */
     resp->response->result = rc;
@@ -912,6 +899,23 @@ rp_unsubscribe_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
 }
 
 /**
+ * @brief Processes an unsubscribe-destination internal request.
+ */
+static int
+rp_unsubscribe_destination_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
+{
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG4(rp_ctx, msg, msg->internal_request, msg->internal_request->unsubscribe_dst_req);
+
+    SR_LOG_DBG_MSG("Processing unsubscribe destination request.");
+
+    rc = np_unsubscribe_destination(rp_ctx->np_ctx, msg->internal_request->unsubscribe_dst_req->destination);
+
+    return rc;
+}
+
+/**
  * @brief Dispatches the received message.
  */
 static int
@@ -919,10 +923,17 @@ rp_msg_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
 {
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG3(rp_ctx, session, msg);
+    CHECK_NULL_ARG2(rp_ctx, msg);
+
+    /* NULL session is only allowed for internal messages */
+    if ((NULL == session) && (SR__MSG__MSG_TYPE__INTERNAL_REQUEST != msg->type)) {
+        SR_LOG_ERR("Session argument of the message  to be processed is NULL (type=%d).", msg->type);
+        sr__msg__free_unpacked(msg, NULL);
+        return SR_ERR_INVAL_ARG;
+    }
 
     /* whitelist only some operations for notification sessions */
-    if (session->options & SR__SESSION_FLAGS__SESS_NOTIFICATION) {
+    if ((NULL != session) && (session->options & SR__SESSION_FLAGS__SESS_NOTIFICATION)) {
         if ((SR__OPERATION__GET_ITEM != msg->request->operation) &&
                 (SR__OPERATION__GET_ITEMS != msg->request->operation) &&
                 (SR__OPERATION__UNSUBSCRIBE != msg->request->operation)) {
@@ -944,7 +955,7 @@ rp_msg_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
             case SR__OPERATION__MOVE_ITEM:
             case SR__OPERATION__SESSION_REFRESH:
                 pthread_rwlock_rdlock(&rp_ctx->commit_lock);
-		break;
+                break;
             case SR__OPERATION__COMMIT:
                 pthread_rwlock_wrlock(&rp_ctx->commit_lock);
                 break;
@@ -1029,9 +1040,19 @@ rp_msg_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
             default:
                 break;
         }
+    } else if (SR__MSG__MSG_TYPE__INTERNAL_REQUEST == msg->type) {
+        /* internal request handling */
+        switch (msg->internal_request->operation) {
+            case SR__OPERATION__UNSUBSCRIBE_DESTINATION:
+                rc = rp_unsubscribe_destination_req_process(rp_ctx, session, msg);
+                break;
+            default:
+                SR_LOG_ERR("Unsupported internal request received (operation=%d).", msg->request->operation);
+                rc = SR_ERR_UNSUPPORTED;
+                break;
+        }
     } else {
-        /* response handling */
-        SR_LOG_ERR("Unsupported response received (session id=%"PRIu32", operation=%d).",
+        SR_LOG_ERR("Unsupported message received (session id=%"PRIu32", operation=%d).",
                 session->id, msg->response->operation);
         rc = SR_ERR_UNSUPPORTED;
     }
@@ -1097,19 +1118,21 @@ rp_worker_thread_execute(void *rp_ctx_p)
 
             if (dequeued) {
                 /* process the request */
-                if (NULL == req.msg || NULL == req.session) {
+                if (NULL == req.msg) {
                     SR_LOG_DBG("Thread id=%lu received an empty request, exiting.", (unsigned long)pthread_self());
                     exit = true;
                 } else {
                     rp_msg_dispatch(rp_ctx, req.session, req.msg);
-                    /* update message count and release session if needed */
-                    pthread_mutex_lock(&req.session->msg_count_mutex);
-                    req.session->msg_count -= 1;
-                    if (0 == req.session->msg_count && req.session->stop_requested) {
-                        pthread_mutex_unlock(&req.session->msg_count_mutex);
-                        rp_session_cleanup(rp_ctx, req.session);
-                    } else {
-                        pthread_mutex_unlock(&req.session->msg_count_mutex);
+                    if (NULL != req.session) {
+                        /* update message count and release session if needed */
+                        pthread_mutex_lock(&req.session->msg_count_mutex);
+                        req.session->msg_count -= 1;
+                        if (0 == req.session->msg_count && req.session->stop_requested) {
+                            pthread_mutex_unlock(&req.session->msg_count_mutex);
+                            rp_session_cleanup(rp_ctx, req.session);
+                        } else {
+                            pthread_mutex_unlock(&req.session->msg_count_mutex);
+                        }
                     }
                 }
                 dequeued_prev = true;
@@ -1213,7 +1236,7 @@ rp_init(cm_ctx_t *cm_ctx, rp_ctx_t **rp_ctx_p)
     }
 
     /* initialize Persistence Manager */
-    rc = pm_init(ctx->ac_ctx, SR_INTERNAL_SCHEMA_SEARCH_DIR, SR_DATA_SEARCH_DIR, &ctx->pm_ctx);
+    rc = pm_init(ctx, SR_INTERNAL_SCHEMA_SEARCH_DIR, SR_DATA_SEARCH_DIR, &ctx->pm_ctx);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Persistence Manager initialization failed.");
         goto cleanup;
@@ -1373,7 +1396,7 @@ rp_msg_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
     struct timespec now = { 0 };
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG_NORET3(rc, rp_ctx, session, msg);
+    CHECK_NULL_ARG_NORET2(rc, rp_ctx, msg);
 
     if (SR_ERR_OK != rc) {
         if (NULL != msg) {
@@ -1382,9 +1405,11 @@ rp_msg_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
         return rc;
     }
 
-    pthread_mutex_lock(&session->msg_count_mutex);
-    session->msg_count += 1;
-    pthread_mutex_unlock(&session->msg_count_mutex);
+    if (NULL != session) {
+        pthread_mutex_lock(&session->msg_count_mutex);
+        session->msg_count += 1;
+        pthread_mutex_unlock(&session->msg_count_mutex);
+    }
 
     req.session = session;
     req.msg = msg;
