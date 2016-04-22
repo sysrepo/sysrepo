@@ -175,15 +175,19 @@ pm_ly_log_cb(LY_LOG_LEVEL level, const char *msg, const char *path)
  */
 static int
 pm_save_persistent_data(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *module_name,
-        bool add, const char *xpath, const char *value, struct lyd_node **data_tree_p)
+        const char *xpath, const char *value, bool add, struct lyd_node **data_tree_p, bool *running_affected)
 {
     char *data_filename = NULL;
-    struct lyd_node *data_tree = NULL, *new_node = NULL;
+    struct lyd_node *data_tree = NULL, *node = NULL, *new_node = NULL;
     struct ly_set *node_set = NULL;
     int fd = -1, ret = 0;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG3(pm_ctx, module_name, xpath);
+
+    if (NULL != running_affected) {
+        *running_affected = false;
+    }
 
     /* get persist file path */
     rc = sr_get_persist_data_file_name(pm_ctx->data_search_dir, module_name, &data_filename);
@@ -225,6 +229,17 @@ pm_save_persistent_data(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const cha
             goto cleanup;
         }
         for (size_t i = 0; i < node_set->number; i++) {
+            if ((NULL != running_affected) && (false == *running_affected)) {
+                /* need to check if running state is affected by delete */
+                node = node_set->set.d[i]->child;
+                while (NULL != node) {
+                    if ((NULL != node->schema->name) && (0 == strcmp(node->schema->name, "enable-running"))) {
+                        *running_affected = true;
+                        break;
+                    }
+                    node = node->next;
+                }
+            }
             ret = lyd_unlink(node_set->set.d[i]);
             CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_INTERNAL, cleanup,
                     "Unable to delete persistent data (module=%s, xpath=%s): %s.", module_name, xpath, ly_errmsg());
@@ -285,9 +300,36 @@ pm_subscription_entry_fill(struct lyd_node *node, np_subscription_t *subscriptio
             if (0 == strcmp(node->schema->name, "enable-running")) {
                 subscription->enable_running = true;
             }
-            node = node->next;
         }
+        node = node->next;
     }
+    return SR_ERR_OK;
+}
+
+/**
+ * @brief Checks whether there are some subscriptions that enable running datastore
+ * within the data tree.
+ */
+static int
+pm_dt_has_running_enable_susbscriptions(struct lyd_node *data_tree, const char *module_name, bool *result)
+{
+    char xpath[PATH_MAX] = { 0, };
+    struct ly_set *node_set = NULL;
+
+    CHECK_NULL_ARG3(data_tree, module_name, result);
+
+    snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTIONS_WITH_E_RUNNING, module_name);
+    node_set = lyd_get_node(data_tree, xpath);
+    if (NULL == node_set || 0 == node_set->number) {
+        *result = false;
+    } else {
+        *result = true;
+    }
+
+    if (NULL != node_set) {
+        ly_set_free(node_set);
+    }
+
     return SR_ERR_OK;
 }
 
@@ -365,7 +407,7 @@ pm_save_feature_state(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char 
         /* enable the feature */
         snprintf(xpath, PATH_MAX, PM_XPATH_FEATURES, module_name);
 
-        rc = pm_save_persistent_data(pm_ctx, user_cred, module_name, true, xpath, feature_name, NULL);
+        rc = pm_save_persistent_data(pm_ctx, user_cred, module_name, xpath, feature_name, true, NULL, NULL);
 
         if (SR_ERR_OK == rc) {
             SR_LOG_DBG("Feature '%s' successfully enabled in '%s' persist data tree.", feature_name, module_name);
@@ -374,7 +416,7 @@ pm_save_feature_state(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char 
         /* disable the feature */
         snprintf(xpath, PATH_MAX, PM_XPATH_FEATURES_BY_NAME, module_name, feature_name);
 
-        rc = pm_save_persistent_data(pm_ctx, user_cred, module_name, false, xpath, NULL, NULL);
+        rc = pm_save_persistent_data(pm_ctx, user_cred, module_name, xpath, NULL, false, NULL, NULL);
 
         if (SR_ERR_OK == rc) {
             SR_LOG_DBG("Feature '%s' successfully disabled in '%s' persist file.", feature_name, module_name);
@@ -477,55 +519,91 @@ cleanup:
 }
 
 int
-pm_save_subscribtion_state(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *module_name,
-        const np_subscription_t *subscription, const bool subscribe)
+pm_add_subscription(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *module_name,
+        const np_subscription_t *subscription)
 {
     char xpath[PATH_MAX] = { 0, };
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG4(pm_ctx, user_cred, module_name, subscription);
-
-    if (subscribe) {
-        /* add the subscription */
-        if (subscription->enable_running) {
-            snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTION_ENABLE_RUNNING, module_name,
-                    sr_event_gpb_to_str(subscription->event_type), subscription->dst_address, subscription->dst_id);
-        } else {
-            snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTION, module_name,
-                    sr_event_gpb_to_str(subscription->event_type), subscription->dst_address, subscription->dst_id);
-        }
-        rc = pm_save_persistent_data(pm_ctx, user_cred, module_name, true, xpath, NULL, NULL);
-
-        if (SR_ERR_OK == rc) {
-            SR_LOG_DBG("Subscription entry successfully added into '%s' persist data tree.", module_name);
-        }
+    if (subscription->enable_running) {
+        snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTION_ENABLE_RUNNING, module_name,
+                sr_event_gpb_to_str(subscription->event_type), subscription->dst_address, subscription->dst_id);
     } else {
-        /* remove the subscription */
         snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTION, module_name,
                 sr_event_gpb_to_str(subscription->event_type), subscription->dst_address, subscription->dst_id);
+    }
+    rc = pm_save_persistent_data(pm_ctx, user_cred, module_name, xpath, NULL, true, NULL, NULL);
 
-        rc = pm_save_persistent_data(pm_ctx, user_cred, module_name, false, xpath, NULL, /* TODO */NULL);
-
-        if (SR_ERR_OK == rc) {
-            SR_LOG_DBG("Subscription entry successfully removed from '%s' persist file.", module_name);
-        }
+    if (SR_ERR_OK == rc) {
+        SR_LOG_DBG("Subscription entry successfully added into '%s' persist data tree.", module_name);
     }
 
     return rc;
 }
 
 int
-pm_delete_subscriptions_for_destination(pm_ctx_t *pm_ctx, const char *module_name, const char *dst_address)
+pm_remove_subscription(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *module_name,
+        const np_subscription_t *subscription, bool *disable_running)
 {
     char xpath[PATH_MAX] = { 0, };
+    struct lyd_node *data_tree = NULL;
+    bool running_affected = false, has_running_enable_susbscriptions = false;
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG3(pm_ctx, module_name, dst_address);
+    CHECK_NULL_ARG5(pm_ctx, user_cred, module_name, subscription, disable_running);
+
+    *disable_running = false;
+
+    snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTION, module_name,
+            sr_event_gpb_to_str(subscription->event_type), subscription->dst_address, subscription->dst_id);
+
+    rc = pm_save_persistent_data(pm_ctx, user_cred, module_name, xpath, NULL, false, &data_tree, &running_affected);
+    if (NULL != data_tree) {
+        if (running_affected) {
+            /* check if some subscriptions that enable running left */
+            rc = pm_dt_has_running_enable_susbscriptions(data_tree, module_name, &has_running_enable_susbscriptions);
+            if (SR_ERR_OK == rc && !has_running_enable_susbscriptions) {
+                *disable_running = true;
+            }
+        }
+        lyd_free_withsiblings(data_tree);
+    }
+
+    if (SR_ERR_OK == rc) {
+        SR_LOG_DBG("Subscription entry successfully removed from '%s' persist file.", module_name);
+    }
+
+    return rc;
+}
+
+int
+pm_remove_subscriptions_for_destination(pm_ctx_t *pm_ctx, const char *module_name, const char *dst_address,
+        bool *disable_running)
+{
+    char xpath[PATH_MAX] = { 0, };
+    struct lyd_node *data_tree = NULL;
+    bool running_affected = false, has_running_enable_susbscriptions = false;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG4(pm_ctx, module_name, dst_address, disable_running);
+
+    *disable_running = false;
 
     snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTIONS_BY_DST_ADDR, module_name, dst_address);
 
     /* remove the subscriptions */
-    rc = pm_save_persistent_data(pm_ctx, NULL, module_name, false, xpath, NULL, /* TODO */NULL);
+    rc = pm_save_persistent_data(pm_ctx, NULL, module_name, xpath, NULL, false, &data_tree, &running_affected);
+    if (NULL != data_tree) {
+        /* check if some subscriptions that enable running left */
+        if (running_affected) {
+            /* check if some subscriptions that enable running left */
+            rc = pm_dt_has_running_enable_susbscriptions(data_tree, module_name, &has_running_enable_susbscriptions);
+            if (SR_ERR_OK == rc && !has_running_enable_susbscriptions) {
+                *disable_running = true;
+            }
+        }
+        lyd_free_withsiblings(data_tree);
+    }
 
     if (SR_ERR_OK == rc) {
         SR_LOG_DBG("Subscription entries for destination '%s' successfully removed from '%s' persist file.",

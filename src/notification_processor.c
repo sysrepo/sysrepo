@@ -294,7 +294,7 @@ np_notification_subscribe(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, Sr__Not
         rc = np_dst_info_insert(np_ctx, dst_address, module_name);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to update notification destination info.");
 
-        rc = pm_save_subscribtion_state(np_ctx->rp_ctx->pm_ctx, user_cred, module_name, subscription, true);
+        rc = pm_add_subscription(np_ctx->rp_ctx->pm_ctx, user_cred, module_name, subscription);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to save the subscription into persistent data file.");
 
         goto cleanup; /* subscription not needed anymore */
@@ -337,6 +337,7 @@ np_notification_unsubscribe(np_ctx_t *np_ctx,  const ac_ucred_t *user_cred, Sr__
 {
     np_subscription_t *subscription = NULL, subscription_lookup = { 0, };
     size_t i = 0;
+    bool disable_running = true;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG2(np_ctx, dst_address);
@@ -348,11 +349,14 @@ np_notification_unsubscribe(np_ctx_t *np_ctx,  const ac_ucred_t *user_cred, Sr__
         subscription_lookup.dst_address = dst_address;
         subscription_lookup.dst_id = dst_id;
         subscription_lookup.event_type = event_type;
-        rc = pm_save_subscribtion_state(np_ctx->rp_ctx->pm_ctx, user_cred, module_name, &subscription_lookup, false);
+        rc = pm_remove_subscription(np_ctx->rp_ctx->pm_ctx, user_cred, module_name, &subscription_lookup, &disable_running);
         if (SR_ERR_OK == rc) {
             pthread_rwlock_wrlock(&np_ctx->lock);
             rc = np_dst_info_remove(np_ctx, dst_address, module_name);
             pthread_rwlock_unlock(&np_ctx->lock);
+            if (disable_running) {
+                // TODO: disable_running in DM
+            }
         }
     } else {
         /* remove the subscription from in-memory subscription list */
@@ -392,6 +396,7 @@ int
 np_unsubscribe_destination(np_ctx_t *np_ctx, const char *dst_address)
 {
     np_dst_info_t info_lookup = { 0, }, *info = NULL;
+    bool disable_running = true;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG2(np_ctx, dst_address);
@@ -404,10 +409,13 @@ np_unsubscribe_destination(np_ctx_t *np_ctx, const char *dst_address)
         for (size_t i = 0; i < info->subscribed_modules_cnt; i++) {
             SR_LOG_DBG("Removing subscriptions for destination '%s' from '%s'.", dst_address,
                     info->subscribed_modules[i]);
-            rc = pm_delete_subscriptions_for_destination(np_ctx->rp_ctx->pm_ctx,
-                    info->subscribed_modules[i], dst_address);
+            rc = pm_remove_subscriptions_for_destination(np_ctx->rp_ctx->pm_ctx,
+                    info->subscribed_modules[i], dst_address, &disable_running);
             CHECK_RC_LOG_RETURN(rc, "Unable to remove subscriptions for destination '%s' from '%s'.", dst_address,
                     info->subscribed_modules[i]);
+            if (disable_running) {
+                // TODO: disable_running in DM
+            }
         }
         np_dst_info_remove(np_ctx, dst_address, NULL);
     }
