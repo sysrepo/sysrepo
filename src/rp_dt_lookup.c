@@ -20,16 +20,19 @@
  */
 
 #include <stdbool.h>
+#include <pthread.h>
 
 #include "rp_dt_lookup.h"
 
 int
-rp_dt_find_nodes(struct lyd_node *data_tree, const char *xpath, bool check_enable, struct ly_set **nodes)
+rp_dt_find_nodes(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char *xpath, bool check_enable, struct ly_set **nodes)
 {
-    CHECK_NULL_ARG2(xpath, nodes);
+    CHECK_NULL_ARG3(dm_ctx, xpath, nodes);
+    int rc = SR_ERR_OK;
     if (NULL == data_tree) {
         return SR_ERR_NOT_FOUND;
     }
+    CHECK_NULL_ARG3(data_tree->schema,data_tree->schema->module, data_tree->schema->module->name);
     struct ly_set *res = lyd_get_node(data_tree, xpath);
     if (NULL == res){
         SR_LOG_ERR_MSG("Lyd get node failed");
@@ -37,6 +40,15 @@ rp_dt_find_nodes(struct lyd_node *data_tree, const char *xpath, bool check_enabl
     }
 
     if (check_enable) {
+        /* lock ly_ctx_lock to schema_info_tree*/
+        dm_schema_info_t *si = NULL;
+        rc = dm_get_schema_info((dm_ctx_t *) dm_ctx, data_tree->schema->module->name, &si);
+        if (rc != SR_ERR_OK) {
+            SR_LOG_ERR("Get schema info failed for %s", data_tree->schema->module->name);
+            ly_set_free(res);
+            return rc;
+        }
+        pthread_rwlock_rdlock(&si->model_lock);
         for (int i = res->number - 1; i>=0; i--) {
             if (!dm_is_enabled_check_recursively(res->set.d[i]->schema)) {
                 memmove(&res->set.d[i],
@@ -45,6 +57,7 @@ rp_dt_find_nodes(struct lyd_node *data_tree, const char *xpath, bool check_enabl
                 res->number--;
             }
         }
+        pthread_rwlock_unlock(&si->model_lock);
     }
 
     if (0 == res->number) {
@@ -53,18 +66,19 @@ rp_dt_find_nodes(struct lyd_node *data_tree, const char *xpath, bool check_enabl
     }
     *nodes = res;
     return SR_ERR_OK;
+
 }
 
 int
-rp_dt_find_node(struct lyd_node *data_tree, const char *xpath, bool check_enable, struct lyd_node **node)
+rp_dt_find_node(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char *xpath, bool check_enable, struct lyd_node **node)
 {
-    CHECK_NULL_ARG2(xpath, node);
+    CHECK_NULL_ARG3(dm_ctx, xpath, node);
     if (NULL == data_tree) {
         return SR_ERR_NOT_FOUND;
     }
     int rc = SR_ERR_OK;
     struct ly_set *res = NULL;
-    rc = rp_dt_find_nodes(data_tree, xpath, check_enable, &res);
+    rc = rp_dt_find_nodes(dm_ctx, data_tree, xpath, check_enable, &res);
     if (SR_ERR_OK != rc) {
         return rc;
     } else if (1 != res->number) {
@@ -94,7 +108,7 @@ rp_dt_find_nodes_with_opts(const dm_ctx_t *dm_ctx, dm_session_t *dm_session, rp_
             offset != get_items_ctx->offset) {
         ly_set_free(get_items_ctx->nodes);
         get_items_ctx->nodes = NULL;
-        rc = rp_dt_find_nodes(data_tree, xpath, dm_is_running_ds_session(dm_session), &get_items_ctx->nodes);
+        rc = rp_dt_find_nodes(dm_ctx, data_tree, xpath, dm_is_running_ds_session(dm_session), &get_items_ctx->nodes);
 
         if (SR_ERR_OK != rc) {
             if (SR_ERR_NOT_FOUND != rc) {

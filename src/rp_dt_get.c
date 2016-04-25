@@ -317,7 +317,7 @@ rp_dt_get_value(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char *
     int rc = 0;
     struct lyd_node *node = NULL;
 
-    rc = rp_dt_find_node(data_tree, xpath, check_enabled, &node);
+    rc = rp_dt_find_node(dm_ctx, data_tree, xpath, check_enabled, &node);
     if (SR_ERR_OK != rc) {
         if (SR_ERR_NOT_FOUND != rc) {
             SR_LOG_ERR("Find node failed (%d) xpath %s", rc, xpath);
@@ -339,7 +339,7 @@ rp_dt_get_values(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char 
     int rc = SR_ERR_OK;
 
     struct ly_set *nodes = NULL;
-    rc = rp_dt_find_nodes(data_tree, xpath, check_enable, &nodes);
+    rc = rp_dt_find_nodes(dm_ctx, data_tree, xpath, check_enable, &nodes);
     if (SR_ERR_OK != rc) {
         if (SR_ERR_NOT_FOUND != rc) {
             SR_LOG_ERR("Get nodes for xpath %s failed (%d)", xpath, rc);

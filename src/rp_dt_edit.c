@@ -178,7 +178,7 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, co
     }
 
     /* find nodes nodes to be deleted */
-    rc = rp_dt_find_nodes(info->node, xpath, dm_is_running_ds_session(session), &nodes);
+    rc = rp_dt_find_nodes(dm_ctx, info->node, xpath, dm_is_running_ds_session(session), &nodes);
     if (SR_ERR_NOT_FOUND == rc ) {
         if (SR_EDIT_STRICT & options) {
             SR_LOG_ERR("No nodes to be deleted with strict option %s", xpath);
@@ -315,9 +315,18 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const
     }
 
     /* check if node is enabled */
-    if (dm_is_running_ds_session(session) && !dm_is_enabled_check_recursively(sch_node)) {
-        SR_LOG_ERR("The node is not enabled in running datastore %s", xpath);
-        return SR_ERR_INVAL_ARG;
+    if (dm_is_running_ds_session(session)) {
+        dm_schema_info_t *si = NULL;
+        rc = dm_get_schema_info((dm_ctx_t *) dm_ctx, module->name, &si);
+        CHECK_RC_LOG_RETURN(rc, "Get schema info failed for %s", module->name);
+
+        pthread_rwlock_rdlock(&si->model_lock);
+        if (!dm_is_enabled_check_recursively(sch_node)) {
+            SR_LOG_ERR("The node is not enabled in running datastore %s", xpath);
+            pthread_rwlock_unlock(&si->model_lock);
+            return SR_ERR_INVAL_ARG;
+        }
+        pthread_rwlock_unlock(&si->model_lock);
     }
 
     /* non-presence container can not be created */
@@ -389,7 +398,7 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const
     }
     /* remove default tag if the default value has been explictly set */
     if (NULL == node && sch_node->nodetype == LYS_LEAF && ((struct lys_node_leaf *) sch_node)->dflt != NULL && 0 == strcmp(((struct lys_node_leaf *) sch_node)->dflt, new_value) ){
-        rc = rp_dt_find_node(info->node, xpath, dm_is_running_ds_session(session), &node);
+        rc = rp_dt_find_node(dm_ctx, info->node, xpath, dm_is_running_ds_session(session), &node);
         CHECK_RC_LOG_GOTO(rc, cleanup, "Created node %s not found", xpath);
         node->dflt = 0;
     }
@@ -424,7 +433,7 @@ rp_dt_move_list(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, sr_m
         return rc;
     }
 
-    rc = rp_dt_find_node(info->node, xpath, dm_is_running_ds_session(session), &node);
+    rc = rp_dt_find_node(dm_ctx, info->node, xpath, dm_is_running_ds_session(session), &node);
     if (SR_ERR_NOT_FOUND == rc) {
         SR_LOG_ERR("List not found %s", xpath);
         return SR_ERR_INVAL_ARG;
@@ -439,7 +448,7 @@ rp_dt_move_list(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, sr_m
     }
 
     if ((SR_MOVE_AFTER == position || SR_MOVE_BEFORE == position) && NULL != relative_item) {
-        rc = rp_dt_find_node(info->node, relative_item, dm_is_running_ds_session(session), &sibling);
+        rc = rp_dt_find_node(dm_ctx, info->node, relative_item, dm_is_running_ds_session(session), &sibling);
         if (SR_ERR_NOT_FOUND == rc) {
             rc = dm_report_error(session, "Relative item for move operation not found", strdup(relative_item), SR_ERR_INVAL_ARG);
             goto cleanup;
