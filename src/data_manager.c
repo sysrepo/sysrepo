@@ -2102,7 +2102,7 @@ dm_enable_module_runnig(dm_ctx_t *ctx, dm_session_t *session, const char *module
         rc = dm_has_enabled_subtree(ctx, module_name, &module, &module_enabled);
     }
     if (SR_ERR_OK == rc && !module_enabled) {
-        /* f not already enabled, enable each subtree within the module */
+        /* if not already enabled, enable each subtree within the module */
         struct lys_node *node = module->data;
         while (NULL != node) {
             if ((LYS_CONTAINER | LYS_LIST | LYS_LEAF | LYS_LEAFLIST) & node->nodetype) {
@@ -2119,6 +2119,70 @@ dm_enable_module_runnig(dm_ctx_t *ctx, dm_session_t *session, const char *module
         /* if not already enabled, copy the data from startup */
         rc = dm_copy_module(ctx, session, module_name, SR_DS_STARTUP, SR_DS_RUNNING);
     }
+    return rc;
+}
+
+int
+dm_disable_module_running(dm_ctx_t *ctx, dm_session_t *session, const char *module_name, const struct lys_module *module)
+{
+    CHECK_NULL_ARG2(ctx, module_name);
+    bool module_enabled = false;
+    int rc = SR_ERR_OK;
+
+    if (NULL == module) {
+        /* if module is not known, get it and check if it is already enabled */
+        rc = dm_has_enabled_subtree(ctx, module_name, &module, &module_enabled);
+    }
+    if (SR_ERR_OK == rc && module_enabled) {
+        /* if enabled, disable each subtree within the module */
+
+        dm_schema_info_t *si = NULL;
+        rc = dm_get_schema_info(ctx, module->name, &si);
+        CHECK_RC_LOG_RETURN(rc, "Get schema info failed %s", module->name);
+        struct lys_node *iter = NULL, *child = NULL;
+        struct ly_set *stack = NULL;
+        stack = ly_set_new();
+        CHECK_NULL_NOMEM_RETURN(stack);
+        pthread_rwlock_wrlock(&si->model_lock);
+        /* iterate through top-level nodes */
+        LY_TREE_FOR(module->data, iter) {
+            if ((LYS_CONTAINER | LYS_LIST | LYS_LEAF | LYS_LEAFLIST) & iter->nodetype && dm_is_node_enabled(iter)) {
+                rc = dm_set_node_state(iter, DM_NODE_DISABLED);
+                CHECK_RC_MSG_GOTO(rc, cleanup, "Set node state failed");
+
+                if ((LYS_CONTAINER | LYS_LIST) & iter->nodetype) {
+                    LY_TREE_FOR(iter->child, child) {
+                        if ((LYS_CONTAINER | LYS_LIST | LYS_LEAF | LYS_LEAFLIST) & iter->nodetype && dm_is_node_enabled(child)) {
+                            rc = ly_set_add(stack, child);
+                            CHECK_ZERO_MSG_GOTO(rc, rc, SR_ERR_INTERNAL, cleanup, "Adding to ly_set failed");
+                        }
+                    }
+                }
+            }
+        }
+
+        /* recursively disable all enabled children*/
+        while (stack->number != 0) {
+            iter = stack->set.s[stack->number - 1];
+            rc = dm_set_node_state(iter, DM_NODE_DISABLED);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "Set node state failed");
+
+            ly_set_rm_index(stack, stack->number -1);
+
+            if ((LYS_CONTAINER | LYS_LIST) & iter->nodetype) {
+                LY_TREE_FOR(iter->child, child) {
+                    if ((LYS_CONTAINER | LYS_LIST | LYS_LEAF | LYS_LEAFLIST) & child->nodetype && dm_is_node_enabled(child)) {
+                        rc = ly_set_add(stack, child);
+                        CHECK_ZERO_MSG_GOTO(rc, rc, SR_ERR_INTERNAL, cleanup, "Adding to ly_set failed");
+                    }
+                }
+            }
+        }
+cleanup:
+        pthread_rwlock_unlock(&si->model_lock);
+        ly_set_free(stack);
+    }
+
     return rc;
 }
 

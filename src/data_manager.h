@@ -506,6 +506,16 @@ int dm_has_enabled_subtree(dm_ctx_t *ctx, const char *module_name, const struct 
 int dm_enable_module_runnig(dm_ctx_t *ctx, dm_session_t *session, const char *module_name, const struct lys_module *module);
 
 /**
+ * @brief Disables module in running data store
+ * @param [in] ctx
+ * @param [in] session
+ * @param [in] module_name
+ * @param [in] module (optional can be NULL)
+ * @return Error code (SR_ERR_OK on success)
+ */
+int dm_disable_module_running(dm_ctx_t *ctx, dm_session_t *session, const char *module_name, const struct lys_module *module);
+
+/**
  * @brief Copies the content of the module from one datastore to the another.
  * @param [in] dm_ctx
  * @param [in] session
