@@ -12,6 +12,7 @@ set(SYSREPO_VERSION ${SYSREPO_MAJOR_VERSION}.${SYSREPO_MINOR_VERSION}.${SYSREPO_
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE debug)
 endif()
+string(TOLOWER "${CMAKE_BUILD_TYPE}" CMAKE_BUILD_TYPE_LOWER)
 
 set(CMAKE_C_FLAGS         "${CMAKE_C_FLAGS} -Wall -Wpedantic -std=gnu11")
 set(CMAKE_C_FLAGS_RELEASE "-DNDEBUG -O2")
@@ -32,7 +33,7 @@ if(NOT INCLUDE_INSTALL_DIR)
 endif()
 
 # set build-type specific settings
-if(CMAKE_BUILD_TYPE MATCHES DEBUG)
+if(CMAKE_BUILD_TYPE_LOWER MATCHES "debug")
     MESSAGE(STATUS "Preparing debug build of sysrepo v. ${SYSREPO_VERSION}")
     set(DAEMON_PID_FILE "/tmp/sysrepo.pid" CACHE PATH "Sysrepo daemon PID file.")
     set(DAEMON_SOCKET "/tmp/sysrepod.sock" CACHE PATH "Sysrepo deamon server socket path.")
@@ -43,7 +44,7 @@ else()
 endif()
 
 # location of system repository
-if(CMAKE_BUILD_TYPE MATCHES DEBUG)
+if(CMAKE_BUILD_TYPE_LOWER MATCHES "debug")
     set(REPOSITORY_LOC "${CMAKE_BINARY_DIR}/repository" CACHE PATH "System repository location, contains configuration schema and data files.")
 else()
     set(REPOSITORY_LOC "/etc/sysrepo" CACHE PATH "System repository location, contains configuration schema and data files.")
