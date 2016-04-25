@@ -55,10 +55,10 @@ no_subscription_test(void **state)
 
    sr_val_t **values = NULL;
    size_t count = 0;
-
+#if 0
    rc = rp_dt_get_values_wrapper(ctx, session, "/test-module:containera", &values, &count);
    assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
-
+#endif
    rc = rp_dt_get_values_wrapper(ctx, session, "/test-module:*", &values, &count);
    assert_int_equal(SR_ERR_NOT_FOUND, rc);
 

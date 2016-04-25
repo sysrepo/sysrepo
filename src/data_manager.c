@@ -70,6 +70,7 @@ typedef struct dm_ctx_s {
     bool ds_lock;                 /**< Flag if the ds lock is hold by a session*/
     pthread_mutex_t ds_lock_mutex;/**< Data store lock mutex */
     struct ly_set *disabled_sch;  /**< Set of schema that has been disabled */
+    sr_btree_t *schema_info_tree; /**< Binary tree holding information about schemas*/
 } dm_ctx_t;
 
 /**
@@ -149,6 +150,35 @@ dm_compare_lock_item(const void *a, const void *b)
     }
 }
 
+/**
+ * @brief Compares two schema data info by module name
+ */
+static int
+dm_schema_info_cmp(const void *a, const void *b)
+{
+    assert(a);
+    assert(b);
+    dm_schema_info_t *info_a = (dm_schema_info_t *) a;
+    dm_schema_info_t *info_b = (dm_schema_info_t *) b;
+
+    int res = strcmp(info_a->module_name, info_b->module_name);
+    if (res == 0) {
+        return 0;
+    } else if (res < 0) {
+        return -1;
+    } else {
+        return 1;
+    }
+}
+
+static void
+dm_free_schema_info(void *schema_info)
+{
+    CHECK_NULL_ARG_VOID(schema_info);
+    dm_schema_info_t *si = (dm_schema_info_t *) schema_info;
+    pthread_rwlock_destroy(&si->model_lock);
+    free(si);
+}
 
 /**
  * @brief frees the dm_data_info stored in binary tree
@@ -163,6 +193,22 @@ dm_data_info_free(void *item)
     free(info);
 }
 
+int
+dm_get_schema_info(dm_ctx_t *dm_ctx, const char *module_name, dm_schema_info_t **schema_info)
+{
+    CHECK_NULL_ARG3(dm_ctx, module_name, schema_info);
+    int rc = SR_ERR_OK;
+    dm_schema_info_t lookup_item = {0,};
+    lookup_item.module_name = module_name;
+    pthread_rwlock_rdlock(&dm_ctx->lyctx_lock);
+    *schema_info = sr_btree_search(dm_ctx->schema_info_tree, &lookup_item);
+    pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
+    if (NULL == *schema_info) {
+        SR_LOG_ERR("Schema info not found for model %s", module_name);
+        return SR_ERR_NOT_FOUND;
+    }
+    return rc;
+}
 /**
  * @brief Check whether the file_name corresponds to the schema file.
  * @return 1 if it does, 0 otherwise.
@@ -192,10 +238,18 @@ dm_load_schema_file(dm_ctx_t *dm_ctx, const char *dir_name, const char *file_nam
     char **features = NULL;
     size_t feature_cnt = 0;
     bool running_enabled = false;
+    dm_schema_info_t *si = NULL;
     int rc = SR_ERR_OK;
 
     rc = sr_str_join(dir_name, file_name, &schema_filename);
     if (SR_ERR_OK != rc) {
+        return SR_ERR_NOMEM;
+    }
+
+    si = calloc(1, sizeof(*si));
+    if (NULL == si) {
+        SR_LOG_ERR_MSG("Memory allocation failed");
+        free(schema_filename);
         return SR_ERR_NOMEM;
     }
 
@@ -205,11 +259,26 @@ dm_load_schema_file(dm_ctx_t *dm_ctx, const char *dir_name, const char *file_nam
     free(schema_filename);
     if (module == NULL) {
         SR_LOG_WRN("Unable to parse a schema file: %s", file_name);
+        dm_free_schema_info(si);
         pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
         return SR_ERR_INTERNAL;
     }
-    pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
 
+    pthread_rwlock_init(&si->model_lock, NULL);
+    si->module_name = module->name;
+
+    rc = sr_btree_insert(dm_ctx->schema_info_tree, si);
+    if (SR_ERR_OK != rc) {
+        printf("insert failed %s", module->name);
+        dm_free_schema_info(si);
+        if (SR_ERR_DATA_EXISTS != rc) {
+            SR_LOG_WRN_MSG("Insert into schema binary tree failed");
+            pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
+            return rc;
+        }
+    }
+
+    pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
     /* load module's persistent data */
     rc = pm_get_module_info(dm_ctx->pm_ctx, module->name, &running_enabled, &features, &feature_cnt);
     if (SR_ERR_OK == rc) {
@@ -985,6 +1054,9 @@ dm_init(ac_ctx_t *ac_ctx, np_ctx_t *np_ctx, pm_ctx_t *pm_ctx,
         return SR_ERR_INTERNAL;
     }
 
+    rc = sr_btree_init(dm_schema_info_cmp, dm_free_schema_info, &ctx->schema_info_tree);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Schema binary tree allocation failed");
+
     *dm_ctx = ctx;
     rc = dm_load_schemas(ctx);
 
@@ -1002,6 +1074,7 @@ dm_cleanup(dm_ctx_t *dm_ctx)
     if (NULL != dm_ctx) {
         free(dm_ctx->schema_search_dir);
         free(dm_ctx->data_search_dir);
+        sr_btree_cleanup(dm_ctx->schema_info_tree);
         if (NULL != dm_ctx->ly_ctx) {
             ly_ctx_destroy(dm_ctx->ly_ctx, dm_free_lys_private_data);
         }
@@ -1992,9 +2065,15 @@ dm_has_enabled_subtree(dm_ctx_t *ctx, const char *module_name, const struct lys_
    const struct lys_module *mod = NULL;
    rc = dm_get_module(ctx, module_name, NULL, &mod);
    CHECK_RC_MSG_RETURN(rc, "Get module failed");
+   CHECK_NULL_ARG(mod->name);
 
    *res = false;
    struct lys_node *node = mod->data;
+   dm_schema_info_t *si = NULL;
+   rc = dm_get_schema_info((dm_ctx_t *) ctx, mod->name, &si);
+   CHECK_RC_LOG_RETURN(rc, "Get schema info failed for %s", mod->name);
+
+   pthread_rwlock_rdlock(&si->model_lock);
    while (NULL != node) {
        if (dm_is_enabled_check_recursively(node)){
            *res = true;
@@ -2002,6 +2081,7 @@ dm_has_enabled_subtree(dm_ctx_t *ctx, const char *module_name, const struct lys_
        }
        node = node->next;
    }
+   pthread_rwlock_unlock(&si->model_lock);
    if (NULL != module) {
        *module = (struct lys_module *) mod;
    }

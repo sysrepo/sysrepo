@@ -52,23 +52,25 @@ int rp_dt_find_nodes_with_opts(const dm_ctx_t *dm_ctx, dm_session_t *dm_session,
 /**
  * @brief Looks up the node matching xpath. If there are more than one node in result
  * SR_ERR_INVAL_ARG is returned.
+ * @param [in] dm_ctx
  * @param [in] data_tree
  * @param [in] xpath
  * @param [in] check_enable
  * @param [out] node
  * @return Error code (SR_ERR_OK on success)
  */
-int rp_dt_find_node(struct lyd_node *data_tree, const char *xpath, bool check_enable, struct lyd_node **node);
+int rp_dt_find_node(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char *xpath, bool check_enable, struct lyd_node **node);
 
 /**
  * @brief Looks up the nodes matching xpath.
+ * @param [in] dm_ctx
  * @param [in] data_tree
  * @param [in] xpath
  * @param [in] check_enable
  * @param [out] nodes
  * @return Error code (SR_ERR_OK on success)
  */
-int rp_dt_find_nodes(struct lyd_node *data_tree, const char *xpath, bool check_enable, struct ly_set **nodes);
+int rp_dt_find_nodes(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char *xpath, bool check_enable, struct ly_set **nodes);
 
 #endif /* RP_DT_LOOKUP_H */
 
