@@ -830,15 +830,9 @@ rp_subscribe_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr
     subscribe_req = msg->request->subscribe_req;
 
     /* subscribe to the notification */
-    rc = np_notification_subscribe(rp_ctx->np_ctx, session->user_credentials, subscribe_req->event,
+    rc = np_notification_subscribe(rp_ctx->np_ctx, session, subscribe_req->event,
             subscribe_req->destination, subscribe_req->subscription_id,
             subscribe_req->module_name, subscribe_req->xpath, subscribe_req->enable_running);
-
-    if ((SR_ERR_OK == rc) &&
-            (SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV == subscribe_req->event) && (subscribe_req->enable_running)) {
-        /* enable the module in running config */
-        rc = dm_enable_module_runnig(rp_ctx->dm_ctx, session->dm_session, subscribe_req->module_name, NULL);
-    }
 
     /* set response code */
     resp->response->result = rc;
@@ -881,7 +875,7 @@ rp_unsubscribe_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
     }
 
     /* unsubscribe from the notifications */
-    rc = np_notification_unsubscribe(rp_ctx->np_ctx, session->user_credentials, msg->request->unsubscribe_req->event,
+    rc = np_notification_unsubscribe(rp_ctx->np_ctx, session, msg->request->unsubscribe_req->event,
             msg->request->unsubscribe_req->destination, msg->request->unsubscribe_req->subscription_id,
             msg->request->unsubscribe_req->module_name);
 

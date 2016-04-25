@@ -22,8 +22,9 @@
 #ifndef NOTIFICATION_PROCESSOR_H_
 #define NOTIFICATION_PROCESSOR_H_
 
-typedef struct rp_ctx_s rp_ctx_t;     /**< Forward-declaration of Request Processor context. */
-typedef struct ac_ucred_s ac_ucred_t; /**< Forward-declaration of user credentials context. */
+typedef struct rp_ctx_s rp_ctx_t;          /**< Forward-declaration of Request Processor context. */
+typedef struct rp_session_s rp_session_t;  /**< Forward-declaration of Request Processor session context. */
+typedef struct ac_ucred_s ac_ucred_t;      /**< Forward-declaration of user credentials context. */
 
 /**
  * @defgroup np Notification Processor
@@ -70,7 +71,7 @@ void np_cleanup(np_ctx_t *np_ctx);
  * @brief Subscribe the client to notifications on specified event.
  *
  * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
- * @param[in] user_cred User credentials.
+ * @param[in] rp_session Request Processor session.
  * @param[in] event_type Type of the event to subscribe.
  * @param[in] dst_address Destination address of the subscriber.
  * @param[in] dst_id Destination subscription ID.
@@ -80,14 +81,14 @@ void np_cleanup(np_ctx_t *np_ctx);
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int np_notification_subscribe(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, Sr__NotificationEvent event_type,
+int np_notification_subscribe(np_ctx_t *np_ctx, const rp_session_t *rp_session, Sr__NotificationEvent event_type,
         const char *dst_address, uint32_t dst_id, const char *module_name, const char *xpath, const bool enable_running);
 
 /**
  * @brief Unsubscribe the client from notifications on specified event.
  *
  * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
- * @param[in] user_cred User credentials.
+ * @param[in] rp_session Request Processor session.
  * @param[in] event_type  Type of the event of the subscription.
  * @param[in] dst_address Destination address of the subscriber.
  * @param[in] dst_id Destination subscription ID.
@@ -95,7 +96,7 @@ int np_notification_subscribe(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, Sr_
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int np_notification_unsubscribe(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, Sr__NotificationEvent event_type,
+int np_notification_unsubscribe(np_ctx_t *np_ctx, const rp_session_t *rp_session, Sr__NotificationEvent event_type,
         const char *dst_address, uint32_t dst_id, const char *module_name);
 
 /**

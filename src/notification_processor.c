@@ -262,14 +262,14 @@ np_cleanup(np_ctx_t *np_ctx)
 }
 
 int
-np_notification_subscribe(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, Sr__NotificationEvent event_type,
+np_notification_subscribe(np_ctx_t *np_ctx, const rp_session_t *rp_session, Sr__NotificationEvent event_type,
         const char *dst_address, uint32_t dst_id, const char *module_name, const char *xpath, const bool enable_running)
 {
     np_subscription_t *subscription = NULL;
     np_subscription_t **subscriptions_tmp = NULL;
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG3(np_ctx, np_ctx->rp_ctx, dst_address);
+    CHECK_NULL_ARG4(np_ctx, np_ctx->rp_ctx, rp_session, dst_address);
 
     SR_LOG_DBG("Notification subscribe: event=%d, dst_address='%s', dst_id=%"PRIu32".", event_type, dst_address, dst_id);
 
@@ -290,12 +290,19 @@ np_notification_subscribe(np_ctx_t *np_ctx, const ac_ucred_t *user_cred, Sr__Not
 
     /* save the new subscription */
     if (SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV == event_type) {
-        /* add the subscription to module's persistent data */
+        /*  update notification destination info */
         rc = np_dst_info_insert(np_ctx, dst_address, module_name);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to update notification destination info.");
 
-        rc = pm_add_subscription(np_ctx->rp_ctx->pm_ctx, user_cred, module_name, subscription);
+        /* add the subscription to module's persistent data */
+        rc = pm_add_subscription(np_ctx->rp_ctx->pm_ctx, rp_session->user_credentials, module_name, subscription);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to save the subscription into persistent data file.");
+
+        if (enable_running) {
+            /* enable the module in running config */
+            rc = dm_enable_module_runnig(np_ctx->rp_ctx->dm_ctx, rp_session->dm_session, module_name, NULL);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to enable the module in the running datastore.");
+        }
 
         goto cleanup; /* subscription not needed anymore */
     } else {
@@ -332,7 +339,7 @@ cleanup:
 }
 
 int
-np_notification_unsubscribe(np_ctx_t *np_ctx,  const ac_ucred_t *user_cred, Sr__NotificationEvent event_type,
+np_notification_unsubscribe(np_ctx_t *np_ctx,  const rp_session_t *rp_session, Sr__NotificationEvent event_type,
         const char *dst_address, uint32_t dst_id, const char *module_name)
 {
     np_subscription_t *subscription = NULL, subscription_lookup = { 0, };
@@ -340,7 +347,7 @@ np_notification_unsubscribe(np_ctx_t *np_ctx,  const ac_ucred_t *user_cred, Sr__
     bool disable_running = true;
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG2(np_ctx, dst_address);
+    CHECK_NULL_ARG4(np_ctx, np_ctx->rp_ctx, rp_session, dst_address);
 
     SR_LOG_DBG("Notification unsubscribe: dst_address='%s', dst_id=%"PRIu32".", dst_address, dst_id);
 
@@ -349,13 +356,15 @@ np_notification_unsubscribe(np_ctx_t *np_ctx,  const ac_ucred_t *user_cred, Sr__
         subscription_lookup.dst_address = dst_address;
         subscription_lookup.dst_id = dst_id;
         subscription_lookup.event_type = event_type;
-        rc = pm_remove_subscription(np_ctx->rp_ctx->pm_ctx, user_cred, module_name, &subscription_lookup, &disable_running);
+        rc = pm_remove_subscription(np_ctx->rp_ctx->pm_ctx, rp_session->user_credentials, module_name,
+                &subscription_lookup, &disable_running);
         if (SR_ERR_OK == rc) {
             pthread_rwlock_wrlock(&np_ctx->lock);
             rc = np_dst_info_remove(np_ctx, dst_address, module_name);
             pthread_rwlock_unlock(&np_ctx->lock);
             if (disable_running) {
                 // TODO: disable_running in DM
+                SR_LOG_INF("--- DISABLE RUNNING --- (%s)", module_name);
             }
         }
     } else {
@@ -415,6 +424,7 @@ np_unsubscribe_destination(np_ctx_t *np_ctx, const char *dst_address)
                     info->subscribed_modules[i]);
             if (disable_running) {
                 // TODO: disable_running in DM
+                SR_LOG_INF("--- DISABLE RUNNING --- (%s)", info->subscribed_modules[i]);
             }
         }
         np_dst_info_remove(np_ctx, dst_address, NULL);

@@ -1103,6 +1103,8 @@ cm_notif_conn_create(cm_ctx_t *cm_ctx, const char *socket_path, sm_connection_t 
     if (-1 == rc) {
         if (EINPROGRESS == errno) {
             // TODO: monitor socket for writing and send message later
+            SR_LOG_ERR_MSG("The connection cannot be completed immediately, not yet supported by sysrepo.");
+            rc = SR_ERR_DISCONNECT;
         } else {
             SR_LOG_ERR("Unable to connect to notification socket=%s: %s", socket_path, strerror(errno));
             rc = SR_ERR_DISCONNECT;
