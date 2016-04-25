@@ -62,8 +62,7 @@ int rp_dt_validate_node_xpath(dm_ctx_t *dm_ctx, dm_session_t *session, const cha
  * @param [in] xpath
  * @return Error code (SR_ERR_OK on success)
  */
-int
-rp_dt_enable_xpath(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath);
+int rp_dt_enable_xpath(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath);
 
 /**
  * @}

@@ -2102,7 +2102,7 @@ dm_enable_module_runnig(dm_ctx_t *ctx, dm_session_t *session, const char *module
         rc = dm_has_enabled_subtree(ctx, module_name, &module, &module_enabled);
     }
     if (SR_ERR_OK == rc && !module_enabled) {
-        /* f not already enabled, enable each subtree within the module */
+        /* if not already enabled, enable each subtree within the module */
         struct lys_node *node = module->data;
         while (NULL != node) {
             if ((LYS_CONTAINER | LYS_LIST | LYS_LEAF | LYS_LEAFLIST) & node->nodetype) {
@@ -2119,6 +2119,42 @@ dm_enable_module_runnig(dm_ctx_t *ctx, dm_session_t *session, const char *module
         /* if not already enabled, copy the data from startup */
         rc = dm_copy_module(ctx, session, module_name, SR_DS_STARTUP, SR_DS_RUNNING);
     }
+    return rc;
+}
+
+int
+dm_disable_module_running(dm_ctx_t *ctx, dm_session_t *session, const char *module_name, const struct lys_module *module)
+{
+    CHECK_NULL_ARG2(ctx, module_name);
+    bool module_enabled = false;
+    int rc = SR_ERR_OK;
+
+    if (NULL == module) {
+        /* if module is not known, get it and check if it is already enabled */
+        rc = dm_has_enabled_subtree(ctx, module_name, &module, &module_enabled);
+    }
+    if (SR_ERR_OK == rc && module_enabled) {
+        /* if enabled, disable each subtree within the module */
+
+        dm_schema_info_t *si = NULL;
+        rc = dm_get_schema_info(ctx, module->name, &si);
+        CHECK_RC_LOG_RETURN(rc, "Get schema info failed %s", module->name);
+        struct lys_node *iter = NULL;
+        struct lys_node *next = NULL;
+        pthread_rwlock_wrlock(&si->model_lock);
+        LY_TREE_DFS_BEGIN(module->data, next, iter){
+            if ((LYS_CONTAINER | LYS_LIST | LYS_LEAF | LYS_LEAFLIST) & iter->nodetype) {
+                if (dm_is_node_enabled(iter)){
+                    rc = dm_set_node_state(iter, DM_NODE_DISABLED);
+                    CHECK_RC_MSG_GOTO(rc, cleanup, "Set node state failed");
+                }
+            }
+            LY_TREE_DFS_END(module->data, next, iter)
+        }
+cleanup:
+        pthread_rwlock_unlock(&si->model_lock);
+    }
+
     return rc;
 }
 
