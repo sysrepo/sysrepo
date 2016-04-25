@@ -52,7 +52,7 @@ ADD_UNIT_TEST(common_test 0)
 ADD_UNIT_TEST(ac_test 1)
 
 ADD_UNIT_TEST(cm_sm_test 0)
-ADD_UNIT_TEST_WITH_OPTS(np_test 0 1 "cm_msg_send")
+ADD_UNIT_TEST_WITH_OPTS(np_test 1 1 "cm_msg_send")
 ADD_UNIT_TEST_WITH_OPTS(pm_test 1 1 "cm_msg_send")
 
 ADD_UNIT_TEST(dm_test 1)

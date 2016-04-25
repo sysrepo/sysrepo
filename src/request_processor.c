@@ -712,7 +712,8 @@ rp_session_refresh_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg 
 
     /* copy error information to GPB  (if any) */
     if (NULL != errors) {
-        sr_gpb_fill_errors(errors, err_cnt, &resp->response->session_refresh_resp->errors, &resp->response->session_refresh_resp->n_errors);
+        sr_gpb_fill_errors(errors, err_cnt, &resp->response->session_refresh_resp->errors,
+                &resp->response->session_refresh_resp->n_errors);
         sr_free_errors(errors, err_cnt);
     }
 
@@ -829,15 +830,9 @@ rp_subscribe_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr
     subscribe_req = msg->request->subscribe_req;
 
     /* subscribe to the notification */
-    rc = np_notification_subscribe(rp_ctx->np_ctx, session->user_credentials, subscribe_req->event,
+    rc = np_notification_subscribe(rp_ctx->np_ctx, session, subscribe_req->event,
             subscribe_req->destination, subscribe_req->subscription_id,
             subscribe_req->module_name, subscribe_req->xpath, subscribe_req->enable_running);
-
-    if ((SR_ERR_OK == rc) &&
-            (SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV == subscribe_req->event) && (subscribe_req->enable_running)) {
-        /* enable the module in running config */
-        rc = dm_enable_module_runnig(rp_ctx->dm_ctx, session->dm_session, subscribe_req->module_name, NULL);
-    }
 
     /* set response code */
     resp->response->result = rc;
@@ -880,7 +875,7 @@ rp_unsubscribe_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
     }
 
     /* unsubscribe from the notifications */
-    rc = np_notification_unsubscribe(rp_ctx->np_ctx, session->user_credentials, msg->request->unsubscribe_req->event,
+    rc = np_notification_unsubscribe(rp_ctx->np_ctx, session, msg->request->unsubscribe_req->event,
             msg->request->unsubscribe_req->destination, msg->request->unsubscribe_req->subscription_id,
             msg->request->unsubscribe_req->module_name);
 
@@ -1188,7 +1183,7 @@ rp_init(cm_ctx_t *cm_ctx, rp_ctx_t **rp_ctx_p)
 {
     size_t i = 0, j = 0;
     rp_ctx_t *ctx = NULL;
-    int rc = SR_ERR_OK;
+    int ret = 0, rc = SR_ERR_OK;
 
     CHECK_NULL_ARG(rp_ctx_p);
 
@@ -1221,12 +1216,9 @@ rp_init(cm_ctx_t *cm_ctx, rp_ctx_t **rp_ctx_p)
 #if defined(HAVE_PTHREAD_RWLOCKATTR_SETKIND_NP)
     pthread_rwlockattr_setkind_np(&attr, PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP);
 #endif
-    rc = pthread_rwlock_init(&ctx->commit_lock, &attr);
+    ret = pthread_rwlock_init(&ctx->commit_lock, &attr);
     pthread_rwlockattr_destroy(&attr);
-    if (0 != rc) {
-        SR_LOG_ERR_MSG("commit rwlock initialization failed");
-        goto cleanup;
-    }
+    CHECK_ZERO_MSG_GOTO(ret, rc, SR_ERR_INIT_FAILED, cleanup, "Commit rwlock initialization failed.");
 
     /* initialize Notification Processor */
     rc = np_init(ctx, &ctx->np_ctx);

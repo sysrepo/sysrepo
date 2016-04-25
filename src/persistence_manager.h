@@ -87,30 +87,47 @@ int pm_get_module_info(pm_ctx_t *pm_ctx, const char *module_name,
         bool *running_enabled, char ***features, size_t *feature_cnt);
 
 /**
- * @brief Saves/deletes the subscription in module's persistent storage.
+ * @brief Adds a new subscription into module's persistent storage.
  *
  * @param[in] pm_ctx Persistence Manager context acquired by ::pm_init call.
  * @param[in] user_cred User credentials.
  * @param[in] module_name Name of the module.
- * @param[in] subscription Subscription to be saved.
- * @param[in] subscribe TRUE if the subscription should be added, FALSE if removed.
+ * @param[in] subscription Subscription to be added.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int pm_save_subscribtion_state(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *module_name,
-        const np_subscription_t *subscription, const bool subscribe);
+int pm_add_subscription(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *module_name,
+        const np_subscription_t *subscription);
 
 /**
- * @brief Deletes all subscriptions in module's persistent storage that are to be
- * delivered to specified destination address.
+ * @brief Removes the subscription from module's persistent storage.
+ *
+ * @param[in] pm_ctx Persistence Manager context acquired by ::pm_init call.
+ * @param[in] user_cred User credentials.
+ * @param[in] module_name Name of the module.
+ * @param[in] subscription Subscription to be deleted.
+ * @param[out] disable_running Set to TRUE if running datastore should be disabled
+ * after this unsubscribe.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int pm_remove_subscription(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *module_name,
+        const np_subscription_t *subscription, bool *disable_running);
+
+/**
+ * @brief Removes all subscriptions that are to be delivered to specified
+ * destination address from module's persistent storage.
  *
  * @param[in] pm_ctx Persistence Manager context acquired by ::pm_init call.
  * @param[in] module_name Name of the module.
  * @param[in] dst_address Notification delivery destination address.
+ * @param[out] disable_running Set to TRUE if running datastore should be disabled
+ * after this unsubscribe.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int pm_delete_subscriptions_for_destination(pm_ctx_t *pm_ctx, const char *module_name, const char *dst_address);
+int pm_remove_subscriptions_for_destination(pm_ctx_t *pm_ctx, const char *module_name, const char *dst_address,
+        bool *disable_running);
 
 /**
  * @brief Returns the array of active subscriptions of given type in module's persistent storage.

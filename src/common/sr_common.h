@@ -249,7 +249,7 @@
 
 #define CHECK_ZERO_LOG_GOTO(RET, RC, ERROR, LABEL, MSG, ...) \
     do { \
-        if (0 != RC) { \
+        if (0 != RET) { \
             SR_LOG_ERR(MSG, __VA_ARGS__); \
             RC = ERROR; \
             goto LABEL; \
