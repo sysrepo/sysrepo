@@ -19,6 +19,8 @@
  * limitations under the License.
  */
 
+#include <pthread.h>
+
 #include "rp_dt_xpath.h"
 #include "sr_common.h"
 
@@ -559,16 +561,18 @@ rp_dt_enable_xpath(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath)
         return rc;
     }
 
+    dm_schema_info_t *si = NULL;
+    rc = dm_get_schema_info(dm_ctx, match->module->name, &si);
+    CHECK_RC_LOG_RETURN(rc, "Get schema info failed %s", match->module->name);
+
+    pthread_rwlock_wrlock(&si->model_lock);
     if ((LYS_CONTAINER | LYS_LIST) & match->nodetype) {
         rc = dm_set_node_state(match, DM_NODE_ENABLED_WITH_CHILDREN);
     } else {
         rc = dm_set_node_state(match, DM_NODE_ENABLED);
     }
 
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Set node state failed %s", xpath);
-        return rc;
-    }
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Set node state failed %s", xpath);
 
     node = match->parent;
     while (NULL != node) {
@@ -578,20 +582,16 @@ rp_dt_enable_xpath(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath)
         }
         if (!dm_is_node_enabled(node)){
             rc = dm_set_node_state(node, DM_NODE_ENABLED);
-            if (SR_ERR_OK != rc) {
-                SR_LOG_ERR("Set node state failed %s", xpath);
-                return rc;
-            }
-            rc = rp_dt_enable_key_nodes(node);
-            if (SR_ERR_OK != rc) {
-                SR_LOG_ERR("Enable key nodes failed %s", xpath);
-                return rc;
-            }
+            CHECK_RC_LOG_GOTO(rc, cleanup, "Set node state failed %s", xpath);
 
+            rc = rp_dt_enable_key_nodes(node);
+            CHECK_RC_LOG_GOTO(rc, cleanup, "Enable key nodes failed %s", xpath);
         }
         node = node->parent;
 
     }
 
+cleanup:
+    pthread_rwlock_unlock(&si->model_lock);
     return rc;
 }

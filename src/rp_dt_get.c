@@ -317,7 +317,7 @@ rp_dt_get_value(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char *
     int rc = 0;
     struct lyd_node *node = NULL;
 
-    rc = rp_dt_find_node(data_tree, xpath, check_enabled, &node);
+    rc = rp_dt_find_node(dm_ctx, data_tree, xpath, check_enabled, &node);
     if (SR_ERR_OK != rc) {
         if (SR_ERR_NOT_FOUND != rc) {
             SR_LOG_ERR("Find node failed (%d) xpath %s", rc, xpath);
@@ -339,7 +339,7 @@ rp_dt_get_values(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char 
     int rc = SR_ERR_OK;
 
     struct ly_set *nodes = NULL;
-    rc = rp_dt_find_nodes(data_tree, xpath, check_enable, &nodes);
+    rc = rp_dt_find_nodes(dm_ctx, data_tree, xpath, check_enable, &nodes);
     if (SR_ERR_OK != rc) {
         if (SR_ERR_NOT_FOUND != rc) {
             SR_LOG_ERR("Get nodes for xpath %s failed (%d)", xpath, rc);
@@ -390,8 +390,10 @@ rp_dt_get_value_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char *
     rc = rp_dt_get_value(rp_ctx->dm_ctx, data_tree, xpath, dm_is_running_ds_session(rp_session->dm_session), value);
 cleanup:
     if (SR_ERR_NOT_FOUND == rc) {
+#if 0
         rc = rp_dt_validate_node_xpath(rp_ctx->dm_ctx, rp_session->dm_session, xpath, NULL, NULL);
         rc = rc == SR_ERR_OK ? SR_ERR_NOT_FOUND : rc;
+#endif
     } else if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Get value failed for xpath '%s'", xpath);
     }
@@ -435,8 +437,10 @@ rp_dt_get_values_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char 
 
 cleanup:
     if (SR_ERR_NOT_FOUND == rc || (SR_ERR_OK == rc && 0 == count)) {
+#if 0
         rc = rp_dt_validate_node_xpath(rp_ctx->dm_ctx, rp_session->dm_session, xpath, NULL, NULL);
         rc = rc == SR_ERR_OK ? SR_ERR_NOT_FOUND : rc;
+#endif
     }
     free(data_tree_name);
     return rc;
@@ -486,8 +490,10 @@ rp_dt_get_values_wrapper_with_opts(rp_ctx_t *rp_ctx, rp_session_t *rp_session, r
     rc = rp_dt_get_values_from_nodes(nodes, values);
 cleanup:
     if (SR_ERR_NOT_FOUND == rc) {
+#if 0
         rc = rp_dt_validate_node_xpath(rp_ctx->dm_ctx, rp_session->dm_session, xpath, NULL, NULL);
         rc = rc == SR_ERR_OK ? SR_ERR_NOT_FOUND : rc;
+#endif
     } else if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Copying values from nodes failed for xpath '%s'", xpath);
     }

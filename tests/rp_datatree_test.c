@@ -544,26 +544,26 @@ void get_node_test_found(void **state)
     assert_int_equal(SR_ERR_OK, rc);
 
 #define XPATH "/example-module:container/list[key1='key1'][key2='key2']/leaf"
-    rc = rp_dt_find_node(data_tree, XPATH, false, &node);
+    rc = rp_dt_find_node(ctx, data_tree, XPATH, false, &node);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(node);
     assert_string_equal("leaf", node->schema->name);
 
 /* if key names are specified the order does not matter*/
 #define XPATH2 "/example-module:container/list[key2='key2'][key1='key1']/leaf"
-    rc = rp_dt_find_node(data_tree, XPATH2, false, &node);
+    rc = rp_dt_find_node(ctx, data_tree, XPATH2, false, &node);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(node);
     assert_string_equal("leaf", node->schema->name);
 
 #define XPATH_CONT "/example-module:container"
-    rc = rp_dt_find_node(data_tree, XPATH_CONT, false, &node);
+    rc = rp_dt_find_node(ctx, data_tree, XPATH_CONT, false, &node);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(node);
     assert_string_equal("container", node->schema->name);
 
 #define XPATH_LIST "/example-module:container/list[key1='key1'][key2='key2']"
-    rc = rp_dt_find_node(data_tree, XPATH_LIST, false, &node);
+    rc = rp_dt_find_node(ctx, data_tree, XPATH_LIST, false, &node);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(node);
     assert_string_equal("list", node->schema->name);
@@ -573,7 +573,7 @@ void get_node_test_found(void **state)
 
 #define XPATH_LIST_WITHOUT_KEY "/test-module:list"
     /* find node can return at most one element */
-    rc = rp_dt_find_node(data_tree, XPATH_LIST_WITHOUT_KEY, false, &node);
+    rc = rp_dt_find_node(ctx, data_tree, XPATH_LIST_WITHOUT_KEY, false, &node);
     assert_int_equal(SR_ERR_INVAL_ARG, rc);
 
     dm_session_stop(ctx, ses_ctx);
@@ -598,7 +598,7 @@ void get_nodes_test(void **state){
     struct ly_set *node_set = NULL;
 #define EXAMPLE_LIST "/example-module:container/list[key1='key1'][key2='key2']/*"
 
-    rc = rp_dt_find_nodes(root, EXAMPLE_LIST, false, &node_set);
+    rc = rp_dt_find_nodes(ctx, root, EXAMPLE_LIST, false, &node_set);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(3, node_set->number);
 
@@ -625,23 +625,23 @@ void get_node_test_not_found(void **state)
 
     /* non existing nodes*/
 #define XPATH_UNKNOWN1 "/example-module:abc"
-    rc = rp_dt_find_node(data_tree, XPATH_UNKNOWN1, false, &node);
+    rc = rp_dt_find_node(ctx, data_tree, XPATH_UNKNOWN1, false, &node);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
 #define XPATH_UNKNOWN2 "/example-module:container/a"
-    rc = rp_dt_find_node(data_tree, XPATH_UNKNOWN2, false, &node);
+    rc = rp_dt_find_node(ctx, data_tree, XPATH_UNKNOWN2, false, &node);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
 #define XPATH_UNKNOWN3 "/example-module:container/list[key1='key1'][key2='key2']/abc"
-    rc = rp_dt_find_node(data_tree, XPATH_UNKNOWN3, false, &node);
+    rc = rp_dt_find_node(ctx, data_tree, XPATH_UNKNOWN3, false, &node);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
     /* non matching key values*/
 #define XPATH_NF "/example-module:container/list[key1='k1'][key2='k2']/leaf"
-    rc = rp_dt_find_node(data_tree, XPATH_NF, false, &node);
+    rc = rp_dt_find_node(ctx, data_tree, XPATH_NF, false, &node);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
     /* missing key*/
 #define XPATH_INV "/example-module:container/list[key1='key1']/leaf"
-    rc = rp_dt_find_node(data_tree, XPATH_INV, false, &node);
+    rc = rp_dt_find_node(ctx, data_tree, XPATH_INV, false, &node);
     assert_int_equal(SR_ERR_OK, rc);
 
     dm_session_stop(ctx, ses_ctx);

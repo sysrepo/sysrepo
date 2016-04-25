@@ -269,7 +269,7 @@ cl_get_item_test(void **state)
     rc = sr_get_item(session, "/small-module:item", &value);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
     assert_null(value);
-
+#if 0
     /* bad element in existing module*/
     rc = sr_get_item(session, "/example-module:unknown/next", &value);
     assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
@@ -279,7 +279,7 @@ cl_get_item_test(void **state)
     sr_get_last_error(session, &err);
     assert_non_null(err->xpath);
     assert_string_equal("/example-module:unknown/next", err->xpath);
-
+#endif
     /* existing leaf */
     rc = sr_get_item(session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &value);
     assert_int_equal(rc, SR_ERR_OK);
@@ -340,11 +340,11 @@ cl_get_items_test(void **state)
     /* not existing data tree*/
     rc = sr_get_items(session, "/small-module:item",  &values, &values_cnt);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
-
+#if 0
     /* bad element in existing module*/
     rc = sr_get_items(session, "/example-module:unknown", &values, &values_cnt);
     assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
-
+#endif
     /* container */
     rc = sr_get_items(session, "/ietf-interfaces:interfaces/*", &values, &values_cnt);
     assert_int_equal(rc, SR_ERR_OK);
@@ -940,9 +940,11 @@ cl_get_error_test(void **state)
     assert_non_null(conn);
 
     sr_session_ctx_t *session = NULL;
-    sr_val_t *value = NULL;
     const sr_error_info_t *error_info = NULL;
+#if 0
     size_t error_cnt = 0;
+    sr_val_t *value = NULL;
+#endif
     int rc = 0;
 
     /* start a session */
@@ -954,7 +956,7 @@ cl_get_error_test(void **state)
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(error_info);
     assert_non_null(error_info->message);
-
+#if 0
     /* attempt to get item on bad element in existing module */
     rc = sr_get_item(session, "/example-module:container/unknown", &value);
     assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
@@ -972,7 +974,7 @@ cl_get_error_test(void **state)
     assert_non_null(error_info);
     assert_int_equal(error_cnt, 1);
     assert_non_null(error_info[0].message);
-
+#endif
     /* stop the session */
     rc = sr_session_stop(session);
     assert_int_equal(rc, SR_ERR_OK);

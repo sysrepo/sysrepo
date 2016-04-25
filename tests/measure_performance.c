@@ -284,6 +284,7 @@ perf_get_items_test(void **state, int op_num, int *items) {
     for (size_t i = 0; i<op_num; i++){
         /* existing leaf */
         rc = sr_get_items(session, "/example-module:container/list/leaf", &values, &count);
+        assert_int_equal(SR_ERR_OK, rc);
         sr_free_values(values, count);
     }
 

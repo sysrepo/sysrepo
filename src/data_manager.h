@@ -60,6 +60,14 @@ typedef struct dm_data_info_s{
 }dm_data_info_t;
 
 /**
+ * @brief Holds information related to the schema
+ */
+typedef struct dm_schema_info_s {
+    const char *module_name;       /**< name of the module the name */
+    pthread_rwlock_t model_lock;   /**< module lock used */
+}dm_schema_info_t;
+
+/**
  * @brief States of the node in running data store.
  */
 typedef enum dm_node_state_e{
@@ -357,6 +365,15 @@ bool dm_has_error(dm_session_t *session);
  * @return Error code (SR_ERR_OK on success)
  */
 int dm_copy_errors(dm_session_t *session, char **error_msg, char **err_xpath);
+
+/**
+ * @brief Looks up the schema info structure for the module specified by module name
+ * @param [in] dm_ctx
+ * @param [in] module_name
+ * @param [out] schema_info
+ * @return Error code (SR_ERR_OK on success)
+ */
+int dm_get_schema_info(dm_ctx_t *dm_ctx, const char *module_name, dm_schema_info_t **schema_info);
 
 /**
  *
