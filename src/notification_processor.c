@@ -363,8 +363,9 @@ np_notification_unsubscribe(np_ctx_t *np_ctx,  const rp_session_t *rp_session, S
             rc = np_dst_info_remove(np_ctx, dst_address, module_name);
             pthread_rwlock_unlock(&np_ctx->lock);
             if (disable_running) {
-                // TODO: disable_running in DM
                 SR_LOG_INF("--- DISABLE RUNNING --- (%s)", module_name);
+                rc = dm_disable_module_running(np_ctx->rp_ctx->dm_ctx, rp_session->dm_session, module_name, NULL);
+                CHECK_RC_LOG_RETURN(rc, "Disabling module %s failed", module_name);
             }
         }
     } else {
@@ -420,16 +421,17 @@ np_unsubscribe_destination(np_ctx_t *np_ctx, const char *dst_address)
                     info->subscribed_modules[i]);
             rc = pm_remove_subscriptions_for_destination(np_ctx->rp_ctx->pm_ctx,
                     info->subscribed_modules[i], dst_address, &disable_running);
-            CHECK_RC_LOG_RETURN(rc, "Unable to remove subscriptions for destination '%s' from '%s'.", dst_address,
+            CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to remove subscriptions for destination '%s' from '%s'.", dst_address,
                     info->subscribed_modules[i]);
             if (disable_running) {
-                // TODO: disable_running in DM
                 SR_LOG_INF("--- DISABLE RUNNING --- (%s)", info->subscribed_modules[i]);
+                rc = dm_disable_module_running(np_ctx->rp_ctx->dm_ctx, NULL, info->subscribed_modules[i], NULL);
+                CHECK_RC_LOG_GOTO(rc, cleanup, "Disabling module %s failed", info->subscribed_modules[i]);
             }
         }
         np_dst_info_remove(np_ctx, dst_address, NULL);
     }
-
+cleanup:
     pthread_rwlock_unlock(&np_ctx->lock);
 
     return rc;
