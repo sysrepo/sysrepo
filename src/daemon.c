@@ -32,7 +32,7 @@
 #include "connection_manager.h"
 
 #define SR_DEFAULT_DEAMON_LOG_LEVEL SR_LL_INF  /**< Default log level of sysrepo daemon. */
-#define SR_CHILD_INIT_TIMEOUT 2                /**< Timeout to initialize the child process (in seconds) */
+#define SR_CHILD_INIT_TIMEOUT 5                /**< Timeout to initialize the child process (in seconds) */
 
 int pidfile_fd = -1; /**< File descriptor of sysrepo deamon's PID file */
 
@@ -50,10 +50,13 @@ srd_child_status_handler(int signum)
             break;
         case SIGALRM:
             /* child process has not initialized within SR_CHILD_INIT_TIMEOUT seconds */
+            fprintf(stderr, "Sysrepo daemon did not initialize within the timeout period (%d sec), "
+                    "check syslog for more info.\n", SR_CHILD_INIT_TIMEOUT);
             exit(EXIT_FAILURE);
             break;
         case SIGCHLD:
             /* child process has terminated */
+            fprintf(stderr, "Failure by initialization of sysrepo daemon, check syslog for more info.\n");
             exit(EXIT_FAILURE);
             break;
     }
@@ -140,6 +143,7 @@ srd_daemonize(void)
     }
 
     /* at this point we are executing as the child process */
+    srd_check_single_instance();
 
     /* ignore certain signals */
     srd_ignore_signals();
@@ -157,12 +161,13 @@ srd_daemonize(void)
        exit(EXIT_FAILURE);
    }
 
+   /* turn off stderr logging */
+   sr_log_stderr(SR_LL_NONE);
+
    /* redirect standard files to /dev/null */
     freopen("/dev/null", "r", stdin);
     freopen("/dev/null", "w", stdout);
     freopen("/dev/null", "w", stderr);
-
-    srd_check_single_instance();
 
     return getppid(); /* return PID of the parent */
 }
@@ -257,7 +262,7 @@ main(int argc, char* argv[])
         sr_log_stderr(SR_DEFAULT_DEAMON_LOG_LEVEL);
         sr_log_syslog(SR_LL_NONE);
     } else {
-        sr_log_stderr(SR_LL_NONE);
+        sr_log_stderr(SR_DEFAULT_DEAMON_LOG_LEVEL);
         sr_log_syslog(SR_DEFAULT_DEAMON_LOG_LEVEL);
     }
     if ((-1 != log_level) && (log_level >= SR_LL_NONE) && (log_level <= SR_LL_DBG)) {
@@ -268,7 +273,7 @@ main(int argc, char* argv[])
         }
     }
 
-    SR_LOG_INF_MSG("Sysrepo daemon initialization started.");
+    SR_LOG_DBG_MSG("Sysrepo daemon initialization started.");
 
     /* deamonize the process */
     if (!debug_mode) {

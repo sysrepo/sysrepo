@@ -68,10 +68,10 @@
 #define SR_DEAMON_WORK_DIR "/"
 
 /** Sysrepo daemon PID file. */
-#define SR_DAEMON_PID_FILE "/tmp/sysrepo.pid"
+#define SR_DAEMON_PID_FILE "@DAEMON_PID_FILE@"
 
 /** Sysrepo daemon server socket. */
-#define SR_DAEMON_SOCKET "/tmp/sysrepod.sock"
+#define SR_DAEMON_SOCKET "@DAEMON_SOCKET@"
 
 /** Maximum size of a GPB message. */
 #define SR_MAX_MSG_SIZE ((SIZE_MAX < UINT32_MAX) ? SIZE_MAX : UINT32_MAX)

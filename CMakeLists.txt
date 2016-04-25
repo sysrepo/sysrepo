@@ -79,11 +79,24 @@ else(USE_AVL_LIB)
 endif(USE_AVL_LIB)
 
 # location of system repository
-set(REPOSITORY_LOC "${CMAKE_BINARY_DIR}/repository" CACHE PATH "System repository location, contains configuration schema and data files.")
+if(CMAKE_BUILD_TYPE MATCHES DEBUG)
+    set(REPOSITORY_LOC "${CMAKE_BINARY_DIR}/repository" CACHE PATH "System repository location, contains configuration schema and data files.")
+else()
+    set(REPOSITORY_LOC "/etc/sysrepo" CACHE PATH "System repository location, contains configuration schema and data files.")
+endif()
 set(SCHEMA_SEARCH_DIR "${REPOSITORY_LOC}/yang/")
 set(DATA_SEARCH_DIR "${REPOSITORY_LOC}/data/")
 set(INTERNAL_SCHEMA_SEARCH_DIR "${REPOSITORY_LOC}/internal/yang/")
 MESSAGE(STATUS "sysrepo repository location is: ${REPOSITORY_LOC}")
+
+# set some deamon settings
+if(CMAKE_BUILD_TYPE MATCHES DEBUG)
+    set(DAEMON_PID_FILE "/tmp/sysrepo.pid" CACHE PATH "Sysrepo daemon PID file.")
+    set(DAEMON_SOCKET "/tmp/sysrepod.sock" CACHE PATH "Sysrepo deamon server socket path.")
+else()
+    set(DAEMON_PID_FILE "/var/run/sysrepo.pid" CACHE PATH "Sysrepo daemon PID file.")
+    set(DAEMON_SOCKET "/var/run/sysrepod.sock" CACHE PATH "Sysrepo deamon server socket path.")
+endif()
 
 # check for non-portable functions and headers
 set(CMAKE_REQUIRED_LIBRARIES pthread)
