@@ -96,14 +96,14 @@ main(int argc, char **argv)
     /* connect to sysrepo */
     rc = sr_connect("example_application", SR_CONN_DEFAULT, &connection);
     if (SR_ERR_OK != rc) {
-        printf("Error by sr_connect: %s\n", sr_strerror(rc));
+        fprintf(stderr, "Error by sr_connect: %s\n", sr_strerror(rc));
         goto cleanup;
     }
 
     /* start session */
     rc = sr_session_start(connection, SR_DS_STARTUP, SR_SESS_DEFAULT, &session);
     if (SR_ERR_OK != rc) {
-        printf("Error by sr_session_start: %s\n", sr_strerror(rc));
+        fprintf(stderr, "Error by sr_session_start: %s\n", sr_strerror(rc));
         goto cleanup;
     }
 
@@ -114,7 +114,7 @@ main(int argc, char **argv)
     /* subscribe for changes in running config */
     rc = sr_module_change_subscribe(session, "ietf-interfaces", true, module_change_cb, NULL, &subscription);
     if (SR_ERR_OK != rc) {
-        printf("Error by sr_module_change_subscribe: %s\n", sr_strerror(rc));
+        fprintf(stderr, "Error by sr_module_change_subscribe: %s\n", sr_strerror(rc));
         goto cleanup;
     }
 
