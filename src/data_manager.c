@@ -220,7 +220,8 @@ static int
 dm_is_schema_file(const char *file_name)
 {
     CHECK_NULL_ARG(file_name);
-    return sr_str_ends_with(file_name, SR_SCHEMA_YIN_FILE_EXT) || sr_str_ends_with(file_name, SR_SCHEMA_YANG_FILE_EXT);
+    //TODO: uncomment once libyang is able to handle repeated module read
+    return sr_str_ends_with(file_name, SR_SCHEMA_YIN_FILE_EXT) /*|| sr_str_ends_with(file_name, SR_SCHEMA_YANG_FILE_EXT)*/;
 }
 
 /**
