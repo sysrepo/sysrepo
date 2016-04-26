@@ -25,5 +25,5 @@ endmacro(INSTALL_EXAMPLE_YANG)
 
 INSTALL_EXAMPLE_YANG("turing-machine" "")
 INSTALL_EXAMPLE_YANG("iana-if-type" "")
-INSTALL_EXAMPLE_YANG("ietf-interfaces" "@2014-05-08")
 INSTALL_EXAMPLE_YANG("ietf-ip" "@2014-06-16")
+INSTALL_EXAMPLE_YANG("ietf-interfaces" "@2014-05-08")
