@@ -100,7 +100,7 @@ class Tester(object):
         for step in range(len(self.steps)):
             self.execute_step(step)
 
-    def run(self, done = None, next_step= None, rand_sleep=False, lock=None, id=-1, queue = None):
+    def run(self, done=None, next_step=None, rand_sleep=False, lock=None, pids=None, id=-1, queue = None):
         """Executes the tester steps
 
             Arguments:
@@ -108,12 +108,14 @@ class Tester(object):
                 next_step   (Semaphore) - to be released on step completion
                 rand_sleep  (bool)      - flag whether sleep before each step
                 lock        (Lock)      - stdout synchronization
-                id          (int)       - identification used for queue messages
+                pids        (Array)     - pids of other testers
+                id          (int)       - identification used for queue messages index of the tester pid in pids
                 queue       (Queue)     - message for notification whether there is a step to be executed
         """
         self.setup()
         self.lock = lock
         self._current_step = 0
+        self.pids = pids
 
         if done is not None and next_step is not None and queue is not None:
             self.run_sync(done, next_step, rand_sleep, id, queue)

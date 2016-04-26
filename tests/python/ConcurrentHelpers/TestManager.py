@@ -41,14 +41,17 @@ class TestManager:
 
     def start_processes(self, rand_sleep):
         """create process for each tester"""
+        self.pids = self.manager.Array('l', range(len(self.testers)))
+
         for id in range(len(self.testers)):
             self.process_done.release()
             next_s = self.manager.Semaphore(0)
 
-            p = Process(target=self.testers[id].run, args=(self.process_done, next_s, rand_sleep, self.lock, id, self.queue))
+            p = Process(target=self.testers[id].run, args=(self.process_done, next_s, rand_sleep, self.lock, self.pids, id, self.queue))
             self.proc_ids.append(p)
             self.next_steps.append(next_s)
             p.start()
+            self.pids[id] = p.pid
 
     def wait_for_processes(self):
         """wait for all process to finish"""
