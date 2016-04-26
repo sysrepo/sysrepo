@@ -51,7 +51,7 @@ else()
 endif()
 set(SCHEMA_SEARCH_DIR "${REPOSITORY_LOC}/yang/")
 set(DATA_SEARCH_DIR "${REPOSITORY_LOC}/data/")
-set(INTERNAL_SCHEMA_SEARCH_DIR "${REPOSITORY_LOC}/internal/yang/")
+set(INTERNAL_SCHEMA_SEARCH_DIR "${REPOSITORY_LOC}/yang/internal/")
 MESSAGE(STATUS "sysrepo repository location: ${REPOSITORY_LOC}")
 
 # include custom Modules
