@@ -28,19 +28,6 @@
 #include <pthread.h>
 #include <libyang/libyang.h>
 
-
-/**
- * @brief structure filled by ::rp_dt_find_deepest_match_wrapper.
- * It includes resources for further edit request processing.
- */
-typedef struct rp_dt_match_s {
-    struct lys_node *schema_node;   /**< Matched schema node */
-    dm_data_info_t *info;           /**< Data info structure for the model pointed by loc_id */
-
-    size_t level;                   /**< Depth of the node that has been matched */
-    struct lyd_node *node;          /**< Deepest match */
-}rp_dt_match_t;
-
 /**
  * @brief Checks if the schema node has a key node with the specified name
  * @param [in] node
