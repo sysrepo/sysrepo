@@ -69,11 +69,12 @@ typedef struct ac_session_s ac_session_t;
 /**
  * @brief Initializes Access Control module.
  *
+ * @param[in] data_search_dir Directory with data files of individual YANG modules.
  * @param[out] ac_ctx Access Control module context that can be used in subsequent API calls.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int ac_init(ac_ctx_t **ac_ctx);
+int ac_init(const char *data_search_dir, ac_ctx_t **ac_ctx);
 
 /**
  * @brief Cleans up Access Control module.

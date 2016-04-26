@@ -31,6 +31,7 @@ main(int argc, char **argv)
     sr_session_ctx_t *sess = NULL;
     sr_val_t value = { 0 };
     int rc = SR_ERR_OK;
+    sr_log_stderr(SR_LL_DBG);
 
     /* connect to sysrepo */
     rc = sr_connect("app3", SR_CONN_DEFAULT, &conn);
@@ -39,7 +40,7 @@ main(int argc, char **argv)
     }
 
     /* start session */
-    rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &sess);
+    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &sess);
     if (SR_ERR_OK != rc) {
         goto cleanup;
     }

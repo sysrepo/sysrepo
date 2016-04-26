@@ -42,7 +42,7 @@ test_rp_ctx_create(rp_ctx_t **rp_ctx_p)
     ctx = calloc(1, sizeof(*ctx));
     assert_non_null(ctx);
 
-    rc = ac_init(&ctx->ac_ctx);
+    rc = ac_init(TEST_DATA_SEARCH_DIR, &ctx->ac_ctx);
     assert_int_equal(SR_ERR_OK, rc);
 
     rc = np_init(ctx, &ctx->np_ctx);

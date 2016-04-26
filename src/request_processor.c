@@ -1198,7 +1198,7 @@ rp_init(cm_ctx_t *cm_ctx, rp_ctx_t **rp_ctx_p)
     ctx->cm_ctx = cm_ctx;
 
     /* initialize access control module */
-    rc = ac_init(&ctx->ac_ctx);
+    rc = ac_init(SR_DATA_SEARCH_DIR, &ctx->ac_ctx);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Access Control module initialization failed.");
         goto cleanup;

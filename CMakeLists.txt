@@ -116,9 +116,15 @@ CHECK_STRUCT_HAS_MEMBER("struct stat" st_mtim "sys/stat.h" HAVE_STAT_ST_MTIM)
 # add subdirectories
 add_subdirectory(src)
 add_subdirectory(inc)
-add_subdirectory(examples)
 
-#Testing
+# Examples
+SET(BUILD_EXAMPLES 1 CACHE BOOL "Build examples and install example YANG models.")
+if(BUILD_EXAMPLES)
+    MESSAGE(STATUS "Example code and YANG models will be built and installed.")
+    add_subdirectory(examples)
+endif()
+
+# Testing
 SET(ENABLE_TESTS 1 CACHE BOOL "Enable unit tests.")
 if(ENABLE_TESTS)
     find_package(CMOCKA)
@@ -196,14 +202,6 @@ install (DIRECTORY DESTINATION ${DATA_SEARCH_DIR} DIRECTORY_PERMISSIONS
 # install internal YANGs
 install (FILES ${PROJECT_SOURCE_DIR}/yang/sysrepo-persistent-data.yin DESTINATION ${INTERNAL_SCHEMA_SEARCH_DIR})
 install (FILES ${PROJECT_SOURCE_DIR}/yang/sysrepo-persistent-data.yang DESTINATION ${INTERNAL_SCHEMA_SEARCH_DIR})
-
-# install turing machine model
-set(CMD "${CMAKE_BINARY_DIR}/src/sysrepoctl --install --yang=${CMAKE_CURRENT_SOURCE_DIR}/yang/turing-machine.yang --yin=${CMAKE_CURRENT_SOURCE_DIR}/yang/turing-machine.yin")
-install(CODE "execute_process(COMMAND ${CMD} OUTPUT_QUIET)")
-
-# import data into turing machine model
-set(CMD "${CMAKE_BINARY_DIR}/src/sysrepoctl --import=xml --module=turing-machine")
-install(CODE "execute_process(COMMAND ${CMD} OUTPUT_QUIET INPUT_FILE ${CMAKE_CURRENT_SOURCE_DIR}/yang/turing-machine-data.xml)")
 
 # install swig bindings
 if (SWIG_FOUND AND PYTHONLIBS_FOUND AND PYTHONINTERP_FOUND)

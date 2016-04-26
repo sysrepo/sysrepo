@@ -38,10 +38,11 @@
  * @brief Access Control module context.
  */
 typedef struct ac_ctx_s {
-    bool priviledged_process;  /**< Sysrepo Engine is running within an privileged process */
-    uid_t proc_euid;           /**< Effective uid of the process at the time of initialization. */
-    gid_t proc_egid;           /**< Effective gid of the process at the time of initialization. */
-    pthread_mutex_t lock;      /**< Context lock. Used for mutual exclusion if we are changing process-wide settings. */
+    const char *data_search_dir;  /**< Directory with data files of individual YANG modules. */
+    bool priviledged_process;     /**< Sysrepo Engine is running within an privileged process */
+    uid_t proc_euid;              /**< Effective uid of the process at the time of initialization. */
+    gid_t proc_egid;              /**< Effective gid of the process at the time of initialization. */
+    pthread_mutex_t lock;         /**< Context lock. Used for mutual exclusion if we are changing process-wide settings. */
 } ac_ctx_t;
 
 /**
@@ -204,19 +205,21 @@ ac_check_file_access_with_eid(ac_ctx_t *ac_ctx, const char *file_name,
 }
 
 int
-ac_init(ac_ctx_t **ac_ctx)
+ac_init(const char *data_search_dir, ac_ctx_t **ac_ctx)
 {
     ac_ctx_t *ctx = NULL;
+    int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG(ac_ctx);
 
     /* allocate and initialize the context */
     ctx = calloc(1, sizeof(*ctx));
-    if (NULL == ctx) {
-        SR_LOG_ERR_MSG("Unable to allocate Access Control module context.");
-        return SR_ERR_NOMEM;
-    }
+    CHECK_NULL_NOMEM_RETURN(ctx);
+
     pthread_mutex_init(&ctx->lock, NULL);
+
+    ctx->data_search_dir = strdup(data_search_dir);
+    CHECK_NULL_NOMEM_GOTO(ctx->data_search_dir, rc, cleanup);
 
     /* save current euid and egid */
     ctx->proc_euid = geteuid();
@@ -230,13 +233,18 @@ ac_init(ac_ctx_t **ac_ctx)
     }
 
     *ac_ctx = ctx;
-    return SR_ERR_OK;
+    return rc;
+
+cleanup:
+    ac_cleanup(ctx);
+    return rc;
 }
 
 void
 ac_cleanup(ac_ctx_t *ac_ctx)
 {
     if (NULL != ac_ctx) {
+        free((void*)ac_ctx->data_search_dir);
         pthread_mutex_destroy(&ac_ctx->lock);
         free(ac_ctx);
     }
@@ -288,7 +296,7 @@ ac_check_node_permissions(ac_session_t *session, const char *node_xpath, const a
     char *file_name = NULL;
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG2(session, node_xpath);
+    CHECK_NULL_ARG3(session, session->ac_ctx, node_xpath);
 
     lookup_info.xpath = node_xpath;
     module_info = sr_btree_search(session->module_info_btree, &lookup_info);
@@ -330,7 +338,7 @@ ac_check_node_permissions(ac_session_t *session, const char *node_xpath, const a
     }
 
     /* do the check */
-    rc = sr_get_data_file_name(SR_DATA_SEARCH_DIR, module_info->module_name, SR_DS_STARTUP, &file_name);
+    rc = sr_get_data_file_name(session->ac_ctx->data_search_dir, module_info->module_name, SR_DS_STARTUP, &file_name);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Retrieving data file name failed.");
         return rc;
