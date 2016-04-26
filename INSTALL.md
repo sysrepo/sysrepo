@@ -122,17 +122,19 @@ make doc
 ## Useful CMake options
 #### Changing build mode:
 Sysrepo supports two build modes:
-- Debug - generates the library and executables with the debug information and disables any compiler optimizations of the code, enables all unit tests
-- Release - generates the library and executables for the production use, without any debug information and with compiler optimization of the code enabled. 
+- Release - generates the library and executables for the production use, without any debug information and with compiler optimization of the code enabled. Default for the master branch.
+- Debug - generates the library and executables with the debug information and disables any compiler optimizations of the code, enables all unit tests. Default for the development branches.
 
 To change the build mode use `CMAKE_BUILD_TYPE` variable as follows: `cmake -DCMAKE_BUILD_TYPE=Release ..`
 
-#### Changing install path
+#### Changing install path:
 To change the location where the library, headers and any other files are installed (default is `/usr/local`), use `CMAKE_INSTALL_PREFIX` variable as follows: `cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr ..`
 
-#### Changing repository location
+#### Changing repository location:
 Sysrepo stores all YANG models and corresponding data files in so-named *repository location*. By default, the repository location is set to `/etc/sysrepo` for Release build and `tests/data` (relatively to the directory from which the cmake command is executed) for Debug build. To change default values, use `REPOSITORY_LOC` variable as follows: `cmake -DREPOSITORY_LOC:PATH=/etc/sysrepo ..`
 
+#### Building with / without examples:
+By default, some [example programs](examples/) are built with sysrepo and several [example YANG modules](examples/yang/) are installed into sysrepo repository, along with some meaningless data. If you wish to not build and install them, use `BUILD_EXAMPLES` varibale as follows: `cmake -DBUILD_EXAMPLES:BOOL=FALSE ..`
 
 ## Using sysrepo
 By installation, three main parts of sysrepo are installed on the system: **sysrepoctl tool**, **sysrepo library** and **sysrepo daemon**.
