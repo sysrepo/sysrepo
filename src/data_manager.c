@@ -39,7 +39,10 @@
 
 /**
  * @brief Helper structure for advisory locking. Holds
- * binary tree with filename -> fd maping.
+ * binary tree with filename -> fd maping. This structure
+ * is used to avoid the loss of the lock by file closing.
+ * File name is first looked up in this structure to detect if the
+ * file is currently opened by the process.
  */
 typedef struct dm_lock_ctx_s {
     sr_btree_t *lock_files;       /**< Binary tree of lock files for fast look up by file name */
@@ -217,7 +220,7 @@ static int
 dm_is_schema_file(const char *file_name)
 {
     CHECK_NULL_ARG(file_name);
-    return sr_str_ends_with(file_name, SR_SCHEMA_YIN_FILE_EXT);
+    return sr_str_ends_with(file_name, SR_SCHEMA_YIN_FILE_EXT) || sr_str_ends_with(file_name, SR_SCHEMA_YANG);
 }
 
 /**
