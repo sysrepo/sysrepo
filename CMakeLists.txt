@@ -137,7 +137,7 @@ if(ENABLE_TESTS)
     endif(CMOCKA_FOUND)
 endif(ENABLE_TESTS)
 
-#Documentation
+# Documentation
 find_package(Doxygen)
 if(DOXYGEN_FOUND)
     configure_file(${CMAKE_CURRENT_SOURCE_DIR}/Doxyfile.in ${CMAKE_CURRENT_BINARY_DIR}/Doxyfile @ONLY)

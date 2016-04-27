@@ -108,10 +108,13 @@ EXECUTE_PROCESS(
   ERROR_QUIET
 )
 
+# make common_test depend on sysrepoctl
+add_dependencies(common_test sysrepoctl)
+
 # install testing YANG modules
 macro(INSTALL_YANG_MODULE MODULE_NAME)
     ADD_CUSTOM_COMMAND(
-        TARGET sysrepoctl
+        TARGET common_test
         POST_BUILD
         COMMAND ${CMAKE_BINARY_DIR}/src/sysrepoctl --install --yang=${CMAKE_CURRENT_SOURCE_DIR}/yang/${MODULE_NAME}.yang --yin=${CMAKE_CURRENT_SOURCE_DIR}/yang/${MODULE_NAME}.yin -0 ${TEST_REPOSITORY_LOC} > /dev/null
         VERBATIM
