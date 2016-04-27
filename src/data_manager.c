@@ -274,7 +274,6 @@ dm_load_schema_file(dm_ctx_t *dm_ctx, const char *dir_name, const char *file_nam
 
     rc = sr_btree_insert(dm_ctx->schema_info_tree, si);
     if (SR_ERR_OK != rc) {
-        printf("insert failed %s", module->name);
         dm_free_schema_info(si);
         if (SR_ERR_DATA_EXISTS != rc) {
             SR_LOG_WRN_MSG("Insert into schema binary tree failed");

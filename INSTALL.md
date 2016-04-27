@@ -93,23 +93,23 @@ $ git clone https://github.com/sysrepo/sysrepo.git
 $ cd sysrepo
 $ mkdir build; cd build
 ```
-2 a) Configure build for testing and development (Debug build):
+2 a) Configure build for production use (Release build):
 ```
-$ cmake ..
+$ cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX:PATH=/usr ..
 ```
-2 b) Configure build for production use (Release build):
+2 b) Configure build for testing and development (Debug build):
 ```
-$ cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX:PATH=/usr -DREPOSITORY_LOC:PATH=/etc/sysrepo ..
+$ cmake -DCMAKE_BUILD_TYPE=Debug ..
 ```
 3) Build:
 ```
 $ make
 ```
-4 a) Run unit tests (applicable only to Debug build)
+4 a) Run unit tests (some of them applicable only to Debug build)
 ```
 $ ctest
 ```
-4 b) Install (applicable only to Release build)
+4 b) Install
 ```
 $ make install
 ```
@@ -122,15 +122,19 @@ make doc
 ## Useful CMake options
 #### Changing build mode:
 Sysrepo supports two build modes:
-- Debug (default) - generates the library and executables with the debug information and disables any compiler optimizations of the code
-- Release - generates the library and executables for the production use, without any debug information and with compiler optimization of the code enabled. To change the build mode use `CMAKE_BUILD_TYPE` variable as follows: `cmake -DCMAKE_BUILD_TYPE=Release ..`
+- Release - generates the library and executables for the production use, without any debug information and with compiler optimization of the code enabled. Default for the master branch.
+- Debug - generates the library and executables with the debug information and disables any compiler optimizations of the code, enables all unit tests. Default for the development branches.
 
-#### Changing install path
+To change the build mode use `CMAKE_BUILD_TYPE` variable as follows: `cmake -DCMAKE_BUILD_TYPE=Release ..`
+
+#### Changing install path:
 To change the location where the library, headers and any other files are installed (default is `/usr/local`), use `CMAKE_INSTALL_PREFIX` variable as follows: `cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr ..`
 
-#### Changing repository location
-Sysrepo stores all YANG models and corresponding data files in so-named *repository location*. By default, the repository location is set to `tests/data/` (relatively to the directory from which the cmake command is executed). However for production use, we suggest using some standardized location (such as `/etc/sysrepo/`) with `REPOSITORY_LOC` variable as follows: `cmake -DREPOSITORY_LOC:PATH=/etc/sysrepo ..`
+#### Changing repository location:
+Sysrepo stores all YANG models and corresponding data files in so-named *repository location*. By default, the repository location is set to `/etc/sysrepo` for Release build and `tests/data` (relatively to the directory from which the cmake command is executed) for Debug build. To change default values, use `REPOSITORY_LOC` variable as follows: `cmake -DREPOSITORY_LOC:PATH=/etc/sysrepo ..`
 
+#### Building with / without examples:
+By default, some [example programs](examples/) are built with sysrepo and several [example YANG modules](examples/yang/) are installed into sysrepo repository, along with some meaningless data. If you wish to not build and install them, use `BUILD_EXAMPLES` varibale as follows: `cmake -DBUILD_EXAMPLES:BOOL=FALSE ..`
 
 ## Using sysrepo
 By installation, three main parts of sysrepo are installed on the system: **sysrepoctl tool**, **sysrepo library** and **sysrepo daemon**.

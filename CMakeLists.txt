@@ -12,6 +12,7 @@ set(SYSREPO_VERSION ${SYSREPO_MAJOR_VERSION}.${SYSREPO_MINOR_VERSION}.${SYSREPO_
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE debug)
 endif()
+string(TOLOWER "${CMAKE_BUILD_TYPE}" CMAKE_BUILD_TYPE_LOWER)
 
 set(CMAKE_C_FLAGS         "${CMAKE_C_FLAGS} -Wall -Wpedantic -std=gnu11")
 set(CMAKE_C_FLAGS_RELEASE "-DNDEBUG -O2")
@@ -30,6 +31,28 @@ endif()
 if(NOT INCLUDE_INSTALL_DIR)
     set(INCLUDE_INSTALL_DIR "include")
 endif()
+
+# set build-type specific settings
+if(CMAKE_BUILD_TYPE_LOWER MATCHES "debug")
+    MESSAGE(STATUS "Preparing debug build of sysrepo v. ${SYSREPO_VERSION}")
+    set(DAEMON_PID_FILE "/tmp/sysrepo.pid" CACHE PATH "Sysrepo daemon PID file.")
+    set(DAEMON_SOCKET "/tmp/sysrepod.sock" CACHE PATH "Sysrepo deamon server socket path.")
+else()
+    MESSAGE(STATUS "Preparing release build of sysrepo v. ${SYSREPO_VERSION}")
+    set(DAEMON_PID_FILE "/var/run/sysrepo.pid" CACHE PATH "Sysrepo daemon PID file.")
+    set(DAEMON_SOCKET "/var/run/sysrepod.sock" CACHE PATH "Sysrepo deamon server socket path.")
+endif()
+
+# location of system repository
+if(CMAKE_BUILD_TYPE_LOWER MATCHES "debug")
+    set(REPOSITORY_LOC "${CMAKE_BINARY_DIR}/repository" CACHE PATH "System repository location, contains configuration schema and data files.")
+else()
+    set(REPOSITORY_LOC "/etc/sysrepo" CACHE PATH "System repository location, contains configuration schema and data files.")
+endif()
+set(SCHEMA_SEARCH_DIR "${REPOSITORY_LOC}/yang/")
+set(DATA_SEARCH_DIR "${REPOSITORY_LOC}/data/")
+set(INTERNAL_SCHEMA_SEARCH_DIR "${REPOSITORY_LOC}/yang/internal/")
+MESSAGE(STATUS "sysrepo repository location: ${REPOSITORY_LOC}")
 
 # include custom Modules
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/CMakeModules/")
@@ -78,13 +101,6 @@ else(USE_AVL_LIB)
     endif(REDBLACK_FOUND)
 endif(USE_AVL_LIB)
 
-# location of system repository
-set(REPOSITORY_LOC "${CMAKE_BINARY_DIR}/repository" CACHE PATH "System repository location, contains configuration schema and data files.")
-set(SCHEMA_SEARCH_DIR "${REPOSITORY_LOC}/yang/")
-set(DATA_SEARCH_DIR "${REPOSITORY_LOC}/data/")
-set(INTERNAL_SCHEMA_SEARCH_DIR "${REPOSITORY_LOC}/internal/yang/")
-MESSAGE(STATUS "sysrepo repository location is: ${REPOSITORY_LOC}")
-
 # check for non-portable functions and headers
 set(CMAKE_REQUIRED_LIBRARIES pthread)
 include(CheckFunctionExists)
@@ -100,9 +116,15 @@ CHECK_STRUCT_HAS_MEMBER("struct stat" st_mtim "sys/stat.h" HAVE_STAT_ST_MTIM)
 # add subdirectories
 add_subdirectory(src)
 add_subdirectory(inc)
-add_subdirectory(examples)
 
-#Testing
+# Examples
+SET(BUILD_EXAMPLES 1 CACHE BOOL "Build examples and install example YANG models.")
+if(BUILD_EXAMPLES)
+    MESSAGE(STATUS "Example code and YANG models will be built and installed.")
+    add_subdirectory(examples)
+endif()
+
+# Testing
 SET(ENABLE_TESTS 1 CACHE BOOL "Enable unit tests.")
 if(ENABLE_TESTS)
     find_package(CMOCKA)
@@ -180,14 +202,6 @@ install (DIRECTORY DESTINATION ${DATA_SEARCH_DIR} DIRECTORY_PERMISSIONS
 # install internal YANGs
 install (FILES ${PROJECT_SOURCE_DIR}/yang/sysrepo-persistent-data.yin DESTINATION ${INTERNAL_SCHEMA_SEARCH_DIR})
 install (FILES ${PROJECT_SOURCE_DIR}/yang/sysrepo-persistent-data.yang DESTINATION ${INTERNAL_SCHEMA_SEARCH_DIR})
-
-# install turing machine model
-set(CMD "${CMAKE_BINARY_DIR}/src/sysrepoctl --install --yang=${CMAKE_CURRENT_SOURCE_DIR}/yang/turing-machine.yang --yin=${CMAKE_CURRENT_SOURCE_DIR}/yang/turing-machine.yin")
-install(CODE "execute_process(COMMAND ${CMD} OUTPUT_QUIET)")
-
-# import data into turing machine model
-set(CMD "${CMAKE_BINARY_DIR}/src/sysrepoctl --import=xml --module=turing-machine")
-install(CODE "execute_process(COMMAND ${CMD} OUTPUT_QUIET INPUT_FILE ${CMAKE_CURRENT_SOURCE_DIR}/yang/turing-machine-data.xml)")
 
 # install swig bindings
 if (SWIG_FOUND AND PYTHONLIBS_FOUND AND PYTHONINTERP_FOUND)

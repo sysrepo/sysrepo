@@ -1,0 +1,30 @@
+<interfaces xmlns="urn:ietf:params:xml:ns:yang:ietf-interfaces">
+  <interface>
+    <name>eth0</name>
+    <description>Ethernet 0</description>
+    <type>ethernetCsmacd</type>
+    <enabled>true</enabled>
+    <ipv4 xmlns="urn:ietf:params:xml:ns:yang:ietf-ip">
+      <enabled>true</enabled>
+      <mtu>1500</mtu>
+      <address>
+        <ip>192.168.2.100</ip>
+        <prefix-length>24</prefix-length>
+      </address>
+    </ipv4>
+  </interface>
+  <interface>
+    <name>eth1</name>
+    <description>Ethernet 1</description>
+    <type>ethernetCsmacd</type>
+    <enabled>true</enabled>
+    <ipv4 xmlns="urn:ietf:params:xml:ns:yang:ietf-ip">
+      <enabled>true</enabled>
+      <mtu>1500</mtu>
+      <address>
+        <ip>10.10.1.5</ip>
+        <prefix-length>16</prefix-length>
+      </address>
+    </ipv4>
+  </interface>
+</interfaces>

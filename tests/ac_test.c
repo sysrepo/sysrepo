@@ -30,6 +30,7 @@
 #include "sr_common.h"
 #include "access_control.h"
 #include "test_module_helper.h"
+#include "test_data.h"
 
 /**
  * @brief Test setup routine.
@@ -82,7 +83,7 @@ ac_test_unpriviledged(void **state)
     credentials.r_gid = getgid();
 
     /* init */
-    rc = ac_init(&ctx);
+    rc = ac_init(TEST_DATA_SEARCH_DIR, &ctx);
     assert_int_equal(rc, SR_ERR_OK);
     rc = ac_session_init(ctx, &credentials, &session);
     assert_int_equal(rc, SR_ERR_OK);
@@ -160,7 +161,7 @@ ac_test_priviledged(void **state)
     }
 
     /* init */
-    rc = ac_init(&ctx);
+    rc = ac_init(TEST_DATA_SEARCH_DIR, &ctx);
     assert_int_equal(rc, SR_ERR_OK);
     rc = ac_session_init(ctx, &credentials1, &session1);
     assert_int_equal(rc, SR_ERR_OK);
@@ -230,7 +231,7 @@ ac_test_identity_switch(void **state)
     bool proc_sudo = (NULL != getenv("SUDO_USER")); /* running under sudo */
 
     /* init */
-    rc = ac_init(&ctx);
+    rc = ac_init(TEST_DATA_SEARCH_DIR, &ctx);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* set effective user to sudo parent user (if possible) */
@@ -323,7 +324,7 @@ ac_test_negative(void **state)
     credentials.r_gid = getgid();
 
     /* init */
-    rc = ac_init(&ctx);
+    rc = ac_init(TEST_DATA_SEARCH_DIR, &ctx);
     assert_int_equal(rc, SR_ERR_OK);
     rc = ac_session_init(ctx, &credentials, &session);
     assert_int_equal(rc, SR_ERR_OK);

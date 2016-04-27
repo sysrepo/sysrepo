@@ -38,7 +38,7 @@ before_install:
   - cd ..
 
 script:
-  - mkdir build ; cd build ; cmake -DCMAKE_C_FLAGS="-Werror -coverage" .. && make -j2
+  - mkdir build ; cd build ; cmake -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_FLAGS="-Werror -coverage" .. && make -j2
   - ctest --output-on-failure
   - sudo ctest --output-on-failure --tests-regex ac_test
 
