@@ -442,7 +442,7 @@ srctl_schema_install(struct ly_ctx *ly_ctx, const char *yang_src, const char *yi
             /* only if the source file actually exists */
             srctl_get_yang_path(*module_name, *revision_date, yang_dst, PATH_MAX);
             printf("Installing the YANG file to '%s' ...\n", yang_dst);
-            snprintf(cmd, PATH_MAX, "cp -u %s %s", yang_src, yang_dst);
+            snprintf(cmd, PATH_MAX, "cp %s %s", yang_src, yang_dst);
             ret = system(cmd);
             if (0 != ret) {
                 fprintf(stderr, "Error: Unable to install the YANG file to '%s'.\n", yang_dst);
@@ -457,7 +457,7 @@ srctl_schema_install(struct ly_ctx *ly_ctx, const char *yang_src, const char *yi
             /* only if the source file actually exists */
             srctl_get_yin_path(*module_name, *revision_date, yin_dst, PATH_MAX);
             printf("Installing the YIN file to '%s' ...\n", yin_dst);
-            snprintf(cmd, PATH_MAX, "cp -u %s %s", yin_src, yin_dst);
+            snprintf(cmd, PATH_MAX, "cp %s %s", yin_src, yin_dst);
             ret = system(cmd);
             if (0 != ret) {
                 fprintf(stderr, "Error: Unable to install the YIN file to '%s'.\n", yin_dst);

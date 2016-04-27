@@ -78,7 +78,7 @@ pm_save_data_tree(pm_ctx_t *pm_ctx, int fd, struct lyd_node *data_tree)
     CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "Saving persist data tree failed: %s", ly_errmsg());
 
     /* flush in-core data to the disc */
-    ret = fdatasync(fd);
+    ret = fsync(fd);
     CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "File synchronization failed: %s", strerror(errno));
 
     SR_LOG_DBG_MSG("Persist data tree successfully saved.");
