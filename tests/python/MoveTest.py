@@ -66,3 +66,6 @@ class MoveTest(unittest.TestCase):
         self.session.move_item("/test-module:user[name='nameC']", SR_MOVE_LAST)
         items = self.session.get_items("/test-module:user")
         self.compareListItems(items, ["A", "B", "D", "C"])
+
+if __name__ == '__main__':
+    unittest.main()

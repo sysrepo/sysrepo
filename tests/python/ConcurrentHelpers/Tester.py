@@ -49,6 +49,11 @@ class Tester(object):
         """Checks whether there is a step to be executed"""
         return self._current_step < (len(self.steps))
 
+    def report_pid(self, pid):
+        """Insert pid into notification queue"""
+        if self.sub_proc is not None:
+            self.sub_proc.put(pid)
+
     def print_with_lock(self, *args):
         """Print to stdout with acquired lock"""
         if self.lock is not None:
@@ -100,7 +105,7 @@ class Tester(object):
         for step in range(len(self.steps)):
             self.execute_step(step)
 
-    def run(self, done=None, next_step=None, rand_sleep=False, lock=None, pids=None, id=-1, queue = None):
+    def run(self, done=None, next_step=None, rand_sleep=False, lock=None, sub_proc=None, pids=None, id=-1, queue=None):
         """Executes the tester steps
 
             Arguments:
@@ -108,6 +113,7 @@ class Tester(object):
                 next_step   (Semaphore) - to be released on step completion
                 rand_sleep  (bool)      - flag whether sleep before each step
                 lock        (Lock)      - stdout synchronization
+                sub_proc    (Queue)     - queue to report pids of created process in tester to be terminated by testmanager
                 pids        (Array)     - pids of other testers
                 id          (int)       - identification used for queue messages index of the tester pid in pids
                 queue       (Queue)     - message for notification whether there is a step to be executed
@@ -116,6 +122,7 @@ class Tester(object):
         self.lock = lock
         self._current_step = 0
         self.pids = pids
+        self.sub_proc = sub_proc
 
         if done is not None and next_step is not None and queue is not None:
             self.run_sync(done, next_step, rand_sleep, id, queue)
