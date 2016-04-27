@@ -32,7 +32,7 @@
 #include "rp_internal.h"
 #include "persistence_manager.h"
 
-#define PM_SCHEMA_FILE "sysrepo-persistent-data.yin"  /**< Schema of module's persistent data. */
+#define PM_SCHEMA_FILE "sysrepo-persistent-data.yang"  /**< Schema of module's persistent data. */
 
 #define PM_XPATH_MODULE                      "/sysrepo-persistent-data:module[name='%s']"
 
@@ -366,7 +366,7 @@ pm_init(rp_ctx_t *rp_ctx, const char *schema_search_dir, const char *data_search
     }
 
     /* load persist files schema to context */
-    ctx->schema = lys_parse_path(ctx->ly_ctx, schema_filename, LYS_IN_YIN);
+    ctx->schema = lys_parse_path(ctx->ly_ctx, schema_filename, LYS_IN_YANG);
     free(schema_filename);
     if (NULL == ctx->schema) {
         SR_LOG_WRN("Unable to parse the schema file '%s': %s", PM_SCHEMA_FILE, ly_errmsg());
