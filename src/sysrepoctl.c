@@ -499,11 +499,13 @@ srctl_schema_install(struct ly_ctx *ly_ctx, const char *yang_src, const char *yi
 fail:
     if ('\0' != yang_dst[0]) {
         snprintf(cmd, PATH_MAX, "rm -f %s", yang_dst);
-        system(cmd);
+        ret = system(cmd);
+        CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "Error by the execution of '%s'.", cmd);
     }
     if ('\0' != yin_dst[0]) {
         snprintf(cmd, PATH_MAX, "rm -f %s", yin_dst);
-        system(cmd);
+        ret = system(cmd);
+        CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "Error by the execution of '%s'.", cmd);
     }
 
     return SR_ERR_INTERNAL;
@@ -635,7 +637,8 @@ cleanup:
     }
     if ('\0' != tmp_dir[0]) {
         snprintf(cmd, PATH_MAX, "rm -r %s", tmp_dir);
-        system(cmd);
+        ret = system(cmd);
+        CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "Error by the execution of '%s'.", cmd);
     }
     return rc;
 }

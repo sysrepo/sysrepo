@@ -15,6 +15,10 @@ endif()
 string(TOLOWER "${CMAKE_BUILD_TYPE}" CMAKE_BUILD_TYPE_LOWER)
 
 set(CMAKE_C_FLAGS         "${CMAKE_C_FLAGS} -Wall -Wpedantic -std=gnu11")
+if(CMAKE_COMPILER_IS_GNUCC)
+    # disable strict aliasing in GCC, since it produces false alarams in libev
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-strict-aliasing")
+endif()
 set(CMAKE_C_FLAGS_RELEASE "-DNDEBUG -O2")
 set(CMAKE_C_FLAGS_DEBUG   "-g -O0")
 
@@ -238,4 +242,3 @@ if(PKG_CONFIG_FOUND)
     configure_file("libsysrepo.pc.in" "libsysrepo.pc" @ONLY)
     install(FILES "${CMAKE_CURRENT_BINARY_DIR}/libsysrepo.pc" DESTINATION "${CMAKE_INSTALL_PREFIX}/lib/pkgconfig")
 endif()
-
