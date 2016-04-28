@@ -20,7 +20,6 @@ __license__ = "Apache 2.0"
 
 from ConcurrentHelpers import *
 from SysrepoWrappers import *
-import TestModule
 import signal
 import os
 import subprocess
