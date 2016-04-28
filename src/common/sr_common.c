@@ -266,6 +266,7 @@ sr_save_data_tree_file(const char *file_name, const struct lyd_node *data_tree)
 {
     CHECK_NULL_ARG2(file_name, data_tree);
     int ret = 0;
+    int rc = SR_ERR_OK;
 
     FILE *f = fopen(file_name, "w");
     if (NULL == f){
@@ -273,17 +274,14 @@ sr_save_data_tree_file(const char *file_name, const struct lyd_node *data_tree)
         return SR_ERR_IO;
     }
     ret = lockf(fileno(f), F_LOCK, 0);
-    if (0 != ret) {
-        SR_LOG_ERR("Failed to lock the file %s", file_name);
-        return SR_ERR_IO;
-    }
+    CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_IO, cleanup, "Failed to lock the file %s", file_name);
 
-    if( 0 != lyd_print_file(f, data_tree, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT)){
-        SR_LOG_ERR("Failed to write output into %s", file_name);
-        return SR_ERR_INTERNAL;
-    }
+    ret = lyd_print_file(f, data_tree, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT);
+    CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_INTERNAL, cleanup, "Failed to write output into %s", file_name);
+
+cleanup:
     fclose(f);
-    return SR_ERR_OK;
+    return rc;
 }
 
 struct lyd_node*

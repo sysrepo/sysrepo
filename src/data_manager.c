@@ -2042,10 +2042,18 @@ dm_copy_config(dm_ctx_t *dm_ctx, dm_session_t *session, const struct ly_set *mod
         free(file_name);
     }
 
+    int ret = 0;
     for (size_t i = 0; i < modules->number; i++) {
         /* write dest file*/
+        lyd_wd_cleanup(&src_infos[i]->node, 0);
         if (0 != lyd_print_fd(fds[i], src_infos[i]->node, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT)){
             SR_LOG_ERR("Copy of module %s failed", module->name);
+            rc = SR_ERR_INTERNAL;
+        }
+        ret = fsync(fds[i]);
+        if (0 != ret){
+            SR_LOG_ERR("Failed to write data of '%s' module: %s", src_infos[i]->module->name,
+            (ly_errno != LY_SUCCESS) ? ly_errmsg() : strerror(errno));
             rc = SR_ERR_INTERNAL;
         }
     }

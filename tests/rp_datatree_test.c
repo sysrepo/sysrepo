@@ -38,6 +38,7 @@
 
 int setup(void **state){
    createDataTreeExampleModule();
+   createDataTreeTestModule();
    test_rp_ctx_create((rp_ctx_t**)state);
    return 0;
 }
