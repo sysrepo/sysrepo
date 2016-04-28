@@ -139,6 +139,10 @@ np_persistent_subscription_test(void **state)
     np_ctx_t *np_ctx = test_ctx->rp_ctx->np_ctx;
     assert_non_null(np_ctx);
 
+    /* delete old subscriptions, if any */
+    np_unsubscribe_destination(np_ctx, "addr1");
+    np_unsubscribe_destination(np_ctx, "addr2");
+
     /* create subscription to example-module @ addr1 */
     rc = np_notification_subscribe(np_ctx, test_ctx->rp_session_ctx, SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV,
             "addr1", 123, "example-module", NULL, true);
@@ -205,6 +209,9 @@ np_negative_subscription_test(void **state)
     assert_non_null(test_ctx);
     np_ctx_t *np_ctx = test_ctx->rp_ctx->np_ctx;
     assert_non_null(np_ctx);
+
+    /* delete old subscriptions, if any */
+    np_unsubscribe_destination(np_ctx, "addr2");
 
     /* subscribe */
     rc = np_notification_subscribe(np_ctx, test_ctx->rp_session_ctx, SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV,
