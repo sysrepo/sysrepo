@@ -122,7 +122,8 @@ srd_ignore_signals()
 static pid_t
 srd_daemonize(void)
 {
-    pid_t pid, sid;
+    pid_t pid = 0, sid = 0;
+    int fd = -1;
 
     /* register handlers for signals that we expect to receive from child process */
     signal(SIGCHLD, srd_child_status_handler);
@@ -156,18 +157,24 @@ srd_daemonize(void)
     }
 
     /* change the current working directory. */
-   if ((chdir(SR_DEAMON_WORK_DIR)) < 0) {
-       SR_LOG_ERR("Unable to change directory to '%s': %s.", SR_DEAMON_WORK_DIR, strerror(errno));
-       exit(EXIT_FAILURE);
-   }
+    if ((chdir(SR_DEAMON_WORK_DIR)) < 0) {
+        SR_LOG_ERR("Unable to change directory to '%s': %s.", SR_DEAMON_WORK_DIR, strerror(errno));
+        exit(EXIT_FAILURE);
+    }
 
-   /* turn off stderr logging */
-   sr_log_stderr(SR_LL_NONE);
+    /* turn off stderr logging */
+    sr_log_stderr(SR_LL_NONE);
 
-   /* redirect standard files to /dev/null */
-    freopen("/dev/null", "r", stdin);
-    freopen("/dev/null", "w", stdout);
-    freopen("/dev/null", "w", stderr);
+    /* redirect standard files to /dev/null */
+    fd = open("/dev/null", O_RDWR, 0);
+    if (-1 != fd) {
+        dup2(fd, STDIN_FILENO);
+        dup2(fd, STDOUT_FILENO);
+        dup2(fd, STDERR_FILENO);
+        if (fd > 2) {
+            close(fd);
+        }
+    }
 
     return getppid(); /* return PID of the parent */
 }
@@ -230,7 +237,7 @@ srd_print_help()
 int
 main(int argc, char* argv[])
 {
-    pid_t parent;
+    pid_t parent = 0;
     int rc = SR_ERR_OK;
     cm_ctx_t *sr_cm_ctx = NULL;
 

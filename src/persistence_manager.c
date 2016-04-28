@@ -32,7 +32,7 @@
 #include "rp_internal.h"
 #include "persistence_manager.h"
 
-#define PM_SCHEMA_FILE "sysrepo-persistent-data.yin"  /**< Schema of module's persistent data. */
+#define PM_SCHEMA_FILE "sysrepo-persistent-data.yang"  /**< Schema of module's persistent data. */
 
 #define PM_XPATH_MODULE                      "/sysrepo-persistent-data:module[name='%s']"
 
@@ -78,7 +78,7 @@ pm_save_data_tree(pm_ctx_t *pm_ctx, int fd, struct lyd_node *data_tree)
     CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "Saving persist data tree failed: %s", ly_errmsg());
 
     /* flush in-core data to the disc */
-    ret = fdatasync(fd);
+    ret = fsync(fd);
     CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "File synchronization failed: %s", strerror(errno));
 
     SR_LOG_DBG_MSG("Persist data tree successfully saved.");
@@ -366,7 +366,7 @@ pm_init(rp_ctx_t *rp_ctx, const char *schema_search_dir, const char *data_search
     }
 
     /* load persist files schema to context */
-    ctx->schema = lys_parse_path(ctx->ly_ctx, schema_filename, LYS_IN_YIN);
+    ctx->schema = lys_parse_path(ctx->ly_ctx, schema_filename, LYS_IN_YANG);
     free(schema_filename);
     if (NULL == ctx->schema) {
         SR_LOG_WRN("Unable to parse the schema file '%s': %s", PM_SCHEMA_FILE, ly_errmsg());

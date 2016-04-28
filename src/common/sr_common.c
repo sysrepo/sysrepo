@@ -265,19 +265,23 @@ int
 sr_save_data_tree_file(const char *file_name, const struct lyd_node *data_tree)
 {
     CHECK_NULL_ARG2(file_name, data_tree);
+    int ret = 0;
 
     FILE *f = fopen(file_name, "w");
     if (NULL == f){
         SR_LOG_ERR("Failed to open file %s", file_name);
         return SR_ERR_IO;
     }
-    lockf(fileno(f), F_LOCK, 0);
+    ret = lockf(fileno(f), F_LOCK, 0);
+    if (0 != ret) {
+        SR_LOG_ERR("Failed to lock the file %s", file_name);
+        return SR_ERR_IO;
+    }
 
     if( 0 != lyd_print_file(f, data_tree, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT)){
         SR_LOG_ERR("Failed to write output into %s", file_name);
         return SR_ERR_INTERNAL;
     }
-    lockf(fileno(f), F_ULOCK, 0);
     fclose(f);
     return SR_ERR_OK;
 }

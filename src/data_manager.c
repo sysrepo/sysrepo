@@ -212,6 +212,7 @@ dm_get_schema_info(dm_ctx_t *dm_ctx, const char *module_name, dm_schema_info_t *
     }
     return rc;
 }
+
 /**
  * @brief Check whether the file_name corresponds to the schema file.
  * @return 1 if it does, 0 otherwise.
@@ -220,8 +221,7 @@ static int
 dm_is_schema_file(const char *file_name)
 {
     CHECK_NULL_ARG(file_name);
-    //TODO: uncomment once libyang is able to handle repeated module read
-    return sr_str_ends_with(file_name, SR_SCHEMA_YIN_FILE_EXT) /*|| sr_str_ends_with(file_name, SR_SCHEMA_YANG_FILE_EXT)*/;
+    return sr_str_ends_with(file_name, SR_SCHEMA_YIN_FILE_EXT) || sr_str_ends_with(file_name, SR_SCHEMA_YANG_FILE_EXT);
 }
 
 /**
