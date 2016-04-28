@@ -20,6 +20,7 @@ __license__ = "Apache 2.0"
 
 from ConcurrentHelpers import *
 from SysrepoWrappers import *
+import TestModule
 import signal
 import os
 import subprocess
@@ -61,7 +62,7 @@ class SubscriptionTest(unittest.TestCase):
         tm = TestManager()
 
         srd = SysrepodTester("Srd")
-        reader = SysrepoTester("First", SR_DS_RUNNING)
+        reader = SysrepoTester("First", SR_DS_RUNNING, SR_CONN_DAEMON_REQUIRED, False)
         subscriber = SubscriptionTester("Second")
 
         srd.add_step(srd.startDaemonStep)
@@ -79,6 +80,10 @@ class SubscriptionTest(unittest.TestCase):
         srd.add_step(srd.waitStep)
         reader.add_step(reader.waitStep)
         subscriber.add_step(subscriber.subscribeStep)
+
+        srd.add_step(srd.waitStep)
+        reader.add_step(reader.refreshStep)
+        subscriber.add_step(subscriber.waitStep)
 
         srd.add_step(srd.waitStep)
         reader.add_step(reader.getItemsStep, "/ietf-interfaces:*")
@@ -121,6 +126,10 @@ class SubscriptionTest(unittest.TestCase):
         srd.add_step(srd.waitStep)
         reader.add_step(reader.waitStep)
         subscriber.add_step(subscriber.subscribeStep)
+
+        srd.add_step(srd.waitStep)
+        reader.add_step(reader.refreshStep)
+        subscriber.add_step(subscriber.waitStep)
 
         srd.add_step(srd.waitStep)
         reader.add_step(reader.getItemsStep, "/ietf-interfaces:*")

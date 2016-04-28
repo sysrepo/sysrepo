@@ -2048,6 +2048,7 @@ dm_copy_config(dm_ctx_t *dm_ctx, dm_session_t *session, const struct ly_set *mod
             SR_LOG_ERR("Copy of module %s failed", module->name);
             rc = SR_ERR_INTERNAL;
         }
+        fsync(fds[i]);
     }
 
 cleanup:

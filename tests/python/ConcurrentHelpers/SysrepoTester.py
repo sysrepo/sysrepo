@@ -21,18 +21,21 @@ from SysrepoWrappers import *
 
 
 class SysrepoTester(Tester):
-    def __init__(self, name="LockUser", ds=SR_DS_STARTUP):
+    def __init__(self, name="LockUser", ds=SR_DS_STARTUP, conn=SR_CONN_DEFAULT, connectInSetup=True):
         super(SysrepoTester, self).__init__()
         self.name = name
         self.ds = ds
+        self.conn = conn
+        self.autoconnect = connectInSetup
 
     def setup(self):
-        self.sr = Sysrepo(self.name, SR_CONN_DEFAULT)
-        self.session = Session(self.sr, self.ds)
-        self.sr.log_stderr(SR_LL_INF)
+        if self.autoconnect:
+            self.sr = Sysrepo(self.name, self.conn)
+            self.session = Session(self.sr, self.ds)
+            self.sr.log_stderr(SR_LL_INF)
 
     def restartConnection(self):
-        self.sr = Sysrepo(self.name, SR_CONN_DEFAULT)
+        self.sr = Sysrepo(self.name, self.conn)
         self.session = Session(self.sr, self.ds)
 
     def lockStep(self):
@@ -68,3 +71,6 @@ class SysrepoTester(Tester):
     def getItemsFailStep(self, xpath):
         with self.tc.assertRaisesRegexp(RuntimeError, ".* found"):
             self.session.get_items(xpath)
+
+    def refreshStep(self):
+        self.session.refresh()
