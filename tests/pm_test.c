@@ -96,6 +96,10 @@ pm_feature_test(void **state)
     bool running_enabled = false;
     int rc = SR_ERR_OK;
 
+    /* delete old features, if any */
+    pm_save_feature_state(pm_ctx, &test_ctx->user_cred, "example-module", "featureX", false);
+    pm_save_feature_state(pm_ctx, &test_ctx->user_cred, "example-module", "featureY", false);
+
     rc = pm_save_feature_state(pm_ctx, &test_ctx->user_cred, "example-module", "featureX", true);
     assert_int_equal(SR_ERR_OK, rc);
 
@@ -139,6 +143,12 @@ pm_subscription_test(void **state)
 
     np_subscription_t subscription = { 0, };
     subscription.dst_id = 123456789;
+
+    /* delete old subscriptions, if any */
+    pm_remove_subscriptions_for_destination(pm_ctx, "example-module", "/tmp/test-subscription-address1.sock",
+            &disable_running);
+    pm_remove_subscriptions_for_destination(pm_ctx, "example-module", "/tmp/test-subscription-address2.sock",
+                &disable_running);
 
     /* create subscriptions for destination 1 */
     subscription.dst_address = "/tmp/test-subscription-address1.sock";

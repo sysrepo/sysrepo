@@ -69,7 +69,7 @@ print_current_config(sr_session_ctx_t *session)
 
     rc = sr_get_items(session, "/ietf-interfaces:*//*", &values, &count);
     if (SR_ERR_OK != rc) {
-        printf("Error: %s", sr_strerror(rc));
+        printf("Error by sr_get_items: %s", sr_strerror(rc));
         return;
     }
     for (size_t i = 0; i < count; i++){

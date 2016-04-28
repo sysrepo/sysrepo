@@ -199,140 +199,6 @@ srctl_get_dir_path(const char *file_path)
 }
 
 /**
- * @brief Gets filename without the extension (new string will be allocated, should be freed by the caller).
- */
-static char *
-srctl_get_file_base_name(const char *file_path)
-{
-    char *slash = NULL, *dot = NULL, *result = NULL;
-
-    slash = strrchr(file_path, '/');
-    if (NULL != slash) {
-        result = strdup(slash + 1);
-    } else {
-        result = strdup(file_path);
-    }
-
-    if (NULL != result) {
-        dot = strrchr(result, '.');
-    }
-    if (NULL != dot) {
-        *dot = '\0';
-    }
-
-    return result;
-}
-
-/* forward-declartion */
-static char *srctl_yin_generate(const char *search_dir, const char *dst_dir, const char *yang_file);
-
-/**
- * @brief Generates YIN files out of the all dependent models of given YANG file.
- */
-static void
-srctl_dependent_yins_generate(const char *search_dir, const char *dst_dir, const char *yang_path)
-{
-    char command[PATH_MAX] = { 0, };
-    char filename[PATH_MAX] = { 0, };
-    DIR *dp;
-    struct dirent *ep;
-    char *ext = NULL, *strtok_tmp = NULL;
-
-    dp = opendir(search_dir);
-    if (NULL == dp) {
-        return;
-    }
-
-    /* list dependent YINs */
-    snprintf(command, PATH_MAX, "pyang --path=%s --no-path-recurse --format=depend %s",
-            search_dir, yang_path);
-    FILE *fp = popen(command, "r");
-    if (fp != NULL) {
-        while (fgets(command, sizeof(command)-1, fp) != NULL) {
-            char *token = strtok_r(command, ": \n", &strtok_tmp);
-            size_t cnt = 0;
-            while(NULL != token) {
-                /* first token contains the 'target' part - skip it */
-                if (0 != cnt++) {
-                    /* compare dependent module name with the files in search_dir */
-                    rewinddir(dp);
-                    while (NULL != (ep = readdir(dp))) {
-                        if (0 == strncmp(ep->d_name, token, strlen(token))) {
-                            ext = strrchr(ep->d_name, '.');
-                            if (NULL != ext && 0 == strcmp(ext, ".yang")) {
-                                /* matching YANG file found */
-                                snprintf(filename, PATH_MAX, "%s/%s", search_dir, ep->d_name);
-                                srctl_yin_generate(search_dir, dst_dir, filename);
-                            }
-                        }
-                    }
-                }
-                /* get next token */
-                token = strtok_r(NULL, ": \n", &strtok_tmp);
-           }
-        }
-        pclose(fp);
-    }
-
-    closedir(dp);
-}
-
-/**
- * @brief Generates YIN file out of the given YANG file.
- */
-static char *
-srctl_yin_generate(const char *search_dir, const char *dst_dir, const char *yang_file)
-{
-    char *file_base_name = NULL, *yin_file = NULL;
-    char command[PATH_MAX] = { 0, };
-    size_t len = 0;
-    int ret = 0;
-
-    file_base_name = srctl_get_file_base_name(yang_file);
-    if (NULL == file_base_name) {
-        return NULL;
-    }
-
-    len = snprintf(NULL, 0, "%s%s.yin", dst_dir, file_base_name);
-    yin_file = calloc(len + 1, sizeof(*yin_file));
-    if (NULL == yin_file) {
-        free(file_base_name);
-        return NULL;
-    }
-    snprintf(yin_file, len + 1, "%s%s.yin", dst_dir, file_base_name);
-
-    if (-1 == access(yin_file, F_OK)) {
-        /* if the yin does not already exists */
-        snprintf(command, PATH_MAX, "pyang --path=%s --no-path-recurse --format=yin --output=%s %s",
-                search_dir, yin_file, yang_file);
-        printf("Generating YIN from '%s' ...\n", yang_file);
-        ret = system(command);
-        if (0 != ret) {
-            fprintf(stderr, "Error: Unable to generate the YIN file.\n");
-            free(yin_file);
-            yin_file = NULL;
-        }
-    }
-
-    if (NULL != yin_file) {
-        snprintf(command, PATH_MAX, "cp %s %s", yang_file, dst_dir);
-        ret = system(command);
-        if (0 != ret) {
-            fprintf(stderr, "Error: Unable to install the YIN file to '%s'.\n", dst_dir);
-            free(yin_file);
-            yin_file = NULL;
-        }
-    }
-
-    if (NULL != yin_file) {
-        srctl_dependent_yins_generate(search_dir, dst_dir, yang_file);
-    }
-
-    free(file_base_name);
-    return yin_file;
-}
-
-/**
  * @brief Generates the YANG file path from module name and optional revision date.
  */
 static void
@@ -400,7 +266,7 @@ srctl_yang_filepath_from_yin_filepath(const char *yin_filepath)
         strcpy((char*)yang_filepath, yin_filepath);
         dot = strrchr(yang_filepath, '.');
         if (NULL != dot) {
-            strncpy(dot, ".yang", 6);
+            strncpy(dot, SR_SCHEMA_YANG_FILE_EXT, 6);
         }
     }
 
@@ -416,7 +282,7 @@ srctl_schema_install(struct ly_ctx *ly_ctx, const char *yang_src, const char *yi
 {
     const struct lys_module *module = NULL;
     char yang_dst[PATH_MAX] = { 0, }, yin_dst[PATH_MAX] = { 0, }, cmd[PATH_MAX] = { 0, };
-    const char *tmp_name = NULL, *tmp_rev = NULL, *yang_name;
+    const char *tmp_name = NULL, *tmp_rev = NULL, *yang_path = NULL, *yin_path = NULL;
     int ret = 0, rc = SR_ERR_OK;
 
     if (NULL != module_in) {
@@ -442,7 +308,7 @@ srctl_schema_install(struct ly_ctx *ly_ctx, const char *yang_src, const char *yi
             /* only if the source file actually exists */
             srctl_get_yang_path(*module_name, *revision_date, yang_dst, PATH_MAX);
             printf("Installing the YANG file to '%s' ...\n", yang_dst);
-            snprintf(cmd, PATH_MAX, "cp -u %s %s", yang_src, yang_dst);
+            snprintf(cmd, PATH_MAX, "cp %s %s", yang_src, yang_dst);
             ret = system(cmd);
             if (0 != ret) {
                 fprintf(stderr, "Error: Unable to install the YANG file to '%s'.\n", yang_dst);
@@ -457,7 +323,7 @@ srctl_schema_install(struct ly_ctx *ly_ctx, const char *yang_src, const char *yi
             /* only if the source file actually exists */
             srctl_get_yin_path(*module_name, *revision_date, yin_dst, PATH_MAX);
             printf("Installing the YIN file to '%s' ...\n", yin_dst);
-            snprintf(cmd, PATH_MAX, "cp -u %s %s", yin_src, yin_dst);
+            snprintf(cmd, PATH_MAX, "cp %s %s", yin_src, yin_dst);
             ret = system(cmd);
             if (0 != ret) {
                 fprintf(stderr, "Error: Unable to install the YIN file to '%s'.\n", yin_dst);
@@ -466,13 +332,18 @@ srctl_schema_install(struct ly_ctx *ly_ctx, const char *yang_src, const char *yi
         }
     }
 
-    /* install dependent YANG and YIN files */
+    /* install dependent YANG / YIN files */
     for (size_t i = 0; i < module->inc_size; i++) {
         printf("Resolving dependency: '%s' includes '%s'...\n", *module_name, module->inc[i].submodule->name);
-        yang_name = srctl_yang_filepath_from_yin_filepath(module->inc[i].submodule->filepath);
-        rc = srctl_schema_install(ly_ctx, yang_name, module->inc[i].submodule->filepath,
+        if (sr_str_ends_with(module->inc[i].submodule->filepath, SR_SCHEMA_YANG_FILE_EXT)) {
+            yang_path = module->inc[i].submodule->filepath;
+            yin_path = NULL;
+        } else {
+            yang_path = NULL;
+            yin_path = module->inc[i].submodule->filepath;
+        }
+        rc = srctl_schema_install(ly_ctx, yang_path, yin_path,
                 (const struct lys_module *)module->inc[i].submodule, &tmp_name, &tmp_rev);
-        free((void*)yang_name);
         if (SR_ERR_OK != rc) {
             fprintf(stderr, "Error: Unable to resolve the dependency on '%s'.\n", module->inc[i].submodule->name);
             goto fail;
@@ -484,10 +355,15 @@ srctl_schema_install(struct ly_ctx *ly_ctx, const char *yang_src, const char *yi
             continue;
         }
         printf("Resolving dependency: '%s' imports '%s' ...\n", *module_name, module->imp[i].module->name);
-        yang_name = srctl_yang_filepath_from_yin_filepath(module->imp[i].module->filepath);
-        rc = srctl_schema_install(ly_ctx, yang_name, module->imp[i].module->filepath,
+        if (sr_str_ends_with(module->imp[i].module->filepath, SR_SCHEMA_YANG_FILE_EXT)) {
+            yang_path = module->imp[i].module->filepath;
+            yin_path = NULL;
+        } else {
+            yang_path = NULL;
+            yin_path = module->imp[i].module->filepath;
+        }
+        rc = srctl_schema_install(ly_ctx, yang_path, yin_path,
                 (const struct lys_module *)module->imp[i].module, &tmp_name, &tmp_rev);
-        free((void*)yang_name);
         if (SR_ERR_OK != rc) {
             fprintf(stderr, "Error: Unable to resolve the dependency on '%s'.\n", module->imp[i].module->name);
             goto fail;
@@ -499,11 +375,13 @@ srctl_schema_install(struct ly_ctx *ly_ctx, const char *yang_src, const char *yi
 fail:
     if ('\0' != yang_dst[0]) {
         snprintf(cmd, PATH_MAX, "rm -f %s", yang_dst);
-        system(cmd);
+        ret = system(cmd);
+        CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "Error by the execution of '%s'.", cmd);
     }
     if ('\0' != yin_dst[0]) {
         snprintf(cmd, PATH_MAX, "rm -f %s", yin_dst);
-        system(cmd);
+        ret = system(cmd);
+        CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "Error by the execution of '%s'.", cmd);
     }
 
     return SR_ERR_INTERNAL;
@@ -539,38 +417,15 @@ srctl_install(const char *yang, const char *yin, const char *owner, const char *
         local_search_dir = true;
     }
 
-    /* generate YIN if not provided */
-    if (NULL == yin) {
-        /* check if pyang is installed */
-        ret = system("pyang --version > /dev/null");
-        if (0 != ret) {
-            fprintf(stderr, "Error: Pyang not found. Install it, or use --yin option to specify YIN file.\n");
-            goto fail;
-        }
-        snprintf(tmp_dir, PATH_MAX, "/tmp/sysrepoctl-%d/", getpid());
-        snprintf(cmd, PATH_MAX, "mkdir %s", tmp_dir);
-        ret = system(cmd);
-        if (0 != ret) {
-            fprintf(stderr, "Error: Unable to create temprary working directory.\n");
-            goto fail;
-        }
-        /* generate the YIN file */
-        tmp_yin = srctl_yin_generate(search_dir, tmp_dir, yang);
-        if (NULL == tmp_yin) {
-            fprintf(stderr, "Error: Unable to generate the YIN file.\n");
-            goto fail;
-        }
-    }
-
     /* init libyang context */
-    ly_ctx = ly_ctx_new((NULL != yin) ? search_dir : tmp_dir);
+    ly_ctx = ly_ctx_new(search_dir);
     if (NULL == ly_ctx) {
         fprintf(stderr, "Error: Unable to initialize libyang context: %s.\n", ly_errmsg());
         goto fail;
     }
 
     /* Install schema files */
-    rc = srctl_schema_install(ly_ctx, yang, ((NULL != yin) ? yin : tmp_yin), NULL, &module_name, &revision_date);
+    rc = srctl_schema_install(ly_ctx, yang, yin, NULL, &module_name, &revision_date);
     if (SR_ERR_OK != rc) {
         fprintf(stderr, "Error: Unable to install schema files.\n");
         goto fail;
@@ -635,7 +490,8 @@ cleanup:
     }
     if ('\0' != tmp_dir[0]) {
         snprintf(cmd, PATH_MAX, "rm -r %s", tmp_dir);
-        system(cmd);
+        ret = system(cmd);
+        CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "Error by the execution of '%s'.", cmd);
     }
     return rc;
 }
@@ -724,7 +580,7 @@ srctl_schema_uninstall(struct ly_ctx *ly_ctx, const char *module_name, const cha
         while (NULL != (ep = readdir(dp))) {
             if (0 == strncmp(ep->d_name, module_name, strlen(module_name))) {
                 ext = strrchr(ep->d_name, '.');
-                if (NULL != ext && 0 == strcmp(ext, ".yin")) {
+                if (NULL != ext && 0 == strcmp(ext, SR_SCHEMA_YIN_FILE_EXT)) {
                     snprintf(schema_file, PATH_MAX, "%s%s", srctl_schema_search_dir, ep->d_name);
                     rc = srctl_schema_file_uninstall(ly_ctx, schema_file);
                 }
@@ -883,7 +739,7 @@ srctl_ly_init(struct ly_ctx **ly_ctx)
 {
     DIR *dp;
     struct dirent *ep;
-    char *ext = NULL, schema_filename[PATH_MAX] = { 0, };
+    char schema_filename[PATH_MAX] = { 0, };
 
     *ly_ctx = ly_ctx_new(srctl_schema_search_dir);
     if (NULL == *ly_ctx) {
@@ -898,10 +754,9 @@ srctl_ly_init(struct ly_ctx **ly_ctx)
         return SR_ERR_INVAL_ARG;
     }
     while (NULL != (ep = readdir(dp))) {
-        ext = strrchr(ep->d_name, '.');
-        if (NULL != ext && 0 == strcmp(ext, ".yin")) {
+        if (sr_str_ends_with(ep->d_name, SR_SCHEMA_YIN_FILE_EXT) || sr_str_ends_with(ep->d_name, SR_SCHEMA_YANG_FILE_EXT)) {
             snprintf(schema_filename, PATH_MAX, "%s%s", srctl_schema_search_dir, ep->d_name);
-            lys_parse_path(*ly_ctx, schema_filename, LYS_IN_YIN);
+            lys_parse_path(*ly_ctx, schema_filename, sr_str_ends_with(ep->d_name, SR_SCHEMA_YIN_FILE_EXT) ? LYS_IN_YIN : LYS_IN_YANG);
         }
     }
     closedir(dp);
@@ -943,7 +798,7 @@ srctl_dump_import(const char *module, const char *format, bool dump)
 
     snprintf(data_filename, PATH_MAX, "%s%s%s", srctl_data_search_dir, module, SR_STARTUP_FILE_EXT);
 
-    fd = open(data_filename, dump ? O_RDONLY : (O_WRONLY | O_TRUNC));
+    fd = open(data_filename, dump ? O_RDONLY : (O_RDWR | O_TRUNC));
     if (-1 == fd) {
         fprintf(stderr, "Error: Unable to open the data file '%s': %s.\n", data_filename, strerror(errno));
         ly_ctx_destroy(ly_ctx, NULL);

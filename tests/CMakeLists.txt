@@ -37,6 +37,7 @@ macro(ADD_UNIT_TEST_WITH_OPTS TEST_NAME USE_HELPERS USE_VALGRIND WRAP_FUNCTION)
            add_test(${TEST_NAME}_valgrind valgrind
                 --error-exitcode=1 --read-var-info=yes
                 --leak-check=full --show-leak-kinds=all
+                --suppressions=${TEST_HELPERS_DIR}/valgrind.supp
                 ./${TEST_NAME})
        endif(${USE_VALGRIND})
     endif(valgrind_FOUND)
@@ -94,7 +95,7 @@ if("${TEST_REPOSITORY_LOC}" STREQUAL "${REPOSITORY_LOC}")
         ADD_PYTHON_TEST(PerfTest)
     endif()
     add_executable(measure_perf measure_performance.c ${TEST_HELPERS_DIR}test_module_helper.c)
-    target_link_libraries(measure_perf cmocka sysrepo sysrepo-engine)
+    target_link_libraries(measure_perf ${CMOCKA_LIBRARIES} sysrepo sysrepo-engine)
 else()
     message(STATUS "Test repostory location differs to system repository location, some tests will be disabled.")
 endif()
@@ -108,12 +109,15 @@ EXECUTE_PROCESS(
   ERROR_QUIET
 )
 
+# make common_test depend on sysrepoctl
+add_dependencies(common_test sysrepoctl)
+
 # install testing YANG modules
 macro(INSTALL_YANG_MODULE MODULE_NAME)
     ADD_CUSTOM_COMMAND(
         TARGET common_test
         POST_BUILD
-        COMMAND ${CMAKE_BINARY_DIR}/src/sysrepoctl --install --yang=${CMAKE_CURRENT_SOURCE_DIR}/yang/${MODULE_NAME}.yang --yin=${CMAKE_CURRENT_SOURCE_DIR}/yang/${MODULE_NAME}.yin -0 ${TEST_REPOSITORY_LOC} > /dev/null
+        COMMAND ${CMAKE_BINARY_DIR}/src/sysrepoctl --install --yang=${CMAKE_CURRENT_SOURCE_DIR}/yang/${MODULE_NAME}.yang -0 ${TEST_REPOSITORY_LOC} > /dev/null
         VERBATIM
     )
 endmacro(INSTALL_YANG_MODULE)

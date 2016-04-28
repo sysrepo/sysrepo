@@ -1052,7 +1052,7 @@ cl_notification_test(void **state)
     assert_int_equal(rc, SR_ERR_OK);
     for (size_t s = 0; s < schema_cnt; s++) {
         if (0 == strcmp("ietf-interfaces", schemas[s].module_name)){
-            assert_int_equal(1, schemas[s].enabled_feature_cnt);
+            assert_true(schemas[s].enabled_feature_cnt > 0);
             assert_string_equal("pre-provisioning", schemas[s].enabled_features[0]);
         } else {
             assert_int_equal(0, schemas[s].enabled_feature_cnt);
