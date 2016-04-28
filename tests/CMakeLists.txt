@@ -37,7 +37,6 @@ macro(ADD_UNIT_TEST_WITH_OPTS TEST_NAME USE_HELPERS USE_VALGRIND WRAP_FUNCTION)
            add_test(${TEST_NAME}_valgrind valgrind
                 --error-exitcode=1 --read-var-info=yes
                 --leak-check=full --show-leak-kinds=all
-                --suppressions=${TEST_HELPERS_DIR}/valgrind.supp
                 ./${TEST_NAME})
        endif(${USE_VALGRIND})
     endif(valgrind_FOUND)
@@ -84,18 +83,23 @@ if("${TEST_REPOSITORY_LOC}" STREQUAL "${REPOSITORY_LOC}")
     if (SWIG_FOUND AND PYTHONLIBS_FOUND AND PYTHONINTERP_FOUND)
         macro(ADD_PYTHON_TEST TEST_NAME)
             add_test(NAME python_${TEST_NAME}
-                COMMAND sh ${CMAKE_CURRENT_SOURCE_DIR}/run_python_test.sh "${CMAKE_BINARY_DIR}/swig/python:${PROJECT_SOURCE_DIR}/swig/python" ${PYTHON_EXECUTABLE}
+                COMMAND sh ${CMAKE_CURRENT_SOURCE_DIR}/run_python_test.sh "${CMAKE_BINARY_DIR}/src:${CMAKE_BINARY_DIR}/tests" "${CMAKE_BINARY_DIR}/swig/python:${PROJECT_SOURCE_DIR}/swig/python" ${PYTHON_EXECUTABLE}
                     ${CMAKE_CURRENT_SOURCE_DIR}/python/${TEST_NAME}.py
+                WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
             )
         endmacro(ADD_PYTHON_TEST)
         ADD_PYTHON_TEST(SysrepoBasicTest)
         ADD_PYTHON_TEST(LockingTest)
         ADD_PYTHON_TEST(CommitTest)
         ADD_PYTHON_TEST(MoveTest)
+        ADD_PYTHON_TEST(SubscriptionTest)
         ADD_PYTHON_TEST(PerfTest)
     endif()
     add_executable(measure_perf measure_performance.c ${TEST_HELPERS_DIR}test_module_helper.c)
     target_link_libraries(measure_perf ${CMOCKA_LIBRARIES} sysrepo sysrepo-engine)
+    add_executable(subscription_test_app subscription_test_app.c)
+    target_link_libraries(subscription_test_app ${CMOCKA_LIBRARIES} sysrepo sysrepo-engine)
+
 else()
     message(STATUS "Test repostory location differs to system repository location, some tests will be disabled.")
 endif()

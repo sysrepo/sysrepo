@@ -19,14 +19,14 @@
 # to setup PYTHONPATH for ctest
 #
  
-if [ "$#" -ne 3 ] ; then
-  echo "Usage: $0 PythonPath PythonExecutable Test" >&2
+if [ "$#" -ne 4 ] ; then
+  echo "Usage: $0 PATH PythonPath PythonExecutable Test" >&2
   exit 1
 fi
-
-PYTHON_EXE="$2"
-TEST_FILE="$3"
-
-export PYTHONPATH="$1"
+PTH="$1"
+PYTHON_EXE="$3"
+TEST_FILE="$4"
+export PATH=$PTH:$PATH
+export PYTHONPATH="$2"
 
 $PYTHON_EXE $TEST_FILE

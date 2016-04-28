@@ -145,6 +145,32 @@ def create_example_module():
     session.set_item(v.xpath, v)
     session.commit()
 
+def create_ietf_interfaces():
+    sr = Sysrepo("ietf-interfaces")
+
+    session = Session(sr, SR_DS_STARTUP)
+    session.delete_item("/ietf-interfaces:*")
+    Sysrepo.log_stderr(SR_LL_DBG)
+    v = Value("/ietf-interfaces:interfaces/interface[name='eth0']/type", SR_IDENTITYREF_T, "ethernetCsmacd")
+    session.set_item(v.xpath, v)
+
+    v = Value("/ietf-interfaces:interfaces/interface[name='eth0']/description", SR_STRING_T, "Ethernet 0");
+    session.set_item(v.xpath, v)
+
+    v = Value("/ietf-interfaces:interfaces/interface[name='eth0']/enabled", SR_BOOL_T, "true");
+    session.set_item(v.xpath, v)
+
+    v = Value("/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/address[ip='192.168.2.100']/prefix-length", SR_UINT8_T, 24)
+    session.set_item(v.xpath, v)
+
+    v = Value("/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/enabled", SR_BOOL_T, True)
+    session.set_item(v.xpath, v)
+
+    v = Value("/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/mtu", SR_UINT32_T, "1500")
+    session.set_item(v.xpath, v)
+
+    session.commit()
+
 
 if __name__ == "__main__":
     create_test_module()

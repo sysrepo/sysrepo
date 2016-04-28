@@ -17,6 +17,8 @@ __license__ = "Apache 2.0"
 # limitations under the License.
 
 from multiprocessing import Process, Manager
+import os
+import signal
 
 
 class TestManager:
@@ -29,12 +31,14 @@ class TestManager:
         self.lock = self.manager.Lock()
         self.process_done = self.manager.Semaphore(0)
         self.queue = self.manager.Queue()
+        self.sub_proc = self.manager.Queue()
         self._setup()
 
     def _setup(self):
         self.testers = []
         self.next_steps = []
         self.proc_ids = []
+        self.subprocToKill = []
 
     def add_tester(self, tester):
         self.testers.append(tester)
@@ -47,7 +51,7 @@ class TestManager:
             self.process_done.release()
             next_s = self.manager.Semaphore(0)
 
-            p = Process(target=self.testers[id].run, args=(self.process_done, next_s, rand_sleep, self.lock, self.pids, id, self.queue))
+            p = Process(target=self.testers[id].run, args=(self.process_done, next_s, rand_sleep, self.lock, self.sub_proc, self.pids, id, self.queue))
             self.proc_ids.append(p)
             self.next_steps.append(next_s)
             p.start()
@@ -80,8 +84,12 @@ class TestManager:
                     if status == True:
                         will_continue.append(proc)
                     elif isinstance(status, BaseException):
+                        print "Error in tester", proc,"step",step
                         for p in self.proc_ids:
                             p.terminate()
+                        while not self.sub_proc.empty():
+                            pid = self.sub_proc.get()
+                            os.kill(pid, signal.SIGKILL)
                         raise status
 
             if len(will_continue) == 0:
