@@ -16,7 +16,7 @@ __license__ = "Apache 2.0"
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-# Test must be executed from build directory
+# sysrepod and subscription_test_app must be in PATH
 
 from ConcurrentHelpers import *
 from SysrepoWrappers import *
@@ -27,7 +27,7 @@ import subprocess
 class SubscriptionTester(SysrepoTester):
 
     def subscribeStep(self):
-        self.process = subprocess.Popen("./tests/subscription_test_app")
+        self.process = subprocess.Popen("subscription_test_app")
         self.report_pid(self.process.pid)
 
     def cancelSubscriptionStep(self):
@@ -41,7 +41,7 @@ class SubscriptionTester(SysrepoTester):
 class SysrepodTester(SysrepoTester):
 
     def startDaemonStep(self):
-        self.process = subprocess.Popen(["./src/sysrepod", "-d"])
+        self.process = subprocess.Popen(["sysrepod", "-d"])
         self.report_pid(self.process.pid)
 
     def stopDaemonStep(self):
@@ -50,11 +50,6 @@ class SysrepodTester(SysrepoTester):
 
 
 class SubscriptionTest(unittest.TestCase):
-
-    def setUp(self):
-        #verify that required executables can be found
-        self.assertTrue(os.path.isfile("./src/sysrepod"))
-        self.assertTrue(os.path.isfile("./tests/subscription_test_app"))
 
 
     def test_SubscribeUnsubscribe(self):
