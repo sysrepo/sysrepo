@@ -105,6 +105,7 @@ np_dst_info_insert(np_ctx_t *np_ctx, const char *dst_address, const char *module
 {
     np_dst_info_t info_lookup = { 0, }, *info = NULL, *new_info = NULL;
     char **tmp = NULL;
+    bool inserted = false;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG3(np_ctx, dst_address, module_name);
@@ -140,6 +141,7 @@ np_dst_info_insert(np_ctx_t *np_ctx, const char *dst_address, const char *module
 
         rc = sr_btree_insert(np_ctx->dst_info_btree, new_info);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to insert new info entry into btree.");
+        inserted = true;
         info = new_info;
     }
 
@@ -157,10 +159,13 @@ np_dst_info_insert(np_ctx_t *np_ctx, const char *dst_address, const char *module
 
 cleanup:
     if (NULL != new_info) {
-        sr_btree_delete(np_ctx->dst_info_btree, new_info);
-        free((char*)new_info->dst_address);
-        free((char*)new_info->subscribed_modules);
-        free(new_info);
+        if (inserted) {
+            sr_btree_delete(np_ctx->dst_info_btree, new_info);
+        } else {
+            free((char*)new_info->dst_address);
+            free((char*)new_info->subscribed_modules);
+            free(new_info);
+        }
     }
     pthread_rwlock_unlock(&np_ctx->lock);
     return rc;
@@ -178,18 +183,13 @@ np_dst_info_remove(np_ctx_t *np_ctx, const char *dst_address, const char *module
 
     info_lookup.dst_address = dst_address;
 
-    if (NULL == module_name) {
-        /* remove whole destination info entry */
-        sr_btree_delete(np_ctx->dst_info_btree, &info_lookup);
-        return SR_ERR_OK;
-    }
-
-    /* remove specified module name */
+    /* find specified module name */
     info = sr_btree_search(np_ctx->dst_info_btree, &info_lookup);
     if (NULL != info) {
-        if (1 == info->subscribed_modules_cnt) {
-            /* last module - remove whole destination info entry */
-            sr_btree_delete(np_ctx->dst_info_btree, &info_lookup);
+        if (NULL == module_name || 1 == info->subscribed_modules_cnt) {
+            /* if whole destination info entry needs to be removed OR this is the last module,
+             * remove whole destination info entry */
+            sr_btree_delete(np_ctx->dst_info_btree, info);
         } else {
             /* not last module - remove only the matching module name */
             for (size_t i = 0; i < info->subscribed_modules_cnt; i++) {
@@ -363,7 +363,7 @@ np_notification_unsubscribe(np_ctx_t *np_ctx,  const rp_session_t *rp_session, S
             rc = np_dst_info_remove(np_ctx, dst_address, module_name);
             pthread_rwlock_unlock(&np_ctx->lock);
             if (disable_running) {
-                SR_LOG_INF("--- DISABLE RUNNING --- (%s)", module_name);
+                SR_LOG_DBG("Disabling running datastore fo module '%s'.", module_name);
                 rc = dm_disable_module_running(np_ctx->rp_ctx->dm_ctx, rp_session->dm_session, module_name, NULL);
                 CHECK_RC_LOG_RETURN(rc, "Disabling module %s failed", module_name);
             }
@@ -424,7 +424,7 @@ np_unsubscribe_destination(np_ctx_t *np_ctx, const char *dst_address)
             CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to remove subscriptions for destination '%s' from '%s'.", dst_address,
                     info->subscribed_modules[i]);
             if (disable_running) {
-                SR_LOG_INF("--- DISABLE RUNNING --- (%s)", info->subscribed_modules[i]);
+                SR_LOG_DBG("Disabling running datastore fo module '%s'.", info->subscribed_modules[i]);
                 rc = dm_disable_module_running(np_ctx->rp_ctx->dm_ctx, NULL, info->subscribed_modules[i], NULL);
                 CHECK_RC_LOG_GOTO(rc, cleanup, "Disabling module %s failed", info->subscribed_modules[i]);
             }
