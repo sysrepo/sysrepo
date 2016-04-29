@@ -635,8 +635,7 @@ srctl_uninstall(const char *module, const char *revision)
     /* delete schema files */
     rc = srctl_schema_uninstall(ly_ctx, module, revision);
     if (SR_ERR_OK != rc) {
-        fprintf(stderr, "Error: Unable to uninstall schemas.\n");
-        return rc;
+        goto cleanup;
     }
 
     if (!custom_repository) {
@@ -648,25 +647,31 @@ srctl_uninstall(const char *module, const char *revision)
         if (SR_ERR_OK != rc && SR_ERR_NOT_FOUND != rc) {
             srctl_report_error(session, rc);
             sr_disconnect(connection);
-            return rc;
+            goto cleanup;
         }
         sr_disconnect(connection);
     }
 
     /* delete data files */
     printf("Deleting data files ...\n");
-    // TODO: lock data file, fail if it is already locked
 
     ret = srctl_data_files_alter(module, "rm -f", true);
     if (0 != ret) {
         fprintf(stderr, "Error: Unable to delete data files. However, schemas has been successfully uninstalled.\n");
-        return SR_ERR_INTERNAL;
+        rc = SR_ERR_INTERNAL;
+        goto cleanup;
     }
 
     printf("Operation completed successfully.\n");
 
     ly_ctx_destroy(ly_ctx, NULL);
     return SR_ERR_OK;
+
+cleanup:
+    fprintf(stderr, "Uninstall operation cancelled.\n");
+
+    ly_ctx_destroy(ly_ctx, NULL);
+    return rc;
 }
 
 /**
