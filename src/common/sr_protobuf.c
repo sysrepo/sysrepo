@@ -823,10 +823,7 @@ sr_set_val_t_value_in_gpb(const sr_val_t *value, Sr__Value *gpb_value){
 
     if (NULL != value->xpath) {
         gpb_value->xpath = strdup(value->xpath);
-        if (NULL == gpb_value->xpath){
-            SR_LOG_ERR_MSG("Memory allocation failed");
-            return  SR_ERR_NOMEM;
-        }
+        CHECK_NULL_NOMEM_RETURN(value->xpath);
     }
 
     gpb_value->dflt = value->dflt;
@@ -1233,6 +1230,7 @@ sr_schemas_sr_to_gpb(const sr_schema_t *sr_schemas, const size_t schema_cnt, Sr_
 {
     Sr__Schema **schemas = NULL;
     size_t i = 0, j = 0;
+    int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG2(sr_schemas, gpb_schemas);
     if (0 == schema_cnt) {
@@ -1241,130 +1239,93 @@ sr_schemas_sr_to_gpb(const sr_schema_t *sr_schemas, const size_t schema_cnt, Sr_
     }
 
     schemas = calloc(schema_cnt, sizeof(*schemas));
-    if (NULL == schemas) {
-        SR_LOG_ERR_MSG("Cannot allocate array of pointers to GPB schemas.");
-        return SR_ERR_NOMEM;
-    }
+    CHECK_NULL_NOMEM_RETURN(schemas);
 
     for (i = 0; i < schema_cnt; i++) {
         schemas[i] = calloc(1, sizeof(**schemas));
-        if (NULL == schemas[i]) {
-            goto nomem;
-        }
+        CHECK_NULL_NOMEM_GOTO(schemas[i], rc, cleanup);
+
         sr__schema__init(schemas[i]);
         if (NULL != sr_schemas[i].module_name) {
             schemas[i]->module_name = strdup(sr_schemas[i].module_name);
-            if (NULL == schemas[i]->module_name) {
-                goto nomem;
-            }
+            CHECK_NULL_NOMEM_GOTO(sr_schemas[i].module_name, rc, cleanup);
         }
         if (NULL != sr_schemas[i].ns) {
             schemas[i]->ns = strdup(sr_schemas[i].ns);
-            if (NULL == schemas[i]->ns) {
-                goto nomem;
-            }
+            CHECK_NULL_NOMEM_GOTO(sr_schemas[i].ns, rc, cleanup);
         }
         if (NULL != sr_schemas[i].prefix) {
             schemas[i]->prefix = strdup(sr_schemas[i].prefix);
-            if (NULL == schemas[i]->prefix) {
-                goto nomem;
-            }
+            CHECK_NULL_NOMEM_GOTO(schemas[i]->prefix, rc, cleanup);
         }
 
         schemas[i]->revision = calloc(1, sizeof (*schemas[i]->revision));
-        if (NULL == schemas[i]->revision) {
-            goto nomem;
-        }
+        CHECK_NULL_NOMEM_GOTO(schemas[i]->revision, rc, cleanup);
+
         sr__schema_rev__init(schemas[i]->revision);
         if (NULL != sr_schemas[i].revision.revision) {
             schemas[i]->revision->revision = strdup(sr_schemas[i].revision.revision);
-            if (NULL == schemas[i]->revision->revision) {
-                goto nomem;
-            }
+            CHECK_NULL_NOMEM_GOTO(schemas[i]->revision->revision, rc, cleanup);
         }
         if (NULL != sr_schemas[i].revision.file_path_yang) {
             schemas[i]->revision->file_path_yang = strdup(sr_schemas[i].revision.file_path_yang);
-            if (NULL == schemas[i]->revision->file_path_yang) {
-                goto nomem;
-            }
+            CHECK_NULL_NOMEM_GOTO(schemas[i]->revision->file_path_yang, rc, cleanup);
         }
         if (NULL != sr_schemas[i].revision.file_path_yin) {
             schemas[i]->revision->file_path_yin = strdup(sr_schemas[i].revision.file_path_yin);
-            if (NULL == schemas[i]->revision->file_path_yin) {
-                goto nomem;
-            }
+            CHECK_NULL_NOMEM_GOTO(schemas[i]->revision->file_path_yin, rc, cleanup);
         }
 
         schemas[i]->enabled_features = calloc(sr_schemas[i].enabled_feature_cnt, sizeof(*schemas[i]->enabled_features));
-        if (NULL == schemas[i]->enabled_features) {
-            goto nomem;
-        }
+        CHECK_NULL_NOMEM_GOTO(schemas[i]->enabled_features, rc, cleanup);
         for (size_t f = 0; f < sr_schemas[i].enabled_feature_cnt; f++) {
             if (NULL != sr_schemas[i].enabled_features[f]){
                 schemas[i]->enabled_features[f] = strdup(sr_schemas[i].enabled_features[f]);
-                if (NULL == schemas[i]->enabled_features[f]) {
-                    goto nomem;
-                }
+                CHECK_NULL_NOMEM_GOTO(schemas[i]->enabled_features[f], rc, cleanup);
             }
             schemas[i]->n_enabled_features++;
         }
 
         schemas[i]->submodules = calloc(sr_schemas[i].submodule_count, sizeof(*schemas[i]->submodules));
-        if (NULL == schemas[i]->submodules){
-            goto nomem;
-        }
+        CHECK_NULL_NOMEM_GOTO(schemas[i]->submodules, rc, cleanup);
         schemas[i]->n_submodules = sr_schemas[i].submodule_count;
 
         for (size_t s = 0; s < sr_schemas[i].submodule_count; s++) {
             schemas[i]->submodules[s] = calloc(1, sizeof (*schemas[i]->submodules[s]));
-            if (NULL == schemas[i]->submodules[s]) {
-                goto nomem;
-            }
+            CHECK_NULL_NOMEM_GOTO(schemas[i]->submodules[s], rc, cleanup);
             sr__schema_submodule__init(schemas[i]->submodules[s]);
             if (NULL != sr_schemas[i].submodules[s].submodule_name) {
                 schemas[i]->submodules[s]->submodule_name = strdup(sr_schemas[i].submodules[s].submodule_name);
-                if (NULL == schemas[i]->submodules[s]->submodule_name) {
-                    goto nomem;
-                }
+                CHECK_NULL_NOMEM_GOTO(schemas[i]->submodules[s]->submodule_name, rc, cleanup);
             }
 
             schemas[i]->submodules[s]->revision = calloc(1, sizeof (*schemas[i]->submodules[s]->revision));
-            if (NULL == schemas[i]->submodules[s]->revision) {
-                goto nomem;
-            }
+            CHECK_NULL_NOMEM_GOTO(schemas[i]->submodules[s]->revision, rc, cleanup);
             sr__schema_rev__init(schemas[i]->submodules[s]->revision);
             if (NULL != sr_schemas[i].submodules[s].revision.revision) {
                 schemas[i]->submodules[s]->revision->revision = strdup(sr_schemas[i].submodules[s].revision.revision);
-                if (NULL == schemas[i]->submodules[s]->revision->revision) {
-                    goto nomem;
-                }
+                CHECK_NULL_NOMEM_GOTO(schemas[i]->submodules[s]->revision->revision, rc, cleanup);
             }
             if (NULL != sr_schemas[i].submodules[s].revision.file_path_yang) {
                 schemas[i]->submodules[s]->revision->file_path_yang = strdup(sr_schemas[i].submodules[s].revision.file_path_yang);
-                if (NULL == schemas[i]->submodules[s]->revision->file_path_yang) {
-                    goto nomem;
-                }
+                CHECK_NULL_NOMEM_GOTO(schemas[i]->submodules[s]->revision->file_path_yang, rc, cleanup);
             }
             if (NULL != sr_schemas[i].submodules[s].revision.file_path_yin) {
                 schemas[i]->submodules[s]->revision->file_path_yin = strdup(sr_schemas[i].submodules[s].revision.file_path_yin);
-                if (NULL == schemas[i]->submodules[s]->revision->file_path_yin) {
-                    goto nomem;
-                }
+                CHECK_NULL_NOMEM_GOTO(schemas[i]->submodules[s]->revision->file_path_yin, rc, cleanup);
             }
-
         }
     }
 
     *gpb_schemas = schemas;
     return SR_ERR_OK;
 
-nomem:
-    SR_LOG_ERR_MSG("Cannot allocate memory for GPB schema contents.");
+cleanup:
     for (j = 0; j < i; j++) {
         sr__schema__free_unpacked(schemas[j], NULL);
     }
     free(schemas);
-    return SR_ERR_NOMEM;
+    return rc;
 }
 
 int
@@ -1372,6 +1333,7 @@ sr_schemas_gpb_to_sr(const Sr__Schema **gpb_schemas, const size_t schema_cnt, sr
 {
     sr_schema_t *schemas = NULL;
     size_t i = 0;
+    int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG2(gpb_schemas, sr_schemas);
     if (0 == schema_cnt) {
@@ -1380,143 +1342,107 @@ sr_schemas_gpb_to_sr(const Sr__Schema **gpb_schemas, const size_t schema_cnt, sr
     }
 
     schemas = calloc(schema_cnt, sizeof(*schemas));
-    if (NULL == schemas) {
-        SR_LOG_ERR_MSG("Cannot allocate array of schemas.");
-        return SR_ERR_NOMEM;
-    }
+    CHECK_NULL_NOMEM_RETURN(schemas);
 
     for (i = 0; i < schema_cnt; i++) {
         if (NULL != gpb_schemas[i]->module_name) {
             schemas[i].module_name = strdup(gpb_schemas[i]->module_name);
-            if (NULL == schemas[i].module_name) {
-                goto nomem;
-            }
+            CHECK_NULL_NOMEM_GOTO(schemas[i].module_name, rc, cleanup);
         }
         if (NULL != gpb_schemas[i]->ns) {
             schemas[i].ns = strdup(gpb_schemas[i]->ns);
-            if (NULL == schemas[i].ns) {
-                goto nomem;
-            }
+            CHECK_NULL_NOMEM_GOTO(schemas[i].ns, rc, cleanup);
         }
         if (NULL != gpb_schemas[i]->prefix) {
             schemas[i].prefix = strdup(gpb_schemas[i]->prefix);
-            if (NULL == schemas[i].prefix) {
-                goto nomem;
-            }
+            CHECK_NULL_NOMEM_GOTO(schemas[i].prefix, rc, cleanup);
         }
 
         if (NULL != gpb_schemas[i]->revision->revision) {
             schemas[i].revision.revision = strdup(gpb_schemas[i]->revision->revision);
-            if (NULL == schemas[i].revision.revision) {
-                goto nomem;
-            }
+            CHECK_NULL_NOMEM_GOTO(schemas[i].revision.revision, rc, cleanup);
         }
         if (NULL != gpb_schemas[i]->revision->file_path_yang) {
             schemas[i].revision.file_path_yang = strdup(gpb_schemas[i]->revision->file_path_yang);
-            if (NULL == schemas[i].revision.file_path_yang) {
-                goto nomem;
-            }
+            CHECK_NULL_NOMEM_GOTO(schemas[i].revision.file_path_yang, rc, cleanup);
         }
         if (NULL != gpb_schemas[i]->revision->file_path_yin) {
             schemas[i].revision.file_path_yin = strdup(gpb_schemas[i]->revision->file_path_yin);
-            if (NULL == schemas[i].revision.file_path_yin) {
-                goto nomem;
-            }
+            CHECK_NULL_NOMEM_GOTO(schemas[i].revision.file_path_yin, rc, cleanup);
         }
 
         schemas[i].enabled_features = calloc(gpb_schemas[i]->n_enabled_features, sizeof(*schemas[i].enabled_features));
-        if (NULL == schemas[i].enabled_features) {
-            goto nomem;
-        }
+        CHECK_NULL_NOMEM_GOTO(schemas[i].enabled_features, rc, cleanup);
         for (size_t f = 0; f < gpb_schemas[i]->n_enabled_features; f++){
             if (NULL != gpb_schemas[i]->enabled_features[f]) {
                 schemas[i].enabled_features[f] = strdup(gpb_schemas[i]->enabled_features[f]);
-                if (NULL == schemas[i].enabled_features[f]) {
-                    goto nomem;
-                }
+                CHECK_NULL_NOMEM_GOTO(schemas[i].enabled_features[f], rc, cleanup);
             }
             schemas[i].enabled_feature_cnt++;
         }
 
         schemas[i].submodules = calloc(gpb_schemas[i]->n_submodules, sizeof(*schemas[i].submodules));
-        if (NULL == schemas[i].submodules) {
-            goto nomem;
-        }
+        CHECK_NULL_NOMEM_GOTO(schemas[i].submodules, rc, cleanup);
+
         for (size_t s = 0; s < gpb_schemas[i]->n_submodules; s++) {
             if (NULL != gpb_schemas[i]->submodules[s]->submodule_name) {
                 schemas[i].submodules[s].submodule_name = strdup(gpb_schemas[i]->submodules[s]->submodule_name);
-                if (NULL == schemas[i].submodules[s].submodule_name) {
-                    goto nomem;
-                }
+                CHECK_NULL_NOMEM_GOTO(schemas[i].submodules[s].submodule_name, rc, cleanup);
             }
 
             if (NULL != gpb_schemas[i]->submodules[s]->revision->revision) {
                 schemas[i].submodules[s].revision.revision = strdup(gpb_schemas[i]->submodules[s]->revision->revision);
-                if (NULL == schemas[i].submodules[s].revision.revision) {
-                    goto nomem;
-                }
+                CHECK_NULL_NOMEM_GOTO(schemas[i].submodules[s].revision.revision, rc, cleanup);
             }
             if (NULL != gpb_schemas[i]->submodules[s]->revision->file_path_yang) {
                 schemas[i].submodules[s].revision.file_path_yang = strdup(gpb_schemas[i]->submodules[s]->revision->file_path_yang);
-                if (NULL == schemas[i].submodules[s].revision.file_path_yang) {
-                    goto nomem;
-                }
+                CHECK_NULL_NOMEM_GOTO(schemas[i].submodules[s].revision.file_path_yang, rc, cleanup);
             }
             if (NULL != gpb_schemas[i]->submodules[s]->revision->file_path_yin) {
                 schemas[i].submodules[s].revision.file_path_yin = strdup(gpb_schemas[i]->submodules[s]->revision->file_path_yin);
-                if (NULL == schemas[i].submodules[s].revision.file_path_yin) {
-                    goto nomem;
-                }
+                CHECK_NULL_NOMEM_GOTO(schemas[i].submodules[s].revision.file_path_yin, rc, cleanup);
             }
-
             schemas[i].submodule_count++;
         }
-
     }
 
     *sr_schemas = schemas;
     return SR_ERR_OK;
 
-nomem:
-    SR_LOG_ERR_MSG("Cannot duplicate schema contents - not enough memory.");
+cleanup:
     sr_free_schemas(schemas, schema_cnt);
-    return SR_ERR_NOMEM;
+    return rc;
 }
 
 int
 sr_gpb_fill_error(const char *error_message, const char *error_path, Sr__Error **gpb_error_p)
 {
     Sr__Error *gpb_error = NULL;
+    int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG(gpb_error_p);
 
     gpb_error = calloc(1, sizeof(*gpb_error));
-    if (NULL == gpb_error) {
-        goto nomem;
-    }
+    CHECK_NULL_NOMEM_RETURN(gpb_error);
+
     sr__error__init(gpb_error);
     if (NULL != error_message) {
         gpb_error->message = strdup(error_message);
-        if (NULL == gpb_error->message) {
-            goto nomem;
-        }
+        CHECK_NULL_NOMEM_GOTO(gpb_error->message, rc, cleanup);
     }
     if (NULL != error_path) {
         gpb_error->xpath = strdup(error_path);
-        if (NULL == gpb_error->xpath) {
-            goto nomem;
-        }
+        CHECK_NULL_NOMEM_GOTO(gpb_error->xpath, rc, cleanup);
     }
 
     *gpb_error_p = gpb_error;
     return SR_ERR_OK;
 
-nomem:
+cleanup:
     if (NULL != gpb_error) {
         sr__error__free_unpacked(gpb_error, NULL);
     }
-    SR_LOG_ERR_MSG("GPB error allocation failed.");
-    return SR_ERR_NOMEM;
+    return rc;
 }
 
 int
@@ -1528,10 +1454,7 @@ sr_gpb_fill_errors(sr_error_info_t *sr_errors, size_t sr_error_cnt, Sr__Error **
     CHECK_NULL_ARG3(sr_errors, gpb_errors_p, gpb_error_cnt_p);
 
     gpb_errors = calloc(sr_error_cnt, sizeof(*gpb_errors));
-    if (NULL == gpb_errors) {
-        SR_LOG_ERR_MSG("GPB error array allocation failed.");
-        return SR_ERR_NOMEM;
-    }
+    CHECK_NULL_NOMEM_RETURN(gpb_errors);
 
     for (size_t i = 0; i < sr_error_cnt; i++) {
         rc = sr_gpb_fill_error(sr_errors[i].message, sr_errors[i].xpath, &gpb_errors[i]);
