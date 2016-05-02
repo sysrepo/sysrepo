@@ -27,7 +27,9 @@
 #include <cmocka.h>
 
 #include "sr_common.h"
-#include "rp_data_tree.h"
+#include "rp_dt_get.h"
+#include "rp_dt_edit.h"
+#include "rp_dt_xpath.h"
 #include "test_data.h"
 #include "test_module_helper.h"
 #include "rp_dt_context_helper.h"
