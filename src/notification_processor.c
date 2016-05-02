@@ -300,7 +300,7 @@ np_notification_subscribe(np_ctx_t *np_ctx, const rp_session_t *rp_session, Sr__
 
         if (enable_running) {
             /* enable the module in running config */
-            rc = dm_enable_module_runnig(np_ctx->rp_ctx->dm_ctx, rp_session->dm_session, module_name, NULL);
+            rc = dm_enable_module_running(np_ctx->rp_ctx->dm_ctx, rp_session->dm_session, module_name, NULL);
             CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to enable the module in the running datastore.");
         }
 

@@ -297,7 +297,7 @@ dm_load_schema_file(dm_ctx_t *dm_ctx, const char *dir_name, const char *file_nam
     }
     if (SR_ERR_OK == rc && running_enabled) {
         /* enable running datastore */
-        rc = dm_enable_module_runnig(dm_ctx, NULL, module->name, module);
+        rc = dm_enable_module_running(dm_ctx, NULL, module->name, module);
     }
 
     return SR_ERR_OK;
@@ -2103,7 +2103,7 @@ dm_has_enabled_subtree(dm_ctx_t *ctx, const char *module_name, const struct lys_
 }
 
 int
-dm_enable_module_runnig(dm_ctx_t *ctx, dm_session_t *session, const char *module_name, const struct lys_module *module)
+dm_enable_module_running(dm_ctx_t *ctx, dm_session_t *session, const char *module_name, const struct lys_module *module)
 {
     CHECK_NULL_ARG2(ctx, module_name);
     bool module_enabled = false;

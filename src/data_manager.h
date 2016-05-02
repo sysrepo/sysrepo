@@ -500,7 +500,7 @@ int dm_has_enabled_subtree(dm_ctx_t *ctx, const char *module_name, const struct 
  * @param [in] module Libyang schema tree pointer. If not known, NULL can be provided.
  * @return Error code (SR_ERR_OK on success)
  */
-int dm_enable_module_runnig(dm_ctx_t *ctx, dm_session_t *session, const char *module_name, const struct lys_module *module);
+int dm_enable_module_running(dm_ctx_t *ctx, dm_session_t *session, const char *module_name, const struct lys_module *module);
 
 /**
  * @brief Disables module in running data store
