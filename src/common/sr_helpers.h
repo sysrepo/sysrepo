@@ -40,6 +40,11 @@
         RC = SR_ERR_INVAL_ARG; \
     } \
 
+
+/**
+ * Function argument checkers - return from function with SR_ERR_INVAL_ARG error.
+ */
+
 #define CHECK_NULL_ARG(ARG) \
     do { \
         CHECK_NULL_ARG__INTERNAL(ARG) \
@@ -74,6 +79,11 @@
         CHECK_NULL_ARG__INTERNAL(ARG4) \
         CHECK_NULL_ARG__INTERNAL(ARG5) \
     } while(0)
+
+
+/**
+ * Function argument checkers - return from void function.
+ */
 
 #define CHECK_NULL_ARG_VOID(ARG) \
     do { \
@@ -110,6 +120,11 @@
         CHECK_NULL_ARG_VOID__INTERNAL(ARG5) \
     } while(0)
 
+
+/**
+ * Function argument checkers - do not return from function, set error code.
+ */
+
 #define CHECK_NULL_ARG_NORET(RC, ARG) \
     do { \
         CHECK_NULL_ARG_NORET__INTERNAL(RC, ARG) \
@@ -145,6 +160,11 @@
         CHECK_NULL_ARG_NORET__INTERNAL(RC, ARG5) \
     } while(0)
 
+
+/**
+ * Memory allocation checkers.
+ */
+
 #define CHECK_NULL_NOMEM_RETURN(ARG) \
     do { \
         if (NULL == ARG) { \
@@ -169,6 +189,11 @@
             goto LABEL; \
         } \
     } while(0)
+
+
+/**
+ * Return code checkers.
+ */
 
 #define CHECK_RC_MSG_RETURN(RC, MSG) \
     do { \
@@ -202,6 +227,10 @@
         } \
     } while(0)
 
+
+/**
+ * Non-zero value checkers.
+ */
 #define CHECK_ZERO_MSG_RETURN(RET, ERROR, MSG) \
     do { \
         if (0 != RET) { \
@@ -235,5 +264,16 @@
             goto LABEL; \
         } \
     } while(0)
+
+
+/**
+ * NULL value checker - returns given error code.
+ */
+
+#define CHECK_NULL_RETURN(ARG, RC) \
+    if (NULL == ARG) { \
+        SR_LOG_ERR("NULL value detected for %s in %s", #ARG, __FUNCTION__); \
+        return RC; \
+    } \
 
 #endif /* SR_HELPERS_H_ */

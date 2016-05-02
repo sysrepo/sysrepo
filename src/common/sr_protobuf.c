@@ -512,184 +512,140 @@ sr_gpb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__O
 
     if (SR__MSG__MSG_TYPE__REQUEST == type) {
         /* request */
-        if (NULL == msg->request) {
-            return SR_ERR_MALFORMED_MSG;
-        }
+        CHECK_NULL_RETURN(msg->request, SR_ERR_MALFORMED_MSG);
         if (msg->request->operation != operation) {
             return SR_ERR_MALFORMED_MSG;
         }
         switch (operation) {
             case SR__OPERATION__SESSION_START:
-                if (NULL == msg->request->session_start_req)
-                    return SR_ERR_MALFORMED_MSG;
+                CHECK_NULL_RETURN(msg->request->session_start_req, SR_ERR_MALFORMED_MSG);
                 break;
             case SR__OPERATION__SESSION_STOP:
-                if (NULL == msg->request->session_stop_req)
-                    return SR_ERR_MALFORMED_MSG;
+                CHECK_NULL_RETURN(msg->request->session_stop_req, SR_ERR_MALFORMED_MSG);
                 break;
             case SR__OPERATION__SESSION_REFRESH:
-                if (NULL == msg->request->session_refresh_req)
-                    return SR_ERR_MALFORMED_MSG;
+                CHECK_NULL_RETURN(msg->request->session_refresh_req, SR_ERR_MALFORMED_MSG);
                 break;
             case SR__OPERATION__LIST_SCHEMAS:
-                if (NULL == msg->request->list_schemas_req)
-                    return SR_ERR_MALFORMED_MSG;
+                CHECK_NULL_RETURN(msg->request->list_schemas_req, SR_ERR_MALFORMED_MSG);
                 break;
             case SR__OPERATION__GET_SCHEMA:
-                if (NULL == msg->request->get_schema_req)
-                    return SR_ERR_MALFORMED_MSG;
+                CHECK_NULL_RETURN(msg->request->get_schema_req, SR_ERR_MALFORMED_MSG);
                 break;
             case SR__OPERATION__FEATURE_ENABLE:
-                if (NULL == msg->request->feature_enable_req)
-                    return SR_ERR_MALFORMED_MSG;
+                CHECK_NULL_RETURN(msg->request->feature_enable_req, SR_ERR_MALFORMED_MSG);
                 break;
             case SR__OPERATION__MODULE_INSTALL:
-                if (NULL == msg->request->module_install_req)
-                    return SR_ERR_MALFORMED_MSG;
+                CHECK_NULL_RETURN(msg->request->module_install_req, SR_ERR_MALFORMED_MSG);
                 break;
             case SR__OPERATION__GET_ITEM:
-                if (NULL == msg->request->get_item_req)
-                    return SR_ERR_MALFORMED_MSG;
+                CHECK_NULL_RETURN(msg->request->get_item_req, SR_ERR_MALFORMED_MSG);
                 break;
             case SR__OPERATION__GET_ITEMS:
-                if (NULL == msg->request->get_items_req)
-                    return SR_ERR_MALFORMED_MSG;
+                CHECK_NULL_RETURN(msg->request->get_items_req, SR_ERR_MALFORMED_MSG);
                 break;
             case SR__OPERATION__SET_ITEM:
-                if (NULL == msg->request->set_item_req)
-                    return SR_ERR_MALFORMED_MSG;
+                CHECK_NULL_RETURN(msg->request->set_item_req, SR_ERR_MALFORMED_MSG);
                 break;
             case SR__OPERATION__DELETE_ITEM:
-                if (NULL == msg->request->delete_item_req)
-                    return SR_ERR_MALFORMED_MSG;
+                CHECK_NULL_RETURN(msg->request->delete_item_req, SR_ERR_MALFORMED_MSG);
                 break;
             case SR__OPERATION__MOVE_ITEM:
-                if (NULL == msg->request->move_item_req)
-                    return SR_ERR_MALFORMED_MSG;
+                CHECK_NULL_RETURN(msg->request->move_item_req, SR_ERR_MALFORMED_MSG);
                 break;
             case SR__OPERATION__VALIDATE:
-                if (NULL == msg->request->validate_req)
-                    return SR_ERR_MALFORMED_MSG;
+                CHECK_NULL_RETURN(msg->request->validate_req, SR_ERR_MALFORMED_MSG);
                 break;
             case SR__OPERATION__COMMIT:
-                if (NULL == msg->request->commit_req)
-                    return SR_ERR_MALFORMED_MSG;
+                CHECK_NULL_RETURN(msg->request->commit_req, SR_ERR_MALFORMED_MSG);
                 break;
             case SR__OPERATION__DISCARD_CHANGES:
-                if (NULL == msg->request->discard_changes_req)
-                    return SR_ERR_MALFORMED_MSG;
+                CHECK_NULL_RETURN(msg->request->discard_changes_req, SR_ERR_MALFORMED_MSG);
                 break;
             case SR__OPERATION__COPY_CONFIG:
-                if (NULL == msg->request->copy_config_req)
-                    return SR_ERR_MALFORMED_MSG;
+                CHECK_NULL_RETURN(msg->request->copy_config_req, SR_ERR_MALFORMED_MSG);
                 break;
             case SR__OPERATION__LOCK:
-                if (NULL == msg->request->lock_req)
-                    return SR_ERR_MALFORMED_MSG;
+                CHECK_NULL_RETURN(msg->request->lock_req, SR_ERR_MALFORMED_MSG);
                 break;
             case SR__OPERATION__UNLOCK:
-                if (NULL == msg->request->unlock_req)
-                    return SR_ERR_MALFORMED_MSG;
+                CHECK_NULL_RETURN(msg->request->unlock_req, SR_ERR_MALFORMED_MSG);
                 break;
             case SR__OPERATION__SUBSCRIBE:
-                if (NULL == msg->request->subscribe_req)
-                    return SR_ERR_MALFORMED_MSG;
+                CHECK_NULL_RETURN(msg->request->subscribe_req, SR_ERR_MALFORMED_MSG);
                 break;
             case SR__OPERATION__UNSUBSCRIBE:
-                if (NULL == msg->request->unsubscribe_req)
-                    return SR_ERR_MALFORMED_MSG;
+                CHECK_NULL_RETURN(msg->request->unsubscribe_req, SR_ERR_MALFORMED_MSG);
                 break;
             default:
                 return SR_ERR_MALFORMED_MSG;
         }
     } else if (SR__MSG__MSG_TYPE__RESPONSE == type) {
         /* response */
-        if (NULL == msg->response) {
-            return SR_ERR_MALFORMED_MSG;
-        }
+        CHECK_NULL_RETURN(msg->response, SR_ERR_MALFORMED_MSG);
         if (msg->response->operation != operation) {
             return SR_ERR_MALFORMED_MSG;
         }
         switch (operation) {
             case SR__OPERATION__SESSION_START:
-                if (NULL == msg->response->session_start_resp)
-                    return SR_ERR_MALFORMED_MSG;
+                CHECK_NULL_RETURN(msg->response->session_start_resp, SR_ERR_MALFORMED_MSG);
                 break;
             case SR__OPERATION__SESSION_STOP:
-                if (NULL == msg->response->session_stop_resp)
-                    return SR_ERR_MALFORMED_MSG;
+                CHECK_NULL_RETURN(msg->response->session_stop_resp, SR_ERR_MALFORMED_MSG);
                 break;
             case SR__OPERATION__SESSION_REFRESH:
-                if (NULL == msg->response->session_refresh_resp)
-                    return SR_ERR_MALFORMED_MSG;
+                CHECK_NULL_RETURN(msg->response->session_refresh_resp, SR_ERR_MALFORMED_MSG);
                 break;
             case SR__OPERATION__LIST_SCHEMAS:
-                if (NULL == msg->response->list_schemas_resp)
-                    return SR_ERR_MALFORMED_MSG;
+                CHECK_NULL_RETURN(msg->response->list_schemas_resp, SR_ERR_MALFORMED_MSG);
                 break;
             case SR__OPERATION__GET_SCHEMA:
-                if (NULL == msg->response->get_schema_resp)
-                    return SR_ERR_MALFORMED_MSG;
+                CHECK_NULL_RETURN(msg->response->get_schema_resp, SR_ERR_MALFORMED_MSG);
                 break;
             case SR__OPERATION__FEATURE_ENABLE:
-                if (NULL == msg->response->feature_enable_resp)
-                    return SR_ERR_MALFORMED_MSG;
+                CHECK_NULL_RETURN(msg->response->feature_enable_resp, SR_ERR_MALFORMED_MSG);
                 break;
             case SR__OPERATION__MODULE_INSTALL:
-                if (NULL == msg->response->module_install_resp)
-                    return SR_ERR_MALFORMED_MSG;
+                CHECK_NULL_RETURN(msg->response->module_install_resp, SR_ERR_MALFORMED_MSG);
                 break;
             case SR__OPERATION__GET_ITEM:
-                if (NULL == msg->response->get_item_resp)
-                    return SR_ERR_MALFORMED_MSG;
+                CHECK_NULL_RETURN(msg->response->get_item_resp, SR_ERR_MALFORMED_MSG);
                 break;
             case SR__OPERATION__GET_ITEMS:
-                if (NULL == msg->response->get_items_resp)
-                    return SR_ERR_MALFORMED_MSG;
+                CHECK_NULL_RETURN(msg->response->get_items_resp, SR_ERR_MALFORMED_MSG);
                 break;
             case SR__OPERATION__SET_ITEM:
-                if (NULL == msg->response->set_item_resp)
-                    return SR_ERR_MALFORMED_MSG;
+                CHECK_NULL_RETURN(msg->response->set_item_resp, SR_ERR_MALFORMED_MSG);
                 break;
             case SR__OPERATION__DELETE_ITEM:
-                if (NULL == msg->response->delete_item_resp)
-                    return SR_ERR_MALFORMED_MSG;
+                CHECK_NULL_RETURN(msg->response->delete_item_resp, SR_ERR_MALFORMED_MSG);
                 break;
             case SR__OPERATION__MOVE_ITEM:
-                if (NULL == msg->response->move_item_resp)
-                    return SR_ERR_MALFORMED_MSG;
+                CHECK_NULL_RETURN(msg->response->move_item_resp, SR_ERR_MALFORMED_MSG);
                 break;
             case SR__OPERATION__VALIDATE:
-                if (NULL == msg->response->validate_resp)
-                    return SR_ERR_MALFORMED_MSG;
+                CHECK_NULL_RETURN(msg->response->validate_resp, SR_ERR_MALFORMED_MSG);
                 break;
             case SR__OPERATION__COMMIT:
-                if (NULL == msg->response->commit_resp)
-                    return SR_ERR_MALFORMED_MSG;
+                CHECK_NULL_RETURN(msg->response->commit_resp, SR_ERR_MALFORMED_MSG);
                 break;
             case SR__OPERATION__DISCARD_CHANGES:
-                if (NULL == msg->response->discard_changes_resp)
-                    return SR_ERR_MALFORMED_MSG;
+                CHECK_NULL_RETURN(msg->response->discard_changes_resp, SR_ERR_MALFORMED_MSG);
                 break;
             case SR__OPERATION__COPY_CONFIG:
-                if (NULL == msg->response->copy_config_resp)
-                    return SR_ERR_MALFORMED_MSG;
+                CHECK_NULL_RETURN(msg->response->copy_config_resp, SR_ERR_MALFORMED_MSG);
                 break;
             case SR__OPERATION__LOCK:
-                if (NULL == msg->response->lock_resp)
-                    return SR_ERR_MALFORMED_MSG;
+                CHECK_NULL_RETURN(msg->response->lock_resp, SR_ERR_MALFORMED_MSG);
                 break;
             case SR__OPERATION__UNLOCK:
-                if (NULL == msg->response->unlock_resp)
-                    return SR_ERR_MALFORMED_MSG;
+                CHECK_NULL_RETURN(msg->response->unlock_resp, SR_ERR_MALFORMED_MSG);
                 break;
             case SR__OPERATION__SUBSCRIBE:
-                if (NULL == msg->response->subscribe_resp)
-                    return SR_ERR_MALFORMED_MSG;
+                CHECK_NULL_RETURN(msg->response->subscribe_resp, SR_ERR_MALFORMED_MSG);
                 break;
             case SR__OPERATION__UNSUBSCRIBE:
-                if (NULL == msg->response->unsubscribe_resp)
-                    return SR_ERR_MALFORMED_MSG;
+                CHECK_NULL_RETURN(msg->response->unsubscribe_resp, SR_ERR_MALFORMED_MSG);
                 break;
             default:
                 return SR_ERR_MALFORMED_MSG;
@@ -708,25 +664,20 @@ sr_gpb_msg_validate_notif(const Sr__Msg *msg, const Sr__NotificationEvent event)
     CHECK_NULL_ARG(msg);
 
     if (SR__MSG__MSG_TYPE__NOTIFICATION == msg->type) {
-        if (NULL == msg->notification) {
-            return SR_ERR_MALFORMED_MSG;
-        }
+        CHECK_NULL_RETURN(msg->notification, SR_ERR_MALFORMED_MSG);
         if ((msg->notification->event != SR__NOTIFICATION_EVENT__HELLO_EV) &&
                 (msg->notification->event != event)) {
             return SR_ERR_MALFORMED_MSG;
         }
         switch (msg->notification->event) {
             case SR__NOTIFICATION_EVENT__MODULE_INSTALL_EV:
-                if (NULL == msg->notification->module_install_notif)
-                    return SR_ERR_MALFORMED_MSG;
+                CHECK_NULL_RETURN(msg->notification->module_install_notif, SR_ERR_MALFORMED_MSG);
                 break;
             case SR__NOTIFICATION_EVENT__FEATURE_ENABLE_EV:
-                if (NULL == msg->notification->feature_enable_notif)
-                    return SR_ERR_MALFORMED_MSG;
+                CHECK_NULL_RETURN(msg->notification->feature_enable_notif, SR_ERR_MALFORMED_MSG);
                 break;
             case SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV:
-                if (NULL == msg->notification->module_change_notif)
-                    return SR_ERR_MALFORMED_MSG;
+                CHECK_NULL_RETURN(msg->notification->module_change_notif, SR_ERR_MALFORMED_MSG);
                 break;
             case SR__NOTIFICATION_EVENT__HELLO_EV:
                 break;
