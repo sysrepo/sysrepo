@@ -29,6 +29,8 @@ class SubscriptionTester(SysrepoTester):
     def subscribeStep(self):
         self.process = subprocess.Popen("subscription_test_app")
         self.report_pid(self.process.pid)
+        # wait for running data file to be copied
+        time.sleep(0.1)
 
     def cancelSubscriptionStep(self):
         os.kill(self.process.pid, signal.SIGUSR1)

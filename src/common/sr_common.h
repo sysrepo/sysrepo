@@ -348,7 +348,7 @@ int sr_str_join(const char *str1, const char *str2, char **result);
  */
 int sr_save_data_tree_file(const char *file_name, const struct lyd_node *data_tree);
 
-/*
+/**
  * @brief Copies the datatree pointed by root including its siblings.
  * @param [in] root
  * @return duplicated datatree or NULL in case of error
@@ -468,7 +468,7 @@ int sr_pb_resp_alloc(const Sr__Operation operation, const uint32_t session_id, S
  * @param[in] event Notification event type.
  * @param[in] destination Destination (socket path) of the notification.
  * @param[in] subscription_id CLient-local subscription identifier.
- * @param[out] msg GPB message.
+ * @param[out] msg_p GPB message.
  *
  * @return Error code (SR_ERR_OK on success).
  */
@@ -479,7 +479,7 @@ int sr_pb_notif_alloc(const Sr__NotificationEvent event, const char *destination
  * @brief Allocates and initializes GPB internal request message.
  *
  * @param[in] operation Requested operation.
- * @param[out] msg GPB message.
+ * @param[out] msg_p GPB message.
  *
  * @return Error code (SR_ERR_OK on success).
  */
@@ -747,7 +747,7 @@ void sr_free_schema(sr_schema_t *schema);
  * @param[in] fd Descriptor of the file to be locked.
  * @param[in] write TRUE if you are requesting a lock for writing to the file,
  * FALSE if you are requesting a lock just for reading.
- * @param[in] TRUE If you want this function to block until lock is acquired,
+ * @param[in] wait TRUE If you want this function to block until lock is acquired,
  * FALSE if you want this function to return an error if the lock cannot be acquired.
  *
  * @return err_code (SR_ERR_OK on success, SR_ERR_LOCKED if wait was set to

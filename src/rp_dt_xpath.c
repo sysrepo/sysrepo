@@ -1,5 +1,5 @@
 /**
- * @file rp_xpath.c
+ * @file rp_dt_xpath.c
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
  * @brief
  *
@@ -308,7 +308,7 @@ rp_dt_find_in_choice(dm_session_t *session, const char *xpath, const char *trimm
     CHECK_NULL_NOMEM_GOTO(err_msg, rc, not_matched);
 
     /* split xpath into unmatched part and the part that may contain a choice */
-    unmatch_part = strdup(trimmed_xpath + strlen(xp_copy)+1);
+    unmatch_part = strdup(trimmed_xpath + strlen(xp_copy) + 1);
     CHECK_NULL_NOMEM_GOTO(unmatch_part, rc, not_matched);
 
     const struct lys_node *node = ly_ctx_get_node(module->ctx, NULL, xp_copy);
@@ -316,7 +316,9 @@ rp_dt_find_in_choice(dm_session_t *session, const char *xpath, const char *trimm
         goto not_matched;
     }
     struct lys_node *iter = NULL;
-    LY_TREE_FOR(node->child, iter) {
+
+    LY_TREE_FOR(node->child, iter)
+    {
         if (LYS_CHOICE == iter->nodetype) {
             /* TODO choice in choice */
             *match = (struct lys_node *) ly_ctx_get_node(module->ctx, iter, unmatch_part);
@@ -375,6 +377,7 @@ not_matched:
     free(err_msg);
     return rc;
 }
+
 /**
  * @brief Removes trailing characters from xpath to make it validateable by ly_ctx_get_node
  * @param [in] dm_ctx
@@ -398,19 +401,19 @@ rp_dt_trim_xpath(dm_ctx_t *dm_ctx, const char *xpath, char **trimmed)
     bool change = false;
     while (0 < (xp_len = strlen(xp_copy))) {
         change = false;
-        if ('*' == xp_copy[xp_len-1]) {
-            xp_copy[xp_len-1] = 0;
+        if ('*' == xp_copy[xp_len - 1]) {
+            xp_copy[xp_len - 1] = 0;
             xp_len--;
             change = true;
         }
 
-        if ('/' == xp_copy[xp_len-1]) {
-            xp_copy[xp_len-1] = 0;
+        if ('/' == xp_copy[xp_len - 1]) {
+            xp_copy[xp_len - 1] = 0;
             xp_len--;
             change = true;
         }
-        if (':' == xp_copy[xp_len-1]) {
-            xp_copy[xp_len-1] = 0;
+        if (':' == xp_copy[xp_len - 1]) {
+            xp_copy[xp_len - 1] = 0;
             xp_len--;
             char *last_slash = rindex(xp_copy, '/');
             if (NULL == last_slash || xp_len < 1) {
@@ -418,7 +421,7 @@ rp_dt_trim_xpath(dm_ctx_t *dm_ctx, const char *xpath, char **trimmed)
                 return SR_ERR_INVAL_ARG;
             }
 
-            namespace = strdup(last_slash+1); /* do not copy leading slash */
+            namespace = strdup(last_slash + 1); /* do not copy leading slash */
             const struct lys_module *tmp_module = NULL;
             rc = dm_get_module(dm_ctx, namespace, NULL, &tmp_module);
             if (SR_ERR_OK != rc) {
@@ -482,7 +485,7 @@ rp_dt_validate_node_xpath(dm_ctx_t *dm_ctx, dm_session_t *session, const char *x
     }
 
     const struct lys_node *sch_node = ly_ctx_get_node(module->ctx, NULL, xp_copy);
-    if (NULL != sch_node){
+    if (NULL != sch_node) {
         if (NULL != match) {
             *match = (struct lys_node *) sch_node;
         }
@@ -490,13 +493,13 @@ rp_dt_validate_node_xpath(dm_ctx_t *dm_ctx, dm_session_t *session, const char *x
         switch (ly_vecode) {
         case LYVE_PATH_INNODE:
             /* ly_ctx_get_node is not able to locate nodes inside the choice */
-            rc = rp_dt_find_in_choice(session, xpath, xp_copy, module, (struct lys_node **)&sch_node);
+            rc = rp_dt_find_in_choice(session, xpath, xp_copy, module, (struct lys_node **) &sch_node);
             if (NULL != match) {
                 *match = (struct lys_node *) sch_node;
             }
             break;
         case LYVE_PATH_INCHAR:
-            rc = rp_dt_find_leaflist(session, xpath, xp_copy, module, (struct lys_node **)&sch_node);
+            rc = rp_dt_find_leaflist(session, xpath, xp_copy, module, (struct lys_node **) &sch_node);
             if (NULL != match) {
                 *match = (struct lys_node *) sch_node;
             }
@@ -527,7 +530,6 @@ rp_dt_validate_node_xpath(dm_ctx_t *dm_ctx, dm_session_t *session, const char *x
     return rc;
 }
 
-
 static int
 rp_dt_enable_key_nodes(struct lys_node *node)
 {
@@ -537,8 +539,8 @@ rp_dt_enable_key_nodes(struct lys_node *node)
         /* enable list key nodes */
         struct lys_node_list *l = (struct lys_node_list *) node;
         for (size_t k = 0; k < l->keys_size; k++) {
-            if (!dm_is_node_enabled((struct lys_node *)l->keys[k])) {
-                rc = dm_set_node_state((struct lys_node *)l->keys[k], DM_NODE_ENABLED);
+            if (!dm_is_node_enabled((struct lys_node *) l->keys[k])) {
+                rc = dm_set_node_state((struct lys_node *) l->keys[k], DM_NODE_ENABLED);
                 if (SR_ERR_OK != rc) {
                     SR_LOG_ERR_MSG("Set node state failed");
                     return rc;
@@ -580,7 +582,7 @@ rp_dt_enable_xpath(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath)
             node = ((struct lys_node_augment *) node)->target;
             continue;
         }
-        if (!dm_is_node_enabled(node)){
+        if (!dm_is_node_enabled(node)) {
             rc = dm_set_node_state(node, DM_NODE_ENABLED);
             CHECK_RC_LOG_GOTO(rc, cleanup, "Set node state failed %s", xpath);
 

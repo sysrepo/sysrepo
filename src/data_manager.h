@@ -123,7 +123,7 @@ typedef struct dm_commit_context_s {
 /**
  * @brief Initializes the data manager context, which will be passed in further
  * data manager related calls.
- * @param [in] ac_ctx_t Acccess Control module context
+ * @param [in] ac_ctx Acccess Control module context
  * @param [in] np_ctx Notification Processor context
  * @param [in] pm_ctx Persistence Manager context
  * @param [in] schema_search_dir - location where schema files are located
@@ -167,13 +167,13 @@ void dm_session_stop(dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx);
  * @param [in] dm_ctx
  * @param [in] dm_session_ctx
  * @param [in] module_name
- * @param [out] data_tree
+ * @param [out] info
  * @return Error code (SR_ERR_OK on success), SR_ERR_UNKNOWN_MODEL
  */
 int dm_get_data_info(dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, const char *module_name, dm_data_info_t **info);
 
 /**
- * @brief Returns the data tree for the specified module. Internally calls ::dm_get_dat_info
+ * @brief Returns the data tree for the specified module. Internally calls ::dm_get_data_info
  * @param [in] dm_ctx
  * @param [in] dm_session_ctx
  * @param [in] module_name
@@ -261,15 +261,12 @@ int dm_update_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, struct
 int dm_commit_prepare_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t **c_ctx);
 
 /**
- * @brief Loads the data tree which has been modified in the session to the commit session. If the session copy has
- * the same timestamp as the file system file it is copied otherwise it is loaded from file.
- * In case of error all files are closed.
+ * @brief Loads the data tree which has been modified in the session to the commit context. If the session copy has
+ * the same timestamp as the file system file it is copied otherwise, data tree is loaded from file and the changes
+ * made in the session are applied.
  * @param [in] dm_ctx
  * @param [in] session
- * @param [in] commit_session - session where the data models are loaded (either from file or copied from session)
- * @param [in] fds - array where file descriptor of opened files will be stored
- * @param [in] existed - array where the true is set if the file existed
- * @param [out] up_to_date
+ * @param [in] c_ctx
  * @return Error code (SR_ERR_OK on success)
  */
 int dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm_commit_context_t *c_ctx);
@@ -307,8 +304,8 @@ void dm_free_commit_context(dm_ctx_t *dm_ctx, dm_commit_context_t *c_ctx);
  * @param [in] xpath
  * @param [in] val - must be allocated, will be free with operation list
  * @param [in] opts
- * @param [in] position - applicable only with move operation
- * @param [in] relative_item - option of move operation
+ * @param [in] pos - applicable only with move operation
+ * @param [in] rel_item - option of move operation
  * @return Error code (SR_ERR_OK on success)
  */
 int dm_add_operation(dm_session_t *session, dm_operation_t op, const char *xpath, sr_val_t *val, sr_edit_options_t opts, sr_move_position_t pos, const char *rel_item);

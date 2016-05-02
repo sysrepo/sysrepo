@@ -3,7 +3,7 @@
  * @{
  * @brief Set of functions retrieving nodes from provided data tree according to
  * the location id.
- * @file rp_lookup.h
+ * @file rp_dt_lookup.h
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
  *
  *
