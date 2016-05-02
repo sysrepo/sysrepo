@@ -1537,7 +1537,8 @@ dm_is_info_copy_uptodate(const char *file_name, const dm_data_info_t *info, bool
      * is the negation of the optimized commit */
     if (info->timestamp.tv_sec != st.st_mtim.tv_sec ||
             info->timestamp.tv_nsec != st.st_mtim.tv_nsec ||
-            (now.tv_sec == st.st_mtim.tv_sec && difftime(now.tv_nsec, st.st_mtim.tv_nsec) < NANOSEC_THRESHOLD)) {
+            (now.tv_sec == st.st_mtim.tv_sec && difftime(now.tv_nsec, st.st_mtim.tv_nsec) < NANOSEC_THRESHOLD) ||
+            info->timestamp.tv_nsec == 0) {
         SR_LOG_DBG("Module %s will be refreshed", info->module->name);
         *res = false;
 
