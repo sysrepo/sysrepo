@@ -39,68 +39,10 @@
 #include "sr_constants.h"
 #include "sr_helpers.h"
 
+#include "sr_data_struct.h"
 #include "sr_logger.h"
-#include "sr_btree.h"
 #include "sr_protobuf.h"
 
-
-/**
- * @brief FIFO circular buffer queue context.
- */
-typedef struct sr_cbuff_s sr_cbuff_t;
-
-/**
- * @brief Initializes FIFO circular buffer of elements with given size.
- *
- * You can provide initial capacity of the buffer. The buffer automatically
- * enlarges when it's full (it always doubles its capacity).
- *
- * @param[in] initial_capacity Initial buffer capacity in number of elements.
- * @param[in] elem_size Size of one element (in bytes).
- * @param[out] buffer Circular buffer queue context.
- *
- * @return Error code (SR_ERR_OK on success).
- */
-int sr_cbuff_init(const size_t initial_capacity, const size_t elem_size, sr_cbuff_t **buffer);
-
-/**
- * @brief Cleans up circular buffer.
- *
- * All memory allocated within provided circular buffer context will be freed.
- *
- * @param[in] buffer Circular buffer context.
- */
-void sr_cbuff_cleanup(sr_cbuff_t *buffer);
-
-/**
- * @brief Enqueues an element into circular buffer.
- *
- * @param[in] buffer Circular buffer context.
- * @param[in] item The element to be enqueued (pointer to memory from where
- * the data will be copied to buffer).
- *
- * @return Error code (SR_ERR_OK on success).
- */
-int sr_cbuff_enqueue(sr_cbuff_t *buffer, void *item);
-
-/**
- * @brief Dequeues an element from circular buffer.
- *
- * @param[in] buffer Circular buffer queue context.
- * @param[out] item Pointer to memory where dequeued data will be copied.
- *
- * @return TRUE if an element was dequeued, FALSE if the buffer is empty.
- */
-bool sr_cbuff_dequeue(sr_cbuff_t *buffer, void *item);
-
-/**
- * @brief Return number of elements currently stored in the queue.
- *
- * @param[in] buffer Circular buffer queue context.
- *
- * @return Number of elements currently stored in the queue.
- */
-size_t sr_cbuff_items_in_queue(sr_cbuff_t *buffer);
 
 /**
  * @brief Compares the suffix of the string, if it matches 0 is returned

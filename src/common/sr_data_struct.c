@@ -20,7 +20,7 @@
  */
 
 #include "sr_common.h"
-#include "sr_btree.h"
+#include "sr_data_struct.h"
 
 #ifdef USE_AVL_LIB
 #include <avl.h>
@@ -210,3 +210,118 @@ sr_btree_get_at(sr_btree_t *tree, size_t index)
 
     return NULL;
 }
+
+/**
+ * @brief FIFO circular buffer queue context.
+ */
+typedef struct sr_cbuff_s {
+    void *data;       /**< Data of the buffer. */
+    size_t capacity;   /**< Buffer capacity in number of elements. */
+    size_t elem_size;  /**< Size of one element in the buffer */
+    size_t head;       /**< Index of the first element in the buffer. */
+    size_t count;      /**< Number of elements stored in the buffer. */
+} sr_cbuff_t;
+
+int
+sr_cbuff_init(const size_t initial_capacity, const size_t elem_size, sr_cbuff_t **buffer_p)
+{
+    sr_cbuff_t *buffer = NULL;
+
+    CHECK_NULL_ARG(buffer_p);
+
+    SR_LOG_DBG("Initiating circular buffer for %zu elements.", initial_capacity);
+
+    buffer = calloc(1, sizeof(*buffer));
+    if (NULL == buffer) {
+        SR_LOG_ERR_MSG("Cannot allocate memory for circular buffer.");
+        return SR_ERR_NOMEM;
+    }
+
+    buffer->data = calloc(initial_capacity, elem_size);
+    if (NULL == buffer) {
+        SR_LOG_ERR_MSG("Cannot allocate memory for circular buffer data.");
+        free(buffer);
+        return SR_ERR_NOMEM;
+    }
+
+    buffer->capacity = initial_capacity;
+    buffer->elem_size = elem_size;
+    buffer->head = 0;
+    buffer->count = 0;
+
+    *buffer_p = buffer;
+    return SR_ERR_OK;
+}
+
+void
+sr_cbuff_cleanup(sr_cbuff_t *buffer)
+{
+    if (NULL != buffer) {
+        free(buffer->data);
+        free(buffer);
+    }
+}
+
+int
+sr_cbuff_enqueue(sr_cbuff_t *buffer, void *item)
+{
+    void *tmp = NULL;
+    size_t pos = 0;
+
+    CHECK_NULL_ARG2(buffer, item);
+
+    if (buffer->count == buffer->capacity) {
+        /* buffer is full - double it's size */
+        SR_LOG_DBG("Enlarging circular buffer from %zu to %zu elements.", buffer->capacity, buffer->capacity * 2);
+
+        tmp = realloc(buffer->data, (buffer->capacity * 2 * buffer->elem_size));
+        if (NULL == tmp) {
+            SR_LOG_ERR_MSG("Cannot enlarge circular buffer - not enough memory.");
+            return SR_ERR_NOMEM;
+        }
+        buffer->data = tmp;
+
+        if (0 != buffer->head) {
+            /* move the the elements from before head to the end */
+            SR_LOG_DBG("Moving %zu circular buffer elements from pos 0 to pos %zu.", buffer->head, buffer->capacity);
+            memmove(((uint8_t*)buffer->data + (buffer->capacity * buffer->elem_size)), buffer->data, (buffer->head * buffer->elem_size));
+        }
+        buffer->capacity *= 2;
+    }
+
+    pos = (buffer->head + buffer->count) % buffer->capacity;
+
+    memcpy(((uint8_t*)buffer->data + (pos * buffer->elem_size)), item, buffer->elem_size);
+    buffer->count++;
+
+    SR_LOG_DBG("Circular buffer enqueue to position=%zu, current count=%zu.", pos, buffer->count);
+
+    return SR_ERR_OK;
+}
+
+bool
+sr_cbuff_dequeue(sr_cbuff_t *buffer, void *item)
+{
+    if (NULL == buffer || 0 == buffer->count) {
+        return false;
+    }
+
+    memcpy(item, ((uint8_t*)buffer->data + (buffer->head * buffer->elem_size)), buffer->elem_size);
+    buffer->head = (buffer->head + 1) % buffer->capacity;
+    buffer->count--;
+
+    SR_LOG_DBG("Circular buffer dequeue, new buffer head=%zu, count=%zu.", buffer->head, buffer->count);
+
+    return true;
+}
+
+size_t
+sr_cbuff_items_in_queue(sr_cbuff_t *buffer)
+{
+    if (NULL != buffer) {
+        return buffer->count;
+    } else {
+        return 0;
+    }
+}
+
