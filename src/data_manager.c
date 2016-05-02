@@ -31,7 +31,6 @@
 
 #include "data_manager.h"
 #include "sr_common.h"
-#include "rp_dt_edit.h"
 #include "rp_dt_xpath.h"
 #include "access_control.h"
 #include "notification_processor.h"
