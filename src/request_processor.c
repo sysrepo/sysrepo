@@ -89,7 +89,7 @@ rp_list_schemas_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session,
     SR_LOG_DBG_MSG("Processing list_schemas request.");
 
     /* allocate the response */
-    rc = sr_pb_resp_alloc(SR__OPERATION__LIST_SCHEMAS, session->id, &resp);
+    rc = sr_gpb_resp_alloc(SR__OPERATION__LIST_SCHEMAS, session->id, &resp);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Cannot allocate list_schemas response.");
         return SR_ERR_NOMEM;
@@ -130,7 +130,7 @@ rp_get_schema_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, S
     SR_LOG_DBG_MSG("Processing get_schema request.");
 
     /* allocate the response */
-    rc = sr_pb_resp_alloc(SR__OPERATION__GET_SCHEMA, session->id, &resp);
+    rc = sr_gpb_resp_alloc(SR__OPERATION__GET_SCHEMA, session->id, &resp);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Cannot allocate get_schema response.");
         return SR_ERR_NOMEM;
@@ -170,7 +170,7 @@ rp_module_install_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *sessio
     }
 
     /* allocate the response */
-    rc = sr_pb_resp_alloc(SR__OPERATION__MODULE_INSTALL, session->id, &resp);
+    rc = sr_gpb_resp_alloc(SR__OPERATION__MODULE_INSTALL, session->id, &resp);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Cannot allocate module_install response.");
         return SR_ERR_NOMEM;
@@ -215,7 +215,7 @@ rp_feature_enable_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *sessio
     SR_LOG_DBG_MSG("Processing feature_enable request.");
 
     /* allocate the response */
-    rc = sr_pb_resp_alloc(SR__OPERATION__FEATURE_ENABLE, session->id, &resp);
+    rc = sr_gpb_resp_alloc(SR__OPERATION__FEATURE_ENABLE, session->id, &resp);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Cannot allocate feature_enable response.");
         return SR_ERR_NOMEM;
@@ -264,7 +264,7 @@ rp_get_item_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
     SR_LOG_DBG_MSG("Processing get_item request.");
 
     Sr__Msg *resp = NULL;
-    rc = sr_pb_resp_alloc(SR__OPERATION__GET_ITEM, session->id, &resp);
+    rc = sr_gpb_resp_alloc(SR__OPERATION__GET_ITEM, session->id, &resp);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Memory allocation failed");
         return SR_ERR_NOMEM;
@@ -317,7 +317,7 @@ rp_get_items_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
     SR_LOG_DBG_MSG("Processing get_items request.");
 
     Sr__Msg *resp = NULL;
-    rc = sr_pb_resp_alloc(SR__OPERATION__GET_ITEMS, session->id, &resp);
+    rc = sr_gpb_resp_alloc(SR__OPERATION__GET_ITEMS, session->id, &resp);
 
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Memory allocation failed");
@@ -406,7 +406,7 @@ rp_set_item_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
     xpath = msg->request->set_item_req->xpath;
 
     /* allocate the response */
-    rc = sr_pb_resp_alloc(SR__OPERATION__SET_ITEM, session->id, &resp);
+    rc = sr_gpb_resp_alloc(SR__OPERATION__SET_ITEM, session->id, &resp);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Allocation of set_item response failed.");
         free(value);
@@ -467,7 +467,7 @@ rp_delete_item_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg
     xpath = msg->request->delete_item_req->xpath;
 
     /* allocate the response */
-    rc = sr_pb_resp_alloc(SR__OPERATION__DELETE_ITEM, session->id, &resp);
+    rc = sr_gpb_resp_alloc(SR__OPERATION__DELETE_ITEM, session->id, &resp);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Allocation of delete_item response failed.");
         return SR_ERR_NOMEM;
@@ -512,7 +512,7 @@ rp_move_item_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
     relative_item = msg->request->move_item_req->relative_item;
 
     /* allocate the response */
-    rc = sr_pb_resp_alloc(SR__OPERATION__MOVE_ITEM, session->id, &resp);
+    rc = sr_gpb_resp_alloc(SR__OPERATION__MOVE_ITEM, session->id, &resp);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Allocation of move_item response failed.");
         return SR_ERR_NOMEM;
@@ -549,7 +549,7 @@ rp_validate_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr_
     SR_LOG_DBG_MSG("Processing validate request.");
 
     /* allocate the response */
-    rc = sr_pb_resp_alloc(SR__OPERATION__VALIDATE, session->id, &resp);
+    rc = sr_gpb_resp_alloc(SR__OPERATION__VALIDATE, session->id, &resp);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Allocation of validate response failed.");
         return SR_ERR_NOMEM;
@@ -588,7 +588,7 @@ rp_commit_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
     SR_LOG_DBG_MSG("Processing commit request.");
 
     /* allocate the response */
-    rc = sr_pb_resp_alloc(SR__OPERATION__COMMIT, session->id, &resp);
+    rc = sr_gpb_resp_alloc(SR__OPERATION__COMMIT, session->id, &resp);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Allocation of commit response failed.");
         return SR_ERR_NOMEM;
@@ -627,7 +627,7 @@ rp_discard_changes_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *sessi
     SR_LOG_DBG_MSG("Processing discard_changes request.");
 
     /* allocate the response */
-    rc = sr_pb_resp_alloc(SR__OPERATION__DISCARD_CHANGES, session->id, &resp);
+    rc = sr_gpb_resp_alloc(SR__OPERATION__DISCARD_CHANGES, session->id, &resp);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Allocation of discard_changes response failed.");
         return SR_ERR_NOMEM;
@@ -663,7 +663,7 @@ rp_copy_config_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
     SR_LOG_DBG_MSG("Processing copy_config request.");
 
     /* allocate the response */
-    rc = sr_pb_resp_alloc(SR__OPERATION__COPY_CONFIG, session->id, &resp);
+    rc = sr_gpb_resp_alloc(SR__OPERATION__COPY_CONFIG, session->id, &resp);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Allocation of copy_config response failed.");
         return SR_ERR_NOMEM;
@@ -702,7 +702,7 @@ rp_session_refresh_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg 
     SR_LOG_DBG_MSG("Processing session_data_refresh request.");
 
     /* allocate the response */
-    rc = sr_pb_resp_alloc(SR__OPERATION__SESSION_REFRESH, session->id, &resp);
+    rc = sr_gpb_resp_alloc(SR__OPERATION__SESSION_REFRESH, session->id, &resp);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Allocation of session_data_refresh response failed.");
         return SR_ERR_NOMEM;
@@ -743,7 +743,7 @@ rp_lock_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg
     SR_LOG_DBG_MSG("Processing lock request.");
 
     /* allocate the response */
-    rc = sr_pb_resp_alloc(SR__OPERATION__LOCK, session->id, &resp);
+    rc = sr_gpb_resp_alloc(SR__OPERATION__LOCK, session->id, &resp);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Allocation of lock response failed.");
         return SR_ERR_NOMEM;
@@ -785,7 +785,7 @@ rp_unlock_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__M
     SR_LOG_DBG_MSG("Processing unlock request.");
 
     /* allocate the response */
-    rc = sr_pb_resp_alloc(SR__OPERATION__UNLOCK, session->id, &resp);
+    rc = sr_gpb_resp_alloc(SR__OPERATION__UNLOCK, session->id, &resp);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Allocation of unlock response failed.");
         return SR_ERR_NOMEM;
@@ -828,7 +828,7 @@ rp_subscribe_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr
     SR_LOG_DBG_MSG("Processing subscribe request.");
 
     /* allocate the response */
-    rc = sr_pb_resp_alloc(SR__OPERATION__SUBSCRIBE, session->id, &resp);
+    rc = sr_gpb_resp_alloc(SR__OPERATION__SUBSCRIBE, session->id, &resp);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Allocation of subscribe response failed.");
         return SR_ERR_NOMEM;
@@ -874,7 +874,7 @@ rp_unsubscribe_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
     SR_LOG_DBG_MSG("Processing unsubscribe request.");
 
     /* allocate the response */
-    rc = sr_pb_resp_alloc(SR__OPERATION__UNSUBSCRIBE, session->id, &resp);
+    rc = sr_gpb_resp_alloc(SR__OPERATION__UNSUBSCRIBE, session->id, &resp);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Allocation of unsubscribe response failed.");
         return SR_ERR_NOMEM;

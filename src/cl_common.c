@@ -398,7 +398,7 @@ cl_request_process(sr_session_ctx_t *session, Sr__Msg *msg_req, Sr__Msg **msg_re
 
     CHECK_NULL_ARG4(session, session->conn_ctx, msg_req, msg_resp);
 
-    SR_LOG_DBG("Sending %s request.", sr_operation_name(expected_response_op));
+    SR_LOG_DBG("Sending %s request.", sr_gpb_operation_name(expected_response_op));
 
     pthread_mutex_lock(&session->conn_ctx->lock);
     /* some operation may take more time, raise the timeout */
@@ -415,18 +415,18 @@ cl_request_process(sr_session_ctx_t *session, Sr__Msg *msg_req, Sr__Msg **msg_re
     rc = cl_message_send(session->conn_ctx, msg_req);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Unable to send the message with request (session id=%"PRIu32", operation=%s).",
-                session->id, sr_operation_name(msg_req->request->operation));
+                session->id, sr_gpb_operation_name(msg_req->request->operation));
         pthread_mutex_unlock(&session->conn_ctx->lock);
         return rc;
     }
 
-    SR_LOG_DBG("%s request sent, waiting for response.", sr_operation_name(expected_response_op));
+    SR_LOG_DBG("%s request sent, waiting for response.", sr_gpb_operation_name(expected_response_op));
 
     /* receive the response */
     rc = cl_message_recv(session->conn_ctx, msg_resp);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Unable to receive the message with response (session id=%"PRIu32", operation=%s).",
-                session->id, sr_operation_name(msg_req->request->operation));
+                session->id, sr_gpb_operation_name(msg_req->request->operation));
         pthread_mutex_unlock(&session->conn_ctx->lock);
         return rc;
     }
@@ -442,13 +442,13 @@ cl_request_process(sr_session_ctx_t *session, Sr__Msg *msg_req, Sr__Msg **msg_re
 
     pthread_mutex_unlock(&session->conn_ctx->lock);
 
-    SR_LOG_DBG("%s response received, processing.", sr_operation_name(expected_response_op));
+    SR_LOG_DBG("%s response received, processing.", sr_gpb_operation_name(expected_response_op));
 
     /* validate the response */
-    rc = sr_pb_msg_validate(*msg_resp, SR__MSG__MSG_TYPE__RESPONSE, expected_response_op);
+    rc = sr_gpb_msg_validate(*msg_resp, SR__MSG__MSG_TYPE__RESPONSE, expected_response_op);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Malformed message with response received (session id=%"PRIu32", operation=%s).",
-                session->id, sr_operation_name(msg_req->request->operation));
+                session->id, sr_gpb_operation_name(msg_req->request->operation));
         return rc;
     }
 
@@ -463,7 +463,7 @@ cl_request_process(sr_session_ctx_t *session, Sr__Msg *msg_req, Sr__Msg **msg_re
                 SR_ERR_VALIDATION_FAILED != (*msg_resp)->response->result &&
                 SR_ERR_COMMIT_FAILED != (*msg_resp)->response->result) {
             SR_LOG_ERR("Error by processing of the %s request (session id=%"PRIu32"): %s.",
-                    sr_operation_name(msg_req->request->operation), session->id,
+                    sr_gpb_operation_name(msg_req->request->operation), session->id,
                 (NULL != (*msg_resp)->response->error && NULL != (*msg_resp)->response->error->message) ?
                         (*msg_resp)->response->error->message : sr_strerror((*msg_resp)->response->result));
         }

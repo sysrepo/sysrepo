@@ -23,7 +23,9 @@ configure_file("${COMMON_DIR}/sr_constants.h.in" "${COMMON_DIR}/sr_constants.h" 
 
 # common sources
 set (COMMON_SOURCES
+    ${GENERATED_PROTO}
     common/sr_common.c
+    common/sr_protobuf.c
     common/sr_btree.c
     common/sr_logger.c
 )
@@ -31,7 +33,6 @@ set (COMMON_SOURCES
 # client library sources
 set(SYSREPO_SOURCES
     ${COMMON_SOURCES}
-    ${GENERATED_PROTO}
     client_library.c
     cl_subscription_manager.c
     cl_common.c
@@ -40,7 +41,6 @@ set(SYSREPO_SOURCES
 # sysrepo engine sources
 set(SYSREPO_ENGINE_SOURCES
     ${COMMON_SOURCES}
-    ${GENERATED_PROTO}
     access_control.c
     connection_manager.c
     cm_session_manager.c

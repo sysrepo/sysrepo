@@ -458,7 +458,7 @@ cl_sm_get_data_session(cl_sm_ctx_t *sm_ctx, sr_subscription_ctx_t *subscription,
         rc = cl_session_create(connection, &session);
 
         /* prepare session_start message */
-        rc = sr_pb_req_alloc(SR__OPERATION__SESSION_START, /* undefined session id */ 0, &msg_req);
+        rc = sr_gpb_req_alloc(SR__OPERATION__SESSION_START, /* undefined session id */ 0, &msg_req);
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR_MSG("Cannot allocate session_start message.");
             cl_session_cleanup(session);
@@ -530,7 +530,7 @@ cl_sm_conn_msg_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, uint8_t *msg
     }
 
     /* validate the message according to the subscription type */
-    rc = sr_pb_msg_validate_notif(msg, subscription->event_type);
+    rc = sr_gpb_msg_validate_notif(msg, subscription->event_type);
     if (SR_ERR_OK != rc) {
         pthread_mutex_unlock(&sm_ctx->subscriptions_lock);
         SR_LOG_ERR("Received notification message is not valid for subscription id=%"PRIu32".", subscription->id);

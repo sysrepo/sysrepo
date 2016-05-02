@@ -453,7 +453,7 @@ np_module_install_notify(np_ctx_t *np_ctx, const char *module_name, const char *
     for (size_t i = 0; i < np_ctx->subscription_cnt; i++) {
         if (SR__NOTIFICATION_EVENT__MODULE_INSTALL_EV == np_ctx->subscriptions[i]->event_type) {
             /* allocate the notification */
-            rc = sr_pb_notif_alloc(SR__NOTIFICATION_EVENT__MODULE_INSTALL_EV,
+            rc = sr_gpb_notif_alloc(SR__NOTIFICATION_EVENT__MODULE_INSTALL_EV,
                     np_ctx->subscriptions[i]->dst_address, np_ctx->subscriptions[i]->dst_id, &notif);
             /* fill-in notification details */
             if (SR_ERR_OK == rc) {
@@ -498,7 +498,7 @@ np_feature_enable_notify(np_ctx_t *np_ctx, const char *module_name, const char *
     for (size_t i = 0; i < np_ctx->subscription_cnt; i++) {
         if (SR__NOTIFICATION_EVENT__FEATURE_ENABLE_EV == np_ctx->subscriptions[i]->event_type) {
             /* allocate the notification */
-            rc = sr_pb_notif_alloc(SR__NOTIFICATION_EVENT__FEATURE_ENABLE_EV,
+            rc = sr_gpb_notif_alloc(SR__NOTIFICATION_EVENT__FEATURE_ENABLE_EV,
                     np_ctx->subscriptions[i]->dst_address, np_ctx->subscriptions[i]->dst_id, &notif);
             /* fill-in notification details */
             if (SR_ERR_OK == rc) {
@@ -544,7 +544,7 @@ np_module_change_notify(np_ctx_t *np_ctx, const char *module_name)
 
     for (size_t i = 0; i < subscription_cnt; i++) {
         /* allocate the notification */
-        rc = sr_pb_notif_alloc(SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV,
+        rc = sr_gpb_notif_alloc(SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV,
                 subscriptions[i].dst_address, subscriptions[i].dst_id, &notif);
         /* fill-in notification details */
         if (SR_ERR_OK == rc) {
@@ -584,7 +584,7 @@ np_hello_notify(np_ctx_t *np_ctx, const char *module_name, const char *dst_addre
 
     SR_LOG_DBG("Sending HELLO notification to '%s' @ %"PRIu32".", dst_address, dst_id);
 
-    rc = sr_pb_notif_alloc(SR__NOTIFICATION_EVENT__HELLO_EV, dst_address, dst_id, &notif);
+    rc = sr_gpb_notif_alloc(SR__NOTIFICATION_EVENT__HELLO_EV, dst_address, dst_id, &notif);
 
     if (SR_ERR_OK == rc) {
         /* save notification destination info */

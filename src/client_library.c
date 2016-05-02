@@ -95,7 +95,7 @@ cl_send_get_items_iter(sr_session_ctx_t *session, const char *xpath, size_t offs
     CHECK_NULL_ARG4(session, session->conn_ctx, xpath, msg_resp);
 
     /* prepare get_item message */
-    rc = sr_pb_req_alloc(SR__OPERATION__GET_ITEMS, session->id, &msg_req);
+    rc = sr_gpb_req_alloc(SR__OPERATION__GET_ITEMS, session->id, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate get_items message.");
 
     /* fill in the path */
@@ -147,7 +147,7 @@ cl_subscribtion_init(sr_session_ctx_t *session, Sr__NotificationEvent event_type
     CHECK_RC_MSG_RETURN(rc, "Cannot initialize Client Subscription Manager.");
 
     /* prepare subscribe message */
-    rc = sr_pb_req_alloc(SR__OPERATION__SUBSCRIBE, session->id, &msg_req);
+    rc = sr_gpb_req_alloc(SR__OPERATION__SUBSCRIBE, session->id, &msg_req);
     CHECK_RC_MSG_RETURN(rc, "Cannot allocate subscribe message.");
 
     /* initialize subscription ctx */
@@ -299,7 +299,7 @@ sr_session_start_user(sr_conn_ctx_t *conn_ctx, const char *user_name, sr_datasto
     CHECK_RC_MSG_RETURN(rc, "Unable to create new session.");
 
     /* prepare session_start message */
-    rc = sr_pb_req_alloc(SR__OPERATION__SESSION_START, /* undefined session id */ 0, &msg_req);
+    rc = sr_gpb_req_alloc(SR__OPERATION__SESSION_START, /* undefined session id */ 0, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
 
     msg_req->request->session_start_req->options = opts;
@@ -344,7 +344,7 @@ sr_session_stop(sr_session_ctx_t *session)
     cl_session_clear_errors(session);
 
     /* prepare session_stop message */
-    rc = sr_pb_req_alloc(SR__OPERATION__SESSION_STOP, session->id, &msg_req);
+    rc = sr_gpb_req_alloc(SR__OPERATION__SESSION_STOP, session->id, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
 
     msg_req->request->session_stop_req->session_id = session->id;
@@ -381,7 +381,7 @@ sr_session_refresh(sr_session_ctx_t *session)
     cl_session_clear_errors(session);
 
     /* prepare session_stop message */
-    rc = sr_pb_req_alloc(SR__OPERATION__SESSION_REFRESH, session->id, &msg_req);
+    rc = sr_gpb_req_alloc(SR__OPERATION__SESSION_REFRESH, session->id, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
 
     /* send the request and receive the response */
@@ -414,7 +414,7 @@ sr_list_schemas(sr_session_ctx_t *session, sr_schema_t **schemas, size_t *schema
     cl_session_clear_errors(session);
 
     /* prepare list_schemas message */
-    rc = sr_pb_req_alloc(SR__OPERATION__LIST_SCHEMAS, session->id, &msg_req);
+    rc = sr_gpb_req_alloc(SR__OPERATION__LIST_SCHEMAS, session->id, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
 
     /* send the request and receive the response */
@@ -456,7 +456,7 @@ sr_get_schema(sr_session_ctx_t *session, const char *module_name, const char *mo
     cl_session_clear_errors(session);
 
     /* prepare get_schema message */
-    rc = sr_pb_req_alloc(SR__OPERATION__GET_SCHEMA, session->id, &msg_req);
+    rc = sr_gpb_req_alloc(SR__OPERATION__GET_SCHEMA, session->id, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
 
     /* set arguments */
@@ -508,7 +508,7 @@ sr_get_item(sr_session_ctx_t *session, const char *xpath, sr_val_t **value)
     cl_session_clear_errors(session);
 
     /* prepare get_item message */
-    rc = sr_pb_req_alloc(SR__OPERATION__GET_ITEM, session->id, &msg_req);
+    rc = sr_gpb_req_alloc(SR__OPERATION__GET_ITEM, session->id, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
 
     /* fill in the path */
@@ -550,7 +550,7 @@ sr_get_items(sr_session_ctx_t *session, const char *xpath, sr_val_t **values, si
     cl_session_clear_errors(session);
 
     /* prepare get_item message */
-    rc = sr_pb_req_alloc(SR__OPERATION__GET_ITEMS, session->id, &msg_req);
+    rc = sr_gpb_req_alloc(SR__OPERATION__GET_ITEMS, session->id, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
 
     /* fill in the path */
@@ -756,7 +756,7 @@ sr_set_item(sr_session_ctx_t *session, const char *xpath, const sr_val_t *value,
     cl_session_clear_errors(session);
 
     /* prepare get_item message */
-    rc = sr_pb_req_alloc(SR__OPERATION__SET_ITEM, session->id, &msg_req);
+    rc = sr_gpb_req_alloc(SR__OPERATION__SET_ITEM, session->id, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
 
     /* fill in the path and options */
@@ -801,7 +801,7 @@ sr_delete_item(sr_session_ctx_t *session, const char *xpath, const sr_edit_optio
     cl_session_clear_errors(session);
 
     /* prepare get_item message */
-    rc = sr_pb_req_alloc(SR__OPERATION__DELETE_ITEM, session->id, &msg_req);
+    rc = sr_gpb_req_alloc(SR__OPERATION__DELETE_ITEM, session->id, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
 
     /* fill in the path and options */
@@ -840,7 +840,7 @@ sr_move_item(sr_session_ctx_t *session, const char *xpath, const sr_move_positio
     cl_session_clear_errors(session);
 
     /* prepare get_item message */
-    rc = sr_pb_req_alloc(SR__OPERATION__MOVE_ITEM, session->id, &msg_req);
+    rc = sr_gpb_req_alloc(SR__OPERATION__MOVE_ITEM, session->id, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
 
     /* fill in the path and direction */
@@ -885,7 +885,7 @@ sr_validate(sr_session_ctx_t *session)
     cl_session_clear_errors(session);
 
     /* prepare validate message */
-    rc = sr_pb_req_alloc(SR__OPERATION__VALIDATE, session->id, &msg_req);
+    rc = sr_gpb_req_alloc(SR__OPERATION__VALIDATE, session->id, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
 
     /* send the request and receive the response */
@@ -932,7 +932,7 @@ sr_commit(sr_session_ctx_t *session)
     cl_session_clear_errors(session);
 
     /* prepare commit message */
-    rc = sr_pb_req_alloc(SR__OPERATION__COMMIT, session->id, &msg_req);
+    rc = sr_gpb_req_alloc(SR__OPERATION__COMMIT, session->id, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
 
     /* send the request and receive the response */
@@ -978,7 +978,7 @@ sr_discard_changes(sr_session_ctx_t *session)
     cl_session_clear_errors(session);
 
     /* prepare discard_changes message */
-    rc = sr_pb_req_alloc(SR__OPERATION__DISCARD_CHANGES, session->id, &msg_req);
+    rc = sr_gpb_req_alloc(SR__OPERATION__DISCARD_CHANGES, session->id, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
 
     /* send the request and receive the response */
@@ -1012,7 +1012,7 @@ sr_copy_config(sr_session_ctx_t *session, const char *module_name,
     cl_session_clear_errors(session);
 
     /* prepare copy_config message */
-    rc = sr_pb_req_alloc(SR__OPERATION__COPY_CONFIG, session->id, &msg_req);
+    rc = sr_gpb_req_alloc(SR__OPERATION__COPY_CONFIG, session->id, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
 
     /* set the message content */
@@ -1065,7 +1065,7 @@ sr_lock_module(sr_session_ctx_t *session, const char *module_name)
     cl_session_clear_errors(session);
 
     /* prepare lock message */
-    rc = sr_pb_req_alloc(SR__OPERATION__LOCK, session->id, &msg_req);
+    rc = sr_gpb_req_alloc(SR__OPERATION__LOCK, session->id, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
 
     /* fill-in module name (if provided) */
@@ -1104,7 +1104,7 @@ sr_unlock_module(sr_session_ctx_t *session, const char *module_name)
     cl_session_clear_errors(session);
 
     /* prepare lock message */
-    rc = sr_pb_req_alloc(SR__OPERATION__UNLOCK, session->id, &msg_req);
+    rc = sr_gpb_req_alloc(SR__OPERATION__UNLOCK, session->id, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
 
     /* fill-in module name (if provided) */
@@ -1334,7 +1334,7 @@ sr_unsubscribe(sr_subscription_ctx_t *subscription)
     }
 
     /* prepare unsubscribe message */
-    rc = sr_pb_req_alloc(SR__OPERATION__UNSUBSCRIBE, session->id, &msg_req);
+    rc = sr_gpb_req_alloc(SR__OPERATION__UNSUBSCRIBE, session->id, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate unsubscribe message.");
 
     msg_req->request->unsubscribe_req->event = subscription->event_type;
@@ -1392,7 +1392,7 @@ sr_module_install(sr_session_ctx_t *session, const char *module_name, const char
     cl_session_clear_errors(session);
 
     /* prepare module_install message */
-    rc = sr_pb_req_alloc(SR__OPERATION__MODULE_INSTALL, session->id, &msg_req);
+    rc = sr_gpb_req_alloc(SR__OPERATION__MODULE_INSTALL, session->id, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
 
     /* set arguments */
@@ -1435,7 +1435,7 @@ sr_feature_enable(sr_session_ctx_t *session, const char *module_name, const char
     cl_session_clear_errors(session);
 
     /* prepare feature_enable message */
-    rc = sr_pb_req_alloc(SR__OPERATION__FEATURE_ENABLE, session->id, &msg_req);
+    rc = sr_gpb_req_alloc(SR__OPERATION__FEATURE_ENABLE, session->id, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
 
     /* set arguments */
