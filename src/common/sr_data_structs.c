@@ -20,7 +20,7 @@
  */
 
 #include "sr_common.h"
-#include "sr_data_struct.h"
+#include "sr_data_structs.h"
 
 #ifdef USE_AVL_LIB
 #include <avl.h>

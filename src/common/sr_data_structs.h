@@ -19,8 +19,8 @@
  * limitations under the License.
  */
 
-#ifndef SR_DATA_STRUCT_H_
-#define SR_DATA_STRUCT_H_
+#ifndef SR_DATA_STRUCTS_H_
+#define SR_DATA_STRUCTS_H_
 
 /**
  * @brief Common context of balanced binary tree, independent of the library used.
@@ -167,4 +167,4 @@ bool sr_cbuff_dequeue(sr_cbuff_t *buffer, void *item);
  */
 size_t sr_cbuff_items_in_queue(sr_cbuff_t *buffer);
 
-#endif /* SR_DATA_STRUCT_H_ */
+#endif /* SR_DATA_STRUCTS_H_ */

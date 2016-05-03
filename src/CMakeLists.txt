@@ -25,7 +25,7 @@ configure_file("${COMMON_DIR}/sr_constants.h.in" "${COMMON_DIR}/sr_constants.h" 
 set (COMMON_SOURCES
     ${GENERATED_PROTO}
     common/sr_common.c
-    common/sr_data_struct.c
+    common/sr_data_structs.c
     common/sr_logger.c
     common/sr_protobuf.c
 )

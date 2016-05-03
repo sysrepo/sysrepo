@@ -79,17 +79,15 @@ sr_str_ends_with(const char *str, const char *suffix)
     return strncmp(str + str_len - suffix_len, suffix, suffix_len) == 0;
 }
 
-int sr_str_join(const char *str1, const char *str2, char **result)
+int
+sr_str_join(const char *str1, const char *str2, char **result)
 {
     CHECK_NULL_ARG3(str1, str2, result);
     char *res = NULL;
     size_t l1 = strlen(str1);
     size_t l2 = strlen(str2);
-    res = malloc(l1 + l2 + 1);
-    if (res == NULL) {
-        SR_LOG_ERR_MSG("Calloc in sr_str_join failed.");
-        return SR_ERR_OK;
-    }
+    res = calloc(l1 + l2 + 1, sizeof(*res));
+    CHECK_NULL_NOMEM_RETURN(res);
     strcpy(res, str1);
     strcpy(res + l1, str2);
     *result = res;
@@ -499,10 +497,7 @@ sr_dec64_to_str(double val, struct lys_node *schema_node, char **out)
 
     size_t len = snprintf(NULL, 0, format_string, val);
     *out = calloc(len + 1, sizeof(**out));
-    if (NULL == *out) {
-        SR_LOG_ERR_MSG("Memory allocation failed");
-        return SR_ERR_NOMEM;
-    }
+    CHECK_NULL_NOMEM_RETURN(*out);
     snprintf(*out, len + 1, format_string, val);
     return SR_ERR_OK;
 }
@@ -516,65 +511,78 @@ sr_val_to_str(const sr_val_t *value, struct lys_node *schema_node, char **out)
     case SR_BINARY_T:
         if (NULL != value->data.binary_val) {
             *out = strdup(value->data.binary_val);
+            CHECK_NULL_NOMEM_RETURN(*out);
         }
         break;
     case SR_BITS_T:
         if (NULL != value->data.bits_val) {
             *out = strdup(value->data.bits_val);
+            CHECK_NULL_NOMEM_RETURN(*out);
         }
         break;
     case SR_BOOL_T:
         *out = value->data.bool_val ? strdup("true") : strdup("false");
+        CHECK_NULL_NOMEM_RETURN(*out);
         break;
     case SR_DECIMAL64_T:
         return sr_dec64_to_str(value->data.decimal64_val, schema_node, out);
     case SR_ENUM_T:
         if (NULL != value->data.enum_val) {
             *out = strdup(value->data.enum_val);
+            CHECK_NULL_NOMEM_RETURN(*out);
         }
         break;
     case SR_CONTAINER_PRESENCE_T:
     case SR_LEAF_EMPTY_T:
         *out = strdup("");
+        CHECK_NULL_NOMEM_RETURN(*out);
         break;
     case SR_IDENTITYREF_T:
         if (NULL != value->data.identityref_val) {
             *out = strdup(value->data.identityref_val);
+            CHECK_NULL_NOMEM_RETURN(*out);
         }
         break;
     case SR_INSTANCEID_T:
         if (NULL != value->data.instanceid_val) {
             *out = strdup(value->data.instanceid_val);
+            CHECK_NULL_NOMEM_RETURN(*out);
         }
         break;
     case SR_INT8_T:
         len = snprintf(NULL, 0, "%"PRId8, value->data.int8_val);
         *out = calloc(len + 1, sizeof(**out));
+        CHECK_NULL_NOMEM_RETURN(*out);
         snprintf(*out, len + 1, "%"PRId8, value->data.int8_val);
         break;
     case SR_INT16_T:
         len = snprintf(NULL, 0, "%"PRId16, value->data.int16_val);
         *out = calloc(len + 1, sizeof(**out));
+        CHECK_NULL_NOMEM_RETURN(*out);
         snprintf(*out, len + 1, "%"PRId16, value->data.int16_val);
         break;
     case SR_INT32_T:
         len = snprintf(NULL, 0, "%"PRId32, value->data.int32_val);
         *out = calloc(len + 1, sizeof(**out));
+        CHECK_NULL_NOMEM_RETURN(*out);
         snprintf(*out, len + 1, "%"PRId32, value->data.int32_val);
         break;
     case SR_INT64_T:
         len = snprintf(NULL, 0, "%"PRId64, value->data.int64_val);
         *out = calloc(len + 1, sizeof(**out));
+        CHECK_NULL_NOMEM_RETURN(*out);
         snprintf(*out, len + 1, "%"PRId64, value->data.int64_val);
         break;
     case SR_LEAFREF_T:
         if (NULL != value->data.leafref_val) {
             *out = strdup(value->data.leafref_val);
+            CHECK_NULL_NOMEM_RETURN(*out);
         }
         break;
     case SR_STRING_T:
         if (NULL != value->data.string_val){
             *out = strdup(value->data.string_val);
+            CHECK_NULL_NOMEM_RETURN(*out);
         } else {
             *out = NULL;
             return SR_ERR_OK;
@@ -583,30 +591,30 @@ sr_val_to_str(const sr_val_t *value, struct lys_node *schema_node, char **out)
     case SR_UINT8_T:
         len = snprintf(NULL, 0, "%"PRIu8, value->data.uint8_val);
         *out = calloc(len + 1, sizeof(**out));
+        CHECK_NULL_NOMEM_RETURN(*out);
         snprintf(*out, len + 1, "%"PRIu8, value->data.uint8_val);
         break;
     case SR_UINT16_T:
         len = snprintf(NULL, 0, "%"PRIu16, value->data.uint16_val);
         *out = calloc(len + 1, sizeof(**out));
+        CHECK_NULL_NOMEM_RETURN(*out);
         snprintf(*out, len + 1, "%"PRIu16, value->data.uint16_val);
         break;
     case SR_UINT32_T:
         len = snprintf(NULL, 0, "%"PRIu32, value->data.uint32_val);
         *out = calloc(len + 1, sizeof(**out));
+        CHECK_NULL_NOMEM_RETURN(*out);
         snprintf(*out, len + 1, "%"PRIu32, value->data.uint32_val);
         break;
     case SR_UINT64_T:
         len = snprintf(NULL, 0, "%"PRIu64, value->data.uint64_val);
         *out = calloc(len + 1, sizeof(**out));
+        CHECK_NULL_NOMEM_RETURN(*out);
         snprintf(*out, len + 1, "%"PRIu64, value->data.uint64_val);
         break;
     default:
         SR_LOG_ERR_MSG("Conversion of value_t to string failed");
         *out = NULL;
-    }
-    if (NULL == *out) {
-        SR_LOG_ERR("String copy failed %s", value->xpath);
-        return SR_ERR_INTERNAL;
     }
     return SR_ERR_OK;
 }

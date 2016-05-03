@@ -39,7 +39,7 @@
 #include "sr_constants.h"
 #include "sr_helpers.h"
 
-#include "sr_data_struct.h"
+#include "sr_data_structs.h"
 #include "sr_logger.h"
 #include "sr_protobuf.h"
 
