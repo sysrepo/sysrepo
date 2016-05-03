@@ -1,8 +1,9 @@
 /**
- * @defgroup rp_xp Request Processor's xpath Helpers
+ * @defgroup rp_xp Data tree XPath helpers
+ * @ingroup rp
  * @{
  * @brief Functions for creating and validating xpath.
- * @file rp_xpath.h
+ * @file rp_dt_xpath.h
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
  * @brief
  *
@@ -48,7 +49,7 @@ int rp_dt_create_xpath_for_node(const struct lyd_node *node, char **xpath);
  * @param [in] dm_ctx
  * @param [in] session
  * @param [in] xpath input to be validated
- * @param [out] module pointer to the module where the xpath is pointing (in case of augment, augmented module)
+ * @param [out] matched_module pointer to the module where the xpath is pointing (in case of augment, augmented module)
  * @param [out] match schema node is returned if NULL is not passed
  * @return Error code (SR_ERR_OK on success) SR_ERR_UNKNOWN_MODEL, SR_ERR_BAD_ELEMENT
  */
@@ -58,7 +59,7 @@ int rp_dt_validate_node_xpath(dm_ctx_t *dm_ctx, dm_session_t *session, const cha
  * @brief Enables the subtree specified by xpath in running data store. Until then, data retrieval calls return
  * SR_ERR_NOT_FOUND and no edit like calls can be made for the specified xpath and the nodes underneath.
  * @param [in] dm_ctx
- * @param [in] dm_session
+ * @param [in] session
  * @param [in] xpath
  * @return Error code (SR_ERR_OK on success)
  */

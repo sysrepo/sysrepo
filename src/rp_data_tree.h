@@ -1,5 +1,5 @@
 /**
- * @defgroup rp_dt Request Processor's Datatree Helpers
+ * @addtogroup rp
  * @{
  * @brief Functions for accessing and manipulation data trees.
  * @file rp_data_tree.h

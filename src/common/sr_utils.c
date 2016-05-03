@@ -19,9 +19,6 @@
  * limitations under the License.
  */
 
-#ifndef SR_UTILS_C_
-#define SR_UTILS_C_
-
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -378,7 +375,7 @@ cleanup:
 }
 
 struct lyd_node*
-sr_dup_datatree(struct lyd_node *root){
+sr_dup_datatree(struct lyd_node *root) {
     struct lyd_node *dup = NULL, *s = NULL, *n = NULL;
 
     struct lyd_node *next = NULL;
@@ -526,7 +523,7 @@ sr_dec64_to_str(double val, struct lys_node *schema_node, char **out)
         return SR_ERR_INVAL_ARG;
     }
     /* format string for double string conversion "%.XXf", where XX is corresponding number of fraction digits 1-18 */
-#define MAX_FMT_LEN 6
+#define MAX_FMT_LEN 6 /**< max dec64 format string length */
     char format_string [MAX_FMT_LEN] = {0,};
     snprintf(format_string, MAX_FMT_LEN, "%%.%zuf", fraction_digits);
 
@@ -742,5 +739,3 @@ sr_free_schema(sr_schema_t *schema)
         free(schema->enabled_features);
     }
 }
-
-#endif /* SR_UTILS_C_ */

@@ -681,9 +681,9 @@ int sr_delete_item(sr_session_ctx_t *session, const char *xpath, const sr_edit_o
  *
  * @param[in] session Session context acquired with ::sr_session_start call.
  * @param[in] xpath @ref xp_page "XPath" identifier of the data element to be moved.
- * @param[in] postion Requested move direction.
- * @param[in] relative item xpath identifier of the data element that is used
- * to determine relative position, used only if position argument is SR_MOVE_BEFORE or SR_MOVE_AFTER
+ * @param[in] position Requested move direction.
+ * @param[in] relative_item xpath Identifier of the data element that is used
+ * to determine relative position, used only if position argument is SR_MOVE_BEFORE or SR_MOVE_AFTER.
  *
  * @return Error code (SR_ERR_OK on success).
  */

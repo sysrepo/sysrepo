@@ -26,6 +26,14 @@
 #include "sr_common.h"
 
 /**
+ * @defgroup gpb_wrappers Protocol Buffers Wrappers
+ * @ingroup common
+ * @{
+ *
+ * @brief Functions used for wrapping and manipulation with Google Protocol Buffer structures.
+ */
+
+/**
  * @brief Returns string with name of the provided operation in GPB format.
  *
  * @param[in] operation Sysrepo operation in GPB enum value format.
@@ -67,7 +75,7 @@ int sr_gpb_resp_alloc(const Sr__Operation operation, const uint32_t session_id, 
  * @return Error code (SR_ERR_OK on success).
  */
 int sr_gpb_notif_alloc(const Sr__NotificationEvent event, const char *destination,
-        const uint32_t subscription_id, Sr__Msg **msg_p);
+        const uint32_t subscription_id, Sr__Msg **msg);
 
 /**
  * @brief Allocates and initializes GPB internal request message.
@@ -77,7 +85,7 @@ int sr_gpb_notif_alloc(const Sr__NotificationEvent event, const char *destinatio
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int sr_gpb_internal_req_alloc(const Sr__Operation operation, Sr__Msg **msg_p);
+int sr_gpb_internal_req_alloc(const Sr__Operation operation, Sr__Msg **msg);
 
 /**
  * @brief Validates the message according to excepted message type and operation.
@@ -219,5 +227,7 @@ int sr_gpb_fill_error(const char *error_message, const char *error_path, Sr__Err
  * @return Error code (SR_ERR_OK on success).
  */
 int sr_gpb_fill_errors(sr_error_info_t *sr_errors, size_t sr_error_cnt, Sr__Error ***gpb_errors, size_t *gpb_error_cnt);
+
+/**@} gpb_wrappers */
 
 #endif /* SR_PROTOBUF_H_ */

@@ -1,5 +1,6 @@
 /**
- * @defgroup rp_get Request processor's data tree get helpers
+ * @defgroup rp_get Data tree get helpers
+ * @ingroup rp
  * @{
  * @brief Function for retrieving values from data trees.
  * @file rp_dt_get.h

@@ -1,5 +1,5 @@
 /**
- * @file rp_get.c
+ * @file rp_dt_get.c
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
  * @brief
  *

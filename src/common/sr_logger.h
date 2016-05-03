@@ -29,7 +29,8 @@
 #include <syslog.h>
 
 /**
- * @defgroup logger Logger
+ * @defgroup logger Sysrepo Logger
+ * @ingroup common
  * @{
  *
  * @brief Logger module allows logging of messages with various severities into
@@ -67,8 +68,6 @@
 extern volatile uint8_t sr_ll_stderr;       /**< Holds current level of stderr debugs. */
 extern volatile uint8_t sr_ll_syslog;       /**< Holds current level of syslog debugs. */
 extern volatile sr_log_cb sr_log_callback;  /**< Holds pointer to logging callback, if set. */
-
-void sr_log_to_cb(sr_log_level_t level, const char *format, ...);
 
 #define SR_LOG__LL_STR(LL) \
     ((SR_LL_DBG == LL) ? "DBG" : \
@@ -159,6 +158,15 @@ void sr_logger_init(const char *app_name);
  * @note Needs to be called only once per the application life-time.
  */
 void sr_logger_cleanup();
+
+/**
+ * @brief Logs into callback pre-specified by ::sr_log_set_cb.
+ * Used internally by logging macros.
+ *
+ * @param[in] level Log level.
+ * @param[in] format Format message.
+ */
+void sr_log_to_cb(sr_log_level_t level, const char *format, ...);
 
 /**@} logger */
 

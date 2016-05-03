@@ -24,9 +24,14 @@
 
 #include <libyang/libyang.h>
 
+typedef struct dm_data_info_s dm_data_info_t;  /**< forward declaration */
+
 /**
- * @addtogroup common Common Routines
+ * @defgroup utils Utility Functions
+ * @ingroup common
  * @{
+ *
+ * @brief Utility functions used in sysrepo sources.
  */
 
 /**
@@ -147,7 +152,7 @@ int sr_get_schema_file_name(const char *schema_search_dir, const char *module_na
  * @param[in] fd Descriptor of the file to be locked.
  * @param[in] write TRUE if you are requesting a lock for writing to the file,
  * FALSE if you are requesting a lock just for reading.
- * @param[in] TRUE If you want this function to block until lock is acquired,
+ * @param[in] wait TRUE If you want this function to block until lock is acquired,
  * FALSE if you want this function to return an error if the lock cannot be acquired.
  *
  * @return err_code (SR_ERR_OK on success, SR_ERR_LOCKED if wait was set to
@@ -194,15 +199,12 @@ int sr_get_peer_eid(int fd, uid_t *uid, gid_t *gid);
  */
 int sr_save_data_tree_file(const char *file_name, const struct lyd_node *data_tree);
 
-/*
+/**
  * @brief Copies the datatree pointed by root including its siblings.
- * @param [in] root
+ * @param [in] root Root of the datatree to be duped.
  * @return duplicated datatree or NULL in case of error
  */
 struct lyd_node* sr_dup_datatree(struct lyd_node *root);
-
-/* forward declaration */
-typedef struct dm_data_info_s dm_data_info_t;
 
 /**
  * lyd_unlink wrapper handles the unlink of the root_node
@@ -295,6 +297,6 @@ void sr_free_errors(sr_error_info_t *sr_errors, size_t sr_error_cnt);
  */
 void sr_free_schema(sr_schema_t *schema);
 
-/**@} common */
+/**@} utils */
 
 #endif /* SR_UTILS_H_ */

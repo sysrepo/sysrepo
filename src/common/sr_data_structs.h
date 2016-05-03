@@ -1,7 +1,7 @@
 /**
- * @file sr_btree.h
+ * @file sr_data_structs.h
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
- * @brief Sysrepo balanced binary tree API.
+ * @brief Sysrepo data structures API.
  *
  * @copyright
  * Copyright 2016 Cisco Systems, Inc.
@@ -21,6 +21,14 @@
 
 #ifndef SR_DATA_STRUCTS_H_
 #define SR_DATA_STRUCTS_H_
+
+/**
+ * @defgroup data_structs Sysrepo Data Structures
+ * @ingroup common
+ * @{
+ *
+ * @brief Data structures used in sysrepo (balanced binary tree, circular buffer).
+ */
 
 /**
  * @brief Common context of balanced binary tree, independent of the library used.
@@ -166,5 +174,7 @@ bool sr_cbuff_dequeue(sr_cbuff_t *buffer, void *item);
  * @return Number of elements currently stored in the queue.
  */
 size_t sr_cbuff_items_in_queue(sr_cbuff_t *buffer);
+
+/**@} data_structs */
 
 #endif /* SR_DATA_STRUCTS_H_ */

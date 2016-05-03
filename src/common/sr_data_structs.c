@@ -1,7 +1,7 @@
 /**
- * @file sr_btree.c
+ * @file sr_data_structs.c
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
- * @brief Sysrepo balanced binary tree implementation.
+ * @brief Sysrepo data structures implementation.
  *
  * @copyright
  * Copyright 2016 Cisco Systems, Inc.

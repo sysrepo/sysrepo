@@ -1,5 +1,5 @@
 /**
- * @file rp_xpath.c
+ * @file rp_dt_xpath.c
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
  * @brief
  *
