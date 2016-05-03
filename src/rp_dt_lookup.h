@@ -1,5 +1,6 @@
 /**
- * @defgroup rp_lu Request processor's look up functions
+ * @defgroup rp_lu Data tree lookup functions
+ * @ingroup rp
  * @{
  * @brief Set of functions retrieving nodes from provided data tree according to
  * the location id.

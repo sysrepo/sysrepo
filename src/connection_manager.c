@@ -252,7 +252,7 @@ cm_notif_unsubscribe_destination(cm_ctx_t *cm_ctx, const char *destination_addre
 
     SR_LOG_DBG("Requesting removal of subscriptions for the destination '%s'.", destination_address);
 
-    rc = sr_pb_internal_req_alloc(SR__OPERATION__UNSUBSCRIBE_DESTINATION, &msg_req);
+    rc = sr_gpb_internal_req_alloc(SR__OPERATION__UNSUBSCRIBE_DESTINATION, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
 
     msg_req->internal_request->unsubscribe_dst_req->destination = strdup(destination_address);
@@ -520,7 +520,7 @@ cm_session_start_req_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, Sr__Msg *m
     SR_LOG_DBG("Processing session_start request (conn=%p).", (void*)conn);
 
     /* prepare the response */
-    rc = sr_pb_resp_alloc(SR__OPERATION__SESSION_START, 0, &msg);
+    rc = sr_gpb_resp_alloc(SR__OPERATION__SESSION_START, 0, &msg);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Cannot allocate the response for session_start request (conn=%p).", (void*)conn);
         return SR_ERR_NOMEM;
@@ -567,7 +567,7 @@ cm_session_stop_req_process(cm_ctx_t *cm_ctx, sm_session_t *session, Sr__Msg *ms
     SR_LOG_DBG("Processing session_stop request (session id=%"PRIu32").", session->id);
 
     /* prepare the response */
-    rc = sr_pb_resp_alloc(SR__OPERATION__SESSION_STOP, msg_in->session_id, &msg_out);
+    rc = sr_gpb_resp_alloc(SR__OPERATION__SESSION_STOP, msg_in->session_id, &msg_out);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Cannot allocate the response for session_stop request (session id=%"PRIu32").", session->id);
         return SR_ERR_NOMEM;
@@ -642,7 +642,7 @@ cm_req_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, sm_session_t *session, S
         return SR_ERR_INVAL_ARG;
     }
 
-    rc = sr_pb_msg_validate(msg, SR__MSG__MSG_TYPE__REQUEST, msg->request->operation);
+    rc = sr_gpb_msg_validate(msg, SR__MSG__MSG_TYPE__REQUEST, msg->request->operation);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Invalid request received (conn=%p).", (void*)conn);
         rc = SR_ERR_INVAL_ARG;
@@ -702,7 +702,7 @@ cm_resp_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, sm_session_t *session, 
     CHECK_NULL_ARG4(cm_ctx, conn, msg, msg->response);
     CHECK_NULL_ARG2(session, session->cm_data);
 
-    rc = sr_pb_msg_validate(msg, SR__MSG__MSG_TYPE__RESPONSE, msg->response->operation);
+    rc = sr_gpb_msg_validate(msg, SR__MSG__MSG_TYPE__RESPONSE, msg->response->operation);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Invalid response received (conn=%p).", (void*)conn);
         rc = SR_ERR_INVAL_ARG;

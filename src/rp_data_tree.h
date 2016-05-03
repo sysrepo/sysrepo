@@ -1,7 +1,10 @@
 /**
- * @file sr_common.h
+ * @addtogroup rp
+ * @{
+ * @brief Functions for accessing and manipulation data trees.
+ * @file rp_data_tree.h
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
- * @brief Sysrepo common routines.
+ * @brief
  *
  * @copyright
  * Copyright 2015 Cisco Systems, Inc.
@@ -19,30 +22,16 @@
  * limitations under the License.
  */
 
-#ifndef SRC_SR_COMMON_H_
-#define SRC_SR_COMMON_H_
+
+#ifndef SRC_RP_DATA_TREE_H_
+#define SRC_RP_DATA_TREE_H_
+
+#include "rp_dt_get.h"
+#include "rp_dt_edit.h"
+#include "rp_dt_lookup.h"
+#include "rp_dt_xpath.h"
 
 /**
- * @defgroup common Common Routines
- * @{
- *
- * @brief This module contains common routines and utilities used across
- * both sysrepo Client Library and Sysrepo Engine.
+ * @}
  */
-
-#include <stdbool.h>
-#include <sys/types.h>
-#include <stdint.h>
-
-#include "sysrepo.h"
-#include "sr_constants.h"
-#include "sr_helpers.h"
-
-#include "sr_utils.h"
-#include "sr_data_structs.h"
-#include "sr_logger.h"
-#include "sr_protobuf.h"
-
-/**@} common */
-
-#endif /* SRC_SR_COMMON_H_ */
+#endif /* SRC_RP_DATA_TREE_H_ */

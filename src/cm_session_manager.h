@@ -32,11 +32,13 @@ typedef struct cm_session_ctx_s cm_session_ctx_t;        /**< Forward-declaratio
 typedef struct cm_connection_ctx_s cm_connection_ctx_t;  /**< Forward-declaration of Connection Manager's connection context. */
 
 /**
- * @defgroup sm Connection Manager's Session Manager
+ * @defgroup sm Session Manager
+ * @ingroup cm
  * @{
  *
  * @brief Session manager tracks information about all active sysrepo sessions
- * (see ::sm_session_t), and connections (see ::sm_connection_t).
+ * (see ::sm_session_t), and connections (see ::sm_connection_t) in Connection
+ * Manager.
  *
  * Sessions and connections are tied together, one connection can be used
  * to serve multiple sessions.

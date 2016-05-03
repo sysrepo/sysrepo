@@ -1,7 +1,7 @@
 /**
- * @file sr_btree.c
+ * @file sr_data_structs.c
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
- * @brief Sysrepo balanced binary tree implementation.
+ * @brief Sysrepo data structures implementation.
  *
  * @copyright
  * Copyright 2016 Cisco Systems, Inc.
@@ -20,7 +20,7 @@
  */
 
 #include "sr_common.h"
-#include "sr_btree.h"
+#include "sr_data_structs.h"
 
 #ifdef USE_AVL_LIB
 #include <avl.h>
@@ -61,32 +61,30 @@ int
 sr_btree_init(sr_btree_compare_item_cb compare_item_cb, sr_btree_free_item_cb free_item_cb, sr_btree_t **tree_p)
 {
     sr_btree_t *tree = NULL;
+    int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG2(compare_item_cb, tree_p);
 
     tree = calloc(1, sizeof(*tree));
-    if (NULL == tree) {
-        return SR_ERR_NOMEM;
-    }
+    CHECK_NULL_NOMEM_RETURN(tree);
+
     tree->compare_item_cb = compare_item_cb;
     tree->free_item_cb = free_item_cb;
 
 #ifdef USE_AVL_LIB
     tree->avl_tree = avl_alloc_tree(compare_item_cb, free_item_cb);
-    if (NULL == tree->avl_tree) {
-        free(tree);
-        return SR_ERR_NOMEM;
-    }
+    CHECK_NULL_NOMEM_GOTO(tree->avl_tree, rc, cleanup);
 #else
     tree->rb_tree = rbinit(sr_redblack_compare_item_cb, tree);
-    if (NULL == tree->rb_tree) {
-        free(tree);
-        return SR_ERR_NOMEM;
-    }
+    CHECK_NULL_NOMEM_GOTO(tree->rb_tree, rc, cleanup);
 #endif
 
     *tree_p = tree;
     return SR_ERR_OK;
+
+cleanup:
+    free(tree);
+    return rc;
 }
 
 void
@@ -210,3 +208,114 @@ sr_btree_get_at(sr_btree_t *tree, size_t index)
 
     return NULL;
 }
+
+
+/**
+ * @brief FIFO circular buffer queue context.
+ */
+typedef struct sr_cbuff_s {
+    void *data;       /**< Data of the buffer. */
+    size_t capacity;   /**< Buffer capacity in number of elements. */
+    size_t elem_size;  /**< Size of one element in the buffer */
+    size_t head;       /**< Index of the first element in the buffer. */
+    size_t count;      /**< Number of elements stored in the buffer. */
+} sr_cbuff_t;
+
+int
+sr_cbuff_init(const size_t initial_capacity, const size_t elem_size, sr_cbuff_t **buffer_p)
+{
+    sr_cbuff_t *buffer = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG(buffer_p);
+
+    SR_LOG_DBG("Initiating circular buffer for %zu elements.", initial_capacity);
+
+    buffer = calloc(1, sizeof(*buffer));
+    CHECK_NULL_NOMEM_RETURN(buffer);
+
+    buffer->data = calloc(initial_capacity, elem_size);
+    CHECK_NULL_NOMEM_GOTO(buffer->data, rc, cleanup);
+
+    buffer->capacity = initial_capacity;
+    buffer->elem_size = elem_size;
+    buffer->head = 0;
+    buffer->count = 0;
+
+    *buffer_p = buffer;
+    return SR_ERR_OK;
+
+cleanup:
+    free(buffer);
+    return rc;
+}
+
+void
+sr_cbuff_cleanup(sr_cbuff_t *buffer)
+{
+    if (NULL != buffer) {
+        free(buffer->data);
+        free(buffer);
+    }
+}
+
+int
+sr_cbuff_enqueue(sr_cbuff_t *buffer, void *item)
+{
+    void *tmp = NULL;
+    size_t pos = 0;
+
+    CHECK_NULL_ARG2(buffer, item);
+
+    if (buffer->count == buffer->capacity) {
+        /* buffer is full - double it's size */
+        SR_LOG_DBG("Enlarging circular buffer from %zu to %zu elements.", buffer->capacity, buffer->capacity * 2);
+
+        tmp = realloc(buffer->data, (buffer->capacity * 2 * buffer->elem_size));
+        CHECK_NULL_NOMEM_RETURN(tmp);
+        buffer->data = tmp;
+
+        if (0 != buffer->head) {
+            /* move the the elements from before head to the end */
+            SR_LOG_DBG("Moving %zu circular buffer elements from pos 0 to pos %zu.", buffer->head, buffer->capacity);
+            memmove(((uint8_t*)buffer->data + (buffer->capacity * buffer->elem_size)), buffer->data, (buffer->head * buffer->elem_size));
+        }
+        buffer->capacity *= 2;
+    }
+
+    pos = (buffer->head + buffer->count) % buffer->capacity;
+
+    memcpy(((uint8_t*)buffer->data + (pos * buffer->elem_size)), item, buffer->elem_size);
+    buffer->count++;
+
+    SR_LOG_DBG("Circular buffer enqueue to position=%zu, current count=%zu.", pos, buffer->count);
+
+    return SR_ERR_OK;
+}
+
+bool
+sr_cbuff_dequeue(sr_cbuff_t *buffer, void *item)
+{
+    if (NULL == buffer || 0 == buffer->count) {
+        return false;
+    }
+
+    memcpy(item, ((uint8_t*)buffer->data + (buffer->head * buffer->elem_size)), buffer->elem_size);
+    buffer->head = (buffer->head + 1) % buffer->capacity;
+    buffer->count--;
+
+    SR_LOG_DBG("Circular buffer dequeue, new buffer head=%zu, count=%zu.", buffer->head, buffer->count);
+
+    return true;
+}
+
+size_t
+sr_cbuff_items_in_queue(sr_cbuff_t *buffer)
+{
+    if (NULL != buffer) {
+        return buffer->count;
+    } else {
+        return 0;
+    }
+}
+

@@ -123,7 +123,7 @@ typedef struct dm_commit_context_s {
 /**
  * @brief Initializes the data manager context, which will be passed in further
  * data manager related calls.
- * @param [in] ac_ctx Acccess Control module context
+ * @param [in] ac_ctx Access Control module context
  * @param [in] np_ctx Notification Processor context
  * @param [in] pm_ctx Persistence Manager context
  * @param [in] schema_search_dir - location where schema files are located
@@ -162,7 +162,7 @@ void dm_session_stop(dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx);
 /**
  * @brief Returns the structure holding data tree, timestamp and modified flag for the specified module.
  * If the module has been already loaded, the session copy is returned. If not
- * the function tries to load it from file system using ::dm_load_data_tree
+ * the function tries to load it from file system.
  * This structure is needed for edit like calls that can modify the data tree.
  * @param [in] dm_ctx
  * @param [in] dm_session_ctx
@@ -173,7 +173,7 @@ void dm_session_stop(dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx);
 int dm_get_data_info(dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, const char *module_name, dm_data_info_t **info);
 
 /**
- * @brief Returns the data tree for the specified module. Internally calls ::dm_get_data_info
+ * @brief Returns the data tree for the specified module.
  * @param [in] dm_ctx
  * @param [in] dm_session_ctx
  * @param [in] module_name
@@ -266,7 +266,7 @@ int dm_commit_prepare_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit
  * made in the session are applied.
  * @param [in] dm_ctx
  * @param [in] session
- * @param [in] c_ctx
+ * @param [in] c_ctx - commit context
  * @return Error code (SR_ERR_OK on success)
  */
 int dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm_commit_context_t *c_ctx);

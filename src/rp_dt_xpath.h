@@ -1,5 +1,6 @@
 /**
- * @defgroup rp_xp Request Processor's xpath Helpers
+ * @defgroup rp_xp Data tree XPath helpers
+ * @ingroup rp
  * @{
  * @brief Functions for creating and validating xpath.
  * @file rp_dt_xpath.h

@@ -2161,15 +2161,14 @@ dm_disable_module_running(dm_ctx_t *ctx, dm_session_t *session, const char *modu
         /* iterate through top-level nodes */
         LY_TREE_FOR(module->data, iter)
         {
-            if ((LYS_CONTAINER | LYS_LIST | LYS_LEAF | LYS_LEAFLIST) & iter->nodetype && dm_is_node_enabled(iter)) {
+            if (((LYS_CONTAINER | LYS_LIST | LYS_LEAF | LYS_LEAFLIST) & iter->nodetype) && dm_is_node_enabled(iter)) {
                 rc = dm_set_node_state(iter, DM_NODE_DISABLED);
                 CHECK_RC_MSG_GOTO(rc, cleanup, "Set node state failed");
 
                 if ((LYS_CONTAINER | LYS_LIST) & iter->nodetype) {
-
                     LY_TREE_FOR(iter->child, child)
                     {
-                        if ((LYS_CONTAINER | LYS_LIST | LYS_LEAF | LYS_LEAFLIST) & iter->nodetype && dm_is_node_enabled(child)) {
+                        if (((LYS_CONTAINER | LYS_LIST | LYS_LEAF | LYS_LEAFLIST) & iter->nodetype) && dm_is_node_enabled(child)) {
                             rc = ly_set_add(stack, child);
                             CHECK_ZERO_MSG_GOTO(rc, rc, SR_ERR_INTERNAL, cleanup, "Adding to ly_set failed");
                         }
@@ -2187,10 +2186,9 @@ dm_disable_module_running(dm_ctx_t *ctx, dm_session_t *session, const char *modu
             ly_set_rm_index(stack, stack->number - 1);
 
             if ((LYS_CONTAINER | LYS_LIST) & iter->nodetype) {
-
                 LY_TREE_FOR(iter->child, child)
                 {
-                    if ((LYS_CONTAINER | LYS_LIST | LYS_LEAF | LYS_LEAFLIST) & child->nodetype && dm_is_node_enabled(child)) {
+                    if (((LYS_CONTAINER | LYS_LIST | LYS_LEAF | LYS_LEAFLIST) & child->nodetype) && dm_is_node_enabled(child)) {
                         rc = ly_set_add(stack, child);
                         CHECK_ZERO_MSG_GOTO(rc, rc, SR_ERR_INTERNAL, cleanup, "Adding to ly_set failed");
                     }

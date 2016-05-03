@@ -76,7 +76,7 @@ void np_cleanup(np_ctx_t *np_ctx);
  * @param[in] dst_address Destination address of the subscriber.
  * @param[in] dst_id Destination subscription ID.
  * @param[in] module_name Name of the module which the subscription is active in (if applicable).
- * @param[in] path XPath to the subtree where the subscription is active (if applicable).
+ * @param[in] xpath XPath to the subtree where the subscription is active (if applicable).
  * @param[in] enable_running TRUE if the subscription enables specified subtree in the running datastore.
  *
  * @return Error code (SR_ERR_OK on success).

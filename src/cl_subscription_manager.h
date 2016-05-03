@@ -28,11 +28,11 @@
 #include "sr_common.h"
 
 /**
- * @defgroup cl_sm Client Library's Subscription Manager
+ * @defgroup cl_sm Subscription Manager
  * @{
  *
- * @brief Internally tracks all subscriptions and provides the notification
- * communication channel between sysepo engine and client library.
+ * @brief Internally tracks all subscriptions in CLient Library and provides
+ * the notification communication channel between sysepo engine and the client library.
  */
 
 /**

@@ -1,5 +1,6 @@
 /**
- * @defgroup rp_edit Request processor's data tree edit helpers
+ * @defgroup rp_edit Data tree edit helpers
+ * @ingroup rp
  * @{
  * @brief Function that can create, modify delete nodes or move lists.
  * @file rp_dt_edit.h
