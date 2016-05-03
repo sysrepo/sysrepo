@@ -27,7 +27,7 @@
 #include <cmocka.h>
 
 #include "test_data.h"
-#include "rp_data_tree.h"
+#include "request_processor.h"
 #include "rp_internal.h"
 
 #include "notification_processor.h"

@@ -29,7 +29,8 @@
 #include "notification_processor.h"
 #include "data_manager.h"
 #include "rp_internal.h"
-#include "rp_data_tree.h"
+#include "rp_dt_get.h"
+#include "rp_dt_edit.h"
 
 #define RP_INIT_REQ_QUEUE_SIZE 10    /**< Initial size of the request queue. */
 

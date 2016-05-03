@@ -31,7 +31,6 @@
 
 #include "data_manager.h"
 #include "sr_common.h"
-#include "rp_dt_edit.h"
 #include "rp_dt_xpath.h"
 #include "access_control.h"
 #include "notification_processor.h"
@@ -298,7 +297,7 @@ dm_load_schema_file(dm_ctx_t *dm_ctx, const char *dir_name, const char *file_nam
     }
     if (SR_ERR_OK == rc && running_enabled) {
         /* enable running datastore */
-        rc = dm_enable_module_runnig(dm_ctx, NULL, module->name, module);
+        rc = dm_enable_module_running(dm_ctx, NULL, module->name, module);
     }
 
     return SR_ERR_OK;
@@ -435,6 +434,7 @@ dm_load_data_tree_file(dm_ctx_t *dm_ctx, int fd, const char *data_filename, cons
 
     return rc;
 }
+
 /**
  * @brief Loads data tree from file. Module and datastore argument are used to
  * determine the file name.
@@ -510,7 +510,7 @@ dm_free_sess_op(dm_sess_op_t *op)
 static void
 dm_free_sess_operations(dm_sess_op_t *ops, size_t count)
 {
-    if (NULL == ops){
+    if (NULL == ops) {
         return;
     }
 
@@ -552,24 +552,24 @@ dm_lock_file(dm_lock_ctx_t *lock_ctx, char *filename)
 
     found_item = sr_btree_search(lock_ctx->lock_files, &lookup_item);
     if (NULL == found_item) {
-       found_item = calloc(1, sizeof(*found_item));
-       CHECK_NULL_NOMEM_GOTO(found_item, rc, cleanup);
+        found_item = calloc(1, sizeof(*found_item));
+        CHECK_NULL_NOMEM_GOTO(found_item, rc, cleanup);
 
-       found_item->fd = -1;
-       found_item->filename = strdup(filename);
-       if (NULL == found_item->filename) {
-           SR_LOG_ERR_MSG("Filename duplication failed");
-           free(found_item);
-           rc = SR_ERR_INTERNAL;
-           goto cleanup;
-       }
+        found_item->fd = -1;
+        found_item->filename = strdup(filename);
+        if (NULL == found_item->filename) {
+            SR_LOG_ERR_MSG("Filename duplication failed");
+            free(found_item);
+            rc = SR_ERR_INTERNAL;
+            goto cleanup;
+        }
 
-       rc = sr_btree_insert(lock_ctx->lock_files, found_item);
-       if (SR_ERR_OK != rc){
-           SR_LOG_ERR_MSG("Adding to binary tree failed");
-           dm_free_lock_item(found_item);
-           goto cleanup;
-       }
+        rc = sr_btree_insert(lock_ctx->lock_files, found_item);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR_MSG("Adding to binary tree failed");
+            dm_free_lock_item(found_item);
+            goto cleanup;
+        }
     }
 
     if (-1 == found_item->fd) {
@@ -662,7 +662,7 @@ dm_lock_module(dm_ctx_t *dm_ctx, dm_session_t *session, char *modul_name)
 
     /* check if already locked by this session */
     for (size_t i = 0; i < session->locked_files->number; i++) {
-        if (0 == strcmp(lock_file, (char *)session->locked_files->set.g[i])){
+        if (0 == strcmp(lock_file, (char *) session->locked_files->set.g[i])) {
             SR_LOG_INF("File %s is already by this session", lock_file);
             free(lock_file);
             return rc;
@@ -678,7 +678,7 @@ dm_lock_module(dm_ctx_t *dm_ctx, dm_session_t *session, char *modul_name)
     ac_unset_user_identity(dm_ctx->ac_ctx);
 
     /* log information about locked model */
-    if (SR_ERR_OK != rc){
+    if (SR_ERR_OK != rc) {
         free(lock_file);
     } else {
         ly_set_add(session->locked_files, lock_file);
@@ -700,7 +700,7 @@ dm_unlock_module(dm_ctx_t *dm_ctx, dm_session_t *session, char *modul_name)
     /* check if already locked */
     bool found = false;
     for (i = 0; i < session->locked_files->number; i++) {
-        if (0 == strcmp(lock_file, (char *)session->locked_files->set.g[i])){
+        if (0 == strcmp(lock_file, (char *) session->locked_files->set.g[i])) {
             found = true;
             break;
         }
@@ -718,7 +718,6 @@ dm_unlock_module(dm_ctx_t *dm_ctx, dm_session_t *session, char *modul_name)
     free(lock_file);
     return rc;
 }
-
 
 int
 dm_lock_datastore(dm_ctx_t *dm_ctx, dm_session_t *session)
@@ -748,7 +747,7 @@ dm_lock_datastore(dm_ctx_t *dm_ctx, dm_session_t *session)
     for (size_t i = 0; i < schema_count; i++) {
         rc = dm_lock_module(dm_ctx, session, (char *) schemas[i].module_name);
         if (SR_ERR_OK != rc) {
-            if (SR_ERR_UNAUTHORIZED == rc){
+            if (SR_ERR_UNAUTHORIZED == rc) {
                 SR_LOG_INF("Not allowed to lock %s, skipping", schemas[i].module_name);
                 continue;
             } else if (SR_ERR_LOCKED == rc) {
@@ -777,12 +776,12 @@ dm_unlock_datastore(dm_ctx_t *dm_ctx, dm_session_t *session)
 {
     CHECK_NULL_ARG2(dm_ctx, session);
 
-    while (session->locked_files->number > 0){
+    while (session->locked_files->number > 0) {
         dm_unlock_file(&dm_ctx->lock_ctx, (char *) session->locked_files->set.g[0]);
         free(session->locked_files->set.g[0]);
         ly_set_rm_index(session->locked_files, 0);
     }
-    if (session->holds_ds_lock){
+    if (session->holds_ds_lock) {
         pthread_mutex_lock(&dm_ctx->ds_lock_mutex);
         dm_ctx->ds_lock = false;
         session->holds_ds_lock = false;
@@ -818,11 +817,11 @@ dm_add_operation(dm_session_t *session, dm_operation_t op, const char *xpath, sr
         goto cleanup;
     }
 
-    if (NULL == session->operations){
+    if (NULL == session->operations) {
         session->oper_size = 1;
         session->operations = calloc(session->oper_size, sizeof(*session->operations));
         CHECK_NULL_NOMEM_GOTO(session->operations, rc, cleanup);
-    } else if (session->oper_count == session->oper_size){
+    } else if (session->oper_count == session->oper_size) {
         session->oper_size *= 2;
         dm_sess_op_t *tmp_op = realloc(session->operations, session->oper_size * sizeof(*session->operations));
         CHECK_NULL_NOMEM_GOTO(tmp_op, rc, cleanup);
@@ -837,9 +836,9 @@ dm_add_operation(dm_session_t *session, dm_operation_t op, const char *xpath, sr
         session->operations[session->oper_count].detail.set.options = opts;
     } else if (DM_DELETE_OP == op) {
         session->operations[session->oper_count].detail.del.options = opts;
-    } else if (DM_MOVE_OP == op){
+    } else if (DM_MOVE_OP == op) {
         session->operations[session->oper_count].detail.mov.position = pos;
-        if (NULL != rel_item){
+        if (NULL != rel_item) {
             session->operations[session->oper_count].detail.mov.relative_item = strdup(rel_item);
             CHECK_NULL_NOMEM_GOTO(session->operations[session->oper_count].detail.mov.relative_item, rc, cleanup);
         } else {
@@ -1209,33 +1208,34 @@ dm_list_rev_file(dm_ctx_t *dm_ctx, const char *module_name, const char *rev_date
     CHECK_NULL_ARG3(dm_ctx, module_name, rev);
     int rc = SR_ERR_OK;
 
-    if (NULL != rev_date){
+    if (NULL != rev_date) {
         rev->revision = strdup(rev_date);
         CHECK_NULL_NOMEM_GOTO(rev->revision, rc, cleanup);
     }
 
-    rc = sr_get_schema_file_name(dm_ctx->schema_search_dir, module_name, rev_date, true, (char**)&rev->file_path_yang);
+    rc = sr_get_schema_file_name(dm_ctx->schema_search_dir, module_name, rev_date, true, (char**) &rev->file_path_yang);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Get schema file name failed");
 
-    rc = sr_get_schema_file_name(dm_ctx->schema_search_dir, module_name, rev_date, false, (char**)&rev->file_path_yin);
+    rc = sr_get_schema_file_name(dm_ctx->schema_search_dir, module_name, rev_date, false, (char**) &rev->file_path_yin);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Get schema file name failed");
 
     if (-1 == access(rev->file_path_yang, F_OK)) {
-        free((void*)rev->file_path_yang);
+        free((void*) rev->file_path_yang);
         rev->file_path_yang = NULL;
     }
     if (-1 == access(rev->file_path_yin, F_OK)) {
-        free((void*)rev->file_path_yin);
+        free((void*) rev->file_path_yin);
         rev->file_path_yin = NULL;
     }
     return rc;
 
 cleanup:
-    free((void*)rev->revision);
-    free((void*)rev->file_path_yang);
-    free((void*)rev->file_path_yin);
+    free((void*) rev->revision);
+    free((void*) rev->file_path_yang);
+    free((void*) rev->file_path_yin);
     return rc;
 }
+
 /**
  * @brief Fills the schema_t structure for one module all its revisions and submodules
  * @param [in] dm_ctx
@@ -1279,8 +1279,8 @@ dm_list_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, 
 
     while (NULL != features[feature_cnt]) feature_cnt++;
 
-    for (size_t i = 0; i<feature_cnt; i++) {
-        if (state[i]==1) {
+    for (size_t i = 0; i < feature_cnt; i++) {
+        if (state[i] == 1) {
             enabled++;
         }
     }
@@ -1288,7 +1288,7 @@ dm_list_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, 
     if (feature_cnt > 0) {
         schema->enabled_features = calloc(feature_cnt, sizeof(*schema->enabled_features));
         CHECK_NULL_NOMEM_GOTO(schema->enabled_features, rc, cleanup);
-        for (size_t i = 0; i<feature_cnt; i++) {
+        for (size_t i = 0; i < feature_cnt; i++) {
             if (state[i] == 1) {
                 schema->enabled_features[schema->enabled_feature_cnt] = strdup(features[i]);
                 CHECK_NULL_NOMEM_GOTO(schema->enabled_features[schema->enabled_feature_cnt], rc, cleanup);
@@ -1302,7 +1302,7 @@ dm_list_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, 
     schema->submodules = calloc(module->inc_size, sizeof(*schema->submodules));
     CHECK_NULL_NOMEM_GOTO(schema->submodules, rc, cleanup);
 
-    for (size_t s = 0; s < module->inc_size; s++){
+    for (size_t s = 0; s < module->inc_size; s++) {
         const struct lys_submodule *sub = module->inc[s].submodule;
         if (NULL == sub->name) {
             SR_LOG_ERR_MSG("Missing schema information");
@@ -1338,11 +1338,11 @@ dm_get_module_revision(struct lyd_node *module)
         SR_LOG_ERR_MSG("Getting module revision failed");
         return NULL;
     }
-    if (0 == rev->number){
+    if (0 == rev->number) {
         ly_set_free(rev);
     } else {
-        result = ((struct lyd_node_leaf_list *)rev->set.d[0])->value_str;
-        if (0 == strcmp(result,"")){
+        result = ((struct lyd_node_leaf_list *) rev->set.d[0])->value_str;
+        if (0 == strcmp(result, "")) {
             result = NULL;
         }
     }
@@ -1367,7 +1367,7 @@ dm_list_schemas(dm_ctx_t *dm_ctx, dm_session_t *dm_session, sr_schema_t **schema
 
     struct ly_set *modules = lyd_get_node(info, "/ietf-yang-library:modules-state/module/name");
     if (NULL == modules) {
-        SR_LOG_ERR_MSG ("Error during module listing");
+        SR_LOG_ERR_MSG("Error during module listing");
         rc = SR_ERR_INTERNAL;
         goto cleanup;
     } else if (0 == modules->number) {
@@ -1380,7 +1380,7 @@ dm_list_schemas(dm_ctx_t *dm_ctx, dm_session_t *dm_session, sr_schema_t **schema
     for (unsigned int i = 0; i < modules->number; i++) {
         const char *revision = dm_get_module_revision(modules->set.d[i]->parent);
         const char *module_name = ((struct lyd_node_leaf_list *) modules->set.d[i])->value_str;
-        if (dm_is_module_disabled(dm_ctx, module_name)){
+        if (dm_is_module_disabled(dm_ctx, module_name)) {
             SR_LOG_WRN("Module %s is disabled and will not be included in list schema", module_name);
             continue;
         }
@@ -1390,12 +1390,12 @@ dm_list_schemas(dm_ctx_t *dm_ctx, dm_session_t *dm_session, sr_schema_t **schema
     }
 
     /* return only files where we can locate schema files */
-    for (int i = *schema_count - 1; i >= 0 ; i--) {
+    for (int i = *schema_count - 1; i >= 0; i--) {
         sr_schema_t *s = &((*schemas)[i]);
-        if (NULL == s->revision.file_path_yang && NULL == s->revision.file_path_yin){
+        if (NULL == s->revision.file_path_yang && NULL == s->revision.file_path_yin) {
             sr_free_schema(s);
             memmove(&(*schemas)[i],
-                    &(*schemas)[i+1],
+                    &(*schemas)[i + 1],
                     (*schema_count - i - 1) * sizeof(*s));
             (*schema_count)--;
         }
@@ -1403,9 +1403,9 @@ dm_list_schemas(dm_ctx_t *dm_ctx, dm_session_t *dm_session, sr_schema_t **schema
 
 cleanup:
     if (SR_ERR_OK != rc) {
-       sr_free_schemas(*schemas, *schema_count);
-       *schemas = NULL;
-       *schema_count = 0;
+        sr_free_schemas(*schemas, *schema_count);
+        *schemas = NULL;
+        *schema_count = 0;
     }
     ly_set_free(modules);
     lyd_free_withsiblings(info);
@@ -1424,9 +1424,9 @@ dm_get_schema(dm_ctx_t *dm_ctx, const char *module_name, const char *module_revi
         return SR_ERR_NOT_FOUND;
     }
 
-    if (NULL == submodule_name){
+    if (NULL == submodule_name) {
         /* module*/
-        rc = lys_print_mem(schema, module, yang_format ? LYS_OUT_YANG: LYS_OUT_YIN, NULL);
+        rc = lys_print_mem(schema, module, yang_format ? LYS_OUT_YANG : LYS_OUT_YIN, NULL);
         if (0 != rc) {
             SR_LOG_ERR("Module %s print failed.", module->name);
             return SR_ERR_INTERNAL;
@@ -1441,7 +1441,7 @@ dm_get_schema(dm_ctx_t *dm_ctx, const char *module_name, const char *module_revi
         return SR_ERR_NOT_FOUND;
     }
 
-    rc = lys_print_mem(schema, (const struct lys_module *) submodule, yang_format ? LYS_OUT_YANG: LYS_OUT_YIN, NULL);
+    rc = lys_print_mem(schema, (const struct lys_module *) submodule, yang_format ? LYS_OUT_YANG : LYS_OUT_YIN, NULL);
     if (0 != rc) {
         SR_LOG_ERR("Submodule %s print failed.", submodule->name);
         return SR_ERR_INTERNAL;
@@ -1471,14 +1471,14 @@ dm_validate_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error
                 SR_LOG_DBG("Validation failed for %s module", info->module->name);
                 (*err_cnt)++;
                 sr_error_info_t *tmp_err = realloc(*errors, *err_cnt * sizeof(**errors));
-                if (NULL == tmp_err){
+                if (NULL == tmp_err) {
                     SR_LOG_ERR_MSG("Memory allocation failed");
                     sr_free_errors(*errors, *err_cnt - 1);
                     return SR_ERR_NOMEM;
                 }
                 *errors = tmp_err;
-                (*errors)[(*err_cnt)-1].message = strdup(ly_errmsg());
-                (*errors)[(*err_cnt)-1].xpath = strdup(ly_errpath());
+                (*errors)[(*err_cnt) - 1].message = strdup(ly_errmsg());
+                (*errors)[(*err_cnt) - 1].xpath = strdup(ly_errpath());
 
                 rc = SR_ERR_VALIDATION_FAILED;
             } else {
@@ -1504,7 +1504,7 @@ dm_discard_changes(dm_ctx_t *dm_ctx, dm_session_t *session)
     dm_free_sess_operations(session->operations, session->oper_count);
     session->operations = NULL;
     session->oper_count = 0;
-    session->oper_size  = 0;
+    session->oper_size = 0;
 
     return SR_ERR_OK;
 }
@@ -1515,38 +1515,39 @@ dm_is_info_copy_uptodate(const char *file_name, const dm_data_info_t *info, bool
     CHECK_NULL_ARG(info);
     int rc;
 #ifdef HAVE_STAT_ST_MTIM
-        struct stat st = {0};
-        rc = stat(file_name, &st);
-        if (-1 == rc) {
-            SR_LOG_ERR_MSG("Stat failed");
-            return SR_ERR_INTERNAL;
-        }
-        struct timespec now;
-        clock_gettime(CLOCK_REALTIME, &now);
-        SR_LOG_DBG("Session copy %s: mtime sec=%lld nsec=%lld", info->module->name,
-                (long long) info->timestamp.tv_sec,
-                (long long) info->timestamp.tv_nsec);
-        SR_LOG_DBG("Loaded module %s: mtime sec=%lld nsec=%lld", info->module->name,
-                (long long) st.st_mtim.tv_sec,
-                (long long) st.st_mtim.tv_nsec);
-        SR_LOG_DBG("Current time: mtime sec=%lld nsec=%lld",
-                (long long) now.tv_sec,
-                (long long) now.tv_nsec);
-        /* check if we should update session copy conditions
-         * is the negation of the optimized commit */
-        if (info->timestamp.tv_sec != st.st_mtim.tv_sec ||
+    struct stat st = {0};
+    rc = stat(file_name, &st);
+    if (-1 == rc) {
+        SR_LOG_ERR_MSG("Stat failed");
+        return SR_ERR_INTERNAL;
+    }
+    struct timespec now;
+    clock_gettime(CLOCK_REALTIME, &now);
+    SR_LOG_DBG("Session copy %s: mtime sec=%lld nsec=%lld", info->module->name,
+            (long long) info->timestamp.tv_sec,
+            (long long) info->timestamp.tv_nsec);
+    SR_LOG_DBG("Loaded module %s: mtime sec=%lld nsec=%lld", info->module->name,
+            (long long) st.st_mtim.tv_sec,
+            (long long) st.st_mtim.tv_nsec);
+    SR_LOG_DBG("Current time: mtime sec=%lld nsec=%lld",
+            (long long) now.tv_sec,
+            (long long) now.tv_nsec);
+    /* check if we should update session copy conditions
+     * is the negation of the optimized commit */
+    if (info->timestamp.tv_sec != st.st_mtim.tv_sec ||
             info->timestamp.tv_nsec != st.st_mtim.tv_nsec ||
-            (now.tv_sec == st.st_mtim.tv_sec && difftime(now.tv_nsec, st.st_mtim.tv_nsec) < NANOSEC_THRESHOLD)) {
-            SR_LOG_DBG("Module %s will be refreshed", info->module->name);
-            *res = false;
-
-        } else {
-            *res = true;
-        }
-#else
+            (now.tv_sec == st.st_mtim.tv_sec && difftime(now.tv_nsec, st.st_mtim.tv_nsec) < NANOSEC_THRESHOLD) ||
+            info->timestamp.tv_nsec == 0) {
+        SR_LOG_DBG("Module %s will be refreshed", info->module->name);
         *res = false;
+
+    } else {
+        *res = true;
+    }
+#else
+    *res = false;
 #endif
-        return SR_ERR_OK;
+    return SR_ERR_OK;
 
 }
 
@@ -1617,9 +1618,9 @@ dm_update_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, struct ly_
 
 cleanup:
     ly_set_free(to_be_refreshed);
-    if (SR_ERR_OK == rc){
+    if (SR_ERR_OK == rc) {
         *up_to_date_models = up_to_date;
-    } else{
+    } else {
         ly_set_free(up_to_date);
     }
     free(file_name);
@@ -1630,13 +1631,13 @@ void
 dm_remove_operations_with_error(dm_session_t *session)
 {
     CHECK_NULL_ARG_VOID(session);
-    for (int i = session->oper_count-1; i >=0 ; i--) {
+    for (int i = session->oper_count - 1; i >= 0; i--) {
         dm_sess_op_t *op = &session->operations[i];
-        if (op->has_error){
+        if (op->has_error) {
             dm_free_sess_op(op);
             memmove(&session->operations[i],
-                    &session->operations[i+1],
-                    (session->oper_count-i-1)*sizeof(*op));
+                    &session->operations[i + 1],
+                    (session->oper_count - i - 1) * sizeof(*op));
             session->oper_count--;
         }
     }
@@ -1793,7 +1794,7 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
                 rc = SR_ERR_INTERNAL;
                 goto cleanup;
             }
-            di = calloc(1, sizeof (*di));
+            di = calloc(1, sizeof(*di));
             CHECK_NULL_NOMEM_GOTO(di, rc, cleanup);
             di->node = sr_dup_datatree(info->node);
             if (NULL != info->node && NULL == di->node) {
@@ -1910,7 +1911,7 @@ dm_feature_enable(dm_ctx_t *dm_ctx, const char *module_name, const char *feature
     pthread_rwlock_wrlock(&dm_ctx->lyctx_lock);
 
     const struct lys_module *module = ly_ctx_get_module(dm_ctx->ly_ctx, module_name, NULL);
-    if (NULL == module){
+    if (NULL == module) {
         pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
         SR_LOG_ERR("Module %s was not found", module_name);
         return SR_ERR_UNKNOWN_MODEL;
@@ -1983,7 +1984,7 @@ dm_copy_config(dm_ctx_t *dm_ctx, dm_session_t *session, const struct ly_set *mod
     char *file_name = NULL;
     int *fds = NULL;
 
-    if (src == dst || 0 == modules->number){
+    if (src == dst || 0 == modules->number) {
         return rc;
     }
 
@@ -2000,7 +2001,7 @@ dm_copy_config(dm_ctx_t *dm_ctx, dm_session_t *session, const struct ly_set *mod
     rc = dm_session_start(dm_ctx, (session != NULL ? session->user_credentials : NULL), dst, &dst_session);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Creating of temporary session failed");
 
-    for (size_t i = 0; i < modules->number; i++){
+    for (size_t i = 0; i < modules->number; i++) {
         module = (struct lys_module *) modules->set.g[i];
         /* lock module in source ds */
         rc = dm_lock_module(dm_ctx, src_session, (char *) module->name);
@@ -2046,14 +2047,14 @@ dm_copy_config(dm_ctx_t *dm_ctx, dm_session_t *session, const struct ly_set *mod
     for (size_t i = 0; i < modules->number; i++) {
         /* write dest file*/
         lyd_wd_cleanup(&src_infos[i]->node, 0);
-        if (0 != lyd_print_fd(fds[i], src_infos[i]->node, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT)){
+        if (0 != lyd_print_fd(fds[i], src_infos[i]->node, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT)) {
             SR_LOG_ERR("Copy of module %s failed", module->name);
             rc = SR_ERR_INTERNAL;
         }
         ret = fsync(fds[i]);
-        if (0 != ret){
+        if (0 != ret) {
             SR_LOG_ERR("Failed to write data of '%s' module: %s", src_infos[i]->module->name,
-            (ly_errno != LY_SUCCESS) ? ly_errmsg() : strerror(errno));
+                    (ly_errno != LY_SUCCESS) ? ly_errmsg() : strerror(errno));
             rc = SR_ERR_INTERNAL;
         }
     }
@@ -2061,7 +2062,7 @@ dm_copy_config(dm_ctx_t *dm_ctx, dm_session_t *session, const struct ly_set *mod
 cleanup:
     dm_session_stop(dm_ctx, src_session);
     dm_session_stop(dm_ctx, dst_session);
-    for (size_t i = 0; i < opened_files; i++){
+    for (size_t i = 0; i < opened_files; i++) {
         close(fds[i]);
     }
     free(fds);
@@ -2072,41 +2073,41 @@ cleanup:
 int
 dm_has_enabled_subtree(dm_ctx_t *ctx, const char *module_name, const struct lys_module **module, bool *res)
 {
-   CHECK_NULL_ARG3(ctx, module_name, res);
-   int rc = SR_ERR_OK;
-   const struct lys_module *mod = NULL;
-   rc = dm_get_module(ctx, module_name, NULL, &mod);
-   CHECK_RC_MSG_RETURN(rc, "Get module failed");
-   CHECK_NULL_ARG(mod->name);
+    CHECK_NULL_ARG3(ctx, module_name, res);
+    int rc = SR_ERR_OK;
+    const struct lys_module *mod = NULL;
+    rc = dm_get_module(ctx, module_name, NULL, &mod);
+    CHECK_RC_MSG_RETURN(rc, "Get module failed");
+    CHECK_NULL_ARG(mod->name);
 
-   *res = false;
-   struct lys_node *node = mod->data;
-   dm_schema_info_t *si = NULL;
-   rc = dm_get_schema_info((dm_ctx_t *) ctx, mod->name, &si);
-   CHECK_RC_LOG_RETURN(rc, "Get schema info failed for %s", mod->name);
+    *res = false;
+    struct lys_node *node = mod->data;
+    dm_schema_info_t *si = NULL;
+    rc = dm_get_schema_info((dm_ctx_t *) ctx, mod->name, &si);
+    CHECK_RC_LOG_RETURN(rc, "Get schema info failed for %s", mod->name);
 
-   pthread_rwlock_rdlock(&si->model_lock);
-   while (NULL != node) {
-       if (dm_is_enabled_check_recursively(node)){
-           *res = true;
-           break;
-       }
-       node = node->next;
-   }
-   pthread_rwlock_unlock(&si->model_lock);
-   if (NULL != module) {
-       *module = (struct lys_module *) mod;
-   }
+    pthread_rwlock_rdlock(&si->model_lock);
+    while (NULL != node) {
+        if (dm_is_enabled_check_recursively(node)) {
+            *res = true;
+            break;
+        }
+        node = node->next;
+    }
+    pthread_rwlock_unlock(&si->model_lock);
+    if (NULL != module) {
+        *module = (struct lys_module *) mod;
+    }
 
-   return rc;
+    return rc;
 }
 
 int
-dm_enable_module_runnig(dm_ctx_t *ctx, dm_session_t *session, const char *module_name, const struct lys_module *module)
+dm_enable_module_running(dm_ctx_t *ctx, dm_session_t *session, const char *module_name, const struct lys_module *module)
 {
     CHECK_NULL_ARG2(ctx, module_name);
     bool module_enabled = false;
-    char xpath[PATH_MAX] = { 0, };
+    char xpath[PATH_MAX] = {0,};
     int rc = SR_ERR_OK;
 
     if (NULL == module) {
@@ -2156,14 +2157,17 @@ dm_disable_module_running(dm_ctx_t *ctx, dm_session_t *session, const char *modu
         stack = ly_set_new();
         CHECK_NULL_NOMEM_RETURN(stack);
         pthread_rwlock_wrlock(&si->model_lock);
+
         /* iterate through top-level nodes */
-        LY_TREE_FOR(module->data, iter) {
+        LY_TREE_FOR(module->data, iter)
+        {
             if (((LYS_CONTAINER | LYS_LIST | LYS_LEAF | LYS_LEAFLIST) & iter->nodetype) && dm_is_node_enabled(iter)) {
                 rc = dm_set_node_state(iter, DM_NODE_DISABLED);
                 CHECK_RC_MSG_GOTO(rc, cleanup, "Set node state failed");
 
                 if ((LYS_CONTAINER | LYS_LIST) & iter->nodetype) {
-                    LY_TREE_FOR(iter->child, child) {
+                    LY_TREE_FOR(iter->child, child)
+                    {
                         if (((LYS_CONTAINER | LYS_LIST | LYS_LEAF | LYS_LEAFLIST) & iter->nodetype) && dm_is_node_enabled(child)) {
                             rc = ly_set_add(stack, child);
                             CHECK_ZERO_MSG_GOTO(rc, rc, SR_ERR_INTERNAL, cleanup, "Adding to ly_set failed");
@@ -2179,10 +2183,11 @@ dm_disable_module_running(dm_ctx_t *ctx, dm_session_t *session, const char *modu
             rc = dm_set_node_state(iter, DM_NODE_DISABLED);
             CHECK_RC_MSG_GOTO(rc, cleanup, "Set node state failed");
 
-            ly_set_rm_index(stack, stack->number -1);
+            ly_set_rm_index(stack, stack->number - 1);
 
             if ((LYS_CONTAINER | LYS_LIST) & iter->nodetype) {
-                LY_TREE_FOR(iter->child, child) {
+                LY_TREE_FOR(iter->child, child)
+                {
                     if (((LYS_CONTAINER | LYS_LIST | LYS_LEAF | LYS_LEAFLIST) & child->nodetype) && dm_is_node_enabled(child)) {
                         rc = ly_set_add(stack, child);
                         CHECK_ZERO_MSG_GOTO(rc, rc, SR_ERR_INTERNAL, cleanup, "Adding to ly_set failed");
@@ -2212,7 +2217,7 @@ dm_copy_module(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module_name,
     rc = dm_get_module(dm_ctx, module_name, NULL, &module);
     CHECK_RC_MSG_GOTO(rc, cleanup, "dm_get_module failed");
 
-    if (0 != ly_set_add(module_set, (struct lys_module *) module)){
+    if (0 != ly_set_add(module_set, (struct lys_module *) module)) {
         SR_LOG_ERR_MSG("ly_set_add failed");
         goto cleanup;
     }
@@ -2250,7 +2255,7 @@ dm_copy_all_models(dm_ctx_t *dm_ctx, dm_session_t *session, sr_datastore_t src, 
         if (!enabled) {
             continue;
         }
-        if (0 != ly_set_add(enabled_modules, (struct lys_module *)module)) {
+        if (0 != ly_set_add(enabled_modules, (struct lys_module *) module)) {
             SR_LOG_ERR_MSG("ly_set_add failed");
             goto cleanup;
         }

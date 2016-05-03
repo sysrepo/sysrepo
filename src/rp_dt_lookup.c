@@ -32,9 +32,9 @@ rp_dt_find_nodes(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char 
     if (NULL == data_tree) {
         return SR_ERR_NOT_FOUND;
     }
-    CHECK_NULL_ARG3(data_tree->schema,data_tree->schema->module, data_tree->schema->module->name);
+    CHECK_NULL_ARG3(data_tree->schema, data_tree->schema->module, data_tree->schema->module->name);
     struct ly_set *res = lyd_get_node(data_tree, xpath);
-    if (NULL == res){
+    if (NULL == res) {
         SR_LOG_ERR_MSG("Lyd get node failed");
         return LY_EINVAL == ly_errno || LY_EVALID == ly_errno ? SR_ERR_INVAL_ARG : SR_ERR_INTERNAL;
     }
@@ -49,11 +49,11 @@ rp_dt_find_nodes(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char 
             return rc;
         }
         pthread_rwlock_rdlock(&si->model_lock);
-        for (int i = res->number - 1; i>=0; i--) {
+        for (int i = res->number - 1; i >= 0; i--) {
             if (!dm_is_enabled_check_recursively(res->set.d[i]->schema)) {
                 memmove(&res->set.d[i],
-                    &res->set.d[i+1],
-                    (res->number - i - 1) * sizeof(*res->set.d));
+                        &res->set.d[i + 1],
+                        (res->number - i - 1) * sizeof (*res->set.d));
                 res->number--;
             }
         }
@@ -84,13 +84,12 @@ rp_dt_find_node(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char *
     } else if (1 != res->number) {
         SR_LOG_ERR("Xpath %s matches more than one node", xpath);
         rc = SR_ERR_INVAL_ARG;
-    } else{
+    } else {
         *node = res->set.d[0];
     }
     ly_set_free(res);
     return rc;
 }
-
 
 int
 rp_dt_find_nodes_with_opts(const dm_ctx_t *dm_ctx, dm_session_t *dm_session, rp_dt_get_items_ctx_t *get_items_ctx, struct lyd_node *data_tree,
@@ -144,13 +143,13 @@ rp_dt_find_nodes_with_opts(const dm_ctx_t *dm_ctx, dm_session_t *dm_session, rp_
     CHECK_NULL_NOMEM_RETURN(*nodes);
 
     /* selection from matched nodes */
-    for (; index < get_items_ctx->nodes->number; index++){
+    for (; index < get_items_ctx->nodes->number; index++) {
         if (cnt >= limit) {
             break;
         }
         /* append node to result if it is in chosen range*/
         if (index >= offset) {
-            if (0 != ly_set_add(*nodes, get_items_ctx->nodes->set.d[index])){
+            if (0 != ly_set_add(*nodes, get_items_ctx->nodes->set.d[index])) {
                 SR_LOG_ERR_MSG("Adding to the result nodes failed");
                 ly_set_free(*nodes);
                 *nodes = NULL;
@@ -162,7 +161,7 @@ rp_dt_find_nodes_with_opts(const dm_ctx_t *dm_ctx, dm_session_t *dm_session, rp_
 
     /* mark the index where the processing stopped*/
     get_items_ctx->offset = index;
-    if (0 == cnt){
+    if (0 == cnt) {
         ly_set_free(*nodes);
         *nodes = NULL;
         return SR_ERR_NOT_FOUND;

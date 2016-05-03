@@ -261,9 +261,9 @@ int dm_update_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, struct
 int dm_commit_prepare_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t **c_ctx);
 
 /**
- * @brief Loads the data tree which has been modified in the session to the commit session. If the session copy has
- * the same timestamp as the file system file it is copied otherwise it is loaded from file.
- * In case of error all files are closed.
+ * @brief Loads the data tree which has been modified in the session to the commit context. If the session copy has
+ * the same timestamp as the file system file it is copied otherwise, data tree is loaded from file and the changes
+ * made in the session are applied.
  * @param [in] dm_ctx
  * @param [in] session
  * @param [in] c_ctx - commit context
@@ -500,7 +500,7 @@ int dm_has_enabled_subtree(dm_ctx_t *ctx, const char *module_name, const struct 
  * @param [in] module Libyang schema tree pointer. If not known, NULL can be provided.
  * @return Error code (SR_ERR_OK on success)
  */
-int dm_enable_module_runnig(dm_ctx_t *ctx, dm_session_t *session, const char *module_name, const struct lys_module *module);
+int dm_enable_module_running(dm_ctx_t *ctx, dm_session_t *session, const char *module_name, const struct lys_module *module);
 
 /**
  * @brief Disables module in running data store

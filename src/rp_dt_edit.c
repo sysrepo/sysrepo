@@ -86,31 +86,33 @@ rp_dt_check_node_deletion(struct lyd_node *node, struct ly_set *delete_nodes, bo
     int rc = SR_ERR_OK;
     if (NULL != node->schema &&
             LYS_LEAF == node->schema->nodetype) {
-            bool is_key = false;
-            rc = rp_dt_has_key(node->parent, node->schema->name, &is_key);
-            if (SR_ERR_OK != rc){
-                SR_LOG_ERR_MSG("Has key failed");
-                return rc;
-            }
-            if (is_key){
-                //check if the whole list is to be deleted
-                struct lyd_node *iter = NULL;
-                LY_TREE_FOR(node->parent->child, iter){
-                    bool found = false;
-                    for(size_t j = 0; j < delete_nodes->number; j++) {
-                        if (iter == delete_nodes->set.d[j]) {
-                            found = true;
-                            break;
-                        }
-                    }
-                    if (!found) {
-                        *can_be_removed = false;
-                        return rc;
+        bool is_key = false;
+        rc = rp_dt_has_key(node->parent, node->schema->name, &is_key);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR_MSG("Has key failed");
+            return rc;
+        }
+        if (is_key) {
+            //check if the whole list is to be deleted
+            struct lyd_node *iter = NULL;
+
+            LY_TREE_FOR(node->parent->child, iter)
+            {
+                bool found = false;
+                for (size_t j = 0; j < delete_nodes->number; j++) {
+                    if (iter == delete_nodes->set.d[j]) {
+                        found = true;
+                        break;
                     }
                 }
-
+                if (!found) {
+                    *can_be_removed = false;
+                    return rc;
+                }
             }
+
         }
+    }
     *can_be_removed = true;
     return rc;
 }
@@ -166,15 +168,14 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, co
 
     /* find nodes nodes to be deleted */
     rc = rp_dt_find_nodes(dm_ctx, info->node, xpath, dm_is_running_ds_session(session), &nodes);
-    if (SR_ERR_NOT_FOUND == rc ) {
+    if (SR_ERR_NOT_FOUND == rc) {
         if (SR_EDIT_STRICT & options) {
             SR_LOG_ERR("No nodes to be deleted with strict option %s", xpath);
             return dm_report_error(session, NULL, strdup(xpath), SR_ERR_DATA_MISSING);
         } else {
             return SR_ERR_OK;
         }
-    }
-    else if (SR_ERR_OK != rc) {
+    } else if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Find nodes failed %s", xpath);
         return rc;
     }
@@ -183,7 +184,7 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, co
     for (size_t i = 0; i < nodes->number; i++) {
         bool can_be_deleted = false;
         rc = rp_dt_check_node_deletion(nodes->set.d[i], nodes, &can_be_deleted);
-        if (SR_ERR_OK != rc){
+        if (SR_ERR_OK != rc) {
             SR_LOG_ERR("Check node deletion failed %s", xpath);
             goto cleanup;
         }
@@ -198,7 +199,7 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, co
     if (SR_EDIT_NON_RECURSIVE & options) {
         for (size_t i = 0; i < nodes->number; i++) {
             if ((nodes->set.d[i]->schema->nodetype & (LYS_LIST | LYS_CONTAINER)) &&
-                 !rp_dt_has_only_keys(nodes->set.d[i])) {
+                    !rp_dt_has_only_keys(nodes->set.d[i])) {
                 SR_LOG_ERR("List of the nodes to be deleted contains list or container with non recursive opt %s", xpath);
                 rc = dm_report_error(session, NULL, strdup(xpath), SR_ERR_DATA_EXISTS);
                 goto cleanup;
@@ -211,7 +212,7 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, co
 
     /* unlink nodes and save their parents */
     for (size_t i = 0; i < nodes->number; i++) {
-        if (NULL != nodes->set.d[i]->parent){
+        if (NULL != nodes->set.d[i]->parent) {
             ly_set_add(parents, nodes->set.d[i]->parent);
         }
 
@@ -327,17 +328,17 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const
         bool is_key = false;
         rc = rp_dt_has_sch_key(sch_node->parent, sch_node->name, &is_key);
         if (SR_ERR_OK != rc) {
-           SR_LOG_ERR_MSG("Has key failed");
-           return rc;
+            SR_LOG_ERR_MSG("Has key failed");
+            return rc;
         }
         if (is_key) {
-           SR_LOG_ERR("Value of the key can not be set %s", xpath);
-           return dm_report_error(session, "Value of the key can not be set", strdup(xpath), SR_ERR_INVAL_ARG);
+            SR_LOG_ERR("Value of the key can not be set %s", xpath);
+            return dm_report_error(session, "Value of the key can not be set", strdup(xpath), SR_ERR_INVAL_ARG);
         }
     }
 
     /* transform new value from sr_val_t to string */
-    if (NULL != value){
+    if (NULL != value) {
         rc = sr_val_to_str(value, sch_node, &new_value);
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR_MSG("Copy new value to string failed");
@@ -352,19 +353,19 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const
     /* non-recursive flag */
     if (SR_EDIT_NON_RECURSIVE & options) {
         if (NULL != sch_node->parent) {
-           char *last_slash = rindex(xpath, '/');
-           CHECK_NULL_NOMEM_GOTO(last_slash, rc, cleanup);
-           char *parent_node = strndup(xpath, last_slash-xpath-1);
-           CHECK_NULL_NOMEM_GOTO(parent_node, rc, cleanup);
-           struct ly_set *res = lyd_get_node(info->node, parent_node);
-           free(parent_node);
-           if (NULL == res ||0 == res->number) {
-               SR_LOG_ERR("A preceding node is missing '%s' create it or omit the non recursive option", xpath);
-               ly_set_free(res);
-               free(new_value);
-               return dm_report_error(session, "A preceding node is missing", strdup(xpath), SR_ERR_DATA_MISSING);
-           }
-           ly_set_free(res);
+            char *last_slash = rindex(xpath, '/');
+            CHECK_NULL_NOMEM_GOTO(last_slash, rc, cleanup);
+            char *parent_node = strndup(xpath, last_slash - xpath - 1);
+            CHECK_NULL_NOMEM_GOTO(parent_node, rc, cleanup);
+            struct ly_set *res = lyd_get_node(info->node, parent_node);
+            free(parent_node);
+            if (NULL == res || 0 == res->number) {
+                SR_LOG_ERR("A preceding node is missing '%s' create it or omit the non recursive option", xpath);
+                ly_set_free(res);
+                free(new_value);
+                return dm_report_error(session, "A preceding node is missing", strdup(xpath), SR_ERR_DATA_MISSING);
+            }
+            ly_set_free(res);
         }
     }
 
@@ -384,7 +385,7 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const
         }
     }
     /* remove default tag if the default value has been explictly set */
-    if (NULL == node && sch_node->nodetype == LYS_LEAF && ((struct lys_node_leaf *) sch_node)->dflt != NULL && 0 == strcmp(((struct lys_node_leaf *) sch_node)->dflt, new_value) ){
+    if (NULL == node && sch_node->nodetype == LYS_LEAF && ((struct lys_node_leaf *) sch_node)->dflt != NULL && 0 == strcmp(((struct lys_node_leaf *) sch_node)->dflt, new_value)) {
         rc = rp_dt_find_node(dm_ctx, info->node, xpath, dm_is_running_ds_session(session), &node);
         CHECK_RC_LOG_GOTO(rc, cleanup, "Created node %s not found", xpath);
         node->dflt = 0;
@@ -392,7 +393,7 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const
     lyd_wd_add(module->ctx, &info->node, LYD_WD_IMPL_TAG);
 cleanup:
     free(new_value);
-    if (NULL != info){
+    if (NULL != info) {
         info->modified = SR_ERR_OK == rc ? true : info->modified;
     }
     return rc;
@@ -430,7 +431,7 @@ rp_dt_move_list(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, sr_m
     }
 
     if (!((LYS_LIST | LYS_LEAFLIST) & node->schema->nodetype) || (!(LYS_USERORDERED & node->schema->flags))) {
-        SR_LOG_ERR ("Xpath %s does not identify the user ordered list or leaf-list", xpath);
+        SR_LOG_ERR("Xpath %s does not identify the user ordered list or leaf-list", xpath);
         return SR_ERR_INVAL_ARG;
     }
 
@@ -439,8 +440,7 @@ rp_dt_move_list(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, sr_m
         if (SR_ERR_NOT_FOUND == rc) {
             rc = dm_report_error(session, "Relative item for move operation not found", strdup(relative_item), SR_ERR_INVAL_ARG);
             goto cleanup;
-        }
-        else if (SR_ERR_OK != rc) {
+        } else if (SR_ERR_OK != rc) {
             SR_LOG_ERR_MSG("Find the closest sibling failed");
             return rc;
         }
@@ -454,13 +454,13 @@ rp_dt_move_list(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, sr_m
         if (SR_MOVE_FIRST == position) {
             sibling = siblings->set.d[0];
         } else if (SR_MOVE_LAST == position) {
-            sibling = siblings->set.d[siblings->number -1];
+            sibling = siblings->set.d[siblings->number - 1];
         }
         ly_set_free(siblings);
     }
 
     if (NULL == sibling || !((LYS_LIST | LYS_LEAFLIST) & sibling->schema->nodetype) || (!(LYS_USERORDERED & sibling->schema->flags)) || (node->schema != sibling->schema)) {
-        SR_LOG_ERR ("Xpath %s does not identify the user ordered list or leaf-list or sibling node", xpath);
+        SR_LOG_ERR("Xpath %s does not identify the user ordered list or leaf-list or sibling node", xpath);
         return SR_ERR_INVAL_ARG;
     }
 
@@ -497,13 +497,13 @@ rp_dt_move_list_wrapper(rp_ctx_t *rp_ctx, rp_session_t *session, const char *xpa
     }
 
     rc = dm_add_operation(session->dm_session, DM_MOVE_OP, xpath, NULL, 0, position, relative_item);
-    if (SR_ERR_OK != rc){
+    if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Adding operation to session op list failed");
         return rc;
     }
 
     rc = rp_dt_move_list(rp_ctx->dm_ctx, session->dm_session, xpath, position, relative_item);
-    if (SR_ERR_OK != rc){
+    if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("List move failed");
         dm_remove_last_operation(session->dm_session);
     }
@@ -526,7 +526,7 @@ rp_dt_set_item_wrapper(rp_ctx_t *rp_ctx, rp_session_t *session, const char *xpat
     }
 
     rc = dm_add_operation(session->dm_session, DM_SET_OP, xpath, val, opt, 0, NULL);
-    if (SR_ERR_OK != rc){
+    if (SR_ERR_OK != rc) {
         /* val is freed by dm_add_operation */
         SR_LOG_ERR_MSG("Adding operation to session op list failed");
         return rc;
@@ -553,13 +553,13 @@ rp_dt_delete_item_wrapper(rp_ctx_t *rp_ctx, rp_session_t *session, const char *x
     }
 
     rc = dm_add_operation(session->dm_session, DM_DELETE_OP, xpath, NULL, opts, 0, NULL);
-    if (SR_ERR_OK != rc){
+    if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Adding operation to session op list failed");
         return rc;
     }
 
     rc = rp_dt_delete_item(rp_ctx->dm_ctx, session->dm_session, xpath, opts);
-    if (SR_ERR_OK != rc){
+    if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("List move failed");
         dm_remove_last_operation(session->dm_session);
     }
@@ -594,14 +594,14 @@ rp_dt_replay_operations(dm_ctx_t *ctx, dm_session_t *session, dm_sess_op_t *oper
         }
         /* check if the operation should be skipped */
         bool match = false;
-            for (unsigned int m = 0; m < models_to_skip->number; m++){
-                if (0 == sr_cmp_first_ns(op->xpath, (char *) models_to_skip->set.g[m])){
-                    SR_LOG_DBG("Skipping op for model %s", (char *) models_to_skip->set.g[m]);
-                    match = true;
-                    break;
-                }
+        for (unsigned int m = 0; m < models_to_skip->number; m++) {
+            if (0 == sr_cmp_first_ns(op->xpath, (char *) models_to_skip->set.g[m])) {
+                SR_LOG_DBG("Skipping op for model %s", (char *) models_to_skip->set.g[m]);
+                match = true;
+                break;
             }
-        if (match){
+        }
+        if (match) {
             continue;
         }
 
@@ -619,7 +619,7 @@ rp_dt_replay_operations(dm_ctx_t *ctx, dm_session_t *session, dm_sess_op_t *oper
 
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR("Replay of operation %zu / %zu failed", i, count);
-            if (!continue_on_error){
+            if (!continue_on_error) {
                 return rc;
             } else {
                 op->has_error = true;
@@ -627,9 +627,9 @@ rp_dt_replay_operations(dm_ctx_t *ctx, dm_session_t *session, dm_sess_op_t *oper
             }
         }
     }
-    if (continue_on_error && err_occured){
+    if (continue_on_error && err_occured) {
         return SR_ERR_INTERNAL;
-    } else{
+    } else {
         return rc;
     }
 }
@@ -701,7 +701,7 @@ rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, sr_error_info_t **errors, 
 cleanup:
     dm_free_commit_context(rp_ctx->dm_ctx, commit_ctx);
 
-    if (SR_ERR_OK == rc){
+    if (SR_ERR_OK == rc) {
         /* discard changes in session in next get_data_tree call newly committed content will be loaded */
         rc = dm_discard_changes(rp_ctx->dm_ctx, session->dm_session);
         SR_LOG_DBG_MSG("Commit (7/7): finished successfully");
@@ -718,24 +718,24 @@ rp_dt_create_refresh_errors(const dm_sess_op_t *ops, size_t op_count, sr_error_i
         if (!op->has_error) {
             continue;
         }
-        sr_error_info_t *tmp_err = realloc(*errors, (*err_cnt +1)* sizeof (**errors));
+        sr_error_info_t *tmp_err = realloc(*errors, (*err_cnt + 1) * sizeof(**errors));
         if (NULL == tmp_err) {
             SR_LOG_ERR_MSG("Memory allocation failed");
             return;
         }
         *errors = tmp_err;
         switch (op->op) {
-            case DM_SET_OP:
-                (*errors)[*err_cnt].message = strdup("SET operation can not be merged with current datastore state");
-                break;
-            case DM_DELETE_OP:
-                (*errors)[*err_cnt].message = strdup("DELETE Operation can not be merged with current datastore state");
-                break;
-            case DM_MOVE_OP:
-                (*errors)[*err_cnt].message = strdup("MOVE Operation can not be merged with current datastore state");
-                break;
-            default:
-                (*errors)[*err_cnt].message = strdup("An operation can not be merged with current datastore state");
+        case DM_SET_OP:
+            (*errors)[*err_cnt].message = strdup("SET operation can not be merged with current datastore state");
+            break;
+        case DM_DELETE_OP:
+            (*errors)[*err_cnt].message = strdup("DELETE Operation can not be merged with current datastore state");
+            break;
+        case DM_MOVE_OP:
+            (*errors)[*err_cnt].message = strdup("MOVE Operation can not be merged with current datastore state");
+            break;
+        default:
+            (*errors)[*err_cnt].message = strdup("An operation can not be merged with current datastore state");
         }
         (*errors)[*err_cnt].xpath = strdup(op->xpath);
         (*err_cnt)++;
@@ -769,7 +769,7 @@ rp_dt_refresh_session(rp_ctx_t *rp_ctx, rp_session_t *session, sr_error_info_t *
 
     /* replay operations continue on error */
     rc = rp_dt_replay_operations(rp_ctx->dm_ctx, session->dm_session,
-                ops, op_count, true, up_to_date);
+            ops, op_count, true, up_to_date);
 
     if (SR_ERR_OK != rc) {
         /* report errors for the ops that could not be performed */
