@@ -1,6 +1,7 @@
 set(COMMON_DIR "${CMAKE_CURRENT_SOURCE_DIR}/common")
+set(EXECUTABLES_DIR "${CMAKE_CURRENT_SOURCE_DIR}/executables")
 
-include_directories("${PROJECT_SOURCE_DIR}/inc" "${CMAKE_CURRENT_SOURCE_DIR}" "${COMMON_DIR}")
+include_directories("${PROJECT_SOURCE_DIR}/inc" "${CMAKE_CURRENT_SOURCE_DIR}" "${COMMON_DIR}" "${EXECUTABLES_DIR}")
 
 #compile protobuf-c
 set(PROTO_NAME sysrepo)
@@ -24,11 +25,11 @@ configure_file("${COMMON_DIR}/sr_constants.h.in" "${COMMON_DIR}/sr_constants.h" 
 # common sources
 set (COMMON_SOURCES
     ${GENERATED_PROTO}
-    common/sr_common.c
-    common/sr_utils.c
-    common/sr_data_structs.c
-    common/sr_logger.c
-    common/sr_protobuf.c
+    ${COMMON_DIR}/sr_common.c
+    ${COMMON_DIR}/sr_utils.c
+    ${COMMON_DIR}/sr_data_structs.c
+    ${COMMON_DIR}/sr_logger.c
+    ${COMMON_DIR}/sr_protobuf.c
 )
 
 # client library sources
@@ -80,11 +81,11 @@ target_link_libraries(sysrepo-engine ${LINK_LIBRARIES})
 target_link_libraries(sysrepo-engine_so ${LINK_LIBRARIES})
 
 # sysrepo daemon
-add_executable(sysrepod daemon.c)
+add_executable(sysrepod ${EXECUTABLES_DIR}/sysrepod.c)
 target_link_libraries(sysrepod sysrepo-engine)
 
-# sysrepo ctl tool
-add_executable(sysrepoctl sysrepoctl.c)
+# sysrepoctl tool
+add_executable(sysrepoctl ${EXECUTABLES_DIR}/sysrepoctl.c)
 target_link_libraries(sysrepoctl sysrepo ${YANG_LIBRARIES})
 
 install(TARGETS sysrepo_so DESTINATION ${LIB_INSTALL_DIR})
