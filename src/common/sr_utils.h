@@ -1,7 +1,7 @@
 /**
  * @file sr_utils.h
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
- * @brief TODO
+ * @brief Sysrepo utility functions API.
  *
  * @copyright
  * Copyright 2016 Cisco Systems, Inc.
@@ -23,6 +23,11 @@
 #define SR_UTILS_H_
 
 #include <libyang/libyang.h>
+
+/**
+ * @addtogroup common Common Routines
+ * @{
+ */
 
 /**
  * @brief Converts byte buffer content to uint32_t number.
@@ -289,5 +294,7 @@ void sr_free_errors(sr_error_info_t *sr_errors, size_t sr_error_cnt);
  * @param [in] schema
  */
 void sr_free_schema(sr_schema_t *schema);
+
+/**@} common */
 
 #endif /* SR_UTILS_H_ */
