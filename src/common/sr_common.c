@@ -165,68 +165,6 @@ sr_lyd_unlink(dm_data_info_t *data_info, struct lyd_node *node)
 }
 
 struct lyd_node *
-sr_lyd_new(dm_data_info_t *data_info, struct lyd_node *parent, const struct lys_module *module, const char* node_name)
-{
-    int rc = SR_ERR_OK;
-    CHECK_NULL_ARG_NORET3(rc, data_info, module, node_name);
-    if (SR_ERR_OK != rc){
-        return NULL;
-    }
-
-    struct lyd_node *new = NULL;
-    new = lyd_new(parent, module, node_name);
-
-    if (NULL == parent) {
-        if (NULL == data_info->node) {
-            data_info->node = new;
-        } else {
-            struct lyd_node *last_sibling = data_info->node;
-            while (NULL != last_sibling->next) {
-                last_sibling = last_sibling->next;
-            }
-            if (0 != lyd_insert_after(last_sibling, new)) {
-                SR_LOG_ERR_MSG("Append of top level node failed");
-                lyd_free(new);
-                return NULL;
-            }
-        }
-    }
-
-    return new;
-}
-
-struct lyd_node *
-sr_lyd_new_leaf(dm_data_info_t *data_info, struct lyd_node *parent, const struct lys_module *module, const char *node_name, const char *value)
-{
-    int rc = SR_ERR_OK;
-    CHECK_NULL_ARG_NORET4(rc, data_info, module, node_name, value);
-    if (SR_ERR_OK != rc){
-        return NULL;
-    }
-
-    struct lyd_node *new = NULL;
-    new = lyd_new_leaf(parent, module, node_name, value);
-
-    if (NULL == parent) {
-        if (NULL == data_info->node) {
-            data_info->node = new;
-        } else {
-            struct lyd_node *last_sibling = data_info->node;
-            while (NULL != last_sibling->next) {
-                last_sibling = last_sibling->next;
-            }
-            if (0 != lyd_insert_after(last_sibling, new)) {
-                SR_LOG_ERR_MSG("Append of top level node failed");
-                lyd_free(new);
-                return NULL;
-            }
-        }
-    }
-
-    return new;
-}
-
-struct lyd_node *
 sr_lyd_new_path(dm_data_info_t *data_info, struct ly_ctx *ctx, const char *path, const char *value, int options)
 {
     int rc = SR_ERR_OK;

@@ -88,27 +88,6 @@ typedef struct dm_data_info_s dm_data_info_t;
 int sr_lyd_unlink(dm_data_info_t *data_info, struct lyd_node *node);
 
 /**
- * lyd_new wrapper handle the creation of the container or list
- * @param data_info
- * @param parent
- * @param module
- * @param node_name
- * @return created node or NULL in case of error
- */
-struct lyd_node *sr_lyd_new(dm_data_info_t *data_info, struct lyd_node *parent, const struct lys_module *module, const char *node_name);
-
-/**
- * lyd_new wrapper handle the creation of the leaf or leaflist
- * @param data_info
- * @param parent
- * @param module
- * @param node_name
- * @param value
- * @return created node or NULL in case of error
- */
-struct lyd_node *sr_lyd_new_leaf(dm_data_info_t *data_info, struct lyd_node *parent, const struct lys_module *module, const char *node_name, const char *value);
-
-/**
  * @brief Call lyd_new_path if the data info does not contain a node attaches the created node.
  * @param [in] data_info
  * @param [in] ctx
