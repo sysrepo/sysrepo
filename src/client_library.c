@@ -1465,3 +1465,17 @@ cleanup:
     }
     return cl_session_return(session, rc);
 }
+
+int
+sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callback,
+        void *private_ctx, sr_subscription_ctx_t **subscription)
+{
+    return SR_ERR_UNSUPPORTED;
+}
+
+int
+sr_rpc_send(sr_session_ctx_t *session, const char *xpath,
+        sr_val_t *input,  size_t input_cnt, sr_val_t **output, size_t *output_cnt)
+{
+    return SR_ERR_UNSUPPORTED;
+}
