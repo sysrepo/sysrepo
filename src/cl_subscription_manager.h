@@ -52,6 +52,7 @@ typedef struct sr_subscription_ctx_s {
         sr_feature_enable_cb feature_enable_cb;  /**< Callback to be called by feature enable/disable event. */
         sr_module_install_cb module_install_cb;  /**< Callback to be called by module (un)install event. */
         sr_module_change_cb module_change_cb;    /**< Callback to be called by module change event. */
+        sr_rpc_cb rpc_cb;                        /**< Callback to be called by RPC delivery. */
     } callback;
     cl_sm_ctx_t *sm_ctx;                         /**< Associated Subscription Manager context. */
     sr_session_ctx_t *data_session;              /**< Pointer to a data session that can be used from notification callbacks. */

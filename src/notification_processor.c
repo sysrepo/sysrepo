@@ -289,7 +289,8 @@ np_notification_subscribe(np_ctx_t *np_ctx, const rp_session_t *rp_session, Sr__
     subscription->enable_running = enable_running;
 
     /* save the new subscription */
-    if (SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV == event_type) {
+    if ((SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV == event_type) ||
+            (SR__NOTIFICATION_EVENT__RPC_EV == event_type)) {
         /*  update notification destination info */
         rc = np_dst_info_insert(np_ctx, dst_address, module_name);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to update notification destination info.");
@@ -351,7 +352,8 @@ np_notification_unsubscribe(np_ctx_t *np_ctx,  const rp_session_t *rp_session, S
 
     SR_LOG_DBG("Notification unsubscribe: dst_address='%s', dst_id=%"PRIu32".", dst_address, dst_id);
 
-    if (SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV == event_type) {
+    if ((SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV == event_type) ||
+            (SR__NOTIFICATION_EVENT__RPC_EV == event_type)) {
         /* remove the subscription to module's persistent data */
         subscription_lookup.dst_address = dst_address;
         subscription_lookup.dst_id = dst_id;

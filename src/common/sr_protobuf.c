@@ -1154,6 +1154,8 @@ sr_event_gpb_to_str(Sr__NotificationEvent event)
         return "feature-enable";
     case SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV:
         return "module-change";
+    case SR__NOTIFICATION_EVENT__RPC_EV:
+        return "rpc";
     case SR__NOTIFICATION_EVENT__HELLO_EV:
         return "hello";
     default:
