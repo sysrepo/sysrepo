@@ -52,11 +52,11 @@
  * @brief Client Subscription Manager context.
  */
 typedef struct cl_sm_ctx_s {
-    /** Path where unix-domain server for notifications is binded to. */
+    /** Path where subscriber unix-domain server is binded to. */
     char *socket_path;
     /** Socket descriptor used to listen & accept new unix-domain connections. */
     int listen_socket_fd;
-    /** Binary tree used for fast notification connection lookup by file descriptor. */
+    /** Binary tree used for fast subscriber connection lookup by file descriptor. */
     sr_btree_t *fd_btree;
     
     /** Binary tree of data connections to sysrepo, organized by destination socket address. */
@@ -88,7 +88,7 @@ typedef struct cl_sm_buffer_s {
 } cl_sm_buffer_t;
 
 /**
- * @brief Context of a notification connection to Subscription Manger's unix-domain server.
+ * @brief Context of a subscriber connection to Subscription Manger's unix-domain server.
  */
 typedef struct cl_sm_conn_ctx_s {
     cl_sm_ctx_t *sm_ctx;      /**< Pointer to Subscription Manger context. */
@@ -256,6 +256,8 @@ cl_sm_conn_close(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn)
 
     CHECK_NULL_ARG2(sm_ctx, conn);
 
+    SR_LOG_DBG("Closing subscriber connection on fd=%d.", conn->fd);
+
     if (NULL != conn->read_watcher.data) {
         ev_io_stop(conn->sm_ctx->event_loop, &conn->read_watcher);
     }
@@ -271,7 +273,7 @@ cl_sm_conn_close(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn)
 }
 
 /**
- * @brief Initializes unix-domain socket server for notification connections.
+ * @brief Initializes unix-domain socket server for subscriber connections.
  */
 static int
 cl_sm_server_init(cl_sm_ctx_t *sm_ctx)
@@ -347,7 +349,7 @@ cleanup:
 }
 
 /**
- * @brief Destroys the unix-domain socket server for notification connections.
+ * @brief Destroys the unix-domain socket server for subscriber connections.
  */
 static void
 cl_sm_server_cleanup(cl_sm_ctx_t *sm_ctx)
@@ -817,7 +819,7 @@ cl_sm_conn_in_buff_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn)
 }
 
 /**
- * @brief Reads data from a notification connection file descriptor and processes them.
+ * @brief Reads data from a subscriber connection file descriptor and processes them.
  */
 static int
 cl_sm_fd_read_data(cl_sm_ctx_t *sm_ctx, int fd)
@@ -834,7 +836,7 @@ cl_sm_fd_read_data(cl_sm_ctx_t *sm_ctx, int fd)
     tmp_conn.fd = fd;
     conn = sr_btree_search(sm_ctx->fd_btree, &tmp_conn);
     if (NULL == conn) {
-        SR_LOG_ERR("Invalid file descriptor fd=%d, matching subscription connection not found.", fd);
+        SR_LOG_ERR("Invalid file descriptor fd=%d, matching subscriber connection not found.", fd);
         return SR_ERR_INVAL_ARG;
     }
 
@@ -884,7 +886,6 @@ cl_sm_fd_read_data(cl_sm_ctx_t *sm_ctx, int fd)
 
     /* close the connection if requested */
     if (conn->close_requested) {
-        SR_LOG_DBG("Closing notification connection on fd=%d.", fd);
         cl_sm_conn_close(sm_ctx, conn);
         rc = SR_ERR_DISCONNECT;
     }
