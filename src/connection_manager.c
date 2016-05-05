@@ -240,10 +240,10 @@ cm_connection_data_cleanup(void *connection)
 }
 
 /**
- * @brief Request removal of subscriptions with the delivery address specified in destination_address.
+ * @brief Request removal of subscriptions with the specified destination address.
  */
 static int
-cm_notif_unsubscribe_destination(cm_ctx_t *cm_ctx, const char *destination_address)
+cm_subscr_unsubscribe_destination(cm_ctx_t *cm_ctx, const char *destination_address)
 {
     Sr__Msg *msg_req = NULL;
     int rc = SR_ERR_OK;
@@ -314,9 +314,9 @@ cm_conn_close(cm_ctx_t *cm_ctx, sm_connection_t *conn)
     }
 
     if (CM_AF_UNIX_SERVER == conn->type && NULL != conn->dst_address) {
-        /* this was a notification connection, remove the subscriptions for that destination */
-        SR_LOG_DBG("Notification server at '%s' has disconnected.", conn->dst_address);
-        cm_notif_unsubscribe_destination(cm_ctx, conn->dst_address);
+        /* this was a subscriber connection, remove the subscriptions for that destination */
+        SR_LOG_DBG("Subscription server at '%s' has disconnected.", conn->dst_address);
+        cm_subscr_unsubscribe_destination(cm_ctx, conn->dst_address);
     }
 
     /* cleanup connection, pointers to the connection from outstanding sessions will be set to NULL */
@@ -718,6 +718,7 @@ cm_resp_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, sm_session_t *session, 
     if (session->cm_data->rp_resp_expected > 0) {
         /* the response is expected, forward it to Request Processor */
         rc = rp_msg_process(cm_ctx->rp_ctx, session->cm_data->rp_session, msg);
+        session->cm_data->rp_resp_expected -= 1;
     } else {
         /* the response is unexpected */
         SR_LOG_ERR("Unexpected response received to session id=%"PRIu32".", session->id);
@@ -768,7 +769,7 @@ cm_conn_msg_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, uint8_t *msg_data, 
             rc = SR_ERR_INVAL_ARG;
             goto cleanup;
         }
-        if (conn != session->connection) {
+        if (CM_AF_UNIX_SERVER != conn->type && conn != session->connection) {
             SR_LOG_ERR("Session mismatched with connection (session id=%"PRIu32", conn=%p).",
                     msg->session_id, (void*)conn);
             rc = SR_ERR_INVAL_ARG;
@@ -1046,10 +1047,10 @@ cm_server_watcher_cb(struct ev_loop *loop, ev_io *w, int revents)
 }
 
 /**
- * @brief Creates a new connection to the notification destination address.
+ * @brief Creates a new connection to the subscriber destination address.
  */
 static int
-cm_notif_conn_create(cm_ctx_t *cm_ctx, const char *socket_path, sm_connection_t **connection_p)
+cm_subscr_conn_create(cm_ctx_t *cm_ctx, const char *socket_path, sm_connection_t **connection_p)
 {
     int fd = -1;
     struct sockaddr_un addr = { 0, };
@@ -1107,7 +1108,7 @@ cm_notif_conn_create(cm_ctx_t *cm_ctx, const char *socket_path, sm_connection_t 
             rc = SR_ERR_DISCONNECT;
             goto cleanup;
         } else {
-            SR_LOG_ERR("Unable to connect to notification socket=%s: %s", socket_path, strerror(errno));
+            SR_LOG_ERR("Unable to connect to subscriber socket=%s: %s", socket_path, strerror(errno));
             rc = SR_ERR_DISCONNECT;
             goto cleanup;
         }
@@ -1144,7 +1145,7 @@ cm_out_notif_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
 
     CHECK_NULL_ARG3(cm_ctx, msg, msg->notification);
 
-    SR_LOG_DBG_MSG("Sending a new notification.");
+    SR_LOG_DBG("Sending a notification to '%s'.", msg->notification->destination_address);
 
     /* fill-in source address */
     msg->notification->source_address = strdup(cm_ctx->server_socket_path);
@@ -1160,7 +1161,7 @@ cm_out_notif_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
     } else {
         /* connection to that destination does not exist - connect */
         SR_LOG_DBG("Creating a new connection for the notification destination '%s'", msg->notification->destination_address);
-        rc = cm_notif_conn_create(cm_ctx, msg->notification->destination_address, &connection);
+        rc = cm_subscr_conn_create(cm_ctx, msg->notification->destination_address, &connection);
     }
 
     /* send the message */
@@ -1170,7 +1171,64 @@ cm_out_notif_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
 
     if (SR_ERR_OK != rc) {
         /* by error, remove subscriptions on this destination */
-        cm_notif_unsubscribe_destination(cm_ctx, msg->notification->destination_address);
+        cm_subscr_unsubscribe_destination(cm_ctx, msg->notification->destination_address);
+    }
+
+    sr__msg__free_unpacked(msg, NULL);
+
+    return rc;
+}
+
+/**
+ * @brief Processes an outgoing RPC (RPC to be sent to the client library).
+ */
+static int
+cm_out_rpc_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
+{
+    sm_session_t *session = NULL;
+    sm_connection_t *connection = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG4(cm_ctx, msg, msg->request, msg->request->rpc_req);
+
+    SR_LOG_DBG("Sending a RPC request to '%s'.", msg->request->rpc_req->subscriber_address);
+
+    /* find the session */
+    rc = sm_session_find_id(cm_ctx->sm_ctx, msg->session_id, &session);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Unable to find the session matching with id specified in the message "
+                "(id=%"PRIu32").", msg->session_id);
+        sr__msg__free_unpacked(msg, NULL);
+        return SR_ERR_INTERNAL;
+    }
+    if ((NULL == session) || (NULL == session->cm_data)) {
+        SR_LOG_ERR("invalid session context - NULL value detected (id=%"PRIu32").", msg->session_id);
+        sr__msg__free_unpacked(msg, NULL);
+        return SR_ERR_INTERNAL;
+    }
+    /* track that we expect a response for this session */
+    session->cm_data->rp_resp_expected += 1;
+
+    /* get a connection to the RPC destination */
+    rc = sm_connection_find_dst(cm_ctx->sm_ctx, msg->request->rpc_req->subscriber_address, &connection);
+    if (SR_ERR_OK == rc) {
+        /* a connection to the destination already exists - reuse */
+        SR_LOG_DBG("Reusing existing connection on fd=%d for the RPC destination '%s'",
+                connection->fd, msg->request->rpc_req->subscriber_address);
+    } else {
+        /* connection to that destination does not exist - connect */
+        SR_LOG_DBG("Creating a new connection for the RPC destination '%s'", msg->request->rpc_req->subscriber_address);
+        rc = cm_subscr_conn_create(cm_ctx, msg->request->rpc_req->subscriber_address, &connection);
+    }
+
+    /* send the message */
+    if (SR_ERR_OK == rc) {
+        rc = cm_msg_send_connection(cm_ctx, connection, msg);
+    }
+
+    if (SR_ERR_OK != rc) {
+        /* by error, remove subscriptions on this destination */
+        cm_subscr_unsubscribe_destination(cm_ctx, msg->request->rpc_req->subscriber_address);
     }
 
     sr__msg__free_unpacked(msg, NULL);
@@ -1267,8 +1325,12 @@ cm_msg_enqueue_cb(struct ev_loop *loop, ev_async *w, int revents)
 
         if (dequeued) {
             if (SR__MSG__MSG_TYPE__NOTIFICATION == msg->type) {
-                /* process as a notification */
+                /* send the notification via subscriber connection */
                 cm_out_notif_process(cm_ctx, msg);
+            } else if ((SR__MSG__MSG_TYPE__REQUEST == msg->type) &&
+                    (SR__OPERATION__RPC == msg->request->operation)) {
+                /* send the RPC request via subscriber connection */
+                cm_out_rpc_process(cm_ctx, msg);
             } else {
                 /* process as a normal message */
                 cm_out_msg_process(cm_ctx, msg);

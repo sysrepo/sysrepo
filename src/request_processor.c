@@ -901,6 +901,81 @@ rp_unsubscribe_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
 }
 
 /**
+ * @brief Processes a RPC request.
+ */
+static int
+rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
+{
+    char *module_name = NULL;
+    np_subscription_t *subscriptions = NULL;
+    size_t subscription_cnt = 0;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG_NORET5(rc, rp_ctx, session, msg, msg->request, msg->request->rpc_req);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Invalid argument passed in.");
+
+    SR_LOG_DBG_MSG("Processing RPC request.");
+
+    rc = sr_copy_first_ns(msg->request->rpc_req->xpath, &module_name);
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to extract module name from xpath '%s'.", msg->request->rpc_req->xpath);
+
+    // TODO verify RPC request against YANG
+
+    /* get RPC subscription */
+    rc = pm_get_subscriptions(rp_ctx->pm_ctx, module_name, SR__NOTIFICATION_EVENT__RPC_EV,
+            &subscriptions, &subscription_cnt);
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to retrieve RPC subscriptions for '%s'.", msg->request->rpc_req->xpath);
+    free(module_name);
+
+    /* forward RPC request */
+    if (subscription_cnt > 0) {
+        // TODO: what to do if there are more RPC subscribers?
+        msg->request->rpc_req->subscriber_address = strdup(subscriptions[0].dst_address);
+        CHECK_NULL_NOMEM_GOTO(msg->request->rpc_req->subscriber_address, rc, cleanup);
+        msg->request->rpc_req->subscription_id = subscriptions[0].dst_id;
+        msg->request->rpc_req->has_subscription_id = true;
+        msg->request->rpc_req->session_id = session->id;
+        msg->request->rpc_req->has_session_id = true;
+        rc = cm_msg_send(rp_ctx->cm_ctx, msg);
+    }
+
+    for (size_t i = 0; i < subscription_cnt; i++) {
+        free((void*)subscriptions[i].dst_address);
+    }
+    free(subscriptions);
+
+    return rc;
+
+cleanup:
+    free(module_name);
+    sr__msg__free_unpacked(msg, NULL);
+    return rc;
+}
+
+/**
+ * @brief Processes a RPC response.
+ */
+static int
+rp_rpc_resp_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
+{
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG_NORET5(rc, rp_ctx, session, msg, msg->response, msg->response->rpc_resp);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Invalid argument passed in.");
+
+    // TODO verify RPC request against YANG
+
+    /* forward RPC response to the originator */
+    rc = cm_msg_send(rp_ctx->cm_ctx, msg);
+
+    return rc;
+
+cleanup:
+    sr__msg__free_unpacked(msg, NULL);
+    return rc;
+}
+
+/**
  * @brief Processes an unsubscribe-destination internal request.
  */
 static int
@@ -947,6 +1022,8 @@ rp_msg_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
     }
 
     if (SR__MSG__MSG_TYPE__REQUEST == msg->type) {
+        /* request handling */
+
         dm_clear_session_errors(session->dm_session);
         /* acquire lock for operation accessing data */
         switch (msg->request->operation) {
@@ -965,7 +1042,6 @@ rp_msg_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
                 break;
         }
 
-        /* request handling */
         switch (msg->request->operation) {
             case SR__OPERATION__LIST_SCHEMAS:
                 rc = rp_list_schemas_req_process(rp_ctx, session, msg);
@@ -1021,6 +1097,10 @@ rp_msg_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
             case SR__OPERATION__UNSUBSCRIBE:
                 rc = rp_unsubscribe_req_process(rp_ctx, session, msg);
                 break;
+            case SR__OPERATION__RPC:
+                rc = rp_rpc_req_process(rp_ctx, session, msg);
+                return rc; /* skip further processing and msg cleanup */
+                break;
             default:
                 SR_LOG_ERR("Unsupported request received (session id=%"PRIu32", operation=%d).",
                         session->id, msg->request->operation);
@@ -1050,6 +1130,19 @@ rp_msg_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
                 break;
             default:
                 SR_LOG_ERR("Unsupported internal request received (operation=%d).", msg->request->operation);
+                rc = SR_ERR_UNSUPPORTED;
+                break;
+        }
+    } else if (SR__MSG__MSG_TYPE__RESPONSE == msg->type) {
+        /* response handling */
+        switch (msg->response->operation) {
+            case SR__OPERATION__RPC:
+                rc = rp_rpc_resp_process(rp_ctx, session, msg);
+                return rc; /* skip further processing and msg cleanup */
+                break;
+            default:
+                SR_LOG_ERR("Unsupported response received (session id=%"PRIu32", operation=%d).",
+                        session->id, msg->response->operation);
                 rc = SR_ERR_UNSUPPORTED;
                 break;
         }

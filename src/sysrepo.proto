@@ -505,11 +505,17 @@ message ModuleChangeNotification {
 message RPCReq {
   required string xpath = 1;
   repeated Value input = 2;
+
+  optional string subscriber_address = 10;
+  optional uint32 subscription_id = 11;
+  optional uint32 session_id = 12;
 }
 
 message RPCResp {
   required string xpath = 1;
   repeated Value output = 2;
+
+  optional uint32 session_id = 10;
 }
 
 
@@ -633,7 +639,7 @@ message Response {
   optional SubscribeResp subscribe_resp = 70;
   optional UnsubscribeResp unsubscribe_resp = 71;
 
-    optional RPCReq rpc_resp = 80;
+  optional RPCResp rpc_resp = 80;
 }
 
 /**

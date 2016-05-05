@@ -1190,7 +1190,12 @@ cl_rpc_test(void **state)
     rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
+    /* subscribe for RPC */
     rc = sr_rpc_subscribe(session, "/some-module:rpc-name", test_rpc_cb, &callback_called, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* send a RPC */
+    rc = sr_rpc_send(session, "/some-module:rpc-name", NULL, 0, NULL, 0);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* stop the session */
