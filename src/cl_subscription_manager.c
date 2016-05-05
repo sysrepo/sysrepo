@@ -229,21 +229,19 @@ cl_sm_connection_add(cl_sm_ctx_t *sm_ctx, int fd, cl_sm_conn_ctx_t **conn_p)
     CHECK_NULL_ARG(sm_ctx);
 
     conn = calloc(1, sizeof(*conn));
-    if (NULL == conn) {
-        SR_LOG_ERR_MSG("Unable to allocate subscription connection context.");
-        return SR_ERR_NOMEM;
-    }
+    CHECK_NULL_NOMEM_RETURN(conn);
+
     conn->sm_ctx = sm_ctx;
     conn->fd = fd;
 
     rc = sr_btree_insert(sm_ctx->fd_btree, conn);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Cannot insert new entry into fd binary tree (duplicate fd?).");
-        free(conn);
-        return SR_ERR_INTERNAL;
-    }
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot insert new entry into fd binary tree (duplicate fd?).");
 
     *conn_p = conn;
+    return rc;
+
+cleanup:
+    free(conn);
     return rc;
 }
 
@@ -278,7 +276,7 @@ cl_sm_conn_close(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn)
 static int
 cl_sm_server_init(cl_sm_ctx_t *sm_ctx)
 {
-    int path_len = 0, fd = -1;
+    int path_len = 0, fd = -1, ret = 0;
     int rc = SR_ERR_OK;
     struct sockaddr_un addr;
     mode_t old_umask = 0;
@@ -286,10 +284,8 @@ cl_sm_server_init(cl_sm_ctx_t *sm_ctx)
     /* generate socket path */
     path_len = snprintf(NULL, 0, "%s-%d.sock", CL_SUBSCRIPTIONS_PATH_PREFIX, getpid());
     sm_ctx->socket_path = calloc(path_len + 1, sizeof(*sm_ctx->socket_path));
-    if (NULL == sm_ctx->socket_path) {
-        SR_LOG_ERR_MSG("Unable to allocate socket path string.");
-        return SR_ERR_NOMEM;
-    }
+    CHECK_NULL_NOMEM_RETURN(sm_ctx->socket_path);
+
     snprintf(sm_ctx->socket_path, path_len + 1, "%s-%d.sock", CL_SUBSCRIPTIONS_PATH_PREFIX, getpid());
     unlink(sm_ctx->socket_path);
 
@@ -297,7 +293,7 @@ cl_sm_server_init(cl_sm_ctx_t *sm_ctx)
 
     /* create listening socket */
     fd = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (-1 == fd){
+    if (-1 == fd) {
         SR_LOG_ERR("Socket create error: %s", strerror(errno));
         rc = SR_ERR_INIT_FAILED;
         goto cleanup;
@@ -305,11 +301,7 @@ cl_sm_server_init(cl_sm_ctx_t *sm_ctx)
 
     /* set socket to nonblocking mode */
     rc = sr_fd_set_nonblock(fd);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Cannot set socket to nonblocking mode.");
-        rc = SR_ERR_INIT_FAILED;
-        goto cleanup;
-    }
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot set socket to nonblocking mode.");
 
     memset(&addr, 0, sizeof(addr));
     addr.sun_family = AF_UNIX;
@@ -317,21 +309,12 @@ cl_sm_server_init(cl_sm_ctx_t *sm_ctx)
 
     /* create the unix-domain socket writable to anyone */
     old_umask = umask(0);
-    rc = bind(fd, (struct sockaddr*)&addr, sizeof(addr));
+    ret = bind(fd, (struct sockaddr*)&addr, sizeof(addr));
     umask(old_umask);
+    CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_INIT_FAILED, cleanup, "Socket bind error: %s", strerror(errno));
 
-    if (-1 == rc) {
-        SR_LOG_ERR("Socket bind error: %s", strerror(errno));
-        rc = SR_ERR_INIT_FAILED;
-        goto cleanup;
-    }
-
-    rc = listen(fd, SOMAXCONN);
-    if (-1 == rc) {
-        SR_LOG_ERR("Socket listen error: %s", strerror(errno));
-        rc = SR_ERR_INIT_FAILED;
-        goto cleanup;
-    }
+    ret = listen(fd, SOMAXCONN);
+    CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_INIT_FAILED, cleanup, "Socket listen error: %s", strerror(errno));
 
     sm_ctx->listen_socket_fd = fd;
     return SR_ERR_OK;
@@ -382,16 +365,12 @@ cl_sm_conn_buffer_expand(const cl_sm_conn_ctx_t *conn, cl_sm_buffer_t *buff, siz
             requested_space = CL_SM_BUFF_ALLOC_CHUNK;
         }
         tmp = realloc(buff->data, buff->size + requested_space);
-        if (NULL != tmp) {
-            buff->data = tmp;
-            buff->size += requested_space;
-            SR_LOG_DBG("%s buffer for fd=%d expanded to %zu bytes.",
-                    (&conn->in_buff == buff ? "Input" : "Output"), conn->fd, buff->size);
-        } else {
-            SR_LOG_ERR("Cannot expand %s buffer for fd=%d - not enough memory.",
-                    (&conn->in_buff == buff ? "input" : "output"), conn->fd);
-            return SR_ERR_NOMEM;
-        }
+        CHECK_NULL_NOMEM_RETURN(tmp);
+
+        buff->data = tmp;
+        buff->size += requested_space;
+        SR_LOG_DBG("%s buffer for fd=%d expanded to %zu bytes.",
+                (&conn->in_buff == buff ? "Input" : "Output"), conn->fd, buff->size);
     }
 
     return SR_ERR_OK;
@@ -533,8 +512,8 @@ cl_sm_get_data_session(cl_sm_ctx_t *sm_ctx, sr_subscription_ctx_t *subscription,
         rc = cl_connection_create(&connection);
         if (SR_ERR_OK == rc) {
             connection->dst_address = strdup(source_address);
-            connection->dst_pid = source_pid;
             CHECK_NULL_NOMEM_ERROR(connection->dst_address, rc);
+            connection->dst_pid = source_pid;
         }
         if (SR_ERR_OK == rc) {
             rc = cl_socket_connect(connection, connection->dst_address);
@@ -707,10 +686,7 @@ cl_sm_rpc_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *msg)
 
     /* allocate the response and send it */
     rc = sr_gpb_resp_alloc(SR__OPERATION__RPC, msg->session_id, &resp);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Allocation of RPC response failed.");
-        return SR_ERR_NOMEM;
-    }
+    CHECK_RC_MSG_RETURN(rc, "Allocation of RPC response failed.");
 
     resp->response->result = rpc_rc;
     resp->response->rpc_resp->xpath = strdup(msg->request->rpc_req->xpath);
@@ -1036,7 +1012,7 @@ int
 cl_sm_init(cl_sm_ctx_t **sm_ctx_p)
 {
     cl_sm_ctx_t *ctx = NULL;
-    int rc = SR_ERR_OK;
+    int ret = 0, rc = SR_ERR_OK;
 
     CHECK_NULL_ARG(sm_ctx_p);
 
@@ -1044,46 +1020,28 @@ cl_sm_init(cl_sm_ctx_t **sm_ctx_p)
 
     /* allocate the context */
     ctx = calloc(1, sizeof(*ctx));
-    if (NULL == ctx) {
-        SR_LOG_ERR_MSG("Could not allocate Client Subscription Manger context");
-        return SR_ERR_NOMEM;
-    }
+    CHECK_NULL_NOMEM_RETURN(ctx);
 
     /* create binary tree for fast connection lookup by fd,
      * with automatic cleanup when the session is removed from tree */
     rc = sr_btree_init(cl_sm_connection_cmp_fd, cl_sm_connection_cleanup, &ctx->fd_btree);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Cannot allocate binary tree for FDd.");
-        goto cleanup;
-    }
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate binary tree for FDd.");
 
     /* create binary tree for fast subscription lookup by id */
     rc = sr_btree_init(cl_sm_subscription_cmp_id, cl_sm_subscription_cleanup_internal, &ctx->subscriptions_btree);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Cannot allocate binary tree for subscription IDs.");
-        goto cleanup;
-    }
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate binary tree for subscription IDs.");
 
     /* create binary tree for fast data connection lookup by destination (socket) string */
     rc = sr_btree_init(cl_sm_data_connection_cmp_dst, cl_sm_data_connection_cleanup, &ctx->data_connection_btree);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Cannot allocate binary tree for data connections.");
-        goto cleanup;
-    }
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate binary tree for data connections.");
 
     /* initialize the mutex for subscriptions */
-    rc = pthread_mutex_init(&ctx->subscriptions_lock, NULL);
-    if (0 != rc) {
-        SR_LOG_ERR_MSG("Cannot initialize subscriptions btree mutex.");
-        rc = SR_ERR_INIT_FAILED;
-        goto cleanup;
-    }
+    ret = pthread_mutex_init(&ctx->subscriptions_lock, NULL);
+    CHECK_ZERO_MSG_GOTO(ret, rc, SR_ERR_INIT_FAILED, cleanup, "Cannot initialize subscriptions btree mutex.");
 
     /* initialize unix-domain server */
     rc = cl_sm_server_init(ctx);
-    if (SR_ERR_OK != rc) {
-        goto cleanup;
-    }
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot initialize subscription unix-domain server.");
 
     srand(time(NULL));
 
@@ -1102,12 +1060,8 @@ cl_sm_init(cl_sm_ctx_t **sm_ctx_p)
     ctx->stop_watcher.data = (void*)ctx;
     ev_async_start(ctx->event_loop, &ctx->stop_watcher);
 
-    rc = pthread_create(&ctx->event_loop_thread, NULL, cl_sm_event_loop_threaded, ctx);
-    if (0 != rc) {
-        SR_LOG_ERR("Error by creating a new thread: %s", strerror(errno));
-        rc = SR_ERR_INTERNAL;
-        goto cleanup;
-    }
+    ret = pthread_create(&ctx->event_loop_thread, NULL, cl_sm_event_loop_threaded, ctx);
+    CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_INIT_FAILED, cleanup, "Error by creating a new thread: %s", strerror(errno));
 
     SR_LOG_DBG_MSG("Client Subscription Manager initialized successfully.");
 
@@ -1159,9 +1113,8 @@ cl_sm_subscription_init(cl_sm_ctx_t *sm_ctx, sr_subscription_ctx_t **subscriptio
     CHECK_NULL_ARG2(sm_ctx, subscription_p);
 
     subscription = calloc(1, sizeof(*subscription));
-    if (NULL == subscription) {
-        return SR_ERR_NOMEM;
-    }
+    CHECK_NULL_NOMEM_RETURN(subscription);
+
     subscription->sm_ctx = sm_ctx;
 
     pthread_mutex_lock(&sm_ctx->subscriptions_lock);
@@ -1186,11 +1139,7 @@ cl_sm_subscription_init(cl_sm_ctx_t *sm_ctx, sr_subscription_ctx_t **subscriptio
 
     pthread_mutex_unlock(&sm_ctx->subscriptions_lock);
 
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Cannot insert new entry into subscription binary tree (duplicate id?).");
-        rc = SR_ERR_INTERNAL;
-        goto cleanup;
-    }
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot insert new entry into subscription binary tree (duplicate id?).");
 
     subscription->delivery_address = sm_ctx->socket_path;
     *subscription_p = subscription;
