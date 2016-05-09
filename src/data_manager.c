@@ -2283,10 +2283,12 @@ dm_validate_rpc(dm_ctx_t *dm_ctx, dm_session_t *session, const char *rpc_xpath, 
     char *string_value = NULL;
     int ret = 0, rc = SR_ERR_OK;
 
-    data_tree = lyd_new_path(NULL, dm_ctx->ly_ctx, rpc_xpath, NULL, (input ? 0 : LYD_PATH_OPT_OUTPUT));
-    if (NULL == data_tree) {
-        SR_LOG_ERR("RPC xpath validation failed ('%s'): %s", rpc_xpath, ly_errmsg());
-        return dm_report_error(session, ly_errmsg(), rpc_xpath, SR_ERR_BAD_ELEMENT);
+    if (input) {
+        data_tree = lyd_new_path(NULL, dm_ctx->ly_ctx, rpc_xpath, NULL, (input ? 0 : LYD_PATH_OPT_OUTPUT));
+        if (NULL == data_tree) {
+            SR_LOG_ERR("RPC xpath validation failed ('%s'): %s", rpc_xpath, ly_errmsg());
+            return dm_report_error(session, ly_errmsg(), rpc_xpath, SR_ERR_BAD_ELEMENT);
+        }
     }
 
     for (size_t i = 0; i < arg_cnt; i++) {
@@ -2314,6 +2316,9 @@ dm_validate_rpc(dm_ctx_t *dm_ctx, dm_session_t *session, const char *rpc_xpath, 
             SR_LOG_ERR("Unable to add new RPC argument '%s': %s.", args[i].xpath, ly_errmsg());
             rc = dm_report_error(session, ly_errmsg(), ly_errpath(), SR_ERR_VALIDATION_FAILED);
             break;
+        }
+        if (NULL == data_tree) {
+            data_tree = new_node;
         }
     }
 

@@ -1014,8 +1014,7 @@ rp_rpc_resp_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg
     /* validate the RPC response */
     rc = sr_values_gpb_to_sr(msg->response->rpc_resp->output,  msg->response->rpc_resp->n_output, &output, &output_cnt);
     if (SR_ERR_OK == rc) {
-        //rc = dm_validate_rpc(rp_ctx->dm_ctx, session->dm_session, msg->response->rpc_resp->xpath, output, output_cnt, false);
-        // TODO: uncomment
+        rc = dm_validate_rpc(rp_ctx->dm_ctx, session->dm_session, msg->response->rpc_resp->xpath, output, output_cnt, false);
     }
     sr_free_values(output, output_cnt);
 
