@@ -345,7 +345,7 @@ void dm_clear_session_errors(dm_session_t *session);
  * @param [in] rc
  * @return rc or SR_ERR_INTERNAL
  */
-int dm_report_error(dm_session_t *session, const char *msg, char *err_path, int rc);
+int dm_report_error(dm_session_t *session, const char *msg, const char *err_path, int rc);
 
 /**
  * @brief Checks if the session contains an error
