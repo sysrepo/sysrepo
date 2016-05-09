@@ -657,6 +657,8 @@ cl_sm_rpc_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *msg)
     sr_subscription_ctx_t *subscription = NULL;
     sr_subscription_ctx_t subscription_lookup = { 0, };
     Sr__Msg *resp = NULL;
+    sr_val_t *input = NULL, *output = NULL;
+    size_t input_cnt = 0, output_cnt = 0;
     int rc = SR_ERR_OK, rpc_rc = SR_ERR_OK;
 
     CHECK_NULL_ARG4(sm_ctx, msg, msg->request, msg->request->rpc_req);
@@ -676,10 +678,14 @@ cl_sm_rpc_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *msg)
 
     SR_LOG_DBG("Calling RPC callback for subscription id=%"PRIu32".", subscription->id);
 
+    /* copy input values from GPB */
+    rc = sr_values_gpb_to_sr(msg->request->rpc_req->input, msg->request->rpc_req->n_input, &input, &input_cnt);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by copying RPC input arguments from GPB.");
+
     rpc_rc = subscription->callback.rpc_cb(
             msg->request->rpc_req->xpath,
-            NULL, 0, // TODO input
-            NULL, NULL, // TODO output
+            input, input_cnt,
+            &output, &output_cnt,
             subscription->private_ctx);
 
     pthread_mutex_unlock(&sm_ctx->subscriptions_lock);
@@ -691,12 +697,19 @@ cl_sm_rpc_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *msg)
     resp->response->result = rpc_rc;
     resp->response->rpc_resp->xpath = strdup(msg->request->rpc_req->xpath);
     CHECK_NULL_NOMEM_GOTO(resp->response->rpc_resp->xpath, rc, cleanup);
-    // TODO: fill-in output
+
+    /* copy output values to GPB */
+    if (SR_ERR_OK == rpc_rc) {
+        rc = sr_values_sr_to_gpb(output, output_cnt, &resp->response->rpc_resp->output, &resp->response->rpc_resp->n_output);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Error by copying RPC output arguments to GPB.");
+    }
 
     /* send the response */
     rc = cl_sm_msg_send_connection(sm_ctx, conn, resp);
 
 cleanup:
+    sr_free_values(input, input_cnt);
+    sr_free_values(output, output_cnt);
     sr__msg__free_unpacked(resp, NULL);
     return rc;
 }

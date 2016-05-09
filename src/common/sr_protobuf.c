@@ -1073,13 +1073,13 @@ sr_copy_gpb_to_val_t(const Sr__Value *gpb_value, sr_val_t *value)
     int rc = SR_ERR_INTERNAL;
 
     rc = sr_set_gpb_type_in_val_t(gpb_value, value);
-    if (SR_ERR_OK != rc){
+    if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Setting type in for sr_value_t failed");
         return rc;
     }
 
     rc = sr_set_gpb_value_in_val_t(gpb_value, value);
-    if (SR_ERR_OK != rc){
+    if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Setting value in for sr_value_t failed");
         return rc;
     }
@@ -1104,6 +1104,68 @@ sr_dup_gpb_to_val_t(const Sr__Value *gpb_value, sr_val_t **value)
     }
 
     *value = val;
+    return rc;
+}
+
+int
+sr_values_sr_to_gpb(const sr_val_t *sr_values, const size_t sr_value_cnt, Sr__Value ***gpb_values_p, size_t *gpb_value_cnt_p)
+{
+    Sr__Value **gpb_values = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG2(gpb_values_p, gpb_value_cnt_p);
+
+    if ((NULL != sr_values) && (sr_value_cnt > 0)) {
+        gpb_values = calloc(sr_value_cnt, sizeof(*gpb_values));
+        CHECK_NULL_NOMEM_RETURN(gpb_values);
+
+        for (size_t i = 0; i < sr_value_cnt; i++) {
+            rc = sr_dup_val_t_to_gpb(&sr_values[i], &gpb_values[i]);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to duplicate sr_val_t to GPB.");
+        }
+    }
+
+    *gpb_values_p = gpb_values;
+    *gpb_value_cnt_p = sr_value_cnt;
+
+    return SR_ERR_OK;
+
+cleanup:
+    for (size_t i = 0; i < sr_value_cnt; i++) {
+        sr__value__free_unpacked(gpb_values[i], NULL);
+    }
+    free(gpb_values);
+    return rc;
+}
+
+int
+sr_values_gpb_to_sr(Sr__Value **gpb_values, size_t gpb_value_cnt, sr_val_t **sr_values_p, size_t *sr_value_cnt_p)
+{
+    sr_val_t *sr_values = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG2(sr_values_p, sr_value_cnt_p);
+
+    if ((NULL != gpb_values) && (gpb_value_cnt > 0)) {
+        sr_values = calloc(gpb_value_cnt, sizeof(*sr_values));
+        CHECK_NULL_NOMEM_RETURN(sr_values);
+
+        for (size_t i = 0; i < gpb_value_cnt; i++) {
+            rc = sr_copy_gpb_to_val_t(gpb_values[i], &sr_values[i]);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to duplicate GPB value to sr_val_t.");
+        }
+    }
+
+    *sr_values_p = sr_values;
+    *sr_value_cnt_p = gpb_value_cnt;
+
+    return SR_ERR_OK;
+
+cleanup:
+    for (size_t i = 0; i < gpb_value_cnt; i++) {
+        sr_free_val_content(&sr_values[i]);
+    }
+    free(sr_values);
     return rc;
 }
 

@@ -1520,7 +1520,7 @@ cleanup:
 
 int
 sr_rpc_send(sr_session_ctx_t *session, const char *xpath,
-        sr_val_t *input,  size_t input_cnt, sr_val_t **output, size_t *output_cnt)
+        const sr_val_t *input,  const size_t input_cnt, sr_val_t **output, size_t *output_cnt)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
     int rc = SR_ERR_OK;
@@ -1537,13 +1537,19 @@ sr_rpc_send(sr_session_ctx_t *session, const char *xpath,
     msg_req->request->rpc_req->xpath = strdup(xpath);
     CHECK_NULL_NOMEM_GOTO(msg_req->request->rpc_req->xpath, rc, cleanup);
 
-    // TODO: set input arguments
+    /* set input arguments */
+    rc = sr_values_sr_to_gpb(input, input_cnt, &msg_req->request->rpc_req->input, &msg_req->request->rpc_req->n_input);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by copying RPC input arguments to GPB.");
 
     /* send the request and receive the response */
     rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__RPC);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
-    // TODO: set output arguments
+    if (NULL != output) {
+        /* set output arguments */
+        rc = sr_values_gpb_to_sr(msg_resp->response->rpc_resp->output, msg_resp->response->rpc_resp->n_output, output, output_cnt);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Error by copying RPC output arguments from GPB.");
+    }
 
     sr__msg__free_unpacked(msg_req, NULL);
     sr__msg__free_unpacked(msg_resp, NULL);

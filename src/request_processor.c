@@ -907,6 +907,8 @@ static int
 rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
 {
     char *module_name = NULL;
+    sr_val_t *input = NULL;
+    size_t input_cnt = 0;
     np_subscription_t *subscriptions = NULL;
     size_t subscription_cnt = 0;
     int rc = SR_ERR_OK;
@@ -921,11 +923,17 @@ rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg 
 
     // TODO verify RPC request against YANG
 
+    rc = sr_values_gpb_to_sr(msg->request->rpc_req->input,  msg->request->rpc_req->n_input, &input, &input_cnt);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to copy RPC values from GPB.");
+    rc = dm_validate_rpc(rp_ctx->dm_ctx, session->dm_session, msg->request->rpc_req->xpath, input, input_cnt, true);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to validate RPC.");
+
+    // TODO authorize
+
     /* get RPC subscription */
     rc = pm_get_subscriptions(rp_ctx->pm_ctx, module_name, SR__NOTIFICATION_EVENT__RPC_EV,
             &subscriptions, &subscription_cnt);
     CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to retrieve RPC subscriptions for '%s'.", msg->request->rpc_req->xpath);
-    free(module_name);
 
     /* forward RPC request */
     if (subscription_cnt > 0) {
@@ -944,10 +952,14 @@ rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg 
     }
     free(subscriptions);
 
+    free(module_name);
+    sr_free_values(input, input_cnt);
+
     return rc;
 
 cleanup:
     free(module_name);
+    sr_free_values(input, input_cnt);
     sr__msg__free_unpacked(msg, NULL);
     return rc;
 }

@@ -2268,3 +2268,61 @@ cleanup:
     sr_free_schemas(schemas, count);
     return rc;
 }
+
+int
+dm_validate_rpc(dm_ctx_t *dm_ctx, dm_session_t *session, const char *rpc_xpath, sr_val_t *args, size_t arg_cnt, bool input)
+{
+    const struct lys_node *sch_node = NULL;
+    struct lyd_node *data_tree = NULL, *new_node = NULL;
+    char *string_value = NULL;
+    int ret = 0, rc = SR_ERR_OK;
+
+    data_tree = lyd_new_path(NULL, dm_ctx->ly_ctx, rpc_xpath, NULL, (input ? 0 : LYD_PATH_OPT_OUTPUT));
+    if (NULL == data_tree) {
+        SR_LOG_ERR("RPC xpath validation failed ('%s'): %s", rpc_xpath, ly_errmsg());
+        return SR_ERR_BAD_ELEMENT;
+        // TODO fill error xpath
+    }
+
+    for (size_t i = 0; i < arg_cnt; i++) {
+        /* get schema node */
+        sch_node = ly_ctx_get_node2(dm_ctx->ly_ctx, NULL, args[i].xpath, (input ? 0 : 1));
+        if (NULL == sch_node) {
+            SR_LOG_ERR("RPC argument xpath validation failed('%s'): %s", args[i].xpath, ly_errmsg());
+            rc = SR_ERR_BAD_ELEMENT;
+            break;
+        }
+        /* copy argument value to string */
+        if ((SR_CONTAINER_T != args[i].type) && (SR_LIST_T != args[i].type)) {
+            rc = sr_val_to_str(&args[i], sch_node, &string_value);
+            if (SR_ERR_OK != rc) {
+                SR_LOG_ERR_MSG("Unable to copy RPC argument value.");
+                break;
+            }
+        } else {
+            string_value = NULL;
+        }
+        /* create the argument node in the tree */
+        new_node = lyd_new_path(data_tree, dm_ctx->ly_ctx, args[i].xpath, string_value, (input ? 0 : LYD_PATH_OPT_OUTPUT));
+        free(string_value);
+        if (NULL == new_node) {
+            SR_LOG_ERR("Unable to add new RPC argument '%s': %s.", args[i].xpath, ly_errmsg());
+            rc = SR_ERR_INTERNAL;
+            break;
+        }
+    }
+
+    if ((SR_ERR_OK == rc) && (arg_cnt > 0)) {
+        /* validate the RPC content */
+        ret = lyd_validate(&data_tree, LYD_OPT_STRICT | (input ? LYD_OPT_RPC : LYD_OPT_RPCREPLY));
+        if (0 != ret) {
+            SR_LOG_ERR("RPC content validation failed: %s", ly_errmsg());
+            return SR_ERR_VALIDATION_FAILED;
+        }
+    }
+
+    lyd_free_withsiblings(data_tree);
+
+    return rc;
+}
+

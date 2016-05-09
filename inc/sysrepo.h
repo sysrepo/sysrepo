@@ -946,7 +946,7 @@ int sr_unsubscribe(sr_subscription_ctx_t *subscription);
  *
  * @return Error code (SR_ERR_OK on success).
  */
-typedef int (*sr_rpc_cb)(const char *xpath, sr_val_t *input, size_t input_cnt,
+typedef int (*sr_rpc_cb)(const char *xpath, const sr_val_t *input, const size_t input_cnt,
         sr_val_t **output, size_t *output_cnt, void *private_ctx);
 
 /**
@@ -976,7 +976,7 @@ int sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb cal
  * @return Error code (SR_ERR_OK on success).
  */
 int sr_rpc_send(sr_session_ctx_t *session, const char *xpath,
-        sr_val_t *input,  size_t input_cnt, sr_val_t **output, size_t *output_cnt);
+        const sr_val_t *input,  const size_t input_cnt, sr_val_t **output, size_t *output_cnt);
 
 
 ////////////////////////////////////////////////////////////////////////////////

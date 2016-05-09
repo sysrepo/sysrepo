@@ -133,6 +133,16 @@ int sr_dup_gpb_to_val_t(const Sr__Value *gpb_value, sr_val_t **value);
 int sr_copy_gpb_to_val_t(const Sr__Value *gpb_value, sr_val_t *value);
 
 /**
+ * @brief TODO
+ */
+int sr_values_sr_to_gpb(const sr_val_t *sr_values, const size_t sr_value_cnt, Sr__Value ***gpb_values, size_t *gpb_value_cnt);
+
+/**
+ * @brief TODO
+ */
+int sr_values_gpb_to_sr(Sr__Value **gpb_values, size_t gpb_value_cnt, sr_val_t **sr_values, size_t *sr_value_cnt);
+
+/**
  * @brief Converts sysrepo datastore to GPB datastore.
  *
  * @param [in] sr_ds Sysrepo datastore.

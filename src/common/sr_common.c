@@ -65,24 +65,21 @@ sr_strerror(int err_code)
 void
 sr_free_val(sr_val_t *value)
 {
-    if (NULL == value){
-        return;
+    if (NULL != value) {
+        sr_free_val_content(value);
+        free(value);
     }
-    sr_free_val_content(value);
-    free(value);
 }
 
 void
 sr_free_values(sr_val_t *values, size_t count)
 {
-    if (NULL == values){
-        return;
+    if (NULL != values) {
+        for (size_t i = 0; i < count; i++) {
+            sr_free_val_content(&values[i]);
+        }
+        free(values);
     }
-
-    for (size_t i = 0; i < count; i++) {
-        sr_free_val_content(&values[i]);
-    }
-    free(values);
 }
 
 void
