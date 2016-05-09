@@ -1176,12 +1176,12 @@ test_rpc_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt,
     }
 
     *output = calloc(2, sizeof(**output));
-    (*output)[0].xpath = "/test-module:activate-software-image/status";
+    (*output)[0].xpath = strdup("/test-module:activate-software-image/status");
     (*output)[0].type = SR_STRING_T;
-    (*output)[0].data.string_val = "The image acmefw-2.3 is being installed.";
-    (*output)[1].xpath = "/test-module:activate-software-image/version";
+    (*output)[0].data.string_val = strdup("The image acmefw-2.3 is being installed.");
+    (*output)[1].xpath = strdup("/test-module:activate-software-image/version");
     (*output)[1].type = SR_STRING_T;
-    (*output)[1].data.string_val = "2.3";
+    (*output)[1].data.string_val = strdup("2.3");
 
     *output_cnt = 2;
 
