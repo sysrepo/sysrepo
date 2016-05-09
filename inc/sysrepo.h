@@ -939,7 +939,8 @@ int sr_unsubscribe(sr_subscription_ctx_t *subscription);
  * @param[in] xpath XPath identifying the RPC.
  * @param[in] input Array of input parameters.
  * @param[in] input_cnt Number of input parameters.
- * @param[out] output Array of output parameters.
+ * @param[out] output Array of output parameters. Should be allocated on heap,
+ * will be freed by sysrepo after sending of the RPC response.
  * @param[out] output_cnt Number of output parameters.
  * @param[in] private_ctx Private context opaque to sysrepo, as passed to
  * ::sr_rpc_subscribe call.
@@ -970,7 +971,8 @@ int sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb cal
  * @param[in] xpath XPath identifying the RPC.
  * @param[in] input Array of input parameters.
  * @param[in] input_cnt Number of input parameters.
- * @param[out] output Array of output parameters.
+ * @param[out] output Array of output parameters. Will be allocated by sysrepo
+ * and should be freed by caller using ::sr_free_values.
  * @param[out] output_cnt Number of output parameters.
  *
  * @return Error code (SR_ERR_OK on success).

@@ -822,6 +822,7 @@ rp_subscribe_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr
 {
     Sr__Msg *resp = NULL;
     Sr__SubscribeReq *subscribe_req = NULL;
+    np_subscr_options_t options = NP_SUBSCR_DEFAULT;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->subscribe_req);
@@ -836,10 +837,18 @@ rp_subscribe_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr
     }
     subscribe_req = msg->request->subscribe_req;
 
+    /* set subscribe options */
+    if (subscribe_req->enable_running) {
+        options |= NP_SUBSCR_ENABLE_RUNNING;
+    }
+    if (SR__NOTIFICATION_EVENT__RPC_EV == subscribe_req->event) {
+        options |= NP_SUBSCR_EXCLUSIVE;
+    }
+
     /* subscribe to the notification */
     rc = np_notification_subscribe(rp_ctx->np_ctx, session, subscribe_req->event,
             subscribe_req->destination, subscribe_req->subscription_id,
-            subscribe_req->module_name, subscribe_req->xpath, subscribe_req->enable_running);
+            subscribe_req->module_name, subscribe_req->xpath, options);
 
     /* set response code */
     resp->response->result = rc;

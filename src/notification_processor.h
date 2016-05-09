@@ -68,6 +68,21 @@ int np_init(rp_ctx_t *rp_ctx, np_ctx_t **np_ctx);
 void np_cleanup(np_ctx_t *np_ctx);
 
 /**
+ * @brief Flags used to override default default handling by ::np_notification_subscribe call.
+ */
+typedef enum np_subscr_flag_e {
+    NP_SUBSCR_DEFAULT = 0,
+    NP_SUBSCR_ENABLE_RUNNING = 1,
+    NP_SUBSCR_EXCLUSIVE = 2,
+} np_subscr_flag_t;
+
+/**
+ * @brief Options overriding default handling by ::np_notification_subscribe call,
+ * can be bitwise OR-ed value of any ::sr_subscr_flag_t flags.
+ */
+typedef uint32_t np_subscr_options_t;
+
+/**
  * @brief Subscribe the client to notifications on specified event.
  *
  * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
@@ -77,12 +92,12 @@ void np_cleanup(np_ctx_t *np_ctx);
  * @param[in] dst_id Destination subscription ID.
  * @param[in] module_name Name of the module which the subscription is active in (if applicable).
  * @param[in] xpath XPath to the subtree where the subscription is active (if applicable).
- * @param[in] enable_running TRUE if the subscription enables specified subtree in the running datastore.
+ * @param[in] opts Options overriding default handling. Bitwise OR-ed value of any ::sr_subscr_flag_t flags.
  *
  * @return Error code (SR_ERR_OK on success).
  */
 int np_notification_subscribe(np_ctx_t *np_ctx, const rp_session_t *rp_session, Sr__NotificationEvent event_type,
-        const char *dst_address, uint32_t dst_id, const char *module_name, const char *xpath, const bool enable_running);
+        const char *dst_address, uint32_t dst_id, const char *module_name, const char *xpath, const np_subscr_options_t opts);
 
 /**
  * @brief Unsubscribe the client from notifications on specified event.

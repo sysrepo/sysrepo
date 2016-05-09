@@ -521,7 +521,7 @@ cleanup:
 
 int
 pm_add_subscription(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *module_name,
-        const np_subscription_t *subscription)
+        const np_subscription_t *subscription, const bool exclusive)
 {
     char xpath[PATH_MAX] = { 0, };
     int rc = SR_ERR_OK;
