@@ -911,56 +911,77 @@ rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg 
     size_t input_cnt = 0;
     np_subscription_t *subscriptions = NULL;
     size_t subscription_cnt = 0;
-    int rc = SR_ERR_OK;
+    Sr__Msg *resp = NULL;
+    int rc = SR_ERR_OK, rc_tmp = SR_ERR_OK;
 
     CHECK_NULL_ARG_NORET5(rc, rp_ctx, session, msg, msg->request, msg->request->rpc_req);
-    CHECK_RC_MSG_GOTO(rc, cleanup, "Invalid argument passed in.");
+    if (SR_ERR_OK != rc) {
+        /* release the message since it won't be released in dispatch */
+        sr__msg__free_unpacked(msg, NULL);
+        return rc;
+    }
 
     SR_LOG_DBG_MSG("Processing RPC request.");
 
-    rc = sr_copy_first_ns(msg->request->rpc_req->xpath, &module_name);
-    CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to extract module name from xpath '%s'.", msg->request->rpc_req->xpath);
-
-    // TODO verify RPC request against YANG
-
+    /* validate RPC request */
     rc = sr_values_gpb_to_sr(msg->request->rpc_req->input,  msg->request->rpc_req->n_input, &input, &input_cnt);
-    CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to copy RPC values from GPB.");
-    rc = dm_validate_rpc(rp_ctx->dm_ctx, session->dm_session, msg->request->rpc_req->xpath, input, input_cnt, true);
-    CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to validate RPC.");
+    if (SR_ERR_OK == rc) {
+        rc = dm_validate_rpc(rp_ctx->dm_ctx, session->dm_session, msg->request->rpc_req->xpath, input, input_cnt, true);
+    }
+    sr_free_values(input, input_cnt);
 
-    // TODO authorize
+    /* get module name */
+    if (SR_ERR_OK == rc) {
+        rc = sr_copy_first_ns(msg->request->rpc_req->xpath, &module_name);
+    }
+
+    /* authorize (write permissions are required to deliver the RPC) */
+    if (SR_ERR_OK == rc) {
+        rc = ac_check_module_permissions(session->ac_session, module_name, AC_OPER_READ_WRITE);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR("Access control check failed for module name '%s'", module_name);
+        }
+    }
 
     /* get RPC subscription */
-    rc = pm_get_subscriptions(rp_ctx->pm_ctx, module_name, SR__NOTIFICATION_EVENT__RPC_EV,
-            &subscriptions, &subscription_cnt);
-    CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to retrieve RPC subscriptions for '%s'.", msg->request->rpc_req->xpath);
+    if (SR_ERR_OK == rc) {
+        rc = pm_get_subscriptions(rp_ctx->pm_ctx, module_name, SR__NOTIFICATION_EVENT__RPC_EV,
+                &subscriptions, &subscription_cnt);
+    }
+    free(module_name);
 
-    /* forward RPC request */
+    /* fill-in subscription details into the request */
     if (subscription_cnt > 0) {
         // TODO: what to do if there are more RPC subscribers?
-        msg->request->rpc_req->subscriber_address = strdup(subscriptions[0].dst_address);
-        CHECK_NULL_NOMEM_GOTO(msg->request->rpc_req->subscriber_address, rc, cleanup);
+        msg->request->rpc_req->subscriber_address = (char*)subscriptions[0].dst_address; /* copied to GPB - do not free */
         msg->request->rpc_req->subscription_id = subscriptions[0].dst_id;
         msg->request->rpc_req->has_subscription_id = true;
         msg->request->rpc_req->session_id = session->id;
         msg->request->rpc_req->has_session_id = true;
+        free(subscriptions);
+    } else if (SR_ERR_OK == rc) {
+        /* no subscription for this RPC */
+        SR_LOG_ERR("No subscription found for RPC delivery (xpath = '%s').", msg->request->rpc_req->xpath);
+        rc = SR_ERR_NOT_FOUND;
+    }
+
+    if (SR_ERR_OK == rc) {
+        /* forward the request to the subscriber */
         rc = cm_msg_send(rp_ctx->cm_ctx, msg);
+    } else {
+        /* send the response with error */
+        rc_tmp = sr_gpb_resp_alloc(SR__OPERATION__RPC, session->id, &resp);
+        if (SR_ERR_OK == rc_tmp) {
+            resp->response->result = rc;
+            resp->response->rpc_resp->xpath = msg->request->rpc_req->xpath;
+            msg->request->rpc_req->xpath = NULL;
+            /* send the response */
+            rc = cm_msg_send(rp_ctx->cm_ctx, resp);
+        }
+        /* release the request */
+        sr__msg__free_unpacked(msg, NULL);
     }
 
-    for (size_t i = 0; i < subscription_cnt; i++) {
-        free((void*)subscriptions[i].dst_address);
-    }
-    free(subscriptions);
-
-    free(module_name);
-    sr_free_values(input, input_cnt);
-
-    return rc;
-
-cleanup:
-    free(module_name);
-    sr_free_values(input, input_cnt);
-    sr__msg__free_unpacked(msg, NULL);
     return rc;
 }
 
@@ -970,20 +991,37 @@ cleanup:
 static int
 rp_rpc_resp_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
 {
+    sr_val_t *output = NULL;
+    size_t output_cnt = 0;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG_NORET5(rc, rp_ctx, session, msg, msg->response, msg->response->rpc_resp);
-    CHECK_RC_MSG_GOTO(rc, cleanup, "Invalid argument passed in.");
+    if (SR_ERR_OK != rc) {
+        /* release the message since it won't be released in dispatch */
+        sr__msg__free_unpacked(msg, NULL);
+        return rc;
+    }
 
-    // TODO verify RPC request against YANG
+    /* validate the RPC response */
+    rc = sr_values_gpb_to_sr(msg->response->rpc_resp->output,  msg->response->rpc_resp->n_output, &output, &output_cnt);
+    if (SR_ERR_OK == rc) {
+        //rc = dm_validate_rpc(rp_ctx->dm_ctx, session->dm_session, msg->response->rpc_resp->xpath, output, output_cnt, false);
+        // TODO: uncomment
+    }
+    sr_free_values(output, output_cnt);
+
+    /* set response code */
+    msg->response->result = rc;
+
+    /* copy DM errors, if any */
+    rc = rp_resp_fill_errors(msg, session->dm_session);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Copying errors to gpb failed.");
+    }
 
     /* forward RPC response to the originator */
     rc = cm_msg_send(rp_ctx->cm_ctx, msg);
 
-    return rc;
-
-cleanup:
-    sr__msg__free_unpacked(msg, NULL);
     return rc;
 }
 

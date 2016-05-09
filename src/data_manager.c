@@ -2286,8 +2286,7 @@ dm_validate_rpc(dm_ctx_t *dm_ctx, dm_session_t *session, const char *rpc_xpath, 
     data_tree = lyd_new_path(NULL, dm_ctx->ly_ctx, rpc_xpath, NULL, (input ? 0 : LYD_PATH_OPT_OUTPUT));
     if (NULL == data_tree) {
         SR_LOG_ERR("RPC xpath validation failed ('%s'): %s", rpc_xpath, ly_errmsg());
-        return SR_ERR_BAD_ELEMENT;
-        // TODO fill error xpath
+        return dm_report_error(session, ly_errmsg(), rpc_xpath, SR_ERR_BAD_ELEMENT);
     }
 
     for (size_t i = 0; i < arg_cnt; i++) {
@@ -2295,14 +2294,14 @@ dm_validate_rpc(dm_ctx_t *dm_ctx, dm_session_t *session, const char *rpc_xpath, 
         sch_node = ly_ctx_get_node2(dm_ctx->ly_ctx, NULL, args[i].xpath, (input ? 0 : 1));
         if (NULL == sch_node) {
             SR_LOG_ERR("RPC argument xpath validation failed('%s'): %s", args[i].xpath, ly_errmsg());
-            rc = SR_ERR_BAD_ELEMENT;
+            rc = dm_report_error(session, ly_errmsg(), args[i].xpath, SR_ERR_BAD_ELEMENT);
             break;
         }
         /* copy argument value to string */
         if ((SR_CONTAINER_T != args[i].type) && (SR_LIST_T != args[i].type)) {
             rc = sr_val_to_str(&args[i], sch_node, &string_value);
             if (SR_ERR_OK != rc) {
-                SR_LOG_ERR_MSG("Unable to copy RPC argument value.");
+                SR_LOG_ERR_MSG("Unable to convert RPC argument value to string.");
                 break;
             }
         } else {
@@ -2313,7 +2312,7 @@ dm_validate_rpc(dm_ctx_t *dm_ctx, dm_session_t *session, const char *rpc_xpath, 
         free(string_value);
         if (NULL == new_node) {
             SR_LOG_ERR("Unable to add new RPC argument '%s': %s.", args[i].xpath, ly_errmsg());
-            rc = SR_ERR_INTERNAL;
+            rc = dm_report_error(session, ly_errmsg(), ly_errpath(), SR_ERR_VALIDATION_FAILED);
             break;
         }
     }
@@ -2323,7 +2322,7 @@ dm_validate_rpc(dm_ctx_t *dm_ctx, dm_session_t *session, const char *rpc_xpath, 
         ret = lyd_validate(&data_tree, LYD_OPT_STRICT | (input ? LYD_OPT_RPC : LYD_OPT_RPCREPLY));
         if (0 != ret) {
             SR_LOG_ERR("RPC content validation failed: %s", ly_errmsg());
-            return SR_ERR_VALIDATION_FAILED;
+            rc = dm_report_error(session, ly_errmsg(), ly_errpath(), SR_ERR_VALIDATION_FAILED);
         }
     }
 
