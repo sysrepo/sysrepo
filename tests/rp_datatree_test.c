@@ -745,6 +745,7 @@ default_nodes_test(void **state)
     rc = rp_dt_get_value_wrapper(ctx, ses_ctx, "/test-module:with_def[name='withdef']/num", &val);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);
+    assert_int_equal(0, val->data.int8_val);
     assert_true(val->dflt);
     sr_free_val(val);
 
@@ -761,6 +762,7 @@ default_nodes_test(void **state)
     rc = rp_dt_get_value_wrapper(ctx, ses_ctx, "/test-module:with_def[name='withother']/num", &val);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);
+    assert_int_equal(9, val->data.int8_val);
     assert_false(val->dflt);
     sr_free_val(val);
 
@@ -780,6 +782,26 @@ default_nodes_test(void **state)
     assert_false(val->dflt);
     sr_free_val(val);
 
+    /* list with default value later overwritten with a non-default one */
+    rc = rp_dt_set_item_wrapper(ctx, ses_ctx, "/test-module:with_def[name='withmodifdef']", NULL, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    v = NULL;
+    v = calloc(1, sizeof(*v));
+    assert_non_null(v);
+    v->type = SR_INT8_T;
+    v->data.int8_val = 9;
+
+    rc = rp_dt_set_item_wrapper(ctx, ses_ctx, "/test-module:with_def[name='withmodifdef']/num", v, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_get_value_wrapper(ctx, ses_ctx, "/test-module:with_def[name='withmodifdef']/num", &val);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(val);
+    assert_int_equal(9, val->data.int8_val);
+    assert_false(val->dflt);
+    sr_free_val(val);
+
     rc = rp_dt_commit(ctx, ses_ctx, &errors, &e_cnt);
     assert_int_equal(SR_ERR_OK, rc);
 
@@ -793,12 +815,20 @@ default_nodes_test(void **state)
     rc = rp_dt_get_value_wrapper(ctx, ses_ctx, "/test-module:with_def[name='withother']/num", &val);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);
+    assert_int_equal(9, val->data.int8_val);
     assert_false(val->dflt);
     sr_free_val(val);
 
     rc = rp_dt_get_value_wrapper(ctx, ses_ctx, "/test-module:with_def[name='withexpl']/num", &val);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);
+    assert_false(val->dflt);
+    sr_free_val(val);
+
+    rc = rp_dt_get_value_wrapper(ctx, ses_ctx, "/test-module:with_def[name='withmodifdef']/num", &val);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(val);
+    assert_int_equal(9, val->data.int8_val);
     assert_false(val->dflt);
     sr_free_val(val);
 
