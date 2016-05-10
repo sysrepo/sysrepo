@@ -222,4 +222,9 @@ module test-module {
         default 0;
     }
  }
+
+ leaf top-level-default {
+    type string;
+    default "default value";
+ }
 }

@@ -260,7 +260,7 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, co
             }
         }
     }
-
+    lyd_wd_add(info->module->ctx, &info->node, LYD_WD_IMPL_TAG);
 cleanup:
     ly_set_free(parents);
     ly_set_free(nodes);
