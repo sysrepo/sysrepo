@@ -37,6 +37,7 @@ macro(ADD_UNIT_TEST_WITH_OPTS TEST_NAME USE_HELPERS USE_VALGRIND WRAP_FUNCTION)
            add_test(${TEST_NAME}_valgrind valgrind
                 --error-exitcode=1 --read-var-info=yes
                 --leak-check=full --show-leak-kinds=all
+                --suppressions=${TEST_HELPERS_DIR}valgrind.supp
                 ./${TEST_NAME})
        endif(${USE_VALGRIND})
     endif(valgrind_FOUND)

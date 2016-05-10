@@ -1,0 +1,15 @@
+{
+   lydict_insert_zc
+   Memcheck:Cond
+   fun:__memcmp_sse4_1
+   fun:dict_insert
+   fun:lydict_insert_zc
+}
+
+{
+   lydict_insert
+   Memcheck:Cond
+   fun:__memcmp_sse4_1
+   fun:dict_insert
+   fun:lydict_insert
+}

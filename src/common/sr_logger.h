@@ -1,6 +1,7 @@
 /**
  * @file sr_logger.h
- * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
+ * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>,
+ *         Milan Lenco <milan.lenco@pantheon.tech>
  * @brief Sysrepo logging API.
  *
  * @copyright
@@ -83,11 +84,11 @@ extern volatile sr_log_cb sr_log_callback;  /**< Holds pointer to logging callba
 
 #if SR_LOG_PRINT_FUNCTION_NAMES
 #define SR_LOG__SYSLOG(LL, MSG, ...) \
-        syslog(SR_LOG__LL_FACILITY(LL), "[%s] (%s:%d) " MSG, SR_LOG__LL_STR(LL), __FUNCTION__, __LINE__, __VA_ARGS__);
+        syslog(SR_LOG__LL_FACILITY(LL), "[%s] (%s:%d) " MSG, SR_LOG__LL_STR(LL), __func__, __LINE__, __VA_ARGS__);
 #define SR_LOG__STDERR(LL, MSG, ...) \
-        fprintf(stderr, "[%s] (%s:%d) " MSG "\n", SR_LOG__LL_STR(LL), __FUNCTION__, __LINE__, __VA_ARGS__);
+        fprintf(stderr, "[%s] (%s:%d) " MSG "\n", SR_LOG__LL_STR(LL), __func__, __LINE__, __VA_ARGS__);
 #define SR_LOG__CALLBACK(LL, MSG, ...) \
-        sr_log_to_cb(LL, "(%s:%d) " MSG, __FUNCTION__, __LINE__, __VA_ARGS__);
+        sr_log_to_cb(LL, "(%s:%d) " MSG, __func__, __LINE__, __VA_ARGS__);
 #else
 #define SR_LOG__SYSLOG(LL, MSG, ...) \
         syslog(SR_LOG__LL_FACILITY(LL), "[%s] " MSG, SR_LOG__LL_STR(LL), __VA_ARGS__);
