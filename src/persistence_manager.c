@@ -190,13 +190,18 @@ pm_save_persistent_data(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const cha
         *running_affected = false;
     }
 
-    /* get persist file path */
-    rc = sr_get_persist_data_file_name(pm_ctx->data_search_dir, module_name, &data_filename);
-    CHECK_RC_LOG_RETURN(rc, "Unable to compose persist data file name for '%s'.", module_name);
+    if (NULL != data_tree_p && NULL != *data_tree_p) {
+        /* use provided data tree */
+        data_tree = *data_tree_p;
+    } else {
+        /* get persist file path */
+        rc = sr_get_persist_data_file_name(pm_ctx->data_search_dir, module_name, &data_filename);
+        CHECK_RC_LOG_RETURN(rc, "Unable to compose persist data file name for '%s'.", module_name);
 
-    /* load the data tree from persist file */
-    rc = pm_load_data_tree(pm_ctx, user_cred, module_name, data_filename, false, &fd, &data_tree);
-    CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to load persist data tree for module '%s'.", module_name);
+        /* load the data tree from persist file */
+        rc = pm_load_data_tree(pm_ctx, user_cred, module_name, data_filename, false, &fd, &data_tree);
+        CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to load persist data tree for module '%s'.", module_name);
+    }
 
     if (NULL == data_tree && !add) {
         SR_LOG_ERR("Persist data tree for module '%s' is empty.", module_name);
@@ -524,21 +529,28 @@ pm_add_subscription(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *m
         const np_subscription_t *subscription, const bool exclusive)
 {
     char xpath[PATH_MAX] = { 0, };
+    const char *value = NULL;
     int rc = SR_ERR_OK;
+
+    if (exclusive) {
+        /* first, delete existing subscriptions of given type */
+        snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTIONS_BY_TYPE, module_name, sr_event_gpb_to_str(subscription->event_type));
+        rc = pm_save_persistent_data(pm_ctx, user_cred, module_name, xpath, NULL, false, NULL, NULL); // TODO: LOG, data-tree re-use
+    }
 
     if (subscription->enable_running) {
         snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTION_ENABLE_RUNNING, module_name,
                 sr_event_gpb_to_str(subscription->event_type), subscription->dst_address, subscription->dst_id);
-        rc = pm_save_persistent_data(pm_ctx, user_cred, module_name, xpath, NULL, true, NULL, NULL);
     } else if (NULL != subscription->xpath) {
         snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTION_XPATH, module_name,
                 sr_event_gpb_to_str(subscription->event_type), subscription->dst_address, subscription->dst_id);
-        rc = pm_save_persistent_data(pm_ctx, user_cred, module_name, xpath, subscription->xpath, true, NULL, NULL);
+        value = subscription->xpath;
     } else {
         snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTION, module_name,
                 sr_event_gpb_to_str(subscription->event_type), subscription->dst_address, subscription->dst_id);
-        rc = pm_save_persistent_data(pm_ctx, user_cred, module_name, xpath, NULL, true, NULL, NULL);
     }
+
+    rc = pm_save_persistent_data(pm_ctx, user_cred, module_name, xpath, value, true, NULL, NULL);
 
     if (SR_ERR_OK == rc) {
         SR_LOG_DBG("Subscription entry successfully added into '%s' persist data tree.", module_name);

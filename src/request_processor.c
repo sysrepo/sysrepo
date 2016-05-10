@@ -961,7 +961,6 @@ rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg 
 
     /* fill-in subscription details into the request */
     if (subscription_cnt > 0) {
-        // TODO: what to do if there are more RPC subscribers?
         msg->request->rpc_req->subscriber_address = (char*)subscriptions[0].dst_address; /* copied to GPB - do not free */
         msg->request->rpc_req->subscription_id = subscriptions[0].dst_id;
         msg->request->rpc_req->has_subscription_id = true;
