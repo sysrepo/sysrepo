@@ -170,6 +170,74 @@ pm_ly_log_cb(LY_LOG_LEVEL level, const char *msg, const char *path)
     }
 }
 
+static int
+pm_modify_persist_data_tree(pm_ctx_t *pm_ctx, struct lyd_node *data_tree, const char *xpath, const char *value,
+        bool add, bool *running_affected)
+{
+    struct lyd_node *node = NULL, *new_node = NULL;
+    struct ly_set *node_set = NULL;
+    int ret = 0;
+    int rc = SR_ERR_OK;
+
+    if (NULL == data_tree && !add) {
+        SR_LOG_DBG("Persist data tree for given module is empty (xpath=%s).", xpath);
+        return SR_ERR_DATA_MISSING;
+    }
+
+    if (add) {
+        /* add persistent data */
+        new_node = lyd_new_path(data_tree, pm_ctx->ly_ctx, xpath, value, 0);
+        if (NULL == data_tree) {
+            /* if the new data tree has been just created */
+            data_tree = new_node;
+        }
+        if (NULL == new_node) {
+            SR_LOG_ERR("Unable to add new persistent data (xpath=%s): %s.", xpath, ly_errmsg());
+            return SR_ERR_DATA_EXISTS;
+        }
+    } else {
+        /* delete persistent data */
+        node_set = lyd_get_node(data_tree, xpath);
+        if (NULL == node_set || LY_SUCCESS != ly_errno) {
+            SR_LOG_ERR("Unable to find requested persistent data (xpath=%s): %s.", xpath, ly_errmsg());
+            rc = SR_ERR_INTERNAL;
+            goto cleanup;
+        }
+        if (0 == node_set->number) {
+            SR_LOG_DBG("Requested persistent data is missing (xpath=%s).", xpath);
+            rc = SR_ERR_DATA_MISSING;
+            goto cleanup;
+        }
+        for (size_t i = 0; i < node_set->number; i++) {
+            if ((NULL != running_affected) && (false == *running_affected)) {
+                /* need to check if running state is affected by delete */
+                node = node_set->set.d[i]->child;
+                while (NULL != node) {
+                    if ((NULL != node->schema->name) && (0 == strcmp(node->schema->name, "enable-running"))) {
+                        *running_affected = true;
+                        break;
+                    }
+                    node = node->next;
+                }
+            }
+            ret = lyd_unlink(node_set->set.d[i]);
+            if (0 != ret) {
+                SR_LOG_ERR("Unable to delete persistent data (xpath=%s): %s.", xpath, ly_errmsg());
+                rc = SR_ERR_INTERNAL;
+                goto cleanup;
+            }
+            lyd_free(node_set->set.d[i]);
+        }
+    }
+
+cleanup:
+    if (NULL != node_set) {
+        ly_set_free(node_set);
+    }
+
+    return rc;
+}
+
 /**
  * @brief Saves/deletes provided data on provided xpath location within the
  * persistent data file of a module.
@@ -179,9 +247,8 @@ pm_save_persistent_data(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const cha
         const char *xpath, const char *value, bool add, struct lyd_node **data_tree_p, bool *running_affected)
 {
     char *data_filename = NULL;
-    struct lyd_node *data_tree = NULL, *node = NULL, *new_node = NULL;
-    struct ly_set *node_set = NULL;
-    int fd = -1, ret = 0;
+    struct lyd_node *data_tree = NULL;
+    int fd = -1;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG3(pm_ctx, module_name, xpath);
@@ -203,55 +270,8 @@ pm_save_persistent_data(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const cha
         CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to load persist data tree for module '%s'.", module_name);
     }
 
-    if (NULL == data_tree && !add) {
-        SR_LOG_ERR("Persist data tree for module '%s' is empty.", module_name);
-        rc = SR_ERR_DATA_MISSING;
-        goto cleanup;
-    }
-
-    if (add) {
-        /* add persistent data */
-        new_node = lyd_new_path(data_tree, pm_ctx->ly_ctx, xpath, value, 0);
-        if (NULL == data_tree) {
-            /* if the new data tree has been just created */
-            data_tree = new_node;
-        }
-        if (NULL == new_node) {
-            SR_LOG_ERR("Unable to add new persistent data (module=%s, xpath=%s): %s.", module_name, xpath, ly_errmsg());
-            rc = SR_ERR_DATA_EXISTS;
-            goto cleanup;
-        }
-    } else {
-        /* delete persistent data */
-        node_set = lyd_get_node(data_tree, xpath);
-        if (NULL == node_set || LY_SUCCESS != ly_errno) {
-            SR_LOG_ERR("Unable to find requested persistent data (module=%s, xpath=%s): %s.", module_name, xpath, ly_errmsg());
-            rc = SR_ERR_INTERNAL;
-            goto cleanup;
-        }
-        if (0 == node_set->number) {
-            SR_LOG_ERR("Requested persistent data is missing (module=%s, xpath=%s).", module_name, xpath);
-            rc = SR_ERR_DATA_MISSING;
-            goto cleanup;
-        }
-        for (size_t i = 0; i < node_set->number; i++) {
-            if ((NULL != running_affected) && (false == *running_affected)) {
-                /* need to check if running state is affected by delete */
-                node = node_set->set.d[i]->child;
-                while (NULL != node) {
-                    if ((NULL != node->schema->name) && (0 == strcmp(node->schema->name, "enable-running"))) {
-                        *running_affected = true;
-                        break;
-                    }
-                    node = node->next;
-                }
-            }
-            ret = lyd_unlink(node_set->set.d[i]);
-            CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_INTERNAL, cleanup,
-                    "Unable to delete persistent data (module=%s, xpath=%s): %s.", module_name, xpath, ly_errmsg());
-            lyd_free(node_set->set.d[i]);
-        }
-    }
+    rc = pm_modify_persist_data_tree(pm_ctx, data_tree, xpath, value, add, running_affected);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to modify persist data tree.");
 
     /* save the changes to the persist file */
     rc = pm_save_data_tree(pm_ctx, fd, data_tree);
@@ -264,9 +284,6 @@ pm_save_persistent_data(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const cha
     }
 
 cleanup:
-    if (NULL != node_set) {
-        ly_set_free(node_set);
-    }
     if (NULL != data_tree) {
         lyd_free_withsiblings(data_tree);
     }
@@ -530,12 +547,16 @@ pm_add_subscription(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *m
 {
     char xpath[PATH_MAX] = { 0, };
     const char *value = NULL;
+    struct lyd_node *data_tree = NULL;
     int rc = SR_ERR_OK;
 
     if (exclusive) {
         /* first, delete existing subscriptions of given type */
+        SR_LOG_DBG("Removing all existing %s subscriptions from '%s' persist data tree.",
+                sr_event_gpb_to_str(subscription->event_type), module_name);
+
         snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTIONS_BY_TYPE, module_name, sr_event_gpb_to_str(subscription->event_type));
-        rc = pm_save_persistent_data(pm_ctx, user_cred, module_name, xpath, NULL, false, NULL, NULL); // TODO: LOG, data-tree re-use
+        rc = pm_save_persistent_data(pm_ctx, user_cred, module_name, xpath, NULL, false, &data_tree, NULL);
     }
 
     if (subscription->enable_running) {
@@ -550,7 +571,9 @@ pm_add_subscription(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *m
                 sr_event_gpb_to_str(subscription->event_type), subscription->dst_address, subscription->dst_id);
     }
 
-    rc = pm_save_persistent_data(pm_ctx, user_cred, module_name, xpath, value, true, NULL, NULL);
+    rc = pm_save_persistent_data(pm_ctx, user_cred, module_name, xpath, value, true, &data_tree, NULL);
+
+    lyd_free_withsiblings(data_tree);
 
     if (SR_ERR_OK == rc) {
         SR_LOG_DBG("Subscription entry successfully added into '%s' persist data tree.", module_name);

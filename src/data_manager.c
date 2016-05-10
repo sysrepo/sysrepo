@@ -2287,10 +2287,13 @@ dm_validate_rpc(dm_ctx_t *dm_ctx, dm_session_t *session, const char *rpc_xpath, 
     char *string_value = NULL;
     int ret = 0, rc = SR_ERR_OK;
 
+    pthread_rwlock_rdlock(&dm_ctx->lyctx_lock);
+
     if (input) {
         data_tree = lyd_new_path(NULL, dm_ctx->ly_ctx, rpc_xpath, NULL, (input ? 0 : LYD_PATH_OPT_OUTPUT));
         if (NULL == data_tree) {
             SR_LOG_ERR("RPC xpath validation failed ('%s'): %s", rpc_xpath, ly_errmsg());
+            pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
             return dm_report_error(session, ly_errmsg(), rpc_xpath, SR_ERR_BAD_ELEMENT);
         }
     }
@@ -2334,6 +2337,8 @@ dm_validate_rpc(dm_ctx_t *dm_ctx, dm_session_t *session, const char *rpc_xpath, 
             rc = dm_report_error(session, ly_errmsg(), ly_errpath(), SR_ERR_VALIDATION_FAILED);
         }
     }
+
+    pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
 
     lyd_free_withsiblings(data_tree);
 
