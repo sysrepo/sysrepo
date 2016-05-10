@@ -534,7 +534,14 @@ int dm_copy_module(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module_n
 int dm_copy_all_models(dm_ctx_t *dm_ctx, dm_session_t *session, sr_datastore_t src, sr_datastore_t dst);
 
 /**
- * TODO
+ * @brief Validates content of a RPC request or reply.
+ * @param [in] dm_ctx DM context.
+ * @param [in] session DM session.
+ * @param [in] rpc_xpath XPath of the RPC.
+ * @param [in] args Input/output arguments of the RPC.
+ * @param [in] arg_cnt Number of input/output arguments provided.
+ * @param [in] input TRUE if input arguments were provided, FALSE if output.
+ * @return Error code (SR_ERR_OK on success)
  */
 int dm_validate_rpc(dm_ctx_t *dm_ctx, dm_session_t *session, const char *rpc_xpath, sr_val_t *args, size_t arg_cnt, bool input);
 
