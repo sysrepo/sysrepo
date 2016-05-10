@@ -85,11 +85,12 @@ main(int argc, char **argv)
     if (SR_ERR_OK != rc) {
         goto cleanup;
     }
-    
+
     while (SR_ERR_OK == sr_get_item_next(sess, iter, &value)){
         print_value(value);
         sr_free_val(value);
     }
+    sr_free_val_iter(iter);
 
 cleanup:
     if (NULL != sess) {
