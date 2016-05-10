@@ -4,7 +4,8 @@
  * @{
  * @brief Function that can create, modify delete nodes or move lists.
  * @file rp_dt_edit.h
- * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
+ * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>,
+ *         Milan Lenco <milan.lenco@pantheon.tech>
  *
  *
  * @copyright
