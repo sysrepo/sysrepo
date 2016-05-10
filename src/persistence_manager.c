@@ -171,7 +171,7 @@ pm_ly_log_cb(LY_LOG_LEVEL level, const char *msg, const char *path)
 }
 
 static int
-pm_modify_persist_data_tree(pm_ctx_t *pm_ctx, struct lyd_node *data_tree, const char *xpath, const char *value,
+pm_modify_persist_data_tree(pm_ctx_t *pm_ctx, struct lyd_node **data_tree, const char *xpath, const char *value,
         bool add, bool *running_affected)
 {
     struct lyd_node *node = NULL, *new_node = NULL;
@@ -179,17 +179,17 @@ pm_modify_persist_data_tree(pm_ctx_t *pm_ctx, struct lyd_node *data_tree, const 
     int ret = 0;
     int rc = SR_ERR_OK;
 
-    if (NULL == data_tree && !add) {
+    if (NULL == *data_tree && !add) {
         SR_LOG_DBG("Persist data tree for given module is empty (xpath=%s).", xpath);
         return SR_ERR_DATA_MISSING;
     }
 
     if (add) {
         /* add persistent data */
-        new_node = lyd_new_path(data_tree, pm_ctx->ly_ctx, xpath, value, 0);
-        if (NULL == data_tree) {
+        new_node = lyd_new_path(*data_tree, pm_ctx->ly_ctx, xpath, value, 0);
+        if (NULL == *data_tree) {
             /* if the new data tree has been just created */
-            data_tree = new_node;
+            *data_tree = new_node;
         }
         if (NULL == new_node) {
             SR_LOG_ERR("Unable to add new persistent data (xpath=%s): %s.", xpath, ly_errmsg());
@@ -197,7 +197,7 @@ pm_modify_persist_data_tree(pm_ctx_t *pm_ctx, struct lyd_node *data_tree, const 
         }
     } else {
         /* delete persistent data */
-        node_set = lyd_get_node(data_tree, xpath);
+        node_set = lyd_get_node(*data_tree, xpath);
         if (NULL == node_set || LY_SUCCESS != ly_errno) {
             SR_LOG_ERR("Unable to find requested persistent data (xpath=%s): %s.", xpath, ly_errmsg());
             rc = SR_ERR_INTERNAL;
@@ -270,7 +270,7 @@ pm_save_persistent_data(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const cha
         CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to load persist data tree for module '%s'.", module_name);
     }
 
-    rc = pm_modify_persist_data_tree(pm_ctx, data_tree, xpath, value, add, running_affected);
+    rc = pm_modify_persist_data_tree(pm_ctx, &data_tree, xpath, value, add, running_affected);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to modify persist data tree.");
 
     /* save the changes to the persist file */
