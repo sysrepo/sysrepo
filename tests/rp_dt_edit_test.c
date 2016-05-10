@@ -262,23 +262,25 @@ void delete_whole_module_test(void **state)
     test_rp_sesssion_create(ctx, SR_DS_STARTUP, &session);
 
     /* module xpath must not be called with non recursive*/
-    rc = rp_dt_delete_item_wrapper(ctx, session, "/test-module:*", SR_EDIT_NON_RECURSIVE);
+    rc = rp_dt_delete_item_wrapper(ctx, session, "/example-module:*", SR_EDIT_NON_RECURSIVE);
     assert_int_equal(SR_ERR_DATA_EXISTS, rc);
 
-    rc = rp_dt_delete_item_wrapper(ctx, session, "/test-module:*", SR_EDIT_DEFAULT);
+    rc = rp_dt_delete_item_wrapper(ctx, session, "/example-module:*", SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
     /* data tree is already empty can not be called with strict*/
-    rc = rp_dt_delete_item_wrapper(ctx, session, "/test-module:*", SR_EDIT_STRICT);
+    rc = rp_dt_delete_item_wrapper(ctx, session, "/example-module:*", SR_EDIT_STRICT);
     assert_int_equal(SR_ERR_DATA_MISSING, rc);
 
     sr_val_t **values = NULL;
     size_t cnt = 0;
-    rc = rp_dt_get_values_wrapper(ctx, session, "/test-module:*", &values, &cnt);
+    rc = rp_dt_get_values_wrapper(ctx, session, "/example-module:*", &values, &cnt);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
     assert_int_equal(0, cnt);
 
     test_rp_session_cleanup(ctx, session);
+
+    createDataTreeExampleModule();
 }
 
 void delete_item_alllist_test(void **state){
