@@ -419,6 +419,10 @@ dm_load_data_tree_file(dm_ctx_t *dm_ctx, int fd, const char *data_filename, cons
         free(data);
         return SR_ERR_INTERNAL;
     }
+    /* add default nodes to the empty data tree */
+    else if (NULL == data_tree) {
+        lyd_wd_add(dm_ctx->ly_ctx, &data_tree, LYD_WD_IMPL_TAG);
+    }
 
     data->module = module;
     data->modified = false;

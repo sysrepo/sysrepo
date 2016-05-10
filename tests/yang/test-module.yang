@@ -238,4 +238,9 @@ module test-module {
       }
     }
   }
+
+  leaf top-level-default {
+    type string;
+    default "default value";
+  }
 }

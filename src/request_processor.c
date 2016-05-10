@@ -670,10 +670,17 @@ rp_copy_config_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
         return SR_ERR_NOMEM;
     }
 
-    /* copy module content in DM */
-    rc = dm_copy_module(rp_ctx->dm_ctx, session->dm_session, msg->request->copy_config_req->module_name,
-            sr_datastore_gpb_to_sr(msg->request->copy_config_req->src_datastore),
-            sr_datastore_gpb_to_sr(msg->request->copy_config_req->dst_datastore));
+    if (NULL != msg->request->copy_config_req->module_name) {
+        /* copy module content in DM */
+        rc = dm_copy_module(rp_ctx->dm_ctx, session->dm_session, msg->request->copy_config_req->module_name,
+                sr_datastore_gpb_to_sr(msg->request->copy_config_req->src_datastore),
+                sr_datastore_gpb_to_sr(msg->request->copy_config_req->dst_datastore));
+    } else {
+        /* copy all enabled modules */
+        rc = dm_copy_all_models(rp_ctx->dm_ctx, session->dm_session,
+                sr_datastore_gpb_to_sr(msg->request->copy_config_req->src_datastore),
+                sr_datastore_gpb_to_sr(msg->request->copy_config_req->dst_datastore));
+    }
 
     /* set response code */
     resp->response->result = rc;

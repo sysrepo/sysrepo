@@ -1129,6 +1129,10 @@ cl_copy_config_test(void **state)
     rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &session_running);
     assert_int_equal(rc, SR_ERR_OK);
 
+    /* copy-config all enabled models, currently none */
+    rc = sr_copy_config(session_startup, NULL, SR_DS_RUNNING, SR_DS_STARTUP);
+    assert_int_equal(rc, SR_ERR_OK);
+
     /* enable running DS for example-module */
     rc = sr_module_change_subscribe(session_startup, "example-module", true,
             test_module_change_cb, &callback_called, &subscription);
@@ -1151,6 +1155,28 @@ cl_copy_config_test(void **state)
     rc = sr_get_item(session_startup, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &val);
     assert_int_equal(rc, SR_ERR_OK);
     assert_string_equal(val->data.string_val, "copy_config_test");
+    sr_free_val(val);
+
+    /* edit config in running 2 */
+    value.type = SR_STRING_T;
+    value.data.string_val = "copy_config_modified";
+    rc = sr_set_item(session_running, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* commit */
+    rc = sr_commit(session_running);
+
+    /* copy-config all enabled models */
+    rc = sr_copy_config(session_startup, NULL, SR_DS_RUNNING, SR_DS_STARTUP);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_session_refresh(session_startup);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* get-config from startup */
+    rc = sr_get_item(session_startup, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &val);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_string_equal(val->data.string_val, value.data.string_val);
     sr_free_val(val);
 
     /* stop the sessions */

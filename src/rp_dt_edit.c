@@ -260,7 +260,7 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, co
             }
         }
     }
-
+    lyd_wd_add(info->module->ctx, &info->node, LYD_WD_IMPL_TAG);
 cleanup:
     ly_set_free(parents);
     ly_set_free(nodes);
@@ -384,13 +384,19 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const
             rc = SR_ERR_INTERNAL;
         }
     }
-    /* remove default tag if the default value has been explictly set */
-    if (NULL == node && sch_node->nodetype == LYS_LEAF && ((struct lys_node_leaf *) sch_node)->dflt != NULL && 0 == strcmp(((struct lys_node_leaf *) sch_node)->dflt, new_value)) {
-        rc = rp_dt_find_node(dm_ctx, info->node, xpath, dm_is_running_ds_session(session), &node);
-        CHECK_RC_LOG_GOTO(rc, cleanup, "Created node %s not found", xpath);
+
+    /* remove default tag if the default value has been explicitly set or overwritten */
+    if (sch_node->nodetype == LYS_LEAF && ((struct lys_node_leaf *) sch_node)->dflt != NULL) {
+        if (NULL == node) {
+            rc = rp_dt_find_node(dm_ctx, info->node, xpath, dm_is_running_ds_session(session), &node);
+            CHECK_RC_LOG_GOTO(rc, cleanup, "Created node %s not found", xpath);
+        }
         node->dflt = 0;
     }
+
+    /* add default nodes into the data tree */
     lyd_wd_add(module->ctx, &info->node, LYD_WD_IMPL_TAG);
+
 cleanup:
     free(new_value);
     if (NULL != info) {
