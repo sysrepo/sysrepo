@@ -67,6 +67,8 @@ sr_gpb_operation_name(Sr__Operation operation)
         return "unsubscribe";
     case SR__OPERATION__UNSUBSCRIBE_DESTINATION:
         return "unsubscribe-destination";
+    case SR__OPERATION__RPC:
+        return "rpc";
     default:
         return "unknown";
     }
@@ -218,8 +220,15 @@ sr_gpb_req_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__M
             sr__unsubscribe_req__init((Sr__UnsubscribeReq*)sub_msg);
             req->unsubscribe_req = (Sr__UnsubscribeReq*)sub_msg;
             break;
-        default:
+        case SR__OPERATION__RPC:
+            sub_msg = calloc(1, sizeof(Sr__RPCReq));
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
+            sr__rpcreq__init((Sr__RPCReq*)sub_msg);
+            req->rpc_req = (Sr__RPCReq*)sub_msg;
             break;
+        default:
+            rc = SR_ERR_UNSUPPORTED;
+            goto error;
     }
 
     *msg_p = msg;
@@ -379,8 +388,15 @@ sr_gpb_resp_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__
             sr__unsubscribe_resp__init((Sr__UnsubscribeResp*)sub_msg);
             resp->unsubscribe_resp = (Sr__UnsubscribeResp*)sub_msg;
             break;
-        default:
+        case SR__OPERATION__RPC:
+            sub_msg = calloc(1, sizeof(Sr__RPCResp));
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
+            sr__rpcresp__init((Sr__RPCResp*)sub_msg);
+            resp->rpc_resp = (Sr__RPCResp*)sub_msg;
             break;
+        default:
+            rc = SR_ERR_UNSUPPORTED;
+            goto error;
     }
 
     *msg_p = msg;
@@ -446,7 +462,8 @@ sr_gpb_notif_alloc(const Sr__NotificationEvent event, const char *destination, c
             /* no sub-message */
             break;
         default:
-            break;
+            rc = SR_ERR_UNSUPPORTED;
+            goto error;
     }
 
     *msg_p = msg;
@@ -577,6 +594,9 @@ sr_gpb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__O
             case SR__OPERATION__UNSUBSCRIBE:
                 CHECK_NULL_RETURN(msg->request->unsubscribe_req, SR_ERR_MALFORMED_MSG);
                 break;
+            case SR__OPERATION__RPC:
+                CHECK_NULL_RETURN(msg->request->rpc_req, SR_ERR_MALFORMED_MSG);
+                break;
             default:
                 return SR_ERR_MALFORMED_MSG;
         }
@@ -646,6 +666,9 @@ sr_gpb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__O
                 break;
             case SR__OPERATION__UNSUBSCRIBE:
                 CHECK_NULL_RETURN(msg->response->unsubscribe_resp, SR_ERR_MALFORMED_MSG);
+                break;
+            case SR__OPERATION__RPC:
+                CHECK_NULL_RETURN(msg->response->rpc_resp, SR_ERR_MALFORMED_MSG);
                 break;
             default:
                 return SR_ERR_MALFORMED_MSG;
@@ -1050,13 +1073,13 @@ sr_copy_gpb_to_val_t(const Sr__Value *gpb_value, sr_val_t *value)
     int rc = SR_ERR_INTERNAL;
 
     rc = sr_set_gpb_type_in_val_t(gpb_value, value);
-    if (SR_ERR_OK != rc){
+    if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Setting type in for sr_value_t failed");
         return rc;
     }
 
     rc = sr_set_gpb_value_in_val_t(gpb_value, value);
-    if (SR_ERR_OK != rc){
+    if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Setting value in for sr_value_t failed");
         return rc;
     }
@@ -1081,6 +1104,68 @@ sr_dup_gpb_to_val_t(const Sr__Value *gpb_value, sr_val_t **value)
     }
 
     *value = val;
+    return rc;
+}
+
+int
+sr_values_sr_to_gpb(const sr_val_t *sr_values, const size_t sr_value_cnt, Sr__Value ***gpb_values_p, size_t *gpb_value_cnt_p)
+{
+    Sr__Value **gpb_values = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG2(gpb_values_p, gpb_value_cnt_p);
+
+    if ((NULL != sr_values) && (sr_value_cnt > 0)) {
+        gpb_values = calloc(sr_value_cnt, sizeof(*gpb_values));
+        CHECK_NULL_NOMEM_RETURN(gpb_values);
+
+        for (size_t i = 0; i < sr_value_cnt; i++) {
+            rc = sr_dup_val_t_to_gpb(&sr_values[i], &gpb_values[i]);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to duplicate sr_val_t to GPB.");
+        }
+    }
+
+    *gpb_values_p = gpb_values;
+    *gpb_value_cnt_p = sr_value_cnt;
+
+    return SR_ERR_OK;
+
+cleanup:
+    for (size_t i = 0; i < sr_value_cnt; i++) {
+        sr__value__free_unpacked(gpb_values[i], NULL);
+    }
+    free(gpb_values);
+    return rc;
+}
+
+int
+sr_values_gpb_to_sr(Sr__Value **gpb_values, size_t gpb_value_cnt, sr_val_t **sr_values_p, size_t *sr_value_cnt_p)
+{
+    sr_val_t *sr_values = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG2(sr_values_p, sr_value_cnt_p);
+
+    if ((NULL != gpb_values) && (gpb_value_cnt > 0)) {
+        sr_values = calloc(gpb_value_cnt, sizeof(*sr_values));
+        CHECK_NULL_NOMEM_RETURN(sr_values);
+
+        for (size_t i = 0; i < gpb_value_cnt; i++) {
+            rc = sr_copy_gpb_to_val_t(gpb_values[i], &sr_values[i]);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to duplicate GPB value to sr_val_t.");
+        }
+    }
+
+    *sr_values_p = sr_values;
+    *sr_value_cnt_p = gpb_value_cnt;
+
+    return SR_ERR_OK;
+
+cleanup:
+    for (size_t i = 0; i < gpb_value_cnt; i++) {
+        sr_free_val_content(&sr_values[i]);
+    }
+    free(sr_values);
     return rc;
 }
 
@@ -1154,6 +1239,8 @@ sr_event_gpb_to_str(Sr__NotificationEvent event)
         return "feature-enable";
     case SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV:
         return "module-change";
+    case SR__NOTIFICATION_EVENT__RPC_EV:
+        return "rpc";
     case SR__NOTIFICATION_EVENT__HELLO_EV:
         return "hello";
     default:

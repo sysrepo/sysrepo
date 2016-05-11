@@ -511,7 +511,7 @@ sr_libyang_type_to_sysrepo(LY_DATA_TYPE t)
 }
 
 static int
-sr_dec64_to_str(double val, struct lys_node *schema_node, char **out)
+sr_dec64_to_str(double val, const struct lys_node *schema_node, char **out)
 {
     CHECK_NULL_ARG2(schema_node, out);
     size_t fraction_digits = 0;
@@ -535,7 +535,7 @@ sr_dec64_to_str(double val, struct lys_node *schema_node, char **out)
 }
 
 int
-sr_val_to_str(const sr_val_t *value, struct lys_node *schema_node, char **out)
+sr_val_to_str(const sr_val_t *value, const struct lys_node *schema_node, char **out)
 {
     CHECK_NULL_ARG3(value, schema_node, out);
     size_t len = 0;

@@ -345,7 +345,7 @@ void dm_clear_session_errors(dm_session_t *session);
  * @param [in] rc
  * @return rc or SR_ERR_INTERNAL
  */
-int dm_report_error(dm_session_t *session, const char *msg, char *err_path, int rc);
+int dm_report_error(dm_session_t *session, const char *msg, const char *err_path, int rc);
 
 /**
  * @brief Checks if the session contains an error
@@ -532,6 +532,18 @@ int dm_copy_module(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module_n
  * @return Error code (SR_ERR_OK on success)
  */
 int dm_copy_all_models(dm_ctx_t *dm_ctx, dm_session_t *session, sr_datastore_t src, sr_datastore_t dst);
+
+/**
+ * @brief Validates content of a RPC request or reply.
+ * @param [in] dm_ctx DM context.
+ * @param [in] session DM session.
+ * @param [in] rpc_xpath XPath of the RPC.
+ * @param [in] args Input/output arguments of the RPC.
+ * @param [in] arg_cnt Number of input/output arguments provided.
+ * @param [in] input TRUE if input arguments were provided, FALSE if output.
+ * @return Error code (SR_ERR_OK on success)
+ */
+int dm_validate_rpc(dm_ctx_t *dm_ctx, dm_session_t *session, const char *rpc_xpath, sr_val_t *args, size_t arg_cnt, bool input);
 
 /**@} Data manager*/
 #endif /* SRC_DATA_MANAGER_H_ */

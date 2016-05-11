@@ -1465,3 +1465,103 @@ cleanup:
     }
     return cl_session_return(session, rc);
 }
+
+int
+sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callback,
+        void *private_ctx, sr_subscription_ctx_t **subscription_p)
+{
+    Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    sr_subscription_ctx_t *subscription = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG3(session, callback, subscription_p);
+
+    cl_session_clear_errors(session);
+
+    /* Initialize the subscription */
+    rc = cl_subscribtion_init(session, SR__NOTIFICATION_EVENT__RPC_EV, NULL,
+            private_ctx, &subscription, &msg_req);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by initialization of the subscription in the client library.");
+
+    subscription->callback.rpc_cb = callback;
+
+    /* Fill-in GPB subscription information */
+    msg_req->request->subscribe_req->event = SR__NOTIFICATION_EVENT__RPC_EV;
+
+    msg_req->request->subscribe_req->xpath = strdup(xpath);
+    CHECK_NULL_NOMEM_GOTO(msg_req->request->subscribe_req->xpath, rc, cleanup);
+
+    rc = sr_copy_first_ns(xpath, &msg_req->request->subscribe_req->module_name);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by extracting module name from xpath.");
+
+    subscription->module_name = strdup(msg_req->request->subscribe_req->module_name);
+    CHECK_NULL_NOMEM_GOTO(subscription->module_name, rc, cleanup);
+
+    /* send the request and receive the response */
+    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__SUBSCRIBE);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
+
+    sr__msg__free_unpacked(msg_req, NULL);
+    sr__msg__free_unpacked(msg_resp, NULL);
+
+    *subscription_p = subscription;
+    return cl_session_return(session, SR_ERR_OK);
+
+cleanup:
+    sr_unsubscribe(subscription);
+    if (NULL != msg_req) {
+        sr__msg__free_unpacked(msg_req, NULL);
+    }
+    if (NULL != msg_resp) {
+        sr__msg__free_unpacked(msg_resp, NULL);
+    }
+    return cl_session_return(session, rc);
+}
+
+int
+sr_rpc_send(sr_session_ctx_t *session, const char *xpath,
+        const sr_val_t *input,  const size_t input_cnt, sr_val_t **output, size_t *output_cnt)
+{
+    Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG3(session, session->conn_ctx, xpath);
+
+    cl_session_clear_errors(session);
+
+    /* prepare feature_enable message */
+    rc = sr_gpb_req_alloc(SR__OPERATION__RPC, session->id, &msg_req);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
+
+    /* set arguments */
+    msg_req->request->rpc_req->xpath = strdup(xpath);
+    CHECK_NULL_NOMEM_GOTO(msg_req->request->rpc_req->xpath, rc, cleanup);
+
+    /* set input arguments */
+    rc = sr_values_sr_to_gpb(input, input_cnt, &msg_req->request->rpc_req->input, &msg_req->request->rpc_req->n_input);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by copying RPC input arguments to GPB.");
+
+    /* send the request and receive the response */
+    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__RPC);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
+
+    if (NULL != output) {
+        /* set output arguments */
+        rc = sr_values_gpb_to_sr(msg_resp->response->rpc_resp->output, msg_resp->response->rpc_resp->n_output, output, output_cnt);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Error by copying RPC output arguments from GPB.");
+    }
+
+    sr__msg__free_unpacked(msg_req, NULL);
+    sr__msg__free_unpacked(msg_resp, NULL);
+
+    return cl_session_return(session, SR_ERR_OK);
+
+cleanup:
+    if (NULL != msg_req) {
+        sr__msg__free_unpacked(msg_req, NULL);
+    }
+    if (NULL != msg_resp) {
+        sr__msg__free_unpacked(msg_resp, NULL);
+    }
+    return cl_session_return(session, rc);
+}

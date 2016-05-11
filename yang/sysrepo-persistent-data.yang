@@ -53,6 +53,11 @@ module sysrepo-persistent-data {
       YANG subtree.";
   }
 
+  identity rpc {
+    base subscription-type;
+    description "Subscription for delivery of RPC identified by xpath.";
+  }
+
   list module {
     key "name";
     description "Module-specific persistent data maintained by sysrepo.";
@@ -103,8 +108,9 @@ module sysrepo-persistent-data {
 
         leaf enable-running {
           type empty;
+          when "../type = 'module-change' or ../type = 'subtree-change'";
           description "If set, the subscription enables specified subtree in
-          the running datastore.";
+            the running datastore.";
         }
       }
     }

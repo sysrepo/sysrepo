@@ -188,7 +188,7 @@ module test-module {
     }
  }
 
- list user {
+  list user {
     description "This is a list of users in the system.";
     ordered-by user;
     config true;
@@ -204,14 +204,14 @@ module test-module {
     leaf full-name {
         type string;
     }
- }
+  }
 
- leaf-list ordered-numbers {
+  leaf-list ordered-numbers {
     ordered-by user;
     type uint8;
- }
+  }
 
- list with_def {
+  list with_def {
     config true;
     key "name";
     leaf name {
@@ -221,10 +221,26 @@ module test-module {
         type int8;
         default 0;
     }
- }
+  }
+ 
+  rpc activate-software-image {
+    input {
+      leaf image-name {
+        type string;
+      }
+    }
+    output {
+      leaf status {
+        type string;
+      }
+      leaf version {
+        type string;
+      }
+    }
+  }
 
- leaf top-level-default {
+  leaf top-level-default {
     type string;
     default "default value";
- }
+  }
 }

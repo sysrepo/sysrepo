@@ -430,6 +430,58 @@ dm_copy_module_test(void **state)
    dm_cleanup(ctx);
 }
 
+void
+dm_rpc_test(void **state)
+{
+    int rc = SR_ERR_OK;
+    dm_ctx_t *ctx = NULL;
+    dm_session_t *session = NULL;
+    sr_val_t input = { 0, };
+    sr_val_t output[2] = { { 0, }, };
+
+    rc = dm_init(NULL, NULL, NULL, TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = dm_session_start(ctx, NULL, SR_DS_STARTUP, &session);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* non-existing RPC */
+    rc = dm_validate_rpc(ctx, session, "/test-module:non-existing-rpc", &input, 1, true);
+    assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
+
+    /* RPC input */
+    input.xpath = "/test-module:activate-software-image/image-name";
+    input.type = SR_STRING_T;
+    input.data.string_val = "acmefw-2.3";
+
+    rc = dm_validate_rpc(ctx, session, "/test-module:activate-software-image", &input, 1, true);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* invalid RPC input */
+    input.xpath = "/test-module:activate-software-image/non-existing-input";
+    rc = dm_validate_rpc(ctx, session, "/test-module:activate-software-image", &input, 1, true);
+    assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
+
+    /* RPC output */
+    output[0].xpath = "/test-module:activate-software-image/status";
+    output[0].type = SR_STRING_T;
+    output[0].data.string_val = "The image acmefw-2.3 is being installed.";
+    output[1].xpath = "/test-module:activate-software-image/version";
+    output[1].type = SR_STRING_T;
+    output[1].data.string_val = "2.3";
+
+    rc = dm_validate_rpc(ctx, session, "/test-module:activate-software-image", output, 2, false);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* invalid RPC output */
+    output[1].xpath = "/test-module:activate-software-image/non-existing-output";
+    rc = dm_validate_rpc(ctx, session, "/test-module:activate-software-image", output, 2, false);
+    assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
+
+    dm_session_stop(ctx, session);
+    dm_cleanup(ctx);
+}
+
 int main(){
     sr_log_stderr(SR_LL_DBG);
 
@@ -444,6 +496,7 @@ int main(){
             cmocka_unit_test(dm_add_operation_test),
             cmocka_unit_test(dm_locking_test),
             cmocka_unit_test(dm_copy_module_test),
+            cmocka_unit_test(dm_rpc_test),
     };
     return cmocka_run_group_tests(tests, setup, NULL);
 }

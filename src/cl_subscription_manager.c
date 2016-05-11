@@ -52,11 +52,11 @@
  * @brief Client Subscription Manager context.
  */
 typedef struct cl_sm_ctx_s {
-    /** Path where unix-domain server for notifications is binded to. */
+    /** Path where subscriber unix-domain server is binded to. */
     char *socket_path;
     /** Socket descriptor used to listen & accept new unix-domain connections. */
     int listen_socket_fd;
-    /** Binary tree used for fast notification connection lookup by file descriptor. */
+    /** Binary tree used for fast subscriber connection lookup by file descriptor. */
     sr_btree_t *fd_btree;
     
     /** Binary tree of data connections to sysrepo, organized by destination socket address. */
@@ -88,7 +88,7 @@ typedef struct cl_sm_buffer_s {
 } cl_sm_buffer_t;
 
 /**
- * @brief Context of a notification connection to Subscription Manger's unix-domain server.
+ * @brief Context of a subscriber connection to Subscription Manger's unix-domain server.
  */
 typedef struct cl_sm_conn_ctx_s {
     cl_sm_ctx_t *sm_ctx;      /**< Pointer to Subscription Manger context. */
@@ -229,21 +229,19 @@ cl_sm_connection_add(cl_sm_ctx_t *sm_ctx, int fd, cl_sm_conn_ctx_t **conn_p)
     CHECK_NULL_ARG(sm_ctx);
 
     conn = calloc(1, sizeof(*conn));
-    if (NULL == conn) {
-        SR_LOG_ERR_MSG("Unable to allocate subscription connection context.");
-        return SR_ERR_NOMEM;
-    }
+    CHECK_NULL_NOMEM_RETURN(conn);
+
     conn->sm_ctx = sm_ctx;
     conn->fd = fd;
 
     rc = sr_btree_insert(sm_ctx->fd_btree, conn);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Cannot insert new entry into fd binary tree (duplicate fd?).");
-        free(conn);
-        return SR_ERR_INTERNAL;
-    }
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot insert new entry into fd binary tree (duplicate fd?).");
 
     *conn_p = conn;
+    return rc;
+
+cleanup:
+    free(conn);
     return rc;
 }
 
@@ -251,15 +249,21 @@ cl_sm_connection_add(cl_sm_ctx_t *sm_ctx, int fd, cl_sm_conn_ctx_t **conn_p)
  * @brief Removes the connection context from Subscription Manager.
  */
 static int
-cl_sm_connection_remove(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn)
+cl_sm_conn_close(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn)
 {
 
     CHECK_NULL_ARG2(sm_ctx, conn);
 
+    SR_LOG_DBG("Closing subscriber connection on fd=%d.", conn->fd);
+
     if (NULL != conn->read_watcher.data) {
-        /* if read watcher was set, stop it */
         ev_io_stop(conn->sm_ctx->event_loop, &conn->read_watcher);
     }
+    if (NULL != conn->write_watcher.data) {
+        ev_io_stop(conn->sm_ctx->event_loop, &conn->write_watcher);
+    }
+
+    close(conn->fd);
 
     sr_btree_delete(sm_ctx->fd_btree, conn); /* sm_connection_cleanup auto-invoked */
 
@@ -267,12 +271,12 @@ cl_sm_connection_remove(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn)
 }
 
 /**
- * @brief Initializes unix-domain socket server for notification connections.
+ * @brief Initializes unix-domain socket server for subscriber connections.
  */
 static int
 cl_sm_server_init(cl_sm_ctx_t *sm_ctx)
 {
-    int path_len = 0, fd = -1;
+    int path_len = 0, fd = -1, ret = 0;
     int rc = SR_ERR_OK;
     struct sockaddr_un addr;
     mode_t old_umask = 0;
@@ -280,10 +284,8 @@ cl_sm_server_init(cl_sm_ctx_t *sm_ctx)
     /* generate socket path */
     path_len = snprintf(NULL, 0, "%s-%d.sock", CL_SUBSCRIPTIONS_PATH_PREFIX, getpid());
     sm_ctx->socket_path = calloc(path_len + 1, sizeof(*sm_ctx->socket_path));
-    if (NULL == sm_ctx->socket_path) {
-        SR_LOG_ERR_MSG("Unable to allocate socket path string.");
-        return SR_ERR_NOMEM;
-    }
+    CHECK_NULL_NOMEM_RETURN(sm_ctx->socket_path);
+
     snprintf(sm_ctx->socket_path, path_len + 1, "%s-%d.sock", CL_SUBSCRIPTIONS_PATH_PREFIX, getpid());
     unlink(sm_ctx->socket_path);
 
@@ -291,7 +293,7 @@ cl_sm_server_init(cl_sm_ctx_t *sm_ctx)
 
     /* create listening socket */
     fd = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (-1 == fd){
+    if (-1 == fd) {
         SR_LOG_ERR("Socket create error: %s", strerror(errno));
         rc = SR_ERR_INIT_FAILED;
         goto cleanup;
@@ -299,11 +301,7 @@ cl_sm_server_init(cl_sm_ctx_t *sm_ctx)
 
     /* set socket to nonblocking mode */
     rc = sr_fd_set_nonblock(fd);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Cannot set socket to nonblocking mode.");
-        rc = SR_ERR_INIT_FAILED;
-        goto cleanup;
-    }
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot set socket to nonblocking mode.");
 
     memset(&addr, 0, sizeof(addr));
     addr.sun_family = AF_UNIX;
@@ -311,21 +309,12 @@ cl_sm_server_init(cl_sm_ctx_t *sm_ctx)
 
     /* create the unix-domain socket writable to anyone */
     old_umask = umask(0);
-    rc = bind(fd, (struct sockaddr*)&addr, sizeof(addr));
+    ret = bind(fd, (struct sockaddr*)&addr, sizeof(addr));
     umask(old_umask);
+    CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_INIT_FAILED, cleanup, "Socket bind error: %s", strerror(errno));
 
-    if (-1 == rc) {
-        SR_LOG_ERR("Socket bind error: %s", strerror(errno));
-        rc = SR_ERR_INIT_FAILED;
-        goto cleanup;
-    }
-
-    rc = listen(fd, SOMAXCONN);
-    if (-1 == rc) {
-        SR_LOG_ERR("Socket listen error: %s", strerror(errno));
-        rc = SR_ERR_INIT_FAILED;
-        goto cleanup;
-    }
+    ret = listen(fd, SOMAXCONN);
+    CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_INIT_FAILED, cleanup, "Socket listen error: %s", strerror(errno));
 
     sm_ctx->listen_socket_fd = fd;
     return SR_ERR_OK;
@@ -343,7 +332,7 @@ cleanup:
 }
 
 /**
- * @brief Destroys the unix-domain socket server for notification connections.
+ * @brief Destroys the unix-domain socket server for subscriber connections.
  */
 static void
 cl_sm_server_cleanup(cl_sm_ctx_t *sm_ctx)
@@ -376,19 +365,110 @@ cl_sm_conn_buffer_expand(const cl_sm_conn_ctx_t *conn, cl_sm_buffer_t *buff, siz
             requested_space = CL_SM_BUFF_ALLOC_CHUNK;
         }
         tmp = realloc(buff->data, buff->size + requested_space);
-        if (NULL != tmp) {
-            buff->data = tmp;
-            buff->size += requested_space;
-            SR_LOG_DBG("%s buffer for fd=%d expanded to %zu bytes.",
-                    (&conn->in_buff == buff ? "Input" : "Output"), conn->fd, buff->size);
-        } else {
-            SR_LOG_ERR("Cannot expand %s buffer for fd=%d - not enough memory.",
-                    (&conn->in_buff == buff ? "input" : "output"), conn->fd);
-            return SR_ERR_NOMEM;
-        }
+        CHECK_NULL_NOMEM_RETURN(tmp);
+
+        buff->data = tmp;
+        buff->size += requested_space;
+        SR_LOG_DBG("%s buffer for fd=%d expanded to %zu bytes.",
+                (&conn->in_buff == buff ? "Input" : "Output"), conn->fd, buff->size);
     }
 
     return SR_ERR_OK;
+}
+
+/**
+ * @brief Flush contents of the output buffer of the given connection.
+ */
+static int
+cl_sm_conn_out_buff_flush(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn)
+{
+    cl_sm_buffer_t *buff = NULL;
+    int written = 0;
+    size_t buff_size = 0, buff_pos = 0;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG2(sm_ctx, conn);
+
+    buff = &conn->out_buff;
+    buff_size = buff->pos;
+    buff_pos = conn->out_buff.start;
+
+    SR_LOG_DBG("Sending %zu bytes of data.", (buff_size - buff_pos));
+
+    do {
+        /* try to send all data */
+        written = send(conn->fd, (buff->data + buff_pos), (buff_size - buff_pos), 0);
+        if (written > 0) {
+            SR_LOG_DBG("%d bytes of data sent.", written);
+            buff_pos += written;
+        } else {
+            if ((EWOULDBLOCK == errno) || (EAGAIN == errno)) {
+                /* no more data can be sent now */
+                SR_LOG_DBG("fd %d would block", conn->fd);
+                /* mark the position where the unsent data start */
+                conn->out_buff.start = buff_pos;
+                /* monitor fd for writable event */
+                ev_io_start(sm_ctx->event_loop, &conn->write_watcher);
+                break;
+            } else {
+                /* error by writing - close the connection due to an error */
+                SR_LOG_ERR("Error by writing data to fd %d: %s.", conn->fd, strerror(errno));
+                conn->close_requested = true;
+                break;
+            }
+        }
+    } while ((buff_pos < buff_size) && (written > 0));
+
+    if (buff_size == buff_pos) {
+        /* no more data left in the buffer */
+        buff->pos = 0;
+        conn->out_buff.start = 0;
+    }
+
+    return rc;
+}
+
+/**
+ * @brief Sends a message to the recipient identified by session context.
+ */
+static int
+cl_sm_msg_send_connection(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *msg)
+{
+    cl_sm_buffer_t *buff = NULL;
+    size_t msg_size = 0;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG3(sm_ctx, conn, msg);
+
+    buff = &conn->out_buff;
+
+    /* find out required message size */
+    msg_size = sr__msg__get_packed_size(msg);
+    if ((msg_size <= 0) || (msg_size > SR_MAX_MSG_SIZE)) {
+        SR_LOG_ERR("Unable to send the message of size %zuB.", msg_size);
+        return SR_ERR_INTERNAL;
+    }
+
+    /* expand the buffer if needed */
+    rc = cl_sm_conn_buffer_expand(conn, buff, SR_MSG_PREAM_SIZE + msg_size);
+
+    if (SR_ERR_OK == rc) {
+        /* write the pramble */
+        sr_uint32_to_buff(msg_size, (buff->data + buff->pos));
+        buff->pos += SR_MSG_PREAM_SIZE;
+
+        /* write the message */
+        sr__msg__pack(msg, (buff->data + buff->pos));
+        buff->pos += msg_size;
+
+        /* flush the buffer */
+        rc = cl_sm_conn_out_buff_flush(sm_ctx, conn);
+        if ((conn->close_requested) || (SR_ERR_OK != rc)) {
+            cl_sm_conn_close(sm_ctx, conn);
+        }
+    }
+
+    return rc;
 }
 
 /**
@@ -432,8 +512,8 @@ cl_sm_get_data_session(cl_sm_ctx_t *sm_ctx, sr_subscription_ctx_t *subscription,
         rc = cl_connection_create(&connection);
         if (SR_ERR_OK == rc) {
             connection->dst_address = strdup(source_address);
-            connection->dst_pid = source_pid;
             CHECK_NULL_NOMEM_ERROR(connection->dst_address, rc);
+            connection->dst_pid = source_pid;
         }
         if (SR_ERR_OK == rc) {
             rc = cl_socket_connect(connection, connection->dst_address);
@@ -487,32 +567,17 @@ cl_sm_get_data_session(cl_sm_ctx_t *sm_ctx, sr_subscription_ctx_t *subscription,
 }
 
 /**
- * @brief Processes a message received on the connection.
+ * @brief Processes an incoming notification message.
  */
 static int
-cl_sm_conn_msg_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, uint8_t *msg_data, size_t msg_size)
+cl_sm_notif_process(cl_sm_ctx_t *sm_ctx, Sr__Msg *msg)
 {
-    Sr__Msg *msg = NULL;
     sr_subscription_ctx_t *subscription = NULL;
     sr_subscription_ctx_t subscription_lookup = { 0, };
     sr_session_ctx_t *data_session = NULL;
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG3(sm_ctx, conn, msg_data);
-
-    /* unpack the message */
-    msg = sr__msg__unpack(NULL, msg_size, msg_data);
-    if (NULL == msg) {
-        SR_LOG_ERR("Unable to unpack the message (conn=%p).", (void*)conn);
-        return SR_ERR_INTERNAL;
-    }
-
-    /* check the message */
-    if ((SR__MSG__MSG_TYPE__NOTIFICATION != msg->type) || (NULL == msg->notification)) {
-        SR_LOG_ERR("Invalid or unexpected message received (conn=%p).", (void*)conn);
-        rc = SR_ERR_INVAL_ARG;
-        goto cleanup;
-    }
+    CHECK_NULL_ARG3(sm_ctx, msg, msg->notification);
 
     SR_LOG_DBG("Received a notification for subscription id=%"PRIu32" (source address='%s').",
             msg->notification->subscription_id, msg->notification->source_address);
@@ -525,8 +590,7 @@ cl_sm_conn_msg_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, uint8_t *msg
     if (NULL == subscription) {
         pthread_mutex_unlock(&sm_ctx->subscriptions_lock);
         SR_LOG_ERR("No matching subscription for subscription id=%"PRIu32".", msg->notification->subscription_id);
-        rc = SR_ERR_INVAL_ARG;
-        goto cleanup;
+        return SR_ERR_INVAL_ARG;
     }
 
     /* validate the message according to the subscription type */
@@ -534,8 +598,7 @@ cl_sm_conn_msg_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, uint8_t *msg
     if (SR_ERR_OK != rc) {
         pthread_mutex_unlock(&sm_ctx->subscriptions_lock);
         SR_LOG_ERR("Received notification message is not valid for subscription id=%"PRIu32".", subscription->id);
-        rc = SR_ERR_INVAL_ARG;
-        goto cleanup;
+        return SR_ERR_INVAL_ARG;
     }
 
     /* get data session that can be used from notification callback */
@@ -544,8 +607,7 @@ cl_sm_conn_msg_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, uint8_t *msg
                 msg->notification->source_pid, &data_session);
         if (SR_ERR_OK != rc) {
             pthread_mutex_unlock(&sm_ctx->subscriptions_lock);
-            SR_LOG_ERR("Unable to get configuration session for address='%s'.", msg->notification->source_address);
-            goto cleanup;
+            return SR_ERR_INVAL_ARG;
         }
     }
 
@@ -583,12 +645,108 @@ cl_sm_conn_msg_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, uint8_t *msg
 
     pthread_mutex_unlock(&sm_ctx->subscriptions_lock);
 
-    sr__msg__free_unpacked(msg, NULL);
-
     return rc;
+}
+
+/**
+ * @brief Processes an incoming RPC message.
+ */
+static int
+cl_sm_rpc_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *msg)
+{
+    sr_subscription_ctx_t *subscription = NULL;
+    sr_subscription_ctx_t subscription_lookup = { 0, };
+    Sr__Msg *resp = NULL;
+    sr_val_t *input = NULL, *output = NULL;
+    size_t input_cnt = 0, output_cnt = 0;
+    int rc = SR_ERR_OK, rpc_rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG4(sm_ctx, msg, msg->request, msg->request->rpc_req);
+
+    SR_LOG_DBG("Received a RPC request for subscription id=%"PRIu32".", msg->request->rpc_req->subscription_id);
+
+    pthread_mutex_lock(&sm_ctx->subscriptions_lock);
+
+    /* find the subscription according to id */
+    subscription_lookup.id = msg->request->rpc_req->subscription_id;
+    subscription = sr_btree_search(sm_ctx->subscriptions_btree, &subscription_lookup);
+    if (NULL == subscription) {
+        pthread_mutex_unlock(&sm_ctx->subscriptions_lock);
+        SR_LOG_ERR("No matching subscription for subscription id=%"PRIu32".", msg->request->rpc_req->subscription_id);
+        return SR_ERR_INVAL_ARG;
+    }
+
+    SR_LOG_DBG("Calling RPC callback for subscription id=%"PRIu32".", subscription->id);
+
+    /* copy input values from GPB */
+    rc = sr_values_gpb_to_sr(msg->request->rpc_req->input, msg->request->rpc_req->n_input, &input, &input_cnt);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by copying RPC input arguments from GPB.");
+
+    rpc_rc = subscription->callback.rpc_cb(
+            msg->request->rpc_req->xpath,
+            input, input_cnt,
+            &output, &output_cnt,
+            subscription->private_ctx);
+
+    pthread_mutex_unlock(&sm_ctx->subscriptions_lock);
+
+    /* allocate the response and send it */
+    rc = sr_gpb_resp_alloc(SR__OPERATION__RPC, msg->session_id, &resp);
+    CHECK_RC_MSG_RETURN(rc, "Allocation of RPC response failed.");
+
+    resp->response->result = rpc_rc;
+    resp->response->rpc_resp->xpath = strdup(msg->request->rpc_req->xpath);
+    CHECK_NULL_NOMEM_GOTO(resp->response->rpc_resp->xpath, rc, cleanup);
+
+    /* copy output values to GPB */
+    if (SR_ERR_OK == rpc_rc) {
+        rc = sr_values_sr_to_gpb(output, output_cnt, &resp->response->rpc_resp->output, &resp->response->rpc_resp->n_output);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Error by copying RPC output arguments to GPB.");
+    }
+
+    /* send the response */
+    rc = cl_sm_msg_send_connection(sm_ctx, conn, resp);
 
 cleanup:
+    sr_free_values(input, input_cnt);
+    sr_free_values(output, output_cnt);
+    sr__msg__free_unpacked(resp, NULL);
+    return rc;
+}
+
+/**
+ * @brief Processes a message received on the connection.
+ */
+static int
+cl_sm_conn_msg_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, uint8_t *msg_data, size_t msg_size)
+{
+    Sr__Msg *msg = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG3(sm_ctx, conn, msg_data);
+
+    /* unpack the message */
+    msg = sr__msg__unpack(NULL, msg_size, msg_data);
+    if (NULL == msg) {
+        SR_LOG_ERR("Unable to unpack the message (conn=%p).", (void*)conn);
+        return SR_ERR_INTERNAL;
+    }
+
+    /* check the message */
+    if (SR__MSG__MSG_TYPE__NOTIFICATION == msg->type) {
+        /* notification */
+        rc = cl_sm_notif_process(sm_ctx, msg);
+    } else if ((SR__MSG__MSG_TYPE__REQUEST == msg->type) && (SR__OPERATION__RPC == msg->request->operation)) {
+        /* RPC request */
+        rc = cl_sm_rpc_process(sm_ctx, conn, msg);
+    } else {
+        SR_LOG_ERR("Invalid or unexpected message received (conn=%p).", (void*)conn);
+        rc = SR_ERR_INVAL_ARG;
+    }
+
+    /* release the message */
     sr__msg__free_unpacked(msg, NULL);
+
     return rc;
 }
 
@@ -650,7 +808,7 @@ cl_sm_conn_in_buff_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn)
 }
 
 /**
- * @brief Reads data from a notification connection file descriptor and processes them.
+ * @brief Reads data from a subscriber connection file descriptor and processes them.
  */
 static int
 cl_sm_fd_read_data(cl_sm_ctx_t *sm_ctx, int fd)
@@ -667,7 +825,7 @@ cl_sm_fd_read_data(cl_sm_ctx_t *sm_ctx, int fd)
     tmp_conn.fd = fd;
     conn = sr_btree_search(sm_ctx->fd_btree, &tmp_conn);
     if (NULL == conn) {
-        SR_LOG_ERR("Invalid file descriptor fd=%d, matching subscription connection not found.", fd);
+        SR_LOG_ERR("Invalid file descriptor fd=%d, matching subscriber connection not found.", fd);
         return SR_ERR_INVAL_ARG;
     }
 
@@ -717,9 +875,7 @@ cl_sm_fd_read_data(cl_sm_ctx_t *sm_ctx, int fd)
 
     /* close the connection if requested */
     if (conn->close_requested) {
-        SR_LOG_DBG("Closing notification connection on fd=%d.", fd);
-        cl_sm_connection_remove(sm_ctx, conn);
-        close(fd);
+        cl_sm_conn_close(sm_ctx, conn);
         rc = SR_ERR_DISCONNECT;
     }
 
@@ -739,6 +895,36 @@ cl_sm_fd_read_cb(struct ev_loop *loop, ev_io *w, int revents)
     sm_ctx = (cl_sm_ctx_t*)w->data;
 
     cl_sm_fd_read_data(sm_ctx, w->fd);
+}
+
+/**
+ * @brief Callback called by the event loop watcher when the file descriptor of
+ * a connection is writable (without blocking).
+ */
+static void
+cl_sm_conn_write_cb(struct ev_loop *loop, ev_io *w, int revents)
+{
+    cl_sm_conn_ctx_t *conn = NULL;
+    cl_sm_ctx_t *sm_ctx = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG_VOID2(w, w->data);
+    conn = (cl_sm_conn_ctx_t*)w->data;
+
+    CHECK_NULL_ARG_VOID2(conn, conn->sm_ctx);
+    sm_ctx = conn->sm_ctx;
+
+    SR_LOG_DBG("fd %d writeable", conn->fd);
+
+    ev_io_stop(sm_ctx->event_loop, &conn->write_watcher);
+
+    /* flush the output buffer */
+    rc = cl_sm_conn_out_buff_flush(sm_ctx, conn);
+
+    /* close the connection if requested */
+    if ((conn->close_requested) || (SR_ERR_OK != rc)) {
+        cl_sm_conn_close(sm_ctx, conn);
+    }
 }
 
 /**
@@ -781,6 +967,10 @@ cl_sm_server_watcher_cb(struct ev_loop *loop, ev_io *w, int revents)
             ev_io_init(&conn->read_watcher, cl_sm_fd_read_cb, clnt_fd, EV_READ);
             conn->read_watcher.data = (void*)sm_ctx;
             ev_io_start(sm_ctx->event_loop, &conn->read_watcher);
+
+            ev_io_init(&conn->write_watcher, cl_sm_conn_write_cb, conn->fd, EV_WRITE);
+            conn->write_watcher.data = (void*)conn;
+            /* do not start write watcher - will be started when needed */
         } else {
             if ((EWOULDBLOCK == errno) || (EAGAIN == errno)) {
                 /* no more connections to accept */
@@ -835,7 +1025,7 @@ int
 cl_sm_init(cl_sm_ctx_t **sm_ctx_p)
 {
     cl_sm_ctx_t *ctx = NULL;
-    int rc = SR_ERR_OK;
+    int ret = 0, rc = SR_ERR_OK;
 
     CHECK_NULL_ARG(sm_ctx_p);
 
@@ -843,46 +1033,28 @@ cl_sm_init(cl_sm_ctx_t **sm_ctx_p)
 
     /* allocate the context */
     ctx = calloc(1, sizeof(*ctx));
-    if (NULL == ctx) {
-        SR_LOG_ERR_MSG("Could not allocate Client Subscription Manger context");
-        return SR_ERR_NOMEM;
-    }
+    CHECK_NULL_NOMEM_RETURN(ctx);
 
     /* create binary tree for fast connection lookup by fd,
      * with automatic cleanup when the session is removed from tree */
     rc = sr_btree_init(cl_sm_connection_cmp_fd, cl_sm_connection_cleanup, &ctx->fd_btree);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Cannot allocate binary tree for FDd.");
-        goto cleanup;
-    }
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate binary tree for FDd.");
 
     /* create binary tree for fast subscription lookup by id */
     rc = sr_btree_init(cl_sm_subscription_cmp_id, cl_sm_subscription_cleanup_internal, &ctx->subscriptions_btree);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Cannot allocate binary tree for subscription IDs.");
-        goto cleanup;
-    }
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate binary tree for subscription IDs.");
 
     /* create binary tree for fast data connection lookup by destination (socket) string */
     rc = sr_btree_init(cl_sm_data_connection_cmp_dst, cl_sm_data_connection_cleanup, &ctx->data_connection_btree);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Cannot allocate binary tree for data connections.");
-        goto cleanup;
-    }
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate binary tree for data connections.");
 
     /* initialize the mutex for subscriptions */
-    rc = pthread_mutex_init(&ctx->subscriptions_lock, NULL);
-    if (0 != rc) {
-        SR_LOG_ERR_MSG("Cannot initialize subscriptions btree mutex.");
-        rc = SR_ERR_INIT_FAILED;
-        goto cleanup;
-    }
+    ret = pthread_mutex_init(&ctx->subscriptions_lock, NULL);
+    CHECK_ZERO_MSG_GOTO(ret, rc, SR_ERR_INIT_FAILED, cleanup, "Cannot initialize subscriptions btree mutex.");
 
     /* initialize unix-domain server */
     rc = cl_sm_server_init(ctx);
-    if (SR_ERR_OK != rc) {
-        goto cleanup;
-    }
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot initialize subscription unix-domain server.");
 
     srand(time(NULL));
 
@@ -901,12 +1073,8 @@ cl_sm_init(cl_sm_ctx_t **sm_ctx_p)
     ctx->stop_watcher.data = (void*)ctx;
     ev_async_start(ctx->event_loop, &ctx->stop_watcher);
 
-    rc = pthread_create(&ctx->event_loop_thread, NULL, cl_sm_event_loop_threaded, ctx);
-    if (0 != rc) {
-        SR_LOG_ERR("Error by creating a new thread: %s", strerror(errno));
-        rc = SR_ERR_INTERNAL;
-        goto cleanup;
-    }
+    ret = pthread_create(&ctx->event_loop_thread, NULL, cl_sm_event_loop_threaded, ctx);
+    CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_INIT_FAILED, cleanup, "Error by creating a new thread: %s", strerror(errno));
 
     SR_LOG_DBG_MSG("Client Subscription Manager initialized successfully.");
 
@@ -958,9 +1126,8 @@ cl_sm_subscription_init(cl_sm_ctx_t *sm_ctx, sr_subscription_ctx_t **subscriptio
     CHECK_NULL_ARG2(sm_ctx, subscription_p);
 
     subscription = calloc(1, sizeof(*subscription));
-    if (NULL == subscription) {
-        return SR_ERR_NOMEM;
-    }
+    CHECK_NULL_NOMEM_RETURN(subscription);
+
     subscription->sm_ctx = sm_ctx;
 
     pthread_mutex_lock(&sm_ctx->subscriptions_lock);
@@ -985,11 +1152,7 @@ cl_sm_subscription_init(cl_sm_ctx_t *sm_ctx, sr_subscription_ctx_t **subscriptio
 
     pthread_mutex_unlock(&sm_ctx->subscriptions_lock);
 
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Cannot insert new entry into subscription binary tree (duplicate id?).");
-        rc = SR_ERR_INTERNAL;
-        goto cleanup;
-    }
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot insert new entry into subscription binary tree (duplicate id?).");
 
     subscription->delivery_address = sm_ctx->socket_path;
     *subscription_p = subscription;

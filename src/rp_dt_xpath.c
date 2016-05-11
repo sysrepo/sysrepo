@@ -333,7 +333,7 @@ not_matched:
     free(xp_copy);
     free(unmatch_part);
     if (SR_ERR_OK != rc && NULL != session) {
-        rc = dm_report_error(session, err_msg, strdup(xpath), SR_ERR_BAD_ELEMENT);
+        rc = dm_report_error(session, err_msg, xpath, SR_ERR_BAD_ELEMENT);
     }
     free(err_msg);
     return rc;
@@ -372,7 +372,7 @@ rp_dt_find_leaflist(dm_session_t *session, const char *xpath, char *xp_copy, con
 
 not_matched:
     if (SR_ERR_OK != rc && NULL != session) {
-        rc = dm_report_error(session, err_msg, strdup(xpath), SR_ERR_BAD_ELEMENT);
+        rc = dm_report_error(session, err_msg, xpath, SR_ERR_BAD_ELEMENT);
     }
     free(err_msg);
     return rc;
@@ -460,7 +460,7 @@ rp_dt_validate_node_xpath(dm_ctx_t *dm_ctx, dm_session_t *session, const char *x
     const struct lys_module *module = NULL;
     rc = dm_get_module(dm_ctx, namespace, NULL, &module);
     if (SR_ERR_UNKNOWN_MODEL == rc && NULL != session) {
-        rc = dm_report_error(session, NULL, strdup(xpath), rc);
+        rc = dm_report_error(session, NULL, xpath, rc);
     }
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Get module %s failed", namespace);
@@ -506,21 +506,21 @@ rp_dt_validate_node_xpath(dm_ctx_t *dm_ctx, dm_session_t *session, const char *x
             break;
         case LYVE_PATH_INKEY:
             if (NULL != session) {
-                rc = dm_report_error(session, ly_errmsg(), strdup(ly_errpath()), SR_ERR_BAD_ELEMENT);
+                rc = dm_report_error(session, ly_errmsg(), ly_errpath(), SR_ERR_BAD_ELEMENT);
             } else {
                 rc = SR_ERR_BAD_ELEMENT;
             }
             break;
         case LYVE_PATH_INMOD:
             if (NULL != session) {
-                rc = dm_report_error(session, ly_errmsg(), strdup(ly_errpath()), SR_ERR_UNKNOWN_MODEL);
+                rc = dm_report_error(session, ly_errmsg(), ly_errpath(), SR_ERR_UNKNOWN_MODEL);
             } else {
                 rc = SR_ERR_UNKNOWN_MODEL;
             }
             break;
         default:
             if (NULL != session) {
-                rc = dm_report_error(session, ly_errmsg(), strdup(ly_errpath()), SR_ERR_INVAL_ARG);
+                rc = dm_report_error(session, ly_errmsg(), ly_errpath(), SR_ERR_INVAL_ARG);
             } else {
                 rc = SR_ERR_INVAL_ARG;
             }

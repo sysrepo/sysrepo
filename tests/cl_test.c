@@ -1189,6 +1189,76 @@ cl_copy_config_test(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 }
 
+static int
+test_rpc_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt,
+        sr_val_t **output, size_t *output_cnt, void *private_ctx)
+{
+    int *callback_called = (int*)private_ctx;
+    *callback_called += 1;
+
+    printf("'Executing' RPC: %s\n", xpath);
+    for (size_t i = 0; i < input_cnt; i++) {
+        printf("    input parameter[%zu]: %s = %s\n", i, input[i].xpath, input[i].data.string_val);
+    }
+
+    *output = calloc(2, sizeof(**output));
+    (*output)[0].xpath = strdup("/test-module:activate-software-image/status");
+    (*output)[0].type = SR_STRING_T;
+    (*output)[0].data.string_val = strdup("The image acmefw-2.3 is being installed.");
+    (*output)[1].xpath = strdup("/test-module:activate-software-image/version");
+    (*output)[1].type = SR_STRING_T;
+    (*output)[1].data.string_val = strdup("2.3");
+
+    *output_cnt = 2;
+
+    return SR_ERR_OK;
+}
+
+static void
+cl_rpc_test(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+
+    sr_session_ctx_t *session = NULL;
+    sr_subscription_ctx_t *subscription = NULL;
+    int callback_called = 0;
+    int rc = SR_ERR_OK;
+
+    /* start a session */
+    rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* subscribe for RPC */
+    rc = sr_rpc_subscribe(session, "/test-module:activate-software-image", test_rpc_cb, &callback_called, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    sr_val_t input = { 0, };
+    sr_val_t *output = NULL;
+    size_t output_cnt = 0;
+    input.xpath = "/test-module:activate-software-image/image-name";
+    input.type = SR_STRING_T;
+    input.data.string_val = "acmefw-2.3";
+
+    /* send a RPC */
+    rc = sr_rpc_send(session, "/test-module:activate-software-image", &input, 1, &output, &output_cnt);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    for (size_t i = 0; i < output_cnt; i++) {
+        printf("RPC output parameter[%zu]: %s = %s\n", i, output[i].xpath, output[i].data.string_val);
+    }
+
+    sr_free_values(output, output_cnt);
+
+    /* stop the session */
+    rc = sr_session_stop(session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* unsubscribe */
+    rc = sr_unsubscribe(subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+}
+
 int
 main()
 {
@@ -1210,6 +1280,7 @@ main()
             cmocka_unit_test_setup_teardown(cl_refresh_session, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_notification_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_copy_config_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_rpc_test, sysrepo_setup, sysrepo_teardown),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);

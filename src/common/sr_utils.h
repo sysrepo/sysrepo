@@ -258,7 +258,7 @@ sr_type_t sr_libyang_type_to_sysrepo(LY_DATA_TYPE t);
  * @param [out] out
  * @return
  */
-int sr_val_to_str(const sr_val_t *value, struct lys_node *schema_node, char **out);
+int sr_val_to_str(const sr_val_t *value, const struct lys_node *schema_node, char **out);
 
 /**
  * @brief Frees contents of the sr_val_t structure, does not free the

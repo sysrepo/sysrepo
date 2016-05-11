@@ -263,7 +263,7 @@ np_cleanup(np_ctx_t *np_ctx)
 
 int
 np_notification_subscribe(np_ctx_t *np_ctx, const rp_session_t *rp_session, Sr__NotificationEvent event_type,
-        const char *dst_address, uint32_t dst_id, const char *module_name, const char *xpath, const bool enable_running)
+        const char *dst_address, uint32_t dst_id, const char *module_name, const char *xpath, const np_subscr_options_t opts)
 {
     np_subscription_t *subscription = NULL;
     np_subscription_t **subscriptions_tmp = NULL;
@@ -286,19 +286,21 @@ np_notification_subscribe(np_ctx_t *np_ctx, const rp_session_t *rp_session, Sr__
     subscription->dst_id = dst_id;
     subscription->dst_address = strdup(dst_address);
     CHECK_NULL_NOMEM_GOTO(subscription->dst_address, rc, cleanup);
-    subscription->enable_running = enable_running;
+    subscription->enable_running = (opts & NP_SUBSCR_ENABLE_RUNNING);
 
     /* save the new subscription */
-    if (SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV == event_type) {
+    if ((SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV == event_type) ||
+            (SR__NOTIFICATION_EVENT__RPC_EV == event_type)) {
         /*  update notification destination info */
         rc = np_dst_info_insert(np_ctx, dst_address, module_name);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to update notification destination info.");
 
         /* add the subscription to module's persistent data */
-        rc = pm_add_subscription(np_ctx->rp_ctx->pm_ctx, rp_session->user_credentials, module_name, subscription);
+        rc = pm_add_subscription(np_ctx->rp_ctx->pm_ctx, rp_session->user_credentials, module_name, subscription,
+                (opts & NP_SUBSCR_EXCLUSIVE));
         CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to save the subscription into persistent data file.");
 
-        if (enable_running) {
+        if (opts & NP_SUBSCR_ENABLE_RUNNING) {
             /* enable the module in running config */
             rc = dm_enable_module_running(np_ctx->rp_ctx->dm_ctx, rp_session->dm_session, module_name, NULL);
             CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to enable the module in the running datastore.");
@@ -351,7 +353,8 @@ np_notification_unsubscribe(np_ctx_t *np_ctx,  const rp_session_t *rp_session, S
 
     SR_LOG_DBG("Notification unsubscribe: dst_address='%s', dst_id=%"PRIu32".", dst_address, dst_id);
 
-    if (SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV == event_type) {
+    if ((SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV == event_type) ||
+            (SR__NOTIFICATION_EVENT__RPC_EV == event_type)) {
         /* remove the subscription to module's persistent data */
         subscription_lookup.dst_address = dst_address;
         subscription_lookup.dst_id = dst_id;

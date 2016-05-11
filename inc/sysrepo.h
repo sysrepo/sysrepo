@@ -929,6 +929,59 @@ int sr_unsubscribe(sr_subscription_ctx_t *subscription);
 
 
 ////////////////////////////////////////////////////////////////////////////////
+// RPC API - !!! EXPERIMENTAL !!!
+////////////////////////////////////////////////////////////////////////////////
+
+/**
+ * @brief Callback to be called by the delivery of RPC specified by xpath.
+ * Subscribe to it by ::sr_rpc_subscribe call.
+ *
+ * @param[in] xpath XPath identifying the RPC.
+ * @param[in] input Array of input parameters.
+ * @param[in] input_cnt Number of input parameters.
+ * @param[out] output Array of output parameters. Should be allocated on heap,
+ * will be freed by sysrepo after sending of the RPC response.
+ * @param[out] output_cnt Number of output parameters.
+ * @param[in] private_ctx Private context opaque to sysrepo, as passed to
+ * ::sr_rpc_subscribe call.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+typedef int (*sr_rpc_cb)(const char *xpath, const sr_val_t *input, const size_t input_cnt,
+        sr_val_t **output, size_t *output_cnt, void *private_ctx);
+
+/**
+ * @brief Subscribes for delivery of RPC specified by xpath.
+ *
+ * @param[in] session Session context acquired with ::sr_session_start call.
+ * @param[in] xpath XPath identifying the RPC.
+ * @param[in] callback Callback to be called when the RPC is called.
+ * @param[in] private_ctx Private context passed to the callback function, opaque to sysrepo.
+ * @param[out] subscription Subscription context that can be passed to ::sr_unsubscribe.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callback,
+        void *private_ctx, sr_subscription_ctx_t **subscription);
+
+/**
+ * @brief Sends a RPC specified by xpath and waits for the result.
+ *
+ * @param[in] session Session context acquired with ::sr_session_start call.
+ * @param[in] xpath XPath identifying the RPC.
+ * @param[in] input Array of input parameters.
+ * @param[in] input_cnt Number of input parameters.
+ * @param[out] output Array of output parameters. Will be allocated by sysrepo
+ * and should be freed by caller using ::sr_free_values.
+ * @param[out] output_cnt Number of output parameters.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_rpc_send(sr_session_ctx_t *session, const char *xpath,
+        const sr_val_t *input,  const size_t input_cnt, sr_val_t **output, size_t *output_cnt);
+
+
+////////////////////////////////////////////////////////////////////////////////
 // Cleanup Routines
 ////////////////////////////////////////////////////////////////////////////////
 

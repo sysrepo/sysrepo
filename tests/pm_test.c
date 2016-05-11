@@ -155,27 +155,27 @@ pm_subscription_test(void **state)
 
     subscription.event_type = SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV;
     subscription.enable_running = true;
-    rc = pm_add_subscription(pm_ctx, &test_ctx->user_cred, "example-module", &subscription);
+    rc = pm_add_subscription(pm_ctx, &test_ctx->user_cred, "example-module", &subscription, false);
     subscription.enable_running = false;
     assert_int_equal(SR_ERR_OK, rc);
 
     subscription.event_type = SR__NOTIFICATION_EVENT__FEATURE_ENABLE_EV;
-    rc = pm_add_subscription(pm_ctx, &test_ctx->user_cred, "example-module", &subscription);
+    rc = pm_add_subscription(pm_ctx, &test_ctx->user_cred, "example-module", &subscription, false);
     assert_int_equal(SR_ERR_OK, rc);
 
     subscription.event_type = SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV;
-    rc = pm_add_subscription(pm_ctx, &test_ctx->user_cred, "example-module", &subscription);
+    rc = pm_add_subscription(pm_ctx, &test_ctx->user_cred, "example-module", &subscription, false);
     assert_int_equal(SR_ERR_DATA_EXISTS, rc);
 
     /* create subscriptions for destination 2 */
     subscription.dst_address = "/tmp/test-subscription-address2.sock";
 
     subscription.event_type = SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV;
-    rc = pm_add_subscription(pm_ctx, &test_ctx->user_cred, "example-module", &subscription);
+    rc = pm_add_subscription(pm_ctx, &test_ctx->user_cred, "example-module", &subscription, false);
     assert_int_equal(SR_ERR_OK, rc);
 
     subscription.event_type = SR__NOTIFICATION_EVENT__FEATURE_ENABLE_EV;
-    rc = pm_add_subscription(pm_ctx, &test_ctx->user_cred, "example-module", &subscription);
+    rc = pm_add_subscription(pm_ctx, &test_ctx->user_cred, "example-module", &subscription, false);
     assert_int_equal(SR_ERR_OK, rc);
 
     /* retrieve active subscriptions */
