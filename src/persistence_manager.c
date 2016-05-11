@@ -293,8 +293,10 @@ pm_save_persistent_data(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const cha
     CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to modify persist data tree.");
 
     /* save the changes to the persist file */
-    rc = pm_save_data_tree(data_tree, fd);
-    CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to save persist data tree.");
+    if (-1 != fd) {
+        rc = pm_save_data_tree(data_tree, fd);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to save persist data tree.");
+    }
 
     /* if data tree was requested, do not free and return it */
     if (NULL != data_tree_p) {
