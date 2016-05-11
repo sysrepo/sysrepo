@@ -91,6 +91,7 @@ message Error {
 enum DataStore {
   STARTUP = 1;
   RUNNING = 2;
+  CANDIDATE = 3;
 }
 
 /**

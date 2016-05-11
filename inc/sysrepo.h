@@ -285,6 +285,8 @@ typedef enum sr_datastore_e {
     SR_DS_STARTUP = 0,    /**< Contains configuration data that should be loaded by the controlled application when it starts. */
     SR_DS_RUNNING = 1,    /**< Contains currently applied configuration and state data of a running application.
                                @note This datastore is supported only by applications that subscribe for notifications about the changes made in the datastore. */
+    SR_DS_CANDIDATE = 2,  /**< Contains configuration that can be manipulated without impacting the current configuration. It can be than
+                           * committed to the running or copied to a datastore. */
 } sr_datastore_t;
 
 /**

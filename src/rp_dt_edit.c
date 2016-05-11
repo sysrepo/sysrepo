@@ -709,7 +709,12 @@ cleanup:
 
     if (SR_ERR_OK == rc) {
         /* discard changes in session in next get_data_tree call newly committed content will be loaded */
-        rc = dm_discard_changes(rp_ctx->dm_ctx, session->dm_session);
+        if (SR_DS_CANDIDATE != session->datastore) {
+            rc = dm_discard_changes(rp_ctx->dm_ctx, session->dm_session);
+        } else {
+            dm_remove_session_operations(session->dm_session);
+            rc = dm_remove_modified_flag(session->dm_session);
+        }
         SR_LOG_DBG_MSG("Commit (7/7): finished successfully");
     }
     return rc;

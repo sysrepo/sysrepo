@@ -237,6 +237,20 @@ int dm_validate_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, sr_e
 int dm_discard_changes(dm_ctx_t *dm_ctx, dm_session_t *session);
 
 /**
+ * @brief Removes the modified flags from session copies of data trees.
+ * @param [in] session
+ * @return Error code (SR_ERR_OK on success)
+ */
+int dm_remove_modified_flag(dm_session_t *session);
+
+/**
+ * @brief Empties the list of operation associated with the session
+ * @param [in] session
+ * @return Error code (SR_ERR_OK on success)
+ */
+int dm_remove_session_operations(dm_session_t *session);
+
+/**
  * @brief Removes the session copies of the data trees that are not up to date.
  * Subsequent calls will load the fresh state.
  *

@@ -1129,6 +1129,13 @@ cl_copy_config_test(void **state)
     rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &session_running);
     assert_int_equal(rc, SR_ERR_OK);
 
+    /* copy to/from candidate is not allowed using the session associated with a different ds*/
+    rc = sr_copy_config(session_startup, NULL, SR_DS_CANDIDATE, SR_DS_STARTUP);
+    assert_int_equal(rc, SR_ERR_INVAL_ARG);
+
+    rc = sr_copy_config(session_startup, NULL, SR_DS_STARTUP, SR_DS_CANDIDATE);
+    assert_int_equal(rc, SR_ERR_INVAL_ARG);
+
     /* copy-config all enabled models, currently none */
     rc = sr_copy_config(session_startup, NULL, SR_DS_RUNNING, SR_DS_STARTUP);
     assert_int_equal(rc, SR_ERR_OK);
@@ -1189,6 +1196,86 @@ cl_copy_config_test(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 }
 
+
+static void
+candidate_ds_test(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+
+    sr_session_ctx_t *session_startup = NULL, *session_running = NULL, *session_candidate = NULL;
+    sr_subscription_ctx_t *subscription = NULL;
+    int callback_called = 0;
+    sr_val_t value = { 0, }, *val = NULL;
+    int rc = SR_ERR_OK;
+
+    /* start sessions */
+    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &session_startup);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_session_start(conn, SR_DS_CANDIDATE, SR_SESS_DEFAULT, &session_candidate);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &session_running);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* get-config from candidate, should be empty no module enabled */
+    rc = sr_get_item(session_candidate, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &val);
+    assert_int_equal(rc, SR_ERR_NOT_FOUND);
+    sr_free_val(val);
+
+    value.type = SR_STRING_T;
+    value.data.string_val = "abcd";
+    value.xpath = "/example-module:container/list[key1='key1'][key2='key2']/leaf";
+
+    /* set item into candidate work even for not enabled leaf */
+    rc = sr_set_item(session_candidate, value.xpath, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_get_item(session_candidate, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &val);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_int_equal(value.type, val->type);
+    assert_string_equal(value.data.string_val, val->data.string_val);
+    sr_free_val(val);
+
+    rc = sr_copy_config(session_candidate, "example-module", SR_DS_CANDIDATE, SR_DS_STARTUP);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* get-config from startup, candidate should be copied to the startup */
+    rc = sr_get_item(session_startup, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &val);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_int_equal(value.type, val->type);
+    assert_string_equal(value.data.string_val, val->data.string_val);
+    sr_free_val(val);
+
+    /* commit should fail because non enabled nodes are modified */
+    rc = sr_commit(session_candidate);
+    assert_int_equal(SR_ERR_COMMIT_FAILED, rc);
+
+    /* enable running DS for example-module */
+    rc = sr_module_change_subscribe(session_startup, "example-module", true,
+            test_module_change_cb, &callback_called, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* commit should pass */
+    rc = sr_commit(session_candidate);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = sr_get_item(session_running, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &val);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_int_equal(value.type, val->type);
+    assert_string_equal(value.data.string_val, val->data.string_val);
+    sr_free_val(val);
+
+    /* stop the sessions */
+    rc = sr_session_stop(session_startup);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_session_stop(session_candidate);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_session_stop(session_running);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_unsubscribe(subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+}
 int
 main()
 {
@@ -1210,6 +1297,7 @@ main()
             cmocka_unit_test_setup_teardown(cl_refresh_session, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_notification_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_copy_config_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(candidate_ds_test, sysrepo_setup, sysrepo_teardown),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);
