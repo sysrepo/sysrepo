@@ -2183,10 +2183,11 @@ dm_copy_config(dm_ctx_t *dm_ctx, dm_session_t *session, const struct ly_set *mod
         sr_error_info_t *errors = NULL;
         size_t e_cnt = 0;
         rc = dm_validate_session_data_trees(dm_ctx, session, &errors, &e_cnt);
-        sr_free_errors(errors, e_cnt);
         if (SR_ERR_OK != rc) {
+            rc = dm_report_error(session, errors[0].message, errors[0].xpath, SR_ERR_VALIDATION_FAILED);
+            sr_free_errors(errors, e_cnt);
             SR_LOG_ERR_MSG("There is a invalid data tree, can not be copied");
-            return rc;
+            goto cleanup;
         }
     }
 

@@ -162,7 +162,19 @@ sr_get_data_file_name(const char *data_search_dir, const char *module_name, cons
     char *tmp = NULL;
     int rc = sr_str_join(data_search_dir, module_name, &tmp);
     if (SR_ERR_OK == rc) {
-        char *suffix = SR_DS_STARTUP == ds ? SR_STARTUP_FILE_EXT : SR_RUNNING_FILE_EXT;
+        char *suffix = NULL;
+        switch (ds) {
+        case SR_DS_CANDIDATE:
+            suffix = SR_CANDIDATE_FILE_EXT;
+            break;
+        case SR_DS_RUNNING:
+            suffix = SR_RUNNING_FILE_EXT;
+            break;
+        case SR_DS_STARTUP:
+            /* fall through */
+        default:
+            suffix = SR_STARTUP_FILE_EXT;
+        }
         rc = sr_str_join(tmp, suffix, file_name);
         free(tmp);
         return rc;

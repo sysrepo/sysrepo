@@ -1792,6 +1792,72 @@ empty_string_leaf_test(void **state)
    test_rp_session_cleanup(ctx, sessionB);
 }
 
+static void
+candidate_edit_test(void **state)
+{
+    int rc = 0;
+    rp_ctx_t *ctx = *state;
+    rp_session_t *sessionA = NULL, *sessionB = NULL;
+    sr_val_t *value = NULL;
+
+    test_rp_sesssion_create(ctx, SR_DS_CANDIDATE, &sessionA);
+    test_rp_sesssion_create(ctx, SR_DS_CANDIDATE, &sessionB);
+
+    sr_val_t iftype = {0};
+    iftype.xpath = NULL;
+    iftype.type = SR_ENUM_T;
+    iftype.data.enum_val = strdup ("ethernet");
+
+    rc = rp_dt_set_item(ctx->dm_ctx, sessionA->dm_session, "/test-module:interface/ifType", SR_EDIT_DEFAULT, &iftype);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    sr_free_val_content(&iftype);
+
+    /* modified module in cadidate is validated before copy */
+    rc = dm_copy_module(ctx->dm_ctx, sessionA->dm_session, "test-module", SR_DS_CANDIDATE, SR_DS_STARTUP);
+    assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
+
+    rc = dm_discard_changes(ctx->dm_ctx, sessionA->dm_session);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* refresh candidate session */
+    sr_val_t *v = NULL;
+    v = calloc(1, sizeof(*v));
+    assert_non_null(v);
+
+    v->xpath = strdup("/test-module:main/i8");
+    v->type = SR_INT8_T;
+    v->data.int8_val = 42;
+
+    rc = rp_dt_get_value_wrapper(ctx, sessionA, "/test-module:main/i8", &value);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+
+    rc = rp_dt_set_item_wrapper(ctx, sessionA, v->xpath, v, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    sr_error_info_t *errors = NULL;
+    size_t e_cnt = 0;
+
+    rc = rp_dt_refresh_session(ctx, sessionA, &errors, &e_cnt);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_get_value_wrapper(ctx, sessionA, "/test-module:main/i8", &value);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(SR_INT8_T, value->type);
+    assert_int_equal(v->data.int8_val, value->data.int8_val);
+    sr_free_val(value);
+
+    /* test locking on candidate ds */
+    rc = dm_lock_module(ctx->dm_ctx, sessionA->dm_session, "test-module");
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = dm_lock_module(ctx->dm_ctx, sessionB->dm_session, "test-module");
+    assert_int_equal(SR_ERR_LOCKED, rc);
+
+    test_rp_session_cleanup(ctx, sessionA);
+    test_rp_session_cleanup(ctx, sessionB);
+}
+
 int main(){
 
     sr_log_stderr(SR_LL_DBG);
@@ -1823,6 +1889,7 @@ int main(){
             cmocka_unit_test(operation_logging_test),
             cmocka_unit_test(lock_commit_test),
             cmocka_unit_test(empty_string_leaf_test),
+            cmocka_unit_test(candidate_edit_test),
     };
     return cmocka_run_group_tests(tests, setup, teardown);
 }
