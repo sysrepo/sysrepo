@@ -171,7 +171,7 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, co
     if (SR_ERR_NOT_FOUND == rc) {
         if (SR_EDIT_STRICT & options) {
             SR_LOG_ERR("No nodes to be deleted with strict option %s", xpath);
-            return dm_report_error(session, NULL, strdup(xpath), SR_ERR_DATA_MISSING);
+            return dm_report_error(session, NULL, xpath, SR_ERR_DATA_MISSING);
         } else {
             return SR_ERR_OK;
         }
@@ -190,7 +190,7 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, co
         }
         if (!can_be_deleted) {
             SR_LOG_ERR("Key leaf can not be delete delete the list instead %s", xpath);
-            rc = dm_report_error(session, "List key can not be deleted", strdup(xpath), SR_ERR_INVAL_ARG);
+            rc = dm_report_error(session, "List key can not be deleted", xpath, SR_ERR_INVAL_ARG);
             goto cleanup;
         }
     }
@@ -201,7 +201,7 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, co
             if ((nodes->set.d[i]->schema->nodetype & (LYS_LIST | LYS_CONTAINER)) &&
                     !rp_dt_has_only_keys(nodes->set.d[i])) {
                 SR_LOG_ERR("List of the nodes to be deleted contains list or container with non recursive opt %s", xpath);
-                rc = dm_report_error(session, NULL, strdup(xpath), SR_ERR_DATA_EXISTS);
+                rc = dm_report_error(session, NULL, xpath, SR_ERR_DATA_EXISTS);
                 goto cleanup;
             }
         }
@@ -333,7 +333,7 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const
         }
         if (is_key) {
             SR_LOG_ERR("Value of the key can not be set %s", xpath);
-            return dm_report_error(session, "Value of the key can not be set", strdup(xpath), SR_ERR_INVAL_ARG);
+            return dm_report_error(session, "Value of the key can not be set", xpath, SR_ERR_INVAL_ARG);
         }
     }
 
@@ -363,7 +363,7 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const
                 SR_LOG_ERR("A preceding node is missing '%s' create it or omit the non recursive option", xpath);
                 ly_set_free(res);
                 free(new_value);
-                return dm_report_error(session, "A preceding node is missing", strdup(xpath), SR_ERR_DATA_MISSING);
+                return dm_report_error(session, "A preceding node is missing", xpath, SR_ERR_DATA_MISSING);
             }
             ly_set_free(res);
         }
@@ -444,7 +444,7 @@ rp_dt_move_list(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, sr_m
     if ((SR_MOVE_AFTER == position || SR_MOVE_BEFORE == position) && NULL != relative_item) {
         rc = rp_dt_find_node(dm_ctx, info->node, relative_item, dm_is_running_ds_session(session), &sibling);
         if (SR_ERR_NOT_FOUND == rc) {
-            rc = dm_report_error(session, "Relative item for move operation not found", strdup(relative_item), SR_ERR_INVAL_ARG);
+            rc = dm_report_error(session, "Relative item for move operation not found", relative_item, SR_ERR_INVAL_ARG);
             goto cleanup;
         } else if (SR_ERR_OK != rc) {
             SR_LOG_ERR_MSG("Find the closest sibling failed");

@@ -829,6 +829,7 @@ rp_subscribe_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr
 {
     Sr__Msg *resp = NULL;
     Sr__SubscribeReq *subscribe_req = NULL;
+    np_subscr_options_t options = NP_SUBSCR_DEFAULT;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->subscribe_req);
@@ -843,10 +844,18 @@ rp_subscribe_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr
     }
     subscribe_req = msg->request->subscribe_req;
 
+    /* set subscribe options */
+    if (subscribe_req->enable_running) {
+        options |= NP_SUBSCR_ENABLE_RUNNING;
+    }
+    if (SR__NOTIFICATION_EVENT__RPC_EV == subscribe_req->event) {
+        options |= NP_SUBSCR_EXCLUSIVE;
+    }
+
     /* subscribe to the notification */
     rc = np_notification_subscribe(rp_ctx->np_ctx, session, subscribe_req->event,
             subscribe_req->destination, subscribe_req->subscription_id,
-            subscribe_req->module_name, subscribe_req->xpath, subscribe_req->enable_running);
+            subscribe_req->module_name, subscribe_req->xpath, options);
 
     /* set response code */
     resp->response->result = rc;
@@ -908,6 +917,129 @@ rp_unsubscribe_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
 }
 
 /**
+ * @brief Processes a RPC request.
+ */
+static int
+rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
+{
+    char *module_name = NULL;
+    sr_val_t *input = NULL;
+    size_t input_cnt = 0;
+    np_subscription_t *subscriptions = NULL;
+    size_t subscription_cnt = 0;
+    Sr__Msg *resp = NULL;
+    int rc = SR_ERR_OK, rc_tmp = SR_ERR_OK;
+
+    CHECK_NULL_ARG_NORET5(rc, rp_ctx, session, msg, msg->request, msg->request->rpc_req);
+    if (SR_ERR_OK != rc) {
+        /* release the message since it won't be released in dispatch */
+        sr__msg__free_unpacked(msg, NULL);
+        return rc;
+    }
+
+    SR_LOG_DBG_MSG("Processing RPC request.");
+
+    /* validate RPC request */
+    rc = sr_values_gpb_to_sr(msg->request->rpc_req->input,  msg->request->rpc_req->n_input, &input, &input_cnt);
+    if (SR_ERR_OK == rc) {
+        rc = dm_validate_rpc(rp_ctx->dm_ctx, session->dm_session, msg->request->rpc_req->xpath, input, input_cnt, true);
+    }
+    sr_free_values(input, input_cnt);
+
+    /* get module name */
+    if (SR_ERR_OK == rc) {
+        rc = sr_copy_first_ns(msg->request->rpc_req->xpath, &module_name);
+    }
+
+    /* authorize (write permissions are required to deliver the RPC) */
+    if (SR_ERR_OK == rc) {
+        rc = ac_check_module_permissions(session->ac_session, module_name, AC_OPER_READ_WRITE);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR("Access control check failed for module name '%s'", module_name);
+        }
+    }
+
+    /* get RPC subscription */
+    if (SR_ERR_OK == rc) {
+        rc = pm_get_subscriptions(rp_ctx->pm_ctx, module_name, SR__NOTIFICATION_EVENT__RPC_EV,
+                &subscriptions, &subscription_cnt);
+    }
+    free(module_name);
+
+    /* fill-in subscription details into the request */
+    if (subscription_cnt > 0) {
+        msg->request->rpc_req->subscriber_address = (char*)subscriptions[0].dst_address; /* copied to GPB - do not free */
+        msg->request->rpc_req->subscription_id = subscriptions[0].dst_id;
+        msg->request->rpc_req->has_subscription_id = true;
+        msg->request->rpc_req->session_id = session->id;
+        msg->request->rpc_req->has_session_id = true;
+        free(subscriptions);
+    } else if (SR_ERR_OK == rc) {
+        /* no subscription for this RPC */
+        SR_LOG_ERR("No subscription found for RPC delivery (xpath = '%s').", msg->request->rpc_req->xpath);
+        rc = SR_ERR_NOT_FOUND;
+    }
+
+    if (SR_ERR_OK == rc) {
+        /* forward the request to the subscriber */
+        rc = cm_msg_send(rp_ctx->cm_ctx, msg);
+    } else {
+        /* send the response with error */
+        rc_tmp = sr_gpb_resp_alloc(SR__OPERATION__RPC, session->id, &resp);
+        if (SR_ERR_OK == rc_tmp) {
+            resp->response->result = rc;
+            resp->response->rpc_resp->xpath = msg->request->rpc_req->xpath;
+            msg->request->rpc_req->xpath = NULL;
+            /* send the response */
+            rc = cm_msg_send(rp_ctx->cm_ctx, resp);
+        }
+        /* release the request */
+        sr__msg__free_unpacked(msg, NULL);
+    }
+
+    return rc;
+}
+
+/**
+ * @brief Processes a RPC response.
+ */
+static int
+rp_rpc_resp_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
+{
+    sr_val_t *output = NULL;
+    size_t output_cnt = 0;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG_NORET5(rc, rp_ctx, session, msg, msg->response, msg->response->rpc_resp);
+    if (SR_ERR_OK != rc) {
+        /* release the message since it won't be released in dispatch */
+        sr__msg__free_unpacked(msg, NULL);
+        return rc;
+    }
+
+    /* validate the RPC response */
+    rc = sr_values_gpb_to_sr(msg->response->rpc_resp->output,  msg->response->rpc_resp->n_output, &output, &output_cnt);
+    if (SR_ERR_OK == rc) {
+        rc = dm_validate_rpc(rp_ctx->dm_ctx, session->dm_session, msg->response->rpc_resp->xpath, output, output_cnt, false);
+    }
+    sr_free_values(output, output_cnt);
+
+    /* set response code */
+    msg->response->result = rc;
+
+    /* copy DM errors, if any */
+    rc = rp_resp_fill_errors(msg, session->dm_session);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Copying errors to gpb failed.");
+    }
+
+    /* forward RPC response to the originator */
+    rc = cm_msg_send(rp_ctx->cm_ctx, msg);
+
+    return rc;
+}
+
+/**
  * @brief Processes an unsubscribe-destination internal request.
  */
 static int
@@ -954,6 +1086,8 @@ rp_msg_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
     }
 
     if (SR__MSG__MSG_TYPE__REQUEST == msg->type) {
+        /* request handling */
+
         dm_clear_session_errors(session->dm_session);
         /* acquire lock for operation accessing data */
         switch (msg->request->operation) {
@@ -972,7 +1106,6 @@ rp_msg_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
                 break;
         }
 
-        /* request handling */
         switch (msg->request->operation) {
             case SR__OPERATION__LIST_SCHEMAS:
                 rc = rp_list_schemas_req_process(rp_ctx, session, msg);
@@ -1028,6 +1161,10 @@ rp_msg_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
             case SR__OPERATION__UNSUBSCRIBE:
                 rc = rp_unsubscribe_req_process(rp_ctx, session, msg);
                 break;
+            case SR__OPERATION__RPC:
+                rc = rp_rpc_req_process(rp_ctx, session, msg);
+                return rc; /* skip further processing and msg cleanup */
+                break;
             default:
                 SR_LOG_ERR("Unsupported request received (session id=%"PRIu32", operation=%d).",
                         session->id, msg->request->operation);
@@ -1057,6 +1194,19 @@ rp_msg_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
                 break;
             default:
                 SR_LOG_ERR("Unsupported internal request received (operation=%d).", msg->request->operation);
+                rc = SR_ERR_UNSUPPORTED;
+                break;
+        }
+    } else if (SR__MSG__MSG_TYPE__RESPONSE == msg->type) {
+        /* response handling */
+        switch (msg->response->operation) {
+            case SR__OPERATION__RPC:
+                rc = rp_rpc_resp_process(rp_ctx, session, msg);
+                return rc; /* skip further processing and msg cleanup */
+                break;
+            default:
+                SR_LOG_ERR("Unsupported response received (session id=%"PRIu32", operation=%d).",
+                        session->id, msg->response->operation);
                 rc = SR_ERR_UNSUPPORTED;
                 break;
         }
