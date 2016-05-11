@@ -665,6 +665,10 @@ cl_sm_rpc_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *msg)
 
     SR_LOG_DBG("Received a RPC request for subscription id=%"PRIu32".", msg->request->rpc_req->subscription_id);
 
+    /* copy input values from GPB */
+    rc = sr_values_gpb_to_sr(msg->request->rpc_req->input, msg->request->rpc_req->n_input, &input, &input_cnt);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by copying RPC input arguments from GPB.");
+
     pthread_mutex_lock(&sm_ctx->subscriptions_lock);
 
     /* find the subscription according to id */
@@ -677,10 +681,6 @@ cl_sm_rpc_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *msg)
     }
 
     SR_LOG_DBG("Calling RPC callback for subscription id=%"PRIu32".", subscription->id);
-
-    /* copy input values from GPB */
-    rc = sr_values_gpb_to_sr(msg->request->rpc_req->input, msg->request->rpc_req->n_input, &input, &input_cnt);
-    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by copying RPC input arguments from GPB.");
 
     rpc_rc = subscription->callback.rpc_cb(
             msg->request->rpc_req->xpath,
@@ -710,7 +710,9 @@ cl_sm_rpc_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *msg)
 cleanup:
     sr_free_values(input, input_cnt);
     sr_free_values(output, output_cnt);
-    sr__msg__free_unpacked(resp, NULL);
+    if (NULL != resp) {
+        sr__msg__free_unpacked(resp, NULL);
+    }
     return rc;
 }
 

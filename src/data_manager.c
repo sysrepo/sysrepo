@@ -2290,7 +2290,7 @@ dm_validate_rpc(dm_ctx_t *dm_ctx, dm_session_t *session, const char *rpc_xpath, 
     pthread_rwlock_rdlock(&dm_ctx->lyctx_lock);
 
     if (input) {
-        data_tree = lyd_new_path(NULL, dm_ctx->ly_ctx, rpc_xpath, NULL, (input ? 0 : LYD_PATH_OPT_OUTPUT));
+        data_tree = lyd_new_path(NULL, dm_ctx->ly_ctx, rpc_xpath, NULL, 0);
         if (NULL == data_tree) {
             SR_LOG_ERR("RPC xpath validation failed ('%s'): %s", rpc_xpath, ly_errmsg());
             pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
@@ -2307,14 +2307,13 @@ dm_validate_rpc(dm_ctx_t *dm_ctx, dm_session_t *session, const char *rpc_xpath, 
             break;
         }
         /* copy argument value to string */
+        string_value = NULL;
         if ((SR_CONTAINER_T != args[i].type) && (SR_LIST_T != args[i].type)) {
             rc = sr_val_to_str(&args[i], sch_node, &string_value);
             if (SR_ERR_OK != rc) {
                 SR_LOG_ERR_MSG("Unable to convert RPC argument value to string.");
                 break;
             }
-        } else {
-            string_value = NULL;
         }
         /* create the argument node in the tree */
         new_node = lyd_new_path(data_tree, dm_ctx->ly_ctx, args[i].xpath, string_value, (input ? 0 : LYD_PATH_OPT_OUTPUT));
