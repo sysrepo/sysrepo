@@ -64,11 +64,11 @@ typedef struct pm_ctx_s {
  * @brief Saves the data tree into the file specified by file descriptor.
  */
 static int
-pm_save_data_tree(pm_ctx_t *pm_ctx, int fd, struct lyd_node *data_tree)
+pm_save_data_tree(struct lyd_node *data_tree, int fd)
 {
     int ret = 0;
 
-    CHECK_NULL_ARG2(pm_ctx, data_tree);
+    CHECK_NULL_ARG(data_tree);
 
     /* empty file content */
     ret = ftruncate(fd, 0);
@@ -88,16 +88,35 @@ pm_save_data_tree(pm_ctx_t *pm_ctx, int fd, struct lyd_node *data_tree)
 }
 
 /**
+ * @brief Cleans up specified data tree and closes specified file descriptor.
+ */
+static void
+pm_cleanup_data_tree(struct lyd_node *data_tree, int fd)
+{
+    if (NULL != data_tree) {
+        lyd_free_withsiblings(data_tree);
+    }
+    if (-1 != fd) {
+        sr_unlock_fd(fd);
+        close(fd);
+    }
+}
+
+/**
  * @brief Loads the data tree of persistent data file tied to specified YANG module.
  */
 static int
-pm_load_data_tree(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *module_name,  const char *data_filename,
-        bool read_only, int *fd_p, struct lyd_node **data_tree)
+pm_load_data_tree(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *module_name,
+        bool read_only, struct lyd_node **data_tree, int *fd_p)
 {
+    char *data_filename = NULL;
     int fd = -1;
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG5(pm_ctx, pm_ctx->rp_ctx, module_name, data_filename, data_tree);
+    CHECK_NULL_ARG4(pm_ctx, pm_ctx->rp_ctx, module_name, data_tree);
+
+    rc = sr_get_persist_data_file_name(pm_ctx->data_search_dir, module_name, &data_filename);
+    CHECK_RC_LOG_RETURN(rc, "Unable to compose persist data file name for '%s'.", module_name);
 
     /* open the file as the proper user */
     if (NULL != user_cred) {
@@ -133,7 +152,7 @@ pm_load_data_tree(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *mod
             SR_LOG_ERR("Unable to open persist data file '%s': %s.", data_filename, strerror(errno));
             rc = SR_ERR_INTERNAL;
         }
-        CHECK_RC_LOG_RETURN(rc, "Persist data tree load for '%s' has failed.", module_name);
+        CHECK_RC_LOG_GOTO(rc, cleanup, "Persist data tree load for '%s' has failed.", module_name);
     }
 
     /* lock & load the data tree */
@@ -147,7 +166,7 @@ pm_load_data_tree(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *mod
         SR_LOG_DBG("Persist data successfully loaded from file '%s'.", data_filename);
     }
 
-    if (read_only || NULL == fd_p) {
+    if ((SR_ERR_OK != rc) || (true == read_only) || (NULL == fd_p)) {
         /* unlock and close fd in case of read_only has been requested */
         sr_unlock_fd(fd);
         close(fd);
@@ -156,6 +175,8 @@ pm_load_data_tree(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *mod
         *fd_p = fd;
     }
 
+cleanup:
+    free(data_filename);
     return rc;
 }
 
@@ -170,6 +191,9 @@ pm_ly_log_cb(LY_LOG_LEVEL level, const char *msg, const char *path)
     }
 }
 
+/**
+ * @brief Modifies data tree with persistent data in specified way.
+ */
 static int
 pm_modify_persist_data_tree(pm_ctx_t *pm_ctx, struct lyd_node **data_tree, const char *xpath, const char *value,
         bool add, bool *running_affected)
@@ -246,7 +270,6 @@ static int
 pm_save_persistent_data(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *module_name,
         const char *xpath, const char *value, bool add, struct lyd_node **data_tree_p, bool *running_affected)
 {
-    char *data_filename = NULL;
     struct lyd_node *data_tree = NULL;
     int fd = -1;
     int rc = SR_ERR_OK;
@@ -261,12 +284,8 @@ pm_save_persistent_data(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const cha
         /* use provided data tree */
         data_tree = *data_tree_p;
     } else {
-        /* get persist file path */
-        rc = sr_get_persist_data_file_name(pm_ctx->data_search_dir, module_name, &data_filename);
-        CHECK_RC_LOG_RETURN(rc, "Unable to compose persist data file name for '%s'.", module_name);
-
         /* load the data tree from persist file */
-        rc = pm_load_data_tree(pm_ctx, user_cred, module_name, data_filename, false, &fd, &data_tree);
+        rc = pm_load_data_tree(pm_ctx, user_cred, module_name, false, &data_tree, &fd);
         CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to load persist data tree for module '%s'.", module_name);
     }
 
@@ -274,7 +293,7 @@ pm_save_persistent_data(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const cha
     CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to modify persist data tree.");
 
     /* save the changes to the persist file */
-    rc = pm_save_data_tree(pm_ctx, fd, data_tree);
+    rc = pm_save_data_tree(data_tree, fd);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to save persist data tree.");
 
     /* if data tree was requested, do not free and return it */
@@ -284,16 +303,7 @@ pm_save_persistent_data(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const cha
     }
 
 cleanup:
-    if (NULL != data_tree) {
-        lyd_free_withsiblings(data_tree);
-    }
-    free(data_filename);
-
-    if (-1 != fd) {
-        sr_unlock_fd(fd);
-        close(fd);
-    }
-
+    pm_cleanup_data_tree(data_tree, fd);
     return rc;
 }
 
@@ -453,7 +463,6 @@ int
 pm_get_module_info(pm_ctx_t *pm_ctx, const char *module_name,
         bool *running_enabled, char ***features_p, size_t *feature_cnt_p)
 {
-    char *data_filename = NULL;
     char xpath[PATH_MAX] = { 0, };
     struct lyd_node *data_tree = NULL;
     struct ly_set *node_set = NULL;
@@ -469,12 +478,8 @@ pm_get_module_info(pm_ctx_t *pm_ctx, const char *module_name,
     *feature_cnt_p = 0;
     *running_enabled = false;
 
-    /* get persist file path */
-    rc = sr_get_persist_data_file_name(pm_ctx->data_search_dir, module_name, &data_filename);
-    CHECK_RC_LOG_RETURN(rc, "Unable to compose persist data file name for '%s'.", module_name);
-
     /* load the data tree from persist file */
-    rc = pm_load_data_tree(pm_ctx, NULL, module_name, data_filename, true, NULL, &data_tree);
+    rc = pm_load_data_tree(pm_ctx, NULL, module_name, true, &data_tree, NULL);
     CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to load persist data tree for module '%s'.", module_name);
 
     if (NULL == data_tree) {
@@ -530,7 +535,6 @@ cleanup:
     if (NULL != data_tree) {
         lyd_free_withsiblings(data_tree);
     }
-    free(data_filename);
 
     if (SR_ERR_OK != rc) {
         for (size_t i = 0; i < feature_cnt; i++) {
@@ -548,7 +552,11 @@ pm_add_subscription(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *m
     char xpath[PATH_MAX] = { 0, };
     const char *value = NULL;
     struct lyd_node *data_tree = NULL;
+    int fd = -1;
     int rc = SR_ERR_OK;
+
+    rc = pm_load_data_tree(pm_ctx, user_cred, module_name, false, &data_tree, &fd);
+    CHECK_RC_LOG_RETURN(rc, "Unable to load persist data tree for module '%s'.", module_name);
 
     if (exclusive) {
         /* first, delete existing subscriptions of given type */
@@ -556,7 +564,8 @@ pm_add_subscription(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *m
                 sr_event_gpb_to_str(subscription->event_type), module_name);
 
         snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTIONS_BY_TYPE, module_name, sr_event_gpb_to_str(subscription->event_type));
-        rc = pm_save_persistent_data(pm_ctx, user_cred, module_name, xpath, NULL, false, &data_tree, NULL);
+        pm_modify_persist_data_tree(pm_ctx, &data_tree, xpath, NULL, false, NULL);
+        /* error check not needed here */
     }
 
     if (subscription->enable_running) {
@@ -571,14 +580,17 @@ pm_add_subscription(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *m
                 sr_event_gpb_to_str(subscription->event_type), subscription->dst_address, subscription->dst_id);
     }
 
-    rc = pm_save_persistent_data(pm_ctx, user_cred, module_name, xpath, value, true, &data_tree, NULL);
+    rc = pm_modify_persist_data_tree(pm_ctx, &data_tree, xpath, value, true, NULL);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to add new subscription to data tree.");
 
-    lyd_free_withsiblings(data_tree);
+    rc = pm_save_data_tree(data_tree, fd);
 
     if (SR_ERR_OK == rc) {
         SR_LOG_DBG("Subscription entry successfully added into '%s' persist data tree.", module_name);
     }
 
+cleanup:
+    pm_cleanup_data_tree(data_tree, fd);
     return rc;
 }
 
@@ -658,7 +670,6 @@ int
 pm_get_subscriptions(pm_ctx_t *pm_ctx, const char *module_name, Sr__NotificationEvent event_type,
         np_subscription_t **subscriptions_p, size_t *subscription_cnt_p)
 {
-    char *data_filename = NULL;
     char xpath[PATH_MAX] = { 0, };
     struct lyd_node *data_tree = NULL;
     struct ly_set *node_set = NULL;
@@ -668,12 +679,8 @@ pm_get_subscriptions(pm_ctx_t *pm_ctx, const char *module_name, Sr__Notification
 
     CHECK_NULL_ARG4(pm_ctx, module_name, subscriptions_p, subscription_cnt_p);
 
-    /* get persist file path */
-    rc = sr_get_persist_data_file_name(pm_ctx->data_search_dir, module_name, &data_filename);
-    CHECK_RC_LOG_RETURN(rc, "Unable to compose persist data file name for '%s'.", module_name);
-
     /* load the data tree from persist file */
-    rc = pm_load_data_tree(pm_ctx, NULL, module_name, data_filename, true, NULL, &data_tree);
+    rc = pm_load_data_tree(pm_ctx, NULL, module_name, true, &data_tree, NULL);
     CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to load persist data tree for module '%s'.", module_name);
 
     if (NULL == data_tree) {
@@ -709,7 +716,6 @@ cleanup:
     if (NULL != data_tree) {
         lyd_free_withsiblings(data_tree);
     }
-    free(data_filename);
 
     if (SR_ERR_OK != rc) {
         for (size_t i = 0; i < subscription_cnt; i++) {

@@ -13,3 +13,13 @@
    fun:dict_insert
    fun:lydict_insert
 }
+{
+   lyd_validate
+   Memcheck:Leak
+   match-leak-kinds: definite
+   fun:calloc
+   fun:ly_set_new
+   fun:lyd_wd_top
+   fun:lyd_validate_defaults_unres
+   fun:lyd_validate
+}
