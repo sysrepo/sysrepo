@@ -13,6 +13,7 @@
    fun:dict_insert
    fun:lydict_insert
 }
+
 {
    lyd_validate
    Memcheck:Leak

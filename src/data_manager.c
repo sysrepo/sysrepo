@@ -2338,6 +2338,8 @@ dm_validate_rpc(dm_ctx_t *dm_ctx, dm_session_t *session, const char *rpc_xpath, 
         }
     }
 
+    // TODO: handle nodes with default values
+
     pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
 
     lyd_free_withsiblings(data_tree);
