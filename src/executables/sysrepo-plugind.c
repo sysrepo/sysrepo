@@ -265,5 +265,7 @@ cleanup:
     SR_LOG_INF_MSG("Sysrepo plugin daemon terminated.");
     sr_logger_cleanup();
 
+    unlink(SR_PLUGIN_DAEMON_PID_FILE);
+
     return ((SR_ERR_OK == rc) ? EXIT_SUCCESS : EXIT_FAILURE);
 }

@@ -42,9 +42,6 @@ srd_sigterm_cb(cm_ctx_t *cm_ctx, int signum)
 
         /* stop the event loop in the Connection Manager */
         cm_stop(cm_ctx);
-
-        /* delete the PID file */
-        unlink(SR_DAEMON_PID_FILE);
     }
 }
 
@@ -115,7 +112,7 @@ main(int argc, char* argv[])
     sr_logger_init("sysrepo-plugind");
 
     /* daemonize the process */
-    parent_pid = sr_daemonize(debug_mode, log_level, SR_PLUGIN_DAEMON_PID_FILE);
+    parent_pid = sr_daemonize(debug_mode, log_level, SR_DAEMON_PID_FILE);
 
     SR_LOG_DBG_MSG("Sysrepo daemon initialization started.");
 
@@ -148,6 +145,8 @@ cleanup:
 
     SR_LOG_INF_MSG("Sysrepo daemon terminated.");
     sr_logger_cleanup();
+
+    unlink(SR_DAEMON_PID_FILE);
 
     return ((SR_ERR_OK == rc) ? EXIT_SUCCESS : EXIT_FAILURE);
 }
