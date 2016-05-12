@@ -44,7 +44,7 @@ module_change_cb(sr_session_ctx_t *session, const char *module_name, void *priva
 }
 
 int
-sr_plugin_init(sr_session_ctx_t *session, void **private_ctx)
+sr_plugin_init_cb(sr_session_ctx_t *session, void **private_ctx)
 {
     sr_subscription_ctx_t *subscription = NULL;
     int rc = SR_ERR_OK;
@@ -58,7 +58,7 @@ sr_plugin_init(sr_session_ctx_t *session, void **private_ctx)
 }
 
 void
-sr_plugin_cleanup(sr_session_ctx_t *session, void *private_ctx)
+sr_plugin_cleanup_cb(sr_session_ctx_t *session, void *private_ctx)
 {
     sr_unsubscribe(private_ctx);
 

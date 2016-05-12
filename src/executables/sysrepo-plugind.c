@@ -32,14 +32,8 @@
 
 #include "sr_common.h"
 
-#define SR_DEFAULT_DEAMON_LOG_LEVEL SR_LL_INF  /**< Default log level of sysrepo daemon. */
-#define SR_CHILD_INIT_TIMEOUT 5                /**< Timeout to initialize the child process (in seconds) */
-
-int pidfile_fd = -1; /**< File descriptor of sysrepo deamon's PID file */
-
-
-#define SR_PLUGIN_INIT_FN_NAME "sr_plugin_init"
-#define SR_PLUGIN_CLEANUP_FN_NAME "sr_plugin_cleanup"
+#define SR_PLUGIN_INIT_FN_NAME     "sr_plugin_init_cb"
+#define SR_PLUGIN_CLEANUP_FN_NAME  "sr_plugin_cleanup_cb"
 
 /**
  * @brief Sysrepo plugin initialization function.
@@ -62,147 +56,6 @@ typedef struct sr_pd_plugin_ctx_s {
     sr_plugin_cleanup_fn cleanup_fn;  /**< Cleanup function pointer. */
     void *private_ctx;                /**< Private context, opaque to . */
 } sr_pd_plugin_ctx_t;
-
-/**
- * @brief Signal handler used to deliver initialization result from child to
- * parent process, so that parent can exit with appropriate exit code.
- */
-static void
-sr_pd_child_status_handler(int signum)
-{
-    switch(signum) {
-        case SIGUSR1:
-            /* child process has initialized successfully */
-            exit(EXIT_SUCCESS);
-            break;
-        case SIGALRM:
-            /* child process has not initialized within SR_CHILD_INIT_TIMEOUT seconds */
-            fprintf(stderr, "Sysrepo plugin daemon did not initialize within the timeout period (%d sec), "
-                    "check syslog for more info.\n", SR_CHILD_INIT_TIMEOUT);
-            exit(EXIT_FAILURE);
-            break;
-        case SIGCHLD:
-            /* child process has terminated */
-            fprintf(stderr, "Failure by initialization of sysrepo plugin daemon, check syslog for more info.\n");
-            exit(EXIT_FAILURE);
-            break;
-    }
-}
-
-/**
- * @brief Maintains only single instance of sysrepo daemon by opening and
- * locking the PID file.
- */
-static void
-sr_pd_check_single_instance()
-{
-    char str[NAME_MAX] = { 0 };
-    int ret = 0;
-
-    /* open PID file */
-    pidfile_fd = open(SR_PLUGIN_DAEMON_PID_FILE, O_RDWR | O_CREAT, 0640);
-    if (pidfile_fd < 0) {
-        SR_LOG_ERR("Unable to open sysrepo PID file '%s': %s.", SR_PLUGIN_DAEMON_PID_FILE, strerror(errno));
-        exit(EXIT_FAILURE);
-    }
-
-    /* acquire lock on the PID file */
-    if (lockf(pidfile_fd, F_TLOCK, 0) < 0) {
-        if (EACCES == errno || EAGAIN == errno) {
-            SR_LOG_ERR_MSG("Another instance of sysrepo daemon is running, unable to start.");
-        } else {
-            SR_LOG_ERR("Unable to lock sysrepo PID file '%s': %s.", SR_PLUGIN_DAEMON_PID_FILE, strerror(errno));
-        }
-        exit(EXIT_FAILURE);
-    }
-
-    /* write PID into the PID file */
-    snprintf(str, NAME_MAX, "%d\n", getpid());
-    ret = write(pidfile_fd, str, strlen(str));
-    if (-1 == ret) {
-        SR_LOG_ERR("Unable to write into sysrepo PID file '%s': %s.", SR_PLUGIN_DAEMON_PID_FILE, strerror(errno));
-        exit(EXIT_FAILURE);
-    }
-
-    /* do not close nor unlock the PID file, keep it open while the daemon is alive */
-}
-
-/**
- * @brief Ignores certain signals that sysrepo daemon should not care of.
- */
-static void
-sr_pd_ignore_signals()
-{
-    signal(SIGUSR1, SIG_IGN);
-    signal(SIGALRM, SIG_IGN);
-    signal(SIGCHLD, SIG_IGN);
-    signal(SIGTSTP, SIG_IGN);  /* keyboard stop */
-    signal(SIGTTIN, SIG_IGN);  /* background read from tty */
-    signal(SIGTTOU, SIG_IGN);  /* background write to tty */
-    signal(SIGHUP, SIG_IGN);   /* hangup */
-    signal(SIGPIPE, SIG_IGN);  /* broken pipe */
-}
-
-/**
- * @brief Daemonize the process - fork() and instruct the child to behave as a proper daemon.
- */
-static pid_t
-sr_pd_daemonize(void)
-{
-    pid_t pid = 0, sid = 0;
-    int fd = -1;
-
-    /* register handlers for signals that we expect to receive from child process */
-    signal(SIGCHLD, sr_pd_child_status_handler);
-    signal(SIGUSR1, sr_pd_child_status_handler);
-    signal(SIGALRM, sr_pd_child_status_handler);
-
-    /* fork off the parent process. */
-    pid = fork();
-    if (pid < 0) {
-        SR_LOG_ERR("Unable to fork sysrepo plugin daemon: %s.", strerror(errno));
-        exit(EXIT_FAILURE);
-    }
-    if (pid > 0) {
-        /* this is the parent process, wait for a signal from child */
-        alarm(SR_CHILD_INIT_TIMEOUT);
-        pause();
-        exit(EXIT_FAILURE); /* this should not be executed */
-    }
-
-    /* at this point we are executing as the child process */
-    sr_pd_check_single_instance();
-
-    /* ignore certain signals */
-    sr_pd_ignore_signals();
-
-    /* create a new session containing a single (new) process group */
-    sid = setsid();
-    if (sid < 0) {
-        SR_LOG_ERR("Unable to create new session: %s.", strerror(errno));
-        exit(EXIT_FAILURE);
-    }
-
-    /* change the current working directory. */
-    if ((chdir(SR_DEAMON_WORK_DIR)) < 0) {
-        SR_LOG_ERR("Unable to change directory to '%s': %s.", SR_DEAMON_WORK_DIR, strerror(errno));
-        exit(EXIT_FAILURE);
-    }
-
-    /* turn off stderr logging */
-    sr_log_stderr(SR_LL_NONE);
-
-    /* redirect standard files to /dev/null */
-    fd = open("/dev/null", O_RDWR, 0);
-    if (-1 != fd) {
-        dup2(fd, STDIN_FILENO);
-        dup2(fd, STDOUT_FILENO);
-        dup2(fd, STDERR_FILENO);
-        close(fd);
-    }
-
-    return getppid(); /* return PID of the parent */
-}
 
 static int
 sr_pd_load_plugin(sr_session_ctx_t *session, const char *plugin_filename, sr_pd_plugin_ctx_t *plugin_ctx)
@@ -269,7 +122,7 @@ sr_pd_load_plugins(sr_session_ctx_t *session, sr_pd_plugin_ctx_t **plugins_p, si
         return SR_ERR_INVAL_ARG;
     }
     while (NULL != (ep = readdir(dp))) {
-        if (sr_str_ends_with(ep->d_name, SR_PLUGIN_EXT)) {
+        if (sr_str_ends_with(ep->d_name, SR_PLUGIN_FILE_EXT)) {
             SR_LOG_DBG("Loading plugin '%s'.", ep->d_name);
             snprintf(plugin_filename, PATH_MAX, "%s%s", SR_PLUGINS_DIR, ep->d_name);
             /* realloc plugins array */
@@ -322,7 +175,7 @@ sr_pd_print_version()
  * @brief Prints daemon usage help.
  */
 static void
-srd_print_help()
+sr_pd_print_help()
 {
     sr_pd_print_version();
 
@@ -346,7 +199,7 @@ srd_print_help()
 int
 main(int argc, char* argv[])
 {
-    pid_t parent = 0;
+    pid_t parent_pid = 0;
     sr_pd_plugin_ctx_t *plugins = NULL;
     size_t plugins_cnt = 0;
     sr_conn_ctx_t *connection = NULL;
@@ -370,45 +223,18 @@ main(int argc, char* argv[])
                 log_level = atoi(optarg);
                 break;
             default:
-                srd_print_help();
+                sr_pd_print_help();
                 return 0;
         }
     }
 
-    /* init logger and set log levels */
+    /* init logger */
     sr_logger_init("sysrepo-plugind");
-    if (debug_mode) {
-        sr_log_stderr(SR_DEFAULT_DEAMON_LOG_LEVEL);
-        sr_log_syslog(SR_LL_NONE);
-    } else {
-        sr_log_stderr(SR_DEFAULT_DEAMON_LOG_LEVEL);
-        sr_log_syslog(SR_DEFAULT_DEAMON_LOG_LEVEL);
-    }
-    if ((-1 != log_level) && (log_level >= SR_LL_NONE) && (log_level <= SR_LL_DBG)) {
-        if (debug_mode) {
-            sr_log_stderr(log_level);
-        } else {
-            sr_log_syslog(log_level);
-        }
-    }
+
+    /* daemonize the process */
+    parent_pid = sr_daemonize(debug_mode, log_level, SR_PLUGIN_DAEMON_PID_FILE);
 
     SR_LOG_DBG_MSG("Sysrepo plugin daemon initialization started.");
-
-    /* deamonize the process */
-    if (!debug_mode) {
-        parent = sr_pd_daemonize();
-    } else {
-        sr_pd_check_single_instance();
-        sr_pd_ignore_signals();
-    }
-
-    /* set file creation mask */
-    umask(S_IWGRP | S_IWOTH);
-
-    /* tell the parent process that we are okay */
-    if (!debug_mode) {
-        kill(parent, SIGUSR1);
-    }
 
     /* connect to sysrepo */
     rc = sr_connect("sysrepo-plugind", SR_CONN_DEFAULT, &connection);
@@ -419,7 +245,12 @@ main(int argc, char* argv[])
     CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to connect to sysrepo: %s", sr_strerror(rc));
 
     /* load the plugins */
-    sr_pd_load_plugins(session, &plugins, &plugins_cnt);
+    rc = sr_pd_load_plugins(session, &plugins, &plugins_cnt);
+
+    /* tell the parent process that we are okay */
+    if (!debug_mode) {
+        sr_daemonize_signal_success(parent_pid);
+    }
 
     SR_LOG_INF_MSG("Sysrepo plugin daemon initialized successfully.");
 
@@ -431,9 +262,8 @@ cleanup:
     sr_session_stop(session);
     sr_disconnect(connection);
 
+    SR_LOG_INF_MSG("Sysrepo plugin daemon terminated.");
     sr_logger_cleanup();
 
-    SR_LOG_INF_MSG("Sysrepo plugin daemon terminated.");
-
-    return 0;
+    return ((SR_ERR_OK == rc) ? EXIT_SUCCESS : EXIT_FAILURE);
 }

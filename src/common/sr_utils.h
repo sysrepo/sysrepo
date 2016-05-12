@@ -297,6 +297,16 @@ void sr_free_errors(sr_error_info_t *sr_errors, size_t sr_error_cnt);
  */
 void sr_free_schema(sr_schema_t *schema);
 
+/**
+ * TODO
+ */
+pid_t sr_daemonize(bool debug_mode, sr_log_level_t log_level, const char *pid_file);
+
+/**
+ * TODO
+ */
+void sr_daemonize_signal_success(pid_t parent_pid);
+
 /**@} utils */
 
 #endif /* SR_UTILS_H_ */
