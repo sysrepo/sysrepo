@@ -559,5 +559,55 @@ int dm_copy_all_models(dm_ctx_t *dm_ctx, dm_session_t *session, sr_datastore_t s
  */
 int dm_validate_rpc(dm_ctx_t *dm_ctx, dm_session_t *session, const char *rpc_xpath, sr_val_t *args, size_t arg_cnt, bool input);
 
+/**
+ * @brief Locks lyctx_lock and call lyd_get_node.
+ * @param [in] dm_ctx
+ * @param [in] data
+ * @param [in] expr
+ * @return set of nodes matching expr
+ */
+struct ly_set *dm_lyd_get_node(dm_ctx_t *dm_ctx, const struct lyd_node *data, const char *expr);
+
+/**
+ * @brief Locks lyctx_lock and call lyd_get_node2.
+ * @param [in] dm_ctx
+ * @param [in] data
+ * @param [in] sch_node
+ * @return set of instances of sch_node
+ */
+struct ly_set *dm_lyd_get_node2(dm_ctx_t *dm_ctx, const struct lyd_node *data, const struct lys_node *sch_node);
+
+/**
+ * @brief Locks the lyctx lock, subsequently calls lyd_new_path if the data info does not contain a node attaches the created node.
+ * @param [in] dm_ctx
+ * @param [in] data_info
+ * @param [in] ctx
+ * @param [in] path
+ * @param [in] value
+ * @param [in] options
+ * @return same as libyang's lyd_new_path
+ */
+struct lyd_node *dm_lyd_new_path(dm_ctx_t *dm_ctx, dm_data_info_t *data_info, struct ly_ctx *ctx,
+        const char *path, const char *value, int options);
+
+/**
+ * @brief Locks the lyctx lock, then call lyd_wd_add
+ * @param [in] dm_ctx
+ * @param [in] lyctx
+ * @param [in] root
+ * @param [in] options
+ * @return Error code
+ */
+int dm_lyd_wd_add(dm_ctx_t *dm_ctx, struct ly_ctx *lyctx, struct lyd_node **root, int options);
+
+/**
+ * @brief Locks the lyctx lock, then call ly_ctx_ge_node
+ * @param [in] dm_ctx
+ * @param [in] lyctx
+ * @param [in] start
+ * @param [in] nodeid
+ * @return Matched schema node
+ */
+const struct lys_node *dm_ly_ctx_get_node(dm_ctx_t *dm_ctx, struct ly_ctx *lyctx, const struct lys_node *start, const char *nodeid);
 /**@} Data manager*/
 #endif /* SRC_DATA_MANAGER_H_ */

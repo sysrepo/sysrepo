@@ -215,18 +215,6 @@ struct lyd_node* sr_dup_datatree(struct lyd_node *root);
 int sr_lyd_unlink(dm_data_info_t *data_info, struct lyd_node *node);
 
 /**
- * @brief Call lyd_new_path if the data info does not contain a node attaches the created node.
- * @param [in] data_info
- * @param [in] ctx
- * @param [in] path
- * @param [in] value
- * @param [in] options
- * @return same as libyang's lyd_new_path
- */
-struct lyd_node *sr_lyd_new_path(dm_data_info_t *data_info, struct ly_ctx *ctx,
-        const char *path, const char *value, int options);
-
-/**
  * @brief Insert node after sibling and fixes the pointer in dm_data_info if needed.
  * @param [in] data_info
  * @param [in] sibling

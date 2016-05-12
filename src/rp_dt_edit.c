@@ -260,7 +260,7 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, co
             }
         }
     }
-    lyd_wd_add(info->module->ctx, &info->node, LYD_WD_IMPL_TAG);
+    dm_lyd_wd_add(dm_ctx, info->module->ctx, &info->node, LYD_WD_IMPL_TAG);
 cleanup:
     ly_set_free(parents);
     ly_set_free(nodes);
@@ -357,7 +357,7 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const
             CHECK_NULL_NOMEM_GOTO(last_slash, rc, cleanup);
             char *parent_node = strndup(xpath, last_slash - xpath - 1);
             CHECK_NULL_NOMEM_GOTO(parent_node, rc, cleanup);
-            struct ly_set *res = lyd_get_node(info->node, parent_node);
+            struct ly_set *res = dm_lyd_get_node(dm_ctx, info->node, parent_node);
             free(parent_node);
             if (NULL == res || 0 == res->number) {
                 SR_LOG_ERR("A preceding node is missing '%s' create it or omit the non recursive option", xpath);
@@ -373,7 +373,7 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const
     int flags = (SR_EDIT_STRICT & options) ? 0 : LYD_PATH_OPT_UPDATE;
 
     /* create or update */
-    node = sr_lyd_new_path(info, module->ctx, xpath, new_value, flags);
+    node = dm_lyd_new_path(dm_ctx, info, module->ctx, xpath, new_value, flags);
     if (NULL == node && LY_SUCCESS != ly_errno) {
         SR_LOG_ERR("Setting of item failed %s %d", xpath, ly_vecode);
         if (LYVE_PATH_EXISTS == ly_vecode) {
@@ -395,7 +395,7 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const
     }
 
     /* add default nodes into the data tree */
-    lyd_wd_add(module->ctx, &info->node, LYD_WD_IMPL_TAG);
+    dm_lyd_wd_add(dm_ctx, module->ctx, &info->node, LYD_WD_IMPL_TAG);
 
 cleanup:
     free(new_value);
@@ -451,7 +451,7 @@ rp_dt_move_list(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, sr_m
             return rc;
         }
     } else {
-        struct ly_set *siblings = lyd_get_node2(info->node, node->schema);
+        struct ly_set *siblings = dm_lyd_get_node2(dm_ctx, info->node, node->schema);
 
         if (NULL == siblings || 0 == siblings->number) {
             SR_LOG_ERR_MSG("No siblings found");

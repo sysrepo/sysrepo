@@ -404,7 +404,9 @@ dm_load_data_tree_file(dm_ctx_t *dm_ctx, int fd, const char *data_filename, cons
                 (long long) st.st_mtim.tv_sec,
                 (long long) st.st_mtim.tv_nsec);
 #endif
+        pthread_rwlock_rdlock(&dm_ctx->lyctx_lock);
         data_tree = lyd_parse_fd(dm_ctx->ly_ctx, fd, LYD_XML, LYD_OPT_STRICT | LYD_OPT_CONFIG);
+        pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
         if (NULL == data_tree && LY_SUCCESS != ly_errno) {
             SR_LOG_ERR("Parsing data tree from file %s failed: %s", data_filename, ly_errmsg());
             free(data);
@@ -412,9 +414,11 @@ dm_load_data_tree_file(dm_ctx_t *dm_ctx, int fd, const char *data_filename, cons
         }
     }
 
+    pthread_rwlock_rdlock(&dm_ctx->lyctx_lock);
     /* if the data tree is loaded, validate it*/
     if (NULL != data_tree && 0 != lyd_validate(&data_tree, LYD_OPT_STRICT | LYD_OPT_CONFIG | LYD_WD_IMPL_TAG)) {
         SR_LOG_ERR("Loaded data tree '%s' is not valid", data_filename);
+        pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
         lyd_free_withsiblings(data_tree);
         free(data);
         return SR_ERR_INTERNAL;
@@ -423,6 +427,7 @@ dm_load_data_tree_file(dm_ctx_t *dm_ctx, int fd, const char *data_filename, cons
     else if (NULL == data_tree) {
         lyd_wd_add(dm_ctx->ly_ctx, &data_tree, LYD_WD_IMPL_TAG);
     }
+    pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
 
     data->module = module;
     data->modified = false;
@@ -1146,6 +1151,12 @@ dm_session_stop(dm_ctx_t *dm_ctx, dm_session_t *session)
     free(session);
 }
 
+/**
+ * @brief Removes not enabled leaves from data tree.
+ * @note function expects lyctx to be locked before calling
+ * @param info
+ * @return Error code (SR_ERR_OK on success)
+ */
 static int
 dm_remove_not_enabled_nodes(dm_data_info_t *info)
 {
@@ -1204,6 +1215,13 @@ cleanup:
 }
 
 
+/**
+ * @brief Test if there is not enabled leaf in the provided data tree
+ * @note function expects lyctx to be locked before calling
+ * @param [in] info
+ * @param [out] res
+ * @return Error code (SR_ERR_OK on success)
+ */
 static int
 dm_has_not_enabled_nodes(dm_data_info_t *info, bool *res)
 {
@@ -1290,13 +1308,16 @@ dm_get_data_info(dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, const char *mod
     if (SR_DS_CANDIDATE == dm_session_ctx->datastore) {
         rc = dm_load_data_tree(dm_ctx, dm_session_ctx, module, SR_DS_RUNNING, &di);
         CHECK_RC_LOG_RETURN(rc, "Getting data tree for %s failed.", module_name);
+        pthread_rwlock_rdlock(&dm_ctx->lyctx_lock);
         rc = dm_remove_not_enabled_nodes(di);
         if (SR_ERR_OK != rc) {
+            pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
             dm_data_info_free(di);
             SR_LOG_ERR("Removing of not enabled nodes in model %s failed", di->module->name);
             return rc;
         }
         lyd_wd_add(dm_ctx->ly_ctx, &di->node, LYD_WD_IMPL_TAG);
+        pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
     }
     else {
         rc = dm_load_data_tree(dm_ctx, dm_session_ctx, module, dm_session_ctx->datastore, &di);
@@ -1333,7 +1354,9 @@ int
 dm_get_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, const struct lys_module **module)
 {
     CHECK_NULL_ARG3(dm_ctx, module_name, module); /* revision might be NULL*/
+    pthread_rwlock_rdlock(&dm_ctx->lyctx_lock);
     *module = ly_ctx_get_module(dm_ctx->ly_ctx, module_name, revision);
+    pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
     if (NULL == *module) {
         SR_LOG_ERR("Get module failed %s", module_name);
         return SR_ERR_UNKNOWN_MODEL;
@@ -1498,8 +1521,10 @@ dm_list_schemas(dm_ctx_t *dm_ctx, dm_session_t *dm_session, sr_schema_t **schema
     *schemas = NULL;
     *schema_count = 0;
 
+    pthread_rwlock_rdlock(&dm_ctx->lyctx_lock);
     struct lyd_node *info = ly_ctx_info(dm_ctx->ly_ctx);
     if (NULL == info) {
+        pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
         SR_LOG_ERR("No info data found %d", ly_errno);
         return SR_ERR_INTERNAL;
     }
@@ -1541,6 +1566,7 @@ dm_list_schemas(dm_ctx_t *dm_ctx, dm_session_t *dm_session, sr_schema_t **schema
     }
 
 cleanup:
+    pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
     if (SR_ERR_OK != rc) {
         sr_free_schemas(*schemas, *schema_count);
         *schemas = NULL;
@@ -1557,7 +1583,9 @@ dm_get_schema(dm_ctx_t *dm_ctx, const char *module_name, const char *module_revi
     CHECK_NULL_ARG2(dm_ctx, module_name);
     int rc = SR_ERR_OK;
 
+    pthread_rwlock_rdlock(&dm_ctx->lyctx_lock);
     const struct lys_module *module = ly_ctx_get_module(dm_ctx->ly_ctx, module_name, module_revision);
+    pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
     if (NULL == module) {
         SR_LOG_ERR("Module %s with revision %s was not found", module_name, module_revision);
         return SR_ERR_NOT_FOUND;
@@ -1574,7 +1602,9 @@ dm_get_schema(dm_ctx_t *dm_ctx, const char *module_name, const char *module_revi
     }
 
     /* submodule */
+    pthread_rwlock_rdlock(&dm_ctx->lyctx_lock);
     const struct lys_submodule *submodule = ly_ctx_get_submodule2(module, submodule_name);
+    pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
     if (NULL == submodule) {
         SR_LOG_ERR("Submodule %s of module %s (%s) was not found.", submodule_name, module_name, module_revision);
         return SR_ERR_NOT_FOUND;
@@ -1903,9 +1933,11 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
             if (SR_DS_CANDIDATE == session->datastore) {
                 /* check if all subtrees are enabled */
                 bool has_not_enabled = true;
+                pthread_rwlock_rdlock(&dm_ctx->lyctx_lock);
                 lyd_wd_cleanup(&info->node, 0);
                 rc = dm_has_not_enabled_nodes(info, &has_not_enabled);
                 lyd_wd_add(dm_ctx->ly_ctx, &info->node, LYD_WD_IMPL_TAG);
+                pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
                 CHECK_RC_LOG_RETURN(rc, "Has not enabled check failed for module %s", info->module->name);
                 if (has_not_enabled) {
                     SR_LOG_ERR("There is a not enabled node in %s module, it can not be committed to the running", info->module->name);
@@ -2264,7 +2296,9 @@ dm_copy_config(dm_ctx_t *dm_ctx, dm_session_t *session, const struct ly_set *mod
             }
             if (SR_DS_CANDIDATE == src) {
                 /* if the source ds is candidate we have bring default nodes back */
+                pthread_rwlock_rdlock(&dm_ctx->lyctx_lock);
                 lyd_wd_add(dm_ctx->ly_ctx, &src_infos[i]->node, LYD_WD_IMPL_TAG);
+                pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
             }
         } else {
             /* copy data tree into candidate session */
@@ -2278,7 +2312,6 @@ dm_copy_config(dm_ctx_t *dm_ctx, dm_session_t *session, const struct ly_set *mod
             /* load data tree to be copied*/
             rc = dm_get_data_info(dm_ctx, src_session, module->name, &di_tmp);
             CHECK_RC_MSG_GOTO(rc, cleanup, "Get data info failed");
-            //TODO remove operations from candidate session
             lyd_free_withsiblings(di_tmp->node);
             di_tmp->node = dup;
             di_tmp->modified = true;
@@ -2570,3 +2603,76 @@ dm_validate_rpc(dm_ctx_t *dm_ctx, dm_session_t *session, const char *rpc_xpath, 
     return rc;
 }
 
+struct ly_set *
+dm_lyd_get_node(dm_ctx_t *dm_ctx, const struct lyd_node *data, const char *expr)
+{
+    if (NULL == dm_ctx) {
+        SR_LOG_ERR_MSG("Null argument passed to dm_lyd_get_node");
+        return NULL;
+    }
+    struct ly_set *result = NULL;
+    pthread_rwlock_rdlock(&dm_ctx->lyctx_lock);
+    result = lyd_get_node(data, expr);
+    pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
+    return result;
+}
+
+struct ly_set *
+dm_lyd_get_node2(dm_ctx_t* dm_ctx, const struct lyd_node* data, const struct lys_node* sch_node)
+{
+    if (NULL == dm_ctx) {
+        SR_LOG_ERR_MSG("Null argument passed to dm_lyd_get_node2");
+        return NULL;
+    }
+    struct ly_set *result = NULL;
+    pthread_rwlock_rdlock(&dm_ctx->lyctx_lock);
+    result = lyd_get_node2(data, sch_node);
+    pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
+    return result;
+}
+
+struct lyd_node *
+dm_lyd_new_path(dm_ctx_t *dm_ctx, dm_data_info_t *data_info, struct ly_ctx *ctx, const char *path, const char *value, int options)
+{
+    int rc = SR_ERR_OK;
+    CHECK_NULL_ARG_NORET3(rc, dm_ctx, data_info, path);
+    if (SR_ERR_OK != rc){
+        return NULL;
+    }
+
+    struct lyd_node *new = NULL;
+    pthread_rwlock_rdlock(&dm_ctx->lyctx_lock);
+    new = lyd_new_path(data_info->node, ctx, path, value, options);
+    pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
+    if (NULL == data_info->node) {
+        data_info->node = new;
+    }
+
+    return new;
+}
+
+int
+dm_lyd_wd_add(dm_ctx_t *dm_ctx, struct ly_ctx *lyctx, struct lyd_node **root, int options)
+{
+    CHECK_NULL_ARG(dm_ctx);
+    int rc = SR_ERR_OK;
+    pthread_rwlock_rdlock(&dm_ctx->lyctx_lock);
+    rc = lyd_wd_add(lyctx, root, options);
+    pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
+    return rc;
+}
+
+const struct lys_node *
+dm_ly_ctx_get_node(dm_ctx_t *dm_ctx, struct ly_ctx *lyctx, const struct lys_node *start, const char *nodeid)
+{
+    if (NULL == dm_ctx) {
+        SR_LOG_ERR_MSG("Null argument passed to dm_ly_ctx_get_node");
+        return NULL;
+    }
+    const struct lys_node *result = SR_ERR_OK;
+    pthread_rwlock_rdlock(&dm_ctx->lyctx_lock);
+    result = ly_ctx_get_node(lyctx, start, nodeid);
+    pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
+    return result;
+
+}
