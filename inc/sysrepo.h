@@ -274,7 +274,7 @@ typedef enum sr_session_flag_e {
  * @brief Options overriding default connection session handling,
  * can be bitwise OR-ed value of any ::sr_session_flag_t flags.
  */
-typedef uint32_t sr_conn_options_t;
+typedef uint32_t sr_sess_options_t;
 
 /**
  * @brief Data stores that sysrepo supports. Both are editable via implicit candidate.
@@ -327,7 +327,7 @@ void sr_disconnect(sr_conn_ctx_t *conn_ctx);
  * @return Error code (SR_ERR_OK on success).
  */
 int sr_session_start(sr_conn_ctx_t *conn_ctx, const sr_datastore_t datastore,
-        const sr_conn_options_t opts, sr_session_ctx_t **session);
+        const sr_sess_options_t opts, sr_session_ctx_t **session);
 
 /**
  * @brief Starts a new configuration session on behalf of a different user.
@@ -359,7 +359,7 @@ int sr_session_start(sr_conn_ctx_t *conn_ctx, const sr_datastore_t datastore,
  * @return Error code (SR_ERR_OK on success).
  */
 int sr_session_start_user(sr_conn_ctx_t *conn_ctx, const char *user_name, const sr_datastore_t datastore,
-        const sr_conn_options_t opts, sr_session_ctx_t **session);
+        const sr_sess_options_t opts, sr_session_ctx_t **session);
 
 /**
  * @brief Stops current session and releases resources tied to the session.

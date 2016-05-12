@@ -39,12 +39,14 @@ endif()
 # set build-type specific settings
 if(CMAKE_BUILD_TYPE_LOWER MATCHES "debug")
     MESSAGE(STATUS "Preparing debug build of sysrepo v. ${SYSREPO_VERSION}")
-    set(DAEMON_PID_FILE "/tmp/sysrepo.pid" CACHE PATH "Sysrepo daemon PID file.")
+    set(DAEMON_PID_FILE "/tmp/sysrepod.pid" CACHE PATH "Sysrepo daemon PID file.")
     set(DAEMON_SOCKET "/tmp/sysrepod.sock" CACHE PATH "Sysrepo deamon server socket path.")
+    set(PLUGIN_DAEMON_PID_FILE "/tmp/sysrepo-plugind.pid" CACHE PATH "Sysrepo plugin daemon PID file.")
 else()
     MESSAGE(STATUS "Preparing release build of sysrepo v. ${SYSREPO_VERSION}")
-    set(DAEMON_PID_FILE "/var/run/sysrepo.pid" CACHE PATH "Sysrepo daemon PID file.")
+    set(DAEMON_PID_FILE "/var/run/sysrepod.pid" CACHE PATH "Sysrepo daemon PID file.")
     set(DAEMON_SOCKET "/var/run/sysrepod.sock" CACHE PATH "Sysrepo deamon server socket path.")
+    set(PLUGIN_DAEMON_PID_FILE "/var/run/sysrepo-plugind.pid" CACHE PATH "Sysrepo plugin daemon PID file.")
 endif()
 
 # location of system repository
@@ -57,6 +59,9 @@ set(SCHEMA_SEARCH_DIR "${REPOSITORY_LOC}/yang/")
 set(DATA_SEARCH_DIR "${REPOSITORY_LOC}/data/")
 set(INTERNAL_SCHEMA_SEARCH_DIR "${REPOSITORY_LOC}/yang/internal/")
 MESSAGE(STATUS "sysrepo repository location: ${REPOSITORY_LOC}")
+
+# TODO TODO TODO TODO
+set(PLUGINS_DIR "${CMAKE_CURRENT_BINARY_DIR}/examples/plugins/")
 
 # include custom Modules
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/CMakeModules/")

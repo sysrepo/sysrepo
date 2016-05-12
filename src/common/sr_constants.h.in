@@ -46,6 +46,9 @@
 /** Path to the directory with internal schemas. */
 #define SR_INTERNAL_SCHEMA_SEARCH_DIR "@INTERNAL_SCHEMA_SEARCH_DIR@"
 
+/** Path to the directory with sysrepo plugins. */
+#define SR_PLUGINS_DIR "@PLUGINS_DIR@"
+
 /** File extension of data files for startup datastore */
 #define SR_STARTUP_FILE_EXT ".startup"
 
@@ -64,6 +67,9 @@
 /** File extension of YIN schema files */
 #define SR_SCHEMA_YIN_FILE_EXT ".yin"
 
+/** File extension of sysrepo plugins */
+#define SR_PLUGIN_EXT ".so"
+
 /** Sysrepo daemon working directory. */
 #define SR_DEAMON_WORK_DIR "/"
 
@@ -72,6 +78,9 @@
 
 /** Sysrepo daemon server socket. */
 #define SR_DAEMON_SOCKET "@DAEMON_SOCKET@"
+
+/** Sysrepo plugin daemon PID file. */
+#define SR_PLUGIN_DAEMON_PID_FILE "@PLUGIN_DAEMON_PID_FILE@"
 
 /** Maximum size of a GPB message. */
 #define SR_MAX_MSG_SIZE ((SIZE_MAX < UINT32_MAX) ? SIZE_MAX : UINT32_MAX)

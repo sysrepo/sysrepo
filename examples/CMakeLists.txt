@@ -1,5 +1,7 @@
 include_directories("${PROJECT_SOURCE_DIR}/inc")
 
+add_subdirectory(plugins)
+
 add_executable(sr_get_item_example sr_get_item_example.c)
 add_executable(sr_get_items_example sr_get_items_example.c)
 add_executable(sr_get_items_iter_example sr_get_items_iter_example.c)

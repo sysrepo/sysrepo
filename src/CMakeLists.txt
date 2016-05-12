@@ -84,6 +84,10 @@ target_link_libraries(sysrepo-engine_so ${LINK_LIBRARIES})
 add_executable(sysrepod ${EXECUTABLES_DIR}/sysrepod.c)
 target_link_libraries(sysrepod sysrepo-engine)
 
+# sysrepo plugin daemon
+add_executable(sysrepo-plugind ${EXECUTABLES_DIR}/sysrepo-plugind.c)
+target_link_libraries(sysrepo-plugind sysrepo dl)
+
 # sysrepoctl tool
 add_executable(sysrepoctl ${EXECUTABLES_DIR}/sysrepoctl.c)
 target_link_libraries(sysrepoctl sysrepo ${YANG_LIBRARIES})
