@@ -2669,7 +2669,7 @@ dm_ly_ctx_get_node(dm_ctx_t *dm_ctx, struct ly_ctx *lyctx, const struct lys_node
         SR_LOG_ERR_MSG("Null argument passed to dm_ly_ctx_get_node");
         return NULL;
     }
-    const struct lys_node *result = SR_ERR_OK;
+    const struct lys_node *result = NULL;
     pthread_rwlock_rdlock(&dm_ctx->lyctx_lock);
     result = ly_ctx_get_node(lyctx, start, nodeid);
     pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
