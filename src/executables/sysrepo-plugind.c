@@ -209,7 +209,7 @@ sr_pd_load_plugin(sr_session_ctx_t *session, const char *plugin_filename, sr_pd_
 {
     int rc = SR_ERR_OK;
 
-    //CHECK_NULL_ARG3(session, plugin_filename, plugin_ctx);//TODO
+    CHECK_NULL_ARG3(session, plugin_filename, plugin_ctx);
 
     /* open the dynamic library with plugin */
     plugin_ctx->dl_handle = dlopen(plugin_filename, RTLD_LAZY);
@@ -259,7 +259,7 @@ sr_pd_load_plugins(sr_session_ctx_t *session, sr_pd_plugin_ctx_t **plugins_p, si
     size_t plugins_cnt = 0;
     int rc = SR_ERR_OK;
 
-    //CHECK_NULL_ARG3(session, plugins_p, plugins_cnt_p);//TODO
+    CHECK_NULL_ARG3(session, plugins_p, plugins_cnt_p);
 
     SR_LOG_DBG("Loading plugins from '%s'.", SR_PLUGINS_DIR);
 
@@ -410,15 +410,22 @@ main(int argc, char* argv[])
         kill(parent, SIGUSR1);
     }
 
+    /* connect to sysrepo */
     rc = sr_connect("sysrepo-plugind", SR_CONN_DEFAULT, &connection);
-    // TODO err
-    rc = sr_session_start(connection, SR_DS_STARTUP, SR_SESS_DEFAULT, &session);
-    // TODO err
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to connect to sysrepo: %s", sr_strerror(rc));
 
+    /* start the session */
+    rc = sr_session_start(connection, SR_DS_STARTUP, SR_SESS_DEFAULT, &session);
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to connect to sysrepo: %s", sr_strerror(rc));
+
+    /* load the plugins */
     sr_pd_load_plugins(session, &plugins, &plugins_cnt);
 
     SR_LOG_INF_MSG("Sysrepo plugin daemon initialized successfully.");
 
+    // TODO: event loop
+
+cleanup:
     sr_pd_cleanup_plugins(session, plugins, plugins_cnt);
 
     sr_session_stop(session);
