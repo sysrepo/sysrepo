@@ -38,9 +38,65 @@
     } while(0)
 
 static void
+print_value(sr_val_t *value)
+{
+    switch (value->type) {
+        case SR_CONTAINER_T:
+        case SR_CONTAINER_PRESENCE_T:
+        case SR_LIST_T:
+            /* do not print */
+            break;
+        case SR_STRING_T:
+            log_fmt("%s = '%s'", value->xpath, value->data.string_val);
+            break;
+        case SR_BOOL_T:
+            log_fmt("%s = %s", value->xpath, value->data.bool_val ? "true" : "false");
+            break;
+        case SR_UINT8_T:
+            log_fmt("%s = %u", value->xpath, value->data.uint8_val);
+            break;
+        case SR_UINT16_T:
+            log_fmt("%s = %u", value->xpath, value->data.uint16_val);
+            break;
+        case SR_UINT32_T:
+            log_fmt("%s = %u", value->xpath, value->data.uint32_val);
+            break;
+        case SR_IDENTITYREF_T:
+            log_fmt("%s = %s", value->xpath, value->data.identityref_val);
+            break;
+        case SR_ENUM_T:
+            log_fmt("%s = %s", value->xpath, value->data.enum_val);
+            break;
+        default:
+            log_fmt("%s (unprintable)", value->xpath);
+    }
+}
+
+static void
+print_current_config(sr_session_ctx_t *session)
+{
+    sr_val_t *values = NULL;
+    size_t count = 0;
+    int rc = SR_ERR_OK;
+
+    log_msg("current turing-machine configuration:");
+
+    rc = sr_get_items(session, "/turing-machine:turing-machine/transition-function//*", &values, &count);
+    if (SR_ERR_OK != rc) {
+        printf("Error by sr_get_items: %s", sr_strerror(rc));
+        return;
+    }
+    for (size_t i = 0; i < count; i++){
+        print_value(&values[i]);
+    }
+    sr_free_values(values, count);
+}
+
+static void
 module_change_cb(sr_session_ctx_t *session, const char *module_name, void *private_ctx)
 {
     log_msg("turing-machine configuration has changed");
+    print_current_config(session);
 }
 
 int
@@ -53,6 +109,8 @@ sr_plugin_init_cb(sr_session_ctx_t *session, void **private_ctx)
     *private_ctx = subscription;
 
     log_msg("turing-machine plugin initialized");
+
+    print_current_config(session);
 
     return rc;
 }

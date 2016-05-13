@@ -12,8 +12,7 @@ compiler:
 before_install:
   - sudo apt-get update -qq
   - sudo apt-get install -y libavl-dev libev-dev valgrind swig python-dev lcov
-#  - pip install --user pyang codecov
-  - pip install --user cpp-coveralls
+  - pip install --user codecov
   
   - git clone git://git.cryptomilk.org/projects/cmocka.git
   - cd cmocka
@@ -39,14 +38,12 @@ before_install:
   - cd ..
 
 script:
-#  - mkdir build ; cd build ; cmake -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_FLAGS="-Werror -coverage" .. && make -j2
-  - mkdir build ; cd build ; cmake -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_FLAGS="-Werror -fprofile-arcs -ftest-coverage" .. && make -j2
+  - mkdir build ; cd build ; cmake -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_FLAGS="-Werror -coverage" .. && make -j2
   - ctest --output-on-failure
   - sudo ctest --output-on-failure --tests-regex ac_test
 
 after_success:
-#  - if [ "$CC" = "gcc" ]; then codecov; fi
-  - if [ "$CC" = "gcc" ]; then cpp-coveralls --build-root . --exclude examples --exclude swig --exclude tests; fi
+  - if [ "$CC" = "gcc" ]; then codecov; fi
 
 env:
   global:
