@@ -300,7 +300,7 @@ void sr_free_schema(sr_schema_t *schema);
 /**
  * TODO
  */
-pid_t sr_daemonize(bool debug_mode, sr_log_level_t log_level, const char *pid_file);
+pid_t sr_daemonize(bool debug_mode, int log_level, const char *pid_file);
 
 /**
  * TODO

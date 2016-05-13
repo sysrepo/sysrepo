@@ -825,7 +825,7 @@ sr_daemon_ignore_signals()
  * @brief Daemonize the process - fork() and instruct the child to behave as a proper daemon.
  */
 pid_t
-sr_daemonize(bool debug_mode, sr_log_level_t log_level, const char *pid_file)
+sr_daemonize(bool debug_mode, int log_level, const char *pid_file)
 {
     pid_t pid = 0, sid = 0;
     int fd = -1;
