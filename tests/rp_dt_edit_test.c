@@ -1864,7 +1864,6 @@ copy_to_running_test(void **state)
     int rc = 0;
     rp_ctx_t *ctx = *state;
     rp_session_t *sessionA = NULL, *sessionB = NULL;
-    sr_val_t *value = NULL;
 
     test_rp_sesssion_create(ctx, SR_DS_CANDIDATE, &sessionA);
     test_rp_sesssion_create(ctx, SR_DS_STARTUP, &sessionB);
