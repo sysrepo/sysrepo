@@ -138,3 +138,10 @@ INSTALL_YANG_MODULE("module-b@2016-02-05")
 INSTALL_YANG_MODULE("iana-if-type")
 INSTALL_YANG_MODULE("ietf-interfaces@2014-05-08")
 INSTALL_YANG_MODULE("ietf-ip@2014-06-16")
+
+# dummy testing plugins
+add_library(dummy-plugin-1 SHARED ${TEST_HELPERS_DIR}dummy_plugin.c)
+target_link_libraries(dummy-plugin-1 sysrepo_so)
+
+add_library(dummy-plugin-2 SHARED ${TEST_HELPERS_DIR}dummy_plugin.c)
+target_link_libraries(dummy-plugin-2 sysrepo_so)

@@ -74,6 +74,8 @@ sysrepo_plugin_daemon_test(void **state)
 {
     int ret = 0;
 
+    setenv("SR_PLUGINS_DIR", ".", 1);
+
     /* print version */
     ret = system("../src/sysrepo-plugind -v");
     assert_int_equal(ret, 0);
