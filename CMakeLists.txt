@@ -35,6 +35,7 @@ endif()
 if(NOT INCLUDE_INSTALL_DIR)
     set(INCLUDE_INSTALL_DIR "include")
 endif()
+set(PLUGINS_DIR "${CMAKE_INSTALL_PREFIX}/${LIB_INSTALL_DIR}/sysrepo/plugins/" CACHE PATH "Sysrepo plugins directory.")
 
 # set build-type specific settings
 if(CMAKE_BUILD_TYPE_LOWER MATCHES "debug")
@@ -59,9 +60,6 @@ set(SCHEMA_SEARCH_DIR "${REPOSITORY_LOC}/yang/")
 set(DATA_SEARCH_DIR "${REPOSITORY_LOC}/data/")
 set(INTERNAL_SCHEMA_SEARCH_DIR "${REPOSITORY_LOC}/yang/internal/")
 MESSAGE(STATUS "sysrepo repository location: ${REPOSITORY_LOC}")
-
-# TODO TODO TODO TODO
-set(PLUGINS_DIR "${CMAKE_CURRENT_BINARY_DIR}/examples/plugins/")
 
 # include custom Modules
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/CMakeModules/")
@@ -208,6 +206,9 @@ install (DIRECTORY DESTINATION ${DATA_SEARCH_DIR} DIRECTORY_PERMISSIONS
     GROUP_READ GROUP_EXECUTE
     WORLD_READ WORLD_EXECUTE)
 
+# install plugins directory
+install(DIRECTORY DESTINATION ${PLUGINS_DIR})
+
 # install internal YANGs
 install (FILES ${PROJECT_SOURCE_DIR}/yang/sysrepo-persistent-data.yang DESTINATION ${INTERNAL_SCHEMA_SEARCH_DIR})
 
@@ -225,7 +226,6 @@ if (SWIG_FOUND AND PYTHONLIBS_FOUND AND PYTHONINTERP_FOUND)
     INSTALL ( FILES ${CMAKE_CURRENT_BINARY_DIR}/swig/python/_${PYTHON_SWIG_BINDING}.so DESTINATION ${PYTHON_MODULE_PATH} )
     INSTALL ( FILES ${CMAKE_CURRENT_BINARY_DIR}/swig/python/${PYTHON_SWIG_BINDING}.py DESTINATION ${PYTHON_MODULE_PATH} )
     INSTALL ( DIRECTORY ${PROJECT_SOURCE_DIR}/swig/python/SysrepoWrappers DESTINATION ${PYTHON_MODULE_PATH} )
-
 endif()
 
 if (SWIG_FOUND AND LUA51_FOUND)
@@ -246,3 +246,4 @@ if(PKG_CONFIG_FOUND)
     configure_file("libsysrepo.pc.in" "libsysrepo.pc" @ONLY)
     install(FILES "${CMAKE_CURRENT_BINARY_DIR}/libsysrepo.pc" DESTINATION "${CMAKE_INSTALL_PREFIX}/lib/pkgconfig")
 endif()
+

@@ -18,7 +18,7 @@ target_link_libraries(application_example sysrepo)
 
 macro(INSTALL_EXAMPLE_YANG MODULE_NAME REVISION)
     # install the YANG module
-    set(CMD "${CMAKE_BINARY_DIR}/src/sysrepoctl --install --yang=${CMAKE_CURRENT_SOURCE_DIR}/yang/${MODULE_NAME}${REVISION}.yang")
+    set(CMD "${CMAKE_BINARY_DIR}/src/sysrepoctl --install --yang=${CMAKE_CURRENT_SOURCE_DIR}/yang/${MODULE_NAME}${REVISION}.yang --permissions=666")
     install(CODE "execute_process(COMMAND ${CMD} OUTPUT_QUIET)")
     # import data into module
     set(CMD "${CMAKE_BINARY_DIR}/src/sysrepoctl --import=xml --module=${MODULE_NAME}")

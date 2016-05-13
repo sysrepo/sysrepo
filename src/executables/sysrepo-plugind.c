@@ -124,7 +124,7 @@ sr_pd_load_plugins(sr_session_ctx_t *session, sr_pd_plugin_ctx_t **plugins_p, si
     while (NULL != (ep = readdir(dp))) {
         if (sr_str_ends_with(ep->d_name, SR_PLUGIN_FILE_EXT)) {
             SR_LOG_DBG("Loading plugin '%s'.", ep->d_name);
-            snprintf(plugin_filename, PATH_MAX, "%s%s", SR_PLUGINS_DIR, ep->d_name);
+            snprintf(plugin_filename, PATH_MAX, "%s/%s", SR_PLUGINS_DIR, ep->d_name);
             /* realloc plugins array */
             tmp = realloc(plugins, sizeof(*plugins) * (plugins_cnt + 1));
             if (NULL == tmp) {
