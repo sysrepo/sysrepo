@@ -52,7 +52,9 @@ static int
 test_setup(void **state)
 {
     /* if the daemon is running, kill it */
-    // TODO
+    if (-1 != access(SR_PLUGIN_DAEMON_PID_FILE, F_OK)) {
+        daemon_kill();
+    }
 
     return 0;
 }
@@ -60,7 +62,9 @@ test_setup(void **state)
 static int
 test_teardown(void **state)
 {
-    daemon_kill();
+    if (-1 != access(SR_PLUGIN_DAEMON_PID_FILE, F_OK)) {
+        daemon_kill();
+    }
 
     return 0;
 }

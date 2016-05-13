@@ -677,7 +677,7 @@ cl_sm_rpc_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *msg)
     if (NULL == subscription) {
         pthread_mutex_unlock(&sm_ctx->subscriptions_lock);
         SR_LOG_ERR("No matching subscription for subscription id=%"PRIu32".", msg->request->rpc_req->subscription_id);
-        return SR_ERR_INVAL_ARG;
+        goto cleanup;
     }
 
     SR_LOG_DBG("Calling RPC callback for subscription id=%"PRIu32".", subscription->id);
