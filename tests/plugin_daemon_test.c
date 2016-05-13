@@ -89,7 +89,7 @@ sysrepo_plugin_daemon_test(void **state)
     assert_int_equal(ret, 0);
 
     /* 2nd attempt to start the daemon - should fail since the daemon is running already */
-    ret = system("../src/sysrepo-plugind");
+    ret = system("../src/sysrepo-plugind -l4");
     assert_int_not_equal(ret, 0);
 }
 

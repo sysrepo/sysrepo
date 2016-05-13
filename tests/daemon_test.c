@@ -114,7 +114,7 @@ sysrepo_daemon_test(void **state)
     sr_disconnect(conn);
 
     /* 2nd attempt to start the daemon - should fail since the daemon is running already */
-    ret = system("../src/sysrepod");
+    ret = system("../src/sysrepod -l4");
     assert_int_not_equal(ret, 0);
 }
 
