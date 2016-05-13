@@ -29,6 +29,7 @@
 #include <signal.h>
 #include <dirent.h>
 #include <dlfcn.h>
+#include <ev.h>
 
 #include "sr_common.h"
 
@@ -56,6 +57,19 @@ typedef struct sr_pd_plugin_ctx_s {
     sr_plugin_cleanup_fn cleanup_fn;  /**< Cleanup function pointer. */
     void *private_ctx;                /**< Private context, opaque to . */
 } sr_pd_plugin_ctx_t;
+
+/**
+ * @brief Callback called by the event loop watcher when a signal is caught.
+ */
+static void
+cm_signal_cb_internal(struct ev_loop *loop, struct ev_signal *w, int revents)
+{
+    CHECK_NULL_ARG_VOID2(loop, w);
+
+    SR_LOG_DBG("Signal %d caught, breaking the event loop.", w->signum);
+
+    ev_break(loop, EVBREAK_ALL);
+}
 
 static int
 sr_pd_load_plugin(sr_session_ctx_t *session, const char *plugin_filename, sr_pd_plugin_ctx_t *plugin_ctx)
@@ -204,6 +218,8 @@ main(int argc, char* argv[])
     size_t plugins_cnt = 0;
     sr_conn_ctx_t *connection = NULL;
     sr_session_ctx_t *session = NULL;
+    struct ev_loop *event_loop =  EV_DEFAULT;
+    ev_signal signal_watcher[2];
     int rc = SR_ERR_OK;
 
     int c = 0;
@@ -236,6 +252,12 @@ main(int argc, char* argv[])
 
     SR_LOG_DBG_MSG("Sysrepo plugin daemon initialization started.");
 
+    /* init signal watchers */
+    ev_signal_init(&signal_watcher[0], cm_signal_cb_internal, SIGTERM);
+    ev_signal_start(event_loop, &signal_watcher[0]);
+    ev_signal_init(&signal_watcher[1], cm_signal_cb_internal, SIGINT);
+    ev_signal_start(event_loop, &signal_watcher[1]);
+
     /* connect to sysrepo */
     rc = sr_connect("sysrepo-plugind", SR_CONN_DEFAULT, &connection);
     CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to connect to sysrepo: %s", sr_strerror(rc));
@@ -254,7 +276,10 @@ main(int argc, char* argv[])
 
     SR_LOG_INF_MSG("Sysrepo plugin daemon initialized successfully.");
 
-    // TODO: event loop
+    /* run the event loop */
+    ev_run(event_loop, 0);
+
+    ev_loop_destroy(event_loop);
 
 cleanup:
     sr_pd_cleanup_plugins(session, plugins, plugins_cnt);
