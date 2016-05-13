@@ -37,6 +37,7 @@
         syslog(LOG_INFO, MSG, __VA_ARGS__); \
     } while(0)
 
+/* prints one value retrieved from sysrepo */
 static void
 print_value(sr_val_t *value)
 {
@@ -72,8 +73,9 @@ print_value(sr_val_t *value)
     }
 }
 
+/* retrieves & prints current turing-machine configuration */
 static void
-print_current_config(sr_session_ctx_t *session)
+retrieve_current_config(sr_session_ctx_t *session)
 {
     sr_val_t *values = NULL;
     size_t count = 0;
@@ -96,7 +98,7 @@ static void
 module_change_cb(sr_session_ctx_t *session, const char *module_name, void *private_ctx)
 {
     log_msg("turing-machine configuration has changed");
-    print_current_config(session);
+    retrieve_current_config(session);
 }
 
 int
@@ -110,7 +112,7 @@ sr_plugin_init_cb(sr_session_ctx_t *session, void **private_ctx)
 
     log_msg("turing-machine plugin initialized");
 
-    print_current_config(session);
+    retrieve_current_config(session);
 
     return rc;
 }

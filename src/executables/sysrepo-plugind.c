@@ -37,24 +37,35 @@
 #define SR_PLUGIN_CLEANUP_FN_NAME  "sr_plugin_cleanup_cb"
 
 /**
- * @brief Sysrepo plugin initialization function.
- * TODO
+ * @brief Sysrepo plugin initialization callback.
+ *
+ * @param[in] session Sysrepo session that can be used for any API calls needed
+ * for plugin initialization (mainly for reading of startup configuration
+ * and subscribing for notifications).
+ * @param[out] private_ctx Private context (opaque to sysrepo) that will be
+ * passed to ::sr_plugin_cleanup_cb when plugin cleanup is requested.
+ *
+ * @return Error code (SR_ERR_OK on success).
  */
-typedef int (*sr_plugin_init_fn)(sr_session_ctx_t *session, void **private_ctx);
+typedef int (*sr_plugin_init_cb)(sr_session_ctx_t *session, void **private_ctx);
 
 /**
- * @brief Sysrepo plugin cleanup function.
- * TODO
+ * @brief Sysrepo plugin cleanup callback.
+ *
+ * @param[in] session Sysrepo session that can be used for any API calls
+ * needed for plugin cleanup (mainly for unsubscribing of subscriptions
+ * initialized in sr_plugin_init_cb).
+ * @param[in] private_ctx Private context as passed in ::sr_plugin_init_cb.
  */
-typedef int (*sr_plugin_cleanup_fn)(sr_session_ctx_t *session, void *private_ctx);
+typedef void (*sr_plugin_cleanup_cb)(sr_session_ctx_t *session, void *private_ctx);
 
 /**
  * @brief Sysrepo plugin context.
  */
 typedef struct sr_pd_plugin_ctx_s {
     void *dl_handle;                  /**< Shared library handle. */
-    sr_plugin_init_fn init_fn;        /**< Initialization function pointer. */
-    sr_plugin_cleanup_fn cleanup_fn;  /**< Cleanup function pointer. */
+    sr_plugin_init_cb init_cb;        /**< Initialization function pointer. */
+    sr_plugin_cleanup_cb cleanup_cb;  /**< Cleanup function pointer. */
     void *private_ctx;                /**< Private context, opaque to . */
 } sr_pd_plugin_ctx_t;
 
@@ -87,23 +98,23 @@ sr_pd_load_plugin(sr_session_ctx_t *session, const char *plugin_filename, sr_pd_
     }
 
     /* get init function pointer */
-    *(void **) (&plugin_ctx->init_fn) = dlsym(plugin_ctx->dl_handle, SR_PLUGIN_INIT_FN_NAME);
-    if (NULL == plugin_ctx->init_fn) {
+    *(void **) (&plugin_ctx->init_cb) = dlsym(plugin_ctx->dl_handle, SR_PLUGIN_INIT_FN_NAME);
+    if (NULL == plugin_ctx->init_cb) {
         SR_LOG_ERR("Unable to find '%s' function: %s.", SR_PLUGIN_INIT_FN_NAME, dlerror());
         rc = SR_ERR_INIT_FAILED;
         goto cleanup;
     }
 
     /* get cleanup function pointer */
-    *(void **) (&plugin_ctx->cleanup_fn) = dlsym(plugin_ctx->dl_handle, SR_PLUGIN_CLEANUP_FN_NAME);
-    if (NULL == plugin_ctx->init_fn) {
+    *(void **) (&plugin_ctx->cleanup_cb) = dlsym(plugin_ctx->dl_handle, SR_PLUGIN_CLEANUP_FN_NAME);
+    if (NULL == plugin_ctx->init_cb) {
         SR_LOG_ERR("Unable to find '%s' function: %s.", SR_PLUGIN_CLEANUP_FN_NAME, dlerror());
         rc = SR_ERR_INIT_FAILED;
         goto cleanup;
     }
 
     /* call init */
-    rc = plugin_ctx->init_fn(session, &plugin_ctx->private_ctx);
+    rc = plugin_ctx->init_cb(session, &plugin_ctx->private_ctx);
     CHECK_RC_LOG_GOTO(rc, cleanup, "Execution of '%s' from '%s' returned an error: %s.",
             SR_PLUGIN_INIT_FN_NAME, plugin_filename, sr_strerror(rc));
 
@@ -121,6 +132,7 @@ sr_pd_load_plugins(sr_session_ctx_t *session, sr_pd_plugin_ctx_t **plugins_p, si
 {
     DIR *dp;
     struct dirent *ep;
+    char *plugins_dir = NULL;
     char plugin_filename[PATH_MAX] = { 0, };
     sr_pd_plugin_ctx_t *plugins = NULL, *tmp = NULL;
     size_t plugins_cnt = 0;
@@ -128,9 +140,15 @@ sr_pd_load_plugins(sr_session_ctx_t *session, sr_pd_plugin_ctx_t **plugins_p, si
 
     CHECK_NULL_ARG3(session, plugins_p, plugins_cnt_p);
 
-    SR_LOG_DBG("Loading plugins from '%s'.", SR_PLUGINS_DIR);
+    /* get plugins dir from environment variable, or use default one */
+    plugins_dir = getenv("SR_PLUGINS_DIR");
+    if (NULL == plugins_dir) {
+        plugins_dir = SR_PLUGINS_DIR;
+    }
 
-    dp = opendir(SR_PLUGINS_DIR);
+    SR_LOG_DBG("Loading plugins from '%s'.", plugins_dir);
+
+    dp = opendir(plugins_dir);
     if (NULL == dp) {
         fprintf(stderr, "Error by opening plugin directory: %s.\n", strerror(errno));
         return SR_ERR_INVAL_ARG;
@@ -138,7 +156,7 @@ sr_pd_load_plugins(sr_session_ctx_t *session, sr_pd_plugin_ctx_t **plugins_p, si
     while (NULL != (ep = readdir(dp))) {
         if (sr_str_ends_with(ep->d_name, SR_PLUGIN_FILE_EXT)) {
             SR_LOG_DBG("Loading plugin '%s'.", ep->d_name);
-            snprintf(plugin_filename, PATH_MAX, "%s/%s", SR_PLUGINS_DIR, ep->d_name);
+            snprintf(plugin_filename, PATH_MAX, "%s/%s", plugins_dir, ep->d_name);
             /* realloc plugins array */
             tmp = realloc(plugins, sizeof(*plugins) * (plugins_cnt + 1));
             if (NULL == tmp) {
@@ -164,15 +182,13 @@ sr_pd_load_plugins(sr_session_ctx_t *session, sr_pd_plugin_ctx_t **plugins_p, si
 static int
 sr_pd_cleanup_plugins(sr_session_ctx_t *session, sr_pd_plugin_ctx_t *plugins, size_t plugins_cnt)
 {
-    CHECK_NULL_ARG(plugins);
-
-    for (size_t i = 0; i < plugins_cnt; i++) {
-        plugins[i].cleanup_fn(session, plugins[i].private_ctx);
-        dlclose(plugins[i].dl_handle);
+    if (NULL != plugins) {
+        for (size_t i = 0; i < plugins_cnt; i++) {
+            plugins[i].cleanup_cb(session, plugins[i].private_ctx);
+            dlclose(plugins[i].dl_handle);
+        }
+        free(plugins);
     }
-
-    free(plugins);
-
     return SR_ERR_OK;
 }
 
@@ -292,5 +308,5 @@ cleanup:
 
     unlink(SR_PLUGIN_DAEMON_PID_FILE);
 
-    return ((SR_ERR_OK == rc) ? EXIT_SUCCESS : EXIT_FAILURE);
+    exit((SR_ERR_OK == rc) ? EXIT_SUCCESS : EXIT_FAILURE);
 }

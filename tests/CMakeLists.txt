@@ -74,6 +74,7 @@ if("${TEST_REPOSITORY_LOC}" STREQUAL "${REPOSITORY_LOC}")
     ADD_UNIT_TEST(concurr_test 1)
     ADD_UNIT_TEST_WITH_OPTS(perf_test 1 0 "")
     ADD_UNIT_TEST_WITH_OPTS(daemon_test 0 0 "")
+    ADD_UNIT_TEST_WITH_OPTS(plugin_daemon_test 0 0 "")
     ADD_UNIT_TEST_WITH_OPTS(sysrepoctl_test 0 0 "")
 
     # Python tests

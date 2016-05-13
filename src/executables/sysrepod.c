@@ -148,5 +148,5 @@ cleanup:
 
     unlink(SR_DAEMON_PID_FILE);
 
-    return ((SR_ERR_OK == rc) ? EXIT_SUCCESS : EXIT_FAILURE);
+    exit((SR_ERR_OK == rc) ? EXIT_SUCCESS : EXIT_FAILURE);
 }
