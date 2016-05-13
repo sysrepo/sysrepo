@@ -1858,6 +1858,44 @@ candidate_edit_test(void **state)
     test_rp_session_cleanup(ctx, sessionB);
 }
 
+static void
+copy_to_running_test(void **state)
+{
+    int rc = 0;
+    rp_ctx_t *ctx = *state;
+    rp_session_t *sessionA = NULL, *sessionB = NULL;
+    sr_val_t *value = NULL;
+
+    test_rp_sesssion_create(ctx, SR_DS_CANDIDATE, &sessionA);
+    test_rp_sesssion_create(ctx, SR_DS_STARTUP, &sessionB);
+
+    /* only enabled modules are copied, no module is enabled => no operation*/
+    rc = rp_dt_copy_config(ctx, sessionB, NULL, SR_DS_STARTUP, SR_DS_RUNNING);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* explictly select a module which is not enabled copy fails*/
+    rc = rp_dt_copy_config(ctx, sessionB, "test-module", SR_DS_STARTUP, SR_DS_RUNNING);
+    assert_int_equal(SR_ERR_COMMIT_FAILED, rc);
+
+    /* only enabled modules are copied, no module is enabled => no operation*/
+    rc = rp_dt_copy_config(ctx, sessionA, NULL, SR_DS_CANDIDATE, SR_DS_RUNNING);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* empty data tree loaded from running (source of candidate) can be copied to running */
+    rc = rp_dt_copy_config(ctx, sessionA, "test-module", SR_DS_CANDIDATE, SR_DS_RUNNING);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* copy startup to candidate */
+    rc = rp_dt_copy_config(ctx, sessionA, "test-module", SR_DS_STARTUP, SR_DS_CANDIDATE);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* copy of not enabled module to running should fail */
+    rc = rp_dt_copy_config(ctx, sessionA, "test-module", SR_DS_CANDIDATE, SR_DS_RUNNING);
+    assert_int_equal(SR_ERR_COMMIT_FAILED, rc);
+
+    test_rp_session_cleanup(ctx, sessionA);
+    test_rp_session_cleanup(ctx, sessionB);
+}
 int main(){
 
     sr_log_stderr(SR_LL_DBG);
@@ -1890,6 +1928,7 @@ int main(){
             cmocka_unit_test(lock_commit_test),
             cmocka_unit_test(empty_string_leaf_test),
             cmocka_unit_test(candidate_edit_test),
+            cmocka_unit_test(copy_to_running_test),
     };
     return cmocka_run_group_tests(tests, setup, teardown);
 }

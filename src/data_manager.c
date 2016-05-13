@@ -1878,7 +1878,7 @@ dm_commit_prepare_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_con
 
     SR_LOG_DBG("Commit: In the session there are %zu / %zu modified models", c_ctx->modif_count, i);
 
-    if (0 == session->oper_count && 0 != c_ctx->modif_count) {
+    if (0 == session->oper_count && 0 != c_ctx->modif_count && SR_DS_CANDIDATE != session->datastore) {
         SR_LOG_WRN_MSG("No operation logged, however data tree marked as modified");
         c_ctx->modif_count = 0;
         *commit_ctx = c_ctx;
@@ -2093,7 +2093,7 @@ dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t *c
     size_t i = 0;
     dm_data_info_t *info = NULL;
 
-    if (SR_DS_RUNNING == session->datastore) {
+    if (SR_DS_RUNNING == session->datastore || SR_DS_CANDIDATE == session->datastore) {
         SR_LOG_DBG_MSG("Sending notifications about the changes made in running datastore...");
         i = 0;
         while (NULL != (info = sr_btree_get_at(session->session_modules, i))) {
@@ -2310,7 +2310,7 @@ dm_copy_config(dm_ctx_t *dm_ctx, dm_session_t *session, const struct ly_set *mod
                 goto cleanup;
             }
             /* load data tree to be copied*/
-            rc = dm_get_data_info(dm_ctx, src_session, module->name, &di_tmp);
+            rc = dm_get_data_info(dm_ctx, dst_session, module->name, &di_tmp);
             CHECK_RC_MSG_GOTO(rc, cleanup, "Get data info failed");
             lyd_free_withsiblings(di_tmp->node);
             di_tmp->node = dup;
@@ -2502,37 +2502,16 @@ dm_copy_all_models(dm_ctx_t *dm_ctx, dm_session_t *session, sr_datastore_t src, 
 {
     CHECK_NULL_ARG2(dm_ctx, session);
     struct ly_set *enabled_modules = NULL;
-    sr_schema_t *schemas = NULL;
-    size_t count = 0;
-    const struct lys_module *module = NULL;
     int rc = SR_ERR_OK;
 
-    enabled_modules = ly_set_new();
-    CHECK_NULL_NOMEM_RETURN(enabled_modules);
+    rc = dm_get_all_modules(dm_ctx, session, (SR_DS_RUNNING == src || SR_DS_RUNNING == dst), &enabled_modules);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Get all modules failed");
 
-    rc = dm_list_schemas(dm_ctx, session, &schemas, &count);
-    CHECK_RC_MSG_GOTO(rc, cleanup, "List schemas failed");
-
-    /* find enable subtrees */
-    for (size_t i = 0; i < count; i++) {
-        bool enabled = false;
-        rc = dm_has_enabled_subtree(dm_ctx, schemas[i].module_name, &module, &enabled);
-        CHECK_RC_LOG_GOTO(rc, cleanup, "Has enabled subtree failed %s", schemas[i].module_name);
-
-        if ((SR_DS_RUNNING == src || SR_DS_RUNNING == dst) && !enabled) {
-            continue;
-        }
-        if (0 != ly_set_add(enabled_modules, (struct lys_module *) module)) {
-            SR_LOG_ERR_MSG("ly_set_add failed");
-            goto cleanup;
-        }
-    }
     rc = dm_copy_config(dm_ctx, session, enabled_modules, src, dst);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Dm copy config failed");
 
 cleanup:
     ly_set_free(enabled_modules);
-    sr_free_schemas(schemas, count);
     return rc;
 }
 
@@ -2675,4 +2654,156 @@ dm_ly_ctx_get_node(dm_ctx_t *dm_ctx, struct ly_ctx *lyctx, const struct lys_node
     pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
     return result;
 
+}
+
+int
+dm_copy_modified_session_trees(dm_ctx_t *dm_ctx, dm_session_t *from, dm_session_t *to)
+{
+    CHECK_NULL_ARG3(dm_ctx, from, to);
+    int rc = SR_ERR_OK;
+    size_t i = 0;
+    dm_data_info_t *info = NULL;
+    dm_data_info_t *new_info = NULL;
+    while (NULL != (info = sr_btree_get_at(from->session_modules, i++))) {
+        if (!info->modified) {
+            continue;
+        }
+        bool existed = true;
+        new_info = sr_btree_search(to->session_modules, info);
+        if (NULL == new_info) {
+            existed = false;
+            new_info = calloc(1, sizeof(*new_info));
+            CHECK_NULL_NOMEM_RETURN(new_info);
+        }
+
+        new_info->modified = info->modified;
+        new_info->module = info->module;
+        new_info->timestamp = info->timestamp;
+        lyd_free_withsiblings(new_info->node);
+        new_info->node = lyd_dup(info->node, 1);
+
+        if (!existed) {
+            sr_btree_insert(to->session_modules, new_info);
+        }
+    }
+    return rc;
+}
+
+int
+dm_copy_session_tree(dm_ctx_t *dm_ctx, dm_session_t *from, dm_session_t *to, const char *module_name)
+{
+    CHECK_NULL_ARG4(dm_ctx, from, to, module_name);
+    int rc = SR_ERR_OK;
+    dm_data_info_t *info = NULL;
+    dm_data_info_t lookup = {0};
+    dm_data_info_t *new_info = NULL;
+    struct lyd_node *tmp_node = NULL;
+    bool existed = true;
+    rc = dm_get_module(dm_ctx, module_name, NULL, &lookup.module);
+    CHECK_RC_LOG_RETURN(rc, "Get module %s failed.", module_name);
+
+    info = sr_btree_search(from->session_modules, &lookup);
+    if (NULL == info) {
+        SR_LOG_DBG("Module %s not loaded in source session", module_name);
+        return rc;
+    }
+
+    new_info = sr_btree_search(to->session_modules, &lookup);
+    if (NULL == new_info) {
+        existed = false;
+        new_info = calloc(1, sizeof(*new_info));
+        CHECK_NULL_NOMEM_RETURN(new_info);
+    }
+
+    new_info->modified = info->modified;
+    new_info->module = info->module;
+    new_info->timestamp = info->timestamp;
+    tmp_node = lyd_dup(info->node, 1);
+    CHECK_NULL_NOMEM_ERROR(tmp_node, rc);
+
+    if (SR_ERR_OK == rc) {
+        lyd_free_withsiblings(new_info->node);
+        new_info->node = tmp_node;
+    }
+
+    if (!existed) {
+        if (SR_ERR_OK == rc) {
+            rc = sr_btree_insert(to->session_modules, new_info);
+        } else {
+            dm_data_info_free(new_info);
+        }
+    }
+    return rc;
+}
+int
+dm_move_session_tree_and_ops(dm_ctx_t *dm_ctx, dm_session_t *from, dm_session_t *to)
+{
+    CHECK_NULL_ARG3(dm_ctx, from, to);
+    CHECK_NULL_ARG(from->session_modules);
+    int rc = SR_ERR_OK;
+
+    sr_btree_cleanup(to->session_modules);
+
+    to->session_modules = from->session_modules;
+    to->oper_count = from->oper_count;
+    to->oper_size = from->oper_size;
+    to->operations = from->operations;
+
+    from->session_modules = NULL;
+    from->operations = 0;
+    from->oper_count = 0;
+    from->oper_size = 0;
+
+    rc = dm_discard_changes(dm_ctx, from);
+    CHECK_RC_MSG_RETURN(rc, "Discard changes failed");
+    return rc;
+}
+
+int
+dm_change_session_datastore(dm_session_t *session, sr_datastore_t ds)
+{
+    CHECK_NULL_ARG(session);
+    session->datastore = ds;
+    return SR_ERR_OK;
+}
+
+int
+dm_get_all_modules(dm_ctx_t *dm_ctx, dm_session_t *session, bool enabled_only, struct ly_set **result)
+{
+    CHECK_NULL_ARG3(dm_ctx, session, result);
+    int rc = SR_ERR_OK;
+    const struct lys_module *module = NULL;
+    size_t count = 0;
+    sr_schema_t *schemas = NULL;
+    struct ly_set *modules = ly_set_new();
+    CHECK_NULL_NOMEM_RETURN(modules);
+
+    rc = dm_list_schemas(dm_ctx, session, &schemas, &count);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "List schemas failed");
+
+    for (size_t i = 0; i < count; i++) {
+        if (enabled_only) {
+            bool enabled = false;
+            rc = dm_has_enabled_subtree(dm_ctx, schemas[i].module_name, &module, &enabled);
+            CHECK_RC_LOG_GOTO(rc, cleanup, "Has enabled subtree failed %s", schemas[i].module_name);
+            if (!enabled) {
+                continue;
+            }
+        } else {
+            rc = dm_get_module(dm_ctx, schemas[i].module_name, NULL, &module);
+            CHECK_RC_LOG_GOTO(rc, cleanup, "Get module %s failed", schemas[i].module_name);
+        }
+
+        rc = ly_set_add(modules, (struct lys_module *) module);
+        CHECK_ZERO_MSG_GOTO(rc, rc, SR_ERR_INTERNAL, cleanup, "ly_set_add failed");
+    }
+
+cleanup:
+    if (SR_ERR_OK != rc) {
+        ly_set_free(modules);
+    } else {
+        *result = modules;
+    }
+    sr_free_schemas(schemas, count);
+    return rc;
 }

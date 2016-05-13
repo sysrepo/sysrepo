@@ -739,9 +739,6 @@ int sr_discard_changes(sr_session_ctx_t *session);
  *
  * If the target datastore exists, it is overwritten. Otherwise, a new one is created.
  *
- * @note In the current implementation, running configuration datastore is not
- * supported as the destination datastore.
- *
  * @param[in] session Session context acquired with ::sr_session_start call.
  * @param[in] module_name If specified, only limits the copy operation only to
  * one specified module.

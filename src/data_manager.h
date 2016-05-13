@@ -609,5 +609,55 @@ int dm_lyd_wd_add(dm_ctx_t *dm_ctx, struct ly_ctx *lyctx, struct lyd_node **root
  * @return Matched schema node
  */
 const struct lys_node *dm_ly_ctx_get_node(dm_ctx_t *dm_ctx, struct ly_ctx *lyctx, const struct lys_node *start, const char *nodeid);
+
+/**
+ * @brief Copies all modified data trees from one session to another.
+ * @note Corresponding operations are not copied so the changes may be overwritten by session refresh.
+ * @param [in] dm_ctx
+ * @param [in] from
+ * @param [in] to
+ * @return Error code (SR_ERR_OK on success)
+ */
+int dm_copy_modified_session_trees(dm_ctx_t *dm_ctx, dm_session_t *from, dm_session_t *to);
+
+/**
+ * @brief Copies the selected data tree from one session to another, if the module is not
+ * loaded in 'from' session, does nothing
+ * @param [in] dm_ctx
+ * @param [in] from
+ * @param [in] to
+ * @param [in] module_name
+ * @return Error code (SR_ERR_OK on success)
+ */
+int dm_copy_session_tree(dm_ctx_t *dm_ctx, dm_session_t *from, dm_session_t *to, const char *module_name);
+
+/**
+ * @brief Moves session data trees and operation from one session to another
+ * @param [in] dm_ctx
+ * @param [in] from
+ * @param [in] to
+ * @return Error code (SR_ERR_OK on success)
+ */
+int dm_move_session_tree_and_ops(dm_ctx_t *dm_ctx, dm_session_t *from, dm_session_t *to);
+
+/**
+ * @brief Changes the datastore to which the session is tied to. Subsequent operations
+ * will work on the selected datastore.
+ * @param [in] session
+ * @param [in] ds
+ * @return Error code (SR_ERR_OK on success)
+ */
+int dm_change_session_datastore(dm_session_t *session, sr_datastore_t ds);
+
+/**
+ * @brief Returns the set of all modules.
+ * @param [in] dm_ctx
+ * @param [in] session
+ * @param [in] enabled_only
+ * @param [out] result
+ * @return Error code (SR_ERR_OK on success)
+ */
+int dm_get_all_modules(dm_ctx_t *dm_ctx, dm_session_t *session, bool enabled_only, struct ly_set **result);
+
 /**@} Data manager*/
 #endif /* SRC_DATA_MANAGER_H_ */

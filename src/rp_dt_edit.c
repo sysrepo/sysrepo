@@ -578,7 +578,7 @@ rp_dt_delete_item_wrapper(rp_ctx_t *rp_ctx, rp_session_t *session, const char *x
  * is set to true, operation is marked with has_error flag.
  * @param [in] ctx
  * @param [in] session
- * @param [in] operations
+ * @param [in] operations can be null in case of candidate session
  * @param [in] count
  * @param [in] continue_on_error flag denoting whether replay should be stopped on first error
  * @param [in] models_to_skip - set of model's name where the current modify timestamp
@@ -589,7 +589,7 @@ static int
 rp_dt_replay_operations(dm_ctx_t *ctx, dm_session_t *session, dm_sess_op_t *operations, size_t count,
         bool continue_on_error, struct ly_set *models_to_skip)
 {
-    CHECK_NULL_ARG3(ctx, session, operations);
+    CHECK_NULL_ARG2(ctx, session);
     int rc = SR_ERR_OK;
     bool err_occured = false; /* flag used in case of continue_on_err */
 
@@ -794,4 +794,82 @@ rp_dt_refresh_session(rp_ctx_t *rp_ctx, rp_session_t *session, sr_error_info_t *
 cleanup:
     ly_set_free(up_to_date);
     return rc;
+}
+
+int
+rp_dt_copy_config(rp_ctx_t *rp_ctx, rp_session_t *session, const char *module_name, sr_datastore_t src, sr_datastore_t dst)
+{
+    CHECK_NULL_ARG2(rp_ctx, session);
+    int rc = SR_ERR_OK;
+    struct ly_set *modules = NULL;
+    dm_session_t *backup = NULL;
+    sr_datastore_t prev_ds = session->datastore;
+    dm_data_info_t *info = NULL;
+    int first_err = SR_ERR_OK;
+    sr_error_info_t *errors = NULL;
+    size_t e_cnt = 0;
+
+
+    if (src == dst) {
+        return rc;
+    }
+
+    if (SR_DS_RUNNING != dst) {
+        if (NULL != module_name) {
+            /* copy module content in DM */
+            rc = dm_copy_module(rp_ctx->dm_ctx, session->dm_session, module_name, src, dst);
+        } else {
+            /* copy all enabled modules */
+            rc = dm_copy_all_models(rp_ctx->dm_ctx, session->dm_session, src, dst);
+        }
+        return rc;
+    }
+
+    /* copy to running is canidate commit behind the scenes */
+    rc = dm_session_start(rp_ctx->dm_ctx, session->user_credentials, SR_DS_STARTUP, &backup);
+    CHECK_RC_MSG_RETURN(rc, "Session start of temporary session failed");
+
+    /* move datatrees & session ops -> backup */
+    rc = dm_move_session_tree_and_ops(rp_ctx->dm_ctx, session->dm_session, backup);
+    CHECK_RC_MSG_GOTO(rc, cleanup_sess_stop, "Moving session data trees failed");
+
+    /* load models to be committed to the session */
+    if (NULL != module_name) {
+        rc = dm_copy_session_tree(rp_ctx->dm_ctx, backup, session->dm_session, module_name);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Copy session data trees failed");
+        /* load data tree if it was not copied from backup session */
+        rc = dm_get_data_info(rp_ctx->dm_ctx, session->dm_session, module_name, &info);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Get data info failed");
+        info->modified = true;
+    } else {
+        /* load all enabled models */
+        rc = dm_copy_modified_session_trees(rp_ctx->dm_ctx, backup, session->dm_session);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Copy session data trees failed");
+
+        rc = dm_get_all_modules(rp_ctx->dm_ctx, session->dm_session, true, &modules);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Get all modules failed");
+        for (size_t i = 0; i < modules->number; i++) {
+            rc = dm_get_data_info(rp_ctx->dm_ctx, session->dm_session, modules->set.g[i], &info);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "Get data info failed");
+            info->modified = true;
+        }
+
+    }
+    /* change session to candidate */
+    rc = rp_switch_datastore(session, SR_DS_CANDIDATE);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Data tree switch failed");
+    /* commit */
+    rc = rp_dt_commit(rp_ctx, session, &errors, &e_cnt);
+    sr_free_errors(errors, e_cnt);
+
+cleanup:
+    first_err = rc;
+    /* move datatrees & ops backup -> session */
+    rc = dm_move_session_tree_and_ops(rp_ctx->dm_ctx, backup, session->dm_session);
+    /* change session to prev type */
+    rc = rp_switch_datastore(session, prev_ds);
+    ly_set_free(modules);
+cleanup_sess_stop:
+    dm_session_stop(rp_ctx->dm_ctx, backup);
+    return first_err == SR_ERR_OK ? rc : first_err;
 }

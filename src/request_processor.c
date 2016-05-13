@@ -654,7 +654,7 @@ rp_discard_changes_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *sessi
  * @brief Processes a discard_changes request.
  */
 static int
-rp_copy_config_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
+rp_copy_config_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
 {
     Sr__Msg *resp = NULL;
     int rc = SR_ERR_OK;
@@ -670,17 +670,9 @@ rp_copy_config_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
         return SR_ERR_NOMEM;
     }
 
-    if (NULL != msg->request->copy_config_req->module_name) {
-        /* copy module content in DM */
-        rc = dm_copy_module(rp_ctx->dm_ctx, session->dm_session, msg->request->copy_config_req->module_name,
+    rc = rp_dt_copy_config(rp_ctx, session, msg->request->copy_config_req->module_name,
                 sr_datastore_gpb_to_sr(msg->request->copy_config_req->src_datastore),
                 sr_datastore_gpb_to_sr(msg->request->copy_config_req->dst_datastore));
-    } else {
-        /* copy all enabled modules */
-        rc = dm_copy_all_models(rp_ctx->dm_ctx, session->dm_session,
-                sr_datastore_gpb_to_sr(msg->request->copy_config_req->src_datastore),
-                sr_datastore_gpb_to_sr(msg->request->copy_config_req->dst_datastore));
-    }
 
     /* set response code */
     resp->response->result = rc;
@@ -1543,6 +1535,16 @@ rp_session_stop(const rp_ctx_t *rp_ctx, rp_session_t *session)
     }
 
     return SR_ERR_OK;
+}
+
+int
+rp_switch_datastore(rp_session_t *session, sr_datastore_t ds)
+{
+    CHECK_NULL_ARG(session);
+    int rc = SR_ERR_OK;
+    session->datastore = ds;
+    rc = dm_change_session_datastore(session->dm_session, ds);
+    return rc;
 }
 
 int
