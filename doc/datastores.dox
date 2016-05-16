@@ -5,7 +5,7 @@
 Sysrepo supports \b startup \b running and \b candidate configuration datastores. Each configuration
 session created can perform operations on any of them. On session start the initial datastore
 is selected. All subsequent calls are tied to the chosen datastore. The datastore which
-the session is operating on, can be changed using ::sr_session_switch_ds.
+the session is operating can be changed using ::sr_session_switch_ds.
 
 The changes made within a session are not applied into the datastore
 until ::sr_commit is requested. While not committed, changes are visible only
@@ -34,10 +34,6 @@ When new configuration is committed into the running datastore, subscribed appli
 informed about it and should start using it. Be aware that that kind of
 change is not permanent - you need to copy the configuration to the startup
 datastore to make it permanent after application restart (::sr_copy_config).
-
-@note In sysrepo versions below 0.3.0, notifications are not implemented, and running datastore
-cannot be used. For testing purposes, an internal function ::rp_dt_enable_xpath can be
-called to enable a subtree in running datastore.
 
 @section cds Candidate Datastore
 The candidate configuration is a full configuration data set that serves as a work
