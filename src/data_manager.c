@@ -36,6 +36,7 @@
 #include "notification_processor.h"
 #include "persistence_manager.h"
 
+#define DM_DATASTORE_COUNT 3
 /**
  * @brief Helper structure for advisory locking. Holds
  * binary tree with filename -> fd maping. This structure
@@ -81,12 +82,12 @@ typedef struct dm_ctx_s {
 typedef struct dm_session_s {
     sr_datastore_t datastore;           /**< datastore to which the session is tied */
     const ac_ucred_t *user_credentials; /**< credentials of the user who this session belongs to */
-    sr_btree_t *session_modules;        /**< binary holding session copies of data models */
+    sr_btree_t **session_modules;       /**< array of binary trees holding session copies of data models for each datastore */
+    dm_sess_op_t **operations;          /**< array of list of operations performed in this session */
+    size_t *oper_count;                 /**< array of number of performed operation */
+    size_t *oper_size;                  /**< array of number of allocated operations */
     char *error_msg;                    /**< description of the last error */
     char *error_xpath;                  /**< xpath of the last error if applicable */
-    dm_sess_op_t *operations;           /**< list of operations performed in this session */
-    size_t oper_count;                  /**< number of performed operation */
-    size_t oper_size;                   /**< number of allocated operations */
     struct ly_set *locked_files;        /**< set of filename that are locked by this session */
     bool holds_ds_lock;                 /**< flags if the session holds ds lock*/
 } dm_session_t;
@@ -826,36 +827,37 @@ dm_add_operation(dm_session_t *session, dm_operation_t op, const char *xpath, sr
         goto cleanup;
     }
 
-    if (NULL == session->operations) {
-        session->oper_size = 1;
-        session->operations = calloc(session->oper_size, sizeof(*session->operations));
-        CHECK_NULL_NOMEM_GOTO(session->operations, rc, cleanup);
-    } else if (session->oper_count == session->oper_size) {
-        session->oper_size *= 2;
-        dm_sess_op_t *tmp_op = realloc(session->operations, session->oper_size * sizeof(*session->operations));
+    if (NULL == session->operations[session->datastore]) {
+        session->oper_size[session->datastore] = 1;
+        session->operations[session->datastore] = calloc(session->oper_size[session->datastore], sizeof(*session->operations[session->datastore]));
+        CHECK_NULL_NOMEM_GOTO(session->operations[session->datastore], rc, cleanup);
+    } else if (session->oper_count[session->datastore] == session->oper_size[session->datastore]) {
+        session->oper_size[session->datastore] *= 2;
+        dm_sess_op_t *tmp_op = realloc(session->operations[session->datastore], session->oper_size[session->datastore] * sizeof(*session->operations[session->datastore]));
         CHECK_NULL_NOMEM_GOTO(tmp_op, rc, cleanup);
-        session->operations = tmp_op;
+        session->operations[session->datastore] = tmp_op;
     }
-    session->operations[session->oper_count].op = op;
-    session->operations[session->oper_count].has_error = false;
-    session->operations[session->oper_count].xpath = strdup(xpath);
-    CHECK_NULL_NOMEM_GOTO(session->operations[session->oper_count].xpath, rc, cleanup);
+    int index = session->oper_count[session->datastore];
+    session->operations[session->datastore][index].op = op;
+    session->operations[session->datastore][index].has_error = false;
+    session->operations[session->datastore][index].xpath = strdup(xpath);
+    CHECK_NULL_NOMEM_GOTO(session->operations[session->datastore][index].xpath, rc, cleanup);
     if (DM_SET_OP == op) {
-        session->operations[session->oper_count].detail.set.val = val;
-        session->operations[session->oper_count].detail.set.options = opts;
+        session->operations[session->datastore][index].detail.set.val = val;
+        session->operations[session->datastore][index].detail.set.options = opts;
     } else if (DM_DELETE_OP == op) {
-        session->operations[session->oper_count].detail.del.options = opts;
+        session->operations[session->datastore][index].detail.del.options = opts;
     } else if (DM_MOVE_OP == op) {
-        session->operations[session->oper_count].detail.mov.position = pos;
+        session->operations[session->datastore][index].detail.mov.position = pos;
         if (NULL != rel_item) {
-            session->operations[session->oper_count].detail.mov.relative_item = strdup(rel_item);
-            CHECK_NULL_NOMEM_GOTO(session->operations[session->oper_count].detail.mov.relative_item, rc, cleanup);
+            session->operations[session->datastore][index].detail.mov.relative_item = strdup(rel_item);
+            CHECK_NULL_NOMEM_GOTO(session->operations[session->datastore][index].detail.mov.relative_item, rc, cleanup);
         } else {
-            session->operations[session->oper_count].detail.mov.relative_item = NULL;
+            session->operations[session->datastore][index].detail.mov.relative_item = NULL;
         }
     }
 
-    session->oper_count++;
+    session->oper_count[session->datastore]++;
     return rc;
 cleanup:
     sr_free_val(val);
@@ -866,11 +868,12 @@ void
 dm_remove_last_operation(dm_session_t *session)
 {
     CHECK_NULL_ARG_VOID(session);
-    if (session->oper_count > 0) {
-        session->oper_count--;
-        dm_free_sess_op(&session->operations[session->oper_count]);
-        session->operations[session->oper_count].xpath = NULL;
-        session->operations[session->oper_count].detail.set.val = NULL;
+    if (session->oper_count[session->datastore] > 0) {
+        session->oper_count[session->datastore]--;
+        int index = session->oper_count[session->datastore];
+        dm_free_sess_op(&session->operations[session->datastore][index]);
+        session->operations[session->datastore][index].xpath = NULL;
+        session->operations[session->datastore][index].detail.set.val = NULL;
     }
 }
 
@@ -878,8 +881,8 @@ void
 dm_get_session_operations(dm_session_t *session, dm_sess_op_t **ops, size_t *count)
 {
     CHECK_NULL_ARG_VOID3(session, ops, count);
-    *ops = session->operations;
-    *count = session->oper_count;
+    *ops = session->operations[session->datastore];
+    *count = session->oper_count[session->datastore];
 }
 
 void
@@ -1119,22 +1122,32 @@ dm_session_start(const dm_ctx_t *dm_ctx, const ac_ucred_t *user_credentials, con
     session_ctx->datastore = ds;
 
     int rc = SR_ERR_OK;
-    rc = sr_btree_init(dm_data_info_cmp, dm_data_info_free, &session_ctx->session_modules);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Binary tree allocation failed");
-        free(session_ctx);
-        return SR_ERR_NOMEM;
-    }
-    session_ctx->locked_files = ly_set_new();
-    if (NULL == session_ctx->locked_files) {
-        SR_LOG_ERR_MSG("Locked file set init failed");
-        sr_btree_cleanup(session_ctx->session_modules);
-        free(session_ctx);
-        return SR_ERR_INTERNAL;
-    }
-    *dm_session_ctx = session_ctx;
+    session_ctx->session_modules = calloc(DM_DATASTORE_COUNT, sizeof(*session_ctx->session_modules));
+    CHECK_NULL_NOMEM_GOTO(session_ctx->session_modules, rc, cleanup);
 
-    return SR_ERR_OK;
+    for (size_t i = 0; i < DM_DATASTORE_COUNT; i++) {
+        rc = sr_btree_init(dm_data_info_cmp, dm_data_info_free, &session_ctx->session_modules[i]);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Session module binary tree init failed");
+    }
+
+    session_ctx->locked_files = ly_set_new();
+    CHECK_NULL_NOMEM_GOTO(session_ctx->locked_files, rc, cleanup);
+
+    session_ctx->operations = calloc(DM_DATASTORE_COUNT, sizeof(*session_ctx->operations));
+    CHECK_NULL_NOMEM_GOTO(session_ctx->operations, rc, cleanup);
+    session_ctx->oper_count = calloc(DM_DATASTORE_COUNT, sizeof(*session_ctx->oper_count));
+    CHECK_NULL_NOMEM_GOTO(session_ctx->oper_count, rc, cleanup);
+    session_ctx->oper_size = calloc(DM_DATASTORE_COUNT, sizeof(*session_ctx->oper_size));
+    CHECK_NULL_NOMEM_GOTO(session_ctx->oper_size, rc, cleanup);
+
+
+cleanup:
+    if (SR_ERR_OK == rc) {
+        *dm_session_ctx = session_ctx;
+    } else {
+        dm_session_stop((dm_ctx_t *) dm_ctx, session_ctx);
+    }
+    return rc;
 }
 
 void
@@ -1145,9 +1158,17 @@ dm_session_stop(dm_ctx_t *dm_ctx, dm_session_t *session)
         dm_unlock_datastore(dm_ctx, session);
         ly_set_free(session->locked_files);
     }
-    sr_btree_cleanup(session->session_modules);
+    for (size_t i = 0; i < DM_DATASTORE_COUNT; i++) {
+        sr_btree_cleanup(session->session_modules[i]);
+    }
+    free(session->session_modules);
     dm_clear_session_errors(session);
-    dm_free_sess_operations(session->operations, session->oper_count);
+    for (size_t i = 0; i < DM_DATASTORE_COUNT; i++) {
+        dm_free_sess_operations(session->operations[i], session->oper_count[i]);
+    }
+    free(session->operations);
+    free(session->oper_count);
+    free(session->oper_size);
     free(session);
 }
 
@@ -1295,7 +1316,7 @@ dm_get_data_info(dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, const char *mod
 
     dm_data_info_t lookup_data = {0};
     lookup_data.module = module;
-    exisiting_data_info = sr_btree_search(dm_session_ctx->session_modules, &lookup_data);
+    exisiting_data_info = sr_btree_search(dm_session_ctx->session_modules[dm_session_ctx->datastore], &lookup_data);
 
     if (NULL != exisiting_data_info) {
         *info = exisiting_data_info;
@@ -1324,7 +1345,7 @@ dm_get_data_info(dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, const char *mod
         CHECK_RC_LOG_RETURN(rc, "Getting data tree for %s failed.", module_name);
     }
 
-    rc = sr_btree_insert(dm_session_ctx->session_modules, (void *) di);
+    rc = sr_btree_insert(dm_session_ctx->session_modules[dm_session_ctx->datastore], (void *) di);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Insert into session avl failed module %s", module_name);
         dm_data_info_free(di);
@@ -1628,7 +1649,7 @@ dm_validate_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error
     size_t cnt = 0;
     *err_cnt = 0;
     dm_data_info_t *info = NULL;
-    while (NULL != (info = sr_btree_get_at(session->session_modules, cnt))) {
+    while (NULL != (info = sr_btree_get_at(session->session_modules[session->datastore], cnt))) {
         /* loaded data trees are valid, so check only the modified ones */
         if (info->modified) {
             if (NULL == info->module || NULL == info->module->name) {
@@ -1665,15 +1686,15 @@ dm_discard_changes(dm_ctx_t *dm_ctx, dm_session_t *session)
     CHECK_NULL_ARG2(dm_ctx, session);
     int rc = SR_ERR_OK;
 
-    sr_btree_cleanup(session->session_modules);
-    session->session_modules = NULL;
+    sr_btree_cleanup(session->session_modules[session->datastore]);
+    session->session_modules[session->datastore] = NULL;
 
-    rc = sr_btree_init(dm_data_info_cmp, dm_data_info_free, &session->session_modules);
+    rc = sr_btree_init(dm_data_info_cmp, dm_data_info_free, &session->session_modules[session->datastore]);
     CHECK_RC_MSG_RETURN(rc, "Binary tree allocation failed");
-    dm_free_sess_operations(session->operations, session->oper_count);
-    session->operations = NULL;
-    session->oper_count = 0;
-    session->oper_size = 0;
+    dm_free_sess_operations(session->operations[session->datastore], session->oper_count[session->datastore]);
+    session->operations[session->datastore] = NULL;
+    session->oper_count[session->datastore] = 0;
+    session->oper_size[session->datastore] = 0;
 
     return SR_ERR_OK;
 }
@@ -1684,7 +1705,7 @@ dm_remove_modified_flag(dm_session_t* session)
     int rc = SR_ERR_OK;
     dm_data_info_t *info = NULL;
     size_t cnt = 0;
-    while (NULL != (info = sr_btree_get_at(session->session_modules, cnt))) {
+    while (NULL != (info = sr_btree_get_at(session->session_modules[session->datastore], cnt))) {
         /* remove modified flag */
         info->modified = false;
         cnt++;
@@ -1696,7 +1717,7 @@ int
 dm_remove_session_operations(dm_session_t *session)
 {
     CHECK_NULL_ARG(session);
-    while (session->oper_count > 0) {
+    while (session->oper_count[session->datastore] > 0) {
         dm_remove_last_operation(session);
     }
     return SR_ERR_OK;
@@ -1760,7 +1781,7 @@ dm_update_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, struct ly_
     CHECK_NULL_NOMEM_GOTO(to_be_refreshed, rc, cleanup);
     CHECK_NULL_NOMEM_GOTO(up_to_date, rc, cleanup);
 
-    while (NULL != (info = sr_btree_get_at(session->session_modules, i++))) {
+    while (NULL != (info = sr_btree_get_at(session->session_modules[session->datastore], i++))) {
         rc = sr_get_data_file_name(dm_ctx->data_search_dir, info->module->name, session->datastore, &file_name);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Get data file name failed");
         ac_set_user_identity(dm_ctx->ac_ctx, session->user_credentials);
@@ -1806,7 +1827,7 @@ dm_update_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, struct ly_
     }
 
     for (i = 0; i < to_be_refreshed->number; i++) {
-        sr_btree_delete(session->session_modules, to_be_refreshed->set.g[i]);
+        sr_btree_delete(session->session_modules[session->datastore], to_be_refreshed->set.g[i]);
     }
 
 cleanup:
@@ -1824,14 +1845,14 @@ void
 dm_remove_operations_with_error(dm_session_t *session)
 {
     CHECK_NULL_ARG_VOID(session);
-    for (int i = session->oper_count - 1; i >= 0; i--) {
-        dm_sess_op_t *op = &session->operations[i];
+    for (int i = session->oper_count[session->datastore] - 1; i >= 0; i--) {
+        dm_sess_op_t *op = &session->operations[session->datastore][i];
         if (op->has_error) {
             dm_free_sess_op(op);
-            memmove(&session->operations[i],
-                    &session->operations[i + 1],
-                    (session->oper_count - i - 1) * sizeof(*op));
-            session->oper_count--;
+            memmove(&session->operations[session->datastore][i],
+                    &session->operations[session->datastore][i + 1],
+                    (session->oper_count[session->datastore] - i - 1) * sizeof(*op));
+            session->oper_count[session->datastore]--;
         }
     }
 }
@@ -1869,7 +1890,7 @@ dm_commit_prepare_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_con
 
     c_ctx->modif_count = 0;
     /* count modified files */
-    while (NULL != (info = sr_btree_get_at(session->session_modules, i))) {
+    while (NULL != (info = sr_btree_get_at(session->session_modules[session->datastore], i))) {
         if (info->modified) {
             c_ctx->modif_count++;
         }
@@ -1898,8 +1919,8 @@ dm_commit_prepare_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_con
     CHECK_NULL_NOMEM_GOTO(c_ctx->up_to_date_models, rc, cleanup);
 
     /* set pointer to the list of operations to be committed */
-    c_ctx->operations = session->operations;
-    c_ctx->oper_count = session->oper_count;
+    c_ctx->operations = session->operations[session->datastore];
+    c_ctx->oper_count = session->oper_count[session->datastore];
 
     *commit_ctx = c_ctx;
     return rc;
@@ -1922,7 +1943,7 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
     char *file_name = NULL;
     c_ctx->modif_count = 0; /* how many file descriptors should be closed on cleanup */
 
-    while (NULL != (info = sr_btree_get_at(session->session_modules, i++))) {
+    while (NULL != (info = sr_btree_get_at(session->session_modules[session->datastore], i++))) {
         if (info->modified) {
             rc = dm_lock_module(dm_ctx, c_ctx->session, (char *) info->module->name);
             if (SR_ERR_LOCKED == rc) {
@@ -1950,7 +1971,7 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
 
     ac_set_user_identity(dm_ctx->ac_ctx, session->user_credentials);
 
-    while (NULL != (info = sr_btree_get_at(session->session_modules, i++))) {
+    while (NULL != (info = sr_btree_get_at(session->session_modules[session->datastore], i++))) {
         if (!info->modified) {
             continue;
         }
@@ -2018,7 +2039,7 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
             CHECK_RC_MSG_GOTO(rc, cleanup, "Loading data file failed");
         }
 
-        rc = sr_btree_insert(c_ctx->session->session_modules, (void *) di);
+        rc = sr_btree_insert(c_ctx->session->session_modules[c_ctx->session->datastore], (void *) di);
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR("Insert into commit session avl failed module %s", info->module->name);
             dm_data_info_free(di);
@@ -2053,10 +2074,10 @@ dm_commit_write_files(dm_session_t *session, dm_commit_context_t *c_ctx)
     /* write data trees */
     i = 0;
     dm_data_info_t *merged_info = NULL;
-    while (NULL != (info = sr_btree_get_at(session->session_modules, i))) {
+    while (NULL != (info = sr_btree_get_at(session->session_modules[session->datastore], i++))) {
         if (info->modified) {
             /* get merged info */
-            merged_info = sr_btree_search(c_ctx->session->session_modules, info);
+            merged_info = sr_btree_search(c_ctx->session->session_modules[c_ctx->session->datastore], info);
             if (NULL == merged_info) {
                 SR_LOG_ERR("Merged data info %s not found", info->module->name);
                 rc = SR_ERR_INTERNAL;
@@ -2080,7 +2101,6 @@ dm_commit_write_files(dm_session_t *session, dm_commit_context_t *c_ctx)
             }
             count++;
         }
-        i++;
     }
     return rc;
 }
@@ -2096,7 +2116,7 @@ dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t *c
     if (SR_DS_RUNNING == session->datastore || SR_DS_CANDIDATE == session->datastore) {
         SR_LOG_DBG_MSG("Sending notifications about the changes made in running datastore...");
         i = 0;
-        while (NULL != (info = sr_btree_get_at(session->session_modules, i))) {
+        while (NULL != (info = sr_btree_get_at(session->session_modules[session->datastore], i))) {
             if (info->modified) {
                 rc = np_module_change_notify(dm_ctx->np_ctx, info->module->name);
                 if (SR_ERR_OK != rc) {
@@ -2191,11 +2211,6 @@ dm_copy_config(dm_ctx_t *dm_ctx, dm_session_t *session, const struct ly_set *mod
     size_t opened_files = 0;
     char *file_name = NULL;
     int *fds = NULL;
-
-    if ((SR_DS_CANDIDATE == src || SR_DS_CANDIDATE == dst) && SR_DS_CANDIDATE != session->datastore) {
-        SR_LOG_ERR_MSG("Copy config to/from candidate issued on non-candidate session");
-        return SR_ERR_INVAL_ARG;
-    }
 
     if (src == dst || 0 == modules->number) {
         return rc;
@@ -2664,12 +2679,12 @@ dm_copy_modified_session_trees(dm_ctx_t *dm_ctx, dm_session_t *from, dm_session_
     size_t i = 0;
     dm_data_info_t *info = NULL;
     dm_data_info_t *new_info = NULL;
-    while (NULL != (info = sr_btree_get_at(from->session_modules, i++))) {
+    while (NULL != (info = sr_btree_get_at(from->session_modules[from->datastore], i++))) {
         if (!info->modified) {
             continue;
         }
         bool existed = true;
-        new_info = sr_btree_search(to->session_modules, info);
+        new_info = sr_btree_search(to->session_modules[to->datastore], info);
         if (NULL == new_info) {
             existed = false;
             new_info = calloc(1, sizeof(*new_info));
@@ -2683,7 +2698,7 @@ dm_copy_modified_session_trees(dm_ctx_t *dm_ctx, dm_session_t *from, dm_session_
         new_info->node = lyd_dup(info->node, 1);
 
         if (!existed) {
-            sr_btree_insert(to->session_modules, new_info);
+            sr_btree_insert(to->session_modules[to->datastore], new_info);
         }
     }
     return rc;
@@ -2702,13 +2717,13 @@ dm_copy_session_tree(dm_ctx_t *dm_ctx, dm_session_t *from, dm_session_t *to, con
     rc = dm_get_module(dm_ctx, module_name, NULL, &lookup.module);
     CHECK_RC_LOG_RETURN(rc, "Get module %s failed.", module_name);
 
-    info = sr_btree_search(from->session_modules, &lookup);
+    info = sr_btree_search(from->session_modules[from->datastore], &lookup);
     if (NULL == info) {
         SR_LOG_DBG("Module %s not loaded in source session", module_name);
         return rc;
     }
 
-    new_info = sr_btree_search(to->session_modules, &lookup);
+    new_info = sr_btree_search(to->session_modules[to->datastore], &lookup);
     if (NULL == new_info) {
         existed = false;
         new_info = calloc(1, sizeof(*new_info));
@@ -2728,34 +2743,109 @@ dm_copy_session_tree(dm_ctx_t *dm_ctx, dm_session_t *from, dm_session_t *to, con
 
     if (!existed) {
         if (SR_ERR_OK == rc) {
-            rc = sr_btree_insert(to->session_modules, new_info);
+            rc = sr_btree_insert(to->session_modules[to->datastore], new_info);
         } else {
             dm_data_info_free(new_info);
         }
     }
     return rc;
 }
+
 int
 dm_move_session_tree_and_ops(dm_ctx_t *dm_ctx, dm_session_t *from, dm_session_t *to)
+{
+    CHECK_NULL_ARG3(dm_ctx, from, to);
+    CHECK_NULL_ARG2(from->session_modules, from->session_modules[from->datastore]);
+    int rc = SR_ERR_OK;
+
+    sr_btree_cleanup(to->session_modules[to->datastore]);
+    dm_free_sess_operations(to->operations[to->datastore], to->oper_count[to->datastore]);
+
+    to->session_modules[to->datastore] = from->session_modules[from->datastore];
+    to->oper_count[to->datastore] = from->oper_count[from->datastore];
+    to->oper_size[to->datastore] = from->oper_size[from->datastore];
+    to->operations[to->datastore] = from->operations[from->datastore];
+
+    from->session_modules[from->datastore] = NULL;
+    from->operations[from->datastore] = NULL;
+    from->oper_count[from->datastore] = 0;
+    from->oper_size[from->datastore] = 0;
+
+    rc = dm_discard_changes(dm_ctx, from);
+    CHECK_RC_MSG_RETURN(rc, "Discard changes failed");
+    return rc;
+}
+
+int
+dm_move_session_tree_and_ops_all_ds(dm_ctx_t *dm_ctx, dm_session_t *from, dm_session_t *to)
 {
     CHECK_NULL_ARG3(dm_ctx, from, to);
     CHECK_NULL_ARG(from->session_modules);
     int rc = SR_ERR_OK;
 
-    sr_btree_cleanup(to->session_modules);
+    int from_ds = from->datastore;
+    int to_ds = to->datastore;
+    for (int ds = 0; ds < DM_DATASTORE_COUNT; ds++) {
+        dm_change_session_datastore(from, ds);
+        dm_change_session_datastore(to, ds);
+        sr_btree_cleanup(to->session_modules[ds]);
+        dm_free_sess_operations(to->operations[ds], to->oper_count[ds]);
 
-    to->session_modules = from->session_modules;
-    to->oper_count = from->oper_count;
-    to->oper_size = from->oper_size;
-    to->operations = from->operations;
+        to->session_modules[ds] = from->session_modules[ds];
+        to->oper_count[ds] = from->oper_count[ds];
+        to->oper_size[ds] = from->oper_size[ds];
+        to->operations[ds] = from->operations[ds];
 
-    from->session_modules = NULL;
-    from->operations = 0;
-    from->oper_count = 0;
-    from->oper_size = 0;
+        from->session_modules[ds] = NULL;
+        from->operations[ds] = NULL;
+        from->oper_count[ds] = 0;
+        from->oper_size[ds] = 0;
 
-    rc = dm_discard_changes(dm_ctx, from);
+        dm_change_session_datastore(from, ds);
+        rc = dm_discard_changes(dm_ctx, from);
+    }
+    dm_change_session_datastore(from, from_ds);
+    dm_change_session_datastore(to, to_ds);
     CHECK_RC_MSG_RETURN(rc, "Discard changes failed");
+    return rc;
+}
+
+
+int
+dm_move_session_trees_in_session(dm_ctx_t *dm_ctx, dm_session_t *session, sr_datastore_t from, sr_datastore_t to)
+{
+    CHECK_NULL_ARG2(dm_ctx, session);
+    CHECK_NULL_ARG(session->session_modules);
+    int rc = SR_ERR_OK;
+
+    if (from == to) {
+        return rc;
+    }
+
+    int prev_ds = session->datastore;
+
+    /* cleanup the target*/
+    sr_btree_cleanup(session->session_modules[to]);
+    dm_free_sess_operations(session->operations[to], session->oper_count[to]);
+
+    /* move */
+    session->session_modules[to] = session->session_modules[from];
+    session->oper_count[to] = session->oper_count[from];
+    session->oper_size[to] = session->oper_size[from];
+    session->operations[to] = session->operations[from];
+
+    dm_change_session_datastore(session, from);
+    session->session_modules[from] = NULL;
+    session->operations[from] = NULL;
+    session->oper_count[from] = 0;
+    session->oper_size[from] = 0;
+
+    /* initialize the from datastore binary tree*/
+    dm_change_session_datastore(session, from);
+    rc = dm_discard_changes(dm_ctx, session);
+    CHECK_RC_MSG_RETURN(rc, "Discard changes failed");
+
+    rc = dm_change_session_datastore(session, prev_ds);
     return rc;
 }
 

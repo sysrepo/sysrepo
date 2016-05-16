@@ -41,14 +41,14 @@
 typedef struct dm_session_s {
     sr_datastore_t datastore;           /**< datastore to which the session is tied */
     const ac_ucred_t *user_credentials; /**< credentials of the user who this session belongs to */
-    sr_btree_t *session_modules;        /**< binary holding session copies of data models */
+    sr_btree_t **session_modules;       /**< array of binary trees holding session copies of data models for each datastore */
+    dm_sess_op_t **operations;          /**< array of list of operations performed in this session */
+    size_t *oper_count;                 /**< array of number of performed operation */
+    size_t *oper_size;                  /**< array of number of allocated operations */
     char *error_msg;                    /**< description of the last error */
     char *error_xpath;                  /**< xpath of the last error if applicable */
-    dm_sess_op_t *operations;           /**< list of operations performed in this session */
-    size_t oper_count;                  /**< number of performed operation */
-    size_t oper_size;                   /**< number of allocated operations */
     struct ly_set *locked_files;        /**< set of filename that are locked by this session */
-    bool holds_ds_lock;               /**< flags if the session holds ds lock*/
+    bool holds_ds_lock;                 /**< flags if the session holds ds lock*/
 } dm_session_t;
 
 int setup(void **state){
@@ -1663,7 +1663,7 @@ operation_logging_test(void **state)
 
    test_rp_sesssion_create(ctx, SR_DS_STARTUP, &session);
 
-   assert_int_equal(0, session->dm_session->oper_count);
+   assert_int_equal(0, session->dm_session->oper_count[session->datastore]);
 
    /* set */
 
@@ -1675,38 +1675,38 @@ operation_logging_test(void **state)
    value->type = SR_STRING_T;
    rc = rp_dt_set_item_wrapper(ctx, session, "/test-module:main/i8", value, SR_EDIT_DEFAULT);
    assert_int_equal(SR_ERR_INVAL_ARG, rc);
-   assert_int_equal(0, session->dm_session->oper_count);
+   assert_int_equal(0, session->dm_session->oper_count[session->datastore]);
 
 
    rc = rp_dt_set_item_wrapper(ctx, session, "/test-module:user[name='nameC']", NULL, SR_EDIT_DEFAULT);
    assert_int_equal(SR_ERR_OK, rc);
-   assert_int_equal(1, session->dm_session->oper_count);
-   assert_int_equal(DM_SET_OP, session->dm_session->operations[session->dm_session->oper_count-1].op);
+   assert_int_equal(1, session->dm_session->oper_count[session->datastore]);
+   assert_int_equal(DM_SET_OP, session->dm_session->operations[session->datastore][session->dm_session->oper_count[session->datastore]-1].op);
 
    rc = rp_dt_set_item_wrapper(ctx, session, "/test-module:user[name='nameX']", NULL, SR_EDIT_DEFAULT);
    assert_int_equal(SR_ERR_OK, rc);
-   assert_int_equal(2, session->dm_session->oper_count);
+   assert_int_equal(2, session->dm_session->oper_count[session->datastore]);
 
    /* move */
    rc = rp_dt_move_list_wrapper(ctx, session, "/test-module:user[name='nameX']", SR_MOVE_LAST, NULL);
    assert_int_equal(SR_ERR_OK, rc);
-   assert_int_equal(3, session->dm_session->oper_count);
-   assert_int_equal(DM_MOVE_OP, session->dm_session->operations[session->dm_session->oper_count-1].op);
+   assert_int_equal(3, session->dm_session->oper_count[session->datastore]);
+   assert_int_equal(DM_MOVE_OP, session->dm_session->operations[session->datastore][session->dm_session->oper_count[session->datastore]-1].op);
 
    rc = rp_dt_move_list_wrapper(ctx, session, "/test-module:!^", SR_MOVE_BEFORE, "/test-module:user[name='nameC']");
    assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
-   assert_int_equal(3, session->dm_session->oper_count);
+   assert_int_equal(3, session->dm_session->oper_count[session->datastore]);
 
    /* delete */
    rc = rp_dt_delete_item_wrapper(ctx, session, "/test-module:user[name='nameC']", SR_EDIT_DEFAULT);
    assert_int_equal(SR_ERR_OK, rc);
-   assert_int_equal(4, session->dm_session->oper_count);
-   assert_int_equal(DM_DELETE_OP, session->dm_session->operations[session->dm_session->oper_count-1].op);
+   assert_int_equal(4, session->dm_session->oper_count[session->datastore]);
+   assert_int_equal(DM_DELETE_OP, session->dm_session->operations[session->datastore][session->dm_session->oper_count[session->datastore]-1].op);
 
    /* unsuccessful operation should not be logged */
    rc = rp_dt_move_list_wrapper(ctx, session, "/test-module:user[name='nameC']", SR_MOVE_AFTER, "/test-module:user[name='nameC']");
    assert_int_equal(SR_ERR_INVAL_ARG, rc);
-   assert_int_equal(4, session->dm_session->oper_count);
+   assert_int_equal(4, session->dm_session->oper_count[session->datastore]);
 
    test_rp_session_cleanup(ctx, session);
 }

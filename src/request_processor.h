@@ -107,8 +107,6 @@ int rp_session_start(const rp_ctx_t *rp_ctx, const uint32_t session_id, const ac
  */
 int rp_session_stop(const rp_ctx_t *rp_ctx, rp_session_t *session);
 
-int rp_switch_datastore(rp_session_t *session, sr_datastore_t ds);
-
 /**
  * @brief Pass the message for processing in Request Processor.
  *

@@ -729,6 +729,44 @@ rp_session_refresh_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg 
     return rc;
 }
 
+static int
+rp_switch_datastore_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
+{
+    Sr__Msg *resp = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->session_switch_ds_req);
+
+    SR_LOG_DBG_MSG("Processing session_data_refresh request.");
+
+    /* allocate the response */
+    rc = sr_gpb_resp_alloc(SR__OPERATION__SESSION_SWITCH_DS, session->id, &resp);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Allocation of session_switch_ds response failed.");
+        return SR_ERR_NOMEM;
+    }
+
+    sr_error_info_t *errors = NULL;
+    size_t err_cnt = 0;
+
+    rc = rp_dt_refresh_session(rp_ctx, session, &errors, &err_cnt);
+
+    /* set response code */
+    resp->response->result = rc;
+
+    /* copy error information to GPB  (if any) */
+    if (NULL != errors) {
+        sr_gpb_fill_errors(errors, err_cnt, &resp->response->session_refresh_resp->errors,
+                &resp->response->session_refresh_resp->n_errors);
+        sr_free_errors(errors, err_cnt);
+    }
+
+    /* send the response */
+    rc = cm_msg_send(rp_ctx->cm_ctx, resp);
+
+    return rc;
+}
+
 /**
  * @brief Processes a lock request.
  */
@@ -1099,6 +1137,9 @@ rp_msg_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
         }
 
         switch (msg->request->operation) {
+            case SR__OPERATION__SESSION_SWITCH_DS:
+                rc = rp_switch_datastore_req_process(rp_ctx, session, msg);
+                break;
             case SR__OPERATION__LIST_SCHEMAS:
                 rc = rp_list_schemas_req_process(rp_ctx, session, msg);
                 break;
@@ -1535,16 +1576,6 @@ rp_session_stop(const rp_ctx_t *rp_ctx, rp_session_t *session)
     }
 
     return SR_ERR_OK;
-}
-
-int
-rp_switch_datastore(rp_session_t *session, sr_datastore_t ds)
-{
-    CHECK_NULL_ARG(session);
-    int rc = SR_ERR_OK;
-    session->datastore = ds;
-    rc = dm_change_session_datastore(session->dm_session, ds);
-    return rc;
 }
 
 int

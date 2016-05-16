@@ -796,8 +796,17 @@ cleanup:
     return rc;
 }
 
-int
-rp_dt_copy_config(rp_ctx_t *rp_ctx, rp_session_t *session, const char *module_name, sr_datastore_t src, sr_datastore_t dst)
+/**
+ * @brief Performs copy config to running datastore. It is done by commit to perform
+ * all validation and notifications as needed
+ * @param [in] rp_ctx
+ * @param [in] session
+ * @param [in] module_name
+ * @param [in] src
+ * @return Error code (SR_ERR_OK on success)
+ */
+static int
+rp_dt_copy_config_to_running(rp_ctx_t* rp_ctx, rp_session_t* session, const char* module_name, sr_datastore_t src)
 {
     CHECK_NULL_ARG2(rp_ctx, session);
     int rc = SR_ERR_OK;
@@ -809,43 +818,33 @@ rp_dt_copy_config(rp_ctx_t *rp_ctx, rp_session_t *session, const char *module_na
     sr_error_info_t *errors = NULL;
     size_t e_cnt = 0;
 
-
-    if (src == dst) {
-        return rc;
-    }
-
-    if (SR_DS_RUNNING != dst) {
-        if (NULL != module_name) {
-            /* copy module content in DM */
-            rc = dm_copy_module(rp_ctx->dm_ctx, session->dm_session, module_name, src, dst);
-        } else {
-            /* copy all enabled modules */
-            rc = dm_copy_all_models(rp_ctx->dm_ctx, session->dm_session, src, dst);
-        }
-        return rc;
-    }
-
-    /* copy to running is canidate commit behind the scenes */
-    rc = dm_session_start(rp_ctx->dm_ctx, session->user_credentials, SR_DS_STARTUP, &backup);
+    /* copy to running is candidate commit behind the scenes */
+    rc = dm_session_start(rp_ctx->dm_ctx, session->user_credentials, src, &backup);
     CHECK_RC_MSG_RETURN(rc, "Session start of temporary session failed");
 
     /* move datatrees & session ops -> backup */
-    rc = dm_move_session_tree_and_ops(rp_ctx->dm_ctx, session->dm_session, backup);
+    rc = dm_move_session_tree_and_ops_all_ds(rp_ctx->dm_ctx, session->dm_session, backup);
     CHECK_RC_MSG_GOTO(rc, cleanup_sess_stop, "Moving session data trees failed");
+
+    rc = rp_dt_switch_datastore(rp_ctx, session, src);
 
     /* load models to be committed to the session */
     if (NULL != module_name) {
-        rc = dm_copy_session_tree(rp_ctx->dm_ctx, backup, session->dm_session, module_name);
-        CHECK_RC_MSG_GOTO(rc, cleanup, "Copy session data trees failed");
+        if (SR_DS_CANDIDATE == src) {
+            rc = dm_copy_session_tree(rp_ctx->dm_ctx, backup, session->dm_session, module_name);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "Copy session data trees failed");
+        }
         /* load data tree if it was not copied from backup session */
         rc = dm_get_data_info(rp_ctx->dm_ctx, session->dm_session, module_name, &info);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Get data info failed");
         info->modified = true;
     } else {
-        /* load all enabled models */
-        rc = dm_copy_modified_session_trees(rp_ctx->dm_ctx, backup, session->dm_session);
-        CHECK_RC_MSG_GOTO(rc, cleanup, "Copy session data trees failed");
 
+        /* load all enabled models */
+        if (SR_DS_CANDIDATE == src) {
+            rc = dm_copy_modified_session_trees(rp_ctx->dm_ctx, backup, session->dm_session);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "Copy session data trees failed");
+        }
         rc = dm_get_all_modules(rp_ctx->dm_ctx, session->dm_session, true, &modules);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Get all modules failed");
         for (size_t i = 0; i < modules->number; i++) {
@@ -856,8 +855,12 @@ rp_dt_copy_config(rp_ctx_t *rp_ctx, rp_session_t *session, const char *module_na
 
     }
     /* change session to candidate */
-    rc = rp_switch_datastore(session, SR_DS_CANDIDATE);
-    CHECK_RC_MSG_GOTO(rc, cleanup, "Data tree switch failed");
+    if (SR_DS_STARTUP == src) {
+        rc = rp_dt_switch_datastore(rp_ctx, session, SR_DS_CANDIDATE);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Data tree switch failed");
+        rc = dm_move_session_trees_in_session(rp_ctx->dm_ctx, session->dm_session, SR_DS_STARTUP, SR_DS_CANDIDATE);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Data tree move failed");
+    }
     /* commit */
     rc = rp_dt_commit(rp_ctx, session, &errors, &e_cnt);
     sr_free_errors(errors, e_cnt);
@@ -865,11 +868,53 @@ rp_dt_copy_config(rp_ctx_t *rp_ctx, rp_session_t *session, const char *module_na
 cleanup:
     first_err = rc;
     /* move datatrees & ops backup -> session */
-    rc = dm_move_session_tree_and_ops(rp_ctx->dm_ctx, backup, session->dm_session);
+    rc = dm_move_session_tree_and_ops_all_ds(rp_ctx->dm_ctx, backup, session->dm_session);
+
     /* change session to prev type */
-    rc = rp_switch_datastore(session, prev_ds);
+    rc = rp_dt_switch_datastore(rp_ctx, session, prev_ds);
     ly_set_free(modules);
 cleanup_sess_stop:
     dm_session_stop(rp_ctx->dm_ctx, backup);
     return first_err == SR_ERR_OK ? rc : first_err;
+}
+
+int
+rp_dt_copy_config(rp_ctx_t *rp_ctx, rp_session_t *session, const char *module_name, sr_datastore_t src, sr_datastore_t dst)
+{
+    CHECK_NULL_ARG2(rp_ctx, session);
+    int rc = SR_ERR_OK;
+
+    if (src == dst) {
+        return rc;
+    }
+
+    if ((SR_DS_CANDIDATE == src || SR_DS_CANDIDATE == dst) && SR_DS_CANDIDATE != session->datastore) {
+        SR_LOG_ERR_MSG("Copy config to/from candidate issued on non-candidate session");
+        return SR_ERR_INVAL_ARG;
+    }
+
+    if (SR_DS_RUNNING != dst) {
+        if (NULL != module_name) {
+            /* copy module content in DM */
+            rc = dm_copy_module(rp_ctx->dm_ctx, session->dm_session, module_name, src, dst);
+        } else {
+            /* copy all enabled modules */
+            rc = dm_copy_all_models(rp_ctx->dm_ctx, session->dm_session, src, dst);
+        }
+
+    } else {
+        rc = rp_dt_copy_config_to_running(rp_ctx, session, module_name, src);
+    }
+
+    return rc;
+}
+
+int
+rp_dt_switch_datastore(rp_ctx_t *rp_ctx, rp_session_t *session, sr_datastore_t ds)
+{
+    CHECK_NULL_ARG3(rp_ctx, session, session->dm_session);
+    int rc = SR_ERR_OK;
+    session->datastore = ds;
+    rc = dm_change_session_datastore(session->dm_session, ds);
+    return rc;
 }

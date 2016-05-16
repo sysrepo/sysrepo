@@ -390,6 +390,16 @@ int sr_session_stop(sr_session_ctx_t *session);
 int sr_session_refresh(sr_session_ctx_t *session);
 
 /**
+ * @brief Changes datastore to which the session is tied to. All subsequent
+ * calls will be issued on the chosen datastore.
+ *
+ * @param [in] session
+ * @param [in] ds
+ * @return Error code (SR_ERR_OK on success)
+ */
+int sr_session_switch_ds(sr_session_ctx_t *session, sr_datastore_t ds);
+
+/**
  * @brief Retrieves detailed information about the error that has occurred
  * during the last operation executed within provided session.
  *

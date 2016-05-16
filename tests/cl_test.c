@@ -1337,6 +1337,23 @@ candidate_ds_test(void **state)
     assert_string_equal(value.data.string_val, val->data.string_val);
     sr_free_val(val);
 
+    /* copy config should work as well*/
+    value.data.string_val = "xyz";
+    rc = sr_set_item(session_candidate, value.xpath, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_copy_config(session_candidate, "example-module", SR_DS_CANDIDATE, SR_DS_RUNNING);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = sr_session_refresh(session_running);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = sr_get_item(session_running, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &val);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_int_equal(value.type, val->type);
+    assert_string_equal(value.data.string_val, val->data.string_val);
+    sr_free_val(val);
+
     /* stop the sessions */
     rc = sr_session_stop(session_startup);
     assert_int_equal(rc, SR_ERR_OK);

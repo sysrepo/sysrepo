@@ -135,6 +135,7 @@ int rp_dt_refresh_session(rp_ctx_t *rp_ctx, rp_session_t *session, sr_error_info
 
 int rp_dt_copy_config(rp_ctx_t *rp_ctx, rp_session_t *session, const char *module_name, sr_datastore_t src, sr_datastore_t dst);
 
+int rp_dt_switch_datastore(rp_ctx_t *rp_ctx, rp_session_t *session, sr_datastore_t ds);
 #endif /* RP_DT_EDIT_H */
 
 /**
