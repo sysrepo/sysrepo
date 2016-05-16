@@ -212,6 +212,81 @@ cleanup:
     return rc;
 }
 
+/**
+ * @brief Closes and cleans up the subscription.
+ */
+static int
+cl_subscription_close(sr_session_ctx_t *session, cl_sm_subscription_ctx_t *subscription)
+{
+    Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG2(session, subscription);
+
+    /* prepare unsubscribe message */
+    rc = sr_gpb_req_alloc(SR__OPERATION__UNSUBSCRIBE, session->id, &msg_req);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate unsubscribe message.");
+
+    msg_req->request->unsubscribe_req->event = subscription->event_type;
+
+    msg_req->request->unsubscribe_req->destination = strdup(subscription->delivery_address);
+    CHECK_NULL_NOMEM_GOTO(msg_req->request->unsubscribe_req->destination, rc, cleanup);
+    msg_req->request->unsubscribe_req->subscription_id = subscription->id;
+
+    if (NULL != subscription->module_name) {
+        msg_req->request->unsubscribe_req->module_name = strdup(subscription->module_name);
+        CHECK_NULL_NOMEM_GOTO(msg_req->request->unsubscribe_req->module_name, rc, cleanup);
+    }
+
+    /* send the request and receive the response */
+    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__UNSUBSCRIBE);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
+
+    /* cleanup the SM subscription */
+    cl_sm_subscription_cleanup(subscription);
+
+    /* global resources cleanup */
+    pthread_mutex_lock(&global_lock);
+    subscriptions_cnt--;
+    if (0 == subscriptions_cnt) {
+        /* this is the last subscription - destroy subscription manager */
+        cl_sm_cleanup(cl_sm_ctx);
+    }
+    if ((0 == subscriptions_cnt) && (0 == connections_cnt)) {
+        /* destroy library-global resources */
+        sr_logger_cleanup();
+    }
+    pthread_mutex_unlock(&global_lock);
+
+cleanup:
+    if (NULL != msg_req) {
+        sr__msg__free_unpacked(msg_req, NULL);
+    }
+    if (NULL != msg_resp) {
+        sr__msg__free_unpacked(msg_resp, NULL);
+    }
+    return rc;
+}
+
+static int
+cl_subscription_close_last(sr_session_ctx_t *session, sr_subscription_ctx_t *sr_subscription,
+        cl_sm_subscription_ctx_t *sm_subscription)
+{
+    int rc = SR_ERR_OK;
+
+    rc = cl_subscription_close(session, sm_subscription);
+    if (NULL != sr_subscription) {
+        if (sr_subscription->sm_subscription_cnt > 1) {
+            sr_subscription->sm_subscription_cnt -= 1;
+        } else {
+            free(sr_subscription->sm_subscriptions);
+            free(sr_subscription);
+        }
+    }
+
+    return rc;
+}
+
 int
 sr_connect(const char *app_name, const sr_conn_options_t opts, sr_conn_ctx_t **conn_ctx_p)
 {
@@ -1218,7 +1293,6 @@ sr_module_install_subscribe(sr_session_ctx_t *session, sr_module_install_cb call
         sr_subscription_ctx_t **subscription_p)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
-    sr_subscription_ctx_t *sr_subscription = NULL;
     cl_sm_subscription_ctx_t *sm_subscription = NULL;
     int rc = SR_ERR_OK;
 
@@ -1228,7 +1302,7 @@ sr_module_install_subscribe(sr_session_ctx_t *session, sr_module_install_cb call
 
     /* Initialize the subscription */
     rc = cl_subscribtion_init(session, SR__NOTIFICATION_EVENT__MODULE_INSTALL_EV, NULL,
-            private_ctx, &sr_subscription, &sm_subscription, &msg_req);
+            private_ctx, subscription_p, &sm_subscription, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by initialization of the subscription in the client library.");
 
     sm_subscription->callback.module_install_cb = callback;
@@ -1240,11 +1314,10 @@ sr_module_install_subscribe(sr_session_ctx_t *session, sr_module_install_cb call
     sr__msg__free_unpacked(msg_req, NULL);
     sr__msg__free_unpacked(msg_resp, NULL);
 
-    *subscription_p = sr_subscription;
     return cl_session_return(session, SR_ERR_OK);
 
 cleanup:
-    sr_unsubscribe(sr_subscription);
+    cl_subscription_close_last(session, *subscription_p, sm_subscription);
     if (NULL != msg_req) {
         sr__msg__free_unpacked(msg_req, NULL);
     }
@@ -1259,7 +1332,6 @@ sr_feature_enable_subscribe(sr_session_ctx_t *session, sr_feature_enable_cb call
         sr_subscription_ctx_t **subscription_p)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
-    sr_subscription_ctx_t *sr_subscription = NULL;
     cl_sm_subscription_ctx_t *sm_subscription = NULL;
     int rc = SR_ERR_OK;
 
@@ -1269,7 +1341,7 @@ sr_feature_enable_subscribe(sr_session_ctx_t *session, sr_feature_enable_cb call
 
     /* Initialize the subscription */
     rc = cl_subscribtion_init(session, SR__NOTIFICATION_EVENT__FEATURE_ENABLE_EV, NULL,
-            private_ctx, &sr_subscription, &sm_subscription, &msg_req);
+            private_ctx, subscription_p, &sm_subscription, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by initialization of the subscription in the client library.");
 
     sm_subscription->callback.feature_enable_cb = callback;
@@ -1281,11 +1353,10 @@ sr_feature_enable_subscribe(sr_session_ctx_t *session, sr_feature_enable_cb call
     sr__msg__free_unpacked(msg_req, NULL);
     sr__msg__free_unpacked(msg_resp, NULL);
 
-    *subscription_p = sr_subscription;
     return cl_session_return(session, SR_ERR_OK);
 
 cleanup:
-    sr_unsubscribe(sr_subscription);
+    cl_subscription_close_last(session, *subscription_p, sm_subscription);
     if (NULL != msg_req) {
         sr__msg__free_unpacked(msg_req, NULL);
     }
@@ -1300,7 +1371,6 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, b
         sr_module_change_cb callback, void *private_ctx, sr_subscription_ctx_t **subscription_p)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
-    sr_subscription_ctx_t *sr_subscription = NULL;
     cl_sm_subscription_ctx_t *sm_subscription = NULL;
     int rc = SR_ERR_OK;
 
@@ -1310,7 +1380,7 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, b
 
     /* Initialize the subscription */
     rc = cl_subscribtion_init(session, SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV, module_name,
-            private_ctx, &sr_subscription, &sm_subscription, &msg_req);
+            private_ctx, subscription_p, &sm_subscription, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by initialization of the subscription in the client library.");
 
     sm_subscription->callback.module_change_cb = callback;
@@ -1328,11 +1398,10 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, b
     sr__msg__free_unpacked(msg_req, NULL);
     sr__msg__free_unpacked(msg_resp, NULL);
 
-    *subscription_p = sr_subscription;
     return cl_session_return(session, SR_ERR_OK);
 
 cleanup:
-    sr_unsubscribe(sr_subscription);
+    cl_subscription_close_last(session, *subscription_p, sm_subscription);
     if (NULL != msg_req) {
         sr__msg__free_unpacked(msg_req, NULL);
     }
@@ -1340,59 +1409,6 @@ cleanup:
         sr__msg__free_unpacked(msg_resp, NULL);
     }
     return cl_session_return(session, rc);
-}
-
-static int
-cl_subscription_close(sr_session_ctx_t *session, cl_sm_subscription_ctx_t *subscription)
-{
-    Sr__Msg *msg_req = NULL, *msg_resp = NULL;
-    int rc = SR_ERR_OK;
-
-    CHECK_NULL_ARG2(session, subscription);
-
-    /* prepare unsubscribe message */
-    rc = sr_gpb_req_alloc(SR__OPERATION__UNSUBSCRIBE, session->id, &msg_req);
-    CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate unsubscribe message.");
-
-    msg_req->request->unsubscribe_req->event = subscription->event_type;
-
-    msg_req->request->unsubscribe_req->destination = strdup(subscription->delivery_address);
-    CHECK_NULL_NOMEM_GOTO(msg_req->request->unsubscribe_req->destination, rc, cleanup);
-    msg_req->request->unsubscribe_req->subscription_id = subscription->id;
-
-    if (NULL != subscription->module_name) {
-        msg_req->request->unsubscribe_req->module_name = strdup(subscription->module_name);
-        CHECK_NULL_NOMEM_GOTO(msg_req->request->unsubscribe_req->module_name, rc, cleanup);
-    }
-
-    /* send the request and receive the response */
-    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__UNSUBSCRIBE);
-    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
-
-    /* cleanup the subscription */
-    cl_sm_subscription_cleanup(subscription);
-
-    /* global resources cleanup */
-    pthread_mutex_lock(&global_lock);
-    subscriptions_cnt--;
-    if (0 == subscriptions_cnt) {
-        /* this is the last subscription - destroy subscription manager */
-        cl_sm_cleanup(cl_sm_ctx);
-    }
-    if ((0 == subscriptions_cnt) && (0 == connections_cnt)) {
-        /* destroy library-global resources */
-        sr_logger_cleanup();
-    }
-    pthread_mutex_unlock(&global_lock);
-
-cleanup:
-    if (NULL != msg_req) {
-        sr__msg__free_unpacked(msg_req, NULL);
-    }
-    if (NULL != msg_resp) {
-        sr__msg__free_unpacked(msg_resp, NULL);
-    }
-    return rc;
 }
 
 int
@@ -1414,10 +1430,7 @@ sr_unsubscribe(sr_subscription_ctx_t *sr_subscription)
         if (SR_ERR_OK == rc) {
             rc = sr_session_start(connection, SR_DS_STARTUP, SR_SESS_DEFAULT, &session);
         }
-        if (SR_ERR_OK != rc) {
-            sr_disconnect(connection);
-            return rc;
-        }
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to start new sysrepo session.");
     }
 
     for (size_t i = 0; i < sr_subscription->sm_subscription_cnt; i++) {
@@ -1524,7 +1537,6 @@ sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callbac
         void *private_ctx, sr_subscription_ctx_t **subscription_p)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
-    sr_subscription_ctx_t *sr_subscription = NULL;
     cl_sm_subscription_ctx_t *sm_subscription = NULL;
     int rc = SR_ERR_OK;
 
@@ -1534,7 +1546,7 @@ sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callbac
 
     /* Initialize the subscription */
     rc = cl_subscribtion_init(session, SR__NOTIFICATION_EVENT__RPC_EV, NULL,
-            private_ctx, &sr_subscription, &sm_subscription, &msg_req);
+            private_ctx, subscription_p, &sm_subscription, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by initialization of the subscription in the client library.");
 
     sm_subscription->callback.rpc_cb = callback;
@@ -1558,11 +1570,10 @@ sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callbac
     sr__msg__free_unpacked(msg_req, NULL);
     sr__msg__free_unpacked(msg_resp, NULL);
 
-    *subscription_p = sr_subscription;
     return cl_session_return(session, SR_ERR_OK);
 
 cleanup:
-    sr_unsubscribe(sr_subscription);
+    cl_subscription_close_last(session, *subscription_p, sm_subscription);
     if (NULL != msg_req) {
         sr__msg__free_unpacked(msg_req, NULL);
     }
