@@ -1945,21 +1945,21 @@ dm_commit_lock_model(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_
     int rc = SR_ERR_OK;
     if (SR_DS_CANDIDATE == session->datastore) {
         /* acquire candidate lock*/
-        dm_change_session_datastore(c_ctx->session, SR_DS_CANDIDATE);
+        dm_session_switch_ds(c_ctx->session, SR_DS_CANDIDATE);
         rc = dm_lock_module(dm_ctx, c_ctx->session, module_name);
         if (SR_ERR_LOCKED == rc) {
             /* check if the lock is hold by session that issued commit */
             rc = dm_lock_module(dm_ctx, session, module_name);
         }
-        dm_change_session_datastore(c_ctx->session, SR_DS_RUNNING);
+        dm_session_switch_ds(c_ctx->session, SR_DS_RUNNING);
         CHECK_RC_LOG_RETURN(rc, "Failed to lock %s in candidate ds", module_name);
         /* acquire running lock*/
         rc = dm_lock_module(dm_ctx, c_ctx->session, module_name);
         if (SR_ERR_LOCKED == rc) {
             /* check if the lock is hold by session that issued commit */
-            dm_change_session_datastore(session, SR_DS_RUNNING);
+            dm_session_switch_ds(session, SR_DS_RUNNING);
             rc = dm_lock_module(dm_ctx, session, module_name);
-            dm_change_session_datastore(session, SR_DS_CANDIDATE);
+            dm_session_switch_ds(session, SR_DS_CANDIDATE);
         }
         CHECK_RC_LOG_RETURN(rc, "Failed to lock %s in running ds", module_name);
     } else {
@@ -2826,8 +2826,8 @@ dm_move_session_tree_and_ops_all_ds(dm_ctx_t *dm_ctx, dm_session_t *from, dm_ses
     int from_ds = from->datastore;
     int to_ds = to->datastore;
     for (int ds = 0; ds < DM_DATASTORE_COUNT; ds++) {
-        dm_change_session_datastore(from, ds);
-        dm_change_session_datastore(to, ds);
+        dm_session_switch_ds(from, ds);
+        dm_session_switch_ds(to, ds);
         sr_btree_cleanup(to->session_modules[ds]);
         dm_free_sess_operations(to->operations[ds], to->oper_count[ds]);
 
@@ -2841,11 +2841,11 @@ dm_move_session_tree_and_ops_all_ds(dm_ctx_t *dm_ctx, dm_session_t *from, dm_ses
         from->oper_count[ds] = 0;
         from->oper_size[ds] = 0;
 
-        dm_change_session_datastore(from, ds);
+        dm_session_switch_ds(from, ds);
         rc = dm_discard_changes(dm_ctx, from);
     }
-    dm_change_session_datastore(from, from_ds);
-    dm_change_session_datastore(to, to_ds);
+    dm_session_switch_ds(from, from_ds);
+    dm_session_switch_ds(to, to_ds);
     CHECK_RC_MSG_RETURN(rc, "Discard changes failed");
     return rc;
 }
@@ -2874,23 +2874,23 @@ dm_move_session_trees_in_session(dm_ctx_t *dm_ctx, dm_session_t *session, sr_dat
     session->oper_size[to] = session->oper_size[from];
     session->operations[to] = session->operations[from];
 
-    dm_change_session_datastore(session, from);
+    dm_session_switch_ds(session, from);
     session->session_modules[from] = NULL;
     session->operations[from] = NULL;
     session->oper_count[from] = 0;
     session->oper_size[from] = 0;
 
     /* initialize the from datastore binary tree*/
-    dm_change_session_datastore(session, from);
+    dm_session_switch_ds(session, from);
     rc = dm_discard_changes(dm_ctx, session);
     CHECK_RC_MSG_RETURN(rc, "Discard changes failed");
 
-    rc = dm_change_session_datastore(session, prev_ds);
+    rc = dm_session_switch_ds(session, prev_ds);
     return rc;
 }
 
 int
-dm_change_session_datastore(dm_session_t *session, sr_datastore_t ds)
+dm_session_switch_ds(dm_session_t *session, sr_datastore_t ds)
 {
     CHECK_NULL_ARG(session);
     session->datastore = ds;

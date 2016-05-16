@@ -647,7 +647,7 @@ int dm_move_session_tree_and_ops(dm_ctx_t *dm_ctx, dm_session_t *from, dm_sessio
  * @param [in] ds
  * @return Error code (SR_ERR_OK on success)
  */
-int dm_change_session_datastore(dm_session_t *session, sr_datastore_t ds);
+int dm_session_switch_ds(dm_session_t *session, sr_datastore_t ds);
 
 /**
  * @brief Moves session data trees and operations (for all datastores) from one session to another.

@@ -917,6 +917,6 @@ rp_dt_switch_datastore(rp_ctx_t *rp_ctx, rp_session_t *session, sr_datastore_t d
     CHECK_NULL_ARG3(rp_ctx, session, session->dm_session);
     int rc = SR_ERR_OK;
     session->datastore = ds;
-    rc = dm_change_session_datastore(session->dm_session, ds);
+    rc = dm_session_switch_ds(session->dm_session, ds);
     return rc;
 }
