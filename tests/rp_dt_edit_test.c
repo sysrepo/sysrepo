@@ -1895,6 +1895,78 @@ copy_to_running_test(void **state)
     test_rp_session_cleanup(ctx, sessionA);
     test_rp_session_cleanup(ctx, sessionB);
 }
+
+static void
+candidate_commit_lock_test(void **state)
+{
+    int rc = 0;
+    rp_ctx_t *ctx = *state;
+    rp_session_t *sessionA = NULL, *sessionB = NULL, *sessionC = NULL;
+    sr_error_info_t *errors = NULL;
+    size_t e_cnt = 0;
+    sr_val_t *value = NULL;
+
+    test_rp_sesssion_create(ctx, SR_DS_CANDIDATE, &sessionA);
+    test_rp_sesssion_create(ctx, SR_DS_RUNNING, &sessionB);
+    test_rp_sesssion_create(ctx, SR_DS_CANDIDATE, &sessionC);
+
+    rc = dm_enable_module_running(ctx->dm_ctx, sessionA->dm_session, "test-module", NULL);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* lock test module in running*/
+    rc = dm_lock_module(ctx->dm_ctx, sessionB->dm_session, "test-module");
+    assert_int_equal(SR_ERR_OK, rc);
+
+    sr_val_t *v = NULL;
+    v = calloc(1, sizeof(*v));
+    assert_non_null(v);
+
+    v->xpath = strdup("/test-module:main/i8");
+    v->type = SR_INT8_T;
+    v->data.int8_val = 42;
+
+    rc = rp_dt_set_item_wrapper(ctx, sessionA, v->xpath, v, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* commit failed running locked */
+    rc = rp_dt_commit(ctx, sessionA, &errors, &e_cnt);
+    assert_int_equal(SR_ERR_LOCKED, rc);
+    sr_free_errors(errors, e_cnt);
+
+    rc = dm_lock_module(ctx->dm_ctx, sessionC->dm_session, "test-module");
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* commit failed running & candidate locked */
+    rc = rp_dt_commit(ctx, sessionA, &errors, &e_cnt);
+    assert_int_equal(SR_ERR_LOCKED, rc);
+    sr_free_errors(errors, e_cnt);
+
+    rc = dm_unlock_module(ctx->dm_ctx, sessionB->dm_session, "test-module");
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* commit failed candidate locked */
+    rc = rp_dt_commit(ctx, sessionA, &errors, &e_cnt);
+    assert_int_equal(SR_ERR_LOCKED, rc);
+    sr_free_errors(errors, e_cnt);
+
+    rc = dm_unlock_module(ctx->dm_ctx, sessionC->dm_session, "test-module");
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_commit(ctx, sessionA, &errors, &e_cnt);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_get_value_wrapper(ctx, sessionA, "/test-module:main/i8", &value);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(SR_INT8_T, value->type);
+    assert_int_equal(42, value->data.int8_val);
+
+    sr_free_val(value);
+
+    test_rp_session_cleanup(ctx, sessionA);
+    test_rp_session_cleanup(ctx, sessionB);
+    test_rp_session_cleanup(ctx, sessionC);
+}
+
 int main(){
 
     sr_log_stderr(SR_LL_DBG);
@@ -1928,6 +2000,7 @@ int main(){
             cmocka_unit_test(empty_string_leaf_test),
             cmocka_unit_test(candidate_edit_test),
             cmocka_unit_test(copy_to_running_test),
+            cmocka_unit_test(candidate_commit_lock_test),
     };
     return cmocka_run_group_tests(tests, setup, teardown);
 }
