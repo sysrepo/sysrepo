@@ -1412,37 +1412,39 @@ cleanup:
 }
 
 int
-sr_unsubscribe(sr_subscription_ctx_t *sr_subscription)
+sr_unsubscribe(sr_session_ctx_t *session, sr_subscription_ctx_t *sr_subscription)
 {
-    sr_conn_ctx_t *connection = NULL;
-    sr_session_ctx_t *session = NULL;
+    sr_conn_ctx_t *tmp_connection = NULL;
+    sr_session_ctx_t *tmp_session = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG(sr_subscription);
 
-    /* get the session */
-    if (sr_subscription->sm_subscription_cnt > 0 && NULL != sr_subscription->sm_subscriptions[0]->data_session) {
-        /* use the session from the subscription */
-        session = sr_subscription->sm_subscriptions[0]->data_session;
-    } else {
-        /* create a temporary connection and session */
-        rc = sr_connect("tmp-conn-unsubscribe", SR_CONN_DEFAULT, &connection);
-        if (SR_ERR_OK == rc) {
-            rc = sr_session_start(connection, SR_DS_STARTUP, SR_SESS_DEFAULT, &session);
+    if (NULL == session) {
+        /* get the session */
+        if (sr_subscription->sm_subscription_cnt > 0 && NULL != sr_subscription->sm_subscriptions[0]->data_session) {
+            /* use the session from the subscription */
+            tmp_session = sr_subscription->sm_subscriptions[0]->data_session;
+        } else {
+            /* create a temporary connection and session */
+            rc = sr_connect("tmp-conn-unsubscribe", SR_CONN_DEFAULT, &tmp_connection);
+            if (SR_ERR_OK == rc) {
+                rc = sr_session_start(tmp_connection, SR_DS_STARTUP, SR_SESS_DEFAULT, &tmp_session);
+            }
+            CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to start new sysrepo session.");
         }
-        CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to start new sysrepo session.");
     }
 
     for (size_t i = 0; i < sr_subscription->sm_subscription_cnt; i++) {
-        rc = cl_subscription_close(session, sr_subscription->sm_subscriptions[i]);
+        rc = cl_subscription_close((NULL != session ? session : tmp_session), sr_subscription->sm_subscriptions[i]);
     }
 
     free(sr_subscription->sm_subscriptions);
     free(sr_subscription);
 
 cleanup:
-    if (NULL != connection) {
-        sr_disconnect(connection);
+    if (NULL != tmp_connection) {
+        sr_disconnect(tmp_connection);
     }
     return rc;
 }

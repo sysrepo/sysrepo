@@ -1097,11 +1097,11 @@ cl_notification_test(void **state)
     rc = sr_lock_module(session, "example-module");
     assert_int_equal(rc, SR_ERR_UNKNOWN_MODEL);
 
-    /* stop the session */
-    rc = sr_session_stop(session);
+    rc = sr_unsubscribe(session, subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = sr_unsubscribe(subscription);
+    /* stop the session */
+    rc = sr_session_stop(session);
     assert_int_equal(rc, SR_ERR_OK);
 }
 
@@ -1179,7 +1179,7 @@ cl_copy_config_test(void **state)
     rc = sr_session_stop(session_running);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = sr_unsubscribe(subscription);
+    rc = sr_unsubscribe(NULL, subscription);
     assert_int_equal(rc, SR_ERR_OK);
 }
 
@@ -1244,12 +1244,12 @@ cl_rpc_test(void **state)
 
     sr_free_values(output, output_cnt);
 
-    /* stop the session */
-    rc = sr_session_stop(session);
+    /* unsubscribe */
+    rc = sr_unsubscribe(session, subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
-    /* unsubscribe */
-    rc = sr_unsubscribe(subscription);
+    /* stop the session */
+    rc = sr_session_stop(session);
     assert_int_equal(rc, SR_ERR_OK);
 }
 

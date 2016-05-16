@@ -127,7 +127,7 @@ main(int argc, char **argv)
 
 cleanup:
     if (NULL != subscription) {
-        sr_unsubscribe(subscription);
+        sr_unsubscribe(session, subscription);
     }
     if (NULL != session) {
         sr_session_stop(session);

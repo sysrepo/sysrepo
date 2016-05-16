@@ -120,7 +120,7 @@ sr_plugin_init_cb(sr_session_ctx_t *session, void **private_ctx)
 void
 sr_plugin_cleanup_cb(sr_session_ctx_t *session, void *private_ctx)
 {
-    sr_unsubscribe(private_ctx);
+    sr_unsubscribe(session, private_ctx);
 
     log_msg("turing-machine plugin cleanup finished");
 }

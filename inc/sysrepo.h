@@ -923,9 +923,16 @@ int sr_feature_enable_subscribe(sr_session_ctx_t *session, sr_feature_enable_cb 
  * @brief Unsubscribes from a subscription acquired by any of sr_*_subscribe
  * calls and releases all subscription-related data.
  *
+ * @param[in] session Session context acquired with ::sr_session_start call.
+ * Does not need to be the same as used for subscribing. NULL can be passed too,
+ * in that case a temporary session used for unsubscribe will be automatically
+ * created by sysrepo.
+ * @param[in] subscription Subscription context acquired by any of sr_*_subscribe
+ * calls.
+ *
  * @return Error code (SR_ERR_OK on success).
  */
-int sr_unsubscribe(sr_subscription_ctx_t *subscription);
+int sr_unsubscribe(sr_session_ctx_t *session, sr_subscription_ctx_t *subscription);
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -969,10 +976,12 @@ int sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb cal
  *
  * @param[in] session Session context acquired with ::sr_session_start call.
  * @param[in] xpath XPath identifying the RPC.
- * @param[in] input Array of input parameters.
+ * @param[in] input Array of input parameters (array of all nodes that hold some
+ * data in RPC input subtree - same as ::sr_get_items would return).
  * @param[in] input_cnt Number of input parameters.
- * @param[out] output Array of output parameters. Will be allocated by sysrepo
- * and should be freed by caller using ::sr_free_values.
+ * @param[out] output Array of output parameters (all nodes that hold some data
+ * in RPC output subtree). Will be allocated by sysrepo and should be freed by
+ * caller using ::sr_free_values.
  * @param[out] output_cnt Number of output parameters.
  *
  * @return Error code (SR_ERR_OK on success).
