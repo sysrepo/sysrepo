@@ -1317,10 +1317,10 @@ candidate_ds_test(void **state)
 
     /* commit should fail because non enabled nodes are modified */
     rc = sr_commit(session_candidate);
-    assert_int_equal(SR_ERR_COMMIT_FAILED, rc);
+    assert_int_equal(SR_ERR_OPERATION_FAILED, rc);
 
     rc = sr_copy_config(session_candidate, "example-module", SR_DS_CANDIDATE, SR_DS_RUNNING);
-    assert_int_equal(SR_ERR_COMMIT_FAILED, rc);
+    assert_int_equal(SR_ERR_OPERATION_FAILED, rc);
 
     /* enable running DS for example-module */
     rc = sr_module_change_subscribe(session_startup, "example-module", true,

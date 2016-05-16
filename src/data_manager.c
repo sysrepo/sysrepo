@@ -1962,7 +1962,7 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
                 CHECK_RC_LOG_RETURN(rc, "Has not enabled check failed for module %s", info->module->name);
                 if (has_not_enabled) {
                     SR_LOG_ERR("There is a not enabled node in %s module, it can not be committed to the running", info->module->name);
-                    return SR_ERR_COMMIT_FAILED;
+                    return SR_ERR_OPERATION_FAILED;
                 }
             }
         }
@@ -2005,7 +2005,7 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
         rc = sr_lock_fd(c_ctx->fds[count], true, false);
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR("Locking of file '%s' failed: %s.", file_name, sr_strerror(rc));
-            rc = SR_ERR_COMMIT_FAILED;
+            rc = SR_ERR_OPERATION_FAILED;
             goto cleanup;
         }
         dm_data_info_t *di = NULL;

@@ -1874,7 +1874,7 @@ copy_to_running_test(void **state)
 
     /* explictly select a module which is not enabled copy fails*/
     rc = rp_dt_copy_config(ctx, sessionB, "test-module", SR_DS_STARTUP, SR_DS_RUNNING);
-    assert_int_equal(SR_ERR_COMMIT_FAILED, rc);
+    assert_int_equal(SR_ERR_OPERATION_FAILED, rc);
 
     /* only enabled modules are copied, no module is enabled => no operation*/
     rc = rp_dt_copy_config(ctx, sessionA, NULL, SR_DS_CANDIDATE, SR_DS_RUNNING);
@@ -1890,7 +1890,7 @@ copy_to_running_test(void **state)
 
     /* copy of not enabled module to running should fail */
     rc = rp_dt_copy_config(ctx, sessionA, "test-module", SR_DS_CANDIDATE, SR_DS_RUNNING);
-    assert_int_equal(SR_ERR_COMMIT_FAILED, rc);
+    assert_int_equal(SR_ERR_OPERATION_FAILED, rc);
 
     test_rp_session_cleanup(ctx, sessionA);
     test_rp_session_cleanup(ctx, sessionB);
