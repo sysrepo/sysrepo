@@ -101,6 +101,28 @@ module_change_cb(sr_session_ctx_t *session, const char *module_name, void *priva
     retrieve_current_config(session);
 }
 
+static int
+rpc_initialize_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt,
+        sr_val_t **output, size_t *output_cnt, void *private_ctx)
+{
+    log_msg("turing-machine 'initialize' RPC called");
+
+    if (input_cnt > 0) {
+        log_fmt("turing-machine tape content: %s", input[0].data.string_val);
+    }
+
+    return SR_ERR_OK;
+}
+
+static int
+rpc_run_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt,
+        sr_val_t **output, size_t *output_cnt, void *private_ctx)
+{
+    log_msg("turing-machine 'run' RPC called");
+
+    return SR_ERR_OK;
+}
+
 int
 sr_plugin_init_cb(sr_session_ctx_t *session, void **private_ctx)
 {
@@ -108,18 +130,39 @@ sr_plugin_init_cb(sr_session_ctx_t *session, void **private_ctx)
     int rc = SR_ERR_OK;
 
     rc = sr_module_change_subscribe(session, "turing-machine", true, module_change_cb, NULL, &subscription);
-    *private_ctx = subscription;
+    if (SR_ERR_OK != rc) {
+        goto error;
+    }
 
-    log_msg("turing-machine plugin initialized");
+    rc = sr_rpc_subscribe(session, "/turing-machine:initialize", rpc_initialize_cb, NULL, &subscription);
+    if (SR_ERR_OK != rc) {
+        goto error;
+    }
+
+    rc = sr_rpc_subscribe(session, "/turing-machine:run", rpc_run_cb, NULL, &subscription);
+    if (SR_ERR_OK != rc) {
+        goto error;
+    }
+
+    log_msg("turing-machine plugin initialized successfully");
 
     retrieve_current_config(session);
 
+    /* set subscription as our private context */
+    *private_ctx = subscription;
+
+    return SR_ERR_OK;
+
+error:
+    log_fmt("turing-machine plugin initialization failed: %s", sr_strerror(rc));
+    sr_unsubscribe(session, subscription);
     return rc;
 }
 
 void
 sr_plugin_cleanup_cb(sr_session_ctx_t *session, void *private_ctx)
 {
+    /* subscription was set as our private context */
     sr_unsubscribe(session, private_ctx);
 
     log_msg("turing-machine plugin cleanup finished");
