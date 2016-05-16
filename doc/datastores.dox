@@ -4,8 +4,8 @@
 
 Sysrepo supports \b startup \b running and \b candidate configuration datastores. Each configuration
 session created can perform operations on any of them. On session start the initial datastore
-is selected. All subsequent calls are tied to the chosen datastore. The datastore on which
-the session is operating, on can be changed using ::sr_session_switch_ds.
+is selected. All subsequent calls are tied to the chosen datastore. The datastore which
+the session is operating on, can be changed using ::sr_session_switch_ds.
 
 The changes made within a session are not applied into the datastore
 until ::sr_commit is requested. While not committed, changes are visible only

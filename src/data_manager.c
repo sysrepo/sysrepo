@@ -2735,7 +2735,10 @@ dm_copy_modified_session_trees(dm_ctx_t *dm_ctx, dm_session_t *from, dm_session_
         new_info->module = info->module;
         new_info->timestamp = info->timestamp;
         lyd_free_withsiblings(new_info->node);
-        new_info->node = lyd_dup(info->node, 1);
+        new_info->node = NULL;
+        if (NULL != info->node) {
+            new_info->node = lyd_dup(info->node, 1);
+        }
 
         if (!existed) {
             sr_btree_insert(to->session_modules[to->datastore], new_info);
@@ -2773,8 +2776,10 @@ dm_copy_session_tree(dm_ctx_t *dm_ctx, dm_session_t *from, dm_session_t *to, con
     new_info->modified = info->modified;
     new_info->module = info->module;
     new_info->timestamp = info->timestamp;
-    tmp_node = lyd_dup(info->node, 1);
-    CHECK_NULL_NOMEM_ERROR(tmp_node, rc);
+    if (NULL != info->node) {
+        tmp_node = lyd_dup(info->node, 1);
+        CHECK_NULL_NOMEM_ERROR(tmp_node, rc);
+    }
 
     if (SR_ERR_OK == rc) {
         lyd_free_withsiblings(new_info->node);

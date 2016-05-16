@@ -737,7 +737,7 @@ rp_switch_datastore_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg
 
     CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->session_switch_ds_req);
 
-    SR_LOG_DBG_MSG("Processing session_data_refresh request.");
+    SR_LOG_DBG_MSG("Processing session_switch_ds request.");
 
     /* allocate the response */
     rc = sr_gpb_resp_alloc(SR__OPERATION__SESSION_SWITCH_DS, session->id, &resp);
@@ -746,19 +746,14 @@ rp_switch_datastore_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg
         return SR_ERR_NOMEM;
     }
 
-    sr_error_info_t *errors = NULL;
-    size_t err_cnt = 0;
-
-    rc = rp_dt_refresh_session(rp_ctx, session, &errors, &err_cnt);
+    rc = rp_dt_switch_datastore(rp_ctx, session, msg->request->session_switch_ds_req->datastore);
 
     /* set response code */
     resp->response->result = rc;
 
-    /* copy error information to GPB  (if any) */
-    if (NULL != errors) {
-        sr_gpb_fill_errors(errors, err_cnt, &resp->response->session_refresh_resp->errors,
-                &resp->response->session_refresh_resp->n_errors);
-        sr_free_errors(errors, err_cnt);
+    rc = rp_resp_fill_errors(resp, session->dm_session);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Copying errors to gpb failed");
     }
 
     /* send the response */
