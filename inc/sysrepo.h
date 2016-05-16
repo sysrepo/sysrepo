@@ -319,7 +319,8 @@ void sr_disconnect(sr_conn_ctx_t *conn_ctx);
  *
  * @param[in] conn_ctx Connection context acquired with ::sr_connect call.
  * @param[in] datastore Datastore on which all sysrepo functions within this
- * session will operate. Functionality of some sysrepo calls does not depend on
+ * session will operate. Later on, datastore can be changed using
+ * ::sr_session_switch_ds call. Functionality of some sysrepo calls does not depend on
  * datastore. If your session will contain just calls like these, you can pass
  * any valid value (e.g. SR_RUNNING).
  * @param[in] opts Options overriding default session handling.
@@ -748,6 +749,9 @@ int sr_discard_changes(sr_session_ctx_t *session);
  * source datastore.
  *
  * If the target datastore exists, it is overwritten. Otherwise, a new one is created.
+ *
+ * @note Operation may fail, if it tries to copy a not enabled configuration to the
+ * running datastore.
  *
  * @param[in] session Session context acquired with ::sr_session_start call.
  * @param[in] module_name If specified, only limits the copy operation only to
