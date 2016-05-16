@@ -130,12 +130,13 @@ cleanup:
 static int
 sr_pd_load_plugins(sr_session_ctx_t *session, sr_pd_plugin_ctx_t **plugins_p, size_t *plugins_cnt_p)
 {
-    DIR *dp;
-    struct dirent *ep;
+    DIR *dir;
+    struct dirent entry, *result;
     char *plugins_dir = NULL;
     char plugin_filename[PATH_MAX] = { 0, };
     sr_pd_plugin_ctx_t *plugins = NULL, *tmp = NULL;
     size_t plugins_cnt = 0;
+    int ret = 0;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG3(session, plugins_p, plugins_cnt_p);
@@ -148,15 +149,20 @@ sr_pd_load_plugins(sr_session_ctx_t *session, sr_pd_plugin_ctx_t **plugins_p, si
 
     SR_LOG_DBG("Loading plugins from '%s'.", plugins_dir);
 
-    dp = opendir(plugins_dir);
-    if (NULL == dp) {
-        fprintf(stderr, "Error by opening plugin directory: %s.\n", strerror(errno));
+    dir = opendir(plugins_dir);
+    if (NULL == dir) {
+        SR_LOG_ERR("Error by opening plugin directory: %s.\n", strerror(errno));
         return SR_ERR_INVAL_ARG;
     }
-    while (NULL != (ep = readdir(dp))) {
-        if (sr_str_ends_with(ep->d_name, SR_PLUGIN_FILE_EXT)) {
-            SR_LOG_DBG("Loading plugin '%s'.", ep->d_name);
-            snprintf(plugin_filename, PATH_MAX, "%s/%s", plugins_dir, ep->d_name);
+    do {
+        ret = readdir_r(dir, &entry, &result);
+        if (0 != ret) {
+            SR_LOG_ERR("Error by reading plugin directory: %s.\n", strerror(errno));
+            break;
+        }
+        if ((NULL != result) && sr_str_ends_with(entry.d_name, SR_PLUGIN_FILE_EXT)) {
+            SR_LOG_DBG("Loading plugin '%s'.", entry.d_name);
+            snprintf(plugin_filename, PATH_MAX, "%s/%s", plugins_dir, entry.d_name);
             /* realloc plugins array */
             tmp = realloc(plugins, sizeof(*plugins) * (plugins_cnt + 1));
             if (NULL == tmp) {
@@ -170,8 +176,8 @@ sr_pd_load_plugins(sr_session_ctx_t *session, sr_pd_plugin_ctx_t **plugins_p, si
                 plugins_cnt += 1;
             }
         }
-    }
-    closedir(dp);
+    } while (NULL != result);
+    closedir(dir);
 
     *plugins_p = plugins;
     *plugins_cnt_p = plugins_cnt;

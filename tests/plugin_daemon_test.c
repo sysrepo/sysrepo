@@ -72,9 +72,12 @@ test_teardown(void **state)
 static void
 sysrepo_plugin_daemon_test(void **state)
 {
+    char cwd[PATH_MAX] = { 0, };
     int ret = 0;
 
-    setenv("SR_PLUGINS_DIR", ".", 1);
+    getcwd(cwd, sizeof(cwd));
+    setenv("SR_PLUGINS_DIR", cwd, 1);
+    printf("SR_PLUGINS_DIR = %s\n", cwd);
 
     /* print version */
     ret = system("../src/sysrepo-plugind -v");
