@@ -1129,12 +1129,9 @@ cl_copy_config_test(void **state)
     rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &session_running);
     assert_int_equal(rc, SR_ERR_OK);
 
-    /* copy to/from candidate is not allowed using the session associated with a different ds*/
-    rc = sr_copy_config(session_startup, NULL, SR_DS_CANDIDATE, SR_DS_STARTUP);
-    assert_int_equal(rc, SR_ERR_INVAL_ARG);
-
+    /* copy to/from candidate */
     rc = sr_copy_config(session_startup, NULL, SR_DS_STARTUP, SR_DS_CANDIDATE);
-    assert_int_equal(rc, SR_ERR_INVAL_ARG);
+    assert_int_equal(rc, SR_ERR_OK);
 
     /* copy-config all enabled models, currently none */
     rc = sr_copy_config(session_startup, NULL, SR_DS_RUNNING, SR_DS_STARTUP);

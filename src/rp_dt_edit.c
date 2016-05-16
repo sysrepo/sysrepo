@@ -883,14 +883,15 @@ rp_dt_copy_config(rp_ctx_t *rp_ctx, rp_session_t *session, const char *module_na
 {
     CHECK_NULL_ARG2(rp_ctx, session);
     int rc = SR_ERR_OK;
+    int prev_ds = session->datastore;
 
     if (src == dst) {
         return rc;
     }
 
     if ((SR_DS_CANDIDATE == src || SR_DS_CANDIDATE == dst) && SR_DS_CANDIDATE != session->datastore) {
-        SR_LOG_ERR_MSG("Copy config to/from candidate issued on non-candidate session");
-        return SR_ERR_INVAL_ARG;
+        rc = rp_dt_switch_datastore(rp_ctx, session, SR_DS_CANDIDATE);
+        CHECK_RC_MSG_RETURN(rc, "Datastore switch failed");
     }
 
     if (SR_DS_RUNNING != dst) {
@@ -906,6 +907,7 @@ rp_dt_copy_config(rp_ctx_t *rp_ctx, rp_session_t *session, const char *module_na
         rc = rp_dt_copy_config_to_running(rp_ctx, session, module_name, src);
     }
 
+    rp_dt_switch_datastore(rp_ctx, session, prev_ds);
     return rc;
 }
 

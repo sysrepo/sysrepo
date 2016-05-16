@@ -657,7 +657,7 @@ dm_ly_log_cb(LY_LOG_LEVEL level, const char *msg, const char *path)
 }
 
 int
-dm_lock_module(dm_ctx_t *dm_ctx, dm_session_t *session, char *modul_name)
+dm_lock_module(dm_ctx_t *dm_ctx, dm_session_t *session, const char *modul_name)
 {
     CHECK_NULL_ARG3(dm_ctx, session, modul_name);
     int rc = SR_ERR_OK;
@@ -1930,6 +1930,49 @@ cleanup:
     return rc;
 }
 
+/**
+ * @brief Acquires locks that are needed to commit changes into the datastore
+ * @param [in] dm_ctx
+ * @param [in] session
+ * @param [in] c_ctx
+ * @param [in] module_name
+ * @return Error code (SR_ERR_OK on success)
+ */
+static int
+dm_commit_lock_model(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t *c_ctx, const char *module_name)
+{
+    CHECK_NULL_ARG4(dm_ctx, session, c_ctx, module_name);
+    int rc = SR_ERR_OK;
+    if (SR_DS_CANDIDATE == session->datastore) {
+        /* acquire candidate lock*/
+        dm_change_session_datastore(c_ctx->session, SR_DS_CANDIDATE);
+        rc = dm_lock_module(dm_ctx, c_ctx->session, module_name);
+        if (SR_ERR_LOCKED == rc) {
+            /* check if the lock is hold by session that issued commit */
+            rc = dm_lock_module(dm_ctx, session, module_name);
+        }
+        dm_change_session_datastore(c_ctx->session, SR_DS_RUNNING);
+        CHECK_RC_LOG_RETURN(rc, "Failed to lock %s in candidate ds", module_name);
+        /* acquire running lock*/
+        rc = dm_lock_module(dm_ctx, c_ctx->session, module_name);
+        if (SR_ERR_LOCKED == rc) {
+            /* check if the lock is hold by session that issued commit */
+            dm_change_session_datastore(session, SR_DS_RUNNING);
+            rc = dm_lock_module(dm_ctx, session, module_name);
+            dm_change_session_datastore(session, SR_DS_CANDIDATE);
+        }
+        CHECK_RC_LOG_RETURN(rc, "Failed to lock %s in running ds", module_name);
+    } else {
+        /* in case of startup/running ds acquire only startup/running lock*/
+        rc = dm_lock_module(dm_ctx, c_ctx->session, module_name);
+        if (SR_ERR_LOCKED == rc) {
+            /* check if the lock is hold by session that issued commit */
+            rc = dm_lock_module(dm_ctx, session, module_name);
+        }
+    }
+    return rc;
+}
+
 int
 dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm_commit_context_t *c_ctx)
 {
@@ -1944,26 +1987,23 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
     c_ctx->modif_count = 0; /* how many file descriptors should be closed on cleanup */
 
     while (NULL != (info = sr_btree_get_at(session->session_modules[session->datastore], i++))) {
-        if (info->modified) {
-            rc = dm_lock_module(dm_ctx, c_ctx->session, (char *) info->module->name);
-            if (SR_ERR_LOCKED == rc) {
-                /* check if the lock is hold by session that issued commit */
-                rc = dm_lock_module(dm_ctx, (dm_session_t *) session, (char *) info->module->name);
-            }
-            CHECK_RC_LOG_RETURN(rc, "Module %s can not be locked", info->module->name);
-            if (SR_DS_CANDIDATE == session->datastore) {
-                /* check if all subtrees are enabled */
-                bool has_not_enabled = true;
-                pthread_rwlock_rdlock(&dm_ctx->lyctx_lock);
-                lyd_wd_cleanup(&info->node, 0);
-                rc = dm_has_not_enabled_nodes(info, &has_not_enabled);
-                lyd_wd_add(dm_ctx->ly_ctx, &info->node, LYD_WD_IMPL_TAG);
-                pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
-                CHECK_RC_LOG_RETURN(rc, "Has not enabled check failed for module %s", info->module->name);
-                if (has_not_enabled) {
-                    SR_LOG_ERR("There is a not enabled node in %s module, it can not be committed to the running", info->module->name);
-                    return SR_ERR_OPERATION_FAILED;
-                }
+        if (!info->modified) {
+            continue;
+        }
+        rc = dm_commit_lock_model(dm_ctx, (dm_session_t *) session, c_ctx, info->module->name);
+        CHECK_RC_LOG_RETURN(rc, "Module %s can not be locked", info->module->name);
+        if (SR_DS_CANDIDATE == session->datastore) {
+            /* check if all subtrees are enabled */
+            bool has_not_enabled = true;
+            pthread_rwlock_rdlock(&dm_ctx->lyctx_lock);
+            lyd_wd_cleanup(&info->node, 0);
+            rc = dm_has_not_enabled_nodes(info, &has_not_enabled);
+            lyd_wd_add(dm_ctx->ly_ctx, &info->node, LYD_WD_IMPL_TAG);
+            pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
+            CHECK_RC_LOG_RETURN(rc, "Has not enabled check failed for module %s", info->module->name);
+            if (has_not_enabled) {
+                SR_LOG_ERR("There is a not enabled node in %s module, it can not be committed to the running", info->module->name);
+                return SR_ERR_OPERATION_FAILED;
             }
         }
     }

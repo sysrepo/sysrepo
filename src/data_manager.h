@@ -434,7 +434,7 @@ bool dm_is_running_ds_session(dm_session_t *session);
  * @return Error code (SR_ERR_OK on success), SR_ERR_LOCKED if the module is locked
  * by other session, SR_ERR_UNAUTHORIZED if the file can no be locked because of permissions.
  */
-int dm_lock_module(dm_ctx_t *dm_ctx, dm_session_t *session, char *module_name);
+int dm_lock_module(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module_name);
 
 /**
  * @brief Releases the lock.
