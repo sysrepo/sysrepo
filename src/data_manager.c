@@ -2937,3 +2937,19 @@ cleanup:
     sr_free_schemas(schemas, count);
     return rc;
 }
+
+int
+dm_is_model_modified(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module_name, bool *res)
+{
+    CHECK_NULL_ARG3(dm_ctx, session, module_name);
+    int rc = SR_ERR_OK;
+    dm_data_info_t lookup = {0};
+    rc = dm_get_module(dm_ctx, module_name, NULL, &lookup.module);
+    CHECK_RC_MSG_RETURN(rc, "Dm get module failed");
+
+    dm_data_info_t *info  = NULL;
+
+    info = sr_btree_search(session->session_modules[session->datastore], &lookup);
+    *res = NULL != info ? info->modified : false;
+    return rc;
+}

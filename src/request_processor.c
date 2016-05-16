@@ -787,13 +787,7 @@ rp_lock_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg
         return SR_ERR_NOMEM;
     }
 
-    if (NULL != msg->request->lock_req->module_name) {
-        /* module-level lock */
-        rc = dm_lock_module(rp_ctx->dm_ctx, session->dm_session, msg->request->lock_req->module_name);
-    } else {
-        /* datastore-level lock */
-        rc = dm_lock_datastore(rp_ctx->dm_ctx, session->dm_session);
-    }
+    rc = rp_dt_lock(rp_ctx, session, msg->request->lock_req->module_name);
 
     /* set response code */
     resp->response->result = rc;

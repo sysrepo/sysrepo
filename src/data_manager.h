@@ -678,5 +678,14 @@ int dm_move_session_trees_in_session(dm_ctx_t *dm_ctx, dm_session_t *session, sr
  */
 int dm_get_all_modules(dm_ctx_t *dm_ctx, dm_session_t *session, bool enabled_only, struct ly_set **result);
 
+/**
+ * @brief If there is a session copy of the model, return modified flag.
+ * @param [in] dm_ctx
+ * @param [in] session
+ * @param [in] module_name
+ * @param [out] res - modified flag to be set.
+ * @return Error code (SR_ERR_OK on success)
+ */
+int dm_is_model_modified(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module_name, bool *res);
 /**@} Data manager*/
 #endif /* SRC_DATA_MANAGER_H_ */

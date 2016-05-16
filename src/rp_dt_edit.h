@@ -153,6 +153,16 @@ int rp_dt_copy_config(rp_ctx_t *rp_ctx, rp_session_t *session, const char *modul
  * @return Error code (SR_ERR_OK on success)
  */
 int rp_dt_switch_datastore(rp_ctx_t *rp_ctx, rp_session_t *session, sr_datastore_t ds);
+
+/**
+ * @brief Locks a model or whole datastore. Lock can not be acquired if the session
+ * copy has been modified.
+ * @param [in] rp_ctx
+ * @param [in] session
+ * @param [in] module_name optional to lock only a particular model
+ * @return Error code (SR_ERR_OK on success)
+ */
+int rp_dt_lock(const rp_ctx_t *rp_ctx, const rp_session_t *session, const char *module_name);
 #endif /* RP_DT_EDIT_H */
 
 /**

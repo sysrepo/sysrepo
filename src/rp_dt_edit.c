@@ -920,3 +920,44 @@ rp_dt_switch_datastore(rp_ctx_t *rp_ctx, rp_session_t *session, sr_datastore_t d
     rc = dm_session_switch_ds(session->dm_session, ds);
     return rc;
 }
+
+int
+rp_dt_lock(const rp_ctx_t *rp_ctx, const rp_session_t *session, const char *module_name)
+{
+    CHECK_NULL_ARG2(rp_ctx, session);
+    int rc = SR_ERR_OK;
+    bool modif = false;
+
+    sr_schema_t *schemas = NULL;
+    size_t count = 0;
+
+    if (NULL != module_name) {
+        /* module-level lock */
+        rc = dm_is_model_modified(rp_ctx->dm_ctx, session->dm_session, module_name, &modif);
+        CHECK_RC_MSG_RETURN(rc, "is model modified failed");
+        if (modif) {
+            SR_LOG_ERR("Modified model %s can not be locked", module_name);
+            return dm_report_error(session->dm_session, "Module has been modified, it can not be locked. Discard or commit changes", module_name, SR_ERR_OPERATION_FAILED);
+        }
+        rc = dm_lock_module(rp_ctx->dm_ctx, session->dm_session, module_name);
+    } else {
+        /* datastore-level lock */
+        rc = dm_list_schemas(rp_ctx->dm_ctx, session->dm_session, &schemas, &count);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "List schemas failed");
+
+        for (size_t i = 0; i < count; i++) {
+            rc = dm_is_model_modified(rp_ctx->dm_ctx, session->dm_session, schemas[i].module_name, &modif);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "is model modified failed");
+
+            if (modif) {
+                SR_LOG_ERR("Modified model %s can not be locked", schemas[i].module_name);
+                rc = dm_report_error(session->dm_session, "Module has been modified, it can not be locked. Discard or commit changes", schemas[i].module_name, SR_ERR_OPERATION_FAILED);
+                goto cleanup;
+            }
+        }
+        rc = dm_lock_datastore(rp_ctx->dm_ctx, session->dm_session);
+    }
+cleanup:
+    sr_free_schemas(schemas, count);
+    return rc;
+}

@@ -772,6 +772,7 @@ int sr_copy_config(sr_session_ctx_t *session, const char *module_name,
 /**
  * @brief Locks the datastore which the session is tied to. If there is
  * a module locked by the other session SR_ERR_LOCKED is returned.
+ * Operation fails if there is a modified data tree in session.
  *
  * All data models within the datastore will be locked for writing until
  * ::sr_unlock_datastore is called or until the session is stopped or terminated
@@ -800,7 +801,7 @@ int sr_unlock_datastore(sr_session_ctx_t *session);
 
 /**
  * @brief Locks specified data module within the datastore which the session
- * is tied to.
+ * is tied to. Operation fails if the data tree has been modified.
  *
  * Specified data module will be locked for writing in the datastore until
  * ::sr_unlock_module is called or until the session is stopped or terminated

@@ -832,6 +832,16 @@ cl_locking_test(void **state)
     rc = sr_lock_module(sessionB, "unknown-module");
     assert_int_equal(rc, SR_ERR_UNKNOWN_MODEL);
 
+    /* modified module can not be locked*/
+    rc = sr_delete_item(sessionB, "/test-module:main", SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = sr_lock_module(sessionB, "test-module");
+    assert_int_equal(rc, SR_ERR_OPERATION_FAILED);
+
+    rc = sr_lock_datastore(sessionB);
+    assert_int_equal(rc, SR_ERR_OPERATION_FAILED);
+
     /* stop the sessions */
     rc = sr_session_stop(sessionA);
     assert_int_equal(rc, SR_ERR_OK);
