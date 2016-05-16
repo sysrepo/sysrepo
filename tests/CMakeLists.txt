@@ -5,6 +5,8 @@ set(TEST_INTERNAL_SCHEMA_SEARCH_DIR "${TEST_REPOSITORY_LOC}/yang/internal/")
 
 set(TEST_HELPERS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/helpers/")
 
+CHECK_INCLUDE_FILES(regex.h HAVE_REGEX_H)
+
 configure_file("${TEST_HELPERS_DIR}/test_data.h.in" "${TEST_HELPERS_DIR}/test_data.h" ESCAPE_QUOTES @ONLY) 
 
 include_directories ("${PROJECT_SOURCE_DIR}/src" "${PROJECT_SOURCE_DIR}/src/common" "${PROJECT_SOURCE_DIR}/inc" "${TEST_HELPERS_DIR}")
@@ -18,6 +20,7 @@ macro(ADD_UNIT_TEST_WITH_OPTS TEST_NAME USE_HELPERS USE_VALGRIND WRAP_FUNCTION)
             ${TEST_NAME}.c
             ${TEST_HELPERS_DIR}rp_dt_context_helper.c
             ${TEST_HELPERS_DIR}test_module_helper.c
+            ${TEST_HELPERS_DIR}system_helper.c
             )
     else()
         set(TEST_SRC
@@ -74,7 +77,7 @@ if("${TEST_REPOSITORY_LOC}" STREQUAL "${REPOSITORY_LOC}")
     ADD_UNIT_TEST(concurr_test 1)
     ADD_UNIT_TEST_WITH_OPTS(perf_test 1 0 "")
     ADD_UNIT_TEST_WITH_OPTS(daemon_test 0 0 "")
-    ADD_UNIT_TEST_WITH_OPTS(sysrepoctl_test 0 0 "")
+    ADD_UNIT_TEST_WITH_OPTS(sysrepoctl_test 1 0 "")
 
     # Python tests
     FIND_PACKAGE(PythonInterp)

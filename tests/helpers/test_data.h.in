@@ -1,6 +1,7 @@
 /**
  * @file test_data.h
- * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
+ * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>,
+ *         Milan Lenco <milan.lenco@pantheon.tech>
  * @brief 
  *
  * @copyright
@@ -22,6 +23,8 @@
 
 #ifndef TEST_DATA_TEST_DATA_H_IN_
 #define TEST_DATA_TEST_DATA_H_IN_
+
+#cmakedefine HAVE_REGEX_H
 
 #define TEST_SCHEMA_SEARCH_DIR "@TEST_SCHEMA_SEARCH_DIR@"
 #define TEST_DATA_SEARCH_DIR "@TEST_DATA_SEARCH_DIR@"
