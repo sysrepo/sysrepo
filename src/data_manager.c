@@ -1899,7 +1899,7 @@ dm_commit_prepare_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_con
 
     SR_LOG_DBG("Commit: In the session there are %zu / %zu modified models", c_ctx->modif_count, i);
 
-    if (0 == session->oper_count && 0 != c_ctx->modif_count && SR_DS_CANDIDATE != session->datastore) {
+    if (0 == session->oper_count[session->datastore] && 0 != c_ctx->modif_count && SR_DS_CANDIDATE != session->datastore) {
         SR_LOG_WRN_MSG("No operation logged, however data tree marked as modified");
         c_ctx->modif_count = 0;
         *commit_ctx = c_ctx;
@@ -2741,9 +2741,14 @@ dm_copy_modified_session_trees(dm_ctx_t *dm_ctx, dm_session_t *from, dm_session_
         }
 
         if (!existed) {
-            sr_btree_insert(to->session_modules[to->datastore], new_info);
+            rc = sr_btree_insert(to->session_modules[to->datastore], new_info);
+            CHECK_RC_MSG_GOTO(rc, fail, "Adding data tree to session modules failed");
         }
     }
+    return rc;
+
+fail:
+    dm_data_info_free(new_info);
     return rc;
 }
 

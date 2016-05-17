@@ -1369,6 +1369,60 @@ candidate_ds_test(void **state)
     rc = sr_unsubscribe(NULL, subscription);
     assert_int_equal(rc, SR_ERR_OK);
 }
+
+static void
+cl_switch_ds(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+
+    sr_session_ctx_t *session = NULL;
+    sr_val_t value = { 0, }, *val = NULL;
+    int rc = SR_ERR_OK;
+
+    /* start session */
+    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* value can be found in startup */
+    rc = sr_get_item(session, "/test-module:main/i8", &val);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(SR_INT8_T, val->type);
+    sr_free_val(val);
+    val = NULL;
+
+    value.type = SR_INT8_T;
+    value.xpath = "/test-module:main/i8";
+    value.data.int8_val = 1;
+
+    /* modify value in startup */
+    rc = sr_set_item(session, value.xpath, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = sr_session_switch_ds(session, SR_DS_RUNNING);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* value is not enabled in running */
+    rc = sr_get_item(session, "/test-module:main/i8", &val);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+
+    /* switch back to startup*/
+    rc = sr_session_switch_ds(session, SR_DS_STARTUP);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* changes made in session are in place */
+    rc = sr_get_item(session, "/test-module:main/i8", &val);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(SR_INT8_T, val->type);
+    assert_int_equal(1, val->data.uint8_val);
+    sr_free_val(val);
+    val = NULL;
+
+    rc = sr_session_stop(session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+}
+
 int
 main()
 {
@@ -1392,6 +1446,7 @@ main()
             cmocka_unit_test_setup_teardown(cl_copy_config_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_rpc_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(candidate_ds_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_switch_ds, sysrepo_setup, sysrepo_teardown),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);
