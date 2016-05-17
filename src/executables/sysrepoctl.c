@@ -57,7 +57,8 @@ const char * const data_files_ext[] = { SR_STARTUP_FILE_EXT,
                                         SR_RUNNING_FILE_EXT,
                                         SR_STARTUP_FILE_EXT SR_LOCK_FILE_EXT,
                                         SR_RUNNING_FILE_EXT SR_LOCK_FILE_EXT,
-                                        SR_PERSIST_FILE_EXT };
+                                        SR_PERSIST_FILE_EXT,
+                                        SR_CANDIDATE_FILE_EXT SR_LOCK_FILE_EXT};
 
 
 /**

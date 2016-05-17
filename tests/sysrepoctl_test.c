@@ -94,6 +94,7 @@ sysrepoctl_test_uninstall(void **state)
     test_file_exists(TEST_DATA_SEARCH_DIR "ietf-interfaces.startup.lock", true);
     test_file_exists(TEST_DATA_SEARCH_DIR "ietf-interfaces.running", true);
     test_file_exists(TEST_DATA_SEARCH_DIR "ietf-interfaces.running.lock", true);
+    test_file_exists(TEST_DATA_SEARCH_DIR "ietf-interfaces.candidate.lock", true);
     test_file_exists(TEST_DATA_SEARCH_DIR "ietf-interfaces.persist", true);
     exec_shell_command("../src/sysrepoctl -l", "ietf-interfaces", 0);
 
@@ -104,6 +105,7 @@ sysrepoctl_test_uninstall(void **state)
     test_file_exists(TEST_DATA_SEARCH_DIR "ietf-interfaces.startup.lock", false);
     test_file_exists(TEST_DATA_SEARCH_DIR "ietf-interfaces.running", false);
     test_file_exists(TEST_DATA_SEARCH_DIR "ietf-interfaces.running.lock", false);
+    test_file_exists(TEST_DATA_SEARCH_DIR "ietf-interfaces.candidate.lock", false);
     test_file_exists(TEST_DATA_SEARCH_DIR "ietf-interfaces.persist", false);
     exec_shell_command("../src/sysrepoctl -l", "!ietf-interfaces", 0);
 }
@@ -129,6 +131,7 @@ sysrepoctl_test_install(void **state)
     test_file_exists(TEST_DATA_SEARCH_DIR "ietf-ip.startup.lock", false);
     test_file_exists(TEST_DATA_SEARCH_DIR "ietf-ip.running", false);
     test_file_exists(TEST_DATA_SEARCH_DIR "ietf-ip.running.lock", false);
+    test_file_exists(TEST_DATA_SEARCH_DIR "ietf-ip.candidate.lock", false);
     test_file_exists(TEST_DATA_SEARCH_DIR "ietf-ip.persist", false);
 
     /* auto install dependencies (ietf-interfaces) */
@@ -137,6 +140,7 @@ sysrepoctl_test_install(void **state)
     test_file_exists(TEST_DATA_SEARCH_DIR "ietf-interfaces.startup.lock", true);
     test_file_exists(TEST_DATA_SEARCH_DIR "ietf-interfaces.running", true);
     test_file_exists(TEST_DATA_SEARCH_DIR "ietf-interfaces.running.lock", true);
+    test_file_exists(TEST_DATA_SEARCH_DIR "ietf-interfaces.candidate.lock", true);
     test_file_exists(TEST_DATA_SEARCH_DIR "ietf-interfaces.persist", true);
     snprintf(buff, PATH_MAX, "ietf-interfaces\\s*| 2014-05-08 | %s:%s\\s*| 644\\s*|", user, user);
     exec_shell_command("../src/sysrepoctl -l", buff, 0);
@@ -164,6 +168,7 @@ sysrepoctl_test_change(void **state)
     test_file_owner(TEST_DATA_SEARCH_DIR "ietf-interfaces.startup.lock", user);
     test_file_owner(TEST_DATA_SEARCH_DIR "ietf-interfaces.running", user);
     test_file_owner(TEST_DATA_SEARCH_DIR "ietf-interfaces.running.lock", user);
+    test_file_owner(TEST_DATA_SEARCH_DIR "ietf-interfaces.candidate.lock", user);
     test_file_owner(TEST_DATA_SEARCH_DIR "ietf-interfaces.persist", user);
 
     mode_t mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH;
@@ -171,6 +176,7 @@ sysrepoctl_test_change(void **state)
     test_file_permissions(TEST_DATA_SEARCH_DIR "ietf-interfaces.startup.lock", mode);
     test_file_permissions(TEST_DATA_SEARCH_DIR "ietf-interfaces.running", mode);
     test_file_permissions(TEST_DATA_SEARCH_DIR "ietf-interfaces.running.lock", mode);
+    test_file_permissions(TEST_DATA_SEARCH_DIR "ietf-interfaces.candidate.lock", mode);
     test_file_permissions(TEST_DATA_SEARCH_DIR "ietf-interfaces.persist", mode);
 }
 
@@ -232,12 +238,14 @@ sysrepoctl_test_init(void **state)
     test_file_exists(TEST_DATA_SEARCH_DIR "ietf-interfaces.startup.lock", true);
     test_file_exists(TEST_DATA_SEARCH_DIR "ietf-interfaces.running", true);
     test_file_exists(TEST_DATA_SEARCH_DIR "ietf-interfaces.running.lock", true);
+    test_file_exists(TEST_DATA_SEARCH_DIR "ietf-interfaces.candidate.lock", true);
     test_file_exists(TEST_DATA_SEARCH_DIR "ietf-interfaces.persist", true);
 
     test_file_owner(TEST_DATA_SEARCH_DIR "ietf-interfaces.startup", user);
     test_file_owner(TEST_DATA_SEARCH_DIR "ietf-interfaces.startup.lock", user);
     test_file_owner(TEST_DATA_SEARCH_DIR "ietf-interfaces.running", user);
     test_file_owner(TEST_DATA_SEARCH_DIR "ietf-interfaces.running.lock", user);
+    test_file_owner(TEST_DATA_SEARCH_DIR "ietf-interfaces.candidate.lock", user);
     test_file_owner(TEST_DATA_SEARCH_DIR "ietf-interfaces.persist", user);
 
     mode_t mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH;
@@ -245,6 +253,7 @@ sysrepoctl_test_init(void **state)
     test_file_permissions(TEST_DATA_SEARCH_DIR "ietf-interfaces.startup.lock", mode);
     test_file_permissions(TEST_DATA_SEARCH_DIR "ietf-interfaces.running", mode);
     test_file_permissions(TEST_DATA_SEARCH_DIR "ietf-interfaces.running.lock", mode);
+    test_file_permissions(TEST_DATA_SEARCH_DIR "ietf-interfaces.candidate.lock", mode);
     test_file_permissions(TEST_DATA_SEARCH_DIR "ietf-interfaces.persist", mode);
 
     /* initialize already installed ietf-ip */
@@ -256,6 +265,7 @@ sysrepoctl_test_init(void **state)
     test_file_exists(TEST_DATA_SEARCH_DIR "ietf-ip.startup.lock", false);
     test_file_exists(TEST_DATA_SEARCH_DIR "ietf-ip.running", false);
     test_file_exists(TEST_DATA_SEARCH_DIR "ietf-ip.running.lock", false);
+    test_file_exists(TEST_DATA_SEARCH_DIR "ietf-ip.candidate.lock", false);
     test_file_exists(TEST_DATA_SEARCH_DIR "ietf-ip.persist", false);
 
     /* ... but permissions for dependencies should change */
@@ -264,6 +274,7 @@ sysrepoctl_test_init(void **state)
     test_file_permissions(TEST_DATA_SEARCH_DIR "ietf-interfaces.startup.lock", mode);
     test_file_permissions(TEST_DATA_SEARCH_DIR "ietf-interfaces.running", mode);
     test_file_permissions(TEST_DATA_SEARCH_DIR "ietf-interfaces.running.lock", mode);
+    test_file_permissions(TEST_DATA_SEARCH_DIR "ietf-interfaces.candidate.lock", mode);
     test_file_permissions(TEST_DATA_SEARCH_DIR "ietf-interfaces.persist", mode);
 }
 
