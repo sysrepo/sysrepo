@@ -632,15 +632,6 @@ int dm_copy_modified_session_trees(dm_ctx_t *dm_ctx, dm_session_t *from, dm_sess
 int dm_copy_session_tree(dm_ctx_t *dm_ctx, dm_session_t *from, dm_session_t *to, const char *module_name);
 
 /**
- * @brief Moves session data trees and operations (in current datastore) from one session to another
- * @param [in] dm_ctx
- * @param [in] from
- * @param [in] to
- * @return Error code (SR_ERR_OK on success)
- */
-int dm_move_session_tree_and_ops(dm_ctx_t *dm_ctx, dm_session_t *from, dm_session_t *to);
-
-/**
  * @brief Changes the datastore to which the session is tied to. Subsequent operations
  * will work on the selected datastore.
  * @param [in] session

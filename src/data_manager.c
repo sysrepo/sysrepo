@@ -2802,31 +2802,6 @@ dm_copy_session_tree(dm_ctx_t *dm_ctx, dm_session_t *from, dm_session_t *to, con
 }
 
 int
-dm_move_session_tree_and_ops(dm_ctx_t *dm_ctx, dm_session_t *from, dm_session_t *to)
-{
-    CHECK_NULL_ARG3(dm_ctx, from, to);
-    CHECK_NULL_ARG2(from->session_modules, from->session_modules[from->datastore]);
-    int rc = SR_ERR_OK;
-
-    sr_btree_cleanup(to->session_modules[to->datastore]);
-    dm_free_sess_operations(to->operations[to->datastore], to->oper_count[to->datastore]);
-
-    to->session_modules[to->datastore] = from->session_modules[from->datastore];
-    to->oper_count[to->datastore] = from->oper_count[from->datastore];
-    to->oper_size[to->datastore] = from->oper_size[from->datastore];
-    to->operations[to->datastore] = from->operations[from->datastore];
-
-    from->session_modules[from->datastore] = NULL;
-    from->operations[from->datastore] = NULL;
-    from->oper_count[from->datastore] = 0;
-    from->oper_size[from->datastore] = 0;
-
-    rc = dm_discard_changes(dm_ctx, from);
-    CHECK_RC_MSG_RETURN(rc, "Discard changes failed");
-    return rc;
-}
-
-int
 dm_move_session_tree_and_ops_all_ds(dm_ctx_t *dm_ctx, dm_session_t *from, dm_session_t *to)
 {
     CHECK_NULL_ARG3(dm_ctx, from, to);
