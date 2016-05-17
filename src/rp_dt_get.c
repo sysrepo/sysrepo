@@ -362,6 +362,7 @@ rp_dt_get_value_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char *
 {
     CHECK_NULL_ARG4(rp_ctx, rp_ctx->dm_ctx, rp_session, rp_session->dm_session);
     CHECK_NULL_ARG2(xpath, value);
+    SR_LOG_INF("Get item request %s datastore, xpath: %s", sr_ds_to_str(rp_session->datastore), xpath);
 
     int rc = SR_ERR_INVAL_ARG;
     struct lyd_node *data_tree = NULL;

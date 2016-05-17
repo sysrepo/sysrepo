@@ -281,6 +281,7 @@ rp_dt_create_xpath_for_node(const struct lyd_node *node, char **xpath)
 
 /**
  * @brief Tries to match lys_node including choice nodes
+ * @param [in] dm_ctx
  * @param [in] session
  * @param [in] xpath
  * @param [in] trimmed_xpath
@@ -289,9 +290,9 @@ rp_dt_create_xpath_for_node(const struct lyd_node *node, char **xpath)
  * @return Error code (SR_ERR_OK on success)
  */
 static int
-rp_dt_find_in_choice(dm_session_t *session, const char *xpath, const char *trimmed_xpath, const struct lys_module *module, struct lys_node **match)
+rp_dt_find_in_choice(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const char *trimmed_xpath, const struct lys_module *module, struct lys_node **match)
 {
-    CHECK_NULL_ARG4(xpath, trimmed_xpath, module, match);
+    CHECK_NULL_ARG5(dm_ctx, xpath, trimmed_xpath, module, match);
     /* libyang err_msg is used to parse the match and unmatch part */
     int rc = SR_ERR_BAD_ELEMENT;
     char *unmatch_part = NULL;
@@ -311,7 +312,7 @@ rp_dt_find_in_choice(dm_session_t *session, const char *xpath, const char *trimm
     unmatch_part = strdup(trimmed_xpath + strlen(xp_copy) + 1);
     CHECK_NULL_NOMEM_GOTO(unmatch_part, rc, not_matched);
 
-    const struct lys_node *node = ly_ctx_get_node(module->ctx, NULL, xp_copy);
+    const struct lys_node *node = dm_ly_ctx_get_node(dm_ctx, module->ctx, NULL, xp_copy);
     if (NULL == node) {
         goto not_matched;
     }
@@ -484,7 +485,7 @@ rp_dt_validate_node_xpath(dm_ctx_t *dm_ctx, dm_session_t *session, const char *x
         return SR_ERR_OK;
     }
 
-    const struct lys_node *sch_node = ly_ctx_get_node(module->ctx, NULL, xp_copy);
+    const struct lys_node *sch_node = dm_ly_ctx_get_node(dm_ctx, module->ctx, NULL, xp_copy);
     if (NULL != sch_node) {
         if (NULL != match) {
             *match = (struct lys_node *) sch_node;
@@ -493,7 +494,7 @@ rp_dt_validate_node_xpath(dm_ctx_t *dm_ctx, dm_session_t *session, const char *x
         switch (ly_vecode) {
         case LYVE_PATH_INNODE:
             /* ly_ctx_get_node is not able to locate nodes inside the choice */
-            rc = rp_dt_find_in_choice(session, xpath, xp_copy, module, (struct lys_node **) &sch_node);
+            rc = rp_dt_find_in_choice(dm_ctx, session, xpath, xp_copy, module, (struct lys_node **) &sch_node);
             if (NULL != match) {
                 *match = (struct lys_node *) sch_node;
             }

@@ -260,7 +260,7 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, co
             }
         }
     }
-    lyd_wd_add(info->module->ctx, &info->node, LYD_WD_IMPL_TAG);
+    dm_lyd_wd_add(dm_ctx, info->module->ctx, &info->node, LYD_WD_IMPL_TAG);
 cleanup:
     ly_set_free(parents);
     ly_set_free(nodes);
@@ -357,7 +357,7 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const
             CHECK_NULL_NOMEM_GOTO(last_slash, rc, cleanup);
             char *parent_node = strndup(xpath, last_slash - xpath - 1);
             CHECK_NULL_NOMEM_GOTO(parent_node, rc, cleanup);
-            struct ly_set *res = lyd_get_node(info->node, parent_node);
+            struct ly_set *res = dm_lyd_get_node(dm_ctx, info->node, parent_node);
             free(parent_node);
             if (NULL == res || 0 == res->number) {
                 SR_LOG_ERR("A preceding node is missing '%s' create it or omit the non recursive option", xpath);
@@ -373,7 +373,7 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const
     int flags = (SR_EDIT_STRICT & options) ? 0 : LYD_PATH_OPT_UPDATE;
 
     /* create or update */
-    node = sr_lyd_new_path(info, module->ctx, xpath, new_value, flags);
+    node = dm_lyd_new_path(dm_ctx, info, module->ctx, xpath, new_value, flags);
     if (NULL == node && LY_SUCCESS != ly_errno) {
         SR_LOG_ERR("Setting of item failed %s %d", xpath, ly_vecode);
         if (LYVE_PATH_EXISTS == ly_vecode) {
@@ -395,7 +395,7 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const
     }
 
     /* add default nodes into the data tree */
-    lyd_wd_add(module->ctx, &info->node, LYD_WD_IMPL_TAG);
+    dm_lyd_wd_add(dm_ctx, module->ctx, &info->node, LYD_WD_IMPL_TAG);
 
 cleanup:
     free(new_value);
@@ -451,7 +451,7 @@ rp_dt_move_list(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, sr_m
             return rc;
         }
     } else {
-        struct ly_set *siblings = lyd_get_node2(info->node, node->schema);
+        struct ly_set *siblings = dm_lyd_get_node2(dm_ctx, info->node, node->schema);
 
         if (NULL == siblings || 0 == siblings->number) {
             SR_LOG_ERR_MSG("No siblings found");
@@ -578,7 +578,7 @@ rp_dt_delete_item_wrapper(rp_ctx_t *rp_ctx, rp_session_t *session, const char *x
  * is set to true, operation is marked with has_error flag.
  * @param [in] ctx
  * @param [in] session
- * @param [in] operations
+ * @param [in] operations can be null in case of candidate session
  * @param [in] count
  * @param [in] continue_on_error flag denoting whether replay should be stopped on first error
  * @param [in] models_to_skip - set of model's name where the current modify timestamp
@@ -589,7 +589,7 @@ static int
 rp_dt_replay_operations(dm_ctx_t *ctx, dm_session_t *session, dm_sess_op_t *operations, size_t count,
         bool continue_on_error, struct ly_set *models_to_skip)
 {
-    CHECK_NULL_ARG3(ctx, session, operations);
+    CHECK_NULL_ARG2(ctx, session);
     int rc = SR_ERR_OK;
     bool err_occured = false; /* flag used in case of continue_on_err */
 
@@ -709,7 +709,12 @@ cleanup:
 
     if (SR_ERR_OK == rc) {
         /* discard changes in session in next get_data_tree call newly committed content will be loaded */
-        rc = dm_discard_changes(rp_ctx->dm_ctx, session->dm_session);
+        if (SR_DS_CANDIDATE != session->datastore) {
+            rc = dm_discard_changes(rp_ctx->dm_ctx, session->dm_session);
+        } else {
+            dm_remove_session_operations(session->dm_session);
+            rc = dm_remove_modified_flag(session->dm_session);
+        }
         SR_LOG_DBG_MSG("Commit (7/7): finished successfully");
     }
     return rc;
@@ -788,5 +793,172 @@ rp_dt_refresh_session(rp_ctx_t *rp_ctx, rp_session_t *session, sr_error_info_t *
     SR_LOG_DBG_MSG("End of session refresh");
 cleanup:
     ly_set_free(up_to_date);
+    return rc;
+}
+
+/**
+ * @brief Performs copy config to running datastore. It is done by commit to perform
+ * all validation and notifications as needed
+ * @param [in] rp_ctx
+ * @param [in] session
+ * @param [in] module_name
+ * @param [in] src
+ * @return Error code (SR_ERR_OK on success)
+ */
+static int
+rp_dt_copy_config_to_running(rp_ctx_t* rp_ctx, rp_session_t* session, const char* module_name, sr_datastore_t src)
+{
+    CHECK_NULL_ARG2(rp_ctx, session);
+    int rc = SR_ERR_OK;
+    struct ly_set *modules = NULL;
+    dm_session_t *backup = NULL;
+    sr_datastore_t prev_ds = session->datastore;
+    dm_data_info_t *info = NULL;
+    int first_err = SR_ERR_OK;
+    sr_error_info_t *errors = NULL;
+    size_t e_cnt = 0;
+
+    /* copy to running is candidate commit behind the scenes */
+    rc = dm_session_start(rp_ctx->dm_ctx, session->user_credentials, src, &backup);
+    CHECK_RC_MSG_RETURN(rc, "Session start of temporary session failed");
+
+    /* move datatrees & session ops -> backup */
+    rc = dm_move_session_tree_and_ops_all_ds(rp_ctx->dm_ctx, session->dm_session, backup);
+    CHECK_RC_MSG_GOTO(rc, cleanup_sess_stop, "Moving session data trees failed");
+
+    rc = rp_dt_switch_datastore(rp_ctx, session, src);
+
+    /* load models to be committed to the session */
+    if (NULL != module_name) {
+        if (SR_DS_CANDIDATE == src) {
+            rc = dm_copy_session_tree(rp_ctx->dm_ctx, backup, session->dm_session, module_name);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "Copy session data trees failed");
+        }
+        /* load data tree if it was not copied from backup session */
+        rc = dm_get_data_info(rp_ctx->dm_ctx, session->dm_session, module_name, &info);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Get data info failed");
+        info->modified = true;
+    } else {
+
+        /* load all enabled models */
+        if (SR_DS_CANDIDATE == src) {
+            rc = dm_copy_modified_session_trees(rp_ctx->dm_ctx, backup, session->dm_session);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "Copy session data trees failed");
+        }
+        rc = dm_get_all_modules(rp_ctx->dm_ctx, session->dm_session, true, &modules);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Get all modules failed");
+        for (size_t i = 0; i < modules->number; i++) {
+            rc = dm_get_data_info(rp_ctx->dm_ctx, session->dm_session, modules->set.g[i], &info);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "Get data info failed");
+            info->modified = true;
+        }
+
+    }
+    /* change session to candidate */
+    if (SR_DS_STARTUP == src) {
+        rc = rp_dt_switch_datastore(rp_ctx, session, SR_DS_CANDIDATE);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Data tree switch failed");
+        rc = dm_move_session_trees_in_session(rp_ctx->dm_ctx, session->dm_session, SR_DS_STARTUP, SR_DS_CANDIDATE);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Data tree move failed");
+    }
+    /* commit */
+    rc = rp_dt_commit(rp_ctx, session, &errors, &e_cnt);
+    sr_free_errors(errors, e_cnt);
+
+cleanup:
+    first_err = rc;
+    /* move datatrees & ops backup -> session */
+    rc = dm_move_session_tree_and_ops_all_ds(rp_ctx->dm_ctx, backup, session->dm_session);
+
+    /* change session to prev type */
+    rc = rp_dt_switch_datastore(rp_ctx, session, prev_ds);
+    ly_set_free(modules);
+cleanup_sess_stop:
+    dm_session_stop(rp_ctx->dm_ctx, backup);
+    return first_err == SR_ERR_OK ? rc : first_err;
+}
+
+int
+rp_dt_copy_config(rp_ctx_t *rp_ctx, rp_session_t *session, const char *module_name, sr_datastore_t src, sr_datastore_t dst)
+{
+    CHECK_NULL_ARG2(rp_ctx, session);
+    SR_LOG_INF("Copy config: %s -> %s, model: %s", sr_ds_to_str(src), sr_ds_to_str(dst), module_name);
+    int rc = SR_ERR_OK;
+    int prev_ds = session->datastore;
+
+    if (src == dst) {
+        return rc;
+    }
+
+    if ((SR_DS_CANDIDATE == src || SR_DS_CANDIDATE == dst) && SR_DS_CANDIDATE != session->datastore) {
+        rc = rp_dt_switch_datastore(rp_ctx, session, SR_DS_CANDIDATE);
+        CHECK_RC_MSG_RETURN(rc, "Datastore switch failed");
+    }
+
+    if (SR_DS_RUNNING != dst) {
+        if (NULL != module_name) {
+            /* copy module content in DM */
+            rc = dm_copy_module(rp_ctx->dm_ctx, session->dm_session, module_name, src, dst);
+        } else {
+            /* copy all enabled modules */
+            rc = dm_copy_all_models(rp_ctx->dm_ctx, session->dm_session, src, dst);
+        }
+
+    } else {
+        rc = rp_dt_copy_config_to_running(rp_ctx, session, module_name, src);
+    }
+
+    rp_dt_switch_datastore(rp_ctx, session, prev_ds);
+    return rc;
+}
+
+int
+rp_dt_switch_datastore(rp_ctx_t *rp_ctx, rp_session_t *session, sr_datastore_t ds)
+{
+    CHECK_NULL_ARG3(rp_ctx, session, session->dm_session);
+    int rc = SR_ERR_OK;
+    session->datastore = ds;
+    rc = dm_session_switch_ds(session->dm_session, ds);
+    return rc;
+}
+
+int
+rp_dt_lock(const rp_ctx_t *rp_ctx, const rp_session_t *session, const char *module_name)
+{
+    CHECK_NULL_ARG2(rp_ctx, session);
+    int rc = SR_ERR_OK;
+    bool modif = false;
+
+    sr_schema_t *schemas = NULL;
+    size_t count = 0;
+
+    if (NULL != module_name) {
+        /* module-level lock */
+        rc = dm_is_model_modified(rp_ctx->dm_ctx, session->dm_session, module_name, &modif);
+        CHECK_RC_MSG_RETURN(rc, "is model modified failed");
+        if (modif) {
+            SR_LOG_ERR("Modified model %s can not be locked", module_name);
+            return dm_report_error(session->dm_session, "Module has been modified, it can not be locked. Discard or commit changes", module_name, SR_ERR_OPERATION_FAILED);
+        }
+        rc = dm_lock_module(rp_ctx->dm_ctx, session->dm_session, module_name);
+    } else {
+        /* datastore-level lock */
+        rc = dm_list_schemas(rp_ctx->dm_ctx, session->dm_session, &schemas, &count);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "List schemas failed");
+
+        for (size_t i = 0; i < count; i++) {
+            rc = dm_is_model_modified(rp_ctx->dm_ctx, session->dm_session, schemas[i].module_name, &modif);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "is model modified failed");
+
+            if (modif) {
+                SR_LOG_ERR("Modified model %s can not be locked", schemas[i].module_name);
+                rc = dm_report_error(session->dm_session, "Module has been modified, it can not be locked. Discard or commit changes", schemas[i].module_name, SR_ERR_OPERATION_FAILED);
+                goto cleanup;
+            }
+        }
+        rc = dm_lock_datastore(rp_ctx->dm_ctx, session->dm_session);
+    }
+cleanup:
+    sr_free_schemas(schemas, count);
     return rc;
 }

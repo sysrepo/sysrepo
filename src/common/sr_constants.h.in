@@ -52,6 +52,9 @@
 /** File extension of data files for running datastore */
 #define SR_RUNNING_FILE_EXT ".running"
 
+/** File extension of data files for candidate datastore */
+#define SR_CANDIDATE_FILE_EXT ".candidate"
+
 /** File extension of data lock files */
 #define SR_LOCK_FILE_EXT ".lock"
 

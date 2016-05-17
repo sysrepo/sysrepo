@@ -91,6 +91,7 @@ message Error {
 enum DataStore {
   STARTUP = 1;
   RUNNING = 2;
+  CANDIDATE = 3;
 }
 
 /**
@@ -145,6 +146,20 @@ message SessionRefreshReq {
  */
 message SessionRefreshResp {
   repeated Error errors = 1;
+}
+
+/**
+ * @brief Changes the datastore to which the session is tied to.
+ */
+message SessionSwitchDsReq {
+  required DataStore datastore = 1;
+}
+
+/**
+ * @brief Response to sr_session_switch_ds request.
+ */
+message SessionSwitchDsResp {
+
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -539,6 +554,7 @@ enum Operation {
   SESSION_START = 10;
   SESSION_STOP = 11;
   SESSION_REFRESH = 12;
+  SESSION_SWITCH_DS = 13;
 
   LIST_SCHEMAS = 20;
   GET_SCHEMA = 21;
@@ -577,6 +593,7 @@ message Request {
   optional SessionStartReq session_start_req = 10;
   optional SessionStopReq session_stop_req = 11;
   optional SessionRefreshReq session_refresh_req = 12;
+  optional SessionSwitchDsReq session_switch_ds_req =13;
 
   optional ListSchemasReq list_schemas_req = 20;
   optional GetSchemaReq get_schema_req = 21;
@@ -615,6 +632,7 @@ message Response {
   optional SessionStartResp session_start_resp = 10;
   optional SessionStopResp session_stop_resp = 11;
   optional SessionRefreshResp session_refresh_resp = 12;
+  optional SessionSwitchDsResp session_switch_ds_resp = 13;
 
   optional ListSchemasResp list_schemas_resp = 20;
   optional GetSchemaResp get_schema_resp = 21;

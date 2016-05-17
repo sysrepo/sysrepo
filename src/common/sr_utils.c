@@ -162,7 +162,19 @@ sr_get_data_file_name(const char *data_search_dir, const char *module_name, cons
     char *tmp = NULL;
     int rc = sr_str_join(data_search_dir, module_name, &tmp);
     if (SR_ERR_OK == rc) {
-        char *suffix = SR_DS_STARTUP == ds ? SR_STARTUP_FILE_EXT : SR_RUNNING_FILE_EXT;
+        char *suffix = NULL;
+        switch (ds) {
+        case SR_DS_CANDIDATE:
+            suffix = SR_CANDIDATE_FILE_EXT;
+            break;
+        case SR_DS_RUNNING:
+            suffix = SR_RUNNING_FILE_EXT;
+            break;
+        case SR_DS_STARTUP:
+            /* fall through */
+        default:
+            suffix = SR_STARTUP_FILE_EXT;
+        }
         rc = sr_str_join(tmp, suffix, file_name);
         free(tmp);
         return rc;
@@ -419,25 +431,6 @@ sr_lyd_unlink(dm_data_info_t *data_info, struct lyd_node *node)
     return SR_ERR_OK;
 }
 
-struct lyd_node *
-sr_lyd_new_path(dm_data_info_t *data_info, struct ly_ctx *ctx, const char *path, const char *value, int options)
-{
-    int rc = SR_ERR_OK;
-    CHECK_NULL_ARG_NORET2(rc, data_info, path);
-    if (SR_ERR_OK != rc){
-        return NULL;
-    }
-
-    struct lyd_node *new = NULL;
-    new = lyd_new_path(data_info->node, ctx, path, value, options);
-
-    if (NULL == data_info->node) {
-        data_info->node = new;
-    }
-
-    return new;
-}
-
 int
 sr_lyd_insert_before(dm_data_info_t *data_info, struct lyd_node *sibling, struct lyd_node *node)
 {
@@ -649,6 +642,22 @@ sr_val_to_str(const sr_val_t *value, const struct lys_node *schema_node, char **
         *out = NULL;
     }
     return SR_ERR_OK;
+}
+
+const char *
+sr_ds_to_str(sr_datastore_t ds)
+{
+    const char *const sr_dslist[] = {
+        "startup",    /* SR_DS_STARTUP */
+        "running",    /* SR_DS_RUNNING */
+        "candidate",  /* SR_DS_CANDIDATE */
+    };
+
+    if (ds >= (sizeof(sr_dslist) / (sizeof *sr_dslist))) {
+        return "Unknown datastore";
+    } else {
+        return sr_dslist[ds];
+    }
 }
 
 void
