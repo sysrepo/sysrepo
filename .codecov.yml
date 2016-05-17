@@ -12,9 +12,9 @@ coverage:
   status:
     patch: false
     
-  parsers:
-    gcov:
-      branch_detection:
-        macro: no
-        conditional: no
-        loops: no
+#  parsers:
+#    gcov:
+#      branch_detection:
+#        macro: no
+#        conditional: no
+#        loops: no
