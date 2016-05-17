@@ -2742,7 +2742,7 @@ dm_copy_modified_session_trees(dm_ctx_t *dm_ctx, dm_session_t *from, dm_session_
 
         if (!existed) {
             rc = sr_btree_insert(to->session_modules[to->datastore], new_info);
-            CHECK_RC_LOG_GOTO(rc, fail, "Adding data tree to session modules failed");
+            CHECK_RC_MSG_GOTO(rc, fail, "Adding data tree to session modules failed");
         }
     }
     return rc;
