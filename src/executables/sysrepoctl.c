@@ -302,8 +302,7 @@ srctl_data_files_apply(const char *module_name, int (*command) (const char *, vo
     char path[PATH_MAX] = { 0, };
     int rc = 0, ret = 0;
 
-    for (size_t i = 0; i < sizeof(data_files_ext) / sizeof(data_files_ext[0]); ++i)
-    {
+    for (size_t i = 0; i < sizeof(data_files_ext) / sizeof(data_files_ext[0]); ++i) {
         snprintf(path, PATH_MAX, "%s%s%s", srctl_data_search_dir, module_name, data_files_ext[i]);
         ret = command(path, arg);
         if (0 != ret) {
@@ -322,8 +321,8 @@ srctl_data_files_apply(const char *module_name, int (*command) (const char *, vo
 static int
 srctl_module_change(const char *module_name, const char *owner, const char *permissions)
 {
-    int ret;
-    struct passwd *pwd;
+    int ret = 0;
+    struct passwd *pwd = NULL;
 
     /* update owner if requested */
     if (NULL != owner) {
@@ -389,8 +388,8 @@ srctl_ly_log_cb(LY_LOG_LEVEL level, const char *msg, const char *path)
 static int
 srctl_ly_init(struct ly_ctx **ly_ctx)
 {
-    DIR *dp;
-    struct dirent *ep;
+    DIR *dp = NULL;
+    struct dirent *ep = NULL;
     char schema_filename[PATH_MAX] = { 0, };
 
     *ly_ctx = ly_ctx_new(srctl_schema_search_dir);
@@ -480,8 +479,7 @@ srctl_schema_uninstall(struct ly_ctx *ly_ctx, const char *module_name, const cha
     int rc = SR_ERR_OK;
 
     /* find matching module to uninstall */
-    MODULE_ITER(ly_ctx, module_name, revision_date, module)
-    {
+    MODULE_ITER(ly_ctx, module_name, revision_date, module) {
          /* uninstall all submodules */
          for (size_t i = 0; i < module->inc_size; i++) {
              rc = srctl_schema_file_delete(module->inc[i].submodule->filepath);
@@ -506,7 +504,7 @@ srctl_schema_uninstall(struct ly_ctx *ly_ctx, const char *module_name, const cha
 static int
 srctl_data_uninstall(const char *module_name)
 {
-    int ret;
+    int ret = 0;
 
     ret = srctl_data_files_apply(module_name, srctl_file_remove, NULL, true);
     if (0 != ret) {
@@ -678,14 +676,12 @@ srctl_module_has_data(const struct lys_module *module)
     struct lys_node *iter = NULL;
 
     /* submodules don't have data tree, the data nodes are placed in the main module altogether */
-    if (module->type)
-    {
+    if (module->type) {
         return false;
     }
 
     /* iterate through top-level nodes */
-    LY_TREE_FOR(module->data, iter)
-    {
+    LY_TREE_FOR(module->data, iter) {
         if (((LYS_CONFIG_R & iter->flags) /* operational data */ ||
              ((LYS_CONTAINER | LYS_LIST | LYS_LEAF | LYS_LEAFLIST | LYS_CHOICE) & iter->nodetype) /* data-carrying */) &&
             !(LYS_AUGMENT & iter->nodetype) /* not an augment */) {
@@ -704,8 +700,7 @@ srctl_data_install(const struct lys_module *module, const char *owner, const cha
     int ret = 0, rc = SR_ERR_OK;
 
     /* install data files only if module can contain any data */
-    if (srctl_module_has_data(module))
-    {
+    if (srctl_module_has_data(module)) {
         printf("Installing data files for module %s...\n", module->name);
         ret = srctl_data_files_apply(module->name, srctl_file_create, NULL, false);
         if (0 != ret) {
@@ -718,9 +713,7 @@ srctl_data_install(const struct lys_module *module, const char *owner, const cha
         if (SR_ERR_OK != rc) {
             goto fail;
         }
-    }
-    else
-    {
+    } else {
         printf("Skipping installation of data files for module '%s'...\n", module->name);
     }
 
@@ -863,8 +856,7 @@ srctl_init(const char *module_name, const char *revision, const char *owner, con
     }
 
     /* find matching module to initialize */
-    MODULE_ITER(ly_ctx, module_name, revision, module)
-    {
+    MODULE_ITER(ly_ctx, module_name, revision, module) {
         rc = srctl_data_install(module, owner, permissions);
         if (SR_ERR_OK != rc) {
             fprintf(stderr, "Error: Unable to install data files.\n");

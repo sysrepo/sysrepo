@@ -101,10 +101,9 @@ test_fp_content(FILE *fp, const char *regex)
     char *buffer = read_file_content(fp);
     bool nomatch = false;
     regex_t re;
-    int rc;
+    int rc = 0;
 
-    if (strlen(regex) && regex[0] == '!')
-    {
+    if (strlen(regex) && regex[0] == '!') {
         nomatch = true;
         regex += 1;
     }
@@ -126,7 +125,8 @@ test_fp_content(FILE *fp, const char *regex)
 void
 test_file_content(const char *path, const char *regex)
 {
-    FILE *fp;
+    FILE *fp = NULL;
+
     fp = fopen(path, "r");
     assert_non_null(fp);
     test_fp_content(fp, regex);
@@ -135,8 +135,8 @@ test_file_content(const char *path, const char *regex)
 
 int compare_files(const char *path1, const char *path2)
 {
-    int rc;
-    FILE *fp1, *fp2;
+    int rc = 0;
+    FILE *fp1 = NULL, *fp2 = NULL;
 
     /* open */
     fp1 = fopen(path1, "r");
@@ -163,8 +163,9 @@ int compare_files(const char *path1, const char *path2)
 void
 exec_shell_command(const char *cmd, const char *re_exp_output, int exp_ret)
 {
-	int ret;
-    FILE *fp;
+    int ret = 0;
+    FILE *fp = NULL;
+
     fp = popen(cmd, "r");
     assert_non_null(fp);
     test_fp_content(fp, re_exp_output);
