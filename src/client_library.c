@@ -268,13 +268,9 @@ cleanup:
     return rc;
 }
 
-static int
-cl_subscription_close_last(sr_session_ctx_t *session, sr_subscription_ctx_t *sr_subscription,
-        cl_sm_subscription_ctx_t *sm_subscription)
+static void
+cl_sr_subscription_remove_one(sr_subscription_ctx_t *sr_subscription)
 {
-    int rc = SR_ERR_OK;
-
-    rc = cl_subscription_close(session, sm_subscription);
     if (NULL != sr_subscription) {
         if (sr_subscription->sm_subscription_cnt > 1) {
             sr_subscription->sm_subscription_cnt -= 1;
@@ -283,8 +279,6 @@ cl_subscription_close_last(sr_session_ctx_t *session, sr_subscription_ctx_t *sr_
             free(sr_subscription);
         }
     }
-
-    return rc;
 }
 
 int
@@ -1317,7 +1311,8 @@ sr_module_install_subscribe(sr_session_ctx_t *session, sr_module_install_cb call
     return cl_session_return(session, SR_ERR_OK);
 
 cleanup:
-    cl_subscription_close_last(session, *subscription_p, sm_subscription);
+    cl_subscription_close(session, sm_subscription);
+    cl_sr_subscription_remove_one(*subscription_p);
     if (NULL != msg_req) {
         sr__msg__free_unpacked(msg_req, NULL);
     }
@@ -1356,7 +1351,8 @@ sr_feature_enable_subscribe(sr_session_ctx_t *session, sr_feature_enable_cb call
     return cl_session_return(session, SR_ERR_OK);
 
 cleanup:
-    cl_subscription_close_last(session, *subscription_p, sm_subscription);
+    cl_subscription_close(session, sm_subscription);
+    cl_sr_subscription_remove_one(*subscription_p);
     if (NULL != msg_req) {
         sr__msg__free_unpacked(msg_req, NULL);
     }
@@ -1401,7 +1397,8 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, b
     return cl_session_return(session, SR_ERR_OK);
 
 cleanup:
-    cl_subscription_close_last(session, *subscription_p, sm_subscription);
+    cl_subscription_close(session, sm_subscription);
+    cl_sr_subscription_remove_one(*subscription_p);
     if (NULL != msg_req) {
         sr__msg__free_unpacked(msg_req, NULL);
     }
@@ -1435,12 +1432,16 @@ sr_unsubscribe(sr_session_ctx_t *session, sr_subscription_ctx_t *sr_subscription
         }
     }
 
-    for (size_t i = 0; i < sr_subscription->sm_subscription_cnt; i++) {
+    /* close all subscriptions wrapped in the context */
+    for (int i = (sr_subscription->sm_subscription_cnt - 1); i >= 0 ; i--) {
         rc = cl_subscription_close((NULL != session ? session : tmp_session), sr_subscription->sm_subscriptions[i]);
+        if (SR_ERR_OK == rc) {
+            cl_sr_subscription_remove_one(sr_subscription);
+        } else {
+            SR_LOG_ERR_MSG("Unable to close the subscription.");
+            break;
+        }
     }
-
-    free(sr_subscription->sm_subscriptions);
-    free(sr_subscription);
 
 cleanup:
     if (NULL != tmp_connection) {
@@ -1575,7 +1576,8 @@ sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callbac
     return cl_session_return(session, SR_ERR_OK);
 
 cleanup:
-    cl_subscription_close_last(session, *subscription_p, sm_subscription);
+    cl_subscription_close(session, sm_subscription);
+    cl_sr_subscription_remove_one(*subscription_p);
     if (NULL != msg_req) {
         sr__msg__free_unpacked(msg_req, NULL);
     }
