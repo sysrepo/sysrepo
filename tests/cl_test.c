@@ -1041,6 +1041,7 @@ cl_notification_test(void **state)
     rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
+    /* subscribe to some notifications */
     rc = sr_module_install_subscribe(session, test_module_install_cb, &callback_called, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
@@ -1051,6 +1052,7 @@ cl_notification_test(void **state)
             test_module_change_cb, &callback_called, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
+    /* do some changes */
     rc = sr_module_install(session, "example-module", NULL, true);
     assert_int_equal(rc, SR_ERR_OK);
 
@@ -1075,7 +1077,6 @@ cl_notification_test(void **state)
     rc = sr_feature_enable(session, "ietf-interfaces", "pre-provisioning", false);
     assert_int_equal(rc, SR_ERR_OK);
 
-    // change & commit something, expect module change callback
     /* perform a set-item request */
     value.type = SR_STRING_T;
     value.data.string_val = "notification_test";
@@ -1260,12 +1261,12 @@ cl_rpc_test(void **state)
 
     sr_free_values(output, output_cnt);
 
-    /* unsubscribe */
-    rc = sr_unsubscribe(session, subscription);
-    assert_int_equal(rc, SR_ERR_OK);
-
     /* stop the session */
     rc = sr_session_stop(session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* unsubscribe */
+    rc = sr_unsubscribe(NULL, subscription);
     assert_int_equal(rc, SR_ERR_OK);
 }
 

@@ -677,7 +677,6 @@ int
 sr_get_items(sr_session_ctx_t *session, const char *xpath, sr_val_t **values, size_t *value_cnt)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
-    sr_val_t *vals = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG5(session, session->conn_ctx, xpath, values, value_cnt);
@@ -696,34 +695,12 @@ sr_get_items(sr_session_ctx_t *session, const char *xpath, sr_val_t **values, si
     rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__GET_ITEMS);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
-    /* allocate the array of sr_val_t */
-    size_t cnt = msg_resp->response->get_items_resp->n_values;
-    vals = calloc(cnt, sizeof(*vals));
-    CHECK_NULL_NOMEM_GOTO(vals, rc, cleanup);
-
     /* copy the content of gpb values to sr_val_t */
-    for (size_t i = 0; i < cnt; i++) {
-        rc = sr_copy_gpb_to_val_t(msg_resp->response->get_items_resp->values[i], &vals[i]);
-        if (SR_ERR_OK != rc) {
-            SR_LOG_ERR_MSG("Copying from gpb to sr_val_t failed");
-            for (size_t j = 0; j < i; j++) {
-                sr_free_val_content(&vals[i]);
-            }
-            rc = SR_ERR_INTERNAL;
-            goto cleanup;
-        }
-    }
-
-    *values = vals;
-    *value_cnt = cnt;
-
-    sr__msg__free_unpacked(msg_req, NULL);
-    sr__msg__free_unpacked(msg_resp, NULL);
-
-    return cl_session_return(session, SR_ERR_OK);
+    rc = sr_values_gpb_to_sr(msg_resp->response->get_items_resp->values, msg_resp->response->get_items_resp->n_values,
+            values, value_cnt);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by copying the values from GPB.");
 
 cleanup:
-    free(vals);
     if (NULL != msg_req) {
         sr__msg__free_unpacked(msg_req, NULL);
     }
