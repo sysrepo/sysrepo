@@ -274,7 +274,7 @@ typedef enum sr_session_flag_e {
  * @brief Options overriding default connection session handling,
  * can be bitwise OR-ed value of any ::sr_session_flag_t flags.
  */
-typedef uint32_t sr_conn_options_t;
+typedef uint32_t sr_sess_options_t;
 
 /**
  * @brief Data stores that sysrepo supports. Both are editable via implicit candidate.
@@ -330,7 +330,7 @@ void sr_disconnect(sr_conn_ctx_t *conn_ctx);
  * @return Error code (SR_ERR_OK on success).
  */
 int sr_session_start(sr_conn_ctx_t *conn_ctx, const sr_datastore_t datastore,
-        const sr_conn_options_t opts, sr_session_ctx_t **session);
+        const sr_sess_options_t opts, sr_session_ctx_t **session);
 
 /**
  * @brief Starts a new configuration session on behalf of a different user.
@@ -362,7 +362,7 @@ int sr_session_start(sr_conn_ctx_t *conn_ctx, const sr_datastore_t datastore,
  * @return Error code (SR_ERR_OK on success).
  */
 int sr_session_start_user(sr_conn_ctx_t *conn_ctx, const char *user_name, const sr_datastore_t datastore,
-        const sr_conn_options_t opts, sr_session_ctx_t **session);
+        const sr_sess_options_t opts, sr_session_ctx_t **session);
 
 /**
  * @brief Stops current session and releases resources tied to the session.
@@ -937,9 +937,16 @@ int sr_feature_enable_subscribe(sr_session_ctx_t *session, sr_feature_enable_cb 
  * @brief Unsubscribes from a subscription acquired by any of sr_*_subscribe
  * calls and releases all subscription-related data.
  *
+ * @param[in] session Session context acquired with ::sr_session_start call.
+ * Does not need to be the same as used for subscribing. NULL can be passed too,
+ * in that case a temporary session used for unsubscribe will be automatically
+ * created by sysrepo.
+ * @param[in] subscription Subscription context acquired by any of sr_*_subscribe
+ * calls.
+ *
  * @return Error code (SR_ERR_OK on success).
  */
-int sr_unsubscribe(sr_subscription_ctx_t *subscription);
+int sr_unsubscribe(sr_session_ctx_t *session, sr_subscription_ctx_t *subscription);
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -983,10 +990,12 @@ int sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb cal
  *
  * @param[in] session Session context acquired with ::sr_session_start call.
  * @param[in] xpath XPath identifying the RPC.
- * @param[in] input Array of input parameters.
+ * @param[in] input Array of input parameters (array of all nodes that hold some
+ * data in RPC input subtree - same as ::sr_get_items would return).
  * @param[in] input_cnt Number of input parameters.
- * @param[out] output Array of output parameters. Will be allocated by sysrepo
- * and should be freed by caller using ::sr_free_values.
+ * @param[out] output Array of output parameters (all nodes that hold some data
+ * in RPC output subtree). Will be allocated by sysrepo and should be freed by
+ * caller using ::sr_free_values.
  * @param[out] output_cnt Number of output parameters.
  *
  * @return Error code (SR_ERR_OK on success).

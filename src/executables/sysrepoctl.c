@@ -57,7 +57,8 @@ const char * const data_files_ext[] = { SR_STARTUP_FILE_EXT,
                                         SR_RUNNING_FILE_EXT,
                                         SR_STARTUP_FILE_EXT SR_LOCK_FILE_EXT,
                                         SR_RUNNING_FILE_EXT SR_LOCK_FILE_EXT,
-                                        SR_PERSIST_FILE_EXT };
+                                        SR_PERSIST_FILE_EXT,
+                                        SR_CANDIDATE_FILE_EXT SR_LOCK_FILE_EXT};
 
 
 /**
@@ -253,7 +254,7 @@ static int
 srctl_file_create(const char *path, void *arg)
 {
     (void)arg;
-    printf("Installing data file %s ...\n", path);
+    printf("Installing data file '%s' ...\n", path);
     int fd = open(path, O_WRONLY | O_CREAT, 0666);
     return fd == -1 ? -1 : close(fd);
 }
@@ -286,9 +287,13 @@ static int
 srctl_file_remove(const char *path, void *arg)
 {
     (void)arg;
-    if (-1 != access(path, F_OK)) {
-        printf("Deleting the data file %s ...\n", path);
-        return unlink(path);
+    int ret = 0;
+
+    ret = unlink(path);
+    if (0 != ret) {
+        return (errno == ENOENT ? 0 : ret);
+    } else {
+        printf("Deleted the data file '%s'.\n", path);
     }
     return 0;
 }
@@ -446,23 +451,25 @@ srctl_schema_file_delete(const char *schema_file)
     const char *compl_file = NULL;
     int ret = 0, rc = SR_ERR_OK;
 
-    if (-1 != access(schema_file, F_OK)) {
-        printf("Deleting the schema file %s ...\n", schema_file);
-        ret = unlink(schema_file);
-        if (0 != ret) {
+    ret = unlink(schema_file);
+    if (0 != ret) {
+        if (errno != ENOENT) {
             fprintf(stderr, "Error: Unable to delete the schema file '%s'.\n", schema_file);
             rc = SR_ERR_INTERNAL;
         }
+    } else {
+        printf("Deleted the schema file '%s'.\n", schema_file);
     }
 
     compl_file = srctl_get_compl_schema_file(schema_file);
-    if (-1 != access(compl_file, F_OK)) {
-        printf("Deleting the schema file %s ...\n", compl_file);
-        ret = unlink(compl_file);
-        if (0 != ret) {
+    ret = unlink(compl_file);
+    if (0 != ret) {
+        if (errno != ENOENT) {
             fprintf(stderr, "Error: Unable to delete the schema file '%s'.\n", compl_file);
             rc = SR_ERR_INTERNAL;
         }
+    } else {
+        printf("Deleted the schema file '%s'.\n", compl_file);
     }
     free((void*)compl_file);
 

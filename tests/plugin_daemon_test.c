@@ -1,7 +1,7 @@
 /**
- * @file daemon_test.c
+ * @file plugin_daemon_test.c
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
- * @brief Sysrepo daemon unit test.
+ * @brief Sysrepo plugin daemon unit test.
  *
  * @copyright
  * Copyright 2016 Cisco Systems, Inc.
@@ -31,8 +31,6 @@
 #include "sysrepo.h"
 #include "sr_common.h"
 
-bool daemon_run_before_test = false; /**< Indices if the daemon was running before executing the test. */
-
 static void
 daemon_kill()
 {
@@ -40,7 +38,7 @@ daemon_kill()
     int pid = 0, ret = 0;
 
     /* read PID of the daemon from sysrepo PID file */
-    pidfile = fopen(SR_DAEMON_PID_FILE, "r");
+    pidfile = fopen(SR_PLUGIN_DAEMON_PID_FILE, "r");
     assert_non_null(pidfile);
     ret = fscanf(pidfile, "%d", &pid);
     assert_int_equal(ret, 1);
@@ -53,25 +51,9 @@ daemon_kill()
 static int
 test_setup(void **state)
 {
-    sr_conn_ctx_t *conn = NULL;
-    struct timespec ts = { 0 };
-    int rc = SR_ERR_OK;
-
-    /* connect to sysrepo, force daemon connection */
-    rc = sr_connect("daemon_test", SR_CONN_DAEMON_REQUIRED, &conn);
-    sr_disconnect(conn);
-    assert_true(SR_ERR_OK == rc || SR_ERR_DISCONNECT == rc);
-
-    /* kill the daemon if it was running */
-    if (SR_ERR_OK == rc) {
-        daemon_run_before_test = true;
+    /* if the daemon is running, kill it */
+    if (-1 != access(SR_PLUGIN_DAEMON_PID_FILE, F_OK)) {
         daemon_kill();
-        /* wait for the daemon to terminate */
-        ts.tv_sec = 0;
-        ts.tv_nsec = 100000000L; /* 100 milliseconds */
-        nanosleep(&ts, NULL);
-    } else {
-        daemon_run_before_test = false;
     }
 
     return 0;
@@ -80,8 +62,7 @@ test_setup(void **state)
 static int
 test_teardown(void **state)
 {
-    /* kill the daemon if it was not running before test */
-    if (!daemon_run_before_test) {
+    if (-1 != access(SR_PLUGIN_DAEMON_PID_FILE, F_OK)) {
         daemon_kill();
     }
 
@@ -89,39 +70,36 @@ test_teardown(void **state)
 }
 
 static void
-sysrepo_daemon_test(void **state)
+sysrepo_plugin_daemon_test(void **state)
 {
-    sr_conn_ctx_t *conn = NULL;
-    int rc = SR_ERR_OK, ret = 0;
+    char cwd[PATH_MAX] = { 0, };
+    int ret = 0;
+
+    getcwd(cwd, sizeof(cwd));
+    setenv("SR_PLUGINS_DIR", cwd, 1);
+    printf("SR_PLUGINS_DIR = %s\n", cwd);
 
     /* print version */
-    ret = system("../src/sysrepod -v");
+    ret = system("../src/sysrepo-plugind -v");
     assert_int_equal(ret, 0);
 
     /* print help */
-    ret = system("../src/sysrepod -h");
+    ret = system("../src/sysrepo-plugind -h");
     assert_int_equal(ret, 0);
 
     /* start the daemon */
-    ret = system("../src/sysrepod");
+    ret = system("../src/sysrepo-plugind");
     assert_int_equal(ret, 0);
 
-    /* connect to sysrepo, force daemon connection */
-    rc = sr_connect("daemon_test", SR_CONN_DAEMON_REQUIRED, &conn);
-    assert_true(SR_ERR_OK == rc);
-
-    /* disconnect */
-    sr_disconnect(conn);
-
     /* 2nd attempt to start the daemon - should fail since the daemon is running already */
-    ret = system("../src/sysrepod -l4");
+    ret = system("../src/sysrepo-plugind -l4");
     assert_int_not_equal(ret, 0);
 }
 
 int
 main() {
     const struct CMUnitTest tests[] = {
-            cmocka_unit_test_setup_teardown(sysrepo_daemon_test, test_setup, test_teardown),
+            cmocka_unit_test_setup_teardown(sysrepo_plugin_daemon_test, test_setup, test_teardown),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);

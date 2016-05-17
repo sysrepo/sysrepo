@@ -291,6 +291,26 @@ void sr_free_errors(sr_error_info_t *sr_errors, size_t sr_error_cnt);
  */
 void sr_free_schema(sr_schema_t *schema);
 
+/**
+ * @brief Daemonize the process. The process will fork and PID of the original
+ * (parent) process will be returned.
+ *
+ * @param[in] debug_mode Do not fork, Turn on logging to stderr.
+ * @param[in] log_level Desired log level.
+ * @param[in] pid_file PID file path.
+ *
+ * @return PID of the original (parent) process, 0 In case of debug mode.
+ */
+pid_t sr_daemonize(bool debug_mode, int log_level, const char *pid_file);
+
+/**
+ * @brief Send a signal notifying about initialization success to the parent of
+ * the process forked by ::sr_daemonize.
+ *
+ * @param[in] PID of the parent process that is waiting for this signal.
+ */
+void sr_daemonize_signal_success(pid_t parent_pid);
+
 /**@} utils */
 
 #endif /* SR_UTILS_H_ */
