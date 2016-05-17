@@ -1365,7 +1365,7 @@ candidate_ds_test(void **state)
     rc = sr_session_stop(session_running);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = sr_unsubscribe(subscription);
+    rc = sr_unsubscribe(NULL, subscription);
     assert_int_equal(rc, SR_ERR_OK);
 }
 int
