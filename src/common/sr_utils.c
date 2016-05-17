@@ -25,6 +25,7 @@
 #include <arpa/inet.h>
 #include <inttypes.h>
 #include <fcntl.h>
+#include <signal.h>
 #include <libyang/libyang.h>
 
 #include "sr_common.h"
@@ -747,4 +748,177 @@ sr_free_schema(sr_schema_t *schema)
         }
         free(schema->enabled_features);
     }
+}
+
+/**
+ * @brief Signal handler used to deliver initialization result from daemon
+ * child to daemon parent process, so that the parent can exit with appropriate exit code.
+ */
+static void
+sr_daemon_child_status_handler(int signum)
+{
+    switch(signum) {
+        case SIGUSR1:
+            /* child process has initialized successfully */
+            exit(EXIT_SUCCESS);
+            break;
+        case SIGALRM:
+            /* child process has not initialized within SR_CHILD_INIT_TIMEOUT seconds */
+            fprintf(stderr, "Sysrepo daemon did not initialize within the timeout period, "
+                    "check syslog for more info.\n");
+            exit(EXIT_FAILURE);
+            break;
+        case SIGCHLD:
+            /* child process has terminated */
+            fprintf(stderr, "Failure by initialization of sysrepo daemon, check syslog for more info.\n");
+            exit(EXIT_FAILURE);
+            break;
+    }
+}
+
+/**
+ * @brief Maintains only single instance of a daemon by opening and locking the PID file.
+ */
+static void
+sr_daemon_check_single_instance(const char *pid_file)
+{
+    char str[NAME_MAX] = { 0 };
+    int pidfile_fd = -1;
+    int ret = 0;
+
+    /* open PID file */
+    pidfile_fd = open(pid_file, O_RDWR | O_CREAT, 0640);
+    if (pidfile_fd < 0) {
+        SR_LOG_ERR("Unable to open sysrepo PID file '%s': %s.", pid_file, strerror(errno));
+        exit(EXIT_FAILURE);
+    }
+
+    /* acquire lock on the PID file */
+    if (lockf(pidfile_fd, F_TLOCK, 0) < 0) {
+        if (EACCES == errno || EAGAIN == errno) {
+            SR_LOG_ERR_MSG("Another instance of sysrepo daemon is running, unable to start.");
+        } else {
+            SR_LOG_ERR("Unable to lock sysrepo PID file '%s': %s.", pid_file, strerror(errno));
+        }
+        exit(EXIT_FAILURE);
+    }
+
+    /* write PID into the PID file */
+    snprintf(str, NAME_MAX, "%d\n", getpid());
+    ret = write(pidfile_fd, str, strlen(str));
+    if (-1 == ret) {
+        SR_LOG_ERR("Unable to write into sysrepo PID file '%s': %s.", pid_file, strerror(errno));
+        exit(EXIT_FAILURE);
+    }
+
+    /* do not close nor unlock the PID file, keep it open while the daemon is alive */
+}
+
+/**
+ * @brief Ignores certain signals that sysrepo daemon should not care of.
+ */
+static void
+sr_daemon_ignore_signals()
+{
+    signal(SIGUSR1, SIG_IGN);
+    signal(SIGALRM, SIG_IGN);
+    signal(SIGCHLD, SIG_IGN);
+    signal(SIGTSTP, SIG_IGN);  /* keyboard stop */
+    signal(SIGTTIN, SIG_IGN);  /* background read from tty */
+    signal(SIGTTOU, SIG_IGN);  /* background write to tty */
+    signal(SIGHUP, SIG_IGN);   /* hangup */
+    signal(SIGPIPE, SIG_IGN);  /* broken pipe */
+}
+
+/**
+ * @brief Daemonize the process - fork() and instruct the child to behave as a proper daemon.
+ */
+pid_t
+sr_daemonize(bool debug_mode, int log_level, const char *pid_file)
+{
+    pid_t pid = 0, sid = 0;
+    int fd = -1;
+
+    /* set file creation mask */
+    umask(S_IWGRP | S_IWOTH);
+
+    /* set log levels */
+    if (debug_mode) {
+        sr_log_stderr(SR_DAEMON_LOG_LEVEL);
+        sr_log_syslog(SR_LL_NONE);
+    } else {
+        sr_log_stderr(SR_DAEMON_LOG_LEVEL);
+        sr_log_syslog(SR_DAEMON_LOG_LEVEL);
+    }
+    if ((-1 != log_level) && (log_level >= SR_LL_NONE) && (log_level <= SR_LL_DBG)) {
+        if (debug_mode) {
+            sr_log_stderr(log_level);
+        } else {
+            sr_log_syslog(log_level);
+        }
+    }
+
+    if (debug_mode) {
+        /* do not fork in debug mode */
+        sr_daemon_check_single_instance(pid_file);
+        sr_daemon_ignore_signals();
+        return 0;
+    }
+
+    /* register handlers for signals that we expect to receive from child process */
+    signal(SIGCHLD, sr_daemon_child_status_handler);
+    signal(SIGUSR1, sr_daemon_child_status_handler);
+    signal(SIGALRM, sr_daemon_child_status_handler);
+
+    /* fork off the parent process. */
+    pid = fork();
+    if (pid < 0) {
+        SR_LOG_ERR("Unable to fork sysrepo plugin daemon: %s.", strerror(errno));
+        exit(EXIT_FAILURE);
+    }
+    if (pid > 0) {
+        /* this is the parent process, wait for a signal from child */
+        alarm(SR_DAEMON_INIT_TIMEOUT);
+        pause();
+        exit(EXIT_FAILURE); /* this should not be executed */
+    }
+
+    /* at this point we are executing as the child process */
+    sr_daemon_check_single_instance(pid_file);
+
+    /* ignore certain signals */
+    sr_daemon_ignore_signals();
+
+    /* create a new session containing a single (new) process group */
+    sid = setsid();
+    if (sid < 0) {
+        SR_LOG_ERR("Unable to create new session: %s.", strerror(errno));
+        exit(EXIT_FAILURE);
+    }
+
+    /* change the current working directory. */
+    if ((chdir(SR_DEAMON_WORK_DIR)) < 0) {
+        SR_LOG_ERR("Unable to change directory to '%s': %s.", SR_DEAMON_WORK_DIR, strerror(errno));
+        exit(EXIT_FAILURE);
+    }
+
+    /* turn off stderr logging */
+    sr_log_stderr(SR_LL_NONE);
+
+    /* redirect standard files to /dev/null */
+    fd = open("/dev/null", O_RDWR, 0);
+    if (-1 != fd) {
+        dup2(fd, STDIN_FILENO);
+        dup2(fd, STDOUT_FILENO);
+        dup2(fd, STDERR_FILENO);
+        close(fd);
+    }
+
+    return getppid(); /* return PID of the parent */
+}
+
+void
+sr_daemonize_signal_success(pid_t parent_pid)
+{
+    kill(parent_pid, SIGUSR1);
 }

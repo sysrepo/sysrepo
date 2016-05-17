@@ -46,10 +46,13 @@
 /** Path to the directory with internal schemas. */
 #define SR_INTERNAL_SCHEMA_SEARCH_DIR "@INTERNAL_SCHEMA_SEARCH_DIR@"
 
-/** File extension of data files for startup datastore */
+/** Path to the directory with sysrepo plugins. */
+#define SR_PLUGINS_DIR "@PLUGINS_DIR@"
+
+/** File extension of data files for startup datastore. */
 #define SR_STARTUP_FILE_EXT ".startup"
 
-/** File extension of data files for running datastore */
+/** File extension of data files for running datastore. */
 #define SR_RUNNING_FILE_EXT ".running"
 
 /** File extension of data files for candidate datastore */
@@ -58,23 +61,35 @@
 /** File extension of data lock files */
 #define SR_LOCK_FILE_EXT ".lock"
 
-/** File extension of persistent data files */
+/** File extension of persistent data files. */
 #define SR_PERSIST_FILE_EXT ".persist"
 
-/** File extension of YANG schema files */
+/** File extension of YANG schema files. */
 #define SR_SCHEMA_YANG_FILE_EXT ".yang"
 
-/** File extension of YIN schema files */
+/** File extension of YIN schema files. */
 #define SR_SCHEMA_YIN_FILE_EXT ".yin"
 
-/** Sysrepo daemon working directory. */
-#define SR_DEAMON_WORK_DIR "/"
+/** File extension of sysrepo plugins. */
+#define SR_PLUGIN_FILE_EXT ".so"
 
 /** Sysrepo daemon PID file. */
 #define SR_DAEMON_PID_FILE "@DAEMON_PID_FILE@"
 
+/** Sysrepo plugin daemon PID file. */
+#define SR_PLUGIN_DAEMON_PID_FILE "@PLUGIN_DAEMON_PID_FILE@"
+
 /** Sysrepo daemon server socket. */
 #define SR_DAEMON_SOCKET "@DAEMON_SOCKET@"
+
+/** Sysrepo daemon working directory. */
+#define SR_DEAMON_WORK_DIR "/"
+
+/** Sysrepo daemon log level <0 - 4>. */
+#define SR_DAEMON_LOG_LEVEL 3
+
+/** Sysrepo daemon initialization timeout (in seconds). */
+#define SR_DAEMON_INIT_TIMEOUT 10
 
 /** Maximum size of a GPB message. */
 #define SR_MAX_MSG_SIZE ((SIZE_MAX < UINT32_MAX) ? SIZE_MAX : UINT32_MAX)

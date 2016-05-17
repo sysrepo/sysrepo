@@ -22,7 +22,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <signal.h>
 #include "sysrepo.h"
+
+volatile int exit_application = 0;
 
 static void
 print_value(sr_val_t *value)
@@ -85,6 +88,12 @@ module_change_cb(sr_session_ctx_t *session, const char *module_name, void *priva
     print_current_config(session);
 }
 
+static void
+sigint_handler(int signum)
+{
+    exit_application = 1;
+}
+
 int
 main(int argc, char **argv)
 {
@@ -120,14 +129,17 @@ main(int argc, char **argv)
 
     printf("\n\n ========== STARTUP CONFIG APPLIED AS RUNNING ==========\n\n");
 
-    while (1) {
-        /* do some work... */
-        sleep(1);
+    /* loop until ctrl-c is pressed / SIGINT is received */
+    signal(SIGINT, sigint_handler);
+    while (!exit_application) {
+        sleep(1000);  /* or do some more useful work... */
     }
+
+    printf("Application exit requested, exiting.\n");
 
 cleanup:
     if (NULL != subscription) {
-        sr_unsubscribe(subscription);
+        sr_unsubscribe(session, subscription);
     }
     if (NULL != session) {
         sr_session_stop(session);

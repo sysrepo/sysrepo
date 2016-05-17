@@ -109,8 +109,8 @@ cl_sm_subscription_cmp_id(const void *a, const void *b)
 {
     assert(a);
     assert(b);
-    sr_subscription_ctx_t *subs_a = (sr_subscription_ctx_t*)a;
-    sr_subscription_ctx_t *subs_b = (sr_subscription_ctx_t*)b;
+    cl_sm_subscription_ctx_t *subs_a = (cl_sm_subscription_ctx_t*)a;
+    cl_sm_subscription_ctx_t *subs_b = (cl_sm_subscription_ctx_t*)b;
 
     if (subs_a->id == subs_b->id) {
         return 0;
@@ -130,10 +130,10 @@ cl_sm_subscription_cmp_id(const void *a, const void *b)
 static void
 cl_sm_subscription_cleanup_internal(void *subscription_p)
 {
-    sr_subscription_ctx_t *subscription = NULL;
+    cl_sm_subscription_ctx_t *subscription = NULL;
 
     if (NULL != subscription_p) {
-        subscription = (sr_subscription_ctx_t *)subscription_p;
+        subscription = (cl_sm_subscription_ctx_t *)subscription_p;
         free((void*)subscription->module_name);
         free(subscription);
     }
@@ -475,7 +475,7 @@ cl_sm_msg_send_connection(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *
  * @brief Get (prepare) configuration session that can be used from notification callback.
  */
 static int
-cl_sm_get_data_session(cl_sm_ctx_t *sm_ctx, sr_subscription_ctx_t *subscription,
+cl_sm_get_data_session(cl_sm_ctx_t *sm_ctx, cl_sm_subscription_ctx_t *subscription,
         const char *source_address, uint32_t source_pid, sr_session_ctx_t **config_session_p)
 {
     sr_conn_ctx_t *connection = NULL;
@@ -572,8 +572,8 @@ cl_sm_get_data_session(cl_sm_ctx_t *sm_ctx, sr_subscription_ctx_t *subscription,
 static int
 cl_sm_notif_process(cl_sm_ctx_t *sm_ctx, Sr__Msg *msg)
 {
-    sr_subscription_ctx_t *subscription = NULL;
-    sr_subscription_ctx_t subscription_lookup = { 0, };
+    cl_sm_subscription_ctx_t *subscription = NULL;
+    cl_sm_subscription_ctx_t subscription_lookup = { 0, };
     sr_session_ctx_t *data_session = NULL;
     int rc = SR_ERR_OK;
 
@@ -654,8 +654,8 @@ cl_sm_notif_process(cl_sm_ctx_t *sm_ctx, Sr__Msg *msg)
 static int
 cl_sm_rpc_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *msg)
 {
-    sr_subscription_ctx_t *subscription = NULL;
-    sr_subscription_ctx_t subscription_lookup = { 0, };
+    cl_sm_subscription_ctx_t *subscription = NULL;
+    cl_sm_subscription_ctx_t subscription_lookup = { 0, };
     Sr__Msg *resp = NULL;
     sr_val_t *input = NULL, *output = NULL;
     size_t input_cnt = 0, output_cnt = 0;
@@ -677,7 +677,7 @@ cl_sm_rpc_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *msg)
     if (NULL == subscription) {
         pthread_mutex_unlock(&sm_ctx->subscriptions_lock);
         SR_LOG_ERR("No matching subscription for subscription id=%"PRIu32".", msg->request->rpc_req->subscription_id);
-        return SR_ERR_INVAL_ARG;
+        goto cleanup;
     }
 
     SR_LOG_DBG("Calling RPC callback for subscription id=%"PRIu32".", subscription->id);
@@ -1120,9 +1120,9 @@ cl_sm_cleanup(cl_sm_ctx_t *sm_ctx)
 }
 
 int
-cl_sm_subscription_init(cl_sm_ctx_t *sm_ctx, sr_subscription_ctx_t **subscription_p)
+cl_sm_subscription_init(cl_sm_ctx_t *sm_ctx, cl_sm_subscription_ctx_t **subscription_p)
 {
-    sr_subscription_ctx_t *subscription = NULL;
+    cl_sm_subscription_ctx_t *subscription = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG2(sm_ctx, subscription_p);
@@ -1166,7 +1166,7 @@ cleanup:
 }
 
 void
-cl_sm_subscription_cleanup(sr_subscription_ctx_t *subscription)
+cl_sm_subscription_cleanup(cl_sm_subscription_ctx_t *subscription)
 {
     cl_sm_ctx_t *sm_ctx = NULL;
 

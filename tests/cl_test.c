@@ -1032,7 +1032,7 @@ cl_notification_test(void **state)
     assert_non_null(conn);
 
     sr_session_ctx_t *session = NULL;
-    sr_subscription_ctx_t *subscription1 = NULL, *subscription2 = NULL, *subscription3 = NULL;
+    sr_subscription_ctx_t *subscription = NULL;
     int callback_called = 0;
     sr_val_t value = { 0, };
     int rc = SR_ERR_OK;
@@ -1041,16 +1041,18 @@ cl_notification_test(void **state)
     rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = sr_module_install_subscribe(session, test_module_install_cb, &callback_called, &subscription1);
+    /* subscribe to some notifications */
+    rc = sr_module_install_subscribe(session, test_module_install_cb, &callback_called, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = sr_feature_enable_subscribe(session, test_feature_enable_cb, &callback_called, &subscription2);
+    rc = sr_feature_enable_subscribe(session, test_feature_enable_cb, &callback_called, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
     rc = sr_module_change_subscribe(session, "example-module", true,
-            test_module_change_cb, &callback_called, &subscription3);
+            test_module_change_cb, &callback_called, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
+    /* do some changes */
     rc = sr_module_install(session, "example-module", NULL, true);
     assert_int_equal(rc, SR_ERR_OK);
 
@@ -1075,7 +1077,6 @@ cl_notification_test(void **state)
     rc = sr_feature_enable(session, "ietf-interfaces", "pre-provisioning", false);
     assert_int_equal(rc, SR_ERR_OK);
 
-    // change & commit something, expect module change callback
     /* perform a set-item request */
     value.type = SR_STRING_T;
     value.data.string_val = "notification_test";
@@ -1109,17 +1110,11 @@ cl_notification_test(void **state)
     rc = sr_lock_module(session, "example-module");
     assert_int_equal(rc, SR_ERR_UNKNOWN_MODEL);
 
+    rc = sr_unsubscribe(session, subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
     /* stop the session */
     rc = sr_session_stop(session);
-    assert_int_equal(rc, SR_ERR_OK);
-
-    rc = sr_unsubscribe(subscription1);
-    assert_int_equal(rc, SR_ERR_OK);
-
-    rc = sr_unsubscribe(subscription2);
-    assert_int_equal(rc, SR_ERR_OK);
-
-    rc = sr_unsubscribe(subscription3);
     assert_int_equal(rc, SR_ERR_OK);
 }
 
@@ -1201,7 +1196,7 @@ cl_copy_config_test(void **state)
     rc = sr_session_stop(session_running);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = sr_unsubscribe(subscription);
+    rc = sr_unsubscribe(NULL, subscription);
     assert_int_equal(rc, SR_ERR_OK);
 }
 
@@ -1271,7 +1266,7 @@ cl_rpc_test(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 
     /* unsubscribe */
-    rc = sr_unsubscribe(subscription);
+    rc = sr_unsubscribe(NULL, subscription);
     assert_int_equal(rc, SR_ERR_OK);
 }
 
@@ -1371,7 +1366,7 @@ candidate_ds_test(void **state)
     rc = sr_session_stop(session_running);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = sr_unsubscribe(subscription);
+    rc = sr_unsubscribe(NULL, subscription);
     assert_int_equal(rc, SR_ERR_OK);
 }
 int
