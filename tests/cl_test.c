@@ -1392,11 +1392,11 @@ cl_switch_ds(void **state)
     /* value can be found in startup */
     rc = sr_get_item(session, "/test-module:main/i8", &val);
     assert_int_equal(SR_ERR_OK, rc);
-    assert_int_equal(SR_UINT8_T, val->type);
+    assert_int_equal(SR_INT8_T, val->type);
     sr_free_val(val);
     val = NULL;
 
-    value.type = SR_UINT8_T;
+    value.type = SR_INT8_T;
     value.xpath = "/test-module:main/i8";
     value.data.int8_val = 1;
 
@@ -1418,8 +1418,8 @@ cl_switch_ds(void **state)
     /* changes made in session are in place */
     rc = sr_get_item(session, "/test-module:main/i8", &val);
     assert_int_equal(SR_ERR_OK, rc);
-    assert_int_equal(SR_UINT8_T, val->type);
-    assert_int_equal(1, val->type);
+    assert_int_equal(SR_INT8_T, val->type);
+    assert_int_equal(1, val->data.uint8_val);
     sr_free_val(val);
     val = NULL;
 
