@@ -654,7 +654,7 @@ rp_discard_changes_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *sessi
  * @brief Processes a discard_changes request.
  */
 static int
-rp_copy_config_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
+rp_copy_config_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
 {
     Sr__Msg *resp = NULL;
     int rc = SR_ERR_OK;
@@ -670,17 +670,9 @@ rp_copy_config_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
         return SR_ERR_NOMEM;
     }
 
-    if (NULL != msg->request->copy_config_req->module_name) {
-        /* copy module content in DM */
-        rc = dm_copy_module(rp_ctx->dm_ctx, session->dm_session, msg->request->copy_config_req->module_name,
+    rc = rp_dt_copy_config(rp_ctx, session, msg->request->copy_config_req->module_name,
                 sr_datastore_gpb_to_sr(msg->request->copy_config_req->src_datastore),
                 sr_datastore_gpb_to_sr(msg->request->copy_config_req->dst_datastore));
-    } else {
-        /* copy all enabled modules */
-        rc = dm_copy_all_models(rp_ctx->dm_ctx, session->dm_session,
-                sr_datastore_gpb_to_sr(msg->request->copy_config_req->src_datastore),
-                sr_datastore_gpb_to_sr(msg->request->copy_config_req->dst_datastore));
-    }
 
     /* set response code */
     resp->response->result = rc;
@@ -737,6 +729,39 @@ rp_session_refresh_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg 
     return rc;
 }
 
+static int
+rp_switch_datastore_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
+{
+    Sr__Msg *resp = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->session_switch_ds_req);
+
+    SR_LOG_DBG_MSG("Processing session_switch_ds request.");
+
+    /* allocate the response */
+    rc = sr_gpb_resp_alloc(SR__OPERATION__SESSION_SWITCH_DS, session->id, &resp);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Allocation of session_switch_ds response failed.");
+        return SR_ERR_NOMEM;
+    }
+
+    rc = rp_dt_switch_datastore(rp_ctx, session, sr_datastore_gpb_to_sr(msg->request->session_switch_ds_req->datastore));
+
+    /* set response code */
+    resp->response->result = rc;
+
+    rc = rp_resp_fill_errors(resp, session->dm_session);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Copying errors to gpb failed");
+    }
+
+    /* send the response */
+    rc = cm_msg_send(rp_ctx->cm_ctx, resp);
+
+    return rc;
+}
+
 /**
  * @brief Processes a lock request.
  */
@@ -757,13 +782,7 @@ rp_lock_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg
         return SR_ERR_NOMEM;
     }
 
-    if (NULL != msg->request->lock_req->module_name) {
-        /* module-level lock */
-        rc = dm_lock_module(rp_ctx->dm_ctx, session->dm_session, msg->request->lock_req->module_name);
-    } else {
-        /* datastore-level lock */
-        rc = dm_lock_datastore(rp_ctx->dm_ctx, session->dm_session);
-    }
+    rc = rp_dt_lock(rp_ctx, session, msg->request->lock_req->module_name);
 
     /* set response code */
     resp->response->result = rc;
@@ -1107,6 +1126,9 @@ rp_msg_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
         }
 
         switch (msg->request->operation) {
+            case SR__OPERATION__SESSION_SWITCH_DS:
+                rc = rp_switch_datastore_req_process(rp_ctx, session, msg);
+                break;
             case SR__OPERATION__LIST_SCHEMAS:
                 rc = rp_list_schemas_req_process(rp_ctx, session, msg);
                 break;

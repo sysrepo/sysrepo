@@ -33,7 +33,7 @@ rp_dt_find_nodes(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char 
         return SR_ERR_NOT_FOUND;
     }
     CHECK_NULL_ARG3(data_tree->schema, data_tree->schema->module, data_tree->schema->module->name);
-    struct ly_set *res = lyd_get_node(data_tree, xpath);
+    struct ly_set *res = dm_lyd_get_node((dm_ctx_t *)dm_ctx, data_tree, xpath);
     if (NULL == res) {
         SR_LOG_ERR_MSG("Lyd get node failed");
         return LY_EINVAL == ly_errno || LY_EVALID == ly_errno ? SR_ERR_INVAL_ARG : SR_ERR_INTERNAL;

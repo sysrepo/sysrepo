@@ -31,6 +31,9 @@ class Session:
     def __del__(self):
         sr.sr_session_stop(self.session)
 
+    def switch_ds(self, ds):
+        sr.sr_session_switch_ds(self.session, ds)
+
     def get_last_error(self):
         return sr.sr_get_last_error(self.session)
 

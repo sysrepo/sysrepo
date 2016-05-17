@@ -237,6 +237,20 @@ int dm_validate_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, sr_e
 int dm_discard_changes(dm_ctx_t *dm_ctx, dm_session_t *session);
 
 /**
+ * @brief Removes the modified flags from session copies of data trees.
+ * @param [in] session
+ * @return Error code (SR_ERR_OK on success)
+ */
+int dm_remove_modified_flag(dm_session_t *session);
+
+/**
+ * @brief Empties the list of operation associated with the session
+ * @param [in] session
+ * @return Error code (SR_ERR_OK on success)
+ */
+int dm_remove_session_operations(dm_session_t *session);
+
+/**
  * @brief Removes the session copies of the data trees that are not up to date.
  * Subsequent calls will load the fresh state.
  *
@@ -420,7 +434,7 @@ bool dm_is_running_ds_session(dm_session_t *session);
  * @return Error code (SR_ERR_OK on success), SR_ERR_LOCKED if the module is locked
  * by other session, SR_ERR_UNAUTHORIZED if the file can no be locked because of permissions.
  */
-int dm_lock_module(dm_ctx_t *dm_ctx, dm_session_t *session, char *module_name);
+int dm_lock_module(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module_name);
 
 /**
  * @brief Releases the lock.
@@ -545,5 +559,133 @@ int dm_copy_all_models(dm_ctx_t *dm_ctx, dm_session_t *session, sr_datastore_t s
  */
 int dm_validate_rpc(dm_ctx_t *dm_ctx, dm_session_t *session, const char *rpc_xpath, sr_val_t *args, size_t arg_cnt, bool input);
 
+/**
+ * @brief Locks lyctx_lock and call lyd_get_node.
+ * @param [in] dm_ctx
+ * @param [in] data
+ * @param [in] expr
+ * @return set of nodes matching expr
+ */
+struct ly_set *dm_lyd_get_node(dm_ctx_t *dm_ctx, const struct lyd_node *data, const char *expr);
+
+/**
+ * @brief Locks lyctx_lock and call lyd_get_node2.
+ * @param [in] dm_ctx
+ * @param [in] data
+ * @param [in] sch_node
+ * @return set of instances of sch_node
+ */
+struct ly_set *dm_lyd_get_node2(dm_ctx_t *dm_ctx, const struct lyd_node *data, const struct lys_node *sch_node);
+
+/**
+ * @brief Locks the lyctx lock, subsequently calls lyd_new_path if the data info does not contain a node attaches the created node.
+ * @param [in] dm_ctx
+ * @param [in] data_info
+ * @param [in] ctx
+ * @param [in] path
+ * @param [in] value
+ * @param [in] options
+ * @return same as libyang's lyd_new_path
+ */
+struct lyd_node *dm_lyd_new_path(dm_ctx_t *dm_ctx, dm_data_info_t *data_info, struct ly_ctx *ctx,
+        const char *path, const char *value, int options);
+
+/**
+ * @brief Locks the lyctx lock, then call lyd_wd_add
+ * @param [in] dm_ctx
+ * @param [in] lyctx
+ * @param [in] root
+ * @param [in] options
+ * @return Error code
+ */
+int dm_lyd_wd_add(dm_ctx_t *dm_ctx, struct ly_ctx *lyctx, struct lyd_node **root, int options);
+
+/**
+ * @brief Locks the lyctx lock, then call ly_ctx_ge_node
+ * @param [in] dm_ctx
+ * @param [in] lyctx
+ * @param [in] start
+ * @param [in] nodeid
+ * @return Matched schema node
+ */
+const struct lys_node *dm_ly_ctx_get_node(dm_ctx_t *dm_ctx, struct ly_ctx *lyctx, const struct lys_node *start, const char *nodeid);
+
+/**
+ * @brief Copies all modified data trees (in current datastore) from one session to another.
+ * @note Corresponding operations are not copied so the changes may be overwritten by session refresh.
+ * @param [in] dm_ctx
+ * @param [in] from
+ * @param [in] to
+ * @return Error code (SR_ERR_OK on success)
+ */
+int dm_copy_modified_session_trees(dm_ctx_t *dm_ctx, dm_session_t *from, dm_session_t *to);
+
+/**
+ * @brief Copies the selected data tree (in current datastore) from one session to another, if the module is not
+ * loaded in 'from' session, does nothing.
+ * @param [in] dm_ctx
+ * @param [in] from
+ * @param [in] to
+ * @param [in] module_name
+ * @return Error code (SR_ERR_OK on success)
+ */
+int dm_copy_session_tree(dm_ctx_t *dm_ctx, dm_session_t *from, dm_session_t *to, const char *module_name);
+
+/**
+ * @brief Moves session data trees and operations (in current datastore) from one session to another
+ * @param [in] dm_ctx
+ * @param [in] from
+ * @param [in] to
+ * @return Error code (SR_ERR_OK on success)
+ */
+int dm_move_session_tree_and_ops(dm_ctx_t *dm_ctx, dm_session_t *from, dm_session_t *to);
+
+/**
+ * @brief Changes the datastore to which the session is tied to. Subsequent operations
+ * will work on the selected datastore.
+ * @param [in] session
+ * @param [in] ds
+ * @return Error code (SR_ERR_OK on success)
+ */
+int dm_session_switch_ds(dm_session_t *session, sr_datastore_t ds);
+
+/**
+ * @brief Moves session data trees and operations (for all datastores) from one session to another.
+ * @param [in] dm_ctx
+ * @param [in] from
+ * @param [in] to
+ * @return Error code (SR_ERR_OK on success)
+ */
+int dm_move_session_tree_and_ops_all_ds(dm_ctx_t *dm_ctx, dm_session_t *from, dm_session_t *to);
+
+/**
+ * @brief Moves data trees from one datastore to another in the session
+ * @param [in] dm_ctx
+ * @param [in] session
+ * @param [in] from
+ * @param [in] to
+ * @return Error code (SR_ERR_OK)
+ */
+int dm_move_session_trees_in_session(dm_ctx_t *dm_ctx, dm_session_t *session, sr_datastore_t from, sr_datastore_t to);
+
+/**
+ * @brief Returns the set of all modules.
+ * @param [in] dm_ctx
+ * @param [in] session
+ * @param [in] enabled_only
+ * @param [out] result
+ * @return Error code (SR_ERR_OK on success)
+ */
+int dm_get_all_modules(dm_ctx_t *dm_ctx, dm_session_t *session, bool enabled_only, struct ly_set **result);
+
+/**
+ * @brief If there is a session copy of the model, return modified flag.
+ * @param [in] dm_ctx
+ * @param [in] session
+ * @param [in] module_name
+ * @param [out] res - modified flag to be set.
+ * @return Error code (SR_ERR_OK on success)
+ */
+int dm_is_model_modified(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module_name, bool *res);
 /**@} Data manager*/
 #endif /* SRC_DATA_MANAGER_H_ */

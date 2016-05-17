@@ -118,6 +118,12 @@ sr_gpb_req_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__M
             sr__session_refresh_req__init((Sr__SessionRefreshReq*)sub_msg);
             req->session_refresh_req = (Sr__SessionRefreshReq*)sub_msg;
             break;
+        case SR__OPERATION__SESSION_SWITCH_DS:
+            sub_msg = calloc(1, sizeof(Sr__SessionSwitchDsReq));
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
+            sr__session_switch_ds_req__init((Sr__SessionSwitchDsReq*)sub_msg);
+            req->session_switch_ds_req = (Sr__SessionSwitchDsReq*)sub_msg;
+            break;
         case SR__OPERATION__LIST_SCHEMAS:
             sub_msg = calloc(1, sizeof(Sr__ListSchemasReq));
             CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
@@ -285,6 +291,12 @@ sr_gpb_resp_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__
            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
            sr__session_refresh_resp__init((Sr__SessionRefreshResp*)sub_msg);
            resp->session_refresh_resp = (Sr__SessionRefreshResp*)sub_msg;
+           break;
+        case SR__OPERATION__SESSION_SWITCH_DS:
+           sub_msg = calloc(1, sizeof(Sr__SessionSwitchDsResp));
+           CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
+           sr__session_switch_ds_resp__init((Sr__SessionSwitchDsResp*)sub_msg);
+           resp->session_switch_ds_resp = (Sr__SessionSwitchDsResp*)sub_msg;
            break;
         case SR__OPERATION__LIST_SCHEMAS:
             sub_msg = calloc(1, sizeof(Sr__ListSchemasResp));
@@ -1173,6 +1185,8 @@ Sr__DataStore
 sr_datastore_sr_to_gpb(const sr_datastore_t sr_ds)
 {
     switch (sr_ds) {
+        case SR_DS_CANDIDATE:
+            return SR__DATA_STORE__CANDIDATE;
         case SR_DS_RUNNING:
             return SR__DATA_STORE__RUNNING;
         case SR_DS_STARTUP:
@@ -1186,6 +1200,8 @@ sr_datastore_t
 sr_datastore_gpb_to_sr(Sr__DataStore gpb_ds)
 {
     switch (gpb_ds) {
+        case SR__DATA_STORE__CANDIDATE:
+            return SR_DS_CANDIDATE;
         case SR__DATA_STORE__RUNNING:
             return SR_DS_RUNNING;
         case SR__DATA_STORE__STARTUP:

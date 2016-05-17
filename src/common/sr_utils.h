@@ -215,18 +215,6 @@ struct lyd_node* sr_dup_datatree(struct lyd_node *root);
 int sr_lyd_unlink(dm_data_info_t *data_info, struct lyd_node *node);
 
 /**
- * @brief Call lyd_new_path if the data info does not contain a node attaches the created node.
- * @param [in] data_info
- * @param [in] ctx
- * @param [in] path
- * @param [in] value
- * @param [in] options
- * @return same as libyang's lyd_new_path
- */
-struct lyd_node *sr_lyd_new_path(dm_data_info_t *data_info, struct ly_ctx *ctx,
-        const char *path, const char *value, int options);
-
-/**
  * @brief Insert node after sibling and fixes the pointer in dm_data_info if needed.
  * @param [in] data_info
  * @param [in] sibling
@@ -260,6 +248,12 @@ sr_type_t sr_libyang_type_to_sysrepo(LY_DATA_TYPE t);
  */
 int sr_val_to_str(const sr_val_t *value, const struct lys_node *schema_node, char **out);
 
+/**
+ * @brief Returns the string name of the datastore
+ * @param [in] ds
+ * @return Data store name
+ */
+const char * sr_ds_to_str(sr_datastore_t ds);
 /**
  * @brief Frees contents of the sr_val_t structure, does not free the
  * value structure itself.

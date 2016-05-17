@@ -159,7 +159,7 @@ typedef enum sr_error_e {
     SR_ERR_UNKNOWN_MODEL,      /**< Request includes unknown schema */
     SR_ERR_BAD_ELEMENT,        /**< Unknown element in existing schema */
     SR_ERR_VALIDATION_FAILED,  /**< Validation of the changes failed. */
-    SR_ERR_COMMIT_FAILED,      /**< Commit operation failed. */
+    SR_ERR_OPERATION_FAILED,   /**< An operation failed. */
     SR_ERR_DATA_EXISTS,        /**< Item already exists. */
     SR_ERR_DATA_MISSING,       /**< Item does not exists. */
     SR_ERR_UNAUTHORIZED,       /**< Operation not authorized. */
@@ -285,6 +285,8 @@ typedef enum sr_datastore_e {
     SR_DS_STARTUP = 0,    /**< Contains configuration data that should be loaded by the controlled application when it starts. */
     SR_DS_RUNNING = 1,    /**< Contains currently applied configuration and state data of a running application.
                                @note This datastore is supported only by applications that subscribe for notifications about the changes made in the datastore. */
+    SR_DS_CANDIDATE = 2,  /**< Contains configuration that can be manipulated without impacting the current configuration. It can be than
+                           * committed to the running or copied to a datastore. */
 } sr_datastore_t;
 
 /**
@@ -317,7 +319,8 @@ void sr_disconnect(sr_conn_ctx_t *conn_ctx);
  *
  * @param[in] conn_ctx Connection context acquired with ::sr_connect call.
  * @param[in] datastore Datastore on which all sysrepo functions within this
- * session will operate. Functionality of some sysrepo calls does not depend on
+ * session will operate. Later on, datastore can be changed using
+ * ::sr_session_switch_ds call. Functionality of some sysrepo calls does not depend on
  * datastore. If your session will contain just calls like these, you can pass
  * any valid value (e.g. SR_RUNNING).
  * @param[in] opts Options overriding default session handling.
@@ -386,6 +389,16 @@ int sr_session_stop(sr_session_ctx_t *session);
  * @return Error code (SR_ERR_OK on success).
  */
 int sr_session_refresh(sr_session_ctx_t *session);
+
+/**
+ * @brief Changes datastore to which the session is tied to. All subsequent
+ * calls will be issued on the chosen datastore.
+ *
+ * @param [in] session
+ * @param [in] ds
+ * @return Error code (SR_ERR_OK on success)
+ */
+int sr_session_switch_ds(sr_session_ctx_t *session, sr_datastore_t ds);
 
 /**
  * @brief Retrieves detailed information about the error that has occurred
@@ -737,8 +750,8 @@ int sr_discard_changes(sr_session_ctx_t *session);
  *
  * If the target datastore exists, it is overwritten. Otherwise, a new one is created.
  *
- * @note In the current implementation, running configuration datastore is not
- * supported as the destination datastore.
+ * @note Operation may fail, if it tries to copy a not enabled configuration to the
+ * running datastore.
  *
  * @param[in] session Session context acquired with ::sr_session_start call.
  * @param[in] module_name If specified, only limits the copy operation only to
@@ -759,6 +772,7 @@ int sr_copy_config(sr_session_ctx_t *session, const char *module_name,
 /**
  * @brief Locks the datastore which the session is tied to. If there is
  * a module locked by the other session SR_ERR_LOCKED is returned.
+ * Operation fails if there is a modified data tree in session.
  *
  * All data models within the datastore will be locked for writing until
  * ::sr_unlock_datastore is called or until the session is stopped or terminated
@@ -787,7 +801,7 @@ int sr_unlock_datastore(sr_session_ctx_t *session);
 
 /**
  * @brief Locks specified data module within the datastore which the session
- * is tied to.
+ * is tied to. Operation fails if the data tree has been modified.
  *
  * Specified data module will be locked for writing in the datastore until
  * ::sr_unlock_module is called or until the session is stopped or terminated

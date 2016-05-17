@@ -132,6 +132,37 @@ int rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, sr_error_info_t **erro
  * be merged
  */
 int rp_dt_refresh_session(rp_ctx_t *rp_ctx, rp_session_t *session, sr_error_info_t **errors, size_t *err_cnt);
+
+/**
+ * @brief Copies the configuration from a datastore to another one.
+ * @param [in] rp_ctx
+ * @param [in] session
+ * @param [in] module_name
+ * @param [in] src
+ * @param [in] dst
+ * @return Error code (SR_ERR_OK on success)
+ */
+int rp_dt_copy_config(rp_ctx_t *rp_ctx, rp_session_t *session, const char *module_name, sr_datastore_t src, sr_datastore_t dst);
+
+/**
+ * @brief Changes the datastore of the session. Subsequent call will operate on the
+ * selected datastore.
+ * @param [in] rp_ctx
+ * @param [in] session
+ * @param [in] ds
+ * @return Error code (SR_ERR_OK on success)
+ */
+int rp_dt_switch_datastore(rp_ctx_t *rp_ctx, rp_session_t *session, sr_datastore_t ds);
+
+/**
+ * @brief Locks a model or whole datastore. Lock can not be acquired if the session
+ * copy has been modified.
+ * @param [in] rp_ctx
+ * @param [in] session
+ * @param [in] module_name optional to lock only a particular model
+ * @return Error code (SR_ERR_OK on success)
+ */
+int rp_dt_lock(const rp_ctx_t *rp_ctx, const rp_session_t *session, const char *module_name);
 #endif /* RP_DT_EDIT_H */
 
 /**
