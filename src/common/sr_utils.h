@@ -249,6 +249,12 @@ sr_type_t sr_libyang_type_to_sysrepo(LY_DATA_TYPE t);
 int sr_val_to_str(const sr_val_t *value, const struct lys_node *schema_node, char **out);
 
 /**
+ * @brief Returns the string name of the datastore
+ * @param [in] ds
+ * @return Data store name
+ */
+const char * sr_ds_to_str(sr_datastore_t ds);
+/**
  * @brief Frees contents of the sr_val_t structure, does not free the
  * value structure itself.
  */

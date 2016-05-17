@@ -1017,10 +1017,12 @@ test_module_change_cb(sr_session_ctx_t *session, const char *module_name, void *
     printf("Some data within the module '%s' has changed.\n", module_name);
 
     rc = sr_get_item(session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &value);
-    assert_int_equal(rc, SR_ERR_OK);
-
-    printf("New value for '%s' = '%s'\n", value->xpath, value->data.string_val);
-    sr_free_val(value);
+    if (SR_ERR_OK == rc) {
+        printf("New value for '%s' = '%s'\n", value->xpath, value->data.string_val);
+        sr_free_val(value);
+    } else {
+        printf("While retrieving '%s' error with code (%d) occured\n", "/example-module:container/list[key1='key1'][key2='key2']/leaf", rc);
+    }
 }
 
 static void

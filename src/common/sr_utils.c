@@ -644,6 +644,22 @@ sr_val_to_str(const sr_val_t *value, const struct lys_node *schema_node, char **
     return SR_ERR_OK;
 }
 
+const char *
+sr_ds_to_str(sr_datastore_t ds)
+{
+    const char *const sr_dslist[] = {
+        "startup",    /* SR_DS_STARTUP */
+        "running",    /* SR_DS_RUNNING */
+        "candidate",  /* SR_DS_CANDIDATE */
+    };
+
+    if (ds >= (sizeof(sr_dslist) / (sizeof *sr_dslist))) {
+        return "Unknown datastore";
+    } else {
+        return sr_dslist[ds];
+    }
+}
+
 void
 sr_free_val_content(sr_val_t *value)
 {

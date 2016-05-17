@@ -882,6 +882,7 @@ int
 rp_dt_copy_config(rp_ctx_t *rp_ctx, rp_session_t *session, const char *module_name, sr_datastore_t src, sr_datastore_t dst)
 {
     CHECK_NULL_ARG2(rp_ctx, session);
+    SR_LOG_INF("Copy config: %s -> %s, model: %s", sr_ds_to_str(src), sr_ds_to_str(dst), module_name);
     int rc = SR_ERR_OK;
     int prev_ds = session->datastore;
 
