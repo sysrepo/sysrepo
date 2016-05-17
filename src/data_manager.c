@@ -1606,8 +1606,8 @@ dm_get_schema(dm_ctx_t *dm_ctx, const char *module_name, const char *module_revi
 
     pthread_rwlock_rdlock(&dm_ctx->lyctx_lock);
     const struct lys_module *module = ly_ctx_get_module(dm_ctx->ly_ctx, module_name, module_revision);
-    pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
     if (NULL == module) {
+        pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
         SR_LOG_ERR("Module %s with revision %s was not found", module_name, module_revision);
         return SR_ERR_NOT_FOUND;
     }
@@ -1615,6 +1615,7 @@ dm_get_schema(dm_ctx_t *dm_ctx, const char *module_name, const char *module_revi
     if (NULL == submodule_name) {
         /* module*/
         rc = lys_print_mem(schema, module, yang_format ? LYS_OUT_YANG : LYS_OUT_YIN, NULL);
+        pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
         if (0 != rc) {
             SR_LOG_ERR("Module %s print failed.", module->name);
             return SR_ERR_INTERNAL;
@@ -1623,7 +1624,6 @@ dm_get_schema(dm_ctx_t *dm_ctx, const char *module_name, const char *module_revi
     }
 
     /* submodule */
-    pthread_rwlock_rdlock(&dm_ctx->lyctx_lock);
     const struct lys_submodule *submodule = ly_ctx_get_submodule2(module, submodule_name);
     pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
     if (NULL == submodule) {
