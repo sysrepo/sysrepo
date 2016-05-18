@@ -780,21 +780,22 @@ sr_daemon_child_status_handler(int signum)
  * @brief Maintains only single instance of a daemon by opening and locking the PID file.
  */
 static void
-sr_daemon_check_single_instance(const char *pid_file)
+sr_daemon_check_single_instance(const char *pid_file, int *pid_file_fd)
 {
     char str[NAME_MAX] = { 0 };
-    int pidfile_fd = -1;
     int ret = 0;
 
+    CHECK_NULL_ARG_VOID2(pid_file, pid_file_fd);
+
     /* open PID file */
-    pidfile_fd = open(pid_file, O_RDWR | O_CREAT, 0640);
-    if (pidfile_fd < 0) {
+    *pid_file_fd = open(pid_file, O_RDWR | O_CREAT, 0640);
+    if (*pid_file_fd < 0) {
         SR_LOG_ERR("Unable to open sysrepo PID file '%s': %s.", pid_file, strerror(errno));
         exit(EXIT_FAILURE);
     }
 
     /* acquire lock on the PID file */
-    if (lockf(pidfile_fd, F_TLOCK, 0) < 0) {
+    if (lockf(*pid_file_fd, F_TLOCK, 0) < 0) {
         if (EACCES == errno || EAGAIN == errno) {
             SR_LOG_ERR_MSG("Another instance of sysrepo daemon is running, unable to start.");
         } else {
@@ -805,7 +806,7 @@ sr_daemon_check_single_instance(const char *pid_file)
 
     /* write PID into the PID file */
     snprintf(str, NAME_MAX, "%d\n", getpid());
-    ret = write(pidfile_fd, str, strlen(str));
+    ret = write(*pid_file_fd, str, strlen(str));
     if (-1 == ret) {
         SR_LOG_ERR("Unable to write into sysrepo PID file '%s': %s.", pid_file, strerror(errno));
         exit(EXIT_FAILURE);
@@ -834,7 +835,7 @@ sr_daemon_ignore_signals()
  * @brief Daemonize the process - fork() and instruct the child to behave as a proper daemon.
  */
 pid_t
-sr_daemonize(bool debug_mode, int log_level, const char *pid_file)
+sr_daemonize(bool debug_mode, int log_level, const char *pid_file, int *pid_file_fd)
 {
     pid_t pid = 0, sid = 0;
     int fd = -1;
@@ -860,7 +861,7 @@ sr_daemonize(bool debug_mode, int log_level, const char *pid_file)
 
     if (debug_mode) {
         /* do not fork in debug mode */
-        sr_daemon_check_single_instance(pid_file);
+        sr_daemon_check_single_instance(pid_file, pid_file_fd);
         sr_daemon_ignore_signals();
         return 0;
     }
@@ -884,7 +885,7 @@ sr_daemonize(bool debug_mode, int log_level, const char *pid_file)
     }
 
     /* at this point we are executing as the child process */
-    sr_daemon_check_single_instance(pid_file);
+    sr_daemon_check_single_instance(pid_file, pid_file_fd);
 
     /* ignore certain signals */
     sr_daemon_ignore_signals();
