@@ -295,42 +295,59 @@ rp_dt_find_in_choice(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath,
     CHECK_NULL_ARG5(dm_ctx, xpath, trimmed_xpath, module, match);
     /* libyang err_msg is used to parse the match and unmatch part */
     int rc = SR_ERR_BAD_ELEMENT;
+    #define MAX_NODE_NAME_LEN 100
     char *unmatch_part = NULL;
     char *err_msg = NULL;
+    char *search = NULL;
+    size_t search_size = 0;
     char *xp_copy = strdup(ly_errpath());
     CHECK_NULL_NOMEM_RETURN(xp_copy);
     char *last_slash = rindex(xp_copy, '/');
     if (NULL == last_slash) {
-        goto not_matched;
+        goto done;
     }
     *last_slash = 0;
 
     err_msg = strdup(ly_errmsg());
-    CHECK_NULL_NOMEM_GOTO(err_msg, rc, not_matched);
+    CHECK_NULL_NOMEM_GOTO(err_msg, rc, done);
 
     /* split xpath into unmatched part and the part that may contain a choice */
     unmatch_part = strdup(trimmed_xpath + strlen(xp_copy) + 1);
-    CHECK_NULL_NOMEM_GOTO(unmatch_part, rc, not_matched);
+    CHECK_NULL_NOMEM_GOTO(unmatch_part, rc, done);
+
+    search_size = MAX_NODE_NAME_LEN + strlen(unmatch_part);
+    search = calloc(search_size, sizeof(*search));
+    CHECK_NULL_NOMEM_GOTO(search, rc, done);
 
     const struct lys_node *node = dm_ly_ctx_get_node(dm_ctx, module->ctx, NULL, xp_copy);
     if (NULL == node) {
-        goto not_matched;
+        goto done;
     }
     struct lys_node *iter = NULL;
+    struct lys_node *child = NULL;
 
     LY_TREE_FOR(node->child, iter)
     {
         if (LYS_CHOICE == iter->nodetype) {
             /* TODO choice in choice */
-            *match = (struct lys_node *) ly_ctx_get_node(module->ctx, iter, unmatch_part);
-            if (NULL != *match) {
-                rc = SR_ERR_OK;
+            LY_TREE_FOR(iter->child, child) {
+                if (LYS_CASE == child->nodetype || 0 == strcmp(unmatch_part, child->name)){
+                    snprintf(search, search_size, "%s/%s", child->name, unmatch_part);
+                } else {
+                    continue;
+                }
+                *match = (struct lys_node *) ly_ctx_get_node(module->ctx, iter, search);
+                if (NULL != *match) {
+                    rc = SR_ERR_OK;
+                    goto done;
+                }
             }
         }
     }
 
 
-not_matched:
+done:
+    free(search);
     free(xp_copy);
     free(unmatch_part);
     if (SR_ERR_OK != rc && NULL != session) {

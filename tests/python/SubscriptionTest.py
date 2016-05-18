@@ -23,6 +23,7 @@ from SysrepoWrappers import *
 import signal
 import os
 import subprocess
+import TestModule
 
 class SubscriptionTester(SysrepoTester):
 
@@ -53,6 +54,9 @@ class SysrepodTester(SysrepoTester):
 
 class SubscriptionTest(unittest.TestCase):
 
+    @classmethod
+    def setUpClass(self):
+        TestModule.create_ietf_interfaces()
 
     def test_SubscribeUnsubscribe(self):
         tm = TestManager()

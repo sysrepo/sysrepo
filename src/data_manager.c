@@ -1606,8 +1606,8 @@ dm_get_schema(dm_ctx_t *dm_ctx, const char *module_name, const char *module_revi
 
     pthread_rwlock_rdlock(&dm_ctx->lyctx_lock);
     const struct lys_module *module = ly_ctx_get_module(dm_ctx->ly_ctx, module_name, module_revision);
-    pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
     if (NULL == module) {
+        pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
         SR_LOG_ERR("Module %s with revision %s was not found", module_name, module_revision);
         return SR_ERR_NOT_FOUND;
     }
@@ -1615,6 +1615,7 @@ dm_get_schema(dm_ctx_t *dm_ctx, const char *module_name, const char *module_revi
     if (NULL == submodule_name) {
         /* module*/
         rc = lys_print_mem(schema, module, yang_format ? LYS_OUT_YANG : LYS_OUT_YIN, NULL);
+        pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
         if (0 != rc) {
             SR_LOG_ERR("Module %s print failed.", module->name);
             return SR_ERR_INTERNAL;
@@ -1623,7 +1624,6 @@ dm_get_schema(dm_ctx_t *dm_ctx, const char *module_name, const char *module_revi
     }
 
     /* submodule */
-    pthread_rwlock_rdlock(&dm_ctx->lyctx_lock);
     const struct lys_submodule *submodule = ly_ctx_get_submodule2(module, submodule_name);
     pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
     if (NULL == submodule) {
@@ -2798,31 +2798,6 @@ dm_copy_session_tree(dm_ctx_t *dm_ctx, dm_session_t *from, dm_session_t *to, con
             dm_data_info_free(new_info);
         }
     }
-    return rc;
-}
-
-int
-dm_move_session_tree_and_ops(dm_ctx_t *dm_ctx, dm_session_t *from, dm_session_t *to)
-{
-    CHECK_NULL_ARG3(dm_ctx, from, to);
-    CHECK_NULL_ARG2(from->session_modules, from->session_modules[from->datastore]);
-    int rc = SR_ERR_OK;
-
-    sr_btree_cleanup(to->session_modules[to->datastore]);
-    dm_free_sess_operations(to->operations[to->datastore], to->oper_count[to->datastore]);
-
-    to->session_modules[to->datastore] = from->session_modules[from->datastore];
-    to->oper_count[to->datastore] = from->oper_count[from->datastore];
-    to->oper_size[to->datastore] = from->oper_size[from->datastore];
-    to->operations[to->datastore] = from->operations[from->datastore];
-
-    from->session_modules[from->datastore] = NULL;
-    from->operations[from->datastore] = NULL;
-    from->oper_count[from->datastore] = 0;
-    from->oper_size[from->datastore] = 0;
-
-    rc = dm_discard_changes(dm_ctx, from);
-    CHECK_RC_MSG_RETURN(rc, "Discard changes failed");
     return rc;
 }
 
