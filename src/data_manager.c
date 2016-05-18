@@ -1893,6 +1893,9 @@ dm_commit_prepare_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_con
     while (NULL != (info = sr_btree_get_at(session->session_modules[session->datastore], i))) {
         if (info->modified) {
             c_ctx->modif_count++;
+            /* TODO load subscriptions for the model
+             * attach schema node to the subscription
+             */
         }
         i++;
     }
