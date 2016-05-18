@@ -408,6 +408,7 @@ rp_dt_get_values_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char 
 {
     CHECK_NULL_ARG4(rp_ctx, rp_ctx->dm_ctx, rp_session, rp_session->dm_session);
     CHECK_NULL_ARG3(xpath, values, count);
+    SR_LOG_INF("Get items request %s datastore, xpath: %s", sr_ds_to_str(rp_session->datastore), xpath);
 
     int rc = SR_ERR_INVAL_ARG;
     struct lyd_node *data_tree = NULL;
@@ -453,6 +454,7 @@ rp_dt_get_values_wrapper_with_opts(rp_ctx_t *rp_ctx, rp_session_t *rp_session, r
 {
     CHECK_NULL_ARG5(rp_ctx, rp_ctx->dm_ctx, rp_session, rp_session->dm_session, get_items_ctx);
     CHECK_NULL_ARG3(xpath, values, count);
+    SR_LOG_INF("Get items request %s datastore, xpath: %s, offset: %zu, limit: %zu", sr_ds_to_str(rp_session->datastore), xpath, offset, limit);
 
     int rc = SR_ERR_INVAL_ARG;
     struct lyd_node *data_tree = NULL;
