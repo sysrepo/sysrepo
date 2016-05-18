@@ -121,13 +121,13 @@ the system-wide Sysrepo Engine) and should normally be automatically started by
 system startup. However, auto-start is not configured by cmake install operation 
 and you need to configure it yourself, accroding to the guidelines of your system.
 
-Sysrepo deamon can be started by executing following command:
+Sysrepo deamon can be started by executing of the following command:
 ~~~~~~~~~~~~~~~
 sysrepod
 ~~~~~~~~~~~~~~~
 
-The daemon accepts several arguments for specifying log verbosity level or for 
-debugging. You can display them by executing `sysrepod -h`
+The daemon accepts several arguments aimed for debugging. You can display them
+by executing `sysrepod -h`
 ~~~~~~~~~~~~~~~
 sysrepod - sysrepo daemon, version 0.1.18
 
