@@ -1307,6 +1307,7 @@ sr_module_install_subscribe(sr_session_ctx_t *session, sr_module_install_cb call
     cl_session_clear_errors(session);
 
     /* Initialize the subscription */
+    sr_subscription = *subscription_p;
     rc = cl_subscribtion_init(session, SR__NOTIFICATION_EVENT__MODULE_INSTALL_EV, NULL,
             private_ctx, &sr_subscription, &sm_subscription, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by initialization of the subscription in the client library.");
@@ -1350,6 +1351,7 @@ sr_feature_enable_subscribe(sr_session_ctx_t *session, sr_feature_enable_cb call
     cl_session_clear_errors(session);
 
     /* Initialize the subscription */
+    sr_subscription = *subscription_p;
     rc = cl_subscribtion_init(session, SR__NOTIFICATION_EVENT__FEATURE_ENABLE_EV, NULL,
             private_ctx, &sr_subscription, &sm_subscription, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by initialization of the subscription in the client library.");
@@ -1393,6 +1395,7 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, b
     cl_session_clear_errors(session);
 
     /* Initialize the subscription */
+    sr_subscription = *subscription_p;
     rc = cl_subscribtion_init(session, SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV, module_name,
             private_ctx, &sr_subscription, &sm_subscription, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by initialization of the subscription in the client library.");
@@ -1569,6 +1572,7 @@ sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callbac
     cl_session_clear_errors(session);
 
     /* Initialize the subscription */
+    sr_subscription = *subscription_p;
     rc = cl_subscribtion_init(session, SR__NOTIFICATION_EVENT__RPC_EV, NULL,
             private_ctx, &sr_subscription, &sm_subscription, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by initialization of the subscription in the client library.");
