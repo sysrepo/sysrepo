@@ -258,7 +258,7 @@ rp_dt_get_value_from_node(struct lyd_node *node, sr_val_t *val)
     return SR_ERR_OK;
 
 cleanup:
-    sr_free_val(val);
+    sr_free_val_content(val);
     return rc;
 }
 
