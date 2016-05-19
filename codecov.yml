@@ -1,0 +1,19 @@
+comment:
+  layout: header, changes, diff
+  
+coverage:
+  precision: 2
+  round: nearest
+  
+  ignore:
+  - tests/.*
+  - examples/.*
+  
+  parsers:
+    gcov:
+      branch_detection:
+        macro: no
+        loop: no
+        conditional: no
+        method: no
+

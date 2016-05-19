@@ -13,6 +13,7 @@ Sysrepo can be easily integrated to management agents such as [NETCONF](https://
 ![Sysrepo Architecture](doc/high_level_architecture.png)
 
 ## Status
+- May 2016: RPC support and sysrepo plugins infrastructure ready, working on better notifications towards subscribed applications
 - April 2016: full concurrency and locking support ready, generated Python bindings, working on concurrency testing, helping with [Netopeer 2](https://github.com/CESNET/Netopeer2) integration
 - March 2016: syrepo daemon and data manipulation (edit-config) functionality ready, working on full concurrency and locking support
 - February 2016: working on sysrepo daemon, data manipulation (edit-config) functionality
@@ -21,17 +22,16 @@ Sysrepo can be easily integrated to management agents such as [NETCONF](https://
 
 ## Features
 - ability to store / retrieve YANG-modeled data elements adressed by XPath
-- startup and running configuration datastore with implicit candidate capability
+- startup, running and candidate datastores
 - data consistency and constraints enforecment according to YANG model (with help of [libyang](https://github.com/cesnet/libyang) library)
 - no single point of failure design (client library is able to instantiate its own sysrepo engine and prerform most of the data-access operations also by itself, whithout the need of contacting system-wide daemon)
 - full transaction and concurrency support, conforming all ACID properties (Atomicity, Consistency, Isolation, Durability)
-- (TODO) notifications of subscribed applications about the changes made in the datastore
+- custom RPC support
+- plugins infrastructure for use-cases where there is no daemon to be integrated with sysrepo
+- (IN PROGRESS) notifications of subscribed applications about the changes made in the datastore
 - (TODO) ability to subscribe to notifications as a verifier and validate the changes before they are committed
-- (TODO) plugins infrastructure for applications / services that cannot use sysrepo as the datastore, but still want to be manageable via sysrepo
 - (TODO) operational data support (publishing of application's state data to sysrepo)
 - (TODO) [NACM](https://tools.ietf.org/html/rfc6536) (NETCONF Access Control Model)
-- (TODO) [NETCONF Event Notifications](https://tools.ietf.org/html/rfc5277)
-- (TODO) custom RPC support
 - (TODO) [NETCONF Event Notifications](https://tools.ietf.org/html/rfc5277) support
 - (TODO) bindings / native client libraries for other programming languages (Python, Java, ...)
 
