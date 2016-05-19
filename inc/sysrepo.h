@@ -838,11 +838,16 @@ int sr_unlock_module(sr_session_ctx_t *session, const char *module_name);
 ////////////////////////////////////////////////////////////////////////////////
 
 /**
- * @brief TODO
+ * @brief Type of the notification event which the notification subscriber is interested in.
+ *
+ * The correct implementation should subscribe to both SR_EV_VERIFY and SR_EV_NOTIFY events.
  */
 typedef enum sr_notif_event_e {
-    SR_EV_VERIFY,  /**< called before changes have been committed, application is supposed to verify that the chages can be applied and reserve all resources for that change */
-    SR_EV_NOTIFY,  /**< called after changes have been applied, used just to notify the recipient */
+    SR_EV_VERIFY,  /**< Occurs just before the changes are committed to the datastore,
+                        the subscriber is supposed to verify that the changes are valid and can be applied
+                        and prepare all resources for the changes. The subscriber can deny the changes in this phase. */
+    SR_EV_NOTIFY,  /**< Occurs just after the changes have been committed to the datastore,
+                        the subscriber is supposed to apply the changes now, but cannot deny the changes in this phase. */
 } sr_notif_event_t;
 
 /**
@@ -1111,7 +1116,7 @@ void sr_free_values(sr_val_t *values, size_t count);
 void sr_free_val_iter(sr_val_iter_t *iter);
 
 /**
- * @brief TODO Frees ::sr_val_iter_t iterator and all memory allocated within it.
+ * @brief Frees ::sr_change_iter_t iterator and all memory allocated within it.
  *
  * @param[in] iter Iterator to be freed.
  */

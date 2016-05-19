@@ -1458,6 +1458,12 @@ sr_get_change_next(sr_session_ctx_t *session, sr_change_iter_t *iter, sr_change_
     return SR_ERR_UNSUPPORTED;
 }
 
+void
+sr_free_change_iter(sr_change_iter_t *iter)
+{
+    // TODO implement
+}
+
 int
 sr_unsubscribe(sr_session_ctx_t *session, sr_subscription_ctx_t *sr_subscription)
 {
