@@ -1921,6 +1921,105 @@ dm_remove_operations_with_error(dm_session_t *session)
     }
 }
 
+/**
+ * @brief whether the node match the subscribed one - if it is the same node or children
+ * of the subscribed one
+ * @param [in] sub_node
+ * @param [in] node tested node
+ * @param [out] res
+ * @return Error code (SR_ERR_OK on success)
+ */
+static int
+dm_match_subscription(const struct lys_node *sub_node, const struct lys_node *node, bool *res)
+{
+    CHECK_NULL_ARG3(sub_node, node, res);
+
+    struct lys_node *n = (struct lys_node *) node;
+    while (NULL != n) {
+        if (sub_node == n) {
+            *res = true;
+            return SR_ERR_OK;
+        }
+        n = lys_parent(n);
+    }
+    *res = false;
+    return SR_ERR_OK;
+}
+
+/**
+ * @brief Returns the schema node to be tested whether the changes matches the subscription
+ * @param [in] diff
+ * @param [in] index
+ * @return  Schema node of the change
+ */
+static const struct lys_node *
+dm_get_notification_match_node(struct lyd_difflist *diff, size_t index)
+{
+    if (NULL == diff) {
+        return NULL;
+    }
+    switch (diff->type[index]) {
+    case LYD_DIFF_MOVEDAFTER2:
+    case LYD_DIFF_CREATED:
+        return diff->second[index]->schema;
+    case LYD_DIFF_MOVEDAFTER1:
+    case LYD_DIFF_CHANGED:
+    case LYD_DIFF_DELETED:
+        return diff->first[index]->schema;
+    default:
+        /* LYD_DIFF_END */
+        return NULL;
+    }
+}
+
+/**
+ * @brief Returns the xpath of the change
+ * @param [in] diff
+ * @param [in] index
+ * @return Allocated xpath of the changed node
+ */
+static char *
+dm_get_notification_changed_xpath(struct lyd_difflist *diff, size_t index)
+{
+    if (NULL == diff) {
+        return NULL;
+    }
+    switch (diff->type[index]) {
+    case LYD_DIFF_MOVEDAFTER2:
+    case LYD_DIFF_CREATED:
+        return lyd_path(diff->second[index]);
+    case LYD_DIFF_MOVEDAFTER1:
+    case LYD_DIFF_CHANGED:
+    case LYD_DIFF_DELETED:
+        return lyd_path(diff->first[index]);
+    default:
+        /* LYD_DIFF_END */
+        return NULL;
+    }
+}
+
+/**
+ * @brief Returns string representation of the change type
+ * @param [in] type
+ * @return statically allocated string
+ */
+static const char *
+dm_get_diff_type_to_string(LYD_DIFFTYPE type)
+{
+    const char *diff_states[] = {
+        "End",      /* LYD_DIFF_END = 0*/
+        "Deleted",  /* LYD_DIFF_DELETED */
+        "Changed",  /* LYD_DIFF_CHANGED */
+        "Moved1",   /* LYD_DIFF_MOVEDAFTER1 */
+        "Created",  /* LYD_DIFF_CREATED */
+        "Moved2",   /* LYD_DIFF_MOVEDAFTER2 */
+    };
+    if (type > sizeof(diff_states)/sizeof(*diff_states)){
+        return "Unknown";
+    }
+    return diff_states[type];
+}
+
 void
 dm_free_commit_context(dm_ctx_t *dm_ctx, dm_commit_context_t *c_ctx)
 {
@@ -2167,8 +2266,26 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
             dm_data_info_free(di);
             goto cleanup;
         }
-        rc = dm_insert_data_info_copy(c_ctx->prev_data_trees, di);
-        CHECK_RC_MSG_GOTO(rc, cleanup, "Insert data infor copy failed");
+
+        if (SR_DS_STARTUP != session->datastore) {
+            /* for candidate and running we save prev state */
+            if (SR_DS_RUNNING != session->datastore || copy_uptodate) {
+                /* load data tree from file system */
+                rc = dm_load_data_tree_file(dm_ctx, c_ctx->existed[count] ? c_ctx->fds[count] : -1, file_name, info->module, &di);
+                CHECK_RC_MSG_GOTO(rc, cleanup, "Loading data file failed");
+
+                rc = sr_btree_insert(c_ctx->prev_data_trees, (void *) di);
+                if (SR_ERR_OK != rc) {
+                    SR_LOG_ERR("Insert into prev data trees failed module %s", info->module->name);
+                    dm_data_info_free(di);
+                    goto cleanup;
+                }
+            } else {
+                /* we can reuse data that were just read from file system */
+                rc = dm_insert_data_info_copy(c_ctx->prev_data_trees, di);
+                CHECK_RC_MSG_GOTO(rc, cleanup, "Insert data info copy failed");
+            }
+        }
 
         free(file_name);
         file_name = NULL;
@@ -2230,67 +2347,84 @@ dm_commit_write_files(dm_session_t *session, dm_commit_context_t *c_ctx)
     return rc;
 }
 
-static int
-dm_match_subscription(const struct lys_node *sub_node, const struct lys_node *node, bool *res)
-{
-    CHECK_NULL_ARG3(sub_node, node, res);
-
-    struct lys_node *n = (struct lys_node *) node;
-    while (NULL != n) {
-        if (sub_node == n) {
-            *res = true;
-            return SR_ERR_OK;
-        }
-        n = lys_parent(n);
-    }
-    *res = false;
-    return SR_ERR_OK;
-}
-
 int
 dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t *c_ctx)
 {
     CHECK_NULL_ARG3(dm_ctx, session, c_ctx);
     int rc = SR_ERR_OK;
     size_t i = 0;
-    dm_data_info_t *info = NULL;
+    dm_data_info_t *info = NULL, *commit_info = NULL, *prev_info = NULL, lookup_info = {0};
     dm_model_subscription_t *ms = NULL;
     bool match = false;
-    if (SR_DS_RUNNING == session->datastore || SR_DS_CANDIDATE == session->datastore) {
-        SR_LOG_DBG_MSG("Sending notifications about the changes made in running datastore...");
-        i = 0;
-        while (NULL != (info = sr_btree_get_at(session->session_modules[session->datastore], i))) {
-            if (info->modified) {
-                /**
-                 * TODO
-                 * create diff
-                 */
-                dm_model_subscription_t lookup = {0};
-                lookup.module = info->module;
+    /* notification are sent only when running or candidate is committed*/
+    if (SR_DS_STARTUP == session->datastore) {
+        return SR_ERR_OK;
+    }
 
-                ms = sr_btree_search(c_ctx->subscriptions, &lookup);
-                if (NULL != ms) {
-                    //for d in diff
-                        for (size_t s = 0; s < ms->subscription_cnt; s++) {
-                            rc = dm_match_subscription(ms->nodes[i], /*TODO replace by diff node*/ms->nodes[i], &match);
-                            if (SR_ERR_OK != rc) {
-                                SR_LOG_WRN_MSG("Subscription match failed");
-                                continue;
-                            }
-                            if (match) {
-                                //send notification
-                            }
-                        }
-                    //for-end
-                }
+    SR_LOG_DBG_MSG("Sending notifications about the changes made in running datastore...");
+    while (NULL != (info = sr_btree_get_at(session->session_modules[session->datastore], i++))) {
+        if (!info->modified) {
+            continue;
+        }
+        size_t d_cnt = 0;
+        dm_model_subscription_t lookup = {0};
 
-                rc = np_module_change_notify(dm_ctx->np_ctx, info->module->name);
+        lookup_info.module = info->module;
+        prev_info = sr_btree_search(c_ctx->prev_data_trees, &lookup_info);
+        if (NULL == prev_info) {
+            SR_LOG_ERR("Current data tree for module %s not found", info->module->name);
+            continue;
+        }
+        commit_info = sr_btree_search(c_ctx->session->session_modules[c_ctx->session->datastore], &lookup_info);
+        if (NULL == commit_info) {
+            SR_LOG_ERR("Commit data tree for module %s not found", info->module->name);
+            continue;
+        }
+
+        lyd_wd_cleanup(&prev_info->node, 0);
+        struct lyd_difflist *diff = lyd_diff(commit_info->node, prev_info->node, 0);
+        if (NULL == diff) {
+            SR_LOG_ERR("Lyd diff failed for module %s", info->module->name);
+            continue;
+        }
+        if (diff->type[d_cnt] == LYD_DIFF_END) {
+            SR_LOG_DBG("No changes in module %s", info->module->name);
+            lyd_free_diff(diff);
+            continue;
+        }
+
+        lookup.module = info->module;
+
+        ms = sr_btree_search(c_ctx->subscriptions, &lookup);
+        if (NULL == ms) {
+            SR_LOG_WRN("No subscription found for %s", info->module->name);
+            lyd_free_diff(diff);
+            continue;
+        }
+
+        while (LYD_DIFF_END != diff->type[d_cnt]) {
+            const struct lys_node *cmp_node = dm_get_notification_match_node(diff, d_cnt);
+            char *path = dm_get_notification_changed_xpath(diff, d_cnt);
+            SR_LOG_DBG("%s: %s", dm_get_diff_type_to_string(diff->type[d_cnt]), path);
+            free(path);
+            for (size_t s = 0; s < ms->subscription_cnt; s++) {
+                rc = dm_match_subscription(ms->nodes[s], cmp_node, &match);
                 if (SR_ERR_OK != rc) {
-                    SR_LOG_WRN("Unable to send notifications about the changes made in the '%s' module.", info->module->name);
+                    SR_LOG_WRN_MSG("Subscription match failed");
+                    continue;
+                }
+                if (match) {
+                    //TODO: send notification
                 }
             }
-            i++;
+            d_cnt++;
         }
+
+        rc = np_module_change_notify(dm_ctx->np_ctx, info->module->name);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_WRN("Unable to send notifications about the changes made in the '%s' module.", info->module->name);
+        }
+        lyd_free_diff(diff);
     }
 
     return SR_ERR_OK;
