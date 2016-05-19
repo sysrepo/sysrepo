@@ -497,16 +497,16 @@ int main(){
     sr_log_stderr(SR_LL_DBG);
 
     const struct CMUnitTest tests[] = {
-//            cmocka_unit_test(dm_create_cleanup),
-//            cmocka_unit_test(dm_get_data_tree),
-//            cmocka_unit_test(dm_list_schema_test),
-//            cmocka_unit_test(dm_validate_data_trees_test),
-//            cmocka_unit_test(dm_discard_changes_test),
-//            cmocka_unit_test(dm_get_schema_test),
-//            cmocka_unit_test(dm_get_schema_negative_test),
-//            cmocka_unit_test(dm_add_operation_test),
-//            cmocka_unit_test(dm_locking_test),
-//            cmocka_unit_test(dm_copy_module_test),
+            cmocka_unit_test(dm_create_cleanup),
+            cmocka_unit_test(dm_get_data_tree),
+            cmocka_unit_test(dm_list_schema_test),
+            cmocka_unit_test(dm_validate_data_trees_test),
+            cmocka_unit_test(dm_discard_changes_test),
+            cmocka_unit_test(dm_get_schema_test),
+            cmocka_unit_test(dm_get_schema_negative_test),
+            cmocka_unit_test(dm_add_operation_test),
+            cmocka_unit_test(dm_locking_test),
+            cmocka_unit_test(dm_copy_module_test),
             cmocka_unit_test(dm_rpc_test),
     };
     return cmocka_run_group_tests(tests, setup, NULL);

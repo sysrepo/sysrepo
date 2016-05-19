@@ -941,11 +941,16 @@ rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg 
     }
 
     /* duplicate msg into req with the new input values */
-    rc = sr_gpb_req_alloc(SR__OPERATION__RPC, session->id, &req);
-    req->request->rpc_req->xpath = strdup(msg->request->rpc_req->xpath);
-    // TODO
-    rc = sr_values_sr_to_gpb(input, input_cnt, &req->request->rpc_req->input, &req->request->rpc_req->n_input);
-    // TODO
+    if (SR_ERR_OK == rc) {
+        rc = sr_gpb_req_alloc(SR__OPERATION__RPC, session->id, &req);
+    }
+    if (SR_ERR_OK == rc) {
+        req->request->rpc_req->xpath = strdup(msg->request->rpc_req->xpath);
+        CHECK_NULL_NOMEM_ERROR(req->request->rpc_req->xpath, rc);
+    }
+    if (SR_ERR_OK == rc) {
+        rc = sr_values_sr_to_gpb(input, input_cnt, &req->request->rpc_req->input, &req->request->rpc_req->n_input);
+    }
     sr_free_values(input, input_cnt);
     sr__msg__free_unpacked(msg, NULL);
     msg = NULL;
@@ -1029,14 +1034,24 @@ rp_rpc_resp_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg
     }
 
     /* duplicate msg into resp with the new output values */
-    rc = sr_gpb_resp_alloc(SR__OPERATION__RPC, session->id, &resp);
-    resp->response->rpc_resp->xpath = strdup(msg->response->rpc_resp->xpath);
-    // TODO
-    rc = sr_values_sr_to_gpb(output, output_cnt, &resp->response->rpc_resp->output, &resp->response->rpc_resp->n_output);
-    // TODO
+    if (SR_ERR_OK == rc) {
+        rc = sr_gpb_resp_alloc(SR__OPERATION__RPC, session->id, &resp);
+    }
+    if (SR_ERR_OK == rc) {
+        resp->response->rpc_resp->xpath = strdup(msg->response->rpc_resp->xpath);
+        CHECK_NULL_NOMEM_ERROR(resp->response->rpc_resp->xpath, rc);
+    }
+    if (SR_ERR_OK == rc) {
+        rc = sr_values_sr_to_gpb(output, output_cnt, &resp->response->rpc_resp->output, &resp->response->rpc_resp->n_output);
+    }
     sr_free_values(output, output_cnt);
-    sr__msg__free_unpacked(msg, NULL);
-    msg = NULL;
+
+    if (SR_ERR_OK == rc) {
+        sr__msg__free_unpacked(msg, NULL);
+        msg = NULL;
+    } else {
+        resp = msg;
+    }
 
     /* set response code */
     resp->response->result = rc;
