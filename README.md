@@ -14,7 +14,7 @@ Sysrepo can be easily integrated to management agents such as [NETCONF](https://
 
 ## Status
 - May 2016: RPC support and sysrepo plugins infrastructure ready, working on better notifications towards subscribed applications
-- April 2016: full concurrency and locking support ready, generated Python bindings, working on concurrency testing, helping with [Netopeer 2](https://github.com/CESNET/Netopeer2) integration
+- April 2016: full concurrency and locking support ready, generated Python bindings, integrated with [Netopeer 2 NETCONF server](https://github.com/CESNET/Netopeer2), released as sysrepo [version 0.2.0](https://github.com/sysrepo/sysrepo/releases/tag/v0.2.0)
 - March 2016: syrepo daemon and data manipulation (edit-config) functionality ready, working on full concurrency and locking support
 - February 2016: working on sysrepo daemon, data manipulation (edit-config) functionality
 - January 2016: data retrieval (get-config) functionality ready, released as sysrepo [version 0.1.0](https://github.com/sysrepo/sysrepo/releases/tag/v0.1.0)
