@@ -263,11 +263,12 @@ cleanup:
 }
 
 int
-rp_dt_get_values_from_nodes(struct ly_set *nodes, sr_val_t **values)
+rp_dt_get_values_from_nodes(struct ly_set *nodes, sr_val_t **values, size_t *value_cnt)
 {
     CHECK_NULL_ARG2(nodes, values);
     int rc = SR_ERR_OK;
     sr_val_t *vals = NULL;
+    size_t cnt = 0;
     struct lyd_node *node = NULL;
 
     vals = calloc(nodes->number, sizeof(*vals));
@@ -275,18 +276,21 @@ rp_dt_get_values_from_nodes(struct ly_set *nodes, sr_val_t **values)
 
     for (size_t i = 0; i < nodes->number; i++) {
         node = nodes->set.d[i];
+        if (NULL == node || NULL == node->schema || LYS_RPC == node->schema->nodetype) {
+            /* ignore this node */
+            continue;
+        }
         rc = rp_dt_get_value_from_node(node, &vals[i]);
         if (SR_ERR_OK != rc) {
-            const char *name = "";
-            if (NULL != node && NULL != node->schema && NULL != node->schema->name) {
-                name = node->schema->name;
-            }
-            SR_LOG_ERR("Getting value from node %s failed", name);
+            SR_LOG_ERR("Getting value from node %s failed", node->schema->name);
             free(vals);
             return SR_ERR_INTERNAL;
         }
+        cnt++;
     }
+
     *values = vals;
+    *value_cnt = cnt;
 
     return rc;
 }
@@ -335,8 +339,7 @@ rp_dt_get_values(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char 
         return rc;
     }
 
-    *count = nodes->number;
-    rc = rp_dt_get_values_from_nodes(nodes, values);
+    rc = rp_dt_get_values_from_nodes(nodes, values, count);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Copying values from nodes failed for xpath '%s'", xpath);
     }
@@ -476,9 +479,8 @@ rp_dt_get_values_wrapper_with_opts(rp_ctx_t *rp_ctx, rp_session_t *rp_session, r
         }
         goto cleanup;
     }
-    *count = nodes->number;
 
-    rc = rp_dt_get_values_from_nodes(nodes, values);
+    rc = rp_dt_get_values_from_nodes(nodes, values, count);
 cleanup:
     if (SR_ERR_NOT_FOUND == rc) {
 #if 0

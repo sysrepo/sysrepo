@@ -32,6 +32,7 @@
 #include "data_manager.h"
 #include "sr_common.h"
 #include "rp_dt_xpath.h"
+#include "rp_dt_get.h"
 #include "access_control.h"
 #include "notification_processor.h"
 #include "persistence_manager.h"
@@ -2570,22 +2571,26 @@ cleanup:
 }
 
 int
-dm_validate_rpc(dm_ctx_t *dm_ctx, dm_session_t *session, const char *rpc_xpath, sr_val_t *args, size_t arg_cnt, bool input)
+dm_validate_rpc(dm_ctx_t *dm_ctx, dm_session_t *session, const char *rpc_xpath, sr_val_t **args_p, size_t *arg_cnt_p, bool input)
 {
+    sr_val_t *args = NULL;
+    size_t arg_cnt = 0;
     const struct lys_node *sch_node = NULL;
     struct lyd_node *data_tree = NULL, *new_node = NULL;
-    char *string_value = NULL;
+    char *string_value = NULL, *tmp_xpath = NULL;
+    struct ly_set *ly_nodes = NULL;
     int ret = 0, rc = SR_ERR_OK;
+
+    args = *args_p;
+    arg_cnt = *arg_cnt_p;
 
     pthread_rwlock_rdlock(&dm_ctx->lyctx_lock);
 
-    if (input) {
-        data_tree = lyd_new_path(NULL, dm_ctx->ly_ctx, rpc_xpath, NULL, 0);
-        if (NULL == data_tree) {
-            SR_LOG_ERR("RPC xpath validation failed ('%s'): %s", rpc_xpath, ly_errmsg());
-            pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
-            return dm_report_error(session, ly_errmsg(), rpc_xpath, SR_ERR_BAD_ELEMENT);
-        }
+    data_tree = lyd_new_path(NULL, dm_ctx->ly_ctx, rpc_xpath, NULL, 0);
+    if (NULL == data_tree) {
+        SR_LOG_ERR("RPC xpath validation failed ('%s'): %s", rpc_xpath, ly_errmsg());
+        pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
+        return dm_report_error(session, ly_errmsg(), rpc_xpath, SR_ERR_BAD_ELEMENT);
     }
 
     for (size_t i = 0; i < arg_cnt; i++) {
@@ -2613,21 +2618,42 @@ dm_validate_rpc(dm_ctx_t *dm_ctx, dm_session_t *session, const char *rpc_xpath, 
             rc = dm_report_error(session, ly_errmsg(), ly_errpath(), SR_ERR_VALIDATION_FAILED);
             break;
         }
-        if (NULL == data_tree) {
-            data_tree = new_node;
-        }
     }
 
+    /* validate the RPC content (and also add default nodes) */
     if ((SR_ERR_OK == rc) && (arg_cnt > 0)) {
-        /* validate the RPC content */
-        ret = lyd_validate(&data_tree, LYD_OPT_STRICT | (input ? LYD_OPT_RPC : LYD_OPT_RPCREPLY));
+        ret = lyd_validate(&data_tree, LYD_OPT_STRICT | LYD_WD_IMPL_TAG | (input ? LYD_OPT_RPC : LYD_OPT_RPCREPLY));
         if (0 != ret) {
             SR_LOG_ERR("RPC content validation failed: %s", ly_errmsg());
             rc = dm_report_error(session, ly_errmsg(), ly_errpath(), SR_ERR_VALIDATION_FAILED);
         }
     }
 
-    // TODO: handle nodes with default values
+    /* re-read the arguments from data tree (it can now contain newly added default nodes) */
+    if ((SR_ERR_OK == rc) && (arg_cnt > 0)) {
+        tmp_xpath = calloc(strlen(rpc_xpath)+4, sizeof(*tmp_xpath));
+        if (NULL != tmp_xpath) {
+            strcat(tmp_xpath, rpc_xpath);
+            strcat(tmp_xpath, "//*");
+            ly_nodes = lyd_get_node(data_tree, tmp_xpath);
+            if (NULL != ly_nodes) {
+                rc = rp_dt_get_values_from_nodes(ly_nodes, &args, &arg_cnt);
+                if (SR_ERR_OK == rc) {
+                    sr_free_values(*args_p, *arg_cnt_p);
+                    *args_p = args;
+                    *arg_cnt_p = arg_cnt;
+                }
+            } else {
+                SR_LOG_ERR("No matching nodes returned for xpath '%s'.", tmp_xpath);
+                rc = SR_ERR_INTERNAL;
+            }
+            ly_set_free(ly_nodes);
+            free(tmp_xpath);
+        } else {
+            SR_LOG_ERR_MSG("Unable to allocate memory for xpath.");
+            rc = SR_ERR_NOMEM;
+        }
+    }
 
     pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
 

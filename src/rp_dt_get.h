@@ -97,7 +97,7 @@ int rp_dt_get_values_wrapper_with_opts(rp_ctx_t *rp_ctx, rp_session_t *rp_sessio
  * @param [out] values
  * @return Error code (SR_ERR_OK on success)
  */
-int rp_dt_get_values_from_nodes(struct ly_set *nodes, sr_val_t **values);
+int rp_dt_get_values_from_nodes(struct ly_set *nodes, sr_val_t **values, size_t *value_cnt);
 
 #endif /* RP_DT_GET_H */
 
