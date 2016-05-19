@@ -132,8 +132,9 @@ sr_pd_load_plugins(sr_session_ctx_t *session, sr_pd_plugin_ctx_t **plugins_p, si
 {
     DIR *dir;
     struct dirent entry, *result;
-    char *plugins_dir = NULL;
-    char plugin_filename[PATH_MAX] = { 0, };
+    char *env_str = NULL;
+    char plugins_dir[PATH_MAX + 1] = { 0, };
+    char plugin_filename[PATH_MAX + 1] = { 0, };
     sr_pd_plugin_ctx_t *plugins = NULL, *tmp = NULL;
     size_t plugins_cnt = 0;
     int ret = 0;
@@ -142,9 +143,11 @@ sr_pd_load_plugins(sr_session_ctx_t *session, sr_pd_plugin_ctx_t **plugins_p, si
     CHECK_NULL_ARG3(session, plugins_p, plugins_cnt_p);
 
     /* get plugins dir from environment variable, or use default one */
-    plugins_dir = getenv("SR_PLUGINS_DIR");
-    if (NULL == plugins_dir) {
-        plugins_dir = SR_PLUGINS_DIR;
+    env_str = getenv("SR_PLUGINS_DIR");
+    if (NULL != env_str) {
+        strncat(plugins_dir, env_str, PATH_MAX);
+    } else {
+        strncat(plugins_dir, SR_PLUGINS_DIR, PATH_MAX);
     }
 
     SR_LOG_DBG("Loading plugins from '%s'.", plugins_dir);
@@ -236,6 +239,7 @@ int
 main(int argc, char* argv[])
 {
     pid_t parent_pid = 0;
+    int pidfile_fd = -1;
     sr_pd_plugin_ctx_t *plugins = NULL;
     size_t plugins_cnt = 0;
     sr_conn_ctx_t *connection = NULL;
@@ -270,7 +274,7 @@ main(int argc, char* argv[])
     sr_logger_init("sysrepo-plugind");
 
     /* daemonize the process */
-    parent_pid = sr_daemonize(debug_mode, log_level, SR_PLUGIN_DAEMON_PID_FILE);
+    parent_pid = sr_daemonize(debug_mode, log_level, SR_PLUGIN_DAEMON_PID_FILE, &pidfile_fd);
 
     SR_LOG_DBG_MSG("Sysrepo plugin daemon initialization started.");
 
@@ -313,6 +317,9 @@ cleanup:
     sr_logger_cleanup();
 
     unlink(SR_PLUGIN_DAEMON_PID_FILE);
+    if (-1 != pidfile_fd) {
+        close(pidfile_fd);
+    }
 
     exit((SR_ERR_OK == rc) ? EXIT_SUCCESS : EXIT_FAILURE);
 }

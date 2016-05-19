@@ -149,7 +149,7 @@ rp_dt_find_nodes_with_opts(const dm_ctx_t *dm_ctx, dm_session_t *dm_session, rp_
         }
         /* append node to result if it is in chosen range*/
         if (index >= offset) {
-            if (0 != ly_set_add(*nodes, get_items_ctx->nodes->set.d[index])) {
+            if (-1 == ly_set_add(*nodes, get_items_ctx->nodes->set.d[index])) {
                 SR_LOG_ERR_MSG("Adding to the result nodes failed");
                 ly_set_free(*nodes);
                 *nodes = NULL;

@@ -298,10 +298,11 @@ void sr_free_schema(sr_schema_t *schema);
  * @param[in] debug_mode Do not fork, Turn on logging to stderr.
  * @param[in] log_level Desired log level.
  * @param[in] pid_file PID file path.
+ * @param[out] pid_file_fd File descriptor of opened PID file.
  *
  * @return PID of the original (parent) process, 0 In case of debug mode.
  */
-pid_t sr_daemonize(bool debug_mode, int log_level, const char *pid_file);
+pid_t sr_daemonize(bool debug_mode, int log_level, const char *pid_file, int *pid_file_fd);
 
 /**
  * @brief Send a signal notifying about initialization success to the parent of

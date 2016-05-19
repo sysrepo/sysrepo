@@ -83,12 +83,12 @@ int
 main(int argc, char* argv[])
 {
     pid_t parent_pid = 0;
-    int rc = SR_ERR_OK;
+    int pidfile_fd = -1;
     cm_ctx_t *sr_cm_ctx = NULL;
-
     int c = 0;
     bool debug_mode = false;
     int log_level = -1;
+    int rc = SR_ERR_OK;
 
     while ((c = getopt (argc, argv, "hvdl:")) != -1) {
         switch (c) {
@@ -112,7 +112,7 @@ main(int argc, char* argv[])
     sr_logger_init("sysrepo-plugind");
 
     /* daemonize the process */
-    parent_pid = sr_daemonize(debug_mode, log_level, SR_DAEMON_PID_FILE);
+    parent_pid = sr_daemonize(debug_mode, log_level, SR_DAEMON_PID_FILE, &pidfile_fd);
 
     SR_LOG_DBG_MSG("Sysrepo daemon initialization started.");
 
@@ -147,6 +147,9 @@ cleanup:
     sr_logger_cleanup();
 
     unlink(SR_DAEMON_PID_FILE);
+    if (-1 != pidfile_fd) {
+        close(pidfile_fd);
+    }
 
     exit((SR_ERR_OK == rc) ? EXIT_SUCCESS : EXIT_FAILURE);
 }
