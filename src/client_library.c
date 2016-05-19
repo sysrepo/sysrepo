@@ -1382,13 +1382,16 @@ cleanup:
 }
 
 int
-sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, bool enable_running,
-        sr_module_change_cb callback, void *private_ctx, sr_subscription_ctx_t **subscription_p)
+sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t event,
+        bool enable_running, int priority, sr_module_change_cb callback, void *private_ctx,
+        sr_subscription_ctx_t **subscription_p)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
     sr_subscription_ctx_t *sr_subscription = NULL;
     cl_sm_subscription_ctx_t *sm_subscription = NULL;
     int rc = SR_ERR_OK;
+
+    // TODO: handle event & priority
 
     CHECK_NULL_ARG4(session, module_name, callback, subscription_p);
 
@@ -1429,6 +1432,30 @@ cleanup:
         sr__msg__free_unpacked(msg_resp, NULL);
     }
     return cl_session_return(session, rc);
+}
+
+int
+sr_subtree_change_subscribe(sr_session_ctx_t *session, const char *xpath, sr_notif_event_t event,
+        bool enable_running, int priority, sr_module_change_cb callback, void *private_ctx,
+        sr_subscription_ctx_t **subscription)
+{
+    // TODO: implement
+    return SR_ERR_UNSUPPORTED;
+}
+
+int
+sr_get_changes_iter(sr_session_ctx_t *session, const char *xpath, sr_change_iter_t **iter)
+{
+    // TODO: implement
+    return SR_ERR_UNSUPPORTED;
+}
+
+int
+sr_get_change_next(sr_session_ctx_t *session, sr_change_iter_t *iter, sr_change_oper_t *operation,
+        sr_val_t **old_value, sr_val_t **new_value)
+{
+    // TODO implement
+    return SR_ERR_UNSUPPORTED;
 }
 
 int

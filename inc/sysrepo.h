@@ -483,7 +483,8 @@ typedef struct sr_schema_s {
 typedef enum sr_schema_format_e {
     SR_SCHEMA_YANG,                         /**< YANG format */
     SR_SCHEMA_YIN                           /**< YIN format */
-}sr_schema_format_t;
+} sr_schema_format_t;
+
 /**
  * @brief Iterator used for accessing data nodes via ::sr_get_items_iter call.
  */
@@ -833,14 +834,37 @@ int sr_unlock_module(sr_session_ctx_t *session, const char *module_name);
 
 
 ////////////////////////////////////////////////////////////////////////////////
-// Notification API
+// Notification API - EXPERIMENTAL !!! (some functions may not work properly)
 ////////////////////////////////////////////////////////////////////////////////
+
+/**
+ * @brief TODO
+ */
+typedef enum sr_notif_event_e {
+    SR_EV_VERIFY,  /**< called before changes have been committed, application is supposed to verify that the chages can be applied and reserve all resources for that change */
+    SR_EV_NOTIFY,  /**< called after changes have been applied, used just to notify the recipient */
+} sr_notif_event_t;
+
+/**
+ * @brief TODO
+ */
+typedef enum sr_change_oper_e {
+   SR_OP_CREATED,
+   SR_OP_MODIFIED,
+   SR_OP_MOVED, /* in case of leaf-list or list reorder*/
+   SR_OP_DELETED,
+} sr_change_oper_t;
 
 /**
  * @brief Sysrepo subscription context returned from sr_*_subscribe calls,
  * can be released by ::sr_unsubscribe call.
  */
 typedef struct sr_subscription_ctx_s sr_subscription_ctx_t;
+
+/**
+ * @brief TODO Iterator used for accessing data nodes via ::sr_get_items_iter call.
+ */
+typedef struct sr_change_iter_s sr_change_iter_t;
 
 /**
  * @brief Callback to be called by the event of changing any running datastore
@@ -850,10 +874,18 @@ typedef struct sr_subscription_ctx_s sr_subscription_ctx_t;
  * obtaining changed data (e.g. with ::sr_get_item, ::sr_get_items or
  * ::sr_get_items_iter calls). Do not stop this session.
  * @param[in] module_name Name of the module where the change has occurred.
+ * @param[in] event TODO
  * @param[in] private_ctx Private context opaque to sysrepo, as passed to
  * ::sr_module_change_subscribe call.
  */
-typedef void (*sr_module_change_cb)(sr_session_ctx_t *session, const char *module_name, void *private_ctx);
+typedef void (*sr_module_change_cb)(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t event,
+        void *private_ctx);
+
+/**
+ * @brief TODO
+ */
+typedef void (*sr_subtree_change_cb)(sr_session_ctx_t *session, const char *xpath, sr_notif_event_t event,
+        void *private_ctx);
 
 /**
  * @brief Callback to be called by the event of installation / uninstallation
@@ -890,14 +922,23 @@ typedef void (*sr_feature_enable_cb)(const char *module_name, const char *featur
  * of the module in the running datastore (if the application subscribing to the
  * event is the "owner" of the data), FALSE otherwise (e.g. if you are just
  * interested in the changes of other application's data).
+ * @param[in] priority
  * @param[in] callback Callback to be called when the event occurs.
  * @param[in] private_ctx Private context passed to the callback function, opaque to sysrepo.
  * @param[out] subscription Subscription context that can be passed to ::sr_unsubscribe.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, bool enable_running,
-        sr_module_change_cb callback, void *private_ctx, sr_subscription_ctx_t **subscription);
+int sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t event,
+        bool enable_running, int priority, sr_module_change_cb callback, void *private_ctx,
+        sr_subscription_ctx_t **subscription);
+
+/**
+ * @brief TODO
+ */
+int sr_subtree_change_subscribe(sr_session_ctx_t *session, const char *xpath, sr_notif_event_t event,
+        bool enable_running, int priority, sr_module_change_cb callback, void *private_ctx,
+        sr_subscription_ctx_t **subscription);
 
 /**
  * @brief Subscribes for notifications about installation / uninstallation
@@ -947,6 +988,44 @@ int sr_feature_enable_subscribe(sr_session_ctx_t *session, sr_feature_enable_cb 
  * @return Error code (SR_ERR_OK on success).
  */
 int sr_unsubscribe(sr_session_ctx_t *session, sr_subscription_ctx_t *subscription);
+
+/**
+ * @brief TODO Creates an iterator for retrieving of the data elements stored under provided xpath.
+ *
+ * Requested data elements are transferred from the datastore in larger chunks
+ * of pre-defined size, which is much more efficient that calling multiple
+ * ::sr_get_item calls, and may be less memory demanding than calling ::sr_get_items
+ * on very large datasets.
+ *
+ * @see @ref xp_page "XPath Addressing" documentation, or
+ * https://tools.ietf.org/html/draft-ietf-netmod-yang-json#section-6.11
+ * for XPath syntax used for identification of yang nodes in sysrepo calls.
+ *
+ * @see ::sr_get_item_next for iterating over returned data elements.
+ *
+ * @param[in] session Session context acquired with ::sr_session_start call.
+ * @param[in] xpath @ref xp_page "XPath" identifier of the data element / subtree to be retrieved.
+ * @param[out] iter Iterator context that can be used to retrieve individual data
+ * elements via ::sr_get_item_next calls. Allocated by the function, should be
+ * freed with ::sr_free_val_iter.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_get_changes_iter(sr_session_ctx_t *session, const char *xpath, sr_change_iter_t **iter);
+
+/**
+ * @brief TODO Returns the next item from the dataset of provided iterator created
+ * by ::sr_get_items_iter call. If there is no item left SR_ERR_NOT_FOUND is returned.
+ *
+ * @param[in] session Session context acquired with ::sr_session_start call.
+ * @param[in,out] iter Iterator acquired with ::sr_get_items_iter call.
+ * @param[out] value Structure containing information about requested element
+ * (allocated by the function, can be freed with ::sr_free_val).
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_get_change_next(sr_session_ctx_t *session, sr_change_iter_t *iter, sr_change_oper_t *operation,
+        sr_val_t **old_value, sr_val_t **new_value);
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1030,6 +1109,13 @@ void sr_free_values(sr_val_t *values, size_t count);
  * @param[in] iter Iterator to be freed.
  */
 void sr_free_val_iter(sr_val_iter_t *iter);
+
+/**
+ * @brief TODO Frees ::sr_val_iter_t iterator and all memory allocated within it.
+ *
+ * @param[in] iter Iterator to be freed.
+ */
+void sr_free_change_iter(sr_change_iter_t *iter);
 
 /**
  * @brief Frees array of ::sr_schema_t structures (and all memory allocated

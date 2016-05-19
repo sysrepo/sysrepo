@@ -82,7 +82,7 @@ print_current_config(sr_session_ctx_t *session)
 }
 
 static void
-module_change_cb(sr_session_ctx_t *session, const char *module_name, void *private_ctx)
+module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t event, void *private_ctx)
 {
     printf("\n\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: ==========\n\n");
     print_current_config(session);
@@ -121,7 +121,7 @@ main(int argc, char **argv)
     print_current_config(session);
 
     /* subscribe for changes in running config */
-    rc = sr_module_change_subscribe(session, "ietf-interfaces", true, module_change_cb, NULL, &subscription);
+    rc = sr_module_change_subscribe(session, "ietf-interfaces", SR_EV_NOTIFY, true, 0, module_change_cb, NULL, &subscription);
     if (SR_ERR_OK != rc) {
         fprintf(stderr, "Error by sr_module_change_subscribe: %s\n", sr_strerror(rc));
         goto cleanup;

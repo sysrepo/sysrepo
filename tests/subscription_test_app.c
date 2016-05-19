@@ -37,7 +37,7 @@ void sig_handler(int num)
 }
 
 static void
-module_change_cb(sr_session_ctx_t *session, const char *module_name, void *private_ctx)
+module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t event, void *private_ctx)
 {
     printf("\n\n ========== CONFIG HAS CHANGED ==========\n\n");
 }
@@ -75,7 +75,7 @@ int main(int argc, char **argv){
    printf("\n\n ========== READING STARTUP CONFIG: ==========\n\n");
 
    /* subscribe for changes in running config */
-   rc = sr_module_change_subscribe(session, "ietf-interfaces", true, module_change_cb, NULL, &subscription);
+   rc = sr_module_change_subscribe(session, "ietf-interfaces", SR_EV_NOTIFY, true, 0, module_change_cb, NULL, &subscription);
    if (SR_ERR_OK != rc) {
        goto cleanup;
    }
