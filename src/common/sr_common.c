@@ -44,7 +44,7 @@ const char *const sr_errlist[] = {
         "Requested schema model is not known",  /* SR_ERR_UNKNOWN_MODEL */
         "Request contains unknown element",     /* SR_ERR_BAD_ELEMENT */
         "Validation of the changes failed",     /* SR_ERR_VALIDATION_FAILED */
-        "Commit operation failed",              /* SR_ERR_COMMIT_FAILED */
+        "An operation failed",                  /* SR_ERR_OPERATION_FAILED */
         "The item already exists",              /* SR_ERR_DATA_EXISTS */
         "The item expected to exist is missing",/* SR_ERR_DATA_MISSING */
         "Operation not authorized",             /* SR_ERR_UNAUTHORIZED */
@@ -65,24 +65,21 @@ sr_strerror(int err_code)
 void
 sr_free_val(sr_val_t *value)
 {
-    if (NULL == value){
-        return;
+    if (NULL != value) {
+        sr_free_val_content(value);
+        free(value);
     }
-    sr_free_val_content(value);
-    free(value);
 }
 
 void
 sr_free_values(sr_val_t *values, size_t count)
 {
-    if (NULL == values){
-        return;
+    if (NULL != values) {
+        for (size_t i = 0; i < count; i++) {
+            sr_free_val_content(&values[i]);
+        }
+        free(values);
     }
-
-    for (size_t i = 0; i < count; i++) {
-        sr_free_val_content(&values[i]);
-    }
-    free(values);
 }
 
 void

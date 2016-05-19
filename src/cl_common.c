@@ -461,7 +461,7 @@ cl_request_process(sr_session_ctx_t *session, Sr__Msg *msg_req, Sr__Msg **msg_re
         /* log the error (except expected ones) */
         if (SR_ERR_NOT_FOUND != (*msg_resp)->response->result &&
                 SR_ERR_VALIDATION_FAILED != (*msg_resp)->response->result &&
-                SR_ERR_COMMIT_FAILED != (*msg_resp)->response->result) {
+                SR_ERR_OPERATION_FAILED != (*msg_resp)->response->result) {
             SR_LOG_ERR("Error by processing of the %s request (session id=%"PRIu32"): %s.",
                     sr_gpb_operation_name(msg_req->request->operation), session->id,
                 (NULL != (*msg_resp)->response->error && NULL != (*msg_resp)->response->error->message) ?

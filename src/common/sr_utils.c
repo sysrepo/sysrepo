@@ -25,6 +25,7 @@
 #include <arpa/inet.h>
 #include <inttypes.h>
 #include <fcntl.h>
+#include <signal.h>
 #include <libyang/libyang.h>
 
 #include "sr_common.h"
@@ -162,7 +163,19 @@ sr_get_data_file_name(const char *data_search_dir, const char *module_name, cons
     char *tmp = NULL;
     int rc = sr_str_join(data_search_dir, module_name, &tmp);
     if (SR_ERR_OK == rc) {
-        char *suffix = SR_DS_STARTUP == ds ? SR_STARTUP_FILE_EXT : SR_RUNNING_FILE_EXT;
+        char *suffix = NULL;
+        switch (ds) {
+        case SR_DS_CANDIDATE:
+            suffix = SR_CANDIDATE_FILE_EXT;
+            break;
+        case SR_DS_RUNNING:
+            suffix = SR_RUNNING_FILE_EXT;
+            break;
+        case SR_DS_STARTUP:
+            /* fall through */
+        default:
+            suffix = SR_STARTUP_FILE_EXT;
+        }
         rc = sr_str_join(tmp, suffix, file_name);
         free(tmp);
         return rc;
@@ -419,25 +432,6 @@ sr_lyd_unlink(dm_data_info_t *data_info, struct lyd_node *node)
     return SR_ERR_OK;
 }
 
-struct lyd_node *
-sr_lyd_new_path(dm_data_info_t *data_info, struct ly_ctx *ctx, const char *path, const char *value, int options)
-{
-    int rc = SR_ERR_OK;
-    CHECK_NULL_ARG_NORET2(rc, data_info, path);
-    if (SR_ERR_OK != rc){
-        return NULL;
-    }
-
-    struct lyd_node *new = NULL;
-    new = lyd_new_path(data_info->node, ctx, path, value, options);
-
-    if (NULL == data_info->node) {
-        data_info->node = new;
-    }
-
-    return new;
-}
-
 int
 sr_lyd_insert_before(dm_data_info_t *data_info, struct lyd_node *sibling, struct lyd_node *node)
 {
@@ -511,7 +505,7 @@ sr_libyang_type_to_sysrepo(LY_DATA_TYPE t)
 }
 
 static int
-sr_dec64_to_str(double val, struct lys_node *schema_node, char **out)
+sr_dec64_to_str(double val, const struct lys_node *schema_node, char **out)
 {
     CHECK_NULL_ARG2(schema_node, out);
     size_t fraction_digits = 0;
@@ -535,7 +529,7 @@ sr_dec64_to_str(double val, struct lys_node *schema_node, char **out)
 }
 
 int
-sr_val_to_str(const sr_val_t *value, struct lys_node *schema_node, char **out)
+sr_val_to_str(const sr_val_t *value, const struct lys_node *schema_node, char **out)
 {
     CHECK_NULL_ARG3(value, schema_node, out);
     size_t len = 0;
@@ -651,6 +645,22 @@ sr_val_to_str(const sr_val_t *value, struct lys_node *schema_node, char **out)
     return SR_ERR_OK;
 }
 
+const char *
+sr_ds_to_str(sr_datastore_t ds)
+{
+    const char *const sr_dslist[] = {
+        "startup",    /* SR_DS_STARTUP */
+        "running",    /* SR_DS_RUNNING */
+        "candidate",  /* SR_DS_CANDIDATE */
+    };
+
+    if (ds >= (sizeof(sr_dslist) / (sizeof *sr_dslist))) {
+        return "Unknown datastore";
+    } else {
+        return sr_dslist[ds];
+    }
+}
+
 void
 sr_free_val_content(sr_val_t *value)
 {
@@ -681,27 +691,23 @@ sr_free_val_content(sr_val_t *value)
 void
 sr_free_values_arr(sr_val_t **values, size_t count)
 {
-    if (NULL == values){
-        return;
+    if (NULL != values) {
+        for (size_t i = 0; i < count; i++) {
+            sr_free_val(values[i]);
+        }
+        free(values);
     }
-
-    for (size_t i = 0; i < count; i++) {
-        sr_free_val(values[i]);
-    }
-    free(values);
 }
 
 void
 sr_free_values_arr_range(sr_val_t **values, size_t from, size_t to)
 {
-    if (NULL == values){
-        return;
+    if (NULL != values) {
+        for (size_t i = from; i < to; i++) {
+            sr_free_val(values[i]);
+        }
+        free(values);
     }
-
-    for (size_t i = from; i < to; i++) {
-        sr_free_val(values[i]);
-    }
-    free(values);
 }
 
 void
@@ -738,4 +744,178 @@ sr_free_schema(sr_schema_t *schema)
         }
         free(schema->enabled_features);
     }
+}
+
+/**
+ * @brief Signal handler used to deliver initialization result from daemon
+ * child to daemon parent process, so that the parent can exit with appropriate exit code.
+ */
+static void
+sr_daemon_child_status_handler(int signum)
+{
+    switch(signum) {
+        case SIGUSR1:
+            /* child process has initialized successfully */
+            exit(EXIT_SUCCESS);
+            break;
+        case SIGALRM:
+            /* child process has not initialized within SR_CHILD_INIT_TIMEOUT seconds */
+            fprintf(stderr, "Sysrepo daemon did not initialize within the timeout period, "
+                    "check syslog for more info.\n");
+            exit(EXIT_FAILURE);
+            break;
+        case SIGCHLD:
+            /* child process has terminated */
+            fprintf(stderr, "Failure by initialization of sysrepo daemon, check syslog for more info.\n");
+            exit(EXIT_FAILURE);
+            break;
+    }
+}
+
+/**
+ * @brief Maintains only single instance of a daemon by opening and locking the PID file.
+ */
+static void
+sr_daemon_check_single_instance(const char *pid_file, int *pid_file_fd)
+{
+    char str[NAME_MAX] = { 0 };
+    int ret = 0;
+
+    CHECK_NULL_ARG_VOID2(pid_file, pid_file_fd);
+
+    /* open PID file */
+    *pid_file_fd = open(pid_file, O_RDWR | O_CREAT, 0640);
+    if (*pid_file_fd < 0) {
+        SR_LOG_ERR("Unable to open sysrepo PID file '%s': %s.", pid_file, strerror(errno));
+        exit(EXIT_FAILURE);
+    }
+
+    /* acquire lock on the PID file */
+    if (lockf(*pid_file_fd, F_TLOCK, 0) < 0) {
+        if (EACCES == errno || EAGAIN == errno) {
+            SR_LOG_ERR_MSG("Another instance of sysrepo daemon is running, unable to start.");
+        } else {
+            SR_LOG_ERR("Unable to lock sysrepo PID file '%s': %s.", pid_file, strerror(errno));
+        }
+        exit(EXIT_FAILURE);
+    }
+
+    /* write PID into the PID file */
+    snprintf(str, NAME_MAX, "%d\n", getpid());
+    ret = write(*pid_file_fd, str, strlen(str));
+    if (-1 == ret) {
+        SR_LOG_ERR("Unable to write into sysrepo PID file '%s': %s.", pid_file, strerror(errno));
+        exit(EXIT_FAILURE);
+    }
+
+    /* do not close nor unlock the PID file, keep it open while the daemon is alive */
+}
+
+/**
+ * @brief Ignores certain signals that sysrepo daemon should not care of.
+ */
+static void
+sr_daemon_ignore_signals()
+{
+    signal(SIGUSR1, SIG_IGN);
+    signal(SIGALRM, SIG_IGN);
+    signal(SIGCHLD, SIG_IGN);
+    signal(SIGTSTP, SIG_IGN);  /* keyboard stop */
+    signal(SIGTTIN, SIG_IGN);  /* background read from tty */
+    signal(SIGTTOU, SIG_IGN);  /* background write to tty */
+    signal(SIGHUP, SIG_IGN);   /* hangup */
+    signal(SIGPIPE, SIG_IGN);  /* broken pipe */
+}
+
+/**
+ * @brief Daemonize the process - fork() and instruct the child to behave as a proper daemon.
+ */
+pid_t
+sr_daemonize(bool debug_mode, int log_level, const char *pid_file, int *pid_file_fd)
+{
+    pid_t pid = 0, sid = 0;
+    int fd = -1;
+
+    /* set file creation mask */
+    umask(S_IWGRP | S_IWOTH);
+
+    /* set log levels */
+    if (debug_mode) {
+        sr_log_stderr(SR_DAEMON_LOG_LEVEL);
+        sr_log_syslog(SR_LL_NONE);
+    } else {
+        sr_log_stderr(SR_DAEMON_LOG_LEVEL);
+        sr_log_syslog(SR_DAEMON_LOG_LEVEL);
+    }
+    if ((-1 != log_level) && (log_level >= SR_LL_NONE) && (log_level <= SR_LL_DBG)) {
+        if (debug_mode) {
+            sr_log_stderr(log_level);
+        } else {
+            sr_log_syslog(log_level);
+        }
+    }
+
+    if (debug_mode) {
+        /* do not fork in debug mode */
+        sr_daemon_check_single_instance(pid_file, pid_file_fd);
+        sr_daemon_ignore_signals();
+        return 0;
+    }
+
+    /* register handlers for signals that we expect to receive from child process */
+    signal(SIGCHLD, sr_daemon_child_status_handler);
+    signal(SIGUSR1, sr_daemon_child_status_handler);
+    signal(SIGALRM, sr_daemon_child_status_handler);
+
+    /* fork off the parent process. */
+    pid = fork();
+    if (pid < 0) {
+        SR_LOG_ERR("Unable to fork sysrepo plugin daemon: %s.", strerror(errno));
+        exit(EXIT_FAILURE);
+    }
+    if (pid > 0) {
+        /* this is the parent process, wait for a signal from child */
+        alarm(SR_DAEMON_INIT_TIMEOUT);
+        pause();
+        exit(EXIT_FAILURE); /* this should not be executed */
+    }
+
+    /* at this point we are executing as the child process */
+    sr_daemon_check_single_instance(pid_file, pid_file_fd);
+
+    /* ignore certain signals */
+    sr_daemon_ignore_signals();
+
+    /* create a new session containing a single (new) process group */
+    sid = setsid();
+    if (sid < 0) {
+        SR_LOG_ERR("Unable to create new session: %s.", strerror(errno));
+        exit(EXIT_FAILURE);
+    }
+
+    /* change the current working directory. */
+    if ((chdir(SR_DEAMON_WORK_DIR)) < 0) {
+        SR_LOG_ERR("Unable to change directory to '%s': %s.", SR_DEAMON_WORK_DIR, strerror(errno));
+        exit(EXIT_FAILURE);
+    }
+
+    /* turn off stderr logging */
+    sr_log_stderr(SR_LL_NONE);
+
+    /* redirect standard files to /dev/null */
+    fd = open("/dev/null", O_RDWR, 0);
+    if (-1 != fd) {
+        dup2(fd, STDIN_FILENO);
+        dup2(fd, STDOUT_FILENO);
+        dup2(fd, STDERR_FILENO);
+        close(fd);
+    }
+
+    return getppid(); /* return PID of the parent */
+}
+
+void
+sr_daemonize_signal_success(pid_t parent_pid)
+{
+    kill(parent_pid, SIGUSR1);
 }

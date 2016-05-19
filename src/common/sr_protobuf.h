@@ -133,6 +133,31 @@ int sr_dup_gpb_to_val_t(const Sr__Value *gpb_value, sr_val_t **value);
 int sr_copy_gpb_to_val_t(const Sr__Value *gpb_value, sr_val_t *value);
 
 /**
+ * @brief Copies values from sysrepo values array to GPB array of pointers to values.
+ * GPB values will be allocated by this function and should be freed by caller.
+ *
+ * @param[in] sr_values Array of sysrepo values.
+ * @param[in] sr_value_cnt Number of values in the input array.
+ * @param[out] gpb_values GPB array of pointers to values.
+ * @param[out] gpb_value_cnt Number of values in the output array.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_values_sr_to_gpb(const sr_val_t *sr_values, const size_t sr_value_cnt, Sr__Value ***gpb_values, size_t *gpb_value_cnt);
+
+/**
+ * @brief Copies values from GPB array of pointers to values to sysrepo values array.
+ *
+ * @param[in] gpb_values GPB array of pointers to values.
+ * @param[in] gpb_value_cnt Number of values in the input array.
+ * @param[out] sr_values Array of sysrepo values.
+ * @param[out] sr_value_cnt Number of values in the output array.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_values_gpb_to_sr(Sr__Value **gpb_values, size_t gpb_value_cnt, sr_val_t **sr_values, size_t *sr_value_cnt);
+
+/**
  * @brief Converts sysrepo datastore to GPB datastore.
  *
  * @param [in] sr_ds Sysrepo datastore.

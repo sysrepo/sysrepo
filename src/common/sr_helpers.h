@@ -1,6 +1,7 @@
 /**
  * @file sr_helpers.h
- * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
+ * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>,
+ *         Milan Lenco <milan.lenco@pantheon.tech>
  * @brief Sysrepo helper macros.
  *
  * @copyright
@@ -24,19 +25,19 @@
 
 #define CHECK_NULL_ARG__INTERNAL(ARG) \
     if (NULL == ARG) { \
-        SR_LOG_ERR("NULL value detected for %s argument of %s", #ARG, __FUNCTION__); \
+        SR_LOG_ERR("NULL value detected for %s argument of %s", #ARG, __func__); \
         return SR_ERR_INVAL_ARG; \
     } \
 
 #define CHECK_NULL_ARG_VOID__INTERNAL(ARG) \
     if (NULL == ARG) { \
-        SR_LOG_ERR("NULL value detected for %s argument of %s", #ARG, __FUNCTION__); \
+        SR_LOG_ERR("NULL value detected for %s argument of %s", #ARG, __func__); \
         return; \
     } \
 
 #define CHECK_NULL_ARG_NORET__INTERNAL(RC, ARG) \
     if (NULL == ARG) { \
-        SR_LOG_ERR("NULL value detected for %s argument of %s", #ARG, __FUNCTION__); \
+        SR_LOG_ERR("NULL value detected for %s argument of %s", #ARG, __func__); \
         RC = SR_ERR_INVAL_ARG; \
     } \
 
@@ -168,7 +169,7 @@
 #define CHECK_NULL_NOMEM_RETURN(ARG) \
     do { \
         if (NULL == ARG) { \
-            SR_LOG_ERR("Unable to allocate memory in %s", __FUNCTION__); \
+            SR_LOG_ERR("Unable to allocate memory in %s", __func__); \
             return SR_ERR_NOMEM; \
         } \
     } while(0)
@@ -176,7 +177,7 @@
 #define CHECK_NULL_NOMEM_ERROR(ARG, ERROR) \
     do { \
         if (NULL == ARG) { \
-            SR_LOG_ERR("Unable to allocate memory in %s", __FUNCTION__); \
+            SR_LOG_ERR("Unable to allocate memory in %s", __func__); \
             ERROR = SR_ERR_NOMEM; \
         } \
     } while(0)
@@ -184,7 +185,7 @@
 #define CHECK_NULL_NOMEM_GOTO(ARG, ERROR, LABEL) \
     do { \
         if (NULL == ARG) { \
-            SR_LOG_ERR("Unable to allocate memory in %s", __FUNCTION__); \
+            SR_LOG_ERR("Unable to allocate memory in %s", __func__); \
             ERROR = SR_ERR_NOMEM; \
             goto LABEL; \
         } \
@@ -265,6 +266,42 @@
         } \
     } while(0)
 
+/**
+ * Non-minus value checkers.
+ */
+#define CHECK_NOT_MINUS1_MSG_RETURN(RET, ERROR, MSG) \
+    do { \
+        if (-1 == RET) { \
+            SR_LOG_ERR_MSG(MSG); \
+            return ERROR; \
+        } \
+    } while(0)
+
+#define CHECK_NOT_MINUS1_LOG_RETURN(RET, ERROR, MSG, ...) \
+    do { \
+        if (-1 == RET) { \
+            SR_LOG_ERR(MSG, __VA_ARGS__); \
+            return ERROR; \
+        } \
+    } while(0)
+
+#define CHECK_NOT_MINUS1_MSG_GOTO(RET, RC, ERROR, LABEL, MSG) \
+    do { \
+        if (-1 == RET) { \
+            SR_LOG_ERR_MSG(MSG); \
+            RC = ERROR; \
+            goto LABEL; \
+        } \
+    } while(0)
+
+#define CHECK_NOT_MINUS1_LOG_GOTO(RET, RC, ERROR, LABEL, MSG, ...) \
+    do { \
+        if (-1 == RET) { \
+            SR_LOG_ERR(MSG, __VA_ARGS__); \
+            RC = ERROR; \
+            goto LABEL; \
+        } \
+    } while(0)
 
 /**
  * NULL value checker - returns given error code.
@@ -272,7 +309,7 @@
 
 #define CHECK_NULL_RETURN(ARG, RC) \
     if (NULL == ARG) { \
-        SR_LOG_ERR("NULL value detected for %s in %s", #ARG, __FUNCTION__); \
+        SR_LOG_ERR("NULL value detected for %s in %s", #ARG, __func__); \
         return RC; \
     } \
 

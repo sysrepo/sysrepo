@@ -5,6 +5,8 @@ set(TEST_INTERNAL_SCHEMA_SEARCH_DIR "${TEST_REPOSITORY_LOC}/yang/internal/")
 
 set(TEST_HELPERS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/helpers/")
 
+CHECK_INCLUDE_FILES(regex.h HAVE_REGEX_H)
+
 configure_file("${TEST_HELPERS_DIR}/test_data.h.in" "${TEST_HELPERS_DIR}/test_data.h" ESCAPE_QUOTES @ONLY) 
 
 include_directories ("${PROJECT_SOURCE_DIR}/src" "${PROJECT_SOURCE_DIR}/src/common" "${PROJECT_SOURCE_DIR}/inc" "${TEST_HELPERS_DIR}")
@@ -18,6 +20,7 @@ macro(ADD_UNIT_TEST_WITH_OPTS TEST_NAME USE_HELPERS USE_VALGRIND WRAP_FUNCTION)
             ${TEST_NAME}.c
             ${TEST_HELPERS_DIR}rp_dt_context_helper.c
             ${TEST_HELPERS_DIR}test_module_helper.c
+            ${TEST_HELPERS_DIR}system_helper.c
             )
     else()
         set(TEST_SRC
@@ -30,13 +33,14 @@ macro(ADD_UNIT_TEST_WITH_OPTS TEST_NAME USE_HELPERS USE_VALGRIND WRAP_FUNCTION)
         set(test_link_flags "-Wl,--wrap,${WRAP_FUNCTION}")
     endif()
     add_executable(${TEST_NAME} ${TEST_SRC})
-    target_link_libraries(${TEST_NAME} ${CMOCKA_LIBRARIES} sysrepo sysrepo-engine ${test_link_flags})
+    target_link_libraries(${TEST_NAME} ${CMOCKA_LIBRARIES} sysrepo_a sysrepo-engine_a ${test_link_flags})
     add_test(${TEST_NAME} ${TEST_NAME})
     if(valgrind_FOUND)
        if(${USE_VALGRIND})
            add_test(${TEST_NAME}_valgrind valgrind
                 --error-exitcode=1 --read-var-info=yes
                 --leak-check=full --show-leak-kinds=all
+                --suppressions=${TEST_HELPERS_DIR}valgrind.supp
                 ./${TEST_NAME})
        endif(${USE_VALGRIND})
     endif(valgrind_FOUND)
@@ -73,7 +77,8 @@ if("${TEST_REPOSITORY_LOC}" STREQUAL "${REPOSITORY_LOC}")
     ADD_UNIT_TEST(concurr_test 1)
     ADD_UNIT_TEST_WITH_OPTS(perf_test 1 0 "")
     ADD_UNIT_TEST_WITH_OPTS(daemon_test 0 0 "")
-    ADD_UNIT_TEST_WITH_OPTS(sysrepoctl_test 0 0 "")
+    ADD_UNIT_TEST_WITH_OPTS(plugin_daemon_test 0 0 "")
+    ADD_UNIT_TEST_WITH_OPTS(sysrepoctl_test 1 0 "")
 
     # Python tests
     FIND_PACKAGE(PythonInterp)
@@ -96,9 +101,9 @@ if("${TEST_REPOSITORY_LOC}" STREQUAL "${REPOSITORY_LOC}")
         ADD_PYTHON_TEST(PerfTest)
     endif()
     add_executable(measure_perf measure_performance.c ${TEST_HELPERS_DIR}test_module_helper.c)
-    target_link_libraries(measure_perf ${CMOCKA_LIBRARIES} sysrepo sysrepo-engine)
+    target_link_libraries(measure_perf ${CMOCKA_LIBRARIES} sysrepo_a)
     add_executable(subscription_test_app subscription_test_app.c)
-    target_link_libraries(subscription_test_app ${CMOCKA_LIBRARIES} sysrepo sysrepo-engine)
+    target_link_libraries(subscription_test_app ${CMOCKA_LIBRARIES} sysrepo_a)
 
 else()
     message(STATUS "Test repostory location differs to system repository location, some tests will be disabled.")
@@ -136,3 +141,10 @@ INSTALL_YANG_MODULE("module-b@2016-02-05")
 INSTALL_YANG_MODULE("iana-if-type")
 INSTALL_YANG_MODULE("ietf-interfaces@2014-05-08")
 INSTALL_YANG_MODULE("ietf-ip@2014-06-16")
+
+# dummy testing plugins
+add_library(dummy-plugin-1 SHARED ${TEST_HELPERS_DIR}dummy_plugin.c)
+target_link_libraries(dummy-plugin-1 sysrepo)
+
+add_library(dummy-plugin-2 SHARED ${TEST_HELPERS_DIR}dummy_plugin.c)
+target_link_libraries(dummy-plugin-2 sysrepo)

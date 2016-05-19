@@ -215,18 +215,6 @@ struct lyd_node* sr_dup_datatree(struct lyd_node *root);
 int sr_lyd_unlink(dm_data_info_t *data_info, struct lyd_node *node);
 
 /**
- * @brief Call lyd_new_path if the data info does not contain a node attaches the created node.
- * @param [in] data_info
- * @param [in] ctx
- * @param [in] path
- * @param [in] value
- * @param [in] options
- * @return same as libyang's lyd_new_path
- */
-struct lyd_node *sr_lyd_new_path(dm_data_info_t *data_info, struct ly_ctx *ctx,
-        const char *path, const char *value, int options);
-
-/**
  * @brief Insert node after sibling and fixes the pointer in dm_data_info if needed.
  * @param [in] data_info
  * @param [in] sibling
@@ -258,8 +246,14 @@ sr_type_t sr_libyang_type_to_sysrepo(LY_DATA_TYPE t);
  * @param [out] out
  * @return
  */
-int sr_val_to_str(const sr_val_t *value, struct lys_node *schema_node, char **out);
+int sr_val_to_str(const sr_val_t *value, const struct lys_node *schema_node, char **out);
 
+/**
+ * @brief Returns the string name of the datastore
+ * @param [in] ds
+ * @return Data store name
+ */
+const char * sr_ds_to_str(sr_datastore_t ds);
 /**
  * @brief Frees contents of the sr_val_t structure, does not free the
  * value structure itself.
@@ -296,6 +290,27 @@ void sr_free_errors(sr_error_info_t *sr_errors, size_t sr_error_cnt);
  * @param [in] schema
  */
 void sr_free_schema(sr_schema_t *schema);
+
+/**
+ * @brief Daemonize the process. The process will fork and PID of the original
+ * (parent) process will be returned.
+ *
+ * @param[in] debug_mode Do not fork, Turn on logging to stderr.
+ * @param[in] log_level Desired log level.
+ * @param[in] pid_file PID file path.
+ * @param[out] pid_file_fd File descriptor of opened PID file.
+ *
+ * @return PID of the original (parent) process, 0 In case of debug mode.
+ */
+pid_t sr_daemonize(bool debug_mode, int log_level, const char *pid_file, int *pid_file_fd);
+
+/**
+ * @brief Send a signal notifying about initialization success to the parent of
+ * the process forked by ::sr_daemonize.
+ *
+ * @param[in] PID of the parent process that is waiting for this signal.
+ */
+void sr_daemonize_signal_success(pid_t parent_pid);
 
 /**@} utils */
 

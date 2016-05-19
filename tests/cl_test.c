@@ -832,6 +832,16 @@ cl_locking_test(void **state)
     rc = sr_lock_module(sessionB, "unknown-module");
     assert_int_equal(rc, SR_ERR_UNKNOWN_MODEL);
 
+    /* modified module can not be locked*/
+    rc = sr_delete_item(sessionB, "/test-module:main", SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = sr_lock_module(sessionB, "test-module");
+    assert_int_equal(rc, SR_ERR_OPERATION_FAILED);
+
+    rc = sr_lock_datastore(sessionB);
+    assert_int_equal(rc, SR_ERR_OPERATION_FAILED);
+
     /* stop the sessions */
     rc = sr_session_stop(sessionA);
     assert_int_equal(rc, SR_ERR_OK);
@@ -1007,10 +1017,12 @@ test_module_change_cb(sr_session_ctx_t *session, const char *module_name, void *
     printf("Some data within the module '%s' has changed.\n", module_name);
 
     rc = sr_get_item(session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &value);
-    assert_int_equal(rc, SR_ERR_OK);
-
-    printf("New value for '%s' = '%s'\n", value->xpath, value->data.string_val);
-    sr_free_val(value);
+    if (SR_ERR_OK == rc) {
+        printf("New value for '%s' = '%s'\n", value->xpath, value->data.string_val);
+        sr_free_val(value);
+    } else {
+        printf("While retrieving '%s' error with code (%d) occured\n", "/example-module:container/list[key1='key1'][key2='key2']/leaf", rc);
+    }
 }
 
 static void
@@ -1020,7 +1032,7 @@ cl_notification_test(void **state)
     assert_non_null(conn);
 
     sr_session_ctx_t *session = NULL;
-    sr_subscription_ctx_t *subscription1 = NULL, *subscription2 = NULL, *subscription3 = NULL;
+    sr_subscription_ctx_t *subscription = NULL;
     int callback_called = 0;
     sr_val_t value = { 0, };
     int rc = SR_ERR_OK;
@@ -1029,16 +1041,18 @@ cl_notification_test(void **state)
     rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = sr_module_install_subscribe(session, test_module_install_cb, &callback_called, &subscription1);
+    /* subscribe to some notifications */
+    rc = sr_module_install_subscribe(session, test_module_install_cb, &callback_called, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = sr_feature_enable_subscribe(session, test_feature_enable_cb, &callback_called, &subscription2);
+    rc = sr_feature_enable_subscribe(session, test_feature_enable_cb, &callback_called, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
     rc = sr_module_change_subscribe(session, "example-module", true,
-            test_module_change_cb, &callback_called, &subscription3);
+            test_module_change_cb, &callback_called, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
+    /* do some changes */
     rc = sr_module_install(session, "example-module", NULL, true);
     assert_int_equal(rc, SR_ERR_OK);
 
@@ -1063,7 +1077,6 @@ cl_notification_test(void **state)
     rc = sr_feature_enable(session, "ietf-interfaces", "pre-provisioning", false);
     assert_int_equal(rc, SR_ERR_OK);
 
-    // change & commit something, expect module change callback
     /* perform a set-item request */
     value.type = SR_STRING_T;
     value.data.string_val = "notification_test";
@@ -1097,17 +1110,11 @@ cl_notification_test(void **state)
     rc = sr_lock_module(session, "example-module");
     assert_int_equal(rc, SR_ERR_UNKNOWN_MODEL);
 
+    rc = sr_unsubscribe(session, subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
     /* stop the session */
     rc = sr_session_stop(session);
-    assert_int_equal(rc, SR_ERR_OK);
-
-    rc = sr_unsubscribe(subscription1);
-    assert_int_equal(rc, SR_ERR_OK);
-
-    rc = sr_unsubscribe(subscription2);
-    assert_int_equal(rc, SR_ERR_OK);
-
-    rc = sr_unsubscribe(subscription3);
     assert_int_equal(rc, SR_ERR_OK);
 }
 
@@ -1127,6 +1134,14 @@ cl_copy_config_test(void **state)
     rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &session_startup);
     assert_int_equal(rc, SR_ERR_OK);
     rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &session_running);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* copy to/from candidate */
+    rc = sr_copy_config(session_startup, NULL, SR_DS_STARTUP, SR_DS_CANDIDATE);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* copy-config all enabled models, currently none */
+    rc = sr_copy_config(session_startup, NULL, SR_DS_RUNNING, SR_DS_STARTUP);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* enable running DS for example-module */
@@ -1153,14 +1168,261 @@ cl_copy_config_test(void **state)
     assert_string_equal(val->data.string_val, "copy_config_test");
     sr_free_val(val);
 
+    /* edit config in running 2 */
+    value.type = SR_STRING_T;
+    value.data.string_val = "copy_config_modified";
+    rc = sr_set_item(session_running, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* commit */
+    rc = sr_commit(session_running);
+
+    /* copy-config all enabled models */
+    rc = sr_copy_config(session_startup, NULL, SR_DS_RUNNING, SR_DS_STARTUP);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_session_refresh(session_startup);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* get-config from startup */
+    rc = sr_get_item(session_startup, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &val);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_string_equal(val->data.string_val, value.data.string_val);
+    sr_free_val(val);
+
     /* stop the sessions */
     rc = sr_session_stop(session_startup);
     assert_int_equal(rc, SR_ERR_OK);
     rc = sr_session_stop(session_running);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = sr_unsubscribe(subscription);
+    rc = sr_unsubscribe(NULL, subscription);
     assert_int_equal(rc, SR_ERR_OK);
+}
+
+static int
+test_rpc_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt,
+        sr_val_t **output, size_t *output_cnt, void *private_ctx)
+{
+    int *callback_called = (int*)private_ctx;
+    *callback_called += 1;
+
+    assert_int_equal(input_cnt, 2);
+
+    printf("'Executing' RPC: %s\n", xpath);
+    for (size_t i = 0; i < input_cnt; i++) {
+        printf("    input parameter[%zu]: %s = %s\n", i, input[i].xpath, input[i].data.string_val);
+    }
+
+    *output = calloc(2, sizeof(**output));
+    (*output)[0].xpath = strdup("/test-module:activate-software-image/status");
+    (*output)[0].type = SR_STRING_T;
+    (*output)[0].data.string_val = strdup("The image acmefw-2.3 is being installed.");
+    (*output)[1].xpath = strdup("/test-module:activate-software-image/version");
+    (*output)[1].type = SR_STRING_T;
+    (*output)[1].data.string_val = strdup("2.3");
+
+    *output_cnt = 2;
+
+    return SR_ERR_OK;
+}
+
+static void
+cl_rpc_test(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+
+    sr_session_ctx_t *session = NULL;
+    sr_subscription_ctx_t *subscription = NULL;
+    int callback_called = 0;
+    int rc = SR_ERR_OK;
+
+    /* start a session */
+    rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* subscribe for RPC */
+    rc = sr_rpc_subscribe(session, "/test-module:activate-software-image", test_rpc_cb, &callback_called, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    sr_val_t input = { 0, };
+    sr_val_t *output = NULL;
+    size_t output_cnt = 0;
+    input.xpath = "/test-module:activate-software-image/image-name";
+    input.type = SR_STRING_T;
+    input.data.string_val = "acmefw-2.3";
+
+    /* send a RPC */
+    rc = sr_rpc_send(session, "/test-module:activate-software-image", &input, 1, &output, &output_cnt);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    assert_int_equal(output_cnt, 3);
+    for (size_t i = 0; i < output_cnt; i++) {
+        printf("RPC output parameter[%zu]: %s = %s\n", i, output[i].xpath, output[i].data.string_val);
+    }
+    sr_free_values(output, output_cnt);
+
+    /* stop the session */
+    rc = sr_session_stop(session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* unsubscribe */
+    rc = sr_unsubscribe(NULL, subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+}
+
+static void
+candidate_ds_test(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+
+    sr_session_ctx_t *session_startup = NULL, *session_running = NULL, *session_candidate = NULL;
+    sr_subscription_ctx_t *subscription = NULL;
+    int callback_called = 0;
+    sr_val_t value = { 0, }, *val = NULL;
+    int rc = SR_ERR_OK;
+
+    /* start sessions */
+    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &session_startup);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_session_start(conn, SR_DS_CANDIDATE, SR_SESS_DEFAULT, &session_candidate);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &session_running);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* get-config from candidate, should be empty no module enabled */
+    rc = sr_get_item(session_candidate, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &val);
+    assert_int_equal(rc, SR_ERR_NOT_FOUND);
+    sr_free_val(val);
+
+    value.type = SR_STRING_T;
+    value.data.string_val = "abcd";
+    value.xpath = "/example-module:container/list[key1='key1'][key2='key2']/leaf";
+
+    /* set item into candidate work even for not enabled leaf */
+    rc = sr_set_item(session_candidate, value.xpath, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_get_item(session_candidate, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &val);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_int_equal(value.type, val->type);
+    assert_string_equal(value.data.string_val, val->data.string_val);
+    sr_free_val(val);
+
+    rc = sr_copy_config(session_candidate, "example-module", SR_DS_CANDIDATE, SR_DS_STARTUP);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* get-config from startup, candidate should be copied to the startup */
+    rc = sr_get_item(session_startup, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &val);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_int_equal(value.type, val->type);
+    assert_string_equal(value.data.string_val, val->data.string_val);
+    sr_free_val(val);
+
+    /* commit should fail because non enabled nodes are modified */
+    rc = sr_commit(session_candidate);
+    assert_int_equal(SR_ERR_OPERATION_FAILED, rc);
+
+    rc = sr_copy_config(session_candidate, "example-module", SR_DS_CANDIDATE, SR_DS_RUNNING);
+    assert_int_equal(SR_ERR_OPERATION_FAILED, rc);
+
+    /* enable running DS for example-module */
+    rc = sr_module_change_subscribe(session_startup, "example-module", true,
+            test_module_change_cb, &callback_called, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* commit should pass */
+    rc = sr_commit(session_candidate);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = sr_get_item(session_running, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &val);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_int_equal(value.type, val->type);
+    assert_string_equal(value.data.string_val, val->data.string_val);
+    sr_free_val(val);
+
+    /* copy config should work as well*/
+    value.data.string_val = "xyz";
+    rc = sr_set_item(session_candidate, value.xpath, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_copy_config(session_candidate, "example-module", SR_DS_CANDIDATE, SR_DS_RUNNING);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = sr_session_refresh(session_running);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = sr_get_item(session_running, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &val);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_int_equal(value.type, val->type);
+    assert_string_equal(value.data.string_val, val->data.string_val);
+    sr_free_val(val);
+
+    /* stop the sessions */
+    rc = sr_session_stop(session_startup);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_session_stop(session_candidate);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_session_stop(session_running);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_unsubscribe(NULL, subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+}
+
+static void
+cl_switch_ds(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+
+    sr_session_ctx_t *session = NULL;
+    sr_val_t value = { 0, }, *val = NULL;
+    int rc = SR_ERR_OK;
+
+    /* start session */
+    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* value can be found in startup */
+    rc = sr_get_item(session, "/test-module:main/i8", &val);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(SR_INT8_T, val->type);
+    sr_free_val(val);
+    val = NULL;
+
+    value.type = SR_INT8_T;
+    value.xpath = "/test-module:main/i8";
+    value.data.int8_val = 1;
+
+    /* modify value in startup */
+    rc = sr_set_item(session, value.xpath, &value, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = sr_session_switch_ds(session, SR_DS_RUNNING);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* value is not enabled in running */
+    rc = sr_get_item(session, "/test-module:main/i8", &val);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+
+    /* switch back to startup*/
+    rc = sr_session_switch_ds(session, SR_DS_STARTUP);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* changes made in session are in place */
+    rc = sr_get_item(session, "/test-module:main/i8", &val);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(SR_INT8_T, val->type);
+    assert_int_equal(1, val->data.uint8_val);
+    sr_free_val(val);
+    val = NULL;
+
+    rc = sr_session_stop(session);
+    assert_int_equal(rc, SR_ERR_OK);
+
 }
 
 int
@@ -1184,6 +1446,9 @@ main()
             cmocka_unit_test_setup_teardown(cl_refresh_session, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_notification_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_copy_config_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_rpc_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(candidate_ds_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_switch_ds, sysrepo_setup, sysrepo_teardown),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);

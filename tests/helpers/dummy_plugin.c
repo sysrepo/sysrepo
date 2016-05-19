@@ -1,11 +1,10 @@
 /**
- * @file test_data.h
- * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>,
- *         Milan Lenco <milan.lenco@pantheon.tech>
- * @brief 
+ * @file dummy_plugin.c
+ * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
+ * @brief Source code of dummy sysrepo plugin used for unit tests.
  *
  * @copyright
- * Copyright 2015 Cisco Systems, Inc.
+ * Copyright 2016 Cisco Systems, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,14 +19,20 @@
  * limitations under the License.
  */
 
+#include <stdio.h>
+#include <syslog.h>
+#include "sysrepo.h"
 
-#ifndef TEST_DATA_TEST_DATA_H_IN_
-#define TEST_DATA_TEST_DATA_H_IN_
+int
+sr_plugin_init_cb(sr_session_ctx_t *session, void **private_ctx)
+{
+    printf("dummy plugin init");
 
-#cmakedefine HAVE_REGEX_H
+    return SR_ERR_OK;
+}
 
-#define TEST_SCHEMA_SEARCH_DIR "@TEST_SCHEMA_SEARCH_DIR@"
-#define TEST_DATA_SEARCH_DIR "@TEST_DATA_SEARCH_DIR@"
-#define TEST_INTERNAL_SCHEMA_SEARCH_DIR "@TEST_INTERNAL_SCHEMA_SEARCH_DIR@"
-
-#endif /* TEST_DATA_TEST_DATA_H_IN_ */
+void
+sr_plugin_cleanup_cb(sr_session_ctx_t *session, void *private_ctx)
+{
+    printf("dummy plugin cleanup");
+}

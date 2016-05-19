@@ -2,41 +2,43 @@
 
 @page ds_page Datastores & Sessions
 
-Sysrepo supports \b startup and \b running configuration datastores. Each configuration 
-session created in sysrepo is permanently tied to only one of them.
+Sysrepo supports \b startup \b running and \b candidate configuration datastores. Each configuration
+session created can perform operations on any of them. On session start the initial datastore
+is selected. All subsequent calls are tied to the chosen datastore. The datastore which
+the session is operating can be changed using ::sr_session_switch_ds.
 
-Both startup and running datastores provide <b>implicit candidate</b> capability. 
-That means, that changes made within a session are not applied into the datastore 
-until ::sr_commit is requested. While not committed, changes are visible only 
-within the same configuration session.
+The changes made within a session are not applied into the datastore
+until ::sr_commit is requested. While not committed, changes are visible only
+within the same configuration session. This applies for all three datastores.
 
 
 @section sds Startup Datastore
 Startup datastore contains the configuration data that should be loaded by the
 controlled application or service when it starts. Each sysrepo-enabled application
-or service supports at least this datastore. 
+or service supports at least this datastore.
 
 
 @section rds Running Datastore
-Running datastore contains currently applied configuration and state data 
-of a running application or service. If the application is not running at the 
+Running datastore contains currently applied configuration and state data
+of a running application or service. If the application is not running at the
 moment for whatever reason, it will have no data in the running datastore.
 
 Not all applications support this datastore. If an application does not support running
 datastore, it won't have any data in it, regardless of whether it is running or not.
 
 To support running datastore, the application needs to subscribe for notifications about the
-changes made in the datastore. After the subscription, the data on subscribed paths 
+changes made in the datastore. After the subscription, the data on subscribed paths
 will be copied from startup to running datastore and become available for retrieval.
 
-When new configuration is committed into the running datastore, subscribed application is 
-informed about it and should start using it. Be aware that that kind of 
-change is not permanent - you need to copy the configuration to the startup 
+When new configuration is committed into the running datastore, subscribed application is
+informed about it and should start using it. Be aware that that kind of
+change is not permanent - you need to copy the configuration to the startup
 datastore to make it permanent after application restart (::sr_copy_config).
 
-@note In sysrepo versions below 0.3.0, notifications are not implemented, and running datastore
-cannot be used. For testing purposes, an internal function ::rp_dt_enable_xpath can be 
-called to enable a subtree in running datastore.
+@section cds Candidate Datastore
+The candidate configuration is a full configuration data set that serves as a work
+place for creating and manipulating configuration data. ::sr_commit operation sets
+running configuration to the value of the candidate content.
 
 @section dscache Session Data Caching
 For faster processing, sysrepo caches configuration data within the session.
@@ -45,8 +47,8 @@ data model within the session. After that, all requests within the session
 operate on that session-local view of the data. By commit operation,
 changes made within the session are merged with the actual state of the datastore
 at the time of commit. That implies, that commit operation may possibly fail if
-datastore has been changed by another session in the meantime and the two changes 
-cannot be merged. To prevent this situation, the client should always use 
+datastore has been changed by another session in the meantime and the two changes
+cannot be merged. To prevent this situation, the client should always use
 locking capabilities of sysrepo in multi-user environments.
 
 Cached data will be released and the session will start operate on fresh data

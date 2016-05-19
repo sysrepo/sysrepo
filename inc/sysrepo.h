@@ -159,7 +159,7 @@ typedef enum sr_error_e {
     SR_ERR_UNKNOWN_MODEL,      /**< Request includes unknown schema */
     SR_ERR_BAD_ELEMENT,        /**< Unknown element in existing schema */
     SR_ERR_VALIDATION_FAILED,  /**< Validation of the changes failed. */
-    SR_ERR_COMMIT_FAILED,      /**< Commit operation failed. */
+    SR_ERR_OPERATION_FAILED,   /**< An operation failed. */
     SR_ERR_DATA_EXISTS,        /**< Item already exists. */
     SR_ERR_DATA_MISSING,       /**< Item does not exists. */
     SR_ERR_UNAUTHORIZED,       /**< Operation not authorized. */
@@ -274,7 +274,7 @@ typedef enum sr_session_flag_e {
  * @brief Options overriding default connection session handling,
  * can be bitwise OR-ed value of any ::sr_session_flag_t flags.
  */
-typedef uint32_t sr_conn_options_t;
+typedef uint32_t sr_sess_options_t;
 
 /**
  * @brief Data stores that sysrepo supports. Both are editable via implicit candidate.
@@ -285,6 +285,8 @@ typedef enum sr_datastore_e {
     SR_DS_STARTUP = 0,    /**< Contains configuration data that should be loaded by the controlled application when it starts. */
     SR_DS_RUNNING = 1,    /**< Contains currently applied configuration and state data of a running application.
                                @note This datastore is supported only by applications that subscribe for notifications about the changes made in the datastore. */
+    SR_DS_CANDIDATE = 2,  /**< Contains configuration that can be manipulated without impacting the current configuration. It can be than
+                           * committed to the running or copied to a datastore. */
 } sr_datastore_t;
 
 /**
@@ -317,7 +319,8 @@ void sr_disconnect(sr_conn_ctx_t *conn_ctx);
  *
  * @param[in] conn_ctx Connection context acquired with ::sr_connect call.
  * @param[in] datastore Datastore on which all sysrepo functions within this
- * session will operate. Functionality of some sysrepo calls does not depend on
+ * session will operate. Later on, datastore can be changed using
+ * ::sr_session_switch_ds call. Functionality of some sysrepo calls does not depend on
  * datastore. If your session will contain just calls like these, you can pass
  * any valid value (e.g. SR_RUNNING).
  * @param[in] opts Options overriding default session handling.
@@ -327,7 +330,7 @@ void sr_disconnect(sr_conn_ctx_t *conn_ctx);
  * @return Error code (SR_ERR_OK on success).
  */
 int sr_session_start(sr_conn_ctx_t *conn_ctx, const sr_datastore_t datastore,
-        const sr_conn_options_t opts, sr_session_ctx_t **session);
+        const sr_sess_options_t opts, sr_session_ctx_t **session);
 
 /**
  * @brief Starts a new configuration session on behalf of a different user.
@@ -359,7 +362,7 @@ int sr_session_start(sr_conn_ctx_t *conn_ctx, const sr_datastore_t datastore,
  * @return Error code (SR_ERR_OK on success).
  */
 int sr_session_start_user(sr_conn_ctx_t *conn_ctx, const char *user_name, const sr_datastore_t datastore,
-        const sr_conn_options_t opts, sr_session_ctx_t **session);
+        const sr_sess_options_t opts, sr_session_ctx_t **session);
 
 /**
  * @brief Stops current session and releases resources tied to the session.
@@ -386,6 +389,16 @@ int sr_session_stop(sr_session_ctx_t *session);
  * @return Error code (SR_ERR_OK on success).
  */
 int sr_session_refresh(sr_session_ctx_t *session);
+
+/**
+ * @brief Changes datastore to which the session is tied to. All subsequent
+ * calls will be issued on the chosen datastore.
+ *
+ * @param [in] session
+ * @param [in] ds
+ * @return Error code (SR_ERR_OK on success)
+ */
+int sr_session_switch_ds(sr_session_ctx_t *session, sr_datastore_t ds);
 
 /**
  * @brief Retrieves detailed information about the error that has occurred
@@ -737,8 +750,8 @@ int sr_discard_changes(sr_session_ctx_t *session);
  *
  * If the target datastore exists, it is overwritten. Otherwise, a new one is created.
  *
- * @note In the current implementation, running configuration datastore is not
- * supported as the destination datastore.
+ * @note Operation may fail, if it tries to copy a not enabled configuration to the
+ * running datastore.
  *
  * @param[in] session Session context acquired with ::sr_session_start call.
  * @param[in] module_name If specified, only limits the copy operation only to
@@ -759,6 +772,7 @@ int sr_copy_config(sr_session_ctx_t *session, const char *module_name,
 /**
  * @brief Locks the datastore which the session is tied to. If there is
  * a module locked by the other session SR_ERR_LOCKED is returned.
+ * Operation fails if there is a modified data tree in session.
  *
  * All data models within the datastore will be locked for writing until
  * ::sr_unlock_datastore is called or until the session is stopped or terminated
@@ -787,7 +801,7 @@ int sr_unlock_datastore(sr_session_ctx_t *session);
 
 /**
  * @brief Locks specified data module within the datastore which the session
- * is tied to.
+ * is tied to. Operation fails if the data tree has been modified.
  *
  * Specified data module will be locked for writing in the datastore until
  * ::sr_unlock_module is called or until the session is stopped or terminated
@@ -819,7 +833,7 @@ int sr_unlock_module(sr_session_ctx_t *session, const char *module_name);
 
 
 ////////////////////////////////////////////////////////////////////////////////
-// Notification API - !!! EXPERIMENTAL !!!
+// Notification API
 ////////////////////////////////////////////////////////////////////////////////
 
 /**
@@ -923,9 +937,71 @@ int sr_feature_enable_subscribe(sr_session_ctx_t *session, sr_feature_enable_cb 
  * @brief Unsubscribes from a subscription acquired by any of sr_*_subscribe
  * calls and releases all subscription-related data.
  *
+ * @param[in] session Session context acquired with ::sr_session_start call.
+ * Does not need to be the same as used for subscribing. NULL can be passed too,
+ * in that case a temporary session used for unsubscribe will be automatically
+ * created by sysrepo.
+ * @param[in] subscription Subscription context acquired by any of sr_*_subscribe
+ * calls.
+ *
  * @return Error code (SR_ERR_OK on success).
  */
-int sr_unsubscribe(sr_subscription_ctx_t *subscription);
+int sr_unsubscribe(sr_session_ctx_t *session, sr_subscription_ctx_t *subscription);
+
+
+////////////////////////////////////////////////////////////////////////////////
+// RPC API
+////////////////////////////////////////////////////////////////////////////////
+
+/**
+ * @brief Callback to be called by the delivery of RPC specified by xpath.
+ * Subscribe to it by ::sr_rpc_subscribe call.
+ *
+ * @param[in] xpath XPath identifying the RPC.
+ * @param[in] input Array of input parameters.
+ * @param[in] input_cnt Number of input parameters.
+ * @param[out] output Array of output parameters. Should be allocated on heap,
+ * will be freed by sysrepo after sending of the RPC response.
+ * @param[out] output_cnt Number of output parameters.
+ * @param[in] private_ctx Private context opaque to sysrepo, as passed to
+ * ::sr_rpc_subscribe call.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+typedef int (*sr_rpc_cb)(const char *xpath, const sr_val_t *input, const size_t input_cnt,
+        sr_val_t **output, size_t *output_cnt, void *private_ctx);
+
+/**
+ * @brief Subscribes for delivery of RPC specified by xpath.
+ *
+ * @param[in] session Session context acquired with ::sr_session_start call.
+ * @param[in] xpath XPath identifying the RPC.
+ * @param[in] callback Callback to be called when the RPC is called.
+ * @param[in] private_ctx Private context passed to the callback function, opaque to sysrepo.
+ * @param[out] subscription Subscription context that can be passed to ::sr_unsubscribe.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callback,
+        void *private_ctx, sr_subscription_ctx_t **subscription);
+
+/**
+ * @brief Sends a RPC specified by xpath and waits for the result.
+ *
+ * @param[in] session Session context acquired with ::sr_session_start call.
+ * @param[in] xpath XPath identifying the RPC.
+ * @param[in] input Array of input parameters (array of all nodes that hold some
+ * data in RPC input subtree - same as ::sr_get_items would return).
+ * @param[in] input_cnt Number of input parameters.
+ * @param[out] output Array of output parameters (all nodes that hold some data
+ * in RPC output subtree). Will be allocated by sysrepo and should be freed by
+ * caller using ::sr_free_values.
+ * @param[out] output_cnt Number of output parameters.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_rpc_send(sr_session_ctx_t *session, const char *xpath,
+        const sr_val_t *input,  const size_t input_cnt, sr_val_t **output, size_t *output_cnt);
 
 
 ////////////////////////////////////////////////////////////////////////////////

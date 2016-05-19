@@ -93,11 +93,13 @@ int pm_get_module_info(pm_ctx_t *pm_ctx, const char *module_name,
  * @param[in] user_cred User credentials.
  * @param[in] module_name Name of the module.
  * @param[in] subscription Subscription to be added.
+ * @param[in] exclusive TRUE if this is an exclusive subscription, which means
+ * that any other subscriptions of the same type will be removed before adding new one).
  *
  * @return Error code (SR_ERR_OK on success).
  */
 int pm_add_subscription(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *module_name,
-        const np_subscription_t *subscription);
+        const np_subscription_t *subscription, const bool exclusive);
 
 /**
  * @brief Removes the subscription from module's persistent storage.
