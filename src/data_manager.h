@@ -107,12 +107,16 @@ typedef struct dm_sess_op_s{
     }detail;
 }dm_sess_op_t;
 
+/**
+ * @brief Holds subscriptions for the particular model
+ * used in commit context
+ */
 typedef struct dm_model_subscription_s {
     const struct lys_module *module;    /* module */
-    void **subscription;                /* array of struct received from np */
-    const struct lys_node **sch_node;   /* array of schema nodes corresponding to the subscription */
+    void **subscriptions;               /* array of struct received from np */
+    const struct lys_node **nodes;   /* array of schema nodes corresponding to the subscription */
     size_t subscription_cnt;            /* number of subscriptions */
-}dm_subscription_t;
+}dm_model_subscription_t;
 
 /**
  * @brief Structure holding information used during commit process
@@ -125,7 +129,8 @@ typedef struct dm_commit_context_s {
     struct ly_set *up_to_date_models; /**< set of module names where the timestamp of the session copy is equal to file system timestamp */
     dm_sess_op_t *operations;   /**< pointer to the list of operations performed in session to be commited */
     size_t oper_count;          /**< number of operation in the operations list */
-    sr_btree_t *subscriptions;
+    sr_btree_t *subscriptions;  /**< binary trees of subscriptions organised per models */
+    sr_btree_t *prev_data_trees;/**< data trees in the state before commit */
 } dm_commit_context_t;
 
 /**

@@ -174,6 +174,27 @@ dm_schema_info_cmp(const void *a, const void *b)
     }
 }
 
+/**
+ * @brief Compares two schema data info by module name
+ */
+static int
+dm_module_subscription_cmp(const void *a, const void *b)
+{
+    assert(a);
+    assert(b);
+    dm_model_subscription_t *sub_a = (dm_model_subscription_t *) a;
+    dm_model_subscription_t *sub_b = (dm_model_subscription_t *) b;
+
+    int res = strcmp(sub_a->module->name, sub_b->module->name);
+    if (res == 0) {
+        return 0;
+    } else if (res < 0) {
+        return -1;
+    } else {
+        return 1;
+    }
+}
+
 static void
 dm_free_schema_info(void *schema_info)
 {
@@ -194,6 +215,47 @@ dm_data_info_free(void *item)
         lyd_free_withsiblings(info->node);
     }
     free(info);
+}
+
+static void
+dm_model_subscription_free(void *sub)
+{
+    dm_model_subscription_t *ms = (dm_model_subscription_t *) sub;
+    if (NULL != ms) {
+        free(ms->subscriptions);
+        free(ms->nodes);
+    }
+    free(ms);
+}
+
+/**
+ * @brief Creates the copy of dm_data_info structure and inserts it into binary tree
+ * @param [in] tree
+ * @param [in] di
+ * @return Error code (SR_ERR_OK on success)
+ */
+static int
+dm_insert_data_info_copy(sr_btree_t *tree, const dm_data_info_t *di)
+{
+    CHECK_NULL_ARG2(tree, di);
+    int rc = SR_ERR_OK;
+    dm_data_info_t *copy = NULL;
+    copy = calloc (1, sizeof(*copy));
+    CHECK_NULL_NOMEM_RETURN(copy);
+
+    if (NULL != di->node) {
+        copy->node = lyd_dup(di->node, 1);
+        CHECK_NULL_NOMEM_GOTO(copy->node, rc, cleanup);
+    }
+    copy->module = di->module;
+    copy->timestamp = di->timestamp;
+
+    sr_btree_insert(tree, (void *) copy);
+    return rc;
+
+cleanup:
+    dm_data_info_free(copy);
+    return rc;
 }
 
 int
@@ -1872,6 +1934,8 @@ dm_free_commit_context(dm_ctx_t *dm_ctx, dm_commit_context_t *c_ctx)
     c_ctx->existed = NULL;
     c_ctx->modif_count = 0;
 
+    sr_btree_cleanup(c_ctx->subscriptions);
+    sr_btree_cleanup(c_ctx->prev_data_trees);
     dm_session_stop(dm_ctx, c_ctx->session);
     c_ctx->session = NULL;
     free(c_ctx);
@@ -1888,14 +1952,28 @@ dm_commit_prepare_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_con
     c_ctx = calloc(1, sizeof(*c_ctx));
     CHECK_NULL_NOMEM_RETURN(c_ctx);
 
+    rc = sr_btree_init(dm_module_subscription_cmp, dm_model_subscription_free, &c_ctx->subscriptions);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Binary tree allocation failed");
+
+    rc = sr_btree_init(dm_data_info_cmp, dm_data_info_free, &c_ctx->prev_data_trees);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Binary tree allocation failed");
+
     c_ctx->modif_count = 0;
     /* count modified files */
     while (NULL != (info = sr_btree_get_at(session->session_modules[session->datastore], i))) {
         if (info->modified) {
             c_ctx->modif_count++;
             /* TODO load subscriptions for the model
+             * order subscriptions by priority
              * attach schema node to the subscription
              */
+            dm_model_subscription_t *ms = NULL;
+            ms = calloc(1, sizeof(*ms));
+            CHECK_NULL_NOMEM_RETURN(ms);
+
+            ms->module = info->module;
+            rc = sr_btree_insert(c_ctx->subscriptions, ms);
+            CHECK_RC_MSG_RETURN(rc, "Insert into subscription tree failed");
         }
         i++;
     }
@@ -1989,6 +2067,7 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
     char *file_name = NULL;
     c_ctx->modif_count = 0; /* how many file descriptors should be closed on cleanup */
 
+    /* lock models that should be committed */
     while (NULL != (info = sr_btree_get_at(session->session_modules[session->datastore], i++))) {
         if (!info->modified) {
             continue;
@@ -2061,11 +2140,8 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
         if (copy_uptodate || SR_DS_CANDIDATE == session->datastore) {
             SR_LOG_DBG("Timestamp for the model %s matches, ops will be skipped", info->module->name);
             rc = ly_set_add(c_ctx->up_to_date_models, (void *) info->module->name);
-            if (0 != rc) {
-                SR_LOG_ERR_MSG("Adding to ly set failed");
-                rc = SR_ERR_INTERNAL;
-                goto cleanup;
-            }
+            CHECK_ZERO_MSG_GOTO(rc, rc, SR_ERR_INTERNAL, cleanup, "Adding to ly set failed");
+
             di = calloc(1, sizeof(*di));
             CHECK_NULL_NOMEM_GOTO(di, rc, cleanup);
             di->node = sr_dup_datatree(info->node);
@@ -2088,6 +2164,9 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
             dm_data_info_free(di);
             goto cleanup;
         }
+        rc = dm_insert_data_info_copy(c_ctx->prev_data_trees, di);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Insert data infor copy failed");
+
         free(file_name);
         file_name = NULL;
 
@@ -2148,6 +2227,23 @@ dm_commit_write_files(dm_session_t *session, dm_commit_context_t *c_ctx)
     return rc;
 }
 
+static int
+dm_match_subscription(const struct lys_node *sub_node, const struct lys_node *node, bool *res)
+{
+    CHECK_NULL_ARG3(sub_node, node, res);
+
+    struct lys_node *n = (struct lys_node *) node;
+    while (NULL != n) {
+        if (sub_node == n) {
+            *res = true;
+            return SR_ERR_OK;
+        }
+        n = lys_parent(n);
+    }
+    *res = false;
+    return SR_ERR_OK;
+}
+
 int
 dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t *c_ctx)
 {
@@ -2155,12 +2251,36 @@ dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t *c
     int rc = SR_ERR_OK;
     size_t i = 0;
     dm_data_info_t *info = NULL;
-
+    dm_model_subscription_t *ms = NULL;
+    bool match = false;
     if (SR_DS_RUNNING == session->datastore || SR_DS_CANDIDATE == session->datastore) {
         SR_LOG_DBG_MSG("Sending notifications about the changes made in running datastore...");
         i = 0;
         while (NULL != (info = sr_btree_get_at(session->session_modules[session->datastore], i))) {
             if (info->modified) {
+                /**
+                 * TODO
+                 * create diff
+                 */
+                dm_model_subscription_t lookup = {0};
+                lookup.module = info->module;
+
+                ms = sr_btree_search(c_ctx->subscriptions, &lookup);
+                if (NULL != ms) {
+                    //for d in diff
+                        for (size_t s = 0; s < ms->subscription_cnt; s++) {
+                            rc = dm_match_subscription(ms->nodes[i], /*TODO replace by diff node*/ms->nodes[i], &match);
+                            if (SR_ERR_OK != rc) {
+                                SR_LOG_WRN_MSG("Subscription match failed");
+                                continue;
+                            }
+                            if (match) {
+                                //send notification
+                            }
+                        }
+                    //for-end
+                }
+
                 rc = np_module_change_notify(dm_ctx->np_ctx, info->module->name);
                 if (SR_ERR_OK != rc) {
                     SR_LOG_WRN("Unable to send notifications about the changes made in the '%s' module.", info->module->name);
