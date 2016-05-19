@@ -311,6 +311,9 @@ rp_get_item_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
 static int
 rp_get_items_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
 {
+    sr_val_t *values = NULL;
+    size_t count = 0, limit = 0, offset = 0;
+    char *xpath = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->get_items_req);
@@ -319,25 +322,19 @@ rp_get_items_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
 
     Sr__Msg *resp = NULL;
     rc = sr_gpb_resp_alloc(SR__OPERATION__GET_ITEMS, session->id, &resp);
-
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Memory allocation failed");
         return SR_ERR_NOMEM;
     }
 
-    sr_val_t **values = NULL;
-    size_t count = 0;
-    char *xpath = msg->request->get_items_req->xpath;
-    size_t offset = msg->request->get_items_req->offset;
-    size_t limit = msg->request->get_items_req->limit;
+    xpath = msg->request->get_items_req->xpath;
+    offset = msg->request->get_items_req->offset;
+    limit = msg->request->get_items_req->limit;
 
-    if (msg->request->get_items_req->has_offset ||
-            msg->request->get_items_req->has_limit){
-
+    if (msg->request->get_items_req->has_offset || msg->request->get_items_req->has_limit) {
         rc = rp_dt_get_values_wrapper_with_opts(rp_ctx, session, &session->get_items_ctx, xpath,
-                                                offset, limit, &values, &count);
-    }
-    else {
+                offset, limit, &values, &count);
+    } else {
         rc = rp_dt_get_values_wrapper(rp_ctx, session, xpath, &values, &count);
     }
 
@@ -349,27 +346,9 @@ rp_get_items_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
     }
     SR_LOG_DBG("%zu items found for '%s', session id=%"PRIu32".", count, xpath, session->id);
 
-    resp->response->get_items_resp->values = calloc(count, sizeof(Sr__Value *));
-    if (NULL == resp->response->get_items_resp->values){
-        SR_LOG_ERR_MSG("Memory allocation failed");
-        rc = SR_ERR_NOMEM;
-        goto cleanup;
-    }
-
-    /* copy value to gpb*/
-    if (SR_ERR_OK == rc) {
-        for (size_t i = 0; i< count; i++){
-            rc = sr_dup_val_t_to_gpb(values[i], &resp->response->get_items_resp->values[i]);
-            if (SR_ERR_OK != rc) {
-                SR_LOG_ERR("Copying sr_val_t to gpb failed for xpath '%s'", xpath);
-                for (size_t j = 0; j<i; j++){
-                    sr__value__free_unpacked(resp->response->get_items_resp->values[j], NULL);
-                }
-                free(resp->response->get_items_resp->values);
-            }
-        }
-        resp->response->get_items_resp->n_values = count;
-    }
+    /* copy values to gpb */
+    rc = sr_values_sr_to_gpb(values, count, &resp->response->get_items_resp->values, &resp->response->get_items_resp->n_values);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Copying values to GPB failed.");
 
 cleanup:
     /* set response code */
@@ -381,10 +360,7 @@ cleanup:
     }
 
     rc = cm_msg_send(rp_ctx->cm_ctx, resp);
-    for (size_t i = 0; i< count; i++){
-        sr_free_val(values[i]);
-    }
-    free(values);
+    sr_free_values(values, count);
 
     return rc;
 }
