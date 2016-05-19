@@ -436,8 +436,8 @@ dm_rpc_test(void **state)
     int rc = SR_ERR_OK;
     dm_ctx_t *ctx = NULL;
     dm_session_t *session = NULL;
-    sr_val_t input = { 0, };
-    sr_val_t output[2] = { { 0, }, };
+    sr_val_t *input = NULL, *output = NULL;
+    size_t input_cnt = 0, output_cnt = 0;
 
     rc = dm_init(NULL, NULL, NULL, TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx);
     assert_int_equal(SR_ERR_OK, rc);
@@ -446,37 +446,48 @@ dm_rpc_test(void **state)
     assert_int_equal(SR_ERR_OK, rc);
 
     /* non-existing RPC */
-    rc = dm_validate_rpc(ctx, session, "/test-module:non-existing-rpc", &input, 1, true);
+    rc = dm_validate_rpc(ctx, session, "/test-module:non-existing-rpc", &input, &input_cnt, true);
     assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
 
     /* RPC input */
-    input.xpath = "/test-module:activate-software-image/image-name";
-    input.type = SR_STRING_T;
-    input.data.string_val = "acmefw-2.3";
+    input_cnt = 1;
+    input = calloc(input_cnt, sizeof(*input));
+    input[0].xpath = strdup("/test-module:activate-software-image/image-name");
+    input[0].type = SR_STRING_T;
+    input[0].data.string_val = strdup("acmefw-2.3");
 
-    rc = dm_validate_rpc(ctx, session, "/test-module:activate-software-image", &input, 1, true);
+    rc = dm_validate_rpc(ctx, session, "/test-module:activate-software-image", &input, &input_cnt, true);
     assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(input_cnt, 2); /* including default leaf */
 
     /* invalid RPC input */
-    input.xpath = "/test-module:activate-software-image/non-existing-input";
-    rc = dm_validate_rpc(ctx, session, "/test-module:activate-software-image", &input, 1, true);
+    free(input[0].xpath);
+    input[0].xpath = strdup("/test-module:activate-software-image/non-existing-input");
+    rc = dm_validate_rpc(ctx, session, "/test-module:activate-software-image", &input, &input_cnt, true);
     assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
 
     /* RPC output */
-    output[0].xpath = "/test-module:activate-software-image/status";
+    output_cnt = 2;
+    output = calloc(output_cnt, sizeof(*output));
+    output[0].xpath = strdup("/test-module:activate-software-image/status");
     output[0].type = SR_STRING_T;
-    output[0].data.string_val = "The image acmefw-2.3 is being installed.";
-    output[1].xpath = "/test-module:activate-software-image/version";
+    output[0].data.string_val = strdup("The image acmefw-2.3 is being installed.");
+    output[1].xpath = strdup("/test-module:activate-software-image/version");
     output[1].type = SR_STRING_T;
-    output[1].data.string_val = "2.3";
+    output[1].data.string_val = strdup("2.3");
 
-    rc = dm_validate_rpc(ctx, session, "/test-module:activate-software-image", output, 2, false);
+    rc = dm_validate_rpc(ctx, session, "/test-module:activate-software-image", &output, &output_cnt, false);
     assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(output_cnt, 3); /* including default leaf */
 
     /* invalid RPC output */
-    output[1].xpath = "/test-module:activate-software-image/non-existing-output";
-    rc = dm_validate_rpc(ctx, session, "/test-module:activate-software-image", output, 2, false);
+    free(output[1].xpath);
+    output[1].xpath = strdup("/test-module:activate-software-image/non-existing-output");
+    rc = dm_validate_rpc(ctx, session, "/test-module:activate-software-image", &output, &output_cnt, false);
     assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
+
+    sr_free_values(input, input_cnt);
+    sr_free_values(output, output_cnt);
 
     dm_session_stop(ctx, session);
     dm_cleanup(ctx);

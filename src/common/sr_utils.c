@@ -691,27 +691,23 @@ sr_free_val_content(sr_val_t *value)
 void
 sr_free_values_arr(sr_val_t **values, size_t count)
 {
-    if (NULL == values){
-        return;
+    if (NULL != values) {
+        for (size_t i = 0; i < count; i++) {
+            sr_free_val(values[i]);
+        }
+        free(values);
     }
-
-    for (size_t i = 0; i < count; i++) {
-        sr_free_val(values[i]);
-    }
-    free(values);
 }
 
 void
 sr_free_values_arr_range(sr_val_t **values, size_t from, size_t to)
 {
-    if (NULL == values){
-        return;
+    if (NULL != values) {
+        for (size_t i = from; i < to; i++) {
+            sr_free_val(values[i]);
+        }
+        free(values);
     }
-
-    for (size_t i = from; i < to; i++) {
-        sr_free_val(values[i]);
-    }
-    free(values);
 }
 
 void

@@ -203,25 +203,19 @@ rp_dt_copy_value(const struct lyd_node_leaf_list *leaf, LY_DATA_TYPE type, sr_va
  * @return Error code (SR_ERR_OK on success)
  */
 static int
-rp_dt_get_value_from_node(struct lyd_node *node, sr_val_t **value)
+rp_dt_get_value_from_node(struct lyd_node *node, sr_val_t *val)
 {
-    CHECK_NULL_ARG3(node, value, node->schema);
+    CHECK_NULL_ARG3(node, val, node->schema);
 
     int rc = SR_ERR_OK;
     char *xpath = NULL;
     struct lyd_node_leaf_list *data_leaf = NULL;
     struct lys_node_container *sch_cont = NULL;
+
     rc = rp_dt_create_xpath_for_node(node, &xpath);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Create xpath for node failed");
         return rc;
-    }
-
-    sr_val_t *val = calloc(1, sizeof(*val));
-    if (NULL == val) {
-        SR_LOG_ERR_MSG("Memory allocation failed.");
-        free(xpath);
-        return SR_ERR_NOMEM;
     }
     val->xpath = xpath;
 
@@ -261,51 +255,42 @@ rp_dt_get_value_from_node(struct lyd_node *node, sr_val_t **value)
         rc = SR_ERR_INTERNAL;
         goto cleanup;
     }
-    *value = val;
     return SR_ERR_OK;
 
 cleanup:
-    sr_free_val(val);
+    sr_free_val_content(val);
     return rc;
 }
 
-/**
- * @brief Fills the values from the array of nodes. The length of the
- * values array is equal to the count of the nodes in nodes set
- * @param [in] nodes
- * @param [out] values
- * @return Error code (SR_ERR_OK on success)
- */
-static int
-rp_dt_get_values_from_nodes(struct ly_set *nodes, sr_val_t ***values)
+int
+rp_dt_get_values_from_nodes(struct ly_set *nodes, sr_val_t **values, size_t *value_cnt)
 {
     CHECK_NULL_ARG2(nodes, values);
     int rc = SR_ERR_OK;
-    sr_val_t **vals = NULL;
+    sr_val_t *vals = NULL;
+    size_t cnt = 0;
     struct lyd_node *node = NULL;
+
     vals = calloc(nodes->number, sizeof(*vals));
-    if (NULL == vals) {
-        SR_LOG_ERR_MSG("Memory allocation failed");
-        return SR_ERR_NOMEM;
-    }
+    CHECK_NULL_NOMEM_RETURN(vals);
 
     for (size_t i = 0; i < nodes->number; i++) {
         node = nodes->set.d[i];
+        if (NULL == node || NULL == node->schema || LYS_RPC == node->schema->nodetype) {
+            /* ignore this node */
+            continue;
+        }
         rc = rp_dt_get_value_from_node(node, &vals[i]);
         if (SR_ERR_OK != rc) {
-            const char *name = "";
-            if (NULL != node && NULL != node->schema && NULL != node->schema->name) {
-                name = node->schema->name;
-            }
-            SR_LOG_ERR("Getting value from node %s failed", name);
-            for (size_t j = 0; j < i; j++) {
-                sr_free_val(vals[j]);
-            }
+            SR_LOG_ERR("Getting value from node %s failed", node->schema->name);
             free(vals);
             return SR_ERR_INTERNAL;
         }
+        cnt++;
     }
+
     *values = vals;
+    *value_cnt = cnt;
 
     return rc;
 }
@@ -314,7 +299,8 @@ int
 rp_dt_get_value(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char *xpath, bool check_enabled, sr_val_t **value)
 {
     CHECK_NULL_ARG4(dm_ctx, data_tree, xpath, value);
-    int rc = 0;
+    int rc = SR_ERR_OK;
+    sr_val_t *val = NULL;
     struct lyd_node *node = NULL;
 
     rc = rp_dt_find_node(dm_ctx, data_tree, xpath, check_enabled, &node);
@@ -324,15 +310,21 @@ rp_dt_get_value(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char *
         }
         return rc;
     }
-    rc = rp_dt_get_value_from_node(node, value);
+
+    val = calloc(1, sizeof(*val));
+    CHECK_NULL_NOMEM_RETURN(val);
+
+    rc = rp_dt_get_value_from_node(node, val);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Get value from node failed for xpath %s", xpath);
+    } else {
+        *value = val;
     }
     return rc;
 }
 
 int
-rp_dt_get_values(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char *xpath, bool check_enable, sr_val_t ***values, size_t *count)
+rp_dt_get_values(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char *xpath, bool check_enable, sr_val_t **values, size_t *count)
 {
     CHECK_NULL_ARG5(dm_ctx, data_tree, xpath, values, count);
 
@@ -347,8 +339,7 @@ rp_dt_get_values(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char 
         return rc;
     }
 
-    *count = nodes->number;
-    rc = rp_dt_get_values_from_nodes(nodes, values);
+    rc = rp_dt_get_values_from_nodes(nodes, values, count);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Copying values from nodes failed for xpath '%s'", xpath);
     }
@@ -404,7 +395,7 @@ cleanup:
 }
 
 int
-rp_dt_get_values_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char *xpath, sr_val_t ***values, size_t *count)
+rp_dt_get_values_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char *xpath, sr_val_t **values, size_t *count)
 {
     CHECK_NULL_ARG4(rp_ctx, rp_ctx->dm_ctx, rp_session, rp_session->dm_session);
     CHECK_NULL_ARG3(xpath, values, count);
@@ -450,7 +441,7 @@ cleanup:
 
 int
 rp_dt_get_values_wrapper_with_opts(rp_ctx_t *rp_ctx, rp_session_t *rp_session, rp_dt_get_items_ctx_t *get_items_ctx, const char *xpath,
-        size_t offset, size_t limit, sr_val_t ***values, size_t *count)
+        size_t offset, size_t limit, sr_val_t **values, size_t *count)
 {
     CHECK_NULL_ARG5(rp_ctx, rp_ctx->dm_ctx, rp_session, rp_session->dm_session, get_items_ctx);
     CHECK_NULL_ARG3(xpath, values, count);
@@ -488,9 +479,8 @@ rp_dt_get_values_wrapper_with_opts(rp_ctx_t *rp_ctx, rp_session_t *rp_session, r
         }
         goto cleanup;
     }
-    *count = nodes->number;
 
-    rc = rp_dt_get_values_from_nodes(nodes, values);
+    rc = rp_dt_get_values_from_nodes(nodes, values, count);
 cleanup:
     if (SR_ERR_NOT_FOUND == rc) {
 #if 0

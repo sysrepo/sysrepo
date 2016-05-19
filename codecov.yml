@@ -8,7 +8,19 @@ coverage:
   ignore:
   - tests/.*
   - examples/.*
-  
+
+  status:
+    project:
+      default:
+        target: auto
+        if_no_uploads: error
+
+    patch:
+      default:
+        if_no_uploads: error
+
+    changes: true
+
   parsers:
     gcov:
       branch_detection:

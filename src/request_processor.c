@@ -311,6 +311,9 @@ rp_get_item_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
 static int
 rp_get_items_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
 {
+    sr_val_t *values = NULL;
+    size_t count = 0, limit = 0, offset = 0;
+    char *xpath = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->get_items_req);
@@ -319,25 +322,19 @@ rp_get_items_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
 
     Sr__Msg *resp = NULL;
     rc = sr_gpb_resp_alloc(SR__OPERATION__GET_ITEMS, session->id, &resp);
-
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Memory allocation failed");
         return SR_ERR_NOMEM;
     }
 
-    sr_val_t **values = NULL;
-    size_t count = 0;
-    char *xpath = msg->request->get_items_req->xpath;
-    size_t offset = msg->request->get_items_req->offset;
-    size_t limit = msg->request->get_items_req->limit;
+    xpath = msg->request->get_items_req->xpath;
+    offset = msg->request->get_items_req->offset;
+    limit = msg->request->get_items_req->limit;
 
-    if (msg->request->get_items_req->has_offset ||
-            msg->request->get_items_req->has_limit){
-
+    if (msg->request->get_items_req->has_offset || msg->request->get_items_req->has_limit) {
         rc = rp_dt_get_values_wrapper_with_opts(rp_ctx, session, &session->get_items_ctx, xpath,
-                                                offset, limit, &values, &count);
-    }
-    else {
+                offset, limit, &values, &count);
+    } else {
         rc = rp_dt_get_values_wrapper(rp_ctx, session, xpath, &values, &count);
     }
 
@@ -349,27 +346,9 @@ rp_get_items_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
     }
     SR_LOG_DBG("%zu items found for '%s', session id=%"PRIu32".", count, xpath, session->id);
 
-    resp->response->get_items_resp->values = calloc(count, sizeof(Sr__Value *));
-    if (NULL == resp->response->get_items_resp->values){
-        SR_LOG_ERR_MSG("Memory allocation failed");
-        rc = SR_ERR_NOMEM;
-        goto cleanup;
-    }
-
-    /* copy value to gpb*/
-    if (SR_ERR_OK == rc) {
-        for (size_t i = 0; i< count; i++){
-            rc = sr_dup_val_t_to_gpb(values[i], &resp->response->get_items_resp->values[i]);
-            if (SR_ERR_OK != rc) {
-                SR_LOG_ERR("Copying sr_val_t to gpb failed for xpath '%s'", xpath);
-                for (size_t j = 0; j<i; j++){
-                    sr__value__free_unpacked(resp->response->get_items_resp->values[j], NULL);
-                }
-                free(resp->response->get_items_resp->values);
-            }
-        }
-        resp->response->get_items_resp->n_values = count;
-    }
+    /* copy values to gpb */
+    rc = sr_values_sr_to_gpb(values, count, &resp->response->get_items_resp->values, &resp->response->get_items_resp->n_values);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Copying values to GPB failed.");
 
 cleanup:
     /* set response code */
@@ -381,10 +360,7 @@ cleanup:
     }
 
     rc = cm_msg_send(rp_ctx->cm_ctx, resp);
-    for (size_t i = 0; i< count; i++){
-        sr_free_val(values[i]);
-    }
-    free(values);
+    sr_free_values(values, count);
 
     return rc;
 }
@@ -946,7 +922,7 @@ rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg 
     size_t input_cnt = 0;
     np_subscription_t *subscriptions = NULL;
     size_t subscription_cnt = 0;
-    Sr__Msg *resp = NULL;
+    Sr__Msg *req = NULL, *resp = NULL;
     int rc = SR_ERR_OK, rc_tmp = SR_ERR_OK;
 
     CHECK_NULL_ARG_NORET5(rc, rp_ctx, session, msg, msg->request, msg->request->rpc_req);
@@ -961,13 +937,27 @@ rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg 
     /* validate RPC request */
     rc = sr_values_gpb_to_sr(msg->request->rpc_req->input,  msg->request->rpc_req->n_input, &input, &input_cnt);
     if (SR_ERR_OK == rc) {
-        rc = dm_validate_rpc(rp_ctx->dm_ctx, session->dm_session, msg->request->rpc_req->xpath, input, input_cnt, true);
+        rc = dm_validate_rpc(rp_ctx->dm_ctx, session->dm_session, msg->request->rpc_req->xpath, &input, &input_cnt, true);
+    }
+
+    /* duplicate msg into req with the new input values */
+    if (SR_ERR_OK == rc) {
+        rc = sr_gpb_req_alloc(SR__OPERATION__RPC, session->id, &req);
+    }
+    if (SR_ERR_OK == rc) {
+        req->request->rpc_req->xpath = strdup(msg->request->rpc_req->xpath);
+        CHECK_NULL_NOMEM_ERROR(req->request->rpc_req->xpath, rc);
+    }
+    if (SR_ERR_OK == rc) {
+        rc = sr_values_sr_to_gpb(input, input_cnt, &req->request->rpc_req->input, &req->request->rpc_req->n_input);
     }
     sr_free_values(input, input_cnt);
+    sr__msg__free_unpacked(msg, NULL);
+    msg = NULL;
 
     /* get module name */
     if (SR_ERR_OK == rc) {
-        rc = sr_copy_first_ns(msg->request->rpc_req->xpath, &module_name);
+        rc = sr_copy_first_ns(req->request->rpc_req->xpath, &module_name);
     }
 
     /* authorize (write permissions are required to deliver the RPC) */
@@ -987,33 +977,33 @@ rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg 
 
     /* fill-in subscription details into the request */
     if (subscription_cnt > 0) {
-        msg->request->rpc_req->subscriber_address = (char*)subscriptions[0].dst_address; /* copied to GPB - do not free */
-        msg->request->rpc_req->subscription_id = subscriptions[0].dst_id;
-        msg->request->rpc_req->has_subscription_id = true;
-        msg->request->rpc_req->session_id = session->id;
-        msg->request->rpc_req->has_session_id = true;
+        req->request->rpc_req->subscriber_address = (char*)subscriptions[0].dst_address; /* copied to GPB - do not free */
+        req->request->rpc_req->subscription_id = subscriptions[0].dst_id;
+        req->request->rpc_req->has_subscription_id = true;
+        req->request->rpc_req->session_id = session->id;
+        req->request->rpc_req->has_session_id = true;
         free(subscriptions);
     } else if (SR_ERR_OK == rc) {
         /* no subscription for this RPC */
-        SR_LOG_ERR("No subscription found for RPC delivery (xpath = '%s').", msg->request->rpc_req->xpath);
+        SR_LOG_ERR("No subscription found for RPC delivery (xpath = '%s').", req->request->rpc_req->xpath);
         rc = SR_ERR_NOT_FOUND;
     }
 
     if (SR_ERR_OK == rc) {
         /* forward the request to the subscriber */
-        rc = cm_msg_send(rp_ctx->cm_ctx, msg);
+        rc = cm_msg_send(rp_ctx->cm_ctx, req);
     } else {
         /* send the response with error */
         rc_tmp = sr_gpb_resp_alloc(SR__OPERATION__RPC, session->id, &resp);
         if (SR_ERR_OK == rc_tmp) {
             resp->response->result = rc;
-            resp->response->rpc_resp->xpath = msg->request->rpc_req->xpath;
-            msg->request->rpc_req->xpath = NULL;
+            resp->response->rpc_resp->xpath = req->request->rpc_req->xpath;
+            req->request->rpc_req->xpath = NULL;
             /* send the response */
             rc = cm_msg_send(rp_ctx->cm_ctx, resp);
         }
         /* release the request */
-        sr__msg__free_unpacked(msg, NULL);
+        sr__msg__free_unpacked(req, NULL);
     }
 
     return rc;
@@ -1027,6 +1017,7 @@ rp_rpc_resp_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg
 {
     sr_val_t *output = NULL;
     size_t output_cnt = 0;
+    Sr__Msg *resp = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG_NORET5(rc, rp_ctx, session, msg, msg->response, msg->response->rpc_resp);
@@ -1039,21 +1030,40 @@ rp_rpc_resp_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg
     /* validate the RPC response */
     rc = sr_values_gpb_to_sr(msg->response->rpc_resp->output,  msg->response->rpc_resp->n_output, &output, &output_cnt);
     if (SR_ERR_OK == rc) {
-        rc = dm_validate_rpc(rp_ctx->dm_ctx, session->dm_session, msg->response->rpc_resp->xpath, output, output_cnt, false);
+        rc = dm_validate_rpc(rp_ctx->dm_ctx, session->dm_session, msg->response->rpc_resp->xpath, &output, &output_cnt, false);
+    }
+
+    /* duplicate msg into resp with the new output values */
+    if (SR_ERR_OK == rc) {
+        rc = sr_gpb_resp_alloc(SR__OPERATION__RPC, session->id, &resp);
+    }
+    if (SR_ERR_OK == rc) {
+        resp->response->rpc_resp->xpath = strdup(msg->response->rpc_resp->xpath);
+        CHECK_NULL_NOMEM_ERROR(resp->response->rpc_resp->xpath, rc);
+    }
+    if (SR_ERR_OK == rc) {
+        rc = sr_values_sr_to_gpb(output, output_cnt, &resp->response->rpc_resp->output, &resp->response->rpc_resp->n_output);
     }
     sr_free_values(output, output_cnt);
 
+    if (SR_ERR_OK == rc) {
+        sr__msg__free_unpacked(msg, NULL);
+        msg = NULL;
+    } else {
+        resp = msg;
+    }
+
     /* set response code */
-    msg->response->result = rc;
+    resp->response->result = rc;
 
     /* copy DM errors, if any */
-    rc = rp_resp_fill_errors(msg, session->dm_session);
+    rc = rp_resp_fill_errors(resp, session->dm_session);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Copying errors to gpb failed.");
     }
 
     /* forward RPC response to the originator */
-    rc = cm_msg_send(rp_ctx->cm_ctx, msg);
+    rc = cm_msg_send(rp_ctx->cm_ctx, resp);
 
     return rc;
 }

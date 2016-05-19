@@ -55,7 +55,7 @@ no_subscription_test(void **state)
     //no enable subtree has been called all request should return SR_ERR_NOT_FOUND
    test_rp_sesssion_create(ctx, SR_DS_RUNNING, &session);
 
-   sr_val_t **values = NULL;
+   sr_val_t *values = NULL;
    size_t count = 0;
 #if 0
    rc = rp_dt_get_values_wrapper(ctx, session, "/test-module:containera", &values, &count);
