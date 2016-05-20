@@ -589,6 +589,8 @@ int sr_get_items(sr_session_ctx_t *session, const char *xpath, sr_val_t **values
  * for XPath syntax used for identification of yang nodes in sysrepo calls.
  *
  * @see ::sr_get_item_next for iterating over returned data elements.
+ * @note Iterator allows to iterate through the values once. To start iteration
+ *  from the beginning new iterator must be created.
  *
  * @param[in] session Session context acquired with ::sr_session_start call.
  * @param[in] xpath @ref xp_page "XPath" identifier of the data element / subtree to be retrieved.
@@ -607,7 +609,7 @@ int sr_get_items_iter(sr_session_ctx_t *session, const char *xpath, sr_val_iter_
  * @param[in] session Session context acquired with ::sr_session_start call.
  * @param[in,out] iter Iterator acquired with ::sr_get_items_iter call.
  * @param[out] value Structure containing information about requested element
- * (allocated by the function, can be freed with ::sr_free_val).
+ * (allocated by the function, it is supposed to be freed by caller using ::sr_free_val).
  *
  * @return Error code (SR_ERR_OK on success).
  */
@@ -749,6 +751,11 @@ int sr_discard_changes(sr_session_ctx_t *session);
  * source datastore.
  *
  * If the target datastore exists, it is overwritten. Otherwise, a new one is created.
+ *
+ * @note ::sr_session_refresh is needed to see the result of a copy-config operation
+ * in a session apart from the case when SR_DS_CANDIDATE is the destination datastore.
+ * Since the candidate is not shared among sessions, data trees are copied only to the
+ * canidate in the session issuing the copy-config operation.
  *
  * @note Operation may fail, if it tries to copy a not enabled configuration to the
  * running datastore.
