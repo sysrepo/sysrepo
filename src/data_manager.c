@@ -36,7 +36,16 @@
 #include "notification_processor.h"
 #include "persistence_manager.h"
 
+/**
+ * @brief number of supported data stores - length of arrays used in session
+ */
 #define DM_DATASTORE_COUNT 3
+
+/**
+ * @brief maximum number of saved commit context
+ */
+#define DM_MAX_COMMITCTX_CNT 5
+
 /**
  * @brief Helper structure for advisory locking. Holds
  * binary tree with filename -> fd maping. This structure
@@ -74,6 +83,8 @@ typedef struct dm_ctx_s {
     pthread_mutex_t ds_lock_mutex;/**< Data store lock mutex */
     struct ly_set *disabled_sch;  /**< Set of schema that has been disabled */
     sr_btree_t *schema_info_tree; /**< Binary tree holding information about schemas*/
+    dm_commit_context_t **c_ctxs; /**< Array of commit context used for notifications */
+    pthread_rwlock_t c_ctxs_lock; /**< rwlock to access c_ctxx */
 } dm_ctx_t;
 
 /**
@@ -224,6 +235,7 @@ dm_model_subscription_free(void *sub)
     if (NULL != ms) {
         free(ms->subscriptions);
         free(ms->nodes);
+        lyd_free_diff(ms->difflist);
     }
     free(ms);
 }
@@ -1099,6 +1111,8 @@ dm_init(ac_ctx_t *ac_ctx, np_ctx_t *np_ctx, pm_ctx_t *pm_ctx,
 
     dm_ctx_t *ctx = NULL;
     int rc = SR_ERR_OK;
+    pthread_rwlockattr_t attr;
+    pthread_rwlockattr_init(&attr);
     ctx = calloc(1, sizeof(*ctx));
     CHECK_NULL_NOMEM_GOTO(ctx, rc, cleanup);
     ctx->ac_ctx = ac_ctx;
@@ -1123,27 +1137,28 @@ dm_init(ac_ctx_t *ac_ctx, np_ctx_t *np_ctx, pm_ctx_t *pm_ctx,
     pthread_mutex_init(&ctx->lock_ctx.mutex, NULL);
     rc = sr_btree_init(dm_compare_lock_item, dm_free_lock_item, &ctx->lock_ctx.lock_files);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Creating of lock files binary tree failed");
-    pthread_rwlockattr_t attr;
-    pthread_rwlockattr_init(&attr);
 #if defined(HAVE_PTHREAD_RWLOCKATTR_SETKIND_NP)
     pthread_rwlockattr_setkind_np(&attr, PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP);
 #endif
 
     rc = pthread_rwlock_init(&ctx->lyctx_lock, &attr);
-    pthread_rwlockattr_destroy(&attr);
-    if (0 != rc) {
-        SR_LOG_ERR_MSG("lyctx mutex initialization failed");
-        dm_cleanup(ctx);
-        return SR_ERR_INTERNAL;
-    }
+    CHECK_ZERO_MSG_GOTO(rc, rc, SR_ERR_INTERNAL, cleanup, "lyctx mutex initialization failed");
 
     rc = sr_btree_init(dm_schema_info_cmp, dm_free_schema_info, &ctx->schema_info_tree);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Schema binary tree allocation failed");
+
+    ctx->c_ctxs = calloc(DM_MAX_COMMITCTX_CNT, sizeof(*ctx->c_ctxs));
+    CHECK_NULL_NOMEM_GOTO(ctx->c_ctxs, rc, cleanup);
+
+    rc = pthread_rwlock_init(&ctx->c_ctxs_lock, &attr);
+    CHECK_ZERO_MSG_GOTO(rc, rc, SR_ERR_INTERNAL, cleanup, "c_ctxs_lock init failed");
+
 
     *dm_ctx = ctx;
     rc = dm_load_schemas(ctx);
 
 cleanup:
+    pthread_rwlockattr_destroy(&attr);
     if (SR_ERR_OK != rc) {
         dm_cleanup(ctx);
     }
@@ -1155,6 +1170,10 @@ void
 dm_cleanup(dm_ctx_t *dm_ctx)
 {
     if (NULL != dm_ctx) {
+        for (size_t i = 0; i < DM_MAX_COMMITCTX_CNT; i++) {
+            dm_free_commit_context(dm_ctx, dm_ctx->c_ctxs[i]);
+        }
+
         free(dm_ctx->schema_search_dir);
         free(dm_ctx->data_search_dir);
         sr_btree_cleanup(dm_ctx->schema_info_tree);
@@ -1168,6 +1187,9 @@ dm_cleanup(dm_ctx_t *dm_ctx)
         pthread_mutex_destroy(&dm_ctx->lock_ctx.mutex);
         pthread_mutex_destroy(&dm_ctx->ds_lock_mutex);
         ly_set_free(dm_ctx->disabled_sch);
+
+        free(dm_ctx->c_ctxs);
+        pthread_rwlock_destroy(&dm_ctx->c_ctxs_lock);
         free(dm_ctx);
     }
 }
@@ -2023,7 +2045,53 @@ dm_get_diff_type_to_string(LYD_DIFFTYPE type)
 void
 dm_free_commit_context(dm_ctx_t *dm_ctx, dm_commit_context_t *c_ctx)
 {
-    CHECK_NULL_ARG_VOID(c_ctx);
+    if (NULL != c_ctx) {
+        for (size_t i = 0; i < c_ctx->modif_count; i++) {
+            close(c_ctx->fds[i]);
+        }
+        free(c_ctx->fds);
+        free(c_ctx->existed);
+        ly_set_free(c_ctx->up_to_date_models);
+        c_ctx->up_to_date_models = NULL;
+        c_ctx->fds = NULL;
+        c_ctx->existed = NULL;
+        c_ctx->modif_count = 0;
+
+        sr_btree_cleanup(c_ctx->subscriptions);
+        sr_btree_cleanup(c_ctx->prev_data_trees);
+        dm_session_stop(dm_ctx, c_ctx->session);
+        c_ctx->session = NULL;
+        free(c_ctx);
+    }
+}
+
+static int
+dm_insert_commit_context(dm_ctx_t *dm_ctx, dm_commit_context_t *c_ctx)
+{
+    CHECK_NULL_ARG2(dm_ctx, c_ctx);
+    //TODO: insert into correct order
+    pthread_rwlock_wrlock(&dm_ctx->c_ctxs_lock);
+    if (dm_ctx->c_ctxs[0] != NULL) {
+        dm_free_commit_context(dm_ctx, dm_ctx->c_ctxs[0]);
+    }
+    dm_ctx->c_ctxs[0] = c_ctx;
+    pthread_rwlock_unlock(&dm_ctx->c_ctxs_lock);
+    return SR_ERR_OK;
+}
+
+static int
+dm_remove_commit_context(dm_ctx_t *dm_ctx, int c_ctx_id)
+{
+    pthread_rwlock_wrlock(&dm_ctx->c_ctxs_lock);
+    pthread_rwlock_unlock(&dm_ctx->c_ctxs_lock);
+    return SR_ERR_OK;
+}
+
+int
+dm_save_commit_context(dm_ctx_t *dm_ctx, dm_commit_context_t *c_ctx)
+{
+    CHECK_NULL_ARG(c_ctx);
+    int rc = SR_ERR_OK;
     for (size_t i = 0; i < c_ctx->modif_count; i++) {
         close(c_ctx->fds[i]);
     }
@@ -2035,11 +2103,13 @@ dm_free_commit_context(dm_ctx_t *dm_ctx, dm_commit_context_t *c_ctx)
     c_ctx->existed = NULL;
     c_ctx->modif_count = 0;
 
-    sr_btree_cleanup(c_ctx->subscriptions);
-    sr_btree_cleanup(c_ctx->prev_data_trees);
-    dm_session_stop(dm_ctx, c_ctx->session);
-    c_ctx->session = NULL;
-    free(c_ctx);
+    dm_unlock_datastore(dm_ctx, c_ctx->session);
+
+    /* assign id to the commit context and save it to th dm_ctx */
+    rc = dm_insert_commit_context(dm_ctx, c_ctx);
+
+    return rc;
+
 }
 
 int
@@ -2383,6 +2453,7 @@ dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t *c
 
         lyd_wd_cleanup(&prev_info->node, 0);
         struct lyd_difflist *diff = lyd_diff(commit_info->node, prev_info->node, 0);
+        dm_lyd_wd_add(dm_ctx, dm_ctx->ly_ctx, &commit_info->node, LYD_WD_IMPL_TAG);
         if (NULL == diff) {
             SR_LOG_ERR("Lyd diff failed for module %s", info->module->name);
             continue;
@@ -2402,32 +2473,51 @@ dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t *c
             continue;
         }
 
-        while (LYD_DIFF_END != diff->type[d_cnt]) {
-            const struct lys_node *cmp_node = dm_get_notification_match_node(diff, d_cnt);
-            char *path = dm_get_notification_changed_xpath(diff, d_cnt);
-            SR_LOG_DBG("%s: %s", dm_get_diff_type_to_string(diff->type[d_cnt]), path);
-            free(path);
-            for (size_t s = 0; s < ms->subscription_cnt; s++) {
+        /* store differences in commit context */
+        ms->difflist = diff;
+
+        if (SR_LL_DBG == sr_ll_stderr || SR_LL_DBG == sr_ll_syslog) {
+            while (LYD_DIFF_END != diff->type[d_cnt]) {
+                char *path = dm_get_notification_changed_xpath(diff, d_cnt);
+                SR_LOG_DBG("%s: %s", dm_get_diff_type_to_string(diff->type[d_cnt]), path);
+                free(path);
+                d_cnt++;
+            }
+        }
+
+        for (size_t s = 0; s < ms->subscription_cnt; s++) {
+            d_cnt = 0;
+            while (LYD_DIFF_END != diff->type[d_cnt]) {
+                const struct lys_node *cmp_node = dm_get_notification_match_node(diff, d_cnt);
+                char *path = dm_get_notification_changed_xpath(diff, d_cnt);
+                SR_LOG_DBG("%s: %s", dm_get_diff_type_to_string(diff->type[d_cnt]), path);
+                free(path);
                 rc = dm_match_subscription(ms->nodes[s], cmp_node, &match);
                 if (SR_ERR_OK != rc) {
                     SR_LOG_WRN_MSG("Subscription match failed");
                     continue;
                 }
                 if (match) {
-                    //TODO: send notification
+                    break;
                 }
+                d_cnt++;
             }
-            d_cnt++;
+
+            if (match) {
+                //TODO something has been changed for this subscription, send notification
+            }
         }
+
 
         rc = np_module_change_notify(dm_ctx->np_ctx, info->module->name);
         if (SR_ERR_OK != rc) {
             SR_LOG_WRN("Unable to send notifications about the changes made in the '%s' module.", info->module->name);
         }
-        lyd_free_diff(diff);
     }
 
-    return SR_ERR_OK;
+    rc = dm_save_commit_context(dm_ctx, c_ctx);
+
+    return rc;
 }
 
 int
@@ -3197,5 +3287,31 @@ dm_is_model_modified(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module
 
     info = sr_btree_search(session->session_modules[session->datastore], &lookup);
     *res = NULL != info ? info->modified : false;
+    return rc;
+}
+
+/**
+ * @brief Checks if the module is loaded in the session. If it is not loaded
+ * in the session and it is loaded in from_session. Copies the data tree.
+ * @param [in] dm_ctx_t
+ * @param [in] session
+ * @param [in] module_name
+ * @param [in ]from_session
+ * @return Error code (SR_ERR_OK)
+ */
+int
+dm_copy_if_not_loaded(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module_name, dm_session_t *from_session)
+{
+    CHECK_NULL_ARG4(dm_ctx, session, module_name, from_session);
+    int rc = SR_ERR_OK;
+    dm_data_info_t lookup = {0};
+    rc = dm_get_module(dm_ctx, module_name, NULL, &lookup.module);
+    CHECK_RC_MSG_RETURN(rc, "Dm get module failed");
+
+    dm_data_info_t *info  = NULL;
+    info = sr_btree_search(session->session_modules[session->datastore], &lookup);
+    if (NULL == info) {
+        rc = dm_copy_session_tree(dm_ctx, from_session, session, module_name);
+    }
     return rc;
 }

@@ -114,8 +114,9 @@ typedef struct dm_sess_op_s{
 typedef struct dm_model_subscription_s {
     const struct lys_module *module;    /* module */
     void **subscriptions;               /* array of struct received from np */
-    const struct lys_node **nodes;   /* array of schema nodes corresponding to the subscription */
+    const struct lys_node **nodes;      /* array of schema nodes corresponding to the subscription */
     size_t subscription_cnt;            /* number of subscriptions */
+    struct lyd_difflist *difflist;      /* diff list */
 }dm_model_subscription_t;
 
 /**
@@ -322,6 +323,14 @@ int dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_
  * modif_count of files.
  */
 void dm_free_commit_context(dm_ctx_t *dm_ctx, dm_commit_context_t *c_ctx);
+
+/**
+ * @brief Saves commit context to be used for notifications. Releases acquired locks
+ * and closes opened files.
+ * @param [in] dm_ctx
+ * @param [in] c_ctx
+ */
+int dm_save_commit_context(dm_ctx_t *dm_ctx, dm_commit_context_t *c_ctx);
 
 /**
  * @brief Logs operation into session operation list. The operation list is used
