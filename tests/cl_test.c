@@ -1006,8 +1006,8 @@ test_feature_enable_cb(const char *module_name, const char *feature_name, bool e
     printf("Feature '%s' has been %s in module '%s'.\n", feature_name, enabled ? "enabled" : "disabled", module_name);
 }
 
-static void
-test_module_change_cb(sr_session_ctx_t *session, const char *module_name, void *private_ctx)
+static int
+test_module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t event, void *private_ctx)
 {
     sr_val_t *value = NULL;
     int rc = SR_ERR_OK;
@@ -1023,6 +1023,8 @@ test_module_change_cb(sr_session_ctx_t *session, const char *module_name, void *
     } else {
         printf("While retrieving '%s' error with code (%d) occured\n", "/example-module:container/list[key1='key1'][key2='key2']/leaf", rc);
     }
+
+    return SR_ERR_OK;
 }
 
 static void
@@ -1048,7 +1050,7 @@ cl_notification_test(void **state)
     rc = sr_feature_enable_subscribe(session, test_feature_enable_cb, &callback_called, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = sr_module_change_subscribe(session, "example-module", true,
+    rc = sr_module_change_subscribe(session, "example-module", SR_EV_NOTIFY, true, 0,
             test_module_change_cb, &callback_called, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
@@ -1145,7 +1147,7 @@ cl_copy_config_test(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 
     /* enable running DS for example-module */
-    rc = sr_module_change_subscribe(session_startup, "example-module", true,
+    rc = sr_module_change_subscribe(session_startup, "example-module", SR_EV_NOTIFY, true, 0,
             test_module_change_cb, &callback_called, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
@@ -1329,7 +1331,7 @@ candidate_ds_test(void **state)
     assert_int_equal(SR_ERR_OPERATION_FAILED, rc);
 
     /* enable running DS for example-module */
-    rc = sr_module_change_subscribe(session_startup, "example-module", true,
+    rc = sr_module_change_subscribe(session_startup, "example-module", SR_EV_NOTIFY, true, 0,
             test_module_change_cb, &callback_called, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 

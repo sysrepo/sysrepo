@@ -633,6 +633,7 @@ cl_sm_notif_process(cl_sm_ctx_t *sm_ctx, Sr__Msg *msg)
             subscription->callback.module_change_cb(
                     data_session,
                     msg->notification->module_change_notif->module_name,
+                    SR_EV_NOTIFY, /* TODO pass correct event */
                     subscription->private_ctx);
             break;
         case SR__NOTIFICATION_EVENT__HELLO_EV:
