@@ -2359,7 +2359,7 @@ dm_copy_config(dm_ctx_t *dm_ctx, dm_session_t *session, const struct ly_set *mod
             /* copy data tree into candidate session */
             struct lyd_node *dup = lyd_dup(src_infos[i]->node, 1);
             dm_data_info_t *di_tmp = NULL;
-            if (NULL == dup) {
+            if (NULL != src_infos[i]->node && NULL == dup) {
                 SR_LOG_ERR("Duplication of data tree %s failed", src_infos[i]->module->name);
                 rc = SR_ERR_INTERNAL;
                 goto cleanup;
