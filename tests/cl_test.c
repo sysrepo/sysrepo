@@ -842,6 +842,12 @@ cl_locking_test(void **state)
     rc = sr_lock_datastore(sessionB);
     assert_int_equal(rc, SR_ERR_OPERATION_FAILED);
 
+    const sr_error_info_t *error = NULL;
+    sr_get_last_error(sessionB, &error);
+
+    assert_string_equal("test-module", error->xpath);
+    assert_string_equal("Module has been modified, it can not be locked. Discard or commit changes", error->message);
+
     /* stop the sessions */
     rc = sr_session_stop(sessionA);
     assert_int_equal(rc, SR_ERR_OK);
