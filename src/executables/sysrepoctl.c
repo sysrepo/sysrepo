@@ -400,14 +400,14 @@ srctl_ly_init(struct ly_ctx **ly_ctx)
     *ly_ctx = ly_ctx_new(srctl_schema_search_dir);
     if (NULL == *ly_ctx) {
         fprintf(stderr, "Error: Unable to initialize libyang context: %s.\n", ly_errmsg());
-        return SR_ERR_INVAL_ARG;
+        return SR_ERR_INTERNAL;
     }
     ly_set_log_clb(srctl_ly_log_cb, 0);
 
     dp = opendir(srctl_schema_search_dir);
     if (NULL == dp) {
         fprintf(stderr, "Error by opening schema directory: %s.\n", strerror(errno));
-        return SR_ERR_INVAL_ARG;
+        return SR_ERR_INTERNAL;
     }
     while (NULL != (ep = readdir(dp))) {
         if (sr_str_ends_with(ep->d_name, SR_SCHEMA_YIN_FILE_EXT) || sr_str_ends_with(ep->d_name, SR_SCHEMA_YANG_FILE_EXT)) {

@@ -1,6 +1,7 @@
 /**
  * @file sr_utils.c
- * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
+ * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>,
+ *         Milan Lenco <milan.lenco@pantheon.tech>
  * @brief Sysrepo utility functions.
  *
  * @copyright
@@ -25,6 +26,7 @@
 #include <arpa/inet.h>
 #include <inttypes.h>
 #include <fcntl.h>
+#include <ctype.h>
 #include <libyang/libyang.h>
 
 #include "sr_common.h"
@@ -87,6 +89,24 @@ sr_str_join(const char *str1, const char *str2, char **result)
     strcpy(res + l1, str2);
     *result = res;
     return SR_ERR_OK;
+}
+
+void
+sr_str_trim(char *str) {
+    if (NULL == str) {
+        return;
+    }
+
+    char *ptr = str;
+    size_t len = strlen(str);
+    if (0 == len) {
+        return;
+    }
+
+    while(isspace(ptr[len - 1])) ptr[--len] = 0;
+    while(*ptr && isspace(*ptr)) ++ptr, --len;
+
+    memmove(str, ptr, len + 1);
 }
 
 int
