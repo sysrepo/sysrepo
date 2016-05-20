@@ -952,8 +952,6 @@ rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg 
         rc = sr_values_sr_to_gpb(input, input_cnt, &req->request->rpc_req->input, &req->request->rpc_req->n_input);
     }
     sr_free_values(input, input_cnt);
-    sr__msg__free_unpacked(msg, NULL);
-    msg = NULL;
 
     /* get module name */
     if (SR_ERR_OK == rc) {
@@ -997,14 +995,18 @@ rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg 
         rc_tmp = sr_gpb_resp_alloc(SR__OPERATION__RPC, session->id, &resp);
         if (SR_ERR_OK == rc_tmp) {
             resp->response->result = rc;
-            resp->response->rpc_resp->xpath = req->request->rpc_req->xpath;
-            req->request->rpc_req->xpath = NULL;
+            resp->response->rpc_resp->xpath = msg->request->rpc_req->xpath;
+            msg->request->rpc_req->xpath = NULL;
             /* send the response */
             rc = cm_msg_send(rp_ctx->cm_ctx, resp);
         }
         /* release the request */
-        sr__msg__free_unpacked(req, NULL);
+        if (NULL != req) {
+            sr__msg__free_unpacked(req, NULL);
+        }
     }
+
+    sr__msg__free_unpacked(msg, NULL);
 
     return rc;
 }
@@ -1046,7 +1048,7 @@ rp_rpc_resp_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg
     }
     sr_free_values(output, output_cnt);
 
-    if (SR_ERR_OK == rc) {
+    if ((SR_ERR_OK == rc) || (NULL != resp)) {
         sr__msg__free_unpacked(msg, NULL);
         msg = NULL;
     } else {

@@ -317,9 +317,11 @@ rp_dt_get_value(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char *
     rc = rp_dt_get_value_from_node(node, val);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Get value from node failed for xpath %s", xpath);
+        free(val);
     } else {
         *value = val;
     }
+
     return rc;
 }
 
