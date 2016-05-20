@@ -1436,7 +1436,7 @@ cleanup:
 
 int
 sr_subtree_change_subscribe(sr_session_ctx_t *session, const char *xpath, sr_notif_event_t event,
-        bool enable_running, int priority, sr_module_change_cb callback, void *private_ctx,
+        bool enable_running, int priority, sr_subtree_change_cb callback, void *private_ctx,
         sr_subscription_ctx_t **subscription)
 {
     // TODO: implement

@@ -94,11 +94,13 @@ retrieve_current_config(sr_session_ctx_t *session)
     sr_free_values(values, count);
 }
 
-static void
+static int
 module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t event, void *private_ctx)
 {
     log_msg("turing-machine configuration has changed");
     retrieve_current_config(session);
+
+    return SR_ERR_OK;
 }
 
 static int

@@ -36,10 +36,11 @@ void sig_handler(int num)
    }
 }
 
-static void
+static int
 module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t event, void *private_ctx)
 {
     printf("\n\n ========== CONFIG HAS CHANGED ==========\n\n");
+    return SR_ERR_OK;
 }
 
 int main(int argc, char **argv){

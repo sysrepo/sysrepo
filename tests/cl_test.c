@@ -1006,7 +1006,7 @@ test_feature_enable_cb(const char *module_name, const char *feature_name, bool e
     printf("Feature '%s' has been %s in module '%s'.\n", feature_name, enabled ? "enabled" : "disabled", module_name);
 }
 
-static void
+static int
 test_module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t event, void *private_ctx)
 {
     sr_val_t *value = NULL;
@@ -1023,6 +1023,8 @@ test_module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_not
     } else {
         printf("While retrieving '%s' error with code (%d) occured\n", "/example-module:container/list[key1='key1'][key2='key2']/leaf", rc);
     }
+
+    return SR_ERR_OK;
 }
 
 static void

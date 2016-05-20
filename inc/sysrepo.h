@@ -845,19 +845,20 @@ int sr_unlock_module(sr_session_ctx_t *session, const char *module_name);
 typedef enum sr_notif_event_e {
     SR_EV_VERIFY,  /**< Occurs just before the changes are committed to the datastore,
                         the subscriber is supposed to verify that the changes are valid and can be applied
-                        and prepare all resources for the changes. The subscriber can deny the changes in this phase. */
+                        and prepare all resources for the changes. The subscriber can still deny the changes in this phase
+                        by returning an error from the callback. */
     SR_EV_NOTIFY,  /**< Occurs just after the changes have been committed to the datastore,
                         the subscriber is supposed to apply the changes now, but cannot deny the changes in this phase. */
 } sr_notif_event_t;
 
 /**
- * @brief TODO
+ * @brief Type of the operation made on an item, used by changeset retrieval in ::sr_get_change_next.
  */
 typedef enum sr_change_oper_e {
-   SR_OP_CREATED,
-   SR_OP_MODIFIED,
-   SR_OP_MOVED, /* in case of leaf-list or list reorder*/
-   SR_OP_DELETED,
+    SR_OP_CREATED,   /**< The item has been created by the change. */
+    SR_OP_MODIFIED,  /**< The value of the item has been modified by the change. */
+    SR_OP_DELETED,   /**< The item has been deleted by the change. */
+    SR_OP_MOVED,     /**< The item has been moved in the subtree by the change (applicable for leaf-lists and user-ordered lists). */
 } sr_change_oper_t;
 
 /**
@@ -867,30 +868,38 @@ typedef enum sr_change_oper_e {
 typedef struct sr_subscription_ctx_s sr_subscription_ctx_t;
 
 /**
- * @brief TODO Iterator used for accessing data nodes via ::sr_get_items_iter call.
+ * @brief Iterator used for retrieval of a changeset using ::sr_get_changes_iter call.
  */
 typedef struct sr_change_iter_s sr_change_iter_t;
 
 /**
  * @brief Callback to be called by the event of changing any running datastore
- * content within a module. Subscribe to it by ::sr_module_change_subscribe call.
+ * content within the specified module. Subscribe to it by ::sr_module_change_subscribe call.
  *
- * @param[in] session Automatically-created session that can be used for
- * obtaining changed data (e.g. with ::sr_get_item, ::sr_get_items or
- * ::sr_get_items_iter calls). Do not stop this session.
+ * @param[in] session Automatically-created session that can be used for obtaining changed data
+ * (e.g. by ::sr_get_changes_iter call ot ::sr_get_item -like calls). Do not stop this session.
  * @param[in] module_name Name of the module where the change has occurred.
- * @param[in] event TODO
+ * @param[in] event Type of the notification event that has occurred.
  * @param[in] private_ctx Private context opaque to sysrepo, as passed to
  * ::sr_module_change_subscribe call.
  */
-typedef void (*sr_module_change_cb)(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t event,
-        void *private_ctx);
+typedef int (*sr_module_change_cb)(sr_session_ctx_t *session, const char *module_name,
+        sr_notif_event_t event, void *private_ctx);
 
 /**
- * @brief TODO
+ * @brief Callback to be called by the event of changing any running datastore
+ * content within the specified subtree. Subscribe to it by ::sr_subtree_change_subscribe call.
+ *
+ * @param[in] session Automatically-created session that can be used for obtaining changed data
+ * (e.g. by ::sr_get_changes_iter call or ::sr_get_item -like calls). Do not stop this session.
+ * @param[in] xpath XPath of the subtree where the change has occurred (as
+ * provided to ::sr_subtree_change_subscribe call).
+ * @param[in] event Type of the notification event that has occurred.
+ * @param[in] private_ctx Private context opaque to sysrepo, as passed to
+ * ::sr_subtree_change_subscribe call.
  */
-typedef void (*sr_subtree_change_cb)(sr_session_ctx_t *session, const char *xpath, sr_notif_event_t event,
-        void *private_ctx);
+typedef int (*sr_subtree_change_cb)(sr_session_ctx_t *session, const char *xpath,
+        sr_notif_event_t event, void *private_ctx);
 
 /**
  * @brief Callback to be called by the event of installation / uninstallation
@@ -918,19 +927,22 @@ typedef void (*sr_module_install_cb)(const char *module_name, const char *revisi
 typedef void (*sr_feature_enable_cb)(const char *module_name, const char *feature_name, bool enabled, void *private_ctx);
 
 /**
- * @brief Subscribes for notifications about the changes in any running datastore
- * content within specified module.
+ * @brief Subscribes for notifications about the changes made within specified
+ * module in running datastore.
  *
  * @param[in] session Session context acquired with ::sr_session_start call.
- * @param[in] module_name Module name of the interest for change notifications.
- * @param[in] enable_running TRUE if this subscription should enable the contents
- * of the module in the running datastore (if the application subscribing to the
- * event is the "owner" of the data), FALSE otherwise (e.g. if you are just
- * interested in the changes of other application's data).
- * @param[in] priority
+ * @param[in] module_name Name of the module of interest for change notifications.
+ * @param[in] event Type of the notification event which the notification subscriber is interested in.
+ * @param[in] enable_running TRUE if this subscription should enable the contents of the module
+ * in the running datastore (if the application subscribing to the event is the "owner" of the data),
+ * FALSE otherwise (e.g. if it is just interested in the changes of other application's data).
+ * @param[in] priority Specifies the order in which the callbacks will be called (callbacks with higher
+ * priority will be called sooner, callbacks with the priority of 0 will be called at the end).
  * @param[in] callback Callback to be called when the event occurs.
  * @param[in] private_ctx Private context passed to the callback function, opaque to sysrepo.
- * @param[out] subscription Subscription context that can be passed to ::sr_unsubscribe.
+ * @param[in,out] subscription Subscription context that can be later passed to ::sr_unsubscribe.
+ * An existing subscription context can be passed in - in that case the same context will be used
+ * for multiple subscriptions and a single ::sr_unsubscribe call will unsubscribe from all of them.
  *
  * @return Error code (SR_ERR_OK on success).
  */
@@ -939,10 +951,28 @@ int sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_nam
         sr_subscription_ctx_t **subscription);
 
 /**
- * @brief TODO
+ * @brief Subscribes for notifications about the changes made within specified
+ * subtree in running datastore.
+ *
+ * @param[in] session Session context acquired with ::sr_session_start call.
+ * @param[in] xpath @ref xp_page "XPath" identifier of the subtree of the interest for change notifications.
+ * The XPath cannot identify any specific list instance - keys of the lists should be omitted.
+ * @param[in] event Type of the notification event which the notification subscriber is interested in.
+ * @param[in] enable_running TRUE if this subscription should enable the contents of the subtree
+ * in the running datastore (if the application subscribing to the event is the "owner" of the data),
+ * FALSE otherwise (e.g. if it is just interested in the changes of other application's data).
+ * @param[in] priority Specifies the order in which the callbacks will be called (callbacks with higher
+ * priority will be called sooner, callback with the priority of 0 will be called at the end).
+ * @param[in] callback Callback to be called when the event occurs.
+ * @param[in] private_ctx Private context passed to the callback function, opaque to sysrepo.
+ * @param[in,out] subscription Subscription context that can be later passed to ::sr_unsubscribe.
+ * An existing subscription context can be passed in - in that case the same context will be used
+ * for multiple subscriptions and a single ::sr_unsubscribe call will unsubscribe from all of them.
+ *
+ * @return Error code (SR_ERR_OK on success).
  */
 int sr_subtree_change_subscribe(sr_session_ctx_t *session, const char *xpath, sr_notif_event_t event,
-        bool enable_running, int priority, sr_module_change_cb callback, void *private_ctx,
+        bool enable_running, int priority, sr_subtree_change_cb callback, void *private_ctx,
         sr_subscription_ctx_t **subscription);
 
 /**
@@ -955,7 +985,9 @@ int sr_subtree_change_subscribe(sr_session_ctx_t *session, const char *xpath, sr
  * @param[in] session Session context acquired with ::sr_session_start call.
  * @param[in] callback Callback to be called when the event occurs.
  * @param[in] private_ctx Private context passed to the callback function, opaque to sysrepo.
- * @param[out] subscription Subscription context that can be passed to ::sr_unsubscribe.
+ * @param[in,out] subscription Subscription context that can be later passed to ::sr_unsubscribe.
+ * An existing subscription context can be passed in - in that case the same context will be used
+ * for multiple subscriptions and a single ::sr_unsubscribe call will unsubscribe from all of them.
  *
  * @return Error code (SR_ERR_OK on success).
  */
@@ -972,7 +1004,9 @@ int sr_module_install_subscribe(sr_session_ctx_t *session, sr_module_install_cb 
  * @param[in] session Session context acquired with ::sr_session_start call.
  * @param[in] callback Callback to be called when the event occurs.
  * @param[in] private_ctx Private context passed to the callback function, opaque to sysrepo.
- * @param[out] subscription Subscription context that can be passed to ::sr_unsubscribe.
+ * @param[in,out] subscription Subscription context that can be later passed to ::sr_unsubscribe.
+ * An existing subscription context can be passed in - in that case the same context will be used
+ * for multiple subscriptions and a single ::sr_unsubscribe call will unsubscribe from all of them.
  *
  * @return Error code (SR_ERR_OK on success).
  */
@@ -983,54 +1017,52 @@ int sr_feature_enable_subscribe(sr_session_ctx_t *session, sr_feature_enable_cb 
  * @brief Unsubscribes from a subscription acquired by any of sr_*_subscribe
  * calls and releases all subscription-related data.
  *
- * @param[in] session Session context acquired with ::sr_session_start call.
- * Does not need to be the same as used for subscribing. NULL can be passed too,
- * in that case a temporary session used for unsubscribe will be automatically
- * created by sysrepo.
- * @param[in] subscription Subscription context acquired by any of sr_*_subscribe
- * calls.
+ * @note In case that the same subscription context was used to subscribe for
+ * multiple subscriptions, unsubscribes from all of them.
+ *
+ * @param[in] session Session context acquired with ::sr_session_start call. Does not
+ * need to be the same as used for subscribing. NULL can be passed too, in that case
+ * a temporary session used for unsubscribe will be automatically created by sysrepo.
+ * @param[in] subscription Subscription context acquired by any of sr_*_subscribe calls.
  *
  * @return Error code (SR_ERR_OK on success).
  */
 int sr_unsubscribe(sr_session_ctx_t *session, sr_subscription_ctx_t *subscription);
 
 /**
- * @brief TODO Creates an iterator for retrieving of the data elements stored under provided xpath.
+ * @brief Creates an iterator for retrieving of the changeset (list of newly
+ * added / removed / modified nodes) in notification callbacks.
  *
- * Requested data elements are transferred from the datastore in larger chunks
- * of pre-defined size, which is much more efficient that calling multiple
- * ::sr_get_item calls, and may be less memory demanding than calling ::sr_get_items
- * on very large datasets.
+ * @see ::sr_get_change_next for iterating over the changeset using this iterator.
  *
- * @see @ref xp_page "XPath Addressing" documentation, or
- * https://tools.ietf.org/html/draft-ietf-netmod-yang-json#section-6.11
- * for XPath syntax used for identification of yang nodes in sysrepo calls.
- *
- * @see ::sr_get_item_next for iterating over returned data elements.
- *
- * @param[in] session Session context acquired with ::sr_session_start call.
- * @param[in] xpath @ref xp_page "XPath" identifier of the data element / subtree to be retrieved.
- * @param[out] iter Iterator context that can be used to retrieve individual data
- * elements via ::sr_get_item_next calls. Allocated by the function, should be
- * freed with ::sr_free_val_iter.
+ * @param[in] session Session context as passed to notication the callbacks (e.g.
+ * ::sr_module_change_cb or ::sr_subtree_change_cb). Will not work with any other sessions.
+ * @param[in] xpath @ref xp_page "XPath" identifier of the subtree from which the changeset
+ * should be obtained. Only XPaths that would be accepted by ::sr_subtree_change_subscribe are allowed.
+ * @param[out] iter Iterator context that can be used to retrieve individual changes using
+ * ::sr_get_change_next calls. Allocated by the function, should be freed with ::sr_free_change_iter.
  *
  * @return Error code (SR_ERR_OK on success).
  */
 int sr_get_changes_iter(sr_session_ctx_t *session, const char *xpath, sr_change_iter_t **iter);
 
 /**
- * @brief TODO Returns the next item from the dataset of provided iterator created
- * by ::sr_get_items_iter call. If there is no item left SR_ERR_NOT_FOUND is returned.
+ * @brief Returns the next change from the changeset of provided iterator created
+ * by ::sr_get_changes_iter call. If there is no item left, SR_ERR_NOT_FOUND is returned.
  *
- * @param[in] session Session context acquired with ::sr_session_start call.
- * @param[in,out] iter Iterator acquired with ::sr_get_items_iter call.
- * @param[out] value Structure containing information about requested element
- * (allocated by the function, can be freed with ::sr_free_val).
+ * @param[in] session Session context as passed to notication the callbacks (e.g.
+ * ::sr_module_change_cb or ::sr_subtree_change_cb). Will not work with any other sessions.
+ * @param[in,out] iter Iterator acquired with ::sr_get_changes_iter call.
+ * @param[out] operation Type of the operation made on the returned item.
+ * @param[out] new_value New (modified) value of the the item. NULL in case that
+ * the item has been just deleted (operation == SR_OP_DELETED).
+ * @param[out] old_value Old value of the item (the value before the change).
+ * NULL in case that the item has been just created (operation == SR_OP_CREATED).
  *
  * @return Error code (SR_ERR_OK on success).
  */
 int sr_get_change_next(sr_session_ctx_t *session, sr_change_iter_t *iter, sr_change_oper_t *operation,
-        sr_val_t **old_value, sr_val_t **new_value);
+        sr_val_t **new_value, sr_val_t **old_value);
 
 
 ////////////////////////////////////////////////////////////////////////////////
