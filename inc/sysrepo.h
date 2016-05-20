@@ -833,7 +833,7 @@ int sr_unlock_module(sr_session_ctx_t *session, const char *module_name);
 
 
 ////////////////////////////////////////////////////////////////////////////////
-// Notification API
+// Notification API - EXPERIMENTAL !!! (API may change in the next release)
 ////////////////////////////////////////////////////////////////////////////////
 
 /**
@@ -893,6 +893,9 @@ typedef void (*sr_feature_enable_cb)(const char *module_name, const char *featur
  * @param[in] callback Callback to be called when the event occurs.
  * @param[in] private_ctx Private context passed to the callback function, opaque to sysrepo.
  * @param[out] subscription Subscription context that can be passed to ::sr_unsubscribe.
+ * An existing subscription context can be passed in - in that case the same context will be used
+ * for multiple subscriptions and a single ::sr_unsubscribe call will unsubscribe from all of them.
+ * Otherwise the memory pointed to by the subscription passed in must be inititialized to NULL.
  *
  * @return Error code (SR_ERR_OK on success).
  */
@@ -910,6 +913,9 @@ int sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_nam
  * @param[in] callback Callback to be called when the event occurs.
  * @param[in] private_ctx Private context passed to the callback function, opaque to sysrepo.
  * @param[out] subscription Subscription context that can be passed to ::sr_unsubscribe.
+ * An existing subscription context can be passed in - in that case the same context will be used
+ * for multiple subscriptions and a single ::sr_unsubscribe call will unsubscribe from all of them.
+ * Otherwise the memory pointed to by the subscription passed in must be inititialized to NULL.
  *
  * @return Error code (SR_ERR_OK on success).
  */
@@ -927,6 +933,9 @@ int sr_module_install_subscribe(sr_session_ctx_t *session, sr_module_install_cb 
  * @param[in] callback Callback to be called when the event occurs.
  * @param[in] private_ctx Private context passed to the callback function, opaque to sysrepo.
  * @param[out] subscription Subscription context that can be passed to ::sr_unsubscribe.
+ * An existing subscription context can be passed in - in that case the same context will be used
+ * for multiple subscriptions and a single ::sr_unsubscribe call will unsubscribe from all of them.
+ * Otherwise the memory pointed to by the subscription passed in must be inititialized to NULL.
  *
  * @return Error code (SR_ERR_OK on success).
  */
@@ -950,7 +959,7 @@ int sr_unsubscribe(sr_session_ctx_t *session, sr_subscription_ctx_t *subscriptio
 
 
 ////////////////////////////////////////////////////////////////////////////////
-// RPC API
+// RPC API - EXPERIMENTAL !!! (API may change in the next release)
 ////////////////////////////////////////////////////////////////////////////////
 
 /**
@@ -979,6 +988,9 @@ typedef int (*sr_rpc_cb)(const char *xpath, const sr_val_t *input, const size_t 
  * @param[in] callback Callback to be called when the RPC is called.
  * @param[in] private_ctx Private context passed to the callback function, opaque to sysrepo.
  * @param[out] subscription Subscription context that can be passed to ::sr_unsubscribe.
+ * An existing subscription context can be passed in - in that case the same context will be used
+ * for multiple subscriptions and a single ::sr_unsubscribe call will unsubscribe from all of them.
+ * Otherwise the memory pointed to by the subscription passed in must be inititialized to NULL.
  *
  * @return Error code (SR_ERR_OK on success).
  */
