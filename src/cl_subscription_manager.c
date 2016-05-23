@@ -633,7 +633,7 @@ cl_sm_notif_process(cl_sm_ctx_t *sm_ctx, Sr__Msg *msg)
             subscription->callback.module_change_cb(
                     data_session,
                     msg->notification->module_change_notif->module_name,
-                    msg->notification->module_change_notif->event,
+                    SR_EV_NOTIFY, // TODO: msg->notification->module_change_notif->event
                     subscription->private_ctx);
             break;
         // TODO: subtree-change callback
