@@ -133,6 +133,10 @@ To change the location where the library, headers and any other files are instal
 #### Changing repository location:
 Sysrepo stores all YANG models and corresponding data files in so-named *repository location*. By default, the repository location is set to `/etc/sysrepo` for Release build and `tests/data` (relatively to the directory from which the cmake command is executed) for Debug build. To change default values, use `REPOSITORY_LOC` variable as follows: `cmake -DREPOSITORY_LOC:PATH=/etc/sysrepo ..`
 
+#### Changing plugins directory location:
+All sysrepo plugins should be placed into *plugins directory*. This defaults
+to `${CMAKE_INSTALL_PREFIX}/${LIB_INSTALL_DIR}/sysrepo/plugins/` (e.g. `/usr/local/lib/sysrepo/plugins/`) and can be changed by `PLUGINS_DIR` variable as follows: `cmake -DPLUGINS_DIR:PATH=/opt/sysrepo/plugins ..`
+
 #### Building with / without examples:
 By default, some [example programs](examples/) are built with sysrepo and several [example YANG modules](examples/yang/) are installed into sysrepo repository, along with some meaningless data. If you wish to not build and install them, use `BUILD_EXAMPLES` varibale as follows: `cmake -DBUILD_EXAMPLES:BOOL=FALSE ..`
 
@@ -178,12 +182,12 @@ See [examples directory](examples/) for more usage examples.
 #### Starting sysrepo daemon
 Sysrepo deamon provides the functionality of the datastore on the system and should normally be automatically started by system startup. However, auto-start is not configured by cmake install operation and you need to configure it yourself, accroding to the guidelines of your system.
 
-Sysrepo deamon can be started by executing following command:
+Sysrepo deamon can be started by executing of the following command:
 ```
 sysrepod
 ```
 
-The daemon accepts several arguments for specifying log verbosity level or for debugging. You can display them by executing `sysrepod -h`:
+The daemon accepts several arguments aimed for debugging. You can display them by executing `sysrepod -h`:
 ```
 $ sysrepod -h
 sysrepod - sysrepo daemon, version 0.1.12
@@ -200,4 +204,10 @@ Options:
                     2 = log error and warning messages
                     3 = (default) log error, warning and informational messages
                     4 = log everything, including development debug messages
+```
+
+#### Starting sysrepo plugin daemon
+Sysrepo plugin daemon loads all plugins (shared libraries) located in the *plugins directory*. It works similarly to the main sysrepo damon described above (and also accepts the same arguments) and can be started by executing of the following command:
+```
+sysrepo-plugind
 ```

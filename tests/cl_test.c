@@ -842,6 +842,12 @@ cl_locking_test(void **state)
     rc = sr_lock_datastore(sessionB);
     assert_int_equal(rc, SR_ERR_OPERATION_FAILED);
 
+    const sr_error_info_t *error = NULL;
+    sr_get_last_error(sessionB, &error);
+
+    assert_string_equal("test-module", error->xpath);
+    assert_string_equal("Module has been modified, it can not be locked. Discard or commit changes", error->message);
+
     /* stop the sessions */
     rc = sr_session_stop(sessionA);
     assert_int_equal(rc, SR_ERR_OK);
@@ -1207,6 +1213,8 @@ test_rpc_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt,
     int *callback_called = (int*)private_ctx;
     *callback_called += 1;
 
+    assert_int_equal(input_cnt, 2);
+
     printf("'Executing' RPC: %s\n", xpath);
     for (size_t i = 0; i < input_cnt; i++) {
         printf("    input parameter[%zu]: %s = %s\n", i, input[i].xpath, input[i].data.string_val);
@@ -1255,10 +1263,10 @@ cl_rpc_test(void **state)
     rc = sr_rpc_send(session, "/test-module:activate-software-image", &input, 1, &output, &output_cnt);
     assert_int_equal(rc, SR_ERR_OK);
 
+    assert_int_equal(output_cnt, 3);
     for (size_t i = 0; i < output_cnt; i++) {
         printf("RPC output parameter[%zu]: %s = %s\n", i, output[i].xpath, output[i].data.string_val);
     }
-
     sr_free_values(output, output_cnt);
 
     /* stop the session */
