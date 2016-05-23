@@ -47,6 +47,7 @@ typedef struct np_subscription_s {
     sr_notif_event_t notif_event;      /**< Notification event which the notification subscriber is interested in. */
     const char *dst_address;           /**< Destination address where the notification should be delivered. */
     uint32_t dst_id;                   /**< Destination ID of the subscription (used locally, in the client library). */
+    const char *module_name;           /**< Name of the module where the subscription is active. */
     const char *xpath;                 /**< XPath to the subtree where the subscription is active (if applicable). */
     uint32_t priority;                 /**< Priority of the subscribtion by delivering notifications (0 is the lowest priority). */
     bool enable_running;               /**< TRUE if the subscription enables specified subtree in the running datastore. */
@@ -188,11 +189,36 @@ int np_get_module_change_subscriptions(np_ctx_t *np_ctx, const char *module_name
         np_subscription_t ***subscriptions_arr, size_t *subscriptions_cnt);
 
 /**
- * @brief Cleans up a subscription context.
+ * @brief Notify the subscriber about the change they are subscribed to.
+ *
+ * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
+ * @param[in] subscription Subscription context acquired by ::np_get_module_change_subscriptions call.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int np_subscription_notify(np_ctx_t *np_ctx, np_subscription_t *subscription);
+
+/**
+ * @brief Cleans up a subscription context (including all its content).
  *
  * @param[in] subscription Subscription context to be freed.
  */
-void np_subscription_cleanup(np_subscription_t *subscription);
+void np_free_subscription(np_subscription_t *subscription);
+
+/**
+ * @brief Cleans up the content of a subscription context, does not free the context itself.
+ *
+ * @param[in] subscription Subscription context to be freed.
+ */
+void np_free_subscription_content(np_subscription_t *subscription);
+
+/**
+ * @brief Cleans up an array of subscription contexts (including all its content).
+ *
+ * @param[in] subscriptions Array of subscription contexts to be freed.
+ * @param[in] subscriptions_cnt Count of the subscriptions in the array.
+ */
+void np_free_subscriptions(np_subscription_t *subscriptions, size_t subscriptions_cnt);
 
 /**@} np */
 

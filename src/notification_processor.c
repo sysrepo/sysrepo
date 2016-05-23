@@ -250,7 +250,7 @@ np_cleanup(np_ctx_t *np_ctx)
 
     if (NULL != np_ctx) {
         for (size_t i = 0; i < np_ctx->subscription_cnt; i++) {
-            np_subscription_cleanup(np_ctx->subscriptions[i]);
+            np_free_subscription(np_ctx->subscriptions[i]);
         }
         free(np_ctx->subscriptions);
         sr_btree_cleanup(np_ctx->dst_info_btree);
@@ -276,6 +276,10 @@ np_notification_subscribe(np_ctx_t *np_ctx, const rp_session_t *rp_session, Sr__
     CHECK_NULL_NOMEM_RETURN(subscription);
 
     subscription->notif_type = notif_type;
+    if (NULL != module_name) {
+        subscription->module_name = strdup(module_name);
+        CHECK_NULL_NOMEM_GOTO(subscription->module_name, rc, cleanup);
+    }
     if (NULL != xpath) {
         subscription->xpath = strdup(xpath);
         CHECK_NULL_NOMEM_GOTO(subscription->xpath, rc, cleanup);
@@ -331,7 +335,7 @@ cleanup:
             np_dst_info_remove(np_ctx, dst_address, module_name);
             pthread_rwlock_unlock(&np_ctx->lock);
         }
-        np_subscription_cleanup(subscription);
+        np_free_subscription(subscription);
     }
     return rc;
 }
@@ -393,7 +397,7 @@ np_notification_unsubscribe(np_ctx_t *np_ctx,  const rp_session_t *rp_session, S
         pthread_rwlock_unlock(&np_ctx->lock);
 
         /* release the subscription */
-        np_subscription_cleanup(subscription);
+        np_free_subscription(subscription);
     }
 
     return rc;
@@ -564,7 +568,7 @@ np_module_change_notify(np_ctx_t *np_ctx, const char *module_name)
     }
 
     for (size_t i = 0; i < subscription_cnt; i++) {
-        free((void*)subscriptions[i].dst_address);
+        np_free_subscription_content(&subscriptions[i]);
     }
     free(subscriptions);
 
@@ -634,12 +638,70 @@ cleanup:
     return rc;
 }
 
+int
+np_subscription_notify(np_ctx_t *np_ctx, np_subscription_t *subscription)
+{
+    Sr__Msg *notif = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG4(np_ctx, np_ctx->rp_ctx, subscription, subscription->dst_address);
+
+    SR_LOG_DBG("Sending %s notification to '%s' @ %"PRIu32".", sr_notif_type_gpb_to_str(subscription->notif_type),
+            subscription->dst_address, subscription->dst_id);
+
+    rc = sr_gpb_notif_alloc(subscription->notif_type, subscription->dst_address, subscription->dst_id, &notif);
+
+    if (SR_ERR_OK == rc) {
+        if (SR__NOTIFICATION_TYPE__MODULE_CHANGE_NOTIF == subscription->notif_type) {
+            notif->notification->module_change_notif->event = subscription->notif_event;
+            notif->notification->module_change_notif->module_name = strdup(subscription->module_name);
+            CHECK_NULL_NOMEM_ERROR(notif->notification->module_change_notif->module_name, rc);
+        }
+        if (SR__NOTIFICATION_TYPE__SUBTREE_CHANGE_NOTIF == subscription->notif_type) {
+            notif->notification->subtree_change_notif->event = subscription->notif_event;
+            notif->notification->subtree_change_notif->xpath = strdup(subscription->xpath);
+            CHECK_NULL_NOMEM_ERROR(notif->notification->subtree_change_notif->xpath, rc);
+        }
+    }
+
+    if (SR_ERR_OK == rc) {
+        /* save notification destination info */
+        rc = np_dst_info_insert(np_ctx, subscription->dst_address, subscription->module_name);
+    }
+    if (SR_ERR_OK == rc) {
+        /* send the message */
+        rc = cm_msg_send(np_ctx->rp_ctx->cm_ctx, notif);
+    } else {
+        sr__msg__free_unpacked(notif, NULL);
+    }
+
+    return rc;
+}
+
 void
-np_subscription_cleanup(np_subscription_t *subscription)
+np_free_subscription(np_subscription_t *subscription)
+{
+    if (NULL != subscription) {
+        np_free_subscription_content(subscription);
+        free(subscription);
+    }
+}
+
+void
+np_free_subscription_content(np_subscription_t *subscription)
 {
     if (NULL != subscription) {
         free((void*)subscription->dst_address);
+        free((void*)subscription->module_name);
         free((void*)subscription->xpath);
-        free(subscription);
     }
+}
+
+void
+np_free_subscriptions(np_subscription_t *subscriptions, size_t subscriptions_cnt)
+{
+    for (size_t i = 0; i < subscriptions_cnt; i++) {
+        np_free_subscription_content(&subscriptions[i]);
+    }
+    free(subscriptions);
 }

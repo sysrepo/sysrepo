@@ -317,21 +317,33 @@ static int
 pm_subscription_entry_fill(struct lyd_node *node, np_subscription_t *subscription)
 {
     struct lyd_node_leaf_list *node_ll = NULL;
+    int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG(subscription);
+    CHECK_NULL_ARG4(subscription, node, node->schema, node->schema->module);
+
+    subscription->module_name = strdup(node->schema->module->name);
+    CHECK_NULL_NOMEM_GOTO(subscription->module_name, rc, cleanup);
 
     while (NULL != node) {
-        if (NULL != node->schema->name) {
+        if (NULL != node->schema && NULL != node->schema->name) {
             node_ll = (struct lyd_node_leaf_list*)node;
+            if (NULL != node_ll->value_str && 0 == strcmp(node->schema->name, "xpath")) {
+                subscription->xpath = strdup(node_ll->value_str);
+                CHECK_NULL_NOMEM_GOTO(subscription->xpath, rc, cleanup);
+            }
             if (NULL != node_ll->value_str && 0 == strcmp(node->schema->name, "type")) {
                 subscription->notif_type = sr_notif_type_str_to_gpb(node_ll->value_str);
             }
+            // TODO: notification event
             if (NULL != node_ll->value_str && 0 == strcmp(node->schema->name, "destination-address")) {
                 subscription->dst_address = strdup(node_ll->value_str);
-                CHECK_NULL_NOMEM_RETURN(subscription->dst_address);
+                CHECK_NULL_NOMEM_GOTO(subscription->dst_address, rc, cleanup);
             }
             if (NULL != node_ll->value_str && 0 == strcmp(node->schema->name, "destination-id")) {
                 subscription->dst_id = atoi(node_ll->value_str);
+            }
+            if (NULL != node_ll->value_str && 0 == strcmp(node->schema->name, "priority")) {
+                subscription->priority = atoi(node_ll->value_str);
             }
             if (0 == strcmp(node->schema->name, "enable-running")) {
                 subscription->enable_running = true;
@@ -339,7 +351,12 @@ pm_subscription_entry_fill(struct lyd_node *node, np_subscription_t *subscriptio
         }
         node = node->next;
     }
+
     return SR_ERR_OK;
+
+cleanup:
+    np_free_subscription_content(subscription);
+    return rc;
 }
 
 /**
@@ -521,7 +538,7 @@ pm_get_module_info(pm_ctx_t *pm_ctx, const char *module_name,
             if (SR_ERR_OK == rc) {
                 rc = np_hello_notify(pm_ctx->rp_ctx->np_ctx, module_name, subscription.dst_address, subscription.dst_id);
             }
-            free((void*)subscription.dst_address);
+            np_free_subscription_content(&subscription);
         }
     }
 

@@ -303,7 +303,10 @@ np_module_subscriptions_test(void **state)
     for (size_t i = 0; i < subscriptions_cnt; i++) {
         assert_non_null(subscriptions_arr[i]);
         assert_true(SR__NOTIFICATION_TYPE__MODULE_CHANGE_NOTIF == subscriptions_arr[i]->notif_type);
-        np_subscription_cleanup(subscriptions_arr[i]);
+        /* notify and cleanup */
+        rc = np_subscription_notify(np_ctx, subscriptions_arr[i]);
+        assert_int_equal(rc, SR_ERR_OK);
+        np_free_subscription(subscriptions_arr[i]);
     }
     free(subscriptions_arr);
 

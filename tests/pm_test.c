@@ -185,7 +185,7 @@ pm_subscription_test(void **state)
     assert_true(subscription_cnt >= 1);
     for (size_t i = 0; i < subscription_cnt; i++) {
         printf("Found subscription: %s @ %"PRIu32"\n", subscriptions[i].dst_address, subscriptions[i].dst_id);
-        free((void*)subscriptions[i].dst_address);
+        np_free_subscription_content(&subscriptions[i]);
     }
     free(subscriptions);
 

@@ -1296,7 +1296,7 @@ sr_notif_type_str_to_gpb(const char *type_name)
     if (0 == strcmp(type_name, "subtree-change")) {
         return SR__NOTIFICATION_TYPE__SUBTREE_CHANGE_NOTIF;
     }
-    return _SR__NOTIFICATION_EVENT_IS_INT_SIZE;
+    return _SR__NOTIFICATION_TYPE_IS_INT_SIZE;
 }
 
 int
