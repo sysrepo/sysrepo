@@ -79,6 +79,14 @@ if("${TEST_REPOSITORY_LOC}" STREQUAL "${REPOSITORY_LOC}")
     ADD_UNIT_TEST_WITH_OPTS(daemon_test 0 0 "")
     ADD_UNIT_TEST_WITH_OPTS(plugin_daemon_test 0 0 "")
     ADD_UNIT_TEST_WITH_OPTS(sysrepoctl_test 1 0 "")
+    ADD_UNIT_TEST_WITH_OPTS(sysrepocfg_test 1 0 "")
+
+    ADD_CUSTOM_COMMAND(
+        TARGET sysrepocfg_test
+        POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/sysrepocfg_test_editor.sh ${CMAKE_CURRENT_BINARY_DIR}
+        VERBATIM
+    )
 
     # Python tests
     FIND_PACKAGE(PythonInterp)

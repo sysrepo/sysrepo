@@ -461,31 +461,39 @@ message FeatureEnableResp {
 // Notification API - !!! EXPERIMENTAL !!!
 ////////////////////////////////////////////////////////////////////////////////
 
-enum NotificationEvent {
-  MODULE_INSTALL_EV = 1;
-  FEATURE_ENABLE_EV = 2;
-  MODULE_CHANGE_EV = 3;
+enum NotificationType {
+  MODULE_INSTALL_NOTIF = 1;
+  FEATURE_ENABLE_NOTIF = 2;
+  MODULE_CHANGE_NOTIF = 3;
+  SUBTREE_CHANGE_NOTIF = 4;
 
-  RPC_EV = 10;
-  HELLO_EV = 20;           /**< Used only internally to test for inactive notification subscriptions. */
+  RPC_NOTIF = 10;
+  HELLO_NOTIF = 20;           /**< Used only internally to test for inactive notification subscriptions. */
+}
+
+enum NotificationEvent {
+  VERIFY_EV = 1;
+  NOTIFY_EV = 2;
 }
 
 message SubscribeReq {
-  required NotificationEvent event = 1;
+  required NotificationType notif_type = 1;
 
   required string destination = 2;
   required uint32 subscription_id = 3;
 
   optional string module_name = 4;
   optional string xpath = 5;
-  optional bool enable_running = 6;
+
+  optional bool enable_running = 10;
+  optional uint32 priority = 11;
 }
 
 message SubscribeResp {
 }
 
 message UnsubscribeReq {
-  required NotificationEvent event = 1;
+  required NotificationType notif_type = 1;
 
   required string destination = 2;
   required uint32 subscription_id = 3;
@@ -509,7 +517,13 @@ message FeatureEnableNotification {
 }
 
 message ModuleChangeNotification {
-  required string module_name = 1;
+  required NotificationEvent event = 1;
+  required string module_name = 2;
+}
+
+message SubtreeChangeNotification {
+  required NotificationEvent event = 1;
+  required string xpath = 2;
 }
 
 
@@ -664,7 +678,7 @@ message Response {
  * @brief Notification about an event that occurred in the datastore.
  */
 message Notification {
-  required NotificationEvent event = 1;
+  required NotificationType type = 1;
   required string destination_address = 2;
   required string source_address = 3;
   required uint32 source_pid = 4;
@@ -673,6 +687,7 @@ message Notification {
   optional ModuleInstallNotification module_install_notif = 10;
   optional FeatureEnableNotification feature_enable_notif = 11;
   optional ModuleChangeNotification module_change_notif = 12;
+  optional SubtreeChangeNotification subtree_change_notif = 13;
 }
 
 /**
