@@ -1,6 +1,7 @@
 /**
  * @file sr_utils.h
- * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
+ * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>,
+ *         Milan Lenco <milan.lenco@pantheon.tech>
  * @brief Sysrepo utility functions API.
  *
  * @copyright
@@ -67,6 +68,13 @@ int sr_str_ends_with(const char *str, const char *suffix);
  * @return err_code
  */
 int sr_str_join(const char *str1, const char *str2, char **result);
+
+/**
+ * @brief Removes all leading and trailing white-space characters from the input string
+ * @param [in] str
+ */
+void
+sr_str_trim(char *str);
 
 /**
  * @brief Copies the first string from the beginning of the xpath up to the first colon,
