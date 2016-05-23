@@ -112,17 +112,18 @@ typedef struct dm_sess_op_s{
  * used in commit context
  */
 typedef struct dm_model_subscription_s {
-    const struct lys_module *module;    /* module */
-    void **subscriptions;               /* array of struct received from np */
-    const struct lys_node **nodes;      /* array of schema nodes corresponding to the subscription */
-    size_t subscription_cnt;            /* number of subscriptions */
-    struct lyd_difflist *difflist;      /* diff list */
+    const struct lys_module *module;    /**< module */
+    np_subscription_t **subscriptions;           /**< array of struct received from np */
+    const struct lys_node **nodes;      /**< array of schema nodes corresponding to the subscription */
+    size_t subscription_cnt;            /**< number of subscriptions */
+    struct lyd_difflist *difflist;      /**< diff list */
 }dm_model_subscription_t;
 
 /**
  * @brief Structure holding information used during commit process
  */
 typedef struct dm_commit_context_s {
+    int id;                     /**< id used for commit identification in notification session */
     dm_session_t *session;      /**< session where mereged (user changes + file system state) data trees are stored */
     int *fds;                   /**< opened file descriptors */
     bool *existed;              /**< flag wheter the file for the filedesriptor existed (and should be truncated) before commit*/
@@ -163,7 +164,7 @@ void dm_cleanup(dm_ctx_t *dm_ctx);
  * @param [out] dm_session_ctx
  * @return Error code (SR_ERR_OK on success)
  */
-int dm_session_start(const dm_ctx_t *dm_ctx, const ac_ucred_t *user_credentials, const sr_datastore_t ds, dm_session_t **dm_session_ctx);
+int dm_session_start(dm_ctx_t *dm_ctx, const ac_ucred_t *user_credentials, const sr_datastore_t ds, dm_session_t **dm_session_ctx);
 
 /**
  * @brief Frees resources allocated for the session.
@@ -322,7 +323,7 @@ int dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_
  * @brief Frees all resources allocated in commit context closes
  * modif_count of files.
  */
-void dm_free_commit_context(dm_ctx_t *dm_ctx, dm_commit_context_t *c_ctx);
+void dm_free_commit_context(void *commit_ctx);
 
 /**
  * @brief Saves commit context to be used for notifications. Releases acquired locks
@@ -700,5 +701,23 @@ int dm_get_all_modules(dm_ctx_t *dm_ctx, dm_session_t *session, bool enabled_onl
  * @return Error code (SR_ERR_OK on success)
  */
 int dm_is_model_modified(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module_name, bool *res);
+
+/**
+ * @brief Removes commit context identified by id
+ * @param [in] dm_ctx
+ * @param [in] c_ctx_id
+ * @return Error code (SR_ERR_OK on success)
+ */
+int dm_remove_commit_context(dm_ctx_t *dm_ctx, int c_ctx_id);
+
+/**
+ * @brief Looks up commit context identified by id
+ * @param [in] dm_ctx
+ * @param [in] c_ctx_id
+ * @param [out] c_ctx pointer to found c_ctx, NULL if there is no cctx with specified id
+ * @return Error code (SR_ERR_OK if no error occurred)
+ */
+int dm_get_commit_context(dm_ctx_t *dm_ctx, int c_ctx_id, dm_commit_context_t **c_ctx);
+
 /**@} Data manager*/
 #endif /* SRC_DATA_MANAGER_H_ */

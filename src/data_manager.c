@@ -43,11 +43,6 @@
 #define DM_DATASTORE_COUNT 3
 
 /**
- * @brief maximum number of saved commit context
- */
-#define DM_MAX_COMMITCTX_CNT 5
-
-/**
  * @brief Helper structure for advisory locking. Holds
  * binary tree with filename -> fd maping. This structure
  * is used to avoid the loss of the lock by file closing.
@@ -84,7 +79,7 @@ typedef struct dm_ctx_s {
     pthread_mutex_t ds_lock_mutex;/**< Data store lock mutex */
     struct ly_set *disabled_sch;  /**< Set of schema that has been disabled */
     sr_btree_t *schema_info_tree; /**< Binary tree holding information about schemas*/
-    dm_commit_context_t **c_ctxs; /**< Array of commit context used for notifications */
+    sr_btree_t *c_ctx_tree;       /**< Array of commit context used for notifications */
     pthread_rwlock_t c_ctxs_lock; /**< rwlock to access c_ctxx */
 } dm_ctx_t;
 
@@ -92,6 +87,7 @@ typedef struct dm_ctx_s {
  * @brief Structure that holds Data Manager's per-session context.
  */
 typedef struct dm_session_s {
+    dm_ctx_t *dm_ctx;                   /**< dm_ctx where the session belongs to */
     sr_datastore_t datastore;           /**< datastore to which the session is tied */
     const ac_ucred_t *user_credentials; /**< credentials of the user who this session belongs to */
     sr_btree_t **session_modules;       /**< array of binary trees holding session copies of data models for each datastore */
@@ -201,6 +197,27 @@ dm_module_subscription_cmp(const void *a, const void *b)
     if (res == 0) {
         return 0;
     } else if (res < 0) {
+        return -1;
+    } else {
+        return 1;
+    }
+}
+
+/**
+ * @brief Compares two commit context by id
+ */
+static int
+dm_c_ctx_id_cmp(const void *a, const void *b)
+{
+    assert(a);
+    assert(b);
+    dm_commit_context_t *cctx_a = (dm_commit_context_t *) a;
+    dm_commit_context_t *cctx_b = (dm_commit_context_t *) b;
+
+
+    if (cctx_a->id == cctx_b->id) {
+        return 0;
+    } else if (cctx_a->id < cctx_b->id) {
         return -1;
     } else {
         return 1;
@@ -1148,8 +1165,8 @@ dm_init(ac_ctx_t *ac_ctx, np_ctx_t *np_ctx, pm_ctx_t *pm_ctx,
     rc = sr_btree_init(dm_schema_info_cmp, dm_free_schema_info, &ctx->schema_info_tree);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Schema binary tree allocation failed");
 
-    ctx->c_ctxs = calloc(DM_MAX_COMMITCTX_CNT, sizeof(*ctx->c_ctxs));
-    CHECK_NULL_NOMEM_GOTO(ctx->c_ctxs, rc, cleanup);
+    rc = sr_btree_init(dm_c_ctx_id_cmp, dm_free_commit_context, &ctx->c_ctx_tree);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Commit context binary tree initialization failed");
 
     rc = pthread_rwlock_init(&ctx->c_ctxs_lock, &attr);
     CHECK_ZERO_MSG_GOTO(rc, rc, SR_ERR_INTERNAL, cleanup, "c_ctxs_lock init failed");
@@ -1171,9 +1188,7 @@ void
 dm_cleanup(dm_ctx_t *dm_ctx)
 {
     if (NULL != dm_ctx) {
-        for (size_t i = 0; i < DM_MAX_COMMITCTX_CNT; i++) {
-            dm_free_commit_context(dm_ctx, dm_ctx->c_ctxs[i]);
-        }
+        sr_btree_cleanup(dm_ctx->c_ctx_tree);
 
         free(dm_ctx->schema_search_dir);
         free(dm_ctx->data_search_dir);
@@ -1189,20 +1204,20 @@ dm_cleanup(dm_ctx_t *dm_ctx)
         pthread_mutex_destroy(&dm_ctx->ds_lock_mutex);
         ly_set_free(dm_ctx->disabled_sch);
 
-        free(dm_ctx->c_ctxs);
         pthread_rwlock_destroy(&dm_ctx->c_ctxs_lock);
         free(dm_ctx);
     }
 }
 
 int
-dm_session_start(const dm_ctx_t *dm_ctx, const ac_ucred_t *user_credentials, const sr_datastore_t ds, dm_session_t **dm_session_ctx)
+dm_session_start(dm_ctx_t *dm_ctx, const ac_ucred_t *user_credentials, const sr_datastore_t ds, dm_session_t **dm_session_ctx)
 {
     CHECK_NULL_ARG(dm_session_ctx);
 
     dm_session_t *session_ctx = NULL;
     session_ctx = calloc(1, sizeof(*session_ctx));
     CHECK_NULL_NOMEM_RETURN(session_ctx);
+    session_ctx->dm_ctx = dm_ctx;
     session_ctx->user_credentials = user_credentials;
     session_ctx->datastore = ds;
 
@@ -2044,9 +2059,10 @@ dm_get_diff_type_to_string(LYD_DIFFTYPE type)
 }
 
 void
-dm_free_commit_context(dm_ctx_t *dm_ctx, dm_commit_context_t *c_ctx)
+dm_free_commit_context(void *commit_ctx)
 {
-    if (NULL != c_ctx) {
+    if (NULL != commit_ctx) {
+        dm_commit_context_t *c_ctx = commit_ctx;
         for (size_t i = 0; i < c_ctx->modif_count; i++) {
             close(c_ctx->fds[i]);
         }
@@ -2060,7 +2076,9 @@ dm_free_commit_context(dm_ctx_t *dm_ctx, dm_commit_context_t *c_ctx)
 
         sr_btree_cleanup(c_ctx->subscriptions);
         sr_btree_cleanup(c_ctx->prev_data_trees);
-        dm_session_stop(dm_ctx, c_ctx->session);
+        if (NULL != c_ctx->session) {
+            dm_session_stop(c_ctx->session->dm_ctx, c_ctx->session);
+        }
         c_ctx->session = NULL;
         free(c_ctx);
     }
@@ -2070,20 +2088,28 @@ static int
 dm_insert_commit_context(dm_ctx_t *dm_ctx, dm_commit_context_t *c_ctx)
 {
     CHECK_NULL_ARG2(dm_ctx, c_ctx);
-    //TODO: insert into correct order
+    int rc = SR_ERR_OK;
     pthread_rwlock_wrlock(&dm_ctx->c_ctxs_lock);
-    if (dm_ctx->c_ctxs[0] != NULL) {
-        dm_free_commit_context(dm_ctx, dm_ctx->c_ctxs[0]);
-    }
-    dm_ctx->c_ctxs[0] = c_ctx;
+    rc = sr_btree_insert(dm_ctx->c_ctx_tree, c_ctx);
     pthread_rwlock_unlock(&dm_ctx->c_ctxs_lock);
-    return SR_ERR_OK;
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Insert into commit context bin tree failed");
+    }
+    return rc;
 }
 
-static int
+int
 dm_remove_commit_context(dm_ctx_t *dm_ctx, int c_ctx_id)
 {
     pthread_rwlock_wrlock(&dm_ctx->c_ctxs_lock);
+    dm_commit_context_t *c_ctx = NULL;
+    dm_commit_context_t lookup = {0};
+    lookup.id = c_ctx_id;
+    c_ctx = sr_btree_search(dm_ctx->c_ctx_tree, &lookup);
+    if (NULL == c_ctx) {
+        SR_LOG_WRN("Commit context with id %d not found", c_ctx_id);
+    }
+    sr_btree_delete(dm_ctx->c_ctx_tree, c_ctx);
     pthread_rwlock_unlock(&dm_ctx->c_ctxs_lock);
     return SR_ERR_OK;
 }
@@ -2123,6 +2149,8 @@ dm_commit_prepare_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_con
     dm_commit_context_t *c_ctx = NULL;
     c_ctx = calloc(1, sizeof(*c_ctx));
     CHECK_NULL_NOMEM_RETURN(c_ctx);
+
+    c_ctx->id = rand();
 
     rc = sr_btree_init(dm_module_subscription_cmp, dm_model_subscription_free, &c_ctx->subscriptions);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Binary tree allocation failed");
@@ -2179,7 +2207,7 @@ dm_commit_prepare_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_con
     return rc;
 
 cleanup:
-    dm_free_commit_context(dm_ctx, c_ctx);
+    dm_free_commit_context(c_ctx);
     return rc;
 }
 
@@ -3340,4 +3368,16 @@ dm_copy_if_not_loaded(dm_ctx_t *dm_ctx, dm_session_t *session, const char *modul
         rc = dm_copy_session_tree(dm_ctx, from_session, session, module_name);
     }
     return rc;
+}
+
+int
+dm_get_commit_context(dm_ctx_t *dm_ctx, int c_ctx_id, dm_commit_context_t **c_ctx)
+{
+    CHECK_NULL_ARG2(dm_ctx, c_ctx);
+    pthread_rwlock_rdlock(&dm_ctx->c_ctxs_lock);
+    dm_commit_context_t lookup = {0};
+    lookup.id = c_ctx_id;
+    *c_ctx = sr_btree_search(dm_ctx->c_ctx_tree, &lookup);
+    pthread_rwlock_unlock(&dm_ctx->c_ctxs_lock);
+    return SR_ERR_OK;
 }

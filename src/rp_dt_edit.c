@@ -666,7 +666,7 @@ rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, sr_error_info_t **errors, 
         return rc;
     } else if (0 == commit_ctx->modif_count) {
         SR_LOG_DBG_MSG("Commit: Finished - no model modified");
-        dm_free_commit_context(rp_ctx->dm_ctx, commit_ctx);
+        dm_free_commit_context(commit_ctx);
         return SR_ERR_OK;
     }
 
@@ -709,7 +709,7 @@ cleanup:
      * all notifications session are closed.
      */
     if (SR_ERR_OK != rc || !dm_is_running_ds_session(commit_ctx->session)) {
-        dm_free_commit_context(rp_ctx->dm_ctx, commit_ctx);
+        dm_free_commit_context(commit_ctx);
     }
 
     if (SR_ERR_OK == rc) {
