@@ -44,7 +44,7 @@ typedef struct np_ctx_s np_ctx_t;
  */
 typedef struct np_subscription_s {
     Sr__NotificationType notif_type;   /**< Type of the notification that this subscription subscribes to. */
-    sr_notif_event_t notif_event;      /**< Notification event which the notification subscriber is interested in. */
+    Sr__NotificationEvent notif_event; /**< Notification event which the notification subscriber is interested in. */
     const char *dst_address;           /**< Destination address where the notification should be delivered. */
     uint32_t dst_id;                   /**< Destination ID of the subscription (used locally, in the client library). */
     const char *module_name;           /**< Name of the module where the subscription is active. */
