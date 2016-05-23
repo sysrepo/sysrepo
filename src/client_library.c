@@ -135,7 +135,7 @@ cleanup:
  * @brief Initializes a new subscription.
  */
 static int
-cl_subscribtion_init(sr_session_ctx_t *session, Sr__NotificationEvent event_type, const char *module_name,
+cl_subscribtion_init(sr_session_ctx_t *session, Sr__NotificationType notif_type, const char *module_name,
         void *private_ctx, sr_subscription_ctx_t **sr_subscription_p, cl_sm_subscription_ctx_t **sm_subscription_p,
         Sr__Msg **msg_req_p)
 {
@@ -165,7 +165,7 @@ cl_subscribtion_init(sr_session_ctx_t *session, Sr__NotificationEvent event_type
     rc = cl_sm_subscription_init(cl_sm_ctx, &sm_subscription);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by initialization of the subscription in the Subscription Manager.");
 
-    sm_subscription->event_type = event_type;
+    sm_subscription->notif_type = notif_type;
     sm_subscription->private_ctx = private_ctx;
     if (NULL != module_name) {
         sm_subscription->module_name = strdup(module_name);
@@ -177,7 +177,7 @@ cl_subscribtion_init(sr_session_ctx_t *session, Sr__NotificationEvent event_type
     CHECK_NULL_NOMEM_GOTO(msg_req->request->subscribe_req->destination, rc, cleanup);
 
     msg_req->request->subscribe_req->subscription_id = sm_subscription->id;
-    msg_req->request->subscribe_req->event = event_type;
+    msg_req->request->subscribe_req->notif_type = notif_type;
 
     /* if not already allocated, allocate 'umbrella' subscription context */
     if (NULL == *sr_subscription_p) {
@@ -227,7 +227,7 @@ cl_subscription_close(sr_session_ctx_t *session, cl_sm_subscription_ctx_t *subsc
     rc = sr_gpb_req_alloc(SR__OPERATION__UNSUBSCRIBE, session->id, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate unsubscribe message.");
 
-    msg_req->request->unsubscribe_req->event = subscription->event_type;
+    msg_req->request->unsubscribe_req->notif_type = subscription->notif_type;
 
     msg_req->request->unsubscribe_req->destination = strdup(subscription->delivery_address);
     CHECK_NULL_NOMEM_GOTO(msg_req->request->unsubscribe_req->destination, rc, cleanup);
@@ -1308,7 +1308,7 @@ sr_module_install_subscribe(sr_session_ctx_t *session, sr_module_install_cb call
 
     /* Initialize the subscription */
     sr_subscription = *subscription_p;
-    rc = cl_subscribtion_init(session, SR__NOTIFICATION_EVENT__MODULE_INSTALL_EV, NULL,
+    rc = cl_subscribtion_init(session, SR__NOTIFICATION_TYPE__MODULE_INSTALL_NOTIF, NULL,
             private_ctx, &sr_subscription, &sm_subscription, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by initialization of the subscription in the client library.");
 
@@ -1352,7 +1352,7 @@ sr_feature_enable_subscribe(sr_session_ctx_t *session, sr_feature_enable_cb call
 
     /* Initialize the subscription */
     sr_subscription = *subscription_p;
-    rc = cl_subscribtion_init(session, SR__NOTIFICATION_EVENT__FEATURE_ENABLE_EV, NULL,
+    rc = cl_subscribtion_init(session, SR__NOTIFICATION_TYPE__FEATURE_ENABLE_NOTIF, NULL,
             private_ctx, &sr_subscription, &sm_subscription, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by initialization of the subscription in the client library.");
 
@@ -1399,13 +1399,13 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, s
 
     /* Initialize the subscription */
     sr_subscription = *subscription_p;
-    rc = cl_subscribtion_init(session, SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV, module_name,
+    rc = cl_subscribtion_init(session, SR__NOTIFICATION_TYPE__MODULE_CHANGE_NOTIF, module_name,
             private_ctx, &sr_subscription, &sm_subscription, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by initialization of the subscription in the client library.");
 
     sm_subscription->callback.module_change_cb = callback;
 
-    msg_req->request->subscribe_req->event = SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV;
+    msg_req->request->subscribe_req->notif_type = SR__NOTIFICATION_TYPE__MODULE_CHANGE_NOTIF;
     msg_req->request->subscribe_req->has_enable_running = true;
     msg_req->request->subscribe_req->enable_running = enable_running;
     msg_req->request->subscribe_req->module_name = strdup(module_name);
@@ -1606,14 +1606,14 @@ sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callbac
 
     /* Initialize the subscription */
     sr_subscription = *subscription_p;
-    rc = cl_subscribtion_init(session, SR__NOTIFICATION_EVENT__RPC_EV, NULL,
+    rc = cl_subscribtion_init(session, SR__NOTIFICATION_TYPE__RPC_NOTIF, NULL,
             private_ctx, &sr_subscription, &sm_subscription, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by initialization of the subscription in the client library.");
 
     sm_subscription->callback.rpc_cb = callback;
 
     /* Fill-in GPB subscription information */
-    msg_req->request->subscribe_req->event = SR__NOTIFICATION_EVENT__RPC_EV;
+    msg_req->request->subscribe_req->notif_type = SR__NOTIFICATION_TYPE__RPC_NOTIF;
 
     msg_req->request->subscribe_req->xpath = strdup(xpath);
     CHECK_NULL_NOMEM_GOTO(msg_req->request->subscribe_req->xpath, rc, cleanup);

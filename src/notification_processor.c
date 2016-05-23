@@ -250,9 +250,7 @@ np_cleanup(np_ctx_t *np_ctx)
 
     if (NULL != np_ctx) {
         for (size_t i = 0; i < np_ctx->subscription_cnt; i++) {
-            free((void*)np_ctx->subscriptions[i]->dst_address);
-            free((void*)np_ctx->subscriptions[i]->xpath);
-            free(np_ctx->subscriptions[i]);
+            np_subscription_cleanup(np_ctx->subscriptions[i]);
         }
         free(np_ctx->subscriptions);
         sr_btree_cleanup(np_ctx->dst_info_btree);
@@ -262,7 +260,7 @@ np_cleanup(np_ctx_t *np_ctx)
 }
 
 int
-np_notification_subscribe(np_ctx_t *np_ctx, const rp_session_t *rp_session, Sr__NotificationEvent event_type,
+np_notification_subscribe(np_ctx_t *np_ctx, const rp_session_t *rp_session, Sr__NotificationType notif_type,
         const char *dst_address, uint32_t dst_id, const char *module_name, const char *xpath, const np_subscr_options_t opts)
 {
     np_subscription_t *subscription = NULL;
@@ -271,13 +269,13 @@ np_notification_subscribe(np_ctx_t *np_ctx, const rp_session_t *rp_session, Sr__
 
     CHECK_NULL_ARG4(np_ctx, np_ctx->rp_ctx, rp_session, dst_address);
 
-    SR_LOG_DBG("Notification subscribe: event=%d, dst_address='%s', dst_id=%"PRIu32".", event_type, dst_address, dst_id);
+    SR_LOG_DBG("Notification subscribe: event=%d, dst_address='%s', dst_id=%"PRIu32".", notif_type, dst_address, dst_id);
 
     /* prepare new subscription entry */
     subscription = calloc(1, sizeof(*subscription));
     CHECK_NULL_NOMEM_RETURN(subscription);
 
-    subscription->event_type = event_type;
+    subscription->notif_type = notif_type;
     if (NULL != xpath) {
         subscription->xpath = strdup(xpath);
         CHECK_NULL_NOMEM_GOTO(subscription->xpath, rc, cleanup);
@@ -289,8 +287,8 @@ np_notification_subscribe(np_ctx_t *np_ctx, const rp_session_t *rp_session, Sr__
     subscription->enable_running = (opts & NP_SUBSCR_ENABLE_RUNNING);
 
     /* save the new subscription */
-    if ((SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV == event_type) ||
-            (SR__NOTIFICATION_EVENT__RPC_EV == event_type)) {
+    if ((SR__NOTIFICATION_TYPE__MODULE_CHANGE_NOTIF == notif_type) ||
+            (SR__NOTIFICATION_TYPE__RPC_NOTIF == notif_type)) {
         /*  update notification destination info */
         rc = np_dst_info_insert(np_ctx, dst_address, module_name);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to update notification destination info.");
@@ -333,15 +331,13 @@ cleanup:
             np_dst_info_remove(np_ctx, dst_address, module_name);
             pthread_rwlock_unlock(&np_ctx->lock);
         }
-        free((void*)subscription->dst_address);
-        free((void*)subscription->xpath);
-        free(subscription);
+        np_subscription_cleanup(subscription);
     }
     return rc;
 }
 
 int
-np_notification_unsubscribe(np_ctx_t *np_ctx,  const rp_session_t *rp_session, Sr__NotificationEvent event_type,
+np_notification_unsubscribe(np_ctx_t *np_ctx,  const rp_session_t *rp_session, Sr__NotificationType notif_type,
         const char *dst_address, uint32_t dst_id, const char *module_name)
 {
     np_subscription_t *subscription = NULL, subscription_lookup = { 0, };
@@ -353,12 +349,12 @@ np_notification_unsubscribe(np_ctx_t *np_ctx,  const rp_session_t *rp_session, S
 
     SR_LOG_DBG("Notification unsubscribe: dst_address='%s', dst_id=%"PRIu32".", dst_address, dst_id);
 
-    if ((SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV == event_type) ||
-            (SR__NOTIFICATION_EVENT__RPC_EV == event_type)) {
+    if ((SR__NOTIFICATION_TYPE__MODULE_CHANGE_NOTIF == notif_type) ||
+            (SR__NOTIFICATION_TYPE__RPC_NOTIF == notif_type)) {
         /* remove the subscription to module's persistent data */
         subscription_lookup.dst_address = dst_address;
         subscription_lookup.dst_id = dst_id;
-        subscription_lookup.event_type = event_type;
+        subscription_lookup.notif_type = notif_type;
         rc = pm_remove_subscription(np_ctx->rp_ctx->pm_ctx, rp_session->user_credentials, module_name,
                 &subscription_lookup, &disable_running);
         if (SR_ERR_OK == rc) {
@@ -397,9 +393,7 @@ np_notification_unsubscribe(np_ctx_t *np_ctx,  const rp_session_t *rp_session, S
         pthread_rwlock_unlock(&np_ctx->lock);
 
         /* release the subscription */
-        free((void*)subscription->dst_address);
-        free((void*)subscription->xpath);
-        free(subscription);
+        np_subscription_cleanup(subscription);
     }
 
     return rc;
@@ -454,9 +448,9 @@ np_module_install_notify(np_ctx_t *np_ctx, const char *module_name, const char *
     pthread_rwlock_rdlock(&np_ctx->lock);
 
     for (size_t i = 0; i < np_ctx->subscription_cnt; i++) {
-        if (SR__NOTIFICATION_EVENT__MODULE_INSTALL_EV == np_ctx->subscriptions[i]->event_type) {
+        if (SR__NOTIFICATION_TYPE__MODULE_INSTALL_NOTIF == np_ctx->subscriptions[i]->notif_type) {
             /* allocate the notification */
-            rc = sr_gpb_notif_alloc(SR__NOTIFICATION_EVENT__MODULE_INSTALL_EV,
+            rc = sr_gpb_notif_alloc(SR__NOTIFICATION_TYPE__MODULE_INSTALL_NOTIF,
                     np_ctx->subscriptions[i]->dst_address, np_ctx->subscriptions[i]->dst_id, &notif);
             /* fill-in notification details */
             if (SR_ERR_OK == rc) {
@@ -499,9 +493,9 @@ np_feature_enable_notify(np_ctx_t *np_ctx, const char *module_name, const char *
     pthread_rwlock_rdlock(&np_ctx->lock);
 
     for (size_t i = 0; i < np_ctx->subscription_cnt; i++) {
-        if (SR__NOTIFICATION_EVENT__FEATURE_ENABLE_EV == np_ctx->subscriptions[i]->event_type) {
+        if (SR__NOTIFICATION_TYPE__FEATURE_ENABLE_NOTIF == np_ctx->subscriptions[i]->notif_type) {
             /* allocate the notification */
-            rc = sr_gpb_notif_alloc(SR__NOTIFICATION_EVENT__FEATURE_ENABLE_EV,
+            rc = sr_gpb_notif_alloc(SR__NOTIFICATION_TYPE__FEATURE_ENABLE_NOTIF,
                     np_ctx->subscriptions[i]->dst_address, np_ctx->subscriptions[i]->dst_id, &notif);
             /* fill-in notification details */
             if (SR_ERR_OK == rc) {
@@ -542,12 +536,12 @@ np_module_change_notify(np_ctx_t *np_ctx, const char *module_name)
 
     SR_LOG_DBG("Sending module-change notifications, module_name='%s'.", module_name);
 
-    rc = pm_get_subscriptions(np_ctx->rp_ctx->pm_ctx, module_name, SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV,
+    rc = pm_get_subscriptions(np_ctx->rp_ctx->pm_ctx, module_name, SR__NOTIFICATION_TYPE__MODULE_CHANGE_NOTIF,
             &subscriptions, &subscription_cnt);
 
     for (size_t i = 0; i < subscription_cnt; i++) {
         /* allocate the notification */
-        rc = sr_gpb_notif_alloc(SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV,
+        rc = sr_gpb_notif_alloc(SR__NOTIFICATION_TYPE__MODULE_CHANGE_NOTIF,
                 subscriptions[i].dst_address, subscriptions[i].dst_id, &notif);
         /* fill-in notification details */
         if (SR_ERR_OK == rc) {
@@ -587,7 +581,7 @@ np_hello_notify(np_ctx_t *np_ctx, const char *module_name, const char *dst_addre
 
     SR_LOG_DBG("Sending HELLO notification to '%s' @ %"PRIu32".", dst_address, dst_id);
 
-    rc = sr_gpb_notif_alloc(SR__NOTIFICATION_EVENT__HELLO_EV, dst_address, dst_id, &notif);
+    rc = sr_gpb_notif_alloc(SR__NOTIFICATION_TYPE__HELLO_NOTIF, dst_address, dst_id, &notif);
 
     if (SR_ERR_OK == rc) {
         /* save notification destination info */
@@ -601,4 +595,51 @@ np_hello_notify(np_ctx_t *np_ctx, const char *module_name, const char *dst_addre
     }
 
     return rc;
+}
+
+int
+np_get_module_change_subscriptions(np_ctx_t *np_ctx, const char *module_name, np_subscription_t ***subscriptions_arr_p,
+        size_t *subscriptions_cnt_p)
+{
+    np_subscription_t *subscriptions = NULL, **subscriptions_arr = NULL;
+    size_t subscription_cnt = 0, subscriptions_arr_cnt = 0;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG4(np_ctx, module_name, subscriptions_arr_p, subscriptions_cnt_p);
+
+    rc = pm_get_subscriptions(np_ctx->rp_ctx->pm_ctx, module_name, SR__NOTIFICATION_TYPE__MODULE_CHANGE_NOTIF,
+            &subscriptions, &subscription_cnt);
+
+    subscriptions_arr = calloc(subscription_cnt, sizeof(*subscriptions_arr));
+    CHECK_NULL_NOMEM_GOTO(subscriptions_arr, rc, cleanup);
+
+    for (size_t i = 0; i < subscription_cnt; i++) {
+        subscriptions_arr[i] = calloc(1, sizeof(**subscriptions_arr));
+        CHECK_NULL_NOMEM_GOTO(subscriptions_arr[i], rc, cleanup);
+        memcpy(subscriptions_arr[i], &subscriptions[i], sizeof(subscriptions[i]));
+        subscriptions_arr_cnt++;
+    }
+
+    // TODO: subtree_change_notif
+
+    free(subscriptions);
+    *subscriptions_arr_p = subscriptions_arr;
+    *subscriptions_cnt_p = subscriptions_arr_cnt;
+
+    return SR_ERR_OK;
+
+cleanup:
+// TODO
+    free(subscriptions);
+    return rc;
+}
+
+void
+np_subscription_cleanup(np_subscription_t *subscription)
+{
+    if (NULL != subscription) {
+        free((void*)subscription->dst_address);
+        free((void*)subscription->xpath);
+        free(subscription);
+    }
 }

@@ -324,7 +324,7 @@ pm_subscription_entry_fill(struct lyd_node *node, np_subscription_t *subscriptio
         if (NULL != node->schema->name) {
             node_ll = (struct lyd_node_leaf_list*)node;
             if (NULL != node_ll->value_str && 0 == strcmp(node->schema->name, "type")) {
-                subscription->event_type = sr_event_str_to_gpb(node_ll->value_str);
+                subscription->notif_type = sr_notif_type_str_to_gpb(node_ll->value_str);
             }
             if (NULL != node_ll->value_str && 0 == strcmp(node->schema->name, "destination-address")) {
                 subscription->dst_address = strdup(node_ll->value_str);
@@ -564,24 +564,24 @@ pm_add_subscription(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *m
     if (exclusive) {
         /* first, delete existing subscriptions of given type */
         SR_LOG_DBG("Removing all existing %s subscriptions from '%s' persist data tree.",
-                sr_event_gpb_to_str(subscription->event_type), module_name);
+                sr_notif_type_gpb_to_str(subscription->notif_type), module_name);
 
         snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTIONS_BY_TYPE_XPATH, module_name,
-                sr_event_gpb_to_str(subscription->event_type), subscription->xpath);
+                sr_notif_type_gpb_to_str(subscription->notif_type), subscription->xpath);
         pm_modify_persist_data_tree(pm_ctx, &data_tree, xpath, NULL, false, NULL);
         /* error check not needed here */
     }
 
     if (subscription->enable_running) {
         snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTION_ENABLE_RUNNING, module_name,
-                sr_event_gpb_to_str(subscription->event_type), subscription->dst_address, subscription->dst_id);
+                sr_notif_type_gpb_to_str(subscription->notif_type), subscription->dst_address, subscription->dst_id);
     } else if (NULL != subscription->xpath) {
         snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTION_XPATH, module_name,
-                sr_event_gpb_to_str(subscription->event_type), subscription->dst_address, subscription->dst_id);
+                sr_notif_type_gpb_to_str(subscription->notif_type), subscription->dst_address, subscription->dst_id);
         value = subscription->xpath;
     } else {
         snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTION, module_name,
-                sr_event_gpb_to_str(subscription->event_type), subscription->dst_address, subscription->dst_id);
+                sr_notif_type_gpb_to_str(subscription->notif_type), subscription->dst_address, subscription->dst_id);
     }
 
     rc = pm_modify_persist_data_tree(pm_ctx, &data_tree, xpath, value, true, NULL);
@@ -612,7 +612,7 @@ pm_remove_subscription(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char
     *disable_running = false;
 
     snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTION, module_name,
-            sr_event_gpb_to_str(subscription->event_type), subscription->dst_address, subscription->dst_id);
+            sr_notif_type_gpb_to_str(subscription->notif_type), subscription->dst_address, subscription->dst_id);
 
     rc = pm_save_persistent_data(pm_ctx, user_cred, module_name, xpath, NULL, false, &data_tree, &running_affected);
     if (NULL != data_tree) {
@@ -671,7 +671,7 @@ pm_remove_subscriptions_for_destination(pm_ctx_t *pm_ctx, const char *module_nam
 }
 
 int
-pm_get_subscriptions(pm_ctx_t *pm_ctx, const char *module_name, Sr__NotificationEvent event_type,
+pm_get_subscriptions(pm_ctx_t *pm_ctx, const char *module_name, Sr__NotificationType notif_type,
         np_subscription_t **subscriptions_p, size_t *subscription_cnt_p)
 {
     char xpath[PATH_MAX] = { 0, };
@@ -694,7 +694,7 @@ pm_get_subscriptions(pm_ctx_t *pm_ctx, const char *module_name, Sr__Notification
         goto cleanup;
     }
 
-    snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTIONS_BY_TYPE, module_name, sr_event_gpb_to_str(event_type));
+    snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTIONS_BY_TYPE, module_name, sr_notif_type_gpb_to_str(notif_type));
     node_set = lyd_get_node(data_tree, xpath);
 
     if (NULL != node_set && node_set->number > 0) {

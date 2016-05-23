@@ -153,33 +153,33 @@ pm_subscription_test(void **state)
     /* create subscriptions for destination 1 */
     subscription.dst_address = "/tmp/test-subscription-address1.sock";
 
-    subscription.event_type = SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV;
+    subscription.notif_type = SR__NOTIFICATION_TYPE__MODULE_CHANGE_NOTIF;
     subscription.enable_running = true;
     rc = pm_add_subscription(pm_ctx, &test_ctx->user_cred, "example-module", &subscription, false);
     subscription.enable_running = false;
     assert_int_equal(SR_ERR_OK, rc);
 
-    subscription.event_type = SR__NOTIFICATION_EVENT__FEATURE_ENABLE_EV;
+    subscription.notif_type = SR__NOTIFICATION_TYPE__FEATURE_ENABLE_NOTIF;
     rc = pm_add_subscription(pm_ctx, &test_ctx->user_cred, "example-module", &subscription, false);
     assert_int_equal(SR_ERR_OK, rc);
 
-    subscription.event_type = SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV;
+    subscription.notif_type = SR__NOTIFICATION_TYPE__MODULE_CHANGE_NOTIF;
     rc = pm_add_subscription(pm_ctx, &test_ctx->user_cred, "example-module", &subscription, false);
     assert_int_equal(SR_ERR_DATA_EXISTS, rc);
 
     /* create subscriptions for destination 2 */
     subscription.dst_address = "/tmp/test-subscription-address2.sock";
 
-    subscription.event_type = SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV;
+    subscription.notif_type = SR__NOTIFICATION_TYPE__MODULE_CHANGE_NOTIF;
     rc = pm_add_subscription(pm_ctx, &test_ctx->user_cred, "example-module", &subscription, false);
     assert_int_equal(SR_ERR_OK, rc);
 
-    subscription.event_type = SR__NOTIFICATION_EVENT__FEATURE_ENABLE_EV;
+    subscription.notif_type = SR__NOTIFICATION_TYPE__FEATURE_ENABLE_NOTIF;
     rc = pm_add_subscription(pm_ctx, &test_ctx->user_cred, "example-module", &subscription, false);
     assert_int_equal(SR_ERR_OK, rc);
 
     /* retrieve active subscriptions */
-    rc = pm_get_subscriptions(pm_ctx, "example-module", SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV,
+    rc = pm_get_subscriptions(pm_ctx, "example-module", SR__NOTIFICATION_TYPE__MODULE_CHANGE_NOTIF,
             &subscriptions, &subscription_cnt);
     assert_int_equal(SR_ERR_OK, rc);
     assert_true(subscription_cnt >= 1);
@@ -196,17 +196,17 @@ pm_subscription_test(void **state)
 
     /* remove subscriptions for destination 1 */
     subscription.dst_address = "/tmp/test-subscription-address1.sock";
-    subscription.event_type = SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV;
+    subscription.notif_type = SR__NOTIFICATION_TYPE__MODULE_CHANGE_NOTIF;
     rc = pm_remove_subscription(pm_ctx, &test_ctx->user_cred, "example-module", &subscription, &disable_running);
     assert_int_equal(SR_ERR_OK, rc);
     assert_true(disable_running);
 
-    subscription.event_type = SR__NOTIFICATION_EVENT__FEATURE_ENABLE_EV;
+    subscription.notif_type = SR__NOTIFICATION_TYPE__FEATURE_ENABLE_NOTIF;
     rc = pm_remove_subscription(pm_ctx, &test_ctx->user_cred, "example-module", &subscription, &disable_running);
     assert_int_equal(SR_ERR_OK, rc);
     assert_false(disable_running);
 
-    subscription.event_type = SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV;
+    subscription.notif_type = SR__NOTIFICATION_TYPE__MODULE_CHANGE_NOTIF;
     rc = pm_remove_subscription(pm_ctx, &test_ctx->user_cred, "example-module", &subscription, &disable_running);
     assert_int_equal(SR_ERR_DATA_MISSING, rc);
     assert_false(disable_running);

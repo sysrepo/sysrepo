@@ -43,10 +43,12 @@ typedef struct np_ctx_s np_ctx_t;
  * @brief Notification subscription information.
  */
 typedef struct np_subscription_s {
-    Sr__NotificationEvent event_type;  /**< Type of the event that this subscription subscribes to.  */
+    Sr__NotificationType notif_type;   /**< Type of the notification that this subscription subscribes to. */
+    sr_notif_event_t notif_event;      /**< Notification event which the notification subscriber is interested in. */
     const char *dst_address;           /**< Destination address where the notification should be delivered. */
     uint32_t dst_id;                   /**< Destination ID of the subscription (used locally, in the client library). */
     const char *xpath;                 /**< XPath to the subtree where the subscription is active (if applicable). */
+    uint32_t priority;                 /**< Priority of the subscribtion by delivering notifications (0 is the lowest priority). */
     bool enable_running;               /**< TRUE if the subscription enables specified subtree in the running datastore. */
 } np_subscription_t;
 
@@ -78,7 +80,7 @@ typedef enum np_subscr_flag_e {
 
 /**
  * @brief Options overriding default handling by ::np_notification_subscribe call,
- * can be bitwise OR-ed value of any ::sr_subscr_flag_t flags.
+ * can be bitwise OR-ed value of any ::np_subscr_flag_t flags.
  */
 typedef uint32_t np_subscr_options_t;
 
@@ -87,16 +89,16 @@ typedef uint32_t np_subscr_options_t;
  *
  * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
  * @param[in] rp_session Request Processor session.
- * @param[in] event_type Type of the event to subscribe.
+ * @param[in] notif_type Type of the notification to subscribe.
  * @param[in] dst_address Destination address of the subscriber.
  * @param[in] dst_id Destination subscription ID.
  * @param[in] module_name Name of the module which the subscription is active in (if applicable).
  * @param[in] xpath XPath to the subtree where the subscription is active (if applicable).
- * @param[in] opts Options overriding default handling. Bitwise OR-ed value of any ::sr_subscr_flag_t flags.
+ * @param[in] opts Options overriding default handling. Bitwise OR-ed value of any ::np_subscr_flag_t flags.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int np_notification_subscribe(np_ctx_t *np_ctx, const rp_session_t *rp_session, Sr__NotificationEvent event_type,
+int np_notification_subscribe(np_ctx_t *np_ctx, const rp_session_t *rp_session, Sr__NotificationType notif_type,
         const char *dst_address, uint32_t dst_id, const char *module_name, const char *xpath, const np_subscr_options_t opts);
 
 /**
@@ -104,14 +106,14 @@ int np_notification_subscribe(np_ctx_t *np_ctx, const rp_session_t *rp_session, 
  *
  * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
  * @param[in] rp_session Request Processor session.
- * @param[in] event_type  Type of the event of the subscription.
+ * @param[in] notif_type Type of the notification of the subscription.
  * @param[in] dst_address Destination address of the subscriber.
  * @param[in] dst_id Destination subscription ID.
  * @param[in] module_name Name of the module which the subscription is active in (if applicable).
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int np_notification_unsubscribe(np_ctx_t *np_ctx, const rp_session_t *rp_session, Sr__NotificationEvent event_type,
+int np_notification_unsubscribe(np_ctx_t *np_ctx, const rp_session_t *rp_session, Sr__NotificationType notif_type,
         const char *dst_address, uint32_t dst_id, const char *module_name);
 
 /**
@@ -170,6 +172,27 @@ int np_module_change_notify(np_ctx_t *np_ctx, const char *module_name);
  * @return Error code (SR_ERR_OK on success).
  */
 int np_hello_notify(np_ctx_t *np_ctx, const char *module_name, const char *dst_address, uint32_t dst_id);
+
+/**
+ * @brief Gets all subscriptions that subscibe for changes in specified module
+ * or in a subtree within the specified module.
+ *
+ * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
+ * @param[in] module_name ame of the module where the subscription is active.
+ * @param[out] subscriptions_arr Array of pointers to subscriptions matching the criteria.
+ * @param[out] subscriptions_cnt Count of the matching subscriptions.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int np_get_module_change_subscriptions(np_ctx_t *np_ctx, const char *module_name,
+        np_subscription_t ***subscriptions_arr, size_t *subscriptions_cnt);
+
+/**
+ * @brief Cleans up a subscription context.
+ *
+ * @param[in] subscription Subscription context to be freed.
+ */
+void np_subscription_cleanup(np_subscription_t *subscription);
 
 /**@} np */
 
