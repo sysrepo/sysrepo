@@ -51,6 +51,7 @@ typedef struct dm_session_s dm_session_t;
  * @brief Structure holds data tree related info
  */
 typedef struct dm_data_info_s{
+    bool rdonly_copy;                   /**< node member is only copy of pointer it must not be freed nor modified */
     const struct lys_module *module;    /**< pointer to schema file*/
     struct lyd_node *node;              /**< data tree */
 #ifdef HAVE_STAT_ST_MTIM
@@ -653,6 +654,29 @@ int dm_copy_modified_session_trees(dm_ctx_t *dm_ctx, dm_session_t *from, dm_sess
  * @return Error code (SR_ERR_OK on success)
  */
 int dm_copy_session_tree(dm_ctx_t *dm_ctx, dm_session_t *from, dm_session_t *to, const char *module_name);
+
+/**
+ * @brief Copies pointer to the selected data tree (in current datastore) from one session to another, if the module is not
+ * loaded in 'from' session, does nothing. You need to be sure that from session's datatrees are not
+ * freed before "to" session.
+ * @param [in] dm_ctx
+ * @param [in] from
+ * @param [in] to
+ * @param [in] module_name
+ * @return Error code (SR_ERR_OK on success)
+ */
+int dm_create_rdonly_ptr_data_tree(dm_ctx_t *dm_ctx, dm_session_t *from, dm_session_t *to, const char *module_name);
+
+/**
+ * @brief Checks if the module is loaded in the session. If it is not loaded
+ * in the session and it is loaded in from_session. Copies the data tree.
+ * @param [in] dm_ctx
+ * @param [in] from_session
+ * @param [in] session
+ * @param [in] module_name
+ * @return Error code (SR_ERR_OK on success)
+ */
+int dm_copy_if_not_loaded(dm_ctx_t *dm_ctx, dm_session_t *from_session, dm_session_t *session, const char *module_name);
 
 /**
  * @brief Changes the datastore to which the session is tied to. Subsequent operations

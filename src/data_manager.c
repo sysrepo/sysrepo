@@ -81,6 +81,9 @@ typedef struct dm_ctx_s {
     sr_btree_t *schema_info_tree; /**< Binary tree holding information about schemas*/
     sr_btree_t *c_ctx_tree;       /**< Array of commit context used for notifications */
     pthread_rwlock_t c_ctxs_lock; /**< rwlock to access c_ctxx */
+    int last_commit_id; // id of the last commit context
+    //TODO: should be removed once notification session contains
+    //commit id
 } dm_ctx_t;
 
 /**
@@ -240,7 +243,7 @@ static void
 dm_data_info_free(void *item)
 {
     dm_data_info_t *info = (dm_data_info_t *) item;
-    if (NULL != info) {
+    if (NULL != info && !info->rdonly_copy) {
         lyd_free_withsiblings(info->node);
     }
     free(info);
@@ -2090,6 +2093,7 @@ dm_insert_commit_context(dm_ctx_t *dm_ctx, dm_commit_context_t *c_ctx)
     CHECK_NULL_ARG2(dm_ctx, c_ctx);
     int rc = SR_ERR_OK;
     pthread_rwlock_wrlock(&dm_ctx->c_ctxs_lock);
+    dm_ctx->last_commit_id = c_ctx->id;
     rc = sr_btree_insert(dm_ctx->c_ctx_tree, c_ctx);
     pthread_rwlock_unlock(&dm_ctx->c_ctxs_lock);
     if (SR_ERR_OK != rc) {
@@ -3206,6 +3210,65 @@ dm_copy_session_tree(dm_ctx_t *dm_ctx, dm_session_t *from, dm_session_t *to, con
 }
 
 int
+dm_create_rdonly_ptr_data_tree(dm_ctx_t *dm_ctx, dm_session_t *from, dm_session_t *to, const char *module_name)
+{
+    CHECK_NULL_ARG4(dm_ctx, from, to, module_name);
+    int rc = SR_ERR_OK;
+    dm_data_info_t *info = NULL;
+    dm_data_info_t lookup = {0};
+    dm_data_info_t *new_info = NULL;
+    bool existed = true;
+    rc = dm_get_module(dm_ctx, module_name, NULL, &lookup.module);
+    CHECK_RC_LOG_RETURN(rc, "Get module %s failed.", module_name);
+
+    info = sr_btree_search(from->session_modules[from->datastore], &lookup);
+    if (NULL == info) {
+        SR_LOG_DBG("Module %s not loaded in source session", module_name);
+        return rc;
+    }
+
+    new_info = sr_btree_search(to->session_modules[to->datastore], &lookup);
+    if (NULL == new_info) {
+        existed = false;
+        new_info = calloc(1, sizeof(*new_info));
+        CHECK_NULL_NOMEM_RETURN(new_info);
+    }
+
+    new_info->modified = info->modified;
+    new_info->module = info->module;
+    new_info->timestamp = info->timestamp;
+    new_info->rdonly_copy = true;
+    lyd_free_withsiblings(new_info->node);
+    new_info->node = info->node;
+
+    if (!existed) {
+        if (SR_ERR_OK == rc) {
+            rc = sr_btree_insert(to->session_modules[to->datastore], new_info);
+        } else {
+            dm_data_info_free(new_info);
+        }
+    }
+    return rc;
+}
+
+int
+dm_copy_if_not_loaded(dm_ctx_t *dm_ctx, dm_session_t *from_session, dm_session_t *session, const char *module_name)
+{
+    CHECK_NULL_ARG4(dm_ctx, session, module_name, from_session);
+    int rc = SR_ERR_OK;
+    dm_data_info_t lookup = {0};
+    rc = dm_get_module(dm_ctx, module_name, NULL, &lookup.module);
+    CHECK_RC_MSG_RETURN(rc, "Dm get module failed");
+
+    dm_data_info_t *info  = NULL;
+    info = sr_btree_search(session->session_modules[session->datastore], &lookup);
+    if (NULL == info) {
+        rc = dm_create_rdonly_ptr_data_tree(dm_ctx, from_session, session, module_name);
+    }
+    return rc;
+}
+
+int
 dm_move_session_tree_and_ops_all_ds(dm_ctx_t *dm_ctx, dm_session_t *from, dm_session_t *to)
 {
     CHECK_NULL_ARG3(dm_ctx, from, to);
@@ -3344,39 +3407,14 @@ dm_is_model_modified(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module
     return rc;
 }
 
-/**
- * @brief Checks if the module is loaded in the session. If it is not loaded
- * in the session and it is loaded in from_session. Copies the data tree.
- * @param [in] dm_ctx_t
- * @param [in] session
- * @param [in] module_name
- * @param [in ]from_session
- * @return Error code (SR_ERR_OK)
- */
-int
-dm_copy_if_not_loaded(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module_name, dm_session_t *from_session)
-{
-    CHECK_NULL_ARG4(dm_ctx, session, module_name, from_session);
-    int rc = SR_ERR_OK;
-    dm_data_info_t lookup = {0};
-    rc = dm_get_module(dm_ctx, module_name, NULL, &lookup.module);
-    CHECK_RC_MSG_RETURN(rc, "Dm get module failed");
-
-    dm_data_info_t *info  = NULL;
-    info = sr_btree_search(session->session_modules[session->datastore], &lookup);
-    if (NULL == info) {
-        rc = dm_copy_session_tree(dm_ctx, from_session, session, module_name);
-    }
-    return rc;
-}
-
 int
 dm_get_commit_context(dm_ctx_t *dm_ctx, int c_ctx_id, dm_commit_context_t **c_ctx)
 {
     CHECK_NULL_ARG2(dm_ctx, c_ctx);
     pthread_rwlock_rdlock(&dm_ctx->c_ctxs_lock);
     dm_commit_context_t lookup = {0};
-    lookup.id = c_ctx_id;
+    //TODO: use argument lookup.id = c_ctx_id;
+    lookup.id = dm_ctx->last_commit_id;
     *c_ctx = sr_btree_search(dm_ctx->c_ctx_tree, &lookup);
     pthread_rwlock_unlock(&dm_ctx->c_ctxs_lock);
     return SR_ERR_OK;

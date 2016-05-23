@@ -75,6 +75,42 @@ rp_resp_fill_errors(Sr__Msg *msg, dm_session_t *dm_session)
 }
 
 /**
+ * @brief Verifies that the requested commit context still exists. Copies data tree from commit context to the session if
+ * needed.
+ */
+static int
+rp_check_notif_session(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
+{
+    int rc = SR_ERR_OK;
+    dm_commit_context_t *c_ctx = NULL;
+    char *module_name = NULL;
+    const char *xpath = NULL;
+    //TODO: retrieve commit id from the session
+    int id = 0;
+    rc = dm_get_commit_context(rp_ctx->dm_ctx, id, &c_ctx);
+    CHECK_RC_MSG_RETURN(rc, "Get commit context failed");
+    if (NULL == c_ctx) {
+        SR_LOG_ERR("Commit context with id %d can not be found", id);
+        return dm_report_error(session->dm_session, "Commit data are not available anymore", NULL, SR_ERR_INTERNAL);
+    }
+
+    if (SR__OPERATION__GET_ITEM == msg->request->operation) {
+        xpath = msg->request->get_item_req->xpath;
+    } else if (SR__OPERATION__GET_ITEMS == msg->request->operation) {
+        xpath = msg->request->get_items_req->xpath;
+    }
+
+    rc = sr_copy_first_ns(xpath, &module_name);
+    CHECK_RC_LOG_RETURN(rc, "Copy first ns failed for xpath %s", xpath);
+
+    /* copy requested model from commit context */
+    rc = dm_copy_if_not_loaded(rp_ctx->dm_ctx,  c_ctx->session, session->dm_session, module_name);
+    free(module_name);
+
+    return rc;
+}
+
+/**
  * @brief Processes a list_schemas request.
  */
 static int
@@ -274,12 +310,15 @@ rp_get_item_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
     sr_val_t *value = NULL;
     char *xpath = msg->request->get_item_req->xpath;
 
+    if (session->options & SR__SESSION_FLAGS__SESS_NOTIFICATION) {
+        rc = rp_check_notif_session(rp_ctx, session, msg);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Check notif session failed");
+    }
+
     /* get value from data manager */
     rc = rp_dt_get_value_wrapper(rp_ctx, session, xpath, &value);
-    if (SR_ERR_OK != rc) {
-        if (SR_ERR_NOT_FOUND != rc) {
-            SR_LOG_ERR("Get item failed for '%s', session id=%"PRIu32".", xpath, session->id);
-        }
+    if (SR_ERR_OK != rc && SR_ERR_NOT_FOUND != rc) {
+        SR_LOG_ERR("Get item failed for '%s', session id=%"PRIu32".", xpath, session->id);
     }
 
     /* copy value to gpb */
@@ -290,6 +329,7 @@ rp_get_item_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
         }
     }
 
+cleanup:
     /* set response code */
     resp->response->result = rc;
 
@@ -325,6 +365,11 @@ rp_get_items_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Memory allocation failed");
         return SR_ERR_NOMEM;
+    }
+
+    if (session->options & SR__SESSION_FLAGS__SESS_NOTIFICATION) {
+        rc = rp_check_notif_session(rp_ctx, session, msg);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Check notif session failed");
     }
 
     xpath = msg->request->get_items_req->xpath;
@@ -1110,7 +1155,7 @@ rp_msg_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
                 (SR__OPERATION__GET_ITEMS != msg->request->operation) &&
                 (SR__OPERATION__UNSUBSCRIBE != msg->request->operation)) {
             SR_LOG_ERR("Unsupported operation for notification session (session id=%"PRIu32", operation=%d).",
-                    session->id, msg->response->operation);
+                    session->id, msg->request->operation);
             sr__msg__free_unpacked(msg, NULL);
             return SR_ERR_UNSUPPORTED;
         }
