@@ -22,7 +22,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <signal.h>
 #include "sysrepo.h"
+
+volatile int exit_application = 0;
 
 static void
 print_value(sr_val_t *value)
@@ -78,11 +81,20 @@ print_current_config(sr_session_ctx_t *session)
     sr_free_values(values, count);
 }
 
-static void
-module_change_cb(sr_session_ctx_t *session, const char *module_name, void *private_ctx)
+static int
+module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t event, void *private_ctx)
 {
     printf("\n\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: ==========\n\n");
+
     print_current_config(session);
+
+    return SR_ERR_OK;
+}
+
+static void
+sigint_handler(int signum)
+{
+    exit_application = 1;
 }
 
 int
@@ -112,7 +124,7 @@ main(int argc, char **argv)
     print_current_config(session);
 
     /* subscribe for changes in running config */
-    rc = sr_module_change_subscribe(session, "ietf-interfaces", true, module_change_cb, NULL, &subscription);
+    rc = sr_module_change_subscribe(session, "ietf-interfaces", SR_EV_NOTIFY, true, 0, module_change_cb, NULL, &subscription);
     if (SR_ERR_OK != rc) {
         fprintf(stderr, "Error by sr_module_change_subscribe: %s\n", sr_strerror(rc));
         goto cleanup;
@@ -120,14 +132,17 @@ main(int argc, char **argv)
 
     printf("\n\n ========== STARTUP CONFIG APPLIED AS RUNNING ==========\n\n");
 
-    while (1) {
-        /* do some work... */
-        sleep(1);
+    /* loop until ctrl-c is pressed / SIGINT is received */
+    signal(SIGINT, sigint_handler);
+    while (!exit_application) {
+        sleep(1000);  /* or do some more useful work... */
     }
+
+    printf("Application exit requested, exiting.\n");
 
 cleanup:
     if (NULL != subscription) {
-        sr_unsubscribe(subscription);
+        sr_unsubscribe(session, subscription);
     }
     if (NULL != session) {
         sr_session_stop(session);

@@ -555,6 +555,9 @@ sr_gpb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__O
             case SR__OPERATION__SESSION_REFRESH:
                 CHECK_NULL_RETURN(msg->request->session_refresh_req, SR_ERR_MALFORMED_MSG);
                 break;
+            case SR__OPERATION__SESSION_SWITCH_DS:
+                CHECK_NULL_RETURN(msg->request->session_switch_ds_req, SR_ERR_MALFORMED_MSG);
+                break;
             case SR__OPERATION__LIST_SCHEMAS:
                 CHECK_NULL_RETURN(msg->request->list_schemas_req, SR_ERR_MALFORMED_MSG);
                 break;
@@ -627,6 +630,9 @@ sr_gpb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__O
                 break;
             case SR__OPERATION__SESSION_REFRESH:
                 CHECK_NULL_RETURN(msg->response->session_refresh_resp, SR_ERR_MALFORMED_MSG);
+                break;
+            case SR__OPERATION__SESSION_SWITCH_DS:
+                CHECK_NULL_RETURN(msg->response->session_switch_ds_resp, SR_ERR_MALFORMED_MSG);
                 break;
             case SR__OPERATION__LIST_SCHEMAS:
                 CHECK_NULL_RETURN(msg->response->list_schemas_resp, SR_ERR_MALFORMED_MSG);

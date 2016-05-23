@@ -1,0 +1,104 @@
+/**
+
+@page plugins Sysrepo Plugins
+
+There are some use-cases for YANG-based configuration of services, that
+do not run as userspace daemons and therefore cannot use sysrepo as
+the primary configuration store. There are also some daemons that simply cannot
+be natively integrated with sysrepo for whatever reason. For cases like these,
+we allow developers to write a **plugin** that would act as an interface
+between sysrepo and the legacy configuration store of the application/service
+(e.g. a flat configuration file, or the `/proc` filesystem).
+
+A plugin is simply a shared library that implements the following two functions:
+
+~~~~~~~~~~~~~~~{.c}
+#include <sysrepo.h>
+
+int
+sr_plugin_init_cb(sr_session_ctx_t *session, void **private_ctx)
+{
+    ...
+}
+
+void
+sr_plugin_cleanup_cb(sr_session_ctx_t *session, void *private_ctx) 
+{
+    ...
+}
+~~~~~~~~~~~~~~~
+
+If such a plugin is linked into a shared library and placed into the @ref plugin-dir,
+it will be automatically discovered and loaded by @ref sysrepo-plugind when it starts.
+
+An example plugin of a turing-machine implementation can be found in
+the file `examples/plugins/turing-machine.c`.
+
+@section plugin_init Plugin Initialization
+Inside of ::sr_plugin_init_cb, the plugin should perform all its initialization
+tasks. From sysrepo point of view it would mainly mean:
+
+- reading (and applying) the current startup configuration,
+- opening subscriptions to data modules of interest (e.g. ::sr_module_change_subscribe,
+::sr_rpc_subscribe or similar).
+
+For all sysrepo API calls inside of the init function, the plugin can use the 
+session passed in as the first argument of the ::sr_plugin_init_cb.
+
+The plugin can set any data into the private_ctx pointer. This data will be
+passed to ::sr_plugin_cleanup_cb when the plugin daemon is about to exit.
+
+@section plugin_cleanup Plugin Cleanup
+Inside of ::sr_plugin_cleanup_cb, the plugin should cleanup all resources that
+it has allocated in ::sr_plugin_init_cb and do all other cleanup tasks. From sysrepo
+point of view it would mainly mean closing of all subscriptions (::sr_unsubscribe).
+
+Similarly as in ::sr_plugin_init_cb, the plugin can use the
+session passed in as the first argument of ::sr_plugin_cleanup_cb for any 
+desired sysrepo API calls. The plugin must not close this session.
+
+@section plugin-dir Plugin Directory
+All sysrepo plugins should be placed into `PLUGINS_DIR` directory. This defaults
+to `${CMAKE_INSTALL_PREFIX}/${LIB_INSTALL_DIR}/sysrepo/plugins/` 
+(e.g. `/usr/local/lib/sysrepo/plugins/`) and can be changed by:
+
+- `PLUGINS_DIR` CMake variable in the build time (e.g.
+`"cmake -DPLUGINS_DIR:PATH=/opt/sysrepo/plugins .."`)
+- `SR_PLUGINS_DIR` environment variable before starting the plugin daemon (e.g.
+`"SR_PLUGINS_DIR=/opt/sysrepo/plugins sysrepo-plugind"`)
+
+@section sysrepo-plugind Sysrepo Plugin Daemon
+Sysrepo plugin daemon loads all plugins (shared libraries) located in the 
+@ref plugin-dir. It should normally be automatically started by 
+system startup. However, auto-start is not configured by cmake install operation 
+and you need to configure it yourself, according to the guidelines of your system.
+
+Sysrepo plugin deamon can be started by executing of the following command:
+~~~~~~~~~~~~~~~
+sysrepo-plugind
+~~~~~~~~~~~~~~~
+
+The daemon accepts several arguments aimed for debugging. You can display them
+by executing `sysrepo-plugind -h`
+~~~~~~~~~~~~~~~
+sysrepo-plugind - sysrepo plugins daemon, version 0.2.2
+
+Usage:
+  sysrepo-plugind [-h] [-v] [-d] [-l <level>]
+
+Options:
+  -h          Prints usage help.
+  -v          Prints version.
+  -d          Debug mode - daemon will run in the foreground and print logs to stderr instead of syslog.
+  -l <level>  Sets verbosity level of logging:
+                      0 = all logging turned off
+                      1 = log only error messages
+                      2 = log error and warning messages
+                      3 = (default) log error, warning and informational messages
+                      4 = log everything, including development debug messages
+~~~~~~~~~~~~~~~
+
+If any new plugin has been placed into the @ref plugin-dir, the daemon
+needs to be restarted in order to load it.
+
+*/

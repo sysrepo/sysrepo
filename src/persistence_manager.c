@@ -46,6 +46,7 @@
 #define PM_XPATH_SUBSCRIPTION_ENABLE_RUNNING  PM_XPATH_SUBSCRIPTION      "/enable-running"
 
 #define PM_XPATH_SUBSCRIPTIONS_BY_TYPE        PM_XPATH_SUBSCRIPTION_LIST "[type='%s']"
+#define PM_XPATH_SUBSCRIPTIONS_BY_TYPE_XPATH  PM_XPATH_SUBSCRIPTION_LIST "[type='%s'][xpath='%s']"
 #define PM_XPATH_SUBSCRIPTIONS_BY_DST_ADDR    PM_XPATH_SUBSCRIPTION_LIST "[destination-address='%s']"
 #define PM_XPATH_SUBSCRIPTIONS_BY_DST_ID      PM_XPATH_SUBSCRIPTION_LIST "[destination-address='%s'][destination-id='%"PRIu32"']"
 #define PM_XPATH_SUBSCRIPTIONS_WITH_E_RUNNING PM_XPATH_SUBSCRIPTION_LIST "[enable-running=true()]"
@@ -565,7 +566,8 @@ pm_add_subscription(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *m
         SR_LOG_DBG("Removing all existing %s subscriptions from '%s' persist data tree.",
                 sr_event_gpb_to_str(subscription->event_type), module_name);
 
-        snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTIONS_BY_TYPE, module_name, sr_event_gpb_to_str(subscription->event_type));
+        snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTIONS_BY_TYPE_XPATH, module_name,
+                sr_event_gpb_to_str(subscription->event_type), subscription->xpath);
         pm_modify_persist_data_tree(pm_ctx, &data_tree, xpath, NULL, false, NULL);
         /* error check not needed here */
     }

@@ -146,9 +146,9 @@ void createDataTreeIETFinterfaces(struct ly_ctx *ctx, struct lyd_node **root){
  * Function expects the values under xpath
  * "/ietf-interfaces:interfaces/interface[name='eth0']"
  */
-void check_ietf_interfaces_int_values(sr_val_t **values, size_t count){
+void check_ietf_interfaces_int_values(sr_val_t *values, size_t count){
     for (size_t i = 0; i < count; i++) {
-        sr_val_t *v = values[i];
+        sr_val_t *v = &values[i];
         if (0 == strcmp(v->xpath, "/ietf-interfaces:interfaces/interface[name='eth0']/name")){
             assert_int_equal(SR_STRING_T, v->type);
             assert_string_equal("eth0", v->data.string_val);
@@ -168,9 +168,9 @@ void check_ietf_interfaces_int_values(sr_val_t **values, size_t count){
  * Function expect the values under xpath
  * /ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4
  */
-void check_ietf_interfaces_ipv4_values(sr_val_t **values, size_t count){
+void check_ietf_interfaces_ipv4_values(sr_val_t *values, size_t count){
     for (size_t i = 0; i < count; i++) {
-         sr_val_t *v = values[i];
+         sr_val_t *v = &values[i];
          if (0 == strcmp(v->xpath, "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/enabled")){
              assert_int_equal(SR_BOOL_T, v->type);
              assert_true(v->data.bool_val);
@@ -190,9 +190,9 @@ void check_ietf_interfaces_ipv4_values(sr_val_t **values, size_t count){
  * Function expects the values under xpath
  * /ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/address[ip='192.168.2.100']
  */
-void check_ietf_interfaces_addr_values(sr_val_t **values, size_t count){
+void check_ietf_interfaces_addr_values(sr_val_t *values, size_t count){
     for (size_t i = 0; i < count; i++) {
-        sr_val_t *v = values[i];
+        sr_val_t *v = &values[i];
         if (0 == strcmp(v->xpath, "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/address[ip='192.168.2.100']/ip")){
             assert_int_equal(SR_STRING_T, v->type);
             assert_string_equal("192.168.2.100", v->data.string_val);
@@ -218,52 +218,48 @@ void ietf_interfaces_test(void **state){
     createDataTreeIETFinterfaces(data_tree->schema->module->ctx, &root);
     assert_non_null(root);
 
-    sr_val_t **values;
-    size_t count;
+    sr_val_t *values = NULL;
+    size_t count = 0;
 
 #define INTERFACES "/ietf-interfaces:interfaces/*"
     rc = rp_dt_get_values(ctx, root, INTERFACES, false, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(3, count);
     for (size_t i = 0; i < count; i++) {
-        assert_int_equal(0, strncmp(INTERFACES, values[i]->xpath, strlen(INTERFACES)-1));
-        puts(values[i]->xpath);
-        sr_free_val(values[i]);
+        assert_int_equal(0, strncmp(INTERFACES, values[i].xpath, strlen(INTERFACES)-1));
+        puts(values[i].xpath);
     }
-    free(values);
+    sr_free_values(values, count);
 
 #define INTERFACE_ETH0 "/ietf-interfaces:interfaces/interface[name='eth0']"
     rc = rp_dt_get_values(ctx, root, INTERFACE_ETH0, false, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
     check_ietf_interfaces_int_values(values, count);
     for (size_t i = 0; i < count; i++) {
-        assert_int_equal(0, strncmp(INTERFACE_ETH0, values[i]->xpath, strlen(INTERFACE_ETH0)));
-        puts(values[i]->xpath);
-        sr_free_val(values[i]);
+        assert_int_equal(0, strncmp(INTERFACE_ETH0, values[i].xpath, strlen(INTERFACE_ETH0)));
+        puts(values[i].xpath);
     }
-    free(values);
+    sr_free_values(values, count);
 
 #define INTERFACE_ETH0_IPV4 "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4"
     rc = rp_dt_get_values(ctx, root, INTERFACE_ETH0_IPV4, false, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
     check_ietf_interfaces_ipv4_values(values, count);
     for (size_t i = 0; i < count; i++) {
-        assert_int_equal(0, strncmp(INTERFACE_ETH0_IPV4, values[i]->xpath, strlen(INTERFACE_ETH0_IPV4)));
-        puts(values[i]->xpath);
-        sr_free_val(values[i]);
+        assert_int_equal(0, strncmp(INTERFACE_ETH0_IPV4, values[i].xpath, strlen(INTERFACE_ETH0_IPV4)));
+        puts(values[i].xpath);
     }
-    free(values);
+    sr_free_values(values, count);
 
 #define INTERFACE_ETH0_IPV4_IP "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/address[ip='192.168.2.100']"
     rc = rp_dt_get_values(ctx, root, INTERFACE_ETH0_IPV4_IP, false, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
     check_ietf_interfaces_addr_values(values, count);
     for (size_t i = 0; i < count; i++) {
-        assert_int_equal(0, strncmp(INTERFACE_ETH0_IPV4_IP, values[i]->xpath, strlen(INTERFACE_ETH0_IPV4_IP)));
-        puts(values[i]->xpath);
-        sr_free_val(values[i]);
+        assert_int_equal(0, strncmp(INTERFACE_ETH0_IPV4_IP, values[i].xpath, strlen(INTERFACE_ETH0_IPV4_IP)));
+        puts(values[i].xpath);
     }
-    free(values);
+    sr_free_values(values, count);
 
     lyd_free_withsiblings(root);
     dm_session_stop(ctx, ses_ctx);
@@ -330,69 +326,64 @@ void get_values_test(void **state){
     createDataTree(data_tree->schema->module->ctx, &root);
     assert_non_null(root);
 
-    sr_val_t **values;
-    size_t count;
+    sr_val_t *values = NULL;
+    size_t count = 0;
+
     #define XP_MODULE "/example-module:*"
     rc = rp_dt_get_values(ctx, root, XP_MODULE, false, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(4, count); /*container + 3 leaf-list instances */
     for (size_t i = 0; i < count; i++) {
-        puts(values[i]->xpath);
-        sr_free_val(values[i]);
+        puts(values[i].xpath);
     }
-    free(values);
+    sr_free_values(values, count);
 
 #define XP_LEAF "/example-module:container/list[key1='key1'][key2='key2']/leaf"
     rc = rp_dt_get_values(ctx, root, XP_LEAF, false, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(1, count);
     for (size_t i = 0; i < count; i++) {
-        assert_string_equal(XP_LEAF, values[i]->xpath);
-        assert_string_equal(LEAF_VALUE, values[i]->data.string_val);
-        sr_free_val(values[i]);
+        assert_string_equal(XP_LEAF, values[i].xpath);
+        assert_string_equal(LEAF_VALUE, values[i].data.string_val);
     }
-    free(values);
+    sr_free_values(values, count);
 
 #define XP_LIST_WITH_KEYS "/example-module:container/list[key1='key1'][key2='key2']/*"
     rc = rp_dt_get_values(ctx, root, XP_LIST_WITH_KEYS, false, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(3, count);
     for (size_t i = 0; i < count; i++) {
-        assert_int_equal(0, strncmp(XP_LIST_WITH_KEYS, values[i]->xpath, strlen(XP_LIST_WITH_KEYS)-1)); /* do not compare last asterisk sign */
-        sr_free_val(values[i]);
+        assert_int_equal(0, strncmp(XP_LIST_WITH_KEYS, values[i].xpath, strlen(XP_LIST_WITH_KEYS)-1)); /* do not compare last asterisk sign */
     }
-    free(values);
+    sr_free_values(values, count);
 
 #define XP_LIST_WITHOUT_KEYS "/example-module:container/list"
     rc = rp_dt_get_values(ctx, root, XP_LIST_WITHOUT_KEYS, false, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(2, count);
     for (size_t i = 0; i < count; i++) {
-        assert_int_equal(0, strncmp(XP_LIST_WITHOUT_KEYS, values[i]->xpath, strlen(XP_LIST_WITHOUT_KEYS)));
-        sr_free_val(values[i]);
+        assert_int_equal(0, strncmp(XP_LIST_WITHOUT_KEYS, values[i].xpath, strlen(XP_LIST_WITHOUT_KEYS)));
     }
-    free(values);
+    sr_free_values(values, count);
 
 #define XP_CONTAINER "/example-module:container"
     rc = rp_dt_get_values(ctx, root, XP_LIST_WITHOUT_KEYS, false, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(2, count);
     for (size_t i = 0; i < count; i++) {
-        assert_int_equal(0, strncmp(XP_CONTAINER, values[i]->xpath, strlen(XP_CONTAINER)));
-        sr_free_val(values[i]);
+        assert_int_equal(0, strncmp(XP_CONTAINER, values[i].xpath, strlen(XP_CONTAINER)));
     }
-    free(values);
+    sr_free_values(values, count);
 
 #define XP_LEAFLIST "/example-module:number"
     rc = rp_dt_get_values(ctx, root, XP_LEAFLIST, false, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(3, count);
     for (size_t i = 0; i < count; i++) {
-        assert_string_equal(XP_LEAFLIST, values[i]->xpath);
-        printf("Leaf list %d\n", values[i]->data.uint16_val);
-        sr_free_val(values[i]);
+        assert_string_equal(XP_LEAFLIST, values[i].xpath);
+        printf("Leaf list %d\n", values[i].data.uint16_val);
     }
-    free(values);
+    sr_free_values(values, count);
 
     lyd_free_withsiblings(root);
 
@@ -414,7 +405,7 @@ void get_values_opts_test(void **state) {
     createDataTree(data_tree->schema->module->ctx, &root);
     assert_non_null(root);
 
-    sr_val_t **values;
+    sr_val_t *values = NULL;
     size_t count = 0;
     rp_dt_get_items_ctx_t get_items_ctx;
     get_items_ctx.nodes = NULL;
@@ -432,9 +423,9 @@ void get_values_opts_test(void **state) {
     assert_string_equal(EX_CONT, get_items_ctx.xpath);
     assert_int_equal(1, get_items_ctx.offset);
     for (size_t i=0; i < count; i++){
-        puts(values[i]->xpath);
+        puts(values[i].xpath);
     }
-    sr_free_values_arr(values, count);
+    sr_free_values(values, count);
 
     rc = rp_dt_get_values_wrapper_with_opts(ctx, ses_ctx, &get_items_ctx, EX_CONT, 100, 1, &values, &count);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
@@ -444,9 +435,9 @@ void get_values_opts_test(void **state) {
     assert_int_equal(SR_ERR_OK, rc);
     assert_string_equal("/example-module:*", get_items_ctx.xpath);
     for (size_t i=0; i < count; i++){
-        puts(values[i]->xpath);
+        puts(values[i].xpath);
     }
-    sr_free_values_arr(values, count);
+    sr_free_values(values, count);
 
     free(get_items_ctx.xpath);
     ly_set_free(get_items_ctx.nodes);
@@ -464,7 +455,7 @@ void get_values_with_augments_test(void **state){
     struct lyd_node *data_tree = NULL;
     struct lyd_node *root = NULL;
     size_t count = 0;
-    sr_val_t **values = NULL;
+    sr_val_t *values = NULL;
     dm_session_start(ctx, NULL, SR_DS_STARTUP, &ses_ctx);
 
     rc = dm_get_datatree(ctx, ses_ctx, "example-module", &data_tree);
@@ -477,10 +468,9 @@ void get_values_with_augments_test(void **state){
     assert_int_equal(2, count);
 
     for (size_t i = 0; i < count; i++) {
-        assert_int_equal(0, strncmp(SM_MODULE, values[i]->xpath, strlen(SM_MODULE)-1));
-        sr_free_val(values[i]);
+        assert_int_equal(0, strncmp(SM_MODULE, values[i].xpath, strlen(SM_MODULE)-1));
     }
-    free(values);
+    sr_free_values(values, count);
 
 
     lyd_free_withsiblings(root);
@@ -686,7 +676,7 @@ get_nodes_with_opts_cache_missed_test(void **state)
     rp_session_t *ses_ctx = NULL;
 
     test_rp_sesssion_create(ctx, SR_DS_STARTUP, &ses_ctx);
-    sr_val_t **values = NULL;
+    sr_val_t *values = NULL;
     size_t count = 0;
     rp_dt_get_items_ctx_t get_items_ctx;
     get_items_ctx.nodes = NULL;
@@ -695,11 +685,11 @@ get_nodes_with_opts_cache_missed_test(void **state)
 
     rc = rp_dt_get_values_wrapper_with_opts(ctx, ses_ctx, &get_items_ctx, "/test-module:list[key='k1']/*", 0, 2, &values, &count);
     assert_int_equal(rc, SR_ERR_OK);
-    sr_free_values_arr(values, count);
+    sr_free_values(values, count);
 
     rc = rp_dt_get_values_wrapper_with_opts(ctx, ses_ctx, &get_items_ctx, "/test-module:list[key='k1']/*", 2, 2, &values, &count);
     assert_int_equal(rc, SR_ERR_OK);
-    sr_free_values_arr(values, count);
+    sr_free_values(values, count);
 
     rc = rp_dt_get_values_wrapper_with_opts(ctx, ses_ctx, &get_items_ctx, "/test-module:list[key='k1']/wireless/*", 0, 2, &values, &count);
     assert_int_equal(rc, SR_ERR_NOT_FOUND);

@@ -12,7 +12,7 @@ compiler:
 before_install:
   - sudo apt-get update -qq
   - sudo apt-get install -y libavl-dev libev-dev valgrind swig python-dev
-  - pip install --user pyang codecov
+  - pip install --user codecov
   
   - git clone git://git.cryptomilk.org/projects/cmocka.git
   - cd cmocka
@@ -54,7 +54,6 @@ addons:
   coverity_scan:
     project:
       name: "sysrepo/sysrepo"
-      description: "Build submitted via Travis CI"
     notification_email: raszabo@cisco.com
     build_command_prepend: "mkdir build ; cd build ; cmake .. && make clean"
     build_command:   "make -j 2"
