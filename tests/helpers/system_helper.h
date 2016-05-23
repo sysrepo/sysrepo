@@ -42,11 +42,11 @@ void test_file_owner(const char *path, const char *owner);
 void test_file_permissions(const char *path, mode_t permissions);
 
 /**
- * @brief Tests file content against the given regular expression.
- * Prepend regular expression with exclamation mark to test that the file
- * content does NOT match the supplied pattern.
+ * @brief Tests file content against the given string / regular expression.
+ * Prepend the string with exclamation mark to test that the file
+ * content does NOT match the supplied string/pattern.
  */
-void test_file_content(const char *path, const char *regex);
+void test_file_content(const char *path, const char *exp_content, bool regex);
 
 /**
  * @brief Compares contents of two files using strcmp().
@@ -55,9 +55,9 @@ int compare_files(const char *path1, const char *path2);
 
 /**
  * @brief Executes shell command, tests return value and compares output 
- * against the given regular expression.
+ * against the given string / regular expression.
  */
-void exec_shell_command(const char *cmd, const char *re_exp_output, int exp_ret);
+void exec_shell_command(const char *cmd, const char *exp_out, bool regex, int exp_ret);
 
 #endif /* SYSTEM_HELPER_H */
 
