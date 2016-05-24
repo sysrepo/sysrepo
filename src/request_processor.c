@@ -1108,9 +1108,10 @@ rp_msg_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
     if ((NULL != session) && (session->options & SR__SESSION_FLAGS__SESS_NOTIFICATION)) {
         if ((SR__OPERATION__GET_ITEM != msg->request->operation) &&
                 (SR__OPERATION__GET_ITEMS != msg->request->operation) &&
+                (SR__OPERATION__SESSION_REFRESH != msg->request->operation) &&
                 (SR__OPERATION__UNSUBSCRIBE != msg->request->operation)) {
             SR_LOG_ERR("Unsupported operation for notification session (session id=%"PRIu32", operation=%d).",
-                    session->id, msg->response->operation);
+                    session->id, msg->request->operation);
             sr__msg__free_unpacked(msg, NULL);
             return SR_ERR_UNSUPPORTED;
         }

@@ -609,6 +609,11 @@ cl_sm_notif_process(cl_sm_ctx_t *sm_ctx, Sr__Msg *msg)
             pthread_mutex_unlock(&sm_ctx->subscriptions_lock);
             return SR_ERR_INVAL_ARG;
         }
+        rc = sr_session_refresh(data_session);
+        if (SR_ERR_OK != rc) {
+            pthread_mutex_unlock(&sm_ctx->subscriptions_lock);
+            return rc;
+        }
     }
 
     switch (msg->notification->event) {
