@@ -62,6 +62,13 @@ typedef struct rp_dt_get_items_ctx {
     struct ly_set *nodes;   /**< nodes to be iterated through */
 } rp_dt_get_items_ctx_t;
 
+typedef struct rp_dt_change_ctx_s {
+    char *xpath;
+    size_t offset;
+    size_t limit;
+    size_t position;
+} rp_dt_change_ctx_t;
+
 /**
  * @brief Structure that holds Request Processor's per-session context.
  */
@@ -76,6 +83,7 @@ typedef struct rp_session_s {
     ac_session_t *ac_session;            /**< Access Control module's session context. */
     dm_session_t *dm_session;            /**< Data Manager's session context. */
     rp_dt_get_items_ctx_t get_items_ctx; /**< Context for get_items_iter calls. */
+    rp_dt_change_ctx_t change_ctx;
 } rp_session_t;
 
 #endif /* RP_INTERNAL_H_ */

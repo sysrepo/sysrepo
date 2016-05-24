@@ -29,6 +29,12 @@
 #include "request_processor.h"
 #include "rp_dt_lookup.h"
 
+typedef struct rp_dt_change_s {
+    sr_change_oper_t oper;
+    sr_val_t *new_value;
+    sr_val_t *old_value;
+}rp_dt_change_t;
+
 /**
  * @brief Retrieves all nodes matching xpath using ::rp_dt_find_nodes and copy fills sr_val_t structures.
  * @param [in] dm_ctx

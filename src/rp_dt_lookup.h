@@ -73,6 +73,18 @@ int rp_dt_find_node(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const ch
  */
 int rp_dt_find_nodes(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char *xpath, bool check_enable, struct ly_set **nodes);
 
+/**
+ * @brief Find matching changes
+ * @param [in] session
+ * @param [in] c_ctx - commit context where the diff are stored
+ * @param [in] change_ctx - cache for the iteration in changes
+ * @param [in] xpath - used for selection of the changes to be returned
+ * @param [in] offset
+ * @param [in] limit - maximum number of changes to be returned
+ * @param [out] changes - matching changes
+ * @return Error code (SR_ERR_OK on success)
+ */
+int rp_dt_find_changes(dm_session_t *session, dm_commit_context_t *c_ctx, rp_dt_change_ctx_t *change_ctx, const char *xpath, size_t offset, size_t limit, struct ly_set **changes);
 #endif /* RP_DT_LOOKUP_H */
 
 /**

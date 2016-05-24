@@ -169,3 +169,18 @@ rp_dt_find_nodes_with_opts(const dm_ctx_t *dm_ctx, dm_session_t *dm_session, rp_
         return SR_ERR_OK;
     }
 }
+
+int
+rp_dt_find_changes(dm_session_t *session, dm_commit_context_t *c_ctx, rp_dt_change_ctx_t *change_ctx, const char *xpath, size_t offset, size_t limit, struct ly_set **changes)
+{
+    int rc = SR_ERR_OK;
+
+    //find node/model from xpath
+
+    //find changes for the model
+
+    //for c in changes
+        //if c matches add change
+
+    return rc;
+}

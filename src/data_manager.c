@@ -79,11 +79,7 @@ typedef struct dm_ctx_s {
     pthread_mutex_t ds_lock_mutex;/**< Data store lock mutex */
     struct ly_set *disabled_sch;  /**< Set of schema that has been disabled */
     sr_btree_t *schema_info_tree; /**< Binary tree holding information about schemas*/
-    sr_btree_t *c_ctx_tree;       /**< Array of commit context used for notifications */
-    pthread_rwlock_t c_ctxs_lock; /**< rwlock to access c_ctxx */
-    int last_commit_id; // id of the last commit context
-    //TODO: should be removed once notification session contains
-    //commit id
+    dm_commit_ctxs_t commit_ctxs;
 } dm_ctx_t;
 
 /**
@@ -1168,10 +1164,10 @@ dm_init(ac_ctx_t *ac_ctx, np_ctx_t *np_ctx, pm_ctx_t *pm_ctx,
     rc = sr_btree_init(dm_schema_info_cmp, dm_free_schema_info, &ctx->schema_info_tree);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Schema binary tree allocation failed");
 
-    rc = sr_btree_init(dm_c_ctx_id_cmp, dm_free_commit_context, &ctx->c_ctx_tree);
+    rc = sr_btree_init(dm_c_ctx_id_cmp, dm_free_commit_context, &ctx->commit_ctxs.tree);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Commit context binary tree initialization failed");
 
-    rc = pthread_rwlock_init(&ctx->c_ctxs_lock, &attr);
+    rc = pthread_rwlock_init(&ctx->commit_ctxs.lock, &attr);
     CHECK_ZERO_MSG_GOTO(rc, rc, SR_ERR_INTERNAL, cleanup, "c_ctxs_lock init failed");
 
 
@@ -1191,7 +1187,7 @@ void
 dm_cleanup(dm_ctx_t *dm_ctx)
 {
     if (NULL != dm_ctx) {
-        sr_btree_cleanup(dm_ctx->c_ctx_tree);
+        sr_btree_cleanup(dm_ctx->commit_ctxs.tree);
 
         free(dm_ctx->schema_search_dir);
         free(dm_ctx->data_search_dir);
@@ -1207,7 +1203,7 @@ dm_cleanup(dm_ctx_t *dm_ctx)
         pthread_mutex_destroy(&dm_ctx->ds_lock_mutex);
         ly_set_free(dm_ctx->disabled_sch);
 
-        pthread_rwlock_destroy(&dm_ctx->c_ctxs_lock);
+        pthread_rwlock_destroy(&dm_ctx->commit_ctxs.lock);
         free(dm_ctx);
     }
 }
@@ -2092,10 +2088,10 @@ dm_insert_commit_context(dm_ctx_t *dm_ctx, dm_commit_context_t *c_ctx)
 {
     CHECK_NULL_ARG2(dm_ctx, c_ctx);
     int rc = SR_ERR_OK;
-    pthread_rwlock_wrlock(&dm_ctx->c_ctxs_lock);
-    dm_ctx->last_commit_id = c_ctx->id;
-    rc = sr_btree_insert(dm_ctx->c_ctx_tree, c_ctx);
-    pthread_rwlock_unlock(&dm_ctx->c_ctxs_lock);
+    pthread_rwlock_wrlock(&dm_ctx->commit_ctxs.lock);
+    dm_ctx->commit_ctxs.last_commit_id = c_ctx->id;
+    rc = sr_btree_insert(dm_ctx->commit_ctxs.tree, c_ctx);
+    pthread_rwlock_unlock(&dm_ctx->commit_ctxs.lock);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Insert into commit context bin tree failed");
     }
@@ -2105,16 +2101,16 @@ dm_insert_commit_context(dm_ctx_t *dm_ctx, dm_commit_context_t *c_ctx)
 int
 dm_remove_commit_context(dm_ctx_t *dm_ctx, int c_ctx_id)
 {
-    pthread_rwlock_wrlock(&dm_ctx->c_ctxs_lock);
+    pthread_rwlock_wrlock(&dm_ctx->commit_ctxs.lock);
     dm_commit_context_t *c_ctx = NULL;
     dm_commit_context_t lookup = {0};
     lookup.id = c_ctx_id;
-    c_ctx = sr_btree_search(dm_ctx->c_ctx_tree, &lookup);
+    c_ctx = sr_btree_search(dm_ctx->commit_ctxs.tree, &lookup);
     if (NULL == c_ctx) {
         SR_LOG_WRN("Commit context with id %d not found", c_ctx_id);
     }
-    sr_btree_delete(dm_ctx->c_ctx_tree, c_ctx);
-    pthread_rwlock_unlock(&dm_ctx->c_ctxs_lock);
+    sr_btree_delete(dm_ctx->commit_ctxs.tree, c_ctx);
+    pthread_rwlock_unlock(&dm_ctx->commit_ctxs.lock);
     return SR_ERR_OK;
 }
 
@@ -3411,11 +3407,19 @@ int
 dm_get_commit_context(dm_ctx_t *dm_ctx, int c_ctx_id, dm_commit_context_t **c_ctx)
 {
     CHECK_NULL_ARG2(dm_ctx, c_ctx);
-    pthread_rwlock_rdlock(&dm_ctx->c_ctxs_lock);
+    pthread_rwlock_rdlock(&dm_ctx->commit_ctxs.lock);
     dm_commit_context_t lookup = {0};
     //TODO: use argument lookup.id = c_ctx_id;
-    lookup.id = dm_ctx->last_commit_id;
-    *c_ctx = sr_btree_search(dm_ctx->c_ctx_tree, &lookup);
-    pthread_rwlock_unlock(&dm_ctx->c_ctxs_lock);
+    lookup.id = dm_ctx->commit_ctxs.last_commit_id;
+    *c_ctx = sr_btree_search(dm_ctx->commit_ctxs.tree, &lookup);
+    pthread_rwlock_unlock(&dm_ctx->commit_ctxs.lock);
+    return SR_ERR_OK;
+}
+
+int
+dm_get_commit_ctxs(dm_ctx_t *dm_ctx, dm_commit_ctxs_t **commit_ctxs)
+{
+    CHECK_NULL_ARG2(dm_ctx, commit_ctxs);
+    *commit_ctxs = &dm_ctx->commit_ctxs;
     return SR_ERR_OK;
 }

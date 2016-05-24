@@ -114,7 +114,7 @@ typedef struct dm_sess_op_s{
  */
 typedef struct dm_model_subscription_s {
     const struct lys_module *module;    /**< module */
-    np_subscription_t **subscriptions;           /**< array of struct received from np */
+    np_subscription_t **subscriptions;  /**< array of struct received from np */
     const struct lys_node **nodes;      /**< array of schema nodes corresponding to the subscription */
     size_t subscription_cnt;            /**< number of subscriptions */
     struct lyd_difflist *difflist;      /**< diff list */
@@ -135,6 +135,13 @@ typedef struct dm_commit_context_s {
     sr_btree_t *subscriptions;  /**< binary trees of subscriptions organised per models */
     sr_btree_t *prev_data_trees;/**< data trees in the state before commit */
 } dm_commit_context_t;
+
+typedef struct dm_c_ctxs_s {
+    sr_btree_t *tree;      /**< Array of commit context used for notifications */
+    pthread_rwlock_t lock; /**< rwlock to access c_ctxx */
+    int last_commit_id;    // id of the last commit context
+                           //TODO: should be removed once notification session contains
+} dm_commit_ctxs_t;
 
 /**
  * @brief Initializes the data manager context, which will be passed in further
@@ -743,5 +750,12 @@ int dm_remove_commit_context(dm_ctx_t *dm_ctx, int c_ctx_id);
  */
 int dm_get_commit_context(dm_ctx_t *dm_ctx, int c_ctx_id, dm_commit_context_t **c_ctx);
 
+/**
+ * @brief Returns the structure containing commit contexts and corresponding lock
+ * @param [in] dm_ctx
+ * @param [out] commit_ctxs
+ * @return Error code (SR_ERR_OK on success)
+ */
+int dm_get_commit_ctxs(dm_ctx_t *dm_ctx, dm_commit_ctxs_t **commit_ctxs);
 /**@} Data manager*/
 #endif /* SRC_DATA_MANAGER_H_ */

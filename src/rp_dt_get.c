@@ -20,6 +20,7 @@
  */
 
 #include <libyang/libyang.h>
+#include <pthread.h>
 #include "sysrepo.h"
 #include "sr_common.h"
 
@@ -497,4 +498,34 @@ cleanup:
     free(data_tree_name);
     return rc;
 
+}
+
+int
+rp_dt_get_changes(rp_ctx_t *rp_ctx, rp_session_t *rp_session, dm_commit_context_t *c_ctx, const char *xpath,
+        size_t offset, size_t limit, rp_dt_change_t **changes, size_t *count)
+{
+    CHECK_NULL_ARG4(rp_ctx, rp_session, c_ctx, xpath);
+    CHECK_NULL_ARG2(changes, count);
+
+    int rc = SR_ERR_OK;
+    dm_commit_ctxs_t *dm_ctxs = NULL;
+    struct ly_set *matched_changes = NULL;
+    CHECK_NULL_NOMEM_GOTO(matched_changes, rc, cleanup);
+
+    /* lock commit context */
+    rc = dm_get_commit_ctxs(rp_ctx->dm_ctx, &dm_ctxs);
+    CHECK_RC_MSG_RETURN(rc, "Get commit ctx failed");
+    pthread_rwlock_rdlock(&dm_ctxs->lock);
+
+    rc = rp_dt_find_changes(rp_session->dm_session, c_ctx, &rp_session->change_ctx, xpath, offset, limit, &matched_changes);
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Find changes failed for %s", xpath);
+
+    //fill changes struct
+    *changes = NULL;
+    *count = 0;
+    pthread_rwlock_unlock(&dm_ctxs->lock);
+
+cleanup:
+    ly_set_free(matched_changes);
+    return rc;
 }
