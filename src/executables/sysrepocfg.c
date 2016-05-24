@@ -186,16 +186,23 @@ srcfg_import_datastore(struct ly_ctx *ly_ctx, int fd_in, const char *module_name
     int fd_out = -1;
     char *input_data = NULL;
     int locked = 0, ret = 0;
+    struct stat info;
 
-    /* load input data into the memory */
-    ret = srcfg_read_file_content(fd_in, &input_data);
-    if (SR_ERR_OK != ret) {
-        fprintf(stderr, "Error: Unable to read the input data.\n");
-        goto cleanup;
+    /* parse input data */
+    fstat(fd_in, &info);
+    if (S_ISREG(info.st_mode)) {
+        /* load (using mmap) and parse the input data in one step */
+        data_tree = lyd_parse_fd(ly_ctx, fd_in, format, LYD_OPT_STRICT | LYD_OPT_CONFIG);
+    } else { /* most likely STDIN */
+        /* load input data into the memory first */
+        ret = srcfg_read_file_content(fd_in, &input_data);
+        if (SR_ERR_OK != ret) {
+            fprintf(stderr, "Error: Unable to read the input data.\n");
+            goto cleanup;
+        }
+        /* parse the input data stored inside memory buffer */
+        data_tree = lyd_parse_mem(ly_ctx, input_data, format, LYD_OPT_STRICT | LYD_OPT_CONFIG);
     }
-
-    /* try to parse the input data */
-    data_tree = lyd_parse_mem(ly_ctx, input_data, format, LYD_OPT_STRICT | LYD_OPT_CONFIG);
     if (NULL == data_tree && LY_SUCCESS != ly_errno) {
         fprintf(stderr, "Error: Unable to parse the input data: %s.\n", ly_errmsg());
         goto cleanup;
