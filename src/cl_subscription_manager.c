@@ -594,7 +594,7 @@ cl_sm_notif_process(cl_sm_ctx_t *sm_ctx, Sr__Msg *msg)
     }
 
     /* validate the message according to the subscription type */
-    rc = sr_gpb_msg_validate_notif(msg, subscription->event_type);
+    rc = sr_gpb_msg_validate_notif(msg, subscription->notif_type);
     if (SR_ERR_OK != rc) {
         pthread_mutex_unlock(&sm_ctx->subscriptions_lock);
         SR_LOG_ERR("Received notification message is not valid for subscription id=%"PRIu32".", subscription->id);
@@ -602,7 +602,7 @@ cl_sm_notif_process(cl_sm_ctx_t *sm_ctx, Sr__Msg *msg)
     }
 
     /* get data session that can be used from notification callback */
-    if (SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV == msg->notification->event) {
+    if (SR__NOTIFICATION_TYPE__MODULE_CHANGE_NOTIF == msg->notification->type) {
         rc = cl_sm_get_data_session(sm_ctx, subscription, msg->notification->source_address,
                 msg->notification->source_pid, &data_session);
         if (SR_ERR_OK != rc) {
@@ -611,8 +611,8 @@ cl_sm_notif_process(cl_sm_ctx_t *sm_ctx, Sr__Msg *msg)
         }
     }
 
-    switch (msg->notification->event) {
-        case SR__NOTIFICATION_EVENT__MODULE_INSTALL_EV:
+    switch (msg->notification->type) {
+        case SR__NOTIFICATION_TYPE__MODULE_INSTALL_NOTIF:
             SR_LOG_DBG("Calling module-install callback for subscription id=%"PRIu32".", subscription->id);
             subscription->callback.module_install_cb(
                     msg->notification->module_install_notif->module_name,
@@ -620,7 +620,7 @@ cl_sm_notif_process(cl_sm_ctx_t *sm_ctx, Sr__Msg *msg)
                     msg->notification->module_install_notif->installed,
                     subscription->private_ctx);
             break;
-        case SR__NOTIFICATION_EVENT__FEATURE_ENABLE_EV:
+        case SR__NOTIFICATION_TYPE__FEATURE_ENABLE_NOTIF:
             SR_LOG_DBG("Calling feature-enable callback for subscription id=%"PRIu32".", subscription->id);
             subscription->callback.feature_enable_cb(
                     msg->notification->feature_enable_notif->module_name,
@@ -628,15 +628,16 @@ cl_sm_notif_process(cl_sm_ctx_t *sm_ctx, Sr__Msg *msg)
                     msg->notification->feature_enable_notif->enabled,
                     subscription->private_ctx);
             break;
-        case SR__NOTIFICATION_EVENT__MODULE_CHANGE_EV:
+        case SR__NOTIFICATION_TYPE__MODULE_CHANGE_NOTIF:
             SR_LOG_DBG("Calling module-change callback for subscription id=%"PRIu32".", subscription->id);
             subscription->callback.module_change_cb(
                     data_session,
                     msg->notification->module_change_notif->module_name,
-                    SR_EV_NOTIFY, /* TODO pass correct event */
+                    SR_EV_NOTIFY, // TODO: msg->notification->module_change_notif->event
                     subscription->private_ctx);
             break;
-        case SR__NOTIFICATION_EVENT__HELLO_EV:
+        // TODO: subtree-change callback
+        case SR__NOTIFICATION_TYPE__HELLO_NOTIF:
             SR_LOG_DBG("HELLO notification received on subscription id=%"PRIu32".", subscription->id);
             break;
         default:

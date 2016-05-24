@@ -67,14 +67,14 @@ int sr_gpb_resp_alloc(const Sr__Operation operation, const uint32_t session_id, 
 /**
  * @brief Allocates and initializes GPB notification message.
  *
- * @param[in] event Notification event type.
+ * @param[in] type Notification type.
  * @param[in] destination Destination (socket path) of the notification.
  * @param[in] subscription_id CLient-local subscription identifier.
  * @param[out] msg GPB message.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int sr_gpb_notif_alloc(const Sr__NotificationEvent event, const char *destination,
+int sr_gpb_notif_alloc(const Sr__NotificationType type, const char *destination,
         const uint32_t subscription_id, Sr__Msg **msg);
 
 /**
@@ -106,7 +106,7 @@ int sr_gpb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const S
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int sr_gpb_msg_validate_notif(const Sr__Msg *msg, const Sr__NotificationEvent event);
+int sr_gpb_msg_validate_notif(const Sr__Msg *msg, const Sr__NotificationType type);
 
 /**
  * @brief Allocates and fills gpb structure form sr_val_t.
@@ -195,7 +195,7 @@ sr_move_position_t sr_move_direction_gpb_to_sr(Sr__MoveItemReq__MovePosition gpb
  * @param[in] event GPB event type.
  * @return Pointer to statically allocated string with the event name.
  */
-char *sr_event_gpb_to_str(Sr__NotificationEvent event);
+char *sr_notif_type_gpb_to_str(Sr__NotificationType type);
 
 /**
  * @brief Converts notification event type string to its GPB enum representation.
@@ -203,7 +203,7 @@ char *sr_event_gpb_to_str(Sr__NotificationEvent event);
  * @param[in] event_name String name of the event.
  * @return GPB event type.
  */
-Sr__NotificationEvent sr_event_str_to_gpb(const char *event_name);
+Sr__NotificationType sr_notif_type_str_to_gpb(const char *type_name);
 
 /**
  * @brief Converts array of sr_schema_t to an array of pointers to GPB schemas.
