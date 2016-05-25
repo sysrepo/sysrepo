@@ -483,7 +483,10 @@ pm_get_module_info(pm_ctx_t *pm_ctx, const char *module_name,
 
     /* load the data tree from persist file */
     rc = pm_load_data_tree(pm_ctx, NULL, module_name, true, &data_tree, NULL);
-    CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to load persist data tree for module '%s'.", module_name);
+    if (SR_ERR_DATA_MISSING != rc) {
+        /* ignore data missing error */
+        CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to load persist data tree for module '%s'.", module_name);
+    }
 
     if (NULL == data_tree) {
         /* empty data file */
