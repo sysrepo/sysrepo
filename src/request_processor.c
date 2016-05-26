@@ -20,6 +20,7 @@
  */
 
 #include <time.h>
+#include <unistd.h>
 #include <inttypes.h>
 #include <pthread.h>
 
@@ -1154,6 +1155,7 @@ rp_msg_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
     if ((NULL != session) && (session->options & SR__SESSION_FLAGS__SESS_NOTIFICATION)) {
         if ((SR__OPERATION__GET_ITEM != msg->request->operation) &&
                 (SR__OPERATION__GET_ITEMS != msg->request->operation) &&
+                (SR__OPERATION__SESSION_REFRESH != msg->request->operation) &&
                 (SR__OPERATION__UNSUBSCRIBE != msg->request->operation)) {
             SR_LOG_ERR("Unsupported operation for notification session (session id=%"PRIu32", operation=%d).",
                     session->id, msg->request->operation);
@@ -1675,6 +1677,9 @@ rp_msg_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
         }
         rp_ctx->last_thread_wakeup = now;
     }
+
+    SR_LOG_DBG("Threads: active=%zu/%d, %zu requests in queue", rp_ctx->active_threads, RP_THREAD_COUNT,
+            sr_cbuff_items_in_queue(rp_ctx->request_queue));
 
     /* send signal if there is no active thread ready to process the request */
     if (0 == rp_ctx->active_threads ||

@@ -307,8 +307,12 @@ cm_conn_close(cm_ctx_t *cm_ctx, sm_connection_t *conn)
                 }
             }
             if (drop_session) {
-                /* drop the session in Session manager */
+                /* drop the session in Session Manager */
                 sm_session_drop(cm_ctx->sm_ctx, sess->session);
+            } else {
+                /* just remove the session from the connection's session list */
+                conn->session_list = conn->session_list->next;
+                free(sess);
             }
         }
     }
@@ -1315,6 +1319,8 @@ cm_msg_enqueue_cb(struct ev_loop *loop, ev_async *w, int revents)
 
     CHECK_NULL_ARG_VOID2(w, w->data);
     cm_ctx = (cm_ctx_t*)w->data;
+
+    SR_LOG_DBG_MSG("New message enqueued into CM message queue.");
 
     do {
         Sr__Msg *msg = NULL;
