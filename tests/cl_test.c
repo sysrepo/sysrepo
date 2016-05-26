@@ -1434,11 +1434,12 @@ cl_switch_ds(void **state)
 
 }
 
-static void
-module_change_cb(sr_session_ctx_t *session, const char *module_name, void *private_ctx)
+static int
+module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t ev, void *private_ctx)
 {
     int *callback_called = (int*)private_ctx;
     *callback_called += 1;
+    return SR_ERR_OK;
 }
 
 static void
@@ -1459,8 +1460,8 @@ cl_candidate_refresh(void **state)
     rc = sr_session_start(conn, SR_DS_CANDIDATE, SR_SESS_DEFAULT, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = sr_module_change_subscribe(session, "example-module", true,
-            module_change_cb, &cb_called, &subscription);
+    rc = sr_module_change_subscribe(session, "example-module", SR_EV_NOTIFY, true,
+            0, module_change_cb, &cb_called, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* check the list presence in candidate */
