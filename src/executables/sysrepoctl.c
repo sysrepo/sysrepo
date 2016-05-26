@@ -50,6 +50,15 @@
             if ((NULL == REVISION) ||                                                  \
                 ((ITER->rev_size > 0) && (0 == strcmp(ITER->rev[0].date, REVISION))))  \
 
+/**
+ * @brief Helper structure used for storing uid and gid of module's owner
+ * and group respectively.
+ */
+typedef struct srctl_module_owner_s {
+    uid_t owner;
+    gid_t group;
+} srctl_module_owner_t;
+
 static char *srctl_schema_search_dir = SR_SCHEMA_SEARCH_DIR;
 static char *srctl_data_search_dir = SR_DATA_SEARCH_DIR;
 static bool custom_repository = false;
@@ -265,7 +274,8 @@ srctl_file_create(const char *path, void *arg)
 static int
 srctl_file_chown(const char *path, void *arg)
 {
-    return chown(path, *((uid_t *)arg), -1);
+    srctl_module_owner_t *owner_id = (srctl_module_owner_t *)arg;
+    return chown(path, owner_id->owner, owner_id->group);
 }
 
 /**
@@ -327,18 +337,40 @@ static int
 srctl_module_change(const char *module_name, const char *owner, const char *permissions)
 {
     int ret = 0;
+    char *colon = NULL;
     struct passwd *pwd = NULL;
+    struct group *group = NULL;
+    srctl_module_owner_t owner_id = { -1, -1 };
 
     /* update owner if requested */
     if (NULL != owner) {
-        /* try getting owner's UID */
-        pwd = getpwnam(owner);
-        if (NULL == pwd) {
-            fprintf(stderr, "Error: Unable to obtain UID for the user '%s'.\n", owner);
-            goto fail;
+        colon = strchr(owner, ':');
+        if (NULL != colon && strlen(colon+1)) {
+            /* try to get group ID */
+            group = getgrnam(colon+1);
+            if (NULL == group) {
+                fprintf(stderr, "Error: Unable to obtain GID for the group '%s'.\n", colon+1);
+                goto fail;
+            }
+            owner_id.group = group->gr_gid;
         }
-        ret = srctl_data_files_apply(module_name, srctl_file_chown, (void *)&(pwd->pw_uid), true);
+        if (NULL != colon) {
+            *colon = '\0';
+        }
+        if (NULL == colon || owner < colon) {
+            /* try to get user ID */
+            pwd = getpwnam(owner);
+            if (NULL == pwd) {
+                fprintf(stderr, "Error: Unable to obtain UID for the user '%s'.\n", owner);
+                goto fail;
+            }
+            owner_id.owner = pwd->pw_uid;
+        }
+        ret = srctl_data_files_apply(module_name, srctl_file_chown, (void *)&owner_id, true);
         if (0 != ret) {
+            if (NULL != colon) {
+                *colon = ':'; /* restore the value of input string */
+            }
             fprintf(stderr, "Error: Unable to change owner to '%s' for module '%s'.\n", owner, module_name);
             goto fail;
         }
@@ -656,7 +688,7 @@ srctl_schema_install(const struct lys_module *module, const char *yang_src, cons
     return SR_ERR_OK;
 
 fail:
-    printf("Installation of the schema file cancelled for module '%s', reverting...\n", module->name);
+    printf("Installation of schema files cancelled for module '%s', reverting...\n", module->name);
     if ('\0' != yang_dst[0]) {
         ret = unlink(yang_dst);
         if (0 != ret && ENOENT != errno) {
