@@ -317,6 +317,7 @@ cl_get_items_test(void **state)
     sr_conn_ctx_t *conn = *state;
     assert_non_null(conn);
 
+    createDataTreeIETFinterfacesModule();
     sr_session_ctx_t *session = NULL;
     sr_val_t *values = NULL;
     size_t values_cnt = 0;
@@ -1431,6 +1432,78 @@ cl_switch_ds(void **state)
 
 }
 
+static void
+module_change_cb(sr_session_ctx_t *session, const char *module_name, void *private_ctx)
+{
+    int *callback_called = (int*)private_ctx;
+    *callback_called += 1;
+}
+
+static void
+cl_candidate_refresh(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+    sr_session_ctx_t *session = NULL;
+    sr_subscription_ctx_t *subscription = NULL;
+    int cb_called = 0;
+
+    sr_val_t *val = NULL;
+    const char *xpath = NULL;
+    int rc = SR_ERR_OK;
+    xpath = "/example-module:container/list[key1='key1'][key2='key2']/leaf";
+
+    /* start session */
+    rc = sr_session_start(conn, SR_DS_CANDIDATE, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_module_change_subscribe(session, "example-module", true,
+            module_change_cb, &cb_called, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* check the list presence in candidate */
+    rc = sr_get_item(session, xpath, &val);
+    assert_int_equal(rc, SR_ERR_OK);
+    sr_free_val(val);
+
+    /* switch to running */
+    rc = sr_session_switch_ds(session, SR_DS_RUNNING);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* remove the list instance */
+    rc = sr_delete_item(session, xpath, SR_EDIT_DEFAULT);
+
+    /* save changes to running */
+    rc = sr_commit(session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* check the change in running */
+    rc = sr_get_item(session, xpath, &val);
+    assert_int_not_equal(rc, SR_ERR_OK);
+
+    /* switch to candidate */
+    rc = sr_session_switch_ds(session, SR_DS_CANDIDATE);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* check the change in candidate - the change is not yet reflected */
+    rc = sr_get_item(session, xpath, &val);
+    assert_int_equal(rc, SR_ERR_OK);
+    sr_free_val(val);
+
+    /* check the change after session refresh */
+    rc = sr_session_refresh(session);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_get_item(session, xpath, &val);
+    assert_int_not_equal(rc, SR_ERR_OK);
+
+    rc = sr_unsubscribe(session, subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_session_stop(session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+}
+
 int
 main()
 {
@@ -1455,6 +1528,7 @@ main()
             cmocka_unit_test_setup_teardown(cl_rpc_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(candidate_ds_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_switch_ds, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_candidate_refresh, sysrepo_setup, sysrepo_teardown),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);

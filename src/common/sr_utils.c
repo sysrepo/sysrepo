@@ -558,6 +558,8 @@ sr_val_to_str(const sr_val_t *value, const struct lys_node *schema_node, char **
             CHECK_NULL_NOMEM_RETURN(*out);
         }
         break;
+    case SR_LIST_T:
+    case SR_CONTAINER_T:
     case SR_CONTAINER_PRESENCE_T:
     case SR_LEAF_EMPTY_T:
         *out = strdup("");
