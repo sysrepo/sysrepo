@@ -99,49 +99,6 @@ void createDataTreeWithAugments(struct ly_ctx *ctx, struct lyd_node **root){
 
 }
 
-void createDataTreeIETFinterfaces(struct ly_ctx *ctx, struct lyd_node **root){
-
-    const struct lys_module *module_interfaces = ly_ctx_get_module(ctx, "ietf-interfaces", NULL);
-    const struct lys_module *module_ip = ly_ctx_get_module(ctx, "ietf-ip", NULL);
-
-    struct lyd_node *node = NULL;
-
-    *root = lyd_new(NULL, module_interfaces, "interfaces");
-    node = lyd_new(*root, module_interfaces, "interface");
-    lyd_new_leaf(node, module_interfaces, "name", "eth0");
-    lyd_new_leaf(node, module_interfaces, "description", "Ethernet 0");
-    lyd_new_leaf(node, module_interfaces, "type", "ethernetCsmacd");
-    lyd_new_leaf(node, module_interfaces, "enabled", "true");
-    node = lyd_new(node, module_ip, "ipv4");
-    lyd_new_leaf(node, module_ip, "enabled", "true");
-    lyd_new_leaf(node, module_ip, "mtu", "1500");
-    node = lyd_new(node, module_ip, "address");
-    lyd_new_leaf(node, module_ip, "ip", "192.168.2.100");
-    lyd_new_leaf(node, module_ip, "prefix-length", "24");
-
-    node = lyd_new(*root, module_interfaces, "interface");
-    lyd_new_leaf(node, module_interfaces, "name", "eth1");
-    lyd_new_leaf(node, module_interfaces, "description", "Ethernet 1");
-    lyd_new_leaf(node, module_interfaces, "type", "ethernetCsmacd");
-    lyd_new_leaf(node, module_interfaces, "enabled", "true");
-    node = lyd_new(node, module_ip, "ipv4");
-    lyd_new_leaf(node, module_ip, "enabled", "true");
-    lyd_new_leaf(node, module_ip, "mtu", "1500");
-    node = lyd_new(node, module_ip, "address");
-    lyd_new_leaf(node, module_ip, "ip", "10.10.1.5");
-    lyd_new_leaf(node, module_ip, "prefix-length", "16");
-
-    node = lyd_new(*root, module_interfaces, "interface");
-    lyd_new_leaf(node, module_interfaces, "name", "gigaeth0");
-    lyd_new_leaf(node, module_interfaces, "description", "GigabitEthernet 0");
-    lyd_new_leaf(node, module_interfaces, "type", "ethernetCsmacd");
-    lyd_new_leaf(node, module_interfaces, "enabled", "false");
-
-    assert_int_equal(0, lyd_validate(root, LYD_OPT_STRICT | LYD_OPT_CONFIG));
-    assert_int_equal(SR_ERR_OK, sr_save_data_tree_file(TEST_DATA_SEARCH_DIR"ietf-interfaces"SR_STARTUP_FILE_EXT, *root));
-
-}
-
 /**
  * Function expects the values under xpath
  * "/ietf-interfaces:interfaces/interface[name='eth0']"
@@ -209,14 +166,11 @@ void ietf_interfaces_test(void **state){
     rp_ctx_t *rp_ctx = *state;
     dm_ctx_t *ctx = rp_ctx->dm_ctx;
     dm_session_t *ses_ctx = NULL;
-    struct lyd_node *data_tree = NULL;
-    dm_session_start(ctx, NULL, SR_DS_STARTUP, &ses_ctx);
-    rc = dm_get_datatree(ctx, ses_ctx, "example-module", &data_tree);
-    assert_int_equal(SR_ERR_OK, rc);
-
     struct lyd_node *root = NULL;
-    createDataTreeIETFinterfaces(data_tree->schema->module->ctx, &root);
-    assert_non_null(root);
+    createDataTreeIETFinterfacesModule();
+    dm_session_start(ctx, NULL, SR_DS_STARTUP, &ses_ctx);
+    rc = dm_get_datatree(ctx, ses_ctx, "ietf-interfaces", &root);
+    assert_int_equal(SR_ERR_OK, rc);
 
     sr_val_t *values = NULL;
     size_t count = 0;
@@ -261,7 +215,6 @@ void ietf_interfaces_test(void **state){
     }
     sr_free_values(values, count);
 
-    lyd_free_withsiblings(root);
     dm_session_stop(ctx, ses_ctx);
 }
 
