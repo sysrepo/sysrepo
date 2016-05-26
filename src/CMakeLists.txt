@@ -65,31 +65,38 @@ else(USE_AVL_LIB)
 endif(USE_AVL_LIB)
 
 # sysrepo library
-add_library(sysrepo ${SYSREPO_SOURCES})
-add_library(sysrepo_so SHARED ${SYSREPO_SOURCES})
-SET_TARGET_PROPERTIES(sysrepo_so PROPERTIES
+add_library(sysrepo SHARED ${SYSREPO_SOURCES})
+add_library(sysrepo_a ${SYSREPO_SOURCES})
+SET_TARGET_PROPERTIES(sysrepo_a PROPERTIES
               OUTPUT_NAME sysrepo CLEAN_DIRECT_OUTPUT 1)
 target_link_libraries(sysrepo ${LINK_LIBRARIES} sysrepo-engine)
-target_link_libraries(sysrepo_so ${LINK_LIBRARIES} sysrepo-engine_so)
+target_link_libraries(sysrepo_a ${LINK_LIBRARIES} sysrepo-engine_a)
 
 # sysrepo-engine library
-add_library(sysrepo-engine ${SYSREPO_ENGINE_SOURCES})
-add_library(sysrepo-engine_so SHARED ${SYSREPO_ENGINE_SOURCES})
-SET_TARGET_PROPERTIES(sysrepo-engine_so PROPERTIES
+add_library(sysrepo-engine SHARED ${SYSREPO_ENGINE_SOURCES})
+add_library(sysrepo-engine_a ${SYSREPO_ENGINE_SOURCES})
+SET_TARGET_PROPERTIES(sysrepo-engine_a PROPERTIES
               OUTPUT_NAME sysrepo-engine CLEAN_DIRECT_OUTPUT 1)
+target_link_libraries(sysrepo-engine_a ${LINK_LIBRARIES})
 target_link_libraries(sysrepo-engine ${LINK_LIBRARIES})
-target_link_libraries(sysrepo-engine_so ${LINK_LIBRARIES})
 
 # sysrepo daemon
 add_executable(sysrepod ${EXECUTABLES_DIR}/sysrepod.c)
 target_link_libraries(sysrepod sysrepo-engine)
 
+# sysrepo plugin daemon
+add_executable(sysrepo-plugind ${EXECUTABLES_DIR}/sysrepo-plugind.c)
+target_link_libraries(sysrepo-plugind ${EV_LIBRARIES} sysrepo dl)
+
 # sysrepoctl tool
 add_executable(sysrepoctl ${EXECUTABLES_DIR}/sysrepoctl.c)
 target_link_libraries(sysrepoctl sysrepo ${YANG_LIBRARIES})
 
-install(TARGETS sysrepo_so DESTINATION ${LIB_INSTALL_DIR})
-install(TARGETS sysrepo-engine_so DESTINATION ${LIB_INSTALL_DIR})
+install(TARGETS sysrepo DESTINATION ${LIB_INSTALL_DIR})
+install(TARGETS sysrepo_a DESTINATION ${LIB_INSTALL_DIR})
+install(TARGETS sysrepo-engine DESTINATION ${LIB_INSTALL_DIR})
+install(TARGETS sysrepo-engine_a DESTINATION ${LIB_INSTALL_DIR})
 install(TARGETS sysrepod DESTINATION ${BIN_INSTALL_DIR})
+install(TARGETS sysrepo-plugind DESTINATION ${BIN_INSTALL_DIR})
 install(TARGETS sysrepoctl DESTINATION ${BIN_INSTALL_DIR})
 install(FILES ${HEADERS} DESTINATION ${INCLUDE_INSTALL_DIR})

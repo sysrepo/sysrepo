@@ -228,6 +228,10 @@ module test-module {
       leaf image-name {
         type string;
       }
+      leaf location {
+        type string;
+        default "/";
+      }
     }
     output {
       leaf status {
@@ -235,6 +239,10 @@ module test-module {
       }
       leaf version {
         type string;
+      }
+      leaf location {
+        type string;
+        default "/";
       }
     }
   }

@@ -552,12 +552,12 @@ int dm_copy_all_models(dm_ctx_t *dm_ctx, dm_session_t *session, sr_datastore_t s
  * @param [in] dm_ctx DM context.
  * @param [in] session DM session.
  * @param [in] rpc_xpath XPath of the RPC.
- * @param [in] args Input/output arguments of the RPC.
- * @param [in] arg_cnt Number of input/output arguments provided.
+ * @param [in] args Input/output arguments of the RPC (can be changed inside of the function).
+ * @param [in] arg_cnt Number of input/output arguments provided (can be changed inside of the function).
  * @param [in] input TRUE if input arguments were provided, FALSE if output.
  * @return Error code (SR_ERR_OK on success)
  */
-int dm_validate_rpc(dm_ctx_t *dm_ctx, dm_session_t *session, const char *rpc_xpath, sr_val_t *args, size_t arg_cnt, bool input);
+int dm_validate_rpc(dm_ctx_t *dm_ctx, dm_session_t *session, const char *rpc_xpath, sr_val_t **args, size_t *arg_cnt, bool input);
 
 /**
  * @brief Locks lyctx_lock and call lyd_get_node.
@@ -630,15 +630,6 @@ int dm_copy_modified_session_trees(dm_ctx_t *dm_ctx, dm_session_t *from, dm_sess
  * @return Error code (SR_ERR_OK on success)
  */
 int dm_copy_session_tree(dm_ctx_t *dm_ctx, dm_session_t *from, dm_session_t *to, const char *module_name);
-
-/**
- * @brief Moves session data trees and operations (in current datastore) from one session to another
- * @param [in] dm_ctx
- * @param [in] from
- * @param [in] to
- * @return Error code (SR_ERR_OK on success)
- */
-int dm_move_session_tree_and_ops(dm_ctx_t *dm_ctx, dm_session_t *from, dm_session_t *to);
 
 /**
  * @brief Changes the datastore to which the session is tied to. Subsequent operations

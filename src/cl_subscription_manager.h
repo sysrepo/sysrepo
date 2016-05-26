@@ -43,7 +43,7 @@ typedef struct cl_sm_ctx_s cl_sm_ctx_t;
 /**
  * @brief Sysrepo subscription context.
  */
-typedef struct sr_subscription_ctx_s {
+typedef struct cl_sm_subscription_ctx_s {
     Sr__NotificationEvent event_type;            /**< Type of the notification event subscribed to. */
     const char *delivery_address;                /**< Address where the notification messages should be delivered. */
     uint32_t id;                                 /**< Library-local subscription identifier. */
@@ -57,7 +57,7 @@ typedef struct sr_subscription_ctx_s {
     cl_sm_ctx_t *sm_ctx;                         /**< Associated Subscription Manager context. */
     sr_session_ctx_t *data_session;              /**< Pointer to a data session that can be used from notification callbacks. */
     void *private_ctx;                           /**< Private context pointer, opaque to sysrepo. */
-} sr_subscription_ctx_t;
+} cl_sm_subscription_ctx_t;
 
 /**
  * @brief Initializes a Subscription Manager instance.
@@ -84,14 +84,14 @@ void cl_sm_cleanup(cl_sm_ctx_t *sm_ctx);
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int cl_sm_subscription_init(cl_sm_ctx_t *sm_ctx, sr_subscription_ctx_t **subscription);
+int cl_sm_subscription_init(cl_sm_ctx_t *sm_ctx, cl_sm_subscription_ctx_t **subscription);
 
 /**
  * @brief Cleans up a subscription.
  *
  * @param[in] subscription Subscription context acquired by ::cl_sm_subscription_init call.
  */
-void cl_sm_subscription_cleanup(sr_subscription_ctx_t *subscription);
+void cl_sm_subscription_cleanup(cl_sm_subscription_ctx_t *subscription);
 
 /**@} cl_sm */
 

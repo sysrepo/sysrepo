@@ -39,7 +39,7 @@
  * @param [out] count
  * @return Error code (SR_ERR_OK on success)
  */
-int rp_dt_get_values(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char *xpath, bool check_enable, sr_val_t ***values, size_t *count);
+int rp_dt_get_values(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char *xpath, bool check_enable, sr_val_t **values, size_t *count);
 
 /**
  * @brief Returns the value for the specified xpath. If more than one node matching xpath,
@@ -72,7 +72,7 @@ int rp_dt_get_value_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const ch
  * @param [out] count
  * @return Error code (SR_ERR_OK on success), SR_ERR_NOT_FOUND, SR_ERR_UNKNOWN_MODEL, SR_ERR_BAD_ELEMENT
  */
-int rp_dt_get_values_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char *xpath, sr_val_t ***values, size_t *count);
+int rp_dt_get_values_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char *xpath, sr_val_t **values, size_t *count);
 
 /**
  * @brief Returns the values for the specified xpath. Internally calls ::rp_dt_find_nodes_with_opts
@@ -88,7 +88,16 @@ int rp_dt_get_values_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const c
  * @return Error code (SR_ERR_OK on success)
  */
 int rp_dt_get_values_wrapper_with_opts(rp_ctx_t *rp_ctx, rp_session_t *rp_session, rp_dt_get_items_ctx_t *get_items_ctx, const char *xpath,
-                                       size_t offset, size_t limit, sr_val_t ***values, size_t *count);
+                                       size_t offset, size_t limit, sr_val_t **values, size_t *count);
+
+/**
+ * @brief Fills the values from the array of nodes. The length of the
+ * values array is equal to the count of the nodes in nodes set
+ * @param [in] nodes
+ * @param [out] values
+ * @return Error code (SR_ERR_OK on success)
+ */
+int rp_dt_get_values_from_nodes(struct ly_set *nodes, sr_val_t **values, size_t *value_cnt);
 
 #endif /* RP_DT_GET_H */
 

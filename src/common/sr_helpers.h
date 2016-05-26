@@ -266,6 +266,42 @@
         } \
     } while(0)
 
+/**
+ * Non-minus value checkers.
+ */
+#define CHECK_NOT_MINUS1_MSG_RETURN(RET, ERROR, MSG) \
+    do { \
+        if (-1 == RET) { \
+            SR_LOG_ERR_MSG(MSG); \
+            return ERROR; \
+        } \
+    } while(0)
+
+#define CHECK_NOT_MINUS1_LOG_RETURN(RET, ERROR, MSG, ...) \
+    do { \
+        if (-1 == RET) { \
+            SR_LOG_ERR(MSG, __VA_ARGS__); \
+            return ERROR; \
+        } \
+    } while(0)
+
+#define CHECK_NOT_MINUS1_MSG_GOTO(RET, RC, ERROR, LABEL, MSG) \
+    do { \
+        if (-1 == RET) { \
+            SR_LOG_ERR_MSG(MSG); \
+            RC = ERROR; \
+            goto LABEL; \
+        } \
+    } while(0)
+
+#define CHECK_NOT_MINUS1_LOG_GOTO(RET, RC, ERROR, LABEL, MSG, ...) \
+    do { \
+        if (-1 == RET) { \
+            SR_LOG_ERR(MSG, __VA_ARGS__); \
+            RC = ERROR; \
+            goto LABEL; \
+        } \
+    } while(0)
 
 /**
  * NULL value checker - returns given error code.
