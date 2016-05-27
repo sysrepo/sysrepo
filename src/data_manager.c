@@ -250,6 +250,9 @@ dm_model_subscription_free(void *sub)
 {
     dm_model_subscription_t *ms = (dm_model_subscription_t *) sub;
     if (NULL != ms) {
+        for (size_t i = 0; i < ms->subscription_cnt; i++) {
+            np_free_subscription(ms->subscriptions[i]);
+        }
         free(ms->subscriptions);
         free(ms->nodes);
         lyd_free_diff(ms->difflist);
@@ -1961,6 +1964,33 @@ dm_remove_operations_with_error(dm_session_t *session)
     }
 }
 
+#define LYD_TREE_DFS_END(START, NEXT, ELEM)                                   \
+    /* select element for the next run - children first */                    \
+    do {                                                                      \
+        (NEXT) = (ELEM)->child;                                                 \
+        if ((ELEM)->schema->nodetype & (LYS_LEAF | LYS_LEAFLIST | LYS_ANYXML)) { \
+            (NEXT) = NULL;                                                    \
+        }                                                                     \
+        if (!(NEXT)) {                                                        \
+            /* no children */                                                 \
+            if ((ELEM) == (START)) {                                          \
+                /* we are done, (START) has no children */                    \
+                break;                                                        \
+            }                                                                 \
+            /* try siblings */                                                \
+            (NEXT) = (ELEM)->next;                                            \
+        }                                                                     \
+        while (!(NEXT)) {                                                     \
+            /* parent is already processed, go to its sibling */              \
+            (ELEM) = (ELEM)->parent;                                          \
+            /* no siblings, go back through parents */                        \
+            if ((ELEM)->parent == (START)->parent) {                          \
+                /* we are done, no next element to process */                 \
+                break;                                                        \
+            }                                                                 \
+            (NEXT) = (ELEM)->next;                                            \
+        }                                                                     \
+    }while(0)
 /**
  * @brief whether the node match the subscribed one - if it is the same node or children
  * of the subscribed one
@@ -1970,11 +2000,17 @@ dm_remove_operations_with_error(dm_session_t *session)
  * @return Error code (SR_ERR_OK on success)
  */
 static int
-dm_match_subscription(const struct lys_node *sub_node, const struct lys_node *node, bool *res)
+dm_match_subscription(const struct lys_node *sub_node, const struct lyd_node *node, bool *res)
 {
-    CHECK_NULL_ARG3(sub_node, node, res);
+    CHECK_NULL_ARG2(node, res);
 
-    struct lys_node *n = (struct lys_node *) node;
+    if (NULL == sub_node) {
+        *res = true;
+        return SR_ERR_OK;
+    }
+
+    /* check if a node has been changes under subscriptions */
+    struct lys_node *n = (struct lys_node *) node->schema;
     while (NULL != n) {
         if (sub_node == n) {
             *res = true;
@@ -1982,6 +2018,41 @@ dm_match_subscription(const struct lys_node *sub_node, const struct lys_node *no
         }
         n = lys_parent(n);
     }
+
+    /* if a container/list has been created/deleted check if there
+     * a more specific subscription
+     * e.g: subscription to /container/list/leaf
+     *      container has been deleted
+     */
+    if ((LYS_CONTAINER | LYS_LIST) & node->schema->nodetype) {
+        struct lys_node *n = (struct lys_node *) sub_node;
+        bool subsc_under_modif = false;
+        while (NULL != n) {
+            if (node->schema == n) {
+                subsc_under_modif = true;
+                break;
+            }
+            n = lys_parent(n);
+        }
+
+        if (!subsc_under_modif) {
+            goto not_matched;
+        }
+
+        /* check whether a subscribed children has been created/deleted */
+        struct lyd_node *next = NULL, *iter = NULL;
+        LY_TREE_DFS_BEGIN((struct lyd_node *) node, next, iter){
+            if (sub_node == iter->schema){
+                *res = true;
+                return SR_ERR_OK;
+            }
+            LYD_TREE_DFS_END(node, next, iter);
+        }
+
+    }
+
+
+not_matched:
     *res = false;
     return SR_ERR_OK;
 }
@@ -1992,7 +2063,7 @@ dm_match_subscription(const struct lys_node *sub_node, const struct lys_node *no
  * @param [in] index
  * @return  Schema node of the change
  */
-static const struct lys_node *
+static const struct lyd_node *
 dm_get_notification_match_node(struct lyd_difflist *diff, size_t index)
 {
     if (NULL == diff) {
@@ -2001,11 +2072,11 @@ dm_get_notification_match_node(struct lyd_difflist *diff, size_t index)
     switch (diff->type[index]) {
     case LYD_DIFF_MOVEDAFTER2:
     case LYD_DIFF_CREATED:
-        return diff->second[index]->schema;
+        return diff->second[index];
     case LYD_DIFF_MOVEDAFTER1:
     case LYD_DIFF_CHANGED:
     case LYD_DIFF_DELETED:
-        return diff->first[index]->schema;
+        return diff->first[index];
     default:
         /* LYD_DIFF_END */
         return NULL;
@@ -2058,6 +2129,53 @@ dm_get_diff_type_to_string(LYD_DIFFTYPE type)
         return "Unknown";
     }
     return diff_states[type];
+}
+
+static int
+dm_prepare_module_subscriptions(dm_ctx_t *dm_ctx, const struct lys_module *module, dm_model_subscription_t **model_sub)
+{
+    CHECK_NULL_ARG3(dm_ctx, module, model_sub);
+    int rc = SR_ERR_OK;
+    dm_model_subscription_t *ms = NULL;
+
+    ms = calloc(1, sizeof(*ms));
+    CHECK_NULL_NOMEM_RETURN(ms);
+
+    rc = np_get_module_change_subscriptions(dm_ctx->np_ctx,
+            module->name,
+            &ms->subscriptions,
+            &ms->subscription_cnt);
+
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Get module subscription failed for module %s", module->name);
+
+    //TODO order subscriptions by priority
+
+    ms->nodes = calloc(ms->subscription_cnt, sizeof(*ms->nodes));
+    CHECK_NULL_NOMEM_GOTO(ms->nodes, rc, cleanup);
+
+    for (size_t s = 0; s < ms->subscription_cnt; s++) {
+        if (NULL == ms->subscriptions[s]->xpath) {
+            ms->nodes[s] = NULL;
+        } else {
+            rc = rp_dt_validate_node_xpath(dm_ctx, NULL,
+                    ms->subscriptions[s]->xpath,
+                    NULL,
+                    &ms->nodes[s]);
+            if (SR_ERR_OK != rc || NULL == ms->nodes[s]) {
+                SR_LOG_WRN("Node for xpath %s has not been found", ms->subscriptions[s]->xpath);
+            }
+        }
+    }
+
+    ms->module = module;
+
+cleanup:
+    if (SR_ERR_OK != rc) {
+        dm_model_subscription_free(ms);
+    } else {
+        *model_sub = ms;
+    }
+    return rc;
 }
 
 void
@@ -2149,6 +2267,7 @@ dm_commit_prepare_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_con
     dm_data_info_t *info = NULL;
     size_t i = 0;
     int rc = SR_ERR_OK;
+    dm_model_subscription_t *ms = NULL;
     dm_commit_context_t *c_ctx = NULL;
     c_ctx = calloc(1, sizeof(*c_ctx));
     CHECK_NULL_NOMEM_RETURN(c_ctx);
@@ -2166,17 +2285,13 @@ dm_commit_prepare_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_con
     while (NULL != (info = sr_btree_get_at(session->session_modules[session->datastore], i))) {
         if (info->modified) {
             c_ctx->modif_count++;
-            /* TODO load subscriptions for the model
-             * order subscriptions by priority
-             * attach schema node to the subscription
-             */
-            dm_model_subscription_t *ms = NULL;
-            ms = calloc(1, sizeof(*ms));
-            CHECK_NULL_NOMEM_RETURN(ms);
 
-            ms->module = info->module;
+            rc = dm_prepare_module_subscriptions(dm_ctx, info->module, &ms);
+            CHECK_RC_LOG_GOTO(rc, cleanup, "Prepare module subscription failed %s", info->module->name);
+
             rc = sr_btree_insert(c_ctx->subscriptions, ms);
-            CHECK_RC_MSG_RETURN(rc, "Insert into subscription tree failed");
+            CHECK_RC_LOG_GOTO(rc, cleanup, "Insert into subscription tree failed module %s", info->module->name);
+            ms = NULL;
         }
         i++;
     }
@@ -2210,6 +2325,7 @@ dm_commit_prepare_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_con
     return rc;
 
 cleanup:
+    dm_model_subscription_free(ms);
     dm_free_commit_context(c_ctx);
     return rc;
 }
@@ -2520,13 +2636,14 @@ dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t *c
         for (size_t s = 0; s < ms->subscription_cnt; s++) {
             d_cnt = 0;
             while (LYD_DIFF_END != diff->type[d_cnt]) {
-                const struct lys_node *cmp_node = dm_get_notification_match_node(diff, d_cnt);
+                const struct lyd_node *cmp_node = dm_get_notification_match_node(diff, d_cnt);
                 char *path = dm_get_notification_changed_xpath(diff, d_cnt);
                 SR_LOG_DBG("%s: %s", dm_get_diff_type_to_string(diff->type[d_cnt]), path);
                 free(path);
                 rc = dm_match_subscription(ms->nodes[s], cmp_node, &match);
                 if (SR_ERR_OK != rc) {
                     SR_LOG_WRN_MSG("Subscription match failed");
+                    d_cnt++;
                     continue;
                 }
                 if (match) {
@@ -2536,14 +2653,14 @@ dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t *c
             }
 
             if (match) {
-                //TODO something has been changed for this subscription, send notification
+                /* something has been changed for this subscription, send notification */
+                rc = np_subscription_notify(dm_ctx->np_ctx, ms->subscriptions[s]);
+                if (SR_ERR_OK != rc) {
+                   SR_LOG_WRN("Unable to send notifications about the changes for the subscription in module %s xpath %s.",
+                           ms->subscriptions[s]->module_name,
+                           ms->subscriptions[s]->xpath);
+                }
             }
-        }
-
-
-        rc = np_module_change_notify(dm_ctx->np_ctx, info->module->name);
-        if (SR_ERR_OK != rc) {
-            SR_LOG_WRN("Unable to send notifications about the changes made in the '%s' module.", info->module->name);
         }
     }
 

@@ -115,7 +115,7 @@ typedef struct dm_sess_op_s{
 typedef struct dm_model_subscription_s {
     const struct lys_module *module;    /**< module */
     np_subscription_t **subscriptions;  /**< array of struct received from np */
-    const struct lys_node **nodes;      /**< array of schema nodes corresponding to the subscription */
+    struct lys_node **nodes;            /**< array of schema nodes corresponding to the subscription */
     size_t subscription_cnt;            /**< number of subscriptions */
     struct lyd_difflist *difflist;      /**< diff list */
 }dm_model_subscription_t;
