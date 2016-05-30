@@ -34,6 +34,11 @@
 void createDataTreeTestModule();
 
 /**
+ * Creates ietf-interfaces data tree and writes it into a file
+ */
+void createDataTreeIETFinterfacesModule();
+
+/**
  * Creates example-module data tree and writes it into a file.
  */
 void createDataTreeExampleModule();
