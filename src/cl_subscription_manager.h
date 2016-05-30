@@ -44,7 +44,7 @@ typedef struct cl_sm_ctx_s cl_sm_ctx_t;
  * @brief Sysrepo subscription context.
  */
 typedef struct cl_sm_subscription_ctx_s {
-    Sr__NotificationType notif_type;             /**< Type of the notification which subscriber is subscribed to. */
+    Sr__SubscriptionType type;                   /**< Type of the subscription the subscriber is subscribed to. */
     const char *delivery_address;                /**< Address where the notification messages should be delivered. */
     uint32_t id;                                 /**< Library-local subscription identifier. */
     const char *module_name;                     /**< Name of the YANG module witch the subscription is tied to.*/

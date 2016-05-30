@@ -43,6 +43,8 @@
 
 #define PM_XPATH_SUBSCRIPTION                 PM_XPATH_SUBSCRIPTION_LIST "[type='%s'][destination-address='%s'][destination-id='%"PRIu32"']"
 #define PM_XPATH_SUBSCRIPTION_XPATH           PM_XPATH_SUBSCRIPTION      "/xpath"
+#define PM_XPATH_SUBSCRIPTION_EVENT           PM_XPATH_SUBSCRIPTION      "/event"
+#define PM_XPATH_SUBSCRIPTION_PRIORITY        PM_XPATH_SUBSCRIPTION      "/priority"
 #define PM_XPATH_SUBSCRIPTION_ENABLE_RUNNING  PM_XPATH_SUBSCRIPTION      "/enable-running"
 
 #define PM_XPATH_SUBSCRIPTIONS_BY_TYPE        PM_XPATH_SUBSCRIPTION_LIST "[type='%s']"
@@ -327,20 +329,22 @@ pm_subscription_entry_fill(struct lyd_node *node, np_subscription_t *subscriptio
     while (NULL != node) {
         if (NULL != node->schema && NULL != node->schema->name) {
             node_ll = (struct lyd_node_leaf_list*)node;
-            if (NULL != node_ll->value_str && 0 == strcmp(node->schema->name, "xpath")) {
-                subscription->xpath = strdup(node_ll->value_str);
-                CHECK_NULL_NOMEM_GOTO(subscription->xpath, rc, cleanup);
-            }
             if (NULL != node_ll->value_str && 0 == strcmp(node->schema->name, "type")) {
-                subscription->notif_type = sr_notif_type_str_to_gpb(node_ll->value_str);
+                subscription->type = sr_subsciption_type_str_to_gpb(node_ll->value_str);
             }
-            // TODO: notification event
             if (NULL != node_ll->value_str && 0 == strcmp(node->schema->name, "destination-address")) {
                 subscription->dst_address = strdup(node_ll->value_str);
                 CHECK_NULL_NOMEM_GOTO(subscription->dst_address, rc, cleanup);
             }
             if (NULL != node_ll->value_str && 0 == strcmp(node->schema->name, "destination-id")) {
                 subscription->dst_id = atoi(node_ll->value_str);
+            }
+            if (NULL != node_ll->value_str && 0 == strcmp(node->schema->name, "xpath")) {
+                subscription->xpath = strdup(node_ll->value_str);
+                CHECK_NULL_NOMEM_GOTO(subscription->xpath, rc, cleanup);
+            }
+            if (NULL != node_ll->value_str && 0 == strcmp(node->schema->name, "event")) {
+                subscription->notif_event = sr_notification_event_str_to_gpb(node_ll->value_str);
             }
             if (NULL != node_ll->value_str && 0 == strcmp(node->schema->name, "priority")) {
                 subscription->priority = atoi(node_ll->value_str);
@@ -569,7 +573,7 @@ int
 pm_add_subscription(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *module_name,
         const np_subscription_t *subscription, const bool exclusive)
 {
-    char xpath[PATH_MAX] = { 0, };
+    char xpath[PATH_MAX] = { 0, }, buff[15] = { 0, };
     const char *value = NULL;
     struct lyd_node *data_tree = NULL;
     int fd = -1;
@@ -581,28 +585,51 @@ pm_add_subscription(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *m
     if (exclusive) {
         /* first, delete existing subscriptions of given type */
         SR_LOG_DBG("Removing all existing %s subscriptions from '%s' persist data tree.",
-                sr_notif_type_gpb_to_str(subscription->notif_type), module_name);
+                sr_subscription_type_gpb_to_str(subscription->type), module_name);
 
         snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTIONS_BY_TYPE_XPATH, module_name,
-                sr_notif_type_gpb_to_str(subscription->notif_type), subscription->xpath);
+                sr_subscription_type_gpb_to_str(subscription->type), subscription->xpath);
         pm_modify_persist_data_tree(pm_ctx, &data_tree, xpath, NULL, false, NULL);
         /* error check not needed here */
     }
 
+    /* create the subscription */
+    snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTION, module_name,
+            sr_subscription_type_gpb_to_str(subscription->type), subscription->dst_address, subscription->dst_id);
+    rc = pm_modify_persist_data_tree(pm_ctx, &data_tree, xpath, value, true, NULL);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to add new subscription into the data tree.");
+
+    /* set subscription details */
     if (subscription->enable_running) {
         snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTION_ENABLE_RUNNING, module_name,
-                sr_notif_type_gpb_to_str(subscription->notif_type), subscription->dst_address, subscription->dst_id);
-    } else if (NULL != subscription->xpath) {
-        snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTION_XPATH, module_name,
-                sr_notif_type_gpb_to_str(subscription->notif_type), subscription->dst_address, subscription->dst_id);
-        value = subscription->xpath;
-    } else {
-        snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTION, module_name,
-                sr_notif_type_gpb_to_str(subscription->notif_type), subscription->dst_address, subscription->dst_id);
+                sr_subscription_type_gpb_to_str(subscription->type), subscription->dst_address, subscription->dst_id);
+        rc = pm_modify_persist_data_tree(pm_ctx, &data_tree, xpath, value, true, NULL);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to add new leaf into the data tree.");
     }
-
-    rc = pm_modify_persist_data_tree(pm_ctx, &data_tree, xpath, value, true, NULL);
-    CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to add new subscription to data tree.");
+    if (NULL != subscription->xpath) {
+        snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTION_XPATH, module_name,
+                sr_subscription_type_gpb_to_str(subscription->type), subscription->dst_address, subscription->dst_id);
+        value = subscription->xpath;
+        rc = pm_modify_persist_data_tree(pm_ctx, &data_tree, xpath, value, true, NULL);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to add new leaf into the data tree.");
+    }
+    if (SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS == subscription->type ||
+            SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS == subscription->type) {
+        snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTION_EVENT, module_name,
+                sr_subscription_type_gpb_to_str(subscription->type), subscription->dst_address, subscription->dst_id);
+        value = sr_notification_event_gpb_to_str(subscription->notif_event);
+        rc = pm_modify_persist_data_tree(pm_ctx, &data_tree, xpath, value, true, NULL);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to add new leaf into the data tree.");
+    }
+    if (SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS == subscription->type ||
+            SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS == subscription->type) {
+        snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTION_PRIORITY, module_name,
+                sr_subscription_type_gpb_to_str(subscription->type), subscription->dst_address, subscription->dst_id);
+        snprintf(buff, sizeof(buff), "%"PRIu32, subscription->priority);
+        value = buff;
+        rc = pm_modify_persist_data_tree(pm_ctx, &data_tree, xpath, value, true, NULL);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to add new leaf into the data tree.");
+    }
 
     rc = pm_save_data_tree(data_tree, fd);
 
@@ -629,7 +656,7 @@ pm_remove_subscription(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char
     *disable_running = false;
 
     snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTION, module_name,
-            sr_notif_type_gpb_to_str(subscription->notif_type), subscription->dst_address, subscription->dst_id);
+            sr_subscription_type_gpb_to_str(subscription->type), subscription->dst_address, subscription->dst_id);
 
     rc = pm_save_persistent_data(pm_ctx, user_cred, module_name, xpath, NULL, false, &data_tree, &running_affected);
     if (NULL != data_tree) {
@@ -688,7 +715,7 @@ pm_remove_subscriptions_for_destination(pm_ctx_t *pm_ctx, const char *module_nam
 }
 
 int
-pm_get_subscriptions(pm_ctx_t *pm_ctx, const char *module_name, Sr__NotificationType notif_type,
+pm_get_subscriptions(pm_ctx_t *pm_ctx, const char *module_name, Sr__SubscriptionType type,
         np_subscription_t **subscriptions_p, size_t *subscription_cnt_p)
 {
     char xpath[PATH_MAX] = { 0, };
@@ -711,7 +738,7 @@ pm_get_subscriptions(pm_ctx_t *pm_ctx, const char *module_name, Sr__Notification
         goto cleanup;
     }
 
-    snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTIONS_BY_TYPE, module_name, sr_notif_type_gpb_to_str(notif_type));
+    snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTIONS_BY_TYPE, module_name, sr_subscription_type_gpb_to_str(type));
     node_set = lyd_get_node(data_tree, xpath);
 
     if (NULL != node_set && node_set->number > 0) {
