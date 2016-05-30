@@ -1785,7 +1785,10 @@ dm_update_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, struct ly_
     CHECK_NULL_NOMEM_GOTO(up_to_date, rc, cleanup);
 
     while (NULL != (info = sr_btree_get_at(session->session_modules[session->datastore], i++))) {
-        rc = sr_get_data_file_name(dm_ctx->data_search_dir, info->module->name, session->datastore, &file_name);
+        rc = sr_get_data_file_name(dm_ctx->data_search_dir,
+                info->module->name,
+                SR_DS_CANDIDATE == session->datastore ? SR_DS_RUNNING : session->datastore,
+                &file_name);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Get data file name failed");
         ac_set_user_identity(dm_ctx->ac_ctx, session->user_credentials);
         fd = open(file_name, O_RDONLY);

@@ -276,18 +276,23 @@ cl_sm_conn_close(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn)
 static int
 cl_sm_server_init(cl_sm_ctx_t *sm_ctx)
 {
-    int path_len = 0, fd = -1, ret = 0;
+    int path_len = 0, fd = -1, fd_tmp = -1, ret = 0;
     int rc = SR_ERR_OK;
     struct sockaddr_un addr;
     mode_t old_umask = 0;
 
     /* generate socket path */
-    path_len = snprintf(NULL, 0, "%s-%d.sock", CL_SUBSCRIPTIONS_PATH_PREFIX, getpid());
+    path_len = snprintf(NULL, 0, "%s.%d.XXXXXX.sock", CL_SUBSCRIPTIONS_PATH_PREFIX, getpid());
     sm_ctx->socket_path = calloc(path_len + 1, sizeof(*sm_ctx->socket_path));
     CHECK_NULL_NOMEM_RETURN(sm_ctx->socket_path);
 
-    snprintf(sm_ctx->socket_path, path_len + 1, "%s-%d.sock", CL_SUBSCRIPTIONS_PATH_PREFIX, getpid());
+    snprintf(sm_ctx->socket_path, path_len + 1, "%s.%d.XXXXXX.sock", CL_SUBSCRIPTIONS_PATH_PREFIX, getpid());
     unlink(sm_ctx->socket_path);
+    fd_tmp = mkstemps(sm_ctx->socket_path, 5);
+    if (-1 != fd_tmp) {
+        close(fd_tmp);
+        unlink(sm_ctx->socket_path);
+    }
 
     SR_LOG_DBG("Initializing sysrepo subscription server at socket=%s", sm_ctx->socket_path);
 
@@ -608,6 +613,11 @@ cl_sm_notif_process(cl_sm_ctx_t *sm_ctx, Sr__Msg *msg)
         if (SR_ERR_OK != rc) {
             pthread_mutex_unlock(&sm_ctx->subscriptions_lock);
             return SR_ERR_INVAL_ARG;
+        }
+        rc = sr_session_refresh(data_session);
+        if (SR_ERR_OK != rc) {
+            pthread_mutex_unlock(&sm_ctx->subscriptions_lock);
+            return rc;
         }
     }
 
