@@ -169,7 +169,7 @@ srcfg_ly_init(struct ly_ctx **ly_ctx, const char *module_name)
         SR_LOG_ERR("Unable to initialize libyang context: %s", ly_errmsg());
         return SR_ERR_INTERNAL;
     }
-    ly_set_log_clb(srcfg_ly_log_cb, 0);
+    ly_set_log_clb(srcfg_ly_log_cb, 1);
 
     /* iterate over all files in the directory with schemas */
     dp = opendir(srcfg_schema_search_dir);
@@ -225,7 +225,7 @@ srcfg_import_startup_datastore(struct lyd_node *data_tree, const char *module_na
     char data_filename[PATH_MAX] = { 0, };
     bool locked_by_me = false;
 
-    CHECK_NULL_ARG2(data_tree, module_name);
+    CHECK_NULL_ARG(module_name);
 
     /* try to open the data file */
     snprintf(data_filename, PATH_MAX, "%s%s%s", srcfg_data_search_dir, module_name, SR_STARTUP_FILE_EXT);
@@ -239,8 +239,6 @@ srcfg_import_startup_datastore(struct lyd_node *data_tree, const char *module_na
         if (!locked_by_me) {
             SR_LOG_ERR("Unable to lock the data file '%s'.", data_filename);
             goto cleanup;
-        } else {
-            fprintf(stderr, "Locked '%s' RW\n", data_filename);
         }
     }
 
@@ -254,7 +252,6 @@ srcfg_import_startup_datastore(struct lyd_node *data_tree, const char *module_na
 cleanup:
     if (locked_by_me || (locked && SR_ERR_OK == rc /* not needed anymore */)) {
         sr_unlock_fd(fd_out);
-        fprintf(stderr, "Unlocked '%s'\n", data_filename);
     }
     return rc;
 }
@@ -324,7 +321,8 @@ srcfg_convert_lydiff_created(struct lyd_node *node)
     bool process_children = true;
     sr_val_t value = { 0, SR_UNKNOWN_T };
     struct lyd_node_leaf_list *data_leaf = NULL;
-    char *xpath = NULL;
+    struct lys_node_list *slist = NULL;
+    char *xpath = NULL, *delim = NULL;
 
     CHECK_NULL_ARG(node);
 
@@ -336,37 +334,76 @@ srcfg_convert_lydiff_created(struct lyd_node *node)
                 elem = elem->child;
             }
         }
-        /* process node */
+
+        /* get appropriate xpath */
+        free(xpath);
+        xpath = NULL;
         switch (elem->schema->nodetype) {
-            case LYS_LEAF:
-            case LYS_LEAFLIST:
-                data_leaf = (struct lyd_node_leaf_list *)elem;
-                value.type = sr_libyang_type_to_sysrepo(data_leaf->value_type);
-                rc = sr_libyang_leaf_copy_value(data_leaf, &value);
-                if (SR_ERR_OK != rc) {
-                    SR_LOG_ERR("Error returned from sr_libyang_leaf_copy_value: %s.", sr_strerror(rc));
-                    goto cleanup;
-                }
+            case LYS_LEAF: /* e.g.: /test-module:user[name='nameE']/name */
                 xpath = lyd_path(elem);
                 if (NULL == xpath) {
                     SR_LOG_ERR("Error returned from lyd_path: %s.", ly_errmsg());
                     goto cleanup;
                 }
-                rc = sr_set_item(srcfg_session, xpath, &value, SR_EDIT_NON_RECURSIVE);
-                if (SR_ERR_OK != rc) {
-                    SR_LOG_ERR("Error returned from sr_set_item: %s.", sr_strerror(rc));
+                /* key value of a list cannot be set directly */
+                if (elem->parent && (elem->parent->schema->nodetype == LYS_LIST)) {
+                    slist = (struct lys_node_list *)elem->parent->schema;
+                    for (unsigned i = 0; i < slist->keys_size; ++i) {
+                        if (slist->keys[i]->name == elem->schema->name) {
+                            /* key */
+                            if (i == 0) {
+                                delim = strrchr(xpath, '/');
+                                if (delim) {
+                                    *delim = '\0';
+                                }
+                                goto set_value;
+                            } else {
+                                /* create list instance (directly) only once - with the first key */
+                                goto next_node;
+                            }
+                        }
+                    }
+                }
+                break;
+
+            case LYS_LEAFLIST: /* e.g.: /test-module:main/numbers[.='10'] */
+                xpath = lyd_path(elem);
+                if (NULL == xpath) {
+                    SR_LOG_ERR("Error returned from lyd_path: %s.", ly_errmsg());
                     goto cleanup;
                 }
-                free(xpath);
-                xpath = NULL;
-                break;
+                /* strip away the predicate */
+                delim = strrchr(xpath, '[');
+                if (delim) {
+                    *delim = '\0';
+                }
+               break;
+
             case LYS_ANYXML:
                 SR_LOG_ERR_MSG("The anyxml statement is not yet supported by Sysrepo.");
                 goto cleanup;
+
             default:
                 /* no data to set */
-                break;
+                goto next_node;
         }
+
+set_value:
+        /* set value */
+        data_leaf = (struct lyd_node_leaf_list *)elem;
+        value.type = sr_libyang_type_to_sysrepo(data_leaf->value_type);
+        rc = sr_libyang_leaf_copy_value(data_leaf, &value);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR("Error returned from sr_libyang_leaf_copy_value: %s.", sr_strerror(rc));
+            goto cleanup;
+        }
+        rc = sr_set_item(srcfg_session, xpath, &value, SR_EDIT_DEFAULT);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR("Error returned from sr_set_item: %s.", sr_strerror(rc));
+            goto cleanup;
+        }
+
+next_node:
         /* backtracking + automatically moving to the next sibling if there is any */
         if (elem != node) {
             if (elem->next) {
@@ -377,8 +414,12 @@ srcfg_convert_lydiff_created(struct lyd_node *node)
                 elem = elem->parent;
                 process_children = false;
             }
+        } else {
+            break;
         }
-    } while (elem != node);
+    } while (true);
+
+    rc = SR_ERR_OK;
 
 cleanup:
     if (NULL != xpath) {
@@ -433,8 +474,6 @@ srcfg_import_running_datastore(struct ly_ctx *ly_ctx, struct lyd_node *new_data_
         if (!locked_by_me) {
             SR_LOG_ERR("Unable to lock the data file '%s'.", data_filename);
             goto cleanup;
-        } else {
-            fprintf(stderr, "Locked '%s' RW\n", data_filename);
         }
     }
 
@@ -448,12 +487,6 @@ srcfg_import_running_datastore(struct ly_ctx *ly_ctx, struct lyd_node *new_data_
     /* remove default nodes */
     lyd_wd_cleanup(&new_data_tree, 0);
     lyd_wd_cleanup(&current_data_tree, 0);
-
-    printf("\nCurrent config:\n");
-    lyd_print_fd(STDOUT_FILENO, current_data_tree, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT);
-    printf("\n\nNew config:\n");
-    lyd_print_fd(STDOUT_FILENO, new_data_tree, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT);
-    printf("\n\n");
 
     /* get the list of changes made by the user */
     diff = lyd_diff(current_data_tree, new_data_tree, 0);
@@ -535,11 +568,12 @@ cleanup:
         free(second_xpath);
     }
     if (NULL != diff) {
+#if 0   /* TODO: this crashes in some cases */
         lyd_free_diff(diff);
+#endif
     }
     if (locked_by_me || (locked && SR_ERR_OK == rc /* not needed anymore */)) {
         sr_unlock_fd(fd_out);
-        fprintf(stderr, "Unlocked '%s'\n", data_filename);
     }
     if (-1 != fd_out) {
         close(fd_out);
@@ -687,8 +721,6 @@ srcfg_export_datastore(struct ly_ctx *ly_ctx, int fd_out, const char *module_nam
     if (!locked) {
         SR_LOG_ERR("Unable to lock the data file '%s'.", data_filename);
         goto cleanup;
-    } else {
-        fprintf(stderr, "Locked '%s' %s\n", data_filename, keep ? "RW" : "R");
     }
 
     /* parse data file */
@@ -708,7 +740,6 @@ srcfg_export_datastore(struct ly_ctx *ly_ctx, int fd_out, const char *module_nam
 cleanup:
     if (locked && (SR_ERR_OK != rc || !keep)) {
         sr_unlock_fd(fd_in);
-        fprintf(stderr, "Unlocked '%s'\n", data_filename);
     }
     if (-1 != fd_in) {
         close(fd_in);
@@ -839,7 +870,6 @@ edit:
     }
     first_attempt = 0;
 
-    fprintf(stderr, "Editing...\n");
     /* Open the temporary file inside the preferred text editor */
     child_pid = fork();
     if (0 <= child_pid) { /* fork succeeded */
@@ -865,7 +895,6 @@ edit:
         SR_LOG_ERR_MSG("Failed to fork a new process for the text editor.");
         goto fail;
     }
-    fprintf(stderr, "Editing finished.\n");
 
 /* import: */
     /* re-open temporary file */
@@ -926,7 +955,6 @@ cleanup:
         }
         if (-1 != fd_datastore) {
             close(fd_datastore);
-            fprintf(stderr, "Unlocked '%s'\n", data_filename);
         }
     }
     if (-1 != fd_tmp) {
@@ -1054,11 +1082,15 @@ main(int argc, char* argv[])
                 break;
             case 'i':
                 operation = SRCFG_OP_IMPORT;
-                filepath = optarg;
+                if (NULL != optarg && 0 != strcmp("-", optarg)) {
+                    filepath = optarg;
+                }
                 break;
             case 'x':
                 operation = SRCFG_OP_EXPORT;
-                filepath = optarg;
+                if (NULL != optarg && 0 != strcmp("-", optarg)) {
+                    filepath = optarg;
+                }
                 break;
             case 'k':
                 keep = true;
