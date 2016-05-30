@@ -241,7 +241,7 @@ rp_dt_find_changes(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t 
     CHECK_NULL_NOMEM_GOTO(*changes, rc, cleanup);
     size_t position = 0; /* index to change set */
 
-    /* selection from matched nodes */
+    /* selection from model changes */
     for (position = change_ctx->position; position < ms->changes->number; position++) {
         bool match = false;
         sr_change_t *change = (sr_change_t *) ms->changes->set.g[position];

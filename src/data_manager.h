@@ -139,7 +139,7 @@ typedef struct dm_commit_context_s {
 
 typedef struct dm_c_ctxs_s {
     sr_btree_t *tree;      /**< Array of commit context used for notifications */
-    pthread_rwlock_t lock; /**< rwlock to access c_ctxx */
+    pthread_rwlock_t lock; /**< rwlock to access c_ctxs */
     int last_commit_id;    // id of the last commit context
                            //TODO: should be removed once notification session contains
 } dm_commit_ctxs_t;

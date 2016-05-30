@@ -78,8 +78,8 @@ typedef struct dm_ctx_s {
     bool ds_lock;                 /**< Flag if the ds lock is hold by a session*/
     pthread_mutex_t ds_lock_mutex;/**< Data store lock mutex */
     struct ly_set *disabled_sch;  /**< Set of schema that has been disabled */
-    sr_btree_t *schema_info_tree; /**< Binary tree holding information about schemas*/
-    dm_commit_ctxs_t commit_ctxs;
+    sr_btree_t *schema_info_tree; /**< Binary tree holding information about schemas */
+    dm_commit_ctxs_t commit_ctxs; /**< Structure holding commit contexts and corresponding lock */
 } dm_ctx_t;
 
 /**
@@ -2058,14 +2058,13 @@ dm_match_subscription(const struct lys_node *sub_node, const struct lyd_node *no
 
     }
 
-
 not_matched:
     *res = false;
     return SR_ERR_OK;
 }
 
 /**
- * @brief Returns the schema node to be tested whether the changes matches the subscription
+ * @brief Returns the node to be tested whether the changes matches the subscription
  * @param [in] diff
  * @param [in] index
  * @return  Schema node of the change

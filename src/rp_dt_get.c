@@ -578,7 +578,9 @@ rp_dt_get_changes(rp_ctx_t *rp_ctx, rp_session_t *rp_session, dm_commit_context_
     //TODO: changes should be generated on the first request
 
     rc = rp_dt_find_changes(rp_ctx->dm_ctx, rp_session->dm_session, c_ctx, &rp_session->change_ctx, xpath, offset, limit, matched_changes);
-    CHECK_RC_LOG_RETURN(rc, "Find changes failed for %s", xpath);
+    if (SR_ERR_NOT_FOUND != rc) {
+        CHECK_RC_LOG_RETURN(rc, "Find changes failed for %s", xpath);
+    }
 
     return rc;
 }
