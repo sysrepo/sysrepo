@@ -62,11 +62,14 @@ typedef struct rp_dt_get_items_ctx {
     struct ly_set *nodes;   /**< nodes to be iterated through */
 } rp_dt_get_items_ctx_t;
 
+/**
+ * @brief Cache structure that holds of the last get_changes_iter call
+ */
 typedef struct rp_dt_change_ctx_s {
-    char *xpath;
-    size_t offset;
-    size_t limit;
-    size_t position;
+    char *xpath;                        /* xpath used for change identification */
+    const struct lys_node *schema_node; /* schema node corresponding to xpath, used for matching */
+    size_t offset;                      /* offset-th matched change to be returned */
+    size_t position;                    /* index to the change set */
 } rp_dt_change_ctx_t;
 
 /**

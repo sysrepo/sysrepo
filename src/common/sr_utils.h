@@ -27,6 +27,13 @@
 
 typedef struct dm_data_info_s dm_data_info_t;  /**< forward declaration */
 
+typedef struct sr_change_s {
+    sr_change_oper_t oper;
+    struct lys_node *sch_node;
+    sr_val_t *new_value;
+    sr_val_t *old_value;
+}sr_change_t;
+
 /**
  * @defgroup utils Utility Functions
  * @ingroup common
@@ -298,6 +305,13 @@ void sr_free_errors(sr_error_info_t *sr_errors, size_t sr_error_cnt);
  * @param [in] schema
  */
 void sr_free_schema(sr_schema_t *schema);
+
+/**
+ * @breif Frees the changes
+ * @param [in] changes
+ * @param [in] count
+ */
+void sr_free_changes(sr_change_t *changes, size_t count);
 
 /**
  * @brief Daemonize the process. The process will fork and PID of the original

@@ -118,6 +118,7 @@ typedef struct dm_model_subscription_s {
     struct lys_node **nodes;            /**< array of schema nodes corresponding to the subscription */
     size_t subscription_cnt;            /**< number of subscriptions */
     struct lyd_difflist *difflist;      /**< diff list */
+    struct ly_set *changes;             /**< set of changes for the model */
 }dm_model_subscription_t;
 
 /**
@@ -634,12 +635,11 @@ int dm_lyd_wd_add(dm_ctx_t *dm_ctx, struct ly_ctx *lyctx, struct lyd_node **root
 /**
  * @brief Locks the lyctx lock, then call ly_ctx_ge_node
  * @param [in] dm_ctx
- * @param [in] lyctx
  * @param [in] start
  * @param [in] nodeid
  * @return Matched schema node
  */
-const struct lys_node *dm_ly_ctx_get_node(dm_ctx_t *dm_ctx, struct ly_ctx *lyctx, const struct lys_node *start, const char *nodeid);
+const struct lys_node *dm_ly_ctx_get_node(dm_ctx_t *dm_ctx, const struct lys_node *start, const char *nodeid);
 
 /**
  * @brief Copies all modified data trees (in current datastore) from one session to another.

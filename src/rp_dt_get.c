@@ -501,31 +501,84 @@ cleanup:
 }
 
 int
-rp_dt_get_changes(rp_ctx_t *rp_ctx, rp_session_t *rp_session, dm_commit_context_t *c_ctx, const char *xpath,
-        size_t offset, size_t limit, rp_dt_change_t **changes, size_t *count)
+rp_dt_difflist_to_changes(struct lyd_difflist *difflist, struct ly_set **changes)
 {
-    CHECK_NULL_ARG4(rp_ctx, rp_session, c_ctx, xpath);
-    CHECK_NULL_ARG2(changes, count);
-
+    CHECK_NULL_ARG2(difflist, changes);
     int rc = SR_ERR_OK;
-    dm_commit_ctxs_t *dm_ctxs = NULL;
-    struct ly_set *matched_changes = NULL;
-    CHECK_NULL_NOMEM_GOTO(matched_changes, rc, cleanup);
+    int ret = 0;
 
-    /* lock commit context */
-    rc = dm_get_commit_ctxs(rp_ctx->dm_ctx, &dm_ctxs);
-    CHECK_RC_MSG_RETURN(rc, "Get commit ctx failed");
-    pthread_rwlock_rdlock(&dm_ctxs->lock);
+    struct ly_set *set = NULL;
+    set = ly_set_new();
+    CHECK_NULL_NOMEM_RETURN(set);
 
-    rc = rp_dt_find_changes(rp_session->dm_session, c_ctx, &rp_session->change_ctx, xpath, offset, limit, &matched_changes);
-    CHECK_RC_LOG_GOTO(rc, cleanup, "Find changes failed for %s", xpath);
+    for(size_t d_cnt = 0; LYD_DIFF_END != difflist->type[d_cnt]; d_cnt++) {
+        sr_change_t *ch = NULL;
+        ch = calloc(1, sizeof(*ch));
+        CHECK_NULL_NOMEM_GOTO(ch, rc, cleanup);
 
-    //fill changes struct
-    *changes = NULL;
-    *count = 0;
-    pthread_rwlock_unlock(&dm_ctxs->lock);
+        switch (difflist->type[d_cnt]) {
+        case LYD_DIFF_CREATED:
+            ch->oper = SR_OP_CREATED;
+            ch->sch_node = difflist->second[d_cnt]->schema;
+            break;
+        case LYD_DIFF_DELETED:
+            ch->oper = SR_OP_DELETED;
+            ch->sch_node = difflist->first[d_cnt]->schema;
+            break;
+        case LYD_DIFF_MOVEDAFTER1:
+        case LYD_DIFF_MOVEDAFTER2:
+            ch->oper = SR_OP_MOVED;
+            break;
+        default:
+            /* case LYD_DIFF_CHANGED */
+            ch->oper = SR_OP_MODIFIED;
+            ch->sch_node = difflist->first[d_cnt]->schema;
+        }
+
+        //TODO for created/deleted container/list generate multiple changes
+
+        if (NULL != difflist->first[d_cnt]) {
+            ch->old_value = calloc(1, sizeof(*ch->old_value));
+            rc = rp_dt_get_value_from_node(difflist->first[d_cnt], ch->old_value);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "Get value from node failed");
+        }
+
+        if (NULL != difflist->second[d_cnt]) {
+            ch->new_value = calloc(1, sizeof(*ch->new_value));
+            rc = rp_dt_get_value_from_node(difflist->second[d_cnt], ch->new_value);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "Get value from node failed");
+        }
+
+        ret = ly_set_add(set, ch);
+        CHECK_NOT_MINUS1_MSG_GOTO(ret, rc, SR_ERR_INTERNAL, cleanup, "Ly set add failed");
+
+    }
 
 cleanup:
-    ly_set_free(matched_changes);
+    if (SR_ERR_OK != rc) {
+        for (int i = 0; i < set->number; i++) {
+            sr_free_changes(set->set.g[i], 1);
+        }
+        ly_set_free(set);
+    } else {
+        *changes = set;
+    }
+    return rc;
+}
+
+int
+rp_dt_get_changes(rp_ctx_t *rp_ctx, rp_session_t *rp_session, dm_commit_context_t *c_ctx, const char *xpath,
+        size_t offset, size_t limit, struct ly_set **matched_changes)
+{
+    CHECK_NULL_ARG4(rp_ctx, rp_session, c_ctx, xpath);
+    CHECK_NULL_ARG(matched_changes);
+
+    int rc = SR_ERR_OK;
+
+    //TODO: changes should be generated on the first request
+
+    rc = rp_dt_find_changes(rp_ctx->dm_ctx, rp_session->dm_session, c_ctx, &rp_session->change_ctx, xpath, offset, limit, matched_changes);
+    CHECK_RC_LOG_RETURN(rc, "Find changes failed for %s", xpath);
+
     return rc;
 }

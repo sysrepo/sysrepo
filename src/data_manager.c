@@ -256,6 +256,12 @@ dm_model_subscription_free(void *sub)
         free(ms->subscriptions);
         free(ms->nodes);
         lyd_free_diff(ms->difflist);
+        if (NULL != ms->changes) {
+            for (int i = 0; i < ms->changes->number; i++) {
+                sr_free_changes(ms->changes->set.g[i], 1);
+            }
+            ly_set_free(ms->changes);
+        }
     }
     free(ms);
 }
@@ -1991,6 +1997,7 @@ dm_remove_operations_with_error(dm_session_t *session)
             (NEXT) = (ELEM)->next;                                            \
         }                                                                     \
     }while(0)
+
 /**
  * @brief whether the node match the subscribed one - if it is the same node or children
  * of the subscribed one
@@ -2624,6 +2631,12 @@ dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t *c
         /* store differences in commit context */
         ms->difflist = diff;
 
+        rc = rp_dt_difflist_to_changes(ms->difflist, &ms->changes);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR_MSG("Difflist to changes failed");
+            continue;
+        }
+
         if (SR_LL_DBG == sr_ll_stderr || SR_LL_DBG == sr_ll_syslog) {
             while (LYD_DIFF_END != diff->type[d_cnt]) {
                 char *path = dm_get_notification_changed_xpath(diff, d_cnt);
@@ -3221,7 +3234,7 @@ dm_lyd_wd_add(dm_ctx_t *dm_ctx, struct ly_ctx *lyctx, struct lyd_node **root, in
 }
 
 const struct lys_node *
-dm_ly_ctx_get_node(dm_ctx_t *dm_ctx, struct ly_ctx *lyctx, const struct lys_node *start, const char *nodeid)
+dm_ly_ctx_get_node(dm_ctx_t *dm_ctx, const struct lys_node *start, const char *nodeid)
 {
     if (NULL == dm_ctx) {
         SR_LOG_ERR_MSG("Null argument passed to dm_ly_ctx_get_node");
@@ -3229,7 +3242,7 @@ dm_ly_ctx_get_node(dm_ctx_t *dm_ctx, struct ly_ctx *lyctx, const struct lys_node
     }
     const struct lys_node *result = NULL;
     pthread_rwlock_rdlock(&dm_ctx->lyctx_lock);
-    result = ly_ctx_get_node(lyctx, start, nodeid);
+    result = ly_ctx_get_node(dm_ctx->ly_ctx, start, nodeid);
     pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
     return result;
 
@@ -3527,12 +3540,10 @@ int
 dm_get_commit_context(dm_ctx_t *dm_ctx, int c_ctx_id, dm_commit_context_t **c_ctx)
 {
     CHECK_NULL_ARG2(dm_ctx, c_ctx);
-    pthread_rwlock_rdlock(&dm_ctx->commit_ctxs.lock);
     dm_commit_context_t lookup = {0};
     //TODO: use argument lookup.id = c_ctx_id;
     lookup.id = dm_ctx->commit_ctxs.last_commit_id;
     *c_ctx = sr_btree_search(dm_ctx->commit_ctxs.tree, &lookup);
-    pthread_rwlock_unlock(&dm_ctx->commit_ctxs.lock);
     return SR_ERR_OK;
 }
 

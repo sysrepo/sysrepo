@@ -170,17 +170,115 @@ rp_dt_find_nodes_with_opts(const dm_ctx_t *dm_ctx, dm_session_t *dm_session, rp_
     }
 }
 
-int
-rp_dt_find_changes(dm_session_t *session, dm_commit_context_t *c_ctx, rp_dt_change_ctx_t *change_ctx, const char *xpath, size_t offset, size_t limit, struct ly_set **changes)
+/**
+ * @brief Test if the change matches the selection
+ */
+static int
+rp_dt_match_change(const struct lys_node *selection_node, const struct lys_node *node, bool *res)
 {
+    CHECK_NULL_ARG2(node, res);
+
+    if (NULL == selection_node) {
+        *res = true;
+        return SR_ERR_OK;
+    }
+
+    /* check if a node has been changes under subscription */
+    struct lys_node *n = (struct lys_node *) node;
+    while (NULL != n) {
+        if (selection_node == n) {
+            *res = true;
+            return SR_ERR_OK;
+        }
+        n = lys_parent(n);
+    }
+    *res = false;
+    return SR_ERR_OK;
+}
+
+int
+rp_dt_find_changes(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t *c_ctx,
+        rp_dt_change_ctx_t *change_ctx, const char *xpath, size_t offset, size_t limit, struct ly_set **changes)
+{
+    CHECK_NULL_ARG(dm_ctx);
+    CHECK_NULL_ARG5(session, c_ctx, change_ctx, xpath, changes);
     int rc = SR_ERR_OK;
+    dm_model_subscription_t *ms = NULL;
+    bool cache_hit = false;
+    char *module_name = NULL;
 
-    //find node/model from xpath
+    if (NULL == change_ctx->xpath || 0 != strcmp(xpath, change_ctx->xpath) || offset != change_ctx->offset) {
+        free(change_ctx->xpath);
+        change_ctx->xpath = strdup(xpath);
+        CHECK_NULL_NOMEM_RETURN(change_ctx->xpath);
+        change_ctx->schema_node = dm_ly_ctx_get_node(dm_ctx, NULL, xpath);
+        change_ctx->offset = 0;
+        change_ctx->position = 0;
+    } else {
+        cache_hit = true;
+    }
 
-    //find changes for the model
+    SR_LOG_DBG("Get changes: %s limit:%zu offset:%zu cache %s", xpath, limit, offset, cache_hit ? "hit" : "miss");
 
-    //for c in changes
-        //if c matches add change
+    rc = sr_copy_first_ns(xpath, &module_name);
+    CHECK_RC_MSG_RETURN(rc, "Copy first ns failed");
 
+    dm_model_subscription_t lookup = {0};
+    rc = dm_get_module(dm_ctx, module_name, NULL, &lookup.module);
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Dm get module failed for %s", module_name);
+
+    ms = sr_btree_search(c_ctx->subscriptions, &lookup);
+    if (NULL == ms) {
+        SR_LOG_ERR("Module subscription not found for module %s", lookup.module->name);
+        rc = SR_ERR_INTERNAL;
+        goto cleanup;
+    }
+
+    size_t cnt = 0; /* number of returned changes (in offset limit range) */
+    size_t index = cache_hit ? change_ctx->offset : 0; /* number of matching changes */
+
+    *changes = ly_set_new();
+    CHECK_NULL_NOMEM_GOTO(*changes, rc, cleanup);
+    size_t position = 0; /* index to change set */
+
+    /* selection from matched nodes */
+    for (position = change_ctx->position; position < ms->changes->number; position++) {
+        bool match = false;
+        sr_change_t *change = (sr_change_t *) ms->changes->set.g[position];
+
+        rc = rp_dt_match_change(change_ctx->schema_node, change->sch_node, &match);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Match subscription failed");
+
+        if (!match) {
+            continue;
+        }
+
+        if (cnt >= limit) {
+            break;
+        }
+        /* append change to result if it is in the chosen range */
+        if (index >= offset) {
+            if (-1 == ly_set_add(*changes, ms->changes->set.g[position])) {
+                SR_LOG_ERR_MSG("Adding to the result changes failed");
+                ly_set_free(*changes);
+                *changes = NULL;
+                return SR_ERR_INTERNAL;
+            }
+            cnt++;
+        }
+        index++;
+    }
+
+    /* mark the index where the processing stopped*/
+    change_ctx->offset = index;
+    change_ctx->position = position;
+    if (0 == cnt) {
+        ly_set_free(*changes);
+        *changes = NULL;
+        rc = SR_ERR_NOT_FOUND;
+    }
+
+cleanup:
+    free(module_name);
     return rc;
 }
