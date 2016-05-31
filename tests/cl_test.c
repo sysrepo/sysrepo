@@ -1050,14 +1050,14 @@ cl_notification_test(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 
     /* subscribe to some notifications */
-    rc = sr_module_install_subscribe(session, test_module_install_cb, &callback_called, &subscription);
+    rc = sr_module_install_subscribe(session, test_module_install_cb, &callback_called, SR_SUBSCR_DEFAULT, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = sr_feature_enable_subscribe(session, test_feature_enable_cb, &callback_called, &subscription);
+    rc = sr_feature_enable_subscribe(session, test_feature_enable_cb, &callback_called, SR_SUBSCR_DEFAULT, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = sr_module_change_subscribe(session, "example-module", SR_EV_NOTIFY, true, 0,
-            test_module_change_cb, &callback_called, &subscription);
+    rc = sr_module_change_subscribe(session, "example-module", test_module_change_cb, &callback_called,
+            0, SR_SUBSCR_DEFAULT, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* do some changes */
@@ -1153,8 +1153,8 @@ cl_copy_config_test(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 
     /* enable running DS for example-module */
-    rc = sr_module_change_subscribe(session_startup, "example-module", SR_EV_NOTIFY, true, 0,
-            test_module_change_cb, &callback_called, &subscription);
+    rc = sr_module_change_subscribe(session_startup, "example-module", test_module_change_cb,
+            &callback_called, 0, SR_SUBSCR_DEFAULT, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* edit config in running */
@@ -1251,7 +1251,8 @@ cl_rpc_test(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 
     /* subscribe for RPC */
-    rc = sr_rpc_subscribe(session, "/test-module:activate-software-image", test_rpc_cb, &callback_called, &subscription);
+    rc = sr_rpc_subscribe(session, "/test-module:activate-software-image", test_rpc_cb, &callback_called,
+            SR_SUBSCR_DEFAULT, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
     sr_val_t input = { 0, };
@@ -1337,8 +1338,8 @@ candidate_ds_test(void **state)
     assert_int_equal(SR_ERR_OPERATION_FAILED, rc);
 
     /* enable running DS for example-module */
-    rc = sr_module_change_subscribe(session_startup, "example-module", SR_EV_NOTIFY, true, 0,
-            test_module_change_cb, &callback_called, &subscription);
+    rc = sr_module_change_subscribe(session_startup, "example-module", test_module_change_cb,
+            &callback_called, 0, SR_SUBSCR_DEFAULT, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* commit should pass */

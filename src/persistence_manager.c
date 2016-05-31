@@ -321,7 +321,7 @@ pm_subscription_entry_fill(const char *module_name, np_subscription_t *subscript
     struct lyd_node_leaf_list *node_ll = NULL;
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG4(subscription, node, node->schema, node->schema->module);
+    CHECK_NULL_ARG4(module_name, subscription, node, node->schema);
 
     subscription->module_name = strdup(module_name);
     CHECK_NULL_NOMEM_GOTO(subscription->module_name, rc, cleanup);

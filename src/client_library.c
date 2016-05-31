@@ -1295,7 +1295,7 @@ sr_get_last_errors(sr_session_ctx_t *session, const sr_error_info_t **error_info
 
 int
 sr_module_install_subscribe(sr_session_ctx_t *session, sr_module_install_cb callback, void *private_ctx,
-        sr_subscription_ctx_t **subscription_p)
+        sr_subscr_options_t opts, sr_subscription_ctx_t **subscription_p)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
     sr_subscription_ctx_t *sr_subscription = NULL;
@@ -1339,7 +1339,7 @@ cleanup:
 
 int
 sr_feature_enable_subscribe(sr_session_ctx_t *session, sr_feature_enable_cb callback, void *private_ctx,
-        sr_subscription_ctx_t **subscription_p)
+        sr_subscr_options_t opts, sr_subscription_ctx_t **subscription_p)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
     sr_subscription_ctx_t *sr_subscription = NULL;
@@ -1382,9 +1382,8 @@ cleanup:
 }
 
 int
-sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t event,
-        bool enable_running, int priority, sr_module_change_cb callback, void *private_ctx,
-        sr_subscription_ctx_t **subscription_p)
+sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, sr_module_change_cb callback,
+        void *private_ctx, int priority, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription_p)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
     sr_subscription_ctx_t *sr_subscription = NULL;
@@ -1407,7 +1406,7 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, s
 
     msg_req->request->subscribe_req->type = SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS;
     msg_req->request->subscribe_req->has_enable_running = true;
-    msg_req->request->subscribe_req->enable_running = enable_running;
+    msg_req->request->subscribe_req->enable_running = !(opts & SR_SUBSCR_PASSIVE);
     msg_req->request->subscribe_req->module_name = strdup(module_name);
     CHECK_NULL_NOMEM_GOTO(msg_req->request->subscribe_req->module_name, rc, cleanup);
 
@@ -1435,9 +1434,8 @@ cleanup:
 }
 
 int
-sr_subtree_change_subscribe(sr_session_ctx_t *session, const char *xpath, sr_notif_event_t event,
-        bool enable_running, int priority, sr_subtree_change_cb callback, void *private_ctx,
-        sr_subscription_ctx_t **subscription)
+sr_subtree_change_subscribe(sr_session_ctx_t *session, const char *xpath, sr_subtree_change_cb callback,
+        void *private_ctx, int priority, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription)
 {
     // TODO: implement
     return SR_ERR_UNSUPPORTED;
@@ -1593,7 +1591,7 @@ cleanup:
 
 int
 sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callback,
-        void *private_ctx, sr_subscription_ctx_t **subscription_p)
+        void *private_ctx, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription_p)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
     sr_subscription_ctx_t *sr_subscription = NULL;

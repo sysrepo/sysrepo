@@ -851,9 +851,39 @@ int sr_unlock_module(sr_session_ctx_t *session, const char *module_name);
 ////////////////////////////////////////////////////////////////////////////////
 
 /**
- * @brief Type of the notification event which the notification subscriber is interested in.
+ * @brief Flags used to override default handling of subscriptions.
+ */
+typedef enum sr_subscr_flag_e {
+    SR_SUBSCR_DEFAULT = 0,    /**< Default behavior of the subscription. In case of ::sr_module_change_subscribe and
+                                   ::sr_subtree_change_subscribe calls it (among other things) means that:
+                                   - the subscriber is the "owner" of the subscribed data tree and and the data tree will be
+                                   activated in the running datastore while this subcription is alive (can be changed with SR_SUBSCR_PASSIVE flag)
+                                   - the callback will be called just after the changes have been committed to the datastore
+                                   (can be changed with SR_SUBSCR_VERIFIER flag). */
+    SR_SUBSCR_CTX_REUSE = 1,  /**< This option enables the application to re-use an already existing subscription context
+                                   previously returned from any sr_*_subscribe call instead of requesting the creation of a new one.
+                                   In that case a single ::sr_unsubscribe call unsubscribes from all subscriptions filed within the context. */
+    SR_SUBSCR_PASSIVE = 2,    /**< The subscriber is not the "owner" of the subscribed data tree, just a passive watcher for changes.
+                                   When this option is passed in to ::sr_module_change_subscribe or ::sr_subtree_change_subscribe,
+                                   the subscription will have no effect on the presence of the subtree in the running datastore. */
+    SR_SUBSCR_VERIFIER = 4,   /**< This subscription is supposed to verify the changes that are going to be committed into the
+                                   datastore just before the changes will be committed to the datastore. The subscriber can
+                                   deny the changes in this phase by returning an error from the callback specified in
+                                   to ::sr_module_change_subscribe or ::sr_subtree_change_subscribe calls.
+                                   @note This option is currently not supported and will be ignored.*/
+} sr_subscr_flag_t;
+
+/**
+ * @brief Options overriding default behavior of subscriptions,
+ * it is supposed to be a bitwise OR-ed value of any ::sr_subscr_flag_t flags.
+ */
+typedef uint32_t sr_subscr_options_t;
+
+/**
+ * @brief Type of the notification event that has occurred (passed to notification callbacks).
  *
- * The correct implementation should subscribe to both SR_EV_VERIFY and SR_EV_NOTIFY events.
+ * @note The correct implementation should subscribe to both SR_EV_VERIFY and SR_EV_NOTIFY events (that means,
+ * subscribe to the same module / subtree once by specifying SR_SUBSCR_VERIFIER option and once without it).
  */
 typedef enum sr_notif_event_e {
     SR_EV_VERIFY,  /**< Occurs just before the changes are committed to the datastore,
@@ -933,7 +963,7 @@ typedef void (*sr_module_install_cb)(const char *module_name, const char *revisi
  *
  * @param[in] module_name Name of the module where the feature has been enabled / disabled.
  * @param[in] feature_name Name of the feature that has been enabled / disabled.
- * @param[in] enabled TRU if the feature has been enabled, FALSE if disabled.
+ * @param[in] enabled TRUE if the feature has been enabled, FALSE if disabled.
  * @param[in] private_ctx Private context opaque to sysrepo, as passed to
  * ::sr_feature_enable_subscribe call.
  */
@@ -945,24 +975,19 @@ typedef void (*sr_feature_enable_cb)(const char *module_name, const char *featur
  *
  * @param[in] session Session context acquired with ::sr_session_start call.
  * @param[in] module_name Name of the module of interest for change notifications.
- * @param[in] event Type of the notification event which the notification subscriber is interested in.
- * @param[in] enable_running TRUE if this subscription should enable the contents of the module
- * in the running datastore (if the application subscribing to the event is the "owner" of the data),
- * FALSE otherwise (e.g. if it is just interested in the changes of other application's data).
+ * @param[in] callback Callback to be called when the change in the datastore occurs.
+ * @param[in] private_ctx Private context passed to the callback function, opaque to sysrepo.
  * @param[in] priority Specifies the order in which the callbacks will be called (callbacks with higher
  * priority will be called sooner, callbacks with the priority of 0 will be called at the end).
- * @param[in] callback Callback to be called when the event occurs.
- * @param[in] private_ctx Private context passed to the callback function, opaque to sysrepo.
- * @param[out] subscription Subscription context that can be passed to ::sr_unsubscribe.
- * An existing subscription context can be passed in - in that case the same context will be used
- * for multiple subscriptions and a single ::sr_unsubscribe call will unsubscribe from all of them.
- * Otherwise the memory pointed to by the subscription passed in must be inititialized to NULL.
+ * @param[in] opts Options overriding default behavior of the subscription, it is supposed to be
+ * a bitwise OR-ed value of any ::sr_subscr_flag_t flags.
+ * @param[in,out] subscription Subscription context that is supposed to be released by ::sr_unsubscribe.
+ * @note An existing context may be passed in in case that SR_SUBSCR_CTX_REUSE option is specified.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t event,
-        bool enable_running, int priority, sr_module_change_cb callback, void *private_ctx,
-        sr_subscription_ctx_t **subscription);
+int sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, sr_module_change_cb callback,
+        void *private_ctx, int priority, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription);
 
 /**
  * @brief Subscribes for notifications about the changes made within specified
@@ -971,23 +996,19 @@ int sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_nam
  * @param[in] session Session context acquired with ::sr_session_start call.
  * @param[in] xpath @ref xp_page "XPath" identifier of the subtree of the interest for change notifications.
  * The XPath cannot identify any specific list instance - keys of the lists should be omitted.
- * @param[in] event Type of the notification event which the notification subscriber is interested in.
- * @param[in] enable_running TRUE if this subscription should enable the contents of the subtree
- * in the running datastore (if the application subscribing to the event is the "owner" of the data),
- * FALSE otherwise (e.g. if it is just interested in the changes of other application's data).
- * @param[in] priority Specifies the order in which the callbacks will be called (callbacks with higher
- * priority will be called sooner, callback with the priority of 0 will be called at the end).
- * @param[in] callback Callback to be called when the event occurs.
+ * @param[in] callback Callback to be called when the change in the datastore occurs.
  * @param[in] private_ctx Private context passed to the callback function, opaque to sysrepo.
- * @param[in,out] subscription Subscription context that can be later passed to ::sr_unsubscribe.
- * An existing subscription context can be passed in - in that case the same context will be used
- * for multiple subscriptions and a single ::sr_unsubscribe call will unsubscribe from all of them.
+ * @param[in] priority Specifies the order in which the callbacks will be called (callbacks with higher
+ * priority will be called sooner, callbacks with the priority of 0 will be called at the end).
+ * @param[in] opts Options overriding default behavior of the subscription, it is supposed to be
+ * a bitwise OR-ed value of any ::sr_subscr_flag_t flags.
+ * @param[in,out] subscription Subscription context that is supposed to be released by ::sr_unsubscribe.
+ * @note An existing context may be passed in in case that SR_SUBSCR_CTX_REUSE option is specified.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int sr_subtree_change_subscribe(sr_session_ctx_t *session, const char *xpath, sr_notif_event_t event,
-        bool enable_running, int priority, sr_subtree_change_cb callback, void *private_ctx,
-        sr_subscription_ctx_t **subscription);
+int sr_subtree_change_subscribe(sr_session_ctx_t *session, const char *xpath, sr_subtree_change_cb callback,
+        void *private_ctx, int priority, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription);
 
 /**
  * @brief Subscribes for notifications about installation / uninstallation
@@ -999,15 +1020,15 @@ int sr_subtree_change_subscribe(sr_session_ctx_t *session, const char *xpath, sr
  * @param[in] session Session context acquired with ::sr_session_start call.
  * @param[in] callback Callback to be called when the event occurs.
  * @param[in] private_ctx Private context passed to the callback function, opaque to sysrepo.
- * @param[out] subscription Subscription context that can be passed to ::sr_unsubscribe.
- * An existing subscription context can be passed in - in that case the same context will be used
- * for multiple subscriptions and a single ::sr_unsubscribe call will unsubscribe from all of them.
- * Otherwise the memory pointed to by the subscription passed in must be inititialized to NULL.
+ * @param[in] opts Options overriding default behavior of the subscription, it is supposed to be
+ * a bitwise OR-ed value of any ::sr_subscr_flag_t flags.
+ * @param[in,out] subscription Subscription context that is supposed to be released by ::sr_unsubscribe.
+ * @note An existing context may be passed in in case that SR_SUBSCR_CTX_REUSE option is specified.
  *
  * @return Error code (SR_ERR_OK on success).
  */
 int sr_module_install_subscribe(sr_session_ctx_t *session, sr_module_install_cb callback, void *private_ctx,
-        sr_subscription_ctx_t **subscription);
+        sr_subscr_options_t opts, sr_subscription_ctx_t **subscription);
 
 /**
  * @brief Subscribes for notifications about enabling / disabling of
@@ -1019,15 +1040,15 @@ int sr_module_install_subscribe(sr_session_ctx_t *session, sr_module_install_cb 
  * @param[in] session Session context acquired with ::sr_session_start call.
  * @param[in] callback Callback to be called when the event occurs.
  * @param[in] private_ctx Private context passed to the callback function, opaque to sysrepo.
- * @param[out] subscription Subscription context that can be passed to ::sr_unsubscribe.
- * An existing subscription context can be passed in - in that case the same context will be used
- * for multiple subscriptions and a single ::sr_unsubscribe call will unsubscribe from all of them.
- * Otherwise the memory pointed to by the subscription passed in must be inititialized to NULL.
+ * @param[in] opts Options overriding default behavior of the subscription, it is supposed to be
+ * a bitwise OR-ed value of any ::sr_subscr_flag_t flags.
+ * @param[in,out] subscription Subscription context that is supposed to be released by ::sr_unsubscribe.
+ * @note An existing context may be passed in in case that SR_SUBSCR_CTX_REUSE option is specified.
  *
  * @return Error code (SR_ERR_OK on success).
  */
 int sr_feature_enable_subscribe(sr_session_ctx_t *session, sr_feature_enable_cb callback, void *private_ctx,
-        sr_subscription_ctx_t **subscription);
+        sr_subscr_options_t opts, sr_subscription_ctx_t **subscription);
 
 /**
  * @brief Unsubscribes from a subscription acquired by any of sr_*_subscribe
@@ -1110,15 +1131,15 @@ typedef int (*sr_rpc_cb)(const char *xpath, const sr_val_t *input, const size_t 
  * @param[in] xpath XPath identifying the RPC.
  * @param[in] callback Callback to be called when the RPC is called.
  * @param[in] private_ctx Private context passed to the callback function, opaque to sysrepo.
- * @param[out] subscription Subscription context that can be passed to ::sr_unsubscribe.
- * An existing subscription context can be passed in - in that case the same context will be used
- * for multiple subscriptions and a single ::sr_unsubscribe call will unsubscribe from all of them.
- * Otherwise the memory pointed to by the subscription passed in must be inititialized to NULL.
+ * @param[in] opts Options overriding default behavior of the subscription, it is supposed to be
+ * a bitwise OR-ed value of any ::sr_subscr_flag_t flags.
+ * @param[in,out] subscription Subscription context that is supposed to be released by ::sr_unsubscribe.
+ * @note An existing context may be passed in in case that SR_SUBSCR_CTX_REUSE option is specified.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callback,
-        void *private_ctx, sr_subscription_ctx_t **subscription);
+int sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callback, void *private_ctx,
+        sr_subscr_options_t opts, sr_subscription_ctx_t **subscription);
 
 /**
  * @brief Sends a RPC specified by xpath and waits for the result.
