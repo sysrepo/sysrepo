@@ -2636,6 +2636,7 @@ dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t *c
             continue;
         }
 
+        /* Log changes */
         if (SR_LL_DBG == sr_ll_stderr || SR_LL_DBG == sr_ll_syslog) {
             while (LYD_DIFF_END != diff->type[d_cnt]) {
                 char *path = dm_get_notification_changed_xpath(diff, d_cnt);
@@ -2645,6 +2646,7 @@ dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t *c
             }
         }
 
+        /* loop through subscription test if they should be notified */
         for (size_t s = 0; s < ms->subscription_cnt; s++) {
             d_cnt = 0;
             while (LYD_DIFF_END != diff->type[d_cnt]) {

@@ -27,11 +27,14 @@
 
 typedef struct dm_data_info_s dm_data_info_t;  /**< forward declaration */
 
+/**
+ * @brief Internal structure holding information about changes used for notifications
+ */
 typedef struct sr_change_s {
-    sr_change_oper_t oper;
-    struct lys_node *sch_node;
-    sr_val_t *new_value;
-    sr_val_t *old_value;
+    sr_change_oper_t oper;      /**< Performed operation */
+    struct lys_node *sch_node;  /**< Schema node used for comaparation whether the change matches the request */
+    sr_val_t *new_value;        /**< Created, modified, moved value, NULL in case of SR_OP_DELETED */
+    sr_val_t *old_value;        /**< Prev value, NULL in case of SR_OP_CREATED, predcessor in case of SR_OP_MOVED */
 }sr_change_t;
 
 /**
