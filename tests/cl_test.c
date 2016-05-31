@@ -1531,8 +1531,8 @@ list_changes_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_eve
     while (ch->cnt < MAX_CHANGE) {
         rc = sr_get_change_next(session, it,
                 &ch->oper[ch->cnt],
-                &ch->new_values[ch->cnt],
-                &ch->old_values[ch->cnt]);
+                &ch->old_values[ch->cnt],
+                &ch->new_values[ch->cnt]);
         if (SR_ERR_OK != rc) {
             break;
         }

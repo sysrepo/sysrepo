@@ -74,6 +74,7 @@ if("${TEST_REPOSITORY_LOC}" STREQUAL "${REPOSITORY_LOC}")
     ADD_UNIT_TEST(rp_test 0)
     
     ADD_UNIT_TEST(cl_test 1)
+    ADD_UNIT_TEST(notifications_test 1)
     ADD_UNIT_TEST(concurr_test 1)
     ADD_UNIT_TEST_WITH_OPTS(perf_test 1 0 "")
     ADD_UNIT_TEST_WITH_OPTS(daemon_test 0 0 "")

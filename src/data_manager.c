@@ -2649,9 +2649,6 @@ dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t *c
             d_cnt = 0;
             while (LYD_DIFF_END != diff->type[d_cnt]) {
                 const struct lyd_node *cmp_node = dm_get_notification_match_node(diff, d_cnt);
-                char *path = dm_get_notification_changed_xpath(diff, d_cnt);
-                SR_LOG_DBG("%s: %s", dm_get_diff_type_to_string(diff->type[d_cnt]), path);
-                free(path);
                 rc = dm_match_subscription(ms->nodes[s], cmp_node, &match);
                 if (SR_ERR_OK != rc) {
                     SR_LOG_WRN_MSG("Subscription match failed");
