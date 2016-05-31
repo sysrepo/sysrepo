@@ -452,7 +452,7 @@ sysrepocfg_test_editing(void **state)
     strcpy(args,"ietf-interfaces");
     exec_shell_command(cmd, "The new configuration was successfully applied.", true, 0);
     exec_shell_command("../src/sysrepocfg --export --datastore=startup --format=xml ietf-interfaces > /tmp/ietf-interfaces_edited.xml", "", true, 0);
-    /* order of items is not user defined, do only simple tests */
+    /* order of items is not user defined, do only partial tests */
     test_file_content("/tmp/ietf-interfaces_edited.xml", "^<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">\n", true);
     test_file_content("/tmp/ietf-interfaces_edited.xml", "<interface>.*<name>eth1</name>", true);
     test_file_content("/tmp/ietf-interfaces_edited.xml", "<interface>.*<description>Ethernet 1</description>", true);

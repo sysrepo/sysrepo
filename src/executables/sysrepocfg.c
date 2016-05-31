@@ -532,23 +532,23 @@ srcfg_import_running_datastore(struct ly_ctx *ly_ctx, struct lyd_node *new_data_
         }
         switch (diff->type[i]) {
             case LYD_DIFF_DELETED:
-                SR_LOG_DBG("<DELETED> node: %s", first_xpath);
+                SR_LOG_DBG("<LYD_DIFF_DELETED> node: %s", first_xpath);
                 rc = srcfg_convert_lydiff_deleted(first_xpath);
                 break;
             case LYD_DIFF_CHANGED:
-                SR_LOG_DBG("<CHANGED> orig: %s, new: %s", first_xpath, second_xpath);
+                SR_LOG_DBG("<LYD_DIFF_CHANGED> orig: %s, new: %s", first_xpath, second_xpath);
                 rc = srcfg_convert_lydiff_changed(first_xpath, diff->second[i]);
                 break;
             case LYD_DIFF_MOVEDAFTER1:
-                SR_LOG_DBG("<MOVEDAFTER1> move this: %s, after this: %s", first_xpath, second_xpath);
+                SR_LOG_DBG("<LYD_DIFF_MOVEDAFTER1> moved: %s, after: %s", first_xpath, second_xpath);
                 rc = srcfg_convert_lydiff_movedafter(first_xpath, second_xpath);
                 break;
             case LYD_DIFF_CREATED:
-                SR_LOG_DBG("<CREATED> parent: %s, new_node: %s", first_xpath, second_xpath);
+                SR_LOG_DBG("<LYD_DIFF_CREATED> parent: %s, new node: %s", first_xpath, second_xpath);
                 rc = srcfg_convert_lydiff_created(diff->second[i]);
                 break;
             case LYD_DIFF_MOVEDAFTER2:
-                SR_LOG_DBG("<MOVEDAFTER2> after this: %s, this new node was previously inserted: %s", first_xpath, second_xpath);
+                SR_LOG_DBG("<LYD_DIFF_MOVEDAFTER2> after: %s, this new node was inserted: %s", first_xpath, second_xpath);
                 rc = srcfg_convert_lydiff_movedafter(second_xpath, first_xpath);
                 break;
             default:
