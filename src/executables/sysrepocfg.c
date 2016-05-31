@@ -335,11 +335,21 @@ srcfg_convert_lydiff_created(struct lyd_node *node)
             }
         }
 
-        /* get appropriate xpath */
+        /* get appropriate xpath and value */
         free(xpath);
-        xpath = NULL;
+        xpath = value.xpath = NULL;
+        value.type = SR_UNKNOWN_T;
         switch (elem->schema->nodetype) {
             case LYS_LEAF: /* e.g.: /test-module:user[name='nameE']/name */
+                /* get value */
+                data_leaf = (struct lyd_node_leaf_list *)elem;
+                value.type = sr_libyang_type_to_sysrepo(data_leaf->value_type);
+                rc = sr_libyang_leaf_copy_value(data_leaf, &value);
+                if (SR_ERR_OK != rc) {
+                    SR_LOG_ERR("Error returned from sr_libyang_leaf_copy_value: %s.", sr_strerror(rc));
+                    goto cleanup;
+                }
+                /* get xpath */
                 xpath = lyd_path(elem);
                 if (NULL == xpath) {
                     SR_LOG_ERR("Error returned from lyd_path: %s.", ly_errmsg());
@@ -367,6 +377,15 @@ srcfg_convert_lydiff_created(struct lyd_node *node)
                 break;
 
             case LYS_LEAFLIST: /* e.g.: /test-module:main/numbers[.='10'] */
+                /* get value */
+                data_leaf = (struct lyd_node_leaf_list *)elem;
+                value.type = sr_libyang_type_to_sysrepo(data_leaf->value_type);
+                rc = sr_libyang_leaf_copy_value(data_leaf, &value);
+                if (SR_ERR_OK != rc) {
+                    SR_LOG_ERR("Error returned from sr_libyang_leaf_copy_value: %s.", sr_strerror(rc));
+                    goto cleanup;
+                }
+                /* get xpath */
                 xpath = lyd_path(elem);
                 if (NULL == xpath) {
                     SR_LOG_ERR("Error returned from lyd_path: %s.", ly_errmsg());
@@ -377,11 +396,20 @@ srcfg_convert_lydiff_created(struct lyd_node *node)
                 if (delim) {
                     *delim = '\0';
                 }
-               break;
+                break;
 
             case LYS_ANYXML:
                 SR_LOG_ERR_MSG("The anyxml statement is not yet supported by Sysrepo.");
                 goto cleanup;
+
+            case LYS_CONTAINER:
+                /* explicitly create only presence containers */
+                if (((struct lys_node_container *)elem->schema)->presence) {
+                    xpath = lyd_path(elem);
+                } else {
+                    goto next_node;
+                }
+                break;
 
             default:
                 /* no data to set */
@@ -390,14 +418,7 @@ srcfg_convert_lydiff_created(struct lyd_node *node)
 
 set_value:
         /* set value */
-        data_leaf = (struct lyd_node_leaf_list *)elem;
-        value.type = sr_libyang_type_to_sysrepo(data_leaf->value_type);
-        rc = sr_libyang_leaf_copy_value(data_leaf, &value);
-        if (SR_ERR_OK != rc) {
-            SR_LOG_ERR("Error returned from sr_libyang_leaf_copy_value: %s.", sr_strerror(rc));
-            goto cleanup;
-        }
-        rc = sr_set_item(srcfg_session, xpath, &value, SR_EDIT_DEFAULT);
+        rc = sr_set_item(srcfg_session, xpath, SR_UNKNOWN_T != value.type ? &value : NULL, SR_EDIT_DEFAULT);
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR("Error returned from sr_set_item: %s.", sr_strerror(rc));
             goto cleanup;
@@ -568,9 +589,7 @@ cleanup:
         free(second_xpath);
     }
     if (NULL != diff) {
-#if 0   /* TODO: this crashes in some cases */
         lyd_free_diff(diff);
-#endif
     }
     if (locked_by_me || (locked && SR_ERR_OK == rc /* not needed anymore */)) {
         sr_unlock_fd(fd_out);
