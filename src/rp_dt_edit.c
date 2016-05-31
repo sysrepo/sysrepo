@@ -247,10 +247,14 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, co
     /* remove empty parent container/list nodes */
     for (size_t i = 0; i < parents->number; i++) {
         struct lyd_node *node = parents->set.d[i];
+        struct lys_node *schema = node->schema;
         struct lyd_node *parent = NULL;
 
         while (NULL != node) {
-            if (NULL == node->child && ((LYS_CONTAINER | LYS_LIST) & node->schema->nodetype)) {
+            if (NULL == node->child &&
+                ((LYS_LIST & node->schema->nodetype) ||
+                 ((LYS_CONTAINER & node->schema->nodetype) && NULL == ((struct lys_node_container *)schema)->presence))) {
+                /* list or non-presence container with no children */
                 parent = node->parent;
                 sr_lyd_unlink(info, node);
                 lyd_free(node);

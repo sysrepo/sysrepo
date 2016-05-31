@@ -255,6 +255,15 @@ int sr_lyd_insert_before(dm_data_info_t *data_info, struct lyd_node *sibling, st
 sr_type_t sr_libyang_type_to_sysrepo(LY_DATA_TYPE t);
 
 /**
+ * @brief Copies value from lyd_node_leaf_list to the sr_val_t.
+ * @param [in] leaf input which is copied
+ * @param [in] type
+ * @param [in] value where the content is copied to
+ * @return Error code (SR_ERR_OK on success)
+ */
+int sr_libyang_leaf_copy_value(const struct lyd_node_leaf_list *leaf, sr_val_t *value);
+
+/**
  * @brief Converts sr_val_t to string representation, used in set item
  * @param [in] value
  * @param [in] schema_node
