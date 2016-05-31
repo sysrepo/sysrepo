@@ -79,7 +79,7 @@ list_changes_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_eve
     changes_t *ch = (changes_t *) private_ctx;
     sr_change_iter_t *it = NULL;
     int rc = SR_ERR_OK;
-    
+
     rc = sr_get_changes_iter(session, "/example-module:container" , &it);
     puts("Iteration over changes started");
     if (SR_ERR_OK != rc) {
@@ -109,7 +109,7 @@ list_changes_test_module_cb(sr_session_ctx_t *session, const char *module_name, 
     changes_t *ch = (changes_t *) private_ctx;
     sr_change_iter_t *it = NULL;
     int rc = SR_ERR_OK;
-    
+
     ch->cnt++;
 
     rc = sr_get_changes_iter(session, "/test-module:ordered-numbers" , &it);
@@ -161,7 +161,7 @@ cl_get_changes_create_test(void **state)
     /* check the list presence in candidate */
     rc = sr_get_item(session, xpath, &val);
     assert_int_equal(rc, SR_ERR_NOT_FOUND);
-    
+
 
     /* create the list instance */
     rc = sr_set_item(session, xpath, NULL, SR_EDIT_DEFAULT);
@@ -178,8 +178,8 @@ cl_get_changes_create_test(void **state)
     assert_non_null(changes.new_values[0]);
     assert_null(changes.old_values[0]);
     assert_string_equal(xpath, changes.new_values[0]->xpath);
-    
-    
+
+
     for (size_t i = 0; i < changes.cnt; i++) {
         sr_free_val(changes.new_values[i]);
         sr_free_val(changes.old_values[i]);
@@ -217,11 +217,11 @@ cl_get_changes_modified_test(void **state)
     /* check the list presence in candidate */
     rc = sr_get_item(session, xpath, &val);
     assert_int_equal(rc, SR_ERR_OK);
-    
+
     sr_val_t new_val = {0};
     new_val.type = SR_STRING_T;
     new_val.data.string_val = "abcdef";
-    
+
     /* create the list instance */
     rc = sr_set_item(session, xpath, &new_val, SR_EDIT_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
@@ -238,8 +238,7 @@ cl_get_changes_modified_test(void **state)
     assert_non_null(changes.old_values[0]);
     assert_string_equal(val->data.string_val, changes.old_values[0]->data.string_val);
     assert_string_equal(new_val.data.string_val, changes.new_values[0]->data.string_val);
-    
-    
+
     for (size_t i = 0; i < changes.cnt; i++) {
         sr_free_val(changes.new_values[i]);
         sr_free_val(changes.old_values[i]);
@@ -296,7 +295,7 @@ cl_get_changes_deleted_test(void **state)
     assert_null(changes.new_values[0]);
     assert_non_null(changes.old_values[0]);
     assert_string_equal(xpath, changes.old_values[0]->xpath);
-   
+
     for (size_t i = 0; i < changes.cnt; i++) {
         sr_free_val(changes.new_values[i]);
         sr_free_val(changes.old_values[i]);
@@ -323,25 +322,20 @@ cl_get_changes_moved_test(void **state)
     xpath = "/test-module:ordered-numbers";
 
     /* start session */
-    rc = sr_session_start(conn, SR_DS_CANDIDATE, SR_SESS_DEFAULT, &session);
-    assert_int_equal(rc, SR_ERR_OK);
-    
-    rc = sr_module_change_subscribe(session, "test-module", SR_EV_NOTIFY, true,
-            0, list_changes_test_module_cb, &changes, &subscription);
+    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
-    
     sr_val_t v = {0};
     v.type = SR_UINT8_T;
     v.data.uint8_val = 1;
     /* create user ordered leaf-list instance */
     rc = sr_set_item(session, xpath, &v, SR_EDIT_STRICT);
     assert_int_equal(rc, SR_ERR_OK);
-    
+
     v.data.uint8_val = 2;
     rc = sr_set_item(session, xpath, &v, SR_EDIT_STRICT);
     assert_int_equal(rc, SR_ERR_OK);
-    
+
     v.data.uint8_val = 3;
     rc = sr_set_item(session, xpath, &v, SR_EDIT_STRICT);
     assert_int_equal(rc, SR_ERR_OK);
@@ -349,36 +343,32 @@ cl_get_changes_moved_test(void **state)
     /* save changes to running */
     rc = sr_commit(session);
     assert_int_equal(rc, SR_ERR_OK);
-     
-    usleep(100000);
-    assert_int_equal(changes.cnt, 6);
-    assert_int_equal(changes.oper[0], SR_OP_CREATED);
-    assert_int_equal(changes.oper[1], SR_OP_MOVED);
-    assert_int_equal(changes.oper[2], SR_OP_CREATED);
-    assert_int_equal(changes.oper[3], SR_OP_MOVED);
-    assert_int_equal(changes.oper[4], SR_OP_CREATED);
-    assert_int_equal(changes.oper[5], SR_OP_MOVED);
-   
-    for (size_t i = 0; i < changes.cnt; i++) {
-        sr_free_val(changes.new_values[i]);
-        sr_free_val(changes.old_values[i]);
-    }
-    
+
+    rc = sr_session_switch_ds(session, SR_DS_CANDIDATE);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_module_change_subscribe(session, "test-module", SR_EV_NOTIFY, true,
+            0, list_changes_test_module_cb, &changes, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* move leaf-list */
     rc = sr_move_item(session, "/test-module:ordered-numbers[.='3']", SR_MOVE_AFTER, "/test-module:ordered-numbers[.='1']");
     assert_int_equal(rc, SR_ERR_OK);
-    
+
+    /* save changes to running */
     rc = sr_commit(session);
     assert_int_equal(rc, SR_ERR_OK);
-    
+
     usleep(100000);
     
     assert_int_equal(changes.cnt, 1);
     assert_int_equal(changes.oper[0], SR_OP_MOVED);
-    assert_non_null(changes.old_values[0]);
     assert_non_null(changes.new_values[0]);
+    assert_non_null(changes.old_values[0]);
+    assert_string_equal(xpath, changes.old_values[0]->xpath);
     assert_int_equal(changes.new_values[0]->data.uint8_val, 2);
     assert_int_equal(changes.old_values[0]->data.uint8_val, 3);
-    
+
     for (size_t i = 0; i < changes.cnt; i++) {
         sr_free_val(changes.new_values[i]);
         sr_free_val(changes.old_values[i]);
@@ -389,7 +379,7 @@ cl_get_changes_moved_test(void **state)
 
     rc = sr_session_stop(session);
     assert_int_equal(rc, SR_ERR_OK);
-    
+
 }
 
 int
