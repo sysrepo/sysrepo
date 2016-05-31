@@ -316,14 +316,14 @@ cleanup:
  * @brief Fills subscription details from libyang's list instance to subscription structure.
  */
 static int
-pm_subscription_entry_fill(struct lyd_node *node, np_subscription_t *subscription)
+pm_subscription_entry_fill(const char *module_name, np_subscription_t *subscription, struct lyd_node *node)
 {
     struct lyd_node_leaf_list *node_ll = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG4(subscription, node, node->schema, node->schema->module);
 
-    subscription->module_name = strdup(node->schema->module->name);
+    subscription->module_name = strdup(module_name);
     CHECK_NULL_NOMEM_GOTO(subscription->module_name, rc, cleanup);
 
     while (NULL != node) {
@@ -538,7 +538,7 @@ pm_get_module_info(pm_ctx_t *pm_ctx, const char *module_name,
 
         /* send HELLO notifications to verify that these subscriptions are still alive */
         for (size_t i = 0; i < node_set->number; i++) {
-            rc = pm_subscription_entry_fill(node_set->set.d[i]->child, &subscription);
+            rc = pm_subscription_entry_fill(module_name, &subscription, node_set->set.d[i]->child);
             if (SR_ERR_OK == rc) {
                 rc = np_hello_notify(pm_ctx->rp_ctx->np_ctx, module_name, subscription.dst_address, subscription.dst_id);
             }
@@ -746,7 +746,7 @@ pm_get_subscriptions(pm_ctx_t *pm_ctx, const char *module_name, Sr__Subscription
         CHECK_NULL_NOMEM_GOTO(subscriptions, rc, cleanup);
 
         for (size_t i = 0; i < node_set->number; i++) {
-            rc = pm_subscription_entry_fill(node_set->set.d[i]->child, &subscriptions[subscription_cnt]);
+            rc = pm_subscription_entry_fill(module_name, &subscriptions[subscription_cnt], node_set->set.d[i]->child);
             CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to fill subscription details.");
             subscription_cnt++;
         }
