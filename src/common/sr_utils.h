@@ -28,6 +28,16 @@
 typedef struct dm_data_info_s dm_data_info_t;  /**< forward declaration */
 
 /**
+ * @brief Internal structure holding information about changes used for notifications
+ */
+typedef struct sr_change_s {
+    sr_change_oper_t oper;      /**< Performed operation */
+    struct lys_node *sch_node;  /**< Schema node used for comaparation whether the change matches the request */
+    sr_val_t *new_value;        /**< Created, modified, moved value, NULL in case of SR_OP_DELETED */
+    sr_val_t *old_value;        /**< Prev value, NULL in case of SR_OP_CREATED, predcessor in case of SR_OP_MOVED */
+}sr_change_t;
+
+/**
  * @defgroup utils Utility Functions
  * @ingroup common
  * @{
@@ -307,6 +317,13 @@ void sr_free_errors(sr_error_info_t *sr_errors, size_t sr_error_cnt);
  * @param [in] schema
  */
 void sr_free_schema(sr_schema_t *schema);
+
+/**
+ * @breif Frees the changes
+ * @param [in] changes
+ * @param [in] count
+ */
+void sr_free_changes(sr_change_t *changes, size_t count);
 
 /**
  * @brief Daemonize the process. The process will fork and PID of the original

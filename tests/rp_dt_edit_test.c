@@ -39,6 +39,7 @@
 
 /* Must be updated with data_manager.c*/
 typedef struct dm_session_s {
+    dm_ctx_t *dm_ctx;                   /**< dm_ctx where the session belongs to */
     sr_datastore_t datastore;           /**< datastore to which the session is tied */
     const ac_ucred_t *user_credentials; /**< credentials of the user who this session belongs to */
     sr_btree_t **session_modules;       /**< array of binary trees holding session copies of data models for each datastore */

@@ -1507,6 +1507,93 @@ cl_candidate_refresh(void **state)
 
 }
 
+#define MAX_CHANGE 10
+typedef struct changes_s{
+    size_t cnt;
+    sr_val_t *new_values[MAX_CHANGE];
+    sr_val_t *old_values[MAX_CHANGE];
+    sr_change_oper_t oper[MAX_CHANGE];
+}changes_t;
+
+static int
+list_changes_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t ev, void *private_ctx)
+{
+    changes_t *ch = (changes_t *) private_ctx;
+    sr_change_iter_t *it = NULL;
+    int rc = SR_ERR_OK;
+    rc = sr_get_changes_iter(session, "/example-module:container", &it);
+    puts("Iteration over changes started");
+    if (SR_ERR_OK != rc) {
+        puts("sr get changes iter failed");
+        goto cleanup;
+    }
+    ch->cnt = 0;
+    while (ch->cnt < MAX_CHANGE) {
+        rc = sr_get_change_next(session, it,
+                &ch->oper[ch->cnt],
+                &ch->old_values[ch->cnt],
+                &ch->new_values[ch->cnt]);
+        if (SR_ERR_OK != rc) {
+            break;
+        }
+        ch->cnt++;
+    }
+
+cleanup:
+    sr_free_change_iter(it);
+    return SR_ERR_OK;
+}
+
+static void
+cl_get_changes_iter_test(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+    sr_session_ctx_t *session = NULL;
+    sr_subscription_ctx_t *subscription = NULL;
+    changes_t changes = {0};
+
+    sr_val_t *val = NULL;
+    const char *xpath = NULL;
+    int rc = SR_ERR_OK;
+    xpath = "/example-module:container/list[key1='key1'][key2='key2']/leaf";
+
+    /* start session */
+    rc = sr_session_start(conn, SR_DS_CANDIDATE, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_module_change_subscribe(session, "example-module", SR_EV_NOTIFY, true,
+            0, list_changes_cb, &changes, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* check the list presence in candidate */
+    rc = sr_get_item(session, xpath, &val);
+    assert_int_equal(rc, SR_ERR_OK);
+    sr_free_val(val);
+
+    /* remove the list instance */
+    rc = sr_delete_item(session, xpath, SR_EDIT_DEFAULT);
+
+    /* save changes to running */
+    rc = sr_commit(session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    usleep(100000);
+
+    assert_int_equal(changes.cnt, 1);
+    for (size_t i = 0; i < changes.cnt; i++) {
+        sr_free_val(changes.new_values[i]);
+        sr_free_val(changes.old_values[i]);
+    }
+
+
+    rc = sr_unsubscribe(NULL, subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_session_stop(session);
+    assert_int_equal(rc, SR_ERR_OK);
+}
+
 int
 main()
 {
@@ -1532,6 +1619,7 @@ main()
             cmocka_unit_test_setup_teardown(candidate_ds_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_switch_ds, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_candidate_refresh, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_get_changes_iter_test, sysrepo_setup, sysrepo_teardown),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);

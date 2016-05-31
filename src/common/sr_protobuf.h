@@ -158,6 +158,15 @@ int sr_values_sr_to_gpb(const sr_val_t *sr_values, const size_t sr_value_cnt, Sr
 int sr_values_gpb_to_sr(Sr__Value **gpb_values, size_t gpb_value_cnt, sr_val_t **sr_values, size_t *sr_value_cnt);
 
 /**
+ * @brief Fills the gpb structures from the set of changes
+ * @param [in] sr_changes
+ * @param [out] changes
+ * @param [out] gpb_count
+ * @return Error code (SR_ERR_OK on success)
+ */
+int sr_changes_sr_to_gpb(struct ly_set *sr_changes, Sr__Change ***changes, size_t *gpb_count);
+
+/**
  * @brief Converts sysrepo datastore to GPB datastore.
  *
  * @param [in] sr_ds Sysrepo datastore.
@@ -172,6 +181,22 @@ Sr__DataStore sr_datastore_sr_to_gpb(const sr_datastore_t sr_ds);
  * @return Sysrepo datastore.
  */
 sr_datastore_t sr_datastore_gpb_to_sr(Sr__DataStore gpb_ds);
+
+/**
+ * @brief Converts GPB change operation to sysrepo change
+ *
+ * @param [in] gpb_ch
+ * @return Sysrepo change operation
+ */
+sr_change_oper_t sr_change_op_gpb_to_sr(Sr__ChangeOperation gpb_ch);
+
+/**
+ * @brief Converts sysrepo change to GPB change operation
+ *
+ * @param [in] sr_ch
+ * @return GPB change operation
+ */
+Sr__ChangeOperation sr_change_op_sr_to_gpb(sr_change_oper_t sr_ch);
 
 /**
  * @brief Converts sysrepo move direction to GPB move direction.
