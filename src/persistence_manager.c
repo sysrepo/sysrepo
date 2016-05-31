@@ -766,10 +766,7 @@ cleanup:
     }
 
     if (SR_ERR_OK != rc) {
-        for (size_t i = 0; i < subscription_cnt; i++) {
-            free((void*)subscriptions[i].dst_address);
-        }
-        free(subscriptions);
+        np_free_subscriptions(subscriptions, subscription_cnt);
     }
 
     return rc;

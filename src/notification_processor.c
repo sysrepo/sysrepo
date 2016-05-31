@@ -611,36 +611,58 @@ int
 np_get_module_change_subscriptions(np_ctx_t *np_ctx, const char *module_name, np_subscription_t ***subscriptions_arr_p,
         size_t *subscriptions_cnt_p)
 {
-    np_subscription_t *subscriptions = NULL, **subscriptions_arr = NULL;
-    size_t subscription_cnt = 0, subscriptions_arr_cnt = 0;
+    np_subscription_t *subscriptions = NULL, **subscriptions_arr = NULL, **subscriptions_arr_tmp = NULL;
+    size_t subscription_cnt = 0, subscriptions_arr_cnt = 0, part_cnt = 0;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG4(np_ctx, module_name, subscriptions_arr_p, subscriptions_cnt_p);
 
-    rc = pm_get_subscriptions(np_ctx->rp_ctx->pm_ctx, module_name, SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS,
+    /* subtree-change subscriptions */
+    rc = pm_get_subscriptions(np_ctx->rp_ctx->pm_ctx, module_name, SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS,
             &subscriptions, &subscription_cnt);
 
     subscriptions_arr = calloc(subscription_cnt, sizeof(*subscriptions_arr));
     CHECK_NULL_NOMEM_GOTO(subscriptions_arr, rc, cleanup);
 
     for (size_t i = 0; i < subscription_cnt; i++) {
-        subscriptions_arr[i] = calloc(1, sizeof(**subscriptions_arr));
-        CHECK_NULL_NOMEM_GOTO(subscriptions_arr[i], rc, cleanup);
-        memcpy(subscriptions_arr[i], &subscriptions[i], sizeof(subscriptions[i]));
+        subscriptions_arr[subscriptions_arr_cnt] = calloc(1, sizeof(**subscriptions_arr));
+        CHECK_NULL_NOMEM_GOTO(subscriptions_arr[subscriptions_arr_cnt], rc, cleanup);
+        memcpy(subscriptions_arr[subscriptions_arr_cnt], &subscriptions[i], sizeof(subscriptions[i]));
         subscriptions_arr_cnt++;
     }
-
-    // TODO: subtree_change_notif
-
     free(subscriptions);
+    subscriptions = NULL;
+
+    part_cnt = subscriptions_arr_cnt;
+
+    /* module-change subscriptions */
+    rc = pm_get_subscriptions(np_ctx->rp_ctx->pm_ctx, module_name, SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS,
+            &subscriptions, &subscription_cnt);
+
+    subscriptions_arr_tmp = realloc(subscriptions_arr, (part_cnt + subscription_cnt) * sizeof(*subscriptions_arr));
+    CHECK_NULL_NOMEM_GOTO(subscriptions_arr_tmp, rc, cleanup);
+    subscriptions_arr = subscriptions_arr_tmp;
+
+    for (size_t i = 0; i < subscription_cnt; i++) {
+        subscriptions_arr[subscriptions_arr_cnt] = calloc(1, sizeof(**subscriptions_arr));
+        CHECK_NULL_NOMEM_GOTO(subscriptions_arr[subscriptions_arr_cnt], rc, cleanup);
+        memcpy(subscriptions_arr[subscriptions_arr_cnt], &subscriptions[i], sizeof(subscriptions[i]));
+        subscriptions_arr_cnt++;
+    }
+    free(subscriptions);
+    subscriptions = NULL;
+
     *subscriptions_arr_p = subscriptions_arr;
     *subscriptions_cnt_p = subscriptions_arr_cnt;
 
     return SR_ERR_OK;
 
 cleanup:
-// TODO
-    free(subscriptions);
+    np_free_subscriptions(subscriptions, subscription_cnt);
+    for (size_t i = 0; i < subscriptions_arr_cnt; i++) {
+        free(subscriptions_arr[i]);
+    }
+    free(subscriptions_arr);
     return rc;
 }
 

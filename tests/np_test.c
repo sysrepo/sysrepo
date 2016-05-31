@@ -299,10 +299,12 @@ np_module_subscriptions_test(void **state)
     assert_int_equal(rc, SR_ERR_OK);
     assert_int_not_equal(subscriptions_cnt, 0);
 
+    assert_int_equal(subscriptions_cnt, 2);
+
     for (size_t i = 0; i < subscriptions_cnt; i++) {
         assert_non_null(subscriptions_arr[i]);
-        assert_true(SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS == subscriptions_arr[i]->type ||
-                SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS == subscriptions_arr[i]->type);
+        assert_true((SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS == subscriptions_arr[i]->type) ||
+                (SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS == subscriptions_arr[i]->type));
         assert_true(10 == subscriptions_arr[i]->priority || 20 == subscriptions_arr[i]->priority);
         assert_true(SR__NOTIFICATION_EVENT__VERIFY_EV == subscriptions_arr[i]->notif_event);
         /* notify and cleanup */
