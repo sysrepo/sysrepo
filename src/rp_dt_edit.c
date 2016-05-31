@@ -247,10 +247,14 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, co
     /* remove empty parent container/list nodes */
     for (size_t i = 0; i < parents->number; i++) {
         struct lyd_node *node = parents->set.d[i];
+        struct lys_node *schema = node->schema;
         struct lyd_node *parent = NULL;
 
         while (NULL != node) {
-            if (NULL == node->child && ((LYS_CONTAINER | LYS_LIST) & node->schema->nodetype)) {
+            if (NULL == node->child &&
+                ((LYS_LIST & node->schema->nodetype) ||
+                 ((LYS_CONTAINER & node->schema->nodetype) && NULL == ((struct lys_node_container *)schema)->presence))) {
+                /* list or non-presence container with no children */
                 parent = node->parent;
                 sr_lyd_unlink(info, node);
                 lyd_free(node);
@@ -355,7 +359,7 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const
         if (NULL != sch_node->parent) {
             char *last_slash = rindex(xpath, '/');
             CHECK_NULL_NOMEM_GOTO(last_slash, rc, cleanup);
-            char *parent_node = strndup(xpath, last_slash - xpath - 1);
+            char *parent_node = strndup(xpath, last_slash - xpath);
             CHECK_NULL_NOMEM_GOTO(parent_node, rc, cleanup);
             struct ly_set *res = dm_lyd_get_node(dm_ctx, info->node, parent_node);
             free(parent_node);
@@ -373,6 +377,7 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const
     int flags = (SR_EDIT_STRICT & options) ? 0 : LYD_PATH_OPT_UPDATE;
 
     /* create or update */
+    ly_errno = 0;
     node = dm_lyd_new_path(dm_ctx, info, module->ctx, xpath, new_value, flags);
     if (NULL == node && LY_SUCCESS != ly_errno) {
         SR_LOG_ERR("Setting of item failed %s %d", xpath, ly_vecode);
@@ -566,7 +571,7 @@ rp_dt_delete_item_wrapper(rp_ctx_t *rp_ctx, rp_session_t *session, const char *x
 
     rc = rp_dt_delete_item(rp_ctx->dm_ctx, session->dm_session, xpath, opts);
     if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("List move failed");
+        SR_LOG_ERR_MSG("List delete failed");
         dm_remove_last_operation(session->dm_session);
     }
     return rc;
@@ -666,7 +671,7 @@ rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, sr_error_info_t **errors, 
         return rc;
     } else if (0 == commit_ctx->modif_count) {
         SR_LOG_DBG_MSG("Commit: Finished - no model modified");
-        dm_free_commit_context(rp_ctx->dm_ctx, commit_ctx);
+        dm_free_commit_context(commit_ctx);
         return SR_ERR_OK;
     }
 
@@ -705,7 +710,12 @@ rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, sr_error_info_t **errors, 
     }
 
 cleanup:
-    dm_free_commit_context(rp_ctx->dm_ctx, commit_ctx);
+    /* In case of running datastore, commit context will be freed when
+     * all notifications session are closed.
+     */
+    if (SR_ERR_OK != rc || !dm_is_running_ds_session(commit_ctx->session)) {
+        dm_free_commit_context(commit_ctx);
+    }
 
     if (SR_ERR_OK == rc) {
         /* discard changes in session in next get_data_tree call newly committed content will be loaded */

@@ -524,6 +524,170 @@ sr_libyang_type_to_sysrepo(LY_DATA_TYPE t)
         }
 }
 
+/**
+ * Functions copies the bits into string
+ * @param [in] leaf - data tree node from the bits will be copied
+ * @param [out] dest - space separated set bit field
+ * @return Error code (SR_ERR_OK on success)
+ */
+static int
+sr_libyang_leaf_copy_bits(const struct lyd_node_leaf_list *leaf, char **dest)
+{
+    CHECK_NULL_ARG3(leaf, dest, leaf->schema);
+
+    struct lys_node_leaf *sch = (struct lys_node_leaf *) leaf->schema;
+    char *bits_str = NULL;
+    int bits_count = sch->type.info.bits.count;
+    struct lys_type_bit **bits = leaf->value.bit;
+
+    size_t length = 1; /* terminating NULL byte*/
+    for (int i = 0; i < bits_count; i++) {
+        if (NULL != bits[i] && NULL != bits[i]->name) {
+            length += strlen(bits[i]->name);
+            length++; /*space after bit*/
+        }
+    }
+    bits_str = calloc(length, sizeof(*bits_str));
+    if (NULL == bits_str) {
+        SR_LOG_ERR_MSG("Memory allocation failed");
+        return SR_ERR_NOMEM;
+    }
+    size_t offset = 0;
+    for (int i = 0; i < bits_count; i++) {
+        if (NULL != bits[i] && NULL != bits[i]->name) {
+            strcpy(bits_str + offset, bits[i]->name);
+            offset += strlen(bits[i]->name);
+            bits_str[offset] = ' ';
+            offset++;
+        }
+    }
+    if (0 != offset) {
+        bits_str[offset - 1] = '\0';
+    }
+
+    *dest = bits_str;
+    return SR_ERR_OK;
+}
+
+
+int
+sr_libyang_leaf_copy_value(const struct lyd_node_leaf_list *leaf, sr_val_t *value)
+{
+    CHECK_NULL_ARG2(leaf, value);
+    int rc = SR_ERR_OK;
+    struct lys_node_leaf *leaf_schema = NULL;
+    LY_DATA_TYPE type = leaf->value_type;
+    if (NULL == leaf->schema || NULL == leaf->schema->name) {
+        SR_LOG_ERR_MSG("Missing schema information");
+        return SR_ERR_INTERNAL;
+    }
+
+    switch (type) {
+    case LY_TYPE_BINARY:
+        if (NULL == leaf->value.binary) {
+            SR_LOG_ERR("Binary data in leaf '%s' is NULL", leaf->schema->name);
+            return SR_ERR_INTERNAL;
+        }
+        value->data.binary_val = strdup(leaf->value.binary);
+        if (NULL == value->data.binary_val) {
+            SR_LOG_ERR("Copy value failed for leaf '%s' of type 'binary'", leaf->schema->name);
+            return SR_ERR_INTERNAL;
+        }
+        return SR_ERR_OK;
+    case LY_TYPE_BITS:
+        if (NULL == leaf->value.bit) {
+            SR_LOG_ERR("Missing schema information for node '%s'", leaf->schema->name);
+        }
+        rc = sr_libyang_leaf_copy_bits(leaf, &(value->data.bits_val));
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR("Copy value failed for leaf '%s' of type 'bits'", leaf->schema->name);
+        }
+        return rc;
+    case LY_TYPE_BOOL:
+        value->data.bool_val = leaf->value.bln;
+        return SR_ERR_OK;
+    case LY_TYPE_DEC64:
+        value->data.decimal64_val = (double) leaf->value.dec64;
+        leaf_schema = (struct lys_node_leaf *) leaf->schema;
+        for (size_t i = 0; i < leaf_schema->type.info.dec64.dig; i++) {
+            /* shift decimal point*/
+            value->data.decimal64_val *= 0.1;
+        }
+        return SR_ERR_OK;
+    case LY_TYPE_EMPTY:
+        return SR_ERR_OK;
+    case LY_TYPE_ENUM:
+        if (NULL == leaf->value.enm || NULL == leaf->value.enm->name) {
+            SR_LOG_ERR("Missing schema information for node '%s'", leaf->schema->name);
+            return SR_ERR_INTERNAL;
+        }
+        value->data.enum_val = strdup(leaf->value.enm->name);
+        if (NULL == value->data.enum_val) {
+            SR_LOG_ERR("Copy value failed for leaf '%s' of type 'enum'", leaf->schema->name);
+            return SR_ERR_INTERNAL;
+        }
+        return SR_ERR_OK;
+    case LY_TYPE_IDENT:
+        if (NULL == leaf->value.ident->name) {
+            SR_LOG_ERR("Identity ref in leaf '%s' is NULL", leaf->schema->name);
+            return SR_ERR_INTERNAL;
+        }
+        value->data.identityref_val = strdup(leaf->value.ident->name);
+        if (NULL == value->data.identityref_val) {
+            SR_LOG_ERR("Copy value failed for leaf '%s' of type 'identityref'", leaf->schema->name);
+            return SR_ERR_INTERNAL;
+        }
+        return SR_ERR_OK;
+    case LY_TYPE_INST:
+        /* NOT IMPLEMENTED yet*/
+        if (NULL != leaf->schema && NULL != leaf->schema->name) {
+            SR_LOG_ERR("Copy value failed for leaf '%s'", leaf->schema->name);
+        }
+        return SR_ERR_INTERNAL;
+    case LY_TYPE_STRING:
+        if (NULL != leaf->value.string) {
+            value->data.string_val = strdup(leaf->value.string);
+            if (NULL == value->data.string_val) {
+                SR_LOG_ERR_MSG("String duplication failed");
+                return SR_ERR_NOMEM;
+            }
+        }
+        return SR_ERR_OK;
+    case LY_TYPE_UNION:
+        /* Copy of selected union type should be called instead */
+        SR_LOG_ERR("Can not copy value of union '%s'", leaf->schema->name);
+        return SR_ERR_INTERNAL;
+    case LY_TYPE_INT8:
+        value->data.int8_val = leaf->value.int8;
+        return SR_ERR_OK;
+    case LY_TYPE_UINT8:
+        value->data.uint8_val = leaf->value.uint8;
+        return SR_ERR_OK;
+    case LY_TYPE_INT16:
+        value->data.int16_val = leaf->value.int16;
+        return SR_ERR_OK;
+    case LY_TYPE_UINT16:
+        value->data.uint16_val = leaf->value.uint16;
+        return SR_ERR_OK;
+    case LY_TYPE_INT32:
+        value->data.int32_val = leaf->value.int32;
+        return SR_ERR_OK;
+    case LY_TYPE_UINT32:
+        value->data.uint32_val = leaf->value.uint32;
+        return SR_ERR_OK;
+    case LY_TYPE_INT64:
+        value->data.int64_val = leaf->value.int64;
+        return SR_ERR_OK;
+    case LY_TYPE_UINT64:
+        value->data.uint64_val = leaf->value.uint64;
+        return SR_ERR_OK;
+    default:
+        SR_LOG_ERR("Copy value failed for leaf '%s'", leaf->schema->name);
+        return SR_ERR_INTERNAL;
+    }
+}
+
+
 static int
 sr_dec64_to_str(double val, const struct lys_node *schema_node, char **out)
 {
@@ -578,6 +742,8 @@ sr_val_to_str(const sr_val_t *value, const struct lys_node *schema_node, char **
             CHECK_NULL_NOMEM_RETURN(*out);
         }
         break;
+    case SR_LIST_T:
+    case SR_CONTAINER_T:
     case SR_CONTAINER_PRESENCE_T:
     case SR_LEAF_EMPTY_T:
         *out = strdup("");
@@ -763,6 +929,18 @@ sr_free_schema(sr_schema_t *schema)
             free(schema->enabled_features[f]);
         }
         free(schema->enabled_features);
+    }
+}
+
+void
+sr_free_changes(sr_change_t *changes, size_t count)
+{
+    if (NULL != changes) {
+        for (size_t i = 0; i < count; i++) {
+            sr_free_val(changes[i].old_value);
+            sr_free_val(changes[i].new_value);
+        }
+        free(changes);
     }
 }
 

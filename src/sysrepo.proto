@@ -527,6 +527,36 @@ message SubtreeChangeNotification {
   required string xpath = 2;
 }
 
+enum ChangeOperation {
+   CREATED = 1;
+   MODIFIED = 2;
+   DELETED = 3;
+   MOVED = 4;
+}
+
+message Change {
+    required ChangeOperation changeOperation = 1;
+    optional Value new_value = 2;
+    optional Value old_value = 3;
+}
+
+/**
+ * @brief Retrieves an array of changes made under provided path.
+ * Sent by sr_get_changes_iter or sr_get_change_next API calls.
+ */
+message GetChangesReq {
+  required string xpath = 1;
+  required uint32 limit = 2;
+  required uint32 offset = 3;
+}
+
+/**
+ * @brief Response to get_changes request.
+ */
+message GetChangesResp {
+  repeated Change changes = 1;
+}
+
 
 ////////////////////////////////////////////////////////////////////////////////
 // RPC API - !!! EXPERIMENTAL !!!
@@ -593,6 +623,7 @@ enum Operation {
 
   SUBSCRIBE = 70;
   UNSUBSCRIBE = 71;
+  GET_CHANGES = 72;
 
   RPC = 80;
 
@@ -632,6 +663,7 @@ message Request {
 
   optional SubscribeReq subscribe_req = 70;
   optional UnsubscribeReq unsubscribe_req = 71;
+  optional GetChangesReq get_changes_req = 72;
 
   optional RPCReq rpc_req = 80;
 }
@@ -671,6 +703,7 @@ message Response {
 
   optional SubscribeResp subscribe_resp = 70;
   optional UnsubscribeResp unsubscribe_resp = 71;
+  optional GetChangesResp get_changes_resp = 72;
 
   optional RPCResp rpc_resp = 80;
 }

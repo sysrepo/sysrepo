@@ -28,6 +28,16 @@
 typedef struct dm_data_info_s dm_data_info_t;  /**< forward declaration */
 
 /**
+ * @brief Internal structure holding information about changes used for notifications
+ */
+typedef struct sr_change_s {
+    sr_change_oper_t oper;      /**< Performed operation */
+    struct lys_node *sch_node;  /**< Schema node used for comaparation whether the change matches the request */
+    sr_val_t *new_value;        /**< Created, modified, moved value, NULL in case of SR_OP_DELETED */
+    sr_val_t *old_value;        /**< Prev value, NULL in case of SR_OP_CREATED, predcessor in case of SR_OP_MOVED */
+}sr_change_t;
+
+/**
  * @defgroup utils Utility Functions
  * @ingroup common
  * @{
@@ -248,6 +258,15 @@ int sr_lyd_insert_before(dm_data_info_t *data_info, struct lyd_node *sibling, st
 sr_type_t sr_libyang_type_to_sysrepo(LY_DATA_TYPE t);
 
 /**
+ * @brief Copies value from lyd_node_leaf_list to the sr_val_t.
+ * @param [in] leaf input which is copied
+ * @param [in] type
+ * @param [in] value where the content is copied to
+ * @return Error code (SR_ERR_OK on success)
+ */
+int sr_libyang_leaf_copy_value(const struct lyd_node_leaf_list *leaf, sr_val_t *value);
+
+/**
  * @brief Converts sr_val_t to string representation, used in set item
  * @param [in] value
  * @param [in] schema_node
@@ -298,6 +317,13 @@ void sr_free_errors(sr_error_info_t *sr_errors, size_t sr_error_cnt);
  * @param [in] schema
  */
 void sr_free_schema(sr_schema_t *schema);
+
+/**
+ * @breif Frees the changes
+ * @param [in] changes
+ * @param [in] count
+ */
+void sr_free_changes(sr_change_t *changes, size_t count);
 
 /**
  * @brief Daemonize the process. The process will fork and PID of the original

@@ -196,3 +196,55 @@ createDataTreeLargeExampleModule(int list_count)
     lyd_free_withsiblings(root);
     ly_ctx_destroy(ctx, NULL);
 }
+
+void
+createDataTreeIETFinterfacesModule(){
+
+    struct ly_ctx *ctx = ly_ctx_new(TEST_SCHEMA_SEARCH_DIR);
+    assert_non_null(ctx);
+    
+    struct lyd_node *root = NULL;
+
+    const struct lys_module *module_interfaces = ly_ctx_load_module(ctx, "ietf-interfaces", NULL);
+    const struct lys_module *module_ip = ly_ctx_load_module(ctx, "ietf-ip", NULL);
+    const struct lys_module *module = ly_ctx_load_module(ctx, "iana-if-type", "2014-05-08");
+    assert_non_null(module);
+    struct lyd_node *node = NULL;
+
+    root = lyd_new(NULL, module_interfaces, "interfaces");
+    node = lyd_new(root, module_interfaces, "interface");
+    lyd_new_leaf(node, module_interfaces, "name", "eth0");
+    lyd_new_leaf(node, module_interfaces, "description", "Ethernet 0");
+    lyd_new_leaf(node, module_interfaces, "type", "ethernetCsmacd");
+    lyd_new_leaf(node, module_interfaces, "enabled", "true");
+    node = lyd_new(node, module_ip, "ipv4");
+    lyd_new_leaf(node, module_ip, "enabled", "true");
+    lyd_new_leaf(node, module_ip, "mtu", "1500");
+    node = lyd_new(node, module_ip, "address");
+    lyd_new_leaf(node, module_ip, "ip", "192.168.2.100");
+    lyd_new_leaf(node, module_ip, "prefix-length", "24");
+
+    node = lyd_new(root, module_interfaces, "interface");
+    lyd_new_leaf(node, module_interfaces, "name", "eth1");
+    lyd_new_leaf(node, module_interfaces, "description", "Ethernet 1");
+    lyd_new_leaf(node, module_interfaces, "type", "ethernetCsmacd");
+    lyd_new_leaf(node, module_interfaces, "enabled", "true");
+    node = lyd_new(node, module_ip, "ipv4");
+    lyd_new_leaf(node, module_ip, "enabled", "true");
+    lyd_new_leaf(node, module_ip, "mtu", "1500");
+    node = lyd_new(node, module_ip, "address");
+    lyd_new_leaf(node, module_ip, "ip", "10.10.1.5");
+    lyd_new_leaf(node, module_ip, "prefix-length", "16");
+
+    node = lyd_new(root, module_interfaces, "interface");
+    lyd_new_leaf(node, module_interfaces, "name", "gigaeth0");
+    lyd_new_leaf(node, module_interfaces, "description", "GigabitEthernet 0");
+    lyd_new_leaf(node, module_interfaces, "type", "ethernetCsmacd");
+    lyd_new_leaf(node, module_interfaces, "enabled", "false");
+
+    assert_int_equal(0, lyd_validate(&root, LYD_OPT_STRICT | LYD_OPT_CONFIG));
+    assert_int_equal(SR_ERR_OK, sr_save_data_tree_file(TEST_DATA_SEARCH_DIR"ietf-interfaces"SR_STARTUP_FILE_EXT, root));
+    
+    lyd_free_withsiblings(root);
+    ly_ctx_destroy(ctx, NULL);
+}

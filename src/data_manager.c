@@ -37,7 +37,11 @@
 #include "notification_processor.h"
 #include "persistence_manager.h"
 
+/**
+ * @brief number of supported data stores - length of arrays used in session
+ */
 #define DM_DATASTORE_COUNT 3
+
 /**
  * @brief Helper structure for advisory locking. Holds
  * binary tree with filename -> fd maping. This structure
@@ -74,13 +78,15 @@ typedef struct dm_ctx_s {
     bool ds_lock;                 /**< Flag if the ds lock is hold by a session*/
     pthread_mutex_t ds_lock_mutex;/**< Data store lock mutex */
     struct ly_set *disabled_sch;  /**< Set of schema that has been disabled */
-    sr_btree_t *schema_info_tree; /**< Binary tree holding information about schemas*/
+    sr_btree_t *schema_info_tree; /**< Binary tree holding information about schemas */
+    dm_commit_ctxs_t commit_ctxs; /**< Structure holding commit contexts and corresponding lock */
 } dm_ctx_t;
 
 /**
  * @brief Structure that holds Data Manager's per-session context.
  */
 typedef struct dm_session_s {
+    dm_ctx_t *dm_ctx;                   /**< dm_ctx where the session belongs to */
     sr_datastore_t datastore;           /**< datastore to which the session is tied */
     const ac_ucred_t *user_credentials; /**< credentials of the user who this session belongs to */
     sr_btree_t **session_modules;       /**< array of binary trees holding session copies of data models for each datastore */
@@ -175,6 +181,48 @@ dm_schema_info_cmp(const void *a, const void *b)
     }
 }
 
+/**
+ * @brief Compares two schema data info by module name
+ */
+static int
+dm_module_subscription_cmp(const void *a, const void *b)
+{
+    assert(a);
+    assert(b);
+    dm_model_subscription_t *sub_a = (dm_model_subscription_t *) a;
+    dm_model_subscription_t *sub_b = (dm_model_subscription_t *) b;
+
+    int res = strcmp(sub_a->module->name, sub_b->module->name);
+    if (res == 0) {
+        return 0;
+    } else if (res < 0) {
+        return -1;
+    } else {
+        return 1;
+    }
+}
+
+/**
+ * @brief Compares two commit context by id
+ */
+static int
+dm_c_ctx_id_cmp(const void *a, const void *b)
+{
+    assert(a);
+    assert(b);
+    dm_commit_context_t *cctx_a = (dm_commit_context_t *) a;
+    dm_commit_context_t *cctx_b = (dm_commit_context_t *) b;
+
+
+    if (cctx_a->id == cctx_b->id) {
+        return 0;
+    } else if (cctx_a->id < cctx_b->id) {
+        return -1;
+    } else {
+        return 1;
+    }
+}
+
 static void
 dm_free_schema_info(void *schema_info)
 {
@@ -191,10 +239,61 @@ static void
 dm_data_info_free(void *item)
 {
     dm_data_info_t *info = (dm_data_info_t *) item;
-    if (NULL != info) {
+    if (NULL != info && !info->rdonly_copy) {
         lyd_free_withsiblings(info->node);
     }
     free(info);
+}
+
+static void
+dm_model_subscription_free(void *sub)
+{
+    dm_model_subscription_t *ms = (dm_model_subscription_t *) sub;
+    if (NULL != ms) {
+        for (size_t i = 0; i < ms->subscription_cnt; i++) {
+            np_free_subscription(ms->subscriptions[i]);
+        }
+        free(ms->subscriptions);
+        free(ms->nodes);
+        lyd_free_diff(ms->difflist);
+        if (NULL != ms->changes) {
+            for (int i = 0; i < ms->changes->number; i++) {
+                sr_free_changes(ms->changes->set.g[i], 1);
+            }
+            ly_set_free(ms->changes);
+        }
+    }
+    free(ms);
+}
+
+/**
+ * @brief Creates the copy of dm_data_info structure and inserts it into binary tree
+ * @param [in] tree
+ * @param [in] di
+ * @return Error code (SR_ERR_OK on success)
+ */
+static int
+dm_insert_data_info_copy(sr_btree_t *tree, const dm_data_info_t *di)
+{
+    CHECK_NULL_ARG2(tree, di);
+    int rc = SR_ERR_OK;
+    dm_data_info_t *copy = NULL;
+    copy = calloc (1, sizeof(*copy));
+    CHECK_NULL_NOMEM_RETURN(copy);
+
+    if (NULL != di->node) {
+        copy->node = lyd_dup(di->node, 1);
+        CHECK_NULL_NOMEM_GOTO(copy->node, rc, cleanup);
+    }
+    copy->module = di->module;
+    copy->timestamp = di->timestamp;
+
+    sr_btree_insert(tree, (void *) copy);
+    return rc;
+
+cleanup:
+    dm_data_info_free(copy);
+    return rc;
 }
 
 int
@@ -1038,6 +1137,8 @@ dm_init(ac_ctx_t *ac_ctx, np_ctx_t *np_ctx, pm_ctx_t *pm_ctx,
 
     dm_ctx_t *ctx = NULL;
     int rc = SR_ERR_OK;
+    pthread_rwlockattr_t attr;
+    pthread_rwlockattr_init(&attr);
     ctx = calloc(1, sizeof(*ctx));
     CHECK_NULL_NOMEM_GOTO(ctx, rc, cleanup);
     ctx->ac_ctx = ac_ctx;
@@ -1062,27 +1163,28 @@ dm_init(ac_ctx_t *ac_ctx, np_ctx_t *np_ctx, pm_ctx_t *pm_ctx,
     pthread_mutex_init(&ctx->lock_ctx.mutex, NULL);
     rc = sr_btree_init(dm_compare_lock_item, dm_free_lock_item, &ctx->lock_ctx.lock_files);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Creating of lock files binary tree failed");
-    pthread_rwlockattr_t attr;
-    pthread_rwlockattr_init(&attr);
 #if defined(HAVE_PTHREAD_RWLOCKATTR_SETKIND_NP)
     pthread_rwlockattr_setkind_np(&attr, PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP);
 #endif
 
     rc = pthread_rwlock_init(&ctx->lyctx_lock, &attr);
-    pthread_rwlockattr_destroy(&attr);
-    if (0 != rc) {
-        SR_LOG_ERR_MSG("lyctx mutex initialization failed");
-        dm_cleanup(ctx);
-        return SR_ERR_INTERNAL;
-    }
+    CHECK_ZERO_MSG_GOTO(rc, rc, SR_ERR_INTERNAL, cleanup, "lyctx mutex initialization failed");
 
     rc = sr_btree_init(dm_schema_info_cmp, dm_free_schema_info, &ctx->schema_info_tree);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Schema binary tree allocation failed");
+
+    rc = sr_btree_init(dm_c_ctx_id_cmp, dm_free_commit_context, &ctx->commit_ctxs.tree);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Commit context binary tree initialization failed");
+
+    rc = pthread_rwlock_init(&ctx->commit_ctxs.lock, &attr);
+    CHECK_ZERO_MSG_GOTO(rc, rc, SR_ERR_INTERNAL, cleanup, "c_ctxs_lock init failed");
+
 
     *dm_ctx = ctx;
     rc = dm_load_schemas(ctx);
 
 cleanup:
+    pthread_rwlockattr_destroy(&attr);
     if (SR_ERR_OK != rc) {
         dm_cleanup(ctx);
     }
@@ -1094,6 +1196,8 @@ void
 dm_cleanup(dm_ctx_t *dm_ctx)
 {
     if (NULL != dm_ctx) {
+        sr_btree_cleanup(dm_ctx->commit_ctxs.tree);
+
         free(dm_ctx->schema_search_dir);
         free(dm_ctx->data_search_dir);
         sr_btree_cleanup(dm_ctx->schema_info_tree);
@@ -1107,18 +1211,21 @@ dm_cleanup(dm_ctx_t *dm_ctx)
         pthread_mutex_destroy(&dm_ctx->lock_ctx.mutex);
         pthread_mutex_destroy(&dm_ctx->ds_lock_mutex);
         ly_set_free(dm_ctx->disabled_sch);
+
+        pthread_rwlock_destroy(&dm_ctx->commit_ctxs.lock);
         free(dm_ctx);
     }
 }
 
 int
-dm_session_start(const dm_ctx_t *dm_ctx, const ac_ucred_t *user_credentials, const sr_datastore_t ds, dm_session_t **dm_session_ctx)
+dm_session_start(dm_ctx_t *dm_ctx, const ac_ucred_t *user_credentials, const sr_datastore_t ds, dm_session_t **dm_session_ctx)
 {
     CHECK_NULL_ARG(dm_session_ctx);
 
     dm_session_t *session_ctx = NULL;
     session_ctx = calloc(1, sizeof(*session_ctx));
     CHECK_NULL_NOMEM_RETURN(session_ctx);
+    session_ctx->dm_ctx = dm_ctx;
     session_ctx->user_credentials = user_credentials;
     session_ctx->datastore = ds;
 
@@ -1785,7 +1892,10 @@ dm_update_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, struct ly_
     CHECK_NULL_NOMEM_GOTO(up_to_date, rc, cleanup);
 
     while (NULL != (info = sr_btree_get_at(session->session_modules[session->datastore], i++))) {
-        rc = sr_get_data_file_name(dm_ctx->data_search_dir, info->module->name, session->datastore, &file_name);
+        rc = sr_get_data_file_name(dm_ctx->data_search_dir,
+                info->module->name,
+                SR_DS_CANDIDATE == session->datastore ? SR_DS_RUNNING : session->datastore,
+                &file_name);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Get data file name failed");
         ac_set_user_identity(dm_ctx->ac_ctx, session->user_credentials);
         fd = open(file_name, O_RDONLY);
@@ -1860,10 +1970,282 @@ dm_remove_operations_with_error(dm_session_t *session)
     }
 }
 
-void
-dm_free_commit_context(dm_ctx_t *dm_ctx, dm_commit_context_t *c_ctx)
+#define LYD_TREE_DFS_END(START, NEXT, ELEM)                                   \
+    /* select element for the next run - children first */                    \
+    do {                                                                      \
+        (NEXT) = (ELEM)->child;                                                 \
+        if ((ELEM)->schema->nodetype & (LYS_LEAF | LYS_LEAFLIST | LYS_ANYXML)) { \
+            (NEXT) = NULL;                                                    \
+        }                                                                     \
+        if (!(NEXT)) {                                                        \
+            /* no children */                                                 \
+            if ((ELEM) == (START)) {                                          \
+                /* we are done, (START) has no children */                    \
+                break;                                                        \
+            }                                                                 \
+            /* try siblings */                                                \
+            (NEXT) = (ELEM)->next;                                            \
+        }                                                                     \
+        while (!(NEXT)) {                                                     \
+            /* parent is already processed, go to its sibling */              \
+            (ELEM) = (ELEM)->parent;                                          \
+            /* no siblings, go back through parents */                        \
+            if ((ELEM)->parent == (START)->parent) {                          \
+                /* we are done, no next element to process */                 \
+                break;                                                        \
+            }                                                                 \
+            (NEXT) = (ELEM)->next;                                            \
+        }                                                                     \
+    }while(0)
+
+/**
+ * @brief whether the node match the subscribed one - if it is the same node or children
+ * of the subscribed one
+ * @param [in] sub_node
+ * @param [in] node tested node
+ * @param [out] res
+ * @return Error code (SR_ERR_OK on success)
+ */
+static int
+dm_match_subscription(const struct lys_node *sub_node, const struct lyd_node *node, bool *res)
 {
-    CHECK_NULL_ARG_VOID(c_ctx);
+    CHECK_NULL_ARG2(node, res);
+
+    if (NULL == sub_node) {
+        *res = true;
+        return SR_ERR_OK;
+    }
+
+    /* check if a node has been changes under subscriptions */
+    struct lys_node *n = (struct lys_node *) node->schema;
+    while (NULL != n) {
+        if (sub_node == n) {
+            *res = true;
+            return SR_ERR_OK;
+        }
+        n = lys_parent(n);
+    }
+
+    /* if a container/list has been created/deleted check if there
+     * a more specific subscription
+     * e.g: subscription to /container/list/leaf
+     *      container has been deleted
+     */
+    if ((LYS_CONTAINER | LYS_LIST) & node->schema->nodetype) {
+        struct lys_node *n = (struct lys_node *) sub_node;
+        bool subsc_under_modif = false;
+        while (NULL != n) {
+            if (node->schema == n) {
+                subsc_under_modif = true;
+                break;
+            }
+            n = lys_parent(n);
+        }
+
+        if (!subsc_under_modif) {
+            goto not_matched;
+        }
+
+        /* check whether a subscribed children has been created/deleted */
+        struct lyd_node *next = NULL, *iter = NULL;
+        LY_TREE_DFS_BEGIN((struct lyd_node *) node, next, iter){
+            if (sub_node == iter->schema){
+                *res = true;
+                return SR_ERR_OK;
+            }
+            LYD_TREE_DFS_END(node, next, iter);
+        }
+
+    }
+
+not_matched:
+    *res = false;
+    return SR_ERR_OK;
+}
+
+/**
+ * @brief Returns the node to be tested whether the changes matches the subscription
+ * @param [in] diff
+ * @param [in] index
+ * @return  Schema node of the change
+ */
+static const struct lyd_node *
+dm_get_notification_match_node(struct lyd_difflist *diff, size_t index)
+{
+    if (NULL == diff) {
+        return NULL;
+    }
+    switch (diff->type[index]) {
+    case LYD_DIFF_MOVEDAFTER2:
+    case LYD_DIFF_CREATED:
+        return diff->second[index];
+    case LYD_DIFF_MOVEDAFTER1:
+    case LYD_DIFF_CHANGED:
+    case LYD_DIFF_DELETED:
+        return diff->first[index];
+    default:
+        /* LYD_DIFF_END */
+        return NULL;
+    }
+}
+
+/**
+ * @brief Returns the xpath of the change
+ * @param [in] diff
+ * @param [in] index
+ * @return Allocated xpath of the changed node
+ */
+static char *
+dm_get_notification_changed_xpath(struct lyd_difflist *diff, size_t index)
+{
+    if (NULL == diff) {
+        return NULL;
+    }
+    switch (diff->type[index]) {
+    case LYD_DIFF_MOVEDAFTER2:
+    case LYD_DIFF_CREATED:
+        return lyd_path(diff->second[index]);
+    case LYD_DIFF_MOVEDAFTER1:
+    case LYD_DIFF_CHANGED:
+    case LYD_DIFF_DELETED:
+        return lyd_path(diff->first[index]);
+    default:
+        /* LYD_DIFF_END */
+        return NULL;
+    }
+}
+
+/**
+ * @brief Returns string representation of the change type
+ * @param [in] type
+ * @return statically allocated string
+ */
+static const char *
+dm_get_diff_type_to_string(LYD_DIFFTYPE type)
+{
+    const char *diff_states[] = {
+        "End",      /* LYD_DIFF_END = 0*/
+        "Deleted",  /* LYD_DIFF_DELETED */
+        "Changed",  /* LYD_DIFF_CHANGED */
+        "Moved1",   /* LYD_DIFF_MOVEDAFTER1 */
+        "Created",  /* LYD_DIFF_CREATED */
+        "Moved2",   /* LYD_DIFF_MOVEDAFTER2 */
+    };
+    if (type > sizeof(diff_states)/sizeof(*diff_states)){
+        return "Unknown";
+    }
+    return diff_states[type];
+}
+
+static int
+dm_prepare_module_subscriptions(dm_ctx_t *dm_ctx, const struct lys_module *module, dm_model_subscription_t **model_sub)
+{
+    CHECK_NULL_ARG3(dm_ctx, module, model_sub);
+    int rc = SR_ERR_OK;
+    dm_model_subscription_t *ms = NULL;
+
+    ms = calloc(1, sizeof(*ms));
+    CHECK_NULL_NOMEM_RETURN(ms);
+
+    rc = np_get_module_change_subscriptions(dm_ctx->np_ctx,
+            module->name,
+            &ms->subscriptions,
+            &ms->subscription_cnt);
+
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Get module subscription failed for module %s", module->name);
+
+    //TODO order subscriptions by priority
+
+    ms->nodes = calloc(ms->subscription_cnt, sizeof(*ms->nodes));
+    CHECK_NULL_NOMEM_GOTO(ms->nodes, rc, cleanup);
+
+    for (size_t s = 0; s < ms->subscription_cnt; s++) {
+        if (NULL == ms->subscriptions[s]->xpath) {
+            ms->nodes[s] = NULL;
+        } else {
+            rc = rp_dt_validate_node_xpath(dm_ctx, NULL,
+                    ms->subscriptions[s]->xpath,
+                    NULL,
+                    &ms->nodes[s]);
+            if (SR_ERR_OK != rc || NULL == ms->nodes[s]) {
+                SR_LOG_WRN("Node for xpath %s has not been found", ms->subscriptions[s]->xpath);
+            }
+        }
+    }
+
+    ms->module = module;
+
+cleanup:
+    if (SR_ERR_OK != rc) {
+        dm_model_subscription_free(ms);
+    } else {
+        *model_sub = ms;
+    }
+    return rc;
+}
+
+void
+dm_free_commit_context(void *commit_ctx)
+{
+    if (NULL != commit_ctx) {
+        dm_commit_context_t *c_ctx = commit_ctx;
+        for (size_t i = 0; i < c_ctx->modif_count; i++) {
+            close(c_ctx->fds[i]);
+        }
+        free(c_ctx->fds);
+        free(c_ctx->existed);
+        ly_set_free(c_ctx->up_to_date_models);
+        c_ctx->up_to_date_models = NULL;
+        c_ctx->fds = NULL;
+        c_ctx->existed = NULL;
+        c_ctx->modif_count = 0;
+
+        sr_btree_cleanup(c_ctx->subscriptions);
+        sr_btree_cleanup(c_ctx->prev_data_trees);
+        if (NULL != c_ctx->session) {
+            dm_session_stop(c_ctx->session->dm_ctx, c_ctx->session);
+        }
+        c_ctx->session = NULL;
+        free(c_ctx);
+    }
+}
+
+static int
+dm_insert_commit_context(dm_ctx_t *dm_ctx, dm_commit_context_t *c_ctx)
+{
+    CHECK_NULL_ARG2(dm_ctx, c_ctx);
+    int rc = SR_ERR_OK;
+    pthread_rwlock_wrlock(&dm_ctx->commit_ctxs.lock);
+    dm_ctx->commit_ctxs.last_commit_id = c_ctx->id;
+    rc = sr_btree_insert(dm_ctx->commit_ctxs.tree, c_ctx);
+    pthread_rwlock_unlock(&dm_ctx->commit_ctxs.lock);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Insert into commit context bin tree failed");
+    }
+    return rc;
+}
+
+int
+dm_remove_commit_context(dm_ctx_t *dm_ctx, int c_ctx_id)
+{
+    pthread_rwlock_wrlock(&dm_ctx->commit_ctxs.lock);
+    dm_commit_context_t *c_ctx = NULL;
+    dm_commit_context_t lookup = {0};
+    lookup.id = c_ctx_id;
+    c_ctx = sr_btree_search(dm_ctx->commit_ctxs.tree, &lookup);
+    if (NULL == c_ctx) {
+        SR_LOG_WRN("Commit context with id %d not found", c_ctx_id);
+    }
+    sr_btree_delete(dm_ctx->commit_ctxs.tree, c_ctx);
+    pthread_rwlock_unlock(&dm_ctx->commit_ctxs.lock);
+    return SR_ERR_OK;
+}
+
+int
+dm_save_commit_context(dm_ctx_t *dm_ctx, dm_commit_context_t *c_ctx)
+{
+    CHECK_NULL_ARG(c_ctx);
+    int rc = SR_ERR_OK;
     for (size_t i = 0; i < c_ctx->modif_count; i++) {
         close(c_ctx->fds[i]);
     }
@@ -1875,9 +2257,13 @@ dm_free_commit_context(dm_ctx_t *dm_ctx, dm_commit_context_t *c_ctx)
     c_ctx->existed = NULL;
     c_ctx->modif_count = 0;
 
-    dm_session_stop(dm_ctx, c_ctx->session);
-    c_ctx->session = NULL;
-    free(c_ctx);
+    dm_unlock_datastore(dm_ctx, c_ctx->session);
+
+    /* assign id to the commit context and save it to th dm_ctx */
+    rc = dm_insert_commit_context(dm_ctx, c_ctx);
+
+    return rc;
+
 }
 
 int
@@ -1887,15 +2273,31 @@ dm_commit_prepare_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_con
     dm_data_info_t *info = NULL;
     size_t i = 0;
     int rc = SR_ERR_OK;
+    dm_model_subscription_t *ms = NULL;
     dm_commit_context_t *c_ctx = NULL;
     c_ctx = calloc(1, sizeof(*c_ctx));
     CHECK_NULL_NOMEM_RETURN(c_ctx);
+
+    c_ctx->id = rand();
+
+    rc = sr_btree_init(dm_module_subscription_cmp, dm_model_subscription_free, &c_ctx->subscriptions);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Binary tree allocation failed");
+
+    rc = sr_btree_init(dm_data_info_cmp, dm_data_info_free, &c_ctx->prev_data_trees);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Binary tree allocation failed");
 
     c_ctx->modif_count = 0;
     /* count modified files */
     while (NULL != (info = sr_btree_get_at(session->session_modules[session->datastore], i))) {
         if (info->modified) {
             c_ctx->modif_count++;
+
+            rc = dm_prepare_module_subscriptions(dm_ctx, info->module, &ms);
+            CHECK_RC_LOG_GOTO(rc, cleanup, "Prepare module subscription failed %s", info->module->name);
+
+            rc = sr_btree_insert(c_ctx->subscriptions, ms);
+            CHECK_RC_LOG_GOTO(rc, cleanup, "Insert into subscription tree failed module %s", info->module->name);
+            ms = NULL;
         }
         i++;
     }
@@ -1929,7 +2331,8 @@ dm_commit_prepare_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_con
     return rc;
 
 cleanup:
-    dm_free_commit_context(dm_ctx, c_ctx);
+    dm_model_subscription_free(ms);
+    dm_free_commit_context(c_ctx);
     return rc;
 }
 
@@ -1990,6 +2393,7 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
     char *file_name = NULL;
     c_ctx->modif_count = 0; /* how many file descriptors should be closed on cleanup */
 
+    /* lock models that should be committed */
     while (NULL != (info = sr_btree_get_at(session->session_modules[session->datastore], i++))) {
         if (!info->modified) {
             continue;
@@ -2063,6 +2467,7 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
             SR_LOG_DBG("Timestamp for the model %s matches, ops will be skipped", info->module->name);
             ret = ly_set_add(c_ctx->up_to_date_models, (void *) info->module->name);
             CHECK_NOT_MINUS1_MSG_GOTO(ret, rc, SR_ERR_INTERNAL, cleanup, "Adding to ly set failed");
+
             di = calloc(1, sizeof(*di));
             CHECK_NULL_NOMEM_GOTO(di, rc, cleanup);
             di->node = sr_dup_datatree(info->node);
@@ -2085,6 +2490,27 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
             dm_data_info_free(di);
             goto cleanup;
         }
+
+        if (SR_DS_STARTUP != session->datastore) {
+            /* for candidate and running we save prev state */
+            if (SR_DS_RUNNING != session->datastore || copy_uptodate) {
+                /* load data tree from file system */
+                rc = dm_load_data_tree_file(dm_ctx, c_ctx->existed[count] ? c_ctx->fds[count] : -1, file_name, info->module, &di);
+                CHECK_RC_MSG_GOTO(rc, cleanup, "Loading data file failed");
+
+                rc = sr_btree_insert(c_ctx->prev_data_trees, (void *) di);
+                if (SR_ERR_OK != rc) {
+                    SR_LOG_ERR("Insert into prev data trees failed module %s", info->module->name);
+                    dm_data_info_free(di);
+                    goto cleanup;
+                }
+            } else {
+                /* we can reuse data that were just read from file system */
+                rc = dm_insert_data_info_copy(c_ctx->prev_data_trees, di);
+                CHECK_RC_MSG_GOTO(rc, cleanup, "Insert data info copy failed");
+            }
+        }
+
         free(file_name);
         file_name = NULL;
 
@@ -2151,23 +2577,107 @@ dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t *c
     CHECK_NULL_ARG3(dm_ctx, session, c_ctx);
     int rc = SR_ERR_OK;
     size_t i = 0;
-    dm_data_info_t *info = NULL;
+    dm_data_info_t *info = NULL, *commit_info = NULL, *prev_info = NULL, lookup_info = {0};
+    dm_model_subscription_t *ms = NULL;
+    bool match = false;
+    /* notification are sent only when running or candidate is committed*/
+    if (SR_DS_STARTUP == session->datastore) {
+        return SR_ERR_OK;
+    }
 
-    if (SR_DS_RUNNING == session->datastore || SR_DS_CANDIDATE == session->datastore) {
-        SR_LOG_DBG_MSG("Sending notifications about the changes made in running datastore...");
-        i = 0;
-        while (NULL != (info = sr_btree_get_at(session->session_modules[session->datastore], i))) {
-            if (info->modified) {
-                rc = np_module_change_notify(dm_ctx->np_ctx, info->module->name);
+    SR_LOG_DBG_MSG("Sending notifications about the changes made in running datastore...");
+    while (NULL != (info = sr_btree_get_at(session->session_modules[session->datastore], i++))) {
+        if (!info->modified) {
+            continue;
+        }
+        size_t d_cnt = 0;
+        dm_model_subscription_t lookup = {0};
+
+        lookup_info.module = info->module;
+        prev_info = sr_btree_search(c_ctx->prev_data_trees, &lookup_info);
+        if (NULL == prev_info) {
+            SR_LOG_ERR("Current data tree for module %s not found", info->module->name);
+            continue;
+        }
+        commit_info = sr_btree_search(c_ctx->session->session_modules[c_ctx->session->datastore], &lookup_info);
+        if (NULL == commit_info) {
+            SR_LOG_ERR("Commit data tree for module %s not found", info->module->name);
+            continue;
+        }
+
+        lyd_wd_cleanup(&prev_info->node, 0);
+        struct lyd_difflist *diff = lyd_diff(prev_info->node, commit_info->node, 0);
+        dm_lyd_wd_add(dm_ctx, dm_ctx->ly_ctx, &commit_info->node, LYD_WD_IMPL_TAG);
+        if (NULL == diff) {
+            SR_LOG_ERR("Lyd diff failed for module %s", info->module->name);
+            continue;
+        }
+        if (diff->type[d_cnt] == LYD_DIFF_END) {
+            SR_LOG_DBG("No changes in module %s", info->module->name);
+            lyd_free_diff(diff);
+            continue;
+        }
+
+        lookup.module = info->module;
+
+        ms = sr_btree_search(c_ctx->subscriptions, &lookup);
+        if (NULL == ms) {
+            SR_LOG_WRN("No subscription found for %s", info->module->name);
+            lyd_free_diff(diff);
+            continue;
+        }
+
+        /* store differences in commit context */
+        ms->difflist = diff;
+
+        rc = rp_dt_difflist_to_changes(ms->difflist, &ms->changes);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR_MSG("Difflist to changes failed");
+            continue;
+        }
+
+        /* Log changes */
+        if (SR_LL_DBG == sr_ll_stderr || SR_LL_DBG == sr_ll_syslog) {
+            while (LYD_DIFF_END != diff->type[d_cnt]) {
+                char *path = dm_get_notification_changed_xpath(diff, d_cnt);
+                SR_LOG_DBG("%s: %s", dm_get_diff_type_to_string(diff->type[d_cnt]), path);
+                free(path);
+                d_cnt++;
+            }
+        }
+
+        /* loop through subscription test if they should be notified */
+        for (size_t s = 0; s < ms->subscription_cnt; s++) {
+            d_cnt = 0;
+            while (LYD_DIFF_END != diff->type[d_cnt]) {
+                const struct lyd_node *cmp_node = dm_get_notification_match_node(diff, d_cnt);
+                rc = dm_match_subscription(ms->nodes[s], cmp_node, &match);
                 if (SR_ERR_OK != rc) {
-                    SR_LOG_WRN("Unable to send notifications about the changes made in the '%s' module.", info->module->name);
+                    SR_LOG_WRN_MSG("Subscription match failed");
+                    d_cnt++;
+                    continue;
+                }
+                if (match) {
+                    break;
+                }
+                d_cnt++;
+            }
+
+            if (match) {
+                /* something has been changed for this subscription, send notification */
+                rc = np_subscription_notify(dm_ctx->np_ctx, ms->subscriptions[s]);
+                if (SR_ERR_OK != rc) {
+                   SR_LOG_WRN("Unable to send notifications about the changes for the subscription in module %s xpath %s.",
+                           ms->subscriptions[s]->module_name,
+                           ms->subscriptions[s]->xpath);
                 }
             }
-            i++;
         }
     }
 
-    return SR_ERR_OK;
+    rc = dm_save_commit_context(dm_ctx, c_ctx);
+
+    return rc;
 }
 
 int
@@ -2722,7 +3232,7 @@ dm_lyd_wd_add(dm_ctx_t *dm_ctx, struct ly_ctx *lyctx, struct lyd_node **root, in
 }
 
 const struct lys_node *
-dm_ly_ctx_get_node(dm_ctx_t *dm_ctx, struct ly_ctx *lyctx, const struct lys_node *start, const char *nodeid)
+dm_ly_ctx_get_node(dm_ctx_t *dm_ctx, const struct lys_node *start, const char *nodeid)
 {
     if (NULL == dm_ctx) {
         SR_LOG_ERR_MSG("Null argument passed to dm_ly_ctx_get_node");
@@ -2730,7 +3240,7 @@ dm_ly_ctx_get_node(dm_ctx_t *dm_ctx, struct ly_ctx *lyctx, const struct lys_node
     }
     const struct lys_node *result = NULL;
     pthread_rwlock_rdlock(&dm_ctx->lyctx_lock);
-    result = ly_ctx_get_node(lyctx, start, nodeid);
+    result = ly_ctx_get_node(dm_ctx->ly_ctx, start, nodeid);
     pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
     return result;
 
@@ -2822,6 +3332,65 @@ dm_copy_session_tree(dm_ctx_t *dm_ctx, dm_session_t *from, dm_session_t *to, con
         } else {
             dm_data_info_free(new_info);
         }
+    }
+    return rc;
+}
+
+int
+dm_create_rdonly_ptr_data_tree(dm_ctx_t *dm_ctx, dm_session_t *from, dm_session_t *to, const char *module_name)
+{
+    CHECK_NULL_ARG4(dm_ctx, from, to, module_name);
+    int rc = SR_ERR_OK;
+    dm_data_info_t *info = NULL;
+    dm_data_info_t lookup = {0};
+    dm_data_info_t *new_info = NULL;
+    bool existed = true;
+    rc = dm_get_module(dm_ctx, module_name, NULL, &lookup.module);
+    CHECK_RC_LOG_RETURN(rc, "Get module %s failed.", module_name);
+
+    info = sr_btree_search(from->session_modules[from->datastore], &lookup);
+    if (NULL == info) {
+        SR_LOG_DBG("Module %s not loaded in source session", module_name);
+        return rc;
+    }
+
+    new_info = sr_btree_search(to->session_modules[to->datastore], &lookup);
+    if (NULL == new_info) {
+        existed = false;
+        new_info = calloc(1, sizeof(*new_info));
+        CHECK_NULL_NOMEM_RETURN(new_info);
+    }
+
+    new_info->modified = info->modified;
+    new_info->module = info->module;
+    new_info->timestamp = info->timestamp;
+    new_info->rdonly_copy = true;
+    lyd_free_withsiblings(new_info->node);
+    new_info->node = info->node;
+
+    if (!existed) {
+        if (SR_ERR_OK == rc) {
+            rc = sr_btree_insert(to->session_modules[to->datastore], new_info);
+        } else {
+            dm_data_info_free(new_info);
+        }
+    }
+    return rc;
+}
+
+int
+dm_copy_if_not_loaded(dm_ctx_t *dm_ctx, dm_session_t *from_session, dm_session_t *session, const char *module_name)
+{
+    CHECK_NULL_ARG4(dm_ctx, session, module_name, from_session);
+    int rc = SR_ERR_OK;
+    dm_data_info_t lookup = {0};
+    rc = dm_get_module(dm_ctx, module_name, NULL, &lookup.module);
+    CHECK_RC_MSG_RETURN(rc, "Dm get module failed");
+
+    dm_data_info_t *info  = NULL;
+    info = sr_btree_search(session->session_modules[session->datastore], &lookup);
+    if (NULL == info) {
+        rc = dm_create_rdonly_ptr_data_tree(dm_ctx, from_session, session, module_name);
     }
     return rc;
 }
@@ -2963,4 +3532,23 @@ dm_is_model_modified(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module
     info = sr_btree_search(session->session_modules[session->datastore], &lookup);
     *res = NULL != info ? info->modified : false;
     return rc;
+}
+
+int
+dm_get_commit_context(dm_ctx_t *dm_ctx, int c_ctx_id, dm_commit_context_t **c_ctx)
+{
+    CHECK_NULL_ARG2(dm_ctx, c_ctx);
+    dm_commit_context_t lookup = {0};
+    //TODO: use argument lookup.id = c_ctx_id;
+    lookup.id = dm_ctx->commit_ctxs.last_commit_id;
+    *c_ctx = sr_btree_search(dm_ctx->commit_ctxs.tree, &lookup);
+    return SR_ERR_OK;
+}
+
+int
+dm_get_commit_ctxs(dm_ctx_t *dm_ctx, dm_commit_ctxs_t **commit_ctxs)
+{
+    CHECK_NULL_ARG2(dm_ctx, commit_ctxs);
+    *commit_ctxs = &dm_ctx->commit_ctxs;
+    return SR_ERR_OK;
 }
