@@ -1229,8 +1229,8 @@ sr_changes_sr_to_gpb(struct ly_set *sr_changes, Sr__Change ***gpb_changes_p, siz
 
         for (size_t i = 0; i < sr_changes->number; i++) {
             gpb_changes[i] = calloc(1, sizeof(**gpb_changes));
-            sr__change__init(gpb_changes[i]);
             CHECK_NULL_NOMEM_GOTO(gpb_changes[i], rc, cleanup);
+            sr__change__init(gpb_changes[i]);
             sr_change_t *ch = sr_changes->set.g[i];
             if (NULL != ch->new_value) {
                 rc = sr_dup_val_t_to_gpb(ch->new_value, &gpb_changes[i]->new_value);
