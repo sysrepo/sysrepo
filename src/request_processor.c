@@ -1001,7 +1001,7 @@ rp_get_changes_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg
     }
 
     rc = dm_get_commit_ctxs(rp_ctx->dm_ctx, &dm_ctxs);
-    CHECK_RC_MSG_RETURN(rc, "Get commit ctx failed");
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Get commit ctx failed");
     pthread_rwlock_rdlock(&dm_ctxs->lock);
 
     rc = dm_get_commit_context(rp_ctx->dm_ctx, id, &c_ctx);

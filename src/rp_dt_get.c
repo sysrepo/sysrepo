@@ -356,6 +356,7 @@ rp_dt_difflist_to_changes(struct lyd_difflist *difflist, struct ly_set **changes
             ch->sch_node = difflist->second[d_cnt]->schema;
 
             ch->new_value = calloc(1, sizeof(*ch->new_value));
+            CHECK_NULL_NOMEM_GOTO(ch->new_value, rc, cleanup);
             rc = rp_dt_get_value_from_node(difflist->second[d_cnt], ch->new_value);
             CHECK_RC_MSG_GOTO(rc, cleanup, "Get value from node failed");
             break;
@@ -364,6 +365,7 @@ rp_dt_difflist_to_changes(struct lyd_difflist *difflist, struct ly_set **changes
             ch->sch_node = difflist->first[d_cnt]->schema;
 
             ch->old_value = calloc(1, sizeof(*ch->old_value));
+            CHECK_NULL_NOMEM_GOTO(ch->old_value, rc, cleanup);
             rc = rp_dt_get_value_from_node(difflist->first[d_cnt], ch->old_value);
             CHECK_RC_MSG_GOTO(rc, cleanup, "Get value from node failed");
             break;
@@ -373,11 +375,13 @@ rp_dt_difflist_to_changes(struct lyd_difflist *difflist, struct ly_set **changes
 
             if (NULL != difflist->second[d_cnt]){
                 ch->old_value = calloc(1, sizeof(*ch->old_value));
+                CHECK_NULL_NOMEM_GOTO(ch->old_value, rc, cleanup);
                 rc = rp_dt_get_value_from_node(difflist->second[d_cnt], ch->old_value);
                 CHECK_RC_MSG_GOTO(rc, cleanup, "Get value from node failed");
             }
 
             ch->new_value = calloc(1, sizeof(*ch->new_value));
+            CHECK_NULL_NOMEM_GOTO(ch->new_value, rc, cleanup);
             rc = rp_dt_get_value_from_node(difflist->first[d_cnt], ch->new_value);
             CHECK_RC_MSG_GOTO(rc, cleanup, "Get value from node failed");
             break;
@@ -387,11 +391,13 @@ rp_dt_difflist_to_changes(struct lyd_difflist *difflist, struct ly_set **changes
 
             if (NULL != difflist->first[d_cnt]){
                 ch->old_value = calloc(1, sizeof(*ch->old_value));
+                CHECK_NULL_NOMEM_GOTO(ch->old_value, rc, cleanup);
                 rc = rp_dt_get_value_from_node(difflist->first[d_cnt], ch->old_value);
                 CHECK_RC_MSG_GOTO(rc, cleanup, "Get value from node failed");
             }
 
             ch->new_value = calloc(1, sizeof(*ch->new_value));
+            CHECK_NULL_NOMEM_GOTO(ch->new_value, rc, cleanup);
             rc = rp_dt_get_value_from_node(difflist->second[d_cnt], ch->new_value);
             CHECK_RC_MSG_GOTO(rc, cleanup, "Get value from node failed");
             break;
