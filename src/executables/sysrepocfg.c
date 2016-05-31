@@ -1205,8 +1205,8 @@ main(int argc, char* argv[])
             rc = sr_session_start(srcfg_connection, SR_DS_RUNNING, SR_SESS_DEFAULT, &srcfg_session);
         }
         if (SR_ERR_OK == rc) {
-            rc = sr_module_change_subscribe(srcfg_session, module_name, SR_EV_NOTIFY, true, 0,
-                                            srcfg_module_change_cb, NULL, &srcfg_subscription);
+            rc = sr_module_change_subscribe(srcfg_session, module_name, srcfg_module_change_cb, NULL,
+                    0, SR_SUBSCR_PASSIVE, &srcfg_subscription);
         }
         if (SR_ERR_OK != rc) {
             srcfg_report_error(rc);

@@ -1461,8 +1461,8 @@ cl_candidate_refresh(void **state)
     rc = sr_session_start(conn, SR_DS_CANDIDATE, SR_SESS_DEFAULT, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = sr_module_change_subscribe(session, "example-module", SR_EV_NOTIFY, true, 0,
-            module_change_cb, &cb_called, &subscription);
+    rc = sr_module_change_subscribe(session, "example-module", module_change_cb, &cb_called,
+            0, SR_SUBSCR_DEFAULT, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* check the list presence in candidate */
@@ -1563,8 +1563,8 @@ cl_get_changes_iter_test(void **state)
     rc = sr_session_start(conn, SR_DS_CANDIDATE, SR_SESS_DEFAULT, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = sr_module_change_subscribe(session, "example-module", SR_EV_NOTIFY, true,
-            0, list_changes_cb, &changes, &subscription);
+    rc = sr_module_change_subscribe(session, "example-module", list_changes_cb, &changes,
+            0, SR_SUBSCR_DEFAULT, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* check the list presence in candidate */
