@@ -57,4 +57,4 @@ addons:
     notification_email: raszabo@cisco.com
     build_command_prepend: "mkdir build ; cd build ; cmake .. && make clean"
     build_command:   "make -j 2"
-    branch_pattern: coverity
+    branch_pattern: ".*coverity"
