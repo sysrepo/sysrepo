@@ -1001,6 +1001,9 @@ rp_get_changes_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg
     if (session->options & SR__SESSION_FLAGS__SESS_NOTIFICATION) {
         rc = rp_check_notif_session(rp_ctx, session, msg);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Check notif session failed");
+    } else {
+        rc = dm_report_error(session->dm_session, "Get changes call can be issued only on notification session", NULL, SR_ERR_UNSUPPORTED);
+        goto cleanup;
     }
 
     rc = dm_get_commit_ctxs(rp_ctx->dm_ctx, &dm_ctxs);
