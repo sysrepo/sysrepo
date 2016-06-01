@@ -991,7 +991,7 @@ typedef void (*sr_feature_enable_cb)(const char *module_name, const char *featur
  * @return Error code (SR_ERR_OK on success).
  */
 int sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, sr_module_change_cb callback,
-        void *private_ctx, int priority, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription);
+        void *private_ctx, uint32_t priority, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription);
 
 /**
  * @brief Subscribes for notifications about the changes made within specified
@@ -1012,7 +1012,7 @@ int sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_nam
  * @return Error code (SR_ERR_OK on success).
  */
 int sr_subtree_change_subscribe(sr_session_ctx_t *session, const char *xpath, sr_subtree_change_cb callback,
-        void *private_ctx, int priority, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription);
+        void *private_ctx, uint32_t priority, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription);
 
 /**
  * @brief Subscribes for notifications about installation / uninstallation
