@@ -64,8 +64,11 @@ sysrepo_teardown(void **state)
     return 0;
 }
 
+#define COND_WAIT_SEC 5
 #define MAX_CHANGE 10
 typedef struct changes_s{
+    pthread_mutex_t mutex;
+    pthread_cond_t cv;
     size_t cnt;
     sr_val_t *new_values[MAX_CHANGE];
     sr_val_t *old_values[MAX_CHANGE];
@@ -110,7 +113,7 @@ list_changes_test_module_cb(sr_session_ctx_t *session, const char *module_name, 
     sr_change_iter_t *it = NULL;
     int rc = SR_ERR_OK;
 
-    ch->cnt++;
+    pthread_mutex_lock(&ch->mutex);
 
     rc = sr_get_changes_iter(session, "/test-module:ordered-numbers" , &it);
     puts("Iteration over changes started");
@@ -132,6 +135,8 @@ list_changes_test_module_cb(sr_session_ctx_t *session, const char *module_name, 
 
 cleanup:
     sr_free_change_iter(it);
+    pthread_cond_signal(&ch->cv);
+    pthread_mutex_unlock(&ch->mutex);
     return SR_ERR_OK;
 }
 
@@ -143,7 +148,8 @@ cl_get_changes_create_test(void **state)
     assert_non_null(conn);
     sr_session_ctx_t *session = NULL;
     sr_subscription_ctx_t *subscription = NULL;
-    changes_t changes = {0};
+    changes_t changes = {.mutex = PTHREAD_MUTEX_INITIALIZER, .cv = PTHREAD_COND_INITIALIZER, 0};
+    struct timespec ts;
 
     sr_val_t *val = NULL;
     const char *xpath = NULL;
@@ -168,10 +174,13 @@ cl_get_changes_create_test(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 
     /* save changes to running */
+    pthread_mutex_lock(&changes.mutex);
     rc = sr_commit(session);
     assert_int_equal(rc, SR_ERR_OK);
 
-    usleep(100000);
+    clock_gettime(CLOCK_REALTIME, &ts);
+    ts.tv_sec += COND_WAIT_SEC;
+    pthread_cond_timedwait(&changes.cv, &changes.mutex, &ts);
 
     assert_int_equal(changes.cnt, 1);
     assert_int_equal(changes.oper[0], SR_OP_CREATED);
@@ -184,6 +193,8 @@ cl_get_changes_create_test(void **state)
         sr_free_val(changes.new_values[i]);
         sr_free_val(changes.old_values[i]);
     }
+
+    pthread_mutex_unlock(&changes.mutex);
 
     rc = sr_unsubscribe(NULL, subscription);
     assert_int_equal(rc, SR_ERR_OK);
@@ -199,7 +210,8 @@ cl_get_changes_modified_test(void **state)
     assert_non_null(conn);
     sr_session_ctx_t *session = NULL;
     sr_subscription_ctx_t *subscription = NULL;
-    changes_t changes = {0};
+    changes_t changes = {.mutex = PTHREAD_MUTEX_INITIALIZER, .cv = PTHREAD_COND_INITIALIZER, 0};
+    struct timespec ts;
 
     sr_val_t *val = NULL;
     const char *xpath = NULL;
@@ -227,10 +239,13 @@ cl_get_changes_modified_test(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 
     /* save changes to running */
+    pthread_mutex_lock(&changes.mutex);
     rc = sr_commit(session);
     assert_int_equal(rc, SR_ERR_OK);
 
-    usleep(100000);
+    clock_gettime(CLOCK_REALTIME, &ts);
+    ts.tv_sec += COND_WAIT_SEC;
+    pthread_cond_timedwait(&changes.cv, &changes.mutex, &ts);
 
     assert_int_equal(changes.cnt, 1);
     assert_int_equal(changes.oper[0], SR_OP_MODIFIED);
@@ -245,6 +260,7 @@ cl_get_changes_modified_test(void **state)
     }
 
     sr_free_val(val);
+    pthread_mutex_unlock(&changes.mutex);
 
     rc = sr_unsubscribe(NULL, subscription);
     assert_int_equal(rc, SR_ERR_OK);
@@ -260,7 +276,8 @@ cl_get_changes_deleted_test(void **state)
     assert_non_null(conn);
     sr_session_ctx_t *session = NULL;
     sr_subscription_ctx_t *subscription = NULL;
-    changes_t changes = {0};
+    changes_t changes = {.mutex = PTHREAD_MUTEX_INITIALIZER, .cv = PTHREAD_COND_INITIALIZER, 0};
+    struct timespec ts;
 
     sr_val_t *val = NULL;
     const char *xpath = NULL;
@@ -285,10 +302,13 @@ cl_get_changes_deleted_test(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 
     /* save changes to running */
+    pthread_mutex_lock(&changes.mutex);
     rc = sr_commit(session);
     assert_int_equal(rc, SR_ERR_OK);
 
-    usleep(100000);
+    clock_gettime(CLOCK_REALTIME, &ts);
+    ts.tv_sec += COND_WAIT_SEC;
+    pthread_cond_timedwait(&changes.cv, &changes.mutex, &ts);
 
     assert_int_equal(changes.cnt, 1);
     assert_int_equal(changes.oper[0], SR_OP_DELETED);
@@ -300,6 +320,7 @@ cl_get_changes_deleted_test(void **state)
         sr_free_val(changes.new_values[i]);
         sr_free_val(changes.old_values[i]);
     }
+    pthread_mutex_unlock(&changes.mutex);
 
     rc = sr_unsubscribe(NULL, subscription);
     assert_int_equal(rc, SR_ERR_OK);
@@ -315,7 +336,8 @@ cl_get_changes_moved_test(void **state)
     assert_non_null(conn);
     sr_session_ctx_t *session = NULL;
     sr_subscription_ctx_t *subscription = NULL;
-    changes_t changes = {0};
+    changes_t changes = {.mutex = PTHREAD_MUTEX_INITIALIZER, .cv = PTHREAD_COND_INITIALIZER, 0};
+    struct timespec ts;
 
     const char *xpath = NULL;
     int rc = SR_ERR_OK;
@@ -356,11 +378,14 @@ cl_get_changes_moved_test(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 
     /* save changes to running */
+    pthread_mutex_lock(&changes.mutex);
     rc = sr_commit(session);
     assert_int_equal(rc, SR_ERR_OK);
 
-    usleep(100000);
-    
+    clock_gettime(CLOCK_REALTIME, &ts);
+    ts.tv_sec += COND_WAIT_SEC;
+    pthread_cond_timedwait(&changes.cv, &changes.mutex, &ts);
+
     assert_int_equal(changes.cnt, 1);
     assert_int_equal(changes.oper[0], SR_OP_MOVED);
     assert_non_null(changes.new_values[0]);
@@ -373,6 +398,7 @@ cl_get_changes_moved_test(void **state)
         sr_free_val(changes.new_values[i]);
         sr_free_val(changes.old_values[i]);
     }
+    pthread_mutex_unlock(&changes.mutex);
 
     rc = sr_unsubscribe(NULL, subscription);
     assert_int_equal(rc, SR_ERR_OK);
