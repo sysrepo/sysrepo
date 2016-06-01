@@ -1119,10 +1119,10 @@ cl_notification_test(void **state)
     /* commit */
     rc = sr_commit(session);
 
-    /* wait for all callbacks or timeout after 100 ms */
-    for (size_t i = 0; i < 100; i++) {
-        if (callback_called >= 4) break;
-        usleep(100000); /* 100 ms */
+    /* wait for all callbacks or timeout after 10 seconds */
+    for (size_t i = 0; i < 1000; i++) {
+        if (callback_called >= 5) break;
+        usleep(10000); /* 10 ms */
     }
     assert_true(callback_called >= 5);
 
