@@ -160,8 +160,8 @@ cl_get_changes_create_test(void **state)
     rc = sr_session_start(conn, SR_DS_CANDIDATE, SR_SESS_DEFAULT, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = sr_module_change_subscribe(session, "example-module", SR_EV_NOTIFY, true,
-            0, list_changes_cb, &changes, &subscription);
+    rc = sr_module_change_subscribe(session, "example-module", list_changes_cb, &changes,
+            0, SR_SUBSCR_DEFAULT, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* check the list presence in candidate */
@@ -222,8 +222,8 @@ cl_get_changes_modified_test(void **state)
     rc = sr_session_start(conn, SR_DS_CANDIDATE, SR_SESS_DEFAULT, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = sr_module_change_subscribe(session, "example-module", SR_EV_NOTIFY, true,
-            0, list_changes_cb, &changes, &subscription);
+    rc = sr_module_change_subscribe(session, "example-module", list_changes_cb, &changes,
+            0, SR_SUBSCR_DEFAULT, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* check the list presence in candidate */
@@ -288,8 +288,8 @@ cl_get_changes_deleted_test(void **state)
     rc = sr_session_start(conn, SR_DS_CANDIDATE, SR_SESS_DEFAULT, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = sr_module_change_subscribe(session, "example-module", SR_EV_NOTIFY, true,
-            0, list_changes_cb, &changes, &subscription);
+    rc = sr_module_change_subscribe(session, "example-module", list_changes_cb, &changes,
+            0, SR_SUBSCR_DEFAULT, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* check the list presence in candidate */
@@ -369,8 +369,8 @@ cl_get_changes_moved_test(void **state)
     rc = sr_session_switch_ds(session, SR_DS_CANDIDATE);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = sr_module_change_subscribe(session, "test-module", SR_EV_NOTIFY, true,
-            0, list_changes_test_module_cb, &changes, &subscription);
+    rc = sr_module_change_subscribe(session, "test-module", list_changes_test_module_cb, &changes,
+            0, SR_SUBSCR_DEFAULT, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* move leaf-list */

@@ -43,7 +43,7 @@ typedef struct np_ctx_s np_ctx_t;
  * @brief Notification subscription information.
  */
 typedef struct np_subscription_s {
-    Sr__NotificationType notif_type;   /**< Type of the notification that this subscription subscribes to. */
+    Sr__SubscriptionType type;         /**< Type of the subscription that this subscription subscribes to. */
     Sr__NotificationEvent notif_event; /**< Notification event which the notification subscriber is interested in. */
     const char *dst_address;           /**< Destination address where the notification should be delivered. */
     uint32_t dst_id;                   /**< Destination ID of the subscription (used locally, in the client library). */
@@ -90,31 +90,34 @@ typedef uint32_t np_subscr_options_t;
  *
  * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
  * @param[in] rp_session Request Processor session.
- * @param[in] notif_type Type of the notification to subscribe.
+ * @param[in] type Type of the subscription to subscribe.
  * @param[in] dst_address Destination address of the subscriber.
  * @param[in] dst_id Destination subscription ID.
  * @param[in] module_name Name of the module which the subscription is active in (if applicable).
  * @param[in] xpath XPath to the subtree where the subscription is active (if applicable).
+ * @param[in] notif_event Notification event which the notification subscriber is interested in.
+ * @param[in] priority Priority of the subscribtion by delivering notifications (0 is the lowest priority).
  * @param[in] opts Options overriding default handling. Bitwise OR-ed value of any ::np_subscr_flag_t flags.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int np_notification_subscribe(np_ctx_t *np_ctx, const rp_session_t *rp_session, Sr__NotificationType notif_type,
-        const char *dst_address, uint32_t dst_id, const char *module_name, const char *xpath, const np_subscr_options_t opts);
+int np_notification_subscribe(np_ctx_t *np_ctx, const rp_session_t *rp_session, Sr__SubscriptionType type,
+        const char *dst_address, uint32_t dst_id, const char *module_name, const char *xpath,
+        Sr__NotificationEvent notif_event, uint32_t priority, const np_subscr_options_t opts);
 
 /**
  * @brief Unsubscribe the client from notifications on specified event.
  *
  * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
  * @param[in] rp_session Request Processor session.
- * @param[in] notif_type Type of the notification of the subscription.
+ * @param[in] type Type of the subscription.
  * @param[in] dst_address Destination address of the subscriber.
  * @param[in] dst_id Destination subscription ID.
  * @param[in] module_name Name of the module which the subscription is active in (if applicable).
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int np_notification_unsubscribe(np_ctx_t *np_ctx, const rp_session_t *rp_session, Sr__NotificationType notif_type,
+int np_notification_unsubscribe(np_ctx_t *np_ctx, const rp_session_t *rp_session, Sr__SubscriptionType type,
         const char *dst_address, uint32_t dst_id, const char *module_name);
 
 /**

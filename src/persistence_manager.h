@@ -24,6 +24,7 @@
 
 #include "access_control.h"
 #include "notification_processor.h"
+#include "sr_common.h"
 
 /**
  * @defgroup pm Persistence Manager
@@ -142,7 +143,7 @@ int pm_remove_subscriptions_for_destination(pm_ctx_t *pm_ctx, const char *module
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int pm_get_subscriptions(pm_ctx_t *pm_ctx, const char *module_name, Sr__NotificationType notif_type,
+int pm_get_subscriptions(pm_ctx_t *pm_ctx, const char *module_name, Sr__SubscriptionType notif_type,
         np_subscription_t **subscriptions, size_t *subscription_cnt);
 
 /**@} pm */

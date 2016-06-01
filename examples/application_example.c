@@ -124,7 +124,8 @@ main(int argc, char **argv)
     print_current_config(session);
 
     /* subscribe for changes in running config */
-    rc = sr_module_change_subscribe(session, "ietf-interfaces", SR_EV_NOTIFY, true, 0, module_change_cb, NULL, &subscription);
+    rc = sr_module_change_subscribe(session, "ietf-interfaces", module_change_cb, NULL,
+            0, SR_SUBSCR_DEFAULT, &subscription);
     if (SR_ERR_OK != rc) {
         fprintf(stderr, "Error by sr_module_change_subscribe: %s\n", sr_strerror(rc));
         goto cleanup;

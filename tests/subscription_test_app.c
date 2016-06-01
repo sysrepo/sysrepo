@@ -76,7 +76,8 @@ int main(int argc, char **argv){
    printf("\n\n ========== READING STARTUP CONFIG: ==========\n\n");
 
    /* subscribe for changes in running config */
-   rc = sr_module_change_subscribe(session, "ietf-interfaces", SR_EV_NOTIFY, true, 0, module_change_cb, NULL, &subscription);
+   rc = sr_module_change_subscribe(session, "ietf-interfaces", module_change_cb, NULL,
+           0, SR_SUBSCR_DEFAULT, &subscription);
    if (SR_ERR_OK != rc) {
        goto cleanup;
    }
