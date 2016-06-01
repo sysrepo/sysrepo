@@ -338,13 +338,13 @@ rp_dt_difflist_to_changes(struct lyd_difflist *difflist, struct ly_set **changes
     CHECK_NULL_ARG2(difflist, changes);
     int rc = SR_ERR_OK;
     int ret = 0;
+    sr_change_t *ch = NULL;
 
     struct ly_set *set = NULL;
     set = ly_set_new();
     CHECK_NULL_NOMEM_RETURN(set);
 
     for(size_t d_cnt = 0; LYD_DIFF_END != difflist->type[d_cnt]; d_cnt++) {
-        sr_change_t *ch = NULL;
         ch = calloc(1, sizeof(*ch));
         CHECK_NULL_NOMEM_GOTO(ch, rc, cleanup);
 
@@ -417,11 +417,15 @@ rp_dt_difflist_to_changes(struct lyd_difflist *difflist, struct ly_set **changes
 
         ret = ly_set_add(set, ch);
         CHECK_NOT_MINUS1_MSG_GOTO(ret, rc, SR_ERR_INTERNAL, cleanup, "Ly set add failed");
+        ch = NULL;
 
     }
 
 cleanup:
     if (SR_ERR_OK != rc) {
+        if (NULL != ch) {
+            sr_free_changes(ch, 1);
+        }
         for (int i = 0; i < set->number; i++) {
             sr_free_changes(set->set.g[i], 1);
         }
