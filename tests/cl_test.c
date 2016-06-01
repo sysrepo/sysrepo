@@ -1552,6 +1552,7 @@ cl_get_changes_iter_test(void **state)
     sr_session_ctx_t *session = NULL;
     sr_subscription_ctx_t *subscription = NULL;
     changes_t changes = {0};
+    sr_change_iter_t *iter = NULL;
 
     sr_val_t *val = NULL;
     const char *xpath = NULL;
@@ -1561,6 +1562,10 @@ cl_get_changes_iter_test(void **state)
     /* start session */
     rc = sr_session_start(conn, SR_DS_CANDIDATE, SR_SESS_DEFAULT, &session);
     assert_int_equal(rc, SR_ERR_OK);
+
+    /* get changes can not be called only on notification session */
+    rc = sr_get_changes_iter(session, "/example-module:container", &iter);
+    assert_int_equal(rc, SR_ERR_UNSUPPORTED);
 
     rc = sr_module_change_subscribe(session, "example-module", SR_EV_NOTIFY, true,
             0, list_changes_cb, &changes, &subscription);
