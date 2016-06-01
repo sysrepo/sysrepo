@@ -83,39 +83,15 @@ list_changes_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_eve
     sr_change_iter_t *it = NULL;
     int rc = SR_ERR_OK;
 
-    rc = sr_get_changes_iter(session, "/example-module:container" , &it);
-    puts("Iteration over changes started");
-    if (SR_ERR_OK != rc) {
-        puts("sr get changes iter failed");
-        goto cleanup;
-    }
-    ch->cnt = 0;
-    while (ch->cnt < MAX_CHANGE) {
-        rc = sr_get_change_next(session, it,
-                &ch->oper[ch->cnt],
-                &ch->old_values[ch->cnt],
-                &ch->new_values[ch->cnt]);
-        if (SR_ERR_OK != rc) {
-            break;
-        }
-        ch->cnt++;
-    }
-
-cleanup:
-    sr_free_change_iter(it);
-    return SR_ERR_OK;
-}
-
-static int
-list_changes_test_module_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t ev, void *private_ctx)
-{
-    changes_t *ch = (changes_t *) private_ctx;
-    sr_change_iter_t *it = NULL;
-    int rc = SR_ERR_OK;
-
     pthread_mutex_lock(&ch->mutex);
+    char *change_path = NULL;
+    if (0 == strcmp("test-module", module_name)) {
+        change_path = "/test-module:ordered-numbers";
+    } else {
+        change_path = "/example-module:container";
+    }
 
-    rc = sr_get_changes_iter(session, "/test-module:ordered-numbers" , &it);
+    rc = sr_get_changes_iter(session, change_path , &it);
     puts("Iteration over changes started");
     if (SR_ERR_OK != rc) {
         puts("sr get changes iter failed");
@@ -369,7 +345,7 @@ cl_get_changes_moved_test(void **state)
     rc = sr_session_switch_ds(session, SR_DS_CANDIDATE);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = sr_module_change_subscribe(session, "test-module", list_changes_test_module_cb, &changes,
+    rc = sr_module_change_subscribe(session, "test-module", list_changes_cb, &changes,
             0, SR_SUBSCR_DEFAULT, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
