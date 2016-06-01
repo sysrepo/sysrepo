@@ -1245,7 +1245,7 @@ sr_changes_sr_to_gpb(struct ly_set *sr_changes, Sr__Change ***gpb_changes_p, siz
     }
 
     *gpb_changes_p = gpb_changes;
-    *gpb_count = sr_changes->number;
+    *gpb_count = NULL != sr_changes ? sr_changes->number : 0;
 
     return SR_ERR_OK;
 
