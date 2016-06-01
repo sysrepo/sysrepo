@@ -643,10 +643,17 @@ cl_sm_notif_process(cl_sm_ctx_t *sm_ctx, Sr__Msg *msg)
             subscription->callback.module_change_cb(
                     data_session,
                     msg->notification->module_change_notif->module_name,
-                    SR_EV_NOTIFY, // TODO: msg->notification->module_change_notif->event
+                    msg->notification->module_change_notif->event,
                     subscription->private_ctx);
             break;
-        // TODO: subtree-change callback
+        case SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS:
+            SR_LOG_DBG("Calling subtree-change callback for subscription id=%"PRIu32".", subscription->id);
+            subscription->callback.subtree_change_cb(
+                    data_session,
+                    msg->notification->subtree_change_notif->xpath,
+                    msg->notification->subtree_change_notif->event,
+                    subscription->private_ctx);
+            break;
         case SR__SUBSCRIPTION_TYPE__HELLO_SUBS:
             SR_LOG_DBG("HELLO notification received on subscription id=%"PRIu32".", subscription->id);
             break;
