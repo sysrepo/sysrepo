@@ -348,8 +348,9 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const
             SR_LOG_ERR_MSG("Copy new value to string failed");
             return rc;
         }
-    } else if (!((LYS_CONTAINER | LYS_LIST) & sch_node->nodetype)) {
-        /* value can be NULL only if  container or list is being created */
+    } else if (!((LYS_CONTAINER | LYS_LIST) & sch_node->nodetype) &&
+            !(LYS_LEAFLIST == sch_node->nodetype && NULL != strstr(xpath, "[.='") && ']' == xpath[strlen(xpath)-1])) {
+        /* value can be NULL only if a presence container, list or leaf-list with predicated is being created */
         SR_LOG_ERR_MSG("Argument value not passed");
         return SR_ERR_INVAL_ARG;
     }

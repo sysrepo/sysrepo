@@ -511,6 +511,43 @@ void set_item_leaflist_test(void **state){
     assert_int_equal(99, values[3].data.uint8_val);
     sr_free_values(values, count);
 
+    /* create leaf-list with predicate value can be NULL*/
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/test-module:main/numbers[.='33']", SR_EDIT_STRICT, NULL);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_get_values_wrapper(ctx, session, LEAF_LIST_XP, &values, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(5, count);
+
+    assert_int_equal(SR_UINT8_T, values[4].type);
+    assert_int_equal(33, values[4].data.uint8_val);
+    sr_free_values(values, count);
+
+    val = calloc(1, sizeof(*val));
+    assert_non_null(val);
+
+    val->xpath = strdup("/test-module:main/numbers");
+    assert_non_null(val->xpath);
+    val->type = SR_UINT8_T;
+    val->data.uint8_val = 66;
+
+    /* if there is a leaf-list predicate, value is ignored */
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/test-module:main/numbers[.='55']", SR_EDIT_STRICT, val);
+    assert_int_equal(SR_ERR_OK, rc);
+    sr_free_val(val);
+
+    rc = rp_dt_get_values_wrapper(ctx, session, LEAF_LIST_XP, &values, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(6, count);
+
+    assert_int_equal(SR_UINT8_T, values[5].type);
+    assert_int_equal(55, values[5].data.uint8_val);
+    sr_free_values(values, count);
+
+    /* either predicate or value must be specified */
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/test-module:main/numbers", SR_EDIT_STRICT, NULL);
+    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+
     test_rp_session_cleanup(ctx, session);
 }
 

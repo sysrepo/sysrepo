@@ -663,9 +663,13 @@ typedef enum sr_move_position_e {
  * With default options it recursively creates all missing nodes (containers and
  * lists including their key leaves) in the xpath to the specified node (can be
  * turned off with SR_EDIT_NON_RECURSIVE option). If SR_EDIT_STRICT flag is set,
- * the node must not exist (otherwise an error is returned). Setting of a leaf-list
- * value appends the value at the end of the leaf-list. To create a list use
- * xpath with key values included and pass NULL as value argument.
+ * the node must not exist (otherwise an error is returned).
+ *
+ * To create a list use xpath with key values included and pass NULL as value argument.
+ *
+ * Setting of a leaf-list value appends the value at the end of the leaf-list.
+ * A value of leaf-list can be specified either by predicate in xpath or by value argument.
+ * If both are present, value argument is ignored and xpath predicate is used.
  *
  * @param[in] session Session context acquired with ::sr_session_start call.
  * @param[in] xpath @ref xp_page "XPath" identifier of the data element to be set.
