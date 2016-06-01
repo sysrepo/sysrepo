@@ -1419,6 +1419,19 @@ sr_notification_event_str_to_gpb(const char *event_name)
     return _SR__NOTIFICATION_EVENT_IS_INT_SIZE;
 }
 
+sr_notif_event_t
+sr_notification_event_gpb_to_sr(Sr__NotificationEvent event)
+{
+    switch (event) {
+        case SR__NOTIFICATION_EVENT__VERIFY_EV:
+            return SR_EV_VERIFY;
+        case SR__NOTIFICATION_EVENT__NOTIFY_EV:
+            return SR_EV_NOTIFY;
+        default:
+            return SR_EV_NOTIFY;
+    }
+}
+
 int
 sr_schemas_sr_to_gpb(const sr_schema_t *sr_schemas, const size_t schema_cnt, Sr__Schema ***gpb_schemas)
 {

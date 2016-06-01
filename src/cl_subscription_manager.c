@@ -644,7 +644,7 @@ cl_sm_notif_process(cl_sm_ctx_t *sm_ctx, Sr__Msg *msg)
             subscription->callback.module_change_cb(
                     data_session,
                     msg->notification->module_change_notif->module_name,
-                    msg->notification->module_change_notif->event,
+                    sr_notification_event_gpb_to_sr(msg->notification->module_change_notif->event),
                     subscription->private_ctx);
             break;
         case SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS:
@@ -652,7 +652,7 @@ cl_sm_notif_process(cl_sm_ctx_t *sm_ctx, Sr__Msg *msg)
             subscription->callback.subtree_change_cb(
                     data_session,
                     msg->notification->subtree_change_notif->xpath,
-                    msg->notification->subtree_change_notif->event,
+                    sr_notification_event_gpb_to_sr(msg->notification->subtree_change_notif->event),
                     subscription->private_ctx);
             break;
         case SR__SUBSCRIPTION_TYPE__HELLO_SUBS:
