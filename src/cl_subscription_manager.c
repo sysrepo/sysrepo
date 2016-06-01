@@ -607,7 +607,8 @@ cl_sm_notif_process(cl_sm_ctx_t *sm_ctx, Sr__Msg *msg)
     }
 
     /* get data session that can be used from notification callback */
-    if (SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS == msg->notification->type) {
+    if ((SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS == msg->notification->type) ||
+            (SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS == msg->notification->type)) {
         rc = cl_sm_get_data_session(sm_ctx, subscription, msg->notification->source_address,
                 msg->notification->source_pid, &data_session);
         if (SR_ERR_OK != rc) {

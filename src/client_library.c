@@ -1510,9 +1510,6 @@ sr_subtree_change_subscribe(sr_session_ctx_t *session, const char *xpath, sr_sub
 
     cl_session_clear_errors(session);
 
-    rc = sr_copy_first_ns(xpath, &msg_req->request->subscribe_req->module_name);
-    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by extracting module name from xpath.");
-
     /* Initialize the subscription */
     if (opts & SR_SUBSCR_CTX_REUSE) {
         sr_subscription = *subscription_p;
