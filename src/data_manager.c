@@ -288,11 +288,11 @@ dm_insert_data_info_copy(sr_btree_t *tree, const dm_data_info_t *di)
     copy->module = di->module;
     copy->timestamp = di->timestamp;
 
-    sr_btree_insert(tree, (void *) copy);
-    return rc;
-
+    rc = sr_btree_insert(tree, (void *) copy);
 cleanup:
-    dm_data_info_free(copy);
+    if (SR_ERR_OK != rc) {
+        dm_data_info_free(copy);
+    }
     return rc;
 }
 
@@ -2131,7 +2131,7 @@ dm_get_diff_type_to_string(LYD_DIFFTYPE type)
         "Created",  /* LYD_DIFF_CREATED */
         "Moved2",   /* LYD_DIFF_MOVEDAFTER2 */
     };
-    if (type > sizeof(diff_states)/sizeof(*diff_states)){
+    if (type >= sizeof(diff_states)/sizeof(*diff_states)){
         return "Unknown";
     }
     return diff_states[type];
@@ -3369,9 +3369,8 @@ dm_create_rdonly_ptr_data_tree(dm_ctx_t *dm_ctx, dm_session_t *from, dm_session_
     new_info->node = info->node;
 
     if (!existed) {
-        if (SR_ERR_OK == rc) {
-            rc = sr_btree_insert(to->session_modules[to->datastore], new_info);
-        } else {
+        rc = sr_btree_insert(to->session_modules[to->datastore], new_info);
+        if (SR_ERR_OK != rc) {
             dm_data_info_free(new_info);
         }
     }

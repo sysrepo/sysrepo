@@ -983,6 +983,7 @@ rp_get_changes_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg
     dm_commit_ctxs_t *dm_ctxs = NULL;
     dm_commit_context_t *c_ctx = NULL;
     struct ly_set *changes = NULL;
+    bool locked = false;
 
     CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->get_changes_req);
     SR_LOG_DBG_MSG("Processing get changes request.");
@@ -1009,13 +1010,13 @@ rp_get_changes_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg
     rc = dm_get_commit_ctxs(rp_ctx->dm_ctx, &dm_ctxs);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Get commit ctx failed");
     pthread_rwlock_rdlock(&dm_ctxs->lock);
+    locked = true;
 
     rc = dm_get_commit_context(rp_ctx->dm_ctx, id, &c_ctx);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Get commit context failed");
     if (NULL == c_ctx) {
         SR_LOG_ERR("Commit context with id %d can not be found", id);
         dm_report_error(session->dm_session, "Commit data are not available anymore", NULL, SR_ERR_INTERNAL);
-        pthread_rwlock_unlock(&dm_ctxs->lock);
         goto cleanup;
     }
 
@@ -1032,10 +1033,11 @@ rp_get_changes_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg
             SR_LOG_ERR_MSG("Copying values to GPB failed.");
         }
     }
-    pthread_rwlock_unlock(&dm_ctxs->lock);
-
 
 cleanup:
+    if (locked) {
+        pthread_rwlock_unlock(&dm_ctxs->lock);
+    }
 
     /* set response code */
     resp->response->result = rc;
