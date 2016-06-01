@@ -1051,14 +1051,14 @@ cl_notification_test(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 
     /* subscribe to some notifications */
-    rc = sr_module_install_subscribe(session, test_module_install_cb, &callback_called, &subscription);
+    rc = sr_module_install_subscribe(session, test_module_install_cb, &callback_called, SR_SUBSCR_DEFAULT, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = sr_feature_enable_subscribe(session, test_feature_enable_cb, &callback_called, &subscription);
+    rc = sr_feature_enable_subscribe(session, test_feature_enable_cb, &callback_called, SR_SUBSCR_DEFAULT, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = sr_module_change_subscribe(session, "example-module", SR_EV_NOTIFY, true, 0,
-            test_module_change_cb, &callback_called, &subscription);
+    rc = sr_module_change_subscribe(session, "example-module", test_module_change_cb, &callback_called,
+            0, SR_SUBSCR_DEFAULT, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* do some changes */
@@ -1154,8 +1154,8 @@ cl_copy_config_test(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 
     /* enable running DS for example-module */
-    rc = sr_module_change_subscribe(session_startup, "example-module", SR_EV_NOTIFY, true, 0,
-            test_module_change_cb, &callback_called, &subscription);
+    rc = sr_module_change_subscribe(session_startup, "example-module", test_module_change_cb,
+            &callback_called, 0, SR_SUBSCR_DEFAULT, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* edit config in running */
@@ -1252,7 +1252,8 @@ cl_rpc_test(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 
     /* subscribe for RPC */
-    rc = sr_rpc_subscribe(session, "/test-module:activate-software-image", test_rpc_cb, &callback_called, &subscription);
+    rc = sr_rpc_subscribe(session, "/test-module:activate-software-image", test_rpc_cb, &callback_called,
+            SR_SUBSCR_DEFAULT, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
     sr_val_t input = { 0, };
@@ -1338,8 +1339,8 @@ candidate_ds_test(void **state)
     assert_int_equal(SR_ERR_OPERATION_FAILED, rc);
 
     /* enable running DS for example-module */
-    rc = sr_module_change_subscribe(session_startup, "example-module", SR_EV_NOTIFY, true, 0,
-            test_module_change_cb, &callback_called, &subscription);
+    rc = sr_module_change_subscribe(session_startup, "example-module", test_module_change_cb,
+            &callback_called, 0, SR_SUBSCR_DEFAULT, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* commit should pass */
@@ -1460,8 +1461,8 @@ cl_candidate_refresh(void **state)
     rc = sr_session_start(conn, SR_DS_CANDIDATE, SR_SESS_DEFAULT, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = sr_module_change_subscribe(session, "example-module", SR_EV_NOTIFY, true, 0,
-            module_change_cb, &cb_called, &subscription);
+    rc = sr_module_change_subscribe(session, "example-module", module_change_cb, &cb_called,
+            0, SR_SUBSCR_DEFAULT, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* check the list presence in candidate */
@@ -1567,8 +1568,8 @@ cl_get_changes_iter_test(void **state)
     rc = sr_get_changes_iter(session, "/example-module:container", &iter);
     assert_int_equal(rc, SR_ERR_UNSUPPORTED);
 
-    rc = sr_module_change_subscribe(session, "example-module", SR_EV_NOTIFY, true,
-            0, list_changes_cb, &changes, &subscription);
+    rc = sr_module_change_subscribe(session, "example-module", list_changes_cb, &changes,
+            0, SR_SUBSCR_DEFAULT, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* check the list presence in candidate */

@@ -436,7 +436,7 @@ error:
 }
 
 int
-sr_gpb_notif_alloc(const Sr__NotificationType type, const char *destination, const uint32_t subscription_id, Sr__Msg **msg_p)
+sr_gpb_notif_alloc(const Sr__SubscriptionType type, const char *destination, const uint32_t subscription_id, Sr__Msg **msg_p)
 {
     Sr__Msg *msg = NULL;
     Sr__Notification *notif = NULL;
@@ -466,31 +466,31 @@ sr_gpb_notif_alloc(const Sr__NotificationType type, const char *destination, con
 
     /* initialize sub-message */
     switch (type) {
-        case SR__NOTIFICATION_TYPE__MODULE_INSTALL_NOTIF:
+        case SR__SUBSCRIPTION_TYPE__MODULE_INSTALL_SUBS:
             sub_msg = calloc(1, sizeof(Sr__ModuleInstallNotification));
             CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__module_install_notification__init((Sr__ModuleInstallNotification*)sub_msg);
             notif->module_install_notif = (Sr__ModuleInstallNotification*)sub_msg;
             break;
-        case SR__NOTIFICATION_TYPE__FEATURE_ENABLE_NOTIF:
+        case SR__SUBSCRIPTION_TYPE__FEATURE_ENABLE_SUBS:
             sub_msg = calloc(1, sizeof(Sr__FeatureEnableNotification));
             CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__feature_enable_notification__init((Sr__FeatureEnableNotification*)sub_msg);
             notif->feature_enable_notif = (Sr__FeatureEnableNotification*)sub_msg;
             break;
-        case SR__NOTIFICATION_TYPE__MODULE_CHANGE_NOTIF:
+        case SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS:
             sub_msg = calloc(1, sizeof(Sr__ModuleChangeNotification));
             CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__module_change_notification__init((Sr__ModuleChangeNotification*)sub_msg);
             notif->module_change_notif = (Sr__ModuleChangeNotification*)sub_msg;
             break;
-        case SR__NOTIFICATION_TYPE__SUBTREE_CHANGE_NOTIF:
+        case SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS:
             sub_msg = calloc(1, sizeof(Sr__SubtreeChangeNotification));
             CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__subtree_change_notification__init((Sr__SubtreeChangeNotification*)sub_msg);
             notif->subtree_change_notif = (Sr__SubtreeChangeNotification*)sub_msg;
             break;
-        case SR__NOTIFICATION_TYPE__HELLO_NOTIF:
+        case SR__SUBSCRIPTION_TYPE__HELLO_SUBS:
             /* no sub-message */
             break;
         default:
@@ -726,30 +726,30 @@ sr_gpb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__O
 }
 
 int
-sr_gpb_msg_validate_notif(const Sr__Msg *msg, const Sr__NotificationType type)
+sr_gpb_msg_validate_notif(const Sr__Msg *msg, const Sr__SubscriptionType type)
 {
     CHECK_NULL_ARG(msg);
 
     if (SR__MSG__MSG_TYPE__NOTIFICATION == msg->type) {
         CHECK_NULL_RETURN(msg->notification, SR_ERR_MALFORMED_MSG);
-        if ((msg->notification->type != SR__NOTIFICATION_TYPE__HELLO_NOTIF) &&
+        if ((msg->notification->type != SR__SUBSCRIPTION_TYPE__HELLO_SUBS) &&
                 (msg->notification->type != type)) {
             return SR_ERR_MALFORMED_MSG;
         }
         switch (msg->notification->type) {
-            case SR__NOTIFICATION_TYPE__MODULE_INSTALL_NOTIF:
+            case SR__SUBSCRIPTION_TYPE__MODULE_INSTALL_SUBS:
                 CHECK_NULL_RETURN(msg->notification->module_install_notif, SR_ERR_MALFORMED_MSG);
                 break;
-            case SR__NOTIFICATION_TYPE__FEATURE_ENABLE_NOTIF:
+            case SR__SUBSCRIPTION_TYPE__FEATURE_ENABLE_SUBS:
                 CHECK_NULL_RETURN(msg->notification->feature_enable_notif, SR_ERR_MALFORMED_MSG);
                 break;
-            case SR__NOTIFICATION_TYPE__MODULE_CHANGE_NOTIF:
+            case SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS:
                 CHECK_NULL_RETURN(msg->notification->module_change_notif, SR_ERR_MALFORMED_MSG);
                 break;
-            case SR__NOTIFICATION_TYPE__SUBTREE_CHANGE_NOTIF:
+            case SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS:
                 CHECK_NULL_RETURN(msg->notification->subtree_change_notif, SR_ERR_MALFORMED_MSG);
                 break;
-            case SR__NOTIFICATION_TYPE__HELLO_NOTIF:
+            case SR__SUBSCRIPTION_TYPE__HELLO_SUBS:
                 break;
             default:
                 return SR_ERR_MALFORMED_MSG;
@@ -1356,42 +1356,67 @@ sr_move_direction_gpb_to_sr(Sr__MoveItemReq__MovePosition gpb_position)
 }
 
 char *
-sr_notif_type_gpb_to_str(Sr__NotificationType type)
+sr_subscription_type_gpb_to_str(Sr__SubscriptionType type)
 {
     switch (type) {
-        case SR__NOTIFICATION_TYPE__MODULE_INSTALL_NOTIF:
+        case SR__SUBSCRIPTION_TYPE__MODULE_INSTALL_SUBS:
             return "module-install";
-        case SR__NOTIFICATION_TYPE__FEATURE_ENABLE_NOTIF:
+        case SR__SUBSCRIPTION_TYPE__FEATURE_ENABLE_SUBS:
             return "feature-enable";
-        case SR__NOTIFICATION_TYPE__MODULE_CHANGE_NOTIF:
+        case SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS:
             return "module-change";
-        case SR__NOTIFICATION_TYPE__SUBTREE_CHANGE_NOTIF:
+        case SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS:
             return "subtree-change";
-        case SR__NOTIFICATION_TYPE__RPC_NOTIF:
+        case SR__SUBSCRIPTION_TYPE__RPC_SUBS:
             return "rpc";
-        case SR__NOTIFICATION_TYPE__HELLO_NOTIF:
+        case SR__SUBSCRIPTION_TYPE__HELLO_SUBS:
             return "hello";
         default:
             return "unknown";
     }
 }
 
-Sr__NotificationType
-sr_notif_type_str_to_gpb(const char *type_name)
+Sr__SubscriptionType
+sr_subsciption_type_str_to_gpb(const char *type_name)
 {
     if (0 == strcmp(type_name, "module-install")) {
-        return SR__NOTIFICATION_TYPE__MODULE_INSTALL_NOTIF;
+        return SR__SUBSCRIPTION_TYPE__MODULE_INSTALL_SUBS;
     }
     if (0 == strcmp(type_name, "feature-enable")) {
-        return SR__NOTIFICATION_TYPE__FEATURE_ENABLE_NOTIF;
+        return SR__SUBSCRIPTION_TYPE__FEATURE_ENABLE_SUBS;
     }
     if (0 == strcmp(type_name, "module-change")) {
-        return SR__NOTIFICATION_TYPE__MODULE_CHANGE_NOTIF;
+        return SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS;
     }
     if (0 == strcmp(type_name, "subtree-change")) {
-        return SR__NOTIFICATION_TYPE__SUBTREE_CHANGE_NOTIF;
+        return SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS;
     }
-    return _SR__NOTIFICATION_TYPE_IS_INT_SIZE;
+    return _SR__SUBSCRIPTION_TYPE_IS_INT_SIZE;
+}
+
+char *
+sr_notification_event_gpb_to_str(Sr__NotificationEvent event)
+{
+    switch (event) {
+        case SR__NOTIFICATION_EVENT__VERIFY_EV:
+            return "verify";
+        case SR__NOTIFICATION_EVENT__NOTIFY_EV:
+            return "notify";
+        default:
+            return "unknown";
+    }
+}
+
+Sr__NotificationEvent
+sr_notification_event_str_to_gpb(const char *event_name)
+{
+    if (0 == strcmp(event_name, "verify")) {
+        return SR__NOTIFICATION_EVENT__VERIFY_EV;
+    }
+    if (0 == strcmp(event_name, "notify")) {
+        return SR__NOTIFICATION_EVENT__NOTIFY_EV;
+    }
+    return _SR__NOTIFICATION_EVENT_IS_INT_SIZE;
 }
 
 int

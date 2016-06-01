@@ -898,17 +898,20 @@ rp_subscribe_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr
     subscribe_req = msg->request->subscribe_req;
 
     /* set subscribe options */
-    if (subscribe_req->enable_running) {
+    if (subscribe_req->has_enable_running && subscribe_req->enable_running) {
         options |= NP_SUBSCR_ENABLE_RUNNING;
     }
-    if (SR__NOTIFICATION_TYPE__RPC_NOTIF == subscribe_req->notif_type) {
+    if (SR__SUBSCRIPTION_TYPE__RPC_SUBS == subscribe_req->type) {
         options |= NP_SUBSCR_EXCLUSIVE;
     }
 
     /* subscribe to the notification */
-    rc = np_notification_subscribe(rp_ctx->np_ctx, session, subscribe_req->notif_type,
+    rc = np_notification_subscribe(rp_ctx->np_ctx, session, subscribe_req->type,
             subscribe_req->destination, subscribe_req->subscription_id,
-            subscribe_req->module_name, subscribe_req->xpath, options);
+            subscribe_req->module_name, subscribe_req->xpath,
+            (subscribe_req->has_notif_event ? subscribe_req->notif_event : SR__NOTIFICATION_EVENT__NOTIFY_EV),
+            (subscribe_req->has_priority ? subscribe_req->priority : 0),
+            options);
 
     /* set response code */
     resp->response->result = rc;
@@ -951,7 +954,7 @@ rp_unsubscribe_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
     }
 
     /* unsubscribe from the notifications */
-    rc = np_notification_unsubscribe(rp_ctx->np_ctx, session, msg->request->unsubscribe_req->notif_type,
+    rc = np_notification_unsubscribe(rp_ctx->np_ctx, session, msg->request->unsubscribe_req->type,
             msg->request->unsubscribe_req->destination, msg->request->unsubscribe_req->subscription_id,
             msg->request->unsubscribe_req->module_name);
 
@@ -1106,7 +1109,7 @@ rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg 
 
     /* get RPC subscription */
     if (SR_ERR_OK == rc) {
-        rc = pm_get_subscriptions(rp_ctx->pm_ctx, module_name, SR__NOTIFICATION_TYPE__RPC_NOTIF,
+        rc = pm_get_subscriptions(rp_ctx->pm_ctx, module_name, SR__SUBSCRIPTION_TYPE__RPC_SUBS,
                 &subscriptions, &subscription_cnt);
     }
     free(module_name);

@@ -1232,8 +1232,9 @@ main(int argc, char* argv[])
                               SR_SESS_DEFAULT, &srcfg_session);
     }
     if (SR_ERR_OK == rc) {
-        rc = sr_module_change_subscribe(srcfg_session, module_name, SR_EV_NOTIFY, true, 0,
-                                        srcfg_module_change_cb, NULL, &srcfg_subscription);
+        // TODO: remove the subscription from sysrepocfg
+        rc = sr_module_change_subscribe(srcfg_session, module_name, srcfg_module_change_cb, NULL,
+                0, SR_SUBSCR_DEFAULT, &srcfg_subscription);
     }
     if (SR_ERR_OK != rc) {
         srcfg_report_error(rc);
