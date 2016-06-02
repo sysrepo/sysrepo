@@ -592,8 +592,10 @@ pm_add_subscription(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *m
 
         snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTIONS_BY_TYPE_XPATH, module_name,
                 sr_subscription_type_gpb_to_str(subscription->type), subscription->xpath);
-        pm_modify_persist_data_tree(pm_ctx, &data_tree, xpath, NULL, false, NULL);
-        /* error check not needed here */
+        rc = pm_modify_persist_data_tree(pm_ctx, &data_tree, xpath, NULL, false, NULL);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_WRN("Unable to delete existing %s subscriptions.", sr_subscription_type_gpb_to_str(subscription->type));
+        }
     }
 
     /* create the subscription */

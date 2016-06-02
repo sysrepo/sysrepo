@@ -398,6 +398,7 @@ dm_load_schema_file(dm_ctx_t *dm_ctx, const char *dir_name, const char *file_nam
     }
     if (SR_ERR_OK == rc && running_enabled) {
         /* enable running datastore */
+        // TODO: enable only enabled subtrees
         rc = dm_enable_module_running(dm_ctx, NULL, module->name, module);
     }
 

@@ -607,7 +607,8 @@ cl_sm_notif_process(cl_sm_ctx_t *sm_ctx, Sr__Msg *msg)
     }
 
     /* get data session that can be used from notification callback */
-    if (SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS == msg->notification->type) {
+    if ((SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS == msg->notification->type) ||
+            (SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS == msg->notification->type)) {
         rc = cl_sm_get_data_session(sm_ctx, subscription, msg->notification->source_address,
                 msg->notification->source_pid, &data_session);
         if (SR_ERR_OK != rc) {
@@ -643,10 +644,17 @@ cl_sm_notif_process(cl_sm_ctx_t *sm_ctx, Sr__Msg *msg)
             subscription->callback.module_change_cb(
                     data_session,
                     msg->notification->module_change_notif->module_name,
-                    SR_EV_NOTIFY, // TODO: msg->notification->module_change_notif->event
+                    sr_notification_event_gpb_to_sr(msg->notification->module_change_notif->event),
                     subscription->private_ctx);
             break;
-        // TODO: subtree-change callback
+        case SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS:
+            SR_LOG_DBG("Calling subtree-change callback for subscription id=%"PRIu32".", subscription->id);
+            subscription->callback.subtree_change_cb(
+                    data_session,
+                    msg->notification->subtree_change_notif->xpath,
+                    sr_notification_event_gpb_to_sr(msg->notification->subtree_change_notif->event),
+                    subscription->private_ctx);
+            break;
         case SR__SUBSCRIPTION_TYPE__HELLO_SUBS:
             SR_LOG_DBG("HELLO notification received on subscription id=%"PRIu32".", subscription->id);
             break;

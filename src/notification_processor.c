@@ -309,6 +309,7 @@ np_notification_subscribe(np_ctx_t *np_ctx, const rp_session_t *rp_session, Sr__
 
         if (opts & NP_SUBSCR_ENABLE_RUNNING) {
             /* enable the module in running config */
+            // TODO: enable only the subtree in case of SUBTREE_CHANGE_SUBS
             rc = dm_enable_module_running(np_ctx->rp_ctx->dm_ctx, rp_session->dm_session, module_name, NULL);
             CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to enable the module in the running datastore.");
         }
