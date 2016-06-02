@@ -580,6 +580,18 @@ int dm_has_enabled_subtree(dm_ctx_t *ctx, const char *module_name, const struct 
 int dm_enable_module_running(dm_ctx_t *ctx, dm_session_t *session, const char *module_name, const struct lys_module *module);
 
 /**
+ * @brief Enables subtree in running datastore (including copying of the startup data into running).
+ * @param [in] ctx DM context.
+ * @param [in] session DM session.
+ * @param [in] module_name Name of the module where a subtree needs to be enabled.
+ * @param[in] xpath XPath identifying the subtree to be enabled.
+ * @param [in] module Libyang schema tree pointer. If not known, NULL can be provided.
+ * @return Error code (SR_ERR_OK on success)
+ */
+int dm_enable_module_subtree_running(dm_ctx_t *ctx, dm_session_t *session, const char *module_name, const char *xpath,
+        const struct lys_module *module);
+
+/**
  * @brief Disables module in running data store
  * @param [in] ctx
  * @param [in] session

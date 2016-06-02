@@ -484,23 +484,26 @@ pm_save_feature_state(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char 
 }
 
 int
-pm_get_module_info(pm_ctx_t *pm_ctx, const char *module_name,
-        bool *running_enabled, char ***features_p, size_t *feature_cnt_p)
+pm_get_module_info(pm_ctx_t *pm_ctx, const char *module_name, bool *module_enabled,
+        char ***subtrees_enabled_p, size_t *subtrees_enabled_cnt_p, char ***features_p, size_t *features_cnt_p)
 {
     char xpath[PATH_MAX] = { 0, };
     struct lyd_node *data_tree = NULL;
     struct ly_set *node_set = NULL;
-    char **features = NULL;
+    char **subtrees_enabled = NULL, **features = NULL, **tmp = NULL;
     const char *feature_name = NULL;
-    size_t feature_cnt = 0;
+    size_t subtrees_enabled_cnt = 0, feature_cnt = 0;
     np_subscription_t subscription = { 0, };
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG4(pm_ctx, module_name, features_p, feature_cnt_p);
+    CHECK_NULL_ARG3(pm_ctx, module_name, module_enabled);
+    CHECK_NULL_ARG4(subtrees_enabled_p, subtrees_enabled_cnt_p, features_p, features_cnt_p);
 
+    *module_enabled = false;
+    *subtrees_enabled_p = NULL;
+    *subtrees_enabled_cnt_p = 0;
     *features_p = NULL;
-    *feature_cnt_p = 0;
-    *running_enabled = false;
+    *features_cnt_p = 0;
 
     /* load the data tree from persist file */
     rc = pm_load_data_tree(pm_ctx, NULL, module_name, true, &data_tree, NULL);
@@ -514,6 +517,7 @@ pm_get_module_info(pm_ctx_t *pm_ctx, const char *module_name,
         goto cleanup;
     }
 
+    /* get all enabled features */
     snprintf(xpath, PATH_MAX, PM_XPATH_FEATURES, module_name);
     node_set = lyd_get_node(data_tree, xpath);
 
@@ -534,26 +538,41 @@ pm_get_module_info(pm_ctx_t *pm_ctx, const char *module_name,
         ly_set_free(node_set);
     }
 
+    /* get all subscriptions that enable running */
     snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTIONS_WITH_E_RUNNING, module_name);
     node_set = lyd_get_node(data_tree, xpath);
-    if (NULL != node_set && node_set->number > 0) {
-        *running_enabled = true;
 
-        /* send HELLO notifications to verify that these subscriptions are still alive */
+    if (NULL != node_set && node_set->number > 0) {
         for (size_t i = 0; i < node_set->number; i++) {
             rc = pm_subscription_entry_fill(module_name, &subscription, node_set->set.d[i]->child);
             if (SR_ERR_OK == rc) {
+                if (SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS == subscription.type) {
+                    *module_enabled = true;
+                }
+                if (SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS == subscription.type) {
+                    tmp = realloc(subtrees_enabled, (subtrees_enabled_cnt + 1) * sizeof(*subtrees_enabled));
+                    CHECK_NULL_NOMEM_GOTO(tmp, rc, cleanup);
+                    subtrees_enabled = tmp;
+                    subtrees_enabled[subtrees_enabled_cnt] = strdup(subscription.xpath);
+                    CHECK_NULL_NOMEM_GOTO(subtrees_enabled[subtrees_enabled_cnt], rc, cleanup);
+                    subtrees_enabled_cnt++;
+                }
+            }
+            if (SR_ERR_OK == rc) {
+                /* send HELLO notifications to verify that these subscriptions are still alive */
                 rc = np_hello_notify(pm_ctx->rp_ctx->np_ctx, module_name, subscription.dst_address, subscription.dst_id);
             }
             np_free_subscription_content(&subscription);
         }
     }
 
-    SR_LOG_DBG("Returning info from '%s' persist file: running ds %s, %zu features enabled.",
-            module_name, (*running_enabled ? "enabled" : "disabled"), feature_cnt);
+    SR_LOG_DBG("Returning info from '%s' persist file: module %s, %zu subtrees enabled in running, %zu features enabled.",
+            module_name, (*module_enabled ? "enabled" : "disabled"), subtrees_enabled_cnt, feature_cnt);
 
+    *subtrees_enabled_p = subtrees_enabled;
+    *subtrees_enabled_cnt_p = subtrees_enabled_cnt;
     *features_p = features;
-    *feature_cnt_p = feature_cnt;
+    *features_cnt_p = feature_cnt;
 
 cleanup:
     if (NULL != node_set) {
@@ -564,9 +583,13 @@ cleanup:
     }
 
     if (SR_ERR_OK != rc) {
+        for (size_t i = 0; i < subtrees_enabled_cnt; i++) {
+            free((void*)subtrees_enabled[i]);
+        }
         for (size_t i = 0; i < feature_cnt; i++) {
             free((void*)features[i]);
         }
+        free(subtrees_enabled);
         free(features);
     }
     return rc;

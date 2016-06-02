@@ -308,12 +308,16 @@ np_notification_subscribe(np_ctx_t *np_ctx, const rp_session_t *rp_session, Sr__
         CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to save the subscription into persistent data file.");
 
         if (opts & NP_SUBSCR_ENABLE_RUNNING) {
-            /* enable the module in running config */
-            // TODO: enable only the subtree in case of SUBTREE_CHANGE_SUBS
-            rc = dm_enable_module_running(np_ctx->rp_ctx->dm_ctx, rp_session->dm_session, module_name, NULL);
-            CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to enable the module in the running datastore.");
+            if (SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS == type) {
+                /* enable the subtree in running config */
+                rc = dm_enable_module_subtree_running(np_ctx->rp_ctx->dm_ctx, rp_session->dm_session, module_name, xpath, NULL);
+                CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to enable the subtree in the running datastore.");
+            } else {
+                /* enable the module in running config */
+                rc = dm_enable_module_running(np_ctx->rp_ctx->dm_ctx, rp_session->dm_session, module_name, NULL);
+                CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to enable the module in the running datastore.");
+            }
         }
-
         goto cleanup; /* subscription not needed anymore */
     } else {
         /* add the subscription to in-memory subscription list */

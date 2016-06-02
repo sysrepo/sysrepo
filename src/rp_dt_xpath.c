@@ -580,6 +580,11 @@ rp_dt_enable_xpath(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath)
         SR_LOG_ERR("Xpath validation failed %s", xpath);
         return rc;
     }
+    if (NULL == match) {
+        // TODO: XPath such as '/example-module://*' seems to return match == NULL
+        SR_LOG_ERR("Unsupported xpath '%s'", xpath);
+        return SR_ERR_UNSUPPORTED;
+    }
 
     dm_schema_info_t *si = NULL;
     rc = dm_get_schema_info(dm_ctx, match->module->name, &si);
