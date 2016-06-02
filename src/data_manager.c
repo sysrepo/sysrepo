@@ -400,11 +400,11 @@ dm_load_schema_file(dm_ctx_t *dm_ctx, const char *dir_name, const char *file_nam
     if (SR_ERR_OK == rc) {
         if (module_enabled) {
             /* enable running datastore for whole module */
-            rc = dm_enable_module_running(dm_ctx, NULL, module->name, module);
+            rc = dm_enable_module_running(dm_ctx, NULL, module->name, module, false);
         } else {
             /* enable running datastore for specified subtrees */
             for (size_t i = 0; i < enabled_subtrees_cnt; i++) {
-                rc = dm_enable_module_subtree_running(dm_ctx, NULL, module->name, enabled_subtrees[i], module);
+                rc = dm_enable_module_subtree_running(dm_ctx, NULL, module->name, enabled_subtrees[i], module, false);
                 if (SR_ERR_OK != rc) {
                     SR_LOG_WRN("Unable to enable subtree '%s' in module '%s' in running ds.", enabled_subtrees[i], module->name);
                 }
@@ -2948,7 +2948,8 @@ dm_has_enabled_subtree(dm_ctx_t *ctx, const char *module_name, const struct lys_
 }
 
 int
-dm_enable_module_running(dm_ctx_t *ctx, dm_session_t *session, const char *module_name, const struct lys_module *module)
+dm_enable_module_running(dm_ctx_t *ctx, dm_session_t *session, const char *module_name, const struct lys_module *module,
+        bool copy_from_startup)
 {
     CHECK_NULL_ARG2(ctx, module_name);
     bool has_enabled_subtree = false;
@@ -2975,7 +2976,7 @@ dm_enable_module_running(dm_ctx_t *ctx, dm_session_t *session, const char *modul
             node = node->next;
         }
     }
-    if (SR_ERR_OK == rc && !has_enabled_subtree) {
+    if (SR_ERR_OK == rc && copy_from_startup && !has_enabled_subtree) {
         /* if no subtree was already enabled within the module, copy the data from startup */
         rc = dm_copy_module(ctx, session, module_name, SR_DS_STARTUP, SR_DS_RUNNING);
     }
@@ -2984,7 +2985,7 @@ dm_enable_module_running(dm_ctx_t *ctx, dm_session_t *session, const char *modul
 
 int
 dm_enable_module_subtree_running(dm_ctx_t *ctx, dm_session_t *session, const char *module_name, const char *xpath,
-        const struct lys_module *module)
+        const struct lys_module *module, bool copy_from_startup)
 {
     CHECK_NULL_ARG2(ctx, module_name);
     bool has_enabled_subtree = false;
@@ -3000,7 +3001,7 @@ dm_enable_module_subtree_running(dm_ctx_t *ctx, dm_session_t *session, const cha
         /* enable the subtree specified by xpath */
         rc = rp_dt_enable_xpath(ctx, session, xpath);
     }
-    if (SR_ERR_OK == rc) {
+    if (SR_ERR_OK == rc && copy_from_startup) {
         if (!has_enabled_subtree) {
             /* no subtree was already enabled within the module, copy the data from startup */
             rc = dm_copy_module(ctx, session, module_name, SR_DS_STARTUP, SR_DS_RUNNING);
