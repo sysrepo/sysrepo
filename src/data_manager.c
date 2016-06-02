@@ -339,9 +339,9 @@ dm_load_schema_file(dm_ctx_t *dm_ctx, const char *dir_name, const char *file_nam
     CHECK_NULL_ARG3(dm_ctx, dir_name, file_name);
     const struct lys_module *module = NULL;
     char *schema_filename = NULL;
-    char **features = NULL;
-    size_t feature_cnt = 0;
-    bool running_enabled = false;
+    char **enabled_subtrees = NULL, **features = NULL;
+    size_t enabled_subtrees_cnt = 0, features_cnt = 0;
+    bool module_enabled = false;
     dm_schema_info_t *si = NULL;
     int rc = SR_ERR_OK;
 
@@ -384,10 +384,11 @@ dm_load_schema_file(dm_ctx_t *dm_ctx, const char *dir_name, const char *file_nam
 
     pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
     /* load module's persistent data */
-    rc = pm_get_module_info(dm_ctx->pm_ctx, module->name, &running_enabled, &features, &feature_cnt);
+    rc = pm_get_module_info(dm_ctx->pm_ctx, module->name, &module_enabled,
+            &enabled_subtrees, &enabled_subtrees_cnt, &features, &features_cnt);
     if (SR_ERR_OK == rc) {
         /* enable active features */
-        for (size_t i = 0; i < feature_cnt; i++) {
+        for (size_t i = 0; i < features_cnt; i++) {
             rc = dm_feature_enable(dm_ctx, module->name, features[i], true);
             if (SR_ERR_OK != rc) {
                 SR_LOG_WRN("Unable to enable feature '%s' in module '%s' in Data Manager.", features[i], module->name);
@@ -396,10 +397,21 @@ dm_load_schema_file(dm_ctx_t *dm_ctx, const char *dir_name, const char *file_nam
         }
         free(features);
     }
-    if (SR_ERR_OK == rc && running_enabled) {
-        /* enable running datastore */
-        // TODO: enable only enabled subtrees
-        rc = dm_enable_module_running(dm_ctx, NULL, module->name, module);
+    if (SR_ERR_OK == rc) {
+        if (module_enabled) {
+            /* enable running datastore for whole module */
+            rc = dm_enable_module_running(dm_ctx, NULL, module->name, module);
+        } else {
+            /* enable running datastore for specified subtrees */
+            for (size_t i = 0; i < enabled_subtrees_cnt; i++) {
+                rc = dm_enable_module_subtree_running(dm_ctx, NULL, module->name, enabled_subtrees[i], module);
+                if (SR_ERR_OK != rc) {
+                    SR_LOG_WRN("Unable to enable subtree '%s' in module '%s' in running ds.", enabled_subtrees[i], module->name);
+                }
+                free(enabled_subtrees[i]);
+            }
+            free(enabled_subtrees);
+        }
     }
 
     return SR_ERR_OK;
