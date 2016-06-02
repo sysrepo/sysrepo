@@ -389,8 +389,6 @@ rp_dt_difflist_to_changes(struct lyd_difflist *difflist, struct ly_set **changes
             CHECK_NULL_NOMEM_GOTO(ch, rc, cleanup);
         }
 
-        //TODO for created/deleted container/list generate multiple changes
-
         switch (difflist->type[d_cnt]) {
         case LYD_DIFF_CREATED:
             if ((LYS_LIST | LYS_CONTAINER) & difflist->second[d_cnt]->schema->nodetype) {
