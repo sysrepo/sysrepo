@@ -1020,13 +1020,34 @@ test_module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_not
     int rc = SR_ERR_OK;
 
     int *callback_called = (int*)private_ctx;
-    *callback_called += 1;
     printf("Some data within the module '%s' has changed.\n", module_name);
 
     rc = sr_get_item(session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &value);
     if (SR_ERR_OK == rc) {
         printf("New value for '%s' = '%s'\n", value->xpath, value->data.string_val);
         sr_free_val(value);
+        *callback_called += 1;
+    } else {
+        printf("While retrieving '%s' error with code (%d) occured\n", "/example-module:container/list[key1='key1'][key2='key2']/leaf", rc);
+    }
+
+    return SR_ERR_OK;
+}
+
+static int
+test_subtree_change_cb(sr_session_ctx_t *session, const char *xpath, sr_notif_event_t event, void *private_ctx)
+{
+    sr_val_t *value = NULL;
+    int rc = SR_ERR_OK;
+
+    int *callback_called = (int*)private_ctx;
+    printf("Some data within the subtree '%s' has changed.\n", xpath);
+
+    rc = sr_get_item(session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &value);
+    if (SR_ERR_OK == rc) {
+        printf("New value for '%s' = '%s'\n", value->xpath, value->data.string_val);
+        sr_free_val(value);
+        *callback_called += 1;
     } else {
         printf("While retrieving '%s' error with code (%d) occured\n", "/example-module:container/list[key1='key1'][key2='key2']/leaf", rc);
     }
@@ -1054,11 +1075,15 @@ cl_notification_test(void **state)
     rc = sr_module_install_subscribe(session, test_module_install_cb, &callback_called, SR_SUBSCR_DEFAULT, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = sr_feature_enable_subscribe(session, test_feature_enable_cb, &callback_called, SR_SUBSCR_DEFAULT, &subscription);
+    rc = sr_feature_enable_subscribe(session, test_feature_enable_cb, &callback_called, SR_SUBSCR_CTX_REUSE, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
     rc = sr_module_change_subscribe(session, "example-module", test_module_change_cb, &callback_called,
-            0, SR_SUBSCR_DEFAULT, &subscription);
+            0, SR_SUBSCR_CTX_REUSE, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_subtree_change_subscribe(session, "/example-module:container/list", test_subtree_change_cb, &callback_called,
+            0, SR_SUBSCR_CTX_REUSE, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* do some changes */
@@ -1094,12 +1119,12 @@ cl_notification_test(void **state)
     /* commit */
     rc = sr_commit(session);
 
-    /* wait for all callbacks or timeout after 100 ms */
-    for (size_t i = 0; i < 100; i++) {
-        if (callback_called >= 4) break;
-        usleep(1000); /* 1 ms */
+    /* wait for all callbacks or timeout after 10 seconds */
+    for (size_t i = 0; i < 1000; i++) {
+        if (callback_called >= 5) break;
+        usleep(10000); /* 10 ms */
     }
-    assert_true(callback_called >= 4);
+    assert_true(callback_called >= 5);
 
     /* some negative tests */
     rc = sr_feature_enable(session, "unknown-module", "unknown", true);
