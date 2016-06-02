@@ -2939,16 +2939,18 @@ int
 dm_enable_module_running(dm_ctx_t *ctx, dm_session_t *session, const char *module_name, const struct lys_module *module)
 {
     CHECK_NULL_ARG2(ctx, module_name);
-    bool module_enabled = false;
+    bool has_enabled_subtree = false;
     char xpath[PATH_MAX] = {0,};
     int rc = SR_ERR_OK;
 
+    CHECK_NULL_ARG3(ctx, session, module_name);
+
     if (NULL == module) {
-        /* if module is not known, get it and check if it is already enabled */
-        rc = dm_has_enabled_subtree(ctx, module_name, &module, &module_enabled);
+        /* if module is not known, get it and check if it has some enabled subtree */
+        rc = dm_has_enabled_subtree(ctx, module_name, &module, &has_enabled_subtree);
     }
-    if (SR_ERR_OK == rc && !module_enabled) {
-        /* if not already enabled, enable each subtree within the module */
+    if (SR_ERR_OK == rc) {
+        /* enable each subtree within the module */
         struct lys_node *node = module->data;
         while (NULL != node) {
             if ((LYS_CONTAINER | LYS_LIST | LYS_LEAF | LYS_LEAFLIST) & node->nodetype) {
@@ -2961,9 +2963,38 @@ dm_enable_module_running(dm_ctx_t *ctx, dm_session_t *session, const char *modul
             node = node->next;
         }
     }
-    if (SR_ERR_OK == rc && !module_enabled) {
-        /* if not already enabled, copy the data from startup */
+    if (SR_ERR_OK == rc && !has_enabled_subtree) {
+        /* if no subtree was already enabled within the module, copy the data from startup */
         rc = dm_copy_module(ctx, session, module_name, SR_DS_STARTUP, SR_DS_RUNNING);
+    }
+    return rc;
+}
+
+int
+dm_enable_module_subtree_running(dm_ctx_t *ctx, dm_session_t *session, const char *module_name, const char *xpath,
+        const struct lys_module *module)
+{
+    CHECK_NULL_ARG2(ctx, module_name);
+    bool has_enabled_subtree = false;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG4(ctx, session, module_name, xpath);
+
+    if (NULL == module) {
+        /* if module is not known, get it and check if it has some enabled subtree */
+        rc = dm_has_enabled_subtree(ctx, module_name, &module, &has_enabled_subtree);
+    }
+    if (SR_ERR_OK == rc) {
+        /* enable the subtree specified by xpath */
+        rc = rp_dt_enable_xpath(ctx, session, xpath);
+    }
+    if (SR_ERR_OK == rc) {
+        if (!has_enabled_subtree) {
+            /* no subtree was already enabled within the module, copy the data from startup */
+            rc = dm_copy_module(ctx, session, module_name, SR_DS_STARTUP, SR_DS_RUNNING);
+        } else {
+            // TODO: if something was already enabled, we should still copy fresh data of specified subtree from startup
+        }
     }
     return rc;
 }

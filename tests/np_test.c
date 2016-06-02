@@ -291,7 +291,7 @@ np_module_subscriptions_test(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 
     rc = np_notification_subscribe(np_ctx, test_ctx->rp_session_ctx, SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS,
-            "addr3", 456, "example-module", "/example-module://*", SR__NOTIFICATION_EVENT__VERIFY_EV, 20, NP_SUBSCR_ENABLE_RUNNING);
+            "addr3", 456, "example-module", "/example-module:container", SR__NOTIFICATION_EVENT__VERIFY_EV, 20, NP_SUBSCR_ENABLE_RUNNING);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* get subscriptions */
