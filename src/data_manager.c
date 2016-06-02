@@ -1971,34 +1971,6 @@ dm_remove_operations_with_error(dm_session_t *session)
     }
 }
 
-#define LYD_TREE_DFS_END(START, NEXT, ELEM)                                   \
-    /* select element for the next run - children first */                    \
-    do {                                                                      \
-        (NEXT) = (ELEM)->child;                                                 \
-        if ((ELEM)->schema->nodetype & (LYS_LEAF | LYS_LEAFLIST | LYS_ANYXML)) { \
-            (NEXT) = NULL;                                                    \
-        }                                                                     \
-        if (!(NEXT)) {                                                        \
-            /* no children */                                                 \
-            if ((ELEM) == (START)) {                                          \
-                /* we are done, (START) has no children */                    \
-                break;                                                        \
-            }                                                                 \
-            /* try siblings */                                                \
-            (NEXT) = (ELEM)->next;                                            \
-        }                                                                     \
-        while (!(NEXT)) {                                                     \
-            /* parent is already processed, go to its sibling */              \
-            (ELEM) = (ELEM)->parent;                                          \
-            /* no siblings, go back through parents */                        \
-            if ((ELEM)->parent == (START)->parent) {                          \
-                /* we are done, no next element to process */                 \
-                break;                                                        \
-            }                                                                 \
-            (NEXT) = (ELEM)->next;                                            \
-        }                                                                     \
-    }while(0)
-
 /**
  * @brief whether the node match the subscribed one - if it is the same node or children
  * of the subscribed one

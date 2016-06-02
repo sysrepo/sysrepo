@@ -158,11 +158,21 @@ cl_get_changes_create_test(void **state)
     ts.tv_sec += COND_WAIT_SEC;
     pthread_cond_timedwait(&changes.cv, &changes.mutex, &ts);
 
-    assert_int_equal(changes.cnt, 1);
+    assert_int_equal(changes.cnt, 3);
     assert_int_equal(changes.oper[0], SR_OP_CREATED);
     assert_non_null(changes.new_values[0]);
     assert_null(changes.old_values[0]);
     assert_string_equal(xpath, changes.new_values[0]->xpath);
+
+    assert_int_equal(changes.oper[1], SR_OP_CREATED);
+    assert_non_null(changes.new_values[1]);
+    assert_null(changes.old_values[1]);
+    assert_string_equal("/example-module:container/list[key1='abc'][key2='def']/key1", changes.new_values[1]->xpath);
+
+    assert_int_equal(changes.oper[2], SR_OP_CREATED);
+    assert_non_null(changes.new_values[2]);
+    assert_null(changes.old_values[2]);
+    assert_string_equal("/example-module:container/list[key1='abc'][key2='def']/key2", changes.new_values[2]->xpath);
 
 
     for (size_t i = 0; i < changes.cnt; i++) {
@@ -286,11 +296,31 @@ cl_get_changes_deleted_test(void **state)
     ts.tv_sec += COND_WAIT_SEC;
     pthread_cond_timedwait(&changes.cv, &changes.mutex, &ts);
 
-    assert_int_equal(changes.cnt, 1);
+    assert_int_equal(changes.cnt, 5);
     assert_int_equal(changes.oper[0], SR_OP_DELETED);
     assert_null(changes.new_values[0]);
     assert_non_null(changes.old_values[0]);
     assert_string_equal(xpath, changes.old_values[0]->xpath);
+
+    assert_int_equal(changes.oper[1], SR_OP_DELETED);
+    assert_null(changes.new_values[1]);
+    assert_non_null(changes.old_values[1]);
+    assert_string_equal("/example-module:container/list[key1='key1'][key2='key2']", changes.old_values[1]->xpath);
+
+    assert_int_equal(changes.oper[2], SR_OP_DELETED);
+    assert_null(changes.new_values[2]);
+    assert_non_null(changes.old_values[2]);
+    assert_string_equal("/example-module:container/list[key1='key1'][key2='key2']/key1", changes.old_values[2]->xpath);
+
+    assert_int_equal(changes.oper[3], SR_OP_DELETED);
+    assert_null(changes.new_values[3]);
+    assert_non_null(changes.old_values[3]);
+    assert_string_equal("/example-module:container/list[key1='key1'][key2='key2']/key2", changes.old_values[3]->xpath);
+
+    assert_int_equal(changes.oper[4], SR_OP_DELETED);
+    assert_null(changes.new_values[4]);
+    assert_non_null(changes.old_values[4]);
+    assert_string_equal("/example-module:container/list[key1='key1'][key2='key2']/leaf", changes.old_values[4]->xpath);
 
     for (size_t i = 0; i < changes.cnt; i++) {
         sr_free_val(changes.new_values[i]);

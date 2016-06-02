@@ -145,6 +145,37 @@ typedef struct dm_c_ctxs_s {
 } dm_commit_ctxs_t;
 
 /**
+ * @brief End macro for data child iteration
+ */
+#define LYD_TREE_DFS_END(START, NEXT, ELEM)                                   \
+    /* select element for the next run - children first */                    \
+    do {                                                                      \
+        (NEXT) = (ELEM)->child;                                                 \
+        if ((ELEM)->schema->nodetype & (LYS_LEAF | LYS_LEAFLIST | LYS_ANYXML)) { \
+            (NEXT) = NULL;                                                    \
+        }                                                                     \
+        if (!(NEXT)) {                                                        \
+            /* no children */                                                 \
+            if ((ELEM) == (START)) {                                          \
+                /* we are done, (START) has no children */                    \
+                break;                                                        \
+            }                                                                 \
+            /* try siblings */                                                \
+            (NEXT) = (ELEM)->next;                                            \
+        }                                                                     \
+        while (!(NEXT)) {                                                     \
+            /* parent is already processed, go to its sibling */              \
+            (ELEM) = (ELEM)->parent;                                          \
+            /* no siblings, go back through parents */                        \
+            if ((ELEM)->parent == (START)->parent) {                          \
+                /* we are done, no next element to process */                 \
+                break;                                                        \
+            }                                                                 \
+            (NEXT) = (ELEM)->next;                                            \
+        }                                                                     \
+    }while(0)
+
+/**
  * @brief Initializes the data manager context, which will be passed in further
  * data manager related calls.
  * @param [in] ac_ctx Access Control module context

@@ -332,6 +332,44 @@ cleanup:
 
 }
 
+/**
+ * @brief generates changes for the children of created/deleted container/list
+ *
+ */
+static int
+rp_dt_add_changes_for_children(struct ly_set *changes, LYD_DIFFTYPE type, struct lyd_node *node)
+{
+    CHECK_NULL_ARG2(changes, node);
+    int rc = SR_ERR_OK;
+    int ret = 0;
+    struct lyd_node *next = NULL, *elem = NULL;
+    sr_change_t *ch = NULL;
+
+    LY_TREE_DFS_BEGIN(node, next, elem) {
+        ch = calloc(1, sizeof(*ch));
+        CHECK_NULL_NOMEM_GOTO(ch, rc, cleanup);
+
+        ch->oper = type == LYD_DIFF_CREATED ?  SR_OP_CREATED : SR_OP_DELETED;
+        ch->sch_node = elem->schema;
+
+        sr_val_t **ptr = LYD_DIFF_CREATED == type ? &ch->new_value : &ch->old_value;
+        *ptr = calloc(1, sizeof(**ptr));
+        CHECK_NULL_NOMEM_GOTO(*ptr, rc, cleanup);
+        rc = rp_dt_get_value_from_node(elem, *ptr);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Get value from node failed");
+
+        ret = ly_set_add(changes, ch);
+        CHECK_NOT_MINUS1_MSG_GOTO(ret, rc, SR_ERR_INTERNAL, cleanup, "Ly set add failed");
+        ch = NULL;
+        LYD_TREE_DFS_END(node, next, elem);
+    }
+cleanup:
+    if (NULL != ch) {
+        sr_free_changes(ch, 1);
+    }
+    return rc;
+}
+
 int
 rp_dt_difflist_to_changes(struct lyd_difflist *difflist, struct ly_set **changes)
 {
@@ -345,29 +383,40 @@ rp_dt_difflist_to_changes(struct lyd_difflist *difflist, struct ly_set **changes
     CHECK_NULL_NOMEM_RETURN(set);
 
     for(size_t d_cnt = 0; LYD_DIFF_END != difflist->type[d_cnt]; d_cnt++) {
-        ch = calloc(1, sizeof(*ch));
-        CHECK_NULL_NOMEM_GOTO(ch, rc, cleanup);
+        if (!(LYD_DIFF_CREATED == difflist->type[d_cnt] && (LYS_LIST | LYS_CONTAINER) & difflist->second[d_cnt]->schema->nodetype) &&
+            !(LYD_DIFF_DELETED == difflist->type[d_cnt] && (LYS_LIST | LYS_CONTAINER) & difflist->first[d_cnt]->schema->nodetype)) {
+            ch = calloc(1, sizeof(*ch));
+            CHECK_NULL_NOMEM_GOTO(ch, rc, cleanup);
+        }
 
         //TODO for created/deleted container/list generate multiple changes
 
         switch (difflist->type[d_cnt]) {
         case LYD_DIFF_CREATED:
-            ch->oper = SR_OP_CREATED;
-            ch->sch_node = difflist->second[d_cnt]->schema;
-
-            ch->new_value = calloc(1, sizeof(*ch->new_value));
-            CHECK_NULL_NOMEM_GOTO(ch->new_value, rc, cleanup);
-            rc = rp_dt_get_value_from_node(difflist->second[d_cnt], ch->new_value);
-            CHECK_RC_MSG_GOTO(rc, cleanup, "Get value from node failed");
+            if ((LYS_LIST | LYS_CONTAINER) & difflist->second[d_cnt]->schema->nodetype) {
+                rc = rp_dt_add_changes_for_children(set, difflist->type[d_cnt], difflist->second[d_cnt]);
+                CHECK_RC_MSG_GOTO(rc, cleanup, "Add changes for children failed");
+            } else {
+                ch->oper = SR_OP_CREATED;
+                ch->sch_node = difflist->second[d_cnt]->schema;
+                ch->new_value = calloc(1, sizeof(*ch->new_value));
+                CHECK_NULL_NOMEM_GOTO(ch->new_value, rc, cleanup);
+                rc = rp_dt_get_value_from_node(difflist->second[d_cnt], ch->new_value);
+                CHECK_RC_MSG_GOTO(rc, cleanup, "Get value from node failed");
+            }
             break;
         case LYD_DIFF_DELETED:
-            ch->oper = SR_OP_DELETED;
-            ch->sch_node = difflist->first[d_cnt]->schema;
-
-            ch->old_value = calloc(1, sizeof(*ch->old_value));
-            CHECK_NULL_NOMEM_GOTO(ch->old_value, rc, cleanup);
-            rc = rp_dt_get_value_from_node(difflist->first[d_cnt], ch->old_value);
-            CHECK_RC_MSG_GOTO(rc, cleanup, "Get value from node failed");
+            if ((LYS_LIST | LYS_CONTAINER) & difflist->first[d_cnt]->schema->nodetype) {
+                rc = rp_dt_add_changes_for_children(set, difflist->type[d_cnt], difflist->first[d_cnt]);
+                CHECK_RC_MSG_GOTO(rc, cleanup, "Add changes for children failed");
+            } else {
+                ch->oper = SR_OP_DELETED;
+                ch->sch_node = difflist->first[d_cnt]->schema;
+                ch->old_value = calloc(1, sizeof(*ch->old_value));
+                CHECK_NULL_NOMEM_GOTO(ch->old_value, rc, cleanup);
+                rc = rp_dt_get_value_from_node(difflist->first[d_cnt], ch->old_value);
+                CHECK_RC_MSG_GOTO(rc, cleanup, "Get value from node failed");
+            }
             break;
         case LYD_DIFF_MOVEDAFTER1:
             ch->oper = SR_OP_MOVED;
@@ -415,9 +464,11 @@ rp_dt_difflist_to_changes(struct lyd_difflist *difflist, struct ly_set **changes
             CHECK_RC_MSG_GOTO(rc, cleanup, "Get value from node failed");
         }
 
-        ret = ly_set_add(set, ch);
-        CHECK_NOT_MINUS1_MSG_GOTO(ret, rc, SR_ERR_INTERNAL, cleanup, "Ly set add failed");
-        ch = NULL;
+        if (NULL != ch) {
+            ret = ly_set_add(set, ch);
+            CHECK_NOT_MINUS1_MSG_GOTO(ret, rc, SR_ERR_INTERNAL, cleanup, "Ly set add failed");
+            ch = NULL;
+        }
 
     }
 
