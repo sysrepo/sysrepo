@@ -913,6 +913,48 @@ rp_unsubscribe_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
 }
 
 /**
+ * @brief Processes a check-enabled-running request.
+ */
+static int
+rp_check_enabled_running_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
+{
+    Sr__Msg *resp = NULL;
+    int rc = SR_ERR_OK;
+    bool enabled = false;
+
+    CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->check_enabled_running_req);
+
+    SR_LOG_DBG_MSG("Processing check-enabled-running request.");
+
+    /* allocate the response */
+    rc = sr_gpb_resp_alloc(SR__OPERATION__CHECK_ENABLED_RUNNING, session->id, &resp);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Allocation of check-enabled-running response failed.");
+        return SR_ERR_NOMEM;
+    }
+
+    /* query data manager */
+    rc = dm_has_enabled_subtree(rp_ctx->dm_ctx, msg->request->check_enabled_running_req->module_name, NULL, &enabled);
+    if (SR_ERR_OK == rc) {
+        resp->response->check_enabled_running_resp->enabled = enabled;
+    }
+
+    /* set response code */
+    resp->response->result = rc;
+
+    /* copy DM errors, if any */
+    rc = rp_resp_fill_errors(resp, session->dm_session);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Copying errors to gpb failed");
+    }
+
+    /* send the response */
+    rc = cm_msg_send(rp_ctx->cm_ctx, resp);
+
+    return rc;
+}
+
+/**
  * @brief Processes a RPC request.
  */
 static int
@@ -1197,6 +1239,9 @@ rp_msg_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
                 break;
             case SR__OPERATION__UNSUBSCRIBE:
                 rc = rp_unsubscribe_req_process(rp_ctx, session, msg);
+                break;
+            case SR__OPERATION__CHECK_ENABLED_RUNNING:
+                rc = rp_check_enabled_running_req_process(rp_ctx, session, msg);
                 break;
             case SR__OPERATION__RPC:
                 rc = rp_rpc_req_process(rp_ctx, session, msg);

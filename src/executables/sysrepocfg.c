@@ -589,10 +589,12 @@ srcfg_import_datastore(struct ly_ctx *ly_ctx, int fd_in, const char *module_name
         goto cleanup;
     }
 
+/* XXX testing
     printf("CURRENT CONFIG:\n");
     lyd_print_fd(STDOUT_FILENO, current_data_tree, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT);
     printf("NEW CONFIG:\n");
     lyd_print_fd(STDOUT_FILENO, new_data_tree, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT);
+*/
 
     /* get the list of changes made by the user */
     diff = lyd_diff(current_data_tree, new_data_tree, 0);
@@ -1226,13 +1228,17 @@ main(int argc, char* argv[])
         rc = sr_session_start(srcfg_connection, datastore == SRCFG_STORE_RUNNING ? SR_DS_RUNNING : SR_DS_STARTUP,
                               SR_SESS_DEFAULT, &srcfg_session);
     }
-    if (SR_ERR_OK == rc) {
-        rc = sr_module_change_subscribe(srcfg_session, module_name, SR_EV_NOTIFY, true, 0,
-                                        srcfg_module_change_cb, NULL, &srcfg_subscription);
+    if (SRCFG_STORE_RUNNING == datastore) {
+        rc = sr_check_enabled_running(srcfg_session, module_name, &enabled);
+        if (SR_ERR_OK == rc && !enabled) {
+            printf("Cannot operate on the running datastore as there are no active subscriptions.\n"
+                   "Cancelling the operation.\n");
+            goto terminate;
+        }
     }
     if (SR_ERR_OK != rc) {
         srcfg_report_error(rc);
-        printf("Unable to subscribe for module changes in sysrepo. Cancelling the operation.\n");
+        printf("Unable to connect to sysrepo. Cancelling the operation.\n");
         goto terminate;
     }
 

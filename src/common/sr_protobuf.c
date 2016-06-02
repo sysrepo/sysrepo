@@ -65,6 +65,8 @@ sr_gpb_operation_name(Sr__Operation operation)
         return "subscribe";
     case SR__OPERATION__UNSUBSCRIBE:
         return "unsubscribe";
+    case SR__OPERATION__CHECK_ENABLED_RUNNING:
+        return "check-enabled-running";
     case SR__OPERATION__UNSUBSCRIBE_DESTINATION:
         return "unsubscribe-destination";
     case SR__OPERATION__RPC:
@@ -225,6 +227,12 @@ sr_gpb_req_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__M
             CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__unsubscribe_req__init((Sr__UnsubscribeReq*)sub_msg);
             req->unsubscribe_req = (Sr__UnsubscribeReq*)sub_msg;
+            break;
+        case SR__OPERATION__CHECK_ENABLED_RUNNING:
+            sub_msg = calloc(1, sizeof(Sr__CheckEnabledRunningReq));
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
+            sr__check_enabled_running_req__init((Sr__CheckEnabledRunningReq*)sub_msg);
+            req->check_enabled_running_req = (Sr__CheckEnabledRunningReq*)sub_msg;
             break;
         case SR__OPERATION__RPC:
             sub_msg = calloc(1, sizeof(Sr__RPCReq));
@@ -399,6 +407,12 @@ sr_gpb_resp_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__
             CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__unsubscribe_resp__init((Sr__UnsubscribeResp*)sub_msg);
             resp->unsubscribe_resp = (Sr__UnsubscribeResp*)sub_msg;
+            break;
+        case SR__OPERATION__CHECK_ENABLED_RUNNING:
+            sub_msg = calloc(1, sizeof(Sr__CheckEnabledRunningResp));
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
+            sr__check_enabled_running_resp__init((Sr__CheckEnabledRunningResp*)sub_msg);
+            resp->check_enabled_running_resp = (Sr__CheckEnabledRunningResp*)sub_msg;
             break;
         case SR__OPERATION__RPC:
             sub_msg = calloc(1, sizeof(Sr__RPCResp));
@@ -615,6 +629,9 @@ sr_gpb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__O
             case SR__OPERATION__UNSUBSCRIBE:
                 CHECK_NULL_RETURN(msg->request->unsubscribe_req, SR_ERR_MALFORMED_MSG);
                 break;
+            case SR__OPERATION__CHECK_ENABLED_RUNNING:
+                CHECK_NULL_RETURN(msg->request->check_enabled_running_req, SR_ERR_MALFORMED_MSG);
+                break;
             case SR__OPERATION__RPC:
                 CHECK_NULL_RETURN(msg->request->rpc_req, SR_ERR_MALFORMED_MSG);
                 break;
@@ -690,6 +707,9 @@ sr_gpb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__O
                 break;
             case SR__OPERATION__UNSUBSCRIBE:
                 CHECK_NULL_RETURN(msg->response->unsubscribe_resp, SR_ERR_MALFORMED_MSG);
+                break;
+            case SR__OPERATION__CHECK_ENABLED_RUNNING:
+                CHECK_NULL_RETURN(msg->response->check_enabled_running_resp, SR_ERR_MALFORMED_MSG);
                 break;
             case SR__OPERATION__RPC:
                 CHECK_NULL_RETURN(msg->response->rpc_resp, SR_ERR_MALFORMED_MSG);

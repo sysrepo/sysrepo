@@ -50,4 +50,15 @@ int sr_module_install(sr_session_ctx_t *session, const char *module_name, const 
  */
 int sr_feature_enable(sr_session_ctx_t *session, const char *module_name, const char *feature_name, bool enabled);
 
+/**
+ * @brief Checks (via sysrepo engine) whether the module has *any* enabled subtree.
+ *
+ * @param[in] session Session context acquired with ::sr_session_start call.
+ * @param[in] module_name Name of the module to be checked.
+ * @param[out] res TRUE if there is at least one enabled subtree in the module.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_check_enabled_running(sr_session_ctx_t *session, const char *module_name, bool *res);
+
 #endif /* CLIENT_LIBRARY_H_ */
