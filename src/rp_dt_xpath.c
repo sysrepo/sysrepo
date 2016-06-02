@@ -319,7 +319,7 @@ rp_dt_find_in_choice(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath,
     search = calloc(search_size, sizeof(*search));
     CHECK_NULL_NOMEM_GOTO(search, rc, done);
 
-    const struct lys_node *node = dm_ly_ctx_get_node(dm_ctx, module->ctx, NULL, xp_copy);
+    const struct lys_node *node = dm_ly_ctx_get_node(dm_ctx, NULL, xp_copy);
     if (NULL == node) {
         goto done;
     }
@@ -502,7 +502,7 @@ rp_dt_validate_node_xpath(dm_ctx_t *dm_ctx, dm_session_t *session, const char *x
         return SR_ERR_OK;
     }
 
-    const struct lys_node *sch_node = dm_ly_ctx_get_node(dm_ctx, module->ctx, NULL, xp_copy);
+    const struct lys_node *sch_node = dm_ly_ctx_get_node(dm_ctx, NULL, xp_copy);
     if (NULL != sch_node) {
         if (NULL != match) {
             *match = (struct lys_node *) sch_node;
@@ -579,6 +579,11 @@ rp_dt_enable_xpath(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath)
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Xpath validation failed %s", xpath);
         return rc;
+    }
+    if (NULL == match) {
+        // TODO: XPath such as '/example-module://*' seems to return match == NULL
+        SR_LOG_ERR("Unsupported xpath '%s'", xpath);
+        return SR_ERR_UNSUPPORTED;
     }
 
     dm_schema_info_t *si = NULL;

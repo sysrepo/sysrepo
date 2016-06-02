@@ -63,6 +63,16 @@ typedef struct rp_dt_get_items_ctx {
 } rp_dt_get_items_ctx_t;
 
 /**
+ * @brief Cache structure that holds of the last get_changes_iter call
+ */
+typedef struct rp_dt_change_ctx_s {
+    char *xpath;                        /* xpath used for change identification */
+    const struct lys_node *schema_node; /* schema node corresponding to xpath, used for matching */
+    size_t offset;                      /* offset-th matched change to be returned */
+    size_t position;                    /* index to the change set */
+} rp_dt_change_ctx_t;
+
+/**
  * @brief Structure that holds Request Processor's per-session context.
  */
 typedef struct rp_session_s {
@@ -76,6 +86,7 @@ typedef struct rp_session_s {
     ac_session_t *ac_session;            /**< Access Control module's session context. */
     dm_session_t *dm_session;            /**< Data Manager's session context. */
     rp_dt_get_items_ctx_t get_items_ctx; /**< Context for get_items_iter calls. */
+    rp_dt_change_ctx_t change_ctx;
 } rp_session_t;
 
 #endif /* RP_INTERNAL_H_ */

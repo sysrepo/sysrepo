@@ -51,6 +51,7 @@ typedef struct dm_session_s dm_session_t;
  * @brief Structure holds data tree related info
  */
 typedef struct dm_data_info_s{
+    bool rdonly_copy;                   /**< node member is only copy of pointer it must not be freed nor modified */
     const struct lys_module *module;    /**< pointer to schema file*/
     struct lyd_node *node;              /**< data tree */
 #ifdef HAVE_STAT_ST_MTIM
@@ -108,9 +109,23 @@ typedef struct dm_sess_op_s{
 }dm_sess_op_t;
 
 /**
+ * @brief Holds subscriptions for the particular model
+ * used in commit context
+ */
+typedef struct dm_model_subscription_s {
+    const struct lys_module *module;    /**< module */
+    np_subscription_t **subscriptions;  /**< array of struct received from np */
+    struct lys_node **nodes;            /**< array of schema nodes corresponding to the subscription */
+    size_t subscription_cnt;            /**< number of subscriptions */
+    struct lyd_difflist *difflist;      /**< diff list */
+    struct ly_set *changes;             /**< set of changes for the model */
+}dm_model_subscription_t;
+
+/**
  * @brief Structure holding information used during commit process
  */
 typedef struct dm_commit_context_s {
+    int id;                     /**< id used for commit identification in notification session */
     dm_session_t *session;      /**< session where mereged (user changes + file system state) data trees are stored */
     int *fds;                   /**< opened file descriptors */
     bool *existed;              /**< flag wheter the file for the filedesriptor existed (and should be truncated) before commit*/
@@ -118,7 +133,16 @@ typedef struct dm_commit_context_s {
     struct ly_set *up_to_date_models; /**< set of module names where the timestamp of the session copy is equal to file system timestamp */
     dm_sess_op_t *operations;   /**< pointer to the list of operations performed in session to be commited */
     size_t oper_count;          /**< number of operation in the operations list */
+    sr_btree_t *subscriptions;  /**< binary trees of subscriptions organised per models */
+    sr_btree_t *prev_data_trees;/**< data trees in the state before commit */
 } dm_commit_context_t;
+
+typedef struct dm_c_ctxs_s {
+    sr_btree_t *tree;      /**< Array of commit context used for notifications */
+    pthread_rwlock_t lock; /**< rwlock to access c_ctxs */
+    int last_commit_id;    // id of the last commit context
+                           //TODO: should be removed once notification session contains
+} dm_commit_ctxs_t;
 
 /**
  * @brief Initializes the data manager context, which will be passed in further
@@ -149,7 +173,7 @@ void dm_cleanup(dm_ctx_t *dm_ctx);
  * @param [out] dm_session_ctx
  * @return Error code (SR_ERR_OK on success)
  */
-int dm_session_start(const dm_ctx_t *dm_ctx, const ac_ucred_t *user_credentials, const sr_datastore_t ds, dm_session_t **dm_session_ctx);
+int dm_session_start(dm_ctx_t *dm_ctx, const ac_ucred_t *user_credentials, const sr_datastore_t ds, dm_session_t **dm_session_ctx);
 
 /**
  * @brief Frees resources allocated for the session.
@@ -308,7 +332,15 @@ int dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_
  * @brief Frees all resources allocated in commit context closes
  * modif_count of files.
  */
-void dm_free_commit_context(dm_ctx_t *dm_ctx, dm_commit_context_t *c_ctx);
+void dm_free_commit_context(void *commit_ctx);
+
+/**
+ * @brief Saves commit context to be used for notifications. Releases acquired locks
+ * and closes opened files.
+ * @param [in] dm_ctx
+ * @param [in] c_ctx
+ */
+int dm_save_commit_context(dm_ctx_t *dm_ctx, dm_commit_context_t *c_ctx);
 
 /**
  * @brief Logs operation into session operation list. The operation list is used
@@ -512,9 +544,24 @@ int dm_has_enabled_subtree(dm_ctx_t *ctx, const char *module_name, const struct 
  * @param [in] session DM session.
  * @param [in] module_name Name of the module to be enabled.
  * @param [in] module Libyang schema tree pointer. If not known, NULL can be provided.
+ * @param[in] copy_from_startup Load data from startup ds (if not already loaded).
  * @return Error code (SR_ERR_OK on success)
  */
-int dm_enable_module_running(dm_ctx_t *ctx, dm_session_t *session, const char *module_name, const struct lys_module *module);
+int dm_enable_module_running(dm_ctx_t *ctx, dm_session_t *session, const char *module_name,
+        const struct lys_module *module, bool copy_from_startup);
+
+/**
+ * @brief Enables subtree in running datastore (including copying of the startup data into running).
+ * @param [in] ctx DM context.
+ * @param [in] session DM session.
+ * @param [in] module_name Name of the module where a subtree needs to be enabled.
+ * @param[in] xpath XPath identifying the subtree to be enabled.
+ * @param [in] module Libyang schema tree pointer. If not known, NULL can be provided.
+ * @param[in] copy_from_startup Load data from startup ds (if not already loaded).
+ * @return Error code (SR_ERR_OK on success)
+ */
+int dm_enable_module_subtree_running(dm_ctx_t *ctx, dm_session_t *session, const char *module_name, const char *xpath,
+        const struct lys_module *module, bool copy_from_startup);
 
 /**
  * @brief Disables module in running data store
@@ -603,12 +650,11 @@ int dm_lyd_wd_add(dm_ctx_t *dm_ctx, struct ly_ctx *lyctx, struct lyd_node **root
 /**
  * @brief Locks the lyctx lock, then call ly_ctx_ge_node
  * @param [in] dm_ctx
- * @param [in] lyctx
  * @param [in] start
  * @param [in] nodeid
  * @return Matched schema node
  */
-const struct lys_node *dm_ly_ctx_get_node(dm_ctx_t *dm_ctx, struct ly_ctx *lyctx, const struct lys_node *start, const char *nodeid);
+const struct lys_node *dm_ly_ctx_get_node(dm_ctx_t *dm_ctx, const struct lys_node *start, const char *nodeid);
 
 /**
  * @brief Copies all modified data trees (in current datastore) from one session to another.
@@ -630,6 +676,29 @@ int dm_copy_modified_session_trees(dm_ctx_t *dm_ctx, dm_session_t *from, dm_sess
  * @return Error code (SR_ERR_OK on success)
  */
 int dm_copy_session_tree(dm_ctx_t *dm_ctx, dm_session_t *from, dm_session_t *to, const char *module_name);
+
+/**
+ * @brief Copies pointer to the selected data tree (in current datastore) from one session to another, if the module is not
+ * loaded in 'from' session, does nothing. You need to be sure that from session's datatrees are not
+ * freed before "to" session.
+ * @param [in] dm_ctx
+ * @param [in] from
+ * @param [in] to
+ * @param [in] module_name
+ * @return Error code (SR_ERR_OK on success)
+ */
+int dm_create_rdonly_ptr_data_tree(dm_ctx_t *dm_ctx, dm_session_t *from, dm_session_t *to, const char *module_name);
+
+/**
+ * @brief Checks if the module is loaded in the session. If it is not loaded
+ * in the session and it is loaded in from_session. Copies the data tree.
+ * @param [in] dm_ctx
+ * @param [in] from_session
+ * @param [in] session
+ * @param [in] module_name
+ * @return Error code (SR_ERR_OK on success)
+ */
+int dm_copy_if_not_loaded(dm_ctx_t *dm_ctx, dm_session_t *from_session, dm_session_t *session, const char *module_name);
 
 /**
  * @brief Changes the datastore to which the session is tied to. Subsequent operations
@@ -678,5 +747,30 @@ int dm_get_all_modules(dm_ctx_t *dm_ctx, dm_session_t *session, bool enabled_onl
  * @return Error code (SR_ERR_OK on success)
  */
 int dm_is_model_modified(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module_name, bool *res);
+
+/**
+ * @brief Removes commit context identified by id
+ * @param [in] dm_ctx
+ * @param [in] c_ctx_id
+ * @return Error code (SR_ERR_OK on success)
+ */
+int dm_remove_commit_context(dm_ctx_t *dm_ctx, int c_ctx_id);
+
+/**
+ * @brief Looks up commit context identified by id
+ * @param [in] dm_ctx
+ * @param [in] c_ctx_id
+ * @param [out] c_ctx pointer to found c_ctx, NULL if there is no cctx with specified id
+ * @return Error code (SR_ERR_OK if no error occurred)
+ */
+int dm_get_commit_context(dm_ctx_t *dm_ctx, int c_ctx_id, dm_commit_context_t **c_ctx);
+
+/**
+ * @brief Returns the structure containing commit contexts and corresponding lock
+ * @param [in] dm_ctx
+ * @param [out] commit_ctxs
+ * @return Error code (SR_ERR_OK on success)
+ */
+int dm_get_commit_ctxs(dm_ctx_t *dm_ctx, dm_commit_ctxs_t **commit_ctxs);
 /**@} Data manager*/
 #endif /* SRC_DATA_MANAGER_H_ */

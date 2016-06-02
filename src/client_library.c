@@ -66,6 +66,21 @@ typedef struct sr_val_iter_s {
     size_t count;                   /**< Number of elements currently buffered. */
 } sr_val_iter_t;
 
+/**
+ * @brief Structure holding data for iterative access to changes (::sr_get_changes_iter).
+ */
+typedef struct sr_change_iter_s {
+    char *xpath;                    /**< Xpath of the request. */
+    size_t offset;                  /**< Offset where the next data should be read. */
+    size_t limit;                   /**< How many items should be read. */
+    sr_change_oper_t *operations;   /**< Type of the change */
+    sr_val_t **new_values;          /**< Buffered new values. */
+    sr_val_t **old_values;          /**< Buffered old values. */
+    size_t index;                   /**< Index into buff_values pointing to the value to be returned by next call. */
+    size_t count;                   /**< Number of elements currently buffered. */
+} sr_change_iter_t;
+
+
 static int connections_cnt = 0;        /**< Number of active connections to the Sysrepo Engine. */
 static int subscriptions_cnt = 0;      /**< Number of active subscriptions. */
 static cl_sm_ctx_t *cl_sm_ctx = NULL;  /**< Subscription Manager context. */
@@ -132,10 +147,48 @@ cleanup:
 }
 
 /**
+ * @brief Creates get_changes request and sends it
+ */
+static int
+cl_send_get_changes(sr_session_ctx_t *session, const char *xpath, size_t offset, size_t limit, Sr__Msg **msg_resp)
+{
+    Sr__Msg *msg_req = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG4(session, session->conn_ctx, xpath, msg_resp);
+
+    /* prepare get_item message */
+    rc = sr_gpb_req_alloc(SR__OPERATION__GET_CHANGES, session->id, &msg_req);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate get_items message.");
+
+    /* fill in the path */
+    msg_req->request->get_changes_req->xpath = strdup(xpath);
+    CHECK_NULL_NOMEM_GOTO(msg_req->request->get_changes_req->xpath, rc, cleanup);
+
+    /* fill in other arguments */
+    msg_req->request->get_changes_req->limit = limit;
+    msg_req->request->get_changes_req->offset = offset;
+
+
+    /* send the request and receive the response */
+    rc = cl_request_process(session, msg_req, msg_resp, SR__OPERATION__GET_CHANGES);
+
+    sr__msg__free_unpacked(msg_req, NULL);
+
+    return rc;
+
+cleanup:
+    if (NULL != msg_req) {
+        sr__msg__free_unpacked(msg_req, NULL);
+    }
+    return rc;
+}
+
+/**
  * @brief Initializes a new subscription.
  */
 static int
-cl_subscribtion_init(sr_session_ctx_t *session, Sr__NotificationType notif_type, const char *module_name,
+cl_subscribtion_init(sr_session_ctx_t *session, Sr__SubscriptionType type, const char *module_name,
         void *private_ctx, sr_subscription_ctx_t **sr_subscription_p, cl_sm_subscription_ctx_t **sm_subscription_p,
         Sr__Msg **msg_req_p)
 {
@@ -165,7 +218,7 @@ cl_subscribtion_init(sr_session_ctx_t *session, Sr__NotificationType notif_type,
     rc = cl_sm_subscription_init(cl_sm_ctx, &sm_subscription);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by initialization of the subscription in the Subscription Manager.");
 
-    sm_subscription->notif_type = notif_type;
+    sm_subscription->type = type;
     sm_subscription->private_ctx = private_ctx;
     if (NULL != module_name) {
         sm_subscription->module_name = strdup(module_name);
@@ -177,7 +230,7 @@ cl_subscribtion_init(sr_session_ctx_t *session, Sr__NotificationType notif_type,
     CHECK_NULL_NOMEM_GOTO(msg_req->request->subscribe_req->destination, rc, cleanup);
 
     msg_req->request->subscribe_req->subscription_id = sm_subscription->id;
-    msg_req->request->subscribe_req->notif_type = notif_type;
+    msg_req->request->subscribe_req->type = type;
 
     /* if not already allocated, allocate 'umbrella' subscription context */
     if (NULL == *sr_subscription_p) {
@@ -227,7 +280,7 @@ cl_subscription_close(sr_session_ctx_t *session, cl_sm_subscription_ctx_t *subsc
     rc = sr_gpb_req_alloc(SR__OPERATION__UNSUBSCRIBE, session->id, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate unsubscribe message.");
 
-    msg_req->request->unsubscribe_req->notif_type = subscription->notif_type;
+    msg_req->request->unsubscribe_req->type = subscription->type;
 
     msg_req->request->unsubscribe_req->destination = strdup(subscription->delivery_address);
     CHECK_NULL_NOMEM_GOTO(msg_req->request->unsubscribe_req->destination, rc, cleanup);
@@ -1295,7 +1348,7 @@ sr_get_last_errors(sr_session_ctx_t *session, const sr_error_info_t **error_info
 
 int
 sr_module_install_subscribe(sr_session_ctx_t *session, sr_module_install_cb callback, void *private_ctx,
-        sr_subscription_ctx_t **subscription_p)
+        sr_subscr_options_t opts, sr_subscription_ctx_t **subscription_p)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
     sr_subscription_ctx_t *sr_subscription = NULL;
@@ -1307,8 +1360,10 @@ sr_module_install_subscribe(sr_session_ctx_t *session, sr_module_install_cb call
     cl_session_clear_errors(session);
 
     /* Initialize the subscription */
-    sr_subscription = *subscription_p;
-    rc = cl_subscribtion_init(session, SR__NOTIFICATION_TYPE__MODULE_INSTALL_NOTIF, NULL,
+    if (opts & SR_SUBSCR_CTX_REUSE) {
+        sr_subscription = *subscription_p;
+    }
+    rc = cl_subscribtion_init(session, SR__SUBSCRIPTION_TYPE__MODULE_INSTALL_SUBS, NULL,
             private_ctx, &sr_subscription, &sm_subscription, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by initialization of the subscription in the client library.");
 
@@ -1339,7 +1394,7 @@ cleanup:
 
 int
 sr_feature_enable_subscribe(sr_session_ctx_t *session, sr_feature_enable_cb callback, void *private_ctx,
-        sr_subscription_ctx_t **subscription_p)
+        sr_subscr_options_t opts, sr_subscription_ctx_t **subscription_p)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
     sr_subscription_ctx_t *sr_subscription = NULL;
@@ -1351,8 +1406,10 @@ sr_feature_enable_subscribe(sr_session_ctx_t *session, sr_feature_enable_cb call
     cl_session_clear_errors(session);
 
     /* Initialize the subscription */
-    sr_subscription = *subscription_p;
-    rc = cl_subscribtion_init(session, SR__NOTIFICATION_TYPE__FEATURE_ENABLE_NOTIF, NULL,
+    if (opts & SR_SUBSCR_CTX_REUSE) {
+        sr_subscription = *subscription_p;
+    }
+    rc = cl_subscribtion_init(session, SR__SUBSCRIPTION_TYPE__FEATURE_ENABLE_SUBS, NULL,
             private_ctx, &sr_subscription, &sm_subscription, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by initialization of the subscription in the client library.");
 
@@ -1421,34 +1478,40 @@ cleanup:
 }
 
 int
-sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t event,
-        bool enable_running, int priority, sr_module_change_cb callback, void *private_ctx,
-        sr_subscription_ctx_t **subscription_p)
+sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, sr_module_change_cb callback,
+        void *private_ctx, uint32_t priority, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription_p)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
     sr_subscription_ctx_t *sr_subscription = NULL;
     cl_sm_subscription_ctx_t *sm_subscription = NULL;
     int rc = SR_ERR_OK;
 
-    // TODO: handle event & priority
-
     CHECK_NULL_ARG4(session, module_name, callback, subscription_p);
 
     cl_session_clear_errors(session);
 
     /* Initialize the subscription */
-    sr_subscription = *subscription_p;
-    rc = cl_subscribtion_init(session, SR__NOTIFICATION_TYPE__MODULE_CHANGE_NOTIF, module_name,
+    if (opts & SR_SUBSCR_CTX_REUSE) {
+        sr_subscription = *subscription_p;
+    }
+    rc = cl_subscribtion_init(session, SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS, module_name,
             private_ctx, &sr_subscription, &sm_subscription, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by initialization of the subscription in the client library.");
 
     sm_subscription->callback.module_change_cb = callback;
 
-    msg_req->request->subscribe_req->notif_type = SR__NOTIFICATION_TYPE__MODULE_CHANGE_NOTIF;
-    msg_req->request->subscribe_req->has_enable_running = true;
-    msg_req->request->subscribe_req->enable_running = enable_running;
+    /* fill-in subscription details */
+    msg_req->request->subscribe_req->type = SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS;
     msg_req->request->subscribe_req->module_name = strdup(module_name);
     CHECK_NULL_NOMEM_GOTO(msg_req->request->subscribe_req->module_name, rc, cleanup);
+
+    msg_req->request->subscribe_req->has_notif_event = true;
+    msg_req->request->subscribe_req->notif_event =
+            (opts & SR_SUBSCR_VERIFIER) ? SR__NOTIFICATION_EVENT__VERIFY_EV : SR__NOTIFICATION_EVENT__NOTIFY_EV;
+    msg_req->request->subscribe_req->has_priority = true;
+    msg_req->request->subscribe_req->priority = priority;
+    msg_req->request->subscribe_req->has_enable_running = true;
+    msg_req->request->subscribe_req->enable_running = !(opts & SR_SUBSCR_PASSIVE);
 
     /* send the request and receive the response */
     rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__SUBSCRIBE);
@@ -1474,33 +1537,246 @@ cleanup:
 }
 
 int
-sr_subtree_change_subscribe(sr_session_ctx_t *session, const char *xpath, sr_notif_event_t event,
-        bool enable_running, int priority, sr_subtree_change_cb callback, void *private_ctx,
-        sr_subscription_ctx_t **subscription)
+sr_subtree_change_subscribe(sr_session_ctx_t *session, const char *xpath, sr_subtree_change_cb callback,
+        void *private_ctx, uint32_t priority, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription_p)
 {
-    // TODO: implement
-    return SR_ERR_UNSUPPORTED;
+    Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    sr_subscription_ctx_t *sr_subscription = NULL;
+    cl_sm_subscription_ctx_t *sm_subscription = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG4(session, xpath, callback, subscription_p);
+
+    cl_session_clear_errors(session);
+
+    /* Initialize the subscription */
+    if (opts & SR_SUBSCR_CTX_REUSE) {
+        sr_subscription = *subscription_p;
+    }
+    rc = cl_subscribtion_init(session, SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS, NULL,
+            private_ctx, &sr_subscription, &sm_subscription, &msg_req);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by initialization of the subscription in the client library.");
+
+    sm_subscription->callback.subtree_change_cb = callback;
+
+    /* fill-in subscription details */
+    msg_req->request->subscribe_req->type = SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS;
+    msg_req->request->subscribe_req->xpath = strdup(xpath);
+    CHECK_NULL_NOMEM_GOTO(msg_req->request->subscribe_req->xpath, rc, cleanup);
+
+    rc = sr_copy_first_ns(xpath, &msg_req->request->subscribe_req->module_name);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by extracting module name from xpath.");
+    sm_subscription->module_name = strdup(msg_req->request->subscribe_req->module_name);
+    CHECK_NULL_NOMEM_GOTO(sm_subscription->module_name, rc, cleanup);
+
+    msg_req->request->subscribe_req->has_notif_event = true;
+    msg_req->request->subscribe_req->notif_event =
+            (opts & SR_SUBSCR_VERIFIER) ? SR__NOTIFICATION_EVENT__VERIFY_EV : SR__NOTIFICATION_EVENT__NOTIFY_EV;
+    msg_req->request->subscribe_req->has_priority = true;
+    msg_req->request->subscribe_req->priority = priority;
+    msg_req->request->subscribe_req->has_enable_running = true;
+    msg_req->request->subscribe_req->enable_running = !(opts & SR_SUBSCR_PASSIVE);
+
+    /* send the request and receive the response */
+    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__SUBSCRIBE);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
+
+    sr__msg__free_unpacked(msg_req, NULL);
+    sr__msg__free_unpacked(msg_resp, NULL);
+
+    *subscription_p = sr_subscription;
+
+    return cl_session_return(session, SR_ERR_OK);
+
+cleanup:
+    cl_subscription_close(session, sm_subscription);
+    cl_sr_subscription_remove_one(sr_subscription);
+    if (NULL != msg_req) {
+        sr__msg__free_unpacked(msg_req, NULL);
+    }
+    if (NULL != msg_resp) {
+        sr__msg__free_unpacked(msg_resp, NULL);
+    }
+    return cl_session_return(session, rc);
 }
 
 int
 sr_get_changes_iter(sr_session_ctx_t *session, const char *xpath, sr_change_iter_t **iter)
 {
-    // TODO: implement
-    return SR_ERR_UNSUPPORTED;
+    Sr__Msg *msg_resp = NULL;
+    sr_change_iter_t *it = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG4(session, session->conn_ctx, xpath, iter);
+
+    cl_session_clear_errors(session);
+
+    rc = cl_send_get_changes(session, xpath, 0, CL_GET_ITEMS_FETCH_LIMIT, &msg_resp);
+    if (SR_ERR_NOT_FOUND == rc) {
+        SR_LOG_DBG("No items found for xpath '%s'", xpath);
+        /* SR_ERR_NOT_FOUND will be returned on get_change_next call */
+        rc = SR_ERR_OK;
+    } else {
+        CHECK_RC_LOG_GOTO(rc, cleanup, "Sending get_changes request failed '%s'", xpath);
+    }
+
+    it = calloc(1, sizeof(*it));
+    CHECK_NULL_NOMEM_GOTO(it, rc, cleanup);
+
+    it->index = 0;
+    it->count = msg_resp->response->get_changes_resp->n_changes;
+    it->offset = it->count;
+
+    it->xpath = strdup(xpath);
+    CHECK_NULL_NOMEM_GOTO(it->xpath, rc, cleanup);
+
+    it->operations = calloc(it->count, sizeof(*it->operations));
+    CHECK_NULL_NOMEM_GOTO(it->operations, rc, cleanup);
+
+    it->old_values = calloc(it->count, sizeof(*it->old_values));
+    CHECK_NULL_NOMEM_GOTO(it->old_values, rc, cleanup);
+
+    it->new_values = calloc(it->count, sizeof(*it->new_values));
+    CHECK_NULL_NOMEM_GOTO(it->new_values, rc, cleanup);
+
+    /* copy the content of gpb to sr_val_t */
+    for (size_t i = 0; i < it->count; i++) {
+        if (NULL != msg_resp->response->get_changes_resp->changes[i]->new_value) {
+            rc = sr_dup_gpb_to_val_t(msg_resp->response->get_changes_resp->changes[i]->new_value, &it->new_values[i]);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "Copying from gpb to sr_val_t failed");
+        }
+        if (NULL != msg_resp->response->get_changes_resp->changes[i]->old_value) {
+            rc = sr_dup_gpb_to_val_t(msg_resp->response->get_changes_resp->changes[i]->old_value, &it->old_values[i]);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "Copying from gpb to sr_val_t failed");
+        }
+        it->operations[i] = sr_change_op_gpb_to_sr(msg_resp->response->get_changes_resp->changes[i]->changeoperation);
+    }
+
+    *iter = it;
+
+    sr__msg__free_unpacked(msg_resp, NULL);
+
+    return cl_session_return(session, SR_ERR_OK);
+
+cleanup:
+    if (NULL != msg_resp) {
+        sr__msg__free_unpacked(msg_resp, NULL);
+    }
+    if (NULL != it){
+        sr_free_change_iter(it);
+    }
+    return cl_session_return(session, rc);
 }
 
 int
 sr_get_change_next(sr_session_ctx_t *session, sr_change_iter_t *iter, sr_change_oper_t *operation,
         sr_val_t **old_value, sr_val_t **new_value)
 {
-    // TODO implement
-    return SR_ERR_UNSUPPORTED;
+    int rc = SR_ERR_OK;
+    Sr__Msg *msg_resp = NULL;
+
+    CHECK_NULL_ARG5(session, iter, operation, old_value, new_value);
+
+    cl_session_clear_errors(session);
+
+    if (0 == iter->count) {
+        /* No more data to be read */
+        *new_value = NULL;
+        *old_value = NULL;
+        return SR_ERR_NOT_FOUND;
+    } else if (iter->index < iter->count) {
+        /* There are buffered data */
+        *operation = iter->operations[iter->index];
+        *old_value = iter->old_values[iter->index];
+        *new_value = iter->new_values[iter->index];
+        iter->index++;
+    } else {
+        /* Fetch more items */
+        rc = cl_send_get_changes(session, iter->xpath, iter->offset,
+                CL_GET_ITEMS_FETCH_LIMIT, &msg_resp);
+        if (SR_ERR_NOT_FOUND == rc) {
+            SR_LOG_DBG("All items has been read for xpath '%s'", iter->xpath);
+            goto cleanup;
+        } else {
+            CHECK_RC_LOG_GOTO(rc, cleanup, "Fetching more items failed '%s'", iter->xpath);
+        }
+
+        size_t received_cnt = msg_resp->response->get_changes_resp->n_changes;
+        if (0 == received_cnt) {
+            /* There is no more data to be read */
+            *new_value = NULL;
+            *old_value = NULL;
+            rc = SR_ERR_NOT_FOUND;
+            goto cleanup;
+        }
+        if (iter->count < received_cnt) {
+            /* realloc the array for buffered values pointers */
+            sr_val_t **tmp = NULL;
+            tmp = realloc(iter->new_values, received_cnt * sizeof(*iter->new_values));
+            CHECK_NULL_NOMEM_GOTO(tmp, rc, cleanup);
+            iter->new_values = tmp;
+
+            tmp = realloc(iter->old_values, received_cnt * sizeof(*iter->old_values));
+            CHECK_NULL_NOMEM_GOTO(tmp, rc, cleanup);
+            iter->old_values = tmp;
+
+            sr_change_oper_t *oper_tmp = NULL;
+            oper_tmp = realloc(iter->operations, received_cnt * sizeof(*iter->operations));
+            CHECK_NULL_NOMEM_GOTO(oper_tmp, rc, cleanup);
+            iter->operations = oper_tmp;
+
+        }
+        iter->index = 0;
+        iter->count = received_cnt;
+
+        /* copy the content of gpb to sr_val_t*/
+        for (size_t i = 0; i < iter->count; i++) {
+            if (NULL != msg_resp->response->get_changes_resp->changes[i]->new_value) {
+                rc = sr_dup_gpb_to_val_t(msg_resp->response->get_changes_resp->changes[i]->new_value, &iter->new_values[i]);
+            }
+            if (SR_ERR_OK == rc && NULL != msg_resp->response->get_changes_resp->changes[i]->old_value) {
+                rc = sr_dup_gpb_to_val_t(msg_resp->response->get_changes_resp->changes[i]->old_value, &iter->old_values[i]);
+            }
+            if (SR_ERR_OK != rc) {
+                SR_LOG_ERR_MSG("Copying from gpb to sr_val_t failed");
+                sr_free_values_arr(iter->new_values, i);
+                sr_free_values_arr(iter->old_values, i);
+                iter->count = 0;
+                rc = SR_ERR_INTERNAL;
+                goto cleanup;
+            }
+            iter->operations[i] = sr_change_op_gpb_to_sr(msg_resp->response->get_changes_resp->changes[i]->changeoperation);
+        }
+        *operation = iter->operations[iter->index];
+        *old_value = iter->old_values[iter->index];
+        *new_value = iter->new_values[iter->index];
+        iter->index++;
+        iter->offset += received_cnt;
+        sr__msg__free_unpacked(msg_resp, NULL);
+    }
+    return cl_session_return(session, SR_ERR_OK);
+
+cleanup:
+    if (NULL != msg_resp){
+        sr__msg__free_unpacked(msg_resp, NULL);
+    }
+    return cl_session_return(session, rc);
 }
 
 void
 sr_free_change_iter(sr_change_iter_t *iter)
 {
-    // TODO implement
+    if (NULL != iter) {
+        free(iter->xpath);
+        for (size_t i = iter->index; i < iter->count; i++) {
+            sr_free_val(iter->new_values[i]);
+            sr_free_val(iter->old_values[i]);
+        }
+        free(iter->old_values);
+        free(iter->new_values);
+        free(iter->operations);
+        free(iter);
+    }
 }
 
 int
@@ -1632,7 +1908,7 @@ cleanup:
 
 int
 sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callback,
-        void *private_ctx, sr_subscription_ctx_t **subscription_p)
+        void *private_ctx, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription_p)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
     sr_subscription_ctx_t *sr_subscription = NULL;
@@ -1644,15 +1920,17 @@ sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callbac
     cl_session_clear_errors(session);
 
     /* Initialize the subscription */
-    sr_subscription = *subscription_p;
-    rc = cl_subscribtion_init(session, SR__NOTIFICATION_TYPE__RPC_NOTIF, NULL,
+    if (opts & SR_SUBSCR_CTX_REUSE) {
+        sr_subscription = *subscription_p;
+    }
+    rc = cl_subscribtion_init(session, SR__SUBSCRIPTION_TYPE__RPC_SUBS, NULL,
             private_ctx, &sr_subscription, &sm_subscription, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by initialization of the subscription in the client library.");
 
     sm_subscription->callback.rpc_cb = callback;
 
     /* Fill-in GPB subscription information */
-    msg_req->request->subscribe_req->notif_type = SR__NOTIFICATION_TYPE__RPC_NOTIF;
+    msg_req->request->subscribe_req->type = SR__SUBSCRIPTION_TYPE__RPC_SUBS;
 
     msg_req->request->subscribe_req->xpath = strdup(xpath);
     CHECK_NULL_NOMEM_GOTO(msg_req->request->subscribe_req->xpath, rc, cleanup);

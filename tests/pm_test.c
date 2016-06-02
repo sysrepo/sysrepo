@@ -91,9 +91,9 @@ pm_feature_test(void **state)
 {
     test_ctx_t *test_ctx = *state;
     pm_ctx_t *pm_ctx = test_ctx->rp_ctx->pm_ctx;
-    char **features = NULL;
-    size_t feature_cnt = 0;
-    bool running_enabled = false;
+    char **subtrees = NULL, **features = NULL;
+    size_t subtrees_cnt = 0, feature_cnt = 0;
+    bool module_enabled = false;
     int rc = SR_ERR_OK;
 
     /* delete old features, if any */
@@ -109,9 +109,10 @@ pm_feature_test(void **state)
     rc = pm_save_feature_state(pm_ctx, &test_ctx->user_cred, "example-module", "featureX", true);
     assert_int_equal(SR_ERR_DATA_EXISTS, rc);
 
-    rc = pm_get_module_info(pm_ctx, "example-module", &running_enabled, &features, &feature_cnt);
+    rc = pm_get_module_info(pm_ctx, "example-module", &module_enabled, &subtrees, &subtrees_cnt, &features, &feature_cnt);
     assert_int_equal(SR_ERR_OK, rc);
-    assert_false(running_enabled);
+    assert_false(module_enabled);
+    assert_int_equal(subtrees_cnt, 0);
     assert_true(feature_cnt >= 2);
     for (size_t i = 0; i < feature_cnt; i++) {
         printf("Found enabled feature: %s\n", features[i]);
@@ -136,8 +137,8 @@ pm_subscription_test(void **state)
     pm_ctx_t *pm_ctx = test_ctx->rp_ctx->pm_ctx;
     np_subscription_t *subscriptions = NULL;
     size_t subscription_cnt = 0;
-    char **features = NULL;
-    size_t feature_cnt = 0;
+    char **subtrees = NULL, **features = NULL;
+    size_t subtrees_cnt = 0, feature_cnt = 0;
     bool running_enabled = false, disable_running = false;
     int rc = SR_ERR_OK;
 
@@ -153,60 +154,83 @@ pm_subscription_test(void **state)
     /* create subscriptions for destination 1 */
     subscription.dst_address = "/tmp/test-subscription-address1.sock";
 
-    subscription.notif_type = SR__NOTIFICATION_TYPE__MODULE_CHANGE_NOTIF;
+    subscription.type = SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS;
     subscription.enable_running = true;
+    subscription.notif_event = SR__NOTIFICATION_EVENT__NOTIFY_EV;
+    subscription.priority = 53;
     rc = pm_add_subscription(pm_ctx, &test_ctx->user_cred, "example-module", &subscription, false);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    subscription.type = SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS;
+    subscription.xpath = "/example-module:container";
+    rc = pm_add_subscription(pm_ctx, &test_ctx->user_cred, "example-module", &subscription, false);
+    assert_int_equal(SR_ERR_OK, rc);
+
     subscription.enable_running = false;
-    assert_int_equal(SR_ERR_OK, rc);
 
-    subscription.notif_type = SR__NOTIFICATION_TYPE__FEATURE_ENABLE_NOTIF;
+    subscription.type = SR__SUBSCRIPTION_TYPE__FEATURE_ENABLE_SUBS;
     rc = pm_add_subscription(pm_ctx, &test_ctx->user_cred, "example-module", &subscription, false);
     assert_int_equal(SR_ERR_OK, rc);
 
-    subscription.notif_type = SR__NOTIFICATION_TYPE__MODULE_CHANGE_NOTIF;
+    subscription.type = SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS;
     rc = pm_add_subscription(pm_ctx, &test_ctx->user_cred, "example-module", &subscription, false);
     assert_int_equal(SR_ERR_DATA_EXISTS, rc);
 
     /* create subscriptions for destination 2 */
     subscription.dst_address = "/tmp/test-subscription-address2.sock";
 
-    subscription.notif_type = SR__NOTIFICATION_TYPE__MODULE_CHANGE_NOTIF;
+    subscription.type = SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS;
     rc = pm_add_subscription(pm_ctx, &test_ctx->user_cred, "example-module", &subscription, false);
     assert_int_equal(SR_ERR_OK, rc);
 
-    subscription.notif_type = SR__NOTIFICATION_TYPE__FEATURE_ENABLE_NOTIF;
+    subscription.type = SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS;
+    rc = pm_add_subscription(pm_ctx, &test_ctx->user_cred, "example-module", &subscription, false);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    subscription.type = SR__SUBSCRIPTION_TYPE__FEATURE_ENABLE_SUBS;
     rc = pm_add_subscription(pm_ctx, &test_ctx->user_cred, "example-module", &subscription, false);
     assert_int_equal(SR_ERR_OK, rc);
 
     /* retrieve active subscriptions */
-    rc = pm_get_subscriptions(pm_ctx, "example-module", SR__NOTIFICATION_TYPE__MODULE_CHANGE_NOTIF,
+    rc = pm_get_subscriptions(pm_ctx, "example-module", SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS,
             &subscriptions, &subscription_cnt);
     assert_int_equal(SR_ERR_OK, rc);
     assert_true(subscription_cnt >= 1);
     for (size_t i = 0; i < subscription_cnt; i++) {
+        assert_true(SR__NOTIFICATION_EVENT__NOTIFY_EV == subscriptions[i].notif_event);
+        assert_int_equal(subscriptions[i].priority, 53);
         printf("Found subscription: %s @ %"PRIu32"\n", subscriptions[i].dst_address, subscriptions[i].dst_id);
         np_free_subscription_content(&subscriptions[i]);
     }
     free(subscriptions);
 
     /* retrieve module info */
-    rc = pm_get_module_info(pm_ctx, "example-module", &running_enabled, &features, &feature_cnt);
+    rc = pm_get_module_info(pm_ctx, "example-module", &running_enabled, &subtrees, &subtrees_cnt, &features, &feature_cnt);
     assert_int_equal(SR_ERR_OK, rc);
     assert_true(running_enabled);
+    assert_int_equal(subtrees_cnt, 1);
+    assert_int_equal(feature_cnt, 0);
+    free(subtrees[0]);
+    free(subtrees);
 
     /* remove subscriptions for destination 1 */
     subscription.dst_address = "/tmp/test-subscription-address1.sock";
-    subscription.notif_type = SR__NOTIFICATION_TYPE__MODULE_CHANGE_NOTIF;
-    rc = pm_remove_subscription(pm_ctx, &test_ctx->user_cred, "example-module", &subscription, &disable_running);
-    assert_int_equal(SR_ERR_OK, rc);
-    assert_true(disable_running);
-
-    subscription.notif_type = SR__NOTIFICATION_TYPE__FEATURE_ENABLE_NOTIF;
+    subscription.type = SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS;
     rc = pm_remove_subscription(pm_ctx, &test_ctx->user_cred, "example-module", &subscription, &disable_running);
     assert_int_equal(SR_ERR_OK, rc);
     assert_false(disable_running);
 
-    subscription.notif_type = SR__NOTIFICATION_TYPE__MODULE_CHANGE_NOTIF;
+    subscription.type = SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS;
+    rc = pm_remove_subscription(pm_ctx, &test_ctx->user_cred, "example-module", &subscription, &disable_running);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_true(disable_running);
+
+    subscription.type = SR__SUBSCRIPTION_TYPE__FEATURE_ENABLE_SUBS;
+    rc = pm_remove_subscription(pm_ctx, &test_ctx->user_cred, "example-module", &subscription, &disable_running);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_false(disable_running);
+
+    subscription.type = SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS;
     rc = pm_remove_subscription(pm_ctx, &test_ctx->user_cred, "example-module", &subscription, &disable_running);
     assert_int_equal(SR_ERR_DATA_MISSING, rc);
     assert_false(disable_running);
@@ -218,9 +242,10 @@ pm_subscription_test(void **state)
     assert_false(disable_running);
 
     /* retrieve module info */
-    rc = pm_get_module_info(pm_ctx, "example-module", &running_enabled, &features, &feature_cnt);
+    rc = pm_get_module_info(pm_ctx, "example-module", &running_enabled, &subtrees, &subtrees_cnt, &features, &feature_cnt);
     assert_int_equal(SR_ERR_OK, rc);
     assert_false(running_enabled);
+    assert_int_equal(subtrees_cnt, 0);
 }
 
 int

@@ -69,6 +69,8 @@ sr_gpb_operation_name(Sr__Operation operation)
         return "check-enabled-running";
     case SR__OPERATION__UNSUBSCRIBE_DESTINATION:
         return "unsubscribe-destination";
+    case SR__OPERATION__GET_CHANGES:
+        return "get changes";
     case SR__OPERATION__RPC:
         return "rpc";
     default:
@@ -233,6 +235,12 @@ sr_gpb_req_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__M
             CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__check_enabled_running_req__init((Sr__CheckEnabledRunningReq*)sub_msg);
             req->check_enabled_running_req = (Sr__CheckEnabledRunningReq*)sub_msg;
+            break;
+        case SR__OPERATION__GET_CHANGES:
+            sub_msg = calloc(1, sizeof(Sr__GetChangesReq));
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
+            sr__get_changes_req__init((Sr__GetChangesReq *)sub_msg);
+            req->get_changes_req = (Sr__GetChangesReq *)sub_msg;
             break;
         case SR__OPERATION__RPC:
             sub_msg = calloc(1, sizeof(Sr__RPCReq));
@@ -414,6 +422,12 @@ sr_gpb_resp_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__
             sr__check_enabled_running_resp__init((Sr__CheckEnabledRunningResp*)sub_msg);
             resp->check_enabled_running_resp = (Sr__CheckEnabledRunningResp*)sub_msg;
             break;
+        case SR__OPERATION__GET_CHANGES:
+            sub_msg = calloc(1, sizeof(Sr__GetChangesResp));
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
+            sr__get_changes_resp__init((Sr__GetChangesResp*)sub_msg);
+            resp->get_changes_resp = (Sr__GetChangesResp*)sub_msg;
+            break;
         case SR__OPERATION__RPC:
             sub_msg = calloc(1, sizeof(Sr__RPCResp));
             CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
@@ -436,7 +450,7 @@ error:
 }
 
 int
-sr_gpb_notif_alloc(const Sr__NotificationType type, const char *destination, const uint32_t subscription_id, Sr__Msg **msg_p)
+sr_gpb_notif_alloc(const Sr__SubscriptionType type, const char *destination, const uint32_t subscription_id, Sr__Msg **msg_p)
 {
     Sr__Msg *msg = NULL;
     Sr__Notification *notif = NULL;
@@ -466,31 +480,31 @@ sr_gpb_notif_alloc(const Sr__NotificationType type, const char *destination, con
 
     /* initialize sub-message */
     switch (type) {
-        case SR__NOTIFICATION_TYPE__MODULE_INSTALL_NOTIF:
+        case SR__SUBSCRIPTION_TYPE__MODULE_INSTALL_SUBS:
             sub_msg = calloc(1, sizeof(Sr__ModuleInstallNotification));
             CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__module_install_notification__init((Sr__ModuleInstallNotification*)sub_msg);
             notif->module_install_notif = (Sr__ModuleInstallNotification*)sub_msg;
             break;
-        case SR__NOTIFICATION_TYPE__FEATURE_ENABLE_NOTIF:
+        case SR__SUBSCRIPTION_TYPE__FEATURE_ENABLE_SUBS:
             sub_msg = calloc(1, sizeof(Sr__FeatureEnableNotification));
             CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__feature_enable_notification__init((Sr__FeatureEnableNotification*)sub_msg);
             notif->feature_enable_notif = (Sr__FeatureEnableNotification*)sub_msg;
             break;
-        case SR__NOTIFICATION_TYPE__MODULE_CHANGE_NOTIF:
+        case SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS:
             sub_msg = calloc(1, sizeof(Sr__ModuleChangeNotification));
             CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__module_change_notification__init((Sr__ModuleChangeNotification*)sub_msg);
             notif->module_change_notif = (Sr__ModuleChangeNotification*)sub_msg;
             break;
-        case SR__NOTIFICATION_TYPE__SUBTREE_CHANGE_NOTIF:
+        case SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS:
             sub_msg = calloc(1, sizeof(Sr__SubtreeChangeNotification));
             CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__subtree_change_notification__init((Sr__SubtreeChangeNotification*)sub_msg);
             notif->subtree_change_notif = (Sr__SubtreeChangeNotification*)sub_msg;
             break;
-        case SR__NOTIFICATION_TYPE__HELLO_NOTIF:
+        case SR__SUBSCRIPTION_TYPE__HELLO_SUBS:
             /* no sub-message */
             break;
         default:
@@ -632,6 +646,9 @@ sr_gpb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__O
             case SR__OPERATION__CHECK_ENABLED_RUNNING:
                 CHECK_NULL_RETURN(msg->request->check_enabled_running_req, SR_ERR_MALFORMED_MSG);
                 break;
+            case SR__OPERATION__GET_CHANGES:
+                CHECK_NULL_RETURN(msg->request->get_changes_req, SR_ERR_MALFORMED_MSG);
+                break;
             case SR__OPERATION__RPC:
                 CHECK_NULL_RETURN(msg->request->rpc_req, SR_ERR_MALFORMED_MSG);
                 break;
@@ -711,6 +728,9 @@ sr_gpb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__O
             case SR__OPERATION__CHECK_ENABLED_RUNNING:
                 CHECK_NULL_RETURN(msg->response->check_enabled_running_resp, SR_ERR_MALFORMED_MSG);
                 break;
+            case SR__OPERATION__GET_CHANGES:
+                CHECK_NULL_RETURN(msg->response->get_changes_resp, SR_ERR_MALFORMED_MSG);
+                break;
             case SR__OPERATION__RPC:
                 CHECK_NULL_RETURN(msg->response->rpc_resp, SR_ERR_MALFORMED_MSG);
                 break;
@@ -726,30 +746,30 @@ sr_gpb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__O
 }
 
 int
-sr_gpb_msg_validate_notif(const Sr__Msg *msg, const Sr__NotificationType type)
+sr_gpb_msg_validate_notif(const Sr__Msg *msg, const Sr__SubscriptionType type)
 {
     CHECK_NULL_ARG(msg);
 
     if (SR__MSG__MSG_TYPE__NOTIFICATION == msg->type) {
         CHECK_NULL_RETURN(msg->notification, SR_ERR_MALFORMED_MSG);
-        if ((msg->notification->type != SR__NOTIFICATION_TYPE__HELLO_NOTIF) &&
+        if ((msg->notification->type != SR__SUBSCRIPTION_TYPE__HELLO_SUBS) &&
                 (msg->notification->type != type)) {
             return SR_ERR_MALFORMED_MSG;
         }
         switch (msg->notification->type) {
-            case SR__NOTIFICATION_TYPE__MODULE_INSTALL_NOTIF:
+            case SR__SUBSCRIPTION_TYPE__MODULE_INSTALL_SUBS:
                 CHECK_NULL_RETURN(msg->notification->module_install_notif, SR_ERR_MALFORMED_MSG);
                 break;
-            case SR__NOTIFICATION_TYPE__FEATURE_ENABLE_NOTIF:
+            case SR__SUBSCRIPTION_TYPE__FEATURE_ENABLE_SUBS:
                 CHECK_NULL_RETURN(msg->notification->feature_enable_notif, SR_ERR_MALFORMED_MSG);
                 break;
-            case SR__NOTIFICATION_TYPE__MODULE_CHANGE_NOTIF:
+            case SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS:
                 CHECK_NULL_RETURN(msg->notification->module_change_notif, SR_ERR_MALFORMED_MSG);
                 break;
-            case SR__NOTIFICATION_TYPE__SUBTREE_CHANGE_NOTIF:
+            case SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS:
                 CHECK_NULL_RETURN(msg->notification->subtree_change_notif, SR_ERR_MALFORMED_MSG);
                 break;
-            case SR__NOTIFICATION_TYPE__HELLO_NOTIF:
+            case SR__SUBSCRIPTION_TYPE__HELLO_SUBS:
                 break;
             default:
                 return SR_ERR_MALFORMED_MSG;
@@ -1216,6 +1236,47 @@ cleanup:
     return rc;
 }
 
+int
+sr_changes_sr_to_gpb(struct ly_set *sr_changes, Sr__Change ***gpb_changes_p, size_t *gpb_count) {
+    Sr__Change **gpb_changes = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG2(gpb_changes_p, gpb_count);
+
+    if ((NULL != sr_changes) && (sr_changes->number > 0)) {
+        gpb_changes = calloc(sr_changes->number, sizeof(*gpb_changes));
+        CHECK_NULL_NOMEM_RETURN(gpb_changes);
+
+        for (size_t i = 0; i < sr_changes->number; i++) {
+            gpb_changes[i] = calloc(1, sizeof(**gpb_changes));
+            CHECK_NULL_NOMEM_GOTO(gpb_changes[i], rc, cleanup);
+            sr__change__init(gpb_changes[i]);
+            sr_change_t *ch = sr_changes->set.g[i];
+            if (NULL != ch->new_value) {
+                rc = sr_dup_val_t_to_gpb(ch->new_value, &gpb_changes[i]->new_value);
+                CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to duplicate sr_val_t to GPB.");
+            }
+            if (NULL != ch->old_value) {
+                rc = sr_dup_val_t_to_gpb(ch->old_value, &gpb_changes[i]->old_value);
+                CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to duplicate sr_val_t to GPB.");
+            }
+            gpb_changes[i]->changeoperation = sr_change_op_sr_to_gpb(ch->oper);
+        }
+    }
+
+    *gpb_changes_p = gpb_changes;
+    *gpb_count = NULL != sr_changes ? sr_changes->number : 0;
+
+    return SR_ERR_OK;
+
+cleanup:
+    for (size_t i = 0; i < sr_changes->number; i++) {
+        sr__change__free_unpacked(gpb_changes[i], NULL);
+    }
+    free(gpb_changes);
+    return rc;
+}
+
 Sr__DataStore
 sr_datastore_sr_to_gpb(const sr_datastore_t sr_ds)
 {
@@ -1243,6 +1304,40 @@ sr_datastore_gpb_to_sr(Sr__DataStore gpb_ds)
             /* fall through */
         default:
             return SR_DS_STARTUP;
+    }
+}
+
+sr_change_oper_t
+sr_change_op_gpb_to_sr(Sr__ChangeOperation gpb_ch)
+{
+    switch (gpb_ch) {
+    case SR__CHANGE_OPERATION__CREATED:
+        return SR_OP_CREATED;
+    case SR__CHANGE_OPERATION__DELETED:
+        return SR_OP_DELETED;
+    case SR__CHANGE_OPERATION__MOVED:
+        return SR_OP_MOVED;
+    case SR__CHANGE_OPERATION__MODIFIED:
+    default:
+        /* fall through */
+        return SR_OP_MODIFIED;
+    }
+}
+
+Sr__ChangeOperation
+sr_change_op_sr_to_gpb(sr_change_oper_t sr_ch)
+{
+    switch (sr_ch) {
+    case SR_OP_CREATED:
+        return SR__CHANGE_OPERATION__CREATED;
+    case SR_OP_DELETED:
+        return SR__CHANGE_OPERATION__DELETED;
+    case SR_OP_MOVED:
+        return SR__CHANGE_OPERATION__MOVED;
+    case SR_OP_MODIFIED:
+    default:
+        /* fall through */
+        return SR__CHANGE_OPERATION__MODIFIED;
     }
 }
 
@@ -1281,42 +1376,80 @@ sr_move_direction_gpb_to_sr(Sr__MoveItemReq__MovePosition gpb_position)
 }
 
 char *
-sr_notif_type_gpb_to_str(Sr__NotificationType type)
+sr_subscription_type_gpb_to_str(Sr__SubscriptionType type)
 {
     switch (type) {
-        case SR__NOTIFICATION_TYPE__MODULE_INSTALL_NOTIF:
+        case SR__SUBSCRIPTION_TYPE__MODULE_INSTALL_SUBS:
             return "module-install";
-        case SR__NOTIFICATION_TYPE__FEATURE_ENABLE_NOTIF:
+        case SR__SUBSCRIPTION_TYPE__FEATURE_ENABLE_SUBS:
             return "feature-enable";
-        case SR__NOTIFICATION_TYPE__MODULE_CHANGE_NOTIF:
+        case SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS:
             return "module-change";
-        case SR__NOTIFICATION_TYPE__SUBTREE_CHANGE_NOTIF:
+        case SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS:
             return "subtree-change";
-        case SR__NOTIFICATION_TYPE__RPC_NOTIF:
+        case SR__SUBSCRIPTION_TYPE__RPC_SUBS:
             return "rpc";
-        case SR__NOTIFICATION_TYPE__HELLO_NOTIF:
+        case SR__SUBSCRIPTION_TYPE__HELLO_SUBS:
             return "hello";
         default:
             return "unknown";
     }
 }
 
-Sr__NotificationType
-sr_notif_type_str_to_gpb(const char *type_name)
+Sr__SubscriptionType
+sr_subsciption_type_str_to_gpb(const char *type_name)
 {
     if (0 == strcmp(type_name, "module-install")) {
-        return SR__NOTIFICATION_TYPE__MODULE_INSTALL_NOTIF;
+        return SR__SUBSCRIPTION_TYPE__MODULE_INSTALL_SUBS;
     }
     if (0 == strcmp(type_name, "feature-enable")) {
-        return SR__NOTIFICATION_TYPE__FEATURE_ENABLE_NOTIF;
+        return SR__SUBSCRIPTION_TYPE__FEATURE_ENABLE_SUBS;
     }
     if (0 == strcmp(type_name, "module-change")) {
-        return SR__NOTIFICATION_TYPE__MODULE_CHANGE_NOTIF;
+        return SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS;
     }
     if (0 == strcmp(type_name, "subtree-change")) {
-        return SR__NOTIFICATION_TYPE__SUBTREE_CHANGE_NOTIF;
+        return SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS;
     }
-    return _SR__NOTIFICATION_TYPE_IS_INT_SIZE;
+    return _SR__SUBSCRIPTION_TYPE_IS_INT_SIZE;
+}
+
+char *
+sr_notification_event_gpb_to_str(Sr__NotificationEvent event)
+{
+    switch (event) {
+        case SR__NOTIFICATION_EVENT__VERIFY_EV:
+            return "verify";
+        case SR__NOTIFICATION_EVENT__NOTIFY_EV:
+            return "notify";
+        default:
+            return "unknown";
+    }
+}
+
+Sr__NotificationEvent
+sr_notification_event_str_to_gpb(const char *event_name)
+{
+    if (0 == strcmp(event_name, "verify")) {
+        return SR__NOTIFICATION_EVENT__VERIFY_EV;
+    }
+    if (0 == strcmp(event_name, "notify")) {
+        return SR__NOTIFICATION_EVENT__NOTIFY_EV;
+    }
+    return _SR__NOTIFICATION_EVENT_IS_INT_SIZE;
+}
+
+sr_notif_event_t
+sr_notification_event_gpb_to_sr(Sr__NotificationEvent event)
+{
+    switch (event) {
+        case SR__NOTIFICATION_EVENT__VERIFY_EV:
+            return SR_EV_VERIFY;
+        case SR__NOTIFICATION_EVENT__NOTIFY_EV:
+            return SR_EV_NOTIFY;
+        default:
+            return SR_EV_NOTIFY;
+    }
 }
 
 int

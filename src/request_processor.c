@@ -76,6 +76,54 @@ rp_resp_fill_errors(Sr__Msg *msg, dm_session_t *dm_session)
 }
 
 /**
+ * @brief Verifies that the requested commit context still exists. Copies data tree from commit context to the session if
+ * needed.
+ */
+static int
+rp_check_notif_session(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
+{
+    int rc = SR_ERR_OK;
+    dm_commit_context_t *c_ctx = NULL;
+    char *module_name = NULL;
+    const char *xpath = NULL;
+    dm_commit_ctxs_t *dm_ctxs = NULL;
+    //TODO: retrieve commit id from the session
+    int id = 0;
+
+    rc = dm_get_commit_ctxs(rp_ctx->dm_ctx, &dm_ctxs);
+    CHECK_RC_MSG_RETURN(rc, "Get commit ctx failed");
+    pthread_rwlock_rdlock(&dm_ctxs->lock);
+
+    rc = dm_get_commit_context(rp_ctx->dm_ctx, id, &c_ctx);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Get commit context failed");
+    if (NULL == c_ctx) {
+        SR_LOG_ERR("Commit context with id %d can not be found", id);
+        dm_report_error(session->dm_session, "Commit data are not available anymore", NULL, SR_ERR_INTERNAL);
+        goto cleanup;
+    }
+
+    if (SR__OPERATION__GET_ITEM == msg->request->operation) {
+        xpath = msg->request->get_item_req->xpath;
+    } else if (SR__OPERATION__GET_ITEMS == msg->request->operation) {
+        xpath = msg->request->get_items_req->xpath;
+    } else if (SR__OPERATION__GET_CHANGES == msg->request->operation) {
+        xpath = msg->request->get_changes_req->xpath;
+    } else {
+        SR_LOG_WRN_MSG("Check notif session called for unknown operation");
+    }
+
+    rc = sr_copy_first_ns(xpath, &module_name);
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Copy first ns failed for xpath %s", xpath);
+
+    /* copy requested model from commit context */
+    rc = dm_copy_if_not_loaded(rp_ctx->dm_ctx,  c_ctx->session, session->dm_session, module_name);
+    free(module_name);
+cleanup:
+    pthread_rwlock_unlock(&dm_ctxs->lock);
+    return rc;
+}
+
+/**
  * @brief Processes a list_schemas request.
  */
 static int
@@ -275,12 +323,15 @@ rp_get_item_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
     sr_val_t *value = NULL;
     char *xpath = msg->request->get_item_req->xpath;
 
+    if (session->options & SR__SESSION_FLAGS__SESS_NOTIFICATION) {
+        rc = rp_check_notif_session(rp_ctx, session, msg);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Check notif session failed");
+    }
+
     /* get value from data manager */
     rc = rp_dt_get_value_wrapper(rp_ctx, session, xpath, &value);
-    if (SR_ERR_OK != rc) {
-        if (SR_ERR_NOT_FOUND != rc) {
-            SR_LOG_ERR("Get item failed for '%s', session id=%"PRIu32".", xpath, session->id);
-        }
+    if (SR_ERR_OK != rc && SR_ERR_NOT_FOUND != rc) {
+        SR_LOG_ERR("Get item failed for '%s', session id=%"PRIu32".", xpath, session->id);
     }
 
     /* copy value to gpb */
@@ -291,6 +342,7 @@ rp_get_item_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
         }
     }
 
+cleanup:
     /* set response code */
     resp->response->result = rc;
 
@@ -326,6 +378,11 @@ rp_get_items_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Memory allocation failed");
         return SR_ERR_NOMEM;
+    }
+
+    if (session->options & SR__SESSION_FLAGS__SESS_NOTIFICATION) {
+        rc = rp_check_notif_session(rp_ctx, session, msg);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Check notif session failed");
     }
 
     xpath = msg->request->get_items_req->xpath;
@@ -841,17 +898,20 @@ rp_subscribe_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr
     subscribe_req = msg->request->subscribe_req;
 
     /* set subscribe options */
-    if (subscribe_req->enable_running) {
+    if (subscribe_req->has_enable_running && subscribe_req->enable_running) {
         options |= NP_SUBSCR_ENABLE_RUNNING;
     }
-    if (SR__NOTIFICATION_TYPE__RPC_NOTIF == subscribe_req->notif_type) {
+    if (SR__SUBSCRIPTION_TYPE__RPC_SUBS == subscribe_req->type) {
         options |= NP_SUBSCR_EXCLUSIVE;
     }
 
     /* subscribe to the notification */
-    rc = np_notification_subscribe(rp_ctx->np_ctx, session, subscribe_req->notif_type,
+    rc = np_notification_subscribe(rp_ctx->np_ctx, session, subscribe_req->type,
             subscribe_req->destination, subscribe_req->subscription_id,
-            subscribe_req->module_name, subscribe_req->xpath, options);
+            subscribe_req->module_name, subscribe_req->xpath,
+            (subscribe_req->has_notif_event ? subscribe_req->notif_event : SR__NOTIFICATION_EVENT__NOTIFY_EV),
+            (subscribe_req->has_priority ? subscribe_req->priority : 0),
+            options);
 
     /* set response code */
     resp->response->result = rc;
@@ -894,7 +954,7 @@ rp_unsubscribe_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
     }
 
     /* unsubscribe from the notifications */
-    rc = np_notification_unsubscribe(rp_ctx->np_ctx, session, msg->request->unsubscribe_req->notif_type,
+    rc = np_notification_unsubscribe(rp_ctx->np_ctx, session, msg->request->unsubscribe_req->type,
             msg->request->unsubscribe_req->destination, msg->request->unsubscribe_req->subscription_id,
             msg->request->unsubscribe_req->module_name);
 
@@ -950,7 +1010,88 @@ rp_check_enabled_running_req_process(const rp_ctx_t *rp_ctx, const rp_session_t 
 
     /* send the response */
     rc = cm_msg_send(rp_ctx->cm_ctx, resp);
+    return rc;
+}
 
+/**
+ * @brief Process get changes request.
+ */
+static int
+rp_get_changes_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
+{
+    Sr__Msg *resp = NULL;
+    int rc = SR_ERR_OK;
+    dm_commit_ctxs_t *dm_ctxs = NULL;
+    dm_commit_context_t *c_ctx = NULL;
+    struct ly_set *changes = NULL;
+    bool locked = false;
+
+    CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->get_changes_req);
+    SR_LOG_DBG_MSG("Processing get changes request.");
+
+    /* allocate the response */
+    rc = sr_gpb_resp_alloc(SR__OPERATION__GET_CHANGES, session->id, &resp);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Allocation of get changes response failed.");
+        return SR_ERR_NOMEM;
+    }
+
+    char *xpath = msg->request->get_changes_req->xpath;
+    //TODO retrieve commit id from session
+    int id = 0;
+
+    if (session->options & SR__SESSION_FLAGS__SESS_NOTIFICATION) {
+        rc = rp_check_notif_session(rp_ctx, session, msg);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Check notif session failed");
+    } else {
+        rc = dm_report_error(session->dm_session, "Get changes call can be issued only on notification session", NULL, SR_ERR_UNSUPPORTED);
+        goto cleanup;
+    }
+
+    rc = dm_get_commit_ctxs(rp_ctx->dm_ctx, &dm_ctxs);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Get commit ctx failed");
+    pthread_rwlock_rdlock(&dm_ctxs->lock);
+    locked = true;
+
+    rc = dm_get_commit_context(rp_ctx->dm_ctx, id, &c_ctx);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Get commit context failed");
+    if (NULL == c_ctx) {
+        SR_LOG_ERR("Commit context with id %d can not be found", id);
+        dm_report_error(session->dm_session, "Commit data are not available anymore", NULL, SR_ERR_INTERNAL);
+        goto cleanup;
+    }
+
+    /* get changes */
+    rc = rp_dt_get_changes(rp_ctx, session, c_ctx, xpath,
+            msg->request->get_changes_req->offset,
+            msg->request->get_changes_req->limit,
+            &changes);
+
+    if (SR_ERR_OK == rc) {
+        /* copy values to gpb */
+        rc = sr_changes_sr_to_gpb(changes, &resp->response->get_changes_resp->changes, &resp->response->get_changes_resp->n_changes);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR_MSG("Copying values to GPB failed.");
+        }
+    }
+
+cleanup:
+    if (locked) {
+        pthread_rwlock_unlock(&dm_ctxs->lock);
+    }
+
+    /* set response code */
+    resp->response->result = rc;
+
+    rc = rp_resp_fill_errors(resp, session->dm_session);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Copying errors to gpb failed");
+    }
+
+    /* send the response */
+    rc = cm_msg_send(rp_ctx->cm_ctx, resp);
+
+    ly_set_free(changes);
     return rc;
 }
 
@@ -1011,7 +1152,7 @@ rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg 
 
     /* get RPC subscription */
     if (SR_ERR_OK == rc) {
-        rc = pm_get_subscriptions(rp_ctx->pm_ctx, module_name, SR__NOTIFICATION_TYPE__RPC_NOTIF,
+        rc = pm_get_subscriptions(rp_ctx->pm_ctx, module_name, SR__SUBSCRIPTION_TYPE__RPC_SUBS,
                 &subscriptions, &subscription_cnt);
     }
     free(module_name);
@@ -1153,6 +1294,7 @@ rp_msg_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
         if ((SR__OPERATION__GET_ITEM != msg->request->operation) &&
                 (SR__OPERATION__GET_ITEMS != msg->request->operation) &&
                 (SR__OPERATION__SESSION_REFRESH != msg->request->operation) &&
+                (SR__OPERATION__GET_CHANGES != msg->request->operation) &&
                 (SR__OPERATION__UNSUBSCRIBE != msg->request->operation)) {
             SR_LOG_ERR("Unsupported operation for notification session (session id=%"PRIu32", operation=%d).",
                     session->id, msg->request->operation);
@@ -1243,6 +1385,9 @@ rp_msg_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
             case SR__OPERATION__CHECK_ENABLED_RUNNING:
                 rc = rp_check_enabled_running_req_process(rp_ctx, session, msg);
                 break;
+            case SR__OPERATION__GET_CHANGES:
+                rc = rp_get_changes_req_process(rp_ctx, session, msg);
+                break;
             case SR__OPERATION__RPC:
                 rc = rp_rpc_req_process(rp_ctx, session, msg);
                 return rc; /* skip further processing and msg cleanup */
@@ -1324,6 +1469,7 @@ rp_session_cleanup(const rp_ctx_t *rp_ctx, rp_session_t *session)
     ly_set_free(session->get_items_ctx.nodes);
     free(session->get_items_ctx.xpath);
     pthread_mutex_destroy(&session->msg_count_mutex);
+    free(session->change_ctx.xpath);
     free(session);
 
     return SR_ERR_OK;

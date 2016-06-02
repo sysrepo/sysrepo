@@ -1020,13 +1020,34 @@ test_module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_not
     int rc = SR_ERR_OK;
 
     int *callback_called = (int*)private_ctx;
-    *callback_called += 1;
     printf("Some data within the module '%s' has changed.\n", module_name);
 
     rc = sr_get_item(session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &value);
     if (SR_ERR_OK == rc) {
         printf("New value for '%s' = '%s'\n", value->xpath, value->data.string_val);
         sr_free_val(value);
+        *callback_called += 1;
+    } else {
+        printf("While retrieving '%s' error with code (%d) occured\n", "/example-module:container/list[key1='key1'][key2='key2']/leaf", rc);
+    }
+
+    return SR_ERR_OK;
+}
+
+static int
+test_subtree_change_cb(sr_session_ctx_t *session, const char *xpath, sr_notif_event_t event, void *private_ctx)
+{
+    sr_val_t *value = NULL;
+    int rc = SR_ERR_OK;
+
+    int *callback_called = (int*)private_ctx;
+    printf("Some data within the subtree '%s' has changed.\n", xpath);
+
+    rc = sr_get_item(session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &value);
+    if (SR_ERR_OK == rc) {
+        printf("New value for '%s' = '%s'\n", value->xpath, value->data.string_val);
+        sr_free_val(value);
+        *callback_called += 1;
     } else {
         printf("While retrieving '%s' error with code (%d) occured\n", "/example-module:container/list[key1='key1'][key2='key2']/leaf", rc);
     }
@@ -1051,14 +1072,18 @@ cl_notification_test(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 
     /* subscribe to some notifications */
-    rc = sr_module_install_subscribe(session, test_module_install_cb, &callback_called, &subscription);
+    rc = sr_module_install_subscribe(session, test_module_install_cb, &callback_called, SR_SUBSCR_DEFAULT, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = sr_feature_enable_subscribe(session, test_feature_enable_cb, &callback_called, &subscription);
+    rc = sr_feature_enable_subscribe(session, test_feature_enable_cb, &callback_called, SR_SUBSCR_CTX_REUSE, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = sr_module_change_subscribe(session, "example-module", SR_EV_NOTIFY, true, 0,
-            test_module_change_cb, &callback_called, &subscription);
+    rc = sr_module_change_subscribe(session, "example-module", test_module_change_cb, &callback_called,
+            0, SR_SUBSCR_CTX_REUSE, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_subtree_change_subscribe(session, "/example-module:container/list", test_subtree_change_cb, &callback_called,
+            0, SR_SUBSCR_CTX_REUSE, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* do some changes */
@@ -1094,12 +1119,12 @@ cl_notification_test(void **state)
     /* commit */
     rc = sr_commit(session);
 
-    /* wait for all callbacks or timeout after 100 ms */
-    for (size_t i = 0; i < 100; i++) {
-        if (callback_called >= 4) break;
-        usleep(1000); /* 1 ms */
+    /* wait for all callbacks or timeout after 10 seconds */
+    for (size_t i = 0; i < 1000; i++) {
+        if (callback_called >= 5) break;
+        usleep(10000); /* 10 ms */
     }
-    assert_true(callback_called >= 4);
+    assert_true(callback_called >= 5);
 
     /* some negative tests */
     rc = sr_feature_enable(session, "unknown-module", "unknown", true);
@@ -1154,8 +1179,8 @@ cl_copy_config_test(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 
     /* enable running DS for example-module */
-    rc = sr_module_change_subscribe(session_startup, "example-module", SR_EV_NOTIFY, true, 0,
-            test_module_change_cb, &callback_called, &subscription);
+    rc = sr_module_change_subscribe(session_startup, "example-module", test_module_change_cb,
+            &callback_called, 0, SR_SUBSCR_DEFAULT, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* edit config in running */
@@ -1252,7 +1277,8 @@ cl_rpc_test(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 
     /* subscribe for RPC */
-    rc = sr_rpc_subscribe(session, "/test-module:activate-software-image", test_rpc_cb, &callback_called, &subscription);
+    rc = sr_rpc_subscribe(session, "/test-module:activate-software-image", test_rpc_cb, &callback_called,
+            SR_SUBSCR_DEFAULT, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
     sr_val_t input = { 0, };
@@ -1338,8 +1364,8 @@ candidate_ds_test(void **state)
     assert_int_equal(SR_ERR_OPERATION_FAILED, rc);
 
     /* enable running DS for example-module */
-    rc = sr_module_change_subscribe(session_startup, "example-module", SR_EV_NOTIFY, true, 0,
-            test_module_change_cb, &callback_called, &subscription);
+    rc = sr_module_change_subscribe(session_startup, "example-module", test_module_change_cb,
+            &callback_called, 0, SR_SUBSCR_DEFAULT, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* commit should pass */
@@ -1460,8 +1486,8 @@ cl_candidate_refresh(void **state)
     rc = sr_session_start(conn, SR_DS_CANDIDATE, SR_SESS_DEFAULT, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = sr_module_change_subscribe(session, "example-module", SR_EV_NOTIFY, true, 0,
-            module_change_cb, &cb_called, &subscription);
+    rc = sr_module_change_subscribe(session, "example-module", module_change_cb, &cb_called,
+            0, SR_SUBSCR_DEFAULT, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* check the list presence in candidate */
@@ -1507,6 +1533,98 @@ cl_candidate_refresh(void **state)
 
 }
 
+#define MAX_CHANGE 10
+typedef struct changes_s{
+    size_t cnt;
+    sr_val_t *new_values[MAX_CHANGE];
+    sr_val_t *old_values[MAX_CHANGE];
+    sr_change_oper_t oper[MAX_CHANGE];
+}changes_t;
+
+static int
+list_changes_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t ev, void *private_ctx)
+{
+    changes_t *ch = (changes_t *) private_ctx;
+    sr_change_iter_t *it = NULL;
+    int rc = SR_ERR_OK;
+    rc = sr_get_changes_iter(session, "/example-module:container", &it);
+    puts("Iteration over changes started");
+    if (SR_ERR_OK != rc) {
+        puts("sr get changes iter failed");
+        goto cleanup;
+    }
+    ch->cnt = 0;
+    while (ch->cnt < MAX_CHANGE) {
+        rc = sr_get_change_next(session, it,
+                &ch->oper[ch->cnt],
+                &ch->old_values[ch->cnt],
+                &ch->new_values[ch->cnt]);
+        if (SR_ERR_OK != rc) {
+            break;
+        }
+        ch->cnt++;
+    }
+
+cleanup:
+    sr_free_change_iter(it);
+    return SR_ERR_OK;
+}
+
+static void
+cl_get_changes_iter_test(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+    sr_session_ctx_t *session = NULL;
+    sr_subscription_ctx_t *subscription = NULL;
+    changes_t changes = {0};
+    sr_change_iter_t *iter = NULL;
+
+    sr_val_t *val = NULL;
+    const char *xpath = NULL;
+    int rc = SR_ERR_OK;
+    xpath = "/example-module:container/list[key1='key1'][key2='key2']/leaf";
+
+    /* start session */
+    rc = sr_session_start(conn, SR_DS_CANDIDATE, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* get changes can not be called only on notification session */
+    rc = sr_get_changes_iter(session, "/example-module:container", &iter);
+    assert_int_equal(rc, SR_ERR_UNSUPPORTED);
+
+    rc = sr_module_change_subscribe(session, "example-module", list_changes_cb, &changes,
+            0, SR_SUBSCR_DEFAULT, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* check the list presence in candidate */
+    rc = sr_get_item(session, xpath, &val);
+    assert_int_equal(rc, SR_ERR_OK);
+    sr_free_val(val);
+
+    /* remove the list instance */
+    rc = sr_delete_item(session, xpath, SR_EDIT_DEFAULT);
+
+    /* save changes to running */
+    rc = sr_commit(session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    usleep(100000);
+
+    assert_int_equal(changes.cnt, 1);
+    for (size_t i = 0; i < changes.cnt; i++) {
+        sr_free_val(changes.new_values[i]);
+        sr_free_val(changes.old_values[i]);
+    }
+
+
+    rc = sr_unsubscribe(NULL, subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_session_stop(session);
+    assert_int_equal(rc, SR_ERR_OK);
+}
+
 int
 main()
 {
@@ -1532,6 +1650,7 @@ main()
             cmocka_unit_test_setup_teardown(candidate_ds_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_switch_ds, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_candidate_refresh, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_get_changes_iter_test, sysrepo_setup, sysrepo_teardown),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);

@@ -99,6 +99,27 @@ int rp_dt_get_values_wrapper_with_opts(rp_ctx_t *rp_ctx, rp_session_t *rp_sessio
  */
 int rp_dt_get_values_from_nodes(struct ly_set *nodes, sr_val_t **values, size_t *value_cnt);
 
+/**
+ * @brief Transforms difflist to the set of changes
+ * @param [in] difflist
+ * @param [out] changes
+ * @return Error code (SR_ERR_OK on success)
+ */
+int rp_dt_difflist_to_changes(struct lyd_difflist *difflist, struct ly_set **changes);
+
+/**
+ * @brief Returns the changes that match the selection based on xpath, offset and limit criteria.
+ * @param [in] rp_ctx
+ * @param [in] session
+ * @param [in] c_ctx
+ * @param [in] xpath
+ * @param [in] offset
+ * @param [in] limit
+ * @param [out] matched_changes
+ * @return Error code (SR_ERR_OK on success)
+ */
+int rp_dt_get_changes(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t *c_ctx, const char *xpath,
+            size_t offset, size_t limit, struct ly_set **matched_changes);
 #endif /* RP_DT_GET_H */
 
 /**

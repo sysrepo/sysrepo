@@ -260,8 +260,9 @@ np_cleanup(np_ctx_t *np_ctx)
 }
 
 int
-np_notification_subscribe(np_ctx_t *np_ctx, const rp_session_t *rp_session, Sr__NotificationType notif_type,
-        const char *dst_address, uint32_t dst_id, const char *module_name, const char *xpath, const np_subscr_options_t opts)
+np_notification_subscribe(np_ctx_t *np_ctx, const rp_session_t *rp_session, Sr__SubscriptionType type,
+        const char *dst_address, uint32_t dst_id, const char *module_name, const char *xpath,
+        Sr__NotificationEvent notif_event, uint32_t priority, const np_subscr_options_t opts)
 {
     np_subscription_t *subscription = NULL;
     np_subscription_t **subscriptions_tmp = NULL;
@@ -269,13 +270,13 @@ np_notification_subscribe(np_ctx_t *np_ctx, const rp_session_t *rp_session, Sr__
 
     CHECK_NULL_ARG4(np_ctx, np_ctx->rp_ctx, rp_session, dst_address);
 
-    SR_LOG_DBG("Notification subscribe: event=%d, dst_address='%s', dst_id=%"PRIu32".", notif_type, dst_address, dst_id);
+    SR_LOG_DBG("Notification subscribe: event=%d, dst_address='%s', dst_id=%"PRIu32".", type, dst_address, dst_id);
 
     /* prepare new subscription entry */
     subscription = calloc(1, sizeof(*subscription));
     CHECK_NULL_NOMEM_RETURN(subscription);
 
-    subscription->notif_type = notif_type;
+    subscription->type = type;
     if (NULL != module_name) {
         subscription->module_name = strdup(module_name);
         CHECK_NULL_NOMEM_GOTO(subscription->module_name, rc, cleanup);
@@ -288,11 +289,15 @@ np_notification_subscribe(np_ctx_t *np_ctx, const rp_session_t *rp_session, Sr__
     subscription->dst_id = dst_id;
     subscription->dst_address = strdup(dst_address);
     CHECK_NULL_NOMEM_GOTO(subscription->dst_address, rc, cleanup);
+
+    subscription->notif_event = notif_event;
+    subscription->priority = priority;
     subscription->enable_running = (opts & NP_SUBSCR_ENABLE_RUNNING);
 
     /* save the new subscription */
-    if ((SR__NOTIFICATION_TYPE__MODULE_CHANGE_NOTIF == notif_type) ||
-            (SR__NOTIFICATION_TYPE__RPC_NOTIF == notif_type)) {
+    if ((SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS == type) ||
+            (SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS == type) ||
+            (SR__SUBSCRIPTION_TYPE__RPC_SUBS == type)) {
         /*  update notification destination info */
         rc = np_dst_info_insert(np_ctx, dst_address, module_name);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to update notification destination info.");
@@ -303,11 +308,16 @@ np_notification_subscribe(np_ctx_t *np_ctx, const rp_session_t *rp_session, Sr__
         CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to save the subscription into persistent data file.");
 
         if (opts & NP_SUBSCR_ENABLE_RUNNING) {
-            /* enable the module in running config */
-            rc = dm_enable_module_running(np_ctx->rp_ctx->dm_ctx, rp_session->dm_session, module_name, NULL);
-            CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to enable the module in the running datastore.");
+            if (SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS == type) {
+                /* enable the subtree in running config */
+                rc = dm_enable_module_subtree_running(np_ctx->rp_ctx->dm_ctx, rp_session->dm_session, module_name, xpath, NULL, true);
+                CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to enable the subtree in the running datastore.");
+            } else {
+                /* enable the module in running config */
+                rc = dm_enable_module_running(np_ctx->rp_ctx->dm_ctx, rp_session->dm_session, module_name, NULL, true);
+                CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to enable the module in the running datastore.");
+            }
         }
-
         goto cleanup; /* subscription not needed anymore */
     } else {
         /* add the subscription to in-memory subscription list */
@@ -341,7 +351,7 @@ cleanup:
 }
 
 int
-np_notification_unsubscribe(np_ctx_t *np_ctx,  const rp_session_t *rp_session, Sr__NotificationType notif_type,
+np_notification_unsubscribe(np_ctx_t *np_ctx,  const rp_session_t *rp_session, Sr__SubscriptionType notif_type,
         const char *dst_address, uint32_t dst_id, const char *module_name)
 {
     np_subscription_t *subscription = NULL, subscription_lookup = { 0, };
@@ -353,12 +363,13 @@ np_notification_unsubscribe(np_ctx_t *np_ctx,  const rp_session_t *rp_session, S
 
     SR_LOG_DBG("Notification unsubscribe: dst_address='%s', dst_id=%"PRIu32".", dst_address, dst_id);
 
-    if ((SR__NOTIFICATION_TYPE__MODULE_CHANGE_NOTIF == notif_type) ||
-            (SR__NOTIFICATION_TYPE__RPC_NOTIF == notif_type)) {
+    if ((SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS == notif_type) ||
+            (SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS == notif_type) ||
+            (SR__SUBSCRIPTION_TYPE__RPC_SUBS == notif_type)) {
         /* remove the subscription to module's persistent data */
         subscription_lookup.dst_address = dst_address;
         subscription_lookup.dst_id = dst_id;
-        subscription_lookup.notif_type = notif_type;
+        subscription_lookup.type = notif_type;
         rc = pm_remove_subscription(np_ctx->rp_ctx->pm_ctx, rp_session->user_credentials, module_name,
                 &subscription_lookup, &disable_running);
         if (SR_ERR_OK == rc) {
@@ -452,9 +463,9 @@ np_module_install_notify(np_ctx_t *np_ctx, const char *module_name, const char *
     pthread_rwlock_rdlock(&np_ctx->lock);
 
     for (size_t i = 0; i < np_ctx->subscription_cnt; i++) {
-        if (SR__NOTIFICATION_TYPE__MODULE_INSTALL_NOTIF == np_ctx->subscriptions[i]->notif_type) {
+        if (SR__SUBSCRIPTION_TYPE__MODULE_INSTALL_SUBS == np_ctx->subscriptions[i]->type) {
             /* allocate the notification */
-            rc = sr_gpb_notif_alloc(SR__NOTIFICATION_TYPE__MODULE_INSTALL_NOTIF,
+            rc = sr_gpb_notif_alloc(SR__SUBSCRIPTION_TYPE__MODULE_INSTALL_SUBS,
                     np_ctx->subscriptions[i]->dst_address, np_ctx->subscriptions[i]->dst_id, &notif);
             /* fill-in notification details */
             if (SR_ERR_OK == rc) {
@@ -497,9 +508,9 @@ np_feature_enable_notify(np_ctx_t *np_ctx, const char *module_name, const char *
     pthread_rwlock_rdlock(&np_ctx->lock);
 
     for (size_t i = 0; i < np_ctx->subscription_cnt; i++) {
-        if (SR__NOTIFICATION_TYPE__FEATURE_ENABLE_NOTIF == np_ctx->subscriptions[i]->notif_type) {
+        if (SR__SUBSCRIPTION_TYPE__FEATURE_ENABLE_SUBS == np_ctx->subscriptions[i]->type) {
             /* allocate the notification */
-            rc = sr_gpb_notif_alloc(SR__NOTIFICATION_TYPE__FEATURE_ENABLE_NOTIF,
+            rc = sr_gpb_notif_alloc(SR__SUBSCRIPTION_TYPE__FEATURE_ENABLE_SUBS,
                     np_ctx->subscriptions[i]->dst_address, np_ctx->subscriptions[i]->dst_id, &notif);
             /* fill-in notification details */
             if (SR_ERR_OK == rc) {
@@ -540,12 +551,12 @@ np_module_change_notify(np_ctx_t *np_ctx, const char *module_name)
 
     SR_LOG_DBG("Sending module-change notifications, module_name='%s'.", module_name);
 
-    rc = pm_get_subscriptions(np_ctx->rp_ctx->pm_ctx, module_name, SR__NOTIFICATION_TYPE__MODULE_CHANGE_NOTIF,
+    rc = pm_get_subscriptions(np_ctx->rp_ctx->pm_ctx, module_name, SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS,
             &subscriptions, &subscription_cnt);
 
     for (size_t i = 0; i < subscription_cnt; i++) {
         /* allocate the notification */
-        rc = sr_gpb_notif_alloc(SR__NOTIFICATION_TYPE__MODULE_CHANGE_NOTIF,
+        rc = sr_gpb_notif_alloc(SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS,
                 subscriptions[i].dst_address, subscriptions[i].dst_id, &notif);
         /* fill-in notification details */
         if (SR_ERR_OK == rc) {
@@ -585,7 +596,7 @@ np_hello_notify(np_ctx_t *np_ctx, const char *module_name, const char *dst_addre
 
     SR_LOG_DBG("Sending HELLO notification to '%s' @ %"PRIu32".", dst_address, dst_id);
 
-    rc = sr_gpb_notif_alloc(SR__NOTIFICATION_TYPE__HELLO_NOTIF, dst_address, dst_id, &notif);
+    rc = sr_gpb_notif_alloc(SR__SUBSCRIPTION_TYPE__HELLO_SUBS, dst_address, dst_id, &notif);
 
     if (SR_ERR_OK == rc) {
         /* save notification destination info */
@@ -605,36 +616,60 @@ int
 np_get_module_change_subscriptions(np_ctx_t *np_ctx, const char *module_name, np_subscription_t ***subscriptions_arr_p,
         size_t *subscriptions_cnt_p)
 {
-    np_subscription_t *subscriptions = NULL, **subscriptions_arr = NULL;
-    size_t subscription_cnt = 0, subscriptions_arr_cnt = 0;
+    np_subscription_t *subscriptions_1 = NULL, *subscriptions_2 = NULL, **subscriptions_arr = NULL;
+    size_t subscription_cnt_1 = 0, subscription_cnt_2 = 0, subscriptions_arr_cnt = 0;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG4(np_ctx, module_name, subscriptions_arr_p, subscriptions_cnt_p);
 
-    rc = pm_get_subscriptions(np_ctx->rp_ctx->pm_ctx, module_name, SR__NOTIFICATION_TYPE__MODULE_CHANGE_NOTIF,
-            &subscriptions, &subscription_cnt);
+    /* get subtree-change subscriptions */
+    rc = pm_get_subscriptions(np_ctx->rp_ctx->pm_ctx, module_name, SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS,
+            &subscriptions_1, &subscription_cnt_1);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to retrieve subtree-change subscriptions");
 
-    subscriptions_arr = calloc(subscription_cnt, sizeof(*subscriptions_arr));
-    CHECK_NULL_NOMEM_GOTO(subscriptions_arr, rc, cleanup);
+    /* get module-change subscriptions */
+    rc = pm_get_subscriptions(np_ctx->rp_ctx->pm_ctx, module_name, SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS,
+            &subscriptions_2, &subscription_cnt_2);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to retrieve module-change subscriptions");
 
-    for (size_t i = 0; i < subscription_cnt; i++) {
-        subscriptions_arr[i] = calloc(1, sizeof(**subscriptions_arr));
-        CHECK_NULL_NOMEM_GOTO(subscriptions_arr[i], rc, cleanup);
-        memcpy(subscriptions_arr[i], &subscriptions[i], sizeof(subscriptions[i]));
-        subscriptions_arr_cnt++;
+    if ((subscription_cnt_1 + subscription_cnt_2) > 0) {
+        /* allocate array of pointers to be returned */
+        subscriptions_arr = calloc(subscription_cnt_1 + subscription_cnt_2, sizeof(*subscriptions_arr));
+        CHECK_NULL_NOMEM_GOTO(subscriptions_arr, rc, cleanup);
+
+        /* copy subtree-change subscriptions */
+        for (size_t i = 0; i < subscription_cnt_1; i++) {
+            subscriptions_arr[subscriptions_arr_cnt] = calloc(1, sizeof(**subscriptions_arr));
+            CHECK_NULL_NOMEM_GOTO(subscriptions_arr[subscriptions_arr_cnt], rc, cleanup);
+            memcpy(subscriptions_arr[subscriptions_arr_cnt], &subscriptions_1[i], sizeof(subscriptions_1[i]));
+            subscriptions_arr_cnt++;
+        }
+        free(subscriptions_1);
+        subscriptions_1 = NULL;
+
+        /* copy module-change subscriptions */
+        for (size_t i = 0; i < subscription_cnt_2; i++) {
+            subscriptions_arr[subscriptions_arr_cnt] = calloc(1, sizeof(**subscriptions_arr));
+            CHECK_NULL_NOMEM_GOTO(subscriptions_arr[subscriptions_arr_cnt], rc, cleanup);
+            memcpy(subscriptions_arr[subscriptions_arr_cnt], &subscriptions_2[i], sizeof(subscriptions_2[i]));
+            subscriptions_arr_cnt++;
+        }
+        free(subscriptions_2);
+        subscriptions_2 = NULL;
     }
 
-    // TODO: subtree_change_notif
-
-    free(subscriptions);
     *subscriptions_arr_p = subscriptions_arr;
     *subscriptions_cnt_p = subscriptions_arr_cnt;
 
     return SR_ERR_OK;
 
 cleanup:
-// TODO
-    free(subscriptions);
+    np_free_subscriptions(subscriptions_1, subscription_cnt_1);
+    np_free_subscriptions(subscriptions_2, subscription_cnt_2);
+    for (size_t i = 0; i < subscriptions_arr_cnt; i++) {
+        free(subscriptions_arr[i]);
+    }
+    free(subscriptions_arr);
     return rc;
 }
 
@@ -646,18 +681,18 @@ np_subscription_notify(np_ctx_t *np_ctx, np_subscription_t *subscription)
 
     CHECK_NULL_ARG4(np_ctx, np_ctx->rp_ctx, subscription, subscription->dst_address);
 
-    SR_LOG_DBG("Sending %s notification to '%s' @ %"PRIu32".", sr_notif_type_gpb_to_str(subscription->notif_type),
+    SR_LOG_DBG("Sending %s notification to '%s' @ %"PRIu32".", sr_subscription_type_gpb_to_str(subscription->type),
             subscription->dst_address, subscription->dst_id);
 
-    rc = sr_gpb_notif_alloc(subscription->notif_type, subscription->dst_address, subscription->dst_id, &notif);
+    rc = sr_gpb_notif_alloc(subscription->type, subscription->dst_address, subscription->dst_id, &notif);
 
     if (SR_ERR_OK == rc) {
-        if (SR__NOTIFICATION_TYPE__MODULE_CHANGE_NOTIF == subscription->notif_type) {
+        if (SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS == subscription->type) {
             notif->notification->module_change_notif->event = subscription->notif_event;
             notif->notification->module_change_notif->module_name = strdup(subscription->module_name);
             CHECK_NULL_NOMEM_ERROR(notif->notification->module_change_notif->module_name, rc);
         }
-        if (SR__NOTIFICATION_TYPE__SUBTREE_CHANGE_NOTIF == subscription->notif_type) {
+        if (SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS == subscription->type) {
             notif->notification->subtree_change_notif->event = subscription->notif_event;
             notif->notification->subtree_change_notif->xpath = strdup(subscription->xpath);
             CHECK_NULL_NOMEM_ERROR(notif->notification->subtree_change_notif->xpath, rc);

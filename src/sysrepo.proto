@@ -461,14 +461,14 @@ message FeatureEnableResp {
 // Notification API - !!! EXPERIMENTAL !!!
 ////////////////////////////////////////////////////////////////////////////////
 
-enum NotificationType {
-  MODULE_INSTALL_NOTIF = 1;
-  FEATURE_ENABLE_NOTIF = 2;
-  MODULE_CHANGE_NOTIF = 3;
-  SUBTREE_CHANGE_NOTIF = 4;
+enum SubscriptionType {
+  MODULE_INSTALL_SUBS = 1;
+  FEATURE_ENABLE_SUBS = 2;
+  MODULE_CHANGE_SUBS = 3;
+  SUBTREE_CHANGE_SUBS = 4;
 
-  RPC_NOTIF = 10;
-  HELLO_NOTIF = 20;           /**< Used only internally to test for inactive notification subscriptions. */
+  RPC_SUBS = 10;
+  HELLO_SUBS = 20;           /**< Used only internally to test for inactive notification subscriptions. */
 }
 
 enum NotificationEvent {
@@ -477,7 +477,7 @@ enum NotificationEvent {
 }
 
 message SubscribeReq {
-  required NotificationType notif_type = 1;
+  required SubscriptionType type = 1;
 
   required string destination = 2;
   required uint32 subscription_id = 3;
@@ -485,15 +485,16 @@ message SubscribeReq {
   optional string module_name = 4;
   optional string xpath = 5;
 
-  optional bool enable_running = 10;
+  optional NotificationEvent notif_event = 10;
   optional uint32 priority = 11;
+  optional bool enable_running = 12;
 }
 
 message SubscribeResp {
 }
 
 message UnsubscribeReq {
-  required NotificationType notif_type = 1;
+  required SubscriptionType type = 1;
 
   required string destination = 2;
   required uint32 subscription_id = 3;
@@ -536,6 +537,36 @@ message ModuleChangeNotification {
 message SubtreeChangeNotification {
   required NotificationEvent event = 1;
   required string xpath = 2;
+}
+
+enum ChangeOperation {
+   CREATED = 1;
+   MODIFIED = 2;
+   DELETED = 3;
+   MOVED = 4;
+}
+
+message Change {
+    required ChangeOperation changeOperation = 1;
+    optional Value new_value = 2;
+    optional Value old_value = 3;
+}
+
+/**
+ * @brief Retrieves an array of changes made under provided path.
+ * Sent by sr_get_changes_iter or sr_get_change_next API calls.
+ */
+message GetChangesReq {
+  required string xpath = 1;
+  required uint32 limit = 2;
+  required uint32 offset = 3;
+}
+
+/**
+ * @brief Response to get_changes request.
+ */
+message GetChangesResp {
+  repeated Change changes = 1;
 }
 
 
@@ -605,6 +636,7 @@ enum Operation {
   SUBSCRIBE = 70;
   UNSUBSCRIBE = 71;
   CHECK_ENABLED_RUNNING = 72;
+  GET_CHANGES = 73;
 
   RPC = 80;
 
@@ -645,6 +677,7 @@ message Request {
   optional SubscribeReq subscribe_req = 70;
   optional UnsubscribeReq unsubscribe_req = 71;
   optional CheckEnabledRunningReq check_enabled_running_req = 72;
+  optional GetChangesReq get_changes_req = 73;
 
   optional RPCReq rpc_req = 80;
 }
@@ -685,6 +718,7 @@ message Response {
   optional SubscribeResp subscribe_resp = 70;
   optional UnsubscribeResp unsubscribe_resp = 71;
   optional CheckEnabledRunningResp check_enabled_running_resp = 72;
+  optional GetChangesResp get_changes_resp = 73;
 
   optional RPCResp rpc_resp = 80;
 }
@@ -693,7 +727,7 @@ message Response {
  * @brief Notification about an event that occurred in the datastore.
  */
 message Notification {
-  required NotificationType type = 1;
+  required SubscriptionType type = 1;
   required string destination_address = 2;
   required string source_address = 3;
   required uint32 source_pid = 4;

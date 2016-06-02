@@ -58,6 +58,20 @@ module sysrepo-persistent-data {
     description "Subscription for delivery of RPC identified by xpath.";
   }
 
+  identity notification-event {
+    description "Notification event which the subscriber is interested in.";
+  }
+
+  identity verify {
+    base notification-event;
+    description "Occurs just before the changes are committed to the datastore.";
+  }
+
+  identity notify {
+    base notification-event;
+    description "Occurs just after the changes have been committed to the datastore.";
+  }
+
   list module {
     key "name";
     description "Module-specific persistent data maintained by sysrepo.";
@@ -102,11 +116,20 @@ module sysrepo-persistent-data {
         }
 
         leaf xpath {
+          when "../type = 'subtree-change' or ../type = 'rpc'";
           type string;
           description "XPath of the subtree where the subscription is active.";
         }
 
+        leaf event {
+          when "../type = 'module-change' or ../type = 'subtree-change'";
+          type identityref {
+            base notification-event;
+          }
+        }
+
         leaf priority {
+          when "../type = 'module-change' or ../type = 'subtree-change'";
           type uint32;
           description "Priority of the subscribtion by delivering notifications (0 is the lowest priority).";
         }
@@ -114,7 +137,7 @@ module sysrepo-persistent-data {
         leaf enable-running {
           type empty;
           when "../type = 'module-change' or ../type = 'subtree-change'";
-          description "If set, the subscription enables specified subtree in
+          description "If present, the subscription enables specified subtree in
             the running datastore.";
         }
       }

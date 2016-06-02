@@ -932,6 +932,18 @@ sr_free_schema(sr_schema_t *schema)
     }
 }
 
+void
+sr_free_changes(sr_change_t *changes, size_t count)
+{
+    if (NULL != changes) {
+        for (size_t i = 0; i < count; i++) {
+            sr_free_val(changes[i].old_value);
+            sr_free_val(changes[i].new_value);
+        }
+        free(changes);
+    }
+}
+
 /**
  * @brief Signal handler used to deliver initialization result from daemon
  * child to daemon parent process, so that the parent can exit with appropriate exit code.
