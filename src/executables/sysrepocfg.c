@@ -541,7 +541,7 @@ srcfg_convert_lydiff_movedafter(const char *target_xpath, const char *after_xpat
  */
 static int
 srcfg_import_datastore(struct ly_ctx *ly_ctx, int fd_in, const char *module_name, srcfg_datastore_t datastore,
-                       LYD_FORMAT format)
+                       LYD_FORMAT format, bool permanent)
 {
     int rc = SR_ERR_INTERNAL;
     unsigned i = 0;
@@ -662,7 +662,7 @@ srcfg_import_datastore(struct ly_ctx *ly_ctx, int fd_in, const char *module_name
             SR_LOG_ERR("Error returned from sr_commit: %s.", sr_strerror(rc));
             goto cleanup;
         }
-        if (SRCFG_STORE_RUNNING == datastore) {
+        if (SRCFG_STORE_RUNNING == datastore && permanent) {
             /* copy running datastore data into the startup datastore */
             rc = sr_copy_config(srcfg_session, module_name, SR_DS_RUNNING, SR_DS_STARTUP);
             if (SR_ERR_OK != rc) {
@@ -695,7 +695,7 @@ cleanup:
  */
 static int
 srcfg_import_operation(const char *module_name, srcfg_datastore_t datastore, const char *filepath,
-                       LYD_FORMAT format)
+                       LYD_FORMAT format, bool permanent)
 {
     int rc = SR_ERR_INTERNAL, ret = 0;
     struct ly_ctx *ly_ctx = NULL;
@@ -718,7 +718,7 @@ srcfg_import_operation(const char *module_name, srcfg_datastore_t datastore, con
     }
 
     /* import datastore data */
-    ret = srcfg_import_datastore(ly_ctx, fd_in, module_name, datastore, format);
+    ret = srcfg_import_datastore(ly_ctx, fd_in, module_name, datastore, format, permanent);
     if (SR_ERR_OK != ret) {
         goto fail;
     }
@@ -856,7 +856,7 @@ srcfg_prompt(const char *question, const char *positive, const char *negative)
  */
 static int
 srcfg_edit_operation(const char *module_name, srcfg_datastore_t datastore, LYD_FORMAT format,
-                     const char *editor, bool keep)
+                     const char *editor, bool keep, bool permanent)
 {
     int rc = SR_ERR_INTERNAL, ret = 0;
     struct ly_ctx *ly_ctx = NULL;
@@ -943,7 +943,7 @@ edit:
                               "Unable to re-open the configuration after it was edited using the text editor.");
 
     /* import temporary file content into the datastore */
-    ret = srcfg_import_datastore(ly_ctx, fd_tmp, module_name, datastore, format);
+    ret = srcfg_import_datastore(ly_ctx, fd_tmp, module_name, datastore, format, permanent);
     close(fd_tmp);
     fd_tmp = -1;
     if (SR_ERR_OK != ret) {
@@ -1043,6 +1043,8 @@ srcfg_print_help()
     printf("                               or to stdout if the argument is empty.\n");
     printf("  -k, --keep                   Keep datastore locked for the entire process of editing\n");
     printf("                               (rather than just for I/O operations)\n");
+    printf("  -p, --permanent              Make all changes made in the running datastore permanent\n");
+    printf("                               by copying the new configuration to the startup datastore after the commit.\n");
     printf("  -l, --level <level>          Set verbosity level of logging:\n");
     printf("                                 0 = all logging turned off\n");
     printf("                                 1 = (default) log only error messages\n");
@@ -1076,7 +1078,7 @@ main(int argc, char* argv[])
     char *filepath = NULL;
     srcfg_datastore_t datastore = SRCFG_STORE_RUNNING;
     LYD_FORMAT format = LYD_XML;
-    bool enabled = false, keep = false;
+    bool enabled = false, keep = false, permanent = false;
     int log_level = -1;
     char local_schema_search_dir[PATH_MAX] = { 0, };
     int rc = SR_ERR_OK;
@@ -1090,6 +1092,7 @@ main(int argc, char* argv[])
        { "import",    optional_argument, NULL, 'i' },
        { "export",    optional_argument, NULL, 'x' },
        { "keep",      no_argument,       NULL, 'k' },
+       { "permanent", no_argument,       NULL, 'p' },
        { "level",     required_argument, NULL, 'l' },
        { 0, 0, 0, 0 }
     };
@@ -1101,7 +1104,7 @@ main(int argc, char* argv[])
     }
 
     /* parse options */
-    while ((c = getopt_long(argc, argv, ":hvd:f:e:i:x:kl:0:", longopts, NULL)) != -1) {
+    while ((c = getopt_long(argc, argv, ":hvd:f:e:i:x:kpl:0:", longopts, NULL)) != -1) {
         switch (c) {
             case 'h':
                 srcfg_print_help();
@@ -1138,6 +1141,9 @@ main(int argc, char* argv[])
                 break;
             case 'k':
                 keep = true;
+                break;
+            case 'p':
+                permanent = true;
                 break;
             case 'l':
                 log_level = atoi(optarg);
@@ -1245,10 +1251,10 @@ main(int argc, char* argv[])
     /* call selected operation */
     switch (operation) {
         case SRCFG_OP_EDIT:
-            rc = srcfg_edit_operation(module_name, datastore, format, editor, keep);
+            rc = srcfg_edit_operation(module_name, datastore, format, editor, keep, permanent);
             break;
         case SRCFG_OP_IMPORT:
-            rc = srcfg_import_operation(module_name, datastore, filepath, format);
+            rc = srcfg_import_operation(module_name, datastore, filepath, format, permanent);
             break;
         case SRCFG_OP_EXPORT:
             rc = srcfg_export_operation(module_name, filepath, format);
