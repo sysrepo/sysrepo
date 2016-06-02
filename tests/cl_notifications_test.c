@@ -498,6 +498,121 @@ cl_notif_priority_test(void **state)
 }
 
 int
+cl_whole_module_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t ev, void *private_ctx)
+{
+    changes_t *ch = (changes_t *) private_ctx;
+    sr_change_iter_t *it = NULL;
+    int rc = SR_ERR_OK;
+
+    pthread_mutex_lock(&ch->mutex);
+    char change_path[50] = {0,};
+    snprintf(change_path, 50, "/%s:*", module_name);
+
+    rc = sr_get_changes_iter(session, change_path , &it);
+    puts("Iteration over changes started");
+    if (SR_ERR_OK != rc) {
+        puts("sr get changes iter failed");
+        goto cleanup;
+    }
+    ch->cnt = 0;
+    while (ch->cnt < MAX_CHANGE) {
+        rc = sr_get_change_next(session, it,
+                &ch->oper[ch->cnt],
+                &ch->old_values[ch->cnt],
+                &ch->new_values[ch->cnt]);
+        if (SR_ERR_OK != rc) {
+            break;
+        }
+        ch->cnt++;
+    }
+
+cleanup:
+    sr_free_change_iter(it);
+    pthread_cond_signal(&ch->cv);
+    pthread_mutex_unlock(&ch->mutex);
+    return SR_ERR_OK;
+}
+
+static void
+cl_whole_module_changes(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+    sr_session_ctx_t *session = NULL;
+    sr_subscription_ctx_t *subscription = NULL;
+    changes_t changes = {.mutex = PTHREAD_MUTEX_INITIALIZER, .cv = PTHREAD_COND_INITIALIZER, 0};
+    struct timespec ts;
+    int rc = SR_ERR_OK;
+
+    /* start session */
+    rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_module_change_subscribe(session, "test-module", cl_whole_module_cb, &changes,
+            0, SR_SUBSCR_DEFAULT, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+
+    sr_val_t v = {0};
+    v.type = SR_UINT8_T;
+    v.data.uint8_val = 19;
+
+    rc = sr_set_item(session, "/test-module:main/ui8", &v, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_set_item(session, "/test-module:user[name='userA']", NULL, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    pthread_mutex_lock(&changes.mutex);
+    rc = sr_commit(session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    clock_gettime(CLOCK_REALTIME, &ts);
+    ts.tv_sec += COND_WAIT_SEC;
+    pthread_cond_timedwait(&changes.cv, &changes.mutex, &ts);
+
+
+    /* timeout 10 sec */
+    for (size_t i = 0; i < 1000; i++) {
+        if (changes.cnt >= 4) break;
+        usleep(10000); /* 10 ms */
+    }
+
+    for (int i= 0; i < changes.cnt; i++) {
+        if (NULL != changes.new_values[i]) {
+            puts(changes.new_values[i]->xpath);
+        }
+    }
+    assert_int_equal(changes.cnt, 4);
+
+    assert_int_equal(changes.oper[0], SR_OP_MODIFIED);
+    assert_non_null(changes.new_values[0]);
+    assert_non_null(changes.old_values[0]);
+    assert_string_equal("/test-module:main/ui8", changes.new_values[0]->xpath);
+
+    assert_int_equal(changes.oper[1], SR_OP_CREATED);
+    assert_non_null(changes.new_values[1]);
+    assert_null(changes.old_values[1]);
+    assert_string_equal("/test-module:user[name='userA']", changes.new_values[1]->xpath);
+
+    assert_int_equal(changes.oper[2], SR_OP_CREATED);
+    assert_non_null(changes.new_values[2]);
+    assert_null(changes.old_values[2]);
+    assert_string_equal("/test-module:user[name='userA']/name", changes.new_values[2]->xpath);
+
+    assert_int_equal(changes.oper[3], SR_OP_MOVED);
+    assert_non_null(changes.new_values[3]);
+    assert_null(changes.old_values[3]);
+    assert_string_equal("/test-module:user[name='userA']", changes.new_values[3]->xpath);
+
+    pthread_mutex_unlock(&changes.mutex);
+
+    /* check that cb were called in correct order according to the priority */
+    sr_unsubscribe(session, subscription);
+    sr_session_stop(session);
+}
+
+int
 main()
 {
     const struct CMUnitTest tests[] = {
@@ -506,6 +621,7 @@ main()
         cmocka_unit_test_setup_teardown(cl_get_changes_deleted_test, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_get_changes_moved_test, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_notif_priority_test, sysrepo_setup, sysrepo_teardown),
+        cmocka_unit_test_setup_teardown(cl_whole_module_changes, sysrepo_setup, sysrepo_teardown),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);
