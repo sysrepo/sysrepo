@@ -393,8 +393,8 @@ static int
 priority_zero_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t ev, void *private_ctx)
 {
     priority_t *pr = (priority_t *) private_ctx;
-    pr->count++;
     pr->cb[pr->count] = 0;
+    pr->count++;
 
     return SR_ERR_OK;
 }
@@ -403,8 +403,8 @@ static int
 priority_one_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t ev, void *private_ctx)
 {
     priority_t *pr = (priority_t *) private_ctx;
-    pr->count++;
     pr->cb[pr->count] = 1;
+    pr->count++;
 
     return SR_ERR_OK;
 }
@@ -413,9 +413,8 @@ static int
 priority_two_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t ev, void *private_ctx)
 {
     priority_t *pr = (priority_t *) private_ctx;
-    pr->count++;
     pr->cb[pr->count] = 2;
-
+    pr->count++;
     return SR_ERR_OK;
 }
 
