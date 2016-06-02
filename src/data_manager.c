@@ -2137,6 +2137,21 @@ dm_get_diff_type_to_string(LYD_DIFFTYPE type)
     return diff_states[type];
 }
 
+int
+dm_subs_cmp(const void *a, const void *b)
+{
+    np_subscription_t **sub_a = (np_subscription_t **) a;
+    np_subscription_t **sub_b = (np_subscription_t **) b;
+
+    if ((*sub_b)->priority == (*sub_a)->priority) {
+        return 0;
+    } else if ((*sub_b)->priority > (*sub_a)->priority) {
+        return 1;
+    } else {
+        return -1;
+    }
+}
+
 static int
 dm_prepare_module_subscriptions(dm_ctx_t *dm_ctx, const struct lys_module *module, dm_model_subscription_t **model_sub)
 {
@@ -2154,7 +2169,7 @@ dm_prepare_module_subscriptions(dm_ctx_t *dm_ctx, const struct lys_module *modul
 
     CHECK_RC_LOG_GOTO(rc, cleanup, "Get module subscription failed for module %s", module->name);
 
-    //TODO order subscriptions by priority
+    qsort(ms->subscriptions, ms->subscription_cnt, sizeof(*ms->subscriptions), dm_subs_cmp);
 
     ms->nodes = calloc(ms->subscription_cnt, sizeof(*ms->nodes));
     CHECK_NULL_NOMEM_GOTO(ms->nodes, rc, cleanup);

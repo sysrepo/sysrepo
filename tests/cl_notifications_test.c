@@ -384,6 +384,90 @@ cl_get_changes_moved_test(void **state)
 
 }
 
+typedef struct priority_s {
+    int count;
+    int cb[3];
+}priority_t;
+
+static int
+priority_zero_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t ev, void *private_ctx)
+{
+    priority_t *pr = (priority_t *) private_ctx;
+    pr->count++;
+    pr->cb[pr->count] = 0;
+
+    return SR_ERR_OK;
+}
+
+static int
+priority_one_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t ev, void *private_ctx)
+{
+    priority_t *pr = (priority_t *) private_ctx;
+    pr->count++;
+    pr->cb[pr->count] = 1;
+
+    return SR_ERR_OK;
+}
+
+static int
+priority_two_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t ev, void *private_ctx)
+{
+    priority_t *pr = (priority_t *) private_ctx;
+    pr->count++;
+    pr->cb[pr->count] = 2;
+
+    return SR_ERR_OK;
+}
+
+static void
+cl_notif_priority_test(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+    sr_session_ctx_t *session = NULL;
+    sr_subscription_ctx_t *subscription = NULL;
+    priority_t priority = {0};
+    int rc = SR_ERR_OK;
+
+    /* start session */
+    rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_module_change_subscribe(session, "test-module", priority_zero_cb, &priority,
+            0, SR_SUBSCR_DEFAULT, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_module_change_subscribe(session, "test-module", priority_two_cb, &priority,
+            2, SR_SUBSCR_DEFAULT | SR_SUBSCR_CTX_REUSE, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_module_change_subscribe(session, "test-module", priority_one_cb, &priority,
+            1, SR_SUBSCR_DEFAULT | SR_SUBSCR_CTX_REUSE, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_set_item(session, "/test-module:user[name='userA']", NULL, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_commit(session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+
+    /* timeout 10 sec */
+    for (size_t i = 0; i < 1000; i++) {
+        if (priority.count >= 3) break;
+        usleep(10000); /* 10 ms */
+    }
+
+    assert_int_equal(priority.count, 3);
+    assert_int_equal(2, priority.cb [0]);
+    assert_int_equal(1, priority.cb [1]);
+    assert_int_equal(0, priority.cb [2]);
+
+    /* check that cb were called in correct order according to the priority */
+    sr_unsubscribe(session, subscription);
+    sr_session_stop(session);
+}
+
 int
 main()
 {
@@ -392,6 +476,7 @@ main()
         cmocka_unit_test_setup_teardown(cl_get_changes_modified_test, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_get_changes_deleted_test, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_get_changes_moved_test, sysrepo_setup, sysrepo_teardown),
+        cmocka_unit_test_setup_teardown(cl_notif_priority_test, sysrepo_setup, sysrepo_teardown),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);
