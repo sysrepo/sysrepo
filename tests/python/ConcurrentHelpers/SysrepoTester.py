@@ -18,6 +18,7 @@ __license__ = "Apache 2.0"
 
 from ConcurrentHelpers import *
 from SysrepoWrappers import *
+from time import sleep
 
 
 class SysrepoTester(Tester):
@@ -74,3 +75,6 @@ class SysrepoTester(Tester):
 
     def refreshStep(self):
         self.session.refresh()
+
+    def waitTimeoutStep(self, timeout):
+        sleep(timeout)

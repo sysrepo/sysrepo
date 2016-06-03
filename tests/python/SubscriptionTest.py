@@ -140,6 +140,10 @@ class SubscriptionTest(unittest.TestCase):
         subscriber.add_step(subscriber.killStep)
 
         srd.add_step(srd.waitStep)
+        reader.add_step(reader.waitStep)
+        subscriber.add_step(subscriber.waitTimeoutStep, 1)
+
+        srd.add_step(srd.waitStep)
         reader.add_step(reader.getItemsFailStep, "/ietf-interfaces:*")
         subscriber.add_step(subscriber.waitStep)
 
