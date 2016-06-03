@@ -282,7 +282,7 @@ dm_insert_data_info_copy(sr_btree_t *tree, const dm_data_info_t *di)
     CHECK_NULL_NOMEM_RETURN(copy);
 
     if (NULL != di->node) {
-        copy->node = lyd_dup(di->node, 1);
+        copy->node = sr_dup_datatree(di->node);
         CHECK_NULL_NOMEM_GOTO(copy->node, rc, cleanup);
     }
     copy->module = di->module;
@@ -400,11 +400,11 @@ dm_load_schema_file(dm_ctx_t *dm_ctx, const char *dir_name, const char *file_nam
     if (SR_ERR_OK == rc) {
         if (module_enabled) {
             /* enable running datastore for whole module */
-            rc = dm_enable_module_running(dm_ctx, NULL, module->name, module);
+            rc = dm_enable_module_running(dm_ctx, NULL, module->name, module, false);
         } else {
             /* enable running datastore for specified subtrees */
             for (size_t i = 0; i < enabled_subtrees_cnt; i++) {
-                rc = dm_enable_module_subtree_running(dm_ctx, NULL, module->name, enabled_subtrees[i], module);
+                rc = dm_enable_module_subtree_running(dm_ctx, NULL, module->name, enabled_subtrees[i], module, false);
                 if (SR_ERR_OK != rc) {
                     SR_LOG_WRN("Unable to enable subtree '%s' in module '%s' in running ds.", enabled_subtrees[i], module->name);
                 }
@@ -1983,34 +1983,6 @@ dm_remove_operations_with_error(dm_session_t *session)
     }
 }
 
-#define LYD_TREE_DFS_END(START, NEXT, ELEM)                                   \
-    /* select element for the next run - children first */                    \
-    do {                                                                      \
-        (NEXT) = (ELEM)->child;                                                 \
-        if ((ELEM)->schema->nodetype & (LYS_LEAF | LYS_LEAFLIST | LYS_ANYXML)) { \
-            (NEXT) = NULL;                                                    \
-        }                                                                     \
-        if (!(NEXT)) {                                                        \
-            /* no children */                                                 \
-            if ((ELEM) == (START)) {                                          \
-                /* we are done, (START) has no children */                    \
-                break;                                                        \
-            }                                                                 \
-            /* try siblings */                                                \
-            (NEXT) = (ELEM)->next;                                            \
-        }                                                                     \
-        while (!(NEXT)) {                                                     \
-            /* parent is already processed, go to its sibling */              \
-            (ELEM) = (ELEM)->parent;                                          \
-            /* no siblings, go back through parents */                        \
-            if ((ELEM)->parent == (START)->parent) {                          \
-                /* we are done, no next element to process */                 \
-                break;                                                        \
-            }                                                                 \
-            (NEXT) = (ELEM)->next;                                            \
-        }                                                                     \
-    }while(0)
-
 /**
  * @brief whether the node match the subscribed one - if it is the same node or children
  * of the subscribed one
@@ -2150,6 +2122,21 @@ dm_get_diff_type_to_string(LYD_DIFFTYPE type)
     return diff_states[type];
 }
 
+int
+dm_subs_cmp(const void *a, const void *b)
+{
+    np_subscription_t **sub_a = (np_subscription_t **) a;
+    np_subscription_t **sub_b = (np_subscription_t **) b;
+
+    if ((*sub_b)->priority == (*sub_a)->priority) {
+        return 0;
+    } else if ((*sub_b)->priority > (*sub_a)->priority) {
+        return 1;
+    } else {
+        return -1;
+    }
+}
+
 static int
 dm_prepare_module_subscriptions(dm_ctx_t *dm_ctx, const struct lys_module *module, dm_model_subscription_t **model_sub)
 {
@@ -2167,7 +2154,7 @@ dm_prepare_module_subscriptions(dm_ctx_t *dm_ctx, const struct lys_module *modul
 
     CHECK_RC_LOG_GOTO(rc, cleanup, "Get module subscription failed for module %s", module->name);
 
-    //TODO order subscriptions by priority
+    qsort(ms->subscriptions, ms->subscription_cnt, sizeof(*ms->subscriptions), dm_subs_cmp);
 
     ms->nodes = calloc(ms->subscription_cnt, sizeof(*ms->nodes));
     CHECK_NULL_NOMEM_GOTO(ms->nodes, rc, cleanup);
@@ -2948,14 +2935,13 @@ dm_has_enabled_subtree(dm_ctx_t *ctx, const char *module_name, const struct lys_
 }
 
 int
-dm_enable_module_running(dm_ctx_t *ctx, dm_session_t *session, const char *module_name, const struct lys_module *module)
+dm_enable_module_running(dm_ctx_t *ctx, dm_session_t *session, const char *module_name, const struct lys_module *module,
+        bool copy_from_startup)
 {
-    CHECK_NULL_ARG2(ctx, module_name);
+    CHECK_NULL_ARG2(ctx, module_name); /* session can be NULL */
     bool has_enabled_subtree = false;
     char xpath[PATH_MAX] = {0,};
     int rc = SR_ERR_OK;
-
-    CHECK_NULL_ARG3(ctx, session, module_name);
 
     if (NULL == module) {
         /* if module is not known, get it and check if it has some enabled subtree */
@@ -2975,7 +2961,7 @@ dm_enable_module_running(dm_ctx_t *ctx, dm_session_t *session, const char *modul
             node = node->next;
         }
     }
-    if (SR_ERR_OK == rc && !has_enabled_subtree) {
+    if (SR_ERR_OK == rc && copy_from_startup && !has_enabled_subtree) {
         /* if no subtree was already enabled within the module, copy the data from startup */
         rc = dm_copy_module(ctx, session, module_name, SR_DS_STARTUP, SR_DS_RUNNING);
     }
@@ -2984,7 +2970,7 @@ dm_enable_module_running(dm_ctx_t *ctx, dm_session_t *session, const char *modul
 
 int
 dm_enable_module_subtree_running(dm_ctx_t *ctx, dm_session_t *session, const char *module_name, const char *xpath,
-        const struct lys_module *module)
+        const struct lys_module *module, bool copy_from_startup)
 {
     CHECK_NULL_ARG2(ctx, module_name);
     bool has_enabled_subtree = false;
@@ -3000,7 +2986,7 @@ dm_enable_module_subtree_running(dm_ctx_t *ctx, dm_session_t *session, const cha
         /* enable the subtree specified by xpath */
         rc = rp_dt_enable_xpath(ctx, session, xpath);
     }
-    if (SR_ERR_OK == rc) {
+    if (SR_ERR_OK == rc && copy_from_startup) {
         if (!has_enabled_subtree) {
             /* no subtree was already enabled within the module, copy the data from startup */
             rc = dm_copy_module(ctx, session, module_name, SR_DS_STARTUP, SR_DS_RUNNING);

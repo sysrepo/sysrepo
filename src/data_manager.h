@@ -145,6 +145,37 @@ typedef struct dm_c_ctxs_s {
 } dm_commit_ctxs_t;
 
 /**
+ * @brief End macro for data child iteration
+ */
+#define LYD_TREE_DFS_END(START, NEXT, ELEM)                                   \
+    /* select element for the next run - children first */                    \
+    do {                                                                      \
+        (NEXT) = (ELEM)->child;                                                 \
+        if ((ELEM)->schema->nodetype & (LYS_LEAF | LYS_LEAFLIST | LYS_ANYXML)) { \
+            (NEXT) = NULL;                                                    \
+        }                                                                     \
+        if (!(NEXT)) {                                                        \
+            /* no children */                                                 \
+            if ((ELEM) == (START)) {                                          \
+                /* we are done, (START) has no children */                    \
+                break;                                                        \
+            }                                                                 \
+            /* try siblings */                                                \
+            (NEXT) = (ELEM)->next;                                            \
+        }                                                                     \
+        while (!(NEXT)) {                                                     \
+            /* parent is already processed, go to its sibling */              \
+            (ELEM) = (ELEM)->parent;                                          \
+            /* no siblings, go back through parents */                        \
+            if ((ELEM)->parent == (START)->parent) {                          \
+                /* we are done, no next element to process */                 \
+                break;                                                        \
+            }                                                                 \
+            (NEXT) = (ELEM)->next;                                            \
+        }                                                                     \
+    }while(0)
+
+/**
  * @brief Initializes the data manager context, which will be passed in further
  * data manager related calls.
  * @param [in] ac_ctx Access Control module context
@@ -544,9 +575,11 @@ int dm_has_enabled_subtree(dm_ctx_t *ctx, const char *module_name, const struct 
  * @param [in] session DM session.
  * @param [in] module_name Name of the module to be enabled.
  * @param [in] module Libyang schema tree pointer. If not known, NULL can be provided.
+ * @param[in] copy_from_startup Load data from startup ds (if not already loaded).
  * @return Error code (SR_ERR_OK on success)
  */
-int dm_enable_module_running(dm_ctx_t *ctx, dm_session_t *session, const char *module_name, const struct lys_module *module);
+int dm_enable_module_running(dm_ctx_t *ctx, dm_session_t *session, const char *module_name,
+        const struct lys_module *module, bool copy_from_startup);
 
 /**
  * @brief Enables subtree in running datastore (including copying of the startup data into running).
@@ -555,10 +588,11 @@ int dm_enable_module_running(dm_ctx_t *ctx, dm_session_t *session, const char *m
  * @param [in] module_name Name of the module where a subtree needs to be enabled.
  * @param[in] xpath XPath identifying the subtree to be enabled.
  * @param [in] module Libyang schema tree pointer. If not known, NULL can be provided.
+ * @param[in] copy_from_startup Load data from startup ds (if not already loaded).
  * @return Error code (SR_ERR_OK on success)
  */
 int dm_enable_module_subtree_running(dm_ctx_t *ctx, dm_session_t *session, const char *module_name, const char *xpath,
-        const struct lys_module *module);
+        const struct lys_module *module, bool copy_from_startup);
 
 /**
  * @brief Disables module in running data store
