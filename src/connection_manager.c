@@ -47,6 +47,9 @@
 
 #define CM_MAX_SIGNAL_WATCHERS 2  /**< Maximum number of signals that Connection Manager can watch for. */
 
+#define CM_SUBSCRIBER_DISCONNECT_TIMEOUT 1  /**< Timeout (in seconds) to wait after disconnection of a subscriber
+                                                 before removing of the subscription. */
+
 /**
  * @brief Connection Manager context.
  */
@@ -68,6 +71,11 @@ typedef struct cm_ctx_s {
     sr_cbuff_t *msg_queue;
     /** Message queue mutex. */
     pthread_mutex_t msg_queue_mutex;
+
+    /** Queue of requests to be sent to the Request Processor after some timeout. */
+    sr_cbuff_t *delayed_requests_queue;
+    /** Linked-list of all delayed requests (to be sent to the Request Processor after some timeout). */
+    struct cm_delayed_request_ctx_s *delayed_requests;
 
     /** Thread where event loop will be running in case of library mode. */
     pthread_t event_loop_thread;
@@ -112,12 +120,23 @@ typedef struct cm_session_ctx_s {
  * @brief Context used to store connection-related data managed by Connection Manager.
  */
 typedef struct cm_connection_ctx_s {
-    cm_ctx_t *cm_ctx;      /**< Connection manager context assigned to this connection. */
+    cm_ctx_t *cm_ctx;      /**< Connection Manager context related to this connection. */
     cm_buffer_t in_buff;   /**< Input buffer. If not empty, there is some received data to be processed. */
     cm_buffer_t out_buff;  /**< Output buffer. If not empty, there is some data to be sent when receiver is ready. */
     ev_io read_watcher;    /**< Watcher for readable events on connection's socket. */
     ev_io write_watcher;   /**< Watcher for writable events on connection's socket. */
 } cm_connection_ctx_t;
+
+/**
+ * @brief Context of a delayed request (request to be sent to the Request Processor after some timeout).
+ */
+typedef struct cm_delayed_request_ctx_s {
+    cm_ctx_t *cm_ctx;                       /**< Connection Manager context related to this request. */
+    cm_session_ctx_t *session;              /**< Session context related to this request. */
+    Sr__Msg *msg;                           /**< Message with the request. */
+    ev_timer timer;                         /**< Timer used to determine when to send the request. */
+    struct cm_delayed_request_ctx_s *next;  /**< Pointer to the next scheduled delayed request. */
+} cm_delayed_request_ctx_t;
 
 /**
  * @brief Initializes unix-domain socket server.
@@ -240,10 +259,86 @@ cm_connection_data_cleanup(void *connection)
 }
 
 /**
+ * @brief Callback called by the event loop when an delayed request timer has elapsed.
+ */
+static void
+cm_delayed_request_cb(struct ev_loop *loop, ev_timer *w, int revents)
+{
+    cm_delayed_request_ctx_t *req = NULL, *prev = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG_VOID2(w, w->data);
+    req = (cm_delayed_request_ctx_t*)w->data;
+
+    CHECK_NULL_ARG_VOID3(req, req->cm_ctx, req->msg);
+
+    rc = rp_msg_process(req->cm_ctx->rp_ctx, (NULL != req->session ? req->session->rp_session : NULL), req->msg);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_WRN_MSG("Unable to send the delayed request to the Request Processor.");
+    } else {
+        SR_LOG_DBG_MSG("Delayed request sent to the Request Processor.");
+    }
+
+    /* remove the request from linked list */
+    if (req == req->cm_ctx->delayed_requests) {
+        req->cm_ctx->delayed_requests = req->next;
+    } else {
+        prev = req->cm_ctx->delayed_requests;
+        while ((NULL != prev) && (req != prev->next)) {
+            prev = prev->next;
+        }
+        if (NULL != prev) {
+            prev->next = req->next;
+        }
+    }
+
+    free(req);
+}
+
+/**
+ * @brief Sends a request to to the Request Processor after some timeout.
+ */
+static int
+cm_delayed_msg_process(cm_ctx_t *cm_ctx, cm_session_ctx_t *session, Sr__Msg *msg, double timeout)
+{
+    cm_delayed_request_ctx_t *req = NULL, *prev = NULL;
+
+    CHECK_NULL_ARG2(cm_ctx, msg);
+
+    SR_LOG_DBG("Scheduling a delayed request for %f seconds.", timeout);
+
+    /* allocate the delayed request context */
+    req = calloc(1, sizeof(*req));
+    CHECK_NULL_NOMEM_RETURN(req);
+
+    req->cm_ctx = cm_ctx;
+    req->session = session;
+    req->msg = msg;
+
+    /* put the context at the end of the linked-list in CM context */
+    if (NULL == cm_ctx->delayed_requests) {
+        cm_ctx->delayed_requests = req;
+    } else {
+        prev = cm_ctx->delayed_requests;
+        while (NULL != prev->next) {
+            prev = prev->next;
+        }
+        prev->next = req;
+    }
+
+    /* schedule the timer */
+    ev_timer_init(&req->timer, cm_delayed_request_cb, timeout, 0.);
+    req->timer.data = req;
+    ev_timer_start(cm_ctx->event_loop, &req->timer);
+
+    return SR_ERR_OK;
+}
+
+/**
  * @brief Request removal of subscriptions with the specified destination address.
  */
 static int
-cm_subscr_unsubscribe_destination(cm_ctx_t *cm_ctx, const char *destination_address)
+cm_subscr_unsubscribe_destination(cm_ctx_t *cm_ctx, const char *destination_address, double delay)
 {
     Sr__Msg *msg_req = NULL;
     int rc = SR_ERR_OK;
@@ -258,7 +353,13 @@ cm_subscr_unsubscribe_destination(cm_ctx_t *cm_ctx, const char *destination_addr
     msg_req->internal_request->unsubscribe_dst_req->destination = strdup(destination_address);
     CHECK_NULL_NOMEM_GOTO(msg_req->internal_request->unsubscribe_dst_req->destination, rc, cleanup);
 
-    rc = rp_msg_process(cm_ctx->rp_ctx, NULL, msg_req);
+    if (delay > 0) {
+        /* unsubscribe after timeout to prevent configuration flaps in running ds */
+        rc = cm_delayed_msg_process(cm_ctx, NULL, msg_req, delay);
+    } else {
+        /* unsubscribe immediately */
+        rc = rp_msg_process(cm_ctx->rp_ctx, NULL, msg_req);
+    }
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Unable to remove subscriptions for the destination '%s'.", destination_address);
     }
@@ -320,7 +421,8 @@ cm_conn_close(cm_ctx_t *cm_ctx, sm_connection_t *conn)
     if (CM_AF_UNIX_SERVER == conn->type && NULL != conn->dst_address) {
         /* this was a subscriber connection, remove the subscriptions for that destination */
         SR_LOG_DBG("Subscription server at '%s' has disconnected.", conn->dst_address);
-        cm_subscr_unsubscribe_destination(cm_ctx, conn->dst_address);
+        /* unsubscribe after timeout to prevent configuration flaps in running ds */
+        cm_subscr_unsubscribe_destination(cm_ctx, conn->dst_address, CM_SUBSCRIBER_DISCONNECT_TIMEOUT);
     }
 
     /* cleanup connection, pointers to the connection from outstanding sessions will be set to NULL */
@@ -1175,7 +1277,7 @@ cm_out_notif_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
 
     if (SR_ERR_OK != rc) {
         /* by error, remove subscriptions on this destination */
-        cm_subscr_unsubscribe_destination(cm_ctx, msg->notification->destination_address);
+        cm_subscr_unsubscribe_destination(cm_ctx, msg->notification->destination_address, 0);
     }
 
     sr__msg__free_unpacked(msg, NULL);
@@ -1232,7 +1334,7 @@ cm_out_rpc_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
 
     if (SR_ERR_OK != rc) {
         /* by error, remove subscriptions on this destination */
-        cm_subscr_unsubscribe_destination(cm_ctx, msg->request->rpc_req->subscriber_address);
+        cm_subscr_unsubscribe_destination(cm_ctx, msg->request->rpc_req->subscriber_address, 0);
     }
 
     sr__msg__free_unpacked(msg, NULL);
@@ -1499,6 +1601,7 @@ cm_cleanup(cm_ctx_t *cm_ctx)
     size_t i = 0;
     sm_session_t *session = NULL;
     Sr__Msg *msg = NULL;
+    cm_delayed_request_ctx_t *req = NULL, *tmp = NULL;
     int rc = SR_ERR_OK;
 
     if (NULL != cm_ctx) {
@@ -1521,6 +1624,14 @@ cm_cleanup(cm_ctx_t *cm_ctx)
         }
         sr_cbuff_cleanup(cm_ctx->msg_queue);
         pthread_mutex_destroy(&cm_ctx->msg_queue_mutex);
+
+        tmp = cm_ctx->delayed_requests;
+        while (NULL != tmp) {
+            req = tmp;
+            tmp = tmp->next;
+            sr__msg__free_unpacked(req->msg, NULL);
+            free(req);
+        }
 
         free(cm_ctx);
     }
