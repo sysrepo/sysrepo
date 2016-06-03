@@ -29,6 +29,8 @@
 
 volatile int exit_application = 0;
 
+#define MAX_LEN 100
+
 static void
 print_value(sr_val_t *value)
 {
@@ -127,7 +129,6 @@ print_current_config(sr_session_ctx_t *session, const char *module_name)
     sr_val_t *values = NULL;
     size_t count = 0;
     int rc = SR_ERR_OK;
-    #define MAX_LEN 100
     char select_xpath[MAX_LEN];
     snprintf(select_xpath, MAX_LEN, "/%s:*//*", module_name);
 
@@ -150,7 +151,7 @@ module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_ev
     sr_change_oper_t oper;
     sr_val_t *old_value = NULL;
     sr_val_t *new_value = NULL;
-    char change_path[50] = {0,};
+    char change_path[MAX_LEN] = {0,};
 
 
     printf("\n\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: ==========\n\n");
@@ -160,7 +161,7 @@ module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_ev
     printf("\n\n ========== CHANGES: =============================================\n\n");
 
 
-    snprintf(change_path, 50, "/%s:*", module_name);
+    snprintf(change_path, MAX_LEN, "/%s:*", module_name);
 
     rc = sr_get_changes_iter(session, change_path , &it);
     if (SR_ERR_OK != rc) {
@@ -205,7 +206,6 @@ main(int argc, char **argv)
     }
 
     printf("Application will watch for changes in %s\n", module_name);
-    sr_log_stderr(SR_LL_DBG);
     /* connect to sysrepo */
     rc = sr_connect("example_application", SR_CONN_DEFAULT, &connection);
     if (SR_ERR_OK != rc) {
