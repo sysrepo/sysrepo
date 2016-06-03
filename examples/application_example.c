@@ -43,7 +43,10 @@ print_value(sr_val_t *value)
     case SR_CONTAINER_PRESENCE_T:
         printf("(container)\n");
         break;
-      case SR_STRING_T:
+    case SR_LIST_T:
+        printf("(list instance)\n");
+        break;
+    case SR_STRING_T:
         printf("= %s\n", value->data.string_val);
         break;
     case SR_BOOL_T:
