@@ -56,7 +56,7 @@ For bug reports, please open an issue on GitHub. For general questions and feedb
 - sysrepo-announce@sysrepo.org - if you want to be informed about new releases and released features
 
 ## Other Resources
-- [Sysrepo Project WIKI](http://www.sysrepo.org/)
+- [sysrepo.org](http://www.sysrepo.org/) - General information about the project
 - CESNET's [Netopeer 2](https://github.com/CESNET/Netopeer2) NETCONF Toolset
 - CESNET's [libyang](https://github.com/cesnet/libyang) YANG toolkit
 - [RFC 6020](http://tools.ietf.org/html/rfc6020) (YANG Data Modeling Language)
