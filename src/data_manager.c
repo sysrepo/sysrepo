@@ -2360,7 +2360,7 @@ dm_copy_config(dm_ctx_t *dm_ctx, dm_session_t *session, const struct ly_set *mod
             }
         } else {
             /* copy data tree into candidate session */
-            struct lyd_node *dup = lyd_dup(src_infos[i]->node, 1);
+            struct lyd_node *dup = sr_dup_datatree(src_infos[i]->node);
             dm_data_info_t *di_tmp = NULL;
             if (NULL != src_infos[i]->node && NULL == dup) {
                 SR_LOG_ERR("Duplication of data tree %s failed", src_infos[i]->module->name);
@@ -2765,7 +2765,7 @@ dm_copy_modified_session_trees(dm_ctx_t *dm_ctx, dm_session_t *from, dm_session_
         lyd_free_withsiblings(new_info->node);
         new_info->node = NULL;
         if (NULL != info->node) {
-            new_info->node = lyd_dup(info->node, 1);
+            new_info->node = sr_dup_datatree(info->node);
         }
 
         if (!existed) {
@@ -2810,7 +2810,7 @@ dm_copy_session_tree(dm_ctx_t *dm_ctx, dm_session_t *from, dm_session_t *to, con
     new_info->module = info->module;
     new_info->timestamp = info->timestamp;
     if (NULL != info->node) {
-        tmp_node = lyd_dup(info->node, 1);
+        tmp_node = sr_dup_datatree(info->node);
         CHECK_NULL_NOMEM_ERROR(tmp_node, rc);
     }
 
