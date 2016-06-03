@@ -575,9 +575,11 @@ int dm_has_enabled_subtree(dm_ctx_t *ctx, const char *module_name, const struct 
  * @param [in] session DM session.
  * @param [in] module_name Name of the module to be enabled.
  * @param [in] module Libyang schema tree pointer. If not known, NULL can be provided.
+ * @param[in] copy_from_startup Load data from startup ds (if not already loaded).
  * @return Error code (SR_ERR_OK on success)
  */
-int dm_enable_module_running(dm_ctx_t *ctx, dm_session_t *session, const char *module_name, const struct lys_module *module);
+int dm_enable_module_running(dm_ctx_t *ctx, dm_session_t *session, const char *module_name,
+        const struct lys_module *module, bool copy_from_startup);
 
 /**
  * @brief Enables subtree in running datastore (including copying of the startup data into running).
@@ -586,10 +588,11 @@ int dm_enable_module_running(dm_ctx_t *ctx, dm_session_t *session, const char *m
  * @param [in] module_name Name of the module where a subtree needs to be enabled.
  * @param[in] xpath XPath identifying the subtree to be enabled.
  * @param [in] module Libyang schema tree pointer. If not known, NULL can be provided.
+ * @param[in] copy_from_startup Load data from startup ds (if not already loaded).
  * @return Error code (SR_ERR_OK on success)
  */
 int dm_enable_module_subtree_running(dm_ctx_t *ctx, dm_session_t *session, const char *module_name, const char *xpath,
-        const struct lys_module *module);
+        const struct lys_module *module, bool copy_from_startup);
 
 /**
  * @brief Disables module in running data store

@@ -1948,7 +1948,7 @@ candidate_commit_lock_test(void **state)
     test_rp_sesssion_create(ctx, SR_DS_RUNNING, &sessionB);
     test_rp_sesssion_create(ctx, SR_DS_CANDIDATE, &sessionC);
 
-    rc = dm_enable_module_running(ctx->dm_ctx, sessionA->dm_session, "test-module", NULL);
+    rc = dm_enable_module_running(ctx->dm_ctx, sessionA->dm_session, "test-module", NULL, true);
     assert_int_equal(SR_ERR_OK, rc);
 
     /* lock test module in running*/
