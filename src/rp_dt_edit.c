@@ -355,7 +355,7 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const
         if (NULL != sch_node->parent) {
             char *last_slash = rindex(xpath, '/');
             CHECK_NULL_NOMEM_GOTO(last_slash, rc, cleanup);
-            char *parent_node = strndup(xpath, last_slash - xpath - 1);
+            char *parent_node = strndup(xpath, last_slash - xpath);
             CHECK_NULL_NOMEM_GOTO(parent_node, rc, cleanup);
             struct ly_set *res = dm_lyd_get_node(dm_ctx, info->node, parent_node);
             free(parent_node);

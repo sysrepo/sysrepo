@@ -50,6 +50,15 @@
             if ((NULL == REVISION) ||                                                  \
                 ((ITER->rev_size > 0) && (0 == strcmp(ITER->rev[0].date, REVISION))))  \
 
+/**
+ * @brief Helper structure used for storing uid and gid of module's owner
+ * and group respectively.
+ */
+typedef struct srctl_module_owner_s {
+    uid_t owner;
+    gid_t group;
+} srctl_module_owner_t;
+
 static char *srctl_schema_search_dir = SR_SCHEMA_SEARCH_DIR;
 static char *srctl_data_search_dir = SR_DATA_SEARCH_DIR;
 static bool custom_repository = false;
@@ -265,7 +274,8 @@ srctl_file_create(const char *path, void *arg)
 static int
 srctl_file_chown(const char *path, void *arg)
 {
-    return chown(path, *((uid_t *)arg), -1);
+    srctl_module_owner_t *owner_id = (srctl_module_owner_t *)arg;
+    return chown(path, owner_id->owner, owner_id->group);
 }
 
 /**
@@ -327,18 +337,40 @@ static int
 srctl_module_change(const char *module_name, const char *owner, const char *permissions)
 {
     int ret = 0;
+    char *colon = NULL;
     struct passwd *pwd = NULL;
+    struct group *group = NULL;
+    srctl_module_owner_t owner_id = { -1, -1 };
 
     /* update owner if requested */
     if (NULL != owner) {
-        /* try getting owner's UID */
-        pwd = getpwnam(owner);
-        if (NULL == pwd) {
-            fprintf(stderr, "Error: Unable to obtain UID for the user '%s'.\n", owner);
-            goto fail;
+        colon = strchr(owner, ':');
+        if (NULL != colon && strlen(colon+1)) {
+            /* try to get group ID */
+            group = getgrnam(colon+1);
+            if (NULL == group) {
+                fprintf(stderr, "Error: Unable to obtain GID for the group '%s'.\n", colon+1);
+                goto fail;
+            }
+            owner_id.group = group->gr_gid;
         }
-        ret = srctl_data_files_apply(module_name, srctl_file_chown, (void *)&(pwd->pw_uid), true);
+        if (NULL != colon) {
+            *colon = '\0';
+        }
+        if (NULL == colon || owner < colon) {
+            /* try to get user ID */
+            pwd = getpwnam(owner);
+            if (NULL == pwd) {
+                fprintf(stderr, "Error: Unable to obtain UID for the user '%s'.\n", owner);
+                goto fail;
+            }
+            owner_id.owner = pwd->pw_uid;
+        }
+        ret = srctl_data_files_apply(module_name, srctl_file_chown, (void *)&owner_id, true);
         if (0 != ret) {
+            if (NULL != colon) {
+                *colon = ':'; /* restore the value of input string */
+            }
             fprintf(stderr, "Error: Unable to change owner to '%s' for module '%s'.\n", owner, module_name);
             goto fail;
         }
@@ -375,7 +407,13 @@ srctl_change(const char *module_name, const char *owner, const char *permissions
     }
 
     printf("Changing ownership/permissions of the module '%s'.\n", module_name);
-    return srctl_module_change(module_name, owner, permissions);
+    int rc = srctl_module_change(module_name, owner, permissions);
+    if (SR_ERR_OK == rc) {
+        printf("Operation completed successfully.\n");
+    } else {
+        printf("Operation was cancelled.\n");
+    }
+    return rc;
 }
 
 /**
@@ -477,35 +515,6 @@ srctl_schema_file_delete(const char *schema_file)
 }
 
 /**
- * @brief Uninstalls a schema identified by module name and revision date.
- */
-static int
-srctl_schema_uninstall(struct ly_ctx *ly_ctx, const char *module_name, const char *revision_date)
-{
-    const struct lys_module *module = NULL;
-    int rc = SR_ERR_OK;
-
-    /* find matching module to uninstall */
-    MODULE_ITER(ly_ctx, module_name, revision_date, module) {
-         /* uninstall all submodules */
-         for (size_t i = 0; i < module->inc_size; i++) {
-             rc = srctl_schema_file_delete(module->inc[i].submodule->filepath);
-             if (SR_ERR_OK != rc) {
-                 fprintf(stderr, "Warning: Submodule schema delete was unsuccessful, continuing.\n");
-             }
-         }
-         /* uninstall the module */
-         rc = srctl_schema_file_delete(module->filepath);
-         if (SR_ERR_OK != rc) {
-             fprintf(stderr, "Error: Module schema delete was unsuccessful.\n");
-             return rc;
-         }
-    }
-
-    return rc;
-}
-
-/**
  * @brief Deletes data files of a given module.
  */
 static int
@@ -531,6 +540,7 @@ srctl_uninstall(const char *module_name, const char *revision)
     sr_conn_ctx_t *connection = NULL;
     sr_session_ctx_t *session = NULL;
     struct ly_ctx *ly_ctx = NULL;
+    const struct lys_module *module = NULL;
     int rc = SR_ERR_OK;
 
     if (NULL == module_name) {
@@ -542,14 +552,25 @@ srctl_uninstall(const char *module_name, const char *revision)
     /* init libyang context */
     rc = srctl_ly_init(&ly_ctx);
     if (SR_ERR_OK != rc) {
-        fprintf(stderr, "Failed to initialize libyang context.\n");
-        return rc;
+        fprintf(stderr, "Error: Failed to initialize libyang context.\n");
+        goto fail;
     }
 
-    /* delete schema files */
-    rc = srctl_schema_uninstall(ly_ctx, module_name, revision);
-    if (SR_ERR_OK != rc) {
-        goto cleanup;
+    /* find matching module to uninstall */
+    MODULE_ITER(ly_ctx, module_name, revision, module) {
+         /* uninstall all submodules */
+         for (size_t i = 0; i < module->inc_size; i++) {
+             rc = srctl_schema_file_delete(module->inc[i].submodule->filepath);
+             if (SR_ERR_OK != rc) {
+                 fprintf(stderr, "Warning: Submodule schema delete was unsuccessful, continuing.\n");
+             }
+         }
+         /* uninstall the module */
+         rc = srctl_schema_file_delete(module->filepath);
+         if (SR_ERR_OK != rc) {
+             fprintf(stderr, "Error: Module schema delete was unsuccessful.\n");
+             goto fail;
+         }
     }
 
     if (!custom_repository) {
@@ -561,7 +582,7 @@ srctl_uninstall(const char *module_name, const char *revision)
         if (SR_ERR_OK != rc && SR_ERR_NOT_FOUND != rc) {
             srctl_report_error(session, rc);
             sr_disconnect(connection);
-            goto cleanup;
+            goto fail;
         }
         sr_disconnect(connection);
     }
@@ -569,17 +590,20 @@ srctl_uninstall(const char *module_name, const char *revision)
     /* delete data files */
     rc = srctl_data_uninstall(module_name);
     if (SR_ERR_OK != rc) {
-        goto cleanup;
+        goto fail;
     }
 
     printf("Operation completed successfully.\n");
-    ly_ctx_destroy(ly_ctx, NULL);
-    return SR_ERR_OK;
+    rc = SR_ERR_OK;
+    goto cleanup;
+
+fail:
+    printf("Uninstall operation cancelled.\n");
 
 cleanup:
-    fprintf(stderr, "Uninstall operation cancelled.\n");
-
-    ly_ctx_destroy(ly_ctx, NULL);
+    if (ly_ctx) {
+        ly_ctx_destroy(ly_ctx, NULL);
+    }
     return rc;
 }
 
@@ -603,6 +627,7 @@ srctl_schema_install(const struct lys_module *module, const char *yang_src, cons
             ret = system(cmd);
             if (0 != ret) {
                 fprintf(stderr, "Error: Unable to install the YANG file to '%s'.\n", yang_dst);
+                yang_dst[0] = '\0';
                 goto fail;
             }
         }
@@ -618,6 +643,7 @@ srctl_schema_install(const struct lys_module *module, const char *yang_src, cons
             ret = system(cmd);
             if (0 != ret) {
                 fprintf(stderr, "Error: Unable to install the YIN file to '%s'.\n", yin_dst);
+                yin_dst[0] = '\0';
                 goto fail;
             }
         }
@@ -662,13 +688,18 @@ srctl_schema_install(const struct lys_module *module, const char *yang_src, cons
     return SR_ERR_OK;
 
 fail:
+    printf("Installation of schema files cancelled for module '%s', reverting...\n", module->name);
     if ('\0' != yang_dst[0]) {
         ret = unlink(yang_dst);
-        CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "Error by the execution of '%s'.", cmd);
+        if (0 != ret && ENOENT != errno) {
+            fprintf(stderr, "Error: Unable to revert the installation of the schema file '%s'.\n", yang_dst);
+        }
     }
     if ('\0' != yin_dst[0]) {
         ret = unlink(yin_dst);
-        CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "Error by the execution of '%s'.", cmd);
+        if (0 != ret && ENOENT != errno) {
+            fprintf(stderr, "Error: Unable to revert the installation of the schema file '%s'.\n", yin_dst);
+        }
     }
 
     return SR_ERR_INTERNAL;
@@ -741,7 +772,7 @@ srctl_data_install(const struct lys_module *module, const char *owner, const cha
     goto cleanup;
 
 fail:
-    fprintf(stderr, "Installation of data files cancelled for module '%s', reverting...\n", module->name);
+    printf("Installation of data files cancelled for module '%s', reverting...\n", module->name);
     srctl_data_uninstall(module->name);
 
 cleanup:
@@ -759,7 +790,8 @@ srctl_install(const char *yang, const char *yin, const char *owner, const char *
     struct ly_ctx *ly_ctx = NULL;
     const struct lys_module *module;
     bool local_search_dir = false;
-    int rc = SR_ERR_INTERNAL;
+    char schema_dst[PATH_MAX] = { 0, };
+    int rc = SR_ERR_INTERNAL, ret = 0;
 
     if (NULL == yang && NULL == yin) {
         fprintf(stderr, "Error: Either YANG or YIN file must be specified for --install operation.\n");
@@ -794,14 +826,12 @@ srctl_install(const char *yang, const char *yin, const char *owner, const char *
     /* Install schema files */
     rc = srctl_schema_install(module, yang, yin);
     if (SR_ERR_OK != rc) {
-        fprintf(stderr, "Error: Unable to install schema files.\n");
         goto fail;
     }
 
     /* Install data files */
     rc = srctl_data_install(module, owner, permissions);
     if (SR_ERR_OK != rc) {
-        fprintf(stderr, "Error: Unable to install data files.\n");
         goto fail_data;
     }
 
@@ -825,9 +855,26 @@ srctl_install(const char *yang, const char *yin, const char *owner, const char *
 fail_notif:
     srctl_data_uninstall(module->name);
 fail_data:
-    srctl_schema_uninstall(ly_ctx, module->name, module->rev[0].date);
+    if (NULL != yang) {
+        srctl_get_yang_path(module->name, module->rev[0].date, schema_dst, PATH_MAX);
+        ret = unlink(schema_dst);
+        if (0 != ret && ENOENT != errno) {
+            fprintf(stderr, "Error: Unable to revert the installation of the schema file '%s'.\n", schema_dst);
+        } else {
+            printf("Deleted the schema file '%s'.\n", schema_dst);
+        }
+    }
+    if (NULL != yin) {
+        srctl_get_yin_path(module->name, module->rev[0].date, schema_dst, PATH_MAX);
+        ret = unlink(schema_dst);
+        if (0 != ret && ENOENT != errno) {
+            fprintf(stderr, "Error: Unable to revert the installation of the schema file '%s'.\n", schema_dst);
+        } else {
+            printf("Deleted the schema file '%s'.\n", schema_dst);
+        }
+    }
 fail:
-    fprintf(stderr, "Install operation cancelled.\n");
+    printf("Install operation cancelled.\n");
 
 cleanup:
     if (NULL != connection) {
@@ -866,7 +913,6 @@ srctl_init(const char *module_name, const char *revision, const char *owner, con
     MODULE_ITER(ly_ctx, module_name, revision, module) {
         rc = srctl_data_install(module, owner, permissions);
         if (SR_ERR_OK != rc) {
-            fprintf(stderr, "Error: Unable to install data files.\n");
             goto fail;
         }
         break;
@@ -877,7 +923,7 @@ srctl_init(const char *module_name, const char *revision, const char *owner, con
     goto cleanup;
 
 fail:
-    fprintf(stderr, "Init operation cancelled.\n");
+    printf("Init operation cancelled.\n");
 
 cleanup:
     return rc;
