@@ -2956,8 +2956,6 @@ dm_enable_module_running(dm_ctx_t *ctx, dm_session_t *session, const char *modul
     char xpath[PATH_MAX] = {0,};
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG3(ctx, session, module_name);
-
     if (NULL == module) {
         /* if module is not known, get it and check if it has some enabled subtree */
         rc = dm_has_enabled_subtree(ctx, module_name, &module, &has_enabled_subtree);
@@ -2987,11 +2985,9 @@ int
 dm_enable_module_subtree_running(dm_ctx_t *ctx, dm_session_t *session, const char *module_name, const char *xpath,
         const struct lys_module *module, bool copy_from_startup)
 {
-    CHECK_NULL_ARG2(ctx, module_name);
+    CHECK_NULL_ARG3(ctx, module_name, xpath);
     bool has_enabled_subtree = false;
     int rc = SR_ERR_OK;
-
-    CHECK_NULL_ARG4(ctx, session, module_name, xpath);
 
     if (NULL == module) {
         /* if module is not known, get it and check if it has some enabled subtree */
