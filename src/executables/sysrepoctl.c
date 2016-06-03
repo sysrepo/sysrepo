@@ -120,7 +120,7 @@ srctl_print_module_owner(const char *module_name, char *buff)
         if(pw && gr) {
             snprintf(buff, PATH_MAX, "%s:%s", pw->pw_name, gr->gr_name);
         } else {
-            snprintf(buff, PATH_MAX, "%d:%d", info.st_uid, in.st_gid);
+            snprintf(buff, PATH_MAX, "%d:%d", info.st_uid, info.st_gid);
         }
     } else {
         snprintf(buff, PATH_MAX, " ");
