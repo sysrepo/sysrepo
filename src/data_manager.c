@@ -2937,12 +2937,10 @@ dm_has_enabled_subtree(dm_ctx_t *ctx, const char *module_name, const struct lys_
 int
 dm_enable_module_running(dm_ctx_t *ctx, dm_session_t *session, const char *module_name, const struct lys_module *module)
 {
-    CHECK_NULL_ARG2(ctx, module_name);
+    CHECK_NULL_ARG2(ctx, module_name); /* session can be NULL */
     bool has_enabled_subtree = false;
     char xpath[PATH_MAX] = {0,};
     int rc = SR_ERR_OK;
-
-    CHECK_NULL_ARG3(ctx, session, module_name);
 
     if (NULL == module) {
         /* if module is not known, get it and check if it has some enabled subtree */
