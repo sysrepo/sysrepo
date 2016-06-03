@@ -605,6 +605,10 @@ cl_whole_module_changes(void **state)
     assert_null(changes.old_values[3]);
     assert_string_equal("/test-module:user[name='userA']", changes.new_values[3]->xpath);
 
+    for (size_t i = 0; i < changes.cnt; i++) {
+        sr_free_val(changes.new_values[i]);
+        sr_free_val(changes.old_values[i]);
+    }
     pthread_mutex_unlock(&changes.mutex);
 
     /* check that cb were called in correct order according to the priority */
