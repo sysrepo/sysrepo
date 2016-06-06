@@ -317,7 +317,7 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const
     if (LYS_LEAF == sch_node->nodetype) {
         bool is_key = false;
         rc = rp_dt_has_sch_key(sch_node->parent, sch_node->name, &is_key);
-        CHECK_RC_LOG_RETURN(rc, "Has key failed");
+        CHECK_RC_MSG_RETURN(rc, "Has key failed");
 
         if (is_key) {
             SR_LOG_ERR("Value of the key can not be set %s", xpath);
