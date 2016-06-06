@@ -29,10 +29,11 @@ Sysrepo can be easily integrated to management agents such as [NETCONF](https://
 - custom RPC support
 - plugins infrastructure for use-cases where there is no daemon to be integrated with sysrepo
 - (IN PROGRESS) notifications of subscribed applications about the changes made in the datastore
-- (TODO) ability to subscribe to notifications as a verifier and validate the changes before they are committed
 - (TODO) operational data support (publishing of application's state data to sysrepo)
+- (TODO) ability to subscribe to notifications as a verifier and validate the changes before they are committed
 - (TODO) [NACM](https://tools.ietf.org/html/rfc6536) (NETCONF Access Control Model)
 - (TODO) [NETCONF Event Notifications](https://tools.ietf.org/html/rfc5277) support
+- (TODO) confirmed commit support
 - (TODO) bindings / native client libraries for other programming languages (Python, Java, ...)
 
 ## Performance
@@ -44,14 +45,19 @@ See [INSTALL.md](INSTALL.md) file, which contains detailed build and installatio
 ## Usage Examples
 See [examples](examples) directory, which contains an example per each data-acess API function.
 
-Also see our [fork of dnsmasq](https://github.com/sysrepo/dnsmasq-sysrepo) that uses sysrepo to store its configuration for short demonstration of how sysrepo can be integrated into an existing application ([see the diff](https://github.com/sysrepo/dnsmasq-sysrepo/commit/39ce80b6eae1d155af3b20f195c1e13efbc9094a)).
+Also see our [fork of dnsmasq](https://github.com/sysrepo/dnsmasq-sysrepo) that uses sysrepo to store its configuration for short demonstration of how sysrepo can be integrated into an existing application ([see the diff](https://github.com/sysrepo/dnsmasq-sysrepo/compare/a92c41eda58624056242f0c3a71c1efb7bba91b5...master)).
 
 ## Documentation
 Client Library API, as well as all internal modules of sysrepo are documented with Doxygen comments. To read the documentation, you can navigate to the [nigthly build of documentation on sysrepo.org](http://www.sysrepo.org/static/doc/html/), or [build your own copy](INSTALL.md) of the documentation.
 
+## Contact
+For bug reports, please open an issue on GitHub. For general questions and feedback, please post to our [mailing lists](http://lists.sysrepo.org/listinfo/). You are also welcome to subscribe to our mailing lists if you have interest in sysrepo:
+- sysrepo-devel@sysrepo.org - if you want to be involved in all technical discussions
+- sysrepo-announce@sysrepo.org - if you want to be informed about new releases and released features
+
 ## Other Resources
-- [Sysrepo Project WIKI](http://www.sysrepo.org/)
-- CESNET's [libyang](https://github.com/cesnet/libyang) YANG toolkit
+- [sysrepo.org](http://www.sysrepo.org/) - General information about the project
 - CESNET's [Netopeer 2](https://github.com/CESNET/Netopeer2) NETCONF Toolset
+- CESNET's [libyang](https://github.com/cesnet/libyang) YANG toolkit
 - [RFC 6020](http://tools.ietf.org/html/rfc6020) (YANG Data Modeling Language)
 - [RFC 6241](https://tools.ietf.org/html/rfc6241) (Network Configuration Protocol - NETCONF)

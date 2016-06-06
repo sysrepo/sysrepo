@@ -282,7 +282,7 @@ dm_insert_data_info_copy(sr_btree_t *tree, const dm_data_info_t *di)
     CHECK_NULL_NOMEM_RETURN(copy);
 
     if (NULL != di->node) {
-        copy->node = lyd_dup(di->node, 1);
+        copy->node = sr_dup_datatree(di->node);
         CHECK_NULL_NOMEM_GOTO(copy->node, rc, cleanup);
     }
     copy->module = di->module;
@@ -1983,34 +1983,6 @@ dm_remove_operations_with_error(dm_session_t *session)
     }
 }
 
-#define LYD_TREE_DFS_END(START, NEXT, ELEM)                                   \
-    /* select element for the next run - children first */                    \
-    do {                                                                      \
-        (NEXT) = (ELEM)->child;                                                 \
-        if ((ELEM)->schema->nodetype & (LYS_LEAF | LYS_LEAFLIST | LYS_ANYXML)) { \
-            (NEXT) = NULL;                                                    \
-        }                                                                     \
-        if (!(NEXT)) {                                                        \
-            /* no children */                                                 \
-            if ((ELEM) == (START)) {                                          \
-                /* we are done, (START) has no children */                    \
-                break;                                                        \
-            }                                                                 \
-            /* try siblings */                                                \
-            (NEXT) = (ELEM)->next;                                            \
-        }                                                                     \
-        while (!(NEXT)) {                                                     \
-            /* parent is already processed, go to its sibling */              \
-            (ELEM) = (ELEM)->parent;                                          \
-            /* no siblings, go back through parents */                        \
-            if ((ELEM)->parent == (START)->parent) {                          \
-                /* we are done, no next element to process */                 \
-                break;                                                        \
-            }                                                                 \
-            (NEXT) = (ELEM)->next;                                            \
-        }                                                                     \
-    }while(0)
-
 /**
  * @brief whether the node match the subscribed one - if it is the same node or children
  * of the subscribed one
@@ -2150,6 +2122,21 @@ dm_get_diff_type_to_string(LYD_DIFFTYPE type)
     return diff_states[type];
 }
 
+int
+dm_subs_cmp(const void *a, const void *b)
+{
+    np_subscription_t **sub_a = (np_subscription_t **) a;
+    np_subscription_t **sub_b = (np_subscription_t **) b;
+
+    if ((*sub_b)->priority == (*sub_a)->priority) {
+        return 0;
+    } else if ((*sub_b)->priority > (*sub_a)->priority) {
+        return 1;
+    } else {
+        return -1;
+    }
+}
+
 static int
 dm_prepare_module_subscriptions(dm_ctx_t *dm_ctx, const struct lys_module *module, dm_model_subscription_t **model_sub)
 {
@@ -2167,7 +2154,7 @@ dm_prepare_module_subscriptions(dm_ctx_t *dm_ctx, const struct lys_module *modul
 
     CHECK_RC_LOG_GOTO(rc, cleanup, "Get module subscription failed for module %s", module->name);
 
-    //TODO order subscriptions by priority
+    qsort(ms->subscriptions, ms->subscription_cnt, sizeof(*ms->subscriptions), dm_subs_cmp);
 
     ms->nodes = calloc(ms->subscription_cnt, sizeof(*ms->nodes));
     CHECK_NULL_NOMEM_GOTO(ms->nodes, rc, cleanup);
@@ -2880,7 +2867,7 @@ dm_copy_config(dm_ctx_t *dm_ctx, dm_session_t *session, const struct ly_set *mod
             }
         } else {
             /* copy data tree into candidate session */
-            struct lyd_node *dup = lyd_dup(src_infos[i]->node, 1);
+            struct lyd_node *dup = sr_dup_datatree(src_infos[i]->node);
             dm_data_info_t *di_tmp = NULL;
             if (NULL != src_infos[i]->node && NULL == dup) {
                 SR_LOG_ERR("Duplication of data tree %s failed", src_infos[i]->module->name);
@@ -2951,12 +2938,10 @@ int
 dm_enable_module_running(dm_ctx_t *ctx, dm_session_t *session, const char *module_name, const struct lys_module *module,
         bool copy_from_startup)
 {
-    CHECK_NULL_ARG2(ctx, module_name);
+    CHECK_NULL_ARG2(ctx, module_name); /* session can be NULL */
     bool has_enabled_subtree = false;
     char xpath[PATH_MAX] = {0,};
     int rc = SR_ERR_OK;
-
-    CHECK_NULL_ARG3(ctx, session, module_name);
 
     if (NULL == module) {
         /* if module is not known, get it and check if it has some enabled subtree */
@@ -3317,7 +3302,7 @@ dm_copy_modified_session_trees(dm_ctx_t *dm_ctx, dm_session_t *from, dm_session_
         lyd_free_withsiblings(new_info->node);
         new_info->node = NULL;
         if (NULL != info->node) {
-            new_info->node = lyd_dup(info->node, 1);
+            new_info->node = sr_dup_datatree(info->node);
         }
 
         if (!existed) {
@@ -3362,7 +3347,7 @@ dm_copy_session_tree(dm_ctx_t *dm_ctx, dm_session_t *from, dm_session_t *to, con
     new_info->module = info->module;
     new_info->timestamp = info->timestamp;
     if (NULL != info->node) {
-        tmp_node = lyd_dup(info->node, 1);
+        tmp_node = sr_dup_datatree(info->node);
         CHECK_NULL_NOMEM_ERROR(tmp_node, rc);
     }
 
