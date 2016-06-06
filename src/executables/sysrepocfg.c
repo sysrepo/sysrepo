@@ -234,12 +234,14 @@ srcfg_get_module_data(struct ly_ctx *ly_ctx, const char *module_name, struct lyd
     ly_errno = LY_SUCCESS;
     while (SR_ERR_OK == (rc = sr_get_item_next(srcfg_session, iter, &value))) {
 
-/* XXX testing
+#if 0 /* XXX temporarily here for testing purposes */
         printf("%s ", value->xpath);
         switch (value->type) {
             case SR_CONTAINER_T:
-            case SR_CONTAINER_PRESENCE_T:
                 printf("(container)\n");
+                break;
+            case SR_CONTAINER_PRESENCE_T:
+                printf("(presence container)\n");
                 break;
             case SR_LIST_T:
                 printf("(list instance)\n");
@@ -265,38 +267,52 @@ srcfg_get_module_data(struct ly_ctx *ly_ctx, const char *module_name, struct lyd
             default:
                 printf("(unprintable)\n");
         }
-*/
+#endif
 
         /* get node schema */
         schema = ly_ctx_get_node2(ly_ctx, NULL, value->xpath, 0);
         if (!schema) {
+            SR_LOG_ERR("Error by ly_ctx_get_node2: %s", ly_errmsg());
             goto fail;
         }
 
         /* skip default values */
-        if (schema->nodetype != LYS_LEAF || !value->dflt) {
-            /* convert value to string */
-            rc = sr_val_to_str(value, schema, &string_val);
-            if (SR_ERR_OK != rc) {
-                SR_LOG_ERR("Error by sr_val_to_str: %s", sr_strerror(rc));
-                goto fail;
-            }
-
-            /* add node to data tree */
-            node = lyd_new_path(*data_tree, ly_ctx, value->xpath, string_val, LYD_PATH_OPT_UPDATE);
-            if (ly_errno) {
-                goto fail;
-            }
-            if (NULL == *data_tree) {
-                *data_tree = node;
-            }
+        if (schema->nodetype == LYS_LEAF && value->dflt) {
+            goto next;
         }
 
+        /* skip non-presence containers */
+        if (value->type == SR_CONTAINER_T) {
+            goto next;
+        }
+
+        /* convert value to string */
+        rc = sr_val_to_str(value, schema, &string_val);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR("Error by sr_val_to_str: %s", sr_strerror(rc));
+            goto fail;
+        }
+
+        /* add node to data tree */
+        ly_errno = LY_SUCCESS;
+        node = lyd_new_path(*data_tree, ly_ctx, value->xpath, string_val, LYD_PATH_OPT_UPDATE);
+        if (!node && LY_SUCCESS != ly_errno) {
+            SR_LOG_ERR("Error by lyd_new_path: %s", ly_errmsg());
+            goto fail;
+        }
+        if (NULL == *data_tree) {
+            *data_tree = node;
+        }
+next:
         /* cleanup before next iteration */
-        free(string_val);
-        string_val = NULL;
-        sr_free_val(value);
-        value = NULL;
+        if (NULL != string_val) {
+            free(string_val);
+            string_val = NULL;
+        }
+        if (NULL != value) {
+            sr_free_val(value);
+            value = NULL;
+        }
     }
 
     if (SR_ERR_NOT_FOUND == rc) {
@@ -559,6 +575,7 @@ srcfg_import_datastore(struct ly_ctx *ly_ctx, int fd_in, const char *module_name
     ret = fstat(fd_in, &info);
     CHECK_NOT_MINUS1_LOG_GOTO(ret, rc, SR_ERR_INTERNAL, cleanup,
                               "Unable to obtain input file info: %s.", strerror(errno));
+    ly_errno = LY_SUCCESS;
     if (S_ISREG(info.st_mode)) {
         /* load (using mmap) and parse the input data in one step */
         new_data_tree = lyd_parse_fd(ly_ctx, fd_in, format, LYD_OPT_STRICT | LYD_OPT_CONFIG);
@@ -589,12 +606,12 @@ srcfg_import_datastore(struct ly_ctx *ly_ctx, int fd_in, const char *module_name
         goto cleanup;
     }
 
-/* XXX testing
+#if 0 /* XXX temporarily here for testing purposes */
     printf("CURRENT CONFIG:\n");
     lyd_print_fd(STDOUT_FILENO, current_data_tree, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT);
     printf("NEW CONFIG:\n");
     lyd_print_fd(STDOUT_FILENO, new_data_tree, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT);
-*/
+#endif
 
     /* get the list of changes made by the user */
     diff = lyd_diff(current_data_tree, new_data_tree, 0);
@@ -1239,6 +1256,7 @@ main(int argc, char* argv[])
         if (SR_ERR_OK == rc && !enabled) {
             printf("Cannot operate on the running datastore as there are no active subscriptions.\n"
                    "Cancelling the operation.\n");
+            rc = SR_ERR_INTERNAL;
             goto terminate;
         }
     }
