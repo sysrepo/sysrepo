@@ -233,42 +233,6 @@ srcfg_get_module_data(struct ly_ctx *ly_ctx, const char *module_name, struct lyd
     *data_tree = NULL;
     ly_errno = LY_SUCCESS;
     while (SR_ERR_OK == (rc = sr_get_item_next(srcfg_session, iter, &value))) {
-
-#if 0 /* XXX temporarily here for testing purposes */
-        printf("%s ", value->xpath);
-        switch (value->type) {
-            case SR_CONTAINER_T:
-                printf("(container)\n");
-                break;
-            case SR_CONTAINER_PRESENCE_T:
-                printf("(presence container)\n");
-                break;
-            case SR_LIST_T:
-                printf("(list instance)\n");
-                break;
-            case SR_STRING_T:
-                printf("= %s\n", value->data.string_val);
-                break;
-            case SR_BOOL_T:
-                printf("= %s\n", value->data.bool_val ? "true" : "false");
-                break;
-            case SR_UINT8_T:
-                printf("= %u\n", value->data.uint8_val);
-                break;
-            case SR_UINT16_T:
-                printf("= %u\n", value->data.uint16_val);
-                break;
-            case SR_UINT32_T:
-                printf("= %u\n", value->data.uint32_val);
-                break;
-            case SR_IDENTITYREF_T:
-                printf("= %s\n", value->data.identityref_val);
-                break;
-            default:
-                printf("(unprintable)\n");
-        }
-#endif
-
         /* get node schema */
         schema = ly_ctx_get_node2(ly_ctx, NULL, value->xpath, 0);
         if (!schema) {
@@ -605,13 +569,6 @@ srcfg_import_datastore(struct ly_ctx *ly_ctx, int fd_in, const char *module_name
     if (SR_ERR_OK != rc) {
         goto cleanup;
     }
-
-#if 0 /* XXX temporarily here for testing purposes */
-    printf("CURRENT CONFIG:\n");
-    lyd_print_fd(STDOUT_FILENO, current_data_tree, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT);
-    printf("NEW CONFIG:\n");
-    lyd_print_fd(STDOUT_FILENO, new_data_tree, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT);
-#endif
 
     /* get the list of changes made by the user */
     diff = lyd_diff(current_data_tree, new_data_tree, 0);
