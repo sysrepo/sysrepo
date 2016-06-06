@@ -80,6 +80,9 @@ typedef struct dm_ctx_s {
     struct ly_set *disabled_sch;  /**< Set of schema that has been disabled */
     sr_btree_t *schema_info_tree; /**< Binary tree holding information about schemas */
     dm_commit_ctxs_t commit_ctxs; /**< Structure holding commit contexts and corresponding lock */
+#ifdef HAVE_STAT_ST_MTIM
+    struct timespec last_commit_time;  /**< Time of the last commit */
+#endif
 } dm_ctx_t;
 
 /**
@@ -1839,9 +1842,9 @@ dm_remove_session_operations(dm_session_t *session)
 }
 
 static int
-dm_is_info_copy_uptodate(const char *file_name, const dm_data_info_t *info, bool *res)
+dm_is_info_copy_uptodate(dm_ctx_t *dm_ctx, const char *file_name, const dm_data_info_t *info, bool *res)
 {
-    CHECK_NULL_ARG(info);
+    CHECK_NULL_ARG4(dm_ctx, file_name, info, res);
     int rc;
 #ifdef HAVE_STAT_ST_MTIM
     struct stat st = {0};
@@ -1866,6 +1869,8 @@ dm_is_info_copy_uptodate(const char *file_name, const dm_data_info_t *info, bool
     if (info->timestamp.tv_sec != st.st_mtim.tv_sec ||
             info->timestamp.tv_nsec != st.st_mtim.tv_nsec ||
             (now.tv_sec == st.st_mtim.tv_sec && difftime(now.tv_nsec, st.st_mtim.tv_nsec) < NANOSEC_THRESHOLD) ||
+            info->timestamp.tv_sec < dm_ctx->last_commit_time.tv_sec ||
+            (info->timestamp.tv_sec == dm_ctx->last_commit_time.tv_sec && info->timestamp.tv_nsec <= dm_ctx->last_commit_time.tv_nsec) ||
             info->timestamp.tv_nsec == 0) {
         SR_LOG_DBG("Module %s will be refreshed", info->module->name);
         *res = false;
@@ -1923,7 +1928,7 @@ dm_update_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, struct ly_
         rc = sr_lock_fd(fd, false, false);
 
         bool copy_uptodate = false;
-        rc = dm_is_info_copy_uptodate(file_name, info, &copy_uptodate);
+        rc = dm_is_info_copy_uptodate(dm_ctx, file_name, info, &copy_uptodate);
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR_MSG("File up to date check failed");
             close(fd);
@@ -2445,7 +2450,7 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
         dm_data_info_t *di = NULL;
 
         bool copy_uptodate = false;
-        rc = dm_is_info_copy_uptodate(file_name, info, &copy_uptodate);
+        rc = dm_is_info_copy_uptodate(dm_ctx, file_name, info, &copy_uptodate);
         CHECK_RC_MSG_GOTO(rc, cleanup, "File up to date check failed");
 
         /* ops are skipped also when candidate is committed to the running */
@@ -2554,6 +2559,9 @@ dm_commit_write_files(dm_session_t *session, dm_commit_context_t *c_ctx)
             count++;
         }
     }
+    /* save time of the last commit */
+    clock_gettime(CLOCK_REALTIME, &session->dm_ctx->last_commit_time);
+
     return rc;
 }
 
