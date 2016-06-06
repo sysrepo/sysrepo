@@ -955,6 +955,79 @@ cl_refresh_session(void **state)
 }
 
 static void
+cl_refresh_session2(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+
+    sr_session_ctx_t *sessionA = NULL, *sessionB = NULL, *sessionC = NULL;
+    const sr_error_info_t *error_info = NULL;
+    size_t error_cnt = 0;
+    int rc = 0;
+
+    /* start two session */
+    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &sessionA);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &sessionB);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &sessionC);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_set_item(sessionA, "/test-module:ordered-numbers[.='1']", NULL, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_set_item(sessionA, "/test-module:ordered-numbers[.='2']", NULL, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_set_item(sessionA, "/test-module:ordered-numbers[.='3']", NULL, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_commit(sessionA);
+    assert_int_equal(SR_ERR_OK, rc);
+
+
+    /* delete whole module configuration in sessionA */
+    rc = sr_delete_item(sessionA, "/test-module:*", SR_EDIT_STRICT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* delete whole module configuration in sessionB */
+    rc = sr_delete_item(sessionB, "/test-module:*", SR_EDIT_STRICT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* delete whole module configuration in sessionB */
+    rc = sr_move_item(sessionC, "/test-module:ordered-numbers[.='1']", SR_MOVE_AFTER, "/test-module:ordered-numbers[.='2']");
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* commit session A */
+    rc = sr_commit(sessionA);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* Session refresh of B should fail, can not delete non existing configuration */
+    rc = sr_session_refresh(sessionB);
+    assert_int_equal(SR_ERR_INTERNAL, rc);
+
+    sr_get_last_errors(sessionB, &error_info, &error_cnt);
+    for (size_t i=0; i<error_cnt; i++) {
+        printf("%s:\n\t%s\n", error_info[i].message, error_info[i].xpath);
+    }
+
+    /* Session refresh of C should fail, can not move deleted list */
+    rc = sr_session_refresh(sessionC);
+    assert_int_equal(SR_ERR_INTERNAL, rc);
+
+    sr_get_last_errors(sessionC, &error_info, &error_cnt);
+    for (size_t i=0; i<error_cnt; i++) {
+        printf("%s:\n\t%s\n", error_info[i].message, error_info[i].xpath);
+    }
+
+    rc = sr_session_stop(sessionA);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = sr_session_stop(sessionB);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = sr_session_stop(sessionC);
+    assert_int_equal(SR_ERR_OK, rc);
+}
+
+static void
 cl_get_error_test(void **state)
 {
     sr_conn_ctx_t *conn = *state;
@@ -1648,6 +1721,7 @@ main()
             cmocka_unit_test_setup_teardown(cl_locking_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_get_error_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_refresh_session, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_refresh_session2, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_notification_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_copy_config_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_rpc_test, sysrepo_setup, sysrepo_teardown),

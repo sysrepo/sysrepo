@@ -139,6 +139,37 @@ rp_dt_has_only_keys(const struct lyd_node *node)
     }
     return false;
 }
+/**
+ * @brief Tests whether the set of nodes contains a non default node
+ */
+static bool
+rp_dt_contains_non_default_node(struct ly_set *nodes)
+{
+    if (NULL == nodes) {
+        return false;
+    }
+    for (int i = 0; i < nodes->number; i++) {
+        if ((LYS_LEAFLIST | LYS_LIST) & nodes->set.d[i]->schema->nodetype ||
+            (LYS_CONTAINER == nodes->set.d[i]->schema->nodetype &&
+                 NULL != ((struct lys_node_container *) nodes->set.d[i]->schema)->presence) ||
+            (LYS_LEAF == nodes->set.d[i]->schema->nodetype && !nodes->set.d[i]->dflt)) {
+            return true;
+        } else if (LYS_CONTAINER == nodes->set.d[i]->schema->nodetype) {
+            struct lyd_node *next = NULL, *iter = NULL;
+            LY_TREE_DFS_BEGIN(nodes->set.d[i], next, iter)
+            {
+                if ((LYS_LEAFLIST | LYS_LIST) & iter->schema->nodetype ||
+                    (LYS_LEAF == iter->schema->nodetype && !iter->dflt) ||
+                    (LYS_CONTAINER == iter->schema->nodetype &&
+                        NULL != ((struct lys_node_container *) iter->schema)->presence)) {
+                    return true;
+                }
+                LYD_TREE_DFS_END(nodes->set.d[i], next, iter);
+            }
+        }
+    }
+    return false;
+}
 
 int
 rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const sr_edit_flag_t options)
@@ -173,6 +204,12 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, co
     } else if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Find nodes failed %s", xpath);
         return rc;
+    }
+
+    /* if strict option is set, at least one non default node must be deleted */
+    if (SR_EDIT_STRICT & options && !rp_dt_contains_non_default_node(nodes)) {
+        SR_LOG_ERR("No nodes to be deleted with strict option %s", xpath);
+        return dm_report_error(session, NULL, xpath, SR_ERR_DATA_MISSING);
     }
 
     /* list key can be deleted only when the whole list is deleted */
