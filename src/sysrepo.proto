@@ -1,6 +1,7 @@
 /**
  * @file sysreo.proto
- * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
+ * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>,
+ *         Milan Lenco <milan.lenco@pantheon.tech>
  * @brief Definition of sysrepo GPB messages used as the API for the
  * communication between sysrepo engine and sysrepo client library.
  *

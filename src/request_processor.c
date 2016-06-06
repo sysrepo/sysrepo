@@ -1,6 +1,7 @@
 /**
  * @file request_processor.c
- * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
+ * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>,
+ *         Milan Lenco <milan.lenco@pantheon.tech>
  * @brief Implementation of Sysrepo's Request Processor.
  *
  * @copyright

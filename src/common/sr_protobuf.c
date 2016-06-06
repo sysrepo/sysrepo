@@ -1,6 +1,7 @@
 /**
  * @file sr_protobuf.c
- * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
+ * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>,
+ *         Milan Lenco <milan.lenco@pantheon.tech>
  * @brief Sysrepo Google Protocol Buffers conversion functions implementation.
  *
  * @copyright

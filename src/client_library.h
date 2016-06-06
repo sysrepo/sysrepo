@@ -1,6 +1,7 @@
 /**
  * @file client_library.h
- * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
+ * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>,
+ *         Milan Lenco <milan.lenco@pantheon.tech>
  * @brief Sysrepo Client Library non-public API.
  *
  * @copyright

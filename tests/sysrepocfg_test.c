@@ -62,9 +62,6 @@ srcfg_test_subscription_t srcfg_test_subscriptions[MAX_SUBS];
 static int
 srcfg_test_cmp_data_file_content(const char *file_path, LYD_FORMAT file_format, const char *exp, LYD_FORMAT exp_format)
 {
-    if (file_format == LYD_JSON || exp_format == LYD_JSON) {
-        return 0;
-    }
     int fd = -1;
     struct lyd_node *file_data = NULL, *exp_data = NULL;
     struct lyd_difflist *diff = NULL;
