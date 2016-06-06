@@ -1034,10 +1034,7 @@ dm_report_error(dm_session_t *session, const char *msg, const char *err_path, in
         free(session->error_msg);
     }
     session->error_msg = strdup(msg);
-    if (NULL == session->error_msg) {
-        SR_LOG_ERR_MSG("Error message duplication failed");
-        return SR_ERR_NOMEM;
-    }
+    CHECK_NULL_NOMEM_RETURN(session->error_msg);
 
     /* error xpath */
     if (NULL != err_path) {
@@ -1046,10 +1043,7 @@ dm_report_error(dm_session_t *session, const char *msg, const char *err_path, in
             free(session->error_xpath);
         }
         session->error_xpath = strdup(err_path);
-        if (NULL == session->error_xpath) {
-            SR_LOG_ERR_MSG("Error message duplication failed");
-            return SR_ERR_NOMEM;
-        }
+        CHECK_NULL_NOMEM_RETURN(session->error_xpath);
     } else {
         SR_LOG_DBG_MSG("Error xpath passed to dm_report is NULL");
     }
@@ -1122,10 +1116,7 @@ dm_set_node_state(struct lys_node *node, dm_node_state_t state)
     CHECK_NULL_ARG(node);
     if (NULL == node->priv) {
         node->priv = calloc(1, sizeof(dm_node_info_t));
-        if (NULL == node->priv) {
-            SR_LOG_ERR_MSG("Memory allocation failed");
-            return SR_ERR_NOMEM;
-        }
+        CHECK_NULL_NOMEM_RETURN(node->priv);
     }
     ((dm_node_info_t *) node->priv)->state = state;
     return SR_ERR_OK;
@@ -2219,9 +2210,7 @@ dm_insert_commit_context(dm_ctx_t *dm_ctx, dm_commit_context_t *c_ctx)
     dm_ctx->commit_ctxs.last_commit_id = c_ctx->id;
     rc = sr_btree_insert(dm_ctx->commit_ctxs.tree, c_ctx);
     pthread_rwlock_unlock(&dm_ctx->commit_ctxs.lock);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Insert into commit context bin tree failed");
-    }
+    CHECK_RC_MSG_RETURN(rc, "Insert into commit context bin tree failed");
     return rc;
 }
 
@@ -2438,11 +2427,7 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
             if (ENOENT == errno) {
                 SR_LOG_DBG("File %s does not exist, trying to create an empty one", file_name);
                 c_ctx->fds[count] = open(file_name, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
-                if (-1 == c_ctx->fds[count]) {
-                    SR_LOG_ERR("File %s can not be created", file_name);
-                    rc = SR_ERR_IO;
-                    goto cleanup;
-                }
+                CHECK_NOT_MINUS1_LOG_GOTO(c_ctx->fds[count], rc, SR_ERR_IO, cleanup, "File %s can not be created", file_name);
             }
         } else {
             c_ctx->existed[count] = true;
