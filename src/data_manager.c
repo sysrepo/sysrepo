@@ -3047,7 +3047,7 @@ dm_disable_module_running(dm_ctx_t *ctx, dm_session_t *session, const char *modu
                 {
                     if (((LYS_CONTAINER | LYS_LIST | LYS_LEAF | LYS_LEAFLIST) & child->nodetype) && dm_is_node_enabled(child)) {
                         ret = ly_set_add(stack, child);
-                        CHECK_ZERO_MSG_GOTO(ret, rc, SR_ERR_INTERNAL, cleanup, "Adding to ly_set failed");
+                        CHECK_NOT_MINUS1_MSG_GOTO(ret, rc, SR_ERR_INTERNAL, cleanup, "Adding to ly_set failed");
                     }
                 }
             }
