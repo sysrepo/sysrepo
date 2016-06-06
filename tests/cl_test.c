@@ -591,6 +591,10 @@ cl_move_item_test(void **state)
     rc = sr_move_item(session, "/test-module:list[key='k1']", SR_MOVE_FIRST, NULL);
     assert_int_equal(rc, SR_ERR_INVAL_ARG);
 
+    /* perform a move-item request, unknown element */
+    rc = sr_move_item(session, "/test-module:unknown", SR_MOVE_FIRST, NULL);
+    assert_int_equal(rc, SR_ERR_BAD_ELEMENT);
+
     rc = sr_set_item(session, "/test-module:user[name='nameA']", NULL, SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
