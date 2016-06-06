@@ -168,18 +168,6 @@ np_persistent_subscription_test(void **state)
             "addr2", 456, "test-module", NULL, SR__NOTIFICATION_EVENT__NOTIFY_EV, 0, NP_SUBSCR_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
 
-    /* module change notify 1 */
-    rc = np_module_change_notify(np_ctx, "example-module");
-    assert_int_equal(rc, SR_ERR_OK);
-
-    /* module change notify 2 */
-    rc = np_module_change_notify(np_ctx, "test-module");
-    assert_int_equal(rc, SR_ERR_OK);
-
-    /* module change notify 3 */
-    rc = np_module_change_notify(np_ctx, "small-module");
-    assert_int_equal(rc, SR_ERR_OK);
-
     /* unsubscribe addr1 per partes */
     rc = np_notification_unsubscribe(np_ctx, test_ctx->rp_session_ctx, SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS,
             "addr1", 123, "example-module");
