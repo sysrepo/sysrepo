@@ -518,6 +518,7 @@ dm_load_data_tree_file(dm_ctx_t *dm_ctx, int fd, const char *data_filename, cons
                 (long long) st.st_mtim.tv_sec,
                 (long long) st.st_mtim.tv_nsec);
 #endif
+        ly_errno = 0;
         pthread_rwlock_rdlock(&dm_ctx->lyctx_lock);
         data_tree = lyd_parse_fd(dm_ctx->ly_ctx, fd, LYD_XML, LYD_OPT_STRICT | LYD_OPT_CONFIG);
         pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
