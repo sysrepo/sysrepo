@@ -108,6 +108,7 @@ print_change(sr_change_oper_t op, sr_val_t *old_val, sr_val_t *new_val) {
            printf("DELETED: ");
            print_value(old_val);
         }
+	break;
     case SR_OP_MODIFIED:
         if (NULL != old_val && NULL != new_val) {
            printf("MODIFIED: ");
@@ -116,10 +117,12 @@ print_change(sr_change_oper_t op, sr_val_t *old_val, sr_val_t *new_val) {
            printf("new value");
            print_value(new_val);
         }
+	break;
     case SR_OP_MOVED:
         if (NULL != new_val) {
             printf("MOVED: %s after %s", new_val->xpath, NULL != old_val ? old_val->xpath : NULL);
         }
+	break;
     }
 }
 
