@@ -22,9 +22,8 @@ from time import sleep
 
 
 class SysrepoTester(Tester):
-    def __init__(self, name="LockUser", ds=SR_DS_STARTUP, conn=SR_CONN_DEFAULT, connectInSetup=True):
-        super(SysrepoTester, self).__init__()
-        self.name = name
+    def __init__(self, name="SysrepoUser", ds=SR_DS_STARTUP, conn=SR_CONN_DEFAULT, connectInSetup=True):
+        super(SysrepoTester, self).__init__(name)
         self.ds = ds
         self.conn = conn
         self.autoconnect = connectInSetup

@@ -80,12 +80,12 @@ class TestManager:
             for _ in wait_for:
                 self.process_done.acquire()
                 if step >= 0:
-                    proc, status = self.queue.get()
-                    print ("Received ", proc, status)
+                    proc, name, status = self.queue.get()
+                    print ("Received ", proc, name, status)
                     if status == True:
                         will_continue.append(proc)
                     elif isinstance(status, BaseException):
-                        print "Error in tester", proc, "step", step
+                        print "Error in tester", id, name, "step", step
                         for p in self.proc_ids:
                             p.terminate()
                         while not self.sub_proc.empty():
