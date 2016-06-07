@@ -71,20 +71,21 @@ class TestManager:
         """Execute tester steps"""
         self.start_processes(rand_sleep)
 
-        step = 0
+        step = -1
         will_continue = range(len(self.next_steps))
         wait_for = range(len(self.next_steps))
         while True:
-            print "=================== TestManager step", step, "testers:", wait_for
+            if step >= 0:
+                print "=================== TestManager step", step, "testers:", wait_for
             for _ in wait_for:
                 self.process_done.acquire()
-                if step > 0:
+                if step >= 0:
                     proc, status = self.queue.get()
                     print ("Received ", proc, status)
                     if status == True:
                         will_continue.append(proc)
                     elif isinstance(status, BaseException):
-                        print "Error in tester", proc,"step",step
+                        print "Error in tester", proc, "step", step
                         for p in self.proc_ids:
                             p.terminate()
                         while not self.sub_proc.empty():
