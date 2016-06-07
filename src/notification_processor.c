@@ -540,53 +540,6 @@ np_feature_enable_notify(np_ctx_t *np_ctx, const char *module_name, const char *
 }
 
 int
-np_module_change_notify(np_ctx_t *np_ctx, const char *module_name)
-{
-    np_subscription_t *subscriptions = NULL;
-    size_t subscription_cnt = 0;
-    Sr__Msg *notif = NULL;
-    int rc = SR_ERR_OK;
-
-    CHECK_NULL_ARG2(np_ctx, module_name);
-
-    SR_LOG_DBG("Sending module-change notifications, module_name='%s'.", module_name);
-
-    rc = pm_get_subscriptions(np_ctx->rp_ctx->pm_ctx, module_name, SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS,
-            &subscriptions, &subscription_cnt);
-
-    for (size_t i = 0; i < subscription_cnt; i++) {
-        /* allocate the notification */
-        rc = sr_gpb_notif_alloc(SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS,
-                subscriptions[i].dst_address, subscriptions[i].dst_id, &notif);
-        /* fill-in notification details */
-        if (SR_ERR_OK == rc) {
-            notif->notification->module_change_notif->module_name = strdup(module_name);
-            CHECK_NULL_NOMEM_ERROR(notif->notification->module_change_notif->module_name, rc);
-        }
-        /* save notification destination info */
-        if (SR_ERR_OK == rc) {
-            rc = np_dst_info_insert(np_ctx, subscriptions[i].dst_address, module_name);
-        }
-        /* send the notification */
-        if (SR_ERR_OK == rc) {
-            SR_LOG_DBG("Sending a module-change notification to the destination address='%s', id=%"PRIu32".",
-                    subscriptions[i].dst_address, subscriptions[i].dst_id);
-            rc = cm_msg_send(np_ctx->rp_ctx->cm_ctx, notif);
-        } else {
-            sr__msg__free_unpacked(notif, NULL);
-            break;
-        }
-    }
-
-    for (size_t i = 0; i < subscription_cnt; i++) {
-        np_free_subscription_content(&subscriptions[i]);
-    }
-    free(subscriptions);
-
-    return rc;
-}
-
-int
 np_hello_notify(np_ctx_t *np_ctx, const char *module_name, const char *dst_address, uint32_t dst_id)
 {
     Sr__Msg *notif = NULL;
@@ -674,7 +627,7 @@ cleanup:
 }
 
 int
-np_subscription_notify(np_ctx_t *np_ctx, np_subscription_t *subscription)
+np_subscription_notify(np_ctx_t *np_ctx, np_subscription_t *subscription, uint32_t commit_id)
 {
     Sr__Msg *notif = NULL;
     int rc = SR_ERR_OK;
@@ -687,6 +640,8 @@ np_subscription_notify(np_ctx_t *np_ctx, np_subscription_t *subscription)
     rc = sr_gpb_notif_alloc(subscription->type, subscription->dst_address, subscription->dst_id, &notif);
 
     if (SR_ERR_OK == rc) {
+        notif->notification->commit_id = commit_id;
+        notif->notification->has_commit_id = true;
         if (SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS == subscription->type) {
             notif->notification->module_change_notif->event = subscription->notif_event;
             notif->notification->module_change_notif->module_name = strdup(subscription->module_name);

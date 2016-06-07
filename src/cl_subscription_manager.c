@@ -481,24 +481,17 @@ cl_sm_msg_send_connection(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *
  */
 static int
 cl_sm_get_data_session(cl_sm_ctx_t *sm_ctx, cl_sm_subscription_ctx_t *subscription,
-        const char *source_address, uint32_t source_pid, sr_session_ctx_t **config_session_p)
+        const char *source_address, uint32_t source_pid, uint32_t commit_id,
+        sr_session_ctx_t **config_session_p)
 {
     sr_conn_ctx_t *connection = NULL;
     sr_conn_ctx_t connection_lookup = { 0, };
     sr_session_ctx_t *session = NULL;
+    sr_session_list_t *tmp = NULL;
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG4(sm_ctx, subscription, source_address, config_session_p);
-
-    if ((NULL != subscription->data_session) &&
-            (NULL != subscription->data_session->conn_ctx) && (NULL != subscription->data_session->conn_ctx->dst_address) &&
-            (0 == strcmp(subscription->data_session->conn_ctx->dst_address, source_address)) &&
-            (subscription->data_session->conn_ctx->dst_pid == source_pid)) {
-        /* use already existing session stored within the subscription */
-        *config_session_p = subscription->data_session;
-        return SR_ERR_OK;
-    }
 
     /* find a connection matching with provided address */
     connection_lookup.dst_address = source_address;
@@ -533,10 +526,18 @@ cl_sm_get_data_session(cl_sm_ctx_t *sm_ctx, cl_sm_subscription_ctx_t *subscripti
         }
     }
 
-    /* try to retrieve the session from the connection */
+    /* try to find the session matching with the commit ID in connection */
     if (NULL != connection->session_list) {
-        session = connection->session_list->session;
+        tmp = connection->session_list;
+        while (NULL != tmp) {
+            if ((NULL != tmp->session) && (tmp->session->commit_id == commit_id)) {
+                session = tmp->session;
+                break;
+            }
+            tmp = tmp->next;
+        }
     }
+    /* is the matching session is not already open, open a new session */
     if (NULL == session) {
         /* session not found, create a new one */
         SR_LOG_DBG("Creating a new data session at '%s'.", source_address);
@@ -550,6 +551,10 @@ cl_sm_get_data_session(cl_sm_ctx_t *sm_ctx, cl_sm_subscription_ctx_t *subscripti
             return rc;
         }
         msg_req->request->session_start_req->options = SR__SESSION_FLAGS__SESS_NOTIFICATION;
+        if (0 != commit_id) {
+            msg_req->request->session_start_req->commit_id = commit_id;
+            msg_req->request->session_start_req->has_commit_id = true;
+        }
         msg_req->request->session_start_req->datastore = SR__DATA_STORE__RUNNING;
 
         /* send the request and receive the response */
@@ -562,6 +567,8 @@ cl_sm_get_data_session(cl_sm_ctx_t *sm_ctx, cl_sm_subscription_ctx_t *subscripti
         }
 
         session->id = msg_resp->response->session_start_resp->session_id;
+        session->commit_id = commit_id;
+
         sr__msg__free_unpacked(msg_req, NULL);
         sr__msg__free_unpacked(msg_resp, NULL);
     }
@@ -610,7 +617,9 @@ cl_sm_notif_process(cl_sm_ctx_t *sm_ctx, Sr__Msg *msg)
     if ((SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS == msg->notification->type) ||
             (SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS == msg->notification->type)) {
         rc = cl_sm_get_data_session(sm_ctx, subscription, msg->notification->source_address,
-                msg->notification->source_pid, &data_session);
+                msg->notification->source_pid,
+                (msg->notification->has_commit_id ? msg->notification->commit_id : 0),
+                &data_session);
         if (SR_ERR_OK != rc) {
             pthread_mutex_unlock(&sm_ctx->subscriptions_lock);
             return SR_ERR_INVAL_ARG;

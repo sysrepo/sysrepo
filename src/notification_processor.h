@@ -156,16 +156,6 @@ int np_module_install_notify(np_ctx_t *np_ctx, const char *module_name, const ch
 int np_feature_enable_notify(np_ctx_t *np_ctx, const char *module_name, const char *feature_name, bool enabled);
 
 /**
- * @brief Notify all subscribers about the change of data within a module.
- *
- * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
- * @param[in] module_name Name of the module where the change has occurred.
- *
- * @return Error code (SR_ERR_OK on success).
- */
-int np_module_change_notify(np_ctx_t *np_ctx, const char *module_name);
-
-/**
  * @brief Tests the subscription by sending of a hello notification.
  *
  * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
@@ -196,10 +186,11 @@ int np_get_module_change_subscriptions(np_ctx_t *np_ctx, const char *module_name
  *
  * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
  * @param[in] subscription Subscription context acquired by ::np_get_module_change_subscriptions call.
+ * @param[in] commit_id ID of the commit to be used for starting a new notification session from client library.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int np_subscription_notify(np_ctx_t *np_ctx, np_subscription_t *subscription);
+int np_subscription_notify(np_ctx_t *np_ctx, np_subscription_t *subscription, uint32_t commit_id);
 
 /**
  * @brief Cleans up a subscription context (including all its content).

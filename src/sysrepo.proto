@@ -1,6 +1,7 @@
 /**
  * @file sysreo.proto
- * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
+ * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>,
+ *         Milan Lenco <milan.lenco@pantheon.tech>
  * @brief Definition of sysrepo GPB messages used as the API for the
  * communication between sysrepo engine and sysrepo client library.
  *
@@ -111,6 +112,7 @@ message SessionStartReq {
   required DataStore datastore = 1;
   optional string user_name = 2;
   required uint32 options = 3;
+  optional uint32 commit_id = 4; /**< Applicable if SESS_NOTIFICATION was specified. */
 }
 
 /**
@@ -505,6 +507,18 @@ message UnsubscribeReq {
 message UnsubscribeResp {
 }
 
+/**
+ * @brief Checks whether the module has any enabled subtree.
+ * Sent by sr_check_enabled_running.
+ */
+message CheckEnabledRunningReq {
+  required string module_name = 1;
+}
+
+message CheckEnabledRunningResp {
+  required bool enabled = 1;
+}
+
 message ModuleInstallNotification {
   optional string module_name = 1;
   optional string revision = 2;
@@ -623,7 +637,8 @@ enum Operation {
 
   SUBSCRIBE = 70;
   UNSUBSCRIBE = 71;
-  GET_CHANGES = 72;
+  CHECK_ENABLED_RUNNING = 72;
+  GET_CHANGES = 73;
 
   RPC = 80;
 
@@ -663,7 +678,8 @@ message Request {
 
   optional SubscribeReq subscribe_req = 70;
   optional UnsubscribeReq unsubscribe_req = 71;
-  optional GetChangesReq get_changes_req = 72;
+  optional CheckEnabledRunningReq check_enabled_running_req = 72;
+  optional GetChangesReq get_changes_req = 73;
 
   optional RPCReq rpc_req = 80;
 }
@@ -703,7 +719,8 @@ message Response {
 
   optional SubscribeResp subscribe_resp = 70;
   optional UnsubscribeResp unsubscribe_resp = 71;
-  optional GetChangesResp get_changes_resp = 72;
+  optional CheckEnabledRunningResp check_enabled_running_resp = 72;
+  optional GetChangesResp get_changes_resp = 73;
 
   optional RPCResp rpc_resp = 80;
 }
@@ -717,6 +734,7 @@ message Notification {
   required string source_address = 3;
   required uint32 source_pid = 4;
   required uint32 subscription_id = 5;
+  optional uint32 commit_id = 6;
 
   optional ModuleInstallNotification module_install_notif = 10;
   optional FeatureEnableNotification feature_enable_notif = 11;
