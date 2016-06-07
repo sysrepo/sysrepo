@@ -36,7 +36,14 @@ class SysrepoTester(Tester):
             self.sr.log_stderr(SR_LL_INF)
 
     def restartConnection(self):
-        self.sr = Sysrepo(self.name, self.conn)
+        try:
+            self.sr = Sysrepo(self.name, self.conn)
+        except RuntimeError as r:
+            if self.conn == SR_CONN_DAEMON_REQUIRED and r.message == "The peer disconnected":
+                sleep(1) #wait for daemon to start
+                self.sr = Sysrepo(self.name, self.conn)
+            else:
+                raise r
         self.session = Session(self.sr, self.ds)
 
     def lockStep(self):

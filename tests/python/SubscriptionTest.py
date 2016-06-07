@@ -108,7 +108,7 @@ class SubscriptionTest(unittest.TestCase):
         tm = TestManager()
 
         srd = SysrepodTester("Srd")
-        reader = SysrepoTester("First", SR_DS_RUNNING)
+        reader = SysrepoTester("First", SR_DS_RUNNING, SR_CONN_DAEMON_REQUIRED, False)
         subscriber = SubscriptionTester("Second")
 
         srd.add_step(srd.startDaemonStep)
