@@ -207,9 +207,10 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, co
     }
 
     /* if strict option is set, at least one non default node must be deleted */
-    if (SR_EDIT_STRICT & options && !rp_dt_contains_non_default_node(nodes)) {
+    if (SR_EDIT_STRICT & options && !rp_dt_contains_non_default_node(nodes)) {    
         SR_LOG_ERR("No nodes to be deleted with strict option %s", xpath);
-        return dm_report_error(session, NULL, xpath, SR_ERR_DATA_MISSING);
+        rc = dm_report_error(session, NULL, xpath, SR_ERR_DATA_MISSING);
+        goto cleanup;
     }
 
     /* list key can be deleted only when the whole list is deleted */
