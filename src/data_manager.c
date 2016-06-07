@@ -80,6 +80,9 @@ typedef struct dm_ctx_s {
     struct ly_set *disabled_sch;  /**< Set of schema that has been disabled */
     sr_btree_t *schema_info_tree; /**< Binary tree holding information about schemas */
     dm_commit_ctxs_t commit_ctxs; /**< Structure holding commit contexts and corresponding lock */
+#ifdef HAVE_STAT_ST_MTIM
+    struct timespec last_commit_time;  /**< Time of the last commit */
+#endif
 } dm_ctx_t;
 
 /**
@@ -106,6 +109,11 @@ typedef struct dm_session_s {
 typedef struct dm_node_info_s {
     dm_node_state_t state;
 } dm_node_info_t;
+
+/** @brief Invalid value for the commit context id, used for signaling e.g.: duplicate id */
+#define DM_COMMIT_CTX_ID_INVALID 0
+/** @brief Number of attempts to generate unique id for commit context */
+#define DM_COMMIT_CTX_ID_MAX_ATTEMPTS 100
 
 /**
  * @brief Minimal nanosecond difference between current time and modification timestamp.
@@ -518,6 +526,7 @@ dm_load_data_tree_file(dm_ctx_t *dm_ctx, int fd, const char *data_filename, cons
                 (long long) st.st_mtim.tv_sec,
                 (long long) st.st_mtim.tv_nsec);
 #endif
+        ly_errno = 0;
         pthread_rwlock_rdlock(&dm_ctx->lyctx_lock);
         data_tree = lyd_parse_fd(dm_ctx->ly_ctx, fd, LYD_XML, LYD_OPT_STRICT | LYD_OPT_CONFIG);
         pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
@@ -1034,10 +1043,7 @@ dm_report_error(dm_session_t *session, const char *msg, const char *err_path, in
         free(session->error_msg);
     }
     session->error_msg = strdup(msg);
-    if (NULL == session->error_msg) {
-        SR_LOG_ERR_MSG("Error message duplication failed");
-        return SR_ERR_NOMEM;
-    }
+    CHECK_NULL_NOMEM_RETURN(session->error_msg);
 
     /* error xpath */
     if (NULL != err_path) {
@@ -1046,10 +1052,7 @@ dm_report_error(dm_session_t *session, const char *msg, const char *err_path, in
             free(session->error_xpath);
         }
         session->error_xpath = strdup(err_path);
-        if (NULL == session->error_xpath) {
-            SR_LOG_ERR_MSG("Error message duplication failed");
-            return SR_ERR_NOMEM;
-        }
+        CHECK_NULL_NOMEM_RETURN(session->error_xpath);
     } else {
         SR_LOG_DBG_MSG("Error xpath passed to dm_report is NULL");
     }
@@ -1122,10 +1125,7 @@ dm_set_node_state(struct lys_node *node, dm_node_state_t state)
     CHECK_NULL_ARG(node);
     if (NULL == node->priv) {
         node->priv = calloc(1, sizeof(dm_node_info_t));
-        if (NULL == node->priv) {
-            SR_LOG_ERR_MSG("Memory allocation failed");
-            return SR_ERR_NOMEM;
-        }
+        CHECK_NULL_NOMEM_RETURN(node->priv);
     }
     ((dm_node_info_t *) node->priv)->state = state;
     return SR_ERR_OK;
@@ -1847,9 +1847,9 @@ dm_remove_session_operations(dm_session_t *session)
 }
 
 static int
-dm_is_info_copy_uptodate(const char *file_name, const dm_data_info_t *info, bool *res)
+dm_is_info_copy_uptodate(dm_ctx_t *dm_ctx, const char *file_name, const dm_data_info_t *info, bool *res)
 {
-    CHECK_NULL_ARG(info);
+    CHECK_NULL_ARG4(dm_ctx, file_name, info, res);
     int rc;
 #ifdef HAVE_STAT_ST_MTIM
     struct stat st = {0};
@@ -1874,6 +1874,8 @@ dm_is_info_copy_uptodate(const char *file_name, const dm_data_info_t *info, bool
     if (info->timestamp.tv_sec != st.st_mtim.tv_sec ||
             info->timestamp.tv_nsec != st.st_mtim.tv_nsec ||
             (now.tv_sec == st.st_mtim.tv_sec && difftime(now.tv_nsec, st.st_mtim.tv_nsec) < NANOSEC_THRESHOLD) ||
+            info->timestamp.tv_sec < dm_ctx->last_commit_time.tv_sec ||
+            (info->timestamp.tv_sec == dm_ctx->last_commit_time.tv_sec && info->timestamp.tv_nsec <= dm_ctx->last_commit_time.tv_nsec) ||
             info->timestamp.tv_nsec == 0) {
         SR_LOG_DBG("Module %s will be refreshed", info->module->name);
         *res = false;
@@ -1931,7 +1933,7 @@ dm_update_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, struct ly_
         rc = sr_lock_fd(fd, false, false);
 
         bool copy_uptodate = false;
-        rc = dm_is_info_copy_uptodate(file_name, info, &copy_uptodate);
+        rc = dm_is_info_copy_uptodate(dm_ctx, file_name, info, &copy_uptodate);
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR_MSG("File up to date check failed");
             close(fd);
@@ -2219,14 +2221,12 @@ dm_insert_commit_context(dm_ctx_t *dm_ctx, dm_commit_context_t *c_ctx)
     dm_ctx->commit_ctxs.last_commit_id = c_ctx->id;
     rc = sr_btree_insert(dm_ctx->commit_ctxs.tree, c_ctx);
     pthread_rwlock_unlock(&dm_ctx->commit_ctxs.lock);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Insert into commit context bin tree failed");
-    }
+    CHECK_RC_MSG_RETURN(rc, "Insert into commit context bin tree failed");
     return rc;
 }
 
 int
-dm_remove_commit_context(dm_ctx_t *dm_ctx, int c_ctx_id)
+dm_remove_commit_context(dm_ctx_t *dm_ctx, uint32_t c_ctx_id)
 {
     pthread_rwlock_wrlock(&dm_ctx->commit_ctxs.lock);
     dm_commit_context_t *c_ctx = NULL;
@@ -2278,7 +2278,19 @@ dm_commit_prepare_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_con
     c_ctx = calloc(1, sizeof(*c_ctx));
     CHECK_NULL_NOMEM_RETURN(c_ctx);
 
-    c_ctx->id = rand();
+    size_t attempts = 0;
+    /* generate unique id */
+    do {
+        c_ctx->id = rand();
+        if (NULL != sr_btree_search(dm_ctx->commit_ctxs.tree, c_ctx)) {
+            c_ctx->id = DM_COMMIT_CTX_ID_INVALID;
+        }
+        if (++attempts > DM_COMMIT_CTX_ID_MAX_ATTEMPTS) {
+            SR_LOG_ERR_MSG("Unable to generate an unique session_id.");
+            rc = SR_ERR_INTERNAL;
+            goto cleanup;
+        }
+    } while (DM_COMMIT_CTX_ID_INVALID == c_ctx->id);
 
     rc = sr_btree_init(dm_module_subscription_cmp, dm_model_subscription_free, &c_ctx->subscriptions);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Binary tree allocation failed");
@@ -2438,11 +2450,7 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
             if (ENOENT == errno) {
                 SR_LOG_DBG("File %s does not exist, trying to create an empty one", file_name);
                 c_ctx->fds[count] = open(file_name, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
-                if (-1 == c_ctx->fds[count]) {
-                    SR_LOG_ERR("File %s can not be created", file_name);
-                    rc = SR_ERR_IO;
-                    goto cleanup;
-                }
+                CHECK_NOT_MINUS1_LOG_GOTO(c_ctx->fds[count], rc, SR_ERR_IO, cleanup, "File %s can not be created", file_name);
             }
         } else {
             c_ctx->existed[count] = true;
@@ -2459,7 +2467,7 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
         dm_data_info_t *di = NULL;
 
         bool copy_uptodate = false;
-        rc = dm_is_info_copy_uptodate(file_name, info, &copy_uptodate);
+        rc = dm_is_info_copy_uptodate(dm_ctx, file_name, info, &copy_uptodate);
         CHECK_RC_MSG_GOTO(rc, cleanup, "File up to date check failed");
 
         /* ops are skipped also when candidate is committed to the running */
@@ -2568,6 +2576,9 @@ dm_commit_write_files(dm_session_t *session, dm_commit_context_t *c_ctx)
             count++;
         }
     }
+    /* save time of the last commit */
+    clock_gettime(CLOCK_REALTIME, &session->dm_ctx->last_commit_time);
+
     return rc;
 }
 
@@ -3053,7 +3064,7 @@ dm_disable_module_running(dm_ctx_t *ctx, dm_session_t *session, const char *modu
                 {
                     if (((LYS_CONTAINER | LYS_LIST | LYS_LEAF | LYS_LEAFLIST) & child->nodetype) && dm_is_node_enabled(child)) {
                         ret = ly_set_add(stack, child);
-                        CHECK_ZERO_MSG_GOTO(ret, rc, SR_ERR_INTERNAL, cleanup, "Adding to ly_set failed");
+                        CHECK_NOT_MINUS1_MSG_GOTO(ret, rc, SR_ERR_INTERNAL, cleanup, "Adding to ly_set failed");
                     }
                 }
             }
@@ -3564,7 +3575,7 @@ dm_is_model_modified(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module
 }
 
 int
-dm_get_commit_context(dm_ctx_t *dm_ctx, int c_ctx_id, dm_commit_context_t **c_ctx)
+dm_get_commit_context(dm_ctx_t *dm_ctx, uint32_t c_ctx_id, dm_commit_context_t **c_ctx)
 {
     CHECK_NULL_ARG2(dm_ctx, c_ctx);
     dm_commit_context_t lookup = {0};

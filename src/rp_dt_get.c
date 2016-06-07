@@ -46,10 +46,7 @@ rp_dt_get_value_from_node(struct lyd_node *node, sr_val_t *val)
     struct lys_node_container *sch_cont = NULL;
 
     rc = rp_dt_create_xpath_for_node(node, &xpath);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Create xpath for node failed");
-        return rc;
-    }
+    CHECK_RC_MSG_RETURN(rc, "Create xpath for node failed");
     val->xpath = xpath;
 
     switch (node->schema->nodetype) {
@@ -60,10 +57,7 @@ rp_dt_get_value_from_node(struct lyd_node *node, sr_val_t *val)
         val->type = sr_libyang_type_to_sysrepo(data_leaf->value_type);
 
         rc = sr_libyang_leaf_copy_value(data_leaf, val);
-        if (SR_ERR_OK != rc) {
-            SR_LOG_ERR_MSG("Copying of value failed");
-            goto cleanup;
-        }
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Copying of value failed");
         break;
     case LYS_CONTAINER:
         sch_cont = (struct lys_node_container *) node->schema;
@@ -78,10 +72,7 @@ rp_dt_get_value_from_node(struct lyd_node *node, sr_val_t *val)
         val->type = sr_libyang_type_to_sysrepo(data_leaf->value_type);
 
         rc = sr_libyang_leaf_copy_value(data_leaf, val);
-        if (SR_ERR_OK != rc) {
-            SR_LOG_ERR_MSG("Copying of value failed");
-            goto cleanup;
-        }
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Copying of value failed");
         break;
     default:
         SR_LOG_WRN_MSG("Get value is not implemented for this node type");
@@ -116,7 +107,7 @@ rp_dt_get_values_from_nodes(struct ly_set *nodes, sr_val_t **values, size_t *val
         rc = rp_dt_get_value_from_node(node, &vals[i]);
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR("Getting value from node %s failed", node->schema->name);
-            free(vals);
+            sr_free_values(vals, i);
             return SR_ERR_INTERNAL;
         }
         cnt++;
@@ -201,10 +192,7 @@ rp_dt_get_value_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char *
     }
 
     rc = sr_copy_first_ns(xpath, &data_tree_name);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Copying module name failed for xpath '%s'", xpath);
-        goto cleanup;
-    }
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Copying module name failed for xpath '%s'", xpath);
 
     rc = dm_get_datatree(rp_ctx->dm_ctx, rp_session->dm_session, data_tree_name, &data_tree);
     if (SR_ERR_OK != rc) {
@@ -241,15 +229,11 @@ rp_dt_get_values_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char 
     char *data_tree_name = NULL;
 
     rc = sr_copy_first_ns(xpath, &data_tree_name);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Copying module name failed for xpath '%s'", xpath);
-        goto cleanup;
-    }
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Copying module name failed for xpath '%s'", xpath);
+
     rc = ac_check_node_permissions(rp_session->ac_session, xpath, AC_OPER_READ);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Access control check failed for xpath '%s'", xpath);
-        goto cleanup;
-    }
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Access control check failed for xpath '%s'", xpath);
+
     rc = dm_get_datatree(rp_ctx->dm_ctx, rp_session->dm_session, data_tree_name, &data_tree);
     if (SR_ERR_OK != rc) {
         if (SR_ERR_NOT_FOUND != rc) {
@@ -288,16 +272,10 @@ rp_dt_get_values_wrapper_with_opts(rp_ctx_t *rp_ctx, rp_session_t *rp_session, r
     char *data_tree_name = NULL;
 
     rc = sr_copy_first_ns(xpath, &data_tree_name);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Copying module name failed for xpath '%s'", xpath);
-        goto cleanup;
-    }
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Copying module name failed for xpath '%s'", xpath);
 
     rc = ac_check_node_permissions(rp_session->ac_session, xpath, AC_OPER_READ);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Access control check failed for xpath '%s'", xpath);
-        goto cleanup;
-    }
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Access control check failed for xpath '%s'", xpath);
 
     rc = dm_get_datatree(rp_ctx->dm_ctx, rp_session->dm_session, data_tree_name, &data_tree);
     if (SR_ERR_OK != rc) {

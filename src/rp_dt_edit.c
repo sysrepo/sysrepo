@@ -88,10 +88,7 @@ rp_dt_check_node_deletion(struct lyd_node *node, struct ly_set *delete_nodes, bo
             LYS_LEAF == node->schema->nodetype) {
         bool is_key = false;
         rc = rp_dt_has_key(node->parent, node->schema->name, &is_key);
-        if (SR_ERR_OK != rc) {
-            SR_LOG_ERR_MSG("Has key failed");
-            return rc;
-        }
+        CHECK_RC_MSG_RETURN(rc, "Has key failed");
         if (is_key) {
             //check if the whole list is to be deleted
             struct lyd_node *iter = NULL;
@@ -142,6 +139,37 @@ rp_dt_has_only_keys(const struct lyd_node *node)
     }
     return false;
 }
+/**
+ * @brief Tests whether the set of nodes contains a non default node
+ */
+static bool
+rp_dt_contains_non_default_node(struct ly_set *nodes)
+{
+    if (NULL == nodes) {
+        return false;
+    }
+    for (int i = 0; i < nodes->number; i++) {
+        if ((LYS_LEAFLIST | LYS_LIST) & nodes->set.d[i]->schema->nodetype ||
+            (LYS_CONTAINER == nodes->set.d[i]->schema->nodetype &&
+                 NULL != ((struct lys_node_container *) nodes->set.d[i]->schema)->presence) ||
+            (LYS_LEAF == nodes->set.d[i]->schema->nodetype && !nodes->set.d[i]->dflt)) {
+            return true;
+        } else if (LYS_CONTAINER == nodes->set.d[i]->schema->nodetype) {
+            struct lyd_node *next = NULL, *iter = NULL;
+            LY_TREE_DFS_BEGIN(nodes->set.d[i], next, iter)
+            {
+                if ((LYS_LEAFLIST | LYS_LIST) & iter->schema->nodetype ||
+                    (LYS_LEAF == iter->schema->nodetype && !iter->dflt) ||
+                    (LYS_CONTAINER == iter->schema->nodetype &&
+                        NULL != ((struct lys_node_container *) iter->schema)->presence)) {
+                    return true;
+                }
+                LYD_TREE_DFS_END(nodes->set.d[i], next, iter);
+            }
+        }
+    }
+    return false;
+}
 
 int
 rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const sr_edit_flag_t options)
@@ -153,6 +181,7 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, co
     dm_data_info_t *info = NULL;
     struct ly_set *nodes = NULL;
     struct ly_set *parents = NULL;
+    int ret = 0;
 
     rc = rp_dt_validate_node_xpath(dm_ctx, session, xpath, &module, NULL);
     if (SR_ERR_OK != rc) {
@@ -161,10 +190,7 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, co
     }
 
     rc = dm_get_data_info(dm_ctx, session, module->name, &info);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Getting data tree failed for xpath '%s'", xpath);
-        return rc;
-    }
+    CHECK_RC_LOG_RETURN(rc, "Getting data tree failed for xpath '%s'", xpath);
 
     /* find nodes nodes to be deleted */
     rc = rp_dt_find_nodes(dm_ctx, info->node, xpath, dm_is_running_ds_session(session), &nodes);
@@ -180,14 +206,19 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, co
         return rc;
     }
 
+    /* if strict option is set, at least one non default node must be deleted */
+    if (SR_EDIT_STRICT & options && !rp_dt_contains_non_default_node(nodes)) {    
+        SR_LOG_ERR("No nodes to be deleted with strict option %s", xpath);
+        rc = dm_report_error(session, NULL, xpath, SR_ERR_DATA_MISSING);
+        goto cleanup;
+    }
+
     /* list key can be deleted only when the whole list is deleted */
     for (size_t i = 0; i < nodes->number; i++) {
         bool can_be_deleted = false;
         rc = rp_dt_check_node_deletion(nodes->set.d[i], nodes, &can_be_deleted);
-        if (SR_ERR_OK != rc) {
-            SR_LOG_ERR("Check node deletion failed %s", xpath);
-            goto cleanup;
-        }
+        CHECK_RC_LOG_GOTO(rc, cleanup, "Check node deletion failed %s", xpath);
+
         if (!can_be_deleted) {
             SR_LOG_ERR("Key leaf can not be delete delete the list instead %s", xpath);
             rc = dm_report_error(session, "List key can not be deleted", xpath, SR_ERR_INVAL_ARG);
@@ -216,12 +247,8 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, co
             ly_set_add(parents, nodes->set.d[i]->parent);
         }
 
-        rc = sr_lyd_unlink(info, nodes->set.d[i]);
-        if (0 != rc) {
-            SR_LOG_ERR("Unlinking of the node %s failed", xpath);
-            rc = SR_ERR_INTERNAL;
-            goto cleanup;
-        }
+        ret = sr_lyd_unlink(info, nodes->set.d[i]);
+        CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_INTERNAL, cleanup, "Unlinking of the node %s failed", xpath);
     }
 
     /* remove parents that are to be deleted by query */
@@ -301,10 +328,7 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const
 
     /* get data tree to be update */
     rc = dm_get_data_info(dm_ctx, session, module->name, &info);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Getting data tree failed for xpath '%s'", xpath);
-        return rc;
-    }
+    CHECK_RC_LOG_RETURN(rc, "Getting data tree failed for xpath '%s'", xpath);
 
     /* check if node is enabled */
     if (dm_is_running_ds_session(session)) {
@@ -331,10 +355,8 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const
     if (LYS_LEAF == sch_node->nodetype) {
         bool is_key = false;
         rc = rp_dt_has_sch_key(sch_node->parent, sch_node->name, &is_key);
-        if (SR_ERR_OK != rc) {
-            SR_LOG_ERR_MSG("Has key failed");
-            return rc;
-        }
+        CHECK_RC_MSG_RETURN(rc, "Has key failed");
+
         if (is_key) {
             SR_LOG_ERR("Value of the key can not be set %s", xpath);
             return dm_report_error(session, "Value of the key can not be set", xpath, SR_ERR_INVAL_ARG);
@@ -344,10 +366,7 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const
     /* transform new value from sr_val_t to string */
     if (NULL != value) {
         rc = sr_val_to_str(value, sch_node, &new_value);
-        if (SR_ERR_OK != rc) {
-            SR_LOG_ERR_MSG("Copy new value to string failed");
-            return rc;
-        }
+        CHECK_RC_MSG_RETURN(rc, "Copy new value to string failed");
     } else if (!((LYS_CONTAINER | LYS_LIST) & sch_node->nodetype) &&
             !(LYS_LEAFLIST == sch_node->nodetype && NULL != strstr(xpath, "[.='") && ']' == xpath[strlen(xpath)-1])) {
         /* value can be NULL only if a presence container, list or leaf-list with predicated is being created */
@@ -422,16 +441,10 @@ rp_dt_move_list(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, sr_m
     dm_data_info_t *info = NULL;
 
     rc = rp_dt_validate_node_xpath(dm_ctx, session, xpath, &module, NULL);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Requested node is not valid %s", xpath);
-        return rc;
-    }
+    CHECK_RC_LOG_RETURN(rc, "Requested node is not valid %s", xpath);
 
     rc = dm_get_data_info(dm_ctx, session, module->name, &info);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Getting data tree failed for xpath '%s'", xpath);
-        return rc;
-    }
+    CHECK_RC_LOG_RETURN(rc, "Getting data tree failed for xpath '%s'", xpath);
 
     rc = rp_dt_find_node(dm_ctx, info->node, xpath, dm_is_running_ds_session(session), &node);
     if (SR_ERR_NOT_FOUND == rc) {
@@ -486,9 +499,7 @@ rp_dt_move_list(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, sr_m
         rc = sr_lyd_insert_after(info, sibling, node);
     }
 
-    if (0 != rc) {
-        SR_LOG_ERR_MSG("Moving of the node failed");
-    }
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Moving of the node failed");
 
 cleanup:
     info->modified = SR_ERR_OK == rc ? true : info->modified;
@@ -503,16 +514,10 @@ rp_dt_move_list_wrapper(rp_ctx_t *rp_ctx, rp_session_t *session, const char *xpa
     int rc = SR_ERR_OK;
 
     rc = ac_check_node_permissions(session->ac_session, xpath, AC_OPER_READ_WRITE);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Access control check failed for xpath '%s'", xpath);
-        return rc;
-    }
+    CHECK_RC_LOG_RETURN(rc, "Access control check failed for xpath '%s'", xpath);
 
     rc = dm_add_operation(session->dm_session, DM_MOVE_OP, xpath, NULL, 0, position, relative_item);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Adding operation to session op list failed");
-        return rc;
-    }
+    CHECK_RC_MSG_RETURN(rc, "Adding operation to session op list failed");
 
     rc = rp_dt_move_list(rp_ctx->dm_ctx, session->dm_session, xpath, position, relative_item);
     if (SR_ERR_OK != rc) {
@@ -538,11 +543,8 @@ rp_dt_set_item_wrapper(rp_ctx_t *rp_ctx, rp_session_t *session, const char *xpat
     }
 
     rc = dm_add_operation(session->dm_session, DM_SET_OP, xpath, val, opt, 0, NULL);
-    if (SR_ERR_OK != rc) {
-        /* val is freed by dm_add_operation */
-        SR_LOG_ERR_MSG("Adding operation to session op list failed");
-        return rc;
-    }
+    /* val is freed by dm_add_operation */
+    CHECK_RC_MSG_RETURN(rc, "Adding operation to session op list failed");
 
     rc = rp_dt_set_item(rp_ctx->dm_ctx, session->dm_session, xpath, opt, val);
     if (SR_ERR_OK != rc) {
@@ -559,16 +561,10 @@ rp_dt_delete_item_wrapper(rp_ctx_t *rp_ctx, rp_session_t *session, const char *x
     int rc = SR_ERR_OK;
 
     rc = ac_check_node_permissions(session->ac_session, xpath, AC_OPER_READ_WRITE);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Access control check failed for xpath '%s'", xpath);
-        return rc;
-    }
+    CHECK_RC_LOG_RETURN(rc, "Access control check failed for xpath '%s'", xpath);
 
     rc = dm_add_operation(session->dm_session, DM_DELETE_OP, xpath, NULL, opts, 0, NULL);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Adding operation to session op list failed");
-        return rc;
-    }
+    CHECK_RC_MSG_RETURN(rc, "Adding operation to session op list failed");
 
     rc = rp_dt_delete_item(rp_ctx->dm_ctx, session->dm_session, xpath, opts);
     if (SR_ERR_OK != rc) {
@@ -859,8 +855,9 @@ rp_dt_copy_config_to_running(rp_ctx_t* rp_ctx, rp_session_t* session, const char
         rc = dm_get_all_modules(rp_ctx->dm_ctx, session->dm_session, true, &modules);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Get all modules failed");
         for (size_t i = 0; i < modules->number; i++) {
-            rc = dm_get_data_info(rp_ctx->dm_ctx, session->dm_session, modules->set.g[i], &info);
-            CHECK_RC_MSG_GOTO(rc, cleanup, "Get data info failed");
+            struct lys_module *module = modules->set.g[i];
+            rc = dm_get_data_info(rp_ctx->dm_ctx, session->dm_session, module->name, &info);
+            CHECK_RC_LOG_GOTO(rc, cleanup, "Get data info failed %s", module->name);
             info->modified = true;
         }
 
