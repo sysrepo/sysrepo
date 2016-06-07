@@ -186,10 +186,11 @@ int np_get_module_change_subscriptions(np_ctx_t *np_ctx, const char *module_name
  *
  * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
  * @param[in] subscription Subscription context acquired by ::np_get_module_change_subscriptions call.
+ * @param[in] commit_id ID of the commit to be used for starting a new notification session from client library.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int np_subscription_notify(np_ctx_t *np_ctx, np_subscription_t *subscription);
+int np_subscription_notify(np_ctx_t *np_ctx, np_subscription_t *subscription, uint32_t commit_id);
 
 /**
  * @brief Cleans up a subscription context (including all its content).

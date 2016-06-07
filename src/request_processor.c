@@ -1663,7 +1663,7 @@ rp_cleanup(rp_ctx_t *rp_ctx)
 
 int
 rp_session_start(const rp_ctx_t *rp_ctx, const uint32_t session_id, const ac_ucred_t *user_credentials,
-        const sr_datastore_t datastore, const uint32_t session_options, rp_session_t **session_p)
+        const sr_datastore_t datastore, const uint32_t session_options, const uint32_t commit_id, rp_session_t **session_p)
 {
     rp_session_t *session = NULL;
     int rc = SR_ERR_OK;
@@ -1683,6 +1683,7 @@ rp_session_start(const rp_ctx_t *rp_ctx, const uint32_t session_id, const ac_ucr
     session->id = session_id;
     session->datastore = datastore;
     session->options = session_options;
+    session->commit_id = commit_id;
 
     rc = ac_session_init(rp_ctx->ac_ctx, user_credentials, &session->ac_session);
     if (SR_ERR_OK  != rc) {

@@ -296,7 +296,7 @@ np_module_subscriptions_test(void **state)
         assert_true(10 == subscriptions_arr[i]->priority || 20 == subscriptions_arr[i]->priority);
         assert_true(SR__NOTIFICATION_EVENT__VERIFY_EV == subscriptions_arr[i]->notif_event);
         /* notify and cleanup */
-        rc = np_subscription_notify(np_ctx, subscriptions_arr[i]);
+        rc = np_subscription_notify(np_ctx, subscriptions_arr[i], 0);
         assert_int_equal(rc, SR_ERR_OK);
         np_free_subscription(subscriptions_arr[i]);
     }

@@ -2665,7 +2665,7 @@ dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t *c
 
             if (match) {
                 /* something has been changed for this subscription, send notification */
-                rc = np_subscription_notify(dm_ctx->np_ctx, ms->subscriptions[s]);
+                rc = np_subscription_notify(dm_ctx->np_ctx, ms->subscriptions[s], c_ctx->id);
                 if (SR_ERR_OK != rc) {
                    SR_LOG_WRN("Unable to send notifications about the changes for the subscription in module %s xpath %s.",
                            ms->subscriptions[s]->module_name,

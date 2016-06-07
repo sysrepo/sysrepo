@@ -111,6 +111,7 @@ message SessionStartReq {
   required DataStore datastore = 1;
   optional string user_name = 2;
   required uint32 options = 3;
+  optional uint32 commit_id = 4; /**< Applicable if SESS_NOTIFICATION was specified. */
 }
 
 /**
@@ -717,6 +718,7 @@ message Notification {
   required string source_address = 3;
   required uint32 source_pid = 4;
   required uint32 subscription_id = 5;
+  optional uint32 commit_id = 6;
 
   optional ModuleInstallNotification module_install_notif = 10;
   optional FeatureEnableNotification feature_enable_notif = 11;

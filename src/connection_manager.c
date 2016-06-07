@@ -561,7 +561,7 @@ cm_msg_send_connection(cm_ctx_t *cm_ctx, sm_connection_t *connection, Sr__Msg *m
  */
 static int
 cm_session_start_internal(cm_ctx_t *cm_ctx, sm_connection_t *conn, const char *effective_user,
-        sr_datastore_t datastore, uint32_t session_options, sm_session_t **session_p)
+        sr_datastore_t datastore, uint32_t session_options, uint32_t commit_id, sm_session_t **session_p)
 {
     sm_session_t *session = NULL;
     int rc = SR_ERR_OK;
@@ -596,7 +596,7 @@ cm_session_start_internal(cm_ctx_t *cm_ctx, sm_connection_t *conn, const char *e
     /* start session in Request Processor */
     if (SR_ERR_OK == rc) {
         rc = rp_session_start(cm_ctx->rp_ctx,  session->id, &session->credentials,  datastore,
-                session_options, &session->cm_data->rp_session);
+                session_options, commit_id, &session->cm_data->rp_session);
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR("Cannot start Request Processor session (conn=%p).", (void*)conn);
         }
@@ -635,7 +635,9 @@ cm_session_start_req_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, Sr__Msg *m
     /* start the session */
     rc = cm_session_start_internal(cm_ctx, conn, msg_in->request->session_start_req->user_name,
             sr_datastore_gpb_to_sr(msg_in->request->session_start_req->datastore),
-            msg_in->request->session_start_req->options, &session);
+            msg_in->request->session_start_req->options,
+            (msg_in->request->session_start_req->has_commit_id ? msg_in->request->session_start_req->commit_id : 0),
+            &session);
 
     if (SR_ERR_OK == rc) {
         /* set the id to response */
