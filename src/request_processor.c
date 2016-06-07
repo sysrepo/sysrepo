@@ -1841,6 +1841,11 @@ rp_msg_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
     if (SR_ERR_OK != rc) {
         /* release the message by error */
         SR_LOG_ERR_MSG("Unable to process the message, skipping.");
+        if (NULL != session) {
+            pthread_mutex_lock(&session->msg_count_mutex);
+            session->msg_count -= 1;
+            pthread_mutex_unlock(&session->msg_count_mutex);
+        }
         sr__msg__free_unpacked(msg, NULL);
     }
 
