@@ -223,7 +223,7 @@ srcfg_get_module_data(struct ly_ctx *ly_ctx, const char *module_name, struct lyd
     char query[PATH_MAX] = { 0, };
     char *string_val = NULL;
 
-    snprintf(query, PATH_MAX, "/%s:*//*", module_name);
+    snprintf(query, PATH_MAX, "/%s:*//.", module_name);
     rc = sr_get_items_iter(srcfg_session, query, &iter);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Error by sr_get_items_iter: %s", sr_strerror(rc));
