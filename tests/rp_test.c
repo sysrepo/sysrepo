@@ -77,7 +77,7 @@ rp_session_test(void **state)
 
     for (i = 0; i < 100; i++) {
         /* create a session */
-        rc = rp_session_start(rp_ctx, 123456, &credentials, SR_DS_STARTUP, false, &session);
+        rc = rp_session_start(rp_ctx, 123456, &credentials, SR_DS_STARTUP, SR_SESS_DEFAULT, 0, &session);
         assert_int_equal(rc, SR_ERR_OK);
         assert_non_null(session);
 
@@ -114,7 +114,7 @@ rp_msg_neg_test(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 
     /* create a session */
-    rc = rp_session_start(rp_ctx, 123456, &credentials, SR_DS_STARTUP, false, &session);
+    rc = rp_session_start(rp_ctx, 123456, &credentials, SR_DS_STARTUP, SR_SESS_DEFAULT, 0, &session);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(session);
 

@@ -79,7 +79,8 @@ typedef struct rp_session_s {
     uint32_t id;                         /**< Assigned session id. */
     const ac_ucred_t *user_credentials;  /**< Credentials of the user who the session belongs to. */
     sr_datastore_t datastore;            /**< Datastore selected for this session. */
-    uint32_t options;                   /**< Session options used to override default session behavior. */
+    uint32_t options;                    /**< Session options used to override default session behavior. */
+    uint32_t commit_id;                  /**< Commit ID in case that this is a notification session. */
     uint32_t msg_count;                  /**< Count of unprocessed messages (including waiting in queue). */
     pthread_mutex_t msg_count_mutex;     /**< Mutex for msg_count counter. */
     bool stop_requested;                 /**< Session stop has been requested. */
