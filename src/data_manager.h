@@ -125,7 +125,7 @@ typedef struct dm_model_subscription_s {
  * @brief Structure holding information used during commit process
  */
 typedef struct dm_commit_context_s {
-    int id;                     /**< id used for commit identification in notification session */
+    uint32_t id;                /**< id used for commit identification in notification session */
     dm_session_t *session;      /**< session where mereged (user changes + file system state) data trees are stored */
     int *fds;                   /**< opened file descriptors */
     bool *existed;              /**< flag wheter the file for the filedesriptor existed (and should be truncated) before commit*/
@@ -140,7 +140,7 @@ typedef struct dm_commit_context_s {
 typedef struct dm_c_ctxs_s {
     sr_btree_t *tree;      /**< Array of commit context used for notifications */
     pthread_rwlock_t lock; /**< rwlock to access c_ctxs */
-    int last_commit_id;    // id of the last commit context
+    uint32_t last_commit_id;    // id of the last commit context
                            //TODO: should be removed once notification session contains
 } dm_commit_ctxs_t;
 
@@ -785,7 +785,7 @@ int dm_is_model_modified(dm_ctx_t *dm_ctx, dm_session_t *session, const char *mo
  * @param [in] c_ctx_id
  * @return Error code (SR_ERR_OK on success)
  */
-int dm_remove_commit_context(dm_ctx_t *dm_ctx, int c_ctx_id);
+int dm_remove_commit_context(dm_ctx_t *dm_ctx, uint32_t c_ctx_id);
 
 /**
  * @brief Looks up commit context identified by id
@@ -794,7 +794,7 @@ int dm_remove_commit_context(dm_ctx_t *dm_ctx, int c_ctx_id);
  * @param [out] c_ctx pointer to found c_ctx, NULL if there is no cctx with specified id
  * @return Error code (SR_ERR_OK if no error occurred)
  */
-int dm_get_commit_context(dm_ctx_t *dm_ctx, int c_ctx_id, dm_commit_context_t **c_ctx);
+int dm_get_commit_context(dm_ctx_t *dm_ctx, uint32_t c_ctx_id, dm_commit_context_t **c_ctx);
 
 /**
  * @brief Returns the structure containing commit contexts and corresponding lock

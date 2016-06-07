@@ -591,6 +591,10 @@ cl_move_item_test(void **state)
     rc = sr_move_item(session, "/test-module:list[key='k1']", SR_MOVE_FIRST, NULL);
     assert_int_equal(rc, SR_ERR_INVAL_ARG);
 
+    /* perform a move-item request, unknown element */
+    rc = sr_move_item(session, "/test-module:unknown", SR_MOVE_FIRST, NULL);
+    assert_int_equal(rc, SR_ERR_BAD_ELEMENT);
+
     rc = sr_set_item(session, "/test-module:user[name='nameA']", NULL, SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
@@ -951,6 +955,79 @@ cl_refresh_session(void **state)
 }
 
 static void
+cl_refresh_session2(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+
+    sr_session_ctx_t *sessionA = NULL, *sessionB = NULL, *sessionC = NULL;
+    const sr_error_info_t *error_info = NULL;
+    size_t error_cnt = 0;
+    int rc = 0;
+
+    /* start two session */
+    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &sessionA);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &sessionB);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &sessionC);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_set_item(sessionA, "/test-module:ordered-numbers[.='1']", NULL, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_set_item(sessionA, "/test-module:ordered-numbers[.='2']", NULL, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_set_item(sessionA, "/test-module:ordered-numbers[.='3']", NULL, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_commit(sessionA);
+    assert_int_equal(SR_ERR_OK, rc);
+
+
+    /* delete whole module configuration in sessionA */
+    rc = sr_delete_item(sessionA, "/test-module:*", SR_EDIT_STRICT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* delete whole module configuration in sessionB */
+    rc = sr_delete_item(sessionB, "/test-module:*", SR_EDIT_STRICT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* delete whole module configuration in sessionB */
+    rc = sr_move_item(sessionC, "/test-module:ordered-numbers[.='1']", SR_MOVE_AFTER, "/test-module:ordered-numbers[.='2']");
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* commit session A */
+    rc = sr_commit(sessionA);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* Session refresh of B should fail, can not delete non existing configuration */
+    rc = sr_session_refresh(sessionB);
+    assert_int_equal(SR_ERR_INTERNAL, rc);
+
+    sr_get_last_errors(sessionB, &error_info, &error_cnt);
+    for (size_t i=0; i<error_cnt; i++) {
+        printf("%s:\n\t%s\n", error_info[i].message, error_info[i].xpath);
+    }
+
+    /* Session refresh of C should fail, can not move deleted list */
+    rc = sr_session_refresh(sessionC);
+    assert_int_equal(SR_ERR_INTERNAL, rc);
+
+    sr_get_last_errors(sessionC, &error_info, &error_cnt);
+    for (size_t i=0; i<error_cnt; i++) {
+        printf("%s:\n\t%s\n", error_info[i].message, error_info[i].xpath);
+    }
+
+    rc = sr_session_stop(sessionA);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = sr_session_stop(sessionB);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = sr_session_stop(sessionC);
+    assert_int_equal(SR_ERR_OK, rc);
+}
+
+static void
 cl_get_error_test(void **state)
 {
     sr_conn_ctx_t *conn = *state;
@@ -1226,6 +1303,65 @@ cl_copy_config_test(void **state)
 
     /* stop the sessions */
     rc = sr_session_stop(session_startup);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_session_stop(session_running);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_unsubscribe(NULL, subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+}
+
+static void
+cl_copy_config_test2(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+
+    sr_session_ctx_t *session_candidate = NULL, *session_running = NULL;
+    sr_subscription_ctx_t *subscription = NULL;
+    int callback_called = 0;
+    sr_val_t value = { 0, }, *val = NULL;
+    int rc = SR_ERR_OK;
+
+    /* start sessions */
+    rc = sr_session_start(conn, SR_DS_CANDIDATE, SR_SESS_DEFAULT, &session_candidate);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &session_running);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* enable example-module */
+    rc = sr_module_change_subscribe(session_running, "example-module", test_module_change_cb,
+            &callback_called, 0, SR_SUBSCR_DEFAULT, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* edit config candidate */
+    value.type = SR_STRING_T;
+    value.data.string_val = "copy_config_test";
+    rc = sr_set_item(session_candidate, "/example-module:container/list[key1='abc'][key2='def']/leaf", &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* copy-config */
+    rc = sr_copy_config(session_candidate, NULL, SR_DS_CANDIDATE, SR_DS_RUNNING);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* check that value from candidate has been copied */
+    rc = sr_get_item(session_running, "/example-module:container/list[key1='abc'][key2='def']/leaf", &val);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_string_equal(val->data.string_val, "copy_config_test");
+    sr_free_val(val);
+
+    /* overwrite change in candidate - copy all enabled modules from startup to running */
+    rc = sr_copy_config(session_candidate, NULL, SR_DS_STARTUP, SR_DS_RUNNING);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_session_refresh(session_running);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_get_item(session_running, "/example-module:container/list[key1='abc'][key2='def']/leaf", &val);
+    assert_int_equal(rc, SR_ERR_NOT_FOUND);
+
+    /* stop the sessions */
+    rc = sr_session_stop(session_candidate);
     assert_int_equal(rc, SR_ERR_OK);
     rc = sr_session_stop(session_running);
     assert_int_equal(rc, SR_ERR_OK);
@@ -1644,8 +1780,10 @@ main()
             cmocka_unit_test_setup_teardown(cl_locking_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_get_error_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_refresh_session, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_refresh_session2, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_notification_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_copy_config_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_copy_config_test2, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_rpc_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(candidate_ds_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_switch_ds, sysrepo_setup, sysrepo_teardown),

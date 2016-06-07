@@ -23,6 +23,7 @@
 #include <pthread.h>
 
 #include "rp_dt_lookup.h"
+#include "rp_dt_xpath.h"
 
 int
 rp_dt_find_nodes(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char *xpath, bool check_enable, struct ly_set **nodes)
@@ -208,10 +209,11 @@ rp_dt_find_changes(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t 
     char *module_name = NULL;
 
     if (NULL == change_ctx->xpath || 0 != strcmp(xpath, change_ctx->xpath) || offset != change_ctx->offset) {
+        rc = rp_dt_validate_node_xpath(dm_ctx, session, xpath, NULL, (struct lys_node **) &change_ctx->schema_node);
+        CHECK_RC_LOG_RETURN(rc, "Selection node for changes can not be found xpath '%s'", xpath);
         free(change_ctx->xpath);
         change_ctx->xpath = strdup(xpath);
         CHECK_NULL_NOMEM_RETURN(change_ctx->xpath);
-        change_ctx->schema_node = dm_ly_ctx_get_node(dm_ctx, NULL, xpath);
         change_ctx->offset = 0;
         change_ctx->position = 0;
     } else {
