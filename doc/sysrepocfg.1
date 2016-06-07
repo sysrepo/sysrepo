@@ -1,0 +1,167 @@
+.\" Manpage for Sysrepocfg.
+.\" Process this file with
+.\" groff -man -Tascii sysrepocfg.1
+.\"
+
+.TH SYSREPOCFG 1 "2016-06-07" "Sysrepo"
+.SH NAME
+sysrepocfg \- configuration tool for Sysrepo datastore
+.
+.SH SYNOPSIS
+.B sysrepocfg
+[\-\-\fBe\fPditor=\fIEDITOR\fP] [\-\-\fBd\fPatastore=\fIDATASTORE\fP]
+[\-\-\fBf\fPormat=\fIFORMAT\fP] [\-\-\fBp\fPermanent] [\-\-\fBk\fPeep]
+[\-\-\fBl\fPevel=\fINUM\fP] \fIMODULE\fP
+.br
+.br
+.B sysrepocfg
+\-\-\fBi\fPmport[=\fIFILE\fP] [\-\-\fBd\fPatastore=\fIDATASTORE\fP]
+[\-\-\fBf\fPormat=\fIFORMAT\fP] [\-\-\fBp\fPermanent]
+[\-\-\fBl\fPevel=\fINUM\fP] \fIMODULE\fP
+.br
+.B sysrepocfg
+\-\-e\fBx\fPport[=\fIFILE\fP] [\-\-\fBd\fPatastore=\fIDATASTORE\fP]
+[\-\-\fBf\fPormat=\fIFORMAT\fP] [\-\-\fBl\fPevel=\fINUM\fP] \fIMODULE\fP
+.br
+.B sysrepocfg
+\-\-\fBh\fPelp
+.br
+.B sysrepocfg
+\-\-\fBv\fPersion
+.
+.SH DESCRIPTION
+\fBsysrepocfg\fP is a command-line tool for editing, importing and exporting configuration
+stored in Sysrepo datastore. It allows the user to edit startup or running configuration 
+of specified module in preferred text editor and to propagate the perfomed changes into 
+the datastore transparently for all subscribed applications. 
+Moreover, the user can export the current configuration into a file or get it
+printed to the standard output and, similarly, an already prepared configuration can 
+be imported from a file or read from the standard input.
+.br
+In the background, \fBsysrepocfg\fP uses Sysrepo client library for
+any data manipulation rather than directly accessing configuration data files, thus
+effectively inheriting all main features of Sysrepo, such as YANG-based data validation,
+full transaction and concurrency support, and, perhaps most importantly, subscribed 
+applications are notified about the changes made using \fBsysrepocfg\fP and can immediately
+take the new configuration into account.
+.br
+The editing process itself consists internally of the following steps:
+.IP \[bu] 2
+\fBsysrepocfg\fP connect to Sysrepo and starts a new session associated with the selected datastore.
+.IP \[bu]
+\fBsysrepocfg\fP sends request to Sysrepo to get the full configuration of the selected module. 
+The obtained data are then printed to a temporary file and presented to the user in his preferred 
+text editor.
+.IP \[bu]
+Once the editor is closed, \fBsysrepocfg\fP updates its view of the current datastore content and compares
+it against the user edited configuration. If no changes are detected, the program stops immediately,
+otherwise it proceeds with the data validation.
+.IP \[bu]
+In case the edited configuration cannot be parsed or violates defined YANG-based constraints, 
+all validation errors are printed to stderr and the user is asked for the next action: 
+either to re-open the configuration in the text editor, or to copy the temporary file with the edited 
+configuration to a user-selected path or to discard the changes altogether. 
+.IP \[bu]
+Once the new configuration is proven to be valid, \fBsysrepocfg\fP will attempt to propagate it to Sysrepo
+datastore one change at a time, but sends request to commit all modifications only after everything 
+was applied successfully, thus conforming to ACID properties of database transactions.
+.
+.SH OPTIONS
+.TP
+.BR \-h ", " \-\^\-help
+Output a usage message and exit.
+.TP
+.BR \-v ", " \-\^\-version
+Output the version number of
+.B sysrepocfg
+and exit.
+.TP
+.BI \-d " DATASTORE" "\fR,\fP \-\^\-datastore=" DATASTORE
+Datastore to be operated on. Select either \fBrunning\fP or \fBstartup\fP.
+If this option is ommited, \fBrunning\fP datastore is used.
+.TP
+.BI \-f " FORMAT" "\fR,\fP \-\^\-format=" FORMAT
+Data format to be used for configuration editing/importing/exporting.
+Currently supported formats are \fBxml\fP and \fBjson\fP.
+By default, \fBxml\fP is assumed.
+.TP
+.BI \-e " EDITOR" "\fR,\fP \-\^\-editor=" EDITOR
+Text editor to be used for editing datastore data.
+By default, \fBsysrepocfg\fP will try to determine the preffered text editor
+based on the values of environment variables \fIVISUAL\fP and \fIEDITOR\fP in this 
+order. When no editor is specified via argument or environment variables,
+\fBsysrepocfg\fP will print an error message and return an exit status indicating abnormal 
+termination.
+.TP
+.BR \-i " [\fIFILE\fP"], " \-\^\-import[=\fIFILE\fP]
+Import entire configuration from a supplied file into the specified datastore.
+Specify format of the input file using the option \fB--format\fP.
+If the file path is empty or if the file 
+.RB "\*(lq" \- "\*(rq"
+is given, \fBsysrepocfg\fP will read 
+the configuration from standard input.
+.TP
+.BR \-x " [\fIFILE\fP"], " \-\^\-export[=\fIFILE\fP]
+Export data of a specified module and datastore to a file at the defined path.
+The output file is created if it does not exist yet, otherwise its previous content
+is overwritten.
+Specify format of the output file using the option \fB--format\fP.
+If the file path is empty or if the file 
+.RB "\*(lq" \- "\*(rq"
+is given, \fBsysrepocfg\fP will print the configuration to the standard output.
+.TP
+.BR \-k ", " \-\^\-keep
+Keep datastore of the selected module locked while it is being edited 
+inside the text editor. 
+Other users and applications will not be able to access the same module
+and datastore for the duration of editing, therefore use with caution.
+.TP
+.BR \-p ", " \-\^\-permanent
+Make all changes made in the running datastore permanent by copying the new 
+configuration to the startup datastore after the commit.
+.TP
+.BI \-l " NUM" "\fR,\fP \-\^\-level=" NUM
+Set verbosity level of logging:
+.RS
+.IP \fB0\fP
+all logging turned off
+.IP \fB1\fP
+(default) log only error messages
+.IP \fB2\fP
+log error and warning messages
+.IP \fB3\fP
+log error, warning and informational messages
+.IP \fB4\fP
+log everything, including development debug messages
+.
+.SH EXAMPLE
+.IP \[bu] 2
+Edit \fBietf-interfaces\fP module's \fBrunning config\fP in \fBxml format\fP via \fBdefault editor\fP:
+    sysrepocf ietf-interfaces
+.IP \[bu]
+Edit \fBietf-interfaces\fP module's \fBrunning config\fP in \fBxml format\fP via \fBvim\fP:
+    sysrepocfg --editor=vim ietf-interfaces
+.IP \[bu]
+Edit \fBietf-interfaces\fP module's \fBrunning config\fP in \fBxml format\fP via \fBvim\fP and make changes permanent:
+    sysrepocfg --editor=vim --permanent ietf-interfaces
+.IP \[bu]
+Edit \fBietf-interfaces\fP module's \fBstartup config\fP in \fBjson format\fP via \fBdefault editor\fP:
+    sysrepocfg --format=json --datastore=startup ietf-interfaces
+.IP \[bu]
+Export \fBietf-interfaces\fP module's \fBstartup config\fP in \fBjson format\fP into \fB/tmp/backup.json\fP file:
+    sysrepocfg --export=/tmp/backup.json --format=json --datastore=startup ietf-interfaces
+.IP \[bu]
+Import \fBietf-interfaces\fP module's \fBrunning config\fP content from \fB/tmp/backup.json\fP file in \fBjson format\fP:
+    sysrepocfg --import=/tmp/backup.json --format=json ietf-interfaces
+.
+.SH SEE ALSO
+http://www.sysrepo.org (Sysrepo homepage)
+.br
+https://github.com/CESNET/libyang (the GitHub base for libyang)
+.
+.SH AUTHORS
+Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>,
+Milan Lenco <milan.lenco@pantheon.tech>
+.
+.SH COPYRIGHT
+Copyright \(co 2016 Cisco Systems, Inc.
