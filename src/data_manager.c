@@ -111,7 +111,7 @@ typedef struct dm_node_info_s {
 } dm_node_info_t;
 
 /** @brief Invalid value for the commit context id, used for signaling e.g.: duplicate id */
-#define DM_COMMIT_CTX_ID_INVALID -1
+#define DM_COMMIT_CTX_ID_INVALID 0
 /** @brief Number of attempts to generate unique id for commit context */
 #define DM_COMMIT_CTX_ID_MAX_ATTEMPTS 100
 
@@ -2226,7 +2226,7 @@ dm_insert_commit_context(dm_ctx_t *dm_ctx, dm_commit_context_t *c_ctx)
 }
 
 int
-dm_remove_commit_context(dm_ctx_t *dm_ctx, int c_ctx_id)
+dm_remove_commit_context(dm_ctx_t *dm_ctx, uint32_t c_ctx_id)
 {
     pthread_rwlock_wrlock(&dm_ctx->commit_ctxs.lock);
     dm_commit_context_t *c_ctx = NULL;
@@ -3575,7 +3575,7 @@ dm_is_model_modified(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module
 }
 
 int
-dm_get_commit_context(dm_ctx_t *dm_ctx, int c_ctx_id, dm_commit_context_t **c_ctx)
+dm_get_commit_context(dm_ctx_t *dm_ctx, uint32_t c_ctx_id, dm_commit_context_t **c_ctx)
 {
     CHECK_NULL_ARG2(dm_ctx, c_ctx);
     dm_commit_context_t lookup = {0};
