@@ -641,6 +641,7 @@ np_subscription_notify(np_ctx_t *np_ctx, np_subscription_t *subscription, uint32
 
     if (SR_ERR_OK == rc) {
         notif->notification->commit_id = commit_id;
+        notif->notification->has_commit_id = true;
         if (SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS == subscription->type) {
             notif->notification->module_change_notif->event = subscription->notif_event;
             notif->notification->module_change_notif->module_name = strdup(subscription->module_name);
