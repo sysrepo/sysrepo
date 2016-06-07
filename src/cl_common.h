@@ -67,6 +67,7 @@ typedef struct sr_session_ctx_s {
     sr_error_info_t *error_info;  /**< Array of detailed error information from last API call. */
     size_t error_info_size;       /**< Current size of the error_info array. */
     size_t error_cnt;             /**< Number of errors that occurred within last API call. */
+    uint32_t commit_id;           /**< ID of the commit in case that this is a notification session (0 otherwise). */
 } sr_session_ctx_t;
 
 /**
