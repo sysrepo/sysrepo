@@ -855,8 +855,9 @@ rp_dt_copy_config_to_running(rp_ctx_t* rp_ctx, rp_session_t* session, const char
         rc = dm_get_all_modules(rp_ctx->dm_ctx, session->dm_session, true, &modules);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Get all modules failed");
         for (size_t i = 0; i < modules->number; i++) {
-            rc = dm_get_data_info(rp_ctx->dm_ctx, session->dm_session, modules->set.g[i], &info);
-            CHECK_RC_MSG_GOTO(rc, cleanup, "Get data info failed");
+            struct lys_module *module = modules->set.g[i];
+            rc = dm_get_data_info(rp_ctx->dm_ctx, session->dm_session, module->name, &info);
+            CHECK_RC_LOG_GOTO(rc, cleanup, "Get data info failed %s", module->name);
             info->modified = true;
         }
 
