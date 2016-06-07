@@ -1016,7 +1016,6 @@ srcfg_print_help()
     printf("  -x, --export [<path>]        Export data of specified module and datastore to a file at the defined path\n");
     printf("                               or to stdout if the argument is empty.\n");
     printf("  -k, --keep                   Keep datastore locked for the entire process of editing\n");
-    printf("                               (rather than just for I/O operations)\n");
     printf("  -p, --permanent              Make all changes made in the running datastore permanent\n");
     printf("                               by copying the new configuration to the startup datastore after the commit.\n");
     printf("  -l, --level <level>          Set verbosity level of logging:\n");
