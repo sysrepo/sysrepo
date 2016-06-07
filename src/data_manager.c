@@ -110,6 +110,11 @@ typedef struct dm_node_info_s {
     dm_node_state_t state;
 } dm_node_info_t;
 
+/** @brief Invalid value for the commit context id, used for signaling e.g.: duplicate id */
+#define DM_COMMIT_CTX_ID_INVALID -1
+/** @brief Number of attempts to generate unique id for commit context */
+#define DM_COMMIT_CTX_ID_MAX_ATTEMPTS 100
+
 /**
  * @brief Minimal nanosecond difference between current time and modification timestamp.
  * To allow optimized commit - if timestamp of the file system file and session copy matches
@@ -2273,7 +2278,19 @@ dm_commit_prepare_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_con
     c_ctx = calloc(1, sizeof(*c_ctx));
     CHECK_NULL_NOMEM_RETURN(c_ctx);
 
-    c_ctx->id = rand();
+    size_t attempts = 0;
+    /* generate unique id */
+    do {
+        c_ctx->id = rand();
+        if (NULL != sr_btree_search(dm_ctx->commit_ctxs.tree, c_ctx)) {
+            c_ctx->id = DM_COMMIT_CTX_ID_INVALID;
+        }
+        if (++attempts > DM_COMMIT_CTX_ID_MAX_ATTEMPTS) {
+            SR_LOG_ERR_MSG("Unable to generate an unique session_id.");
+            rc = SR_ERR_INTERNAL;
+            goto cleanup;
+        }
+    } while (DM_COMMIT_CTX_ID_INVALID == c_ctx->id);
 
     rc = sr_btree_init(dm_module_subscription_cmp, dm_model_subscription_free, &c_ctx->subscriptions);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Binary tree allocation failed");
