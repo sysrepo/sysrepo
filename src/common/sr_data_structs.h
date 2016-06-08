@@ -31,6 +31,68 @@
  */
 
 /**
+ * @brief List data structure.
+ */
+typedef struct sr_list_s {
+    size_t count;   /**< Count of the elements currently stored in the list. */
+    void **data;    /**< Array of data elements stored in the list. */
+    size_t _size;   /**< Current allocated size of the list. Internal member, should not be touched. */
+} sr_list_t;
+
+/**
+ * @brief Allocates and initializes a new list instance.
+ *
+ * @param[out] list Pointer to the list structure, it is supposed to be freed by ::sr_list_cleanup.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_list_init(sr_list_t **list);
+
+/**
+ * @brief Cleans up the list structure.
+ *
+ * @param[in] list Pointer to the list structure.
+ */
+void sr_list_cleanup(sr_list_t *list);
+
+/**
+ * @brief Adds a new element at the end of the list.
+ *
+ * @note O(1).
+ *
+ * @param[in] list Pointer to the list structure.
+ * @param[in] item Item to be added.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_list_add(sr_list_t *list, void *item);
+
+/**
+ * @brief Removes an element from the list. If there are multiple matching
+ * elements, removes the first one.
+ *
+ * @note O(n), optimized for removing from the end with O(1).
+ *
+ * @param[in] list Pointer to the list structure.
+ * @param[in] item Item to be removed.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_list_rm(sr_list_t *list, void *item);
+
+/**
+ * @brief Removes an list element at specified position (starting with 0).
+ *
+ * @note O(1), but includes memmove.
+ *
+ * @param[in] list Pointer to the list structure.
+ * @param[in] index Index of the item to be removed.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_list_rm_at(sr_list_t *list, size_t index);
+
+/**
  * @brief Common context of balanced binary tree, independent of the library used.
  */
 typedef struct sr_btree_s sr_btree_t;
@@ -71,6 +133,8 @@ void sr_btree_cleanup(sr_btree_t* tree);
  * A matching item to the inserted one (according to the compare function) must
  * not already exist in the tree, otherwise SR_ERR_EXISTS error is returned.
  *
+ * @note O(log n).
+ *
  * @param[in] tree Binary tree context acquired with ::sr_btree_init.
  * @param[in] item Item to be inserted.
  *
@@ -83,6 +147,8 @@ int sr_btree_insert(sr_btree_t *tree, void *item);
  * @brief Deletes the item from the tree, if matching item item (according to
  * the compare function) exists in the tree.
  *
+ * @note O(log n).
+ *
  * @param[in] tree Binary tree context acquired with ::sr_btree_init.
  * @param[in] item Item to be deleted.
  */
@@ -91,6 +157,8 @@ void sr_btree_delete(sr_btree_t *tree, void *item);
 /**
  * @brief Search for an item in the tree, matching with provided item according
  * to the compare function.
+ *
+ * @note O(log n).
  *
  * @param[in] tree Binary tree context acquired with ::sr_btree_init.
  * @param[in] item Item to be searched for.
@@ -109,6 +177,8 @@ void *sr_btree_search(const sr_btree_t *tree, const void *item);
  *
  * @note Use this function in an iteration from 0 to (number of items - 1).
  * Any Other usage may lead to unexpected behavior.
+ *
+ * @note O(log n).
  *
  * @param[in] tree Binary tree context acquired with ::sr_btree_init.
  * @param[in] index Index of an item.
@@ -148,6 +218,8 @@ void sr_cbuff_cleanup(sr_cbuff_t *buffer);
 /**
  * @brief Enqueues an element into circular buffer.
  *
+ * @note O(1).
+ *
  * @param[in] buffer Circular buffer context.
  * @param[in] item The element to be enqueued (pointer to memory from where
  * the data will be copied to buffer).
@@ -159,6 +231,8 @@ int sr_cbuff_enqueue(sr_cbuff_t *buffer, void *item);
 /**
  * @brief Dequeues an element from circular buffer.
  *
+ * @note O(1).
+ *
  * @param[in] buffer Circular buffer queue context.
  * @param[out] item Pointer to memory where dequeued data will be copied.
  *
@@ -168,6 +242,8 @@ bool sr_cbuff_dequeue(sr_cbuff_t *buffer, void *item);
 
 /**
  * @brief Return number of elements currently stored in the queue.
+ *
+ * @note O(1).
  *
  * @param[in] buffer Circular buffer queue context.
  *
