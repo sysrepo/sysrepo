@@ -895,7 +895,8 @@ void delete_negative_test(void **state){
     assert_int_equal(SR_ERR_INVAL_ARG, rc);
 
     rc = rp_dt_delete_item_wrapper(ctx, session, "/example-module:unknown", SR_EDIT_DEFAULT);
-    assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
+    /* validation of the xpath produces only warning */
+    assert_int_equal(SR_ERR_OK, rc);
 
     test_rp_session_cleanup(ctx, session);
 }
