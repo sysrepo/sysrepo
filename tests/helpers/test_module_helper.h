@@ -44,9 +44,14 @@ void createDataTreeIETFinterfacesModule();
 void createDataTreeExampleModule();
 
 /**
- * Creates example-module data tree with thousands instances of a list.
+ * Creates example-module data tree with specified number list instances.
  */
-void createDataTreeLargeExampleModule();
+void createDataTreeLargeExampleModule(int list_count);
+
+/**
+ * Creates ietf-interfaces module configuration for specified number of interfaces
+ */
+void createDataTreeLargeIETFinterfacesModule(size_t if_count);
 
 #define XP_TEST_MODULE_ENUM "/test-module:main/enum"
 #define XP_TEST_MODULE_ENUM_VALUE "maybe"
