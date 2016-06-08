@@ -47,6 +47,51 @@ logging_cleanup(void **state)
 }
 
 /*
+ * Tests sysrepo list DS.
+ */
+static void
+sr_list_test(void **state)
+{
+    sr_list_t *list = NULL;
+    int rc = SR_ERR_OK;
+
+    rc = sr_list_init(&list);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    for (size_t i = 1; i <= 100; i++) {
+        sr_list_add(list, (void*)i);
+    }
+
+    rc = sr_list_rm_at(list, 50);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_list_rm_at(list, 51);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_list_rm_at(list, 52);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_list_rm(list, (void*)66);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_list_rm(list, (void*)100);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_list_rm(list, (void*)99);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    assert_int_equal(list->count, 94);
+    rc = sr_list_rm_at(list, 94);
+    assert_int_equal(rc, SR_ERR_INVAL_ARG);
+
+    rc = sr_list_rm(list, (void*)100);
+    assert_int_equal(rc, SR_ERR_NOT_FOUND);
+    rc = sr_list_rm(list, (void*)66);
+    assert_int_equal(rc, SR_ERR_NOT_FOUND);
+
+    rc = sr_list_rm_at(list, 100);
+    assert_int_equal(rc, SR_ERR_INVAL_ARG);
+
+    sr_list_cleanup(list);
+}
+
+/*
  * Tests circular buffer - stores integers in it.
  */
 static void
@@ -209,6 +254,7 @@ logger_callback_test(void **state)
 int
 main() {
     const struct CMUnitTest tests[] = {
+            cmocka_unit_test_setup_teardown(sr_list_test, logging_setup, logging_cleanup),
             cmocka_unit_test_setup_teardown(circular_buffer_test1, logging_setup, logging_cleanup),
             cmocka_unit_test_setup_teardown(circular_buffer_test2, logging_setup, logging_cleanup),
             cmocka_unit_test_setup_teardown(circular_buffer_test3, logging_setup, logging_cleanup),
