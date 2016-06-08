@@ -251,12 +251,10 @@ rp_dt_get_values_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char 
 
 cleanup:
     if (SR_ERR_NOT_FOUND == rc || (SR_ERR_OK == rc && 0 == count)) {
-        rc = rp_dt_validate_node_xpath(rp_ctx->dm_ctx, NULL, xpath, NULL, NULL);
-        if (SR_ERR_OK != rc) {
+        if (SR_ERR_OK != rp_dt_validate_node_xpath(rp_ctx->dm_ctx, NULL, xpath, NULL, NULL)) {
             /* Print warning only, because we are not able to validate all xpath */
             SR_LOG_WRN("Validation of xpath %s was not successful", xpath);
         }
-        rc = SR_ERR_NOT_FOUND;
     }
     free(data_tree_name);
     return rc;
