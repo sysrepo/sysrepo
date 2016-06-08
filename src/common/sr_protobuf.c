@@ -32,6 +32,8 @@ sr_gpb_operation_name(Sr__Operation operation)
         return "session-stop";
     case SR__OPERATION__SESSION_REFRESH:
         return "session-refresh";
+    case SR__OPERATION__SESSION_SWITCH_DS:
+        return "session-switch-ds";
     case SR__OPERATION__LIST_SCHEMAS:
         return "list-schemas";
     case SR__OPERATION__GET_SCHEMA:
@@ -74,9 +76,10 @@ sr_gpb_operation_name(Sr__Operation operation)
         return "get changes";
     case SR__OPERATION__RPC:
         return "rpc";
-    default:
+    case _SR__OPERATION_IS_INT_SIZE:
         return "unknown";
     }
+    return "unknown";
 }
 
 int
@@ -506,6 +509,7 @@ sr_gpb_notif_alloc(const Sr__SubscriptionType type, const char *destination, con
             notif->subtree_change_notif = (Sr__SubtreeChangeNotification*)sub_msg;
             break;
         case SR__SUBSCRIPTION_TYPE__HELLO_SUBS:
+        case SR__SUBSCRIPTION_TYPE__COMMIT_END_SUBS:
             /* no sub-message */
             break;
         default:
@@ -754,6 +758,7 @@ sr_gpb_msg_validate_notif(const Sr__Msg *msg, const Sr__SubscriptionType type)
     if (SR__MSG__MSG_TYPE__NOTIFICATION == msg->type) {
         CHECK_NULL_RETURN(msg->notification, SR_ERR_MALFORMED_MSG);
         if ((msg->notification->type != SR__SUBSCRIPTION_TYPE__HELLO_SUBS) &&
+                (msg->notification->type != SR__SUBSCRIPTION_TYPE__COMMIT_END_SUBS) &&
                 (msg->notification->type != type)) {
             return SR_ERR_MALFORMED_MSG;
         }
@@ -771,6 +776,7 @@ sr_gpb_msg_validate_notif(const Sr__Msg *msg, const Sr__SubscriptionType type)
                 CHECK_NULL_RETURN(msg->notification->subtree_change_notif, SR_ERR_MALFORMED_MSG);
                 break;
             case SR__SUBSCRIPTION_TYPE__HELLO_SUBS:
+            case SR__SUBSCRIPTION_TYPE__COMMIT_END_SUBS:
                 break;
             default:
                 return SR_ERR_MALFORMED_MSG;
@@ -1392,6 +1398,8 @@ sr_subscription_type_gpb_to_str(Sr__SubscriptionType type)
             return "rpc";
         case SR__SUBSCRIPTION_TYPE__HELLO_SUBS:
             return "hello";
+        case SR__SUBSCRIPTION_TYPE__COMMIT_END_SUBS:
+            return "commit-end";
         default:
             return "unknown";
     }

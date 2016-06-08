@@ -193,6 +193,11 @@ int np_get_module_change_subscriptions(np_ctx_t *np_ctx, const char *module_name
 int np_subscription_notify(np_ctx_t *np_ctx, np_subscription_t *subscription, uint32_t commit_id);
 
 /**
+ * @brief Notify given subscribers that the commit process has ended.
+ */
+int np_commit_end_notify(np_ctx_t *np_ctx, uint32_t commit_id, sr_list_t *subscriptions);
+
+/**
  * @brief Cleans up a subscription context (including all its content).
  *
  * @param[in] subscription Subscription context to be freed.

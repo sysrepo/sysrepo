@@ -668,6 +668,36 @@ np_subscription_notify(np_ctx_t *np_ctx, np_subscription_t *subscription, uint32
     return rc;
 }
 
+int
+np_commit_end_notify(np_ctx_t *np_ctx, uint32_t commit_id, sr_list_t *subscriptions)
+{
+    np_subscription_t *subscription = NULL;
+    Sr__Msg *notif = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG2(np_ctx, subscriptions);
+
+    for (size_t i = 0; i < subscriptions->count; i++) {
+        /* send commit_end notification */
+        subscription = subscriptions->data[i];
+        rc = sr_gpb_notif_alloc(SR__SUBSCRIPTION_TYPE__COMMIT_END_SUBS, subscription->dst_address,
+                subscription->dst_id, &notif);
+        notif->notification->commit_id = commit_id;
+        notif->notification->has_commit_id = true;
+
+        if (SR_ERR_OK == rc) {
+            /* send the message */
+            rc = cm_msg_send(np_ctx->rp_ctx->cm_ctx, notif);
+        } else {
+            /* release the message */
+            sr__msg__free_unpacked(notif, NULL);
+        }
+        notif = NULL;
+    }
+
+    return SR_ERR_OK;
+}
+
 void
 np_free_subscription(np_subscription_t *subscription)
 {

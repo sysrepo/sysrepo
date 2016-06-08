@@ -578,6 +578,44 @@ cl_sm_get_data_session(cl_sm_ctx_t *sm_ctx, cl_sm_subscription_ctx_t *subscripti
     return rc;
 }
 
+int
+cl_sm_close_data_session(cl_sm_ctx_t *sm_ctx, cl_sm_subscription_ctx_t *subscription,
+        const char *source_address, uint32_t commit_id)
+{
+    sr_conn_ctx_t *connection = NULL;
+    sr_conn_ctx_t connection_lookup = { 0, };
+    sr_session_ctx_t *session = NULL;
+    sr_session_list_t *tmp = NULL;
+
+    CHECK_NULL_ARG3(sm_ctx, subscription, source_address);
+
+    /* find a connection matching with provided address */
+    connection_lookup.dst_address = source_address;
+    connection = sr_btree_search(sm_ctx->data_connection_btree, &connection_lookup);
+
+    if (NULL == connection || NULL == connection->session_list) {
+        /* no connection / sessions for this source address */
+        return SR_ERR_OK;
+    }
+
+    /* try to find the session matching with the commit ID in connection */
+    tmp = connection->session_list;
+    while (NULL != tmp) {
+        if ((NULL != tmp->session) && (tmp->session->commit_id == commit_id)) {
+            session = tmp->session;
+            break;
+        }
+        tmp = tmp->next;
+    }
+
+    if (NULL != session) {
+        /* stop the session including sending of a session-stop request */
+        sr_session_stop(session);
+    }
+
+    return SR_ERR_OK;
+}
+
 /**
  * @brief Processes an incoming notification message.
  */
@@ -622,11 +660,6 @@ cl_sm_notif_process(cl_sm_ctx_t *sm_ctx, Sr__Msg *msg)
                 &data_session);
         if (SR_ERR_OK != rc) {
             pthread_mutex_unlock(&sm_ctx->subscriptions_lock);
-            return SR_ERR_INVAL_ARG;
-        }
-        rc = sr_session_refresh(data_session);
-        if (SR_ERR_OK != rc) {
-            pthread_mutex_unlock(&sm_ctx->subscriptions_lock);
             return rc;
         }
     }
@@ -666,6 +699,14 @@ cl_sm_notif_process(cl_sm_ctx_t *sm_ctx, Sr__Msg *msg)
             break;
         case SR__SUBSCRIPTION_TYPE__HELLO_SUBS:
             SR_LOG_DBG("HELLO notification received on subscription id=%"PRIu32".", subscription->id);
+            break;
+        case SR__SUBSCRIPTION_TYPE__COMMIT_END_SUBS:
+            SR_LOG_DBG("COMMIT-END notification received on subscription id=%"PRIu32".", subscription->id);
+            /* close the session for this commit */
+            if (msg->notification->has_commit_id) {
+                rc = cl_sm_close_data_session(sm_ctx, subscription, msg->notification->source_address,
+                        msg->notification->commit_id);
+            }
             break;
         default:
             SR_LOG_ERR("Unknown notification event received on subscription id=%"PRIu32".", subscription->id);

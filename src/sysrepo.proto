@@ -470,7 +470,9 @@ enum SubscriptionType {
   SUBTREE_CHANGE_SUBS = 4;
 
   RPC_SUBS = 10;
+
   HELLO_SUBS = 20;           /**< Used only internally to test for inactive notification subscriptions. */
+  COMMIT_END_SUBS = 21;      /**< Used only internally to notify about the end of the commit process. */
 }
 
 enum NotificationEvent {
