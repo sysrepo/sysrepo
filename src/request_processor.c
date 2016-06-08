@@ -88,8 +88,7 @@ rp_check_notif_session(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
     char *module_name = NULL;
     const char *xpath = NULL;
     dm_commit_ctxs_t *dm_ctxs = NULL;
-    //TODO: retrieve commit id from the session
-    uint32_t id = 0;
+    uint32_t id = session->commit_id;
 
     rc = dm_get_commit_ctxs(rp_ctx->dm_ctx, &dm_ctxs);
     CHECK_RC_MSG_RETURN(rc, "Get commit ctx failed");
@@ -1038,8 +1037,8 @@ rp_get_changes_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg
     }
 
     char *xpath = msg->request->get_changes_req->xpath;
-    //TODO retrieve commit id from session
-    uint32_t id = 0;
+
+    uint32_t id = session->commit_id;
 
     if (session->options & SR__SESSION_FLAGS__SESS_NOTIFICATION) {
         rc = rp_check_notif_session(rp_ctx, session, msg);
