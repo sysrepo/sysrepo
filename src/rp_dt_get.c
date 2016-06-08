@@ -205,10 +205,12 @@ rp_dt_get_value_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char *
     rc = rp_dt_get_value(rp_ctx->dm_ctx, data_tree, xpath, dm_is_running_ds_session(rp_session->dm_session), value);
 cleanup:
     if (SR_ERR_NOT_FOUND == rc) {
-#if 0
-        rc = rp_dt_validate_node_xpath(rp_ctx->dm_ctx, rp_session->dm_session, xpath, NULL, NULL);
-        rc = rc == SR_ERR_OK ? SR_ERR_NOT_FOUND : rc;
-#endif
+        rc = rp_dt_validate_node_xpath(rp_ctx->dm_ctx, NULL, xpath, NULL, NULL);
+        if (SR_ERR_OK != rc) {
+            /* Print warning only, because we are not able to validate all xpath */
+            SR_LOG_WRN("Validation of xpath %s was not successful", xpath);
+        }
+        rc = SR_ERR_NOT_FOUND;
     } else if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Get value failed for xpath '%s'", xpath);
     }
@@ -243,16 +245,18 @@ rp_dt_get_values_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char 
     }
 
     rc = rp_dt_get_values(rp_ctx->dm_ctx, data_tree, xpath, dm_is_running_ds_session(rp_session->dm_session), values, count);
-    if (SR_ERR_OK != rc) {
+    if (SR_ERR_OK != rc && SR_ERR_NOT_FOUND != rc) {
         SR_LOG_ERR("Get values failed for xpath '%s'", xpath);
     }
 
 cleanup:
     if (SR_ERR_NOT_FOUND == rc || (SR_ERR_OK == rc && 0 == count)) {
-#if 0
-        rc = rp_dt_validate_node_xpath(rp_ctx->dm_ctx, rp_session->dm_session, xpath, NULL, NULL);
-        rc = rc == SR_ERR_OK ? SR_ERR_NOT_FOUND : rc;
-#endif
+        rc = rp_dt_validate_node_xpath(rp_ctx->dm_ctx, NULL, xpath, NULL, NULL);
+        if (SR_ERR_OK != rc) {
+            /* Print warning only, because we are not able to validate all xpath */
+            SR_LOG_WRN("Validation of xpath %s was not successful", xpath);
+        }
+        rc = SR_ERR_NOT_FOUND;
     }
     free(data_tree_name);
     return rc;
@@ -296,10 +300,12 @@ rp_dt_get_values_wrapper_with_opts(rp_ctx_t *rp_ctx, rp_session_t *rp_session, r
     rc = rp_dt_get_values_from_nodes(nodes, values, count);
 cleanup:
     if (SR_ERR_NOT_FOUND == rc) {
-#if 0
-        rc = rp_dt_validate_node_xpath(rp_ctx->dm_ctx, rp_session->dm_session, xpath, NULL, NULL);
-        rc = rc == SR_ERR_OK ? SR_ERR_NOT_FOUND : rc;
-#endif
+        rc = rp_dt_validate_node_xpath(rp_ctx->dm_ctx, NULL, xpath, NULL, NULL);
+        if (SR_ERR_OK != rc) {
+            /* Print warning only, because we are not able to validate all xpath */
+            SR_LOG_WRN("Validation of xpath %s was not successful", xpath);
+        }
+        rc = SR_ERR_NOT_FOUND;
     } else if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Copying values from nodes failed for xpath '%s'", xpath);
     }

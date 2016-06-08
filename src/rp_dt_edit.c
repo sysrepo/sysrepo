@@ -181,20 +181,28 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, co
     dm_data_info_t *info = NULL;
     struct ly_set *nodes = NULL;
     struct ly_set *parents = NULL;
+    char *module_name = NULL;
     int ret = 0;
 
-    rc = rp_dt_validate_node_xpath(dm_ctx, session, xpath, &module, NULL);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Requested node is not valid %s", xpath);
-        return rc;
-    }
+    rc = sr_copy_first_ns(xpath, &module_name);
+    CHECK_RC_LOG_RETURN(rc, "Copying module name failed for xpath '%s'", xpath);
 
-    rc = dm_get_data_info(dm_ctx, session, module->name, &info);
+    rc = dm_get_data_info(dm_ctx, session, module_name, &info);
+    free(module_name);
     CHECK_RC_LOG_RETURN(rc, "Getting data tree failed for xpath '%s'", xpath);
 
     /* find nodes nodes to be deleted */
     rc = rp_dt_find_nodes(dm_ctx, info->node, xpath, dm_is_running_ds_session(session), &nodes);
     if (SR_ERR_NOT_FOUND == rc) {
+        rc = rp_dt_validate_node_xpath(dm_ctx, session, xpath, &module, NULL);
+        if (SR_ERR_OK != rc && NULL == module) {
+            SR_LOG_ERR("Requested xpath is not valid %s", xpath);
+            return rc;
+        }
+        else if (SR_ERR_OK != rc) {
+            SR_LOG_WRN("Validation of xpath %s was not successful", xpath);
+        }
+
         if (SR_EDIT_STRICT & options) {
             SR_LOG_ERR("No nodes to be deleted with strict option %s", xpath);
             return dm_report_error(session, NULL, xpath, SR_ERR_DATA_MISSING);
@@ -207,7 +215,7 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, co
     }
 
     /* if strict option is set, at least one non default node must be deleted */
-    if (SR_EDIT_STRICT & options && !rp_dt_contains_non_default_node(nodes)) {    
+    if (SR_EDIT_STRICT & options && !rp_dt_contains_non_default_node(nodes)) {
         SR_LOG_ERR("No nodes to be deleted with strict option %s", xpath);
         rc = dm_report_error(session, NULL, xpath, SR_ERR_DATA_MISSING);
         goto cleanup;
