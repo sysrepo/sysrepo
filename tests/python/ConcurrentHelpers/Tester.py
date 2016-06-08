@@ -33,7 +33,8 @@ class Tester(object):
         _current_step(int) - index of the step to be executed
 
     """
-    def __init__(self):
+    def __init__(self, name=None):
+        self.name = name
         self.tc = unittest.TestCase('__init__')
         self.steps = []
 
@@ -72,10 +73,12 @@ class Tester(object):
 
     def run_sync(self, done, next_step, rand_sleep, id, queue):
         """run steps in sync with other tester and inform test manager"""
+        if self.name is None:
+            self.name = id
         #empty steps check
         if len(self.steps) == 0:
             next_step.acquire()
-            queue.put((id, False))
+            queue.put((id, self.name, False))
             done.release()
 
         for step in range(len(self.steps)):
@@ -93,11 +96,11 @@ class Tester(object):
                 self._current_step += 1
                 #report to test manager if there is any step left
                 if err is not None:
-                    queue.put((id, err))
+                    queue.put((id, self.name, err))
                 elif self.has_next():
-                    queue.put((id, True))
+                    queue.put((id, self.name, True))
                 else:
-                    queue.put((id, False))
+                    queue.put((id, self.name, False))
                 done.release()
 
     def run_without_sync(self):

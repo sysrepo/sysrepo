@@ -2218,7 +2218,6 @@ dm_insert_commit_context(dm_ctx_t *dm_ctx, dm_commit_context_t *c_ctx)
     CHECK_NULL_ARG2(dm_ctx, c_ctx);
     int rc = SR_ERR_OK;
     pthread_rwlock_wrlock(&dm_ctx->commit_ctxs.lock);
-    dm_ctx->commit_ctxs.last_commit_id = c_ctx->id;
     rc = sr_btree_insert(dm_ctx->commit_ctxs.tree, c_ctx);
     pthread_rwlock_unlock(&dm_ctx->commit_ctxs.lock);
     CHECK_RC_MSG_RETURN(rc, "Insert into commit context bin tree failed");
@@ -2605,11 +2604,13 @@ dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t *c
         dm_model_subscription_t lookup = {0};
 
         lookup_info.module = info->module;
+        /* configuration before commit */
         prev_info = sr_btree_search(c_ctx->prev_data_trees, &lookup_info);
         if (NULL == prev_info) {
             SR_LOG_ERR("Current data tree for module %s not found", info->module->name);
             continue;
         }
+        /* configuration after commit */
         commit_info = sr_btree_search(c_ctx->session->session_modules[c_ctx->session->datastore], &lookup_info);
         if (NULL == commit_info) {
             SR_LOG_ERR("Commit data tree for module %s not found", info->module->name);
@@ -2659,19 +2660,17 @@ dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t *c
 
         /* loop through subscription test if they should be notified */
         for (size_t s = 0; s < ms->subscription_cnt; s++) {
-            d_cnt = 0;
-            while (LYD_DIFF_END != diff->type[d_cnt]) {
+
+            for (d_cnt = 0; LYD_DIFF_END != diff->type[d_cnt]; d_cnt++) {
                 const struct lyd_node *cmp_node = dm_get_notification_match_node(diff, d_cnt);
                 rc = dm_match_subscription(ms->nodes[s], cmp_node, &match);
                 if (SR_ERR_OK != rc) {
                     SR_LOG_WRN_MSG("Subscription match failed");
-                    d_cnt++;
                     continue;
                 }
                 if (match) {
                     break;
                 }
-                d_cnt++;
             }
 
             if (match) {
@@ -3579,8 +3578,7 @@ dm_get_commit_context(dm_ctx_t *dm_ctx, uint32_t c_ctx_id, dm_commit_context_t *
 {
     CHECK_NULL_ARG2(dm_ctx, c_ctx);
     dm_commit_context_t lookup = {0};
-    //TODO: use argument lookup.id = c_ctx_id;
-    lookup.id = dm_ctx->commit_ctxs.last_commit_id;
+    lookup.id = c_ctx_id;
     *c_ctx = sr_btree_search(dm_ctx->commit_ctxs.tree, &lookup);
     return SR_ERR_OK;
 }

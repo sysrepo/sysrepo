@@ -269,12 +269,13 @@ cl_get_item_test(void **state)
     rc = sr_get_item(session, "/small-module:item", &value);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
     assert_null(value);
-#if 0
-    /* bad element in existing module*/
-    rc = sr_get_item(session, "/example-module:unknown/next", &value);
-    assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
-    assert_null(value);
 
+    /* bad element in existing module returns SR_ERR_NOT_FOUND instead of SR_ERR_BAD_ELEMENT*/
+    rc = sr_get_item(session, "/example-module:unknown/next", &value);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+    assert_null(value);
+#if 0
+    /* xpath validation produces only warning on get-like calls */
     const sr_error_info_t *err = NULL;
     sr_get_last_error(session, &err);
     assert_non_null(err->xpath);
@@ -341,11 +342,11 @@ cl_get_items_test(void **state)
     /* not existing data tree*/
     rc = sr_get_items(session, "/small-module:item",  &values, &values_cnt);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
-#if 0
-    /* bad element in existing module*/
+
+    /* bad element in existing module produces SR_ERR_NOT_FOUND instead of SR_ERR_BAD_ELEMENT */
     rc = sr_get_items(session, "/example-module:unknown", &values, &values_cnt);
-    assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
-#endif
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+
     /* container */
     rc = sr_get_items(session, "/ietf-interfaces:interfaces/*", &values, &values_cnt);
     assert_int_equal(rc, SR_ERR_OK);
@@ -1051,6 +1052,7 @@ cl_get_error_test(void **state)
     assert_non_null(error_info);
     assert_non_null(error_info->message);
 #if 0
+    /* xpath validation produces only warnings on get like calls */
     /* attempt to get item on bad element in existing module */
     rc = sr_get_item(session, "/example-module:container/unknown", &value);
     assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
