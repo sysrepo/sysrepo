@@ -1023,7 +1023,7 @@ rp_get_changes_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg
     int rc = SR_ERR_OK;
     dm_commit_ctxs_t *dm_ctxs = NULL;
     dm_commit_context_t *c_ctx = NULL;
-    struct ly_set *changes = NULL;
+    sr_list_t *changes = NULL;
     bool locked = false;
 
     CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->get_changes_req);
@@ -1091,7 +1091,7 @@ cleanup:
     /* send the response */
     rc = cm_msg_send(rp_ctx->cm_ctx, resp);
 
-    ly_set_free(changes);
+    sr_list_cleanup(changes);
     return rc;
 }
 

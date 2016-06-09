@@ -265,10 +265,10 @@ dm_model_subscription_free(void *sub)
         free(ms->nodes);
         lyd_free_diff(ms->difflist);
         if (NULL != ms->changes) {
-            for (int i = 0; i < ms->changes->number; i++) {
-                sr_free_changes(ms->changes->set.g[i], 1);
+            for (int i = 0; i < ms->changes->count; i++) {
+                sr_free_changes(ms->changes->data[i], 1);
             }
-            ly_set_free(ms->changes);
+            sr_list_cleanup(ms->changes);
         }
     }
     free(ms);

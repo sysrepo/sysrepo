@@ -319,11 +319,10 @@ cleanup:
  *
  */
 static int
-rp_dt_add_changes_for_children(struct ly_set *changes, LYD_DIFFTYPE type, struct lyd_node *node)
+rp_dt_add_changes_for_children(sr_list_t *changes, LYD_DIFFTYPE type, struct lyd_node *node)
 {
     CHECK_NULL_ARG2(changes, node);
     int rc = SR_ERR_OK;
-    int ret = 0;
     struct lyd_node *next = NULL, *elem = NULL;
     sr_change_t *ch = NULL;
 
@@ -340,8 +339,8 @@ rp_dt_add_changes_for_children(struct ly_set *changes, LYD_DIFFTYPE type, struct
         rc = rp_dt_get_value_from_node(elem, *ptr);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Get value from node failed");
 
-        ret = ly_set_add(changes, ch);
-        CHECK_NOT_MINUS1_MSG_GOTO(ret, rc, SR_ERR_INTERNAL, cleanup, "Ly set add failed");
+        rc = sr_list_add(changes, ch);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "List add failed");
         ch = NULL;
         LYD_TREE_DFS_END(node, next, elem);
     }
@@ -353,16 +352,15 @@ cleanup:
 }
 
 int
-rp_dt_difflist_to_changes(struct lyd_difflist *difflist, struct ly_set **changes)
+rp_dt_difflist_to_changes(struct lyd_difflist *difflist, sr_list_t **changes)
 {
     CHECK_NULL_ARG2(difflist, changes);
     int rc = SR_ERR_OK;
-    int ret = 0;
     sr_change_t *ch = NULL;
 
-    struct ly_set *set = NULL;
-    set = ly_set_new();
-    CHECK_NULL_NOMEM_RETURN(set);
+    sr_list_t *list = NULL;
+    rc = sr_list_init(&list);
+    CHECK_RC_MSG_RETURN(rc, "List init failed");
 
     for(size_t d_cnt = 0; LYD_DIFF_END != difflist->type[d_cnt]; d_cnt++) {
         if (!(LYD_DIFF_CREATED == difflist->type[d_cnt] && (LYS_LIST | LYS_CONTAINER) & difflist->second[d_cnt]->schema->nodetype) &&
@@ -374,7 +372,7 @@ rp_dt_difflist_to_changes(struct lyd_difflist *difflist, struct ly_set **changes
         switch (difflist->type[d_cnt]) {
         case LYD_DIFF_CREATED:
             if ((LYS_LIST | LYS_CONTAINER) & difflist->second[d_cnt]->schema->nodetype) {
-                rc = rp_dt_add_changes_for_children(set, difflist->type[d_cnt], difflist->second[d_cnt]);
+                rc = rp_dt_add_changes_for_children(list, difflist->type[d_cnt], difflist->second[d_cnt]);
                 CHECK_RC_MSG_GOTO(rc, cleanup, "Add changes for children failed");
             } else {
                 ch->oper = SR_OP_CREATED;
@@ -387,7 +385,7 @@ rp_dt_difflist_to_changes(struct lyd_difflist *difflist, struct ly_set **changes
             break;
         case LYD_DIFF_DELETED:
             if ((LYS_LIST | LYS_CONTAINER) & difflist->first[d_cnt]->schema->nodetype) {
-                rc = rp_dt_add_changes_for_children(set, difflist->type[d_cnt], difflist->first[d_cnt]);
+                rc = rp_dt_add_changes_for_children(list, difflist->type[d_cnt], difflist->first[d_cnt]);
                 CHECK_RC_MSG_GOTO(rc, cleanup, "Add changes for children failed");
             } else {
                 ch->oper = SR_OP_DELETED;
@@ -445,8 +443,8 @@ rp_dt_difflist_to_changes(struct lyd_difflist *difflist, struct ly_set **changes
         }
 
         if (NULL != ch) {
-            ret = ly_set_add(set, ch);
-            CHECK_NOT_MINUS1_MSG_GOTO(ret, rc, SR_ERR_INTERNAL, cleanup, "Ly set add failed");
+            rc = sr_list_add(list, ch);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "List add failed");
             ch = NULL;
         }
 
@@ -457,19 +455,19 @@ cleanup:
         if (NULL != ch) {
             sr_free_changes(ch, 1);
         }
-        for (int i = 0; i < set->number; i++) {
-            sr_free_changes(set->set.g[i], 1);
+        for (int i = 0; i < list->count; i++) {
+            sr_free_changes(list->data[i], 1);
         }
-        ly_set_free(set);
+        sr_list_cleanup(list);
     } else {
-        *changes = set;
+        *changes = list;
     }
     return rc;
 }
 
 int
 rp_dt_get_changes(rp_ctx_t *rp_ctx, rp_session_t *rp_session, dm_commit_context_t *c_ctx, const char *xpath,
-        size_t offset, size_t limit, struct ly_set **matched_changes)
+        size_t offset, size_t limit, sr_list_t **matched_changes)
 {
     CHECK_NULL_ARG4(rp_ctx, rp_session, c_ctx, xpath);
     CHECK_NULL_ARG(matched_changes);

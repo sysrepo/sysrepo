@@ -199,7 +199,7 @@ rp_dt_match_change(const struct lys_node *selection_node, const struct lys_node 
 
 int
 rp_dt_find_changes(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t *c_ctx,
-        rp_dt_change_ctx_t *change_ctx, const char *xpath, size_t offset, size_t limit, struct ly_set **changes)
+        rp_dt_change_ctx_t *change_ctx, const char *xpath, size_t offset, size_t limit, sr_list_t **changes)
 {
     CHECK_NULL_ARG(dm_ctx);
     CHECK_NULL_ARG5(session, c_ctx, change_ctx, xpath, changes);
@@ -239,14 +239,14 @@ rp_dt_find_changes(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t 
     size_t cnt = 0; /* number of returned changes (in offset limit range) */
     size_t index = cache_hit ? change_ctx->offset : 0; /* number of matching changes */
 
-    *changes = ly_set_new();
-    CHECK_NULL_NOMEM_GOTO(*changes, rc, cleanup);
+    rc = sr_list_init(changes);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "sr_list_init failed");
     size_t position = 0; /* index to change set */
 
     /* selection from model changes */
-    for (position = change_ctx->position; position < ms->changes->number; position++) {
+    for (position = change_ctx->position; position < ms->changes->count; position++) {
         bool match = false;
-        sr_change_t *change = (sr_change_t *) ms->changes->set.g[position];
+        sr_change_t *change = (sr_change_t *) ms->changes->data[position];
 
         rc = rp_dt_match_change(change_ctx->schema_node, change->sch_node, &match);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Match subscription failed");
@@ -260,9 +260,9 @@ rp_dt_find_changes(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t 
         }
         /* append change to result if it is in the chosen range */
         if (index >= offset) {
-            if (-1 == ly_set_add(*changes, ms->changes->set.g[position])) {
+            if (SR_ERR_OK != sr_list_add(*changes, change)) {
                 SR_LOG_ERR_MSG("Adding to the result changes failed");
-                ly_set_free(*changes);
+                sr_list_cleanup(*changes);
                 *changes = NULL;
                 return SR_ERR_INTERNAL;
             }
@@ -275,7 +275,7 @@ rp_dt_find_changes(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t 
     change_ctx->offset = index;
     change_ctx->position = position;
     if (0 == cnt) {
-        ly_set_free(*changes);
+        sr_list_cleanup(*changes);
         *changes = NULL;
         rc = SR_ERR_NOT_FOUND;
     }
