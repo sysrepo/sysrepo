@@ -39,6 +39,16 @@ typedef struct np_dst_info_s {
 } np_dst_info_t;
 
 /**
+ * @brief TODO
+ */
+typedef struct np_commit_ctx_s {
+    uint32_t commit_id;
+    bool timer_started;
+    size_t notifications_sent;
+    size_t notification_recieved;
+} np_commit_ctx_t;
+
+/**
  * @brief Notification Processor context.
  */
 typedef struct np_ctx_s {

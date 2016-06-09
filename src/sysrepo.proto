@@ -603,6 +603,9 @@ message UnsubscribeDestinationReq {
   required string destination = 1;
 }
 
+message CommitReleaseReq {
+  required uint32 commit_id = 1;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 // Sysrepo Engine API umbrella messages
@@ -645,6 +648,7 @@ enum Operation {
   RPC = 80;
 
   UNSUBSCRIBE_DESTINATION = 101;
+  COMMIT_RELEASE = 102;
 }
 
 /**
@@ -760,6 +764,7 @@ message InternalRequest {
   required Operation operation = 1;
 
   optional UnsubscribeDestinationReq unsubscribe_dst_req = 10;
+  optional CommitReleaseReq commit_release_req = 11;
 }
 
 /**
