@@ -42,6 +42,10 @@ class Tester(object):
         """Method executed before steps"""
         pass
 
+    def cleanup(self):
+        """Method executed after steps"""
+        pass
+
     def add_step(self, step, *args):
         """Adds the step to the end of the list"""
         self.steps.append((step, args))
@@ -86,7 +90,7 @@ class Tester(object):
             next_step.acquire()
             if rand_sleep:
                 time.sleep(randint(1,1000)*0.00001)
-            self.print_with_lock('Step: ', step, ", pid: ", os.getpid())
+            #self.print_with_lock('Step: ', step, ", pid: ", os.getpid())
 
             try:
                 self.execute_step(step)
@@ -131,6 +135,8 @@ class Tester(object):
             self.run_sync(done, next_step, rand_sleep, id, queue)
         else:
             self.run_without_sync()
+
+        self.cleanup()
 
     def waitStep(self):
         """Step that can be used by tester, to do nothing"""

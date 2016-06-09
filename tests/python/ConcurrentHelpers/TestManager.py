@@ -18,6 +18,7 @@ __license__ = "Apache 2.0"
 
 from multiprocessing import Process, Manager
 import os
+import sys
 import signal
 
 
@@ -76,12 +77,12 @@ class TestManager:
         wait_for = range(len(self.next_steps))
         while True:
             if step >= 0:
-                print "=================== TestManager step", step, "testers:", wait_for
+                print >> sys.stderr, "\n\n=================== TestManager step", step, "testers:", wait_for
             for _ in wait_for:
                 self.process_done.acquire()
                 if step >= 0:
                     proc, name, status = self.queue.get()
-                    print ("Received ", proc, name, status)
+                    print >> sys.stderr, ("Received ", proc, name, status)
                     if status == True:
                         will_continue.append(proc)
                     elif isinstance(status, BaseException):

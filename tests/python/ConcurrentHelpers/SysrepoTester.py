@@ -79,6 +79,9 @@ class SysrepoTester(Tester):
         with self.tc.assertRaisesRegexp(RuntimeError, ".* found"):
             self.session.get_items(xpath)
 
+    def deleteItemStep(self, xpath):
+        self.session.delete_item(xpath)
+
     def refreshStep(self):
         self.session.refresh()
 
