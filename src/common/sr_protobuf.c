@@ -70,12 +70,14 @@ sr_gpb_operation_name(Sr__Operation operation)
         return "unsubscribe";
     case SR__OPERATION__CHECK_ENABLED_RUNNING:
         return "check-enabled-running";
-    case SR__OPERATION__UNSUBSCRIBE_DESTINATION:
-        return "unsubscribe-destination";
     case SR__OPERATION__GET_CHANGES:
         return "get changes";
     case SR__OPERATION__RPC:
         return "rpc";
+    case SR__OPERATION__UNSUBSCRIBE_DESTINATION:
+        return "unsubscribe-destination";
+    case SR__OPERATION__COMMIT_RELEASE:
+        return "commit-release";
     case _SR__OPERATION_IS_INT_SIZE:
         return "unknown";
     }

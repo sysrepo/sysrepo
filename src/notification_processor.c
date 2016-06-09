@@ -39,13 +39,13 @@ typedef struct np_dst_info_s {
 } np_dst_info_t;
 
 /**
- * @brief TODO
+ * @brief Context holding information about notifications sent per commit.
  */
 typedef struct np_commit_ctx_s {
-    uint32_t commit_id;
-    bool timer_started;
-    size_t notifications_sent;
-    size_t notification_recieved;
+    uint32_t commit_id;            /**< Commit identifier. */
+    bool timer_started;            /**< Flag marking weather timer for releasing of the commit has been already started. */
+    size_t notifications_sent;     /**< Count of sent notifications. */
+    size_t notification_acks;      /**< Count of received acknowledgments. */
 } np_commit_ctx_t;
 
 /**
@@ -56,6 +56,7 @@ typedef struct np_ctx_s {
     np_subscription_t **subscriptions;    /**< List of active non-persistent subscriptions. */
     size_t subscription_cnt;              /**< Number of active non-persistent subscriptions. */
     sr_btree_t *dst_info_btree;           /**< Binary tree used for fast destination info lookup. */
+    sr_llist_t *commits;                  /**< Linked-list of ongoing commits. */
     pthread_rwlock_t lock;                /**< Read-write lock for the context. */
 } np_ctx_t;
 
