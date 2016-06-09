@@ -1385,6 +1385,7 @@ rp_req_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, bool *ski
         case SR__OPERATION__RPC:
             rc = rp_rpc_req_process(rp_ctx, session, msg);
             *skip_msg_cleanup = true;
+            return rc; /* skip further processing */
             break;
         default:
             SR_LOG_ERR("Unsupported request received (session id=%"PRIu32", operation=%d).",
@@ -1415,16 +1416,19 @@ rp_req_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, bool *ski
  * @brief Dispatches received response message.
  */
 static int
-rp_resp_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
+rp_resp_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, bool *skip_msg_cleanup)
 {
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG3(rp_ctx, session, msg);
+    CHECK_NULL_ARG4(rp_ctx, session, msg, skip_msg_cleanup);
+
+    *skip_msg_cleanup = false;
 
     switch (msg->response->operation) {
         case SR__OPERATION__RPC:
             rc = rp_rpc_resp_process(rp_ctx, session, msg);
-            return rc; /* skip further processing and msg cleanup */
+            *skip_msg_cleanup = true;
+            return rc; /* skip further processing */
             break;
         default:
             SR_LOG_ERR("Unsupported response received (session id=%"PRIu32", operation=%d).",
@@ -1498,7 +1502,7 @@ rp_msg_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
             rc = rp_req_dispatch(rp_ctx, session, msg, &skip_msg_cleanup);
             break;
         case SR__MSG__MSG_TYPE__RESPONSE:
-            rc = rp_resp_dispatch(rp_ctx, session, msg);
+            rc = rp_resp_dispatch(rp_ctx, session, msg, &skip_msg_cleanup);
             break;
         case SR__MSG__MSG_TYPE__INTERNAL_REQUEST:
             rc = rp_internal_req_dispatch(rp_ctx, msg);

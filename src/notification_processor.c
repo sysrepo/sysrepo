@@ -240,6 +240,10 @@ np_init(rp_ctx_t *rp_ctx, np_ctx_t **np_ctx_p)
     rc = sr_btree_init(np_dst_info_cmp, np_dst_info_cleanup, &ctx->dst_info_btree);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate binary tree for destination info lookup.");
 
+    /* init linked-list for commit contexts */
+    rc = sr_llist_init(&ctx->commits);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate commits linke-list.");
+
     /* initialize subscriptions lock */
     ret = pthread_rwlock_init(&ctx->lock, NULL);
     CHECK_ZERO_MSG_GOTO(ret, rc, SR_ERR_INTERNAL, cleanup, "Subscriptions lock initialization failed.");
@@ -264,6 +268,7 @@ np_cleanup(np_ctx_t *np_ctx)
             np_free_subscription(np_ctx->subscriptions[i]);
         }
         free(np_ctx->subscriptions);
+        sr_llist_cleanup(np_ctx->commits);
         sr_btree_cleanup(np_ctx->dst_info_btree);
         pthread_rwlock_destroy(&np_ctx->lock);
         free(np_ctx);
