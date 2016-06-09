@@ -1259,7 +1259,7 @@ rp_rpc_resp_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg
  * @brief Processes an unsubscribe-destination internal request.
  */
 static int
-rp_unsubscribe_destination_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
+rp_unsubscribe_destination_req_process(const rp_ctx_t *rp_ctx, Sr__Msg *msg)
 {
     int rc = SR_ERR_OK;
 
@@ -1276,7 +1276,7 @@ rp_unsubscribe_destination_req_process(const rp_ctx_t *rp_ctx, const rp_session_
  * @brief Processes an notification acknowledgment.
  */
 static int
-rp_notification_ack_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
+rp_notification_ack_process(rp_ctx_t *rp_ctx, Sr__Msg *msg)
 {
     int rc = SR_ERR_OK;
 
@@ -1440,15 +1440,15 @@ rp_resp_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
  * @brief Dispatches received internal request message.
  */
 static int
-rp_internal_req_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
+rp_internal_req_dispatch(rp_ctx_t *rp_ctx, Sr__Msg *msg)
 {
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG3(rp_ctx, session, msg);
+    CHECK_NULL_ARG2(rp_ctx, msg);
 
     switch (msg->internal_request->operation) {
         case SR__OPERATION__UNSUBSCRIBE_DESTINATION:
-            rc = rp_unsubscribe_destination_req_process(rp_ctx, session, msg);
+            rc = rp_unsubscribe_destination_req_process(rp_ctx, msg);
             break;
         default:
             SR_LOG_ERR("Unsupported internal request received (operation=%d).", msg->request->operation);
@@ -1501,10 +1501,10 @@ rp_msg_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
             rc = rp_resp_dispatch(rp_ctx, session, msg);
             break;
         case SR__MSG__MSG_TYPE__INTERNAL_REQUEST:
-            rc = rp_internal_req_dispatch(rp_ctx, session, msg);
+            rc = rp_internal_req_dispatch(rp_ctx, msg);
             break;
         case SR__MSG__MSG_TYPE__NOTIFICATION_ACK:
-            rc = rp_notification_ack_process(rp_ctx, session, msg);
+            rc = rp_notification_ack_process(rp_ctx, msg);
             break;
         default:
             SR_LOG_ERR("Unsupported message received (session id=%"PRIu32", operation=%d).",
