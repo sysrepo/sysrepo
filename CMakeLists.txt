@@ -156,6 +156,9 @@ if(DOXYGEN_FOUND)
         COMMENT "Generating API documentation with Doxygen" VERBATIM
     )
 endif(DOXYGEN_FOUND)
+if(NOT MAN_INSTALL_DIR)
+    set(MAN_INSTALL_DIR share/man)
+endif()
 
 set(PYTHON_SWIG_BINDING sysrepoPy)
 set(LUA_SWIG_BINDING sysrepoLua)
@@ -248,4 +251,7 @@ if(PKG_CONFIG_FOUND)
     configure_file("libsysrepo.pc.in" "libsysrepo.pc" @ONLY)
     install(FILES "${CMAKE_CURRENT_BINARY_DIR}/libsysrepo.pc" DESTINATION "${CMAKE_INSTALL_PREFIX}/lib/pkgconfig")
 endif()
+
+# install doc (man)
+install(FILES ${PROJECT_SOURCE_DIR}/doc/sysrepocfg.1 DESTINATION ${MAN_INSTALL_DIR}/man1)
 

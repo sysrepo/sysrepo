@@ -49,7 +49,7 @@ typedef struct np_subscription_s {
     uint32_t dst_id;                   /**< Destination ID of the subscription (used locally, in the client library). */
     const char *module_name;           /**< Name of the module where the subscription is active. */
     const char *xpath;                 /**< XPath to the subtree where the subscription is active (if applicable). */
-    uint32_t priority;                 /**< Priority of the subscribtion by delivering notifications (0 is the lowest priority). */
+    uint32_t priority;                 /**< Priority of the subscription by delivering notifications (0 is the lowest priority). */
     bool enable_running;               /**< TRUE if the subscription enables specified subtree in the running datastore. */
 } np_subscription_t;
 
