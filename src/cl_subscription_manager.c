@@ -620,12 +620,13 @@ cl_sm_close_data_session(cl_sm_ctx_t *sm_ctx, cl_sm_subscription_ctx_t *subscrip
  * @brief Processes an incoming notification message.
  */
 static int
-cl_sm_notif_process(cl_sm_ctx_t *sm_ctx, Sr__Msg *msg)
+cl_sm_notif_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *msg)
 {
     cl_sm_subscription_ctx_t *subscription = NULL;
     cl_sm_subscription_ctx_t subscription_lookup = { 0, };
     sr_session_ctx_t *data_session = NULL;
-    int rc = SR_ERR_OK;
+    Sr__Msg *ack_msg = NULL;
+    int rc = SR_ERR_OK, rc_tmp = SR_ERR_OK;
 
     CHECK_NULL_ARG3(sm_ctx, msg, msg->notification);
 
@@ -711,6 +712,22 @@ cl_sm_notif_process(cl_sm_ctx_t *sm_ctx, Sr__Msg *msg)
         default:
             SR_LOG_ERR("Unknown notification event received on subscription id=%"PRIu32".", subscription->id);
             rc = SR_ERR_INVAL_ARG;
+    }
+
+    /* send notification ACK */
+    if ((SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS == msg->notification->type) ||
+            (SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS == msg->notification->type)) {
+        rc_tmp = sr_gpb_notif_ack_alloc(msg, &ack_msg);
+        if (SR_ERR_OK == rc_tmp) {
+            ack_msg->notification_ack->result = rc;
+            rc_tmp = cl_sm_msg_send_connection(sm_ctx, conn, ack_msg);
+            ack_msg->notification_ack->notif = NULL;
+            sr__msg__free_unpacked(ack_msg, NULL);
+        }
+        if (SR_ERR_OK != rc_tmp) {
+            SR_LOG_ERR("Unable to send notification ACK: %s", sr_strerror(rc_tmp));
+            rc = rc_tmp;
+        }
     }
 
     pthread_mutex_unlock(&sm_ctx->subscriptions_lock);
@@ -807,7 +824,7 @@ cl_sm_conn_msg_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, uint8_t *msg
     /* check the message */
     if (SR__MSG__MSG_TYPE__NOTIFICATION == msg->type) {
         /* notification */
-        rc = cl_sm_notif_process(sm_ctx, msg);
+        rc = cl_sm_notif_process(sm_ctx, conn, msg);
     } else if ((SR__MSG__MSG_TYPE__REQUEST == msg->type) && (SR__OPERATION__RPC == msg->request->operation)) {
         /* RPC request */
         rc = cl_sm_rpc_process(sm_ctx, conn, msg);

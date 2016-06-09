@@ -745,6 +745,15 @@ message Notification {
 }
 
 /**
+ * @brief Notification Acknowledgment.
+ */
+message NotificationAck {
+  required Notification notif = 1;  /**< Original notification. */
+  required uint32 result = 2;       /**< Result of the notification (success / error code). */
+  optional Error error = 3;         /**< Additional error information. */
+}
+
+/**
  * @brief Internal request sent by sysrepo. Should not be used from the public API.
  */
 message InternalRequest {
@@ -765,7 +774,8 @@ message Msg {
     REQUEST = 1;           /**< The message is a request. */
     RESPONSE = 2;          /**< The message is a response to the request. */
     NOTIFICATION = 3;      /**< The message is a notification. */
-    INTERNAL_REQUEST = 4;  /**< The message is an internal request, should not be used from the public API. */
+    NOTIFICATION_ACK = 4;  /**< The message is a notification acknowledgment. */
+    INTERNAL_REQUEST = 5;  /**< The message is an internal request, should not be used from the public API. */
   }
 
   required MsgType type = 1;                      /**< Indicates type of the message. */
@@ -774,5 +784,6 @@ message Msg {
   optional Request request = 3;                   /**< Filled in in case of type == REQUEST. */
   optional Response response = 4;                 /**< Filled in in case of type == RESPONSE. */
   optional Notification notification = 5;         /**< Filled in in case of type == NOTIFICATION. */
-  optional InternalRequest internal_request = 6;  /**< Filled in in case of type == INTERNAL. */
+  optional NotificationAck notification_ack = 6;  /**< Filled in in case of type == NOTIFICATION_ACK */
+  optional InternalRequest internal_request = 7;  /**< Filled in in case of type == INTERNAL. */
 }

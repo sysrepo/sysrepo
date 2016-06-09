@@ -528,6 +528,40 @@ error:
 }
 
 int
+sr_gpb_notif_ack_alloc(Sr__Msg *notification, Sr__Msg **msg_p)
+{
+    Sr__Msg *msg = NULL;
+    Sr__NotificationAck *notif_ack = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG3(notification, notification->notification, msg_p);
+
+    /* initialize Sr__Msg */
+    msg = calloc(1, sizeof(*msg));
+    CHECK_NULL_NOMEM_GOTO(msg, rc, error);
+    sr__msg__init(msg);
+    msg->type = SR__MSG__MSG_TYPE__NOTIFICATION_ACK;
+    msg->session_id = 0;
+
+    /* initialize Sr__NotificationAck */
+    notif_ack = calloc(1, sizeof(*notif_ack));
+    CHECK_NULL_NOMEM_GOTO(notif_ack, rc, error);
+    sr__notification_ack__init(notif_ack);
+    msg->notification_ack = notif_ack;
+
+    notif_ack->notif = notification->notification;
+
+    *msg_p = msg;
+    return SR_ERR_OK;
+
+error:
+    if (NULL != msg) {
+        sr__msg__free_unpacked(msg, NULL);
+    }
+    return rc;
+}
+
+int
 sr_gpb_internal_req_alloc(const Sr__Operation operation, Sr__Msg **msg_p)
 {
     Sr__Msg *msg = NULL;

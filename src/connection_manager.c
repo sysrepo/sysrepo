@@ -842,6 +842,32 @@ cleanup:
 }
 
 /**
+ * @brief Processes a notification ACK message from client.
+ */
+static int
+cm_notif_ack_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, Sr__Msg *msg)
+{
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG5(cm_ctx, conn, msg, msg->notification_ack, msg->notification_ack->notif);
+
+    if (CM_AF_UNIX_SERVER != conn->type) {
+        SR_LOG_ERR("Notification ACK received from non-server connection (conn=%p).", (void*)conn);
+        rc = SR_ERR_INVAL_ARG;
+        goto cleanup;
+    }
+
+    /* forward the message to Request Processor */
+    rc = rp_msg_process(cm_ctx->rp_ctx, NULL, msg);
+
+    return rc;
+
+cleanup:
+    sr__msg__free_unpacked(msg, NULL);
+    return rc;
+}
+
+/**
  * @brief Processes a message received on connection.
  */
 static int
@@ -868,8 +894,9 @@ cm_conn_msg_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, uint8_t *msg_data, 
         goto cleanup;
     }
 
-    /* find matching session (except for session_start request) */
-    if ((SR__MSG__MSG_TYPE__REQUEST != msg->type) || (SR__OPERATION__SESSION_START != msg->request->operation)) {
+    /* find matching session (except for some exceptions) */
+    if (SR__MSG__MSG_TYPE__NOTIFICATION_ACK != msg->type &&
+            ((SR__MSG__MSG_TYPE__REQUEST != msg->type) || (SR__OPERATION__SESSION_START != msg->request->operation))) {
         rc = sm_session_find_id(cm_ctx->sm_ctx, msg->session_id, &session);
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR("Unable to find session context for session id=%"PRIu32" (conn=%p).",
@@ -891,6 +918,9 @@ cm_conn_msg_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, uint8_t *msg_data, 
             break;
         case SR__MSG__MSG_TYPE__RESPONSE:
             rc = cm_resp_process(cm_ctx, conn, session, msg);
+            break;
+        case SR__MSG__MSG_TYPE__NOTIFICATION_ACK:
+            rc = cm_notif_ack_process(cm_ctx, conn, msg);
             break;
         default:
             SR_LOG_ERR("Unexpected message type received (session id=%"PRIu32").", session->id);
