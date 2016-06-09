@@ -2303,11 +2303,13 @@ dm_commit_prepare_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_con
         if (info->modified) {
             c_ctx->modif_count++;
 
-            rc = dm_prepare_module_subscriptions(dm_ctx, info->module, &ms);
-            CHECK_RC_LOG_GOTO(rc, cleanup, "Prepare module subscription failed %s", info->module->name);
+            if (SR_DS_STARTUP != session->datastore) {
+                rc = dm_prepare_module_subscriptions(dm_ctx, info->module, &ms);
+                CHECK_RC_LOG_GOTO(rc, cleanup, "Prepare module subscription failed %s", info->module->name);
 
-            rc = sr_btree_insert(c_ctx->subscriptions, ms);
-            CHECK_RC_LOG_GOTO(rc, cleanup, "Insert into subscription tree failed module %s", info->module->name);
+                rc = sr_btree_insert(c_ctx->subscriptions, ms);
+                CHECK_RC_LOG_GOTO(rc, cleanup, "Insert into subscription tree failed module %s", info->module->name);
+            }
             ms = NULL;
         }
         i++;
