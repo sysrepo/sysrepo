@@ -98,7 +98,7 @@ typedef struct dm_session_s {
     size_t *oper_size;                  /**< array of number of allocated operations */
     char *error_msg;                    /**< description of the last error */
     char *error_xpath;                  /**< xpath of the last error if applicable */
-    struct ly_set *locked_files;        /**< set of filename that are locked by this session */
+    sr_list_t *locked_files;        /**< set of filename that are locked by this session */
     bool holds_ds_lock;                 /**< flags if the session holds ds lock*/
 } dm_session_t;
 
@@ -793,8 +793,8 @@ dm_lock_module(dm_ctx_t *dm_ctx, dm_session_t *session, const char *modul_name)
     CHECK_RC_MSG_RETURN(rc, "Lock file name can not be created");
 
     /* check if already locked by this session */
-    for (size_t i = 0; i < session->locked_files->number; i++) {
-        if (0 == strcmp(lock_file, (char *) session->locked_files->set.g[i])) {
+    for (size_t i = 0; i < session->locked_files->count; i++) {
+        if (0 == strcmp(lock_file, (char *) session->locked_files->data[i])) {
             SR_LOG_INF("File %s is already by this session", lock_file);
             free(lock_file);
             return rc;
@@ -813,7 +813,8 @@ dm_lock_module(dm_ctx_t *dm_ctx, dm_session_t *session, const char *modul_name)
     if (SR_ERR_OK != rc) {
         free(lock_file);
     } else {
-        ly_set_add(session->locked_files, lock_file);
+        rc = sr_list_add(session->locked_files, lock_file);
+        CHECK_RC_MSG_RETURN(rc, "List add failed");
     }
     return rc;
 }
@@ -831,8 +832,8 @@ dm_unlock_module(dm_ctx_t *dm_ctx, dm_session_t *session, char *modul_name)
 
     /* check if already locked */
     bool found = false;
-    for (i = 0; i < session->locked_files->number; i++) {
-        if (0 == strcmp(lock_file, (char *) session->locked_files->set.g[i])) {
+    for (i = 0; i < session->locked_files->count; i++) {
+        if (0 == strcmp(lock_file, (char *) session->locked_files->data[i])) {
             found = true;
             break;
         }
@@ -843,8 +844,8 @@ dm_unlock_module(dm_ctx_t *dm_ctx, dm_session_t *session, char *modul_name)
         rc = SR_ERR_INVAL_ARG;
     } else {
         rc = dm_unlock_file(&dm_ctx->lock_ctx, lock_file);
-        free(session->locked_files->set.g[i]);
-        ly_set_rm_index(session->locked_files, i);
+        free(session->locked_files->data[i]);
+        sr_list_rm_at(session->locked_files, i);
     }
 
     free(lock_file);
@@ -859,8 +860,9 @@ dm_lock_datastore(dm_ctx_t *dm_ctx, dm_session_t *session)
     sr_schema_t *schemas = NULL;
     size_t schema_count = 0;
 
-    struct ly_set *locked = ly_set_new();
-    CHECK_NULL_NOMEM_RETURN(locked);
+    sr_list_t *locked = NULL;
+    rc = sr_list_init(&locked);
+    CHECK_RC_MSG_RETURN(rc, "List init failed");
 
     rc = dm_list_schemas(dm_ctx, session, &schemas, &schema_count);
     CHECK_RC_MSG_GOTO(rc, cleanup, "List schemas failed");
@@ -885,8 +887,8 @@ dm_lock_datastore(dm_ctx_t *dm_ctx, dm_session_t *session)
             } else if (SR_ERR_LOCKED == rc) {
                 SR_LOG_ERR("Model %s is already locked by other session", schemas[i].module_name);
             }
-            for (size_t l = 0; l < locked->number; l++) {
-                dm_unlock_module(dm_ctx, session, (char *) locked->set.g[l]);
+            for (size_t l = 0; l < locked->count; l++) {
+                dm_unlock_module(dm_ctx, session, (char *) locked->data[l]);
             }
             pthread_mutex_lock(&dm_ctx->ds_lock_mutex);
             dm_ctx->ds_lock = false;
@@ -895,11 +897,12 @@ dm_lock_datastore(dm_ctx_t *dm_ctx, dm_session_t *session)
             goto cleanup;
         }
         SR_LOG_DBG("Module %s locked", schemas[i].module_name);
-        ly_set_add(locked, (char *) schemas[i].module_name);
+        rc = sr_list_add(locked, (char *) schemas[i].module_name);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "List add failed");
     }
 cleanup:
     sr_free_schemas(schemas, schema_count);
-    ly_set_free(locked);
+    sr_list_cleanup(locked);
     return rc;
 }
 
@@ -908,10 +911,10 @@ dm_unlock_datastore(dm_ctx_t *dm_ctx, dm_session_t *session)
 {
     CHECK_NULL_ARG2(dm_ctx, session);
 
-    while (session->locked_files->number > 0) {
-        dm_unlock_file(&dm_ctx->lock_ctx, (char *) session->locked_files->set.g[0]);
-        free(session->locked_files->set.g[0]);
-        ly_set_rm_index(session->locked_files, 0);
+    while (session->locked_files->count > 0) {
+        dm_unlock_file(&dm_ctx->lock_ctx, (char *) session->locked_files->data[0]);
+        free(session->locked_files->data[0]);
+        sr_list_rm_at(session->locked_files, 0);
     }
     if (session->holds_ds_lock) {
         pthread_mutex_lock(&dm_ctx->ds_lock_mutex);
@@ -1251,8 +1254,8 @@ dm_session_start(dm_ctx_t *dm_ctx, const ac_ucred_t *user_credentials, const sr_
         CHECK_RC_MSG_GOTO(rc, cleanup, "Session module binary tree init failed");
     }
 
-    session_ctx->locked_files = ly_set_new();
-    CHECK_NULL_NOMEM_GOTO(session_ctx->locked_files, rc, cleanup);
+    rc = sr_list_init(&session_ctx->locked_files);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "List init failed");
 
     session_ctx->operations = calloc(DM_DATASTORE_COUNT, sizeof(*session_ctx->operations));
     CHECK_NULL_NOMEM_GOTO(session_ctx->operations, rc, cleanup);
@@ -1277,7 +1280,7 @@ dm_session_stop(dm_ctx_t *dm_ctx, dm_session_t *session)
     CHECK_NULL_ARG_VOID2(dm_ctx, session);
     if (NULL != session->locked_files) {
         dm_unlock_datastore(dm_ctx, session);
-        ly_set_free(session->locked_files);
+        sr_list_cleanup(session->locked_files);
     }
     for (size_t i = 0; i < DM_DATASTORE_COUNT; i++) {
         sr_btree_cleanup(session->session_modules[i]);
