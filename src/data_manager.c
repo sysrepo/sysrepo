@@ -77,7 +77,7 @@ typedef struct dm_ctx_s {
     dm_lock_ctx_t lock_ctx;       /**< lock context for lock/unlock/commit operations */
     bool ds_lock;                 /**< Flag if the ds lock is hold by a session*/
     pthread_mutex_t ds_lock_mutex;/**< Data store lock mutex */
-    struct ly_set *disabled_sch;  /**< Set of schema that has been disabled */
+    sr_list_t *disabled_sch;  /**< Set of schema that has been disabled */
     sr_btree_t *schema_info_tree; /**< Binary tree holding information about schemas */
     dm_commit_ctxs_t commit_ctxs; /**< Structure holding commit contexts and corresponding lock */
 #ifdef HAVE_STAT_ST_MTIM
@@ -462,8 +462,8 @@ dm_is_module_disabled(dm_ctx_t *dm_ctx, const char *module_name)
         return true;
     }
 
-    for (size_t i = 0; i < dm_ctx->disabled_sch->number; i++) {
-        if (0 == strcmp((char *) dm_ctx->disabled_sch->set.g[i], module_name)) {
+    for (size_t i = 0; i < dm_ctx->disabled_sch->count; i++) {
+        if (0 == strcmp((char *) dm_ctx->disabled_sch->data[i], module_name)) {
             return true;
         }
     }
@@ -1169,8 +1169,8 @@ dm_init(ac_ctx_t *ac_ctx, np_ctx_t *np_ctx, pm_ctx_t *pm_ctx,
     ctx->data_search_dir = strdup(data_search_dir);
     CHECK_NULL_NOMEM_GOTO(ctx->data_search_dir, rc, cleanup);
 
-    ctx->disabled_sch = ly_set_new();
-    CHECK_NULL_NOMEM_GOTO(ctx->disabled_sch, rc, cleanup);
+    rc = sr_list_init(&ctx->disabled_sch);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "List init failed");
 
     pthread_mutex_init(&ctx->ds_lock_mutex, NULL);
     pthread_mutex_init(&ctx->lock_ctx.mutex, NULL);
@@ -1223,7 +1223,7 @@ dm_cleanup(dm_ctx_t *dm_ctx)
         }
         pthread_mutex_destroy(&dm_ctx->lock_ctx.mutex);
         pthread_mutex_destroy(&dm_ctx->ds_lock_mutex);
-        ly_set_free(dm_ctx->disabled_sch);
+        sr_list_cleanup(dm_ctx->disabled_sch);
 
         pthread_rwlock_destroy(&dm_ctx->commit_ctxs.lock);
         free(dm_ctx);
@@ -2753,8 +2753,7 @@ dm_uninstall_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revis
         SR_LOG_ERR("Module %s with revision %s was not found", module_name, revision);
         rc = SR_ERR_NOT_FOUND;
     } else {
-        ly_set_add(dm_ctx->disabled_sch, (void *) module->name);
-        rc = SR_ERR_OK;
+        rc = sr_list_add(dm_ctx->disabled_sch, (void *) module->name);
     }
 
     pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
