@@ -2762,7 +2762,7 @@ dm_uninstall_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revis
 }
 
 static int
-dm_copy_config(dm_ctx_t *dm_ctx, dm_session_t *session, const struct ly_set *modules, sr_datastore_t src, sr_datastore_t dst)
+dm_copy_config(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_list_t *modules, sr_datastore_t src, sr_datastore_t dst)
 {
     CHECK_NULL_ARG2(dm_ctx, modules);
     int rc = SR_ERR_OK;
@@ -2774,13 +2774,13 @@ dm_copy_config(dm_ctx_t *dm_ctx, dm_session_t *session, const struct ly_set *mod
     char *file_name = NULL;
     int *fds = NULL;
 
-    if (src == dst || 0 == modules->number) {
+    if (src == dst || 0 == modules->count) {
         return rc;
     }
 
-    src_infos = calloc(modules->number, sizeof(*src_infos));
+    src_infos = calloc(modules->count, sizeof(*src_infos));
     CHECK_NULL_NOMEM_GOTO(src_infos, rc, cleanup);
-    fds = calloc(modules->number, sizeof(*fds));
+    fds = calloc(modules->count, sizeof(*fds));
     CHECK_NULL_NOMEM_GOTO(fds, rc, cleanup);
 
     /* create source session */
@@ -2808,8 +2808,8 @@ dm_copy_config(dm_ctx_t *dm_ctx, dm_session_t *session, const struct ly_set *mod
         dst_session = session;
     }
 
-    for (size_t i = 0; i < modules->number; i++) {
-        module = (struct lys_module *) modules->set.g[i];
+    for (size_t i = 0; i < modules->count; i++) {
+        module = (struct lys_module *) modules->data[i];
         /* lock module in source ds */
         if (SR_DS_CANDIDATE != src) {
             rc = dm_lock_module(dm_ctx, src_session, (char *) module->name);
@@ -2857,7 +2857,7 @@ dm_copy_config(dm_ctx_t *dm_ctx, dm_session_t *session, const struct ly_set *mod
     }
 
     int ret = 0;
-    for (size_t i = 0; i < modules->number; i++) {
+    for (size_t i = 0; i < modules->count; i++) {
         if (SR_DS_CANDIDATE != dst) {
             /* write dest file, dst is either startup or running*/
             lyd_wd_cleanup(&src_infos[i]->node, 0);
@@ -3081,25 +3081,24 @@ int
 dm_copy_module(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module_name, sr_datastore_t src, sr_datastore_t dst)
 {
     CHECK_NULL_ARG2(dm_ctx, module_name);
-    struct ly_set *module_set = NULL;
+    sr_list_t *module_list = NULL;
     const struct lys_module *module = NULL;
     int rc = SR_ERR_OK;
-    int ret = 0;
 
-    module_set = ly_set_new();
-    CHECK_NULL_NOMEM_RETURN(module_set);
+    rc = sr_list_init(&module_list);
+    CHECK_RC_MSG_RETURN(rc, "List init failed");
 
     rc = dm_get_module(dm_ctx, module_name, NULL, &module);
     CHECK_RC_MSG_GOTO(rc, cleanup, "dm_get_module failed");
 
-    ret = ly_set_add(module_set, (struct lys_module *) module);
-    CHECK_NOT_MINUS1_MSG_GOTO(ret, rc, SR_ERR_INTERNAL, cleanup, "Adding to ly set failed");
+    rc = sr_list_add(module_list, (struct lys_module *) module);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Adding to sr_list failed");
 
-    rc = dm_copy_config(dm_ctx, session, module_set, src, dst);
+    rc = dm_copy_config(dm_ctx, session, module_list, src, dst);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Dm copy config failed");
 
 cleanup:
-    ly_set_free(module_set);
+    sr_list_cleanup(module_list);
     return rc;
 }
 
@@ -3107,7 +3106,7 @@ int
 dm_copy_all_models(dm_ctx_t *dm_ctx, dm_session_t *session, sr_datastore_t src, sr_datastore_t dst)
 {
     CHECK_NULL_ARG2(dm_ctx, session);
-    struct ly_set *enabled_modules = NULL;
+    sr_list_t *enabled_modules = NULL;
     int rc = SR_ERR_OK;
 
     rc = dm_get_all_modules(dm_ctx, session, (SR_DS_RUNNING == src || SR_DS_RUNNING == dst), &enabled_modules);
@@ -3117,7 +3116,7 @@ dm_copy_all_models(dm_ctx_t *dm_ctx, dm_session_t *session, sr_datastore_t src, 
     CHECK_RC_MSG_GOTO(rc, cleanup, "Dm copy config failed");
 
 cleanup:
-    ly_set_free(enabled_modules);
+    sr_list_cleanup(enabled_modules);
     return rc;
 }
 
@@ -3517,16 +3516,16 @@ dm_session_switch_ds(dm_session_t *session, sr_datastore_t ds)
 }
 
 int
-dm_get_all_modules(dm_ctx_t *dm_ctx, dm_session_t *session, bool enabled_only, struct ly_set **result)
+dm_get_all_modules(dm_ctx_t *dm_ctx, dm_session_t *session, bool enabled_only, sr_list_t **result)
 {
     CHECK_NULL_ARG3(dm_ctx, session, result);
     int rc = SR_ERR_OK;
-    int ret = 0;
     const struct lys_module *module = NULL;
     size_t count = 0;
     sr_schema_t *schemas = NULL;
-    struct ly_set *modules = ly_set_new();
-    CHECK_NULL_NOMEM_RETURN(modules);
+    sr_list_t *modules = NULL;
+    rc = sr_list_init(&modules);
+    CHECK_RC_MSG_RETURN(rc, "List init failed");
 
     rc = dm_list_schemas(dm_ctx, session, &schemas, &count);
     CHECK_RC_MSG_GOTO(rc, cleanup, "List schemas failed");
@@ -3544,13 +3543,13 @@ dm_get_all_modules(dm_ctx_t *dm_ctx, dm_session_t *session, bool enabled_only, s
             CHECK_RC_LOG_GOTO(rc, cleanup, "Get module %s failed", schemas[i].module_name);
         }
 
-        ret = ly_set_add(modules, (struct lys_module *) module);
-        CHECK_NOT_MINUS1_MSG_GOTO(ret, rc, SR_ERR_INTERNAL, cleanup, "ly_set_add failed");
+        rc = sr_list_add(modules, (struct lys_module *) module);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Adding to list failed");
     }
 
 cleanup:
     if (SR_ERR_OK != rc) {
-        ly_set_free(modules);
+        sr_list_cleanup(modules);
     } else {
         *result = modules;
     }

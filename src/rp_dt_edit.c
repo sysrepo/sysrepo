@@ -825,7 +825,7 @@ rp_dt_copy_config_to_running(rp_ctx_t* rp_ctx, rp_session_t* session, const char
 {
     CHECK_NULL_ARG2(rp_ctx, session);
     int rc = SR_ERR_OK;
-    struct ly_set *modules = NULL;
+    sr_list_t *modules = NULL;
     dm_session_t *backup = NULL;
     sr_datastore_t prev_ds = session->datastore;
     dm_data_info_t *info = NULL;
@@ -862,8 +862,8 @@ rp_dt_copy_config_to_running(rp_ctx_t* rp_ctx, rp_session_t* session, const char
         }
         rc = dm_get_all_modules(rp_ctx->dm_ctx, session->dm_session, true, &modules);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Get all modules failed");
-        for (size_t i = 0; i < modules->number; i++) {
-            struct lys_module *module = modules->set.g[i];
+        for (size_t i = 0; i < modules->count; i++) {
+            struct lys_module *module = modules->data[i];
             rc = dm_get_data_info(rp_ctx->dm_ctx, session->dm_session, module->name, &info);
             CHECK_RC_LOG_GOTO(rc, cleanup, "Get data info failed %s", module->name);
             info->modified = true;
@@ -888,7 +888,7 @@ cleanup:
 
     /* change session to prev type */
     rc = rp_dt_switch_datastore(rp_ctx, session, prev_ds);
-    ly_set_free(modules);
+    sr_list_cleanup(modules);
 cleanup_sess_stop:
     dm_session_stop(rp_ctx->dm_ctx, backup);
     return first_err == SR_ERR_OK ? rc : first_err;

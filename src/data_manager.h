@@ -765,7 +765,7 @@ int dm_move_session_trees_in_session(dm_ctx_t *dm_ctx, dm_session_t *session, sr
  * @param [out] result
  * @return Error code (SR_ERR_OK on success)
  */
-int dm_get_all_modules(dm_ctx_t *dm_ctx, dm_session_t *session, bool enabled_only, struct ly_set **result);
+int dm_get_all_modules(dm_ctx_t *dm_ctx, dm_session_t *session, bool enabled_only, sr_list_t **result);
 
 /**
  * @brief If there is a session copy of the model, return modified flag.
