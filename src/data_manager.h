@@ -130,7 +130,7 @@ typedef struct dm_commit_context_s {
     int *fds;                   /**< opened file descriptors */
     bool *existed;              /**< flag wheter the file for the filedesriptor existed (and should be truncated) before commit*/
     size_t modif_count;         /**< number of modified models fds to be closed*/
-    struct ly_set *up_to_date_models; /**< set of module names where the timestamp of the session copy is equal to file system timestamp */
+    sr_list_t *up_to_date_models; /**< set of module names where the timestamp of the session copy is equal to file system timestamp */
     dm_sess_op_t *operations;   /**< pointer to the list of operations performed in session to be commited */
     size_t oper_count;          /**< number of operation in the operations list */
     sr_btree_t *subscriptions;  /**< binary trees of subscriptions organised per models */
@@ -314,7 +314,7 @@ int dm_remove_session_operations(dm_session_t *session);
  *
  * @return Error code (SR_ERR_OK on success)
  */
-int dm_update_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, struct ly_set **up_to_date_models);
+int dm_update_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, sr_list_t **up_to_date_models);
 
 /**
  * @brief Counts modified models and allocates structures used during commit process if the

@@ -1889,7 +1889,7 @@ dm_is_info_copy_uptodate(dm_ctx_t *dm_ctx, const char *file_name, const dm_data_
 }
 
 int
-dm_update_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, struct ly_set **up_to_date_models)
+dm_update_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, sr_list_t **up_to_date_models)
 {
     CHECK_NULL_ARG3(dm_ctx, session, up_to_date_models);
     int rc = SR_ERR_OK;
@@ -1897,12 +1897,12 @@ dm_update_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, struct ly_
     char *file_name = NULL;
     dm_data_info_t *info = NULL;
     size_t i = 0;
-    struct ly_set *to_be_refreshed = NULL, *up_to_date = NULL;
-    to_be_refreshed = ly_set_new();
-    up_to_date = ly_set_new();
+    sr_list_t *to_be_refreshed = NULL, *up_to_date = NULL;
+    rc = sr_list_init(&to_be_refreshed);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "List init failed");
 
-    CHECK_NULL_NOMEM_GOTO(to_be_refreshed, rc, cleanup);
-    CHECK_NULL_NOMEM_GOTO(up_to_date, rc, cleanup);
+    rc = sr_list_init(&up_to_date);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "List init failed");
 
     while (NULL != (info = sr_btree_get_at(session->session_modules[session->datastore], i++))) {
         rc = sr_get_data_file_name(dm_ctx->data_search_dir,
@@ -1940,28 +1940,30 @@ dm_update_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, struct ly_
 
         if (copy_uptodate) {
             if (info->modified) {
-                ly_set_add(up_to_date, (void *) info->module->name);
+                rc = sr_list_add(up_to_date, (void *) info->module->name);
             }
         } else {
             SR_LOG_DBG("Module %s will be refreshed", info->module->name);
-            ly_set_add(to_be_refreshed, info);
+            rc = sr_list_add(to_be_refreshed, info);
         }
         free(file_name);
         file_name = NULL;
         close(fd);
 
+        CHECK_RC_MSG_GOTO(rc, cleanup, "List add failed");
+
     }
 
-    for (i = 0; i < to_be_refreshed->number; i++) {
-        sr_btree_delete(session->session_modules[session->datastore], to_be_refreshed->set.g[i]);
+    for (i = 0; i < to_be_refreshed->count; i++) {
+        sr_btree_delete(session->session_modules[session->datastore], to_be_refreshed->data[i]);
     }
 
 cleanup:
-    ly_set_free(to_be_refreshed);
+    sr_list_cleanup(to_be_refreshed);
     if (SR_ERR_OK == rc) {
         *up_to_date_models = up_to_date;
     } else {
-        ly_set_free(up_to_date);
+        sr_list_cleanup(up_to_date);
     }
     free(file_name);
     return rc;
@@ -2194,7 +2196,7 @@ dm_free_commit_context(void *commit_ctx)
         }
         free(c_ctx->fds);
         free(c_ctx->existed);
-        ly_set_free(c_ctx->up_to_date_models);
+        sr_list_cleanup(c_ctx->up_to_date_models);
         c_ctx->up_to_date_models = NULL;
         c_ctx->fds = NULL;
         c_ctx->existed = NULL;
@@ -2248,7 +2250,7 @@ dm_save_commit_context(dm_ctx_t *dm_ctx, dm_commit_context_t *c_ctx)
     }
     free(c_ctx->fds);
     free(c_ctx->existed);
-    ly_set_free(c_ctx->up_to_date_models);
+    sr_list_cleanup(c_ctx->up_to_date_models);
     c_ctx->up_to_date_models = NULL;
     c_ctx->fds = NULL;
     c_ctx->existed = NULL;
@@ -2331,8 +2333,8 @@ dm_commit_prepare_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_con
     rc = dm_session_start(dm_ctx, session->user_credentials, SR_DS_CANDIDATE == session->datastore ? SR_DS_RUNNING : session->datastore, &c_ctx->session);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Commit session initialization failed");
 
-    c_ctx->up_to_date_models = ly_set_new();
-    CHECK_NULL_NOMEM_GOTO(c_ctx->up_to_date_models, rc, cleanup);
+    rc = sr_list_init(&c_ctx->up_to_date_models);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "List init failed");
 
     /* set pointer to the list of operations to be committed */
     c_ctx->operations = session->operations[session->datastore];
@@ -2400,7 +2402,6 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
     size_t i = 0;
     size_t count = 0;
     int rc = SR_ERR_OK;
-    int ret = 0;
     char *file_name = NULL;
     c_ctx->modif_count = 0; /* how many file descriptors should be closed on cleanup */
 
@@ -2472,8 +2473,8 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
         /* ops are skipped also when candidate is committed to the running */
         if (copy_uptodate || SR_DS_CANDIDATE == session->datastore) {
             SR_LOG_DBG("Timestamp for the model %s matches, ops will be skipped", info->module->name);
-            ret = ly_set_add(c_ctx->up_to_date_models, (void *) info->module->name);
-            CHECK_NOT_MINUS1_MSG_GOTO(ret, rc, SR_ERR_INTERNAL, cleanup, "Adding to ly set failed");
+            rc = sr_list_add(c_ctx->up_to_date_models, (void *) info->module->name);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "Adding to sr_list failed");
 
             di = calloc(1, sizeof(*di));
             CHECK_NULL_NOMEM_GOTO(di, rc, cleanup);

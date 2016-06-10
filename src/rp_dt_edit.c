@@ -597,7 +597,7 @@ rp_dt_delete_item_wrapper(rp_ctx_t *rp_ctx, rp_session_t *session, const char *x
  */
 static int
 rp_dt_replay_operations(dm_ctx_t *ctx, dm_session_t *session, dm_sess_op_t *operations, size_t count,
-        bool continue_on_error, struct ly_set *models_to_skip)
+        bool continue_on_error, sr_list_t *models_to_skip)
 {
     CHECK_NULL_ARG2(ctx, session);
     int rc = SR_ERR_OK;
@@ -610,9 +610,9 @@ rp_dt_replay_operations(dm_ctx_t *ctx, dm_session_t *session, dm_sess_op_t *oper
         }
         /* check if the operation should be skipped */
         bool match = false;
-        for (unsigned int m = 0; m < models_to_skip->number; m++) {
-            if (0 == sr_cmp_first_ns(op->xpath, (char *) models_to_skip->set.g[m])) {
-                SR_LOG_DBG("Skipping op for model %s", (char *) models_to_skip->set.g[m]);
+        for (unsigned int m = 0; m < models_to_skip->count; m++) {
+            if (0 == sr_cmp_first_ns(op->xpath, (char *) models_to_skip->data[m])) {
+                SR_LOG_DBG("Skipping op for model %s", (char *) models_to_skip->data[m]);
                 match = true;
                 break;
             }
@@ -773,7 +773,7 @@ rp_dt_refresh_session(rp_ctx_t *rp_ctx, rp_session_t *session, sr_error_info_t *
 {
     CHECK_NULL_ARG2(rp_ctx, session);
     int rc = SR_ERR_OK;
-    struct ly_set *up_to_date = NULL;
+    sr_list_t *up_to_date = NULL;
     dm_sess_op_t *ops = NULL;
     size_t op_count = 0;
     *err_cnt = 0;
@@ -807,7 +807,7 @@ rp_dt_refresh_session(rp_ctx_t *rp_ctx, rp_session_t *session, sr_error_info_t *
     }
     SR_LOG_DBG_MSG("End of session refresh");
 cleanup:
-    ly_set_free(up_to_date);
+    sr_list_cleanup(up_to_date);
     return rc;
 }
 
