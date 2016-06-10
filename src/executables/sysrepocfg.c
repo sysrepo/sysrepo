@@ -67,6 +67,9 @@ static bool srcfg_custom_repository = false;
 static sr_conn_ctx_t *srcfg_connection = NULL;
 static sr_session_ctx_t *srcfg_session = NULL;
 
+/* logging */
+static bool ly_diminish_errors = false;
+
 /**
  * @brief Logging callback called from libyang for each log entry.
  */
@@ -75,7 +78,10 @@ srcfg_ly_log_cb(LY_LOG_LEVEL level, const char *msg, const char *path)
 {
     switch (level) {
         case LY_LLERR:
-            SR_LOG_ERR("libyang: %s", msg);
+            if (ly_diminish_errors)
+                SR_LOG_WRN("libyang: %s", msg);
+            else
+                SR_LOG_ERR("libyang: %s", msg);
             break;
         case LY_LLWRN:
             SR_LOG_WRN("libyang: %s", msg);
@@ -232,7 +238,9 @@ srcfg_get_module_data(struct ly_ctx *ly_ctx, const char *module_name, struct lyd
 
     *data_tree = NULL;
     ly_errno = LY_SUCCESS;
-    while (SR_ERR_OK == (rc = sr_get_item_next(srcfg_session, iter, &value))) {
+    while ((ly_diminish_errors = true) && SR_ERR_OK == (rc = sr_get_item_next(srcfg_session, iter, &value))) {
+        ly_diminish_errors = false;
+
         /* get node schema */
         schema = ly_ctx_get_node2(ly_ctx, NULL, value->xpath, 0);
         if (!schema) {
@@ -278,6 +286,7 @@ next:
             value = NULL;
         }
     }
+    ly_diminish_errors = false;
 
     if (SR_ERR_NOT_FOUND == rc) {
         rc = SR_ERR_OK;
