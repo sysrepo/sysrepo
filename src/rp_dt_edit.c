@@ -712,6 +712,10 @@ rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, sr_error_info_t **errors, 
         SR_LOG_DBG_MSG("Commit (6/7): data write succeeded");
 
         rc = dm_commit_notify(rp_ctx->dm_ctx, session->dm_session, commit_ctx);
+
+        // TODO: replace this with proper subscriptions list
+        sr_list_t s = { 0, };
+        rc = np_commit_end_notify(rp_ctx->np_ctx, commit_ctx->id, &s);
     }
 
 cleanup:

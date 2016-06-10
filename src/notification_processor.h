@@ -194,8 +194,14 @@ int np_subscription_notify(np_ctx_t *np_ctx, np_subscription_t *subscription, ui
 
 /**
  * @brief Notify given subscribers that the commit process has ended.
+ * TODO
  */
 int np_commit_end_notify(np_ctx_t *np_ctx, uint32_t commit_id, sr_list_t *subscriptions);
+
+/**
+ * TODO
+ */
+int np_commit_notification_ack(np_ctx_t *np_ctx, uint32_t commit_id);
 
 /**
  * @brief Cleans up a subscription context (including all its content).

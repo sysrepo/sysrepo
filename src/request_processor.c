@@ -1282,7 +1282,9 @@ rp_notification_ack_process(rp_ctx_t *rp_ctx, Sr__Msg *msg)
 
     CHECK_NULL_ARG4(rp_ctx, msg, msg->notification_ack, msg->notification_ack->notif);
 
-    // TODO
+    SR_LOG_DBG("Notification ACK received with result = %"PRIu32".", msg->notification_ack->result);
+
+    rc = np_commit_notification_ack(rp_ctx->np_ctx, msg->notification_ack->notif->commit_id);
 
     return rc;
 }

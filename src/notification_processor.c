@@ -43,9 +43,9 @@ typedef struct np_dst_info_s {
  */
 typedef struct np_commit_ctx_s {
     uint32_t commit_id;            /**< Commit identifier. */
-    bool timer_started;            /**< Flag marking weather timer for releasing of the commit has been already started. */
+    bool commit_ended;             /**< Flag marking weather the commit already ended. */
     size_t notifications_sent;     /**< Count of sent notifications. */
-    size_t notification_acks;      /**< Count of received acknowledgments. */
+    size_t notifications_acked;    /**< Count of received acknowledgments. */
 } np_commit_ctx_t;
 
 /**
@@ -222,6 +222,71 @@ np_dst_info_remove(np_ctx_t *np_ctx, const char *dst_address, const char *module
     return SR_ERR_OK;
 }
 
+/**
+ * @brief Find commit context in the NP context by provided commit ID.
+ */
+static np_commit_ctx_t *
+np_commit_ctx_find(np_ctx_t *np_ctx, uint32_t commit_id, sr_llist_node_t **llist_node)
+{
+    sr_llist_node_t *node = NULL;
+    np_commit_ctx_t *commit = NULL;
+    bool matched = false;
+
+    if ((NULL != np_ctx) && (NULL != np_ctx->commits)) {
+        node = np_ctx->commits->first;
+        while (NULL != node) {
+            commit = (np_commit_ctx_t*)node->data;
+            if ((NULL != commit) && (commit->commit_id == commit_id)) {
+                matched = true;
+                break;
+            }
+            node = node->next;
+        }
+    }
+
+    if (matched) {
+        if (NULL != llist_node) {
+            *llist_node = node;
+        }
+        return commit;
+    } else {
+        return NULL;
+    }
+}
+
+/**
+ * @brief Increments count of notifications sent for the commit specified by commit ID.
+ */
+static int
+np_commit_notif_cnt_increment(np_ctx_t *np_ctx, uint32_t commit_id)
+{
+    np_commit_ctx_t *commit = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG(np_ctx);
+
+    pthread_rwlock_wrlock(&np_ctx->lock);
+
+    commit = np_commit_ctx_find(np_ctx, commit_id, NULL);
+
+    if (NULL == commit) {
+        /* add a new commit context */
+        SR_LOG_DBG("Crating a new NP commit context for commit ID %"PRIu32".", commit_id);
+
+        commit = calloc(1, sizeof(*commit));
+        CHECK_NULL_NOMEM_RETURN(commit);
+
+        commit->commit_id = commit_id;
+        rc = sr_llist_add_new(np_ctx->commits, commit);
+    }
+
+    commit->notifications_sent++;
+
+    pthread_rwlock_unlock(&np_ctx->lock);
+
+    return rc;
+}
+
 int
 np_init(rp_ctx_t *rp_ctx, np_ctx_t **np_ctx_p)
 {
@@ -261,6 +326,8 @@ cleanup:
 void
 np_cleanup(np_ctx_t *np_ctx)
 {
+    sr_llist_node_t *node = NULL;
+
     SR_LOG_DBG_MSG("Notification Processor cleanup requested.");
 
     if (NULL != np_ctx) {
@@ -268,7 +335,16 @@ np_cleanup(np_ctx_t *np_ctx)
             np_free_subscription(np_ctx->subscriptions[i]);
         }
         free(np_ctx->subscriptions);
+
+        /* cleanup unfinished commits */
+        node = np_ctx->commits->first;
+        while (NULL != node) {
+            // TODO: cleanup the commit in DM
+            free(node->data);
+            node = node->next;
+        }
         sr_llist_cleanup(np_ctx->commits);
+
         sr_btree_cleanup(np_ctx->dst_info_btree);
         pthread_rwlock_destroy(&np_ctx->lock);
         free(np_ctx);
@@ -677,6 +753,9 @@ np_subscription_notify(np_ctx_t *np_ctx, np_subscription_t *subscription, uint32
     if (SR_ERR_OK == rc) {
         /* send the message */
         rc = cm_msg_send(np_ctx->rp_ctx->cm_ctx, notif);
+        if (SR_ERR_OK == rc) {
+            rc = np_commit_notif_cnt_increment(np_ctx, commit_id);
+        }
     } else {
         sr__msg__free_unpacked(notif, NULL);
     }
@@ -689,10 +768,14 @@ np_commit_end_notify(np_ctx_t *np_ctx, uint32_t commit_id, sr_list_t *subscripti
 {
     np_subscription_t *subscription = NULL;
     Sr__Msg *notif = NULL;
+    np_commit_ctx_t *commit = NULL;
+    sr_llist_node_t *commit_node = NULL;
+    bool release = false;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG2(np_ctx, subscriptions);
 
+    /* send commit end notifications */
     for (size_t i = 0; i < subscriptions->count; i++) {
         /* send commit_end notification */
         subscription = subscriptions->data[i];
@@ -711,7 +794,65 @@ np_commit_end_notify(np_ctx_t *np_ctx, uint32_t commit_id, sr_list_t *subscripti
         notif = NULL;
     }
 
+    pthread_rwlock_wrlock(&np_ctx->lock);
+
+    commit = np_commit_ctx_find(np_ctx, commit_id, &commit_node);
+    if (NULL != commit) {
+        commit->commit_ended = true;
+        if (commit->notifications_acked == commit->notifications_sent) {
+            /* release the commit */
+            sr_llist_rm(np_ctx->commits, commit_node);
+            free(commit);
+            release = true;
+        } else {
+            /* TODO setup commit release timer */
+        }
+    }
+
+    pthread_rwlock_unlock(&np_ctx->lock);
+
+    if (release) {
+        SR_LOG_DBG("Releasing commit id=%"PRIu32".", commit_id);
+        // TODO: release in DM
+    }
+
     return SR_ERR_OK;
+}
+
+int
+np_commit_notification_ack(np_ctx_t *np_ctx, uint32_t commit_id)
+{
+    np_commit_ctx_t *commit = NULL;
+    sr_llist_node_t *commit_node = NULL;
+    bool release = false;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG(np_ctx);
+
+    pthread_rwlock_wrlock(&np_ctx->lock);
+
+    commit = np_commit_ctx_find(np_ctx, commit_id, &commit_node);
+
+    if (NULL != commit) {
+        commit->notifications_acked++;
+        if (commit->commit_ended && (commit->notifications_sent == commit->notifications_acked)) {
+            /* release the commit */
+            sr_llist_rm(np_ctx->commits, commit_node);
+            free(commit);
+            release = true;
+        }
+    } else {
+        SR_LOG_WRN("No NP commit context for commit ID %"PRIu32".", commit_id);
+    }
+
+    pthread_rwlock_unlock(&np_ctx->lock);
+
+    if (release) {
+        SR_LOG_DBG("Releasing commit id=%"PRIu32".", commit_id);
+        // TODO: release in DM
+    }
+
+    return rc;
 }
 
 void
