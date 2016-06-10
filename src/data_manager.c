@@ -1304,12 +1304,11 @@ dm_remove_not_enabled_nodes(dm_data_info_t *info)
 {
     CHECK_NULL_ARG(info);
     struct lyd_node *iter = NULL, *child = NULL, *next = NULL;
-    struct ly_set *stack = NULL;
+    sr_list_t *stack = NULL;
     int rc = SR_ERR_OK;
-    int ret = 0;
 
-    stack = ly_set_new();
-    CHECK_NULL_NOMEM_RETURN(stack);
+    rc = sr_list_init(&stack);
+    CHECK_RC_MSG_RETURN(rc, "List init failed");
 
     /* iterate through top-level nodes */
     LY_TREE_FOR_SAFE(info->node, next, iter)
@@ -1320,8 +1319,8 @@ dm_remove_not_enabled_nodes(dm_data_info_t *info)
                     LY_TREE_FOR(iter->child, child)
                     {
                         if (((LYS_CONTAINER | LYS_LIST | LYS_LEAF | LYS_LEAFLIST) & iter->schema->nodetype) && dm_is_node_enabled(child->schema)) {
-                            ret = ly_set_add(stack, child);
-                            CHECK_NOT_MINUS1_MSG_GOTO(ret, rc, SR_ERR_INTERNAL, cleanup, "Adding to ly_set failed");
+                            rc = sr_list_add(stack, child);
+                            CHECK_RC_MSG_GOTO(rc, cleanup, "Adding to sr_list failed");
                         }
                     }
                 }
@@ -1333,16 +1332,16 @@ dm_remove_not_enabled_nodes(dm_data_info_t *info)
         }
     }
 
-    while (stack->number != 0) {
-        iter = stack->set.d[stack->number - 1];
+    while (stack->count != 0) {
+        iter = stack->data[stack->count - 1];
         if (dm_is_node_enabled(iter->schema)) {
             if (!dm_is_node_enabled_with_children(iter->schema) && (LYS_CONTAINER | LYS_LIST) & iter->schema->nodetype) {
 
                 LY_TREE_FOR(iter->child, child)
                 {
                     if (((LYS_CONTAINER | LYS_LIST | LYS_LEAF | LYS_LEAFLIST) & iter->schema->nodetype)) {
-                        ret = ly_set_add(stack, child);
-                        CHECK_NOT_MINUS1_MSG_GOTO(ret, rc, SR_ERR_INTERNAL, cleanup, "Adding to ly_set failed");
+                        rc = sr_list_add(stack, child);
+                        CHECK_RC_MSG_GOTO(rc, cleanup, "Adding to sr_list failed");
                     }
                 }
             }
@@ -1353,7 +1352,7 @@ dm_remove_not_enabled_nodes(dm_data_info_t *info)
     }
 
 cleanup:
-    ly_set_free(stack);
+    sr_list_cleanup(stack);
     return rc;
 }
 
@@ -1370,12 +1369,11 @@ dm_has_not_enabled_nodes(dm_data_info_t *info, bool *res)
 {
     CHECK_NULL_ARG2(info, res);
     struct lyd_node *iter = NULL, *child = NULL, *next = NULL;
-    struct ly_set *stack = NULL;
+    sr_list_t *stack = NULL;
     int rc = SR_ERR_OK;
-    int ret = 0;
 
-    stack = ly_set_new();
-    CHECK_NULL_NOMEM_RETURN(stack);
+    rc = sr_list_init(&stack);
+    CHECK_RC_MSG_RETURN(rc, "List init failed");
 
     /* iterate through top-level nodes */
     LY_TREE_FOR_SAFE(info->node, next, iter)
@@ -1386,8 +1384,8 @@ dm_has_not_enabled_nodes(dm_data_info_t *info, bool *res)
                     LY_TREE_FOR(iter->child, child)
                     {
                         if (((LYS_CONTAINER | LYS_LIST | LYS_LEAF | LYS_LEAFLIST) & iter->schema->nodetype)) {
-                            ret = ly_set_add(stack, child);
-                            CHECK_NOT_MINUS1_MSG_GOTO(ret, rc, SR_ERR_INTERNAL, cleanup, "Adding to ly_set failed");
+                            rc = sr_list_add(stack, child);
+                            CHECK_RC_MSG_GOTO(rc, cleanup, "Adding to sr_list failed");
                         }
                     }
                 }
@@ -1399,16 +1397,16 @@ dm_has_not_enabled_nodes(dm_data_info_t *info, bool *res)
         }
     }
 
-    while (stack->number != 0) {
-        iter = stack->set.d[stack->number - 1];
+    while (stack->count != 0) {
+        iter = stack->data[stack->count - 1];
         if (dm_is_node_enabled(iter->schema)) {
             if (!dm_is_node_enabled_with_children(iter->schema) && (LYS_CONTAINER | LYS_LIST) & iter->schema->nodetype) {
 
                 LY_TREE_FOR(iter->child, child)
                 {
                     if (((LYS_CONTAINER | LYS_LIST | LYS_LEAF | LYS_LEAFLIST) & iter->schema->nodetype)) {
-                        ret = ly_set_add(stack, child);
-                        CHECK_NOT_MINUS1_MSG_GOTO(ret, rc, SR_ERR_INTERNAL, cleanup, "Adding to ly_set failed");
+                        rc = sr_list_add(stack, child);
+                        CHECK_RC_MSG_GOTO(rc, cleanup, "Adding to sr_list failed");
                     }
                 }
             }
@@ -1420,7 +1418,7 @@ dm_has_not_enabled_nodes(dm_data_info_t *info, bool *res)
     *res = false;
 
 cleanup:
-    ly_set_free(stack);
+    sr_list_cleanup(stack);
     return rc;
 }
 
