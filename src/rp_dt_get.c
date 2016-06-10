@@ -54,7 +54,7 @@ rp_dt_get_value_from_node(struct lyd_node *node, sr_val_t *val)
         data_leaf = (struct lyd_node_leaf_list *) node;
         val->dflt = node->dflt;
 
-        val->type = sr_libyang_type_to_sysrepo(data_leaf->value_type);
+        val->type = sr_libyang_leaf_get_type(data_leaf);
 
         rc = sr_libyang_leaf_copy_value(data_leaf, val);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Copying of value failed");
@@ -69,7 +69,7 @@ rp_dt_get_value_from_node(struct lyd_node *node, sr_val_t *val)
     case LYS_LEAFLIST:
         data_leaf = (struct lyd_node_leaf_list *) node;
 
-        val->type = sr_libyang_type_to_sysrepo(data_leaf->value_type);
+        val->type = sr_libyang_leaf_get_type(data_leaf);
 
         rc = sr_libyang_leaf_copy_value(data_leaf, val);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Copying of value failed");

@@ -215,7 +215,7 @@ srcfg_ly_init(struct ly_ctx **ly_ctx, const char *module_name)
 static int
 srcfg_get_module_data(struct ly_ctx *ly_ctx, const char *module_name, struct lyd_node **data_tree)
 {
-    int rc = SR_ERR_OK;
+    int rc = SR_ERR_OK, ret = 0;
     sr_val_t *value = NULL;
     sr_val_iter_t *iter = NULL;
     struct lyd_node *node = NULL;
@@ -283,6 +283,11 @@ next:
         rc = SR_ERR_OK;
     }
     if (SR_ERR_OK == rc) {
+        /* validate returned data, but most importantly resolve leafrefs */
+        ret = lyd_validate(data_tree, LYD_OPT_STRICT | LYD_OPT_CONFIG | LYD_WD_IMPL_TAG);
+        CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_INTERNAL, fail, "Received data tree from sysrepo is not valid: %s", ly_errmsg());
+        /* remove default nodes added by validation */
+        lyd_wd_cleanup(data_tree, 0);
         goto cleanup;
     }
 
@@ -322,7 +327,7 @@ srcfg_convert_lydiff_changed(const char *xpath, struct lyd_node *node)
         case LYS_LEAF:
         case LYS_LEAFLIST:
             data_leaf = (struct lyd_node_leaf_list *) node;
-            value.type = sr_libyang_type_to_sysrepo(data_leaf->value_type);
+            value.type = sr_libyang_leaf_get_type(data_leaf);
             rc = sr_libyang_leaf_copy_value(data_leaf, &value);
             if (SR_ERR_OK != rc) {
                 SR_LOG_ERR("Error returned from sr_libyang_leaf_copy_value: %s.", sr_strerror(rc));
@@ -393,7 +398,7 @@ srcfg_convert_lydiff_created(struct lyd_node *node)
             case LYS_LEAF: /* e.g.: /test-module:user[name='nameE']/name */
                 /* get value */
                 data_leaf = (struct lyd_node_leaf_list *)elem;
-                value.type = sr_libyang_type_to_sysrepo(data_leaf->value_type);
+                value.type = sr_libyang_leaf_get_type(data_leaf);
                 rc = sr_libyang_leaf_copy_value(data_leaf, &value);
                 if (SR_ERR_OK != rc) {
                     SR_LOG_ERR("Error returned from sr_libyang_leaf_copy_value: %s.", sr_strerror(rc));
@@ -429,7 +434,7 @@ srcfg_convert_lydiff_created(struct lyd_node *node)
             case LYS_LEAFLIST: /* e.g.: /test-module:main/numbers[.='10'] */
                 /* get value */
                 data_leaf = (struct lyd_node_leaf_list *)elem;
-                value.type = sr_libyang_type_to_sysrepo(data_leaf->value_type);
+                value.type = sr_libyang_leaf_get_type(data_leaf);
                 rc = sr_libyang_leaf_copy_value(data_leaf, &value);
                 if (SR_ERR_OK != rc) {
                     SR_LOG_ERR("Error returned from sr_libyang_leaf_copy_value: %s.", sr_strerror(rc));

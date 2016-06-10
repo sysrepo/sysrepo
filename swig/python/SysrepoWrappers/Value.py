@@ -66,8 +66,6 @@ class Value(object):
             return self._cObject.data.int32_val
         elif self.type == sr.SR_INT64_T:
             return self._cObject.data.int64_val
-        elif self.type == sr.SR_LEAFREF_T:
-            return self._cObject.data.leafref_val
         elif self.type == sr.SR_STRING_T:
             return self._cObject.data.string_val
         elif self.type == sr.SR_UINT8_T:
@@ -112,8 +110,6 @@ class Value(object):
             self._cObject.data.int32_val = val
         elif self.type == sr.SR_INT64_T:
             self._cObject.data.int64_val = val
-        elif self.type == sr.SR_LEAFREF_T:
-            self._cObject.data.leafref_val = val
         elif self.type == sr.SR_STRING_T:
             self._cObject.data.string_val = val
         elif self.type == sr.SR_UINT8_T:

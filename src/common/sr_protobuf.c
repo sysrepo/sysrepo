@@ -832,9 +832,6 @@ sr_set_val_t_type_in_gpb(const sr_val_t *value, Sr__Value *gpb_value){
     case SR_INT64_T:
         gpb_value->type = SR__VALUE__TYPES__INT64;
         break;
-    case SR_LEAFREF_T:
-        gpb_value->type = SR__VALUE__TYPES__LEAFREF;
-        break;
     case SR_STRING_T:
         gpb_value->type = SR__VALUE__TYPES__STRING;
         break;
@@ -1029,9 +1026,6 @@ sr_set_gpb_type_in_val_t(const Sr__Value *gpb_value, sr_val_t *value){
     case SR__VALUE__TYPES__INT64:
         value->type = SR_INT64_T;
         break;
-    case SR__VALUE__TYPES__LEAFREF:
-        value->type = SR_LEAFREF_T;
-        break;
     case SR__VALUE__TYPES__STRING:
         value->type = SR_STRING_T;
         break;
@@ -1106,10 +1100,6 @@ sr_set_gpb_value_in_val_t(const Sr__Value *gpb_value, sr_val_t *value){
         return SR_ERR_OK;
     case SR__VALUE__TYPES__INT64:
         value->data.int64_val = gpb_value->int64_val;
-        return SR_ERR_OK;
-    case SR__VALUE__TYPES__LEAFREF:
-        value->data.leafref_val = strdup(gpb_value->leafref_val);
-        CHECK_NULL_NOMEM_RETURN(gpb_value->leafref_val);
         return SR_ERR_OK;
     case SR__VALUE__TYPES__STRING:
         value->data.string_val = strdup(gpb_value->string_val);

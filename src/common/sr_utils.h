@@ -251,16 +251,15 @@ int sr_lyd_insert_after(dm_data_info_t *data_info, struct lyd_node *sibling, str
 int sr_lyd_insert_before(dm_data_info_t *data_info, struct lyd_node *sibling, struct lyd_node *node);
 
 /**
- * @brief Converts libyang enum of YANG built-in types to sysrepo representation
- * @param [in] t
- * @return sr_type_t
+ * @brief Converts value type of a libyang's leaf(list) to sysrepo representation
+ * @param [in] leaf whose value type is converted
+ * @return Converted type (sr_type_t)
  */
-sr_type_t sr_libyang_type_to_sysrepo(LY_DATA_TYPE t);
+sr_type_t sr_libyang_leaf_get_type(const struct lyd_node_leaf_list *leaf);
 
 /**
  * @brief Copies value from lyd_node_leaf_list to the sr_val_t.
  * @param [in] leaf input which is copied
- * @param [in] type
  * @param [in] value where the content is copied to
  * @return Error code (SR_ERR_OK on success)
  */
