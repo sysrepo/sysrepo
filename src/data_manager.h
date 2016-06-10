@@ -118,7 +118,7 @@ typedef struct dm_model_subscription_s {
     struct lys_node **nodes;            /**< array of schema nodes corresponding to the subscription */
     size_t subscription_cnt;            /**< number of subscriptions */
     struct lyd_difflist *difflist;      /**< diff list */
-    struct ly_set *changes;             /**< set of changes for the model */
+    sr_list_t *changes;             /**< set of changes for the model */
 }dm_model_subscription_t;
 
 /**
@@ -130,7 +130,7 @@ typedef struct dm_commit_context_s {
     int *fds;                   /**< opened file descriptors */
     bool *existed;              /**< flag wheter the file for the filedesriptor existed (and should be truncated) before commit*/
     size_t modif_count;         /**< number of modified models fds to be closed*/
-    struct ly_set *up_to_date_models; /**< set of module names where the timestamp of the session copy is equal to file system timestamp */
+    sr_list_t *up_to_date_models; /**< set of module names where the timestamp of the session copy is equal to file system timestamp */
     dm_sess_op_t *operations;   /**< pointer to the list of operations performed in session to be commited */
     size_t oper_count;          /**< number of operation in the operations list */
     sr_btree_t *subscriptions;  /**< binary trees of subscriptions organised per models */
@@ -314,7 +314,7 @@ int dm_remove_session_operations(dm_session_t *session);
  *
  * @return Error code (SR_ERR_OK on success)
  */
-int dm_update_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, struct ly_set **up_to_date_models);
+int dm_update_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, sr_list_t **up_to_date_models);
 
 /**
  * @brief Counts modified models and allocates structures used during commit process if the
@@ -765,7 +765,7 @@ int dm_move_session_trees_in_session(dm_ctx_t *dm_ctx, dm_session_t *session, sr
  * @param [out] result
  * @return Error code (SR_ERR_OK on success)
  */
-int dm_get_all_modules(dm_ctx_t *dm_ctx, dm_session_t *session, bool enabled_only, struct ly_set **result);
+int dm_get_all_modules(dm_ctx_t *dm_ctx, dm_session_t *session, bool enabled_only, sr_list_t **result);
 
 /**
  * @brief If there is a session copy of the model, return modified flag.

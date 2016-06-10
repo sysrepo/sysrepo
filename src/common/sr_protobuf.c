@@ -1238,21 +1238,21 @@ cleanup:
 }
 
 int
-sr_changes_sr_to_gpb(struct ly_set *sr_changes, Sr__Change ***gpb_changes_p, size_t *gpb_count) {
+sr_changes_sr_to_gpb(sr_list_t *sr_changes, Sr__Change ***gpb_changes_p, size_t *gpb_count) {
     Sr__Change **gpb_changes = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG2(gpb_changes_p, gpb_count);
 
-    if ((NULL != sr_changes) && (sr_changes->number > 0)) {
-        gpb_changes = calloc(sr_changes->number, sizeof(*gpb_changes));
+    if ((NULL != sr_changes) && (sr_changes->count > 0)) {
+        gpb_changes = calloc(sr_changes->count, sizeof(*gpb_changes));
         CHECK_NULL_NOMEM_RETURN(gpb_changes);
 
-        for (size_t i = 0; i < sr_changes->number; i++) {
+        for (size_t i = 0; i < sr_changes->count; i++) {
             gpb_changes[i] = calloc(1, sizeof(**gpb_changes));
             CHECK_NULL_NOMEM_GOTO(gpb_changes[i], rc, cleanup);
             sr__change__init(gpb_changes[i]);
-            sr_change_t *ch = sr_changes->set.g[i];
+            sr_change_t *ch = sr_changes->data[i];
             if (NULL != ch->new_value) {
                 rc = sr_dup_val_t_to_gpb(ch->new_value, &gpb_changes[i]->new_value);
                 CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to duplicate sr_val_t to GPB.");
@@ -1266,12 +1266,12 @@ sr_changes_sr_to_gpb(struct ly_set *sr_changes, Sr__Change ***gpb_changes_p, siz
     }
 
     *gpb_changes_p = gpb_changes;
-    *gpb_count = NULL != sr_changes ? sr_changes->number : 0;
+    *gpb_count = NULL != sr_changes ? sr_changes->count : 0;
 
     return SR_ERR_OK;
 
 cleanup:
-    for (size_t i = 0; i < sr_changes->number; i++) {
+    for (size_t i = 0; i < sr_changes->count; i++) {
         sr__change__free_unpacked(gpb_changes[i], NULL);
     }
     free(gpb_changes);
