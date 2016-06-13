@@ -357,6 +357,45 @@ void delete_item_leaflist_test(void **state){
     test_rp_session_cleanup(ctx, session);
 }
 
+void delete_item_leafref_test(void **state) {
+    int rc = 0;
+    rp_ctx_t *ctx = *state;
+    rp_session_t *session = NULL;
+    sr_val_t *values = NULL;
+    size_t count = 0;
+
+    test_rp_sesssion_create(ctx, SR_DS_STARTUP, &session);
+
+    /* delete list item with leafrefs */
+#define ITEM_WITH_LEAFREFS_XP "/test-module:university/classes/class[title='CCNA']/student[name='nameC']"
+#define REFERENCED_ITEM_XP "/test-module:university/students/student[name='nameC']"
+
+    rc = rp_dt_delete_item_wrapper(ctx, session, ITEM_WITH_LEAFREFS_XP, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_get_values_wrapper(ctx, session, ITEM_WITH_LEAFREFS_XP, &values, &count);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+    /* do not delete referenced item though */
+    rc = rp_dt_get_values_wrapper(ctx, session, REFERENCED_ITEM_XP, &values, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* delete one leafref only */
+#define LEAFREF_XP "/test-module:university/classes/class[title='CCNA']/student[name='nameB']/age"
+#define REFERENCED_LEAFREF_XP "/test-module:university/students/student[name='nameB']/age"
+
+    rc = rp_dt_delete_item_wrapper(ctx, session, LEAFREF_XP, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_get_values_wrapper(ctx, session, LEAFREF_XP, &values, &count);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+    /* do not delete referenced item though */
+    rc = rp_dt_get_values_wrapper(ctx, session, REFERENCED_LEAFREF_XP, &values, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    test_rp_session_cleanup(ctx, session);
+
+}
+
 void set_item_leaf_test(void **state){
     int rc = 0;
     rp_ctx_t *ctx = *state;
@@ -613,6 +652,64 @@ void set_item_container_test(void **state){
     /* set existing fails with strict opt*/
     rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/test-module:list[key='key']/wireless", SR_EDIT_STRICT, NULL);
     assert_int_equal(SR_ERR_DATA_EXISTS, rc);
+
+    test_rp_session_cleanup(ctx, session);
+}
+
+void set_item_leafref_test(void **state) {
+    int rc = 0;
+    rp_ctx_t *ctx = *state;
+    rp_session_t *session = NULL;
+
+    test_rp_sesssion_create(ctx, SR_DS_STARTUP, &session);
+
+    /* set list item with leafref as the key */
+#undef ITEM_WITH_LEAFREFS_XP
+#define ITEM_WITH_LEAFREFS_XP "/test-module:university/classes/class[title='CCNA']/student[name='nameA']"
+    sr_val_t *value = NULL;
+    rc = rp_dt_get_value_wrapper(ctx, session, ITEM_WITH_LEAFREFS_XP, &value);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, ITEM_WITH_LEAFREFS_XP, SR_EDIT_DEFAULT, NULL);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_get_value_wrapper(ctx, session, ITEM_WITH_LEAFREFS_XP "/name", &value);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(value);
+    assert_int_equal(SR_STRING_T, value->type);
+    assert_string_equal("nameA", value->data.string_val);
+
+    sr_free_val(value);
+
+    /* set existing does nothing*/
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, ITEM_WITH_LEAFREFS_XP, SR_EDIT_DEFAULT, NULL);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* set existing fails with strict opt*/
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, ITEM_WITH_LEAFREFS_XP, SR_EDIT_STRICT, NULL);
+    assert_int_equal(SR_ERR_DATA_EXISTS, rc);
+
+    /* set leafref */
+    value = calloc(1, sizeof(*value));
+    assert_non_null(value);
+    value->type = SR_UINT8_T;
+    value->data.uint8_val = 17;
+
+    rc = rp_dt_get_value_wrapper(ctx, session, LEAFREF_XP, &value);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, LEAFREF_XP, SR_EDIT_DEFAULT, value);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    sr_free_val(value);
+    value = NULL;
+
+    rc = rp_dt_get_value_wrapper(ctx, session, LEAFREF_XP, &value);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(value);
+    assert_int_equal(SR_UINT8_T, value->type);
+    assert_string_equal(17, value->data.string_val);
+    sr_free_val(value);
 
     test_rp_session_cleanup(ctx, session);
 }
@@ -880,6 +977,19 @@ void edit_test_module_test(void **state){
     assert_int_equal(value->data.uint64_val, new_set->data.uint64_val);
     FREE_VARS(value, new_set);
 
+    /* leafref */
+#undef ITEM_WITH_LEAFREFS_XP
+#define ITEM_WITH_LEAFREFS_XP "/test-module:university/classes/class[title='CCNA']/student[name='nameB']"
+    rc = rp_dt_get_value_wrapper(ctx, session, ITEM_WITH_LEAFREFS_XP "/name", &value);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    assert_int_equal(SR_STRING_T, value->type);
+    assert_int_equal("nameB", value->data.string_val);
+
+    delete_get_set_get(ctx, session, ITEM_WITH_LEAFREFS_XP "/name", value, &new_set);
+    assert_int_equal(value->data.string_val, new_set->data.string_val);
+    FREE_VARS(value, new_set);
+
     test_rp_session_cleanup(ctx, session);
 }
 
@@ -1103,6 +1213,71 @@ edit_validate_test(void **state)
     e_cnt = 0;
 
     /* validation pass because lyd_new path doesn't add duplicate leaf-list */
+    rc = dm_validate_session_data_trees(ctx->dm_ctx, session->dm_session, &errors, &e_cnt);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    test_rp_session_cleanup(ctx, session);
+
+    /* leafref */
+    test_rp_sesssion_create(ctx, SR_DS_STARTUP, &session);
+
+    sr_val_t age;
+    age.type = SR_UINT8_T;
+    age.data.uint8_val = 18; /* invalid reference */
+
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, LEAFREF_XP, SR_EDIT_DEFAULT, &age);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    errors = NULL;
+    e_cnt = 0;
+
+    rc = dm_validate_session_data_trees(ctx->dm_ctx, session->dm_session, &errors, &e_cnt);
+    assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
+    assert_int_equal(1, e_cnt);
+    assert_string_equal("Leafref \"../../../../students/student[name = current()/../name]/age\" of value \"18\" "
+                        "points to a non-existing leaf.", errors[0].message);
+    assert_string_equal(LEAFREF_XP, errors[0].xpath);
+    sr_free_errors(errors, e_cnt);
+
+    age.data.uint8_val = 17; /* valid reference */
+
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, LEAFREF_XP, SR_EDIT_DEFAULT, &age);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = dm_validate_session_data_trees(ctx->dm_ctx, session->dm_session, &errors, &e_cnt);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    test_rp_session_cleanup(ctx, session);
+
+    /* leafref chain */
+    test_rp_sesssion_create(ctx, SR_DS_STARTUP, &session);
+
+    sr_val_t link;
+    link.type = SR_STRING_T;
+    link.data.string_val = "final-leaf";
+
+#define LEAFREF_CHAIN         "/test-module:leafref-chain/"
+#define LEAFREF_CHAIN_LINK_A  LEAFREF_CHAIN "A"
+#define LEAFREF_CHAIN_LINK_B  LEAFREF_CHAIN "B"
+
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, LEAFREF_CHAIN_LINK_A, SR_EDIT_DEFAULT, &link);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    errors = NULL;
+    e_cnt = 0;
+
+    /* missing link "B" */
+    rc = dm_validate_session_data_trees(ctx->dm_ctx, session->dm_session, &errors, &e_cnt);
+    assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
+    assert_int_equal(1, e_cnt);
+    assert_string_equal("Leafref \"../B\" of value \"final-leaf\" points to a non-existing leaf.", errors[0].message);
+    assert_string_equal(LEAFREF_CHAIN_LINK_A, errors[0].xpath);
+    sr_free_errors(errors, e_cnt);
+
+    /* add missing link */
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, LEAFREF_CHAIN_LINK_B, SR_EDIT_DEFAULT, &link);
+    assert_int_equal(SR_ERR_OK, rc);
+
     rc = dm_validate_session_data_trees(ctx->dm_ctx, session->dm_session, &errors, &e_cnt);
     assert_int_equal(SR_ERR_OK, rc);
 
@@ -2016,12 +2191,14 @@ int main(){
             cmocka_unit_test(delete_item_list_test),
             cmocka_unit_test(delete_item_alllist_test),
             cmocka_unit_test(delete_item_leaflist_test),
+            cmocka_unit_test(delete_item_leafref_test),
             cmocka_unit_test(delete_whole_module_test),
             cmocka_unit_test(delete_negative_test),
             cmocka_unit_test(set_item_leaf_test),
             cmocka_unit_test(set_item_leaflist_test),
             cmocka_unit_test(set_item_list_test),
             cmocka_unit_test(set_item_container_test),
+            cmocka_unit_test(set_item_leafref_test),
             cmocka_unit_test(set_item_negative_test),
             cmocka_unit_test(edit_test_module_test),
             cmocka_unit_test(edit_validate_test),

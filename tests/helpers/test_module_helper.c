@@ -133,6 +133,79 @@ createDataTreeTestModule()
     n = lyd_new_leaf(node, module, "union", "infinity");
     assert_non_null(n);
 
+    /* list + list of leafrefs */
+    node = lyd_new(NULL, module, "university");
+    assert_non_null(node);
+    assert_int_equal(0,lyd_insert_after(r, node));
+
+    node = lyd_new(node, module, "students");
+    assert_non_null(node);
+    /*  -> student: nameA */
+    node = lyd_new(node, module, "student");
+    assert_non_null(node);
+    n = lyd_new_leaf(node, module, "name", "nameA");
+    assert_non_null(n);
+    n = lyd_new_leaf(node, module, "age", "19");
+    assert_non_null(n);
+
+    node = node->parent;
+    assert_non_null(node);
+
+    /*  -> student: nameB */
+    node = lyd_new(node, module, "student");
+    assert_non_null(node);
+    n = lyd_new_leaf(node, module, "name", "nameB");
+    assert_non_null(n);
+    n = lyd_new_leaf(node, module, "age", "17");
+    assert_non_null(n);
+
+    node = node->parent;
+    assert_non_null(node);
+
+    /*  -> student: nameC */
+    node = lyd_new(node, module, "student");
+    assert_non_null(node);
+    n = lyd_new_leaf(node, module, "name", "nameC");
+    assert_non_null(n);
+    n = lyd_new_leaf(node, module, "age", "18");
+    assert_non_null(n);
+
+    node = node->parent;
+    assert_non_null(node);
+    node = node->parent;
+    assert_non_null(node);
+
+    node = lyd_new(node, module, "classes");
+    assert_non_null(node);
+
+    /*  -> class: CCNA */
+    node = lyd_new(node, module, "class");
+    assert_non_null(node);
+    n = lyd_new_leaf(node, module, "title", "CCNA");
+    assert_non_null(n);
+    node = lyd_new(node, module, "student");
+    assert_non_null(node);
+    n = lyd_new_leaf(node, module, "name", "nameB");
+    assert_non_null(n);
+    n = lyd_new_leaf(node, module, "age", "17");
+    assert_non_null(n);
+    node = node->parent;
+    assert_non_null(node);
+    node = lyd_new(node, module, "student");
+    assert_non_null(node);
+    n = lyd_new_leaf(node, module, "name", "nameC");
+    assert_non_null(n);
+
+    /* leafref chain */
+    node = lyd_new(NULL, module, "leafref-chain");
+    assert_non_null(node);
+    assert_int_equal(0,lyd_insert_after(r, node));
+    n = lyd_new_leaf(node, module, "D", "final-leaf");
+    assert_non_null(n);
+    n = lyd_new_leaf(node, module, "C", "final-leaf");
+    assert_non_null(n);
+
+    /* validate & save */
     assert_int_equal(0, lyd_validate(&r, LYD_OPT_STRICT | LYD_OPT_CONFIG));
     assert_int_equal(SR_ERR_OK, sr_save_data_tree_file(TEST_MODULE_DATA_FILE_NAME, r));
 

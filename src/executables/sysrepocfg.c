@@ -292,11 +292,13 @@ next:
         rc = SR_ERR_OK;
     }
     if (SR_ERR_OK == rc) {
-        /* validate returned data, but most importantly resolve leafrefs */
-        ret = lyd_validate(data_tree, LYD_OPT_STRICT | LYD_OPT_CONFIG | LYD_WD_IMPL_TAG);
-        CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_INTERNAL, fail, "Received data tree from sysrepo is not valid: %s", ly_errmsg());
-        /* remove default nodes added by validation */
-        lyd_wd_cleanup(data_tree, 0);
+        if (NULL != *data_tree) {
+            /* validate returned data, but most importantly resolve leafrefs */
+            ret = lyd_validate(data_tree, LYD_OPT_STRICT | LYD_OPT_CONFIG | LYD_WD_IMPL_TAG);
+            CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_INTERNAL, fail, "Received data tree from sysrepo is not valid: %s", ly_errmsg());
+            /* remove default nodes added by validation */
+            lyd_wd_cleanup(data_tree, 0);
+        }
         goto cleanup;
     }
 
