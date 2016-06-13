@@ -298,9 +298,9 @@ np_commit_release_in_dm(np_ctx_t *np_ctx, uint32_t commit_id)
 {
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG(np_ctx);
+    CHECK_NULL_ARG3(np_ctx, np_ctx->rp_ctx, np_ctx->rp_ctx->dm_ctx);
 
-    // TODO: release commit in DM
+    rc = dm_remove_commit_context(np_ctx->rp_ctx->dm_ctx, commit_id);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Unable to release the commit in Data Manager.");
     }
@@ -348,7 +348,6 @@ void
 np_cleanup(np_ctx_t *np_ctx)
 {
     sr_llist_node_t *node = NULL;
-    np_commit_ctx_t *commit = NULL;
 
     SR_LOG_DBG_MSG("Notification Processor cleanup requested.");
 
@@ -361,9 +360,7 @@ np_cleanup(np_ctx_t *np_ctx)
         /* cleanup unfinished commits */
         node = np_ctx->commits->first;
         while (NULL != node) {
-            commit = (np_commit_ctx_t*)node->data;
-            np_commit_release_in_dm(np_ctx, commit->commit_id);
-            free(commit);
+            free(node->data);
             node = node->next;
         }
         sr_llist_cleanup(np_ctx->commits);
