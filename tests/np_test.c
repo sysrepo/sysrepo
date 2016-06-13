@@ -314,6 +314,9 @@ np_module_subscriptions_test(void **state)
     }
     sr_list_cleanup(subscriptions_list);
 
+    rc = np_commit_release(np_ctx, 12345);
+    assert_int_equal(rc, SR_ERR_OK);
+
     /* unsubscribe */
     rc = np_notification_unsubscribe(np_ctx, test_ctx->rp_session_ctx, SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS,
             "addr3", 123, "example-module");
