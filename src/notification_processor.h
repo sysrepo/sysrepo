@@ -193,6 +193,37 @@ int np_get_module_change_subscriptions(np_ctx_t *np_ctx, const char *module_name
 int np_subscription_notify(np_ctx_t *np_ctx, np_subscription_t *subscription, uint32_t commit_id);
 
 /**
+ * @brief Notify given subscribers that the commit process has ended.
+ *
+ * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
+ * @param[in] commit_id Commit identifier.
+ * @param[in] subscriptions List of subscriptions to be notified about commit end.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int np_commit_end_notify(np_ctx_t *np_ctx, uint32_t commit_id, sr_list_t *subscriptions);
+
+/**
+ * @brief Release the commit context related to specified commit ID.
+ *
+ * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
+ * @param[in] commit_id Commit identifier.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int np_commit_release(np_ctx_t *np_ctx, uint32_t commit_id);
+
+/**
+ * @brief
+ *
+ * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
+ * @param[in] commit_id Commit identifier.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int np_commit_notification_ack(np_ctx_t *np_ctx, uint32_t commit_id);
+
+/**
  * @brief Cleans up a subscription context (including all its content).
  *
  * @param[in] subscription Subscription context to be freed.
