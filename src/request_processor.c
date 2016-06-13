@@ -1273,6 +1273,23 @@ rp_unsubscribe_destination_req_process(const rp_ctx_t *rp_ctx, Sr__Msg *msg)
 }
 
 /**
+ * @brief Processes an commit-release internal request.
+ */
+static int
+rp_commit_release_req_process(const rp_ctx_t *rp_ctx, Sr__Msg *msg)
+{
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG4(rp_ctx, msg, msg->internal_request, msg->internal_request->commit_release_req);
+
+    SR_LOG_DBG_MSG("Processing commit-release request.");
+
+    rc = np_commit_release(rp_ctx->np_ctx, msg->internal_request->commit_release_req->commit_id);
+
+    return rc;
+}
+
+/**
  * @brief Processes an notification acknowledgment.
  */
 static int
@@ -1456,8 +1473,11 @@ rp_internal_req_dispatch(rp_ctx_t *rp_ctx, Sr__Msg *msg)
         case SR__OPERATION__UNSUBSCRIBE_DESTINATION:
             rc = rp_unsubscribe_destination_req_process(rp_ctx, msg);
             break;
+        case SR__OPERATION__COMMIT_RELEASE:
+            rc = rp_commit_release_req_process(rp_ctx, msg);
+            break;
         default:
-            SR_LOG_ERR("Unsupported internal request received (operation=%d).", msg->request->operation);
+            SR_LOG_ERR("Unsupported internal request received (operation=%d).", msg->internal_request->operation);
             rc = SR_ERR_UNSUPPORTED;
             break;
     }

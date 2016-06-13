@@ -585,7 +585,8 @@ sr_gpb_internal_req_alloc(const Sr__Operation operation, Sr__Msg **msg_p)
     CHECK_NULL_NOMEM_GOTO(req, rc, error);
     sr__internal_request__init(req);
     msg->internal_request = req;
-    req->operation = operation;
+
+    msg->internal_request->operation = operation;
 
     /* initialize sub-message */
     switch (operation) {
@@ -594,6 +595,12 @@ sr_gpb_internal_req_alloc(const Sr__Operation operation, Sr__Msg **msg_p)
             CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__unsubscribe_destination_req__init((Sr__UnsubscribeDestinationReq*)sub_msg);
             req->unsubscribe_dst_req = (Sr__UnsubscribeDestinationReq*)sub_msg;
+            break;
+        case SR__OPERATION__COMMIT_RELEASE:
+            sub_msg = calloc(1, sizeof(Sr__CommitReleaseReq));
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
+            sr__commit_release_req__init((Sr__CommitReleaseReq*)sub_msg);
+            req->commit_release_req = (Sr__CommitReleaseReq*)sub_msg;
             break;
         default:
             break;

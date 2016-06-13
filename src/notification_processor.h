@@ -201,6 +201,11 @@ int np_commit_end_notify(np_ctx_t *np_ctx, uint32_t commit_id, sr_list_t *subscr
 /**
  * TODO
  */
+int np_commit_release(np_ctx_t *np_ctx, uint32_t commit_id);
+
+/**
+ * TODO
+ */
 int np_commit_notification_ack(np_ctx_t *np_ctx, uint32_t commit_id);
 
 /**

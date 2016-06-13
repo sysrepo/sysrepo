@@ -29,6 +29,9 @@
 #include "persistence_manager.h"
 #include "notification_processor.h"
 
+#define NP_COMMIT_RELEASE_TIMEOUT 60  /**< Timeout (in seconds) after which the commit will be released
+                                           also in case that not all notification ACKs have been received. */
+
 /**
  * @brief Information about a notification destination.
  */
@@ -287,6 +290,24 @@ np_commit_notif_cnt_increment(np_ctx_t *np_ctx, uint32_t commit_id)
     return rc;
 }
 
+/**
+ * @brief Releases the commit in Data Manager.
+ */
+static int
+np_commit_release_in_dm(np_ctx_t *np_ctx, uint32_t commit_id)
+{
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG(np_ctx);
+
+    // TODO: release commit in DM
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Unable to release the commit in Data Manager.");
+    }
+
+    return rc;
+}
+
 int
 np_init(rp_ctx_t *rp_ctx, np_ctx_t **np_ctx_p)
 {
@@ -327,6 +348,7 @@ void
 np_cleanup(np_ctx_t *np_ctx)
 {
     sr_llist_node_t *node = NULL;
+    np_commit_ctx_t *commit = NULL;
 
     SR_LOG_DBG_MSG("Notification Processor cleanup requested.");
 
@@ -339,8 +361,9 @@ np_cleanup(np_ctx_t *np_ctx)
         /* cleanup unfinished commits */
         node = np_ctx->commits->first;
         while (NULL != node) {
-            // TODO: cleanup the commit in DM
-            free(node->data);
+            commit = (np_commit_ctx_t*)node->data;
+            np_commit_release_in_dm(np_ctx, commit->commit_id);
+            free(commit);
             node = node->next;
         }
         sr_llist_cleanup(np_ctx->commits);
@@ -767,13 +790,13 @@ int
 np_commit_end_notify(np_ctx_t *np_ctx, uint32_t commit_id, sr_list_t *subscriptions)
 {
     np_subscription_t *subscription = NULL;
-    Sr__Msg *notif = NULL;
+    Sr__Msg *notif = NULL, *req = NULL;
     np_commit_ctx_t *commit = NULL;
     sr_llist_node_t *commit_node = NULL;
     bool release = false;
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG2(np_ctx, subscriptions);
+    CHECK_NULL_ARG3(np_ctx, np_ctx->rp_ctx, subscriptions);
 
     /* send commit end notifications */
     for (size_t i = 0; i < subscriptions->count; i++) {
@@ -781,15 +804,12 @@ np_commit_end_notify(np_ctx_t *np_ctx, uint32_t commit_id, sr_list_t *subscripti
         subscription = subscriptions->data[i];
         rc = sr_gpb_notif_alloc(SR__SUBSCRIPTION_TYPE__COMMIT_END_SUBS, subscription->dst_address,
                 subscription->dst_id, &notif);
-        notif->notification->commit_id = commit_id;
-        notif->notification->has_commit_id = true;
-
         if (SR_ERR_OK == rc) {
+            notif->notification->commit_id = commit_id;
+            notif->notification->has_commit_id = true;
+
             /* send the message */
             rc = cm_msg_send(np_ctx->rp_ctx->cm_ctx, notif);
-        } else {
-            /* release the message */
-            sr__msg__free_unpacked(notif, NULL);
         }
         notif = NULL;
     }
@@ -800,12 +820,23 @@ np_commit_end_notify(np_ctx_t *np_ctx, uint32_t commit_id, sr_list_t *subscripti
     if (NULL != commit) {
         commit->commit_ended = true;
         if (commit->notifications_acked == commit->notifications_sent) {
-            /* release the commit */
+            /* release the commit immediately */
             sr_llist_rm(np_ctx->commits, commit_node);
             free(commit);
             release = true;
         } else {
-            /* TODO setup commit release timer */
+            /* setup commit release timer */
+            rc = sr_gpb_internal_req_alloc(SR__OPERATION__COMMIT_RELEASE, &req);
+            if (SR_ERR_OK == rc) {
+                req->internal_request->commit_release_req->commit_id = commit_id;
+                rc = cm_delayed_msg_process(np_ctx->rp_ctx->cm_ctx, NULL, req, NP_COMMIT_RELEASE_TIMEOUT);
+            }
+            if (SR_ERR_OK == rc) {
+                SR_LOG_DBG("Setting up a commit-release timer for commit id=%"PRIu32" with timeout=%d seconds.",
+                        commit_id, NP_COMMIT_RELEASE_TIMEOUT);
+            } else {
+                SR_LOG_ERR("Unable to setup commit-release timer for commit id=%"PRIu32".", commit_id);
+            }
         }
     }
 
@@ -813,10 +844,39 @@ np_commit_end_notify(np_ctx_t *np_ctx, uint32_t commit_id, sr_list_t *subscripti
 
     if (release) {
         SR_LOG_DBG("Releasing commit id=%"PRIu32".", commit_id);
-        // TODO: release in DM
+        rc = np_commit_release_in_dm(np_ctx, commit_id);
     }
 
-    return SR_ERR_OK;
+    return rc;
+}
+
+int
+np_commit_release(np_ctx_t *np_ctx, uint32_t commit_id)
+{
+    np_commit_ctx_t *commit = NULL;
+    sr_llist_node_t *commit_node = NULL;
+    bool release = false;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG(np_ctx);
+
+    pthread_rwlock_wrlock(&np_ctx->lock);
+
+    commit = np_commit_ctx_find(np_ctx, commit_id, &commit_node);
+    if (NULL != commit) {
+        sr_llist_rm(np_ctx->commits, commit_node);
+        free(commit);
+        release = true;
+    }
+
+    pthread_rwlock_unlock(&np_ctx->lock);
+
+    if (release) {
+        SR_LOG_DBG("Releasing commit id=%"PRIu32".", commit_id);
+        rc = np_commit_release_in_dm(np_ctx, commit_id);
+    }
+
+    return rc;
 }
 
 int
@@ -849,7 +909,7 @@ np_commit_notification_ack(np_ctx_t *np_ctx, uint32_t commit_id)
 
     if (release) {
         SR_LOG_DBG("Releasing commit id=%"PRIu32".", commit_id);
-        // TODO: release in DM
+        rc = np_commit_release_in_dm(np_ctx, commit_id);
     }
 
     return rc;
