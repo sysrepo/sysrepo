@@ -328,7 +328,7 @@ np_init(rp_ctx_t *rp_ctx, np_ctx_t **np_ctx_p)
 
     /* init linked-list for commit contexts */
     rc = sr_llist_init(&ctx->commits);
-    CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate commits linke-list.");
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate commits linked-list.");
 
     /* initialize subscriptions lock */
     ret = pthread_rwlock_init(&ctx->lock, NULL);

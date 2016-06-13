@@ -544,6 +544,7 @@ pm_get_module_info(pm_ctx_t *pm_ctx, const char *module_name, bool *module_enabl
 
     if (NULL != node_set && node_set->number > 0) {
         for (size_t i = 0; i < node_set->number; i++) {
+            memset(&subscription, 0, sizeof(subscription));
             rc = pm_subscription_entry_fill(module_name, &subscription, node_set->set.d[i]->child);
             if (SR_ERR_OK == rc) {
                 if (SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS == subscription.type) {
