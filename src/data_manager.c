@@ -2594,10 +2594,14 @@ dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t *c
     dm_data_info_t *info = NULL, *commit_info = NULL, *prev_info = NULL, lookup_info = {0};
     dm_model_subscription_t *ms = NULL;
     bool match = false;
+    sr_list_t *notified_notif = NULL;
     /* notification are sent only when running or candidate is committed*/
     if (SR_DS_STARTUP == session->datastore) {
         return SR_ERR_OK;
     }
+
+    rc = sr_list_init(&notified_notif);
+    CHECK_RC_MSG_RETURN(rc, "List init failed");
 
     SR_LOG_DBG_MSG("Sending notifications about the changes made in running datastore...");
     while (NULL != (info = sr_btree_get_at(session->session_modules[session->datastore], i++))) {
@@ -2685,12 +2689,18 @@ dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t *c
                            ms->subscriptions[s]->module_name,
                            ms->subscriptions[s]->xpath);
                 }
+                rc = sr_list_add(notified_notif, ms->subscriptions[s]);
+                if (SR_ERR_OK != rc) {
+                   SR_LOG_WRN_MSG("List add failed");
+                }
             }
         }
     }
 
     rc = dm_save_commit_context(dm_ctx, c_ctx);
 
+    //TODO let the np know that commit has finished
+    sr_list_cleanup(notified_notif);
     return rc;
 }
 
