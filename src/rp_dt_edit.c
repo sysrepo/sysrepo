@@ -597,7 +597,7 @@ rp_dt_delete_item_wrapper(rp_ctx_t *rp_ctx, rp_session_t *session, const char *x
  */
 static int
 rp_dt_replay_operations(dm_ctx_t *ctx, dm_session_t *session, dm_sess_op_t *operations, size_t count,
-        bool continue_on_error, struct ly_set *models_to_skip)
+        bool continue_on_error, sr_list_t *models_to_skip)
 {
     CHECK_NULL_ARG2(ctx, session);
     int rc = SR_ERR_OK;
@@ -610,9 +610,9 @@ rp_dt_replay_operations(dm_ctx_t *ctx, dm_session_t *session, dm_sess_op_t *oper
         }
         /* check if the operation should be skipped */
         bool match = false;
-        for (unsigned int m = 0; m < models_to_skip->number; m++) {
-            if (0 == sr_cmp_first_ns(op->xpath, (char *) models_to_skip->set.g[m])) {
-                SR_LOG_DBG("Skipping op for model %s", (char *) models_to_skip->set.g[m]);
+        for (unsigned int m = 0; m < models_to_skip->count; m++) {
+            if (0 == sr_cmp_first_ns(op->xpath, (char *) models_to_skip->data[m])) {
+                SR_LOG_DBG("Skipping op for model %s", (char *) models_to_skip->data[m]);
                 match = true;
                 break;
             }
@@ -777,7 +777,7 @@ rp_dt_refresh_session(rp_ctx_t *rp_ctx, rp_session_t *session, sr_error_info_t *
 {
     CHECK_NULL_ARG2(rp_ctx, session);
     int rc = SR_ERR_OK;
-    struct ly_set *up_to_date = NULL;
+    sr_list_t *up_to_date = NULL;
     dm_sess_op_t *ops = NULL;
     size_t op_count = 0;
     *err_cnt = 0;
@@ -811,7 +811,7 @@ rp_dt_refresh_session(rp_ctx_t *rp_ctx, rp_session_t *session, sr_error_info_t *
     }
     SR_LOG_DBG_MSG("End of session refresh");
 cleanup:
-    ly_set_free(up_to_date);
+    sr_list_cleanup(up_to_date);
     return rc;
 }
 
@@ -829,7 +829,7 @@ rp_dt_copy_config_to_running(rp_ctx_t* rp_ctx, rp_session_t* session, const char
 {
     CHECK_NULL_ARG2(rp_ctx, session);
     int rc = SR_ERR_OK;
-    struct ly_set *modules = NULL;
+    sr_list_t *modules = NULL;
     dm_session_t *backup = NULL;
     sr_datastore_t prev_ds = session->datastore;
     dm_data_info_t *info = NULL;
@@ -866,8 +866,8 @@ rp_dt_copy_config_to_running(rp_ctx_t* rp_ctx, rp_session_t* session, const char
         }
         rc = dm_get_all_modules(rp_ctx->dm_ctx, session->dm_session, true, &modules);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Get all modules failed");
-        for (size_t i = 0; i < modules->number; i++) {
-            struct lys_module *module = modules->set.g[i];
+        for (size_t i = 0; i < modules->count; i++) {
+            struct lys_module *module = modules->data[i];
             rc = dm_get_data_info(rp_ctx->dm_ctx, session->dm_session, module->name, &info);
             CHECK_RC_LOG_GOTO(rc, cleanup, "Get data info failed %s", module->name);
             info->modified = true;
@@ -892,7 +892,7 @@ cleanup:
 
     /* change session to prev type */
     rc = rp_dt_switch_datastore(rp_ctx, session, prev_ds);
-    ly_set_free(modules);
+    sr_list_cleanup(modules);
 cleanup_sess_stop:
     dm_session_stop(rp_ctx->dm_ctx, backup);
     return first_err == SR_ERR_OK ? rc : first_err;

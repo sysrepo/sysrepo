@@ -174,7 +174,7 @@ int sr_values_gpb_to_sr(Sr__Value **gpb_values, size_t gpb_value_cnt, sr_val_t *
  * @param [out] gpb_count
  * @return Error code (SR_ERR_OK on success)
  */
-int sr_changes_sr_to_gpb(struct ly_set *sr_changes, Sr__Change ***changes, size_t *gpb_count);
+int sr_changes_sr_to_gpb(sr_list_t *sr_changes, Sr__Change ***changes, size_t *gpb_count);
 
 /**
  * @brief Converts sysrepo datastore to GPB datastore.

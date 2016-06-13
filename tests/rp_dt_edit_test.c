@@ -48,7 +48,7 @@ typedef struct dm_session_s {
     size_t *oper_size;                  /**< array of number of allocated operations */
     char *error_msg;                    /**< description of the last error */
     char *error_xpath;                  /**< xpath of the last error if applicable */
-    struct ly_set *locked_files;        /**< set of filename that are locked by this session */
+    sr_list_t *locked_files;            /**< set of filename that are locked by this session */
     bool holds_ds_lock;                 /**< flags if the session holds ds lock*/
 } dm_session_t;
 
