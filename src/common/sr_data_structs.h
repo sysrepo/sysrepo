@@ -251,6 +251,83 @@ bool sr_cbuff_dequeue(sr_cbuff_t *buffer, void *item);
  */
 size_t sr_cbuff_items_in_queue(sr_cbuff_t *buffer);
 
+/**
+ * @brief Holds binary tree with filename -> fd maping. This structure
+ * is used to check file locks inside of the process and to avoid
+ * the loss of the lock by file closing. File name  is first looked
+ * up in this structure to detect if the file is currently opened by the process.
+ */
+typedef struct sr_locking_set_s {
+    sr_btree_t *lock_files;       /**< Binary tree of lock files for fast look up by file name */
+    sr_btree_t *fd_index;         /**< Binary tree for fast lookup by fd */
+    pthread_mutex_t mutex;        /**< Mutex for exclusive access to binary tree */
+    pthread_cond_t cond;          /**< Condition variable */
+}sr_locking_set_t;
+
+/**
+ * @brief The item of the lock_files binary tree in dm_lock_ctx_t
+ */
+typedef struct sr_lock_item_s {
+    char *filename;               /**< File name of the lockfile */
+    int fd;                       /**< File descriptor of the file */
+    bool locked;                  /**< Flag signalizing that file is locked */
+}sr_lock_item_t;
+
+/**
+ * @brief Initializes the locking set.
+ * @param [in] lset
+ * @return Error code (SR_ERR_OK on success)
+ */
+int sr_locking_set_init(sr_locking_set_t *lset);
+
+/**
+ * @brief Frees all resources allocated in the set.
+ * @param [in] lset
+ */
+void sr_locking_set_cleanup(sr_locking_set_t *lset);
+
+/**
+ * @brief Checks if the file is not locked in the provided context.
+ * If not it locks a file based on provided file name. Identity must be
+ * switched before calling the function. Opens the file and set the output argument.
+ * @param [in] lock_ctx
+ * @param [in] filename
+ * @param [in] blocking
+ * @param [out] fd, if not NULL opened file descriptor is returned
+ * @return Error code (SR_ERR_OK on success), SR_ERR_LOCKED if the file is already locked,
+ * SR_ERR_UNATHORIZED if the file can not be locked because of the permission.
+ */
+int sr_locking_set_lock_file_open(sr_locking_set_t *lock_ctx, char *filename, bool blocking, int *fd);
+
+/**
+ * @brief Same as ::sr_locking_set_lock_file_open however it expects that file is already opened.
+ * @param [in] lock_ctx
+ * @param [in] filename
+ * @param [in] blocking - flag whether the function should wait until it locks the file or return an error
+ * @param [in] fd - file descriptor of the opened file to be locked
+ * @return Error code (SR_ERR_OK on success), SR_ERR_LOCKED if the file is already locked,
+ * SR_ERR_UNATHORIZED if the file can not be locked because of the permission.
+ */
+int sr_locking_set_lock_fd(sr_locking_set_t *lock_ctx, char *filename, bool blocking, int fd);
+
+/**
+ * @brief Looks up the file based on the filename in locking set. Then the file is unlocked and fd is closed.
+ * @param [in] lock_ctx
+ * @param [in] filename
+ * @return Error code (SR_ERR_OK on success) SR_ERR_INVAL_ARG if the
+ * file had not been locked in provided context
+ */
+int sr_locking_set_unlock_close_file(sr_locking_set_t *lock_ctx, char *filename);
+
+/**
+ * @brief Looks up the file based on the file descriptor in locking set. Then the file is unlocked and fd is closed.
+ * @param [in] lock_ctx
+ * @param [in] filename
+ * @return Error code (SR_ERR_OK on success) SR_ERR_INVAL_ARG if the
+ * file had not been locked in provided context
+ */
+int sr_locking_set_unlock_close_fd(sr_locking_set_t *lock_ctx, int fd);
+
 /**@} data_structs */
 
 #endif /* SR_DATA_STRUCTS_H_ */
