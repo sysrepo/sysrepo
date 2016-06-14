@@ -379,7 +379,6 @@ sr_btree_get_at(sr_btree_t *tree, size_t index)
     return NULL;
 }
 
-
 /**
  * @brief FIFO circular buffer queue context.
  */
@@ -490,6 +489,29 @@ sr_cbuff_items_in_queue(sr_cbuff_t *buffer)
 }
 
 /**
+ * @brief Holds binary tree with filename -> fd maping. This structure
+ * is used to check file locks inside of the process and to avoid
+ * the loss of the lock by file closing. File name  is first looked
+ * up in this structure to detect if the file is currently opened by the process.
+ * File can be closed and unlocked by fd.
+ */
+typedef struct sr_locking_set_s {
+    sr_btree_t *lock_files;       /**< Binary tree of lock files for fast look up by file name */
+    sr_btree_t *fd_index;         /**< Binary tree for fast lookup by fd, only index to the items stored in lock_files binary tree */
+    pthread_mutex_t mutex;        /**< Mutex for exclusive access to binary tree */
+    pthread_cond_t cond;          /**< Condition variable used for blocking lock */
+} sr_locking_set_t;
+
+/**
+ * @brief The item of the lock_files binary tree in dm_lock_ctx_t
+ */
+typedef struct sr_lock_item_s {
+    char *filename;               /**< File name of the lockfile */
+    int fd;                       /**< File descriptor of the file */
+    bool locked;                  /**< Flag signalizing that file is locked */
+} sr_lock_item_t;
+
+/**
  * @brief Compare two lock items by filename
  */
 static int
@@ -546,18 +568,28 @@ sr_free_lock_item(void *lock_item)
 }
 
 int
-sr_locking_set_init(sr_locking_set_t *lset){
-   CHECK_NULL_ARG(lset);
-   int rc = SR_ERR_OK;
-   pthread_mutex_init(&lset->mutex, NULL);
-   pthread_cond_init(&lset->cond, NULL);
-   rc = sr_btree_init(sr_compare_lock_item, sr_free_lock_item, &lset->lock_files);
-   CHECK_RC_MSG_RETURN(rc, "Creating of lock files binary tree failed");
+sr_locking_set_init(sr_locking_set_t **lset_p){
+    CHECK_NULL_ARG(lset_p);
+    int rc = SR_ERR_OK;
+    sr_locking_set_t *lset = NULL;
 
-   rc = sr_btree_init(sr_compare_lock_item_fd, NULL, &lset->fd_index);
-   CHECK_RC_MSG_RETURN(rc, "Creating of lock files binary tree failed");
+    lset = calloc(1, sizeof(*lset));
+    CHECK_NULL_NOMEM_RETURN(lset);
 
-   return rc;
+    pthread_mutex_init(&lset->mutex, NULL);
+    pthread_cond_init(&lset->cond, NULL);
+    rc = sr_btree_init(sr_compare_lock_item, sr_free_lock_item, &lset->lock_files);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Creating of lock files binary tree failed");
+
+    rc = sr_btree_init(sr_compare_lock_item_fd, NULL, &lset->fd_index);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Creating of lock files binary tree failed");
+
+    *lset_p = lset;
+    return rc;
+
+cleanup:
+    sr_locking_set_cleanup(lset);
+    return rc;
 }
 
 void
@@ -568,6 +600,7 @@ sr_locking_set_cleanup(sr_locking_set_t *lset)
         sr_btree_cleanup(lset->lock_files);
         pthread_mutex_destroy(&lset->mutex);
         pthread_cond_destroy(&lset->cond);
+        free(lset);
     }
 }
 
