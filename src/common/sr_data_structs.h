@@ -313,12 +313,13 @@ size_t sr_cbuff_items_in_queue(sr_cbuff_t *buffer);
  * is used to check file locks inside of the process and to avoid
  * the loss of the lock by file closing. File name  is first looked
  * up in this structure to detect if the file is currently opened by the process.
+ * File can be closed and unlocked by fd.
  */
 typedef struct sr_locking_set_s {
     sr_btree_t *lock_files;       /**< Binary tree of lock files for fast look up by file name */
     sr_btree_t *fd_index;         /**< Binary tree for fast lookup by fd */
     pthread_mutex_t mutex;        /**< Mutex for exclusive access to binary tree */
-    pthread_cond_t cond;          /**< Condition variable */
+    pthread_cond_t cond;          /**< Condition variable used for blocking lock */
 }sr_locking_set_t;
 
 /**

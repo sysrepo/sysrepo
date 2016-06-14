@@ -23,11 +23,11 @@
 #include "sr_data_structs.h"
 #include <fcntl.h>
 #include <unistd.h>
+#include <pthread.h>
 
 
 #ifdef USE_AVL_LIB
 #include <avl.h>
-#include <pthread.h>
 #else
 #include <redblack.h>
 #endif
@@ -556,7 +556,6 @@ sr_locking_set_init(sr_locking_set_t *lset){
 
    rc = sr_btree_init(sr_compare_lock_item_fd, NULL, &lset->fd_index);
    CHECK_RC_MSG_RETURN(rc, "Creating of lock files binary tree failed");
-
 
    return rc;
 }

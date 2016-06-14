@@ -339,7 +339,6 @@ static void
 sr_locking_set_test(void **state)
 {
 
-
     sr_locking_set_t lset = {0,};
     int rc = SR_ERR_OK;
     int fd = -1, fd2 =-1;
@@ -347,7 +346,6 @@ sr_locking_set_test(void **state)
 
     rc = sr_locking_set_init(&lset);
     assert_int_equal(SR_ERR_OK, rc);
-
 
     unlink(TESTING_FILE);
 
