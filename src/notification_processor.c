@@ -277,7 +277,7 @@ np_commit_notif_cnt_increment(np_ctx_t *np_ctx, uint32_t commit_id)
         SR_LOG_DBG("Crating a new NP commit context for commit ID %"PRIu32".", commit_id);
 
         commit = calloc(1, sizeof(*commit));
-        CHECK_NULL_NOMEM_RETURN(commit);
+        CHECK_NULL_NOMEM_GOTO(commit, rc, unlock);
 
         commit->commit_id = commit_id;
         rc = sr_llist_add_new(np_ctx->commits, commit);
@@ -285,6 +285,7 @@ np_commit_notif_cnt_increment(np_ctx_t *np_ctx, uint32_t commit_id)
 
     commit->notifications_sent++;
 
+unlock:
     pthread_rwlock_unlock(&np_ctx->lock);
 
     return rc;
