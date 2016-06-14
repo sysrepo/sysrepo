@@ -314,16 +314,16 @@ size_t sr_cbuff_items_in_queue(sr_cbuff_t *buffer);
 typedef struct sr_locking_set_s sr_locking_set_t;
 
 /**
- * @brief Allocates & initializes the locking set.
+ * @brief Allocates & initializes the file locking set.
  *
- * @param [in] lset Locking set context.
+ * @param [in] lset Locking set context, it is supposed to be freed by ::sr_locking_set_cleanup.
  *
  * @return Error code (SR_ERR_OK on success)
  */
 int sr_locking_set_init(sr_locking_set_t **lset);
 
 /**
- * @brief Frees all resources allocated in the set and the set itself.
+ * @brief Frees all resources allocated in the file locking set context and the context itself.
  *
  * @param [in] lset Locking set context.
  */
@@ -331,13 +331,14 @@ void sr_locking_set_cleanup(sr_locking_set_t *lset);
 
 /**
  * @brief Checks if the file is not locked in the provided context.
- * If not it locks a file based on provided file name. Identity must be
+ * If not it locks the file based on provided file name. Identity must be
  * switched before calling the function. Opens the file and set the output argument.
  *
  * @param [in] lock_ctx Locking set context.
  * @param [in] filename Name of the file to be opened & locked.
- * @param [in] write
- * @param [in] blocking TRUE if the call should block until the lock can be acquired or error occurs.
+ * @param [in] write TRUE if the file should be locked for writing by inter-process
+ * access, FALSE if just for reading.
+ * @param [in] blocking TRUE if the call should block until the lock can be acquired or an error occurs.
  * @param [out] fd File descriptor of opened file, NULL in case of error.
  *
  * @return Error code (SR_ERR_OK on success), SR_ERR_LOCKED if the file is already locked,
@@ -351,8 +352,9 @@ int sr_locking_set_lock_file_open(sr_locking_set_t *lock_ctx, char *filename, bo
  * @param [in] lock_ctx Locking set context.
  * @param [in] fd File descriptor of the opened file to be locked.
  * @param [in] filename Name of the file to be locked.
- * @param [in] write
- * @param [in] blocking TRUE if the call should block until the lock can be acquired or error occurs.
+ * @param [in] write TRUE if the file should be locked for writing by inter-process
+ * access, FALSE if just for reading.
+ * @param [in] blocking TRUE if the call should block until the lock can be acquired or an error occurs.
  *
  * @return Error code (SR_ERR_OK on success), SR_ERR_LOCKED if the file is already locked,
  * SR_ERR_UNATHORIZED if the file can not be locked because of the permission.
