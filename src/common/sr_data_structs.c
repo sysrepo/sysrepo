@@ -562,7 +562,7 @@ sr_free_lock_item(void *lock_item)
     sr_lock_item_t *li = (sr_lock_item_t *) lock_item;
     free(li->filename);
     if (-1 != li->fd) {
-        SR_LOG_WRN("Closing fd = %d", li->fd);
+        SR_LOG_DBG("Closing fd = %d", li->fd);
         close(li->fd);
     }
     free(li);
