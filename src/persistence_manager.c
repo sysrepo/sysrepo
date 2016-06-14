@@ -61,6 +61,7 @@ typedef struct pm_ctx_s {
     struct ly_ctx *ly_ctx;            /**< libyang context used locally in PM. */
     const struct lys_module *schema;  /**< Schema tree of sysrepo-persistent-data YANG. */
     const char *data_search_dir;      /**< Directory containing the data files. */
+    sr_locking_set_t *lock_ctx;        /**< Context for locking persist data files. */
 } pm_ctx_t;
 
 /**
@@ -94,14 +95,13 @@ pm_save_data_tree(struct lyd_node *data_tree, int fd)
  * @brief Cleans up specified data tree and closes specified file descriptor.
  */
 static void
-pm_cleanup_data_tree(struct lyd_node *data_tree, int fd)
+pm_cleanup_data_tree(pm_ctx_t *pm_ctx, struct lyd_node *data_tree, int fd)
 {
     if (NULL != data_tree) {
         lyd_free_withsiblings(data_tree);
     }
-    if (-1 != fd) {
-        sr_unlock_fd(fd);
-        close(fd);
+    if (-1 != fd && NULL != pm_ctx) {
+        sr_locking_set_unlock_close_fd(pm_ctx->lock_ctx, fd);
     }
 }
 
@@ -159,7 +159,8 @@ pm_load_data_tree(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *mod
     }
 
     /* lock & load the data tree */
-    sr_lock_fd(fd, (read_only ? false : true), true);
+    rc = sr_locking_set_lock_fd(pm_ctx->lock_ctx, fd, data_filename, (read_only ? false : true), true);
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to lock persist data file for '%s'.", module_name);
 
     *data_tree = lyd_parse_fd(pm_ctx->ly_ctx, fd, LYD_XML, LYD_OPT_STRICT | LYD_OPT_CONFIG);
     if (NULL == *data_tree && LY_SUCCESS != ly_errno) {
@@ -171,8 +172,7 @@ pm_load_data_tree(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *mod
 
     if ((SR_ERR_OK != rc) || (true == read_only) || (NULL == fd_p)) {
         /* unlock and close fd in case of read_only has been requested */
-        sr_unlock_fd(fd);
-        close(fd);
+        sr_locking_set_unlock_close_fd(pm_ctx->lock_ctx, fd);
     } else {
         /* return open fd to locked file otherwise */
         *fd_p = fd;
@@ -308,7 +308,7 @@ pm_save_persistent_data(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const cha
     }
 
 cleanup:
-    pm_cleanup_data_tree(data_tree, fd);
+    pm_cleanup_data_tree(pm_ctx, data_tree, fd);
     return rc;
 }
 
@@ -407,6 +407,9 @@ pm_init(rp_ctx_t *rp_ctx, const char *schema_search_dir, const char *data_search
     ctx->data_search_dir = strdup(data_search_dir);
     CHECK_NULL_NOMEM_GOTO(ctx->data_search_dir, rc, cleanup);
 
+    rc = sr_locking_set_init(&ctx->lock_ctx);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to initialize locking set.");
+
     /* initialize libyang */
     ctx->ly_ctx = ly_ctx_new(schema_search_dir);
     if (NULL == ctx->ly_ctx) {
@@ -446,6 +449,7 @@ pm_cleanup(pm_ctx_t *pm_ctx)
         if (NULL != pm_ctx->ly_ctx) {
             ly_ctx_destroy(pm_ctx->ly_ctx, NULL);
         }
+        sr_locking_set_cleanup(pm_ctx->lock_ctx);
         free((void*)pm_ctx->data_search_dir);
         free(pm_ctx);
     }
@@ -667,7 +671,7 @@ pm_add_subscription(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *m
     }
 
 cleanup:
-    pm_cleanup_data_tree(data_tree, fd);
+    pm_cleanup_data_tree(pm_ctx, data_tree, fd);
     return rc;
 }
 

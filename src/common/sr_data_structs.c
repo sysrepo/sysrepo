@@ -379,7 +379,6 @@ sr_btree_get_at(sr_btree_t *tree, size_t index)
     return NULL;
 }
 
-
 /**
  * @brief FIFO circular buffer queue context.
  */
@@ -490,6 +489,29 @@ sr_cbuff_items_in_queue(sr_cbuff_t *buffer)
 }
 
 /**
+ * @brief Holds binary tree with filename -> fd maping. This structure
+ * is used to check file locks inside of the process and to avoid
+ * the loss of the lock by file closing. File name  is first looked
+ * up in this structure to detect if the file is currently opened by the process.
+ * File can be closed and unlocked by fd.
+ */
+typedef struct sr_locking_set_s {
+    sr_btree_t *lock_files;       /**< Binary tree of lock files for fast look up by file name */
+    sr_btree_t *fd_index;         /**< Binary tree for fast lookup by fd, only index to the items stored in lock_files binary tree */
+    pthread_mutex_t mutex;        /**< Mutex for exclusive access to binary tree */
+    pthread_cond_t cond;          /**< Condition variable used for blocking lock */
+} sr_locking_set_t;
+
+/**
+ * @brief The item of the lock_files binary tree in dm_lock_ctx_t
+ */
+typedef struct sr_lock_item_s {
+    char *filename;               /**< File name of the lockfile */
+    int fd;                       /**< File descriptor of the file */
+    bool locked;                  /**< Flag signalizing that file is locked */
+} sr_lock_item_t;
+
+/**
  * @brief Compare two lock items by filename
  */
 static int
@@ -540,24 +562,35 @@ sr_free_lock_item(void *lock_item)
     sr_lock_item_t *li = (sr_lock_item_t *) lock_item;
     free(li->filename);
     if (-1 != li->fd) {
+        SR_LOG_DBG("Closing fd = %d", li->fd);
         close(li->fd);
     }
     free(li);
 }
 
 int
-sr_locking_set_init(sr_locking_set_t *lset){
-   CHECK_NULL_ARG(lset);
-   int rc = SR_ERR_OK;
-   pthread_mutex_init(&lset->mutex, NULL);
-   pthread_cond_init(&lset->cond, NULL);
-   rc = sr_btree_init(sr_compare_lock_item, sr_free_lock_item, &lset->lock_files);
-   CHECK_RC_MSG_RETURN(rc, "Creating of lock files binary tree failed");
+sr_locking_set_init(sr_locking_set_t **lset_p){
+    CHECK_NULL_ARG(lset_p);
+    int rc = SR_ERR_OK;
+    sr_locking_set_t *lset = NULL;
 
-   rc = sr_btree_init(sr_compare_lock_item_fd, NULL, &lset->fd_index);
-   CHECK_RC_MSG_RETURN(rc, "Creating of lock files binary tree failed");
+    lset = calloc(1, sizeof(*lset));
+    CHECK_NULL_NOMEM_RETURN(lset);
 
-   return rc;
+    pthread_mutex_init(&lset->mutex, NULL);
+    pthread_cond_init(&lset->cond, NULL);
+    rc = sr_btree_init(sr_compare_lock_item, sr_free_lock_item, &lset->lock_files);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Creating of lock files binary tree failed");
+
+    rc = sr_btree_init(sr_compare_lock_item_fd, NULL, &lset->fd_index);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Creating of lock files binary tree failed");
+
+    *lset_p = lset;
+    return rc;
+
+cleanup:
+    sr_locking_set_cleanup(lset);
+    return rc;
 }
 
 void
@@ -568,11 +601,12 @@ sr_locking_set_cleanup(sr_locking_set_t *lset)
         sr_btree_cleanup(lset->lock_files);
         pthread_mutex_destroy(&lset->mutex);
         pthread_cond_destroy(&lset->cond);
+        free(lset);
     }
 }
 
 int
-sr_locking_set_lock_file_open(sr_locking_set_t *lock_ctx, char *filename, bool blocking, int *fd)
+sr_locking_set_lock_file_open(sr_locking_set_t *lock_ctx, char *filename, bool write, bool blocking, int *fd)
 {
     CHECK_NULL_ARG2(lock_ctx, filename);
     int rc = SR_ERR_OK;
@@ -630,7 +664,7 @@ sr_locking_set_lock_file_open(sr_locking_set_t *lock_ctx, char *filename, bool b
         }
     }
 
-    rc = sr_lock_fd(found_item->fd, true, blocking);
+    rc = sr_lock_fd(found_item->fd, write, blocking);
     if (SR_ERR_OK == rc) {
         SR_LOG_DBG("File %s has been locked", filename);
         found_item->locked = true;
@@ -652,7 +686,7 @@ cleanup:
 }
 
 int
-sr_locking_set_lock_fd(sr_locking_set_t *lock_ctx, char *filename, bool blocking, int fd)
+sr_locking_set_lock_fd(sr_locking_set_t *lock_ctx, int fd, char *filename, bool write, bool blocking)
 {
     CHECK_NULL_ARG2(lock_ctx, filename);
     int rc = SR_ERR_OK;
@@ -694,7 +728,7 @@ sr_locking_set_lock_fd(sr_locking_set_t *lock_ctx, char *filename, bool blocking
         pthread_cond_wait(&lock_ctx->cond, &lock_ctx->mutex);
     }
 
-    rc = sr_lock_fd(fd, true, blocking);
+    rc = sr_lock_fd(fd, write, blocking);
     if (SR_ERR_OK == rc) {
         SR_LOG_DBG("File %s has been locked", filename);
         found_item->fd = fd;
@@ -765,7 +799,7 @@ sr_locking_set_unlock_close_fd(sr_locking_set_t* lock_ctx, int fd)
         goto cleanup;
     }
     sr_unlock_fd(found_item->fd);
-    SR_LOG_DBG("File %s (fd = %d) with  has been unlocked", found_item->filename, fd);
+    SR_LOG_DBG("File %s (fd = %d) has been unlocked", found_item->filename, fd);
 
     rc = close(found_item->fd);
     if (SR_ERR_OK != rc) {
