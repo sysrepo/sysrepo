@@ -622,7 +622,7 @@ static int
 dm_lock_file(sr_locking_set_t *lock_ctx, char *filename)
 {
     CHECK_NULL_ARG2(lock_ctx, filename);
-    return sr_locking_set_lock_file_open(lock_ctx, filename, false, NULL);
+    return sr_locking_set_lock_file_open(lock_ctx, filename, true, false, NULL);
 }
 
 /**

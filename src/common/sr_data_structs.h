@@ -336,26 +336,28 @@ void sr_locking_set_cleanup(sr_locking_set_t *lset);
  *
  * @param [in] lock_ctx Locking set context.
  * @param [in] filename Name of the file to be opened & locked.
+ * @param [in] write
  * @param [in] blocking TRUE if the call should block until the lock can be acquired or error occurs.
  * @param [out] fd File descriptor of opened file, NULL in case of error.
  *
  * @return Error code (SR_ERR_OK on success), SR_ERR_LOCKED if the file is already locked,
  * SR_ERR_UNATHORIZED if the file can not be locked because of the permission.
  */
-int sr_locking_set_lock_file_open(sr_locking_set_t *lock_ctx, char *filename, bool blocking, int *fd);
+int sr_locking_set_lock_file_open(sr_locking_set_t *lock_ctx, char *filename, bool write, bool blocking, int *fd);
 
 /**
  * @brief Same as ::sr_locking_set_lock_file_open however it expects that file is already opened.
  *
  * @param [in] lock_ctx Locking set context.
- * @param [in] filename Name of the file to be locked.
- * @param [in] blocking TRUE if the call should block until the lock can be acquired or error occurs.
  * @param [in] fd File descriptor of the opened file to be locked.
+ * @param [in] filename Name of the file to be locked.
+ * @param [in] write
+ * @param [in] blocking TRUE if the call should block until the lock can be acquired or error occurs.
  *
  * @return Error code (SR_ERR_OK on success), SR_ERR_LOCKED if the file is already locked,
  * SR_ERR_UNATHORIZED if the file can not be locked because of the permission.
  */
-int sr_locking_set_lock_fd(sr_locking_set_t *lock_ctx, char *filename, bool blocking, int fd);
+int sr_locking_set_lock_fd(sr_locking_set_t *lock_ctx, int fd, char *filename, bool write, bool blocking);
 
 /**
  * @brief Looks up the file based on the filename in locking set. Then the file is unlocked and fd is closed.

@@ -562,6 +562,7 @@ sr_free_lock_item(void *lock_item)
     sr_lock_item_t *li = (sr_lock_item_t *) lock_item;
     free(li->filename);
     if (-1 != li->fd) {
+        SR_LOG_WRN("Closing fd = %d", li->fd);
         close(li->fd);
     }
     free(li);
@@ -605,7 +606,7 @@ sr_locking_set_cleanup(sr_locking_set_t *lset)
 }
 
 int
-sr_locking_set_lock_file_open(sr_locking_set_t *lock_ctx, char *filename, bool blocking, int *fd)
+sr_locking_set_lock_file_open(sr_locking_set_t *lock_ctx, char *filename, bool write, bool blocking, int *fd)
 {
     CHECK_NULL_ARG2(lock_ctx, filename);
     int rc = SR_ERR_OK;
@@ -663,7 +664,7 @@ sr_locking_set_lock_file_open(sr_locking_set_t *lock_ctx, char *filename, bool b
         }
     }
 
-    rc = sr_lock_fd(found_item->fd, true, blocking);
+    rc = sr_lock_fd(found_item->fd, write, blocking);
     if (SR_ERR_OK == rc) {
         SR_LOG_DBG("File %s has been locked", filename);
         found_item->locked = true;
@@ -685,7 +686,7 @@ cleanup:
 }
 
 int
-sr_locking_set_lock_fd(sr_locking_set_t *lock_ctx, char *filename, bool blocking, int fd)
+sr_locking_set_lock_fd(sr_locking_set_t *lock_ctx, int fd, char *filename, bool write, bool blocking)
 {
     CHECK_NULL_ARG2(lock_ctx, filename);
     int rc = SR_ERR_OK;
@@ -727,7 +728,7 @@ sr_locking_set_lock_fd(sr_locking_set_t *lock_ctx, char *filename, bool blocking
         pthread_cond_wait(&lock_ctx->cond, &lock_ctx->mutex);
     }
 
-    rc = sr_lock_fd(fd, true, blocking);
+    rc = sr_lock_fd(fd, write, blocking);
     if (SR_ERR_OK == rc) {
         SR_LOG_DBG("File %s has been locked", filename);
         found_item->fd = fd;
@@ -798,7 +799,7 @@ sr_locking_set_unlock_close_fd(sr_locking_set_t* lock_ctx, int fd)
         goto cleanup;
     }
     sr_unlock_fd(found_item->fd);
-    SR_LOG_DBG("File %s (fd = %d) with  has been unlocked", found_item->filename, fd);
+    SR_LOG_DBG("File %s (fd = %d) has been unlocked", found_item->filename, fd);
 
     rc = close(found_item->fd);
     if (SR_ERR_OK != rc) {

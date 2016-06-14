@@ -323,7 +323,7 @@ lock_in_thread(void *ctx)
    usleep(100 * (rand()%6));
 
    /* lock blocking */
-   rc = sr_locking_set_lock_file_open(lset, TESTING_FILE, true, &fd);
+   rc = sr_locking_set_lock_file_open(lset, TESTING_FILE, true, true, &fd);
    assert_int_equal(rc, SR_ERR_OK);
 
    /* wait rand */
@@ -350,11 +350,11 @@ sr_locking_set_test(void **state)
     unlink(TESTING_FILE);
 
     /* lock by file name nonblocking */
-    rc = sr_locking_set_lock_file_open(lset, TESTING_FILE, false, &fd);
+    rc = sr_locking_set_lock_file_open(lset, TESTING_FILE, true, false, &fd);
     assert_int_equal(SR_ERR_OK, rc);
 
     /* locking already locked resources should fail */
-    rc = sr_locking_set_lock_file_open(lset, TESTING_FILE, false, &fd);
+    rc = sr_locking_set_lock_file_open(lset, TESTING_FILE, true, false, &fd);
     assert_int_equal(SR_ERR_LOCKED, rc);
 
     /* unlock by filename */
@@ -371,13 +371,13 @@ sr_locking_set_test(void **state)
     fd = open(TESTING_FILE, O_RDWR, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
     assert_int_not_equal(-1, fd);
 
-    rc = sr_locking_set_lock_fd(lset, TESTING_FILE, false, fd);
+    rc = sr_locking_set_lock_fd(lset, fd, TESTING_FILE, true, false);
     assert_int_equal(rc, SR_ERR_OK);
 
     fd2 = open(TESTING_FILE, O_RDWR, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
     assert_int_not_equal(-1, fd2);
 
-    rc = sr_locking_set_lock_fd(lset, TESTING_FILE, false, fd2);
+    rc = sr_locking_set_lock_fd(lset, fd2, TESTING_FILE, true, false);
     assert_int_equal(rc, SR_ERR_LOCKED);
 
     /* unlock by fd */
@@ -385,7 +385,7 @@ sr_locking_set_test(void **state)
     rc = sr_locking_set_unlock_close_fd(lset, fd);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = sr_locking_set_lock_fd(lset, TESTING_FILE, false, fd2);
+    rc = sr_locking_set_lock_fd(lset, fd2, TESTING_FILE, true, false);
     assert_int_equal(rc, SR_ERR_OK);
 
     rc = sr_locking_set_unlock_close_fd(lset, fd2);
@@ -394,7 +394,7 @@ sr_locking_set_test(void **state)
     /*************************************/
 
     /* lock by file name nonblocking */
-    rc = sr_locking_set_lock_file_open(lset, TESTING_FILE, false, &fd);
+    rc = sr_locking_set_lock_file_open(lset, TESTING_FILE, true, false, &fd);
     assert_int_equal(SR_ERR_OK, rc);
 
     /* unlock by fd */
@@ -407,7 +407,7 @@ sr_locking_set_test(void **state)
     fd = open(TESTING_FILE, O_RDWR, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
     assert_int_not_equal(-1, fd);
 
-    rc = sr_locking_set_lock_fd(lset, TESTING_FILE, false, fd);
+    rc = sr_locking_set_lock_fd(lset, fd, TESTING_FILE, true, false);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* unlock by filename */
