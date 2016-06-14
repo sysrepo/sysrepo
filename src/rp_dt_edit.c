@@ -718,7 +718,7 @@ cleanup:
     /* In case of running datastore, commit context will be freed when
      * all notifications session are closed.
      */
-    if (SR_ERR_OK != rc || !dm_is_running_ds_session(commit_ctx->session)) {
+    if (SR_ERR_OK != rc || SR_DS_STARTUP == session->datastore) {
         dm_free_commit_context(commit_ctx);
     }
 
