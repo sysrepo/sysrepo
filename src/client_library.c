@@ -1790,18 +1790,12 @@ sr_unsubscribe(sr_session_ctx_t *session, sr_subscription_ctx_t *sr_subscription
     CHECK_NULL_ARG(sr_subscription);
 
     if (NULL == session) {
-        /* get the session */
-        if (sr_subscription->sm_subscription_cnt > 0 && NULL != sr_subscription->sm_subscriptions[0]->data_session) {
-            /* use the session from the subscription */
-            tmp_session = sr_subscription->sm_subscriptions[0]->data_session;
-        } else {
-            /* create a temporary connection and session */
-            rc = sr_connect("tmp-conn-unsubscribe", SR_CONN_DEFAULT, &tmp_connection);
-            if (SR_ERR_OK == rc) {
-                rc = sr_session_start(tmp_connection, SR_DS_STARTUP, SR_SESS_DEFAULT, &tmp_session);
-            }
-            CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to start new sysrepo session.");
+        /* create a temporary connection and session */
+        rc = sr_connect("tmp-conn-unsubscribe", SR_CONN_DEFAULT, &tmp_connection);
+        if (SR_ERR_OK == rc) {
+            rc = sr_session_start(tmp_connection, SR_DS_STARTUP, SR_SESS_DEFAULT, &tmp_session);
         }
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to start new sysrepo session.");
     }
 
     /* close all subscriptions wrapped in the context */

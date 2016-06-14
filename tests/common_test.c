@@ -49,6 +49,60 @@ logging_cleanup(void **state)
 }
 
 /*
+ * Tests sysrepo linked-list DS.
+ */
+static void
+sr_llist_test(void **state)
+{
+    sr_llist_t *llist = NULL;
+    sr_llist_node_t *node = NULL;
+    size_t cnt = 0;
+    int rc = SR_ERR_OK;
+
+    rc = sr_llist_init(&llist);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    for (size_t i = 1; i <= 10; i++) {
+        rc = sr_llist_add_new(llist, (void*)i);
+        assert_int_equal(rc, SR_ERR_OK);
+    }
+
+    // rm 3
+    rc = sr_llist_rm(llist, llist->first->next->next);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    // rm 4
+    rc = sr_llist_rm(llist, llist->first->next->next);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    // rm 1
+    rc = sr_llist_rm(llist, llist->first);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    // rm 2
+    rc = sr_llist_rm(llist, llist->first);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    // rm 10
+    rc = sr_llist_rm(llist, llist->last);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    // rm 9
+    rc = sr_llist_rm(llist, llist->last);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    node = llist->first;
+    while (NULL != node) {
+        assert_in_range((size_t)node->data, 5, 8);
+        node = node->next;
+        cnt++;
+    }
+    assert_int_equal(cnt, 4);
+
+    sr_llist_cleanup(llist);
+}
+
+/*
  * Tests sysrepo list DS.
  */
 static void
@@ -61,7 +115,8 @@ sr_list_test(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 
     for (size_t i = 1; i <= 100; i++) {
-        sr_list_add(list, (void*)i);
+        rc = sr_list_add(list, (void*)i);
+        assert_int_equal(rc, SR_ERR_OK);
     }
 
     rc = sr_list_rm_at(list, 50);
@@ -382,6 +437,7 @@ sr_locking_set_test(void **state)
 int
 main() {
     const struct CMUnitTest tests[] = {
+            cmocka_unit_test_setup_teardown(sr_llist_test, logging_setup, logging_cleanup),
             cmocka_unit_test_setup_teardown(sr_list_test, logging_setup, logging_cleanup),
             cmocka_unit_test_setup_teardown(circular_buffer_test1, logging_setup, logging_cleanup),
             cmocka_unit_test_setup_teardown(circular_buffer_test2, logging_setup, logging_cleanup),

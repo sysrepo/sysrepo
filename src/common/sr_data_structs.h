@@ -27,8 +27,65 @@
  * @ingroup common
  * @{
  *
- * @brief Data structures used in sysrepo (balanced binary tree, circular buffer).
+ * @brief Data structures used in sysrepo (list, linked-list, self-balanced binary tree, circular buffer).
  */
+
+/**
+ * @brief Doubly linked list node structure.
+ */
+typedef struct sr_llist_node_s {
+    void *data;                    /**< Data of the node. */
+    struct sr_llist_node_s *prev;  /**< Previous node. */
+    struct sr_llist_node_s *next;  /**< Next node. */
+} sr_llist_node_t;
+
+/**
+ * @brief Doubly linked list context structure.
+ */
+typedef struct sr_llist_s {
+    sr_llist_node_t *first;  /**< First node in the linked-list. */
+    sr_llist_node_t *last;   /**< Last node in the linked-list. */
+} sr_llist_t;
+
+/**
+ * @brief  Allocates and initializes a new linked-list instance.
+ *
+ *  @param[out] llist Pointer to the linked-list structure, it is supposed to be freed by ::sr_llist_cleanup.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_llist_init(sr_llist_t **llist);
+
+/**
+ * @brief Cleans up the linked-list and all the nodes within it.
+ *
+ * @param[in] llist Pointer to the linked-list structure.
+ */
+void sr_llist_cleanup(sr_llist_t *llist);
+
+/**
+ * @brief Allocates and adds a new node into the linked-list (at the end of it).
+ *
+ * @note O(1).
+ *
+ * @param[in] llist Pointer to the linked-list structure.
+ * @param[in] data Data to be added into the new linked-list node.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_llist_add_new(sr_llist_t *llist, void *data);
+
+/**
+ * @brief Removes and frees the node from the linked-list.
+ *
+ *  @note O(1).
+ *
+ * @param[in] llist Pointer to the linked-list structure.
+ * @param[in] node Node to be removed from the linked-list.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_llist_rm(sr_llist_t *llist, sr_llist_node_t *node);
 
 /**
  * @brief List data structure.

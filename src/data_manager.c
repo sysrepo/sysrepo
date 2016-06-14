@@ -2569,7 +2569,11 @@ dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t *c
 
     rc = dm_save_commit_context(dm_ctx, c_ctx);
 
-    //TODO let the np know that commit has finished
+    /* let the np know that the commit has finished */
+    if (SR_ERR_OK == rc) {
+        rc = np_commit_end_notify(dm_ctx->np_ctx, c_ctx->id, notified_notif);
+    }
+
     sr_list_cleanup(notified_notif);
     return rc;
 }

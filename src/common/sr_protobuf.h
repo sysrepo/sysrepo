@@ -78,6 +78,16 @@ int sr_gpb_notif_alloc(const Sr__SubscriptionType type, const char *destination,
         const uint32_t subscription_id, Sr__Msg **msg);
 
 /**
+ * @brief Allocates and initializes GPB notification acknowledgment message.
+ *
+ * @param[in] notification Original notification to be acknowledged.
+ * @param[out] msg GPB message.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_gpb_notif_ack_alloc(Sr__Msg *notification, Sr__Msg **msg);
+
+/**
  * @brief Allocates and initializes GPB internal request message.
  *
  * @param[in] operation Requested operation.

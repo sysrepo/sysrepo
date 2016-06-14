@@ -34,19 +34,80 @@
 
 #define SR_LIST_INIT_SIZE 4  /**< Initial size of the sysrepo list (in number of elements). */
 
-/**
- * @brief Common context of balanced binary tree, independent of the library used.
- */
-typedef struct sr_btree_s {
-#ifdef USE_AVL_LIB
-    avl_tree_t *avl_tree;    /**< AVL tree context. */
-#else
-    struct rbtree *rb_tree;  /**< Red-black tree context. */
-    RBLIST *rb_list;         /**< List used to walk in the red-black tree. */
-#endif
-    sr_btree_compare_item_cb compare_item_cb;
-    sr_btree_free_item_cb free_item_cb;
-} sr_btree_t;
+int
+sr_llist_init(sr_llist_t **llist_p)
+{
+    sr_llist_t *llist = NULL;
+
+    llist = calloc(1, sizeof(*llist));
+    CHECK_NULL_NOMEM_RETURN(llist);
+
+    *llist_p = llist;
+    return SR_ERR_OK;
+}
+
+void
+sr_llist_cleanup(sr_llist_t *llist)
+{
+    sr_llist_node_t *node = NULL, *tmp = NULL;
+
+    if (NULL != llist) {
+        node = llist->first;
+        while (NULL != node) {
+            tmp = node;
+            node = node->next;
+            free(tmp);
+        }
+        free(llist);
+    }
+}
+
+int
+sr_llist_add_new(sr_llist_t *llist, void *data)
+{
+    sr_llist_node_t *node = NULL;
+
+    CHECK_NULL_ARG2(llist, data);
+
+    node = calloc(1, sizeof(*node));
+    CHECK_NULL_NOMEM_RETURN(node);
+
+    node->data = data;
+
+    if (NULL != llist->last) {
+        llist->last->next = node;
+        node->prev = llist->last;
+    }
+    llist->last = node;
+
+    if (NULL == llist->first) {
+        llist->first = node;
+    }
+
+    return SR_ERR_OK;
+}
+
+int
+sr_llist_rm(sr_llist_t *llist, sr_llist_node_t *node)
+{
+    CHECK_NULL_ARG2(llist, node);
+
+    if (NULL != node->prev) {
+        node->prev->next = node->next;
+    }
+    if (NULL != node->next) {
+        node->next->prev = node->prev;
+    }
+    if (node == llist->last) {
+        llist->last = node->prev;
+    }
+    if (node == llist->first) {
+        llist->first = node->next;
+    }
+    free(node);
+
+    return SR_ERR_OK;
+}
 
 int
 sr_list_init(sr_list_t **list)
@@ -136,6 +197,20 @@ sr_list_rm_at(sr_list_t *list, size_t index)
 
     return SR_ERR_OK;
 }
+
+/**
+ * @brief Common context of balanced binary tree, independent of the library used.
+ */
+typedef struct sr_btree_s {
+#ifdef USE_AVL_LIB
+    avl_tree_t *avl_tree;    /**< AVL tree context. */
+#else
+    struct rbtree *rb_tree;  /**< Red-black tree context. */
+    RBLIST *rb_list;         /**< List used to walk in the red-black tree. */
+#endif
+    sr_btree_compare_item_cb compare_item_cb;
+    sr_btree_free_item_cb free_item_cb;
+} sr_btree_t;
 
 #ifndef USE_AVL_LIB
 /**
