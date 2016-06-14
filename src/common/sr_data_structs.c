@@ -580,7 +580,7 @@ sr_locking_set_lock_file_open(sr_locking_set_t *lock_ctx, char *filename, bool b
     sr_lock_item_t *found_item = NULL;
     lookup_item.filename = filename;
 
-    pthread_mutex_lock(&lock_ctx->mutex);
+    MUTEX_LOCK_TIMED_CHECK_RETURN(&lock_ctx->mutex);
 
     found_item = sr_btree_search(lock_ctx->lock_files, &lookup_item);
     if (NULL == found_item) {
@@ -660,7 +660,7 @@ sr_locking_set_lock_fd(sr_locking_set_t *lock_ctx, char *filename, bool blocking
     sr_lock_item_t *found_item = NULL;
     lookup_item.filename = filename;
 
-    pthread_mutex_lock(&lock_ctx->mutex);
+    MUTEX_LOCK_TIMED_CHECK_RETURN(&lock_ctx->mutex);
 
     found_item = sr_btree_search(lock_ctx->lock_files, &lookup_item);
     if (NULL == found_item) {
@@ -722,7 +722,7 @@ sr_locking_set_unlock_close_file(sr_locking_set_t* lock_ctx, char* filename)
     sr_lock_item_t *found_item = NULL;
     lookup_item.filename = filename;
 
-    pthread_mutex_lock(&lock_ctx->mutex);
+    MUTEX_LOCK_TIMED_CHECK_RETURN(&lock_ctx->mutex);
 
     found_item = sr_btree_search(lock_ctx->lock_files, &lookup_item);
     if (NULL == found_item || -1 == found_item->fd) {
@@ -756,7 +756,7 @@ sr_locking_set_unlock_close_fd(sr_locking_set_t* lock_ctx, int fd)
     sr_lock_item_t *found_item = NULL;
     lookup_item.fd = fd;
 
-    pthread_mutex_lock(&lock_ctx->mutex);
+    MUTEX_LOCK_TIMED_CHECK_RETURN(&lock_ctx->mutex);
 
     found_item = sr_btree_search(lock_ctx->fd_index, &lookup_item);
     if (NULL == found_item || -1 == found_item->fd) {
