@@ -140,6 +140,8 @@ main(int argc, char **argv)
     sr_subscription_ctx_t *subscription = NULL;
     int rc = SR_ERR_OK;
 
+    sr_log_stderr(SR_LL_DBG);
+
     char *module_name = "ietf-interfaces";
     if (argc > 1) {
         module_name = argv[1];
