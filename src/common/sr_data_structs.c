@@ -28,6 +28,172 @@
 #include <redblack.h>
 #endif
 
+#define SR_LIST_INIT_SIZE 4  /**< Initial size of the sysrepo list (in number of elements). */
+
+int
+sr_llist_init(sr_llist_t **llist_p)
+{
+    sr_llist_t *llist = NULL;
+
+    llist = calloc(1, sizeof(*llist));
+    CHECK_NULL_NOMEM_RETURN(llist);
+
+    *llist_p = llist;
+    return SR_ERR_OK;
+}
+
+void
+sr_llist_cleanup(sr_llist_t *llist)
+{
+    sr_llist_node_t *node = NULL, *tmp = NULL;
+
+    if (NULL != llist) {
+        node = llist->first;
+        while (NULL != node) {
+            tmp = node;
+            node = node->next;
+            free(tmp);
+        }
+        free(llist);
+    }
+}
+
+int
+sr_llist_add_new(sr_llist_t *llist, void *data)
+{
+    sr_llist_node_t *node = NULL;
+
+    CHECK_NULL_ARG2(llist, data);
+
+    node = calloc(1, sizeof(*node));
+    CHECK_NULL_NOMEM_RETURN(node);
+
+    node->data = data;
+
+    if (NULL != llist->last) {
+        llist->last->next = node;
+        node->prev = llist->last;
+    }
+    llist->last = node;
+
+    if (NULL == llist->first) {
+        llist->first = node;
+    }
+
+    return SR_ERR_OK;
+}
+
+int
+sr_llist_rm(sr_llist_t *llist, sr_llist_node_t *node)
+{
+    CHECK_NULL_ARG2(llist, node);
+
+    if (NULL != node->prev) {
+        node->prev->next = node->next;
+    }
+    if (NULL != node->next) {
+        node->next->prev = node->prev;
+    }
+    if (node == llist->last) {
+        llist->last = node->prev;
+    }
+    if (node == llist->first) {
+        llist->first = node->next;
+    }
+    free(node);
+
+    return SR_ERR_OK;
+}
+
+int
+sr_list_init(sr_list_t **list)
+{
+    CHECK_NULL_ARG(list);
+
+    *list = calloc(1, sizeof(**list));
+    CHECK_NULL_NOMEM_RETURN(*list);
+
+    return SR_ERR_OK;
+}
+
+void
+sr_list_cleanup(sr_list_t *list)
+{
+    if (NULL != list) {
+        free(list->data);
+        free(list);
+    }
+}
+
+int
+sr_list_add(sr_list_t *list, void *item)
+{
+    void **tmp = NULL;
+
+    CHECK_NULL_ARG2(list, item);
+
+    if (0 == list->_size) {
+        /* allocate initial space */
+        list->data = calloc(SR_LIST_INIT_SIZE, sizeof(*list->data));
+        CHECK_NULL_NOMEM_RETURN(list->data);
+        list->_size = SR_LIST_INIT_SIZE;
+    } else if (list->_size == list->count) {
+        /* enlarge the space */
+        tmp = realloc(list->data,  (list->_size << 1) * sizeof(*list->data));
+        CHECK_NULL_NOMEM_RETURN(tmp);
+        list->data = tmp;
+        list->_size <<= 1;
+    }
+
+    list->data[list->count] = item;
+    list->count++;
+
+    return SR_ERR_OK;
+}
+
+int
+sr_list_rm(sr_list_t *list, void *item)
+{
+    CHECK_NULL_ARG2(list, item);
+
+    if (item == list->data[list->count - 1]) {
+        /* just "remove" the last item */
+        list->count--;
+        return SR_ERR_OK;
+    }
+
+    for (size_t i = 0; i < (list->count - 1); i++) {
+        /* find and remove matching item */
+        if (item == list->data[i]) {
+            return sr_list_rm_at(list, i);
+        }
+    }
+
+    return SR_ERR_NOT_FOUND;
+}
+
+int
+sr_list_rm_at(sr_list_t *list, size_t index)
+{
+    CHECK_NULL_ARG(list);
+
+    if (index > list->count - 1) {
+        SR_LOG_ERR("Index %zu out of bounds of the list (0 - %zu)", index, list->count - 1);
+        return SR_ERR_INVAL_ARG;
+    }
+
+    if (index == (list->count - 1)) {
+        /* just "remove" the last item */
+        list->count--;
+    } else {
+        /* move the remaining items forward */
+        memmove(&list->data[index], &list->data[index + 1], (list->count - index - 1) * sizeof(*list->data));
+        list->count--;
+    }
+
+    return SR_ERR_OK;
+}
+
 /**
  * @brief Common context of balanced binary tree, independent of the library used.
  */

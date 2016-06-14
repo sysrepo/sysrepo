@@ -78,6 +78,16 @@ int sr_gpb_notif_alloc(const Sr__SubscriptionType type, const char *destination,
         const uint32_t subscription_id, Sr__Msg **msg);
 
 /**
+ * @brief Allocates and initializes GPB notification acknowledgment message.
+ *
+ * @param[in] notification Original notification to be acknowledged.
+ * @param[out] msg GPB message.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_gpb_notif_ack_alloc(Sr__Msg *notification, Sr__Msg **msg);
+
+/**
  * @brief Allocates and initializes GPB internal request message.
  *
  * @param[in] operation Requested operation.
@@ -164,7 +174,7 @@ int sr_values_gpb_to_sr(Sr__Value **gpb_values, size_t gpb_value_cnt, sr_val_t *
  * @param [out] gpb_count
  * @return Error code (SR_ERR_OK on success)
  */
-int sr_changes_sr_to_gpb(struct ly_set *sr_changes, Sr__Change ***changes, size_t *gpb_count);
+int sr_changes_sr_to_gpb(sr_list_t *sr_changes, Sr__Change ***changes, size_t *gpb_count);
 
 /**
  * @brief Converts sysrepo datastore to GPB datastore.

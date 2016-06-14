@@ -32,6 +32,8 @@ sr_gpb_operation_name(Sr__Operation operation)
         return "session-stop";
     case SR__OPERATION__SESSION_REFRESH:
         return "session-refresh";
+    case SR__OPERATION__SESSION_SWITCH_DS:
+        return "session-switch-ds";
     case SR__OPERATION__LIST_SCHEMAS:
         return "list-schemas";
     case SR__OPERATION__GET_SCHEMA:
@@ -68,15 +70,18 @@ sr_gpb_operation_name(Sr__Operation operation)
         return "unsubscribe";
     case SR__OPERATION__CHECK_ENABLED_RUNNING:
         return "check-enabled-running";
-    case SR__OPERATION__UNSUBSCRIBE_DESTINATION:
-        return "unsubscribe-destination";
     case SR__OPERATION__GET_CHANGES:
         return "get changes";
     case SR__OPERATION__RPC:
         return "rpc";
-    default:
+    case SR__OPERATION__UNSUBSCRIBE_DESTINATION:
+        return "unsubscribe-destination";
+    case SR__OPERATION__COMMIT_RELEASE:
+        return "commit-release";
+    case _SR__OPERATION_IS_INT_SIZE:
         return "unknown";
     }
+    return "unknown";
 }
 
 int
@@ -506,12 +511,47 @@ sr_gpb_notif_alloc(const Sr__SubscriptionType type, const char *destination, con
             notif->subtree_change_notif = (Sr__SubtreeChangeNotification*)sub_msg;
             break;
         case SR__SUBSCRIPTION_TYPE__HELLO_SUBS:
+        case SR__SUBSCRIPTION_TYPE__COMMIT_END_SUBS:
             /* no sub-message */
             break;
         default:
             rc = SR_ERR_UNSUPPORTED;
             goto error;
     }
+
+    *msg_p = msg;
+    return SR_ERR_OK;
+
+error:
+    if (NULL != msg) {
+        sr__msg__free_unpacked(msg, NULL);
+    }
+    return rc;
+}
+
+int
+sr_gpb_notif_ack_alloc(Sr__Msg *notification, Sr__Msg **msg_p)
+{
+    Sr__Msg *msg = NULL;
+    Sr__NotificationAck *notif_ack = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG3(notification, notification->notification, msg_p);
+
+    /* initialize Sr__Msg */
+    msg = calloc(1, sizeof(*msg));
+    CHECK_NULL_NOMEM_GOTO(msg, rc, error);
+    sr__msg__init(msg);
+    msg->type = SR__MSG__MSG_TYPE__NOTIFICATION_ACK;
+    msg->session_id = 0;
+
+    /* initialize Sr__NotificationAck */
+    notif_ack = calloc(1, sizeof(*notif_ack));
+    CHECK_NULL_NOMEM_GOTO(notif_ack, rc, error);
+    sr__notification_ack__init(notif_ack);
+    msg->notification_ack = notif_ack;
+
+    notif_ack->notif = notification->notification;
 
     *msg_p = msg;
     return SR_ERR_OK;
@@ -545,7 +585,8 @@ sr_gpb_internal_req_alloc(const Sr__Operation operation, Sr__Msg **msg_p)
     CHECK_NULL_NOMEM_GOTO(req, rc, error);
     sr__internal_request__init(req);
     msg->internal_request = req;
-    req->operation = operation;
+
+    msg->internal_request->operation = operation;
 
     /* initialize sub-message */
     switch (operation) {
@@ -554,6 +595,12 @@ sr_gpb_internal_req_alloc(const Sr__Operation operation, Sr__Msg **msg_p)
             CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__unsubscribe_destination_req__init((Sr__UnsubscribeDestinationReq*)sub_msg);
             req->unsubscribe_dst_req = (Sr__UnsubscribeDestinationReq*)sub_msg;
+            break;
+        case SR__OPERATION__COMMIT_RELEASE:
+            sub_msg = calloc(1, sizeof(Sr__CommitReleaseReq));
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
+            sr__commit_release_req__init((Sr__CommitReleaseReq*)sub_msg);
+            req->commit_release_req = (Sr__CommitReleaseReq*)sub_msg;
             break;
         default:
             break;
@@ -754,6 +801,7 @@ sr_gpb_msg_validate_notif(const Sr__Msg *msg, const Sr__SubscriptionType type)
     if (SR__MSG__MSG_TYPE__NOTIFICATION == msg->type) {
         CHECK_NULL_RETURN(msg->notification, SR_ERR_MALFORMED_MSG);
         if ((msg->notification->type != SR__SUBSCRIPTION_TYPE__HELLO_SUBS) &&
+                (msg->notification->type != SR__SUBSCRIPTION_TYPE__COMMIT_END_SUBS) &&
                 (msg->notification->type != type)) {
             return SR_ERR_MALFORMED_MSG;
         }
@@ -771,6 +819,7 @@ sr_gpb_msg_validate_notif(const Sr__Msg *msg, const Sr__SubscriptionType type)
                 CHECK_NULL_RETURN(msg->notification->subtree_change_notif, SR_ERR_MALFORMED_MSG);
                 break;
             case SR__SUBSCRIPTION_TYPE__HELLO_SUBS:
+            case SR__SUBSCRIPTION_TYPE__COMMIT_END_SUBS:
                 break;
             default:
                 return SR_ERR_MALFORMED_MSG;
@@ -1228,21 +1277,21 @@ cleanup:
 }
 
 int
-sr_changes_sr_to_gpb(struct ly_set *sr_changes, Sr__Change ***gpb_changes_p, size_t *gpb_count) {
+sr_changes_sr_to_gpb(sr_list_t *sr_changes, Sr__Change ***gpb_changes_p, size_t *gpb_count) {
     Sr__Change **gpb_changes = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG2(gpb_changes_p, gpb_count);
 
-    if ((NULL != sr_changes) && (sr_changes->number > 0)) {
-        gpb_changes = calloc(sr_changes->number, sizeof(*gpb_changes));
+    if ((NULL != sr_changes) && (sr_changes->count > 0)) {
+        gpb_changes = calloc(sr_changes->count, sizeof(*gpb_changes));
         CHECK_NULL_NOMEM_RETURN(gpb_changes);
 
-        for (size_t i = 0; i < sr_changes->number; i++) {
+        for (size_t i = 0; i < sr_changes->count; i++) {
             gpb_changes[i] = calloc(1, sizeof(**gpb_changes));
             CHECK_NULL_NOMEM_GOTO(gpb_changes[i], rc, cleanup);
             sr__change__init(gpb_changes[i]);
-            sr_change_t *ch = sr_changes->set.g[i];
+            sr_change_t *ch = sr_changes->data[i];
             if (NULL != ch->new_value) {
                 rc = sr_dup_val_t_to_gpb(ch->new_value, &gpb_changes[i]->new_value);
                 CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to duplicate sr_val_t to GPB.");
@@ -1256,12 +1305,12 @@ sr_changes_sr_to_gpb(struct ly_set *sr_changes, Sr__Change ***gpb_changes_p, siz
     }
 
     *gpb_changes_p = gpb_changes;
-    *gpb_count = NULL != sr_changes ? sr_changes->number : 0;
+    *gpb_count = NULL != sr_changes ? sr_changes->count : 0;
 
     return SR_ERR_OK;
 
 cleanup:
-    for (size_t i = 0; i < sr_changes->number; i++) {
+    for (size_t i = 0; i < sr_changes->count; i++) {
         sr__change__free_unpacked(gpb_changes[i], NULL);
     }
     free(gpb_changes);
@@ -1382,6 +1431,8 @@ sr_subscription_type_gpb_to_str(Sr__SubscriptionType type)
             return "rpc";
         case SR__SUBSCRIPTION_TYPE__HELLO_SUBS:
             return "hello";
+        case SR__SUBSCRIPTION_TYPE__COMMIT_END_SUBS:
+            return "commit-end";
         default:
             return "unknown";
     }

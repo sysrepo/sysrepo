@@ -105,7 +105,7 @@ int rp_dt_get_values_from_nodes(struct ly_set *nodes, sr_val_t **values, size_t 
  * @param [out] changes
  * @return Error code (SR_ERR_OK on success)
  */
-int rp_dt_difflist_to_changes(struct lyd_difflist *difflist, struct ly_set **changes);
+int rp_dt_difflist_to_changes(struct lyd_difflist *difflist, sr_list_t **changes);
 
 /**
  * @brief Returns the changes that match the selection based on xpath, offset and limit criteria.
@@ -119,7 +119,7 @@ int rp_dt_difflist_to_changes(struct lyd_difflist *difflist, struct ly_set **cha
  * @return Error code (SR_ERR_OK on success)
  */
 int rp_dt_get_changes(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t *c_ctx, const char *xpath,
-            size_t offset, size_t limit, struct ly_set **matched_changes);
+            size_t offset, size_t limit, sr_list_t **matched_changes);
 #endif /* RP_DT_GET_H */
 
 /**

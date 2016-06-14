@@ -49,7 +49,7 @@ typedef struct np_subscription_s {
     uint32_t dst_id;                   /**< Destination ID of the subscription (used locally, in the client library). */
     const char *module_name;           /**< Name of the module where the subscription is active. */
     const char *xpath;                 /**< XPath to the subtree where the subscription is active (if applicable). */
-    uint32_t priority;                 /**< Priority of the subscribtion by delivering notifications (0 is the lowest priority). */
+    uint32_t priority;                 /**< Priority of the subscription by delivering notifications (0 is the lowest priority). */
     bool enable_running;               /**< TRUE if the subscription enables specified subtree in the running datastore. */
 } np_subscription_t;
 
@@ -191,6 +191,37 @@ int np_get_module_change_subscriptions(np_ctx_t *np_ctx, const char *module_name
  * @return Error code (SR_ERR_OK on success).
  */
 int np_subscription_notify(np_ctx_t *np_ctx, np_subscription_t *subscription, uint32_t commit_id);
+
+/**
+ * @brief Notify given subscribers that the commit process has ended.
+ *
+ * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
+ * @param[in] commit_id Commit identifier.
+ * @param[in] subscriptions List of subscriptions to be notified about commit end.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int np_commit_end_notify(np_ctx_t *np_ctx, uint32_t commit_id, sr_list_t *subscriptions);
+
+/**
+ * @brief Release the commit context related to specified commit ID.
+ *
+ * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
+ * @param[in] commit_id Commit identifier.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int np_commit_release(np_ctx_t *np_ctx, uint32_t commit_id);
+
+/**
+ * @brief
+ *
+ * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
+ * @param[in] commit_id Commit identifier.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int np_commit_notification_ack(np_ctx_t *np_ctx, uint32_t commit_id);
 
 /**
  * @brief Cleans up a subscription context (including all its content).

@@ -11,7 +11,7 @@ compiler:
 
 before_install:
   - sudo apt-get update -qq
-  - sudo apt-get install -y libavl-dev libev-dev valgrind swig python-dev
+  - sudo apt-get install -y libavl-dev libev-dev valgrind swig python-dev ca-certificates
   - pip install --user codecov
   
   - git clone git://git.cryptomilk.org/projects/cmocka.git

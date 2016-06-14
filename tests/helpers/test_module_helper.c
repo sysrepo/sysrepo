@@ -271,11 +271,68 @@ createDataTreeLargeExampleModule(int list_count)
 }
 
 void
+createDataTreeLargeIETFinterfacesModule(size_t if_count)
+{
+
+    struct ly_ctx *ctx = ly_ctx_new(TEST_SCHEMA_SEARCH_DIR);
+    assert_non_null(ctx);
+
+    struct lyd_node *root = NULL;
+
+    #define MAX_IF_LEN 150
+    const char *template_prefix_len = "/ietf-interfaces:interfaces/interface[name='eth%d']/ietf-ip:ipv4/address[ip='192.168.%d.%d']/prefix-length";
+    const char *template_type = "/ietf-interfaces:interfaces/interface[name='eth%d']/type";
+    const char *template_desc = "/ietf-interfaces:interfaces/interface[name='eth%d']/description";
+    const char *template_enabled = "/ietf-interfaces:interfaces/interface[name='eth%d']/enabled";
+    const char *template_ipv4_enabled = "/ietf-interfaces:interfaces/interface[name='eth%d']/ietf-ip:ipv4/enabled";
+    const char *template_ipv4_mtu = "/ietf-interfaces:interfaces/interface[name='eth%d']/ietf-ip:ipv4/mtu";
+    char xpath[MAX_IF_LEN] = {0,};
+
+    const struct lys_module *module_interfaces = ly_ctx_load_module(ctx, "ietf-interfaces", NULL);
+    assert_non_null(module_interfaces);
+    const struct lys_module *module_ip = ly_ctx_load_module(ctx, "ietf-ip", NULL);
+    assert_non_null(module_ip);
+    const struct lys_module *module = ly_ctx_load_module(ctx, "iana-if-type", "2014-05-08");
+    assert_non_null(module);
+    struct lyd_node *node = NULL;
+
+    for (size_t i = 1; i < (if_count+1); i++) {
+        snprintf(xpath, MAX_IF_LEN, template_prefix_len, i, (i/244 +1), i % 244);
+        node = lyd_new_path(root, ctx, xpath, "24", 0);
+        if (NULL == root) {
+            root = node;
+        }
+        snprintf(xpath, MAX_IF_LEN, template_type, i);
+        lyd_new_path(root, ctx, xpath, "ethernetCsmacd", 0);
+
+        snprintf(xpath, MAX_IF_LEN, template_desc, i);
+        lyd_new_path(root, ctx, xpath, "ethernet interface", 0);
+
+        snprintf(xpath, MAX_IF_LEN, template_enabled, i);
+        lyd_new_path(root, ctx, xpath, "true", 0);
+
+        snprintf(xpath, MAX_IF_LEN, template_ipv4_enabled, i);
+        lyd_new_path(root, ctx, xpath, "true", 0);
+
+        snprintf(xpath, MAX_IF_LEN, template_ipv4_mtu, i);
+        lyd_new_path(root, ctx, xpath, "1500", 0);
+
+    }
+
+
+    assert_int_equal(0, lyd_validate(&root, LYD_OPT_STRICT | LYD_OPT_CONFIG));
+    assert_int_equal(SR_ERR_OK, sr_save_data_tree_file(TEST_DATA_SEARCH_DIR"ietf-interfaces"SR_STARTUP_FILE_EXT, root));
+
+    lyd_free_withsiblings(root);
+    ly_ctx_destroy(ctx, NULL);
+}
+
+void
 createDataTreeIETFinterfacesModule(){
 
     struct ly_ctx *ctx = ly_ctx_new(TEST_SCHEMA_SEARCH_DIR);
     assert_non_null(ctx);
-    
+
     struct lyd_node *root = NULL;
 
     const struct lys_module *module_interfaces = ly_ctx_load_module(ctx, "ietf-interfaces", NULL);
@@ -317,7 +374,7 @@ createDataTreeIETFinterfacesModule(){
 
     assert_int_equal(0, lyd_validate(&root, LYD_OPT_STRICT | LYD_OPT_CONFIG));
     assert_int_equal(SR_ERR_OK, sr_save_data_tree_file(TEST_DATA_SEARCH_DIR"ietf-interfaces"SR_STARTUP_FILE_EXT, root));
-    
+
     lyd_free_withsiblings(root);
     ly_ctx_destroy(ctx, NULL);
 }

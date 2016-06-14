@@ -329,6 +329,40 @@ perf_get_items_iter_test(void **state, int op_num, int *items) {
 }
 
 static void
+perf_get_ietf_intefaces_test(void **state, int op_num, int *items) {
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+
+    sr_session_ctx_t *session = NULL;
+    sr_val_t *value = NULL;
+    sr_val_iter_t *iter = NULL;
+    int rc = 0;
+
+    /* start a session */
+    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* perform a get-items_iter request */
+    size_t count = 0;
+    for (size_t i = 0; i<op_num; i++){
+        count = 0;
+        /* existing leaf */
+        rc = sr_get_items_iter(session, "/ietf-interfaces:interfaces//*", &iter);
+        assert_int_equal(SR_ERR_OK, rc);
+        while (SR_ERR_OK == sr_get_item_next(session, iter, &value)){
+            sr_free_val(value);
+            count++;
+        }
+        sr_free_val_iter(iter);
+    }
+
+    /* stop the session */
+    rc = sr_session_stop(session);
+    assert_int_equal(rc, SR_ERR_OK);
+    *items = count;
+}
+
+static void
 perf_commit_test(void **state, int op_num, int *items) {
     sr_conn_ctx_t *conn = *state;
     assert_non_null(conn);
@@ -428,6 +462,7 @@ main (int argc, char **argv)
         {perf_get_item_with_data_load_test, "Get item incl session start", OP_COUNT, sysrepo_setup, sysrepo_teardown},
         {perf_get_items_test, "Get items all list", OP_COUNT, sysrepo_setup, sysrepo_teardown},
         {perf_get_items_iter_test, "Get items iter all list", OP_COUNT, sysrepo_setup, sysrepo_teardown},
+        {perf_get_ietf_intefaces_test, "Get items ietf-if config", OP_COUNT, sysrepo_setup, sysrepo_teardown},
         {perf_commit_test, "Commit one leaf change", OP_COUNT_COMMIT, sysrepo_setup, sysrepo_teardown},
         {perf_libyang_get_node, "Libyang get one node", OP_COUNT, libyang_setup, libyang_teardown},
         {perf_libyang_get_all_list, "Libyang get all list", OP_COUNT, libyang_setup, libyang_teardown},
@@ -439,24 +474,29 @@ main (int argc, char **argv)
     if (argc > 1) {
         sscanf(argv[1], "%d", &selection);
     }
-
     /* one list instance */
     createDataTreeExampleModule();
+    createDataTreeLargeIETFinterfacesModule(1);
     test_perf(tests, test_count, "Data file with one list instance", selection);
 
     /* 20 list instances*/
     createDataTreeLargeExampleModule(20);
+    createDataTreeLargeIETFinterfacesModule(20);
     test_perf(tests, test_count, "Data file with 20 list instance", selection);
 
 
     /* decrease the number of performed operation on larger file*/
     for (size_t i = 0; i<test_count; i++){
-        tests[i].op_count = OP_COUNT_LOW;
+        if (OP_COUNT_COMMIT != tests[i].op_count){
+            tests[i].op_count = OP_COUNT_LOW;
+        }
     }
 
     /* 100 list instances*/
     createDataTreeLargeExampleModule(100);
+    createDataTreeLargeIETFinterfacesModule(100);
     test_perf(tests, test_count, "Data file with 100 list instance", selection);
     puts("\n\n");
+
     return 0;
 }

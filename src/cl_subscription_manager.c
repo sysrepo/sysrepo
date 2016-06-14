@@ -578,16 +578,55 @@ cl_sm_get_data_session(cl_sm_ctx_t *sm_ctx, cl_sm_subscription_ctx_t *subscripti
     return rc;
 }
 
+int
+cl_sm_close_data_session(cl_sm_ctx_t *sm_ctx, cl_sm_subscription_ctx_t *subscription,
+        const char *source_address, uint32_t commit_id)
+{
+    sr_conn_ctx_t *connection = NULL;
+    sr_conn_ctx_t connection_lookup = { 0, };
+    sr_session_ctx_t *session = NULL;
+    sr_session_list_t *tmp = NULL;
+
+    CHECK_NULL_ARG3(sm_ctx, subscription, source_address);
+
+    /* find a connection matching with provided address */
+    connection_lookup.dst_address = source_address;
+    connection = sr_btree_search(sm_ctx->data_connection_btree, &connection_lookup);
+
+    if (NULL == connection || NULL == connection->session_list) {
+        /* no connection / sessions for this source address */
+        return SR_ERR_OK;
+    }
+
+    /* try to find the session matching with the commit ID in connection */
+    tmp = connection->session_list;
+    while (NULL != tmp) {
+        if ((NULL != tmp->session) && (tmp->session->commit_id == commit_id)) {
+            session = tmp->session;
+            break;
+        }
+        tmp = tmp->next;
+    }
+
+    if (NULL != session) {
+        /* stop the session including sending of a session-stop request */
+        sr_session_stop(session);
+    }
+
+    return SR_ERR_OK;
+}
+
 /**
  * @brief Processes an incoming notification message.
  */
 static int
-cl_sm_notif_process(cl_sm_ctx_t *sm_ctx, Sr__Msg *msg)
+cl_sm_notif_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *msg)
 {
     cl_sm_subscription_ctx_t *subscription = NULL;
     cl_sm_subscription_ctx_t subscription_lookup = { 0, };
     sr_session_ctx_t *data_session = NULL;
-    int rc = SR_ERR_OK;
+    Sr__Msg *ack_msg = NULL;
+    int rc = SR_ERR_OK, rc_tmp = SR_ERR_OK;
 
     CHECK_NULL_ARG3(sm_ctx, msg, msg->notification);
 
@@ -620,11 +659,6 @@ cl_sm_notif_process(cl_sm_ctx_t *sm_ctx, Sr__Msg *msg)
                 msg->notification->source_pid,
                 (msg->notification->has_commit_id ? msg->notification->commit_id : 0),
                 &data_session);
-        if (SR_ERR_OK != rc) {
-            pthread_mutex_unlock(&sm_ctx->subscriptions_lock);
-            return SR_ERR_INVAL_ARG;
-        }
-        rc = sr_session_refresh(data_session);
         if (SR_ERR_OK != rc) {
             pthread_mutex_unlock(&sm_ctx->subscriptions_lock);
             return rc;
@@ -667,9 +701,33 @@ cl_sm_notif_process(cl_sm_ctx_t *sm_ctx, Sr__Msg *msg)
         case SR__SUBSCRIPTION_TYPE__HELLO_SUBS:
             SR_LOG_DBG("HELLO notification received on subscription id=%"PRIu32".", subscription->id);
             break;
+        case SR__SUBSCRIPTION_TYPE__COMMIT_END_SUBS:
+            SR_LOG_DBG("COMMIT-END notification received on subscription id=%"PRIu32".", subscription->id);
+            /* close the session for this commit */
+            if (msg->notification->has_commit_id) {
+                rc = cl_sm_close_data_session(sm_ctx, subscription, msg->notification->source_address,
+                        msg->notification->commit_id);
+            }
+            break;
         default:
             SR_LOG_ERR("Unknown notification event received on subscription id=%"PRIu32".", subscription->id);
             rc = SR_ERR_INVAL_ARG;
+    }
+
+    /* send notification ACK */
+    if ((SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS == msg->notification->type) ||
+            (SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS == msg->notification->type)) {
+        rc_tmp = sr_gpb_notif_ack_alloc(msg, &ack_msg);
+        if (SR_ERR_OK == rc_tmp) {
+            ack_msg->notification_ack->result = rc;
+            rc_tmp = cl_sm_msg_send_connection(sm_ctx, conn, ack_msg);
+            ack_msg->notification_ack->notif = NULL;
+            sr__msg__free_unpacked(ack_msg, NULL);
+        }
+        if (SR_ERR_OK != rc_tmp) {
+            SR_LOG_ERR("Unable to send notification ACK: %s", sr_strerror(rc_tmp));
+            rc = rc_tmp;
+        }
     }
 
     pthread_mutex_unlock(&sm_ctx->subscriptions_lock);
@@ -766,7 +824,7 @@ cl_sm_conn_msg_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, uint8_t *msg
     /* check the message */
     if (SR__MSG__MSG_TYPE__NOTIFICATION == msg->type) {
         /* notification */
-        rc = cl_sm_notif_process(sm_ctx, msg);
+        rc = cl_sm_notif_process(sm_ctx, conn, msg);
     } else if ((SR__MSG__MSG_TYPE__REQUEST == msg->type) && (SR__OPERATION__RPC == msg->request->operation)) {
         /* RPC request */
         rc = cl_sm_rpc_process(sm_ctx, conn, msg);
