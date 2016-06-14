@@ -450,7 +450,7 @@ sr_compare_lock_item_fd(const void *a, const void *b)
 
     if (item_a->fd == item_b->fd) {
         return 0;
-    } else if (item_a->fd < 0) {
+    } else if (item_a->fd < item_b->fd) {
         return -1;
     } else {
         return 1;
@@ -561,7 +561,7 @@ sr_locking_set_lock_file_open(sr_locking_set_t *lock_ctx, char *filename, bool b
         SR_LOG_DBG("File %s has been locked", filename);
         found_item->locked = true;
         rc = sr_btree_insert(lock_ctx->fd_index, found_item);
-        CHECK_RC_MSG_GOTO(rc, cleanup, "Insert into fd index failed");
+        CHECK_RC_LOG_GOTO(rc, cleanup, "Insert into fd index failed file %s (fd = %d)", found_item->filename, found_item->fd);
     } else {
         SR_LOG_WRN("File %s can not be locked", filename);
         close(found_item->fd);
