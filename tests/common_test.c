@@ -323,7 +323,7 @@ lock_in_thread(void *ctx)
    usleep(100 * (rand()%6));
 
    /* lock blocking */
-   rc = sr_locking_set_lock_file_open(lset, TESTING_FILE, true, &fd);
+   rc = sr_locking_set_lock_file_open(lset, TESTING_FILE, true, true, &fd);
    assert_int_equal(rc, SR_ERR_OK);
 
    /* wait rand */
@@ -339,7 +339,7 @@ static void
 sr_locking_set_test(void **state)
 {
 
-    sr_locking_set_t lset = {0,};
+    sr_locking_set_t *lset = NULL;
     int rc = SR_ERR_OK;
     int fd = -1, fd2 =-1;
     pthread_t threads[TEST_THREAD_COUNT] = {0};
@@ -350,19 +350,19 @@ sr_locking_set_test(void **state)
     unlink(TESTING_FILE);
 
     /* lock by file name nonblocking */
-    rc = sr_locking_set_lock_file_open(&lset, TESTING_FILE, false, &fd);
+    rc = sr_locking_set_lock_file_open(lset, TESTING_FILE, true, false, &fd);
     assert_int_equal(SR_ERR_OK, rc);
 
     /* locking already locked resources should fail */
-    rc = sr_locking_set_lock_file_open(&lset, TESTING_FILE, false, &fd);
+    rc = sr_locking_set_lock_file_open(lset, TESTING_FILE, true, false, &fd);
     assert_int_equal(SR_ERR_LOCKED, rc);
 
     /* unlock by filename */
-    rc = sr_locking_set_unlock_close_file(&lset, TESTING_FILE);
+    rc = sr_locking_set_unlock_close_file(lset, TESTING_FILE);
     assert_int_equal(SR_ERR_OK, rc);
 
     /* unlocking of unlocked file*/
-    rc = sr_locking_set_unlock_close_file(&lset, TESTING_FILE);
+    rc = sr_locking_set_unlock_close_file(lset, TESTING_FILE);
     assert_int_equal(SR_ERR_INVAL_ARG, rc);
 
     /*************************************/
@@ -371,34 +371,34 @@ sr_locking_set_test(void **state)
     fd = open(TESTING_FILE, O_RDWR, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
     assert_int_not_equal(-1, fd);
 
-    rc = sr_locking_set_lock_fd(&lset, TESTING_FILE, false, fd);
+    rc = sr_locking_set_lock_fd(lset, fd, TESTING_FILE, true, false);
     assert_int_equal(rc, SR_ERR_OK);
 
     fd2 = open(TESTING_FILE, O_RDWR, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
     assert_int_not_equal(-1, fd2);
 
-    rc = sr_locking_set_lock_fd(&lset, TESTING_FILE, false, fd2);
+    rc = sr_locking_set_lock_fd(lset, fd2, TESTING_FILE, true, false);
     assert_int_equal(rc, SR_ERR_LOCKED);
 
     /* unlock by fd */
 
-    rc = sr_locking_set_unlock_close_fd(&lset, fd);
+    rc = sr_locking_set_unlock_close_fd(lset, fd);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = sr_locking_set_lock_fd(&lset, TESTING_FILE, false, fd2);
+    rc = sr_locking_set_lock_fd(lset, fd2, TESTING_FILE, true, false);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = sr_locking_set_unlock_close_fd(&lset, fd2);
+    rc = sr_locking_set_unlock_close_fd(lset, fd2);
     assert_int_equal(rc, SR_ERR_OK);
 
     /*************************************/
 
     /* lock by file name nonblocking */
-    rc = sr_locking_set_lock_file_open(&lset, TESTING_FILE, false, &fd);
+    rc = sr_locking_set_lock_file_open(lset, TESTING_FILE, true, false, &fd);
     assert_int_equal(SR_ERR_OK, rc);
 
     /* unlock by fd */
-    rc = sr_locking_set_unlock_close_fd(&lset, fd);
+    rc = sr_locking_set_unlock_close_fd(lset, fd);
     assert_int_equal(SR_ERR_OK, rc);
 
     /*************************************/
@@ -407,14 +407,14 @@ sr_locking_set_test(void **state)
     fd = open(TESTING_FILE, O_RDWR, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
     assert_int_not_equal(-1, fd);
 
-    rc = sr_locking_set_lock_fd(&lset, TESTING_FILE, false, fd);
+    rc = sr_locking_set_lock_fd(lset, fd, TESTING_FILE, true, false);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* unlock by filename */
-    rc = sr_locking_set_unlock_close_file(&lset, TESTING_FILE);
+    rc = sr_locking_set_unlock_close_file(lset, TESTING_FILE);
     assert_int_equal(rc, SR_ERR_OK);
 
-    sr_locking_set_cleanup(&lset);
+    sr_locking_set_cleanup(lset);
 
     /*************************************/
 
@@ -422,14 +422,14 @@ sr_locking_set_test(void **state)
     assert_int_equal(SR_ERR_OK, rc);
 
     for (int i = 0; i < TEST_THREAD_COUNT; i++) {
-        pthread_create(&threads[i], NULL, lock_in_thread, &lset);
+        pthread_create(&threads[i], NULL, lock_in_thread, lset);
     }
 
     for (int i = 0; i < TEST_THREAD_COUNT; i++) {
         pthread_join(threads[i], NULL);
     }
 
-    sr_locking_set_cleanup(&lset);
+    sr_locking_set_cleanup(lset);
 }
 
 int

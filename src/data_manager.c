@@ -54,7 +54,7 @@ typedef struct dm_ctx_s {
     char *data_search_dir;        /**< location where data files are located */
     struct ly_ctx *ly_ctx;        /**< libyang context holding all loaded schemas */
     pthread_rwlock_t lyctx_lock;  /**< rwlock to access ly_ctx */
-    sr_locking_set_t locking_ctx; /**< lock context for lock/unlock/commit operations */
+    sr_locking_set_t *locking_ctx;/**< lock context for lock/unlock/commit operations */
     bool ds_lock;                 /**< Flag if the ds lock is hold by a session*/
     pthread_mutex_t ds_lock_mutex;/**< Data store lock mutex */
     sr_list_t *disabled_sch;  /**< Set of schema that has been disabled */
@@ -622,7 +622,7 @@ static int
 dm_lock_file(sr_locking_set_t *lock_ctx, char *filename)
 {
     CHECK_NULL_ARG2(lock_ctx, filename);
-    return sr_locking_set_lock_file_open(lock_ctx, filename, false, NULL);
+    return sr_locking_set_lock_file_open(lock_ctx, filename, true, false, NULL);
 }
 
 /**
@@ -676,7 +676,7 @@ dm_lock_module(dm_ctx_t *dm_ctx, dm_session_t *session, const char *modul_name)
     /* switch identity */
     ac_set_user_identity(dm_ctx->ac_ctx, session->user_credentials);
 
-    rc = dm_lock_file(&dm_ctx->locking_ctx, lock_file);
+    rc = dm_lock_file(dm_ctx->locking_ctx, lock_file);
 
     /* switch identity back */
     ac_unset_user_identity(dm_ctx->ac_ctx);
@@ -715,7 +715,7 @@ dm_unlock_module(dm_ctx_t *dm_ctx, dm_session_t *session, char *modul_name)
         SR_LOG_ERR("File %s has not been locked in this context", lock_file);
         rc = SR_ERR_INVAL_ARG;
     } else {
-        rc = dm_unlock_file(&dm_ctx->locking_ctx, lock_file);
+        rc = dm_unlock_file(dm_ctx->locking_ctx, lock_file);
         free(session->locked_files->data[i]);
         sr_list_rm_at(session->locked_files, i);
     }
@@ -784,7 +784,7 @@ dm_unlock_datastore(dm_ctx_t *dm_ctx, dm_session_t *session)
     CHECK_NULL_ARG2(dm_ctx, session);
 
     while (session->locked_files->count > 0) {
-        dm_unlock_file(&dm_ctx->locking_ctx, (char *) session->locked_files->data[0]);
+        dm_unlock_file(dm_ctx->locking_ctx, (char *) session->locked_files->data[0]);
         free(session->locked_files->data[0]);
         sr_list_rm_at(session->locked_files, 0);
     }
@@ -1094,7 +1094,7 @@ dm_cleanup(dm_ctx_t *dm_ctx)
             ly_ctx_destroy(dm_ctx->ly_ctx, dm_free_lys_private_data);
         }
         pthread_rwlock_destroy(&dm_ctx->lyctx_lock);
-        sr_locking_set_cleanup(&dm_ctx->locking_ctx);
+        sr_locking_set_cleanup(dm_ctx->locking_ctx);
         pthread_mutex_destroy(&dm_ctx->ds_lock_mutex);
         sr_list_cleanup(dm_ctx->disabled_sch);
 
