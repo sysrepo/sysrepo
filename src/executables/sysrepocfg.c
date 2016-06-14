@@ -825,6 +825,7 @@ srcfg_prompt(const char *question, const char *positive, const char *negative)
         }
         printf("Please enter [%s] or [%s].\n", positive, negative);
     }
+    return 0;
 }
 
 /**
