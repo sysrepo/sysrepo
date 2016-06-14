@@ -317,7 +317,7 @@ size_t sr_cbuff_items_in_queue(sr_cbuff_t *buffer);
  */
 typedef struct sr_locking_set_s {
     sr_btree_t *lock_files;       /**< Binary tree of lock files for fast look up by file name */
-    sr_btree_t *fd_index;         /**< Binary tree for fast lookup by fd */
+    sr_btree_t *fd_index;         /**< Binary tree for fast lookup by fd, only index to the items stored in lock_files binary tree */
     pthread_mutex_t mutex;        /**< Mutex for exclusive access to binary tree */
     pthread_cond_t cond;          /**< Condition variable used for blocking lock */
 }sr_locking_set_t;
