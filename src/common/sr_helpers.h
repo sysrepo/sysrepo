@@ -23,6 +23,11 @@
 #ifndef SR_HELPERS_H_
 #define SR_HELPERS_H_
 
+/**
+ * Time out for mutex and rwlock
+ */
+#define MUTEX_WAIT_TIME 10
+
 #define CHECK_NULL_ARG__INTERNAL(ARG) \
     if (NULL == ARG) { \
         SR_LOG_ERR("NULL value detected for %s argument of %s", #ARG, __func__); \
@@ -312,5 +317,89 @@
         SR_LOG_ERR("NULL value detected for %s in %s", #ARG, __func__); \
         return RC; \
     } \
+
+/**
+ * mutex and rwlock timed locking
+ */
+#define MUTEX_LOCK_TIMED_CHECK_RETURN(MUTEX) \
+    do {                                     \
+        struct timespec ts = {0};            \
+        int ret = 0;                         \
+        clock_gettime(CLOCK_REALTIME, &ts);  \
+        ts.tv_sec += MUTEX_WAIT_TIME;        \
+        ret = pthread_mutex_timedlock(MUTEX, &ts); \
+        if (0 != ret) {                            \
+            SR_LOG_ERR("Mutex can not be locked %s", strerror(errno));\
+            return SR_ERR_TIME_OUT;          \
+        }                                    \
+    } while(0)
+
+#define MUTEX_LOCK_TIMED_CHECK_GOTO(MUTEX, RC, LABEL) \
+    do {                                     \
+        struct timespec ts = {0};            \
+        int ret = 0;                         \
+        clock_gettime(CLOCK_REALTIME, &ts);  \
+        ts.tv_sec += MUTEX_WAIT_TIME;        \
+        ret = pthread_mutex_timedlock(MUTEX, &ts); \
+        if (0 != ret) {                            \
+            SR_LOG_ERR("Mutex can not be locked %s", strerror(errno));\
+            rc = SR_ERR_TIME_OUT;            \
+            goto LABEL;                      \
+        }                                    \
+    } while(0)
+
+#define RWLOCK_WRLOCK_TIMED_CHECK_RETURN(MUTEX) \
+    do {                                     \
+        struct timespec ts = {0};            \
+        int ret = 0;                         \
+        clock_gettime(CLOCK_REALTIME, &ts);  \
+        ts.tv_sec += MUTEX_WAIT_TIME;        \
+        ret = pthread_rwlock_timedwrlock(MUTEX, &ts); \
+        if (0 != ret) {                            \
+            SR_LOG_ERR("rwlock can not be locked %s", strerror(errno));\
+            return SR_ERR_TIME_OUT;          \
+        }                                    \
+    } while(0)
+
+#define RWLOCK_RDLOCK_TIMED_CHECK_RETURN(MUTEX) \
+    do {                                     \
+        struct timespec ts = {0};            \
+        int ret = 0;                         \
+        clock_gettime(CLOCK_REALTIME, &ts);  \
+        ts.tv_sec += MUTEX_WAIT_TIME;        \
+        ret = pthread_rwlock_timedrdlock(MUTEX, &ts); \
+        if (0 != ret) {                            \
+            SR_LOG_ERR("rwlock can not be locked %s", strerror(errno));\
+            return SR_ERR_TIME_OUT;          \
+        }                                    \
+    } while(0)
+
+#define RWLOCK_WRLOCK_TIMED_CHECK_GOTO(MUTEX, RC, LABEL) \
+    do {                                     \
+        struct timespec ts = {0};            \
+        int ret = 0;                         \
+        clock_gettime(CLOCK_REALTIME, &ts);  \
+        ts.tv_sec += MUTEX_WAIT_TIME;        \
+        ret = pthread_rwlock_timedwrlock(MUTEX, &ts); \
+        if (0 != ret) {                            \
+            SR_LOG_ERR("rwlock can not be locked %s", strerror(errno));\
+            rc = SR_ERR_TIME_OUT;            \
+            goto LABEL;                      \
+        }                                    \
+    } while(0)
+
+#define RWLOCK_RDLOCK_TIMED_CHECK_GOTO(MUTEX, RC, LABEL) \
+    do {                                     \
+        struct timespec ts = {0};            \
+        int ret = 0;                         \
+        clock_gettime(CLOCK_REALTIME, &ts);  \
+        ts.tv_sec += MUTEX_WAIT_TIME;        \
+        ret = pthread_rwlock_timedrdlock(MUTEX, &ts); \
+        if (0 != ret) {                            \
+            SR_LOG_ERR("rwlock can not be locked %s", strerror(errno));\
+            rc = SR_ERR_TIME_OUT;            \
+            goto LABEL;                      \
+        }                                    \
+    } while(0)
 
 #endif /* SR_HELPERS_H_ */
