@@ -9,36 +9,18 @@ compiler:
   - gcc
   - clang
 
+cache:
+  directories:
+    - $HOME/local
+
 before_install:
   - sudo apt-get update -qq
-  - sudo apt-get install -y libavl-dev libev-dev valgrind swig python-dev ca-certificates
+  - sudo apt-get install -y libavl-dev libev-dev valgrind swig python-dev
   - pip install --user codecov
-  
-  - git clone git://git.cryptomilk.org/projects/cmocka.git
-  - cd cmocka
-  - mkdir build; cd build
-  - cmake -DCMAKE_INSTALL_PREFIX=/usr ..
-  - make -j2 && sudo make install
-  - cd ../..
-  
-  - git clone https://github.com/CESNET/libyang.git
-  - cd libyang; mkdir build; cd build
-  - cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr -DCMAKE_BUILD_TYPE=Release ..
-  - make -j2 && sudo make install
-  - cd ../..
-  
-  - git clone https://github.com/google/protobuf.git
-  - cd protobuf
-  - ./autogen.sh && ./configure --prefix=/usr && make -j2 && sudo make install
-  - cd ..
-  
-  - git clone https://github.com/protobuf-c/protobuf-c.git
-  - cd protobuf-c
-  - ./autogen.sh && ./configure --prefix=/usr && make -j2 && sudo make install
-  - cd ..
+  - bash .travis-install.sh
 
 script:
-  - mkdir build ; cd build ; cmake -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_FLAGS="-Werror -coverage" .. && make -j2
+  - mkdir build ; cd build ; cmake -DCMAKE_BUILD_TYPE=Debug  -DCMAKE_PREFIX_PATH=$HOME/local -DCMAKE_C_FLAGS="-Werror -coverage" .. && make -j2
   - ctest --output-on-failure
   - sudo ctest --output-on-failure --tests-regex ac_test
 
