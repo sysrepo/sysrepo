@@ -299,7 +299,7 @@ cl_sm_server_init(cl_sm_ctx_t *sm_ctx)
     /* create listening socket */
     fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (-1 == fd) {
-        SR_LOG_ERR("Socket create error: %s", strerror(errno));
+        SR_LOG_ERR("Socket create error: %s", sr_strerror_safe(errno));
         rc = SR_ERR_INIT_FAILED;
         goto cleanup;
     }
@@ -316,10 +316,10 @@ cl_sm_server_init(cl_sm_ctx_t *sm_ctx)
     old_umask = umask(0);
     ret = bind(fd, (struct sockaddr*)&addr, sizeof(addr));
     umask(old_umask);
-    CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_INIT_FAILED, cleanup, "Socket bind error: %s", strerror(errno));
+    CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_INIT_FAILED, cleanup, "Socket bind error: %s", sr_strerror_safe(errno));
 
     ret = listen(fd, SOMAXCONN);
-    CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_INIT_FAILED, cleanup, "Socket listen error: %s", strerror(errno));
+    CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_INIT_FAILED, cleanup, "Socket listen error: %s", sr_strerror_safe(errno));
 
     sm_ctx->listen_socket_fd = fd;
     return SR_ERR_OK;
@@ -417,7 +417,7 @@ cl_sm_conn_out_buff_flush(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn)
                 break;
             } else {
                 /* error by writing - close the connection due to an error */
-                SR_LOG_ERR("Error by writing data to fd %d: %s.", conn->fd, strerror(errno));
+                SR_LOG_ERR("Error by writing data to fd %d: %s.", conn->fd, sr_strerror_safe(errno));
                 conn->close_requested = true;
                 break;
             }
@@ -946,7 +946,7 @@ cl_sm_fd_read_data(cl_sm_ctx_t *sm_ctx, int fd)
                 break;
             } else {
                 /* error by reading - close the connection due to an error */
-                SR_LOG_ERR("Error by reading data on fd %d: %s.", conn->fd, strerror(errno));
+                SR_LOG_ERR("Error by reading data on fd %d: %s.", conn->fd, sr_strerror_safe(errno));
                 conn->close_requested = true;
                 break;
             }
@@ -1066,7 +1066,7 @@ cl_sm_server_watcher_cb(struct ev_loop *loop, ev_io *w, int revents)
                 break;
             } else {
                 /* error by accept - only log the error and skip it */
-                SR_LOG_ERR("Unexpected error by accepting new connection: %s", strerror(errno));
+                SR_LOG_ERR("Unexpected error by accepting new connection: %s", sr_strerror_safe(errno));
                 continue;
             }
         }
@@ -1163,7 +1163,7 @@ cl_sm_init(cl_sm_ctx_t **sm_ctx_p)
     ev_async_start(ctx->event_loop, &ctx->stop_watcher);
 
     ret = pthread_create(&ctx->event_loop_thread, NULL, cl_sm_event_loop_threaded, ctx);
-    CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_INIT_FAILED, cleanup, "Error by creating a new thread: %s", strerror(errno));
+    CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_INIT_FAILED, cleanup, "Error by creating a new thread: %s", sr_strerror_safe(errno));
 
     SR_LOG_DBG_MSG("Client Subscription Manager initialized successfully.");
 

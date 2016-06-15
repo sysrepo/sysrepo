@@ -97,4 +97,7 @@
 /** Size of the preamble sent before each sysrepo GPB message. */
 #define SR_MSG_PREAM_SIZE sizeof(uint32_t)
 
+/** Strerror buffer length */
+#define MAX_STRERROR_LEN 150
+
 #endif /* SRC_SR_CONSTANTS_H_IN_ */

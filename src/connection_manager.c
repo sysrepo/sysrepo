@@ -155,7 +155,7 @@ cm_server_init(cm_ctx_t *cm_ctx, const char *socket_path)
 
     fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (-1 == fd){
-        SR_LOG_ERR("Socket create error: %s", strerror(errno));
+        SR_LOG_ERR("Socket create error: %s", sr_strerror_safe(errno));
         rc = SR_ERR_INIT_FAILED;
         goto cleanup;
     }
@@ -184,14 +184,14 @@ cm_server_init(cm_ctx_t *cm_ctx, const char *socket_path)
     umask(old_umask);
 
     if (-1 == rc) {
-        SR_LOG_ERR("Socket bind error: %s", strerror(errno));
+        SR_LOG_ERR("Socket bind error: %s", sr_strerror_safe(errno));
         rc = SR_ERR_INIT_FAILED;
         goto cleanup;
     }
 
     rc = listen(fd, SOMAXCONN);
     if (-1 == rc) {
-        SR_LOG_ERR("Socket listen error: %s", strerror(errno));
+        SR_LOG_ERR("Socket listen error: %s", sr_strerror_safe(errno));
         rc = SR_ERR_INIT_FAILED;
         goto cleanup;
     }
@@ -497,7 +497,7 @@ cm_conn_out_buff_flush(cm_ctx_t *cm_ctx, sm_connection_t *connection)
                 break;
             } else {
                 /* error by writing - close the connection due to an error */
-                SR_LOG_ERR("Error by writing data to fd %d: %s.", connection->fd, strerror(errno));
+                SR_LOG_ERR("Error by writing data to fd %d: %s.", connection->fd, sr_strerror_safe(errno));
                 connection->close_requested = true;
                 break;
             }
@@ -1039,7 +1039,7 @@ cm_conn_read_cb(struct ev_loop *loop, ev_io *w, int revents)
                 break;
             } else {
                 /* error by reading - close the connection due to an error */
-                SR_LOG_ERR("Error by reading data on fd %d: %s.", conn->fd, strerror(errno));
+                SR_LOG_ERR("Error by reading data on fd %d: %s.", conn->fd, sr_strerror_safe(errno));
                 conn->close_requested = true;
                 break;
             }
@@ -1177,7 +1177,7 @@ cm_server_watcher_cb(struct ev_loop *loop, ev_io *w, int revents)
                 break;
             } else {
                 /* error by accept - only log the error and skip it */
-                SR_LOG_ERR("Unexpected error by accepting new connection: %s", strerror(errno));
+                SR_LOG_ERR("Unexpected error by accepting new connection: %s", sr_strerror_safe(errno));
                 continue;
             }
         }
@@ -1198,7 +1198,7 @@ cm_subscr_conn_create(cm_ctx_t *cm_ctx, const char *socket_path, sm_connection_t
     /* prepare a socket */
     fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (-1 == fd) {
-        SR_LOG_ERR("Unable to create a new socket: %s", strerror(errno));
+        SR_LOG_ERR("Unable to create a new socket: %s", sr_strerror_safe(errno));
         return SR_ERR_INTERNAL;
     }
 
@@ -1246,7 +1246,7 @@ cm_subscr_conn_create(cm_ctx_t *cm_ctx, const char *socket_path, sm_connection_t
             rc = SR_ERR_DISCONNECT;
             goto cleanup;
         } else {
-            SR_LOG_ERR("Unable to connect to subscriber socket=%s: %s", socket_path, strerror(errno));
+            SR_LOG_ERR("Unable to connect to subscriber socket=%s: %s", socket_path, sr_strerror_safe(errno));
             rc = SR_ERR_DISCONNECT;
             goto cleanup;
         }
@@ -1712,7 +1712,7 @@ cm_start(cm_ctx_t *cm_ctx)
         rc = pthread_create(&cm_ctx->event_loop_thread, NULL,
                 cm_event_loop_threaded, cm_ctx);
         if (0 != rc) {
-            SR_LOG_ERR("Error by creating a new thread: %s", strerror(errno));
+            SR_LOG_ERR("Error by creating a new thread: %s", sr_strerror_safe(errno));
             rc = SR_ERR_INTERNAL;
         }
     }

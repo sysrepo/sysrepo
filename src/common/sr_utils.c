@@ -255,7 +255,7 @@ sr_lock_fd_internal(int fd, bool lock, bool write, bool wait)
     ret = fcntl(fd, wait ? F_SETLKW : F_SETLK, &fl);
 
     if (-1 == ret) {
-        SR_LOG_WRN("Unable to acquire the lock on fd %d: %s", fd, strerror(errno));
+        SR_LOG_WRN("Unable to acquire the lock on fd %d: %s", fd, sr_strerror_safe(errno));
         if (!wait && (EAGAIN == errno || EACCES == errno)) {
             /* already locked by someone else */
             return SR_ERR_LOCKED;
@@ -286,12 +286,12 @@ sr_fd_set_nonblock(int fd)
 
     flags = fcntl(fd, F_GETFL, 0);
     if (-1 == flags) {
-        SR_LOG_WRN("Socket fcntl error (skipped): %s", strerror(errno));
+        SR_LOG_WRN("Socket fcntl error (skipped): %s", sr_strerror_safe(errno));
         flags = 0;
     }
     rc = fcntl(fd, F_SETFL, flags | O_NONBLOCK);
     if (-1 == rc) {
-        SR_LOG_ERR("Socket fcntl error: %s", strerror(errno));
+        SR_LOG_ERR("Socket fcntl error: %s", sr_strerror_safe(errno));
         return SR_ERR_INTERNAL;
     }
 
@@ -323,7 +323,7 @@ sr_get_peer_eid(int fd, uid_t *uid, gid_t *gid)
     CHECK_NULL_ARG2(uid, gid);
 
     if (-1 == getsockopt(fd, SOL_SOCKET, SO_PEERCRED, &cred, &len)) {
-        SR_LOG_ERR("Cannot retrieve credentials of the UNIX-domain peer: %s", strerror(errno));
+        SR_LOG_ERR("Cannot retrieve credentials of the UNIX-domain peer: %s", sr_strerror_safe(errno));
         return SR_ERR_INTERNAL;
     }
     *uid = cred.uid;
@@ -346,7 +346,7 @@ sr_get_peer_eid(int fd, uid_t *uid, gid_t *gid)
     CHECK_NULL_ARG2(uid, gid);
 
     if (-1 == getpeerucred(fd, &ucred)) {
-        SR_LOG_ERR("Cannot retrieve credentials of the UNIX-domain peer: %s", strerror(errno));
+        SR_LOG_ERR("Cannot retrieve credentials of the UNIX-domain peer: %s", sr_strerror_safe(errno));
         return SR_ERR_INTERNAL;
     }
     if (-1 == (*uid = ucred_geteuid(ucred))) {
@@ -375,7 +375,7 @@ sr_get_peer_eid(int fd, uid_t *uid, gid_t *gid)
 
     ret = getpeereid(fd, uid, gid);
     if (-1 == ret) {
-        SR_LOG_ERR("Cannot retrieve credentials of the UNIX-domain peer: %s", strerror(errno));
+        SR_LOG_ERR("Cannot retrieve credentials of the UNIX-domain peer: %s", sr_strerror_safe(errno));
         return SR_ERR_INTERNAL;
     } else {
         return SR_ERR_OK;
@@ -992,7 +992,7 @@ sr_daemon_check_single_instance(const char *pid_file, int *pid_file_fd)
     /* open PID file */
     *pid_file_fd = open(pid_file, O_RDWR | O_CREAT, 0640);
     if (*pid_file_fd < 0) {
-        SR_LOG_ERR("Unable to open sysrepo PID file '%s': %s.", pid_file, strerror(errno));
+        SR_LOG_ERR("Unable to open sysrepo PID file '%s': %s.", pid_file, sr_strerror_safe(errno));
         exit(EXIT_FAILURE);
     }
 
@@ -1001,7 +1001,7 @@ sr_daemon_check_single_instance(const char *pid_file, int *pid_file_fd)
         if (EACCES == errno || EAGAIN == errno) {
             SR_LOG_ERR_MSG("Another instance of sysrepo daemon is running, unable to start.");
         } else {
-            SR_LOG_ERR("Unable to lock sysrepo PID file '%s': %s.", pid_file, strerror(errno));
+            SR_LOG_ERR("Unable to lock sysrepo PID file '%s': %s.", pid_file, sr_strerror_safe(errno));
         }
         exit(EXIT_FAILURE);
     }
@@ -1010,7 +1010,7 @@ sr_daemon_check_single_instance(const char *pid_file, int *pid_file_fd)
     snprintf(str, NAME_MAX, "%d\n", getpid());
     ret = write(*pid_file_fd, str, strlen(str));
     if (-1 == ret) {
-        SR_LOG_ERR("Unable to write into sysrepo PID file '%s': %s.", pid_file, strerror(errno));
+        SR_LOG_ERR("Unable to write into sysrepo PID file '%s': %s.", pid_file, sr_strerror_safe(errno));
         exit(EXIT_FAILURE);
     }
 
@@ -1076,7 +1076,7 @@ sr_daemonize(bool debug_mode, int log_level, const char *pid_file, int *pid_file
     /* fork off the parent process. */
     pid = fork();
     if (pid < 0) {
-        SR_LOG_ERR("Unable to fork sysrepo plugin daemon: %s.", strerror(errno));
+        SR_LOG_ERR("Unable to fork sysrepo plugin daemon: %s.", sr_strerror_safe(errno));
         exit(EXIT_FAILURE);
     }
     if (pid > 0) {
@@ -1095,13 +1095,13 @@ sr_daemonize(bool debug_mode, int log_level, const char *pid_file, int *pid_file
     /* create a new session containing a single (new) process group */
     sid = setsid();
     if (sid < 0) {
-        SR_LOG_ERR("Unable to create new session: %s.", strerror(errno));
+        SR_LOG_ERR("Unable to create new session: %s.", sr_strerror_safe(errno));
         exit(EXIT_FAILURE);
     }
 
     /* change the current working directory. */
     if ((chdir(SR_DEAMON_WORK_DIR)) < 0) {
-        SR_LOG_ERR("Unable to change directory to '%s': %s.", SR_DEAMON_WORK_DIR, strerror(errno));
+        SR_LOG_ERR("Unable to change directory to '%s': %s.", SR_DEAMON_WORK_DIR, sr_strerror_safe(errno));
         exit(EXIT_FAILURE);
     }
 

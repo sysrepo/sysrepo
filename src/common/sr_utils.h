@@ -37,6 +37,7 @@ typedef struct sr_change_s {
     sr_val_t *old_value;        /**< Prev value, NULL in case of SR_OP_CREATED, predcessor in case of SR_OP_MOVED */
 }sr_change_t;
 
+
 /**
  * @defgroup utils Utility Functions
  * @ingroup common

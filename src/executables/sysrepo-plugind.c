@@ -154,13 +154,13 @@ sr_pd_load_plugins(sr_session_ctx_t *session, sr_pd_plugin_ctx_t **plugins_p, si
 
     dir = opendir(plugins_dir);
     if (NULL == dir) {
-        SR_LOG_ERR("Error by opening plugin directory: %s.\n", strerror(errno));
+        SR_LOG_ERR("Error by opening plugin directory: %s.\n", sr_strerror_safe(errno));
         return SR_ERR_INVAL_ARG;
     }
     do {
         ret = readdir_r(dir, &entry, &result);
         if (0 != ret) {
-            SR_LOG_ERR("Error by reading plugin directory: %s.\n", strerror(errno));
+            SR_LOG_ERR("Error by reading plugin directory: %s.\n", sr_strerror_safe(errno));
             break;
         }
         if ((NULL != result) && sr_str_ends_with(entry.d_name, SR_PLUGIN_FILE_EXT)) {
