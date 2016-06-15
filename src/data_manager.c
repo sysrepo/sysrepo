@@ -229,6 +229,7 @@ dm_model_subscription_free(void *sub)
             }
             sr_list_cleanup(ms->changes);
         }
+        pthread_rwlock_destroy(&ms->changes_lock);
     }
     free(ms);
 }
@@ -2025,6 +2026,8 @@ dm_prepare_module_subscriptions(dm_ctx_t *dm_ctx, const struct lys_module *modul
     ms = calloc(1, sizeof(*ms));
     CHECK_NULL_NOMEM_RETURN(ms);
 
+    pthread_rwlock_init(&ms->changes_lock, NULL);
+
     rc = np_get_module_change_subscriptions(dm_ctx->np_ctx,
             module->name,
             &ms->subscriptions,
@@ -2522,12 +2525,6 @@ dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t *c
 
         /* store differences in commit context */
         ms->difflist = diff;
-
-        rc = rp_dt_difflist_to_changes(ms->difflist, &ms->changes);
-        if (SR_ERR_OK != rc) {
-            SR_LOG_ERR_MSG("Difflist to changes failed");
-            continue;
-        }
 
         /* Log changes */
         if (SR_LL_DBG == sr_ll_stderr || SR_LL_DBG == sr_ll_syslog) {
