@@ -827,7 +827,9 @@ np_commit_end_notify(np_ctx_t *np_ctx, uint32_t commit_id, sr_list_t *subscripti
             rc = sr_gpb_internal_req_alloc(SR__OPERATION__COMMIT_RELEASE, &req);
             if (SR_ERR_OK == rc) {
                 req->internal_request->commit_release_req->commit_id = commit_id;
-                rc = cm_delayed_msg_process(np_ctx->rp_ctx->cm_ctx, NULL, req, NP_COMMIT_RELEASE_TIMEOUT);
+                req->internal_request->postpone_timeout = NP_COMMIT_RELEASE_TIMEOUT;
+                req->internal_request->has_postpone_timeout = true;
+                rc = cm_msg_send(np_ctx->rp_ctx->cm_ctx, req);
             }
             if (SR_ERR_OK == rc) {
                 SR_LOG_DBG("Setting up a commit-release timer for commit id=%"PRIu32" with timeout=%d seconds.",

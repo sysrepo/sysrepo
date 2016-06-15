@@ -762,6 +762,7 @@ message NotificationAck {
  */
 message InternalRequest {
   required Operation operation = 1;
+  optional uint32 postpone_timeout = 2;
 
   optional UnsubscribeDestinationReq unsubscribe_dst_req = 10;
   optional CommitReleaseReq commit_release_req = 11;
