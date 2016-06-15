@@ -693,7 +693,10 @@ void set_item_leafref_test(void **state) {
     value = calloc(1, sizeof(*value));
     assert_non_null(value);
     value->type = SR_UINT8_T;
-    value->data.uint8_val = 17;
+    value->data.uint8_val = 18;
+
+#undef LEAFREF_XP
+#define LEAFREF_XP "/test-module:university/classes/class[title='CCNA']/student[name='nameC']/age"
 
     rc = rp_dt_get_value_wrapper(ctx, session, LEAFREF_XP, &value);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
@@ -708,7 +711,7 @@ void set_item_leafref_test(void **state) {
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(value);
     assert_int_equal(SR_UINT8_T, value->type);
-    assert_string_equal(17, value->data.string_val);
+    assert_int_equal(18, value->data.uint8_val);
     sr_free_val(value);
 
     test_rp_session_cleanup(ctx, session);
@@ -978,16 +981,16 @@ void edit_test_module_test(void **state){
     FREE_VARS(value, new_set);
 
     /* leafref */
-#undef ITEM_WITH_LEAFREFS_XP
-#define ITEM_WITH_LEAFREFS_XP "/test-module:university/classes/class[title='CCNA']/student[name='nameB']"
-    rc = rp_dt_get_value_wrapper(ctx, session, ITEM_WITH_LEAFREFS_XP "/name", &value);
+#undef LEAFREF_XP
+#define LEAFREF_XP "/test-module:university/classes/class[title='CCNA']/student[name='nameB']/age"
+    rc = rp_dt_get_value_wrapper(ctx, session, LEAFREF_XP, &value);
     assert_int_equal(SR_ERR_OK, rc);
 
-    assert_int_equal(SR_STRING_T, value->type);
-    assert_int_equal("nameB", value->data.string_val);
+    assert_int_equal(SR_UINT8_T, value->type);
+    assert_int_equal(17, value->data.uint8_val);
 
-    delete_get_set_get(ctx, session, ITEM_WITH_LEAFREFS_XP "/name", value, &new_set);
-    assert_int_equal(value->data.string_val, new_set->data.string_val);
+    delete_get_set_get(ctx, session, LEAFREF_XP, value, &new_set);
+    assert_int_equal(value->data.uint8_val, new_set->data.uint8_val);
     FREE_VARS(value, new_set);
 
     test_rp_session_cleanup(ctx, session);
@@ -1221,9 +1224,12 @@ edit_validate_test(void **state)
     /* leafref */
     test_rp_sesssion_create(ctx, SR_DS_STARTUP, &session);
 
+#undef LEAFREF_XP
+#define LEAFREF_XP "/test-module:university/classes/class[title='CCNA']/student[name='nameC']/age"
+
     sr_val_t age;
     age.type = SR_UINT8_T;
-    age.data.uint8_val = 18; /* invalid reference */
+    age.data.uint8_val = 17; /* invalid reference */
 
     rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, LEAFREF_XP, SR_EDIT_DEFAULT, &age);
     assert_int_equal(SR_ERR_OK, rc);
@@ -1234,12 +1240,12 @@ edit_validate_test(void **state)
     rc = dm_validate_session_data_trees(ctx->dm_ctx, session->dm_session, &errors, &e_cnt);
     assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
     assert_int_equal(1, e_cnt);
-    assert_string_equal("Leafref \"../../../../students/student[name = current()/../name]/age\" of value \"18\" "
+    assert_string_equal("Leafref \"../../../../students/student[name = current()/../name]/age\" of value \"17\" "
                         "points to a non-existing leaf.", errors[0].message);
     assert_string_equal(LEAFREF_XP, errors[0].xpath);
     sr_free_errors(errors, e_cnt);
 
-    age.data.uint8_val = 17; /* valid reference */
+    age.data.uint8_val = 18; /* valid reference */
 
     rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, LEAFREF_XP, SR_EDIT_DEFAULT, &age);
     assert_int_equal(SR_ERR_OK, rc);
