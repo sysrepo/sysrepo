@@ -17,7 +17,7 @@ before_install:
   - sudo apt-get update -qq
   - sudo apt-get install -y libavl-dev libev-dev valgrind swig python-dev
   - pip install --user codecov
-  - bash .travis-install.sh
+  - bash .travis-install-libs.sh
 
 script:
   - mkdir build ; cd build ; cmake -DCMAKE_BUILD_TYPE=Debug -DCMAKE_PREFIX_PATH=$HOME/local -DCMAKE_C_FLAGS="-Werror -coverage" .. && make -j2
