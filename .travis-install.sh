@@ -7,6 +7,7 @@ export PKG_CONFIG_PATH=$INSTALL_PREFIX_DIR/lib/pkgconfig:$PKG_CONFIG_PATH
 # check to see if cache folder is empty
 if [ ! -d "$INSTALL_PREFIX_DIR/lib" ]; then
     echo "Building all libraries."
+    cd ~
 
     # CMocka
     git clone git://git.cryptomilk.org/projects/cmocka.git
