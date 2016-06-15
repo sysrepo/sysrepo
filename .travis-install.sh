@@ -40,6 +40,6 @@ fi
 git clone https://github.com/CESNET/libyang.git
 cd libyang ; mkdir build ; cd build
 cmake -DCMAKE_BUILD_TYPE=Release -DENABLE_BUILD_TESTS=OFF ..
-make -j2 && make install
+make -j2 && sudo make install
 cd ../..
 
