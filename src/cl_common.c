@@ -532,6 +532,18 @@ cl_session_set_errors(sr_session_ctx_t *session, Sr__Error **errors, size_t erro
 
     pthread_mutex_lock(&session->lock);
 
+    /* first release already allocated space for errors */
+    for (size_t i = 0; i < session->error_info_size; i++) {
+        if (NULL != session->error_info[i].message) {
+            free((void*)session->error_info[i].message);
+            session->error_info[i].message = NULL;
+        }
+        if (NULL != session->error_info[i].xpath) {
+            free((void*)session->error_info[i].xpath);
+            session->error_info[i].xpath = NULL;
+        }
+    }
+
     if (session->error_info_size < error_cnt) {
         tmp_info = realloc(session->error_info, (error_cnt * sizeof(*tmp_info)));
         if (NULL == tmp_info) {

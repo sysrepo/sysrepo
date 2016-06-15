@@ -481,9 +481,10 @@ sr_lyd_insert_after(dm_data_info_t *data_info, struct lyd_node *sibling, struct 
 }
 
 sr_type_t
-sr_libyang_type_to_sysrepo(LY_DATA_TYPE t)
+sr_libyang_leaf_get_type(const struct lyd_node_leaf_list *leaf)
 {
-        switch(t){
+    const struct lyd_node *leafref = NULL;
+    switch(leaf->value_type){
         case LY_TYPE_BINARY:
             return SR_BINARY_T;
         case LY_TYPE_BITS:
@@ -500,6 +501,12 @@ sr_libyang_type_to_sysrepo(LY_DATA_TYPE t)
             return SR_IDENTITYREF_T;
         case LY_TYPE_INST:
             return SR_INSTANCEID_T;
+        case LY_TYPE_LEAFREF:
+            leafref = leaf->value.leafref;
+            if (NULL != leafref && ((LYS_LEAF | LYS_LEAFLIST) & leafref->schema->nodetype)) {
+                return sr_libyang_leaf_get_type((const struct lyd_node_leaf_list *)leafref);
+            }
+            return SR_UNKNOWN_T;
         case LY_TYPE_STRING:
             return SR_STRING_T;
         case LY_TYPE_UNION:
@@ -522,7 +529,7 @@ sr_libyang_type_to_sysrepo(LY_DATA_TYPE t)
             return SR_UINT64_T;
         default:
             return SR_UNKNOWN_T;
-            //LY_LEAFREF, LY_DERIVED
+            //LY_DERIVED
         }
 }
 
@@ -578,6 +585,7 @@ sr_libyang_leaf_copy_value(const struct lyd_node_leaf_list *leaf, sr_val_t *valu
     CHECK_NULL_ARG2(leaf, value);
     int rc = SR_ERR_OK;
     struct lys_node_leaf *leaf_schema = NULL;
+    const struct lyd_node *leafref = NULL;
     LY_DATA_TYPE type = leaf->value_type;
     if (NULL == leaf->schema || NULL == leaf->schema->name) {
         SR_LOG_ERR_MSG("Missing schema information");
@@ -646,6 +654,12 @@ sr_libyang_leaf_copy_value(const struct lyd_node_leaf_list *leaf, sr_val_t *valu
             SR_LOG_ERR("Copy value failed for leaf '%s'", leaf->schema->name);
         }
         return SR_ERR_INTERNAL;
+    case LY_TYPE_LEAFREF:
+        leafref = leaf->value.leafref;
+        if (NULL != leafref && ((LYS_LEAF | LYS_LEAFLIST) & leafref->schema->nodetype)) {
+            return sr_libyang_leaf_copy_value((const struct lyd_node_leaf_list *)leafref, value);
+        }
+        return SR_ERR_OK;
     case LY_TYPE_STRING:
         if (NULL != leaf->value.string) {
             value->data.string_val = strdup(leaf->value.string);
@@ -786,12 +800,6 @@ sr_val_to_str(const sr_val_t *value, const struct lys_node *schema_node, char **
         *out = calloc(len + 1, sizeof(**out));
         CHECK_NULL_NOMEM_RETURN(*out);
         snprintf(*out, len + 1, "%"PRId64, value->data.int64_val);
-        break;
-    case SR_LEAFREF_T:
-        if (NULL != value->data.leafref_val) {
-            *out = strdup(value->data.leafref_val);
-            CHECK_NULL_NOMEM_RETURN(*out);
-        }
         break;
     case SR_STRING_T:
         if (NULL != value->data.string_val){

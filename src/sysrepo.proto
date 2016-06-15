@@ -46,12 +46,11 @@ message Value {
     INT16 = 18;
     INT32 = 19;
     INT64 = 20;
-    LEAFREF = 21;
-    STRING = 22;
-    UINT8 = 23;
-    UINT16 = 24;
-    UINT32 = 25;
-    UINT64 = 26;
+    STRING = 21;
+    UINT8 = 22;
+    UINT16 = 23;
+    UINT32 = 24;
+    UINT64 = 25;
   }
 
   required string xpath = 1;
@@ -69,12 +68,11 @@ message Value {
   optional int32 int16_val = 18;
   optional int32 int32_val = 19;
   optional int64 int64_val = 20;
-  optional string leafref_val = 21;
-  optional string string_val = 22;
-  optional uint32 uint8_val = 23;
-  optional uint32 uint16_val = 24;
-  optional uint32 uint32_val = 25;
-  optional uint64 uint64_val = 26;
+  optional string string_val = 21;
+  optional uint32 uint8_val = 22;
+  optional uint32 uint16_val = 23;
+  optional uint32 uint32_val = 24;
+  optional uint64 uint64_val = 25;
 }
 
 message Error {

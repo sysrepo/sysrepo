@@ -67,6 +67,9 @@ static bool srcfg_custom_repository = false;
 static sr_conn_ctx_t *srcfg_connection = NULL;
 static sr_session_ctx_t *srcfg_session = NULL;
 
+/* logging */
+static bool ly_diminish_errors = false;
+
 /**
  * @brief Logging callback called from libyang for each log entry.
  */
@@ -75,7 +78,10 @@ srcfg_ly_log_cb(LY_LOG_LEVEL level, const char *msg, const char *path)
 {
     switch (level) {
         case LY_LLERR:
-            SR_LOG_ERR("libyang: %s", msg);
+            if (ly_diminish_errors)
+                SR_LOG_WRN("libyang: %s", msg);
+            else
+                SR_LOG_ERR("libyang: %s", msg);
             break;
         case LY_LLWRN:
             SR_LOG_WRN("libyang: %s", msg);
@@ -215,7 +221,7 @@ srcfg_ly_init(struct ly_ctx **ly_ctx, const char *module_name)
 static int
 srcfg_get_module_data(struct ly_ctx *ly_ctx, const char *module_name, struct lyd_node **data_tree)
 {
-    int rc = SR_ERR_OK;
+    int rc = SR_ERR_OK, ret = 0;
     sr_val_t *value = NULL;
     sr_val_iter_t *iter = NULL;
     struct lyd_node *node = NULL;
@@ -232,7 +238,8 @@ srcfg_get_module_data(struct ly_ctx *ly_ctx, const char *module_name, struct lyd
 
     *data_tree = NULL;
     ly_errno = LY_SUCCESS;
-    while (SR_ERR_OK == (rc = sr_get_item_next(srcfg_session, iter, &value))) {
+    while ((ly_diminish_errors = true) && SR_ERR_OK == (rc = sr_get_item_next(srcfg_session, iter, &value))) {
+        ly_diminish_errors = false;
         if (NULL == value) {
             continue;
         }
@@ -281,11 +288,19 @@ next:
             value = NULL;
         }
     }
+    ly_diminish_errors = false;
 
     if (SR_ERR_NOT_FOUND == rc) {
         rc = SR_ERR_OK;
     }
     if (SR_ERR_OK == rc) {
+        if (NULL != *data_tree) {
+            /* validate returned data, but most importantly resolve leafrefs */
+            ret = lyd_validate(data_tree, LYD_OPT_STRICT | LYD_OPT_CONFIG | LYD_WD_IMPL_TAG);
+            CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_INTERNAL, fail, "Received data tree from sysrepo is not valid: %s", ly_errmsg());
+            /* remove default nodes added by validation */
+            lyd_wd_cleanup(data_tree, 0);
+        }
         goto cleanup;
     }
 
@@ -325,7 +340,7 @@ srcfg_convert_lydiff_changed(const char *xpath, struct lyd_node *node)
         case LYS_LEAF:
         case LYS_LEAFLIST:
             data_leaf = (struct lyd_node_leaf_list *) node;
-            value.type = sr_libyang_type_to_sysrepo(data_leaf->value_type);
+            value.type = sr_libyang_leaf_get_type(data_leaf);
             rc = sr_libyang_leaf_copy_value(data_leaf, &value);
             if (SR_ERR_OK != rc) {
                 SR_LOG_ERR("Error returned from sr_libyang_leaf_copy_value: %s.", sr_strerror(rc));
@@ -396,7 +411,7 @@ srcfg_convert_lydiff_created(struct lyd_node *node)
             case LYS_LEAF: /* e.g.: /test-module:user[name='nameE']/name */
                 /* get value */
                 data_leaf = (struct lyd_node_leaf_list *)elem;
-                value.type = sr_libyang_type_to_sysrepo(data_leaf->value_type);
+                value.type = sr_libyang_leaf_get_type(data_leaf);
                 rc = sr_libyang_leaf_copy_value(data_leaf, &value);
                 if (SR_ERR_OK != rc) {
                     SR_LOG_ERR("Error returned from sr_libyang_leaf_copy_value: %s.", sr_strerror(rc));
@@ -432,7 +447,7 @@ srcfg_convert_lydiff_created(struct lyd_node *node)
             case LYS_LEAFLIST: /* e.g.: /test-module:main/numbers[.='10'] */
                 /* get value */
                 data_leaf = (struct lyd_node_leaf_list *)elem;
-                value.type = sr_libyang_type_to_sysrepo(data_leaf->value_type);
+                value.type = sr_libyang_leaf_get_type(data_leaf);
                 rc = sr_libyang_leaf_copy_value(data_leaf, &value);
                 if (SR_ERR_OK != rc) {
                     SR_LOG_ERR("Error returned from sr_libyang_leaf_copy_value: %s.", sr_strerror(rc));
