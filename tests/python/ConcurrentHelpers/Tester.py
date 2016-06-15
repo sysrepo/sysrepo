@@ -19,6 +19,8 @@ __license__ = "Apache 2.0"
 from random import randint
 import os, time
 import unittest
+import traceback
+import sys
 
 
 class Tester(object):
@@ -95,6 +97,9 @@ class Tester(object):
             try:
                 self.execute_step(step)
             except Exception as e:
+                _, _, tb = sys.exc_info()
+                traceback.print_tb(tb) # Print traceback
+                print >> sys.stderr, "\n\n"
                 err = e
             finally:
                 self._current_step += 1

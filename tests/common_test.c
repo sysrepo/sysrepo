@@ -25,6 +25,8 @@
 #include <sys/socket.h>
 #include <setjmp.h>
 #include <cmocka.h>
+#include <fcntl.h>
+#include <pthread.h>
 
 #include "sr_common.h"
 #include "request_processor.h"
@@ -306,6 +308,130 @@ logger_callback_test(void **state)
     SR_LOG_INF("Testing logging callback %d, %d, %d, %s", 2, 1, 0, "GO!");
 }
 
+
+#define TESTING_FILE "/tmp/testing_file"
+#define TEST_THREAD_COUNT 5
+
+static void *
+lock_in_thread(void *ctx)
+{
+   sr_locking_set_t *lset = ctx;
+   int fd = -1;
+   int rc = SR_ERR_OK;
+
+   /* wait rand */
+   usleep(100 * (rand()%6));
+
+   /* lock blocking */
+   rc = sr_locking_set_lock_file_open(lset, TESTING_FILE, true, true, &fd);
+   assert_int_equal(rc, SR_ERR_OK);
+
+   /* wait rand */
+   usleep(100 * (rand()%10));
+
+   /* unlock */
+   sr_locking_set_unlock_close_file(lset, TESTING_FILE);
+
+   return NULL;
+}
+
+static void
+sr_locking_set_test(void **state)
+{
+
+    sr_locking_set_t *lset = NULL;
+    int rc = SR_ERR_OK;
+    int fd = -1, fd2 =-1;
+    pthread_t threads[TEST_THREAD_COUNT] = {0};
+
+    rc = sr_locking_set_init(&lset);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    unlink(TESTING_FILE);
+
+    /* lock by file name nonblocking */
+    rc = sr_locking_set_lock_file_open(lset, TESTING_FILE, true, false, &fd);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* locking already locked resources should fail */
+    rc = sr_locking_set_lock_file_open(lset, TESTING_FILE, true, false, &fd);
+    assert_int_equal(SR_ERR_LOCKED, rc);
+
+    /* unlock by filename */
+    rc = sr_locking_set_unlock_close_file(lset, TESTING_FILE);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* unlocking of unlocked file*/
+    rc = sr_locking_set_unlock_close_file(lset, TESTING_FILE);
+    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+
+    /*************************************/
+
+    /* lock by fd nonblocking */
+    fd = open(TESTING_FILE, O_RDWR, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
+    assert_int_not_equal(-1, fd);
+
+    rc = sr_locking_set_lock_fd(lset, fd, TESTING_FILE, true, false);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    fd2 = open(TESTING_FILE, O_RDWR, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
+    assert_int_not_equal(-1, fd2);
+
+    rc = sr_locking_set_lock_fd(lset, fd2, TESTING_FILE, true, false);
+    assert_int_equal(rc, SR_ERR_LOCKED);
+
+    /* unlock by fd */
+
+    rc = sr_locking_set_unlock_close_fd(lset, fd);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_locking_set_lock_fd(lset, fd2, TESTING_FILE, true, false);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_locking_set_unlock_close_fd(lset, fd2);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /*************************************/
+
+    /* lock by file name nonblocking */
+    rc = sr_locking_set_lock_file_open(lset, TESTING_FILE, true, false, &fd);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* unlock by fd */
+    rc = sr_locking_set_unlock_close_fd(lset, fd);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /*************************************/
+
+    /* lock by fd nonblocking */
+    fd = open(TESTING_FILE, O_RDWR, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
+    assert_int_not_equal(-1, fd);
+
+    rc = sr_locking_set_lock_fd(lset, fd, TESTING_FILE, true, false);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* unlock by filename */
+    rc = sr_locking_set_unlock_close_file(lset, TESTING_FILE);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    sr_locking_set_cleanup(lset);
+
+    /*************************************/
+
+    rc = sr_locking_set_init(&lset);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    for (int i = 0; i < TEST_THREAD_COUNT; i++) {
+        pthread_create(&threads[i], NULL, lock_in_thread, lset);
+    }
+
+    for (int i = 0; i < TEST_THREAD_COUNT; i++) {
+        pthread_join(threads[i], NULL);
+    }
+
+    sr_locking_set_cleanup(lset);
+}
+
 int
 main() {
     const struct CMUnitTest tests[] = {
@@ -315,6 +441,7 @@ main() {
             cmocka_unit_test_setup_teardown(circular_buffer_test2, logging_setup, logging_cleanup),
             cmocka_unit_test_setup_teardown(circular_buffer_test3, logging_setup, logging_cleanup),
             cmocka_unit_test_setup_teardown(logger_callback_test, logging_setup, logging_cleanup),
+            cmocka_unit_test_setup_teardown(sr_locking_set_test, logging_setup, logging_cleanup),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);

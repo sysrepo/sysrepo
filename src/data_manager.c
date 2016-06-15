@@ -43,26 +43,6 @@
 #define DM_DATASTORE_COUNT 3
 
 /**
- * @brief Helper structure for advisory locking. Holds
- * binary tree with filename -> fd maping. This structure
- * is used to avoid the loss of the lock by file closing.
- * File name is first looked up in this structure to detect if the
- * file is currently opened by the process.
- */
-typedef struct dm_lock_ctx_s {
-    sr_btree_t *lock_files;       /**< Binary tree of lock files for fast look up by file name */
-    pthread_mutex_t mutex;        /**< Mutex for exclusive access to binary tree */
-}dm_lock_ctx_t;
-
-/**
- * @brief The item of the lock_files binary tree in dm_lock_ctx_t
- */
-typedef struct dm_lock_item_s {
-    char *filename;               /**< File name of the lockfile */
-    int fd;                       /**< File descriptor of the file */
-}dm_lock_item_t;
-
-/**
  * @brief Data manager context holding loaded schemas, data trees
  * and corresponding locks
  */
@@ -74,7 +54,7 @@ typedef struct dm_ctx_s {
     char *data_search_dir;        /**< location where data files are located */
     struct ly_ctx *ly_ctx;        /**< libyang context holding all loaded schemas */
     pthread_rwlock_t lyctx_lock;  /**< rwlock to access ly_ctx */
-    dm_lock_ctx_t lock_ctx;       /**< lock context for lock/unlock/commit operations */
+    sr_locking_set_t *locking_ctx;/**< lock context for lock/unlock/commit operations */
     bool ds_lock;                 /**< Flag if the ds lock is hold by a session*/
     pthread_mutex_t ds_lock_mutex;/**< Data store lock mutex */
     sr_list_t *disabled_sch;  /**< Set of schema that has been disabled */
@@ -138,27 +118,6 @@ dm_data_info_cmp(const void *a, const void *b)
     dm_data_info_t *node_b = (dm_data_info_t *) b;
 
     int res = strcmp(node_a->module->name, node_b->module->name);
-    if (res == 0) {
-        return 0;
-    } else if (res < 0) {
-        return -1;
-    } else {
-        return 1;
-    }
-}
-
-/**
- * @brief Compare two lock items
- */
-static int
-dm_compare_lock_item(const void *a, const void *b)
-{
-    assert(a);
-    assert(b);
-    dm_lock_item_t *item_a = (dm_lock_item_t *) a;
-    dm_lock_item_t *item_b = (dm_lock_item_t *) b;
-
-    int res = strcmp(item_a->filename, item_b->filename);
     if (res == 0) {
         return 0;
     } else if (res < 0) {
@@ -652,18 +611,6 @@ dm_free_sess_operations(dm_sess_op_t *ops, size_t count)
     free(ops);
 }
 
-static void
-dm_free_lock_item(void *lock_item)
-{
-    CHECK_NULL_ARG_VOID(lock_item);
-    dm_lock_item_t *li = (dm_lock_item_t *) lock_item;
-    free(li->filename);
-    if (-1 != li->fd) {
-        close(li->fd);
-    }
-    free(li);
-}
-
 /**
  * @brief Locks a file based on provided file name.
  * @param [in] lock_ctx
@@ -672,66 +619,10 @@ dm_free_lock_item(void *lock_item)
  * SR_ERR_UNATHORIZED if the file can not be locked because of the permission.
  */
 static int
-dm_lock_file(dm_lock_ctx_t *lock_ctx, char *filename)
+dm_lock_file(sr_locking_set_t *lock_ctx, char *filename)
 {
     CHECK_NULL_ARG2(lock_ctx, filename);
-    int rc = SR_ERR_OK;
-    dm_lock_item_t lookup_item = {0,};
-    dm_lock_item_t *found_item = NULL;
-    lookup_item.filename = filename;
-
-    pthread_mutex_lock(&lock_ctx->mutex);
-
-    found_item = sr_btree_search(lock_ctx->lock_files, &lookup_item);
-    if (NULL == found_item) {
-        found_item = calloc(1, sizeof(*found_item));
-        CHECK_NULL_NOMEM_GOTO(found_item, rc, cleanup);
-
-        found_item->fd = -1;
-        found_item->filename = strdup(filename);
-        if (NULL == found_item->filename) {
-            SR_LOG_ERR_MSG("Filename duplication failed");
-            free(found_item);
-            rc = SR_ERR_INTERNAL;
-            goto cleanup;
-        }
-
-        rc = sr_btree_insert(lock_ctx->lock_files, found_item);
-        if (SR_ERR_OK != rc) {
-            SR_LOG_ERR_MSG("Adding to binary tree failed");
-            dm_free_lock_item(found_item);
-            goto cleanup;
-        }
-    }
-
-    if (-1 == found_item->fd) {
-        found_item->fd = open(filename, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
-        if (-1 == found_item->fd) {
-            if (EACCES == errno) {
-                SR_LOG_ERR("Insufficient permissions to lock the file '%s'", filename);
-                rc = SR_ERR_UNAUTHORIZED;
-            } else {
-                SR_LOG_ERR("Error by opening the file '%s': %s", filename, strerror(errno));
-                rc = SR_ERR_INTERNAL;
-            }
-            goto cleanup;
-        }
-        rc = sr_lock_fd(found_item->fd, true, false);
-        if (SR_ERR_OK == rc) {
-            SR_LOG_DBG("File %s has been locked", filename);
-        } else {
-            SR_LOG_INF("File %s locked by other process", filename);
-            close(found_item->fd);
-            found_item->fd = -1;
-        }
-    } else {
-        rc = SR_ERR_LOCKED;
-        SR_LOG_INF("File %s is already locked", filename);
-    }
-
-cleanup:
-    pthread_mutex_unlock(&lock_ctx->mutex);
-    return rc;
+    return sr_locking_set_lock_file_open(lock_ctx, filename, true, false, NULL);
 }
 
 /**
@@ -742,29 +633,10 @@ cleanup:
  * file had not been locked in provided context
  */
 static int
-dm_unlock_file(dm_lock_ctx_t *lock_ctx, char *filename)
+dm_unlock_file(sr_locking_set_t *lock_ctx, char *filename)
 {
     CHECK_NULL_ARG2(lock_ctx, filename);
-    int rc = SR_ERR_OK;
-    dm_lock_item_t lookup_item = {0,};
-    dm_lock_item_t *found_item = NULL;
-    lookup_item.filename = filename;
-
-    pthread_mutex_lock(&lock_ctx->mutex);
-
-    found_item = sr_btree_search(lock_ctx->lock_files, &lookup_item);
-    if (NULL == found_item || -1 == found_item->fd) {
-        SR_LOG_ERR("File %s has not been locked in this context", filename);
-        rc = SR_ERR_INVAL_ARG;
-        goto cleanup;
-    }
-    close(found_item->fd);
-    found_item->fd = -1;
-    SR_LOG_DBG("File %s has been unlocked", filename);
-
-cleanup:
-    pthread_mutex_unlock(&lock_ctx->mutex);
-    return rc;
+    return sr_locking_set_unlock_close_file(lock_ctx, filename);
 }
 
 /**
@@ -804,7 +676,7 @@ dm_lock_module(dm_ctx_t *dm_ctx, dm_session_t *session, const char *modul_name)
     /* switch identity */
     ac_set_user_identity(dm_ctx->ac_ctx, session->user_credentials);
 
-    rc = dm_lock_file(&dm_ctx->lock_ctx, lock_file);
+    rc = dm_lock_file(dm_ctx->locking_ctx, lock_file);
 
     /* switch identity back */
     ac_unset_user_identity(dm_ctx->ac_ctx);
@@ -843,7 +715,7 @@ dm_unlock_module(dm_ctx_t *dm_ctx, dm_session_t *session, char *modul_name)
         SR_LOG_ERR("File %s has not been locked in this context", lock_file);
         rc = SR_ERR_INVAL_ARG;
     } else {
-        rc = dm_unlock_file(&dm_ctx->lock_ctx, lock_file);
+        rc = dm_unlock_file(dm_ctx->locking_ctx, lock_file);
         free(session->locked_files->data[i]);
         sr_list_rm_at(session->locked_files, i);
     }
@@ -912,7 +784,7 @@ dm_unlock_datastore(dm_ctx_t *dm_ctx, dm_session_t *session)
     CHECK_NULL_ARG2(dm_ctx, session);
 
     while (session->locked_files->count > 0) {
-        dm_unlock_file(&dm_ctx->lock_ctx, (char *) session->locked_files->data[0]);
+        dm_unlock_file(dm_ctx->locking_ctx, (char *) session->locked_files->data[0]);
         free(session->locked_files->data[0]);
         sr_list_rm_at(session->locked_files, 0);
     }
@@ -1176,9 +1048,10 @@ dm_init(ac_ctx_t *ac_ctx, np_ctx_t *np_ctx, pm_ctx_t *pm_ctx,
     CHECK_RC_MSG_GOTO(rc, cleanup, "List init failed");
 
     pthread_mutex_init(&ctx->ds_lock_mutex, NULL);
-    pthread_mutex_init(&ctx->lock_ctx.mutex, NULL);
-    rc = sr_btree_init(dm_compare_lock_item, dm_free_lock_item, &ctx->lock_ctx.lock_files);
-    CHECK_RC_MSG_GOTO(rc, cleanup, "Creating of lock files binary tree failed");
+
+    rc = sr_locking_set_init(&ctx->locking_ctx);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Locking set init failed");
+
 #if defined(HAVE_PTHREAD_RWLOCKATTR_SETKIND_NP)
     pthread_rwlockattr_setkind_np(&attr, PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP);
 #endif
@@ -1221,10 +1094,7 @@ dm_cleanup(dm_ctx_t *dm_ctx)
             ly_ctx_destroy(dm_ctx->ly_ctx, dm_free_lys_private_data);
         }
         pthread_rwlock_destroy(&dm_ctx->lyctx_lock);
-        if (NULL != dm_ctx->lock_ctx.lock_files) {
-            sr_btree_cleanup(dm_ctx->lock_ctx.lock_files);
-        }
-        pthread_mutex_destroy(&dm_ctx->lock_ctx.mutex);
+        sr_locking_set_cleanup(dm_ctx->locking_ctx);
         pthread_mutex_destroy(&dm_ctx->ds_lock_mutex);
         sr_list_cleanup(dm_ctx->disabled_sch);
 

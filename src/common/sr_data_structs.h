@@ -308,6 +308,81 @@ bool sr_cbuff_dequeue(sr_cbuff_t *buffer, void *item);
  */
 size_t sr_cbuff_items_in_queue(sr_cbuff_t *buffer);
 
+/**
+ * @brief Locking set context.
+ */
+typedef struct sr_locking_set_s sr_locking_set_t;
+
+/**
+ * @brief Allocates & initializes the file locking set.
+ *
+ * @param [in] lset Locking set context, it is supposed to be freed by ::sr_locking_set_cleanup.
+ *
+ * @return Error code (SR_ERR_OK on success)
+ */
+int sr_locking_set_init(sr_locking_set_t **lset);
+
+/**
+ * @brief Frees all resources allocated in the file locking set context and the context itself.
+ *
+ * @param [in] lset Locking set context.
+ */
+void sr_locking_set_cleanup(sr_locking_set_t *lset);
+
+/**
+ * @brief Checks if the file is not locked in the provided context.
+ * If not it locks the file based on provided file name. Identity must be
+ * switched before calling the function. Opens the file and set the output argument.
+ *
+ * @param [in] lock_ctx Locking set context.
+ * @param [in] filename Name of the file to be opened & locked.
+ * @param [in] write TRUE if the file should be locked for writing by inter-process
+ * access, FALSE if just for reading.
+ * @param [in] blocking TRUE if the call should block until the lock can be acquired or an error occurs.
+ * @param [out] fd File descriptor of opened file, NULL in case of error.
+ *
+ * @return Error code (SR_ERR_OK on success), SR_ERR_LOCKED if the file is already locked,
+ * SR_ERR_UNATHORIZED if the file can not be locked because of the permission.
+ */
+int sr_locking_set_lock_file_open(sr_locking_set_t *lock_ctx, char *filename, bool write, bool blocking, int *fd);
+
+/**
+ * @brief Same as ::sr_locking_set_lock_file_open however it expects that file is already opened.
+ *
+ * @param [in] lock_ctx Locking set context.
+ * @param [in] fd File descriptor of the opened file to be locked.
+ * @param [in] filename Name of the file to be locked.
+ * @param [in] write TRUE if the file should be locked for writing by inter-process
+ * access, FALSE if just for reading.
+ * @param [in] blocking TRUE if the call should block until the lock can be acquired or an error occurs.
+ *
+ * @return Error code (SR_ERR_OK on success), SR_ERR_LOCKED if the file is already locked,
+ * SR_ERR_UNATHORIZED if the file can not be locked because of the permission.
+ */
+int sr_locking_set_lock_fd(sr_locking_set_t *lock_ctx, int fd, char *filename, bool write, bool blocking);
+
+/**
+ * @brief Looks up the file based on the filename in locking set. Then the file is unlocked and fd is closed.
+ *
+ * @param [in] lock_ctx Locking set context.
+ * @param [in] filename Name of the file to be unlocked & closed.
+ *
+ * @return Error code (SR_ERR_OK on success)
+ * SR_ERR_INVAL_ARG if the file had not been locked in provided context.
+ */
+int sr_locking_set_unlock_close_file(sr_locking_set_t *lock_ctx, char *filename);
+
+/**
+ * @brief Looks up the file based on the file descriptor in locking set. Then the file is unlocked and fd is closed.
+ *
+ * @param [in] lock_ctx Locking set context.
+ * @param [in] fd File descriptor of the file to be unlocked & closed.
+ *
+ * @return Error code (SR_ERR_OK on success)
+ * SR_ERR_INVAL_ARG if the file had not been locked in provided context.
+ */
+int sr_locking_set_unlock_close_fd(sr_locking_set_t *lock_ctx, int fd);
+
 /**@} data_structs */
 
 #endif /* SR_DATA_STRUCTS_H_ */

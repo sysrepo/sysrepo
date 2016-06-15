@@ -240,7 +240,9 @@ srcfg_get_module_data(struct ly_ctx *ly_ctx, const char *module_name, struct lyd
     ly_errno = LY_SUCCESS;
     while ((ly_diminish_errors = true) && SR_ERR_OK == (rc = sr_get_item_next(srcfg_session, iter, &value))) {
         ly_diminish_errors = false;
-
+        if (NULL == value) {
+            continue;
+        }
         /* get node schema */
         schema = ly_ctx_get_node2(ly_ctx, NULL, value->xpath, 0);
         if (!schema) {
@@ -838,6 +840,7 @@ srcfg_prompt(const char *question, const char *positive, const char *negative)
         }
         printf("Please enter [%s] or [%s].\n", positive, negative);
     }
+    return 0;
 }
 
 /**
