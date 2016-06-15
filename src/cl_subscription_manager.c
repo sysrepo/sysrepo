@@ -648,7 +648,7 @@ cl_sm_notif_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *msg)
     rc = sr_gpb_msg_validate_notif(msg, subscription->type);
     if (SR_ERR_OK != rc) {
         pthread_mutex_unlock(&sm_ctx->subscriptions_lock);
-        SR_LOG_ERR("Received notification message is not valid for subscription id=%"PRIu32".", subscription->id);
+        SR_LOG_ERR("Received notification message is not valid for subscription id=%"PRIu32".", msg->notification->subscription_id);
         return SR_ERR_INVAL_ARG;
     }
 

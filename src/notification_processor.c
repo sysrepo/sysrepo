@@ -277,7 +277,7 @@ np_commit_notif_cnt_increment(np_ctx_t *np_ctx, uint32_t commit_id)
         SR_LOG_DBG("Crating a new NP commit context for commit ID %"PRIu32".", commit_id);
 
         commit = calloc(1, sizeof(*commit));
-        CHECK_NULL_NOMEM_RETURN(commit);
+        CHECK_NULL_NOMEM_GOTO(commit, rc, unlock);
 
         commit->commit_id = commit_id;
         rc = sr_llist_add_new(np_ctx->commits, commit);
@@ -285,6 +285,7 @@ np_commit_notif_cnt_increment(np_ctx_t *np_ctx, uint32_t commit_id)
 
     commit->notifications_sent++;
 
+unlock:
     pthread_rwlock_unlock(&np_ctx->lock);
 
     return rc;
@@ -826,7 +827,9 @@ np_commit_end_notify(np_ctx_t *np_ctx, uint32_t commit_id, sr_list_t *subscripti
             rc = sr_gpb_internal_req_alloc(SR__OPERATION__COMMIT_RELEASE, &req);
             if (SR_ERR_OK == rc) {
                 req->internal_request->commit_release_req->commit_id = commit_id;
-                rc = cm_delayed_msg_process(np_ctx->rp_ctx->cm_ctx, NULL, req, NP_COMMIT_RELEASE_TIMEOUT);
+                req->internal_request->postpone_timeout = NP_COMMIT_RELEASE_TIMEOUT;
+                req->internal_request->has_postpone_timeout = true;
+                rc = cm_msg_send(np_ctx->rp_ctx->cm_ctx, req);
             }
             if (SR_ERR_OK == rc) {
                 SR_LOG_DBG("Setting up a commit-release timer for commit id=%"PRIu32" with timeout=%d seconds.",

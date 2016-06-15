@@ -296,6 +296,45 @@ cm_delayed_request_cb(struct ev_loop *loop, ev_timer *w, int revents)
 }
 
 /**
+ * @brief Sends a message to the Request Processor after specified timeout.
+ */
+static int
+cm_delayed_msg_process(cm_ctx_t *cm_ctx, cm_session_ctx_t *session, Sr__Msg *msg, double timeout)
+{
+    cm_delayed_request_ctx_t *req = NULL, *prev = NULL;
+
+    CHECK_NULL_ARG2(cm_ctx, msg);
+
+    SR_LOG_DBG("Scheduling a delayed request for %f seconds.", timeout);
+
+    /* allocate the delayed request context */
+    req = calloc(1, sizeof(*req));
+    CHECK_NULL_NOMEM_RETURN(req);
+
+    req->cm_ctx = cm_ctx;
+    req->session = session;
+    req->msg = msg;
+
+    /* put the context at the end of the linked-list in CM context */
+    if (NULL == cm_ctx->delayed_requests) {
+        cm_ctx->delayed_requests = req;
+    } else {
+        prev = cm_ctx->delayed_requests;
+        while (NULL != prev->next) {
+            prev = prev->next;
+        }
+        prev->next = req;
+    }
+
+    /* schedule the timer */
+    ev_timer_init(&req->timer, cm_delayed_request_cb, timeout, 0.);
+    req->timer.data = req;
+    ev_timer_start(cm_ctx->event_loop, &req->timer);
+
+    return SR_ERR_OK;
+}
+
+/**
  * @brief Request removal of subscriptions with the specified destination address.
  */
 static int
@@ -1336,6 +1375,28 @@ cm_out_rpc_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
 }
 
 /**
+ * @brief Processes an internal request received from Request Processor.
+ */
+static int
+cm_internal_msg_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
+{
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG3(cm_ctx, msg, msg->internal_request);
+
+    if (msg->internal_request->has_postpone_timeout) {
+        /* schedule delivery of message with postpone timeout */
+        rc = cm_delayed_msg_process(cm_ctx, NULL, msg, msg->internal_request->postpone_timeout);
+    } else {
+        SR_LOG_WRN_MSG("Unsupported internal message received, ignoring.");
+        rc = SR_ERR_UNSUPPORTED;
+        sr__msg__free_unpacked(msg, NULL);
+    }
+
+    return rc;
+}
+
+/**
  * @brief Processes an outgoing message (message to be sent to the client library).
  */
 static int
@@ -1345,6 +1406,11 @@ cm_out_msg_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG2(cm_ctx, msg);
+
+    if (SR__MSG__MSG_TYPE__INTERNAL_REQUEST == msg->type) {
+        /* handle as an internal request from RP */
+        return cm_internal_msg_process(cm_ctx, msg);
+    }
 
     /* find the session */
     rc = sm_session_find_id(cm_ctx->sm_ctx, msg->session_id, &session);
@@ -1718,40 +1784,4 @@ cm_watch_signal(cm_ctx_t *cm_ctx, int signum, cm_signal_cb callback)
         }
     }
     return SR_ERR_INTERNAL; /* no space for more watchers */
-}
-
-int
-cm_delayed_msg_process(cm_ctx_t *cm_ctx, cm_session_ctx_t *session, Sr__Msg *msg, double timeout)
-{
-    cm_delayed_request_ctx_t *req = NULL, *prev = NULL;
-
-    CHECK_NULL_ARG2(cm_ctx, msg);
-
-    SR_LOG_DBG("Scheduling a delayed request for %f seconds.", timeout);
-
-    /* allocate the delayed request context */
-    req = calloc(1, sizeof(*req));
-    CHECK_NULL_NOMEM_RETURN(req);
-
-    req->cm_ctx = cm_ctx;
-    req->session = session;
-    req->msg = msg;
-
-    /* put the context at the end of the linked-list in CM context */
-    if (NULL == cm_ctx->delayed_requests) {
-        cm_ctx->delayed_requests = req;
-    } else {
-        prev = cm_ctx->delayed_requests;
-        while (NULL != prev->next) {
-            prev = prev->next;
-        }
-        prev->next = req;
-    }
-
-    /* schedule the timer */
-    ev_timer_init(&req->timer, cm_delayed_request_cb, timeout, 0.);
-    req->timer.data = req;
-    ev_timer_start(cm_ctx->event_loop, &req->timer);
-
-    return SR_ERR_OK;
 }
