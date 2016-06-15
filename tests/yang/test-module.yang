@@ -222,7 +222,7 @@ module test-module {
         default 0;
     }
   }
- 
+
   rpc activate-software-image {
     input {
       leaf image-name {
@@ -251,4 +251,75 @@ module test-module {
     type string;
     default "default value";
   }
+
+  container university {
+    container students {
+        list student {
+            ordered-by user;
+            config true;
+
+            key "name";
+
+            leaf name {
+                type string;
+            }
+
+            leaf age {
+                type uint8;
+            }
+        }
+    }
+
+    container classes {
+        list class {
+            config true;
+
+            key "title";
+
+            leaf title {
+                type string;
+            }
+
+            list student {
+                key "name";
+
+                leaf name {
+                    type leafref {
+                        path "../../../../students/student/name";
+                    }
+                }
+                leaf age {
+                    type leafref {
+                        path "../../../../students/student[name = current()/../name]/age";
+                    }
+                }
+            }
+        }
+    }
+  }
+
+  container leafref-chain {
+    leaf A {
+        type leafref {
+            path "../B";
+        }
+    }
+
+    leaf B {
+        type leafref {
+            path "../C";
+        }
+    }
+
+    leaf C {
+        type leafref {
+            path "../D";
+        }
+    }
+
+    leaf D {
+        type string;
+    }
+  }
+
 }

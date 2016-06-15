@@ -444,7 +444,6 @@ srctl_ly_init(struct ly_ctx **ly_ctx)
         fprintf(stderr, "Error: Unable to initialize libyang context: %s.\n", ly_errmsg());
         return SR_ERR_INTERNAL;
     }
-    ly_set_log_clb(srctl_ly_log_cb, 0);
 
     dp = opendir(srctl_schema_search_dir);
     if (NULL == dp) {
@@ -1205,6 +1204,8 @@ main(int argc, char* argv[])
                 break;
         }
     }
+
+    ly_set_log_clb(srctl_ly_log_cb, 0);
 
     switch (operation) {
         case 'l':
