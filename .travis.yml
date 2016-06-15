@@ -20,7 +20,7 @@ before_install:
   - bash .travis-install.sh
 
 script:
-  - mkdir build ; cd build ; cmake -DCMAKE_BUILD_TYPE=Debug  -DCMAKE_PREFIX_PATH=$HOME/local -DCMAKE_C_FLAGS="-Werror -coverage" .. && make -j2
+  - mkdir build ; cd build ; cmake -DCMAKE_BUILD_TYPE=Debug -DCMAKE_PREFIX_PATH=$HOME/local -DCMAKE_C_FLAGS="-Werror -coverage" .. && make -j2
   - ctest --output-on-failure
   - sudo ctest --output-on-failure --tests-regex ac_test
 
