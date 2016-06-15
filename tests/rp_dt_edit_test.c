@@ -378,6 +378,8 @@ void delete_item_leafref_test(void **state) {
     /* do not delete referenced item though */
     rc = rp_dt_get_values_wrapper(ctx, session, REFERENCED_ITEM_XP, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
+    sr_free_values(values, count);
+    values = NULL;
 
     /* delete one leafref only */
 #define LEAFREF_XP "/test-module:university/classes/class[title='CCNA']/student[name='nameB']/age"
@@ -391,6 +393,8 @@ void delete_item_leafref_test(void **state) {
     /* do not delete referenced item though */
     rc = rp_dt_get_values_wrapper(ctx, session, REFERENCED_LEAFREF_XP, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
+    sr_free_values(values, count);
+    values = NULL;
 
     test_rp_session_cleanup(ctx, session);
 

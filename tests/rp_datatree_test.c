@@ -258,6 +258,8 @@ void get_values_test_module_test(void **state){
     assert_int_equal(SR_BITS_T, value->type);
     assert_string_equal("strict recursive", value->data.bits_val);
 
+    sr_free_val(value);
+
     /* leafref */
 #define LEAFREF_XP "/test-module:university/classes/class[title='CCNA']/student[name='nameB']/age"
     rc = rp_dt_get_value(ctx, root, LEAFREF_XP, false, &value);
