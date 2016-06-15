@@ -10,6 +10,7 @@ compiler:
   - clang
 
 cache:
+  pip: true
   directories:
     - $HOME/local
 
