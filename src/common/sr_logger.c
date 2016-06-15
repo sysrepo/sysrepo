@@ -40,6 +40,7 @@
 volatile uint8_t sr_ll_stderr = SR_LL_NONE;  /**< Global variable used to store log level of stderr messages. */
 volatile uint8_t sr_ll_syslog = SR_LL_NONE;  /**< Global variable used to store log level of syslog messages. */
 volatile sr_log_cb sr_log_callback = NULL;   /**< Global variable used to store logging callback, if set. */
+__thread char strerror_buf[] = {0};          /**< Thread local buffer for strerror_r */
 
 static volatile bool sr_syslog_enabled = false;     /**< Global variable used to mark if the syslog initialization (openlog) has been done. */
 static volatile char *sr_syslog_identifier = NULL;  /**< Global variable used to store syslog identifier. */
@@ -182,4 +183,11 @@ sr_log_to_cb(sr_log_level_t level, const char *format, ...)
         }
     }
 #endif
+}
+
+const char *
+sr_strerror_safe(int err_no)
+{
+    strerror_r(err_no, strerror_buf, MAX_STRERROR_LEN);
+    return strerror_buf;
 }

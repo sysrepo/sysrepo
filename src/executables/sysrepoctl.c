@@ -448,7 +448,7 @@ srctl_ly_init(struct ly_ctx **ly_ctx)
 
     dp = opendir(srctl_schema_search_dir);
     if (NULL == dp) {
-        fprintf(stderr, "Error by opening schema directory: %s.\n", strerror(errno));
+        fprintf(stderr, "Error by opening schema directory: %s.\n", sr_strerror_safe(errno));
         return SR_ERR_INTERNAL;
     }
     while (NULL != (ep = readdir(dp))) {
@@ -1002,7 +1002,7 @@ srctl_dump_import(const char *module_name, const char *format, bool dump)
 
     fd = open(data_filename, dump ? O_RDONLY : (O_RDWR | O_TRUNC));
     if (-1 == fd) {
-        fprintf(stderr, "Error: Unable to open the data file '%s': %s.\n", data_filename, strerror(errno));
+        fprintf(stderr, "Error: Unable to open the data file '%s': %s.\n", data_filename, sr_strerror_safe(errno));
         ly_ctx_destroy(ly_ctx, NULL);
         return SR_ERR_INVAL_ARG;
     }
