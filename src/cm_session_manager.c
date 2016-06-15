@@ -282,7 +282,7 @@ sm_init(sm_cleanup_cb session_cleanup_cb, sm_cleanup_cb connection_cleanup_cb, s
         goto cleanup;
     }
 
-    srand(time(NULL));
+    rand_seed = time(NULL);
 
     SR_LOG_DBG("Session Manager initialized successfully, ctx=%p.", (void*)ctx);
 
@@ -436,7 +436,7 @@ sm_session_create(const sm_ctx_t *sm_ctx, sm_connection_t *connection,
     /* generate unused random session_id */
     size_t attempts = 0;
     do {
-        session->id = rand();
+        session->id = rand_r(&rand_seed);
         if (NULL != sr_btree_search(sm_ctx->session_id_btree, session)) {
             session->id = SM_SESSION_ID_INVALID;
         }

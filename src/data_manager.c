@@ -2156,7 +2156,7 @@ dm_commit_prepare_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_con
     size_t attempts = 0;
     /* generate unique id */
     do {
-        c_ctx->id = rand();
+        c_ctx->id = rand_r(&rand_seed);
         if (NULL != sr_btree_search(dm_ctx->commit_ctxs.tree, c_ctx)) {
             c_ctx->id = DM_COMMIT_CTX_ID_INVALID;
         }

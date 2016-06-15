@@ -35,6 +35,8 @@
 
 #include "data_manager.h"
 
+__thread unsigned int rand_seed;
+
 /* used for sr_buff_to_uint32 and sr_uint32_to_buff conversions */
 typedef union {
    uint32_t value;

@@ -38,6 +38,11 @@ typedef struct sr_change_s {
 }sr_change_t;
 
 /**
+ * @brief Thread local rand seed
+ */
+extern __thread unsigned int rand_seed;
+
+/**
  * @defgroup utils Utility Functions
  * @ingroup common
  * @{

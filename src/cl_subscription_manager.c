@@ -1145,7 +1145,7 @@ cl_sm_init(cl_sm_ctx_t **sm_ctx_p)
     rc = cl_sm_server_init(ctx);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot initialize subscription unix-domain server.");
 
-    srand(time(NULL));
+    rand_seed = time(NULL);
 
     /* initialize event loop */
     /* According to our measurements, EPOLL backend is significantly slower for
@@ -1224,7 +1224,7 @@ cl_sm_subscription_init(cl_sm_ctx_t *sm_ctx, cl_sm_subscription_ctx_t **subscrip
     /* generate unused random subscription id */
     size_t attempts = 0;
     do {
-        subscription->id = rand();
+        subscription->id = rand_r(&rand_seed);
         if (NULL != sr_btree_search(sm_ctx->subscriptions_btree, subscription)) {
             subscription->id = CL_SM_SUBSCRIPTION_ID_INVALID;
         }
