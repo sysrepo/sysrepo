@@ -86,7 +86,7 @@ class TestManager:
                     if status == True:
                         will_continue.append(proc)
                     elif isinstance(status, BaseException):
-                        print "Error in tester", id, name, "step", step
+                        print "Error in tester", proc, name, "step", step
                         for p in self.proc_ids:
                             p.terminate()
                         while not self.sub_proc.empty():
