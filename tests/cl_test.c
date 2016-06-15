@@ -306,6 +306,14 @@ cl_get_item_test(void **state)
     assert_string_equal("/example-module:container/list[key1='key1'][key2='key2']", value->xpath);
     sr_free_val(value);
 
+    /* leafref (transparent for user) */
+    rc = sr_get_item(session, "/test-module:university/classes/class[title='CCNA']/student[name='nameB']/age", &value);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_non_null(value);
+    assert_int_equal(SR_UINT8_T, value->type);
+    assert_string_equal("/test-module:university/classes/class[title='CCNA']/student[name='nameB']/age", value->xpath);
+    assert_int_equal(17, value->data.uint8_val);
+    sr_free_val(value);
 
     /* stop the session */
     rc = sr_session_stop(session);
@@ -369,6 +377,12 @@ cl_get_items_test(void **state)
     rc = sr_get_items(session, "/test-module:main/numbers", &values, &values_cnt);
     assert_int_equal(rc, SR_ERR_OK);
     assert_int_equal(3, values_cnt);
+    sr_free_values(values, values_cnt);
+
+    /* leafrefs */
+    rc = sr_get_items(session, "/test-module:university/classes/class[title='CCNA']/student[name='nameB']/*", &values, &values_cnt);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_int_equal(2, values_cnt);
     sr_free_values(values, values_cnt);
 
     /* stop the session */
@@ -682,6 +696,58 @@ cl_validate_test(void **state)
     rc = sr_validate(session);
     assert_int_equal(rc, SR_ERR_OK);
 
+    /* leafref: non-existing leaf and then fix it */
+    value.type = SR_UINT8_T;
+    value.data.uint8_val = 18;
+    rc = sr_set_item(session, "/test-module:university/classes/class[title='CCNA']/student[name='nameB']/age", &value, SR_EDIT_DEFAULT);
+
+    rc = sr_validate(session);
+    assert_int_equal(rc, SR_ERR_VALIDATION_FAILED);
+
+    /* print out all errors (if any) */
+    rc = sr_get_last_errors(session, &errors, &error_cnt);
+    if (error_cnt > 0) {
+        for (size_t i = 0; i < error_cnt; i++) {
+            printf("Error[%zu]: %s: %s\n", i, errors[i].xpath, errors[i].message);
+        }
+    }
+
+    /* fix leafref */
+    value.data.uint8_val = 17;
+    rc = sr_set_item(session, "/test-module:university/classes/class[title='CCNA']/student[name='nameB']/age", &value, SR_EDIT_DEFAULT);
+
+    rc = sr_validate(session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* leafref chain */
+    value.type = SR_STRING_T;
+    value.data.string_val = "final-leaf";
+    rc = sr_set_item(session, "/test-module:leafref-chain/A", &value, SR_EDIT_DEFAULT);
+
+    rc = sr_validate(session);
+    assert_int_equal(rc, SR_ERR_VALIDATION_FAILED); /* missing "B" as the second link in the chain */
+
+    /* add missing link, but with an invalid value */
+    value.data.string_val = "second-leaf";
+    rc = sr_set_item(session, "/test-module:leafref-chain/B", &value, SR_EDIT_DEFAULT);
+    rc = sr_validate(session);
+    assert_int_equal(rc, SR_ERR_VALIDATION_FAILED);
+
+    /* print out all errors (if any) */
+    rc = sr_get_last_errors(session, &errors, &error_cnt);
+    if (error_cnt > 0) {
+        for (size_t i = 0; i < error_cnt; i++) {
+            printf("Error[%zu]: %s: %s\n", i, errors[i].xpath, errors[i].message);
+        }
+    }
+
+    /* fix the value of "B" */
+    value.data.string_val = "final-leaf";
+    rc = sr_set_item(session, "/test-module:leafref-chain/B", &value, SR_EDIT_DEFAULT);
+
+    rc = sr_validate(session);
+    assert_int_equal(rc, SR_ERR_OK);
+
     /* stop the session */
     rc = sr_session_stop(session);
     assert_int_equal(rc, SR_ERR_OK);
@@ -732,12 +798,64 @@ cl_commit_test(void **state)
     rc = sr_set_item(session, "/test-module:location/longitude", &value, SR_EDIT_DEFAULT);
 
     /* perform a commit request again - expect success */
-   rc = sr_commit(session);
-   assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_commit(session);
+    assert_int_equal(rc, SR_ERR_OK);
 
     /* cleanup - delete added data */
     rc = sr_delete_item(session, "/test-module:location", SR_EDIT_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_commit(session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* leafref: non-existing leaf and then fix it */
+    value.type = SR_UINT8_T;
+    value.data.uint8_val = 18;
+    rc = sr_set_item(session, "/test-module:university/classes/class[title='CCNA']/student[name='nameB']/age", &value, SR_EDIT_DEFAULT);
+
+    rc = sr_commit(session);
+    assert_int_equal(rc, SR_ERR_VALIDATION_FAILED);
+
+    /* print out all errors (if any) */
+    rc = sr_get_last_errors(session, &errors, &error_cnt);
+    if (error_cnt > 0) {
+        for (size_t i = 0; i < error_cnt; i++) {
+            printf("Error[%zu]: %s: %s\n", i, errors[i].xpath, errors[i].message);
+        }
+    }
+
+    /* fix leafref */
+    value.data.uint8_val = 17;
+    rc = sr_set_item(session, "/test-module:university/classes/class[title='CCNA']/student[name='nameB']/age", &value, SR_EDIT_DEFAULT);
+
+    rc = sr_commit(session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* leafref chain */
+    value.type = SR_STRING_T;
+    value.data.string_val = "final-leaf";
+    rc = sr_set_item(session, "/test-module:leafref-chain/A", &value, SR_EDIT_DEFAULT);
+
+    rc = sr_commit(session);
+    assert_int_equal(rc, SR_ERR_VALIDATION_FAILED); /* missing "B" as the second link in the chain */
+
+    /* add missing link, but with an invalid value */
+    value.data.string_val = "second-leaf";
+    rc = sr_set_item(session, "/test-module:leafref-chain/B", &value, SR_EDIT_DEFAULT);
+    rc = sr_commit(session);
+    assert_int_equal(rc, SR_ERR_VALIDATION_FAILED);
+
+    /* print out all errors (if any) */
+    rc = sr_get_last_errors(session, &errors, &error_cnt);
+    if (error_cnt > 0) {
+        for (size_t i = 0; i < error_cnt; i++) {
+            printf("Error[%zu]: %s: %s\n", i, errors[i].xpath, errors[i].message);
+        }
+    }
+
+    /* fix the value of "B" */
+    value.data.string_val = "final-leaf";
+    rc = sr_set_item(session, "/test-module:leafref-chain/B", &value, SR_EDIT_DEFAULT);
+
     rc = sr_commit(session);
     assert_int_equal(rc, SR_ERR_OK);
 

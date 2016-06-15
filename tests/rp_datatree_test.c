@@ -260,6 +260,16 @@ void get_values_test_module_test(void **state){
 
     sr_free_val(value);
 
+    /* leafref */
+#define LEAFREF_XP "/test-module:university/classes/class[title='CCNA']/student[name='nameB']/age"
+    rc = rp_dt_get_value(ctx, root, LEAFREF_XP, false, &value);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    assert_int_equal(SR_UINT8_T, value->type);
+    assert_int_equal(17, value->data.uint8_val);
+
+    sr_free_val(value);
+
     dm_session_stop(ctx, ses_ctx);
 }
 
