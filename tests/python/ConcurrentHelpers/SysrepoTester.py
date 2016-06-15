@@ -82,6 +82,9 @@ class SysrepoTester(Tester):
     def deleteItemStep(self, xpath):
         self.session.delete_item(xpath)
 
+    def setItemStep(self, xpath, value):
+        self.session.set_item(xpath, value)
+
     def refreshStep(self):
         self.session.refresh()
 

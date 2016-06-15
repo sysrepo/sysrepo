@@ -26,14 +26,15 @@ import os
 import subprocess
 import TestModule
 
+
 class NotificationTester(SysrepoTester):
 
     def cleanup(self):
-        if self.filename:
+        if self.filename and os.path.isfile(self.filename):
             os.unlink(self.filename)
 
     def subscribeStep(self, xpath):
-        self.filename = "notifications_test_" + str(randint(0,9999))
+        self.filename = "notifications_test_" + str(randint(0, 9999))
         self.process = subprocess.Popen(["notifications_test_app", xpath, self.filename])
         self.report_pid(self.process.pid)
         # wait for running data file to be copied
@@ -57,65 +58,61 @@ class NotificationTester(SysrepoTester):
             self.tc.assertEqual(self.notifications[i][0], expected[i][0])
             self.tc.assertEqual(self.notifications[i][1], expected[i][1])
 
+    def checkNoNotificationArrived(self):
+        self.tc.assertFalse(os.path.isfile(self.filename))
 
 
-class SysrepodTester(SysrepoTester):
-
-    def startDaemonStep(self):
-        self.process = subprocess.Popen(["sysrepod", "-d"])
-        self.report_pid(self.process.pid)
-        time.sleep(0.1)
-
-
-    def stopDaemonStep(self):
-        os.kill(self.process.pid, signal.SIGTERM)
-        self.process.wait()
-
-
-class SubscriptionTest(unittest.TestCase):
+class NotificationTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(self):
         TestModule.create_ietf_interfaces()
+        TestModule.create_example_module()
 
-    def test_SubscribeUnsubscribe(self):
+    def test_notify_delete(self):
         tm = TestManager()
 
-        srd = SysrepodTester("Srd")
+        srd = SysrepodDaemonTester("Srd")
         tester = SysrepoTester("Tester", SR_DS_RUNNING, SR_CONN_DAEMON_REQUIRED, False)
         subscriber = NotificationTester("Subscriber")
         subscriber2 = NotificationTester("Subscriber2")
-
+        subscriber3 = NotificationTester("Subscriber3")
 
         srd.add_step(srd.startDaemonStep)
         tester.add_step(tester.waitStep)
         subscriber.add_step(subscriber.waitStep)
         subscriber2.add_step(subscriber2.waitStep)
+        subscriber3.add_step(subscriber3.waitStep)
 
         srd.add_step(srd.waitStep)
         tester.add_step(tester.restartConnection)
         subscriber.add_step(subscriber.waitStep)
         subscriber2.add_step(subscriber2.waitStep)
+        subscriber3.add_step(subscriber3.waitStep)
 
         srd.add_step(srd.waitStep)
         tester.add_step(tester.waitStep)
         subscriber.add_step(subscriber.subscribeStep, "/ietf-interfaces:interfaces")
         subscriber2.add_step(subscriber2.subscribeStep, "/ietf-interfaces:interfaces/interface/ietf-ip:ipv4/address")
+        subscriber3.add_step(subscriber3.subscribeStep, "/example-module:container")
 
         srd.add_step(srd.waitStep)
         tester.add_step(tester.deleteItemStep, "/ietf-interfaces:interfaces/interface[name='eth0']")
         subscriber.add_step(subscriber.waitStep)
         subscriber2.add_step(subscriber2.waitStep)
+        subscriber3.add_step(subscriber3.waitStep)
 
         srd.add_step(srd.waitStep)
         tester.add_step(tester.commitStep)
         subscriber.add_step(subscriber.waitStep)
         subscriber2.add_step(subscriber2.waitStep)
+        subscriber3.add_step(subscriber3.waitStep)
 
         srd.add_step(srd.waitStep)
         tester.add_step(tester.waitStep)
         subscriber.add_step(subscriber.waitStep)
         subscriber2.add_step(subscriber2.waitStep)
+        subscriber3.add_step(subscriber3.waitStep)
 
         srd.add_step(srd.waitStep)
         tester.add_step(tester.waitStep)
@@ -136,11 +133,13 @@ class SubscriptionTest(unittest.TestCase):
          ["DELETED", "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/address[ip='192.168.2.100']/ip"],
          ["DELETED", "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/address[ip='192.168.2.100']/prefix-length"],
          ])
+        subscriber3.add_step(subscriber3.checkNoNotificationArrived)
 
         srd.add_step(srd.waitStep)
         tester.add_step(tester.waitStep)
         subscriber.add_step(subscriber.cancelSubscriptionStep)
         subscriber2.add_step(subscriber2.cancelSubscriptionStep)
+        subscriber3.add_step(subscriber3.cancelSubscriptionStep)
 
         srd.add_step(srd.stopDaemonStep)
 
@@ -148,6 +147,161 @@ class SubscriptionTest(unittest.TestCase):
         tm.add_tester(tester)
         tm.add_tester(subscriber)
         tm.add_tester(subscriber2)
+        tm.add_tester(subscriber3)
+        tm.run()
+
+
+    def test_notify_modify(self):
+        tm = TestManager()
+
+        srd = SysrepodDaemonTester("Srd")
+        tester = SysrepoTester("Tester", SR_DS_RUNNING, SR_CONN_DAEMON_REQUIRED, False)
+        subscriber = NotificationTester("Subscriber")
+        subscriber2 = NotificationTester("Subscriber2")
+        subscriber3 = NotificationTester("Subscriber3")
+
+        srd.add_step(srd.startDaemonStep)
+        tester.add_step(tester.waitStep)
+        subscriber.add_step(subscriber.waitStep)
+        subscriber2.add_step(subscriber2.waitStep)
+        subscriber3.add_step(subscriber3.waitStep)
+
+        srd.add_step(srd.waitStep)
+        tester.add_step(tester.restartConnection)
+        subscriber.add_step(subscriber.waitStep)
+        subscriber2.add_step(subscriber2.waitStep)
+        subscriber3.add_step(subscriber3.waitStep)
+
+        srd.add_step(srd.waitStep)
+        tester.add_step(tester.waitStep)
+        subscriber.add_step(subscriber.subscribeStep, "/ietf-interfaces:interfaces")
+        subscriber2.add_step(subscriber2.subscribeStep, "/ietf-interfaces:interfaces/interface/ietf-ip:ipv4")
+        subscriber3.add_step(subscriber3.subscribeStep, "/example-module:container")
+
+        srd.add_step(srd.waitStep)
+        tester.add_step(tester.setItemStep, "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/enabled", Value(leaf_type=SR_BOOL_T, value= False))
+        subscriber.add_step(subscriber.waitStep)
+        subscriber2.add_step(subscriber2.waitStep)
+        subscriber3.add_step(subscriber3.waitStep)
+
+        srd.add_step(srd.waitStep)
+        tester.add_step(tester.commitStep)
+        subscriber.add_step(subscriber.waitStep)
+        subscriber2.add_step(subscriber2.waitStep)
+        subscriber3.add_step(subscriber3.waitStep)
+
+        srd.add_step(srd.waitStep)
+        tester.add_step(tester.waitStep)
+        subscriber.add_step(subscriber.waitStep)
+        subscriber2.add_step(subscriber2.waitStep)
+        subscriber3.add_step(subscriber3.waitStep)
+
+        srd.add_step(srd.waitStep)
+        tester.add_step(tester.waitStep)
+        subscriber.add_step(subscriber.checkNotificationStep,
+        [["MODIFIED", "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/enabled"]])
+        subscriber2.add_step(subscriber2.checkNotificationStep,
+        [["MODIFIED", "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/enabled"]])
+        subscriber3.add_step(subscriber3.checkNoNotificationArrived)
+
+        srd.add_step(srd.waitStep)
+        tester.add_step(tester.waitStep)
+        subscriber.add_step(subscriber.cancelSubscriptionStep)
+        subscriber2.add_step(subscriber2.cancelSubscriptionStep)
+        subscriber3.add_step(subscriber3.cancelSubscriptionStep)
+
+        srd.add_step(srd.stopDaemonStep)
+
+        tm.add_tester(srd)
+        tm.add_tester(tester)
+        tm.add_tester(subscriber)
+        tm.add_tester(subscriber2)
+        tm.add_tester(subscriber3)
+        tm.run()
+
+    def test_notify_changes_in_multiple_modules(self):
+        tm = TestManager()
+
+        srd = SysrepodDaemonTester("Srd")
+        tester = SysrepoTester("Tester", SR_DS_RUNNING, SR_CONN_DAEMON_REQUIRED, False)
+        subscriber = NotificationTester("Subscriber")
+        subscriber2 = NotificationTester("Subscriber2")
+        subscriber3 = NotificationTester("Subscriber3")
+
+        srd.add_step(srd.startDaemonStep)
+        tester.add_step(tester.waitStep)
+        subscriber.add_step(subscriber.waitStep)
+        subscriber2.add_step(subscriber2.waitStep)
+        subscriber3.add_step(subscriber3.waitStep)
+
+        srd.add_step(srd.waitStep)
+        tester.add_step(tester.restartConnection)
+        subscriber.add_step(subscriber.waitStep)
+        subscriber2.add_step(subscriber2.waitStep)
+        subscriber3.add_step(subscriber3.waitStep)
+
+        srd.add_step(srd.waitStep)
+        tester.add_step(tester.waitStep)
+        subscriber.add_step(subscriber.subscribeStep, "/ietf-interfaces:interfaces")
+        subscriber2.add_step(subscriber2.subscribeStep, "/ietf-interfaces:interfaces/interface/ietf-ip:ipv4/address")
+        subscriber3.add_step(subscriber3.subscribeStep, "/example-module:container")
+
+        srd.add_step(srd.waitStep)
+        tester.add_step(tester.setItemStep, "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/enabled", Value(leaf_type=SR_BOOL_T, value= False))
+        subscriber.add_step(subscriber.waitStep)
+        subscriber2.add_step(subscriber2.waitStep)
+        subscriber3.add_step(subscriber3.waitStep)
+
+        srd.add_step(srd.waitStep)
+        tester.add_step(tester.setItemStep, "/example-module:container/list[key1='abc'][key2='def']/leaf", Value(leaf_type=SR_STRING_T, value= "new value"))
+        subscriber.add_step(subscriber.waitStep)
+        subscriber2.add_step(subscriber2.waitStep)
+        subscriber3.add_step(subscriber3.waitStep)
+
+        srd.add_step(srd.waitStep)
+        tester.add_step(tester.deleteItemStep, "/example-module:container/list[key1='key1'][key2='key2']/leaf")
+        subscriber.add_step(subscriber.waitStep)
+        subscriber2.add_step(subscriber2.waitStep)
+        subscriber3.add_step(subscriber3.waitStep)
+
+        srd.add_step(srd.waitStep)
+        tester.add_step(tester.commitStep)
+        subscriber.add_step(subscriber.waitStep)
+        subscriber2.add_step(subscriber2.waitStep)
+        subscriber3.add_step(subscriber3.waitStep)
+
+        srd.add_step(srd.waitStep)
+        tester.add_step(tester.waitStep)
+        subscriber.add_step(subscriber.waitStep)
+        subscriber2.add_step(subscriber2.waitStep)
+        subscriber3.add_step(subscriber3.waitStep)
+
+        srd.add_step(srd.waitStep)
+        tester.add_step(tester.waitStep)
+        subscriber.add_step(subscriber.checkNotificationStep,
+        [["MODIFIED", "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/enabled"]])
+        subscriber2.add_step(subscriber2.checkNoNotificationArrived)
+        subscriber3.add_step(subscriber3.checkNotificationStep, [
+            ["DELETED", "/example-module:container/list[key1='key1'][key2='key2']/leaf"],
+            ["CREATED", "/example-module:container/list[key1='abc'][key2='def']"],
+            ["CREATED", "/example-module:container/list[key1='abc'][key2='def']/key1"],
+            ["CREATED", "/example-module:container/list[key1='abc'][key2='def']/key2"],
+            ["CREATED", "/example-module:container/list[key1='abc'][key2='def']/leaf"]
+            ])
+
+        srd.add_step(srd.waitStep)
+        tester.add_step(tester.waitStep)
+        subscriber.add_step(subscriber.cancelSubscriptionStep)
+        subscriber2.add_step(subscriber2.cancelSubscriptionStep)
+        subscriber3.add_step(subscriber3.cancelSubscriptionStep)
+
+        srd.add_step(srd.stopDaemonStep)
+
+        tm.add_tester(srd)
+        tm.add_tester(tester)
+        tm.add_tester(subscriber)
+        tm.add_tester(subscriber2)
+        tm.add_tester(subscriber3)
         tm.run()
 
 if __name__ == '__main__':
