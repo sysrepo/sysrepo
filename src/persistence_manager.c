@@ -76,7 +76,7 @@ pm_save_data_tree(struct lyd_node *data_tree, int fd)
 
     /* empty file content */
     ret = ftruncate(fd, 0);
-    CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "File truncate failed: %s", strerror(errno));
+    CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "File truncate failed: %s", sr_strerror_safe(errno));
 
     /* print data tree to file */
     ret = lyd_print_fd(fd, data_tree, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT);
@@ -84,7 +84,7 @@ pm_save_data_tree(struct lyd_node *data_tree, int fd)
 
     /* flush in-core data to the disc */
     ret = fsync(fd);
-    CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "File synchronization failed: %s", strerror(errno));
+    CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "File synchronization failed: %s", sr_strerror_safe(errno));
 
     SR_LOG_DBG_MSG("Persist data tree successfully saved.");
 
@@ -144,7 +144,7 @@ pm_load_data_tree(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *mod
                 fd = open(data_filename, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
                 ac_unset_user_identity(pm_ctx->rp_ctx->ac_ctx);
                 if (-1 == fd) {
-                    SR_LOG_ERR("Unable to create new persist data file '%s': %s", data_filename, strerror(errno));
+                    SR_LOG_ERR("Unable to create new persist data file '%s': %s", data_filename, sr_strerror_safe(errno));
                     rc = SR_ERR_INTERNAL;
                 }
             }
@@ -152,7 +152,7 @@ pm_load_data_tree(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *mod
             SR_LOG_ERR("Insufficient permissions to access persist data file '%s'.", data_filename);
             rc = SR_ERR_UNAUTHORIZED;
         } else {
-            SR_LOG_ERR("Unable to open persist data file '%s': %s.", data_filename, strerror(errno));
+            SR_LOG_ERR("Unable to open persist data file '%s': %s.", data_filename, sr_strerror_safe(errno));
             rc = SR_ERR_INTERNAL;
         }
         CHECK_RC_LOG_GOTO(rc, cleanup, "Persist data tree load for '%s' has failed.", module_name);

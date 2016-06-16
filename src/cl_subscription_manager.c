@@ -308,6 +308,58 @@ cl_sm_conn_buffer_expand(const cl_sm_conn_ctx_t *conn, cl_sm_buffer_t *buff, siz
 }
 
 /**
+ * @brief Flush contents of the output buffer of the given connection.
+ */
+static int
+cl_sm_conn_out_buff_flush(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn)
+{
+    cl_sm_buffer_t *buff = NULL;
+    int written = 0;
+    size_t buff_size = 0, buff_pos = 0;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG2(sm_ctx, conn);
+
+    buff = &conn->out_buff;
+    buff_size = buff->pos;
+    buff_pos = conn->out_buff.start;
+
+    SR_LOG_DBG("Sending %zu bytes of data.", (buff_size - buff_pos));
+
+    do {
+        /* try to send all data */
+        written = send(conn->fd, (buff->data + buff_pos), (buff_size - buff_pos), 0);
+        if (written > 0) {
+            SR_LOG_DBG("%d bytes of data sent.", written);
+            buff_pos += written;
+        } else {
+            if ((EWOULDBLOCK == errno) || (EAGAIN == errno)) {
+                /* no more data can be sent now */
+                SR_LOG_DBG("fd %d would block", conn->fd);
+                /* mark the position where the unsent data start */
+                conn->out_buff.start = buff_pos;
+                /* monitor fd for writable event */
+                ev_io_start(sm_ctx->event_loop, &conn->write_watcher);
+                break;
+            } else {
+                /* error by writing - close the connection due to an error */
+                SR_LOG_ERR("Error by writing data to fd %d: %s.", conn->fd, sr_strerror_safe(errno));
+                conn->close_requested = true;
+                break;
+            }
+        }
+    } while ((buff_pos < buff_size) && (written > 0));
+
+    if (buff_size == buff_pos) {
+        /* no more data left in the buffer */
+        buff->pos = 0;
+        conn->out_buff.start = 0;
+    }
+
+    return rc;
+}
+
+/**
  * @brief Get (prepare) configuration session that can be used from notification callback.
  */
 static int
@@ -445,58 +497,6 @@ cl_sm_close_data_session(cl_sm_ctx_t *sm_ctx, cl_sm_subscription_ctx_t *subscrip
     }
 
     return SR_ERR_OK;
-}
-
-/**
- * @brief Flush contents of the output buffer of the given connection.
- */
-static int
-cl_sm_conn_out_buff_flush(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn)
-{
-    cl_sm_buffer_t *buff = NULL;
-    int written = 0;
-    size_t buff_size = 0, buff_pos = 0;
-    int rc = SR_ERR_OK;
-
-    CHECK_NULL_ARG2(sm_ctx, conn);
-
-    buff = &conn->out_buff;
-    buff_size = buff->pos;
-    buff_pos = conn->out_buff.start;
-
-    SR_LOG_DBG("Sending %zu bytes of data.", (buff_size - buff_pos));
-
-    do {
-        /* try to send all data */
-        written = send(conn->fd, (buff->data + buff_pos), (buff_size - buff_pos), 0);
-        if (written > 0) {
-            SR_LOG_DBG("%d bytes of data sent.", written);
-            buff_pos += written;
-        } else {
-            if ((EWOULDBLOCK == errno) || (EAGAIN == errno)) {
-                /* no more data can be sent now */
-                SR_LOG_DBG("fd %d would block", conn->fd);
-                /* mark the position where the unsent data start */
-                conn->out_buff.start = buff_pos;
-                /* monitor fd for writable event */
-                ev_io_start(sm_ctx->event_loop, &conn->write_watcher);
-                break;
-            } else {
-                /* error by writing - close the connection due to an error */
-                SR_LOG_ERR("Error by writing data to fd %d: %s.", conn->fd, strerror(errno));
-                conn->close_requested = true;
-                break;
-            }
-        }
-    } while ((buff_pos < buff_size) && (written > 0));
-
-    if (buff_size == buff_pos) {
-        /* no more data left in the buffer */
-        buff->pos = 0;
-        conn->out_buff.start = 0;
-    }
-
-    return rc;
 }
 
 /**
@@ -872,7 +872,7 @@ cl_sm_fd_read_data(cl_sm_ctx_t *sm_ctx, int fd)
                 break;
             } else {
                 /* error by reading - close the connection due to an error */
-                SR_LOG_ERR("Error by reading data on fd %d: %s.", conn->fd, strerror(errno));
+                SR_LOG_ERR("Error by reading data on fd %d: %s.", conn->fd, sr_strerror_safe(errno));
                 conn->close_requested = true;
                 break;
             }
@@ -994,7 +994,7 @@ cl_sm_server_watcher_cb(struct ev_loop *loop, ev_io *w, int revents)
                 break;
             } else {
                 /* error by accept - only log the error and skip it */
-                SR_LOG_ERR("Unexpected error by accepting new connection: %s", strerror(errno));
+                SR_LOG_ERR("Unexpected error by accepting new connection: %s", sr_strerror_safe(errno));
                 continue;
             }
         }
@@ -1234,7 +1234,7 @@ cl_sm_init(cl_sm_ctx_t **sm_ctx_p)
 
     /* start the event loop in a new thread */
     ret = pthread_create(&ctx->event_loop_thread, NULL, cl_sm_event_loop_threaded, ctx);
-    CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_INIT_FAILED, cleanup, "Error by creating a new thread: %s", strerror(errno));
+    CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_INIT_FAILED, cleanup, "Error by creating a new thread: %s", sr_strerror_safe(errno));
 
     SR_LOG_DBG_MSG("Client Subscription Manager initialized successfully.");
 

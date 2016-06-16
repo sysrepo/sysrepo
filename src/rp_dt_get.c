@@ -479,13 +479,51 @@ rp_dt_get_changes(rp_ctx_t *rp_ctx, rp_session_t *rp_session, dm_commit_context_
     CHECK_NULL_ARG(matched_changes);
 
     int rc = SR_ERR_OK;
+    char *module_name = NULL;
+    dm_model_subscription_t lookup = {0};
+    dm_model_subscription_t *ms = NULL;
 
-    //TODO: changes should be generated on the first request
+    rc = sr_copy_first_ns(xpath, &module_name);
+    CHECK_RC_MSG_RETURN(rc, "Copy first ns failed");
 
-    rc = rp_dt_find_changes(rp_ctx->dm_ctx, rp_session->dm_session, c_ctx, &rp_session->change_ctx, xpath, offset, limit, matched_changes);
-    if (SR_ERR_NOT_FOUND != rc) {
-        CHECK_RC_LOG_RETURN(rc, "Find changes failed for %s", xpath);
+    rc = dm_get_module(rp_ctx->dm_ctx, module_name, NULL, &lookup.module);
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Dm get module failed for %s", module_name);
+
+    ms = sr_btree_search(c_ctx->subscriptions, &lookup);
+    if (NULL == ms) {
+        SR_LOG_ERR("Module subscription not found for module %s", lookup.module->name);
+        rc = SR_ERR_INTERNAL;
+        goto cleanup;
     }
 
+
+    RWLOCK_RDLOCK_TIMED_CHECK_GOTO(&ms->changes_lock, rc, cleanup);
+
+    /* generate changes on demand */
+    if (!ms->changes_generated) {
+        pthread_rwlock_unlock(&ms->changes_lock);
+        /* acquire write lock */
+        RWLOCK_WRLOCK_TIMED_CHECK_GOTO(&ms->changes_lock, rc, cleanup);
+        /* check if some generated the changes meanwhile */
+        if (!ms->changes_generated) {
+            rc = rp_dt_difflist_to_changes(ms->difflist, &ms->changes);
+            if (SR_ERR_OK != rc) {
+                SR_LOG_ERR_MSG("Difflist to changes failed");
+                pthread_rwlock_unlock(&ms->changes_lock);
+                goto cleanup;
+            }
+            ms->changes_generated = true;
+        }
+    }
+
+    rc = rp_dt_find_changes(rp_ctx->dm_ctx, rp_session->dm_session, ms, &rp_session->change_ctx, xpath, offset, limit, matched_changes);
+    pthread_rwlock_unlock(&ms->changes_lock);
+
+    if (SR_ERR_NOT_FOUND != rc) {
+        CHECK_RC_LOG_GOTO(rc, cleanup, "Find changes failed for %s", xpath);
+    }
+
+cleanup:
+    free(module_name);
     return rc;
 }

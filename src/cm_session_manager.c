@@ -401,7 +401,7 @@ sm_session_create(const sm_ctx_t *sm_ctx, sm_connection_t *connection,
     /* save real user credentials */
     pws = getpwuid(connection->uid);
     if (NULL == pws) {
-        SR_LOG_ERR("Cannot retrieve credentials of the real user: %s", strerror(errno));
+        SR_LOG_ERR("Cannot retrieve credentials of the real user: %s", sr_strerror_safe(errno));
         rc = SR_ERR_INTERNAL;
         goto cleanup;
     }

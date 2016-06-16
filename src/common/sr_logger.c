@@ -41,6 +41,9 @@ volatile uint8_t sr_ll_stderr = SR_LL_NONE;  /**< Global variable used to store 
 volatile uint8_t sr_ll_syslog = SR_LL_NONE;  /**< Global variable used to store log level of syslog messages. */
 volatile sr_log_cb sr_log_callback = NULL;   /**< Global variable used to store logging callback, if set. */
 
+static pthread_once_t sr_strerror_buf_create_key_once = PTHREAD_ONCE_INIT;  /** Used to control that ::sr_strerror_buff_create_key is called only once per thread. */
+static pthread_key_t sr_strerror_buf_key;    /**< Thread local buffer for strerror_r */
+
 static volatile bool sr_syslog_enabled = false;     /**< Global variable used to mark if the syslog initialization (openlog) has been done. */
 static volatile char *sr_syslog_identifier = NULL;  /**< Global variable used to store syslog identifier. */
 
@@ -57,6 +60,16 @@ sr_log_buff_create_key(void)
     while (pthread_key_create(&sr_log_buff_key, free) == EAGAIN);
     pthread_setspecific(sr_log_buff_key, NULL);
 #endif
+}
+
+/**
+ * @brief Create key for thread-specific errno message buffer. Should be called only once per thread.
+ */
+static void
+sr_strerror_buff_create_key(void)
+{
+    while (pthread_key_create(&sr_strerror_buf_key, free) == EAGAIN);
+    pthread_setspecific(sr_strerror_buf_key, NULL);
 }
 
 void
@@ -114,6 +127,14 @@ sr_logger_cleanup()
         pthread_setspecific(sr_log_buff_key, NULL);
     }
 #endif
+    /* free sr_strerror_safe storage */
+    char *buff = NULL;
+    pthread_once(&sr_strerror_buf_create_key_once, sr_strerror_buff_create_key);
+    buff = pthread_getspecific(sr_strerror_buf_key);
+    if (NULL != buff) {
+        free(buff);
+        pthread_setspecific(sr_strerror_buf_key, NULL);
+    }
 }
 
 void
@@ -182,4 +203,21 @@ sr_log_to_cb(sr_log_level_t level, const char *format, ...)
         }
     }
 #endif
+}
+
+const char *
+sr_strerror_safe(int err_no)
+{
+    char *buff = NULL;
+    pthread_once(&sr_strerror_buf_create_key_once, sr_strerror_buff_create_key);
+    buff = pthread_getspecific(sr_strerror_buf_key);
+    if (NULL == buff) {
+        buff = calloc(MAX_STRERROR_LEN, sizeof(*buff));
+        pthread_setspecific(sr_strerror_buf_key, buff);
+    }
+    /* print the message into buffer and call callback */
+    if (NULL != buff) {
+        strerror_r(err_no, buff, MAX_STRERROR_LEN);
+    }
+    return buff;
 }

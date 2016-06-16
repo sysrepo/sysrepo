@@ -229,6 +229,7 @@ dm_model_subscription_free(void *sub)
             }
             sr_list_cleanup(ms->changes);
         }
+        pthread_rwlock_destroy(&ms->changes_lock);
     }
     free(ms);
 }
@@ -409,7 +410,7 @@ dm_load_schemas(dm_ctx_t *dm_ctx)
         closedir(dir);
         return SR_ERR_OK;
     } else {
-        SR_LOG_ERR("Could not open the directory %s: %s", dm_ctx->schema_search_dir, strerror(errno));
+        SR_LOG_ERR("Could not open the directory %s: %s", dm_ctx->schema_search_dir, sr_strerror_safe(errno));
         return SR_ERR_IO;
     }
 }
@@ -1800,8 +1801,11 @@ dm_update_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, sr_list_t 
             continue;
         }
 
-        /*  to lock for read, blocking */
-        rc = sr_lock_fd(fd, false, false);
+        /* lock for read, blocking - guards access to the file among processes.
+         * Inside the process access to data files is protected by commit_lock in rp.
+         * Each request that might need to read data file locks it for read at the beginning
+         * of request processing. */
+        rc = sr_lock_fd(fd, false, true);
 
         bool copy_uptodate = false;
         rc = dm_is_info_copy_uptodate(dm_ctx, file_name, info, &copy_uptodate);
@@ -2021,6 +2025,8 @@ dm_prepare_module_subscriptions(dm_ctx_t *dm_ctx, const struct lys_module *modul
 
     ms = calloc(1, sizeof(*ms));
     CHECK_NULL_NOMEM_RETURN(ms);
+
+    pthread_rwlock_init(&ms->changes_lock, NULL);
 
     rc = np_get_module_change_subscriptions(dm_ctx->np_ctx,
             module->name,
@@ -2441,7 +2447,7 @@ dm_commit_write_files(dm_session_t *session, dm_commit_context_t *c_ctx)
             }
             if (0 != ret) {
                 SR_LOG_ERR("Failed to write data of '%s' module: %s", info->module->name,
-                        (ly_errno != LY_SUCCESS) ? ly_errmsg() : strerror(errno));
+                        (ly_errno != LY_SUCCESS) ? ly_errmsg() : sr_strerror_safe(errno));
                 rc = SR_ERR_INTERNAL;
             } else {
                 SR_LOG_DBG("Data successfully written for module '%s'", info->module->name);
@@ -2519,12 +2525,6 @@ dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t *c
 
         /* store differences in commit context */
         ms->difflist = diff;
-
-        rc = rp_dt_difflist_to_changes(ms->difflist, &ms->changes);
-        if (SR_ERR_OK != rc) {
-            SR_LOG_ERR_MSG("Difflist to changes failed");
-            continue;
-        }
 
         /* Log changes */
         if (SR_LL_DBG == sr_ll_stderr || SR_LL_DBG == sr_ll_syslog) {
@@ -2753,7 +2753,7 @@ dm_copy_config(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_list_t *modules
             ret = fsync(fds[i]);
             if (0 != ret) {
                 SR_LOG_ERR("Failed to write data of '%s' module: %s", src_infos[i]->module->name,
-                        (ly_errno != LY_SUCCESS) ? ly_errmsg() : strerror(errno));
+                        (ly_errno != LY_SUCCESS) ? ly_errmsg() : sr_strerror_safe(errno));
                 rc = SR_ERR_INTERNAL;
             }
             if (SR_DS_CANDIDATE == src) {
