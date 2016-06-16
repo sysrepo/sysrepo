@@ -201,10 +201,6 @@ cl_subscribtion_init(sr_session_ctx_t *session, Sr__SubscriptionType type, const
 
     CHECK_NULL_ARG4(session, sr_subscription_p, sm_subscription_p, msg_req_p);
 
-    if (NULL == module_name) {
-        module_name = "internal"; // TODO
-    }
-
     /* check if this is the first subscription, if yes, initialize subscription manager */
     pthread_mutex_lock(&global_lock);
     if (0 == subscriptions_cnt) {
@@ -312,7 +308,7 @@ cl_subscription_close(sr_session_ctx_t *session, cl_sm_subscription_ctx_t *subsc
     subscriptions_cnt--;
     if (0 == subscriptions_cnt) {
         /* this is the last subscription - destroy subscription manager */
-        cl_sm_cleanup(cl_sm_ctx);
+        cl_sm_cleanup(cl_sm_ctx, true);
     }
     if ((0 == subscriptions_cnt) && (0 == connections_cnt)) {
         /* destroy library-global resources */

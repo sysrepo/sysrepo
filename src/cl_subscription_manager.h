@@ -78,11 +78,22 @@ int cl_sm_init(cl_sm_ctx_t **sm_ctx);
  * @brief Cleans up the Subscription Manager.
  *
  * @param[in] sm_ctx Subscription Manager context acquired by ::cl_sm_init call.
+ * param[in] join If set to TRUE, joins the thread with the event loop and then does the cleanup.
  */
-void cl_sm_cleanup(cl_sm_ctx_t *sm_ctx);
+void cl_sm_cleanup(cl_sm_ctx_t *sm_ctx, bool join);
 
 /**
- * @brief TODO
+ * @brief Prepares / assigns a unix-domain server context that can be used for
+ * delivering notification messages related to specified module.
+ *
+ * If the server capable for handling subscriptions of specified module does not
+ * exists yet, it will be created and stored within the Subscription Manager context.
+ *
+ * @param[in] sm_ctx Subscription Manager context acquired by ::cl_sm_init call.
+ * @param[in] module_name Name of the YANG module the server will be serving notifications for.
+ * @param[out] server_ctx Pointer to associated unix-domain server context.
+ *
+ * @return Error code (SR_ERR_OK on success).
  */
 int cl_sm_get_server_ctx(cl_sm_ctx_t *sm_ctx, const char *module_name, cl_sm_server_ctx_t **server_ctx);
 
@@ -90,7 +101,7 @@ int cl_sm_get_server_ctx(cl_sm_ctx_t *sm_ctx, const char *module_name, cl_sm_ser
  * @brief Initializes a new subscription.
  *
  * @param[in] sm_ctx Subscription Manager context acquired by ::cl_sm_init call.
- * @param[in] server_ctx TODO
+ * @param[in] server_ctx Unix-domain server context used for this subscription.
  * @param[out] subscription Allocated subscription context. Release by
  * ::cl_sm_subscription_cleanup call.
  *

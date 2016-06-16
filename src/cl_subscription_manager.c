@@ -49,7 +49,7 @@
 #define CL_SUBSCRIPTIONS_PATH_PREFIX "/tmp/sysrepo-subscriptions"
 
 /**
- * TODO
+ * @brief Subscription Manager's unix-domain server context.
  */
 typedef struct cl_sm_server_ctx_s {
     cl_sm_ctx_t *sm_ctx;      /**< Client Subscription Manager context associated with this server context. */
@@ -66,10 +66,12 @@ typedef struct cl_sm_server_ctx_s {
 typedef struct cl_sm_ctx_s {
     /** Linked-list of server contexts used in the Subscription Manager. */
     sr_llist_t *server_ctx_list;
+    /** Lock for the server contexts linked-list. */
+    pthread_mutex_t server_ctx_lock;
 
     /** Binary tree used for fast subscriber connection lookup by file descriptor. */
     sr_btree_t *fd_btree;
-    
+
     /** Binary tree of data connections to sysrepo, organized by destination socket address. */
     sr_btree_t *data_connection_btree;
 
@@ -1025,6 +1027,8 @@ cl_sm_servers_cleanup(cl_sm_ctx_t *sm_ctx)
 {
     sr_llist_node_t *node = NULL;
 
+    pthread_mutex_lock(&sm_ctx->server_ctx_lock);
+
     if (NULL != sm_ctx && NULL != sm_ctx->server_ctx_list) {
         node = sm_ctx->server_ctx_list->first;
         while (NULL != node) {
@@ -1032,6 +1036,8 @@ cl_sm_servers_cleanup(cl_sm_ctx_t *sm_ctx)
             node = node->next;
         }
     }
+
+    pthread_mutex_unlock(&sm_ctx->server_ctx_lock);
 }
 
 /**
@@ -1069,7 +1075,7 @@ cl_sm_server_init(cl_sm_ctx_t *sm_ctx, const char *module_name, cl_sm_server_ctx
     fd_tmp = mkstemps(server_ctx->socket_path, 5);
     if (-1 != fd_tmp) {
         close(fd_tmp);
-        unlink(server_ctx->socket_path); // TODO: move below to always unlink?
+        unlink(server_ctx->socket_path);
     }
 
     SR_LOG_DBG("Initializing sysrepo subscription server at socket=%s", server_ctx->socket_path);
@@ -1141,12 +1147,13 @@ cl_sm_server_ctx_change_cb(struct ev_loop *loop, ev_async *w, int revents)
 
     SR_LOG_DBG_MSG("Server context changed.");
 
-    // TODO lock
+    pthread_mutex_lock(&sm_ctx->server_ctx_lock);
 
     if (NULL != sm_ctx && NULL != sm_ctx->server_ctx_list) {
         node = sm_ctx->server_ctx_list->first;
         while (NULL != node) {
             server_ctx = (cl_sm_server_ctx_t*)node->data;
+            /* if not already initialized */
             if (!server_ctx->watcher_started) {
                 /* initialize event watcher for unix-domain server socket */
                 ev_io_init(&server_ctx->server_watcher, cl_sm_server_watcher_cb, server_ctx->listen_socket_fd, EV_READ);
@@ -1157,6 +1164,8 @@ cl_sm_server_ctx_change_cb(struct ev_loop *loop, ev_async *w, int revents)
             node = node->next;
         }
     }
+
+    pthread_mutex_unlock(&sm_ctx->server_ctx_lock);
 }
 
 /**
@@ -1165,17 +1174,17 @@ cl_sm_server_ctx_change_cb(struct ev_loop *loop, ev_async *w, int revents)
 static void *
 cl_sm_event_loop_threaded(void *sm_ctx_p)
 {
-    if (NULL == sm_ctx_p) {
-        return NULL;
+    cl_sm_ctx_t *sm_ctx = NULL;
+
+    if (NULL != sm_ctx_p) {
+        sm_ctx = (cl_sm_ctx_t*)sm_ctx_p;
+
+        SR_LOG_DBG_MSG("Starting client subscription event loop.");
+
+        ev_run(sm_ctx->event_loop, 0);
+
+        SR_LOG_DBG_MSG("Client subscription event loop finished.");
     }
-
-    cl_sm_ctx_t *sm_ctx = (cl_sm_ctx_t*)sm_ctx_p;
-
-    SR_LOG_DBG_MSG("Starting client subscription event loop.");
-
-    ev_run(sm_ctx->event_loop, 0);
-
-    SR_LOG_DBG_MSG("Client subscription event loop finished.");
 
     return NULL;
 }
@@ -1211,9 +1220,11 @@ cl_sm_init(cl_sm_ctx_t **sm_ctx_p)
     rc = sr_btree_init(cl_sm_data_connection_cmp_dst, cl_sm_data_connection_cleanup, &ctx->data_connection_btree);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate binary tree for data connections.");
 
-    /* initialize the mutex for subscriptions */
+    /* initialize the mutexes */
+    ret = pthread_mutex_init(&ctx->server_ctx_lock, NULL);
+    CHECK_ZERO_MSG_GOTO(ret, rc, SR_ERR_INIT_FAILED, cleanup, "Cannot initialize subscriptions server contexts mutex.");
     ret = pthread_mutex_init(&ctx->subscriptions_lock, NULL);
-    CHECK_ZERO_MSG_GOTO(ret, rc, SR_ERR_INIT_FAILED, cleanup, "Cannot initialize subscriptions btree mutex.");
+    CHECK_ZERO_MSG_GOTO(ret, rc, SR_ERR_INIT_FAILED, cleanup, "Cannot initialize subscriptions mutex.");
 
     srand(time(NULL));
 
@@ -1242,40 +1253,34 @@ cl_sm_init(cl_sm_ctx_t **sm_ctx_p)
     return rc;
 
 cleanup:
-    if (NULL != ctx) {
-        if (NULL != ctx->event_loop) {
-            ev_loop_destroy(ctx->event_loop);
-        }
-        cl_sm_servers_cleanup(ctx);
-        pthread_mutex_destroy(&ctx->subscriptions_lock);
-        sr_btree_cleanup(ctx->data_connection_btree);
-        sr_btree_cleanup(ctx->subscriptions_btree);
-        sr_btree_cleanup(ctx->fd_btree);
-        sr_llist_cleanup(ctx->server_ctx_list);
-        free(ctx);
-    }
+    cl_sm_cleanup(ctx, false);
     return rc;
 }
 
 void
-cl_sm_cleanup(cl_sm_ctx_t *sm_ctx)
+cl_sm_cleanup(cl_sm_ctx_t *sm_ctx, bool join)
 {
-    CHECK_NULL_ARG_VOID(sm_ctx);
+    if (NULL != sm_ctx) {
+        if (join) {
+            ev_async_send(sm_ctx->event_loop, &sm_ctx->stop_watcher);
+            pthread_join(sm_ctx->event_loop_thread, NULL);
+        }
+        if (NULL != sm_ctx->event_loop) {
+            ev_loop_destroy(sm_ctx->event_loop);
+        }
+        cl_sm_servers_cleanup(sm_ctx);
 
-    ev_async_send(sm_ctx->event_loop, &sm_ctx->stop_watcher);
-    pthread_join(sm_ctx->event_loop_thread, NULL);
+        sr_btree_cleanup(sm_ctx->data_connection_btree);
+        sr_btree_cleanup(sm_ctx->subscriptions_btree);
+        sr_btree_cleanup(sm_ctx->fd_btree);
+        sr_llist_cleanup(sm_ctx->server_ctx_list);
 
-    ev_loop_destroy(sm_ctx->event_loop);
-    cl_sm_servers_cleanup(sm_ctx);
+        pthread_mutex_destroy(&sm_ctx->server_ctx_lock);
+        pthread_mutex_destroy(&sm_ctx->subscriptions_lock);
 
-    pthread_mutex_destroy(&sm_ctx->subscriptions_lock);
-    sr_btree_cleanup(sm_ctx->data_connection_btree);
-    sr_btree_cleanup(sm_ctx->subscriptions_btree);
-    sr_btree_cleanup(sm_ctx->fd_btree);
-    sr_llist_cleanup(sm_ctx->server_ctx_list);
-    free(sm_ctx);
-
-    SR_LOG_INF_MSG("Client Subscription Manager successfully destroyed.");
+        free(sm_ctx);
+        SR_LOG_INF_MSG("Client Subscription Manager successfully destroyed.");
+    }
 }
 
 int
@@ -1286,9 +1291,13 @@ cl_sm_get_server_ctx(cl_sm_ctx_t *sm_ctx, const char *module_name, cl_sm_server_
     bool matched = false;
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG3(sm_ctx, module_name, server_ctx_p);
+    CHECK_NULL_ARG2(sm_ctx, server_ctx_p);
 
-    // TODO lock
+    if (NULL == module_name) {
+        module_name = "internal"; // TODO
+    }
+
+    pthread_mutex_lock(&sm_ctx->server_ctx_lock);
 
     /* find if a server context already exists for this module */
     node = sm_ctx->server_ctx_list->first;
@@ -1306,6 +1315,8 @@ cl_sm_get_server_ctx(cl_sm_ctx_t *sm_ctx, const char *module_name, cl_sm_server_
         server_ctx = NULL;
         rc = cl_sm_server_init(sm_ctx, module_name, &server_ctx);
     }
+
+    pthread_mutex_unlock(&sm_ctx->server_ctx_lock);
 
     *server_ctx_p = server_ctx;
     return rc;
