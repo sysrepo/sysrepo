@@ -2001,6 +2001,9 @@ dm_get_diff_type_to_string(LYD_DIFFTYPE type)
     return diff_states[type];
 }
 
+/**
+ * @brief Compares subscriptions by priority.
+ */
 int
 dm_subs_cmp(const void *a, const void *b)
 {

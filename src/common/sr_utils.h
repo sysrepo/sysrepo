@@ -319,7 +319,7 @@ void sr_free_errors(sr_error_info_t *sr_errors, size_t sr_error_cnt);
 void sr_free_schema(sr_schema_t *schema);
 
 /**
- * @breif Frees the changes
+ * @brief Frees the changes array
  * @param [in] changes
  * @param [in] count
  */

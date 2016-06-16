@@ -295,6 +295,9 @@ rp_dt_find_in_choice(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath,
     CHECK_NULL_ARG5(dm_ctx, xpath, trimmed_xpath, module, match);
     /* libyang err_msg is used to parse the match and unmatch part */
     int rc = SR_ERR_BAD_ELEMENT;
+    /**
+     * @brief Maximum length of node name
+     */
     #define MAX_NODE_NAME_LEN 100
     char *unmatch_part = NULL;
     char *err_msg = NULL;

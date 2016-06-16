@@ -139,8 +139,12 @@ typedef struct dm_commit_context_s {
     sr_btree_t *prev_data_trees;/**< data trees in the state before commit */
 } dm_commit_context_t;
 
+/**
+ * @brief Structure holds commit contexts for the purposes of notification
+ * session.
+ */
 typedef struct dm_c_ctxs_s {
-    sr_btree_t *tree;      /**< Array of commit context used for notifications */
+    sr_btree_t *tree;      /**< Tree of commit context used for notifications */
     pthread_rwlock_t lock; /**< rwlock to access c_ctxs */
 } dm_commit_ctxs_t;
 
