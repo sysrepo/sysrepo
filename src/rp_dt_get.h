@@ -109,13 +109,14 @@ int rp_dt_difflist_to_changes(struct lyd_difflist *difflist, sr_list_t **changes
 
 /**
  * @brief Returns the changes that match the selection based on xpath, offset and limit criteria.
+ * Changes are generated from difflist when the first request came.
  * @param [in] rp_ctx
  * @param [in] session
  * @param [in] c_ctx
  * @param [in] xpath
  * @param [in] offset
  * @param [in] limit
- * @param [out] matched_changes
+ * @param [out] matched_changes - changes matching xpath in the range selected by offset limit
  * @return Error code (SR_ERR_OK on success)
  */
 int rp_dt_get_changes(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t *c_ctx, const char *xpath,
