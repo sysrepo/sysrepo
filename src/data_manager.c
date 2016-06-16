@@ -1599,6 +1599,8 @@ dm_get_schema(dm_ctx_t *dm_ctx, const char *module_name, const char *module_revi
     CHECK_NULL_ARG2(dm_ctx, module_name);
     int rc = SR_ERR_OK;
 
+    SR_LOG_INF("Get schema '%s', revision: '%s', submodule: '%s'", module_name, module_revision, submodule_name);
+
     pthread_rwlock_rdlock(&dm_ctx->lyctx_lock);
     const struct lys_module *module = ly_ctx_get_module(dm_ctx->ly_ctx, module_name, module_revision);
     if (NULL == module) {
@@ -2596,6 +2598,7 @@ dm_feature_enable(dm_ctx_t *dm_ctx, const char *module_name, const char *feature
         return SR_ERR_UNKNOWN_MODEL;
     }
     rc = enable ? lys_features_enable(module, feature_name) : lys_features_disable(module, feature_name);
+    SR_LOG_DBG("%s feature '%s' in module '%s'", enable ? "Enabling" : "Disabling", feature_name, module_name);
     pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
 
     if (1 == rc) {

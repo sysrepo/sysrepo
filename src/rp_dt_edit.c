@@ -523,6 +523,8 @@ rp_dt_move_list_wrapper(rp_ctx_t *rp_ctx, rp_session_t *session, const char *xpa
 
     int rc = SR_ERR_OK;
 
+    SR_LOG_INF("Move item request %s datastore, xpath: %s", sr_ds_to_str(session->datastore), xpath);
+
     rc = ac_check_node_permissions(session->ac_session, xpath, AC_OPER_READ_WRITE);
     CHECK_RC_LOG_RETURN(rc, "Access control check failed for xpath '%s'", xpath);
 
@@ -544,6 +546,8 @@ rp_dt_set_item_wrapper(rp_ctx_t *rp_ctx, rp_session_t *session, const char *xpat
     CHECK_NULL_ARG5(rp_ctx, rp_ctx->dm_ctx, session, session->dm_session, xpath);
 
     int rc = SR_ERR_OK;
+
+    SR_LOG_INF("Set item request %s datastore, xpath: %s", sr_ds_to_str(session->datastore), xpath);
 
     rc = ac_check_node_permissions(session->ac_session, xpath, AC_OPER_READ_WRITE);
     if (SR_ERR_OK != rc) {
@@ -569,6 +573,8 @@ rp_dt_delete_item_wrapper(rp_ctx_t *rp_ctx, rp_session_t *session, const char *x
 {
     CHECK_NULL_ARG5(rp_ctx, rp_ctx->dm_ctx, session, session->dm_session, xpath);
     int rc = SR_ERR_OK;
+
+    SR_LOG_INF("Delete item request %s datastore, xpath: %s", sr_ds_to_str(session->datastore), xpath);
 
     rc = ac_check_node_permissions(session->ac_session, xpath, AC_OPER_READ_WRITE);
     CHECK_RC_LOG_RETURN(rc, "Access control check failed for xpath '%s'", xpath);
@@ -781,6 +787,8 @@ rp_dt_refresh_session(rp_ctx_t *rp_ctx, rp_session_t *session, sr_error_info_t *
     *err_cnt = 0;
     *errors = NULL;
 
+    SR_LOG_INF("Refresh session request %s datastore", sr_ds_to_str(session->datastore));
+
     /* update models and retrieve list of data models-to be skipped in replay */
     rc = dm_update_session_data_trees(rp_ctx->dm_ctx, session->dm_session, &up_to_date);
     if (SR_ERR_OK != rc) {
@@ -935,6 +943,7 @@ rp_dt_switch_datastore(rp_ctx_t *rp_ctx, rp_session_t *session, sr_datastore_t d
 {
     CHECK_NULL_ARG3(rp_ctx, session, session->dm_session);
     int rc = SR_ERR_OK;
+    SR_LOG_INF("Switch datastore request %s -> %s", sr_ds_to_str(session->datastore), sr_ds_to_str(ds));
     session->datastore = ds;
     rc = dm_session_switch_ds(session->dm_session, ds);
     return rc;
@@ -946,6 +955,8 @@ rp_dt_lock(const rp_ctx_t *rp_ctx, const rp_session_t *session, const char *modu
     CHECK_NULL_ARG2(rp_ctx, session);
     int rc = SR_ERR_OK;
     bool modif = false;
+
+    SR_LOG_INF("Lock request module: '%s', datastore %s", module_name, sr_ds_to_str(session->datastore));
 
     sr_schema_t *schemas = NULL;
     size_t count = 0;
