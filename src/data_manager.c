@@ -700,6 +700,8 @@ dm_unlock_module(dm_ctx_t *dm_ctx, dm_session_t *session, char *modul_name)
     char *lock_file = NULL;
     size_t i = 0;
 
+    SR_LOG_INF("Unlock request module='%s'", modul_name);
+
     rc = sr_get_lock_data_file_name(dm_ctx->data_search_dir, modul_name, session->datastore, &lock_file);
     CHECK_RC_MSG_RETURN(rc, "Lock file name can not be created");
 
@@ -783,6 +785,7 @@ int
 dm_unlock_datastore(dm_ctx_t *dm_ctx, dm_session_t *session)
 {
     CHECK_NULL_ARG2(dm_ctx, session);
+    SR_LOG_INF_MSG("Unlock datastore request");
 
     while (session->locked_files->count > 0) {
         dm_unlock_file(dm_ctx->locking_ctx, (char *) session->locked_files->data[0]);
