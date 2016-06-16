@@ -428,7 +428,9 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const
     }
 
     /* add default nodes into the data tree */
-    dm_lyd_wd_add(dm_ctx, module->ctx, &info->node, LYD_WD_IMPL_TAG);
+    if (node != NULL) {
+        dm_lyd_wd_add(dm_ctx, module->ctx, &info->node, LYD_WD_IMPL_TAG | LYD_OPT_NOSIBLINGS);
+    }
 
 cleanup:
     free(new_value);
