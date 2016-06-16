@@ -196,9 +196,14 @@ cl_subscribtion_init(sr_session_ctx_t *session, Sr__SubscriptionType type, const
     Sr__Msg *msg_req = NULL;
     sr_subscription_ctx_t *sr_subscription = NULL;
     cl_sm_subscription_ctx_t **tmp = NULL, *sm_subscription = NULL;
+    cl_sm_server_ctx_t *server_ctx = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG4(session, sr_subscription_p, sm_subscription_p, msg_req_p);
+
+    if (NULL == module_name) {
+        module_name = "internal"; // TODO
+    }
 
     /* check if this is the first subscription, if yes, initialize subscription manager */
     pthread_mutex_lock(&global_lock);
@@ -207,6 +212,9 @@ cl_subscribtion_init(sr_session_ctx_t *session, Sr__SubscriptionType type, const
         rc = cl_sm_init(&cl_sm_ctx);
     }
     subscriptions_cnt++;
+    if (SR_ERR_OK == rc) {
+        rc = cl_sm_get_server_ctx(cl_sm_ctx, module_name, &server_ctx);
+    }
     pthread_mutex_unlock(&global_lock);
 
     CHECK_RC_MSG_RETURN(rc, "Cannot initialize Client Subscription Manager.");
@@ -216,7 +224,7 @@ cl_subscribtion_init(sr_session_ctx_t *session, Sr__SubscriptionType type, const
     CHECK_RC_MSG_RETURN(rc, "Cannot allocate subscribe message.");
 
     /* initialize subscription ctx */
-    rc = cl_sm_subscription_init(cl_sm_ctx, &sm_subscription);
+    rc = cl_sm_subscription_init(cl_sm_ctx, server_ctx, &sm_subscription);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by initialization of the subscription in the Subscription Manager.");
 
     sm_subscription->type = type;
@@ -1544,17 +1552,22 @@ sr_subtree_change_subscribe(sr_session_ctx_t *session, const char *xpath, sr_sub
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
     sr_subscription_ctx_t *sr_subscription = NULL;
     cl_sm_subscription_ctx_t *sm_subscription = NULL;
+    char *module_name = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG4(session, xpath, callback, subscription_p);
 
     cl_session_clear_errors(session);
 
+    /* extract module name from xpath */
+    rc = sr_copy_first_ns(xpath, &module_name);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by extracting module name from xpath.");
+
     /* Initialize the subscription */
     if (opts & SR_SUBSCR_CTX_REUSE) {
         sr_subscription = *subscription_p;
     }
-    rc = cl_subscribtion_init(session, SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS, NULL,
+    rc = cl_subscribtion_init(session, SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS, module_name,
             private_ctx, &sr_subscription, &sm_subscription, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by initialization of the subscription in the client library.");
 
@@ -1562,13 +1575,10 @@ sr_subtree_change_subscribe(sr_session_ctx_t *session, const char *xpath, sr_sub
 
     /* fill-in subscription details */
     msg_req->request->subscribe_req->type = SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS;
+    msg_req->request->subscribe_req->module_name = strdup(module_name);
+    CHECK_NULL_NOMEM_GOTO(msg_req->request->subscribe_req->module_name, rc, cleanup);
     msg_req->request->subscribe_req->xpath = strdup(xpath);
     CHECK_NULL_NOMEM_GOTO(msg_req->request->subscribe_req->xpath, rc, cleanup);
-
-    rc = sr_copy_first_ns(xpath, &msg_req->request->subscribe_req->module_name);
-    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by extracting module name from xpath.");
-    sm_subscription->module_name = strdup(msg_req->request->subscribe_req->module_name);
-    CHECK_NULL_NOMEM_GOTO(sm_subscription->module_name, rc, cleanup);
 
     msg_req->request->subscribe_req->has_notif_event = true;
     msg_req->request->subscribe_req->notif_event =
@@ -1584,6 +1594,7 @@ sr_subtree_change_subscribe(sr_session_ctx_t *session, const char *xpath, sr_sub
 
     sr__msg__free_unpacked(msg_req, NULL);
     sr__msg__free_unpacked(msg_resp, NULL);
+    free(module_name);
 
     *subscription_p = sr_subscription;
 
@@ -1598,6 +1609,7 @@ cleanup:
     if (NULL != msg_resp) {
         sr__msg__free_unpacked(msg_resp, NULL);
     }
+    free(module_name);
     return cl_session_return(session, rc);
 }
 
@@ -1908,17 +1920,22 @@ sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callbac
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
     sr_subscription_ctx_t *sr_subscription = NULL;
     cl_sm_subscription_ctx_t *sm_subscription = NULL;
+    char *module_name = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG3(session, callback, subscription_p);
 
     cl_session_clear_errors(session);
 
+    /* extract module name from xpath */
+    rc = sr_copy_first_ns(xpath, &module_name);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by extracting module name from xpath.");
+
     /* Initialize the subscription */
     if (opts & SR_SUBSCR_CTX_REUSE) {
         sr_subscription = *subscription_p;
     }
-    rc = cl_subscribtion_init(session, SR__SUBSCRIPTION_TYPE__RPC_SUBS, NULL,
+    rc = cl_subscribtion_init(session, SR__SUBSCRIPTION_TYPE__RPC_SUBS, module_name,
             private_ctx, &sr_subscription, &sm_subscription, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by initialization of the subscription in the client library.");
 
@@ -1926,15 +1943,10 @@ sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callbac
 
     /* Fill-in GPB subscription information */
     msg_req->request->subscribe_req->type = SR__SUBSCRIPTION_TYPE__RPC_SUBS;
-
+    msg_req->request->subscribe_req->module_name = strdup(module_name);
+    CHECK_NULL_NOMEM_GOTO(msg_req->request->subscribe_req->module_name, rc, cleanup);
     msg_req->request->subscribe_req->xpath = strdup(xpath);
     CHECK_NULL_NOMEM_GOTO(msg_req->request->subscribe_req->xpath, rc, cleanup);
-
-    rc = sr_copy_first_ns(xpath, &msg_req->request->subscribe_req->module_name);
-    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by extracting module name from xpath.");
-
-    sm_subscription->module_name = strdup(msg_req->request->subscribe_req->module_name);
-    CHECK_NULL_NOMEM_GOTO(sm_subscription->module_name, rc, cleanup);
 
     /* send the request and receive the response */
     rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__SUBSCRIBE);
@@ -1942,6 +1954,7 @@ sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callbac
 
     sr__msg__free_unpacked(msg_req, NULL);
     sr__msg__free_unpacked(msg_resp, NULL);
+    free(module_name);
 
     *subscription_p = sr_subscription;
 
@@ -1956,6 +1969,7 @@ cleanup:
     if (NULL != msg_resp) {
         sr__msg__free_unpacked(msg_resp, NULL);
     }
+    free(module_name);
     return cl_session_return(session, rc);
 }
 

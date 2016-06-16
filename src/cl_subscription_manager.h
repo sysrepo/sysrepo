@@ -41,6 +41,11 @@
 typedef struct cl_sm_ctx_s cl_sm_ctx_t;
 
 /**
+ * @brief Subscription Manager server context.
+ */
+typedef struct cl_sm_server_ctx_s cl_sm_server_ctx_t;
+
+/**
  * @brief Sysrepo subscription context.
  */
 typedef struct cl_sm_subscription_ctx_s {
@@ -77,15 +82,21 @@ int cl_sm_init(cl_sm_ctx_t **sm_ctx);
 void cl_sm_cleanup(cl_sm_ctx_t *sm_ctx);
 
 /**
+ * @brief TODO
+ */
+int cl_sm_get_server_ctx(cl_sm_ctx_t *sm_ctx, const char *module_name, cl_sm_server_ctx_t **server_ctx);
+
+/**
  * @brief Initializes a new subscription.
  *
  * @param[in] sm_ctx Subscription Manager context acquired by ::cl_sm_init call.
+ * @param[in] server_ctx TODO
  * @param[out] subscription Allocated subscription context. Release by
  * ::cl_sm_subscription_cleanup call.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int cl_sm_subscription_init(cl_sm_ctx_t *sm_ctx, cl_sm_subscription_ctx_t **subscription);
+int cl_sm_subscription_init(cl_sm_ctx_t *sm_ctx,  cl_sm_server_ctx_t *server_ctx, cl_sm_subscription_ctx_t **subscription);
 
 /**
  * @brief Cleans up a subscription.
