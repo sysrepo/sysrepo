@@ -171,9 +171,9 @@ void sr_logger_cleanup();
 void sr_log_to_cb(sr_log_level_t level, const char *format, ...);
 
 /**
- * @breif Prints string representation of errno using strerror_r and return pointer
+ * @brief Prints string representation of errno using strerror_r and returns pointer
  * to the thread local buffer.
- * @param [in] errno
+ * @param [in] err_code
  * @return Pointer to error message (do not free)
  */
 const char *sr_strerror_safe(int err_code);

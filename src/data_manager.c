@@ -700,6 +700,8 @@ dm_unlock_module(dm_ctx_t *dm_ctx, dm_session_t *session, char *modul_name)
     char *lock_file = NULL;
     size_t i = 0;
 
+    SR_LOG_INF("Unlock request module='%s'", modul_name);
+
     rc = sr_get_lock_data_file_name(dm_ctx->data_search_dir, modul_name, session->datastore, &lock_file);
     CHECK_RC_MSG_RETURN(rc, "Lock file name can not be created");
 
@@ -783,6 +785,7 @@ int
 dm_unlock_datastore(dm_ctx_t *dm_ctx, dm_session_t *session)
 {
     CHECK_NULL_ARG2(dm_ctx, session);
+    SR_LOG_INF_MSG("Unlock datastore request");
 
     while (session->locked_files->count > 0) {
         dm_unlock_file(dm_ctx->locking_ctx, (char *) session->locked_files->data[0]);
@@ -1599,6 +1602,8 @@ dm_get_schema(dm_ctx_t *dm_ctx, const char *module_name, const char *module_revi
     CHECK_NULL_ARG2(dm_ctx, module_name);
     int rc = SR_ERR_OK;
 
+    SR_LOG_INF("Get schema '%s', revision: '%s', submodule: '%s'", module_name, module_revision, submodule_name);
+
     pthread_rwlock_rdlock(&dm_ctx->lyctx_lock);
     const struct lys_module *module = ly_ctx_get_module(dm_ctx->ly_ctx, module_name, module_revision);
     if (NULL == module) {
@@ -2001,6 +2006,9 @@ dm_get_diff_type_to_string(LYD_DIFFTYPE type)
     return diff_states[type];
 }
 
+/**
+ * @brief Compares subscriptions by priority.
+ */
 int
 dm_subs_cmp(const void *a, const void *b)
 {
@@ -2593,6 +2601,7 @@ dm_feature_enable(dm_ctx_t *dm_ctx, const char *module_name, const char *feature
         return SR_ERR_UNKNOWN_MODEL;
     }
     rc = enable ? lys_features_enable(module, feature_name) : lys_features_disable(module, feature_name);
+    SR_LOG_DBG("%s feature '%s' in module '%s'", enable ? "Enabling" : "Disabling", feature_name, module_name);
     pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
 
     if (1 == rc) {

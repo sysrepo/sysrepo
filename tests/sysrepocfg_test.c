@@ -38,6 +38,8 @@
 #include "sr_common.h"
 #include "test_data.h"
 #include "system_helper.h"
+#include "client_library.h"
+#include "test_module_helper.h"
 
 #define FILENAME_NEW_CONFIG   "sysrepocfg_test-new_config.txt"
 #define FILENAME_USER_INPUT   "sysrepocfg_test-user_input.txt"
@@ -187,6 +189,7 @@ srcfg_test_unsubscribe(const char *module_name)
 static int
 srcfg_test_set_startup_datastore(void **state)
 {
+    createDataTreeIETFinterfacesModule();
     srcfg_test_datastore = strdup("startup");
     assert_non_null(srcfg_test_datastore);
     return 0;
@@ -195,6 +198,7 @@ srcfg_test_set_startup_datastore(void **state)
 static int
 srcfg_test_set_running_datastore(void **state)
 {
+    createDataTreeIETFinterfacesModule();
     srcfg_test_datastore = strdup("running");
     assert_non_null(srcfg_test_datastore);
     return 0;
@@ -678,6 +682,84 @@ srcfg_test_editing(void **state)
     exec_shell_command(cmd, "(.*Unable to apply the changes.*){1}"
                             "Your changes were discarded", true, 1);
 
+    sr_conn_ctx_t *conn = NULL;
+    sr_session_ctx_t *session = NULL;
+    assert_int_equal(SR_ERR_OK, sr_connect("sysrepocfg_test", SR_CONN_DEFAULT, &conn));
+    assert_non_null(conn);
+
+    assert_int_equal(SR_ERR_OK, sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &session));
+    sr_feature_enable(session, "ietf-ip", "ipv4-non-contiguous-netmasks", false);
+
+    /**
+     * module: ietf-interfaces
+     * format: xml
+     * valid?: no (not enabled feature)
+     * permanent?: no
+     **/
+    char *ietf_interfaces4 = "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">\n"
+        "  <interface>\n"
+        "    <name>eth1</name>\n"
+        "    <description>Ethernet 1</description>\n"
+        "    <type>ethernetCsmacd</type>\n"
+        "    <enabled>true</enabled>\n"
+        "    <ipv4 xmlns=\"urn:ietf:params:xml:ns:yang:ietf-ip\">\n"
+        "      <enabled>true</enabled>\n"
+        "      <mtu>1500</mtu>\n"
+        "      <address>\n"
+        "        <ip>10.10.1.5</ip>\n"
+    // node if-feature ipv4-non-contiguous-netmasks
+        "        <netmask>255.255.0.0</netmask>\n"
+        "      </address>\n"
+        "    </ipv4>\n"
+        "  </interface>\n"
+        "</interfaces>\n";
+    srcfg_test_prepare_config(ietf_interfaces4);
+    srcfg_test_prepare_user_input("n\n n\n"); /* 1 failed attempt, don't even save locally */
+    strcpy(args,"ietf-interfaces");
+    exec_shell_command(cmd, "(.*Unable to apply the changes.*){1}"
+                            "Your changes were discarded", true, 1);
+
+
+
+    sr_feature_enable(session, "ietf-ip", "ipv4-non-contiguous-netmasks", true);
+    /**
+     * module: ietf-interfaces
+     * format: xml
+     * valid?: yes
+     * permanent?: no
+     **/
+    char *ietf_interfaces5 = "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">\n"
+        "  <interface>\n"
+        "    <name>eth1</name>\n"
+        "    <description>Ethernet 1</description>\n"
+        "    <type>ethernetCsmacd</type>\n"
+        "    <enabled>true</enabled>\n"
+        "    <ipv4 xmlns=\"urn:ietf:params:xml:ns:yang:ietf-ip\">\n"
+        "      <enabled>true</enabled>\n"
+        "      <mtu>1500</mtu>\n"
+        "      <address>\n"
+        "        <ip>10.10.1.5</ip>\n"
+    // node if-feature ipv4-non-contiguous-netmasks
+        "        <netmask>255.255.0.0</netmask>\n"
+        "      </address>\n"
+        "    </ipv4>\n"
+        "  </interface>\n"
+        "</interfaces>\n";
+    srcfg_test_prepare_config(ietf_interfaces5);
+    srcfg_test_prepare_user_input("");
+    strcpy(args,"ietf-interfaces");
+    exec_shell_command(cmd, "The new configuration was successfully applied.", true, 0);
+    if (0 == strcmp("running", srcfg_test_datastore)) {
+        exec_shell_command("../src/sysrepocfg --export --datastore=running --format=xml ietf-interfaces > /tmp/ietf-interfaces_edited.xml", "", true, 0);
+    } else {
+        exec_shell_command("../src/sysrepocfg --export --datastore=startup --format=xml ietf-interfaces > /tmp/ietf-interfaces_edited.xml", "", true, 0);
+    }
+    srcfg_test_cmp_data_file_content("/tmp/ietf-interfaces_edited.xml", LYD_XML, ietf_interfaces5, LYD_XML);
+
+    sr_feature_enable(session, "ietf-ip", "ipv4-non-contiguous-netmasks", false);
+    sr_session_stop(session);
+    sr_disconnect(conn);
+
     /* restore pre-test state */
     if (0 == strcmp("running", srcfg_test_datastore)) {
         assert_int_equal(0, srcfg_test_unsubscribe("ietf-interfaces"));
@@ -692,6 +774,8 @@ main() {
     sr_schema_t *schemas = NULL;
     size_t schema_cnt = 0;
     const char *path = NULL;
+    const struct lys_module *module = NULL;
+    uint32_t idx = 0;
 
     const struct CMUnitTest tests[] = {
             cmocka_unit_test_setup_teardown(srcfg_test_version, NULL, NULL),
@@ -732,6 +816,11 @@ main() {
                 lys_parse_path(srcfg_test_libyang_ctx, path, LYS_IN_YANG);
             }
 
+        }
+        while (NULL != (module = ly_ctx_get_module_iter(srcfg_test_libyang_ctx, &idx))) {
+            for (int i = 0; i < module->features_size; i++) {
+                lys_features_enable(module, module->features[i].name);
+            }
         }
     }
     if (SR_ERR_OK != ret) {
