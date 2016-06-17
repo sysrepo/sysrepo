@@ -91,6 +91,9 @@
 /** Sysrepo daemon initialization timeout (in seconds). */
 #define SR_DAEMON_INIT_TIMEOUT 10
 
+/** Sysrepo subscriptions socket directory. */
+#define SR_SUBSCRIPTIONS_SOCKET_DIR "@SUBSCRIPTIONS_SOCKET_DIR@"
+
 /** Maximum size of a GPB message. */
 #define SR_MAX_MSG_SIZE ((SIZE_MAX < UINT32_MAX) ? SIZE_MAX : UINT32_MAX)
 

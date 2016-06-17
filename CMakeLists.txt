@@ -45,11 +45,13 @@ if(CMAKE_BUILD_TYPE_LOWER MATCHES "debug")
     set(DAEMON_PID_FILE "/tmp/sysrepod.pid" CACHE PATH "Sysrepo daemon PID file.")
     set(DAEMON_SOCKET "/tmp/sysrepod.sock" CACHE PATH "Sysrepo deamon server socket path.")
     set(PLUGIN_DAEMON_PID_FILE "/tmp/sysrepo-plugind.pid" CACHE PATH "Sysrepo plugin daemon PID file.")
+    set(SUBSCRIPTIONS_SOCKET_DIR "/tmp/sysrepo-subscriptions" CACHE PATH "Sysrepo subscriptions socket directory.")
 else()
     MESSAGE(STATUS "Preparing release build of sysrepo v. ${SYSREPO_VERSION}")
     set(DAEMON_PID_FILE "/var/run/sysrepod.pid" CACHE PATH "Sysrepo daemon PID file.")
     set(DAEMON_SOCKET "/var/run/sysrepod.sock" CACHE PATH "Sysrepo deamon server socket path.")
     set(PLUGIN_DAEMON_PID_FILE "/var/run/sysrepo-plugind.pid" CACHE PATH "Sysrepo plugin daemon PID file.")
+    set(SUBSCRIPTIONS_SOCKET_DIR "/var/run/sysrepo-subscriptions" CACHE PATH "Sysrepo subscriptions socket directory.")
 endif()
 
 # location of system repository
@@ -210,6 +212,12 @@ install (DIRECTORY DESTINATION ${DATA_SEARCH_DIR} DIRECTORY_PERMISSIONS
     OWNER_READ OWNER_WRITE OWNER_EXECUTE
     GROUP_READ GROUP_EXECUTE
     WORLD_READ WORLD_EXECUTE)
+
+# install subscriptions socket directory
+install (DIRECTORY DESTINATION ${SUBSCRIPTIONS_SOCKET_DIR} DIRECTORY_PERMISSIONS
+    OWNER_READ OWNER_WRITE OWNER_EXECUTE
+    GROUP_READ GROUP_WRITE GROUP_EXECUTE
+    WORLD_READ WORLD_WRITE WORLD_EXECUTE)
 
 # install plugins directory
 install(DIRECTORY DESTINATION ${PLUGINS_DIR})

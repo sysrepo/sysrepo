@@ -43,22 +43,34 @@
 #define CL_SM_SUBSCRIPTION_ID_MAX_ATTEMPTS 100  /**< Maximum number of attempts to generate unused random subscription id. */
 
 /**
- * @brief Filesystem path prefix for generating temporary socket names used for
- * unix-domain connections between remote sysrepo engines and subscription manager.
+ * @brief Directory local to SR_CLIENT_SOCKET_DIR containing sysrepo-global subscription sockets.
  */
-#define CL_SUBSCRIPTIONS_PATH_PREFIX "/tmp/sysrepo-subscriptions"
+#define CL_GLOBAL_SUBSCRIPTIONS_DIR "_global-subscriptions"
+
+/**
+ * @brief Subscription Manager's unix-domain server context.
+ */
+typedef struct cl_sm_server_ctx_s {
+    cl_sm_ctx_t *sm_ctx;      /**< Client Subscription Manager context associated with this server context. */
+    char *module_name;        /**< Name of the YANG module for which this server context is being used. */
+    char *socket_path;        /**< Path of the unix-domain server socket used for this server. */
+    int listen_socket_fd;     /**< Socket descriptor used to listen & accept new unix-domain connections. */
+    ev_io server_watcher;     /**< Watcher for events on the unix-domain socket. */
+    bool watcher_started;     /**< TRUE if the watcher has been already started, FALSE otherwise. */
+} cl_sm_server_ctx_t;
 
 /**
  * @brief Client Subscription Manager context.
  */
 typedef struct cl_sm_ctx_s {
-    /** Path where subscriber unix-domain server is binded to. */
-    char *socket_path;
-    /** Socket descriptor used to listen & accept new unix-domain connections. */
-    int listen_socket_fd;
+    /** Linked-list of server contexts used in the Subscription Manager. */
+    sr_llist_t *server_ctx_list;
+    /** Lock for the server contexts linked-list. */
+    pthread_mutex_t server_ctx_lock;
+
     /** Binary tree used for fast subscriber connection lookup by file descriptor. */
     sr_btree_t *fd_btree;
-    
+
     /** Binary tree of data connections to sysrepo, organized by destination socket address. */
     sr_btree_t *data_connection_btree;
 
@@ -71,10 +83,10 @@ typedef struct cl_sm_ctx_s {
     pthread_t event_loop_thread;
     /** Event loop context. */
     struct ev_loop *event_loop;
-    /** Watcher for events on server unix-domain socket. */
-    ev_io server_watcher;
     /** Watcher for stop request events. */
     ev_async stop_watcher;
+    /** Watcher for changes in server context list. */
+    ev_async server_ctx_watcher;
 } cl_sm_ctx_t;
 
 /**
@@ -271,91 +283,6 @@ cl_sm_conn_close(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn)
 }
 
 /**
- * @brief Initializes unix-domain socket server for subscriber connections.
- */
-static int
-cl_sm_server_init(cl_sm_ctx_t *sm_ctx)
-{
-    int path_len = 0, fd = -1, fd_tmp = -1, ret = 0;
-    int rc = SR_ERR_OK;
-    struct sockaddr_un addr;
-    mode_t old_umask = 0;
-
-    /* generate socket path */
-    path_len = snprintf(NULL, 0, "%s.%d.XXXXXX.sock", CL_SUBSCRIPTIONS_PATH_PREFIX, getpid());
-    sm_ctx->socket_path = calloc(path_len + 1, sizeof(*sm_ctx->socket_path));
-    CHECK_NULL_NOMEM_RETURN(sm_ctx->socket_path);
-
-    snprintf(sm_ctx->socket_path, path_len + 1, "%s.%d.XXXXXX.sock", CL_SUBSCRIPTIONS_PATH_PREFIX, getpid());
-    unlink(sm_ctx->socket_path);
-    fd_tmp = mkstemps(sm_ctx->socket_path, 5);
-    if (-1 != fd_tmp) {
-        close(fd_tmp);
-        unlink(sm_ctx->socket_path);
-    }
-
-    SR_LOG_DBG("Initializing sysrepo subscription server at socket=%s", sm_ctx->socket_path);
-
-    /* create listening socket */
-    fd = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (-1 == fd) {
-        SR_LOG_ERR("Socket create error: %s", sr_strerror_safe(errno));
-        rc = SR_ERR_INIT_FAILED;
-        goto cleanup;
-    }
-
-    /* set socket to nonblocking mode */
-    rc = sr_fd_set_nonblock(fd);
-    CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot set socket to nonblocking mode.");
-
-    memset(&addr, 0, sizeof(addr));
-    addr.sun_family = AF_UNIX;
-    strncpy(addr.sun_path, sm_ctx->socket_path, sizeof(addr.sun_path)-1);
-
-    /* create the unix-domain socket writable to anyone */
-    old_umask = umask(0);
-    ret = bind(fd, (struct sockaddr*)&addr, sizeof(addr));
-    umask(old_umask);
-    CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_INIT_FAILED, cleanup, "Socket bind error: %s", sr_strerror_safe(errno));
-
-    ret = listen(fd, SOMAXCONN);
-    CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_INIT_FAILED, cleanup, "Socket listen error: %s", sr_strerror_safe(errno));
-
-    sm_ctx->listen_socket_fd = fd;
-    return SR_ERR_OK;
-
-cleanup:
-    if (-1 != fd) {
-        close(fd);
-    }
-    if (NULL != sm_ctx->socket_path) {
-        unlink(sm_ctx->socket_path);
-        free(sm_ctx->socket_path);
-        sm_ctx->socket_path = NULL;
-    }
-    return rc;
-}
-
-/**
- * @brief Destroys the unix-domain socket server for subscriber connections.
- */
-static void
-cl_sm_server_cleanup(cl_sm_ctx_t *sm_ctx)
-{
-    CHECK_NULL_ARG_VOID(sm_ctx);
-
-    if (-1 != sm_ctx->listen_socket_fd) {
-        close(sm_ctx->listen_socket_fd);
-        sm_ctx->listen_socket_fd = -1;
-    }
-    if (NULL != sm_ctx->socket_path) {
-        unlink(sm_ctx->socket_path);
-        free(sm_ctx->socket_path);
-        sm_ctx->socket_path = NULL;
-    }
-}
-
-/**
  * @brief Expands the size of the buffer of given connection.
  */
 static int
@@ -428,49 +355,6 @@ cl_sm_conn_out_buff_flush(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn)
         /* no more data left in the buffer */
         buff->pos = 0;
         conn->out_buff.start = 0;
-    }
-
-    return rc;
-}
-
-/**
- * @brief Sends a message to the recipient identified by session context.
- */
-static int
-cl_sm_msg_send_connection(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *msg)
-{
-    cl_sm_buffer_t *buff = NULL;
-    size_t msg_size = 0;
-    int rc = SR_ERR_OK;
-
-    CHECK_NULL_ARG3(sm_ctx, conn, msg);
-
-    buff = &conn->out_buff;
-
-    /* find out required message size */
-    msg_size = sr__msg__get_packed_size(msg);
-    if ((msg_size <= 0) || (msg_size > SR_MAX_MSG_SIZE)) {
-        SR_LOG_ERR("Unable to send the message of size %zuB.", msg_size);
-        return SR_ERR_INTERNAL;
-    }
-
-    /* expand the buffer if needed */
-    rc = cl_sm_conn_buffer_expand(conn, buff, SR_MSG_PREAM_SIZE + msg_size);
-
-    if (SR_ERR_OK == rc) {
-        /* write the pramble */
-        sr_uint32_to_buff(msg_size, (buff->data + buff->pos));
-        buff->pos += SR_MSG_PREAM_SIZE;
-
-        /* write the message */
-        sr__msg__pack(msg, (buff->data + buff->pos));
-        buff->pos += msg_size;
-
-        /* flush the buffer */
-        rc = cl_sm_conn_out_buff_flush(sm_ctx, conn);
-        if ((conn->close_requested) || (SR_ERR_OK != rc)) {
-            cl_sm_conn_close(sm_ctx, conn);
-        }
     }
 
     return rc;
@@ -578,7 +462,7 @@ cl_sm_get_data_session(cl_sm_ctx_t *sm_ctx, cl_sm_subscription_ctx_t *subscripti
     return rc;
 }
 
-int
+static int
 cl_sm_close_data_session(cl_sm_ctx_t *sm_ctx, cl_sm_subscription_ctx_t *subscription,
         const char *source_address, uint32_t commit_id)
 {
@@ -614,6 +498,49 @@ cl_sm_close_data_session(cl_sm_ctx_t *sm_ctx, cl_sm_subscription_ctx_t *subscrip
     }
 
     return SR_ERR_OK;
+}
+
+/**
+ * @brief Sends a message to the recipient identified by session context.
+ */
+static int
+cl_sm_msg_send_connection(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *msg)
+{
+    cl_sm_buffer_t *buff = NULL;
+    size_t msg_size = 0;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG3(sm_ctx, conn, msg);
+
+    buff = &conn->out_buff;
+
+    /* find out required message size */
+    msg_size = sr__msg__get_packed_size(msg);
+    if ((msg_size <= 0) || (msg_size > SR_MAX_MSG_SIZE)) {
+        SR_LOG_ERR("Unable to send the message of size %zuB.", msg_size);
+        return SR_ERR_INTERNAL;
+    }
+
+    /* expand the buffer if needed */
+    rc = cl_sm_conn_buffer_expand(conn, buff, SR_MSG_PREAM_SIZE + msg_size);
+
+    if (SR_ERR_OK == rc) {
+        /* write the pramble */
+        sr_uint32_to_buff(msg_size, (buff->data + buff->pos));
+        buff->pos += SR_MSG_PREAM_SIZE;
+
+        /* write the message */
+        sr__msg__pack(msg, (buff->data + buff->pos));
+        buff->pos += msg_size;
+
+        /* flush the buffer */
+        rc = cl_sm_conn_out_buff_flush(sm_ctx, conn);
+        if ((conn->close_requested) || (SR_ERR_OK != rc)) {
+            cl_sm_conn_close(sm_ctx, conn);
+        }
+    }
+
+    return rc;
 }
 
 /**
@@ -1024,16 +951,18 @@ cl_sm_conn_write_cb(struct ev_loop *loop, ev_io *w, int revents)
 static void
 cl_sm_server_watcher_cb(struct ev_loop *loop, ev_io *w, int revents)
 {
+    cl_sm_server_ctx_t *server_ctx = NULL;
     cl_sm_ctx_t *sm_ctx = NULL;
     cl_sm_conn_ctx_t *conn = NULL;
     int clnt_fd = -1;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG_VOID2(w, w->data);
-    sm_ctx = (cl_sm_ctx_t*)w->data;
+    server_ctx = (cl_sm_server_ctx_t*)w->data;
+    sm_ctx = server_ctx->sm_ctx;
 
     do {
-        clnt_fd = accept(sm_ctx->listen_socket_fd, NULL, NULL);
+        clnt_fd = accept(server_ctx->listen_socket_fd, NULL, NULL);
         if (-1 != clnt_fd) {
             /* accepted the new connection */
             SR_LOG_DBG("New connection on fd %d", clnt_fd);
@@ -1074,6 +1003,226 @@ cl_sm_server_watcher_cb(struct ev_loop *loop, ev_io *w, int revents)
 }
 
 /**
+ * @brief Destroys the unix-domain socket server for subscriber connections.
+ */
+static void
+cl_sm_server_cleanup(cl_sm_server_ctx_t *server_ctx)
+{
+    if (NULL != server_ctx) {
+        if (-1 != server_ctx->listen_socket_fd) {
+            close(server_ctx->listen_socket_fd);
+        }
+        if (NULL != server_ctx->socket_path) {
+            unlink(server_ctx->socket_path);
+            free(server_ctx->socket_path);
+        }
+        free(server_ctx->module_name);
+        free(server_ctx);
+    }
+}
+
+/**
+ * @brief Cleans up all server context within the Subscription Manager.
+ */
+static void
+cl_sm_servers_cleanup(cl_sm_ctx_t *sm_ctx)
+{
+    sr_llist_node_t *node = NULL;
+
+    pthread_mutex_lock(&sm_ctx->server_ctx_lock);
+
+    if (NULL != sm_ctx && NULL != sm_ctx->server_ctx_list) {
+        node = sm_ctx->server_ctx_list->first;
+        while (NULL != node) {
+            cl_sm_server_cleanup(node->data);
+            node = node->next;
+        }
+    }
+
+    pthread_mutex_unlock(&sm_ctx->server_ctx_lock);
+}
+
+/**
+ * @brief Sets correct permissions on provided socket directory according to the
+ * data access permission of the YANG module.
+ */
+static int
+cl_sm_set_socket_dir_permissions(const char *socket_dir, const char *module_name)
+{
+    char *data_file_name = NULL;
+    struct stat data_file_stat = { 0, };
+    mode_t mode = 0;
+    int ret = 0, rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG2(socket_dir, module_name);
+
+    /* skip privilege setting for internal 'module name' */
+    if (0 == strcmp(module_name, CL_GLOBAL_SUBSCRIPTIONS_DIR)) {
+        return SR_ERR_OK;
+    }
+
+    /* retrieve module's data filename */
+    rc = sr_get_data_file_name(SR_DATA_SEARCH_DIR, module_name, SR_DS_STARTUP, &data_file_name);
+    CHECK_RC_LOG_RETURN(rc, "Unable to get data file name for module %s.", module_name);
+
+    /* lookup for permissions of the data file */
+    ret = stat(data_file_name, &data_file_stat);
+    free(data_file_name);
+
+    CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "Unable to stat data file for '%s': %s.", module_name, sr_strerror_safe(errno));
+
+    mode = data_file_stat.st_mode;
+    /* set the execute permissions to be the same as write permissions */
+    if (mode & S_IWUSR) {
+        mode |= S_IXUSR;
+    }
+    if (mode & S_IWGRP) {
+        mode |= S_IXGRP;
+    }
+    if (mode & S_IWOTH) {
+        mode |= S_IXOTH;
+    }
+
+    /* change the permissions */
+    ret = chmod(socket_dir, mode);
+    CHECK_ZERO_LOG_RETURN(ret, SR_ERR_UNAUTHORIZED, "Unable to execute chmod on '%s': %s.", socket_dir, sr_strerror_safe(errno));
+
+    /* change the owner (if possible) */
+    ret = chown(socket_dir, data_file_stat.st_uid, data_file_stat.st_gid);
+    if (0 != ret) {
+        /* non-privileged process may not be able to set chown - print warning, since
+         * this may prevent some users otherwise allowed to access the data to connect to our socket.
+         * Correct permissions can be set up at any time using sysrepoctl. */
+        SR_LOG_WRN("Unable to execute chown on '%s': %s.", socket_dir, sr_strerror_safe(errno));
+    }
+
+    return rc;
+}
+
+/**
+ * @brief Gets a filename that can be used for binding a new unix-domain server.
+ * Creates needed directories in SR_CLIENT_SOCKET_DIR if missing.
+ */
+static int
+cl_sm_get_server_socket_filename(cl_sm_ctx_t *sm_ctx, const char *module_name, char **socket_path)
+{
+    char path[PATH_MAX] = { 0, };
+    char pid_str[20] = { 0, };
+    int fd = -1;
+    mode_t old_umask = 0;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG3(sm_ctx, module_name, socket_path);
+
+    /* create the parent directory if does not exist */
+    strncat(path, SR_SUBSCRIPTIONS_SOCKET_DIR, PATH_MAX);
+    strncat(path, "/", PATH_MAX - strlen(path) - 1);
+    if (-1 == access(path, F_OK)) {
+        old_umask = umask(0);
+        mkdir(path, S_IRWXU | S_IRWXG | S_IRWXO);
+        umask(old_umask);
+    }
+
+    /* create the module directory if it does not exist */
+    strncat(path, module_name, PATH_MAX - strlen(path) - 1);
+    strncat(path, "/", PATH_MAX - strlen(path) - 1);
+    if (-1 == access(path, F_OK)) {
+        old_umask = umask(0);
+        mkdir(path, S_IRWXU | S_IRWXG | S_IRWXO);
+        umask(old_umask);
+        rc = cl_sm_set_socket_dir_permissions(path, module_name);
+        CHECK_RC_LOG_RETURN(rc, "Unable to set socket directory permissions for '%s'.", path);
+    }
+
+    /* append PID */
+    snprintf(pid_str, 20, "%d", getpid());
+    strncat(path, pid_str, PATH_MAX - strlen(path) - 1);
+
+    /* append temporary file name part */
+    strncat(path, ".XXXXXX.sock", PATH_MAX - strlen(path) - 1);
+    fd = mkstemps(path, 5);
+    if (-1 != fd) {
+        close(fd);
+        unlink(path);
+    }
+
+    *socket_path = strdup(path);
+    CHECK_NULL_NOMEM_RETURN(*socket_path);
+
+    return rc;
+}
+
+/**
+ * @brief Initializes unix-domain socket server for subscriber connections.
+ */
+static int
+cl_sm_server_init(cl_sm_ctx_t *sm_ctx, const char *module_name, cl_sm_server_ctx_t **server_ctx_p)
+{
+    int ret = 0;
+    struct sockaddr_un addr;
+    mode_t old_umask = 0;
+    cl_sm_server_ctx_t *server_ctx = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG3(sm_ctx, module_name, server_ctx_p);
+
+    /* allocate the context */
+    server_ctx = calloc(1, sizeof(*server_ctx));
+    CHECK_NULL_NOMEM_RETURN(server_ctx);
+
+    server_ctx->sm_ctx = sm_ctx;
+    server_ctx->module_name = strdup(module_name);
+    CHECK_NULL_NOMEM_GOTO(server_ctx->module_name, rc, cleanup);
+
+    /* add the context into server list */
+    rc = sr_llist_add_new(sm_ctx->server_ctx_list, server_ctx);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot add new server context into context list.");
+
+    /* generate socket path */
+    rc = cl_sm_get_server_socket_filename(sm_ctx, module_name, &server_ctx->socket_path);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot generate server socket path.");
+
+    SR_LOG_DBG("Initializing sysrepo subscription server at socket=%s", server_ctx->socket_path);
+
+    /* create listening socket */
+    server_ctx->listen_socket_fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (-1 == server_ctx->listen_socket_fd) {
+        SR_LOG_ERR("Socket create error: %s", sr_strerror_safe(errno));
+        rc = SR_ERR_INIT_FAILED;
+        goto cleanup;
+    }
+
+    /* set socket to nonblocking mode */
+    rc = sr_fd_set_nonblock(server_ctx->listen_socket_fd);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot set socket to nonblocking mode.");
+
+    memset(&addr, 0, sizeof(addr));
+    addr.sun_family = AF_UNIX;
+    strncpy(addr.sun_path, server_ctx->socket_path, sizeof(addr.sun_path)-1);
+
+    /* create the unix-domain socket writable to anyone
+     * (permission are guarded by the directory where the socket is placed) */
+    old_umask = umask(0);
+    ret = bind(server_ctx->listen_socket_fd, (struct sockaddr*)&addr, sizeof(addr));
+    umask(old_umask);
+    CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_INIT_FAILED, cleanup, "Socket bind error: %s", sr_strerror_safe(errno));
+
+    /* start listening on the socket */
+    ret = listen(server_ctx->listen_socket_fd, SOMAXCONN);
+    CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_INIT_FAILED, cleanup, "Socket listen error: %s", sr_strerror_safe(errno));
+
+    /* signal the main thread to re-scan for new server contexts */
+    ev_async_send(sm_ctx->event_loop, &sm_ctx->server_ctx_watcher);
+
+    *server_ctx_p = server_ctx;
+    return SR_ERR_OK;
+
+cleanup:
+    cl_sm_server_cleanup(server_ctx);
+    return rc;
+}
+
+/**
  * @brief Callback called by the event loop watcher when an async request to stop the loop is received.
  */
 static void
@@ -1090,22 +1239,58 @@ cl_sm_stop_cb(struct ev_loop *loop, ev_async *w, int revents)
 }
 
 /**
+ * @brief Callback called by the event loop watcher when an async request to rescan server contexts is received.
+ */
+static void
+cl_sm_server_ctx_change_cb(struct ev_loop *loop, ev_async *w, int revents)
+{
+    cl_sm_ctx_t *sm_ctx = NULL;
+    sr_llist_node_t *node = NULL;
+    cl_sm_server_ctx_t *server_ctx = NULL;
+
+    CHECK_NULL_ARG_VOID3(loop, w, w->data);
+    sm_ctx = (cl_sm_ctx_t*)w->data;
+
+    SR_LOG_DBG_MSG("Server context changed.");
+
+    pthread_mutex_lock(&sm_ctx->server_ctx_lock);
+
+    if (NULL != sm_ctx && NULL != sm_ctx->server_ctx_list) {
+        node = sm_ctx->server_ctx_list->first;
+        while (NULL != node) {
+            server_ctx = (cl_sm_server_ctx_t*)node->data;
+            /* if not already initialized */
+            if (!server_ctx->watcher_started) {
+                /* initialize event watcher for unix-domain server socket */
+                ev_io_init(&server_ctx->server_watcher, cl_sm_server_watcher_cb, server_ctx->listen_socket_fd, EV_READ);
+                server_ctx->server_watcher.data = (void*)server_ctx;
+                ev_io_start(sm_ctx->event_loop, &server_ctx->server_watcher);
+                server_ctx->watcher_started = true;
+            }
+            node = node->next;
+        }
+    }
+
+    pthread_mutex_unlock(&sm_ctx->server_ctx_lock);
+}
+
+/**
  * @brief Runs the event loop in a new thread.
  */
 static void *
 cl_sm_event_loop_threaded(void *sm_ctx_p)
 {
-    if (NULL == sm_ctx_p) {
-        return NULL;
+    cl_sm_ctx_t *sm_ctx = NULL;
+
+    if (NULL != sm_ctx_p) {
+        sm_ctx = (cl_sm_ctx_t*)sm_ctx_p;
+
+        SR_LOG_DBG_MSG("Starting client subscription event loop.");
+
+        ev_run(sm_ctx->event_loop, 0);
+
+        SR_LOG_DBG_MSG("Client subscription event loop finished.");
     }
-
-    cl_sm_ctx_t *sm_ctx = (cl_sm_ctx_t*)sm_ctx_p;
-
-    SR_LOG_DBG_MSG("Starting client subscription event loop.");
-
-    ev_run(sm_ctx->event_loop, 0);
-
-    SR_LOG_DBG_MSG("Client subscription event loop finished.");
 
     return NULL;
 }
@@ -1124,6 +1309,10 @@ cl_sm_init(cl_sm_ctx_t **sm_ctx_p)
     ctx = calloc(1, sizeof(*ctx));
     CHECK_NULL_NOMEM_RETURN(ctx);
 
+    /* initialize linked-list for server contexts */
+    rc = sr_llist_init(&ctx->server_ctx_list);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot initialize linked-list for server contexts.");
+
     /* create binary tree for fast connection lookup by fd,
      * with automatic cleanup when the session is removed from tree */
     rc = sr_btree_init(cl_sm_connection_cmp_fd, cl_sm_connection_cleanup, &ctx->fd_btree);
@@ -1137,13 +1326,11 @@ cl_sm_init(cl_sm_ctx_t **sm_ctx_p)
     rc = sr_btree_init(cl_sm_data_connection_cmp_dst, cl_sm_data_connection_cleanup, &ctx->data_connection_btree);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate binary tree for data connections.");
 
-    /* initialize the mutex for subscriptions */
+    /* initialize the mutexes */
+    ret = pthread_mutex_init(&ctx->server_ctx_lock, NULL);
+    CHECK_ZERO_MSG_GOTO(ret, rc, SR_ERR_INIT_FAILED, cleanup, "Cannot initialize subscriptions server contexts mutex.");
     ret = pthread_mutex_init(&ctx->subscriptions_lock, NULL);
-    CHECK_ZERO_MSG_GOTO(ret, rc, SR_ERR_INIT_FAILED, cleanup, "Cannot initialize subscriptions btree mutex.");
-
-    /* initialize unix-domain server */
-    rc = cl_sm_server_init(ctx);
-    CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot initialize subscription unix-domain server.");
+    CHECK_ZERO_MSG_GOTO(ret, rc, SR_ERR_INIT_FAILED, cleanup, "Cannot initialize subscriptions mutex.");
 
     srand(time(NULL));
 
@@ -1152,16 +1339,17 @@ cl_sm_init(cl_sm_ctx_t **sm_ctx_p)
      * fewer file descriptors, so we are disabling it for now. */
     ctx->event_loop = ev_loop_new((EVBACKEND_ALL ^ EVBACKEND_EPOLL) | EVFLAG_NOENV);
 
-    /* initialize event watcher for unix-domain server socket */
-    ev_io_init(&ctx->server_watcher, cl_sm_server_watcher_cb, ctx->listen_socket_fd, EV_READ);
-    ctx->server_watcher.data = (void*)ctx;
-    ev_io_start(ctx->event_loop, &ctx->server_watcher);
-
     /* initialize event watcher for async stop requests */
     ev_async_init(&ctx->stop_watcher, cl_sm_stop_cb);
     ctx->stop_watcher.data = (void*)ctx;
     ev_async_start(ctx->event_loop, &ctx->stop_watcher);
 
+    /* initialize event watcher for changes in server context */
+    ev_async_init(&ctx->server_ctx_watcher, cl_sm_server_ctx_change_cb);
+    ctx->server_ctx_watcher.data = (void*)ctx;
+    ev_async_start(ctx->event_loop, &ctx->server_ctx_watcher);
+
+    /* start the event loop in a new thread */
     ret = pthread_create(&ctx->event_loop_thread, NULL, cl_sm_event_loop_threaded, ctx);
     CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_INIT_FAILED, cleanup, "Error by creating a new thread: %s", sr_strerror_safe(errno));
 
@@ -1171,43 +1359,78 @@ cl_sm_init(cl_sm_ctx_t **sm_ctx_p)
     return rc;
 
 cleanup:
-    if (NULL != ctx) {
-        if (NULL != ctx->event_loop) {
-            ev_loop_destroy(ctx->event_loop);
-        }
-        cl_sm_server_cleanup(ctx);
-        pthread_mutex_destroy(&ctx->subscriptions_lock);
-        sr_btree_cleanup(ctx->data_connection_btree);
-        sr_btree_cleanup(ctx->subscriptions_btree);
-        sr_btree_cleanup(ctx->fd_btree);
-        free(ctx);
-    }
+    cl_sm_cleanup(ctx, false);
     return rc;
 }
 
 void
-cl_sm_cleanup(cl_sm_ctx_t *sm_ctx)
+cl_sm_cleanup(cl_sm_ctx_t *sm_ctx, bool join)
 {
-    CHECK_NULL_ARG_VOID(sm_ctx);
+    if (NULL != sm_ctx) {
+        if (join) {
+            ev_async_send(sm_ctx->event_loop, &sm_ctx->stop_watcher);
+            pthread_join(sm_ctx->event_loop_thread, NULL);
+        }
+        if (NULL != sm_ctx->event_loop) {
+            ev_loop_destroy(sm_ctx->event_loop);
+        }
+        cl_sm_servers_cleanup(sm_ctx);
 
-    ev_async_send(sm_ctx->event_loop, &sm_ctx->stop_watcher);
-    pthread_join(sm_ctx->event_loop_thread, NULL);
+        sr_btree_cleanup(sm_ctx->data_connection_btree);
+        sr_btree_cleanup(sm_ctx->subscriptions_btree);
+        sr_btree_cleanup(sm_ctx->fd_btree);
+        sr_llist_cleanup(sm_ctx->server_ctx_list);
 
-    ev_loop_destroy(sm_ctx->event_loop);
-    cl_sm_server_cleanup(sm_ctx);
+        pthread_mutex_destroy(&sm_ctx->server_ctx_lock);
+        pthread_mutex_destroy(&sm_ctx->subscriptions_lock);
 
-    pthread_mutex_destroy(&sm_ctx->subscriptions_lock);
-    sr_btree_cleanup(sm_ctx->data_connection_btree);
-    sr_btree_cleanup(sm_ctx->subscriptions_btree);
-    sr_btree_cleanup(sm_ctx->fd_btree);
-
-    free(sm_ctx);
-
-    SR_LOG_INF_MSG("Client Subscription Manager successfully destroyed.");
+        free(sm_ctx);
+        SR_LOG_INF_MSG("Client Subscription Manager successfully destroyed.");
+    }
 }
 
 int
-cl_sm_subscription_init(cl_sm_ctx_t *sm_ctx, cl_sm_subscription_ctx_t **subscription_p)
+cl_sm_get_server_ctx(cl_sm_ctx_t *sm_ctx, const char *module_name, cl_sm_server_ctx_t **server_ctx_p)
+{
+    sr_llist_node_t *node = NULL;
+    cl_sm_server_ctx_t *server_ctx = NULL;
+    bool matched = false;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG2(sm_ctx, server_ctx_p);
+
+    if (NULL == module_name) {
+        /* use internal "fake" module name */
+        module_name = CL_GLOBAL_SUBSCRIPTIONS_DIR;
+    }
+
+    pthread_mutex_lock(&sm_ctx->server_ctx_lock);
+
+    /* find if a server context already exists for this module */
+    node = sm_ctx->server_ctx_list->first;
+    while (NULL != node) {
+        server_ctx = (cl_sm_server_ctx_t*)node->data;
+        if ((NULL != server_ctx->module_name) && (0 == strcmp(server_ctx->module_name, module_name))) {
+            matched = true;
+            break;
+        }
+        node = node->next;
+    }
+
+    if (!matched) {
+        /* start a new server */
+        server_ctx = NULL;
+        rc = cl_sm_server_init(sm_ctx, module_name, &server_ctx);
+    }
+
+    pthread_mutex_unlock(&sm_ctx->server_ctx_lock);
+
+    *server_ctx_p = server_ctx;
+    return rc;
+}
+
+int
+cl_sm_subscription_init(cl_sm_ctx_t *sm_ctx, cl_sm_server_ctx_t *server_ctx, cl_sm_subscription_ctx_t **subscription_p)
 {
     cl_sm_subscription_ctx_t *subscription = NULL;
     int rc = SR_ERR_OK;
@@ -1243,7 +1466,7 @@ cl_sm_subscription_init(cl_sm_ctx_t *sm_ctx, cl_sm_subscription_ctx_t **subscrip
 
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot insert new entry into subscription binary tree (duplicate id?).");
 
-    subscription->delivery_address = sm_ctx->socket_path;
+    subscription->delivery_address = server_ctx->socket_path;
     *subscription_p = subscription;
     return SR_ERR_OK;
 
