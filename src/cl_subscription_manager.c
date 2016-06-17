@@ -1107,6 +1107,7 @@ static int
 cl_sm_get_server_socket_filename(cl_sm_ctx_t *sm_ctx, const char *module_name, char **socket_path)
 {
     char path[PATH_MAX] = { 0, };
+    char pid_str[20] = { 0, };
     int fd = -1;
     mode_t old_umask = 0;
     int rc = SR_ERR_OK;
@@ -1114,7 +1115,7 @@ cl_sm_get_server_socket_filename(cl_sm_ctx_t *sm_ctx, const char *module_name, c
     CHECK_NULL_ARG3(sm_ctx, module_name, socket_path);
 
     /* create the parent directory if does not exist */
-    strncat(path, SR_CLIENT_SOCKET_DIR, PATH_MAX);
+    strncat(path, SR_SUBSCRIPTIONS_SOCKET_DIR, PATH_MAX);
     strncat(path, "/", PATH_MAX - strlen(path) - 1);
     if (-1 == access(path, F_OK)) {
         old_umask = umask(0);
@@ -1133,8 +1134,12 @@ cl_sm_get_server_socket_filename(cl_sm_ctx_t *sm_ctx, const char *module_name, c
         CHECK_RC_LOG_RETURN(rc, "Unable to set socket directory permissions for '%s'.", path);
     }
 
-    /* create temporary file name */
-    strncat(path, "XXXXXX.sock", PATH_MAX - strlen(path) - 1);
+    /* append PID */
+    snprintf(pid_str, 20, "%d", getpid());
+    strncat(path, pid_str, PATH_MAX - strlen(path) - 1);
+
+    /* append temporary file name part */
+    strncat(path, ".XXXXXX.sock", PATH_MAX - strlen(path) - 1);
     fd = mkstemps(path, 5);
     if (-1 != fd) {
         close(fd);
