@@ -1187,7 +1187,7 @@ cl_sm_server_init(cl_sm_ctx_t *sm_ctx, const char *module_name, cl_sm_server_ctx
     /* create listening socket */
     server_ctx->listen_socket_fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (-1 == server_ctx->listen_socket_fd) {
-        SR_LOG_ERR("Socket create error: %s", strerror(errno));
+        SR_LOG_ERR("Socket create error: %s", sr_strerror_safe(errno));
         rc = SR_ERR_INIT_FAILED;
         goto cleanup;
     }
@@ -1205,11 +1205,11 @@ cl_sm_server_init(cl_sm_ctx_t *sm_ctx, const char *module_name, cl_sm_server_ctx
     old_umask = umask(0);
     ret = bind(server_ctx->listen_socket_fd, (struct sockaddr*)&addr, sizeof(addr));
     umask(old_umask);
-    CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_INIT_FAILED, cleanup, "Socket bind error: %s", strerror(errno));
+    CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_INIT_FAILED, cleanup, "Socket bind error: %s", sr_strerror_safe(errno));
 
     /* start listening on the socket */
     ret = listen(server_ctx->listen_socket_fd, SOMAXCONN);
-    CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_INIT_FAILED, cleanup, "Socket listen error: %s", strerror(errno));
+    CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_INIT_FAILED, cleanup, "Socket listen error: %s", sr_strerror_safe(errno));
 
     /* signal the main thread to re-scan for new server contexts */
     ev_async_send(sm_ctx->event_loop, &sm_ctx->server_ctx_watcher);
