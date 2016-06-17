@@ -686,7 +686,7 @@ srcfg_test_editing(void **state)
     sr_session_ctx_t *session = NULL;
     assert_int_equal(SR_ERR_OK, sr_connect("sysrepocfg_test", SR_CONN_DEFAULT, &conn));
     assert_non_null(conn);
-    sr_log_stderr(SR_LL_DBG);
+
     assert_int_equal(SR_ERR_OK, sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &session));
     sr_feature_enable(session, "ietf-ip", "ipv4-non-contiguous-netmasks", false);
 
