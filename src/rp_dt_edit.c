@@ -252,7 +252,7 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, co
     /* unlink nodes and save their parents */
     for (size_t i = 0; i < nodes->number; i++) {
         if (NULL != nodes->set.d[i]->parent) {
-            ly_set_add(parents, nodes->set.d[i]->parent);
+            ly_set_add(parents, nodes->set.d[i]->parent, 0);
         }
 
         ret = sr_lyd_unlink(info, nodes->set.d[i]);
