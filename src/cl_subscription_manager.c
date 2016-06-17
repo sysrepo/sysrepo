@@ -43,10 +43,9 @@
 #define CL_SM_SUBSCRIPTION_ID_MAX_ATTEMPTS 100  /**< Maximum number of attempts to generate unused random subscription id. */
 
 /**
- * @brief Filesystem path prefix for generating temporary socket names used for
- * unix-domain connections between remote sysrepo engines and subscription manager.
+ * @brief Directory local to SR_CLIENT_SOCKET_DIR containing sysrepo-global subscription sockets.
  */
-#define CL_SUBSCRIPTIONS_PATH_PREFIX "/tmp/sysrepo-subscriptions"
+#define CL_GLOBAL_SUBSCRIPTIONS_DIR "_global-subscriptions"
 
 /**
  * @brief Subscription Manager's unix-domain server context.
@@ -1022,6 +1021,9 @@ cl_sm_server_cleanup(cl_sm_server_ctx_t *server_ctx)
     }
 }
 
+/**
+ * @brief Cleans up all server context within the Subscription Manager.
+ */
 static void
 cl_sm_servers_cleanup(cl_sm_ctx_t *sm_ctx)
 {
@@ -1041,12 +1043,117 @@ cl_sm_servers_cleanup(cl_sm_ctx_t *sm_ctx)
 }
 
 /**
+ * @brief Sets correct file permissions on provided socket file or directory.
+ */
+static int
+cl_sm_set_socket_permissions(const char *socket_path, const char *module_name, bool directory)
+{
+    char *data_file_name = NULL;
+    struct stat data_file_stat = { 0, };
+    mode_t mode = 0;
+    int ret = 0, rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG2(socket_path, module_name);
+
+    /* skip privilege setting for internal 'module name' */
+    if (directory && (0 == strcmp(module_name, CL_GLOBAL_SUBSCRIPTIONS_DIR))) {
+        return SR_ERR_OK;
+    }
+
+    /* retrieve module's data filename */
+    rc = sr_get_data_file_name(SR_DATA_SEARCH_DIR, module_name, SR_DS_STARTUP, &data_file_name);
+    CHECK_RC_LOG_RETURN(rc, "Unable to get data file name for module %s.", module_name);
+
+    /* lookup for permissions of the data file */
+    ret = stat(data_file_name, &data_file_stat);
+    free(data_file_name);
+
+    CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "Unable to stat data file for '%s': %s.", module_name, sr_strerror_safe(errno));
+
+    mode = data_file_stat.st_mode;
+    if (directory) {
+        /* set the execute permissions to be the same as write permissions */
+        if (mode & S_IWUSR) {
+            mode |= S_IXUSR;
+        }
+        if (mode & S_IWGRP) {
+            mode |= S_IXGRP;
+        }
+        if (mode & S_IWOTH) {
+            mode |= S_IXOTH;
+        }
+    }
+
+    /* change the permissions */
+    ret = chmod(socket_path, mode);
+    CHECK_ZERO_LOG_RETURN(ret, SR_ERR_UNAUTHORIZED, "Unable to execute chmod on '%s': %s.", socket_path, sr_strerror_safe(errno));
+
+    /* change the owner (if possible) */
+    ret = chown(socket_path, data_file_stat.st_uid, data_file_stat.st_gid);
+    if (0 != ret) {
+        /* non-privileged process may not be able to set chown - print warning, since
+         * this may prevent some users otherwise allowed to access the data to connect to our socket.
+         * Correct permissions can be set up at any time using sysrepoctl. */
+        SR_LOG_WRN("Unable to execute chown on '%s': %s.", socket_path, sr_strerror_safe(errno));
+    }
+
+    return rc;
+}
+
+/**
+ * @brief
+ */
+static int
+cl_sm_get_server_socket_path(cl_sm_ctx_t *sm_ctx, const char *module_name, char **socket_path)
+{
+    char path[PATH_MAX] = { 0, };
+    int fd = -1;
+    mode_t old_umask = 0;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG3(sm_ctx, module_name, socket_path);
+
+    /* create the parent directory if does not exist */
+    strncat(path, SR_CLIENT_SOCKET_DIR, PATH_MAX);
+    strncat(path, "/", PATH_MAX - strlen(path) - 1);
+    if (-1 == access(path, F_OK)) {
+        old_umask = umask(0);
+        mkdir(path, S_IRWXU | S_IRWXG | S_IRWXO);
+        umask(old_umask);
+    }
+
+    /* create the module directory if it does not exist */
+    strncat(path, module_name, PATH_MAX - strlen(path) - 1);
+    strncat(path, "/", PATH_MAX - strlen(path) - 1);
+    if (-1 == access(path, F_OK)) {
+        old_umask = umask(0);
+        mkdir(path, S_IRWXU | S_IRWXG | S_IRWXO);
+        umask(old_umask);
+        rc = cl_sm_set_socket_permissions(path, module_name, true);
+        CHECK_RC_LOG_RETURN(rc, "Unable to set socket directory permissions for '%s'.", path);
+    }
+
+    /* create temporary file name */
+    strncat(path, "XXXXXX.sock", PATH_MAX - strlen(path) - 1);
+    fd = mkstemps(path, 5);
+    if (-1 != fd) {
+        close(fd);
+        unlink(path);
+    }
+
+    *socket_path = strdup(path);
+    CHECK_NULL_NOMEM_RETURN(*socket_path);
+
+    return rc;
+}
+
+/**
  * @brief Initializes unix-domain socket server for subscriber connections.
  */
 static int
 cl_sm_server_init(cl_sm_ctx_t *sm_ctx, const char *module_name, cl_sm_server_ctx_t **server_ctx_p)
 {
-    int path_len = 0, fd_tmp = -1, ret = 0;
+    int ret = 0;
     struct sockaddr_un addr;
     mode_t old_umask = 0;
     cl_sm_server_ctx_t *server_ctx = NULL;
@@ -1062,21 +1169,13 @@ cl_sm_server_init(cl_sm_ctx_t *sm_ctx, const char *module_name, cl_sm_server_ctx
     server_ctx->module_name = strdup(module_name);
     CHECK_NULL_NOMEM_GOTO(server_ctx->module_name, rc, cleanup);
 
+    /* add the context into server list */
     rc = sr_llist_add_new(sm_ctx->server_ctx_list, server_ctx);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot add new server context into context list.");
 
     /* generate socket path */
-    path_len = snprintf(NULL, 0, "%s.%s.%d.XXXXXX.sock", CL_SUBSCRIPTIONS_PATH_PREFIX, module_name, getpid());
-    server_ctx->socket_path = calloc(path_len + 1, sizeof(*server_ctx->socket_path));
-    CHECK_NULL_NOMEM_GOTO(server_ctx->socket_path, rc, cleanup);
-
-    snprintf(server_ctx->socket_path, path_len + 1, "%s.%s.%d.XXXXXX.sock", CL_SUBSCRIPTIONS_PATH_PREFIX, module_name, getpid());
-    unlink(server_ctx->socket_path);
-    fd_tmp = mkstemps(server_ctx->socket_path, 5);
-    if (-1 != fd_tmp) {
-        close(fd_tmp);
-        unlink(server_ctx->socket_path);
-    }
+    rc = cl_sm_get_server_socket_path(sm_ctx, module_name, &server_ctx->socket_path);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot generate server socket path.");
 
     SR_LOG_DBG("Initializing sysrepo subscription server at socket=%s", server_ctx->socket_path);
 
@@ -1096,12 +1195,14 @@ cl_sm_server_init(cl_sm_ctx_t *sm_ctx, const char *module_name, cl_sm_server_ctx
     addr.sun_family = AF_UNIX;
     strncpy(addr.sun_path, server_ctx->socket_path, sizeof(addr.sun_path)-1);
 
-    /* create the unix-domain socket writable to anyone */
+    /* create the unix-domain socket writable to anyone
+     * (permission are guarded by the directory where the socket is placed) */
     old_umask = umask(0);
     ret = bind(server_ctx->listen_socket_fd, (struct sockaddr*)&addr, sizeof(addr));
     umask(old_umask);
     CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_INIT_FAILED, cleanup, "Socket bind error: %s", strerror(errno));
 
+    /* start listening on the socket */
     ret = listen(server_ctx->listen_socket_fd, SOMAXCONN);
     CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_INIT_FAILED, cleanup, "Socket listen error: %s", strerror(errno));
 
@@ -1294,7 +1395,8 @@ cl_sm_get_server_ctx(cl_sm_ctx_t *sm_ctx, const char *module_name, cl_sm_server_
     CHECK_NULL_ARG2(sm_ctx, server_ctx_p);
 
     if (NULL == module_name) {
-        module_name = "internal"; // TODO
+        /* use internal "fake" module name */
+        module_name = CL_GLOBAL_SUBSCRIPTIONS_DIR;
     }
 
     pthread_mutex_lock(&sm_ctx->server_ctx_lock);
