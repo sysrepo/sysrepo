@@ -1043,20 +1043,21 @@ cl_sm_servers_cleanup(cl_sm_ctx_t *sm_ctx)
 }
 
 /**
- * @brief Sets correct file permissions on provided socket file or directory.
+ * @brief Sets correct permissions on provided socket directory according to the
+ * data access permission of the YANG module.
  */
 static int
-cl_sm_set_socket_permissions(const char *socket_path, const char *module_name, bool directory)
+cl_sm_set_socket_dir_permissions(const char *socket_dir, const char *module_name)
 {
     char *data_file_name = NULL;
     struct stat data_file_stat = { 0, };
     mode_t mode = 0;
     int ret = 0, rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG2(socket_path, module_name);
+    CHECK_NULL_ARG2(socket_dir, module_name);
 
     /* skip privilege setting for internal 'module name' */
-    if (directory && (0 == strcmp(module_name, CL_GLOBAL_SUBSCRIPTIONS_DIR))) {
+    if (0 == strcmp(module_name, CL_GLOBAL_SUBSCRIPTIONS_DIR)) {
         return SR_ERR_OK;
     }
 
@@ -1071,40 +1072,39 @@ cl_sm_set_socket_permissions(const char *socket_path, const char *module_name, b
     CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "Unable to stat data file for '%s': %s.", module_name, sr_strerror_safe(errno));
 
     mode = data_file_stat.st_mode;
-    if (directory) {
-        /* set the execute permissions to be the same as write permissions */
-        if (mode & S_IWUSR) {
-            mode |= S_IXUSR;
-        }
-        if (mode & S_IWGRP) {
-            mode |= S_IXGRP;
-        }
-        if (mode & S_IWOTH) {
-            mode |= S_IXOTH;
-        }
+    /* set the execute permissions to be the same as write permissions */
+    if (mode & S_IWUSR) {
+        mode |= S_IXUSR;
+    }
+    if (mode & S_IWGRP) {
+        mode |= S_IXGRP;
+    }
+    if (mode & S_IWOTH) {
+        mode |= S_IXOTH;
     }
 
     /* change the permissions */
-    ret = chmod(socket_path, mode);
-    CHECK_ZERO_LOG_RETURN(ret, SR_ERR_UNAUTHORIZED, "Unable to execute chmod on '%s': %s.", socket_path, sr_strerror_safe(errno));
+    ret = chmod(socket_dir, mode);
+    CHECK_ZERO_LOG_RETURN(ret, SR_ERR_UNAUTHORIZED, "Unable to execute chmod on '%s': %s.", socket_dir, sr_strerror_safe(errno));
 
     /* change the owner (if possible) */
-    ret = chown(socket_path, data_file_stat.st_uid, data_file_stat.st_gid);
+    ret = chown(socket_dir, data_file_stat.st_uid, data_file_stat.st_gid);
     if (0 != ret) {
         /* non-privileged process may not be able to set chown - print warning, since
          * this may prevent some users otherwise allowed to access the data to connect to our socket.
          * Correct permissions can be set up at any time using sysrepoctl. */
-        SR_LOG_WRN("Unable to execute chown on '%s': %s.", socket_path, sr_strerror_safe(errno));
+        SR_LOG_WRN("Unable to execute chown on '%s': %s.", socket_dir, sr_strerror_safe(errno));
     }
 
     return rc;
 }
 
 /**
- * @brief
+ * @brief Gets a filename that can be used for binding a new unix-domain server.
+ * Creates needed directories in SR_CLIENT_SOCKET_DIR if missing.
  */
 static int
-cl_sm_get_server_socket_path(cl_sm_ctx_t *sm_ctx, const char *module_name, char **socket_path)
+cl_sm_get_server_socket_filename(cl_sm_ctx_t *sm_ctx, const char *module_name, char **socket_path)
 {
     char path[PATH_MAX] = { 0, };
     int fd = -1;
@@ -1129,7 +1129,7 @@ cl_sm_get_server_socket_path(cl_sm_ctx_t *sm_ctx, const char *module_name, char 
         old_umask = umask(0);
         mkdir(path, S_IRWXU | S_IRWXG | S_IRWXO);
         umask(old_umask);
-        rc = cl_sm_set_socket_permissions(path, module_name, true);
+        rc = cl_sm_set_socket_dir_permissions(path, module_name);
         CHECK_RC_LOG_RETURN(rc, "Unable to set socket directory permissions for '%s'.", path);
     }
 
@@ -1174,7 +1174,7 @@ cl_sm_server_init(cl_sm_ctx_t *sm_ctx, const char *module_name, cl_sm_server_ctx
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot add new server context into context list.");
 
     /* generate socket path */
-    rc = cl_sm_get_server_socket_path(sm_ctx, module_name, &server_ctx->socket_path);
+    rc = cl_sm_get_server_socket_filename(sm_ctx, module_name, &server_ctx->socket_path);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot generate server socket path.");
 
     SR_LOG_DBG("Initializing sysrepo subscription server at socket=%s", server_ctx->socket_path);
