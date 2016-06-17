@@ -162,6 +162,7 @@ srcfg_ly_init(struct ly_ctx **ly_ctx, const char *module_name)
     struct dirent *ep = NULL;
     char *delim = NULL;
     char schema_filename[PATH_MAX] = { 0, };
+    const struct lys_module *module = NULL;
 
     CHECK_NULL_ARG2(ly_ctx, module_name);
 
@@ -204,7 +205,13 @@ srcfg_ly_init(struct ly_ctx **ly_ctx, const char *module_name)
                 snprintf(schema_filename, PATH_MAX, "%s%s", srcfg_schema_search_dir, ep->d_name);
                 /* load the schema into the context */
                 SR_LOG_DBG("Loading module schema: '%s'.", schema_filename);
-                lys_parse_path(*ly_ctx, schema_filename, fmt);
+                module = lys_parse_path(*ly_ctx, schema_filename, fmt);
+                if (NULL == module) {
+                    continue;
+                }
+                for (uint8_t i = 0; i < module->features_size; i++) {
+                    lys_features_enable(module, module->features[i].name);
+                }
 #if 0
             }
 #endif

@@ -92,9 +92,10 @@ int rp_dt_get_values_wrapper_with_opts(rp_ctx_t *rp_ctx, rp_session_t *rp_sessio
 
 /**
  * @brief Fills the values from the array of nodes. The length of the
- * values array is equal to the count of the nodes in nodes set
+ * values array is equal to the count of the nodes in nodes set.
  * @param [in] nodes
  * @param [out] values
+ * @param [out] value_cnt
  * @return Error code (SR_ERR_OK on success)
  */
 int rp_dt_get_values_from_nodes(struct ly_set *nodes, sr_val_t **values, size_t *value_cnt);

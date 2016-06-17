@@ -245,7 +245,7 @@ rp_dt_get_values_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char 
     rc = dm_get_datatree(rp_ctx->dm_ctx, rp_session->dm_session, data_tree_name, &data_tree);
     if (SR_ERR_OK != rc) {
         if (SR_ERR_NOT_FOUND != rc) {
-            SR_LOG_ERR("Getting data tree failed (%d) for xpath '%s'", rc, xpath);
+            SR_LOG_ERR("Getting data tree failed (%s) for xpath '%s'", strerror(rc), xpath);
         }
         goto cleanup;
     }

@@ -86,7 +86,7 @@
 #define SR_DEAMON_WORK_DIR "/"
 
 /** Sysrepo daemon log level <0 - 4>. */
-#define SR_DAEMON_LOG_LEVEL 3
+#define SR_DAEMON_LOG_LEVEL 2
 
 /** Sysrepo daemon initialization timeout (in seconds). */
 #define SR_DAEMON_INIT_TIMEOUT 10
