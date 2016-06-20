@@ -143,9 +143,10 @@ By default, some [example programs](examples/) are built with sysrepo and severa
 ## Using sysrepo
 By installation, three main parts of sysrepo are installed on the system: **sysrepoctl tool**, **sysrepo library** and **sysrepo daemon**.
 
-#### Using sysrepoctl tool
-sysrepoctl is a tool for the management of YANG modules installed in sysrepo. It can be used for installing of new YANG modules to sysrepo, uninstalling existing ones, listing current state of installed modules, enabling / disabling of YANG features within the module, changing access permissions, or dumping and importing data from / to sysrepo.
-Detailed usage of the tool can be displayed by executing `sysrepoctl -h`. Here are some examples of the usage:
+#### Using sysrepoctl & sysrepocfg tool
+sysrepoctl is a tool for the management of YANG modules installed in sysrepo. It can be used for installing of new YANG modules to sysrepo, uninstalling existing ones, listing current state of installed modules, enabling / disabling of YANG features within the module or changing access permissions.
+sysrepocfg can be used for importing data from / to sysrepo, as well as for editing startup or running configuration of specified module in preferred text editor.
+Detailed usage of the tools can be displayed by executing `sysrepoctl -h` or `sysrepocfg -h`. Here are some examples of the usage:
 
 Install a new module by specifying YANG file, ownership and access permissions:
 
@@ -159,13 +160,13 @@ Enable a feature within a YANG module:
 
 `sysrepoctl --feature-enable=if-mib --module=ietf-interfaces`
 
-Dump startup datastore data of a YANG module into a file in XML format:
+Export (dump) startup datastore data of a YANG module into a file in XML format:
 
-`sysrepoctl --dump=xml --module=ietf-interfaces > dump_file.txt`
+`sysrepocfg --export=dump_file.xml --format=xml --datastore=startup ietf-interfaces`
 
 Import startup datastore data of a YANG module from a file in XML format:
 
-`sysrepoctl --import=xml --module=ietf-interfaces < dump_file.txt`
+`sysrepocfg --import=dump_file.xml --format=xml ietf-interfaces`
 
 
 #### Using sysrepo library in your application

@@ -998,7 +998,7 @@ srctl_print_help()
     printf("Available other-options:\n");
     printf("  -g, --yang             Path to the file with schema in YANG format (--install operation).\n");
     printf("  -n, --yin              Path to the file with schema in YIN format (--install operation).\n");
-    printf("  -m, --module           Name of the module to be operated on (--init, --uninstall, --change, --feature-enable, --feature-disable, --dump, --import operations).\n");
+    printf("  -m, --module           Name of the module to be operated on (--init, --uninstall, --change, --feature-enable, --feature-disable operations).\n");
     printf("  -r, --revision         Revision of the module to be operated on (--init, --uninstall operations).\n");
     printf("  -o, --owner            Owner user and group of the module's data in chown format (--install, --init, --change operations).\n");
     printf("  -p, --permissions      Access permissions of the module's data in chmod format (--install, --init, --change operations).\n");
