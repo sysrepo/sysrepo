@@ -187,6 +187,13 @@ srcfg_test_unsubscribe(const char *module_name)
 }
 
 static int
+srcfg_test_init_datastore_content()
+{
+    createDataTreeIETFinterfacesModule();
+    return 0;
+}
+
+static int
 srcfg_test_set_startup_datastore(void **state)
 {
     createDataTreeIETFinterfacesModule();
@@ -780,10 +787,10 @@ main() {
     const struct CMUnitTest tests[] = {
             cmocka_unit_test_setup_teardown(srcfg_test_version, NULL, NULL),
             cmocka_unit_test_setup_teardown(srcfg_test_help, NULL, NULL),
-            cmocka_unit_test_setup_teardown(srcfg_test_export, NULL, NULL),
+            cmocka_unit_test_setup_teardown(srcfg_test_export, srcfg_test_init_datastore_content, NULL),
             cmocka_unit_test_setup_teardown(srcfg_test_editing, srcfg_test_set_startup_datastore, srcfg_test_teardown),
             cmocka_unit_test_setup_teardown(srcfg_test_editing, srcfg_test_set_running_datastore, srcfg_test_teardown),
-            cmocka_unit_test_setup_teardown(srcfg_test_import, NULL, NULL)
+            cmocka_unit_test_setup_teardown(srcfg_test_import, srcfg_test_init_datastore_content, NULL)
     };
 
     /* create libyang context */
