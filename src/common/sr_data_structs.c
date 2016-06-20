@@ -24,6 +24,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <sys/stat.h>
 
 
 #ifdef USE_AVL_LIB
