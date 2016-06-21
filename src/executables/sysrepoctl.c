@@ -61,13 +61,17 @@ typedef struct srctl_module_owner_s {
 
 static char *srctl_schema_search_dir = SR_SCHEMA_SEARCH_DIR;
 static char *srctl_data_search_dir = SR_DATA_SEARCH_DIR;
+static char *srctl_internal_schema_search_dir = SR_INTERNAL_SCHEMA_SEARCH_DIR;
+static char *srctl_internal_data_search_dir = SR_INTERNAL_DATA_SEARCH_DIR;
 static bool custom_repository = false;
+
 const char * const data_files_ext[] = { SR_STARTUP_FILE_EXT,
                                         SR_RUNNING_FILE_EXT,
                                         SR_STARTUP_FILE_EXT SR_LOCK_FILE_EXT,
                                         SR_RUNNING_FILE_EXT SR_LOCK_FILE_EXT,
                                         SR_PERSIST_FILE_EXT,
                                         SR_CANDIDATE_FILE_EXT SR_LOCK_FILE_EXT};
+
 
 
 /**
@@ -426,7 +430,20 @@ srctl_change(const char *module_name, const char *owner, const char *permissions
 static void
 srctl_ly_log_cb(LY_LOG_LEVEL level, const char *msg, const char *path)
 {
-    return;
+    switch (level) {
+        case LY_LLERR:
+            SR_LOG_ERR("libyang: %s", msg);
+            break;
+        case LY_LLWRN:
+            SR_LOG_WRN("libyang: %s", msg);
+            break;
+        case LY_LLVRB:
+            SR_LOG_INF("libyang: %s", msg);
+            break;
+        case LY_LLDBG:
+            SR_LOG_DBG("libyang: %s", msg);
+            break;
+    }
 }
 
 /**
@@ -576,6 +593,8 @@ srctl_uninstall(const char *module_name, const char *revision)
          }
     }
 
+    /* TODO: update dependencies */
+
     if (!custom_repository) {
         /* disable in sysrepo */
         rc = srctl_open_session(&connection, &session);
@@ -604,7 +623,7 @@ fail:
     printf("Uninstall operation cancelled.\n");
 
 cleanup:
-    if (ly_ctx) {
+   if (ly_ctx) {
         ly_ctx_destroy(ly_ctx, NULL);
     }
     return rc;
@@ -838,6 +857,8 @@ srctl_install(const char *yang, const char *yin, const char *owner, const char *
         goto fail_data;
     }
 
+    /* TODO: update dependencies */
+
     /* Notify sysrepo about the change */
     if (!custom_repository) {
         printf("Notifying sysrepo about the change ...\n");
@@ -920,6 +941,8 @@ srctl_init(const char *module_name, const char *revision, const char *owner, con
         }
         break;
     }
+
+    /* TODO: update dependencies */
 
     printf("Init operation completed successfully.\n");
     rc = SR_ERR_OK;
@@ -1108,6 +1131,7 @@ main(int argc, char* argv[])
     char *owner = NULL, *permissions = NULL;
     char *search_dir = NULL;
     char local_schema_search_dir[PATH_MAX] = { 0, }, local_data_search_dir[PATH_MAX] = { 0, };
+    char local_internal_schema_search_dir[PATH_MAX] = { 0, }, local_internal_data_search_dir[PATH_MAX] = { 0, };
     int rc = SR_ERR_OK;
 
     struct option longopts[] = {
@@ -1186,10 +1210,16 @@ main(int argc, char* argv[])
                 /* 'hidden' option - custom repository location */
                 strncpy(local_schema_search_dir, optarg, PATH_MAX - 6);
                 strncpy(local_data_search_dir, optarg, PATH_MAX - 6);
+                strncpy(local_internal_schema_search_dir, optarg, PATH_MAX - 15);
+                strncpy(local_internal_data_search_dir, optarg, PATH_MAX - 15);
                 strcat(local_schema_search_dir, "/yang/");
                 strcat(local_data_search_dir, "/data/");
+                strcat(local_internal_schema_search_dir, "/yang/internal/");
+                strcat(local_internal_data_search_dir, "/data/internal/");
                 srctl_schema_search_dir = local_schema_search_dir;
                 srctl_data_search_dir = local_data_search_dir;
+                srctl_internal_schema_search_dir = local_internal_schema_search_dir;
+                srctl_internal_data_search_dir = local_internal_data_search_dir;
                 custom_repository = true;
                 break;
             case ':':
@@ -1205,8 +1235,12 @@ main(int argc, char* argv[])
         }
     }
 
+    /* logging */
+    sr_log_stderr(SR_LL_ERR);
+    sr_log_syslog(SR_LL_NONE);
     ly_set_log_clb(srctl_ly_log_cb, 0);
 
+    /* select operation */
     switch (operation) {
         case 'l':
             rc = srctl_list_modules();

@@ -61,6 +61,8 @@ typedef enum srcfg_datastore_e {
 
 /* repository */
 static char *srcfg_schema_search_dir = SR_SCHEMA_SEARCH_DIR;
+static char *srcfg_internal_schema_search_dir = SR_INTERNAL_SCHEMA_SEARCH_DIR;
+static char *srcfg_internal_data_search_dir = SR_INTERNAL_DATA_SEARCH_DIR;
 static bool srcfg_custom_repository = false;
 
 /* sysrepo connection */
@@ -1072,7 +1074,8 @@ main(int argc, char* argv[])
     LYD_FORMAT format = LYD_XML;
     bool enabled = false, keep = false, permanent = false;
     int log_level = -1;
-    char local_schema_search_dir[PATH_MAX] = { 0, };
+    char local_schema_search_dir[PATH_MAX] = { 0, }, local_internal_schema_search_dir[PATH_MAX] = { 0, };
+    char local_internal_data_search_dir[PATH_MAX] = { 0, };
     int rc = SR_ERR_OK;
 
     struct option longopts[] = {
@@ -1144,8 +1147,14 @@ main(int argc, char* argv[])
                 /* 'hidden' option - custom repository location */
                 if (NULL != optarg) {
                     strncpy(local_schema_search_dir, optarg, PATH_MAX - 6);
+                    strncpy(local_internal_schema_search_dir, optarg, PATH_MAX - 15);
+                    strncpy(local_internal_data_search_dir, optarg, PATH_MAX - 15);
                     strcat(local_schema_search_dir, "/yang/");
+                    strcat(local_internal_schema_search_dir, "/yang/internal/");
+                    strcat(local_internal_data_search_dir, "/data/internal/");
                     srcfg_schema_search_dir = local_schema_search_dir;
+                    srcfg_internal_schema_search_dir = local_internal_schema_search_dir;
+                    srcfg_internal_data_search_dir = local_internal_data_search_dir;
                     srcfg_custom_repository = true;
                 }
                 break;
