@@ -9,6 +9,13 @@ compiler:
   - gcc
   - clang
 
+matrix:
+    include:
+        - os: linux
+        dist: trusty
+        sudo: required
+        - os: osx
+
 cache:
   pip: true
   directories:
