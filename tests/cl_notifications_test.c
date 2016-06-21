@@ -154,7 +154,7 @@ cl_get_changes_create_test(void **state)
     rc = sr_commit(session);
     assert_int_equal(rc, SR_ERR_OK);
 
-    clock_gettime(CLOCK_REALTIME, &ts);
+    sr_clock_get_time(CLOCK_REALTIME, &ts);
     ts.tv_sec += COND_WAIT_SEC;
     pthread_cond_timedwait(&changes.cv, &changes.mutex, &ts);
 
@@ -229,7 +229,7 @@ cl_get_changes_modified_test(void **state)
     rc = sr_commit(session);
     assert_int_equal(rc, SR_ERR_OK);
 
-    clock_gettime(CLOCK_REALTIME, &ts);
+    sr_clock_get_time(CLOCK_REALTIME, &ts);
     ts.tv_sec += COND_WAIT_SEC;
     pthread_cond_timedwait(&changes.cv, &changes.mutex, &ts);
 
@@ -292,7 +292,7 @@ cl_get_changes_deleted_test(void **state)
     rc = sr_commit(session);
     assert_int_equal(rc, SR_ERR_OK);
 
-    clock_gettime(CLOCK_REALTIME, &ts);
+    sr_clock_get_time(CLOCK_REALTIME, &ts);
     ts.tv_sec += COND_WAIT_SEC;
     pthread_cond_timedwait(&changes.cv, &changes.mutex, &ts);
 
@@ -388,7 +388,7 @@ cl_get_changes_moved_test(void **state)
     rc = sr_commit(session);
     assert_int_equal(rc, SR_ERR_OK);
 
-    clock_gettime(CLOCK_REALTIME, &ts);
+    sr_clock_get_time(CLOCK_REALTIME, &ts);
     ts.tv_sec += COND_WAIT_SEC;
     pthread_cond_timedwait(&changes.cv, &changes.mutex, &ts);
 
@@ -567,7 +567,7 @@ cl_whole_module_changes(void **state)
     rc = sr_commit(session);
     assert_int_equal(rc, SR_ERR_OK);
 
-    clock_gettime(CLOCK_REALTIME, &ts);
+    sr_clock_get_time(CLOCK_REALTIME, &ts);
     ts.tv_sec += COND_WAIT_SEC;
     pthread_cond_timedwait(&changes.cv, &changes.mutex, &ts);
 
@@ -662,7 +662,7 @@ cl_invalid_xpath_test(void **state)
     rc = sr_commit(session);
     assert_int_equal(rc, SR_ERR_OK);
 
-    clock_gettime(CLOCK_REALTIME, &ts);
+    sr_clock_get_time(CLOCK_REALTIME, &ts);
     ts.tv_sec += COND_WAIT_SEC;
     pthread_cond_timedwait(&changes.cv, &changes.mutex, &ts);
 
@@ -733,7 +733,7 @@ cl_children_subscription_test(void **state)
     rc = sr_commit(session);
     assert_int_equal(rc, SR_ERR_OK);
 
-    clock_gettime(CLOCK_REALTIME, &ts);
+    sr_clock_get_time(CLOCK_REALTIME, &ts);
     ts.tv_sec += COND_WAIT_SEC;
     pthread_cond_timedwait(&changes.cv, &changes.mutex, &ts);
 
