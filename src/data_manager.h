@@ -54,9 +54,7 @@ typedef struct dm_data_info_s{
     bool rdonly_copy;                   /**< node member is only copy of pointer it must not be freed nor modified */
     const struct lys_module *module;    /**< pointer to schema file*/
     struct lyd_node *node;              /**< data tree */
-#ifdef HAVE_STAT_ST_MTIM
-    struct timespec timestamp;          /**< timestamp of this copy */
-#endif
+    struct timespec timestamp;          /**< timestamp of this copy (used only if HAVE_ST_MTIM is defined) */
     bool modified;                      /**< flag denoting whether a change has been made*/
 }dm_data_info_t;
 

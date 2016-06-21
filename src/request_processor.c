@@ -1904,7 +1904,7 @@ rp_msg_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
     if (0 == rp_ctx->active_threads) {
         /* there is no active (non-sleeping) thread - if this is happening too
          * frequently, instruct the threads to spin before going to sleep */
-        clock_gettime(CLOCK_MONOTONIC, &now);
+        sr_clock_get_time(CLOCK_MONOTONIC, &now);
         uint64_t diff = (1000000000L * (now.tv_sec - rp_ctx->last_thread_wakeup.tv_sec)) + now.tv_nsec - rp_ctx->last_thread_wakeup.tv_nsec;
         if (diff < RP_THREAD_SPIN_TIMEOUT) {
             /* a thread has been woken up in less than RP_THREAD_SPIN_TIMEOUT, increase the spin */

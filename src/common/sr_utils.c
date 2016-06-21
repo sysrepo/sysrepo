@@ -1183,3 +1183,22 @@ sr_set_socket_dir_permissions(const char *socket_dir, const char *module_name, b
 
     return rc;
 }
+
+int
+sr_clock_get_time(clockid_t clock_id, struct timespec *ts)
+{
+    CHECK_NULL_ARG(ts);
+#ifdef __APPLE__
+    /* OS X */
+    clock_serv_t cclock = {0};
+    mach_timespec_t mts = {0};
+    host_get_clock_service(mach_host_self(), clock_id, &cclock);
+    clock_get_time(cclock, &mts);
+    mach_port_deallocate(mach_task_self(), cclock);
+    ts->tv_sec = mts.tv_sec;
+    ts->tv_nsec = mts.tv_nsec;
+    return 0;
+#else
+    return clock_gettime(clock_id, ts);
+#endif
+}
