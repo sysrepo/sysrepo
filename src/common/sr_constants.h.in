@@ -94,6 +94,9 @@
 /** Sysrepo subscriptions socket directory. */
 #define SR_SUBSCRIPTIONS_SOCKET_DIR "@SUBSCRIPTIONS_SOCKET_DIR@"
 
+/** Directory local to SR_SUBSCRIPTIONS_SOCKET_DIR containing sysrepo-global subscription sockets. */
+#define SR_GLOBAL_SUBSCRIPTIONS_SUBDIR "_global-subscriptions"
+
 /** Maximum size of a GPB message. */
 #define SR_MAX_MSG_SIZE ((SIZE_MAX < UINT32_MAX) ? SIZE_MAX : UINT32_MAX)
 

@@ -43,11 +43,6 @@
 #define CL_SM_SUBSCRIPTION_ID_MAX_ATTEMPTS 100  /**< Maximum number of attempts to generate unused random subscription id. */
 
 /**
- * @brief Directory local to SR_CLIENT_SOCKET_DIR containing sysrepo-global subscription sockets.
- */
-#define CL_GLOBAL_SUBSCRIPTIONS_DIR "_global-subscriptions"
-
-/**
  * @brief Subscription Manager's unix-domain server context.
  */
 typedef struct cl_sm_server_ctx_s {
@@ -1043,63 +1038,6 @@ cl_sm_servers_cleanup(cl_sm_ctx_t *sm_ctx)
 }
 
 /**
- * @brief Sets correct permissions on provided socket directory according to the
- * data access permission of the YANG module.
- */
-static int
-cl_sm_set_socket_dir_permissions(const char *socket_dir, const char *module_name)
-{
-    char *data_file_name = NULL;
-    struct stat data_file_stat = { 0, };
-    mode_t mode = 0;
-    int ret = 0, rc = SR_ERR_OK;
-
-    CHECK_NULL_ARG2(socket_dir, module_name);
-
-    /* skip privilege setting for internal 'module name' */
-    if (0 == strcmp(module_name, CL_GLOBAL_SUBSCRIPTIONS_DIR)) {
-        return SR_ERR_OK;
-    }
-
-    /* retrieve module's data filename */
-    rc = sr_get_data_file_name(SR_DATA_SEARCH_DIR, module_name, SR_DS_STARTUP, &data_file_name);
-    CHECK_RC_LOG_RETURN(rc, "Unable to get data file name for module %s.", module_name);
-
-    /* lookup for permissions of the data file */
-    ret = stat(data_file_name, &data_file_stat);
-    free(data_file_name);
-
-    CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "Unable to stat data file for '%s': %s.", module_name, sr_strerror_safe(errno));
-
-    mode = data_file_stat.st_mode;
-    /* set the execute permissions to be the same as write permissions */
-    if (mode & S_IWUSR) {
-        mode |= S_IXUSR;
-    }
-    if (mode & S_IWGRP) {
-        mode |= S_IXGRP;
-    }
-    if (mode & S_IWOTH) {
-        mode |= S_IXOTH;
-    }
-
-    /* change the permissions */
-    ret = chmod(socket_dir, mode);
-    CHECK_ZERO_LOG_RETURN(ret, SR_ERR_UNAUTHORIZED, "Unable to execute chmod on '%s': %s.", socket_dir, sr_strerror_safe(errno));
-
-    /* change the owner (if possible) */
-    ret = chown(socket_dir, data_file_stat.st_uid, data_file_stat.st_gid);
-    if (0 != ret) {
-        /* non-privileged process may not be able to set chown - print warning, since
-         * this may prevent some users otherwise allowed to access the data to connect to our socket.
-         * Correct permissions can be set up at any time using sysrepoctl. */
-        SR_LOG_WRN("Unable to execute chown on '%s': %s.", socket_dir, sr_strerror_safe(errno));
-    }
-
-    return rc;
-}
-
-/**
  * @brief Gets a filename that can be used for binding a new unix-domain server.
  * Creates needed directories in SR_CLIENT_SOCKET_DIR if missing.
  */
@@ -1130,7 +1068,7 @@ cl_sm_get_server_socket_filename(cl_sm_ctx_t *sm_ctx, const char *module_name, c
         old_umask = umask(0);
         mkdir(path, S_IRWXU | S_IRWXG | S_IRWXO);
         umask(old_umask);
-        rc = cl_sm_set_socket_dir_permissions(path, module_name);
+        rc = sr_set_socket_dir_permissions(path, module_name, false);
         CHECK_RC_LOG_RETURN(rc, "Unable to set socket directory permissions for '%s'.", path);
     }
 
@@ -1401,7 +1339,7 @@ cl_sm_get_server_ctx(cl_sm_ctx_t *sm_ctx, const char *module_name, cl_sm_server_
 
     if (NULL == module_name) {
         /* use internal "fake" module name */
-        module_name = CL_GLOBAL_SUBSCRIPTIONS_DIR;
+        module_name = SR_GLOBAL_SUBSCRIPTIONS_SUBDIR;
     }
 
     pthread_mutex_lock(&sm_ctx->server_ctx_lock);

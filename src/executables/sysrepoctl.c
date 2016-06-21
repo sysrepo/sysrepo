@@ -335,10 +335,46 @@ srctl_data_files_apply(const char *module_name, int (*command) (const char *, vo
 }
 
 /**
+ * @brief Updates subscription socket directory permissions according to the file
+ * permissions set on the data file.
+ */
+static int
+srctl_update_socket_dir_permissions(const char *module_name)
+{
+    char path[PATH_MAX] = { 0, };
+    mode_t old_umask = 0;
+    int rc = SR_ERR_OK;
+
+    /* create the parent directory if it does not exist */
+    strncat(path, SR_SUBSCRIPTIONS_SOCKET_DIR, PATH_MAX);
+    strncat(path, "/", PATH_MAX - strlen(path) - 1);
+    if (-1 == access(path, F_OK)) {
+        old_umask = umask(0);
+        mkdir(path, S_IRWXU | S_IRWXG | S_IRWXO);
+        umask(old_umask);
+    }
+
+    /* create the module directory if it does not exist */
+    strncat(path, module_name, PATH_MAX - strlen(path) - 1);
+    strncat(path, "/", PATH_MAX - strlen(path) - 1);
+    if (-1 == access(path, F_OK)) {
+        old_umask = umask(0);
+        mkdir(path, S_IRWXU | S_IRWXG | S_IRWXO);
+        umask(old_umask);
+    }
+
+    /* set the permissions */
+    rc = sr_set_socket_dir_permissions(path, module_name, true);
+    CHECK_RC_LOG_RETURN(rc, "Unable to set socket directory permissions for '%s'.", path);
+
+    return rc;
+}
+
+/**
  * @brief Change owner and/or permissions of the given module.
  */
 static int
-srctl_module_change(const char *module_name, const char *owner, const char *permissions)
+srctl_module_change_permissions(const char *module_name, const char *owner, const char *permissions)
 {
     int ret = 0;
     char *colon = NULL;
@@ -389,6 +425,12 @@ srctl_module_change(const char *module_name, const char *owner, const char *perm
         }
     }
 
+    ret = srctl_update_socket_dir_permissions(module_name);
+    if (0 != ret) {
+        fprintf(stderr, "Error: Unable to update socket directory permissions for module '%s'.\n", module_name);
+        goto fail;
+    }
+
     return SR_ERR_OK;
 
 fail:
@@ -411,7 +453,7 @@ srctl_change(const char *module_name, const char *owner, const char *permissions
     }
 
     printf("Changing ownership/permissions of the module '%s'.\n", module_name);
-    int rc = srctl_module_change(module_name, owner, permissions);
+    int rc = srctl_module_change_permissions(module_name, owner, permissions);
     if (SR_ERR_OK == rc) {
         printf("Operation completed successfully.\n");
     } else {
@@ -750,7 +792,7 @@ srctl_data_install(const struct lys_module *module, const char *owner, const cha
             goto fail;
         }
 
-        rc = srctl_module_change(module->name, owner, permissions);
+        rc = srctl_module_change_permissions(module->name, owner, permissions);
         if (SR_ERR_OK != rc) {
             goto fail;
         }
