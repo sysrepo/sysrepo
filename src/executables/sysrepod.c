@@ -1,5 +1,5 @@
 /**
- * @file daemon.c
+ * @file sysrepod.c
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
  * @brief Sysrepo daemon source file.
  *

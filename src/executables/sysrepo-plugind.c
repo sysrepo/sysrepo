@@ -33,8 +33,8 @@
 
 #include "sr_common.h"
 
-#define SR_PLUGIN_INIT_FN_NAME     "sr_plugin_init_cb"
-#define SR_PLUGIN_CLEANUP_FN_NAME  "sr_plugin_cleanup_cb"
+#define SR_PLUGIN_INIT_FN_NAME     "sr_plugin_init_cb"     /**< Name of the plugin initialization function. */
+#define SR_PLUGIN_CLEANUP_FN_NAME  "sr_plugin_cleanup_cb"  /**< Name of the plugin cleanup function. */
 
 /**
  * @brief Sysrepo plugin initialization callback.

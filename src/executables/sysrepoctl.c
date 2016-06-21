@@ -363,7 +363,7 @@ srctl_update_socket_dir_permissions(const char *module_name)
         umask(old_umask);
     }
 
-    /* set the permissions */
+    /* set the permissions on module's socket directory */
     rc = sr_set_socket_dir_permissions(path, module_name, true);
     CHECK_RC_LOG_RETURN(rc, "Unable to set socket directory permissions for '%s'.", path);
 
