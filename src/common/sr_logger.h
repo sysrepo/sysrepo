@@ -69,6 +69,7 @@
 extern volatile uint8_t sr_ll_stderr;       /**< Holds current level of stderr debugs. */
 extern volatile uint8_t sr_ll_syslog;       /**< Holds current level of syslog debugs. */
 extern volatile sr_log_cb sr_log_callback;  /**< Holds pointer to logging callback, if set. */
+extern __thread char strerror_buf [MAX_STRERROR_LEN]; /**< thread local buffer for strerror_r message */
 
 #define SR_LOG__LL_STR(LL) \
     ((SR_LL_DBG == LL) ? "DBG" : \
@@ -168,6 +169,14 @@ void sr_logger_cleanup();
  * @param[in] format Format message.
  */
 void sr_log_to_cb(sr_log_level_t level, const char *format, ...);
+
+/**
+ * @brief Prints string representation of errno using strerror_r and returns pointer
+ * to the thread local buffer.
+ * @param [in] err_code
+ * @return Pointer to error message (do not free)
+ */
+const char *sr_strerror_safe(int err_code);
 
 /**@} logger */
 

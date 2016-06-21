@@ -150,7 +150,7 @@ rp_dt_find_nodes_with_opts(const dm_ctx_t *dm_ctx, dm_session_t *dm_session, rp_
         }
         /* append node to result if it is in chosen range*/
         if (index >= offset) {
-            if (-1 == ly_set_add(*nodes, get_items_ctx->nodes->set.d[index])) {
+            if (-1 == ly_set_add(*nodes, get_items_ctx->nodes->set.d[index], LY_SET_OPT_USEASLIST)) {
                 SR_LOG_ERR_MSG("Adding to the result nodes failed");
                 ly_set_free(*nodes);
                 *nodes = NULL;
@@ -198,13 +198,12 @@ rp_dt_match_change(const struct lys_node *selection_node, const struct lys_node 
 }
 
 int
-rp_dt_find_changes(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t *c_ctx,
+rp_dt_find_changes(dm_ctx_t *dm_ctx, dm_session_t *session, dm_model_subscription_t *ms,
         rp_dt_change_ctx_t *change_ctx, const char *xpath, size_t offset, size_t limit, sr_list_t **changes)
 {
     CHECK_NULL_ARG(dm_ctx);
-    CHECK_NULL_ARG5(session, c_ctx, change_ctx, xpath, changes);
+    CHECK_NULL_ARG5(session, ms, change_ctx, xpath, changes);
     int rc = SR_ERR_OK;
-    dm_model_subscription_t *ms = NULL;
     bool cache_hit = false;
     char *module_name = NULL;
 
@@ -221,20 +220,6 @@ rp_dt_find_changes(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t 
     }
 
     SR_LOG_DBG("Get changes: %s limit:%zu offset:%zu cache %s", xpath, limit, offset, cache_hit ? "hit" : "miss");
-
-    rc = sr_copy_first_ns(xpath, &module_name);
-    CHECK_RC_MSG_RETURN(rc, "Copy first ns failed");
-
-    dm_model_subscription_t lookup = {0};
-    rc = dm_get_module(dm_ctx, module_name, NULL, &lookup.module);
-    CHECK_RC_LOG_GOTO(rc, cleanup, "Dm get module failed for %s", module_name);
-
-    ms = sr_btree_search(c_ctx->subscriptions, &lookup);
-    if (NULL == ms) {
-        SR_LOG_ERR("Module subscription not found for module %s", lookup.module->name);
-        rc = SR_ERR_INTERNAL;
-        goto cleanup;
-    }
 
     size_t cnt = 0; /* number of returned changes (in offset limit range) */
     size_t index = cache_hit ? change_ctx->offset : 0; /* number of matching changes */

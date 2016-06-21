@@ -24,6 +24,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <sys/stat.h>
 
 
 #ifdef USE_AVL_LIB
@@ -657,7 +658,7 @@ sr_locking_set_lock_file_open(sr_locking_set_t *lock_ctx, char *filename, bool w
                 SR_LOG_ERR("Insufficient permissions to lock the file '%s'", filename);
                 rc = SR_ERR_UNAUTHORIZED;
             } else {
-                SR_LOG_ERR("Error by opening the file '%s': %s", filename, strerror(errno));
+                SR_LOG_ERR("Error by opening the file '%s': %s", filename, sr_strerror_safe(errno));
                 rc = SR_ERR_INTERNAL;
             }
             goto cleanup;
@@ -769,7 +770,7 @@ sr_locking_set_unlock_close_file(sr_locking_set_t* lock_ctx, char* filename)
 
     rc = close(found_item->fd);
     if (SR_ERR_OK != rc) {
-        SR_LOG_WRN("Close failed %s", strerror(errno));
+        SR_LOG_WRN("Close failed %s", sr_strerror_safe(errno));
     }
     found_item->locked = false;
     found_item->fd = -1;
@@ -803,7 +804,7 @@ sr_locking_set_unlock_close_fd(sr_locking_set_t* lock_ctx, int fd)
 
     rc = close(found_item->fd);
     if (SR_ERR_OK != rc) {
-        SR_LOG_WRN("Close failed %s", strerror(errno));
+        SR_LOG_WRN("Close failed %s", sr_strerror_safe(errno));
     }
 
     /* remove from index tree */

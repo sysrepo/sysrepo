@@ -159,18 +159,6 @@ typedef void (*cm_signal_cb)(cm_ctx_t *cm_ctx, int signum);
  */
 int cm_watch_signal(cm_ctx_t *cm_ctx, int signum, cm_signal_cb callback);
 
-/**
- * @brief Sends a message to the Request Processor after specified timeout.
- *
- * @param[in] cm_ctx Connection Manager context.
- * @param[in] session Connection Manager session context.
- * @param[in] msg Message to be delivered.
- * @param[in] timeout Timeout after which the message will be delivered.
- *
- * @return Error code (SR_ERR_OK on success).
- */
-int cm_delayed_msg_process(cm_ctx_t *cm_ctx, cm_session_ctx_t *session, Sr__Msg *msg, double timeout);
-
 /**@} cm */
 
 #endif /* SRC_CONNECTION_MANAGER_H_ */

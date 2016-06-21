@@ -339,10 +339,46 @@ srctl_data_files_apply(const char *module_name, int (*command) (const char *, vo
 }
 
 /**
+ * @brief Updates subscription socket directory permissions according to the file
+ * permissions set on the data file.
+ */
+static int
+srctl_update_socket_dir_permissions(const char *module_name)
+{
+    char path[PATH_MAX] = { 0, };
+    mode_t old_umask = 0;
+    int rc = SR_ERR_OK;
+
+    /* create the parent directory if it does not exist */
+    strncat(path, SR_SUBSCRIPTIONS_SOCKET_DIR, PATH_MAX);
+    strncat(path, "/", PATH_MAX - strlen(path) - 1);
+    if (-1 == access(path, F_OK)) {
+        old_umask = umask(0);
+        mkdir(path, S_IRWXU | S_IRWXG | S_IRWXO);
+        umask(old_umask);
+    }
+
+    /* create the module directory if it does not exist */
+    strncat(path, module_name, PATH_MAX - strlen(path) - 1);
+    strncat(path, "/", PATH_MAX - strlen(path) - 1);
+    if (-1 == access(path, F_OK)) {
+        old_umask = umask(0);
+        mkdir(path, S_IRWXU | S_IRWXG | S_IRWXO);
+        umask(old_umask);
+    }
+
+    /* set the permissions */
+    rc = sr_set_socket_dir_permissions(path, module_name, true);
+    CHECK_RC_LOG_RETURN(rc, "Unable to set socket directory permissions for '%s'.", path);
+
+    return rc;
+}
+
+/**
  * @brief Change owner and/or permissions of the given module.
  */
 static int
-srctl_module_change(const char *module_name, const char *owner, const char *permissions)
+srctl_module_change_permissions(const char *module_name, const char *owner, const char *permissions)
 {
     int ret = 0;
     char *colon = NULL;
@@ -393,6 +429,12 @@ srctl_module_change(const char *module_name, const char *owner, const char *perm
         }
     }
 
+    ret = srctl_update_socket_dir_permissions(module_name);
+    if (0 != ret) {
+        fprintf(stderr, "Error: Unable to update socket directory permissions for module '%s'.\n", module_name);
+        goto fail;
+    }
+
     return SR_ERR_OK;
 
 fail:
@@ -415,7 +457,7 @@ srctl_change(const char *module_name, const char *owner, const char *permissions
     }
 
     printf("Changing ownership/permissions of the module '%s'.\n", module_name);
-    int rc = srctl_module_change(module_name, owner, permissions);
+    int rc = srctl_module_change_permissions(module_name, owner, permissions);
     if (SR_ERR_OK == rc) {
         printf("Operation completed successfully.\n");
     } else {
@@ -464,7 +506,7 @@ srctl_ly_init(struct ly_ctx **ly_ctx)
 
     dp = opendir(srctl_schema_search_dir);
     if (NULL == dp) {
-        fprintf(stderr, "Error by opening schema directory: %s.\n", strerror(errno));
+        fprintf(stderr, "Error by opening schema directory: %s.\n", sr_strerror_safe(errno));
         return SR_ERR_INTERNAL;
     }
     while (NULL != (ep = readdir(dp))) {
@@ -769,7 +811,7 @@ srctl_data_install(const struct lys_module *module, const char *owner, const cha
             goto fail;
         }
 
-        rc = srctl_module_change(module->name, owner, permissions);
+        rc = srctl_module_change_permissions(module->name, owner, permissions);
         if (SR_ERR_OK != rc) {
             goto fail;
         }
@@ -989,83 +1031,6 @@ srctl_feature_change(const char *module_name, const char *feature_name, bool ena
 }
 
 /**
- * @brief Performs the --dump and --import operations.
- */
-static int
-srctl_dump_import(const char *module_name, const char *format, bool dump)
-{
-    struct ly_ctx *ly_ctx = NULL;
-    struct lyd_node *data_tree = NULL;
-    char data_filename[PATH_MAX] = { 0, };
-    int fd = 0, ret = 0, rc = SR_ERR_OK;
-    LYD_FORMAT dump_format = LYD_XML;
-
-    if (NULL == module_name) {
-        fprintf(stderr, "Error: Module must be specified for --dump operation.\n");
-        return SR_ERR_INVAL_ARG;
-    }
-    if (NULL != format) {
-        if (0 == strcmp(format, "xml")) {
-            dump_format = LYD_XML;
-        } else if (0 == strcmp(format, "json")) {
-            dump_format = LYD_JSON;
-        } else {
-            fprintf(stderr, "Error: Unknown dump format specified: '%s'.\n", format);
-            return SR_ERR_INVAL_ARG;
-        }
-    }
-
-    rc = srctl_ly_init(&ly_ctx);
-    if (SR_ERR_OK != rc) {
-        return rc;
-    }
-
-    snprintf(data_filename, PATH_MAX, "%s%s%s", srctl_data_search_dir, module_name, SR_STARTUP_FILE_EXT);
-
-    fd = open(data_filename, dump ? O_RDONLY : (O_RDWR | O_TRUNC));
-    if (-1 == fd) {
-        fprintf(stderr, "Error: Unable to open the data file '%s': %s.\n", data_filename, strerror(errno));
-        ly_ctx_destroy(ly_ctx, NULL);
-        return SR_ERR_INVAL_ARG;
-    }
-    sr_lock_fd(fd, false, true);
-
-    if (dump) {
-        /* dump data */
-        data_tree = lyd_parse_fd(ly_ctx, fd, LYD_XML, LYD_OPT_STRICT | LYD_OPT_CONFIG);
-        if (NULL == data_tree && LY_SUCCESS != ly_errno) {
-            fprintf(stderr, "Error: Unable to parse the data file '%s': %s.\n", data_filename, ly_errmsg());
-            rc = SR_ERR_INTERNAL;
-        } else {
-            ret = lyd_print_fd(STDOUT_FILENO, data_tree, dump_format, LYP_WITHSIBLINGS | LYP_FORMAT);
-            if (0 != ret) {
-                fprintf(stderr, "Error: Unable to print the data: %s.\n", ly_errmsg());
-                rc = SR_ERR_INTERNAL;
-            }
-        }
-    } else {
-        /* import data */
-        data_tree = lyd_parse_fd(ly_ctx, STDIN_FILENO, dump_format, LYD_OPT_STRICT | LYD_OPT_CONFIG);
-        if (NULL == data_tree && LY_SUCCESS != ly_errno) {
-            fprintf(stderr, "Error: Unable to parse the data: %s.\n", ly_errmsg());
-            rc = SR_ERR_INTERNAL;
-        } else {
-            ret = lyd_print_fd(fd, data_tree, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT);
-            if (0 != ret) {
-                fprintf(stderr, "Error: Unable to print the data to file '%s': %s.\n", data_filename, ly_errmsg());
-                rc = SR_ERR_INTERNAL;
-            }
-        }
-    }
-
-    sr_unlock_fd(fd);
-    close(fd);
-    ly_ctx_destroy(ly_ctx, NULL);
-
-    return ret;
-}
-
-/**
  * @brief Performs the --version operation.
  */
 static void
@@ -1094,13 +1059,11 @@ srctl_print_help()
     printf("  -c, --change           Changes specified module in sysrepo (--module must be specified).\n");
     printf("  -e, --feature-enable   Enables a feature within a module in sysrepo (feature name is the argument, --module must be specified).\n");
     printf("  -d, --feature-disable  Disables a feature within a module in sysrepo (feature name is the argument, --module must be specified).\n");
-    printf("  -x, --dump             Dumps startup datastore data of specified module (argument speciefies the format: xml or json, --module must be specified).\n");
-    printf("  -t, --import           Imports data of specified module into startup datastore (argument speciefies the format: xml or json, --module must be specified).\n");
     printf("\n");
     printf("Available other-options:\n");
     printf("  -g, --yang             Path to the file with schema in YANG format (--install operation).\n");
     printf("  -n, --yin              Path to the file with schema in YIN format (--install operation).\n");
-    printf("  -m, --module           Name of the module to be operated on (--init, --uninstall, --change, --feature-enable, --feature-disable, --dump, --import operations).\n");
+    printf("  -m, --module           Name of the module to be operated on (--init, --uninstall, --change, --feature-enable, --feature-disable operations).\n");
     printf("  -r, --revision         Revision of the module to be operated on (--init, --uninstall operations).\n");
     printf("  -o, --owner            Owner user and group of the module's data in chown format (--install, --init, --change operations).\n");
     printf("  -p, --permissions      Access permissions of the module's data in chmod format (--install, --init, --change operations).\n");
@@ -1113,10 +1076,6 @@ srctl_print_help()
     printf("     sysrepoctl --change --module=ietf-interfaces --owner=admin:admin --permissions=644\n\n");
     printf("  3) Enable a feature within a YANG module:\n");
     printf("     sysrepoctl --feature-enable=if-mib --module=ietf-interfaces\n\n");
-    printf("  4) Dump startup datastore data of a YANG module into a file in XML format:\n");
-    printf("     sysrepoctl --dump=xml --module=ietf-interfaces > dump_file.txt\n\n");
-    printf("  5) Import startup datastore data of a YANG module from a file in XML format:\n");
-    printf("     sysrepoctl --import=xml --module=ietf-interfaces < dump_file.txt\n\n");
 }
 
 /**
@@ -1126,7 +1085,7 @@ int
 main(int argc, char* argv[])
 {
     int c = 0, operation = 0;
-    char *feature_name = NULL, *dump_format = NULL;
+    char *feature_name = NULL;
     char *yang = NULL, *yin = NULL, *module = NULL, *revision = NULL;
     char *owner = NULL, *permissions = NULL;
     char *search_dir = NULL;
@@ -1144,8 +1103,6 @@ main(int argc, char* argv[])
        { "change",          no_argument,       NULL, 'c' },
        { "feature-enable",  required_argument, NULL, 'e' },
        { "feature-disable", required_argument, NULL, 'd' },
-       { "dump",            optional_argument, NULL, 'x' },
-       { "import",          optional_argument, NULL, 't' },
 
        { "yang",            required_argument, NULL, 'g' },
        { "yin",             required_argument, NULL, 'n' },
@@ -1158,7 +1115,7 @@ main(int argc, char* argv[])
        { 0, 0, 0, 0 }
     };
 
-    while ((c = getopt_long(argc, argv, "hvliIuce:d:x:t:g:n:m:r:o:p:s:0:W;", longopts, NULL)) != -1) {
+    while ((c = getopt_long(argc, argv, "hvliIuce:d:g:n:m:r:o:p:s:0:W;", longopts, NULL)) != -1) {
         switch (c) {
             case 'h':
                 srctl_print_help();
@@ -1179,11 +1136,6 @@ main(int argc, char* argv[])
             case 'd':
                 operation = c;
                 feature_name = optarg;
-                break;
-            case 'x':
-            case 't':
-                operation = c;
-                dump_format = optarg;
                 break;
             case 'g':
                 yang = optarg;
@@ -1262,12 +1214,6 @@ main(int argc, char* argv[])
             break;
         case 'd':
             rc = srctl_feature_change(module, feature_name, false);
-            break;
-        case 'x':
-            rc = srctl_dump_import(module, dump_format, true);
-            break;
-        case 't':
-            rc = srctl_dump_import(module, dump_format, false);
             break;
         default:
             srctl_print_help();

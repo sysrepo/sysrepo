@@ -167,7 +167,7 @@ cl_message_send(sr_conn_ctx_t *conn_ctx, Sr__Msg *msg)
             if (errno == EINTR) {
                 continue;
             }
-            SR_LOG_ERR("Error by sending of the message: %s.", strerror(errno));
+            SR_LOG_ERR("Error by sending of the message: %s.", sr_strerror_safe(errno));
             return SR_ERR_DISCONNECT;
         }
     } while ((pos < (msg_size + SR_MSG_PREAM_SIZE)) && (sent > 0));
@@ -203,7 +203,7 @@ cl_message_recv(sr_conn_ctx_t *conn_ctx, Sr__Msg **msg)
                 SR_LOG_ERR_MSG("While waiting for a response, time out has expired.");
                 return SR_ERR_TIME_OUT;
             }
-            SR_LOG_ERR("Error by receiving of the message: %s.", strerror(errno));
+            SR_LOG_ERR("Error by receiving of the message: %s.", sr_strerror_safe(errno));
             return SR_ERR_MALFORMED_MSG;
         }
         if (0 == len) {
@@ -234,7 +234,7 @@ cl_message_recv(sr_conn_ctx_t *conn_ctx, Sr__Msg **msg)
             if (errno == EINTR) {
                 continue;
             }
-            SR_LOG_ERR("Error by receiving of the message: %s.", strerror(errno));
+            SR_LOG_ERR("Error by receiving of the message: %s.", sr_strerror_safe(errno));
             return SR_ERR_MALFORMED_MSG;
         }
         if (0 == len) {
@@ -359,7 +359,7 @@ cl_socket_connect(sr_conn_ctx_t *conn_ctx, const char *socket_path)
     /* prepare a socket */
     fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (-1 == fd) {
-        SR_LOG_ERR("Unable to create a new socket: %s", strerror(errno));
+        SR_LOG_ERR("Unable to create a new socket: %s", sr_strerror_safe(errno));
         return SR_ERR_INTERNAL;
     }
 
@@ -370,7 +370,7 @@ cl_socket_connect(sr_conn_ctx_t *conn_ctx, const char *socket_path)
     /* connect to server */
     rc = connect(fd, (struct sockaddr*)&addr, sizeof(addr));
     if (-1 == rc) {
-        SR_LOG_DBG("Unable to connect to socket=%s: %s", socket_path, strerror(errno));
+        SR_LOG_DBG("Unable to connect to socket=%s: %s", socket_path, sr_strerror_safe(errno));
         close(fd);
         return SR_ERR_DISCONNECT;
     }
@@ -380,7 +380,7 @@ cl_socket_connect(sr_conn_ctx_t *conn_ctx, const char *socket_path)
     tv.tv_usec = 0;
     rc = setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, (char *)&tv, sizeof(tv));
     if (-1 == rc) {
-        SR_LOG_ERR("Unable to set timeout for socket operations on socket=%s: %s", socket_path, strerror(errno));
+        SR_LOG_ERR("Unable to set timeout for socket operations on socket=%s: %s", socket_path, sr_strerror_safe(errno));
         close(fd);
         return SR_ERR_DISCONNECT;
     }
@@ -407,7 +407,7 @@ cl_request_process(sr_session_ctx_t *session, Sr__Msg *msg_req, Sr__Msg **msg_re
         tv.tv_usec = 0;
         rc = setsockopt(session->conn_ctx->fd, SOL_SOCKET, SO_RCVTIMEO, (char *)&tv, sizeof(tv));
         if (-1 == rc) {
-            SR_LOG_WRN("Unable to set timeout for socket operations: %s", strerror(errno));
+            SR_LOG_WRN("Unable to set timeout for socket operations: %s", sr_strerror_safe(errno));
         }
     }
 
@@ -436,7 +436,7 @@ cl_request_process(sr_session_ctx_t *session, Sr__Msg *msg_req, Sr__Msg **msg_re
         tv.tv_sec = CL_REQUEST_TIMEOUT;
         rc = setsockopt(session->conn_ctx->fd, SOL_SOCKET, SO_RCVTIMEO, (char *)&tv, sizeof(tv));
         if (-1 == rc) {
-            SR_LOG_WRN("Unable to set timeout for socket operations: %s", strerror(errno));
+            SR_LOG_WRN("Unable to set timeout for socket operations: %s", sr_strerror_safe(errno));
         }
     }
 

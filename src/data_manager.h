@@ -118,7 +118,9 @@ typedef struct dm_model_subscription_s {
     struct lys_node **nodes;            /**< array of schema nodes corresponding to the subscription */
     size_t subscription_cnt;            /**< number of subscriptions */
     struct lyd_difflist *difflist;      /**< diff list */
-    sr_list_t *changes;             /**< set of changes for the model */
+    sr_list_t *changes;                 /**< set of changes for the model */
+    bool changes_generated;             /**< Flag signalizing that changes has been generated */
+    pthread_rwlock_t changes_lock;      /**< Lock guarding the changes member of structure */
 }dm_model_subscription_t;
 
 /**
@@ -137,8 +139,12 @@ typedef struct dm_commit_context_s {
     sr_btree_t *prev_data_trees;/**< data trees in the state before commit */
 } dm_commit_context_t;
 
+/**
+ * @brief Structure holds commit contexts for the purposes of notification
+ * session.
+ */
 typedef struct dm_c_ctxs_s {
-    sr_btree_t *tree;      /**< Array of commit context used for notifications */
+    sr_btree_t *tree;      /**< Tree of commit context used for notifications */
     pthread_rwlock_t lock; /**< rwlock to access c_ctxs */
 } dm_commit_ctxs_t;
 

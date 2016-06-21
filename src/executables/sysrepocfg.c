@@ -125,7 +125,7 @@ srcfg_read_file_content(int fd, char **out)
         }
         n = read(fd, buffer + cur, size - cur - 1);
         CHECK_NOT_MINUS1_LOG_GOTO(n, rc, SR_ERR_INTERNAL, fail,
-                                  "Read operation failed: %s.", strerror(errno));
+                                  "Read operation failed: %s.", sr_strerror_safe(errno));
         cur += n;
     } while (0 < n);
 
@@ -164,6 +164,7 @@ srcfg_ly_init(struct ly_ctx **ly_ctx, const char *module_name)
     struct dirent *ep = NULL;
     char *delim = NULL;
     char schema_filename[PATH_MAX] = { 0, };
+    const struct lys_module *module = NULL;
 
     CHECK_NULL_ARG2(ly_ctx, module_name);
 
@@ -177,7 +178,7 @@ srcfg_ly_init(struct ly_ctx **ly_ctx, const char *module_name)
     /* iterate over all files in the directory with schemas */
     dp = opendir(srcfg_schema_search_dir);
     if (NULL == dp) {
-        SR_LOG_ERR("Failed to open the schema directory: %s.", strerror(errno));
+        SR_LOG_ERR("Failed to open the schema directory: %s.", sr_strerror_safe(errno));
         return SR_ERR_INTERNAL;
     }
     while (NULL != (ep = readdir(dp))) {
@@ -206,7 +207,13 @@ srcfg_ly_init(struct ly_ctx **ly_ctx, const char *module_name)
                 snprintf(schema_filename, PATH_MAX, "%s%s", srcfg_schema_search_dir, ep->d_name);
                 /* load the schema into the context */
                 SR_LOG_DBG("Loading module schema: '%s'.", schema_filename);
-                lys_parse_path(*ly_ctx, schema_filename, fmt);
+                module = lys_parse_path(*ly_ctx, schema_filename, fmt);
+                if (NULL == module) {
+                    continue;
+                }
+                for (uint8_t i = 0; i < module->features_size; i++) {
+                    lys_features_enable(module, module->features[i].name);
+                }
 #if 0
             }
 #endif
@@ -558,7 +565,7 @@ srcfg_import_datastore(struct ly_ctx *ly_ctx, int fd_in, const char *module_name
     /* parse input data */
     ret = fstat(fd_in, &info);
     CHECK_NOT_MINUS1_LOG_GOTO(ret, rc, SR_ERR_INTERNAL, cleanup,
-                              "Unable to obtain input file info: %s.", strerror(errno));
+                              "Unable to obtain input file info: %s.", sr_strerror_safe(errno));
     ly_errno = LY_SUCCESS;
     if (S_ISREG(info.st_mode)) {
         /* load (using mmap) and parse the input data in one step */
@@ -705,7 +712,7 @@ srcfg_import_operation(const char *module_name, srcfg_datastore_t datastore, con
         /* try to open the input file */
         fd_in = open(filepath, O_RDONLY);
         CHECK_NOT_MINUS1_LOG_GOTO(fd_in, rc, SR_ERR_INTERNAL, fail,
-                                  "Unable to open the input file '%s': %s.", filepath, strerror(errno));
+                                  "Unable to open the input file '%s': %s.", filepath, sr_strerror_safe(errno));
     } else {
         /* read configuration from stdin */
         printf("Please enter the new configuration:\n");
@@ -786,7 +793,7 @@ srcfg_export_operation(const char *module_name, const char *filepath, LYD_FORMAT
     if (filepath) {
         fd_out = open(filepath, O_WRONLY | O_CREAT | O_TRUNC, 0666);
         CHECK_NOT_MINUS1_LOG_GOTO(fd_out, rc, SR_ERR_INTERNAL, fail,
-                                  "Unable to open the output file '%s': %s.", filepath, strerror(errno));
+                                  "Unable to open the output file '%s': %s.", filepath, sr_strerror_safe(errno));
     }
 
     /* export diatastore data */

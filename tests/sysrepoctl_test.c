@@ -64,20 +64,6 @@ sysrepoctl_test_list(void **state)
 }
 
 static void
-sysrepoctl_test_dump(void **state)
-{
-    /* invalid arguments */
-    exec_shell_command("../src/sysrepoctl --dump=txt --module=ietf-interfaces > /tmp/ietf-interfaces.xml", "", true, 1);
-    exec_shell_command("../src/sysrepoctl --dump=json > /tmp/module.xml", "", true, 1);
-
-    /* dump ietf-interfaces in both xml and json formats */
-    exec_shell_command("../src/sysrepoctl --dump=xml --module=ietf-interfaces > /tmp/ietf-interfaces.xml", "", true, 0);
-    assert_int_equal(0, compare_files("/tmp/ietf-interfaces.xml", TEST_DATA_SEARCH_DIR "ietf-interfaces.startup"));
-    exec_shell_command("../src/sysrepoctl --dump=json --module=ietf-interfaces > /tmp/ietf-interfaces.json", "", true, 0);
-    test_file_exists("/tmp/ietf-interfaces.json", true);
-}
-
-static void
 sysrepoctl_test_uninstall(void **state)
 {
     /* invalid arguments */
@@ -278,33 +264,17 @@ sysrepoctl_test_init(void **state)
     test_file_permissions(TEST_DATA_SEARCH_DIR "ietf-interfaces.persist", mode);
 }
 
-static void
-sysrepoctl_test_import(void **state)
-{
-    /* invalid arguments */
-    exec_shell_command("../src/sysrepoctl --import=txt --module=ietf-interfaces < /tmp/ietf-interfaces.xml", "", true, 1);
-    exec_shell_command("../src/sysrepoctl --import=xml < /tmp/ietf-interfaces.xml", "", true, 1);
-
-    /* import ietf-interfaces startup config from temporary files */
-    exec_shell_command("../src/sysrepoctl --import=xml --module=ietf-interfaces < /tmp/ietf-interfaces.xml", "", true, 0);
-    assert_int_equal(0, compare_files("/tmp/ietf-interfaces.xml", TEST_DATA_SEARCH_DIR "ietf-interfaces.startup"));
-    exec_shell_command("../src/sysrepoctl --import=json --module=ietf-interfaces < /tmp/ietf-interfaces.json", "", true, 0);
-    assert_int_equal(0, compare_files("/tmp/ietf-interfaces.xml", TEST_DATA_SEARCH_DIR "ietf-interfaces.startup"));
-}
-
 int
 main() {
     const struct CMUnitTest tests[] = {
             cmocka_unit_test_setup_teardown(sysrepoctl_test_version, NULL, NULL),
             cmocka_unit_test_setup_teardown(sysrepoctl_test_help, NULL, NULL),
             cmocka_unit_test_setup_teardown(sysrepoctl_test_list, NULL, NULL),
-            cmocka_unit_test_setup_teardown(sysrepoctl_test_dump, NULL, NULL),
             cmocka_unit_test_setup_teardown(sysrepoctl_test_uninstall, NULL, NULL),
             cmocka_unit_test_setup_teardown(sysrepoctl_test_install, NULL, NULL),
             cmocka_unit_test_setup_teardown(sysrepoctl_test_change, NULL, NULL),
             cmocka_unit_test_setup_teardown(sysrepoctl_test_feature, NULL, NULL),
             cmocka_unit_test_setup_teardown(sysrepoctl_test_init, NULL, NULL),
-            cmocka_unit_test_setup_teardown(sysrepoctl_test_import, NULL, NULL),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);

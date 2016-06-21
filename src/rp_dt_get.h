@@ -92,9 +92,10 @@ int rp_dt_get_values_wrapper_with_opts(rp_ctx_t *rp_ctx, rp_session_t *rp_sessio
 
 /**
  * @brief Fills the values from the array of nodes. The length of the
- * values array is equal to the count of the nodes in nodes set
+ * values array is equal to the count of the nodes in nodes set.
  * @param [in] nodes
  * @param [out] values
+ * @param [out] value_cnt
  * @return Error code (SR_ERR_OK on success)
  */
 int rp_dt_get_values_from_nodes(struct ly_set *nodes, sr_val_t **values, size_t *value_cnt);
@@ -109,13 +110,14 @@ int rp_dt_difflist_to_changes(struct lyd_difflist *difflist, sr_list_t **changes
 
 /**
  * @brief Returns the changes that match the selection based on xpath, offset and limit criteria.
+ * Changes are generated from difflist when the first request came.
  * @param [in] rp_ctx
  * @param [in] session
  * @param [in] c_ctx
  * @param [in] xpath
  * @param [in] offset
  * @param [in] limit
- * @param [out] matched_changes
+ * @param [out] matched_changes - changes matching xpath in the range selected by offset limit
  * @return Error code (SR_ERR_OK on success)
  */
 int rp_dt_get_changes(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t *c_ctx, const char *xpath,

@@ -77,7 +77,7 @@ int rp_dt_find_nodes(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const c
  * @brief Find matching changes
  * @param [in] dm_ctx
  * @param [in] session
- * @param [in] c_ctx - commit context where the diff are stored
+ * @param [in] ms - model subscriptions where changes are stored
  * @param [in] change_ctx - cache for the iteration in changes
  * @param [in] xpath - used for selection of the changes to be returned
  * @param [in] offset
@@ -85,7 +85,7 @@ int rp_dt_find_nodes(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const c
  * @param [out] changes - matching changes
  * @return Error code (SR_ERR_OK on success)
  */
-int rp_dt_find_changes(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t *c_ctx, rp_dt_change_ctx_t *change_ctx, const char *xpath, size_t offset, size_t limit, sr_list_t **changes);
+int rp_dt_find_changes(dm_ctx_t *dm_ctx, dm_session_t *session, dm_model_subscription_t *ms, rp_dt_change_ctx_t *change_ctx, const char *xpath, size_t offset, size_t limit, sr_list_t **changes);
 
 #endif /* RP_DT_LOOKUP_H */
 

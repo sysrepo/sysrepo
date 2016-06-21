@@ -304,5 +304,97 @@ class NotificationTest(unittest.TestCase):
         tm.add_tester(subscriber3)
         tm.run()
 
+    def test_notify_same_path(self):
+        """
+        Four testers are subscribed for the same notifications. The changes
+        are generated when the request from the first of them arrives.
+        """
+        tm = TestManager()
+
+        srd = SysrepodDaemonTester("Srd")
+        tester = SysrepoTester("Tester", SR_DS_RUNNING, SR_CONN_DAEMON_REQUIRED, False)
+        subscriber = NotificationTester("Subscriber")
+        subscriber2 = NotificationTester("Subscriber2")
+        subscriber3 = NotificationTester("Subscriber3")
+        subscriber4 = NotificationTester("Subscriber4")
+
+        srd.add_step(srd.startDaemonStep)
+        tester.add_step(tester.waitStep)
+        subscriber.add_step(subscriber.waitStep)
+        subscriber2.add_step(subscriber2.waitStep)
+        subscriber3.add_step(subscriber3.waitStep)
+        subscriber4.add_step(subscriber4.waitStep)
+
+        srd.add_step(srd.waitStep)
+        tester.add_step(tester.restartConnection)
+        subscriber.add_step(subscriber.waitStep)
+        subscriber2.add_step(subscriber2.waitStep)
+        subscriber3.add_step(subscriber3.waitStep)
+        subscriber4.add_step(subscriber4.waitStep)
+
+        srd.add_step(srd.waitStep)
+        tester.add_step(tester.waitStep)
+        subscriber.add_step(subscriber.subscribeStep, "/ietf-interfaces:interfaces")
+        subscriber2.add_step(subscriber2.subscribeStep, "/ietf-interfaces:interfaces")
+        subscriber3.add_step(subscriber3.subscribeStep, "/ietf-interfaces:interfaces")
+        subscriber4.add_step(subscriber4.subscribeStep, "/ietf-interfaces:interfaces")
+
+        srd.add_step(srd.waitStep)
+        tester.add_step(tester.deleteItemStep, "/ietf-interfaces:interfaces/interface[name='eth0']")
+        subscriber.add_step(subscriber.waitStep)
+        subscriber2.add_step(subscriber2.waitStep)
+        subscriber3.add_step(subscriber3.waitStep)
+        subscriber4.add_step(subscriber4.waitStep)
+
+        srd.add_step(srd.waitStep)
+        tester.add_step(tester.commitStep)
+        subscriber.add_step(subscriber.waitStep)
+        subscriber2.add_step(subscriber2.waitStep)
+        subscriber3.add_step(subscriber3.waitStep)
+        subscriber4.add_step(subscriber4.waitStep)
+
+        srd.add_step(srd.waitStep)
+        tester.add_step(tester.waitStep)
+        subscriber.add_step(subscriber.waitStep)
+        subscriber2.add_step(subscriber2.waitStep)
+        subscriber3.add_step(subscriber3.waitStep)
+        subscriber4.add_step(subscriber4.waitStep)
+
+        expected_changes = [["DELETED", "/ietf-interfaces:interfaces/interface[name='eth0']"],
+         ["DELETED", "/ietf-interfaces:interfaces/interface[name='eth0']/name"],
+         ["DELETED", "/ietf-interfaces:interfaces/interface[name='eth0']/type"],
+         ["DELETED", "/ietf-interfaces:interfaces/interface[name='eth0']/enabled"],
+         ["DELETED", "/ietf-interfaces:interfaces/interface[name='eth0']/description"],
+         ["DELETED", "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4"],
+         ["DELETED", "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/address[ip='192.168.2.100']"],
+         ["DELETED", "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/address[ip='192.168.2.100']/ip"],
+         ["DELETED", "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/address[ip='192.168.2.100']/prefix-length"],
+         ["DELETED", "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/enabled"],
+         ["DELETED", "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/mtu"]]
+
+        srd.add_step(srd.waitStep)
+        tester.add_step(tester.waitStep)
+        subscriber.add_step(subscriber.checkNotificationStep, expected_changes)
+        subscriber2.add_step(subscriber2.checkNotificationStep, expected_changes)
+        subscriber3.add_step(subscriber3.checkNotificationStep, expected_changes)
+        subscriber4.add_step(subscriber4.checkNotificationStep, expected_changes)
+
+        srd.add_step(srd.waitStep)
+        tester.add_step(tester.waitStep)
+        subscriber.add_step(subscriber.cancelSubscriptionStep)
+        subscriber2.add_step(subscriber2.cancelSubscriptionStep)
+        subscriber3.add_step(subscriber3.cancelSubscriptionStep)
+        subscriber4.add_step(subscriber4.cancelSubscriptionStep)
+
+        srd.add_step(srd.stopDaemonStep)
+
+        tm.add_tester(srd)
+        tm.add_tester(tester)
+        tm.add_tester(subscriber)
+        tm.add_tester(subscriber2)
+        tm.add_tester(subscriber3)
+        tm.add_tester(subscriber4)
+        tm.run()
+
 if __name__ == '__main__':
     unittest.main()

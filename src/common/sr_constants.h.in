@@ -89,15 +89,24 @@
 #define SR_DEAMON_WORK_DIR "/"
 
 /** Sysrepo daemon log level <0 - 4>. */
-#define SR_DAEMON_LOG_LEVEL 3
+#define SR_DAEMON_LOG_LEVEL 2
 
 /** Sysrepo daemon initialization timeout (in seconds). */
 #define SR_DAEMON_INIT_TIMEOUT 10
+
+/** Sysrepo subscriptions socket directory. */
+#define SR_SUBSCRIPTIONS_SOCKET_DIR "@SUBSCRIPTIONS_SOCKET_DIR@"
+
+/** Directory local to SR_SUBSCRIPTIONS_SOCKET_DIR containing sysrepo-global subscription sockets. */
+#define SR_GLOBAL_SUBSCRIPTIONS_SUBDIR "_global-subscriptions"
 
 /** Maximum size of a GPB message. */
 #define SR_MAX_MSG_SIZE ((SIZE_MAX < UINT32_MAX) ? SIZE_MAX : UINT32_MAX)
 
 /** Size of the preamble sent before each sysrepo GPB message. */
 #define SR_MSG_PREAM_SIZE sizeof(uint32_t)
+
+/** Strerror buffer length */
+#define MAX_STRERROR_LEN 150
 
 #endif /* SRC_SR_CONSTANTS_H_IN_ */

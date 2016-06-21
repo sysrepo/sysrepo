@@ -229,6 +229,7 @@ dm_model_subscription_free(void *sub)
             }
             sr_list_cleanup(ms->changes);
         }
+        pthread_rwlock_destroy(&ms->changes_lock);
     }
     free(ms);
 }
@@ -409,7 +410,7 @@ dm_load_schemas(dm_ctx_t *dm_ctx)
         closedir(dir);
         return SR_ERR_OK;
     } else {
-        SR_LOG_ERR("Could not open the directory %s: %s", dm_ctx->schema_search_dir, strerror(errno));
+        SR_LOG_ERR("Could not open the directory %s: %s", dm_ctx->schema_search_dir, sr_strerror_safe(errno));
         return SR_ERR_IO;
     }
 }
@@ -699,6 +700,8 @@ dm_unlock_module(dm_ctx_t *dm_ctx, dm_session_t *session, char *modul_name)
     char *lock_file = NULL;
     size_t i = 0;
 
+    SR_LOG_INF("Unlock request module='%s'", modul_name);
+
     rc = sr_get_lock_data_file_name(dm_ctx->data_search_dir, modul_name, session->datastore, &lock_file);
     CHECK_RC_MSG_RETURN(rc, "Lock file name can not be created");
 
@@ -782,6 +785,7 @@ int
 dm_unlock_datastore(dm_ctx_t *dm_ctx, dm_session_t *session)
 {
     CHECK_NULL_ARG2(dm_ctx, session);
+    SR_LOG_INF_MSG("Unlock datastore request");
 
     while (session->locked_files->count > 0) {
         dm_unlock_file(dm_ctx->locking_ctx, (char *) session->locked_files->data[0]);
@@ -1598,6 +1602,8 @@ dm_get_schema(dm_ctx_t *dm_ctx, const char *module_name, const char *module_revi
     CHECK_NULL_ARG2(dm_ctx, module_name);
     int rc = SR_ERR_OK;
 
+    SR_LOG_INF("Get schema '%s', revision: '%s', submodule: '%s'", module_name, module_revision, submodule_name);
+
     pthread_rwlock_rdlock(&dm_ctx->lyctx_lock);
     const struct lys_module *module = ly_ctx_get_module(dm_ctx->ly_ctx, module_name, module_revision);
     if (NULL == module) {
@@ -1800,8 +1806,11 @@ dm_update_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, sr_list_t 
             continue;
         }
 
-        /*  to lock for read, blocking */
-        rc = sr_lock_fd(fd, false, false);
+        /* lock for read, blocking - guards access to the file among processes.
+         * Inside the process access to data files is protected by commit_lock in rp.
+         * Each request that might need to read data file locks it for read at the beginning
+         * of request processing. */
+        rc = sr_lock_fd(fd, false, true);
 
         bool copy_uptodate = false;
         rc = dm_is_info_copy_uptodate(dm_ctx, file_name, info, &copy_uptodate);
@@ -1997,6 +2006,9 @@ dm_get_diff_type_to_string(LYD_DIFFTYPE type)
     return diff_states[type];
 }
 
+/**
+ * @brief Compares subscriptions by priority.
+ */
 int
 dm_subs_cmp(const void *a, const void *b)
 {
@@ -2021,6 +2033,8 @@ dm_prepare_module_subscriptions(dm_ctx_t *dm_ctx, const struct lys_module *modul
 
     ms = calloc(1, sizeof(*ms));
     CHECK_NULL_NOMEM_RETURN(ms);
+
+    pthread_rwlock_init(&ms->changes_lock, NULL);
 
     rc = np_get_module_change_subscriptions(dm_ctx->np_ctx,
             module->name,
@@ -2441,7 +2455,7 @@ dm_commit_write_files(dm_session_t *session, dm_commit_context_t *c_ctx)
             }
             if (0 != ret) {
                 SR_LOG_ERR("Failed to write data of '%s' module: %s", info->module->name,
-                        (ly_errno != LY_SUCCESS) ? ly_errmsg() : strerror(errno));
+                        (ly_errno != LY_SUCCESS) ? ly_errmsg() : sr_strerror_safe(errno));
                 rc = SR_ERR_INTERNAL;
             } else {
                 SR_LOG_DBG("Data successfully written for module '%s'", info->module->name);
@@ -2520,12 +2534,6 @@ dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t *c
         /* store differences in commit context */
         ms->difflist = diff;
 
-        rc = rp_dt_difflist_to_changes(ms->difflist, &ms->changes);
-        if (SR_ERR_OK != rc) {
-            SR_LOG_ERR_MSG("Difflist to changes failed");
-            continue;
-        }
-
         /* Log changes */
         if (SR_LL_DBG == sr_ll_stderr || SR_LL_DBG == sr_ll_syslog) {
             while (LYD_DIFF_END != diff->type[d_cnt]) {
@@ -2593,6 +2601,7 @@ dm_feature_enable(dm_ctx_t *dm_ctx, const char *module_name, const char *feature
         return SR_ERR_UNKNOWN_MODEL;
     }
     rc = enable ? lys_features_enable(module, feature_name) : lys_features_disable(module, feature_name);
+    SR_LOG_DBG("%s feature '%s' in module '%s'", enable ? "Enabling" : "Disabling", feature_name, module_name);
     pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
 
     if (1 == rc) {
@@ -2753,7 +2762,7 @@ dm_copy_config(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_list_t *modules
             ret = fsync(fds[i]);
             if (0 != ret) {
                 SR_LOG_ERR("Failed to write data of '%s' module: %s", src_infos[i]->module->name,
-                        (ly_errno != LY_SUCCESS) ? ly_errmsg() : strerror(errno));
+                        (ly_errno != LY_SUCCESS) ? ly_errmsg() : sr_strerror_safe(errno));
                 rc = SR_ERR_INTERNAL;
             }
             if (SR_DS_CANDIDATE == src) {

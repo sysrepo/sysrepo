@@ -1737,7 +1737,7 @@ rp_init(cm_ctx_t *cm_ctx, rp_ctx_t **rp_ctx_p)
     for (i = 0; i < RP_THREAD_COUNT; i++) {
         rc = pthread_create(&ctx->thread_pool[i], NULL, rp_worker_thread_execute, ctx);
         if (0 != rc) {
-            SR_LOG_ERR("Error by creating a new thread: %s", strerror(errno));
+            SR_LOG_ERR("Error by creating a new thread: %s", sr_strerror_safe(errno));
             for (j = 0; j < i; j++) {
                 pthread_cancel(ctx->thread_pool[j]);
             }

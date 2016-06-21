@@ -155,7 +155,7 @@ cm_server_init(cm_ctx_t *cm_ctx, const char *socket_path)
 
     fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (-1 == fd){
-        SR_LOG_ERR("Socket create error: %s", strerror(errno));
+        SR_LOG_ERR("Socket create error: %s", sr_strerror_safe(errno));
         rc = SR_ERR_INIT_FAILED;
         goto cleanup;
     }
@@ -184,14 +184,14 @@ cm_server_init(cm_ctx_t *cm_ctx, const char *socket_path)
     umask(old_umask);
 
     if (-1 == rc) {
-        SR_LOG_ERR("Socket bind error: %s", strerror(errno));
+        SR_LOG_ERR("Socket bind error: %s", sr_strerror_safe(errno));
         rc = SR_ERR_INIT_FAILED;
         goto cleanup;
     }
 
     rc = listen(fd, SOMAXCONN);
     if (-1 == rc) {
-        SR_LOG_ERR("Socket listen error: %s", strerror(errno));
+        SR_LOG_ERR("Socket listen error: %s", sr_strerror_safe(errno));
         rc = SR_ERR_INIT_FAILED;
         goto cleanup;
     }
@@ -293,6 +293,45 @@ cm_delayed_request_cb(struct ev_loop *loop, ev_timer *w, int revents)
     }
 
     free(req);
+}
+
+/**
+ * @brief Sends a message to the Request Processor after specified timeout.
+ */
+static int
+cm_delayed_msg_process(cm_ctx_t *cm_ctx, cm_session_ctx_t *session, Sr__Msg *msg, double timeout)
+{
+    cm_delayed_request_ctx_t *req = NULL, *prev = NULL;
+
+    CHECK_NULL_ARG2(cm_ctx, msg);
+
+    SR_LOG_DBG("Scheduling a delayed request for %f seconds.", timeout);
+
+    /* allocate the delayed request context */
+    req = calloc(1, sizeof(*req));
+    CHECK_NULL_NOMEM_RETURN(req);
+
+    req->cm_ctx = cm_ctx;
+    req->session = session;
+    req->msg = msg;
+
+    /* put the context at the end of the linked-list in CM context */
+    if (NULL == cm_ctx->delayed_requests) {
+        cm_ctx->delayed_requests = req;
+    } else {
+        prev = cm_ctx->delayed_requests;
+        while (NULL != prev->next) {
+            prev = prev->next;
+        }
+        prev->next = req;
+    }
+
+    /* schedule the timer */
+    ev_timer_init(&req->timer, cm_delayed_request_cb, timeout, 0.);
+    req->timer.data = req;
+    ev_timer_start(cm_ctx->event_loop, &req->timer);
+
+    return SR_ERR_OK;
 }
 
 /**
@@ -458,7 +497,7 @@ cm_conn_out_buff_flush(cm_ctx_t *cm_ctx, sm_connection_t *connection)
                 break;
             } else {
                 /* error by writing - close the connection due to an error */
-                SR_LOG_ERR("Error by writing data to fd %d: %s.", connection->fd, strerror(errno));
+                SR_LOG_ERR("Error by writing data to fd %d: %s.", connection->fd, sr_strerror_safe(errno));
                 connection->close_requested = true;
                 break;
             }
@@ -1000,7 +1039,7 @@ cm_conn_read_cb(struct ev_loop *loop, ev_io *w, int revents)
                 break;
             } else {
                 /* error by reading - close the connection due to an error */
-                SR_LOG_ERR("Error by reading data on fd %d: %s.", conn->fd, strerror(errno));
+                SR_LOG_ERR("Error by reading data on fd %d: %s.", conn->fd, sr_strerror_safe(errno));
                 conn->close_requested = true;
                 break;
             }
@@ -1138,7 +1177,7 @@ cm_server_watcher_cb(struct ev_loop *loop, ev_io *w, int revents)
                 break;
             } else {
                 /* error by accept - only log the error and skip it */
-                SR_LOG_ERR("Unexpected error by accepting new connection: %s", strerror(errno));
+                SR_LOG_ERR("Unexpected error by accepting new connection: %s", sr_strerror_safe(errno));
                 continue;
             }
         }
@@ -1159,7 +1198,7 @@ cm_subscr_conn_create(cm_ctx_t *cm_ctx, const char *socket_path, sm_connection_t
     /* prepare a socket */
     fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (-1 == fd) {
-        SR_LOG_ERR("Unable to create a new socket: %s", strerror(errno));
+        SR_LOG_ERR("Unable to create a new socket: %s", sr_strerror_safe(errno));
         return SR_ERR_INTERNAL;
     }
 
@@ -1207,7 +1246,7 @@ cm_subscr_conn_create(cm_ctx_t *cm_ctx, const char *socket_path, sm_connection_t
             rc = SR_ERR_DISCONNECT;
             goto cleanup;
         } else {
-            SR_LOG_ERR("Unable to connect to subscriber socket=%s: %s", socket_path, strerror(errno));
+            SR_LOG_ERR("Unable to connect to subscriber socket=%s: %s", socket_path, sr_strerror_safe(errno));
             rc = SR_ERR_DISCONNECT;
             goto cleanup;
         }
@@ -1336,6 +1375,28 @@ cm_out_rpc_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
 }
 
 /**
+ * @brief Processes an internal request received from Request Processor.
+ */
+static int
+cm_internal_msg_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
+{
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG3(cm_ctx, msg, msg->internal_request);
+
+    if (msg->internal_request->has_postpone_timeout) {
+        /* schedule delivery of message with postpone timeout */
+        rc = cm_delayed_msg_process(cm_ctx, NULL, msg, msg->internal_request->postpone_timeout);
+    } else {
+        SR_LOG_WRN_MSG("Unsupported internal message received, ignoring.");
+        rc = SR_ERR_UNSUPPORTED;
+        sr__msg__free_unpacked(msg, NULL);
+    }
+
+    return rc;
+}
+
+/**
  * @brief Processes an outgoing message (message to be sent to the client library).
  */
 static int
@@ -1345,6 +1406,11 @@ cm_out_msg_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG2(cm_ctx, msg);
+
+    if (SR__MSG__MSG_TYPE__INTERNAL_REQUEST == msg->type) {
+        /* handle as an internal request from RP */
+        return cm_internal_msg_process(cm_ctx, msg);
+    }
 
     /* find the session */
     rc = sm_session_find_id(cm_ctx->sm_ctx, msg->session_id, &session);
@@ -1646,7 +1712,7 @@ cm_start(cm_ctx_t *cm_ctx)
         rc = pthread_create(&cm_ctx->event_loop_thread, NULL,
                 cm_event_loop_threaded, cm_ctx);
         if (0 != rc) {
-            SR_LOG_ERR("Error by creating a new thread: %s", strerror(errno));
+            SR_LOG_ERR("Error by creating a new thread: %s", sr_strerror_safe(errno));
             rc = SR_ERR_INTERNAL;
         }
     }
@@ -1718,40 +1784,4 @@ cm_watch_signal(cm_ctx_t *cm_ctx, int signum, cm_signal_cb callback)
         }
     }
     return SR_ERR_INTERNAL; /* no space for more watchers */
-}
-
-int
-cm_delayed_msg_process(cm_ctx_t *cm_ctx, cm_session_ctx_t *session, Sr__Msg *msg, double timeout)
-{
-    cm_delayed_request_ctx_t *req = NULL, *prev = NULL;
-
-    CHECK_NULL_ARG2(cm_ctx, msg);
-
-    SR_LOG_DBG("Scheduling a delayed request for %f seconds.", timeout);
-
-    /* allocate the delayed request context */
-    req = calloc(1, sizeof(*req));
-    CHECK_NULL_NOMEM_RETURN(req);
-
-    req->cm_ctx = cm_ctx;
-    req->session = session;
-    req->msg = msg;
-
-    /* put the context at the end of the linked-list in CM context */
-    if (NULL == cm_ctx->delayed_requests) {
-        cm_ctx->delayed_requests = req;
-    } else {
-        prev = cm_ctx->delayed_requests;
-        while (NULL != prev->next) {
-            prev = prev->next;
-        }
-        prev->next = req;
-    }
-
-    /* schedule the timer */
-    ev_timer_init(&req->timer, cm_delayed_request_cb, timeout, 0.);
-    req->timer.data = req;
-    ev_timer_start(cm_ctx->event_loop, &req->timer);
-
-    return SR_ERR_OK;
 }

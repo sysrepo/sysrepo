@@ -37,6 +37,7 @@ typedef struct sr_change_s {
     sr_val_t *old_value;        /**< Prev value, NULL in case of SR_OP_CREATED, predcessor in case of SR_OP_MOVED */
 }sr_change_t;
 
+
 /**
  * @defgroup utils Utility Functions
  * @ingroup common
@@ -318,7 +319,7 @@ void sr_free_errors(sr_error_info_t *sr_errors, size_t sr_error_cnt);
 void sr_free_schema(sr_schema_t *schema);
 
 /**
- * @breif Frees the changes
+ * @brief Frees the changes array
  * @param [in] changes
  * @param [in] count
  */
@@ -344,6 +345,20 @@ pid_t sr_daemonize(bool debug_mode, int log_level, const char *pid_file, int *pi
  * @param[in] PID of the parent process that is waiting for this signal.
  */
 void sr_daemonize_signal_success(pid_t parent_pid);
+
+/**
+ * @brief Sets correct permissions on provided socket directory according to the
+ * data access permission of the YANG module.
+ *
+ * @param[in] socket_dir Socket directory.
+ * @param[in] module_name Name of the module whose access permissions are used
+ * to derive the permissions for the socket directory.
+ * @param[in] strict TRUE in no errors are allowed during the process of setting permissions,
+ * FALSE otherwise.
+ *
+ * @return Error code.
+ */
+int sr_set_socket_dir_permissions(const char *socket_dir, const char *module_name, bool strict);
 
 /**@} utils */
 
