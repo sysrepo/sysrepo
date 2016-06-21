@@ -218,7 +218,7 @@ sysrepo-plugind
 #### Subscribing to startup datastore
 As described in the documentation section named Datastores & Sessions, to enable a configuration subtree in the running datastore, some application needs to subscribe for the changes in the subtree in sysrepo datastore. If no application has subscribed for specified subtree, it would have no data in the running datastore and all attempts to modify the subtree in the running datastore will result into an error.
 
-For testing purposes, you can use [application_example](examples/application_example.c) or [application_changes_example](examples/application_changes_example.c) from the [examples](examples/) subdirectory. These applications subscribe for chnges in the module specified as the argument and print the new configuration after if has changed:
+For testing purposes, you can use [application_example](examples/application_example.c) or [application_changes_example](examples/application_changes_example.c) from the [examples](examples/) subdirectory. These applications subscribe for chnges in the module specified as the argument and print the new configuration after it has changed:
 ```
 examples/application_example ietf-interfaces
 ```

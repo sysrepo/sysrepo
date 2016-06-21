@@ -179,7 +179,7 @@ result into an error.
 
 For testing purposes, you can use `application_example` or `application_changes_example`
 from the `examples` subdirectory. These applications subscribe for chnges in the module
-specified as the argument and print the new configuration after if has changed:
+specified as the argument and print the new configuration after it has changed:
 
 ~~~~~~~~~~~~~~~
 examples/application_example ietf-interfaces
