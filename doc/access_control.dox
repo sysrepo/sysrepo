@@ -43,15 +43,33 @@ moment and your process in not running under root privileges. To prevent
 this situation, consider specifying SR_CONN_DAEMON_REQUIRED flag by
 ::sr_connect call.
 
-@section nacm NETCONF Access Control Model 
-NETCONF Access Control Model will be implemented later to allow northbound 
-management applications (such as NETCONF or RESTCONF server) to serve more 
-granular access control rules to remote management users than implicit sysrepo 
+@section subscriptions Authorization of sysrepo subscriptions
+When a client subscribes for changes in the datastore, it automatically
+creates a unix-domain socket aimed for delivery of notifications from Sysrepo Engine.
+The socket is created in a YANG module-specific subdirectory of `SR_SUBSCRIPTIONS_SOCKET_DIR`.
+To prevent delivery of malicious notifications, this subdirectory has the access
+privileges derived from module's data file, so that only users authorized for
+writing into the data module can deliver the notifications.
+
+The proper permissions on module-specific subdirectory of `SR_SUBSCRIPTIONS_SOCKET_DIR`
+are set by `sysrepoctl` tool by `--init` and `--install` operations. Be aware that
+if `SR_SUBSCRIPTIONS_SOCKET_DIR` is located on some temporary filesystem (e.g. `/tmp/`),
+the subdirectories may get lost between restarts. In those cases, Sysrepo Engine 
+is capable of creating the directories in runtime, but with some limitations:
+correct file ownership will be derived from the data file only if the process
+with Sysrepo Engine is authorized to execute the respective `chown` syscall
+(otherwise the ownersip is derived from the ownership of the process
+subscribing for notifications).
+
+@section nacm NETCONF Access Control Model
+NETCONF Access Control Model will be implemented later to allow northbound
+management applications (such as NETCONF or RESTCONF server) to serve more
+granular access control rules to remote management users than implicit sysrepo
 rules per YANG-model (on data file level).
 
 Of course, these rules will be more like "virtual", and really should be used only
 for remote management authorization, since any local process will still be able
-to manipulate the data file in any way regardless of the NACM rules configured for it, 
+to manipulate the data file in any way regardless of the NACM rules configured for it,
 given that it has sufficient permissions on data file level.
 
 */

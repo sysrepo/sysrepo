@@ -93,8 +93,8 @@ Options:
   -l <level>  Sets verbosity level of logging:
                       0 = all logging turned off
                       1 = log only error messages
-                      2 = log error and warning messages
-                      3 = (default) log error, warning and informational messages
+                      2 = (default) log error and warning messages
+                      3 = log error, warning and informational messages
                       4 = log everything, including development debug messages
 ~~~~~~~~~~~~~~~
 

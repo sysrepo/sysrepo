@@ -1024,17 +1024,19 @@ cl_sm_servers_cleanup(cl_sm_ctx_t *sm_ctx)
 {
     sr_llist_node_t *node = NULL;
 
-    pthread_mutex_lock(&sm_ctx->server_ctx_lock);
+    if (NULL != sm_ctx ) {
+        pthread_mutex_lock(&sm_ctx->server_ctx_lock);
 
-    if (NULL != sm_ctx && NULL != sm_ctx->server_ctx_list) {
-        node = sm_ctx->server_ctx_list->first;
-        while (NULL != node) {
-            cl_sm_server_cleanup(node->data);
-            node = node->next;
+        if (NULL != sm_ctx->server_ctx_list) {
+            node = sm_ctx->server_ctx_list->first;
+            while (NULL != node) {
+                cl_sm_server_cleanup(node->data);
+                node = node->next;
+            }
         }
-    }
 
-    pthread_mutex_unlock(&sm_ctx->server_ctx_lock);
+        pthread_mutex_unlock(&sm_ctx->server_ctx_lock);
+    }
 }
 
 /**
@@ -1048,17 +1050,18 @@ cl_sm_get_server_socket_filename(cl_sm_ctx_t *sm_ctx, const char *module_name, c
     char pid_str[20] = { 0, };
     int fd = -1;
     mode_t old_umask = 0;
-    int rc = SR_ERR_OK;
+    int ret = 0, rc = SR_ERR_OK;
 
     CHECK_NULL_ARG3(sm_ctx, module_name, socket_path);
 
     /* create the parent directory if does not exist */
-    strncat(path, SR_SUBSCRIPTIONS_SOCKET_DIR, PATH_MAX);
+    strncat(path, SR_SUBSCRIPTIONS_SOCKET_DIR, PATH_MAX - 1);
     strncat(path, "/", PATH_MAX - strlen(path) - 1);
     if (-1 == access(path, F_OK)) {
         old_umask = umask(0);
-        mkdir(path, S_IRWXU | S_IRWXG | S_IRWXO);
+        ret = mkdir(path, S_IRWXU | S_IRWXG | S_IRWXO);
         umask(old_umask);
+        CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "Unable to create the directory '%s': %s", path, sr_strerror_safe(errno));
     }
 
     /* create the module directory if it does not exist */
@@ -1066,8 +1069,9 @@ cl_sm_get_server_socket_filename(cl_sm_ctx_t *sm_ctx, const char *module_name, c
     strncat(path, "/", PATH_MAX - strlen(path) - 1);
     if (-1 == access(path, F_OK)) {
         old_umask = umask(0);
-        mkdir(path, S_IRWXU | S_IRWXG | S_IRWXO);
+        ret = mkdir(path, S_IRWXU | S_IRWXG | S_IRWXO);
         umask(old_umask);
+        CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "Unable to create the directory '%s': %s", path, sr_strerror_safe(errno));
         rc = sr_set_socket_dir_permissions(path, module_name, false);
         CHECK_RC_LOG_RETURN(rc, "Unable to set socket directory permissions for '%s'.", path);
     }

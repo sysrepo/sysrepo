@@ -82,7 +82,7 @@ int pm_save_feature_state(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const c
  * @param[out] subtrees_enabled Array of subtrees (XPaths) that are enabled in running datastore.
  * @param[out] subtrees_enabled_cnt Count of enabled subtrees.
  * @param[out] features Array of enabled features.
- * @param[out] feature_cnt Count of features in returned array.
+ * @param[out] features_cnt Count of features in returned array.
  *
  * @return Error code (SR_ERR_OK on success).
  */
