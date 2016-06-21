@@ -1127,6 +1127,64 @@ sr_daemonize_signal_success(pid_t parent_pid)
 }
 
 int
+sr_set_socket_dir_permissions(const char *socket_dir, const char *module_name, bool strict)
+{
+    char *data_file_name = NULL;
+    struct stat data_file_stat = { 0, };
+    mode_t mode = 0;
+    int ret = 0, rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG2(socket_dir, module_name);
+
+    /* skip privilege setting for internal 'module name' */
+    if (0 == strcmp(module_name, SR_GLOBAL_SUBSCRIPTIONS_SUBDIR)) {
+        return SR_ERR_OK;
+    }
+
+    /* retrieve module's data filename */
+    rc = sr_get_data_file_name(SR_DATA_SEARCH_DIR, module_name, SR_DS_STARTUP, &data_file_name);
+    CHECK_RC_LOG_RETURN(rc, "Unable to get data file name for module %s.", module_name);
+
+    /* lookup for permissions of the data file */
+    ret = stat(data_file_name, &data_file_stat);
+    free(data_file_name);
+
+    CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "Unable to stat data file for '%s': %s.", module_name, sr_strerror_safe(errno));
+
+    mode = data_file_stat.st_mode;
+    /* set the execute permissions to be the same as write permissions */
+    if (mode & S_IWUSR) {
+        mode |= S_IXUSR;
+    }
+    if (mode & S_IWGRP) {
+        mode |= S_IXGRP;
+    }
+    if (mode & S_IWOTH) {
+        mode |= S_IXOTH;
+    }
+
+    /* change the permissions */
+    ret = chmod(socket_dir, mode);
+    CHECK_ZERO_LOG_RETURN(ret, SR_ERR_UNAUTHORIZED, "Unable to execute chmod on '%s': %s.", socket_dir, sr_strerror_safe(errno));
+
+    /* change the owner (if possible) */
+    ret = chown(socket_dir, data_file_stat.st_uid, data_file_stat.st_gid);
+    if (0 != ret) {
+        if (strict) {
+            SR_LOG_ERR("Unable to execute chown on '%s': %s.", socket_dir, sr_strerror_safe(errno));
+            return SR_ERR_INTERNAL;
+        } else {
+            /* non-privileged process may not be able to set chown - print warning, since
+             * this may prevent some users otherwise allowed to access the data to connect to our socket.
+             * Correct permissions can be set up at any time using sysrepoctl. */
+            SR_LOG_WRN("Unable to execute chown on '%s': %s.", socket_dir, sr_strerror_safe(errno));
+        }
+    }
+
+    return rc;
+}
+
+int
 sr_clock_get_time(clockid_t clock_id, struct timespec *ts)
 {
     CHECK_NULL_ARG(ts);

@@ -190,7 +190,7 @@ typedef enum {
     SR_LL_ERR,   /**< Print only error messages. */
     SR_LL_WRN,   /**< Print error and warning messages. */
     SR_LL_INF,   /**< Besides errors and warnings, print some other informational messages. */
-    SR_LL_DBG    /**< Print all messages including some development debug messages. */
+    SR_LL_DBG,   /**< Print all messages including some development debug messages. */
 } sr_log_level_t;
 
 /**
