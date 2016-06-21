@@ -15,8 +15,8 @@ cache:
     - $HOME/local
 
 before_install:
-  - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; bash .travis-install-libs.sh; fi
-  - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; bash .travis-install-osx.sh; fi
+  - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then bash .travis-install-libs.sh; fi
+  - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then sh .travis-install-osx.sh; fi
 
 script:
   - mkdir build ; cd build ; cmake -DCMAKE_BUILD_TYPE=Debug -DCMAKE_PREFIX_PATH=$HOME/local -DCMAKE_C_FLAGS="-Werror -coverage" .. && make -j2
