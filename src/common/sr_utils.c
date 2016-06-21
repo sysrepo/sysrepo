@@ -1188,7 +1188,7 @@ int
 sr_clock_get_time(clockid_t clock_id, struct timespec *ts)
 {
     CHECK_NULL_ARG(ts);
-#ifdef __MACH__
+#ifdef __APPLE__
     /* OS X */
     clock_serv_t cclock = {0};
     mach_timespec_t mts = {0};

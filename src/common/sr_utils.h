@@ -24,7 +24,7 @@
 #define SR_UTILS_H_
 #include <time.h>
 
-#ifdef __MACH__
+#ifdef __APPLE__
 /* OS X get_time */
 #include <mach/clock.h>
 #include <mach/mach.h>

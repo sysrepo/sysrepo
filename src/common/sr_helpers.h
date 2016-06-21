@@ -23,8 +23,6 @@
 #ifndef SR_HELPERS_H_
 #define SR_HELPERS_H_
 
-#include <pthread.h>
-
 /**
  * Time out for mutex and rwlock
  */
