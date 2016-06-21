@@ -13,10 +13,9 @@ matrix:
             sudo: required
             compiler: clang
         -   os: osx
-            compiler: gcc
-            
+            compiler: gcc         
     allow_failures:
-        os: osx
+        -   os: osx
 
 cache:
   pip: true
