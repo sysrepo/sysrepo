@@ -27,6 +27,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <unistd.h>
 #include <pwd.h>
 #include <setjmp.h>
@@ -187,6 +188,6 @@ exec_shell_command(const char *cmd, const char *exp_content, bool regex, int exp
     fp = popen(cmd, "r");
     assert_non_null(fp);
     test_fp_content(fp, exp_content, regex);
-    ret = WEXITSTATUS(pclose(fp));
-    assert_int_equal(exp_ret, ret);
+    ret = pclose(fp);
+    assert_int_equal(exp_ret, WEXITSTATUS(ret));
 }

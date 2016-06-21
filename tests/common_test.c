@@ -27,6 +27,7 @@
 #include <cmocka.h>
 #include <fcntl.h>
 #include <pthread.h>
+#include <sys/stat.h>
 
 #include "sr_common.h"
 #include "request_processor.h"

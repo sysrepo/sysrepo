@@ -60,9 +60,7 @@ typedef struct dm_ctx_s {
     sr_list_t *disabled_sch;  /**< Set of schema that has been disabled */
     sr_btree_t *schema_info_tree; /**< Binary tree holding information about schemas */
     dm_commit_ctxs_t commit_ctxs; /**< Structure holding commit contexts and corresponding lock */
-#ifdef HAVE_STAT_ST_MTIM
     struct timespec last_commit_time;  /**< Time of the last commit */
-#endif
 } dm_ctx_t;
 
 /**
@@ -1727,7 +1725,7 @@ static int
 dm_is_info_copy_uptodate(dm_ctx_t *dm_ctx, const char *file_name, const dm_data_info_t *info, bool *res)
 {
     CHECK_NULL_ARG4(dm_ctx, file_name, info, res);
-    int rc;
+    int rc = SR_ERR_OK;
 #ifdef HAVE_STAT_ST_MTIM
     struct stat st = {0};
     rc = stat(file_name, &st);
@@ -1763,7 +1761,7 @@ dm_is_info_copy_uptodate(dm_ctx_t *dm_ctx, const char *file_name, const dm_data_
 #else
     *res = false;
 #endif
-    return SR_ERR_OK;
+    return rc;
 
 }
 
@@ -2464,7 +2462,7 @@ dm_commit_write_files(dm_session_t *session, dm_commit_context_t *c_ctx)
         }
     }
     /* save time of the last commit */
-    clock_gettime(CLOCK_REALTIME, &session->dm_ctx->last_commit_time);
+    sr_clock_get_time(CLOCK_REALTIME, &session->dm_ctx->last_commit_time);
 
     return rc;
 }
