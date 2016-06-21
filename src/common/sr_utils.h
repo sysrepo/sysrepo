@@ -346,6 +346,20 @@ pid_t sr_daemonize(bool debug_mode, int log_level, const char *pid_file, int *pi
  */
 void sr_daemonize_signal_success(pid_t parent_pid);
 
+/**
+ * @brief Sets correct permissions on provided socket directory according to the
+ * data access permission of the YANG module.
+ *
+ * @param[in] socket_dir Socket directory.
+ * @param[in] module_name Name of the module whose access permissions are used
+ * to derive the permissions for the socket directory.
+ * @param[in] strict TRUE in no errors are allowed during the process of setting permissions,
+ * FALSE otherwise.
+ *
+ * @return Error code.
+ */
+int sr_set_socket_dir_permissions(const char *socket_dir, const char *module_name, bool strict);
+
 /**@} utils */
 
 #endif /* SR_UTILS_H_ */

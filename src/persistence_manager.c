@@ -155,7 +155,10 @@ pm_load_data_tree(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *mod
             SR_LOG_ERR("Unable to open persist data file '%s': %s.", data_filename, sr_strerror_safe(errno));
             rc = SR_ERR_INTERNAL;
         }
-        CHECK_RC_LOG_GOTO(rc, cleanup, "Persist data tree load for '%s' has failed.", module_name);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_WRN("Persist data tree load for '%s' has failed.", module_name);
+            goto cleanup;
+        }
     }
 
     /* lock & load the data tree */
