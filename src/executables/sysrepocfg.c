@@ -245,10 +245,11 @@ srcfg_get_module_data(struct ly_ctx *ly_ctx, const char *module_name, struct lyd
 
     *data_tree = NULL;
     ly_errno = LY_SUCCESS;
-    while ((ly_diminish_errors = true) && SR_ERR_OK == (rc = sr_get_item_next(srcfg_session, iter, &value))) {
+    ly_diminish_errors = true;
+    while (SR_ERR_OK == (rc = sr_get_item_next(srcfg_session, iter, &value))) {
         ly_diminish_errors = false;
         if (NULL == value) {
-            continue;
+            goto next;
         }
         /* get node schema */
         schema = ly_ctx_get_node2(ly_ctx, NULL, value->xpath, 0);
@@ -294,6 +295,7 @@ next:
             sr_free_val(value);
             value = NULL;
         }
+        ly_diminish_errors = true;
     }
     ly_diminish_errors = false;
 
