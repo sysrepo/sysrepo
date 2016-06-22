@@ -13,26 +13,23 @@ include_directories ("${PROJECT_SOURCE_DIR}/src" "${PROJECT_SOURCE_DIR}/src/comm
 
 find_program(valgrind_FOUND valgrind)
 
+add_library(HELPERS OBJECT ${TEST_HELPERS_DIR}rp_dt_context_helper.c
+            ${TEST_HELPERS_DIR}test_module_helper.c
+            ${TEST_HELPERS_DIR}system_helper.c)
+
 # create test target with specified options
 macro(ADD_UNIT_TEST_WITH_OPTS TEST_NAME USE_HELPERS USE_VALGRIND WRAP_FUNCTION)
-    if(${USE_HELPERS})
-        set(TEST_SRC
-            ${TEST_NAME}.c
-            ${TEST_HELPERS_DIR}rp_dt_context_helper.c
-            ${TEST_HELPERS_DIR}test_module_helper.c
-            ${TEST_HELPERS_DIR}system_helper.c
-            )
-    else()
-        set(TEST_SRC
-            ${TEST_NAME}.c
-            )
-    endif()
     if ("${WRAP_FUNCTION}" STREQUAL "")
         set(test_link_flags "")
     else()
         set(test_link_flags "-Wl,--wrap,${WRAP_FUNCTION}")
     endif()
-    add_executable(${TEST_NAME} ${TEST_SRC})
+    if(${USE_HELPERS})
+        add_executable(${TEST_NAME} ${TEST_NAME}.c $<TARGET_OBJECTS:HELPERS>)
+    else()
+        add_executable(${TEST_NAME} ${TEST_NAME}.c)
+    endif()
+
     target_link_libraries(${TEST_NAME} ${CMOCKA_LIBRARIES} sysrepo_a sysrepo-engine_a ${test_link_flags})
     add_test(${TEST_NAME} ${TEST_NAME})
     if(valgrind_FOUND)
