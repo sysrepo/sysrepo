@@ -25,140 +25,138 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <stddef.h>
+
+#include "sr_common.h"
 
 /*
  * @ brief Type of a dependency
  */
 typedef enum md_dep_type_e {
     MD_DEP_IMPORT,     /**< Import */
-    MD_DEP_EXTENSION   /**< Extension (augment, derived identities, ...) */
+    MD_DEP_EXTENSION   /**< Extension (augment, derived identity, ...) */
 } md_dep_type_t;
 
 typedef struct md_module_s md_module_t; /**< Forward declaration */
 
 /*
- * @brief Structure holding information about a dependency between modules.
+ * @brief Structure holding information about a module dependency.
  */
 typedef struct md_dep_s {
-    md_dep_type_t type;  /**< Type of the dependency */
-    uint32_t distance;   /**< Distance of the shortest-path between nodes in the dependency graph */
-    md_module_t *dest;   /**< Module on which this node depends on */
+    md_dep_type_t type;       /**< Type of the dependency. */
+    const md_module_t *dest;  /**< Module on which the source module depends on. */
+    bool direct;              /**< Is this a direct dependency or a transitive one? */
 } md_dep_t;
 
 /*
- * @brief Data structure describing dependencies of a module.
+ * @brief Data structure describing a single module in the context of inter-module dependencies.
  */
 typedef struct md_module_s {
-    const char *name;                    /**< Name of the module. */
-    const char *revision_date;           /**< Revision date of the module. */
-    const char *filepath;                /**< File path to the schema of the module. */
+    char *name;                /**< Name of the module. */
+    char *revision_date;       /**< Revision date of the module. */
+    char *filepath;            /**< File path to the schema of the module. */
 
-    bool latest_revision;                /**< "true" if this is the latest installed revision of this module. */
+    bool latest_revision;      /**< "true" if this is the latest installed revision of this module. */
 
-    uint32_t deps_size;                  /**< Allocated size of the #deps array. */
-    uint32_t deps_used;                  /**< Number of elements in the #deps array. */
-    md_dep_t *deps;                      /**< Array of dependencies, i.e. the list of modules that this module depends on. */
- 
-    uint32_t inv_deps_size;              /**< Allocated size of the #inv_deps array. */
-    uint32_t inv_deps_used;              /**< Number of elements in the #inv_deps array. */
-    md_dep_t *inv_deps;                  /**< Inverted dependencies, i.e. the list of modules that depend on this module. */
-   
-    uint32_t inst_ids_size;              /**< Number of elements in #inst_ids array. */
-    const char **inst_ids;               /**< Array of xpaths referencing all instance-identifiers in the module. */
+    sr_llist_t *inst_ids;      /**< List of xpaths referencing all instance-identifiers in the module.
+                                    Items are of type (char *) */
 
-    uint32_t idx;                        /**< Index, used internally to numerically reference the module. */
+    sr_llist_t *deps;          /**< Adjacency list for this module in the schema-based, transitively-closed, dependency graph,
+                                    i.e. the list of all modules that this module depends on. Items are of type (md_dep_t *) */
+    sr_llist_t *inv_deps;      /**< Adjacency list for this module in the inverted transitively-closed dependency graph,
+                                    i.e. the list of all modules that depend on this module. Items are of type (md_dep_t *) */
+
+    struct lyd_node *ly_data;  /**< libyang's representation of this data. For convenience. */
 } md_module_t;
 
 /* 
- * @brief Context used to represent complete module dependencies graph in-memory.
+ * @brief Context used to represent complete, transitively-closed, module dependency graph in-memory (using adjacency lists).
  */
 typedef struct md_ctx_s {
-    struct ly_ctx *ly_ctx;       /**< libyang context used for manipulation with the internal data file for dependencies */       
+    int fd;                      /**< file descriptor associated with sysrepo-module-dependencies.xml,
+                                      held only if the file is locked for RW-access, otherwise has value "-1". */
+
+    struct ly_ctx *ly_ctx;       /**< libyang context used for manipulation with the internal data file for dependencies. */
     struct lyd_node *data_tree;  /**< Graph data as loaded by libyang. */
 
-    uint32_t modules_size;       /**< Allocated size of the #modules array. */
-    uint32_t modules_used;       /**< Number of elements in the #modules arrau. */
-    md_module_t *modules;        /**< Array with information about dependencies of every installed module */
+    sr_llist_t *modules;         /**< List of all installed modules and their dependencies. Items are of type (md_module_t *) */
+    sr_btree_t *modules_btree;   /**< Pointers to all modules stored in a balanced tree for a quicker lookup.
+                                      Note: The tree does not own the pointers, the memory allocated for items is freed 
+                                      in the context of the linked list. Items are of type (md_module_t *) */
 } md_ctx_t;
 
 
-/**
- * @brief Return file name of the internal data file with module dependencies.
- *
- * @param [in] internal_data_search_dir Path to the directory with internal data files
- *             (e.g. SR_INTERNAL_DATA_SEARCH_DIR)
- * @param [out] file_name Allocated file path
- * @return Error code (SR_ERR_OK on success)
- */
-int md_get_data_file_name(const char *internal_data_search_dir, char **file_name);
-
-/**
- * @brief Return file name of the internal schema file used to represent module dependencies.
- *
- * @param [in] internal_schema_search_dir Path to the directory with internal schema files
- *             (e.g. SR_INTERNAL_SCHEMA_SEARCH_DIR)
- * @param [out] file_name Allocated file path
- * @return Error code (SR_ERR_OK on success)
- */
-int md_get_schema_file_name(const char *internal_schema_search_dir, char **file_name);
-
-/*
- * @brief Lock the internal data file with dependencies.
- */
-int md_lock(bool write, bool wait);
-
-/*
- * @brief Unlock the internal data file with dependencies.
- */
-int md_unlock();
-
 /*
  * @brief Create context and load the internal data file with module dependencies.
+ * Caller should eventually release the context using ::md_destroy.
+ *
+ * @param [in] schema_search_dir Path to the directory with schema files
+ *             (e.g. SR_SCHEMA_SEARCH_DIR)
+ * @param [in] internal_schema_search_dir Path to the directory with internal schema files
+ *             (e.g. SR_INTERNAL_SCHEMA_SEARCH_DIR)
+ * @param [in] internal_data_search_dir Path to the directory with internal data files
+ *             (e.g. SR_INTERNAL_DATA_SEARCH_DIR)
+ * @param [in] write_lock If set to "true" the internal data file will be kept open and locked 
+ *             for editing until the context is destroyed
+ * @param [out] md_ctx Context reference output location
  */
-md_ctx_t *md_init(const char *internal_schema_search_dir, const char *internal_data_search_dir);
+int md_init(const char *schema_search_dir, const char *internal_schema_search_dir, const char *internal_data_search_dir, 
+            bool write_lock, md_ctx_t **md_ctx);
 
 /*
- * @brief Free all internal structures of the specified context for module dependencies processing.
+ * @brief Free all internal resources associated with the specified Module Dependencies context.
+ * Do not access any data returned by md_* functions for this context after this call.
+ *
+ * @param [in] md_ctx Module Dependencies context
  */
 int md_destroy(md_ctx_t *md_ctx);
 
+/* @brief Get dependency-related information for a given module.
+ *
+ * @note O(log |V|) where V is a set of all modules.
+ *
+ * @param [in] md_ctx Module Dependencies context
+ * @param [in] name Name of the module
+ * @param [in] revision Revision of the module, can be empty string
+ * @param [out] module Output location for the pointer referencing the module info.
+ */
+int md_get_module_info(const md_ctx_t *md_ctx, const char *name, const char *revision, 
+                       const md_module_t **module);
+
+/**
+ * @brief Try to insert module into the dependency graph and update all the edges.
+ *        The operation only changes the in-memory representation of the dependency graph, to make 
+ *        the changes permanent call md_flush().
+ *
+ * @note O(|V| * (d_max)^3) where d_max is the maximum degree in both dependency and inverted dependency graph.
+ *       (+ module schema processing)
+ *
+ * @param [in] md_ctx Module Dependencies context
+ * @param [in] filepath Path leading to the file with the module schema. Should be installed in the repository.
+ */
+int md_insert_module(md_ctx_t *md_ctx, const char *filepath);
+
+/**
+ * @brief Try to remove module from the dependency graph and update all the edges.
+ *        Function will not allow to remove module which is needed by some other installed modules.
+ *        The operation only changes the in-memory representation of the dependency graph, to make 
+ *        the changes permanent call md_flush().
+ *
+ * @note O(|V| * (d_max)^3) where d_max is the maximum degree in both dependency and inverted dependency graph.
+ *
+ * @param [in] md_ctx Module Dependencies context
+ * @param [in] name Name of the module to remove
+ * @param [in] revision Revision of the module to remove, can be empty string
+ */
+int md_remove_module(md_ctx_t *md_ctx, const char *name, const char *revision);
+
 /*
- * @brief Get pointer to a structure with information about dependencies of a given module.
- */
-int md_get_module(const md_ctx_t *md_ctx, const char *name, const char *revision, 
-                  const md_module_t **module);
-
-/**
- * @brief Add entry for a given module into the data tree for recording dependencies.
- * Existing entry is updated.
- */
-int md_add_module(md_ctx_t *md_ctx, const struct lys_module *module);
-
-/**
- * @brief Record specified import-induced dependency for a given module into the data tree.
- */
-int md_add_import(md_ctx_t *md_ctx, const struct lys_module *module, const struct lys_import *imp);
-
-/**
- * @brief Record specified instance identifier for a given module into the data tree.
- */
-int md_add_inst_id(md_ctx_t *md_ctx, const struct lys_module *module, 
-                   struct lys_node_leaf *inst);
-
-/*
- * @brief Output the module dependencies with all recorded changes into the internal data file.
+ * @brief Output the in-memory stored dependency graph from the given context into the internal data file
+ *        (sysrepo-module-dependencies.xml). The context has to be created with write-lock activated
+ *        otherwise the function will return SR_ERR_INVAL_ARG.
+ *
+ * @param [in] md_ctx Module Dependencies context
  */
 int md_flush(md_ctx_t *md_ctx);
-
-/**
- * @brief Record all direct (i.e. non-transitive) dependencies based on imports for a given module 
- * into the data tree.
- */
-int srctl_md_add_import_deps(md_ctx_t *md_ctx, const struct lys_module *module);
-
-/**
- * @brief Rebuild the internal data file with module dependencies tree.
- */
-int srctl_rebuild_dependencies(struct ly_ctx *ly_ctx);
 
 #endif /* MODULE_DEPENDENCIES_H_ */

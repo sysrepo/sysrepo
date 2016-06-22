@@ -24,17 +24,17 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <unistd.h>
 #include <libyang/libyang.h>
 
-#include "sr_common.h"
 #include "module_dependencies.h"
 
-/* Internal Sysrepo module listing all dependencies between modules */
-#define SR_MD_MODULE_NAME      "sysrepo-module-dependencies"
-#define SR_MD_SCHEMA_FILENAME  SR_MD_MODULE_NAME ".yang"
-#define SR_MD_DATA_FILENAME    SR_MD_MODULE_NAME ".xml"
+/* Internal Sysrepo module persistently storing all dependencies between modules */
+#define MD_MODULE_NAME      "sysrepo-module-dependencies"
+#define MD_SCHEMA_FILENAME  MD_MODULE_NAME ".yang"
+#define MD_DATA_FILENAME    MD_MODULE_NAME ".xml"
 
-/* A list of frequently used xpaths for the internal module with dependencies */
+/* A list of frequently used xpaths for the internal module with dependency info */
 #define MD_XPATH_MODULE                      "/sysrepo-module-dependencies:module[name='%s'][revision='%s']"
 #define MD_XPATH_MODULE_FILEPATH             MD_XPATH_MODULE "/filepath"
 #define MD_XPATH_MODULE_LATEST_REV_FLAG      MD_XPATH_MODULE "/latest-revision"
@@ -43,39 +43,266 @@
 #define MD_XPATH_MODULE_INST_ID_LIST         MD_XPATH_MODULE "/instance-identifiers/"
 #define MD_XPATH_MODULE_INST_ID              MD_XPATH_MODULE_INST_ID_LIST "instance-identifier"
 
+/* Initial allocated size of an array */
+#define MD_INIT_ARRAY_SIZE  8
 
-int 
-sr_md_get_data_file_name(const char *internal_data_search_dir, char **file_name)
+/**
+ * @brief Return file path of the internal data file with module dependencies.
+ *
+ * @param [in] internal_data_search_dir Path to the directory with internal data files
+ *             (e.g. SR_INTERNAL_DATA_SEARCH_DIR)
+ * @param [out] file_path Allocated file path
+ * @return Error code (SR_ERR_OK on success)
+ */
+static int 
+md_get_data_file_path(const char *internal_data_search_dir, char **file_path)
 {
-    CHECK_NULL_ARG(file_name);
-    int rc = sr_str_join(internal_data_search_dir, SR_MD_DATA_FILENAME, file_name);
+    CHECK_NULL_ARG(file_path);
+    int rc = sr_str_join(internal_data_search_dir, MD_DATA_FILENAME, file_path);
     return rc;
 }
 
-int
-sr_md_get_schema_file_name(const char *internal_schema_search_dir, char **file_name)
+/**
+ * @brief Return file path of the internal schema file used to represent module dependencies.
+ *
+ * @param [in] internal_schema_search_dir Path to the directory with internal schema files
+ *             (e.g. SR_INTERNAL_SCHEMA_SEARCH_DIR)
+ * @param [out] file_path Allocated file path
+ * @return Error code (SR_ERR_OK on success)
+ */
+static int
+md_get_schema_file_path(const char *internal_schema_search_dir, char **file_path)
 {
-    CHECK_NULL_ARG(file_name);
-    int rc = sr_str_join(internal_schema_search_dir, SR_MD_SCHEMA_FILENAME, file_name);
+    CHECK_NULL_ARG(file_path);
+    int rc = sr_str_join(internal_schema_search_dir, MD_SCHEMA_FILENAME, file_path);
     return rc;
 }
 
-int
-md_lock(bool write, bool wait)
+/*
+ * @brief Convert value of type lys_type_enum to md_dep_type_t.
+ */
+static md_dep_type_t 
+md_get_dep_type_from_ly(const struct lys_type_enum *type)
 {
-    return 0;
+    // TODO
+}
+
+/*
+ * @brief Convert value of type md_dep_type_t to C-string 
+ * (string literal in the global scope).
+ */
+static char * 
+md_get_dep_type_to_str(md_dep_type_t type)
+{
+    // TODO
 }
 
 int
-md_unlock()
+md_init(const char *schema_search_dir, const char *internal_schema_search_dir, const char *internal_data_search_dir, 
+        bool write_lock, md_ctx_t **md_ctx)
 {
-    return 0;
-}
+    int rc = SR_ERR_OK;
+    md_ctx_t *ctx = NULL;
+    char *data_filepath = NULL, *schema_filepath = NULL;
+    const struct lys_module *module_schema = NULL;
+    struct lyd_node *module_data = NULL, *node = NULL;
+    struct lyd_node_leaf_list *leaf = NULL;
+    md_module_t *module = NULL;
+    char **inst_ids = NULL;
+    const char *dep_name = NULL, *dep_rev = NULL;
+    uint32_t dep_dist = 0;
+    md_dep_type_t dep_type;
 
-md_ctx_t *
-md_init(const char *internal_schema_search_dir, const char *internal_data_search_dir)
-{
-    return NULL;
+    CHECK_NULL_ARG2(internal_schema_search_dir, internal_data_search_dir);
+
+    /* Allocate context data structure */
+    ctx = calloc(1, sizeof *ctx);
+    CHECK_NULL_NOMEM_GOTO(ctx, rc, fail);
+    ctx->fd = -1;
+
+    /* initialize libyang context */
+    ctx->ly_ctx = ly_ctx_new(schema_search_dir);
+    if (NULL == ctx->ly_ctx) {
+        fprintf(stderr, "Error: Unable to initialize libyang context: %s.\n", ly_errmsg());
+        goto fail;
+    }
+
+    /* get filepaths to internal schema and data files with dependencies */
+    rc = md_get_schema_file_path(internal_schema_search_dir, &schema_filepath);
+    CHECK_RC_MSG_GOTO(rc, fail, "Unable to get the filepath of " MD_SCHEMA_FILENAME " data file.");
+    rc = md_get_data_file_path(internal_data_search_dir, &data_filepath);
+    CHECK_RC_MSG_GOTO(rc, fail, "Unable to get the filepath of " MD_DATA_FILENAME " schema file.");
+
+    /* load internal schema for model dependencies */
+    module_schema = lys_parse_path(ctx->ly_ctx, schema_filepath, LYS_IN_YANG);
+    if (NULL == module_schema) {
+        fprintf(stderr, "Error: Unable to parse " MD_SCHEMA_FILENAME " schema file: %s.\n", ly_errmsg());
+        goto fail;
+    }
+
+    /* open the internal data file */
+    ctx->fd = open(data_filepath, write_lock ? O_RDWR : O_RDONLY);
+    if (-1 == ctx->fd) {
+        fprintf(stderr, "Error: Unable to open " MD_DATA_FILENAME " data file: %s.\n", strerror(errno));
+        goto fail;
+    }
+
+    /* lock the data file if requested */
+    rc = sr_lock_fd(ctx->fd, true, true);
+    if (SR_ERR_OK != rc) {
+        fprintf(stderr, "Error: Unable to lock " MD_DATA_FILENAME " data file.\n");
+        goto fail;
+    }
+
+    /* parse the data file */
+    ly_errno = LY_SUCCESS;
+    ctx->data_tree = lyd_parse_fd(ctx->ly_ctx, ctx->fd, LYD_XML, LYD_OPT_STRICT | LYD_OPT_CONFIG);
+    if (NULL == ctx->data_tree && LY_SUCCESS != ly_errno) {
+        fprintf(stderr, "Error: Unable to parse " MD_DATA_FILENAME " data file: %s", ly_errmsg());
+        goto fail;
+    }
+
+    /* traverse data tree and construct dependency graph in-memory */
+    /* first process modules skipping dependencies */
+    if (ctx->data_tree) {
+        module_data = ctx->data_tree->child;
+        while (module_data) {
+            if (module_data->schema->name && 0 == strcmp("module", module_data->schema->name)) {
+                /* process "module" list entry */
+                if (ctx->modules_size == ctx->modules_used) {
+                    /* re-allocate #modules array */
+                    if (0 == ctx->modules_size) {
+                        ctx->modules_size = MD_INIT_ARRAY_SIZE;
+                    } else {
+                        ctx->modules_size <<= 1;
+                    }
+                    module = realloc(ctx->modules, ctx->modules_size * sizeof(md_module_t));
+                    CHECK_NULL_NOMEM_GOTO(module, rc, fail);
+                    ctx->modules = module;
+                }
+                module = ctx->modules + (ctx->modules_used++);
+                memset(module, '\0', sizeof(md_module_t));
+                module->ly_data = module_data;
+                module->latest_revision = true;
+                /* process module's attributes */
+                node = module_data->child;
+                while (node) {
+                    leaf = (struct lyd_node_leaf_list *) node;
+                    if ((LYS_LEAF | LYS_LEAFLIST) & node->schema->nodetype) {
+                        if (node->schema->name && 0 == strcmp("name", node->schema->name)) {
+                            module->name = strdup(leaf->value.string);
+                            CHECK_NULL_NOMEM_GOTO(module->name, rc, fail);
+                        } else if (node->schema->name && 0 == strcmp("revision", node->schema->name)) {
+                            module->revision_date = strdup(leaf->value.string);
+                            CHECK_NULL_NOMEM_GOTO(module->revision_date, rc, fail);
+                        } else if (node->schema->name && 0 == strcmp("filepath", node->schema->name)) {
+                            module->filepath = strdup(leaf->value.string);
+                            CHECK_NULL_NOMEM_GOTO(module->filepath, rc, fail);
+                        } else if (node->schema->name && 0 == strcmp("latest-revision", node->schema->name)) {
+                            module->latest_revision = leaf->value.bln;
+                        }
+                    } else {
+                        if (node->schema->name && 0 == strcmp("instance-identifiers", node->schema->name)) {
+                            /* process instance identifiers */
+                            leaf = (struct lyd_node_leaf_list *)node->child;
+                            while (leaf) {
+                                if (leaf->schema->name && 0 == strcmp("instance-identifier", leaf->schema->name)) {
+                                    if (module->inst_ids_used == module->inst_ids_size) {
+                                        /* re-allocate #inst_ids array */
+                                        if (0 == module->inst_ids_size) {
+                                            module->inst_ids_size = MD_INIT_ARRAY_SIZE;
+                                        } else {
+                                            module->inst_ids_size <<= 1;
+                                        }
+                                        inst_ids = realloc(module->inst_ids, module->inst_ids_size * sizeof(char *));
+                                        CHECK_NULL_NOMEM_GOTO(inst_ids, rc, fail);
+                                        module->inst_ids = inst_ids;
+                                    }
+                                    module->inst_ids[module->inst_ids_used] = strdup(leaf->value.string);
+                                    CHECK_NULL_NOMEM_GOTO(module->inst_ids[module->inst_ids_used], rc, fail);
+                                    ++(module->inst_ids_used);
+                                }
+                                leaf = (struct lyd_node_leaf_list *)leaf->next;
+                            }
+                        }
+                    }
+                    node = node->next;
+                }
+            }
+            module_data = module_data->next;
+        }
+
+        /* TODO: now process dependencies */
+        for (unsigned i = 0; i < ctx->modules_size; ++i) {
+            module = ctx->modules + i;
+            module_data = ctx->modules[i].ly_data;
+            /* find list with dependencies */
+            node = module_data->child;
+            while (node) {
+                if (node->schema->name && 0 == strcmp("dependencies", node->schema->name)) {
+                    node = node->child;
+                    break;
+                }
+            }
+            /* process dependencies */
+            while (node) {
+                if (node->schema->name && 0 == strcmp("dependency", node->schema->name)) {
+                    leaf = (struct lyd_node_leaf_list *)node->child;
+                    while (leaf) {
+                        if ((LYS_LEAF | LYS_LEAFLIST) & leaf->schema->nodetype) {
+                            if (leaf->schema->name && 0 == strcmp("module-name", leaf->schema->name)) {
+                                dep_name = leaf->value.string;
+                            } else if (leaf->schema->name && 0 == strcmp("module-revision", leaf->schema->name)) {
+                                dep_rev = leaf->value.string;
+                            } else if (leaf->schema->name && 0 == strcmp("type", leaf->schema->name)) {
+                                dep_type = md_get_dep_type_from_ly(leaf->value.enm);
+                            } else if (leaf->schema->name && 0 == strcmp("distance", leaf->schema->name)) {
+                                dep_dist = leaf->value.uint32;
+                            }
+                        }
+                        leaf = (struct lyd_node_leaf_list *)leaf->next;
+                    }
+                    // TODO: insert dependency
+                }
+                node = node->next;
+            }
+        }
+    } // traversal
+
+    rc = SR_ERR_OK;
+    *md_ctx = ctx;
+    return rc;
+
+fail:
+    if (ctx) {
+        if (ctx->data_tree) {
+            lyd_free_withsiblings(ctx->data_tree);
+        }
+        if (ctx->ly_ctx) {
+            ly_ctx_destroy(ctx->ly_ctx, NULL);
+        }
+        if (-1 != ctx->fd) {
+            close(ctx->fd); /*< auto-unlock */
+        }
+        if (ctx->modules) {
+            for (unsigned i = 0; i < ctx->modules_used; ++i) {
+                free(ctx->modules[i].name);
+                free(ctx->modules[i].revision_date);
+                free(ctx->modules[i].filepath);
+                free(ctx->modules[i].deps);
+                free(ctx->modules[i].inv_deps);
+                for (unsigned j = 0; j < ctx->modules[i].inst_ids_size; ++j) {
+                    free(ctx->modules[i].inst_ids[j]);
+                }
+                free(ctx->modules[i].inst_ids);
+            }
+            free(ctx->modules);
+        }
+        free(ctx);
+    }
+    rc = SR_ERR_INTERNAL;
+    *md_ctx = NULL;
+    return rc;
 }
 
 int 
@@ -85,14 +312,14 @@ md_destroy(md_ctx_t *md_ctx)
 }
 
 int 
-md_get_module(const md_ctx_t *md_ctx, const char *name, const char *revision, 
-              const md_module_t **module)
+md_get_module_info(const md_ctx_t *md_ctx, const char *name, const char *revision, 
+                   const md_module_t **module)
 {
     return 0;
 }
 
 int
-md_add_module(md_ctx_t *md_ctx, const struct lys_module *module)
+md_insert_module(md_ctx_t *md_ctx, const char *filename)
 {
 #if 0
     char xpath[PATH_MAX] = { 0, };
@@ -120,10 +347,25 @@ md_add_module(md_ctx_t *md_ctx, const struct lys_module *module)
     return SR_ERR_OK;
 }
 
+int 
+md_remove_module(md_ctx_t *md_ctx, const char *name, const char *revision)
+{
+    return 0;
+}
+
 int
+md_flush(md_ctx_t *md_ctx)
+{
+    return 0;
+}
+
+#if 0
+/**
+ * @brief Record specified import-induced dependency for a given module into the data tree.
+ */
+static int
 md_add_import(md_ctx_t *md_ctx, const struct lys_module *module, const struct lys_import *imp)
 {
-#if 0
     char xpath[PATH_MAX] = { 0, };
     struct lyd_node *node = NULL;
     const char *rev = revision_date;
@@ -148,16 +390,17 @@ md_add_import(md_ctx_t *md_ctx, const struct lys_module *module, const struct ly
         }
 
     }
-#endif
     return SR_ERR_OK;
 }
 
-int
+/**
+ * @brief Record specified instance identifier for a given module into the data tree.
+ */
+static int
 md_add_inst_id(md_ctx_t *md_ctx, const struct lys_module *module, 
                struct lys_node_leaf *inst)
 {
     int rc = SR_ERR_OK;
-#if 0
     char xpath[PATH_MAX] = { 0, }, *inst_xpath = NULL, *cur = NULL;
     size_t length = 0;
     struct lyd_node *node = NULL;
@@ -225,21 +468,17 @@ cleanup:
     if (NULL != inst_xpath) {
         free(inst_xpath);
     }
-#endif
     return rc;
 }
 
-int
-md_flush(md_ctx_t *md_ctx)
-{
-    return 0;
-}
-
-int
+/**
+ * @brief Record all direct (i.e. non-transitive) dependencies based on imports for a given module 
+ * into the data tree.
+ */
+static int
 srctl_md_add_import_deps(md_ctx_t *md_ctx, const struct lys_module *module)
 {
     int rc = SR_ERR_OK;
-#if 0
     struct lys_import *imp = NULL;
     const char *rev = NULL;
 
@@ -264,15 +503,13 @@ srctl_md_add_import_deps(md_ctx_t *md_ctx, const struct lys_module *module)
             break;
         }
     }
-#endif
     return rc;
 }
 
-int
+static int
 srctl_rebuild_dependencies(struct ly_ctx *ly_ctx)
 {
     int rc = SR_ERR_OK, ret = 0;
-#if 0
     bool ctx_initialized = false;
     int fd = -1;
     bool locked = false;
@@ -425,6 +662,6 @@ cleanup:
     if (ctx_initialized) {
         ly_ctx_destroy(ly_ctx, NULL);
     }
-#endif
     return rc;
 }
+#endif
