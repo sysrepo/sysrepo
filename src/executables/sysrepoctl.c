@@ -1031,6 +1031,7 @@ srctl_print_help()
     printf("Available operation-options:\n");
     printf("  -h, --help             Prints usage help.\n");
     printf("  -v, --version          Prints version.\n");
+    printf("  -L, --level            Set verbosity level of logging ([0 - 4], 0 = all logging turned off).\n");
     printf("  -l, --list             Lists YANG modules installed in sysrepo.\n");
     printf("  -i, --install          Installs specified schema into sysrepo (--yang or --yin must be specified).\n");
     printf("  -I, --init             Initializes already installed YANG/YIN schema (--module must be specified).\n");
@@ -1064,6 +1065,7 @@ int
 main(int argc, char* argv[])
 {
     int c = 0, operation = 0;
+    int log_level = -1;
     char *feature_name = NULL;
     char *yang = NULL, *yin = NULL, *module = NULL, *revision = NULL;
     char *owner = NULL, *permissions = NULL;
@@ -1074,6 +1076,7 @@ main(int argc, char* argv[])
     struct option longopts[] = {
        { "help",            no_argument,       NULL, 'h' },
        { "version",         no_argument,       NULL, 'v' },
+       { "level",           required_argument, NULL, 'L' },
        { "list",            no_argument,       NULL, 'l' },
        { "install",         no_argument,       NULL, 'i' },
        { "init",            no_argument,       NULL, 'I' },
@@ -1093,7 +1096,7 @@ main(int argc, char* argv[])
        { 0, 0, 0, 0 }
     };
 
-    while ((c = getopt_long(argc, argv, "hvliIuce:d:g:n:m:r:o:p:s:0:W;", longopts, NULL)) != -1) {
+    while ((c = getopt_long(argc, argv, "hvLliIuce:d:g:n:m:r:o:p:s:0:W;", longopts, NULL)) != -1) {
         switch (c) {
             case 'h':
                 srctl_print_help();
@@ -1102,6 +1105,9 @@ main(int argc, char* argv[])
             case 'v':
                 srctl_print_version();
                 exit(EXIT_SUCCESS);
+                break;
+            case 'L':
+                log_level = atoi(optarg);
                 break;
             case 'l':
             case 'i':
@@ -1159,6 +1165,12 @@ main(int argc, char* argv[])
         }
     }
 
+    /* set log levels */
+    sr_log_stderr(SR_LL_ERR);
+    sr_log_syslog(SR_LL_NONE);
+    if ((log_level >= SR_LL_NONE) && (log_level <= SR_LL_DBG)) {
+        sr_log_stderr(log_level);
+    }
     ly_set_log_clb(srctl_ly_log_cb, 0);
 
     switch (operation) {
