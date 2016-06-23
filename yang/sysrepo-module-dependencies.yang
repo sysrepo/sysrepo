@@ -45,7 +45,7 @@ module sysrepo-module-dependencies {
     }
 
     container dependencies {
-      description "List of dependencies.";
+      description "List of dependencies. Only direct (non-transitive) dependencies are stored in the data file.";
 
       list dependency {
         key "module-name module-revision";
@@ -67,11 +67,6 @@ module sysrepo-module-dependencies {
                 enum "extension";
             }
             description "Type of the dependency.";
-        }
-
-        leaf distance {
-            type uint32;
-            description "Distance of the shortest-path between these two modules in the dependency graph.";
         }
     }
 

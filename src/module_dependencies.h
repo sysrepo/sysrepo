@@ -43,9 +43,9 @@ typedef struct md_module_s md_module_t; /**< Forward declaration */
  * @brief Structure holding information about a module dependency.
  */
 typedef struct md_dep_s {
-    md_dep_type_t type;       /**< Type of the dependency. */
-    const md_module_t *dest;  /**< Module on which the source module depends on. */
-    bool direct;              /**< Is this a direct dependency or a transitive one? */
+    md_dep_type_t type; /**< Type of the dependency. */
+    md_module_t *dest;  /**< Module on which the source module depends on. */
+    bool direct;        /**< Is this a direct dependency or a transitive one? */
 } md_dep_t;
 
 /*
@@ -69,20 +69,22 @@ typedef struct md_module_s {
     struct lyd_node *ly_data;  /**< libyang's representation of this data. For convenience. */
 } md_module_t;
 
-/* 
+/*
  * @brief Context used to represent complete, transitively-closed, module dependency graph in-memory (using adjacency lists).
  */
 typedef struct md_ctx_s {
-    int fd;                      /**< file descriptor associated with sysrepo-module-dependencies.xml,
-                                      held only if the file is locked for RW-access, otherwise has value "-1". */
+    char *schema_search_dir;         /**< Path to the directory with schema files. */
+    int fd;                          /**< file descriptor associated with sysrepo-module-dependencies.xml,
+                                          held only if the file is locked for RW-access, otherwise has value "-1". */
 
-    struct ly_ctx *ly_ctx;       /**< libyang context used for manipulation with the internal data file for dependencies. */
-    struct lyd_node *data_tree;  /**< Graph data as loaded by libyang. */
+    struct ly_ctx *ly_ctx;           /**< libyang context used for manipulation with the internal data file for dependencies. */
+    struct lyd_node *data_tree;      /**< Graph data as loaded by libyang (not transitively closed).
+                                          Also reflects changes made using ::md_insert_module and ::md_remove_module */
 
-    sr_llist_t *modules;         /**< List of all installed modules and their dependencies. Items are of type (md_module_t *) */
-    sr_btree_t *modules_btree;   /**< Pointers to all modules stored in a balanced tree for a quicker lookup.
-                                      Note: The tree does not own the pointers, the memory allocated for items is freed 
-                                      in the context of the linked list. Items are of type (md_module_t *) */
+    sr_llist_t *modules;             /**< List of all installed modules and their dependencies. Items are of type (md_module_t *) */
+    sr_btree_t *modules_btree;       /**< Pointers to all modules stored in a balanced tree for a quicker lookup.
+                                          Items are of type (md_module_t *)
+                                          Note: The tree also frees memory allocated for all the items.  */
 } md_ctx_t;
 
 
@@ -96,11 +98,11 @@ typedef struct md_ctx_s {
  *             (e.g. SR_INTERNAL_SCHEMA_SEARCH_DIR)
  * @param [in] internal_data_search_dir Path to the directory with internal data files
  *             (e.g. SR_INTERNAL_DATA_SEARCH_DIR)
- * @param [in] write_lock If set to "true" the internal data file will be kept open and locked 
+ * @param [in] write_lock If set to "true" the internal data file will be kept open and locked
  *             for editing until the context is destroyed
  * @param [out] md_ctx Context reference output location
  */
-int md_init(const char *schema_search_dir, const char *internal_schema_search_dir, const char *internal_data_search_dir, 
+int md_init(const char *schema_search_dir, const char *internal_schema_search_dir, const char *internal_data_search_dir,
             bool write_lock, md_ctx_t **md_ctx);
 
 /*
@@ -120,27 +122,31 @@ int md_destroy(md_ctx_t *md_ctx);
  * @param [in] revision Revision of the module, can be empty string
  * @param [out] module Output location for the pointer referencing the module info.
  */
-int md_get_module_info(const md_ctx_t *md_ctx, const char *name, const char *revision, 
+int md_get_module_info(const md_ctx_t *md_ctx, const char *name, const char *revision,
                        const md_module_t **module);
 
 /**
  * @brief Try to insert module into the dependency graph and update all the edges.
- *        The operation only changes the in-memory representation of the dependency graph, to make 
- *        the changes permanent call md_flush().
+ *        To maintain complete dependency graph for all the installed nodes, the function
+ *        also automatically inserts all missing import-based dependencies.
+ *        The operation only changes the in-memory representation of the dependency graph, to make
+ *        the changes permanent call ::md_flush afterwards.
  *
  * @note O(|V| * (d_max)^3) where d_max is the maximum degree in both dependency and inverted dependency graph.
  *       (+ module schema processing)
  *
  * @param [in] md_ctx Module Dependencies context
- * @param [in] filepath Path leading to the file with the module schema. Should be installed in the repository.
+ * @param [in] filepath Path leading to the file with the module schema. Should be installed in the repository
+ *                      with all its imports.
  */
 int md_insert_module(md_ctx_t *md_ctx, const char *filepath);
 
 /**
  * @brief Try to remove module from the dependency graph and update all the edges.
- *        Function will not allow to remove module which is needed by some other installed modules.
- *        The operation only changes the in-memory representation of the dependency graph, to make 
- *        the changes permanent call md_flush().
+ *        Function will not allow to remove module which is needed by some other installed modules,
+ *        hence all the dependencies of the remaining nodes will remain resolved and recorded.
+ *        The operation only changes the in-memory representation of the dependency graph, to make
+ *        the changes permanent call ::md_flush afterwards.
  *
  * @note O(|V| * (d_max)^3) where d_max is the maximum degree in both dependency and inverted dependency graph.
  *
