@@ -1127,7 +1127,7 @@ sr_daemonize_signal_success(pid_t parent_pid)
 }
 
 int
-sr_set_socket_dir_permissions(const char *socket_dir, const char *module_name, bool strict)
+sr_set_socket_dir_permissions(const char *socket_dir, const char *data_serach_dir, const char *module_name, bool strict)
 {
     char *data_file_name = NULL;
     struct stat data_file_stat = { 0, };
@@ -1142,7 +1142,7 @@ sr_set_socket_dir_permissions(const char *socket_dir, const char *module_name, b
     }
 
     /* retrieve module's data filename */
-    rc = sr_get_data_file_name(SR_DATA_SEARCH_DIR, module_name, SR_DS_STARTUP, &data_file_name);
+    rc = sr_get_data_file_name(data_serach_dir, module_name, SR_DS_STARTUP, &data_file_name);
     CHECK_RC_LOG_RETURN(rc, "Unable to get data file name for module %s.", module_name);
 
     /* lookup for permissions of the data file */
