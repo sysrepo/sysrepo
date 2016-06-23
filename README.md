@@ -29,8 +29,8 @@ Sysrepo can be easily integrated to management agents such as [NETCONF](https://
 - full transaction and concurrency support, conforming all ACID properties (Atomicity, Consistency, Isolation, Durability)
 - custom RPC support
 - plugins infrastructure for use-cases where there is no daemon to be integrated with sysrepo
-- (IN PROGRESS) notifications of subscribed applications about the changes made in the datastore
-- (TODO) operational data support (publishing of application's state data to sysrepo)
+- notifications of subscribed applications about the changes made in the datastore
+- (IN PROGRESS) operational data support (publishing of application's state data to sysrepo)
 - (TODO) ability to subscribe to notifications as a verifier and validate the changes before they are committed
 - (TODO) [NACM](https://tools.ietf.org/html/rfc6536) (NETCONF Access Control Model)
 - (TODO) [NETCONF Event Notifications](https://tools.ietf.org/html/rfc5277) support
