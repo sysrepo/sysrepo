@@ -427,10 +427,13 @@ srctl_module_change_permissions(const char *module_name, const char *owner, cons
         }
     }
 
-    ret = srctl_update_socket_dir_permissions(module_name);
-    if (0 != ret) {
-        fprintf(stderr, "Error: Unable to update socket directory permissions for module '%s'.\n", module_name);
-        goto fail;
+    if (!custom_repository) {
+        /* update socket directory permissions (if not executed by build) */
+        ret = srctl_update_socket_dir_permissions(module_name);
+        if (0 != ret) {
+            fprintf(stderr, "Error: Unable to update socket directory permissions for module '%s'.\n", module_name);
+            goto fail;
+        }
     }
 
     return SR_ERR_OK;
