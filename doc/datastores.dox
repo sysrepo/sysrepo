@@ -2,10 +2,10 @@
 
 @page ds_page Datastores & Sessions
 
-Sysrepo supports \b startup \b running and \b candidate configuration datastores. Each configuration
-session created can perform operations on any of them. On session start the initial datastore
+Sysrepo supports \b startup, \b running and \b candidate configuration datastores. Each configuration
+session can perform operations on any of them. On session start the initial datastore
 is selected. All subsequent calls are tied to the chosen datastore. The datastore which
-the session is operating can be changed using ::sr_session_switch_ds.
+the session is operating can be changed during the lifetime of the session using ::sr_session_switch_ds.
 
 The changes made within a session are not applied into the datastore
 until ::sr_commit is requested. While not committed, changes are visible only
@@ -20,25 +20,29 @@ or service supports at least this datastore.
 
 @section rds Running Datastore
 Running datastore contains currently applied configuration and state data
-of a running application or service. If the application is not running at the
-moment for whatever reason, it will have no data in the running datastore.
+of a controlled application or service. If the application is not running at the
+moment for whatever reason, it will have no data in the running datastore
+(and the attempt to alter its configuration in running datastore will result in an error).
 
 Not all applications support this datastore. If an application does not support running
 datastore, it won't have any data in it, regardless of whether it is running or not.
 
 To support running datastore, the application needs to subscribe for notifications about the
 changes made in the datastore. After the subscription, the data on subscribed paths
-will be copied from startup to running datastore and become available for retrieval.
+will be copied from startup to running datastore and become available for retrieval
+and modification via running datastore. When a new configuration is committed into the running datastore, subscribed
+application is informed about it and should start using it.
 
-When new configuration is committed into the running datastore, subscribed application is
-informed about it and should start using it. Be aware that that kind of
-change is not permanent - you need to copy the configuration to the startup
-datastore to make it permanent after application restart (::sr_copy_config).
+@note Be aware that changes in running datastore are not persistent and will
+be lost after the application or the system restarts - an explicit copy-config
+from running to startup datastore is needed to make the changes persistent
+after restarts (see ::sr_copy_config).
 
 @section cds Candidate Datastore
 The candidate configuration is a full configuration data set that serves as a work
 place for creating and manipulating configuration data. ::sr_commit operation sets
-running configuration to the value of the candidate content.
+running configuration to the value of the candidate content (overwrites the running
+datastore content with the content of candidate datastore).
 
 @section dscache Session Data Caching
 For faster processing, sysrepo caches configuration data within the session.

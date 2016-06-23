@@ -78,7 +78,7 @@ int cl_sm_init(cl_sm_ctx_t **sm_ctx);
  * @brief Cleans up the Subscription Manager.
  *
  * @param[in] sm_ctx Subscription Manager context acquired by ::cl_sm_init call.
- * param[in] join If set to TRUE, joins the thread with the event loop and then does the cleanup.
+ * @param[in] join If set to TRUE, joins the thread with the event loop and then does the cleanup.
  */
 void cl_sm_cleanup(cl_sm_ctx_t *sm_ctx, bool join);
 

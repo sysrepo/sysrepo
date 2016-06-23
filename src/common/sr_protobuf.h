@@ -112,7 +112,7 @@ int sr_gpb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const S
  * @brief Validates the notification message according to excepted notification event.
  *
  * @param[in] msg Unpacked message.
- * @param[in] event Expected notification event.
+ * @param[in] type Expected notification type.
  *
  * @return Error code (SR_ERR_OK on success).
  */

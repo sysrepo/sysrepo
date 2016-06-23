@@ -1,5 +1,5 @@
 /**
- * @file daemon.c
+ * @file sysrepod.c
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
  * @brief Sysrepo daemon source file.
  *
@@ -71,8 +71,8 @@ srd_print_help()
     printf("  -l <level>\tSets verbosity level of logging:\n");
     printf("\t\t\t0 = all logging turned off\n");
     printf("\t\t\t1 = log only error messages\n");
-    printf("\t\t\t2 = log error and warning messages\n");
-    printf("\t\t\t3 = (default) log error, warning and informational messages\n");
+    printf("\t\t\t2 = (default) log error and warning messages\n");
+    printf("\t\t\t3 = log error, warning and informational messages\n");
     printf("\t\t\t4 = log everything, including development debug messages\n");
 }
 

@@ -3,9 +3,9 @@
 @page usage Using Sysrepo
 
 By installation, four main parts of sysrepo are installed on the system:
-the **sysrepo control tool** (a.k.a. sysrepoctl), the **sysrepo configuration tool** 
-(a.k.a. sysrepocfg), the **sysrepo library**
-(a.k.a @ref cl or libsysrepo) and the **sysrepo daemon** (a.k.a. sysrepod).
+the **sysrepo control tool** (`sysrepoctl`), the **sysrepo configuration tool** 
+(`sysrepocfg`), the **sysrepo library** (a.k.a @ref cl or libsysrepo) 
+and the **sysrepo daemon** (`sysrepod`).
 See @ref sysrepoctl, @ref libsysrepo and @ref sysrepod for more details about
 these components.
 
@@ -17,11 +17,11 @@ use sysrepo as their datastore are located. It can be set by specifying
 
 
 @section sysrepoctl Using sysrepoctl tool
-sysrepoctl is a tool for the management of YANG modules installed in sysrepo.
+`sysrepoctl` is a tool for the management of YANG modules installed in sysrepo.
 It can be used for installing of new YANG modules to sysrepo, uninstalling 
 existing ones, listing current state of installed modules, enabling / disabling
 of YANG features within the module or changing access permissions. Detailed usage 
-of the tool can be displayed by executing sysrepoctl -h.
+of the tool can be displayed by executing `sysrepoctl -h`.
 
 @subsection sysrepoctl_install Installing and uninstalling of YANG modules to / from sysrepo
 To list currently installed YANG modules, issue the `sysrepoctl -l` command. If
@@ -71,7 +71,7 @@ The changes in enabled features are persistent (do not reset by sysrepo or syste
 
 
 @section sysrepocfg Using sysrepocfg tool
-sysrepocfg  is  a  command-line tool for editing, importing and exporting configuration 
+`sysrepocfg`  is  a  command-line tool for editing, importing and exporting configuration 
 stored in Sysrepo datastore. It allows the user to edit startup or running 
 configuration of specified module in preferred text editor and to propagate the 
 performed changes into the datastore transparently for all subscribed applications.
@@ -79,20 +79,18 @@ Moreover, the user can export the current configuration into a file or get it
 printed to the standard output and, similarly, an already prepared configuration 
 can be imported from a file or read from the standard input.
 
-See sysrepocfg manual page (man 1 sysrepocfg) for more detailed description of the tool.
-
+See `sysrepocfg` manual page (`man 1 sysrepocfg`) for more detailed description of the tool.
 
 @subsection sysrepoctl_dump Dumping and importing data from / to sysrepo
-Contents of the startup datastore can be easilly dumped (e.g. for backup purposes)
+Contents of the running or startup datastore can be easily dumped (e.g. for backup purposes)
 and imported (e.g. for initail data import, or data recovery purposes) by 
-`sysrepoctl --dump` and `sysrepoctl --import` commands, e.g.:
+`sysrepocfg --export` and `sysrepocfg --import` commands, e.g.:
 ~~~~~~~~~~~~~~~
-sysrepoctl --dump=xml --module=ietf-interfaces > dump_file.txt
-sysrepoctl --import=xml --module=ietf-interfaces < dump_file.txt
+sysrepocfg --export=/tmp/backup.json --format=json --datastore=startup ietf-interfaces
+sysrepocfg --import=/tmp/backup.json --format=json ietf-interfaces
 ~~~~~~~~~~~~~~~
-Please note that `--import` completly overwrites the content of startup datastore
-belonging to specified module (existing content will be definitely lost).
 Sysrepo currently supports two dump & import formats: XML and JSON.
+
 
 @section libsysrepo Using sysrepo library in your application
 Sysrepo library is an interface between sysrepo datastore and northbound and 
@@ -154,8 +152,8 @@ Options:
   -l <level>  Sets verbosity level of logging:
                       0 = all logging turned off
                       1 = log only error messages
-                      2 = log error and warning messages
-                      3 = (default) log error, warning and informational messages
+                      2 = (default) log error and warning messages
+                      3 = log error, warning and informational messages
                       4 = log everything, including development debug messages
 ~~~~~~~~~~~~~~~
 
@@ -170,5 +168,21 @@ that would be wasted by frequent init and cleanup procedures of local Sysrepo
 Engines by access from multiple sysrepo clients, as well as offers better 
 concurrency control. Therefore it is vital to have system-wide sysrepo daemon
 running when possible.
+
+
+@section subscribe Subscribing to startup datastore
+As described in @ref ds_page, to enable a configuration subtree in the running datastore,
+some application needs to subscribe for the changes in the subtree in sysrepo datastore.
+If no application has subscribed for specified subtree, it would have no data in the 
+running datastore and all attempts to modify the subtree in the running datastore will
+result into an error.
+
+For testing purposes, you can use `application_example` or `application_changes_example`
+from the `examples` subdirectory. These applications subscribe for chnges in the module
+specified as the argument and print the new configuration after it has changed:
+
+~~~~~~~~~~~~~~~
+examples/application_example ietf-interfaces
+~~~~~~~~~~~~~~~
 
 */

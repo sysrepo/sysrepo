@@ -22,6 +22,16 @@
 
 #ifndef SR_UTILS_H_
 #define SR_UTILS_H_
+#include <time.h>
+
+#ifdef __APPLE__
+/* OS X get_time */
+#include <mach/clock.h>
+#include <mach/mach.h>
+#define CLOCK_REALTIME CALENDAR_CLOCK
+#define CLOCK_MONOTONIC SYSTEM_CLOCK
+typedef int clockid_t;
+#endif
 
 #include <libyang/libyang.h>
 
@@ -339,12 +349,23 @@ void sr_free_changes(sr_change_t *changes, size_t count);
 pid_t sr_daemonize(bool debug_mode, int log_level, const char *pid_file, int *pid_file_fd);
 
 /**
- * @brief Send a signal notifying about initialization success to the parent of
+ * @brief Sends a signal notifying about initialization success to the parent of
  * the process forked by ::sr_daemonize.
  *
- * @param[in] PID of the parent process that is waiting for this signal.
+ * @param[in] parent_pid PID of the parent process that is waiting for this signal.
  */
 void sr_daemonize_signal_success(pid_t parent_pid);
+
+/**
+ * @brief Function calls appropriate function on OS X and other unix/linux systems
+ *
+ * @param [in] clock_id clock identifier
+ * @param [in] ts - time structure to be filled
+ *
+ * @return Error code (SR_ERR_OK on success)
+ */
+int sr_clock_get_time(clockid_t clock_id, struct timespec *ts);
+
 
 /**
  * @brief Sets correct permissions on provided socket directory according to the

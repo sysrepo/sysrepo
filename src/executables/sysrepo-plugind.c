@@ -33,8 +33,8 @@
 
 #include "sr_common.h"
 
-#define SR_PLUGIN_INIT_FN_NAME     "sr_plugin_init_cb"
-#define SR_PLUGIN_CLEANUP_FN_NAME  "sr_plugin_cleanup_cb"
+#define SR_PLUGIN_INIT_FN_NAME     "sr_plugin_init_cb"     /**< Name of the plugin initialization function. */
+#define SR_PLUGIN_CLEANUP_FN_NAME  "sr_plugin_cleanup_cb"  /**< Name of the plugin cleanup function. */
 
 /**
  * @brief Sysrepo plugin initialization callback.
@@ -227,8 +227,8 @@ sr_pd_print_help()
     printf("  -l <level>\tSets verbosity level of logging:\n");
     printf("\t\t\t0 = all logging turned off\n");
     printf("\t\t\t1 = log only error messages\n");
-    printf("\t\t\t2 = log error and warning messages\n");
-    printf("\t\t\t3 = (default) log error, warning and informational messages\n");
+    printf("\t\t\t2 = (default) log error and warning messages\n");
+    printf("\t\t\t3 = log error, warning and informational messages\n");
     printf("\t\t\t4 = log everything, including development debug messages\n");
 }
 

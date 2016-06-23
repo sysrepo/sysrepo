@@ -223,7 +223,7 @@ static void
 srcfg_test_version(void **state)
 {
     exec_shell_command("../src/sysrepocfg -v",
-                       "^sysrepocfg - sysrepo configuration tool, version [0-9]\\.[0-9]\\.[0-9]\\s*$", true, 0);
+                       "^sysrepocfg - sysrepo configuration tool, version [0-9]\\.[0-9]\\.[0-9][[:space:]]*$", true, 0);
 }
 
 static void
