@@ -372,6 +372,7 @@ int sr_clock_get_time(clockid_t clock_id, struct timespec *ts);
  * data access permission of the YANG module.
  *
  * @param[in] socket_dir Socket directory.
+ * @param[in] data_serach_dir Location of the directory with data files.
  * @param[in] module_name Name of the module whose access permissions are used
  * to derive the permissions for the socket directory.
  * @param[in] strict TRUE in no errors are allowed during the process of setting permissions,
@@ -379,7 +380,7 @@ int sr_clock_get_time(clockid_t clock_id, struct timespec *ts);
  *
  * @return Error code.
  */
-int sr_set_socket_dir_permissions(const char *socket_dir, const char *module_name, bool strict);
+int sr_set_socket_dir_permissions(const char *socket_dir, const char *data_serach_dir, const char *module_name, bool strict);
 
 /**@} utils */
 
