@@ -116,6 +116,7 @@ int md_init(const char *schema_search_dir, const char *internal_schema_search_di
 int md_destroy(md_ctx_t *md_ctx);
 
 /* @brief Get dependency-related information for a given module.
+ *        "revision" set to NULL represents the latest revision.
  *
  * @note O(log |V|) where V is a set of all modules.
  *
@@ -145,6 +146,7 @@ int md_insert_module(md_ctx_t *md_ctx, const char *filepath);
 
 /**
  * @brief Try to remove module from the dependency graph and update all the edges.
+ *        "revision" set to NULL represents the latest revision.
  *        Function will not allow to remove module which is needed by some other installed modules,
  *        hence all the dependencies of the remaining nodes will remain resolved and recorded.
  *        The operation only changes the in-memory representation of the dependency graph, to make

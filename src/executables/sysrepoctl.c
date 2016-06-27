@@ -567,9 +567,6 @@ srctl_uninstall(const char *module_name, const char *revision)
         fprintf(stderr, "Error: Module must be specified for --uninstall operation.\n");
         return SR_ERR_INVAL_ARG;
     }
-    if (NULL == revision) {
-        revision = "";
-    }
     printf("Uninstalling the module '%s'.\n", module_name);
 
     /* init libyang context */
@@ -590,7 +587,8 @@ srctl_uninstall(const char *module_name, const char *revision)
     /* search for the module to uninstall */
     rc = md_get_module_info(md_ctx, module_name, revision, &module);
     if (SR_ERR_OK != rc) {
-        fprintf(stderr, "Error: Module '%s@%s' is not installed.\n", module_name, revision);
+        fprintf(stderr, "Error: Module '%s@%s' is not installed.\n", module_name, 
+                revision ? revision : "<latest>");
         goto fail;
     }
    

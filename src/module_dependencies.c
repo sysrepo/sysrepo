@@ -183,6 +183,12 @@ md_compare_modules(const void *module1_ptr, const void *module2_ptr)
     md_module_t *module1 = (md_module_t *)module1_ptr, *module2 = (md_module_t *)module2_ptr;
     ret = strcmp(module1->name, module2->name);
     if (0 == ret) {
+        if (!module1->revision_date || !module2->revision_date) {
+            if (!module1->revision_date)
+                return module2->latest_revision ? 0 : 1;
+            if (!module2->revision_date)
+                return module1->latest_revision ? 0 : -1;
+        }
         ret = strcmp(module1->revision_date, module2->revision_date);
     }
     return ret;
@@ -1027,9 +1033,6 @@ md_remove_module(md_ctx_t *md_ctx, const char *name, const char *revision)
     CHECK_NULL_ARG2(md_ctx, name);
 
     /* search for the module */
-    if (NULL == revision) {
-        revision = "";
-    }
     module_lkp_key.name = (char *)name;
     module_lkp_key.revision_date = (char *)revision;
     module = (md_module_t *)sr_btree_search(md_ctx->modules_btree, &module_lkp_key);

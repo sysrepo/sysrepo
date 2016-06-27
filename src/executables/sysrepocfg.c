@@ -35,6 +35,7 @@
 
 #include "sr_common.h"
 #include "client_library.h"
+#include "module_dependencies.h"
 
 #define EXPECTED_MAX_INPUT_FILE_SIZE  4096
 
@@ -154,20 +155,45 @@ srcfg_report_error(int rc)
     }
 }
 
+/*
+ * @brief Load schema file at the given path into the libyang context and enable all features.
+ */
+static int
+srcfg_load_module_schema(struct ly_ctx *ly_ctx, const char *filepath)
+{
+    const struct lys_module *module_schema = NULL;
+
+    SR_LOG_DBG("Loading module schema: '%s'.", filepath);   
+    module_schema = lys_parse_path(ly_ctx, filepath,
+                                   sr_str_ends_with(filepath, SR_SCHEMA_YANG_FILE_EXT) ? LYS_IN_YANG : LYS_IN_YIN);
+    if (NULL == module_schema) {
+        fprintf(stderr, "Error: Failed to load the schema file at: %s.\n", filepath);
+        return SR_ERR_INTERNAL;
+    }
+
+    /* also enable all features */
+    for (uint8_t i = 0; i < module_schema->features_size; i++) {
+        lys_features_enable(module_schema, module_schema->features[i].name);
+    }
+
+    return SR_ERR_OK;
+}
+
 /**
  * @brief Initializes libyang ctx with all schemas installed for specified module in sysrepo.
  */
 static int
 srcfg_ly_init(struct ly_ctx **ly_ctx, const char *module_name)
 {
-    DIR *dp = NULL;
-    struct dirent *ep = NULL;
-    char *delim = NULL;
-    char schema_filename[PATH_MAX] = { 0, };
-    const struct lys_module *module = NULL;
+    int rc = SR_ERR_OK;
+    md_ctx_t *md_ctx = NULL;
+    const md_module_t *module = NULL;
+    sr_llist_node_t *dep_node = NULL;
+    md_dep_t *dep = NULL;
 
     CHECK_NULL_ARG2(ly_ctx, module_name);
 
+    /* init libyang context */
     *ly_ctx = ly_ctx_new(srcfg_schema_search_dir);
     if (NULL == *ly_ctx) {
         SR_LOG_ERR("Unable to initialize libyang context: %s", ly_errmsg());
@@ -175,53 +201,43 @@ srcfg_ly_init(struct ly_ctx **ly_ctx, const char *module_name)
     }
     ly_set_log_clb(srcfg_ly_log_cb, 1);
 
-    /* iterate over all files in the directory with schemas */
-    dp = opendir(srcfg_schema_search_dir);
-    if (NULL == dp) {
-        SR_LOG_ERR("Failed to open the schema directory: %s.", sr_strerror_safe(errno));
-        return SR_ERR_INTERNAL;
+    /* init module dependencies context */
+    rc = md_init(srcfg_schema_search_dir, srcfg_internal_schema_search_dir, srcfg_internal_data_search_dir,
+                 srcfg_internal_data_search_dir, &md_ctx);
+    if (SR_ERR_OK != rc) {
+        fprintf(stderr, "Error: Failed to initialize module dependencies context.\n");
+        goto cleanup;
     }
-    while (NULL != (ep = readdir(dp))) {
-        /* test file extension */
-        LYS_INFORMAT fmt = LYS_IN_UNKNOWN;
-        if (sr_str_ends_with(ep->d_name, SR_SCHEMA_YIN_FILE_EXT)) {
-            fmt = LYS_IN_YIN;
-        } else if (sr_str_ends_with(ep->d_name, SR_SCHEMA_YANG_FILE_EXT)) {
-            fmt = LYS_IN_YANG;
-        }
-        if (fmt != LYS_IN_UNKNOWN) {
-            /* strip extension and revision */
-            strcpy(schema_filename, ep->d_name);
-            delim = strrchr(schema_filename, '.');
-            assert(delim);
-            *delim = '\0';
-            delim = strrchr(schema_filename, '@');
-            if (delim) {
-                *delim = '\0';
-            }
-            /* TODO install all revisions and dependencies of the specified module, but not more */
-#if 0 /* XXX install all schemas until we can resolve all dependencies */
-            if (strcmp(schema_filename, module_name) == 0) {
-#endif
-                /* construct full file path */
-                snprintf(schema_filename, PATH_MAX, "%s%s", srcfg_schema_search_dir, ep->d_name);
-                /* load the schema into the context */
-                SR_LOG_DBG("Loading module schema: '%s'.", schema_filename);
-                module = lys_parse_path(*ly_ctx, schema_filename, fmt);
-                if (NULL == module) {
-                    continue;
-                }
-                for (uint8_t i = 0; i < module->features_size; i++) {
-                    lys_features_enable(module, module->features[i].name);
-                }
-#if 0
-            }
-#endif
-        }
-    }
-    closedir(dp);
 
-    return SR_ERR_OK;
+    /* search for the module to use */
+    rc = md_get_module_info(md_ctx, module_name, NULL, &module);
+    if (SR_ERR_OK != rc) {
+        fprintf(stderr, "Error: Module '%s' is not installed.\n", module_name);
+        goto cleanup;
+    }
+
+    /* load the module schema and all its dependencies */
+    rc = srcfg_load_module_schema(*ly_ctx, module->filepath);
+    if (SR_ERR_OK != rc) {
+        goto cleanup;
+    }
+    dep_node = module->deps->first;
+    while (dep_node) {
+        dep = (md_dep_t *)dep_node->data;
+        if (dep->type == MD_DEP_EXTENSION) { /*< imports are automatically loaded by libyang */
+            rc = srcfg_load_module_schema(*ly_ctx, dep->dest->filepath);
+            if (SR_ERR_OK != rc) {
+                goto cleanup;
+            }
+        }
+        dep_node = dep_node->next;
+    }
+
+    rc = SR_ERR_OK;
+
+cleanup:
+    md_destroy(md_ctx);
+    return rc;
 }
 
 /**
