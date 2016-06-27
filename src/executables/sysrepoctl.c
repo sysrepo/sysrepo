@@ -34,6 +34,7 @@
 
 #include "sr_common.h"
 #include "client_library.h"
+#include "module_dependencies.h"
 
 /**
  * @brief Macro to iterate via all references to the module identified by NAME and REVISION

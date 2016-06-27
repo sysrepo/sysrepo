@@ -67,10 +67,12 @@ typedef struct md_module_s {
                                     i.e. the list of all modules that depend on this module. Items are of type (md_dep_t *) */
 
     struct lyd_node *ly_data;  /**< libyang's representation of this data. For convenience. */
+    sr_llist_node_t *ll_node;  /**< Pointer to the node in ::md_ctx_t::modules which is used to store this instance. */
 } md_module_t;
 
 /*
  * @brief Context used to represent complete, transitively-closed, module dependency graph in-memory (using adjacency lists).
+ *        Working with the same context from multiple threads is not safe!
  */
 typedef struct md_ctx_s {
     char *schema_search_dir;         /**< Path to the directory with schema files. */

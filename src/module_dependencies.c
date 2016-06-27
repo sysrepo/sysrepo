@@ -58,7 +58,7 @@
 static int
 md_get_data_file_path(const char *internal_data_search_dir, char **file_path)
 {
-    CHECK_NULL_ARG(file_path);
+    CHECK_NULL_ARG2(internal_data_search_dir, file_path);
     int rc = sr_str_join(internal_data_search_dir, MD_DATA_FILENAME, file_path);
     return rc;
 }
@@ -74,7 +74,7 @@ md_get_data_file_path(const char *internal_data_search_dir, char **file_path)
 static int
 md_get_schema_file_path(const char *internal_schema_search_dir, char **file_path)
 {
-    CHECK_NULL_ARG(file_path);
+    CHECK_NULL_ARG2(internal_schema_search_dir, file_path);
     int rc = sr_str_join(internal_schema_search_dir, MD_SCHEMA_FILENAME, file_path);
     return rc;
 }
@@ -197,7 +197,7 @@ md_add_dependency(sr_llist_t *deps, md_dep_type_t type, md_module_t *dest, bool 
     sr_llist_node_t *dep_node = NULL;
     md_dep_t *dep = NULL;
 
-    CHECK_NULL_ARG(deps);
+    CHECK_NULL_ARG2(deps, dest);
 
     dep_node = deps->first;
     while (dep_node) {
@@ -339,7 +339,7 @@ md_init(const char *schema_search_dir, const char *internal_schema_search_dir, c
     char *inst_id = NULL;
     md_dep_type_t dep_type;
 
-    CHECK_NULL_ARG2(internal_schema_search_dir, internal_data_search_dir);
+    CHECK_NULL_ARG4(schema_search_dir, internal_schema_search_dir, internal_data_search_dir, md_ctx);
 
     /* Allocate context data structure */
     ctx = calloc(1, sizeof *ctx);
@@ -432,6 +432,7 @@ md_init(const char *schema_search_dir, const char *internal_schema_search_dir, c
                     SR_LOG_ERR_MSG("Unable to insert instance of (md_module_t *) into a linked-list.");
                     goto fail;
                 }
+                module->ll_node = ctx->modules->last;
                 module->ly_data = module_data;
                 module->latest_revision = true;
                 /* process module's attributes */
@@ -488,6 +489,7 @@ md_init(const char *schema_search_dir, const char *internal_schema_search_dir, c
                     node = node->child;
                     break;
                 }
+                node = node->next;
             }
             /* process dependencies */
             while (node) {
@@ -719,7 +721,7 @@ md_insert_lys_module(md_ctx_t *md_ctx, const struct lys_module *module_schema, c
     struct lys_node_augment *augment = NULL;
     md_module_t module_lkp_key;
 
-    CHECK_NULL_ARG2(module_schema, revision);
+    CHECK_NULL_ARG3(md_ctx, module_schema, revision);
 
     /* allocate structure for storing module dependency info */
     rc = md_alloc_module(&module);
@@ -947,6 +949,7 @@ md_insert_lys_module(md_ctx_t *md_ctx, const struct lys_module *module_schema, c
         SR_LOG_ERR_MSG("Unable to insert instance of (md_module_t *) into a linked-list.");
         goto cleanup;
     }
+    module->ll_node = md_ctx->modules->last;
 
     /* insert the new module into the balanced tree */
     rc = sr_btree_insert(md_ctx->modules_btree, module);
@@ -1012,8 +1015,137 @@ cleanup:
 int
 md_remove_module(md_ctx_t *md_ctx, const char *name, const char *revision)
 {
-    /* TODO */
-    return 0;
+    int ret = 0;
+    md_module_t *module = NULL;
+    md_module_t module_lkp_key;
+    sr_llist_node_t *dep_node = NULL, *dep_node2 = NULL;
+    md_dep_t *dep = NULL, *dep2 = NULL;
+    struct lyd_node *node_data = NULL;
+    struct lyd_node_leaf_list *leaf = NULL;
+    const char *dep_name = NULL, *dep_rev = NULL;
+
+    CHECK_NULL_ARG2(md_ctx, name);
+
+    /* search for the module */
+    if (NULL == revision) {
+        revision = "";
+    }
+    module_lkp_key.name = (char *)name;
+    module_lkp_key.revision_date = (char *)revision;
+    module = (md_module_t *)sr_btree_search(md_ctx->modules_btree, &module_lkp_key);
+    if (NULL == module) {
+        SR_LOG_ERR("Module '%s@%s' is not present in the dependency graph.", name, revision);
+        return SR_ERR_INVAL_ARG;
+    }
+
+    /* check if this module can be removed */
+    dep_node = module->inv_deps->first;
+    while (dep_node) {
+        dep = (md_dep_t *)dep_node->data;
+        if (dep->type == MD_DEP_IMPORT) {
+            SR_LOG_ERR("Module '%s@%s' cannot be removed as module '%s@%s' depends on it.",
+                       name, revision, dep->dest->name, dep->dest->revision_date);
+            return SR_ERR_INVAL_ARG;
+        }
+        dep_node = dep_node->next;
+    }
+
+    /* remove all direct edges pointing to this node */
+    dep_node = module->inv_deps->first;
+    while (dep_node) {
+        dep = (md_dep_t *)dep_node->data;
+        if (dep->direct) {
+            dep_node2 = dep->dest->deps->first;
+            while (dep_node2) {
+                dep2 = (md_dep_t *)dep_node2->data;
+                if (module == dep2->dest) {
+                    free(dep2);
+                    sr_llist_rm(dep->dest->deps, dep_node2);
+                    break;
+                }
+                dep_node2 = dep_node2->next;
+            }
+        }
+        dep_node = dep_node->next;
+    }
+
+    /* remove all direct edges pointing to this node in the inverse graph */
+    dep_node = module->deps->first;
+    while (dep_node) {
+        dep = (md_dep_t *)dep_node->data;
+        if (dep->direct) {
+            dep_node2 = dep->dest->inv_deps->first;
+            while (dep_node2) {
+                dep2 = (md_dep_t *)dep_node2->data;
+                if (module == dep2->dest) {
+                    free(dep2);
+                    sr_llist_rm(dep->dest->inv_deps, dep_node2);
+                    break;
+                }
+                dep_node2 = dep_node2->next;
+            }
+        }
+        dep_node = dep_node->next;
+    }
+
+    /* update libyang's data tree, first remove edges pointing to this module */
+    dep_node = module->inv_deps->first;
+    while (dep_node) {
+        dep = (md_dep_t *)dep_node->data;
+        if (dep->direct) {
+            node_data = dep->dest->ly_data;
+            if (node_data) {
+                node_data = node_data->child;
+                while (node_data) {
+                    if (node_data->schema->name && 0 == strcmp("dependencies", node_data->schema->name)) {
+                        node_data = node_data->child;
+                        break;
+                    }
+                    node_data = node_data->next; /*< next child of "module" */
+                }
+                while (node_data) {
+                    if (node_data->schema->name && 0 == strcmp("dependency", node_data->schema->name)) {
+                        dep_name = NULL;
+                        dep_rev = NULL;
+                        leaf = (struct lyd_node_leaf_list *)node_data->child;
+                        while (leaf) {
+                            if ((LYS_LEAF | LYS_LEAFLIST) & leaf->schema->nodetype) {
+                                if (leaf->schema->name && 0 == strcmp("module-name", leaf->schema->name)) {
+                                    dep_name = (char *)leaf->value.string;
+                                } else if (leaf->schema->name && 0 == strcmp("module-revision", leaf->schema->name)) {
+                                    dep_rev = (char *)leaf->value.string;
+                                }
+                            }
+                            leaf = (struct lyd_node_leaf_list *)leaf->next;
+                        }
+                        if (dep_name && dep_rev && 0 == strcmp(dep_name, name) && 0 == strcmp(dep_rev, revision)) {
+                            lyd_free(node_data);
+                            break; /*< at most one edge from each module */
+                        }
+                    }
+                    node_data = node_data->next; /*< next "dependency" */
+                }
+            }
+        }
+        dep_node = dep_node->next; /*< next inverse dependency */
+    }
+
+    /* now remove the module entry from the data tree */
+    node_data = module->ly_data;
+    lyd_free(node_data);
+
+    /* finally remove the module itself */
+    sr_llist_rm(md_ctx->modules, module->ll_node);
+    sr_btree_delete(md_ctx->modules_btree, module);
+    md_free_module(module);
+
+    /* execute transitive closure */
+    ret = md_transitive_closure(md_ctx);
+    if (SR_ERR_OK != ret) {
+        return SR_ERR_INTERNAL;
+    }
+
+    return SR_ERR_OK;
 }
 
 int
