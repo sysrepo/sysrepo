@@ -55,6 +55,8 @@ typedef struct md_module_s {
     char *name;                /**< Name of the module. */
     char *revision_date;       /**< Revision date of the module. */
     char *filepath;            /**< File path to the schema of the module. */
+    char *fullname;            /**< Fullname of the module (name+revision).
+                                    Normally not used and set to NULL, but can be filled using ::md_get_module_fullname. */
 
     bool latest_revision;      /**< "true" if this is the latest installed revision of this module. */
 
@@ -126,7 +128,15 @@ int md_destroy(md_ctx_t *md_ctx);
  * @param [out] module Output location for the pointer referencing the module info.
  */
 int md_get_module_info(const md_ctx_t *md_ctx, const char *name, const char *revision,
-                       const md_module_t **module);
+                       md_module_t **module);
+
+/*
+ * @brief Create and return fullname of a module. Afterwards can be accessed using only module->fullname.
+ *        Any allocated memory will be automatically deallocated in ::md_destroy.
+ *
+ * @param [in] module Module to get the full name of.
+ */
+const char *md_get_module_fullname(md_module_t *module);
 
 /**
  * @brief Try to insert module into the dependency graph and update all the edges.

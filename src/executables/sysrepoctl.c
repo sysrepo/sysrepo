@@ -560,7 +560,7 @@ srctl_uninstall(const char *module_name, const char *revision)
     sr_session_ctx_t *session = NULL;
     struct ly_ctx *ly_ctx = NULL;
     md_ctx_t *md_ctx = NULL;
-    const md_module_t *module = NULL;
+    md_module_t *module = NULL;
     const struct lys_module *module_schema = NULL;
 
     if (NULL == module_name) {
@@ -578,7 +578,7 @@ srctl_uninstall(const char *module_name, const char *revision)
 
     /* init module dependencies context */
     rc = md_init(srctl_schema_search_dir, srctl_internal_schema_search_dir, srctl_internal_data_search_dir,
-                 srctl_internal_data_search_dir, &md_ctx);
+                 true, &md_ctx);
     if (SR_ERR_OK != rc) {
         fprintf(stderr, "Error: Failed to initialize module dependencies context.\n");
         goto fail;
@@ -627,7 +627,7 @@ srctl_uninstall(const char *module_name, const char *revision)
     }
 
     /* uninstall the module */
-    rc = srctl_schema_file_delete(module->filepath);
+    rc = srctl_schema_file_delete(module_schema->filepath);
     if (SR_ERR_OK != rc) {
         fprintf(stderr, "Warning: Module schema delete was unsuccessful, continuing.\n");
     }
@@ -879,7 +879,7 @@ srctl_install(const char *yang, const char *yin, const char *owner, const char *
 
     /* init module dependencies context */
     ret = md_init(srctl_schema_search_dir, srctl_internal_schema_search_dir, srctl_internal_data_search_dir,
-                  srctl_internal_data_search_dir, &md_ctx);
+                  true, &md_ctx);
     if (SR_ERR_OK != ret) {
         fprintf(stderr, "Error: Failed to initialize module dependencies context.\n");
         goto fail;
@@ -1012,7 +1012,7 @@ srctl_init(const char *module_name, const char *revision, const char *owner, con
 
     /* init module dependencies context */
     rc = md_init(srctl_schema_search_dir, srctl_internal_schema_search_dir, srctl_internal_data_search_dir,
-                 srctl_internal_data_search_dir, &md_ctx);
+                 true, &md_ctx);
     if (SR_ERR_OK != rc) {
         fprintf(stderr, "Error: Failed to initialize module dependencies context.\n");
         goto fail;
@@ -1060,18 +1060,16 @@ srctl_init(const char *module_name, const char *revision, const char *owner, con
 
     /* update dependencies */
     rc = md_insert_module(md_ctx, module->filepath);
-    if (SR_ERR_INVAL_ARG == rc) {
-        printf("The module is already initialized, exiting...\n");
-        goto cleanup;
-    }
-    if (SR_ERR_OK != rc) {
-        fprintf(stderr, "Error: Unable to insert the module into the dependency graph.\n");
-        goto fail;
-    }
-    rc = md_flush(md_ctx);
-    if (SR_ERR_OK != rc) {
-        fprintf(stderr, "Error: Unable to apply the changes made in the dependency graph.\n");
-        goto fail;
+    if (SR_ERR_INVAL_ARG != rc) { /*< ignore if already initialized */
+        if (SR_ERR_OK != rc) {
+            fprintf(stderr, "Error: Unable to insert the module into the dependency graph.\n");
+            goto fail;
+        }
+        rc = md_flush(md_ctx);
+        if (SR_ERR_OK != rc) {
+            fprintf(stderr, "Error: Unable to apply the changes made in the dependency graph.\n");
+            goto fail;
+        }
     }
 
     printf("Init operation completed successfully.\n");

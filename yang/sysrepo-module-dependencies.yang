@@ -68,6 +68,7 @@ module sysrepo-module-dependencies {
             }
             description "Type of the dependency.";
         }
+      }
     }
 
     container instance-identifiers {

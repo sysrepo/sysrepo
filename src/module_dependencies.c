@@ -139,6 +139,7 @@ md_free_module(void *module_ptr)
     free(module->name);
     free(module->revision_date);
     free(module->filepath);
+    free(module->fullname);
 
     /* inst_ids */
     item = module->inst_ids->first;
@@ -166,6 +167,28 @@ md_free_module(void *module_ptr)
 
     /* md_module_t itself */
     free(module);
+}
+
+const char *
+md_get_module_fullname(md_module_t *module)
+{
+    size_t length = 0;
+
+    if (NULL == module->fullname) {
+        length += strlen(module->name);
+        if (module->revision_date && strlen(module->revision_date)) {
+            length += 1 + strlen(module->revision_date);
+        }
+        module->fullname = calloc(length + 1, 1);
+        if (module->fullname) {
+            strcat(module->fullname, module->name);
+            if (module->revision_date && strlen(module->revision_date)) {
+                strcat(module->fullname, "@");
+                strcat(module->fullname, module->revision_date);
+            }
+        }
+    }
+    return module->fullname;
 }
 
 /*
@@ -226,13 +249,10 @@ md_add_dependency(sr_llist_t *deps, md_dep_type_t type, md_module_t *dest, bool 
         dep->type = type;
         dep->dest = dest;
     } else {
-        /* do not overwrite import with extension */
-        type = (dep->type == MD_DEP_IMPORT ? dep->type : type);
-        /* Failed assertion would mean that there is a cycle of imports and also
-         * we would not be able to re-run transitive closure after a node was added or removed
-         * as the type of one of the edges has changed and the original value is lost. */
-        assert(type == dep->type || false == dep->direct);
-        dep->type = type;
+        /* A path of extensions implies a path of imports in the opposite direction,
+         * which means that there cannot be two paths between nodes of different types
+         * otherwise there would be a cycle of imports which yang (and libyang) doesn't allow. */
+        assert(type == dep->type);
     }
 
     return SR_ERR_OK;
@@ -249,7 +269,6 @@ md_transitive_closure(md_ctx_t *md_ctx)
     md_module_t *module = NULL, *moduleI = NULL, *moduleJ = NULL, *moduleK = NULL;
     sr_llist_node_t *dep_node = NULL, *tmp_dep_node = NULL, *depIK_node = NULL, *depKJ_node = NULL;
     md_dep_t *dep = NULL, *depIK = NULL, *depKJ = NULL;
-    md_dep_type_t dep_type = MD_DEP_EXTENSION;
 
     CHECK_NULL_ARG(md_ctx);
 
@@ -281,7 +300,7 @@ md_transitive_closure(md_ctx_t *md_ctx)
         module_node = module_node->next;
     }
 
-    /* run Floyd–Warshall algorithm for transitive closure */
+    /* run Floyd-Warshall algorithm for transitive closure */
     /* consider paths I --{1..K-1}--> K --{1..K-1}--> J */
     moduleK_node = md_ctx->modules->first;
     while (moduleK_node) {
@@ -296,27 +315,29 @@ md_transitive_closure(md_ctx_t *md_ctx)
                 moduleJ = depKJ->dest;
                 if (moduleI != moduleJ) {
                     /*
-                     * Extension vs. Import:
+                     * Extension vs. Import facts:
                      *
-                     * if exists path I --> J:
-                     *     if exists path I --> J such that all edges are Imports:
-                     *         (I, J) dependency is of the Import type
-                     *     else:
-                     *         (I, J) dependency is of the Extension type
-                     * else:
-                     *     I is non dependant on J
+                     *  -> A extends B, B extends C => A extends C (*)
+                     *  -> A imports B, B imports C => A imports C (**)
+                     *
+                     *  (*) A could be extending definition from B which is already a derivation
+                     *      of some base definition from C (it is a potential dependency)
+                     *  (**) A does not necessarily directly imports C, but is certainly dependant on C and the
+                     *       character of this dependancy is practically identical to a direct import
+                     *
+                     *  -> all scenarios in which there are dependancies between (A,B) and (B,C) but of different
+                     *     types, do not create even a potential dependency between (A,C)
+                     *  -> A path of extensions implies a path of imports in the opposite direction, hence
+                     *     the set of inverses of all extensions is a subgraph of all import dependencies
+                     *  -> extension edges and import edges are disjoint sets, otherwise there would a cycle
+                     *     of imports as implied from the above
                      */
-                    if (depIK->type == MD_DEP_IMPORT && depKJ->type == MD_DEP_IMPORT) {
-                        dep_type = MD_DEP_IMPORT;
-                    } else {
-                        /* If a path of only imports is already known, the type will not be overwriten,
-                         * see ::md_add_dependency. */
-                        dep_type = MD_DEP_EXTENSION;
-                    }
-                    if (SR_ERR_OK != md_add_dependency(moduleI->deps, dep_type, moduleJ, false) ||
-                        SR_ERR_OK != md_add_dependency(moduleJ->inv_deps, dep_type, moduleI, false)) {
-                        SR_LOG_ERR_MSG("Failed to add an edge into the dependency graph.");
-                        return SR_ERR_INTERNAL;
+                    if (depIK->type == depKJ->type) {
+                        if (SR_ERR_OK != md_add_dependency(moduleI->deps, depIK->type, moduleJ, false) ||
+                            SR_ERR_OK != md_add_dependency(moduleJ->inv_deps, depIK->type, moduleI, false)) {
+                            SR_LOG_ERR_MSG("Failed to add an edge into the dependency graph.");
+                            return SR_ERR_INTERNAL;
+                        }
                     }
                 }
                 depKJ_node = depKJ_node->next;
@@ -359,7 +380,7 @@ md_init(const char *schema_search_dir, const char *internal_schema_search_dir, c
     /* Initialize libyang context */
     ctx->ly_ctx = ly_ctx_new(internal_schema_search_dir);
     if (NULL == ctx->ly_ctx) {
-        SR_LOG_ERR("Unable to initialize libyang context: %s.", ly_errmsg());
+        SR_LOG_ERR("Unable to initialize libyang context: %s", ly_errmsg());
         goto fail;
     }
 
@@ -386,12 +407,13 @@ md_init(const char *schema_search_dir, const char *internal_schema_search_dir, c
     /* load internal schema for model dependencies */
     module_schema = lys_parse_path(ctx->ly_ctx, schema_filepath, LYS_IN_YANG);
     if (NULL == module_schema) {
-        SR_LOG_ERR("Unable to parse " MD_SCHEMA_FILENAME " schema file: %s.", ly_errmsg());
+        SR_LOG_ERR("Unable to parse " MD_SCHEMA_FILENAME " schema file: %s", ly_errmsg());
         goto fail;
     }
 
     /* open the internal data file */
-    ctx->fd = open(data_filepath, write_lock ? O_RDWR : O_RDONLY);
+    ctx->fd = open(data_filepath, (write_lock ? O_RDWR : O_RDONLY) | O_CREAT,
+                   S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
     if (-1 == ctx->fd) {
         SR_LOG_ERR("Unable to open " MD_DATA_FILENAME " data file: %s.", strerror(errno));
         goto fail;
@@ -408,7 +430,7 @@ md_init(const char *schema_search_dir, const char *internal_schema_search_dir, c
     ly_errno = LY_SUCCESS;
     ctx->data_tree = lyd_parse_fd(ctx->ly_ctx, ctx->fd, LYD_XML, LYD_OPT_STRICT | LYD_OPT_CONFIG);
     if (NULL == ctx->data_tree && LY_SUCCESS != ly_errno) {
-        SR_LOG_ERR("Unable to parse " MD_DATA_FILENAME " data file: %s.", ly_errmsg());
+        SR_LOG_ERR("Unable to parse " MD_DATA_FILENAME " data file: %s", ly_errmsg());
         goto fail;
     }
 
@@ -429,23 +451,13 @@ md_init(const char *schema_search_dir, const char *internal_schema_search_dir, c
                     SR_LOG_ERR_MSG("Unable to allocate an instance of md_module_t structure.");
                     goto fail;
                 }
-                if (SR_ERR_OK != sr_btree_insert(ctx->modules_btree, module)) {
-                    md_free_module(module);
-                    SR_LOG_ERR_MSG("Unable to insert instance of (md_module_t *) into a balanced tree.");
-                    goto fail;
-                }
-                if (SR_ERR_OK != sr_llist_add_new(ctx->modules, module)) {
-                    SR_LOG_ERR_MSG("Unable to insert instance of (md_module_t *) into a linked-list.");
-                    goto fail;
-                }
-                module->ll_node = ctx->modules->last;
                 module->ly_data = module_data;
                 module->latest_revision = true;
                 /* process module's attributes */
                 node = module_data->child;
                 while (node) {
-                    leaf = (struct lyd_node_leaf_list *) node;
                     if ((LYS_LEAF | LYS_LEAFLIST) & node->schema->nodetype) {
+                        leaf = (struct lyd_node_leaf_list *) node;
                         if (node->schema->name && 0 == strcmp("name", node->schema->name)) {
                             module->name = strdup(leaf->value.string);
                             CHECK_NULL_NOMEM_GOTO(module->name, rc, fail);
@@ -470,6 +482,7 @@ md_init(const char *schema_search_dir, const char *internal_schema_search_dir, c
                                     if (SR_ERR_OK != sr_llist_add_new(module->inst_ids, inst_id)) {
                                         free(inst_id);
                                         SR_LOG_ERR_MSG("Unable to insert instance identifier into a linked-list.");
+                                        md_free_module(module);
                                         goto fail;
                                     }
                                 }
@@ -479,6 +492,16 @@ md_init(const char *schema_search_dir, const char *internal_schema_search_dir, c
                     }
                     node = node->next;
                 }
+                if (SR_ERR_OK != sr_btree_insert(ctx->modules_btree, module)) {
+                    md_free_module(module);
+                    SR_LOG_ERR_MSG("Unable to insert instance of (md_module_t *) into a balanced tree.");
+                    goto fail;
+                }
+                if (SR_ERR_OK != sr_llist_add_new(ctx->modules, module)) {
+                    SR_LOG_ERR_MSG("Unable to insert instance of (md_module_t *) into a linked-list.");
+                    goto fail;
+                }
+                module->ll_node = ctx->modules->last;
             }
             module_data = module_data->next;
         } /* module info */
@@ -583,7 +606,7 @@ md_destroy(md_ctx_t *md_ctx)
 
 int
 md_get_module_info(const md_ctx_t *md_ctx, const char *name, const char *revision,
-                   const md_module_t **module)
+                   md_module_t **module)
 {
     md_module_t module_lkp_key;
     module_lkp_key.name = (char *)name;
@@ -591,6 +614,8 @@ md_get_module_info(const md_ctx_t *md_ctx, const char *name, const char *revisio
 
     *module = (md_module_t *)sr_btree_search(md_ctx->modules_btree, &module_lkp_key);
     if (NULL == *module) {
+        SR_LOG_ERR("Module '%s@%s' is not present in the dependency graph.",
+                   name, revision ? revision : "<latest>");
         return SR_ERR_NOT_FOUND;
     }
 
@@ -665,8 +690,8 @@ md_add_instance_id(md_ctx_t *md_ctx, md_module_t *module, struct lys_node_leaf *
    ly_errno = LY_SUCCESS;
    node_data = lyd_new_path(md_ctx->data_tree, md_ctx->ly_ctx, xpath, inst_xpath, LYD_PATH_OPT_UPDATE);
    if (!node_data && LY_SUCCESS != ly_errno) {
-       SR_LOG_ERR("Failed to add instance identifier into the data tree for module '%s': %s.",
-                  module->name, ly_errmsg());
+       SR_LOG_ERR("Failed to add instance identifier into the data tree for module '%s': %s",
+                  md_get_module_fullname(module), ly_errmsg());
        rc = SR_ERR_INTERNAL;
        goto fail;
    }
@@ -754,7 +779,7 @@ md_insert_lys_module(md_ctx_t *md_ctx, const struct lys_module *module_schema, c
                 /* already installed */
                 if (!dependency) {
                     rc = SR_ERR_INVAL_ARG;
-                    SR_LOG_ERR("Module '%s@%s' is already installed.", module->name, module->revision_date);
+                    SR_LOG_ERR("Module '%s' is already installed.", md_get_module_fullname(module));
                 } else {
                     rc = SR_ERR_OK;
                 }
@@ -764,8 +789,8 @@ md_insert_lys_module(md_ctx_t *md_ctx, const struct lys_module *module_schema, c
                 module->latest_revision = false;
                 break;
             }
-            module_ll_node = module_ll_node->next;
         }
+        module_ll_node = module_ll_node->next;
     }
 
     /* Add entry into the data_tree */
@@ -773,7 +798,7 @@ md_insert_lys_module(md_ctx_t *md_ctx, const struct lys_module *module_schema, c
     ly_errno = LY_SUCCESS;
     node_data = lyd_new_path(md_ctx->data_tree, md_ctx->ly_ctx, xpath, module->filepath, LYD_PATH_OPT_UPDATE);
     if (!node_data && LY_SUCCESS != ly_errno) {
-        SR_LOG_ERR("Failed to create a yang list entry for module '%s': %s.", module->name, ly_errmsg());
+        SR_LOG_ERR("Failed to create a yang list entry for module '%s': %s", md_get_module_fullname(module), ly_errmsg());
         rc = SR_ERR_INTERNAL;
         goto cleanup;
     }
@@ -788,7 +813,7 @@ md_insert_lys_module(md_ctx_t *md_ctx, const struct lys_module *module_schema, c
     node_data = lyd_new_path(md_ctx->data_tree, md_ctx->ly_ctx, xpath, module->latest_revision ? "true" : "false",
                              LYD_PATH_OPT_UPDATE);
     if (!node_data && LY_SUCCESS != ly_errno) {
-        SR_LOG_ERR("Failed to set latest-revision flag for module '%s': %s.", module->name, ly_errmsg());
+        SR_LOG_ERR("Failed to set latest-revision flag for module '%s': %s", md_get_module_fullname(module), ly_errmsg());
         rc = SR_ERR_INTERNAL;
         goto cleanup;
     }
@@ -876,8 +901,8 @@ md_insert_lys_module(md_ctx_t *md_ctx, const struct lys_module *module_schema, c
         node_data = lyd_new_path(md_ctx->data_tree, md_ctx->ly_ctx, xpath, md_get_dep_type_to_str(MD_DEP_IMPORT),
                                  LYD_PATH_OPT_UPDATE);
         if (!node_data && LY_SUCCESS != ly_errno) {
-            SR_LOG_ERR("Failed to add dependency into the data tree for module '%s': %s.",
-                       module->name, ly_errmsg());
+            SR_LOG_ERR("Failed to add dependency into the data tree for module '%s': %s",
+                       md_get_module_fullname(module), ly_errmsg());
             rc = SR_ERR_INTERNAL;
             goto cleanup;
         }
@@ -908,8 +933,8 @@ md_insert_lys_module(md_ctx_t *md_ctx, const struct lys_module *module_schema, c
             node_data = lyd_new_path(md_ctx->data_tree, md_ctx->ly_ctx, xpath, md_get_dep_type_to_str(MD_DEP_EXTENSION),
                                      LYD_PATH_OPT_UPDATE);
             if (!node_data && LY_SUCCESS != ly_errno) {
-                SR_LOG_ERR("Failed to add dependency into the data tree for module '%s': %s.",
-                           module->name, ly_errmsg());
+                SR_LOG_ERR("Failed to add dependency into the data tree for module '%s': %s",
+                           md_get_module_fullname(module), ly_errmsg());
                 rc = SR_ERR_INTERNAL;
                 goto cleanup;
             }
@@ -941,8 +966,8 @@ md_insert_lys_module(md_ctx_t *md_ctx, const struct lys_module *module_schema, c
             node_data = lyd_new_path(md_ctx->data_tree, md_ctx->ly_ctx, xpath, md_get_dep_type_to_str(MD_DEP_EXTENSION),
                                      LYD_PATH_OPT_UPDATE);
             if (!node_data && LY_SUCCESS != ly_errno) {
-                SR_LOG_ERR("Failed to add dependency into the data tree for module '%s': %s.",
-                           module->name, ly_errmsg());
+                SR_LOG_ERR("Failed to add dependency into the data tree for module '%s': %s",
+                           md_get_module_fullname(module), ly_errmsg());
                 rc = SR_ERR_INTERNAL;
                 goto cleanup;
             }
@@ -985,7 +1010,7 @@ md_insert_module(md_ctx_t *md_ctx, const char *filepath)
     tmp_ly_ctx = ly_ctx_new(md_ctx->schema_search_dir);
     if (NULL == tmp_ly_ctx) {
         rc = SR_ERR_INTERNAL;
-        SR_LOG_ERR("Unable to initialize libyang context: %s.", ly_errmsg());
+        SR_LOG_ERR("Unable to initialize libyang context: %s", ly_errmsg());
         goto cleanup;
     }
 
@@ -993,7 +1018,7 @@ md_insert_module(md_ctx_t *md_ctx, const char *filepath)
     module_schema = lys_parse_path(tmp_ly_ctx, filepath, sr_str_ends_with(filepath, SR_SCHEMA_YIN_FILE_EXT) ? LYS_IN_YIN : LYS_IN_YANG);
     if (NULL == module_schema) {
         rc = SR_ERR_INTERNAL;
-        SR_LOG_ERR("Unable to parse '%s' schema file: %s.", filepath, ly_errmsg());
+        SR_LOG_ERR("Unable to parse '%s' schema file: %s", filepath, ly_errmsg());
         goto cleanup;
     }
 
@@ -1037,7 +1062,8 @@ md_remove_module(md_ctx_t *md_ctx, const char *name, const char *revision)
     module_lkp_key.revision_date = (char *)revision;
     module = (md_module_t *)sr_btree_search(md_ctx->modules_btree, &module_lkp_key);
     if (NULL == module) {
-        SR_LOG_ERR("Module '%s@%s' is not present in the dependency graph.", name, revision);
+        SR_LOG_ERR("Module '%s@%s' is not present in the dependency graph.",
+                   name, revision ? revision : "<latest>");
         return SR_ERR_INVAL_ARG;
     }
 
@@ -1046,8 +1072,8 @@ md_remove_module(md_ctx_t *md_ctx, const char *name, const char *revision)
     while (dep_node) {
         dep = (md_dep_t *)dep_node->data;
         if (dep->type == MD_DEP_IMPORT) {
-            SR_LOG_ERR("Module '%s@%s' cannot be removed as module '%s@%s' depends on it.",
-                       name, revision, dep->dest->name, dep->dest->revision_date);
+            SR_LOG_ERR("Module '%s' cannot be removed as module '%s' depends on it.",
+                       md_get_module_fullname(module), md_get_module_fullname(dep->dest));
             return SR_ERR_INVAL_ARG;
         }
         dep_node = dep_node->next;
@@ -1121,7 +1147,7 @@ md_remove_module(md_ctx_t *md_ctx, const char *name, const char *revision)
                             }
                             leaf = (struct lyd_node_leaf_list *)leaf->next;
                         }
-                        if (dep_name && dep_rev && 0 == strcmp(dep_name, name) && 0 == strcmp(dep_rev, revision)) {
+                        if (dep_name && dep_rev && 0 == strcmp(dep_name, module->name) && 0 == strcmp(dep_rev, module->revision_date)) {
                             lyd_free(node_data);
                             break; /*< at most one edge from each module */
                         }
@@ -1140,7 +1166,6 @@ md_remove_module(md_ctx_t *md_ctx, const char *name, const char *revision)
     /* finally remove the module itself */
     sr_llist_rm(md_ctx->modules, module->ll_node);
     sr_btree_delete(md_ctx->modules_btree, module);
-    md_free_module(module);
 
     /* execute transitive closure */
     ret = md_transitive_closure(md_ctx);
@@ -1161,6 +1186,8 @@ md_flush(md_ctx_t *md_ctx)
         return SR_ERR_INVAL_ARG;
     }
 
+    ret = ftruncate(md_ctx->fd, 0);
+    CHECK_ZERO_MSG_RETURN(ret, SR_ERR_INTERNAL, "Failed to truncate the internal data file '" MD_DATA_FILENAME"'.");
     ret = lyd_print_fd(md_ctx->fd, md_ctx->data_tree, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT);
     if (0 != ret) {
         SR_LOG_ERR("Unable to export data tree with dependencies: %s", ly_errmsg());

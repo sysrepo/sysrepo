@@ -84,7 +84,23 @@ sysrepoctl_test_uninstall(void **state)
     test_file_exists(TEST_DATA_SEARCH_DIR "ietf-interfaces.persist", true);
     exec_shell_command("../src/sysrepoctl -l", "ietf-interfaces", true, 0);
 
-    /* uninstall ietf-interfaces */
+    /* shouldn't be able to uninstall ietf-interfaces as iana-if-type depends on it */
+    exec_shell_command("../src/sysrepoctl --uninstall --module=ietf-interfaces --revision 2014-05-08", "", true, 1);
+    test_file_exists(TEST_SCHEMA_SEARCH_DIR "ietf-interfaces@2014-05-08.yang", true);
+    test_file_exists(TEST_DATA_SEARCH_DIR "ietf-interfaces.startup", true);
+    test_file_exists(TEST_DATA_SEARCH_DIR "ietf-interfaces.startup.lock", true);
+    test_file_exists(TEST_DATA_SEARCH_DIR "ietf-interfaces.running", true);
+    test_file_exists(TEST_DATA_SEARCH_DIR "ietf-interfaces.running.lock", true);
+    test_file_exists(TEST_DATA_SEARCH_DIR "ietf-interfaces.candidate.lock", true);
+    test_file_exists(TEST_DATA_SEARCH_DIR "ietf-interfaces.persist", true);
+    exec_shell_command("../src/sysrepoctl -l", "ietf-interfaces", true, 0);
+   
+    /* uninstall iana-if-type */
+    exec_shell_command("../src/sysrepoctl --uninstall --module=iana-if-type", "", true, 0);
+    test_file_exists(TEST_SCHEMA_SEARCH_DIR "iana-if-type@2014-05-08.yang", false);
+    exec_shell_command("../src/sysrepoctl -l", "!iana-if-type", true, 0);
+
+    /* now it should be possible to uninstall ietf-interfaces */
     exec_shell_command("../src/sysrepoctl --uninstall --module=ietf-interfaces --revision 2014-05-08", "", true, 0);
     test_file_exists(TEST_SCHEMA_SEARCH_DIR "ietf-interfaces@2014-05-08.yang", false);
     test_file_exists(TEST_DATA_SEARCH_DIR "ietf-interfaces.startup", false);
@@ -205,14 +221,24 @@ sysrepoctl_test_init(void **state)
     snprintf(buff, PATH_MAX, "../src/sysrepoctl --init --owner=%s --permissions=644", user);
     exec_shell_command(buff, "", true, 1);
 
-    /* remove ietf-interfaces data files */
-    snprintf(buff, PATH_MAX, "rm -f \"%s\"*", TEST_DATA_SEARCH_DIR "ietf-interfaces.");
+    /* backup the ietf-interfaces schema file */
+    snprintf(buff, PATH_MAX, "cp " TEST_SCHEMA_SEARCH_DIR "ietf-interfaces@2014-05-08.yang " 
+                                   TEST_SCHEMA_SEARCH_DIR ".ietf-interfaces@2014-05-08.yang.bkp");
+    exec_shell_command(buff, "", true, 0);
+
+    /* first uninstall ietf-interfaces (and ietf-ip which depends on it) */
+    exec_shell_command("../src/sysrepoctl --uninstall --module=ietf-ip --revision 2014-06-16", "", true, 0);
+    exec_shell_command("../src/sysrepoctl --uninstall --module=ietf-interfaces --revision 2014-05-08", "", true, 0);
+
+    /* revert the ietf-interfaces schema file */
+    snprintf(buff, PATH_MAX, "mv " TEST_SCHEMA_SEARCH_DIR ".ietf-interfaces@2014-05-08.yang.bkp " 
+                                   TEST_SCHEMA_SEARCH_DIR "ietf-interfaces@2014-05-08.yang");
     exec_shell_command(buff, "", true, 0);
 
     /* no owner, permissions */
     exec_shell_command("../src/sysrepoctl -l", "ietf-interfaces\\s*| 2014-05-08 |\\s*|\\s*|", true, 0);
 
-    /* initialize already installed ietf-interfaces */
+    /* initialize ietf-interfaces with already installed schema */
     snprintf(buff, PATH_MAX, "../src/sysrepoctl --init --module=ietf-interfaces --owner=%s --permissions=644", user);
     exec_shell_command(buff, "", true, 0);
 
@@ -242,7 +268,10 @@ sysrepoctl_test_init(void **state)
     test_file_permissions(TEST_DATA_SEARCH_DIR "ietf-interfaces.candidate.lock", mode);
     test_file_permissions(TEST_DATA_SEARCH_DIR "ietf-interfaces.persist", mode);
 
-    /* initialize already installed ietf-ip */
+    /* install and initialize already installed ietf-ip */
+    snprintf(buff, PATH_MAX, "../src/sysrepoctl --install --yang=../../tests/yang/ietf-ip@2014-06-16.yang "
+            "--owner=%s --permissions=644", user);
+    exec_shell_command(buff, "", true, 0);
     snprintf(buff, PATH_MAX, "../src/sysrepoctl --init --module=ietf-ip --owner=%s --permissions=664", user);
     exec_shell_command(buff, "", true, 0);
 
@@ -262,6 +291,12 @@ sysrepoctl_test_init(void **state)
     test_file_permissions(TEST_DATA_SEARCH_DIR "ietf-interfaces.running.lock", mode);
     test_file_permissions(TEST_DATA_SEARCH_DIR "ietf-interfaces.candidate.lock", mode);
     test_file_permissions(TEST_DATA_SEARCH_DIR "ietf-interfaces.persist", mode);
+
+    /* finally install back iana-if-type to restore the pre-test state */
+    snprintf(buff, PATH_MAX, "../src/sysrepoctl --install --yang=../../tests/yang/iana-if-type.yang "
+            "--owner=%s --permissions=644", user);
+    exec_shell_command(buff, "", true, 0);
+    test_file_exists(TEST_SCHEMA_SEARCH_DIR "iana-if-type@2014-05-08.yang", true);
 }
 
 int

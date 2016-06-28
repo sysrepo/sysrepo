@@ -163,6 +163,8 @@ srcfg_load_module_schema(struct ly_ctx *ly_ctx, const char *filepath)
 {
     const struct lys_module *module_schema = NULL;
 
+    CHECK_NULL_ARG2(ly_ctx, filepath);
+
     SR_LOG_DBG("Loading module schema: '%s'.", filepath);   
     module_schema = lys_parse_path(ly_ctx, filepath,
                                    sr_str_ends_with(filepath, SR_SCHEMA_YANG_FILE_EXT) ? LYS_IN_YANG : LYS_IN_YIN);
@@ -187,7 +189,7 @@ srcfg_ly_init(struct ly_ctx **ly_ctx, const char *module_name)
 {
     int rc = SR_ERR_OK;
     md_ctx_t *md_ctx = NULL;
-    const md_module_t *module = NULL;
+    md_module_t *module = NULL;
     sr_llist_node_t *dep_node = NULL;
     md_dep_t *dep = NULL;
 
@@ -203,7 +205,7 @@ srcfg_ly_init(struct ly_ctx **ly_ctx, const char *module_name)
 
     /* init module dependencies context */
     rc = md_init(srcfg_schema_search_dir, srcfg_internal_schema_search_dir, srcfg_internal_data_search_dir,
-                 srcfg_internal_data_search_dir, &md_ctx);
+                 false, &md_ctx);
     if (SR_ERR_OK != rc) {
         fprintf(stderr, "Error: Failed to initialize module dependencies context.\n");
         goto cleanup;

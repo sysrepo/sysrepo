@@ -151,8 +151,8 @@ INSTALL_YANG_MODULE("info-module")
 INSTALL_YANG_MODULE("module-a@2016-02-02")
 INSTALL_YANG_MODULE("module-a@2016-02-10")
 INSTALL_YANG_MODULE("module-b@2016-02-05")
-INSTALL_YANG_MODULE("iana-if-type")
 INSTALL_YANG_MODULE("ietf-interfaces@2014-05-08")
+INSTALL_YANG_MODULE("iana-if-type")
 INSTALL_YANG_MODULE("ietf-ip@2014-06-16")
 
 # dummy testing plugins
