@@ -94,6 +94,8 @@ srcfg_ly_log_cb(LY_LOG_LEVEL level, const char *msg, const char *path)
             break;
         case LY_LLDBG:
             SR_LOG_DBG("libyang: %s", msg);
+        case LY_LLSILENT:
+        default:
             break;
     }
 }
