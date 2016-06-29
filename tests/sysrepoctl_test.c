@@ -213,7 +213,7 @@ sysrepoctl_test_init(void **state)
     exec_shell_command("../src/sysrepoctl -l", "ietf-interfaces[[:space:]]*\\| 2014-05-08 \\|[[:space:]]*\\|[[:space:]]*\\|", true, 0);
 
     /* initialize already installed ietf-interfaces */
-    snprintf(buff, PATH_MAX, "../src/sysrepoctl --init --module=ietf-interfaces --owner=%s --permissions=644", user);
+    snprintf(buff, PATH_MAX, "../src/sysrepoctl --init --module=ietf-interfaces --owner=%s:%s --permissions=644", user, user);
     exec_shell_command(buff, ".*", true, 0);
 
     /* has owner, permissions */
