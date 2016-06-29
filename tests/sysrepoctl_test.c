@@ -67,10 +67,10 @@ static void
 sysrepoctl_test_uninstall(void **state)
 {
     /* invalid arguments */
-    exec_shell_command("../src/sysrepoctl --uninstall --revision 2014-06-16", "", true, 1);
+    exec_shell_command("../src/sysrepoctl --uninstall --revision 2014-06-16", ".*", true, 1);
 
     /* uninstall ietf-ip */
-    exec_shell_command("../src/sysrepoctl --uninstall --module=ietf-ip --revision 2014-06-16", "", true, 0);
+    exec_shell_command("../src/sysrepoctl --uninstall --module=ietf-ip --revision 2014-06-16", ".*", true, 0);
     test_file_exists(TEST_SCHEMA_SEARCH_DIR "ietf-ip@2014-06-16.yang", false);
     exec_shell_command("../src/sysrepoctl -l", "!ietf-ip", true, 0);
 
@@ -85,7 +85,7 @@ sysrepoctl_test_uninstall(void **state)
     exec_shell_command("../src/sysrepoctl -l", "ietf-interfaces", true, 0);
 
     /* uninstall ietf-interfaces */
-    exec_shell_command("../src/sysrepoctl --uninstall --module=ietf-interfaces --revision 2014-05-08", "", true, 0);
+    exec_shell_command("../src/sysrepoctl --uninstall --module=ietf-interfaces --revision 2014-05-08", ".*", true, 0);
     test_file_exists(TEST_SCHEMA_SEARCH_DIR "ietf-interfaces@2014-05-08.yang", false);
     test_file_exists(TEST_DATA_SEARCH_DIR "ietf-interfaces.startup", false);
     test_file_exists(TEST_DATA_SEARCH_DIR "ietf-interfaces.startup.lock", false);
@@ -104,12 +104,12 @@ sysrepoctl_test_install(void **state)
 
     /* invalid arguments */
     snprintf(buff, PATH_MAX, "../src/sysrepoctl --install --owner=%s --permissions=644", user);
-    exec_shell_command(buff, "", true, 1);
+    exec_shell_command(buff, ".*", true, 1);
 
     /* install ietf-ip */
     snprintf(buff, PATH_MAX, "../src/sysrepoctl --install --yang=../../tests/yang/ietf-ip@2014-06-16.yang "
             "--owner=%s --permissions=644", user);
-    exec_shell_command(buff, "", true, 0);
+    exec_shell_command(buff, ".*", true, 0);
     test_file_exists(TEST_SCHEMA_SEARCH_DIR "ietf-ip@2014-06-16.yang", true);
     /* ietf-ip defines no data-carrying elements */
     exec_shell_command("../src/sysrepoctl -l", "ietf-ip[[:space:]]*| 2014-06-16 |[[:space:]]*|[[:space:]]*|[[:space:]]*|[[:space:]]*\n", true, 0);
@@ -140,12 +140,12 @@ sysrepoctl_test_change(void **state)
 
     /* invalid arguments */
     snprintf(buff, PATH_MAX, "../src/sysrepoctl --change --owner=%s --permissions=664", user);
-    exec_shell_command(buff, "", true, 1);
-    exec_shell_command("../src/sysrepoctl --change --module=ietf-interfaces", "", true, 1);
+    exec_shell_command(buff, ".*", true, 1);
+    exec_shell_command("../src/sysrepoctl --change --module=ietf-interfaces", ".*", true, 1);
 
     /* change owner and permissions for ietf-interfaces module */
     snprintf(buff, PATH_MAX, "../src/sysrepoctl --change --module=ietf-interfaces --owner=%s --permissions=664", user);
-    exec_shell_command(buff, "", true, 0);
+    exec_shell_command(buff, ".*", true, 0);
 
     snprintf(buff, PATH_MAX, "ietf-interfaces[[:space:]]*| 2014-05-08 | %s:%s[[:space:]]*| 664[[:space:]]*|", user, user);
     exec_shell_command("../src/sysrepoctl -l", buff, true, 0);
@@ -173,8 +173,8 @@ sysrepoctl_test_feature(void **state)
     char *user = getenv("USER");
 
     /* invalid arguments */
-    exec_shell_command("../src/sysrepoctl --feature-enable=if-mib", "", true, 1);
-    exec_shell_command("../src/sysrepoctl --feature-disable=if-mib", "", true, 1);
+    exec_shell_command("../src/sysrepoctl --feature-enable=if-mib", ".*", true, 1);
+    exec_shell_command("../src/sysrepoctl --feature-disable=if-mib", ".*", true, 1);
 
     /* enable */
     exec_shell_command("../src/sysrepoctl --feature-enable=if-mib --module=ietf-interfaces",
@@ -203,18 +203,18 @@ sysrepoctl_test_init(void **state)
 
     /* invalid arguments */
     snprintf(buff, PATH_MAX, "../src/sysrepoctl --init --owner=%s --permissions=644", user);
-    exec_shell_command(buff, "", true, 1);
+    exec_shell_command(buff, ".*", true, 1);
 
     /* remove ietf-interfaces data files */
     snprintf(buff, PATH_MAX, "rm -f \"%s\"*", TEST_DATA_SEARCH_DIR "ietf-interfaces.");
-    exec_shell_command(buff, "", true, 0);
+    exec_shell_command(buff, ".*", true, 0);
 
     /* no owner, permissions */
     exec_shell_command("../src/sysrepoctl -l", "ietf-interfaces[[:space:]]*| 2014-05-08 |[[:space:]]*|[[:space:]]*|", true, 0);
 
     /* initialize already installed ietf-interfaces */
     snprintf(buff, PATH_MAX, "../src/sysrepoctl --init --module=ietf-interfaces --owner=%s --permissions=644", user);
-    exec_shell_command(buff, "", true, 0);
+    exec_shell_command(buff, ".*", true, 0);
 
     /* has owner, permissions */
     snprintf(buff, PATH_MAX, "ietf-interfaces[[:space:]]*| 2014-05-08 | %s:%s[[:space:]]*| 644[[:space:]]*|", user, user);
@@ -244,7 +244,7 @@ sysrepoctl_test_init(void **state)
 
     /* initialize already installed ietf-ip */
     snprintf(buff, PATH_MAX, "../src/sysrepoctl --init --module=ietf-ip --owner=%s --permissions=664", user);
-    exec_shell_command(buff, "", true, 0);
+    exec_shell_command(buff, ".*", true, 0);
 
     /* ietf-ip defines no data-carrying elements */
     test_file_exists(TEST_DATA_SEARCH_DIR "ietf-ip.startup", false);
