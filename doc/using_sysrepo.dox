@@ -170,7 +170,7 @@ concurrency control. Therefore it is vital to have system-wide sysrepo daemon
 running when possible.
 
 
-@section subscribe Subscribing to startup datastore
+@section subscribe Subscribing to running datastore
 As described in @ref ds_page, to enable a configuration subtree in the running datastore,
 some application needs to subscribe for the changes in the subtree in sysrepo datastore.
 If no application has subscribed for specified subtree, it would have no data in the 
