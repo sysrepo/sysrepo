@@ -35,6 +35,7 @@
 #include "sr_common.h"
 #include "test_data.h"
 #include "system_helper.h"
+#include "module_dependencies.h"
 
 static void
 sysrepoctl_test_version(void **state)
@@ -66,6 +67,10 @@ sysrepoctl_test_list(void **state)
 static void
 sysrepoctl_test_uninstall(void **state)
 {
+    int rc = 0;
+    md_ctx_t *md_ctx = NULL;
+    md_module_t *module = NULL;
+
     /* invalid arguments */
     exec_shell_command("../src/sysrepoctl --uninstall --revision 2014-06-16", ".*", true, 1);
 
@@ -84,7 +89,31 @@ sysrepoctl_test_uninstall(void **state)
     test_file_exists(TEST_DATA_SEARCH_DIR "ietf-interfaces.persist", true);
     exec_shell_command("../src/sysrepoctl -l", "ietf-interfaces", true, 0);
 
-    /* uninstall ietf-interfaces */
+    /* check the internal data file with module dependencies */
+    rc = md_init(TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal/", TEST_DATA_SEARCH_DIR "internal/",
+                 false, &md_ctx);
+    assert_int_equal(0, rc);
+    rc = md_get_module_info(md_ctx, "ietf-ip", "2014-06-16", &module);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+    md_destroy(md_ctx);
+
+    /* shouldn't be able to uninstall ietf-interfaces as iana-if-type depends on it */
+    exec_shell_command("../src/sysrepoctl --uninstall --module=ietf-interfaces --revision 2014-05-08", ".*", true, 1);
+    test_file_exists(TEST_SCHEMA_SEARCH_DIR "ietf-interfaces@2014-05-08.yang", true);
+    test_file_exists(TEST_DATA_SEARCH_DIR "ietf-interfaces.startup", true);
+    test_file_exists(TEST_DATA_SEARCH_DIR "ietf-interfaces.startup.lock", true);
+    test_file_exists(TEST_DATA_SEARCH_DIR "ietf-interfaces.running", true);
+    test_file_exists(TEST_DATA_SEARCH_DIR "ietf-interfaces.running.lock", true);
+    test_file_exists(TEST_DATA_SEARCH_DIR "ietf-interfaces.candidate.lock", true);
+    test_file_exists(TEST_DATA_SEARCH_DIR "ietf-interfaces.persist", true);
+    exec_shell_command("../src/sysrepoctl -l", "ietf-interfaces", true, 0);
+   
+    /* uninstall iana-if-type */
+    exec_shell_command("../src/sysrepoctl --uninstall --module=iana-if-type", ".*", true, 0);
+    test_file_exists(TEST_SCHEMA_SEARCH_DIR "iana-if-type@2014-05-08.yang", false);
+    exec_shell_command("../src/sysrepoctl -l", "!iana-if-type", true, 0);
+
+    /* now it should be possible to uninstall ietf-interfaces */
     exec_shell_command("../src/sysrepoctl --uninstall --module=ietf-interfaces --revision 2014-05-08", ".*", true, 0);
     test_file_exists(TEST_SCHEMA_SEARCH_DIR "ietf-interfaces@2014-05-08.yang", false);
     test_file_exists(TEST_DATA_SEARCH_DIR "ietf-interfaces.startup", false);
@@ -94,11 +123,22 @@ sysrepoctl_test_uninstall(void **state)
     test_file_exists(TEST_DATA_SEARCH_DIR "ietf-interfaces.candidate.lock", false);
     test_file_exists(TEST_DATA_SEARCH_DIR "ietf-interfaces.persist", false);
     exec_shell_command("../src/sysrepoctl -l", "!ietf-interfaces", true, 0);
+
+    /* check the internal data file with module dependencies */
+    rc = md_init(TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal/", TEST_DATA_SEARCH_DIR "internal/",
+                 false, &md_ctx);
+    assert_int_equal(0, rc);
+    rc = md_get_module_info(md_ctx, "ietf-interfaces", "2014-05-08", &module);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+    md_destroy(md_ctx);
 }
 
 static void
 sysrepoctl_test_install(void **state)
 {
+    int rc = 0;
+    md_ctx_t *md_ctx = NULL;
+    md_module_t *module = NULL;
     char buff[PATH_MAX] = { 0, };
     char *user = getenv("USER");
 
@@ -130,6 +170,16 @@ sysrepoctl_test_install(void **state)
     test_file_exists(TEST_DATA_SEARCH_DIR "ietf-interfaces.persist", true);
     snprintf(buff, PATH_MAX, "ietf-interfaces[[:space:]]*\\| 2014-05-08 \\| %s:[[:alnum:]]*[[:space:]]*\\| 644[[:space:]]*\\|", user);
     exec_shell_command("../src/sysrepoctl -l", buff, true, 0);
+
+    /* check the internal data file with module dependencies */
+    rc = md_init(TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal/", TEST_DATA_SEARCH_DIR "internal/",
+                 false, &md_ctx);
+    assert_int_equal(0, rc);
+    rc = md_get_module_info(md_ctx, "ietf-ip", "2014-06-16", &module);
+    assert_int_equal(SR_ERR_OK, rc);
+    rc = md_get_module_info(md_ctx, "ietf-interfaces", "2014-05-08", &module);
+    assert_int_equal(SR_ERR_OK, rc);
+    md_destroy(md_ctx);
 }
 
 static void
@@ -198,6 +248,9 @@ sysrepoctl_test_feature(void **state)
 static void
 sysrepoctl_test_init(void **state)
 {
+    int rc = 0;
+    md_ctx_t *md_ctx = NULL;
+    md_module_t *module = NULL;
     char buff[PATH_MAX] = { 0, };
     char *user = getenv("USER");
 
@@ -205,14 +258,24 @@ sysrepoctl_test_init(void **state)
     snprintf(buff, PATH_MAX, "../src/sysrepoctl --init --owner=%s --permissions=644", user);
     exec_shell_command(buff, ".*", true, 1);
 
-    /* remove ietf-interfaces data files */
-    snprintf(buff, PATH_MAX, "rm -f \"%s\"*", TEST_DATA_SEARCH_DIR "ietf-interfaces.");
+    /* backup the ietf-interfaces schema file */
+    snprintf(buff, PATH_MAX, "cp " TEST_SCHEMA_SEARCH_DIR "ietf-interfaces@2014-05-08.yang " 
+                                   TEST_SCHEMA_SEARCH_DIR ".ietf-interfaces@2014-05-08.yang.bkp");
+    exec_shell_command(buff, ".*", true, 0);
+
+    /* first uninstall ietf-interfaces (and ietf-ip which depends on it) */
+    exec_shell_command("../src/sysrepoctl --uninstall --module=ietf-ip --revision 2014-06-16", ".*", true, 0);
+    exec_shell_command("../src/sysrepoctl --uninstall --module=ietf-interfaces --revision 2014-05-08", ".*", true, 0);
+
+    /* revert the ietf-interfaces schema file */
+    snprintf(buff, PATH_MAX, "mv " TEST_SCHEMA_SEARCH_DIR ".ietf-interfaces@2014-05-08.yang.bkp " 
+                                   TEST_SCHEMA_SEARCH_DIR "ietf-interfaces@2014-05-08.yang");
     exec_shell_command(buff, ".*", true, 0);
 
     /* no owner, permissions */
     exec_shell_command("../src/sysrepoctl -l", "ietf-interfaces[[:space:]]*\\| 2014-05-08 \\|[[:space:]]*\\|[[:space:]]*\\|", true, 0);
 
-    /* initialize already installed ietf-interfaces */
+    /* initialize ietf-interfaces with already installed schema */
     snprintf(buff, PATH_MAX, "../src/sysrepoctl --init --module=ietf-interfaces --owner=%s --permissions=644", user);
     exec_shell_command(buff, ".*", true, 0);
 
@@ -242,7 +305,10 @@ sysrepoctl_test_init(void **state)
     test_file_permissions(TEST_DATA_SEARCH_DIR "ietf-interfaces.candidate.lock", mode);
     test_file_permissions(TEST_DATA_SEARCH_DIR "ietf-interfaces.persist", mode);
 
-    /* initialize already installed ietf-ip */
+    /* install and initialize already installed ietf-ip */
+    snprintf(buff, PATH_MAX, "../src/sysrepoctl --install --yang=../../tests/yang/ietf-ip@2014-06-16.yang "
+            "--owner=%s --permissions=644", user);
+    exec_shell_command(buff, "", true, 0);
     snprintf(buff, PATH_MAX, "../src/sysrepoctl --init --module=ietf-ip --owner=%s --permissions=664", user);
     exec_shell_command(buff, ".*", true, 0);
 
@@ -262,6 +328,22 @@ sysrepoctl_test_init(void **state)
     test_file_permissions(TEST_DATA_SEARCH_DIR "ietf-interfaces.running.lock", mode);
     test_file_permissions(TEST_DATA_SEARCH_DIR "ietf-interfaces.candidate.lock", mode);
     test_file_permissions(TEST_DATA_SEARCH_DIR "ietf-interfaces.persist", mode);
+
+    /* check the internal data file with module dependencies */
+    rc = md_init(TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal/", TEST_DATA_SEARCH_DIR "internal/",
+                 false, &md_ctx);
+    assert_int_equal(0, rc);
+    rc = md_get_module_info(md_ctx, "ietf-ip", "2014-06-16", &module);
+    assert_int_equal(SR_ERR_OK, rc);
+    rc = md_get_module_info(md_ctx, "ietf-interfaces", "2014-05-08", &module);
+    assert_int_equal(SR_ERR_OK, rc);
+    md_destroy(md_ctx);
+
+    /* finally install back iana-if-type to restore the pre-test state */
+    snprintf(buff, PATH_MAX, "../src/sysrepoctl --install --yang=../../tests/yang/iana-if-type.yang "
+            "--owner=%s --permissions=644", user);
+    exec_shell_command(buff, "", true, 0);
+    test_file_exists(TEST_SCHEMA_SEARCH_DIR "iana-if-type@2014-05-08.yang", true);
 }
 
 int

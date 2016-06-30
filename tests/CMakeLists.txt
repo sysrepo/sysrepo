@@ -2,6 +2,7 @@ set(TEST_REPOSITORY_LOC "${CMAKE_BINARY_DIR}/repository")
 set(TEST_SCHEMA_SEARCH_DIR "${TEST_REPOSITORY_LOC}/yang/")
 set(TEST_DATA_SEARCH_DIR "${TEST_REPOSITORY_LOC}/data/")
 set(TEST_INTERNAL_SCHEMA_SEARCH_DIR "${TEST_REPOSITORY_LOC}/yang/internal/")
+set(TEST_INTERNAL_DATA_SEARCH_DIR "${TEST_REPOSITORY_LOC}/data/internal/")
 
 set(TEST_HELPERS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/helpers/")
 
@@ -65,6 +66,8 @@ ADD_UNIT_TEST(rp_datatree_test 1)
 ADD_UNIT_TEST(rp_dt_edit_test 1)
 ADD_UNIT_TEST(rp_dt_running_test 1)
 
+ADD_UNIT_TEST(md_test 1)
+
 if("${TEST_REPOSITORY_LOC}" STREQUAL "${REPOSITORY_LOC}")
     # end-to-end tests that work only if test repository location equals to 
     # global procject's repository location
@@ -123,10 +126,11 @@ endif()
 
 # create test repository directories and copy internal schemas
 EXECUTE_PROCESS(
-  COMMAND mkdir -p "${TEST_SCHEMA_SEARCH_DIR}" "${TEST_DATA_SEARCH_DIR}" "${TEST_INTERNAL_SCHEMA_SEARCH_DIR}"
-  COMMAND cp "${PROJECT_SOURCE_DIR}/yang/sysrepo-persistent-data.yang" "${TEST_INTERNAL_SCHEMA_SEARCH_DIR}"
-  COMMAND cp "${PROJECT_SOURCE_DIR}/yang/sysrepo-persistent-data.yin" "${TEST_INTERNAL_SCHEMA_SEARCH_DIR}"
-  ERROR_QUIET
+    COMMAND mkdir -p "${TEST_SCHEMA_SEARCH_DIR}" "${TEST_DATA_SEARCH_DIR}" "${TEST_INTERNAL_SCHEMA_SEARCH_DIR}" "${TEST_INTERNAL_DATA_SEARCH_DIR}"
+    COMMAND cp "${PROJECT_SOURCE_DIR}/yang/sysrepo-persistent-data.yang" "${TEST_INTERNAL_SCHEMA_SEARCH_DIR}"
+    COMMAND cp "${PROJECT_SOURCE_DIR}/yang/sysrepo-persistent-data.yin" "${TEST_INTERNAL_SCHEMA_SEARCH_DIR}"
+    COMMAND cp "${PROJECT_SOURCE_DIR}/yang/sysrepo-module-dependencies.yang" "${TEST_INTERNAL_SCHEMA_SEARCH_DIR}"
+    ERROR_QUIET
 )
 
 # make common_test depend on sysrepoctl
@@ -149,8 +153,8 @@ INSTALL_YANG_MODULE("info-module")
 INSTALL_YANG_MODULE("module-a@2016-02-02")
 INSTALL_YANG_MODULE("module-a@2016-02-10")
 INSTALL_YANG_MODULE("module-b@2016-02-05")
-INSTALL_YANG_MODULE("iana-if-type")
 INSTALL_YANG_MODULE("ietf-interfaces@2014-05-08")
+INSTALL_YANG_MODULE("iana-if-type")
 INSTALL_YANG_MODULE("ietf-ip@2014-06-16")
 
 # dummy testing plugins
