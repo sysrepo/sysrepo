@@ -58,6 +58,7 @@ typedef struct cl_sm_subscription_ctx_s {
         sr_module_install_cb module_install_cb;  /**< Callback to be called by module (un)install event. */
         sr_module_change_cb module_change_cb;    /**< Callback to be called by module change event. */
         sr_subtree_change_cb subtree_change_cb;  /**< Callback to be called by subtree change event. */
+        sr_dp_get_items_cb dp_get_items_cb;      /**< Callback to be called by operational data requests. */
         sr_rpc_cb rpc_cb;                        /**< Callback to be called by RPC delivery. */
     } callback;
     cl_sm_ctx_t *sm_ctx;                         /**< Associated Subscription Manager context. */
