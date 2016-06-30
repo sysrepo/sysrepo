@@ -916,6 +916,7 @@ srctl_install(const char *yang, const char *yin, const char *owner, const char *
     rc = md_insert_module(md_ctx, schema_dst);
     if (SR_ERR_INVAL_ARG == rc) {
         printf("The module is already installed, exiting...\n");
+        rc = SR_ERR_OK; /*< do not treat as error */
         goto cleanup; /*< already installed, do not revert */
     }
     if (SR_ERR_OK != rc) {

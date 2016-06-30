@@ -17,6 +17,7 @@ module sysrepo-module-dependencies {
 
   revision "2016-06-14" {
     description "initial revision";
+    reference "sysrepo.org";
   }
 
   list module {

@@ -66,6 +66,8 @@ ADD_UNIT_TEST(rp_datatree_test 1)
 ADD_UNIT_TEST(rp_dt_edit_test 1)
 ADD_UNIT_TEST(rp_dt_running_test 1)
 
+ADD_UNIT_TEST(md_test 1)
+
 if("${TEST_REPOSITORY_LOC}" STREQUAL "${REPOSITORY_LOC}")
     # end-to-end tests that work only if test repository location equals to 
     # global procject's repository location

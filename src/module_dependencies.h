@@ -33,6 +33,7 @@
  * @ brief Type of a dependency
  */
 typedef enum md_dep_type_e {
+    MD_DEP_NONE,       /**< Used only in tests */
     MD_DEP_IMPORT,     /**< Import */
     MD_DEP_EXTENSION   /**< Extension (augment, derived identity, ...) */
 } md_dep_type_t;
