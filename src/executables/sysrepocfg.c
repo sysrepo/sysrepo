@@ -97,8 +97,6 @@ srcfg_ly_log_cb(LY_LOG_LEVEL level, const char *msg, const char *path)
         case LY_LLSILENT:
         default:
             break;
-        default:
-            break;
     }
 }
 
