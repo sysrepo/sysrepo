@@ -432,7 +432,7 @@ pm_init(rp_ctx_t *rp_ctx, const char *schema_search_dir, const char *data_search
     ctx->schema = lys_parse_path(ctx->ly_ctx, schema_filename, LYS_IN_YANG);
     free(schema_filename);
     if (NULL == ctx->schema) {
-        SR_LOG_WRN("Unable to parse the schema file '%s': %s", PM_SCHEMA_FILE, ly_errmsg());
+        SR_LOG_ERR("Unable to parse the schema file '%s': %s", PM_SCHEMA_FILE, ly_errmsg());
         rc = SR_ERR_INTERNAL;
         goto cleanup;
     }
