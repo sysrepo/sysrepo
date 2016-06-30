@@ -13,7 +13,8 @@ Sysrepo can be easily integrated to management agents such as [NETCONF](https://
 ![Sysrepo Architecture](doc/high_level_architecture.png)
 
 ## Status
-- May 2016: RPC support and sysrepo plugins infrastructure ready, working on better notifications towards subscribed applications
+- June 2016: new subscription API & changeset retrieval functionality ready, sysrepocfg tool, released as sysrepo [version 0.3.0](https://github.com/sysrepo/sysrepo/releases/tag/v0.3.0)
+- May 2016: RPC support and sysrepo plugins infrastructure ready, working on new subscription API & changeset retrieval functionality
 - April 2016: full concurrency and locking support ready, generated Python bindings, integrated with [Netopeer 2 NETCONF server](https://github.com/CESNET/Netopeer2), released as sysrepo [version 0.2.0](https://github.com/sysrepo/sysrepo/releases/tag/v0.2.0)
 - March 2016: syrepo daemon and data manipulation (edit-config) functionality ready, working on full concurrency and locking support
 - February 2016: working on sysrepo daemon, data manipulation (edit-config) functionality
@@ -28,8 +29,8 @@ Sysrepo can be easily integrated to management agents such as [NETCONF](https://
 - full transaction and concurrency support, conforming all ACID properties (Atomicity, Consistency, Isolation, Durability)
 - custom RPC support
 - plugins infrastructure for use-cases where there is no daemon to be integrated with sysrepo
-- (IN PROGRESS) notifications of subscribed applications about the changes made in the datastore
-- (TODO) operational data support (publishing of application's state data to sysrepo)
+- notifications of subscribed applications about the changes made in the datastore
+- (IN PROGRESS) operational data support (publishing of application's state data to sysrepo)
 - (TODO) ability to subscribe to notifications as a verifier and validate the changes before they are committed
 - (TODO) [NACM](https://tools.ietf.org/html/rfc6536) (NETCONF Access Control Model)
 - (TODO) [NETCONF Event Notifications](https://tools.ietf.org/html/rfc5277) support
