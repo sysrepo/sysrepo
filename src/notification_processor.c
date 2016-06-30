@@ -410,6 +410,7 @@ np_notification_subscribe(np_ctx_t *np_ctx, const rp_session_t *rp_session, Sr__
     /* save the new subscription */
     if ((SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS == type) ||
             (SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS == type) ||
+            (SR__SUBSCRIPTION_TYPE__DP_GET_ITEMS_SUBS == type) ||
             (SR__SUBSCRIPTION_TYPE__RPC_SUBS == type)) {
         /*  update notification destination info */
         rc = np_dst_info_insert(np_ctx, dst_address, module_name);
@@ -421,7 +422,7 @@ np_notification_subscribe(np_ctx_t *np_ctx, const rp_session_t *rp_session, Sr__
         CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to save the subscription into persistent data file.");
 
         if (opts & NP_SUBSCR_ENABLE_RUNNING) {
-            if (SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS == type) {
+            if (SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS == type || SR__SUBSCRIPTION_TYPE__DP_GET_ITEMS_SUBS == type) {
                 /* enable the subtree in running config */
                 rc = dm_enable_module_subtree_running(np_ctx->rp_ctx->dm_ctx, rp_session->dm_session, module_name, xpath, NULL, true);
                 CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to enable the subtree in the running datastore.");
@@ -478,6 +479,7 @@ np_notification_unsubscribe(np_ctx_t *np_ctx,  const rp_session_t *rp_session, S
 
     if ((SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS == notif_type) ||
             (SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS == notif_type) ||
+            (SR__SUBSCRIPTION_TYPE__DP_GET_ITEMS_SUBS == notif_type) ||
             (SR__SUBSCRIPTION_TYPE__RPC_SUBS == notif_type)) {
         /* remove the subscription to module's persistent data */
         subscription_lookup.dst_address = dst_address;

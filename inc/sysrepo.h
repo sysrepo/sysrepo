@@ -1194,6 +1194,8 @@ typedef int (*sr_dp_get_items_cb)(const char *xpath, sr_val_t **values, size_t *
  * @brief Registers for providing of operational data under given xpath.
  *
  * @note The XPath must be generic - must not include any list key values.
+ * @note This API works only for operational data (subtrees marked in YANG as "config false").
+ * Subscribing as a data provider for configuration data does not have any effect.
  *
  * @param[in] session Session context acquired with ::sr_session_start call.
  * @param[in] xpath XPath identifying the subtree under which the provider is able to provide

@@ -54,6 +54,11 @@ module sysrepo-persistent-data {
       YANG subtree.";
   }
 
+  identity dp-get-items {
+    base subscription-type;
+    description "Get-items operational data provider subscription.";
+  }
+
   identity rpc {
     base subscription-type;
     description "Subscription for delivery of RPC identified by xpath.";
@@ -117,7 +122,7 @@ module sysrepo-persistent-data {
         }
 
         leaf xpath {
-          when "../type = 'subtree-change' or ../type = 'rpc'";
+          when "../type = 'subtree-change' or ../type = 'dp-get-items' or ../type = 'rpc'";
           type string;
           description "XPath of the subtree where the subscription is active.";
         }
@@ -137,7 +142,7 @@ module sysrepo-persistent-data {
         }
 
         leaf enable-running {
-          when "../type = 'module-change' or ../type = 'subtree-change'";
+          when "../type = 'module-change' or ../type = 'subtree-change' or ../type = 'dp-get-items'";
           type empty;
           description "If present, the subscription enables specified subtree in
             the running datastore.";
