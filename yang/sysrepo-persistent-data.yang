@@ -17,6 +17,7 @@ module sysrepo-persistent-data {
 
   revision "2016-03-30" {
     description "initial revision";
+    reference "sysrepo.org";
   }
 
   identity subscription-type {
@@ -126,6 +127,7 @@ module sysrepo-persistent-data {
           type identityref {
             base notification-event;
           }
+          description "Notification event which the subscriber is interested in.";
         }
 
         leaf priority {
@@ -135,8 +137,8 @@ module sysrepo-persistent-data {
         }
 
         leaf enable-running {
-          type empty;
           when "../type = 'module-change' or ../type = 'subtree-change'";
+          type empty;
           description "If present, the subscription enables specified subtree in
             the running datastore.";
         }
