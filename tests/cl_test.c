@@ -1884,7 +1884,8 @@ cl_get_changes_iter_test(void **state)
 static int
 dp_get_items_cb(const char *xpath, sr_val_t **values, size_t *values_cnt, void *private_ctx)
 {
-    // TODO
+    printf("operational data for '%s' requested.\n", xpath);
+
     return SR_ERR_OK;
 }
 
@@ -1906,7 +1907,7 @@ cl_dp_get_items_test(void **state)
             SR_SUBSCR_DEFAULT, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
-    // TODO
+    // TODO: get some operational data
 
     /* unsubscribe */
     rc = sr_unsubscribe(NULL, subscription);
