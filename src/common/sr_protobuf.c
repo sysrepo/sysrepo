@@ -1427,6 +1427,8 @@ sr_subscription_type_gpb_to_str(Sr__SubscriptionType type)
             return "module-change";
         case SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS:
             return "subtree-change";
+        case SR__SUBSCRIPTION_TYPE__DP_GET_ITEMS_SUBS:
+            return "dp-get-items";
         case SR__SUBSCRIPTION_TYPE__RPC_SUBS:
             return "rpc";
         case SR__SUBSCRIPTION_TYPE__HELLO_SUBS:
@@ -1452,6 +1454,9 @@ sr_subsciption_type_str_to_gpb(const char *type_name)
     }
     if (0 == strcmp(type_name, "subtree-change")) {
         return SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS;
+    }
+    if (0 == strcmp(type_name, "dp-get-items")) {
+        return SR__SUBSCRIPTION_TYPE__DP_GET_ITEMS_SUBS;
     }
     return _SR__SUBSCRIPTION_TYPE_IS_INT_SIZE;
 }

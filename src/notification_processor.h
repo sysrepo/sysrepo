@@ -182,6 +182,20 @@ int np_get_module_change_subscriptions(np_ctx_t *np_ctx, const char *module_name
         np_subscription_t ***subscriptions_arr, size_t *subscriptions_cnt);
 
 /**
+ * @brief Gets all operational data provider subscriptions in specified module
+ * or in a subtree within the specified module.
+ *
+ * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
+ * @param[in] module_name ame of the module where the subscription is active.
+ * @param[out] subscriptions_arr Array of pointers to subscriptions matching the criteria.
+ * @param[out] subscriptions_cnt Count of the matching subscriptions.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int np_get_data_provider_subscriptions(np_ctx_t *np_ctx, const char *module_name,
+        np_subscription_t ***subscriptions_arr, size_t *subscriptions_cnt);
+
+/**
  * @brief Notify the subscriber about the change they are subscribed to.
  *
  * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
