@@ -742,6 +742,51 @@ cleanup:
 }
 
 int
+np_get_data_provider_subscriptions(np_ctx_t *np_ctx, const char *module_name, np_subscription_t ***subscriptions_arr_p,
+        size_t *subscriptions_cnt_p)
+{
+    np_subscription_t *subscriptions = NULL, **subscriptions_arr = NULL;
+    size_t subscription_cnt = 0, subscriptions_arr_cnt = 0;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG4(np_ctx, module_name, subscriptions_arr_p, subscriptions_cnt_p);
+
+    /* get data provides subscriptions */
+    rc = pm_get_subscriptions(np_ctx->rp_ctx->pm_ctx, module_name, SR__SUBSCRIPTION_TYPE__DP_GET_ITEMS_SUBS,
+            &subscriptions, &subscription_cnt);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to retrieve subtree-change subscriptions");
+
+    if (subscription_cnt > 0) {
+        /* allocate array of pointers to be returned */
+        subscriptions_arr = calloc(subscription_cnt, sizeof(*subscriptions_arr));
+        CHECK_NULL_NOMEM_GOTO(subscriptions_arr, rc, cleanup);
+
+        /* copy subtree-change subscriptions */
+        for (size_t i = 0; i < subscription_cnt; i++) {
+            subscriptions_arr[subscriptions_arr_cnt] = calloc(1, sizeof(**subscriptions_arr));
+            CHECK_NULL_NOMEM_GOTO(subscriptions_arr[subscriptions_arr_cnt], rc, cleanup);
+            memcpy(subscriptions_arr[subscriptions_arr_cnt], &subscriptions[i], sizeof(subscriptions[i]));
+            subscriptions_arr_cnt++;
+        }
+        free(subscriptions);
+        subscriptions = NULL;
+    }
+
+    *subscriptions_arr_p = subscriptions_arr;
+    *subscriptions_cnt_p = subscriptions_arr_cnt;
+
+    return SR_ERR_OK;
+
+cleanup:
+    np_free_subscriptions(subscriptions, subscription_cnt);
+    for (size_t i = 0; i < subscriptions_arr_cnt; i++) {
+        free(subscriptions_arr[i]);
+    }
+    free(subscriptions_arr);
+    return rc;
+}
+
+int
 np_subscription_notify(np_ctx_t *np_ctx, np_subscription_t *subscription, uint32_t commit_id)
 {
     Sr__Msg *notif = NULL;
