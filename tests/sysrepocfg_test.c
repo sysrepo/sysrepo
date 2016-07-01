@@ -40,6 +40,7 @@
 #include "system_helper.h"
 #include "client_library.h"
 #include "test_module_helper.h"
+#include "module_dependencies.h"
 
 #define FILENAME_NEW_CONFIG   "sysrepocfg_test-new_config.txt"
 #define FILENAME_USER_INPUT   "sysrepocfg_test-user_input.txt"
@@ -300,6 +301,10 @@ srcfg_test_export(void **state)
 static void
 srcfg_test_import(void **state)
 {
+    int rc = 0;
+    md_ctx_t *md_ctx = NULL;
+    md_module_t *module = NULL;
+
     /* invalid arguments */
     exec_shell_command("../src/sysrepocfg --import --datastore=startup --format=txt ietf-interfaces < /tmp/ietf-interfaces.startup.xml", ".*", true, 1);
     exec_shell_command("../src/sysrepocfg --import=/tmp/ietf-interfaces.startup.xml --datastore=startup --format=xml", ".*", true, 1);
@@ -325,6 +330,13 @@ srcfg_test_import(void **state)
     exec_shell_command("../src/sysrepocfg --permanent --import=/tmp/ietf-interfaces.running.json --datastore=running --format=json ietf-interfaces", ".*", true, 0);
     assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/ietf-interfaces.running.json", LYD_JSON, TEST_DATA_SEARCH_DIR "ietf-interfaces.running", LYD_XML));
     assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/ietf-interfaces.running.json", LYD_JSON, TEST_DATA_SEARCH_DIR "ietf-interfaces.startup", LYD_XML));
+    /* check the internal data file with module dependencies (just in case) */
+    rc = md_init(TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal/", TEST_DATA_SEARCH_DIR "internal/",
+                 false, &md_ctx);
+    assert_int_equal(0, rc);
+    rc = md_get_module_info(md_ctx, "ietf-interfaces", "2014-05-08", &module);
+    assert_int_equal(SR_ERR_OK, rc);
+    md_destroy(md_ctx);
 
     /* test-module */
     /*  startup, xml */
@@ -343,6 +355,13 @@ srcfg_test_import(void **state)
     exec_shell_command("../src/sysrepocfg --permanent --import=/tmp/test-module.running.json --datastore=running --format=json test-module", ".*", true, 0);
     assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/test-module.running.json", LYD_JSON, TEST_DATA_SEARCH_DIR "test-module.running", LYD_XML));
     assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/test-module.running.json", LYD_JSON, TEST_DATA_SEARCH_DIR "test-module.startup", LYD_XML));
+    /* check the internal data file with module dependencies (just in case) */
+    rc = md_init(TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal/", TEST_DATA_SEARCH_DIR "internal/",
+                 false, &md_ctx);
+    assert_int_equal(0, rc);
+    rc = md_get_module_info(md_ctx, "test-module", "", &module);
+    assert_int_equal(SR_ERR_OK, rc);
+    md_destroy(md_ctx);
 
     /* example-module */
     /*  startup, xml */
@@ -361,6 +380,14 @@ srcfg_test_import(void **state)
     exec_shell_command("../src/sysrepocfg --permanent --import=/tmp/example-module.running.json --datastore=running --format=json example-module", ".*", true, 0);
     assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/example-module.running.json", LYD_JSON, TEST_DATA_SEARCH_DIR "example-module.running", LYD_XML));
     assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/example-module.running.json", LYD_JSON, TEST_DATA_SEARCH_DIR "example-module.startup", LYD_XML));
+    /* check the internal data file with module dependencies (just in case) */
+    rc = md_init(TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal/", TEST_DATA_SEARCH_DIR "internal/",
+                 false, &md_ctx);
+    assert_int_equal(0, rc);
+    rc = md_get_module_info(md_ctx, "example-module", "", &module);
+    assert_int_equal(SR_ERR_OK, rc);
+    md_destroy(md_ctx);
+
 
     /* restore pre-test state */
     assert_int_equal(0, srcfg_test_unsubscribe("ietf-interfaces"));
