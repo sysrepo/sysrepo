@@ -74,6 +74,8 @@ sr_gpb_operation_name(Sr__Operation operation)
         return "get changes";
     case SR__OPERATION__RPC:
         return "rpc";
+    case SR__OPERATION__DP_GET_ITEMS:
+        return "dp-get-items";
     case SR__OPERATION__UNSUBSCRIBE_DESTINATION:
         return "unsubscribe-destination";
     case SR__OPERATION__COMMIT_RELEASE:
@@ -247,6 +249,12 @@ sr_gpb_req_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__M
             CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__get_changes_req__init((Sr__GetChangesReq *)sub_msg);
             req->get_changes_req = (Sr__GetChangesReq *)sub_msg;
+            break;
+        case SR__OPERATION__DP_GET_ITEMS:
+            sub_msg = calloc(1, sizeof(Sr__DPGetItemsReq));
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
+            sr__dpget_items_req__init((Sr__DPGetItemsReq*)sub_msg);
+            req->dp_get_items_req = (Sr__DPGetItemsReq*)sub_msg;
             break;
         case SR__OPERATION__RPC:
             sub_msg = calloc(1, sizeof(Sr__RPCReq));
@@ -433,6 +441,12 @@ sr_gpb_resp_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__
             CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__get_changes_resp__init((Sr__GetChangesResp*)sub_msg);
             resp->get_changes_resp = (Sr__GetChangesResp*)sub_msg;
+            break;
+        case SR__OPERATION__DP_GET_ITEMS:
+            sub_msg = calloc(1, sizeof(Sr__DPGetItemsResp));
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
+            sr__dpget_items_resp__init((Sr__DPGetItemsResp*)sub_msg);
+            resp->dp_get_items_resp = (Sr__DPGetItemsResp*)sub_msg;
             break;
         case SR__OPERATION__RPC:
             sub_msg = calloc(1, sizeof(Sr__RPCResp));
@@ -697,6 +711,9 @@ sr_gpb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__O
             case SR__OPERATION__GET_CHANGES:
                 CHECK_NULL_RETURN(msg->request->get_changes_req, SR_ERR_MALFORMED_MSG);
                 break;
+            case SR__OPERATION__DP_GET_ITEMS:
+                CHECK_NULL_RETURN(msg->request->dp_get_items_req, SR_ERR_MALFORMED_MSG);
+                break;
             case SR__OPERATION__RPC:
                 CHECK_NULL_RETURN(msg->request->rpc_req, SR_ERR_MALFORMED_MSG);
                 break;
@@ -778,6 +795,9 @@ sr_gpb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__O
                 break;
             case SR__OPERATION__GET_CHANGES:
                 CHECK_NULL_RETURN(msg->response->get_changes_resp, SR_ERR_MALFORMED_MSG);
+                break;
+            case SR__OPERATION__DP_GET_ITEMS:
+                CHECK_NULL_RETURN(msg->response->dp_get_items_resp, SR_ERR_MALFORMED_MSG);
                 break;
             case SR__OPERATION__RPC:
                 CHECK_NULL_RETURN(msg->response->rpc_resp, SR_ERR_MALFORMED_MSG);

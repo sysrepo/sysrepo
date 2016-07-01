@@ -832,6 +832,44 @@ np_subscription_notify(np_ctx_t *np_ctx, np_subscription_t *subscription, uint32
 }
 
 int
+np_data_provider_request(np_ctx_t *np_ctx, np_subscription_t *subscription, rp_session_t *session)
+{
+    Sr__Msg *req = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG5(np_ctx, np_ctx->rp_ctx, subscription, subscription->dst_address, session);
+
+    SR_LOG_DBG("Requesting operational data of '%s' from '%s' @ %"PRIu32".", subscription->xpath,
+            subscription->dst_address, subscription->dst_id);
+
+    rc = sr_gpb_req_alloc(SR__OPERATION__DP_GET_ITEMS, session->id, &req);
+
+    if (SR_ERR_OK == rc) {
+        req->request->dp_get_items_req->xpath = strdup(subscription->xpath);
+        CHECK_NULL_NOMEM_ERROR(req->request->dp_get_items_req->xpath, rc);
+
+        if (SR_ERR_OK == rc) {
+            req->request->dp_get_items_req->subscription_id = subscription->dst_id;
+            req->request->dp_get_items_req->destination_address = strdup(subscription->dst_address);
+            CHECK_NULL_NOMEM_ERROR(req->request->dp_get_items_req->destination_address, rc);
+        }
+    }
+
+    if (SR_ERR_OK == rc) {
+        /* save notification destination info */
+        rc = np_dst_info_insert(np_ctx, subscription->dst_address, subscription->module_name);
+    }
+    if (SR_ERR_OK == rc) {
+        /* send the message */
+        rc = cm_msg_send(np_ctx->rp_ctx->cm_ctx, req);
+    } else {
+        sr__msg__free_unpacked(req, NULL);
+    }
+
+    return rc;
+}
+
+int
 np_commit_end_notify(np_ctx_t *np_ctx, uint32_t commit_id, sr_list_t *subscriptions)
 {
     np_subscription_t *subscription = NULL;

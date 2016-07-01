@@ -456,6 +456,28 @@ message FeatureEnableReq {
 message FeatureEnableResp {
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// Operational Data API
+////////////////////////////////////////////////////////////////////////////////
+
+/**
+ * @brief Requests operational data under given path form an operational data
+ * provider.
+ */
+message DPGetItemsReq {
+  required string xpath = 1;
+  required string destination_address = 2;
+  required uint32 subscription_id = 3;
+}
+
+/**
+ * @brief Response to a request of operational data under given path form an
+ * operational data provider.
+ */
+message DPGetItemsResp {
+  repeated Value values = 1;
+}
+
 
 ////////////////////////////////////////////////////////////////////////////////
 // Notification API
@@ -646,7 +668,9 @@ enum Operation {
   CHECK_ENABLED_RUNNING = 72;
   GET_CHANGES = 73;
 
-  RPC = 80;
+  DP_GET_ITEMS = 80;
+
+  RPC = 90;
 
   UNSUBSCRIBE_DESTINATION = 101;
   COMMIT_RELEASE = 102;
@@ -688,7 +712,9 @@ message Request {
   optional CheckEnabledRunningReq check_enabled_running_req = 72;
   optional GetChangesReq get_changes_req = 73;
 
-  optional RPCReq rpc_req = 80;
+  optional DPGetItemsReq dp_get_items_req = 80;
+
+  optional RPCReq rpc_req = 90;
 }
 
 /**
@@ -729,7 +755,9 @@ message Response {
   optional CheckEnabledRunningResp check_enabled_running_resp = 72;
   optional GetChangesResp get_changes_resp = 73;
 
-  optional RPCResp rpc_resp = 80;
+  optional DPGetItemsResp dp_get_items_resp = 80;
+
+  optional RPCResp rpc_resp = 90;
 }
 
 /**

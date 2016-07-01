@@ -207,6 +207,17 @@ int np_get_data_provider_subscriptions(np_ctx_t *np_ctx, const char *module_name
 int np_subscription_notify(np_ctx_t *np_ctx, np_subscription_t *subscription, uint32_t commit_id);
 
 /**
+ * @brief Request operational data from a data provider subscription.
+ *
+ * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
+ * @param[in] subscription Subscription context acquired by ::np_get_data_provider_subscriptions call.
+ * @param[in] session Request Processor session that is requesting the data.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int np_data_provider_request(np_ctx_t *np_ctx, np_subscription_t *subscription, rp_session_t *session);
+
+/**
  * @brief Notify given subscribers that the commit process has ended.
  *
  * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
