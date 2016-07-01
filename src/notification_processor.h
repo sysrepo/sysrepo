@@ -186,7 +186,7 @@ int np_get_module_change_subscriptions(np_ctx_t *np_ctx, const char *module_name
  * or in a subtree within the specified module.
  *
  * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
- * @param[in] module_name ame of the module where the subscription is active.
+ * @param[in] module_name Name of the module where the subscription is active.
  * @param[out] subscriptions_arr Array of pointers to subscriptions matching the criteria.
  * @param[out] subscriptions_cnt Count of the matching subscriptions.
  *

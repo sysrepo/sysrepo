@@ -761,7 +761,7 @@ np_get_data_provider_subscriptions(np_ctx_t *np_ctx, const char *module_name, np
         subscriptions_arr = calloc(subscription_cnt, sizeof(*subscriptions_arr));
         CHECK_NULL_NOMEM_GOTO(subscriptions_arr, rc, cleanup);
 
-        /* copy subtree-change subscriptions */
+        /* copy the subscriptions */
         for (size_t i = 0; i < subscription_cnt; i++) {
             subscriptions_arr[subscriptions_arr_cnt] = calloc(1, sizeof(**subscriptions_arr));
             CHECK_NULL_NOMEM_GOTO(subscriptions_arr[subscriptions_arr_cnt], rc, cleanup);
