@@ -796,6 +796,42 @@ rp_switch_datastore_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg
     return rc;
 }
 
+static int
+rp_session_set_opts(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
+{
+    Sr__Msg *resp = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->session_set_opts_req);
+
+    SR_LOG_DBG_MSG("Procession session set opts request.");
+
+    /* allocate the response */
+    rc = sr_gpb_resp_alloc(SR__OPERATION__SESSION_SET_OPTS, session->id, &resp);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Allocation of session_set_opts response failed.");
+        return SR_ERR_NOMEM;
+    }
+
+    /* white list options that can be set */
+    uint32_t mutable_opts = SR_SESS_CONFIG_ONLY;
+
+    session->options = msg->request->session_set_opts_req->options & mutable_opts;
+
+    /* set response code */
+    resp->response->result = rc;
+
+    rc = rp_resp_fill_errors(resp, session->dm_session);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Copying errors to gpb failed");
+    }
+
+    /* send the response */
+    rc = cm_msg_send(rp_ctx->cm_ctx, resp);
+
+    return rc;
+}
+
 /**
  * @brief Processes a lock request.
  */
@@ -1340,6 +1376,9 @@ rp_req_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, bool *ski
     switch (msg->request->operation) {
         case SR__OPERATION__SESSION_SWITCH_DS:
             rc = rp_switch_datastore_req_process(rp_ctx, session, msg);
+            break;
+        case SR__OPERATION__SESSION_SET_OPTS:
+            rc = rp_session_set_opts(rp_ctx, session, msg);
             break;
         case SR__OPERATION__LIST_SCHEMAS:
             rc = rp_list_schemas_req_process(rp_ctx, session, msg);
