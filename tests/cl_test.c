@@ -1886,7 +1886,7 @@ dp_get_items_cb(const char *xpath, sr_val_t **values, size_t *values_cnt, void *
 {
     printf("operational data for '%s' requested.\n", xpath);
 
-    // TODO: return some operational data
+    // TODO: return some real operational data
     *values = calloc(2, sizeof(**values));
     (*values)[0].xpath = strdup("/test-module:activate-software-image/status");
     (*values)[0].type = SR_STRING_T;

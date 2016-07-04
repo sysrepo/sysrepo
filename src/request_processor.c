@@ -930,19 +930,6 @@ rp_subscribe_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr
                 subscribe_req->destination, subscribe_req->subscription_id);
     }
 
-    // TODO: this is for testing purposes, remove after testing
-    if (SR__SUBSCRIPTION_TYPE__DP_GET_ITEMS_SUBS == subscribe_req->type) {
-        np_subscription_t **subscriptions = NULL;
-        size_t subscriptions_cnt = 0;
-        rc = np_get_data_provider_subscriptions(rp_ctx->np_ctx, subscribe_req->module_name,
-                &subscriptions, &subscriptions_cnt);
-        for (size_t i = 0; i < subscriptions_cnt; i++) {
-            rc = np_data_provider_request(rp_ctx->np_ctx, subscriptions[i], (rp_session_t*)session);
-            np_free_subscription(subscriptions[i]);
-        }
-        free(subscriptions);
-    }
-
     return rc;
 }
 

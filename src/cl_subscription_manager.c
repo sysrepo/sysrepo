@@ -658,7 +658,7 @@ cl_sm_notif_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *msg)
 }
 
 /**
- * @brief Processes an incoming operational data request message.
+ * @brief Processes an incoming data-provide request message.
  */
 static int
 cl_sm_dp_request_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *msg)
@@ -672,7 +672,7 @@ cl_sm_dp_request_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *m
 
     CHECK_NULL_ARG4(sm_ctx, msg, msg->request, msg->request->data_provide_req);
 
-    SR_LOG_DBG("Received an op. data request for subscription id=%"PRIu32".", msg->request->data_provide_req->subscription_id);
+    SR_LOG_DBG("Received adata-provide request for subscription id=%"PRIu32".", msg->request->data_provide_req->subscription_id);
 
     pthread_mutex_lock(&sm_ctx->subscriptions_lock);
 
@@ -696,7 +696,7 @@ cl_sm_dp_request_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *m
 
     /* allocate the response and send it */
     rc = sr_gpb_resp_alloc(SR__OPERATION__DATA_PROVIDE, msg->session_id, &resp);
-    CHECK_RC_MSG_RETURN(rc, "Allocation of dp_get_items response failed.");
+    CHECK_RC_MSG_RETURN(rc, "Allocation of data-provide response failed.");
 
     resp->response->result = cb_rc;
     resp->response->data_provide_resp->xpath = strdup(msg->request->data_provide_req->xpath);
@@ -811,7 +811,7 @@ cl_sm_conn_msg_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, uint8_t *msg
         /* notification */
         rc = cl_sm_notif_process(sm_ctx, conn, msg);
     } else if ((SR__MSG__MSG_TYPE__REQUEST == msg->type) && (SR__OPERATION__DATA_PROVIDE == msg->request->operation)) {
-        /* operational data request */
+        /* data-provide request */
         rc = cl_sm_dp_request_process(sm_ctx, conn, msg);
     } else if ((SR__MSG__MSG_TYPE__REQUEST == msg->type) && (SR__OPERATION__RPC == msg->request->operation)) {
         /* RPC request */

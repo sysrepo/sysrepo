@@ -1318,7 +1318,7 @@ cm_out_notif_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
 }
 
 /**
- * @brief Processes an outgoing operational data request (to be sent to the client library).
+ * @brief Processes an outgoing data-provide request (to be sent to the client library).
  */
 static int
 cm_out_dp_request_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
@@ -1332,7 +1332,7 @@ cm_out_dp_request_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
 
     destination_address = msg->request->data_provide_req->subscriber_address;
 
-    SR_LOG_DBG("Sending an operational data request to '%s'.", destination_address);
+    SR_LOG_DBG("Sending a data-provide request to '%s'.", destination_address);
 
     /* find the session */
     rc = sm_session_find_id(cm_ctx->sm_ctx, msg->session_id, &session);
@@ -1350,15 +1350,15 @@ cm_out_dp_request_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
     /* track that we expect a response for this session */
     session->cm_data->rp_resp_expected += 1;
 
-    /* get a connection to the op. data request destination */
+    /* get a connection for the request destination */
     rc = sm_connection_find_dst(cm_ctx->sm_ctx, destination_address, &connection);
     if (SR_ERR_OK == rc) {
         /* a connection to the destination already exists - reuse */
-        SR_LOG_DBG("Reusing existing connection on fd=%d for the op. data request destination '%s'",
+        SR_LOG_DBG("Reusing existing connection on fd=%d for the data-provide request destination '%s'",
                 connection->fd, destination_address);
     } else {
         /* connection to that destination does not exist - connect */
-        SR_LOG_DBG("Creating a new connection for the op. data request destination '%s'", destination_address);
+        SR_LOG_DBG("Creating a new connection for the data-provide request destination '%s'", destination_address);
         rc = cm_subscr_conn_create(cm_ctx, destination_address, &connection);
     }
 
@@ -1559,7 +1559,7 @@ cm_msg_enqueue_cb(struct ev_loop *loop, ev_async *w, int revents)
                 cm_out_notif_process(cm_ctx, msg);
             } else if ((SR__MSG__MSG_TYPE__REQUEST == msg->type) &&
                     (SR__OPERATION__DATA_PROVIDE == msg->request->operation)) {
-                /* send the operational data request via subscriber connection */
+                /* send the data-provide request via subscriber connection */
                 cm_out_dp_request_process(cm_ctx, msg);
             } else if ((SR__MSG__MSG_TYPE__REQUEST == msg->type) &&
                    (SR__OPERATION__RPC == msg->request->operation)) {
