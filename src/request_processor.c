@@ -1210,6 +1210,34 @@ rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg 
 }
 
 /**
+ * @brief Processes an operational data provider response.
+ */
+static int
+rp_dp_resp_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
+{
+    sr_val_t *values = NULL;
+    size_t values_cnt = 0;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG5(rp_ctx, session, msg, msg->response, msg->response->dp_get_items_resp);
+
+    /* copy values fom GPB to sysrepo */
+    rc = sr_values_gpb_to_sr(msg->response->dp_get_items_resp->values,  msg->response->dp_get_items_resp->n_values,
+            &values, &values_cnt);
+
+    if (SR_ERR_OK == rc) {
+        // TODO: process the operational data
+        for (size_t i = 0; i < values_cnt; i++) {
+            printf("%s = %s\n", values[i].xpath, values[i].data.string_val);
+        }
+    }
+
+    sr_free_values(values, values_cnt);
+
+    return rc;
+}
+
+/**
  * @brief Processes a RPC response.
  */
 static int
@@ -1457,10 +1485,12 @@ rp_resp_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, bool *sk
     *skip_msg_cleanup = false;
 
     switch (msg->response->operation) {
+        case SR__OPERATION__DP_GET_ITEMS:
+            rc = rp_dp_resp_process(rp_ctx, session, msg);
+            break;
         case SR__OPERATION__RPC:
             rc = rp_rpc_resp_process(rp_ctx, session, msg);
             *skip_msg_cleanup = true;
-            return rc; /* skip further processing */
             break;
         default:
             SR_LOG_ERR("Unsupported response received (session id=%"PRIu32", operation=%d).",

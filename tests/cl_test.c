@@ -1886,6 +1886,17 @@ dp_get_items_cb(const char *xpath, sr_val_t **values, size_t *values_cnt, void *
 {
     printf("operational data for '%s' requested.\n", xpath);
 
+    // TODO: return some operational data
+    *values = calloc(2, sizeof(**values));
+    (*values)[0].xpath = strdup("/test-module:activate-software-image/status");
+    (*values)[0].type = SR_STRING_T;
+    (*values)[0].data.string_val = strdup("The image acmefw-2.3 is being installed.");
+    (*values)[1].xpath = strdup("/test-module:activate-software-image/version");
+    (*values)[1].type = SR_STRING_T;
+    (*values)[1].data.string_val = strdup("2.3");
+
+    *values_cnt = 2;
+
     return SR_ERR_OK;
 }
 

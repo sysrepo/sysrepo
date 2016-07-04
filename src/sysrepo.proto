@@ -594,7 +594,8 @@ message DPGetItemsReq {
  * operational data provider.
  */
 message DPGetItemsResp {
-  repeated Value values = 1;
+  required string xpath = 1;
+  repeated Value values = 2;
 }
 
 
