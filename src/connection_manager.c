@@ -1318,6 +1318,66 @@ cm_out_notif_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
 }
 
 /**
+ * @brief Processes an outgoing operational data request (to be sent to the client library).
+ */
+static int
+cm_out_dp_request_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
+{
+    sm_session_t *session = NULL;
+    sm_connection_t *connection = NULL;
+    char *destination_address = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG4(cm_ctx, msg, msg->request, msg->request->dp_get_items_req);
+
+    destination_address = msg->request->dp_get_items_req->subscriber_address;
+
+    SR_LOG_DBG("Sending an operational data request to '%s'.", destination_address);
+
+    /* find the session */
+    rc = sm_session_find_id(cm_ctx->sm_ctx, msg->session_id, &session);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Unable to find the session matching with id specified in the message "
+                "(id=%"PRIu32").", msg->session_id);
+        sr__msg__free_unpacked(msg, NULL);
+        return SR_ERR_INTERNAL;
+    }
+    if ((NULL == session) || (NULL == session->cm_data)) {
+        SR_LOG_ERR("invalid session context - NULL value detected (id=%"PRIu32").", msg->session_id);
+        sr__msg__free_unpacked(msg, NULL);
+        return SR_ERR_INTERNAL;
+    }
+    /* track that we expect a response for this session */
+    session->cm_data->rp_resp_expected += 1;
+
+    /* get a connection to the op. data request destination */
+    rc = sm_connection_find_dst(cm_ctx->sm_ctx, destination_address, &connection);
+    if (SR_ERR_OK == rc) {
+        /* a connection to the destination already exists - reuse */
+        SR_LOG_DBG("Reusing existing connection on fd=%d for the op. data request destination '%s'",
+                connection->fd, destination_address);
+    } else {
+        /* connection to that destination does not exist - connect */
+        SR_LOG_DBG("Creating a new connection for the op. data request destination '%s'", destination_address);
+        rc = cm_subscr_conn_create(cm_ctx, destination_address, &connection);
+    }
+
+    /* send the message */
+    if (SR_ERR_OK == rc) {
+        rc = cm_msg_send_connection(cm_ctx, connection, msg);
+    }
+
+    if (SR_ERR_OK != rc) {
+        /* by error, remove subscriptions on this destination */
+        cm_subscr_unsubscribe_destination(cm_ctx, msg->request->dp_get_items_req->subscriber_address, 0);
+    }
+
+    sr__msg__free_unpacked(msg, NULL);
+
+    return rc;
+}
+
+/**
  * @brief Processes an outgoing RPC (RPC to be sent to the client library).
  */
 static int
@@ -1325,11 +1385,14 @@ cm_out_rpc_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
 {
     sm_session_t *session = NULL;
     sm_connection_t *connection = NULL;
+    char *destination_address = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG4(cm_ctx, msg, msg->request, msg->request->rpc_req);
 
-    SR_LOG_DBG("Sending a RPC request to '%s'.", msg->request->rpc_req->subscriber_address);
+    destination_address = msg->request->rpc_req->subscriber_address;
+
+    SR_LOG_DBG("Sending a RPC request to '%s'.", destination_address);
 
     /* find the session */
     rc = sm_session_find_id(cm_ctx->sm_ctx, msg->session_id, &session);
@@ -1348,15 +1411,15 @@ cm_out_rpc_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
     session->cm_data->rp_resp_expected += 1;
 
     /* get a connection to the RPC destination */
-    rc = sm_connection_find_dst(cm_ctx->sm_ctx, msg->request->rpc_req->subscriber_address, &connection);
+    rc = sm_connection_find_dst(cm_ctx->sm_ctx, destination_address, &connection);
     if (SR_ERR_OK == rc) {
         /* a connection to the destination already exists - reuse */
         SR_LOG_DBG("Reusing existing connection on fd=%d for the RPC destination '%s'",
-                connection->fd, msg->request->rpc_req->subscriber_address);
+                connection->fd, destination_address);
     } else {
         /* connection to that destination does not exist - connect */
-        SR_LOG_DBG("Creating a new connection for the RPC destination '%s'", msg->request->rpc_req->subscriber_address);
-        rc = cm_subscr_conn_create(cm_ctx, msg->request->rpc_req->subscriber_address, &connection);
+        SR_LOG_DBG("Creating a new connection for the RPC destination '%s'", destination_address);
+        rc = cm_subscr_conn_create(cm_ctx, destination_address, &connection);
     }
 
     /* send the message */
@@ -1366,7 +1429,7 @@ cm_out_rpc_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
 
     if (SR_ERR_OK != rc) {
         /* by error, remove subscriptions on this destination */
-        cm_subscr_unsubscribe_destination(cm_ctx, msg->request->rpc_req->subscriber_address, 0);
+        cm_subscr_unsubscribe_destination(cm_ctx, destination_address, 0);
     }
 
     sr__msg__free_unpacked(msg, NULL);
@@ -1495,10 +1558,14 @@ cm_msg_enqueue_cb(struct ev_loop *loop, ev_async *w, int revents)
                 /* send the notification via subscriber connection */
                 cm_out_notif_process(cm_ctx, msg);
             } else if ((SR__MSG__MSG_TYPE__REQUEST == msg->type) &&
-                    (SR__OPERATION__RPC == msg->request->operation)) {
-                /* send the RPC request via subscriber connection */
-                cm_out_rpc_process(cm_ctx, msg);
-            } else {
+                    (SR__OPERATION__DP_GET_ITEMS == msg->request->operation)) {
+                /* send the operational data request via subscriber connection */
+                cm_out_dp_request_process(cm_ctx, msg);
+            } else if ((SR__MSG__MSG_TYPE__REQUEST == msg->type) &&
+                   (SR__OPERATION__RPC == msg->request->operation)) {
+               /* send the RPC request via subscriber connection */
+               cm_out_rpc_process(cm_ctx, msg);
+           } else {
                 /* process as a normal message */
                 cm_out_msg_process(cm_ctx, msg);
             }

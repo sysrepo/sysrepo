@@ -456,28 +456,6 @@ message FeatureEnableReq {
 message FeatureEnableResp {
 }
 
-////////////////////////////////////////////////////////////////////////////////
-// Operational Data API
-////////////////////////////////////////////////////////////////////////////////
-
-/**
- * @brief Requests operational data under given path form an operational data
- * provider.
- */
-message DPGetItemsReq {
-  required string xpath = 1;
-  required string destination_address = 2;
-  required uint32 subscription_id = 3;
-}
-
-/**
- * @brief Response to a request of operational data under given path form an
- * operational data provider.
- */
-message DPGetItemsResp {
-  repeated Value values = 1;
-}
-
 
 ////////////////////////////////////////////////////////////////////////////////
 // Notification API
@@ -594,6 +572,29 @@ message GetChangesReq {
  */
 message GetChangesResp {
   repeated Change changes = 1;
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Operational Data API
+////////////////////////////////////////////////////////////////////////////////
+
+/**
+ * @brief Requests operational data under given path form an operational data
+ * provider.
+ */
+message DPGetItemsReq {
+  required string xpath = 1;
+  required string subscriber_address = 2;
+  required uint32 subscription_id = 3;
+}
+
+/**
+ * @brief Response to a request of operational data under given path form an
+ * operational data provider.
+ */
+message DPGetItemsResp {
+  repeated Value values = 1;
 }
 
 

@@ -850,8 +850,8 @@ np_data_provider_request(np_ctx_t *np_ctx, np_subscription_t *subscription, rp_s
 
         if (SR_ERR_OK == rc) {
             req->request->dp_get_items_req->subscription_id = subscription->dst_id;
-            req->request->dp_get_items_req->destination_address = strdup(subscription->dst_address);
-            CHECK_NULL_NOMEM_ERROR(req->request->dp_get_items_req->destination_address, rc);
+            req->request->dp_get_items_req->subscriber_address = strdup(subscription->dst_address);
+            CHECK_NULL_NOMEM_ERROR(req->request->dp_get_items_req->subscriber_address, rc);
         }
     }
 
