@@ -583,17 +583,18 @@ message GetChangesResp {
  * @brief Requests operational data under given path form an operational data
  * provider.
  */
-message DPGetItemsReq {
+message DataProvideReq {
   required string xpath = 1;
-  required string subscriber_address = 2;
-  required uint32 subscription_id = 3;
+
+  required string subscriber_address = 10;
+  required uint32 subscription_id = 11;
 }
 
 /**
  * @brief Response to a request of operational data under given path form an
  * operational data provider.
  */
-message DPGetItemsResp {
+message DataProvideResp {
   required string xpath = 1;
   repeated Value values = 2;
 }
@@ -609,14 +610,11 @@ message RPCReq {
 
   optional string subscriber_address = 10;
   optional uint32 subscription_id = 11;
-  optional uint32 session_id = 12;
 }
 
 message RPCResp {
   required string xpath = 1;
   repeated Value output = 2;
-
-  optional uint32 session_id = 10;
 }
 
 
@@ -670,9 +668,8 @@ enum Operation {
   CHECK_ENABLED_RUNNING = 72;
   GET_CHANGES = 73;
 
-  DP_GET_ITEMS = 80;
-
-  RPC = 90;
+  DATA_PROVIDE = 80;
+  RPC = 81;
 
   UNSUBSCRIBE_DESTINATION = 101;
   COMMIT_RELEASE = 102;
@@ -714,9 +711,8 @@ message Request {
   optional CheckEnabledRunningReq check_enabled_running_req = 72;
   optional GetChangesReq get_changes_req = 73;
 
-  optional DPGetItemsReq dp_get_items_req = 80;
-
-  optional RPCReq rpc_req = 90;
+  optional DataProvideReq data_provide_req = 80;
+  optional RPCReq rpc_req = 81;
 }
 
 /**
@@ -757,9 +753,8 @@ message Response {
   optional CheckEnabledRunningResp check_enabled_running_resp = 72;
   optional GetChangesResp get_changes_resp = 73;
 
-  optional DPGetItemsResp dp_get_items_resp = 80;
-
-  optional RPCResp rpc_resp = 90;
+  optional DataProvideResp data_provide_resp = 80;
+  optional RPCResp rpc_resp = 81;
 }
 
 /**

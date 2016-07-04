@@ -1176,8 +1176,6 @@ rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg 
         CHECK_NULL_NOMEM_ERROR(req->request->rpc_req->subscriber_address, rc);
         req->request->rpc_req->subscription_id = subscriptions[0].dst_id;
         req->request->rpc_req->has_subscription_id = true;
-        req->request->rpc_req->session_id = session->id;
-        req->request->rpc_req->has_session_id = true;
         np_free_subscriptions(subscriptions, subscription_cnt);
     } else if (SR_ERR_OK == rc) {
         /* no subscription for this RPC */
@@ -1213,16 +1211,16 @@ rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg 
  * @brief Processes an operational data provider response.
  */
 static int
-rp_dp_resp_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
+rp_data_provide_resp_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
 {
     sr_val_t *values = NULL;
     size_t values_cnt = 0;
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG5(rp_ctx, session, msg, msg->response, msg->response->dp_get_items_resp);
+    CHECK_NULL_ARG5(rp_ctx, session, msg, msg->response, msg->response->data_provide_resp);
 
     /* copy values fom GPB to sysrepo */
-    rc = sr_values_gpb_to_sr(msg->response->dp_get_items_resp->values,  msg->response->dp_get_items_resp->n_values,
+    rc = sr_values_gpb_to_sr(msg->response->data_provide_resp->values,  msg->response->data_provide_resp->n_values,
             &values, &values_cnt);
 
     if (SR_ERR_OK == rc) {
@@ -1485,8 +1483,8 @@ rp_resp_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, bool *sk
     *skip_msg_cleanup = false;
 
     switch (msg->response->operation) {
-        case SR__OPERATION__DP_GET_ITEMS:
-            rc = rp_dp_resp_process(rp_ctx, session, msg);
+        case SR__OPERATION__DATA_PROVIDE:
+            rc = rp_data_provide_resp_process(rp_ctx, session, msg);
             break;
         case SR__OPERATION__RPC:
             rc = rp_rpc_resp_process(rp_ctx, session, msg);

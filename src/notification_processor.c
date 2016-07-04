@@ -842,16 +842,16 @@ np_data_provider_request(np_ctx_t *np_ctx, np_subscription_t *subscription, rp_s
     SR_LOG_DBG("Requesting operational data of '%s' from '%s' @ %"PRIu32".", subscription->xpath,
             subscription->dst_address, subscription->dst_id);
 
-    rc = sr_gpb_req_alloc(SR__OPERATION__DP_GET_ITEMS, session->id, &req);
+    rc = sr_gpb_req_alloc(SR__OPERATION__DATA_PROVIDE, session->id, &req);
 
     if (SR_ERR_OK == rc) {
-        req->request->dp_get_items_req->xpath = strdup(subscription->xpath);
-        CHECK_NULL_NOMEM_ERROR(req->request->dp_get_items_req->xpath, rc);
+        req->request->data_provide_req->xpath = strdup(subscription->xpath);
+        CHECK_NULL_NOMEM_ERROR(req->request->data_provide_req->xpath, rc);
 
         if (SR_ERR_OK == rc) {
-            req->request->dp_get_items_req->subscription_id = subscription->dst_id;
-            req->request->dp_get_items_req->subscriber_address = strdup(subscription->dst_address);
-            CHECK_NULL_NOMEM_ERROR(req->request->dp_get_items_req->subscriber_address, rc);
+            req->request->data_provide_req->subscription_id = subscription->dst_id;
+            req->request->data_provide_req->subscriber_address = strdup(subscription->dst_address);
+            CHECK_NULL_NOMEM_ERROR(req->request->data_provide_req->subscriber_address, rc);
         }
     }
 

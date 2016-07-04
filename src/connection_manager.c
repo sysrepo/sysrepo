@@ -1328,9 +1328,9 @@ cm_out_dp_request_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
     char *destination_address = NULL;
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG4(cm_ctx, msg, msg->request, msg->request->dp_get_items_req);
+    CHECK_NULL_ARG4(cm_ctx, msg, msg->request, msg->request->data_provide_req);
 
-    destination_address = msg->request->dp_get_items_req->subscriber_address;
+    destination_address = msg->request->data_provide_req->subscriber_address;
 
     SR_LOG_DBG("Sending an operational data request to '%s'.", destination_address);
 
@@ -1369,7 +1369,7 @@ cm_out_dp_request_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
 
     if (SR_ERR_OK != rc) {
         /* by error, remove subscriptions on this destination */
-        cm_subscr_unsubscribe_destination(cm_ctx, msg->request->dp_get_items_req->subscriber_address, 0);
+        cm_subscr_unsubscribe_destination(cm_ctx, msg->request->data_provide_req->subscriber_address, 0);
     }
 
     sr__msg__free_unpacked(msg, NULL);
@@ -1558,7 +1558,7 @@ cm_msg_enqueue_cb(struct ev_loop *loop, ev_async *w, int revents)
                 /* send the notification via subscriber connection */
                 cm_out_notif_process(cm_ctx, msg);
             } else if ((SR__MSG__MSG_TYPE__REQUEST == msg->type) &&
-                    (SR__OPERATION__DP_GET_ITEMS == msg->request->operation)) {
+                    (SR__OPERATION__DATA_PROVIDE == msg->request->operation)) {
                 /* send the operational data request via subscriber connection */
                 cm_out_dp_request_process(cm_ctx, msg);
             } else if ((SR__MSG__MSG_TYPE__REQUEST == msg->type) &&

@@ -670,42 +670,42 @@ cl_sm_dp_request_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *m
     size_t values_cnt = 0;
     int rc = SR_ERR_OK, cb_rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG4(sm_ctx, msg, msg->request, msg->request->dp_get_items_req);
+    CHECK_NULL_ARG4(sm_ctx, msg, msg->request, msg->request->data_provide_req);
 
-    SR_LOG_DBG("Received an op. data request for subscription id=%"PRIu32".", msg->request->dp_get_items_req->subscription_id);
+    SR_LOG_DBG("Received an op. data request for subscription id=%"PRIu32".", msg->request->data_provide_req->subscription_id);
 
     pthread_mutex_lock(&sm_ctx->subscriptions_lock);
 
     /* find the subscription according to id */
-    subscription_lookup.id = msg->request->dp_get_items_req->subscription_id;
+    subscription_lookup.id = msg->request->data_provide_req->subscription_id;
     subscription = sr_btree_search(sm_ctx->subscriptions_btree, &subscription_lookup);
     if (NULL == subscription) {
         pthread_mutex_unlock(&sm_ctx->subscriptions_lock);
-        SR_LOG_ERR("No matching subscription for subscription id=%"PRIu32".", msg->request->dp_get_items_req->subscription_id);
+        SR_LOG_ERR("No matching subscription for subscription id=%"PRIu32".", msg->request->data_provide_req->subscription_id);
         goto cleanup;
     }
 
     SR_LOG_DBG("Calling dp_get_items_cb callback for subscription id=%"PRIu32".", subscription->id);
 
     cb_rc = subscription->callback.dp_get_items_cb(
-            msg->request->dp_get_items_req->xpath,
+            msg->request->data_provide_req->xpath,
             &values, &values_cnt,
             subscription->private_ctx);
 
     pthread_mutex_unlock(&sm_ctx->subscriptions_lock);
 
     /* allocate the response and send it */
-    rc = sr_gpb_resp_alloc(SR__OPERATION__DP_GET_ITEMS, msg->session_id, &resp);
+    rc = sr_gpb_resp_alloc(SR__OPERATION__DATA_PROVIDE, msg->session_id, &resp);
     CHECK_RC_MSG_RETURN(rc, "Allocation of dp_get_items response failed.");
 
     resp->response->result = cb_rc;
-    resp->response->dp_get_items_resp->xpath = strdup(msg->request->dp_get_items_req->xpath);
-    CHECK_NULL_NOMEM_GOTO(resp->response->dp_get_items_resp->xpath, rc, cleanup);
+    resp->response->data_provide_resp->xpath = strdup(msg->request->data_provide_req->xpath);
+    CHECK_NULL_NOMEM_GOTO(resp->response->data_provide_resp->xpath, rc, cleanup);
 
     /* copy output values to GPB */
     if (SR_ERR_OK == cb_rc) {
-        rc = sr_values_sr_to_gpb(values, values_cnt, &resp->response->dp_get_items_resp->values,
-                &resp->response->dp_get_items_resp->n_values);
+        rc = sr_values_sr_to_gpb(values, values_cnt, &resp->response->data_provide_resp->values,
+                &resp->response->data_provide_resp->n_values);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Error by copying output values to GPB.");
     }
 
@@ -810,7 +810,7 @@ cl_sm_conn_msg_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, uint8_t *msg
     if (SR__MSG__MSG_TYPE__NOTIFICATION == msg->type) {
         /* notification */
         rc = cl_sm_notif_process(sm_ctx, conn, msg);
-    } else if ((SR__MSG__MSG_TYPE__REQUEST == msg->type) && (SR__OPERATION__DP_GET_ITEMS == msg->request->operation)) {
+    } else if ((SR__MSG__MSG_TYPE__REQUEST == msg->type) && (SR__OPERATION__DATA_PROVIDE == msg->request->operation)) {
         /* operational data request */
         rc = cl_sm_dp_request_process(sm_ctx, conn, msg);
     } else if ((SR__MSG__MSG_TYPE__REQUEST == msg->type) && (SR__OPERATION__RPC == msg->request->operation)) {
