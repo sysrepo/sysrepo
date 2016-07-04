@@ -212,10 +212,11 @@ int np_subscription_notify(np_ctx_t *np_ctx, np_subscription_t *subscription, ui
  * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
  * @param[in] subscription Subscription context acquired by ::np_get_data_provider_subscriptions call.
  * @param[in] session Request Processor session that is requesting the data.
+ * @param[in] xpath XPath identifying requested operational data subtree.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int np_data_provider_request(np_ctx_t *np_ctx, np_subscription_t *subscription, rp_session_t *session);
+int np_data_provider_request(np_ctx_t *np_ctx, np_subscription_t *subscription, rp_session_t *session, const char *xpath);
 
 /**
  * @brief Notify given subscribers that the commit process has ended.

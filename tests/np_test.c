@@ -368,7 +368,7 @@ np_dp_subscriptions_test(void **state)
         assert_true(SR__SUBSCRIPTION_TYPE__DP_GET_ITEMS_SUBS == subscriptions_arr[i]->type);
 
         /* notify and add into list */
-        rc = np_data_provider_request(np_ctx, subscriptions_arr[i], test_ctx->rp_session_ctx);
+        rc = np_data_provider_request(np_ctx, subscriptions_arr[i], test_ctx->rp_session_ctx, "/example-module:container");
         assert_int_equal(rc, SR_ERR_OK);
 
         sr_list_add(subscriptions_list, subscriptions_arr[i]);

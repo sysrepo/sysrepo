@@ -832,12 +832,13 @@ np_subscription_notify(np_ctx_t *np_ctx, np_subscription_t *subscription, uint32
 }
 
 int
-np_data_provider_request(np_ctx_t *np_ctx, np_subscription_t *subscription, rp_session_t *session)
+np_data_provider_request(np_ctx_t *np_ctx, np_subscription_t *subscription, rp_session_t *session, const char *xpath)
 {
     Sr__Msg *req = NULL;
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG5(np_ctx, np_ctx->rp_ctx, subscription, subscription->dst_address, session);
+    CHECK_NULL_ARG5(np_ctx, np_ctx->rp_ctx, subscription, subscription->dst_address, xpath);
+    CHECK_NULL_ARG(session);
 
     SR_LOG_DBG("Requesting operational data of '%s' from '%s' @ %"PRIu32".", subscription->xpath,
             subscription->dst_address, subscription->dst_id);
@@ -845,7 +846,7 @@ np_data_provider_request(np_ctx_t *np_ctx, np_subscription_t *subscription, rp_s
     rc = sr_gpb_req_alloc(SR__OPERATION__DATA_PROVIDE, session->id, &req);
 
     if (SR_ERR_OK == rc) {
-        req->request->data_provide_req->xpath = strdup(subscription->xpath);
+        req->request->data_provide_req->xpath = strdup(xpath);
         CHECK_NULL_NOMEM_ERROR(req->request->data_provide_req->xpath, rc);
 
         if (SR_ERR_OK == rc) {
