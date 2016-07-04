@@ -366,12 +366,11 @@ np_dp_subscriptions_test(void **state)
     for (size_t i = 0; i < subscriptions_cnt; i++) {
         assert_non_null(subscriptions_arr[i]);
         assert_true(SR__SUBSCRIPTION_TYPE__DP_GET_ITEMS_SUBS == subscriptions_arr[i]->type);
+
         /* notify and add into list */
-
-        // TODO
-        ///rc = np_subscription_notify(np_ctx, subscriptions_arr[i], 0);
-
+        rc = np_data_provider_request(np_ctx, subscriptions_arr[i], test_ctx->rp_session_ctx, "/example-module:container");
         assert_int_equal(rc, SR_ERR_OK);
+
         sr_list_add(subscriptions_list, subscriptions_arr[i]);
     }
     free(subscriptions_arr);

@@ -761,7 +761,7 @@ np_get_data_provider_subscriptions(np_ctx_t *np_ctx, const char *module_name, np
         subscriptions_arr = calloc(subscription_cnt, sizeof(*subscriptions_arr));
         CHECK_NULL_NOMEM_GOTO(subscriptions_arr, rc, cleanup);
 
-        /* copy subtree-change subscriptions */
+        /* copy the subscriptions */
         for (size_t i = 0; i < subscription_cnt; i++) {
             subscriptions_arr[subscriptions_arr_cnt] = calloc(1, sizeof(**subscriptions_arr));
             CHECK_NULL_NOMEM_GOTO(subscriptions_arr[subscriptions_arr_cnt], rc, cleanup);
@@ -826,6 +826,45 @@ np_subscription_notify(np_ctx_t *np_ctx, np_subscription_t *subscription, uint32
         }
     } else {
         sr__msg__free_unpacked(notif, NULL);
+    }
+
+    return rc;
+}
+
+int
+np_data_provider_request(np_ctx_t *np_ctx, np_subscription_t *subscription, rp_session_t *session, const char *xpath)
+{
+    Sr__Msg *req = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG5(np_ctx, np_ctx->rp_ctx, subscription, subscription->dst_address, xpath);
+    CHECK_NULL_ARG(session);
+
+    SR_LOG_DBG("Requesting operational data of '%s' from '%s' @ %"PRIu32".", subscription->xpath,
+            subscription->dst_address, subscription->dst_id);
+
+    rc = sr_gpb_req_alloc(SR__OPERATION__DATA_PROVIDE, session->id, &req);
+
+    if (SR_ERR_OK == rc) {
+        req->request->data_provide_req->xpath = strdup(xpath);
+        CHECK_NULL_NOMEM_ERROR(req->request->data_provide_req->xpath, rc);
+
+        if (SR_ERR_OK == rc) {
+            req->request->data_provide_req->subscription_id = subscription->dst_id;
+            req->request->data_provide_req->subscriber_address = strdup(subscription->dst_address);
+            CHECK_NULL_NOMEM_ERROR(req->request->data_provide_req->subscriber_address, rc);
+        }
+    }
+
+    if (SR_ERR_OK == rc) {
+        /* save notification destination info */
+        rc = np_dst_info_insert(np_ctx, subscription->dst_address, subscription->module_name);
+    }
+    if (SR_ERR_OK == rc) {
+        /* send the message */
+        rc = cm_msg_send(np_ctx->rp_ctx->cm_ctx, req);
+    } else {
+        sr__msg__free_unpacked(req, NULL);
     }
 
     return rc;

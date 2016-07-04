@@ -72,6 +72,8 @@ sr_gpb_operation_name(Sr__Operation operation)
         return "check-enabled-running";
     case SR__OPERATION__GET_CHANGES:
         return "get changes";
+    case SR__OPERATION__DATA_PROVIDE:
+        return "data-provide";
     case SR__OPERATION__RPC:
         return "rpc";
     case SR__OPERATION__UNSUBSCRIBE_DESTINATION:
@@ -247,6 +249,12 @@ sr_gpb_req_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__M
             CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__get_changes_req__init((Sr__GetChangesReq *)sub_msg);
             req->get_changes_req = (Sr__GetChangesReq *)sub_msg;
+            break;
+        case SR__OPERATION__DATA_PROVIDE:
+            sub_msg = calloc(1, sizeof(Sr__DataProvideReq));
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
+            sr__data_provide_req__init((Sr__DataProvideReq*)sub_msg);
+            req->data_provide_req = (Sr__DataProvideReq*)sub_msg;
             break;
         case SR__OPERATION__RPC:
             sub_msg = calloc(1, sizeof(Sr__RPCReq));
@@ -433,6 +441,12 @@ sr_gpb_resp_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__
             CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__get_changes_resp__init((Sr__GetChangesResp*)sub_msg);
             resp->get_changes_resp = (Sr__GetChangesResp*)sub_msg;
+            break;
+        case SR__OPERATION__DATA_PROVIDE:
+            sub_msg = calloc(1, sizeof(Sr__DataProvideResp));
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
+            sr__data_provide_resp__init((Sr__DataProvideResp*)sub_msg);
+            resp->data_provide_resp = (Sr__DataProvideResp*)sub_msg;
             break;
         case SR__OPERATION__RPC:
             sub_msg = calloc(1, sizeof(Sr__RPCResp));
@@ -697,6 +711,9 @@ sr_gpb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__O
             case SR__OPERATION__GET_CHANGES:
                 CHECK_NULL_RETURN(msg->request->get_changes_req, SR_ERR_MALFORMED_MSG);
                 break;
+            case SR__OPERATION__DATA_PROVIDE:
+                CHECK_NULL_RETURN(msg->request->data_provide_req, SR_ERR_MALFORMED_MSG);
+                break;
             case SR__OPERATION__RPC:
                 CHECK_NULL_RETURN(msg->request->rpc_req, SR_ERR_MALFORMED_MSG);
                 break;
@@ -778,6 +795,9 @@ sr_gpb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__O
                 break;
             case SR__OPERATION__GET_CHANGES:
                 CHECK_NULL_RETURN(msg->response->get_changes_resp, SR_ERR_MALFORMED_MSG);
+                break;
+            case SR__OPERATION__DATA_PROVIDE:
+                CHECK_NULL_RETURN(msg->response->data_provide_resp, SR_ERR_MALFORMED_MSG);
                 break;
             case SR__OPERATION__RPC:
                 CHECK_NULL_RETURN(msg->response->rpc_resp, SR_ERR_MALFORMED_MSG);

@@ -1163,8 +1163,6 @@ rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg 
         CHECK_NULL_NOMEM_ERROR(req->request->rpc_req->subscriber_address, rc);
         req->request->rpc_req->subscription_id = subscriptions[0].dst_id;
         req->request->rpc_req->has_subscription_id = true;
-        req->request->rpc_req->session_id = session->id;
-        req->request->rpc_req->has_session_id = true;
         np_free_subscriptions(subscriptions, subscription_cnt);
     } else if (SR_ERR_OK == rc) {
         /* no subscription for this RPC */
@@ -1192,6 +1190,34 @@ rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg 
     }
 
     sr__msg__free_unpacked(msg, NULL);
+
+    return rc;
+}
+
+/**
+ * @brief Processes an operational data provider response.
+ */
+static int
+rp_data_provide_resp_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
+{
+    sr_val_t *values = NULL;
+    size_t values_cnt = 0;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG5(rp_ctx, session, msg, msg->response, msg->response->data_provide_resp);
+
+    /* copy values fom GPB to sysrepo */
+    rc = sr_values_gpb_to_sr(msg->response->data_provide_resp->values,  msg->response->data_provide_resp->n_values,
+            &values, &values_cnt);
+
+    if (SR_ERR_OK == rc) {
+        // TODO: process the operational data
+        for (size_t i = 0; i < values_cnt; i++) {
+            printf("%s = %s\n", values[i].xpath, values[i].data.string_val);
+        }
+    }
+
+    sr_free_values(values, values_cnt);
 
     return rc;
 }
@@ -1444,10 +1470,12 @@ rp_resp_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, bool *sk
     *skip_msg_cleanup = false;
 
     switch (msg->response->operation) {
+        case SR__OPERATION__DATA_PROVIDE:
+            rc = rp_data_provide_resp_process(rp_ctx, session, msg);
+            break;
         case SR__OPERATION__RPC:
             rc = rp_rpc_resp_process(rp_ctx, session, msg);
             *skip_msg_cleanup = true;
-            return rc; /* skip further processing */
             break;
         default:
             SR_LOG_ERR("Unsupported response received (session id=%"PRIu32", operation=%d).",
