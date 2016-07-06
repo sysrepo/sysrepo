@@ -1785,3 +1785,10 @@ cm_watch_signal(cm_ctx_t *cm_ctx, int signum, cm_signal_cb callback)
     }
     return SR_ERR_INTERNAL; /* no space for more watchers */
 }
+
+cm_connection_mode_t
+cm_get_connection_mode(cm_ctx_t *cm_ctx)
+{
+    return cm_ctx->mode;
+}
+
