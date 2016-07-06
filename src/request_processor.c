@@ -328,11 +328,24 @@ rp_get_item_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
         CHECK_RC_MSG_GOTO(rc, cleanup, "Check notif session failed");
     }
 
+    if (RP_REQ_FINISHED == session->state) {
+        session->state = RP_REQ_NEW;
+    } else if (RP_REQ_WAITING_FOR_DATA == session->state) {
+        if (msg == session->req) {
+            SR_LOG_ERR("Time out waiting for operational data expired, session id = %u", session->id);
+        } else {
+            //TODO handle probably invalid state
+        }
+    }
+
     /* get value from data manager */
     rc = rp_dt_get_value_wrapper(rp_ctx, session, xpath, &value);
     if (SR_ERR_OK != rc && SR_ERR_NOT_FOUND != rc) {
         SR_LOG_ERR("Get item failed for '%s', session id=%"PRIu32".", xpath, session->id);
     }
+
+    //TODO if we are waiting for operational data do not free the request
+    //TODO handle received data add new call
 
     /* copy value to gpb */
     if (SR_ERR_OK == rc) {
