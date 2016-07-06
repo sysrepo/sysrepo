@@ -1889,6 +1889,54 @@ cl_get_changes_iter_test(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 }
 
+static int
+dp_get_items_cb(const char *xpath, sr_val_t **values, size_t *values_cnt, void *private_ctx)
+{
+    printf("operational data for '%s' requested.\n", xpath);
+
+    // TODO: return some real operational data
+    *values = calloc(2, sizeof(**values));
+    (*values)[0].xpath = strdup("/test-module:activate-software-image/status");
+    (*values)[0].type = SR_STRING_T;
+    (*values)[0].data.string_val = strdup("The image acmefw-2.3 is being installed.");
+    (*values)[1].xpath = strdup("/test-module:activate-software-image/version");
+    (*values)[1].type = SR_STRING_T;
+    (*values)[1].data.string_val = strdup("2.3");
+
+    *values_cnt = 2;
+
+    return SR_ERR_OK;
+}
+
+static void
+cl_dp_get_items_test(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+    sr_session_ctx_t *session = NULL;
+    sr_subscription_ctx_t *subscription = NULL;
+    int rc = SR_ERR_OK;
+
+    /* start session */
+    rc = sr_session_start(conn, SR_DS_CANDIDATE, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* subscribe as a data provider */
+    rc = sr_dp_get_items_subscribe(session, "/example-module:container/", dp_get_items_cb, NULL,
+            SR_SUBSCR_DEFAULT, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    // TODO: get some operational data
+
+    /* unsubscribe */
+    rc = sr_unsubscribe(NULL, subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* stop the session */
+    rc = sr_session_stop(session);
+    assert_int_equal(rc, SR_ERR_OK);
+}
+
 int
 main()
 {
@@ -1917,6 +1965,7 @@ main()
             cmocka_unit_test_setup_teardown(cl_switch_ds, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_candidate_refresh, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_get_changes_iter_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_dp_get_items_test, sysrepo_setup, sysrepo_teardown),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);

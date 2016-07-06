@@ -327,6 +327,71 @@ np_module_subscriptions_test(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 }
 
+static void
+np_dp_subscriptions_test(void **state)
+{
+    int rc = SR_ERR_OK;
+    test_ctx_t *test_ctx = *state;
+    assert_non_null(test_ctx);
+    np_ctx_t *np_ctx = test_ctx->rp_ctx->np_ctx;
+    assert_non_null(np_ctx);
+    sr_list_t *subscriptions_list = NULL;
+
+    np_subscription_t **subscriptions_arr = NULL;
+    size_t subscriptions_cnt = 0;
+
+    /* delete old subscriptions, if any */
+    np_unsubscribe_destination(np_ctx, "addr3");
+
+    /* subscribe */
+
+    rc = np_notification_subscribe(np_ctx, test_ctx->rp_session_ctx, SR__SUBSCRIPTION_TYPE__DP_GET_ITEMS_SUBS,
+            "addr4", 789, "example-module", "/example-module:container", SR__NOTIFICATION_EVENT__VERIFY_EV, 20, NP_SUBSCR_ENABLE_RUNNING);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = np_notification_subscribe(np_ctx, test_ctx->rp_session_ctx, SR__SUBSCRIPTION_TYPE__DP_GET_ITEMS_SUBS,
+            "addr5", 1011, "example-module", "/example-module:container", SR__NOTIFICATION_EVENT__VERIFY_EV, 20, NP_SUBSCR_ENABLE_RUNNING);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* get subscriptions */
+    rc = np_get_data_provider_subscriptions(np_ctx, "example-module", &subscriptions_arr, &subscriptions_cnt);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_int_not_equal(subscriptions_cnt, 0);
+
+    assert_int_equal(subscriptions_cnt, 2);
+
+    rc = sr_list_init(&subscriptions_list);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    for (size_t i = 0; i < subscriptions_cnt; i++) {
+        assert_non_null(subscriptions_arr[i]);
+        assert_true(SR__SUBSCRIPTION_TYPE__DP_GET_ITEMS_SUBS == subscriptions_arr[i]->type);
+
+        /* notify and add into list */
+        rc = np_data_provider_request(np_ctx, subscriptions_arr[i], test_ctx->rp_session_ctx, "/example-module:container");
+        assert_int_equal(rc, SR_ERR_OK);
+
+        sr_list_add(subscriptions_list, subscriptions_arr[i]);
+    }
+    free(subscriptions_arr);
+
+    /* release the subscriptions */
+    assert_int_equal(rc, SR_ERR_OK);
+    for (size_t i = 0; i < subscriptions_list->count; i++) {
+        np_free_subscription(subscriptions_list->data[i]);
+    }
+    sr_list_cleanup(subscriptions_list);
+
+    /* unsubscribe */
+    rc = np_notification_unsubscribe(np_ctx, test_ctx->rp_session_ctx, SR__SUBSCRIPTION_TYPE__DP_GET_ITEMS_SUBS,
+            "addr4", 789, "example-module");
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = np_notification_unsubscribe(np_ctx, test_ctx->rp_session_ctx, SR__SUBSCRIPTION_TYPE__DP_GET_ITEMS_SUBS,
+            "addr5", 1011, "example-module");
+    assert_int_equal(rc, SR_ERR_OK);
+}
+
 int
 main() {
     const struct CMUnitTest tests[] = {
@@ -335,7 +400,7 @@ main() {
             cmocka_unit_test_setup_teardown(np_negative_subscription_test, test_setup, test_teardown),
             cmocka_unit_test_setup_teardown(np_hello_notify_test, test_setup, test_teardown),
             cmocka_unit_test_setup_teardown(np_module_subscriptions_test, test_setup, test_teardown),
-
+            cmocka_unit_test_setup_teardown(np_dp_subscriptions_test, test_setup, test_teardown),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);
