@@ -344,9 +344,7 @@ dm_load_schema_file(dm_ctx_t *dm_ctx, const char *schema_filepath, const struct 
             if (SR_ERR_OK != rc) {
                 SR_LOG_WRN("Unable to enable feature '%s' in module '%s' in Data Manager.", features[i], module->name);
             }
-            free(features[i]);
         }
-        free(features);
     }
     if (SR_ERR_OK == rc) {
         if (module_enabled) {
@@ -359,11 +357,19 @@ dm_load_schema_file(dm_ctx_t *dm_ctx, const char *schema_filepath, const struct 
                 if (SR_ERR_OK != rc) {
                     SR_LOG_WRN("Unable to enable subtree '%s' in module '%s' in running ds.", enabled_subtrees[i], module->name);
                 }
-                free(enabled_subtrees[i]);
             }
-            free(enabled_subtrees);
         }
     }
+
+    /* release memory */
+    for (size_t i = 0; i < enabled_subtrees_cnt; i++) {
+        free(enabled_subtrees[i]);
+    }
+    free(enabled_subtrees);
+    for (size_t i = 0; i < features_cnt; i++) {
+        free(features[i]);
+    }
+    free(features);
 
     *module_schema = module;
     return SR_ERR_OK;

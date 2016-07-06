@@ -64,11 +64,11 @@ const char * const data_files_ext[] = { SR_STARTUP_FILE_EXT,
  * @brief Connects to sysrepo and starts a session.
  */
 static int
-srctl_open_session(sr_conn_ctx_t **connection_p, sr_session_ctx_t **session_p)
+srctl_open_session(bool daemon_required, sr_conn_ctx_t **connection_p, sr_session_ctx_t **session_p)
 {
     int rc = SR_ERR_OK;
 
-    rc = sr_connect("sysrepoctl", SR_CONN_DEFAULT, connection_p);
+    rc = sr_connect("sysrepoctl", daemon_required ? SR_CONN_DAEMON_REQUIRED : SR_CONN_DEFAULT, connection_p);
     if (SR_ERR_OK == rc) {
         rc = sr_session_start(*connection_p, SR_DS_STARTUP, SR_SESS_DEFAULT, session_p);
     }
@@ -156,7 +156,7 @@ srctl_list_modules()
     printf("Sysrepo data directory:   %s\n", SR_DATA_SEARCH_DIR);
     printf("(Do not alter contents of these directories manually)\n");
 
-    rc = srctl_open_session(&connection, &session);
+    rc = srctl_open_session(false, &connection, &session);
 
     if (SR_ERR_OK == rc) {
         rc = sr_list_schemas(session, &schemas, &schema_cnt);
@@ -644,16 +644,16 @@ srctl_uninstall(const char *module_name, const char *revision)
     /* notify sysrepo about the change */
     if (!custom_repository) {
         /* disable in sysrepo */
-        rc = srctl_open_session(&connection, &session);
+        rc = srctl_open_session(true, &connection, &session);
         if (SR_ERR_OK == rc) {
             rc = sr_module_install(session, module_name, revision, false);
+            if (SR_ERR_OK != rc && SR_ERR_NOT_FOUND != rc) {
+                srctl_report_error(session, rc);
+                fprintf(stderr, "Warning: Sysrepo failed to react properly to uninstalled module, "
+                                "consider restart of the daemon, continuing.\n");
+            }
+            sr_disconnect(connection);
         }
-        if (SR_ERR_OK != rc && SR_ERR_NOT_FOUND != rc) {
-            srctl_report_error(session, rc);
-            fprintf(stderr, "Warning: Sysrepo failed to react properly to uninstalled module, "
-                            "consider restart of the daemon, continuing.\n");
-        }
-        sr_disconnect(connection);
     }
 
     /* delete data files */
@@ -944,13 +944,13 @@ srctl_install(const char *yang, const char *yin, const char *owner, const char *
     /* Notify sysrepo about the change */
     if (!custom_repository) {
         printf("Notifying sysrepo about the change ...\n");
-        rc = srctl_open_session(&connection, &session);
+        rc = srctl_open_session(true, &connection, &session);
         if (SR_ERR_OK == rc) {
             rc = sr_module_install(session, module->name, module->rev[0].date, true);
-        }
-        if (SR_ERR_OK != rc) {
-            srctl_report_error(session, rc);
-            goto fail_notif;
+            if (SR_ERR_OK != rc) {
+                srctl_report_error(session, rc);
+                goto fail_notif;
+            }
         }
     }
 
@@ -1117,7 +1117,7 @@ srctl_feature_change(const char *module_name, const char *feature_name, bool ena
     }
     printf("%s feature '%s' in the module '%s'.\n", enable ? "Enabling" : "Disabling", feature_name, module_name);
 
-    rc = srctl_open_session(&connection, &session);
+    rc = srctl_open_session(false, &connection, &session);
 
     if (SR_ERR_OK == rc) {
         rc = sr_feature_enable(session, module_name, feature_name, enable);

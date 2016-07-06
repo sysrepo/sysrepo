@@ -287,8 +287,8 @@ sysrepoctl_test_init(void **state)
                                    TEST_SCHEMA_SEARCH_DIR "ietf-interfaces@2014-05-08.yang");
     exec_shell_command(buff, ".*", true, 0);
 
-    /* no owner, permissions */
-    exec_shell_command("../src/sysrepoctl -l", "ietf-interfaces[[:space:]]*\\| 2014-05-08 \\|[[:space:]]*\\|[[:space:]]*\\|", true, 0);
+    /* not fully installed */
+    exec_shell_command("../src/sysrepoctl -l", "!ietf-interfaces", true, 0);
 
     /* initialize ietf-interfaces with already installed schema */
     snprintf(buff, PATH_MAX, "../src/sysrepoctl --init --module=ietf-interfaces --owner=%s --permissions=644", user);

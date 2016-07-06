@@ -415,11 +415,7 @@ np_notification_subscribe(np_ctx_t *np_ctx, const rp_session_t *rp_session, Sr__
         rc = np_dst_info_insert(np_ctx, dst_address, module_name);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to update notification destination info.");
 
-        /* add the subscription to module's persistent data */
-        rc = pm_add_subscription(np_ctx->rp_ctx->pm_ctx, rp_session->user_credentials, module_name, subscription,
-                (opts & NP_SUBSCR_EXCLUSIVE));
-        CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to save the subscription into persistent data file.");
-
+        /* enable the module/subtree before the persistent file is edited */
         if (opts & NP_SUBSCR_ENABLE_RUNNING) {
             if (SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS == type) {
                 /* enable the subtree in running config */
@@ -431,6 +427,12 @@ np_notification_subscribe(np_ctx_t *np_ctx, const rp_session_t *rp_session, Sr__
                 CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to enable the module in the running datastore.");
             }
         }
+
+        /* add the subscription to module's persistent data */
+        rc = pm_add_subscription(np_ctx->rp_ctx->pm_ctx, rp_session->user_credentials, module_name, subscription,
+                (opts & NP_SUBSCR_EXCLUSIVE));
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to save the subscription into persistent data file.");
+
         goto cleanup; /* subscription not needed anymore */
     } else {
         /* add the subscription to in-memory subscription list */
