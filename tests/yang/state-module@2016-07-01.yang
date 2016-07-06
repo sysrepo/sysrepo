@@ -40,7 +40,7 @@ module state-module {
 
        leaf distance_travelled {
           config false;
-          type int32;
+          type uint32;
        }
        
    }

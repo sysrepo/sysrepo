@@ -156,6 +156,7 @@ INSTALL_YANG_MODULE("module-b@2016-02-05")
 INSTALL_YANG_MODULE("ietf-interfaces@2014-05-08")
 INSTALL_YANG_MODULE("iana-if-type")
 INSTALL_YANG_MODULE("ietf-ip@2014-06-16")
+INSTALL_YANG_MODULE("state-module@2016-07-01")
 
 # dummy testing plugins
 add_library(dummy-plugin-1 SHARED ${TEST_HELPERS_DIR}dummy_plugin.c)

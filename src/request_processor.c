@@ -305,7 +305,7 @@ rp_feature_enable_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *sessio
  * @brief Processes a get_item request.
  */
 static int
-rp_get_item_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
+rp_get_item_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, bool *skip_msg_cleanup)
 {
     int rc = SR_ERR_OK;
 
@@ -328,6 +328,7 @@ rp_get_item_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
         CHECK_RC_MSG_GOTO(rc, cleanup, "Check notif session failed");
     }
 
+    MUTEX_LOCK_TIMED_CHECK_GOTO(&session->cur_req_mutex, rc, cleanup);
     if (RP_REQ_FINISHED == session->state) {
         session->state = RP_REQ_NEW;
     } else if (RP_REQ_WAITING_FOR_DATA == session->state) {
@@ -344,8 +345,20 @@ rp_get_item_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
         SR_LOG_ERR("Get item failed for '%s', session id=%"PRIu32".", xpath, session->id);
     }
 
-    //TODO if we are waiting for operational data do not free the request
+    if (RP_REQ_WAITING_FOR_DATA == session->state) {
+        SR_LOG_DBG_MSG("Request paused, waiting for data");
+        //TODO if we are waiting for operational data do not free the request
+        *skip_msg_cleanup = true;
+        /* save message */
+        session->req = msg;
+        //TODO: better solution might be to allocate response later or save it, instead of free
+        sr__msg__free_unpacked(resp, NULL);
+        pthread_mutex_unlock(&session->cur_req_mutex);
+        return rc;
+    }
     //TODO handle received data add new call
+
+    pthread_mutex_unlock(&session->cur_req_mutex);
 
     /* copy value to gpb */
     if (SR_ERR_OK == rc) {
@@ -1247,7 +1260,7 @@ rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg 
  * @brief Processes an operational data provider response.
  */
 static int
-rp_data_provide_resp_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
+rp_data_provide_resp_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
 {
     sr_val_t *values = NULL;
     size_t values_cnt = 0;
@@ -1255,17 +1268,40 @@ rp_data_provide_resp_process(const rp_ctx_t *rp_ctx, const rp_session_t *session
 
     CHECK_NULL_ARG5(rp_ctx, session, msg, msg->response, msg->response->data_provide_resp);
 
-    /* copy values fom GPB to sysrepo */
+    /* copy values from GPB to sysrepo */
     rc = sr_values_gpb_to_sr(msg->response->data_provide_resp->values,  msg->response->data_provide_resp->n_values,
             &values, &values_cnt);
 
     if (SR_ERR_OK == rc) {
         // TODO: process the operational data
+        MUTEX_LOCK_TIMED_CHECK_GOTO(&session->cur_req_mutex, rc, cleanup);
         for (size_t i = 0; i < values_cnt; i++) {
-            printf("%s = %s\n", values[i].xpath, values[i].data.string_val);
+            const struct lys_node *node = dm_ly_ctx_get_node(rp_ctx->dm_ctx, NULL, values[i].xpath);
+            if (NULL != node) {
+                char *str_val = NULL;
+                sr_val_to_str(&values[i], node, &str_val);
+                printf("%s = %s\n", values[i].xpath, str_val);
+                free(str_val);
+            } else {
+                printf("%s \n", values[i].xpath);
+            }
+            rc = rp_dt_set_item(rp_ctx->dm_ctx, session->dm_session, values[i].xpath, SR_EDIT_DEFAULT, &values[i]);
+            if (SR_ERR_OK != rc) {
+                //TODO: maybe validate if this path corresponds to the operational data
+                SR_LOG_WRN("Failed to set operational data for xpath %s", values[i].xpath);
+            }
         }
+        session->dp_req_waiting -= 1;
+        if (0 == session->dp_req_waiting) {
+            SR_LOG_DBG("All data from data providers has been received session id = %u, reenque the request", session->id);
+            //TODO validate data
+            session->state = RP_REQ_DATA_LOADED;
+            rp_msg_process(rp_ctx, session, session->req);
+        }
+        pthread_mutex_unlock(&session->cur_req_mutex);
     }
 
+cleanup:
     sr_free_values(values, values_cnt);
 
     return rc;
@@ -1432,7 +1468,7 @@ rp_req_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, bool *ski
             rc = rp_feature_enable_req_process(rp_ctx, session, msg);
             break;
         case SR__OPERATION__GET_ITEM:
-            rc = rp_get_item_req_process(rp_ctx, session, msg);
+            rc = rp_get_item_req_process(rp_ctx, session, msg, skip_msg_cleanup);
             break;
         case SR__OPERATION__GET_ITEMS:
             rc = rp_get_items_req_process(rp_ctx, session, msg);
@@ -1646,6 +1682,7 @@ rp_session_cleanup(const rp_ctx_t *rp_ctx, rp_session_t *session)
     ly_set_free(session->get_items_ctx.nodes);
     free(session->get_items_ctx.xpath);
     pthread_mutex_destroy(&session->msg_count_mutex);
+    pthread_mutex_destroy(&session->cur_req_mutex);
     free(session->change_ctx.xpath);
     free(session);
 
@@ -1905,6 +1942,7 @@ rp_session_start(const rp_ctx_t *rp_ctx, const uint32_t session_id, const ac_ucr
     session->datastore = datastore;
     session->options = session_options;
     session->commit_id = commit_id;
+    pthread_mutex_init(&session->cur_req_mutex, NULL);
 
     rc = ac_session_init(rp_ctx->ac_ctx, user_credentials, &session->ac_session);
     if (SR_ERR_OK  != rc) {

@@ -1888,12 +1888,12 @@ dp_get_items_cb(const char *xpath, sr_val_t **values, size_t *values_cnt, void *
 
     // TODO: return some real operational data
     *values = calloc(2, sizeof(**values));
-    (*values)[0].xpath = strdup("/test-module:activate-software-image/status");
-    (*values)[0].type = SR_STRING_T;
-    (*values)[0].data.string_val = strdup("The image acmefw-2.3 is being installed.");
-    (*values)[1].xpath = strdup("/test-module:activate-software-image/version");
-    (*values)[1].type = SR_STRING_T;
-    (*values)[1].data.string_val = strdup("2.3");
+    (*values)[0].xpath = strdup("/state-module:bus/gps_located");
+    (*values)[0].type = SR_BOOL_T;
+    (*values)[0].data.bool_val = false;
+    (*values)[1].xpath = strdup("/state-module:bus/distance_travelled");
+    (*values)[1].type = SR_UINT32_T;
+    (*values)[1].data.uint32_val = 42;
 
     *values_cnt = 2;
 
@@ -1908,17 +1908,23 @@ cl_dp_get_items_test(void **state)
     sr_session_ctx_t *session = NULL;
     sr_subscription_ctx_t *subscription = NULL;
     int rc = SR_ERR_OK;
+    sr_val_t *value = NULL;
 
     /* start session */
-    rc = sr_session_start(conn, SR_DS_CANDIDATE, SR_SESS_DEFAULT, &session);
+    rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* subscribe as a data provider */
-    rc = sr_dp_get_items_subscribe(session, "/example-module:container/", dp_get_items_cb, NULL,
+    rc = sr_dp_get_items_subscribe(session, "/state-module:bus", dp_get_items_cb, NULL,
             SR_SUBSCR_DEFAULT, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
-    // TODO: get some operational data
+    rc = sr_get_item(session, "/state-module:bus/distance_travelled", &value);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    assert_int_equal(SR_UINT32_T, value->type);
+    assert_int_equal(42, value->data.uint32_val);
+    sr_free_val(value);
 
     /* unsubscribe */
     rc = sr_unsubscribe(NULL, subscription);

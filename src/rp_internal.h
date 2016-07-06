@@ -103,6 +103,7 @@ typedef struct rp_session_s {
     rp_request_state_t state;            /**< the state of the request processing used if the operational data are requested */
     size_t dp_req_waiting;               /**< number of waiting request to operational data providers */
     Sr__Msg *req;                        /**< request that is waiting for operational data */
+    pthread_mutex_t cur_req_mutex;       /**< mutex guarding information about currently processed request */
 
 } rp_session_t;
 
