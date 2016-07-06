@@ -1126,8 +1126,14 @@ main(int argc, char* argv[])
         module_name = argv[argc-1];
         --argc;
     }
+    if (NULL == module_name) {
+        fprintf(stderr, "%s: Module name is not specified.\n", argv[0]);
+        rc = SR_ERR_INVAL_ARG;
+        goto terminate;
+    }
 
     /* parse options */
+    int curind = optind;
     while ((c = getopt_long(argc, argv, ":hvd:f:e:i:x:kpl:0:", longopts, NULL)) != -1) {
         switch (c) {
             case 'h':
@@ -1197,7 +1203,7 @@ main(int argc, char* argv[])
                         operation = SRCFG_OP_EXPORT;
                         break;
                     default:
-                        fprintf(stderr, "%s: option `-%c' requires an argument\n", argv[0], optopt);
+                        fprintf(stderr, "%s: Option '-%c' requires an argument.\n", argv[0], optopt);
                         rc = SR_ERR_INVAL_ARG;
                         goto terminate;
                 }
@@ -1205,19 +1211,18 @@ main(int argc, char* argv[])
             case '?':
             default:
                 /* invalid option */
-                fprintf(stderr, "%s: option `-%c' is invalid. Exiting.\n", argv[0], optopt);
+                if ('\0' != optopt) {
+                    fprintf(stderr, "%s: Unrecognized short option: '-%c'.\n", argv[0], optopt);
+                } else {
+                    fprintf(stderr, "%s: Unrecognized long option: '%s'.\n", argv[0], argv[curind]);
+                }
                 rc = SR_ERR_INVAL_ARG;
                 goto terminate;
         }
+        curind = optind;
     }
 
     /* check argument values */
-    /*  -> module */
-    if (NULL == module_name) {
-        fprintf(stderr, "%s: Module name is not specified.\n", argv[0]);
-        rc = SR_ERR_INVAL_ARG;
-        goto terminate;
-    }
     /*  -> format */
     if (strcasecmp("xml", format_name) == 0) {
         format = LYD_XML;
