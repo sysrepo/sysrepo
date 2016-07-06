@@ -1126,11 +1126,6 @@ main(int argc, char* argv[])
         module_name = argv[argc-1];
         --argc;
     }
-    if (NULL == module_name) {
-        fprintf(stderr, "%s: Module name is not specified.\n", argv[0]);
-        rc = SR_ERR_INVAL_ARG;
-        goto terminate;
-    }
 
     /* parse options */
     int curind = optind;
@@ -1223,6 +1218,12 @@ main(int argc, char* argv[])
     }
 
     /* check argument values */
+    /*  -> module */
+    if (NULL == module_name) {
+        fprintf(stderr, "%s: Module name is not specified.\n", argv[0]);
+        rc = SR_ERR_INVAL_ARG;
+        goto terminate;
+    }
     /*  -> format */
     if (strcasecmp("xml", format_name) == 0) {
         format = LYD_XML;
