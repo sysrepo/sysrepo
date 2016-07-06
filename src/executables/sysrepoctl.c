@@ -45,6 +45,7 @@ typedef struct srctl_module_owner_s {
     gid_t group;
 } srctl_module_owner_t;
 
+int srctl_log_level = -1;
 static char *srctl_schema_search_dir = SR_SCHEMA_SEARCH_DIR;
 static char *srctl_data_search_dir = SR_DATA_SEARCH_DIR;
 static char *srctl_internal_schema_search_dir = SR_INTERNAL_SCHEMA_SEARCH_DIR;
@@ -68,7 +69,17 @@ srctl_open_session(bool daemon_required, sr_conn_ctx_t **connection_p, sr_sessio
 {
     int rc = SR_ERR_OK;
 
+    if (daemon_required) {
+        /* do not report failed connection to sysrepo *daemon* */
+        sr_log_stderr(SR_LL_NONE);
+    }
     rc = sr_connect("sysrepoctl", daemon_required ? SR_CONN_DAEMON_REQUIRED : SR_CONN_DEFAULT, connection_p);
+    if (daemon_required) {
+        /* re-enable logging */
+        if ((srctl_log_level >= SR_LL_NONE) && (srctl_log_level <= SR_LL_DBG)) {
+            sr_log_stderr(srctl_log_level);
+        }
+    }
     if (SR_ERR_OK == rc) {
         rc = sr_session_start(*connection_p, SR_DS_STARTUP, SR_SESS_DEFAULT, session_p);
     }
@@ -1189,7 +1200,6 @@ int
 main(int argc, char* argv[])
 {
     int c = 0, operation = 0;
-    int log_level = -1;
     char *feature_name = NULL;
     char *yang = NULL, *yin = NULL, *module = NULL, *revision = NULL;
     char *owner = NULL, *permissions = NULL;
@@ -1232,7 +1242,7 @@ main(int argc, char* argv[])
                 exit(EXIT_SUCCESS);
                 break;
             case 'L':
-                log_level = atoi(optarg);
+                srctl_log_level = atoi(optarg);
                 break;
             case 'l':
             case 'i':
@@ -1299,8 +1309,8 @@ main(int argc, char* argv[])
     /* set log levels */
     sr_log_stderr(SR_LL_ERR);
     sr_log_syslog(SR_LL_NONE);
-    if ((log_level >= SR_LL_NONE) && (log_level <= SR_LL_DBG)) {
-        sr_log_stderr(log_level);
+    if ((srctl_log_level >= SR_LL_NONE) && (srctl_log_level <= SR_LL_DBG)) {
+        sr_log_stderr(srctl_log_level);
     }
     ly_set_log_clb(srctl_ly_log_cb, 0);
 
