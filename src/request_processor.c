@@ -348,17 +348,15 @@ rp_get_item_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, b
 
     if (RP_REQ_WAITING_FOR_DATA == session->state) {
         SR_LOG_DBG_MSG("Request paused, waiting for data");
-        //TODO if we are waiting for operational data do not free the request
+        /* we are waiting for operational data do not free the request */
         *skip_msg_cleanup = true;
         /* save message */
         session->req = msg;
         //TODO: setup timeout
-        //TODO: better solution might be to allocate response later or save it, instead of free
         sr__msg__free_unpacked(resp, NULL);
         pthread_mutex_unlock(&session->cur_req_mutex);
         return rc;
     }
-    //TODO handle received data add new call
 
     pthread_mutex_unlock(&session->cur_req_mutex);
 

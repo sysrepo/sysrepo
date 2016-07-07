@@ -66,20 +66,20 @@ typedef struct rp_dt_get_items_ctx {
  * @brief Cache structure that holds of the last get_changes_iter call
  */
 typedef struct rp_dt_change_ctx_s {
-    char *xpath;                        /* xpath used for change identification */
-    const struct lys_node *schema_node; /* schema node corresponding to xpath, used for matching */
-    size_t offset;                      /* offset-th matched change to be returned */
-    size_t position;                    /* index to the change set */
+    char *xpath;                        /**< xpath used for change identification */
+    const struct lys_node *schema_node; /**< schema node corresponding to xpath, used for matching */
+    size_t offset;                      /**< offset-th matched change to be returned */
+    size_t position;                    /**< index to the change set */
 } rp_dt_change_ctx_t;
 
 /**
  * @brief States of the request processing
  */
 typedef enum rp_request_state_e {
-    RP_REQ_NEW,
-    RP_REQ_WAITING_FOR_DATA,
-    RP_REQ_DATA_LOADED,
-    RP_REQ_FINISHED
+    RP_REQ_NEW,                         /**< New request received in RP */
+    RP_REQ_WAITING_FOR_DATA,            /**< Request is waiting for state data from providers */
+    RP_REQ_DATA_LOADED,                 /**< Respones for all state data request were received */
+    RP_REQ_FINISHED                     /**< Request processing finished, request can be freed */
 } rp_request_state_t;
 
 /**
