@@ -352,6 +352,7 @@ rp_get_item_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, b
         *skip_msg_cleanup = true;
         /* save message */
         session->req = msg;
+        //TODO: setup timeout
         //TODO: better solution might be to allocate response later or save it, instead of free
         sr__msg__free_unpacked(resp, NULL);
         pthread_mutex_unlock(&session->cur_req_mutex);

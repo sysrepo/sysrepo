@@ -294,8 +294,6 @@ rp_dt_prepare_data(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char *xpath
 
             rp_session->state = RP_REQ_WAITING_FOR_DATA;
 
-            //TODO: setup timer
-
         }
         CHECK_RC_MSG_GOTO(rc, cleanup, "rp_dt_module_has_state data failed");
 
