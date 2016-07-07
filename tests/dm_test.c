@@ -43,7 +43,7 @@ int setup(void **state)
 void dm_create_cleanup(void **state){
    int rc;
    dm_ctx_t *ctx;
-   rc = dm_init(NULL, NULL, NULL, TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx);
+   rc = dm_init(NULL, NULL, NULL, CM_MODE_LOCAL, TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx);
    assert_int_equal(SR_ERR_OK,rc);
 
    dm_cleanup(ctx);
@@ -88,7 +88,7 @@ void dm_get_data_tree(void **state)
     dm_session_t *ses_ctx;
     struct lyd_node *data_tree;
 
-    rc = dm_init(NULL, NULL, NULL, TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx);
+    rc = dm_init(NULL, NULL, NULL, CM_MODE_LOCAL, TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx);
     assert_int_equal(SR_ERR_OK, rc);
 
     dm_session_start(ctx, NULL, SR_DS_STARTUP, &ses_ctx);
@@ -116,7 +116,7 @@ dm_list_schema_test(void **state)
     sr_schema_t *schemas;
     size_t count;
 
-    rc = dm_init(NULL, NULL, NULL, TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx);
+    rc = dm_init(NULL, NULL, NULL, CM_MODE_LOCAL, TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx);
     assert_int_equal(SR_ERR_OK, rc);
 
     rc = dm_session_start(ctx, NULL, SR_DS_STARTUP, &ses_ctx);
@@ -161,7 +161,7 @@ dm_get_schema_test(void **state)
     dm_ctx_t *ctx;
     char *schema = NULL;
 
-    rc = dm_init(NULL, NULL, NULL, TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx);
+    rc = dm_init(NULL, NULL, NULL, CM_MODE_LOCAL, TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx);
     assert_int_equal(SR_ERR_OK, rc);
 
     /* module latest revision */
@@ -172,6 +172,12 @@ dm_get_schema_test(void **state)
 
     /* module latest revision  yin format*/
     rc = dm_get_schema(ctx, "module-a", NULL, NULL, false, &schema);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(schema);
+    free(schema);
+
+    /* module-b latest revision which depends on module-a older revision */
+    rc = dm_get_schema(ctx, "module-b", NULL, NULL, true, &schema);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(schema);
     free(schema);
@@ -206,7 +212,7 @@ dm_get_schema_negative_test(void **state)
     dm_ctx_t *ctx;
     char *schema = NULL;
 
-    rc = dm_init(NULL, NULL, NULL, TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx);
+    rc = dm_init(NULL, NULL, NULL, CM_MODE_LOCAL, TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx);
     assert_int_equal(SR_ERR_OK, rc);
 
     /* unknown module */
@@ -245,7 +251,7 @@ dm_validate_data_trees_test(void **state)
     sr_error_info_t *errors = NULL;
     size_t err_cnt = 0;
 
-    rc = dm_init(NULL, NULL, NULL, TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx);
+    rc = dm_init(NULL, NULL, NULL, CM_MODE_LOCAL, TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx);
     assert_int_equal(SR_ERR_OK, rc);
 
     rc = dm_session_start(ctx, NULL, SR_DS_STARTUP, &ses_ctx);
@@ -290,7 +296,7 @@ dm_discard_changes_test(void **state)
     dm_session_t *ses_ctx = NULL;
     dm_data_info_t *info = NULL;
 
-    rc = dm_init(NULL, NULL, NULL, TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx);
+    rc = dm_init(NULL, NULL, NULL, CM_MODE_LOCAL, TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx);
     assert_int_equal(SR_ERR_OK, rc);
 
     rc = dm_session_start(ctx, NULL, SR_DS_STARTUP, &ses_ctx);
@@ -340,7 +346,7 @@ dm_add_operation_test(void **state)
     dm_ctx_t *ctx = NULL;
     dm_session_t *ses_ctx = NULL;
 
-    rc = dm_init(NULL, NULL, NULL, TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx);
+    rc = dm_init(NULL, NULL, NULL, CM_MODE_LOCAL, TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx);
     assert_int_equal(SR_ERR_OK, rc);
 
     dm_session_start(ctx, NULL, SR_DS_STARTUP, &ses_ctx);
@@ -383,7 +389,7 @@ dm_locking_test(void **state)
    dm_ctx_t *ctx = NULL;
    dm_session_t *sessionA = NULL, *sessionB = NULL;
 
-   rc = dm_init(NULL, NULL, NULL, TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx);
+   rc = dm_init(NULL, NULL, NULL, CM_MODE_LOCAL, TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx);
    assert_int_equal(SR_ERR_OK, rc);
 
    dm_session_start(ctx, NULL, SR_DS_STARTUP, &sessionA);
@@ -411,7 +417,7 @@ dm_copy_module_test(void **state)
    dm_ctx_t *ctx = NULL;
    dm_session_t *sessionA = NULL;
 
-   rc = dm_init(NULL, NULL, NULL, TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx);
+   rc = dm_init(NULL, NULL, NULL, CM_MODE_LOCAL, TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx);
    assert_int_equal(SR_ERR_OK, rc);
 
    rc = dm_session_start(ctx, NULL, SR_DS_STARTUP, &sessionA);
@@ -437,12 +443,17 @@ dm_rpc_test(void **state)
     dm_ctx_t *ctx = NULL;
     dm_session_t *session = NULL;
     sr_val_t *input = NULL, *output = NULL;
+    const struct lys_module *module = NULL;
     size_t input_cnt = 0, output_cnt = 0;
 
-    rc = dm_init(NULL, NULL, NULL, TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx);
+    rc = dm_init(NULL, NULL, NULL, CM_MODE_LOCAL, TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx);
     assert_int_equal(SR_ERR_OK, rc);
 
     rc = dm_session_start(ctx, NULL, SR_DS_STARTUP, &session);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* load test-module */
+    rc = dm_get_module(ctx, "test-module", NULL, &module);
     assert_int_equal(SR_ERR_OK, rc);
 
     /* non-existing RPC */

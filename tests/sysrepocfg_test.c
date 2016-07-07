@@ -60,6 +60,20 @@ srcfg_test_subscription_t srcfg_test_subscriptions[MAX_SUBS];
 
 
 /**
+ * @brief Always get a new instance of libyang context, while the old one is released.
+ */
+static struct ly_ctx *
+srcfg_get_new_ly_ctx()
+{
+    static struct ly_ctx *ly_ctx = NULL;
+    if (NULL != ly_ctx) {
+        ly_ctx_destroy(ly_ctx, NULL);
+    }
+    ly_ctx = ly_ctx_new(TEST_SCHEMA_SEARCH_DIR);
+    return ly_ctx;
+}
+
+/**
  * @brief Compare data file content against a string using libyang's lyd_diff.
  */
 static int
@@ -331,7 +345,7 @@ srcfg_test_import(void **state)
     assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/ietf-interfaces.running.json", LYD_JSON, TEST_DATA_SEARCH_DIR "ietf-interfaces.running", LYD_XML));
     assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/ietf-interfaces.running.json", LYD_JSON, TEST_DATA_SEARCH_DIR "ietf-interfaces.startup", LYD_XML));
     /* check the internal data file with module dependencies (just in case) */
-    rc = md_init(TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal/", TEST_DATA_SEARCH_DIR "internal/",
+    rc = md_init(srcfg_get_new_ly_ctx(), NULL, TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal/", TEST_DATA_SEARCH_DIR "internal/",
                  false, &md_ctx);
     assert_int_equal(0, rc);
     rc = md_get_module_info(md_ctx, "ietf-interfaces", "2014-05-08", &module);
@@ -356,7 +370,7 @@ srcfg_test_import(void **state)
     assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/test-module.running.json", LYD_JSON, TEST_DATA_SEARCH_DIR "test-module.running", LYD_XML));
     assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/test-module.running.json", LYD_JSON, TEST_DATA_SEARCH_DIR "test-module.startup", LYD_XML));
     /* check the internal data file with module dependencies (just in case) */
-    rc = md_init(TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal/", TEST_DATA_SEARCH_DIR "internal/",
+    rc = md_init(srcfg_get_new_ly_ctx(), NULL, TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal/", TEST_DATA_SEARCH_DIR "internal/",
                  false, &md_ctx);
     assert_int_equal(0, rc);
     rc = md_get_module_info(md_ctx, "test-module", "", &module);
@@ -381,7 +395,7 @@ srcfg_test_import(void **state)
     assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/example-module.running.json", LYD_JSON, TEST_DATA_SEARCH_DIR "example-module.running", LYD_XML));
     assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/example-module.running.json", LYD_JSON, TEST_DATA_SEARCH_DIR "example-module.startup", LYD_XML));
     /* check the internal data file with module dependencies (just in case) */
-    rc = md_init(TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal/", TEST_DATA_SEARCH_DIR "internal/",
+    rc = md_init(srcfg_get_new_ly_ctx(), NULL, TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal/", TEST_DATA_SEARCH_DIR "internal/",
                  false, &md_ctx);
     assert_int_equal(0, rc);
     rc = md_get_module_info(md_ctx, "example-module", "", &module);

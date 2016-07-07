@@ -36,6 +36,7 @@
 #include "sr_common.h"
 #include "notification_processor.h"
 #include "persistence_manager.h"
+#include "connection_manager.h"
 
 /**
  * @brief Structure that holds the context of an instance of Data Manager.
@@ -188,7 +189,7 @@ typedef struct dm_c_ctxs_s {
  * @param [out] dm_ctx
  * @return Error code (SR_ERR_OK on success), SR_ERR_IO
  */
-int dm_init(ac_ctx_t *ac_ctx, np_ctx_t *np_ctx, pm_ctx_t *pm_ctx,
+int dm_init(ac_ctx_t *ac_ctx, np_ctx_t *np_ctx, pm_ctx_t *pm_ctx, cm_connection_mode_t conn_mode,
         const char *schema_search_dir, const char *data_search_dir, dm_ctx_t **dm_ctx);
 
 /**
@@ -241,6 +242,8 @@ int dm_get_datatree(dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, const char *
 
 /**
  * @brief Tests if the schema exists in libyang context. If yes returns the module.
+ * If not and Sysrepo is running in the library mode, the module and its dependencies are loaded
+ * into the libyang context.
  * Returned module might be used to validate xpath or to create data tree.
  * @param [in] dm_ctx
  * @param [in] module_name

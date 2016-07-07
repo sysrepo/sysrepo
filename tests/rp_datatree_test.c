@@ -52,7 +52,7 @@ int teardown(void **state){
 
 void createDataTree(struct ly_ctx *ctx, struct lyd_node **root){
     struct lyd_node *node = NULL;
-    const struct lys_module *module = ly_ctx_get_module(ctx, "example-module",NULL);
+    const struct lys_module *module = ly_ctx_load_module(ctx, "example-module",NULL);
     assert_non_null(module);
 
     *root = lyd_new(NULL, module, "container");
@@ -84,7 +84,7 @@ void createDataTree(struct ly_ctx *ctx, struct lyd_node **root){
 
 void createDataTreeWithAugments(struct ly_ctx *ctx, struct lyd_node **root){
     struct lyd_node *node = NULL;
-    const struct lys_module *module = ly_ctx_get_module(ctx, "small-module",NULL);
+    const struct lys_module *module = ly_ctx_load_module(ctx, "small-module", NULL);
     assert_non_null(module);
 
     *root = lyd_new(NULL, module,  "item");
@@ -93,10 +93,8 @@ void createDataTreeWithAugments(struct ly_ctx *ctx, struct lyd_node **root){
     node = lyd_new_leaf(*root, module, "name", "hey hou");
     assert_non_null(node);
 
-    module = ly_ctx_get_module(ctx, "info-module",NULL);
+    module = ly_ctx_load_module(ctx, "info-module",NULL);
     lyd_new_leaf(*root, module, "info", "info 123");
-
-
 }
 
 /**
