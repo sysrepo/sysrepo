@@ -233,6 +233,8 @@ rp_dt_xpath_requests_state_data(rp_ctx_t *rp_ctx, const char *module_name, const
  * @brief Loads configuration data and asks for state data if needed. Request
  * can enter this function in RP_REQ_NEW state or RP_REQ_FINISHED.
  *
+ * In RP_REQ_NEW state saves the data tree name into session.
+ *
  * @param [in] rp_ctx
  * @param [in] rp_session
  * @param [in] xpath
@@ -244,20 +246,19 @@ rp_dt_prepare_data(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char *xpath
 {
     CHECK_NULL_ARG4(rp_ctx, rp_session, xpath, data_tree);
     int rc = SR_ERR_OK;
-    char *data_tree_name = NULL;
     bool has_state_data = false;
     np_subscription_t **subscriptions = NULL;
     size_t subscription_cnt = 0;
 
-    rc = sr_copy_first_ns(xpath, &data_tree_name);
-    CHECK_RC_LOG_GOTO(rc, cleanup, "Copying module name failed for xpath '%s'", xpath);
-
     if (RP_REQ_NEW == rp_session->state) {
+
+        rc = sr_copy_first_ns(xpath, &rp_session->module_name);
+        CHECK_RC_LOG_GOTO(rc, cleanup, "Copying module name failed for xpath '%s'", xpath);
 
         rc = ac_check_node_permissions(rp_session->ac_session, xpath, AC_OPER_READ);
         CHECK_RC_LOG_GOTO(rc, cleanup, "Access control check failed for xpath '%s'", xpath);
 
-        rc = dm_get_datatree(rp_ctx->dm_ctx, rp_session->dm_session, data_tree_name, data_tree);
+        rc = dm_get_datatree(rp_ctx->dm_ctx, rp_session->dm_session, rp_session->module_name, data_tree);
 
         /* check of data tree's emptiness is performed outside of this function -> ignore SR_ERR_NOT_FOUND */
         rc = SR_ERR_NOT_FOUND == rc ? SR_ERR_OK : rc;
@@ -266,9 +267,9 @@ rp_dt_prepare_data(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char *xpath
         /* if the request requires operational data pause the processing and wait for data to be provided */
         if ((SR_DS_RUNNING == rp_session->datastore || SR_DS_CANDIDATE == rp_session->datastore) &&
             (!(SR_SESS_CONFIG_ONLY & rp_session->options)) &&
-            (SR_ERR_OK == rp_dt_module_has_state_data(rp_ctx, data_tree_name, &has_state_data) && has_state_data)) {
+            (SR_ERR_OK == rp_dt_module_has_state_data(rp_ctx, rp_session->module_name, &has_state_data) && has_state_data)) {
 
-            rc = rp_dt_xpath_requests_state_data(rp_ctx, data_tree_name, xpath, &subscriptions, &subscription_cnt);
+            rc = rp_dt_xpath_requests_state_data(rp_ctx, rp_session->module_name, xpath, &subscriptions, &subscription_cnt);
             CHECK_RC_MSG_GOTO(rc, cleanup, "rp_dt_xpath_requests_state_data failed");
 
             if (0 == subscription_cnt) {
@@ -300,14 +301,13 @@ rp_dt_prepare_data(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char *xpath
 
     } else if (RP_REQ_DATA_LOADED == rp_session->state) {
         SR_LOG_DBG("Session id = %u data loaded, continue processing", rp_session->id);
-        rc = dm_get_datatree(rp_ctx->dm_ctx, rp_session->dm_session, data_tree_name, data_tree);
+        rc = dm_get_datatree(rp_ctx->dm_ctx, rp_session->dm_session, rp_session->module_name, data_tree);
     } else {
         SR_LOG_ERR("Session id = %u is in invalid state.", rp_session->id);
         rc = SR_ERR_INTERNAL;
     }
 
 cleanup:
-    free(data_tree_name);
     return rc;
 }
 
@@ -347,6 +347,8 @@ cleanup:
     }
 
     rp_session->state = RP_REQ_FINISHED;
+    free(rp_session->module_name);
+    rp_session->module_name = NULL;
     return rc;
 }
 

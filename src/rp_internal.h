@@ -99,10 +99,11 @@ typedef struct rp_session_s {
     rp_dt_get_items_ctx_t get_items_ctx; /**< Context for get_items_iter calls. */
     rp_dt_change_ctx_t change_ctx;       /**< Context for iteration over the changes */
 
-    /* current request */
+    /* current request - used for data retrieval calls which may need state data */
     rp_request_state_t state;            /**< the state of the request processing used if the operational data are requested */
     size_t dp_req_waiting;               /**< number of waiting request to operational data providers */
     Sr__Msg *req;                        /**< request that is waiting for operational data */
+    char *module_name;                   /**< data tree name used in the current request */
     pthread_mutex_t cur_req_mutex;       /**< mutex guarding information about currently processed request */
 
 } rp_session_t;

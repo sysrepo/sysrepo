@@ -315,10 +315,7 @@ rp_get_item_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, b
 
     Sr__Msg *resp = NULL;
     rc = sr_gpb_resp_alloc(SR__OPERATION__GET_ITEM, session->id, &resp);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Memory allocation failed");
-        return SR_ERR_NOMEM;
-    }
+    CHECK_RC_MSG_RETURN(rc, "Gpb response allocation failed");
 
     sr_val_t *value = NULL;
     char *xpath = msg->request->get_item_req->xpath;
@@ -337,10 +334,11 @@ rp_get_item_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, b
         } else {
             SR_LOG_ERR("A request was not processed, probably invalid state, session id = %u", session->id);
             sr__msg__free_unpacked(session->req, NULL);
-            session->req = NULL;
             session->state = RP_REQ_NEW;
         }
     }
+    /* we do not need to keep the pointer to the request */
+    session->req = NULL;
 
     /* get value from data manager */
     rc = rp_dt_get_value_wrapper(rp_ctx, session, xpath, &value);
@@ -366,7 +364,7 @@ rp_get_item_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, b
     /* copy value to gpb */
     if (SR_ERR_OK == rc) {
         rc = sr_dup_val_t_to_gpb(value, &resp->response->get_item_resp->value);
-        if (SR_ERR_OK != rc){
+        if (SR_ERR_OK != rc) {
             SR_LOG_ERR("Copying sr_val_t to gpb failed for xpath '%s'", xpath);
         }
     }
@@ -1275,7 +1273,6 @@ rp_data_provide_resp_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *m
             &values, &values_cnt);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to transform gpb to sr_val_t");
 
-    // TODO: process the operational data
     MUTEX_LOCK_TIMED_CHECK_GOTO(&session->cur_req_mutex, rc, cleanup);
     for (size_t i = 0; i < values_cnt; i++) {
         SR_LOG_DBG("Received value for data provider for xpath %s \n", values[i].xpath);
@@ -1285,6 +1282,7 @@ rp_data_provide_resp_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *m
             SR_LOG_WRN("Failed to set operational data for xpath %s", values[i].xpath);
         }
     }
+    //TODO: generate request asking for nested data
     session->dp_req_waiting -= 1;
     if (0 == session->dp_req_waiting) {
         SR_LOG_DBG("All data from data providers has been received session id = %u, reenque the request", session->id);
@@ -1677,6 +1675,9 @@ rp_session_cleanup(const rp_ctx_t *rp_ctx, rp_session_t *session)
     pthread_mutex_destroy(&session->msg_count_mutex);
     pthread_mutex_destroy(&session->cur_req_mutex);
     free(session->change_ctx.xpath);
+    if (NULL != session->req) {
+        sr__msg__free_unpacked(session->req, NULL);
+    }
     free(session);
 
     return SR_ERR_OK;
