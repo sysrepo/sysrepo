@@ -630,6 +630,10 @@ message CommitReleaseReq {
   required uint32 commit_id = 1;
 }
 
+message OperDataTimeoutReq {
+  required Msg original_msg = 1;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // Sysrepo Engine API umbrella messages
 ////////////////////////////////////////////////////////////////////////////////
@@ -792,6 +796,7 @@ message InternalRequest {
 
   optional UnsubscribeDestinationReq unsubscribe_dst_req = 10;
   optional CommitReleaseReq commit_release_req = 11;
+  optional OperDataTimeoutReq oper_data_timeout_req = 12;
 }
 
 /**
