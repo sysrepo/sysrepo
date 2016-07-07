@@ -194,6 +194,14 @@ cl_get_schema_test(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 
     /* get schema for specified module, latest revision */
+    rc = sr_get_schema(session, "module-b", NULL, NULL, SR_SCHEMA_YANG, &schema_content);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_non_null(schema_content);
+    printf("%s\n", schema_content);
+    free(schema_content);
+    schema_content = NULL;
+
+    /* get schema for specified module, latest revision */
     rc = sr_get_schema(session, "module-a", NULL, NULL, SR_SCHEMA_YANG, &schema_content);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(schema_content);
