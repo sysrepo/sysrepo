@@ -488,8 +488,8 @@ dm_find_module_schema(dm_ctx_t *dm_ctx, const char *module_name, const struct ly
 {
     CHECK_NULL_ARG2(dm_ctx, module_name);
     const struct lys_module *m = NULL;
-    dm_get_module(dm_ctx, module_name, NULL, &m);
-    if (NULL != module) {
+    int rc = dm_get_module(dm_ctx, module_name, NULL, &m);
+    if (SR_ERR_OK == rc && NULL != module) {
         *module = m;
     }
     return m == NULL || dm_is_module_disabled(dm_ctx, module_name) ? SR_ERR_UNKNOWN_MODEL : SR_ERR_OK;
@@ -2701,8 +2701,6 @@ dm_install_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revisio
     if (NULL == module) {
         SR_LOG_ERR("Module %s with revision %s was not found", module_name, revision);
         return SR_ERR_NOT_FOUND;
-    } else {
-        return SR_ERR_OK;
     }
 
     /* insert module into the dependency graph */
