@@ -614,15 +614,18 @@ void get_value_wrapper_test(void **state){
 
     /* whole model xpath*/
 
+    ses_ctx->state = RP_REQ_NEW;
     value = NULL;
     rc = rp_dt_get_value_wrapper(ctx, ses_ctx, "/test-module:*", &value);
     assert_int_equal(SR_ERR_INVAL_ARG, rc);
 
     /* not existing data tree*/
+    ses_ctx->state = RP_REQ_NEW;
     rc = rp_dt_get_value_wrapper(ctx, ses_ctx, "/small-module:item", &value);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
     /* not exisiting now in existing data tree*/
+    ses_ctx->state = RP_REQ_NEW;
     rc = rp_dt_get_value_wrapper(ctx, ses_ctx, "/example-module:container/list[key1='abc'][key2='def']", &value);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
@@ -693,6 +696,7 @@ default_nodes_test(void **state)
     rc = rp_dt_set_item_wrapper(ctx, ses_ctx, "/test-module:with_def[name='withdef']", NULL, SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
+    ses_ctx->state = RP_REQ_NEW;
     rc = rp_dt_get_value_wrapper(ctx, ses_ctx, "/test-module:with_def[name='withdef']/num", &val);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);
@@ -710,6 +714,7 @@ default_nodes_test(void **state)
     rc = rp_dt_set_item_wrapper(ctx, ses_ctx, "/test-module:with_def[name='withother']/num", v, SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
+    ses_ctx->state = RP_REQ_NEW;
     rc = rp_dt_get_value_wrapper(ctx, ses_ctx, "/test-module:with_def[name='withother']/num", &val);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);
@@ -727,6 +732,7 @@ default_nodes_test(void **state)
     rc = rp_dt_set_item_wrapper(ctx, ses_ctx, "/test-module:with_def[name='withexpl']/num", v, SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
+    ses_ctx->state = RP_REQ_NEW;
     rc = rp_dt_get_value_wrapper(ctx, ses_ctx, "/test-module:with_def[name='withexpl']/num", &val);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);
@@ -746,6 +752,7 @@ default_nodes_test(void **state)
     rc = rp_dt_set_item_wrapper(ctx, ses_ctx, "/test-module:with_def[name='withmodifdef']/num", v, SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
+    ses_ctx->state = RP_REQ_NEW;
     rc = rp_dt_get_value_wrapper(ctx, ses_ctx, "/test-module:with_def[name='withmodifdef']/num", &val);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);
@@ -757,12 +764,14 @@ default_nodes_test(void **state)
     assert_int_equal(SR_ERR_OK, rc);
 
     /* check after commit */
+    ses_ctx->state = RP_REQ_NEW;
     rc = rp_dt_get_value_wrapper(ctx, ses_ctx, "/test-module:with_def[name='withdef']/num", &val);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);
     assert_true(val->dflt);
     sr_free_val(val);
 
+    ses_ctx->state = RP_REQ_NEW;
     rc = rp_dt_get_value_wrapper(ctx, ses_ctx, "/test-module:with_def[name='withother']/num", &val);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);
@@ -770,12 +779,14 @@ default_nodes_test(void **state)
     assert_false(val->dflt);
     sr_free_val(val);
 
+    ses_ctx->state = RP_REQ_NEW;
     rc = rp_dt_get_value_wrapper(ctx, ses_ctx, "/test-module:with_def[name='withexpl']/num", &val);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);
     assert_false(val->dflt);
     sr_free_val(val);
 
+    ses_ctx->state = RP_REQ_NEW;
     rc = rp_dt_get_value_wrapper(ctx, ses_ctx, "/test-module:with_def[name='withmodifdef']/num", &val);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);
@@ -793,6 +804,7 @@ default_nodes_test(void **state)
     rc = rp_dt_set_item_wrapper(ctx, ses_ctx, "/test-module:with_def[name='withdef']/num", v, SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
+    ses_ctx->state = RP_REQ_NEW;
     rc = rp_dt_get_value_wrapper(ctx, ses_ctx, "/test-module:with_def[name='withdef']/num", &val);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);
@@ -830,6 +842,7 @@ default_nodes_toplevel_test(void **state)
     /* lyd_validate doesn't remove the default - test that correct flags are set*/
     rc = dm_validate_session_data_trees(ctx->dm_ctx, ses_ctx->dm_session, &errors, &e_cnt);
     assert_int_equal(SR_ERR_OK, rc);
+    ses_ctx->state = RP_REQ_NEW;
     rc = rp_dt_get_value_wrapper(ctx, ses_ctx, "/test-module:top-level-default", &val);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);
@@ -841,6 +854,7 @@ default_nodes_toplevel_test(void **state)
     assert_int_equal(SR_ERR_OK, rc);
 
     /* default leaf can not be removed */
+    ses_ctx->state = RP_REQ_NEW;
     rc = rp_dt_get_value_wrapper(ctx, ses_ctx, "/test-module:top-level-default", &val);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);
@@ -853,6 +867,7 @@ default_nodes_toplevel_test(void **state)
     assert_int_equal(SR_ERR_OK, rc);
 
     /* top-level default value with empty data tree */
+    ses_ctx->state = RP_REQ_NEW;
     rc = rp_dt_get_value_wrapper(ctx, ses_ctx, "/test-module:top-level-default", &val);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);

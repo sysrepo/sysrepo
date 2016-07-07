@@ -34,6 +34,8 @@ sr_gpb_operation_name(Sr__Operation operation)
         return "session-refresh";
     case SR__OPERATION__SESSION_SWITCH_DS:
         return "session-switch-ds";
+    case SR__OPERATION__SESSION_SET_OPTS:
+        return "session-set-opts";
     case SR__OPERATION__LIST_SCHEMAS:
         return "list-schemas";
     case SR__OPERATION__GET_SCHEMA:
@@ -135,6 +137,12 @@ sr_gpb_req_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__M
             CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__session_switch_ds_req__init((Sr__SessionSwitchDsReq*)sub_msg);
             req->session_switch_ds_req = (Sr__SessionSwitchDsReq*)sub_msg;
+            break;
+        case SR__OPERATION__SESSION_SET_OPTS:
+            sub_msg = calloc(1, sizeof(Sr__SessionSetOptsReq));
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
+            sr__session_set_opts_req__init((Sr__SessionSetOptsReq*)sub_msg);
+            req->session_set_opts_req = (Sr__SessionSetOptsReq*)sub_msg;
             break;
         case SR__OPERATION__LIST_SCHEMAS:
             sub_msg = calloc(1, sizeof(Sr__ListSchemasReq));
@@ -327,6 +335,12 @@ sr_gpb_resp_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__
            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
            sr__session_switch_ds_resp__init((Sr__SessionSwitchDsResp*)sub_msg);
            resp->session_switch_ds_resp = (Sr__SessionSwitchDsResp*)sub_msg;
+           break;
+        case SR__OPERATION__SESSION_SET_OPTS:
+           sub_msg = calloc(1, sizeof(Sr__SessionSetOptsResp));
+           CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
+           sr__session_set_opts_resp__init((Sr__SessionSetOptsResp*)sub_msg);
+           resp->session_set_opts_resp = (Sr__SessionSetOptsResp*)sub_msg;
            break;
         case SR__OPERATION__LIST_SCHEMAS:
             sub_msg = calloc(1, sizeof(Sr__ListSchemasResp));
@@ -654,6 +668,9 @@ sr_gpb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__O
             case SR__OPERATION__SESSION_SWITCH_DS:
                 CHECK_NULL_RETURN(msg->request->session_switch_ds_req, SR_ERR_MALFORMED_MSG);
                 break;
+            case SR__OPERATION__SESSION_SET_OPTS:
+                CHECK_NULL_RETURN(msg->request->session_set_opts_req, SR_ERR_MALFORMED_MSG);
+                break;
             case SR__OPERATION__LIST_SCHEMAS:
                 CHECK_NULL_RETURN(msg->request->list_schemas_req, SR_ERR_MALFORMED_MSG);
                 break;
@@ -738,6 +755,9 @@ sr_gpb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__O
                 break;
             case SR__OPERATION__SESSION_SWITCH_DS:
                 CHECK_NULL_RETURN(msg->response->session_switch_ds_resp, SR_ERR_MALFORMED_MSG);
+                break;
+            case SR__OPERATION__SESSION_SET_OPTS:
+                CHECK_NULL_RETURN(msg->response->session_set_opts_resp, SR_ERR_MALFORMED_MSG);
                 break;
             case SR__OPERATION__LIST_SCHEMAS:
                 CHECK_NULL_RETURN(msg->response->list_schemas_resp, SR_ERR_MALFORMED_MSG);

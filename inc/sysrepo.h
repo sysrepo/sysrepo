@@ -406,6 +406,15 @@ int sr_session_refresh(sr_session_ctx_t *session);
 int sr_session_switch_ds(sr_session_ctx_t *session, sr_datastore_t ds);
 
 /**
+ * @brief Alter the session options.
+ *
+ * @param [in] session
+ * @param [in] opts
+ * @return Error code (SR_ERR_OK on success)
+ */
+int sr_session_set_options(sr_session_ctx_t *session, const sr_sess_options_t opts);
+
+/**
  * @brief Retrieves detailed information about the error that has occurred
  * during the last operation executed within provided session.
  *
