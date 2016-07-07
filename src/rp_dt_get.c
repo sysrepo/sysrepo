@@ -218,8 +218,8 @@ rp_dt_xpath_requests_state_data(rp_ctx_t *rp_ctx, const char *module_name, const
     rc = np_get_data_provider_subscriptions(rp_ctx->np_ctx, module_name, &subs, &subs_cnt);
     CHECK_RC_MSG_RETURN(rc, "Get data provider subscriptions failed");
 
-    //TODo: optimize which data are loaded, a predicate refer to a node at the different level or state node
-    //TOODO: optimize xpath which should be used in request
+    //TODO: optimize which data are loaded, a predicate refer to a node at the different level or state node
+    //TODO: optimize xpath which should be used in request
 
     *subscriptions_arr = subs;
     *subscriptions_cnt = subs_cnt;
@@ -230,7 +230,8 @@ rp_dt_xpath_requests_state_data(rp_ctx_t *rp_ctx, const char *module_name, const
 }
 
 /**
- * @brief Loads configuration data and asks for state data if needed.
+ * @brief Loads configuration data and asks for state data if needed. Request
+ * can enter this function in RP_REQ_NEW state or RP_REQ_FINISHED.
  *
  * @param [in] rp_ctx
  * @param [in] rp_session
@@ -290,8 +291,6 @@ rp_dt_prepare_data(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char *xpath
             }
             free(subscriptions);
 
-
-
             rp_session->state = RP_REQ_WAITING_FOR_DATA;
 
             //TODO: setup timer
@@ -303,7 +302,8 @@ rp_dt_prepare_data(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char *xpath
         SR_LOG_DBG("Session id = %u data loaded, continue processing", rp_session->id);
         rc = dm_get_datatree(rp_ctx->dm_ctx, rp_session->dm_session, data_tree_name, data_tree);
     } else {
-        SR_LOG_DBG("Session id = %u is in invalid state.", rp_session->id);
+        SR_LOG_ERR("Session id = %u is in invalid state.", rp_session->id);
+        rc = SR_ERR_INTERNAL;
     }
 
 cleanup:

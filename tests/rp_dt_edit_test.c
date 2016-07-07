@@ -82,6 +82,7 @@ void delete_item_leaf_test(void **state){
     rc = rp_dt_delete_item_wrapper(ctx, session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
+    session->state = RP_REQ_NEW;
     rc = rp_dt_get_value_wrapper(ctx, session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &val);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
@@ -89,6 +90,7 @@ void delete_item_leaf_test(void **state){
 
     /* delete non existing leaf*/
     test_rp_sesssion_create(ctx, SR_DS_STARTUP, &session);
+    session->state = RP_REQ_NEW;
     rc = rp_dt_get_value_wrapper(ctx, session, "/example-module:container/list[key1='abc'][key2='abc']/leaf", &val);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
 

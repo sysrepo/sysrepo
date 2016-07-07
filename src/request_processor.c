@@ -333,9 +333,12 @@ rp_get_item_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, b
         session->state = RP_REQ_NEW;
     } else if (RP_REQ_WAITING_FOR_DATA == session->state) {
         if (msg == session->req) {
-            SR_LOG_ERR("Time out waiting for operational data expired, session id = %u", session->id);
+            SR_LOG_ERR("Time out waiting for operational data expired before all responses have been received, session id = %u", session->id);
         } else {
-            //TODO handle probably invalid state
+            SR_LOG_ERR("A request was not processed, probably invalid state, session id = %u", session->id);
+            sr__msg__free_unpacked(session->req, NULL);
+            session->req = NULL;
+            session->state = RP_REQ_NEW;
         }
     }
 
