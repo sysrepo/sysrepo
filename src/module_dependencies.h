@@ -26,6 +26,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stddef.h>
+#include <pthread.h>
 
 #include "sr_common.h"
 
@@ -75,14 +76,17 @@ typedef struct md_module_s {
 
 /*
  * @brief Context used to represent complete, transitively-closed, module dependency graph in-memory (using adjacency lists).
- *        Working with the same context from multiple threads is not safe!
+ *        If the context is accessed from multiple threads, use ::md_ctx_lock and ::md_ctx_unlock to protect it.
  */
 typedef struct md_ctx_s {
+    pthread_mutex_t lock;            /**< Lock for protecting members of md_ctx_t, needs to be obtained manually using ::md_ctx_lock
+                                          and released using ::md_ctx_unlock */
     char *schema_search_dir;         /**< Path to the directory with schema files. */
     int fd;                          /**< file descriptor associated with sysrepo-module-dependencies.xml,
                                           held only if the file is locked for RW-access, otherwise has value "-1". */
 
     struct ly_ctx *ly_ctx;           /**< libyang context used for manipulation with the internal data file for dependencies. */
+    pthread_rwlock_t *lyctx_lock;    /**< lock (from outside this context) used to protect ly_ctx, can be NULL */
     struct lyd_node *data_tree;      /**< Graph data as loaded by libyang (not transitively closed).
                                           Also reflects changes made using ::md_insert_module and ::md_remove_module */
 
@@ -97,6 +101,10 @@ typedef struct md_ctx_s {
  * @brief Create context and load the internal data file with module dependencies.
  * Caller should eventually release the context using ::md_destroy.
  *
+ * @param [in] ly_ctx libyang context that will be used to load the schema of the internal data
+ *             file modelling dependency graph
+ * @param [in] lyctx_lock Lock (from the outside of md context) used to protect ly_ctx,
+ *             can be NULL
  * @param [in] schema_search_dir Path to the directory with schema files
  *             (e.g. SR_SCHEMA_SEARCH_DIR)
  * @param [in] internal_schema_search_dir Path to the directory with internal schema files
@@ -107,18 +115,34 @@ typedef struct md_ctx_s {
  *             for editing until the context is destroyed
  * @param [out] md_ctx Context reference output location
  */
-int md_init(const char *schema_search_dir, const char *internal_schema_search_dir, const char *internal_data_search_dir,
+int md_init(struct ly_ctx *ly_ctx, pthread_rwlock_t *lyctx_lock, const char *schema_search_dir,
+            const char *internal_schema_search_dir, const char *internal_data_search_dir,
             bool write_lock, md_ctx_t **md_ctx);
 
-/*
+/**
+ * @brief Lock Module Dependencies context to ensure that no other thread can access it at the same time.
+ *
+ * @param [in] md_ctx Module Dependencies context
+ */
+void md_ctx_lock(md_ctx_t *md_ctx);
+
+/**
+ * @brief Unlock Module Dependencies context.
+ *
+ * @brief [in] md_ctx Module Dependencies context
+ */
+void md_ctx_unlock(md_ctx_t *md_ctx);
+
+/**
  * @brief Free all internal resources associated with the specified Module Dependencies context.
- * Do not access any data returned by md_* functions for this context after this call.
+ *        Do not access any data returned by md_* functions for this context after this call.
  *
  * @param [in] md_ctx Module Dependencies context
  */
 int md_destroy(md_ctx_t *md_ctx);
 
-/* @brief Get dependency-related information for a given module.
+/**
+ * @brief Get dependency-related information for a given module.
  *        "revision" set to NULL represents the latest revision.
  *
  * @note O(log |V|) where V is a set of all modules.
@@ -131,7 +155,7 @@ int md_destroy(md_ctx_t *md_ctx);
 int md_get_module_info(const md_ctx_t *md_ctx, const char *name, const char *revision,
                        md_module_t **module);
 
-/*
+/**
  * @brief Create and return fullname of a module. Afterwards can be accessed using only module->fullname.
  *        Any allocated memory will be automatically deallocated in ::md_destroy.
  *
@@ -171,7 +195,7 @@ int md_insert_module(md_ctx_t *md_ctx, const char *filepath);
  */
 int md_remove_module(md_ctx_t *md_ctx, const char *name, const char *revision);
 
-/*
+/**
  * @brief Output the in-memory stored dependency graph from the given context into the internal data file
  *        (sysrepo-module-dependencies.xml). The context has to be created with write-lock activated
  *        otherwise the function will return SR_ERR_INVAL_ARG.

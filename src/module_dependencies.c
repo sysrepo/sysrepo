@@ -351,8 +351,9 @@ md_transitive_closure(md_ctx_t *md_ctx)
 }
 
 int
-md_init(const char *schema_search_dir, const char *internal_schema_search_dir, const char *internal_data_search_dir,
-        bool write_lock, md_ctx_t **md_ctx)
+md_init(struct ly_ctx *ly_ctx, pthread_rwlock_t *lyctx_lock, const char *schema_search_dir,
+        const char *internal_schema_search_dir, const char *internal_data_search_dir, bool write_lock,
+        md_ctx_t **md_ctx)
 {
     int rc = SR_ERR_OK;
     md_ctx_t *ctx = NULL;
@@ -373,16 +374,19 @@ md_init(const char *schema_search_dir, const char *internal_schema_search_dir, c
     CHECK_NULL_NOMEM_GOTO(ctx, rc, fail);
     ctx->fd = -1;
 
+    /* Initialize pthread mutex */
+    pthread_mutex_init(&ctx->lock, NULL);
+
+    /* Keep pointer to libyang context */
+    ctx->ly_ctx = ly_ctx;
+    ctx->lyctx_lock = lyctx_lock;
+    if (ctx->lyctx_lock) {
+        pthread_rwlock_wrlock(ctx->lyctx_lock);
+    }
+
     /* Copy schema search directory */
     ctx->schema_search_dir = strdup(schema_search_dir);
     CHECK_NULL_NOMEM_GOTO(ctx->schema_search_dir, rc, fail);
-
-    /* Initialize libyang context */
-    ctx->ly_ctx = ly_ctx_new(internal_schema_search_dir);
-    if (NULL == ctx->ly_ctx) {
-        SR_LOG_ERR("Unable to initialize libyang context: %s", ly_errmsg());
-        goto fail;
-    }
 
     /* Initialize the list of modules */
     rc = sr_llist_init(&ctx->modules);
@@ -567,6 +571,9 @@ md_init(const char *schema_search_dir, const char *internal_schema_search_dir, c
     }
 
     rc = SR_ERR_OK;
+    if (ctx && ctx->lyctx_lock) {
+        pthread_rwlock_unlock(ctx->lyctx_lock);
+    }
     free(schema_filepath);
     free(data_filepath);
     *md_ctx = ctx;
@@ -574,6 +581,9 @@ md_init(const char *schema_search_dir, const char *internal_schema_search_dir, c
 
 fail:
     rc = SR_ERR_INTERNAL;
+    if (ctx && ctx->lyctx_lock) {
+        pthread_rwlock_unlock(ctx->lyctx_lock);
+    }
     md_destroy(ctx);
     free(schema_filepath);
     free(data_filepath);
@@ -581,18 +591,34 @@ fail:
     return rc;
 }
 
+void
+md_ctx_lock(md_ctx_t *md_ctx)
+{
+    pthread_mutex_lock(&md_ctx->lock);
+}
+
+void
+md_ctx_unlock(md_ctx_t *md_ctx)
+{
+    pthread_mutex_unlock(&md_ctx->lock);
+}
+
 int
 md_destroy(md_ctx_t *md_ctx)
 {
     if (md_ctx) {
+        pthread_mutex_trylock(&md_ctx->lock);
         if (md_ctx->schema_search_dir) {
             free(md_ctx->schema_search_dir);
+        }
+        if (md_ctx->lyctx_lock) {
+            pthread_rwlock_wrlock(md_ctx->lyctx_lock);
         }
         if (md_ctx->data_tree) {
             lyd_free_withsiblings(md_ctx->data_tree);
         }
-        if (md_ctx->ly_ctx) {
-            ly_ctx_destroy(md_ctx->ly_ctx, NULL);
+        if (md_ctx->lyctx_lock) {
+            pthread_rwlock_unlock(md_ctx->lyctx_lock);
         }
         if (-1 != md_ctx->fd) {
             close(md_ctx->fd); /*< auto-unlock */
@@ -603,6 +629,8 @@ md_destroy(md_ctx_t *md_ctx)
         if (md_ctx->modules_btree) {
             sr_btree_cleanup(md_ctx->modules_btree);
         }
+        pthread_mutex_unlock(&md_ctx->lock);
+        pthread_mutex_destroy(&md_ctx->lock);
         free(md_ctx);
     }
     return SR_ERR_OK;
@@ -783,7 +811,7 @@ md_insert_lys_module(md_ctx_t *md_ctx, const struct lys_module *module_schema, c
                 /* already installed */
                 if (!dependency) {
                     rc = SR_ERR_INVAL_ARG;
-                    SR_LOG_ERR("Module '%s' is already installed.", md_get_module_fullname(module));
+                    SR_LOG_WRN("Module '%s' is already installed.", md_get_module_fullname(module));
                 } else {
                     rc = SR_ERR_OK;
                 }
@@ -1040,7 +1068,13 @@ md_insert_module(md_ctx_t *md_ctx, const char *filepath)
     }
 
     /* insert module into the dependency graph */
+    if (md_ctx->lyctx_lock) {
+        pthread_rwlock_wrlock(md_ctx->lyctx_lock);
+    }
     rc = md_insert_lys_module(md_ctx, module_schema, md_get_module_revision(module_schema), false);
+    if (md_ctx->lyctx_lock) {
+        pthread_rwlock_unlock(md_ctx->lyctx_lock);
+    }
     if (rc != SR_ERR_OK) {
         goto cleanup;
     }
@@ -1156,6 +1190,9 @@ md_remove_module(md_ctx_t *md_ctx, const char *name, const char *revision)
     }
 
     /* update libyang's data tree, first set the new latest_revision if there is one */
+    if (md_ctx->lyctx_lock) {
+        pthread_rwlock_wrlock(md_ctx->lyctx_lock);
+    }
     if (NULL != latest) {
         latest->latest_revision = true;
         snprintf(xpath, PATH_MAX, MD_XPATH_MODULE_LATEST_REV_FLAG, latest->name, latest->revision_date);
@@ -1163,6 +1200,9 @@ md_remove_module(md_ctx_t *md_ctx, const char *name, const char *revision)
         node_data = lyd_new_path(md_ctx->data_tree, md_ctx->ly_ctx, xpath, "true", LYD_PATH_OPT_UPDATE);
         if (!node_data && LY_SUCCESS != ly_errno) {
             SR_LOG_ERR("Failed to set latest-revision flag for module '%s': %s", md_get_module_fullname(latest), ly_errmsg());
+            if (md_ctx->lyctx_lock) {
+                pthread_rwlock_unlock(md_ctx->lyctx_lock);
+            }
             return SR_ERR_INTERNAL;
         }
     }
@@ -1211,7 +1251,13 @@ md_remove_module(md_ctx_t *md_ctx, const char *name, const char *revision)
 
     /* now remove the module entry from the data tree */
     node_data = module->ly_data;
+    if (md_ctx->data_tree == node_data) {
+        md_ctx->data_tree = node_data->next;
+    }
     lyd_free(node_data);
+    if (md_ctx->lyctx_lock) {
+        pthread_rwlock_unlock(md_ctx->lyctx_lock);
+    }
 
     /* finally remove the module itself */
     sr_llist_rm(md_ctx->modules, module->ll_node);
@@ -1238,7 +1284,13 @@ md_flush(md_ctx_t *md_ctx)
 
     ret = ftruncate(md_ctx->fd, 0);
     CHECK_ZERO_MSG_RETURN(ret, SR_ERR_INTERNAL, "Failed to truncate the internal data file '" MD_DATA_FILENAME"'.");
+    if (md_ctx->lyctx_lock) {
+        pthread_rwlock_rdlock(md_ctx->lyctx_lock);
+    }
     ret = lyd_print_fd(md_ctx->fd, md_ctx->data_tree, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT);
+    if (md_ctx->lyctx_lock) {
+        pthread_rwlock_unlock(md_ctx->lyctx_lock);
+    }
     if (0 != ret) {
         SR_LOG_ERR("Unable to export data tree with dependencies: %s", ly_errmsg());
         return SR_ERR_INTERNAL;

@@ -37,6 +37,21 @@
 #include "system_helper.h"
 #include "module_dependencies.h"
 
+
+/**
+ * @brief Always get a new instance of libyang context, while the old one is released.
+ */
+static struct ly_ctx *
+srctl_get_new_ly_ctx()
+{
+    static struct ly_ctx *ly_ctx = NULL;
+    if (NULL != ly_ctx) {
+        ly_ctx_destroy(ly_ctx, NULL);
+    }
+    ly_ctx = ly_ctx_new(TEST_SCHEMA_SEARCH_DIR);
+    return ly_ctx;
+}
+
 static void
 sysrepoctl_test_version(void **state)
 {
@@ -90,8 +105,8 @@ sysrepoctl_test_uninstall(void **state)
     exec_shell_command("../src/sysrepoctl -l", "ietf-interfaces", true, 0);
 
     /* check the internal data file with module dependencies */
-    rc = md_init(TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal/", TEST_DATA_SEARCH_DIR "internal/",
-                 false, &md_ctx);
+    rc = md_init(srctl_get_new_ly_ctx(), NULL, TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal/", 
+                 TEST_DATA_SEARCH_DIR "internal/", false, &md_ctx);
     assert_int_equal(0, rc);
     rc = md_get_module_info(md_ctx, "ietf-ip", "2014-06-16", &module);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
@@ -125,8 +140,8 @@ sysrepoctl_test_uninstall(void **state)
     exec_shell_command("../src/sysrepoctl -l", "!ietf-interfaces", true, 0);
 
     /* check the internal data file with module dependencies */
-    rc = md_init(TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal/", TEST_DATA_SEARCH_DIR "internal/",
-                 false, &md_ctx);
+    rc = md_init(srctl_get_new_ly_ctx(), NULL, TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal/", 
+                 TEST_DATA_SEARCH_DIR "internal/", false, &md_ctx);
     assert_int_equal(0, rc);
     rc = md_get_module_info(md_ctx, "ietf-interfaces", "2014-05-08", &module);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
@@ -172,8 +187,8 @@ sysrepoctl_test_install(void **state)
     exec_shell_command("../src/sysrepoctl -l", buff, true, 0);
 
     /* check the internal data file with module dependencies */
-    rc = md_init(TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal/", TEST_DATA_SEARCH_DIR "internal/",
-                 false, &md_ctx);
+    rc = md_init(srctl_get_new_ly_ctx(), NULL, TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal/", 
+                 TEST_DATA_SEARCH_DIR "internal/", false, &md_ctx);
     assert_int_equal(0, rc);
     rc = md_get_module_info(md_ctx, "ietf-ip", "2014-06-16", &module);
     assert_int_equal(SR_ERR_OK, rc);
@@ -272,8 +287,8 @@ sysrepoctl_test_init(void **state)
                                    TEST_SCHEMA_SEARCH_DIR "ietf-interfaces@2014-05-08.yang");
     exec_shell_command(buff, ".*", true, 0);
 
-    /* no owner, permissions */
-    exec_shell_command("../src/sysrepoctl -l", "ietf-interfaces[[:space:]]*\\| 2014-05-08 \\|[[:space:]]*\\|[[:space:]]*\\|", true, 0);
+    /* not fully installed */
+    exec_shell_command("../src/sysrepoctl -l", "!ietf-interfaces", true, 0);
 
     /* initialize ietf-interfaces with already installed schema */
     snprintf(buff, PATH_MAX, "../src/sysrepoctl --init --module=ietf-interfaces --owner=%s --permissions=644", user);
@@ -330,8 +345,8 @@ sysrepoctl_test_init(void **state)
     test_file_permissions(TEST_DATA_SEARCH_DIR "ietf-interfaces.persist", mode);
 
     /* check the internal data file with module dependencies */
-    rc = md_init(TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal/", TEST_DATA_SEARCH_DIR "internal/",
-                 false, &md_ctx);
+    rc = md_init(srctl_get_new_ly_ctx(), NULL, TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal/", 
+                 TEST_DATA_SEARCH_DIR "internal/", false, &md_ctx);
     assert_int_equal(0, rc);
     rc = md_get_module_info(md_ctx, "ietf-ip", "2014-06-16", &module);
     assert_int_equal(SR_ERR_OK, rc);

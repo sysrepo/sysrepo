@@ -206,7 +206,7 @@ srcfg_ly_init(struct ly_ctx **ly_ctx, const char *module_name)
     ly_set_log_clb(srcfg_ly_log_cb, 1);
 
     /* init module dependencies context */
-    rc = md_init(srcfg_schema_search_dir, srcfg_internal_schema_search_dir, srcfg_internal_data_search_dir,
+    rc = md_init(*ly_ctx, NULL, srcfg_schema_search_dir, srcfg_internal_schema_search_dir, srcfg_internal_data_search_dir,
                  false, &md_ctx);
     if (SR_ERR_OK != rc) {
         fprintf(stderr, "Error: Failed to initialize module dependencies context.\n");
@@ -1128,6 +1128,7 @@ main(int argc, char* argv[])
     }
 
     /* parse options */
+    int curind = optind;
     while ((c = getopt_long(argc, argv, ":hvd:f:e:i:x:kpl:0:", longopts, NULL)) != -1) {
         switch (c) {
             case 'h':
@@ -1197,7 +1198,7 @@ main(int argc, char* argv[])
                         operation = SRCFG_OP_EXPORT;
                         break;
                     default:
-                        fprintf(stderr, "%s: option `-%c' requires an argument\n", argv[0], optopt);
+                        fprintf(stderr, "%s: Option '-%c' requires an argument.\n", argv[0], optopt);
                         rc = SR_ERR_INVAL_ARG;
                         goto terminate;
                 }
@@ -1205,10 +1206,15 @@ main(int argc, char* argv[])
             case '?':
             default:
                 /* invalid option */
-                fprintf(stderr, "%s: option `-%c' is invalid. Exiting.\n", argv[0], optopt);
+                if ('\0' != optopt) {
+                    fprintf(stderr, "%s: Unrecognized short option: '-%c'.\n", argv[0], optopt);
+                } else {
+                    fprintf(stderr, "%s: Unrecognized long option: '%s'.\n", argv[0], argv[curind]);
+                }
                 rc = SR_ERR_INVAL_ARG;
                 goto terminate;
         }
+        curind = optind;
     }
 
     /* check argument values */
