@@ -645,7 +645,7 @@ message CommitReleaseReq {
 }
 
 message OperDataTimeoutReq {
-  required Msg original_msg = 1;
+  required uint64 request_id = 1;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -692,6 +692,7 @@ enum Operation {
 
   UNSUBSCRIBE_DESTINATION = 101;
   COMMIT_RELEASE = 102;
+  OPER_DATA_TIMEOUT = 103;
 }
 
 /**
