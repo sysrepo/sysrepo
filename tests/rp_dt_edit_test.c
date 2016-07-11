@@ -532,6 +532,14 @@ void set_item_leaf_test(void **state){
     sr_free_val(val);
     sr_free_val_content(&v);
 
+    /* try to create leaf with incorrect type (uint32 instead of expected string) */
+    v.xpath = NULL;
+    v.type = SR_UINT32_T;
+    v.data.uint32_val = 42;
+
+    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/test-module:main/string", SR_EDIT_DEFAULT, &v);
+    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+
     test_rp_session_cleanup(ctx, session);
 }
 
