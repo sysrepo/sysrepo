@@ -1166,16 +1166,16 @@ srctl_print_help()
     printf("Available operation-options:\n");
     printf("  -h, --help             Prints usage help.\n");
     printf("  -v, --version          Prints version.\n");
-    printf("  -L, --level            Set verbosity level of logging ([0 - 4], 0 = all logging turned off).\n");
     printf("  -l, --list             Lists YANG modules installed in sysrepo.\n");
     printf("  -i, --install          Installs specified schema into sysrepo (--yang or --yin must be specified).\n");
-    printf("  -I, --init             Initializes already installed YANG/YIN schema (--module must be specified).\n");
+    printf("  -t, --init             Initializes already installed YANG/YIN schema (--module must be specified).\n");
     printf("  -u, --uninstall        Uninstalls specified schema from sysrepo (--module must be specified).\n");
     printf("  -c, --change           Changes specified module in sysrepo (--module must be specified).\n");
     printf("  -e, --feature-enable   Enables a feature within a module in sysrepo (feature name is the argument, --module must be specified).\n");
     printf("  -d, --feature-disable  Disables a feature within a module in sysrepo (feature name is the argument, --module must be specified).\n");
     printf("\n");
     printf("Available other-options:\n");
+    printf("  -L, --level            Set verbosity level of logging ([0 - 4], 0 = all logging turned off).\n");
     printf("  -g, --yang             Path to the file with schema in YANG format (--install operation).\n");
     printf("  -n, --yin              Path to the file with schema in YIN format (--install operation).\n");
     printf("  -m, --module           Name of the module to be operated on (--init, --uninstall, --change, --feature-enable, --feature-disable operations).\n");
@@ -1214,7 +1214,7 @@ main(int argc, char* argv[])
        { "level",           required_argument, NULL, 'L' },
        { "list",            no_argument,       NULL, 'l' },
        { "install",         no_argument,       NULL, 'i' },
-       { "init",            no_argument,       NULL, 'I' },
+       { "init",            no_argument,       NULL, 't' },
        { "uninstall",       no_argument,       NULL, 'u' },
        { "change",          no_argument,       NULL, 'c' },
        { "feature-enable",  required_argument, NULL, 'e' },
@@ -1231,7 +1231,7 @@ main(int argc, char* argv[])
        { 0, 0, 0, 0 }
     };
 
-    while ((c = getopt_long(argc, argv, "hvLliIuce:d:g:n:m:r:o:p:s:0:W;", longopts, NULL)) != -1) {
+    while ((c = getopt_long(argc, argv, "hvLlituce:d:g:n:m:r:o:p:s:0:W;", longopts, NULL)) != -1) {
         switch (c) {
             case 'h':
                 srctl_print_help();
@@ -1322,7 +1322,7 @@ main(int argc, char* argv[])
         case 'i':
             rc = srctl_install(yang, yin, owner, permissions, search_dir);
             break;
-        case 'I':
+        case 't':
             rc = srctl_init(module, revision, owner, permissions);
             break;
         case 'u':
