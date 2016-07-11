@@ -465,6 +465,8 @@ srcfg_convert_lydiff_created(struct lyd_node *node)
                                 if (delim) {
                                     *delim = '\0';
                                 }
+                                /* set type to SR_UNKNOWN_T in order to pass NULL to sr_set_item when a list is created */
+                                value.type = SR_UNKNOWN_T;
                                 goto set_value;
                             } else {
                                 /* create list instance (directly) only once - with the first key */

@@ -478,6 +478,53 @@ sr_lyd_insert_after(dm_data_info_t *data_info, struct lyd_node *sibling, struct 
     return rc;
 }
 
+static sr_type_t
+sr_ly_data_type_to_sr(LY_DATA_TYPE type)
+{
+    switch(type){
+        case LY_TYPE_BINARY:
+            return SR_BINARY_T;
+        case LY_TYPE_BITS:
+            return SR_BITS_T;
+        case LY_TYPE_BOOL:
+            return SR_BOOL_T;
+        case LY_TYPE_DEC64:
+            return SR_DECIMAL64_T;
+        case LY_TYPE_EMPTY:
+            return SR_LEAF_EMPTY_T;
+        case LY_TYPE_ENUM:
+            return SR_ENUM_T;
+        case LY_TYPE_IDENT:
+            return SR_IDENTITYREF_T;
+        case LY_TYPE_INST:
+            return SR_INSTANCEID_T;
+        case LY_TYPE_STRING:
+            return SR_STRING_T;
+        case LY_TYPE_UNION:
+            return SR_UNION_T;
+        case LY_TYPE_INT8:
+            return SR_INT8_T;
+        case LY_TYPE_UINT8:
+            return SR_UINT8_T;
+        case LY_TYPE_INT16:
+            return SR_INT16_T;
+        case LY_TYPE_UINT16:
+            return SR_UINT16_T;
+        case LY_TYPE_INT32:
+            return SR_INT32_T;
+        case LY_TYPE_UINT32:
+            return SR_UINT32_T;
+        case LY_TYPE_INT64:
+            return SR_INT64_T;
+        case LY_TYPE_UINT64:
+            return SR_UINT64_T;
+        default:
+            return SR_UNKNOWN_T;
+            //LY_LEAF_REF
+            //LY_DERIVED
+        }
+}
+
 sr_type_t
 sr_libyang_leaf_get_type(const struct lyd_node_leaf_list *leaf)
 {
@@ -529,6 +576,102 @@ sr_libyang_leaf_get_type(const struct lyd_node_leaf_list *leaf)
             return SR_UNKNOWN_T;
             //LY_DERIVED
         }
+}
+
+int
+sr_check_value_conform_to_schema(const struct lys_node *node, const sr_val_t *value)
+{
+    CHECK_NULL_ARG2(node, value);
+
+    struct lys_node_leaf *leafref = NULL;
+    sr_type_t type = SR_UNKNOWN_T;
+    if (LYS_CONTAINER & node->nodetype) {
+        struct lys_node_container *cont = (struct lys_node_container *) node;
+        type = cont->presence != NULL ? SR_CONTAINER_PRESENCE_T : SR_CONTAINER_T;
+    } else if (LYS_LIST & node->nodetype) {
+        type = SR_LIST_T;
+    } else if ((LYS_LEAF | LYS_LEAFLIST) & node->nodetype) {
+        struct lys_node_leaf *l = (struct lys_node_leaf *) node;
+        switch(l->type.base){
+        case LY_TYPE_BINARY:
+            type = SR_BINARY_T;
+            break;
+        case LY_TYPE_BITS:
+            type = SR_BITS_T;
+            break;
+        case LY_TYPE_BOOL:
+            type = SR_BOOL_T;
+            break;
+        case LY_TYPE_DEC64:
+            type = SR_DECIMAL64_T;
+            break;
+        case LY_TYPE_EMPTY:
+            type = SR_LEAF_EMPTY_T;
+            break;
+        case LY_TYPE_ENUM:
+            type = SR_ENUM_T;
+            break;
+        case LY_TYPE_IDENT:
+            type = SR_IDENTITYREF_T;
+            break;
+        case LY_TYPE_INST:
+            type = SR_INSTANCEID_T;
+            break;
+        case LY_TYPE_LEAFREF:
+            leafref = l->type.info.lref.target;
+            if (NULL != leafref && ((LYS_LEAF | LYS_LEAFLIST) & leafref->nodetype)) {
+                return sr_check_value_conform_to_schema((const struct lys_node *)leafref, value);
+            }
+            break;
+        case LY_TYPE_STRING:
+            type = SR_STRING_T;
+            break;
+        case LY_TYPE_UNION:
+            for (int i = 0; i < l->type.info.uni.count; i++) {
+                type = sr_ly_data_type_to_sr(l->type.info.uni.types[i].base);
+                if (LY_TYPE_LEAFREF == l->type.info.uni.types[i].base) {
+                    leafref = l->type.info.uni.types[i].info.lref.target;
+                    if (SR_ERR_OK == sr_check_value_conform_to_schema((const struct lys_node *)leafref, value)) {
+                        return SR_ERR_OK;
+                    }
+                } else if (value->type == type) {
+                    break;
+                }
+            }
+            break;
+        case LY_TYPE_INT8:
+            type = SR_INT8_T;
+            break;
+        case LY_TYPE_UINT8:
+            type = SR_UINT8_T;
+            break;
+        case LY_TYPE_INT16:
+            type = SR_INT16_T;
+            break;
+        case LY_TYPE_UINT16:
+            type = SR_UINT16_T;
+            break;
+        case LY_TYPE_INT32:
+            type = SR_INT32_T;
+            break;
+        case LY_TYPE_UINT32:
+            type = SR_UINT32_T;
+            break;
+        case LY_TYPE_INT64:
+            type = SR_INT64_T;
+            break;
+        case LY_TYPE_UINT64:
+            type = SR_UINT64_T;
+            break;
+        default:
+            type = SR_UNKNOWN_T;
+            //LY_DERIVED
+        }
+    }
+    if (type != value->type) {
+        SR_LOG_ERR("Value doesn't conform to schema expected %d instead of %d", type, value->type);
+    }
+    return type == value->type ? SR_ERR_OK : SR_ERR_INVAL_ARG;
 }
 
 /**
@@ -731,6 +874,10 @@ sr_val_to_str(const sr_val_t *value, const struct lys_node *schema_node, char **
 {
     CHECK_NULL_ARG3(value, schema_node, out);
     size_t len = 0;
+    int rc = SR_ERR_OK;
+    rc = sr_check_value_conform_to_schema(schema_node, value);
+    CHECK_RC_LOG_RETURN(rc, "Value doesn't conform to schema node %s", schema_node->name);
+
     switch (value->type) {
     case SR_BINARY_T:
         if (NULL != value->data.binary_val) {

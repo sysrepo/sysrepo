@@ -269,6 +269,14 @@ int sr_lyd_insert_before(dm_data_info_t *data_info, struct lyd_node *sibling, st
 sr_type_t sr_libyang_leaf_get_type(const struct lyd_node_leaf_list *leaf);
 
 /**
+ * @brief Checks if the provided value can be set to the specified schema node.
+ * @param [in] node
+ * @parma [in] value
+ * @return Error code (SR_ERR_OK on success)
+ */
+int sr_check_value_conform_to_schema(const struct lys_node *node, const sr_val_t *value);
+
+/**
  * @brief Copies value from lyd_node_leaf_list to the sr_val_t.
  * @param [in] leaf input which is copied
  * @param [in] value where the content is copied to
