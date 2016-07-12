@@ -394,7 +394,7 @@ dm_load_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, 
     sr_llist_node_t *ll_node = NULL;
 
     /* search for the module to use */
-    md_ctx_lock(dm_ctx->md_ctx);
+    md_ctx_lock(dm_ctx->md_ctx, false);
     rc = md_get_module_info(dm_ctx->md_ctx, module_name, revision, &module);
     if (SR_ERR_OK != rc) {
         fprintf(stderr, "Error: Module '%s:%s' is not installed.\n", module_name, revision ? revision : "<latest>");
@@ -441,7 +441,7 @@ dm_load_all_schemas(dm_ctx_t *dm_ctx)
     md_module_t *module = NULL;
     const struct lys_module *module_schema = NULL;
 
-    md_ctx_lock(dm_ctx->md_ctx);
+    md_ctx_lock(dm_ctx->md_ctx, false);
     ll_node = dm_ctx->md_ctx->modules->first;
     while (ll_node) {
         module = (md_module_t *)ll_node->data;
@@ -1075,6 +1075,7 @@ dm_init(ac_ctx_t *ac_ctx, np_ctx_t *np_ctx, pm_ctx_t *pm_ctx, const cm_connectio
     int rc = SR_ERR_OK;
     pthread_rwlockattr_t attr;
     pthread_rwlockattr_init(&attr);
+    char *internal_schema_search_dir = NULL, *internal_data_search_dir = NULL;
     ctx = calloc(1, sizeof(*ctx));
     CHECK_NULL_NOMEM_GOTO(ctx, rc, cleanup);
     ctx->ac_ctx = ac_ctx;
@@ -1117,8 +1118,12 @@ dm_init(ac_ctx_t *ac_ctx, np_ctx_t *np_ctx, pm_ctx_t *pm_ctx, const cm_connectio
     rc = pthread_rwlock_init(&ctx->commit_ctxs.lock, &attr);
     CHECK_ZERO_MSG_GOTO(rc, rc, SR_ERR_INTERNAL, cleanup, "c_ctxs_lock init failed");
 
-    rc = md_init(ctx->ly_ctx, &ctx->lyctx_lock, SR_SCHEMA_SEARCH_DIR,  SR_INTERNAL_SCHEMA_SEARCH_DIR,
-                 SR_INTERNAL_DATA_SEARCH_DIR, false, &ctx->md_ctx);
+    rc = sr_str_join(schema_search_dir, "internal/", &internal_schema_search_dir);
+    CHECK_ZERO_MSG_GOTO(rc, rc, SR_ERR_INTERNAL, cleanup, "sr_str_join failed");
+    rc = sr_str_join(data_search_dir, "internal/", &internal_data_search_dir);
+    CHECK_ZERO_MSG_GOTO(rc, rc, SR_ERR_INTERNAL, cleanup, "sr_str_join failed");
+    rc = md_init(ctx->ly_ctx, &ctx->lyctx_lock, schema_search_dir, internal_schema_search_dir,
+                 internal_data_search_dir, false, &ctx->md_ctx);
     if (SR_ERR_OK != rc) {
         fprintf(stderr, "Error: Failed to initialize Module Dependencies context.\n");
         goto cleanup;
@@ -1130,6 +1135,8 @@ dm_init(ac_ctx_t *ac_ctx, np_ctx_t *np_ctx, pm_ctx_t *pm_ctx, const cm_connectio
     }
 
 cleanup:
+    free(internal_schema_search_dir);
+    free(internal_data_search_dir);
     pthread_rwlockattr_destroy(&attr);
     if (SR_ERR_OK != rc) {
         dm_cleanup(ctx);
@@ -2704,7 +2711,7 @@ dm_install_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revisio
     }
 
     /* insert module into the dependency graph */
-    md_ctx_lock(dm_ctx->md_ctx);
+    md_ctx_lock(dm_ctx->md_ctx, true);
     rc = md_insert_module(dm_ctx->md_ctx, module->filepath);
     md_ctx_unlock(dm_ctx->md_ctx);
     if (SR_ERR_INVAL_ARG == rc) {
@@ -2725,7 +2732,7 @@ dm_uninstall_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revis
     int rc = SR_ERR_OK;
     md_module_t *module = NULL;
 
-    md_ctx_lock(dm_ctx->md_ctx);
+    md_ctx_lock(dm_ctx->md_ctx, true);
     rc = md_get_module_info(dm_ctx->md_ctx, module_name, revision, &module);
 
     if (NULL == module) {
@@ -2895,6 +2902,23 @@ cleanup:
     }
     free(fds);
     free(src_infos);
+    return rc;
+}
+
+int
+dm_has_state_data(dm_ctx_t *ctx, const char *module_name, bool *res)
+{
+    CHECK_NULL_ARG3(ctx, module_name, res);
+    md_module_t *module = NULL;
+    int rc = SR_ERR_OK;
+
+    md_ctx_lock(ctx->md_ctx, false);
+    rc = md_get_module_info(ctx->md_ctx, module_name, NULL, &module);
+    if (SR_ERR_OK == rc) {
+        *res = (module->op_data_subtrees->first != NULL);
+    }
+    md_ctx_unlock(ctx->md_ctx);
+
     return rc;
 }
 
