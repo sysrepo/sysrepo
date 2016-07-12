@@ -1093,15 +1093,15 @@ int sr_get_changes_iter(sr_session_ctx_t *session, const char *xpath, sr_change_
  * ::sr_module_change_cb or ::sr_subtree_change_cb). Will not work with any other sessions.
  * @param[in,out] iter Iterator acquired with ::sr_get_changes_iter call.
  * @param[out] operation Type of the operation made on the returned item.
- * @param[out] new_value New (modified) value of the the item. NULL in case that
- * the item has been just deleted (operation == SR_OP_DELETED).
  * @param[out] old_value Old value of the item (the value before the change).
  * NULL in case that the item has been just created (operation == SR_OP_CREATED).
+ * @param[out] new_value New (modified) value of the the item. NULL in case that
+ * the item has been just deleted (operation == SR_OP_DELETED).
  *
  * @return Error code (SR_ERR_OK on success).
  */
 int sr_get_change_next(sr_session_ctx_t *session, sr_change_iter_t *iter, sr_change_oper_t *operation,
-        sr_val_t **new_value, sr_val_t **old_value);
+        sr_val_t **old_value, sr_val_t **new_value);
 
 
 ////////////////////////////////////////////////////////////////////////////////
