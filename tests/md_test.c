@@ -364,7 +364,7 @@ md_tests_setup(void **state)
 static int
 md_tests_teardown(void **state)
 {
-    //system("rm -f " TEST_SCHEMA_SEARCH_DIR TEST_MODULE_PREFIX "*");
+    system("rm -f " TEST_SCHEMA_SEARCH_DIR TEST_MODULE_PREFIX "*");
     return 0;
 }
 
