@@ -418,16 +418,20 @@ rp_dt_trim_xpath(dm_ctx_t *dm_ctx, const char *xpath, char **trimmed)
     xp_copy = strdup(xpath);
     CHECK_NULL_NOMEM_RETURN(xp_copy);
 
-    /* remove trailing '*:/' */
+    /* remove trailing '*:/.' */
     bool change = false;
     while (0 < (xp_len = strlen(xp_copy))) {
         change = false;
+        if ('.' == xp_copy[xp_len - 1]) {
+            xp_copy[xp_len - 1] = 0;
+            xp_len--;
+            change = true;
+        }
         if ('*' == xp_copy[xp_len - 1]) {
             xp_copy[xp_len - 1] = 0;
             xp_len--;
             change = true;
         }
-
         if ('/' == xp_copy[xp_len - 1]) {
             xp_copy[xp_len - 1] = 0;
             xp_len--;

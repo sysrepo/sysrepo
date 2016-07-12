@@ -316,7 +316,6 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const
     int rc = SR_ERR_OK;
     char *new_value = NULL;
 
-
     const struct lys_module *module = NULL;
     struct lys_node *sch_node = NULL;
     dm_data_info_t *info = NULL;
