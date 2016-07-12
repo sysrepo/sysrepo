@@ -809,7 +809,6 @@ md_init(struct ly_ctx *ly_ctx, pthread_rwlock_t *lyctx_lock, const char *schema_
                     node = node->next;
                 }
                 if (SR_ERR_OK != sr_btree_insert(ctx->modules_btree, module)) {
-                    md_free_module(module);
                     SR_LOG_ERR_MSG("Unable to insert instance of (md_module_t *) into a balanced tree.");
                     goto fail;
                 }
@@ -818,6 +817,7 @@ md_init(struct ly_ctx *ly_ctx, pthread_rwlock_t *lyctx_lock, const char *schema_
                     goto fail;
                 }
                 module->ll_node = ctx->modules->last;
+                module = NULL;
             }
             module_data = module_data->next;
         } /* module info */
@@ -908,6 +908,7 @@ fail:
     if (ctx && ctx->lyctx_lock) {
         pthread_rwlock_unlock(ctx->lyctx_lock);
     }
+    md_free_module(module);
     md_destroy(ctx);
     free(schema_filepath);
     free(data_filepath);
