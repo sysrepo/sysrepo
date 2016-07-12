@@ -388,7 +388,7 @@ cleanup:
  * @brief Processes a get_items request.
  */
 static int
-rp_get_items_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
+rp_get_items_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, bool *skip_msg_cleanup)
 {
     sr_val_t *values = NULL;
     size_t count = 0, limit = 0, offset = 0;
@@ -401,15 +401,27 @@ rp_get_items_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
 
     Sr__Msg *resp = NULL;
     rc = sr_gpb_resp_alloc(SR__OPERATION__GET_ITEMS, session->id, &resp);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Memory allocation failed");
-        return SR_ERR_NOMEM;
-    }
+    CHECK_RC_MSG_RETURN(rc, "Gpb response allocation failed");
 
     if (session->options & SR__SESSION_FLAGS__SESS_NOTIFICATION) {
         rc = rp_check_notif_session(rp_ctx, session, msg);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Check notif session failed");
     }
+
+    MUTEX_LOCK_TIMED_CHECK_GOTO(&session->cur_req_mutex, rc, cleanup);
+    if (RP_REQ_FINISHED == session->state) {
+        session->state = RP_REQ_NEW;
+    } else if (RP_REQ_WAITING_FOR_DATA == session->state) {
+        if (msg == session->req) {
+            SR_LOG_ERR("Time out waiting for operational data expired before all responses have been received, session id = %u", session->id);
+        } else {
+            SR_LOG_ERR("A request was not processed, probably invalid state, session id = %u", session->id);
+            sr__msg__free_unpacked(session->req, NULL);
+            session->state = RP_REQ_NEW;
+        }
+    }
+    /* we do not need to keep the pointer to the request */
+    session->req = NULL;
 
     xpath = msg->request->get_items_req->xpath;
     offset = msg->request->get_items_req->offset;
@@ -426,9 +438,24 @@ rp_get_items_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
         if (SR_ERR_NOT_FOUND != rc) {
             SR_LOG_ERR("Get items failed for '%s', session id=%"PRIu32".", xpath, session->id);
         }
+        pthread_mutex_unlock(&session->cur_req_mutex);
         goto cleanup;
     }
+
+    if (RP_REQ_WAITING_FOR_DATA == session->state) {
+        SR_LOG_DBG_MSG("Request paused, waiting for data");
+        /* we are waiting for operational data do not free the request */
+        *skip_msg_cleanup = true;
+        /* save message */
+        session->req = msg;
+        //TODO: setup timeout
+        sr__msg__free_unpacked(resp, NULL);
+        pthread_mutex_unlock(&session->cur_req_mutex);
+        return rc;
+    }
+
     SR_LOG_DBG("%zu items found for '%s', session id=%"PRIu32".", count, xpath, session->id);
+    pthread_mutex_unlock(&session->cur_req_mutex);
 
     /* copy values to gpb */
     rc = sr_values_sr_to_gpb(values, count, &resp->response->get_items_resp->values, &resp->response->get_items_resp->n_values);
@@ -1461,7 +1488,7 @@ rp_req_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, bool *ski
             rc = rp_get_item_req_process(rp_ctx, session, msg, skip_msg_cleanup);
             break;
         case SR__OPERATION__GET_ITEMS:
-            rc = rp_get_items_req_process(rp_ctx, session, msg);
+            rc = rp_get_items_req_process(rp_ctx, session, msg, skip_msg_cleanup);
             break;
         case SR__OPERATION__SET_ITEM:
             rc = rp_set_item_req_process(rp_ctx, session, msg);

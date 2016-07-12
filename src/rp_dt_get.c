@@ -268,7 +268,9 @@ rp_dt_prepare_data(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char *xpath
             }
             free(subscriptions);
 
-            rp_session->state = RP_REQ_WAITING_FOR_DATA;
+            if (subscription_cnt > 0) {
+                rp_session->state = RP_REQ_WAITING_FOR_DATA;
+            }
 
         }
         CHECK_RC_MSG_GOTO(rc, cleanup, "rp_dt_module_has_state data failed");
@@ -292,7 +294,7 @@ rp_dt_get_value_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char *
     CHECK_NULL_ARG2(xpath, value);
     SR_LOG_INF("Get item request %s datastore, xpath: %s", sr_ds_to_str(rp_session->datastore), xpath);
 
-    int rc = SR_ERR_INVAL_ARG;
+    int rc = SR_ERR_OK;
     struct lyd_node *data_tree = NULL;
 
     rc = rp_dt_prepare_data(rp_ctx, rp_session, xpath, &data_tree);
@@ -333,21 +335,18 @@ rp_dt_get_values_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char 
     CHECK_NULL_ARG3(xpath, values, count);
     SR_LOG_INF("Get items request %s datastore, xpath: %s", sr_ds_to_str(rp_session->datastore), xpath);
 
-    int rc = SR_ERR_INVAL_ARG;
+    int rc = SR_ERR_OK;
     struct lyd_node *data_tree = NULL;
-    char *data_tree_name = NULL;
 
-    rc = sr_copy_first_ns(xpath, &data_tree_name);
-    CHECK_RC_LOG_GOTO(rc, cleanup, "Copying module name failed for xpath '%s'", xpath);
+    rc = rp_dt_prepare_data(rp_ctx, rp_session, xpath, &data_tree);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "rp_dt_prepare_data failed");
 
-    rc = ac_check_node_permissions(rp_session->ac_session, xpath, AC_OPER_READ);
-    CHECK_RC_LOG_GOTO(rc, cleanup, "Access control check failed for xpath '%s'", xpath);
+    if (RP_REQ_WAITING_FOR_DATA == rp_session->state) {
+        SR_LOG_DBG("Session id = %u is waiting for the data", rp_session->id);
+        return rc;
+    }
 
-    rc = dm_get_datatree(rp_ctx->dm_ctx, rp_session->dm_session, data_tree_name, &data_tree);
-    if (SR_ERR_OK != rc) {
-        if (SR_ERR_NOT_FOUND != rc) {
-            SR_LOG_ERR("Getting data tree failed (%s) for xpath '%s'", strerror(rc), xpath);
-        }
+    if (NULL == data_tree) {
         goto cleanup;
     }
 
@@ -357,13 +356,16 @@ rp_dt_get_values_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char 
     }
 
 cleanup:
-    if (SR_ERR_NOT_FOUND == rc || (SR_ERR_OK == rc && 0 == count)) {
+    if (SR_ERR_NOT_FOUND == rc || (SR_ERR_OK == rc && (0 == count || NULL == data_tree))) {
         if (SR_ERR_OK != rp_dt_validate_node_xpath(rp_ctx->dm_ctx, NULL, xpath, NULL, NULL)) {
             /* Print warning only, because we are not able to validate all xpath */
             SR_LOG_WRN("Validation of xpath %s was not successful", xpath);
         }
+        rc = SR_ERR_NOT_FOUND;
     }
-    free(data_tree_name);
+    rp_session->state = RP_REQ_FINISHED;
+    free(rp_session->module_name);
+    rp_session->module_name = NULL;
     return rc;
 }
 
