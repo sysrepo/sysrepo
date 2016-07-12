@@ -1144,7 +1144,7 @@ typedef int (*sr_rpc_cb)(const char *xpath, const sr_val_t *input, const size_t 
  * @param[in] opts Options overriding default behavior of the subscription, it is supposed to be
  * a bitwise OR-ed value of any ::sr_subscr_flag_t flags.
  * @param[in,out] subscription Subscription context that is supposed to be released by ::sr_unsubscribe.
- * @note An existing context may be passed in in case that SR_SUBSCR_CTX_REUSE option is specified.
+ * @note An existing context may be passed in case that SR_SUBSCR_CTX_REUSE option is specified.
  *
  * @return Error code (SR_ERR_OK on success).
  */
@@ -1219,6 +1219,57 @@ typedef int (*sr_dp_get_items_cb)(const char *xpath, sr_val_t **values, size_t *
  */
 int sr_dp_get_items_subscribe(sr_session_ctx_t *session, const char *xpath, sr_dp_get_items_cb callback, void *private_ctx,
         sr_subscr_options_t opts, sr_subscription_ctx_t **subscription);
+
+////////////////////////////////////////////////////////////////////////////////
+// Event Notification API - EXPERIMENTAL (work in progress) !!!
+////////////////////////////////////////////////////////////////////////////////
+
+/**
+ * @brief Callback to be called by the delivery of event notification specified by xpath.
+ * Subscribe to it by ::sr_event_notification_subscribe call.
+ *
+ * @param[in] xpath XPath identifying the event notification.
+ * @param[in] input Array of input parameters.
+ * @param[in] input_cnt Number of input parameters.
+ * @param[in] private_ctx Private context opaque to sysrepo, 
+ * as passed to ::sr_event_notification_subscribe call.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+typedef int (*sr_event_notification_cb)(const char *xpath, const sr_val_t *input, const size_t input_cnt,
+        void *private_ctx);
+
+/**
+ * @brief Subscribes for delivery of an event notification specified by xpath.
+ *
+ * @param[in] session Session context acquired with ::sr_session_start call.
+ * @param[in] xpath XPath identifying the event notification.
+ * @param[in] callback Callback to be called when the event notification is send.
+ * @param[in] private_ctx Private context passed to the callback function, opaque to sysrepo.
+ * @param[in] opts Options overriding default behavior of the subscription, it is supposed to be
+ * a bitwise OR-ed value of any ::sr_subscr_flag_t flags.
+ * @param[in,out] subscription Subscription context that is supposed to be released by ::sr_unsubscribe.
+ * @note An existing context may be passed in case that SR_SUBSCR_CTX_REUSE option is specified.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_event_notification_subscribe(sr_session_ctx_t *session, const char *xpath, 
+        sr_event_notification_cb callback, void *private_ctx, sr_subscr_options_t opts,
+        sr_subscription_ctx_t **subscription);
+
+/**
+ * @brief Sends an event notification specified by xpath and waits for the result.
+ *
+ * @param[in] session Session context acquired with ::sr_session_start call.
+ * @param[in] xpath XPath identifying the event notification.
+ * @param[in] input Array of input parameters (array of all nodes that hold some
+ * data in event notification subtree - same as ::sr_get_items would return).
+ * @param[in] input_cnt Number of input parameters.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_event_notification_send(sr_session_ctx_t *session, const char *xpath, const sr_val_t *input,
+        const size_t input_cnt);
 
 
 ////////////////////////////////////////////////////////////////////////////////
