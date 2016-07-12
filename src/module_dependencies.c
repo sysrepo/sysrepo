@@ -524,6 +524,9 @@ md_load_subtree_ref_list(md_ctx_t *md_ctx, const struct lyd_node *source_root, m
             while (leaf) {
                 if (LYS_LEAF & leaf->schema->nodetype) {
                     if (leaf->schema->name && 0 == strcmp("xpath", leaf->schema->name)) {
+                        if (NULL != xpath) {
+                            free(xpath);
+                        }
                         xpath = strdup(leaf->value.string);
                         CHECK_NULL_NOMEM_GOTO(xpath, rc, fail);
                     } else if (leaf->schema->name && 0 == strcmp("orig-module-name", leaf->schema->name)) {
@@ -575,7 +578,8 @@ md_add_subtree_ref(md_ctx_t *md_ctx, md_module_t *dest_module, sr_llist_t *dest_
                    const struct lys_node *root, const char *output_xpath)
 {
     int rc = SR_ERR_OK;
-    char xpath[PATH_MAX] = { 0, }, format[PATH_MAX] = { 0, };
+    char xpath[PATH_MAX] = { 0, };
+    char xpath_format[PATH_MAX] = "[xpath='%s'][orig-module-revision='%s']/orig-module-name";
     struct lyd_node *node_data = NULL;
     char *root_xpath = NULL;
     bool inserted = false;
@@ -583,6 +587,13 @@ md_add_subtree_ref(md_ctx_t *md_ctx, md_module_t *dest_module, sr_llist_t *dest_
 
     CHECK_NULL_ARG5(md_ctx, dest_module, dest_llist, orig_module, root);
     CHECK_NULL_ARG(output_xpath);
+
+    /* prepare xpath format string */
+    if (PATH_MAX <= strlen(output_xpath) + strlen(xpath_format)) {
+        return SR_ERR_INVAL_ARG;
+    }
+    memmove(xpath_format + strlen(output_xpath), xpath_format, strlen(xpath_format));
+    memcpy(xpath_format, output_xpath, strlen(output_xpath));
 
     /* get and save xpath to this node */
     rc = md_construct_lys_xpath(root, &root_xpath);
@@ -596,9 +607,7 @@ md_add_subtree_ref(md_ctx_t *md_ctx, md_module_t *dest_module, sr_llist_t *dest_
     inserted = true; /*< allocated data owned by the module from now on */
 
     /* add entry also into data_tree */
-    strcat(format, output_xpath);
-    strcat(format, "[xpath='%s'][orig-module-revision='%s']/orig-module-name");
-    snprintf(xpath, PATH_MAX, format, dest_module->name, dest_module->revision_date, root_xpath,
+    snprintf(xpath, PATH_MAX, xpath_format, dest_module->name, dest_module->revision_date, root_xpath,
              orig_module->revision_date);
     ly_errno = LY_SUCCESS;
     node_data = lyd_new_path(md_ctx->data_tree, md_ctx->ly_ctx, xpath, orig_module->name, LYD_PATH_OPT_UPDATE);
@@ -697,7 +706,7 @@ md_init(struct ly_ctx *ly_ctx, pthread_rwlock_t *lyctx_lock, const char *schema_
     ctx->fd = -1;
 
     /* Initialize pthread mutex */
-    pthread_mutex_init(&ctx->lock, NULL);
+    pthread_rwlock_init(&ctx->lock, NULL);
 
     /* Keep pointer to libyang context */
     ctx->ly_ctx = ly_ctx;
@@ -800,7 +809,6 @@ md_init(struct ly_ctx *ly_ctx, pthread_rwlock_t *lyctx_lock, const char *schema_
                     node = node->next;
                 }
                 if (SR_ERR_OK != sr_btree_insert(ctx->modules_btree, module)) {
-                    md_free_module(module);
                     SR_LOG_ERR_MSG("Unable to insert instance of (md_module_t *) into a balanced tree.");
                     goto fail;
                 }
@@ -809,6 +817,7 @@ md_init(struct ly_ctx *ly_ctx, pthread_rwlock_t *lyctx_lock, const char *schema_
                     goto fail;
                 }
                 module->ll_node = ctx->modules->last;
+                module = NULL;
             }
             module_data = module_data->next;
         } /* module info */
@@ -899,6 +908,7 @@ fail:
     if (ctx && ctx->lyctx_lock) {
         pthread_rwlock_unlock(ctx->lyctx_lock);
     }
+    md_free_module(module);
     md_destroy(ctx);
     free(schema_filepath);
     free(data_filepath);
@@ -907,22 +917,26 @@ fail:
 }
 
 void
-md_ctx_lock(md_ctx_t *md_ctx)
+md_ctx_lock(md_ctx_t *md_ctx, bool write)
 {
-    pthread_mutex_lock(&md_ctx->lock);
+    if (write) {
+        pthread_rwlock_wrlock(&md_ctx->lock);
+    } else {
+        pthread_rwlock_rdlock(&md_ctx->lock);
+    }
 }
 
 void
 md_ctx_unlock(md_ctx_t *md_ctx)
 {
-    pthread_mutex_unlock(&md_ctx->lock);
+    pthread_rwlock_unlock(&md_ctx->lock);
 }
 
 int
 md_destroy(md_ctx_t *md_ctx)
 {
     if (md_ctx) {
-        pthread_mutex_trylock(&md_ctx->lock);
+        pthread_rwlock_trywrlock(&md_ctx->lock);
         if (md_ctx->schema_search_dir) {
             free(md_ctx->schema_search_dir);
         }
@@ -944,8 +958,8 @@ md_destroy(md_ctx_t *md_ctx)
         if (md_ctx->modules_btree) {
             sr_btree_cleanup(md_ctx->modules_btree);
         }
-        pthread_mutex_unlock(&md_ctx->lock);
-        pthread_mutex_destroy(&md_ctx->lock);
+        pthread_rwlock_unlock(&md_ctx->lock);
+        pthread_rwlock_destroy(&md_ctx->lock);
         free(md_ctx);
     }
     return SR_ERR_OK;

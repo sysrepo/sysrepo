@@ -90,7 +90,7 @@ typedef struct md_module_s {
  *        If the context is accessed from multiple threads, use ::md_ctx_lock and ::md_ctx_unlock to protect it.
  */
 typedef struct md_ctx_s {
-    pthread_mutex_t lock;            /**< Lock for protecting members of md_ctx_t, needs to be obtained manually using ::md_ctx_lock
+    pthread_rwlock_t lock;           /**< Lock for protecting members of md_ctx_t, needs to be obtained manually using ::md_ctx_lock
                                           and released using ::md_ctx_unlock */
     char *schema_search_dir;         /**< Path to the directory with schema files. */
     int fd;                          /**< file descriptor associated with sysrepo-module-dependencies.xml,
@@ -134,8 +134,9 @@ int md_init(struct ly_ctx *ly_ctx, pthread_rwlock_t *lyctx_lock, const char *sch
  * @brief Lock Module Dependencies context to ensure that no other thread can access it at the same time.
  *
  * @param [in] md_ctx Module Dependencies context
+ * @param [in] write Is write access required?
  */
-void md_ctx_lock(md_ctx_t *md_ctx);
+void md_ctx_lock(md_ctx_t *md_ctx, bool write);
 
 /**
  * @brief Unlock Module Dependencies context.

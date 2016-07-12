@@ -564,6 +564,16 @@ int dm_install_module(dm_ctx_t *dm_ctx, const char *module_name, const char *rev
 int dm_uninstall_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision);
 
 /**
+ * @brief Checks whether the module contains any state data.
+ *
+ * @param [in] ctx DM context.
+ * @param [in] module_name Name of the module to be checked.
+ * @param [out] res True if there is at least one subtree in the module with state data.
+ * @return Error code (SR_ERR_OK on success)
+ */
+int dm_has_state_data(dm_ctx_t *ctx, const char *module_name, bool *res);
+
+/**
  * @brief Checks whether the module has an enabled subtree.
  * @param [in] ctx
  * @param [in] module_name - name of the module to be checked
