@@ -56,6 +56,13 @@ static const char * const md_module_B_body =
 "    leaf B-ext-leaf {\n"
 "      type uint32;\n"
 "    }\n"
+"    leaf B-ext-inst-id {\n"
+"      type instance-identifier;\n"
+"    }\n"
+"    leaf B-ext-op-data {\n"
+"       type uint32;\n"
+"       config false;\n"
+"    }\n"
 "  }\n"
 "\n"
 "  identity B-ext-identity {\n"
@@ -65,6 +72,21 @@ static const char * const md_module_B_body =
 "  container inst-ids {\n"
 "    leaf-list inst-id {\n"
 "      type instance-identifier;\n"
+"    }\n"
+"  }"
+"\n"
+"  container op-data {\n"
+"    config false;\n"
+"    leaf-list list-with-op-data {\n"
+"      type string;\n"
+"    }\n"
+"    container nested-op-data {\n"
+"      leaf nested-leaf1 {\n"
+"        type string;\n"
+"      }\n"
+"      leaf nested-leaf2 {\n"
+"        type int8;\n"
+"      }\n"
 "    }\n"
 "  }";
 
@@ -92,6 +114,21 @@ static const char * const md_module_C_body =
 "  }\n"
 "  leaf inst-id2 {\n"
 "    type instance-identifier;\n"
+"  }\n"
+"  container partly-op-data {\n"
+"    config true;\n"
+"    leaf-list list-with-config-data {\n"
+"      type string;\n"
+"    }\n"
+"    container nested-op-data {\n"
+"      config false;\n"
+"      leaf nested-leaf1 {\n"
+"        type string;\n"
+"      }\n"
+"      leaf nested-leaf2 {\n"
+"        type int8;\n"
+"      }\n"
+"    }\n"
 "  }";
 
 static const char * const md_module_D_rev1_filepath = TEST_SCHEMA_SEARCH_DIR TEST_MODULE_PREFIX "D@2016-06-10" TEST_MODULE_EXT;
@@ -105,6 +142,13 @@ static const char * const md_module_D_rev1_body =
 "      type identityref {\n"
 "        base C:C-ext-identity1;\n"
 "      }\n"
+"    }\n"
+"    leaf D-ext-op-data {\n"
+"       type uint32;\n"
+"       config false;\n"
+"    }\n"
+"    leaf D-ext-inst-id {\n"
+"      type instance-identifier;\n"
 "    }\n"
 "  }\n"
 "\n"
@@ -127,6 +171,20 @@ static const char * const md_module_D_rev2_body =
 "      type identityref {\n"
 "        base C:C-ext-identity1;\n"
 "      }\n"
+"    }\n"
+"    leaf D-ext-op-data {\n"
+"       type uint32;\n"
+"       config false;\n"
+"    }\n"
+"    leaf D-ext-op-data2 {\n"
+"       type uint32;\n"
+"       config false;\n"
+"    }\n"
+"    leaf D-ext-inst-id {\n"
+"      type instance-identifier;\n"
+"    }\n"
+"    leaf D-ext-inst-id2 {\n"
+"      type instance-identifier;\n"
 "    }\n"
 "  }\n"
 "\n"
@@ -154,6 +212,24 @@ static const char * const md_module_E_rev1_body =
 "    leaf inst-id {\n"
 "      type instance-identifier;\n"
 "    }\n"
+"  }"
+"  container partly-op-data {\n"
+"    config true;\n"
+"    leaf-list list-with-op-data {\n"
+"      config false;\n"
+"      type string;\n"
+"    }\n"
+"    container nested-op-data {\n"
+"      config true;\n"
+"      leaf nested-leaf1 {\n"
+"        config false;\n"
+"        type string;\n"
+"      }\n"
+"      leaf nested-leaf2 {\n"
+"        config false;\n"
+"        type int8;\n"
+"      }\n"
+"    }\n"
 "  }";
 
 static const char * const md_module_E_rev2_filepath = TEST_SCHEMA_SEARCH_DIR TEST_MODULE_PREFIX "E@2016-06-21" TEST_MODULE_EXT;
@@ -180,6 +256,28 @@ static const char * const md_module_E_rev2_body =
 "    leaf inst-id {\n"
 "      type instance-identifier;\n"
 "    }\n"
+"  }"
+"  container partly-op-data {\n"
+"    config true;\n"
+"    leaf-list list-with-op-data {\n"
+"      config false;\n"
+"      type string;\n"
+"    }\n"
+"    container nested-op-data {\n"
+"      config true;\n"
+"      leaf nested-leaf1 {\n"
+"        config false;\n"
+"        type string;\n"
+"      }\n"
+"      leaf nested-leaf2 {\n"
+"        config false;\n"
+"        type int8;\n"
+"      }\n"
+"      leaf added-config-leaf {\n"
+"        config true;\n"
+"        type int8;\n"
+"      }\n"
+"    }\n"
 "  }";
 
 
@@ -197,6 +295,9 @@ md_get_new_ly_ctx()
     return ly_ctx;
 }
 
+/**
+ * @brief Construct a yang schema file.
+ */
 static char *
 md_create_yang_schema(const char *name, const char *destpath, const char *body, ...)
 {
@@ -267,7 +368,7 @@ md_tests_teardown(void **state)
     return 0;
 }
 
-/*
+/**
  * @brief Test initialization and destruction of the Module Dependencies context.
  */
 static void
@@ -291,7 +392,7 @@ md_test_init_and_destroy(void **state)
     md_destroy(md_ctx);
 }
 
-/*
+/**
  * @brief Validate dependency between modules.
  */
 static void
@@ -335,7 +436,64 @@ md_test_validate_dependency(const sr_llist_t *deps, const char *module_name, md_
     }
 }
 
-/*
+/**
+ * @brief Check size of a linked-list.
+ */
+static void
+md_test_check_list_size(sr_llist_t *list, size_t expected)
+{
+    size_t size = 0;
+    sr_llist_node_t *node = list->first;
+
+    while (node) {
+        ++size;
+        node = node->next;
+    }
+    assert_int_equal(expected, size);
+}
+
+/**
+ * @brief Validate subtree reference.
+ */
+static void
+md_test_validate_subtree_ref(md_ctx_t *md_ctx, sr_llist_t *list, const char *xpath,
+                             const char *orig_module_name)
+{
+    sr_llist_node_t *node = list->first;
+    md_subtree_ref_t *subtree_ref = NULL;
+    md_module_t *orig = NULL;
+    char *orig_name_cpy = strdup(orig_module_name);
+    char full_module_name[PATH_MAX] = { 0, };
+
+    char *at = strchr(orig_name_cpy, '@');
+    if (NULL != at) {
+        *at = '\0';
+        ++at;
+    } else {
+        at = "";
+    }
+
+    /* test if the module is inserted */
+    snprintf(full_module_name, PATH_MAX, "%s%s", TEST_MODULE_PREFIX, orig_name_cpy);
+    int rc = md_get_module_info(md_ctx, full_module_name, at, &orig);
+
+    while (node) {
+        subtree_ref = (md_subtree_ref_t *)node->data;
+        if (0 == strcmp(subtree_ref->xpath, xpath)) {
+            assert_string_equal(subtree_ref->orig->name, full_module_name);
+            if (0 == strcmp(subtree_ref->orig->revision_date, at)) {
+                assert_int_equal(SR_ERR_OK, rc);
+                free(orig_name_cpy);
+                return;
+            }
+        }
+        node = node->next;
+    }
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+    free(orig_name_cpy);
+}
+
+/**
  * @brief Validate Module Dependencies context.
  */
 static void
@@ -354,7 +512,41 @@ md_test_validate_context(md_ctx_t *md_ctx, md_test_inserted_modules_t inserted)
         assert_string_equal(TEST_MODULE_PREFIX "A", md_get_module_fullname(module));
         assert_string_equal(md_module_A_filepath, module->filepath);
         assert_true(module->latest_revision);
-        assert_null(module->inst_ids->first);
+        /* inst_ids */
+        md_test_check_list_size(module->inst_ids, inserted.B + inserted.D_rev1 + 2*inserted.D_rev2);
+        md_test_validate_subtree_ref(md_ctx, module->inst_ids,
+                                     "/" TEST_MODULE_PREFIX "A:base-container"
+                                     "/" TEST_MODULE_PREFIX "B:B-ext-inst-id", "B");
+        md_test_validate_subtree_ref(md_ctx, module->inst_ids,
+                                     "/" TEST_MODULE_PREFIX "A:base-container"
+                                     "/" TEST_MODULE_PREFIX "C:C-ext-container"
+                                     "/" TEST_MODULE_PREFIX "D:D-ext-inst-id", "D@2016-06-10");
+        md_test_validate_subtree_ref(md_ctx, module->inst_ids,
+                                     "/" TEST_MODULE_PREFIX "A:base-container"
+                                     "/" TEST_MODULE_PREFIX "C:C-ext-container"
+                                     "/" TEST_MODULE_PREFIX "D:D-ext-inst-id", "D@2016-06-20");
+        md_test_validate_subtree_ref(md_ctx, module->inst_ids,
+                                     "/" TEST_MODULE_PREFIX "A:base-container"
+                                     "/" TEST_MODULE_PREFIX "C:C-ext-container"
+                                     "/" TEST_MODULE_PREFIX "D:D-ext-inst-id2", "D@2016-06-20");
+        /* op_data_subtrees */
+        md_test_check_list_size(module->op_data_subtrees, inserted.B + inserted.D_rev1 + 2*inserted.D_rev2);
+        md_test_validate_subtree_ref(md_ctx, module->op_data_subtrees,
+                                     "/" TEST_MODULE_PREFIX "A:base-container"
+                                     "/" TEST_MODULE_PREFIX "B:B-ext-op-data", "B");
+        md_test_validate_subtree_ref(md_ctx, module->op_data_subtrees,
+                                     "/" TEST_MODULE_PREFIX "A:base-container"
+                                     "/" TEST_MODULE_PREFIX "C:C-ext-container"
+                                     "/" TEST_MODULE_PREFIX "D:D-ext-op-data", "D@2016-06-10");
+        md_test_validate_subtree_ref(md_ctx, module->op_data_subtrees,
+                                     "/" TEST_MODULE_PREFIX "A:base-container"
+                                     "/" TEST_MODULE_PREFIX "C:C-ext-container"
+                                     "/" TEST_MODULE_PREFIX "D:D-ext-op-data", "D@2016-06-20");
+        md_test_validate_subtree_ref(md_ctx, module->op_data_subtrees,
+                                     "/" TEST_MODULE_PREFIX "A:base-container"
+                                     "/" TEST_MODULE_PREFIX "C:C-ext-container"
+                                     "/" TEST_MODULE_PREFIX "D:D-ext-op-data2", "D@2016-06-20");
+        /* outside references */
         assert_non_null(module->ly_data);
         assert_non_null(module->ll_node);
         /* dependencies */
@@ -387,10 +579,13 @@ md_test_validate_context(md_ctx_t *md_ctx, md_test_inserted_modules_t inserted)
         assert_string_equal(TEST_MODULE_PREFIX "B", md_get_module_fullname(module));
         assert_string_equal(md_module_B_filepath, module->filepath);
         assert_true(module->latest_revision);
-        assert_non_null(module->inst_ids->first);
-        assert_true(module->inst_ids->first == module->inst_ids->last);
-        assert_string_equal("/" TEST_MODULE_PREFIX "B:inst-ids/" TEST_MODULE_PREFIX "B:inst-id",
-                            (char *)module->inst_ids->first->data);
+        /* inst_ids */
+        md_test_check_list_size(module->inst_ids, 1);
+        md_test_validate_subtree_ref(md_ctx, module->inst_ids, "/" TEST_MODULE_PREFIX "B:inst-ids/inst-id", "B");
+        /* op_data_subtrees */
+        md_test_check_list_size(module->op_data_subtrees, 1);
+        md_test_validate_subtree_ref(md_ctx, module->op_data_subtrees, "/" TEST_MODULE_PREFIX "B:op-data", "B");
+        /* outside references */
         assert_non_null(module->ly_data);
         assert_non_null(module->ll_node);
         /* dependencies */
@@ -423,11 +618,14 @@ md_test_validate_context(md_ctx_t *md_ctx, md_test_inserted_modules_t inserted)
         assert_string_equal(TEST_MODULE_PREFIX "C", md_get_module_fullname(module));
         assert_string_equal(md_module_C_filepath, module->filepath);
         assert_true(module->latest_revision);
-        assert_non_null(module->inst_ids->first);
-        assert_string_equal("/" TEST_MODULE_PREFIX "C:inst-id1", (char *)module->inst_ids->first->data);
-        assert_non_null(module->inst_ids->first->next);
-        assert_string_equal("/" TEST_MODULE_PREFIX "C:inst-id2", (char *)module->inst_ids->first->next->data);
-        assert_null(module->inst_ids->first->next->next);
+        /* inst_ids */
+        md_test_check_list_size(module->inst_ids, 2);
+        md_test_validate_subtree_ref(md_ctx, module->inst_ids, "/" TEST_MODULE_PREFIX "C:inst-id1", "C");
+        md_test_validate_subtree_ref(md_ctx, module->inst_ids, "/" TEST_MODULE_PREFIX "C:inst-id2", "C");
+        /* op_data_subtrees */
+        md_test_check_list_size(module->op_data_subtrees, 1);
+        md_test_validate_subtree_ref(md_ctx, module->op_data_subtrees, "/" TEST_MODULE_PREFIX "C:partly-op-data/nested-op-data", "C");
+        /* outside references */
         assert_non_null(module->ly_data);
         assert_non_null(module->ll_node);
         /* dependencies */
@@ -464,7 +662,11 @@ md_test_validate_context(md_ctx_t *md_ctx, md_test_inserted_modules_t inserted)
         } else {
             assert_true(module->latest_revision);
         }
-        assert_null(module->inst_ids->first);
+        /* inst_ids */
+        md_test_check_list_size(module->inst_ids, 0);
+        /* op_data_subtrees */
+        md_test_check_list_size(module->inst_ids, 0);
+        /* outside references */
         assert_non_null(module->ly_data);
         assert_non_null(module->ll_node);
         /* dependencies */
@@ -497,7 +699,11 @@ md_test_validate_context(md_ctx_t *md_ctx, md_test_inserted_modules_t inserted)
         assert_string_equal(TEST_MODULE_PREFIX "D@2016-06-20", md_get_module_fullname(module));
         assert_string_equal(md_module_D_rev2_filepath, module->filepath);
         assert_true(module->latest_revision);
-        assert_null(module->inst_ids->first);
+        /* inst_ids */
+        md_test_check_list_size(module->inst_ids, 0);
+        /* op_data_subtrees */
+        md_test_check_list_size(module->inst_ids, 0);
+        /* outside references */
         assert_non_null(module->ly_data);
         assert_non_null(module->ll_node);
         /* dependencies */
@@ -534,10 +740,16 @@ md_test_validate_context(md_ctx_t *md_ctx, md_test_inserted_modules_t inserted)
         } else {
             assert_true(module->latest_revision);
         }
-        assert_non_null(module->inst_ids->first);
-        assert_true(module->inst_ids->first == module->inst_ids->last);
-        assert_string_equal("/" TEST_MODULE_PREFIX "E:inst-id-list/" TEST_MODULE_PREFIX "E:inst-id",
-                            (char *)module->inst_ids->first->data);
+        /* inst_ids */
+        md_test_check_list_size(module->inst_ids, 1);
+        md_test_validate_subtree_ref(md_ctx, module->inst_ids, "/" TEST_MODULE_PREFIX "E:inst-id-list/inst-id", "E@2016-06-11");
+        /* op_data_subtrees */
+        md_test_check_list_size(module->op_data_subtrees, 2);
+        md_test_validate_subtree_ref(md_ctx, module->op_data_subtrees,
+                "/" TEST_MODULE_PREFIX "E:partly-op-data/list-with-op-data", "E@2016-06-11");
+        md_test_validate_subtree_ref(md_ctx, module->op_data_subtrees,
+                "/" TEST_MODULE_PREFIX "E:partly-op-data/nested-op-data", "E@2016-06-11");
+        /* outsiide references */
         assert_non_null(module->ly_data);
         assert_non_null(module->ll_node);
         /* dependencies */
@@ -570,10 +782,18 @@ md_test_validate_context(md_ctx_t *md_ctx, md_test_inserted_modules_t inserted)
         assert_string_equal(TEST_MODULE_PREFIX "E@2016-06-21", md_get_module_fullname(module));
         assert_string_equal(md_module_E_rev2_filepath, module->filepath);
         assert_true(module->latest_revision);
-        assert_non_null(module->inst_ids->first);
-        assert_true(module->inst_ids->first == module->inst_ids->last);
-        assert_string_equal("/" TEST_MODULE_PREFIX "E:inst-id-list/" TEST_MODULE_PREFIX "E:inst-id",
-                            (char *)module->inst_ids->first->data);
+        /* inst_ids */
+        md_test_check_list_size(module->inst_ids, 1);
+        md_test_validate_subtree_ref(md_ctx, module->inst_ids, "/" TEST_MODULE_PREFIX "E:inst-id-list/inst-id", "E@2016-06-21");
+        /* op_data_subtrees */
+        md_test_check_list_size(module->op_data_subtrees, 3);
+        md_test_validate_subtree_ref(md_ctx, module->op_data_subtrees,
+                "/" TEST_MODULE_PREFIX "E:partly-op-data/list-with-op-data", "E@2016-06-21");
+        md_test_validate_subtree_ref(md_ctx, module->op_data_subtrees,
+                "/" TEST_MODULE_PREFIX "E:partly-op-data/nested-op-data/nested-leaf1", "E@2016-06-21");
+        md_test_validate_subtree_ref(md_ctx, module->op_data_subtrees,
+                "/" TEST_MODULE_PREFIX "E:partly-op-data/nested-op-data/nested-leaf2", "E@2016-06-21");
+        /* outside references */
         assert_non_null(module->ly_data);
         assert_non_null(module->ll_node);
         /* dependencies */

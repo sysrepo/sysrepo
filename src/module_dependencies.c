@@ -986,7 +986,7 @@ md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, struct lys_node *
     if (NULL == root) {
         return SR_ERR_OK;
     }
-   
+
     module_schema = root->module;
     dest_module = (augment ? md_get_destination_module(md_ctx, root) : module);
     if (NULL == dest_module) {
@@ -1037,7 +1037,7 @@ md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, struct lys_node *
                     /* some or all children carry operational data */
                     if ((intptr_t)node->priv & PRIV_CFG_SUBTREE) {
                         /* a mix of configuration and operational data amongst children */
-                        for (child = node->child; child && module_schema == child->module && SR_ERR_OK == rc; 
+                        for (child = node->child; child && module_schema == child->module && SR_ERR_OK == rc;
                              child = child->next) {
                             if (LYS_CONFIG_R & child->flags) {
                                 rc = md_add_subtree_ref(md_ctx, dest_module, dest_module->op_data_subtrees, module, child,
