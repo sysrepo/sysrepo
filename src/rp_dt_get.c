@@ -181,30 +181,6 @@ rp_dt_get_values(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char 
 }
 
 /**
- * @brief Checks whether the module contains any state data.
- *
- * @param [in] rp_ctx
- * @param [in] module_name
- * @param [out] res
- * @return Error code (SR_ERR_OK on success)
- */
-static int
-rp_dt_module_has_state_data(rp_ctx_t *rp_ctx, const char *module_name, bool *res)
-{
-    CHECK_NULL_ARG3(rp_ctx, module_name, res);
-    int rc = SR_ERR_OK;
-
-    //TODO: load this information from module analysis
-
-    if (0 == strcmp(module_name, "state-module")) {
-        *res = true;
-    } else {
-        *res = false;
-    }
-    return rc;
-}
-
-/**
  * @brief Determines if (and what) state data subtrees are needed to be loaded.
  */
 static int
@@ -267,7 +243,7 @@ rp_dt_prepare_data(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char *xpath
         /* if the request requires operational data pause the processing and wait for data to be provided */
         if ((SR_DS_RUNNING == rp_session->datastore || SR_DS_CANDIDATE == rp_session->datastore) &&
             (!(SR_SESS_CONFIG_ONLY & rp_session->options)) &&
-            (SR_ERR_OK == rp_dt_module_has_state_data(rp_ctx, rp_session->module_name, &has_state_data) && has_state_data)) {
+            (SR_ERR_OK == dm_has_state_data(rp_ctx->dm_ctx, rp_session->module_name, &has_state_data) && has_state_data)) {
 
             rc = rp_dt_xpath_requests_state_data(rp_ctx, rp_session->module_name, xpath, &subscriptions, &subscription_cnt);
             CHECK_RC_MSG_GOTO(rc, cleanup, "rp_dt_xpath_requests_state_data failed");

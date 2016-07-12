@@ -697,7 +697,7 @@ md_init(struct ly_ctx *ly_ctx, pthread_rwlock_t *lyctx_lock, const char *schema_
     ctx->fd = -1;
 
     /* Initialize pthread mutex */
-    pthread_mutex_init(&ctx->lock, NULL);
+    pthread_rwlock_init(&ctx->lock, NULL);
 
     /* Keep pointer to libyang context */
     ctx->ly_ctx = ly_ctx;
@@ -907,22 +907,26 @@ fail:
 }
 
 void
-md_ctx_lock(md_ctx_t *md_ctx)
+md_ctx_lock(md_ctx_t *md_ctx, bool write)
 {
-    pthread_mutex_lock(&md_ctx->lock);
+    if (write) {
+        pthread_rwlock_wrlock(&md_ctx->lock);
+    } else {
+        pthread_rwlock_rdlock(&md_ctx->lock);
+    }
 }
 
 void
 md_ctx_unlock(md_ctx_t *md_ctx)
 {
-    pthread_mutex_unlock(&md_ctx->lock);
+    pthread_rwlock_unlock(&md_ctx->lock);
 }
 
 int
 md_destroy(md_ctx_t *md_ctx)
 {
     if (md_ctx) {
-        pthread_mutex_trylock(&md_ctx->lock);
+        pthread_rwlock_trywrlock(&md_ctx->lock);
         if (md_ctx->schema_search_dir) {
             free(md_ctx->schema_search_dir);
         }
@@ -944,8 +948,8 @@ md_destroy(md_ctx_t *md_ctx)
         if (md_ctx->modules_btree) {
             sr_btree_cleanup(md_ctx->modules_btree);
         }
-        pthread_mutex_unlock(&md_ctx->lock);
-        pthread_mutex_destroy(&md_ctx->lock);
+        pthread_rwlock_unlock(&md_ctx->lock);
+        pthread_rwlock_destroy(&md_ctx->lock);
         free(md_ctx);
     }
     return SR_ERR_OK;

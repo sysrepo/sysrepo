@@ -504,6 +504,45 @@ dm_rpc_test(void **state)
     dm_cleanup(ctx);
 }
 
+void
+dm_state_data_test(void **state)
+{
+    int rc = SR_ERR_OK;
+    dm_ctx_t *ctx = NULL;
+    dm_session_t *session = NULL;
+    bool has_state_data = false;
+
+    rc = dm_init(NULL, NULL, NULL, CM_MODE_LOCAL, TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = dm_session_start(ctx, NULL, SR_DS_STARTUP, &session);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = dm_has_state_data(ctx, "ietf-ip", &has_state_data);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_false(has_state_data);
+
+    rc = dm_has_state_data(ctx, "ietf-interfaces", &has_state_data);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_true(has_state_data);
+
+    rc = dm_has_state_data(ctx, "info-module", &has_state_data);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_false(has_state_data);
+
+    rc = dm_has_state_data(ctx, "test-module", &has_state_data);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_false(has_state_data);
+
+    rc = dm_has_state_data(ctx, "state-module", &has_state_data);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_true(has_state_data);
+
+    dm_session_stop(ctx, session);
+    dm_cleanup(ctx);
+}
+
+
 int main(){
     sr_log_stderr(SR_LL_DBG);
 
@@ -519,6 +558,7 @@ int main(){
             cmocka_unit_test(dm_locking_test),
             cmocka_unit_test(dm_copy_module_test),
             cmocka_unit_test(dm_rpc_test),
+            cmocka_unit_test(dm_state_data_test)
     };
     return cmocka_run_group_tests(tests, setup, NULL);
 }
