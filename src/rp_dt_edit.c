@@ -661,7 +661,7 @@ rp_dt_replay_operations(dm_ctx_t *ctx, dm_session_t *session, dm_sess_op_t *oper
 int
 rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, sr_error_info_t **errors, size_t *err_cnt)
 {
-    CHECK_NULL_ARG2(rp_ctx, session);
+    CHECK_NULL_ARG4(rp_ctx, session, errors, err_cnt);
     int rc = SR_ERR_OK;
     dm_commit_context_t *commit_ctx = NULL;
 
@@ -672,7 +672,7 @@ rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, sr_error_info_t **errors, 
     /* YANG validation */
     rc = dm_validate_session_data_trees(rp_ctx->dm_ctx, session->dm_session, errors, err_cnt);
     if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Data validation failed");
+        SR_LOG_ERR("Data validation failed: %s", *err_cnt > 0 ? errors[0]->message : "(no error)");
         return SR_ERR_VALIDATION_FAILED;
     }
     SR_LOG_DBG_MSG("Commit (2/7): validation succeeded");
