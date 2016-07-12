@@ -50,7 +50,7 @@ module sysrepo-module-dependencies {
 
       list dependency {
         key "module-name module-revision";
-        description "A dependency instance.";
+        description "An instance of module dependency.";
 
         leaf module-name {
             type string;
@@ -73,11 +73,52 @@ module sysrepo-module-dependencies {
     }
 
     container instance-identifiers {
-      description "List of xpaths referring to all leaf(-list)s in the module with the instance-identifier type.";
+      description "List of XPaths referring to all leaf(-list)s in the module with the instance-identifier type.";
 
-      leaf-list instance-identifier {
-        type string;
-        description "XPath (without keys) referring to a leaf or leaf-list with the instance-identifier type.";
+      list instance-identifier {
+        key "xpath orig-module-revision";
+        description "Single instance identifier summary.";
+
+        leaf xpath {
+          type string;
+          description "XPath (without keys) referring to a leaf or leaf-list with the instance-identifier type.";
+        }
+
+        leaf orig-module-name {
+          type string;
+          mandatory "true";
+          description "Name of a module that defines this instance identifier.";
+        }
+
+        leaf orig-module-revision {
+          type string;
+          description "Revision of a module that defines this instance identifier.";
+        }
+      }
+    }
+
+    container op-data-subtrees {
+      description "List of XPaths referring to all subtrees in the schema containing only operational data.";
+
+      list op-data-subtree {
+        key "xpath orig-module-revision";
+        description "Reference to a subtree with only operational data.";
+
+        leaf xpath {
+          type string;
+          description "XPath (without keys) referring to a root of a subtree carrying only operational data.";
+        }
+
+        leaf orig-module-name {
+          type string;
+          mandatory "true";
+          description "Name of a module that defines this subtree.";
+        }
+
+        leaf orig-module-revision {
+          type string;
+          description "Revision of a module that defines this subtree.";
+        }
       }
     }
   }

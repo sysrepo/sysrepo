@@ -51,27 +51,38 @@ typedef struct md_dep_s {
 } md_dep_t;
 
 /*
+ * @brief Structure referencing a subtree in the schema tree.
+ */
+typedef struct md_subtree_ref_s {
+    char *xpath;       /**< xpath pointing to the root of this subtree. */
+    md_module_t *orig; /**< Module which defines this subtree. */
+} md_subtree_ref_t;
+
+/*
  * @brief Data structure describing a single module in the context of inter-module dependencies.
  */
 typedef struct md_module_s {
-    char *name;                /**< Name of the module. */
-    char *revision_date;       /**< Revision date of the module. */
-    char *filepath;            /**< File path to the schema of the module. */
-    char *fullname;            /**< Fullname of the module (name+revision).
-                                    Normally not used and set to NULL, but can be filled using ::md_get_module_fullname. */
+    char *name;                   /**< Name of the module. */
+    char *revision_date;          /**< Revision date of the module. */
+    char *filepath;               /**< File path to the schema of the module. */
+    char *fullname;               /**< Fullname of the module (name+revision).
+                                       Normally not used and set to NULL, but can be filled using ::md_get_module_fullname. */
 
-    bool latest_revision;      /**< "true" if this is the latest installed revision of this module. */
+    bool latest_revision;         /**< "true" if this is the latest installed revision of this module. */
 
-    sr_llist_t *inst_ids;      /**< List of xpaths referencing all instance-identifiers in the module.
-                                    Items are of type (char *) */
+    sr_llist_t *inst_ids;         /**< List of xpaths referencing all instance-identifiers in the module.
+                                       Items are of type (md_subree_ref_t *) (one node subtrees) */
 
-    sr_llist_t *deps;          /**< Adjacency list for this module in the schema-based, transitively-closed, dependency graph,
-                                    i.e. the list of all modules that this module depends on. Items are of type (md_dep_t *) */
-    sr_llist_t *inv_deps;      /**< Adjacency list for this module in the inverted transitively-closed dependency graph,
-                                    i.e. the list of all modules that depend on this module. Items are of type (md_dep_t *) */
+    sr_llist_t *op_data_subtrees; /**< List of xpaths referencing all subtrees in the schema containing only operational data.
+                                       Items are of type (md_subtree_ref_t *) */
 
-    struct lyd_node *ly_data;  /**< libyang's representation of this data. For convenience. */
-    sr_llist_node_t *ll_node;  /**< Pointer to the node in ::md_ctx_t::modules which is used to store this instance. */
+    sr_llist_t *deps;             /**< Adjacency list for this module in the schema-based, transitively-closed, dependency graph,
+                                       i.e. the list of all modules that this module depends on. Items are of type (md_dep_t *) */
+    sr_llist_t *inv_deps;         /**< Adjacency list for this module in the inverted transitively-closed dependency graph,
+                                       i.e. the list of all modules that depend on this module. Items are of type (md_dep_t *) */
+
+    struct lyd_node *ly_data;     /**< libyang's representation of this data. For convenience. */
+    sr_llist_node_t *ll_node;     /**< Pointer to the node in ::md_ctx_t::modules which is used to store this instance. */
 } md_module_t;
 
 /*
