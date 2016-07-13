@@ -388,10 +388,12 @@ void get_values_opts_test(void **state) {
     }
     sr_free_values(values, count);
 
+    ses_ctx->state = RP_REQ_NEW;
     rc = rp_dt_get_values_wrapper_with_opts(ctx, ses_ctx, &get_items_ctx, EX_CONT, 100, 1, &values, &count);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
     assert_string_equal(EX_CONT, get_items_ctx.xpath);
 
+    ses_ctx->state = RP_REQ_NEW;
     rc = rp_dt_get_values_wrapper_with_opts(ctx, ses_ctx, &get_items_ctx, "/example-module:*", 0, 10, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
     assert_string_equal("/example-module:*", get_items_ctx.xpath);
@@ -651,13 +653,16 @@ get_nodes_with_opts_cache_missed_test(void **state)
     assert_int_equal(rc, SR_ERR_OK);
     sr_free_values(values, count);
 
+    ses_ctx->state = RP_REQ_NEW;
     rc = rp_dt_get_values_wrapper_with_opts(ctx, ses_ctx, &get_items_ctx, "/test-module:list[key='k1']/*", 2, 2, &values, &count);
     assert_int_equal(rc, SR_ERR_OK);
     sr_free_values(values, count);
 
+    ses_ctx->state = RP_REQ_NEW;
     rc = rp_dt_get_values_wrapper_with_opts(ctx, ses_ctx, &get_items_ctx, "/test-module:list[key='k1']/wireless/*", 0, 2, &values, &count);
     assert_int_equal(rc, SR_ERR_NOT_FOUND);
 
+    ses_ctx->state = RP_REQ_NEW;
     rc = rp_dt_get_values_wrapper_with_opts(ctx, ses_ctx, &get_items_ctx, "/test-module:list[key='k1']/*", 4, 2, &values, &count);
     assert_int_equal(rc, SR_ERR_NOT_FOUND);
 
