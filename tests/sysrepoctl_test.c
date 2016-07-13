@@ -323,7 +323,7 @@ sysrepoctl_test_init(void **state)
     /* install and initialize already installed ietf-ip */
     snprintf(buff, PATH_MAX, "../src/sysrepoctl --install --yang=../../tests/yang/ietf-ip@2014-06-16.yang "
             "--owner=%s --permissions=644", user);
-    exec_shell_command(buff, "", true, 0);
+    exec_shell_command(buff, ".*", true, 0);
     snprintf(buff, PATH_MAX, "../src/sysrepoctl --init --module=ietf-ip --owner=%s --permissions=664", user);
     exec_shell_command(buff, ".*", true, 0);
 
@@ -357,7 +357,7 @@ sysrepoctl_test_init(void **state)
     /* finally install back iana-if-type to restore the pre-test state */
     snprintf(buff, PATH_MAX, "../src/sysrepoctl --install --yang=../../tests/yang/iana-if-type.yang "
             "--owner=%s --permissions=644", user);
-    exec_shell_command(buff, "", true, 0);
+    exec_shell_command(buff, ".*", true, 0);
     test_file_exists(TEST_SCHEMA_SEARCH_DIR "iana-if-type@2014-05-08.yang", true);
 }
 
