@@ -1254,8 +1254,6 @@ rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg 
             CHECK_NULL_NOMEM_ERROR(req->request->rpc_req->subscriber_address, rc);
             req->request->rpc_req->subscription_id = subscriptions[i].dst_id;
             req->request->rpc_req->has_subscription_id = true;
-            req->request->rpc_req->session_id = session->id;
-            req->request->rpc_req->has_session_id = true;
             np_free_subscriptions(subscriptions, subscription_cnt);
             subscription_match = true;
             break;
