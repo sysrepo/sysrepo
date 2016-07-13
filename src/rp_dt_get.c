@@ -248,6 +248,7 @@ rp_dt_prepare_data(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char *xpath
         /* if the request requires operational data pause the processing and wait for data to be provided */
         if ((SR_DS_RUNNING == rp_session->datastore || SR_DS_CANDIDATE == rp_session->datastore) &&
             (!(SR_SESS_CONFIG_ONLY & rp_session->options)) &&
+            (!(SR__SESSION_FLAGS__SESS_NOTIFICATION & rp_session->options)) &&
             (SR_ERR_OK == dm_has_state_data(rp_ctx->dm_ctx, rp_session->module_name, &has_state_data) && has_state_data)) {
 
             rc = rp_dt_xpath_requests_state_data(rp_ctx, rp_session->module_name, xpath, &subscriptions, &subscription_cnt);
