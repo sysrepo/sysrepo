@@ -1962,10 +1962,73 @@ cl_session_set_opts(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 }
 
+static int
+test_event_notif_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt, void *private_ctx)
+{
+    int *callback_called = (int*)private_ctx;
+    *callback_called += 1;
+
+    assert_int_equal(input_cnt, 4);
+
+    printf("Received event notification: %s\n", xpath);
+    for (size_t i = 0; i < input_cnt; i++) {
+        printf("    input parameter[%zu]: %s = %s\n", i, input[i].xpath, input[i].data.string_val);
+    }
+
+    return SR_ERR_OK;
+}
+
+static void
+cl_event_notif_test(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+
+    sr_session_ctx_t *session = NULL;
+    sr_subscription_ctx_t *subscription = NULL;
+    int callback_called = 0;
+    int rc = SR_ERR_OK;
+
+    /* start a session */
+    rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* subscribe for RPC */
+    rc = sr_event_notif_subscribe(session, "/test-module:link-discovered", test_event_notif_cb, &callback_called,
+            SR_SUBSCR_DEFAULT, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    sr_val_t input[4];
+    input[0].xpath = "/test-module:link-discovered/source/address";
+    input[0].type = SR_STRING_T;
+    input[0].data.string_val = "10.10.1.5";
+    input[1].xpath = "/test-module:link-discovered/source/interface";
+    input[1].type = SR_STRING_T;
+    input[1].data.string_val = "eth1";
+    input[2].xpath = "/test-module:link-discovered/destination/address";
+    input[2].type = SR_STRING_T;
+    input[2].data.string_val = "10.10.1.8";
+    input[3].xpath = "/test-module:link-discovered/destination/interface";
+    input[3].type = SR_STRING_T;
+    input[3].data.string_val = "eth0";
+
+    /* TODO send an event notification */
+//    rc = sr_event_notif_send(session, "/test-module:link-discovered", input, 4);
+//    assert_int_equal(rc, SR_ERR_OK);
+
+    /* stop the session */
+    rc = sr_session_stop(session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* unsubscribe */
+    rc = sr_unsubscribe(NULL, subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+}
 int
 main()
 {
     const struct CMUnitTest tests[] = {
+#if  0
             cmocka_unit_test_setup_teardown(cl_connection_test, logging_setup, NULL),
             cmocka_unit_test_setup_teardown(cl_list_schemas_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_get_schema_test, sysrepo_setup, sysrepo_teardown),
@@ -1992,6 +2055,8 @@ main()
             cmocka_unit_test_setup_teardown(cl_get_changes_iter_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_dp_get_items_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_session_set_opts, sysrepo_setup, sysrepo_teardown),
+#endif
+            cmocka_unit_test_setup_teardown(cl_event_notif_test, sysrepo_setup, sysrepo_teardown),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);

@@ -1226,17 +1226,17 @@ int sr_dp_get_items_subscribe(sr_session_ctx_t *session, const char *xpath, sr_d
 
 /**
  * @brief Callback to be called by the delivery of event notification specified by xpath.
- * Subscribe to it by ::sr_event_notification_subscribe call.
+ * Subscribe to it by ::sr_event_notif_subscribe call.
  *
  * @param[in] xpath XPath identifying the event notification.
  * @param[in] input Array of input parameters.
  * @param[in] input_cnt Number of input parameters.
  * @param[in] private_ctx Private context opaque to sysrepo, 
- * as passed to ::sr_event_notification_subscribe call.
+ * as passed to ::sr_event_notif_subscribe call.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-typedef int (*sr_event_notification_cb)(const char *xpath, const sr_val_t *input, const size_t input_cnt,
+typedef int (*sr_event_notif_cb)(const char *xpath, const sr_val_t *input, const size_t input_cnt,
         void *private_ctx);
 
 /**
@@ -1253,8 +1253,8 @@ typedef int (*sr_event_notification_cb)(const char *xpath, const sr_val_t *input
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int sr_event_notification_subscribe(sr_session_ctx_t *session, const char *xpath, 
-        sr_event_notification_cb callback, void *private_ctx, sr_subscr_options_t opts,
+int sr_event_notif_subscribe(sr_session_ctx_t *session, const char *xpath, 
+        sr_event_notif_cb callback, void *private_ctx, sr_subscr_options_t opts,
         sr_subscription_ctx_t **subscription);
 
 /**
@@ -1268,7 +1268,7 @@ int sr_event_notification_subscribe(sr_session_ctx_t *session, const char *xpath
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int sr_event_notification_send(sr_session_ctx_t *session, const char *xpath, const sr_val_t *input,
+int sr_event_notif_send(sr_session_ctx_t *session, const char *xpath, const sr_val_t *input,
         const size_t input_cnt);
 
 

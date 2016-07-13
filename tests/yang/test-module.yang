@@ -2,6 +2,10 @@ module test-module {
   namespace "urn:ietf:params:xml:ns:yang:test-module";
   prefix tm;
 
+  import ietf-inet-types {
+    prefix inet;
+  }
+
   organization "organization";
   description
     "example yang module";
@@ -321,5 +325,40 @@ module test-module {
         type string;
     }
   }
+
+ grouping link {
+    container source {
+      leaf address {
+        type inet:ip-address-no-zone;
+      }
+      leaf interface {
+        type string;
+      }
+    }
+    container destination {
+      leaf address {
+        type inet:ip-address-no-zone;
+      }
+      leaf interface {
+        type string;
+      }
+    }
+ }
+
+ notification link-discovered {
+   uses link;
+ }
+
+ notification link-overutilized {
+   uses link;
+ }
+
+ notification link-removed {
+    uses link;
+ }
+
+ notification link-utilization-normal {
+    uses link;
+ }
 
 }

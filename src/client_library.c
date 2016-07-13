@@ -189,7 +189,7 @@ cleanup:
  * @brief Initializes a new subscription.
  */
 static int
-cl_subscribtion_init(sr_session_ctx_t *session, Sr__SubscriptionType type, const char *module_name,
+cl_subscription_init(sr_session_ctx_t *session, Sr__SubscriptionType type, const char *module_name,
         void *private_ctx, sr_subscription_ctx_t **sr_subscription_p, cl_sm_subscription_ctx_t **sm_subscription_p,
         Sr__Msg **msg_req_p)
 {
@@ -1403,7 +1403,7 @@ sr_module_install_subscribe(sr_session_ctx_t *session, sr_module_install_cb call
     if (opts & SR_SUBSCR_CTX_REUSE) {
         sr_subscription = *subscription_p;
     }
-    rc = cl_subscribtion_init(session, SR__SUBSCRIPTION_TYPE__MODULE_INSTALL_SUBS, NULL,
+    rc = cl_subscription_init(session, SR__SUBSCRIPTION_TYPE__MODULE_INSTALL_SUBS, NULL,
             private_ctx, &sr_subscription, &sm_subscription, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by initialization of the subscription in the client library.");
 
@@ -1449,7 +1449,7 @@ sr_feature_enable_subscribe(sr_session_ctx_t *session, sr_feature_enable_cb call
     if (opts & SR_SUBSCR_CTX_REUSE) {
         sr_subscription = *subscription_p;
     }
-    rc = cl_subscribtion_init(session, SR__SUBSCRIPTION_TYPE__FEATURE_ENABLE_SUBS, NULL,
+    rc = cl_subscription_init(session, SR__SUBSCRIPTION_TYPE__FEATURE_ENABLE_SUBS, NULL,
             private_ctx, &sr_subscription, &sm_subscription, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by initialization of the subscription in the client library.");
 
@@ -1534,7 +1534,7 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, s
     if (opts & SR_SUBSCR_CTX_REUSE) {
         sr_subscription = *subscription_p;
     }
-    rc = cl_subscribtion_init(session, SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS, module_name,
+    rc = cl_subscription_init(session, SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS, module_name,
             private_ctx, &sr_subscription, &sm_subscription, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by initialization of the subscription in the client library.");
 
@@ -1598,7 +1598,7 @@ sr_subtree_change_subscribe(sr_session_ctx_t *session, const char *xpath, sr_sub
     if (opts & SR_SUBSCR_CTX_REUSE) {
         sr_subscription = *subscription_p;
     }
-    rc = cl_subscribtion_init(session, SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS, module_name,
+    rc = cl_subscription_init(session, SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS, module_name,
             private_ctx, &sr_subscription, &sm_subscription, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by initialization of the subscription in the client library.");
 
@@ -1966,7 +1966,7 @@ sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callbac
     if (opts & SR_SUBSCR_CTX_REUSE) {
         sr_subscription = *subscription_p;
     }
-    rc = cl_subscribtion_init(session, SR__SUBSCRIPTION_TYPE__RPC_SUBS, module_name,
+    rc = cl_subscription_init(session, SR__SUBSCRIPTION_TYPE__RPC_SUBS, module_name,
             private_ctx, &sr_subscription, &sm_subscription, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by initialization of the subscription in the client library.");
 
@@ -2074,7 +2074,7 @@ sr_dp_get_items_subscribe(sr_session_ctx_t *session, const char *xpath, sr_dp_ge
     if (opts & SR_SUBSCR_CTX_REUSE) {
         sr_subscription = *subscription_p;
     }
-    rc = cl_subscribtion_init(session, SR__SUBSCRIPTION_TYPE__DP_GET_ITEMS_SUBS, module_name,
+    rc = cl_subscription_init(session, SR__SUBSCRIPTION_TYPE__DP_GET_ITEMS_SUBS, module_name,
             private_ctx, &sr_subscription, &sm_subscription, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by initialization of the subscription in the client library.");
 
@@ -2089,6 +2089,66 @@ sr_dp_get_items_subscribe(sr_session_ctx_t *session, const char *xpath, sr_dp_ge
 
     msg_req->request->subscribe_req->has_enable_running = true;
     msg_req->request->subscribe_req->enable_running = !(opts & SR_SUBSCR_PASSIVE);
+
+    /* send the request and receive the response */
+    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__SUBSCRIBE);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
+
+    sr__msg__free_unpacked(msg_req, NULL);
+    sr__msg__free_unpacked(msg_resp, NULL);
+    free(module_name);
+
+    *subscription_p = sr_subscription;
+
+    return cl_session_return(session, SR_ERR_OK);
+
+cleanup:
+    cl_subscription_close(session, sm_subscription);
+    cl_sr_subscription_remove_one(sr_subscription);
+    if (NULL != msg_req) {
+        sr__msg__free_unpacked(msg_req, NULL);
+    }
+    if (NULL != msg_resp) {
+        sr__msg__free_unpacked(msg_resp, NULL);
+    }
+    free(module_name);
+    return cl_session_return(session, rc);
+}
+
+int
+sr_event_notif_subscribe(sr_session_ctx_t *session, const char *xpath, sr_event_notif_cb callback,
+        void *private_ctx, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription_p)
+{
+    Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    sr_subscription_ctx_t *sr_subscription = NULL;
+    cl_sm_subscription_ctx_t *sm_subscription = NULL;
+    char *module_name = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG3(session, callback, subscription_p);
+
+    cl_session_clear_errors(session);
+
+    /* extract module name from xpath */
+    rc = sr_copy_first_ns(xpath, &module_name);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by extracting module name from xpath.");
+
+    /* Initialize the subscription */
+    if (opts & SR_SUBSCR_CTX_REUSE) {
+        sr_subscription = *subscription_p;
+    }
+    rc = cl_subscription_init(session, SR__SUBSCRIPTION_TYPE__EVENT_NOTIF_SUBS, module_name,
+            private_ctx, &sr_subscription, &sm_subscription, &msg_req);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by initialization of the subscription in the client library.");
+
+    sm_subscription->callback.event_notif_cb = callback;
+
+    /* Fill-in GPB subscription information */
+    msg_req->request->subscribe_req->type = SR__SUBSCRIPTION_TYPE__EVENT_NOTIF_SUBS;
+    msg_req->request->subscribe_req->module_name = strdup(module_name);
+    CHECK_NULL_NOMEM_GOTO(msg_req->request->subscribe_req->module_name, rc, cleanup);
+    msg_req->request->subscribe_req->xpath = strdup(xpath);
+    CHECK_NULL_NOMEM_GOTO(msg_req->request->subscribe_req->xpath, rc, cleanup);
 
     /* send the request and receive the response */
     rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__SUBSCRIBE);
