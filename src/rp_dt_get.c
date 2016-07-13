@@ -228,6 +228,11 @@ rp_dt_prepare_data(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char *xpath
 
     if (RP_REQ_NEW == rp_session->state) {
 
+        /* in case of get_items_with_opts module name is not freed to save some
+         * copying in case of cache hit */
+        free(rp_session->module_name);
+        rp_session->module_name = NULL;
+
         rc = sr_copy_first_ns(xpath, &rp_session->module_name);
         CHECK_RC_LOG_GOTO(rc, cleanup, "Copying module name failed for xpath '%s'", xpath);
 
@@ -377,22 +382,25 @@ rp_dt_get_values_wrapper_with_opts(rp_ctx_t *rp_ctx, rp_session_t *rp_session, r
     CHECK_NULL_ARG3(xpath, values, count);
     SR_LOG_INF("Get items request %s datastore, xpath: %s, offset: %zu, limit: %zu", sr_ds_to_str(rp_session->datastore), xpath, offset, limit);
 
-    int rc = SR_ERR_INVAL_ARG;
+    int rc = SR_ERR_OK;
     struct lyd_node *data_tree = NULL;
     struct ly_set *nodes = NULL;
-    char *data_tree_name = NULL;
 
-    rc = sr_copy_first_ns(xpath, &data_tree_name);
-    CHECK_RC_LOG_GOTO(rc, cleanup, "Copying module name failed for xpath '%s'", xpath);
+    if (get_items_ctx->xpath != NULL && 0 == strcmp(xpath, get_items_ctx->xpath) &&
+            offset == get_items_ctx->offset) {
+        /* cache hit do not load data from data providers */
+        rp_session->state = RP_REQ_DATA_LOADED;
+    }
 
-    rc = ac_check_node_permissions(rp_session->ac_session, xpath, AC_OPER_READ);
-    CHECK_RC_LOG_GOTO(rc, cleanup, "Access control check failed for xpath '%s'", xpath);
+    rc = rp_dt_prepare_data(rp_ctx, rp_session, xpath, &data_tree);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "rp_dt_prepare_data failed");
 
-    rc = dm_get_datatree(rp_ctx->dm_ctx, rp_session->dm_session, data_tree_name, &data_tree);
-    if (SR_ERR_OK != rc) {
-        if (SR_ERR_NOT_FOUND != rc) {
-            SR_LOG_ERR("Getting data tree failed (%d) for xpath '%s'", rc, xpath);
-        }
+    if (RP_REQ_WAITING_FOR_DATA == rp_session->state) {
+        SR_LOG_DBG("Session id = %u is waiting for the data", rp_session->id);
+        return rc;
+    }
+
+    if (NULL == data_tree) {
         goto cleanup;
     }
 
@@ -406,7 +414,7 @@ rp_dt_get_values_wrapper_with_opts(rp_ctx_t *rp_ctx, rp_session_t *rp_session, r
 
     rc = rp_dt_get_values_from_nodes(nodes, values, count);
 cleanup:
-    if (SR_ERR_NOT_FOUND == rc) {
+    if (SR_ERR_NOT_FOUND == rc || (SR_ERR_OK == rc && (0 == count || NULL == data_tree))) {
         rc = rp_dt_validate_node_xpath(rp_ctx->dm_ctx, NULL, xpath, NULL, NULL);
         if (SR_ERR_OK != rc) {
             /* Print warning only, because we are not able to validate all xpath */
@@ -418,7 +426,7 @@ cleanup:
     }
 
     ly_set_free(nodes);
-    free(data_tree_name);
+    rp_session->state = RP_REQ_FINISHED;
     return rc;
 
 }

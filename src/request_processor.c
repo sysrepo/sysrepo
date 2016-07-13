@@ -1701,6 +1701,7 @@ rp_session_cleanup(const rp_ctx_t *rp_ctx, rp_session_t *session)
     pthread_mutex_destroy(&session->msg_count_mutex);
     pthread_mutex_destroy(&session->cur_req_mutex);
     free(session->change_ctx.xpath);
+    free(session->module_name);
     if (NULL != session->req) {
         sr__msg__free_unpacked(session->req, NULL);
     }
