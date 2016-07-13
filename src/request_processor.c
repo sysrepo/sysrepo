@@ -1639,7 +1639,7 @@ rp_msg_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
     }
 
     /* whitelist only some operations for notification sessions */
-    if ((NULL != session) && (session->options & SR__SESSION_FLAGS__SESS_NOTIFICATION)) {
+    if ((NULL != session) && (SR__MSG__MSG_TYPE__REQUEST == msg->type) && (session->options & SR__SESSION_FLAGS__SESS_NOTIFICATION)) {
         if ((SR__OPERATION__GET_ITEM != msg->request->operation) &&
                 (SR__OPERATION__GET_ITEMS != msg->request->operation) &&
                 (SR__OPERATION__SESSION_REFRESH != msg->request->operation) &&
