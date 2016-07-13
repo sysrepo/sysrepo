@@ -64,6 +64,7 @@ no_subscription_test(void **state)
    rc = rp_dt_get_values_wrapper(ctx, session, "/test-module:*", &values, &count);
    assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
+   session->state = RP_REQ_NEW;
    rc = rp_dt_get_values_wrapper(ctx, session, "/test-module:main", &values, &count);
    assert_int_equal(SR_ERR_NOT_FOUND, rc);
 

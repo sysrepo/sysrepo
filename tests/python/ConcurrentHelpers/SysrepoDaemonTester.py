@@ -24,8 +24,8 @@ import subprocess
 
 class SysrepodDaemonTester(SysrepoTester):
 
-    def startDaemonStep(self):
-        self.process = subprocess.Popen(["sysrepod", "-d"])
+    def startDaemonStep(self, log_level = SR_LL_INF):
+        self.process = subprocess.Popen(["sysrepod", "-d", "-l {0}".format(log_level)])
         self.report_pid(self.process.pid)
         sleep(0.1)
 
