@@ -479,8 +479,6 @@ rp_get_items_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, 
         SR_LOG_DBG_MSG("Request paused, waiting for data");
         /* we are waiting for operational data do not free the request */
         *skip_msg_cleanup = true;
-        /* save message */
-        session->req = msg;
         /* setup timeout */
         rc = rp_set_oper_request_timeout(rp_ctx, session, msg, RP_OPER_DATA_REQ_TIMEOUT);
         sr__msg__free_unpacked(resp, NULL);
