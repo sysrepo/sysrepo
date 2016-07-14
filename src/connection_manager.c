@@ -1443,13 +1443,26 @@ cm_out_rpc_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
 static int
 cm_internal_msg_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
 {
+    sm_session_t *session = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG3(cm_ctx, msg, msg->internal_request);
 
+    if (SR__OPERATION__OPER_DATA_TIMEOUT == msg->internal_request->operation) {
+        /* find the session */
+        rc = sm_session_find_id(cm_ctx->sm_ctx, msg->session_id, &session);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR("Unable to find the session matching with id specified in the message "
+                    "(id=%"PRIu32").", msg->session_id);
+            sr__msg__free_unpacked(msg, NULL);
+            return SR_ERR_INTERNAL;
+        }
+    }
+
     if (msg->internal_request->has_postpone_timeout) {
         /* schedule delivery of message with postpone timeout */
-        rc = cm_delayed_msg_process(cm_ctx, NULL, msg, msg->internal_request->postpone_timeout);
+        rc = cm_delayed_msg_process(cm_ctx, (NULL != session ? session->cm_data : NULL),
+                msg, msg->internal_request->postpone_timeout);
     } else {
         SR_LOG_WRN_MSG("Unsupported internal message received, ignoring.");
         rc = SR_ERR_UNSUPPORTED;
