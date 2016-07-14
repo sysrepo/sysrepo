@@ -453,8 +453,8 @@ rp_get_items_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, 
             session->state = RP_REQ_NEW;
         }
     }
-    /* we do not need to keep the pointer to the request */
-    session->req = NULL;
+    /* store current request to session */
+    session->req = msg;
 
     xpath = msg->request->get_items_req->xpath;
     offset = msg->request->get_items_req->offset;
@@ -486,6 +486,8 @@ rp_get_items_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, 
         sr__msg__free_unpacked(resp, NULL);
         pthread_mutex_unlock(&session->cur_req_mutex);
         return rc;
+    } else {
+        session->req = NULL;
     }
 
     SR_LOG_DBG("%zu items found for '%s', session id=%"PRIu32".", count, xpath, session->id);
