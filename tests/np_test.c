@@ -363,6 +363,8 @@ np_dp_subscriptions_test(void **state)
     rc = sr_list_init(&subscriptions_list);
     assert_int_equal(rc, SR_ERR_OK);
 
+    rc = sr_gpb_req_alloc(SR__OPERATION__GET_ITEM, test_ctx->rp_session_ctx->id, &test_ctx->rp_session_ctx->req);
+    assert_int_equal(rc, SR_ERR_OK);
     for (size_t i = 0; i < subscriptions_cnt; i++) {
         assert_non_null(subscriptions_arr[i]);
         assert_true(SR__SUBSCRIPTION_TYPE__DP_GET_ITEMS_SUBS == subscriptions_arr[i]->type);
