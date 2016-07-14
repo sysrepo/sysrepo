@@ -386,8 +386,6 @@ rp_get_item_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, b
         sr__msg__free_unpacked(resp, NULL);
         pthread_mutex_unlock(&session->cur_req_mutex);
         return rc;
-    } else {
-        session->req = NULL;
     }
 
     pthread_mutex_unlock(&session->cur_req_mutex);
@@ -401,6 +399,7 @@ rp_get_item_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, b
     }
 
 cleanup:
+    session->req = NULL;
     /* set response code */
     resp->response->result = rc;
 
@@ -453,8 +452,8 @@ rp_get_items_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, 
             session->state = RP_REQ_NEW;
         }
     }
-    /* we do not need to keep the pointer to the request */
-    session->req = NULL;
+    /* store current request to session */
+    session->req = msg;
 
     xpath = msg->request->get_items_req->xpath;
     offset = msg->request->get_items_req->offset;
@@ -479,8 +478,6 @@ rp_get_items_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, 
         SR_LOG_DBG_MSG("Request paused, waiting for data");
         /* we are waiting for operational data do not free the request */
         *skip_msg_cleanup = true;
-        /* save message */
-        session->req = msg;
         /* setup timeout */
         rc = rp_set_oper_request_timeout(rp_ctx, session, msg, RP_OPER_DATA_REQ_TIMEOUT);
         sr__msg__free_unpacked(resp, NULL);
@@ -496,6 +493,8 @@ rp_get_items_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, 
     CHECK_RC_MSG_GOTO(rc, cleanup, "Copying values to GPB failed.");
 
 cleanup:
+    session->req = NULL;
+
     /* set response code */
     resp->response->result = rc;
 
