@@ -268,5 +268,5 @@ if(PKG_CONFIG_FOUND)
 endif()
 
 # install doc (man)
+install(FILES ${PROJECT_SOURCE_DIR}/doc/sysrepoctl.1 DESTINATION ${MAN_INSTALL_DIR}/man1)
 install(FILES ${PROJECT_SOURCE_DIR}/doc/sysrepocfg.1 DESTINATION ${MAN_INSTALL_DIR}/man1)
-
