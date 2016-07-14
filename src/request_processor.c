@@ -1346,7 +1346,7 @@ rp_data_provide_resp_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *m
     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to transform gpb to sr_val_t");
 
     MUTEX_LOCK_TIMED_CHECK_GOTO(&session->cur_req_mutex, rc, cleanup);
-    if (RP_REQ_WAITING_FOR_DATA != session->state || NULL == session->req ||  msg->response->data_provide_resp->request_id != (uint64_t) session->id ) {
+    if (RP_REQ_WAITING_FOR_DATA != session->state || NULL == session->req ||  msg->response->data_provide_resp->request_id != (uint64_t) session->req ) {
         SR_LOG_ERR("State data arrived after timeout expiration or session id=%u is invalid.", session->id);
         goto error;
     }
