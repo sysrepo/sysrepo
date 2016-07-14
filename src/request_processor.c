@@ -34,7 +34,8 @@
 #include "rp_dt_get.h"
 #include "rp_dt_edit.h"
 
-#define RP_INIT_REQ_QUEUE_SIZE 10    /**< Initial size of the request queue. */
+#define RP_INIT_REQ_QUEUE_SIZE   10  /**< Initial size of the request queue. */
+#define RP_OPER_DATA_REQ_TIMEOUT 2   /**< Timeout (in seconds) for processing of a request that includes operational data. */
 
 /*
  * Attributes that can significantly affect performance of the threadpool.
@@ -120,6 +121,32 @@ rp_check_notif_session(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
     free(module_name);
 cleanup:
     pthread_rwlock_unlock(&dm_ctxs->lock);
+    return rc;
+}
+
+/**
+ * @brief Sets a timeout for processing of a operational data request.
+ */
+static int
+rp_set_oper_request_timeout(rp_ctx_t *rp_ctx, Sr__Msg *request, uint32_t timeout)
+{
+    Sr__Msg *msg = NULL;
+    int rc = SR_ERR_OK;
+
+    SR_LOG_DBG("Setting up a timeout for op. data request (%"PRIu32" seconds).", timeout);
+
+    rc = sr_gpb_internal_req_alloc(SR__OPERATION__OPER_DATA_TIMEOUT, &msg);
+    if (SR_ERR_OK == rc) {
+        msg->internal_request->oper_data_timeout_req->request_id = (uint64_t)request;
+        msg->internal_request->postpone_timeout = timeout;
+        msg->internal_request->has_postpone_timeout = true;
+        rc = cm_msg_send(rp_ctx->cm_ctx, msg);
+    }
+
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Unable to setup a timeout for op. data request: %s.", sr_strerror(rc));
+    }
+
     return rc;
 }
 
@@ -352,7 +379,8 @@ rp_get_item_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, b
         *skip_msg_cleanup = true;
         /* save message */
         session->req = msg;
-        //TODO: setup timeout
+        /* setup timeout */
+        rc = rp_set_oper_request_timeout(rp_ctx, msg, RP_OPER_DATA_REQ_TIMEOUT);
         sr__msg__free_unpacked(resp, NULL);
         pthread_mutex_unlock(&session->cur_req_mutex);
         return rc;
@@ -448,7 +476,8 @@ rp_get_items_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, 
         *skip_msg_cleanup = true;
         /* save message */
         session->req = msg;
-        //TODO: setup timeout
+        /* setup timeout */
+        rc = rp_set_oper_request_timeout(rp_ctx, msg, RP_OPER_DATA_REQ_TIMEOUT);
         sr__msg__free_unpacked(resp, NULL);
         pthread_mutex_unlock(&session->cur_req_mutex);
         return rc;
@@ -1308,11 +1337,11 @@ rp_data_provide_resp_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *m
 
     MUTEX_LOCK_TIMED_CHECK_GOTO(&session->cur_req_mutex, rc, cleanup);
     for (size_t i = 0; i < values_cnt; i++) {
-        SR_LOG_DBG("Received value for data provider for xpath %s \n", values[i].xpath);
+        SR_LOG_DBG("Received value from data provider for xpath '%s'.", values[i].xpath);
         rc = rp_dt_set_item(rp_ctx->dm_ctx, session->dm_session, values[i].xpath, SR_EDIT_DEFAULT, &values[i]);
         if (SR_ERR_OK != rc) {
             //TODO: maybe validate if this path corresponds to the operational data
-            SR_LOG_WRN("Failed to set operational data for xpath %s", values[i].xpath);
+            SR_LOG_WRN("Failed to set operational data for xpath '%s'.", values[i].xpath);
         }
     }
     //TODO: generate request asking for nested data
@@ -1408,7 +1437,7 @@ rp_unsubscribe_destination_req_process(const rp_ctx_t *rp_ctx, Sr__Msg *msg)
 }
 
 /**
- * @brief Processes an commit-release internal request.
+ * @brief Processes a commit-release internal request.
  */
 static int
 rp_commit_release_req_process(const rp_ctx_t *rp_ctx, Sr__Msg *msg)
@@ -1420,6 +1449,23 @@ rp_commit_release_req_process(const rp_ctx_t *rp_ctx, Sr__Msg *msg)
     SR_LOG_DBG_MSG("Processing commit-release request.");
 
     rc = np_commit_release(rp_ctx->np_ctx, msg->internal_request->commit_release_req->commit_id);
+
+    return rc;
+}
+
+/**
+ * @brief Processes an operational data timeout request.
+ */
+static int
+rp_oper_data_timeout_req_process(const rp_ctx_t *rp_ctx, Sr__Msg *msg)
+{
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG4(rp_ctx, msg, msg->internal_request, msg->internal_request->oper_data_timeout_req);
+
+    SR_LOG_DBG_MSG("Processing oper-data-timeout request.");
+
+    // TODO: timeout the op. data request
 
     return rc;
 }
@@ -1615,6 +1661,9 @@ rp_internal_req_dispatch(rp_ctx_t *rp_ctx, Sr__Msg *msg)
             break;
         case SR__OPERATION__COMMIT_RELEASE:
             rc = rp_commit_release_req_process(rp_ctx, msg);
+            break;
+        case SR__OPERATION__OPER_DATA_TIMEOUT:
+            rc = rp_oper_data_timeout_req_process(rp_ctx, msg);
             break;
         default:
             SR_LOG_ERR("Unsupported internal request received (operation=%d).", msg->internal_request->operation);
