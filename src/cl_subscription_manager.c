@@ -699,6 +699,7 @@ cl_sm_dp_request_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *m
     CHECK_RC_MSG_RETURN(rc, "Allocation of data-provide response failed.");
 
     resp->response->result = cb_rc;
+    resp->response->data_provide_resp->request_id = msg->request->data_provide_req->request_id;
     resp->response->data_provide_resp->xpath = strdup(msg->request->data_provide_req->xpath);
     CHECK_NULL_NOMEM_GOTO(resp->response->data_provide_resp->xpath, rc, cleanup);
 

@@ -368,8 +368,8 @@ rp_get_item_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, b
             session->state = RP_REQ_NEW;
         }
     }
-    /* we do not need to keep the pointer to the request */
-    session->req = NULL;
+    /* store current request to session */
+    session->req = msg;
 
     /* get value from data manager */
     rc = rp_dt_get_value_wrapper(rp_ctx, session, xpath, &value);
@@ -381,13 +381,13 @@ rp_get_item_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, b
         SR_LOG_DBG_MSG("Request paused, waiting for data");
         /* we are waiting for operational data do not free the request */
         *skip_msg_cleanup = true;
-        /* save message */
-        session->req = msg;
         /* setup timeout */
         rc = rp_set_oper_request_timeout(rp_ctx, session, msg, RP_OPER_DATA_REQ_TIMEOUT);
         sr__msg__free_unpacked(resp, NULL);
         pthread_mutex_unlock(&session->cur_req_mutex);
         return rc;
+    } else {
+        session->req = NULL;
     }
 
     pthread_mutex_unlock(&session->cur_req_mutex);
@@ -1346,6 +1346,10 @@ rp_data_provide_resp_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *m
     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to transform gpb to sr_val_t");
 
     MUTEX_LOCK_TIMED_CHECK_GOTO(&session->cur_req_mutex, rc, cleanup);
+    if (RP_REQ_WAITING_FOR_DATA != session->state || NULL == session->req ||  msg->response->data_provide_resp->request_id != (uint64_t) session->id ) {
+        SR_LOG_ERR("State data arrived after timeout expiration or session id=%u is invalid.", session->id);
+        goto error;
+    }
     for (size_t i = 0; i < values_cnt; i++) {
         SR_LOG_DBG("Received value from data provider for xpath '%s'.", values[i].xpath);
         rc = rp_dt_set_item(rp_ctx->dm_ctx, session->dm_session, values[i].xpath, SR_EDIT_DEFAULT, &values[i]);
@@ -1362,6 +1366,7 @@ rp_data_provide_resp_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *m
         session->state = RP_REQ_DATA_LOADED;
         rp_msg_process(rp_ctx, session, session->req);
     }
+error:
     pthread_mutex_unlock(&session->cur_req_mutex);
 
 cleanup:

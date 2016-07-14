@@ -352,6 +352,8 @@ rp_dt_prepare_data(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char *xpath
     } else if (RP_REQ_DATA_LOADED == rp_session->state) {
         SR_LOG_DBG("Session id = %u data loaded, continue processing", rp_session->id);
         rc = dm_get_datatree(rp_ctx->dm_ctx, rp_session->dm_session, rp_session->module_name, data_tree);
+        /* check of data tree's emptiness is performed outside of this function -> ignore SR_ERR_NOT_FOUND */
+        rc = SR_ERR_NOT_FOUND == rc ? SR_ERR_OK : rc;
     } else {
         SR_LOG_ERR("Session id = %u is in invalid state.", rp_session->id);
         rc = SR_ERR_INTERNAL;
@@ -372,7 +374,7 @@ rp_dt_get_value_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char *
     struct lyd_node *data_tree = NULL;
 
     rc = rp_dt_prepare_data(rp_ctx, rp_session, xpath, &data_tree);
-    CHECK_RC_MSG_GOTO(rc, cleanup, "rp_dt_prepare_data failed");
+    CHECK_RC_LOG_GOTO(rc, cleanup, "rp_dt_prepare_data failed %s", sr_strerror(rc));
 
     if (RP_REQ_WAITING_FOR_DATA == rp_session->state) {
         SR_LOG_DBG("Session id = %u is waiting for the data", rp_session->id);
