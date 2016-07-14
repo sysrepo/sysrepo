@@ -82,6 +82,8 @@ sr_gpb_operation_name(Sr__Operation operation)
         return "unsubscribe-destination";
     case SR__OPERATION__COMMIT_RELEASE:
         return "commit-release";
+    case SR__OPERATION__OPER_DATA_TIMEOUT:
+        return "oper-data-timeout";
     case _SR__OPERATION_IS_INT_SIZE:
         return "unknown";
     }
@@ -629,6 +631,12 @@ sr_gpb_internal_req_alloc(const Sr__Operation operation, Sr__Msg **msg_p)
             CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__commit_release_req__init((Sr__CommitReleaseReq*)sub_msg);
             req->commit_release_req = (Sr__CommitReleaseReq*)sub_msg;
+            break;
+        case SR__OPERATION__OPER_DATA_TIMEOUT:
+            sub_msg = calloc(1, sizeof(Sr__OperDataTimeoutReq));
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
+            sr__oper_data_timeout_req__init((Sr__OperDataTimeoutReq*)sub_msg);
+            req->oper_data_timeout_req = (Sr__OperDataTimeoutReq*)sub_msg;
             break;
         default:
             break;

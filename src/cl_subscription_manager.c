@@ -672,7 +672,7 @@ cl_sm_dp_request_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *m
 
     CHECK_NULL_ARG4(sm_ctx, msg, msg->request, msg->request->data_provide_req);
 
-    SR_LOG_DBG("Received adata-provide request for subscription id=%"PRIu32".", msg->request->data_provide_req->subscription_id);
+    SR_LOG_DBG("Received a data-provide request for subscription id=%"PRIu32".", msg->request->data_provide_req->subscription_id);
 
     pthread_mutex_lock(&sm_ctx->subscriptions_lock);
 
