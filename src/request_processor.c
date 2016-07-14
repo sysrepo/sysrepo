@@ -476,7 +476,8 @@ rp_get_items_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, 
         *skip_msg_cleanup = true;
         /* save message */
         session->req = msg;
-        //TODO: setup timeout
+        /* setup timeout */
+        rc = rp_set_oper_request_timeout(rp_ctx, msg, RP_OPER_DATA_REQ_TIMEOUT);
         sr__msg__free_unpacked(resp, NULL);
         pthread_mutex_unlock(&session->cur_req_mutex);
         return rc;
