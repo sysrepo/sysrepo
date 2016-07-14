@@ -1211,7 +1211,6 @@ main(int argc, char* argv[])
     struct option longopts[] = {
        { "help",            no_argument,       NULL, 'h' },
        { "version",         no_argument,       NULL, 'v' },
-       { "level",           required_argument, NULL, 'L' },
        { "list",            no_argument,       NULL, 'l' },
        { "install",         no_argument,       NULL, 'i' },
        { "init",            no_argument,       NULL, 't' },
@@ -1220,6 +1219,7 @@ main(int argc, char* argv[])
        { "feature-enable",  required_argument, NULL, 'e' },
        { "feature-disable", required_argument, NULL, 'd' },
 
+       { "level",           required_argument, NULL, 'L' },
        { "yang",            required_argument, NULL, 'g' },
        { "yin",             required_argument, NULL, 'n' },
        { "module",          required_argument, NULL, 'm' },
@@ -1231,7 +1231,7 @@ main(int argc, char* argv[])
        { 0, 0, 0, 0 }
     };
 
-    while ((c = getopt_long(argc, argv, "hvLlituce:d:g:n:m:r:o:p:s:0:W;", longopts, NULL)) != -1) {
+    while ((c = getopt_long(argc, argv, "hvlituce:d:L:g:n:m:r:o:p:s:0:W;", longopts, NULL)) != -1) {
         switch (c) {
             case 'h':
                 srctl_print_help();
@@ -1246,9 +1246,9 @@ main(int argc, char* argv[])
                 break;
             case 'l':
             case 'i':
+            case 't':
             case 'u':
             case 'c':
-            case 'I':
                 operation = c;
                 break;
             case 'e':
