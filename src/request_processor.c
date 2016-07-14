@@ -128,15 +128,18 @@ cleanup:
  * @brief Sets a timeout for processing of a operational data request.
  */
 static int
-rp_set_oper_request_timeout(rp_ctx_t *rp_ctx, Sr__Msg *request, uint32_t timeout)
+rp_set_oper_request_timeout(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *request, uint32_t timeout)
 {
     Sr__Msg *msg = NULL;
     int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG3(rp_ctx, session, request);
 
     SR_LOG_DBG("Setting up a timeout for op. data request (%"PRIu32" seconds).", timeout);
 
     rc = sr_gpb_internal_req_alloc(SR__OPERATION__OPER_DATA_TIMEOUT, &msg);
     if (SR_ERR_OK == rc) {
+        msg->session_id = session->id;
         msg->internal_request->oper_data_timeout_req->request_id = (uint64_t)request;
         msg->internal_request->postpone_timeout = timeout;
         msg->internal_request->has_postpone_timeout = true;
@@ -358,6 +361,7 @@ rp_get_item_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, b
     } else if (RP_REQ_WAITING_FOR_DATA == session->state) {
         if (msg == session->req) {
             SR_LOG_ERR("Time out waiting for operational data expired before all responses have been received, session id = %u", session->id);
+            session->state = RP_REQ_DATA_LOADED;
         } else {
             SR_LOG_ERR("A request was not processed, probably invalid state, session id = %u", session->id);
             sr__msg__free_unpacked(session->req, NULL);
@@ -380,7 +384,7 @@ rp_get_item_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, b
         /* save message */
         session->req = msg;
         /* setup timeout */
-        rc = rp_set_oper_request_timeout(rp_ctx, msg, RP_OPER_DATA_REQ_TIMEOUT);
+        rc = rp_set_oper_request_timeout(rp_ctx, session, msg, RP_OPER_DATA_REQ_TIMEOUT);
         sr__msg__free_unpacked(resp, NULL);
         pthread_mutex_unlock(&session->cur_req_mutex);
         return rc;
@@ -442,6 +446,7 @@ rp_get_items_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, 
     } else if (RP_REQ_WAITING_FOR_DATA == session->state) {
         if (msg == session->req) {
             SR_LOG_ERR("Time out waiting for operational data expired before all responses have been received, session id = %u", session->id);
+            session->state = RP_REQ_DATA_LOADED;
         } else {
             SR_LOG_ERR("A request was not processed, probably invalid state, session id = %u", session->id);
             sr__msg__free_unpacked(session->req, NULL);
@@ -477,7 +482,7 @@ rp_get_items_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, 
         /* save message */
         session->req = msg;
         /* setup timeout */
-        rc = rp_set_oper_request_timeout(rp_ctx, msg, RP_OPER_DATA_REQ_TIMEOUT);
+        rc = rp_set_oper_request_timeout(rp_ctx, session, msg, RP_OPER_DATA_REQ_TIMEOUT);
         sr__msg__free_unpacked(resp, NULL);
         pthread_mutex_unlock(&session->cur_req_mutex);
         return rc;
@@ -1462,15 +1467,18 @@ rp_commit_release_req_process(const rp_ctx_t *rp_ctx, Sr__Msg *msg)
  * @brief Processes an operational data timeout request.
  */
 static int
-rp_oper_data_timeout_req_process(const rp_ctx_t *rp_ctx, Sr__Msg *msg)
+rp_oper_data_timeout_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
 {
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG4(rp_ctx, msg, msg->internal_request, msg->internal_request->oper_data_timeout_req);
+    CHECK_NULL_ARG5(rp_ctx, msg, msg->internal_request, msg->internal_request->oper_data_timeout_req, session);
 
     SR_LOG_DBG_MSG("Processing oper-data-timeout request.");
 
-    // TODO: timeout the op. data request
+    if (((uint64_t )session->req) == msg->internal_request->oper_data_timeout_req->request_id) {
+        SR_LOG_DBG("Time out expired for operational data to be loaded. Request processing continue, session id = %u", session->id);
+        rp_msg_process(rp_ctx, session, session->req);
+    }
 
     return rc;
 }
@@ -1654,7 +1662,7 @@ rp_resp_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, bool *sk
  * @brief Dispatches received internal request message.
  */
 static int
-rp_internal_req_dispatch(rp_ctx_t *rp_ctx, Sr__Msg *msg)
+rp_internal_req_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
 {
     int rc = SR_ERR_OK;
 
@@ -1668,7 +1676,7 @@ rp_internal_req_dispatch(rp_ctx_t *rp_ctx, Sr__Msg *msg)
             rc = rp_commit_release_req_process(rp_ctx, msg);
             break;
         case SR__OPERATION__OPER_DATA_TIMEOUT:
-            rc = rp_oper_data_timeout_req_process(rp_ctx, msg);
+            rc = rp_oper_data_timeout_req_process(rp_ctx, session, msg);
             break;
         default:
             SR_LOG_ERR("Unsupported internal request received (operation=%d).", msg->internal_request->operation);
@@ -1721,7 +1729,7 @@ rp_msg_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
             rc = rp_resp_dispatch(rp_ctx, session, msg, &skip_msg_cleanup);
             break;
         case SR__MSG__MSG_TYPE__INTERNAL_REQUEST:
-            rc = rp_internal_req_dispatch(rp_ctx, msg);
+            rc = rp_internal_req_dispatch(rp_ctx, session, msg);
             break;
         case SR__MSG__MSG_TYPE__NOTIFICATION_ACK:
             rc = rp_notification_ack_process(rp_ctx, msg);
