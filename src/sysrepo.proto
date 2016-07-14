@@ -639,14 +639,13 @@ message RPCResp {
 
 message EventNotifReq {
   required string xpath = 1;
-  repeated Value input = 2;
+  repeated Value values = 2;
 
   optional string subscriber_address = 10;
   optional uint32 subscription_id = 11;
 }
 
 message EventNotifResp {
-  required string xpath = 1;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

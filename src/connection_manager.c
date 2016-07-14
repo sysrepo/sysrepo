@@ -1438,6 +1438,63 @@ cm_out_rpc_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
 }
 
 /**
+ * @brief Processes an outgoing event notification (notification to be sent to the client library).
+ */
+static int
+cm_out_event_notif_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
+{
+    sm_session_t *session = NULL;
+    sm_connection_t *connection = NULL;
+    char *destination_address = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG4(cm_ctx, msg, msg->request, msg->request->event_notif_req);
+
+    destination_address = msg->request->event_notif_req->subscriber_address;
+
+    SR_LOG_DBG("Sending an event notification to '%s'.", destination_address);
+
+    /* find the session */
+    rc = sm_session_find_id(cm_ctx->sm_ctx, msg->session_id, &session);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Unable to find the session matching with id specified in the message "
+                "(id=%"PRIu32").", msg->session_id);
+        sr__msg__free_unpacked(msg, NULL);
+        return SR_ERR_INTERNAL;
+    }
+    if ((NULL == session) || (NULL == session->cm_data)) {
+        SR_LOG_ERR("invalid session context - NULL value detected (id=%"PRIu32").", msg->session_id);
+        sr__msg__free_unpacked(msg, NULL);
+        return SR_ERR_INTERNAL;
+    }
+
+    /* get a connection to the notification destination */
+    rc = sm_connection_find_dst(cm_ctx->sm_ctx, destination_address, &connection);
+    if (SR_ERR_OK == rc) {
+        /* a connection to the destination already exists - reuse */
+        SR_LOG_DBG("Reusing existing connection on fd=%d for the event notification destination '%s'",
+                connection->fd, destination_address);
+    } else {
+        /* connection to that destination does not exist - connect */
+        SR_LOG_DBG("Creating a new connection for the event notification destination '%s'", destination_address);
+        rc = cm_subscr_conn_create(cm_ctx, destination_address, &connection);
+    }
+
+    /* send the message */
+    if (SR_ERR_OK == rc) {
+        rc = cm_msg_send_connection(cm_ctx, connection, msg);
+    }
+
+    if (SR_ERR_OK != rc) {
+        /* by error, remove subscriptions on this destination */
+        cm_subscr_unsubscribe_destination(cm_ctx, destination_address, 0);
+    }
+
+    sr__msg__free_unpacked(msg, NULL);
+
+    return rc;
+}
+/**
  * @brief Processes an internal request received from Request Processor.
  */
 static int
@@ -1565,6 +1622,10 @@ cm_msg_enqueue_cb(struct ev_loop *loop, ev_async *w, int revents)
                    (SR__OPERATION__RPC == msg->request->operation)) {
                /* send the RPC request via subscriber connection */
                cm_out_rpc_process(cm_ctx, msg);
+            } else if ((SR__MSG__MSG_TYPE__REQUEST == msg->type) &&
+                   (SR__OPERATION__EVENT_NOTIF == msg->request->operation)) {
+               /* send the event notification via subscriber connection */
+               cm_out_event_notif_process(cm_ctx, msg);
            } else {
                 /* process as a normal message */
                 cm_out_msg_process(cm_ctx, msg);

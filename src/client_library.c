@@ -2015,7 +2015,7 @@ sr_rpc_send(sr_session_ctx_t *session, const char *xpath,
 
     cl_session_clear_errors(session);
 
-    /* prepare feature_enable message */
+    /* prepare RPC message */
     rc = sr_gpb_req_alloc(SR__OPERATION__RPC, session->id, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
 
@@ -2172,5 +2172,48 @@ cleanup:
         sr__msg__free_unpacked(msg_resp, NULL);
     }
     free(module_name);
+    return cl_session_return(session, rc);
+}
+
+int
+sr_event_notif_send(sr_session_ctx_t *session, const char *xpath,
+        const sr_val_t *values,  const size_t values_cnt)
+{
+    Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG3(session, session->conn_ctx, xpath);
+
+    cl_session_clear_errors(session);
+
+    /* prepare event-notification message */
+    rc = sr_gpb_req_alloc(SR__OPERATION__EVENT_NOTIF, session->id, &msg_req);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
+
+    /* set arguments */
+    msg_req->request->event_notif_req->xpath = strdup(xpath);
+    CHECK_NULL_NOMEM_GOTO(msg_req->request->event_notif_req->xpath, rc, cleanup);
+
+    /* set values */
+    rc = sr_values_sr_to_gpb(values, values_cnt, &msg_req->request->event_notif_req->values, 
+                             &msg_req->request->event_notif_req->n_values);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by copying event notification values to GPB.");
+
+    /* send the request and receive the response */
+    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__EVENT_NOTIF);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
+
+    sr__msg__free_unpacked(msg_req, NULL);
+    sr__msg__free_unpacked(msg_resp, NULL);
+
+    return cl_session_return(session, SR_ERR_OK);
+
+cleanup:
+    if (NULL != msg_req) {
+        sr__msg__free_unpacked(msg_req, NULL);
+    }
+    if (NULL != msg_resp) {
+        sr__msg__free_unpacked(msg_resp, NULL);
+    }
     return cl_session_return(session, rc);
 }

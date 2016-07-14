@@ -1255,6 +1255,7 @@ rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg 
 
     return rc;
 }
+
 /**
  * @brief Processes an operational data provider response.
  */
@@ -1391,6 +1392,110 @@ rp_commit_release_req_process(const rp_ctx_t *rp_ctx, Sr__Msg *msg)
 }
 
 /**
+ * @brief Processes an event notification request.
+ */
+static int
+rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
+{
+    char *module_name = NULL;
+    sr_val_t *values = NULL;
+    size_t values_cnt = 0;
+    np_subscription_t *subscriptions = NULL;
+    size_t subscription_cnt = 0;
+    bool sub_match = false;
+    Sr__Msg *req = NULL, *resp = NULL;
+    int rc = SR_ERR_OK, rc_tmp = SR_ERR_OK;
+
+    CHECK_NULL_ARG_NORET5(rc, rp_ctx, session, msg, msg->request, msg->request->event_notif_req);
+    if (SR_ERR_OK != rc) {
+        /* release the message since it won't be released in dispatch */
+        sr__msg__free_unpacked(msg, NULL);
+        return rc;
+    }
+
+    SR_LOG_DBG_MSG("Processing event notification request.");
+
+    /* validate event-notification request */
+    rc = sr_values_gpb_to_sr(msg->request->event_notif_req->values, msg->request->event_notif_req->n_values, 
+            &values, &values_cnt);
+    if (SR_ERR_OK == rc) {
+        rc = dm_validate_event_notif(rp_ctx->dm_ctx, session->dm_session, msg->request->event_notif_req->xpath, 
+                &values, &values_cnt);
+    }
+
+    /* get module name */
+    if (SR_ERR_OK == rc) {
+        rc = sr_copy_first_ns(msg->request->event_notif_req->xpath, &module_name);
+    }
+
+    /* authorize (write permissions are required to deliver the event-notification) */
+    if (SR_ERR_OK == rc) {
+        rc = ac_check_module_permissions(session->ac_session, module_name, AC_OPER_READ_WRITE);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR("Access control check failed for module name '%s'", module_name);
+        }
+    }
+
+    /* get event-notification subscriptions */
+    if (SR_ERR_OK == rc) {
+        rc = pm_get_subscriptions(rp_ctx->pm_ctx, module_name, SR__SUBSCRIPTION_TYPE__EVENT_NOTIF_SUBS,
+                &subscriptions, &subscription_cnt);
+    }
+    free(module_name);
+
+    /* broadcast the notification to all subscribed processes */
+    for (unsigned i = 0; SR_ERR_OK == rc && i < subscription_cnt; ++i) {
+        if (NULL != subscriptions[i].xpath && 0 == strcmp(subscriptions[i].xpath, msg->request->event_notif_req->xpath)) {
+            /* duplicate msg into req with values and subscription details */
+            rc = sr_gpb_req_alloc(SR__OPERATION__EVENT_NOTIF, session->id, &req);
+            if (SR_ERR_OK != rc) break;
+            req->request->event_notif_req->xpath = strdup(msg->request->event_notif_req->xpath);
+            CHECK_NULL_NOMEM_ERROR(req->request->event_notif_req->xpath, rc);
+            if (SR_ERR_OK != rc) break;
+            rc = sr_values_sr_to_gpb(values, values_cnt, &req->request->event_notif_req->values, 
+                                     &req->request->event_notif_req->n_values);
+            if (SR_ERR_OK != rc) break;
+            req->request->event_notif_req->subscriber_address = strdup(subscriptions[i].dst_address);
+            CHECK_NULL_NOMEM_ERROR(req->request->event_notif_req->subscriber_address, rc);
+            if (SR_ERR_OK != rc) break;
+            req->request->event_notif_req->subscription_id = subscriptions[i].dst_id;
+            req->request->event_notif_req->has_subscription_id = true;
+            /* forward the request to the subscriber */
+            rc = cm_msg_send(rp_ctx->cm_ctx, req);
+            req = NULL;
+            sub_match = true;
+        }
+    }
+    if (NULL != req) {
+        sr__msg__free_unpacked(req, NULL);
+        req = NULL;
+    }
+    sr_free_values(values, values_cnt);
+    values = NULL;
+    values_cnt = 0;
+
+    if (!sub_match && SR_ERR_OK == rc) {
+        /* no subscription for this event notification */
+        SR_LOG_ERR("No subscription found for event notification delivery (xpath = '%s').",
+                   msg->request->event_notif_req->xpath);
+        rc = SR_ERR_NOT_FOUND;
+    }
+    np_free_subscriptions(subscriptions, subscription_cnt);
+    subscriptions = NULL;
+    subscription_cnt = 0;
+
+    /* send the response with return code */
+    rc_tmp = sr_gpb_resp_alloc(SR__OPERATION__EVENT_NOTIF, session->id, &resp);
+    if (SR_ERR_OK == rc_tmp) {
+        resp->response->result = rc;
+        rc = cm_msg_send(rp_ctx->cm_ctx, resp);
+    }
+
+    sr__msg__free_unpacked(msg, NULL);
+    return rc;
+}
+
+/**
  * @brief Processes an notification acknowledgment.
  */
 static int
@@ -1509,7 +1614,10 @@ rp_req_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, bool *ski
             rc = rp_rpc_req_process(rp_ctx, session, msg);
             *skip_msg_cleanup = true;
             return rc; /* skip further processing */
-            break;
+        case SR__OPERATION__EVENT_NOTIF:
+            rc = rp_event_notif_req_process(rp_ctx, session, msg);
+            *skip_msg_cleanup = true;
+            return rc; /* skip further processing */
         default:
             SR_LOG_ERR("Unsupported request received (session id=%"PRIu32", operation=%d).",
                     session->id, msg->request->operation);

@@ -1229,14 +1229,14 @@ int sr_dp_get_items_subscribe(sr_session_ctx_t *session, const char *xpath, sr_d
  * Subscribe to it by ::sr_event_notif_subscribe call.
  *
  * @param[in] xpath XPath identifying the event notification.
- * @param[in] input Array of input parameters.
- * @param[in] input_cnt Number of input parameters.
+ * @param[in] values Array of all nodes that hold some data in event notification subtree.
+ * @param[in] values_cnt Number of items inside the values array.
  * @param[in] private_ctx Private context opaque to sysrepo, 
  * as passed to ::sr_event_notif_subscribe call.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-typedef int (*sr_event_notif_cb)(const char *xpath, const sr_val_t *input, const size_t input_cnt,
+typedef void (*sr_event_notif_cb)(const char *xpath, const sr_val_t *values, const size_t values_cnt,
         void *private_ctx);
 
 /**
@@ -1262,14 +1262,14 @@ int sr_event_notif_subscribe(sr_session_ctx_t *session, const char *xpath,
  *
  * @param[in] session Session context acquired with ::sr_session_start call.
  * @param[in] xpath XPath identifying the event notification.
- * @param[in] input Array of input parameters (array of all nodes that hold some
- * data in event notification subtree - same as ::sr_get_items would return).
- * @param[in] input_cnt Number of input parameters.
+ * @param[in] values Array of all nodes that hold some data in event notification subtree
+ * (same as ::sr_get_items would return).
+ * @param[in] values_cnt Number of items inside the values array.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int sr_event_notif_send(sr_session_ctx_t *session, const char *xpath, const sr_val_t *input,
-        const size_t input_cnt);
+int sr_event_notif_send(sr_session_ctx_t *session, const char *xpath, const sr_val_t *values,
+        const size_t values_cnt);
 
 
 ////////////////////////////////////////////////////////////////////////////////

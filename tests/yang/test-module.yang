@@ -329,7 +329,7 @@ module test-module {
  grouping link {
     container source {
       leaf address {
-        type inet:ip-address-no-zone;
+        type inet:ipv4-address;
       }
       leaf interface {
         type string;
@@ -337,11 +337,15 @@ module test-module {
     }
     container destination {
       leaf address {
-        type inet:ip-address-no-zone;
+        type inet:ipv4-address;
       }
       leaf interface {
         type string;
       }
+    }
+    leaf MTU {
+      type uint16;
+      default 1500;
     }
  }
 
@@ -349,15 +353,7 @@ module test-module {
    uses link;
  }
 
- notification link-overutilized {
-   uses link;
- }
-
  notification link-removed {
-    uses link;
- }
-
- notification link-utilization-normal {
     uses link;
  }
 
