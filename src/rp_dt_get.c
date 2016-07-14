@@ -28,6 +28,7 @@
 #include "rp_internal.h"
 #include "rp_dt_get.h"
 #include "rp_dt_xpath.h"
+#include "rp_dt_edit.h"
 
 /**
  * @brief Fills sr_val_t from lyd_node structure. It fills xpath and copies the value.
@@ -205,6 +206,68 @@ rp_dt_xpath_requests_state_data(rp_ctx_t *rp_ctx, const char *module_name, const
     return rc;
 }
 
+int
+rp_dt_remove_loaded_state_data(rp_ctx_t *rp_ctx, rp_session_t *rp_session)
+{
+    CHECK_NULL_ARG2(rp_ctx, rp_session);
+    int rc = SR_ERR_OK;
+
+    while (rp_session->loaded_state_data[rp_session->datastore]->count > 0) {
+        char *item_xpath = (char *) rp_session->loaded_state_data[rp_session->datastore]->data[rp_session->loaded_state_data[rp_session->datastore]->count-1];
+        rc = rp_dt_delete_item(rp_ctx->dm_ctx, rp_session->dm_session, item_xpath, SR_EDIT_DEFAULT);
+        CHECK_RC_LOG_RETURN(rc, "Error %s occured while removing state data for xpath %s", sr_strerror(rc), item_xpath);
+        sr_list_rm(rp_session->loaded_state_data[rp_session->datastore], item_xpath);
+        free(item_xpath);
+    }
+
+    return rc;
+}
+
+/**
+ * @brief
+ *
+ * @note Temporary solution will be removed as soon as the logic for loading
+ * only subset of state data is implemented
+ *
+ * @param [in] rp_ctx
+ * @param [in] rp_session
+ * @param [in] module_name
+ * @return Error code (SR_ERR_OK on success)
+ */
+static int
+rp_dt_mark_all_state_data_in_module_as_loaded(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char *module_name)
+{
+    CHECK_NULL_ARG3(rp_ctx, rp_session, module_name);
+    int rc = SR_ERR_OK;
+    md_ctx_t *md_ctx = NULL;
+    md_module_t *module = NULL;
+    char *xpath = NULL;
+
+    rc = dm_get_md_ctx(rp_ctx->dm_ctx, &md_ctx);
+    CHECK_RC_MSG_RETURN(rc,"Failed to retrieve md_ctx");
+
+    md_ctx_lock(md_ctx, false);
+
+    rc = md_get_module_info(md_ctx, rp_session->module_name, NULL, &module);
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Module %s was not found in module dependency", rp_session->module_name);
+
+    sr_llist_node_t *node = module->op_data_subtrees->first;
+    while (NULL != node) {
+        md_subtree_ref_t *sub = node->data;
+        xpath = strdup(sub->xpath);
+        CHECK_NULL_NOMEM_GOTO(xpath, rc, cleanup);
+        rc = sr_list_add(rp_session->loaded_state_data[rp_session->datastore], xpath);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "List add failed");
+        xpath = NULL;
+        node = node->next;
+    }
+
+cleanup:
+    md_ctx_unlock(md_ctx);
+    free(xpath);
+    return rc;
+}
+
 /**
  * @brief Loads configuration data and asks for state data if needed. Request
  * can enter this function in RP_REQ_NEW state or RP_REQ_FINISHED.
@@ -233,6 +296,9 @@ rp_dt_prepare_data(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char *xpath
         free(rp_session->module_name);
         rp_session->module_name = NULL;
 
+        rc = rp_dt_remove_loaded_state_data(rp_ctx, rp_session);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to remove state data from data tree");
+
         rc = sr_copy_first_ns(xpath, &rp_session->module_name);
         CHECK_RC_LOG_GOTO(rc, cleanup, "Copying module name failed for xpath '%s'", xpath);
 
@@ -258,8 +324,6 @@ rp_dt_prepare_data(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char *xpath
                 SR_LOG_DBG("No state state data provider is asked for data because of xpath %s", xpath);
             }
 
-            //TODO: remove prev state data
-
             for (size_t i = 0; i < subscription_cnt; i++) {
                 char *xp = (char *) subscriptions[i]->xpath; /* Todo: xpath that should be used for initial data request */
                 rc = np_data_provider_request(rp_ctx->np_ctx, subscriptions[i], rp_session, xp);
@@ -274,9 +338,13 @@ rp_dt_prepare_data(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char *xpath
             }
             free(subscriptions);
 
-            if (subscription_cnt > 0) {
+            if (rp_session->dp_req_waiting > 0) {
                 rp_session->state = RP_REQ_WAITING_FOR_DATA;
             }
+
+            //TODO: mark only subtrees that were actually loaded
+            rc = rp_dt_mark_all_state_data_in_module_as_loaded(rp_ctx, rp_session, rp_session->module_name);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "Mark all module state data as loaded failed");
 
         }
         CHECK_RC_MSG_GOTO(rc, cleanup, "rp_dt_module_has_state data failed");

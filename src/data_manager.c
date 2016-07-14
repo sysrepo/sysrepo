@@ -39,11 +39,6 @@
 #include "module_dependencies.h"
 
 /**
- * @brief number of supported data stores - length of arrays used in session
- */
-#define DM_DATASTORE_COUNT 3
-
-/**
  * @brief Data manager context holding loaded schemas, data trees
  * and corresponding locks
  */
@@ -3606,5 +3601,12 @@ dm_get_commit_ctxs(dm_ctx_t *dm_ctx, dm_commit_ctxs_t **commit_ctxs)
 {
     CHECK_NULL_ARG2(dm_ctx, commit_ctxs);
     *commit_ctxs = &dm_ctx->commit_ctxs;
+    return SR_ERR_OK;
+}
+
+int
+dm_get_md_ctx(dm_ctx_t *dm_ctx, md_ctx_t **md_ctx){
+    CHECK_NULL_ARG2(dm_ctx, md_ctx);
+    *md_ctx = dm_ctx->md_ctx;
     return SR_ERR_OK;
 }

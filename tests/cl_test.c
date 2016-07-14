@@ -1937,7 +1937,15 @@ cl_dp_get_items_test(void **state)
     rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_CONFIG_ONLY, &config_only_session);
     assert_int_equal(rc, SR_ERR_OK);
 
+    /* no state data in config only session */
     rc = sr_get_item(config_only_session, "/state-module:bus/distance_travelled", &value);
+    assert_int_equal(rc, SR_ERR_NOT_FOUND);
+
+    /* data are also removed when switched to CONFIG_ONLY */
+    rc = sr_session_set_options(session, SR_SESS_CONFIG_ONLY);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_get_item(session, "/state-module:bus/distance_travelled", &value);
     assert_int_equal(rc, SR_ERR_NOT_FOUND);
 
     /* unsubscribe */

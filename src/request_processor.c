@@ -627,7 +627,7 @@ rp_move_item_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
  * @brief Processes a validate request.
  */
 static int
-rp_validate_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
+rp_validate_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
 {
     Sr__Msg *resp = NULL;
     int rc = SR_ERR_OK;
@@ -641,6 +641,11 @@ rp_validate_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr_
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Allocation of validate response failed.");
         return SR_ERR_NOMEM;
+    }
+
+    rc = rp_dt_remove_loaded_state_data(rp_ctx, session);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("An error occurred while removing state data: %s", sr_strerror(rc));
     }
 
     sr_error_info_t *errors = NULL;
@@ -1712,6 +1717,15 @@ rp_session_cleanup(const rp_ctx_t *rp_ctx, rp_session_t *session)
     if (NULL != session->req) {
         sr__msg__free_unpacked(session->req, NULL);
     }
+    for (size_t i = 0; i < DM_DATASTORE_COUNT; i++) {
+        while (session->loaded_state_data[i]->count > 0) {
+            char *item = session->loaded_state_data[i]->data[session->loaded_state_data[i]->count-1];
+            sr_list_rm(session->loaded_state_data[i], item);
+            free(item);
+        }
+        sr_list_cleanup(session->loaded_state_data[i]);
+    }
+    free(session->loaded_state_data);
     free(session);
 
     return SR_ERR_OK;
@@ -1973,22 +1987,26 @@ rp_session_start(const rp_ctx_t *rp_ctx, const uint32_t session_id, const ac_ucr
     session->commit_id = commit_id;
     pthread_mutex_init(&session->cur_req_mutex, NULL);
 
-    rc = ac_session_init(rp_ctx->ac_ctx, user_credentials, &session->ac_session);
-    if (SR_ERR_OK  != rc) {
-        SR_LOG_ERR("Access Control session init failed for session id=%"PRIu32".", session_id);
-        rp_session_cleanup(rp_ctx, session);
-        return rc;
+    session->loaded_state_data = calloc(DM_DATASTORE_COUNT, sizeof(*session->loaded_state_data));
+    CHECK_NULL_NOMEM_GOTO(session->loaded_state_data, rc, cleanup);
+    for (size_t i = 0; i < DM_DATASTORE_COUNT; i++) {
+        rc = sr_list_init(&session->loaded_state_data[i]);
+        CHECK_RC_LOG_GOTO(rc, cleanup, "List of state xpath initialization failed for session id=%"PRIu32".", session_id);
     }
 
+
+    rc = ac_session_init(rp_ctx->ac_ctx, user_credentials, &session->ac_session);
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Access Control session init failed for session id=%"PRIu32".", session_id);
+
     rc = dm_session_start(rp_ctx->dm_ctx, user_credentials, datastore, &session->dm_session);
-    if (SR_ERR_OK  != rc) {
-        SR_LOG_ERR("Init of dm_session failed for session id=%"PRIu32".", session_id);
-        rp_session_cleanup(rp_ctx, session);
-        return rc;
-    }
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Init of dm_session failed for session id=%"PRIu32".", session_id);
 
     *session_p = session;
 
+    return rc;
+
+cleanup:
+    rp_session_cleanup(rp_ctx, session);
     return rc;
 }
 
