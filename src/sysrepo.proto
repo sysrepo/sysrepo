@@ -602,6 +602,8 @@ message DataProvideReq {
 
   required string subscriber_address = 10;
   required uint32 subscription_id = 11;
+
+  required uint64 request_id = 20;
 }
 
 /**
@@ -611,6 +613,8 @@ message DataProvideReq {
 message DataProvideResp {
   required string xpath = 1;
   repeated Value values = 2;
+
+  required uint64 request_id = 10;
 }
 
 
