@@ -25,7 +25,6 @@
 #include "sysrepo.h"
 #include "sr_common.h"
 #include "access_control.h"
-#include "rp_dt_get.h"
 #include <pthread.h>
 #include <libyang/libyang.h>
 
@@ -668,8 +667,6 @@ rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, sr_error_info_t **errors, 
     SR_LOG_DBG_MSG("Commit (1/7): process stared");
 
     //TODO send validate notifications
-    rc = rp_dt_remove_loaded_state_data(rp_ctx, session);
-    CHECK_RC_MSG_RETURN(rc, "An error occurred while removing state data");
 
     /* YANG validation */
     rc = dm_validate_session_data_trees(rp_ctx->dm_ctx, session->dm_session, errors, err_cnt);

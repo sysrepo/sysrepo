@@ -721,9 +721,16 @@ rp_commit_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
         return SR_ERR_NOMEM;
     }
 
+    rc = rp_dt_remove_loaded_state_data(rp_ctx, session);
+    if (SR_ERR_OK != rc ) {
+        SR_LOG_ERR_MSG("An error occurred while removing state data");
+    }
+
     sr_error_info_t *errors = NULL;
     size_t err_cnt = 0;
-    rc = rp_dt_commit(rp_ctx, session, &errors, &err_cnt);
+    if (SR_ERR_OK == rc ) {
+        rc = rp_dt_commit(rp_ctx, session, &errors, &err_cnt);
+    }
 
     /* set response code */
     resp->response->result = rc;
