@@ -1914,7 +1914,7 @@ cl_dp_get_items_test(void **state)
 {
     sr_conn_ctx_t *conn = *state;
     assert_non_null(conn);
-    sr_session_ctx_t *session = NULL;
+    sr_session_ctx_t *session = NULL, *config_only_session = NULL;
     sr_subscription_ctx_t *subscription = NULL;
     int rc = SR_ERR_OK;
     sr_val_t *value = NULL;
@@ -1935,12 +1935,29 @@ cl_dp_get_items_test(void **state)
     assert_int_equal(42, value->data.uint32_val);
     sr_free_val(value);
 
+    rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_CONFIG_ONLY, &config_only_session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* no state data in config only session */
+    rc = sr_get_item(config_only_session, "/state-module:bus/distance_travelled", &value);
+    assert_int_equal(rc, SR_ERR_NOT_FOUND);
+
+    /* data are also removed when switched to CONFIG_ONLY */
+    rc = sr_session_set_options(session, SR_SESS_CONFIG_ONLY);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_get_item(session, "/state-module:bus/distance_travelled", &value);
+    assert_int_equal(rc, SR_ERR_NOT_FOUND);
+
     /* unsubscribe */
     rc = sr_unsubscribe(NULL, subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* stop the session */
     rc = sr_session_stop(session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_session_stop(config_only_session);
     assert_int_equal(rc, SR_ERR_OK);
 }
 

@@ -34,7 +34,8 @@
 #include "rp_dt_get.h"
 #include "rp_dt_edit.h"
 
-#define RP_INIT_REQ_QUEUE_SIZE 10    /**< Initial size of the request queue. */
+#define RP_INIT_REQ_QUEUE_SIZE   10  /**< Initial size of the request queue. */
+#define RP_OPER_DATA_REQ_TIMEOUT 2   /**< Timeout (in seconds) for processing of a request that includes operational data. */
 
 /*
  * Attributes that can significantly affect performance of the threadpool.
@@ -120,6 +121,35 @@ rp_check_notif_session(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
     free(module_name);
 cleanup:
     pthread_rwlock_unlock(&dm_ctxs->lock);
+    return rc;
+}
+
+/**
+ * @brief Sets a timeout for processing of a operational data request.
+ */
+static int
+rp_set_oper_request_timeout(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *request, uint32_t timeout)
+{
+    Sr__Msg *msg = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG3(rp_ctx, session, request);
+
+    SR_LOG_DBG("Setting up a timeout for op. data request (%"PRIu32" seconds).", timeout);
+
+    rc = sr_gpb_internal_req_alloc(SR__OPERATION__OPER_DATA_TIMEOUT, &msg);
+    if (SR_ERR_OK == rc) {
+        msg->session_id = session->id;
+        msg->internal_request->oper_data_timeout_req->request_id = (uint64_t)request;
+        msg->internal_request->postpone_timeout = timeout;
+        msg->internal_request->has_postpone_timeout = true;
+        rc = cm_msg_send(rp_ctx->cm_ctx, msg);
+    }
+
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Unable to setup a timeout for op. data request: %s.", sr_strerror(rc));
+    }
+
     return rc;
 }
 
@@ -331,14 +361,15 @@ rp_get_item_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, b
     } else if (RP_REQ_WAITING_FOR_DATA == session->state) {
         if (msg == session->req) {
             SR_LOG_ERR("Time out waiting for operational data expired before all responses have been received, session id = %u", session->id);
+            session->state = RP_REQ_DATA_LOADED;
         } else {
             SR_LOG_ERR("A request was not processed, probably invalid state, session id = %u", session->id);
             sr__msg__free_unpacked(session->req, NULL);
             session->state = RP_REQ_NEW;
         }
     }
-    /* we do not need to keep the pointer to the request */
-    session->req = NULL;
+    /* store current request to session */
+    session->req = msg;
 
     /* get value from data manager */
     rc = rp_dt_get_value_wrapper(rp_ctx, session, xpath, &value);
@@ -350,9 +381,8 @@ rp_get_item_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, b
         SR_LOG_DBG_MSG("Request paused, waiting for data");
         /* we are waiting for operational data do not free the request */
         *skip_msg_cleanup = true;
-        /* save message */
-        session->req = msg;
-        //TODO: setup timeout
+        /* setup timeout */
+        rc = rp_set_oper_request_timeout(rp_ctx, session, msg, RP_OPER_DATA_REQ_TIMEOUT);
         sr__msg__free_unpacked(resp, NULL);
         pthread_mutex_unlock(&session->cur_req_mutex);
         return rc;
@@ -369,6 +399,7 @@ rp_get_item_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, b
     }
 
 cleanup:
+    session->req = NULL;
     /* set response code */
     resp->response->result = rc;
 
@@ -388,7 +419,7 @@ cleanup:
  * @brief Processes a get_items request.
  */
 static int
-rp_get_items_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
+rp_get_items_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, bool *skip_msg_cleanup)
 {
     sr_val_t *values = NULL;
     size_t count = 0, limit = 0, offset = 0;
@@ -401,15 +432,28 @@ rp_get_items_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
 
     Sr__Msg *resp = NULL;
     rc = sr_gpb_resp_alloc(SR__OPERATION__GET_ITEMS, session->id, &resp);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Memory allocation failed");
-        return SR_ERR_NOMEM;
-    }
+    CHECK_RC_MSG_RETURN(rc, "Gpb response allocation failed");
 
     if (session->options & SR__SESSION_FLAGS__SESS_NOTIFICATION) {
         rc = rp_check_notif_session(rp_ctx, session, msg);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Check notif session failed");
     }
+
+    MUTEX_LOCK_TIMED_CHECK_GOTO(&session->cur_req_mutex, rc, cleanup);
+    if (RP_REQ_FINISHED == session->state) {
+        session->state = RP_REQ_NEW;
+    } else if (RP_REQ_WAITING_FOR_DATA == session->state) {
+        if (msg == session->req) {
+            SR_LOG_ERR("Time out waiting for operational data expired before all responses have been received, session id = %u", session->id);
+            session->state = RP_REQ_DATA_LOADED;
+        } else {
+            SR_LOG_ERR("A request was not processed, probably invalid state, session id = %u", session->id);
+            sr__msg__free_unpacked(session->req, NULL);
+            session->state = RP_REQ_NEW;
+        }
+    }
+    /* store current request to session */
+    session->req = msg;
 
     xpath = msg->request->get_items_req->xpath;
     offset = msg->request->get_items_req->offset;
@@ -426,15 +470,31 @@ rp_get_items_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
         if (SR_ERR_NOT_FOUND != rc) {
             SR_LOG_ERR("Get items failed for '%s', session id=%"PRIu32".", xpath, session->id);
         }
+        pthread_mutex_unlock(&session->cur_req_mutex);
         goto cleanup;
     }
+
+    if (RP_REQ_WAITING_FOR_DATA == session->state) {
+        SR_LOG_DBG_MSG("Request paused, waiting for data");
+        /* we are waiting for operational data do not free the request */
+        *skip_msg_cleanup = true;
+        /* setup timeout */
+        rc = rp_set_oper_request_timeout(rp_ctx, session, msg, RP_OPER_DATA_REQ_TIMEOUT);
+        sr__msg__free_unpacked(resp, NULL);
+        pthread_mutex_unlock(&session->cur_req_mutex);
+        return rc;
+    }
+
     SR_LOG_DBG("%zu items found for '%s', session id=%"PRIu32".", count, xpath, session->id);
+    pthread_mutex_unlock(&session->cur_req_mutex);
 
     /* copy values to gpb */
     rc = sr_values_sr_to_gpb(values, count, &resp->response->get_items_resp->values, &resp->response->get_items_resp->n_values);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Copying values to GPB failed.");
 
 cleanup:
+    session->req = NULL;
+
     /* set response code */
     resp->response->result = rc;
 
@@ -600,7 +660,7 @@ rp_move_item_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
  * @brief Processes a validate request.
  */
 static int
-rp_validate_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
+rp_validate_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
 {
     Sr__Msg *resp = NULL;
     int rc = SR_ERR_OK;
@@ -614,6 +674,11 @@ rp_validate_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr_
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Allocation of validate response failed.");
         return SR_ERR_NOMEM;
+    }
+
+    rc = rp_dt_remove_loaded_state_data(rp_ctx, session);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("An error occurred while removing state data: %s", sr_strerror(rc));
     }
 
     sr_error_info_t *errors = NULL;
@@ -655,9 +720,16 @@ rp_commit_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
         return SR_ERR_NOMEM;
     }
 
+    rc = rp_dt_remove_loaded_state_data(rp_ctx, session);
+    if (SR_ERR_OK != rc ) {
+        SR_LOG_ERR_MSG("An error occurred while removing state data");
+    }
+
     sr_error_info_t *errors = NULL;
     size_t err_cnt = 0;
-    rc = rp_dt_commit(rp_ctx, session, &errors, &err_cnt);
+    if (SR_ERR_OK == rc ) {
+        rc = rp_dt_commit(rp_ctx, session, &errors, &err_cnt);
+    }
 
     /* set response code */
     resp->response->result = rc;
@@ -1220,13 +1292,20 @@ rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg 
     free(module_name);
 
     /* fill-in subscription details into the request */
-    if (subscription_cnt > 0) {
-        req->request->rpc_req->subscriber_address = strdup(subscriptions[0].dst_address);
-        CHECK_NULL_NOMEM_ERROR(req->request->rpc_req->subscriber_address, rc);
-        req->request->rpc_req->subscription_id = subscriptions[0].dst_id;
-        req->request->rpc_req->has_subscription_id = true;
-        np_free_subscriptions(subscriptions, subscription_cnt);
-    } else if (SR_ERR_OK == rc) {
+    bool subscription_match = false;
+    for (size_t i = 0; i < subscription_cnt; i++) {
+        if (NULL != subscriptions[i].xpath && 0 == strcmp(subscriptions[i].xpath, req->request->rpc_req->xpath)) {
+            req->request->rpc_req->subscriber_address = strdup(subscriptions[i].dst_address);
+            CHECK_NULL_NOMEM_ERROR(req->request->rpc_req->subscriber_address, rc);
+            req->request->rpc_req->subscription_id = subscriptions[i].dst_id;
+            req->request->rpc_req->has_subscription_id = true;
+            np_free_subscriptions(subscriptions, subscription_cnt);
+            subscription_match = true;
+            break;
+        }
+    }
+
+    if (SR_ERR_OK == rc && !subscription_match) {
         /* no subscription for this RPC */
         SR_LOG_ERR("No subscription found for RPC delivery (xpath = '%s').", req->request->rpc_req->xpath);
         rc = SR_ERR_NOT_FOUND;
@@ -1274,12 +1353,16 @@ rp_data_provide_resp_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *m
     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to transform gpb to sr_val_t");
 
     MUTEX_LOCK_TIMED_CHECK_GOTO(&session->cur_req_mutex, rc, cleanup);
+    if (RP_REQ_WAITING_FOR_DATA != session->state || NULL == session->req ||  msg->response->data_provide_resp->request_id != (uint64_t) session->req ) {
+        SR_LOG_ERR("State data arrived after timeout expiration or session id=%u is invalid.", session->id);
+        goto error;
+    }
     for (size_t i = 0; i < values_cnt; i++) {
-        SR_LOG_DBG("Received value for data provider for xpath %s \n", values[i].xpath);
+        SR_LOG_DBG("Received value from data provider for xpath '%s'.", values[i].xpath);
         rc = rp_dt_set_item(rp_ctx->dm_ctx, session->dm_session, values[i].xpath, SR_EDIT_DEFAULT, &values[i]);
         if (SR_ERR_OK != rc) {
             //TODO: maybe validate if this path corresponds to the operational data
-            SR_LOG_WRN("Failed to set operational data for xpath %s", values[i].xpath);
+            SR_LOG_WRN("Failed to set operational data for xpath '%s'.", values[i].xpath);
         }
     }
     //TODO: generate request asking for nested data
@@ -1290,6 +1373,7 @@ rp_data_provide_resp_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *m
         session->state = RP_REQ_DATA_LOADED;
         rp_msg_process(rp_ctx, session, session->req);
     }
+error:
     pthread_mutex_unlock(&session->cur_req_mutex);
 
 cleanup:
@@ -1375,7 +1459,7 @@ rp_unsubscribe_destination_req_process(const rp_ctx_t *rp_ctx, Sr__Msg *msg)
 }
 
 /**
- * @brief Processes an commit-release internal request.
+ * @brief Processes a commit-release internal request.
  */
 static int
 rp_commit_release_req_process(const rp_ctx_t *rp_ctx, Sr__Msg *msg)
@@ -1387,6 +1471,26 @@ rp_commit_release_req_process(const rp_ctx_t *rp_ctx, Sr__Msg *msg)
     SR_LOG_DBG_MSG("Processing commit-release request.");
 
     rc = np_commit_release(rp_ctx->np_ctx, msg->internal_request->commit_release_req->commit_id);
+
+    return rc;
+}
+
+/**
+ * @brief Processes an operational data timeout request.
+ */
+static int
+rp_oper_data_timeout_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
+{
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG5(rp_ctx, msg, msg->internal_request, msg->internal_request->oper_data_timeout_req, session);
+
+    SR_LOG_DBG_MSG("Processing oper-data-timeout request.");
+
+    if (((uint64_t )session->req) == msg->internal_request->oper_data_timeout_req->request_id) {
+        SR_LOG_DBG("Time out expired for operational data to be loaded. Request processing continue, session id = %u", session->id);
+        rp_msg_process(rp_ctx, session, session->req);
+    }
 
     return rc;
 }
@@ -1566,7 +1670,7 @@ rp_req_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, bool *ski
             rc = rp_get_item_req_process(rp_ctx, session, msg, skip_msg_cleanup);
             break;
         case SR__OPERATION__GET_ITEMS:
-            rc = rp_get_items_req_process(rp_ctx, session, msg);
+            rc = rp_get_items_req_process(rp_ctx, session, msg, skip_msg_cleanup);
             break;
         case SR__OPERATION__SET_ITEM:
             rc = rp_set_item_req_process(rp_ctx, session, msg);
@@ -1677,7 +1781,7 @@ rp_resp_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, bool *sk
  * @brief Dispatches received internal request message.
  */
 static int
-rp_internal_req_dispatch(rp_ctx_t *rp_ctx, Sr__Msg *msg)
+rp_internal_req_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
 {
     int rc = SR_ERR_OK;
 
@@ -1689,6 +1793,9 @@ rp_internal_req_dispatch(rp_ctx_t *rp_ctx, Sr__Msg *msg)
             break;
         case SR__OPERATION__COMMIT_RELEASE:
             rc = rp_commit_release_req_process(rp_ctx, msg);
+            break;
+        case SR__OPERATION__OPER_DATA_TIMEOUT:
+            rc = rp_oper_data_timeout_req_process(rp_ctx, session, msg);
             break;
         default:
             SR_LOG_ERR("Unsupported internal request received (operation=%d).", msg->internal_request->operation);
@@ -1720,7 +1827,7 @@ rp_msg_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
     }
 
     /* whitelist only some operations for notification sessions */
-    if ((NULL != session) && (session->options & SR__SESSION_FLAGS__SESS_NOTIFICATION)) {
+    if ((NULL != session) && (SR__MSG__MSG_TYPE__REQUEST == msg->type) && (session->options & SR__SESSION_FLAGS__SESS_NOTIFICATION)) {
         if ((SR__OPERATION__GET_ITEM != msg->request->operation) &&
                 (SR__OPERATION__GET_ITEMS != msg->request->operation) &&
                 (SR__OPERATION__SESSION_REFRESH != msg->request->operation) &&
@@ -1741,7 +1848,7 @@ rp_msg_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
             rc = rp_resp_dispatch(rp_ctx, session, msg, &skip_msg_cleanup);
             break;
         case SR__MSG__MSG_TYPE__INTERNAL_REQUEST:
-            rc = rp_internal_req_dispatch(rp_ctx, msg);
+            rc = rp_internal_req_dispatch(rp_ctx, session, msg);
             break;
         case SR__MSG__MSG_TYPE__NOTIFICATION_ACK:
             rc = rp_notification_ack_process(rp_ctx, msg);
@@ -1782,9 +1889,19 @@ rp_session_cleanup(const rp_ctx_t *rp_ctx, rp_session_t *session)
     pthread_mutex_destroy(&session->msg_count_mutex);
     pthread_mutex_destroy(&session->cur_req_mutex);
     free(session->change_ctx.xpath);
+    free(session->module_name);
     if (NULL != session->req) {
         sr__msg__free_unpacked(session->req, NULL);
     }
+    for (size_t i = 0; i < DM_DATASTORE_COUNT; i++) {
+        while (session->loaded_state_data[i]->count > 0) {
+            char *item = session->loaded_state_data[i]->data[session->loaded_state_data[i]->count-1];
+            sr_list_rm(session->loaded_state_data[i], item);
+            free(item);
+        }
+        sr_list_cleanup(session->loaded_state_data[i]);
+    }
+    free(session->loaded_state_data);
     free(session);
 
     return SR_ERR_OK;
@@ -2046,22 +2163,26 @@ rp_session_start(const rp_ctx_t *rp_ctx, const uint32_t session_id, const ac_ucr
     session->commit_id = commit_id;
     pthread_mutex_init(&session->cur_req_mutex, NULL);
 
-    rc = ac_session_init(rp_ctx->ac_ctx, user_credentials, &session->ac_session);
-    if (SR_ERR_OK  != rc) {
-        SR_LOG_ERR("Access Control session init failed for session id=%"PRIu32".", session_id);
-        rp_session_cleanup(rp_ctx, session);
-        return rc;
+    session->loaded_state_data = calloc(DM_DATASTORE_COUNT, sizeof(*session->loaded_state_data));
+    CHECK_NULL_NOMEM_GOTO(session->loaded_state_data, rc, cleanup);
+    for (size_t i = 0; i < DM_DATASTORE_COUNT; i++) {
+        rc = sr_list_init(&session->loaded_state_data[i]);
+        CHECK_RC_LOG_GOTO(rc, cleanup, "List of state xpath initialization failed for session id=%"PRIu32".", session_id);
     }
 
+
+    rc = ac_session_init(rp_ctx->ac_ctx, user_credentials, &session->ac_session);
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Access Control session init failed for session id=%"PRIu32".", session_id);
+
     rc = dm_session_start(rp_ctx->dm_ctx, user_credentials, datastore, &session->dm_session);
-    if (SR_ERR_OK  != rc) {
-        SR_LOG_ERR("Init of dm_session failed for session id=%"PRIu32".", session_id);
-        rp_session_cleanup(rp_ctx, session);
-        return rc;
-    }
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Init of dm_session failed for session id=%"PRIu32".", session_id);
 
     *session_p = session;
 
+    return rc;
+
+cleanup:
+    rp_session_cleanup(rp_ctx, session);
     return rc;
 }
 

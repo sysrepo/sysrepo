@@ -105,6 +105,7 @@ typedef struct rp_session_s {
     Sr__Msg *req;                        /**< request that is waiting for operational data */
     char *module_name;                   /**< data tree name used in the current request */
     pthread_mutex_t cur_req_mutex;       /**< mutex guarding information about currently processed request */
+    sr_list_t **loaded_state_data;       /**< List of xpath for loaded state data in datastore */
 
 } rp_session_t;
 

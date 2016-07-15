@@ -406,10 +406,10 @@ int sr_session_refresh(sr_session_ctx_t *session);
 int sr_session_switch_ds(sr_session_ctx_t *session, sr_datastore_t ds);
 
 /**
- * @brief Alter the session options.
+ * @brief Alter the session options. E.g.: set/unset SR_SESS_CONFIG_ONLY flag.
  *
  * @param [in] session
- * @param [in] opts
+ * @param [in] opts - new value for session options
  * @return Error code (SR_ERR_OK on success)
  */
 int sr_session_set_options(sr_session_ctx_t *session, const sr_sess_options_t opts);

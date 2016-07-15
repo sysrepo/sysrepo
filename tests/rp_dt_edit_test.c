@@ -260,6 +260,7 @@ void delete_item_list_test(void **state){
     assert_int_equal(SR_ERR_OK, rc);
 
     /* delete the only list instance in the container the container should be also deleted */
+    session->state = RP_REQ_NEW;
     rc = rp_dt_get_value_wrapper(ctx, session, "/example-module:container", &val);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
@@ -320,6 +321,7 @@ void delete_item_alllist_test(void **state){
     assert_int_equal(SR_ERR_DATA_EXISTS, rc);
 
     /* items should remain in place*/
+    session->state = RP_REQ_NEW;
     rc = rp_dt_get_values_wrapper(ctx, session, LIST_XP, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
     sr_free_values(values, count);
@@ -329,6 +331,7 @@ void delete_item_alllist_test(void **state){
     assert_int_equal(SR_ERR_OK, rc);
 
     /* items should be deleted*/
+    session->state = RP_REQ_NEW;
     rc = rp_dt_get_values_wrapper(ctx, session, LIST_XP, &values, &count);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
@@ -364,6 +367,7 @@ void delete_item_leaflist_test(void **state){
     rc = rp_dt_delete_item_wrapper(ctx, session, LEAF_LIST_XP, SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
+    session->state = RP_REQ_NEW;
     rc = rp_dt_get_values_wrapper(ctx, session, LEAF_LIST_XP, &values, &count);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
@@ -389,6 +393,7 @@ void delete_item_leafref_test(void **state) {
     rc = rp_dt_get_values_wrapper(ctx, session, ITEM_WITH_LEAFREFS_XP, &values, &count);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
     /* do not delete referenced item though */
+    session->state = RP_REQ_NEW;
     rc = rp_dt_get_values_wrapper(ctx, session, REFERENCED_ITEM_XP, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
     sr_free_values(values, count);
@@ -401,9 +406,11 @@ void delete_item_leafref_test(void **state) {
     rc = rp_dt_delete_item_wrapper(ctx, session, LEAFREF_XP, SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
+    session->state = RP_REQ_NEW;
     rc = rp_dt_get_values_wrapper(ctx, session, LEAFREF_XP, &values, &count);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
     /* do not delete referenced item though */
+    session->state = RP_REQ_NEW;
     rc = rp_dt_get_values_wrapper(ctx, session, REFERENCED_LEAFREF_XP, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
     sr_free_values(values, count);
@@ -572,6 +579,7 @@ void set_item_leaflist_test(void **state){
     assert_int_equal(SR_ERR_OK, rc);
     sr_free_val(val);
 
+    session->state = RP_REQ_NEW;
     rc = rp_dt_get_values_wrapper(ctx, session, LEAF_LIST_XP, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(4, count);
@@ -584,6 +592,7 @@ void set_item_leaflist_test(void **state){
     rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/test-module:main/numbers[.='33']", SR_EDIT_STRICT, NULL);
     assert_int_equal(SR_ERR_OK, rc);
 
+    session->state = RP_REQ_NEW;
     rc = rp_dt_get_values_wrapper(ctx, session, LEAF_LIST_XP, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(5, count);
@@ -605,6 +614,7 @@ void set_item_leaflist_test(void **state){
     assert_int_equal(SR_ERR_OK, rc);
     sr_free_val(val);
 
+    session->state = RP_REQ_NEW;
     rc = rp_dt_get_values_wrapper(ctx, session, LEAF_LIST_XP, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(6, count);
@@ -639,6 +649,7 @@ void set_item_list_test(void **state){
     rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/example-module:container/list[key1='new_key1'][key2='new_key2']", SR_EDIT_DEFAULT, NULL);
     assert_int_equal(SR_ERR_OK, rc);
 
+    session->state = RP_REQ_NEW;
     rc = rp_dt_get_values_wrapper(ctx, session, "/example-module:container/list", &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(2, count);
@@ -1725,6 +1736,7 @@ edit_move_test(void **state)
     rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/test-module:user[name='nameC']", SR_EDIT_DEFAULT, NULL);
     assert_int_equal(SR_ERR_OK, rc);
 
+    session->state = RP_REQ_NEW;
     rc = rp_dt_get_values_wrapper(ctx, session, "/test-module:user", &values, &cnt);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(3, cnt);
@@ -1741,6 +1753,7 @@ edit_move_test(void **state)
     rc = rp_dt_move_list_wrapper(ctx, session, "/test-module:user[name='nameC']", SR_MOVE_BEFORE, "/test-module:user[name='nameA']");
     assert_int_equal(SR_ERR_OK, rc);
 
+    session->state = RP_REQ_NEW;
     rc = rp_dt_get_values_wrapper(ctx, session, "/test-module:user", &values, &cnt);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(3, cnt);
@@ -1794,6 +1807,7 @@ edit_move2_test(void **state)
     rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/test-module:user[name='nameC']", SR_EDIT_DEFAULT, NULL);
     assert_int_equal(SR_ERR_OK, rc);
 
+    session->state = RP_REQ_NEW;
     rc = rp_dt_get_values_wrapper(ctx, session, "/test-module:user", &values, &cnt);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(3, cnt);
@@ -1814,6 +1828,7 @@ edit_move2_test(void **state)
     rc = rp_dt_move_list_wrapper(ctx, session, "/test-module:user[name='nameC']", SR_MOVE_BEFORE, "/test-module:user[name='nameA']");
     assert_int_equal(SR_ERR_OK, rc);
 
+    session->state = RP_REQ_NEW;
     rc = rp_dt_get_values_wrapper(ctx, session, "/test-module:user", &values, &cnt);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(3, cnt);
@@ -1833,6 +1848,7 @@ edit_move2_test(void **state)
     rc = rp_dt_move_list_wrapper(ctx, session, "/test-module:user[name='nameA']", SR_MOVE_FIRST, NULL);
     assert_int_equal(SR_ERR_OK, rc);
 
+    session->state = RP_REQ_NEW;
     rc = rp_dt_get_values_wrapper(ctx, session, "/test-module:user", &values, &cnt);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(3, cnt);
@@ -1867,6 +1883,7 @@ edit_move3_test(void **state)
     rc = rp_dt_get_values_wrapper(ctx, session, "/test-module:user", &values, &cnt);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
+    session->state = RP_REQ_NEW;
     rc = rp_dt_get_values_wrapper(ctx, session, "/test-module:ordered-numbers", &values, &cnt);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
@@ -1897,6 +1914,7 @@ edit_move3_test(void **state)
     rc = rp_dt_set_item_wrapper(ctx, session, v->xpath, v, SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
+    session->state = RP_REQ_NEW;
     rc = rp_dt_get_values_wrapper(ctx, session, "/test-module:ordered-numbers", &values, &cnt);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(3, cnt);
@@ -1910,6 +1928,7 @@ edit_move3_test(void **state)
     rc = rp_dt_move_list_wrapper(ctx, session, "/test-module:ordered-numbers[.='9']", SR_MOVE_FIRST, NULL);
     assert_int_equal(SR_ERR_OK, rc);
 
+    session->state = RP_REQ_NEW;
     rc = rp_dt_get_values_wrapper(ctx, session, "/test-module:ordered-numbers", &values, &cnt);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(3, cnt);

@@ -37,6 +37,12 @@
 #include "notification_processor.h"
 #include "persistence_manager.h"
 #include "connection_manager.h"
+#include "module_dependencies.h"
+
+/**
+ * @brief number of supported data stores - length of arrays used in session
+ */
+#define DM_DATASTORE_COUNT 3
 
 /**
  * @brief Structure that holds the context of an instance of Data Manager.
@@ -829,5 +835,15 @@ int dm_get_commit_context(dm_ctx_t *dm_ctx, uint32_t c_ctx_id, dm_commit_context
  * @return Error code (SR_ERR_OK on success)
  */
 int dm_get_commit_ctxs(dm_ctx_t *dm_ctx, dm_commit_ctxs_t **commit_ctxs);
+
+/**
+ * @brief Returns and instance of module dependency context
+ * @param [in] dm_ctx
+ * @param [out] md_ctx
+ *
+ * @return Error code (SR_ERR_OK on success)
+ *
+ */
+int dm_get_md_ctx(dm_ctx_t *dm_ctx, md_ctx_t **md_ctx);
 /**@} Data manager*/
 #endif /* SRC_DATA_MANAGER_H_ */

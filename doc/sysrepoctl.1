@@ -1,0 +1,161 @@
+.\" Manpage for sysrepoctl.
+.\" Process this file with
+.\" groff -man -Tascii sysrepoctl.1
+.\"
+
+.TH SYSREPOCTL 1 "2016-07-14" "Sysrepo"
+.SH NAME
+sysrepoctl \- Sysrepo datastore control tool
+.
+.SH SYNOPSIS
+.B sysrepoctl
+\-\-\fBl\fPist [\-\-\fBL\fPevel=\fINUM\fP]
+.br
+
+.B sysrepoctl
+\-\-\fBi\fPnstall [\-\-yan\fBg\fP=\fIFILE\fP] [\-\-yi\fBn\fP=\fIFILE\fP]
+[\-\-\fBo\fPwner=\fIOWNER\fP] [\-\-\fBp\fPermissions=\fIPERMISSIONS\fP]
+[\-\-\fBs\fPearch-dir=\fIDIRECTORY\fP] [\-\-\fBL\fPevel=\fINUM\fP]
+.br
+
+.B sysrepoctl
+\-\-ini\fBt\fP \-\-\fBm\fPodule=\fIMODULE\fP [\-\-\fBr\fPevision=\fIREVISION\fP]
+[\-\-\fBo\fPwner=\fIOWNER\fP] [\-\-\fBp\fPermissions=\fIPERMISSIONS\fP]
+[\-\-\fBL\fPevel=\fINUM\fP]
+.br
+
+.B sysrepoctl
+\-\-\fBu\fPninstall \-\-\fBm\fPodule=\fIMODULE\fP [\-\-\fBr\fPevision=\fIREVISION\fP]
+[\-\-\fBL\fPevel=\fINUM\fP]
+.br
+
+.B sysrepoctl
+\-\-\fBc\fPhange \-\-\fBm\fPodule=\fIMODULE\fP [\-\-\fBr\fPevision=\fIREVISION\fP]
+[\-\-\fBo\fPwner=\fIOWNER\fP] [\-\-\fBp\fPermissions=\fIPERMISSIONS\fP]
+[\-\-\fBL\fPevel=\fINUM\fP]
+.br
+
+.B sysrepoctl
+\-\-feature-\fBe\fPnable=\fIFEATURE\fP \-\-\fBm\fPodule=\fIMODULE\fP [\-\-\fBL\fPevel=\fINUM\fP]
+.br
+
+.B sysrepoctl
+\-\-feature-\fBd\fPisable=\fIFEATURE\fP \-\-\fBm\fPodule=\fIMODULE\fP [\-\-\fBL\fPevel=\fINUM\fP]
+.br
+
+.B sysrepoctl
+\-\-\fBh\fPelp
+.br
+
+.B sysrepoctl
+\-\-\fBv\fPersion
+.
+.SH DESCRIPTION
+\fBsysrepoctl\fP is a command-line tool for the management of YANG modules 
+installed in Sysrepo datastore. It can be used for installing of new YANG 
+modules to Sysrepo, uninstalling existing ones, listing current state of 
+installed modules, enabling / disabling of YANG features within the module 
+or changing module access permissions.
+.
+.SH OPTIONS
+.TP
+.BR \-h ", " \-\^\-help
+Outputs usage help and exists.
+.TP
+.BR \-v ", " \-\^\-version
+Outputs the version number of
+.B sysrepoctl
+and exit.
+.TP
+.BR \-l ", " \-\^\-list
+Lists YANG modules installed in sysrepo.
+.TP
+.BR \-i ", " \-\^\-install
+Installs specified schema into sysrepo (\fB--yang\fP or \fB--yin\fP must be specified).
+.TP
+.BR \-t ", " \-\^\-init
+Initializes already installed YANG/YIN schema (\fB--module\fP must be specified).
+.TP
+.BR \-u ", " \-\^\-uninstall
+Uninstalls specified schema from sysrepo (\fB--module\fP must be specified).
+.TP
+.BR \-c ", " \-\^\-change
+Changes specified module in sysrepo (\fB--module\fP must be specified).
+.TP
+.BI \-e " FEATURE" "\fR,\fP \-\^\-feature-enable=" FEATURE
+Enables the YANG feature named \fIFEATURE\fP within a module in sysrepo 
+(\fB--module\fP must be specified).
+.TP
+.BI \-d " FEATURE" "\fR,\fP \-\^\-feature-disable=" FEATURE
+Disables the YANG feature named \fIFEATURE\fP  within a module in sysrepo
+(\fB--module\fP must be specified).
+.TP
+.BI \-g " FILE" "\fR,\fP \-\^\-yang=" FILE
+Specifies path to the file with schema in YANG format
+(used by \fB--install\fP operation).
+.TP
+.BI \-n " FILE" "\fR,\fP \-\^\-yin=" FILE
+Specifies path to the file with schema in YIN format
+(used by \fB--install\fP operation).
+.TP
+.BI \-m " MODULE" "\fR,\fP \-\^\-module=" MODULE
+Name of the module to be operated on 
+(used by \fB--init\fP, \fB--uninstall\fP, \fB--change\fP, 
+\fB--feature-enable\fP, \fB--feature-disable\fP operations)
+.TP
+.BI \-r " REVISION" "\fR,\fP \-\^\-revision=" REVISION
+Revision of the module to be operated on 
+(used by --init, --uninstall operations).
+.TP
+.BI \-o " OWNER" "\fR,\fP \-\^\-owner=" OWNER
+Owner user and group of the module's data in chown format 
+(used by --install, --init, --change operations).
+.TP
+.BI \-p " PERMISSIONS" "\fR,\fP \-\^\-permissions=" PERMISSIONS
+Access permissions of the module's data in chmod format 
+(used by --install, --init, --change operations).
+.TP
+.BI \-s " DIRECTORY" "\fR,\fP \-\^\-search-dir=" DIRECTORY
+Directory to search for included/imported modules. Defaults to the directory 
+with the YANG file being installed (used by --install operation).
+.TP
+.BI \-L " NUM" "\fR,\fP \-\^\-level=" NUM
+Set verbosity level of logging:
+.RS
+.IP \fB0\fP
+(default) all logging turned off
+.IP \fB1\fP
+log only error messages
+.IP \fB2\fP
+log error and warning messages
+.IP \fB3\fP
+log error, warning and informational messages
+.IP \fB4\fP
+log everything, including development debug messages
+.
+.SH EXAMPLE
+.IP \[bu] 2
+Install a new module by specifying YANG file, ownership and access permissions:
+    sysrepoctl --install --yang=ietf-interfaces.yang --owner=admin:admin --permissions=644
+.IP \[bu]
+Change the ownership and permissions of an existing YANG module:
+    sysrepoctl --change --module=ietf-interfaces --owner=admin:admin --permissions=644
+.IP \[bu]
+Enable a feature within a YANG module:
+    sysrepoctl --feature-enable=if-mib --module=ietf-interfaces
+.
+.SH SEE ALSO
+\fBsysrepocfg\fP(1)
+.br
+
+http://www.sysrepo.org (Sysrepo homepage)
+.br
+
+https://github.com/sysrepo/sysrepo (the GitHub base for Sysrepo)
+.
+.SH AUTHORS
+Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>,
+Milan Lenco <milan.lenco@pantheon.tech>
+.
+.SH COPYRIGHT
+Copyright \(co 2016 Cisco Systems, Inc.

@@ -87,10 +87,10 @@ sysrepoctl_test_uninstall(void **state)
     md_module_t *module = NULL;
 
     /* invalid arguments */
-    exec_shell_command("../src/sysrepoctl --uninstall --revision 2014-06-16", ".*", true, 1);
+    exec_shell_command("../src/sysrepoctl --uninstall --revision=2014-06-16", ".*", true, 1);
 
     /* uninstall ietf-ip */
-    exec_shell_command("../src/sysrepoctl --uninstall --module=ietf-ip --revision 2014-06-16", ".*", true, 0);
+    exec_shell_command("../src/sysrepoctl --uninstall --module=ietf-ip --revision=2014-06-16", ".*", true, 0);
     test_file_exists(TEST_SCHEMA_SEARCH_DIR "ietf-ip@2014-06-16.yang", false);
     exec_shell_command("../src/sysrepoctl -l", "!ietf-ip", true, 0);
 
@@ -113,7 +113,7 @@ sysrepoctl_test_uninstall(void **state)
     md_destroy(md_ctx);
 
     /* shouldn't be able to uninstall ietf-interfaces as iana-if-type depends on it */
-    exec_shell_command("../src/sysrepoctl --uninstall --module=ietf-interfaces --revision 2014-05-08", ".*", true, 1);
+    exec_shell_command("../src/sysrepoctl --uninstall --module=ietf-interfaces --revision=2014-05-08", ".*", true, 1);
     test_file_exists(TEST_SCHEMA_SEARCH_DIR "ietf-interfaces@2014-05-08.yang", true);
     test_file_exists(TEST_DATA_SEARCH_DIR "ietf-interfaces.startup", true);
     test_file_exists(TEST_DATA_SEARCH_DIR "ietf-interfaces.startup.lock", true);
@@ -129,7 +129,7 @@ sysrepoctl_test_uninstall(void **state)
     exec_shell_command("../src/sysrepoctl -l", "!iana-if-type", true, 0);
 
     /* now it should be possible to uninstall ietf-interfaces */
-    exec_shell_command("../src/sysrepoctl --uninstall --module=ietf-interfaces --revision 2014-05-08", ".*", true, 0);
+    exec_shell_command("../src/sysrepoctl --uninstall --module=ietf-interfaces --revision=2014-05-08", ".*", true, 0);
     test_file_exists(TEST_SCHEMA_SEARCH_DIR "ietf-interfaces@2014-05-08.yang", false);
     test_file_exists(TEST_DATA_SEARCH_DIR "ietf-interfaces.startup", false);
     test_file_exists(TEST_DATA_SEARCH_DIR "ietf-interfaces.startup.lock", false);
@@ -279,8 +279,8 @@ sysrepoctl_test_init(void **state)
     exec_shell_command(buff, ".*", true, 0);
 
     /* first uninstall ietf-interfaces (and ietf-ip which depends on it) */
-    exec_shell_command("../src/sysrepoctl --uninstall --module=ietf-ip --revision 2014-06-16", ".*", true, 0);
-    exec_shell_command("../src/sysrepoctl --uninstall --module=ietf-interfaces --revision 2014-05-08", ".*", true, 0);
+    exec_shell_command("../src/sysrepoctl --uninstall --module=ietf-ip --revision=2014-06-16", ".*", true, 0);
+    exec_shell_command("../src/sysrepoctl --uninstall --module=ietf-interfaces --revision=2014-05-08", ".*", true, 0);
 
     /* revert the ietf-interfaces schema file */
     snprintf(buff, PATH_MAX, "mv " TEST_SCHEMA_SEARCH_DIR ".ietf-interfaces@2014-05-08.yang.bkp " 
@@ -323,7 +323,7 @@ sysrepoctl_test_init(void **state)
     /* install and initialize already installed ietf-ip */
     snprintf(buff, PATH_MAX, "../src/sysrepoctl --install --yang=../../tests/yang/ietf-ip@2014-06-16.yang "
             "--owner=%s --permissions=644", user);
-    exec_shell_command(buff, "", true, 0);
+    exec_shell_command(buff, ".*", true, 0);
     snprintf(buff, PATH_MAX, "../src/sysrepoctl --init --module=ietf-ip --owner=%s --permissions=664", user);
     exec_shell_command(buff, ".*", true, 0);
 
@@ -357,7 +357,7 @@ sysrepoctl_test_init(void **state)
     /* finally install back iana-if-type to restore the pre-test state */
     snprintf(buff, PATH_MAX, "../src/sysrepoctl --install --yang=../../tests/yang/iana-if-type.yang "
             "--owner=%s --permissions=644", user);
-    exec_shell_command(buff, "", true, 0);
+    exec_shell_command(buff, ".*", true, 0);
     test_file_exists(TEST_SCHEMA_SEARCH_DIR "iana-if-type@2014-05-08.yang", true);
 }
 

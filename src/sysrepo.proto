@@ -604,6 +604,8 @@ message DataProvideReq {
 
   required string subscriber_address = 10;
   required uint32 subscription_id = 11;
+
+  required uint64 request_id = 20;
 }
 
 /**
@@ -613,6 +615,8 @@ message DataProvideReq {
 message DataProvideResp {
   required string xpath = 1;
   repeated Value values = 2;
+
+  required uint64 request_id = 10;
 }
 
 
@@ -660,6 +664,10 @@ message CommitReleaseReq {
   required uint32 commit_id = 1;
 }
 
+message OperDataTimeoutReq {
+  required uint64 request_id = 1;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // Sysrepo Engine API umbrella messages
 ////////////////////////////////////////////////////////////////////////////////
@@ -705,6 +713,7 @@ enum Operation {
 
   UNSUBSCRIBE_DESTINATION = 101;
   COMMIT_RELEASE = 102;
+  OPER_DATA_TIMEOUT = 103;
 }
 
 /**
@@ -828,6 +837,7 @@ message InternalRequest {
 
   optional UnsubscribeDestinationReq unsubscribe_dst_req = 10;
   optional CommitReleaseReq commit_release_req = 11;
+  optional OperDataTimeoutReq oper_data_timeout_req = 12;
 }
 
 /**
