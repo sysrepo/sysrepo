@@ -2195,7 +2195,7 @@ sr_event_notif_send(sr_session_ctx_t *session, const char *xpath,
     CHECK_NULL_NOMEM_GOTO(msg_req->request->event_notif_req->xpath, rc, cleanup);
 
     /* set values */
-    rc = sr_values_sr_to_gpb(values, values_cnt, &msg_req->request->event_notif_req->values, 
+    rc = sr_values_sr_to_gpb(values, values_cnt, &msg_req->request->event_notif_req->values,
                              &msg_req->request->event_notif_req->n_values);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by copying event notification values to GPB.");
 

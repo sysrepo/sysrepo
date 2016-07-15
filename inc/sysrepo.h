@@ -1221,7 +1221,7 @@ int sr_dp_get_items_subscribe(sr_session_ctx_t *session, const char *xpath, sr_d
         sr_subscr_options_t opts, sr_subscription_ctx_t **subscription);
 
 ////////////////////////////////////////////////////////////////////////////////
-// Event Notification API - EXPERIMENTAL (work in progress) !!!
+// Event Notification API
 ////////////////////////////////////////////////////////////////////////////////
 
 /**

@@ -816,11 +816,6 @@ cl_sm_event_notif_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *
     subscription_lookup.id = msg->request->event_notif_req->subscription_id;
     subscription = sr_btree_search(sm_ctx->subscriptions_btree, &subscription_lookup);
     if (NULL == subscription) {
-        size_t index = 0;
-        do {
-            subscription = sr_btree_get_at(sm_ctx->subscriptions_btree, index++);
-        } while (subscription);
-
         pthread_mutex_unlock(&sm_ctx->subscriptions_lock);
         SR_LOG_ERR("No matching subscription for subscription id=%"PRIu32".",
                 msg->request->event_notif_req->subscription_id);
@@ -829,7 +824,7 @@ cl_sm_event_notif_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *
 
     SR_LOG_DBG("Calling event notification callback for subscription id=%"PRIu32".", subscription->id);
 
-    subscription->callback.event_notif_cb(msg->request->event_notif_req->xpath, values, values_cnt, 
+    subscription->callback.event_notif_cb(msg->request->event_notif_req->xpath, values, values_cnt,
             subscription->private_ctx);
 
     pthread_mutex_unlock(&sm_ctx->subscriptions_lock);

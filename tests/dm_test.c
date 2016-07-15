@@ -591,14 +591,14 @@ dm_event_notif_test(void **state)
     rc = dm_validate_event_notif(ctx, session, "/test-module:link-removed", &values, &values_cnt);
     assert_int_equal(SR_ERR_OK, rc);
     /* including default leaf */
-    assert_int_equal(values_cnt, 7); 
+    assert_int_equal(values_cnt, 7);
     assert_string_equal("/test-module:link-removed/MTU", values[6].xpath);
     assert_int_equal(SR_UINT16_T, values[6].type);
     assert_int_equal(1500, values[6].data.uint16_val);
 
     /* invalid event notification values */
-    free(values[4].xpath);
-    values[4].xpath = strdup("/test-module:link-removed/non-existing-node");
+    free(values[6].xpath);
+    values[6].xpath = strdup("/test-module:link-removed/non-existing-node");
     rc = dm_validate_event_notif(ctx, session, "/test-module:link-removed", &values, &values_cnt);
     assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
 

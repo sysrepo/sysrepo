@@ -1416,10 +1416,10 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
     SR_LOG_DBG_MSG("Processing event notification request.");
 
     /* validate event-notification request */
-    rc = sr_values_gpb_to_sr(msg->request->event_notif_req->values, msg->request->event_notif_req->n_values, 
+    rc = sr_values_gpb_to_sr(msg->request->event_notif_req->values, msg->request->event_notif_req->n_values,
             &values, &values_cnt);
     if (SR_ERR_OK == rc) {
-        rc = dm_validate_event_notif(rp_ctx->dm_ctx, session->dm_session, msg->request->event_notif_req->xpath, 
+        rc = dm_validate_event_notif(rp_ctx->dm_ctx, session->dm_session, msg->request->event_notif_req->xpath,
                 &values, &values_cnt);
     }
 
@@ -1452,7 +1452,7 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
             req->request->event_notif_req->xpath = strdup(msg->request->event_notif_req->xpath);
             CHECK_NULL_NOMEM_ERROR(req->request->event_notif_req->xpath, rc);
             if (SR_ERR_OK != rc) break;
-            rc = sr_values_sr_to_gpb(values, values_cnt, &req->request->event_notif_req->values, 
+            rc = sr_values_sr_to_gpb(values, values_cnt, &req->request->event_notif_req->values,
                                      &req->request->event_notif_req->n_values);
             if (SR_ERR_OK != rc) break;
             req->request->event_notif_req->subscriber_address = strdup(subscriptions[i].dst_address);

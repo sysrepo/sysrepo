@@ -345,7 +345,7 @@ dm_load_schema_file(dm_ctx_t *dm_ctx, const char *schema_filepath, const struct 
                 SR_LOG_WRN("Unable to enable feature '%s' in module '%s' in Data Manager.", features[i], module->name);
             }
         }
-    
+
         if (SR_ERR_OK == rc) {
             if (module_enabled) {
                 /* enable running datastore for whole module */
@@ -360,7 +360,7 @@ dm_load_schema_file(dm_ctx_t *dm_ctx, const char *schema_filepath, const struct 
                 }
             }
         }
-    
+
         /* release memory */
         for (size_t i = 0; i < enabled_subtrees_cnt; i++) {
             free(enabled_subtrees[i]);
@@ -3131,14 +3131,14 @@ cleanup:
 /**
  * @brief Kind of procedure that DM can validate.
  */
-typedef enum dm_procedure_e{
+typedef enum dm_procedure_e {
     DM_PROCEDURE_RPC,               /**< Remote procedure call */
     DM_PROCEDURE_EVENT_NOTIF,       /**< Event notification */
     DM_PROCEDURE_ACTION,            /**< NETCONF RPC operation connected to a specific data node. */
 } dm_procedure_t;
 
 /**
- * @brief Validates argument of a procedure (RPC, Event notification, Action).
+ * @brief Validates arguments of a procedure (RPC, Event notification, Action).
  * @param [in] dm_ctx DM context.
  * @param [in] session DM session.
  * @param [in] type Type of the procedure.
@@ -3233,9 +3233,8 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
                 validation_options |= (input ? LYD_OPT_RPC : LYD_OPT_RPCREPLY);
                 break;
             case DM_PROCEDURE_EVENT_NOTIF:
-                validation_options |= LYD_OPT_NOTIF; 
+                validation_options |= LYD_OPT_NOTIF;
         }
-        validation_options |= 
         ret = lyd_validate(&data_tree, validation_options);
         if (0 != ret) {
             SR_LOG_ERR("%s content validation failed: %s", procedure_name, ly_errmsg());
@@ -3284,7 +3283,7 @@ dm_validate_rpc(dm_ctx_t *dm_ctx, dm_session_t *session, const char *rpc_xpath, 
 }
 
 int
-dm_validate_event_notif(dm_ctx_t *dm_ctx, dm_session_t *session, const char *event_notif_xpath, 
+dm_validate_event_notif(dm_ctx_t *dm_ctx, dm_session_t *session, const char *event_notif_xpath,
         sr_val_t **values, size_t *values_cnt)
 {
     return dm_validate_procedure(dm_ctx, session, DM_PROCEDURE_EVENT_NOTIF, event_notif_xpath,

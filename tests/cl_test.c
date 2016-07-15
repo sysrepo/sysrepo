@@ -2056,7 +2056,7 @@ test_event_notif_link_removed_cb(const char *xpath, const sr_val_t *values, cons
 }
 
 static void
-test_event_notif_link_overutilized_cb(const char *xpath, const sr_val_t *values, const size_t values_cnt, 
+test_event_notif_link_overutilized_cb(const char *xpath, const sr_val_t *values, const size_t values_cnt,
         void *private_ctx)
 {
     assert_true(0 && "This callback should not get called");
@@ -2161,10 +2161,10 @@ cl_event_notif_test(void **state)
     rc = sr_event_notif_send(notif_session, "/test-module:link-overutilized", values, 4);
     assert_int_equal(rc, SR_ERR_BAD_ELEMENT);
 
-    /* wait at most 3 seconds for all callbacks to get called */
+    /* wait at most 5 seconds for all callbacks to get called */
     struct timespec ts;
     clock_gettime(CLOCK_REALTIME, &ts);
-    ts.tv_sec += 3;
+    ts.tv_sec += 5;
     while (ETIMEDOUT != pthread_cond_timedwait(&cb_status.cond, &cb_status.mutex, &ts)
             && (cb_status.link_removed < CL_TEST_EN_NUM_SESSIONS || cb_status.link_discovered < CL_TEST_EN_NUM_SESSIONS));
     assert_int_equal(CL_TEST_EN_NUM_SESSIONS, cb_status.link_discovered);
