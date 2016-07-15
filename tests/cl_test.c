@@ -2086,12 +2086,13 @@ cl_event_notif_test(void **state)
     assert_non_null(conn);
 
     cl_test_en_session_t sub_session[CL_TEST_EN_NUM_SESSIONS];
-    sr_session_ctx_t *notif_session;
+    sr_session_ctx_t *notif_session = NULL;
     cl_test_en_cb_status_t cb_status;
     sr_val_t values[4];
     size_t i;
     int rc = SR_ERR_OK;
 
+    memset(&values, '\0', sizeof(values));
     cb_status.link_discovered = 0;
     cb_status.link_removed = 0;
     assert_int_equal(0, pthread_mutex_init(&cb_status.mutex, NULL));
