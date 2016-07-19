@@ -790,6 +790,51 @@ cleanup:
 }
 
 /**
+ * @brief Processes an incoming event notification.
+ */
+static int
+cl_sm_event_notif_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *msg)
+{
+    cl_sm_subscription_ctx_t *subscription = NULL;
+    cl_sm_subscription_ctx_t subscription_lookup = { 0, };
+    sr_val_t *values = NULL;
+    size_t values_cnt = 0;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG4(sm_ctx, msg, msg->request, msg->request->event_notif_req);
+
+    SR_LOG_DBG("Received an event notification for subscription id=%"PRIu32".",
+            msg->request->event_notif_req->subscription_id);
+
+    /* copy values from GPB */
+    rc = sr_values_gpb_to_sr(msg->request->event_notif_req->values, msg->request->event_notif_req->n_values,
+            &values, &values_cnt);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by copying event notification values from GPB.");
+
+    pthread_mutex_lock(&sm_ctx->subscriptions_lock);
+
+    /* find the subscription according to id */
+    subscription_lookup.id = msg->request->event_notif_req->subscription_id;
+    subscription = sr_btree_search(sm_ctx->subscriptions_btree, &subscription_lookup);
+    if (NULL == subscription) {
+        pthread_mutex_unlock(&sm_ctx->subscriptions_lock);
+        SR_LOG_ERR("No matching subscription for subscription id=%"PRIu32".",
+                msg->request->event_notif_req->subscription_id);
+        goto cleanup;
+    }
+
+    SR_LOG_DBG("Calling event notification callback for subscription id=%"PRIu32".", subscription->id);
+
+    subscription->callback.event_notif_cb(msg->request->event_notif_req->xpath, values, values_cnt,
+            subscription->private_ctx);
+
+    pthread_mutex_unlock(&sm_ctx->subscriptions_lock);
+
+cleanup:
+    sr_free_values(values, values_cnt);
+    return rc;
+}
+/**
  * @brief Processes a message received on the connection.
  */
 static int
@@ -817,6 +862,9 @@ cl_sm_conn_msg_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, uint8_t *msg
     } else if ((SR__MSG__MSG_TYPE__REQUEST == msg->type) && (SR__OPERATION__RPC == msg->request->operation)) {
         /* RPC request */
         rc = cl_sm_rpc_process(sm_ctx, conn, msg);
+    } else if ((SR__MSG__MSG_TYPE__REQUEST == msg->type) && (SR__OPERATION__EVENT_NOTIF == msg->request->operation)) {
+        /* event notification */
+        rc = cl_sm_event_notif_process(sm_ctx, conn, msg);
     } else {
         SR_LOG_ERR("Invalid or unexpected message received (conn=%p).", (void*)conn);
         rc = SR_ERR_INVAL_ARG;

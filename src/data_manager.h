@@ -659,6 +659,17 @@ int dm_copy_all_models(dm_ctx_t *dm_ctx, dm_session_t *session, sr_datastore_t s
 int dm_validate_rpc(dm_ctx_t *dm_ctx, dm_session_t *session, const char *rpc_xpath, sr_val_t **args, size_t *arg_cnt, bool input);
 
 /**
+ * @brief Validates content of an event notification request.
+ * @param [in] dm_ctx DM context.
+ * @param [in] session DM session.
+ * @param [in] notif_xpath XPath of the notification.
+ * @param [in] values Event notification subtree nodes (can be changed inside of the function).
+ * @param [in] values_cnt Number of items inside the values array (can be changed inside of the function).
+ * @return Error code (SR_ERR_OK on success)
+ */
+int dm_validate_event_notif(dm_ctx_t *dm_ctx, dm_session_t *session, const char *notif_xpath, sr_val_t **values, size_t *values_cnt);
+
+/**
  * @brief Locks lyctx_lock and call lyd_get_node.
  * @param [in] dm_ctx
  * @param [in] data

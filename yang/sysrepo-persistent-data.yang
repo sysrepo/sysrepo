@@ -58,6 +58,11 @@ module sysrepo-persistent-data {
     description "Subscription for delivery of RPC identified by xpath.";
   }
 
+  identity event-notification {
+    base subscription-type;
+    description "Subscription for delivery of event notification (RFC 5277) identified by xpath.";
+  }
+
   identity notification-event {
     description "Notification event which the subscriber is interested in.";
   }
@@ -116,7 +121,7 @@ module sysrepo-persistent-data {
         }
 
         leaf xpath {
-          when "../type = 'subtree-change' or ../type = 'dp-get-items' or ../type = 'rpc'";
+          when "../type = 'subtree-change' or ../type = 'dp-get-items' or ../type = 'rpc' or ../type = 'event-notification'";
           type string;
           description "XPath of the subtree where the subscription is active.";
         }

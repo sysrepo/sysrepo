@@ -82,6 +82,8 @@ sr_gpb_operation_name(Sr__Operation operation)
         return "unsubscribe-destination";
     case SR__OPERATION__COMMIT_RELEASE:
         return "commit-release";
+    case SR__OPERATION__EVENT_NOTIF:
+        return "event-notification";
     case SR__OPERATION__OPER_DATA_TIMEOUT:
         return "oper-data-timeout";
     case _SR__OPERATION_IS_INT_SIZE:
@@ -271,6 +273,12 @@ sr_gpb_req_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__M
             CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__rpcreq__init((Sr__RPCReq*)sub_msg);
             req->rpc_req = (Sr__RPCReq*)sub_msg;
+            break;
+        case SR__OPERATION__EVENT_NOTIF:
+            sub_msg = calloc(1, sizeof(Sr__EventNotifReq));
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
+            sr__event_notif_req__init((Sr__EventNotifReq*)sub_msg);
+            req->event_notif_req = (Sr__EventNotifReq*)sub_msg;
             break;
         default:
             rc = SR_ERR_UNSUPPORTED;
@@ -469,6 +477,11 @@ sr_gpb_resp_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__
             CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__rpcresp__init((Sr__RPCResp*)sub_msg);
             resp->rpc_resp = (Sr__RPCResp*)sub_msg;
+        case SR__OPERATION__EVENT_NOTIF:
+            sub_msg = calloc(1, sizeof(Sr__EventNotifResp));
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
+            sr__event_notif_resp__init((Sr__EventNotifResp*)sub_msg);
+            resp->event_notif_resp = (Sr__EventNotifResp*)sub_msg;
             break;
         default:
             rc = SR_ERR_UNSUPPORTED;
@@ -742,6 +755,9 @@ sr_gpb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__O
             case SR__OPERATION__RPC:
                 CHECK_NULL_RETURN(msg->request->rpc_req, SR_ERR_MALFORMED_MSG);
                 break;
+            case SR__OPERATION__EVENT_NOTIF:
+                CHECK_NULL_RETURN(msg->request->event_notif_req, SR_ERR_MALFORMED_MSG);
+                break;
             default:
                 return SR_ERR_MALFORMED_MSG;
         }
@@ -829,6 +845,9 @@ sr_gpb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__O
                 break;
             case SR__OPERATION__RPC:
                 CHECK_NULL_RETURN(msg->response->rpc_resp, SR_ERR_MALFORMED_MSG);
+                break;
+            case SR__OPERATION__EVENT_NOTIF:
+                CHECK_NULL_RETURN(msg->response->event_notif_resp, SR_ERR_MALFORMED_MSG);
                 break;
             default:
                 return SR_ERR_MALFORMED_MSG;
@@ -1483,6 +1502,8 @@ sr_subscription_type_gpb_to_str(Sr__SubscriptionType type)
             return "hello";
         case SR__SUBSCRIPTION_TYPE__COMMIT_END_SUBS:
             return "commit-end";
+        case SR__SUBSCRIPTION_TYPE__EVENT_NOTIF_SUBS:
+            return "event-notification";
         default:
             return "unknown";
     }

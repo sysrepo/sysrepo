@@ -107,7 +107,8 @@ rp_dt_get_values_from_nodes(struct ly_set *nodes, sr_val_t **values, size_t *val
 
     for (size_t i = 0; i < nodes->number; i++) {
         node = nodes->set.d[i];
-        if (NULL == node || NULL == node->schema || LYS_RPC == node->schema->nodetype) {
+        if (NULL == node || NULL == node->schema || LYS_RPC == node->schema->nodetype ||
+            LYS_NOTIF == node->schema->nodetype) {
             /* ignore this node */
             continue;
         }
