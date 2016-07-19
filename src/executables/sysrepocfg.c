@@ -1270,7 +1270,7 @@ main(int argc, char* argv[])
     rc = sr_connect("sysrepocfg", SR_CONN_DEFAULT, &srcfg_connection);
     if (SR_ERR_OK == rc) {
         rc = sr_session_start(srcfg_connection, datastore == SRCFG_STORE_RUNNING ? SR_DS_RUNNING : SR_DS_STARTUP,
-                              SR_SESS_DEFAULT, &srcfg_session);
+                              SR_SESS_CONFIG_ONLY, &srcfg_session);
     }
     if (SRCFG_STORE_RUNNING == datastore) {
         rc = sr_check_enabled_running(srcfg_session, module_name, &enabled);
