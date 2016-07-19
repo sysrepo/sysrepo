@@ -267,8 +267,11 @@ static int
 srctl_file_create(const char *path, void *arg)
 {
     (void)arg;
+    mode_t old_umask = 0;
     printf("Installing data file '%s' ...\n", path);
+    old_umask = umask(0);
     int fd = open(path, O_WRONLY | O_CREAT, 0666);
+    umask(old_umask);
     return fd == -1 ? -1 : close(fd);
 }
 
