@@ -243,12 +243,6 @@ rp_module_install_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *sessio
 
     SR_LOG_DBG_MSG("Processing module_install request.");
 
-    rc = ac_check_module_permissions(session->ac_session, msg->request->module_install_req->module_name, AC_OPER_READ_WRITE);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Access control check failed for xpath '%s'", msg->request->module_install_req->module_name);
-        return rc;
-    }
-
     /* allocate the response */
     rc = sr_gpb_resp_alloc(SR__OPERATION__MODULE_INSTALL, session->id, &resp);
     if (SR_ERR_OK != rc) {
@@ -256,15 +250,23 @@ rp_module_install_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *sessio
         return SR_ERR_NOMEM;
     }
 
+    /* check for write permission */
+    oper_rc = ac_check_module_permissions(session->ac_session, msg->request->module_install_req->module_name, AC_OPER_READ_WRITE);
+    if (SR_ERR_OK != oper_rc) {
+        SR_LOG_ERR("Access control check failed for xpath '%s'", msg->request->module_install_req->module_name);
+    }
+
     /* install the module in the DM */
-    oper_rc = msg->request->module_install_req->installed ?
-            dm_install_module(rp_ctx->dm_ctx,
-            msg->request->module_install_req->module_name,
-            msg->request->module_install_req->revision)
-            :
-            dm_uninstall_module(rp_ctx->dm_ctx,
-            msg->request->module_install_req->module_name,
-            msg->request->module_install_req->revision);
+    if (SR_ERR_OK == oper_rc) {
+        oper_rc = msg->request->module_install_req->installed ?
+                dm_install_module(rp_ctx->dm_ctx,
+                        msg->request->module_install_req->module_name,
+                        msg->request->module_install_req->revision)
+                :
+                dm_uninstall_module(rp_ctx->dm_ctx,
+                        msg->request->module_install_req->module_name,
+                        msg->request->module_install_req->revision);
+    }
 
     /* set response code */
     resp->response->result = oper_rc;
