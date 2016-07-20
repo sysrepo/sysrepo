@@ -12,20 +12,13 @@ changes its filesystem UID and GID (on Linux) or effective UID and GID (on Unixe
 to the IDs of the process that is using the client library before accessing any data file. 
 
 @section ifp Initial data file permissions
-It is recommended to use `sysrepoctl` tool (see @ref sysrepoctl) for installing
-new YANG modules to sysrepo and initial access control setup.
-
-If `sysrepoctl` hasn't been used for installing of a module and there is no existing 
-data file (an therefore no existing access control rules) for it, sysrepo creates 
-the data file automatically by the first  commit into the data model, with 
-following file permissions:
-- Owner user and group will be set according to UID and GID of the process 
-that is using the client library. If that user is root and ::sr_session_start_user
-has been used to start the session (see @ref user), sysrepo will use UID and GID
-of specified user instead.
-- The data file will be created with umask 022 in case that the client library 
-is connected to the sysrepo daemon, or with umask of the process that is using 
-the client library when not connected to the daemon.
+`sysrepoctl` tool (see @ref sysrepoctl) must be used for installing
+of new YANG modules into sysrepo. By defualt,
+`sysrepoctl` sets the access permissions on newly installed data files so that 
+everyone can read and write into them. It is therfore strongly recommended to 
+specify desired access permissions by `sysrepoctl --install` or 
+`sysrepoctl --init` operations, or set them later using 
+`sysrepoctl --change` operation.
 
 @section user Starting sessions on behalf of a different user
 Northbound access to sysrepo from management applications (such as NETCONF or 
@@ -52,7 +45,7 @@ privileges derived from module's data file, so that only users authorized for
 writing into the data module can deliver the notifications.
 
 The proper permissions on module-specific subdirectory of `SR_SUBSCRIPTIONS_SOCKET_DIR`
-are set by `sysrepoctl` tool by `--init` and `--install` operations. Be aware that
+are set by `sysrepoctl` tool by `--init`, `--install` and `--change` operations. Be aware that
 if `SR_SUBSCRIPTIONS_SOCKET_DIR` is located on some temporary filesystem (e.g. `/tmp/`),
 the subdirectories may get lost between restarts. In those cases, Sysrepo Engine 
 is capable of creating the directories in runtime, but with some limitations:

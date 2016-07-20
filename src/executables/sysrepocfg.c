@@ -1100,12 +1100,6 @@ main(int argc, char* argv[])
        { 0, 0, 0, 0 }
     };
 
-    /* read mandatory <module_name> argument */
-    if (1 < argc && '-' != argv[argc-1][0]) {
-        module_name = argv[argc-1];
-        --argc;
-    }
-
     /* parse options */
     while ((c = getopt_long(argc, argv, ":hvd:f:e:i:x:kpl:0:", longopts, NULL)) != -1) {
         switch (c) {
@@ -1182,6 +1176,16 @@ main(int argc, char* argv[])
                 rc = SR_ERR_INVAL_ARG;
                 goto terminate;
         }
+    }
+
+    /* parse non-option arguments (<module_name>) */
+    if (optind < argc) {
+        if ((argc - optind) != 1) {
+            fprintf(stderr, "Too many non-option arguments given (%d). Exiting.\n", (argc - optind));
+            rc = SR_ERR_INVAL_ARG;
+            goto terminate;
+        }
+        module_name = argv[optind];
     }
 
     /* check argument values */
