@@ -1160,15 +1160,22 @@ rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg 
     free(module_name);
 
     /* fill-in subscription details into the request */
-    if (subscription_cnt > 0) {
-        req->request->rpc_req->subscriber_address = strdup(subscriptions[0].dst_address);
-        CHECK_NULL_NOMEM_ERROR(req->request->rpc_req->subscriber_address, rc);
-        req->request->rpc_req->subscription_id = subscriptions[0].dst_id;
-        req->request->rpc_req->has_subscription_id = true;
-        req->request->rpc_req->session_id = session->id;
-        req->request->rpc_req->has_session_id = true;
-        np_free_subscriptions(subscriptions, subscription_cnt);
-    } else if (SR_ERR_OK == rc) {
+    bool subscription_match = false;
+    for (size_t i = 0; i < subscription_cnt; i++) {
+        if (NULL != subscriptions[i].xpath && 0 == strcmp(subscriptions[i].xpath, req->request->rpc_req->xpath)) {
+            req->request->rpc_req->subscriber_address = strdup(subscriptions[i].dst_address);
+            CHECK_NULL_NOMEM_ERROR(req->request->rpc_req->subscriber_address, rc);
+            req->request->rpc_req->subscription_id = subscriptions[i].dst_id;
+            req->request->rpc_req->has_subscription_id = true;
+            req->request->rpc_req->session_id = session->id;
+            req->request->rpc_req->has_session_id = true;
+            np_free_subscriptions(subscriptions, subscription_cnt);
+            subscription_match = true;
+            break;
+        }
+    }
+
+    if (SR_ERR_OK == rc && !subscription_match) {
         /* no subscription for this RPC */
         SR_LOG_ERR("No subscription found for RPC delivery (xpath = '%s').", req->request->rpc_req->xpath);
         rc = SR_ERR_NOT_FOUND;
