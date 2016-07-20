@@ -406,6 +406,15 @@ int sr_session_refresh(sr_session_ctx_t *session);
 int sr_session_switch_ds(sr_session_ctx_t *session, sr_datastore_t ds);
 
 /**
+ * @brief Alter the session options. E.g.: set/unset SR_SESS_CONFIG_ONLY flag.
+ *
+ * @param [in] session
+ * @param [in] opts - new value for session options
+ * @return Error code (SR_ERR_OK on success)
+ */
+int sr_session_set_options(sr_session_ctx_t *session, const sr_sess_options_t opts);
+
+/**
  * @brief Retrieves detailed information about the error that has occurred
  * during the last operation executed within provided session.
  *
@@ -1118,8 +1127,7 @@ int sr_get_change_next(sr_session_ctx_t *session, sr_change_iter_t *iter, sr_cha
  * @param[out] output Array of output parameters. Should be allocated on heap,
  * will be freed by sysrepo after sending of the RPC response.
  * @param[out] output_cnt Number of output parameters.
- * @param[in] private_ctx Private context opaque to sysrepo, as passed to
- * ::sr_rpc_subscribe call.
+ * @param[in] private_ctx Private context opaque to sysrepo, as passed to ::sr_rpc_subscribe call.
  *
  * @return Error code (SR_ERR_OK on success).
  */
@@ -1136,7 +1144,7 @@ typedef int (*sr_rpc_cb)(const char *xpath, const sr_val_t *input, const size_t 
  * @param[in] opts Options overriding default behavior of the subscription, it is supposed to be
  * a bitwise OR-ed value of any ::sr_subscr_flag_t flags.
  * @param[in,out] subscription Subscription context that is supposed to be released by ::sr_unsubscribe.
- * @note An existing context may be passed in in case that SR_SUBSCR_CTX_REUSE option is specified.
+ * @note An existing context may be passed in case that SR_SUBSCR_CTX_REUSE option is specified.
  *
  * @return Error code (SR_ERR_OK on success).
  */
@@ -1160,6 +1168,108 @@ int sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb cal
  */
 int sr_rpc_send(sr_session_ctx_t *session, const char *xpath,
         const sr_val_t *input,  const size_t input_cnt, sr_val_t **output, size_t *output_cnt);
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Operational Data API - EXPERIMENTAL (work in progress) !!!
+////////////////////////////////////////////////////////////////////////////////
+
+/**
+ * @brief Callback to be called when operational data at the selected level is requested.
+ * Subscribe to it by ::sr_dp_get_items_subscribe call.
+ *
+ * Callback handler is supposed to provide data of all nodes at the level selected by the xpath argument:
+ *
+ * - If the xpath identifies a container, the provider is supposed to return all leaves and leaf-lists values within it.
+ * Nested lists and containers should not be provided - sysrepo will ask for them in subsequent calls.
+ * - If the xpath identifies a list, the provider is supposed to return all all leaves and leaf-lists values within all
+ * instances of the list. Nested lists and containers should not be provided - sysrepo will ask for them in subsequent calls.
+ * - If the xpath identifies a leaf-list, the provider is supposed to return all leaf-list values.
+ * - If the xpath identifies a leaf, the provider is supposed to return just the leaf in question.
+ *
+ * The xpath argument passed to callback can be only the xpath that was used for the subscription, or xpath of
+ * any nested lists or containers.
+ *
+ * @param[in] xpath XPath identifying the level under which the nodes are requested.
+ * @param[out] values Array of values at the selected level (allocated by the provider).
+ * @param[out] values_cnt Number of values returned.
+ * @param[in] private_ctx Private context opaque to sysrepo, as passed to ::sr_dp_get_items_subscribe call.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+typedef int (*sr_dp_get_items_cb)(const char *xpath, sr_val_t **values, size_t *values_cnt, void *private_ctx);
+
+/**
+ * @brief Registers for providing of operational data under given xpath.
+ *
+ * @note The XPath must be generic - must not include any list key values.
+ * @note This API works only for operational data (subtrees marked in YANG as "config false").
+ * Subscribing as a data provider for configuration data does not have any effect.
+ *
+ * @param[in] session Session context acquired with ::sr_session_start call.
+ * @param[in] xpath XPath identifying the subtree under which the provider is able to provide
+ * operational data.
+ * @param[in] callback Callback to be called when the operational data nder given xpat is needed.
+ * @param[in] private_ctx Private context passed to the callback function, opaque to sysrepo.
+ * @param[in] opts Options overriding default behavior of the subscription, it is supposed to be
+ * a bitwise OR-ed value of any ::sr_subscr_flag_t flags.
+ * @param[in,out] subscription Subscription context that is supposed to be released by ::sr_unsubscribe.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_dp_get_items_subscribe(sr_session_ctx_t *session, const char *xpath, sr_dp_get_items_cb callback, void *private_ctx,
+        sr_subscr_options_t opts, sr_subscription_ctx_t **subscription);
+
+////////////////////////////////////////////////////////////////////////////////
+// Event Notification API
+////////////////////////////////////////////////////////////////////////////////
+
+/**
+ * @brief Callback to be called by the delivery of event notification specified by xpath.
+ * Subscribe to it by ::sr_event_notif_subscribe call.
+ *
+ * @param[in] xpath XPath identifying the event notification.
+ * @param[in] values Array of all nodes that hold some data in event notification subtree.
+ * @param[in] values_cnt Number of items inside the values array.
+ * @param[in] private_ctx Private context opaque to sysrepo, 
+ * as passed to ::sr_event_notif_subscribe call.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+typedef void (*sr_event_notif_cb)(const char *xpath, const sr_val_t *values, const size_t values_cnt,
+        void *private_ctx);
+
+/**
+ * @brief Subscribes for delivery of an event notification specified by xpath.
+ *
+ * @param[in] session Session context acquired with ::sr_session_start call.
+ * @param[in] xpath XPath identifying the event notification.
+ * @param[in] callback Callback to be called when the event notification is send.
+ * @param[in] private_ctx Private context passed to the callback function, opaque to sysrepo.
+ * @param[in] opts Options overriding default behavior of the subscription, it is supposed to be
+ * a bitwise OR-ed value of any ::sr_subscr_flag_t flags.
+ * @param[in,out] subscription Subscription context that is supposed to be released by ::sr_unsubscribe.
+ * @note An existing context may be passed in case that SR_SUBSCR_CTX_REUSE option is specified.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_event_notif_subscribe(sr_session_ctx_t *session, const char *xpath, 
+        sr_event_notif_cb callback, void *private_ctx, sr_subscr_options_t opts,
+        sr_subscription_ctx_t **subscription);
+
+/**
+ * @brief Sends an event notification specified by xpath and waits for the result.
+ *
+ * @param[in] session Session context acquired with ::sr_session_start call.
+ * @param[in] xpath XPath identifying the event notification.
+ * @param[in] values Array of all nodes that hold some data in event notification subtree
+ * (same as ::sr_get_items would return).
+ * @param[in] values_cnt Number of items inside the values array.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_event_notif_send(sr_session_ctx_t *session, const char *xpath, const sr_val_t *values,
+        const size_t values_cnt);
 
 
 ////////////////////////////////////////////////////////////////////////////////

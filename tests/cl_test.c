@@ -26,6 +26,7 @@
 #include <setjmp.h>
 #include <cmocka.h>
 #include <string.h>
+#include <pthread.h>
 
 #include "sysrepo.h"
 #include "client_library.h"
@@ -192,6 +193,14 @@ cl_get_schema_test(void **state)
     /* start a session */
     rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &session);
     assert_int_equal(rc, SR_ERR_OK);
+
+    /* get schema for specified module, latest revision */
+    rc = sr_get_schema(session, "module-b", NULL, NULL, SR_SCHEMA_YANG, &schema_content);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_non_null(schema_content);
+    printf("%s\n", schema_content);
+    free(schema_content);
+    schema_content = NULL;
 
     /* get schema for specified module, latest revision */
     rc = sr_get_schema(session, "module-a", NULL, NULL, SR_SCHEMA_YANG, &schema_content);
@@ -1881,6 +1890,328 @@ cl_get_changes_iter_test(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 }
 
+static int
+dp_get_items_cb(const char *xpath, sr_val_t **values, size_t *values_cnt, void *private_ctx)
+{
+    printf("operational data for '%s' requested.\n", xpath);
+
+    // TODO: return some real operational data
+    *values = calloc(2, sizeof(**values));
+    (*values)[0].xpath = strdup("/state-module:bus/gps_located");
+    (*values)[0].type = SR_BOOL_T;
+    (*values)[0].data.bool_val = false;
+    (*values)[1].xpath = strdup("/state-module:bus/distance_travelled");
+    (*values)[1].type = SR_UINT32_T;
+    (*values)[1].data.uint32_val = 42;
+
+    *values_cnt = 2;
+
+    return SR_ERR_OK;
+}
+
+static void
+cl_dp_get_items_test(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+    sr_session_ctx_t *session = NULL, *config_only_session = NULL;
+    sr_subscription_ctx_t *subscription = NULL;
+    int rc = SR_ERR_OK;
+    sr_val_t *value = NULL;
+
+    /* start session */
+    rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* subscribe as a data provider */
+    rc = sr_dp_get_items_subscribe(session, "/state-module:bus", dp_get_items_cb, NULL,
+            SR_SUBSCR_DEFAULT, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_get_item(session, "/state-module:bus/distance_travelled", &value);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    assert_int_equal(SR_UINT32_T, value->type);
+    assert_int_equal(42, value->data.uint32_val);
+    sr_free_val(value);
+
+    rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_CONFIG_ONLY, &config_only_session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* no state data in config only session */
+    rc = sr_get_item(config_only_session, "/state-module:bus/distance_travelled", &value);
+    assert_int_equal(rc, SR_ERR_NOT_FOUND);
+
+    /* data are also removed when switched to CONFIG_ONLY */
+    rc = sr_session_set_options(session, SR_SESS_CONFIG_ONLY);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_get_item(session, "/state-module:bus/distance_travelled", &value);
+    assert_int_equal(rc, SR_ERR_NOT_FOUND);
+
+    /* unsubscribe */
+    rc = sr_unsubscribe(NULL, subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* stop the session */
+    rc = sr_session_stop(session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_session_stop(config_only_session);
+    assert_int_equal(rc, SR_ERR_OK);
+}
+
+static void
+cl_session_set_opts(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+    sr_session_ctx_t *session = NULL;
+    int rc;
+
+    rc = sr_session_start(conn, SR_DS_CANDIDATE, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_session_set_options(session, SR_SESS_CONFIG_ONLY);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* stop the session */
+    rc = sr_session_stop(session);
+    assert_int_equal(rc, SR_ERR_OK);
+}
+
+#define CL_TEST_EN_NUM_SESSIONS  5
+
+typedef struct cl_test_en_cb_status_s {
+    int link_discovered;
+    int link_removed;
+    pthread_mutex_t mutex;
+    pthread_cond_t cond;
+} cl_test_en_cb_status_t;
+
+typedef struct cl_test_en_session_s {
+    sr_session_ctx_t *session;
+    sr_subscription_ctx_t *subscription_ld;
+    sr_subscription_ctx_t *subscription_lr;
+    sr_subscription_ctx_t *subscription_lo;
+} cl_test_en_session_t;
+
+static void
+test_event_notif_link_discovery_cb(const char *xpath, const sr_val_t *values, const size_t values_cnt,
+        void *private_ctx)
+{
+    cl_test_en_cb_status_t *cb_status = (cl_test_en_cb_status_t*)private_ctx;
+
+    assert_int_equal(0, pthread_mutex_lock(&cb_status->mutex));
+    assert_int_equal(values_cnt, 7);
+
+    assert_string_equal("/test-module:link-discovered", xpath);
+
+    assert_string_equal("/test-module:link-discovered/source", values[0].xpath);
+    assert_int_equal(SR_CONTAINER_T, values[0].type);
+    assert_string_equal("/test-module:link-discovered/source/address", values[1].xpath);
+    assert_int_equal(SR_STRING_T, values[1].type);
+    assert_string_equal("10.10.1.5", values[1].data.string_val);
+    assert_string_equal("/test-module:link-discovered/source/interface", values[2].xpath);
+    assert_int_equal(SR_STRING_T, values[2].type);
+    assert_string_equal("eth1", values[2].data.string_val);
+    assert_string_equal("/test-module:link-discovered/destination", values[3].xpath);
+    assert_int_equal(SR_CONTAINER_T, values[3].type);
+    assert_string_equal("/test-module:link-discovered/destination/address", values[4].xpath);
+    assert_int_equal(SR_STRING_T, values[4].type);
+    assert_string_equal("10.10.1.8", values[4].data.string_val);
+    assert_string_equal("/test-module:link-discovered/destination/interface", values[5].xpath);
+    assert_int_equal(SR_STRING_T, values[5].type);
+    assert_string_equal("eth0", values[5].data.string_val);
+    assert_string_equal("/test-module:link-discovered/MTU", values[6].xpath);  /**< default */
+    assert_int_equal(SR_UINT16_T, values[6].type);
+    assert_int_equal(1500, values[6].data.uint16_val);
+
+    cb_status->link_discovered += 1;
+    if (cb_status->link_discovered == CL_TEST_EN_NUM_SESSIONS) {
+        assert_int_equal(0, pthread_cond_signal(&cb_status->cond));
+    }
+    assert_int_equal(0, pthread_mutex_unlock(&cb_status->mutex));
+}
+
+static void
+test_event_notif_link_removed_cb(const char *xpath, const sr_val_t *values, const size_t values_cnt,
+        void *private_ctx)
+{
+    cl_test_en_cb_status_t *cb_status = (cl_test_en_cb_status_t*)private_ctx;
+
+    assert_int_equal(0, pthread_mutex_lock(&cb_status->mutex));
+    assert_int_equal(values_cnt, 7);
+
+    assert_string_equal("/test-module:link-removed", xpath);
+
+    assert_string_equal("/test-module:link-removed/source", values[0].xpath);
+    assert_int_equal(SR_CONTAINER_T, values[0].type);
+    assert_string_equal("/test-module:link-removed/source/address", values[1].xpath);
+    assert_int_equal(SR_STRING_T, values[1].type);
+    assert_string_equal("10.10.2.4", values[1].data.string_val);
+    assert_string_equal("/test-module:link-removed/source/interface", values[2].xpath);
+    assert_int_equal(SR_STRING_T, values[2].type);
+    assert_string_equal("eth0", values[2].data.string_val);
+    assert_string_equal("/test-module:link-removed/destination", values[3].xpath);
+    assert_int_equal(SR_CONTAINER_T, values[3].type);
+    assert_string_equal("/test-module:link-removed/destination/address", values[4].xpath);
+    assert_int_equal(SR_STRING_T, values[4].type);
+    assert_string_equal("10.10.2.5", values[4].data.string_val);
+    assert_string_equal("/test-module:link-removed/destination/interface", values[5].xpath);
+    assert_int_equal(SR_STRING_T, values[5].type);
+    assert_string_equal("eth2", values[5].data.string_val);
+    assert_string_equal("/test-module:link-removed/MTU", values[6].xpath); /**< default */
+    assert_int_equal(SR_UINT16_T, values[6].type);
+    assert_int_equal(1500, values[6].data.uint16_val);
+
+    cb_status->link_removed += 1;
+    if (cb_status->link_removed == CL_TEST_EN_NUM_SESSIONS) {
+        assert_int_equal(0, pthread_cond_signal(&cb_status->cond));
+    }
+    assert_int_equal(0, pthread_mutex_unlock(&cb_status->mutex));
+}
+
+static void
+test_event_notif_link_overutilized_cb(const char *xpath, const sr_val_t *values, const size_t values_cnt,
+        void *private_ctx)
+{
+    assert_true(0 && "This callback should not get called");
+}
+
+static void
+cl_event_notif_test(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+
+    cl_test_en_session_t sub_session[CL_TEST_EN_NUM_SESSIONS];
+    sr_session_ctx_t *notif_session = NULL;
+    cl_test_en_cb_status_t cb_status;
+    sr_val_t values[4];
+    size_t i;
+    int rc = SR_ERR_OK;
+
+    memset(&values, '\0', sizeof(values));
+    cb_status.link_discovered = 0;
+    cb_status.link_removed = 0;
+    assert_int_equal(0, pthread_mutex_init(&cb_status.mutex, NULL));
+    assert_int_equal(0, pthread_cond_init(&cb_status.cond, NULL));
+    assert_int_equal(0, pthread_mutex_lock(&cb_status.mutex));
+
+    /* start sessions */
+    rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &notif_session);
+    assert_int_equal(rc, SR_ERR_OK);
+    for (i = 0; i < CL_TEST_EN_NUM_SESSIONS; ++i) {
+        rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &sub_session[i].session);
+        assert_int_equal(rc, SR_ERR_OK);
+    }
+
+    /* subscribe for link discovery in every session */
+    for (i = 0; i < CL_TEST_EN_NUM_SESSIONS; ++i) {
+        rc = sr_event_notif_subscribe(sub_session[i].session, "/test-module:link-discovered", test_event_notif_link_discovery_cb,
+                &cb_status, SR_SUBSCR_DEFAULT, &sub_session[i].subscription_ld);
+        assert_int_equal(rc, SR_ERR_OK);
+    }
+
+    /* subscribe for link removal in every session */
+    for (i = 0; i < CL_TEST_EN_NUM_SESSIONS; ++i) {
+        rc = sr_event_notif_subscribe(sub_session[i].session, "/test-module:link-removed", test_event_notif_link_removed_cb,
+                &cb_status, SR_SUBSCR_DEFAULT, &sub_session[i].subscription_lr);
+        assert_int_equal(rc, SR_ERR_OK);
+    }
+
+    /* subscribe for nonexistent notification in every session */
+    for (i = 0; i < CL_TEST_EN_NUM_SESSIONS; ++i) {
+        rc = sr_event_notif_subscribe(sub_session[i].session, "/test-module:link-overutilized", test_event_notif_link_overutilized_cb,
+                    &cb_status, SR_SUBSCR_DEFAULT, &sub_session[i].subscription_lo);
+        assert_int_equal(rc, SR_ERR_OK); /**< not verified at this stage */
+    }
+
+    /* send event notification - link discovery */
+    values[0].xpath = "/test-module:link-discovered/source/address";
+    values[0].type = SR_STRING_T;
+    values[0].data.string_val = "10.10.1.5";
+    values[1].xpath = "/test-module:link-discovered/source/interface";
+    values[1].type = SR_STRING_T;
+    values[1].data.string_val = "eth1";
+    values[2].xpath = "/test-module:link-discovered/destination/address";
+    values[2].type = SR_STRING_T;
+    values[2].data.string_val = "10.10.1.8";
+    values[3].xpath = "/test-module:link-discovered/destination/interface";
+    values[3].type = SR_STRING_T;
+    values[3].data.string_val = "eth0";
+
+    rc = sr_event_notif_send(notif_session, "/test-module:link-discovered", values, 4);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* send event notification - link removal */
+    values[0].xpath = "/test-module:link-removed/source/address";
+    values[0].type = SR_STRING_T;
+    values[0].data.string_val = "10.10.2.4";
+    values[1].xpath = "/test-module:link-removed/source/interface";
+    values[1].type = SR_STRING_T;
+    values[1].data.string_val = "eth0";
+    values[2].xpath = "/test-module:link-removed/destination/address";
+    values[2].type = SR_STRING_T;
+    values[2].data.string_val = "10.10.2.5";
+    values[3].xpath = "/test-module:link-removed/destination/interface";
+    values[3].type = SR_STRING_T;
+    values[3].data.string_val = "eth2";
+
+    rc = sr_event_notif_send(notif_session, "/test-module:link-removed", values, 4);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* send event notification - link overutilized (not defined in yang) */
+    values[0].xpath = "/test-module:link-overutilized/source/address";
+    values[0].type = SR_STRING_T;
+    values[0].data.string_val = "10.10.1.5";
+    values[1].xpath = "/test-module:link-overutilized/source/interface";
+    values[1].type = SR_STRING_T;
+    values[1].data.string_val = "eth1";
+    values[2].xpath = "/test-module:link-overutilized/destination/address";
+    values[2].type = SR_STRING_T;
+    values[2].data.string_val = "10.10.1.8";
+    values[3].xpath = "/test-module:link-overutilized/destination/interface";
+    values[3].type = SR_STRING_T;
+    values[3].data.string_val = "eth0";
+
+    rc = sr_event_notif_send(notif_session, "/test-module:link-overutilized", values, 4);
+    assert_int_equal(rc, SR_ERR_BAD_ELEMENT);
+
+    /* wait at most 5 seconds for all callbacks to get called */
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    ts.tv_sec += 5;
+    while (ETIMEDOUT != pthread_cond_timedwait(&cb_status.cond, &cb_status.mutex, &ts)
+            && (cb_status.link_removed < CL_TEST_EN_NUM_SESSIONS || cb_status.link_discovered < CL_TEST_EN_NUM_SESSIONS));
+    assert_int_equal(CL_TEST_EN_NUM_SESSIONS, cb_status.link_discovered);
+    assert_int_equal(CL_TEST_EN_NUM_SESSIONS, cb_status.link_removed);
+    assert_int_equal(0, pthread_mutex_unlock(&cb_status.mutex));
+
+    /* unsubscribe */
+    for (i = 0; i < CL_TEST_EN_NUM_SESSIONS; ++i) {
+        rc = sr_unsubscribe(NULL, sub_session[i].subscription_ld);
+        assert_int_equal(rc, SR_ERR_OK);
+        rc = sr_unsubscribe(NULL, sub_session[i].subscription_lr);
+        assert_int_equal(rc, SR_ERR_OK);
+        rc = sr_unsubscribe(NULL, sub_session[i].subscription_lo);
+        assert_int_equal(rc, SR_ERR_OK);
+    }
+
+    /* stop sessions */
+    rc = sr_session_stop(notif_session);
+    assert_int_equal(rc, SR_ERR_OK);
+    for (i = 0; i < CL_TEST_EN_NUM_SESSIONS; ++i) {
+        rc = sr_session_stop(sub_session[i].session);
+        assert_int_equal(rc, SR_ERR_OK);
+    }
+
+    /* cleanup */
+    assert_int_equal(0, pthread_mutex_destroy(&cb_status.mutex));
+    assert_int_equal(0, pthread_cond_destroy(&cb_status.cond));
+}
+
 int
 main()
 {
@@ -1909,6 +2240,9 @@ main()
             cmocka_unit_test_setup_teardown(cl_switch_ds, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_candidate_refresh, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_get_changes_iter_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_dp_get_items_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_session_set_opts, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_event_notif_test, sysrepo_setup, sysrepo_teardown),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);

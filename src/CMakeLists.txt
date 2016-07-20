@@ -34,7 +34,6 @@ set (COMMON_SOURCES
 
 # client library sources
 set(SYSREPO_SOURCES
-    ${COMMON_SOURCES}
     client_library.c
     cl_subscription_manager.c
     cl_common.c
@@ -42,7 +41,6 @@ set(SYSREPO_SOURCES
 
 # sysrepo engine sources
 set(SYSREPO_ENGINE_SOURCES
-    ${COMMON_SOURCES}
     access_control.c
     connection_manager.c
     cm_session_manager.c
@@ -54,7 +52,19 @@ set(SYSREPO_ENGINE_SOURCES
     data_manager.c
     notification_processor.c
     persistence_manager.c
+    module_dependencies.c
 )
+
+add_library(COMMON OBJECT ${COMMON_SOURCES})
+set_property(TARGET COMMON PROPERTY COMPILE_FLAGS "-fPIC")
+
+add_library(SR_SRC OBJECT  ${SYSREPO_SOURCES})
+set_property(TARGET SR_SRC PROPERTY COMPILE_FLAGS "-fPIC")
+
+add_library(SR_ENGINE OBJECT  ${SYSREPO_ENGINE_SOURCES})
+set_property(TARGET SR_ENGINE PROPERTY COMPILE_FLAGS "-fPIC")
+
+add_dependencies(SR_ENGINE COMMON)
 
 set(HEADERS "${PROJECT_SOURCE_DIR}/inc/sysrepo.h")
 
@@ -65,16 +75,16 @@ else(USE_AVL_LIB)
 endif(USE_AVL_LIB)
 
 # sysrepo library
-add_library(sysrepo SHARED ${SYSREPO_SOURCES})
-add_library(sysrepo_a ${SYSREPO_SOURCES})
+add_library(sysrepo SHARED $<TARGET_OBJECTS:COMMON> $<TARGET_OBJECTS:SR_SRC>)
+add_library(sysrepo_a $<TARGET_OBJECTS:COMMON> $<TARGET_OBJECTS:SR_SRC>)
 SET_TARGET_PROPERTIES(sysrepo_a PROPERTIES
               OUTPUT_NAME sysrepo CLEAN_DIRECT_OUTPUT 1)
 target_link_libraries(sysrepo ${LINK_LIBRARIES} sysrepo-engine)
 target_link_libraries(sysrepo_a ${LINK_LIBRARIES} sysrepo-engine_a)
 
 # sysrepo-engine library
-add_library(sysrepo-engine SHARED ${SYSREPO_ENGINE_SOURCES})
-add_library(sysrepo-engine_a ${SYSREPO_ENGINE_SOURCES})
+add_library(sysrepo-engine SHARED $<TARGET_OBJECTS:COMMON> $<TARGET_OBJECTS:SR_ENGINE>)
+add_library(sysrepo-engine_a $<TARGET_OBJECTS:COMMON> $<TARGET_OBJECTS:SR_ENGINE>)
 SET_TARGET_PROPERTIES(sysrepo-engine_a PROPERTIES
               OUTPUT_NAME sysrepo-engine CLEAN_DIRECT_OUTPUT 1)
 target_link_libraries(sysrepo-engine_a ${LINK_LIBRARIES})

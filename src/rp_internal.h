@@ -66,11 +66,21 @@ typedef struct rp_dt_get_items_ctx {
  * @brief Cache structure that holds of the last get_changes_iter call
  */
 typedef struct rp_dt_change_ctx_s {
-    char *xpath;                        /* xpath used for change identification */
-    const struct lys_node *schema_node; /* schema node corresponding to xpath, used for matching */
-    size_t offset;                      /* offset-th matched change to be returned */
-    size_t position;                    /* index to the change set */
+    char *xpath;                        /**< xpath used for change identification */
+    const struct lys_node *schema_node; /**< schema node corresponding to xpath, used for matching */
+    size_t offset;                      /**< offset-th matched change to be returned */
+    size_t position;                    /**< index to the change set */
 } rp_dt_change_ctx_t;
+
+/**
+ * @brief States of the request processing
+ */
+typedef enum rp_request_state_e {
+    RP_REQ_NEW,                         /**< New request received in RP */
+    RP_REQ_WAITING_FOR_DATA,            /**< Request is waiting for state data from providers */
+    RP_REQ_DATA_LOADED,                 /**< Respones for all state data request were received */
+    RP_REQ_FINISHED                     /**< Request processing finished, request can be freed */
+} rp_request_state_t;
 
 /**
  * @brief Structure that holds Request Processor's per-session context.
@@ -87,7 +97,16 @@ typedef struct rp_session_s {
     ac_session_t *ac_session;            /**< Access Control module's session context. */
     dm_session_t *dm_session;            /**< Data Manager's session context. */
     rp_dt_get_items_ctx_t get_items_ctx; /**< Context for get_items_iter calls. */
-    rp_dt_change_ctx_t change_ctx;
+    rp_dt_change_ctx_t change_ctx;       /**< Context for iteration over the changes */
+
+    /* current request - used for data retrieval calls which may need state data */
+    rp_request_state_t state;            /**< the state of the request processing used if the operational data are requested */
+    size_t dp_req_waiting;               /**< number of waiting request to operational data providers */
+    Sr__Msg *req;                        /**< request that is waiting for operational data */
+    char *module_name;                   /**< data tree name used in the current request */
+    pthread_mutex_t cur_req_mutex;       /**< mutex guarding information about currently processed request */
+    sr_list_t **loaded_state_data;       /**< List of xpath for loaded state data in datastore */
+
 } rp_session_t;
 
 #endif /* RP_INTERNAL_H_ */

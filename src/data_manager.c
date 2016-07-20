@@ -36,11 +36,7 @@
 #include "access_control.h"
 #include "notification_processor.h"
 #include "persistence_manager.h"
-
-/**
- * @brief number of supported data stores - length of arrays used in session
- */
-#define DM_DATASTORE_COUNT 3
+#include "module_dependencies.h"
 
 /**
  * @brief Data manager context holding loaded schemas, data trees
@@ -50,6 +46,8 @@ typedef struct dm_ctx_s {
     ac_ctx_t *ac_ctx;             /**< Access Control module context */
     np_ctx_t *np_ctx;             /**< Notification Processor context */
     pm_ctx_t *pm_ctx;             /**< Persistence Manager context */
+    md_ctx_t *md_ctx;             /**< Module Dependencies context */
+    cm_connection_mode_t conn_mode;  /**< Mode in which Connection Manager operates */
     char *schema_search_dir;      /**< location where schema files are located */
     char *data_search_dir;        /**< location where data files are located */
     struct ly_ctx *ly_ctx;        /**< libyang context holding all loaded schemas */
@@ -280,56 +278,38 @@ dm_get_schema_info(dm_ctx_t *dm_ctx, const char *module_name, dm_schema_info_t *
 }
 
 /**
- * @brief Check whether the file_name corresponds to the schema file.
- * @return 1 if it does, 0 otherwise.
- */
-static int
-dm_is_schema_file(const char *file_name)
-{
-    CHECK_NULL_ARG(file_name);
-    return sr_str_ends_with(file_name, SR_SCHEMA_YIN_FILE_EXT) || sr_str_ends_with(file_name, SR_SCHEMA_YANG_FILE_EXT);
-}
-
-/**
- * @brief Loads the schema file into the context. The path for loading file is specified as concatenation of dir_name
- * and file_name. Function returns SR_ERR_OK if loading was successful. It might return SR_ERR_IO if the file can not
- * be opened, SR_ERR_INTERNAL if parsing of the file failed or SR_ERR_NOMEM if memory allocation failed.
+ * @brief Loads a schema file into the context. Function returns SR_ERR_OK if loading was successful.
+ * It might return SR_ERR_IO if the file can not be opened, SR_ERR_INTERNAL if parsing of the file failed
+ * or SR_ERR_NOMEM if memory allocation failed.
  * @param [in] dm_ctx
- * @param [in] dir_name
- * @param [in] file_name
+ * @param [in] schema_filepath
+ * @param [out] module_schema
  * @return Error code (SR_ERR_OK on success)
  */
 static int
-dm_load_schema_file(dm_ctx_t *dm_ctx, const char *dir_name, const char *file_name)
+dm_load_schema_file(dm_ctx_t *dm_ctx, const char *schema_filepath, const struct lys_module **module_schema)
 {
-    CHECK_NULL_ARG3(dm_ctx, dir_name, file_name);
+    CHECK_NULL_ARG3(dm_ctx, schema_filepath, module_schema);
     const struct lys_module *module = NULL;
-    char *schema_filename = NULL;
     char **enabled_subtrees = NULL, **features = NULL;
     size_t enabled_subtrees_cnt = 0, features_cnt = 0;
     bool module_enabled = false;
     dm_schema_info_t *si = NULL;
     int rc = SR_ERR_OK;
-
-    rc = sr_str_join(dir_name, file_name, &schema_filename);
-    if (SR_ERR_OK != rc) {
-        return SR_ERR_NOMEM;
-    }
+    *module_schema = NULL;
 
     si = calloc(1, sizeof(*si));
     if (NULL == si) {
         SR_LOG_ERR_MSG("Memory allocation failed");
-        free(schema_filename);
         return SR_ERR_NOMEM;
     }
 
     /* load schema tree */
-    LYS_INFORMAT fmt = sr_str_ends_with(file_name, SR_SCHEMA_YIN_FILE_EXT) ? LYS_IN_YIN : LYS_IN_YANG;
+    LYS_INFORMAT fmt = sr_str_ends_with(schema_filepath, SR_SCHEMA_YIN_FILE_EXT) ? LYS_IN_YIN : LYS_IN_YANG;
     pthread_rwlock_wrlock(&dm_ctx->lyctx_lock);
-    module = lys_parse_path(dm_ctx->ly_ctx, schema_filename, fmt);
-    free(schema_filename);
+    module = lys_parse_path(dm_ctx->ly_ctx, schema_filepath, fmt);
     if (module == NULL) {
-        SR_LOG_WRN("Unable to parse a schema file: %s", file_name);
+        SR_LOG_WRN("Unable to parse a schema file: %s", schema_filepath);
         dm_free_schema_info(si);
         pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
         return SR_ERR_INTERNAL;
@@ -359,58 +339,121 @@ dm_load_schema_file(dm_ctx_t *dm_ctx, const char *dir_name, const char *file_nam
             if (SR_ERR_OK != rc) {
                 SR_LOG_WRN("Unable to enable feature '%s' in module '%s' in Data Manager.", features[i], module->name);
             }
+        }
+
+        if (SR_ERR_OK == rc) {
+            if (module_enabled) {
+                /* enable running datastore for whole module */
+                rc = dm_enable_module_running(dm_ctx, NULL, module->name, module, false);
+            } else {
+                /* enable running datastore for specified subtrees */
+                for (size_t i = 0; i < enabled_subtrees_cnt; i++) {
+                    rc = dm_enable_module_subtree_running(dm_ctx, NULL, module->name, enabled_subtrees[i], module, false);
+                    if (SR_ERR_OK != rc) {
+                        SR_LOG_WRN("Unable to enable subtree '%s' in module '%s' in running ds.", enabled_subtrees[i], module->name);
+                    }
+                }
+            }
+        }
+
+        /* release memory */
+        for (size_t i = 0; i < enabled_subtrees_cnt; i++) {
+            free(enabled_subtrees[i]);
+        }
+        free(enabled_subtrees);
+        for (size_t i = 0; i < features_cnt; i++) {
             free(features[i]);
         }
         free(features);
     }
-    if (SR_ERR_OK == rc) {
-        if (module_enabled) {
-            /* enable running datastore for whole module */
-            rc = dm_enable_module_running(dm_ctx, NULL, module->name, module, false);
-        } else {
-            /* enable running datastore for specified subtrees */
-            for (size_t i = 0; i < enabled_subtrees_cnt; i++) {
-                rc = dm_enable_module_subtree_running(dm_ctx, NULL, module->name, enabled_subtrees[i], module, false);
-                if (SR_ERR_OK != rc) {
-                    SR_LOG_WRN("Unable to enable subtree '%s' in module '%s' in running ds.", enabled_subtrees[i], module->name);
-                }
-                free(enabled_subtrees[i]);
-            }
-            free(enabled_subtrees);
-        }
+    *module_schema = module;
+    return SR_ERR_OK;
+}
+
+/**
+ * @brief Loads module and all its dependencies into the libyang context.
+ * @param [in] dm_ctx
+ * @param [in] module_name
+ * @param [in] revision can be NULL
+ * @param [out] module_schema
+ * @return Error code (SR_ERR_OK on success)
+ */
+static int
+dm_load_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, const struct lys_module **module_schema)
+{
+    CHECK_NULL_ARG3(dm_ctx, module_name, module_schema); /* revision might be NULL*/
+    int rc = 0;
+    const struct lys_module *dep_schema = NULL;
+    md_module_t *module = NULL;
+    md_dep_t *dep = NULL;
+    sr_llist_node_t *ll_node = NULL;
+
+    /* search for the module to use */
+    md_ctx_lock(dm_ctx->md_ctx, false);
+    rc = md_get_module_info(dm_ctx->md_ctx, module_name, revision, &module);
+    if (SR_ERR_OK != rc) {
+        fprintf(stderr, "Error: Module '%s:%s' is not installed.\n", module_name, revision ? revision : "<latest>");
+        *module_schema = NULL;
+        md_ctx_unlock(dm_ctx->md_ctx);
+        return SR_ERR_UNKNOWN_MODEL;
     }
+
+    /* load the module schema and all its dependencies */
+    rc = dm_load_schema_file(dm_ctx, module->filepath, module_schema);
+    if (SR_ERR_OK != rc) {
+        *module_schema = NULL;
+        md_ctx_unlock(dm_ctx->md_ctx);
+        return rc;
+    }
+    ll_node = module->deps->first;
+    while (ll_node) {
+        dep = (md_dep_t *)ll_node->data;
+        if (dep->type == MD_DEP_EXTENSION) { /*< imports are automatically loaded by libyang */
+            rc = dm_load_schema_file(dm_ctx, dep->dest->filepath, &dep_schema);
+            if (SR_ERR_OK != rc) {
+                *module_schema = NULL;
+                md_ctx_unlock(dm_ctx->md_ctx);
+                return rc;
+            }
+        }
+        ll_node = ll_node->next;
+    }
+    md_ctx_unlock(dm_ctx->md_ctx);
 
     return SR_ERR_OK;
 }
 
 /**
- * @brief Loops through the specified directory (dm_ctx->schema_search_dir) and tries to load schema files from it.
- * Schemas that can not be loaded are skipped.
+ * @brief Loads all installed schemas.
  * @param [in] dm_ctx
- * @return Error code (SR_ERR_OK on success), SR_ERR_IO if the directory can not be opened
+ * @return Error code (SR_ERR_OK on success), SR_ERR_IO if a schema cannot be loaded
  */
 static int
-dm_load_schemas(dm_ctx_t *dm_ctx)
+dm_load_all_schemas(dm_ctx_t *dm_ctx)
 {
     CHECK_NULL_ARG(dm_ctx);
-    DIR *dir = NULL;
-    struct dirent *ent = NULL;
-    if ((dir = opendir(dm_ctx->schema_search_dir)) != NULL) {
-        while ((ent = readdir(dir)) != NULL) {
-            if (dm_is_schema_file(ent->d_name)) {
-                if (SR_ERR_OK != dm_load_schema_file(dm_ctx, dm_ctx->schema_search_dir, ent->d_name)) {
-                    SR_LOG_WRN("Loading schema file: %s failed.", ent->d_name);
-                } else {
-                    SR_LOG_INF("Schema file %s loaded successfully", ent->d_name);
-                }
+    sr_llist_node_t *ll_node = NULL;
+    md_module_t *module = NULL;
+    const struct lys_module *module_schema = NULL;
+
+    md_ctx_lock(dm_ctx->md_ctx, false);
+    ll_node = dm_ctx->md_ctx->modules->first;
+    while (ll_node) {
+        module = (md_module_t *)ll_node->data;
+        if (module->latest_revision) {
+            if (SR_ERR_OK != dm_load_schema_file(dm_ctx, module->filepath, &module_schema)) {
+                SR_LOG_ERR("Loading schema file for module '%s' failed.", md_get_module_fullname(module));
+                md_ctx_unlock(dm_ctx->md_ctx);
+                return SR_ERR_IO;
+            } else {
+                SR_LOG_INF("Schema file for module '%s' loaded successfully", md_get_module_fullname(module));
             }
         }
-        closedir(dir);
-        return SR_ERR_OK;
-    } else {
-        SR_LOG_ERR("Could not open the directory %s: %s", dm_ctx->schema_search_dir, sr_strerror_safe(errno));
-        return SR_ERR_IO;
+        ll_node = ll_node->next;
     }
+    md_ctx_unlock(dm_ctx->md_ctx);
+
+    return SR_ERR_OK;
 }
 
 static bool
@@ -440,10 +483,8 @@ dm_find_module_schema(dm_ctx_t *dm_ctx, const char *module_name, const struct ly
 {
     CHECK_NULL_ARG2(dm_ctx, module_name);
     const struct lys_module *m = NULL;
-    pthread_rwlock_rdlock(&dm_ctx->lyctx_lock);
-    m = ly_ctx_get_module(dm_ctx->ly_ctx, module_name, NULL);
-    pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
-    if (NULL != module) {
+    int rc = dm_get_module(dm_ctx, module_name, NULL, &m);
+    if (SR_ERR_OK == rc && NULL != module) {
         *module = m;
     }
     return m == NULL || dm_is_module_disabled(dm_ctx, module_name) ? SR_ERR_UNKNOWN_MODEL : SR_ERR_OK;
@@ -1018,7 +1059,7 @@ dm_is_running_ds_session(dm_session_t *session)
 }
 
 int
-dm_init(ac_ctx_t *ac_ctx, np_ctx_t *np_ctx, pm_ctx_t *pm_ctx,
+dm_init(ac_ctx_t *ac_ctx, np_ctx_t *np_ctx, pm_ctx_t *pm_ctx, const cm_connection_mode_t conn_mode,
         const char *schema_search_dir, const char *data_search_dir, dm_ctx_t **dm_ctx)
 {
     CHECK_NULL_ARG3(schema_search_dir, data_search_dir, dm_ctx);
@@ -1029,11 +1070,13 @@ dm_init(ac_ctx_t *ac_ctx, np_ctx_t *np_ctx, pm_ctx_t *pm_ctx,
     int rc = SR_ERR_OK;
     pthread_rwlockattr_t attr;
     pthread_rwlockattr_init(&attr);
+    char *internal_schema_search_dir = NULL, *internal_data_search_dir = NULL;
     ctx = calloc(1, sizeof(*ctx));
     CHECK_NULL_NOMEM_GOTO(ctx, rc, cleanup);
     ctx->ac_ctx = ac_ctx;
     ctx->np_ctx = np_ctx;
     ctx->pm_ctx = pm_ctx;
+    ctx->conn_mode = conn_mode;
 
     ctx->ly_ctx = ly_ctx_new(schema_search_dir);
     CHECK_NULL_NOMEM_GOTO(ctx->ly_ctx, rc, cleanup);
@@ -1070,11 +1113,25 @@ dm_init(ac_ctx_t *ac_ctx, np_ctx_t *np_ctx, pm_ctx_t *pm_ctx,
     rc = pthread_rwlock_init(&ctx->commit_ctxs.lock, &attr);
     CHECK_ZERO_MSG_GOTO(rc, rc, SR_ERR_INTERNAL, cleanup, "c_ctxs_lock init failed");
 
+    rc = sr_str_join(schema_search_dir, "internal/", &internal_schema_search_dir);
+    CHECK_ZERO_MSG_GOTO(rc, rc, SR_ERR_INTERNAL, cleanup, "sr_str_join failed");
+    rc = sr_str_join(data_search_dir, "internal/", &internal_data_search_dir);
+    CHECK_ZERO_MSG_GOTO(rc, rc, SR_ERR_INTERNAL, cleanup, "sr_str_join failed");
+    rc = md_init(ctx->ly_ctx, &ctx->lyctx_lock, schema_search_dir, internal_schema_search_dir,
+                 internal_data_search_dir, false, &ctx->md_ctx);
+    if (SR_ERR_OK != rc) {
+        fprintf(stderr, "Error: Failed to initialize Module Dependencies context.\n");
+        goto cleanup;
+    }
 
     *dm_ctx = ctx;
-    rc = dm_load_schemas(ctx);
+    if (conn_mode == CM_MODE_DAEMON) {
+        rc = dm_load_all_schemas(ctx);
+    }
 
 cleanup:
+    free(internal_schema_search_dir);
+    free(internal_data_search_dir);
     pthread_rwlockattr_destroy(&attr);
     if (SR_ERR_OK != rc) {
         dm_cleanup(ctx);
@@ -1092,12 +1149,16 @@ dm_cleanup(dm_ctx_t *dm_ctx)
         free(dm_ctx->schema_search_dir);
         free(dm_ctx->data_search_dir);
         sr_btree_cleanup(dm_ctx->schema_info_tree);
+        md_destroy(dm_ctx->md_ctx);
         if (NULL != dm_ctx->ly_ctx) {
             ly_ctx_destroy(dm_ctx->ly_ctx, dm_free_lys_private_data);
         }
         pthread_rwlock_destroy(&dm_ctx->lyctx_lock);
         sr_locking_set_cleanup(dm_ctx->locking_ctx);
         pthread_mutex_destroy(&dm_ctx->ds_lock_mutex);
+        for (size_t i = 0; i < dm_ctx->disabled_sch->count; i++) {
+            free(dm_ctx->disabled_sch->data[i]);
+        }
         sr_list_cleanup(dm_ctx->disabled_sch);
 
         pthread_rwlock_destroy(&dm_ctx->commit_ctxs.lock);
@@ -1371,9 +1432,14 @@ int
 dm_get_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, const struct lys_module **module)
 {
     CHECK_NULL_ARG3(dm_ctx, module_name, module); /* revision might be NULL*/
+
     pthread_rwlock_rdlock(&dm_ctx->lyctx_lock);
     *module = ly_ctx_get_module(dm_ctx->ly_ctx, module_name, revision);
     pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
+
+    if (NULL == *module && dm_ctx->conn_mode == CM_MODE_LOCAL) {
+        dm_load_module(dm_ctx, module_name, revision, module);
+    }
     if (NULL == *module) {
         SR_LOG_ERR("Get module failed %s", module_name);
         return SR_ERR_UNKNOWN_MODEL;
@@ -1538,6 +1604,14 @@ dm_list_schemas(dm_ctx_t *dm_ctx, dm_session_t *dm_session, sr_schema_t **schema
     *schemas = NULL;
     *schema_count = 0;
 
+    if (dm_ctx->conn_mode == CM_MODE_LOCAL) {
+        rc = dm_load_all_schemas(dm_ctx);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR_MSG("Failed to load all schemas.");
+            return rc;
+        }
+    }
+
     pthread_rwlock_rdlock(&dm_ctx->lyctx_lock);
     struct lyd_node *info = ly_ctx_info(dm_ctx->ly_ctx);
     if (NULL == info) {
@@ -1602,14 +1676,13 @@ dm_get_schema(dm_ctx_t *dm_ctx, const char *module_name, const char *module_revi
 
     SR_LOG_INF("Get schema '%s', revision: '%s', submodule: '%s'", module_name, module_revision, submodule_name);
 
-    pthread_rwlock_rdlock(&dm_ctx->lyctx_lock);
-    const struct lys_module *module = ly_ctx_get_module(dm_ctx->ly_ctx, module_name, module_revision);
-    if (NULL == module) {
-        pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
-        SR_LOG_ERR("Module %s with revision %s was not found", module_name, module_revision);
+    const struct lys_module *module = NULL;
+    rc = dm_get_module(dm_ctx, module_name, module_revision, &module);
+    if (SR_ERR_OK != rc) {
         return SR_ERR_NOT_FOUND;
     }
 
+    pthread_rwlock_rdlock(&dm_ctx->lyctx_lock);
     if (NULL == submodule_name) {
         /* module*/
         rc = lys_print_mem(schema, module, yang_format ? LYS_OUT_YANG : LYS_OUT_YIN, NULL);
@@ -2589,15 +2662,14 @@ dm_feature_enable(dm_ctx_t *dm_ctx, const char *module_name, const char *feature
 {
     CHECK_NULL_ARG3(dm_ctx, module_name, feature_name);
     int rc = SR_ERR_OK;
+    const struct lys_module *module = NULL;
 
-    pthread_rwlock_wrlock(&dm_ctx->lyctx_lock);
-
-    const struct lys_module *module = ly_ctx_get_module(dm_ctx->ly_ctx, module_name, NULL);
-    if (NULL == module) {
-        pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
-        SR_LOG_ERR("Module %s was not found", module_name);
+    rc = dm_get_module(dm_ctx, module_name, NULL, &module);
+    if (SR_ERR_OK != rc) {
         return SR_ERR_UNKNOWN_MODEL;
     }
+
+    pthread_rwlock_wrlock(&dm_ctx->lyctx_lock);
     rc = enable ? lys_features_enable(module, feature_name) : lys_features_disable(module, feature_name);
     SR_LOG_DBG("%s feature '%s' in module '%s'", enable ? "Enabling" : "Disabling", feature_name, module_name);
     pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
@@ -2613,6 +2685,7 @@ int
 dm_install_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision)
 {
     CHECK_NULL_ARG2(dm_ctx, module_name);
+    int rc = 0;
 
     pthread_rwlock_wrlock(&dm_ctx->lyctx_lock);
 
@@ -2622,15 +2695,29 @@ dm_install_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revisio
         SR_LOG_WRN("To install module %s sysrepo must be restarted", module_name);
         return SR_ERR_INTERNAL;
     }
+
+    /* load module schema */
     const struct lys_module *module = ly_ctx_load_module(dm_ctx->ly_ctx, module_name, revision);
     pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
 
     if (NULL == module) {
         SR_LOG_ERR("Module %s with revision %s was not found", module_name, revision);
         return SR_ERR_NOT_FOUND;
-    } else {
-        return SR_ERR_OK;
     }
+
+    /* insert module into the dependency graph */
+    md_ctx_lock(dm_ctx->md_ctx, true);
+    rc = md_insert_module(dm_ctx->md_ctx, module->filepath);
+    md_ctx_unlock(dm_ctx->md_ctx);
+    if (SR_ERR_INVAL_ARG == rc) {
+        SR_LOG_WRN("Module '%s' is already installed\n", module->name);
+        return SR_ERR_OK; /*< do not treat as error */
+    }
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Unable to insert module '%s' into the dependency graph", module_name);
+        return rc;
+    }
+    return SR_ERR_OK;
 }
 
 int
@@ -2638,18 +2725,25 @@ dm_uninstall_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revis
 {
     CHECK_NULL_ARG2(dm_ctx, module_name);
     int rc = SR_ERR_OK;
+    md_module_t *module = NULL;
 
-    pthread_rwlock_wrlock(&dm_ctx->lyctx_lock);
-    const struct lys_module *module = ly_ctx_get_module(dm_ctx->ly_ctx, module_name, revision);
+    md_ctx_lock(dm_ctx->md_ctx, true);
+    rc = md_get_module_info(dm_ctx->md_ctx, module_name, revision, &module);
 
     if (NULL == module) {
         SR_LOG_ERR("Module %s with revision %s was not found", module_name, revision);
         rc = SR_ERR_NOT_FOUND;
     } else {
-        rc = sr_list_add(dm_ctx->disabled_sch, (void *) module->name);
+        rc = sr_list_add(dm_ctx->disabled_sch, (void *) strdup(module->name));
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR("Failed to add module %s into the list of disabled modules",
+                       md_get_module_fullname(module));
+        } else {
+            rc = md_remove_module(dm_ctx->md_ctx, module_name, revision);
+        }
     }
 
-    pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
+    md_ctx_unlock(dm_ctx->md_ctx);
     return rc;
 }
 
@@ -2803,6 +2897,23 @@ cleanup:
     }
     free(fds);
     free(src_infos);
+    return rc;
+}
+
+int
+dm_has_state_data(dm_ctx_t *ctx, const char *module_name, bool *res)
+{
+    CHECK_NULL_ARG3(ctx, module_name, res);
+    md_module_t *module = NULL;
+    int rc = SR_ERR_OK;
+
+    md_ctx_lock(ctx->md_ctx, false);
+    rc = md_get_module_info(ctx->md_ctx, module_name, NULL, &module);
+    if (SR_ERR_OK == rc) {
+        *res = (module->op_data_subtrees->first != NULL);
+    }
+    md_ctx_unlock(ctx->md_ctx);
+
     return rc;
 }
 
@@ -3012,34 +3123,80 @@ cleanup:
     return rc;
 }
 
-int
-dm_validate_rpc(dm_ctx_t *dm_ctx, dm_session_t *session, const char *rpc_xpath, sr_val_t **args_p, size_t *arg_cnt_p, bool input)
+/**
+ * @brief Kind of procedure that DM can validate.
+ */
+typedef enum dm_procedure_e {
+    DM_PROCEDURE_RPC,               /**< Remote procedure call */
+    DM_PROCEDURE_EVENT_NOTIF,       /**< Event notification */
+    DM_PROCEDURE_ACTION,            /**< NETCONF RPC operation connected to a specific data node. */
+} dm_procedure_t;
+
+/**
+ * @brief Validates arguments of a procedure (RPC, Event notification, Action).
+ * @param [in] dm_ctx DM context.
+ * @param [in] session DM session.
+ * @param [in] type Type of the procedure.
+ * @param [in] xpath XPath of the procedure.
+ * @param [in] args Input/output arguments of the procedure (can be changed inside of the function).
+ * @param [in] arg_cnt Number of input/output arguments provided (can be changed inside of the function).
+ * @param [in] input TRUE if input arguments were provided, FALSE if output.
+ * @return Error code (SR_ERR_OK on success)
+ */
+static int
+dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t type, const char *xpath,
+        sr_val_t **args_p, size_t *arg_cnt_p, bool input)
 {
     sr_val_t *args = NULL;
     size_t arg_cnt = 0;
+    const struct lys_module *module = NULL;
     const struct lys_node *sch_node = NULL;
     struct lyd_node *data_tree = NULL, *new_node = NULL;
     char *string_value = NULL, *tmp_xpath = NULL;
     struct ly_set *ly_nodes = NULL;
+    char *module_name = NULL;
+    char *procedure_name = NULL;
+    int validation_options = 0;
     int ret = 0, rc = SR_ERR_OK;
 
     args = *args_p;
     arg_cnt = *arg_cnt_p;
 
-    pthread_rwlock_rdlock(&dm_ctx->lyctx_lock);
+    /* get name of the procedure - only for error messages */
+    switch (type) {
+        case DM_PROCEDURE_RPC:
+            procedure_name = "RPC";
+            break;
+        case DM_PROCEDURE_EVENT_NOTIF:
+            procedure_name = "Event notification";
+            break;
+        case DM_PROCEDURE_ACTION:
+            procedure_name = "Action";
+            break;
+    }
 
-    data_tree = lyd_new_path(NULL, dm_ctx->ly_ctx, rpc_xpath, NULL, 0);
+    /* load whichever module is needed */
+    if (dm_ctx->conn_mode == CM_MODE_LOCAL) {
+        rc = sr_copy_first_ns(xpath, &module_name);
+        CHECK_RC_MSG_RETURN(rc, "Error by extracting module name from xpath.");
+        rc = dm_get_module(dm_ctx, module_name, NULL, &module);
+        free(module_name);
+        CHECK_RC_MSG_RETURN(rc, "dm_get_module failed");
+    }
+
+    pthread_rwlock_rdlock(&dm_ctx->lyctx_lock);
+    data_tree = lyd_new_path(NULL, dm_ctx->ly_ctx, xpath, NULL, 0);
     if (NULL == data_tree) {
-        SR_LOG_ERR("RPC xpath validation failed ('%s'): %s", rpc_xpath, ly_errmsg());
+        SR_LOG_ERR("%s xpath validation failed ('%s'): %s", procedure_name, xpath, ly_errmsg());
         pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
-        return dm_report_error(session, ly_errmsg(), rpc_xpath, SR_ERR_BAD_ELEMENT);
+        return dm_report_error(session, ly_errmsg(), xpath, SR_ERR_BAD_ELEMENT);
     }
 
     for (size_t i = 0; i < arg_cnt; i++) {
         /* get schema node */
         sch_node = ly_ctx_get_node2(dm_ctx->ly_ctx, NULL, args[i].xpath, (input ? 0 : 1));
         if (NULL == sch_node) {
-            SR_LOG_ERR("RPC argument xpath validation failed('%s'): %s", args[i].xpath, ly_errmsg());
+            SR_LOG_ERR("%s argument xpath validation failed('%s'): %s", procedure_name, args[i].xpath, ly_errmsg());
             rc = dm_report_error(session, ly_errmsg(), args[i].xpath, SR_ERR_BAD_ELEMENT);
             break;
         }
@@ -3048,7 +3205,7 @@ dm_validate_rpc(dm_ctx_t *dm_ctx, dm_session_t *session, const char *rpc_xpath, 
         if ((SR_CONTAINER_T != args[i].type) && (SR_LIST_T != args[i].type)) {
             rc = sr_val_to_str(&args[i], sch_node, &string_value);
             if (SR_ERR_OK != rc) {
-                SR_LOG_ERR_MSG("Unable to convert RPC argument value to string.");
+                SR_LOG_ERR("Unable to convert %s argument value to string.", procedure_name);
                 break;
             }
         }
@@ -3056,26 +3213,35 @@ dm_validate_rpc(dm_ctx_t *dm_ctx, dm_session_t *session, const char *rpc_xpath, 
         new_node = lyd_new_path(data_tree, dm_ctx->ly_ctx, args[i].xpath, string_value, (input ? 0 : LYD_PATH_OPT_OUTPUT));
         free(string_value);
         if (NULL == new_node) {
-            SR_LOG_ERR("Unable to add new RPC argument '%s': %s.", args[i].xpath, ly_errmsg());
+            SR_LOG_ERR("Unable to add new %s argument '%s': %s.", procedure_name, args[i].xpath, ly_errmsg());
             rc = dm_report_error(session, ly_errmsg(), ly_errpath(), SR_ERR_VALIDATION_FAILED);
             break;
         }
     }
 
-    /* validate the RPC content (and also add default nodes) */
+    /* validate the content (and also add default nodes) */
     if ((SR_ERR_OK == rc) && (arg_cnt > 0)) {
-        ret = lyd_validate(&data_tree, LYD_OPT_STRICT | LYD_WD_IMPL_TAG | (input ? LYD_OPT_RPC : LYD_OPT_RPCREPLY));
+        validation_options = LYD_OPT_STRICT | LYD_WD_IMPL_TAG;
+        switch (type) {
+            case DM_PROCEDURE_RPC:
+            case DM_PROCEDURE_ACTION:
+                validation_options |= (input ? LYD_OPT_RPC : LYD_OPT_RPCREPLY);
+                break;
+            case DM_PROCEDURE_EVENT_NOTIF:
+                validation_options |= LYD_OPT_NOTIF;
+        }
+        ret = lyd_validate(&data_tree, validation_options);
         if (0 != ret) {
-            SR_LOG_ERR("RPC content validation failed: %s", ly_errmsg());
+            SR_LOG_ERR("%s content validation failed: %s", procedure_name, ly_errmsg());
             rc = dm_report_error(session, ly_errmsg(), ly_errpath(), SR_ERR_VALIDATION_FAILED);
         }
     }
 
     /* re-read the arguments from data tree (it can now contain newly added default nodes) */
     if ((SR_ERR_OK == rc) && (arg_cnt > 0)) {
-        tmp_xpath = calloc(strlen(rpc_xpath)+4, sizeof(*tmp_xpath));
+        tmp_xpath = calloc(strlen(xpath)+4, sizeof(*tmp_xpath));
         if (NULL != tmp_xpath) {
-            strcat(tmp_xpath, rpc_xpath);
+            strcat(tmp_xpath, xpath);
             strcat(tmp_xpath, "//*");
             ly_nodes = lyd_get_node(data_tree, tmp_xpath);
             if (NULL != ly_nodes) {
@@ -3102,6 +3268,21 @@ dm_validate_rpc(dm_ctx_t *dm_ctx, dm_session_t *session, const char *rpc_xpath, 
     lyd_free_withsiblings(data_tree);
 
     return rc;
+}
+
+int
+dm_validate_rpc(dm_ctx_t *dm_ctx, dm_session_t *session, const char *rpc_xpath, sr_val_t **args, size_t *arg_cnt,
+        bool input)
+{
+    return dm_validate_procedure(dm_ctx, session, DM_PROCEDURE_RPC, rpc_xpath, args, arg_cnt, input);
+}
+
+int
+dm_validate_event_notif(dm_ctx_t *dm_ctx, dm_session_t *session, const char *event_notif_xpath,
+        sr_val_t **values, size_t *values_cnt)
+{
+    return dm_validate_procedure(dm_ctx, session, DM_PROCEDURE_EVENT_NOTIF, event_notif_xpath,
+            values, values_cnt, true);
 }
 
 struct ly_set *
@@ -3480,5 +3661,12 @@ dm_get_commit_ctxs(dm_ctx_t *dm_ctx, dm_commit_ctxs_t **commit_ctxs)
 {
     CHECK_NULL_ARG2(dm_ctx, commit_ctxs);
     *commit_ctxs = &dm_ctx->commit_ctxs;
+    return SR_ERR_OK;
+}
+
+int
+dm_get_md_ctx(dm_ctx_t *dm_ctx, md_ctx_t **md_ctx){
+    CHECK_NULL_ARG2(dm_ctx, md_ctx);
+    *md_ctx = dm_ctx->md_ctx;
     return SR_ERR_OK;
 }
