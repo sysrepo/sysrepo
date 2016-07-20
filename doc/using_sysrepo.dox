@@ -42,9 +42,9 @@ command, restart of the sysrepo daemon is not needed.
 @subsection sysrepoctl_permissions Specifying module access permissions
 By default, the owner user and group of a module installed by sysrepoctl tool
 will be set to the UID and GID of the user who executed the sysrepoctl tool, 
-with the access permissions defined by default umask settings (e.g. 644 for 
-the root user on most Linux distributions). To overcome this defualt behavior,
-you can specify `--owner` and `--pemissions` options by install operation, e.g.:
+with the access permissions allowing read & write access to everyone (666).
+It is highly recommended to specify desired ownership and access permissions
+using `--owner` and `--pemissions` options by install operation, e.g.:
 ~~~~~~~~~~~~~~~
 sysrepoctl --install --yang=/home/user/ietf-interfaces.yang --owner=admin:admin --permissions=664
 ~~~~~~~~~~~~~~~
