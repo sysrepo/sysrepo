@@ -2690,11 +2690,11 @@ dm_install_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revisio
 
     pthread_rwlock_wrlock(&dm_ctx->lyctx_lock);
 
-    /* if module is disabled require sysrepo restart to its reinstall*/
+    /* if module is disabled require sysrepo restart to its reinstall */
     if (dm_is_module_disabled(dm_ctx, module_name)) {
         pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
-        SR_LOG_WRN("To install module %s sysrepo must be restarted", module_name);
-        return SR_ERR_INTERNAL;
+        SR_LOG_WRN("To reinstall previously uininstalled module '%s', sysrepod must be restarted!", module_name);
+        return SR_ERR_RESTART_NEEDED;
     }
 
     /* load module schema */
@@ -2710,7 +2710,7 @@ dm_install_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revisio
     md_ctx_lock(dm_ctx->md_ctx, true);
     rc = md_insert_module(dm_ctx->md_ctx, module->filepath);
     md_ctx_unlock(dm_ctx->md_ctx);
-    if (SR_ERR_INVAL_ARG == rc) {
+    if (SR_ERR_DATA_EXISTS == rc) {
         SR_LOG_WRN("Module '%s' is already installed\n", module->name);
         return SR_ERR_OK; /*< do not treat as error */
     }
