@@ -576,6 +576,32 @@ rp_dt_enable_key_nodes(struct lys_node *node)
     return SR_ERR_OK;
 }
 
+static int
+rp_dt_enable_mandatory_children(struct lys_node *node)
+{
+    CHECK_NULL_ARG(node);
+    int rc = SR_ERR_OK;
+    struct lys_node *n = NULL;
+    if ((LYS_LIST | LYS_CONTAINER) & node->nodetype) {
+        /* enable mandatory leaves */
+        n = node->child;
+        while (NULL != n) {
+            if ((LYS_LEAF | LYS_LEAFLIST) & n->nodetype &&
+                    !dm_is_node_enabled(n) &&
+                    LYS_MAND_MASK & n->flags
+                    ) {
+                rc = dm_set_node_state(n, DM_NODE_ENABLED);
+                if (SR_ERR_OK != rc) {
+                    SR_LOG_ERR_MSG("Set node state failed");
+                    return rc;
+                }
+            }
+            n = n->next;
+        }
+    }
+    return SR_ERR_OK;
+}
+
 int
 rp_dt_enable_xpath(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath)
 {
@@ -618,6 +644,9 @@ rp_dt_enable_xpath(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath)
 
             rc = rp_dt_enable_key_nodes(node);
             CHECK_RC_LOG_GOTO(rc, cleanup, "Enable key nodes failed %s", xpath);
+
+            rc = rp_dt_enable_mandatory_children(node);
+            CHECK_RC_LOG_GOTO(rc, cleanup, "Enable of manadatory children failed %s node %s", xpath, node->name);
         }
         node = node->parent;
 
