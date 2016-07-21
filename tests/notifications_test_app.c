@@ -211,10 +211,20 @@ main(int argc, char **argv)
     }
 
 
-    /* subscribe for changes in running config */
-    rc = sr_subtree_change_subscribe(session, settings.xpath, subtree_change_cb, &settings, 0, SR_SUBSCR_DEFAULT, &subscription);
+    /* subscribe for changes in running config - try three times because in test
+     * multiple client might try to subscribe for the same model */
+    for (int i = 0; i < 3; i++) {
+        rc = sr_subtree_change_subscribe(session, settings.xpath, subtree_change_cb, &settings, 0, SR_SUBSCR_DEFAULT, &subscription);
+        if (SR_ERR_LOCKED == rc) {
+            fprintf(stderr, "Retrying to subscribe...\n");
+            usleep(10);
+        } else {
+            break;
+        }
+    }
+
     if (SR_ERR_OK != rc) {
-        fprintf(stderr, "Error by sr_module_change_subscribe: %s\n", sr_strerror(rc));
+        fprintf(stderr, "Error by sr_module_change_subscribe: %s %s\n", sr_strerror(rc), settings.xpath);
         goto cleanup;
     }
 

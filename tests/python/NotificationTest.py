@@ -54,13 +54,19 @@ class NotificationTester(SysrepoTester):
             print n
 
         self.tc.assertEqual(len(expected), len(self.notifications))
+
+        ex_sorted = sorted(expected, key=lambda e: e[1])
+        notif_sorted = sorted(self.notifications, key=lambda e: e[1])
         for i in range(len(expected)):
-            self.tc.assertEqual(self.notifications[i][0], expected[i][0])
-            self.tc.assertEqual(self.notifications[i][1], expected[i][1])
+            self.tc.assertEqual(ex_sorted[i][0], notif_sorted[i][0])
+            self.tc.assertEqual(ex_sorted[i][1], notif_sorted[i][1])
 
     def checkNoNotificationArrived(self):
         self.tc.assertFalse(os.path.isfile(self.filename))
 
+    def deleteNotifications(self):
+        if os.path.isfile(self.filename):
+            os.unlink(self.filename)
 
 class NotificationTest(unittest.TestCase):
 
@@ -93,8 +99,14 @@ class NotificationTest(unittest.TestCase):
         srd.add_step(srd.waitStep)
         tester.add_step(tester.waitStep)
         subscriber.add_step(subscriber.subscribeStep, "/ietf-interfaces:interfaces")
-        subscriber2.add_step(subscriber2.subscribeStep, "/ietf-interfaces:interfaces/interface/ietf-ip:ipv4/address")
+        subscriber2.add_step(subscriber2.waitStep)
         subscriber3.add_step(subscriber3.subscribeStep, "/example-module:container")
+
+        srd.add_step(srd.waitStep)
+        tester.add_step(tester.waitStep)
+        subscriber.add_step(subscriber.waitStep)
+        subscriber2.add_step(subscriber2.subscribeStep, "/ietf-interfaces:interfaces/interface/ietf-ip:ipv4/address")
+        subscriber3.add_step(subscriber3.waitStep)
 
         srd.add_step(srd.waitStep)
         tester.add_step(tester.deleteItemStep, "/ietf-interfaces:interfaces/interface[name='eth0']")
@@ -175,8 +187,14 @@ class NotificationTest(unittest.TestCase):
         srd.add_step(srd.waitStep)
         tester.add_step(tester.waitStep)
         subscriber.add_step(subscriber.subscribeStep, "/ietf-interfaces:interfaces")
-        subscriber2.add_step(subscriber2.subscribeStep, "/ietf-interfaces:interfaces/interface/ietf-ip:ipv4")
+        subscriber2.add_step(subscriber2.waitStep)
         subscriber3.add_step(subscriber3.subscribeStep, "/example-module:container")
+
+        srd.add_step(srd.waitStep)
+        tester.add_step(tester.waitStep)
+        subscriber.add_step(subscriber.waitStep)
+        subscriber2.add_step(subscriber2.subscribeStep, "/ietf-interfaces:interfaces/interface/ietf-ip:ipv4")
+        subscriber3.add_step(subscriber3.waitStep)
 
         srd.add_step(srd.waitStep)
         tester.add_step(tester.setItemStep, "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/enabled", Value(leaf_type=SR_BOOL_T, value= False))
@@ -243,8 +261,14 @@ class NotificationTest(unittest.TestCase):
         srd.add_step(srd.waitStep)
         tester.add_step(tester.waitStep)
         subscriber.add_step(subscriber.subscribeStep, "/ietf-interfaces:interfaces")
-        subscriber2.add_step(subscriber2.subscribeStep, "/ietf-interfaces:interfaces/interface/ietf-ip:ipv4/address")
+        subscriber2.add_step(subscriber2.waitStep)
         subscriber3.add_step(subscriber3.subscribeStep, "/example-module:container")
+
+        srd.add_step(srd.waitStep)
+        tester.add_step(tester.waitStep)
+        subscriber.add_step(subscriber.waitStep)
+        subscriber2.add_step(subscriber2.subscribeStep, "/ietf-interfaces:interfaces/interface/ietf-ip:ipv4/address")
+        subscriber3.add_step(subscriber3.waitStep)
 
         srd.add_step(srd.waitStep)
         tester.add_step(tester.setItemStep, "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/enabled", Value(leaf_type=SR_BOOL_T, value= False))
@@ -332,11 +356,33 @@ class NotificationTest(unittest.TestCase):
         subscriber3.add_step(subscriber3.waitStep)
         subscriber4.add_step(subscriber4.waitStep)
 
+        #subscribe synchronously
         srd.add_step(srd.waitStep)
         tester.add_step(tester.waitStep)
         subscriber.add_step(subscriber.subscribeStep, "/ietf-interfaces:interfaces")
+        subscriber2.add_step(subscriber2.waitStep)
+        subscriber3.add_step(subscriber3.waitStep)
+        subscriber4.add_step(subscriber4.waitStep)
+
+        srd.add_step(srd.waitStep)
+        tester.add_step(tester.waitStep)
+        subscriber.add_step(subscriber.waitStep)
         subscriber2.add_step(subscriber2.subscribeStep, "/ietf-interfaces:interfaces")
+        subscriber3.add_step(subscriber3.waitStep)
+        subscriber4.add_step(subscriber4.waitStep)
+
+        srd.add_step(srd.waitStep)
+        tester.add_step(tester.waitStep)
+        subscriber.add_step(subscriber.waitStep)
+        subscriber2.add_step(subscriber2.waitStep)
         subscriber3.add_step(subscriber3.subscribeStep, "/ietf-interfaces:interfaces")
+        subscriber4.add_step(subscriber4.waitStep)
+
+        srd.add_step(srd.waitStep)
+        tester.add_step(tester.waitStep)
+        subscriber.add_step(subscriber.waitStep)
+        subscriber2.add_step(subscriber2.waitStep)
+        subscriber3.add_step(subscriber3.waitStep)
         subscriber4.add_step(subscriber4.subscribeStep, "/ietf-interfaces:interfaces")
 
         srd.add_step(srd.waitStep)

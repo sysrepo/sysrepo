@@ -1881,6 +1881,71 @@ cl_get_changes_iter_test(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 }
 
+static int
+empty_subtree_change_cb(sr_session_ctx_t *session, const char *xpath, sr_notif_event_t event, void *private_ctx)
+{
+    return SR_ERR_OK;
+}
+
+static void
+cl_enable_empty_startup(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+
+    sr_subscription_ctx_t *subs = NULL;
+    sr_session_ctx_t *sessionA = NULL;
+    sr_val_t *values = NULL;
+    size_t cnt = 0;
+
+    int rc = SR_ERR_OK;
+
+    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &sessionA);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = sr_subtree_change_subscribe(sessionA, "/example-module:container", empty_subtree_change_cb, NULL, 0, SR_SUBSCR_DEFAULT, &subs);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* check that value are present in running */
+    rc = sr_get_items(sessionA, "/example-module:container/*", &values, &cnt);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    assert_int_equal(1, cnt);
+
+    sr_free_values(values, cnt);
+
+    /* delete values from startup */
+    rc = sr_session_switch_ds(sessionA, SR_DS_STARTUP);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = sr_delete_item(sessionA, "/example-module:*", SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = sr_commit(sessionA);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    sr_session_stop(sessionA);
+
+    /* enable again, verify that there are no data as well*/
+    values = NULL;
+    cnt = 0;
+
+    rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &sessionA);
+    assert_int_equal(SR_ERR_OK, rc);
+
+
+    /* data should be copied to running in case of the flags does not contain SR_SUBSCR_PASSIVE */
+    rc = sr_subtree_change_subscribe(sessionA, "/example-module:container", empty_subtree_change_cb, NULL, 0, SR_SUBSCR_CTX_REUSE, &subs);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = sr_get_items(sessionA, "/example-module:container/*", &values, &cnt);
+    assert_int_equal(SR_ERR_OK, 0);
+    assert_int_equal(0, cnt);
+
+    sr_unsubscribe(sessionA, subs);
+    sr_session_stop(sessionA);
+}
+
 int
 main()
 {
@@ -1909,6 +1974,7 @@ main()
             cmocka_unit_test_setup_teardown(cl_switch_ds, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_candidate_refresh, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_get_changes_iter_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_enable_empty_startup, sysrepo_setup, sysrepo_teardown),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);
