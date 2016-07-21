@@ -109,6 +109,12 @@ enable_subtree_test(void **state)
    /* check ietf-interfaces:interfaces */
    assert_true(dm_is_node_enabled(module->data));
 
+   rc = rp_dt_validate_node_xpath(ctx->dm_ctx, session->dm_session, "/ietf-interfaces:interfaces/interface/type", &module, &match);
+   assert_int_equal(SR_ERR_OK, rc);
+
+   /* check manadatory leaf is enabled when its parent is enabled */
+   assert_true(dm_is_node_enabled(match));
+
    rc = rp_dt_enable_xpath(ctx->dm_ctx, session->dm_session, "/ietf-interfaces:interfaces/interface/ietf-ip:ipv4/address");
    assert_int_equal(SR_ERR_OK, rc);
 

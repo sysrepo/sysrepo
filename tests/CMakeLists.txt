@@ -125,16 +125,14 @@ endif()
 
 
 # create test repository directories and copy internal schemas
-EXECUTE_PROCESS(
+add_custom_target(create_internals
     COMMAND mkdir -p "${TEST_SCHEMA_SEARCH_DIR}" "${TEST_DATA_SEARCH_DIR}" "${TEST_INTERNAL_SCHEMA_SEARCH_DIR}" "${TEST_INTERNAL_DATA_SEARCH_DIR}"
     COMMAND cp "${PROJECT_SOURCE_DIR}/yang/sysrepo-persistent-data.yang" "${TEST_INTERNAL_SCHEMA_SEARCH_DIR}"
-    COMMAND cp "${PROJECT_SOURCE_DIR}/yang/sysrepo-persistent-data.yin" "${TEST_INTERNAL_SCHEMA_SEARCH_DIR}"
     COMMAND cp "${PROJECT_SOURCE_DIR}/yang/sysrepo-module-dependencies.yang" "${TEST_INTERNAL_SCHEMA_SEARCH_DIR}"
-    ERROR_QUIET
 )
 
 # make common_test depend on sysrepoctl
-add_dependencies(common_test sysrepoctl)
+add_dependencies(common_test create_internals sysrepoctl)
 
 # install testing YANG modules
 macro(INSTALL_YANG_MODULE MODULE_NAME)
