@@ -140,7 +140,7 @@ rp_set_oper_request_timeout(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *re
     rc = sr_gpb_internal_req_alloc(SR__OPERATION__OPER_DATA_TIMEOUT, &msg);
     if (SR_ERR_OK == rc) {
         msg->session_id = session->id;
-        msg->internal_request->oper_data_timeout_req->request_id = (uint64_t)request;
+        msg->internal_request->oper_data_timeout_req->request_id = (intptr_t)request;
         msg->internal_request->postpone_timeout = timeout;
         msg->internal_request->has_postpone_timeout = true;
         rc = cm_msg_send(rp_ctx->cm_ctx, msg);
@@ -1355,7 +1355,7 @@ rp_data_provide_resp_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *m
     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to transform gpb to sr_val_t");
 
     MUTEX_LOCK_TIMED_CHECK_GOTO(&session->cur_req_mutex, rc, cleanup);
-    if (RP_REQ_WAITING_FOR_DATA != session->state || NULL == session->req ||  msg->response->data_provide_resp->request_id != (uint64_t) session->req ) {
+    if (RP_REQ_WAITING_FOR_DATA != session->state || NULL == session->req ||  msg->response->data_provide_resp->request_id != (intptr_t)session->req ) {
         SR_LOG_ERR("State data arrived after timeout expiration or session id=%u is invalid.", session->id);
         goto error;
     }
@@ -1489,7 +1489,7 @@ rp_oper_data_timeout_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Ms
 
     SR_LOG_DBG_MSG("Processing oper-data-timeout request.");
 
-    if (((uint64_t )session->req) == msg->internal_request->oper_data_timeout_req->request_id) {
+    if (((intptr_t)session->req) == msg->internal_request->oper_data_timeout_req->request_id) {
         SR_LOG_DBG("Time out expired for operational data to be loaded. Request processing continue, session id = %u", session->id);
         rp_msg_process(rp_ctx, session, session->req);
     }

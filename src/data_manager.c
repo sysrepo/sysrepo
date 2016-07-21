@@ -394,7 +394,7 @@ dm_load_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, 
     md_ctx_lock(dm_ctx->md_ctx, false);
     rc = md_get_module_info(dm_ctx->md_ctx, module_name, revision, &module);
     if (SR_ERR_OK != rc) {
-        fprintf(stderr, "Error: Module '%s:%s' is not installed.\n", module_name, revision ? revision : "<latest>");
+        SR_LOG_ERR("Module '%s:%s' is not installed.\n", module_name, revision ? revision : "<latest>");
         *module_schema = NULL;
         md_ctx_unlock(dm_ctx->md_ctx);
         return SR_ERR_UNKNOWN_MODEL;
@@ -1119,17 +1119,18 @@ dm_init(ac_ctx_t *ac_ctx, np_ctx_t *np_ctx, pm_ctx_t *pm_ctx, const cm_connectio
     CHECK_ZERO_MSG_GOTO(rc, rc, SR_ERR_INTERNAL, cleanup, "sr_str_join failed");
     rc = sr_str_join(data_search_dir, "internal/", &internal_data_search_dir);
     CHECK_ZERO_MSG_GOTO(rc, rc, SR_ERR_INTERNAL, cleanup, "sr_str_join failed");
+
     rc = md_init(ctx->ly_ctx, &ctx->lyctx_lock, schema_search_dir, internal_schema_search_dir,
                  internal_data_search_dir, false, &ctx->md_ctx);
-    if (SR_ERR_OK != rc) {
-        fprintf(stderr, "Error: Failed to initialize Module Dependencies context.\n");
-        goto cleanup;
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to initialize Module Dependencies context.");
+
+    if (conn_mode == CM_MODE_DAEMON) {
+        /* load the schemas only in daemon mode, in library mode they will be loaded on demand */
+        rc = dm_load_all_schemas(ctx);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to load the schemas.");
     }
 
     *dm_ctx = ctx;
-    if (conn_mode == CM_MODE_DAEMON) {
-        rc = dm_load_all_schemas(ctx);
-    }
 
 cleanup:
     free(internal_schema_search_dir);
