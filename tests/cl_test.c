@@ -2246,7 +2246,7 @@ cl_event_notif_test(void **state)
 
     /* wait at most 5 seconds for all callbacks to get called */
     struct timespec ts;
-    clock_gettime(CLOCK_REALTIME, &ts);
+    sr_clock_get_time(CLOCK_REALTIME, &ts);
     ts.tv_sec += 5;
     while (ETIMEDOUT != pthread_cond_timedwait(&cb_status.cond, &cb_status.mutex, &ts)
             && (cb_status.link_removed < CL_TEST_EN_NUM_SESSIONS || cb_status.link_discovered < CL_TEST_EN_NUM_SESSIONS));
