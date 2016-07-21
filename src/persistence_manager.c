@@ -137,6 +137,7 @@ pm_load_data_tree(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *mod
         if (ENOENT == errno) {
             SR_LOG_DBG("Persist data file '%s' does not exist.", data_filename);
             if (read_only) {
+                SR_LOG_DBG("No persistent data for module '%s' will be loaded.", module_name);
                 rc = SR_ERR_DATA_MISSING;
             } else {
                 /* create new persist file */
@@ -156,7 +157,6 @@ pm_load_data_tree(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *mod
             rc = SR_ERR_INTERNAL;
         }
         if (SR_ERR_OK != rc) {
-            SR_LOG_WRN("Persist data tree load for '%s' has failed.", module_name);
             goto cleanup;
         }
     }
