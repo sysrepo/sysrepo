@@ -1225,6 +1225,7 @@ dm_remove_not_enabled_nodes(dm_data_info_t *info)
             sr_lyd_unlink(info, iter);
             lyd_free_withsiblings(iter);
         }
+        sr_list_rm(stack, iter);
     }
 
 cleanup:
@@ -1290,6 +1291,7 @@ dm_has_not_enabled_nodes(dm_data_info_t *info, bool *res)
             *res = true;
             goto cleanup;
         }
+        sr_list_rm(stack, iter);
     }
     *res = false;
 
@@ -2922,13 +2924,13 @@ dm_copy_subtree_startup_running(dm_ctx_t *ctx, dm_session_t *session, const stru
             char *node_xpath = lyd_path(node);
             CHECK_NULL_NOMEM_GOTO(node_xpath, rc, cleanup);
             dm_lyd_new_path(ctx, candidate_info, ctx->ly_ctx, node_xpath,
-                    ((struct lyd_node_leaf_list *) node)->value_str, 0);
+                    ((struct lyd_node_leaf_list *) node)->value_str, LYD_PATH_OPT_UPDATE);
             free(node_xpath);
         } else {
             /* list or container */
             if (NULL != node->parent) {
                 char *parent_xpath = lyd_path(node->parent);
-                dm_lyd_new_path(ctx, candidate_info, ctx->ly_ctx, parent_xpath, NULL, 0);
+                dm_lyd_new_path(ctx, candidate_info, ctx->ly_ctx, parent_xpath, NULL, LYD_PATH_OPT_UPDATE);
                 /* create or find parent node */
                 rc = rp_dt_find_node(ctx, candidate_info->node, parent_xpath, false, &parent);
                 free(parent_xpath);
