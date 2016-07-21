@@ -2875,6 +2875,16 @@ dm_enable_module_running(dm_ctx_t *ctx, dm_session_t *session, const char *modul
     return rc;
 }
 
+/**
+ * @brief Copies a subtree (specified by xpath) of configuration from startup to running. Replaces
+ * the previous configuration under the xpath.
+ *
+ * @param [in] ctx
+ * @param [in] session
+ * @param [in] module
+ * @param [in] xpath
+ * @return Error code (SR_ERR_OK on success)
+ */
 static int
 dm_copy_subtree_startup_running(dm_ctx_t *ctx, dm_session_t *session, const struct lys_module *module, const char *xpath)
 {
@@ -2906,6 +2916,7 @@ dm_copy_subtree_startup_running(dm_ctx_t *ctx, dm_session_t *session, const stru
     CHECK_RC_MSG_GOTO(rc, cleanup, "Get info failed");
 
     /* remove previous config from running */
+    SR_LOG_DBG("Remove previous content of running configuration under %s.", xpath);
     rc = rp_dt_delete_item(ctx, session, xpath, SR_EDIT_DEFAULT);
     CHECK_RC_LOG_GOTO(rc, cleanup, "Delete of previous values in running failed xpath %s", xpath);
 
@@ -2936,7 +2947,7 @@ dm_copy_subtree_startup_running(dm_ctx_t *ctx, dm_session_t *session, const stru
                 free(parent_xpath);
                 CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to find parent node");
             }
-            /* duplicate data tree */
+            /* unlink data tree from session */
             sr_lyd_unlink(startup_info, node);
 
             /* attach to parent */
@@ -2971,11 +2982,9 @@ int
 dm_enable_module_subtree_running(dm_ctx_t *ctx, dm_session_t *session, const char *module_name, const char *xpath,
         const struct lys_module *module, bool copy_from_startup)
 {
-    CHECK_NULL_ARG2(ctx, module_name);
+    CHECK_NULL_ARG3(ctx, module_name, xpath); /* session can be NULL */
     bool has_enabled_subtree = false;
     int rc = SR_ERR_OK;
-
-    CHECK_NULL_ARG4(ctx, session, module_name, xpath);
 
     if (NULL == module) {
         /* if module is not known, get it and check if it has some enabled subtree */
