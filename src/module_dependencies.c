@@ -1134,7 +1134,7 @@ md_insert_lys_module(md_ctx_t *md_ctx, const struct lys_module *module_schema, c
             if (0 == ret) {
                 /* already installed */
                 if (!dependency) {
-                    rc = SR_ERR_INVAL_ARG;
+                    rc = SR_ERR_DATA_EXISTS;
                     SR_LOG_WRN("Module '%s' is already installed.", md_get_module_fullname(module));
                 } else {
                     rc = SR_ERR_OK;

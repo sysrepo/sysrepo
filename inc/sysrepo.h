@@ -163,6 +163,7 @@ typedef enum sr_error_e {
     SR_ERR_UNAUTHORIZED,       /**< Operation not authorized. */
     SR_ERR_LOCKED,             /**< Requested resource is already locked. */
     SR_ERR_TIME_OUT,           /**< Time out has expired. */
+    SR_ERR_RESTART_NEEDED,     /**< Sysrepo Engine restart is needed. */
 } sr_error_t;
 
 /**
