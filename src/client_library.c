@@ -82,9 +82,10 @@ typedef struct sr_change_iter_s {
 } sr_change_iter_t;
 
 
-static int connections_cnt = 0;        /**< Number of active connections to the Sysrepo Engine. */
-static int subscriptions_cnt = 0;      /**< Number of active subscriptions. */
-static cl_sm_ctx_t *cl_sm_ctx = NULL;  /**< Subscription Manager context. */
+static int connections_cnt = 0;               /**< Number of active connections to the Sysrepo Engine. */
+static int subscriptions_cnt = 0;             /**< Number of active subscriptions. */
+static cl_sm_ctx_t *cl_sm_ctx = NULL;         /**< Subscription Manager context. */
+static int local_watcher_fd[2] = { -1, -1 };  /**< File descriptor pair of an application-local file descriptor watcher. */
 static pthread_mutex_t global_lock = PTHREAD_MUTEX_INITIALIZER;  /**< Mutex for locking shared global variables. */
 
 /**
@@ -2216,4 +2217,63 @@ cleanup:
         sr__msg__free_unpacked(msg_resp, NULL);
     }
     return cl_session_return(session, rc);
+}
+
+int
+sr_fd_watcher_init(int *fd_p)
+{
+    int pipefd[2] = { 0, };
+    int ret = 0;
+
+    CHECK_NULL_ARG(fd_p);
+
+    sr_fd_watcher_cleanup();
+
+    ret = pipe(pipefd);
+    CHECK_ZERO_LOG_RETURN(ret, SR_ERR_IO, "Unable to create a new pipe: %s", sr_strerror_safe(errno));
+
+    *fd_p = pipefd[0]; /* read end of the pipe */
+
+    pthread_mutex_lock(&global_lock);
+    local_watcher_fd[0] = pipefd[0];
+    local_watcher_fd[1] = pipefd[1];
+    pthread_mutex_unlock(&global_lock);
+
+    return SR_ERR_OK;
+}
+
+void
+sr_fd_watcher_cleanup()
+{
+    pthread_mutex_lock(&global_lock);
+    for (size_t i = 0; i < 2; i++) {
+        if (-1 != local_watcher_fd[i]) {
+            close(local_watcher_fd[i]);
+            local_watcher_fd[i] = -1;
+        }
+    }
+    pthread_mutex_unlock(&global_lock);
+}
+
+int
+sr_fd_event_process(int fd, sr_fd_event_t event, sr_fd_watcher_t *fd_change_set, size_t *fd_change_set_cnt)
+{
+    bool watched_set_change = false;
+    char buf[256] = { 0, };
+
+    pthread_mutex_lock(&global_lock);
+    if (local_watcher_fd[1] == fd) {
+        watched_set_change = true;
+    }
+    pthread_mutex_unlock(&global_lock);
+
+    if (watched_set_change) {
+        /* set of file descriptors used for watching needs to be modified */
+        read(fd, buf, sizeof(buf)); /* we do not care about the data */
+    } else {
+        /* read a message from specified fd */
+        // TODO
+    }
+
+    return SR_ERR_OK;
 }
