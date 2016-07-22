@@ -206,7 +206,7 @@ cl_subscription_init(sr_session_ctx_t *session, Sr__SubscriptionType type, const
     pthread_mutex_lock(&global_lock);
     if (0 == subscriptions_cnt) {
         /* this is the first subscription - initialize subscription manager */
-        rc = cl_sm_init(&cl_sm_ctx);
+        rc = cl_sm_init((-1 != local_watcher_fd[1]), local_watcher_fd[1], &cl_sm_ctx);
     }
     subscriptions_cnt++;
     if (SR_ERR_OK == rc) {
@@ -2223,7 +2223,7 @@ int
 sr_fd_watcher_init(int *fd_p)
 {
     int pipefd[2] = { 0, };
-    int ret = 0;
+    int ret = 0, rc = SR_ERR_OK;
 
     CHECK_NULL_ARG(fd_p);
 
@@ -2232,14 +2232,22 @@ sr_fd_watcher_init(int *fd_p)
     ret = pipe(pipefd);
     CHECK_ZERO_LOG_RETURN(ret, SR_ERR_IO, "Unable to create a new pipe: %s", sr_strerror_safe(errno));
 
-    *fd_p = pipefd[0]; /* read end of the pipe */
+    /* set read end to nonblocking mode */
+    rc = sr_fd_set_nonblock(pipefd[0]);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot set socket to nonblocking mode.");
 
     pthread_mutex_lock(&global_lock);
     local_watcher_fd[0] = pipefd[0];
     local_watcher_fd[1] = pipefd[1];
     pthread_mutex_unlock(&global_lock);
 
+    *fd_p = pipefd[0]; /* return read end of the pipe */
+
     return SR_ERR_OK;
+
+cleanup:
+    sr_fd_watcher_cleanup();
+    return rc;
 }
 
 void

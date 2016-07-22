@@ -74,6 +74,11 @@ typedef struct cl_sm_ctx_s {
     /** Lock for the subscriptions binary tree. */
     pthread_mutex_t subscriptions_lock;
 
+    /** Determines whether application-local file descriptor watcher is in place or not. */
+    bool local_fd_watcher;
+    /** File descriptor used for notifications about fd set changes towards application-local file descriptor watcher. */
+    int notify_fd;
+
     /* Thread where Subscription Manger's event loop runs. */
     pthread_t event_loop_thread;
     /** Event loop context. */
@@ -1257,7 +1262,7 @@ cl_sm_server_init(cl_sm_ctx_t *sm_ctx, const char *module_name, cl_sm_server_ctx
     addr.sun_family = AF_UNIX;
     strncpy(addr.sun_path, server_ctx->socket_path, sizeof(addr.sun_path)-1);
 
-    /* create the unix-domain socket writable to anyone
+    /* bind the unix-domain socket writable to anyone
      * (permission are guarded by the directory where the socket is placed) */
     old_umask = umask(0);
     ret = bind(server_ctx->listen_socket_fd, (struct sockaddr*)&addr, sizeof(addr));
@@ -1353,7 +1358,7 @@ cl_sm_event_loop_threaded(void *sm_ctx_p)
 }
 
 int
-cl_sm_init(cl_sm_ctx_t **sm_ctx_p)
+cl_sm_init(bool local_fd_watcher, int notify_fd, cl_sm_ctx_t **sm_ctx_p)
 {
     cl_sm_ctx_t *ctx = NULL;
     int ret = 0, rc = SR_ERR_OK;
@@ -1365,6 +1370,9 @@ cl_sm_init(cl_sm_ctx_t **sm_ctx_p)
     /* allocate the context */
     ctx = calloc(1, sizeof(*ctx));
     CHECK_NULL_NOMEM_RETURN(ctx);
+
+    ctx->local_fd_watcher = local_fd_watcher;
+    ctx->notify_fd = notify_fd;
 
     /* initialize linked-list for server contexts */
     rc = sr_llist_init(&ctx->server_ctx_list);
@@ -1391,24 +1399,31 @@ cl_sm_init(cl_sm_ctx_t **sm_ctx_p)
 
     srand(time(NULL));
 
-    /* initialize event loop */
-    /* According to our measurements, EPOLL backend is significantly slower for
-     * fewer file descriptors, so we are disabling it for now. */
-    ctx->event_loop = ev_loop_new((EVBACKEND_ALL ^ EVBACKEND_EPOLL) | EVFLAG_NOENV);
+    if (local_fd_watcher) {
+        /* use application-local file descriptor watcher */
+        SR_LOG_DBG_MSG("Application-local file descriptor watcher will be used for monitoring of subscriptions.");
+    } else {
+        /* initialize event loop */
+        /* According to our measurements, EPOLL backend is significantly slower for
+         * fewer file descriptors, so we are disabling it for now. */
+        ctx->event_loop = ev_loop_new((EVBACKEND_ALL ^ EVBACKEND_EPOLL) | EVFLAG_NOENV);
 
-    /* initialize event watcher for async stop requests */
-    ev_async_init(&ctx->stop_watcher, cl_sm_stop_cb);
-    ctx->stop_watcher.data = (void*)ctx;
-    ev_async_start(ctx->event_loop, &ctx->stop_watcher);
+        /* initialize event watcher for async stop requests */
+        ev_async_init(&ctx->stop_watcher, cl_sm_stop_cb);
+        ctx->stop_watcher.data = (void*)ctx;
+        ev_async_start(ctx->event_loop, &ctx->stop_watcher);
 
-    /* initialize event watcher for changes in server context */
-    ev_async_init(&ctx->server_ctx_watcher, cl_sm_server_ctx_change_cb);
-    ctx->server_ctx_watcher.data = (void*)ctx;
-    ev_async_start(ctx->event_loop, &ctx->server_ctx_watcher);
+        /* initialize event watcher for changes in server context */
+        ev_async_init(&ctx->server_ctx_watcher, cl_sm_server_ctx_change_cb);
+        ctx->server_ctx_watcher.data = (void*)ctx;
+        ev_async_start(ctx->event_loop, &ctx->server_ctx_watcher);
 
-    /* start the event loop in a new thread */
-    ret = pthread_create(&ctx->event_loop_thread, NULL, cl_sm_event_loop_threaded, ctx);
-    CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_INIT_FAILED, cleanup, "Error by creating a new thread: %s", sr_strerror_safe(errno));
+        /* start the event loop in a new thread */
+        ret = pthread_create(&ctx->event_loop_thread, NULL, cl_sm_event_loop_threaded, ctx);
+        CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_INIT_FAILED, cleanup, "Error by creating a new thread: %s", sr_strerror_safe(errno));
+
+        SR_LOG_DBG_MSG("An event loop in the background thread successfully started.");
+    }
 
     SR_LOG_DBG_MSG("Client Subscription Manager initialized successfully.");
 
@@ -1424,12 +1439,14 @@ void
 cl_sm_cleanup(cl_sm_ctx_t *sm_ctx, bool join)
 {
     if (NULL != sm_ctx) {
-        if (join) {
-            ev_async_send(sm_ctx->event_loop, &sm_ctx->stop_watcher);
-            pthread_join(sm_ctx->event_loop_thread, NULL);
-        }
-        if (NULL != sm_ctx->event_loop) {
-            ev_loop_destroy(sm_ctx->event_loop);
+        if (!sm_ctx->local_fd_watcher) {
+            if (join) {
+                ev_async_send(sm_ctx->event_loop, &sm_ctx->stop_watcher);
+                pthread_join(sm_ctx->event_loop_thread, NULL);
+            }
+            if (NULL != sm_ctx->event_loop) {
+                ev_loop_destroy(sm_ctx->event_loop);
+            }
         }
         cl_sm_servers_cleanup(sm_ctx);
 
