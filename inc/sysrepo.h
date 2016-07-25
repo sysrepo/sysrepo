@@ -1298,7 +1298,7 @@ int sr_fd_watcher_init(int *fd);
 
 void sr_fd_watcher_cleanup();
 
-int sr_fd_event_process(int fd, sr_fd_event_t event, sr_fd_watcher_t *fd_change_set, size_t *fd_change_set_cnt);
+int sr_fd_event_process(int fd, sr_fd_event_t event, sr_fd_watcher_t **fd_change_set, size_t *fd_change_set_cnt);
 
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -77,7 +77,7 @@ typedef struct cl_sm_ctx_s {
     /** Determines whether application-local file descriptor watcher is in place or not. */
     bool local_fd_watcher;
     /** File descriptor used for notifications about fd set changes towards application-local file descriptor watcher. */
-    int notify_fd;
+    int fd_changeset_notify_fd;
 
     /* Thread where Subscription Manger's event loop runs. */
     pthread_t event_loop_thread;
@@ -1273,8 +1273,14 @@ cl_sm_server_init(cl_sm_ctx_t *sm_ctx, const char *module_name, cl_sm_server_ctx
     ret = listen(server_ctx->listen_socket_fd, SOMAXCONN);
     CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_INIT_FAILED, cleanup, "Socket listen error: %s", sr_strerror_safe(errno));
 
-    /* signal the main thread to re-scan for new server contexts */
-    ev_async_send(sm_ctx->event_loop, &sm_ctx->server_ctx_watcher);
+    /* send a signal to re-scan for new server contexts */
+    if (sm_ctx->local_fd_watcher) {
+        /* signal the changeset notify fd */
+        write(sm_ctx->fd_changeset_notify_fd, "x", 1);
+    } else {
+        /* signal the main thread */
+        ev_async_send(sm_ctx->event_loop, &sm_ctx->server_ctx_watcher);
+    }
 
     *server_ctx_p = server_ctx;
     return SR_ERR_OK;
@@ -1372,7 +1378,7 @@ cl_sm_init(bool local_fd_watcher, int notify_fd, cl_sm_ctx_t **sm_ctx_p)
     CHECK_NULL_NOMEM_RETURN(ctx);
 
     ctx->local_fd_watcher = local_fd_watcher;
-    ctx->notify_fd = notify_fd;
+    ctx->fd_changeset_notify_fd = notify_fd;
 
     /* initialize linked-list for server contexts */
     rc = sr_llist_init(&ctx->server_ctx_list);

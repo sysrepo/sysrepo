@@ -2227,7 +2227,7 @@ sr_fd_watcher_init(int *fd_p)
 
     CHECK_NULL_ARG(fd_p);
 
-    sr_fd_watcher_cleanup();
+    SR_LOG_DBG_MSG("Initializing application-local fd watcher.");
 
     ret = pipe(pipefd);
     CHECK_ZERO_LOG_RETURN(ret, SR_ERR_IO, "Unable to create a new pipe: %s", sr_strerror_safe(errno));
@@ -2261,16 +2261,20 @@ sr_fd_watcher_cleanup()
         }
     }
     pthread_mutex_unlock(&global_lock);
+
+    SR_LOG_DBG_MSG("Application-local fd watcher cleaned up.");
 }
 
 int
-sr_fd_event_process(int fd, sr_fd_event_t event, sr_fd_watcher_t *fd_change_set, size_t *fd_change_set_cnt)
+sr_fd_event_process(int fd, sr_fd_event_t event, sr_fd_watcher_t **fd_change_set, size_t *fd_change_set_cnt)
 {
     bool watched_set_change = false;
     char buf[256] = { 0, };
 
+    SR_LOG_DBG("New %s event on fd=%d.", (SR_FD_INPUT_READY == event ? "input" : "output"), fd);
+
     pthread_mutex_lock(&global_lock);
-    if (local_watcher_fd[1] == fd) {
+    if (local_watcher_fd[0] == fd) {
         watched_set_change = true;
     }
     pthread_mutex_unlock(&global_lock);
