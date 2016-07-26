@@ -206,7 +206,7 @@ cl_subscription_init(sr_session_ctx_t *session, Sr__SubscriptionType type, const
     pthread_mutex_lock(&global_lock);
     if (0 == subscriptions_cnt) {
         /* this is the first subscription - initialize subscription manager */
-        rc = cl_sm_init((-1 != local_watcher_fd[1]), local_watcher_fd[1], &cl_sm_ctx);
+        rc = cl_sm_init((-1 != local_watcher_fd[0]), local_watcher_fd, &cl_sm_ctx);
     }
     subscriptions_cnt++;
     if (SR_ERR_OK == rc) {
@@ -2268,24 +2268,16 @@ sr_fd_watcher_cleanup()
 int
 sr_fd_event_process(int fd, sr_fd_event_t event, sr_fd_watcher_t **fd_change_set, size_t *fd_change_set_cnt)
 {
-    bool watched_set_change = false;
-    char buf[256] = { 0, };
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG2(fd_change_set, fd_change_set_cnt);
+
+    *fd_change_set_cnt = 0;
+    *fd_change_set = NULL;
 
     SR_LOG_DBG("New %s event on fd=%d.", (SR_FD_INPUT_READY == event ? "input" : "output"), fd);
 
-    pthread_mutex_lock(&global_lock);
-    if (local_watcher_fd[0] == fd) {
-        watched_set_change = true;
-    }
-    pthread_mutex_unlock(&global_lock);
+    rc = cl_sm_fd_event_process(cl_sm_ctx, fd, event, fd_change_set, fd_change_set_cnt);
 
-    if (watched_set_change) {
-        /* set of file descriptors used for watching needs to be modified */
-        read(fd, buf, sizeof(buf)); /* we do not care about the data */
-    } else {
-        /* read a message from specified fd */
-        // TODO
-    }
-
-    return SR_ERR_OK;
+    return rc;
 }

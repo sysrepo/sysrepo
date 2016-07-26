@@ -72,13 +72,13 @@ typedef struct cl_sm_subscription_ctx_s {
  *
  * @param[in] local_fd_watcher TRUE in case that the application wants to use an application-local file descriptor
  * watcher instead of auto-created thread and event loop.
- * @param[in] notify_fd File descriptor used for notifications about fd set changes towards application-local
+ * @param[in] notify_pipe Pipe used for notifications about fd set changes towards application-local
  * file descriptor watcher.
  * @param[out] sm_ctx Subscription Manager context that can be used in subsequent SM API calls.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int cl_sm_init(bool local_fd_watcher, int notify_fd, cl_sm_ctx_t **sm_ctx);
+int cl_sm_init(bool local_fd_watcher, int notify_pipe[2], cl_sm_ctx_t **sm_ctx);
 
 /**
  * @brief Cleans up the Subscription Manager.
@@ -113,7 +113,7 @@ int cl_sm_get_server_ctx(cl_sm_ctx_t *sm_ctx, const char *module_name, cl_sm_ser
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int cl_sm_subscription_init(cl_sm_ctx_t *sm_ctx,  cl_sm_server_ctx_t *server_ctx, cl_sm_subscription_ctx_t **subscription);
+int cl_sm_subscription_init(cl_sm_ctx_t *sm_ctx, cl_sm_server_ctx_t *server_ctx, cl_sm_subscription_ctx_t **subscription);
 
 /**
  * @brief Cleans up a subscription.
@@ -121,6 +121,12 @@ int cl_sm_subscription_init(cl_sm_ctx_t *sm_ctx,  cl_sm_server_ctx_t *server_ctx
  * @param[in] subscription Subscription context acquired by ::cl_sm_subscription_init call.
  */
 void cl_sm_subscription_cleanup(cl_sm_subscription_ctx_t *subscription);
+
+/**
+ * TODO
+ */
+int cl_sm_fd_event_process(cl_sm_ctx_t *sm_ctx, int fd, sr_fd_event_t event,
+        sr_fd_watcher_t **fd_change_set, size_t *fd_change_set_cnt);
 
 /**@} cl_sm */
 
