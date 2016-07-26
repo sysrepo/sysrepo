@@ -310,6 +310,7 @@ cl_subscription_close(sr_session_ctx_t *session, cl_sm_subscription_ctx_t *subsc
     if (0 == subscriptions_cnt) {
         /* this is the last subscription - destroy subscription manager */
         cl_sm_cleanup(cl_sm_ctx, true);
+        cl_sm_ctx = NULL;
     }
     if ((0 == subscriptions_cnt) && (0 == connections_cnt)) {
         /* destroy library-global resources */

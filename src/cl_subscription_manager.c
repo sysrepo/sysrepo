@@ -119,6 +119,38 @@ typedef struct cl_sm_conn_ctx_s {
 } cl_sm_conn_ctx_t;
 
 /**
+ * TODO
+ */
+static int
+cl_sm_fd_changeset_add(cl_sm_ctx_t *sm_ctx, int fd, int events, sr_fd_action_t action)
+{
+    sr_fd_watcher_t *watcher_arr = NULL;
+
+    CHECK_NULL_ARG(sm_ctx);
+
+    // TODO check whether the same fd already exists in the set
+
+    watcher_arr = realloc(sm_ctx->fd_changeset, (sm_ctx->fd_changeset_cnt + 1) * sizeof(*watcher_arr));
+    CHECK_NULL_NOMEM_RETURN(watcher_arr);
+
+    pthread_mutex_lock(&sm_ctx->fd_changeset_lock);
+
+    sm_ctx->fd_changeset = watcher_arr;
+    sm_ctx->fd_changeset[sm_ctx->fd_changeset_cnt].fd = fd;
+    sm_ctx->fd_changeset[sm_ctx->fd_changeset_cnt].events = events;
+    sm_ctx->fd_changeset[sm_ctx->fd_changeset_cnt].action = action;
+
+    sm_ctx->fd_changeset_cnt += 1;
+
+    pthread_mutex_unlock(&sm_ctx->fd_changeset_lock);
+
+    /* signal the changeset notify fd */
+    write(sm_ctx->fd_changeset_notify_pipe[1], "x", 1);
+
+    return SR_ERR_OK;
+}
+
+/**
  * @brief Compares two subscriptions by their id
  * (used by lookups in the binary tree).
  */
@@ -229,6 +261,24 @@ cl_sm_connection_cleanup(void *connection_p)
 
     if (NULL != connection_p) {
         conn = (cl_sm_conn_ctx_t *)connection_p;
+
+        SR_LOG_DBG("Closing subscriber connection on fd=%d.", conn->fd);
+
+        /* stop monitoring client file descriptor */
+        if (conn->sm_ctx->local_fd_watcher) {
+            cl_sm_fd_changeset_add(conn->sm_ctx, conn->fd, (SR_FD_INPUT_READY & SR_FD_OUTPUT_READY), SR_FD_STOP_WATCHING);
+        } else {
+            if (NULL != conn->read_watcher.data) {
+                ev_io_stop(conn->sm_ctx->event_loop, &conn->read_watcher);
+            }
+            if (NULL != conn->write_watcher.data) {
+                ev_io_stop(conn->sm_ctx->event_loop, &conn->write_watcher);
+            }
+        }
+
+        /* close the file descriptor */
+        close(conn->fd);
+
         free(conn->in_buff.data);
         free(conn->out_buff.data);
         free(conn);
@@ -271,17 +321,6 @@ cl_sm_conn_close(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn)
 {
 
     CHECK_NULL_ARG2(sm_ctx, conn);
-
-    SR_LOG_DBG("Closing subscriber connection on fd=%d.", conn->fd);
-
-    if (NULL != conn->read_watcher.data) {
-        ev_io_stop(conn->sm_ctx->event_loop, &conn->read_watcher);
-    }
-    if (NULL != conn->write_watcher.data) {
-        ev_io_stop(conn->sm_ctx->event_loop, &conn->write_watcher);
-    }
-
-    close(conn->fd);
 
     sr_btree_delete(sm_ctx->fd_btree, conn); /* sm_connection_cleanup auto-invoked */
 
@@ -347,6 +386,7 @@ cl_sm_conn_out_buff_flush(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn)
                 conn->out_buff.start = buff_pos;
                 /* monitor fd for writable event */
                 ev_io_start(sm_ctx->event_loop, &conn->write_watcher);
+                // TODO own watcher
                 break;
             } else {
                 /* error by writing - close the connection due to an error */
@@ -1053,6 +1093,7 @@ cl_sm_conn_write_cb(struct ev_loop *loop, ev_io *w, int revents)
 
     SR_LOG_DBG("fd %d writeable", conn->fd);
 
+    // TODO own watcher
     ev_io_stop(sm_ctx->event_loop, &conn->write_watcher);
 
     /* flush the output buffer */
@@ -1062,35 +1103,6 @@ cl_sm_conn_write_cb(struct ev_loop *loop, ev_io *w, int revents)
     if ((conn->close_requested) || (SR_ERR_OK != rc)) {
         cl_sm_conn_close(sm_ctx, conn);
     }
-}
-
-static int
-cl_sm_fd_changeset_add(cl_sm_ctx_t *sm_ctx, int fd, sr_fd_event_t event, sr_fd_action_t action)
-{
-    sr_fd_watcher_t *watcher_arr = NULL;
-
-    CHECK_NULL_ARG(sm_ctx);
-
-    // TODO check whether the same fd already exists in the set
-
-    watcher_arr = realloc(sm_ctx->fd_changeset, (sm_ctx->fd_changeset_cnt + 1) * sizeof(*watcher_arr));
-    CHECK_NULL_NOMEM_RETURN(watcher_arr);
-
-    pthread_mutex_lock(&sm_ctx->fd_changeset_lock);
-
-    sm_ctx->fd_changeset = watcher_arr;
-    sm_ctx->fd_changeset[sm_ctx->fd_changeset_cnt].fd = fd;
-    sm_ctx->fd_changeset[sm_ctx->fd_changeset_cnt].events = event;
-    sm_ctx->fd_changeset[sm_ctx->fd_changeset_cnt].action = action;
-
-    sm_ctx->fd_changeset_cnt += 1;
-
-    pthread_mutex_unlock(&sm_ctx->fd_changeset_lock);
-
-    /* signal the changeset notify fd */
-    write(sm_ctx->fd_changeset_notify_pipe[1], "x", 1);
-
-    return SR_ERR_OK;
 }
 
 /**
@@ -1175,9 +1187,18 @@ cl_sm_server_watcher_cb(struct ev_loop *loop, ev_io *w, int revents)
  * @brief Destroys the unix-domain socket server for subscriber connections.
  */
 static void
-cl_sm_server_cleanup(cl_sm_server_ctx_t *server_ctx)
+cl_sm_server_cleanup(cl_sm_ctx_t *sm_ctx, cl_sm_server_ctx_t *server_ctx)
 {
     if (NULL != server_ctx) {
+        /* stop monitoring the server socket */
+        if (sm_ctx->local_fd_watcher) {
+            cl_sm_fd_changeset_add(sm_ctx, server_ctx->listen_socket_fd, (SR_FD_INPUT_READY & SR_FD_OUTPUT_READY),
+                    SR_FD_STOP_WATCHING);
+        } else {
+            if (NULL != server_ctx->server_watcher.data) {
+                ev_io_stop(sm_ctx->event_loop, &server_ctx->server_watcher);
+            }
+        }
         if (-1 != server_ctx->listen_socket_fd) {
             close(server_ctx->listen_socket_fd);
         }
@@ -1204,7 +1225,7 @@ cl_sm_servers_cleanup(cl_sm_ctx_t *sm_ctx)
         if (NULL != sm_ctx->server_ctx_list) {
             node = sm_ctx->server_ctx_list->first;
             while (NULL != node) {
-                cl_sm_server_cleanup(node->data);
+                cl_sm_server_cleanup(sm_ctx, node->data);
                 node = node->next;
             }
         }
@@ -1341,7 +1362,7 @@ cl_sm_server_init(cl_sm_ctx_t *sm_ctx, const char *module_name, cl_sm_server_ctx
     return SR_ERR_OK;
 
 cleanup:
-    cl_sm_server_cleanup(server_ctx);
+    cl_sm_server_cleanup(sm_ctx, server_ctx);
     return rc;
 }
 
@@ -1523,7 +1544,14 @@ cl_sm_cleanup(cl_sm_ctx_t *sm_ctx, bool join)
         pthread_mutex_destroy(&sm_ctx->fd_changeset_lock);
         pthread_mutex_destroy(&sm_ctx->subscriptions_lock);
 
+        if (sm_ctx->fd_changeset_cnt > 0) {
+            free(sm_ctx->fd_changeset);
+            sm_ctx->fd_changeset = NULL;
+            sm_ctx->fd_changeset_cnt = 0;
+        }
+
         free(sm_ctx);
+
         SR_LOG_INF_MSG("Client Subscription Manager successfully destroyed.");
     }
 }
@@ -1685,6 +1713,8 @@ cl_sm_fd_event_process(cl_sm_ctx_t *sm_ctx, int fd, sr_fd_event_t event,
     char buf[256] = { 0, };
     cl_sm_server_ctx_t *server_ctx = NULL;
     int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG3(sm_ctx, fd_change_set, fd_change_set_cnt);
 
     if (fd == sm_ctx->fd_changeset_notify_pipe[0]) {
         /* set of file descriptors used for watching needs to be modified */

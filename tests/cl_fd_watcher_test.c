@@ -120,15 +120,20 @@ cl_fd_poll_test(void **state)
     do {
         ret = poll(fd_set, fd_cnt, -1);
         assert_int_not_equal(ret, -1);
-        assert_int_not_equal(ret, 0);
 
         tmp_cnt = fd_cnt; /* fd_cnt will be modified inside of the loop */
         for (size_t i = 0; i < tmp_cnt; i++) {
+            if (fd_set[i].revents & POLLERR || fd_set[i].revents & POLLHUP || fd_set[i].revents & POLLNVAL) {
+                printf("error on fd=%d: %s\n", fd_set[i].fd, strerror(errno));
+                fd_set[i].fd *= -1; /* ignore this fd */ // TODO: assert
+            }
             if (fd_set[i].revents & POLLIN) {
                 rc = sr_fd_event_process(fd_set[i].fd, SR_FD_INPUT_READY, &fd_change_set, &fd_change_set_cnt);
+                assert_int_equal(rc, SR_ERR_OK);
             }
             if (fd_set[i].revents & POLLOUT) {
                 rc = sr_fd_event_process(fd_set[i].fd, SR_FD_OUTPUT_READY, &fd_change_set, &fd_change_set_cnt);
+                assert_int_equal(rc, SR_ERR_OK);
             }
             for (size_t i = 0; i < fd_change_set_cnt; i++) {
                 if (SR_FD_START_WATCHING == fd_change_set[i].action) {
@@ -136,19 +141,32 @@ cl_fd_poll_test(void **state)
                     fd_set[fd_cnt].events = (SR_FD_INPUT_READY == fd_change_set[i].events) ? POLLIN : POLLOUT;
                     fd_cnt++;
                 }
+                if (SR_FD_STOP_WATCHING == fd_change_set[i].action) {
+                    for (size_t j = 0; j < fd_cnt; j++) {
+                        if (fd_change_set[i].fd == fd_set[j].fd) {
+                            // TODO events
+                            if (j < fd_cnt - 1) {
+                                memmove(&fd_set[j], &fd_set[j+1], (fd_cnt - j - 1) * sizeof(*fd_set));
+                            }
+                            fd_cnt--;
+                        }
+                    }
+                }
             }
             free(fd_change_set);
             fd_change_set = NULL;
             fd_change_set_cnt = 0;
         }
-    } while ((SR_ERR_OK == rc) && (fd_cnt > 0) && (!callback_called));
+        printf("fd_cnt = %zu\n", fd_cnt);
+    } while ((SR_ERR_OK == rc) && !callback_called);
 
     /* cleanup app-local watcher */
     sr_fd_watcher_cleanup();
 
-    /* unsubscribe */
-    rc = sr_unsubscribe(NULL, subscription);
+    /* unsubscribe after callback has been called */
+    rc = sr_unsubscribe(session, subscription);
     assert_int_equal(rc, SR_ERR_OK);
+    callback_called = false;
 
     /* stop the session */
     rc = sr_session_stop(session);
