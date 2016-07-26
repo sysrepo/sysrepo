@@ -1350,9 +1350,8 @@ sr_get_last_error(sr_session_ctx_t *session, const sr_error_info_t **error_info)
         /* no detailed error information, let's create it from the last error code */
         pthread_mutex_unlock(&session->lock);
         rc = cl_session_set_error(session, sr_strerror(session->last_error), NULL);
-        if (SR_ERR_OK != rc) {
-            return rc;
-        }
+        CHECK_RC_MSG_RETURN(rc, "Error by setting latest error information.");
+        pthread_mutex_lock(&session->lock);
     }
 
     *error_info = session->error_info;
@@ -1374,9 +1373,8 @@ sr_get_last_errors(sr_session_ctx_t *session, const sr_error_info_t **error_info
         /* no detailed error information, let's create it from the last error code */
         pthread_mutex_unlock(&session->lock);
         rc = cl_session_set_error(session, sr_strerror(session->last_error), NULL);
-        if (SR_ERR_OK != rc) {
-            return rc;
-        }
+        CHECK_RC_MSG_RETURN(rc, "Error by setting latest error information.");
+        pthread_mutex_lock(&session->lock);
     }
 
     *error_info = session->error_info;
