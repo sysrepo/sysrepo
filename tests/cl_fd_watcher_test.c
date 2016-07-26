@@ -84,7 +84,7 @@ cl_fd_poll_test(void **state)
     sr_session_ctx_t *session = NULL;
     sr_subscription_ctx_t *subscription = NULL;
 
-    struct pollfd fd_set[POLL_SIZE] = { 0, };
+    struct pollfd fd_set[POLL_SIZE];
     size_t fd_cnt = 0, tmp_cnt = 0;
     sr_fd_watcher_t *fd_change_set = NULL;
     size_t fd_change_set_cnt = 0;
