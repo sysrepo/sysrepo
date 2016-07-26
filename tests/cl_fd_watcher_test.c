@@ -157,7 +157,6 @@ cl_fd_poll_test(void **state)
             fd_change_set = NULL;
             fd_change_set_cnt = 0;
         }
-        printf("fd_cnt = %zu\n", fd_cnt);
     } while ((SR_ERR_OK == rc) && !callback_called);
 
     /* cleanup app-local watcher */

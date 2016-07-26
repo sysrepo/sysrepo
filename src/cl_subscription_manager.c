@@ -128,8 +128,7 @@ cl_sm_fd_changeset_add(cl_sm_ctx_t *sm_ctx, int fd, int events, sr_fd_action_t a
 
     CHECK_NULL_ARG(sm_ctx);
 
-    // TODO check whether the same fd already exists in the set
-
+    /* allocate space for new change */
     watcher_arr = realloc(sm_ctx->fd_changeset, (sm_ctx->fd_changeset_cnt + 1) * sizeof(*watcher_arr));
     CHECK_NULL_NOMEM_RETURN(watcher_arr);
 
@@ -385,8 +384,11 @@ cl_sm_conn_out_buff_flush(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn)
                 /* mark the position where the unsent data start */
                 conn->out_buff.start = buff_pos;
                 /* monitor fd for writable event */
-                ev_io_start(sm_ctx->event_loop, &conn->write_watcher);
-                // TODO own watcher
+                if (sm_ctx->local_fd_watcher) {
+                    rc = cl_sm_fd_changeset_add(sm_ctx, conn->fd, SR_FD_OUTPUT_READY, SR_FD_START_WATCHING);
+                } else {
+                    ev_io_start(sm_ctx->event_loop, &conn->write_watcher);
+                }
                 break;
             } else {
                 /* error by writing - close the connection due to an error */
@@ -1093,8 +1095,12 @@ cl_sm_conn_write_cb(struct ev_loop *loop, ev_io *w, int revents)
 
     SR_LOG_DBG("fd %d writeable", conn->fd);
 
-    // TODO own watcher
-    ev_io_stop(sm_ctx->event_loop, &conn->write_watcher);
+    /* stop monitoring the FD for writable event */
+    if (sm_ctx->local_fd_watcher) {
+        cl_sm_fd_changeset_add(sm_ctx, conn->fd, SR_FD_OUTPUT_READY, SR_FD_STOP_WATCHING);
+    } else {
+        ev_io_stop(sm_ctx->event_loop, &conn->write_watcher);
+    }
 
     /* flush the output buffer */
     rc = cl_sm_conn_out_buff_flush(sm_ctx, conn);
@@ -1137,11 +1143,11 @@ cl_sm_accept_server_connections(cl_sm_ctx_t *sm_ctx, cl_sm_server_ctx_t *server_
                 close(clnt_fd);
                 continue;
             }
+            /* start watching new client FD */
             if (sm_ctx->local_fd_watcher) {
                 rc = cl_sm_fd_changeset_add(sm_ctx, clnt_fd, SR_FD_INPUT_READY, SR_FD_START_WATCHING);
                 // TODO err check?
             } else {
-                /* start watching this fd */
                 ev_io_init(&conn->read_watcher, cl_sm_fd_read_cb, clnt_fd, EV_READ);
                 conn->read_watcher.data = (void*)sm_ctx;
                 ev_io_start(sm_ctx->event_loop, &conn->read_watcher);
