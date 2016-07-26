@@ -403,6 +403,22 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const
     /* strict flag */
     int flags = (SR_EDIT_STRICT & options) ? 0 : LYD_PATH_OPT_UPDATE;
 
+    /* setting a leaf with default value should pass even with SR_EDIT_STRICT */
+    if ((SR_EDIT_STRICT & options) && sch_node->nodetype == LYS_LEAF && ((struct lys_node_leaf *) sch_node)->dflt != NULL) {
+        rc = rp_dt_find_node(dm_ctx, info->node, xpath, dm_is_running_ds_session(session), &node);
+        if (SR_ERR_NOT_FOUND != rc) {
+            CHECK_RC_LOG_GOTO(rc, cleanup, "Default node %s not found", xpath);
+        } else {
+            /* if leaf does not exists, it is ok LYD_PATH_OPT_UPDATE doesn't need to be added */
+            rc = SR_ERR_OK;
+        }
+        if (NULL != node && 0 == strcmp(((struct lyd_node_leaf_list *) node)->value_str, ((struct lys_node_leaf *) sch_node)->dflt)) {
+            /* add update flag */
+            flags |= LYD_PATH_OPT_UPDATE;
+        }
+    }
+
+
     /* create or update */
     ly_errno = 0;
     node = dm_lyd_new_path(dm_ctx, info, module->ctx, xpath, new_value, flags);
@@ -418,7 +434,7 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const
     }
 
     /* remove default tag if the default value has been explicitly set or overwritten */
-    if (sch_node->nodetype == LYS_LEAF && ((struct lys_node_leaf *) sch_node)->dflt != NULL) {
+    if (SR_ERR_OK == rc && sch_node->nodetype == LYS_LEAF && ((struct lys_node_leaf *) sch_node)->dflt != NULL) {
         if (NULL == node) {
             rc = rp_dt_find_node(dm_ctx, info->node, xpath, dm_is_running_ds_session(session), &node);
             CHECK_RC_LOG_GOTO(rc, cleanup, "Created node %s not found", xpath);
