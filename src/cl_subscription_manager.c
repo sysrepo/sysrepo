@@ -1529,9 +1529,6 @@ cl_sm_cleanup(cl_sm_ctx_t *sm_ctx, bool join)
                 ev_async_send(sm_ctx->event_loop, &sm_ctx->stop_watcher);
                 pthread_join(sm_ctx->event_loop_thread, NULL);
             }
-            if (NULL != sm_ctx->event_loop) {
-                ev_loop_destroy(sm_ctx->event_loop);
-            }
         }
         cl_sm_servers_cleanup(sm_ctx);
 
@@ -1544,10 +1541,16 @@ cl_sm_cleanup(cl_sm_ctx_t *sm_ctx, bool join)
         pthread_mutex_destroy(&sm_ctx->fd_changeset_lock);
         pthread_mutex_destroy(&sm_ctx->subscriptions_lock);
 
-        if (sm_ctx->fd_changeset_cnt > 0) {
-            free(sm_ctx->fd_changeset);
-            sm_ctx->fd_changeset = NULL;
-            sm_ctx->fd_changeset_cnt = 0;
+        if (sm_ctx->local_fd_watcher) {
+            if (sm_ctx->fd_changeset_cnt > 0) {
+                free(sm_ctx->fd_changeset);
+                sm_ctx->fd_changeset = NULL;
+                sm_ctx->fd_changeset_cnt = 0;
+            }
+        } else {
+            if (NULL != sm_ctx->event_loop) {
+                ev_loop_destroy(sm_ctx->event_loop);
+            }
         }
 
         free(sm_ctx);
