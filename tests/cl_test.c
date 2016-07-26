@@ -1572,6 +1572,236 @@ cl_rpc_test(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 }
 
+static int
+test_rpc_tree_cb(const char *xpath, const sr_node_t *input, const size_t input_cnt,
+        sr_node_t **output, size_t *output_cnt, void *private_ctx)
+{
+    const sr_node_t *sr_in_node = NULL;
+    sr_node_t *sr_out_node = NULL;
+    int *callback_called = (int*)private_ctx;
+    *callback_called += 1;
+
+    printf("'Executing' RPC: %s\n", xpath);
+    for (size_t i = 0; i < input_cnt; i++) {
+        printf("    input parameter[%zu]: %s = %s\n", i, input[i].name, input[i].data.string_val);
+    }
+
+    /* check input */
+    assert_int_equal(2, input_cnt);
+    /*   /test-module:activate-software-image/input/image-name */
+    sr_in_node = input;
+    assert_string_equal("image-name", sr_in_node->name);
+    assert_string_equal("test-module", sr_in_node->module_name);
+    assert_false(sr_in_node->dflt);
+    assert_int_equal(SR_STRING_T, sr_in_node->type);
+    assert_string_equal("acmefw-2.3", sr_in_node->data.string_val);
+    assert_int_equal(0, sr_in_node->children_cnt);
+    assert_null(sr_in_node->children);
+    /*   /test-module:activate-software-image/input/location */
+    sr_in_node = input + 1;
+    assert_string_equal("location", sr_in_node->name);
+    assert_string_equal("test-module", sr_in_node->module_name);
+    assert_true(sr_in_node->dflt);
+    assert_int_equal(SR_STRING_T, sr_in_node->type);
+    assert_string_equal("/", sr_in_node->data.string_val);
+    assert_int_equal(0, sr_in_node->children_cnt);
+    assert_null(sr_in_node->children);
+
+    /* prepare output */
+    *output_cnt = 3;
+    *output = calloc(*output_cnt, sizeof(**output));
+    (*output)[0].name = strdup("status");
+    (*output)[0].type = SR_STRING_T;
+    (*output)[0].data.string_val = strdup("The image acmefw-2.3 is being installed.");
+    (*output)[1].name = strdup("version");
+    (*output)[1].type = SR_STRING_T;
+    (*output)[1].data.string_val = strdup("2.3");
+    (*output)[2].name = strdup("init-log");
+    (*output)[2].type = SR_CONTAINER_T;
+    (*output)[2].children_cnt = 2;
+    (*output)[2].children = calloc(2, sizeof(sr_node_t));
+    /* log-msg[1] */
+    sr_out_node = (*output)[2].children;
+    sr_out_node->name = strdup("log-msg");
+    sr_out_node->type = SR_LIST_T;
+    sr_out_node->children_cnt = 3;
+    sr_out_node->children = calloc(sr_out_node->children_cnt, sizeof(sr_node_t));
+    sr_out_node->children[0].name = strdup("msg");
+    sr_out_node->children[0].type = SR_STRING_T;
+    sr_out_node->children[0].data.string_val = strdup("Successfully loaded software image.");
+    sr_out_node->children[1].name = strdup("time");
+    sr_out_node->children[1].type = SR_UINT32_T;
+    sr_out_node->children[1].data.uint32_val = 1469625110;
+    sr_out_node->children[2].name = strdup("msg-type");
+    sr_out_node->children[2].type = SR_ENUM_T;
+    sr_out_node->children[2].data.enum_val = strdup("debug");
+    /* log-msg[2] */
+    sr_out_node = (*output)[2].children + 1;
+    sr_out_node->name = strdup("log-msg");
+    sr_out_node->type = SR_LIST_T;
+    sr_out_node->children_cnt = 3;
+    sr_out_node->children = calloc(sr_out_node->children_cnt, sizeof(sr_node_t));
+    sr_out_node->children[0].name = strdup("msg");
+    sr_out_node->children[0].type = SR_STRING_T;
+    sr_out_node->children[0].data.string_val = strdup("Some soft limit exceeded...");
+    sr_out_node->children[1].name = strdup("time");
+    sr_out_node->children[1].type = SR_UINT32_T;
+    sr_out_node->children[1].data.uint32_val = 1469625150;
+    sr_out_node->children[2].name = strdup("msg-type");
+    sr_out_node->children[2].type = SR_ENUM_T;
+    sr_out_node->children[2].data.enum_val = strdup("warning");
+
+    return SR_ERR_OK;
+}
+
+static void
+cl_rpc_tree_test(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+
+    sr_session_ctx_t *session = NULL;
+    sr_subscription_ctx_t *subscription = NULL;
+    int callback_called = 0;
+    int rc = SR_ERR_OK;
+
+    /* start a session */
+    rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* subscribe for RPC */
+    rc = sr_rpc_subscribe_tree(session, "/test-module:activate-software-image", test_rpc_tree_cb, &callback_called,
+            SR_SUBSCR_DEFAULT, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    sr_node_t input = { 0, };
+    sr_node_t *output = NULL;
+    size_t output_cnt = 0;
+    input.name = "image-name";
+    input.type = SR_STRING_T;
+    input.data.string_val = "acmefw-2.3";
+
+    /* send a RPC */
+    rc = sr_rpc_send_tree(session, "/test-module:activate-software-image", &input, 1, &output, &output_cnt);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    assert_int_equal(output_cnt, 4);
+    for (size_t i = 0; i < output_cnt; i++) {
+        printf("RPC output parameter[%zu]: %s = %s\n", i, output[i].name, output[i].data.string_val);
+    }
+
+    /* check output */
+    sr_node_t *sr_node = output;
+    /*   /test-module:activate-software-image/output/status */
+    assert_string_equal("status", sr_node->name);
+    assert_string_equal("test-module", sr_node->module_name);
+    assert_false(sr_node->dflt);
+    assert_int_equal(SR_STRING_T, sr_node->type);
+    assert_string_equal("The image acmefw-2.3 is being installed.", sr_node->data.string_val);
+    assert_int_equal(0, sr_node->children_cnt);
+    assert_null(sr_node->children);
+    /*   /test-module:activate-software-image/output/version */
+    sr_node = output + 1;
+    assert_string_equal("version", sr_node->name);
+    assert_string_equal("test-module", sr_node->module_name);
+    assert_false(sr_node->dflt);
+    assert_int_equal(SR_STRING_T, sr_node->type);
+    assert_string_equal("2.3", sr_node->data.string_val);
+    assert_int_equal(0, sr_node->children_cnt);
+    assert_null(sr_node->children);
+    /*   /test-module:activate-software-image/output/location */
+    sr_node = output + 2;
+    assert_string_equal("location", sr_node->name);
+    assert_string_equal("test-module", sr_node->module_name);
+    assert_true(sr_node->dflt);
+    assert_int_equal(SR_STRING_T, sr_node->type);
+    assert_string_equal("/", sr_node->data.string_val);
+    assert_int_equal(0, sr_node->children_cnt);
+    assert_null(sr_node->children);
+    /*   /test-module:activate-software-image/output/init-log */
+    sr_node = output + 3;
+    assert_string_equal("init-log", sr_node->name);
+    assert_string_equal("test-module", sr_node->module_name);
+    assert_false(sr_node->dflt);
+    assert_int_equal(SR_CONTAINER_T, sr_node->type);
+    assert_int_equal(2, sr_node->children_cnt);
+    assert_non_null(sr_node->children);
+    /*   /test-module:activate-software-image/output/init-log/log-msg[1] */
+    sr_node = sr_node->children;
+    assert_string_equal("log-msg", sr_node->name);
+    assert_null( sr_node->module_name);
+    assert_false(sr_node->dflt);
+    assert_int_equal(SR_LIST_T, sr_node->type);
+    assert_int_equal(3, sr_node->children_cnt);
+    assert_non_null(sr_node->children);
+    /*   /test-module:activate-software-image/output/init-log/log-msg[1]/msg */
+    assert_string_equal("msg", sr_node->children[0].name);
+    assert_null(sr_node->children[0].module_name);
+    assert_false(sr_node->children[0].dflt);
+    assert_int_equal(SR_STRING_T, sr_node->children[0].type);
+    assert_string_equal("Successfully loaded software image.", sr_node->children[0].data.string_val);
+    assert_int_equal(0, sr_node->children[0].children_cnt);
+    assert_null(sr_node->children[0].children);
+    /*   /test-module:activate-software-image/output/init-log/log-msg[1]/time */
+    assert_string_equal("time", sr_node->children[1].name);
+    assert_null(sr_node->children[1].module_name);
+    assert_false(sr_node->children[1].dflt);
+    assert_int_equal(SR_UINT32_T, sr_node->children[1].type);
+    assert_int_equal(1469625110, sr_node->children[1].data.uint32_val);
+    assert_int_equal(0, sr_node->children[1].children_cnt);
+    assert_null(sr_node->children[1].children);
+    /*   /test-module:activate-software-image/output/init-log/log-msg[1]/msg-type */
+    assert_string_equal("msg-type", sr_node->children[2].name);
+    assert_null(sr_node->children[2].module_name);
+    assert_false(sr_node->children[2].dflt);
+    assert_int_equal(SR_ENUM_T, sr_node->children[2].type);
+    assert_string_equal("debug", sr_node->children[2].data.string_val);
+    assert_int_equal(0, sr_node->children[1].children_cnt);
+    assert_null(sr_node->children[2].children);
+    /*   /test-module:activate-software-image/output/init-log/log-msg[2] */
+    sr_node = output[3].children + 1;
+    assert_string_equal("log-msg", sr_node->name);
+    assert_null( sr_node->module_name);
+    assert_false(sr_node->dflt);
+    assert_int_equal(SR_LIST_T, sr_node->type);
+    assert_int_equal(3, sr_node->children_cnt);
+    assert_non_null(sr_node->children);
+    /*   /test-module:activate-software-image/output/init-log/log-msg[1]/msg */
+    assert_string_equal("msg", sr_node->children[0].name);
+    assert_null(sr_node->children[0].module_name);
+    assert_false(sr_node->children[0].dflt);
+    assert_int_equal(SR_STRING_T, sr_node->children[0].type);
+    assert_string_equal("Some soft limit exceeded...", sr_node->children[0].data.string_val);
+    assert_int_equal(0, sr_node->children[0].children_cnt);
+    assert_null(sr_node->children[0].children);
+    /*   /test-module:activate-software-image/output/init-log/log-msg[1]/time */
+    assert_string_equal("time", sr_node->children[1].name);
+    assert_null(sr_node->children[1].module_name);
+    assert_false(sr_node->children[1].dflt);
+    assert_int_equal(SR_UINT32_T, sr_node->children[1].type);
+    assert_int_equal(1469625150, sr_node->children[1].data.uint32_val);
+    assert_int_equal(0, sr_node->children[1].children_cnt);
+    assert_null(sr_node->children[1].children);
+    /*   /test-module:activate-software-image/output/init-log/log-msg[1]/msg-type */
+    assert_string_equal("msg-type", sr_node->children[2].name);
+    assert_null(sr_node->children[2].module_name);
+    assert_false(sr_node->children[2].dflt);
+    assert_int_equal(SR_ENUM_T, sr_node->children[2].type);
+    assert_string_equal("warning", sr_node->children[2].data.string_val);
+    assert_int_equal(0, sr_node->children[1].children_cnt);
+    assert_null(sr_node->children[2].children);
+
+    sr_free_trees(output, output_cnt);
+
+    /* stop the session */
+    rc = sr_session_stop(session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* unsubscribe */
+    rc = sr_unsubscribe(NULL, subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+}
+
 static void
 candidate_ds_test(void **state)
 {
@@ -2236,6 +2466,7 @@ main()
             cmocka_unit_test_setup_teardown(cl_copy_config_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_copy_config_test2, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_rpc_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_rpc_tree_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(candidate_ds_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_switch_ds, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_candidate_refresh, sysrepo_setup, sysrepo_teardown),
