@@ -123,7 +123,17 @@ int cl_sm_subscription_init(cl_sm_ctx_t *sm_ctx, cl_sm_server_ctx_t *server_ctx,
 void cl_sm_subscription_cleanup(cl_sm_subscription_ctx_t *subscription);
 
 /**
- * TODO
+ * @brief Processes an event of specified type on given file descriptor being watched by application-local
+ * fd event watcher.
+ *
+ * @param[in] sm_ctx Subscription Manager context acquired by ::cl_sm_init call.
+ * @param[in] fd File descriptor.
+ * @param[in] event Event that occurred on the file descriptor.
+ * @param[out] fd_change_set Array of file descriptor contexts that need to be added / removed from the set
+ * of monitored file descriptors.
+ * @param[out] fd_change_set_cnt Count of file descriptors in fd_change_set array.
+ *
+ * @return Error code (SR_ERR_OK on success).
  */
 int cl_sm_fd_event_process(cl_sm_ctx_t *sm_ctx, int fd, sr_fd_event_t event,
         sr_fd_watcher_t **fd_change_set, size_t *fd_change_set_cnt);

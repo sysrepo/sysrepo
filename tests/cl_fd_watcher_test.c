@@ -123,10 +123,8 @@ cl_fd_poll_test(void **state)
 
         tmp_cnt = fd_cnt; /* fd_cnt will be modified inside of the loop */
         for (size_t i = 0; i < tmp_cnt; i++) {
-            if (fd_set[i].revents & POLLERR || fd_set[i].revents & POLLHUP || fd_set[i].revents & POLLNVAL) {
-                printf("error on fd=%d: %s\n", fd_set[i].fd, strerror(errno));
-                fd_set[i].fd *= -1; /* ignore this fd */ // TODO: assert
-            }
+            assert_false((fd_set[i].revents & POLLERR) || (fd_set[i].revents & POLLHUP) || (fd_set[i].revents & POLLNVAL));
+
             if (fd_set[i].revents & POLLIN) {
                 rc = sr_fd_event_process(fd_set[i].fd, SR_FD_INPUT_READY, &fd_change_set, &fd_change_set_cnt);
                 assert_int_equal(rc, SR_ERR_OK);
@@ -137,18 +135,37 @@ cl_fd_poll_test(void **state)
             }
             for (size_t i = 0; i < fd_change_set_cnt; i++) {
                 if (SR_FD_START_WATCHING == fd_change_set[i].action) {
-                    fd_set[fd_cnt].fd = fd_change_set[i].fd;
-                    fd_set[fd_cnt].events = (SR_FD_INPUT_READY == fd_change_set[i].events) ? POLLIN : POLLOUT;
-                    fd_cnt++;
-                }
-                if (SR_FD_STOP_WATCHING == fd_change_set[i].action) {
+                    /* start monitoring the FD for specified event */
+                    bool matched = false;
                     for (size_t j = 0; j < fd_cnt; j++) {
                         if (fd_change_set[i].fd == fd_set[j].fd) {
-                            // TODO events
-                            if (j < fd_cnt - 1) {
-                                memmove(&fd_set[j], &fd_set[j+1], (fd_cnt - j - 1) * sizeof(*fd_set));
+                            /* fond existing entry */
+                            fd_set[fd_cnt].events |= (SR_FD_INPUT_READY == fd_change_set[i].events) ? POLLIN : POLLOUT;
+                            matched = true;
+                        }
+                    }
+                    if (!matched) {
+                        /* create a new entry */
+                        fd_set[fd_cnt].fd = fd_change_set[i].fd;
+                        fd_set[fd_cnt].events = (SR_FD_INPUT_READY == fd_change_set[i].events) ? POLLIN : POLLOUT;
+                        fd_cnt++;
+                    }
+                }
+                if (SR_FD_STOP_WATCHING == fd_change_set[i].action) {
+                    /* stop monitoring the FD for specified event */
+                    for (size_t j = 0; j < fd_cnt; j++) {
+                        if (fd_change_set[i].fd == fd_set[j].fd) {
+                            if ((fd_set[j].events & POLLIN) && (fd_set[j].events & POLLOUT) &&
+                                    !((fd_change_set[i].events & SR_FD_INPUT_READY) && (fd_change_set[i].events & SR_FD_OUTPUT_READY))) {
+                                /* stop monitoring the fd for specified event */
+                                fd_set[j].events &= !(SR_FD_INPUT_READY == fd_change_set[i].events) ? POLLIN : POLLOUT;
+                            } else {
+                                /* stop monitoring the fd at all */
+                                if (j < fd_cnt - 1) {
+                                    memmove(&fd_set[j], &fd_set[j+1], (fd_cnt - j - 1) * sizeof(*fd_set));
+                                }
+                                fd_cnt--;
                             }
-                            fd_cnt--;
                         }
                     }
                 }

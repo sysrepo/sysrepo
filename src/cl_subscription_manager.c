@@ -119,7 +119,7 @@ typedef struct cl_sm_conn_ctx_s {
 } cl_sm_conn_ctx_t;
 
 /**
- * TODO
+ * @brief Adds a new file descriptor into the set of file descriptors whose monitoring state should be changed.
  */
 static int
 cl_sm_fd_changeset_add(cl_sm_ctx_t *sm_ctx, int fd, int events, sr_fd_action_t action)
@@ -148,6 +148,27 @@ cl_sm_fd_changeset_add(cl_sm_ctx_t *sm_ctx, int fd, int events, sr_fd_action_t a
 
     return SR_ERR_OK;
 }
+
+/**
+ * @brief Retrieves current file descriptor chnageset from the SM context and clears it inside of the context.
+ */
+static int
+cl_sm_get_fd_change_set(cl_sm_ctx_t *sm_ctx, sr_fd_watcher_t **fd_change_set, size_t *fd_change_set_cnt)
+{
+    CHECK_NULL_ARG3(sm_ctx, fd_change_set, fd_change_set_cnt);
+
+    pthread_mutex_lock(&sm_ctx->fd_changeset_lock);
+
+    *fd_change_set = sm_ctx->fd_changeset;
+    *fd_change_set_cnt = sm_ctx->fd_changeset_cnt;
+    sm_ctx->fd_changeset = NULL;
+    sm_ctx->fd_changeset_cnt = 0;
+
+    pthread_mutex_unlock(&sm_ctx->fd_changeset_lock);
+
+    return SR_ERR_OK;
+}
+
 
 /**
  * @brief Compares two subscriptions by their id
@@ -1077,23 +1098,14 @@ cl_sm_fd_read_cb(struct ev_loop *loop, ev_io *w, int revents)
 }
 
 /**
- * @brief Callback called by the event loop watcher when the file descriptor of
- * a connection is writable (without blocking).
+ * @brief Writes data in output buffer into specified connection.
  */
-static void
-cl_sm_conn_write_cb(struct ev_loop *loop, ev_io *w, int revents)
+static int
+cl_sm_write_conn(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn)
 {
-    cl_sm_conn_ctx_t *conn = NULL;
-    cl_sm_ctx_t *sm_ctx = NULL;
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG_VOID2(w, w->data);
-    conn = (cl_sm_conn_ctx_t*)w->data;
-
-    CHECK_NULL_ARG_VOID2(conn, conn->sm_ctx);
-    sm_ctx = conn->sm_ctx;
-
-    SR_LOG_DBG("fd %d writeable", conn->fd);
+    CHECK_NULL_ARG2(sm_ctx, conn);
 
     /* stop monitoring the FD for writable event */
     if (sm_ctx->local_fd_watcher) {
@@ -1109,6 +1121,29 @@ cl_sm_conn_write_cb(struct ev_loop *loop, ev_io *w, int revents)
     if ((conn->close_requested) || (SR_ERR_OK != rc)) {
         cl_sm_conn_close(sm_ctx, conn);
     }
+
+    return rc;
+}
+
+/**
+ * @brief Callback called by the event loop watcher when the file descriptor of
+ * a connection is writable (without blocking).
+ */
+static void
+cl_sm_conn_write_cb(struct ev_loop *loop, ev_io *w, int revents)
+{
+    cl_sm_conn_ctx_t *conn = NULL;
+    cl_sm_ctx_t *sm_ctx = NULL;
+
+    CHECK_NULL_ARG_VOID2(w, w->data);
+    conn = (cl_sm_conn_ctx_t*)w->data;
+
+    CHECK_NULL_ARG_VOID2(conn, conn->sm_ctx);
+    sm_ctx = conn->sm_ctx;
+
+    SR_LOG_DBG("fd %d writeable", conn->fd);
+
+    cl_sm_write_conn(sm_ctx, conn);
 }
 
 /**
@@ -1145,8 +1180,7 @@ cl_sm_accept_server_connections(cl_sm_ctx_t *sm_ctx, cl_sm_server_ctx_t *server_
             }
             /* start watching new client FD */
             if (sm_ctx->local_fd_watcher) {
-                rc = cl_sm_fd_changeset_add(sm_ctx, clnt_fd, SR_FD_INPUT_READY, SR_FD_START_WATCHING);
-                // TODO err check?
+                cl_sm_fd_changeset_add(sm_ctx, clnt_fd, SR_FD_INPUT_READY, SR_FD_START_WATCHING);
             } else {
                 ev_io_init(&conn->read_watcher, cl_sm_fd_read_cb, clnt_fd, EV_READ);
                 conn->read_watcher.data = (void*)sm_ctx;
@@ -1370,6 +1404,33 @@ cl_sm_server_init(cl_sm_ctx_t *sm_ctx, const char *module_name, cl_sm_server_ctx
 cleanup:
     cl_sm_server_cleanup(sm_ctx, server_ctx);
     return rc;
+}
+
+/**
+ * @brief Finds server context matching with provided server socket file descriptor.
+ */
+static cl_sm_server_ctx_t *
+cl_sm_fd_find_server_ctx(cl_sm_ctx_t *sm_ctx, int fd)
+{
+    sr_llist_node_t *node = NULL;
+
+    if (NULL != sm_ctx) {
+        pthread_mutex_lock(&sm_ctx->server_ctx_lock);
+
+        if (NULL != sm_ctx->server_ctx_list) {
+            node = sm_ctx->server_ctx_list->first;
+            while (NULL != node) {
+                if (fd == ((cl_sm_server_ctx_t*)(node->data))->listen_socket_fd) {
+                    pthread_mutex_unlock(&sm_ctx->server_ctx_lock);
+                    return node->data;
+                }
+                node = node->next;
+            }
+        }
+
+        pthread_mutex_unlock(&sm_ctx->server_ctx_lock);
+    }
+    return NULL;
 }
 
 /**
@@ -1668,59 +1729,14 @@ cl_sm_subscription_cleanup(cl_sm_subscription_ctx_t *subscription)
     pthread_mutex_unlock(&sm_ctx->subscriptions_lock);
 }
 
-/**
- * TODO
- */
-static int
-cl_sm_get_fd_change_set(cl_sm_ctx_t *sm_ctx, sr_fd_watcher_t **fd_change_set, size_t *fd_change_set_cnt)
-{
-    CHECK_NULL_ARG3(sm_ctx, fd_change_set, fd_change_set_cnt);
-
-    pthread_mutex_lock(&sm_ctx->fd_changeset_lock);
-
-    *fd_change_set = sm_ctx->fd_changeset;
-    *fd_change_set_cnt = sm_ctx->fd_changeset_cnt;
-    sm_ctx->fd_changeset = NULL;
-    sm_ctx->fd_changeset_cnt = 0;
-
-    pthread_mutex_unlock(&sm_ctx->fd_changeset_lock);
-
-    return SR_ERR_OK;
-}
-
-/**
- * TODO
- */
-static cl_sm_server_ctx_t *
-cl_sm_fd_find_server_ctx(cl_sm_ctx_t *sm_ctx, int fd)
-{
-    sr_llist_node_t *node = NULL;
-
-    if (NULL != sm_ctx) {
-        pthread_mutex_lock(&sm_ctx->server_ctx_lock);
-
-        if (NULL != sm_ctx->server_ctx_list) {
-            node = sm_ctx->server_ctx_list->first;
-            while (NULL != node) {
-                if (fd == ((cl_sm_server_ctx_t*)(node->data))->listen_socket_fd) {
-                    pthread_mutex_unlock(&sm_ctx->server_ctx_lock);
-                    return node->data;
-                }
-                node = node->next;
-            }
-        }
-
-        pthread_mutex_unlock(&sm_ctx->server_ctx_lock);
-    }
-    return NULL;
-}
-
 int
 cl_sm_fd_event_process(cl_sm_ctx_t *sm_ctx, int fd, sr_fd_event_t event,
         sr_fd_watcher_t **fd_change_set, size_t *fd_change_set_cnt)
 {
     char buf[256] = { 0, };
     cl_sm_server_ctx_t *server_ctx = NULL;
+    cl_sm_conn_ctx_t tmp_conn = { 0, };
+    cl_sm_conn_ctx_t *conn = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG3(sm_ctx, fd_change_set, fd_change_set_cnt);
@@ -1731,13 +1747,21 @@ cl_sm_fd_event_process(cl_sm_ctx_t *sm_ctx, int fd, sr_fd_event_t event,
         SR_LOG_DBG("Change in the FD set for watching: %zu changes.", *fd_change_set_cnt);
         read(fd, buf, sizeof(buf)); /* we do not care about the data, just read it */
     } else {
-        server_ctx = cl_sm_fd_find_server_ctx(sm_ctx, fd);
-        if (NULL != server_ctx) {
-            /* this is a server socket fd - accept */
-            rc = cl_sm_accept_server_connections(sm_ctx, server_ctx);
+        if (SR_FD_INPUT_READY == event) {
+            /* the file descriptor is readable */
+            server_ctx = cl_sm_fd_find_server_ctx(sm_ctx, fd);
+            if (NULL != server_ctx) {
+                /* this is a server socket fd - accept */
+                rc = cl_sm_accept_server_connections(sm_ctx, server_ctx);
+            } else {
+                /* this is a client socket connection - read a message from specified fd */
+                rc = cl_sm_fd_read_data(sm_ctx, fd);
+            }
         } else {
-            /* this is a client socket connection - read a message from specified fd */
-            rc = cl_sm_fd_read_data(sm_ctx, fd);
+            /* the file descriptor is writeable */
+            tmp_conn.fd = fd;
+            conn = sr_btree_search(sm_ctx->fd_btree, &tmp_conn);
+            rc = cl_sm_write_conn(sm_ctx, conn);
         }
     }
 
