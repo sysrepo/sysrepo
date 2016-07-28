@@ -1352,8 +1352,10 @@ sr_dup_tree_to_gpb(const sr_node_t *sr_tree, Sr__Node **gpb_tree)
 
     gpb = calloc(1, sizeof(*gpb));
     CHECK_NULL_NOMEM_RETURN(gpb);
-
     sr__node__init(gpb);
+    gpb->value = calloc(1, sizeof(*gpb->value));
+    CHECK_NULL_NOMEM_RETURN(gpb->value);
+    sr__value__init(gpb->value);
     gpb->n_children = 0;
 
     /* set members which are common with sr_val_t */
@@ -1376,14 +1378,16 @@ sr_dup_tree_to_gpb(const sr_node_t *sr_tree, Sr__Node **gpb_tree)
     }
 
     /* recursively duplicate children */
-    gpb->children = calloc(sr_tree->children_cnt, sizeof(*gpb->children));
-    CHECK_NULL_NOMEM_GOTO(gpb->children, rc, cleanup);
-    for (size_t i = 0; i < sr_tree->children_cnt; ++i) {
-        rc = sr_dup_tree_to_gpb(sr_tree->children + i, gpb->children + i);
-        if (SR_ERR_OK == rc) {
-            goto cleanup;
+    if (0 < sr_tree->children_cnt) {
+        gpb->children = calloc(sr_tree->children_cnt, sizeof(*gpb->children));
+        CHECK_NULL_NOMEM_GOTO(gpb->children, rc, cleanup);
+        for (size_t i = 0; i < sr_tree->children_cnt; ++i) {
+            rc = sr_dup_tree_to_gpb(sr_tree->children + i, gpb->children + i);
+            if (SR_ERR_OK != rc) {
+                goto cleanup;
+            }
+            ++gpb->n_children;
         }
-        ++gpb->n_children;
     }
 
     *gpb_tree = gpb;
@@ -1434,22 +1438,27 @@ sr_copy_gpb_to_tree(const Sr__Node *gpb_tree, sr_node_t *sr_tree)
     }
 
     /* module_name */
-    if (NULL != gpb_tree->module_name) {
+    if (NULL != gpb_tree->module_name && strlen(gpb_tree->module_name)) {
         sr_tree->module_name = strdup(gpb_tree->module_name);
         CHECK_NULL_NOMEM_GOTO(sr_tree->module_name, rc, cleanup);
+    } else {
+        sr_tree->module_name = NULL;
     }
 
     /* recursively copy children */
     sr_tree->children_cnt = 0;
-    sr_tree->children = calloc(gpb_tree->n_children, sizeof(*sr_tree));
-    CHECK_NULL_NOMEM_GOTO(sr_tree, rc, cleanup);
+    sr_tree->children = NULL;
+    if (gpb_tree->n_children) {
+        sr_tree->children = calloc(gpb_tree->n_children, sizeof(*sr_tree));
+        CHECK_NULL_NOMEM_GOTO(sr_tree, rc, cleanup);
 
-    for (size_t i = 0; i < gpb_tree->n_children; ++i) {
-        rc = sr_copy_gpb_to_tree(gpb_tree->children[i], sr_tree->children + i);
-        if (SR_ERR_OK != rc) {
-            goto cleanup;
+        for (size_t i = 0; i < gpb_tree->n_children; ++i) {
+            rc = sr_copy_gpb_to_tree(gpb_tree->children[i], sr_tree->children + i);
+            if (SR_ERR_OK != rc) {
+                goto cleanup;
+            }
+            ++sr_tree->children_cnt;
         }
-        ++sr_tree->children_cnt;
     }
 
 cleanup:

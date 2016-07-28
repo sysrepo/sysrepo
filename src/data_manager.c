@@ -3157,7 +3157,7 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
     const struct lys_node *sch_node = NULL;
     struct lyd_node *data_tree = NULL, *new_node = NULL;
     char *string_value = NULL, *tmp_xpath = NULL;
-    struct ly_set *ly_nodes = NULL;
+    struct ly_set *nodeset = NULL;
     char *module_name = NULL;
     char *procedure_name = NULL;
     int validation_options = 0;
@@ -3232,7 +3232,7 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
         }
     } else { /**< SR_API_TREES */
         for (size_t i = 0; i < arg_cnt; i++) {
-            snprintf(root_xpath, PATH_MAX, "/%s/%s", xpath, args_tree[i].name);
+            snprintf(root_xpath, PATH_MAX, "%s/%s", xpath, args_tree[i].name);
             rc = sr_tree_to_dt(dm_ctx->ly_ctx, args_tree + i, root_xpath, !input, &data_tree);
             if (SR_ERR_OK != rc) {
                 SR_LOG_ERR("Unable to convert sysrepo tree into a libyang tree ('%s').", root_xpath);
@@ -3266,9 +3266,9 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
             if (NULL != tmp_xpath) {
                 strcat(tmp_xpath, xpath);
                 strcat(tmp_xpath, "//*");
-                ly_nodes = lyd_get_node(data_tree, tmp_xpath);
-                if (NULL != ly_nodes) {
-                    rc = rp_dt_get_values_from_nodes(ly_nodes, &args, &arg_cnt);
+                nodeset = lyd_get_node(data_tree, tmp_xpath);
+                if (NULL != nodeset) {
+                    rc = rp_dt_get_values_from_nodes(nodeset, &args, &arg_cnt);
                     if (SR_ERR_OK == rc) {
                         sr_free_values(*args_p, *arg_cnt_p);
                         *args_p = args;
@@ -3278,20 +3278,25 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
                     SR_LOG_ERR("No matching nodes returned for xpath '%s'.", tmp_xpath);
                     rc = SR_ERR_INTERNAL;
                 }
-                ly_set_free(ly_nodes);
+                ly_set_free(nodeset);
                 free(tmp_xpath);
             } else {
                 SR_LOG_ERR_MSG("Unable to allocate memory for xpath.");
                 rc = SR_ERR_NOMEM;
             }
         } else { /**< SR_API_TREES */
-            tmp_xpath = calloc(strlen(xpath)+3, sizeof(*tmp_xpath));
+            tmp_xpath = calloc(strlen(xpath) + 3 + (type != DM_PROCEDURE_EVENT_NOTIF ? 2 : 0),
+                               sizeof(*tmp_xpath));
             if (NULL != tmp_xpath) {
                 strcat(tmp_xpath, xpath);
-                strcat(tmp_xpath, "/.");
-                ly_nodes = lyd_get_node(data_tree, tmp_xpath);
-                if (NULL != ly_nodes) {
-                    rc = sr_nodes_to_trees(dm_ctx->ly_ctx, ly_nodes, &args_tree, &arg_cnt);
+                strcat(tmp_xpath, "/");
+                if (type != DM_PROCEDURE_EVENT_NOTIF) {
+                    strcat(tmp_xpath, "./"); /* skip "input" / "output" */
+                }
+                strcat(tmp_xpath, "*");
+                nodeset = lyd_get_node(data_tree, tmp_xpath);
+                if (NULL != nodeset) {
+                    rc = sr_nodes_to_trees(dm_ctx->ly_ctx, nodeset, &args_tree, &arg_cnt);
                     if (SR_ERR_OK == rc) {
                         sr_free_trees(*args_p, *arg_cnt_p);
                         *args_p = args_tree;
@@ -3301,7 +3306,7 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
                     SR_LOG_ERR("No matching nodes returned for xpath '%s'.", tmp_xpath);
                     rc = SR_ERR_INTERNAL;
                 }
-                ly_set_free(ly_nodes);
+                ly_set_free(nodeset);
                 free(tmp_xpath);
             } else {
                 SR_LOG_ERR_MSG("Unable to allocate memory for xpath.");

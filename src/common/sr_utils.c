@@ -1027,7 +1027,7 @@ sr_copy_node_to_tree_internal(struct ly_ctx *ly_ctx, const struct lyd_node *pare
             }
             break;
         case LYS_CONTAINER:
-            cont = (struct lys_node_container *)node;
+            cont = (struct lys_node_container *)node->schema;
             sr_tree->type = cont->presence != NULL ? SR_CONTAINER_PRESENCE_T : SR_CONTAINER_T;
             break;
         case LYS_LIST:
@@ -1117,7 +1117,7 @@ sr_subtree_to_dt(struct ly_ctx *ly_ctx, const sr_node_t *sr_tree, bool output, s
     struct ly_set *nodeset = NULL;
     const struct lys_module *module = NULL;
     const struct lys_node *sch_node = NULL;
-    char *string_val = NULL;
+    char *string_val = NULL, *relative_xpath = NULL;
 
     CHECK_NULL_ARG3(ly_ctx, sr_tree, data_tree);
 
@@ -1152,12 +1152,16 @@ sr_subtree_to_dt(struct ly_ctx *ly_ctx, const sr_node_t *sr_tree, bool output, s
                     SR_LOG_ERR("Failed to create tree root node with xpath: %s.", xpath);
                     return SR_ERR_INTERNAL;
                 }
+                node = NULL;
                 nodeset = lyd_get_node(*data_tree, xpath);
-                if (NULL == nodeset || 1 != nodeset->number) {
+                if (NULL != nodeset && 1 == nodeset->number) {
+                    node = nodeset->set.d[0];
+                }
+                ly_set_free(nodeset);
+                if (NULL == node) {
                     SR_LOG_ERR("Failed to obtain newly created tree root node with xpath: %s.", xpath);
                     return SR_ERR_INTERNAL;
                 }
-                node = nodeset->set.d[0];
             } else {
                 node = lyd_new(parent, module, sr_tree->name);
             }
@@ -1172,11 +1176,22 @@ sr_subtree_to_dt(struct ly_ctx *ly_ctx, const sr_node_t *sr_tree, bool output, s
             return SR_ERR_UNSUPPORTED;
 
         default: /* leaf */
+            if (sr_tree->dflt) {
+                /* skip default value */
+                return SR_ERR_OK;
+            }
             /* get node schema */
             if (NULL == parent) {
-                sch_node = ly_ctx_get_node2(ly_ctx, NULL, xpath, (output ? 0 : 1));
+                sch_node = ly_ctx_get_node2(ly_ctx, NULL, xpath, output);
             } else {
-                sch_node = ly_ctx_get_node2(ly_ctx, parent->schema, sr_tree->name, (output ? 0 : 1));
+                relative_xpath = calloc(strlen(module->name) + strlen(sr_tree->name) + 2, sizeof(*relative_xpath));
+                CHECK_NULL_NOMEM_RETURN(relative_xpath);
+                strcat(relative_xpath, module->name);
+                strcat(relative_xpath, ":");
+                strcat(relative_xpath, sr_tree->name);
+                sch_node = ly_ctx_get_node2(ly_ctx, parent->schema, relative_xpath, output);
+                free(relative_xpath);
+                relative_xpath = NULL;
             }
             if (NULL == sch_node) {
                 SR_LOG_ERR("Unable to get the schema node for a sysrepo node ('%s'): %s", sr_tree->name, ly_errmsg());

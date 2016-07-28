@@ -136,7 +136,12 @@ typedef struct sr_val_s {
     /** Type of an element. */
     sr_type_t type;
 
-    /** Flag for default node (applicable only for leaves) */
+    /**
+     * Flag for node with default value (applicable only for leaves).
+     * It is set to TRUE only if the value was *implicitly* set by the datastore as per
+     * module schema. Explicitly set/modified data element (through the sysrepo API) always
+     * has this flag unset regardless of the entered value.
+     */
     bool dflt;
 
     /** Data of an element (if applicable), properly set according to the type. */

@@ -792,7 +792,7 @@ cl_sm_rpc_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *msg)
                     &resp->response->rpc_resp->n_output);
         } else if (NULL != output_tree) {
             rc = sr_trees_sr_to_gpb(output_tree, output_cnt, &resp->response->rpc_resp->output_tree,
-                    &resp->response->rpc_resp->n_output);
+                    &resp->response->rpc_resp->n_output_tree);
         }
         CHECK_RC_MSG_GOTO(rc, cleanup, "Error by copying RPC output arguments to GPB.");
     }
