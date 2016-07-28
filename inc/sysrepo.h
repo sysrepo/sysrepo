@@ -205,6 +205,7 @@ typedef enum sr_error_e {
     SR_ERR_UNAUTHORIZED,       /**< Operation not authorized. */
     SR_ERR_LOCKED,             /**< Requested resource is already locked. */
     SR_ERR_TIME_OUT,           /**< Time out has expired. */
+    SR_ERR_RESTART_NEEDED,     /**< Sysrepo Engine restart is needed. */
 } sr_error_t;
 
 /**
@@ -911,6 +912,7 @@ typedef enum sr_subscr_flag_e {
                                    ::sr_subtree_change_subscribe calls it (among other things) means that:
                                    - the subscriber is the "owner" of the subscribed data tree and and the data tree will be
                                    activated in the running datastore while this subcription is alive (can be changed with SR_SUBSCR_PASSIVE flag)
+                                   - configuration data or the subscribed module or subtree is copied from startup to running datastore
                                    - the callback will be called just after the changes have been committed to the datastore
                                    (can be changed with SR_SUBSCR_VERIFIER flag). */
     SR_SUBSCR_CTX_REUSE = 1,  /**< This option enables the application to re-use an already existing subscription context

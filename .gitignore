@@ -9,3 +9,4 @@ tests/helpers/test_data.h
 .idea/
 nbproject/
 CMakeCache.txt
+tags

@@ -37,6 +37,7 @@
 #include "access_control.h"
 #include "notification_processor.h"
 #include "persistence_manager.h"
+#include "rp_dt_edit.h"
 #include "module_dependencies.h"
 
 /**
@@ -292,6 +293,7 @@ dm_load_schema_file(dm_ctx_t *dm_ctx, const char *schema_filepath, const struct 
 {
     CHECK_NULL_ARG3(dm_ctx, schema_filepath, module_schema);
     const struct lys_module *module = NULL;
+
     char **enabled_subtrees = NULL, **features = NULL;
     size_t enabled_subtrees_cnt = 0, features_cnt = 0;
     bool module_enabled = false;
@@ -393,7 +395,7 @@ dm_load_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, 
     md_ctx_lock(dm_ctx->md_ctx, false);
     rc = md_get_module_info(dm_ctx->md_ctx, module_name, revision, &module);
     if (SR_ERR_OK != rc) {
-        fprintf(stderr, "Error: Module '%s:%s' is not installed.\n", module_name, revision ? revision : "<latest>");
+        SR_LOG_ERR("Module '%s:%s' is not installed.\n", module_name, revision ? revision : "<latest>");
         *module_schema = NULL;
         md_ctx_unlock(dm_ctx->md_ctx);
         return SR_ERR_UNKNOWN_MODEL;
@@ -1118,17 +1120,18 @@ dm_init(ac_ctx_t *ac_ctx, np_ctx_t *np_ctx, pm_ctx_t *pm_ctx, const cm_connectio
     CHECK_ZERO_MSG_GOTO(rc, rc, SR_ERR_INTERNAL, cleanup, "sr_str_join failed");
     rc = sr_str_join(data_search_dir, "internal/", &internal_data_search_dir);
     CHECK_ZERO_MSG_GOTO(rc, rc, SR_ERR_INTERNAL, cleanup, "sr_str_join failed");
+
     rc = md_init(ctx->ly_ctx, &ctx->lyctx_lock, schema_search_dir, internal_schema_search_dir,
                  internal_data_search_dir, false, &ctx->md_ctx);
-    if (SR_ERR_OK != rc) {
-        fprintf(stderr, "Error: Failed to initialize Module Dependencies context.\n");
-        goto cleanup;
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to initialize Module Dependencies context.");
+
+    if (conn_mode == CM_MODE_DAEMON) {
+        /* load the schemas only in daemon mode, in library mode they will be loaded on demand */
+        rc = dm_load_all_schemas(ctx);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to load the schemas.");
     }
 
     *dm_ctx = ctx;
-    if (conn_mode == CM_MODE_DAEMON) {
-        rc = dm_load_all_schemas(ctx);
-    }
 
 cleanup:
     free(internal_schema_search_dir);
@@ -1286,6 +1289,7 @@ dm_remove_not_enabled_nodes(dm_data_info_t *info)
             sr_lyd_unlink(info, iter);
             lyd_free_withsiblings(iter);
         }
+        sr_list_rm(stack, iter);
     }
 
 cleanup:
@@ -1351,6 +1355,7 @@ dm_has_not_enabled_nodes(dm_data_info_t *info, bool *res)
             *res = true;
             goto cleanup;
         }
+        sr_list_rm(stack, iter);
     }
     *res = false;
 
@@ -2690,11 +2695,11 @@ dm_install_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revisio
 
     pthread_rwlock_wrlock(&dm_ctx->lyctx_lock);
 
-    /* if module is disabled require sysrepo restart to its reinstall*/
+    /* if module is disabled require sysrepo restart to its reinstall */
     if (dm_is_module_disabled(dm_ctx, module_name)) {
         pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
-        SR_LOG_WRN("To install module %s sysrepo must be restarted", module_name);
-        return SR_ERR_INTERNAL;
+        SR_LOG_WRN("To reinstall previously uininstalled module '%s', sysrepod must be restarted!", module_name);
+        return SR_ERR_RESTART_NEEDED;
     }
 
     /* load module schema */
@@ -2710,7 +2715,7 @@ dm_install_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revisio
     md_ctx_lock(dm_ctx->md_ctx, true);
     rc = md_insert_module(dm_ctx->md_ctx, module->filepath);
     md_ctx_unlock(dm_ctx->md_ctx);
-    if (SR_ERR_INVAL_ARG == rc) {
+    if (SR_ERR_DATA_EXISTS == rc) {
         SR_LOG_WRN("Module '%s' is already installed\n", module->name);
         return SR_ERR_OK; /*< do not treat as error */
     }
@@ -2977,10 +2982,113 @@ dm_enable_module_running(dm_ctx_t *ctx, dm_session_t *session, const char *modul
             node = node->next;
         }
     }
-    if (SR_ERR_OK == rc && copy_from_startup && !has_enabled_subtree) {
-        /* if no subtree was already enabled within the module, copy the data from startup */
+    if (SR_ERR_OK == rc && copy_from_startup) {
+        /* copy the config if requested - subscription does not contain SR_SUBSCR_PASSIVE flag */
         rc = dm_copy_module(ctx, session, module_name, SR_DS_STARTUP, SR_DS_RUNNING);
     }
+    return rc;
+}
+
+/**
+ * @brief Copies a subtree (specified by xpath) of configuration from startup to running. Replaces
+ * the previous configuration under the xpath.
+ *
+ * @param [in] ctx
+ * @param [in] session
+ * @param [in] module
+ * @param [in] xpath
+ * @return Error code (SR_ERR_OK on success)
+ */
+static int
+dm_copy_subtree_startup_running(dm_ctx_t *ctx, dm_session_t *session, const struct lys_module *module, const char *xpath)
+{
+    CHECK_NULL_ARG4(ctx, session, module, xpath);
+    int rc = SR_ERR_OK;
+    struct ly_set *nodes = NULL;
+    dm_session_t *startup_session = NULL;
+    dm_data_info_t *startup_info = NULL;
+    dm_data_info_t *candidate_info = NULL;
+    struct lyd_node *node = NULL, *parent = NULL;
+
+    /* mark currently selected datastore */
+    int ds = session->datastore;
+
+    rc = dm_session_start(ctx, session->user_credentials, SR_DS_STARTUP, &startup_session);
+    CHECK_RC_MSG_RETURN(rc, "Failed to start a temporary session");
+
+    /* select nodes by xpath from startup */
+    rc = dm_get_data_info(ctx, startup_session, module->name, &startup_info);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Get info for startup config failed");
+
+    if (NULL == startup_info->node) {
+        SR_LOG_DBG("Startup config for module '%s' is empty nothing to copy", module->name);
+    }
+
+    /* switch to candidate */
+    session->datastore = SR_DS_CANDIDATE;
+    rc = dm_get_data_info(ctx, session, module->name, &candidate_info);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Get info failed");
+
+    /* remove previous config from running */
+    SR_LOG_DBG("Remove previous content of running configuration under %s.", xpath);
+    rc = rp_dt_delete_item(ctx, session, xpath, SR_EDIT_DEFAULT);
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Delete of previous values in running failed xpath %s", xpath);
+
+    /* select a part of configuration to be enabled */
+    rc = rp_dt_find_nodes(ctx, startup_info->node, xpath, false, &nodes);
+    if (SR_ERR_NOT_FOUND == rc) {
+        SR_LOG_DBG("Subtree %s of enabled configuration is empty", xpath);
+        rc = SR_ERR_OK;
+    }
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Find nodes for configuration to be enabled failed");
+
+    /* insert selected nodes */
+    for (unsigned i = 0; NULL != nodes && i < nodes->number; i++) {
+        node = nodes->set.d[i];
+        if ((LYS_LEAF | LYS_LEAFLIST) & node->schema->nodetype) {
+            char *node_xpath = lyd_path(node);
+            CHECK_NULL_NOMEM_GOTO(node_xpath, rc, cleanup);
+            dm_lyd_new_path(ctx, candidate_info, ctx->ly_ctx, node_xpath,
+                    ((struct lyd_node_leaf_list *) node)->value_str, LYD_PATH_OPT_UPDATE);
+            free(node_xpath);
+        } else {
+            /* list or container */
+            if (NULL != node->parent) {
+                char *parent_xpath = lyd_path(node->parent);
+                dm_lyd_new_path(ctx, candidate_info, ctx->ly_ctx, parent_xpath, NULL, LYD_PATH_OPT_UPDATE);
+                /* create or find parent node */
+                rc = rp_dt_find_node(ctx, candidate_info->node, parent_xpath, false, &parent);
+                free(parent_xpath);
+                CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to find parent node");
+            }
+            /* unlink data tree from session */
+            sr_lyd_unlink(startup_info, node);
+
+            /* attach to parent */
+            if (NULL != parent) {
+                if (0 != lyd_insert(parent, node)) {
+                    SR_LOG_ERR_MSG("Node insert failed");
+                    lyd_free_withsiblings(node);
+                }
+            } else {
+                rc = sr_lyd_insert_after(candidate_info, candidate_info->node, node);
+                if (SR_ERR_OK != rc) {
+                    lyd_free_withsiblings(node);
+                    SR_LOG_ERR_MSG("Node insert failed");
+                }
+            }
+        }
+    }
+
+    /* copy module candidate -> running */
+    rc = dm_copy_module(ctx, session, module->name, SR_DS_CANDIDATE, SR_DS_RUNNING);
+
+cleanup:
+    ly_set_free(nodes);
+    dm_session_stop(ctx, startup_session);
+    /* switch back to previously selected datastore */
+    session->datastore = ds;
+
     return rc;
 }
 
@@ -2988,27 +3096,22 @@ int
 dm_enable_module_subtree_running(dm_ctx_t *ctx, dm_session_t *session, const char *module_name, const char *xpath,
         const struct lys_module *module, bool copy_from_startup)
 {
-    CHECK_NULL_ARG2(ctx, module_name);
+    CHECK_NULL_ARG3(ctx, module_name, xpath); /* session can be NULL */
     bool has_enabled_subtree = false;
     int rc = SR_ERR_OK;
-
-    CHECK_NULL_ARG4(ctx, session, module_name, xpath);
 
     if (NULL == module) {
         /* if module is not known, get it and check if it has some enabled subtree */
         rc = dm_has_enabled_subtree(ctx, module_name, &module, &has_enabled_subtree);
+        CHECK_RC_LOG_RETURN(rc, "Has enabled subtree failed for module %s", module_name);
     }
-    if (SR_ERR_OK == rc) {
-        /* enable the subtree specified by xpath */
-        rc = rp_dt_enable_xpath(ctx, session, xpath);
-    }
-    if (SR_ERR_OK == rc && copy_from_startup) {
-        if (!has_enabled_subtree) {
-            /* no subtree was already enabled within the module, copy the data from startup */
-            rc = dm_copy_module(ctx, session, module_name, SR_DS_STARTUP, SR_DS_RUNNING);
-        } else {
-            // TODO: if something was already enabled, we should still copy fresh data of specified subtree from startup
-        }
+
+    /* enable the subtree specified by xpath */
+    rc = rp_dt_enable_xpath(ctx, session, xpath);
+    CHECK_RC_LOG_RETURN(rc, "Enabling of xpath %s failed", xpath);
+
+    if (copy_from_startup) {
+        rc = dm_copy_subtree_startup_running(ctx, session, module, xpath);
     }
     return rc;
 }
