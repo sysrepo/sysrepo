@@ -48,7 +48,7 @@ typedef struct sr_change_s {
 }sr_change_t;
 
 /**
- * @brief Internal structures used across sysrepo to differentiate between supported variants of API.
+ * @brief Internal structure used across sysrepo to differentiate between supported variants of API.
  */
 typedef enum sr_api_variant_e {
     SR_API_VALUES = 0,
