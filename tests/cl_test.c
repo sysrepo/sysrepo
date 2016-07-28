@@ -1506,12 +1506,21 @@ test_rpc_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt,
     int *callback_called = (int*)private_ctx;
     *callback_called += 1;
 
-    assert_int_equal(input_cnt, 2);
-
     printf("'Executing' RPC: %s\n", xpath);
     for (size_t i = 0; i < input_cnt; i++) {
         printf("    input parameter[%zu]: %s = %s\n", i, input[i].xpath, input[i].data.string_val);
     }
+
+    /* check input */
+    assert_int_equal(2, input_cnt);
+    assert_string_equal("/test-module:activate-software-image/image-name", input[0].xpath);
+    assert_false(input[0].dflt);
+    assert_int_equal(SR_STRING_T, input[0].type);
+    assert_string_equal("acmefw-2.3", input[0].data.string_val);
+    assert_string_equal("/test-module:activate-software-image/location", input[1].xpath);
+    assert_true(input[1].dflt);
+    assert_int_equal(SR_STRING_T, input[1].type);
+    assert_string_equal("/", input[1].data.string_val);
 
     *output = calloc(2, sizeof(**output));
     (*output)[0].xpath = strdup("/test-module:activate-software-image/status");
@@ -1557,10 +1566,25 @@ cl_rpc_test(void **state)
     rc = sr_rpc_send(session, "/test-module:activate-software-image", &input, 1, &output, &output_cnt);
     assert_int_equal(rc, SR_ERR_OK);
 
-    assert_int_equal(output_cnt, 3);
     for (size_t i = 0; i < output_cnt; i++) {
         printf("RPC output parameter[%zu]: %s = %s\n", i, output[i].xpath, output[i].data.string_val);
     }
+
+    /* check output */
+    assert_int_equal(3, output_cnt);
+    assert_string_equal("/test-module:activate-software-image/status", output[0].xpath);
+    assert_false(output[0].dflt);
+    assert_int_equal(SR_STRING_T, output[0].type);
+    assert_string_equal("The image acmefw-2.3 is being installed.", output[0].data.string_val);
+    assert_string_equal("/test-module:activate-software-image/version", output[1].xpath);
+    assert_false(output[1].dflt);
+    assert_int_equal(SR_STRING_T, output[1].type);
+    assert_string_equal("2.3", output[1].data.string_val);
+    assert_string_equal("/test-module:activate-software-image/location", output[2].xpath);
+    assert_true(output[2].dflt);
+    assert_int_equal(SR_STRING_T, output[2].type);
+    assert_string_equal("/", output[2].data.string_val);
+
     sr_free_values(output, output_cnt);
 
     /* stop the session */
