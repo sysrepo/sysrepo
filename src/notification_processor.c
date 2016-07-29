@@ -421,11 +421,11 @@ np_notification_subscribe(np_ctx_t *np_ctx, const rp_session_t *rp_session, Sr__
         if (opts & NP_SUBSCR_ENABLE_RUNNING) {
             if (SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS == type || SR__SUBSCRIPTION_TYPE__DP_GET_ITEMS_SUBS == type) {
                 /* enable the subtree in running config */
-                rc = dm_enable_module_subtree_running(np_ctx->rp_ctx->dm_ctx, rp_session->dm_session, module_name, xpath, NULL, true);
+                rc = dm_enable_module_subtree_running(np_ctx->rp_ctx->dm_ctx, rp_session->dm_session, module_name, xpath, true);
                 CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to enable the subtree in the running datastore.");
             } else {
                 /* enable the module in running config */
-                rc = dm_enable_module_running(np_ctx->rp_ctx->dm_ctx, rp_session->dm_session, module_name, NULL, true);
+                rc = dm_enable_module_running(np_ctx->rp_ctx->dm_ctx, rp_session->dm_session, module_name, true);
                 CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to enable the module in the running datastore.");
             }
         }
@@ -497,7 +497,7 @@ np_notification_unsubscribe(np_ctx_t *np_ctx,  const rp_session_t *rp_session, S
             pthread_rwlock_unlock(&np_ctx->lock);
             if (disable_running) {
                 SR_LOG_DBG("Disabling running datastore fo module '%s'.", module_name);
-                rc = dm_disable_module_running(np_ctx->rp_ctx->dm_ctx, rp_session->dm_session, module_name, NULL);
+                rc = dm_disable_module_running(np_ctx->rp_ctx->dm_ctx, rp_session->dm_session, module_name);
                 CHECK_RC_LOG_RETURN(rc, "Disabling module %s failed", module_name);
             }
         }
@@ -556,7 +556,7 @@ np_unsubscribe_destination(np_ctx_t *np_ctx, const char *dst_address)
                     info->subscribed_modules[i]);
             if (disable_running) {
                 SR_LOG_DBG("Disabling running datastore fo module '%s'.", info->subscribed_modules[i]);
-                rc = dm_disable_module_running(np_ctx->rp_ctx->dm_ctx, NULL, info->subscribed_modules[i], NULL);
+                rc = dm_disable_module_running(np_ctx->rp_ctx->dm_ctx, NULL, info->subscribed_modules[i]);
                 CHECK_RC_LOG_GOTO(rc, cleanup, "Disabling module %s failed", info->subscribed_modules[i]);
             }
         }

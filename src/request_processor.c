@@ -118,8 +118,9 @@ rp_check_notif_session(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
 
     /* copy requested model from commit context */
     rc = dm_copy_if_not_loaded(rp_ctx->dm_ctx,  c_ctx->session, session->dm_session, module_name);
-    free(module_name);
+
 cleanup:
+    free(module_name);
     pthread_rwlock_unlock(&dm_ctxs->lock);
     return rc;
 }

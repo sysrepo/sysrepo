@@ -665,14 +665,19 @@ rp_dt_get_changes(rp_ctx_t *rp_ctx, rp_session_t *rp_session, dm_commit_context_
     char *module_name = NULL;
     dm_model_subscription_t lookup = {0};
     dm_model_subscription_t *ms = NULL;
+    dm_schema_info_t *schema_info = NULL;
 
     rc = sr_copy_first_ns(xpath, &module_name);
     CHECK_RC_MSG_RETURN(rc, "Copy first ns failed");
 
-    rc = dm_get_module(rp_ctx->dm_ctx, module_name, NULL, &lookup.module);
+    rc = dm_get_module_and_lock(rp_ctx->dm_ctx, module_name, &schema_info);
     CHECK_RC_LOG_GOTO(rc, cleanup, "Dm get module failed for %s", module_name);
 
+    //TODO: replace module by schema_info in dm_model_subscription
+    lookup.module = schema_info->module;
+
     ms = sr_btree_search(c_ctx->subscriptions, &lookup);
+    pthread_rwlock_unlock(&schema_info->model_lock);
     if (NULL == ms) {
         SR_LOG_ERR("Module subscription not found for module %s", lookup.module->name);
         rc = SR_ERR_INTERNAL;

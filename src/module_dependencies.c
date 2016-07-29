@@ -708,8 +708,10 @@ md_init(struct ly_ctx *ly_ctx, pthread_rwlock_t *lyctx_lock, const char *schema_
     /* Initialize pthread mutex */
     pthread_rwlock_init(&ctx->lock, NULL);
 
-    /* Keep pointer to libyang context */
-    ctx->ly_ctx = ly_ctx;
+    /* Create libyang context */
+    ctx->ly_ctx = ly_ctx_new(schema_search_dir);
+    CHECK_NULL_NOMEM_GOTO(ctx->ly_ctx, rc, fail);
+
     ctx->lyctx_lock = lyctx_lock;
     if (ctx->lyctx_lock) {
         pthread_rwlock_wrlock(ctx->lyctx_lock);
@@ -948,6 +950,9 @@ md_destroy(md_ctx_t *md_ctx)
         }
         if (md_ctx->lyctx_lock) {
             pthread_rwlock_unlock(md_ctx->lyctx_lock);
+        }
+        if (md_ctx->ly_ctx) {
+            ly_ctx_destroy(md_ctx->ly_ctx, NULL);
         }
         if (-1 != md_ctx->fd) {
             close(md_ctx->fd); /*< auto-unlock */
