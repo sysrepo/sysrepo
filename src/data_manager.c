@@ -305,15 +305,17 @@ cleanup:
 }
 
 /**
+ * @brief Function verifies that current module is not used by a session
+ * and dis/enable the feature
  *
  * @note Function expects that a schema info is locked for writing.
  *
- * @param dm_ctx
- * @param schema_info
- * @param module_name
- * @param feature_name
- * @param enable
- * @return
+ * @param [in] dm_ctx
+ * @param [in] schema_info - schema info that is locked
+ * @param [in] module_name
+ * @param [in] feature_name
+ * @param [in] enable Flag denoting whether feature should be enabled or disabled
+ * @return Error code (SR_ERR_OK on success)
  */
 static int
 dm_feature_enable_internal(dm_ctx_t *dm_ctx, dm_schema_info_t *schema_info, const char *module_name, const char *feature_name, bool enable)
@@ -4037,7 +4039,7 @@ dm_lock_schema_info(dm_schema_info_t *schema_info)
     if (NULL != schema_info->ly_ctx && NULL != schema_info->module) {
         return SR_ERR_OK;
     } else {
-        SR_LOG_ERR("Schema info can not be locked for module %s", schema_info->module_name);
+        SR_LOG_ERR("Schema info can not be locked for module %s. Module has been uninstalled.", schema_info->module_name);
         pthread_rwlock_unlock(&schema_info->model_lock);
         return SR_ERR_UNKNOWN_MODEL;
     }
@@ -4047,11 +4049,11 @@ int
 dm_lock_schema_info_write(dm_schema_info_t *schema_info)
 {
     CHECK_NULL_ARG2(schema_info, schema_info->module_name);
-    pthread_rwlock_wrlock(&schema_info->model_lock);
+    RWLOCK_WRLOCK_TIMED_CHECK_RETURN(&schema_info->model_lock);
     if (NULL != schema_info->ly_ctx && NULL != schema_info->module) {
         return SR_ERR_OK;
     } else {
-        SR_LOG_ERR("Schema info can not be locked for module %s", schema_info->module_name);
+        SR_LOG_ERR("Schema info can not be locked for module %s. Module has been uninstalled.", schema_info->module_name);
         pthread_rwlock_unlock(&schema_info->model_lock);
         return SR_ERR_UNKNOWN_MODEL;
     }

@@ -610,6 +610,9 @@ int dm_has_state_data(dm_ctx_t *ctx, const char *module_name, bool *res);
 
 /**
  * @brief Checks whether the module has an enabled subtree.
+ *
+ * @note Function acquires and releases read lock for the schema info.
+ *
  * @param [in] ctx
  * @param [in] module_name - name of the module to be checked
  * @param [out] schema - Match schema, can be NULL
@@ -793,6 +796,9 @@ int dm_get_all_modules(dm_ctx_t *dm_ctx, dm_session_t *session, bool enabled_onl
 
 /**
  * @brief If there is a session copy of the model, return modified flag.
+ *
+ * @note Function acquires and releases read lock for the schema info.
+ *
  * @param [in] dm_ctx
  * @param [in] session
  * @param [in] module_name
@@ -839,7 +845,8 @@ int dm_get_md_ctx(dm_ctx_t *dm_ctx, md_ctx_t **md_ctx);
 /**
  * @brief Tries to lock schema info for read - standard usage.
  *
- * @note function may return SR_ERR_UNKNOWN_MODULE if the module has been
+ * @note Schema info read lock is acquired on successful return from function. Must be released by caller.
+ * @note Function may return SR_ERR_UNKNOWN_MODULE if the module has been
  * released meanwhile.
  *
  * @param [in] schema_info
@@ -848,9 +855,10 @@ int dm_get_md_ctx(dm_ctx_t *dm_ctx, md_ctx_t **md_ctx);
 int dm_lock_schema_info(dm_schema_info_t *schema_info);
 
 /**
- * @brief Acquires write lock for schema info
+ * @brief Acquires write lock for the provided schema info.
  *
- * @note function may return SR_ERR_UNKNOWN_MODULE if the module has been
+ * @note Schema info write lock is acquired on successful return from function. Must be released by caller.
+ * @note Function may return SR_ERR_UNKNOWN_MODULE if the module has been
  * released meanwhile.
  *
  * @param [in] schema_info
