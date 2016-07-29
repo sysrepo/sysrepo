@@ -709,8 +709,56 @@ default_nodes_test(void **state)
     assert_true(val->dflt);
     sr_free_val(val);
 
-    /* list with non-default value */
+    /* set default value with strict */
     sr_val_t *v = NULL;
+    v = calloc(1, sizeof(*v));
+    assert_non_null(v);
+    v->type = SR_INT8_T;
+    v->data.int8_val = 99;
+
+    rc = rp_dt_set_item_wrapper(ctx, ses_ctx, "/test-module:with_def[name='createWithStrict']/num", v, SR_EDIT_STRICT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_get_value_wrapper(ctx, ses_ctx, "/test-module:with_def[name='createWithStrict']/num", &val);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(val);
+    assert_int_equal(99, val->data.int8_val);
+    assert_false(val->dflt);
+    sr_free_val(val);
+
+
+    /* overwrite default value with strict */
+    v = NULL;
+    v = calloc(1, sizeof(*v));
+    assert_non_null(v);
+    v->type = SR_INT8_T;
+    v->data.int8_val = 42;
+
+    rc = rp_dt_set_item_wrapper(ctx, ses_ctx, "/test-module:with_def[name='overwrite']", NULL, SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_set_item_wrapper(ctx, ses_ctx, "/test-module:with_def[name='overwrite']/num", v, SR_EDIT_STRICT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_get_value_wrapper(ctx, ses_ctx, "/test-module:with_def[name='overwrite']/num", &val);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(val);
+    assert_int_equal(42, val->data.int8_val);
+    assert_false(val->dflt);
+    sr_free_val(val);
+
+    /* once the leaf contains non-default value SR_EDIT_STRICT failed */
+    v = NULL;
+    v = calloc(1, sizeof(*v));
+    assert_non_null(v);
+    v->type = SR_INT8_T;
+    v->data.int8_val = 9;
+
+    rc = rp_dt_set_item_wrapper(ctx, ses_ctx, "/test-module:with_def[name='overwrite']/num", v, SR_EDIT_STRICT);
+    assert_int_equal(SR_ERR_DATA_EXISTS, rc);
+
+    /* list with non-default value */
+    v = NULL;
     v = calloc(1, sizeof(*v));
     assert_non_null(v);
     v->type = SR_INT8_T;
