@@ -719,6 +719,7 @@ default_nodes_test(void **state)
     rc = rp_dt_set_item_wrapper(ctx, ses_ctx, "/test-module:with_def[name='createWithStrict']/num", v, SR_EDIT_STRICT);
     assert_int_equal(SR_ERR_OK, rc);
 
+    ses_ctx->state = RP_REQ_NEW;
     rc = rp_dt_get_value_wrapper(ctx, ses_ctx, "/test-module:with_def[name='createWithStrict']/num", &val);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);
@@ -740,6 +741,7 @@ default_nodes_test(void **state)
     rc = rp_dt_set_item_wrapper(ctx, ses_ctx, "/test-module:with_def[name='overwrite']/num", v, SR_EDIT_STRICT);
     assert_int_equal(SR_ERR_OK, rc);
 
+    ses_ctx->state = RP_REQ_NEW;
     rc = rp_dt_get_value_wrapper(ctx, ses_ctx, "/test-module:with_def[name='overwrite']/num", &val);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);
