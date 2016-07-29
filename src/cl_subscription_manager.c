@@ -805,6 +805,7 @@ cl_sm_rpc_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *msg)
     cl_sm_subscription_ctx_t subscription_lookup = { 0, };
     Sr__Msg *resp = NULL;
     sr_val_t *input = NULL, *output = NULL;
+    sr_node_t *input_tree = NULL, *output_tree = NULL;
     size_t input_cnt = 0, output_cnt = 0;
     int rc = SR_ERR_OK, rpc_rc = SR_ERR_OK;
 
@@ -813,7 +814,12 @@ cl_sm_rpc_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *msg)
     SR_LOG_DBG("Received a RPC request for subscription id=%"PRIu32".", msg->request->rpc_req->subscription_id);
 
     /* copy input values from GPB */
-    rc = sr_values_gpb_to_sr(msg->request->rpc_req->input, msg->request->rpc_req->n_input, &input, &input_cnt);
+    if (msg->request->rpc_req->n_input) {
+        rc = sr_values_gpb_to_sr(msg->request->rpc_req->input, msg->request->rpc_req->n_input, &input, &input_cnt);
+    } else if (msg->request->rpc_req->n_input_tree) {
+        rc = sr_trees_gpb_to_sr(msg->request->rpc_req->input_tree, msg->request->rpc_req->n_input_tree,
+                                &input_tree, &input_cnt);
+    }
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by copying RPC input arguments from GPB.");
 
     pthread_mutex_lock(&sm_ctx->subscriptions_lock);
@@ -829,11 +835,19 @@ cl_sm_rpc_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *msg)
 
     SR_LOG_DBG("Calling RPC callback for subscription id=%"PRIu32".", subscription->id);
 
-    rpc_rc = subscription->callback.rpc_cb(
-            msg->request->rpc_req->xpath,
-            input, input_cnt,
-            &output, &output_cnt,
-            subscription->private_ctx);
+    if (SR_API_VALUES == subscription->api_variant) {
+        rpc_rc = subscription->callback.rpc_cb(
+                        msg->request->rpc_req->xpath,
+                        input, input_cnt,
+                        &output, &output_cnt,
+                        subscription->private_ctx);
+    } else {
+        rpc_rc = subscription->callback.rpc_tree_cb(
+                        msg->request->rpc_req->xpath,
+                        input_tree, input_cnt,
+                        &output_tree, &output_cnt,
+                        subscription->private_ctx);
+    }
 
     pthread_mutex_unlock(&sm_ctx->subscriptions_lock);
 
@@ -847,7 +861,13 @@ cl_sm_rpc_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *msg)
 
     /* copy output values to GPB */
     if (SR_ERR_OK == rpc_rc) {
-        rc = sr_values_sr_to_gpb(output, output_cnt, &resp->response->rpc_resp->output, &resp->response->rpc_resp->n_output);
+        if (NULL != output) {
+            rc = sr_values_sr_to_gpb(output, output_cnt, &resp->response->rpc_resp->output,
+                    &resp->response->rpc_resp->n_output);
+        } else if (NULL != output_tree) {
+            rc = sr_trees_sr_to_gpb(output_tree, output_cnt, &resp->response->rpc_resp->output_tree,
+                    &resp->response->rpc_resp->n_output_tree);
+        }
         CHECK_RC_MSG_GOTO(rc, cleanup, "Error by copying RPC output arguments to GPB.");
     }
 
@@ -857,6 +877,8 @@ cl_sm_rpc_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *msg)
 cleanup:
     sr_free_values(input, input_cnt);
     sr_free_values(output, output_cnt);
+    sr_free_trees(input_tree, input_cnt);
+    sr_free_trees(output_tree, output_cnt);
     if (NULL != resp) {
         sr__msg__free_unpacked(resp, NULL);
     }

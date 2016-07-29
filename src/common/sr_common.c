@@ -93,3 +93,23 @@ sr_free_schemas(sr_schema_t *schemas, size_t count)
         free(schemas);
     }
 }
+
+void
+sr_free_tree(sr_node_t *tree)
+{
+    if (NULL != tree) {
+        sr_free_tree_content(tree);
+        free(tree);
+    }
+}
+
+void
+sr_free_trees(sr_node_t *trees, size_t count)
+{
+    if (NULL != trees) {
+        for (size_t i = 0; i < count; i++) {
+            sr_free_tree_content(trees + i);
+        }
+        free(trees);
+    }
+}
