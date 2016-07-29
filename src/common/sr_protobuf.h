@@ -119,7 +119,7 @@ int sr_gpb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const S
 int sr_gpb_msg_validate_notif(const Sr__Msg *msg, const Sr__SubscriptionType type);
 
 /**
- * @brief Allocates and fills gpb structure form sr_val_t.
+ * @brief Allocates and fills gpb structure from sr_val_t.
  * @param [in] value
  * @param [out] gpb_value
  * @return err_code
@@ -166,6 +166,58 @@ int sr_values_sr_to_gpb(const sr_val_t *sr_values, const size_t sr_value_cnt, Sr
  * @return Error code (SR_ERR_OK on success).
  */
 int sr_values_gpb_to_sr(Sr__Value **gpb_values, size_t gpb_value_cnt, sr_val_t **sr_values, size_t *sr_value_cnt);
+
+/**
+ * @brief Allocates and copies tree data from the sysrepo tree-representation (based on sr_node_t) into
+ * the GPB tree-representation (based on Sr__Node).
+ *
+ * @param [in] sr_tree Sysrepo tree.
+ * @param [out] gpb_tree GPB tree.
+ * @return err_code
+ */
+int sr_dup_tree_to_gpb(const sr_node_t *sr_tree, Sr__Node **gpb_tree);
+
+/**
+ * @brief Allocates and copies tree data from the GPB tree-representation (based on Sr__Node) into
+ * the sysrepo tree-representation (based on sr_node_t).
+ *
+ * @param [in] gpb_tree GPB tree.
+ * @param [out] sr_tree Sysrepo tree.
+ * @return err_code
+ */
+int sr_dup_gpb_to_tree(const Sr__Node *gpb_tree, sr_node_t **sr_tree);
+
+/**
+ * @brief Fill sysrepo tree content from gpb.
+ * @param [in] gpb_tree
+ * @param [out] sr_tree
+ * @return err_code
+ */
+int sr_copy_gpb_to_tree(const Sr__Node *gpb_tree, sr_node_t *sr_tree);
+
+/**
+ * @brief Copies and transforms an array of sysrepo trees into the array of GPB-represented trees.
+ *
+ * @param[in] sr_trees Array of sysrepo trees.
+ * @param[in] sr_tree_cnt Number of trees.
+ * @param[out] gpb_trees array of GPB trees.
+ * @param[out] gpb_tree_cnt Number of GPB trees as returned in gpb_trees.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_trees_sr_to_gpb(const sr_node_t *sr_trees, const size_t sr_tree_cnt, Sr__Node ***gpb_trees, size_t *gpb_tree_cnt);
+
+/**
+ * @brief Copies and transforms an array of GPB trees into the array of sysrepo-represented trees.
+ *
+ * @param[in] gpb_trees array of GPB trees.
+ * @param[in] gpb_tree_cnt Number of GPB trees.
+ * @param[out] sr_trees Array of sysrepo trees.
+ * @param[out] sr_tree_cnt Number of sysrepo trees as returned in sr_trees.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_trees_gpb_to_sr(Sr__Node **gpb_trees, size_t gpb_tree_cnt, sr_node_t **sr_trees, size_t *sr_tree_cnt);
 
 /**
  * @brief Fills the gpb structures from the set of changes

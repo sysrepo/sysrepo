@@ -47,6 +47,13 @@ typedef struct sr_change_s {
     sr_val_t *old_value;        /**< Prev value, NULL in case of SR_OP_CREATED, predcessor in case of SR_OP_MOVED */
 }sr_change_t;
 
+/**
+ * @brief Internal structure used across sysrepo to differentiate between supported variants of API.
+ */
+typedef enum sr_api_variant_e {
+    SR_API_VALUES = 0,
+    SR_API_TREES = 1
+} sr_api_variant_t;
 
 /**
  * @defgroup utils Utility Functions
@@ -294,11 +301,47 @@ int sr_libyang_leaf_copy_value(const struct lyd_node_leaf_list *leaf, sr_val_t *
 int sr_val_to_str(const sr_val_t *value, const struct lys_node *schema_node, char **out);
 
 /**
+ * @brief Copy and convert content of a libyang node and its descendands into a sysrepo tree.
+ *
+ * @param [in] ly_ctx libyang context
+ * @param [in] node libyang node.
+ * @param [out] sr_tree Returned sysrepo tree.
+ */
+int sr_copy_node_to_tree(struct ly_ctx *ly_ctx, const struct lyd_node *node, sr_node_t *sr_tree);
+
+/**
+ * @brief Convert a set of libyang nodes into an array of sysrepo trees. For each node a corresponding
+ * sysrepo (sub)tree is constructed. It is assumed that the input nodes are not descendands and predecessors
+ * of each other! With this assumption the links between the output trees does not need to be considered which
+ * significantly decreses the cost of this operation.
+ *
+ * @param [in] ly_ctx libyang context
+ * @param [in] nodes A set of libyang nodes.
+ * @param [out] sr_trees Returned array of sysrepo trees.
+ * @param [out] count Number of returned trees.
+ */
+int sr_nodes_to_trees(struct ly_ctx *ly_ctx, struct ly_set *nodes, sr_node_t **sr_trees, size_t *count);
+
+/**
+ * @brief Convert a sysrepo tree into a libyang data tree.
+ * @note data_tree is extended with the converted tree, not overwritten.
+ *
+ * @param [in] ly_ctx libyang context.
+ * @param [in] sr_tree Sysrepo tree (based on sr_node_t).
+ * @param [in] root_xpath XPath referencing the tree root (can be NULL for top-level trees).
+ * @param [in] output Is sr_tree an RPC/Action output?
+ * @param [out] data_tree libyang data tree that will get extended with the converted sysrepo tree.
+ */
+int sr_tree_to_dt(struct ly_ctx *ly_ctx, const sr_node_t *sr_tree, const char *root_xpath, bool output,
+        struct lyd_node **data_tree);
+
+/**
  * @brief Returns the string name of the datastore
  * @param [in] ds
  * @return Data store name
  */
 const char * sr_ds_to_str(sr_datastore_t ds);
+
 /**
  * @brief Frees contents of the sr_val_t structure, does not free the
  * value structure itself.
@@ -321,6 +364,11 @@ void sr_free_values_arr(sr_val_t **values, size_t count);
  * @param [in] to
  */
 void sr_free_values_arr_range(sr_val_t **values, const size_t from, const size_t to);
+
+/**
+ * @brief Frees contents of a sysrepo tree, does not free the root node itself.
+ */
+void sr_free_tree_content(sr_node_t *tree);
 
 /**
  * @brief Frees an array of detailed error information.
@@ -373,7 +421,6 @@ void sr_daemonize_signal_success(pid_t parent_pid);
  * @return Error code (SR_ERR_OK on success)
  */
 int sr_clock_get_time(clockid_t clock_id, struct timespec *ts);
-
 
 /**
  * @brief Sets correct permissions on provided socket directory according to the
