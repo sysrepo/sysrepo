@@ -477,6 +477,7 @@ sr_gpb_resp_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__
             CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__rpcresp__init((Sr__RPCResp*)sub_msg);
             resp->rpc_resp = (Sr__RPCResp*)sub_msg;
+            break;
         case SR__OPERATION__EVENT_NOTIF:
             sub_msg = calloc(1, sizeof(Sr__EventNotifResp));
             CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
