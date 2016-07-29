@@ -177,7 +177,6 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, co
     CHECK_NULL_ARG3(dm_ctx, session, xpath);
 
     int rc = SR_ERR_INVAL_ARG;
-    const struct lys_module *module = NULL;
     dm_data_info_t *info = NULL;
     struct ly_set *nodes = NULL;
     struct ly_set *parents = NULL;
@@ -194,12 +193,8 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, co
     /* find nodes nodes to be deleted */
     rc = rp_dt_find_nodes(dm_ctx, info->node, xpath, dm_is_running_ds_session(session), &nodes);
     if (SR_ERR_NOT_FOUND == rc) {
-        rc = rp_dt_validate_node_xpath(dm_ctx, session, xpath, &module, NULL);
-        if (SR_ERR_OK != rc && NULL == module) {
-            SR_LOG_ERR("Requested xpath is not valid %s", xpath);
-            return rc;
-        }
-        else if (SR_ERR_OK != rc) {
+        rc = rp_dt_validate_node_xpath(dm_ctx, session, xpath, NULL, NULL);
+        if (SR_ERR_OK != rc) {
             SR_LOG_WRN("Validation of xpath %s was not successful", xpath);
         }
 

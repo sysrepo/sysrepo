@@ -39,21 +39,6 @@
  */
 int rp_dt_create_xpath_for_node(const struct lyd_node *node, char **xpath);
 
-/**
- * @brief Validates the location_id with schema. If the provided xpath identifies whole
- * module it only validates if the module exists. For other xpaths, functions does the following checks:
- * - tests if the top level node's namespace is specified
- * - tests if the model exists (if not returns SR_ERR_UNKNOWN_MODEL)
- * - tests if the nodes exists in the model (if not returns SR_ERR_BAD_ELEMENT)
- * - tests if the keys name and key count are valid (if not returns SR_ERR_BAD_ELEMENT)
- * @param [in] dm_ctx
- * @param [in] session
- * @param [in] xpath input to be validated
- * @param [out] matched_module pointer to the module where the xpath is pointing (in case of augment, augmented module)
- * @param [out] match schema node is returned if NULL is not passed
- * @return Error code (SR_ERR_OK on success) SR_ERR_UNKNOWN_MODEL, SR_ERR_BAD_ELEMENT
- */
-int rp_dt_validate_node_xpath(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const struct lys_module **matched_module, struct lys_node **match);
 
 /**
  * @brief Enables the subtree specified by xpath in running data store. Until then, data retrieval calls return
@@ -72,6 +57,7 @@ int rp_dt_enable_xpath(dm_ctx_t *dm_ctx, dm_session_t *session, dm_schema_info_t
 
 /**
  *
+ * @brief
  * @note Schema info read lock is acquired on successful return from function. Must be released by caller.
  *
  * @param dm_ctx
@@ -94,7 +80,7 @@ int rp_dt_validate_node_xpath_lock(dm_ctx_t *dm_ctx, dm_session_t *session, cons
  * @param match
  * @return
  */
-int rp_dt_validate_node_xpath_without_lock(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, dm_schema_info_t **schema_info, struct lys_node **match);
+int rp_dt_validate_node_xpath(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, dm_schema_info_t **schema_info, struct lys_node **match);
 
 /**
  * @}

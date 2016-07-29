@@ -102,7 +102,7 @@ enable_subtree_test(void **state)
 
    pthread_rwlock_unlock(&si->model_lock);
 
-   rc = rp_dt_validate_node_xpath_without_lock(ctx->dm_ctx, session->dm_session, "/ietf-interfaces:interfaces/interface/ietf-ip:ipv4/address", &si, &match);
+   rc = rp_dt_validate_node_xpath(ctx->dm_ctx, session->dm_session, "/ietf-interfaces:interfaces/interface/ietf-ip:ipv4/address", &si, &match);
    assert_int_equal(SR_ERR_OK, rc);
 
    /* check address node */
@@ -114,7 +114,7 @@ enable_subtree_test(void **state)
    /* check ietf-interfaces:interfaces */
    assert_true(dm_is_node_enabled(si->module->data));
 
-   rc = rp_dt_validate_node_xpath_without_lock(ctx->dm_ctx, session->dm_session, "/ietf-interfaces:interfaces/interface/type", &si, &match);
+   rc = rp_dt_validate_node_xpath(ctx->dm_ctx, session->dm_session, "/ietf-interfaces:interfaces/interface/type", &si, &match);
    assert_int_equal(SR_ERR_OK, rc);
 
    /* check manadatory leaf is enabled when its parent is enabled */
@@ -142,7 +142,7 @@ enable_subtree_test(void **state)
    pthread_rwlock_unlock(&si->model_lock);
 
    match = NULL;
-   rc = rp_dt_validate_node_xpath_without_lock(ctx->dm_ctx, session->dm_session, "/example-module:container/list/leaf", &si, &match);
+   rc = rp_dt_validate_node_xpath(ctx->dm_ctx, session->dm_session, "/example-module:container/list/leaf", &si, &match);
    assert_int_equal(SR_ERR_OK, rc);
 
    /* check leaf node */

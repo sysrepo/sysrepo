@@ -565,95 +565,6 @@ rp_dt_validate_node_xpath_intrenal(dm_ctx_t *dm_ctx, dm_session_t *session, dm_s
 }
 
 int
-rp_dt_validate_node_xpath(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const struct lys_module **matched_module, struct lys_node **match)
-{
-    CHECK_NULL_ARG2(dm_ctx, xpath);
-    int rc = SR_ERR_OK;
-
-    char *namespace = NULL;
-    char *xp_copy = NULL;
-    size_t xp_len = 0;
-    rc = sr_copy_first_ns(xpath, &namespace);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Namespace copy failed");
-        return rc;
-    }
-
-    dm_schema_info_t *schema_info = NULL;
-    //TODO might be suitable to acquire lock
-    rc = dm_get_module_without_lock(dm_ctx, namespace, &schema_info);
-    if (SR_ERR_UNKNOWN_MODEL == rc && NULL != session) {
-        rc = dm_report_error(session, NULL, xpath, rc);
-    }
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Get module %s failed", namespace);
-        free(namespace);
-        return rc;
-    }
-    if (NULL != matched_module) {
-        *matched_module = schema_info->module;
-    }
-    free(namespace);
-
-    rc = rp_dt_trim_xpath(dm_ctx, xpath, &xp_copy);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Error while xpath trim %s", xpath);
-        return rc;
-    }
-
-    xp_len = strlen(xp_copy);
-    if (0 == xp_len) {
-        free(xp_copy);
-        return SR_ERR_OK;
-    }
-
-    const struct lys_node *sch_node = ly_ctx_get_node(schema_info->ly_ctx, NULL, xp_copy);
-    if (NULL != sch_node) {
-        if (NULL != match) {
-            *match = (struct lys_node *) sch_node;
-        }
-    } else {
-        switch (ly_vecode) {
-        case LYVE_PATH_INNODE:
-            /* ly_ctx_get_node is not able to locate nodes inside the choice */
-            rc = rp_dt_find_in_choice(dm_ctx, session, xpath, xp_copy, schema_info->module, (struct lys_node **) &sch_node);
-            if (NULL != match) {
-                *match = (struct lys_node *) sch_node;
-            }
-            break;
-        case LYVE_PATH_INCHAR:
-            rc = rp_dt_find_leaflist(session, xpath, xp_copy, schema_info->module, (struct lys_node **) &sch_node);
-            if (NULL != match) {
-                *match = (struct lys_node *) sch_node;
-            }
-            break;
-        case LYVE_PATH_INKEY:
-            if (NULL != session) {
-                rc = dm_report_error(session, ly_errmsg(), ly_errpath(), SR_ERR_BAD_ELEMENT);
-            } else {
-                rc = SR_ERR_BAD_ELEMENT;
-            }
-            break;
-        case LYVE_PATH_INMOD:
-            if (NULL != session) {
-                rc = dm_report_error(session, ly_errmsg(), ly_errpath(), SR_ERR_UNKNOWN_MODEL);
-            } else {
-                rc = SR_ERR_UNKNOWN_MODEL;
-            }
-            break;
-        default:
-            if (NULL != session) {
-                rc = dm_report_error(session, ly_errmsg(), ly_errpath(), SR_ERR_INVAL_ARG);
-            } else {
-                rc = SR_ERR_INVAL_ARG;
-            }
-        }
-    }
-    free(xp_copy);
-    return rc;
-}
-
-int
 rp_dt_validate_node_xpath_lock(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, dm_schema_info_t **schema_info, struct lys_node **match)
 {
     CHECK_NULL_ARG3(dm_ctx, xpath, schema_info);
@@ -684,7 +595,7 @@ cleanup:
 }
 
 int
-rp_dt_validate_node_xpath_without_lock(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, dm_schema_info_t **schema_info, struct lys_node **match)
+rp_dt_validate_node_xpath(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, dm_schema_info_t **schema_info, struct lys_node **match)
 {
     CHECK_NULL_ARG2(dm_ctx, xpath);
     dm_schema_info_t *si = NULL;

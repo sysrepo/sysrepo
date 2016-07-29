@@ -2422,7 +2422,7 @@ dm_prepare_module_subscriptions(dm_ctx_t *dm_ctx, dm_schema_info_t *schema_info,
         if (NULL == ms->subscriptions[s]->xpath) {
             ms->nodes[s] = NULL;
         } else {
-            rc = rp_dt_validate_node_xpath_without_lock(dm_ctx, NULL,
+            rc = rp_dt_validate_node_xpath(dm_ctx, NULL,
                     ms->subscriptions[s]->xpath,
                     NULL,
                     &ms->nodes[s]);
