@@ -643,9 +643,7 @@ sr_node_t_test(void **state)
 
     /* cleanup */
     sr_free_trees(trees, tree_cnt);
-    if (nodeset) {
-        ly_set_free(nodeset);
-    }
+    ly_set_free(nodeset);
     if (data_tree) {
         lyd_free_withsiblings(data_tree);
     }
@@ -738,9 +736,7 @@ sr_node_t_with_augments_test(void **state)
 
     /* cleanup */
     sr_free_trees(trees, tree_cnt);
-    if (nodeset) {
-        ly_set_free(nodeset);
-    }
+    ly_set_free(nodeset);
     if (data_tree) {
         lyd_free_withsiblings(data_tree);
     }
@@ -807,9 +803,7 @@ sr_node_t_rpc_input_test(void **state)
 
     /* cleanup */
     sr_free_trees(trees, tree_cnt);
-    if (nodeset) {
-        ly_set_free(nodeset);
-    }
+    ly_set_free(nodeset);
     if (data_tree) {
         lyd_free_withsiblings(data_tree);
     }
@@ -984,9 +978,7 @@ sr_node_t_rpc_output_test(void **state)
 
     /* cleanup */
     sr_free_trees(trees, tree_cnt);
-    if (nodeset) {
-        ly_set_free(nodeset);
-    }
+    ly_set_free(nodeset);
     if (data_tree) {
         lyd_free_withsiblings(data_tree);
     }

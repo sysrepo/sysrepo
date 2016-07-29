@@ -779,7 +779,7 @@ cl_sm_rpc_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *msg)
 
     /* allocate the response and send it */
     rc = sr_gpb_resp_alloc(SR__OPERATION__RPC, msg->session_id, &resp);
-    CHECK_RC_MSG_RETURN(rc, "Allocation of RPC response failed.");
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Allocation of RPC response failed.");
 
     resp->response->result = rpc_rc;
     resp->response->rpc_resp->xpath = strdup(msg->request->rpc_req->xpath);

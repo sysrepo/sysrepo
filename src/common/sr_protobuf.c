@@ -1354,7 +1354,11 @@ sr_dup_tree_to_gpb(const sr_node_t *sr_tree, Sr__Node **gpb_tree)
     CHECK_NULL_NOMEM_RETURN(gpb);
     sr__node__init(gpb);
     gpb->value = calloc(1, sizeof(*gpb->value));
-    CHECK_NULL_NOMEM_RETURN(gpb->value);
+    CHECK_NULL_NOMEM_ERROR(gpb->value, rc);
+    if (SR_ERR_OK != rc) {
+        free(gpb);
+        return rc;
+    }
     sr__value__init(gpb->value);
     gpb->n_children = 0;
 
