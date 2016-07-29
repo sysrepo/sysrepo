@@ -468,7 +468,14 @@ sr_lyd_insert_before(dm_data_info_t *data_info, struct lyd_node *sibling, struct
 int
 sr_lyd_insert_after(dm_data_info_t *data_info, struct lyd_node *sibling, struct lyd_node *node)
 {
-    CHECK_NULL_ARG3(data_info, sibling, node);
+    CHECK_NULL_ARG2(data_info, node);
+
+    if (NULL == sibling && NULL == data_info->node && NULL == node->schema->parent) {
+        /* adding top-level-node to empty tree */
+        data_info->node = node;
+        return SR_ERR_OK;
+    }
+    CHECK_NULL_ARG(sibling);
 
     int rc = lyd_insert_after(sibling, node);
     if (data_info->node == node) {
