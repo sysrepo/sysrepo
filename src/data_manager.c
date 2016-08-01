@@ -1762,11 +1762,10 @@ dm_list_module(dm_ctx_t *dm_ctx, md_module_t *module, sr_schema_t *schema)
 {
     CHECK_NULL_ARG3(dm_ctx, module, schema);
     int rc = SR_ERR_OK;
-#if 0
     bool module_enabled = false;
     size_t enabled_subtrees_cnt = 0;
     char **enabled_subtrees = NULL;
-#endif
+
     schema->module_name = strdup(module->name);
     CHECK_NULL_NOMEM_GOTO(schema->module_name, rc, cleanup);
 
@@ -1778,7 +1777,6 @@ dm_list_module(dm_ctx_t *dm_ctx, md_module_t *module, sr_schema_t *schema)
 
     //TODO ns, prefix, submodules + features
 
-#if 0
     rc = pm_get_module_info(dm_ctx->pm_ctx, module->name, &module_enabled,
             &enabled_subtrees, &enabled_subtrees_cnt, &schema->enabled_features, &schema->enabled_feature_cnt);
     if (SR_ERR_OK == rc) {
@@ -1791,7 +1789,7 @@ dm_list_module(dm_ctx_t *dm_ctx, md_module_t *module, sr_schema_t *schema)
         /* ignore errors in pm */
         rc = SR_ERR_OK;
     }
-#endif
+
 cleanup:
     if (SR_ERR_OK != rc) {
         sr_free_schema(schema);
