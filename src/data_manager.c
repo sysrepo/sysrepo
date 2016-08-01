@@ -608,39 +608,6 @@ cleanup:
 }
 
 /**
- * @brief Loads all installed schemas.
- * @param [in] dm_ctx
- * @return Error code (SR_ERR_OK on success), SR_ERR_IO if a schema cannot be loaded
- */
-static int
-dm_load_all_schemas(dm_ctx_t *dm_ctx)
-{
-    CHECK_NULL_ARG(dm_ctx);
-/*    sr_llist_node_t *ll_node = NULL;
-    md_module_t *module = NULL;
-    const struct lys_module *module_schema = NULL;
-
-    md_ctx_lock(dm_ctx->md_ctx, false);
-    ll_node = dm_ctx->md_ctx->modules->first;
-    while (ll_node) {
-        module = (md_module_t *)ll_node->data;
-        if (module->latest_revision) {
-            if (SR_ERR_OK != dm_load_schema_file(dm_ctx, module->filepath, &module_schema)) {
-                SR_LOG_ERR("Loading schema file for module '%s' failed.", md_get_module_fullname(module));
-                md_ctx_unlock(dm_ctx->md_ctx);
-                return SR_ERR_IO;
-            } else {
-                SR_LOG_INF("Schema file for module '%s' loaded successfully", md_get_module_fullname(module));
-            }
-        }
-        ll_node = ll_node->next;
-    }
-    md_ctx_unlock(dm_ctx->md_ctx);
-*/
-    return SR_ERR_OK;
-}
-
-/**
  * @brief Tries to load data tree from provided opened file.
  * @param [in] dm_ctx
  * @param [in] fd to be read from, function does not close it
@@ -3040,7 +3007,6 @@ dm_install_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revisio
     CHECK_NULL_ARG3(dm_ctx, module_name, file_name); /* revision can be NULL */
 
     int rc = 0;
-    bool found_in_md_ctx = false;
     md_module_t *module = NULL;
     md_dep_t *dep = NULL;
     sr_llist_node_t *ll_node = NULL;
@@ -3054,7 +3020,6 @@ dm_install_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revisio
     rc = md_insert_module(dm_ctx->md_ctx, file_name);
     if (SR_ERR_DATA_EXISTS == rc) {
         SR_LOG_WRN("Module '%s' is already installed\n", file_name);
-        found_in_md_ctx = true;
         rc = SR_ERR_OK; /*< do not treat as error */
     }
 
