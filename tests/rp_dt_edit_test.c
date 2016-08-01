@@ -2301,8 +2301,8 @@ int main(){
             cmocka_unit_test(lock_commit_test),
             cmocka_unit_test(empty_string_leaf_test),
             cmocka_unit_test(candidate_edit_test),
-            //cmocka_unit_test(copy_to_running_test),
-            //cmocka_unit_test(candidate_commit_lock_test),
+            cmocka_unit_test(copy_to_running_test),
+            cmocka_unit_test(candidate_commit_lock_test),
     };
     return cmocka_run_group_tests(tests, setup, teardown);
 }
