@@ -3388,19 +3388,16 @@ dm_copy_subtree_startup_running(dm_ctx_t *ctx, dm_session_t *session, const char
     CHECK_NULL_ARG5(ctx, session, module_name, schema_info, xpath);
     int rc = SR_ERR_OK;
     struct ly_set *nodes = NULL;
-    dm_session_t *startup_session = NULL;
+    dm_session_t *tmp_session = NULL;
     dm_data_info_t *startup_info = NULL;
     dm_data_info_t *candidate_info = NULL;
     struct lyd_node *node = NULL, *parent = NULL;
 
-    /* mark currently selected datastore */
-    int ds = session->datastore;
-
-    rc = dm_session_start(ctx, session->user_credentials, SR_DS_STARTUP, &startup_session);
+    rc = dm_session_start(ctx, session->user_credentials, SR_DS_STARTUP, &tmp_session);
     CHECK_RC_MSG_RETURN(rc, "Failed to start a temporary session");
 
     /* select nodes by xpath from startup */
-    rc = dm_get_data_info(ctx, startup_session, module_name, &startup_info);
+    rc = dm_get_data_info(ctx, tmp_session, module_name, &startup_info);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Get info for startup config failed");
 
     if (NULL == startup_info->node) {
@@ -3408,13 +3405,13 @@ dm_copy_subtree_startup_running(dm_ctx_t *ctx, dm_session_t *session, const char
     }
 
     /* switch to candidate */
-    session->datastore = SR_DS_CANDIDATE;
-    rc = dm_get_data_info(ctx, session, module_name, &candidate_info);
+    tmp_session->datastore = SR_DS_CANDIDATE;
+    rc = dm_get_data_info(ctx, tmp_session, module_name, &candidate_info);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Get info failed");
 
     /* remove previous config from running */
     SR_LOG_DBG("Remove previous content of running configuration under %s.", xpath);
-    rc = rp_dt_delete_item(ctx, session, xpath, SR_EDIT_DEFAULT);
+    rc = rp_dt_delete_item(ctx, tmp_session, xpath, SR_EDIT_DEFAULT);
     CHECK_RC_LOG_GOTO(rc, cleanup, "Delete of previous values in running failed xpath %s", xpath);
 
     /* select a part of configuration to be enabled */
@@ -3464,13 +3461,11 @@ dm_copy_subtree_startup_running(dm_ctx_t *ctx, dm_session_t *session, const char
     }
 
     /* copy module candidate -> running */
-    rc = dm_copy_module(ctx, session, module_name, SR_DS_CANDIDATE, SR_DS_RUNNING);
+    rc = dm_copy_module(ctx, tmp_session, module_name, SR_DS_CANDIDATE, SR_DS_RUNNING);
 
 cleanup:
     ly_set_free(nodes);
-    dm_session_stop(ctx, startup_session);
-    /* switch back to previously selected datastore */
-    session->datastore = ds;
+    dm_session_stop(ctx, tmp_session);
 
     return rc;
 }

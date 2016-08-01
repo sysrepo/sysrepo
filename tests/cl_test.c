@@ -1356,7 +1356,8 @@ cl_notification_test(void **state)
     assert_int_equal(rc, SR_ERR_UNKNOWN_MODEL);
 
     rc = sr_unsubscribe(session, subscription);
-    assert_int_equal(rc, SR_ERR_OK);
+    /* example module has been uninstalled */
+    assert_int_equal(rc, SR_ERR_UNKNOWN_MODEL);
 
     /* stop the session */
     rc = sr_session_stop(session);
@@ -2302,7 +2303,7 @@ main()
             cmocka_unit_test_setup_teardown(cl_get_error_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_refresh_session, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_refresh_session2, sysrepo_setup, sysrepo_teardown),
-            //cmocka_unit_test_setup_teardown(cl_notification_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_notification_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_copy_config_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_copy_config_test2, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_rpc_test, sysrepo_setup, sysrepo_teardown),
