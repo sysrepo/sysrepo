@@ -443,9 +443,10 @@ message UnlockResp {
  * Sent by sr_module_install internal API calls.
  */
 message ModuleInstallReq {
-  optional string module_name = 1;
+  required string module_name = 1;
   optional string revision = 2;
-  required bool installed = 3;
+  optional string file_name = 3;
+  required bool installed = 4;
 }
 
 /**

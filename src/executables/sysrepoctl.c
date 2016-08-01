@@ -606,13 +606,13 @@ srctl_uninstall(const char *module_name, const char *revision)
     /* search for the module to uninstall */
     rc = md_get_module_info(md_ctx, module_name, revision, &module);
     if (SR_ERR_OK != rc) {
-        fprintf(stderr, "Error: Module '%s@%s' is not installed.\n", module_name, 
+        fprintf(stderr, "Error: Module '%s@%s' is not installed.\n", module_name,
                 revision ? revision : "<latest>");
         goto fail;
     }
-   
+
     /* load the schema into libyang ctx to get access to the list of sub-modules */
-    module_schema = lys_parse_path(ly_ctx, module->filepath, 
+    module_schema = lys_parse_path(ly_ctx, module->filepath,
                                    sr_str_ends_with(module->filepath, SR_SCHEMA_YANG_FILE_EXT) ? LYS_IN_YANG : LYS_IN_YIN);
     if (NULL == module_schema) {
         rc = SR_ERR_INTERNAL;
@@ -631,6 +631,21 @@ srctl_uninstall(const char *module_name, const char *revision)
         fprintf(stderr, "Error: Unable to remove the module from the dependency graph.\n");
         goto fail;
     }
+    /* notify sysrepo about the change */
+    if (!custom_repository) {
+        /* disable in sysrepo */
+        rc = srctl_open_session(true, &connection, &session);
+        if (SR_ERR_OK == rc) {
+            rc = sr_module_install(session, module_name, revision, module_schema->filepath, false);
+            if (SR_ERR_OK != rc && SR_ERR_NOT_FOUND != rc) {
+                srctl_report_error(session, rc);
+                fprintf(stderr, "Module can not be uninstalled because it is being used.\n");
+            }
+            sr_disconnect(connection);
+            CHECK_RC_LOG_GOTO(rc, fail, "Failed to uninstall module %s", module->name);
+        }
+    }
+
     rc = md_flush(md_ctx);
     if (SR_ERR_OK != rc) {
         fprintf(stderr, "Error: Unable to apply the changes made in the dependency graph.\n");
@@ -653,21 +668,6 @@ srctl_uninstall(const char *module_name, const char *revision)
     rc = srctl_schema_file_delete(module_schema->filepath);
     if (SR_ERR_OK != rc) {
         fprintf(stderr, "Warning: Module schema delete was unsuccessful, continuing.\n");
-    }
-
-    /* notify sysrepo about the change */
-    if (!custom_repository) {
-        /* disable in sysrepo */
-        rc = srctl_open_session(true, &connection, &session);
-        if (SR_ERR_OK == rc) {
-            rc = sr_module_install(session, module_name, revision, false);
-            if (SR_ERR_OK != rc && SR_ERR_NOT_FOUND != rc) {
-                srctl_report_error(session, rc);
-                fprintf(stderr, "Warning: Sysrepo failed to react properly to uninstalled module, "
-                                "consider restart of the daemon, continuing.\n");
-            }
-            sr_disconnect(connection);
-        }
     }
 
     /* delete data files */
@@ -963,7 +963,7 @@ srctl_install(const char *yang, const char *yin, const char *owner, const char *
         printf("Notifying sysrepo about the change...\n");
         rc = srctl_open_session(true, &connection, &session);
         if (SR_ERR_OK == rc) {
-            rc = sr_module_install(session, module->name, module->rev[0].date, true);
+            rc = sr_module_install(session, module->name, module->rev[0].date, module->filepath, true);
             if (SR_ERR_OK != rc) {
                 if (SR_ERR_RESTART_NEEDED == rc) {
                     fprintf(stderr, "Error: sysrepod must be restarted (or stopped) before previously uninstalled "
@@ -1097,7 +1097,7 @@ srctl_init(const char *module_name, const char *revision, const char *owner, con
     } while (NULL != module);
 
     if (NULL == module) {
-        fprintf(stderr, "Error: Cannot find schema file for the module '%s@%s' in the repository.\n", 
+        fprintf(stderr, "Error: Cannot find schema file for the module '%s@%s' in the repository.\n",
                 module_name, revision);
         rc = SR_ERR_INVAL_ARG;
         goto fail;

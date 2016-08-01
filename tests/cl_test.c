@@ -28,6 +28,7 @@
 #include <string.h>
 #include <pthread.h>
 
+#include "sr_constants.h"
 #include "sysrepo.h"
 #include "client_library.h"
 
@@ -1292,8 +1293,10 @@ cl_notification_test(void **state)
             0, SR_SUBSCR_CTX_REUSE, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
+    char file_name[512] = {0};
+    snprintf(file_name, 512, "%s%s.yang", SR_SCHEMA_SEARCH_DIR, "example-module");
     /* do some changes */
-    rc = sr_module_install(session, "example-module", NULL, true);
+    rc = sr_module_install(session, "example-module", NULL, file_name, true);
     assert_int_equal(rc, SR_ERR_OK);
 
     rc = sr_feature_enable(session, "ietf-interfaces", "pre-provisioning", true);
@@ -1339,11 +1342,13 @@ cl_notification_test(void **state)
     rc = sr_feature_enable(session, "example-module", "unknown", true);
     assert_int_equal(rc, SR_ERR_INVAL_ARG);
 
-    rc = sr_module_install(session, "example-module", "2016-05-03", false);
+    snprintf(file_name, 512, "%s%s%s.yang", SR_SCHEMA_SEARCH_DIR, "example-module", "@2016-05-03");
+    rc = sr_module_install(session, "example-module", "2016-05-03", file_name, false);
     assert_int_equal(rc, SR_ERR_NOT_FOUND);
 
     /* BEWARE: sysrepo must be restarted to access example-module again */
-    rc = sr_module_install(session, "example-module", NULL, false);
+    snprintf(file_name, 512, "%s%s.yang", SR_SCHEMA_SEARCH_DIR, "example-module");
+    rc = sr_module_install(session, "example-module", NULL, file_name, false);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* after module uninstallation all subsequent operation return UNKOWN_MODEL */

@@ -219,6 +219,7 @@ dm_data_info_free(void *item)
         /* decrement the number of usage of the module */
         pthread_mutex_lock(&info->schema->usage_count_mutex);
         info->schema->usage_count--;
+        SR_LOG_DBG("Usage count %s decremented (value=%zu)", info->schema->module_name, info->schema->usage_count);
         pthread_mutex_unlock(&info->schema->usage_count_mutex);
     }
     free(info);
@@ -292,6 +293,7 @@ dm_insert_data_info_copy(sr_btree_t *tree, const dm_data_info_t *di)
     }
     pthread_mutex_lock(&di->schema->usage_count_mutex);
     di->schema->usage_count++;
+    SR_LOG_DBG("Usage count %s incremented (value=%zu)", di->schema->module_name, di->schema->usage_count);
     pthread_mutex_unlock(&di->schema->usage_count_mutex);
     copy->schema = di->schema;
     copy->timestamp = di->timestamp;
@@ -431,8 +433,7 @@ dm_get_schema_info(dm_ctx_t *dm_ctx, const char *module_name, dm_schema_info_t *
 /**
  * @brief Loads a schema file into the schema_info structure.
  *
- * @note if append is false (the main module is being loaded), module readlock is hold
- * after successful schema loading
+ * @note Function expects that module write lock is hold by caller if append is true
  *
  * @param [in] dm_ctx
  * @param [in] schema_filepath
@@ -484,8 +485,6 @@ dm_load_schema_file(dm_ctx_t *dm_ctx, const char *schema_filepath, bool append, 
     rc = pm_get_module_info(dm_ctx->pm_ctx, module->name, &module_enabled,
             &enabled_subtrees, &enabled_subtrees_cnt, &features, &features_cnt);
     if (SR_ERR_OK == rc) {
-        rc = dm_lock_schema_info_write(si);
-        CHECK_RC_MSG_GOTO(rc, cleanup, "Dm lock schema write failed");
 
         /* enable active features */
         for (size_t i = 0; i < features_cnt; i++) {
@@ -509,9 +508,6 @@ dm_load_schema_file(dm_ctx_t *dm_ctx, const char *schema_filepath, bool append, 
                 }
             }
         }
-
-        /* unlock schema */
-        pthread_rwlock_unlock(&si->model_lock);
 
         /* release memory */
         for (size_t i = 0; i < enabled_subtrees_cnt; i++) {
@@ -567,6 +563,7 @@ dm_load_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, 
     while (ll_node) {
         dep = (md_dep_t *)ll_node->data;
         if (dep->type == MD_DEP_EXTENSION) { /*< imports are automatically loaded by libyang */
+            /* module write lock is not required because schema info is not added into schema tree yet*/
             rc = dm_load_schema_file(dm_ctx, dep->dest->filepath, true, &si);
             if (SR_ERR_OK != rc) {
                 *schema_info = NULL;
@@ -706,6 +703,7 @@ dm_load_data_tree_file(dm_ctx_t *dm_ctx, int fd, const char *data_filename, dm_s
     /* increment counter of data tree using the module */
     pthread_mutex_lock(&schema_info->usage_count_mutex);
     schema_info->usage_count++;
+    SR_LOG_DBG("Usage count %s incremented (value=%zu)", schema_info->module_name, schema_info->usage_count);
     pthread_mutex_unlock(&schema_info->usage_count_mutex);
 
     if (NULL == data_tree) {
@@ -876,6 +874,7 @@ dm_lock_module(dm_ctx_t *dm_ctx, dm_session_t *session, const char *modul_name)
 
         pthread_mutex_lock(&si->usage_count_mutex);
         si->usage_count++;
+        SR_LOG_DBG("Usage count %s incremented (value=%zu)", si->module_name, si->usage_count);
         pthread_mutex_unlock(&si->usage_count_mutex);
     }
 cleanup:
@@ -918,6 +917,7 @@ dm_unlock_module(dm_ctx_t *dm_ctx, dm_session_t *session, char *modul_name)
         sr_list_rm_at(session->locked_files, i);
         pthread_mutex_lock(&si->usage_count_mutex);
         si->usage_count--;
+        SR_LOG_DBG("Usage count %s decremented (value=%zu)", si->module_name, si->usage_count);
         pthread_mutex_unlock(&si->usage_count_mutex);
     }
 cleanup:
@@ -980,13 +980,71 @@ cleanup:
     return rc;
 }
 
+/**
+ *
+ * @brief Extracts the name of the module and lookups the schema info from lock files.
+ *
+ * Expectes that lock file name are in form [DATA_DIR][MODULE_NAME][DATASTORE].lock
+ *
+ * @note Schema info read lock is acquired on successful return from function. Must be released by caller.
+ *
+ * @param [in] dm_ctx
+ * @param [in] lock_file
+ * @param [out] schema_info
+ * @return Error code (SR_ERR_OK on success)
+ */
+static int
+dm_get_schema_info_by_lock_file(dm_ctx_t *dm_ctx, const char *lock_file, dm_schema_info_t **schema_info)
+{
+    CHECK_NULL_ARG3(dm_ctx, lock_file, schema_info);
+    int rc = SR_ERR_OK;
+    char *begin = NULL;
+    char *end = NULL;
+    char *module_name = NULL;
+
+    if (NULL == strstr(lock_file, dm_ctx->data_search_dir)){
+        return SR_ERR_INTERNAL;
+    }
+    begin = (char *)lock_file + strlen(dm_ctx->data_search_dir);
+    if ((end = strstr(begin, SR_STARTUP_FILE_EXT SR_LOCK_FILE_EXT))
+            || (end = strstr(begin, SR_RUNNING_FILE_EXT SR_LOCK_FILE_EXT))
+            || (end = strstr(begin, ".candidate" SR_LOCK_FILE_EXT))) {
+        /* dup the module name */
+        module_name = strndup(begin, end-begin);
+        CHECK_NULL_NOMEM_RETURN(module_name);
+
+        rc = dm_get_module_and_lock(dm_ctx, module_name, schema_info);
+        free(module_name);
+    } else {
+        SR_LOG_ERR("Unable to extract module name %s", lock_file);
+        rc = SR_ERR_INTERNAL;
+    }
+
+    return rc;
+}
+
 int
 dm_unlock_datastore(dm_ctx_t *dm_ctx, dm_session_t *session)
 {
     CHECK_NULL_ARG2(dm_ctx, session);
     SR_LOG_INF_MSG("Unlock datastore request");
+    int rc = SR_ERR_OK;
+    dm_schema_info_t *si = NULL;
 
     while (session->locked_files->count > 0) {
+        si = NULL;
+        rc = dm_get_schema_info_by_lock_file(dm_ctx, (char *) session->locked_files->data[0], &si);
+        if (SR_ERR_OK == rc) {
+            SR_LOG_DBG("Module_name %s", si->module_name);
+            pthread_mutex_lock(&si->usage_count_mutex);
+            si->usage_count--;
+            SR_LOG_DBG("Usage count %s decremented (value=%zu)", si->module_name, si->usage_count);
+            pthread_mutex_unlock(&si->usage_count_mutex);
+            pthread_rwlock_unlock(&si->model_lock);
+        } else {
+            SR_LOG_WRN("Get schema info by lock file failed %s", (char *) session->locked_files->data[0]);
+        }
+
         dm_unlock_file(dm_ctx->locking_ctx, (char *) session->locked_files->data[0]);
         free(session->locked_files->data[0]);
         sr_list_rm_at(session->locked_files, 0);
@@ -2745,6 +2803,7 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
             }
             pthread_mutex_lock(&info->schema->usage_count_mutex);
             info->schema->usage_count++;
+            SR_LOG_DBG("Usage count %s incremented (value=%zu)", info->schema->module_name, info->schema->usage_count);
             pthread_mutex_unlock(&info->schema->usage_count_mutex);
             di->schema = info->schema;
         } else {
@@ -2978,66 +3037,72 @@ dm_feature_enable(dm_ctx_t *dm_ctx, const char *module_name, const char *feature
 }
 
 int
-dm_install_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision)
+dm_install_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, const char *file_name)
 {
-    CHECK_NULL_ARG2(dm_ctx, module_name);
-#if 0
+    CHECK_NULL_ARG3(dm_ctx, module_name, file_name); /* revision can be NULL */
 
     int rc = 0;
     bool found_in_md_ctx = false;
+    md_module_t *module = NULL;
+    md_dep_t *dep = NULL;
+    sr_llist_node_t *ll_node = NULL;
     dm_schema_info_t *si = NULL;
     dm_schema_info_t lookup = {0};
 
-    //TODO: whole path is needed
     /* insert module into the dependency graph */
     md_ctx_lock(dm_ctx->md_ctx, true);
-    rc = md_insert_module(dm_ctx->md_ctx, module->filepath);
-    md_ctx_unlock(dm_ctx->md_ctx);
+    pthread_rwlock_wrlock(&dm_ctx->schema_tree_lock);
+
+    rc = md_insert_module(dm_ctx->md_ctx, file_name);
     if (SR_ERR_DATA_EXISTS == rc) {
-        SR_LOG_WRN("Module '%s' is already installed\n", module->name);
+        SR_LOG_WRN("Module '%s' is already installed\n", file_name);
         found_in_md_ctx = true;
-        return SR_ERR_OK; /*< do not treat as error */
+        rc = SR_ERR_OK; /*< do not treat as error */
     }
 
-    pthread_rwlock_wrlock(&dm_ctx->schema_tree_lock);
-    lookup.module_name = module_name;
+    rc = md_get_module_info(dm_ctx->md_ctx, module_name, revision, &module);
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Get module %s info failed", module_name);
+
+    lookup.module_name = (char *) module_name;
     si = sr_btree_search(dm_ctx->schema_info_tree, &lookup);
     if (NULL == si) {
         /* module is installed for the first time, will be loaded when a request
          * into this module is received */
     } else {
-/*
-        rc = dm_load_schema_file(dm_ctx, module->filepath, false, &si);
-        CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to load schema %s", module->filepath);
+        RWLOCK_WRLOCK_TIMED_CHECK_GOTO(&si->model_lock, rc, cleanup);
+        if (NULL != si->ly_ctx) {
+            SR_LOG_WRN("Module %s already loaded", si->module_name);
+            goto unlock;
+        }
+
+        si->ly_ctx = ly_ctx_new(dm_ctx->schema_search_dir);
+        CHECK_NULL_NOMEM_GOTO(si->ly_ctx, rc, unlock);
+
+        rc = dm_load_schema_file(dm_ctx, module->filepath, true, &si);
+        CHECK_RC_LOG_GOTO(rc, unlock, "Failed to load schema %s", module->filepath);
+
+        si->module = ly_ctx_get_module(si->ly_ctx, module_name, NULL);
+        if (NULL == si->module){
+            rc = SR_ERR_INTERNAL;
+            goto unlock;
+        }
 
         ll_node = module->deps->first;
         while (ll_node) {
             dep = (md_dep_t *)ll_node->data;
             if (dep->type == MD_DEP_EXTENSION) { // imports are automatically loaded by libyang
-            rc = dm_load_schema_file(dm_ctx, dep->dest->filepath, true, &si);
-            if (SR_ERR_OK != rc) {
-                *schema_info = NULL;
-                md_ctx_unlock(dm_ctx->md_ctx);
-                return rc;
+                rc = dm_load_schema_file(dm_ctx, dep->dest->filepath, true, &si);
+                CHECK_RC_LOG_GOTO(rc, cleanup, "Loading of %s was not successfull", dep->dest->name);
             }
+            ll_node = ll_node->next;
         }
-        ll_node = ll_node->next;
-        }
-*/
+unlock:
+        pthread_rwlock_unlock(&si->model_lock);
     }
-
+cleanup:
     pthread_rwlock_unlock(&dm_ctx->schema_tree_lock);
-
-    /* load module schema */
-    const struct lys_module *module = ly_ctx_load_module(dm_ctx->ly_ctx, module_name, revision);
-
-    if (NULL == module) {
-        SR_LOG_ERR("Module %s with revision %s was not found", module_name, revision);
-        return SR_ERR_NOT_FOUND;
-    }
-
-#endif
-    return SR_ERR_OK;
+    md_ctx_unlock(dm_ctx->md_ctx);
+    return rc;
 }
 
 int
@@ -3045,8 +3110,37 @@ dm_uninstall_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revis
 {
     CHECK_NULL_ARG2(dm_ctx, module_name);
     int rc = SR_ERR_OK;
-#if 0
     md_module_t *module = NULL;
+    dm_schema_info_t lookup = {0};
+    dm_schema_info_t *schema_info = NULL;
+
+    RWLOCK_RDLOCK_TIMED_CHECK_RETURN(&dm_ctx->schema_tree_lock);
+    lookup.module_name = (char *) module_name;
+
+    schema_info = sr_btree_search(dm_ctx->schema_info_tree, &lookup);
+    if (NULL != schema_info) {
+        pthread_rwlock_wrlock(&schema_info->model_lock);
+        if (NULL != schema_info->ly_ctx){
+            pthread_mutex_lock(&schema_info->usage_count_mutex);
+            if (0 != schema_info->usage_count) {
+                rc = SR_ERR_OPERATION_FAILED;
+                SR_LOG_ERR("Module %s can not be uninstalled because it is being used. (referenced by %zu)", module_name, schema_info->usage_count);
+            } else {
+                ly_ctx_destroy(schema_info->ly_ctx, dm_free_lys_private_data);
+                schema_info->ly_ctx = NULL;
+                schema_info->module = NULL;
+                SR_LOG_DBG("Module %s uninstalled", module_name);
+            }
+            pthread_mutex_unlock(&schema_info->usage_count_mutex);
+        }
+        pthread_rwlock_unlock(&schema_info->model_lock);
+    } else {
+        SR_LOG_DBG("Module %s is not loaded, can be uninstalled safely", module_name);
+    }
+
+    pthread_rwlock_unlock(&dm_ctx->schema_tree_lock);
+
+    CHECK_RC_LOG_RETURN(rc, "Uninstallation of module %s was not successfull", module_name);
 
     md_ctx_lock(dm_ctx->md_ctx, true);
     rc = md_get_module_info(dm_ctx->md_ctx, module_name, revision, &module);
@@ -3055,16 +3149,9 @@ dm_uninstall_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revis
         SR_LOG_ERR("Module %s with revision %s was not found", module_name, revision);
         rc = SR_ERR_NOT_FOUND;
     } else {
-        rc = sr_list_add(dm_ctx->disabled_sch, (void *) strdup(module->name));
-        if (SR_ERR_OK != rc) {
-            SR_LOG_ERR("Failed to add module %s into the list of disabled modules",
-                       md_get_module_fullname(module));
-        } else {
         rc = md_remove_module(dm_ctx->md_ctx, module_name, revision);
     }
-
     md_ctx_unlock(dm_ctx->md_ctx);
-#endif
     return rc;
 }
 
@@ -3729,6 +3816,7 @@ dm_copy_modified_session_trees(dm_ctx_t *dm_ctx, dm_session_t *from, dm_session_
         if (!existed) {
             pthread_mutex_lock(&info->schema->usage_count_mutex);
             info->schema->usage_count++;
+            SR_LOG_DBG("Usage count %s deccremented (value=%zu)", info->schema->module_name, info->schema->usage_count);
             pthread_mutex_unlock(&info->schema->usage_count_mutex);
 
             rc = sr_btree_insert(to->session_modules[to->datastore], new_info);
@@ -3789,6 +3877,7 @@ dm_copy_session_tree(dm_ctx_t *dm_ctx, dm_session_t *from, dm_session_t *to, con
     if (!existed) {
         pthread_mutex_lock(&info->schema->usage_count_mutex);
         info->schema->usage_count++;
+        SR_LOG_DBG("Usage count %s deccremented (value=%zu)", info->schema->module_name, info->schema->usage_count);
         pthread_mutex_unlock(&info->schema->usage_count_mutex);
         if (SR_ERR_OK == rc) {
             rc = sr_btree_insert(to->session_modules[to->datastore], new_info);

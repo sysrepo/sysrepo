@@ -1860,7 +1860,7 @@ cleanup:
 }
 
 int
-sr_module_install(sr_session_ctx_t *session, const char *module_name, const char *revision, bool installed)
+sr_module_install(sr_session_ctx_t *session, const char *module_name, const char *revision, const char *file_name, bool installed)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
     int rc = SR_ERR_OK;
@@ -1881,7 +1881,15 @@ sr_module_install(sr_session_ctx_t *session, const char *module_name, const char
         msg_req->request->module_install_req->revision = strdup(revision);
         CHECK_NULL_NOMEM_GOTO(msg_req->request->module_install_req->revision, rc, cleanup);
     }
+
     msg_req->request->module_install_req->installed = installed;
+
+    if (installed && NULL == file_name) {
+        SR_LOG_ERR_MSG("File name argument must not be NULL if installed is true");
+        goto cleanup;
+    }
+    msg_req->request->module_install_req->file_name = strdup(file_name);
+    CHECK_NULL_NOMEM_GOTO(msg_req->request->module_install_req->file_name, rc, cleanup);
 
     /* send the request and receive the response */
     rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__MODULE_INSTALL);
