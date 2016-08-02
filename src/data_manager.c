@@ -155,7 +155,7 @@ dm_module_subscription_cmp(const void *a, const void *b)
     dm_model_subscription_t *sub_a = (dm_model_subscription_t *) a;
     dm_model_subscription_t *sub_b = (dm_model_subscription_t *) b;
 
-    int res = strcmp(sub_a->module->name, sub_b->module->name);
+    int res = strcmp(sub_a->schema_info->module_name, sub_b->schema_info->module_name);
     if (res == 0) {
         return 0;
     } else if (res < 0) {
@@ -2362,7 +2362,7 @@ dm_prepare_module_subscriptions(dm_ctx_t *dm_ctx, dm_schema_info_t *schema_info,
         }
     }
 
-    ms->module = schema_info->module;
+    ms->schema_info = schema_info;
 
 cleanup:
     if (SR_ERR_OK != rc) {
@@ -2825,7 +2825,7 @@ dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t *c
             continue;
         }
 
-        lookup.module = info->schema->module;
+        lookup.schema_info = info->schema;
 
         ms = sr_btree_search(c_ctx->subscriptions, &lookup);
         if (NULL == ms) {

@@ -55,17 +55,19 @@ typedef struct dm_ctx_s dm_ctx_t;
 typedef struct dm_session_s dm_session_t;
 
 /**
- * @brief Holds information related to the schema
+ * @brief Holds information related to the schema.
  */
 typedef struct dm_schema_info_s {
-    char *module_name;             /**< name of the module the name */
-    pthread_rwlock_t model_lock;   /**< module lock used */
-    size_t usage_count;            /**< number of data copies referencing the module after releasing lock */
-    pthread_mutex_t usage_count_mutex;  /**< mutex guarding usage_coun variable */
+    char *module_name;                  /**< name of the module the name */
+    pthread_rwlock_t model_lock;        /**< module lock:
+                                         *  read    - usage of schema, reading of private data in schema,
+                                         *  write   - load schema, uninstalling context, modification of private data */
+    size_t usage_count;                 /**< number of data copies referencing the module after releasing lock */
+    pthread_mutex_t usage_count_mutex;  /**< mutex guarding usage_count variable */
     struct ly_ctx *ly_ctx;              /**< libyang context contains the module and all its dependencies.
                                          * Can be NULL if module has been uninstalled
                                          * during sysrepo-engine lifetime */
-    const struct lys_module *module;    /**< Pointer to the module */
+    const struct lys_module *module;    /**< Pointer to the module, might be NULL if module has been uninstalled*/
 }dm_schema_info_t;
 
 /**
@@ -124,7 +126,7 @@ typedef struct dm_sess_op_s{
  * used in commit context
  */
 typedef struct dm_model_subscription_s {
-    const struct lys_module *module;    /**< module */
+    dm_schema_info_t *schema_info;      /**< schema info identifying the module to which the subscriptions are tied to */
     np_subscription_t **subscriptions;  /**< array of struct received from np */
     struct lys_node **nodes;            /**< array of schema nodes corresponding to the subscription */
     size_t subscription_cnt;            /**< number of subscriptions */

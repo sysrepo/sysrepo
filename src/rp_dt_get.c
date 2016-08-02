@@ -673,13 +673,12 @@ rp_dt_get_changes(rp_ctx_t *rp_ctx, rp_session_t *rp_session, dm_commit_context_
     rc = dm_get_module_and_lock(rp_ctx->dm_ctx, module_name, &schema_info);
     CHECK_RC_LOG_GOTO(rc, cleanup, "Dm get module failed for %s", module_name);
 
-    //TODO: replace module by schema_info in dm_model_subscription
-    lookup.module = schema_info->module;
+    lookup.schema_info = schema_info;
 
     ms = sr_btree_search(c_ctx->subscriptions, &lookup);
     pthread_rwlock_unlock(&schema_info->model_lock);
     if (NULL == ms) {
-        SR_LOG_ERR("Module subscription not found for module %s", lookup.module->name);
+        SR_LOG_ERR("Module subscription not found for module %s", lookup.schema_info->module_name);
         rc = SR_ERR_INTERNAL;
         goto cleanup;
     }
