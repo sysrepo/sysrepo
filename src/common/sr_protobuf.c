@@ -477,6 +477,7 @@ sr_gpb_resp_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__
             CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__rpcresp__init((Sr__RPCResp*)sub_msg);
             resp->rpc_resp = (Sr__RPCResp*)sub_msg;
+            break;
         case SR__OPERATION__EVENT_NOTIF:
             sub_msg = calloc(1, sizeof(Sr__EventNotifResp));
             CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
@@ -1354,7 +1355,11 @@ sr_dup_tree_to_gpb(const sr_node_t *sr_tree, Sr__Node **gpb_tree)
     CHECK_NULL_NOMEM_RETURN(gpb);
     sr__node__init(gpb);
     gpb->value = calloc(1, sizeof(*gpb->value));
-    CHECK_NULL_NOMEM_RETURN(gpb->value);
+    CHECK_NULL_NOMEM_ERROR(gpb->value, rc);
+    if (SR_ERR_OK != rc) {
+        free(gpb);
+        return rc;
+    }
     sr__value__init(gpb->value);
     gpb->n_children = 0;
 
