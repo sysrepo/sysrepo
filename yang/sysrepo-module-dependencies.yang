@@ -34,6 +34,16 @@ module sysrepo-module-dependencies {
         description "Revision of the module, can be empty.";
     }
 
+    leaf prefix {
+        type string;
+        description "Prefix of the module.";
+    }
+
+    leaf namespace {
+        type string;
+        description "Namespace of the module.";
+    }
+
     leaf filepath {
         type string;
         description "Path to the schema file.";
@@ -43,6 +53,12 @@ module sysrepo-module-dependencies {
         type boolean;
         default true;
         description "Is this the latest revision of this module?";
+    }
+
+    leaf submodule {
+        type boolean;
+        default false;
+        description "TRUE if this is only submodule, FALSE in case of a proper module.";
     }
 
     container dependencies {
@@ -64,6 +80,7 @@ module sysrepo-module-dependencies {
 
         leaf type {
             type enumeration {
+                enum "include";
                 enum "import";
                 enum "extension";
             }
