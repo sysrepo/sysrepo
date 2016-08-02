@@ -29,7 +29,7 @@
 #include "persistence_manager.h"
 #include "notification_processor.h"
 
-#define NP_COMMIT_RELEASE_TIMEOUT 60  /**< Timeout (in seconds) after which the commit will be released
+#define NP_COMMIT_RELEASE_TIMEOUT 10  /**< Timeout (in seconds) after which the commit will be released
                                            also in case that not all notification ACKs have been received. */
 
 /**
