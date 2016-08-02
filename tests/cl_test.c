@@ -1353,15 +1353,15 @@ cl_notification_test(void **state)
     /* after module uninstallation all subsequent operation return UNKOWN_MODEL */
     rc = sr_lock_module(session, "example-module");
     assert_int_equal(rc, SR_ERR_UNKNOWN_MODEL);
-    
+
     /* install module back */
     snprintf(file_name, 512, "%s%s.yang", SR_SCHEMA_SEARCH_DIR, "example-module");
     rc = sr_module_install(session, "example-module", NULL, file_name, true);
     assert_int_equal(rc, SR_ERR_OK);
-    
+
     rc = sr_unsubscribe(session, subscription);
     assert_int_equal(rc, SR_ERR_OK);
-    
+
     /* stop the session */
     rc = sr_session_stop(session);
     assert_int_equal(rc, SR_ERR_OK);

@@ -469,19 +469,22 @@ rp_dt_trim_xpath(dm_ctx_t *dm_ctx, const char *xpath, char **trimmed)
 
 /**
  *
- * @note Function does not acquire nor release a schema lock.
+ * @brief Function tries to validate the xpath and to find the corresponding
+ * node in schema if possible.
  *
- * @param dm_ctx
- * @param session
- * @param schema_info
- * @param xpath
- * @param match
- * @return
+ * @note Function expects that a schema info is locked for reading.
+ *
+ * @param [in] dm_ctx
+ * @param [in] session
+ * @param [in] schema_info
+ * @param [in] xpath
+ * @param [out] match
+ * @return Error code (SR_ERR_OK on success)
  */
 static int
 rp_dt_validate_node_xpath_intrenal(dm_ctx_t *dm_ctx, dm_session_t *session, dm_schema_info_t *schema_info, const char *xpath, struct lys_node **match)
 {
-    CHECK_NULL_ARG3(dm_ctx, xpath, schema_info);
+    CHECK_NULL_ARG3(dm_ctx, xpath, schema_info); /* match can be NULL */
     int rc = SR_ERR_OK;
 
     char *namespace = NULL;
