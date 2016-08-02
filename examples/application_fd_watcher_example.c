@@ -27,11 +27,17 @@
 #include <unistd.h>
 #include <signal.h>
 #include <inttypes.h>
+#include <errno.h>
+#include <string.h>
+#include <poll.h>
 #include "sysrepo.h"
 
-volatile int exit_application = 0;
+#define XPATH_MAX_LEN 100
+#define POLL_SIZE 32
 
-#define MAX_LEN 100
+volatile int exit_application;
+struct pollfd poll_fd_set[POLL_SIZE];
+size_t poll_fd_cnt;
 
 static void
 print_value(sr_val_t *value)
@@ -102,8 +108,8 @@ print_current_config(sr_session_ctx_t *session, const char *module_name)
     sr_val_t *values = NULL;
     size_t count = 0;
     int rc = SR_ERR_OK;
-    char xpath[MAX_LEN] = {0};
-    snprintf(xpath, MAX_LEN, "/%s:*//*", module_name);
+    char xpath[XPATH_MAX_LEN] = {0};
+    snprintf(xpath, XPATH_MAX_LEN, "/%s:*//*", module_name);
 
     rc = sr_get_items(session, xpath, &values, &count);
     if (SR_ERR_OK != rc) {
@@ -133,13 +139,93 @@ sigint_handler(int signum)
 }
 
 static void
+fd_start_watching(int fd, int events)
+{
+    bool matched = false;
+    for (size_t j = 0; j < poll_fd_cnt; j++) {
+        if (fd == poll_fd_set[j].fd) {
+            /* fond existing entry */
+            poll_fd_set[poll_fd_cnt].events |= (SR_FD_INPUT_READY == events) ? POLLIN : POLLOUT;
+            matched = true;
+        }
+    }
+    if (!matched) {
+        /* create a new entry */
+        poll_fd_set[poll_fd_cnt].fd = fd;
+        poll_fd_set[poll_fd_cnt].events = (SR_FD_INPUT_READY == events) ? POLLIN : POLLOUT;
+        poll_fd_cnt++;
+    }
+}
+
+static void
+fd_stop_watching(int fd, int events)
+{
+    for (size_t j = 0; j < poll_fd_cnt; j++) {
+        if (fd == poll_fd_set[j].fd) {
+            if ((poll_fd_set[j].events & POLLIN) && (poll_fd_set[j].events & POLLOUT) &&
+                    !((events & SR_FD_INPUT_READY) && (events & SR_FD_OUTPUT_READY))) {
+                /* stop monitoring the fd for specified event */
+                poll_fd_set[j].events &= !(SR_FD_INPUT_READY == events) ? POLLIN : POLLOUT;
+            } else {
+                /* stop monitoring the fd at all */
+                if (j < poll_fd_cnt - 1) {
+                    memmove(&poll_fd_set[j], &poll_fd_set[j+1], (poll_fd_cnt - j - 1) * sizeof(*poll_fd_set));
+                }
+                poll_fd_cnt--;
+            }
+        }
+    }
+}
+
+static void
+fd_change_set_process(sr_fd_watcher_t *fd_change_set, size_t fd_change_set_cnt)
+{
+    for (size_t i = 0; i < fd_change_set_cnt; i++) {
+        if (SR_FD_START_WATCHING == fd_change_set[i].action) {
+            /* start monitoring the FD for specified event */
+            fd_start_watching(fd_change_set[i].fd, fd_change_set[i].events);
+        }
+        if (SR_FD_STOP_WATCHING == fd_change_set[i].action) {
+            /* stop monitoring the FD for specified event */
+            fd_stop_watching(fd_change_set[i].fd, fd_change_set[i].events);
+        }
+    }
+}
+
+static void
 event_loop()
 {
-    /* loop until ctrl-c is pressed / SIGINT is received */
+    sr_fd_watcher_t *fd_change_set = NULL;
+    size_t fd_change_set_cnt = 0;
+    int ret = 0, rc = SR_ERR_OK;
+
+    /* install SIGINT handler and block SIGPIPE */
     signal(SIGINT, sigint_handler);
-    while (!exit_application) {
-        sleep(1000);  /* or do some more useful work... */
-    }
+    signal(SIGPIPE, SIG_IGN);
+
+    do {
+        ret = poll(poll_fd_set, poll_fd_cnt, -1);
+        if (-1 == ret && EINTR != errno) {
+            fprintf(stderr, "Error by poll: %s\n", strerror(errno));
+        }
+        for (size_t i = 0; i < poll_fd_cnt; i++) {
+            if (poll_fd_set[i].revents & POLLIN) {
+                rc = sr_fd_event_process(poll_fd_set[i].fd, SR_FD_INPUT_READY, &fd_change_set, &fd_change_set_cnt);
+                fd_change_set_process(fd_change_set, fd_change_set_cnt);
+                free(fd_change_set);
+                fd_change_set_cnt = 0;
+            }
+            if (poll_fd_set[i].revents & POLLOUT) {
+                rc = sr_fd_event_process(poll_fd_set[i].fd, SR_FD_OUTPUT_READY, &fd_change_set, &fd_change_set_cnt);
+                fd_change_set_process(fd_change_set, fd_change_set_cnt);
+                free(fd_change_set);
+                fd_change_set_cnt = 0;
+            }
+            if (SR_ERR_OK != rc) {
+                fprintf(stderr, "Error by processing events on fd: %s\n", sr_strerror(rc));
+            }
+        }
+    } while ((SR_ERR_OK == rc) && !exit_application);
 }
 
 int
@@ -153,6 +239,16 @@ main(int argc, char **argv)
     char *module_name = "ietf-interfaces";
     if (argc > 1) {
         module_name = argv[1];
+    }
+
+    /* init app-local fd watcher */
+    rc = sr_fd_watcher_init(&poll_fd_set[0].fd);
+    poll_fd_set[0].events = POLLIN;
+    poll_fd_cnt = 1;
+
+    if (SR_ERR_OK != rc) {
+        fprintf(stderr, "Error by sr_fd_watcher_init: %s\n", sr_strerror(rc));
+        goto cleanup;
     }
 
     /* connect to sysrepo */
@@ -197,6 +293,10 @@ cleanup:
     if (NULL != connection) {
         sr_disconnect(connection);
     }
+
+    /* cleanup app-local fd watcher */
+    sr_fd_watcher_cleanup();
+
     return rc;
 }
 

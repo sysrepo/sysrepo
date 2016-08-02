@@ -33,6 +33,9 @@
 
 #define POLL_SIZE 32
 
+struct pollfd poll_fd_set[POLL_SIZE];
+size_t poll_fd_cnt;
+
 static int
 sysrepo_setup(void **state)
 {
@@ -77,6 +80,60 @@ module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_ev
 }
 
 static void
+cl_fd_start_watching(int fd, int events)
+{
+    bool matched = false;
+    for (size_t j = 0; j < poll_fd_cnt; j++) {
+        if (fd == poll_fd_set[j].fd) {
+            /* fond existing entry */
+            poll_fd_set[poll_fd_cnt].events |= (SR_FD_INPUT_READY == events) ? POLLIN : POLLOUT;
+            matched = true;
+        }
+    }
+    if (!matched) {
+        /* create a new entry */
+        poll_fd_set[poll_fd_cnt].fd = fd;
+        poll_fd_set[poll_fd_cnt].events = (SR_FD_INPUT_READY == events) ? POLLIN : POLLOUT;
+        poll_fd_cnt++;
+    }
+}
+
+static void
+cl_fd_stop_watching(int fd, int events)
+{
+    for (size_t j = 0; j < poll_fd_cnt; j++) {
+        if (fd == poll_fd_set[j].fd) {
+            if ((poll_fd_set[j].events & POLLIN) && (poll_fd_set[j].events & POLLOUT) &&
+                    !((events & SR_FD_INPUT_READY) && (events & SR_FD_OUTPUT_READY))) {
+                /* stop monitoring the fd for specified event */
+                poll_fd_set[j].events &= !(SR_FD_INPUT_READY == events) ? POLLIN : POLLOUT;
+            } else {
+                /* stop monitoring the fd at all */
+                if (j < poll_fd_cnt - 1) {
+                    memmove(&poll_fd_set[j], &poll_fd_set[j+1], (poll_fd_cnt - j - 1) * sizeof(*poll_fd_set));
+                }
+                poll_fd_cnt--;
+            }
+        }
+    }
+}
+
+static void
+cl_fd_change_set_process(sr_fd_watcher_t *fd_change_set, size_t fd_change_set_cnt)
+{
+    for (size_t i = 0; i < fd_change_set_cnt; i++) {
+        if (SR_FD_START_WATCHING == fd_change_set[i].action) {
+            /* start monitoring the FD for specified event */
+            cl_fd_start_watching(fd_change_set[i].fd, fd_change_set[i].events);
+        }
+        if (SR_FD_STOP_WATCHING == fd_change_set[i].action) {
+            /* stop monitoring the FD for specified event */
+            cl_fd_stop_watching(fd_change_set[i].fd, fd_change_set[i].events);
+        }
+    }
+}
+
+static void
 cl_fd_poll_test(void **state)
 {
     sr_conn_ctx_t *conn = *state;
@@ -84,8 +141,6 @@ cl_fd_poll_test(void **state)
     sr_session_ctx_t *session = NULL;
     sr_subscription_ctx_t *subscription = NULL;
 
-    struct pollfd fd_set[POLL_SIZE];
-    size_t fd_cnt = 0, tmp_cnt = 0;
     sr_fd_watcher_t *fd_change_set = NULL;
     size_t fd_change_set_cnt = 0;
     int init_fd = 0;
@@ -96,9 +151,9 @@ cl_fd_poll_test(void **state)
     rc = sr_fd_watcher_init(&init_fd);
     assert_int_equal(rc, SR_ERR_OK);
 
-    fd_set[0].fd = init_fd;
-    fd_set[0].events = POLLIN;
-    fd_cnt = 1;
+    poll_fd_set[0].fd = init_fd;
+    poll_fd_set[0].events = POLLIN;
+    poll_fd_cnt = 1;
 
     /* start session */
     rc = sr_session_start(conn, SR_DS_CANDIDATE, SR_SESS_DEFAULT, &session);
@@ -118,66 +173,28 @@ cl_fd_poll_test(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 
     do {
-        ret = poll(fd_set, fd_cnt, -1);
+        ret = poll(poll_fd_set, poll_fd_cnt, -1);
         assert_int_not_equal(ret, -1);
 
-        tmp_cnt = fd_cnt; /* fd_cnt will be modified inside of the loop */
-        for (size_t i = 0; i < tmp_cnt; i++) {
-            assert_false((fd_set[i].revents & POLLERR) || (fd_set[i].revents & POLLHUP) || (fd_set[i].revents & POLLNVAL));
+        for (size_t i = 0; i < poll_fd_cnt; i++) {
+            assert_false((poll_fd_set[i].revents & POLLERR) || (poll_fd_set[i].revents & POLLHUP) || (poll_fd_set[i].revents & POLLNVAL));
 
-            if (fd_set[i].revents & POLLIN) {
-                rc = sr_fd_event_process(fd_set[i].fd, SR_FD_INPUT_READY, &fd_change_set, &fd_change_set_cnt);
+            if (poll_fd_set[i].revents & POLLIN) {
+                rc = sr_fd_event_process(poll_fd_set[i].fd, SR_FD_INPUT_READY, &fd_change_set, &fd_change_set_cnt);
                 assert_int_equal(rc, SR_ERR_OK);
+                cl_fd_change_set_process(fd_change_set, fd_change_set_cnt);
+                free(fd_change_set);
+                fd_change_set_cnt = 0;
             }
-            if (fd_set[i].revents & POLLOUT) {
-                rc = sr_fd_event_process(fd_set[i].fd, SR_FD_OUTPUT_READY, &fd_change_set, &fd_change_set_cnt);
+            if (poll_fd_set[i].revents & POLLOUT) {
+                rc = sr_fd_event_process(poll_fd_set[i].fd, SR_FD_OUTPUT_READY, &fd_change_set, &fd_change_set_cnt);
                 assert_int_equal(rc, SR_ERR_OK);
+                cl_fd_change_set_process(fd_change_set, fd_change_set_cnt);
+                free(fd_change_set);
+                fd_change_set_cnt = 0;
             }
-            for (size_t i = 0; i < fd_change_set_cnt; i++) {
-                if (SR_FD_START_WATCHING == fd_change_set[i].action) {
-                    /* start monitoring the FD for specified event */
-                    bool matched = false;
-                    for (size_t j = 0; j < fd_cnt; j++) {
-                        if (fd_change_set[i].fd == fd_set[j].fd) {
-                            /* fond existing entry */
-                            fd_set[fd_cnt].events |= (SR_FD_INPUT_READY == fd_change_set[i].events) ? POLLIN : POLLOUT;
-                            matched = true;
-                        }
-                    }
-                    if (!matched) {
-                        /* create a new entry */
-                        fd_set[fd_cnt].fd = fd_change_set[i].fd;
-                        fd_set[fd_cnt].events = (SR_FD_INPUT_READY == fd_change_set[i].events) ? POLLIN : POLLOUT;
-                        fd_cnt++;
-                    }
-                }
-                if (SR_FD_STOP_WATCHING == fd_change_set[i].action) {
-                    /* stop monitoring the FD for specified event */
-                    for (size_t j = 0; j < fd_cnt; j++) {
-                        if (fd_change_set[i].fd == fd_set[j].fd) {
-                            if ((fd_set[j].events & POLLIN) && (fd_set[j].events & POLLOUT) &&
-                                    !((fd_change_set[i].events & SR_FD_INPUT_READY) && (fd_change_set[i].events & SR_FD_OUTPUT_READY))) {
-                                /* stop monitoring the fd for specified event */
-                                fd_set[j].events &= !(SR_FD_INPUT_READY == fd_change_set[i].events) ? POLLIN : POLLOUT;
-                            } else {
-                                /* stop monitoring the fd at all */
-                                if (j < fd_cnt - 1) {
-                                    memmove(&fd_set[j], &fd_set[j+1], (fd_cnt - j - 1) * sizeof(*fd_set));
-                                }
-                                fd_cnt--;
-                            }
-                        }
-                    }
-                }
-            }
-            free(fd_change_set);
-            fd_change_set = NULL;
-            fd_change_set_cnt = 0;
         }
     } while ((SR_ERR_OK == rc) && !callback_called);
-
-    /* cleanup app-local watcher */
-    sr_fd_watcher_cleanup();
 
     /* unsubscribe after callback has been called */
     rc = sr_unsubscribe(session, subscription);
@@ -187,6 +204,9 @@ cl_fd_poll_test(void **state)
     /* stop the session */
     rc = sr_session_stop(session);
     assert_int_equal(rc, SR_ERR_OK);
+
+    /* cleanup app-local watcher */
+    sr_fd_watcher_cleanup();
 }
 
 int

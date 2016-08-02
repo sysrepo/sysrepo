@@ -1778,6 +1778,10 @@ cl_sm_fd_event_process(cl_sm_ctx_t *sm_ctx, int fd, sr_fd_event_t event,
             } else {
                 /* this is a client socket connection - read a message from specified fd */
                 rc = cl_sm_fd_read_data(sm_ctx, fd);
+                if (SR_ERR_DISCONNECT == rc) {
+                    SR_LOG_DBG("Client of fd %d disconnected, ignoring this fd.", fd);
+                    rc = SR_ERR_OK;
+                }
             }
         } else {
             /* the file descriptor is writeable */

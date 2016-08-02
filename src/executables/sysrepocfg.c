@@ -70,9 +70,6 @@ static bool srcfg_custom_repository = false;
 static sr_conn_ctx_t *srcfg_connection = NULL;
 static sr_session_ctx_t *srcfg_session = NULL;
 
-/* logging */
-static bool ly_diminish_errors = false;
-
 /**
  * @brief Logging callback called from libyang for each log entry.
  */
@@ -81,19 +78,15 @@ srcfg_ly_log_cb(LY_LOG_LEVEL level, const char *msg, const char *path)
 {
     switch (level) {
         case LY_LLERR:
-            if (ly_diminish_errors)
-                SR_LOG_WRN("libyang: %s", msg);
-            else
-                SR_LOG_ERR("libyang: %s", msg);
-            break;
         case LY_LLWRN:
-            SR_LOG_WRN("libyang: %s", msg);
+            SR_LOG_WRN("libyang: %s (%s)", msg, path);
             break;
         case LY_LLVRB:
-            SR_LOG_INF("libyang: %s", msg);
+            SR_LOG_INF("libyang: %s (%s)", msg, path);
             break;
         case LY_LLDBG:
-            SR_LOG_DBG("libyang: %s", msg);
+            SR_LOG_DBG("libyang: %s (%s)", msg, path);
+            break;
         case LY_LLSILENT:
         default:
             break;
@@ -267,9 +260,7 @@ srcfg_get_module_data(struct ly_ctx *ly_ctx, const char *module_name, struct lyd
 
     *data_tree = NULL;
     ly_errno = LY_SUCCESS;
-    ly_diminish_errors = true;
     while (SR_ERR_OK == (rc = sr_get_item_next(srcfg_session, iter, &value))) {
-        ly_diminish_errors = false;
         if (NULL == value) {
             goto next;
         }
@@ -317,9 +308,7 @@ next:
             sr_free_val(value);
             value = NULL;
         }
-        ly_diminish_errors = true;
     }
-    ly_diminish_errors = false;
 
     if (SR_ERR_NOT_FOUND == rc) {
         rc = SR_ERR_OK;
@@ -602,14 +591,14 @@ srcfg_import_datastore(struct ly_ctx *ly_ctx, int fd_in, const char *module_name
         new_data_tree = lyd_parse_mem(ly_ctx, input_data, format, LYD_OPT_STRICT | LYD_OPT_CONFIG);
     }
     if (NULL == new_data_tree && LY_SUCCESS != ly_errno) {
-        SR_LOG_ERR("Unable to parse the input data: %s", ly_errmsg());
+        SR_LOG_ERR("Unable to parse the input data: %s (%s)", ly_errmsg(), ly_errpath());
         goto cleanup;
     }
 
     /* validate input data */
     if (NULL != new_data_tree) {
         ret = lyd_validate(&new_data_tree, LYD_OPT_STRICT | LYD_OPT_CONFIG | LYD_WD_IMPL_TAG);
-        CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_INTERNAL, cleanup, "Input data are not valid: %s", ly_errmsg());
+        CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_INTERNAL, cleanup, "Input data is not valid: %s (%s)", ly_errmsg(), ly_errpath());
     }
 
     /* remove default nodes */
