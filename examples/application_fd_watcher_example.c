@@ -198,7 +198,7 @@ fd_stop_watching(int fd, int events)
  * Processes changes in monitoring of file descriptors specified as the input argument.
  */
 static void
-fd_change_set_process(sr_fd_watcher_t *fd_change_set, size_t fd_change_set_cnt)
+fd_change_set_process(sr_fd_change_t *fd_change_set, size_t fd_change_set_cnt)
 {
     for (size_t i = 0; i < fd_change_set_cnt; i++) {
         if (SR_FD_START_WATCHING == fd_change_set[i].action) {
@@ -218,7 +218,7 @@ fd_change_set_process(sr_fd_watcher_t *fd_change_set, size_t fd_change_set_cnt)
 static void
 event_loop()
 {
-    sr_fd_watcher_t *fd_change_set = NULL;
+    sr_fd_change_t *fd_change_set = NULL;
     size_t fd_change_set_cnt = 0;
     int ret = 0, rc = SR_ERR_OK;
 

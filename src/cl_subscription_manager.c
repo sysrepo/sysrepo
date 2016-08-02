@@ -77,7 +77,7 @@ typedef struct cl_sm_ctx_s {
     /** Determines whether application-local file descriptor watcher is in place or not. */
     bool local_fd_watcher;
     /** File descriptor changes that need to be applied in application-local file descriptor watcher. */
-    sr_fd_watcher_t *fd_changeset;
+    sr_fd_change_t *fd_changeset;
     /** Count of file descriptor changes in fd_changeset array. */
     size_t fd_changeset_cnt;
     /** Lock for the server contexts linked-list. */
@@ -124,7 +124,7 @@ typedef struct cl_sm_conn_ctx_s {
 static int
 cl_sm_fd_changeset_add(cl_sm_ctx_t *sm_ctx, int fd, int events, sr_fd_action_t action)
 {
-    sr_fd_watcher_t *watcher_arr = NULL;
+    sr_fd_change_t *watcher_arr = NULL;
 
     CHECK_NULL_ARG(sm_ctx);
 
@@ -153,7 +153,7 @@ cl_sm_fd_changeset_add(cl_sm_ctx_t *sm_ctx, int fd, int events, sr_fd_action_t a
  * @brief Retrieves current file descriptor chnageset from the SM context and clears it inside of the context.
  */
 static int
-cl_sm_get_fd_change_set(cl_sm_ctx_t *sm_ctx, sr_fd_watcher_t **fd_change_set, size_t *fd_change_set_cnt)
+cl_sm_get_fd_change_set(cl_sm_ctx_t *sm_ctx, sr_fd_change_t **fd_change_set, size_t *fd_change_set_cnt)
 {
     CHECK_NULL_ARG3(sm_ctx, fd_change_set, fd_change_set_cnt);
 
@@ -1756,7 +1756,7 @@ cl_sm_subscription_cleanup(cl_sm_subscription_ctx_t *subscription)
 
 int
 cl_sm_fd_event_process(cl_sm_ctx_t *sm_ctx, int fd, sr_fd_event_t event,
-        sr_fd_watcher_t **fd_change_set, size_t *fd_change_set_cnt)
+        sr_fd_change_t **fd_change_set, size_t *fd_change_set_cnt)
 {
     char buf[256] = { 0, };
     cl_sm_server_ctx_t *server_ctx = NULL;

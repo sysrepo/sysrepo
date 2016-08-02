@@ -140,7 +140,7 @@ void cl_sm_subscription_cleanup(cl_sm_subscription_ctx_t *subscription);
  * @return Error code (SR_ERR_OK on success).
  */
 int cl_sm_fd_event_process(cl_sm_ctx_t *sm_ctx, int fd, sr_fd_event_t event,
-        sr_fd_watcher_t **fd_change_set, size_t *fd_change_set_cnt);
+        sr_fd_change_t **fd_change_set, size_t *fd_change_set_cnt);
 
 /**@} cl_sm */
 

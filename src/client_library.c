@@ -2348,7 +2348,7 @@ sr_fd_watcher_cleanup()
 }
 
 int
-sr_fd_event_process(int fd, sr_fd_event_t event, sr_fd_watcher_t **fd_change_set, size_t *fd_change_set_cnt)
+sr_fd_event_process(int fd, sr_fd_event_t event, sr_fd_change_t **fd_change_set, size_t *fd_change_set_cnt)
 {
     int rc = SR_ERR_OK;
 
