@@ -1910,50 +1910,26 @@ cleanup:
     return rc;
 }
 
-static int
-dm_load_file_content(const char *file_name, char **content)
-{
-    CHECK_NULL_ARG2(file_name, content);
-    int rc = SR_ERR_OK;
-    FILE *f = fopen(file_name, "rb");
-    if (NULL == f) {
-        SR_LOG_ERR("Unable to open schema file %s", file_name);
-        return SR_ERR_IO;
-    }
-    fseek(f, 0, SEEK_END);
-    long fsize = ftell(f);
-    fseek(f, 0, SEEK_SET);
-
-    char *string = calloc(fsize + 1, sizeof(*string));
-    fread(string, fsize, 1, f);
-    fclose(f);
-
-    string[fsize] = 0;
-    *content = string;
-    return rc;
-}
-
 int
 dm_get_schema(dm_ctx_t *dm_ctx, const char *module_name, const char *module_revision, const char *submodule_name, bool yang_format, char **schema)
 {
 
     CHECK_NULL_ARG2(dm_ctx, module_name);
     int rc = SR_ERR_OK;
-    md_module_t *module = NULL;
+    int ret = 0;
+    dm_schema_info_t *si = NULL;
 
     SR_LOG_INF("Get schema '%s', revision: '%s', submodule: '%s'", module_name, module_revision, submodule_name);
 
-    md_ctx_lock(dm_ctx->md_ctx, false);
-    //TODO yin/yang
+    //TODO submodules
+    rc = dm_get_module_and_lock(dm_ctx, module_name, &si);
+    CHECK_RC_LOG_RETURN(rc, "Get module failed for %s", module_name);
 
-    rc = md_get_module_info(dm_ctx->md_ctx, module_name, module_revision, &module);
-    CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to find module %s in md_ctx", module_name);
-
-    rc = dm_load_file_content(module->filepath, schema);
-    CHECK_RC_LOG_GOTO(rc, cleanup, "Loading of file content %s failed", module->filepath);
+    ret = lys_print_mem(schema, si->module, yang_format ? LYS_OUT_YANG : LYS_OUT_YIN, NULL);
+    CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_INTERNAL, cleanup, "Module %s print failed.", si->module_name);
 
 cleanup:
-    md_ctx_unlock(dm_ctx->md_ctx);
+    pthread_rwlock_unlock(&si->model_lock);
     return rc;
 
 }

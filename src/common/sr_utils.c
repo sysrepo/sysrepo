@@ -210,7 +210,7 @@ sr_get_schema_file_name(const char *schema_search_dir, const char *module_name,
     CHECK_NULL_ARG2(module_name, file_name);
     char *tmp = NULL, *tmp2 = NULL;
     int rc = sr_str_join(schema_search_dir, module_name, &tmp);
-    if (NULL != rev_date) {
+    if (NULL != rev_date && 0 != strcmp(rev_date, "")) {
         if (SR_ERR_OK != rc) {
             return rc;
         }
