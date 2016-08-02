@@ -256,12 +256,11 @@ int dm_get_data_info(dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, const char 
 int dm_get_datatree(dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, const char *module_name, struct lyd_node **data_tree);
 
 /**
- * @brief Tests if the schema exists in libyang context. If yes returns the module.
- * If not and Sysrepo is running in the library mode, the module and its dependencies are loaded
- * into the libyang context.
- * Returned module might be used to validate xpath or to create data tree.
+ * @brief Tests if the schema exists. If yes returns the module (loads from file system if
+ * necessary). Having read lock ensures that model will not be uninstalled from sysrepo.
+ * Private schema data can be read and data tree manipulation can be done safely.
  *
- * @note Read-lock is acquired after successful call. Lock must be realeased by caller:
+ * @note Read-lock is acquired after successful call. Lock must be released by caller:
  * pthread_rwlock_unlock(&schema_info->module_lock)
  *
  * @param [in] dm_ctx
@@ -271,10 +270,33 @@ int dm_get_datatree(dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, const char *
  */
 int dm_get_module_and_lock(dm_ctx_t *dm_ctx, const char *module_name, dm_schema_info_t **schema_info);
 
-int dm_get_module_without_lock(dm_ctx_t *dm_ctx, const char *module_name, dm_schema_info_t **schema_info);
-
+/**
+ * @brief Same as ::dm_get_module_and_lock however rwlock is locked for writing. With write lock
+ * acquired, module can be installed/uninstalled and private data stored in schema
+ * can be edited.
+ *
+ * @note Schema info write lock is acquired on successful return from function. Must be released by caller.
+ *
+ * @param [in] dm_ctx
+ * @param [in] module_name
+ * @param [out] schema_info
+ * @return Error code (SR_ERR_OK on success)
+ */
 int dm_get_module_and_lockw(dm_ctx_t *dm_ctx, const char *module_name, dm_schema_info_t **schema_info);
 
+/**
+ * @brief Retrieves schema info using ::dm_get_module_and_lock. Lock is released. Function can be used to verify
+ * that module existed during function execution. To use schema_info afterward, lock must be acquired
+ * using ::dm_lock_schem_info or ::dm_lock_schema_info_write.
+ *
+ * @note Function acquires and releases read lock for the schema info.
+ *
+ * @param [in] dm_ctx
+ * @param [in] module_name
+ * @param [out] schema_info
+ * @return Error code (SR_ERR_OK on success)
+ */
+int dm_get_module_without_lock(dm_ctx_t *dm_ctx, const char *module_name, dm_schema_info_t **schema_info);
 
 /**
  * @brief Returns an array that contains information about schemas supported by sysrepo.
@@ -856,7 +878,9 @@ int dm_get_md_ctx(dm_ctx_t *dm_ctx, md_ctx_t **md_ctx);
 int dm_lock_schema_info(dm_schema_info_t *schema_info);
 
 /**
- * @brief Acquires write lock for the provided schema info.
+ * @brief Acquires write lock for the provided schema info. With write lock
+ * acquired, module can be installed/uninstalled and private data stored in schema
+ * can be edited.
  *
  * @note Schema info write lock is acquired on successful return from function. Must be released by caller.
  * @note Function may return SR_ERR_UNKNOWN_MODULE if the module has been
