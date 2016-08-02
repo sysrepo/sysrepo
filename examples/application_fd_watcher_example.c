@@ -132,6 +132,16 @@ sigint_handler(int signum)
     exit_application = 1;
 }
 
+static void
+event_loop()
+{
+    /* loop until ctrl-c is pressed / SIGINT is received */
+    signal(SIGINT, sigint_handler);
+    while (!exit_application) {
+        sleep(1000);  /* or do some more useful work... */
+    }
+}
+
 int
 main(int argc, char **argv)
 {
@@ -173,11 +183,7 @@ main(int argc, char **argv)
 
     printf("\n\n ========== STARTUP CONFIG APPLIED AS RUNNING ==========\n\n");
 
-    /* loop until ctrl-c is pressed / SIGINT is received */
-    signal(SIGINT, sigint_handler);
-    while (!exit_application) {
-        sleep(1000);  /* or do some more useful work... */
-    }
+    event_loop();
 
     printf("Application exit requested, exiting.\n");
 
