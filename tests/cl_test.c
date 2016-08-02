@@ -1346,7 +1346,6 @@ cl_notification_test(void **state)
     rc = sr_module_install(session, "example-module", "2016-05-03", file_name, false);
     assert_int_equal(rc, SR_ERR_NOT_FOUND);
 
-    /* BEWARE: sysrepo must be restarted to access example-module again */
     snprintf(file_name, 512, "%s%s.yang", SR_SCHEMA_SEARCH_DIR, "example-module");
     rc = sr_module_install(session, "example-module", NULL, file_name, false);
     assert_int_equal(rc, SR_ERR_OK);
@@ -1354,11 +1353,15 @@ cl_notification_test(void **state)
     /* after module uninstallation all subsequent operation return UNKOWN_MODEL */
     rc = sr_lock_module(session, "example-module");
     assert_int_equal(rc, SR_ERR_UNKNOWN_MODEL);
-
+    
+    /* install module back */
+    snprintf(file_name, 512, "%s%s.yang", SR_SCHEMA_SEARCH_DIR, "example-module");
+    rc = sr_module_install(session, "example-module", NULL, file_name, true);
+    assert_int_equal(rc, SR_ERR_OK);
+    
     rc = sr_unsubscribe(session, subscription);
-    /* example module has been uninstalled */
-    assert_int_equal(rc, SR_ERR_UNKNOWN_MODEL);
-
+    assert_int_equal(rc, SR_ERR_OK);
+    
     /* stop the session */
     rc = sr_session_stop(session);
     assert_int_equal(rc, SR_ERR_OK);
@@ -2289,7 +2292,7 @@ main()
     const struct CMUnitTest tests[] = {
             cmocka_unit_test_setup_teardown(cl_connection_test, logging_setup, NULL),
             cmocka_unit_test_setup_teardown(cl_list_schemas_test, sysrepo_setup, sysrepo_teardown),
-            //cmocka_unit_test_setup_teardown(cl_get_schema_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_get_schema_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_get_item_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_get_items_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_get_items_iter_test, sysrepo_setup, sysrepo_teardown),

@@ -1736,11 +1736,8 @@ dm_list_module(dm_ctx_t *dm_ctx, md_module_t *module, sr_schema_t *schema)
     schema->module_name = strdup(module->name);
     CHECK_NULL_NOMEM_GOTO(schema->module_name, rc, cleanup);
 
-    schema->revision.revision = strdup(module->revision_date);
-    CHECK_NULL_NOMEM_GOTO(schema->revision.revision, rc, cleanup);
-
-    schema->revision.file_path_yang = strdup(module->filepath);
-    CHECK_NULL_NOMEM_GOTO(schema->revision.file_path_yang, rc, cleanup);
+    rc = dm_list_rev_file(dm_ctx, module->name, module->revision_date, &schema->revision);
+    CHECK_RC_LOG_GOTO(rc, cleanup, "List rev file failed module %s", module->name);
 
     //TODO ns, prefix, submodules + features
 
@@ -1842,7 +1839,7 @@ cleanup:
 #endif
 }
 
-static const char *
+/*static const char *
 dm_get_module_revision(struct lyd_node *module)
 {
     int rc = 0;
@@ -1867,7 +1864,7 @@ dm_get_module_revision(struct lyd_node *module)
     ly_set_free(rev);
     return result;
 
-}
+}*/
 
 int
 dm_list_schemas(dm_ctx_t *dm_ctx, dm_session_t *dm_session, sr_schema_t **schemas, size_t *schema_count)
@@ -1911,71 +1908,29 @@ dm_list_schemas(dm_ctx_t *dm_ctx, dm_session_t *dm_session, sr_schema_t **schema
 cleanup:
     sr_free_schemas(sch, i);
     return rc;
-#if 0
-    if (dm_ctx->conn_mode == CM_MODE_LOCAL) {
-        rc = dm_load_all_schemas(dm_ctx);
-        if (SR_ERR_OK != rc) {
-            SR_LOG_ERR_MSG("Failed to load all schemas.");
-            return rc;
-        }
+}
+
+static int
+dm_load_file_content(const char *file_name, char **content)
+{
+    CHECK_NULL_ARG2(file_name, content);
+    int rc = SR_ERR_OK;
+    FILE *f = fopen(file_name, "rb");
+    if (NULL == f) {
+        SR_LOG_ERR("Unable to open schema file %s", file_name);
+        return SR_ERR_IO;
     }
+    fseek(f, 0, SEEK_END);
+    long fsize = ftell(f);
+    fseek(f, 0, SEEK_SET);
 
-    pthread_rwlock_rdlock(&dm_ctx->schema_tree_lock);
-    struct lyd_node *info = ly_ctx_info(dm_ctx->ly_ctx);
-    if (NULL == info) {
-        pthread_rwlock_unlock(&dm_ctx->schema_tree_lock);
-        SR_LOG_ERR("No info data found %d", ly_errno);
-        return SR_ERR_INTERNAL;
-    }
+    char *string = calloc(fsize + 1, sizeof(*string));
+    fread(string, fsize, 1, f);
+    fclose(f);
 
-    struct ly_set *modules = lyd_get_node(info, "/ietf-yang-library:modules-state/module/name");
-    if (NULL == modules) {
-        SR_LOG_ERR_MSG("Error during module listing");
-        rc = SR_ERR_INTERNAL;
-        goto cleanup;
-    } else if (0 == modules->number) {
-        goto cleanup;
-    }
-
-    *schemas = calloc(modules->number, sizeof(**schemas));
-    CHECK_NULL_NOMEM_GOTO(*schemas, rc, cleanup);
-
-    for (unsigned int i = 0; i < modules->number; i++) {
-        const char *revision = dm_get_module_revision(modules->set.d[i]->parent);
-        const char *module_name = ((struct lyd_node_leaf_list *) modules->set.d[i])->value_str;
-        if (dm_is_module_disabled(dm_ctx, module_name)) {
-            SR_LOG_WRN("Module %s is disabled and will not be included in list schema", module_name);
-            continue;
-        }
-        rc = dm_list_module(dm_ctx, module_name, revision, &(*schemas)[*schema_count]);
-        CHECK_RC_MSG_GOTO(rc, cleanup, "Filling sr_schema_t failed");
-        (*schema_count)++;
-    }
-
-    /* return only files where we can locate schema files */
-    for (int i = *schema_count - 1; i >= 0; i--) {
-        sr_schema_t *s = &((*schemas)[i]);
-        if (NULL == s->revision.file_path_yang && NULL == s->revision.file_path_yin) {
-            sr_free_schema(s);
-            memmove(&(*schemas)[i],
-                    &(*schemas)[i + 1],
-                    (*schema_count - i - 1) * sizeof(*s));
-            (*schema_count)--;
-        }
-    }
-
-cleanup:
-    pthread_rwlock_unlock(&dm_ctx->schema_tree_lock);
-    if (SR_ERR_OK != rc) {
-        sr_free_schemas(*schemas, *schema_count);
-        *schemas = NULL;
-        *schema_count = 0;
-    }
-    ly_set_free(modules);
-    lyd_free_withsiblings(info);
-
+    string[fsize] = 0;
+    *content = string;
     return rc;
-    #endif
 }
 
 int
@@ -1983,46 +1938,23 @@ dm_get_schema(dm_ctx_t *dm_ctx, const char *module_name, const char *module_revi
 {
 
     CHECK_NULL_ARG2(dm_ctx, module_name);
-#if 0
     int rc = SR_ERR_OK;
+    md_module_t *module = NULL;
 
     SR_LOG_INF("Get schema '%s', revision: '%s', submodule: '%s'", module_name, module_revision, submodule_name);
 
-    const struct lys_module *module = NULL;
-    //TODO extract correct
-    rc = dm_get_module_and_lock(dm_ctx, module_name, module_revision, &module);
-    if (SR_ERR_OK != rc) {
-        return SR_ERR_NOT_FOUND;
-    }
+    md_ctx_lock(dm_ctx->md_ctx, false);
+    //TODO yin/yang
 
-    pthread_rwlock_rdlock(&dm_ctx->schema_tree_lock);
-    if (NULL == submodule_name) {
-        /* module*/
-        rc = lys_print_mem(schema, module, yang_format ? LYS_OUT_YANG : LYS_OUT_YIN, NULL);
-        pthread_rwlock_unlock(&dm_ctx->schema_tree_lock);
-        if (0 != rc) {
-            SR_LOG_ERR("Module %s print failed.", module->name);
-            return SR_ERR_INTERNAL;
-        }
-        return SR_ERR_OK;
-    }
+    rc = md_get_module_info(dm_ctx->md_ctx, module_name, module_revision, &module);
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to find module %s in md_ctx", module_name);
 
-    /* submodule */
-    const struct lys_submodule *submodule = ly_ctx_get_submodule2(module, submodule_name);
-    pthread_rwlock_unlock(&dm_ctx->schema_tree_lock);
-    if (NULL == submodule) {
-        SR_LOG_ERR("Submodule %s of module %s (%s) was not found.", submodule_name, module_name, module_revision);
-        return SR_ERR_NOT_FOUND;
-    }
+    rc = dm_load_file_content(module->filepath, schema);
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Loading of file content %s failed", module->filepath);
 
-    rc = lys_print_mem(schema, (const struct lys_module *) submodule, yang_format ? LYS_OUT_YANG : LYS_OUT_YIN, NULL);
-    if (0 != rc) {
-        SR_LOG_ERR("Submodule %s print failed.", submodule->name);
-        return SR_ERR_INTERNAL;
-    }
-#endif
-
-    return SR_ERR_OK;
+cleanup:
+    md_ctx_unlock(dm_ctx->md_ctx);
+    return rc;
 
 }
 
