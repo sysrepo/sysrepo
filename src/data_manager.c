@@ -2933,16 +2933,13 @@ dm_install_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revisio
 
     lookup.module_name = (char *) module_name;
     si = sr_btree_search(dm_ctx->schema_info_tree, &lookup);
-    if (NULL == si) {
-        /* module is installed for the first time, will be loaded when a request
-         * into this module is received */
-    } else {
+    if (NULL != si) {
         RWLOCK_WRLOCK_TIMED_CHECK_GOTO(&si->model_lock, rc, cleanup);
         if (NULL != si->ly_ctx) {
             SR_LOG_WRN("Module %s already loaded", si->module_name);
             goto unlock;
         }
-
+        /* load module and its dependencies into si */
         si->ly_ctx = ly_ctx_new(dm_ctx->schema_search_dir);
         CHECK_NULL_NOMEM_GOTO(si->ly_ctx, rc, unlock);
 
@@ -2966,6 +2963,10 @@ dm_install_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revisio
         }
 unlock:
         pthread_rwlock_unlock(&si->model_lock);
+    } else {
+        /* module is installed for the first time, will be loaded when a request
+         * into this module is received */
+        SR_LOG_DBG("Module %s will be loaded when a request for it comes", module_name);
     }
 cleanup:
     pthread_rwlock_unlock(&dm_ctx->schema_tree_lock);
@@ -3008,7 +3009,7 @@ dm_uninstall_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revis
 
     pthread_rwlock_unlock(&dm_ctx->schema_tree_lock);
 
-    CHECK_RC_LOG_RETURN(rc, "Uninstallation of module %s was not successfull", module_name);
+    CHECK_RC_LOG_RETURN(rc, "Uninstallation of module %s was not successful", module_name);
 
     md_ctx_lock(dm_ctx->md_ctx, true);
     rc = md_get_module_info(dm_ctx->md_ctx, module_name, revision, &module);

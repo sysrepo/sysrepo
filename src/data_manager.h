@@ -601,8 +601,10 @@ int dm_unlock_datastore(dm_ctx_t *dm_ctx, dm_session_t *session);
 int dm_feature_enable(dm_ctx_t *dm_ctx, const char *module_name, const char *feature_name, bool enable);
 
 /**
- * @brief Tries to load the schema with specified revision. If the module has been
- * uninstalled before sysrepo restart is required and SR_ERR_INTERNAL returned.
+ * @brief Tries to load the schema with specified revision.
+ *
+ * @note Function acquires and releases write lock for the schema info.
+ *
  * @param [in] dm_ctx
  * @param [in] module_name
  * @param [in] revision
