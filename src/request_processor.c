@@ -1240,7 +1240,9 @@ static int
 rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
 {
     char *module_name = NULL;
+    sr_api_variant_t api_variant = SR_API_VALUES;
     sr_val_t *input = NULL;
+    sr_node_t *input_tree = NULL;
     size_t input_cnt = 0;
     np_subscription_t *subscriptions = NULL;
     size_t subscription_cnt = 0;
@@ -1249,51 +1251,81 @@ rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg 
 
     CHECK_NULL_ARG_NORET5(rc, rp_ctx, session, msg, msg->request, msg->request->rpc_req);
     if (SR_ERR_OK != rc) {
-        /* release the message since it won't be released in dispatch */
-        sr__msg__free_unpacked(msg, NULL);
-        return rc;
+        goto finalize;
     }
 
     SR_LOG_DBG_MSG("Processing RPC request.");
 
+    /* parse input arguments */
+    if (msg->request->rpc_req->n_input) {
+        rc = sr_values_gpb_to_sr(msg->request->rpc_req->input,  msg->request->rpc_req->n_input, &input, &input_cnt);
+    } else if (msg->request->rpc_req->n_input_tree) {
+        api_variant = SR_API_TREES;
+        rc = sr_trees_gpb_to_sr(msg->request->rpc_req->input_tree,  msg->request->rpc_req->n_input_tree,
+                                &input_tree, &input_cnt);
+    }
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Failed to parse RPC (%s) input arguments from GPB message.", msg->request->rpc_req->xpath);
+        goto finalize;
+    }
+
     /* validate RPC request */
-    rc = sr_values_gpb_to_sr(msg->request->rpc_req->input,  msg->request->rpc_req->n_input, &input, &input_cnt);
-    if (SR_ERR_OK == rc) {
-        rc = dm_validate_rpc(rp_ctx->dm_ctx, session->dm_session, msg->request->rpc_req->xpath, &input, &input_cnt, true);
+    if (SR_API_VALUES == api_variant) {
+        rc = dm_validate_rpc(rp_ctx->dm_ctx, session->dm_session, msg->request->rpc_req->xpath,
+                &input, &input_cnt, true);
+    } else {
+        rc = dm_validate_rpc_tree(rp_ctx->dm_ctx, session->dm_session, msg->request->rpc_req->xpath,
+                &input_tree, &input_cnt, true);
+    }
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Validation of an RPC (%s) message failed.", msg->request->rpc_req->xpath);
+        goto finalize;
     }
 
     /* duplicate msg into req with the new input values */
-    if (SR_ERR_OK == rc) {
-        rc = sr_gpb_req_alloc(SR__OPERATION__RPC, session->id, &req);
+    rc = sr_gpb_req_alloc(SR__OPERATION__RPC, session->id, &req);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Failed to duplicate RPC request (%s).", msg->request->rpc_req->xpath);
+        goto finalize;
     }
-    if (SR_ERR_OK == rc) {
-        req->request->rpc_req->xpath = strdup(msg->request->rpc_req->xpath);
-        CHECK_NULL_NOMEM_ERROR(req->request->rpc_req->xpath, rc);
+    req->request->rpc_req->xpath = strdup(msg->request->rpc_req->xpath);
+    CHECK_NULL_NOMEM_ERROR(req->request->rpc_req->xpath, rc);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Failed to duplicate RPC request xpath (%s).", msg->request->rpc_req->xpath);
+        goto finalize;
     }
-    if (SR_ERR_OK == rc) {
+
+    if (SR_API_VALUES == api_variant) {
         rc = sr_values_sr_to_gpb(input, input_cnt, &req->request->rpc_req->input, &req->request->rpc_req->n_input);
+    } else {
+        rc = sr_trees_sr_to_gpb(input_tree, input_cnt, &req->request->rpc_req->input_tree, &req->request->rpc_req->n_input_tree);
     }
-    sr_free_values(input, input_cnt);
+    if (SR_ERR_OK != rc ) {
+        SR_LOG_ERR("Failed to duplicate RPC request (%s) input arguments.", msg->request->rpc_req->xpath);
+        goto finalize;
+    }
 
     /* get module name */
-    if (SR_ERR_OK == rc) {
-        rc = sr_copy_first_ns(req->request->rpc_req->xpath, &module_name);
+    rc = sr_copy_first_ns(req->request->rpc_req->xpath, &module_name);
+    if (SR_ERR_OK != rc ) {
+        SR_LOG_ERR("Failed to obtain module name for RPC request (%s).", msg->request->rpc_req->xpath);
+        goto finalize;
     }
 
     /* authorize (write permissions are required to deliver the RPC) */
-    if (SR_ERR_OK == rc) {
-        rc = ac_check_module_permissions(session->ac_session, module_name, AC_OPER_READ_WRITE);
-        if (SR_ERR_OK != rc) {
-            SR_LOG_ERR("Access control check failed for module name '%s'", module_name);
-        }
+    rc = ac_check_module_permissions(session->ac_session, module_name, AC_OPER_READ_WRITE);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Access control check failed for module name '%s'", module_name);
+        goto finalize;
     }
 
     /* get RPC subscription */
-    if (SR_ERR_OK == rc) {
-        rc = pm_get_subscriptions(rp_ctx->pm_ctx, module_name, SR__SUBSCRIPTION_TYPE__RPC_SUBS,
-                &subscriptions, &subscription_cnt);
+    rc = pm_get_subscriptions(rp_ctx->pm_ctx, module_name, SR__SUBSCRIPTION_TYPE__RPC_SUBS,
+            &subscriptions, &subscription_cnt);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Failed to get subscriptions for RPC request (%s).", msg->request->rpc_req->xpath);
+        goto finalize;
     }
-    free(module_name);
 
     /* fill-in subscription details into the request */
     bool subscription_match = false;
@@ -1308,13 +1340,19 @@ rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg 
             break;
         }
     }
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Failed to process subscription data for RPC request (%s).", msg->request->rpc_req->xpath);
+        goto finalize;
+    }
 
-    if (SR_ERR_OK == rc && !subscription_match) {
+    if (!subscription_match) {
         /* no subscription for this RPC */
         SR_LOG_ERR("No subscription found for RPC delivery (xpath = '%s').", req->request->rpc_req->xpath);
         rc = SR_ERR_NOT_FOUND;
+        goto finalize;
     }
 
+finalize:
     if (SR_ERR_OK == rc) {
         /* forward the request to the subscriber */
         rc = cm_msg_send(rp_ctx->cm_ctx, req);
@@ -1334,8 +1372,14 @@ rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg 
         }
     }
 
+    free(module_name);
+    if (SR_API_VALUES == api_variant) {
+        sr_free_values(input, input_cnt);
+    } else {
+        sr_free_trees(input_tree, input_cnt);
+    }
+    /* release the message since it won't be released in dispatch */
     sr__msg__free_unpacked(msg, NULL);
-
     return rc;
 }
 
@@ -1392,7 +1436,9 @@ cleanup:
 static int
 rp_rpc_resp_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
 {
+    sr_api_variant_t api_variant = SR_API_VALUES;
     sr_val_t *output = NULL;
+    sr_node_t *output_tree = NULL;
     size_t output_cnt = 0;
     Sr__Msg *resp = NULL;
     int rc = SR_ERR_OK;
@@ -1405,9 +1451,22 @@ rp_rpc_resp_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg
     }
 
     /* validate the RPC response */
-    rc = sr_values_gpb_to_sr(msg->response->rpc_resp->output,  msg->response->rpc_resp->n_output, &output, &output_cnt);
+    if (msg->response->rpc_resp->n_output) {
+        rc = sr_values_gpb_to_sr(msg->response->rpc_resp->output,  msg->response->rpc_resp->n_output,
+                                 &output, &output_cnt);
+    } else if (msg->response->rpc_resp->n_output_tree) {
+        api_variant = SR_API_TREES;
+        rc = sr_trees_gpb_to_sr(msg->response->rpc_resp->output_tree,  msg->response->rpc_resp->n_output_tree,
+                                &output_tree, &output_cnt);
+    }
     if (SR_ERR_OK == rc) {
-        rc = dm_validate_rpc(rp_ctx->dm_ctx, session->dm_session, msg->response->rpc_resp->xpath, &output, &output_cnt, false);
+        if (SR_API_VALUES == api_variant) {
+            rc = dm_validate_rpc(rp_ctx->dm_ctx, session->dm_session, msg->response->rpc_resp->xpath,
+                    &output, &output_cnt, false);
+        } else {
+            rc = dm_validate_rpc_tree(rp_ctx->dm_ctx, session->dm_session, msg->response->rpc_resp->xpath,
+                    &output_tree, &output_cnt, false);
+        }
     }
 
     /* duplicate msg into resp with the new output values */
@@ -1419,9 +1478,17 @@ rp_rpc_resp_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg
         CHECK_NULL_NOMEM_ERROR(resp->response->rpc_resp->xpath, rc);
     }
     if (SR_ERR_OK == rc) {
-        rc = sr_values_sr_to_gpb(output, output_cnt, &resp->response->rpc_resp->output, &resp->response->rpc_resp->n_output);
+        if (SR_API_VALUES == api_variant) {
+            rc = sr_values_sr_to_gpb(output, output_cnt, &resp->response->rpc_resp->output, &resp->response->rpc_resp->n_output);
+        } else {
+            rc = sr_trees_sr_to_gpb(output_tree, output_cnt, &resp->response->rpc_resp->output_tree, &resp->response->rpc_resp->n_output_tree);
+        }
     }
-    sr_free_values(output, output_cnt);
+    if (SR_API_VALUES == api_variant) {
+        sr_free_values(output, output_cnt);
+    } else {
+        sr_free_trees(output_tree, output_cnt);
+    }
 
     if ((SR_ERR_OK == rc) || (NULL != resp)) {
         sr__msg__free_unpacked(msg, NULL);

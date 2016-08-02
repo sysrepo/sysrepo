@@ -248,6 +248,30 @@ module test-module {
         type string;
         default "/";
       }
+      container init-log {
+        list log-msg {
+          key "msg time";
+          leaf msg {
+            type string;
+          }
+          leaf time {
+            type uint32;
+          }
+          leaf msg-type {
+            type enumeration {
+              enum "error" {
+                value 1;
+              }
+              enum "warning" {
+                value 2;
+              }
+              enum "debug" {
+                value 3;
+              }
+            }
+          }
+        }
+      }
     }
   }
 

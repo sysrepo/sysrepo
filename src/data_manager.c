@@ -1,6 +1,7 @@
 /**
  * @file data_manager.c
- * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
+ * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>,
+ *         Milan Lenco <milan.lenco@pantheon.tech>
  * @brief
  *
  * @copyright
@@ -485,7 +486,6 @@ dm_load_schema_file(dm_ctx_t *dm_ctx, const char *schema_filepath, bool append, 
     rc = pm_get_module_info(dm_ctx->pm_ctx, module->name, &module_enabled,
             &enabled_subtrees, &enabled_subtrees_cnt, &features, &features_cnt);
     if (SR_ERR_OK == rc) {
-
         /* enable active features */
         for (size_t i = 0; i < features_cnt; i++) {
             rc = dm_feature_enable_internal(dm_ctx, si, module->name, features[i], true);
@@ -573,7 +573,6 @@ dm_load_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, 
         }
         ll_node = ll_node->next;
     }
-
     /* insert schema info into schema tree */
     RWLOCK_WRLOCK_TIMED_CHECK_GOTO(&dm_ctx->schema_tree_lock, rc, cleanup);
 
@@ -1682,7 +1681,6 @@ dm_get_module_without_lock(dm_ctx_t *dm_ctx, const char *module_name, dm_schema_
     return rc;
 }
 
-
 static int
 dm_list_rev_file(dm_ctx_t *dm_ctx, const char *module_name, const char *rev_date, sr_sch_revision_t *rev)
 {
@@ -1913,7 +1911,6 @@ cleanup:
 int
 dm_get_schema(dm_ctx_t *dm_ctx, const char *module_name, const char *module_revision, const char *submodule_name, bool yang_format, char **schema)
 {
-
     CHECK_NULL_ARG2(dm_ctx, module_name);
     int rc = SR_ERR_OK;
     int ret = 0;
@@ -3022,6 +3019,7 @@ dm_uninstall_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revis
     } else {
         rc = md_remove_module(dm_ctx->md_ctx, module_name, revision);
     }
+
     md_ctx_unlock(dm_ctx->md_ctx);
     return rc;
 }
@@ -3387,7 +3385,6 @@ dm_disable_module_running(dm_ctx_t *ctx, dm_session_t *session, const char *modu
             CHECK_RC_MSG_GOTO(rc, cleanup, "Set node state failed");
 
             if ((LYS_CONTAINER | LYS_LIST) & iter->nodetype) {
-
                 LY_TREE_FOR(iter->child, child)
                 {
                     if (((LYS_CONTAINER | LYS_LIST | LYS_LEAF | LYS_LEAFLIST) & iter->nodetype) && dm_is_node_enabled(child)) {
@@ -3486,28 +3483,37 @@ typedef enum dm_procedure_e {
  * @param [in] session DM session.
  * @param [in] type Type of the procedure.
  * @param [in] xpath XPath of the procedure.
- * @param [in] args Input/output arguments of the procedure (can be changed inside of the function).
- * @param [in] arg_cnt Number of input/output arguments provided (can be changed inside of the function).
+ * @param [in] api_variant Variant of the API (values vs. trees)
+ * @param [in] args_p Input/output arguments of the procedure (can be changed inside of the function).
+ * @param [in] arg_cnt_p Number of input/output arguments provided (can be changed inside of the function).
  * @param [in] input TRUE if input arguments were provided, FALSE if output.
  * @return Error code (SR_ERR_OK on success)
  */
 static int
 dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t type, const char *xpath,
-        sr_val_t **args_p, size_t *arg_cnt_p, bool input)
+        sr_api_variant_t api_variant, void **args_p, size_t *arg_cnt_p, bool input)
 {
     sr_val_t *args = NULL;
+    sr_node_t *args_tree = NULL;
     size_t arg_cnt = 0;
     dm_schema_info_t *schema_info = NULL;
+    char root_xpath[PATH_MAX] = { 0, };
     const struct lys_node *sch_node = NULL;
     struct lyd_node *data_tree = NULL, *new_node = NULL;
     char *string_value = NULL, *tmp_xpath = NULL;
-    struct ly_set *ly_nodes = NULL;
+    struct ly_set *nodeset = NULL;
     char *module_name = NULL;
     char *procedure_name = NULL;
     int validation_options = 0;
     int ret = 0, rc = SR_ERR_OK;
 
-    args = *args_p;
+    CHECK_NULL_ARG5(dm_ctx, session, xpath, args_p, arg_cnt_p);
+
+    if (SR_API_VALUES == api_variant) {
+        args = (sr_val_t *)*args_p;
+    } else {
+        args_tree = (sr_node_t *)*args_p;
+    }
     arg_cnt = *arg_cnt_p;
 
     /* get name of the procedure - only for error messages */
@@ -3523,46 +3529,55 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
             break;
     }
 
-    /* load whichever module is needed */
-    if (dm_ctx->conn_mode == CM_MODE_LOCAL) {
-        rc = sr_copy_first_ns(xpath, &module_name);
-        CHECK_RC_MSG_RETURN(rc, "Error by extracting module name from xpath.");
-        rc = dm_get_module_and_lock(dm_ctx, module_name, &schema_info);
-        free(module_name);
-        CHECK_RC_MSG_RETURN(rc, "dm_get_module failed");
-    }
+    rc = sr_copy_first_ns(xpath, &module_name);
+    CHECK_RC_MSG_RETURN(rc, "Error by extracting module name from xpath.");
+    rc = dm_get_module_and_lock(dm_ctx, module_name, &schema_info);
+    free(module_name);
+    CHECK_RC_MSG_RETURN(rc, "dm_get_module failed");
+    
 
-    data_tree = lyd_new_path(NULL, schema_info->ly_ctx, xpath, NULL, 0);
-    if (NULL == data_tree) {
-        SR_LOG_ERR("%s xpath validation failed ('%s'): %s", procedure_name, xpath, ly_errmsg());
-        pthread_rwlock_unlock(&schema_info->model_lock);
-        return dm_report_error(session, ly_errmsg(), xpath, SR_ERR_BAD_ELEMENT);
-    }
-
-    for (size_t i = 0; i < arg_cnt; i++) {
-        /* get schema node */
-        sch_node = ly_ctx_get_node2(schema_info->ly_ctx, NULL, args[i].xpath, (input ? 0 : 1));
-        if (NULL == sch_node) {
-            SR_LOG_ERR("%s argument xpath validation failed('%s'): %s", procedure_name, args[i].xpath, ly_errmsg());
-            rc = dm_report_error(session, ly_errmsg(), args[i].xpath, SR_ERR_BAD_ELEMENT);
-            break;
+    /* converse sysrepo values/trees to libyang data tree */
+    if (SR_API_VALUES == api_variant) {
+        data_tree = lyd_new_path(NULL, schema_info->ly_ctx, xpath, NULL, 0);
+        if (NULL == data_tree) {
+            SR_LOG_ERR("%s xpath validation failed ('%s'): %s", procedure_name, xpath, ly_errmsg());
+            rc = dm_report_error(session, ly_errmsg(), xpath, SR_ERR_BAD_ELEMENT);
         }
-        /* copy argument value to string */
-        string_value = NULL;
-        if ((SR_CONTAINER_T != args[i].type) && (SR_LIST_T != args[i].type)) {
-            rc = sr_val_to_str(&args[i], sch_node, &string_value);
+
+        for (size_t i = 0; i < arg_cnt; i++) {
+            /* get schema node */
+            sch_node = ly_ctx_get_node2(schema_info->ly_ctx, NULL, args[i].xpath, (input ? 0 : 1));
+            if (NULL == sch_node) {
+                SR_LOG_ERR("%s argument xpath validation failed('%s'): %s", procedure_name, args[i].xpath, ly_errmsg());
+                rc = dm_report_error(session, ly_errmsg(), args[i].xpath, SR_ERR_BAD_ELEMENT);
+                break;
+            }
+            /* copy argument value to string */
+            string_value = NULL;
+            if ((SR_CONTAINER_T != args[i].type) && (SR_LIST_T != args[i].type)) {
+                rc = sr_val_to_str(&args[i], sch_node, &string_value);
+                if (SR_ERR_OK != rc) {
+                    SR_LOG_ERR("Unable to convert %s argument value to string.", procedure_name);
+                    break;
+                }
+            }
+            /* create the argument node in the tree */
+            new_node = lyd_new_path(data_tree, schema_info->ly_ctx, args[i].xpath, string_value, (input ? 0 : LYD_PATH_OPT_OUTPUT));
+            free(string_value);
+            if (NULL == new_node) {
+                SR_LOG_ERR("Unable to add new %s argument '%s': %s.", procedure_name, args[i].xpath, ly_errmsg());
+                rc = dm_report_error(session, ly_errmsg(), ly_errpath(), SR_ERR_VALIDATION_FAILED);
+                break;
+            }
+        }
+    } else { /**< SR_API_TREES */
+        for (size_t i = 0; i < arg_cnt; i++) {
+            snprintf(root_xpath, PATH_MAX, "%s/%s", xpath, args_tree[i].name);
+            rc = sr_tree_to_dt(schema_info->ly_ctx, args_tree + i, root_xpath, !input, &data_tree);
             if (SR_ERR_OK != rc) {
                 SR_LOG_ERR("Unable to convert %s argument value to string.", procedure_name);
                 break;
             }
-        }
-        /* create the argument node in the tree */
-        new_node = lyd_new_path(data_tree, schema_info->ly_ctx, args[i].xpath, string_value, (input ? 0 : LYD_PATH_OPT_OUTPUT));
-        free(string_value);
-        if (NULL == new_node) {
-            SR_LOG_ERR("Unable to add new %s argument '%s': %s.", procedure_name, args[i].xpath, ly_errmsg());
-            rc = dm_report_error(session, ly_errmsg(), ly_errpath(), SR_ERR_VALIDATION_FAILED);
-            break;
         }
     }
 
@@ -3586,27 +3601,57 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
 
     /* re-read the arguments from data tree (it can now contain newly added default nodes) */
     if ((SR_ERR_OK == rc) && (arg_cnt > 0)) {
-        tmp_xpath = calloc(strlen(xpath)+4, sizeof(*tmp_xpath));
-        if (NULL != tmp_xpath) {
-            strcat(tmp_xpath, xpath);
-            strcat(tmp_xpath, "//*");
-            ly_nodes = lyd_get_node(data_tree, tmp_xpath);
-            if (NULL != ly_nodes) {
-                rc = rp_dt_get_values_from_nodes(ly_nodes, &args, &arg_cnt);
-                if (SR_ERR_OK == rc) {
-                    sr_free_values(*args_p, *arg_cnt_p);
-                    *args_p = args;
-                    *arg_cnt_p = arg_cnt;
+        if (SR_API_VALUES == api_variant) {
+            tmp_xpath = calloc(strlen(xpath)+4, sizeof(*tmp_xpath));
+            if (NULL != tmp_xpath) {
+                strcat(tmp_xpath, xpath);
+                strcat(tmp_xpath, "//*");
+                nodeset = lyd_get_node(data_tree, tmp_xpath);
+                if (NULL != nodeset) {
+                    rc = rp_dt_get_values_from_nodes(nodeset, &args, &arg_cnt);
+                    if (SR_ERR_OK == rc) {
+                        sr_free_values(*args_p, *arg_cnt_p);
+                        *args_p = args;
+                        *arg_cnt_p = arg_cnt;
+                    }
+                } else {
+                    SR_LOG_ERR("No matching nodes returned for xpath '%s'.", tmp_xpath);
+                    rc = SR_ERR_INTERNAL;
                 }
+                ly_set_free(nodeset);
+                free(tmp_xpath);
             } else {
-                SR_LOG_ERR("No matching nodes returned for xpath '%s'.", tmp_xpath);
-                rc = SR_ERR_INTERNAL;
+                SR_LOG_ERR_MSG("Unable to allocate memory for xpath.");
+                rc = SR_ERR_NOMEM;
             }
-            ly_set_free(ly_nodes);
-            free(tmp_xpath);
-        } else {
-            SR_LOG_ERR_MSG("Unable to allocate memory for xpath.");
-            rc = SR_ERR_NOMEM;
+        } else { /**< SR_API_TREES */
+            tmp_xpath = calloc(strlen(xpath) + 3 + (type != DM_PROCEDURE_EVENT_NOTIF ? 2 : 0),
+                               sizeof(*tmp_xpath));
+            if (NULL != tmp_xpath) {
+                strcat(tmp_xpath, xpath);
+                strcat(tmp_xpath, "/");
+                if (type != DM_PROCEDURE_EVENT_NOTIF) {
+                    strcat(tmp_xpath, "./"); /* skip "input" / "output" */
+                }
+                strcat(tmp_xpath, "*");
+                nodeset = lyd_get_node(data_tree, tmp_xpath);
+                if (NULL != nodeset) {
+                    rc = sr_nodes_to_trees(schema_info->ly_ctx, nodeset, &args_tree, &arg_cnt);
+                    if (SR_ERR_OK == rc) {
+                        sr_free_trees(*args_p, *arg_cnt_p);
+                        *args_p = args_tree;
+                        *arg_cnt_p = arg_cnt;
+                    }
+                } else {
+                    SR_LOG_ERR("No matching nodes returned for xpath '%s'.", tmp_xpath);
+                    rc = SR_ERR_INTERNAL;
+                }
+                ly_set_free(nodeset);
+                free(tmp_xpath);
+            } else {
+                SR_LOG_ERR_MSG("Unable to allocate memory for xpath.");
+                rc = SR_ERR_NOMEM;
+            }
         }
     }
 
@@ -3618,18 +3663,24 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
 }
 
 int
-dm_validate_rpc(dm_ctx_t *dm_ctx, dm_session_t *session, const char *rpc_xpath, sr_val_t **args, size_t *arg_cnt,
-        bool input)
+dm_validate_rpc(dm_ctx_t *dm_ctx, dm_session_t *session, const char *rpc_xpath, sr_val_t **args, size_t *arg_cnt, bool input)
 {
-    return dm_validate_procedure(dm_ctx, session, DM_PROCEDURE_RPC, rpc_xpath, args, arg_cnt, input);
+    return dm_validate_procedure(dm_ctx, session, DM_PROCEDURE_RPC, rpc_xpath, SR_API_VALUES,
+            (void **)args, arg_cnt, input);
 }
 
 int
-dm_validate_event_notif(dm_ctx_t *dm_ctx, dm_session_t *session, const char *event_notif_xpath,
-        sr_val_t **values, size_t *values_cnt)
+dm_validate_rpc_tree(dm_ctx_t *dm_ctx, dm_session_t *session, const char *rpc_xpath, sr_node_t **args, size_t *arg_cnt, bool input)
 {
-    return dm_validate_procedure(dm_ctx, session, DM_PROCEDURE_EVENT_NOTIF, event_notif_xpath,
-            values, values_cnt, true);
+    return dm_validate_procedure(dm_ctx, session, DM_PROCEDURE_RPC, rpc_xpath, SR_API_TREES,
+            (void **)args, arg_cnt, input);
+}
+
+int
+dm_validate_event_notif(dm_ctx_t *dm_ctx, dm_session_t *session, const char *event_notif_xpath, sr_val_t **values, size_t *values_cnt)
+{
+    return dm_validate_procedure(dm_ctx, session, DM_PROCEDURE_EVENT_NOTIF, event_notif_xpath, SR_API_VALUES,
+            (void **)values, values_cnt, true);
 }
 
 struct lyd_node *

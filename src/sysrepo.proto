@@ -75,6 +75,17 @@ message Value {
   optional uint64 uint64_val = 25;
 }
 
+/**
+ * @brief Item stored (or to be stored) in the datastore represented as a tree node
+ * reflecting module schema.
+ * Can be mapped to sr_node_t data structure from sysrepo library API.
+ */
+message Node {
+  required Value value = 1;        /**< Value of the node; member *xpath* is used to store node's name. */
+  required string module_name = 2; /**< Name of the module that defines scheme of this node. */
+  repeated Node children = 3;      /**< Direct descendands of this node. */
+}
+
 message Error {
   optional string message = 1;
   optional string xpath = 2;
@@ -628,6 +639,7 @@ message DataProvideResp {
 message RPCReq {
   required string xpath = 1;
   repeated Value input = 2;
+  repeated Node input_tree = 3;
 
   optional string subscriber_address = 10;
   optional uint32 subscription_id = 11;
@@ -636,6 +648,7 @@ message RPCReq {
 message RPCResp {
   required string xpath = 1;
   repeated Value output = 2;
+  repeated Node output_tree = 3;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
