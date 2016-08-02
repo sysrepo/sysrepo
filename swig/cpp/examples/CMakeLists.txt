@@ -1,0 +1,17 @@
+include_directories("${CMAKE_CURRENT_SOURCE_DIR}")
+
+add_executable(get_item_example get_item_example.cpp)
+add_executable(set_item_example set_item_example.cpp)
+add_executable(get_items_example get_items_example.cpp)
+add_executable(get_items_iter_example get_items_iter_example.cpp)
+add_executable(delete_item_example delete_item_example.cpp)
+add_executable(cpp_application_example cpp_application_example.cpp)
+add_executable(cpp_application_changes_example cpp_application_changes_example.cpp)
+
+target_link_libraries(get_item_example Sysrepo_cpp)
+target_link_libraries(set_item_example Sysrepo_cpp)
+target_link_libraries(get_items_example Sysrepo_cpp)
+target_link_libraries(get_items_iter_example Sysrepo_cpp)
+target_link_libraries(delete_item_example Sysrepo_cpp)
+target_link_libraries(cpp_application_example Sysrepo_cpp)
+target_link_libraries(cpp_application_changes_example Sysrepo_cpp)

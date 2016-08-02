@@ -29,5 +29,11 @@ if(NOT BIN_INSTALL_DIR)
 	set(BIN_INSTALL_DIR ${CMAKE_INSTALL_PREFIX}/bin)
 endif()
 
+# Examples
+set(BUILD_CPP_EXAMPLES 1 CACHE BOOL "Build C++ examples")
+if(BUILD_CPP_EXAMPLES)
+	add_subdirectory(cpp/examples)
+endif()
+
 # install binary
 install(TARGETS Sysrepo_cpp DESTINATION ${BIN_INSTALL_DIR})
