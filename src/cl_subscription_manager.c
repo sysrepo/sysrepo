@@ -605,7 +605,10 @@ cl_sm_msg_send_connection(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *
         /* flush the buffer */
         rc = cl_sm_conn_out_buff_flush(sm_ctx, conn);
         if ((conn->close_requested) || (SR_ERR_OK != rc)) {
-            cl_sm_conn_close(sm_ctx, conn);
+            /* do not close the connection right here - since send is always a consequence of receive,
+             * it will be closed in receive code path */
+            conn->close_requested = true;
+            rc = SR_ERR_DISCONNECT;
         }
     }
 
@@ -1007,7 +1010,7 @@ cl_sm_conn_in_buff_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn)
             buff_pos += SR_MSG_PREAM_SIZE + msg_size;
             if (SR_ERR_OK != rc) {
                 SR_LOG_ERR_MSG("Error by processing of the message.");
-                break;
+                return rc;
             }
         } else {
             /* the message is not completely retrieved, end processing */

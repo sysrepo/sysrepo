@@ -1,10 +1,9 @@
 /**
- * @file application_example.c
+ * @file application_fd_watcher_example.c
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
- * @brief Example application that uses sysrepo as the configuration datastore.
- * The application can be used for testing purposes. It enables the module
- * specified as the first argument, or ietf-interfaces by default, in running
- * data store.
+ * @brief Example application that uses sysrepo as the configuration datastore
+ * and has its own event loop, that is used for monitoring of file descriptors
+ * needed for sysrepo (in this case represented by poll).
  *
  * @copyright
  * Copyright 2016 Cisco Systems, Inc.
@@ -32,13 +31,25 @@
 #include <poll.h>
 #include "sysrepo.h"
 
-#define XPATH_MAX_LEN 100
-#define POLL_SIZE 32
+#define XPATH_MAX_LEN 100  /* Maximum length of a xpath statement used in this app. */
+#define POLL_SIZE 32       /* Maximum count of file descriptors used watched by poll in this app. */
 
-volatile int exit_application;
-struct pollfd poll_fd_set[POLL_SIZE];
-size_t poll_fd_cnt;
+struct pollfd poll_fd_set[POLL_SIZE];  /* Array of file descriptors monitored by poll. */
+size_t poll_fd_cnt;                    /* Count of file descriptors currently monitored by poll. */
+volatile int exit_application;         /* Will be set to true in case that SIGINT has been received. */
 
+/*
+ * SIGINT signal handler.
+ */
+static void
+sigint_handler(int signum)
+{
+    exit_application = 1;
+}
+
+/*
+ * Prints a value retrieved from sysrepo datastore.
+ */
 static void
 print_value(sr_val_t *value)
 {
@@ -102,6 +113,9 @@ print_value(sr_val_t *value)
     }
 }
 
+/*
+ * Prints all config of the specified module currently stored in the datastore.
+ */
 static void
 print_current_config(sr_session_ctx_t *session, const char *module_name)
 {
@@ -122,6 +136,9 @@ print_current_config(sr_session_ctx_t *session, const char *module_name)
     sr_free_values(values, count);
 }
 
+/*
+ * Automatically called by sysrepo when there is any change within the specified module in the running datastore.
+ */
 static int
 module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t event, void *private_ctx)
 {
@@ -132,12 +149,9 @@ module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_ev
     return SR_ERR_OK;
 }
 
-static void
-sigint_handler(int signum)
-{
-    exit_application = 1;
-}
-
+/*
+ * Starts watching the specified file descriptor for specified event.
+ */
 static void
 fd_start_watching(int fd, int events)
 {
@@ -157,6 +171,9 @@ fd_start_watching(int fd, int events)
     }
 }
 
+/*
+ * Stops watching the specified file descriptor for specified event.
+ */
 static void
 fd_stop_watching(int fd, int events)
 {
@@ -177,6 +194,9 @@ fd_stop_watching(int fd, int events)
     }
 }
 
+/*
+ * Processes changes in monitoring of file descriptors specified as the input argument.
+ */
 static void
 fd_change_set_process(sr_fd_watcher_t *fd_change_set, size_t fd_change_set_cnt)
 {
@@ -192,6 +212,9 @@ fd_change_set_process(sr_fd_watcher_t *fd_change_set, size_t fd_change_set_cnt)
     }
 }
 
+/*
+ * Application's main event loop.
+ */
 static void
 event_loop()
 {
@@ -279,6 +302,7 @@ main(int argc, char **argv)
 
     printf("\n\n ========== STARTUP CONFIG APPLIED AS RUNNING ==========\n\n");
 
+    /* execute the application's event loop */
     event_loop();
 
     printf("Application exit requested, exiting.\n");

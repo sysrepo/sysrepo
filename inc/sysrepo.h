@@ -1371,29 +1371,47 @@ int sr_event_notif_send(sr_session_ctx_t *session, const char *xpath, const sr_v
 
 
 ////////////////////////////////////////////////////////////////////////////////
-// Local File Descriptor Watcher API
+// Application-local File Descriptor Watcher API
 ////////////////////////////////////////////////////////////////////////////////
 
+/**
+ * @brief
+ */
 typedef enum sr_fd_event_e {
     SR_FD_INPUT_READY,
     SR_FD_OUTPUT_READY,
 } sr_fd_event_t;
 
+/**
+ * @brief
+ */
 typedef enum sr_fd_action_s {
     SR_FD_START_WATCHING,
     SR_FD_STOP_WATCHING,
 } sr_fd_action_t;
 
+/**
+ * @brief
+ */
 typedef struct sr_fd_watcher_s {
     int fd;
     int events;
     sr_fd_action_t action;
 } sr_fd_watcher_t;
 
+/**
+ * @brief
+ */
 int sr_fd_watcher_init(int *fd);
 
+/**
+ * @brief
+ */
 void sr_fd_watcher_cleanup();
 
+/**
+ * @brief
+ */
 int sr_fd_event_process(int fd, sr_fd_event_t event, sr_fd_watcher_t **fd_change_set, size_t *fd_change_set_cnt);
 
 
