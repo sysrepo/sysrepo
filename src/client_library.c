@@ -81,7 +81,6 @@ typedef struct sr_change_iter_s {
     size_t count;                   /**< Number of elements currently buffered. */
 } sr_change_iter_t;
 
-
 static int connections_cnt = 0;               /**< Number of active connections to the Sysrepo Engine. */
 static int subscriptions_cnt = 0;             /**< Number of active subscriptions. */
 static cl_sm_ctx_t *cl_sm_ctx = NULL;         /**< Subscription Manager context. */
@@ -2359,7 +2358,12 @@ sr_fd_event_process(int fd, sr_fd_event_t event, sr_fd_change_t **fd_change_set,
 
     SR_LOG_DBG("New %s event on fd=%d.", (SR_FD_INPUT_READY == event ? "input" : "output"), fd);
 
+    /* the lock is supposed to prevent from calling subscribe / unsubscribe / watcher_init / watcher_cleanup in the meantime */
+    pthread_mutex_lock(&global_lock);
+
     rc = cl_sm_fd_event_process(cl_sm_ctx, fd, event, fd_change_set, fd_change_set_cnt);
+
+    pthread_mutex_unlock(&global_lock);
 
     return rc;
 }
