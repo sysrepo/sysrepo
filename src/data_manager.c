@@ -1306,7 +1306,7 @@ dm_init(ac_ctx_t *ac_ctx, np_ctx_t *np_ctx, pm_ctx_t *pm_ctx, const cm_connectio
     rc = sr_str_join(data_search_dir, "internal/", &internal_data_search_dir);
     CHECK_ZERO_MSG_GOTO(rc, rc, SR_ERR_INTERNAL, cleanup, "sr_str_join failed");
 
-    rc = md_init(NULL, NULL, schema_search_dir, internal_schema_search_dir,
+    rc = md_init(schema_search_dir, internal_schema_search_dir,
                  internal_data_search_dir, false, &ctx->md_ctx);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to initialize Module Dependencies context.");
 

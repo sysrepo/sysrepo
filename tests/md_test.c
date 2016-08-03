@@ -282,20 +282,6 @@ static const char * const md_module_E_rev2_body =
 
 
 /**
- * @brief Always get a new instance of libyang context, while the old one is released.
- */
-static struct ly_ctx *
-md_get_new_ly_ctx()
-{
-    static struct ly_ctx *ly_ctx = NULL;
-    if (NULL != ly_ctx) {
-        ly_ctx_destroy(ly_ctx, NULL);
-    }
-    ly_ctx = ly_ctx_new(TEST_SCHEMA_SEARCH_DIR);
-    return ly_ctx;
-}
-
-/**
  * @brief Construct a yang schema file.
  */
 static char *
@@ -378,7 +364,7 @@ md_test_init_and_destroy(void **state)
     md_ctx_t *md_ctx = NULL;
 
     /* initialize context */
-    rc = md_init(md_get_new_ly_ctx(), NULL, TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal/",
+    rc = md_init(TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal/",
                  TEST_DATA_SEARCH_DIR "internal/", false, &md_ctx);
     assert_int_equal(0, rc);
     assert_non_null(md_ctx->schema_search_dir);
@@ -829,7 +815,7 @@ md_test_insert_module(void **state)
     memset(&inserted, 0, sizeof inserted);
 
     /* initialize context */
-    rc = md_init(md_get_new_ly_ctx(), NULL, TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal/",
+    rc = md_init(TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal/",
                  TEST_DATA_SEARCH_DIR "internal/", true, &md_ctx);
     assert_int_equal(SR_ERR_OK, rc);
     md_test_validate_context(md_ctx, inserted);
@@ -872,7 +858,7 @@ md_test_insert_module(void **state)
     md_destroy(md_ctx);
 
     /* reload dependencies from the file and re-test */
-    rc = md_init(md_get_new_ly_ctx(), NULL, TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal/",
+    rc = md_init(TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal/",
                  TEST_DATA_SEARCH_DIR "internal/", false, &md_ctx);
     assert_int_equal(SR_ERR_OK, rc);
     md_test_validate_context(md_ctx, inserted);
@@ -897,7 +883,7 @@ md_test_remove_module(void **state)
     memset(&inserted, 1, sizeof inserted);
 
     /* initialize context */
-    rc = md_init(md_get_new_ly_ctx(), NULL, TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal/",
+    rc = md_init(TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal/",
                  TEST_DATA_SEARCH_DIR "internal/", true, &md_ctx);
     assert_int_equal(SR_ERR_OK, rc);
     md_test_validate_context(md_ctx, inserted);
@@ -980,7 +966,7 @@ md_test_remove_module(void **state)
     md_destroy(md_ctx);
 
     /* reload dependencies from the file and re-test */
-    rc = md_init(md_get_new_ly_ctx(), NULL, TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal/",
+    rc = md_init(TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal/",
                  TEST_DATA_SEARCH_DIR "internal/", false, &md_ctx);
     assert_int_equal(SR_ERR_OK, rc);
     md_test_validate_context(md_ctx, inserted);

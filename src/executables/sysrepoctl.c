@@ -599,7 +599,7 @@ srctl_uninstall(const char *module_name, const char *revision)
     }
 
     /* init module dependencies context */
-    rc = md_init(ly_ctx, NULL, srctl_schema_search_dir, srctl_internal_schema_search_dir, srctl_internal_data_search_dir,
+    rc = md_init(srctl_schema_search_dir, srctl_internal_schema_search_dir, srctl_internal_data_search_dir,
                  true, &md_ctx);
     if (SR_ERR_OK != rc) {
         fprintf(stderr, "Error: Failed to initialize module dependencies context.\n");
@@ -671,7 +671,7 @@ srctl_uninstall(const char *module_name, const char *revision)
     md_destroy(md_ctx);
     md_ctx = NULL;
 
-        /* uninstall the module */
+    /* uninstall the module */
     rc = srctl_schema_file_delete(filepath);
     if (SR_ERR_OK != rc) {
         fprintf(stderr, "Warning: Module schema delete was unsuccessful, continuing.\n");
@@ -927,7 +927,7 @@ srctl_install(const char *yang, const char *yin, const char *owner, const char *
     }
 
     /* init module dependencies context */
-    ret = md_init(ly_ctx, NULL, srctl_schema_search_dir, srctl_internal_schema_search_dir,
+    ret = md_init(srctl_schema_search_dir, srctl_internal_schema_search_dir,
             srctl_internal_data_search_dir, true, &md_ctx);
     if (SR_ERR_OK != ret) {
         fprintf(stderr, "Error: Failed to initialize module dependencies context.\n");
@@ -1030,7 +1030,7 @@ fail_data:
     }
     if (md_installed) {
         /* remove from dependency list */
-        rc = md_init(ly_ctx, NULL, srctl_schema_search_dir, srctl_internal_schema_search_dir,
+        rc = md_init(srctl_schema_search_dir, srctl_internal_schema_search_dir,
                     srctl_internal_data_search_dir, true, &md_ctx);
         if (SR_ERR_OK == rc) {
             rc = md_remove_module(md_ctx, module->name, module->rev[0].date);
@@ -1086,7 +1086,7 @@ srctl_init(const char *module_name, const char *revision, const char *owner, con
     }
 
     /* init module dependencies context */
-    rc = md_init(ly_ctx, NULL, srctl_schema_search_dir, srctl_internal_schema_search_dir, srctl_internal_data_search_dir,
+    rc = md_init(srctl_schema_search_dir, srctl_internal_schema_search_dir, srctl_internal_data_search_dir,
                  true, &md_ctx);
     if (SR_ERR_OK != rc) {
         fprintf(stderr, "Error: Failed to initialize module dependencies context.\n");

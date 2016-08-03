@@ -37,21 +37,6 @@
 #include "system_helper.h"
 #include "module_dependencies.h"
 
-
-/**
- * @brief Always get a new instance of libyang context, while the old one is released.
- */
-static struct ly_ctx *
-srctl_get_new_ly_ctx()
-{
-    static struct ly_ctx *ly_ctx = NULL;
-    if (NULL != ly_ctx) {
-        ly_ctx_destroy(ly_ctx, NULL);
-    }
-    ly_ctx = ly_ctx_new(TEST_SCHEMA_SEARCH_DIR);
-    return ly_ctx;
-}
-
 static void
 sysrepoctl_test_version(void **state)
 {
@@ -105,7 +90,7 @@ sysrepoctl_test_uninstall(void **state)
     exec_shell_command("../src/sysrepoctl -l", "ietf-interfaces", true, 0);
 
     /* check the internal data file with module dependencies */
-    rc = md_init(srctl_get_new_ly_ctx(), NULL, TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal/", 
+    rc = md_init(TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal/",
                  TEST_DATA_SEARCH_DIR "internal/", false, &md_ctx);
     assert_int_equal(0, rc);
     rc = md_get_module_info(md_ctx, "ietf-ip", "2014-06-16", &module);
@@ -122,7 +107,7 @@ sysrepoctl_test_uninstall(void **state)
     test_file_exists(TEST_DATA_SEARCH_DIR "ietf-interfaces.candidate.lock", true);
     test_file_exists(TEST_DATA_SEARCH_DIR "ietf-interfaces.persist", true);
     exec_shell_command("../src/sysrepoctl -l", "ietf-interfaces", true, 0);
-   
+
     /* uninstall iana-if-type */
     exec_shell_command("../src/sysrepoctl --uninstall --module=iana-if-type", ".*", true, 0);
     test_file_exists(TEST_SCHEMA_SEARCH_DIR "iana-if-type@2014-05-08.yang", false);
@@ -140,7 +125,7 @@ sysrepoctl_test_uninstall(void **state)
     exec_shell_command("../src/sysrepoctl -l", "!ietf-interfaces", true, 0);
 
     /* check the internal data file with module dependencies */
-    rc = md_init(srctl_get_new_ly_ctx(), NULL, TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal/", 
+    rc = md_init(TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal/",
                  TEST_DATA_SEARCH_DIR "internal/", false, &md_ctx);
     assert_int_equal(0, rc);
     rc = md_get_module_info(md_ctx, "ietf-interfaces", "2014-05-08", &module);
@@ -187,7 +172,7 @@ sysrepoctl_test_install(void **state)
     exec_shell_command("../src/sysrepoctl -l", buff, true, 0);
 
     /* check the internal data file with module dependencies */
-    rc = md_init(srctl_get_new_ly_ctx(), NULL, TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal/", 
+    rc = md_init(TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal/",
                  TEST_DATA_SEARCH_DIR "internal/", false, &md_ctx);
     assert_int_equal(0, rc);
     rc = md_get_module_info(md_ctx, "ietf-ip", "2014-06-16", &module);
@@ -274,7 +259,7 @@ sysrepoctl_test_init(void **state)
     exec_shell_command(buff, ".*", true, 1);
 
     /* backup the ietf-interfaces schema file */
-    snprintf(buff, PATH_MAX, "cp " TEST_SCHEMA_SEARCH_DIR "ietf-interfaces@2014-05-08.yang " 
+    snprintf(buff, PATH_MAX, "cp " TEST_SCHEMA_SEARCH_DIR "ietf-interfaces@2014-05-08.yang "
                                    TEST_SCHEMA_SEARCH_DIR ".ietf-interfaces@2014-05-08.yang.bkp");
     exec_shell_command(buff, ".*", true, 0);
 
@@ -283,7 +268,7 @@ sysrepoctl_test_init(void **state)
     exec_shell_command("../src/sysrepoctl --uninstall --module=ietf-interfaces --revision=2014-05-08", ".*", true, 0);
 
     /* revert the ietf-interfaces schema file */
-    snprintf(buff, PATH_MAX, "mv " TEST_SCHEMA_SEARCH_DIR ".ietf-interfaces@2014-05-08.yang.bkp " 
+    snprintf(buff, PATH_MAX, "mv " TEST_SCHEMA_SEARCH_DIR ".ietf-interfaces@2014-05-08.yang.bkp "
                                    TEST_SCHEMA_SEARCH_DIR "ietf-interfaces@2014-05-08.yang");
     exec_shell_command(buff, ".*", true, 0);
 
@@ -345,7 +330,7 @@ sysrepoctl_test_init(void **state)
     test_file_permissions(TEST_DATA_SEARCH_DIR "ietf-interfaces.persist", mode);
 
     /* check the internal data file with module dependencies */
-    rc = md_init(srctl_get_new_ly_ctx(), NULL, TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal/", 
+    rc = md_init(TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal/",
                  TEST_DATA_SEARCH_DIR "internal/", false, &md_ctx);
     assert_int_equal(0, rc);
     rc = md_get_module_info(md_ctx, "ietf-ip", "2014-06-16", &module);
