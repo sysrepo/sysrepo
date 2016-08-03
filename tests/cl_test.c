@@ -2214,7 +2214,6 @@ dp_get_items_cb(const char *xpath, sr_val_t **values, size_t *values_cnt, void *
 {
     printf("operational data for '%s' requested.\n", xpath);
 
-    // TODO: return some real operational data
     *values = calloc(2, sizeof(**values));
     (*values)[0].xpath = strdup("/state-module:bus/gps_located");
     (*values)[0].type = SR_BOOL_T;

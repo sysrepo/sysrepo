@@ -970,7 +970,7 @@ cm_conn_in_buff_process(cm_ctx_t *cm_ctx, sm_connection_t *conn)
             buff_pos += SR_MSG_PREAM_SIZE + msg_size;
             if (SR_ERR_OK != rc) {
                 SR_LOG_ERR_MSG("Error by processing of the message.");
-                break;
+                return rc;
             }
         } else {
             /* the message is not completely retrieved, end processing */

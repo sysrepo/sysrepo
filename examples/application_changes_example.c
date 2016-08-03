@@ -29,7 +29,7 @@
 
 volatile int exit_application = 0;
 
-#define MAX_LEN 100
+#define XPATH_MAX_LEN 100
 
 static void
 print_value(sr_val_t *value)
@@ -112,9 +112,9 @@ print_change(sr_change_oper_t op, sr_val_t *old_val, sr_val_t *new_val) {
     case SR_OP_MODIFIED:
         if (NULL != old_val && NULL != new_val) {
            printf("MODIFIED: ");
-           printf("old value");
+           printf("old value ");
            print_value(old_val);
-           printf("new value");
+           printf("new value ");
            print_value(new_val);
         }
 	break;
@@ -132,8 +132,8 @@ print_current_config(sr_session_ctx_t *session, const char *module_name)
     sr_val_t *values = NULL;
     size_t count = 0;
     int rc = SR_ERR_OK;
-    char select_xpath[MAX_LEN];
-    snprintf(select_xpath, MAX_LEN, "/%s:*//*", module_name);
+    char select_xpath[XPATH_MAX_LEN];
+    snprintf(select_xpath, XPATH_MAX_LEN, "/%s:*//*", module_name);
 
     rc = sr_get_items(session, select_xpath, &values, &count);
     if (SR_ERR_OK != rc) {
@@ -154,7 +154,7 @@ module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_ev
     sr_change_oper_t oper;
     sr_val_t *old_value = NULL;
     sr_val_t *new_value = NULL;
-    char change_path[MAX_LEN] = {0,};
+    char change_path[XPATH_MAX_LEN] = {0,};
 
 
     printf("\n\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: ==========\n\n");
@@ -164,7 +164,7 @@ module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_ev
     printf("\n\n ========== CHANGES: =============================================\n\n");
 
 
-    snprintf(change_path, MAX_LEN, "/%s:*", module_name);
+    snprintf(change_path, XPATH_MAX_LEN, "/%s:*", module_name);
 
     rc = sr_get_changes_iter(session, change_path , &it);
     if (SR_ERR_OK != rc) {
@@ -239,6 +239,7 @@ main(int argc, char **argv)
 
     /* loop until ctrl-c is pressed / SIGINT is received */
     signal(SIGINT, sigint_handler);
+    signal(SIGPIPE, SIG_IGN);
     while (!exit_application) {
         sleep(1000);  /* or do some more useful work... */
     }
