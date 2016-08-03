@@ -31,10 +31,11 @@
 #include "sr_common.h"
 
 /*
- * @ brief Type of a dependency
+ * @ brief Type of a dependency.
  */
 typedef enum md_dep_type_e {
     MD_DEP_NONE,       /**< Used only in tests */
+    MD_DEP_INCLUDE,    /**< Include */
     MD_DEP_IMPORT,     /**< Import */
     MD_DEP_EXTENSION   /**< Extension (augment, derived identity, ...) */
 } md_dep_type_t;
@@ -59,27 +60,34 @@ typedef struct md_subtree_ref_s {
 } md_subtree_ref_t;
 
 /*
- * @brief Data structure describing a single module in the context of inter-module dependencies.
+ * @brief Data structure describing a single (sub)module in the context of inter-module dependencies.
  */
 typedef struct md_module_s {
-    char *name;                   /**< Name of the module. */
-    char *revision_date;          /**< Revision date of the module. */
-    char *filepath;               /**< File path to the schema of the module. */
-    char *fullname;               /**< Fullname of the module (name+revision).
+    char *name;                   /**< Name of the (sub)module. */
+    char *revision_date;          /**< Revision date of the (sub)module. */
+    char *prefix;                 /**< Prefix of the module. */
+    char *ns;                     /**< Namespace of the module. */
+    char *filepath;               /**< File path to the schema of the (sub)module. */
+    char *fullname;               /**< Fullname of the (sub)module (name+revision).
                                        Normally not used and set to NULL, but can be filled using ::md_get_module_fullname. */
 
-    bool latest_revision;         /**< "true" if this is the latest installed revision of this module. */
+    bool latest_revision;         /**< "true" if this is the latest installed revision of this (sub)module. */
+    bool submodule;               /**< "true" if this is actually a submodule, "false" in case of a proper module. */
 
     sr_llist_t *inst_ids;         /**< List of xpaths referencing all instance-identifiers in the module.
-                                       Items are of type (md_subree_ref_t *) (one node subtrees) */
+                                       Items are of type (md_subree_ref_t *) (one node subtrees).
+                                       Empty for submodules. */
 
     sr_llist_t *op_data_subtrees; /**< List of xpaths referencing all subtrees in the schema containing only operational data.
-                                       Items are of type (md_subtree_ref_t *) */
+                                       Items are of type (md_subtree_ref_t *).
+                                       Empty for submodules. */
 
     sr_llist_t *deps;             /**< Adjacency list for this module in the schema-based, transitively-closed, dependency graph,
-                                       i.e. the list of all modules that this module depends on. Items are of type (md_dep_t *) */
+                                       i.e. the list of all modules that this module depends on. Items are of type (md_dep_t *).
+                                       Empty for submodules. */
     sr_llist_t *inv_deps;         /**< Adjacency list for this module in the inverted transitively-closed dependency graph,
-                                       i.e. the list of all modules that depend on this module. Items are of type (md_dep_t *) */
+                                       i.e. the list of all modules that depend on this module. Items are of type (md_dep_t *).
+                                       For a submodule this is a list of all revisions of a module that include it. */
 
     struct lyd_node *ly_data;     /**< libyang's representation of this data. For convenience. */
     sr_llist_node_t *ll_node;     /**< Pointer to the node in ::md_ctx_t::modules which is used to store this instance. */
@@ -101,8 +109,9 @@ typedef struct md_ctx_s {
     struct lyd_node *data_tree;      /**< Graph data as loaded by libyang (not transitively closed).
                                           Also reflects changes made using ::md_insert_module and ::md_remove_module */
 
-    sr_llist_t *modules;             /**< List of all installed modules and their dependencies. Items are of type (md_module_t *) */
-    sr_btree_t *modules_btree;       /**< Pointers to all modules stored in a balanced tree for a quicker lookup.
+    sr_llist_t *modules;             /**< List of all installed modules and submodules with their dependencies.
+                                          Items are of type (md_module_t *) */
+    sr_btree_t *modules_btree;       /**< Pointers to all modules and submodules stored in a balanced tree for a quicker lookup.
                                           Items are of type (md_module_t *)
                                           Note: The tree also frees memory allocated for all the items.  */
 } md_ctx_t;
@@ -154,31 +163,31 @@ void md_ctx_unlock(md_ctx_t *md_ctx);
 int md_destroy(md_ctx_t *md_ctx);
 
 /**
- * @brief Get dependency-related information for a given module.
+ * @brief Get dependency-related information for a given (sub)module.
  *        "revision" set to NULL represents the latest revision.
  *
  * @note O(log |V|) where V is a set of all modules.
  *
  * @param [in] md_ctx Module Dependencies context
- * @param [in] name Name of the module
- * @param [in] revision Revision of the module, can be empty string
+ * @param [in] name Name of the (sub)module
+ * @param [in] revision Revision of the (sub)module, can be empty string
  * @param [out] module Output location for the pointer referencing the module info.
  */
 int md_get_module_info(const md_ctx_t *md_ctx, const char *name, const char *revision,
                        md_module_t **module);
 
 /**
- * @brief Create and return fullname of a module. Afterwards can be accessed using only module->fullname.
+ * @brief Create and return fullname of a (sub)module. Afterwards can be accessed using only module->fullname.
  *        Any allocated memory will be automatically deallocated in ::md_destroy.
  *
- * @param [in] module Module to get the full name of.
+ * @param [in] module (Sub)Module to get the full name of.
  */
 const char *md_get_module_fullname(md_module_t *module);
 
 /**
  * @brief Try to insert module into the dependency graph and update all the edges.
  *        To maintain complete dependency graph for all the installed nodes, the function
- *        also automatically inserts all missing import-based dependencies.
+ *        also automatically inserts all missing import and include-based dependencies.
  *        The operation only changes the in-memory representation of the dependency graph, to make
  *        the changes permanent call ::md_flush afterwards.
  *
@@ -196,6 +205,7 @@ int md_insert_module(md_ctx_t *md_ctx, const char *filepath);
  *        "revision" set to NULL represents the latest revision.
  *        Function will not allow to remove module which is needed by some other installed modules,
  *        hence all the dependencies of the remaining nodes will remain resolved and recorded.
+ *        All submodules whose include count dropped to zero are automatically removed.
  *        The operation only changes the in-memory representation of the dependency graph, to make
  *        the changes permanent call ::md_flush afterwards.
  *

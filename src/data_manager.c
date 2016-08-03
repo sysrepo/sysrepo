@@ -411,7 +411,7 @@ dm_load_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, 
     ll_node = module->deps->first;
     while (ll_node) {
         dep = (md_dep_t *)ll_node->data;
-        if (dep->type == MD_DEP_EXTENSION) { /*< imports are automatically loaded by libyang */
+        if (dep->type == MD_DEP_EXTENSION) { /*< imports and includes are automatically loaded by libyang */
             rc = dm_load_schema_file(dm_ctx, dep->dest->filepath, &dep_schema);
             if (SR_ERR_OK != rc) {
                 *module_schema = NULL;
@@ -443,7 +443,7 @@ dm_load_all_schemas(dm_ctx_t *dm_ctx)
     ll_node = dm_ctx->md_ctx->modules->first;
     while (ll_node) {
         module = (md_module_t *)ll_node->data;
-        if (module->latest_revision) {
+        if (!module->submodule && module->latest_revision) {
             if (SR_ERR_OK != dm_load_schema_file(dm_ctx, module->filepath, &module_schema)) {
                 SR_LOG_ERR("Loading schema file for module '%s' failed.", md_get_module_fullname(module));
                 md_ctx_unlock(dm_ctx->md_ctx);

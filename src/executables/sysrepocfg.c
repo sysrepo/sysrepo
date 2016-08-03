@@ -160,7 +160,7 @@ srcfg_load_module_schema(struct ly_ctx *ly_ctx, const char *filepath)
 
     CHECK_NULL_ARG2(ly_ctx, filepath);
 
-    SR_LOG_DBG("Loading module schema: '%s'.", filepath);   
+    SR_LOG_DBG("Loading module schema: '%s'.", filepath);
     module_schema = lys_parse_path(ly_ctx, filepath,
                                    sr_str_ends_with(filepath, SR_SCHEMA_YANG_FILE_EXT) ? LYS_IN_YANG : LYS_IN_YIN);
     if (NULL == module_schema) {
@@ -221,7 +221,7 @@ srcfg_ly_init(struct ly_ctx **ly_ctx, const char *module_name)
     dep_node = module->deps->first;
     while (dep_node) {
         dep = (md_dep_t *)dep_node->data;
-        if (dep->type == MD_DEP_EXTENSION) { /*< imports are automatically loaded by libyang */
+        if (dep->type == MD_DEP_EXTENSION) { /*< imports and includes are automatically loaded by libyang */
             rc = srcfg_load_module_schema(*ly_ctx, dep->dest->filepath);
             if (SR_ERR_OK != rc) {
                 goto cleanup;
