@@ -1739,14 +1739,52 @@ dm_list_module(dm_ctx_t *dm_ctx, md_module_t *module, sr_schema_t *schema)
     bool module_enabled = false;
     size_t enabled_subtrees_cnt = 0;
     char **enabled_subtrees = NULL;
+    sr_llist_node_t *dep = NULL;
+    md_dep_t *dep_mod = NULL;
+    size_t submod_cnt = 0;
 
     schema->module_name = strdup(module->name);
     CHECK_NULL_NOMEM_GOTO(schema->module_name, rc, cleanup);
 
+    schema->ns = strdup(module->ns);
+    CHECK_NULL_NOMEM_GOTO(schema->ns, rc, cleanup);
+
+    schema->prefix = strdup(module->prefix);
+    CHECK_NULL_NOMEM_GOTO(schema->prefix, rc, cleanup);
+
     rc = dm_list_rev_file(dm_ctx, module->name, module->revision_date, &schema->revision);
     CHECK_RC_LOG_GOTO(rc, cleanup, "List rev file failed module %s", module->name);
 
-    //TODO ns, prefix, submodules + features
+    dep = module->deps->first;
+    while (NULL != dep) {
+        dep_mod = (md_dep_t *) dep->data;
+        dep = dep->next;
+        if (!dep_mod->dest->submodule) {
+            continue;
+        }
+        submod_cnt++;
+    }
+
+    schema->submodules = calloc(submod_cnt, sizeof(*schema->submodules));
+    CHECK_NULL_NOMEM_GOTO(schema->submodules, rc, cleanup);
+
+    dep = module->deps->first;
+    size_t s = 0;
+    while (NULL != dep) {
+        dep_mod = (md_dep_t *) dep->data;
+        dep = dep->next;
+        if (!dep_mod->dest->submodule) {
+            continue;
+        }
+        schema->submodules[s].submodule_name = strdup(dep_mod->dest->name);
+        CHECK_NULL_NOMEM_GOTO(schema->submodules[s].submodule_name, rc, cleanup);
+
+        rc = dm_list_rev_file(dm_ctx, dep_mod->dest->name, dep_mod->dest->revision_date, &schema->submodules[s].revision);
+        CHECK_RC_LOG_GOTO(rc, cleanup, "List rev file failed module %s", module->name);
+
+        schema->submodule_count++;
+        s++;
+    }
 
     rc = pm_get_module_info(dm_ctx->pm_ctx, module->name, &module_enabled,
             &enabled_subtrees, &enabled_subtrees_cnt, &schema->enabled_features, &schema->enabled_feature_cnt);
@@ -1766,28 +1804,6 @@ cleanup:
         sr_free_schema(schema);
     }
     return rc;
-#if 0
-    schema->submodules = calloc(module->inc_size, sizeof(*schema->submodules));
-    CHECK_NULL_NOMEM_GOTO(schema->submodules, rc, cleanup);
-
-    for (size_t s = 0; s < module->inc_size; s++) {
-        const struct lys_submodule *sub = module->inc[s].submodule;
-        if (NULL == sub->name) {
-            SR_LOG_ERR_MSG("Missing schema information");
-            rc = SR_ERR_INTERNAL;
-            goto cleanup;
-        }
-        schema->submodules[s].submodule_name = strdup(sub->name);
-        CHECK_NULL_NOMEM_GOTO(schema->submodules[s].submodule_name, rc, cleanup);
-
-        rc = dm_list_rev_file(dm_ctx, sub->name, sub->rev[0].date, &schema->submodules[s].revision);
-        CHECK_RC_LOG_GOTO(rc, cleanup, "List rev file failed module %s", module->name);
-
-        schema->submodule_count++;
-    }
-    return rc;
-
-#endif
 }
 
 int
