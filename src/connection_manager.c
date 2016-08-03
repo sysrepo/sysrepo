@@ -1494,6 +1494,7 @@ cm_out_event_notif_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
 
     return rc;
 }
+
 /**
  * @brief Processes an internal request received from Request Processor.
  */

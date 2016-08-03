@@ -657,6 +657,7 @@ message RPCResp {
 message EventNotifReq {
   required string xpath = 1;
   repeated Value values = 2;
+  repeated Node trees = 3;
 
   optional string subscriber_address = 10;
   optional uint32 subscription_id = 11;

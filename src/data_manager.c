@@ -3304,15 +3304,15 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
         if (NULL == data_tree) {
             SR_LOG_ERR("%s xpath validation failed ('%s'): %s", procedure_name, xpath, ly_errmsg());
             pthread_rwlock_unlock(&dm_ctx->lyctx_lock);
-            return dm_report_error(session, ly_errmsg(), xpath, SR_ERR_BAD_ELEMENT);
+            return dm_report_error(session, ly_errmsg(), xpath, SR_ERR_VALIDATION_FAILED);
         }
 
         for (size_t i = 0; i < arg_cnt; i++) {
             /* get schema node */
             sch_node = ly_ctx_get_node2(dm_ctx->ly_ctx, NULL, args[i].xpath, (input ? 0 : 1));
             if (NULL == sch_node) {
-                SR_LOG_ERR("%s argument xpath validation failed('%s'): %s", procedure_name, args[i].xpath, ly_errmsg());
-                rc = dm_report_error(session, ly_errmsg(), args[i].xpath, SR_ERR_BAD_ELEMENT);
+                SR_LOG_ERR("%s argument xpath validation failed( '%s'): %s", procedure_name, args[i].xpath, ly_errmsg());
+                rc = dm_report_error(session, ly_errmsg(), args[i].xpath, SR_ERR_VALIDATION_FAILED);
                 break;
             }
             /* copy argument value to string */
@@ -3320,6 +3320,7 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
             if ((SR_CONTAINER_T != args[i].type) && (SR_LIST_T != args[i].type)) {
                 rc = sr_val_to_str(&args[i], sch_node, &string_value);
                 if (SR_ERR_OK != rc) {
+                    rc = SR_ERR_VALIDATION_FAILED;
                     SR_LOG_ERR("Unable to convert %s argument value to string.", procedure_name);
                     break;
                 }
@@ -3338,6 +3339,7 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
             snprintf(root_xpath, PATH_MAX, "%s/%s", xpath, args_tree[i].name);
             rc = sr_tree_to_dt(dm_ctx->ly_ctx, args_tree + i, root_xpath, !input, &data_tree);
             if (SR_ERR_OK != rc) {
+                rc = SR_ERR_VALIDATION_FAILED;
                 SR_LOG_ERR("Unable to convert sysrepo tree into a libyang tree ('%s').", root_xpath);
                 break;
             }
@@ -3444,6 +3446,13 @@ dm_validate_event_notif(dm_ctx_t *dm_ctx, dm_session_t *session, const char *eve
 {
     return dm_validate_procedure(dm_ctx, session, DM_PROCEDURE_EVENT_NOTIF, event_notif_xpath, SR_API_VALUES,
             (void **)values, values_cnt, true);
+}
+
+int
+dm_validate_event_notif_tree(dm_ctx_t *dm_ctx, dm_session_t *session, const char *event_notif_xpath, sr_node_t **trees, size_t *tree_cnt)
+{
+    return dm_validate_procedure(dm_ctx, session, DM_PROCEDURE_EVENT_NOTIF, event_notif_xpath, SR_API_TREES,
+            (void **)trees, tree_cnt, true);
 }
 
 struct ly_set *
