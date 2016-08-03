@@ -52,6 +52,14 @@ if (SWIG_FOUND AND PYTHONLIBS_FOUND AND PYTHONINTERP_FOUND)
 
     swig_add_module(${PYTHON_SWIG_BINDING_2} python python2/${PYTHON_SWIG_BINDING_2}.i)
     swig_link_libraries(${PYTHON_SWIG_BINDING_2} ${PYTHON_LIBRARIES} Sysrepo_cpp)
+
+    file(COPY "python2/examples" DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/python2")
+
+    add_custom_command(
+        TARGET Sysrepo_cpp POST_BUILD
+	COMMAND ln -sf "${CMAKE_BINARY_DIR}/${PYTHON_SWIG_BINDING_2}.py" "${CMAKE_CURRENT_BINARY_DIR}/python2/examples/${PYTHON_SWIG_BINDING_2}.py"
+	COMMAND ln -sf "${CMAKE_CURRENT_BINARY_DIR}/_${PYTHON_SWIG_BINDING_2}.so" "${CMAKE_CURRENT_BINARY_DIR}/python2/examples/_${PYTHON_SWIG_BINDING_2}.so"
+    )
 endif()
 
 # Examples
