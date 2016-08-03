@@ -137,6 +137,7 @@ pm_load_data_tree(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *mod
         if (ENOENT == errno) {
             SR_LOG_DBG("Persist data file '%s' does not exist.", data_filename);
             if (read_only) {
+                SR_LOG_DBG("No persistent data for module '%s' will be loaded.", module_name);
                 rc = SR_ERR_DATA_MISSING;
             } else {
                 /* create new persist file */
@@ -156,7 +157,6 @@ pm_load_data_tree(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *mod
             rc = SR_ERR_INTERNAL;
         }
         if (SR_ERR_OK != rc) {
-            SR_LOG_WRN("Persist data tree load for '%s' has failed.", module_name);
             goto cleanup;
         }
     }
@@ -165,7 +165,7 @@ pm_load_data_tree(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *mod
     rc = sr_locking_set_lock_fd(pm_ctx->lock_ctx, fd, data_filename, (read_only ? false : true), true);
     CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to lock persist data file for '%s'.", module_name);
 
-    *data_tree = lyd_parse_fd(pm_ctx->ly_ctx, fd, LYD_XML, LYD_OPT_STRICT | LYD_OPT_CONFIG);
+    *data_tree = lyd_parse_fd(pm_ctx->ly_ctx, fd, LYD_XML, LYD_OPT_STRICT | LYD_OPT_CONFIG | LYD_OPT_NOAUTODEL);
     if (NULL == *data_tree && LY_SUCCESS != ly_errno) {
         SR_LOG_ERR("Parsing persist data from file '%s' failed: %s", data_filename, ly_errmsg());
         rc = SR_ERR_INTERNAL;
@@ -557,7 +557,8 @@ pm_get_module_info(pm_ctx_t *pm_ctx, const char *module_name, bool *module_enabl
                 if (SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS == subscription.type) {
                     *module_enabled = true;
                 }
-                if (SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS == subscription.type) {
+                if (SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS == subscription.type ||
+                        SR__SUBSCRIPTION_TYPE__DP_GET_ITEMS_SUBS == subscription.type) {
                     tmp = realloc(subtrees_enabled, (subtrees_enabled_cnt + 1) * sizeof(*subtrees_enabled));
                     CHECK_NULL_NOMEM_GOTO(tmp, rc, cleanup);
                     subtrees_enabled = tmp;

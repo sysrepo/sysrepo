@@ -45,6 +45,17 @@ typedef struct cl_sm_ctx_s cl_sm_ctx_t;
  */
 typedef struct cl_sm_server_ctx_s cl_sm_server_ctx_t;
 
+typedef union cl_sm_callback_u {
+        sr_feature_enable_cb feature_enable_cb;  /**< Callback to be called by feature enable/disable event. */
+        sr_module_install_cb module_install_cb;  /**< Callback to be called by module (un)install event. */
+        sr_module_change_cb module_change_cb;    /**< Callback to be called by module change event. */
+        sr_subtree_change_cb subtree_change_cb;  /**< Callback to be called by subtree change event. */
+        sr_dp_get_items_cb dp_get_items_cb;      /**< Callback to be called by operational data requests. */
+        sr_rpc_cb rpc_cb;                        /**< Callback to be called by RPC delivery. */
+        sr_rpc_tree_cb rpc_tree_cb;              /**< Callback to be called by RPC delivery -- the *tree* variant */
+        sr_event_notif_cb event_notif_cb;        /**< Callback to be called by event notification delivery. */
+} cl_sm_callback_t;
+
 /**
  * @brief Sysrepo subscription context.
  */
@@ -53,13 +64,8 @@ typedef struct cl_sm_subscription_ctx_s {
     const char *delivery_address;                /**< Address where the notification messages should be delivered. */
     uint32_t id;                                 /**< Library-local subscription identifier. */
     const char *module_name;                     /**< Name of the YANG module witch the subscription is tied to.*/
-    union {
-        sr_feature_enable_cb feature_enable_cb;  /**< Callback to be called by feature enable/disable event. */
-        sr_module_install_cb module_install_cb;  /**< Callback to be called by module (un)install event. */
-        sr_module_change_cb module_change_cb;    /**< Callback to be called by module change event. */
-        sr_subtree_change_cb subtree_change_cb;  /**< Callback to be called by subtree change event. */
-        sr_rpc_cb rpc_cb;                        /**< Callback to be called by RPC delivery. */
-    } callback;
+    cl_sm_callback_t callback;                   /**< Callback to be called when the associated notification/action triggers. */
+    sr_api_variant_t api_variant;                /**< API variant -- values vs. nodes (relevant for the callback type only) */
     cl_sm_ctx_t *sm_ctx;                         /**< Associated Subscription Manager context. */
     sr_session_ctx_t *data_session;              /**< Pointer to a data session that can be used from notification callbacks. */
     void *private_ctx;                           /**< Private context pointer, opaque to sysrepo. */

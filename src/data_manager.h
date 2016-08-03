@@ -4,8 +4,8 @@
  * @brief Data manager provides access to schemas and data trees managed by sysrepo. It allows to
  * read, lock and edit the data models.
  * @file data_manager.h
- * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
- *
+ * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>,
+ *         Milan Lenco <milan.lenco@pantheon.tech>
  *
  * @copyright
  * Copyright 2015 Cisco Systems, Inc.
@@ -36,6 +36,13 @@
 #include "sr_common.h"
 #include "notification_processor.h"
 #include "persistence_manager.h"
+#include "connection_manager.h"
+#include "module_dependencies.h"
+
+/**
+ * @brief number of supported data stores - length of arrays used in session
+ */
+#define DM_DATASTORE_COUNT 3
 
 /**
  * @brief Structure that holds the context of an instance of Data Manager.
@@ -188,7 +195,7 @@ typedef struct dm_c_ctxs_s {
  * @param [out] dm_ctx
  * @return Error code (SR_ERR_OK on success), SR_ERR_IO
  */
-int dm_init(ac_ctx_t *ac_ctx, np_ctx_t *np_ctx, pm_ctx_t *pm_ctx,
+int dm_init(ac_ctx_t *ac_ctx, np_ctx_t *np_ctx, pm_ctx_t *pm_ctx, cm_connection_mode_t conn_mode,
         const char *schema_search_dir, const char *data_search_dir, dm_ctx_t **dm_ctx);
 
 /**
@@ -241,6 +248,8 @@ int dm_get_datatree(dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, const char *
 
 /**
  * @brief Tests if the schema exists in libyang context. If yes returns the module.
+ * If not and Sysrepo is running in the library mode, the module and its dependencies are loaded
+ * into the libyang context.
  * Returned module might be used to validate xpath or to create data tree.
  * @param [in] dm_ctx
  * @param [in] module_name
@@ -561,6 +570,16 @@ int dm_install_module(dm_ctx_t *dm_ctx, const char *module_name, const char *rev
 int dm_uninstall_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision);
 
 /**
+ * @brief Checks whether the module contains any state data.
+ *
+ * @param [in] ctx DM context.
+ * @param [in] module_name Name of the module to be checked.
+ * @param [out] res True if there is at least one subtree in the module with state data.
+ * @return Error code (SR_ERR_OK on success)
+ */
+int dm_has_state_data(dm_ctx_t *ctx, const char *module_name, bool *res);
+
+/**
  * @brief Checks whether the module has an enabled subtree.
  * @param [in] ctx
  * @param [in] module_name - name of the module to be checked
@@ -638,6 +657,40 @@ int dm_copy_all_models(dm_ctx_t *dm_ctx, dm_session_t *session, sr_datastore_t s
  * @return Error code (SR_ERR_OK on success)
  */
 int dm_validate_rpc(dm_ctx_t *dm_ctx, dm_session_t *session, const char *rpc_xpath, sr_val_t **args, size_t *arg_cnt, bool input);
+
+/**
+ * @brief Validates content of a RPC request or reply with arguments represented using sr_node_t.
+ * @param [in] dm_ctx DM context.
+ * @param [in] session DM session.
+ * @param [in] rpc_xpath XPath of the RPC.
+ * @param [in] args Input/output arguments of the RPC (can be changed inside of the function).
+ * @param [in] arg_cnt Number of input/output arguments provided (can be changed inside of the function).
+ * @param [in] input TRUE if input arguments were provided, FALSE if output.
+ * @return Error code (SR_ERR_OK on success)
+ */
+int dm_validate_rpc_tree(dm_ctx_t *dm_ctx, dm_session_t *session, const char *rpc_xpath, sr_node_t **args, size_t *arg_cnt, bool input);
+
+/**
+ * @brief Validates content of an event notification request.
+ * @param [in] dm_ctx DM context.
+ * @param [in] session DM session.
+ * @param [in] notif_xpath XPath of the notification.
+ * @param [in] values Event notification subtree nodes (can be changed inside of the function).
+ * @param [in] values_cnt Number of items inside the values array (can be changed inside of the function).
+ * @return Error code (SR_ERR_OK on success)
+ */
+int dm_validate_event_notif(dm_ctx_t *dm_ctx, dm_session_t *session, const char *notif_xpath, sr_val_t **values, size_t *values_cnt);
+
+/**
+ * @brief Validates content of an event notification request with data represented using sr_node_t.
+ * @param [in] dm_ctx DM context.
+ * @param [in] session DM session.
+ * @param [in] notif_xpath XPath of the notification.
+ * @param [in] values Event notification subtree nodes (can be changed inside of the function).
+ * @param [in] values_cnt Number of items inside the values array (can be changed inside of the function).
+ * @return Error code (SR_ERR_OK on success)
+ */
+int dm_validate_event_notif_tree(dm_ctx_t *dm_ctx, dm_session_t *session, const char *notif_xpath, sr_node_t **values, size_t *values_cnt);
 
 /**
  * @brief Locks lyctx_lock and call lyd_get_node.
@@ -805,5 +858,15 @@ int dm_get_commit_context(dm_ctx_t *dm_ctx, uint32_t c_ctx_id, dm_commit_context
  * @return Error code (SR_ERR_OK on success)
  */
 int dm_get_commit_ctxs(dm_ctx_t *dm_ctx, dm_commit_ctxs_t **commit_ctxs);
+
+/**
+ * @brief Returns and instance of module dependency context
+ * @param [in] dm_ctx
+ * @param [out] md_ctx
+ *
+ * @return Error code (SR_ERR_OK on success)
+ *
+ */
+int dm_get_md_ctx(dm_ctx_t *dm_ctx, md_ctx_t **md_ctx);
 /**@} Data manager*/
 #endif /* SRC_DATA_MANAGER_H_ */

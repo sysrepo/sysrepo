@@ -159,6 +159,14 @@ typedef void (*cm_signal_cb)(cm_ctx_t *cm_ctx, int signum);
  */
 int cm_watch_signal(cm_ctx_t *cm_ctx, int signum, cm_signal_cb callback);
 
+/**
+ * @brief Get connection mode in which the given instance of Connection Manager
+ * operates.
+ *
+ * @return Connection mode.
+ */
+cm_connection_mode_t cm_get_connection_mode(cm_ctx_t *cm_ctx);
+
 /**@} cm */
 
 #endif /* SRC_CONNECTION_MANAGER_H_ */

@@ -75,6 +75,17 @@ message Value {
   optional uint64 uint64_val = 25;
 }
 
+/**
+ * @brief Item stored (or to be stored) in the datastore represented as a tree node
+ * reflecting module schema.
+ * Can be mapped to sr_node_t data structure from sysrepo library API.
+ */
+message Node {
+  required Value value = 1;        /**< Value of the node; member *xpath* is used to store node's name. */
+  required string module_name = 2; /**< Name of the module that defines scheme of this node. */
+  repeated Node children = 3;      /**< Direct descendands of this node. */
+}
+
 message Error {
   optional string message = 1;
   optional string xpath = 2;
@@ -159,6 +170,20 @@ message SessionSwitchDsReq {
  * @brief Response to sr_session_switch_ds request.
  */
 message SessionSwitchDsResp {
+
+}
+
+/**
+ * @brief Request for modification of session options
+ */
+message SessionSetOptsReq {
+  required uint32 options = 1;
+}
+
+/**
+ * @brief Response to sr_session_set_options
+ */
+message SessionSetOptsResp {
 
 }
 
@@ -464,13 +489,18 @@ message FeatureEnableResp {
 enum SubscriptionType {
   MODULE_INSTALL_SUBS = 1;
   FEATURE_ENABLE_SUBS = 2;
-  MODULE_CHANGE_SUBS = 3;
-  SUBTREE_CHANGE_SUBS = 4;
 
-  RPC_SUBS = 10;
+  MODULE_CHANGE_SUBS = 10;
+  SUBTREE_CHANGE_SUBS = 11;
 
-  HELLO_SUBS = 20;           /**< Used only internally to test for inactive notification subscriptions. */
-  COMMIT_END_SUBS = 21;      /**< Used only internally to notify about the end of the commit process. */
+  DP_GET_ITEMS_SUBS = 20;
+
+  RPC_SUBS = 30;
+
+  EVENT_NOTIF_SUBS = 40;
+
+  HELLO_SUBS = 50;           /**< Used only internally to test for inactive notification subscriptions. */
+  COMMIT_END_SUBS = 51;      /**< Used only internally to notify about the end of the commit process. */
 }
 
 enum NotificationEvent {
@@ -573,25 +603,67 @@ message GetChangesResp {
 
 
 ////////////////////////////////////////////////////////////////////////////////
+// Operational Data API
+////////////////////////////////////////////////////////////////////////////////
+
+/**
+ * @brief Requests operational data under given path form an operational data
+ * provider.
+ */
+message DataProvideReq {
+  required string xpath = 1;
+
+  required string subscriber_address = 10;
+  required uint32 subscription_id = 11;
+
+  required uint64 request_id = 20;
+}
+
+/**
+ * @brief Response to a request of operational data under given path form an
+ * operational data provider.
+ */
+message DataProvideResp {
+  required string xpath = 1;
+  repeated Value values = 2;
+
+  required uint64 request_id = 10;
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
 // RPC API
 ////////////////////////////////////////////////////////////////////////////////
 
 message RPCReq {
   required string xpath = 1;
   repeated Value input = 2;
+  repeated Node input_tree = 3;
 
   optional string subscriber_address = 10;
   optional uint32 subscription_id = 11;
-  optional uint32 session_id = 12;
 }
 
 message RPCResp {
   required string xpath = 1;
   repeated Value output = 2;
-
-  optional uint32 session_id = 10;
+  repeated Node output_tree = 3;
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// Event Notification API
+////////////////////////////////////////////////////////////////////////////////
+
+message EventNotifReq {
+  required string xpath = 1;
+  repeated Value values = 2;
+
+  optional string subscriber_address = 10;
+  optional uint32 subscription_id = 11;
+}
+
+message EventNotifResp {
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 // Sysrepo Engine internal messages
@@ -603,6 +675,10 @@ message UnsubscribeDestinationReq {
 
 message CommitReleaseReq {
   required uint32 commit_id = 1;
+}
+
+message OperDataTimeoutReq {
+  required uint64 request_id = 1;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -617,6 +693,7 @@ enum Operation {
   SESSION_STOP = 11;
   SESSION_REFRESH = 12;
   SESSION_SWITCH_DS = 13;
+  SESSION_SET_OPTS = 14;
 
   LIST_SCHEMAS = 20;
   GET_SCHEMA = 21;
@@ -643,10 +720,13 @@ enum Operation {
   CHECK_ENABLED_RUNNING = 72;
   GET_CHANGES = 73;
 
-  RPC = 80;
+  DATA_PROVIDE = 80;
+  RPC = 81;
+  EVENT_NOTIF = 82;
 
   UNSUBSCRIBE_DESTINATION = 101;
   COMMIT_RELEASE = 102;
+  OPER_DATA_TIMEOUT = 103;
 }
 
 /**
@@ -659,6 +739,7 @@ message Request {
   optional SessionStopReq session_stop_req = 11;
   optional SessionRefreshReq session_refresh_req = 12;
   optional SessionSwitchDsReq session_switch_ds_req =13;
+  optional SessionSetOptsReq session_set_opts_req = 14;
 
   optional ListSchemasReq list_schemas_req = 20;
   optional GetSchemaReq get_schema_req = 21;
@@ -685,7 +766,9 @@ message Request {
   optional CheckEnabledRunningReq check_enabled_running_req = 72;
   optional GetChangesReq get_changes_req = 73;
 
-  optional RPCReq rpc_req = 80;
+  optional DataProvideReq data_provide_req = 80;
+  optional RPCReq rpc_req = 81;
+  optional EventNotifReq event_notif_req = 82;
 }
 
 /**
@@ -700,6 +783,7 @@ message Response {
   optional SessionStopResp session_stop_resp = 11;
   optional SessionRefreshResp session_refresh_resp = 12;
   optional SessionSwitchDsResp session_switch_ds_resp = 13;
+  optional SessionSetOptsResp session_set_opts_resp = 14;
 
   optional ListSchemasResp list_schemas_resp = 20;
   optional GetSchemaResp get_schema_resp = 21;
@@ -726,7 +810,9 @@ message Response {
   optional CheckEnabledRunningResp check_enabled_running_resp = 72;
   optional GetChangesResp get_changes_resp = 73;
 
-  optional RPCResp rpc_resp = 80;
+  optional DataProvideResp data_provide_resp = 80;
+  optional RPCResp rpc_resp = 81;
+  optional EventNotifResp event_notif_resp = 82;
 }
 
 /**
@@ -764,6 +850,7 @@ message InternalRequest {
 
   optional UnsubscribeDestinationReq unsubscribe_dst_req = 10;
   optional CommitReleaseReq commit_release_req = 11;
+  optional OperDataTimeoutReq oper_data_timeout_req = 12;
 }
 
 /**

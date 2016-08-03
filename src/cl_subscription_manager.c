@@ -658,6 +658,70 @@ cl_sm_notif_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *msg)
 }
 
 /**
+ * @brief Processes an incoming data-provide request message.
+ */
+static int
+cl_sm_dp_request_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *msg)
+{
+    cl_sm_subscription_ctx_t *subscription = NULL;
+    cl_sm_subscription_ctx_t subscription_lookup = { 0, };
+    Sr__Msg *resp = NULL;
+    sr_val_t *values = NULL;
+    size_t values_cnt = 0;
+    int rc = SR_ERR_OK, cb_rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG4(sm_ctx, msg, msg->request, msg->request->data_provide_req);
+
+    SR_LOG_DBG("Received a data-provide request for subscription id=%"PRIu32".", msg->request->data_provide_req->subscription_id);
+
+    pthread_mutex_lock(&sm_ctx->subscriptions_lock);
+
+    /* find the subscription according to id */
+    subscription_lookup.id = msg->request->data_provide_req->subscription_id;
+    subscription = sr_btree_search(sm_ctx->subscriptions_btree, &subscription_lookup);
+    if (NULL == subscription) {
+        pthread_mutex_unlock(&sm_ctx->subscriptions_lock);
+        SR_LOG_ERR("No matching subscription for subscription id=%"PRIu32".", msg->request->data_provide_req->subscription_id);
+        goto cleanup;
+    }
+
+    SR_LOG_DBG("Calling dp_get_items_cb callback for subscription id=%"PRIu32".", subscription->id);
+
+    cb_rc = subscription->callback.dp_get_items_cb(
+            msg->request->data_provide_req->xpath,
+            &values, &values_cnt,
+            subscription->private_ctx);
+
+    pthread_mutex_unlock(&sm_ctx->subscriptions_lock);
+
+    /* allocate the response and send it */
+    rc = sr_gpb_resp_alloc(SR__OPERATION__DATA_PROVIDE, msg->session_id, &resp);
+    CHECK_RC_MSG_RETURN(rc, "Allocation of data-provide response failed.");
+
+    resp->response->result = cb_rc;
+    resp->response->data_provide_resp->request_id = msg->request->data_provide_req->request_id;
+    resp->response->data_provide_resp->xpath = strdup(msg->request->data_provide_req->xpath);
+    CHECK_NULL_NOMEM_GOTO(resp->response->data_provide_resp->xpath, rc, cleanup);
+
+    /* copy output values to GPB */
+    if (SR_ERR_OK == cb_rc) {
+        rc = sr_values_sr_to_gpb(values, values_cnt, &resp->response->data_provide_resp->values,
+                &resp->response->data_provide_resp->n_values);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Error by copying output values to GPB.");
+    }
+
+    /* send the response */
+    rc = cl_sm_msg_send_connection(sm_ctx, conn, resp);
+
+cleanup:
+    sr_free_values(values, values_cnt);
+    if (NULL != resp) {
+        sr__msg__free_unpacked(resp, NULL);
+    }
+    return rc;
+}
+
+/**
  * @brief Processes an incoming RPC message.
  */
 static int
@@ -667,6 +731,7 @@ cl_sm_rpc_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *msg)
     cl_sm_subscription_ctx_t subscription_lookup = { 0, };
     Sr__Msg *resp = NULL;
     sr_val_t *input = NULL, *output = NULL;
+    sr_node_t *input_tree = NULL, *output_tree = NULL;
     size_t input_cnt = 0, output_cnt = 0;
     int rc = SR_ERR_OK, rpc_rc = SR_ERR_OK;
 
@@ -675,7 +740,12 @@ cl_sm_rpc_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *msg)
     SR_LOG_DBG("Received a RPC request for subscription id=%"PRIu32".", msg->request->rpc_req->subscription_id);
 
     /* copy input values from GPB */
-    rc = sr_values_gpb_to_sr(msg->request->rpc_req->input, msg->request->rpc_req->n_input, &input, &input_cnt);
+    if (msg->request->rpc_req->n_input) {
+        rc = sr_values_gpb_to_sr(msg->request->rpc_req->input, msg->request->rpc_req->n_input, &input, &input_cnt);
+    } else if (msg->request->rpc_req->n_input_tree) {
+        rc = sr_trees_gpb_to_sr(msg->request->rpc_req->input_tree, msg->request->rpc_req->n_input_tree,
+                                &input_tree, &input_cnt);
+    }
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by copying RPC input arguments from GPB.");
 
     pthread_mutex_lock(&sm_ctx->subscriptions_lock);
@@ -691,17 +761,25 @@ cl_sm_rpc_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *msg)
 
     SR_LOG_DBG("Calling RPC callback for subscription id=%"PRIu32".", subscription->id);
 
-    rpc_rc = subscription->callback.rpc_cb(
-            msg->request->rpc_req->xpath,
-            input, input_cnt,
-            &output, &output_cnt,
-            subscription->private_ctx);
+    if (SR_API_VALUES == subscription->api_variant) {
+        rpc_rc = subscription->callback.rpc_cb(
+                        msg->request->rpc_req->xpath,
+                        input, input_cnt,
+                        &output, &output_cnt,
+                        subscription->private_ctx);
+    } else {
+        rpc_rc = subscription->callback.rpc_tree_cb(
+                        msg->request->rpc_req->xpath,
+                        input_tree, input_cnt,
+                        &output_tree, &output_cnt,
+                        subscription->private_ctx);
+    }
 
     pthread_mutex_unlock(&sm_ctx->subscriptions_lock);
 
     /* allocate the response and send it */
     rc = sr_gpb_resp_alloc(SR__OPERATION__RPC, msg->session_id, &resp);
-    CHECK_RC_MSG_RETURN(rc, "Allocation of RPC response failed.");
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Allocation of RPC response failed.");
 
     resp->response->result = rpc_rc;
     resp->response->rpc_resp->xpath = strdup(msg->request->rpc_req->xpath);
@@ -709,7 +787,13 @@ cl_sm_rpc_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *msg)
 
     /* copy output values to GPB */
     if (SR_ERR_OK == rpc_rc) {
-        rc = sr_values_sr_to_gpb(output, output_cnt, &resp->response->rpc_resp->output, &resp->response->rpc_resp->n_output);
+        if (NULL != output) {
+            rc = sr_values_sr_to_gpb(output, output_cnt, &resp->response->rpc_resp->output,
+                    &resp->response->rpc_resp->n_output);
+        } else if (NULL != output_tree) {
+            rc = sr_trees_sr_to_gpb(output_tree, output_cnt, &resp->response->rpc_resp->output_tree,
+                    &resp->response->rpc_resp->n_output_tree);
+        }
         CHECK_RC_MSG_GOTO(rc, cleanup, "Error by copying RPC output arguments to GPB.");
     }
 
@@ -719,12 +803,59 @@ cl_sm_rpc_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *msg)
 cleanup:
     sr_free_values(input, input_cnt);
     sr_free_values(output, output_cnt);
+    sr_free_trees(input_tree, input_cnt);
+    sr_free_trees(output_tree, output_cnt);
     if (NULL != resp) {
         sr__msg__free_unpacked(resp, NULL);
     }
     return rc;
 }
 
+/**
+ * @brief Processes an incoming event notification.
+ */
+static int
+cl_sm_event_notif_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *msg)
+{
+    cl_sm_subscription_ctx_t *subscription = NULL;
+    cl_sm_subscription_ctx_t subscription_lookup = { 0, };
+    sr_val_t *values = NULL;
+    size_t values_cnt = 0;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG4(sm_ctx, msg, msg->request, msg->request->event_notif_req);
+
+    SR_LOG_DBG("Received an event notification for subscription id=%"PRIu32".",
+            msg->request->event_notif_req->subscription_id);
+
+    /* copy values from GPB */
+    rc = sr_values_gpb_to_sr(msg->request->event_notif_req->values, msg->request->event_notif_req->n_values,
+            &values, &values_cnt);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by copying event notification values from GPB.");
+
+    pthread_mutex_lock(&sm_ctx->subscriptions_lock);
+
+    /* find the subscription according to id */
+    subscription_lookup.id = msg->request->event_notif_req->subscription_id;
+    subscription = sr_btree_search(sm_ctx->subscriptions_btree, &subscription_lookup);
+    if (NULL == subscription) {
+        pthread_mutex_unlock(&sm_ctx->subscriptions_lock);
+        SR_LOG_ERR("No matching subscription for subscription id=%"PRIu32".",
+                msg->request->event_notif_req->subscription_id);
+        goto cleanup;
+    }
+
+    SR_LOG_DBG("Calling event notification callback for subscription id=%"PRIu32".", subscription->id);
+
+    subscription->callback.event_notif_cb(msg->request->event_notif_req->xpath, values, values_cnt,
+            subscription->private_ctx);
+
+    pthread_mutex_unlock(&sm_ctx->subscriptions_lock);
+
+cleanup:
+    sr_free_values(values, values_cnt);
+    return rc;
+}
 /**
  * @brief Processes a message received on the connection.
  */
@@ -747,9 +878,15 @@ cl_sm_conn_msg_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, uint8_t *msg
     if (SR__MSG__MSG_TYPE__NOTIFICATION == msg->type) {
         /* notification */
         rc = cl_sm_notif_process(sm_ctx, conn, msg);
+    } else if ((SR__MSG__MSG_TYPE__REQUEST == msg->type) && (SR__OPERATION__DATA_PROVIDE == msg->request->operation)) {
+        /* data-provide request */
+        rc = cl_sm_dp_request_process(sm_ctx, conn, msg);
     } else if ((SR__MSG__MSG_TYPE__REQUEST == msg->type) && (SR__OPERATION__RPC == msg->request->operation)) {
         /* RPC request */
         rc = cl_sm_rpc_process(sm_ctx, conn, msg);
+    } else if ((SR__MSG__MSG_TYPE__REQUEST == msg->type) && (SR__OPERATION__EVENT_NOTIF == msg->request->operation)) {
+        /* event notification */
+        rc = cl_sm_event_notif_process(sm_ctx, conn, msg);
     } else {
         SR_LOG_ERR("Invalid or unexpected message received (conn=%p).", (void*)conn);
         rc = SR_ERR_INVAL_ARG;

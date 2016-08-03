@@ -2,6 +2,7 @@ set(TEST_REPOSITORY_LOC "${CMAKE_BINARY_DIR}/repository")
 set(TEST_SCHEMA_SEARCH_DIR "${TEST_REPOSITORY_LOC}/yang/")
 set(TEST_DATA_SEARCH_DIR "${TEST_REPOSITORY_LOC}/data/")
 set(TEST_INTERNAL_SCHEMA_SEARCH_DIR "${TEST_REPOSITORY_LOC}/yang/internal/")
+set(TEST_INTERNAL_DATA_SEARCH_DIR "${TEST_REPOSITORY_LOC}/data/internal/")
 
 set(TEST_HELPERS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/helpers/")
 
@@ -13,26 +14,23 @@ include_directories ("${PROJECT_SOURCE_DIR}/src" "${PROJECT_SOURCE_DIR}/src/comm
 
 find_program(valgrind_FOUND valgrind)
 
+add_library(HELPERS OBJECT ${TEST_HELPERS_DIR}rp_dt_context_helper.c
+            ${TEST_HELPERS_DIR}test_module_helper.c
+            ${TEST_HELPERS_DIR}system_helper.c)
+
 # create test target with specified options
 macro(ADD_UNIT_TEST_WITH_OPTS TEST_NAME USE_HELPERS USE_VALGRIND WRAP_FUNCTION)
-    if(${USE_HELPERS})
-        set(TEST_SRC
-            ${TEST_NAME}.c
-            ${TEST_HELPERS_DIR}rp_dt_context_helper.c
-            ${TEST_HELPERS_DIR}test_module_helper.c
-            ${TEST_HELPERS_DIR}system_helper.c
-            )
-    else()
-        set(TEST_SRC
-            ${TEST_NAME}.c
-            )
-    endif()
     if ("${WRAP_FUNCTION}" STREQUAL "")
         set(test_link_flags "")
     else()
         set(test_link_flags "-Wl,--wrap,${WRAP_FUNCTION}")
     endif()
-    add_executable(${TEST_NAME} ${TEST_SRC})
+    if(${USE_HELPERS})
+        add_executable(${TEST_NAME} ${TEST_NAME}.c $<TARGET_OBJECTS:HELPERS>)
+    else()
+        add_executable(${TEST_NAME} ${TEST_NAME}.c)
+    endif()
+
     target_link_libraries(${TEST_NAME} ${CMOCKA_LIBRARIES} sysrepo_a sysrepo-engine_a ${test_link_flags})
     add_test(${TEST_NAME} ${TEST_NAME})
     if(valgrind_FOUND)
@@ -67,6 +65,8 @@ ADD_UNIT_TEST(rp_dt_xpath_test 0)
 ADD_UNIT_TEST(rp_datatree_test 1)
 ADD_UNIT_TEST(rp_dt_edit_test 1)
 ADD_UNIT_TEST(rp_dt_running_test 1)
+
+ADD_UNIT_TEST(md_test 1)
 
 if("${TEST_REPOSITORY_LOC}" STREQUAL "${REPOSITORY_LOC}")
     # end-to-end tests that work only if test repository location equals to 
@@ -125,15 +125,14 @@ endif()
 
 
 # create test repository directories and copy internal schemas
-EXECUTE_PROCESS(
-  COMMAND mkdir -p "${TEST_SCHEMA_SEARCH_DIR}" "${TEST_DATA_SEARCH_DIR}" "${TEST_INTERNAL_SCHEMA_SEARCH_DIR}"
-  COMMAND cp "${PROJECT_SOURCE_DIR}/yang/sysrepo-persistent-data.yang" "${TEST_INTERNAL_SCHEMA_SEARCH_DIR}"
-  COMMAND cp "${PROJECT_SOURCE_DIR}/yang/sysrepo-persistent-data.yin" "${TEST_INTERNAL_SCHEMA_SEARCH_DIR}"
-  ERROR_QUIET
+add_custom_target(create_internals
+    COMMAND mkdir -p "${TEST_SCHEMA_SEARCH_DIR}" "${TEST_DATA_SEARCH_DIR}" "${TEST_INTERNAL_SCHEMA_SEARCH_DIR}" "${TEST_INTERNAL_DATA_SEARCH_DIR}"
+    COMMAND cp "${PROJECT_SOURCE_DIR}/yang/sysrepo-persistent-data.yang" "${TEST_INTERNAL_SCHEMA_SEARCH_DIR}"
+    COMMAND cp "${PROJECT_SOURCE_DIR}/yang/sysrepo-module-dependencies.yang" "${TEST_INTERNAL_SCHEMA_SEARCH_DIR}"
 )
 
 # make common_test depend on sysrepoctl
-add_dependencies(common_test sysrepoctl)
+add_dependencies(common_test create_internals sysrepoctl)
 
 # install testing YANG modules
 macro(INSTALL_YANG_MODULE MODULE_NAME)
@@ -152,9 +151,10 @@ INSTALL_YANG_MODULE("info-module")
 INSTALL_YANG_MODULE("module-a@2016-02-02")
 INSTALL_YANG_MODULE("module-a@2016-02-10")
 INSTALL_YANG_MODULE("module-b@2016-02-05")
-INSTALL_YANG_MODULE("iana-if-type")
 INSTALL_YANG_MODULE("ietf-interfaces@2014-05-08")
+INSTALL_YANG_MODULE("iana-if-type")
 INSTALL_YANG_MODULE("ietf-ip@2014-06-16")
+INSTALL_YANG_MODULE("state-module@2016-07-01")
 
 # dummy testing plugins
 add_library(dummy-plugin-1 SHARED ${TEST_HELPERS_DIR}dummy_plugin.c)

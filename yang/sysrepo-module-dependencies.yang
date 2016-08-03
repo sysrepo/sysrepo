@@ -1,0 +1,125 @@
+module sysrepo-module-dependencies {
+
+  yang-version 1;
+
+  namespace "urn:ietf:params:xml:ns:yang:sysrepo-module-dependencies";
+
+  prefix srmd;
+
+  organization "sysrepo.org";
+
+  contact
+    "sysrepo-devel@sysrepo.org";
+
+  description
+    "List of dependencies stored for each module by sysrepo.
+     Used only internally by Sysrepo Engine.";
+
+  revision "2016-06-14" {
+    description "initial revision";
+    reference "sysrepo.org";
+  }
+
+  list module {
+    key "name revision";
+    description "Module dependencies maintained by sysrepo.";
+
+    leaf name {
+        type string;
+        description "Name of the module.";
+    }
+
+    leaf revision {
+        type string;
+        description "Revision of the module, can be empty.";
+    }
+
+    leaf filepath {
+        type string;
+        description "Path to the schema file.";
+    }
+
+    leaf latest-revision {
+        type boolean;
+        default true;
+        description "Is this the latest revision of this module?";
+    }
+
+    container dependencies {
+      description "List of dependencies. Only direct (non-transitive) dependencies are stored in the data file.";
+
+      list dependency {
+        key "module-name module-revision";
+        description "An instance of module dependency.";
+
+        leaf module-name {
+            type string;
+            description "Name of a module that the source module depends on.";
+        }
+
+        leaf module-revision {
+            type string;
+            description "Revision of a module that the source module depends on, can be empty.";
+        }
+
+        leaf type {
+            type enumeration {
+                enum "import";
+                enum "extension";
+            }
+            description "Type of the dependency.";
+        }
+      }
+    }
+
+    container instance-identifiers {
+      description "List of XPaths referring to all leaf(-list)s in the module with the instance-identifier type.";
+
+      list instance-identifier {
+        key "xpath orig-module-revision";
+        description "Single instance identifier summary.";
+
+        leaf xpath {
+          type string;
+          description "XPath (without keys) referring to a leaf or leaf-list with the instance-identifier type.";
+        }
+
+        leaf orig-module-name {
+          type string;
+          mandatory "true";
+          description "Name of a module that defines this instance identifier.";
+        }
+
+        leaf orig-module-revision {
+          type string;
+          description "Revision of a module that defines this instance identifier.";
+        }
+      }
+    }
+
+    container op-data-subtrees {
+      description "List of XPaths referring to all subtrees in the schema containing only operational data.";
+
+      list op-data-subtree {
+        key "xpath orig-module-revision";
+        description "Reference to a subtree with only operational data.";
+
+        leaf xpath {
+          type string;
+          description "XPath (without keys) referring to a root of a subtree carrying only operational data.";
+        }
+
+        leaf orig-module-name {
+          type string;
+          mandatory "true";
+          description "Name of a module that defines this subtree.";
+        }
+
+        leaf orig-module-revision {
+          type string;
+          description "Revision of a module that defines this subtree.";
+        }
+      }
+    }
+  }
+}

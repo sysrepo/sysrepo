@@ -478,6 +478,53 @@ sr_lyd_insert_after(dm_data_info_t *data_info, struct lyd_node *sibling, struct 
     return rc;
 }
 
+static sr_type_t
+sr_ly_data_type_to_sr(LY_DATA_TYPE type)
+{
+    switch(type){
+        case LY_TYPE_BINARY:
+            return SR_BINARY_T;
+        case LY_TYPE_BITS:
+            return SR_BITS_T;
+        case LY_TYPE_BOOL:
+            return SR_BOOL_T;
+        case LY_TYPE_DEC64:
+            return SR_DECIMAL64_T;
+        case LY_TYPE_EMPTY:
+            return SR_LEAF_EMPTY_T;
+        case LY_TYPE_ENUM:
+            return SR_ENUM_T;
+        case LY_TYPE_IDENT:
+            return SR_IDENTITYREF_T;
+        case LY_TYPE_INST:
+            return SR_INSTANCEID_T;
+        case LY_TYPE_STRING:
+            return SR_STRING_T;
+        case LY_TYPE_UNION:
+            return SR_UNION_T;
+        case LY_TYPE_INT8:
+            return SR_INT8_T;
+        case LY_TYPE_UINT8:
+            return SR_UINT8_T;
+        case LY_TYPE_INT16:
+            return SR_INT16_T;
+        case LY_TYPE_UINT16:
+            return SR_UINT16_T;
+        case LY_TYPE_INT32:
+            return SR_INT32_T;
+        case LY_TYPE_UINT32:
+            return SR_UINT32_T;
+        case LY_TYPE_INT64:
+            return SR_INT64_T;
+        case LY_TYPE_UINT64:
+            return SR_UINT64_T;
+        default:
+            return SR_UNKNOWN_T;
+            //LY_LEAF_REF
+            //LY_DERIVED
+        }
+}
+
 sr_type_t
 sr_libyang_leaf_get_type(const struct lyd_node_leaf_list *leaf)
 {
@@ -529,6 +576,102 @@ sr_libyang_leaf_get_type(const struct lyd_node_leaf_list *leaf)
             return SR_UNKNOWN_T;
             //LY_DERIVED
         }
+}
+
+int
+sr_check_value_conform_to_schema(const struct lys_node *node, const sr_val_t *value)
+{
+    CHECK_NULL_ARG2(node, value);
+
+    struct lys_node_leaf *leafref = NULL;
+    sr_type_t type = SR_UNKNOWN_T;
+    if (LYS_CONTAINER & node->nodetype) {
+        struct lys_node_container *cont = (struct lys_node_container *) node;
+        type = cont->presence != NULL ? SR_CONTAINER_PRESENCE_T : SR_CONTAINER_T;
+    } else if (LYS_LIST & node->nodetype) {
+        type = SR_LIST_T;
+    } else if ((LYS_LEAF | LYS_LEAFLIST) & node->nodetype) {
+        struct lys_node_leaf *l = (struct lys_node_leaf *) node;
+        switch(l->type.base){
+        case LY_TYPE_BINARY:
+            type = SR_BINARY_T;
+            break;
+        case LY_TYPE_BITS:
+            type = SR_BITS_T;
+            break;
+        case LY_TYPE_BOOL:
+            type = SR_BOOL_T;
+            break;
+        case LY_TYPE_DEC64:
+            type = SR_DECIMAL64_T;
+            break;
+        case LY_TYPE_EMPTY:
+            type = SR_LEAF_EMPTY_T;
+            break;
+        case LY_TYPE_ENUM:
+            type = SR_ENUM_T;
+            break;
+        case LY_TYPE_IDENT:
+            type = SR_IDENTITYREF_T;
+            break;
+        case LY_TYPE_INST:
+            type = SR_INSTANCEID_T;
+            break;
+        case LY_TYPE_LEAFREF:
+            leafref = l->type.info.lref.target;
+            if (NULL != leafref && ((LYS_LEAF | LYS_LEAFLIST) & leafref->nodetype)) {
+                return sr_check_value_conform_to_schema((const struct lys_node *)leafref, value);
+            }
+            break;
+        case LY_TYPE_STRING:
+            type = SR_STRING_T;
+            break;
+        case LY_TYPE_UNION:
+            for (int i = 0; i < l->type.info.uni.count; i++) {
+                type = sr_ly_data_type_to_sr(l->type.info.uni.types[i].base);
+                if (LY_TYPE_LEAFREF == l->type.info.uni.types[i].base) {
+                    leafref = l->type.info.uni.types[i].info.lref.target;
+                    if (SR_ERR_OK == sr_check_value_conform_to_schema((const struct lys_node *)leafref, value)) {
+                        return SR_ERR_OK;
+                    }
+                } else if (value->type == type) {
+                    break;
+                }
+            }
+            break;
+        case LY_TYPE_INT8:
+            type = SR_INT8_T;
+            break;
+        case LY_TYPE_UINT8:
+            type = SR_UINT8_T;
+            break;
+        case LY_TYPE_INT16:
+            type = SR_INT16_T;
+            break;
+        case LY_TYPE_UINT16:
+            type = SR_UINT16_T;
+            break;
+        case LY_TYPE_INT32:
+            type = SR_INT32_T;
+            break;
+        case LY_TYPE_UINT32:
+            type = SR_UINT32_T;
+            break;
+        case LY_TYPE_INT64:
+            type = SR_INT64_T;
+            break;
+        case LY_TYPE_UINT64:
+            type = SR_UINT64_T;
+            break;
+        default:
+            type = SR_UNKNOWN_T;
+            //LY_DERIVED
+        }
+    }
+    if (type != value->type) {
+        SR_LOG_ERR("Value doesn't conform to schema expected %d instead of %d", type, value->type);
+    }
+    return type == value->type ? SR_ERR_OK : SR_ERR_INVAL_ARG;
 }
 
 /**
@@ -731,6 +874,10 @@ sr_val_to_str(const sr_val_t *value, const struct lys_node *schema_node, char **
 {
     CHECK_NULL_ARG3(value, schema_node, out);
     size_t len = 0;
+    int rc = SR_ERR_OK;
+    rc = sr_check_value_conform_to_schema(schema_node, value);
+    CHECK_RC_LOG_RETURN(rc, "Value doesn't conform to schema node %s", schema_node->name);
+
     switch (value->type) {
     case SR_BINARY_T:
         if (NULL != value->data.binary_val) {
@@ -839,6 +986,275 @@ sr_val_to_str(const sr_val_t *value, const struct lys_node *schema_node, char **
     return SR_ERR_OK;
 }
 
+/**
+ * @brief Copy and convert content of a libyang node and its descendands into a sysrepo tree.
+ *
+ * @param [in] ly_ctx libyang context
+ * @param [in] parent Parent node.
+ * @param [in] child Child node.
+ * @param [in] node libyang node.
+ * @param [out] sr_tree Returned sysrepo tree.
+ */
+static int
+sr_copy_node_to_tree_internal(struct ly_ctx *ly_ctx, const struct lyd_node *parent, const struct lyd_node *node,
+        sr_node_t *sr_tree)
+{
+    int rc = SR_ERR_OK;
+    struct lyd_node_leaf_list *data_leaf = NULL;
+    struct lys_node_container *cont = NULL;
+    size_t child_cnt = 0, i = 0;
+    const struct lyd_node *child = NULL;
+
+    CHECK_NULL_ARG3(ly_ctx, node, sr_tree);
+
+    /* unset in case the input structure wasn't initialized */
+    memset(sr_tree, '\0', sizeof(*sr_tree));
+
+    /* copy node name */
+    sr_tree->name = strdup(node->schema->name);
+    CHECK_NULL_NOMEM_GOTO(sr_tree->name, rc, cleanup);
+
+    /* copy value and type */
+    switch (node->schema->nodetype) {
+        case LYS_LEAF:
+        case LYS_LEAFLIST:
+            data_leaf = (struct lyd_node_leaf_list *)node;
+            sr_tree->type = sr_libyang_leaf_get_type(data_leaf);
+            rc = sr_libyang_leaf_copy_value(data_leaf, (sr_val_t *)sr_tree);
+            if (SR_ERR_OK != rc) {
+                SR_LOG_ERR("Error returned from sr_libyang_leaf_copy_value: %s.", sr_strerror(rc));
+                goto cleanup;
+            }
+            break;
+        case LYS_CONTAINER:
+            cont = (struct lys_node_container *)node->schema;
+            sr_tree->type = cont->presence != NULL ? SR_CONTAINER_PRESENCE_T : SR_CONTAINER_T;
+            break;
+        case LYS_LIST:
+            sr_tree->type = SR_LIST_T;
+            break;
+        default:
+            SR_LOG_ERR("Detected unsupported node data type (schema name: %s).", sr_tree->name);
+            rc = SR_ERR_UNSUPPORTED;
+            goto cleanup;
+    }
+
+    /* dflt flag */
+    sr_tree->dflt = node->dflt;
+
+    /* set module_name */
+    if (NULL == parent || lyd_node_module(parent) != lyd_node_module(node)) {
+        sr_tree->module_name = strdup(lyd_node_module(node)->name);
+        CHECK_NULL_NOMEM_GOTO(sr_tree->module_name, rc, cleanup);
+    }
+
+    /* copy children */
+    if ((LYS_CONTAINER | LYS_LIST) & node->schema->nodetype) {
+        child = node->child;
+        while (child) {
+            ++child_cnt;
+            child = child->next;
+        }
+        sr_tree->children = calloc(child_cnt, sizeof(sr_node_t));
+        CHECK_NULL_NOMEM_GOTO(sr_tree->children, rc, cleanup);
+        child = node->child;
+        i = 0;
+        while (child) {
+            rc = sr_copy_node_to_tree_internal(ly_ctx, node, child, sr_tree->children + i);
+            if (SR_ERR_OK != rc) {
+                goto cleanup;
+            }
+            child = child->next;
+            ++i;
+            ++sr_tree->children_cnt;
+        }
+    }
+
+cleanup:
+    if (SR_ERR_OK != rc) {
+        sr_free_tree_content(sr_tree);
+    }
+    return rc;
+}
+
+int
+sr_copy_node_to_tree(struct ly_ctx *ly_ctx, const struct lyd_node *node, sr_node_t *sr_tree)
+{
+    return sr_copy_node_to_tree_internal(ly_ctx, NULL, node, sr_tree);
+}
+
+int
+sr_nodes_to_trees(struct ly_ctx *ly_ctx, struct ly_set *nodes, sr_node_t **sr_trees, size_t *count)
+{
+    int rc = 0;
+    sr_node_t *trees = NULL;
+    size_t i = 0;
+
+    CHECK_NULL_ARG4(ly_ctx, nodes, sr_trees, count);
+
+    trees = calloc(nodes->number, sizeof(sr_node_t));
+    CHECK_NULL_NOMEM_RETURN(trees);
+
+    for (i = 0; i < nodes->number && 0 == rc; ++i) {
+        rc = sr_copy_node_to_tree(ly_ctx, nodes->set.d[i], trees + i);
+    }
+
+    if (SR_ERR_OK == rc) {
+        *sr_trees = trees;
+        *count = nodes->number;
+    } else {
+        sr_free_trees(trees, i);
+    }
+    return rc;
+}
+
+static int
+sr_subtree_to_dt(struct ly_ctx *ly_ctx, const sr_node_t *sr_tree, bool output, struct lyd_node *parent,
+        const char *xpath, struct lyd_node **data_tree)
+{
+    int ret = 0;
+    struct lyd_node *node = NULL;
+    struct ly_set *nodeset = NULL;
+    const struct lys_module *module = NULL;
+    const struct lys_node *sch_node = NULL;
+    char *string_val = NULL, *relative_xpath = NULL;
+
+    CHECK_NULL_ARG3(ly_ctx, sr_tree, data_tree);
+
+    if (NULL == parent && NULL == xpath) {
+        return SR_ERR_INVAL_ARG;
+    }
+
+    if (NULL != parent) {
+        /* get module */
+        if (NULL != sr_tree->module_name) {
+            module = ly_ctx_get_module(ly_ctx, sr_tree->module_name, NULL);
+        } else {
+            module = lyd_node_module(parent);
+        }
+        if (NULL == module) {
+            SR_LOG_ERR("Failed to obtain module schema for node: %s.", sr_tree->name);
+            return SR_ERR_INTERNAL;
+        }
+    }
+
+    switch (sr_tree->type) {
+        case SR_LIST_T:
+        case SR_CONTAINER_T:
+        case SR_CONTAINER_PRESENCE_T:
+            /* create the inner node in the tree */
+            if (NULL == parent) {
+                node = lyd_new_path(*data_tree, ly_ctx, xpath, NULL, output ? LYD_PATH_OPT_OUTPUT : 0);
+                if (NULL == *data_tree) {
+                    *data_tree = node;
+                }
+                if (NULL == node) {
+                    SR_LOG_ERR("Failed to create tree root node with xpath: %s.", xpath);
+                    return SR_ERR_INTERNAL;
+                }
+                node = NULL;
+                nodeset = lyd_get_node(*data_tree, xpath);
+                if (NULL != nodeset && 1 == nodeset->number) {
+                    node = nodeset->set.d[0];
+                }
+                ly_set_free(nodeset);
+                if (NULL == node) {
+                    SR_LOG_ERR("Failed to obtain newly created tree root node with xpath: %s.", xpath);
+                    return SR_ERR_INTERNAL;
+                }
+            } else {
+                node = lyd_new(parent, module, sr_tree->name);
+            }
+            /* process children */
+            for (size_t i = 0; i < sr_tree->children_cnt && SR_ERR_OK == ret; ++i) {
+                ret = sr_subtree_to_dt(ly_ctx, sr_tree->children + i, output, node, NULL, data_tree);
+            }
+            return ret;
+
+        case SR_UNKNOWN_T:
+            SR_LOG_ERR("Detected unsupported node data type (schema name: %s).", sr_tree->name);
+            return SR_ERR_UNSUPPORTED;
+
+        default: /* leaf */
+            if (sr_tree->dflt) {
+                /* skip default value */
+                return SR_ERR_OK;
+            }
+            /* get node schema */
+            if (NULL == parent) {
+                sch_node = ly_ctx_get_node2(ly_ctx, NULL, xpath, output);
+            } else {
+                relative_xpath = calloc(strlen(module->name) + strlen(sr_tree->name) + 2, sizeof(*relative_xpath));
+                CHECK_NULL_NOMEM_RETURN(relative_xpath);
+                strcat(relative_xpath, module->name);
+                strcat(relative_xpath, ":");
+                strcat(relative_xpath, sr_tree->name);
+                sch_node = ly_ctx_get_node2(ly_ctx, parent->schema, relative_xpath, output);
+                free(relative_xpath);
+                relative_xpath = NULL;
+            }
+            if (NULL == sch_node) {
+                SR_LOG_ERR("Unable to get the schema node for a sysrepo node ('%s'): %s", sr_tree->name, ly_errmsg());
+                return SR_ERR_INTERNAL;
+            }
+            /* copy argument value to string */
+            ret = sr_val_to_str((sr_val_t *)sr_tree, sch_node, &string_val);
+            if (SR_ERR_OK != ret) {
+                SR_LOG_ERR("Unable to convert value to string for sysrepo node: %s.", sr_tree->name);
+                return ret;
+            }
+            /* create the leaf in the tree */
+            if (NULL == parent) {
+                node = lyd_new_path(*data_tree, ly_ctx, xpath, string_val, output ? LYD_PATH_OPT_OUTPUT : 0);
+                free(string_val);
+                if (NULL == *data_tree) {
+                    *data_tree = node;
+                }
+                if (NULL == node) {
+                    SR_LOG_ERR("Failed to create tree root node (leaf) ('%s'): %s", xpath, ly_errmsg());
+                    return SR_ERR_INTERNAL;
+                }
+            } else {
+                node = lyd_new_leaf(parent, module, sr_tree->name, string_val);
+                free(string_val);
+                if (NULL == node) {
+                    SR_LOG_ERR("Unable to add leaf node (named '%s'): %s", sr_tree->name, ly_errmsg());
+                    return SR_ERR_INTERNAL;
+                }
+            }
+            return SR_ERR_OK;
+    }
+}
+
+int
+sr_tree_to_dt(struct ly_ctx *ly_ctx, const sr_node_t *sr_tree, const char *root_xpath, bool output, struct lyd_node **data_tree)
+{
+    int rc = 0;
+    char *xpath = NULL;
+
+    CHECK_NULL_ARG2(ly_ctx, data_tree);
+
+    if (NULL == sr_tree) {
+        return SR_ERR_OK;
+    }
+    if (NULL == root_xpath && NULL == sr_tree->module_name) {
+        return SR_ERR_INVAL_ARG;
+    }
+
+    if (NULL == root_xpath) {
+        xpath = calloc(strlen(sr_tree->name) + strlen(sr_tree->module_name) + 3, sizeof(*xpath));
+        CHECK_NULL_NOMEM_RETURN(xpath);
+        strcat(xpath, "/");
+        strcat(xpath, sr_tree->module_name);
+        strcat(xpath, ":");
+        strcat(xpath, sr_tree->name);
+    }
+
+    rc = sr_subtree_to_dt(ly_ctx, sr_tree, output, NULL, NULL == root_xpath ? xpath : root_xpath, data_tree);
+    free(xpath);
+    return rc;
+}
+
 const char *
 sr_ds_to_str(sr_datastore_t ds)
 {
@@ -902,6 +1318,17 @@ sr_free_values_arr_range(sr_val_t **values, size_t from, size_t to)
         }
         free(values);
     }
+}
+
+void
+sr_free_tree_content(sr_node_t *tree)
+{
+    for (size_t i = 0; i < tree->children_cnt; ++i) {
+        sr_free_tree_content(tree->children + i);
+    }
+    free(tree->children);
+    free(tree->module_name);
+    sr_free_val_content((sr_val_t *)tree);
 }
 
 void

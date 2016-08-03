@@ -102,6 +102,26 @@ typedef enum sr_type_e {
     SR_UINT64_T,       /**< 64-bit unsigned integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
 } sr_type_t;
 
+/** Data of an element (if applicable), properly set according to the type. */
+typedef union sr_data_u {
+    char *binary_val;       /**< Base64-encoded binary data ([RFC 6020 sec 9.8](http://tools.ietf.org/html/rfc6020#section-9.8)) */
+    char *bits_val;         /**< A set of bits or flags ([RFC 6020 sec 9.7](http://tools.ietf.org/html/rfc6020#section-9.7)) */
+    bool bool_val;          /**< A boolean value ([RFC 6020 sec 9.5](http://tools.ietf.org/html/rfc6020#section-9.5)) */
+    double decimal64_val;   /**< 64-bit signed decimal number ([RFC 6020 sec 9.3](http://tools.ietf.org/html/rfc6020#section-9.3)) */
+    char *enum_val;         /**< A string from enumerated strings list ([RFC 6020 sec 9.6](http://tools.ietf.org/html/rfc6020#section-9.6)) */
+    char *identityref_val;  /**< A reference to an abstract identity ([RFC 6020 sec 9.10](http://tools.ietf.org/html/rfc6020#section-9.10)) */
+    char *instanceid_val;   /**< References a data tree node ([RFC 6020 sec 9.13](http://tools.ietf.org/html/rfc6020#section-9.13)) */
+    int8_t int8_val;        /**< 8-bit signed integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
+    int16_t int16_val;      /**< 16-bit signed integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
+    int32_t int32_val;      /**< 32-bit signed integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
+    int64_t int64_val;      /**< 64-bit signed integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
+    char *string_val;       /**< Human-readable string ([RFC 6020 sec 9.4](http://tools.ietf.org/html/rfc6020#section-9.4)) */
+    uint8_t uint8_val;      /**< 8-bit unsigned integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
+    uint16_t uint16_val;    /**< 16-bit unsigned integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
+    uint32_t uint32_val;    /**< 32-bit unsigned integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
+    uint64_t uint64_val;    /**< 64-bit unsigned integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
+} sr_data_t;
+
 /**
  * @brief Structure that contains value of an data element stored in the sysrepo datastore.
  */
@@ -116,29 +136,51 @@ typedef struct sr_val_s {
     /** Type of an element. */
     sr_type_t type;
 
+    /**
+     * Flag for node with default value (applicable only for leaves).
+     * It is set to TRUE only if the value was *implicitly* set by the datastore as per
+     * module schema. Explicitly set/modified data element (through the sysrepo API) always
+     * has this flag unset regardless of the entered value.
+     */
+    bool dflt;
+
+    /** Data of an element (if applicable), properly set according to the type. */
+    sr_data_t data;
+
+} sr_val_t;
+
+/**
+ * @brief A data element stored in the sysrepo datastore represented as a tree node.
+ *
+ * @note Can be safely casted to sr_val_t, only *xpath* member will point to node name rather
+ * than to an actual xpath.
+ */
+typedef struct sr_node_s {
+    /**
+     * Name of the node.
+     */
+    char *name;
+
+    /** Type of an element. */
+    sr_type_t type;
+
     /** Flag for default node (applicable only for leaves) */
     bool dflt;
 
     /** Data of an element (if applicable), properly set according to the type. */
-    union {
-        char *binary_val;       /**< Base64-encoded binary data ([RFC 6020 sec 9.8](http://tools.ietf.org/html/rfc6020#section-9.8)) */
-        char *bits_val;         /**< A set of bits or flags ([RFC 6020 sec 9.7](http://tools.ietf.org/html/rfc6020#section-9.7)) */
-        bool bool_val;          /**< A boolean value ([RFC 6020 sec 9.5](http://tools.ietf.org/html/rfc6020#section-9.5)) */
-        double decimal64_val;   /**< 64-bit signed decimal number ([RFC 6020 sec 9.3](http://tools.ietf.org/html/rfc6020#section-9.3)) */
-        char *enum_val;         /**< A string from enumerated strings list ([RFC 6020 sec 9.6](http://tools.ietf.org/html/rfc6020#section-9.6)) */
-        char *identityref_val;  /**< A reference to an abstract identity ([RFC 6020 sec 9.10](http://tools.ietf.org/html/rfc6020#section-9.10)) */
-        char *instanceid_val;   /**< References a data tree node ([RFC 6020 sec 9.13](http://tools.ietf.org/html/rfc6020#section-9.13)) */
-        int8_t int8_val;        /**< 8-bit signed integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
-        int16_t int16_val;      /**< 16-bit signed integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
-        int32_t int32_val;      /**< 32-bit signed integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
-        int64_t int64_val;      /**< 64-bit signed integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
-        char *string_val;       /**< Human-readable string ([RFC 6020 sec 9.4](http://tools.ietf.org/html/rfc6020#section-9.4)) */
-        uint8_t uint8_val;      /**< 8-bit unsigned integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
-        uint16_t uint16_val;    /**< 16-bit unsigned integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
-        uint32_t uint32_val;    /**< 32-bit unsigned integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
-        uint64_t uint64_val;    /**< 64-bit unsigned integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
-    } data;
-} sr_val_t;
+    sr_data_t data;
+
+    /**
+     * Name of the module that defines scheme of this node.
+     */
+    char *module_name;
+
+    /**< Array of node's direct descendands */
+    struct sr_node_s *children;
+
+    /**< Number of child nodes */
+    size_t children_cnt;
+} sr_node_t;
 
 /**
  * @brief Sysrepo error codes.
@@ -163,6 +205,7 @@ typedef enum sr_error_e {
     SR_ERR_UNAUTHORIZED,       /**< Operation not authorized. */
     SR_ERR_LOCKED,             /**< Requested resource is already locked. */
     SR_ERR_TIME_OUT,           /**< Time out has expired. */
+    SR_ERR_RESTART_NEEDED,     /**< Sysrepo Engine restart is needed. */
 } sr_error_t;
 
 /**
@@ -404,6 +447,15 @@ int sr_session_refresh(sr_session_ctx_t *session);
  * @return Error code (SR_ERR_OK on success)
  */
 int sr_session_switch_ds(sr_session_ctx_t *session, sr_datastore_t ds);
+
+/**
+ * @brief Alter the session options. E.g.: set/unset SR_SESS_CONFIG_ONLY flag.
+ *
+ * @param [in] session
+ * @param [in] opts - new value for session options
+ * @return Error code (SR_ERR_OK on success)
+ */
+int sr_session_set_options(sr_session_ctx_t *session, const sr_sess_options_t opts);
 
 /**
  * @brief Retrieves detailed information about the error that has occurred
@@ -1119,13 +1171,30 @@ int sr_get_change_next(sr_session_ctx_t *session, sr_change_iter_t *iter, sr_cha
  * @param[out] output Array of output parameters. Should be allocated on heap,
  * will be freed by sysrepo after sending of the RPC response.
  * @param[out] output_cnt Number of output parameters.
- * @param[in] private_ctx Private context opaque to sysrepo, as passed to
- * ::sr_rpc_subscribe call.
+ * @param[in] private_ctx Private context opaque to sysrepo, as passed to ::sr_rpc_subscribe call.
  *
  * @return Error code (SR_ERR_OK on success).
  */
 typedef int (*sr_rpc_cb)(const char *xpath, const sr_val_t *input, const size_t input_cnt,
         sr_val_t **output, size_t *output_cnt, void *private_ctx);
+
+/**
+ * @brief Callback to be called by the delivery of RPC specified by xpath.
+ * This RPC callback variant operates with sysrepo trees rather than with sysrepo values,
+ * use it with ::sr_rpc_subscribe_tree and ::sr_rpc_send_tree.
+ *
+ * @param[in] xpath XPath identifying the RPC.
+ * @param[in] input Array of input parameters (represented as trees).
+ * @param[in] input_cnt Number of input parameters.
+ * @param[out] output Array of output parameters (represented as trees). Should be allocated on heap,
+ * will be freed by sysrepo after sending of the RPC response.
+ * @param[out] output_cnt Number of output parameters.
+ * @param[in] private_ctx Private context opaque to sysrepo, as passed to ::sr_rpc_subscribe call.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+typedef int (*sr_rpc_tree_cb)(const char *xpath, const sr_node_t *input, const size_t input_cnt,
+        sr_node_t **output, size_t *output_cnt, void *private_ctx);
 
 /**
  * @brief Subscribes for delivery of RPC specified by xpath.
@@ -1137,12 +1206,31 @@ typedef int (*sr_rpc_cb)(const char *xpath, const sr_val_t *input, const size_t 
  * @param[in] opts Options overriding default behavior of the subscription, it is supposed to be
  * a bitwise OR-ed value of any ::sr_subscr_flag_t flags.
  * @param[in,out] subscription Subscription context that is supposed to be released by ::sr_unsubscribe.
- * @note An existing context may be passed in in case that SR_SUBSCR_CTX_REUSE option is specified.
+ * @note An existing context may be passed in case that SR_SUBSCR_CTX_REUSE option is specified.
  *
  * @return Error code (SR_ERR_OK on success).
  */
 int sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callback, void *private_ctx,
         sr_subscr_options_t opts, sr_subscription_ctx_t **subscription);
+
+/**
+ * @brief Subscribes for delivery of RPC specified by xpath. Unlike ::sr_rpc_subscribe, this
+ * function expects callback of type ::sr_rpc_tree_cb, therefore use this version if you prefer
+ * to manipulate with RPC input and output data organized in a list of trees.
+ *
+ * @param[in] session Session context acquired with ::sr_session_start call.
+ * @param[in] xpath XPath identifying the RPC.
+ * @param[in] callback Callback to be called when the RPC is called.
+ * @param[in] private_ctx Private context passed to the callback function, opaque to sysrepo.
+ * @param[in] opts Options overriding default behavior of the subscription, it is supposed to be
+ * a bitwise OR-ed value of any ::sr_subscr_flag_t flags.
+ * @param[in,out] subscription Subscription context that is supposed to be released by ::sr_unsubscribe.
+ * @note An existing context may be passed in case that SR_SUBSCR_CTX_REUSE option is specified.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_rpc_subscribe_tree(sr_session_ctx_t *session, const char *xpath, sr_rpc_tree_cb callback,
+        void *private_ctx, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription);
 
 /**
  * @brief Sends a RPC specified by xpath and waits for the result.
@@ -1161,6 +1249,125 @@ int sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb cal
  */
 int sr_rpc_send(sr_session_ctx_t *session, const char *xpath,
         const sr_val_t *input,  const size_t input_cnt, sr_val_t **output, size_t *output_cnt);
+
+/**
+ * @brief Sends a RPC specified by xpath and waits for the result. Input and output data
+ * are represented as arrays of subtrees reflecting the scheme of RPC arguments,
+ * rather than a flat enumeration of all values.
+ *
+ * @param[in] session Session context acquired with ::sr_session_start call.
+ * @param[in] xpath XPath identifying the RPC.
+ * @param[in] input Array of input parameters (organized in trees).
+ * @param[in] input_cnt Number of input parameters.
+ * @param[out] output Array of output parameters (organized in trees).
+ * Will be allocated by sysrepo and should be freed by caller using ::sr_free_trees.
+ * @param[out] output_cnt Number of output parameters.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_rpc_send_tree(sr_session_ctx_t *session, const char *xpath,
+        const sr_node_t *input,  const size_t input_cnt, sr_node_t **output, size_t *output_cnt);
+
+////////////////////////////////////////////////////////////////////////////////
+// Operational Data API - EXPERIMENTAL (work in progress) !!!
+////////////////////////////////////////////////////////////////////////////////
+
+/**
+ * @brief Callback to be called when operational data at the selected level is requested.
+ * Subscribe to it by ::sr_dp_get_items_subscribe call.
+ *
+ * Callback handler is supposed to provide data of all nodes at the level selected by the xpath argument:
+ *
+ * - If the xpath identifies a container, the provider is supposed to return all leaves and leaf-lists values within it.
+ * Nested lists and containers should not be provided - sysrepo will ask for them in subsequent calls.
+ * - If the xpath identifies a list, the provider is supposed to return all all leaves and leaf-lists values within all
+ * instances of the list. Nested lists and containers should not be provided - sysrepo will ask for them in subsequent calls.
+ * - If the xpath identifies a leaf-list, the provider is supposed to return all leaf-list values.
+ * - If the xpath identifies a leaf, the provider is supposed to return just the leaf in question.
+ *
+ * The xpath argument passed to callback can be only the xpath that was used for the subscription, or xpath of
+ * any nested lists or containers.
+ *
+ * @param[in] xpath XPath identifying the level under which the nodes are requested.
+ * @param[out] values Array of values at the selected level (allocated by the provider).
+ * @param[out] values_cnt Number of values returned.
+ * @param[in] private_ctx Private context opaque to sysrepo, as passed to ::sr_dp_get_items_subscribe call.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+typedef int (*sr_dp_get_items_cb)(const char *xpath, sr_val_t **values, size_t *values_cnt, void *private_ctx);
+
+/**
+ * @brief Registers for providing of operational data under given xpath.
+ *
+ * @note The XPath must be generic - must not include any list key values.
+ * @note This API works only for operational data (subtrees marked in YANG as "config false").
+ * Subscribing as a data provider for configuration data does not have any effect.
+ *
+ * @param[in] session Session context acquired with ::sr_session_start call.
+ * @param[in] xpath XPath identifying the subtree under which the provider is able to provide
+ * operational data.
+ * @param[in] callback Callback to be called when the operational data nder given xpat is needed.
+ * @param[in] private_ctx Private context passed to the callback function, opaque to sysrepo.
+ * @param[in] opts Options overriding default behavior of the subscription, it is supposed to be
+ * a bitwise OR-ed value of any ::sr_subscr_flag_t flags.
+ * @param[in,out] subscription Subscription context that is supposed to be released by ::sr_unsubscribe.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_dp_get_items_subscribe(sr_session_ctx_t *session, const char *xpath, sr_dp_get_items_cb callback, void *private_ctx,
+        sr_subscr_options_t opts, sr_subscription_ctx_t **subscription);
+
+////////////////////////////////////////////////////////////////////////////////
+// Event Notification API
+////////////////////////////////////////////////////////////////////////////////
+
+/**
+ * @brief Callback to be called by the delivery of event notification specified by xpath.
+ * Subscribe to it by ::sr_event_notif_subscribe call.
+ *
+ * @param[in] xpath XPath identifying the event notification.
+ * @param[in] values Array of all nodes that hold some data in event notification subtree.
+ * @param[in] values_cnt Number of items inside the values array.
+ * @param[in] private_ctx Private context opaque to sysrepo,
+ * as passed to ::sr_event_notif_subscribe call.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+typedef void (*sr_event_notif_cb)(const char *xpath, const sr_val_t *values, const size_t values_cnt,
+        void *private_ctx);
+
+/**
+ * @brief Subscribes for delivery of an event notification specified by xpath.
+ *
+ * @param[in] session Session context acquired with ::sr_session_start call.
+ * @param[in] xpath XPath identifying the event notification.
+ * @param[in] callback Callback to be called when the event notification is send.
+ * @param[in] private_ctx Private context passed to the callback function, opaque to sysrepo.
+ * @param[in] opts Options overriding default behavior of the subscription, it is supposed to be
+ * a bitwise OR-ed value of any ::sr_subscr_flag_t flags.
+ * @param[in,out] subscription Subscription context that is supposed to be released by ::sr_unsubscribe.
+ * @note An existing context may be passed in case that SR_SUBSCR_CTX_REUSE option is specified.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_event_notif_subscribe(sr_session_ctx_t *session, const char *xpath,
+        sr_event_notif_cb callback, void *private_ctx, sr_subscr_options_t opts,
+        sr_subscription_ctx_t **subscription);
+
+/**
+ * @brief Sends an event notification specified by xpath and waits for the result.
+ *
+ * @param[in] session Session context acquired with ::sr_session_start call.
+ * @param[in] xpath XPath identifying the event notification.
+ * @param[in] values Array of all nodes that hold some data in event notification subtree
+ * (same as ::sr_get_items would return).
+ * @param[in] values_cnt Number of items inside the values array.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_event_notif_send(sr_session_ctx_t *session, const char *xpath, const sr_val_t *values,
+        const size_t values_cnt);
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1205,6 +1412,21 @@ void sr_free_change_iter(sr_change_iter_t *iter);
  * @param [in] count Number of elements stored in the array.
  */
 void sr_free_schemas(sr_schema_t *schemas, size_t count);
+
+/**
+ * @brief Frees sysrepo tree data.
+ *
+ * @param[in] tree Tree data to be freed.
+ */
+void sr_free_tree(sr_node_t *tree);
+
+/**
+ * @brief Frees array of sysrepo trees. For each tree, the ::sr_free_tree is called too.
+ *
+ * @param[in] trees
+ * @param[in] count length of array
+ */
+void sr_free_trees(sr_node_t *trees, size_t count);
 
 /**@} cl */
 

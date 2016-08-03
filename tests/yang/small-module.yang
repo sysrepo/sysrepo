@@ -16,5 +16,6 @@ module small-module {
 
   leaf size {
     type int8;
+    default "5";
   }
 }

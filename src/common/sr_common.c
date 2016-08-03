@@ -49,7 +49,8 @@ const char *const sr_errlist[] = {
         "The item expected to exist is missing",/* SR_ERR_DATA_MISSING */
         "Operation not authorized",             /* SR_ERR_UNAUTHORIZED */
         "Requested resource is already locked", /* SR_ERR_LOCKED */
-        "Time out has expired"                  /* SR_ERR_TIME_OUT */
+        "Time out has expired",                 /* SR_ERR_TIME_OUT */
+        "Sysrepo Engine restart is needed",     /* SR_ERR_RESTART_NEEDED */
 };
 
 const char *
@@ -90,5 +91,25 @@ sr_free_schemas(sr_schema_t *schemas, size_t count)
             sr_free_schema(&schemas[i]);
         }
         free(schemas);
+    }
+}
+
+void
+sr_free_tree(sr_node_t *tree)
+{
+    if (NULL != tree) {
+        sr_free_tree_content(tree);
+        free(tree);
+    }
+}
+
+void
+sr_free_trees(sr_node_t *trees, size_t count)
+{
+    if (NULL != trees) {
+        for (size_t i = 0; i < count; i++) {
+            sr_free_tree_content(trees + i);
+        }
+        free(trees);
     }
 }
