@@ -29,7 +29,7 @@
 #include "persistence_manager.h"
 #include "notification_processor.h"
 
-#define NP_COMMIT_RELEASE_TIMEOUT 60  /**< Timeout (in seconds) after which the commit will be released
+#define NP_COMMIT_RELEASE_TIMEOUT 10  /**< Timeout (in seconds) after which the commit will be released
                                            also in case that not all notification ACKs have been received. */
 
 /**
@@ -496,7 +496,7 @@ np_notification_unsubscribe(np_ctx_t *np_ctx,  const rp_session_t *rp_session, S
             rc = np_dst_info_remove(np_ctx, dst_address, module_name);
             pthread_rwlock_unlock(&np_ctx->lock);
             if (disable_running) {
-                SR_LOG_DBG("Disabling running datastore fo module '%s'.", module_name);
+                SR_LOG_DBG("Disabling running datastore for module '%s'.", module_name);
                 rc = dm_disable_module_running(np_ctx->rp_ctx->dm_ctx, rp_session->dm_session, module_name);
                 CHECK_RC_LOG_RETURN(rc, "Disabling module %s failed", module_name);
             }

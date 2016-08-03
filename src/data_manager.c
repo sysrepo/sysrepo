@@ -607,6 +607,7 @@ cleanup:
     return rc;
 }
 
+
 /**
  * @brief Tries to load data tree from provided opened file.
  * @param [in] dm_ctx

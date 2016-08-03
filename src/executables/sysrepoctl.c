@@ -580,7 +580,10 @@ srctl_uninstall(const char *module_name, const char *revision)
     struct ly_ctx *ly_ctx = NULL;
     md_ctx_t *md_ctx = NULL;
     md_module_t *module = NULL;
-    const struct lys_module *module_schema = NULL;
+    char *filepath = NULL;
+    sr_llist_t *submodules = NULL;
+    sr_llist_node_t *submodule = NULL, *dep_node = NULL;
+    md_dep_t *dep = NULL;
 
     if (NULL == module_name) {
         fprintf(stderr, "Error: Module must be specified for --uninstall operation.\n");
@@ -611,13 +614,25 @@ srctl_uninstall(const char *module_name, const char *revision)
         goto fail;
     }
 
-    /* load the schema into libyang ctx to get access to the list of sub-modules */
-    module_schema = lys_parse_path(ly_ctx, module->filepath,
-                                   sr_str_ends_with(module->filepath, SR_SCHEMA_YANG_FILE_EXT) ? LYS_IN_YANG : LYS_IN_YIN);
-    if (NULL == module_schema) {
-        rc = SR_ERR_INTERNAL;
-        fprintf(stderr, "Error: Unable to load the module by libyang.\n");
-        goto fail;
+    /**
+     * collect list of schemas that need to be removed.
+     *
+     * Note: Module should be removed from the dependency graph before the schema files so
+     * that the repository will remain in correct state even if the uninstallation fails
+     * in-progress.
+     */
+    filepath = strdup(module->filepath);
+    CHECK_NULL_NOMEM_GOTO(filepath, rc, fail);
+    rc = sr_llist_init(&submodules);
+    CHECK_RC_MSG_GOTO(rc, fail, "Unable to initialize a linked-list.");
+    dep_node = module->deps->first;
+    while (dep_node) {
+        dep = (md_dep_t *)dep_node->data;
+        if (dep->dest->submodule && dep->dest->inv_deps->first == dep->dest->inv_deps->last) {
+            rc = sr_llist_add_new(submodules, strdup(dep->dest->filepath));
+            CHECK_RC_LOG_GOTO(rc, fail, "Unable to insert subtree filepath (%s) into a linked-list.", dep->dest->filepath);
+        }
+        dep_node = dep_node->next;
     }
 
     /* try to remove the module from the dependency graph */
@@ -636,7 +651,7 @@ srctl_uninstall(const char *module_name, const char *revision)
         /* disable in sysrepo */
         rc = srctl_open_session(true, &connection, &session);
         if (SR_ERR_OK == rc) {
-            rc = sr_module_install(session, module_name, revision, module_schema->filepath, false);
+            rc = sr_module_install(session, module_name, revision, NULL, false);
             if (SR_ERR_OK != rc && SR_ERR_NOT_FOUND != rc) {
                 srctl_report_error(session, rc);
                 fprintf(stderr, "Module can not be uninstalled because it is being used.\n");
@@ -656,18 +671,20 @@ srctl_uninstall(const char *module_name, const char *revision)
     md_destroy(md_ctx);
     md_ctx = NULL;
 
-    /* uninstall all submodules */
-    for (size_t i = 0; i < module_schema->inc_size; i++) {
-        rc = srctl_schema_file_delete(module_schema->inc[i].submodule->filepath);
+        /* uninstall the module */
+    rc = srctl_schema_file_delete(filepath);
+    if (SR_ERR_OK != rc) {
+        fprintf(stderr, "Warning: Module schema delete was unsuccessful, continuing.\n");
+    }
+
+    /* uninstall submodules that are no longer needed */
+    submodule = submodules->first;
+    while (submodule) {
+        rc = srctl_schema_file_delete((char *)submodule->data);
         if (SR_ERR_OK != rc) {
             fprintf(stderr, "Warning: Submodule schema delete was unsuccessful, continuing.\n");
         }
-    }
-
-    /* uninstall the module */
-    rc = srctl_schema_file_delete(module_schema->filepath);
-    if (SR_ERR_OK != rc) {
-        fprintf(stderr, "Warning: Module schema delete was unsuccessful, continuing.\n");
+        submodule = submodule->next;
     }
 
     /* delete data files */
@@ -684,6 +701,13 @@ fail:
     printf("Uninstall operation failed.\n");
 
 cleanup:
+    submodule = submodules->first;
+    while (submodule) {
+        free(submodule->data);
+        submodule = submodule->next;
+    }
+    sr_llist_cleanup(submodules);
+    free(filepath);
     md_destroy(md_ctx);
     if (ly_ctx) {
         ly_ctx_destroy(ly_ctx, NULL);

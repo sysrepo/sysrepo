@@ -1,5 +1,5 @@
 /**
- * @file notifications_test.c
+ * @file cl_notifications_test.c
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
  * @brief Notifications unit tests.
  *
