@@ -499,9 +499,9 @@ int dm_copy_errors(dm_session_t *session, char **error_msg, char **err_xpath);
  * @brief Looks up the schema info structure for the module specified by module name
  * @param [in] dm_ctx
  * @param [in] module_name
- * @param [out] schema_info
+ * @param [out] schema_info - returned schema info is not locked
  * @return Error code (SR_ERR_OK on success)
- */
+*/
 int dm_get_schema_info(dm_ctx_t *dm_ctx, const char *module_name, dm_schema_info_t **schema_info);
 
 /**
@@ -520,6 +520,9 @@ bool dm_is_node_enabled_with_children(struct lys_node* node);
 
 /**
  * @brief Evaluates the state of the node - if it is enabled.
+ *
+ * @note Function expects that a schema info is locked for reading.
+ *
  * @param [in] node
  * @return True if the node is enabled. It might be enabled directly or one any of his parent is in state DM_NODE_ENABLED_WITH_CHILDREN.
  */
@@ -527,6 +530,9 @@ bool dm_is_enabled_check_recursively(struct lys_node *node);
 
 /**
  * @brief Sets the state of the node.
+ *
+ * @note Function expects that a schema info is locked for writing.
+ *
  * @param [in] node
  * @param [in] state
  * @return Error code (SR_ERR_OK on success)

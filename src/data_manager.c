@@ -351,14 +351,15 @@ dm_feature_enable_internal(dm_ctx_t *dm_ctx, dm_schema_info_t *schema_info, cons
 }
 
 /**
+ * @brief Edits module private data - enables all nodes
  *
  * @note Function expects that a schema info is locked for writing.
  *
- * @param ctx
- * @param session
- * @param schema_info
- * @param module_name
- * @return
+ * @param [in] ctx
+ * @param [in] session
+ * @param [in] schema_info
+ * @param [in] module_name
+ * @return Error code (SR_ERR_OK on success)
  */
 static int
 dm_enable_module_running_internal(dm_ctx_t *ctx, dm_session_t *session, dm_schema_info_t *schema_info, const char *module_name)
@@ -394,12 +395,12 @@ dm_enable_module_running_internal(dm_ctx_t *ctx, dm_session_t *session, dm_schem
  *
  * @note Function expects that a schema info is locked for writing.
  *
- * @param ctx
- * @param session
- * @param module_name
- * @param xpath
- * @param schema_info
- * @return
+ * @param [in] ctx
+ * @param [in] session
+ * @param [in] module_name
+ * @param [in] xpath
+ * @param [in] schema_info
+ * @return Error code (SR_ERR_OK on success)
  */
 static int
 dm_enable_module_subtree_running_internal(dm_ctx_t *ctx, dm_session_t *session, dm_schema_info_t *schema_info, const char *module_name, const char *xpath)
@@ -686,6 +687,9 @@ dm_load_data_tree_file(dm_ctx_t *dm_ctx, int fd, const char *data_filename, dm_s
 /**
  * @brief Loads data tree from file. Module and datastore argument are used to
  * determine the file name.
+ *
+ * @note Function expects that a schema info is locked for reading.
+ *
  * @param [in] dm_ctx
  * @param [in] dm_session_ctx
  * @param [in] schema_info
@@ -1397,8 +1401,10 @@ dm_session_stop(dm_ctx_t *dm_ctx, dm_session_t *session)
 
 /**
  * @brief Removes not enabled leaves from data tree.
- * @note function expects lyctx to be locked before calling
- * @param info
+ *
+ * @note Function expects that a schema info is locked for reading.
+ *
+ * @param [in] info
  * @return Error code (SR_ERR_OK on success)
  */
 static int
@@ -1462,7 +1468,9 @@ cleanup:
 
 /**
  * @brief Test if there is not enabled leaf in the provided data tree
- * @note function expects lyctx to be locked before calling
+ *
+ * @note Function expects that a schema info is locked for reading.
+ *
  * @param [in] info
  * @param [out] res
  * @return Error code (SR_ERR_OK on success)
@@ -1758,59 +1766,6 @@ cleanup:
     }
     return rc;
 #if 0
-    CHECK_NULL_ARG3(dm_ctx, module_name, schema);
-
-    int rc = SR_ERR_INTERNAL;
-
-    const struct lys_module *module = ly_ctx_get_module(dm_ctx->ly_ctx, module_name, revision);
-    if (NULL == module) {
-        SR_LOG_ERR("Module %s at revision %s not found", module_name, revision);
-        return SR_ERR_INTERNAL;
-    }
-    if (NULL == module_name || NULL == module->prefix || NULL == module->ns) {
-        SR_LOG_ERR_MSG("Schema information missing");
-        return SR_ERR_INTERNAL;
-    }
-
-    schema->module_name = strdup(module->name);
-    schema->prefix = strdup(module->prefix);
-    schema->ns = strdup(module->ns);
-    if (NULL == schema->module_name || NULL == schema->prefix || NULL == schema->ns) {
-        SR_LOG_ERR_MSG("Duplication of string for schema_t failed");
-        goto cleanup;
-    }
-
-
-    rc = dm_list_rev_file(dm_ctx, module_name, revision, &schema->revision);
-    CHECK_RC_LOG_GOTO(rc, cleanup, "List rev file failed module %s", module->name);
-
-    uint8_t *state = NULL;
-    size_t feature_cnt = 0;
-    size_t enabled = 0;
-    const char **features = lys_features_list(module, &state);
-
-    while (NULL != features[feature_cnt]) feature_cnt++;
-
-    for (size_t i = 0; i < feature_cnt; i++) {
-        if (state[i] == 1) {
-            enabled++;
-        }
-    }
-
-    if (feature_cnt > 0) {
-        schema->enabled_features = calloc(feature_cnt, sizeof(*schema->enabled_features));
-        CHECK_NULL_NOMEM_GOTO(schema->enabled_features, rc, cleanup);
-        for (size_t i = 0; i < feature_cnt; i++) {
-            if (state[i] == 1) {
-                schema->enabled_features[schema->enabled_feature_cnt] = strdup(features[i]);
-                CHECK_NULL_NOMEM_GOTO(schema->enabled_features[schema->enabled_feature_cnt], rc, cleanup);
-                schema->enabled_feature_cnt++;
-            }
-        }
-    }
-    free(features);
-    free(state);
-
     schema->submodules = calloc(module->inc_size, sizeof(*schema->submodules));
     CHECK_NULL_NOMEM_GOTO(schema->submodules, rc, cleanup);
 
@@ -1831,38 +1786,8 @@ cleanup:
     }
     return rc;
 
-cleanup:
-    sr_free_schema(schema);
-    return rc;
 #endif
 }
-
-/*static const char *
-dm_get_module_revision(struct lyd_node *module)
-{
-    int rc = 0;
-    const char *result = NULL;
-    CHECK_NULL_ARG_NORET(rc, module);
-    if (0 != rc) {
-        return NULL;
-    }
-    struct ly_set *rev = lyd_get_node(module, "revision");
-    if (NULL == rev) {
-        SR_LOG_ERR_MSG("Getting module revision failed");
-        return NULL;
-    }
-    if (0 == rev->number) {
-        ly_set_free(rev);
-    } else {
-        result = ((struct lyd_node_leaf_list *) rev->set.d[0])->value_str;
-        if (0 == strcmp(result, "")) {
-            result = NULL;
-        }
-    }
-    ly_set_free(rev);
-    return result;
-
-}*/
 
 int
 dm_list_schemas(dm_ctx_t *dm_ctx, dm_session_t *dm_session, sr_schema_t **schemas, size_t *schema_count)
@@ -1928,7 +1853,6 @@ dm_get_schema(dm_ctx_t *dm_ctx, const char *module_name, const char *module_revi
 cleanup:
     pthread_rwlock_unlock(&si->model_lock);
     return rc;
-
 }
 
 int
@@ -2322,7 +2246,7 @@ dm_subs_cmp(const void *a, const void *b)
  * @param dm_ctx
  * @param schema_info
  * @param model_sub
- * @return
+ * @return Error code (SR_ERR_OK on success)
  */
 static int
 dm_prepare_module_subscriptions(dm_ctx_t *dm_ctx, dm_schema_info_t *schema_info, dm_model_subscription_t **model_sub)
@@ -2957,7 +2881,7 @@ dm_install_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revisio
             dep = (md_dep_t *)ll_node->data;
             if (dep->type == MD_DEP_EXTENSION) { // imports are automatically loaded by libyang
                 rc = dm_load_schema_file(dm_ctx, dep->dest->filepath, true, &si);
-                CHECK_RC_LOG_GOTO(rc, cleanup, "Loading of %s was not successfull", dep->dest->name);
+                CHECK_RC_LOG_GOTO(rc, unlock, "Loading of %s was not successfull", dep->dest->name);
             }
             ll_node = ll_node->next;
         }
@@ -3535,7 +3459,7 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
     rc = dm_get_module_and_lock(dm_ctx, module_name, &schema_info);
     free(module_name);
     CHECK_RC_MSG_RETURN(rc, "dm_get_module failed");
-    
+
 
     /* converse sysrepo values/trees to libyang data tree */
     if (SR_API_VALUES == api_variant) {
@@ -3795,7 +3719,7 @@ dm_copy_session_tree(dm_ctx_t *dm_ctx, dm_session_t *from, dm_session_t *to, con
     if (!existed) {
         pthread_mutex_lock(&info->schema->usage_count_mutex);
         info->schema->usage_count++;
-        SR_LOG_DBG("Usage count %s deccremented (value=%zu)", info->schema->module_name, info->schema->usage_count);
+        SR_LOG_DBG("Usage count %s decremented (value=%zu)", info->schema->module_name, info->schema->usage_count);
         pthread_mutex_unlock(&info->schema->usage_count_mutex);
         if (SR_ERR_OK == rc) {
             rc = sr_btree_insert(to->session_modules[to->datastore], new_info);
