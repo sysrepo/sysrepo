@@ -1383,11 +1383,11 @@ typedef enum sr_fd_event_e {
 } sr_fd_event_t;
 
 /**
- * @brief Action that is needed to be taken on a file descriptor.
+ * @brief Action that needs to be taken on a file descriptor.
  */
 typedef enum sr_fd_action_s {
-    SR_FD_START_WATCHING,  /**< Start watching for specified event on the file descriptor. */
-    SR_FD_STOP_WATCHING,   /**< Stop watching for specified event on the file descriptor. */
+    SR_FD_START_WATCHING,  /**< Start watching for the specified event on the file descriptor. */
+    SR_FD_STOP_WATCHING,   /**< Stop watching for the specified event on the file descriptor. */
 } sr_fd_action_t;
 
 /**
@@ -1402,9 +1402,9 @@ typedef struct sr_fd_change_s {
 /**
  * @brief Initializes application-local file descriptor watcher.
  *
- * This can be used in those applications that subscribe for changes or data providers in sysrepo, which have their
+ * This can be used in those applications that subscribe for changes or providing data in sysrepo, which have their
  * own event loop that is capable of monitoring of the events on provided file descriptors. In case that the
- * application-local file descriptor watcher is initialized, sysrepo client library won't use a new thread
+ * application-local file descriptor watcher is initialized, sysrepo client library won't use a separate thread
  * for the delivery of the notifications and for calling the callbacks - they will be called from the main thread of the
  * application's event loop (inside of ::sr_fd_event_process calls).
  *
