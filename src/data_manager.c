@@ -1804,8 +1804,12 @@ dm_list_schemas(dm_ctx_t *dm_ctx, dm_session_t *dm_session, sr_schema_t **schema
     md_ctx_lock(dm_ctx->md_ctx, false);
     module_ll_node = dm_ctx->md_ctx->modules->first;
     while (module_ll_node) {
-        sch_count++;
+        module = (md_module_t *) module_ll_node->data;
         module_ll_node = module_ll_node->next;
+        if (module->submodule) {
+            continue;
+        }
+        sch_count++;
     }
 
     sch = calloc(sch_count, sizeof(*sch));
@@ -1815,12 +1819,16 @@ dm_list_schemas(dm_ctx_t *dm_ctx, dm_session_t *dm_session, sr_schema_t **schema
     module_ll_node = dm_ctx->md_ctx->modules->first;
     while (module_ll_node) {
         module = (md_module_t *) module_ll_node->data;
+        module_ll_node = module_ll_node->next;
+        if (module->submodule) {
+            /* skip submodules */
+            continue;
+        }
 
         rc = dm_list_module(dm_ctx, module, &sch[i]);
         CHECK_RC_LOG_GOTO(rc, cleanup, "List module %s failed", module->name);
 
         i++;
-        module_ll_node = module_ll_node->next;
     }
 
     md_ctx_unlock(dm_ctx->md_ctx);
@@ -3894,6 +3902,11 @@ dm_get_all_modules(dm_ctx_t *dm_ctx, dm_session_t *session, bool enabled_only, s
     while (module_ll_node) {
         module = (md_module_t *)module_ll_node->data;
         module_ll_node = module_ll_node->next;
+        if (module->submodule) {
+            /* skip submodules */
+            continue;
+        }
+
         if (enabled_only) {
             bool enabled = false;
             rc = dm_has_enabled_subtree(dm_ctx, module->name, NULL, &enabled);
