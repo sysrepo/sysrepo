@@ -555,6 +555,11 @@ dm_load_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, 
         md_ctx_unlock(dm_ctx->md_ctx);
         return SR_ERR_UNKNOWN_MODEL;
     }
+    if (module->submodule) {
+        SR_LOG_WRN("An attempt to load submodule %s", module_name);
+        rc = SR_ERR_INVAL_ARG;
+        goto cleanup;
+    }
 
     /* load the module schema and all its dependencies */
     rc = dm_load_schema_file(dm_ctx, module->filepath, false, &si);
@@ -1861,18 +1866,55 @@ cleanup:
 int
 dm_get_schema(dm_ctx_t *dm_ctx, const char *module_name, const char *module_revision, const char *submodule_name, bool yang_format, char **schema)
 {
-    CHECK_NULL_ARG2(dm_ctx, module_name);
+    CHECK_NULL_ARG3(dm_ctx, module_name, schema);
     int rc = SR_ERR_OK;
     int ret = 0;
     dm_schema_info_t *si = NULL;
+    const struct lys_module *module = NULL;
+    md_module_t *md_module = NULL;
+    sr_llist_node_t *dep_node = NULL;
+    md_dep_t *dependency = NULL;
+    const char *main_module = module_name;
 
     SR_LOG_INF("Get schema '%s', revision: '%s', submodule: '%s'", module_name, module_revision, submodule_name);
 
-    //TODO submodules
-    rc = dm_get_module_and_lock(dm_ctx, module_name, &si);
+    md_ctx_lock(dm_ctx->md_ctx, false);
+    rc = md_get_module_info(dm_ctx->md_ctx, module_name, module_revision, &md_module);
+
+    CHECK_RC_LOG_RETURN(rc, "Module %s in revision %s not found", module_name, module_revision);
+
+    if (NULL != md_module && !md_module->latest_revision) {
+        /* find a module in latest revision that includes the requested module
+         * this handles the case that requested module is included in older revision by other module */
+        dep_node = md_module->inv_deps->first;
+        while (NULL != dep_node) {
+            dependency = dep_node->data;
+            dep_node = dep_node->next;
+            if (!dependency->dest->submodule && dependency->dest->latest_revision) {
+                main_module = dependency->dest->name;
+                break;
+            }
+        }
+    }
+
+    md_ctx_unlock(dm_ctx->md_ctx);
+    CHECK_RC_LOG_RETURN(rc, "Module %s in revision %s not found", module_name, module_revision);
+
+    rc = dm_get_module_and_lock(dm_ctx, main_module, &si);
     CHECK_RC_LOG_RETURN(rc, "Get module failed for %s", module_name);
 
-    ret = lys_print_mem(schema, si->module, yang_format ? LYS_OUT_YANG : LYS_OUT_YIN, NULL);
+    if (NULL != submodule_name) {
+        module = (const struct lys_module *) ly_ctx_get_submodule(si->ly_ctx, module_name, module_revision, submodule_name, NULL);
+    } else {
+        module = ly_ctx_get_module(si->ly_ctx, module_name, module_revision);
+    }
+
+    if (NULL == module) {
+        SR_LOG_ERR("Not found module %s submodule %s revision %s", module_name, submodule_name, module_revision);
+        rc = SR_ERR_NOT_FOUND;
+        goto cleanup;
+    }
+    ret = lys_print_mem(schema, module, yang_format ? LYS_OUT_YANG : LYS_OUT_YIN, NULL);
     CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_INTERNAL, cleanup, "Module %s print failed.", si->module_name);
 
 cleanup:
@@ -3920,6 +3962,9 @@ dm_get_all_modules(dm_ctx_t *dm_ctx, dm_session_t *session, bool enabled_only, s
         module_ll_node = module_ll_node->next;
         if (module->submodule) {
             /* skip submodules */
+            continue;
+        }
+        if (!module->latest_revision) {
             continue;
         }
 
