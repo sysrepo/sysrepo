@@ -1268,15 +1268,15 @@ main(int argc, char* argv[])
     if (SRCFG_STORE_RUNNING == datastore) {
         rc = sr_check_enabled_running(srcfg_session, module_name, &enabled);
         if (SR_ERR_OK == rc && !enabled) {
-            printf("Cannot operate on the running datastore as there are no active subscriptions.\n"
-                   "Cancelling the operation.\n");
+            printf("Cannot operate on the running datastore for '%s' as there are no active subscriptions for it.\n"
+                   "Canceling the operation.\n", module_name);
             rc = SR_ERR_INTERNAL;
             goto terminate;
         }
     }
     if (SR_ERR_OK != rc) {
         srcfg_report_error(rc);
-        printf("Unable to connect to sysrepo. Cancelling the operation.\n");
+        printf("Unable to connect to sysrepo. Canceling the operation.\n");
         goto terminate;
     }
 

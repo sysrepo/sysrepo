@@ -112,9 +112,9 @@ print_change(sr_change_oper_t op, sr_val_t *old_val, sr_val_t *new_val) {
     case SR_OP_MODIFIED:
         if (NULL != old_val && NULL != new_val) {
            printf("MODIFIED: ");
-           printf("old value");
+           printf("old value ");
            print_value(old_val);
-           printf("new value");
+           printf("new value ");
            print_value(new_val);
         }
 	break;
