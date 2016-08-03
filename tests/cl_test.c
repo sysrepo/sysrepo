@@ -1603,7 +1603,7 @@ test_rpc_tree_cb(const char *xpath, const sr_node_t *input, const size_t input_c
     const sr_node_t *sr_in_node = NULL;
     sr_node_t *sr_out_node = NULL;
     int *callback_called = (int*)private_ctx;
-    *callback_called += 0;
+    *callback_called += 1;
 
     printf("'Executing' RPC: %s\n", xpath);
     for (size_t i = 0; i < input_cnt; i++) {
@@ -1708,6 +1708,7 @@ cl_rpc_tree_test(void **state)
     /* send a RPC */
     rc = sr_rpc_send_tree(session, "/test-module:activate-software-image", &input, 1, &output, &output_cnt);
     assert_int_equal(rc, SR_ERR_OK);
+    assert_int_equal(1 , callback_called);
 
     assert_int_equal(output_cnt, 4);
     for (size_t i = 0; i < output_cnt; i++) {
