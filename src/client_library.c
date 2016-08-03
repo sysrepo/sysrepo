@@ -81,10 +81,10 @@ typedef struct sr_change_iter_s {
     size_t count;                   /**< Number of elements currently buffered. */
 } sr_change_iter_t;
 
-
-static int connections_cnt = 0;        /**< Number of active connections to the Sysrepo Engine. */
-static int subscriptions_cnt = 0;      /**< Number of active subscriptions. */
-static cl_sm_ctx_t *cl_sm_ctx = NULL;  /**< Subscription Manager context. */
+static int connections_cnt = 0;               /**< Number of active connections to the Sysrepo Engine. */
+static int subscriptions_cnt = 0;             /**< Number of active subscriptions. */
+static cl_sm_ctx_t *cl_sm_ctx = NULL;         /**< Subscription Manager context. */
+static int local_watcher_fd[2] = { -1, -1 };  /**< File descriptor pair of an application-local file descriptor watcher. */
 static pthread_mutex_t global_lock = PTHREAD_MUTEX_INITIALIZER;  /**< Mutex for locking shared global variables. */
 
 /**
@@ -205,7 +205,7 @@ cl_subscription_init(sr_session_ctx_t *session, Sr__SubscriptionType type, const
     pthread_mutex_lock(&global_lock);
     if (0 == subscriptions_cnt) {
         /* this is the first subscription - initialize subscription manager */
-        rc = cl_sm_init(&cl_sm_ctx);
+        rc = cl_sm_init((-1 != local_watcher_fd[0]), local_watcher_fd, &cl_sm_ctx);
     }
     subscriptions_cnt++;
     if (SR_ERR_OK == rc) {
@@ -310,6 +310,7 @@ cl_subscription_close(sr_session_ctx_t *session, cl_sm_subscription_ctx_t *subsc
     if (0 == subscriptions_cnt) {
         /* this is the last subscription - destroy subscription manager */
         cl_sm_cleanup(cl_sm_ctx, true);
+        cl_sm_ctx = NULL;
     }
     if ((0 == subscriptions_cnt) && (0 == connections_cnt)) {
         /* destroy library-global resources */
@@ -2376,4 +2377,72 @@ cleanup:
         sr__msg__free_unpacked(msg_resp, NULL);
     }
     return cl_session_return(session, rc);
+}
+
+int
+sr_fd_watcher_init(int *fd_p)
+{
+    int pipefd[2] = { 0, };
+    int ret = 0, rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG(fd_p);
+
+    SR_LOG_DBG_MSG("Initializing application-local fd watcher.");
+
+    ret = pipe(pipefd);
+    CHECK_ZERO_LOG_RETURN(ret, SR_ERR_IO, "Unable to create a new pipe: %s", sr_strerror_safe(errno));
+
+    /* set read end to nonblocking mode */
+    rc = sr_fd_set_nonblock(pipefd[0]);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot set socket to nonblocking mode.");
+
+    pthread_mutex_lock(&global_lock);
+    local_watcher_fd[0] = pipefd[0];
+    local_watcher_fd[1] = pipefd[1];
+    pthread_mutex_unlock(&global_lock);
+
+    *fd_p = pipefd[0]; /* return read end of the pipe */
+
+    return SR_ERR_OK;
+
+cleanup:
+    sr_fd_watcher_cleanup();
+    return rc;
+}
+
+void
+sr_fd_watcher_cleanup()
+{
+    pthread_mutex_lock(&global_lock);
+    for (size_t i = 0; i < 2; i++) {
+        if (-1 != local_watcher_fd[i]) {
+            close(local_watcher_fd[i]);
+            local_watcher_fd[i] = -1;
+        }
+    }
+    pthread_mutex_unlock(&global_lock);
+
+    SR_LOG_DBG_MSG("Application-local fd watcher cleaned up.");
+}
+
+int
+sr_fd_event_process(int fd, sr_fd_event_t event, sr_fd_change_t **fd_change_set, size_t *fd_change_set_cnt)
+{
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG2(fd_change_set, fd_change_set_cnt);
+
+    *fd_change_set_cnt = 0;
+    *fd_change_set = NULL;
+
+    SR_LOG_DBG("New %s event on fd=%d.", (SR_FD_INPUT_READY == event ? "input" : "output"), fd);
+
+    /* the lock is supposed to prevent from calling subscribe / unsubscribe / watcher_init / watcher_cleanup in the meantime */
+    pthread_mutex_lock(&global_lock);
+
+    rc = cl_sm_fd_event_process(cl_sm_ctx, fd, event, fd_change_set, fd_change_set_cnt);
+
+    pthread_mutex_unlock(&global_lock);
+
+    return rc;
 }

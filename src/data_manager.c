@@ -395,7 +395,7 @@ dm_load_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, 
     md_ctx_lock(dm_ctx->md_ctx, false);
     rc = md_get_module_info(dm_ctx->md_ctx, module_name, revision, &module);
     if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Module '%s:%s' is not installed.\n", module_name, revision ? revision : "<latest>");
+        SR_LOG_ERR("Module '%s:%s' is not installed.", module_name, revision ? revision : "<latest>");
         *module_schema = NULL;
         md_ctx_unlock(dm_ctx->md_ctx);
         return SR_ERR_UNKNOWN_MODEL;

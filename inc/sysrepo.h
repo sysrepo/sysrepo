@@ -1422,6 +1422,76 @@ int sr_event_notif_send_tree(sr_session_ctx_t *session, const char *xpath,
 
 
 ////////////////////////////////////////////////////////////////////////////////
+// Application-local File Descriptor Watcher API
+////////////////////////////////////////////////////////////////////////////////
+
+/**
+ * @brief Event that has occurred on a monitored file descriptor.
+ */
+typedef enum sr_fd_event_e {
+    SR_FD_INPUT_READY,   /**< File descriptor is now readable without blocking. */
+    SR_FD_OUTPUT_READY,  /**< File descriptor is now writable without blocking. */
+} sr_fd_event_t;
+
+/**
+ * @brief Action that needs to be taken on a file descriptor.
+ */
+typedef enum sr_fd_action_s {
+    SR_FD_START_WATCHING,  /**< Start watching for the specified event on the file descriptor. */
+    SR_FD_STOP_WATCHING,   /**< Stop watching for the specified event on the file descriptor. */
+} sr_fd_action_t;
+
+/**
+ * @brief Structure representing a change in the set of file descriptors monitored by the application.
+ */
+typedef struct sr_fd_change_s {
+    int fd;                 /**< File descriptor whose monitored state should be changed. */
+    int events;             /**< Monitoring events tied to the change (or-ed value of ::sr_fd_event_t). */
+    sr_fd_action_t action;  /**< Action that is supposed to be performed by application-local file descriptor watcher. */
+} sr_fd_change_t;
+
+/**
+ * @brief Initializes application-local file descriptor watcher.
+ *
+ * This can be used in those applications that subscribe for changes or providing data in sysrepo, which have their
+ * own event loop that is capable of monitoring of the events on provided file descriptors. In case that the
+ * application-local file descriptor watcher is initialized, sysrepo client library won't use a separate thread
+ * for the delivery of the notifications and for calling the callbacks - they will be called from the main thread of the
+ * application's event loop (inside of ::sr_fd_event_process calls).
+ *
+ * @note Calling this function has global consequences on the behavior of the sysrepo client library within the process
+ * that called it. It is supposed to be called as the first sysrepo API call within the application.
+ *
+ * @param[out] fd Initial file descriptor that is supposed to be monitored for readable events by the application.
+ * Once there is an event detected on this file descriptor, the application is supposed to call ::sr_fd_event_process.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_fd_watcher_init(int *fd);
+
+/**
+ * @brief Cleans-up the application-local file descriptor watcher previously initiated by ::sr_fd_watcher_init.
+ * It is supposed to be called as the last sysrepo API within the application.
+ */
+void sr_fd_watcher_cleanup();
+
+/**
+ * @brief Processes an event that has occurred on one of the file descriptors that the application is monitoring for
+ * sysrepo client library purposes. As a result of this event, another file descriptors may need to be started or
+ * stopped monitoring by the application. These are returned as ::fd_change_set array.
+ *
+ * @param[in] fd File descriptor where an event occurred.
+ * @param[in] event Type of the event that occurred on the given file descriptor.
+ * @param[out] fd_change_set Array of file descriptors that need to be started or stopped monitoring for specified event
+ * by the application. The application is supposed to free this array after it processes it.
+ * @param[out] fd_change_set_cnt Count of the items in the ::fd_change_set array.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_fd_event_process(int fd, sr_fd_event_t event, sr_fd_change_t **fd_change_set, size_t *fd_change_set_cnt);
+
+
+////////////////////////////////////////////////////////////////////////////////
 // Cleanup Routines
 ////////////////////////////////////////////////////////////////////////////////
 

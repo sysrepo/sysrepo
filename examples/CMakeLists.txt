@@ -10,6 +10,7 @@ add_executable(sr_delete_item_example sr_delete_item_example.c)
 add_executable(sr_get_changes_iter_example sr_get_changes_iter_example.c)
 add_executable(application_example application_example.c)
 add_executable(application_changes_example application_changes_example.c)
+add_executable(application_fd_watcher_example application_fd_watcher_example.c)
 
 target_link_libraries(sr_get_item_example sysrepo)
 target_link_libraries(sr_get_items_example sysrepo)
@@ -19,6 +20,7 @@ target_link_libraries(sr_delete_item_example sysrepo)
 target_link_libraries(sr_get_changes_iter_example sysrepo)
 target_link_libraries(application_example sysrepo)
 target_link_libraries(application_changes_example sysrepo)
+target_link_libraries(application_fd_watcher_example sysrepo)
 
 macro(INSTALL_EXAMPLE_YANG MODULE_NAME REVISION)
     # install the YANG module
