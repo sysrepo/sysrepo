@@ -740,7 +740,7 @@ md_remove_all_subtree_refs(md_ctx_t *md_ctx, md_module_t *orig_module, sr_llist_
 }
 
 int
-md_init(struct ly_ctx *ly_ctx, pthread_rwlock_t *lyctx_lock, const char *schema_search_dir,
+md_init(const char *schema_search_dir,
         const char *internal_schema_search_dir, const char *internal_data_search_dir, bool write_lock,
         md_ctx_t **md_ctx)
 {
@@ -765,12 +765,9 @@ md_init(struct ly_ctx *ly_ctx, pthread_rwlock_t *lyctx_lock, const char *schema_
     /* Initialize pthread mutex */
     pthread_rwlock_init(&ctx->lock, NULL);
 
-    /* Keep pointer to libyang context */
-    ctx->ly_ctx = ly_ctx;
-    ctx->lyctx_lock = lyctx_lock;
-    if (ctx->lyctx_lock) {
-        pthread_rwlock_wrlock(ctx->lyctx_lock);
-    }
+    /* Create libyang context */
+    ctx->ly_ctx = ly_ctx_new(schema_search_dir);
+    CHECK_NULL_NOMEM_GOTO(ctx->ly_ctx, rc, fail);
 
     /* Copy schema search directory */
     ctx->schema_search_dir = strdup(schema_search_dir);
@@ -959,9 +956,6 @@ md_init(struct ly_ctx *ly_ctx, pthread_rwlock_t *lyctx_lock, const char *schema_
     }
 
     rc = SR_ERR_OK;
-    if (ctx && ctx->lyctx_lock) {
-        pthread_rwlock_unlock(ctx->lyctx_lock);
-    }
     free(schema_filepath);
     free(data_filepath);
     *md_ctx = ctx;
@@ -969,9 +963,6 @@ md_init(struct ly_ctx *ly_ctx, pthread_rwlock_t *lyctx_lock, const char *schema_
 
 fail:
     rc = SR_ERR_INTERNAL;
-    if (ctx && ctx->lyctx_lock) {
-        pthread_rwlock_unlock(ctx->lyctx_lock);
-    }
     md_free_module(module);
     md_destroy(ctx);
     free(schema_filepath);
@@ -1004,14 +995,11 @@ md_destroy(md_ctx_t *md_ctx)
         if (md_ctx->schema_search_dir) {
             free(md_ctx->schema_search_dir);
         }
-        if (md_ctx->lyctx_lock) {
-            pthread_rwlock_wrlock(md_ctx->lyctx_lock);
-        }
         if (md_ctx->data_tree) {
             lyd_free_withsiblings(md_ctx->data_tree);
         }
-        if (md_ctx->lyctx_lock) {
-            pthread_rwlock_unlock(md_ctx->lyctx_lock);
+        if (md_ctx->ly_ctx) {
+            ly_ctx_destroy(md_ctx->ly_ctx, NULL);
         }
         if (-1 != md_ctx->fd) {
             close(md_ctx->fd); /*< auto-unlock */
@@ -1479,13 +1467,7 @@ md_insert_module(md_ctx_t *md_ctx, const char *filepath)
     }
 
     /* insert module into the dependency graph */
-    if (md_ctx->lyctx_lock) {
-        pthread_rwlock_wrlock(md_ctx->lyctx_lock);
-    }
     rc = md_insert_lys_module(md_ctx, module_schema, md_get_module_revision(module_schema), false, NULL);
-    if (md_ctx->lyctx_lock) {
-        pthread_rwlock_unlock(md_ctx->lyctx_lock);
-    }
     if (rc != SR_ERR_OK) {
         goto cleanup;
     }
@@ -1606,17 +1588,11 @@ md_remove_module(md_ctx_t *md_ctx, const char *name, const char *revision)
         }
     }
     /* also update the latest_revision flag in data_tree if needed */
-    if (md_ctx->lyctx_lock) {
-        pthread_rwlock_wrlock(md_ctx->lyctx_lock);
-    }
     if (NULL != latest) {
         latest->latest_revision = true;
         ret = md_lyd_new_path(md_ctx, MD_XPATH_MODULE_LATEST_REV_FLAG, "true", latest,
                               "set latest-revision flag", NULL, latest->name, latest->revision_date);
         if (SR_ERR_OK != ret) {
-            if (md_ctx->lyctx_lock) {
-                pthread_rwlock_unlock(md_ctx->lyctx_lock);
-            }
             return SR_ERR_INTERNAL;
         }
     }
@@ -1709,9 +1685,6 @@ md_remove_module(md_ctx_t *md_ctx, const char *name, const char *revision)
         md_ctx->data_tree = node_data->next;
     }
     lyd_free(node_data);
-    if (md_ctx->lyctx_lock) {
-        pthread_rwlock_unlock(md_ctx->lyctx_lock);
-    }
 
     /* finally remove the module itself */
     sr_llist_rm(md_ctx->modules, module->ll_node);
@@ -1740,13 +1713,8 @@ md_flush(md_ctx_t *md_ctx)
 
     ret = ftruncate(md_ctx->fd, 0);
     CHECK_ZERO_MSG_RETURN(ret, SR_ERR_INTERNAL, "Failed to truncate the internal data file '" MD_DATA_FILENAME"'.");
-    if (md_ctx->lyctx_lock) {
-        pthread_rwlock_rdlock(md_ctx->lyctx_lock);
-    }
+
     ret = lyd_print_fd(md_ctx->fd, md_ctx->data_tree, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT);
-    if (md_ctx->lyctx_lock) {
-        pthread_rwlock_unlock(md_ctx->lyctx_lock);
-    }
     if (0 != ret) {
         SR_LOG_ERR("Unable to export data tree with dependencies: %s", ly_errmsg());
         return SR_ERR_INTERNAL;

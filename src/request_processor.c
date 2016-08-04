@@ -118,8 +118,9 @@ rp_check_notif_session(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
 
     /* copy requested model from commit context */
     rc = dm_copy_if_not_loaded(rp_ctx->dm_ctx,  c_ctx->session, session->dm_session, module_name);
-    free(module_name);
+
 cleanup:
+    free(module_name);
     pthread_rwlock_unlock(&dm_ctxs->lock);
     return rc;
 }
@@ -261,7 +262,8 @@ rp_module_install_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *sessio
         oper_rc = msg->request->module_install_req->installed ?
                 dm_install_module(rp_ctx->dm_ctx,
                         msg->request->module_install_req->module_name,
-                        msg->request->module_install_req->revision)
+                        msg->request->module_install_req->revision,
+                        msg->request->module_install_req->file_name)
                 :
                 dm_uninstall_module(rp_ctx->dm_ctx,
                         msg->request->module_install_req->module_name,

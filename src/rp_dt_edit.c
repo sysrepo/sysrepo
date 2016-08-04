@@ -177,7 +177,6 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, co
     CHECK_NULL_ARG3(dm_ctx, session, xpath);
 
     int rc = SR_ERR_INVAL_ARG;
-    const struct lys_module *module = NULL;
     dm_data_info_t *info = NULL;
     struct ly_set *nodes = NULL;
     struct ly_set *parents = NULL;
@@ -194,12 +193,8 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, co
     /* find nodes nodes to be deleted */
     rc = rp_dt_find_nodes(dm_ctx, info->node, xpath, dm_is_running_ds_session(session), &nodes);
     if (SR_ERR_NOT_FOUND == rc) {
-        rc = rp_dt_validate_node_xpath(dm_ctx, session, xpath, &module, NULL);
-        if (SR_ERR_OK != rc && NULL == module) {
-            SR_LOG_ERR("Requested xpath is not valid %s", xpath);
-            return rc;
-        }
-        else if (SR_ERR_OK != rc) {
+        rc = rp_dt_validate_node_xpath(dm_ctx, session, xpath, NULL, NULL);
+        if (SR_ERR_OK != rc) {
             SR_LOG_WRN("Validation of xpath %s was not successful", xpath);
         }
 
@@ -299,7 +294,7 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, co
             }
         }
     }
-    dm_lyd_wd_add(dm_ctx, info->module->ctx, &info->node, LYD_WD_IMPL_TAG);
+    lyd_wd_add(info->schema->ly_ctx, &info->node, LYD_WD_IMPL_TAG);
 cleanup:
     ly_set_free(parents);
     ly_set_free(nodes);
@@ -319,38 +314,40 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const
     const struct lys_module *module = NULL;
     struct lys_node *sch_node = NULL;
     dm_data_info_t *info = NULL;
+    dm_schema_info_t *schema_info = NULL;
     struct lyd_node *node = NULL;
 
     /* validate xpath */
-    rc = rp_dt_validate_node_xpath(dm_ctx, session, xpath, &module, &sch_node);
+    rc = rp_dt_validate_node_xpath_lock(dm_ctx, session, xpath, &schema_info, &sch_node);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Requested node is not valid %s", xpath);
         return rc;
     }
-
+    module = schema_info->module;
     if (NULL == sch_node) {
         SR_LOG_ERR("Node can not be created or update %s", xpath);
+        pthread_rwlock_unlock(&schema_info->model_lock);
         return SR_ERR_INVAL_ARG;
     }
 
     /* get data tree to be update */
     rc = dm_get_data_info(dm_ctx, session, module->name, &info);
+    if (SR_ERR_OK != rc) {
+        pthread_rwlock_unlock(&schema_info->model_lock);
+    }
+
     CHECK_RC_LOG_RETURN(rc, "Getting data tree failed for xpath '%s'", xpath);
 
     /* check if node is enabled */
     if (dm_is_running_ds_session(session)) {
-        dm_schema_info_t *si = NULL;
-        rc = dm_get_schema_info((dm_ctx_t *) dm_ctx, module->name, &si);
-        CHECK_RC_LOG_RETURN(rc, "Get schema info failed for %s", module->name);
-
-        pthread_rwlock_rdlock(&si->model_lock);
         if (!dm_is_enabled_check_recursively(sch_node)) {
             SR_LOG_ERR("The node is not enabled in running datastore %s", xpath);
-            pthread_rwlock_unlock(&si->model_lock);
+            pthread_rwlock_unlock(&schema_info->model_lock);
             return SR_ERR_INVAL_ARG;
         }
-        pthread_rwlock_unlock(&si->model_lock);
     }
+
+    pthread_rwlock_unlock(&schema_info->model_lock);
 
     /* non-presence container can not be created */
     if (LYS_CONTAINER == sch_node->nodetype && NULL == ((struct lys_node_container *) sch_node)->presence) {
@@ -388,7 +385,7 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const
             CHECK_NULL_NOMEM_GOTO(last_slash, rc, cleanup);
             char *parent_node = strndup(xpath, last_slash - xpath);
             CHECK_NULL_NOMEM_GOTO(parent_node, rc, cleanup);
-            struct ly_set *res = dm_lyd_get_node(dm_ctx, info->node, parent_node);
+            struct ly_set *res = lyd_get_node(info->node, parent_node);
             free(parent_node);
             if (NULL == res || 0 == res->number) {
                 SR_LOG_ERR("A preceding node is missing '%s' create it or omit the non recursive option", xpath);
@@ -421,7 +418,7 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const
 
     /* create or update */
     ly_errno = 0;
-    node = dm_lyd_new_path(dm_ctx, info, module->ctx, xpath, new_value, flags);
+    node = dm_lyd_new_path(info, xpath, new_value, flags);
     if (NULL == node && LY_SUCCESS != ly_errno) {
         SR_LOG_ERR("Setting of item failed %s %d", xpath, ly_vecode);
         if (LYVE_PATH_EXISTS == ly_vecode) {
@@ -444,7 +441,7 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const
 
     /* add default nodes into the data tree */
     if (node != NULL) {
-        dm_lyd_wd_add(dm_ctx, module->ctx, &info->node, LYD_WD_IMPL_TAG | LYD_OPT_NOSIBLINGS);
+        lyd_wd_add(info->schema->ly_ctx, &info->node, LYD_WD_IMPL_TAG | LYD_OPT_NOSIBLINGS);
     }
 
 cleanup:
@@ -462,14 +459,16 @@ rp_dt_move_list(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, sr_m
     int rc = SR_ERR_OK;
     struct lyd_node *node = NULL;
     struct lyd_node *sibling = NULL;
-    const struct lys_module *module = NULL;
+    dm_schema_info_t *schema_info = NULL;
     dm_data_info_t *info = NULL;
 
-    rc = rp_dt_validate_node_xpath(dm_ctx, session, xpath, &module, NULL);
+    rc = rp_dt_validate_node_xpath_lock(dm_ctx, session, xpath, &schema_info, NULL);
     CHECK_RC_LOG_RETURN(rc, "Requested node is not valid %s", xpath);
 
-    rc = dm_get_data_info(dm_ctx, session, module->name, &info);
+    rc = dm_get_data_info(dm_ctx, session, schema_info->module_name, &info);
+    pthread_rwlock_unlock(&schema_info->model_lock);
     CHECK_RC_LOG_RETURN(rc, "Getting data tree failed for xpath '%s'", xpath);
+
 
     rc = rp_dt_find_node(dm_ctx, info->node, xpath, dm_is_running_ds_session(session), &node);
     if (SR_ERR_NOT_FOUND == rc) {
@@ -495,7 +494,7 @@ rp_dt_move_list(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, sr_m
             return rc;
         }
     } else {
-        struct ly_set *siblings = dm_lyd_get_node2(dm_ctx, info->node, node->schema);
+        struct ly_set *siblings = lyd_get_node2(info->node, node->schema);
 
         if (NULL == siblings || 0 == siblings->number) {
             SR_LOG_ERR_MSG("No siblings found");
@@ -888,9 +887,9 @@ rp_dt_copy_config_to_running(rp_ctx_t* rp_ctx, rp_session_t* session, const char
         rc = dm_get_all_modules(rp_ctx->dm_ctx, session->dm_session, true, &modules);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Get all modules failed");
         for (size_t i = 0; i < modules->count; i++) {
-            struct lys_module *module = modules->data[i];
-            rc = dm_get_data_info(rp_ctx->dm_ctx, session->dm_session, module->name, &info);
-            CHECK_RC_LOG_GOTO(rc, cleanup, "Get data info failed %s", module->name);
+            char *module = modules->data[i];
+            rc = dm_get_data_info(rp_ctx->dm_ctx, session->dm_session, module, &info);
+            CHECK_RC_LOG_GOTO(rc, cleanup, "Get data info failed %s", module);
             info->modified = true;
         }
 

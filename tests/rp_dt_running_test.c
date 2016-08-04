@@ -33,6 +33,7 @@
 #include "test_data.h"
 #include "test_module_helper.h"
 #include "rp_dt_context_helper.h"
+#include "data_manager.h"
 #include "rp_internal.h"
 
 int setup(void **state){
@@ -88,16 +89,20 @@ enable_subtree_test(void **state)
    int rc = 0;
    rp_ctx_t *ctx = *state;
    rp_session_t *session = NULL;
-   const struct lys_module *module = NULL;
+   dm_schema_info_t *si = NULL;
    struct lys_node *match = NULL;
 
    test_rp_sesssion_create(ctx, SR_DS_RUNNING, &session);
 
-   rc = rp_dt_enable_xpath(ctx->dm_ctx, session->dm_session, "/ietf-interfaces:interfaces/interface/ietf-ip:ipv4/address");
+   rc = dm_get_module_and_lockw(ctx->dm_ctx, "ietf-interfaces", &si);
    assert_int_equal(SR_ERR_OK, rc);
 
+   rc = rp_dt_enable_xpath(ctx->dm_ctx, session->dm_session, si, "/ietf-interfaces:interfaces/interface/ietf-ip:ipv4/address");
+   assert_int_equal(SR_ERR_OK, rc);
 
-   rc = rp_dt_validate_node_xpath(ctx->dm_ctx, session->dm_session, "/ietf-interfaces:interfaces/interface/ietf-ip:ipv4/address", &module, &match);
+   pthread_rwlock_unlock(&si->model_lock);
+
+   rc = rp_dt_validate_node_xpath(ctx->dm_ctx, session->dm_session, "/ietf-interfaces:interfaces/interface/ietf-ip:ipv4/address", &si, &match);
    assert_int_equal(SR_ERR_OK, rc);
 
    /* check address node */
@@ -107,28 +112,37 @@ enable_subtree_test(void **state)
    assert_true(dm_is_node_enabled(match->parent));
 
    /* check ietf-interfaces:interfaces */
-   assert_true(dm_is_node_enabled(module->data));
+   assert_true(dm_is_node_enabled(si->module->data));
 
-   rc = rp_dt_validate_node_xpath(ctx->dm_ctx, session->dm_session, "/ietf-interfaces:interfaces/interface/type", &module, &match);
+   rc = rp_dt_validate_node_xpath(ctx->dm_ctx, session->dm_session, "/ietf-interfaces:interfaces/interface/type", &si, &match);
    assert_int_equal(SR_ERR_OK, rc);
 
    /* check manadatory leaf is enabled when its parent is enabled */
    assert_true(dm_is_node_enabled(match));
 
-   rc = rp_dt_enable_xpath(ctx->dm_ctx, session->dm_session, "/ietf-interfaces:interfaces/interface/ietf-ip:ipv4/address");
+   rc = dm_get_module_and_lockw(ctx->dm_ctx, "ietf-interfaces", &si);
    assert_int_equal(SR_ERR_OK, rc);
+
+   rc = rp_dt_enable_xpath(ctx->dm_ctx, session->dm_session, si, "/ietf-interfaces:interfaces/interface/ietf-ip:ipv4/address");
+   assert_int_equal(SR_ERR_OK, rc);
+
+   pthread_rwlock_unlock(&si->model_lock);
 
    test_rp_session_cleanup(ctx, session);
 
    /* enable list keys implicitly */
    test_rp_sesssion_create(ctx, SR_DS_RUNNING, &session);
 
-   rc = rp_dt_enable_xpath(ctx->dm_ctx, session->dm_session, "/example-module:container/list/leaf");
+   rc = dm_get_module_and_lockw(ctx->dm_ctx, "example-module", &si);
    assert_int_equal(SR_ERR_OK, rc);
 
-   module = NULL;
+   rc = rp_dt_enable_xpath(ctx->dm_ctx, session->dm_session, si, "/example-module:container/list/leaf");
+   assert_int_equal(SR_ERR_OK, rc);
+
+   pthread_rwlock_unlock(&si->model_lock);
+
    match = NULL;
-   rc = rp_dt_validate_node_xpath(ctx->dm_ctx, session->dm_session, "/example-module:container/list/leaf", &module, &match);
+   rc = rp_dt_validate_node_xpath(ctx->dm_ctx, session->dm_session, "/example-module:container/list/leaf", &si, &match);
    assert_int_equal(SR_ERR_OK, rc);
 
    /* check leaf node */
@@ -153,6 +167,7 @@ edit_enabled(void **state)
    int rc = 0;
    rp_ctx_t *ctx = *state;
    rp_session_t *session = NULL;
+   dm_schema_info_t *si = NULL;
 
    test_rp_sesssion_create(ctx, SR_DS_RUNNING, &session);
 
@@ -163,8 +178,13 @@ edit_enabled(void **state)
    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/example-module:container/list[key1='a'][key2='b']/leaf", SR_EDIT_DEFAULT, &val);
    assert_int_equal(SR_ERR_INVAL_ARG, rc);
 
-   rc = rp_dt_enable_xpath(ctx->dm_ctx, session->dm_session, "/example-module:container/list/leaf");
+   rc = dm_get_module_and_lockw(ctx->dm_ctx, "example-module", &si);
    assert_int_equal(SR_ERR_OK, rc);
+
+   rc = rp_dt_enable_xpath(ctx->dm_ctx, session->dm_session, si, "/example-module:container/list/leaf");
+   assert_int_equal(SR_ERR_OK, rc);
+
+   pthread_rwlock_unlock(&si->model_lock);
 
    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/example-module:container/list[key1='a'][key2='b']/leaf", SR_EDIT_DEFAULT, &val);
    assert_int_equal(SR_ERR_OK, rc);

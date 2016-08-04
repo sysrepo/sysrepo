@@ -75,6 +75,10 @@ class SysrepoTester(Tester):
     def getItemsStep(self, xpath):
         self.session.get_items(xpath)
 
+    def getItemsStepExpectedCount(self, xpath, count):
+        items = self.session.get_items(xpath)
+        self.tc.assertEqual(len(items), count)
+
     def getItemsFailStep(self, xpath):
         with self.tc.assertRaisesRegexp(RuntimeError, ".* found"):
             self.session.get_items(xpath)
@@ -85,8 +89,17 @@ class SysrepoTester(Tester):
     def setItemStep(self, xpath, value):
         self.session.set_item(xpath, value)
 
+    def setItemFailStep(self, xpath, value):
+        with self.tc.assertRaises(RuntimeError):
+            self.session.set_item(xpath, value)
+
     def refreshStep(self):
         self.session.refresh()
 
     def waitTimeoutStep(self, timeout):
         sleep(timeout)
+
+    def getSchemaToFileStep(self, module_name, file_name):
+        content = self.session.get_schema(module_name, None, None, SR_SCHEMA_YANG)
+        with open(file_name, 'w') as f:
+            f.write(content)

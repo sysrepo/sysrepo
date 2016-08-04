@@ -389,7 +389,7 @@ rp_dt_get_value_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char *
     rc = rp_dt_get_value(rp_ctx->dm_ctx, data_tree, xpath, dm_is_running_ds_session(rp_session->dm_session), value);
 cleanup:
     if (SR_ERR_NOT_FOUND == rc || (SR_ERR_OK == rc && NULL == data_tree)) {
-        rc = rp_dt_validate_node_xpath(rp_ctx->dm_ctx, NULL, xpath, NULL, NULL);
+        rc = rp_dt_validate_node_xpath(rp_ctx->dm_ctx, rp_session->dm_session, xpath, NULL, NULL);
         if (SR_ERR_OK != rc) {
             /* Print warning only, because we are not able to validate all xpath */
             SR_LOG_WRN("Validation of xpath %s was not successful", xpath);
@@ -434,7 +434,7 @@ rp_dt_get_values_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char 
 
 cleanup:
     if (SR_ERR_NOT_FOUND == rc || (SR_ERR_OK == rc && (0 == count || NULL == data_tree))) {
-        if (SR_ERR_OK != rp_dt_validate_node_xpath(rp_ctx->dm_ctx, NULL, xpath, NULL, NULL)) {
+        if (SR_ERR_OK != rp_dt_validate_node_xpath(rp_ctx->dm_ctx, rp_session->dm_session, xpath, NULL, NULL)) {
             /* Print warning only, because we are not able to validate all xpath */
             SR_LOG_WRN("Validation of xpath %s was not successful", xpath);
         }
@@ -487,7 +487,7 @@ rp_dt_get_values_wrapper_with_opts(rp_ctx_t *rp_ctx, rp_session_t *rp_session, r
     rc = rp_dt_get_values_from_nodes(nodes, values, count);
 cleanup:
     if (SR_ERR_NOT_FOUND == rc || (SR_ERR_OK == rc && (0 == count || NULL == data_tree))) {
-        rc = rp_dt_validate_node_xpath(rp_ctx->dm_ctx, NULL, xpath, NULL, NULL);
+        rc = rp_dt_validate_node_xpath(rp_ctx->dm_ctx, rp_session->dm_session, xpath, NULL, NULL);
         if (SR_ERR_OK != rc) {
             /* Print warning only, because we are not able to validate all xpath */
             SR_LOG_WRN("Validation of xpath %s was not successful", xpath);
@@ -665,16 +665,20 @@ rp_dt_get_changes(rp_ctx_t *rp_ctx, rp_session_t *rp_session, dm_commit_context_
     char *module_name = NULL;
     dm_model_subscription_t lookup = {0};
     dm_model_subscription_t *ms = NULL;
+    dm_schema_info_t *schema_info = NULL;
 
     rc = sr_copy_first_ns(xpath, &module_name);
     CHECK_RC_MSG_RETURN(rc, "Copy first ns failed");
 
-    rc = dm_get_module(rp_ctx->dm_ctx, module_name, NULL, &lookup.module);
+    rc = dm_get_module_and_lock(rp_ctx->dm_ctx, module_name, &schema_info);
     CHECK_RC_LOG_GOTO(rc, cleanup, "Dm get module failed for %s", module_name);
 
+    lookup.schema_info = schema_info;
+
     ms = sr_btree_search(c_ctx->subscriptions, &lookup);
+    pthread_rwlock_unlock(&schema_info->model_lock);
     if (NULL == ms) {
-        SR_LOG_ERR("Module subscription not found for module %s", lookup.module->name);
+        SR_LOG_ERR("Module subscription not found for module %s", lookup.schema_info->module_name);
         rc = SR_ERR_INTERNAL;
         goto cleanup;
     }

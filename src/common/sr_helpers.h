@@ -330,7 +330,7 @@
         ts.tv_sec += MUTEX_WAIT_TIME;        \
         ret = pthread_mutex_timedlock(MUTEX, &ts); \
         if (0 != ret) {                            \
-            SR_LOG_ERR("Mutex can not be locked %s", sr_strerror_safe(errno));\
+            SR_LOG_ERR("Mutex can not be locked %s", sr_strerror_safe(ret));\
             return SR_ERR_TIME_OUT;          \
         }                                    \
     } while(0)
@@ -347,7 +347,7 @@
         ts.tv_sec += MUTEX_WAIT_TIME;        \
         ret = pthread_mutex_timedlock(MUTEX, &ts); \
         if (0 != ret) {                            \
-            SR_LOG_ERR("Mutex can not be locked %s", sr_strerror_safe(errno));\
+            SR_LOG_ERR("Mutex can not be locked %s", sr_strerror_safe(ret));\
             rc = SR_ERR_TIME_OUT;            \
             goto LABEL;                      \
         }                                    \
@@ -365,7 +365,7 @@
         ts.tv_sec += MUTEX_WAIT_TIME;        \
         ret = pthread_rwlock_timedwrlock(RWLOCK, &ts); \
         if (0 != ret) {                            \
-            SR_LOG_ERR("rwlock can not be locked %s", sr_strerror_safe(errno));   \
+            SR_LOG_ERR("rwlock can not be locked %s", sr_strerror_safe(ret));   \
             return SR_ERR_TIME_OUT;          \
         }                                    \
     } while(0)
@@ -382,7 +382,7 @@
         ts.tv_sec += MUTEX_WAIT_TIME;        \
         ret = pthread_rwlock_timedrdlock(RWLOCK, &ts); \
         if (0 != ret) {                            \
-            SR_LOG_ERR("rwlock can not be locked %s", sr_strerror_safe(errno));   \
+            SR_LOG_ERR("rwlock can not be locked %s", sr_strerror_safe(ret));   \
             return SR_ERR_TIME_OUT;          \
         }                                    \
     } while(0)
@@ -399,7 +399,7 @@
         ts.tv_sec += MUTEX_WAIT_TIME;        \
         ret = pthread_rwlock_timedwrlock(RWLOCK, &ts); \
         if (0 != ret) {                            \
-            SR_LOG_ERR("rwlock can not be locked %s", sr_strerror_safe(errno));   \
+            SR_LOG_ERR("rwlock can not be locked %s", sr_strerror_safe(ret));   \
             rc = SR_ERR_TIME_OUT;            \
             goto LABEL;                      \
         }                                    \
@@ -417,7 +417,7 @@
         ts.tv_sec += MUTEX_WAIT_TIME;        \
         ret = pthread_rwlock_timedrdlock(RWLOCK, &ts); \
         if (0 != ret) {                            \
-            SR_LOG_ERR("rwlock can not be locked %s", sr_strerror_safe(errno));   \
+            SR_LOG_ERR("rwlock can not be locked %s", sr_strerror_safe(ret));   \
             rc = SR_ERR_TIME_OUT;            \
             goto LABEL;                      \
         }                                    \
