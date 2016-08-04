@@ -419,7 +419,7 @@ md_tests_setup(void **state)
 {
     md_create_module_yang_schema("A", md_module_A_filepath, md_module_A_body, NULL);
     md_create_module_yang_schema("B", md_module_B_filepath, md_module_B_body, "sub-Bs1", "sub-Bs2", "sub-Bs3", NULL);
-    md_create_submodule_yang_schema("Bs1", "B", md_submodule_B_sub1_filepath, md_submodule_B_sub1_body, 
+    md_create_submodule_yang_schema("Bs1", "B", md_submodule_B_sub1_filepath, md_submodule_B_sub1_body,
             /* "sub-Bs2" TODO: uncomment once the second issue from libyang/#97 is fixed ,*/ "A", NULL);
     md_create_submodule_yang_schema("Bs2", "B", md_submodule_B_sub2_filepath, md_submodule_B_sub2_body,
             /* "sub-Bs3" TODO: uncomment once the second issue from libyang/#97 is fixed ,*/ "A", NULL);
@@ -427,7 +427,7 @@ md_tests_setup(void **state)
     md_create_module_yang_schema("C", md_module_C_filepath, md_module_C_body, "A", NULL);
     md_create_module_yang_schema("D", md_module_D_rev1_filepath, md_module_D_rev1_body, "sub-Dcommon@2016-06-10", "A", "C", NULL);
     md_create_module_yang_schema("D", md_module_D_rev2_filepath, md_module_D_rev2_body, "sub-Dcommon@2016-06-10", "A", "B", "C", NULL);
-    md_create_submodule_yang_schema("Dcommon", "D", md_submodule_D_common_filepath, md_submodule_D_common_body, 
+    md_create_submodule_yang_schema("Dcommon", "D", md_submodule_D_common_filepath, md_submodule_D_common_body,
             "mod-C" /* "TODO: rename to just "C" once the second issue from libyang/#97 is fixed */, NULL);
     md_create_module_yang_schema("E", md_module_E_rev1_filepath, md_module_E_rev1_body, "D@2016-06-10", NULL);
     md_create_module_yang_schema("E", md_module_E_rev2_filepath, md_module_E_rev2_body, "D@2016-06-20", NULL);
