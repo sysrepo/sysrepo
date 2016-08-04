@@ -8,3 +8,6 @@ Version: @SYSREPO_VERSION@
 Requires.private: libyang
 Libs: -L${libdir} -lsysrepo
 Cflags: -I${includedir}
+
+REPOSITORY_LOC=@REPOSITORY_LOC@
+PLUGINS_DIR=@PLUGINS_DIR@

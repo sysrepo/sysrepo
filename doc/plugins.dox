@@ -67,6 +67,9 @@ to `${CMAKE_INSTALL_PREFIX}/${LIB_INSTALL_DIR}/sysrepo/plugins/`
 - `SR_PLUGINS_DIR` environment variable before starting the plugin daemon (e.g.
 `"SR_PLUGINS_DIR=/opt/sysrepo/plugins sysrepo-plugind"`)
 
+The location of the plugin directory can be retrieved via pkg-config variable `PLUGINS_DIR`,
+e.g.: `pkg-config --variable=PLUGINS_DIR libsysrepo`.
+
 @section sysrepo-plugind Sysrepo Plugin Daemon
 Sysrepo plugin daemon loads all plugins (shared libraries) located in the 
 @ref plugin-dir. It should normally be automatically started by 
