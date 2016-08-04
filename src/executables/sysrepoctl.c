@@ -701,12 +701,14 @@ fail:
     printf("Uninstall operation failed.\n");
 
 cleanup:
-    submodule = submodules->first;
-    while (submodule) {
-        free(submodule->data);
-        submodule = submodule->next;
+    if (submodules) {
+        submodule = submodules->first;
+        while (submodule) {
+            free(submodule->data);
+            submodule = submodule->next;
+        }
+        sr_llist_cleanup(submodules);
     }
-    sr_llist_cleanup(submodules);
     free(filepath);
     md_destroy(md_ctx);
     if (ly_ctx) {
