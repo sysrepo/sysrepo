@@ -1818,6 +1818,7 @@ dm_list_schemas(dm_ctx_t *dm_ctx, dm_session_t *dm_session, sr_schema_t **schema
     int rc = SR_ERR_OK;
     md_module_t *module = NULL;
     sr_llist_node_t *module_ll_node = NULL;
+    size_t i = 0;
 
     sr_schema_t *sch = NULL;
     size_t sch_count = 0;
@@ -1834,9 +1835,8 @@ dm_list_schemas(dm_ctx_t *dm_ctx, dm_session_t *dm_session, sr_schema_t **schema
     }
 
     sch = calloc(sch_count, sizeof(*sch));
-    CHECK_NULL_NOMEM_RETURN(sch);
+    CHECK_NULL_NOMEM_GOTO(sch, rc, cleanup);
 
-    size_t i = 0;
     module_ll_node = dm_ctx->md_ctx->modules->first;
     while (module_ll_node) {
         module = (md_module_t *) module_ll_node->data;
@@ -1852,14 +1852,14 @@ dm_list_schemas(dm_ctx_t *dm_ctx, dm_session_t *dm_session, sr_schema_t **schema
         i++;
     }
 
-    md_ctx_unlock(dm_ctx->md_ctx);
-    *schemas = sch;
-    *schema_count = sch_count;
-
-    return rc;
-
 cleanup:
-    sr_free_schemas(sch, i);
+    md_ctx_unlock(dm_ctx->md_ctx);
+    if (SR_ERR_OK == rc) {
+        *schemas = sch;
+        *schema_count = sch_count;
+    } else {
+        sr_free_schemas(sch, i);
+    }
     return rc;
 }
 
@@ -1880,8 +1880,6 @@ dm_get_schema(dm_ctx_t *dm_ctx, const char *module_name, const char *module_revi
 
     md_ctx_lock(dm_ctx->md_ctx, false);
     rc = md_get_module_info(dm_ctx->md_ctx, module_name, module_revision, &md_module);
-
-    CHECK_RC_LOG_RETURN(rc, "Module %s in revision %s not found", module_name, module_revision);
 
     if (NULL != md_module && !md_module->latest_revision) {
         /* find a module in latest revision that includes the requested module
