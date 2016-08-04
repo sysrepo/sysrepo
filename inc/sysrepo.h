@@ -1189,7 +1189,7 @@ typedef int (*sr_rpc_cb)(const char *xpath, const sr_val_t *input, const size_t 
  * @param[out] output Array of output parameters (represented as trees). Should be allocated on heap,
  * will be freed by sysrepo after sending of the RPC response.
  * @param[out] output_cnt Number of output parameters.
- * @param[in] private_ctx Private context opaque to sysrepo, as passed to ::sr_rpc_subscribe call.
+ * @param[in] private_ctx Private context opaque to sysrepo, as passed to ::sr_rpc_subscribe_tree call.
  *
  * @return Error code (SR_ERR_OK on success).
  */
@@ -1216,7 +1216,8 @@ int sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb cal
 /**
  * @brief Subscribes for delivery of RPC specified by xpath. Unlike ::sr_rpc_subscribe, this
  * function expects callback of type ::sr_rpc_tree_cb, therefore use this version if you prefer
- * to manipulate with RPC input and output data organized in a list of trees.
+ * to manipulate with RPC input and output data organized in a list of trees rather than as a flat
+ * enumeration of all values.
  *
  * @param[in] session Session context acquired with ::sr_session_start call.
  * @param[in] xpath XPath identifying the RPC.
@@ -1252,8 +1253,7 @@ int sr_rpc_send(sr_session_ctx_t *session, const char *xpath,
 
 /**
  * @brief Sends a RPC specified by xpath and waits for the result. Input and output data
- * are represented as arrays of subtrees reflecting the scheme of RPC arguments,
- * rather than a flat enumeration of all values.
+ * are represented as arrays of subtrees reflecting the scheme of RPC arguments.
  *
  * @param[in] session Session context acquired with ::sr_session_start call.
  * @param[in] xpath XPath identifying the RPC.
@@ -1338,6 +1338,21 @@ typedef void (*sr_event_notif_cb)(const char *xpath, const sr_val_t *values, con
         void *private_ctx);
 
 /**
+ * @brief Callback to be called by the delivery of event notification specified by xpath.
+ * This callback variant operates with sysrepo trees rather than with sysrepo values,
+ * use it with ::sr_event_notif_subscribe_tree and ::sr_event_notif_send_tree.
+ *
+ * @param[in] xpath XPath identifying the event notification.
+ * @param[in] trees Array of subtrees carrying event notification data.
+ * @param[in] tree_cnt Number of subtrees with data.
+ * @param[in] private_ctx Private context opaque to sysrepo, as passed to ::sr_event_notif_subscribe_tree call.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+typedef void (*sr_event_notif_tree_cb)(const char *xpath, const sr_node_t *trees, const size_t tree_cnt,
+        void *private_ctx);
+
+/**
  * @brief Subscribes for delivery of an event notification specified by xpath.
  *
  * @param[in] session Session context acquired with ::sr_session_start call.
@@ -1356,6 +1371,27 @@ int sr_event_notif_subscribe(sr_session_ctx_t *session, const char *xpath,
         sr_subscription_ctx_t **subscription);
 
 /**
+ * @brief Subscribes for delivery of event notification specified by xpath.
+ * Unlike ::sr_event_notif_subscribe, this function expects callback of type ::sr_event_notif_tree_cb,
+ * therefore use this version if you prefer to manipulate with event notification data organized
+ * in a list of trees rather than as a flat enumeration of all values.
+ *
+ * @param[in] session Session context acquired with ::sr_session_start call.
+ * @param[in] xpath XPath identifying the event notification.
+ * @param[in] callback Callback to be called when the event notification is called.
+ * @param[in] private_ctx Private context passed to the callback function, opaque to sysrepo.
+ * @param[in] opts Options overriding default behavior of the subscription, it is supposed to be
+ * a bitwise OR-ed value of any ::sr_subscr_flag_t flags.
+ * @param[in,out] subscription Subscription context that is supposed to be released by ::sr_unsubscribe.
+ * @note An existing context may be passed in case that SR_SUBSCR_CTX_REUSE option is specified.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_event_notif_subscribe_tree(sr_session_ctx_t *session, const char *xpath,
+        sr_event_notif_tree_cb callback, void *private_ctx, sr_subscr_options_t opts,
+        sr_subscription_ctx_t **subscription);
+
+/**
  * @brief Sends an event notification specified by xpath and waits for the result.
  *
  * @param[in] session Session context acquired with ::sr_session_start call.
@@ -1368,6 +1404,21 @@ int sr_event_notif_subscribe(sr_session_ctx_t *session, const char *xpath,
  */
 int sr_event_notif_send(sr_session_ctx_t *session, const char *xpath, const sr_val_t *values,
         const size_t values_cnt);
+
+/**
+ * @brief Sends an event notification specified by xpath and waits for the result.
+ * The notification data are represented as arrays of subtrees reflecting the scheme
+ * of the event notification.
+ *
+ * @param[in] session Session context acquired with ::sr_session_start call.
+ * @param[in] xpath XPath identifying the RPC.
+ * @param[in] tree Array of subtrees carrying event notification data.
+ * @param[in] tree_cnt Number of subtrees with data.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_event_notif_send_tree(sr_session_ctx_t *session, const char *xpath,
+        const sr_node_t *trees,  const size_t tree_cnt);
 
 
 ////////////////////////////////////////////////////////////////////////////////

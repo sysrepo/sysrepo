@@ -756,7 +756,7 @@ int dm_validate_event_notif(dm_ctx_t *dm_ctx, dm_session_t *session, const char 
  * @param [in] values_cnt Number of items inside the values array (can be changed inside of the function).
  * @return Error code (SR_ERR_OK on success)
  */
-int dm_validate_event_notif_tree(dm_ctx_t *dm_ctx, dm_session_t *session, const char *notif_xpath, sr_node_t **values, size_t *values_cnt);
+int dm_validate_event_notif_tree(dm_ctx_t *dm_ctx, dm_session_t *session, const char *notif_xpath, sr_node_t **trees, size_t *tree_cnt);
 
 /**
  * @brief Call lyd_new path uses ly_ctx from data_info->schema.

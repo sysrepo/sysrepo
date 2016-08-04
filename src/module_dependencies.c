@@ -1064,6 +1064,10 @@ md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, struct lys_node *
     /* schema traversal (non-recursive DFS post-order on each root) */
     do {
         node = root;
+        if (LYS_GROUPING == node->nodetype) {
+            /* skip grouping */
+            continue;
+        }
         do {
             /* go as deep as possible */
             if (process_children) {
@@ -1086,7 +1090,7 @@ md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, struct lys_node *
                         }
                         break;
                     }
-               default:
+                default:
                     break;
             }
             /* operational data subtrees */
@@ -1183,7 +1187,7 @@ md_insert_lys_module(md_ctx_t *md_ctx, const struct lys_module *module_schema, c
     CHECK_NULL_NOMEM_GOTO(module->name, rc, cleanup);
     module->revision_date = strdup(revision);
     CHECK_NULL_NOMEM_GOTO(module->revision_date, rc, cleanup);
-    module->prefix = strdup(module_schema->prefix);
+    module->prefix = strdup(module->submodule ? "" : module_schema->prefix);
     CHECK_NULL_NOMEM_GOTO(module->prefix, rc, cleanup);
     module->ns = strdup(module->submodule ? "" : module_schema->ns);
     CHECK_NULL_NOMEM_GOTO(module->ns, rc, cleanup);
@@ -1208,6 +1212,8 @@ md_insert_lys_module(md_ctx_t *md_ctx, const struct lys_module *module_schema, c
                         goto cleanup;
                     }
                     /* already installed submodule, still needs to be processed again */
+                    md_free_module(module);
+                    module = module2;
                     already_installed = true;
                     goto dependencies;
                 }
@@ -1436,7 +1442,7 @@ dependencies:
     rc = SR_ERR_OK;
 
 cleanup:
-    if (module) { /*< not inserted into the btree */
+    if (!already_installed && module) { /*< not inserted into the btree */
         md_free_module(module);
     }
     return rc;

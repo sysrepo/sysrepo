@@ -2207,9 +2207,25 @@ cleanup:
     return cl_session_return(session, rc);
 }
 
-int
-sr_event_notif_subscribe(sr_session_ctx_t *session, const char *xpath, sr_event_notif_cb callback,
-        void *private_ctx, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription_p)
+/**
+ * @brief Subscribes for delivery of event notification specified by xpath.
+ *
+ * @param[in] sr_api_variant_t API variant.
+ * @param[in] session Session context acquired with ::sr_session_start call.
+ * @param[in] xpath XPath identifying the event notification.
+ * @param[in] callback Callback to be called when the event notification is called.
+ * @param[in] private_ctx Private context passed to the callback function, opaque to sysrepo.
+ * @param[in] opts Options overriding default behavior of the subscription, it is supposed to be
+ * a bitwise OR-ed value of any ::sr_subscr_flag_t flags.
+ * @param[in,out] subscription Subscription context that is supposed to be released by ::sr_unsubscribe.
+ * @note An existing context may be passed in case that SR_SUBSCR_CTX_REUSE option is specified.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+static int
+cl_event_notif_subscribe(sr_api_variant_t api_variant, sr_session_ctx_t *session, const char *xpath,
+        cl_sm_callback_t callback, void *private_ctx, sr_subscr_options_t opts,
+        sr_subscription_ctx_t **subscription_p)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
     sr_subscription_ctx_t *sr_subscription = NULL;
@@ -2217,7 +2233,7 @@ sr_event_notif_subscribe(sr_session_ctx_t *session, const char *xpath, sr_event_
     char *module_name = NULL;
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG3(session, callback, subscription_p);
+    CHECK_NULL_ARG2(session, subscription_p);
 
     cl_session_clear_errors(session);
 
@@ -2229,11 +2245,11 @@ sr_event_notif_subscribe(sr_session_ctx_t *session, const char *xpath, sr_event_
     if (opts & SR_SUBSCR_CTX_REUSE) {
         sr_subscription = *subscription_p;
     }
-    rc = cl_subscription_init(session, SR__SUBSCRIPTION_TYPE__EVENT_NOTIF_SUBS, module_name, SR_API_VALUES,
+    rc = cl_subscription_init(session, SR__SUBSCRIPTION_TYPE__EVENT_NOTIF_SUBS, module_name, api_variant,
             private_ctx, &sr_subscription, &sm_subscription, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by initialization of the subscription in the client library.");
 
-    sm_subscription->callback.event_notif_cb = callback;
+    sm_subscription->callback = callback;
 
     /* Fill-in GPB subscription information */
     msg_req->request->subscribe_req->type = SR__SUBSCRIPTION_TYPE__EVENT_NOTIF_SUBS;
@@ -2268,6 +2284,26 @@ cleanup:
 }
 
 int
+sr_event_notif_subscribe(sr_session_ctx_t *session, const char *xpath,
+        sr_event_notif_cb callback, void *private_ctx, sr_subscr_options_t opts,
+        sr_subscription_ctx_t **subscription_p)
+{
+    cl_sm_callback_t callback_u;
+    callback_u.event_notif_cb = callback;
+    return cl_event_notif_subscribe(SR_API_VALUES, session, xpath, callback_u, private_ctx, opts, subscription_p);
+}
+
+int
+sr_event_notif_subscribe_tree(sr_session_ctx_t *session, const char *xpath,
+        sr_event_notif_tree_cb callback, void *private_ctx, sr_subscr_options_t opts,
+        sr_subscription_ctx_t **subscription_p)
+{
+    cl_sm_callback_t callback_u;
+    callback_u.event_notif_tree_cb = callback;
+    return cl_event_notif_subscribe(SR_API_TREES, session, xpath, callback_u, private_ctx, opts, subscription_p);
+}
+
+int
 sr_event_notif_send(sr_session_ctx_t *session, const char *xpath,
         const sr_val_t *values,  const size_t values_cnt)
 {
@@ -2290,6 +2326,49 @@ sr_event_notif_send(sr_session_ctx_t *session, const char *xpath,
     rc = sr_values_sr_to_gpb(values, values_cnt, &msg_req->request->event_notif_req->values,
                              &msg_req->request->event_notif_req->n_values);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by copying event notification values to GPB.");
+
+    /* send the request and receive the response */
+    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__EVENT_NOTIF);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
+
+    sr__msg__free_unpacked(msg_req, NULL);
+    sr__msg__free_unpacked(msg_resp, NULL);
+
+    return cl_session_return(session, SR_ERR_OK);
+
+cleanup:
+    if (NULL != msg_req) {
+        sr__msg__free_unpacked(msg_req, NULL);
+    }
+    if (NULL != msg_resp) {
+        sr__msg__free_unpacked(msg_resp, NULL);
+    }
+    return cl_session_return(session, rc);
+}
+
+int
+sr_event_notif_send_tree(sr_session_ctx_t *session, const char *xpath,
+        const sr_node_t *trees,  const size_t tree_cnt)
+{
+    Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG3(session, session->conn_ctx, xpath);
+
+    cl_session_clear_errors(session);
+
+    /* prepare event-notification message */
+    rc = sr_gpb_req_alloc(SR__OPERATION__EVENT_NOTIF, session->id, &msg_req);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
+
+    /* set arguments */
+    msg_req->request->event_notif_req->xpath = strdup(xpath);
+    CHECK_NULL_NOMEM_GOTO(msg_req->request->event_notif_req->xpath, rc, cleanup);
+
+    /* set trees */
+    rc = sr_trees_sr_to_gpb(trees, tree_cnt, &msg_req->request->event_notif_req->trees,
+                             &msg_req->request->event_notif_req->n_trees);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by copying event notification trees to GPB.");
 
     /* send the request and receive the response */
     rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__EVENT_NOTIF);
