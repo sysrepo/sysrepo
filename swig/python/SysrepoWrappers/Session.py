@@ -44,7 +44,7 @@ class Session:
         return sr.sr_list_schemas(self.session)
 
     def get_schema(self, module_name, revision, submodule_name, schema_format):
-        return sr.sr_get_schema(self.session, module_name, submodule_name, schema_format)
+        return sr.sr_get_schema(self.session, module_name, revision, submodule_name, schema_format)
 
     def get_item(self, path):
         return Value(cobj=sr.sr_get_item(self.session, path))

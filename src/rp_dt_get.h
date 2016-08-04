@@ -122,6 +122,15 @@ int rp_dt_difflist_to_changes(struct lyd_difflist *difflist, sr_list_t **changes
  */
 int rp_dt_get_changes(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t *c_ctx, const char *xpath,
             size_t offset, size_t limit, sr_list_t **matched_changes);
+
+/**
+ * @brief Removes the state data loaded into a session
+ * @param [in] rp_ctx
+ * @param [in] rp_session
+ * @return Error code (SR_ERR_OK on success)
+ */
+int rp_dt_remove_loaded_state_data(rp_ctx_t *rp_ctx, rp_session_t *rp_session);
+
 #endif /* RP_DT_GET_H */
 
 /**

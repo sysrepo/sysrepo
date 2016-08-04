@@ -30,12 +30,13 @@
  * @param[in] session Session context acquired with ::sr_session_start call.
  * @param[in] module_name Name of the module to be installed/removed.
  * @param[in] revision Revision to be installed/removed.
+ * @param[in] file_name Name of the file to be installed (required if installed is TRUE)
  * @param[in] installed Pass TRUE if the module should be installed, FALSE
  * if it should be removed.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int sr_module_install(sr_session_ctx_t *session, const char *module_name, const char *revision, bool installed);
+int sr_module_install(sr_session_ctx_t *session, const char *module_name, const char *revision, const char *file_name, bool installed);
 
 /**
  * @brief Notify sysrepo engine about the change in the state of YANG features

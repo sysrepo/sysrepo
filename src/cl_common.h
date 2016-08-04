@@ -28,9 +28,9 @@
 typedef struct cm_ctx_s cm_ctx_t;
 
 /**
- * @brief Timeout (in seconds) for waiting for a response from server by each request.
+ * @brief Timeout (in seconds) for waiting for a response from server by a standard request.
  */
-#define CL_REQUEST_TIMEOUT 2
+#define CL_REQUEST_TIMEOUT 3
 
 /**
  * @brief Timeout (in seconds) for waiting for a response from server by each request

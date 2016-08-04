@@ -30,7 +30,7 @@ class CommitTester(SysrepoTester):
         self.add_step(self.checkItemStep)
 
     def setItemStep(self):
-        v = Value("/test-module:main/i8", SR_UINT8_T, 99)
+        v = Value("/test-module:main/i8", SR_INT8_T, 99)
         self.session.set_item(v.xpath, v)
 
     def checkItemStep(self):

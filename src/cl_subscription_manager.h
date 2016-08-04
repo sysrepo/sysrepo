@@ -45,6 +45,17 @@ typedef struct cl_sm_ctx_s cl_sm_ctx_t;
  */
 typedef struct cl_sm_server_ctx_s cl_sm_server_ctx_t;
 
+typedef union cl_sm_callback_u {
+        sr_feature_enable_cb feature_enable_cb;  /**< Callback to be called by feature enable/disable event. */
+        sr_module_install_cb module_install_cb;  /**< Callback to be called by module (un)install event. */
+        sr_module_change_cb module_change_cb;    /**< Callback to be called by module change event. */
+        sr_subtree_change_cb subtree_change_cb;  /**< Callback to be called by subtree change event. */
+        sr_dp_get_items_cb dp_get_items_cb;      /**< Callback to be called by operational data requests. */
+        sr_rpc_cb rpc_cb;                        /**< Callback to be called by RPC delivery. */
+        sr_rpc_tree_cb rpc_tree_cb;              /**< Callback to be called by RPC delivery -- the *tree* variant */
+        sr_event_notif_cb event_notif_cb;        /**< Callback to be called by event notification delivery. */
+} cl_sm_callback_t;
+
 /**
  * @brief Sysrepo subscription context.
  */
@@ -53,13 +64,8 @@ typedef struct cl_sm_subscription_ctx_s {
     const char *delivery_address;                /**< Address where the notification messages should be delivered. */
     uint32_t id;                                 /**< Library-local subscription identifier. */
     const char *module_name;                     /**< Name of the YANG module witch the subscription is tied to.*/
-    union {
-        sr_feature_enable_cb feature_enable_cb;  /**< Callback to be called by feature enable/disable event. */
-        sr_module_install_cb module_install_cb;  /**< Callback to be called by module (un)install event. */
-        sr_module_change_cb module_change_cb;    /**< Callback to be called by module change event. */
-        sr_subtree_change_cb subtree_change_cb;  /**< Callback to be called by subtree change event. */
-        sr_rpc_cb rpc_cb;                        /**< Callback to be called by RPC delivery. */
-    } callback;
+    cl_sm_callback_t callback;                   /**< Callback to be called when the associated notification/action triggers. */
+    sr_api_variant_t api_variant;                /**< API variant -- values vs. nodes (relevant for the callback type only) */
     cl_sm_ctx_t *sm_ctx;                         /**< Associated Subscription Manager context. */
     sr_session_ctx_t *data_session;              /**< Pointer to a data session that can be used from notification callbacks. */
     void *private_ctx;                           /**< Private context pointer, opaque to sysrepo. */
@@ -68,11 +74,15 @@ typedef struct cl_sm_subscription_ctx_s {
 /**
  * @brief Initializes a Subscription Manager instance.
  *
+ * @param[in] local_fd_watcher TRUE in case that the application wants to use an application-local file descriptor
+ * watcher instead of auto-created thread and event loop.
+ * @param[in] notify_pipe Pipe used for notifications about fd set changes towards application-local
+ * file descriptor watcher.
  * @param[out] sm_ctx Subscription Manager context that can be used in subsequent SM API calls.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int cl_sm_init(cl_sm_ctx_t **sm_ctx);
+int cl_sm_init(bool local_fd_watcher, int notify_pipe[2], cl_sm_ctx_t **sm_ctx);
 
 /**
  * @brief Cleans up the Subscription Manager.
@@ -107,7 +117,7 @@ int cl_sm_get_server_ctx(cl_sm_ctx_t *sm_ctx, const char *module_name, cl_sm_ser
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int cl_sm_subscription_init(cl_sm_ctx_t *sm_ctx,  cl_sm_server_ctx_t *server_ctx, cl_sm_subscription_ctx_t **subscription);
+int cl_sm_subscription_init(cl_sm_ctx_t *sm_ctx, cl_sm_server_ctx_t *server_ctx, cl_sm_subscription_ctx_t **subscription);
 
 /**
  * @brief Cleans up a subscription.
@@ -115,6 +125,22 @@ int cl_sm_subscription_init(cl_sm_ctx_t *sm_ctx,  cl_sm_server_ctx_t *server_ctx
  * @param[in] subscription Subscription context acquired by ::cl_sm_subscription_init call.
  */
 void cl_sm_subscription_cleanup(cl_sm_subscription_ctx_t *subscription);
+
+/**
+ * @brief Processes an event of specified type on given file descriptor being watched by application-local
+ * fd event watcher.
+ *
+ * @param[in] sm_ctx Subscription Manager context acquired by ::cl_sm_init call.
+ * @param[in] fd File descriptor.
+ * @param[in] event Event that occurred on the file descriptor.
+ * @param[out] fd_change_set Array of file descriptor contexts that need to be added / removed from the set
+ * of monitored file descriptors.
+ * @param[out] fd_change_set_cnt Count of file descriptors in fd_change_set array.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int cl_sm_fd_event_process(cl_sm_ctx_t *sm_ctx, int fd, sr_fd_event_t event,
+        sr_fd_change_t **fd_change_set, size_t *fd_change_set_cnt);
 
 /**@} cl_sm */
 

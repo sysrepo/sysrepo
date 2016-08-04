@@ -34,6 +34,8 @@ sr_gpb_operation_name(Sr__Operation operation)
         return "session-refresh";
     case SR__OPERATION__SESSION_SWITCH_DS:
         return "session-switch-ds";
+    case SR__OPERATION__SESSION_SET_OPTS:
+        return "session-set-opts";
     case SR__OPERATION__LIST_SCHEMAS:
         return "list-schemas";
     case SR__OPERATION__GET_SCHEMA:
@@ -72,12 +74,18 @@ sr_gpb_operation_name(Sr__Operation operation)
         return "check-enabled-running";
     case SR__OPERATION__GET_CHANGES:
         return "get changes";
+    case SR__OPERATION__DATA_PROVIDE:
+        return "data-provide";
     case SR__OPERATION__RPC:
         return "rpc";
     case SR__OPERATION__UNSUBSCRIBE_DESTINATION:
         return "unsubscribe-destination";
     case SR__OPERATION__COMMIT_RELEASE:
         return "commit-release";
+    case SR__OPERATION__EVENT_NOTIF:
+        return "event-notification";
+    case SR__OPERATION__OPER_DATA_TIMEOUT:
+        return "oper-data-timeout";
     case _SR__OPERATION_IS_INT_SIZE:
         return "unknown";
     }
@@ -133,6 +141,12 @@ sr_gpb_req_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__M
             CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__session_switch_ds_req__init((Sr__SessionSwitchDsReq*)sub_msg);
             req->session_switch_ds_req = (Sr__SessionSwitchDsReq*)sub_msg;
+            break;
+        case SR__OPERATION__SESSION_SET_OPTS:
+            sub_msg = calloc(1, sizeof(Sr__SessionSetOptsReq));
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
+            sr__session_set_opts_req__init((Sr__SessionSetOptsReq*)sub_msg);
+            req->session_set_opts_req = (Sr__SessionSetOptsReq*)sub_msg;
             break;
         case SR__OPERATION__LIST_SCHEMAS:
             sub_msg = calloc(1, sizeof(Sr__ListSchemasReq));
@@ -248,11 +262,23 @@ sr_gpb_req_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__M
             sr__get_changes_req__init((Sr__GetChangesReq *)sub_msg);
             req->get_changes_req = (Sr__GetChangesReq *)sub_msg;
             break;
+        case SR__OPERATION__DATA_PROVIDE:
+            sub_msg = calloc(1, sizeof(Sr__DataProvideReq));
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
+            sr__data_provide_req__init((Sr__DataProvideReq*)sub_msg);
+            req->data_provide_req = (Sr__DataProvideReq*)sub_msg;
+            break;
         case SR__OPERATION__RPC:
             sub_msg = calloc(1, sizeof(Sr__RPCReq));
             CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__rpcreq__init((Sr__RPCReq*)sub_msg);
             req->rpc_req = (Sr__RPCReq*)sub_msg;
+            break;
+        case SR__OPERATION__EVENT_NOTIF:
+            sub_msg = calloc(1, sizeof(Sr__EventNotifReq));
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
+            sr__event_notif_req__init((Sr__EventNotifReq*)sub_msg);
+            req->event_notif_req = (Sr__EventNotifReq*)sub_msg;
             break;
         default:
             rc = SR_ERR_UNSUPPORTED;
@@ -319,6 +345,12 @@ sr_gpb_resp_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__
            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
            sr__session_switch_ds_resp__init((Sr__SessionSwitchDsResp*)sub_msg);
            resp->session_switch_ds_resp = (Sr__SessionSwitchDsResp*)sub_msg;
+           break;
+        case SR__OPERATION__SESSION_SET_OPTS:
+           sub_msg = calloc(1, sizeof(Sr__SessionSetOptsResp));
+           CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
+           sr__session_set_opts_resp__init((Sr__SessionSetOptsResp*)sub_msg);
+           resp->session_set_opts_resp = (Sr__SessionSetOptsResp*)sub_msg;
            break;
         case SR__OPERATION__LIST_SCHEMAS:
             sub_msg = calloc(1, sizeof(Sr__ListSchemasResp));
@@ -434,11 +466,23 @@ sr_gpb_resp_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__
             sr__get_changes_resp__init((Sr__GetChangesResp*)sub_msg);
             resp->get_changes_resp = (Sr__GetChangesResp*)sub_msg;
             break;
+        case SR__OPERATION__DATA_PROVIDE:
+            sub_msg = calloc(1, sizeof(Sr__DataProvideResp));
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
+            sr__data_provide_resp__init((Sr__DataProvideResp*)sub_msg);
+            resp->data_provide_resp = (Sr__DataProvideResp*)sub_msg;
+            break;
         case SR__OPERATION__RPC:
             sub_msg = calloc(1, sizeof(Sr__RPCResp));
             CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__rpcresp__init((Sr__RPCResp*)sub_msg);
             resp->rpc_resp = (Sr__RPCResp*)sub_msg;
+            break;
+        case SR__OPERATION__EVENT_NOTIF:
+            sub_msg = calloc(1, sizeof(Sr__EventNotifResp));
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
+            sr__event_notif_resp__init((Sr__EventNotifResp*)sub_msg);
+            resp->event_notif_resp = (Sr__EventNotifResp*)sub_msg;
             break;
         default:
             rc = SR_ERR_UNSUPPORTED;
@@ -602,6 +646,12 @@ sr_gpb_internal_req_alloc(const Sr__Operation operation, Sr__Msg **msg_p)
             sr__commit_release_req__init((Sr__CommitReleaseReq*)sub_msg);
             req->commit_release_req = (Sr__CommitReleaseReq*)sub_msg;
             break;
+        case SR__OPERATION__OPER_DATA_TIMEOUT:
+            sub_msg = calloc(1, sizeof(Sr__OperDataTimeoutReq));
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
+            sr__oper_data_timeout_req__init((Sr__OperDataTimeoutReq*)sub_msg);
+            req->oper_data_timeout_req = (Sr__OperDataTimeoutReq*)sub_msg;
+            break;
         default:
             break;
     }
@@ -639,6 +689,9 @@ sr_gpb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__O
                 break;
             case SR__OPERATION__SESSION_SWITCH_DS:
                 CHECK_NULL_RETURN(msg->request->session_switch_ds_req, SR_ERR_MALFORMED_MSG);
+                break;
+            case SR__OPERATION__SESSION_SET_OPTS:
+                CHECK_NULL_RETURN(msg->request->session_set_opts_req, SR_ERR_MALFORMED_MSG);
                 break;
             case SR__OPERATION__LIST_SCHEMAS:
                 CHECK_NULL_RETURN(msg->request->list_schemas_req, SR_ERR_MALFORMED_MSG);
@@ -697,8 +750,14 @@ sr_gpb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__O
             case SR__OPERATION__GET_CHANGES:
                 CHECK_NULL_RETURN(msg->request->get_changes_req, SR_ERR_MALFORMED_MSG);
                 break;
+            case SR__OPERATION__DATA_PROVIDE:
+                CHECK_NULL_RETURN(msg->request->data_provide_req, SR_ERR_MALFORMED_MSG);
+                break;
             case SR__OPERATION__RPC:
                 CHECK_NULL_RETURN(msg->request->rpc_req, SR_ERR_MALFORMED_MSG);
+                break;
+            case SR__OPERATION__EVENT_NOTIF:
+                CHECK_NULL_RETURN(msg->request->event_notif_req, SR_ERR_MALFORMED_MSG);
                 break;
             default:
                 return SR_ERR_MALFORMED_MSG;
@@ -721,6 +780,9 @@ sr_gpb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__O
                 break;
             case SR__OPERATION__SESSION_SWITCH_DS:
                 CHECK_NULL_RETURN(msg->response->session_switch_ds_resp, SR_ERR_MALFORMED_MSG);
+                break;
+            case SR__OPERATION__SESSION_SET_OPTS:
+                CHECK_NULL_RETURN(msg->response->session_set_opts_resp, SR_ERR_MALFORMED_MSG);
                 break;
             case SR__OPERATION__LIST_SCHEMAS:
                 CHECK_NULL_RETURN(msg->response->list_schemas_resp, SR_ERR_MALFORMED_MSG);
@@ -779,8 +841,14 @@ sr_gpb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__O
             case SR__OPERATION__GET_CHANGES:
                 CHECK_NULL_RETURN(msg->response->get_changes_resp, SR_ERR_MALFORMED_MSG);
                 break;
+            case SR__OPERATION__DATA_PROVIDE:
+                CHECK_NULL_RETURN(msg->response->data_provide_resp, SR_ERR_MALFORMED_MSG);
+                break;
             case SR__OPERATION__RPC:
                 CHECK_NULL_RETURN(msg->response->rpc_resp, SR_ERR_MALFORMED_MSG);
+                break;
+            case SR__OPERATION__EVENT_NOTIF:
+                CHECK_NULL_RETURN(msg->response->event_notif_resp, SR_ERR_MALFORMED_MSG);
                 break;
             default:
                 return SR_ERR_MALFORMED_MSG;
@@ -911,7 +979,7 @@ sr_set_val_t_value_in_gpb(const sr_val_t *value, Sr__Value *gpb_value){
 
     if (NULL != value->xpath) {
         gpb_value->xpath = strdup(value->xpath);
-        CHECK_NULL_NOMEM_RETURN(value->xpath);
+        CHECK_NULL_NOMEM_RETURN(gpb_value->xpath);
     }
 
     gpb_value->dflt = value->dflt;
@@ -1277,6 +1345,197 @@ cleanup:
 }
 
 int
+sr_dup_tree_to_gpb(const sr_node_t *sr_tree, Sr__Node **gpb_tree)
+{
+    CHECK_NULL_ARG2(sr_tree, gpb_tree);
+    int rc = SR_ERR_OK;
+    Sr__Node *gpb;
+
+    gpb = calloc(1, sizeof(*gpb));
+    CHECK_NULL_NOMEM_RETURN(gpb);
+    sr__node__init(gpb);
+    gpb->value = calloc(1, sizeof(*gpb->value));
+    CHECK_NULL_NOMEM_ERROR(gpb->value, rc);
+    if (SR_ERR_OK != rc) {
+        free(gpb);
+        return rc;
+    }
+    sr__value__init(gpb->value);
+    gpb->n_children = 0;
+
+    /* set members which are common with sr_val_t */
+    rc = sr_set_val_t_type_in_gpb((sr_val_t *)sr_tree, gpb->value);
+    if (SR_ERR_OK != rc){
+        SR_LOG_ERR("Setting value type in gpb tree failed for node '%s'", sr_tree->name);
+        goto cleanup;
+    }
+
+    rc = sr_set_val_t_value_in_gpb((sr_val_t *)sr_tree, gpb->value);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Setting value in gpb tree failed for node '%s'", sr_tree->name);
+        goto cleanup;
+    }
+
+    /* module_name */
+    if (NULL != sr_tree->module_name) {
+        gpb->module_name = strdup(sr_tree->module_name);
+        CHECK_NULL_NOMEM_GOTO(gpb->module_name, rc, cleanup);
+    }
+
+    /* recursively duplicate children */
+    if (0 < sr_tree->children_cnt) {
+        gpb->children = calloc(sr_tree->children_cnt, sizeof(*gpb->children));
+        CHECK_NULL_NOMEM_GOTO(gpb->children, rc, cleanup);
+        for (size_t i = 0; i < sr_tree->children_cnt; ++i) {
+            rc = sr_dup_tree_to_gpb(sr_tree->children + i, gpb->children + i);
+            if (SR_ERR_OK != rc) {
+                goto cleanup;
+            }
+            ++gpb->n_children;
+        }
+    }
+
+    *gpb_tree = gpb;
+    return rc;
+
+cleanup:
+    sr__node__free_unpacked(gpb, NULL);
+    return rc;
+}
+
+int
+sr_dup_gpb_to_tree(const Sr__Node *gpb_tree, sr_node_t **sr_tree)
+{
+    CHECK_NULL_ARG2(gpb_tree, sr_tree);
+    sr_node_t *tree = NULL;
+    int rc = SR_ERR_INTERNAL;
+
+    tree = calloc(1, sizeof(*tree));
+    CHECK_NULL_NOMEM_RETURN(tree);
+
+    rc = sr_copy_gpb_to_tree(gpb_tree, tree);
+    if (SR_ERR_OK != rc) {
+        free(tree);
+        return rc;
+    }
+
+    *sr_tree = tree;
+    return rc;
+}
+
+int
+sr_copy_gpb_to_tree(const Sr__Node *gpb_tree, sr_node_t *sr_tree)
+{
+    CHECK_NULL_ARG2(gpb_tree, sr_tree);
+    int rc = SR_ERR_INTERNAL;
+
+    /* members common with sr_val_t */
+    rc = sr_set_gpb_type_in_val_t(gpb_tree->value, (sr_val_t *)sr_tree);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Setting value type in for sr_value_t failed");
+        return rc;
+    }
+
+    rc = sr_set_gpb_value_in_val_t(gpb_tree->value, (sr_val_t *)sr_tree);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Setting value in for sr_value_t failed");
+        return rc;
+    }
+
+    /* module_name */
+    if (NULL != gpb_tree->module_name && strlen(gpb_tree->module_name)) {
+        sr_tree->module_name = strdup(gpb_tree->module_name);
+        CHECK_NULL_NOMEM_GOTO(sr_tree->module_name, rc, cleanup);
+    } else {
+        sr_tree->module_name = NULL;
+    }
+
+    /* recursively copy children */
+    sr_tree->children_cnt = 0;
+    sr_tree->children = NULL;
+    if (gpb_tree->n_children) {
+        sr_tree->children = calloc(gpb_tree->n_children, sizeof(*sr_tree));
+        CHECK_NULL_NOMEM_GOTO(sr_tree, rc, cleanup);
+
+        for (size_t i = 0; i < gpb_tree->n_children; ++i) {
+            rc = sr_copy_gpb_to_tree(gpb_tree->children[i], sr_tree->children + i);
+            if (SR_ERR_OK != rc) {
+                goto cleanup;
+            }
+            ++sr_tree->children_cnt;
+        }
+    }
+
+cleanup:
+    if (SR_ERR_OK != rc) {
+        sr_free_tree_content(sr_tree);
+    }
+    return rc;
+}
+
+int
+sr_trees_sr_to_gpb(const sr_node_t *sr_trees, const size_t sr_tree_cnt, Sr__Node ***gpb_trees_p, size_t *gpb_tree_cnt_p)
+{
+    Sr__Node **gpb_trees = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG2(gpb_trees_p, gpb_tree_cnt_p);
+
+    if ((NULL != sr_trees) && (sr_tree_cnt > 0)) {
+        gpb_trees = calloc(sr_tree_cnt, sizeof(*gpb_trees));
+        CHECK_NULL_NOMEM_RETURN(gpb_trees);
+
+        for (size_t i = 0; i < sr_tree_cnt; i++) {
+            rc = sr_dup_tree_to_gpb(&sr_trees[i], &gpb_trees[i]);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to duplicate sysrepo tree to GPB.");
+        }
+    }
+
+    *gpb_trees_p = gpb_trees;
+    *gpb_tree_cnt_p = sr_tree_cnt;
+
+    return SR_ERR_OK;
+
+cleanup:
+    for (size_t i = 0; i < sr_tree_cnt; i++) {
+        sr__node__free_unpacked(gpb_trees[i], NULL);
+    }
+    free(gpb_trees);
+    return rc;
+}
+
+int
+sr_trees_gpb_to_sr(Sr__Node **gpb_trees, size_t gpb_tree_cnt, sr_node_t **sr_trees_p, size_t *sr_tree_cnt_p)
+{
+    sr_node_t *sr_trees = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG2(sr_trees_p, sr_tree_cnt_p);
+
+    if ((NULL != gpb_trees) && (gpb_tree_cnt > 0)) {
+        sr_trees = calloc(gpb_tree_cnt, sizeof(*sr_trees));
+        CHECK_NULL_NOMEM_RETURN(sr_trees);
+
+        for (size_t i = 0; i < gpb_tree_cnt; i++) {
+            rc = sr_copy_gpb_to_tree(gpb_trees[i], &sr_trees[i]);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to duplicate GPB tree to sysrepo tree.");
+        }
+    }
+
+    *sr_trees_p = sr_trees;
+    *sr_tree_cnt_p = gpb_tree_cnt;
+
+    return SR_ERR_OK;
+
+cleanup:
+    for (size_t i = 0; i < gpb_tree_cnt; i++) {
+        sr_free_tree_content(&sr_trees[i]);
+    }
+    free(sr_trees);
+    return rc;
+}
+
+int
 sr_changes_sr_to_gpb(sr_list_t *sr_changes, Sr__Change ***gpb_changes_p, size_t *gpb_count) {
     Sr__Change **gpb_changes = NULL;
     int rc = SR_ERR_OK;
@@ -1427,12 +1686,16 @@ sr_subscription_type_gpb_to_str(Sr__SubscriptionType type)
             return "module-change";
         case SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS:
             return "subtree-change";
+        case SR__SUBSCRIPTION_TYPE__DP_GET_ITEMS_SUBS:
+            return "dp-get-items";
         case SR__SUBSCRIPTION_TYPE__RPC_SUBS:
             return "rpc";
         case SR__SUBSCRIPTION_TYPE__HELLO_SUBS:
             return "hello";
         case SR__SUBSCRIPTION_TYPE__COMMIT_END_SUBS:
             return "commit-end";
+        case SR__SUBSCRIPTION_TYPE__EVENT_NOTIF_SUBS:
+            return "event-notification";
         default:
             return "unknown";
     }
@@ -1452,6 +1715,9 @@ sr_subsciption_type_str_to_gpb(const char *type_name)
     }
     if (0 == strcmp(type_name, "subtree-change")) {
         return SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS;
+    }
+    if (0 == strcmp(type_name, "dp-get-items")) {
+        return SR__SUBSCRIPTION_TYPE__DP_GET_ITEMS_SUBS;
     }
     return _SR__SUBSCRIPTION_TYPE_IS_INT_SIZE;
 }
