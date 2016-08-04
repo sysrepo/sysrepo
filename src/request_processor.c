@@ -1264,10 +1264,8 @@ rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg 
         rc = sr_trees_gpb_to_sr(msg->request->rpc_req->input_tree,  msg->request->rpc_req->n_input_tree,
                                 &input_tree, &input_cnt);
     }
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Failed to parse RPC (%s) input arguments from GPB message.", msg->request->rpc_req->xpath);
-        goto finalize;
-    }
+    CHECK_RC_LOG_GOTO(rc, finalize, "Failed to parse RPC (%s) input arguments from GPB message.",
+                      msg->request->rpc_req->xpath);
 
     /* validate RPC request */
     if (SR_API_VALUES == api_variant) {
@@ -1277,55 +1275,35 @@ rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg 
         rc = dm_validate_rpc_tree(rp_ctx->dm_ctx, session->dm_session, msg->request->rpc_req->xpath,
                 &input_tree, &input_cnt, true);
     }
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Validation of an RPC (%s) message failed.", msg->request->rpc_req->xpath);
-        goto finalize;
-    }
+    CHECK_RC_LOG_GOTO(rc, finalize, "Validation of an RPC (%s) message failed.", msg->request->rpc_req->xpath);
 
     /* duplicate msg into req with the new input values */
     rc = sr_gpb_req_alloc(SR__OPERATION__RPC, session->id, &req);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Failed to duplicate RPC request (%s).", msg->request->rpc_req->xpath);
-        goto finalize;
-    }
+    CHECK_RC_LOG_GOTO(rc, finalize, "Failed to duplicate RPC request (%s).", msg->request->rpc_req->xpath);
+
     req->request->rpc_req->xpath = strdup(msg->request->rpc_req->xpath);
     CHECK_NULL_NOMEM_ERROR(req->request->rpc_req->xpath, rc);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Failed to duplicate RPC request xpath (%s).", msg->request->rpc_req->xpath);
-        goto finalize;
-    }
+    CHECK_RC_LOG_GOTO(rc, finalize, "Failed to duplicate RPC request xpath (%s).", msg->request->rpc_req->xpath);
 
     if (SR_API_VALUES == api_variant) {
         rc = sr_values_sr_to_gpb(input, input_cnt, &req->request->rpc_req->input, &req->request->rpc_req->n_input);
     } else {
         rc = sr_trees_sr_to_gpb(input_tree, input_cnt, &req->request->rpc_req->input_tree, &req->request->rpc_req->n_input_tree);
     }
-    if (SR_ERR_OK != rc ) {
-        SR_LOG_ERR("Failed to duplicate RPC request (%s) input arguments.", msg->request->rpc_req->xpath);
-        goto finalize;
-    }
+    CHECK_RC_LOG_GOTO(rc, finalize, "Failed to duplicate RPC request (%s) input arguments.", msg->request->rpc_req->xpath);
 
     /* get module name */
     rc = sr_copy_first_ns(req->request->rpc_req->xpath, &module_name);
-    if (SR_ERR_OK != rc ) {
-        SR_LOG_ERR("Failed to obtain module name for RPC request (%s).", msg->request->rpc_req->xpath);
-        goto finalize;
-    }
+    CHECK_RC_LOG_GOTO(rc, finalize, "Failed to obtain module name for RPC request (%s).", msg->request->rpc_req->xpath);
 
     /* authorize (write permissions are required to deliver the RPC) */
     rc = ac_check_module_permissions(session->ac_session, module_name, AC_OPER_READ_WRITE);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Access control check failed for module name '%s'", module_name);
-        goto finalize;
-    }
+    CHECK_RC_LOG_GOTO(rc, finalize, "Access control check failed for module name '%s'", module_name);
 
     /* get RPC subscription */
     rc = pm_get_subscriptions(rp_ctx->pm_ctx, module_name, SR__SUBSCRIPTION_TYPE__RPC_SUBS,
             &subscriptions, &subscription_cnt);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Failed to get subscriptions for RPC request (%s).", msg->request->rpc_req->xpath);
-        goto finalize;
-    }
+    CHECK_RC_LOG_GOTO(rc, finalize, "Failed to get subscriptions for RPC request (%s).", msg->request->rpc_req->xpath);
 
     /* fill-in subscription details into the request */
     bool subscription_match = false;
@@ -1340,10 +1318,7 @@ rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg 
             break;
         }
     }
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Failed to process subscription data for RPC request (%s).", msg->request->rpc_req->xpath);
-        goto finalize;
-    }
+    CHECK_RC_LOG_GOTO(rc, finalize, "Failed to process subscription data for RPC request (%s).", msg->request->rpc_req->xpath);
 
     if (!subscription_match) {
         /* no subscription for this RPC */
@@ -1600,11 +1575,8 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
         rc = sr_trees_gpb_to_sr(msg->request->event_notif_req->trees, msg->request->event_notif_req->n_trees,
                 &trees, &tree_cnt);
     }
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Failed to parse event notification (%s) data trees from GPB message.",
-                   msg->request->event_notif_req->xpath);
-        goto finalize;
-    }
+    CHECK_RC_LOG_GOTO(rc, finalize, "Failed to parse event notification (%s) data trees from GPB message.",
+                      msg->request->event_notif_req->xpath);
 
     /* validate event-notification request */
     if (SR_API_VALUES == api_variant) {
@@ -1614,34 +1586,23 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
         rc = dm_validate_event_notif_tree(rp_ctx->dm_ctx, session->dm_session, msg->request->event_notif_req->xpath,
                 &trees, &tree_cnt);
     }
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Validation of an event notification (%s) message failed.", msg->request->event_notif_req->xpath);
-        goto finalize;
-    }
+    CHECK_RC_LOG_GOTO(rc, finalize, "Validation of an event notification (%s) message failed.",
+                      msg->request->event_notif_req->xpath);
 
     /* get module name */
     rc = sr_copy_first_ns(msg->request->event_notif_req->xpath, &module_name);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Failed to obtain module name for event notification request (%s).",
-        msg->request->event_notif_req->xpath);
-        goto finalize;
-    }
+    CHECK_RC_LOG_GOTO(rc, finalize, "Failed to obtain module name for event notification request (%s).",
+                      msg->request->event_notif_req->xpath);
 
     /* authorize (write permissions are required to deliver the event-notification) */
     rc = ac_check_module_permissions(session->ac_session, module_name, AC_OPER_READ_WRITE);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Access control check failed for module name '%s'", module_name);
-        goto finalize;
-    }
+    CHECK_RC_LOG_GOTO(rc, finalize, "Access control check failed for module name '%s'", module_name);
 
     /* get event-notification subscriptions */
     rc = pm_get_subscriptions(rp_ctx->pm_ctx, module_name, SR__SUBSCRIPTION_TYPE__EVENT_NOTIF_SUBS,
             &subscriptions, &subscription_cnt);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Failed to get subscriptions for event notification request (%s).",
-                   msg->request->event_notif_req->xpath);
-        goto finalize;
-    }
+    CHECK_RC_LOG_GOTO(rc, finalize, "Failed to get subscriptions for event notification request (%s).",
+                      msg->request->event_notif_req->xpath);
 
     /* broadcast the notification to all subscribed processes */
     for (unsigned i = 0; SR_ERR_OK == rc && i < subscription_cnt; ++i) {
