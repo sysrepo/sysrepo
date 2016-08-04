@@ -186,7 +186,7 @@ static const char * const md_submodule_D_common_body =
 "  grouping Dcommon-grouping {\n"
 "    leaf D-ext-leaf {\n"
 "      type identityref {\n"
-"        base C:C-ext-identity1;\n"
+"        base mod-C:C-ext-identity1;\n"
 "      }\n"
 "    }\n"
 "    leaf D-ext-op-data {\n"
@@ -320,9 +320,14 @@ md_output_module_deps(FILE *fp, va_list args)
         arg_copy = strdup(arg);
         dep = arg_copy;
         include = false;
-        if (4 < strlen(arg_copy) && 0 == strncmp("sub-", arg_copy, 4)) {
-            dep = arg_copy + 4;
-            include = true;
+        if (4 < strlen(arg_copy)) {
+            if (0 == strncmp("sub-", arg_copy, 4)) {
+                dep = arg_copy + 4;
+                include = true;
+            } else if (0 == strncmp("mod-", arg_copy, 4)) {
+                dep = arg_copy + 4;
+                include = false;
+            }
         }
         rev = strchr(dep, '@');
         if (NULL != rev) {
@@ -335,7 +340,7 @@ md_output_module_deps(FILE *fp, va_list args)
         } else {
             fprintf(fp,
                     "  import " TEST_MODULE_PREFIX "%s {\n"
-                    "    prefix %s;\n%s", dep, dep,
+                    "    prefix %s;\n%s", dep, arg_copy,
                     rev ? "" : "  }\n");
         }
         if (NULL != rev) {
@@ -414,13 +419,16 @@ md_tests_setup(void **state)
 {
     md_create_module_yang_schema("A", md_module_A_filepath, md_module_A_body, NULL);
     md_create_module_yang_schema("B", md_module_B_filepath, md_module_B_body, "sub-Bs1", "sub-Bs2", "sub-Bs3", NULL);
-    md_create_submodule_yang_schema("Bs1", "B", md_submodule_B_sub1_filepath, md_submodule_B_sub1_body, "sub-Bs2", "A", NULL);
-    md_create_submodule_yang_schema("Bs2", "B", md_submodule_B_sub2_filepath, md_submodule_B_sub2_body, "sub-Bs3", "A", NULL);
+    md_create_submodule_yang_schema("Bs1", "B", md_submodule_B_sub1_filepath, md_submodule_B_sub1_body, 
+            /* "sub-Bs2" TODO: uncomment once the second issue from libyang/#97 is fixed ,*/ "A", NULL);
+    md_create_submodule_yang_schema("Bs2", "B", md_submodule_B_sub2_filepath, md_submodule_B_sub2_body,
+            /* "sub-Bs3" TODO: uncomment once the second issue from libyang/#97 is fixed ,*/ "A", NULL);
     md_create_submodule_yang_schema("Bs3", "B", md_submodule_B_sub3_filepath, md_submodule_B_sub3_body, NULL);
     md_create_module_yang_schema("C", md_module_C_filepath, md_module_C_body, "A", NULL);
     md_create_module_yang_schema("D", md_module_D_rev1_filepath, md_module_D_rev1_body, "sub-Dcommon@2016-06-10", "A", "C", NULL);
     md_create_module_yang_schema("D", md_module_D_rev2_filepath, md_module_D_rev2_body, "sub-Dcommon@2016-06-10", "A", "B", "C", NULL);
-    md_create_submodule_yang_schema("Dcommon", "D", md_submodule_D_common_filepath, md_submodule_D_common_body, "C", NULL);
+    md_create_submodule_yang_schema("Dcommon", "D", md_submodule_D_common_filepath, md_submodule_D_common_body, 
+            "mod-C" /* "TODO: rename to just "C" once the second issue from libyang/#97 is fixed */, NULL);
     md_create_module_yang_schema("E", md_module_E_rev1_filepath, md_module_E_rev1_body, "D@2016-06-10", NULL);
     md_create_module_yang_schema("E", md_module_E_rev2_filepath, md_module_E_rev2_body, "D@2016-06-20", NULL);
     return 0;
@@ -590,11 +598,13 @@ md_test_validate_context(md_ctx_t *md_ctx, md_test_inserted_modules_t inserted)
         md_test_validate_subtree_ref(md_ctx, module->inst_ids,
                                      "/" TEST_MODULE_PREFIX "A:base-container"
                                      "/" TEST_MODULE_PREFIX "C:C-ext-container"
-                                     "/" TEST_MODULE_PREFIX "D:D-ext-inst-id", "D@2016-06-10");
+                                     "/" TEST_MODULE_PREFIX "D:Dcommon-grouping"
+                                     "/D-ext-inst-id", "D@2016-06-10");
         md_test_validate_subtree_ref(md_ctx, module->inst_ids,
                                      "/" TEST_MODULE_PREFIX "A:base-container"
                                      "/" TEST_MODULE_PREFIX "C:C-ext-container"
-                                     "/" TEST_MODULE_PREFIX "D:D-ext-inst-id", "D@2016-06-20");
+                                     "/" TEST_MODULE_PREFIX "D:Dcommon-grouping"
+                                     "/D-ext-inst-id", "D@2016-06-20");
         md_test_validate_subtree_ref(md_ctx, module->inst_ids,
                                      "/" TEST_MODULE_PREFIX "A:base-container"
                                      "/" TEST_MODULE_PREFIX "C:C-ext-container"
@@ -607,11 +617,13 @@ md_test_validate_context(md_ctx_t *md_ctx, md_test_inserted_modules_t inserted)
         md_test_validate_subtree_ref(md_ctx, module->op_data_subtrees,
                                      "/" TEST_MODULE_PREFIX "A:base-container"
                                      "/" TEST_MODULE_PREFIX "C:C-ext-container"
-                                     "/" TEST_MODULE_PREFIX "D:D-ext-op-data", "D@2016-06-10");
+                                     "/" TEST_MODULE_PREFIX "D:Dcommon-grouping"
+                                     "/D-ext-op-data", "D@2016-06-10");
         md_test_validate_subtree_ref(md_ctx, module->op_data_subtrees,
                                      "/" TEST_MODULE_PREFIX "A:base-container"
                                      "/" TEST_MODULE_PREFIX "C:C-ext-container"
-                                     "/" TEST_MODULE_PREFIX "D:D-ext-op-data", "D@2016-06-20");
+                                     "/" TEST_MODULE_PREFIX "D:Dcommon-grouping"
+                                     "/D-ext-op-data", "D@2016-06-20");
         md_test_validate_subtree_ref(md_ctx, module->op_data_subtrees,
                                      "/" TEST_MODULE_PREFIX "A:base-container"
                                      "/" TEST_MODULE_PREFIX "C:C-ext-container"
@@ -849,7 +861,7 @@ md_test_validate_context(md_ctx_t *md_ctx, md_test_inserted_modules_t inserted)
         /* inst_ids */
         md_test_check_list_size(module->inst_ids, 0);
         /* op_data_subtrees */
-        md_test_check_list_size(module->inst_ids, 0);
+        md_test_check_list_size(module->op_data_subtrees, 0);
         /* outside references */
         assert_non_null(module->ly_data);
         assert_non_null(module->ll_node);
@@ -896,7 +908,7 @@ md_test_validate_context(md_ctx_t *md_ctx, md_test_inserted_modules_t inserted)
         /* inst_ids */
         md_test_check_list_size(module->inst_ids, 0);
         /* op_data_subtrees */
-        md_test_check_list_size(module->inst_ids, 0);
+        md_test_check_list_size(module->op_data_subtrees, 0);
         /* outside references */
         assert_non_null(module->ly_data);
         assert_non_null(module->ll_node);
