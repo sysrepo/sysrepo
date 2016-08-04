@@ -252,6 +252,9 @@ int sr_lyd_unlink(dm_data_info_t *data_info, struct lyd_node *node);
 
 /**
  * @brief Insert node after sibling and fixes the pointer in dm_data_info if needed.
+ *
+ * @note can be used to insert a top-level node into empty data tree
+ *
  * @param [in] data_info
  * @param [in] sibling
  * @param [in] node

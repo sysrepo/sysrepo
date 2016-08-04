@@ -599,7 +599,7 @@ srctl_uninstall(const char *module_name, const char *revision)
     }
 
     /* init module dependencies context */
-    rc = md_init(ly_ctx, NULL, srctl_schema_search_dir, srctl_internal_schema_search_dir, srctl_internal_data_search_dir,
+    rc = md_init(srctl_schema_search_dir, srctl_internal_schema_search_dir, srctl_internal_data_search_dir,
                  true, &md_ctx);
     if (SR_ERR_OK != rc) {
         fprintf(stderr, "Error: Failed to initialize module dependencies context.\n");
@@ -646,6 +646,21 @@ srctl_uninstall(const char *module_name, const char *revision)
         fprintf(stderr, "Error: Unable to remove the module from the dependency graph.\n");
         goto fail;
     }
+    /* notify sysrepo about the change */
+    if (!custom_repository) {
+        /* disable in sysrepo */
+        rc = srctl_open_session(true, &connection, &session);
+        if (SR_ERR_OK == rc) {
+            rc = sr_module_install(session, module_name, revision, NULL, false);
+            if (SR_ERR_OK != rc && SR_ERR_NOT_FOUND != rc) {
+                srctl_report_error(session, rc);
+                fprintf(stderr, "Module can not be uninstalled because it is being used.\n");
+            }
+            sr_disconnect(connection);
+            CHECK_RC_LOG_GOTO(rc, fail, "Failed to uninstall module %s", module->name);
+        }
+    }
+
     rc = md_flush(md_ctx);
     if (SR_ERR_OK != rc) {
         fprintf(stderr, "Error: Unable to apply the changes made in the dependency graph.\n");
@@ -670,21 +685,6 @@ srctl_uninstall(const char *module_name, const char *revision)
             fprintf(stderr, "Warning: Submodule schema delete was unsuccessful, continuing.\n");
         }
         submodule = submodule->next;
-    }
-
-    /* notify sysrepo about the change */
-    if (!custom_repository) {
-        /* disable in sysrepo */
-        rc = srctl_open_session(true, &connection, &session);
-        if (SR_ERR_OK == rc) {
-            rc = sr_module_install(session, module_name, revision, false);
-            if (SR_ERR_OK != rc && SR_ERR_NOT_FOUND != rc) {
-                srctl_report_error(session, rc);
-                fprintf(stderr, "Warning: Sysrepo failed to react properly to uninstalled module, "
-                                "consider restart of the daemon, continuing.\n");
-            }
-            sr_disconnect(connection);
-        }
     }
 
     /* delete data files */
@@ -927,7 +927,7 @@ srctl_install(const char *yang, const char *yin, const char *owner, const char *
     }
 
     /* init module dependencies context */
-    ret = md_init(ly_ctx, NULL, srctl_schema_search_dir, srctl_internal_schema_search_dir,
+    ret = md_init(srctl_schema_search_dir, srctl_internal_schema_search_dir,
             srctl_internal_data_search_dir, true, &md_ctx);
     if (SR_ERR_OK != ret) {
         fprintf(stderr, "Error: Failed to initialize module dependencies context.\n");
@@ -987,7 +987,7 @@ srctl_install(const char *yang, const char *yin, const char *owner, const char *
         printf("Notifying sysrepo about the change...\n");
         rc = srctl_open_session(true, &connection, &session);
         if (SR_ERR_OK == rc) {
-            rc = sr_module_install(session, module->name, module->rev[0].date, true);
+            rc = sr_module_install(session, module->name, module->rev[0].date, module->filepath, true);
             if (SR_ERR_OK != rc) {
                 if (SR_ERR_RESTART_NEEDED == rc) {
                     fprintf(stderr, "Error: sysrepod must be restarted (or stopped) before previously uninstalled "
@@ -1030,7 +1030,7 @@ fail_data:
     }
     if (md_installed) {
         /* remove from dependency list */
-        rc = md_init(ly_ctx, NULL, srctl_schema_search_dir, srctl_internal_schema_search_dir,
+        rc = md_init(srctl_schema_search_dir, srctl_internal_schema_search_dir,
                     srctl_internal_data_search_dir, true, &md_ctx);
         if (SR_ERR_OK == rc) {
             rc = md_remove_module(md_ctx, module->name, module->rev[0].date);
@@ -1086,7 +1086,7 @@ srctl_init(const char *module_name, const char *revision, const char *owner, con
     }
 
     /* init module dependencies context */
-    rc = md_init(ly_ctx, NULL, srctl_schema_search_dir, srctl_internal_schema_search_dir, srctl_internal_data_search_dir,
+    rc = md_init(srctl_schema_search_dir, srctl_internal_schema_search_dir, srctl_internal_data_search_dir,
                  true, &md_ctx);
     if (SR_ERR_OK != rc) {
         fprintf(stderr, "Error: Failed to initialize module dependencies context.\n");

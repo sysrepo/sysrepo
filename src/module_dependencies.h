@@ -105,7 +105,7 @@ typedef struct md_ctx_s {
                                           held only if the file is locked for RW-access, otherwise has value "-1". */
 
     struct ly_ctx *ly_ctx;           /**< libyang context used for manipulation with the internal data file for dependencies. */
-    pthread_rwlock_t *lyctx_lock;    /**< lock (from outside this context) used to protect ly_ctx, can be NULL */
+
     struct lyd_node *data_tree;      /**< Graph data as loaded by libyang (not transitively closed).
                                           Also reflects changes made using ::md_insert_module and ::md_remove_module */
 
@@ -121,10 +121,6 @@ typedef struct md_ctx_s {
  * @brief Create context and load the internal data file with module dependencies.
  * Caller should eventually release the context using ::md_destroy.
  *
- * @param [in] ly_ctx libyang context that will be used to load the schema of the internal data
- *             file modelling dependency graph
- * @param [in] lyctx_lock Lock (from the outside of md context) used to protect ly_ctx,
- *             can be NULL
  * @param [in] schema_search_dir Path to the directory with schema files
  *             (e.g. SR_SCHEMA_SEARCH_DIR)
  * @param [in] internal_schema_search_dir Path to the directory with internal schema files
@@ -135,7 +131,7 @@ typedef struct md_ctx_s {
  *             for editing until the context is destroyed
  * @param [out] md_ctx Context reference output location
  */
-int md_init(struct ly_ctx *ly_ctx, pthread_rwlock_t *lyctx_lock, const char *schema_search_dir,
+int md_init(const char *schema_search_dir,
             const char *internal_schema_search_dir, const char *internal_data_search_dir,
             bool write_lock, md_ctx_t **md_ctx);
 

@@ -55,23 +55,31 @@ typedef struct dm_ctx_s dm_ctx_t;
 typedef struct dm_session_s dm_session_t;
 
 /**
+ * @brief Holds information related to the schema.
+ */
+typedef struct dm_schema_info_s {
+    char *module_name;                  /**< name of the module the name */
+    pthread_rwlock_t model_lock;        /**< module lock:
+                                         *  read    - usage of schema, reading of private data in schema,
+                                         *  write   - load schema, uninstalling context, modification of private data */
+    size_t usage_count;                 /**< number of data copies referencing the module after releasing lock */
+    pthread_mutex_t usage_count_mutex;  /**< mutex guarding usage_count variable */
+    struct ly_ctx *ly_ctx;              /**< libyang context contains the module and all its dependencies.
+                                         * Can be NULL if module has been uninstalled
+                                         * during sysrepo-engine lifetime */
+    const struct lys_module *module;    /**< Pointer to the module, might be NULL if module has been uninstalled*/
+}dm_schema_info_t;
+
+/**
  * @brief Structure holds data tree related info
  */
 typedef struct dm_data_info_s{
     bool rdonly_copy;                   /**< node member is only copy of pointer it must not be freed nor modified */
-    const struct lys_module *module;    /**< pointer to schema file*/
+    dm_schema_info_t *schema;           /**< pointer to schema info */
     struct lyd_node *node;              /**< data tree */
     struct timespec timestamp;          /**< timestamp of this copy (used only if HAVE_ST_MTIM is defined) */
     bool modified;                      /**< flag denoting whether a change has been made*/
 }dm_data_info_t;
-
-/**
- * @brief Holds information related to the schema
- */
-typedef struct dm_schema_info_s {
-    const char *module_name;       /**< name of the module the name */
-    pthread_rwlock_t model_lock;   /**< module lock used */
-}dm_schema_info_t;
 
 /**
  * @brief States of the node in running data store.
@@ -118,7 +126,7 @@ typedef struct dm_sess_op_s{
  * used in commit context
  */
 typedef struct dm_model_subscription_s {
-    const struct lys_module *module;    /**< module */
+    dm_schema_info_t *schema_info;      /**< schema info identifying the module to which the subscriptions are tied to */
     np_subscription_t **subscriptions;  /**< array of struct received from np */
     struct lys_node **nodes;            /**< array of schema nodes corresponding to the subscription */
     size_t subscription_cnt;            /**< number of subscriptions */
@@ -228,6 +236,9 @@ void dm_session_stop(dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx);
  * If the module has been already loaded, the session copy is returned. If not
  * the function tries to load it from file system.
  * This structure is needed for edit like calls that can modify the data tree.
+ *
+ * @note Function acquires and releases read lock for the schema info.
+ *
  * @param [in] dm_ctx
  * @param [in] dm_session_ctx
  * @param [in] module_name
@@ -247,17 +258,47 @@ int dm_get_data_info(dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, const char 
 int dm_get_datatree(dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, const char *module_name, struct lyd_node **data_tree);
 
 /**
- * @brief Tests if the schema exists in libyang context. If yes returns the module.
- * If not and Sysrepo is running in the library mode, the module and its dependencies are loaded
- * into the libyang context.
- * Returned module might be used to validate xpath or to create data tree.
+ * @brief Tests if the schema exists. If yes returns the module (loads from file system if
+ * necessary). Having read lock ensures that model will not be uninstalled from sysrepo.
+ * Private schema data can be read and data tree manipulation can be done safely.
+ *
+ * @note Read-lock is acquired after successful call. Lock must be released by caller:
+ * pthread_rwlock_unlock(&schema_info->module_lock)
+ *
  * @param [in] dm_ctx
  * @param [in] module_name
- * @param [in] revision can be NULL
- * @param [out] module
+ * @param [out] schema_info
  * @return Error code (SR_ERR_OK on success), SR_ERR_UNKNOWN_MODEL
  */
-int dm_get_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, const struct lys_module **module);
+int dm_get_module_and_lock(dm_ctx_t *dm_ctx, const char *module_name, dm_schema_info_t **schema_info);
+
+/**
+ * @brief Same as ::dm_get_module_and_lock however rwlock is locked for writing. With write lock
+ * acquired, module can be installed/uninstalled and private data stored in schema
+ * can be edited.
+ *
+ * @note Schema info write lock is acquired on successful return from function. Must be released by caller.
+ *
+ * @param [in] dm_ctx
+ * @param [in] module_name
+ * @param [out] schema_info
+ * @return Error code (SR_ERR_OK on success)
+ */
+int dm_get_module_and_lockw(dm_ctx_t *dm_ctx, const char *module_name, dm_schema_info_t **schema_info);
+
+/**
+ * @brief Retrieves schema info using ::dm_get_module_and_lock. Lock is released. Function can be used to verify
+ * that module existed during function execution. To use schema_info afterward, lock must be acquired
+ * using ::dm_lock_schem_info or ::dm_lock_schema_info_write.
+ *
+ * @note Function acquires and releases read lock for the schema info.
+ *
+ * @param [in] dm_ctx
+ * @param [in] module_name
+ * @param [out] schema_info
+ * @return Error code (SR_ERR_OK on success)
+ */
+int dm_get_module_without_lock(dm_ctx_t *dm_ctx, const char *module_name, dm_schema_info_t **schema_info);
 
 /**
  * @brief Returns an array that contains information about schemas supported by sysrepo.
@@ -285,6 +326,9 @@ int dm_get_schema(dm_ctx_t *dm_ctx, const char *module_name, const char *module_
 
 /**
  * @brief Validates the data_trees in session.
+ *
+ * @note Function does not acquire nor release a schema lock.
+ *
  * @param [in] dm_ctx
  * @param [in] session
  * @param [out] errors
@@ -455,9 +499,9 @@ int dm_copy_errors(dm_session_t *session, char **error_msg, char **err_xpath);
  * @brief Looks up the schema info structure for the module specified by module name
  * @param [in] dm_ctx
  * @param [in] module_name
- * @param [out] schema_info
+ * @param [out] schema_info - returned schema info is not locked
  * @return Error code (SR_ERR_OK on success)
- */
+*/
 int dm_get_schema_info(dm_ctx_t *dm_ctx, const char *module_name, dm_schema_info_t **schema_info);
 
 /**
@@ -476,6 +520,9 @@ bool dm_is_node_enabled_with_children(struct lys_node* node);
 
 /**
  * @brief Evaluates the state of the node - if it is enabled.
+ *
+ * @note Function expects that a schema info is locked for reading.
+ *
  * @param [in] node
  * @return True if the node is enabled. It might be enabled directly or one any of his parent is in state DM_NODE_ENABLED_WITH_CHILDREN.
  */
@@ -483,6 +530,9 @@ bool dm_is_enabled_check_recursively(struct lys_node *node);
 
 /**
  * @brief Sets the state of the node.
+ *
+ * @note Function expects that a schema info is locked for writing.
+ *
  * @param [in] node
  * @param [in] state
  * @return Error code (SR_ERR_OK on success)
@@ -502,6 +552,9 @@ bool dm_is_running_ds_session(dm_session_t *session);
  * identity switch.
  *
  * If the model is already locked by the session SR_ERR_OK is returned.
+ *
+ * @note Function acquires and releases read lock for the schema info.
+ *
  * @param [in] dm_ctx
  * @param [in] session
  * @param [in] module_name
@@ -512,6 +565,9 @@ int dm_lock_module(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module_n
 
 /**
  * @brief Releases the lock.
+ *
+ * @note Function acquires and releases read lock for the schema info.
+ *
  * @param [in] dm_ctx
  * @param [in] session
  * @param [in] modul_name
@@ -540,6 +596,9 @@ int dm_unlock_datastore(dm_ctx_t *dm_ctx, dm_session_t *session);
 
 /**
  * @brief Enables or disables the feature state in the module.
+ *
+ * @note Function acquires and releases write lock for the schema info.
+ *
  * @param [in] dm_ctx
  * @param [in] module_name
  * @param [in] feature_name
@@ -550,15 +609,18 @@ int dm_unlock_datastore(dm_ctx_t *dm_ctx, dm_session_t *session);
 int dm_feature_enable(dm_ctx_t *dm_ctx, const char *module_name, const char *feature_name, bool enable);
 
 /**
- * @brief Tries to load the schema with specified revision. If the module has been
- * uninstalled before sysrepo restart is required and SR_ERR_INTERNAL returned.
+ * @brief Tries to load the schema with specified revision.
+ *
+ * @note Function acquires and releases write lock for the schema info.
+ *
  * @param [in] dm_ctx
  * @param [in] module_name
  * @param [in] revision
+ * @param [in] file_name Name of the file that should be used for module installation
  * @return Error code (SR_ERR_OK on success), SR_ERR_NOT_FOUND if module
  * is not loaded successfully
  */
-int dm_install_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision);
+int dm_install_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, const char *file_name);
 
 /**
  * @brief Disables module
@@ -581,49 +643,53 @@ int dm_has_state_data(dm_ctx_t *ctx, const char *module_name, bool *res);
 
 /**
  * @brief Checks whether the module has an enabled subtree.
+ *
+ * @note Function acquires and releases read lock for the schema info.
+ *
  * @param [in] ctx
  * @param [in] module_name - name of the module to be checked
- * @param [out] module - Match module, can be NULL
+ * @param [out] schema - Match schema, can be NULL
  * @param [out] res - True if there is at least one enabled subtree in the module,
  * False otherwise
  * @return Error code (SR_ERR_OK on success)
  */
-int dm_has_enabled_subtree(dm_ctx_t *ctx, const char *module_name, const struct lys_module **module, bool *res);
+int dm_has_enabled_subtree(dm_ctx_t *ctx, const char *module_name, dm_schema_info_t **schema, bool *res);
 
 /**
  * @brief Enables module in running datastore (including copying of the startup data into running).
  * @param [in] ctx DM context.
  * @param [in] session DM session.
  * @param [in] module_name Name of the module to be enabled.
- * @param [in] module Libyang schema tree pointer. If not known, NULL can be provided.
- * @param[in] copy_from_startup Load data from startup ds (if not already loaded).
+ * @param [in] copy_from_startup - flag denoting whether data should be copied from startup to running.
  * @return Error code (SR_ERR_OK on success)
  */
 int dm_enable_module_running(dm_ctx_t *ctx, dm_session_t *session, const char *module_name,
-        const struct lys_module *module, bool copy_from_startup);
+        bool copy_from_startup);
 
 /**
  * @brief Enables subtree in running datastore (including copying of the startup data into running).
  * @param [in] ctx DM context.
  * @param [in] session DM session.
  * @param [in] module_name Name of the module where a subtree needs to be enabled.
- * @param[in] xpath XPath identifying the subtree to be enabled.
- * @param [in] module Libyang schema tree pointer. If not known, NULL can be provided.
- * @param[in] copy_from_startup Load data from startup ds (if not already loaded).
+ * @param [in] xpath XPath identifying the subtree to be enabled.
+ * @param [in] copy_from_startup Load data from startup ds (if not already loaded).
  * @return Error code (SR_ERR_OK on success)
  */
 int dm_enable_module_subtree_running(dm_ctx_t *ctx, dm_session_t *session, const char *module_name, const char *xpath,
-        const struct lys_module *module, bool copy_from_startup);
+        bool copy_from_startup);
 
 /**
  * @brief Disables module in running data store
+ *
+ * @note Function acquires and releases read lock for the schema info.
+ *
  * @param [in] ctx
  * @param [in] session
  * @param [in] module_name
  * @param [in] module (optional can be NULL)
  * @return Error code (SR_ERR_OK on success)
  */
-int dm_disable_module_running(dm_ctx_t *ctx, dm_session_t *session, const char *module_name, const struct lys_module *module);
+int dm_disable_module_running(dm_ctx_t *ctx, dm_session_t *session, const char *module_name);
 
 /**
  * @brief Copies the content of the module from one datastore to the another.
@@ -693,54 +759,15 @@ int dm_validate_event_notif(dm_ctx_t *dm_ctx, dm_session_t *session, const char 
 int dm_validate_event_notif_tree(dm_ctx_t *dm_ctx, dm_session_t *session, const char *notif_xpath, sr_node_t **trees, size_t *tree_cnt);
 
 /**
- * @brief Locks lyctx_lock and call lyd_get_node.
- * @param [in] dm_ctx
- * @param [in] data
- * @param [in] expr
- * @return set of nodes matching expr
- */
-struct ly_set *dm_lyd_get_node(dm_ctx_t *dm_ctx, const struct lyd_node *data, const char *expr);
-
-/**
- * @brief Locks lyctx_lock and call lyd_get_node2.
- * @param [in] dm_ctx
- * @param [in] data
- * @param [in] sch_node
- * @return set of instances of sch_node
- */
-struct ly_set *dm_lyd_get_node2(dm_ctx_t *dm_ctx, const struct lyd_node *data, const struct lys_node *sch_node);
-
-/**
- * @brief Locks the lyctx lock, subsequently calls lyd_new_path if the data info does not contain a node attaches the created node.
+ * @brief Call lyd_new path uses ly_ctx from data_info->schema.
  * @param [in] dm_ctx
  * @param [in] data_info
- * @param [in] ctx
  * @param [in] path
  * @param [in] value
  * @param [in] options
  * @return same as libyang's lyd_new_path
  */
-struct lyd_node *dm_lyd_new_path(dm_ctx_t *dm_ctx, dm_data_info_t *data_info, struct ly_ctx *ctx,
-        const char *path, const char *value, int options);
-
-/**
- * @brief Locks the lyctx lock, then call lyd_wd_add
- * @param [in] dm_ctx
- * @param [in] lyctx
- * @param [in] root
- * @param [in] options
- * @return Error code
- */
-int dm_lyd_wd_add(dm_ctx_t *dm_ctx, struct ly_ctx *lyctx, struct lyd_node **root, int options);
-
-/**
- * @brief Locks the lyctx lock, then call ly_ctx_ge_node
- * @param [in] dm_ctx
- * @param [in] start
- * @param [in] nodeid
- * @return Matched schema node
- */
-const struct lys_node *dm_ly_ctx_get_node(dm_ctx_t *dm_ctx, const struct lys_node *start, const char *nodeid);
+struct lyd_node *dm_lyd_new_path(dm_data_info_t *data_info, const char *path, const char *value, int options);
 
 /**
  * @brief Copies all modified data trees (in current datastore) from one session to another.
@@ -770,10 +797,10 @@ int dm_copy_session_tree(dm_ctx_t *dm_ctx, dm_session_t *from, dm_session_t *to,
  * @param [in] dm_ctx
  * @param [in] from
  * @param [in] to
- * @param [in] module_name
+ * @param [in] schema_info
  * @return Error code (SR_ERR_OK on success)
  */
-int dm_create_rdonly_ptr_data_tree(dm_ctx_t *dm_ctx, dm_session_t *from, dm_session_t *to, const char *module_name);
+int dm_create_rdonly_ptr_data_tree(dm_ctx_t *dm_ctx, dm_session_t *from, dm_session_t *to, dm_schema_info_t *schema_info);
 
 /**
  * @brief Checks if the module is loaded in the session. If it is not loaded
@@ -826,6 +853,9 @@ int dm_get_all_modules(dm_ctx_t *dm_ctx, dm_session_t *session, bool enabled_onl
 
 /**
  * @brief If there is a session copy of the model, return modified flag.
+ *
+ * @note Function acquires and releases read lock for the schema info.
+ *
  * @param [in] dm_ctx
  * @param [in] session
  * @param [in] module_name
@@ -868,5 +898,31 @@ int dm_get_commit_ctxs(dm_ctx_t *dm_ctx, dm_commit_ctxs_t **commit_ctxs);
  *
  */
 int dm_get_md_ctx(dm_ctx_t *dm_ctx, md_ctx_t **md_ctx);
+
+/**
+ * @brief Tries to lock schema info for read - standard usage.
+ *
+ * @note Schema info read lock is acquired on successful return from function. Must be released by caller.
+ * @note Function may return SR_ERR_UNKNOWN_MODULE if the module has been
+ * released meanwhile.
+ *
+ * @param [in] schema_info
+ * @return Error code (SR_ERR_OK on success)
+ */
+int dm_lock_schema_info(dm_schema_info_t *schema_info);
+
+/**
+ * @brief Acquires write lock for the provided schema info. With write lock
+ * acquired, module can be installed/uninstalled and private data stored in schema
+ * can be edited.
+ *
+ * @note Schema info write lock is acquired on successful return from function. Must be released by caller.
+ * @note Function may return SR_ERR_UNKNOWN_MODULE if the module has been
+ * released meanwhile.
+ *
+ * @param [in] schema_info
+ * @return Error code (SR_ERR_OK on success)
+ */
+int dm_lock_schema_info_write(dm_schema_info_t *schema_info);
 /**@} Data manager*/
 #endif /* SRC_DATA_MANAGER_H_ */

@@ -276,7 +276,7 @@ dm_validate_data_trees_test(void **state)
     /* make an invalid  change */
     info->modified = true;
     /* already existing leaf */
-    node = dm_lyd_new_leaf(info, info->node, info->module, "i8", "42");
+    node = dm_lyd_new_leaf(info, info->node, info->schema->module, "i8", "42");
     assert_non_null(node);
 
 
@@ -416,6 +416,7 @@ dm_copy_module_test(void **state)
    int rc = SR_ERR_OK;
    dm_ctx_t *ctx = NULL;
    dm_session_t *sessionA = NULL;
+   dm_schema_info_t *si = NULL;
 
    rc = dm_init(NULL, NULL, NULL, CM_MODE_LOCAL, TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx);
    assert_int_equal(SR_ERR_OK, rc);
@@ -426,8 +427,13 @@ dm_copy_module_test(void **state)
    rc = dm_copy_module(ctx, sessionA, "example-module", SR_DS_STARTUP, SR_DS_RUNNING);
    assert_int_equal(SR_ERR_OK, rc);
 
-   rc = rp_dt_enable_xpath(ctx, sessionA, "/test-module:main");
+   rc = dm_get_module_and_lockw(ctx, "test-module", &si);
    assert_int_equal(SR_ERR_OK, rc);
+
+   rc = rp_dt_enable_xpath(ctx, sessionA, si, "/test-module:main");
+   assert_int_equal(SR_ERR_OK, rc);
+
+   pthread_rwlock_unlock(&si->model_lock);
 
    rc = dm_copy_all_models(ctx, sessionA, SR_DS_STARTUP, SR_DS_RUNNING);
    assert_int_equal(SR_ERR_OK, rc);
@@ -443,7 +449,7 @@ dm_rpc_test(void **state)
     dm_ctx_t *ctx = NULL;
     dm_session_t *session = NULL;
     sr_val_t *input = NULL, *output = NULL;
-    const struct lys_module *module = NULL;
+    dm_schema_info_t *schema_info = NULL;
     size_t input_cnt = 0, output_cnt = 0;
 
     rc = dm_init(NULL, NULL, NULL, CM_MODE_LOCAL, TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx);
@@ -453,7 +459,7 @@ dm_rpc_test(void **state)
     assert_int_equal(SR_ERR_OK, rc);
 
     /* load test-module */
-    rc = dm_get_module(ctx, "test-module", NULL, &module);
+    rc = dm_get_module_without_lock(ctx, "test-module", &schema_info);
     assert_int_equal(SR_ERR_OK, rc);
 
     /* non-existing RPC */
@@ -549,7 +555,7 @@ dm_event_notif_test(void **state)
     dm_ctx_t *ctx = NULL;
     dm_session_t *session = NULL;
     sr_val_t *values = NULL;
-    const struct lys_module *module = NULL;
+    dm_schema_info_t *schema_info = NULL;
     size_t values_cnt = 0;
 
     rc = dm_init(NULL, NULL, NULL, CM_MODE_LOCAL, TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx);
@@ -559,7 +565,7 @@ dm_event_notif_test(void **state)
     assert_int_equal(SR_ERR_OK, rc);
 
     /* load test-module */
-    rc = dm_get_module(ctx, "test-module", NULL, &module);
+    rc = dm_get_module_and_lock(ctx, "test-module", &schema_info);
     assert_int_equal(SR_ERR_OK, rc);
 
     /* non-existing event notification */

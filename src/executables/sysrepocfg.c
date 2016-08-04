@@ -199,7 +199,7 @@ srcfg_ly_init(struct ly_ctx **ly_ctx, const char *module_name)
     ly_set_log_clb(srcfg_ly_log_cb, 1);
 
     /* init module dependencies context */
-    rc = md_init(*ly_ctx, NULL, srcfg_schema_search_dir, srcfg_internal_schema_search_dir, srcfg_internal_data_search_dir,
+    rc = md_init(srcfg_schema_search_dir, srcfg_internal_schema_search_dir, srcfg_internal_data_search_dir,
                  false, &md_ctx);
     if (SR_ERR_OK != rc) {
         fprintf(stderr, "Error: Failed to initialize module dependencies context.\n");
