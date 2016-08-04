@@ -13,7 +13,9 @@ An important setting of a sysrepo installation is the location of
 <b>repository directory</b>. It is basically a common filesystem directory 
 where all YANG models and corresponding  data files of all applications that 
 use sysrepo as their datastore are located. It can be set by specifying 
-`REPOSITORY_LOC` cmake option and it is most commonly set to `/etc/sysrepo`.
+`REPOSITORY_LOC` cmake option and it is most commonly set to `/etc/sysrepo` and
+later retrieved via pkg-config variable `SR_REPOSITORY_LOC`,
+e.g.: `pkg-config --variable=SR_REPOSITORY_LOC libsysrepo`.
 
 
 @section sysrepoctl Using sysrepoctl tool
