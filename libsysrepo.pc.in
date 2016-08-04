@@ -9,5 +9,5 @@ Requires.private: libyang
 Libs: -L${libdir} -lsysrepo
 Cflags: -I${includedir}
 
-REPOSITORY_LOC=@REPOSITORY_LOC@
-PLUGINS_DIR=@PLUGINS_DIR@
+SR_REPOSITORY_LOC=@REPOSITORY_LOC@
+SR_PLUGINS_DIR=@PLUGINS_DIR@
