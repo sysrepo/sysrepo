@@ -30,8 +30,9 @@
 #include "sr_common.h"
 #include "test_data.h"
 
-#define TEST_MODULE_PREFIX  "md_test_module-"
-#define TEST_MODULE_EXT     ".yang"
+#define TEST_MODULE_PREFIX     "md_test_module-"
+#define TEST_SUBMODULE_PREFIX  "md_test_submodule-"
+#define TEST_MODULE_EXT        ".yang"
 
 typedef struct md_test_inserted_modules_s {
     bool A, B, C, D_rev1, D_rev2, E_rev1, E_rev2;
@@ -52,6 +53,20 @@ static const char * const md_module_A_body =
 
 static const char * const md_module_B_filepath = TEST_SCHEMA_SEARCH_DIR TEST_MODULE_PREFIX "B" TEST_MODULE_EXT;
 static const char * const md_module_B_body =
+"  container inst-ids {\n"
+"    leaf-list inst-id {\n"
+"      type instance-identifier;\n"
+"    }\n"
+"  }";
+
+static const char * const md_submodule_B_sub1_filepath = TEST_SCHEMA_SEARCH_DIR TEST_SUBMODULE_PREFIX "Bs1" TEST_MODULE_EXT;
+static const char * const md_submodule_B_sub1_body =
+"  identity B-ext-identity {\n"
+"    base A:base-identity;\n"
+"  }";
+
+static const char * const md_submodule_B_sub2_filepath = TEST_SCHEMA_SEARCH_DIR TEST_SUBMODULE_PREFIX "Bs2" TEST_MODULE_EXT;
+static const char * const md_submodule_B_sub2_body =
 "  augment \"/A:base-container\" {\n"
 "    leaf B-ext-leaf {\n"
 "      type uint32;\n"
@@ -63,18 +78,10 @@ static const char * const md_module_B_body =
 "       type uint32;\n"
 "       config false;\n"
 "    }\n"
-"  }\n"
-"\n"
-"  identity B-ext-identity {\n"
-"    base A:base-identity;\n"
-"  }\n"
-"\n"
-"  container inst-ids {\n"
-"    leaf-list inst-id {\n"
-"      type instance-identifier;\n"
-"    }\n"
-"  }"
-"\n"
+"  }";
+
+static const char * const md_submodule_B_sub3_filepath = TEST_SCHEMA_SEARCH_DIR TEST_SUBMODULE_PREFIX "Bs3" TEST_MODULE_EXT;
+static const char * const md_submodule_B_sub3_body =
 "  container op-data {\n"
 "    config false;\n"
 "    leaf-list list-with-op-data {\n"
@@ -138,18 +145,7 @@ static const char * const md_module_D_rev1_body =
 "  }\n"
 "\n"
 "  augment \"/A:base-container/C:C-ext-container\" {\n"
-"    leaf D-ext-leaf {\n"
-"      type identityref {\n"
-"        base C:C-ext-identity1;\n"
-"      }\n"
-"    }\n"
-"    leaf D-ext-op-data {\n"
-"       type uint32;\n"
-"       config false;\n"
-"    }\n"
-"    leaf D-ext-inst-id {\n"
-"      type instance-identifier;\n"
-"    }\n"
+"    uses Dcommon-grouping;\n"
 "  }\n"
 "\n"
 "  identity D-extA-identity {\n"
@@ -167,6 +163,27 @@ static const char * const md_module_D_rev2_body =
 "  }\n"
 "\n"
 "  augment \"/A:base-container/C:C-ext-container\" {\n"
+"    uses Dcommon-grouping;\n"
+"    leaf D-ext-op-data2 {\n"
+"       type uint32;\n"
+"       config false;\n"
+"    }\n"
+"    leaf D-ext-inst-id2 {\n"
+"      type instance-identifier;\n"
+"    }\n"
+"  }\n"
+"\n"
+"  identity D-extB-identity {\n"
+"    base B:B-ext-identity;\n"
+"  }";
+
+static const char * const md_submodule_D_common_filepath = TEST_SCHEMA_SEARCH_DIR TEST_SUBMODULE_PREFIX "Dcommon" TEST_MODULE_EXT;
+static const char * const md_submodule_D_common_body =
+"  revision \"2016-06-10\" {\n"
+"    description \"First and the only revision of Dcommon.\";\n"
+"  }\n"
+"\n"
+"  grouping Dcommon-grouping {\n"
 "    leaf D-ext-leaf {\n"
 "      type identityref {\n"
 "        base C:C-ext-identity1;\n"
@@ -176,20 +193,9 @@ static const char * const md_module_D_rev2_body =
 "       type uint32;\n"
 "       config false;\n"
 "    }\n"
-"    leaf D-ext-op-data2 {\n"
-"       type uint32;\n"
-"       config false;\n"
-"    }\n"
 "    leaf D-ext-inst-id {\n"
 "      type instance-identifier;\n"
 "    }\n"
-"    leaf D-ext-inst-id2 {\n"
-"      type instance-identifier;\n"
-"    }\n"
-"  }\n"
-"\n"
-"  identity D-extB-identity {\n"
-"    base B:B-ext-identity;\n"
 "  }";
 
 static const char * const md_module_E_rev1_filepath = TEST_SCHEMA_SEARCH_DIR TEST_MODULE_PREFIX "E@2016-06-11" TEST_MODULE_EXT;
@@ -296,15 +302,57 @@ md_get_new_ly_ctx()
 }
 
 /**
- * @brief Construct a yang schema file.
+ * @brief Print out all the imports/includes of a (sub)module.
+ */
+static void
+md_output_module_deps(FILE *fp, va_list args)
+{
+    const char *arg = NULL;
+    char *arg_copy = NULL, *dep = NULL;
+    char *rev = NULL;
+    bool include = false;
+
+    do {
+        arg = va_arg(args, const char *);
+        if (NULL == arg) {
+            break;
+        }
+        arg_copy = strdup(arg);
+        dep = arg_copy;
+        include = false;
+        if (4 < strlen(arg_copy) && 0 == strncmp("sub-", arg_copy, 4)) {
+            dep = arg_copy + 4;
+            include = true;
+        }
+        rev = strchr(dep, '@');
+        if (NULL != rev) {
+            *rev = '\0';
+        }
+        if (include) {
+            fprintf(fp,
+                    "  include " TEST_SUBMODULE_PREFIX "%s%s\n", dep,
+                    rev ? " {" : ";");
+        } else {
+            fprintf(fp,
+                    "  import " TEST_MODULE_PREFIX "%s {\n"
+                    "    prefix %s;\n%s", dep, dep,
+                    rev ? "" : "  }\n");
+        }
+        if (NULL != rev) {
+            fprintf(fp,
+                    "    revision-date \"%s\";\n  }\n", rev + 1);
+        }
+        free(arg_copy);
+    } while (true);
+}
+
+/**
+ * @brief Construct a yang schema file for a module.
  */
 static char *
-md_create_yang_schema(const char *name, const char *destpath, const char *body, ...)
+md_create_module_yang_schema(const char *name, const char *destpath, const char *body, ...)
 {
-    va_list imports;
-    const char *import = NULL;
-    char *import_copy = NULL;
-    char *at = NULL;
+    va_list args;
     FILE *fp = NULL;
 
     fp = fopen(destpath, "w");
@@ -314,28 +362,9 @@ md_create_yang_schema(const char *name, const char *destpath, const char *body, 
             "  namespace \"urn:ietf:params:xml:ns:yang:%s\";\n"
             "  prefix %s;\n", name, name, name);
 
-    /* print out all the imports */
-    va_start (imports, body);
-    do {
-        import = va_arg(imports, const char *);
-        if (NULL == import) {
-            break;
-        }
-        import_copy = strdup(import);
-        at = strchr(import_copy, '@');
-        if (NULL != at) {
-            *at = '\0';
-        }
-        fprintf(fp,
-                "  import " TEST_MODULE_PREFIX "%s {\n"
-                "    prefix %s;\n", import_copy, import_copy);
-        if (NULL != at) {
-            fprintf(fp,
-                    "    revision-date \"%s\";\n", at + 1);
-        }
-        fprintf(fp, "  }\n");
-        free(import_copy);
-    } while (true);
+    va_start(args, body);
+    md_output_module_deps(fp, args);
+    va_end(args);
 
     fprintf(fp,
             "  organization \"sysrepo.org\";\n"
@@ -348,23 +377,60 @@ md_create_yang_schema(const char *name, const char *destpath, const char *body, 
     return 0;
 }
 
+/**
+ * @brief Construct a yang schema file for a submodule.
+ */
+static char *
+md_create_submodule_yang_schema(const char *name, const char *belongsto, const char *destpath, const char *body, ...)
+{
+    va_list args;
+    FILE *fp = NULL;
+
+    fp = fopen(destpath, "w");
+    assert_non_null(fp);
+    fprintf(fp,
+            "submodule " TEST_SUBMODULE_PREFIX "%s {\n"
+            "  belongs-to " TEST_MODULE_PREFIX "%s {\n"
+            "    prefix %s;\n"
+            "  }\n", name, belongsto, belongsto);
+
+    va_start(args, body);
+    md_output_module_deps(fp, args);
+    va_end(args);
+
+    fprintf(fp,
+            "  organization \"sysrepo.org\";\n"
+            "  description \"submodule used by md_test referenced as '%s'\";\n"
+            "  contact \"sysrepo-devel@sysrepo.org\";\n"
+            "\n"
+            "%s\n"
+            "}", name, body);
+    fclose(fp);
+    return 0;
+}
+
 static int
 md_tests_setup(void **state)
 {
-    md_create_yang_schema("A", md_module_A_filepath, md_module_A_body, NULL);
-    md_create_yang_schema("B", md_module_B_filepath, md_module_B_body, "A", NULL);
-    md_create_yang_schema("C", md_module_C_filepath, md_module_C_body, "A", NULL);
-    md_create_yang_schema("D", md_module_D_rev1_filepath, md_module_D_rev1_body, "A", "C", NULL);
-    md_create_yang_schema("D", md_module_D_rev2_filepath, md_module_D_rev2_body, "A", "B", "C", NULL);
-    md_create_yang_schema("E", md_module_E_rev1_filepath, md_module_E_rev1_body, "D@2016-06-10", NULL);
-    md_create_yang_schema("E", md_module_E_rev2_filepath, md_module_E_rev2_body, "D@2016-06-20", NULL);
+    md_create_module_yang_schema("A", md_module_A_filepath, md_module_A_body, NULL);
+    md_create_module_yang_schema("B", md_module_B_filepath, md_module_B_body, "sub-Bs1", "sub-Bs2", "sub-Bs3", NULL);
+    md_create_submodule_yang_schema("Bs1", "B", md_submodule_B_sub1_filepath, md_submodule_B_sub1_body, "sub-Bs2", "A", NULL);
+    md_create_submodule_yang_schema("Bs2", "B", md_submodule_B_sub2_filepath, md_submodule_B_sub2_body, "sub-Bs3", "A", NULL);
+    md_create_submodule_yang_schema("Bs3", "B", md_submodule_B_sub3_filepath, md_submodule_B_sub3_body, NULL);
+    md_create_module_yang_schema("C", md_module_C_filepath, md_module_C_body, "A", NULL);
+    md_create_module_yang_schema("D", md_module_D_rev1_filepath, md_module_D_rev1_body, "sub-Dcommon@2016-06-10", "A", "C", NULL);
+    md_create_module_yang_schema("D", md_module_D_rev2_filepath, md_module_D_rev2_body, "sub-Dcommon@2016-06-10", "A", "B", "C", NULL);
+    md_create_submodule_yang_schema("Dcommon", "D", md_submodule_D_common_filepath, md_submodule_D_common_body, "C", NULL);
+    md_create_module_yang_schema("E", md_module_E_rev1_filepath, md_module_E_rev1_body, "D@2016-06-10", NULL);
+    md_create_module_yang_schema("E", md_module_E_rev2_filepath, md_module_E_rev2_body, "D@2016-06-20", NULL);
     return 0;
 }
 
 static int
 md_tests_teardown(void **state)
 {
-    system("rm -f " TEST_SCHEMA_SEARCH_DIR TEST_MODULE_PREFIX "*");
+//    system("rm -f " TEST_SCHEMA_SEARCH_DIR TEST_MODULE_PREFIX "*");
+//    system("rm -f " TEST_SCHEMA_SEARCH_DIR TEST_SUBMODULE_PREFIX "*");
     return 0;
 }
 
@@ -422,7 +488,9 @@ md_test_validate_dependency(const sr_llist_t *deps, const char *module_name, md_
     dep_node = deps->first;
     while (dep_node) {
         dep = (md_dep_t*)dep_node->data;
-        if (0 == strcmp(md_get_module_fullname(dep->dest)+strlen(TEST_MODULE_PREFIX), module_name)) {
+        if (0 == strcmp(md_get_module_fullname(dep->dest)
+                            + (dep->dest->submodule ? strlen(TEST_SUBMODULE_PREFIX) : strlen(TEST_MODULE_PREFIX)),
+                        module_name)) {
             assert_false(found);
             found = true;
             assert_int_equal(type, dep->type);
@@ -510,6 +578,8 @@ md_test_validate_context(md_ctx_t *md_ctx, md_test_inserted_modules_t inserted)
         assert_string_equal(TEST_MODULE_PREFIX "A", module->name);
         assert_string_equal("", module->revision_date);
         assert_string_equal(TEST_MODULE_PREFIX "A", md_get_module_fullname(module));
+        assert_string_equal("A", module->prefix);
+        assert_string_equal("urn:ietf:params:xml:ns:yang:A", module->ns);
         assert_string_equal(md_module_A_filepath, module->filepath);
         assert_true(module->latest_revision);
         /* inst_ids */
@@ -552,16 +622,24 @@ md_test_validate_context(md_ctx_t *md_ctx, md_test_inserted_modules_t inserted)
         /* dependencies */
         md_test_validate_dependency(module->deps, "A", MD_DEP_NONE, false, inserted);
         md_test_validate_dependency(module->deps, "B", MD_DEP_EXTENSION, true, inserted);
+        md_test_validate_dependency(module->deps, "Bs1", MD_DEP_NONE, false, inserted);
+        md_test_validate_dependency(module->deps, "Bs2", MD_DEP_NONE, false, inserted);
+        md_test_validate_dependency(module->deps, "Bs3", MD_DEP_NONE, false, inserted);
         md_test_validate_dependency(module->deps, "C", MD_DEP_EXTENSION, true, inserted);
         md_test_validate_dependency(module->deps, "D@2016-06-10", MD_DEP_EXTENSION, true, inserted);
         md_test_validate_dependency(module->deps, "D@2016-06-20", MD_DEP_EXTENSION, false, inserted);
+        md_test_validate_dependency(module->deps, "Dcommon@2016-06-10", MD_DEP_NONE, false, inserted);
         md_test_validate_dependency(module->deps, "E@2016-06-11", MD_DEP_NONE, false, inserted);
         md_test_validate_dependency(module->deps, "E@2016-06-21", MD_DEP_NONE, false, inserted);
         md_test_validate_dependency(module->inv_deps, "A", MD_DEP_NONE, false, inserted);
         md_test_validate_dependency(module->inv_deps, "B", MD_DEP_IMPORT, true, inserted);
+        md_test_validate_dependency(module->inv_deps, "Bs1", MD_DEP_NONE, false, inserted);
+        md_test_validate_dependency(module->inv_deps, "Bs2", MD_DEP_NONE, false, inserted);
+        md_test_validate_dependency(module->inv_deps, "Bs3", MD_DEP_NONE, false, inserted);
         md_test_validate_dependency(module->inv_deps, "C", MD_DEP_IMPORT, true, inserted);
         md_test_validate_dependency(module->inv_deps, "D@2016-06-10", MD_DEP_IMPORT, true, inserted);
         md_test_validate_dependency(module->inv_deps, "D@2016-06-20", MD_DEP_IMPORT, true, inserted);
+        md_test_validate_dependency(module->inv_deps, "Dcommon@2016-06-10", MD_DEP_NONE, false, inserted);
         md_test_validate_dependency(module->inv_deps, "E@2016-06-11", MD_DEP_IMPORT, false, inserted);
         md_test_validate_dependency(module->inv_deps, "E@2016-06-21", MD_DEP_IMPORT, false, inserted);
     } else {
@@ -577,6 +655,8 @@ md_test_validate_context(md_ctx_t *md_ctx, md_test_inserted_modules_t inserted)
         assert_string_equal(TEST_MODULE_PREFIX "B", module->name);
         assert_string_equal("", module->revision_date);
         assert_string_equal(TEST_MODULE_PREFIX "B", md_get_module_fullname(module));
+        assert_string_equal("B", module->prefix);
+        assert_string_equal("urn:ietf:params:xml:ns:yang:B", module->ns);
         assert_string_equal(md_module_B_filepath, module->filepath);
         assert_true(module->latest_revision);
         /* inst_ids */
@@ -591,18 +671,110 @@ md_test_validate_context(md_ctx_t *md_ctx, md_test_inserted_modules_t inserted)
         /* dependencies */
         md_test_validate_dependency(module->deps, "A", MD_DEP_IMPORT, true, inserted);
         md_test_validate_dependency(module->deps, "B", MD_DEP_NONE, false, inserted);
+        md_test_validate_dependency(module->deps, "Bs1", MD_DEP_INCLUDE, true, inserted);
+        md_test_validate_dependency(module->deps, "Bs2", MD_DEP_INCLUDE, true, inserted);
+        md_test_validate_dependency(module->deps, "Bs3", MD_DEP_INCLUDE, true, inserted);
         md_test_validate_dependency(module->deps, "C", MD_DEP_NONE, false, inserted);
         md_test_validate_dependency(module->deps, "D@2016-06-10", MD_DEP_NONE, false, inserted);
         md_test_validate_dependency(module->deps, "D@2016-06-20", MD_DEP_EXTENSION, true, inserted);
+        md_test_validate_dependency(module->deps, "Dcommon@2016-06-10", MD_DEP_NONE, false, inserted);
         md_test_validate_dependency(module->deps, "E@2016-06-11", MD_DEP_NONE, false, inserted);
         md_test_validate_dependency(module->deps, "E@2016-06-21", MD_DEP_NONE, false, inserted);
         md_test_validate_dependency(module->inv_deps, "A", MD_DEP_EXTENSION, true, inserted);
         md_test_validate_dependency(module->inv_deps, "B", MD_DEP_NONE, false, inserted);
+        md_test_validate_dependency(module->inv_deps, "Bs1", MD_DEP_NONE, false, inserted);
+        md_test_validate_dependency(module->inv_deps, "Bs2", MD_DEP_NONE, false, inserted);
+        md_test_validate_dependency(module->inv_deps, "Bs3", MD_DEP_NONE, false, inserted);
         md_test_validate_dependency(module->inv_deps, "C", MD_DEP_NONE, false, inserted);
         md_test_validate_dependency(module->inv_deps, "D@2016-06-10", MD_DEP_NONE, false, inserted);
         md_test_validate_dependency(module->inv_deps, "D@2016-06-20", MD_DEP_IMPORT, true, inserted);
+        md_test_validate_dependency(module->inv_deps, "Dcommon@2016-06-10", MD_DEP_NONE, false, inserted);
         md_test_validate_dependency(module->inv_deps, "E@2016-06-11", MD_DEP_NONE, false, inserted);
         md_test_validate_dependency(module->inv_deps, "E@2016-06-21", MD_DEP_IMPORT, false, inserted);
+    } else {
+        assert_int_equal(SR_ERR_NOT_FOUND, rc);
+        assert_null(module);
+    }
+
+    /* validate submodule Bs1 */
+    rc = md_get_module_info(md_ctx, TEST_SUBMODULE_PREFIX "Bs1", NULL, &module);
+    if (inserted.B) {
+        assert_int_equal(SR_ERR_OK, rc);
+        assert_non_null(module);
+        assert_string_equal(TEST_SUBMODULE_PREFIX "Bs1", module->name);
+        assert_string_equal("", module->revision_date);
+        assert_string_equal(TEST_SUBMODULE_PREFIX "Bs1", md_get_module_fullname(module));
+        assert_string_equal("", module->prefix);
+        assert_string_equal("", module->ns);
+        assert_string_equal(md_submodule_B_sub1_filepath, module->filepath);
+        assert_true(module->latest_revision);
+        /* inst_ids */
+        md_test_check_list_size(module->inst_ids, 0);
+        /* op_data_subtrees */
+        md_test_check_list_size(module->op_data_subtrees, 0);
+        /* outside references */
+        assert_non_null(module->ly_data);
+        assert_non_null(module->ll_node);
+        /* dependencies */
+        md_test_check_list_size(module->deps, 0);
+        md_test_check_list_size(module->inv_deps, 1);
+        md_test_validate_dependency(module->inv_deps, "B", MD_DEP_INCLUDE, true, inserted);
+    } else {
+        assert_int_equal(SR_ERR_NOT_FOUND, rc);
+        assert_null(module);
+    }
+
+    /* validate submodule Bs2 */
+    rc = md_get_module_info(md_ctx, TEST_SUBMODULE_PREFIX "Bs2", NULL, &module);
+    if (inserted.B) {
+        assert_int_equal(SR_ERR_OK, rc);
+        assert_non_null(module);
+        assert_string_equal(TEST_SUBMODULE_PREFIX "Bs2", module->name);
+        assert_string_equal("", module->revision_date);
+        assert_string_equal(TEST_SUBMODULE_PREFIX "Bs2", md_get_module_fullname(module));
+        assert_string_equal("", module->prefix);
+        assert_string_equal("", module->ns);
+        assert_string_equal(md_submodule_B_sub2_filepath, module->filepath);
+        assert_true(module->latest_revision);
+        /* inst_ids */
+        md_test_check_list_size(module->inst_ids, 0);
+        /* op_data_subtrees */
+        md_test_check_list_size(module->op_data_subtrees, 0);
+        /* outside references */
+        assert_non_null(module->ly_data);
+        assert_non_null(module->ll_node);
+        /* dependencies */
+        md_test_check_list_size(module->deps, 0);
+        md_test_check_list_size(module->inv_deps, 1);
+        md_test_validate_dependency(module->inv_deps, "B", MD_DEP_INCLUDE, true, inserted);
+    } else {
+        assert_int_equal(SR_ERR_NOT_FOUND, rc);
+        assert_null(module);
+    }
+
+    /* validate submodule Bs3 */
+    rc = md_get_module_info(md_ctx, TEST_SUBMODULE_PREFIX "Bs3", NULL, &module);
+    if (inserted.B) {
+        assert_int_equal(SR_ERR_OK, rc);
+        assert_non_null(module);
+        assert_string_equal(TEST_SUBMODULE_PREFIX "Bs3", module->name);
+        assert_string_equal("", module->revision_date);
+        assert_string_equal(TEST_SUBMODULE_PREFIX "Bs3", md_get_module_fullname(module));
+        assert_string_equal("", module->prefix);
+        assert_string_equal("", module->ns);
+        assert_string_equal(md_submodule_B_sub3_filepath, module->filepath);
+        assert_true(module->latest_revision);
+        /* inst_ids */
+        md_test_check_list_size(module->inst_ids, 0);
+        /* op_data_subtrees */
+        md_test_check_list_size(module->op_data_subtrees, 0);
+        /* outside references */
+        assert_non_null(module->ly_data);
+        assert_non_null(module->ll_node);
+        /* dependencies */
+        md_test_check_list_size(module->deps, 0);
+        md_test_check_list_size(module->inv_deps, 1);
+        md_test_validate_dependency(module->inv_deps, "B", MD_DEP_INCLUDE, true, inserted);
     } else {
         assert_int_equal(SR_ERR_NOT_FOUND, rc);
         assert_null(module);
@@ -616,6 +788,8 @@ md_test_validate_context(md_ctx_t *md_ctx, md_test_inserted_modules_t inserted)
         assert_string_equal(TEST_MODULE_PREFIX "C", module->name);
         assert_string_equal("", module->revision_date);
         assert_string_equal(TEST_MODULE_PREFIX "C", md_get_module_fullname(module));
+        assert_string_equal("C", module->prefix);
+        assert_string_equal("urn:ietf:params:xml:ns:yang:C", module->ns);
         assert_string_equal(md_module_C_filepath, module->filepath);
         assert_true(module->latest_revision);
         /* inst_ids */
@@ -631,16 +805,24 @@ md_test_validate_context(md_ctx_t *md_ctx, md_test_inserted_modules_t inserted)
         /* dependencies */
         md_test_validate_dependency(module->deps, "A", MD_DEP_IMPORT, true, inserted);
         md_test_validate_dependency(module->deps, "B", MD_DEP_NONE, false, inserted);
+        md_test_validate_dependency(module->deps, "Bs1", MD_DEP_NONE, false, inserted);
+        md_test_validate_dependency(module->deps, "Bs2", MD_DEP_NONE, false, inserted);
+        md_test_validate_dependency(module->deps, "Bs3", MD_DEP_NONE, false, inserted);
         md_test_validate_dependency(module->deps, "C", MD_DEP_NONE, false, inserted);
         md_test_validate_dependency(module->deps, "D@2016-06-10", MD_DEP_EXTENSION, true, inserted);
         md_test_validate_dependency(module->deps, "D@2016-06-20", MD_DEP_EXTENSION, true, inserted);
+        md_test_validate_dependency(module->deps, "Dcommon@2016-06-10", MD_DEP_NONE, false, inserted);
         md_test_validate_dependency(module->deps, "E@2016-06-11", MD_DEP_NONE, false, inserted);
         md_test_validate_dependency(module->deps, "E@2016-06-21", MD_DEP_NONE, false, inserted);
         md_test_validate_dependency(module->inv_deps, "A", MD_DEP_EXTENSION, true, inserted);
         md_test_validate_dependency(module->inv_deps, "B", MD_DEP_NONE, false, inserted);
+        md_test_validate_dependency(module->inv_deps, "Bs1", MD_DEP_NONE, false, inserted);
+        md_test_validate_dependency(module->inv_deps, "Bs2", MD_DEP_NONE, false, inserted);
+        md_test_validate_dependency(module->inv_deps, "Bs3", MD_DEP_NONE, false, inserted);
         md_test_validate_dependency(module->inv_deps, "C", MD_DEP_NONE, false, inserted);
         md_test_validate_dependency(module->inv_deps, "D@2016-06-10", MD_DEP_IMPORT, true, inserted);
         md_test_validate_dependency(module->inv_deps, "D@2016-06-20", MD_DEP_IMPORT, true, inserted);
+        md_test_validate_dependency(module->inv_deps, "Dcommon@2016-06-10", MD_DEP_NONE, false, inserted);
         md_test_validate_dependency(module->inv_deps, "E@2016-06-11", MD_DEP_IMPORT, false, inserted);
         md_test_validate_dependency(module->inv_deps, "E@2016-06-21", MD_DEP_IMPORT, false, inserted);
     } else {
@@ -656,6 +838,8 @@ md_test_validate_context(md_ctx_t *md_ctx, md_test_inserted_modules_t inserted)
         assert_string_equal(TEST_MODULE_PREFIX "D", module->name);
         assert_string_equal("2016-06-10", module->revision_date);
         assert_string_equal(TEST_MODULE_PREFIX "D@2016-06-10", md_get_module_fullname(module));
+        assert_string_equal("D", module->prefix);
+        assert_string_equal("urn:ietf:params:xml:ns:yang:D", module->ns);
         assert_string_equal(md_module_D_rev1_filepath, module->filepath);
         if (inserted.D_rev2) {
             assert_false(module->latest_revision);
@@ -672,16 +856,24 @@ md_test_validate_context(md_ctx_t *md_ctx, md_test_inserted_modules_t inserted)
         /* dependencies */
         md_test_validate_dependency(module->deps, "A", MD_DEP_IMPORT, true, inserted);
         md_test_validate_dependency(module->deps, "B", MD_DEP_NONE, false, inserted);
+        md_test_validate_dependency(module->deps, "Bs1", MD_DEP_NONE, false, inserted);
+        md_test_validate_dependency(module->deps, "Bs2", MD_DEP_NONE, false, inserted);
+        md_test_validate_dependency(module->deps, "Bs3", MD_DEP_NONE, false, inserted);
         md_test_validate_dependency(module->deps, "C", MD_DEP_IMPORT, true, inserted);
         md_test_validate_dependency(module->deps, "D@2016-06-10", MD_DEP_NONE, false, inserted);
         md_test_validate_dependency(module->deps, "D@2016-06-20", MD_DEP_NONE, false, inserted);
+        md_test_validate_dependency(module->deps, "Dcommon@2016-06-10", MD_DEP_INCLUDE, true, inserted);
         md_test_validate_dependency(module->deps, "E@2016-06-11", MD_DEP_NONE, false, inserted);
         md_test_validate_dependency(module->deps, "E@2016-06-21", MD_DEP_NONE, false, inserted);
         md_test_validate_dependency(module->inv_deps, "A", MD_DEP_EXTENSION, true, inserted);
         md_test_validate_dependency(module->inv_deps, "B", MD_DEP_NONE, false, inserted);
+        md_test_validate_dependency(module->inv_deps, "Bs1", MD_DEP_NONE, false, inserted);
+        md_test_validate_dependency(module->inv_deps, "Bs2", MD_DEP_NONE, false, inserted);
+        md_test_validate_dependency(module->inv_deps, "Bs3", MD_DEP_NONE, false, inserted);
         md_test_validate_dependency(module->inv_deps, "C", MD_DEP_EXTENSION, true, inserted);
         md_test_validate_dependency(module->inv_deps, "D@2016-06-10", MD_DEP_NONE, false, inserted);
         md_test_validate_dependency(module->inv_deps, "D@2016-06-20", MD_DEP_NONE, false, inserted);
+        md_test_validate_dependency(module->inv_deps, "Dcommon@2016-06-10", MD_DEP_NONE, false, inserted);
         md_test_validate_dependency(module->inv_deps, "E@2016-06-11", MD_DEP_IMPORT, true, inserted);
         md_test_validate_dependency(module->inv_deps, "E@2016-06-21", MD_DEP_NONE, false, inserted);
     } else {
@@ -697,6 +889,8 @@ md_test_validate_context(md_ctx_t *md_ctx, md_test_inserted_modules_t inserted)
         assert_string_equal(TEST_MODULE_PREFIX "D", module->name);
         assert_string_equal("2016-06-20", module->revision_date);
         assert_string_equal(TEST_MODULE_PREFIX "D@2016-06-20", md_get_module_fullname(module));
+        assert_string_equal("D", module->prefix);
+        assert_string_equal("urn:ietf:params:xml:ns:yang:D", module->ns);
         assert_string_equal(md_module_D_rev2_filepath, module->filepath);
         assert_true(module->latest_revision);
         /* inst_ids */
@@ -709,18 +903,55 @@ md_test_validate_context(md_ctx_t *md_ctx, md_test_inserted_modules_t inserted)
         /* dependencies */
         md_test_validate_dependency(module->deps, "A", MD_DEP_IMPORT, true, inserted);
         md_test_validate_dependency(module->deps, "B", MD_DEP_IMPORT, true, inserted);
+        md_test_validate_dependency(module->deps, "Bs1", MD_DEP_NONE, false, inserted);
+        md_test_validate_dependency(module->deps, "Bs2", MD_DEP_NONE, false, inserted);
+        md_test_validate_dependency(module->deps, "Bs3", MD_DEP_NONE, false, inserted);
         md_test_validate_dependency(module->deps, "C", MD_DEP_IMPORT, true, inserted);
         md_test_validate_dependency(module->deps, "D@2016-06-10", MD_DEP_NONE, false, inserted);
         md_test_validate_dependency(module->deps, "D@2016-06-20", MD_DEP_NONE, false, inserted);
+        md_test_validate_dependency(module->deps, "Dcommon@2016-06-10", MD_DEP_INCLUDE, true, inserted);
         md_test_validate_dependency(module->deps, "E@2016-06-11", MD_DEP_NONE, false, inserted);
         md_test_validate_dependency(module->deps, "E@2016-06-21", MD_DEP_NONE, false, inserted);
         md_test_validate_dependency(module->inv_deps, "A", MD_DEP_EXTENSION, false, inserted);
         md_test_validate_dependency(module->inv_deps, "B", MD_DEP_EXTENSION, true, inserted);
+        md_test_validate_dependency(module->inv_deps, "Bs1", MD_DEP_NONE, false, inserted);
+        md_test_validate_dependency(module->inv_deps, "Bs2", MD_DEP_NONE, false, inserted);
+        md_test_validate_dependency(module->inv_deps, "Bs3", MD_DEP_NONE, false, inserted);
         md_test_validate_dependency(module->inv_deps, "C", MD_DEP_EXTENSION, true, inserted);
         md_test_validate_dependency(module->inv_deps, "D@2016-06-10", MD_DEP_NONE, false, inserted);
         md_test_validate_dependency(module->inv_deps, "D@2016-06-20", MD_DEP_NONE, false, inserted);
+        md_test_validate_dependency(module->inv_deps, "Dcommon@2016-06-10", MD_DEP_NONE, false, inserted);
         md_test_validate_dependency(module->inv_deps, "E@2016-06-11", MD_DEP_NONE, false, inserted);
         md_test_validate_dependency(module->inv_deps, "E@2016-06-21", MD_DEP_IMPORT, true, inserted);
+    } else {
+        assert_int_equal(SR_ERR_NOT_FOUND, rc);
+        assert_null(module);
+    }
+
+    /* validate submodule Dcommon */
+    rc = md_get_module_info(md_ctx, TEST_SUBMODULE_PREFIX "Dcommon", NULL, &module);
+    if (inserted.D_rev1 || inserted.D_rev2) {
+        assert_int_equal(SR_ERR_OK, rc);
+        assert_non_null(module);
+        assert_string_equal(TEST_SUBMODULE_PREFIX "Dcommon", module->name);
+        assert_string_equal("2016-06-10", module->revision_date);
+        assert_string_equal(TEST_SUBMODULE_PREFIX "Dcommon@2016-06-10", md_get_module_fullname(module));
+        assert_string_equal("", module->prefix);
+        assert_string_equal("", module->ns);
+        assert_string_equal(md_submodule_D_common_filepath, module->filepath);
+        assert_true(module->latest_revision);
+        /* inst_ids */
+        md_test_check_list_size(module->inst_ids, 0);
+        /* op_data_subtrees */
+        md_test_check_list_size(module->op_data_subtrees, 0);
+        /* outside references */
+        assert_non_null(module->ly_data);
+        assert_non_null(module->ll_node);
+        /* dependencies */
+        md_test_check_list_size(module->deps, 0);
+        md_test_check_list_size(module->inv_deps, inserted.D_rev1 + inserted.D_rev2);
+        md_test_validate_dependency(module->inv_deps, "D@2016-06-10", MD_DEP_INCLUDE, true, inserted);
+        md_test_validate_dependency(module->inv_deps, "D@2016-06-20", MD_DEP_INCLUDE, true, inserted);
     } else {
         assert_int_equal(SR_ERR_NOT_FOUND, rc);
         assert_null(module);
@@ -734,6 +965,8 @@ md_test_validate_context(md_ctx_t *md_ctx, md_test_inserted_modules_t inserted)
         assert_string_equal(TEST_MODULE_PREFIX "E", module->name);
         assert_string_equal("2016-06-11", module->revision_date);
         assert_string_equal(TEST_MODULE_PREFIX "E@2016-06-11", md_get_module_fullname(module));
+        assert_string_equal("E", module->prefix);
+        assert_string_equal("urn:ietf:params:xml:ns:yang:E", module->ns);
         assert_string_equal(md_module_E_rev1_filepath, module->filepath);
         if (inserted.E_rev2) {
             assert_false(module->latest_revision);
@@ -755,16 +988,24 @@ md_test_validate_context(md_ctx_t *md_ctx, md_test_inserted_modules_t inserted)
         /* dependencies */
         md_test_validate_dependency(module->deps, "A", MD_DEP_IMPORT, false, inserted);
         md_test_validate_dependency(module->deps, "B", MD_DEP_NONE, false, inserted);
+        md_test_validate_dependency(module->deps, "Bs1", MD_DEP_NONE, false, inserted);
+        md_test_validate_dependency(module->deps, "Bs2", MD_DEP_NONE, false, inserted);
+        md_test_validate_dependency(module->deps, "Bs3", MD_DEP_NONE, false, inserted);
         md_test_validate_dependency(module->deps, "C", MD_DEP_IMPORT, false, inserted);
         md_test_validate_dependency(module->deps, "D@2016-06-10", MD_DEP_IMPORT, true, inserted);
         md_test_validate_dependency(module->deps, "D@2016-06-20", MD_DEP_NONE, false, inserted);
+        md_test_validate_dependency(module->deps, "Dcommon@2016-06-10", MD_DEP_NONE, false, inserted);
         md_test_validate_dependency(module->deps, "E@2016-06-11", MD_DEP_NONE, false, inserted);
         md_test_validate_dependency(module->deps, "E@2016-06-21", MD_DEP_NONE, false, inserted);
         md_test_validate_dependency(module->inv_deps, "A", MD_DEP_NONE, false, inserted);
         md_test_validate_dependency(module->inv_deps, "B", MD_DEP_NONE, false, inserted);
+        md_test_validate_dependency(module->inv_deps, "Bs1", MD_DEP_NONE, false, inserted);
+        md_test_validate_dependency(module->inv_deps, "Bs2", MD_DEP_NONE, false, inserted);
+        md_test_validate_dependency(module->inv_deps, "Bs3", MD_DEP_NONE, false, inserted);
         md_test_validate_dependency(module->inv_deps, "C", MD_DEP_NONE, false, inserted);
         md_test_validate_dependency(module->inv_deps, "D@2016-06-10", MD_DEP_NONE, false, inserted);
         md_test_validate_dependency(module->inv_deps, "D@2016-06-20", MD_DEP_NONE, false, inserted);
+        md_test_validate_dependency(module->inv_deps, "Dcommon@2016-06-10", MD_DEP_NONE, false, inserted);
         md_test_validate_dependency(module->inv_deps, "E@2016-06-11", MD_DEP_NONE, false, inserted);
         md_test_validate_dependency(module->inv_deps, "E@2016-06-21", MD_DEP_NONE, false, inserted);
     } else {
@@ -780,6 +1021,8 @@ md_test_validate_context(md_ctx_t *md_ctx, md_test_inserted_modules_t inserted)
         assert_string_equal(TEST_MODULE_PREFIX "E", module->name);
         assert_string_equal("2016-06-21", module->revision_date);
         assert_string_equal(TEST_MODULE_PREFIX "E@2016-06-21", md_get_module_fullname(module));
+        assert_string_equal("E", module->prefix);
+        assert_string_equal("urn:ietf:params:xml:ns:yang:E", module->ns);
         assert_string_equal(md_module_E_rev2_filepath, module->filepath);
         assert_true(module->latest_revision);
         /* inst_ids */
@@ -799,16 +1042,24 @@ md_test_validate_context(md_ctx_t *md_ctx, md_test_inserted_modules_t inserted)
         /* dependencies */
         md_test_validate_dependency(module->deps, "A", MD_DEP_IMPORT, false, inserted);
         md_test_validate_dependency(module->deps, "B", MD_DEP_IMPORT, false, inserted);
+        md_test_validate_dependency(module->deps, "Bs1", MD_DEP_NONE, false, inserted);
+        md_test_validate_dependency(module->deps, "Bs2", MD_DEP_NONE, false, inserted);
+        md_test_validate_dependency(module->deps, "Bs3", MD_DEP_NONE, false, inserted);
         md_test_validate_dependency(module->deps, "C", MD_DEP_IMPORT, false, inserted);
         md_test_validate_dependency(module->deps, "D@2016-06-10", MD_DEP_NONE, false, inserted);
         md_test_validate_dependency(module->deps, "D@2016-06-20", MD_DEP_IMPORT, true, inserted);
+        md_test_validate_dependency(module->deps, "Dcommon@2016-06-10", MD_DEP_NONE, false, inserted);
         md_test_validate_dependency(module->deps, "E@2016-06-11", MD_DEP_NONE, false, inserted);
         md_test_validate_dependency(module->deps, "E@2016-06-21", MD_DEP_NONE, false, inserted);
         md_test_validate_dependency(module->inv_deps, "A", MD_DEP_NONE, false, inserted);
         md_test_validate_dependency(module->inv_deps, "B", MD_DEP_NONE, false, inserted);
+        md_test_validate_dependency(module->inv_deps, "Bs1", MD_DEP_NONE, false, inserted);
+        md_test_validate_dependency(module->inv_deps, "Bs2", MD_DEP_NONE, false, inserted);
+        md_test_validate_dependency(module->inv_deps, "Bs3", MD_DEP_NONE, false, inserted);
         md_test_validate_dependency(module->inv_deps, "C", MD_DEP_NONE, false, inserted);
         md_test_validate_dependency(module->inv_deps, "D@2016-06-10", MD_DEP_NONE, false, inserted);
         md_test_validate_dependency(module->inv_deps, "D@2016-06-20", MD_DEP_NONE, false, inserted);
+        md_test_validate_dependency(module->inv_deps, "Dcommon@2016-06-10", MD_DEP_NONE, false, inserted);
         md_test_validate_dependency(module->inv_deps, "E@2016-06-11", MD_DEP_NONE, false, inserted);
         md_test_validate_dependency(module->inv_deps, "E@2016-06-21", MD_DEP_NONE, false, inserted);
      } else {
