@@ -332,6 +332,7 @@ md_lyd_new_path(md_ctx_t *md_ctx, const char *xpath_format, const char *value, m
 
     va_start(va, node_data_p);
     vsnprintf(xpath, PATH_MAX, xpath_format, va);
+    va_end(va);
     ly_errno = LY_SUCCESS;
     node_data = lyd_new_path(md_ctx->data_tree, md_ctx->ly_ctx, xpath, value, LYD_PATH_OPT_UPDATE);
     if (!node_data && LY_SUCCESS != ly_errno) {
@@ -1142,7 +1143,7 @@ md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, struct lys_node *
                 process_children = true;
                 break;
             }
-        } while (true);
+        } while (node);
     } while (!augment && NULL != (root = root->next) && MD_MAIN_MODULE(root) == module_schema);
 
     return SR_ERR_OK;
@@ -1179,7 +1180,8 @@ md_insert_lys_module(md_ctx_t *md_ctx, const struct lys_module *module_schema, c
 
     if (module->submodule && NULL == belongsto) {
         SR_LOG_ERR_MSG("Input argument 'belongsto' cannot be NULL for sub-modules.");
-        return SR_ERR_INVAL_ARG;
+        rc = SR_ERR_INVAL_ARG;
+        goto cleanup;
     }
 
     /* Copy basic information */
