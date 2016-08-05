@@ -3476,18 +3476,22 @@ typedef enum dm_procedure_e {
  * @param [in] type Type of the procedure.
  * @param [in] xpath XPath of the procedure.
  * @param [in] api_variant Variant of the API (values vs. trees)
- * @param [in] args_p Input/output arguments of the procedure (can be changed inside of the function).
- * @param [in] arg_cnt_p Number of input/output arguments provided (can be changed inside of the function).
+ * @param [in] args_p Input/output arguments of the procedure.
+ * @param [in] arg_cnt_p Number of input/output arguments provided.
  * @param [in] input TRUE if input arguments were provided, FALSE if output.
+ * @param [out] with_def Input/Output arguments including default values represented as sysrepo values.
+ * @param [out] with_def_cnt Number of items inside the *with_def* array.
+ * @param [out] with_def_tree Input/Output arguments including default values represented as sysrepo trees.
+ * @param [out] with_def_tree_cnt Number of items inside the *with_def_tree* array.
  * @return Error code (SR_ERR_OK on success)
  */
 static int
 dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t type, const char *xpath,
-        sr_api_variant_t api_variant, void **args_p, size_t *arg_cnt_p, bool input)
+        sr_api_variant_t api_variant, void *args_p, size_t arg_cnt, bool input,
+        sr_val_t **with_def, size_t *with_def_cnt, sr_node_t **with_def_tree, size_t *with_def_tree_cnt)
 {
     sr_val_t *args = NULL;
     sr_node_t *args_tree = NULL;
-    size_t arg_cnt = 0;
     dm_schema_info_t *schema_info = NULL;
     char root_xpath[PATH_MAX] = { 0, };
     const struct lys_node *sch_node = NULL;
@@ -3499,14 +3503,13 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
     int validation_options = 0;
     int ret = 0, rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG5(dm_ctx, session, xpath, args_p, arg_cnt_p);
+    CHECK_NULL_ARG3(dm_ctx, session, xpath);
 
     if (SR_API_VALUES == api_variant) {
-        args = (sr_val_t *)*args_p;
+        args = (sr_val_t *)args_p;
     } else {
-        args_tree = (sr_node_t *)*args_p;
+        args_tree = (sr_node_t *)args_p;
     }
-    arg_cnt = *arg_cnt_p;
 
     /* get name of the procedure - only for error messages */
     switch (type) {
@@ -3594,20 +3597,24 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
     }
 
     /* re-read the arguments from data tree (it can now contain newly added default nodes) */
-    if ((SR_ERR_OK == rc) && (arg_cnt > 0)) {
-        if (SR_API_VALUES == api_variant) {
+    if (with_def && with_def_cnt) {
+        *with_def = NULL;
+        *with_def_cnt = 0;
+    }
+    if (with_def_tree && with_def_tree_cnt) {
+        *with_def_tree = NULL;
+        *with_def_tree_cnt = 0;
+    }
+    if ((SR_ERR_OK == rc) && (0 != arg_cnt)) {
+        if (with_def && with_def_cnt) {
+            /* arguments with defaults as values */
             tmp_xpath = calloc(strlen(xpath)+4, sizeof(*tmp_xpath));
             if (NULL != tmp_xpath) {
                 strcat(tmp_xpath, xpath);
                 strcat(tmp_xpath, "//*");
                 nodeset = lyd_get_node(data_tree, tmp_xpath);
                 if (NULL != nodeset) {
-                    rc = rp_dt_get_values_from_nodes(nodeset, &args, &arg_cnt);
-                    if (SR_ERR_OK == rc) {
-                        sr_free_values(*args_p, *arg_cnt_p);
-                        *args_p = args;
-                        *arg_cnt_p = arg_cnt;
-                    }
+                    rc = rp_dt_get_values_from_nodes(nodeset, with_def, with_def_cnt);
                 } else {
                     SR_LOG_ERR("No matching nodes returned for xpath '%s'.", tmp_xpath);
                     rc = SR_ERR_INTERNAL;
@@ -3618,7 +3625,9 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
                 SR_LOG_ERR_MSG("Unable to allocate memory for xpath.");
                 rc = SR_ERR_NOMEM;
             }
-        } else { /**< SR_API_TREES */
+        }
+        if (SR_ERR_OK == rc && with_def_tree && with_def_tree_cnt) {
+            /* arguments with defaults as trees */
             tmp_xpath = calloc(strlen(xpath) + 3 + (type != DM_PROCEDURE_EVENT_NOTIF ? 2 : 0),
                                sizeof(*tmp_xpath));
             if (NULL != tmp_xpath) {
@@ -3630,12 +3639,7 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
                 strcat(tmp_xpath, "*");
                 nodeset = lyd_get_node(data_tree, tmp_xpath);
                 if (NULL != nodeset) {
-                    rc = sr_nodes_to_trees(schema_info->ly_ctx, nodeset, &args_tree, &arg_cnt);
-                    if (SR_ERR_OK == rc) {
-                        sr_free_trees(*args_p, *arg_cnt_p);
-                        *args_p = args_tree;
-                        *arg_cnt_p = arg_cnt;
-                    }
+                    rc = sr_nodes_to_trees(schema_info->ly_ctx, nodeset, with_def_tree, with_def_tree_cnt);
                 } else {
                     SR_LOG_ERR("No matching nodes returned for xpath '%s'.", tmp_xpath);
                     rc = SR_ERR_INTERNAL;
@@ -3657,31 +3661,35 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
 }
 
 int
-dm_validate_rpc(dm_ctx_t *dm_ctx, dm_session_t *session, const char *rpc_xpath, sr_val_t **args, size_t *arg_cnt, bool input)
+dm_validate_rpc(dm_ctx_t *dm_ctx, dm_session_t *session, const char *rpc_xpath, sr_val_t *args, size_t arg_cnt, bool input,
+        sr_val_t **with_def, size_t *with_def_cnt, sr_node_t **with_def_tree, size_t *with_def_tree_cnt)
 {
     return dm_validate_procedure(dm_ctx, session, DM_PROCEDURE_RPC, rpc_xpath, SR_API_VALUES,
-            (void **)args, arg_cnt, input);
+            (void *)args, arg_cnt, input, with_def, with_def_cnt, with_def_tree, with_def_tree_cnt);
 }
 
 int
-dm_validate_rpc_tree(dm_ctx_t *dm_ctx, dm_session_t *session, const char *rpc_xpath, sr_node_t **args, size_t *arg_cnt, bool input)
+dm_validate_rpc_tree(dm_ctx_t *dm_ctx, dm_session_t *session, const char *rpc_xpath, sr_node_t *args, size_t arg_cnt, bool input,
+        sr_val_t **with_def, size_t *with_def_cnt, sr_node_t **with_def_tree, size_t *with_def_tree_cnt)
 {
     return dm_validate_procedure(dm_ctx, session, DM_PROCEDURE_RPC, rpc_xpath, SR_API_TREES,
-            (void **)args, arg_cnt, input);
+            (void *)args, arg_cnt, input, with_def, with_def_cnt, with_def_tree, with_def_tree_cnt);
 }
 
 int
-dm_validate_event_notif(dm_ctx_t *dm_ctx, dm_session_t *session, const char *event_notif_xpath, sr_val_t **values, size_t *values_cnt)
+dm_validate_event_notif(dm_ctx_t *dm_ctx, dm_session_t *session, const char *event_notif_xpath, sr_val_t *values, size_t value_cnt,
+        sr_val_t **with_def, size_t *with_def_cnt, sr_node_t **with_def_tree, size_t *with_def_tree_cnt)
 {
     return dm_validate_procedure(dm_ctx, session, DM_PROCEDURE_EVENT_NOTIF, event_notif_xpath, SR_API_VALUES,
-            (void **)values, values_cnt, true);
+            (void *)values, value_cnt, true, with_def, with_def_cnt, with_def_tree, with_def_tree_cnt);
 }
 
 int
-dm_validate_event_notif_tree(dm_ctx_t *dm_ctx, dm_session_t *session, const char *event_notif_xpath, sr_node_t **trees, size_t *tree_cnt)
+dm_validate_event_notif_tree(dm_ctx_t *dm_ctx, dm_session_t *session, const char *event_notif_xpath, sr_node_t *trees, size_t tree_cnt,
+        sr_val_t **with_def, size_t *with_def_cnt, sr_node_t **with_def_tree, size_t *with_def_tree_cnt)
 {
     return dm_validate_procedure(dm_ctx, session, DM_PROCEDURE_EVENT_NOTIF, event_notif_xpath, SR_API_TREES,
-            (void **)trees, tree_cnt, true);
+            (void *)trees, tree_cnt, true, with_def, with_def_cnt, with_def_tree, with_def_tree_cnt);
 }
 
 struct lyd_node *

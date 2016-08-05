@@ -295,13 +295,28 @@ int sr_check_value_conform_to_schema(const struct lys_node *node, const sr_val_t
 int sr_libyang_leaf_copy_value(const struct lyd_node_leaf_list *leaf, sr_val_t *value);
 
 /**
- * @brief Converts sr_val_t to string representation, used in set item
+ * @brief Converts sr_val_t to string representation, used in set item.
  * @param [in] value
  * @param [in] schema_node
  * @param [out] out
  * @return
  */
 int sr_val_to_str(const sr_val_t *value, const struct lys_node *schema_node, char **out);
+
+/**
+ * @brief Convert API variant type to its string representation.
+ *
+ * @param [in] api_variant API variant to convert.
+ * @return Pointer to a statically allocated string.
+ */
+char *sr_api_variant_to_str(sr_api_variant_t api_variant);
+
+/**
+ * @brief Get API variant type from its string representation.
+ *
+ * @param [in] api_variant_str API variant string representation.
+ */
+sr_api_variant_t sr_api_variant_from_str(const char *api_variant_str);
 
 /**
  * @brief Copy and convert content of a libyang node and its descendands into a sysrepo tree.

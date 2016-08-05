@@ -46,6 +46,8 @@
 #define PM_XPATH_SUBSCRIPTION_EVENT           PM_XPATH_SUBSCRIPTION      "/event"
 #define PM_XPATH_SUBSCRIPTION_PRIORITY        PM_XPATH_SUBSCRIPTION      "/priority"
 #define PM_XPATH_SUBSCRIPTION_ENABLE_RUNNING  PM_XPATH_SUBSCRIPTION      "/enable-running"
+#define PM_XPATH_SUBSCRIPTION_API_VARIANT     PM_XPATH_SUBSCRIPTION      "/api-variant"
+
 
 #define PM_XPATH_SUBSCRIPTIONS_BY_TYPE        PM_XPATH_SUBSCRIPTION_LIST "[type='%s']"
 #define PM_XPATH_SUBSCRIPTIONS_BY_TYPE_XPATH  PM_XPATH_SUBSCRIPTION_LIST "[type='%s'][xpath='%s']"
@@ -354,6 +356,9 @@ pm_subscription_entry_fill(const char *module_name, np_subscription_t *subscript
             }
             if (0 == strcmp(node->schema->name, "enable-running")) {
                 subscription->enable_running = true;
+            }
+            if (NULL != node_ll->value_str && 0 == strcmp(node->schema->name, "api-variant")) {
+                subscription->api_variant = sr_api_variant_from_str(node_ll->value_str);
             }
         }
         node = node->next;
@@ -664,6 +669,14 @@ pm_add_subscription(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *m
                 sr_subscription_type_gpb_to_str(subscription->type), subscription->dst_address, subscription->dst_id);
         snprintf(buff, sizeof(buff), "%"PRIu32, subscription->priority);
         value = buff;
+        rc = pm_modify_persist_data_tree(pm_ctx, &data_tree, xpath, value, true, NULL);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to add new leaf into the data tree.");
+    }
+    if (SR__SUBSCRIPTION_TYPE__RPC_SUBS == subscription->type ||
+            SR__SUBSCRIPTION_TYPE__EVENT_NOTIF_SUBS == subscription->type) {
+        snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTION_API_VARIANT, module_name,
+                sr_subscription_type_gpb_to_str(subscription->type), subscription->dst_address, subscription->dst_id);
+        value = sr_api_variant_to_str(subscription->api_variant);
         rc = pm_modify_persist_data_tree(pm_ctx, &data_tree, xpath, value, true, NULL);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to add new leaf into the data tree.");
     }

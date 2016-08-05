@@ -860,6 +860,7 @@ cl_sm_rpc_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *msg)
 
     resp->response->result = rpc_rc;
     resp->response->rpc_resp->xpath = strdup(msg->request->rpc_req->xpath);
+    resp->response->rpc_resp->orig_api_variant = msg->request->rpc_req->orig_api_variant;
     CHECK_NULL_NOMEM_GOTO(resp->response->rpc_resp->xpath, rc, cleanup);
 
     /* copy output values to GPB */

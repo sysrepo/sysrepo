@@ -448,9 +448,10 @@ dm_rpc_test(void **state)
     int rc = SR_ERR_OK;
     dm_ctx_t *ctx = NULL;
     dm_session_t *session = NULL;
-    sr_val_t *input = NULL, *output = NULL;
+    sr_val_t *input = NULL, *output = NULL, *with_def = NULL;
+    sr_node_t *with_def_tree = NULL;
     dm_schema_info_t *schema_info = NULL;
-    size_t input_cnt = 0, output_cnt = 0;
+    size_t input_cnt = 0, output_cnt = 0, with_def_cnt = 0, with_def_tree_cnt = 0;
 
     rc = dm_init(NULL, NULL, NULL, CM_MODE_LOCAL, TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx);
     assert_int_equal(SR_ERR_OK, rc);
@@ -463,8 +464,11 @@ dm_rpc_test(void **state)
     assert_int_equal(SR_ERR_OK, rc);
 
     /* non-existing RPC */
-    rc = dm_validate_rpc(ctx, session, "/test-module:non-existing-rpc", &input, &input_cnt, true);
+    rc = dm_validate_rpc(ctx, session, "/test-module:non-existing-rpc", input, input_cnt, true,
+            &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
     assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
+    assert_null(with_def);
+    assert_null(with_def_tree);
 
     /* RPC input */
     input_cnt = 1;
@@ -473,14 +477,19 @@ dm_rpc_test(void **state)
     input[0].type = SR_STRING_T;
     input[0].data.string_val = strdup("acmefw-2.3");
 
-    rc = dm_validate_rpc(ctx, session, "/test-module:activate-software-image", &input, &input_cnt, true);
+    rc = dm_validate_rpc(ctx, session, "/test-module:activate-software-image", input, input_cnt, true,
+            &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
     assert_int_equal(SR_ERR_OK, rc);
-    assert_int_equal(input_cnt, 2); /* including default leaf */
+    assert_int_equal(2, with_def_cnt); /* including default leaf */
+    assert_int_equal(2, with_def_tree_cnt);
+    sr_free_values(with_def, with_def_cnt);
+    sr_free_trees(with_def_tree, with_def_tree_cnt);
 
     /* invalid RPC input */
     free(input[0].xpath);
     input[0].xpath = strdup("/test-module:activate-software-image/non-existing-input");
-    rc = dm_validate_rpc(ctx, session, "/test-module:activate-software-image", &input, &input_cnt, true);
+    rc = dm_validate_rpc(ctx, session, "/test-module:activate-software-image", input, input_cnt, true,
+            &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
     assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
 
     /* RPC output */
@@ -493,14 +502,19 @@ dm_rpc_test(void **state)
     output[1].type = SR_STRING_T;
     output[1].data.string_val = strdup("2.3");
 
-    rc = dm_validate_rpc(ctx, session, "/test-module:activate-software-image", &output, &output_cnt, false);
+    rc = dm_validate_rpc(ctx, session, "/test-module:activate-software-image", output, output_cnt, false,
+            &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
     assert_int_equal(SR_ERR_OK, rc);
-    assert_int_equal(output_cnt, 3); /* including default leaf */
+    assert_int_equal(3, with_def_cnt); /* including default leaf */
+    assert_int_equal(3, with_def_tree_cnt);
+    sr_free_values(with_def, with_def_cnt);
+    sr_free_trees(with_def_tree, with_def_tree_cnt);
 
     /* invalid RPC output */
     free(output[1].xpath);
     output[1].xpath = strdup("/test-module:activate-software-image/non-existing-output");
-    rc = dm_validate_rpc(ctx, session, "/test-module:activate-software-image", &output, &output_cnt, false);
+    rc = dm_validate_rpc(ctx, session, "/test-module:activate-software-image", output, output_cnt, false,
+            &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
     assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
 
     sr_free_values(input, input_cnt);
@@ -554,9 +568,10 @@ dm_event_notif_test(void **state)
     int rc = SR_ERR_OK;
     dm_ctx_t *ctx = NULL;
     dm_session_t *session = NULL;
-    sr_val_t *values = NULL;
+    sr_val_t *values = NULL, *with_def = NULL;
+    sr_node_t *with_def_tree = NULL;
     dm_schema_info_t *schema_info = NULL;
-    size_t values_cnt = 0;
+    size_t values_cnt = 0, with_def_cnt = 0, with_def_tree_cnt = 0;
 
     rc = dm_init(NULL, NULL, NULL, CM_MODE_LOCAL, TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx);
     assert_int_equal(SR_ERR_OK, rc);
@@ -569,7 +584,8 @@ dm_event_notif_test(void **state)
     assert_int_equal(SR_ERR_OK, rc);
 
     /* non-existing event notification */
-    rc = dm_validate_event_notif(ctx, session, "/test-module:non-existing-event-notif", &values, &values_cnt);
+    rc = dm_validate_event_notif(ctx, session, "/test-module:non-existing-event-notif", values, values_cnt,
+            &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
     assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
 
     /* valid event notification */
@@ -594,21 +610,26 @@ dm_event_notif_test(void **state)
     values[5].type = SR_STRING_T;
     values[5].data.string_val = strdup("eth2");
 
-    rc = dm_validate_event_notif(ctx, session, "/test-module:link-removed", &values, &values_cnt);
+    rc = dm_validate_event_notif(ctx, session, "/test-module:link-removed", values, values_cnt,
+            &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
     assert_int_equal(SR_ERR_OK, rc);
     /* including default leaf */
-    assert_int_equal(values_cnt, 7);
-    assert_string_equal("/test-module:link-removed/MTU", values[6].xpath);
-    assert_int_equal(SR_UINT16_T, values[6].type);
-    assert_int_equal(1500, values[6].data.uint16_val);
+    assert_int_equal(7, with_def_cnt);
+    assert_int_equal(3, with_def_tree_cnt);
+    assert_string_equal("/test-module:link-removed/MTU", with_def[6].xpath);
+    assert_int_equal(SR_UINT16_T, with_def[6].type);
+    assert_int_equal(1500, with_def[6].data.uint16_val);
 
     /* invalid event notification values */
-    free(values[6].xpath);
-    values[6].xpath = strdup("/test-module:link-removed/non-existing-node");
-    rc = dm_validate_event_notif(ctx, session, "/test-module:link-removed", &values, &values_cnt);
+    free(with_def[6].xpath);
+    with_def[6].xpath = strdup("/test-module:link-removed/non-existing-node");
+    rc = dm_validate_event_notif(ctx, session, "/test-module:link-removed", with_def, with_def_cnt,
+            NULL, NULL, NULL, NULL);
     assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
 
     sr_free_values(values, values_cnt);
+    sr_free_values(with_def, with_def_cnt);
+    sr_free_trees(with_def_tree, with_def_tree_cnt);
 
     dm_session_stop(ctx, session);
     dm_cleanup(ctx);

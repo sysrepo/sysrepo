@@ -51,6 +51,7 @@ typedef struct np_subscription_s {
     const char *xpath;                 /**< XPath to the subtree where the subscription is active (if applicable). */
     uint32_t priority;                 /**< Priority of the subscription by delivering notifications (0 is the lowest priority). */
     bool enable_running;               /**< TRUE if the subscription enables specified subtree in the running datastore. */
+    sr_api_variant_t api_variant;      /**< API variant -- values vs. trees (relevant for the callback type only). */
 } np_subscription_t;
 
 /**
@@ -97,13 +98,14 @@ typedef uint32_t np_subscr_options_t;
  * @param[in] xpath XPath to the subtree where the subscription is active (if applicable).
  * @param[in] notif_event Notification event which the notification subscriber is interested in.
  * @param[in] priority Priority of the subscribtion by delivering notifications (0 is the lowest priority).
+ * @param[in] api_variant Variant of the subscription API which was used to create the subscription.
  * @param[in] opts Options overriding default handling. Bitwise OR-ed value of any ::np_subscr_flag_t flags.
  *
  * @return Error code (SR_ERR_OK on success).
  */
 int np_notification_subscribe(np_ctx_t *np_ctx, const rp_session_t *rp_session, Sr__SubscriptionType type,
         const char *dst_address, uint32_t dst_id, const char *module_name, const char *xpath,
-        Sr__NotificationEvent notif_event, uint32_t priority, const np_subscr_options_t opts);
+        Sr__NotificationEvent notif_event, uint32_t priority, sr_api_variant_t api_variant, const np_subscr_options_t opts);
 
 /**
  * @brief Unsubscribe the client from notifications on specified event.

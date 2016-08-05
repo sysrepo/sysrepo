@@ -717,46 +717,66 @@ int dm_copy_all_models(dm_ctx_t *dm_ctx, dm_session_t *session, sr_datastore_t s
  * @param [in] dm_ctx DM context.
  * @param [in] session DM session.
  * @param [in] rpc_xpath XPath of the RPC.
- * @param [in] args Input/output arguments of the RPC (can be changed inside of the function).
- * @param [in] arg_cnt Number of input/output arguments provided (can be changed inside of the function).
+ * @param [in] args Input/output arguments of the RPC.
+ * @param [in] arg_cnt Number of input/output arguments provided.
  * @param [in] input TRUE if input arguments were provided, FALSE if output.
+ * @param [out] with_def Input/Output arguments including default values represented as sysrepo values.
+ * @param [out] with_def_cnt Number of items inside the *with_def* array.
+ * @param [out] with_def_tree Input/Output arguments including default values represented as sysrepo trees.
+ * @param [out] with_def_tree_cnt Number of items inside the *with_def_tree* array.
  * @return Error code (SR_ERR_OK on success)
  */
-int dm_validate_rpc(dm_ctx_t *dm_ctx, dm_session_t *session, const char *rpc_xpath, sr_val_t **args, size_t *arg_cnt, bool input);
+int dm_validate_rpc(dm_ctx_t *dm_ctx, dm_session_t *session, const char *rpc_xpath, sr_val_t *args, size_t arg_cnt, bool input,
+                    sr_val_t **with_def, size_t *with_def_cnt, sr_node_t **with_def_tree, size_t *with_def_tree_cnt);
 
 /**
  * @brief Validates content of a RPC request or reply with arguments represented using sr_node_t.
  * @param [in] dm_ctx DM context.
  * @param [in] session DM session.
  * @param [in] rpc_xpath XPath of the RPC.
- * @param [in] args Input/output arguments of the RPC (can be changed inside of the function).
- * @param [in] arg_cnt Number of input/output arguments provided (can be changed inside of the function).
+ * @param [in] args Input/output arguments of the RPC.
+ * @param [in] arg_cnt Number of input/output arguments provided.
  * @param [in] input TRUE if input arguments were provided, FALSE if output.
+ * @param [out] with_def Input/Output arguments including default values represented as sysrepo values.
+ * @param [out] with_def_cnt Number of items inside the *with_def* array.
+ * @param [out] with_def_tree Input/Output arguments including default values represented as sysrepo trees.
+ * @param [out] with_def_tree_cnt Number of items inside the *with_def_tree* array.
  * @return Error code (SR_ERR_OK on success)
  */
-int dm_validate_rpc_tree(dm_ctx_t *dm_ctx, dm_session_t *session, const char *rpc_xpath, sr_node_t **args, size_t *arg_cnt, bool input);
+int dm_validate_rpc_tree(dm_ctx_t *dm_ctx, dm_session_t *session, const char *rpc_xpath, sr_node_t *args, size_t arg_cnt, bool input,
+                         sr_val_t **with_def, size_t *with_def_cnt, sr_node_t **with_def_tree, size_t *with_def_tree_cnt);
 
 /**
  * @brief Validates content of an event notification request.
  * @param [in] dm_ctx DM context.
  * @param [in] session DM session.
  * @param [in] notif_xpath XPath of the notification.
- * @param [in] values Event notification subtree nodes (can be changed inside of the function).
- * @param [in] values_cnt Number of items inside the values array (can be changed inside of the function).
+ * @param [in] values Event notification subtree nodes.
+ * @param [in] value_cnt Number of items inside the values array.
+ * @param [out] with_def Event notification data including default values represented as sysrepo values.
+ * @param [out] with_def_cnt Number of items inside the *with_def* array.
+ * @param [out] with_def_tree Event notification data including default values represented as sysrepo trees.
+ * @param [out] with_def_tree_cnt Number of items inside the *with_def_tree* array.
  * @return Error code (SR_ERR_OK on success)
  */
-int dm_validate_event_notif(dm_ctx_t *dm_ctx, dm_session_t *session, const char *notif_xpath, sr_val_t **values, size_t *values_cnt);
+int dm_validate_event_notif(dm_ctx_t *dm_ctx, dm_session_t *session, const char *notif_xpath, sr_val_t *values, size_t value_cnt,
+                            sr_val_t **with_def, size_t *with_def_cnt, sr_node_t **with_def_tree, size_t *with_def_tree_cnt);
 
 /**
  * @brief Validates content of an event notification request with data represented using sr_node_t.
  * @param [in] dm_ctx DM context.
  * @param [in] session DM session.
  * @param [in] notif_xpath XPath of the notification.
- * @param [in] values Event notification subtree nodes (can be changed inside of the function).
- * @param [in] values_cnt Number of items inside the values array (can be changed inside of the function).
+ * @param [in] trees Event notification subtree nodes.
+ * @param [in] tree_cnt Number of items inside the values array.
+ * @param [out] with_def Event notification data including default values represented as sysrepo values.
+ * @param [out] with_def_cnt Number of items inside the *with_def* array.
+ * @param [out] with_def_tree Event notification data including default values represented as sysrepo trees.
+ * @param [out] with_def_tree_cnt Number of items inside the *with_def_tree* array.
  * @return Error code (SR_ERR_OK on success)
  */
-int dm_validate_event_notif_tree(dm_ctx_t *dm_ctx, dm_session_t *session, const char *notif_xpath, sr_node_t **trees, size_t *tree_cnt);
+int dm_validate_event_notif_tree(dm_ctx_t *dm_ctx, dm_session_t *session, const char *notif_xpath, sr_node_t *trees, size_t tree_cnt,
+                                 sr_val_t **with_def, size_t *with_def_cnt, sr_node_t **with_def_tree, size_t *with_def_tree_cnt);
 
 /**
  * @brief Call lyd_new path uses ly_ctx from data_info->schema.

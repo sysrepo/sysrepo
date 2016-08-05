@@ -317,6 +317,22 @@ Sr__NotificationEvent sr_notification_event_str_to_gpb(const char *event_name);
 sr_notif_event_t sr_notification_event_gpb_to_sr(Sr__NotificationEvent event);
 
 /**
+ * @brief Converts Sysrepo API variant type to its GPB enum representation.
+ *
+ * @param[in] api_variant API variant type to convert.
+ * @return GPB API variant type.
+ */
+Sr__ApiVariant sr_api_variant_sr_to_gpb(sr_api_variant_t api_variant);
+
+/**
+ * @brief Converts API variant type from GPB to sysrepo type.
+ *
+ * @param[in] api_variant_gpb GPB API variant type.
+ * @return Sysrepo API variant type.
+ */
+sr_api_variant_t sr_api_variant_gpb_to_sr(Sr__ApiVariant api_variant_gpb);
+
+/**
  * @brief Converts array of sr_schema_t to an array of pointers to GPB schemas.
  *
  * @param [in] sr_schemas Array of sr_schema_t.

@@ -237,6 +237,7 @@ cl_subscription_init(sr_session_ctx_t *session, Sr__SubscriptionType type, const
 
     msg_req->request->subscribe_req->subscription_id = sm_subscription->id;
     msg_req->request->subscribe_req->type = type;
+    msg_req->request->subscribe_req->api_variant = sr_api_variant_sr_to_gpb(api_variant);
 
     /* if not already allocated, allocate 'umbrella' subscription context */
     if (NULL == *sr_subscription_p) {
@@ -2066,6 +2067,7 @@ sr_rpc_send(sr_session_ctx_t *session, const char *xpath,
     /* set arguments */
     msg_req->request->rpc_req->xpath = strdup(xpath);
     CHECK_NULL_NOMEM_GOTO(msg_req->request->rpc_req->xpath, rc, cleanup);
+    msg_req->request->rpc_req->orig_api_variant = sr_api_variant_sr_to_gpb(SR_API_VALUES);
 
     /* set input arguments */
     rc = sr_values_sr_to_gpb(input, input_cnt, &msg_req->request->rpc_req->input, &msg_req->request->rpc_req->n_input);
@@ -2114,6 +2116,7 @@ sr_rpc_send_tree(sr_session_ctx_t *session, const char *xpath,
     /* set arguments */
     msg_req->request->rpc_req->xpath = strdup(xpath);
     CHECK_NULL_NOMEM_GOTO(msg_req->request->rpc_req->xpath, rc, cleanup);
+    msg_req->request->rpc_req->orig_api_variant = sr_api_variant_sr_to_gpb(SR_API_TREES);
 
     /* set input arguments */
     rc = sr_trees_sr_to_gpb(input, input_cnt, &msg_req->request->rpc_req->input_tree, &msg_req->request->rpc_req->n_input_tree);

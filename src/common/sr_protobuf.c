@@ -1760,6 +1760,32 @@ sr_notification_event_gpb_to_sr(Sr__NotificationEvent event)
     }
 }
 
+Sr__ApiVariant
+sr_api_variant_sr_to_gpb(sr_api_variant_t api_variant)
+{
+    switch (api_variant) {
+        case SR_API_VALUES:
+            return SR__API_VARIANT__VALUES;
+        case SR_API_TREES:
+            return SR__API_VARIANT__TREES;
+        default:
+            return SR__API_VARIANT__VALUES;
+    }
+}
+
+sr_api_variant_t
+sr_api_variant_gpb_to_sr(Sr__ApiVariant api_variant_gpb)
+{
+    switch (api_variant_gpb) {
+        case SR__API_VARIANT__VALUES:
+            return SR_API_VALUES;
+        case SR__API_VARIANT__TREES:
+            return SR_API_TREES;
+        default:
+            return SR_API_VALUES;
+    }
+}
+
 int
 sr_schemas_sr_to_gpb(const sr_schema_t *sr_schemas, const size_t schema_cnt, Sr__Schema ***gpb_schemas)
 {

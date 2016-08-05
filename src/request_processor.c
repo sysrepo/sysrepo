@@ -1049,6 +1049,7 @@ rp_subscribe_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr
             subscribe_req->module_name, subscribe_req->xpath,
             (subscribe_req->has_notif_event ? subscribe_req->notif_event : SR__NOTIFICATION_EVENT__NOTIFY_EV),
             (subscribe_req->has_priority ? subscribe_req->priority : 0),
+            sr_api_variant_gpb_to_sr(subscribe_req->api_variant),
             options);
 
     /* set response code */
@@ -1240,10 +1241,10 @@ static int
 rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
 {
     char *module_name = NULL;
-    sr_api_variant_t api_variant = SR_API_VALUES;
-    sr_val_t *input = NULL;
-    sr_node_t *input_tree = NULL;
-    size_t input_cnt = 0;
+    sr_api_variant_t msg_api_variant = SR_API_VALUES;
+    sr_val_t *input = NULL, *with_def = NULL;
+    sr_node_t *input_tree = NULL, *with_def_tree = NULL;
+    size_t input_cnt = 0, with_def_cnt = 0, with_def_tree_cnt = 0;
     np_subscription_t *subscriptions = NULL;
     size_t subscription_cnt = 0;
     Sr__Msg *req = NULL, *resp = NULL;
@@ -1257,63 +1258,75 @@ rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg 
     SR_LOG_DBG_MSG("Processing RPC request.");
 
     /* parse input arguments */
-    if (msg->request->rpc_req->n_input) {
-        rc = sr_values_gpb_to_sr(msg->request->rpc_req->input,  msg->request->rpc_req->n_input, &input, &input_cnt);
-    } else if (msg->request->rpc_req->n_input_tree) {
-        api_variant = SR_API_TREES;
-        rc = sr_trees_gpb_to_sr(msg->request->rpc_req->input_tree,  msg->request->rpc_req->n_input_tree,
-                                &input_tree, &input_cnt);
+    msg_api_variant = sr_api_variant_gpb_to_sr(msg->request->rpc_req->orig_api_variant);
+    switch (msg_api_variant) {
+        case SR_API_VALUES:
+            rc = sr_values_gpb_to_sr(msg->request->rpc_req->input, msg->request->rpc_req->n_input, &input, &input_cnt);
+            break;
+        case SR_API_TREES:
+            rc = sr_trees_gpb_to_sr(msg->request->rpc_req->input_tree, msg->request->rpc_req->n_input_tree,
+                                    &input_tree, &input_cnt);
+            break;
     }
     CHECK_RC_LOG_GOTO(rc, finalize, "Failed to parse RPC (%s) input arguments from GPB message.",
                       msg->request->rpc_req->xpath);
 
     /* validate RPC request */
-    if (SR_API_VALUES == api_variant) {
-        rc = dm_validate_rpc(rp_ctx->dm_ctx, session->dm_session, msg->request->rpc_req->xpath,
-                &input, &input_cnt, true);
-    } else {
-        rc = dm_validate_rpc_tree(rp_ctx->dm_ctx, session->dm_session, msg->request->rpc_req->xpath,
-                &input_tree, &input_cnt, true);
+    switch (msg_api_variant) {
+        case SR_API_VALUES:
+            rc = dm_validate_rpc(rp_ctx->dm_ctx, session->dm_session, msg->request->rpc_req->xpath,
+                                 input, input_cnt, true, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
+            break;
+        case SR_API_TREES:
+            rc = dm_validate_rpc_tree(rp_ctx->dm_ctx, session->dm_session, msg->request->rpc_req->xpath,
+                                 input_tree, input_cnt, true, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
+            break;
     }
     CHECK_RC_LOG_GOTO(rc, finalize, "Validation of an RPC (%s) message failed.", msg->request->rpc_req->xpath);
 
-    /* duplicate msg into req with the new input values */
-    rc = sr_gpb_req_alloc(SR__OPERATION__RPC, session->id, &req);
-    CHECK_RC_LOG_GOTO(rc, finalize, "Failed to duplicate RPC request (%s).", msg->request->rpc_req->xpath);
-
-    req->request->rpc_req->xpath = strdup(msg->request->rpc_req->xpath);
-    CHECK_NULL_NOMEM_ERROR(req->request->rpc_req->xpath, rc);
-    CHECK_RC_LOG_GOTO(rc, finalize, "Failed to duplicate RPC request xpath (%s).", msg->request->rpc_req->xpath);
-
-    if (SR_API_VALUES == api_variant) {
-        rc = sr_values_sr_to_gpb(input, input_cnt, &req->request->rpc_req->input, &req->request->rpc_req->n_input);
-    } else {
-        rc = sr_trees_sr_to_gpb(input_tree, input_cnt, &req->request->rpc_req->input_tree, &req->request->rpc_req->n_input_tree);
-    }
-    CHECK_RC_LOG_GOTO(rc, finalize, "Failed to duplicate RPC request (%s) input arguments.", msg->request->rpc_req->xpath);
-
     /* get module name */
-    rc = sr_copy_first_ns(req->request->rpc_req->xpath, &module_name);
+    rc = sr_copy_first_ns(msg->request->rpc_req->xpath, &module_name);
     CHECK_RC_LOG_GOTO(rc, finalize, "Failed to obtain module name for RPC request (%s).", msg->request->rpc_req->xpath);
 
     /* authorize (write permissions are required to deliver the RPC) */
     rc = ac_check_module_permissions(session->ac_session, module_name, AC_OPER_READ_WRITE);
     CHECK_RC_LOG_GOTO(rc, finalize, "Access control check failed for module name '%s'", module_name);
 
+    /* fill-in subscription details into the request */
+    bool subscription_match = false;
     /* get RPC subscription */
     rc = pm_get_subscriptions(rp_ctx->pm_ctx, module_name, SR__SUBSCRIPTION_TYPE__RPC_SUBS,
             &subscriptions, &subscription_cnt);
     CHECK_RC_LOG_GOTO(rc, finalize, "Failed to get subscriptions for RPC request (%s).", msg->request->rpc_req->xpath);
 
-    /* fill-in subscription details into the request */
-    bool subscription_match = false;
     for (size_t i = 0; i < subscription_cnt; i++) {
-        if (NULL != subscriptions[i].xpath && 0 == strcmp(subscriptions[i].xpath, req->request->rpc_req->xpath)) {
+        if (NULL != subscriptions[i].xpath && 0 == strcmp(subscriptions[i].xpath, msg->request->rpc_req->xpath)) {
+            /* duplicate msg into req with the new input values */
+            rc = sr_gpb_req_alloc(SR__OPERATION__RPC, session->id, &req);
+            CHECK_RC_LOG_GOTO(rc, finalize, "Failed to duplicate RPC request (%s).", msg->request->rpc_req->xpath);
+            /*  - xpath */
+            req->request->rpc_req->xpath = strdup(msg->request->rpc_req->xpath);
+            CHECK_NULL_NOMEM_ERROR(req->request->rpc_req->xpath, rc);
+            CHECK_RC_LOG_GOTO(rc, finalize, "Failed to duplicate RPC request xpath (%s).", msg->request->rpc_req->xpath);
+            /*  - api variant */
+            req->request->rpc_req->orig_api_variant = msg->request->rpc_req->orig_api_variant;
+            /*  - arguments */
+            switch (subscriptions[i].api_variant) {
+                case SR_API_VALUES:
+                    rc = sr_values_sr_to_gpb(with_def, with_def_cnt, &req->request->rpc_req->input,
+                                             &req->request->rpc_req->n_input);
+                     break;
+                case SR_API_TREES:
+                    rc = sr_trees_sr_to_gpb(with_def_tree, with_def_tree_cnt, &req->request->rpc_req->input_tree,
+                                            &req->request->rpc_req->n_input_tree);
+                    break;
+            }
+            CHECK_RC_LOG_GOTO(rc, finalize, "Failed to duplicate RPC request (%s) input arguments.", msg->request->rpc_req->xpath);
+            /* subscription details */
             req->request->rpc_req->subscriber_address = strdup(subscriptions[i].dst_address);
             CHECK_NULL_NOMEM_GOTO(req->request->rpc_req->subscriber_address, rc, finalize);
             req->request->rpc_req->subscription_id = subscriptions[i].dst_id;
             req->request->rpc_req->has_subscription_id = true;
-            np_free_subscriptions(subscriptions, subscription_cnt);
             subscription_match = true;
             break;
         }
@@ -1347,13 +1360,18 @@ finalize:
         }
     }
 
+    /* free all the allocated data */
+    np_free_subscriptions(subscriptions, subscription_cnt);
     free(module_name);
-    if (SR_API_VALUES == api_variant) {
+    if (SR_API_VALUES == msg_api_variant) {
         sr_free_values(input, input_cnt);
     } else {
         sr_free_trees(input_tree, input_cnt);
     }
-    /* release the message since it won't be released in dispatch */
+    sr_free_values(with_def, with_def_cnt);
+    sr_free_trees(with_def_tree, with_def_tree_cnt);
+
+    /* also release the message since it won't be released in dispatch */
     sr__msg__free_unpacked(msg, NULL);
     return rc;
 }
@@ -1411,10 +1429,11 @@ cleanup:
 static int
 rp_rpc_resp_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
 {
-    sr_api_variant_t api_variant = SR_API_VALUES;
-    sr_val_t *output = NULL;
-    sr_node_t *output_tree = NULL;
-    size_t output_cnt = 0;
+    sr_api_variant_t msg_api_variant = SR_API_VALUES;
+    sr_val_t *output = NULL, *with_def = NULL;
+    sr_node_t *output_tree = NULL, *with_def_tree = NULL;
+    size_t output_cnt = 0, with_def_cnt = 0, with_def_tree_cnt = 0;
+
     Sr__Msg *resp = NULL;
     int rc = SR_ERR_OK;
 
@@ -1430,17 +1449,17 @@ rp_rpc_resp_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg
         rc = sr_values_gpb_to_sr(msg->response->rpc_resp->output,  msg->response->rpc_resp->n_output,
                                  &output, &output_cnt);
     } else if (msg->response->rpc_resp->n_output_tree) {
-        api_variant = SR_API_TREES;
+        msg_api_variant = SR_API_TREES;
         rc = sr_trees_gpb_to_sr(msg->response->rpc_resp->output_tree,  msg->response->rpc_resp->n_output_tree,
                                 &output_tree, &output_cnt);
     }
     if (SR_ERR_OK == rc) {
-        if (SR_API_VALUES == api_variant) {
+        if (SR_API_VALUES == msg_api_variant) {
             rc = dm_validate_rpc(rp_ctx->dm_ctx, session->dm_session, msg->response->rpc_resp->xpath,
-                    &output, &output_cnt, false);
+                    output, output_cnt, false, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
         } else {
             rc = dm_validate_rpc_tree(rp_ctx->dm_ctx, session->dm_session, msg->response->rpc_resp->xpath,
-                    &output_tree, &output_cnt, false);
+                    output_tree, output_cnt, false, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
         }
     }
 
@@ -1451,19 +1470,24 @@ rp_rpc_resp_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg
     if (SR_ERR_OK == rc) {
         resp->response->rpc_resp->xpath = strdup(msg->response->rpc_resp->xpath);
         CHECK_NULL_NOMEM_ERROR(resp->response->rpc_resp->xpath, rc);
+        resp->response->rpc_resp->orig_api_variant = msg->response->rpc_resp->orig_api_variant;
     }
     if (SR_ERR_OK == rc) {
-        if (SR_API_VALUES == api_variant) {
-            rc = sr_values_sr_to_gpb(output, output_cnt, &resp->response->rpc_resp->output, &resp->response->rpc_resp->n_output);
+        if (SR_API_VALUES == sr_api_variant_gpb_to_sr(msg->response->rpc_resp->orig_api_variant)) {
+            rc = sr_values_sr_to_gpb(with_def, with_def_cnt, &resp->response->rpc_resp->output,
+                    &resp->response->rpc_resp->n_output);
         } else {
-            rc = sr_trees_sr_to_gpb(output_tree, output_cnt, &resp->response->rpc_resp->output_tree, &resp->response->rpc_resp->n_output_tree);
+            rc = sr_trees_sr_to_gpb(with_def_tree, with_def_tree_cnt, &resp->response->rpc_resp->output_tree,
+                    &resp->response->rpc_resp->n_output_tree);
         }
     }
-    if (SR_API_VALUES == api_variant) {
+    if (SR_API_VALUES == msg_api_variant) {
         sr_free_values(output, output_cnt);
     } else {
         sr_free_trees(output_tree, output_cnt);
     }
+    sr_free_values(with_def, with_def_cnt);
+    sr_free_trees(with_def_tree, with_def_tree_cnt);
 
     if ((SR_ERR_OK == rc) || (NULL != resp)) {
         sr__msg__free_unpacked(msg, NULL);
@@ -1548,11 +1572,10 @@ static int
 rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
 {
     char *module_name = NULL;
-    sr_api_variant_t api_variant = SR_API_VALUES;
-    sr_val_t *values = NULL;
-    sr_node_t *trees = NULL;
-    size_t values_cnt = 0;
-    size_t tree_cnt = 0;
+    sr_api_variant_t msg_api_variant = SR_API_VALUES;
+    sr_val_t *values = NULL, *with_def = NULL;
+    sr_node_t *trees = NULL, *with_def_tree = NULL;
+    size_t values_cnt = 0, tree_cnt = 0, with_def_cnt = 0, with_def_tree_cnt = 0;
     np_subscription_t *subscriptions = NULL;
     size_t subscription_cnt = 0;
     bool sub_match = false;
@@ -1571,7 +1594,7 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
         rc = sr_values_gpb_to_sr(msg->request->event_notif_req->values, msg->request->event_notif_req->n_values,
                 &values, &values_cnt);
     } else if (msg->request->event_notif_req->n_trees) {
-        api_variant = SR_API_TREES;
+        msg_api_variant = SR_API_TREES;
         rc = sr_trees_gpb_to_sr(msg->request->event_notif_req->trees, msg->request->event_notif_req->n_trees,
                 &trees, &tree_cnt);
     }
@@ -1579,12 +1602,12 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
                       msg->request->event_notif_req->xpath);
 
     /* validate event-notification request */
-    if (SR_API_VALUES == api_variant) {
+    if (SR_API_VALUES == msg_api_variant) {
         rc = dm_validate_event_notif(rp_ctx->dm_ctx, session->dm_session, msg->request->event_notif_req->xpath,
-                &values, &values_cnt);
+                values, values_cnt, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
     } else {
         rc = dm_validate_event_notif_tree(rp_ctx->dm_ctx, session->dm_session, msg->request->event_notif_req->xpath,
-                &trees, &tree_cnt);
+                trees, tree_cnt, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
     }
     CHECK_RC_LOG_GOTO(rc, finalize, "Validation of an event notification (%s) message failed.",
                       msg->request->event_notif_req->xpath);
@@ -1617,12 +1640,15 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
             CHECK_RC_LOG_GOTO(rc, finalize, "Failed to duplicate event notification request xpath (%s).",
                               msg->request->event_notif_req->xpath);
             /*  - values / trees */
-            if (SR_API_VALUES == api_variant) {
-                rc = sr_values_sr_to_gpb(values, values_cnt, &req->request->event_notif_req->values,
-                                         &req->request->event_notif_req->n_values);
-            } else {
-                rc = sr_trees_sr_to_gpb(trees, tree_cnt, &req->request->event_notif_req->trees,
-                                         &req->request->event_notif_req->n_trees);
+            switch (subscriptions[i].api_variant) {
+                case SR_API_VALUES:
+                    rc = sr_values_sr_to_gpb(with_def, with_def_cnt, &req->request->event_notif_req->values,
+                                             &req->request->event_notif_req->n_values);
+                    break;
+                case SR_API_TREES:
+                    rc = sr_trees_sr_to_gpb(with_def_tree, with_def_tree_cnt, &req->request->event_notif_req->trees,
+                                            &req->request->event_notif_req->n_trees);
+                    break;
             }
             CHECK_RC_LOG_GOTO(rc, finalize, "Failed to duplicate event notification (%s) input data.",
                               msg->request->event_notif_req->xpath);
@@ -1645,18 +1671,15 @@ finalize:
         sr__msg__free_unpacked(req, NULL);
         req = NULL;
     }
-
-    if (SR_API_VALUES == api_variant) {
+    if (SR_API_VALUES == msg_api_variant) {
         sr_free_values(values, values_cnt);
-        values = NULL;
-        values_cnt = 0;
     } else {
         sr_free_trees(trees, tree_cnt);
-        trees = NULL;
-        tree_cnt = 0;
     }
-
+    sr_free_values(with_def, with_def_cnt);
+    sr_free_trees(with_def_tree, with_def_tree_cnt);
     free(module_name);
+    np_free_subscriptions(subscriptions, subscription_cnt);
 
     if (!sub_match && SR_ERR_OK == rc) {
         /* no subscription for this event notification */
@@ -1664,10 +1687,6 @@ finalize:
                    msg->request->event_notif_req->xpath);
         rc = SR_ERR_NOT_FOUND;
     }
-
-    np_free_subscriptions(subscriptions, subscription_cnt);
-    subscriptions = NULL;
-    subscription_cnt = 0;
 
     /* send the response with return code */
     rc_tmp = sr_gpb_resp_alloc(SR__OPERATION__EVENT_NOTIF, session->id, &resp);
