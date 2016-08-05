@@ -75,7 +75,7 @@ typedef struct md_module_s {
     bool submodule;               /**< "true" if this is actually a submodule, "false" in case of a proper module. */
 
     sr_llist_t *inst_ids;         /**< List of xpaths referencing all instance-identifiers in the module.
-                                       Items are of type (md_subree_ref_t *) (one node subtrees).
+                                       Items are of type (md_subtree_ref_t *) (one node subtrees).
                                        Empty for submodules. */
 
     sr_llist_t *op_data_subtrees; /**< List of xpaths referencing all subtrees in the schema containing only operational data.

@@ -1717,6 +1717,7 @@ cl_rpc_tree_test(void **state)
     /* send a RPC */
     rc = sr_rpc_send_tree(session, "/test-module:activate-software-image", &input, 1, &output, &output_cnt);
     assert_int_equal(rc, SR_ERR_OK);
+    assert_int_equal(1 , callback_called);
 
     assert_int_equal(output_cnt, 4);
     for (size_t i = 0; i < output_cnt; i++) {
@@ -2329,11 +2330,8 @@ test_event_notif_link_discovery_cb(const char *xpath, const sr_val_t *values, co
 {
     cl_test_en_cb_status_t *cb_status = (cl_test_en_cb_status_t*)private_ctx;
 
-    assert_int_equal(0, pthread_mutex_lock(&cb_status->mutex));
     assert_int_equal(values_cnt, 7);
-
     assert_string_equal("/test-module:link-discovered", xpath);
-
     assert_string_equal("/test-module:link-discovered/source", values[0].xpath);
     assert_int_equal(SR_CONTAINER_T, values[0].type);
     assert_string_equal("/test-module:link-discovered/source/address", values[1].xpath);
@@ -2354,6 +2352,7 @@ test_event_notif_link_discovery_cb(const char *xpath, const sr_val_t *values, co
     assert_int_equal(SR_UINT16_T, values[6].type);
     assert_int_equal(1500, values[6].data.uint16_val);
 
+    assert_int_equal(0, pthread_mutex_lock(&cb_status->mutex));
     cb_status->link_discovered += 1;
     if (cb_status->link_discovered == CL_TEST_EN_NUM_SESSIONS) {
         assert_int_equal(0, pthread_cond_signal(&cb_status->cond));
@@ -2367,11 +2366,8 @@ test_event_notif_link_removed_cb(const char *xpath, const sr_val_t *values, cons
 {
     cl_test_en_cb_status_t *cb_status = (cl_test_en_cb_status_t*)private_ctx;
 
-    assert_int_equal(0, pthread_mutex_lock(&cb_status->mutex));
     assert_int_equal(values_cnt, 7);
-
     assert_string_equal("/test-module:link-removed", xpath);
-
     assert_string_equal("/test-module:link-removed/source", values[0].xpath);
     assert_int_equal(SR_CONTAINER_T, values[0].type);
     assert_string_equal("/test-module:link-removed/source/address", values[1].xpath);
@@ -2392,6 +2388,7 @@ test_event_notif_link_removed_cb(const char *xpath, const sr_val_t *values, cons
     assert_int_equal(SR_UINT16_T, values[6].type);
     assert_int_equal(1500, values[6].data.uint16_val);
 
+    assert_int_equal(0, pthread_mutex_lock(&cb_status->mutex));
     cb_status->link_removed += 1;
     if (cb_status->link_removed == CL_TEST_EN_NUM_SESSIONS) {
         assert_int_equal(0, pthread_cond_signal(&cb_status->cond));
@@ -2504,7 +2501,7 @@ cl_event_notif_test(void **state)
     values[3].data.string_val = "eth0";
 
     rc = sr_event_notif_send(notif_session, "/test-module:link-overutilized", values, 4);
-    assert_int_equal(rc, SR_ERR_BAD_ELEMENT);
+    assert_int_equal(rc, SR_ERR_VALIDATION_FAILED);
 
     /* wait at most 5 seconds for all callbacks to get called */
     struct timespec ts;
@@ -2539,6 +2536,364 @@ cl_event_notif_test(void **state)
     assert_int_equal(0, pthread_cond_destroy(&cb_status.cond));
 }
 
+static void
+test_event_notif_link_discovery_tree_cb(const char *xpath, const sr_node_t *trees, const size_t tree_cnt,
+        void *private_ctx)
+{
+    const sr_node_t *tree = NULL;
+    cl_test_en_cb_status_t *cb_status = (cl_test_en_cb_status_t*)private_ctx;
+
+    assert_string_equal("/test-module:link-discovered", xpath);
+    assert_int_equal(tree_cnt, 3);
+    /*  /test-module:link-discovered/source */
+    tree = trees;
+    assert_string_equal("source", tree->name);
+    assert_string_equal("test-module", tree->module_name);
+    assert_false(tree->dflt);
+    assert_int_equal(SR_CONTAINER_T, tree->type);
+    assert_int_equal(2, tree->children_cnt);
+    assert_non_null(tree->children);
+    /*  /test-module:link-discovered/source/address */
+    tree = trees[0].children;
+    assert_string_equal("address", tree->name);
+    assert_null(tree->module_name);
+    assert_false(tree->dflt);
+    assert_int_equal(SR_STRING_T, tree->type);
+    assert_string_equal("10.10.1.5", tree->data.string_val);
+    assert_int_equal(0, tree->children_cnt);
+    assert_null(tree->children);
+    /*  /test-module:link-discovered/source/interface */
+    tree = trees[0].children + 1;
+    assert_string_equal("interface", tree->name);
+    assert_null(tree->module_name);
+    assert_false(tree->dflt);
+    assert_int_equal(SR_STRING_T, tree->type);
+    assert_string_equal("eth1", tree->data.string_val);
+    assert_int_equal(0, tree->children_cnt);
+    assert_null(tree->children);
+    /*  /test-module:link-discovered/destination */
+    tree = trees + 1;
+    assert_string_equal("destination", tree->name);
+    assert_string_equal("test-module", tree->module_name);
+    assert_false(tree->dflt);
+    assert_int_equal(SR_CONTAINER_T, tree->type);
+    assert_int_equal(2, tree->children_cnt);
+    assert_non_null(tree->children);
+    /*  /test-module:link-discovered/destination/address */
+    tree = trees[1].children;
+    assert_string_equal("address", tree->name);
+    assert_null(tree->module_name);
+    assert_false(tree->dflt);
+    assert_int_equal(SR_STRING_T, tree->type);
+    assert_string_equal("10.10.1.8", tree->data.string_val);
+    assert_int_equal(0, tree->children_cnt);
+    assert_null(tree->children);
+    /*  /test-module:link-discovered/destination/interface */
+    tree = trees[1].children + 1;
+    assert_string_equal("interface", tree->name);
+    assert_null(tree->module_name);
+    assert_false(tree->dflt);
+    assert_int_equal(SR_STRING_T, tree->type);
+    assert_string_equal("eth0", tree->data.string_val);
+    assert_int_equal(0, tree->children_cnt);
+    assert_null(tree->children);
+    /*  /test-module:link-discovered/MTU */
+    tree = trees + 2;
+    assert_string_equal("MTU", tree->name);
+    assert_string_equal("test-module", tree->module_name);
+    assert_true(tree->dflt);  /**< default */
+    assert_int_equal(SR_UINT16_T, tree->type);
+    assert_int_equal(1500, tree->data.uint16_val);
+    assert_int_equal(0, tree->children_cnt);
+    assert_null(tree->children);
+
+    assert_int_equal(0, pthread_mutex_lock(&cb_status->mutex));
+    cb_status->link_discovered += 1;
+    if (cb_status->link_discovered == CL_TEST_EN_NUM_SESSIONS) {
+        assert_int_equal(0, pthread_cond_signal(&cb_status->cond));
+    }
+    assert_int_equal(0, pthread_mutex_unlock(&cb_status->mutex));
+}
+
+static void
+test_event_notif_link_removed_tree_cb(const char *xpath, const sr_node_t *trees, const size_t tree_cnt,
+        void *private_ctx)
+{
+    const sr_node_t *tree = NULL;
+    cl_test_en_cb_status_t *cb_status = (cl_test_en_cb_status_t*)private_ctx;
+
+    assert_string_equal("/test-module:link-removed", xpath);
+    assert_int_equal(tree_cnt, 3);
+    /*  /test-module:link-discovered/source */
+    tree = trees;
+    assert_string_equal("source", tree->name);
+    assert_string_equal("test-module", tree->module_name);
+    assert_false(tree->dflt);
+    assert_int_equal(SR_CONTAINER_T, tree->type);
+    assert_int_equal(2, tree->children_cnt);
+    assert_non_null(tree->children);
+    /*  /test-module:link-discovered/source/address */
+    tree = trees[0].children;
+    assert_string_equal("address", tree->name);
+    assert_null(tree->module_name);
+    assert_false(tree->dflt);
+    assert_int_equal(SR_STRING_T, tree->type);
+    assert_string_equal("10.10.2.4", tree->data.string_val);
+    assert_int_equal(0, tree->children_cnt);
+    assert_null(tree->children);
+    /*  /test-module:link-discovered/source/interface */
+    tree = trees[0].children + 1;
+    assert_string_equal("interface", tree->name);
+    assert_null(tree->module_name);
+    assert_false(tree->dflt);
+    assert_int_equal(SR_STRING_T, tree->type);
+    assert_string_equal("eth0", tree->data.string_val);
+    assert_int_equal(0, tree->children_cnt);
+    assert_null(tree->children);
+    /*  /test-module:link-discovered/destination */
+    tree = trees + 1;
+    assert_string_equal("destination", tree->name);
+    assert_string_equal("test-module", tree->module_name);
+    assert_false(tree->dflt);
+    assert_int_equal(SR_CONTAINER_T, tree->type);
+    assert_int_equal(2, tree->children_cnt);
+    assert_non_null(tree->children);
+    /*  /test-module:link-discovered/destination/address */
+    tree = trees[1].children;
+    assert_string_equal("address", tree->name);
+    assert_null(tree->module_name);
+    assert_false(tree->dflt);
+    assert_int_equal(SR_STRING_T, tree->type);
+    assert_string_equal("10.10.2.5", tree->data.string_val);
+    assert_int_equal(0, tree->children_cnt);
+    assert_null(tree->children);
+    /*  /test-module:link-discovered/destination/interface */
+    tree = trees[1].children + 1;
+    assert_string_equal("interface", tree->name);
+    assert_null(tree->module_name);
+    assert_false(tree->dflt);
+    assert_int_equal(SR_STRING_T, tree->type);
+    assert_string_equal("eth2", tree->data.string_val);
+    assert_int_equal(0, tree->children_cnt);
+    assert_null(tree->children);
+    /*  /test-module:link-discovered/MTU */
+    tree = trees + 2;
+    assert_string_equal("MTU", tree->name);
+    assert_string_equal("test-module", tree->module_name);
+    assert_true(tree->dflt);  /**< default */
+    assert_int_equal(SR_UINT16_T, tree->type);
+    assert_int_equal(1500, tree->data.uint16_val);
+    assert_int_equal(0, tree->children_cnt);
+    assert_null(tree->children);
+
+    assert_int_equal(0, pthread_mutex_lock(&cb_status->mutex));
+    cb_status->link_removed += 1;
+    if (cb_status->link_removed == CL_TEST_EN_NUM_SESSIONS) {
+        assert_int_equal(0, pthread_cond_signal(&cb_status->cond));
+    }
+    assert_int_equal(0, pthread_mutex_unlock(&cb_status->mutex));
+}
+
+static void
+test_event_notif_link_overutilized_tree_cb(const char *xpath, const sr_node_t *trees, const size_t tree_cnt,
+        void *private_ctx)
+{
+    assert_true(0 && "This callback should not get called");
+}
+
+static void
+cl_event_notif_tree_test(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+
+    cl_test_en_session_t sub_session[CL_TEST_EN_NUM_SESSIONS];
+    sr_session_ctx_t *notif_session = NULL;
+    cl_test_en_cb_status_t cb_status;
+    sr_node_t *trees = NULL;
+    sr_node_t *tree = NULL;
+    size_t tree_cnt = 0;
+    size_t i;
+    int rc = SR_ERR_OK;
+
+    cb_status.link_discovered = 0;
+    cb_status.link_removed = 0;
+    assert_int_equal(0, pthread_mutex_init(&cb_status.mutex, NULL));
+    assert_int_equal(0, pthread_cond_init(&cb_status.cond, NULL));
+    assert_int_equal(0, pthread_mutex_lock(&cb_status.mutex));
+
+    /* start sessions */
+    rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &notif_session);
+    assert_int_equal(rc, SR_ERR_OK);
+    for (i = 0; i < CL_TEST_EN_NUM_SESSIONS; ++i) {
+        rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &sub_session[i].session);
+        assert_int_equal(rc, SR_ERR_OK);
+    }
+
+    /* subscribe for link discovery in every session */
+    for (i = 0; i < CL_TEST_EN_NUM_SESSIONS; ++i) {
+        rc = sr_event_notif_subscribe_tree(sub_session[i].session, "/test-module:link-discovered",
+                test_event_notif_link_discovery_tree_cb,
+                &cb_status, SR_SUBSCR_DEFAULT, &sub_session[i].subscription_ld);
+        assert_int_equal(rc, SR_ERR_OK);
+    }
+
+    /* subscribe for link removal in every session */
+    for (i = 0; i < CL_TEST_EN_NUM_SESSIONS; ++i) {
+        rc = sr_event_notif_subscribe_tree(sub_session[i].session, "/test-module:link-removed",
+                test_event_notif_link_removed_tree_cb,
+                &cb_status, SR_SUBSCR_DEFAULT, &sub_session[i].subscription_lr);
+        assert_int_equal(rc, SR_ERR_OK);
+    }
+
+    /* subscribe for nonexistent notification in every session */
+    for (i = 0; i < CL_TEST_EN_NUM_SESSIONS; ++i) {
+        rc = sr_event_notif_subscribe_tree(sub_session[i].session, "/test-module:link-overutilized",
+                test_event_notif_link_overutilized_tree_cb,
+                &cb_status, SR_SUBSCR_DEFAULT, &sub_session[i].subscription_lo);
+        assert_int_equal(rc, SR_ERR_OK); /**< not verified at this stage */
+    }
+
+    /* send event notification - link discovery */
+    tree_cnt = 2;
+    trees = calloc(tree_cnt, sizeof(*trees));
+    /* - source */
+    tree = trees;
+    tree->name = strdup("source");
+    tree->type = SR_CONTAINER_T;
+    tree->children_cnt = 2;
+    tree->children = calloc(tree->children_cnt, sizeof(*tree->children));
+    tree = trees[0].children;
+    tree->name = strdup("address");
+    tree->type = SR_STRING_T;
+    tree->data.string_val = strdup("10.10.1.5");
+    tree = trees[0].children + 1;
+    tree->name = strdup("interface");
+    tree->type = SR_STRING_T;
+    tree->data.string_val = strdup("eth1");
+    /* - destination */
+    tree = trees + 1;
+    tree->name = strdup("destination");
+    tree->type = SR_CONTAINER_T;
+    tree->children_cnt = 2;
+    tree->children = calloc(tree->children_cnt, sizeof(*tree->children));
+    tree = trees[1].children;
+    tree->name = strdup("address");
+    tree->type = SR_STRING_T;
+    tree->data.string_val = strdup("10.10.1.8");
+    tree = trees[1].children + 1;
+    tree->name = strdup("interface");
+    tree->type = SR_STRING_T;
+    tree->data.string_val = strdup("eth0");
+
+    rc = sr_event_notif_send_tree(notif_session, "/test-module:link-discovered", trees, tree_cnt);
+    assert_int_equal(rc, SR_ERR_OK);
+    sr_free_trees(trees, tree_cnt);
+
+    /* send event notification - link removal */
+    tree_cnt = 2;
+    trees = calloc(tree_cnt, sizeof(*trees));
+    /* - source */
+    tree = trees;
+    tree->name = strdup("source");
+    tree->type = SR_CONTAINER_T;
+    tree->children_cnt = 2;
+    tree->children = calloc(tree->children_cnt, sizeof(*tree->children));
+    tree = trees[0].children;
+    tree->name = strdup("address");
+    tree->type = SR_STRING_T;
+    tree->data.string_val = strdup("10.10.2.4");
+    tree = trees[0].children + 1;
+    tree->name = strdup("interface");
+    tree->type = SR_STRING_T;
+    tree->data.string_val = strdup("eth0");
+    /* - destination */
+    tree = trees + 1;
+    tree->name = strdup("destination");
+    tree->type = SR_CONTAINER_T;
+    tree->children_cnt = 2;
+    tree->children = calloc(tree->children_cnt, sizeof(*tree->children));
+    tree = trees[1].children;
+    tree->name = strdup("address");
+    tree->type = SR_STRING_T;
+    tree->data.string_val = strdup("10.10.2.5");
+    tree = trees[1].children + 1;
+    tree->name = strdup("interface");
+    tree->type = SR_STRING_T;
+    tree->data.string_val = strdup("eth2");
+
+    rc = sr_event_notif_send_tree(notif_session, "/test-module:link-removed", trees, tree_cnt);
+    assert_int_equal(rc, SR_ERR_OK);
+    sr_free_trees(trees, tree_cnt);
+
+    /* send event notification - link overutilized (not defined in yang) */
+    tree_cnt = 2;
+    trees = calloc(tree_cnt, sizeof(*trees));
+    /* - source */
+    tree = trees;
+    tree->name = strdup("source");
+    tree->type = SR_CONTAINER_T;
+    tree->children_cnt = 2;
+    tree->children = calloc(tree->children_cnt, sizeof(*tree->children));
+    tree = trees[0].children;
+    tree->name = strdup("address");
+    tree->type = SR_STRING_T;
+    tree->data.string_val = strdup("10.10.1.5");
+    tree = trees[0].children + 1;
+    tree->name = strdup("interface");
+    tree->type = SR_STRING_T;
+    tree->data.string_val = strdup("eth1");
+    /* - destination */
+    tree = trees + 1;
+    tree->name = strdup("destination");
+    tree->type = SR_CONTAINER_T;
+    tree->children_cnt = 2;
+    tree->children = calloc(tree->children_cnt, sizeof(*tree->children));
+    tree = trees[1].children;
+    tree->name = strdup("address");
+    tree->type = SR_STRING_T;
+    tree->data.string_val = strdup("10.10.1.8");
+    tree = trees[1].children + 1;
+    tree->name = strdup("interface");
+    tree->type = SR_STRING_T;
+    tree->data.string_val = strdup("eth0");
+
+    rc = sr_event_notif_send_tree(notif_session, "/test-module:link-overutilized", trees, tree_cnt);
+    assert_int_equal(rc, SR_ERR_VALIDATION_FAILED);
+    sr_free_trees(trees, tree_cnt);
+
+    /* wait at most 5 seconds for all callbacks to get called */
+    struct timespec ts;
+    sr_clock_get_time(CLOCK_REALTIME, &ts);
+    ts.tv_sec += 5;
+    while (ETIMEDOUT != pthread_cond_timedwait(&cb_status.cond, &cb_status.mutex, &ts)
+            && (cb_status.link_removed < CL_TEST_EN_NUM_SESSIONS || cb_status.link_discovered < CL_TEST_EN_NUM_SESSIONS));
+    assert_int_equal(CL_TEST_EN_NUM_SESSIONS, cb_status.link_discovered);
+    assert_int_equal(CL_TEST_EN_NUM_SESSIONS, cb_status.link_removed);
+    assert_int_equal(0, pthread_mutex_unlock(&cb_status.mutex));
+
+    /* unsubscribe */
+    for (i = 0; i < CL_TEST_EN_NUM_SESSIONS; ++i) {
+        rc = sr_unsubscribe(NULL, sub_session[i].subscription_ld);
+        assert_int_equal(rc, SR_ERR_OK);
+        rc = sr_unsubscribe(NULL, sub_session[i].subscription_lr);
+        assert_int_equal(rc, SR_ERR_OK);
+        rc = sr_unsubscribe(NULL, sub_session[i].subscription_lo);
+        assert_int_equal(rc, SR_ERR_OK);
+    }
+
+    /* stop sessions */
+    rc = sr_session_stop(notif_session);
+    assert_int_equal(rc, SR_ERR_OK);
+    for (i = 0; i < CL_TEST_EN_NUM_SESSIONS; ++i) {
+        rc = sr_session_stop(sub_session[i].session);
+        assert_int_equal(rc, SR_ERR_OK);
+    }
+
+    /* cleanup */
+    assert_int_equal(0, pthread_mutex_destroy(&cb_status.mutex));
+    assert_int_equal(0, pthread_cond_destroy(&cb_status.cond));
+}
 int
 main()
 {
@@ -2572,6 +2927,7 @@ main()
             cmocka_unit_test_setup_teardown(cl_dp_get_items_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_session_set_opts, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_event_notif_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_event_notif_tree_test, sysrepo_setup, sysrepo_teardown),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);

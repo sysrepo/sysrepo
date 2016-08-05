@@ -86,7 +86,7 @@ list_changes_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_eve
     pthread_mutex_lock(&ch->mutex);
     char *change_path = NULL;
     if (0 == strcmp("test-module", module_name)) {
-        change_path = "/test-module:ordered-numbers";
+        change_path = "/test-module:*";
     } else {
         change_path = "/example-module:container";
     }
@@ -412,6 +412,198 @@ cl_get_changes_moved_test(void **state)
     rc = sr_session_stop(session);
     assert_int_equal(rc, SR_ERR_OK);
 
+}
+
+static void
+create_list_with_non_def_leaf(sr_conn_ctx_t *conn)
+{
+    int rc = 0;
+    sr_session_ctx_t *session = NULL;
+
+    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    sr_val_t v = {0};
+    v.type = SR_INT8_T;
+    v.data.int8_val = 99;
+
+    rc = sr_set_item(session, "/test-module:with_def[name='key-one']/num", &v, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_commit(session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    sr_session_stop(session);
+}
+
+static void
+create_list_with_def_leaf(sr_conn_ctx_t *conn)
+{
+    int rc = 0;
+    sr_session_ctx_t *session = NULL;
+
+    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_set_item(session, "/test-module:with_def[name='key-one']", NULL, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_commit(session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    sr_session_stop(session);
+}
+
+static void
+cl_get_changes_deleted_default_test(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+    sr_session_ctx_t *session = NULL;
+    sr_subscription_ctx_t *subscription = NULL;
+    changes_t changes = {.mutex = PTHREAD_MUTEX_INITIALIZER, .cv = PTHREAD_COND_INITIALIZER, 0};
+    struct timespec ts;
+
+    sr_val_t *val = NULL;
+    const char *xpath = NULL;
+    int rc = SR_ERR_OK;
+    xpath = "/test-module:with_def[name='key-one']/num";
+
+    create_list_with_non_def_leaf(conn);
+
+    /* start session */
+    rc = sr_session_start(conn, SR_DS_CANDIDATE, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_module_change_subscribe(session, "test-module", list_changes_cb, &changes,
+            0, SR_SUBSCR_DEFAULT, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* check the list presence in candidate */
+    rc = sr_get_item(session, xpath, &val);
+    assert_int_equal(rc, SR_ERR_OK);
+    sr_free_val(val);
+
+    /* delete default node -> it gets default value */
+    rc = sr_delete_item(session, xpath, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* save changes to running */
+    pthread_mutex_lock(&changes.mutex);
+    rc = sr_commit(session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    sr_clock_get_time(CLOCK_REALTIME, &ts);
+    ts.tv_sec += COND_WAIT_SEC;
+    pthread_cond_timedwait(&changes.cv, &changes.mutex, &ts);
+
+    assert_int_equal(changes.cnt, 1);
+    assert_int_equal(changes.oper[0], SR_OP_MODIFIED);
+
+    assert_non_null(changes.new_values[0]);
+    assert_string_equal(xpath, changes.old_values[0]->xpath);
+
+    assert_non_null(changes.old_values[0]);
+    assert_string_equal(xpath, changes.old_values[0]->xpath);
+
+    assert_false(changes.old_values[0]->dflt);
+    assert_int_equal(SR_INT8_T, changes.old_values[0]->type);
+    assert_int_equal(99, changes.old_values[0]->data.int8_val);
+
+    assert_true(changes.new_values[0]->dflt);
+    assert_int_equal(SR_INT8_T, changes.new_values[0]->type);
+    assert_int_equal(0, changes.new_values[0]->data.int8_val);
+
+    for (size_t i = 0; i < changes.cnt; i++) {
+        sr_free_val(changes.new_values[i]);
+        sr_free_val(changes.old_values[i]);
+    }
+    pthread_mutex_unlock(&changes.mutex);
+
+    rc = sr_unsubscribe(NULL, subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_session_stop(session);
+    assert_int_equal(rc, SR_ERR_OK);
+}
+
+
+static void
+cl_get_changes_create_default_test(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+    sr_session_ctx_t *session = NULL;
+    sr_subscription_ctx_t *subscription = NULL;
+    changes_t changes = {.mutex = PTHREAD_MUTEX_INITIALIZER, .cv = PTHREAD_COND_INITIALIZER, 0};
+    struct timespec ts;
+
+    sr_val_t *val = NULL;
+    const char *xpath = NULL;
+    int rc = SR_ERR_OK;
+    xpath = "/test-module:with_def[name='key-one']/num";
+
+    create_list_with_def_leaf(conn);
+
+    /* start session */
+    rc = sr_session_start(conn, SR_DS_CANDIDATE, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_module_change_subscribe(session, "test-module", list_changes_cb, &changes,
+            0, SR_SUBSCR_DEFAULT, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* check the list presence in candidate */
+    rc = sr_get_item(session, xpath, &val);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_true(val->dflt);
+    sr_free_val(val);
+
+    sr_val_t v = {0};
+    v.type = SR_INT8_T;
+    v.data.int8_val = 99;
+
+    /* set value of default node -> it gets modified */
+    rc = sr_set_item(session, xpath, &v, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* save changes to running */
+    pthread_mutex_lock(&changes.mutex);
+    rc = sr_commit(session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    sr_clock_get_time(CLOCK_REALTIME, &ts);
+    ts.tv_sec += COND_WAIT_SEC;
+    pthread_cond_timedwait(&changes.cv, &changes.mutex, &ts);
+
+    assert_int_equal(changes.cnt, 1);
+    assert_int_equal(changes.oper[0], SR_OP_MODIFIED);
+
+    assert_non_null(changes.new_values[0]);
+    assert_string_equal(xpath, changes.old_values[0]->xpath);
+
+    assert_non_null(changes.old_values[0]);
+    assert_string_equal(xpath, changes.old_values[0]->xpath);
+
+    assert_true(changes.old_values[0]->dflt);
+    assert_int_equal(SR_INT8_T, changes.old_values[0]->type);
+    assert_int_equal(0, changes.old_values[0]->data.int8_val);
+
+    assert_false(changes.new_values[0]->dflt);
+    assert_int_equal(SR_INT8_T, changes.new_values[0]->type);
+    assert_int_equal(99, changes.new_values[0]->data.int8_val);
+
+    for (size_t i = 0; i < changes.cnt; i++) {
+        sr_free_val(changes.new_values[i]);
+        sr_free_val(changes.old_values[i]);
+    }
+    pthread_mutex_unlock(&changes.mutex);
+
+    rc = sr_unsubscribe(NULL, subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_session_stop(session);
+    assert_int_equal(rc, SR_ERR_OK);
 }
 
 typedef struct priority_s {
@@ -767,6 +959,8 @@ main()
         cmocka_unit_test_setup_teardown(cl_get_changes_modified_test, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_get_changes_deleted_test, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_get_changes_moved_test, sysrepo_setup, sysrepo_teardown),
+        cmocka_unit_test_setup_teardown(cl_get_changes_deleted_default_test, sysrepo_setup, sysrepo_teardown),
+        cmocka_unit_test_setup_teardown(cl_get_changes_create_default_test, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_notif_priority_test, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_whole_module_changes, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_invalid_xpath_test, sysrepo_setup, sysrepo_teardown),

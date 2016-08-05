@@ -897,7 +897,9 @@ cl_sm_event_notif_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *
     cl_sm_subscription_ctx_t *subscription = NULL;
     cl_sm_subscription_ctx_t subscription_lookup = { 0, };
     sr_val_t *values = NULL;
+    sr_node_t *trees = NULL;
     size_t values_cnt = 0;
+    size_t tree_cnt = 0;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG4(sm_ctx, msg, msg->request, msg->request->event_notif_req);
@@ -905,10 +907,15 @@ cl_sm_event_notif_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *
     SR_LOG_DBG("Received an event notification for subscription id=%"PRIu32".",
             msg->request->event_notif_req->subscription_id);
 
-    /* copy values from GPB */
-    rc = sr_values_gpb_to_sr(msg->request->event_notif_req->values, msg->request->event_notif_req->n_values,
-            &values, &values_cnt);
-    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by copying event notification values from GPB.");
+    /* copy input data from GPB */
+    if (msg->request->event_notif_req->n_values) {
+        rc = sr_values_gpb_to_sr(msg->request->event_notif_req->values, msg->request->event_notif_req->n_values,
+                &values, &values_cnt);
+    } else if (msg->request->event_notif_req->n_trees) {
+        rc = sr_trees_gpb_to_sr(msg->request->event_notif_req->trees, msg->request->event_notif_req->n_trees,
+                &trees, &tree_cnt);
+    }
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by copying event notification input data from GPB.");
 
     pthread_mutex_lock(&sm_ctx->subscriptions_lock);
 
@@ -924,15 +931,22 @@ cl_sm_event_notif_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *
 
     SR_LOG_DBG("Calling event notification callback for subscription id=%"PRIu32".", subscription->id);
 
-    subscription->callback.event_notif_cb(msg->request->event_notif_req->xpath, values, values_cnt,
-            subscription->private_ctx);
+    if (SR_API_VALUES == subscription->api_variant) {
+        subscription->callback.event_notif_cb(msg->request->event_notif_req->xpath, values, values_cnt,
+                subscription->private_ctx);
+    } else {
+        subscription->callback.event_notif_tree_cb(msg->request->event_notif_req->xpath, trees, tree_cnt,
+                subscription->private_ctx);
+    }
 
     pthread_mutex_unlock(&sm_ctx->subscriptions_lock);
 
 cleanup:
     sr_free_values(values, values_cnt);
+    sr_free_trees(trees, tree_cnt);
     return rc;
 }
+
 /**
  * @brief Processes a message received on the connection.
  */

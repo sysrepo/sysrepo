@@ -1818,6 +1818,7 @@ dm_list_schemas(dm_ctx_t *dm_ctx, dm_session_t *dm_session, sr_schema_t **schema
     int rc = SR_ERR_OK;
     md_module_t *module = NULL;
     sr_llist_node_t *module_ll_node = NULL;
+    size_t i = 0;
 
     sr_schema_t *sch = NULL;
     size_t sch_count = 0;
@@ -1834,9 +1835,8 @@ dm_list_schemas(dm_ctx_t *dm_ctx, dm_session_t *dm_session, sr_schema_t **schema
     }
 
     sch = calloc(sch_count, sizeof(*sch));
-    CHECK_NULL_NOMEM_RETURN(sch);
+    CHECK_NULL_NOMEM_GOTO(sch, rc, cleanup);
 
-    size_t i = 0;
     module_ll_node = dm_ctx->md_ctx->modules->first;
     while (module_ll_node) {
         module = (md_module_t *) module_ll_node->data;
@@ -1852,14 +1852,14 @@ dm_list_schemas(dm_ctx_t *dm_ctx, dm_session_t *dm_session, sr_schema_t **schema
         i++;
     }
 
-    md_ctx_unlock(dm_ctx->md_ctx);
-    *schemas = sch;
-    *schema_count = sch_count;
-
-    return rc;
-
 cleanup:
-    sr_free_schemas(sch, i);
+    md_ctx_unlock(dm_ctx->md_ctx);
+    if (SR_ERR_OK == rc) {
+        *schemas = sch;
+        *schema_count = sch_count;
+    } else {
+        sr_free_schemas(sch, i);
+    }
     return rc;
 }
 
@@ -1880,8 +1880,6 @@ dm_get_schema(dm_ctx_t *dm_ctx, const char *module_name, const char *module_revi
 
     md_ctx_lock(dm_ctx->md_ctx, false);
     rc = md_get_module_info(dm_ctx->md_ctx, module_name, module_revision, &md_module);
-
-    CHECK_RC_LOG_RETURN(rc, "Module %s in revision %s not found", module_name, module_revision);
 
     if (NULL != md_module && !md_module->latest_revision) {
         /* find a module in latest revision that includes the requested module
@@ -2803,9 +2801,8 @@ dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t *c
             continue;
         }
 
-        lyd_wd_cleanup(&prev_info->node, 0);
-        struct lyd_difflist *diff = lyd_diff(prev_info->node, commit_info->node, 0);
         lyd_wd_add(commit_info->schema->ly_ctx, &commit_info->node, LYD_WD_IMPL_TAG);
+        struct lyd_difflist *diff = lyd_diff(prev_info->node, commit_info->node, 0);
         if (NULL == diff) {
             SR_LOG_ERR("Lyd diff failed for module %s", info->schema->module->name);
             continue;
@@ -3533,15 +3530,15 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
         data_tree = lyd_new_path(NULL, schema_info->ly_ctx, xpath, NULL, 0);
         if (NULL == data_tree) {
             SR_LOG_ERR("%s xpath validation failed ('%s'): %s", procedure_name, xpath, ly_errmsg());
-            rc = dm_report_error(session, ly_errmsg(), xpath, SR_ERR_BAD_ELEMENT);
+            rc = dm_report_error(session, ly_errmsg(), xpath, SR_ERR_VALIDATION_FAILED);
         }
 
         for (size_t i = 0; i < arg_cnt; i++) {
             /* get schema node */
             sch_node = ly_ctx_get_node2(schema_info->ly_ctx, NULL, args[i].xpath, (input ? 0 : 1));
             if (NULL == sch_node) {
-                SR_LOG_ERR("%s argument xpath validation failed('%s'): %s", procedure_name, args[i].xpath, ly_errmsg());
-                rc = dm_report_error(session, ly_errmsg(), args[i].xpath, SR_ERR_BAD_ELEMENT);
+                SR_LOG_ERR("%s argument xpath validation failed( '%s'): %s", procedure_name, args[i].xpath, ly_errmsg());
+                rc = dm_report_error(session, ly_errmsg(), args[i].xpath, SR_ERR_VALIDATION_FAILED);
                 break;
             }
             /* copy argument value to string */
@@ -3549,6 +3546,7 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
             if ((SR_CONTAINER_T != args[i].type) && (SR_LIST_T != args[i].type)) {
                 rc = sr_val_to_str(&args[i], sch_node, &string_value);
                 if (SR_ERR_OK != rc) {
+                    rc = SR_ERR_VALIDATION_FAILED;
                     SR_LOG_ERR("Unable to convert %s argument value to string.", procedure_name);
                     break;
                 }
@@ -3567,7 +3565,8 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
             snprintf(root_xpath, PATH_MAX, "%s/%s", xpath, args_tree[i].name);
             rc = sr_tree_to_dt(schema_info->ly_ctx, args_tree + i, root_xpath, !input, &data_tree);
             if (SR_ERR_OK != rc) {
-                SR_LOG_ERR("Unable to convert %s argument value to string.", procedure_name);
+                rc = SR_ERR_VALIDATION_FAILED;
+                SR_LOG_ERR("Unable to convert sysrepo tree into a libyang tree ('%s').", root_xpath);
                 break;
             }
         }
@@ -3673,6 +3672,13 @@ dm_validate_event_notif(dm_ctx_t *dm_ctx, dm_session_t *session, const char *eve
 {
     return dm_validate_procedure(dm_ctx, session, DM_PROCEDURE_EVENT_NOTIF, event_notif_xpath, SR_API_VALUES,
             (void **)values, values_cnt, true);
+}
+
+int
+dm_validate_event_notif_tree(dm_ctx_t *dm_ctx, dm_session_t *session, const char *event_notif_xpath, sr_node_t **trees, size_t *tree_cnt)
+{
+    return dm_validate_procedure(dm_ctx, session, DM_PROCEDURE_EVENT_NOTIF, event_notif_xpath, SR_API_TREES,
+            (void **)trees, tree_cnt, true);
 }
 
 struct lyd_node *

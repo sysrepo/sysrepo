@@ -464,7 +464,7 @@ dm_rpc_test(void **state)
 
     /* non-existing RPC */
     rc = dm_validate_rpc(ctx, session, "/test-module:non-existing-rpc", &input, &input_cnt, true);
-    assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
+    assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
 
     /* RPC input */
     input_cnt = 1;
@@ -481,7 +481,7 @@ dm_rpc_test(void **state)
     free(input[0].xpath);
     input[0].xpath = strdup("/test-module:activate-software-image/non-existing-input");
     rc = dm_validate_rpc(ctx, session, "/test-module:activate-software-image", &input, &input_cnt, true);
-    assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
+    assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
 
     /* RPC output */
     output_cnt = 2;
@@ -501,7 +501,7 @@ dm_rpc_test(void **state)
     free(output[1].xpath);
     output[1].xpath = strdup("/test-module:activate-software-image/non-existing-output");
     rc = dm_validate_rpc(ctx, session, "/test-module:activate-software-image", &output, &output_cnt, false);
-    assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
+    assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
 
     sr_free_values(input, input_cnt);
     sr_free_values(output, output_cnt);
@@ -570,7 +570,7 @@ dm_event_notif_test(void **state)
 
     /* non-existing event notification */
     rc = dm_validate_event_notif(ctx, session, "/test-module:non-existing-event-notif", &values, &values_cnt);
-    assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
+    assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
 
     /* valid event notification */
     values_cnt = 6;
@@ -606,7 +606,7 @@ dm_event_notif_test(void **state)
     free(values[6].xpath);
     values[6].xpath = strdup("/test-module:link-removed/non-existing-node");
     rc = dm_validate_event_notif(ctx, session, "/test-module:link-removed", &values, &values_cnt);
-    assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
+    assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
 
     sr_free_values(values, values_cnt);
 
