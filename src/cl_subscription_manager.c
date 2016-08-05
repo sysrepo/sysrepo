@@ -286,7 +286,7 @@ cl_sm_connection_cleanup(void *connection_p)
 
         /* stop monitoring client file descriptor */
         if (conn->sm_ctx->local_fd_watcher) {
-            cl_sm_fd_changeset_add(conn->sm_ctx, conn->fd, (SR_FD_INPUT_READY & SR_FD_OUTPUT_READY), SR_FD_STOP_WATCHING);
+            cl_sm_fd_changeset_add(conn->sm_ctx, conn->fd, (SR_FD_INPUT_READY | SR_FD_OUTPUT_READY), SR_FD_STOP_WATCHING);
         } else {
             if (NULL != conn->read_watcher.data) {
                 ev_io_stop(conn->sm_ctx->event_loop, &conn->read_watcher);
@@ -1271,7 +1271,7 @@ cl_sm_server_cleanup(cl_sm_ctx_t *sm_ctx, cl_sm_server_ctx_t *server_ctx)
     if (NULL != server_ctx) {
         /* stop monitoring the server socket */
         if (sm_ctx->local_fd_watcher) {
-            cl_sm_fd_changeset_add(sm_ctx, server_ctx->listen_socket_fd, (SR_FD_INPUT_READY & SR_FD_OUTPUT_READY),
+            cl_sm_fd_changeset_add(sm_ctx, server_ctx->listen_socket_fd, (SR_FD_INPUT_READY | SR_FD_OUTPUT_READY),
                     SR_FD_STOP_WATCHING);
         } else {
             if (NULL != server_ctx->server_watcher.data) {
@@ -1776,7 +1776,7 @@ cl_sm_fd_event_process(cl_sm_ctx_t *sm_ctx, int fd, sr_fd_event_t event,
     cl_sm_server_ctx_t *server_ctx = NULL;
     cl_sm_conn_ctx_t tmp_conn = { 0, };
     cl_sm_conn_ctx_t *conn = NULL;
-    int rc = SR_ERR_OK;
+    int ret = 0, rc = SR_ERR_OK;
 
     CHECK_NULL_ARG3(sm_ctx, fd_change_set, fd_change_set_cnt);
 
@@ -1784,7 +1784,10 @@ cl_sm_fd_event_process(cl_sm_ctx_t *sm_ctx, int fd, sr_fd_event_t event,
         /* set of file descriptors used for watching needs to be modified */
         rc = cl_sm_get_fd_change_set(sm_ctx, fd_change_set, fd_change_set_cnt);
         SR_LOG_DBG("Change in the FD set for watching: %zu changes.", *fd_change_set_cnt);
-        read(fd, buf, sizeof(buf)); /* we do not care about the data, just read it */
+        ret = read(fd, buf, sizeof(buf)); /* we do not care about the data, just read it */
+        if (-1 == ret) {
+            SR_LOG_WRN("Error by reading from fd notify pipe: %s", sr_strerror_safe(errno));
+        }
     } else {
         if (SR_FD_INPUT_READY == event) {
             /* the file descriptor is readable */
