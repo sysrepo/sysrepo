@@ -1246,7 +1246,7 @@ cm_subscr_conn_create(cm_ctx_t *cm_ctx, const char *socket_path, sm_connection_t
             rc = SR_ERR_DISCONNECT;
             goto cleanup;
         } else {
-            SR_LOG_ERR("Unable to connect to subscriber socket=%s: %s", socket_path, sr_strerror_safe(errno));
+            SR_LOG_WRN("Unable to connect to subscriber socket=%s: %s", socket_path, sr_strerror_safe(errno));
             rc = SR_ERR_DISCONNECT;
             goto cleanup;
         }
