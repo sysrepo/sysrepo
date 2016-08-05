@@ -1378,8 +1378,8 @@ int sr_event_notif_send(sr_session_ctx_t *session, const char *xpath, const sr_v
  * @brief Event that has occurred on a monitored file descriptor.
  */
 typedef enum sr_fd_event_e {
-    SR_FD_INPUT_READY,   /**< File descriptor is now readable without blocking. */
-    SR_FD_OUTPUT_READY,  /**< File descriptor is now writable without blocking. */
+    SR_FD_INPUT_READY = 1,   /**< File descriptor is now readable without blocking. */
+    SR_FD_OUTPUT_READY = 2,  /**< File descriptor is now writable without blocking. */
 } sr_fd_event_t;
 
 /**

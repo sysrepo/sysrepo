@@ -236,12 +236,14 @@ event_loop()
                 rc = sr_fd_event_process(poll_fd_set[i].fd, SR_FD_INPUT_READY, &fd_change_set, &fd_change_set_cnt);
                 fd_change_set_process(fd_change_set, fd_change_set_cnt);
                 free(fd_change_set);
+                fd_change_set = NULL;
                 fd_change_set_cnt = 0;
             }
             if (poll_fd_set[i].revents & POLLOUT) {
                 rc = sr_fd_event_process(poll_fd_set[i].fd, SR_FD_OUTPUT_READY, &fd_change_set, &fd_change_set_cnt);
                 fd_change_set_process(fd_change_set, fd_change_set_cnt);
                 free(fd_change_set);
+                fd_change_set = NULL;
                 fd_change_set_cnt = 0;
             }
             if (SR_ERR_OK != rc) {
