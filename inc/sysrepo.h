@@ -161,12 +161,6 @@ typedef struct sr_node_s {
     /** Name of the node. */
     char *name;
 
-    /**
-     * Name of the module that defines scheme of this node.
-     * If it is NULL, the module name is inherited from the parent node.
-     */
-    char *module_name;
-
     /** Type of an element. */
     sr_type_t type;
 
@@ -175,6 +169,12 @@ typedef struct sr_node_s {
 
     /** Data of an element (if applicable), properly set according to the type. */
     sr_data_t data;
+
+    /**
+     * Name of the module that defines scheme of this node.
+     * If it is NULL, the module name is inherited from the parent node.
+     */
+    char *module_name;
 
     /** Array of node's direct descendants. */
     struct sr_node_s *children;
