@@ -993,6 +993,30 @@ sr_val_to_str(const sr_val_t *value, const struct lys_node *schema_node, char **
     return SR_ERR_OK;
 }
 
+char *
+sr_api_variant_to_str(sr_api_variant_t api_variant)
+{
+    switch (api_variant) {
+        case SR_API_VALUES:
+            return "values";
+        case SR_API_TREES:
+            return "trees";
+        default:
+            return "values";
+    }
+}
+
+sr_api_variant_t
+sr_api_variant_from_str(const char *api_variant_str)
+{
+    if (0 == strcmp("trees", api_variant_str)) {
+        return SR_API_TREES;
+    }
+
+    /* SR_API_VALUES is default */
+    return SR_API_VALUES;
+}
+
 /**
  * @brief Copy and convert content of a libyang node and its descendands into a sysrepo tree.
  *

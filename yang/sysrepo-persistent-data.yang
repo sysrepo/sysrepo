@@ -146,6 +146,18 @@ module sysrepo-persistent-data {
           description "If present, the subscription enables specified subtree in
             the running datastore.";
         }
+
+        leaf api-variant {
+          when "../type = 'rpc' or ../type = 'event-notification'";
+          type enumeration {
+            enum "values" {
+              value 1;
+            }
+            enum "trees" {
+              value 2;
+            }
+          }
+        }
       }
     }
   }

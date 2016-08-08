@@ -375,7 +375,7 @@ np_cleanup(np_ctx_t *np_ctx)
 int
 np_notification_subscribe(np_ctx_t *np_ctx, const rp_session_t *rp_session, Sr__SubscriptionType type,
         const char *dst_address, uint32_t dst_id, const char *module_name, const char *xpath,
-        Sr__NotificationEvent notif_event, uint32_t priority, const np_subscr_options_t opts)
+        Sr__NotificationEvent notif_event, uint32_t priority, sr_api_variant_t api_variant, const np_subscr_options_t opts)
 {
     np_subscription_t *subscription = NULL;
     np_subscription_t **subscriptions_tmp = NULL;
@@ -406,6 +406,7 @@ np_notification_subscribe(np_ctx_t *np_ctx, const rp_session_t *rp_session, Sr__
     subscription->notif_event = notif_event;
     subscription->priority = priority;
     subscription->enable_running = (opts & NP_SUBSCR_ENABLE_RUNNING);
+    subscription->api_variant = api_variant;
 
     /* save the new subscription */
     if ((SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS == type) ||

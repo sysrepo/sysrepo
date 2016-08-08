@@ -91,6 +91,14 @@ message Error {
   optional string xpath = 2;
 }
 
+/**
+ * @brief Variant of the API. Currently only values (sr_val_t) vs. trees (sr_node_t).
+ */
+enum ApiVariant {
+  VALUES = 1;
+  TREES = 2;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // Connection / Session Management
 ////////////////////////////////////////////////////////////////////////////////
@@ -521,6 +529,8 @@ message SubscribeReq {
   optional NotificationEvent notif_event = 10;
   optional uint32 priority = 11;
   optional bool enable_running = 12;
+
+  required ApiVariant api_variant = 20;
 }
 
 message SubscribeResp {
@@ -638,8 +648,9 @@ message DataProvideResp {
 
 message RPCReq {
   required string xpath = 1;
-  repeated Value input = 2;
-  repeated Node input_tree = 3;
+  required ApiVariant orig_api_variant = 2; /**< which API variant was used to send RPC req. */
+  repeated Value input = 3;
+  repeated Node input_tree = 4;
 
   optional string subscriber_address = 10;
   optional uint32 subscription_id = 11;
@@ -647,8 +658,9 @@ message RPCReq {
 
 message RPCResp {
   required string xpath = 1;
-  repeated Value output = 2;
-  repeated Node output_tree = 3;
+  required ApiVariant orig_api_variant = 2; /**< which API variant was used to send RPC req. */
+  repeated Value output = 3;
+  repeated Node output_tree = 4;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
