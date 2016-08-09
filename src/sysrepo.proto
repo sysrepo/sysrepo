@@ -203,20 +203,20 @@ message SessionSetOptsResp {
 ////////////////////////////////////////////////////////////////////////////////
 
 /**
- * @brief TODO Fix naming
+ * @brief Schema revision details.
  */
-message Schema_rev {
+message SchemaRevision {
   optional string revision = 1;         /**< Latest revision date of the module. */
   optional string file_path_yang = 2;   /**< Absolute path to file where the schema is stored (YANG format). */
   optional string file_path_yin  = 3;   /**< Absolute path to file where the schema is stored (.yin format). */
 }
 
 /**
- * @brief TODO Fix naming
+ * @brief Schema submodule information.
  */
-message Schema_submodule {
-  required string submodule_name = 1;   /**< Submodule name */
-  required Schema_rev revision = 2;     /**< Revision of the submodule */
+message SchemaSubmodule {
+  required string submodule_name = 1;       /**< Submodule name */
+  required SchemaRevision revision = 2;     /**< Revision of the submodule */
 }
 /**
  * @brief Information about a schema installed in sysrepo datastore.
@@ -226,10 +226,10 @@ message Schema {
   required string ns = 2;                    /**< Namespace of the module. */
   required string prefix = 3;                /**< Prefix of he module. */
 
-  required Schema_rev revision = 4;          /**< Revision of the module*/
-  repeated Schema_submodule submodules = 5;  /**< Submodules */
+  required SchemaRevision revision = 4;      /**< Revision of the module*/
+  repeated SchemaSubmodule submodules = 5;   /**< Submodules */
 
-  repeated string enabled_features = 6;       /**< Features enabled for the module */
+  repeated string enabled_features = 6;      /**< Features enabled for the module */
 }
 
 /**
