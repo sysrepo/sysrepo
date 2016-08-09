@@ -1507,6 +1507,7 @@ dm_has_not_enabled_nodes(dm_data_info_t *info, bool *res)
                     }
                 }
             } else {
+                SR_LOG_DBG("Found not enabled node %s in module %s", iter->schema->name, iter->schema->module->name);
                 *res = true;
                 goto cleanup;
             }
@@ -1528,6 +1529,7 @@ dm_has_not_enabled_nodes(dm_data_info_t *info, bool *res)
                 }
             }
         } else {
+            SR_LOG_DBG("Found not enabled node %s in module %s", iter->schema->name, iter->schema->module->name);
             *res = true;
             goto cleanup;
         }
@@ -1701,7 +1703,7 @@ dm_list_rev_file(dm_ctx_t *dm_ctx, const char *module_name, const char *rev_date
     CHECK_NULL_ARG3(dm_ctx, module_name, rev);
     int rc = SR_ERR_OK;
 
-    if (NULL != rev_date) {
+    if (NULL != rev_date && 0 != strcmp("", rev_date)) {
         rev->revision = strdup(rev_date);
         CHECK_NULL_NOMEM_GOTO(rev->revision, rc, cleanup);
     }
