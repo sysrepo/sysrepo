@@ -1507,6 +1507,7 @@ dm_has_not_enabled_nodes(dm_data_info_t *info, bool *res)
                     }
                 }
             } else {
+                SR_LOG_DBG("Found not enabled node %s in module %s", iter->schema->name, iter->schema->module->name);
                 *res = true;
                 goto cleanup;
             }
@@ -1528,6 +1529,7 @@ dm_has_not_enabled_nodes(dm_data_info_t *info, bool *res)
                 }
             }
         } else {
+            SR_LOG_DBG("Found not enabled node %s in module %s", iter->schema->name, iter->schema->module->name);
             *res = true;
             goto cleanup;
         }
