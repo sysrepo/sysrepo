@@ -203,7 +203,7 @@ message SessionSetOptsResp {
 ////////////////////////////////////////////////////////////////////////////////
 
 /**
- * @brief TODO
+ * @brief TODO Fix naming
  */
 message Schema_rev {
   optional string revision = 1;         /**< Latest revision date of the module. */
@@ -212,7 +212,7 @@ message Schema_rev {
 }
 
 /**
- * @brief TODO
+ * @brief TODO Fix naming
  */
 message Schema_submodule {
   required string submodule_name = 1;   /**< Submodule name */
