@@ -71,6 +71,11 @@ typedef struct sr_conn_ctx_s sr_conn_ctx_t;
 typedef struct sr_session_ctx_s sr_session_ctx_t;
 
 /**
+ * @brief Memory context used for efficient memory management for values, trees and GPB messages.
+ */
+typedef struct sr_mem_ctx_s sr_mem_ctx_t;
+
+/**
  * @brief Possible types of an data element stored in the sysrepo datastore.
  */
 typedef enum sr_type_e {
@@ -127,6 +132,11 @@ typedef union sr_data_u {
  */
 typedef struct sr_val_s {
     /**
+     * Memory context used by this value.
+     */
+    sr_mem_ctx_t *sr_mem;
+
+    /**
      * XPath identifier of the data element, as defined in
      * @ref xp_page "XPath Addressing" documentation or at
      * https://tools.ietf.org/html/draft-ietf-netmod-yang-json#section-6.11
@@ -156,6 +166,11 @@ typedef struct sr_val_s {
  * than to an actual xpath.
  */
 typedef struct sr_node_s {
+    /**
+     * Memory context used by this node.
+     */
+    sr_mem_ctx_t *sr_mem;
+
     /**
      * Name of the node.
      */

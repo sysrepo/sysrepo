@@ -30,6 +30,7 @@ set (COMMON_SOURCES
     ${COMMON_DIR}/sr_data_structs.c
     ${COMMON_DIR}/sr_logger.c
     ${COMMON_DIR}/sr_protobuf.c
+    ${COMMON_DIR}/sr_experimental.c
 )
 
 # client library sources
