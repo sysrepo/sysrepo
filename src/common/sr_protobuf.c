@@ -1823,7 +1823,7 @@ sr_schemas_sr_to_gpb(const sr_schema_t *sr_schemas, const size_t schema_cnt, Sr_
         schemas[i]->revision = calloc(1, sizeof (*schemas[i]->revision));
         CHECK_NULL_NOMEM_GOTO(schemas[i]->revision, rc, cleanup);
 
-        sr__schema_rev__init(schemas[i]->revision);
+        sr__schema_revision__init(schemas[i]->revision);
         if (NULL != sr_schemas[i].revision.revision) {
             schemas[i]->revision->revision = strdup(sr_schemas[i].revision.revision);
             CHECK_NULL_NOMEM_GOTO(schemas[i]->revision->revision, rc, cleanup);
@@ -1862,7 +1862,7 @@ sr_schemas_sr_to_gpb(const sr_schema_t *sr_schemas, const size_t schema_cnt, Sr_
 
             schemas[i]->submodules[s]->revision = calloc(1, sizeof (*schemas[i]->submodules[s]->revision));
             CHECK_NULL_NOMEM_GOTO(schemas[i]->submodules[s]->revision, rc, cleanup);
-            sr__schema_rev__init(schemas[i]->submodules[s]->revision);
+            sr__schema_revision__init(schemas[i]->submodules[s]->revision);
             if (NULL != sr_schemas[i].submodules[s].revision.revision) {
                 schemas[i]->submodules[s]->revision->revision = strdup(sr_schemas[i].submodules[s].revision.revision);
                 CHECK_NULL_NOMEM_GOTO(schemas[i]->submodules[s]->revision->revision, rc, cleanup);
