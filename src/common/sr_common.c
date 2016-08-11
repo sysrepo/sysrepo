@@ -67,8 +67,14 @@ void
 sr_free_val(sr_val_t *value)
 {
     if (NULL != value) {
-        sr_free_val_content(value);
-        free(value);
+        if (NULL != value->sr_mem) {
+            if (0 == --value->sr_mem->ucount) {
+                sr_mem_free(value->sr_mem);
+            }
+        } else {
+            sr_free_val_content(value);
+            free(value);
+        }
     }
 }
 
@@ -76,10 +82,16 @@ void
 sr_free_values(sr_val_t *values, size_t count)
 {
     if (NULL != values) {
-        for (size_t i = 0; i < count; i++) {
-            sr_free_val_content(&values[i]);
+        if (values[0].sr_mem) {
+            if (0 == --values[0].sr_mem->ucount) {
+                sr_mem_free(values[0].sr_mem);
+            }
+        } else {
+            for (size_t i = 0; i < count; i++) {
+                sr_free_val_content(&values[i]);
+            }
+            free(values);
         }
-        free(values);
     }
 }
 

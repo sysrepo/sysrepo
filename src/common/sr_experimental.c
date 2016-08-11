@@ -35,8 +35,6 @@
 int
 sr_mem_new(size_t min_size, sr_mem_ctx_t **sr_mem_p)
 {
-    assert(0); // do not enable in this commit
-
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG(sr_mem_p);

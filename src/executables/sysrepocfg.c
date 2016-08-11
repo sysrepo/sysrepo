@@ -407,7 +407,7 @@ srcfg_convert_lydiff_created(struct lyd_node *node)
     int rc = SR_ERR_INTERNAL;
     struct lyd_node *elem = node;
     bool process_children = true;
-    sr_val_t value = { 0, SR_UNKNOWN_T };
+    sr_val_t value = { 0, 0, SR_UNKNOWN_T };
     struct lyd_node_leaf_list *data_leaf = NULL;
     struct lys_node_list *slist = NULL;
     char *xpath = NULL, *delim = NULL;
@@ -427,6 +427,7 @@ srcfg_convert_lydiff_created(struct lyd_node *node)
         free(xpath);
         xpath = value.xpath = NULL;
         value.type = SR_UNKNOWN_T;
+        value.data.uint64_val = 0;
         switch (elem->schema->nodetype) {
             case LYS_LEAF: /* e.g.: /test-module:user[name='nameE']/name */
                 /* get value */

@@ -465,7 +465,7 @@ dm_rpc_test(void **state)
 
     /* non-existing RPC */
     rc = dm_validate_rpc(ctx, session, "/test-module:non-existing-rpc", input, input_cnt, true,
-            &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
+            NULL, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
     assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
     assert_null(with_def);
     assert_null(with_def_tree);
@@ -478,7 +478,7 @@ dm_rpc_test(void **state)
     input[0].data.string_val = strdup("acmefw-2.3");
 
     rc = dm_validate_rpc(ctx, session, "/test-module:activate-software-image", input, input_cnt, true,
-            &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
+            NULL, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(2, with_def_cnt); /* including default leaf */
     assert_int_equal(2, with_def_tree_cnt);
@@ -489,7 +489,7 @@ dm_rpc_test(void **state)
     free(input[0].xpath);
     input[0].xpath = strdup("/test-module:activate-software-image/non-existing-input");
     rc = dm_validate_rpc(ctx, session, "/test-module:activate-software-image", input, input_cnt, true,
-            &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
+            NULL, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
     assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
 
     /* RPC output */
@@ -503,7 +503,7 @@ dm_rpc_test(void **state)
     output[1].data.string_val = strdup("2.3");
 
     rc = dm_validate_rpc(ctx, session, "/test-module:activate-software-image", output, output_cnt, false,
-            &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
+            NULL, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(3, with_def_cnt); /* including default leaf */
     assert_int_equal(3, with_def_tree_cnt);
@@ -514,7 +514,7 @@ dm_rpc_test(void **state)
     free(output[1].xpath);
     output[1].xpath = strdup("/test-module:activate-software-image/non-existing-output");
     rc = dm_validate_rpc(ctx, session, "/test-module:activate-software-image", output, output_cnt, false,
-            &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
+            NULL, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
     assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
 
     sr_free_values(input, input_cnt);

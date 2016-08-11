@@ -46,7 +46,7 @@ rp_dt_get_value_from_node(struct lyd_node *node, sr_val_t *val)
     struct lyd_node_leaf_list *data_leaf = NULL;
     struct lys_node_container *sch_cont = NULL;
 
-    rc = rp_dt_create_xpath_for_node(node, &xpath);
+    rc = rp_dt_create_xpath_for_node(val->sr_mem, node, &xpath);
     CHECK_RC_MSG_RETURN(rc, "Create xpath for node failed");
     val->xpath = xpath;
 
@@ -94,18 +94,27 @@ cleanup:
 }
 
 int
-rp_dt_get_values_from_nodes(struct ly_set *nodes, sr_val_t **values, size_t *value_cnt)
+rp_dt_get_values_from_nodes(sr_mem_ctx_t *sr_mem, struct ly_set *nodes, sr_val_t **values, size_t *value_cnt)
 {
     CHECK_NULL_ARG2(nodes, values);
     int rc = SR_ERR_OK;
     sr_val_t *vals = NULL;
+    sr_mem_snapshot_t snapshot = { 0, };
     size_t cnt = 0;
     struct lyd_node *node = NULL;
 
-    vals = calloc(nodes->number, sizeof(*vals));
+    if (sr_mem) {
+        sr_mem_snapshot(sr_mem, &snapshot);
+    }
+
+    vals = sr_calloc(sr_mem, nodes->number, sizeof(*vals));
     CHECK_NULL_NOMEM_RETURN(vals);
+    if (sr_mem) {
+        ++sr_mem->ucount;
+    }
 
     for (size_t i = 0; i < nodes->number; i++) {
+        vals[i].sr_mem = sr_mem;
         node = nodes->set.d[i];
         if (NULL == node || NULL == node->schema || LYS_RPC == node->schema->nodetype ||
             LYS_NOTIF == node->schema->nodetype) {
@@ -115,7 +124,11 @@ rp_dt_get_values_from_nodes(struct ly_set *nodes, sr_val_t **values, size_t *val
         rc = rp_dt_get_value_from_node(node, &vals[i]);
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR("Getting value from node %s failed", node->schema->name);
-            sr_free_values(vals, i);
+            if (sr_mem) {
+                sr_mem_restore(snapshot);
+            } else {
+                sr_free_values(vals, i);
+            }
             return SR_ERR_INTERNAL;
         }
         cnt++;
@@ -173,7 +186,7 @@ rp_dt_get_values(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char 
         return rc;
     }
 
-    rc = rp_dt_get_values_from_nodes(nodes, values, count);
+    rc = rp_dt_get_values_from_nodes(NULL /* TODO: context */, nodes, values, count);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Copying values from nodes failed for xpath '%s'", xpath);
     }
@@ -484,7 +497,7 @@ rp_dt_get_values_wrapper_with_opts(rp_ctx_t *rp_ctx, rp_session_t *rp_session, r
         goto cleanup;
     }
 
-    rc = rp_dt_get_values_from_nodes(nodes, values, count);
+    rc = rp_dt_get_values_from_nodes(NULL /* TODO : context */, nodes, values, count);
 cleanup:
     if (SR_ERR_NOT_FOUND == rc || (SR_ERR_OK == rc && (0 == count || NULL == data_tree))) {
         rc = rp_dt_validate_node_xpath(rp_ctx->dm_ctx, rp_session->dm_session, xpath, NULL, NULL);

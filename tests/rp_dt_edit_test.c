@@ -520,6 +520,7 @@ void set_item_leaf_test(void **state){
 
     /* create augment node */
     sr_val_t v;
+    v.sr_mem = NULL;
     v.xpath = NULL;
     v.type = SR_STRING_T;
     v.data.string_val = strdup("abc");
@@ -1092,6 +1093,7 @@ edit_validate_test(void **state)
     test_rp_sesssion_create(ctx, SR_DS_STARTUP, &session);
 
     sr_val_t iftype;
+    iftype.sr_mem = NULL;
     iftype.xpath = NULL;
     iftype.type = SR_ENUM_T;
     iftype.data.enum_val = strdup ("ethernet");
@@ -1140,6 +1142,7 @@ edit_validate_test(void **state)
     test_rp_sesssion_create(ctx, SR_DS_STARTUP, &session);
 
     sr_val_t hexnumber;
+    hexnumber.sr_mem = NULL;
     hexnumber.xpath = NULL;
     hexnumber.type = SR_STRING_T;
     hexnumber.data.string_val = strdup("92FF");
@@ -1170,6 +1173,7 @@ edit_validate_test(void **state)
     test_rp_sesssion_create(ctx, SR_DS_STARTUP, &session);
 
     sr_val_t name;
+    name.sr_mem = NULL;
     name.xpath = NULL;
     name.type = SR_STRING_T;
     name.data.string_val = strdup("Name");
@@ -1186,6 +1190,7 @@ edit_validate_test(void **state)
     sr_free_errors(errors, e_cnt);
 
     sr_val_t lonigitude;
+    lonigitude.sr_mem = NULL;
     lonigitude.xpath = NULL;
     lonigitude.type = SR_STRING_T;
     lonigitude.data.string_val = strdup("Longitude 49.45");
@@ -1205,6 +1210,7 @@ edit_validate_test(void **state)
     sr_free_errors(errors, e_cnt);
 
     sr_val_t latitude;
+    latitude.sr_mem = NULL;
     latitude.xpath = NULL;
     latitude.type = SR_STRING_T;
     latitude.data.string_val = strdup("Latitude 56.46");
@@ -1263,6 +1269,7 @@ edit_validate_test(void **state)
     /* leaf-list unique values */
     test_rp_sesssion_create(ctx, SR_DS_STARTUP, &session);
     sr_val_t val;
+    val.sr_mem = NULL;
     val.xpath = NULL;
     val.type = SR_UINT8_T;
     val.data.uint8_val = 9;

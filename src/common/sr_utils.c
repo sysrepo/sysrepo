@@ -684,13 +684,13 @@ sr_check_value_conform_to_schema(const struct lys_node *node, const sr_val_t *va
 /**
  * Functions copies the bits into string
  * @param [in] leaf - data tree node from the bits will be copied
- * @param [out] dest - space separated set bit field
+ * @param [out] value - destination value where a space separated set bit field will be copied to
  * @return Error code (SR_ERR_OK on success)
  */
 static int
-sr_libyang_leaf_copy_bits(const struct lyd_node_leaf_list *leaf, char **dest)
+sr_libyang_leaf_copy_bits(const struct lyd_node_leaf_list *leaf, sr_val_t *value)
 {
-    CHECK_NULL_ARG3(leaf, dest, leaf->schema);
+    CHECK_NULL_ARG3(leaf, value, leaf->schema);
 
     struct lys_node_leaf *sch = (struct lys_node_leaf *) leaf->schema;
     char *bits_str = NULL;
@@ -704,7 +704,7 @@ sr_libyang_leaf_copy_bits(const struct lyd_node_leaf_list *leaf, char **dest)
             length++; /*space after bit*/
         }
     }
-    bits_str = calloc(length, sizeof(*bits_str));
+    bits_str = sr_calloc(value->sr_mem, length, sizeof(*bits_str));
     if (NULL == bits_str) {
         SR_LOG_ERR_MSG("Memory allocation failed");
         return SR_ERR_NOMEM;
@@ -722,7 +722,7 @@ sr_libyang_leaf_copy_bits(const struct lyd_node_leaf_list *leaf, char **dest)
         bits_str[offset - 1] = '\0';
     }
 
-    *dest = bits_str;
+    value->data.bits_val = bits_str;
     return SR_ERR_OK;
 }
 
@@ -746,7 +746,7 @@ sr_libyang_leaf_copy_value(const struct lyd_node_leaf_list *leaf, sr_val_t *valu
             SR_LOG_ERR("Binary data in leaf '%s' is NULL", leaf->schema->name);
             return SR_ERR_INTERNAL;
         }
-        value->data.binary_val = strdup(leaf->value.binary);
+        sr_mem_edit_string(value->sr_mem, &value->data.binary_val, leaf->value.binary);
         if (NULL == value->data.binary_val) {
             SR_LOG_ERR("Copy value failed for leaf '%s' of type 'binary'", leaf->schema->name);
             return SR_ERR_INTERNAL;
@@ -756,7 +756,7 @@ sr_libyang_leaf_copy_value(const struct lyd_node_leaf_list *leaf, sr_val_t *valu
         if (NULL == leaf->value.bit) {
             SR_LOG_ERR("Missing schema information for node '%s'", leaf->schema->name);
         }
-        rc = sr_libyang_leaf_copy_bits(leaf, &(value->data.bits_val));
+        rc = sr_libyang_leaf_copy_bits(leaf, value);
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR("Copy value failed for leaf '%s' of type 'bits'", leaf->schema->name);
         }
@@ -779,7 +779,7 @@ sr_libyang_leaf_copy_value(const struct lyd_node_leaf_list *leaf, sr_val_t *valu
             SR_LOG_ERR("Missing schema information for node '%s'", leaf->schema->name);
             return SR_ERR_INTERNAL;
         }
-        value->data.enum_val = strdup(leaf->value.enm->name);
+        sr_mem_edit_string(value->sr_mem, &value->data.enum_val, leaf->value.enm->name);
         if (NULL == value->data.enum_val) {
             SR_LOG_ERR("Copy value failed for leaf '%s' of type 'enum'", leaf->schema->name);
             return SR_ERR_INTERNAL;
@@ -790,7 +790,7 @@ sr_libyang_leaf_copy_value(const struct lyd_node_leaf_list *leaf, sr_val_t *valu
             SR_LOG_ERR("Identity ref in leaf '%s' is NULL", leaf->schema->name);
             return SR_ERR_INTERNAL;
         }
-        value->data.identityref_val = strdup(leaf->value.ident->name);
+        sr_mem_edit_string(value->sr_mem, &value->data.identityref_val, leaf->value.ident->name);
         if (NULL == value->data.identityref_val) {
             SR_LOG_ERR("Copy value failed for leaf '%s' of type 'identityref'", leaf->schema->name);
             return SR_ERR_INTERNAL;
@@ -810,7 +810,7 @@ sr_libyang_leaf_copy_value(const struct lyd_node_leaf_list *leaf, sr_val_t *valu
         return SR_ERR_OK;
     case LY_TYPE_STRING:
         if (NULL != leaf->value.string) {
-            value->data.string_val = strdup(leaf->value.string);
+            sr_mem_edit_string(value->sr_mem, &value->data.string_val, leaf->value.string);
             if (NULL == value->data.string_val) {
                 SR_LOG_ERR_MSG("String duplication failed");
                 return SR_ERR_NOMEM;
@@ -1306,6 +1306,10 @@ void
 sr_free_val_content(sr_val_t *value)
 {
     if (NULL == value){
+        return;
+    }
+    if (NULL != value->sr_mem) {
+        /* do nothing */
         return;
     }
     free(value->xpath);

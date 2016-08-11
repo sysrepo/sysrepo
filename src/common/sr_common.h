@@ -42,6 +42,7 @@
 #include "sr_data_structs.h"
 #include "sr_logger.h"
 #include "sr_protobuf.h"
+#include "sr_experimental.h"
 
 /**@} common */
 

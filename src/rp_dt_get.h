@@ -93,12 +93,13 @@ int rp_dt_get_values_wrapper_with_opts(rp_ctx_t *rp_ctx, rp_session_t *rp_sessio
 /**
  * @brief Fills the values from the array of nodes. The length of the
  * values array is equal to the count of the nodes in nodes set.
+ * @param [in] sr_mem Sysrepo memory context to use for memory allocation (can be NULL).
  * @param [in] nodes
  * @param [out] values
  * @param [out] value_cnt
  * @return Error code (SR_ERR_OK on success)
  */
-int rp_dt_get_values_from_nodes(struct ly_set *nodes, sr_val_t **values, size_t *value_cnt);
+int rp_dt_get_values_from_nodes(sr_mem_ctx_t *sr_mem, struct ly_set *nodes, sr_val_t **values, size_t *value_cnt);
 
 /**
  * @brief Transforms difflist to the set of changes

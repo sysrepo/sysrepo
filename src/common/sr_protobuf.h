@@ -51,22 +51,24 @@ const char *sr_gpb_operation_name(Sr__Operation operation);
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int sr_gpb_req_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__Msg **msg);
+int sr_gpb_req_alloc(sr_mem_ctx_t *sr_mem, const Sr__Operation operation, const uint32_t session_id, Sr__Msg **msg);
 
 /**
  * @brief Allocates and initializes GPB response message.
  *
+ * @param[in] sr_mem Sysrepo memory context. If NULL then standard malloc/calloc/free will be used.
  * @param[in] session_id ID of session identifying the recipient. Pass 0 if session is not open yet.
  * @param[in] operation Requested operation.
  * @param[out] msg GPB message.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int sr_gpb_resp_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__Msg **msg);
+int sr_gpb_resp_alloc(sr_mem_ctx_t *sr_mem, const Sr__Operation operation, const uint32_t session_id, Sr__Msg **msg);
 
 /**
  * @brief Allocates and initializes GPB notification message.
  *
+ * @param[in] sr_mem Sysrepo memory context. If NULL then standard malloc/calloc/free will be used.
  * @param[in] type Notification type.
  * @param[in] destination Destination (socket path) of the notification.
  * @param[in] subscription_id CLient-local subscription identifier.
@@ -74,28 +76,30 @@ int sr_gpb_resp_alloc(const Sr__Operation operation, const uint32_t session_id, 
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int sr_gpb_notif_alloc(const Sr__SubscriptionType type, const char *destination,
+int sr_gpb_notif_alloc(sr_mem_ctx_t *sr_mem, const Sr__SubscriptionType type, const char *destination,
         const uint32_t subscription_id, Sr__Msg **msg);
 
 /**
  * @brief Allocates and initializes GPB notification acknowledgment message.
  *
+ * @param[in] sr_mem Sysrepo memory context. If NULL then standard malloc/calloc/free will be used.
  * @param[in] notification Original notification to be acknowledged.
  * @param[out] msg GPB message.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int sr_gpb_notif_ack_alloc(Sr__Msg *notification, Sr__Msg **msg);
+int sr_gpb_notif_ack_alloc(sr_mem_ctx_t *sr_mem, Sr__Msg *notification, Sr__Msg **msg);
 
 /**
  * @brief Allocates and initializes GPB internal request message.
  *
+ * @param[in] sr_mem Sysrepo memory context. If NULL then standard malloc/calloc/free will be used.
  * @param[in] operation Requested operation.
  * @param[out] msg GPB message.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int sr_gpb_internal_req_alloc(const Sr__Operation operation, Sr__Msg **msg);
+int sr_gpb_internal_req_alloc(sr_mem_ctx_t *sr_mem, const Sr__Operation operation, Sr__Msg **msg);
 
 /**
  * @brief Validates the message according to excepted message type and operation.
@@ -128,11 +132,14 @@ int sr_dup_val_t_to_gpb(const sr_val_t *value, Sr__Value **gpb_value);
 
 /**
  * @brief Allocates and fills sr_val_t structure from gpb.
+ *
+ * @param[in] sr_mem Sysrepo memory context to use for memory allocation.
+ *                   If NULL then the standard malloc/calloc are used.
  * @param [in] gpb_value
  * @param [out] value
  * @return err_code
  */
-int sr_dup_gpb_to_val_t(const Sr__Value *gpb_value, sr_val_t **value);
+int sr_dup_gpb_to_val_t(sr_mem_ctx_t *sr_mem, const Sr__Value *gpb_value, sr_val_t **value);
 
 /**
  * @brief Fills sr_val_t structure from gpb.
@@ -158,6 +165,8 @@ int sr_values_sr_to_gpb(const sr_val_t *sr_values, const size_t sr_value_cnt, Sr
 /**
  * @brief Copies values from GPB array of pointers to values to sysrepo values array.
  *
+ * @param[in] sr_mem Sysrepo memory context to use for memory allocation.
+ *                   If NULL then the standard malloc/calloc are used.
  * @param[in] gpb_values GPB array of pointers to values.
  * @param[in] gpb_value_cnt Number of values in the input array.
  * @param[out] sr_values Array of sysrepo values.
@@ -165,7 +174,8 @@ int sr_values_sr_to_gpb(const sr_val_t *sr_values, const size_t sr_value_cnt, Sr
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int sr_values_gpb_to_sr(Sr__Value **gpb_values, size_t gpb_value_cnt, sr_val_t **sr_values, size_t *sr_value_cnt);
+int sr_values_gpb_to_sr(sr_mem_ctx_t *sr_mem, Sr__Value **gpb_values, size_t gpb_value_cnt, sr_val_t **sr_values,
+        size_t *sr_value_cnt);
 
 /**
  * @brief Allocates and copies tree data from the sysrepo tree-representation (based on sr_node_t) into

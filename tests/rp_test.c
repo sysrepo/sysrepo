@@ -105,7 +105,7 @@ rp_msg_neg_test(void **state)
     credentials.e_gid = getgid();
 
     /* generate some request */
-    rc = sr_gpb_req_alloc(SR__OPERATION__GET_ITEM, 123456, &msg);
+    rc = sr_gpb_req_alloc(NULL, SR__OPERATION__GET_ITEM, 123456, &msg);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(msg);
 
@@ -119,7 +119,7 @@ rp_msg_neg_test(void **state)
     assert_non_null(session);
 
     /* RP does not implement session start request */
-    rc = sr_gpb_req_alloc(SR__OPERATION__SESSION_START, 123456, &msg);
+    rc = sr_gpb_req_alloc(NULL, SR__OPERATION__SESSION_START, 123456, &msg);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(msg);
 
@@ -128,7 +128,7 @@ rp_msg_neg_test(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 
     /* RP does not implement session start response */
-    rc = sr_gpb_resp_alloc(SR__OPERATION__SESSION_START, 123456, &msg);
+    rc = sr_gpb_resp_alloc(NULL, SR__OPERATION__SESSION_START, 123456, &msg);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(msg);
 

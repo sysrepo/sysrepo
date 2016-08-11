@@ -235,7 +235,7 @@ cm_session_data_cleanup(void *session)
     sm_session_t *sm_session = (sm_session_t*)session;
     if ((NULL != sm_session) && (NULL != sm_session->cm_data)) {
         while (sr_cbuff_dequeue(sm_session->cm_data->rp_request_queue, &msg)) {
-            sr__msg__free_unpacked(msg, NULL);
+            sr_msg_free(msg);
         }
         sr_cbuff_cleanup(sm_session->cm_data->rp_request_queue);
         free(sm_session->cm_data);
@@ -341,16 +341,20 @@ static int
 cm_subscr_unsubscribe_destination(cm_ctx_t *cm_ctx, const char *destination_address, double delay)
 {
     Sr__Msg *msg_req = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG2(cm_ctx, destination_address);
 
     SR_LOG_DBG("Requesting removal of subscriptions for the destination '%s'.", destination_address);
 
-    rc = sr_gpb_internal_req_alloc(SR__OPERATION__UNSUBSCRIBE_DESTINATION, &msg_req);
+    rc = sr_mem_new(0, &sr_mem);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot create Sysrepo memory context.");
+
+    rc = sr_gpb_internal_req_alloc(sr_mem, SR__OPERATION__UNSUBSCRIBE_DESTINATION, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
 
-    msg_req->internal_request->unsubscribe_dst_req->destination = strdup(destination_address);
+    sr_mem_edit_string(sr_mem, &msg_req->internal_request->unsubscribe_dst_req->destination, destination_address);
     CHECK_NULL_NOMEM_GOTO(msg_req->internal_request->unsubscribe_dst_req->destination, rc, cleanup);
 
     if (delay > 0) {
@@ -367,8 +371,10 @@ cm_subscr_unsubscribe_destination(cm_ctx_t *cm_ctx, const char *destination_addr
     return rc;
 
 cleanup:
-    if (NULL != msg_req) {
-        sr__msg__free_unpacked(msg_req, NULL);
+    if (msg_req) {
+        sr_msg_free(msg_req);
+    } else if (sr_mem) {
+        sr_mem_free(sr_mem);
     }
     return rc;
 }
@@ -626,7 +632,7 @@ cm_session_start_req_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, Sr__Msg *m
     SR_LOG_DBG("Processing session_start request (conn=%p).", (void*)conn);
 
     /* prepare the response */
-    rc = sr_gpb_resp_alloc(SR__OPERATION__SESSION_START, 0, &msg);
+    rc = sr_gpb_resp_alloc(NULL, SR__OPERATION__SESSION_START, 0, &msg);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Cannot allocate the response for session_start request (conn=%p).", (void*)conn);
         return SR_ERR_NOMEM;
@@ -655,7 +661,7 @@ cm_session_start_req_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, Sr__Msg *m
     }
 
     /* release the message */
-    sr__msg__free_unpacked(msg, NULL);
+    sr_msg_free(msg);
 
     return rc;
 }
@@ -675,7 +681,7 @@ cm_session_stop_req_process(cm_ctx_t *cm_ctx, sm_session_t *session, Sr__Msg *ms
     SR_LOG_DBG("Processing session_stop request (session id=%"PRIu32").", session->id);
 
     /* prepare the response */
-    rc = sr_gpb_resp_alloc(SR__OPERATION__SESSION_STOP, msg_in->session_id, &msg_out);
+    rc = sr_gpb_resp_alloc(NULL, SR__OPERATION__SESSION_STOP, msg_in->session_id, &msg_out);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Cannot allocate the response for session_stop request (session id=%"PRIu32").", session->id);
         return SR_ERR_NOMEM;
@@ -722,7 +728,7 @@ cm_session_stop_req_process(cm_ctx_t *cm_ctx, sm_session_t *session, Sr__Msg *ms
     }
 
     /* release the message */
-    sr__msg__free_unpacked(msg_out, NULL);
+    sr_msg_free(msg_out);
 
     /* drop session in SM - must be called AFTER sending */
     if (drop_session && (SR_ERR_OK == rc)) {
@@ -747,6 +753,7 @@ cm_req_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, sm_session_t *session, S
     /* session can be NULL by session_start */
     if ((SR__OPERATION__SESSION_START != msg->request->operation) &&
             ((NULL == session || NULL == session->cm_data))) {
+        sr_msg_free(msg);
         return SR_ERR_INVAL_ARG;
     }
 
@@ -766,11 +773,11 @@ cm_req_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, sm_session_t *session, S
     switch (msg->request->operation) {
         case SR__OPERATION__SESSION_START:
             rc = cm_session_start_req_process(cm_ctx, conn, msg);
-            sr__msg__free_unpacked(msg, NULL);
+            sr_msg_free(msg);
             break;
         case SR__OPERATION__SESSION_STOP:
             rc = cm_session_stop_req_process(cm_ctx, session, msg);
-            sr__msg__free_unpacked(msg, NULL);
+            sr_msg_free(msg);
             break;
         default:
             if (session->cm_data->rp_req_cnt > 0) {
@@ -795,7 +802,7 @@ cm_req_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, sm_session_t *session, S
     return rc;
 
 cleanup:
-    sr__msg__free_unpacked(msg, NULL);
+    sr_msg_free(msg);
     return rc;
 }
 
@@ -837,7 +844,7 @@ cm_resp_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, sm_session_t *session, 
     return rc;
 
 cleanup:
-    sr__msg__free_unpacked(msg, NULL);
+    sr_msg_free(msg);
     return rc;
 }
 
@@ -863,7 +870,7 @@ cm_notif_ack_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, Sr__Msg *msg)
     return rc;
 
 cleanup:
-    sr__msg__free_unpacked(msg, NULL);
+    sr_msg_free(msg);
     return rc;
 }
 
@@ -875,16 +882,23 @@ cm_conn_msg_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, uint8_t *msg_data, 
 {
     Sr__Msg *msg = NULL;
     sm_session_t *session = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG3(cm_ctx, conn, msg_data);
 
     /* unpack the message */
-    msg = sr__msg__unpack(NULL, msg_size, msg_data);
+    rc = sr_mem_new(msg_size, &sr_mem);
+    CHECK_RC_MSG_RETURN(rc, "Failed to instantiate a Sysrepo memory context.");
+    ProtobufCAllocator allocator = sr_get_protobuf_allocator(sr_mem);
+    msg = sr__msg__unpack(&allocator, msg_size, msg_data);
     if (NULL == msg) {
         SR_LOG_ERR("Unable to unpack the message (conn=%p).", (void*)conn);
-        return SR_ERR_INTERNAL;
+        rc = SR_ERR_INTERNAL;
+        goto cleanup;
     }
+    msg->_sysrepo_mem_ctx = (uint64_t)sr_mem;
+    ++sr_mem->ucount;
 
     /* NULL check according to message type */
     if (((SR__MSG__MSG_TYPE__REQUEST == msg->type) && (NULL == msg->request)) ||
@@ -931,7 +945,11 @@ cm_conn_msg_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, uint8_t *msg_data, 
     return rc;
 
 cleanup:
-    sr__msg__free_unpacked(msg, NULL);
+    if (msg) {
+        sr_msg_free(msg);
+    } else if (sr_mem) {
+        sr_mem_free(sr_mem);
+    }
     return rc;
 }
 
@@ -1286,7 +1304,7 @@ cm_out_notif_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
     SR_LOG_DBG("Sending a notification to '%s'.", msg->notification->destination_address);
 
     /* fill-in source address */
-    msg->notification->source_address = strdup(cm_ctx->server_socket_path);
+    sr_mem_edit_string((sr_mem_ctx_t *)msg->_sysrepo_mem_ctx, &msg->notification->source_address, cm_ctx->server_socket_path);
     CHECK_NULL_NOMEM_RETURN(msg->notification->source_address);
     msg->notification->source_pid = (uint32_t)getpid();
 
@@ -1312,7 +1330,7 @@ cm_out_notif_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
         cm_subscr_unsubscribe_destination(cm_ctx, msg->notification->destination_address, 0);
     }
 
-    sr__msg__free_unpacked(msg, NULL);
+    sr_msg_free(msg);
 
     return rc;
 }
@@ -1339,12 +1357,12 @@ cm_out_dp_request_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Unable to find the session matching with id specified in the message "
                 "(id=%"PRIu32").", msg->session_id);
-        sr__msg__free_unpacked(msg, NULL);
+        sr_msg_free(msg);
         return SR_ERR_INTERNAL;
     }
     if ((NULL == session) || (NULL == session->cm_data)) {
         SR_LOG_ERR("invalid session context - NULL value detected (id=%"PRIu32").", msg->session_id);
-        sr__msg__free_unpacked(msg, NULL);
+        sr_msg_free(msg);
         return SR_ERR_INTERNAL;
     }
     /* track that we expect a response for this session */
@@ -1372,7 +1390,7 @@ cm_out_dp_request_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
         cm_subscr_unsubscribe_destination(cm_ctx, msg->request->data_provide_req->subscriber_address, 0);
     }
 
-    sr__msg__free_unpacked(msg, NULL);
+    sr_msg_free(msg);
 
     return rc;
 }
@@ -1399,12 +1417,12 @@ cm_out_rpc_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Unable to find the session matching with id specified in the message "
                 "(id=%"PRIu32").", msg->session_id);
-        sr__msg__free_unpacked(msg, NULL);
+        sr_msg_free(msg);
         return SR_ERR_INTERNAL;
     }
     if ((NULL == session) || (NULL == session->cm_data)) {
         SR_LOG_ERR("invalid session context - NULL value detected (id=%"PRIu32").", msg->session_id);
-        sr__msg__free_unpacked(msg, NULL);
+        sr_msg_free(msg);
         return SR_ERR_INTERNAL;
     }
     /* track that we expect a response for this session */
@@ -1432,7 +1450,7 @@ cm_out_rpc_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
         cm_subscr_unsubscribe_destination(cm_ctx, destination_address, 0);
     }
 
-    sr__msg__free_unpacked(msg, NULL);
+    sr_msg_free(msg);
 
     return rc;
 }
@@ -1459,12 +1477,12 @@ cm_out_event_notif_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Unable to find the session matching with id specified in the message "
                 "(id=%"PRIu32").", msg->session_id);
-        sr__msg__free_unpacked(msg, NULL);
+        sr_msg_free(msg);
         return SR_ERR_INTERNAL;
     }
     if ((NULL == session) || (NULL == session->cm_data)) {
         SR_LOG_ERR("invalid session context - NULL value detected (id=%"PRIu32").", msg->session_id);
-        sr__msg__free_unpacked(msg, NULL);
+        sr_msg_free(msg);
         return SR_ERR_INTERNAL;
     }
 
@@ -1490,7 +1508,7 @@ cm_out_event_notif_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
         cm_subscr_unsubscribe_destination(cm_ctx, destination_address, 0);
     }
 
-    sr__msg__free_unpacked(msg, NULL);
+    sr_msg_free(msg);
 
     return rc;
 }
@@ -1512,7 +1530,7 @@ cm_internal_msg_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR("Unable to find the session matching with id specified in the message "
                     "(id=%"PRIu32").", msg->session_id);
-            sr__msg__free_unpacked(msg, NULL);
+            sr_msg_free(msg);
             return SR_ERR_INTERNAL;
         }
     }
@@ -1524,7 +1542,7 @@ cm_internal_msg_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
     } else {
         SR_LOG_WRN_MSG("Unsupported internal message received, ignoring.");
         rc = SR_ERR_UNSUPPORTED;
-        sr__msg__free_unpacked(msg, NULL);
+        sr_msg_free(msg);
     }
 
     return rc;
@@ -1551,13 +1569,13 @@ cm_out_msg_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Unable to find the session matching with id specified in the message "
                 "(id=%"PRIu32").", msg->session_id);
-        sr__msg__free_unpacked(msg, NULL);
+        sr_msg_free(msg);
         return SR_ERR_INTERNAL;
     }
 
     if ((NULL == session) || (NULL == session->cm_data)) {
         SR_LOG_ERR("invalid session context - NULL value detected (id=%"PRIu32").", msg->session_id);
-        sr__msg__free_unpacked(msg, NULL);
+        sr_msg_free(msg);
         return SR_ERR_INTERNAL;
     }
 
@@ -1580,7 +1598,7 @@ cm_out_msg_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
     }
 
     /* release the message */
-    sr__msg__free_unpacked(msg, NULL);
+    sr_msg_free(msg);
 
     /* if there are no more outstanding session-related requests in RP */
     if (0 == session->cm_data->rp_req_cnt) {
@@ -1821,7 +1839,7 @@ cm_cleanup(cm_ctx_t *cm_ctx)
         cm_server_cleanup(cm_ctx);
 
         while (sr_cbuff_dequeue(cm_ctx->msg_queue, &msg)) {
-            sr__msg__free_unpacked(msg, NULL);
+            sr_msg_free(msg);
         }
         sr_cbuff_cleanup(cm_ctx->msg_queue);
         pthread_mutex_destroy(&cm_ctx->msg_queue_mutex);
@@ -1830,7 +1848,7 @@ cm_cleanup(cm_ctx_t *cm_ctx)
         while (NULL != tmp) {
             req = tmp;
             tmp = tmp->next;
-            sr__msg__free_unpacked(req->msg, NULL);
+            sr_msg_free(req->msg);
             free(req);
         }
 
@@ -1889,7 +1907,7 @@ cm_msg_send(cm_ctx_t *cm_ctx, Sr__Msg *msg)
 
     if (SR_ERR_OK != rc) {
         if (NULL != msg) {
-            sr__msg__free_unpacked(msg, NULL);
+            sr_msg_free(msg);
         }
         return rc;
     }
@@ -1904,7 +1922,7 @@ cm_msg_send(cm_ctx_t *cm_ctx, Sr__Msg *msg)
     } else {
         /* release the message by error */
         SR_LOG_ERR_MSG("Unable to send the message, skipping.");
-        sr__msg__free_unpacked(msg, NULL);
+        sr_msg_free(msg);
     }
 
     return rc;

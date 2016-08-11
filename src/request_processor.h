@@ -113,7 +113,7 @@ int rp_session_stop(const rp_ctx_t *rp_ctx, rp_session_t *session);
  *
  * @param[in] rp_ctx Request Processor context.
  * @param[in] session Request Processor session context related to the message.
- * @param[in] msg GPB Message to be passed. @note Message will be freed
+ * @param[in] msg GPB Message to be passed. @note Message will be freed.
  * automatically after calling, also in case of error.
  *
  * @return Error code (SR_ERR_OK on success).

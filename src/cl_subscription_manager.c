@@ -497,7 +497,7 @@ cl_sm_get_data_session(cl_sm_ctx_t *sm_ctx, cl_sm_subscription_ctx_t *subscripti
         rc = cl_session_create(connection, &session);
 
         /* prepare session_start message */
-        rc = sr_gpb_req_alloc(SR__OPERATION__SESSION_START, /* undefined session id */ 0, &msg_req);
+        rc = sr_gpb_req_alloc(NULL, SR__OPERATION__SESSION_START, /* undefined session id */ 0, &msg_req);
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR_MSG("Cannot allocate session_start message.");
             cl_session_cleanup(session);
@@ -514,7 +514,7 @@ cl_sm_get_data_session(cl_sm_ctx_t *sm_ctx, cl_sm_subscription_ctx_t *subscripti
         rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__SESSION_START);
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR_MSG("Error by processing of session_start request.");
-            sr__msg__free_unpacked(msg_req, NULL);
+            sr_msg_free(msg_req);
             cl_session_cleanup(session);
             return rc;
         }
@@ -522,8 +522,8 @@ cl_sm_get_data_session(cl_sm_ctx_t *sm_ctx, cl_sm_subscription_ctx_t *subscripti
         session->id = msg_resp->response->session_start_resp->session_id;
         session->commit_id = commit_id;
 
-        sr__msg__free_unpacked(msg_req, NULL);
-        sr__msg__free_unpacked(msg_resp, NULL);
+        sr_msg_free(msg_req);
+        sr_msg_free(msg_resp);
     }
 
     subscription->data_session = session;
@@ -716,12 +716,12 @@ cl_sm_notif_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *msg)
     /* send notification ACK */
     if ((SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS == msg->notification->type) ||
             (SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS == msg->notification->type)) {
-        rc_tmp = sr_gpb_notif_ack_alloc(msg, &ack_msg);
+        rc_tmp = sr_gpb_notif_ack_alloc(NULL, msg, &ack_msg);
         if (SR_ERR_OK == rc_tmp) {
             ack_msg->notification_ack->result = rc;
             rc_tmp = cl_sm_msg_send_connection(sm_ctx, conn, ack_msg);
             ack_msg->notification_ack->notif = NULL;
-            sr__msg__free_unpacked(ack_msg, NULL);
+            sr_msg_free(ack_msg);
         }
         if (SR_ERR_OK != rc_tmp) {
             SR_LOG_ERR("Unable to send notification ACK: %s", sr_strerror(rc_tmp));
@@ -772,7 +772,7 @@ cl_sm_dp_request_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *m
     pthread_mutex_unlock(&sm_ctx->subscriptions_lock);
 
     /* allocate the response and send it */
-    rc = sr_gpb_resp_alloc(SR__OPERATION__DATA_PROVIDE, msg->session_id, &resp);
+    rc = sr_gpb_resp_alloc(NULL, SR__OPERATION__DATA_PROVIDE, msg->session_id, &resp);
     CHECK_RC_MSG_RETURN(rc, "Allocation of data-provide response failed.");
 
     resp->response->result = cb_rc;
@@ -793,7 +793,7 @@ cl_sm_dp_request_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *m
 cleanup:
     sr_free_values(values, values_cnt);
     if (NULL != resp) {
-        sr__msg__free_unpacked(resp, NULL);
+        sr_msg_free(resp);
     }
     return rc;
 }
@@ -809,6 +809,7 @@ cl_sm_rpc_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *msg)
     Sr__Msg *resp = NULL;
     sr_val_t *input = NULL, *output = NULL;
     sr_node_t *input_tree = NULL, *output_tree = NULL;
+    sr_mem_ctx_t *sr_mem_resp = NULL;
     size_t input_cnt = 0, output_cnt = 0;
     int rc = SR_ERR_OK, rpc_rc = SR_ERR_OK;
 
@@ -818,7 +819,8 @@ cl_sm_rpc_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *msg)
 
     /* copy input values from GPB */
     if (msg->request->rpc_req->n_input) {
-        rc = sr_values_gpb_to_sr(msg->request->rpc_req->input, msg->request->rpc_req->n_input, &input, &input_cnt);
+        rc = sr_values_gpb_to_sr((sr_mem_ctx_t *)msg->_sysrepo_mem_ctx, msg->request->rpc_req->input,
+                                 msg->request->rpc_req->n_input, &input, &input_cnt);
     } else if (msg->request->rpc_req->n_input_tree) {
         rc = sr_trees_gpb_to_sr(msg->request->rpc_req->input_tree, msg->request->rpc_req->n_input_tree,
                                 &input_tree, &input_cnt);
@@ -855,11 +857,14 @@ cl_sm_rpc_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *msg)
     pthread_mutex_unlock(&sm_ctx->subscriptions_lock);
 
     /* allocate the response and send it */
-    rc = sr_gpb_resp_alloc(SR__OPERATION__RPC, msg->session_id, &resp);
+    if (NULL != output) {
+        sr_mem_resp = output[0].sr_mem;
+    }
+    rc = sr_gpb_resp_alloc(sr_mem_resp, SR__OPERATION__RPC, msg->session_id, &resp);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Allocation of RPC response failed.");
 
     resp->response->result = rpc_rc;
-    resp->response->rpc_resp->xpath = strdup(msg->request->rpc_req->xpath);
+    sr_mem_edit_string(sr_mem_resp, &resp->response->rpc_resp->xpath, msg->request->rpc_req->xpath);
     resp->response->rpc_resp->orig_api_variant = msg->request->rpc_req->orig_api_variant;
     CHECK_NULL_NOMEM_GOTO(resp->response->rpc_resp->xpath, rc, cleanup);
 
@@ -884,7 +889,7 @@ cleanup:
     sr_free_trees(input_tree, input_cnt);
     sr_free_trees(output_tree, output_cnt);
     if (NULL != resp) {
-        sr__msg__free_unpacked(resp, NULL);
+        sr_msg_free(resp);
     }
     return rc;
 }
@@ -910,7 +915,7 @@ cl_sm_event_notif_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *
 
     /* copy input data from GPB */
     if (msg->request->event_notif_req->n_values) {
-        rc = sr_values_gpb_to_sr(msg->request->event_notif_req->values, msg->request->event_notif_req->n_values,
+        rc = sr_values_gpb_to_sr(NULL, msg->request->event_notif_req->values, msg->request->event_notif_req->n_values,
                 &values, &values_cnt);
     } else if (msg->request->event_notif_req->n_trees) {
         rc = sr_trees_gpb_to_sr(msg->request->event_notif_req->trees, msg->request->event_notif_req->n_trees,
@@ -955,16 +960,28 @@ static int
 cl_sm_conn_msg_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, uint8_t *msg_data, size_t msg_size)
 {
     Sr__Msg *msg = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG3(sm_ctx, conn, msg_data);
 
     /* unpack the message */
-    msg = sr__msg__unpack(NULL, msg_size, msg_data);
+    rc = sr_mem_new(msg_size, &sr_mem);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Failed to create a new Sysrepo memory context (conn=%p).", (void*)conn);
+        return SR_ERR_INTERNAL;
+    }
+    ProtobufCAllocator allocator = sr_get_protobuf_allocator(sr_mem);
+    msg = sr__msg__unpack(&allocator, msg_size, msg_data);
     if (NULL == msg) {
+        sr_mem_free(sr_mem);
         SR_LOG_ERR("Unable to unpack the message (conn=%p).", (void*)conn);
         return SR_ERR_INTERNAL;
     }
+
+    /* associate message with context */
+    msg->_sysrepo_mem_ctx = (uint64_t)sr_mem;
+    ++sr_mem->ucount;
 
     /* check the message */
     if (SR__MSG__MSG_TYPE__NOTIFICATION == msg->type) {
@@ -985,7 +1002,7 @@ cl_sm_conn_msg_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, uint8_t *msg
     }
 
     /* release the message */
-    sr__msg__free_unpacked(msg, NULL);
+    sr_msg_free(msg);
 
     return rc;
 }
