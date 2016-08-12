@@ -64,34 +64,46 @@ size_t reused_sr_mem_count = 0;
 
 void inc_real_alloc(size_t size)
 {
+#ifdef PRINT_ALLOC_STATS
     __sync_add_and_fetch(&real_alloc_count, 1);
     __sync_add_and_fetch(&real_alloc_size, size);
+#endif
 }
 
 void inc_real_by_exp_alloc(size_t size)
 {
+#ifdef PRINT_ALLOC_STATS
     __sync_add_and_fetch(&real_alloc_by_exp_count, 1);
     __sync_add_and_fetch(&real_alloc_by_exp_size, size);
+#endif
 }
 
 void inc_fake_alloc(size_t size)
 {
+#ifdef PRINT_ALLOC_STATS
     __sync_add_and_fetch(&fake_alloc_count, 1);
     __sync_add_and_fetch(&fake_alloc_size, size);
+#endif
 }
 
 void inc_new_sr_mem()
 {
+#ifdef PRINT_ALLOC_STATS
     __sync_add_and_fetch(&new_sr_mem_count, 1);
+#endif
 }
 
 void inc_reused_sr_mem()
 {
+#ifdef PRINT_ALLOC_STATS
     __sync_add_and_fetch(&reused_sr_mem_count, 1);
+#endif
+
 }
 
 __attribute__((destructor)) void print_mem_alloc_stats()
 {
+#ifdef PRINT_ALLOC_STATS
     static int run = 0;
     if (!run) {
         printf("Total number of real allocs: %lu\n", real_alloc_count);
@@ -104,6 +116,7 @@ __attribute__((destructor)) void print_mem_alloc_stats()
         printf("Reused sysrepo memory contexts: %lu\n", reused_sr_mem_count);
         run = 1;
     }
+#endif
 }
 
 /**
