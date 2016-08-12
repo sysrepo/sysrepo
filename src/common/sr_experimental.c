@@ -133,6 +133,7 @@ void
 *sr_malloc(sr_mem_ctx_t *sr_mem, size_t size)
 {
     void *mem = NULL;
+    size_t new_size = 0;
     int err = SR_ERR_OK;
     sr_mem_block_t *mem_block = NULL;
 
@@ -148,11 +149,12 @@ void
 
     if (mem_block->size < sr_mem->used_last + size) {
         /* not enough memory in the last block */
+        new_size = MAX(size, mem_block->size * 2);
         mem_block = (sr_mem_block_t *)calloc(1, sizeof *mem_block);
         CHECK_NULL_NOMEM_GOTO(mem_block, err, cleanup);
-        mem_block->mem = malloc(MAX(size, MEM_BLOCK_MIN_SIZE));
+        mem_block->mem = malloc(new_size);
         CHECK_NULL_NOMEM_GOTO(mem_block->mem, err, cleanup);
-        mem_block->size = MAX(size, MEM_BLOCK_MIN_SIZE);
+        mem_block->size = new_size;
         err = sr_llist_add_new(sr_mem->mem_blocks, mem_block);
         CHECK_RC_MSG_GOTO(err, cleanup, "Failed to add memory block into a linked-list.");
         sr_mem->used_last = 0;
