@@ -26,7 +26,9 @@
 #include "sr_experimental.h"
 #include "sr_common.h"
 
+/* TODO: make this configurable */
 #define MEM_BLOCK_MIN_SIZE  256
+#define MAX_FREE_TRAILING_MEM_BLOCKS 2
 
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
@@ -113,6 +115,7 @@ sr_mem_new(size_t min_size, sr_mem_ctx_t **sr_mem_p)
     rc = sr_llist_add_new(sr_mem->mem_blocks, mem_block);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to add memory block into a linked-list.");
 
+    sr_mem->cursor = sr_mem->mem_blocks->last;
     *sr_mem_p = sr_mem;
 
 cleanup:
@@ -145,19 +148,23 @@ void
         return malloc(size);
     }
 
-    mem_block = (sr_mem_block_t *)sr_mem->mem_blocks->last->data;
+    mem_block = (sr_mem_block_t *)sr_mem->cursor->data;
 
-    if (mem_block->size < sr_mem->used_last + size) {
-        /* not enough memory in the last block */
-        new_size = MAX(size, mem_block->size * 2);
-        mem_block = (sr_mem_block_t *)calloc(1, sizeof *mem_block);
-        CHECK_NULL_NOMEM_GOTO(mem_block, err, cleanup);
-        mem_block->mem = malloc(new_size);
-        CHECK_NULL_NOMEM_GOTO(mem_block->mem, err, cleanup);
-        mem_block->size = new_size;
-        err = sr_llist_add_new(sr_mem->mem_blocks, mem_block);
-        CHECK_RC_MSG_GOTO(err, cleanup, "Failed to add memory block into a linked-list.");
-        sr_mem->used_last = 0;
+    if (mem_block->size < sr_mem->used + size) {
+        /* not enough memory in the current block */
+        if (sr_mem->cursor == sr_mem->mem_blocks->last) {
+            new_size = MAX(size, mem_block->size * 2);
+            mem_block = (sr_mem_block_t *)calloc(1, sizeof *mem_block);
+            CHECK_NULL_NOMEM_GOTO(mem_block, err, cleanup);
+            mem_block->mem = malloc(new_size);
+            CHECK_NULL_NOMEM_GOTO(mem_block->mem, err, cleanup);
+            mem_block->size = new_size;
+            err = sr_llist_add_new(sr_mem->mem_blocks, mem_block);
+            CHECK_RC_MSG_GOTO(err, cleanup, "Failed to add memory block into a linked-list.");
+        }
+        sr_mem->cursor = sr_mem->cursor->next;
+        mem_block = (sr_mem_block_t *)sr_mem->cursor->data;
+        sr_mem->used = 0;
     } else {
 #ifdef PRINT_ALLOC_EXECS
         printf("SR-EXP: Calling fake alloc.\n");
@@ -165,8 +172,8 @@ void
         inc_fake_alloc(size);
     }
 
-    mem = mem_block->mem + sr_mem->used_last;
-    sr_mem->used_last += size;
+    mem = mem_block->mem + sr_mem->used;
+    sr_mem->used += size;
 
 cleanup:
     if (SR_ERR_OK != err) {
@@ -242,9 +249,9 @@ sr_mem_snapshot(sr_mem_ctx_t *sr_mem, sr_mem_snapshot_t *snapshot)
         return; /* NOOP */
     }
     snapshot->sr_mem = sr_mem;
-    snapshot->mem_block = sr_mem->mem_blocks->last;
+    snapshot->mem_block = sr_mem->cursor;
+    snapshot->used = sr_mem->used;
     snapshot->ucount = sr_mem->ucount;
-    snapshot->used = sr_mem->used_last;
 }
 
 void
@@ -254,11 +261,18 @@ sr_mem_restore(sr_mem_snapshot_t snapshot)
         return; /* NOOP */
     }
 
+    snapshot.sr_mem->cursor = snapshot.mem_block;
+    snapshot.sr_mem->used = snapshot.used;
     snapshot.sr_mem->ucount = snapshot.ucount;
-    snapshot.sr_mem->used_last = snapshot.used;
 
-    /* remove trailing empty memory blocks */
-    while (snapshot.sr_mem->mem_blocks->last != snapshot.mem_block) {
+    /* remove extra trailing empty memory blocks */
+    size_t empty_count = 0;
+    sr_llist_node_t *node_ll = snapshot.sr_mem->cursor;
+    while (node_ll->next && empty_count < MAX_FREE_TRAILING_MEM_BLOCKS) {
+        ++empty_count;
+        node_ll = node_ll->next;
+    }
+    while(node_ll != snapshot.sr_mem->mem_blocks->last) {
         sr_mem_block_t *mem_block = (sr_mem_block_t *)snapshot.sr_mem->mem_blocks->last->data;
         free(mem_block->mem);
         free(mem_block);

@@ -40,9 +40,10 @@ typedef struct sr_mem_block_s {
  * @brief Sysrepo memory context, used for allocation of values, trees and GPB messages.
  */
 typedef struct sr_mem_ctx_s {
-   sr_llist_t *mem_blocks; /**< Items are pointers to sr_mem_block_t */
-   unsigned ucount;        /**< Usage counter, i.e. how many value/trees/GPB messages use this context */
-   size_t used_last;       /**< Memory usage of the last block */
+   sr_llist_t *mem_blocks;  /**< Items are pointers to sr_mem_block_t */
+   sr_llist_node_t *cursor; /**< Currently used memory block */
+   size_t used;             /**< Memory usage of the current block */
+   unsigned ucount;         /**< Usage counter, i.e. how many value/trees/GPB messages use this context */
 } sr_mem_ctx_t;
 
 /**
@@ -51,9 +52,9 @@ typedef struct sr_mem_ctx_s {
  */
 typedef struct sr_mem_snapshot_s {
     sr_mem_ctx_t *sr_mem;       /**< Associated Sysrepo memory context. */
-    sr_llist_node_t *mem_block; /**< Last memory block at the time of the snapshot. */
-    unsigned ucount;            /**< Usage count at the time of the snapshot. */
-    size_t used;                /**< Memory usage of the last memory block at the time of the snapshot. */
+    sr_llist_node_t *mem_block; /**< Current memory block at the time of the snapshot. */
+    size_t used;                /**< Memory usage of the current memory block at the time of the snapshot. */
+    unsigned ucount;            /**< Usage count of the context at the time of the snapshot. */
 } sr_mem_snapshot_t;
 
 
