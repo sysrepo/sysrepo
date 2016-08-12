@@ -220,6 +220,41 @@ sr_mem_free(sr_mem_ctx_t *sr_mem)
     }
 }
 
+size_t
+sr_mem_get_total_usage(sr_mem_ctx_t *sr_mem)
+{
+    size_t usage = 0;
+
+    if (NULL != sr_mem) {
+        sr_llist_node_t *node_ll = sr_mem->mem_blocks->first;
+        while (node_ll != sr_mem->cursor) {
+            sr_mem_block_t *mem_block = (sr_mem_block_t *)node_ll->data;
+            usage += mem_block->size;
+            node_ll = node_ll->next;
+        }
+        usage += sr_mem->used;
+    }
+
+    return usage;
+}
+
+size_t
+sr_mem_get_total_size(sr_mem_ctx_t *sr_mem)
+{
+    size_t size = 0;
+
+    if (NULL != sr_mem) {
+        sr_llist_node_t *node_ll = sr_mem->mem_blocks->first;
+        while (NULL != node_ll) {
+            sr_mem_block_t *mem_block = (sr_mem_block_t *)node_ll->data;
+            size += mem_block->size;
+            node_ll = node_ll->next;
+        }
+    }
+
+    return size;
+}
+
 static void
 *sr_protobuf_malloc(void *sr_mem, size_t size)
 {

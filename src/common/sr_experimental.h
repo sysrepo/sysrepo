@@ -94,6 +94,20 @@ void *sr_calloc(sr_mem_ctx_t *sr_mem, size_t nmemb, size_t size);
 void sr_mem_free(sr_mem_ctx_t *sr_mem);
 
 /**
+ * @brief Get total number of bytes used in a Sysrepo memory context.
+ *
+ * @param [in] sr_mem Memory context to get the usage of.
+ */
+size_t sr_mem_get_total_usage(sr_mem_ctx_t *sr_mem);
+
+/**
+ * @brief Get total number of bytes used by a Sysrepo memory context.
+ *
+ * @param [in] sr_mem Memory context to get the size of.
+ */
+size_t sr_mem_get_total_size(sr_mem_ctx_t *sr_mem);
+
+/**
  * @brief Get allocator for the protobuf-c library that will use specified Sysrepo
  * memory context for all the allocation.
  *
