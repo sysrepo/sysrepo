@@ -31,12 +31,11 @@
 #define NUM_OF_REQUESTS   1000
 #define OUTPUT_LOG_SIZE   100
 
-//#define PERF_TEST   1
-#define EXPERIMENTAL_MEM_MGMT
+#define PERF_TEST             1
+#define EXPERIMENTAL_MEM_MGMT 1
+//#define API_ONLY              1
 
-#ifdef PERF_TEST
-#define assert(x)
-#else
+#ifndef PERF_TEST
 #include <assert.h>
 #endif
 
@@ -55,6 +54,7 @@ test_rpc_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt,
     char log_msg[256] = { 0, };
     *callback_called += 1;
 
+#ifndef PERF_TEST
     /* check input */
     assert_int_equal(2, input_cnt);
     assert_string_equal("/test-module:activate-software-image/image-name", input[0].xpath);
@@ -66,6 +66,7 @@ test_rpc_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt,
     assert_true(input[1].dflt);
     assert_int_equal(SR_STRING_T, input[1].type);
     assert_string_equal("/", input[1].data.string_val);
+#endif
 
     *output_cnt = 2 + OUTPUT_LOG_SIZE;
 #ifdef EXPERIMENTAL_MEM_MGMT
@@ -113,10 +114,13 @@ main(int argc, char **argv)
     sr_subscription_ctx_t *subscription = NULL;
     int rc = SR_ERR_OK;
     int callback_called = 0;
+#ifndef PERF_TEST
     char log_msg[256] = { 0, }, msg_str[32] = { 0, };
     char *log_msg_tail = NULL;
+#endif
     sr_log_stderr(SR_LL_ERR);
 
+#if !defined(API_ONLY) || !defined(PERF_TEST)
     /* connect to sysrepo */
     rc = sr_connect("rpc-example", SR_CONN_DEFAULT, &connection);
     if (SR_ERR_OK != rc) {
@@ -135,6 +139,7 @@ main(int argc, char **argv)
     if (SR_ERR_OK != rc) {
         goto cleanup;
     }
+#endif
 
     sr_val_t *input = NULL;
 #ifdef EXPERIMENTAL_MEM_MGMT
@@ -156,13 +161,19 @@ main(int argc, char **argv)
     size_t output_cnt = 0;
 
     for (int i = 0; i < NUM_OF_REQUESTS; ++i) {
+#if defined(API_ONLY) && defined(PERF_TEST)
+        test_rpc_cb("/test-module:activate-software-image", input, 1, &output, &output_cnt, &callback_called);
+#else
         /* send a RPC */
         rc = sr_rpc_send(session, "/test-module:activate-software-image", input, 1, &output, &output_cnt);
         if (SR_ERR_OK != rc) {
             goto cleanup;
         }
+#endif
+
         assert_int_equal(i + 1, callback_called);
 
+#ifndef PERF_TEST
         /* check output */
         assert_int_equal(4 + 4 * OUTPUT_LOG_SIZE, output_cnt);
         assert_string_equal("/test-module:activate-software-image/status", output[0].xpath);
@@ -178,8 +189,8 @@ main(int argc, char **argv)
         assert_string_equal("/test-module:activate-software-image/location", output[2].xpath);
         assert_true(output[2].dflt);
         assert_int_equal(SR_STRING_T, output[2].type);
-
         assert_string_equal("/", output[2].data.string_val);
+
         assert_string_equal("/test-module:activate-software-image/init-log", output[3].xpath);
         assert_false(output[3].dflt);
         assert_int_equal(SR_CONTAINER_T, output[3].type);
@@ -214,14 +225,17 @@ main(int argc, char **argv)
             assert_int_equal(SR_ENUM_T, output[7 + 4*i].type);
             assert_string_equal("debug", output[7 + 4*i].data.enum_val);
         }
+#endif
 
         sr_free_values(output, output_cnt);
     }
 
     sr_free_val(input);
 
+#if !defined(API_ONLY) || !defined(PERF_TEST)
     rc = sr_unsubscribe(NULL, subscription);
     assert_int_equal(rc, SR_ERR_OK);
+#endif
 
     printf("OK\n");
 

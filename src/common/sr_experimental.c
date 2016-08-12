@@ -31,6 +31,61 @@
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 
+#undef calloc
+#undef malloc
+#undef realloc
+#undef strdup
+
+#ifdef PRINT_ALLOC_EXECS
+# define calloc(n,s)  ({ printf("SR-EXP: Calling real calloc.\n"); inc_real_by_exp_alloc(s); inc_real_alloc(s); void *mem = calloc(n,s); mem; })
+# define malloc(s)    ({ printf("SR-EXP: Calling real malloc.\n"); inc_real_by_exp_alloc(s); inc_real_alloc(s); void *mem = malloc(s); mem; })
+# define realloc(p,s) ({ printf("SR-EXP: Calling real realloc.\n"); inc_real_by_exp_alloc(s); inc_real_alloc(s); void *mem = realloc(p,s); mem; })
+# define strdup(s)    ({ printf("SR-EXP: Calling real strdup.\n"); inc_real_by_exp_alloc(strlen(s)+1); inc_real_alloc(strlen(s)+1); char *str = strdup(s); str; })
+#else
+# define calloc(n,s)  ({ inc_real_by_exp_alloc(s); inc_real_alloc(s); void *mem = calloc(n,s); mem; })
+# define malloc(s)    ({ inc_real_by_exp_alloc(s); inc_real_alloc(s); void *mem = malloc(s); mem; })
+# define realloc(p,s) ({ inc_real_by_exp_alloc(s); inc_real_alloc(s); void *mem = realloc(p,s); mem; })
+# define strdup(s)    ({ inc_real_by_exp_alloc(strlen(s)+1); inc_real_alloc(strlen(s)+1); char *str = strdup(s); str; })
+#endif
+
+size_t real_alloc_count = 0;
+size_t real_alloc_size = 0;
+size_t real_alloc_by_exp_count = 0;
+size_t real_alloc_by_exp_size = 0;
+size_t fake_alloc_count = 0;
+size_t fake_alloc_size = 0;
+
+void inc_real_alloc(size_t size)
+{
+    __sync_add_and_fetch (&real_alloc_count, 1);
+    __sync_add_and_fetch (&real_alloc_size, size);
+}
+
+void inc_real_by_exp_alloc(size_t size)
+{
+    __sync_add_and_fetch (&real_alloc_by_exp_count, 1);
+    __sync_add_and_fetch (&real_alloc_by_exp_size, size);
+}
+
+void inc_fake_alloc(size_t size)
+{
+    __sync_add_and_fetch (&fake_alloc_count, 1);
+    __sync_add_and_fetch (&fake_alloc_size, size);
+}
+
+__attribute__((destructor)) void print_mem_alloc_stats()
+{
+    static int run = 0;
+    if (!run) {
+        printf("Total number of real allocs: %lu\n", real_alloc_count);
+        printf("Total size of real allocs: %lu\n", real_alloc_size);
+        printf("Number of real allocs by exp: %lu\n", real_alloc_by_exp_count);
+        printf("Size of real allocs by exp: %lu\n", real_alloc_by_exp_size);
+        printf("Number of fake allocs: %lu\n", fake_alloc_count);
+        printf("Size of fake allocs: %lu\n", fake_alloc_size);
+        run = 1;
+    }
+}
 
 int
 sr_mem_new(size_t min_size, sr_mem_ctx_t **sr_mem_p)
@@ -101,6 +156,11 @@ void
         err = sr_llist_add_new(sr_mem->mem_blocks, mem_block);
         CHECK_RC_MSG_GOTO(err, cleanup, "Failed to add memory block into a linked-list.");
         sr_mem->used_last = 0;
+    } else {
+#ifdef PRINT_ALLOC_EXECS
+        printf("SR-EXP: Calling fake alloc.\n");
+#endif
+        inc_fake_alloc(size);
     }
 
     mem = mem_block->mem + sr_mem->used_last;
