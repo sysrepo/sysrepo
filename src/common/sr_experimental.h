@@ -32,8 +32,8 @@
  * @brief Internal structure representing a single memory block.
  */
 typedef struct sr_mem_block_s {
-    char *mem;
-    size_t size;
+    size_t size;     /**< Size of the memory block. */
+    char mem[];      /**< Memory block. */
 } sr_mem_block_t;
 
 /**

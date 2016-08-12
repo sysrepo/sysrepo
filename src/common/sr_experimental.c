@@ -217,11 +217,8 @@ sr_mem_new(size_t min_size, sr_mem_ctx_t **sr_mem_p)
     sr_mem = calloc(1, sizeof *sr_mem);
     CHECK_NULL_NOMEM_GOTO(sr_mem, rc, cleanup);
 
-    mem_block = calloc(1, sizeof *mem_block);
+    mem_block = malloc(sizeof *mem_block + MAX(min_size, MEM_BLOCK_MIN_SIZE));
     CHECK_NULL_NOMEM_GOTO(mem_block, rc, cleanup);
-
-    mem_block->mem = malloc(MAX(min_size, MEM_BLOCK_MIN_SIZE));
-    CHECK_NULL_NOMEM_GOTO(mem_block->mem, rc, cleanup);
     mem_block->size = MAX(min_size, MEM_BLOCK_MIN_SIZE);
 
     rc = sr_llist_init(&sr_mem->mem_blocks);
@@ -236,10 +233,7 @@ sr_mem_new(size_t min_size, sr_mem_ctx_t **sr_mem_p)
 
 cleanup:
     if (SR_ERR_OK != rc) {
-        if (mem_block) {
-            free(mem_block->mem);
-            free(mem_block);
-        }
+        free(mem_block);
         if (sr_mem) {
             sr_llist_cleanup(sr_mem->mem_blocks);
             free(sr_mem);
@@ -279,10 +273,8 @@ void
         if (sr_mem->cursor == sr_mem->mem_blocks->last) {
             fake_alloc = false;
             new_size = MAX(size, mem_block->size * 2);
-            mem_block = (sr_mem_block_t *)calloc(1, sizeof *mem_block);
+            mem_block = (sr_mem_block_t *)malloc(sizeof *mem_block + new_size);
             CHECK_NULL_NOMEM_GOTO(mem_block, err, cleanup);
-            mem_block->mem = malloc(new_size);
-            CHECK_NULL_NOMEM_GOTO(mem_block->mem, err, cleanup);
             mem_block->size = new_size;
             err = sr_llist_add_new(sr_mem->mem_blocks, mem_block);
             CHECK_RC_MSG_GOTO(err, cleanup, "Failed to add memory block into a linked-list.");
@@ -293,6 +285,7 @@ void
         mem_block = (sr_mem_block_t *)sr_mem->cursor->data;
         sr_mem->used = 0;
         if (NULL != for_removal) {
+            free(for_removal->data);
             sr_llist_rm(sr_mem->mem_blocks, for_removal);
         }
     }
@@ -343,7 +336,6 @@ sr_mem_destroy(sr_mem_ctx_t *sr_mem)
         sr_llist_node_t *node_ll = sr_mem->mem_blocks->first;
         while (node_ll) {
             sr_mem_block_t *mem_block = (sr_mem_block_t *)node_ll->data;
-            free(mem_block->mem);
             free(mem_block);
             node_ll = node_ll->next;
         }
@@ -473,7 +465,6 @@ sr_mem_restore(sr_mem_snapshot_t snapshot)
     }
     while (node_ll != snapshot.sr_mem->mem_blocks->last) {
         sr_mem_block_t *mem_block = (sr_mem_block_t *)snapshot.sr_mem->mem_blocks->last->data;
-        free(mem_block->mem);
         free(mem_block);
         sr_llist_rm(snapshot.sr_mem->mem_blocks, snapshot.sr_mem->mem_blocks->last);
     }
