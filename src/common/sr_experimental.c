@@ -22,13 +22,15 @@
 
 #include <libyang/libyang.h>
 #include <assert.h>
+#include <pthread.h>
 
 #include "sr_experimental.h"
 #include "sr_common.h"
 
-/* TODO: make this configurable */
-#define MEM_BLOCK_MIN_SIZE  256
-#define MAX_FREE_TRAILING_MEM_BLOCKS 2
+/* Configuration */
+#define MEM_BLOCK_MIN_SIZE           256
+#define MAX_FREE_TRAILING_MEM_BLOCKS 3
+#define MAX_FREE_MEM_CONTEXTS        10
 
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
@@ -57,22 +59,35 @@ size_t real_alloc_by_exp_size = 0;
 size_t fake_alloc_count = 0;
 size_t fake_alloc_size = 0;
 
+size_t new_sr_mem_count = 0;
+size_t reused_sr_mem_count = 0;
+
 void inc_real_alloc(size_t size)
 {
-    __sync_add_and_fetch (&real_alloc_count, 1);
-    __sync_add_and_fetch (&real_alloc_size, size);
+    __sync_add_and_fetch(&real_alloc_count, 1);
+    __sync_add_and_fetch(&real_alloc_size, size);
 }
 
 void inc_real_by_exp_alloc(size_t size)
 {
-    __sync_add_and_fetch (&real_alloc_by_exp_count, 1);
-    __sync_add_and_fetch (&real_alloc_by_exp_size, size);
+    __sync_add_and_fetch(&real_alloc_by_exp_count, 1);
+    __sync_add_and_fetch(&real_alloc_by_exp_size, size);
 }
 
 void inc_fake_alloc(size_t size)
 {
-    __sync_add_and_fetch (&fake_alloc_count, 1);
-    __sync_add_and_fetch (&fake_alloc_size, size);
+    __sync_add_and_fetch(&fake_alloc_count, 1);
+    __sync_add_and_fetch(&fake_alloc_size, size);
+}
+
+void inc_new_sr_mem()
+{
+    __sync_add_and_fetch(&new_sr_mem_count, 1);
+}
+
+void inc_reused_sr_mem()
+{
+    __sync_add_and_fetch(&reused_sr_mem_count, 1);
 }
 
 __attribute__((destructor)) void print_mem_alloc_stats()
@@ -85,8 +100,78 @@ __attribute__((destructor)) void print_mem_alloc_stats()
         printf("Size of real allocs by exp: %lu\n", real_alloc_by_exp_size);
         printf("Number of fake allocs: %lu\n", fake_alloc_count);
         printf("Size of fake allocs: %lu\n", fake_alloc_size);
+        printf("New sysrepo memory contexts: %lu\n", new_sr_mem_count);
+        printf("Reused sysrepo memory contexts: %lu\n", reused_sr_mem_count);
         run = 1;
     }
+}
+
+/**
+ * @brief A Pool of free memory contexts.
+ */
+typedef struct fctx_pool_s {
+    sr_llist_t *fctx_llist;  /**< Free memory contexts (items are of type sr_mem_ctx_t). */
+    size_t count;            /**< Number of free memory contexts. */
+} fctx_pool_t;
+
+static pthread_key_t fctx_key; /**< Key to the pool of free memory contexts. */
+static pthread_once_t fctx_init_once = PTHREAD_ONCE_INIT; /**< For initialization of the key. */
+
+/* Forward declaration. */
+static void sr_mem_destroy(sr_mem_ctx_t *sr_mem);
+
+/**
+ * @brief Destroy pool of free contexts.
+ */
+static void
+destroy_fctx_pool(void *fctx_pool_p)
+{
+    fctx_pool_t *fctx_pool = (fctx_pool_t *)fctx_pool_p;
+    sr_llist_node_t *node_ll = NULL;
+
+    if (fctx_pool) {
+        node_ll = fctx_pool->fctx_llist->first;
+        while (node_ll) {
+            sr_mem_ctx_t *sr_mem = (sr_mem_ctx_t *)node_ll->data;
+            sr_mem_destroy(sr_mem);
+            node_ll = node_ll->next;
+        }
+        sr_llist_cleanup(fctx_pool->fctx_llist);
+        free(fctx_pool);
+    }
+}
+
+/**
+ * @brief Initializes fctx_key.
+ */
+static void
+init_fctx_key()
+{
+    (void)pthread_key_create(&fctx_key, destroy_fctx_pool);
+}
+
+/**
+ * @brief Get thread-private pool of free memory contexts.
+ */
+static fctx_pool_t *
+get_fctx_pool()
+{
+    fctx_pool_t *fctx_pool = NULL;
+
+    (void)pthread_once(&fctx_init_once, init_fctx_key);
+    if ((fctx_pool = (fctx_pool_t *)pthread_getspecific(fctx_key)) == NULL) {
+        fctx_pool = calloc(1, sizeof *fctx_pool);
+        if (fctx_pool) {
+            if (SR_ERR_OK == sr_llist_init(&fctx_pool->fctx_llist)) {
+                (void)pthread_setspecific(fctx_key, fctx_pool);
+            } else {
+                free(fctx_pool);
+                fctx_pool = NULL;
+            }
+        }
+    }
+
+    return fctx_pool;
 }
 
 int
@@ -98,6 +183,36 @@ sr_mem_new(size_t min_size, sr_mem_ctx_t **sr_mem_p)
 
     sr_mem_ctx_t *sr_mem = NULL;
     sr_mem_block_t *mem_block = NULL;
+    sr_llist_node_t *node_ll = NULL;
+    fctx_pool_t *fctx_pool = get_fctx_pool();
+
+    if (NULL == fctx_pool) {
+        SR_LOG_WRN_MSG("Failed to get pool of free memory contexts.");
+    } else {
+        if (0 < fctx_pool->count) {
+            node_ll = fctx_pool->fctx_llist->first;
+            /* find the first suitable context */
+            while (node_ll) {
+                sr_mem = (sr_mem_ctx_t *)node_ll->data;
+                if (min_size <= ((sr_mem_block_t *)sr_mem->mem_blocks->first->data)->size) {
+                    sr_llist_rm(fctx_pool->fctx_llist, node_ll);
+                    break;
+                } else {
+                    sr_mem = NULL;
+                }
+                node_ll = node_ll->next;
+            }
+            if (NULL == sr_mem) {
+                /* take also a non-suitable context */
+                sr_mem = (sr_mem_ctx_t *)fctx_pool->fctx_llist->first->data;
+                sr_llist_rm(fctx_pool->fctx_llist, fctx_pool->fctx_llist->first);
+            }
+            --fctx_pool->count;
+            *sr_mem_p = sr_mem;
+            inc_reused_sr_mem();
+            return SR_ERR_OK;
+        }
+    }
 
     sr_mem = calloc(1, sizeof *sr_mem);
     CHECK_NULL_NOMEM_GOTO(sr_mem, rc, cleanup);
@@ -117,6 +232,7 @@ sr_mem_new(size_t min_size, sr_mem_ctx_t **sr_mem_p)
 
     sr_mem->cursor = sr_mem->mem_blocks->last;
     *sr_mem_p = sr_mem;
+    inc_new_sr_mem();
 
 cleanup:
     if (SR_ERR_OK != rc) {
@@ -138,6 +254,8 @@ void
     void *mem = NULL;
     size_t new_size = 0;
     int err = SR_ERR_OK;
+    bool fake_alloc = true;
+    sr_llist_node_t *for_removal = NULL;
     sr_mem_block_t *mem_block = NULL;
 
     if (0 == size) {
@@ -148,11 +266,18 @@ void
         return malloc(size);
     }
 
+    /* find first suitable block starting at the cursor */
     mem_block = (sr_mem_block_t *)sr_mem->cursor->data;
-
-    if (mem_block->size < sr_mem->used + size) {
+    while (mem_block->size < sr_mem->used + size) {
         /* not enough memory in the current block */
+        if (0 == sr_mem->used) {
+            /* don't keep completely empty block in the middle */
+            for_removal = sr_mem->cursor;
+        } else {
+            for_removal = NULL;
+        }
         if (sr_mem->cursor == sr_mem->mem_blocks->last) {
+            fake_alloc = false;
             new_size = MAX(size, mem_block->size * 2);
             mem_block = (sr_mem_block_t *)calloc(1, sizeof *mem_block);
             CHECK_NULL_NOMEM_GOTO(mem_block, err, cleanup);
@@ -162,10 +287,17 @@ void
             err = sr_llist_add_new(sr_mem->mem_blocks, mem_block);
             CHECK_RC_MSG_GOTO(err, cleanup, "Failed to add memory block into a linked-list.");
         }
+        assert(sr_mem->cursor->next);
         sr_mem->cursor = sr_mem->cursor->next;
+        assert(sr_mem->cursor->data);
         mem_block = (sr_mem_block_t *)sr_mem->cursor->data;
         sr_mem->used = 0;
-    } else {
+        if (NULL != for_removal) {
+            sr_llist_rm(sr_mem->mem_blocks, for_removal);
+        }
+    }
+
+    if (fake_alloc) {
 #ifdef PRINT_ALLOC_EXECS
         printf("SR-EXP: Calling fake alloc.\n");
 #endif
@@ -201,12 +333,12 @@ void
     return mem;
 }
 
-void
-sr_mem_free(sr_mem_ctx_t *sr_mem)
+/**
+ * @brief Completely destroys Sysrepo memory context.
+ */
+static void
+sr_mem_destroy(sr_mem_ctx_t *sr_mem)
 {
-    if (sr_mem->ucount) {
-        SR_LOG_WRN_MSG("Deallocation Sysrepo memory context with non-zero usage counter.");
-    }
     if (NULL != sr_mem) {
         sr_llist_node_t *node_ll = sr_mem->mem_blocks->first;
         while (node_ll) {
@@ -218,6 +350,38 @@ sr_mem_free(sr_mem_ctx_t *sr_mem)
         sr_llist_cleanup(sr_mem->mem_blocks);
         free(sr_mem);
     }
+}
+
+void
+sr_mem_free(sr_mem_ctx_t *sr_mem)
+{
+    if (NULL == sr_mem) {
+        return;
+    }
+
+    fctx_pool_t *fctx_pool = get_fctx_pool();
+
+    if (sr_mem->ucount) {
+        SR_LOG_WRN_MSG("Deallocation of Sysrepo memory context with non-zero usage counter.");
+    }
+
+    if (NULL == fctx_pool) {
+        SR_LOG_WRN_MSG("Failed to get pool of free memory contexts.");
+    } else {
+        if (MAX_FREE_MEM_CONTEXTS > fctx_pool->count) {
+            /**
+             * Simulate snapshot right after ::sr_mem_new in order to zero counters and deallocate
+             * extra trailing free memory blocks.
+             */
+            sr_mem_snapshot_t free_ctx = { sr_mem, sr_mem->mem_blocks->first, 0, 0 };
+            sr_mem_restore(free_ctx);
+            sr_llist_add_new(fctx_pool->fctx_llist, sr_mem);
+            ++fctx_pool->count;
+            return;
+        }
+    }
+
+    sr_mem_destroy(sr_mem);
 }
 
 size_t
@@ -307,12 +471,13 @@ sr_mem_restore(sr_mem_snapshot_t snapshot)
         ++empty_count;
         node_ll = node_ll->next;
     }
-    while(node_ll != snapshot.sr_mem->mem_blocks->last) {
+    while (node_ll != snapshot.sr_mem->mem_blocks->last) {
         sr_mem_block_t *mem_block = (sr_mem_block_t *)snapshot.sr_mem->mem_blocks->last->data;
         free(mem_block->mem);
         free(mem_block);
         sr_llist_rm(snapshot.sr_mem->mem_blocks, snapshot.sr_mem->mem_blocks->last);
     }
+    assert(snapshot.sr_mem->cursor->data);
 }
 
 int
@@ -558,6 +723,4 @@ cleanup:
     }
 
     return rc;
-
 }
-
