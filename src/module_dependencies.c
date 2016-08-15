@@ -1355,27 +1355,29 @@ dependencies:
     /* process dependencies introduced by identities */
     for (uint32_t i = 0; i < module_schema->ident_size; ++i) {
         ident = module_schema->ident + i;
-        if (ident->base && module_schema != MD_MAIN_MODULE(ident->base)) {
-            module_lkp_key.name = (char *)MD_MAIN_MODULE(ident->base)->name;
-            module_lkp_key.revision_date = (char *)md_get_module_revision(MD_MAIN_MODULE(ident->base));
-            module2 = (md_module_t *)sr_btree_search(md_ctx->modules_btree, &module_lkp_key);
-            if (NULL == module2) {
-                SR_LOG_ERR_MSG("Unable to resolve dependency induced by a derived identity.");
-                rc = SR_ERR_INTERNAL;
-                goto cleanup;
-            }
-            if (SR_ERR_OK != md_add_dependency(module2->deps, MD_DEP_EXTENSION, main_module, true) ||
-                SR_ERR_OK != md_add_dependency(main_module->inv_deps, MD_DEP_EXTENSION, module2, true)) {
-                SR_LOG_ERR_MSG("Failed to add an edge into the dependency graph.");
-                rc = SR_ERR_INTERNAL;
-                goto cleanup;
-            }
-            /* add entry also into data_tree */
-            rc = md_lyd_new_path(md_ctx, MD_XPATH_MODULE_DEPENDENCY_TYPE, md_get_dep_type_to_str(MD_DEP_EXTENSION),
-                                 main_module, "add (extension) dependency into the data tree", NULL, module2->name,
-                                 module2->revision_date, main_module->name, main_module->revision_date);
-            if (SR_ERR_OK != rc) {
-                goto cleanup;
+        for (uint8_t b = 0; b < ident->base_size; b++) {
+            if (ident->base && module_schema != MD_MAIN_MODULE(ident->base[b])) {
+                module_lkp_key.name = (char *)MD_MAIN_MODULE(ident->base[b])->name;
+                module_lkp_key.revision_date = (char *)md_get_module_revision(MD_MAIN_MODULE(ident->base[b]));
+                module2 = (md_module_t *)sr_btree_search(md_ctx->modules_btree, &module_lkp_key);
+                if (NULL == module2) {
+                    SR_LOG_ERR_MSG("Unable to resolve dependency induced by a derived identity.");
+                    rc = SR_ERR_INTERNAL;
+                    goto cleanup;
+                }
+                if (SR_ERR_OK != md_add_dependency(module2->deps, MD_DEP_EXTENSION, main_module, true) ||
+                    SR_ERR_OK != md_add_dependency(main_module->inv_deps, MD_DEP_EXTENSION, module2, true)) {
+                    SR_LOG_ERR_MSG("Failed to add an edge into the dependency graph.");
+                    rc = SR_ERR_INTERNAL;
+                    goto cleanup;
+                }
+                /* add entry also into data_tree */
+                rc = md_lyd_new_path(md_ctx, MD_XPATH_MODULE_DEPENDENCY_TYPE, md_get_dep_type_to_str(MD_DEP_EXTENSION),
+                                     main_module, "add (extension) dependency into the data tree", NULL, module2->name,
+                                     module2->revision_date, main_module->name, main_module->revision_date);
+                if (SR_ERR_OK != rc) {
+                    goto cleanup;
+                }
             }
         }
     }
