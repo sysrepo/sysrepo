@@ -207,14 +207,24 @@ typedef struct sr_node_s {
 
     /**
      * Name of the module that defines scheme of this node.
+     * NULL if it is the same as that of the predecessor.
      */
     char *module_name;
 
-    /**< Array of node's direct descendands */
-    struct sr_node_s *children;
+    /**< Pointer to the parent node (NULL in case of root node). */
+    struct sr_node_s *parent;
 
-    /**< Number of child nodes */
-    size_t children_cnt;
+    /**< Pointer to the next sibling node (NULL if there is no one). */
+    struct sr_node_s *next;
+
+    /**< Pointer to the previous sibling node (NULL if there is no one). */
+    struct sr_node_s *prev;
+
+    /**< Pointer to the first child node (NULL if this is a leaf). */
+    struct sr_node_s *first_child;
+
+    /**< Pointer to the last child node (NULL if this is a leaf). */
+    struct sr_node_s *last_child;
 } sr_node_t;
 
 /**

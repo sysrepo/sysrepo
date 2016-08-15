@@ -531,6 +531,8 @@ sr_msg_free(Sr__Msg *msg)
     }
 }
 
+
+
 int
 sr_new_val(const char *xpath, sr_val_t **value_p)
 {
@@ -724,6 +726,242 @@ sr_dup_values(sr_val_t *values, size_t count, sr_val_t **values_dup_p)
 cleanup:
     if (SR_ERR_OK != rc) {
         sr_free_values(values_dup, count);
+    }
+
+    return rc;
+}
+
+
+
+/**
+ * @brief Allocate a new instance of a sysrepo node over an existing sysrepo memory context.
+ */
+int
+sr_new_node(sr_mem_ctx_t *sr_mem, const char *name, const char *module_name, sr_node_t **node_p)
+{
+    int rc = SR_ERR_OK;
+    sr_node_t *node = NULL;
+
+    CHECK_NULL_ARG(node_p);
+
+    node = (sr_node_t *)sr_calloc(sr_mem, 1, sizeof *node);
+    CHECK_NULL_NOMEM_RETURN(node);
+    node->sr_mem = sr_mem;
+
+    if (name) {
+        rc = sr_node_set_name(node, name);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to set sysrepo node name.");
+    }
+
+    if (module_name) {
+        rc = sr_node_set_module(node, module_name);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to set module name for a sysrepo node.");
+    }
+
+cleanup:
+    if (SR_ERR_OK == rc) {
+        *node_p = node;
+    } else if (NULL == sr_mem) {
+        sr_free_tree(node);
+    }
+    return rc;
+}
+
+int
+sr_new_tree(const char *name, const char *module_name, sr_node_t **node_p)
+{
+    int rc = SR_ERR_OK;
+    sr_mem_ctx_t *sr_mem = NULL;
+
+    CHECK_NULL_ARG(node_p);
+
+    rc = sr_mem_new(sizeof(sr_node_t) + (name ? strlen(name) + 1 : 0)
+                                      + (module_name ? strlen(module_name) + 1 : 0),
+                    &sr_mem);
+    CHECK_RC_MSG_RETURN(rc, "Failed to obtain new sysrepo memory.");
+
+    rc = sr_new_node(sr_mem, name, module_name, node_p);
+    if (SR_ERR_OK != rc) {
+        sr_mem_free(sr_mem);
+    } else {
+        sr_mem->ucount = 1;
+    }
+
+    return rc;
+}
+
+int
+sr_new_trees(size_t count, sr_node_t **trees_p)
+{
+    int rc = SR_ERR_OK;
+    sr_mem_ctx_t *sr_mem = NULL;
+    sr_node_t *trees = NULL;
+
+    CHECK_NULL_ARG(trees_p);
+
+    if (0 == count) {
+        *trees_p = NULL;
+        return SR_ERR_OK;
+    }
+
+    rc = sr_mem_new((sizeof *trees) * count, &sr_mem);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to obtain new sysrepo memory.");
+    trees = (sr_node_t *)sr_calloc(sr_mem, count, sizeof *trees);
+    CHECK_NULL_NOMEM_GOTO(trees, rc, cleanup);
+    for (size_t i = 0; i < count; ++i) {
+        trees[i].sr_mem = sr_mem;
+    }
+    sr_mem->ucount = 1; /* 1 for the entire array */
+
+cleanup:
+    if (SR_ERR_OK != rc) {
+        sr_mem_free(sr_mem);
+    } else {
+        *trees_p = trees;
+    }
+    return SR_ERR_OK;
+}
+
+int
+sr_node_set_name(sr_node_t *node, const char *name)
+{
+    CHECK_NULL_ARG2(node, name);
+    return sr_mem_edit_string(node->sr_mem, &node->name, name);
+}
+
+int
+sr_node_set_module(sr_node_t *node, const char *module_name)
+{
+    CHECK_NULL_ARG2(node, module_name);
+    return sr_mem_edit_string(node->sr_mem, &node->module_name, module_name);
+}
+
+int
+sr_node_set_string(sr_node_t *node, const char *string_val)
+{
+    return sr_val_set_string((sr_val_t *)node, string_val);
+}
+
+/**
+ * @brief Insert child into the linked-list of children of a given parent node.
+ */
+static void
+sr_node_insert_child(sr_node_t *parent, sr_node_t *child)
+{
+    if (NULL == parent || NULL == child) {
+        return;
+    }
+    if (NULL == parent->first_child) {
+        parent->first_child = child;
+    } else {
+        parent->last_child->next = child;
+    }
+    child->prev = parent->last_child;
+    child->next = NULL;
+    parent->last_child = child;
+    child->parent = parent;
+}
+
+int
+sr_node_add_child(sr_node_t *parent, const char *child_name, const char *child_module_name,
+        sr_node_t **child_p)
+{
+    int rc = SR_ERR_OK;
+    sr_node_t *child = NULL;
+
+    CHECK_NULL_ARG2(parent, child_p);
+
+    rc = sr_new_node(parent->sr_mem, child_name, child_module_name, &child);
+
+    if (SR_ERR_OK == rc) {
+        sr_node_insert_child(parent, child);
+        *child_p = child;
+    }
+
+    return rc;
+}
+
+static int
+sr_dup_tree_ctx(sr_mem_ctx_t *sr_mem, sr_node_t *tree, sr_node_t **tree_dup_p)
+{
+    int rc = SR_ERR_OK;
+    sr_node_t *tree_dup = NULL, *child = NULL, *child_dup = NULL;
+
+    CHECK_NULL_ARG2(tree, tree_dup_p);
+
+    if (NULL != sr_mem) {
+        rc = sr_new_node(sr_mem, tree->name, tree->module_name, &tree_dup);
+    } else {
+        rc = sr_new_tree(tree->name, tree->module_name, &tree_dup);
+    }
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to create new sysrepo node.");
+
+    rc = sr_dup_val_data((sr_val_t *)tree_dup, (sr_val_t *)tree);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to duplicate sysrepo node data.");
+
+    /* duplicate descendants */
+    child = tree->first_child;
+    while (child) {
+        rc = sr_dup_tree_ctx(tree_dup->sr_mem, child, &child_dup);
+        if (SR_ERR_OK != rc) {
+            goto cleanup;
+        }
+        sr_node_insert_child(tree_dup, child_dup);
+        child = child->next;
+    }
+
+    *tree_dup_p = tree_dup;
+
+cleanup:
+    if (SR_ERR_OK != rc && NULL == sr_mem) {
+        sr_free_tree(tree_dup);
+    }
+
+    return rc;
+}
+
+int
+sr_dup_tree(sr_node_t *tree, sr_node_t **tree_dup_p)
+{
+    return sr_dup_tree_ctx(NULL, tree, tree_dup_p);
+}
+
+int
+sr_dup_trees(sr_node_t *trees, size_t count, sr_node_t **trees_dup_p)
+{
+    int rc = SR_ERR_OK;
+    sr_node_t *trees_dup = NULL, *child = NULL, *child_dup = NULL;
+
+    CHECK_NULL_ARG2(trees, trees_dup_p);
+
+    rc = sr_new_trees(count, &trees_dup);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to create new array of sysrepo nodes.");
+
+    for (size_t i = 0; i < count; ++i) {
+        sr_node_set_name(trees_dup + i, trees[i].name);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to duplicate sysrepo node name.");
+        sr_node_set_module(trees_dup + i, trees[i].module_name);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to duplicate module of a sysrepo node.");
+        rc = sr_dup_val_data((sr_val_t *)(trees_dup + i), (sr_val_t *)(trees + i));
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to duplicate sysrepo value data.");
+
+        /* duplicate descendants */
+        child = trees[i].first_child;
+        while (child) {
+            rc = sr_dup_tree_ctx(trees_dup->sr_mem, child, &child_dup);
+            if (SR_ERR_OK != rc) {
+                goto cleanup;
+            }
+            sr_node_insert_child(trees_dup + i, child_dup);
+            child = child->next;
+        }
+    }
+
+    *trees_dup_p = trees_dup;
+
+cleanup:
+    if (SR_ERR_OK != rc) {
+        sr_free_trees(trees_dup, count);
     }
 
     return rc;

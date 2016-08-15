@@ -84,7 +84,7 @@ createDataTree(struct ly_ctx *ctx, struct lyd_node **root) {
     assert_int_equal(0, lyd_validate(root, LYD_OPT_STRICT | LYD_OPT_CONFIG | LYD_WD_IMPL_TAG));
 }
 
-static void 
+static void
 createDataTreeWithAugments(struct ly_ctx *ctx, struct lyd_node **root){
     struct lyd_node *node = NULL;
     const struct lys_module *module = ly_ctx_load_module(ctx, "small-module", NULL);
@@ -485,6 +485,43 @@ sr_locking_set_test(void **state)
     sr_locking_set_cleanup(lset);
 }
 
+/**
+ * @brief Check size of a linked-list.
+ */
+static size_t
+sr_node_t_get_children_cnt(const sr_node_t *node)
+{
+    size_t size = 0;
+    const sr_node_t *child = node->first_child;
+
+    while (child) {
+        ++size;
+        child = child->next;
+    }
+    return size;
+}
+
+/**
+ * @brief Get node child at a given index.
+ */
+static sr_node_t *
+sr_node_t_get_child(const sr_node_t *node, size_t index)
+{
+    size_t i = 0;
+    sr_node_t *child = (sr_node_t *)node->first_child;
+
+    while (child) {
+        assert_true(child->parent == node);
+        if (index == i) {
+            return child;
+        }
+        ++i;
+        child = child->next;
+    }
+    assert_true(false && "index out of range");
+    return NULL;
+}
+
 static void
 sr_node_t_test(void **state)
 {
@@ -515,86 +552,77 @@ sr_node_t_test(void **state)
     assert_string_equal("example-module", sr_node->module_name);
     assert_false(sr_node->dflt);
     assert_int_equal(SR_CONTAINER_T, sr_node->type);
-    assert_int_equal(2, sr_node->children_cnt);
-    assert_non_null(sr_node->children);
+    assert_int_equal(2, sr_node_t_get_children_cnt(sr_node));
 
     /* /example-module:container/list[key1='key1'][key2='key2]' */
-    sr_node = trees[0].children;
+    sr_node = sr_node_t_get_child(trees, 0);
     assert_string_equal("list", sr_node->name);
     assert_null(sr_node->module_name);
     assert_false(sr_node->dflt);
     assert_int_equal(SR_LIST_T, sr_node->type);
-    assert_int_equal(3, sr_node->children_cnt);
-    assert_non_null(sr_node->children);
+    assert_int_equal(3, sr_node_t_get_children_cnt(sr_node));
 
     /* /example-module:container/list[key1='key1'][key2='key2]'/key1 */
-    sr_node = trees[0].children[0].children;
+    sr_node = sr_node_t_get_child(sr_node_t_get_child(trees, 0), 0);
     assert_string_equal("key1", sr_node->name);
     assert_null(sr_node->module_name);
     assert_false(sr_node->dflt);
     assert_int_equal(SR_STRING_T, sr_node->type);
     assert_string_equal("key1", sr_node->data.string_val);
-    assert_int_equal(0, sr_node->children_cnt);
-    assert_null(sr_node->children);
+    assert_int_equal(0, sr_node_t_get_children_cnt(sr_node));
 
     /* /example-module:container/list[key1='key1'][key2='key2]'/key2 */
-    sr_node = trees[0].children[0].children + 1;
+    sr_node = sr_node_t_get_child(sr_node_t_get_child(trees, 0), 1);
     assert_string_equal("key2", sr_node->name);
     assert_null(sr_node->module_name);
     assert_false(sr_node->dflt);
     assert_int_equal(SR_STRING_T, sr_node->type);
     assert_string_equal("key2", sr_node->data.string_val);
-    assert_int_equal(0, sr_node->children_cnt);
-    assert_null(sr_node->children);
+    assert_int_equal(0, sr_node_t_get_children_cnt(sr_node));
 
     /* /example-module:container/list[key1='key1'][key2='key2]'/leaf */
-    sr_node = trees[0].children[0].children + 2;
+    sr_node = sr_node_t_get_child(sr_node_t_get_child(trees, 0), 2);
     assert_string_equal("leaf", sr_node->name);
     assert_null(sr_node->module_name);
     assert_false(sr_node->dflt);
     assert_int_equal(SR_STRING_T, sr_node->type);
     assert_string_equal("leaf12", sr_node->data.string_val);
-    assert_int_equal(0, sr_node->children_cnt);
-    assert_null(sr_node->children);
+    assert_int_equal(0, sr_node_t_get_children_cnt(sr_node));
 
     /* /example-module:container/list[key1='keyA'][key2='keyB]' */
-    sr_node = trees[0].children + 1;
+    sr_node = sr_node_t_get_child(trees, 1);
     assert_string_equal("list", sr_node->name);
     assert_null(sr_node->module_name);
     assert_false(sr_node->dflt);
     assert_int_equal(SR_LIST_T, sr_node->type);
-    assert_int_equal(3, sr_node->children_cnt);
-    assert_non_null(sr_node->children);
+    assert_int_equal(3, sr_node_t_get_children_cnt(sr_node));
 
     /* /example-module:container/list[key1='key1'][key2='key2]'/key1 */
-    sr_node = trees[0].children[1].children;
+    sr_node = sr_node_t_get_child(sr_node_t_get_child(trees, 1), 0);
     assert_string_equal("key1", sr_node->name);
     assert_null(sr_node->module_name);
     assert_false(sr_node->dflt);
     assert_int_equal(SR_STRING_T, sr_node->type);
     assert_string_equal("keyA", sr_node->data.string_val);
-    assert_int_equal(0, sr_node->children_cnt);
-    assert_null(sr_node->children);
+    assert_int_equal(0, sr_node_t_get_children_cnt(sr_node));
 
     /* /example-module:container/list[key1='key1'][key2='key2]'/key2 */
-    sr_node = trees[0].children[1].children + 1;
+    sr_node = sr_node_t_get_child(sr_node_t_get_child(trees, 1), 1);
     assert_string_equal("key2", sr_node->name);
     assert_null(sr_node->module_name);
     assert_false(sr_node->dflt);
     assert_int_equal(SR_STRING_T, sr_node->type);
     assert_string_equal("keyB", sr_node->data.string_val);
-    assert_int_equal(0, sr_node->children_cnt);
-    assert_null(sr_node->children);
+    assert_int_equal(0, sr_node_t_get_children_cnt(sr_node));
 
     /* /example-module:container/list[key1='key1'][key2='key2]'/leaf */
-    sr_node = trees[0].children[1].children + 2;
+    sr_node = sr_node_t_get_child(sr_node_t_get_child(trees, 1), 2);
     assert_string_equal("leaf", sr_node->name);
     assert_null(sr_node->module_name);
     assert_false(sr_node->dflt);
     assert_int_equal(SR_STRING_T, sr_node->type);
     assert_string_equal("leafAB", sr_node->data.string_val);
-    assert_int_equal(0, sr_node->children_cnt);
-    assert_null(sr_node->children);
+    assert_int_equal(0, sr_node_t_get_children_cnt(sr_node));
 
     /* /example-module:number[0] */
     sr_node = trees + 1;
@@ -603,8 +631,7 @@ sr_node_t_test(void **state)
     assert_false(sr_node->dflt);
     assert_int_equal(SR_UINT16_T, sr_node->type);
     assert_int_equal(2, sr_node->data.uint16_val);
-    assert_int_equal(0, sr_node->children_cnt);
-    assert_null(sr_node->children);
+    assert_int_equal(0, sr_node_t_get_children_cnt(sr_node));
 
     /* /example-module:number[1] */
     sr_node = trees + 2;
@@ -613,8 +640,7 @@ sr_node_t_test(void **state)
     assert_false(sr_node->dflt);
     assert_int_equal(SR_UINT16_T, sr_node->type);
     assert_int_equal(1, sr_node->data.uint16_val);
-    assert_int_equal(0, sr_node->children_cnt);
-    assert_null(sr_node->children);
+    assert_int_equal(0, sr_node_t_get_children_cnt(sr_node));
 
     /* /example-module:number[2] */
     sr_node = trees + 3;
@@ -623,8 +649,7 @@ sr_node_t_test(void **state)
     assert_false(sr_node->dflt);
     assert_int_equal(SR_UINT16_T, sr_node->type);
     assert_int_equal(42, sr_node->data.uint16_val);
-    assert_int_equal(0, sr_node->children_cnt);
-    assert_null(sr_node->children);
+    assert_int_equal(0, sr_node_t_get_children_cnt(sr_node));
 
     /* convert back to libyang data tree */
     for (size_t i = 0; i < tree_cnt; ++i) {
@@ -664,7 +689,7 @@ sr_node_t_with_augments_test(void **state)
     size_t tree_cnt = 0, diff_cnt = 0;
 
     ly_ctx = ly_ctx_new(TEST_SCHEMA_SEARCH_DIR);
-   
+
     /* small-module + info-module */
     createDataTreeWithAugments(ly_ctx, &data_tree);
 
@@ -683,29 +708,26 @@ sr_node_t_with_augments_test(void **state)
     assert_string_equal("small-module", sr_node->module_name);
     assert_false(sr_node->dflt);
     assert_int_equal(SR_CONTAINER_T, sr_node->type);
-    assert_int_equal(2, sr_node->children_cnt);
-    assert_non_null(sr_node->children);
+    assert_int_equal(2, sr_node_t_get_children_cnt(sr_node));
 
     /* /small-module:item/name */
-    sr_node = trees[0].children;
+    sr_node = sr_node_t_get_child(trees, 0);
     assert_string_equal("name", sr_node->name);
     assert_null(sr_node->module_name);
     assert_false(sr_node->dflt);
     assert_int_equal(SR_STRING_T, sr_node->type);
     assert_string_equal("hey hou", sr_node->data.string_val);
-    assert_int_equal(0, sr_node->children_cnt);
-    assert_null(sr_node->children);
+    assert_int_equal(0, sr_node_t_get_children_cnt(sr_node));
 
     /* /small-module:item/info-module:info */
-    sr_node = trees[0].children + 1;
+    sr_node = sr_node_t_get_child(trees, 1);
     assert_string_equal("info", sr_node->name);
     assert_non_null(sr_node->module_name);
     assert_string_equal("info-module", sr_node->module_name);
     assert_false(sr_node->dflt);
     assert_int_equal(SR_STRING_T, sr_node->type);
     assert_string_equal("info 123", sr_node->data.string_val);
-    assert_int_equal(0, sr_node->children_cnt);
-    assert_null(sr_node->children);
+    assert_int_equal(0, sr_node_t_get_children_cnt(sr_node));
 
     /* /example-module:size */
     sr_node = trees + 1;
@@ -714,8 +736,7 @@ sr_node_t_with_augments_test(void **state)
     assert_true(sr_node->dflt);
     assert_int_equal(SR_INT8_T, sr_node->type);
     assert_int_equal(5, sr_node->data.uint16_val);
-    assert_int_equal(0, sr_node->children_cnt);
-    assert_null(sr_node->children);
+    assert_int_equal(0, sr_node_t_get_children_cnt(sr_node));
 
     /* convert back to libyang data tree */
     for (size_t i = 0; i < tree_cnt; ++i) {
@@ -788,8 +809,7 @@ sr_node_t_rpc_input_test(void **state)
     assert_false(sr_node->dflt);
     assert_int_equal(SR_STRING_T, sr_node->type);
     assert_string_equal("acmefw-2.3", sr_node->data.string_val);
-    assert_int_equal(0, sr_node->children_cnt);
-    assert_null(sr_node->children);
+    assert_int_equal(0, sr_node_t_get_children_cnt(sr_node));
 
     /* /test-module:activate-software-image/input/location */
     sr_node = trees + 1;
@@ -798,8 +818,7 @@ sr_node_t_rpc_input_test(void **state)
     assert_true(sr_node->dflt);
     assert_int_equal(SR_STRING_T, sr_node->type);
     assert_string_equal("/", sr_node->data.string_val);
-    assert_int_equal(0, sr_node->children_cnt);
-    assert_null(sr_node->children);
+    assert_int_equal(0, sr_node_t_get_children_cnt(sr_node));
 
     /* cleanup */
     sr_free_trees(trees, tree_cnt);
@@ -816,7 +835,7 @@ sr_node_t_rpc_output_test(void **state)
     struct ly_ctx *ly_ctx = NULL;
     struct lyd_node *data_tree = NULL;
     struct ly_set *nodeset = NULL;
-    sr_node_t *trees = NULL, *sr_node = NULL;
+    sr_node_t *trees = NULL, *sr_node = NULL, *child = NULL;
     size_t tree_cnt = 0;
 
     ly_ctx = ly_ctx_new(TEST_SCHEMA_SEARCH_DIR);
@@ -830,38 +849,30 @@ sr_node_t_rpc_output_test(void **state)
     trees[0].data.string_val = strdup("Installed");
     trees[1].name = strdup("init-log");
     trees[1].type = SR_CONTAINER_T;
-    trees[1].children_cnt = 2;
-    trees[1].children = calloc(trees[1].children_cnt, sizeof(sr_node_t));
     /* log-msg[1] */
-    sr_node = trees[1].children;
-    sr_node->name = strdup("log-msg");
+    assert_int_equal(0, sr_node_add_child(trees + 1, "log-msg", NULL, &sr_node));
     sr_node->type = SR_LIST_T;
-    sr_node->children_cnt = 3; 
-    sr_node->children = calloc(sr_node->children_cnt, sizeof(sr_node_t));
-    sr_node->children[0].name = strdup("msg");
-    sr_node->children[0].type = SR_STRING_T;
-    sr_node->children[0].data.string_val = strdup("Successfully loaded software image."); 
-    sr_node->children[1].name = strdup("time");
-    sr_node->children[1].type = SR_UINT32_T;
-    sr_node->children[1].data.uint32_val = 1469625110; 
-    sr_node->children[2].name = strdup("msg-type");
-    sr_node->children[2].type = SR_ENUM_T;
-    sr_node->children[2].data.enum_val = strdup("debug");
+    assert_int_equal(0, sr_node_add_child(sr_node, "msg", NULL, &child));
+    child->type = SR_STRING_T;
+    child->data.string_val = strdup("Successfully loaded software image.");
+    assert_int_equal(0, sr_node_add_child(sr_node, "time", NULL, &child));
+    child->type = SR_UINT32_T;
+    child->data.uint32_val = 1469625110;
+    assert_int_equal(0, sr_node_add_child(sr_node, "msg-type", NULL, &child));
+    child->type = SR_ENUM_T;
+    child->data.enum_val = strdup("debug");
     /* log-msg[2] */
-    sr_node = trees[1].children + 1;
-    sr_node->name = strdup("log-msg");
+    assert_int_equal(0, sr_node_add_child(trees + 1, "log-msg", NULL, &sr_node));
     sr_node->type = SR_LIST_T;
-    sr_node->children_cnt = 3; 
-    sr_node->children = calloc(sr_node->children_cnt, sizeof(sr_node_t));
-    sr_node->children[0].name = strdup("msg");
-    sr_node->children[0].type = SR_STRING_T;
-    sr_node->children[0].data.string_val = strdup("Some soft limit exceeded..."); 
-    sr_node->children[1].name = strdup("time");
-    sr_node->children[1].type = SR_UINT32_T;
-    sr_node->children[1].data.uint32_val = 1469625150; 
-    sr_node->children[2].name = strdup("msg-type");
-    sr_node->children[2].type = SR_ENUM_T;
-    sr_node->children[2].data.enum_val = strdup("warning");
+    assert_int_equal(0, sr_node_add_child(sr_node, "msg", NULL, &child));
+    child->type = SR_STRING_T;
+    child->data.string_val = strdup("Some soft limit exceeded...");
+    assert_int_equal(0, sr_node_add_child(sr_node, "time", NULL, &child));
+    child->type = SR_UINT32_T;
+    child->data.uint32_val = 1469625150;
+    assert_int_equal(0, sr_node_add_child(sr_node, "msg-type", NULL, &child));
+    child->type = SR_ENUM_T;
+    child->data.enum_val = strdup("warning");
 
     /* convert to libyang tree */
     assert_int_equal(SR_ERR_OK, sr_tree_to_dt(ly_ctx, trees, "/test-module:activate-software-image/status", true, &data_tree));
@@ -888,8 +899,7 @@ sr_node_t_rpc_output_test(void **state)
     assert_false(sr_node->dflt);
     assert_int_equal(SR_STRING_T, sr_node->type);
     assert_string_equal("Installed", sr_node->data.string_val);
-    assert_int_equal(0, sr_node->children_cnt);
-    assert_null(sr_node->children);
+    assert_int_equal(0, sr_node_t_get_children_cnt(sr_node));
 
     /* /test-module:activate-software-image/output/location */
     sr_node = trees + 1;
@@ -898,8 +908,7 @@ sr_node_t_rpc_output_test(void **state)
     assert_true(sr_node->dflt);
     assert_int_equal(SR_STRING_T, sr_node->type);
     assert_string_equal("/", sr_node->data.string_val);
-    assert_int_equal(0, sr_node->children_cnt);
-    assert_null(sr_node->children);
+    assert_int_equal(0, sr_node_t_get_children_cnt(sr_node));
 
     /* /test-module:activate-software-image/output/init-log */
     sr_node = trees + 2;
@@ -907,74 +916,71 @@ sr_node_t_rpc_output_test(void **state)
     assert_string_equal("test-module", sr_node->module_name);
     assert_false(sr_node->dflt);
     assert_int_equal(SR_CONTAINER_T, sr_node->type);
-    assert_int_equal(2, sr_node->children_cnt);
-    assert_non_null(sr_node->children);
+    assert_int_equal(2, sr_node_t_get_children_cnt(sr_node));
 
     /* /test-module:activate-software-image/output/init-log/log-msg[1] */
-    sr_node = sr_node->children;
+    sr_node = sr_node_t_get_child(sr_node, 0);
     assert_string_equal("log-msg", sr_node->name);
     assert_null( sr_node->module_name);
     assert_false(sr_node->dflt);
     assert_int_equal(SR_LIST_T, sr_node->type);
-    assert_int_equal(3, sr_node->children_cnt);
-    assert_non_null(sr_node->children);
+    assert_int_equal(3, sr_node_t_get_children_cnt(sr_node));
     /* /test-module:activate-software-image/output/init-log/log-msg[1]/msg */
-    assert_string_equal("msg", sr_node->children[0].name);
-    assert_null(sr_node->children[0].module_name);
-    assert_false(sr_node->children[0].dflt);
-    assert_int_equal(SR_STRING_T, sr_node->children[0].type);
-    assert_string_equal("Successfully loaded software image.", sr_node->children[0].data.string_val);
-    assert_int_equal(0, sr_node->children[0].children_cnt);
-    assert_null(sr_node->children[0].children);
+    child = sr_node_t_get_child(sr_node, 0);
+    assert_string_equal("msg", child->name);
+    assert_null(child->module_name);
+    assert_false(child->dflt);
+    assert_int_equal(SR_STRING_T, child->type);
+    assert_string_equal("Successfully loaded software image.", child->data.string_val);
+    assert_int_equal(0, sr_node_t_get_children_cnt(child));
     /* /test-module:activate-software-image/output/init-log/log-msg[1]/time */
-    assert_string_equal("time", sr_node->children[1].name);
-    assert_null(sr_node->children[1].module_name);
-    assert_false(sr_node->children[1].dflt);
-    assert_int_equal(SR_UINT32_T, sr_node->children[1].type);
-    assert_int_equal(1469625110, sr_node->children[1].data.uint32_val);
-    assert_int_equal(0, sr_node->children[1].children_cnt);
-    assert_null(sr_node->children[1].children);
+    child = sr_node_t_get_child(sr_node, 1);
+    assert_string_equal("time", child->name);
+    assert_null(child->module_name);
+    assert_false(child->dflt);
+    assert_int_equal(SR_UINT32_T, child->type);
+    assert_int_equal(1469625110, child->data.uint32_val);
+    assert_int_equal(0, sr_node_t_get_children_cnt(child));
     /* /test-module:activate-software-image/output/init-log/log-msg[1]/msg-type */
-    assert_string_equal("msg-type", sr_node->children[2].name);
-    assert_null(sr_node->children[2].module_name);
-    assert_false(sr_node->children[2].dflt);
-    assert_int_equal(SR_ENUM_T, sr_node->children[2].type);
-    assert_string_equal("debug", sr_node->children[2].data.string_val);
-    assert_int_equal(0, sr_node->children[2].children_cnt);
-    assert_null(sr_node->children[2].children);
+    child = sr_node_t_get_child(sr_node, 2);
+    assert_string_equal("msg-type", child->name);
+    assert_null(child->module_name);
+    assert_false(child->dflt);
+    assert_int_equal(SR_ENUM_T, child->type);
+    assert_string_equal("debug", child->data.string_val);
+    assert_int_equal(0, sr_node_t_get_children_cnt(child));
 
     /* /test-module:activate-software-image/output/init-log/log-msg[2] */
-    sr_node = trees[2].children + 1;
+    sr_node = sr_node_t_get_child(trees + 2, 1);
     assert_string_equal("log-msg", sr_node->name);
     assert_null( sr_node->module_name);
     assert_false(sr_node->dflt);
     assert_int_equal(SR_LIST_T, sr_node->type);
-    assert_int_equal(3, sr_node->children_cnt);
-    assert_non_null(sr_node->children);
+    assert_int_equal(3, sr_node_t_get_children_cnt(sr_node));
     /* /test-module:activate-software-image/output/init-log/log-msg[1]/msg */
-    assert_string_equal("msg", sr_node->children[0].name);
-    assert_null(sr_node->children[0].module_name);
-    assert_false(sr_node->children[0].dflt);
-    assert_int_equal(SR_STRING_T, sr_node->children[0].type);
-    assert_string_equal("Some soft limit exceeded...", sr_node->children[0].data.string_val);
-    assert_int_equal(0, sr_node->children[0].children_cnt);
-    assert_null(sr_node->children[0].children);
+    child = sr_node_t_get_child(sr_node, 0);
+    assert_string_equal("msg", child->name);
+    assert_null(child->module_name);
+    assert_false(child->dflt);
+    assert_int_equal(SR_STRING_T, child->type);
+    assert_string_equal("Some soft limit exceeded...", child->data.string_val);
+    assert_int_equal(0, sr_node_t_get_children_cnt(child));
     /* /test-module:activate-software-image/output/init-log/log-msg[1]/time */
-    assert_string_equal("time", sr_node->children[1].name);
-    assert_null(sr_node->children[1].module_name);
-    assert_false(sr_node->children[1].dflt);
-    assert_int_equal(SR_UINT32_T, sr_node->children[1].type);
-    assert_int_equal(1469625150, sr_node->children[1].data.uint32_val);
-    assert_int_equal(0, sr_node->children[1].children_cnt);
-    assert_null(sr_node->children[1].children);
+    child = sr_node_t_get_child(sr_node, 1);
+    assert_string_equal("time", child->name);
+    assert_null(child->module_name);
+    assert_false(child->dflt);
+    assert_int_equal(SR_UINT32_T, child->type);
+    assert_int_equal(1469625150, child->data.uint32_val);
+    assert_int_equal(0, sr_node_t_get_children_cnt(child));
     /* /test-module:activate-software-image/output/init-log/log-msg[1]/msg-type */
-    assert_string_equal("msg-type", sr_node->children[2].name);
-    assert_null(sr_node->children[2].module_name);
-    assert_false(sr_node->children[2].dflt);
-    assert_int_equal(SR_ENUM_T, sr_node->children[2].type);
-    assert_string_equal("warning", sr_node->children[2].data.string_val);
-    assert_int_equal(0, sr_node->children[2].children_cnt);
-    assert_null(sr_node->children[2].children);
+    child = sr_node_t_get_child(sr_node, 2);
+    assert_string_equal("msg-type", child->name);
+    assert_null(child->module_name);
+    assert_false(child->dflt);
+    assert_int_equal(SR_ENUM_T, child->type);
+    assert_string_equal("warning", child->data.string_val);
+    assert_int_equal(0, sr_node_t_get_children_cnt(child));
 
     /* cleanup */
     sr_free_trees(trees, tree_cnt);

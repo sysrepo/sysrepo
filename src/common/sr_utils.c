@@ -1033,13 +1033,10 @@ sr_copy_node_to_tree_internal(struct ly_ctx *ly_ctx, const struct lyd_node *pare
     int rc = SR_ERR_OK;
     struct lyd_node_leaf_list *data_leaf = NULL;
     struct lys_node_container *cont = NULL;
-    size_t child_cnt = 0, i = 0;
     const struct lyd_node *child = NULL;
+    sr_node_t *sr_subtree = NULL;
 
     CHECK_NULL_ARG3(ly_ctx, node, sr_tree);
-
-    /* unset in case the input structure wasn't initialized */
-    memset(sr_tree, '\0', sizeof(*sr_tree));
 
     /* copy node name */
     sr_tree->name = strdup(node->schema->name);
@@ -1083,21 +1080,15 @@ sr_copy_node_to_tree_internal(struct ly_ctx *ly_ctx, const struct lyd_node *pare
     if ((LYS_CONTAINER | LYS_LIST) & node->schema->nodetype) {
         child = node->child;
         while (child) {
-            ++child_cnt;
-            child = child->next;
-        }
-        sr_tree->children = calloc(child_cnt, sizeof(sr_node_t));
-        CHECK_NULL_NOMEM_GOTO(sr_tree->children, rc, cleanup);
-        child = node->child;
-        i = 0;
-        while (child) {
-            rc = sr_copy_node_to_tree_internal(ly_ctx, node, child, sr_tree->children + i);
+            rc = sr_node_add_child(sr_tree, NULL, NULL, &sr_subtree);
+            if (SR_ERR_OK != rc) {
+                goto cleanup;
+            }
+            rc = sr_copy_node_to_tree_internal(ly_ctx, node, child, sr_subtree);
             if (SR_ERR_OK != rc) {
                 goto cleanup;
             }
             child = child->next;
-            ++i;
-            ++sr_tree->children_cnt;
         }
     }
 
@@ -1148,6 +1139,7 @@ sr_subtree_to_dt(struct ly_ctx *ly_ctx, const sr_node_t *sr_tree, bool output, s
     struct ly_set *nodeset = NULL;
     const struct lys_module *module = NULL;
     const struct lys_node *sch_node = NULL;
+    sr_node_t *sr_subtree = NULL;
     char *string_val = NULL, *relative_xpath = NULL;
 
     CHECK_NULL_ARG3(ly_ctx, sr_tree, data_tree);
@@ -1197,8 +1189,10 @@ sr_subtree_to_dt(struct ly_ctx *ly_ctx, const sr_node_t *sr_tree, bool output, s
                 node = lyd_new(parent, module, sr_tree->name);
             }
             /* process children */
-            for (size_t i = 0; i < sr_tree->children_cnt && SR_ERR_OK == ret; ++i) {
-                ret = sr_subtree_to_dt(ly_ctx, sr_tree->children + i, output, node, NULL, data_tree);
+            sr_subtree = sr_tree->first_child;
+            while  (sr_subtree) {
+                ret = sr_subtree_to_dt(ly_ctx, sr_subtree, output, node, NULL, data_tree);
+                sr_subtree = sr_subtree->next;
             }
             return ret;
 
@@ -1358,12 +1352,16 @@ sr_free_values_arr_range(sr_val_t **values, size_t from, size_t to)
 void
 sr_free_tree_content(sr_node_t *tree)
 {
-    for (size_t i = 0; i < tree->children_cnt; ++i) {
-        sr_free_tree_content(tree->children + i);
+    if (NULL != tree) {
+        sr_node_t *sr_subtree = tree->first_child, *next = NULL;
+        while (sr_subtree) {
+            next = sr_subtree->next;
+            sr_free_tree(sr_subtree);
+            sr_subtree = next;
+        }
+        free(tree->module_name);
+        sr_free_val_content((sr_val_t *)tree);
     }
-    free(tree->children);
-    free(tree->module_name);
-    sr_free_val_content((sr_val_t *)tree);
 }
 
 void
