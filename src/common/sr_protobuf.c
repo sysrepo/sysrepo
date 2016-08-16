@@ -1185,16 +1185,10 @@ sr_dup_val_t_to_gpb(const sr_val_t *value, Sr__Value **gpb_value){
     sr__value__init(gpb);
 
     rc = sr_set_val_t_type_in_gpb(value, gpb);
-    if (SR_ERR_OK != rc){
-        SR_LOG_ERR("Setting type in gpb failed for xpath '%s'", value->xpath);
-        goto cleanup;
-    }
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Setting type in gpb failed for xpath '%s'", value->xpath);
 
     rc = sr_set_val_t_value_in_gpb(value, gpb);
-    if (SR_ERR_OK != rc){
-        SR_LOG_ERR("Setting value in gpb failed for xpath '%s'", value->xpath);
-        goto cleanup;
-    }
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Setting value in gpb failed for xpath '%s'", value->xpath);
 
     *gpb_value = gpb;
     return rc;
@@ -1203,7 +1197,7 @@ cleanup:
     if (value->sr_mem) {
         sr_mem_restore(snapshot);
     } else {
-        free(gpb);
+        sr__value__free_unpacked(gpb, NULL);
     }
     return rc;
 }
@@ -1416,7 +1410,7 @@ sr_dup_gpb_to_val_t(sr_mem_ctx_t *sr_mem, const Sr__Value *gpb_value, sr_val_t *
     CHECK_NULL_ARG2(gpb_value, value);
     sr_val_t *val = NULL;
     sr_mem_snapshot_t snapshot = { 0, };
-    int rc = SR_ERR_INTERNAL;
+    int rc = SR_ERR_OK;
 
     if (sr_mem) {
         sr_mem_snapshot(sr_mem, &snapshot);
@@ -1537,36 +1531,35 @@ sr_dup_tree_to_gpb(const sr_node_t *sr_tree, Sr__Node **gpb_tree)
     int children_cnt = 0;
     sr_node_t *sr_subtree = NULL;
     Sr__Node *gpb;
+    sr_mem_snapshot_t snapshot = { 0, };
 
-    gpb = calloc(1, sizeof(*gpb));
+    if (sr_tree->sr_mem) {
+        sr_mem_snapshot(sr_tree->sr_mem, &snapshot);
+    }
+
+    gpb = sr_calloc(sr_tree->sr_mem, 1, sizeof(*gpb));
     CHECK_NULL_NOMEM_RETURN(gpb);
     sr__node__init(gpb);
-    gpb->value = calloc(1, sizeof(*gpb->value));
-    CHECK_NULL_NOMEM_ERROR(gpb->value, rc);
-    if (SR_ERR_OK != rc) {
-        free(gpb);
-        return rc;
-    }
+    gpb->value = sr_calloc(sr_tree->sr_mem, 1, sizeof(*gpb->value));
+    CHECK_NULL_NOMEM_GOTO(gpb->value, rc, cleanup);
     sr__value__init(gpb->value);
     gpb->n_children = 0;
 
     /* set members which are common with sr_val_t */
     rc = sr_set_val_t_type_in_gpb((sr_val_t *)sr_tree, gpb->value);
-    if (SR_ERR_OK != rc){
-        SR_LOG_ERR("Setting value type in gpb tree failed for node '%s'", sr_tree->name);
-        goto cleanup;
-    }
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Setting value type in gpb tree failed for node '%s'", sr_tree->name);
 
     rc = sr_set_val_t_value_in_gpb((sr_val_t *)sr_tree, gpb->value);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Setting value in gpb tree failed for node '%s'", sr_tree->name);
-        goto cleanup;
-    }
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Setting value in gpb tree failed for node '%s'", sr_tree->name);
 
     /* module_name */
     if (NULL != sr_tree->module_name) {
-        gpb->module_name = strdup(sr_tree->module_name);
-        CHECK_NULL_NOMEM_GOTO(gpb->module_name, rc, cleanup);
+        if (NULL != sr_tree->sr_mem) {
+            gpb->module_name = sr_tree->module_name;
+        } else {
+            gpb->module_name = strdup(sr_tree->module_name);
+            CHECK_NULL_NOMEM_GOTO(gpb->module_name, rc, cleanup);
+        }
     }
 
     /* recursively duplicate children */
@@ -1576,7 +1569,7 @@ sr_dup_tree_to_gpb(const sr_node_t *sr_tree, Sr__Node **gpb_tree)
         sr_subtree = sr_subtree->next;
     }
     if (0 < children_cnt) {
-        gpb->children = calloc(children_cnt, sizeof(*gpb->children));
+        gpb->children = sr_calloc(sr_tree->sr_mem, children_cnt, sizeof(*gpb->children));
         CHECK_NULL_NOMEM_GOTO(gpb->children, rc, cleanup);
         sr_subtree = sr_tree->first_child;
         i = 0;
@@ -1595,26 +1588,43 @@ sr_dup_tree_to_gpb(const sr_node_t *sr_tree, Sr__Node **gpb_tree)
     return rc;
 
 cleanup:
-    sr__node__free_unpacked(gpb, NULL);
+    if (sr_tree->sr_mem) {
+        sr_mem_restore(snapshot);
+    } else {
+        sr__node__free_unpacked(gpb, NULL);
+    }
     return rc;
 }
 
 int
-sr_dup_gpb_to_tree(const Sr__Node *gpb_tree, sr_node_t **sr_tree)
+sr_dup_gpb_to_tree(sr_mem_ctx_t *sr_mem, const Sr__Node *gpb_tree, sr_node_t **sr_tree)
 {
     CHECK_NULL_ARG2(gpb_tree, sr_tree);
     sr_node_t *tree = NULL;
-    int rc = SR_ERR_INTERNAL;
+    sr_mem_snapshot_t snapshot = { 0, };
+    int rc = SR_ERR_OK;
 
-    tree = calloc(1, sizeof(*tree));
+    if (sr_mem) {
+        sr_mem_snapshot(sr_mem, &snapshot);
+    }
+
+    tree = sr_calloc(sr_mem, 1, sizeof *tree);
     CHECK_NULL_NOMEM_RETURN(tree);
+    tree->sr_mem = sr_mem;
 
     rc = sr_copy_gpb_to_tree(gpb_tree, tree);
     if (SR_ERR_OK != rc) {
-        sr_free_tree(tree);
+        if (sr_mem) {
+            sr_mem_restore(snapshot);
+        } else {
+            sr_free_tree(tree);
+        }
         return rc;
     }
 
+    if (sr_mem) {
+        ++sr_mem->ucount;
+    }
     *sr_tree = tree;
     return rc;
 }
@@ -1641,8 +1651,12 @@ sr_copy_gpb_to_tree(const Sr__Node *gpb_tree, sr_node_t *sr_tree)
 
     /* module_name */
     if (NULL != gpb_tree->module_name && strlen(gpb_tree->module_name)) {
-        sr_tree->module_name = strdup(gpb_tree->module_name);
-        CHECK_NULL_NOMEM_GOTO(sr_tree->module_name, rc, cleanup);
+        if (NULL != sr_tree->sr_mem) {
+            sr_tree->module_name = gpb_tree->module_name;
+        } else {
+            sr_tree->module_name = strdup(gpb_tree->module_name);
+            CHECK_NULL_NOMEM_GOTO(sr_tree->module_name, rc, cleanup);
+        }
     } else {
         sr_tree->module_name = NULL;
     }
@@ -1674,12 +1688,18 @@ int
 sr_trees_sr_to_gpb(const sr_node_t *sr_trees, const size_t sr_tree_cnt, Sr__Node ***gpb_trees_p, size_t *gpb_tree_cnt_p)
 {
     Sr__Node **gpb_trees = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
+    sr_mem_snapshot_t snapshot = { 0, };
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG2(gpb_trees_p, gpb_tree_cnt_p);
 
     if ((NULL != sr_trees) && (sr_tree_cnt > 0)) {
-        gpb_trees = calloc(sr_tree_cnt, sizeof(*gpb_trees));
+        sr_mem = sr_trees[0].sr_mem;
+        if (NULL != sr_mem) {
+            sr_mem_snapshot(sr_mem, &snapshot);
+        }
+        gpb_trees = sr_calloc(sr_mem, sr_tree_cnt, sizeof(*gpb_trees));
         CHECK_NULL_NOMEM_RETURN(gpb_trees);
 
         for (size_t i = 0; i < sr_tree_cnt; i++) {
@@ -1694,24 +1714,37 @@ sr_trees_sr_to_gpb(const sr_node_t *sr_trees, const size_t sr_tree_cnt, Sr__Node
     return SR_ERR_OK;
 
 cleanup:
-    for (size_t i = 0; i < sr_tree_cnt; i++) {
-        sr__node__free_unpacked(gpb_trees[i], NULL);
+    if (NULL == sr_mem) {
+        for (size_t i = 0; i < sr_tree_cnt; i++) {
+            sr__node__free_unpacked(gpb_trees[i], NULL);
+        }
+        free(gpb_trees);
+    } else {
+        sr_mem_restore(snapshot);
     }
-    free(gpb_trees);
     return rc;
 }
 
 int
-sr_trees_gpb_to_sr(Sr__Node **gpb_trees, size_t gpb_tree_cnt, sr_node_t **sr_trees_p, size_t *sr_tree_cnt_p)
+sr_trees_gpb_to_sr(sr_mem_ctx_t *sr_mem, Sr__Node **gpb_trees, size_t gpb_tree_cnt, sr_node_t **sr_trees_p, size_t *sr_tree_cnt_p)
 {
     sr_node_t *sr_trees = NULL;
+    sr_mem_snapshot_t snapshot = { 0, };
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG2(sr_trees_p, sr_tree_cnt_p);
 
     if ((NULL != gpb_trees) && (gpb_tree_cnt > 0)) {
-        sr_trees = calloc(gpb_tree_cnt, sizeof(*sr_trees));
+        if (sr_mem) {
+            sr_mem_snapshot(sr_mem, &snapshot);
+        }
+        sr_trees = sr_calloc(sr_mem, gpb_tree_cnt, sizeof(*sr_trees));
         CHECK_NULL_NOMEM_RETURN(sr_trees);
+        if (sr_mem) {
+            for (size_t i = 0; i < gpb_tree_cnt; i++) {
+                sr_trees[i].sr_mem = sr_mem;
+            }
+        }
 
         for (size_t i = 0; i < gpb_tree_cnt; i++) {
             rc = sr_copy_gpb_to_tree(gpb_trees[i], &sr_trees[i]);
@@ -1719,16 +1752,20 @@ sr_trees_gpb_to_sr(Sr__Node **gpb_trees, size_t gpb_tree_cnt, sr_node_t **sr_tre
         }
     }
 
+    if (sr_mem) {
+        ++sr_mem->ucount;
+    }
     *sr_trees_p = sr_trees;
     *sr_tree_cnt_p = gpb_tree_cnt;
 
     return SR_ERR_OK;
 
 cleanup:
-    for (size_t i = 0; i < gpb_tree_cnt; i++) {
-        sr_free_tree_content(&sr_trees[i]);
+    if (sr_mem) {
+        sr_mem_restore(snapshot);
+    } else {
+        sr_free_trees(sr_trees, gpb_tree_cnt);
     }
-    free(sr_trees);
     return rc;
 }
 

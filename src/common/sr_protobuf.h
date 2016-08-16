@@ -45,6 +45,7 @@ const char *sr_gpb_operation_name(Sr__Operation operation);
 /**
  * @brief Allocates and initializes GPB request message.
  *
+ * @param[in] sr_mem Sysrepo memory context. If NULL then standard malloc/calloc/free will be used.
  * @param[in] session_id ID of session identifying the recipient. Pass 0 if session is not open yet.
  * @param[in] operation Requested operation.
  * @param[out] msg GPB message.
@@ -191,11 +192,13 @@ int sr_dup_tree_to_gpb(const sr_node_t *sr_tree, Sr__Node **gpb_tree);
  * @brief Allocates and copies tree data from the GPB tree-representation (based on Sr__Node) into
  * the sysrepo tree-representation (based on sr_node_t).
  *
+ * @param[in] sr_mem Sysrepo memory context to use for memory allocation.
+ *                   If NULL then the standard malloc/calloc are used.
  * @param [in] gpb_tree GPB tree.
  * @param [out] sr_tree Sysrepo tree.
  * @return err_code
  */
-int sr_dup_gpb_to_tree(const Sr__Node *gpb_tree, sr_node_t **sr_tree);
+int sr_dup_gpb_to_tree(sr_mem_ctx_t *sr_mem, const Sr__Node *gpb_tree, sr_node_t **sr_tree);
 
 /**
  * @brief Fill sysrepo tree content from gpb.
@@ -220,6 +223,8 @@ int sr_trees_sr_to_gpb(const sr_node_t *sr_trees, const size_t sr_tree_cnt, Sr__
 /**
  * @brief Copies and transforms an array of GPB trees into the array of sysrepo-represented trees.
  *
+ * @param[in] sr_mem Sysrepo memory context to use for memory allocation.
+ *                   If NULL then the standard malloc/calloc are used.
  * @param[in] gpb_trees array of GPB trees.
  * @param[in] gpb_tree_cnt Number of GPB trees.
  * @param[out] sr_trees Array of sysrepo trees.
@@ -227,7 +232,7 @@ int sr_trees_sr_to_gpb(const sr_node_t *sr_trees, const size_t sr_tree_cnt, Sr__
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int sr_trees_gpb_to_sr(Sr__Node **gpb_trees, size_t gpb_tree_cnt, sr_node_t **sr_trees, size_t *sr_tree_cnt);
+int sr_trees_gpb_to_sr(sr_mem_ctx_t *sr_mem, Sr__Node **gpb_trees, size_t gpb_tree_cnt, sr_node_t **sr_trees, size_t *sr_tree_cnt);
 
 /**
  * @brief Fills the gpb structures from the set of changes

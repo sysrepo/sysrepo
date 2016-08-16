@@ -1266,24 +1266,24 @@ rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg 
                     msg->request->rpc_req->n_input, &input, &input_cnt);
             break;
         case SR_API_TREES:
-            rc = sr_trees_gpb_to_sr(msg->request->rpc_req->input_tree, msg->request->rpc_req->n_input_tree,
-                                    &input_tree, &input_cnt);
+            rc = sr_trees_gpb_to_sr((sr_mem_ctx_t *)msg->_sysrepo_mem_ctx, msg->request->rpc_req->input_tree,
+                    msg->request->rpc_req->n_input_tree, &input_tree, &input_cnt);
             break;
     }
     CHECK_RC_LOG_GOTO(rc, finalize, "Failed to parse RPC (%s) input arguments from GPB message.",
                       msg->request->rpc_req->xpath);
 
     /* validate RPC request */
+    rc = sr_mem_new(0, &sr_mem_req);
+    CHECK_RC_MSG_GOTO(rc, finalize, "Failed to create a new Sysrepo memory context");
     switch (msg_api_variant) {
         case SR_API_VALUES:
-            rc = sr_mem_new(0, &sr_mem_req); /* TODO: move above switch once trees support sr_mem_ctx_t */
-            CHECK_RC_MSG_GOTO(rc, finalize, "Failed to create a new Sysrepo memory context");
             rc = dm_validate_rpc(rp_ctx->dm_ctx, session->dm_session, msg->request->rpc_req->xpath,
                                  input, input_cnt, true, sr_mem_req, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
             break;
         case SR_API_TREES:
             rc = dm_validate_rpc_tree(rp_ctx->dm_ctx, session->dm_session, msg->request->rpc_req->xpath,
-                                 input_tree, input_cnt, true, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
+                                 input_tree, input_cnt, true, sr_mem_req, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
             break;
     }
     CHECK_RC_LOG_GOTO(rc, finalize, "Validation of an RPC (%s) message failed.", msg->request->rpc_req->xpath);
@@ -1305,9 +1305,6 @@ rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg 
 
     for (size_t i = 0; i < subscription_cnt; i++) {
         if (NULL != subscriptions[i].xpath && 0 == strcmp(subscriptions[i].xpath, msg->request->rpc_req->xpath)) {
-            if (SR_API_TREES == subscriptions[i].api_variant) {
-                sr_mem_req = NULL; /* TODO: remove once trees support sr_mem_ctx_t */
-            }
             /* duplicate msg into req with the new input values */
             rc = sr_gpb_req_alloc(sr_mem_req, SR__OPERATION__RPC, session->id, &req);
             CHECK_RC_LOG_GOTO(rc, finalize, "Failed to duplicate RPC request (%s).", msg->request->rpc_req->xpath);
@@ -1457,26 +1454,20 @@ rp_rpc_resp_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg
                                  msg->response->rpc_resp->n_output, &output, &output_cnt);
     } else if (msg->response->rpc_resp->n_output_tree) {
         msg_api_variant = SR_API_TREES;
-        rc = sr_trees_gpb_to_sr(msg->response->rpc_resp->output_tree,  msg->response->rpc_resp->n_output_tree,
-                                &output_tree, &output_cnt);
+        rc = sr_trees_gpb_to_sr((sr_mem_ctx_t *)msg->_sysrepo_mem_ctx, msg->response->rpc_resp->output_tree,
+                                 msg->response->rpc_resp->n_output_tree, &output_tree, &output_cnt);
+    }
+    if (SR_ERR_OK == rc) {
+        rc = sr_mem_new(0, &sr_mem_resp);
     }
     if (SR_ERR_OK == rc) {
         if (SR_API_VALUES == msg_api_variant) {
-            if (SR_ERR_OK == rc) {
-                rc = sr_mem_new(0, &sr_mem_resp); /* TODO: move above once trees supports sr_mem_ctx_t */
-            }
-            if (SR_ERR_OK == rc) {
-                rc = dm_validate_rpc(rp_ctx->dm_ctx, session->dm_session, msg->response->rpc_resp->xpath,
-                        output, output_cnt, false, sr_mem_resp, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
-            }
+            rc = dm_validate_rpc(rp_ctx->dm_ctx, session->dm_session, msg->response->rpc_resp->xpath,
+                    output, output_cnt, false, sr_mem_resp, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
         } else {
             rc = dm_validate_rpc_tree(rp_ctx->dm_ctx, session->dm_session, msg->response->rpc_resp->xpath,
-                    output_tree, output_cnt, false, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
+                    output_tree, output_cnt, false, sr_mem_resp, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
         }
-    }
-
-    if (SR_API_TREES == sr_api_variant_gpb_to_sr(msg->response->rpc_resp->orig_api_variant)) {
-        sr_mem_resp = NULL; /* TODO: remove once trees supports sr_mem_ctx_t */
     }
 
     /* duplicate msg into resp with the new output values */
@@ -1611,7 +1602,7 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
                 &values, &values_cnt);
     } else if (msg->request->event_notif_req->n_trees) {
         msg_api_variant = SR_API_TREES;
-        rc = sr_trees_gpb_to_sr(msg->request->event_notif_req->trees, msg->request->event_notif_req->n_trees,
+        rc = sr_trees_gpb_to_sr(NULL, msg->request->event_notif_req->trees, msg->request->event_notif_req->n_trees,
                 &trees, &tree_cnt);
     }
     CHECK_RC_LOG_GOTO(rc, finalize, "Failed to parse event notification (%s) data trees from GPB message.",

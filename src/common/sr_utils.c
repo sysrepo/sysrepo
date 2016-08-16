@@ -1039,8 +1039,8 @@ sr_copy_node_to_tree_internal(struct ly_ctx *ly_ctx, const struct lyd_node *pare
     CHECK_NULL_ARG3(ly_ctx, node, sr_tree);
 
     /* copy node name */
-    sr_tree->name = strdup(node->schema->name);
-    CHECK_NULL_NOMEM_GOTO(sr_tree->name, rc, cleanup);
+    rc = sr_node_set_name(sr_tree, node->schema->name);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to set sysrepo node name");
 
     /* copy value and type */
     switch (node->schema->nodetype) {
@@ -1072,8 +1072,8 @@ sr_copy_node_to_tree_internal(struct ly_ctx *ly_ctx, const struct lyd_node *pare
 
     /* set module_name */
     if (NULL == parent || lyd_node_module(parent) != lyd_node_module(node)) {
-        sr_tree->module_name = strdup(lyd_node_module(node)->name);
-        CHECK_NULL_NOMEM_GOTO(sr_tree->module_name, rc, cleanup);
+        rc = sr_node_set_module(sr_tree, lyd_node_module(node)->name);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to set module of a sysrepo node.");
     }
 
     /* copy children */
@@ -1106,18 +1106,27 @@ sr_copy_node_to_tree(struct ly_ctx *ly_ctx, const struct lyd_node *node, sr_node
 }
 
 int
-sr_nodes_to_trees(struct ly_ctx *ly_ctx, struct ly_set *nodes, sr_node_t **sr_trees, size_t *count)
+sr_nodes_to_trees(struct ly_ctx *ly_ctx, struct ly_set *nodes, sr_mem_ctx_t *sr_mem, sr_node_t **sr_trees, size_t *count)
 {
     int rc = 0;
     sr_node_t *trees = NULL;
+    sr_mem_snapshot_t snapshot = { 0, };
     size_t i = 0;
 
     CHECK_NULL_ARG4(ly_ctx, nodes, sr_trees, count);
 
-    trees = calloc(nodes->number, sizeof(sr_node_t));
+    if (sr_mem) {
+        sr_mem_snapshot(sr_mem, &snapshot);
+    }
+
+    trees = sr_calloc(sr_mem, nodes->number, sizeof *trees);
     CHECK_NULL_NOMEM_RETURN(trees);
+    if (sr_mem) {
+        ++sr_mem->ucount;
+    }
 
     for (i = 0; i < nodes->number && 0 == rc; ++i) {
+        trees[i].sr_mem = sr_mem;
         rc = sr_copy_node_to_tree(ly_ctx, nodes->set.d[i], trees + i);
     }
 
@@ -1125,7 +1134,11 @@ sr_nodes_to_trees(struct ly_ctx *ly_ctx, struct ly_set *nodes, sr_node_t **sr_tr
         *sr_trees = trees;
         *count = nodes->number;
     } else {
-        sr_free_trees(trees, i);
+        if (sr_mem) {
+            sr_mem_restore(snapshot);
+        } else {
+            sr_free_trees(trees, i);
+        }
     }
     return rc;
 }
@@ -1353,6 +1366,11 @@ void
 sr_free_tree_content(sr_node_t *tree)
 {
     if (NULL != tree) {
+        if (NULL != tree->sr_mem) {
+            /* do nothing */
+            return;
+        }
+
         sr_node_t *sr_subtree = tree->first_child, *next = NULL;
         while (sr_subtree) {
             next = sr_subtree->next;

@@ -335,10 +335,11 @@ int sr_copy_node_to_tree(struct ly_ctx *ly_ctx, const struct lyd_node *node, sr_
  *
  * @param [in] ly_ctx libyang context
  * @param [in] nodes A set of libyang nodes.
+ * @param [in] sr_mem Sysrepo memory context to use for memory allocation. Can be NULL.
  * @param [out] sr_trees Returned array of sysrepo trees.
  * @param [out] count Number of returned trees.
  */
-int sr_nodes_to_trees(struct ly_ctx *ly_ctx, struct ly_set *nodes, sr_node_t **sr_trees, size_t *count);
+int sr_nodes_to_trees(struct ly_ctx *ly_ctx, struct ly_set *nodes, sr_mem_ctx_t *sr_mem, sr_node_t **sr_trees, size_t *count);
 
 /**
  * @brief Convert a sysrepo tree into a libyang data tree.

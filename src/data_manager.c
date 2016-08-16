@@ -3639,7 +3639,7 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
                 strcat(tmp_xpath, "*");
                 nodeset = lyd_get_node(data_tree, tmp_xpath);
                 if (NULL != nodeset) {
-                    rc = sr_nodes_to_trees(schema_info->ly_ctx, nodeset, with_def_tree, with_def_tree_cnt);
+                    rc = sr_nodes_to_trees(schema_info->ly_ctx, nodeset, sr_mem, with_def_tree, with_def_tree_cnt);
                 } else {
                     SR_LOG_ERR("No matching nodes returned for xpath '%s'.", tmp_xpath);
                     rc = SR_ERR_INTERNAL;
@@ -3670,10 +3670,10 @@ dm_validate_rpc(dm_ctx_t *dm_ctx, dm_session_t *session, const char *rpc_xpath, 
 
 int
 dm_validate_rpc_tree(dm_ctx_t *dm_ctx, dm_session_t *session, const char *rpc_xpath, sr_node_t *args, size_t arg_cnt, bool input,
-        sr_val_t **with_def, size_t *with_def_cnt, sr_node_t **with_def_tree, size_t *with_def_tree_cnt)
+        sr_mem_ctx_t *sr_mem, sr_val_t **with_def, size_t *with_def_cnt, sr_node_t **with_def_tree, size_t *with_def_tree_cnt)
 {
     return dm_validate_procedure(dm_ctx, session, DM_PROCEDURE_RPC, rpc_xpath, SR_API_TREES,
-            (void *)args, arg_cnt, input, NULL, with_def, with_def_cnt, with_def_tree, with_def_tree_cnt);
+            (void *)args, arg_cnt, input, sr_mem, with_def, with_def_cnt, with_def_tree, with_def_tree_cnt);
 }
 
 int

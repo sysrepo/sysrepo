@@ -822,8 +822,8 @@ cl_sm_rpc_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *msg)
         rc = sr_values_gpb_to_sr((sr_mem_ctx_t *)msg->_sysrepo_mem_ctx, msg->request->rpc_req->input,
                                  msg->request->rpc_req->n_input, &input, &input_cnt);
     } else if (msg->request->rpc_req->n_input_tree) {
-        rc = sr_trees_gpb_to_sr(msg->request->rpc_req->input_tree, msg->request->rpc_req->n_input_tree,
-                                &input_tree, &input_cnt);
+        rc = sr_trees_gpb_to_sr((sr_mem_ctx_t *)msg->_sysrepo_mem_ctx, msg->request->rpc_req->input_tree,
+                                msg->request->rpc_req->n_input_tree, &input_tree, &input_cnt);
     }
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by copying RPC input arguments from GPB.");
 
@@ -859,6 +859,8 @@ cl_sm_rpc_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *msg)
     /* allocate the response and send it */
     if (NULL != output) {
         sr_mem_resp = output[0].sr_mem;
+    } else if (NULL != output_tree) {
+        sr_mem_resp = output_tree[0].sr_mem;
     }
     rc = sr_gpb_resp_alloc(sr_mem_resp, SR__OPERATION__RPC, msg->session_id, &resp);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Allocation of RPC response failed.");
@@ -918,7 +920,7 @@ cl_sm_event_notif_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *
         rc = sr_values_gpb_to_sr(NULL, msg->request->event_notif_req->values, msg->request->event_notif_req->n_values,
                 &values, &values_cnt);
     } else if (msg->request->event_notif_req->n_trees) {
-        rc = sr_trees_gpb_to_sr(msg->request->event_notif_req->trees, msg->request->event_notif_req->n_trees,
+        rc = sr_trees_gpb_to_sr(NULL, msg->request->event_notif_req->trees, msg->request->event_notif_req->n_trees,
                 &trees, &tree_cnt);
     }
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by copying event notification input data from GPB.");

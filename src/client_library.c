@@ -2107,6 +2107,9 @@ cleanup:
     if (NULL != msg_resp) {
         sr_msg_free(msg_resp);
     }
+    if (snapshot.sr_mem) {
+        sr_mem_restore(snapshot);
+    }
     return cl_session_return(session, rc);
 }
 
@@ -2115,18 +2118,25 @@ sr_rpc_send_tree(sr_session_ctx_t *session, const char *xpath,
         const sr_node_t *input,  const size_t input_cnt, sr_node_t **output, size_t *output_cnt)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
+    sr_mem_snapshot_t snapshot = { 0, };
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG3(session, session->conn_ctx, xpath);
 
+    if (NULL != input) {
+        sr_mem = input[0].sr_mem;
+        sr_mem_snapshot(sr_mem, &snapshot);
+    }
+
     cl_session_clear_errors(session);
 
     /* prepare RPC message */
-    rc = sr_gpb_req_alloc(NULL, SR__OPERATION__RPC, session->id, &msg_req);
+    rc = sr_gpb_req_alloc(sr_mem, SR__OPERATION__RPC, session->id, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
 
     /* set arguments */
-    msg_req->request->rpc_req->xpath = strdup(xpath);
+    sr_mem_edit_string(sr_mem, &msg_req->request->rpc_req->xpath, xpath);
     CHECK_NULL_NOMEM_GOTO(msg_req->request->rpc_req->xpath, rc, cleanup);
     msg_req->request->rpc_req->orig_api_variant = sr_api_variant_sr_to_gpb(SR_API_TREES);
 
@@ -2140,12 +2150,17 @@ sr_rpc_send_tree(sr_session_ctx_t *session, const char *xpath,
 
     if (NULL != output) {
         /* set output arguments */
-        rc = sr_trees_gpb_to_sr(msg_resp->response->rpc_resp->output_tree, msg_resp->response->rpc_resp->n_output_tree, output, output_cnt);
+        rc = sr_trees_gpb_to_sr((sr_mem_ctx_t *)msg_resp->_sysrepo_mem_ctx, msg_resp->response->rpc_resp->output_tree,
+                msg_resp->response->rpc_resp->n_output_tree, output, output_cnt);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Error by copying RPC output arguments from GPB.");
     }
 
     sr_msg_free(msg_req);
     sr_msg_free(msg_resp);
+
+    if (snapshot.sr_mem) {
+        sr_mem_restore(snapshot);
+    }
 
     return cl_session_return(session, SR_ERR_OK);
 
@@ -2155,6 +2170,9 @@ cleanup:
     }
     if (NULL != msg_resp) {
         sr_msg_free(msg_resp);
+    }
+    if (snapshot.sr_mem) {
+        sr_mem_restore(snapshot);
     }
     return cl_session_return(session, rc);
 }
