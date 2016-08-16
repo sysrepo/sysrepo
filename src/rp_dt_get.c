@@ -473,6 +473,7 @@ cleanup:
     ly_set_free(atoms);
     md_ctx_unlock(md_ctx);
     sr_list_cleanup(subtree_nodes);
+    sr_list_cleanup(subscr_nodes);
     if (SR_ERR_OK != rc) {
         rp_dt_free_state_data_ctx_content(state_data_ctx);
     }
