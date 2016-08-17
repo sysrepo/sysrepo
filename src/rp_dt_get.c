@@ -293,7 +293,7 @@ rp_dt_find_subscription_for_subtree(dm_ctx_t *dm_ctx, sr_list_t *subtree_nodes, 
         struct lys_node *n = subtree_nodes->data[i];
         bool match = false;
         for (size_t s = 0; s < sub_nodes->count; s++) {
-            struct lys_node *subs = sub_nodes->data[i];
+            struct lys_node *subs = sub_nodes->data[s];
             if (rp_dt_is_under_subtree(subs, n)) {
                 state_data_ctx->subscr_index[i] = s;
                 match = true;
