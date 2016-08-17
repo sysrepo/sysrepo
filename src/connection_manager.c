@@ -898,7 +898,7 @@ cm_conn_msg_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, uint8_t *msg_data, 
         goto cleanup;
     }
     msg->_sysrepo_mem_ctx = (uint64_t)sr_mem;
-    ++sr_mem->ucount;
+    ++sr_mem->obj_count;
 
     /* NULL check according to message type */
     if (((SR__MSG__MSG_TYPE__REQUEST == msg->type) && (NULL == msg->request)) ||

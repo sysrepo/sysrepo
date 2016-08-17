@@ -43,7 +43,12 @@ typedef struct sr_mem_ctx_s {
    sr_llist_t *mem_blocks;  /**< Items are pointers to sr_mem_block_t */
    sr_llist_node_t *cursor; /**< Currently used memory block */
    size_t used;             /**< Memory usage of the current block */
-   unsigned ucount;         /**< Usage counter, i.e. how many value/trees/GPB messages use this context */
+   size_t used_total;       /**< Total number of bytes allocated (or skipped) in a Sysrepo memory context. */
+   size_t size_total;       /**< Total number of bytes used by a Sysrepo memory context. */
+   size_t peak;             /**< Peak usage of the memory context. Resets only in ::sr_mem_free. */
+   size_t piggy_back;       /**< Piggybacking.
+                                 Used for threads to exchange information about the recent peak memory usage. */
+   unsigned obj_count;      /**< Object counter, i.e. how many values/trees/GPB messages use this context */
 } sr_mem_ctx_t;
 
 /**
@@ -54,7 +59,8 @@ typedef struct sr_mem_snapshot_s {
     sr_mem_ctx_t *sr_mem;       /**< Associated Sysrepo memory context. */
     sr_llist_node_t *mem_block; /**< Current memory block at the time of the snapshot. */
     size_t used;                /**< Memory usage of the current memory block at the time of the snapshot. */
-    unsigned ucount;            /**< Usage count of the context at the time of the snapshot. */
+    size_t used_total;          /**< Total memory usage at the time of the snapshot. */
+    unsigned obj_count;         /**< Object count of the context at the time of the snapshot. */
 } sr_mem_snapshot_t;
 
 
@@ -92,20 +98,6 @@ void *sr_calloc(sr_mem_ctx_t *sr_mem, size_t nmemb, size_t size);
  * @param [in] sr_mem Memory context to deallocate.
  */
 void sr_mem_free(sr_mem_ctx_t *sr_mem);
-
-/**
- * @brief Get total number of bytes used in a Sysrepo memory context.
- *
- * @param [in] sr_mem Memory context to get the usage of.
- */
-size_t sr_mem_get_total_usage(sr_mem_ctx_t *sr_mem);
-
-/**
- * @brief Get total number of bytes used by a Sysrepo memory context.
- *
- * @param [in] sr_mem Memory context to get the size of.
- */
-size_t sr_mem_get_total_size(sr_mem_ctx_t *sr_mem);
 
 /**
  * @brief Get allocator for the protobuf-c library that will use specified Sysrepo

@@ -110,7 +110,7 @@ rp_dt_get_values_from_nodes(sr_mem_ctx_t *sr_mem, struct ly_set *nodes, sr_val_t
     vals = sr_calloc(sr_mem, nodes->number, sizeof(*vals));
     CHECK_NULL_NOMEM_RETURN(vals);
     if (sr_mem) {
-        ++sr_mem->ucount;
+        ++sr_mem->obj_count;
     }
 
     for (size_t i = 0; i < nodes->number; i++) {

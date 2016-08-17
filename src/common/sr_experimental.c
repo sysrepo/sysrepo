@@ -28,9 +28,9 @@
 #include "sr_common.h"
 
 /* Configuration */
-#define MEM_BLOCK_MIN_SIZE           256
-#define MAX_FREE_TRAILING_MEM_BLOCKS 3
-#define MAX_FREE_MEM_CONTEXTS        10
+#define MEM_BLOCK_MIN_SIZE            256
+#define MAX_FREE_MEM_CONTEXTS         4
+#define MEM_PEAK_USAGE_HISTORY_LENGTH 3
 
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
@@ -125,6 +125,14 @@ __attribute__((destructor)) void print_mem_alloc_stats()
 typedef struct fctx_pool_s {
     sr_llist_t *fctx_llist;  /**< Free memory contexts (items are of type sr_mem_ctx_t). */
     size_t count;            /**< Number of free memory contexts. */
+
+    size_t peak_history[MEM_PEAK_USAGE_HISTORY_LENGTH];  /**< Recent history of peak memory usage
+                                                              of the contexts freed by this thread. */
+    size_t peak_history_head;                            /**< Head of the peak_history queue. */
+
+    size_t pb_peak_history[MEM_PEAK_USAGE_HISTORY_LENGTH]; /**< Piggy-backed recent history of peak memory
+                                                                usage as observed by potentially different threads. */
+    size_t pb_peak_history_head;                           /**< Head of the pb_peak_history queue. */
 } fctx_pool_t;
 
 static pthread_key_t fctx_key; /**< Key to the pool of free memory contexts. */
@@ -198,10 +206,15 @@ sr_mem_new(size_t min_size, sr_mem_ctx_t **sr_mem_p)
     sr_mem_block_t *mem_block = NULL;
     sr_llist_node_t *node_ll = NULL;
     fctx_pool_t *fctx_pool = get_fctx_pool();
+    size_t max_recent_peak = 0;
 
     if (NULL == fctx_pool) {
         SR_LOG_WRN_MSG("Failed to get pool of free memory contexts.");
     } else {
+        /* compute maximum recent peak memory usage to piggy-back */
+        for (size_t i = 0; i < MEM_PEAK_USAGE_HISTORY_LENGTH; ++i) {
+            max_recent_peak = MAX(max_recent_peak, fctx_pool->peak_history[i]);
+        }
         if (0 < fctx_pool->count) {
             node_ll = fctx_pool->fctx_llist->first;
             /* find the first suitable context */
@@ -221,6 +234,7 @@ sr_mem_new(size_t min_size, sr_mem_ctx_t **sr_mem_p)
                 sr_llist_rm(fctx_pool->fctx_llist, fctx_pool->fctx_llist->first);
             }
             --fctx_pool->count;
+            sr_mem->piggy_back = max_recent_peak;
             *sr_mem_p = sr_mem;
             inc_reused_sr_mem();
             return SR_ERR_OK;
@@ -239,8 +253,10 @@ sr_mem_new(size_t min_size, sr_mem_ctx_t **sr_mem_p)
 
     rc = sr_llist_add_new(sr_mem->mem_blocks, mem_block);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to add memory block into a linked-list.");
+    sr_mem->size_total += mem_block->size;
 
     sr_mem->cursor = sr_mem->mem_blocks->last;
+    sr_mem->piggy_back = max_recent_peak;
     *sr_mem_p = sr_mem;
     inc_new_sr_mem();
 
@@ -281,6 +297,7 @@ void
             /* don't keep completely empty block in the middle */
             for_removal = sr_mem->cursor;
         } else {
+            sr_mem->used_total += mem_block->size - sr_mem->used;
             for_removal = NULL;
         }
         if (sr_mem->cursor == sr_mem->mem_blocks->last) {
@@ -291,6 +308,7 @@ void
             mem_block->size = new_size;
             err = sr_llist_add_new(sr_mem->mem_blocks, mem_block);
             CHECK_RC_MSG_GOTO(err, cleanup, "Failed to add memory block into a linked-list.");
+            sr_mem->size_total += mem_block->size;
         }
         assert(sr_mem->cursor->next);
         sr_mem->cursor = sr_mem->cursor->next;
@@ -298,6 +316,7 @@ void
         mem_block = (sr_mem_block_t *)sr_mem->cursor->data;
         sr_mem->used = 0;
         if (NULL != for_removal) {
+            sr_mem->size_total -= ((sr_mem_block_t *)for_removal->data)->size;
             free(for_removal->data);
             sr_llist_rm(sr_mem->mem_blocks, for_removal);
         }
@@ -312,6 +331,8 @@ void
 
     mem = mem_block->mem + sr_mem->used;
     sr_mem->used += size;
+    sr_mem->used_total += size;
+    sr_mem->peak = MAX(sr_mem->used_total, sr_mem->peak);
 
 cleanup:
     if (SR_ERR_OK != err) {
@@ -366,20 +387,45 @@ sr_mem_free(sr_mem_ctx_t *sr_mem)
 
     fctx_pool_t *fctx_pool = get_fctx_pool();
 
-    if (sr_mem->ucount) {
+    if (sr_mem->obj_count) {
         SR_LOG_WRN_MSG("Deallocation of Sysrepo memory context with non-zero usage counter.");
     }
 
     if (NULL == fctx_pool) {
         SR_LOG_WRN_MSG("Failed to get pool of free memory contexts.");
     } else {
+        /* store the information about the peak memory usage into a fixed-size queue */
+        fctx_pool->peak_history[fctx_pool->peak_history_head++] = sr_mem->peak;
+        fctx_pool->peak_history_head %= MEM_PEAK_USAGE_HISTORY_LENGTH;
+        fctx_pool->pb_peak_history[fctx_pool->pb_peak_history_head++] = sr_mem->piggy_back;
+        fctx_pool->pb_peak_history_head %= MEM_PEAK_USAGE_HISTORY_LENGTH;
+        /* calculate maximum peak memory usage from the recorded history of this thread and potenitally other threads */
+        size_t max_recent_peak = 0;
+        for (size_t i = 0; i < MEM_PEAK_USAGE_HISTORY_LENGTH; ++i) {
+            max_recent_peak = MAX(max_recent_peak, MAX(fctx_pool->pb_peak_history[i], fctx_pool->peak_history[i]));
+        }
         if (MAX_FREE_MEM_CONTEXTS > fctx_pool->count) {
-            /**
-             * Simulate snapshot right after ::sr_mem_new in order to zero counters and deallocate
-             * extra trailing free memory blocks.
-             */
-            sr_mem_snapshot_t free_ctx = { sr_mem, sr_mem->mem_blocks->first, 0, 0 };
-            sr_mem_restore(free_ctx);
+            /* remove extra trailing empty memory blocks based on the maximum peak memory usage in the recent history */
+            sr_llist_node_t *node_ll = sr_mem->mem_blocks->last;
+            while (node_ll->prev) {
+                sr_mem_block_t *mem_block = (sr_mem_block_t *)node_ll->data;
+                if (sr_mem->size_total - mem_block->size < max_recent_peak + MEM_BLOCK_MIN_SIZE /* plus some extra bytes */) {
+                    break;
+                }
+                node_ll = node_ll->prev;
+                sr_mem->size_total -= mem_block->size;
+            }
+            while (node_ll != sr_mem->mem_blocks->last) {
+                sr_mem_block_t *mem_block = (sr_mem_block_t *)sr_mem->mem_blocks->last->data;
+                free(mem_block);
+                sr_llist_rm(sr_mem->mem_blocks, sr_mem->mem_blocks->last);
+            }
+            sr_mem->cursor = sr_mem->mem_blocks->first;
+            sr_mem->used = 0;
+            sr_mem->used_total = 0;
+            sr_mem->peak = 0;
+            sr_mem->piggy_back = 0;
+            sr_mem->obj_count = 0;
             sr_llist_add_new(fctx_pool->fctx_llist, sr_mem);
             ++fctx_pool->count;
             return;
@@ -387,41 +433,6 @@ sr_mem_free(sr_mem_ctx_t *sr_mem)
     }
 
     sr_mem_destroy(sr_mem);
-}
-
-size_t
-sr_mem_get_total_usage(sr_mem_ctx_t *sr_mem)
-{
-    size_t usage = 0;
-
-    if (NULL != sr_mem) {
-        sr_llist_node_t *node_ll = sr_mem->mem_blocks->first;
-        while (node_ll != sr_mem->cursor) {
-            sr_mem_block_t *mem_block = (sr_mem_block_t *)node_ll->data;
-            usage += mem_block->size;
-            node_ll = node_ll->next;
-        }
-        usage += sr_mem->used;
-    }
-
-    return usage;
-}
-
-size_t
-sr_mem_get_total_size(sr_mem_ctx_t *sr_mem)
-{
-    size_t size = 0;
-
-    if (NULL != sr_mem) {
-        sr_llist_node_t *node_ll = sr_mem->mem_blocks->first;
-        while (NULL != node_ll) {
-            sr_mem_block_t *mem_block = (sr_mem_block_t *)node_ll->data;
-            size += mem_block->size;
-            node_ll = node_ll->next;
-        }
-    }
-
-    return size;
 }
 
 static void
@@ -455,7 +466,8 @@ sr_mem_snapshot(sr_mem_ctx_t *sr_mem, sr_mem_snapshot_t *snapshot)
     snapshot->sr_mem = sr_mem;
     snapshot->mem_block = sr_mem->cursor;
     snapshot->used = sr_mem->used;
-    snapshot->ucount = sr_mem->ucount;
+    snapshot->used_total = sr_mem->used_total;
+    snapshot->obj_count = sr_mem->obj_count;
 }
 
 void
@@ -467,21 +479,8 @@ sr_mem_restore(sr_mem_snapshot_t snapshot)
 
     snapshot.sr_mem->cursor = snapshot.mem_block;
     snapshot.sr_mem->used = snapshot.used;
-    snapshot.sr_mem->ucount = snapshot.ucount;
-
-    /* remove extra trailing empty memory blocks */
-    size_t empty_count = 0;
-    sr_llist_node_t *node_ll = snapshot.sr_mem->cursor;
-    while (node_ll->next && empty_count < MAX_FREE_TRAILING_MEM_BLOCKS) {
-        ++empty_count;
-        node_ll = node_ll->next;
-    }
-    while (node_ll != snapshot.sr_mem->mem_blocks->last) {
-        sr_mem_block_t *mem_block = (sr_mem_block_t *)snapshot.sr_mem->mem_blocks->last->data;
-        free(mem_block);
-        sr_llist_rm(snapshot.sr_mem->mem_blocks, snapshot.sr_mem->mem_blocks->last);
-    }
-    assert(snapshot.sr_mem->cursor->data);
+    snapshot.sr_mem->used_total = snapshot.used_total;
+    snapshot.sr_mem->obj_count = snapshot.obj_count;
 }
 
 int
@@ -523,7 +522,7 @@ sr_msg_free(Sr__Msg *msg)
     sr_mem_ctx_t *sr_mem = (sr_mem_ctx_t *)msg->_sysrepo_mem_ctx;
 
     if (sr_mem) {
-        if (0 == --sr_mem->ucount) {
+        if (0 == --sr_mem->obj_count) {
             sr_mem_free(sr_mem);
         }
     } else if (msg) {
@@ -550,7 +549,7 @@ sr_new_val(const char *xpath, sr_val_t **value_p)
         return SR_ERR_INTERNAL;
     }
     value->sr_mem = sr_mem;
-    sr_mem->ucount = 1;
+    sr_mem->obj_count = 1;
 
     if (xpath) {
         ret = sr_val_set_xpath(value, xpath);
@@ -588,7 +587,7 @@ sr_new_values(size_t count, sr_val_t **values_p)
     for (size_t i = 0; i < count; ++i) {
         values[i].sr_mem = sr_mem;
     }
-    sr_mem->ucount = 1; /* 1 for the entire array */
+    sr_mem->obj_count = 1; /* 1 for the entire array */
 
     *values_p = values;
     return SR_ERR_OK;
@@ -784,7 +783,7 @@ sr_new_tree(const char *name, const char *module_name, sr_node_t **node_p)
     if (SR_ERR_OK != rc) {
         sr_mem_free(sr_mem);
     } else {
-        sr_mem->ucount = 1;
+        sr_mem->obj_count = 1;
     }
 
     return rc;
@@ -811,7 +810,7 @@ sr_new_trees(size_t count, sr_node_t **trees_p)
     for (size_t i = 0; i < count; ++i) {
         trees[i].sr_mem = sr_mem;
     }
-    sr_mem->ucount = 1; /* 1 for the entire array */
+    sr_mem->obj_count = 1; /* 1 for the entire array */
 
 cleanup:
     if (SR_ERR_OK != rc) {

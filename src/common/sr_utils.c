@@ -1122,7 +1122,7 @@ sr_nodes_to_trees(struct ly_ctx *ly_ctx, struct ly_set *nodes, sr_mem_ctx_t *sr_
     trees = sr_calloc(sr_mem, nodes->number, sizeof *trees);
     CHECK_NULL_NOMEM_RETURN(trees);
     if (sr_mem) {
-        ++sr_mem->ucount;
+        ++sr_mem->obj_count;
     }
 
     for (i = 0; i < nodes->number && 0 == rc; ++i) {

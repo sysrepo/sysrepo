@@ -258,7 +258,7 @@ cl_message_recv(sr_conn_ctx_t *conn_ctx, Sr__Msg **msg)
 
     /* associate message with context */
     (*msg)->_sysrepo_mem_ctx = (uint64_t)sr_mem;
-    ++sr_mem->ucount;
+    ++sr_mem->obj_count;
 
     return SR_ERR_OK;
 }
