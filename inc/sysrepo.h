@@ -59,21 +59,23 @@
 #include <string.h>
 
 //#define PRINT_ALLOC_EXECS 1
-//#define PRINT_ALLOC_STATS
+//#define PRINT_ALLOC_STATS 1
 
 void inc_real_alloc(size_t size);
 void inc_fake_alloc(size_t size);
 
-#ifdef PRINT_ALLOC_EXECS
-# define calloc(n,s)  ({ printf("Calling real calloc.\n"); inc_real_alloc(s); void *mem = calloc(n,s); mem; })
-# define malloc(s)    ({ printf("Calling real malloc.\n"); inc_real_alloc(s); void *mem = malloc(s); mem; })
-# define realloc(p,s) ({ printf("Calling real realloc.\n"); inc_real_alloc(s); void *mem = realloc(p,s); mem; })
-# define strdup(s)    ({ printf("Calling real strdup.\n"); inc_real_alloc(strlen(s)+1); char *str = strdup(s); str; })
-#else 
-# define calloc(n,s)  ({ inc_real_alloc(s); void *mem = calloc(n,s); mem; })
-# define malloc(s)    ({ inc_real_alloc(s); void *mem = malloc(s); mem; })
-# define realloc(p,s) ({ inc_real_alloc(s); void *mem = realloc(p,s); mem; })
-# define strdup(s)    ({ inc_real_alloc(strlen(s)+1); char *str = strdup(s); str; })
+#ifdef PRINT_ALLOC_STATS
+# ifdef PRINT_ALLOC_EXECS
+#  define calloc(n,s)  ({ printf("Calling real calloc.\n"); inc_real_alloc(s); void *mem = calloc(n,s); mem; })
+#  define malloc(s)    ({ printf("Calling real malloc.\n"); inc_real_alloc(s); void *mem = malloc(s); mem; })
+#  define realloc(p,s) ({ printf("Calling real realloc.\n"); inc_real_alloc(s); void *mem = realloc(p,s); mem; })
+#  define strdup(s)    ({ printf("Calling real strdup.\n"); inc_real_alloc(strlen(s)+1); char *str = strdup(s); str; })
+# else
+#  define calloc(n,s)  ({ inc_real_alloc(s); void *mem = calloc(n,s); mem; })
+#  define malloc(s)    ({ inc_real_alloc(s); void *mem = malloc(s); mem; })
+#  define realloc(p,s) ({ inc_real_alloc(s); void *mem = realloc(p,s); mem; })
+#  define strdup(s)    ({ inc_real_alloc(strlen(s)+1); char *str = strdup(s); str; })
+# endif
 #endif
 
 ////////////////////////////////////////////////////////////////////////////////

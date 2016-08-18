@@ -42,17 +42,18 @@
 #undef realloc
 #undef strdup
 
-#ifdef PRINT_ALLOC_EXECS
-# define calloc(n,s)  ({ printf("SR-EXP: Calling real calloc.\n"); inc_real_by_exp_alloc(s); inc_real_alloc(s); void *mem = calloc(n,s); mem; })
-# define malloc(s)    ({ printf("SR-EXP: Calling real malloc.\n"); inc_real_by_exp_alloc(s); inc_real_alloc(s); void *mem = malloc(s); mem; })
-# define realloc(p,s) ({ printf("SR-EXP: Calling real realloc.\n"); inc_real_by_exp_alloc(s); inc_real_alloc(s); void *mem = realloc(p,s); mem; })
-# define strdup(s)    ({ printf("SR-EXP: Calling real strdup.\n"); inc_real_by_exp_alloc(strlen(s)+1); inc_real_alloc(strlen(s)+1); char *str = strdup(s); str; })
-#else
-# define calloc(n,s)  ({ inc_real_by_exp_alloc(s); inc_real_alloc(s); void *mem = calloc(n,s); mem; })
-# define malloc(s)    ({ inc_real_by_exp_alloc(s); inc_real_alloc(s); void *mem = malloc(s); mem; })
-# define realloc(p,s) ({ inc_real_by_exp_alloc(s); inc_real_alloc(s); void *mem = realloc(p,s); mem; })
-# define strdup(s)    ({ inc_real_by_exp_alloc(strlen(s)+1); inc_real_alloc(strlen(s)+1); char *str = strdup(s); str; })
-#endif
+#ifdef PRINT_ALLOC_STATS
+# ifdef PRINT_ALLOC_EXECS
+#  define calloc(n,s)  ({ printf("SR-EXP: Calling real calloc.\n"); inc_real_by_exp_alloc(s); inc_real_alloc(s); void *mem = calloc(n,s); mem; })
+#  define malloc(s)    ({ printf("SR-EXP: Calling real malloc.\n"); inc_real_by_exp_alloc(s); inc_real_alloc(s); void *mem = malloc(s); mem; })
+#  define realloc(p,s) ({ printf("SR-EXP: Calling real realloc.\n"); inc_real_by_exp_alloc(s); inc_real_alloc(s); void *mem = realloc(p,s); mem; })
+#  define strdup(s)    ({ printf("SR-EXP: Calling real strdup.\n"); inc_real_by_exp_alloc(strlen(s)+1); inc_real_alloc(strlen(s)+1); char *str = strdup(s); str; })
+# else
+#  define calloc(n,s)  ({ inc_real_by_exp_alloc(s); inc_real_alloc(s); void *mem = calloc(n,s); mem; })
+#  define malloc(s)    ({ inc_real_by_exp_alloc(s); inc_real_alloc(s); void *mem = malloc(s); mem; })
+#  define realloc(p,s) ({ inc_real_by_exp_alloc(s); inc_real_alloc(s); void *mem = realloc(p,s); mem; })
+#  define strdup(s)    ({ inc_real_by_exp_alloc(strlen(s)+1); inc_real_alloc(strlen(s)+1); char *str = strdup(s); str; })
+# endif
 
 size_t real_alloc_count = 0;
 size_t real_alloc_size = 0;
@@ -66,46 +67,34 @@ size_t reused_sr_mem_count = 0;
 
 void inc_real_alloc(size_t size)
 {
-#ifdef PRINT_ALLOC_STATS
     __sync_add_and_fetch(&real_alloc_count, 1);
     __sync_add_and_fetch(&real_alloc_size, size);
-#endif
 }
 
 void inc_real_by_exp_alloc(size_t size)
 {
-#ifdef PRINT_ALLOC_STATS
     __sync_add_and_fetch(&real_alloc_by_exp_count, 1);
     __sync_add_and_fetch(&real_alloc_by_exp_size, size);
-#endif
 }
 
 void inc_fake_alloc(size_t size)
 {
-#ifdef PRINT_ALLOC_STATS
     __sync_add_and_fetch(&fake_alloc_count, 1);
     __sync_add_and_fetch(&fake_alloc_size, size);
-#endif
 }
 
 void inc_new_sr_mem()
 {
-#ifdef PRINT_ALLOC_STATS
     __sync_add_and_fetch(&new_sr_mem_count, 1);
-#endif
 }
 
 void inc_reused_sr_mem()
 {
-#ifdef PRINT_ALLOC_STATS
     __sync_add_and_fetch(&reused_sr_mem_count, 1);
-#endif
-
 }
 
 __attribute__((destructor)) void print_mem_alloc_stats()
 {
-#ifdef PRINT_ALLOC_STATS
     static int run = 0;
     if (!run) {
         printf("Total number of real allocs: %lu\n", real_alloc_count);
@@ -118,8 +107,8 @@ __attribute__((destructor)) void print_mem_alloc_stats()
         printf("Reused sysrepo memory contexts: %lu\n", reused_sr_mem_count);
         run = 1;
     }
-#endif
 }
+#endif
 
 /**
  * @brief A Pool of free memory contexts.
@@ -237,7 +226,9 @@ sr_mem_new(size_t min_size, sr_mem_ctx_t **sr_mem_p)
             --fctx_pool->count;
             sr_mem->piggy_back = max_recent_peak;
             *sr_mem_p = sr_mem;
+#ifdef PRINT_ALLOC_STATS
             inc_reused_sr_mem();
+#endif
             return SR_ERR_OK;
         }
     }
@@ -259,7 +250,9 @@ sr_mem_new(size_t min_size, sr_mem_ctx_t **sr_mem_p)
     sr_mem->cursor = sr_mem->mem_blocks->last;
     sr_mem->piggy_back = max_recent_peak;
     *sr_mem_p = sr_mem;
+#ifdef PRINT_ALLOC_STATS
     inc_new_sr_mem();
+#endif
 
 cleanup:
     if (SR_ERR_OK != rc) {
@@ -351,7 +344,9 @@ alloc:
 #ifdef PRINT_ALLOC_EXECS
         printf("SR-EXP: Calling fake alloc.\n");
 #endif
+#ifdef PRINT_ALLOC_STATS
         inc_fake_alloc(size);
+#endif
     }
 
     mem = mem_block->mem + sr_mem->used[used_head];
