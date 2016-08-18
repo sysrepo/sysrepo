@@ -80,9 +80,15 @@ module sysrepo-module-dependencies {
 
         leaf type {
             type enumeration {
-                enum "include";
-                enum "import";
-                enum "extension";
+                enum include {
+                    description "The source includes this module.";
+                }
+                enum import {
+                    description "The source imports this module.";
+                }
+                enum extension {
+                    description "The source extends this module.";
+                }
             }
             description "Type of the dependency.";
         }

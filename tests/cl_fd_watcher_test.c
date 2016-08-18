@@ -184,6 +184,7 @@ cl_fd_poll_test(void **state)
                 assert_int_equal(rc, SR_ERR_OK);
                 cl_fd_change_set_process(fd_change_set, fd_change_set_cnt);
                 free(fd_change_set);
+                fd_change_set = NULL;
                 fd_change_set_cnt = 0;
             }
             if (poll_fd_set[i].revents & POLLOUT) {
@@ -191,6 +192,7 @@ cl_fd_poll_test(void **state)
                 assert_int_equal(rc, SR_ERR_OK);
                 cl_fd_change_set_process(fd_change_set, fd_change_set_cnt);
                 free(fd_change_set);
+                fd_change_set = NULL;
                 fd_change_set_cnt = 0;
             }
         }

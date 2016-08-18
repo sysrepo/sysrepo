@@ -361,9 +361,21 @@ void delete_item_leaflist_test(void **state){
     /* three leaf list items*/
     rc = rp_dt_get_values_wrapper(ctx, session, LEAF_LIST_XP, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(3, count);
     sr_free_values(values, count);
 
-    /* delete all list instances*/
+    /* delete one leaf-list instance */
+    rc = rp_dt_delete_item_wrapper(ctx, session, LEAF_LIST_XP "[.=42]", SR_EDIT_STRICT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    session->state = RP_REQ_NEW;
+
+    rc = rp_dt_get_values_wrapper(ctx, session, LEAF_LIST_XP, &values, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(2, count);
+    sr_free_values(values, count);
+
+    /* delete all remaining leaf-list instances*/
     rc = rp_dt_delete_item_wrapper(ctx, session, LEAF_LIST_XP, SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 

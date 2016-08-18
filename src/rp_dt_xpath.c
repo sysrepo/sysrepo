@@ -499,10 +499,10 @@ rp_dt_validate_node_xpath_intrenal(dm_ctx_t *dm_ctx, dm_session_t *session, dm_s
 
     module = ly_ctx_get_module(schema_info->ly_ctx, namespace, NULL);
 
-    if (NULL == module && NULL != session) {
-        rc = dm_report_error(session, NULL, xpath, SR_ERR_UNKNOWN_MODEL);
-    }
     if (NULL == module) {
+        if (NULL != session) {
+            dm_report_error(session, NULL, xpath, SR_ERR_UNKNOWN_MODEL);
+        }
         SR_LOG_ERR("Module %s not found in provided schema info", namespace);
         free(namespace);
         return SR_ERR_UNKNOWN_MODEL;

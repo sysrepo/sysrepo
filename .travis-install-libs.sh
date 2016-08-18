@@ -42,7 +42,7 @@ fi
 # libraries that we don't want to cache
 
 # libyang
-git clone https://github.com/CESNET/libyang.git
+git clone -b devel https://github.com/CESNET/libyang.git
 cd libyang ; mkdir build ; cd build
 cmake -DCMAKE_BUILD_TYPE=Debug -DENABLE_BUILD_TESTS=OFF ..
 make -j2 && sudo make install

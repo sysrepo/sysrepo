@@ -127,7 +127,9 @@ typedef enum sr_type_e {
     SR_UINT64_T,       /**< 64-bit unsigned integer ([RFC 6020 sec 9.2](http://tools.ietf.org/html/rfc6020#section-9.2)) */
 } sr_type_t;
 
-/** Data of an element (if applicable), properly set according to the type. */
+/**
+ * @brief Data of an element (if applicable), properly set according to the type.
+ */
 typedef union sr_data_u {
     char *binary_val;       /**< Base64-encoded binary data ([RFC 6020 sec 9.8](http://tools.ietf.org/html/rfc6020#section-9.8)) */
     char *bits_val;         /**< A set of bits or flags ([RFC 6020 sec 9.7](http://tools.ietf.org/html/rfc6020#section-9.7)) */
@@ -151,9 +153,7 @@ typedef union sr_data_u {
  * @brief Structure that contains value of an data element stored in the sysrepo datastore.
  */
 typedef struct sr_val_s {
-    /**
-     * Memory context used by this value.
-     */
+    /** Memory context used by this value. */
     sr_mem_ctx_t *sr_mem;
 
     /**
@@ -186,20 +186,16 @@ typedef struct sr_val_s {
  * than to an actual xpath.
  */
 typedef struct sr_node_s {
-    /**
-     * Memory context used by this node.
-     */
+    /** Memory context used by this node. */
     sr_mem_ctx_t *sr_mem;
 
-    /**
-     * Name of the node.
-     */
+    /** Name of the node. */
     char *name;
 
     /** Type of an element. */
     sr_type_t type;
 
-    /** Flag for default node (applicable only for leaves) */
+    /** Flag for default node (applicable only for leaves). */
     bool dflt;
 
     /** Data of an element (if applicable), properly set according to the type. */
@@ -211,19 +207,19 @@ typedef struct sr_node_s {
      */
     char *module_name;
 
-    /**< Pointer to the parent node (NULL in case of root node). */
+    /** Pointer to the parent node (NULL in case of root node). */
     struct sr_node_s *parent;
 
-    /**< Pointer to the next sibling node (NULL if there is no one). */
+    /** Pointer to the next sibling node (NULL if there is no one). */
     struct sr_node_s *next;
 
-    /**< Pointer to the previous sibling node (NULL if there is no one). */
+    /** Pointer to the previous sibling node (NULL if there is no one). */
     struct sr_node_s *prev;
 
-    /**< Pointer to the first child node (NULL if this is a leaf). */
+    /** Pointer to the first child node (NULL if this is a leaf). */
     struct sr_node_s *first_child;
 
-    /**< Pointer to the last child node (NULL if this is a leaf). */
+    /** Pointer to the last child node (NULL if this is a leaf). */
     struct sr_node_s *last_child;
 } sr_node_t;
 
@@ -946,7 +942,7 @@ int sr_unlock_module(sr_session_ctx_t *session, const char *module_name);
 
 
 ////////////////////////////////////////////////////////////////////////////////
-// Notification API
+// Change Notifications API
 ////////////////////////////////////////////////////////////////////////////////
 
 /**
@@ -1203,7 +1199,7 @@ int sr_get_change_next(sr_session_ctx_t *session, sr_change_iter_t *iter, sr_cha
 
 
 ////////////////////////////////////////////////////////////////////////////////
-// RPC API
+// RPC (Remote Procedure Calls) API
 ////////////////////////////////////////////////////////////////////////////////
 
 /**
@@ -1313,58 +1309,9 @@ int sr_rpc_send(sr_session_ctx_t *session, const char *xpath,
 int sr_rpc_send_tree(sr_session_ctx_t *session, const char *xpath,
         const sr_node_t *input,  const size_t input_cnt, sr_node_t **output, size_t *output_cnt);
 
-////////////////////////////////////////////////////////////////////////////////
-// Operational Data API - EXPERIMENTAL (work in progress) !!!
-////////////////////////////////////////////////////////////////////////////////
-
-/**
- * @brief Callback to be called when operational data at the selected level is requested.
- * Subscribe to it by ::sr_dp_get_items_subscribe call.
- *
- * Callback handler is supposed to provide data of all nodes at the level selected by the xpath argument:
- *
- * - If the xpath identifies a container, the provider is supposed to return all leaves and leaf-lists values within it.
- * Nested lists and containers should not be provided - sysrepo will ask for them in subsequent calls.
- * - If the xpath identifies a list, the provider is supposed to return all all leaves and leaf-lists values within all
- * instances of the list. Nested lists and containers should not be provided - sysrepo will ask for them in subsequent calls.
- * - If the xpath identifies a leaf-list, the provider is supposed to return all leaf-list values.
- * - If the xpath identifies a leaf, the provider is supposed to return just the leaf in question.
- *
- * The xpath argument passed to callback can be only the xpath that was used for the subscription, or xpath of
- * any nested lists or containers.
- *
- * @param[in] xpath XPath identifying the level under which the nodes are requested.
- * @param[out] values Array of values at the selected level (allocated by the provider).
- * @param[out] values_cnt Number of values returned.
- * @param[in] private_ctx Private context opaque to sysrepo, as passed to ::sr_dp_get_items_subscribe call.
- *
- * @return Error code (SR_ERR_OK on success).
- */
-typedef int (*sr_dp_get_items_cb)(const char *xpath, sr_val_t **values, size_t *values_cnt, void *private_ctx);
-
-/**
- * @brief Registers for providing of operational data under given xpath.
- *
- * @note The XPath must be generic - must not include any list key values.
- * @note This API works only for operational data (subtrees marked in YANG as "config false").
- * Subscribing as a data provider for configuration data does not have any effect.
- *
- * @param[in] session Session context acquired with ::sr_session_start call.
- * @param[in] xpath XPath identifying the subtree under which the provider is able to provide
- * operational data.
- * @param[in] callback Callback to be called when the operational data nder given xpat is needed.
- * @param[in] private_ctx Private context passed to the callback function, opaque to sysrepo.
- * @param[in] opts Options overriding default behavior of the subscription, it is supposed to be
- * a bitwise OR-ed value of any ::sr_subscr_flag_t flags.
- * @param[in,out] subscription Subscription context that is supposed to be released by ::sr_unsubscribe.
- *
- * @return Error code (SR_ERR_OK on success).
- */
-int sr_dp_get_items_subscribe(sr_session_ctx_t *session, const char *xpath, sr_dp_get_items_cb callback, void *private_ctx,
-        sr_subscr_options_t opts, sr_subscription_ctx_t **subscription);
 
 ////////////////////////////////////////////////////////////////////////////////
-// Event Notification API
+// Event Notifications API
 ////////////////////////////////////////////////////////////////////////////////
 
 /**
@@ -1467,6 +1414,57 @@ int sr_event_notif_send_tree(sr_session_ctx_t *session, const char *xpath,
 
 
 ////////////////////////////////////////////////////////////////////////////////
+// Operational Data API - EXPERIMENTAL (work in progress) !!!
+////////////////////////////////////////////////////////////////////////////////
+
+/**
+ * @brief Callback to be called when operational data at the selected level is requested.
+ * Subscribe to it by ::sr_dp_get_items_subscribe call.
+ *
+ * Callback handler is supposed to provide data of all nodes at the level selected by the xpath argument:
+ *
+ * - If the xpath identifies a container, the provider is supposed to return all leaves and leaf-lists values within it.
+ * Nested lists and containers should not be provided - sysrepo will ask for them in subsequent calls.
+ * - If the xpath identifies a list, the provider is supposed to return all all leaves and leaf-lists values within all
+ * instances of the list. Nested lists and containers should not be provided - sysrepo will ask for them in subsequent calls.
+ * - If the xpath identifies a leaf-list, the provider is supposed to return all leaf-list values.
+ * - If the xpath identifies a leaf, the provider is supposed to return just the leaf in question.
+ *
+ * The xpath argument passed to callback can be only the xpath that was used for the subscription, or xpath of
+ * any nested lists or containers.
+ *
+ * @param[in] xpath XPath identifying the level under which the nodes are requested.
+ * @param[out] values Array of values at the selected level (allocated by the provider).
+ * @param[out] values_cnt Number of values returned.
+ * @param[in] private_ctx Private context opaque to sysrepo, as passed to ::sr_dp_get_items_subscribe call.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+typedef int (*sr_dp_get_items_cb)(const char *xpath, sr_val_t **values, size_t *values_cnt, void *private_ctx);
+
+/**
+ * @brief Registers for providing of operational data under given xpath.
+ *
+ * @note The XPath must be generic - must not include any list key values.
+ * @note This API works only for operational data (subtrees marked in YANG as "config false").
+ * Subscribing as a data provider for configuration data does not have any effect.
+ *
+ * @param[in] session Session context acquired with ::sr_session_start call.
+ * @param[in] xpath XPath identifying the subtree under which the provider is able to provide
+ * operational data.
+ * @param[in] callback Callback to be called when the operational data nder given xpat is needed.
+ * @param[in] private_ctx Private context passed to the callback function, opaque to sysrepo.
+ * @param[in] opts Options overriding default behavior of the subscription, it is supposed to be
+ * a bitwise OR-ed value of any ::sr_subscr_flag_t flags.
+ * @param[in,out] subscription Subscription context that is supposed to be released by ::sr_unsubscribe.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_dp_get_items_subscribe(sr_session_ctx_t *session, const char *xpath, sr_dp_get_items_cb callback, void *private_ctx,
+        sr_subscr_options_t opts, sr_subscription_ctx_t **subscription);
+
+
+////////////////////////////////////////////////////////////////////////////////
 // Application-local File Descriptor Watcher API
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -1474,8 +1472,8 @@ int sr_event_notif_send_tree(sr_session_ctx_t *session, const char *xpath,
  * @brief Event that has occurred on a monitored file descriptor.
  */
 typedef enum sr_fd_event_e {
-    SR_FD_INPUT_READY,   /**< File descriptor is now readable without blocking. */
-    SR_FD_OUTPUT_READY,  /**< File descriptor is now writable without blocking. */
+    SR_FD_INPUT_READY = 1,   /**< File descriptor is now readable without blocking. */
+    SR_FD_OUTPUT_READY = 2,  /**< File descriptor is now writable without blocking. */
 } sr_fd_event_t;
 
 /**
