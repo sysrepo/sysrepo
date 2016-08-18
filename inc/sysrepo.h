@@ -61,10 +61,9 @@
 //#define PRINT_ALLOC_EXECS 1
 //#define PRINT_ALLOC_STATS 1
 
+#ifdef PRINT_ALLOC_STATS
 void inc_real_alloc(size_t size);
 void inc_fake_alloc(size_t size);
-
-#ifdef PRINT_ALLOC_STATS
 # ifdef PRINT_ALLOC_EXECS
 #  define calloc(n,s)  ({ printf("Calling real calloc.\n"); inc_real_alloc(s); void *mem = calloc(n,s); mem; })
 #  define malloc(s)    ({ printf("Calling real malloc.\n"); inc_real_alloc(s); void *mem = malloc(s); mem; })
