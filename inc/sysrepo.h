@@ -59,7 +59,7 @@
 #include <string.h>
 
 //#define PRINT_ALLOC_EXECS 1
-#define PRINT_ALLOC_STATS
+//#define PRINT_ALLOC_STATS
 
 void inc_real_alloc(size_t size);
 void inc_fake_alloc(size_t size);
