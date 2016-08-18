@@ -2,7 +2,7 @@
  * @file sr_experimental.c
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>,
  *         Milan Lenco <milan.lenco@pantheon.tech>
- * @brief Sysrepo utility functions.
+ * @brief Sysrepo experimental memory management implementation.
  *
  * @copyright
  * Copyright 2016 Cisco Systems, Inc.
