@@ -479,11 +479,10 @@ Values::Values(sr_val_t *val, size_t cnt)
 {
     _values = val;
     _cnt = cnt;
+    _pos = 0;
 
-    if (_values) {
-        _pos = 0;
+    if (_values)
         _val = &(_values[_pos]);
-    }
 }
 
 Values::~Values()

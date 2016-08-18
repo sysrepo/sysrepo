@@ -74,6 +74,8 @@ void Throw_Exception::throw_exception(int error)
 Errors::Errors()
 {
     // for consistent swig integration
+    info = NULL;
+    cnt = 0;
     return;
 }
 

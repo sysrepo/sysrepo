@@ -71,7 +71,6 @@ public:
 
 private:
     sr_session_ctx_t *_sess;
-    sr_val_t *_values;
     sr_datastore_t _datastore;
     sr_conn_options_t _opts;
 };

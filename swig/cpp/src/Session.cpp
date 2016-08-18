@@ -64,6 +64,7 @@ cleanup:
 Session::Session(sr_session_ctx_t *sess)
 {
     _sess = sess;
+    _opts = SR_CONN_DEFAULT;
 }
 
 void Session::session_stop()
