@@ -2095,7 +2095,7 @@ sr_rpc_send(sr_session_ctx_t *session, const char *xpath,
     sr_msg_free(msg_resp);
 
     if (snapshot.sr_mem) {
-        sr_mem_restore(snapshot);
+        sr_mem_restore(&snapshot);
     }
 
     return cl_session_return(session, SR_ERR_OK);
@@ -2108,7 +2108,7 @@ cleanup:
         sr_msg_free(msg_resp);
     }
     if (snapshot.sr_mem) {
-        sr_mem_restore(snapshot);
+        sr_mem_restore(&snapshot);
     }
     return cl_session_return(session, rc);
 }
@@ -2159,7 +2159,7 @@ sr_rpc_send_tree(sr_session_ctx_t *session, const char *xpath,
     sr_msg_free(msg_resp);
 
     if (snapshot.sr_mem) {
-        sr_mem_restore(snapshot);
+        sr_mem_restore(&snapshot);
     }
 
     return cl_session_return(session, SR_ERR_OK);
@@ -2172,7 +2172,7 @@ cleanup:
         sr_msg_free(msg_resp);
     }
     if (snapshot.sr_mem) {
-        sr_mem_restore(snapshot);
+        sr_mem_restore(&snapshot);
     }
     return cl_session_return(session, rc);
 }

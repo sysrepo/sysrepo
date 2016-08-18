@@ -27,6 +27,8 @@
 #include "sr_protobuf.h"
 #include "sr_data_structs.h"
 
+/* Configuration */
+#define MAX_BLOCKS_AVAIL_FOR_ALLOC 3
 
 /**
  * @brief Internal structure representing a single memory block.
@@ -42,7 +44,8 @@ typedef struct sr_mem_block_s {
 typedef struct sr_mem_ctx_s {
    sr_llist_t *mem_blocks;  /**< Items are pointers to sr_mem_block_t */
    sr_llist_node_t *cursor; /**< Currently used memory block */
-   size_t used;             /**< Memory usage of the current block */
+   size_t used[MAX_BLOCKS_AVAIL_FOR_ALLOC]; /**< Queue of memory usages of the last MAX_BLOCKS_AVAIL_FOR_ALLOC blocks */
+   size_t used_head;        /**< Head of the *used* queue */
    size_t used_total;       /**< Total number of bytes allocated (or skipped) in a Sysrepo memory context. */
    size_t size_total;       /**< Total number of bytes used by a Sysrepo memory context. */
    size_t peak;             /**< Peak usage of the memory context. Resets only in ::sr_mem_free. */
@@ -58,7 +61,8 @@ typedef struct sr_mem_ctx_s {
 typedef struct sr_mem_snapshot_s {
     sr_mem_ctx_t *sr_mem;       /**< Associated Sysrepo memory context. */
     sr_llist_node_t *mem_block; /**< Current memory block at the time of the snapshot. */
-    size_t used;                /**< Memory usage of the current memory block at the time of the snapshot. */
+    size_t used[MAX_BLOCKS_AVAIL_FOR_ALLOC]; /**< Memory usage of the last MAX_BLOCKS_AVAIL_FOR_ALLOC blocks */
+    size_t used_head;           /**< Head of the *used* queue */
     size_t used_total;          /**< Total memory usage at the time of the snapshot. */
     unsigned obj_count;         /**< Object count of the context at the time of the snapshot. */
 } sr_mem_snapshot_t;
@@ -120,7 +124,7 @@ void sr_mem_snapshot(sr_mem_ctx_t *sr_mem, sr_mem_snapshot_t *snapshot);
  *
  * @param [in] snapshot Snapshot to restore.
  */
-void sr_mem_restore(sr_mem_snapshot_t snapshot);
+void sr_mem_restore(sr_mem_snapshot_t *snapshot);
 
 /**
  * @brief Set/change value of a string.

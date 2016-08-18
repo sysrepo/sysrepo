@@ -305,7 +305,7 @@ error:
             sr__msg__free_unpacked(msg, NULL);
         }
     } else if (snapshot.sr_mem) {
-        sr_mem_restore(snapshot);
+        sr_mem_restore(&snapshot);
     }
     return rc;
 }
@@ -524,7 +524,7 @@ error:
             sr__msg__free_unpacked(msg, NULL);
         }
     } else if (snapshot.sr_mem) {
-        sr_mem_restore(snapshot);
+        sr_mem_restore(&snapshot);
     }
     return rc;
 }
@@ -613,7 +613,7 @@ error:
             sr__msg__free_unpacked(msg, NULL);
         }
     } else if (snapshot.sr_mem) {
-        sr_mem_restore(snapshot);
+        sr_mem_restore(&snapshot);
     }
     return rc;
 }
@@ -662,7 +662,7 @@ error:
             sr__msg__free_unpacked(msg, NULL);
         }
     } else if (snapshot.sr_mem) {
-        sr_mem_restore(snapshot);
+        sr_mem_restore(&snapshot);
     }
     return rc;
 }
@@ -736,7 +736,7 @@ error:
             sr__msg__free_unpacked(msg, NULL);
         }
     } else if (snapshot.sr_mem) {
-        sr_mem_restore(snapshot);
+        sr_mem_restore(&snapshot);
     }
     return rc;
 }
@@ -1195,7 +1195,7 @@ sr_dup_val_t_to_gpb(const sr_val_t *value, Sr__Value **gpb_value){
 
 cleanup:
     if (value->sr_mem) {
-        sr_mem_restore(snapshot);
+        sr_mem_restore(&snapshot);
     } else {
         sr__value__free_unpacked(gpb, NULL);
     }
@@ -1423,7 +1423,7 @@ sr_dup_gpb_to_val_t(sr_mem_ctx_t *sr_mem, const Sr__Value *gpb_value, sr_val_t *
     rc = sr_copy_gpb_to_val_t(gpb_value, val);
     if (SR_ERR_OK != rc) {
         if (sr_mem) {
-            sr_mem_restore(snapshot);
+            sr_mem_restore(&snapshot);
         } else {
             free(val);
         }
@@ -1473,7 +1473,7 @@ cleanup:
         }
         free(gpb_values);
     } else {
-        sr_mem_restore(snapshot);
+        sr_mem_restore(&snapshot);
     }
     return rc;
 }
@@ -1516,7 +1516,7 @@ sr_values_gpb_to_sr(sr_mem_ctx_t *sr_mem, Sr__Value **gpb_values, size_t gpb_val
 
 cleanup:
     if (sr_mem) {
-        sr_mem_restore(snapshot);
+        sr_mem_restore(&snapshot);
     } else {
         sr_free_values(sr_values, gpb_value_cnt);
     }
@@ -1589,7 +1589,7 @@ sr_dup_tree_to_gpb(const sr_node_t *sr_tree, Sr__Node **gpb_tree)
 
 cleanup:
     if (sr_tree->sr_mem) {
-        sr_mem_restore(snapshot);
+        sr_mem_restore(&snapshot);
     } else {
         sr__node__free_unpacked(gpb, NULL);
     }
@@ -1615,7 +1615,7 @@ sr_dup_gpb_to_tree(sr_mem_ctx_t *sr_mem, const Sr__Node *gpb_tree, sr_node_t **s
     rc = sr_copy_gpb_to_tree(gpb_tree, tree);
     if (SR_ERR_OK != rc) {
         if (sr_mem) {
-            sr_mem_restore(snapshot);
+            sr_mem_restore(&snapshot);
         } else {
             sr_free_tree(tree);
         }
@@ -1720,7 +1720,7 @@ cleanup:
         }
         free(gpb_trees);
     } else {
-        sr_mem_restore(snapshot);
+        sr_mem_restore(&snapshot);
     }
     return rc;
 }
@@ -1762,7 +1762,7 @@ sr_trees_gpb_to_sr(sr_mem_ctx_t *sr_mem, Sr__Node **gpb_trees, size_t gpb_tree_c
 
 cleanup:
     if (sr_mem) {
-        sr_mem_restore(snapshot);
+        sr_mem_restore(&snapshot);
     } else {
         sr_free_trees(sr_trees, gpb_tree_cnt);
     }

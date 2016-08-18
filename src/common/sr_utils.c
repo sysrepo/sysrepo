@@ -1135,7 +1135,7 @@ sr_nodes_to_trees(struct ly_ctx *ly_ctx, struct ly_set *nodes, sr_mem_ctx_t *sr_
         *count = nodes->number;
     } else {
         if (sr_mem) {
-            sr_mem_restore(snapshot);
+            sr_mem_restore(&snapshot);
         } else {
             sr_free_trees(trees, i);
         }

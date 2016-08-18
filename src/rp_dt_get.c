@@ -125,7 +125,7 @@ rp_dt_get_values_from_nodes(sr_mem_ctx_t *sr_mem, struct ly_set *nodes, sr_val_t
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR("Getting value from node %s failed", node->schema->name);
             if (sr_mem) {
-                sr_mem_restore(snapshot);
+                sr_mem_restore(&snapshot);
             } else {
                 sr_free_values(vals, i);
             }

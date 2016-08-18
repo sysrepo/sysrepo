@@ -35,6 +35,8 @@
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 
+#define QUEUE_PREV(head, len) ((head) == 0 ? ((len)-1) : ((head)-1))
+
 #undef calloc
 #undef malloc
 #undef realloc
@@ -191,7 +193,6 @@ get_fctx_pool()
             }
         }
     }
-
     return fctx_pool;
 }
 
@@ -274,11 +275,12 @@ cleanup:
 void
 *sr_malloc(sr_mem_ctx_t *sr_mem, size_t size)
 {
+    size_t used_head = 0;
     void *mem = NULL;
     size_t new_size = 0;
     int err = SR_ERR_OK;
     bool fake_alloc = true;
-    sr_llist_node_t *for_removal = NULL;
+    sr_llist_node_t *node_ll = NULL, *for_removal = NULL;
     sr_mem_block_t *mem_block = NULL;
 
     if (0 == size) {
@@ -289,20 +291,36 @@ void
         return malloc(size);
     }
 
+    /* first consider previous blocks */
+    node_ll = sr_mem->cursor->prev;
+    used_head = QUEUE_PREV(sr_mem->used_head, MAX_BLOCKS_AVAIL_FOR_ALLOC);
+    for (size_t i = 0; node_ll && i < MAX_BLOCKS_AVAIL_FOR_ALLOC-1;
+         ++i, node_ll = node_ll->prev, used_head = QUEUE_PREV(used_head, MAX_BLOCKS_AVAIL_FOR_ALLOC)) {
+        mem_block = (sr_mem_block_t *)node_ll->data;
+        if (mem_block->size >= sr_mem->used[used_head] + size) {
+            goto alloc;
+        }
+
+    }
+
     /* find first suitable block starting at the cursor */
+    used_head = sr_mem->used_head;
     mem_block = (sr_mem_block_t *)sr_mem->cursor->data;
-    while (mem_block->size < sr_mem->used + size) {
+    while (mem_block->size < sr_mem->used[used_head] + size) {
         /* not enough memory in the current block */
-        if (0 == sr_mem->used) {
+        if (0 == sr_mem->used[used_head]) {
             /* don't keep completely empty block in the middle */
             for_removal = sr_mem->cursor;
         } else {
-            sr_mem->used_total += mem_block->size - sr_mem->used;
+            /* We may still use something from previous blocks in the future,
+             * but count the skipped free bytes as used anyway for simplicity. */
+            sr_mem->used_total += mem_block->size - sr_mem->used[used_head];
             for_removal = NULL;
         }
         if (sr_mem->cursor == sr_mem->mem_blocks->last) {
+            /* add new block */
             fake_alloc = false;
-            new_size = MAX(size, mem_block->size * 2);
+            new_size = MAX(size, mem_block->size + (mem_block->size >> 1) /* 1.5x */);
             mem_block = (sr_mem_block_t *)malloc(sizeof *mem_block + new_size);
             CHECK_NULL_NOMEM_GOTO(mem_block, err, cleanup);
             mem_block->size = new_size;
@@ -310,11 +328,17 @@ void
             CHECK_RC_MSG_GOTO(err, cleanup, "Failed to add memory block into a linked-list.");
             sr_mem->size_total += mem_block->size;
         }
+        /* move to the next block */
         assert(sr_mem->cursor->next);
         sr_mem->cursor = sr_mem->cursor->next;
+        if (NULL == for_removal) {
+            sr_mem->used_head += 1;
+            sr_mem->used_head %= MAX_BLOCKS_AVAIL_FOR_ALLOC;
+            used_head = sr_mem->used_head;
+            sr_mem->used[used_head] = 0;
+        }
         assert(sr_mem->cursor->data);
         mem_block = (sr_mem_block_t *)sr_mem->cursor->data;
-        sr_mem->used = 0;
         if (NULL != for_removal) {
             sr_mem->size_total -= ((sr_mem_block_t *)for_removal->data)->size;
             free(for_removal->data);
@@ -322,6 +346,7 @@ void
         }
     }
 
+alloc:
     if (fake_alloc) {
 #ifdef PRINT_ALLOC_EXECS
         printf("SR-EXP: Calling fake alloc.\n");
@@ -329,10 +354,17 @@ void
         inc_fake_alloc(size);
     }
 
-    mem = mem_block->mem + sr_mem->used;
-    sr_mem->used += size;
-    sr_mem->used_total += size;
-    sr_mem->peak = MAX(sr_mem->used_total, sr_mem->peak);
+    mem = mem_block->mem + sr_mem->used[used_head];
+    sr_mem->used[used_head] += size;
+    assert(mem_block->size >= sr_mem->used[used_head]);
+    if (used_head == sr_mem->used_head) {
+        /* current block */
+        sr_mem->used_total += size;
+        sr_mem->peak = MAX(sr_mem->used_total, sr_mem->peak);
+    } else {
+        /* previous block */
+        /* already counted as used_total */
+    }
 
 cleanup:
     if (SR_ERR_OK != err) {
@@ -421,7 +453,8 @@ sr_mem_free(sr_mem_ctx_t *sr_mem)
                 sr_llist_rm(sr_mem->mem_blocks, sr_mem->mem_blocks->last);
             }
             sr_mem->cursor = sr_mem->mem_blocks->first;
-            sr_mem->used = 0;
+            memset(sr_mem->used, 0, sizeof(sr_mem->used));
+            sr_mem->used_head = 0;
             sr_mem->used_total = 0;
             sr_mem->peak = 0;
             sr_mem->piggy_back = 0;
@@ -465,22 +498,24 @@ sr_mem_snapshot(sr_mem_ctx_t *sr_mem, sr_mem_snapshot_t *snapshot)
     }
     snapshot->sr_mem = sr_mem;
     snapshot->mem_block = sr_mem->cursor;
-    snapshot->used = sr_mem->used;
+    memcpy(snapshot->used, sr_mem->used, sizeof(sr_mem->used));
+    snapshot->used_head = sr_mem->used_head;
     snapshot->used_total = sr_mem->used_total;
     snapshot->obj_count = sr_mem->obj_count;
 }
 
 void
-sr_mem_restore(sr_mem_snapshot_t snapshot)
+sr_mem_restore(sr_mem_snapshot_t *snapshot)
 {
-    if (NULL == snapshot.sr_mem || NULL == snapshot.mem_block) {
+    if (NULL == snapshot || NULL == snapshot->sr_mem || NULL == snapshot->mem_block) {
         return; /* NOOP */
     }
 
-    snapshot.sr_mem->cursor = snapshot.mem_block;
-    snapshot.sr_mem->used = snapshot.used;
-    snapshot.sr_mem->used_total = snapshot.used_total;
-    snapshot.sr_mem->obj_count = snapshot.obj_count;
+    snapshot->sr_mem->cursor = snapshot->mem_block;
+    memcpy(snapshot->sr_mem->used, snapshot->used, sizeof(snapshot->used));
+    snapshot->sr_mem->used_head = snapshot->used_head;
+    snapshot->sr_mem->used_total = snapshot->used_total;
+    snapshot->sr_mem->obj_count = snapshot->obj_count;
 }
 
 int
