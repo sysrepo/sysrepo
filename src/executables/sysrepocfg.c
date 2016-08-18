@@ -351,7 +351,7 @@ static int
 srcfg_convert_lydiff_changed(const char *xpath, struct lyd_node *node)
 {
     int rc = SR_ERR_INTERNAL;
-    sr_val_t value = { 0, SR_UNKNOWN_T };
+    sr_val_t value = { 0, 0, SR_UNKNOWN_T };
     struct lyd_node_leaf_list *data_leaf = NULL;
 
     CHECK_NULL_ARG2(xpath, node);
