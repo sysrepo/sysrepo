@@ -23,6 +23,7 @@
 #define SESSION_H
 
 #include <iostream>
+#include <memory>
 #include <vector>
 
 #include "Sysrepo.h"
@@ -50,11 +51,11 @@ public:
     void list_schemas(Schema& schema);
     void get_schema(Schema& schema, const char *module_name, const char *revision,
 		    const char *submodule_name,  sr_schema_format_t format);
-    void get_item(const char *xpath, Value *value);
-    void get_items(const char *xpath, Values *values);
-    void get_items_iter(const char *xpath, Iter_Value *iter);
-    bool get_item_next(Iter_Value *iter, Value *value);
-    void set_item(const char *xpath, Value& value, const sr_edit_options_t opts = EDIT_DEFAULT);
+    shared_ptr<Value> get_item(const char *xpath);
+    shared_ptr<Values> get_items(const char *xpath);
+    shared_ptr<Iter_Value> get_items_iter(const char *xpath);
+    shared_ptr<Value> get_item_next(shared_ptr<Iter_Value> iter);
+    void set_item(const char *xpath, shared_ptr<Value> value, const sr_edit_options_t opts = EDIT_DEFAULT);
     void delete_item(const char *xpath, const sr_edit_options_t opts = EDIT_DEFAULT);
     void move_item(const char *xpath, const sr_move_position_t position, const char *relative_item = NULL);
     void refresh();
@@ -90,15 +91,17 @@ public:
     void feature_enable_subscribe(sr_feature_enable_cb callback, void *private_ctx = NULL,\
                                   sr_subscr_options_t opts = SUBSCR_DEFAULT);
     void unsubscribe();
-    void get_changes_iter(const char *xpath, Iter_Change *iter);
-    sr_change_oper_t get_change_next(Iter_Change *iter, Values *new_value, Values *old_value);
+
+    shared_ptr<Iter_Change> get_changes_iter(const char *xpath);
+    sr_change_oper_t get_change_next(shared_ptr<Iter_Change> iter, shared_ptr<Value> new_value,\
+                                     shared_ptr<Value> old_value);
     /*void rpc_subscribe(const char *xpath, sr_rpc_cb callback, void *private_ctx = NULL,\
                        sr_subscr_options_t opts = SUBSCR_DEFAULT);*/
     //void rpc_send(const char *xpath, Values *input, Values *output);
     void dp_get_items_subscribe(const char *xpath, sr_dp_get_items_cb callback, void *private_ctx, \
                                sr_subscr_options_t opts = SUBSCR_DEFAULT);
 
-#ifndef SWIG
+#ifdef SWIG
         void Destructor_Subscribe();
         sr_subscription_ctx_t *swig_sub;
         Session *swig_sess;

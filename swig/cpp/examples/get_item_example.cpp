@@ -20,6 +20,7 @@
  */
 
 #include <iostream>
+#include <memory>
 
 #include "Session.h"
 
@@ -38,12 +39,12 @@ main(int argc, char **argv)
 
         const char *xpath = "/ietf-interfaces:interfaces/interface[name='eth0']/enabled";
 
-	Value value;
+        shared_ptr<Value> value = NULL;
 
-        sess.get_item(xpath, &value);
+        value = sess.get_item(xpath);
 
-        cout << endl << "Value on xpath: " << value.get_xpath() << " = "\
-             << (value.get_bool() ? "true" : "false") << endl << endl;
+        cout << endl << "Value on xpath: " << value->get_xpath() << " = "\
+             << (value->get_bool() ? "true" : "false") << endl << endl;
     } catch( const std::exception& e ) {
         cout << e.what() << endl;
     }

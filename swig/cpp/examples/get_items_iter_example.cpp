@@ -26,7 +26,7 @@
 using namespace std;
 
 void
-print_value(Value *value)
+print_value(shared_ptr<Value> value)
 {
     cout << value->get_xpath();
     cout << " ";
@@ -77,12 +77,13 @@ main(int argc, char **argv)
 
         const char *xpath = "/ietf-interfaces:interfaces/interface//*";
 
-	Value value;
-	Iter_Value iter;
-	sess.get_items_iter(xpath, &iter);
+	shared_ptr<Value> value;
+	shared_ptr<Iter_Value> iter;
 
-        while (sess.get_item_next(&iter, &value)) {
-            print_value(&value);
+	iter = sess.get_items_iter(xpath);
+
+        while (value = sess.get_item_next(iter)) {
+            print_value(value);
         }
 
     } catch( const std::exception& e ) {

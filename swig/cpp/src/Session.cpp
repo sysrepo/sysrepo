@@ -20,6 +20,7 @@
  */
 
 #include <stdexcept>
+#include <memory>
 #include <iostream>
 
 #include "Sysrepo.h"
@@ -116,9 +117,8 @@ void Session::get_schema(Schema& schema, const char *module_name, const char *re
     }
 }
 
-void Session::get_item(const char *xpath, Value *value)
+shared_ptr<Value> Session::get_item(const char *xpath)
 {
-
     sr_val_t *tmp_val = NULL;
 
     int ret = sr_get_item(_sess, xpath, &tmp_val);
@@ -126,10 +126,11 @@ void Session::get_item(const char *xpath, Value *value)
         throw_exception(ret);
     }
 
-    value->Set(&tmp_val[0]);
+    shared_ptr<Value> value(new Value(&tmp_val[0]));
+    return value;
 }
 
-void Session::get_items_iter(const char *xpath, Iter_Value *iter)
+shared_ptr<Iter_Value> Session::get_items_iter(const char *xpath)
 {
     sr_val_iter_t *tmp_iter = NULL;
 
@@ -138,10 +139,11 @@ void Session::get_items_iter(const char *xpath, Iter_Value *iter)
         throw_exception(ret);
     }
 
-    iter->Set(tmp_iter);
+    shared_ptr<Iter_Value> iter(new Iter_Value(tmp_iter));
+    return iter;
 }
 
-void Session::get_items(const char *xpath, Values *values)
+shared_ptr<Values> Session::get_items(const char *xpath)
 {
     sr_val_t *tmp_val = NULL;
     size_t tmp_cnt = 0;
@@ -151,24 +153,30 @@ void Session::get_items(const char *xpath, Values *values)
         throw_exception(ret);
     }
 
-    values->Set(tmp_val, tmp_cnt);
+    shared_ptr<Values> values(new Values(tmp_val, tmp_cnt));
+    return values;
 }
 
-bool Session::get_item_next(Iter_Value *iter, Value *value)
+shared_ptr<Value> Session::get_item_next(shared_ptr<Iter_Value> iter)
 {
+    int ret = SR_ERR_OK;
     sr_val_t *tmp_val = NULL;
 
-    if (SR_ERR_OK == sr_get_item_next(_sess, iter->Get(), &tmp_val)){
-        value->Set(tmp_val);
-        return true;
+    ret = sr_get_item_next(_sess, iter->Get(), &tmp_val);
+    if (SR_ERR_OK == ret) {
+        shared_ptr<Value> value(new Value(tmp_val));
+        return value;
+    } else if (SR_ERR_NOT_FOUND == ret) {
+        return NULL;
+    } else {
+        throw_exception(ret);
+	return NULL;
     }
-
-    return false;
 }
 
-void Session::set_item(const char *xpath, Value& value, const sr_edit_options_t opts)
+void Session::set_item(const char *xpath, shared_ptr<Value> value, const sr_edit_options_t opts)
 {
-    int ret = sr_set_item(_sess, xpath, *value.Get(), opts);
+    int ret = sr_set_item(_sess, xpath, *value->Get(), opts);
     if (ret != SR_ERR_OK) {
         throw_exception(ret);
     }
@@ -278,7 +286,7 @@ Subscribe::Subscribe(Session *sess)
 {
     _sub = NULL;
     _sess = sess;
-#ifndef SWIG
+#ifdef SWIG
     swig_sub = _sub;
     swig_sess = _sess;
 #endif
@@ -295,7 +303,7 @@ void Subscribe::d_Subscribe()
     }
 }
 
-#ifndef SWIG
+#ifdef SWIG
 void Subscribe::Destructor_Subscribe()
 {
     d_Subscribe();
@@ -356,7 +364,7 @@ void Subscribe::unsubscribe()
     _sub = NULL;
 }
 
-void Subscribe::get_changes_iter(const char *xpath, Iter_Change *iter)
+shared_ptr<Iter_Change> Subscribe::get_changes_iter(const char *xpath)
 {
     sr_change_iter_t *tmp_iter = NULL;
 
@@ -365,10 +373,12 @@ void Subscribe::get_changes_iter(const char *xpath, Iter_Change *iter)
         throw_exception(ret);
     }
 
-    iter->Set(tmp_iter);
+    shared_ptr<Iter_Change> iter(new Iter_Change(tmp_iter));
+    return iter;
 }
 
-sr_change_oper_t Subscribe::get_change_next(Iter_Change *iter, Values *new_value, Values *old_value)
+sr_change_oper_t Subscribe::get_change_next(shared_ptr<Iter_Change> iter, shared_ptr<Value> new_value,\
+                                            shared_ptr<Value> old_value)
 {
     sr_change_oper_t operation;
 

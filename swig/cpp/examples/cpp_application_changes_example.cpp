@@ -35,7 +35,7 @@ using namespace std;
 volatile int exit_application = 0;
 
 void
-print_value(Values *value)
+print_value(shared_ptr<Value> value)
 {
     cout << value->get_xpath();
     cout << " ";
@@ -76,7 +76,7 @@ print_value(Values *value)
 }
 
 static void
-print_change(sr_change_oper_t op, Values *old_val, Values *new_val) {
+print_change(sr_change_oper_t op, shared_ptr<Value> old_val, shared_ptr<Value> new_val) {
     switch(op) {
     case SR_OP_CREATED:
         if (NULL != new_val) {
@@ -112,15 +112,15 @@ print_current_config(Session *session, const char *module_name)
 {
     char select_xpath[MAX_LEN];
     try {
-        Values values;
+        shared_ptr<Values> values;
 
         snprintf(select_xpath, MAX_LEN, "/%s:*//*", module_name);
 
-        session->get_items(&select_xpath[0], &values);
+        values = session->get_items(&select_xpath[0]);
 
         do {
-            print_value(&values);
-        } while (values.Next());
+            print_value(values);
+        } while (values->Next());
 
     } catch( const std::exception& e ) {
         cout << e.what() << endl;
@@ -131,9 +131,9 @@ static int
 module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t event, void *private_ctx)
 {
     char change_path[MAX_LEN];
-    Values old_value;
-    Values new_value;
-    Iter_Change it;
+    shared_ptr<Value> old_value;
+    shared_ptr<Value> new_value;
+    shared_ptr<Iter_Change> it;
 
     try {
         Session sess(session);
@@ -147,12 +147,12 @@ module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_ev
         snprintf(change_path, MAX_LEN, "/%s:*", module_name);
 
         Subscribe subscribe(&sess);
-        subscribe.get_changes_iter(&change_path[0], &it);
+        it = subscribe.get_changes_iter(&change_path[0]);
 
 	while (true) {
             try {
-                sr_change_oper_t oper = subscribe.get_change_next(&it, &old_value, &new_value);
-                print_change(oper, &old_value, &new_value);
+                sr_change_oper_t oper = subscribe.get_change_next(it, old_value, new_value);
+                print_change(oper, old_value, new_value);
             } catch( const std::exception& e ) {
                 break;
             }

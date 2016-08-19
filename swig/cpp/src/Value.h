@@ -82,6 +82,7 @@ class Iter_Value
 
 public:
     Iter_Value();
+    Iter_Value(sr_val_iter_t *iter);
     ~Iter_Value();
     sr_val_iter_t *Get();
     void Set(sr_val_iter_t *iter);
@@ -96,9 +97,9 @@ class Iter_Change
 
 public:
     Iter_Change();
+    Iter_Change(sr_change_iter_t *iter);
     ~Iter_Change();
     sr_change_iter_t *Get();
-    void Set(sr_change_iter_t *iter);
 
 private:
     sr_change_iter_t *_iter;

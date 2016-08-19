@@ -39,7 +39,7 @@ main(int argc, char **argv)
         const char *xpath = "/ietf-interfaces:interfaces/interface[name='gigaeth0']/ietf-ip:ipv6/address[ip='fe80::ab8']/prefix-length";
 
         int64_t num = 64;
-        Value value(num);
+        shared_ptr<Value> value(new Value(num));
 
         sess.set_item(xpath, value);
         sess.commit();

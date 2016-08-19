@@ -437,6 +437,11 @@ Iter_Value::Iter_Value()
     _iter = NULL;
 }
 
+Iter_Value::Iter_Value(sr_val_iter_t *iter)
+{
+    _iter = iter;
+}
+
 sr_val_iter_t *Iter_Value::Get()
 {
     return _iter;
@@ -461,19 +466,16 @@ Iter_Change::Iter_Change()
     _iter = NULL;
 }
 
+Iter_Change::Iter_Change(sr_change_iter_t *iter)
+{
+    _iter = iter;
+}
+
 sr_change_iter_t *Iter_Change::Get()
 {
     return _iter;
 
 }
-
-void Iter_Change::Set(sr_change_iter_t *iter)
-{
-    if (_iter)
-        sr_free_change_iter(_iter);
-    _iter = iter;
-}
-
 
 Values::Values(sr_val_t *val, size_t cnt)
 {

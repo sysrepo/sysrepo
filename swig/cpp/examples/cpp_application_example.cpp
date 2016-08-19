@@ -32,7 +32,7 @@ using namespace std;
 volatile int exit_application = 0;
 
 void
-print_value(Values *value)
+print_value(shared_ptr<Values> value)
 {
     cout << value->get_xpath();
     cout << " ";
@@ -78,12 +78,12 @@ print_current_config(Session *session)
     try {
         const char *xpath = "/ietf-interfaces:*//*";
 
-	Values values;
-	session->get_items(xpath, &values);
+	shared_ptr<Values> values;
+	values = session->get_items(xpath);
 
         do {
-            print_value(&values);
-        } while (values.Next());
+            print_value(values);
+        } while (values->Next());
 
     } catch( const std::exception& e ) {
         cout << e.what() << endl;
@@ -118,13 +118,14 @@ main(int argc, char **argv)
 
         /* read startup config */
         cout << "\n\n ========== READING STARTUP CONFIG: ==========\n" << endl;
-        print_current_config(&sess);
 
         Subscribe subscribe(&sess);
 
 	subscribe.module_change_subscribe("ietf-interfaces", module_change_cb);
 
-        cout << "\n\n ========== STARTUP CONFIG APPLIED AS RUNNING ==========\n" << endl;
+        print_current_config(&sess);
+
+	cout << "\n\n ========== STARTUP CONFIG APPLIED AS RUNNING ==========\n" << endl;
 
         /* loop until ctrl-c is pressed / SIGINT is received */
         signal(SIGINT, sigint_handler);
