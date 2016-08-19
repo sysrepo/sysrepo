@@ -47,11 +47,9 @@ def print_value(value):
         print "(unprintable)"
 
 def print_current_config(session, module_name):
-    values = sr.Values()
-
     select_xpath = "/" + module_name + ":*//*"
 
-    session.get_items(select_xpath, values)
+    values = session.get_items(select_xpath)
 
     while True:
         print_value(values)

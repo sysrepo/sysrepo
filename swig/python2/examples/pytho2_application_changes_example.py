@@ -63,11 +63,9 @@ def print_change(op, old_val, new_val):
         print "MOVED: " + new_val.get_xpath() + " after " + old_val.get_xpath()
 
 def print_current_config(session, module_name):
-    values = sr.Values()
-
     select_xpath = "/" + module_name + ":*//*"
 
-    session.get_items(select_xpath, values)
+    values = session.get_items(select_xpath)
 
     while True:
         print_value(values)
@@ -77,7 +75,6 @@ def print_current_config(session, module_name):
 def module_change_cb(session, module_name, event, private_ctx):
     old_value = sr.Values()
     new_value = sr.Values()
-    it = sr.Iter_Change()
 
     try:
         sess = sr.Session(session)
@@ -91,7 +88,7 @@ def module_change_cb(session, module_name, event, private_ctx):
         change_path = "/" + module_name + ":*"
 
         subscribe = sr.Subscribe(sess);
-        subscribe.get_changes_iter(change_path, it);
+        it = subscribe.get_changes_iter(change_path);
 
         while True:
             try:
