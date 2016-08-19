@@ -69,9 +69,9 @@ add_dependencies(SR_ENGINE COMMON)
 set(HEADERS "${PROJECT_SOURCE_DIR}/inc/sysrepo.h")
 
 if(USE_AVL_LIB)
-    set(LINK_LIBRARIES pthread ${AVL_LIBRARIES} ${EV_LIBRARIES} ${PROTOBUF-C_LIBRARIES} ${YANG_LIBRARIES})
+    set(LINK_LIBRARIES pthread rt ${AVL_LIBRARIES} ${EV_LIBRARIES} ${PROTOBUF-C_LIBRARIES} ${YANG_LIBRARIES})
 else(USE_AVL_LIB)
-    set(LINK_LIBRARIES pthread ${REDBLACK_LIBRARIES} ${EV_LIBRARIES} ${PROTOBUF-C_LIBRARIES} ${YANG_LIBRARIES})
+    set(LINK_LIBRARIES pthread rt ${REDBLACK_LIBRARIES} ${EV_LIBRARIES} ${PROTOBUF-C_LIBRARIES} ${YANG_LIBRARIES})
 endif(USE_AVL_LIB)
 
 # sysrepo library
@@ -96,7 +96,7 @@ target_link_libraries(sysrepod sysrepo-engine)
 
 # sysrepo plugin daemon
 add_executable(sysrepo-plugind ${EXECUTABLES_DIR}/sysrepo-plugind.c)
-target_link_libraries(sysrepo-plugind ${EV_LIBRARIES} sysrepo ${CMAKE_DL_LIBS})
+target_link_libraries(sysrepo-plugind sysrepo ${EV_LIBRARIES} ${CMAKE_DL_LIBS})
 
 # sysrepoctl tool
 add_executable(sysrepoctl ${EXECUTABLES_DIR}/sysrepoctl.c)

@@ -535,7 +535,7 @@ sr_ly_data_type_to_sr(LY_DATA_TYPE type)
 sr_type_t
 sr_libyang_leaf_get_type(const struct lyd_node_leaf_list *leaf)
 {
-    const struct lyd_node *leafref = NULL;
+    const struct lyd_node_leaf_list *leafref = NULL;
     switch(leaf->value_type){
         case LY_TYPE_BINARY:
             return SR_BINARY_T;
@@ -554,9 +554,9 @@ sr_libyang_leaf_get_type(const struct lyd_node_leaf_list *leaf)
         case LY_TYPE_INST:
             return SR_INSTANCEID_T;
         case LY_TYPE_LEAFREF:
-            leafref = leaf->value.leafref;
-            if (NULL != leafref && ((LYS_LEAF | LYS_LEAFLIST) & leafref->schema->nodetype)) {
-                return sr_libyang_leaf_get_type((const struct lyd_node_leaf_list *)leafref);
+            leafref = (const struct lyd_node_leaf_list *) leaf->value.leafref;
+            if (NULL != leafref) {
+                return sr_libyang_leaf_get_type(leafref);
             }
             return SR_UNKNOWN_T;
         case LY_TYPE_STRING:
@@ -733,32 +733,32 @@ sr_libyang_leaf_copy_value(const struct lyd_node_leaf_list *leaf, sr_val_t *valu
     CHECK_NULL_ARG2(leaf, value);
     int rc = SR_ERR_OK;
     struct lys_node_leaf *leaf_schema = NULL;
-    const struct lyd_node *leafref = NULL;
+    const struct lyd_node_leaf_list *leafref = NULL;
     LY_DATA_TYPE type = leaf->value_type;
-    if (NULL == leaf->schema || NULL == leaf->schema->name) {
-        SR_LOG_ERR_MSG("Missing schema information");
-        return SR_ERR_INTERNAL;
+    const char *node_name = "(unknown)";
+    if (NULL != leaf->schema && NULL != leaf->schema->name) {
+        node_name = leaf->schema->name;
     }
 
     switch (type) {
     case LY_TYPE_BINARY:
         if (NULL == leaf->value.binary) {
-            SR_LOG_ERR("Binary data in leaf '%s' is NULL", leaf->schema->name);
+            SR_LOG_ERR("Binary data in leaf '%s' is NULL", node_name);
             return SR_ERR_INTERNAL;
         }
         value->data.binary_val = strdup(leaf->value.binary);
         if (NULL == value->data.binary_val) {
-            SR_LOG_ERR("Copy value failed for leaf '%s' of type 'binary'", leaf->schema->name);
+            SR_LOG_ERR("Copy value failed for leaf '%s' of type 'binary'", node_name);
             return SR_ERR_INTERNAL;
         }
         return SR_ERR_OK;
     case LY_TYPE_BITS:
         if (NULL == leaf->value.bit) {
-            SR_LOG_ERR("Missing schema information for node '%s'", leaf->schema->name);
+            SR_LOG_ERR("Missing schema information for node '%s'", node_name);
         }
         rc = sr_libyang_leaf_copy_bits(leaf, &(value->data.bits_val));
         if (SR_ERR_OK != rc) {
-            SR_LOG_ERR("Copy value failed for leaf '%s' of type 'bits'", leaf->schema->name);
+            SR_LOG_ERR("Copy value failed for leaf '%s' of type 'bits'", node_name);
         }
         return rc;
     case LY_TYPE_BOOL:
@@ -776,36 +776,36 @@ sr_libyang_leaf_copy_value(const struct lyd_node_leaf_list *leaf, sr_val_t *valu
         return SR_ERR_OK;
     case LY_TYPE_ENUM:
         if (NULL == leaf->value.enm || NULL == leaf->value.enm->name) {
-            SR_LOG_ERR("Missing schema information for node '%s'", leaf->schema->name);
+            SR_LOG_ERR("Missing schema information for node '%s'", node_name);
             return SR_ERR_INTERNAL;
         }
         value->data.enum_val = strdup(leaf->value.enm->name);
         if (NULL == value->data.enum_val) {
-            SR_LOG_ERR("Copy value failed for leaf '%s' of type 'enum'", leaf->schema->name);
+            SR_LOG_ERR("Copy value failed for leaf '%s' of type 'enum'", node_name);
             return SR_ERR_INTERNAL;
         }
         return SR_ERR_OK;
     case LY_TYPE_IDENT:
         if (NULL == leaf->value.ident->name) {
-            SR_LOG_ERR("Identity ref in leaf '%s' is NULL", leaf->schema->name);
+            SR_LOG_ERR("Identity ref in leaf '%s' is NULL", node_name);
             return SR_ERR_INTERNAL;
         }
         value->data.identityref_val = strdup(leaf->value.ident->name);
         if (NULL == value->data.identityref_val) {
-            SR_LOG_ERR("Copy value failed for leaf '%s' of type 'identityref'", leaf->schema->name);
+            SR_LOG_ERR("Copy value failed for leaf '%s' of type 'identityref'", node_name);
             return SR_ERR_INTERNAL;
         }
         return SR_ERR_OK;
     case LY_TYPE_INST:
         /* NOT IMPLEMENTED yet*/
         if (NULL != leaf->schema && NULL != leaf->schema->name) {
-            SR_LOG_ERR("Copy value failed for leaf '%s'", leaf->schema->name);
+            SR_LOG_ERR("Copy value failed for leaf '%s'", node_name);
         }
         return SR_ERR_INTERNAL;
     case LY_TYPE_LEAFREF:
-        leafref = leaf->value.leafref;
-        if (NULL != leafref && ((LYS_LEAF | LYS_LEAFLIST) & leafref->schema->nodetype)) {
-            return sr_libyang_leaf_copy_value((const struct lyd_node_leaf_list *)leafref, value);
+        leafref = (const struct lyd_node_leaf_list *) leaf->value.leafref;
+        if (NULL != leafref) {
+            return sr_libyang_leaf_copy_value(leafref, value);
         }
         return SR_ERR_OK;
     case LY_TYPE_STRING:
@@ -819,7 +819,7 @@ sr_libyang_leaf_copy_value(const struct lyd_node_leaf_list *leaf, sr_val_t *valu
         return SR_ERR_OK;
     case LY_TYPE_UNION:
         /* Copy of selected union type should be called instead */
-        SR_LOG_ERR("Can not copy value of union '%s'", leaf->schema->name);
+        SR_LOG_ERR("Can not copy value of union '%s'", node_name);
         return SR_ERR_INTERNAL;
     case LY_TYPE_INT8:
         value->data.int8_val = leaf->value.int8;
@@ -846,7 +846,7 @@ sr_libyang_leaf_copy_value(const struct lyd_node_leaf_list *leaf, sr_val_t *valu
         value->data.uint64_val = leaf->value.uint64;
         return SR_ERR_OK;
     default:
-        SR_LOG_ERR("Copy value failed for leaf '%s'", leaf->schema->name);
+        SR_LOG_ERR("Copy value failed for leaf '%s'", node_name);
         return SR_ERR_INTERNAL;
     }
 }
