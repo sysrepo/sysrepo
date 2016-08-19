@@ -1,7 +1,8 @@
 set(COMMON_DIR "${CMAKE_CURRENT_SOURCE_DIR}/common")
+set(UTILS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/utils")
 set(EXECUTABLES_DIR "${CMAKE_CURRENT_SOURCE_DIR}/executables")
 
-include_directories("${PROJECT_SOURCE_DIR}/inc" "${CMAKE_CURRENT_SOURCE_DIR}" "${COMMON_DIR}" "${EXECUTABLES_DIR}")
+include_directories("${PROJECT_SOURCE_DIR}/inc" "${CMAKE_CURRENT_SOURCE_DIR}" "${COMMON_DIR}" "${UTILS_DIR}" "${EXECUTABLES_DIR}")
 
 #compile protobuf-c
 set(PROTO_NAME sysrepo)
@@ -30,6 +31,7 @@ set (COMMON_SOURCES
     ${COMMON_DIR}/sr_data_structs.c
     ${COMMON_DIR}/sr_logger.c
     ${COMMON_DIR}/sr_protobuf.c
+    ${UTILS_DIR}/xpath_utils.c
 )
 
 # client library sources
