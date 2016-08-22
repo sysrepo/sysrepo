@@ -67,6 +67,7 @@ public:
     void unlock_module(const char *module_name);
     void discard_changes();
     void copy_config(const char *module_name, sr_datastore_t src_datastore, sr_datastore_t dst_datastore);
+    void set_options(const sr_sess_options_t opts);
     ~Session();
     sr_session_ctx_t *Get();
 

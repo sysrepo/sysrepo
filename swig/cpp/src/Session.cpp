@@ -281,6 +281,13 @@ void Session::copy_config(const char *module_name, sr_datastore_t src_datastore,
     }
 }
 
+void Session::set_options(const sr_sess_options_t opts)
+{
+    int ret = sr_session_set_options(_sess, opts);
+    if (ret != SR_ERR_OK) {
+        throw_exception(ret);
+    }
+}
 
 Subscribe::Subscribe(Session *sess)
 {
