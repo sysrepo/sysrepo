@@ -93,7 +93,7 @@ public:
     void unsubscribe();
 
     shared_ptr<Iter_Change> get_changes_iter(const char *xpath);
-    sr_change_oper_t get_change_next(shared_ptr<Iter_Change> iter, shared_ptr<Value> new_value,\
+    shared_ptr<Operation> get_change_next(shared_ptr<Iter_Change> iter, shared_ptr<Value> new_value,\
                                      shared_ptr<Value> old_value);
     /*void rpc_subscribe(const char *xpath, sr_rpc_cb callback, void *private_ctx = NULL,\
                        sr_subscr_options_t opts = SUBSCR_DEFAULT);*/

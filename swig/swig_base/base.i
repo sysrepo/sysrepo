@@ -8,6 +8,7 @@
 %shared_ptr(Iter_Change)
 %shared_ptr(Session)
 %shared_ptr(Subscribe)
+%shared_ptr(Operation)
 
 %include "../swig_base/sysrepo.i"
 %include "../swig_base/value.i"

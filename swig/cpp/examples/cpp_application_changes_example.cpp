@@ -76,8 +76,8 @@ print_value(shared_ptr<Value> value)
 }
 
 static void
-print_change(sr_change_oper_t op, shared_ptr<Value> old_val, shared_ptr<Value> new_val) {
-    switch(op) {
+print_change(shared_ptr<Operation> op, shared_ptr<Value> old_val, shared_ptr<Value> new_val) {
+    switch(op->Get()) {
     case SR_OP_CREATED:
         if (NULL != new_val) {
            printf("CREATED: ");
@@ -131,9 +131,10 @@ static int
 module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t event, void *private_ctx)
 {
     char change_path[MAX_LEN];
-    shared_ptr<Value> old_value;
-    shared_ptr<Value> new_value;
+    shared_ptr<Value> old_value(new Value());
+    shared_ptr<Value> new_value(new Value());
     shared_ptr<Iter_Change> it;
+    shared_ptr<Operation> oper;
 
     try {
         Session sess(session);
@@ -149,14 +150,10 @@ module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_ev
         Subscribe subscribe(&sess);
         it = subscribe.get_changes_iter(&change_path[0]);
 
-	while (true) {
-            try {
-                sr_change_oper_t oper = subscribe.get_change_next(it, old_value, new_value);
+        while (oper = subscribe.get_change_next(it, old_value, new_value)) {
                 print_change(oper, old_value, new_value);
-            } catch( const std::exception& e ) {
-                break;
-            }
         }
+
         printf("\n\n ========== END OF CHANGES =======================================\n\n");
 
     } catch( const std::exception& e ) {

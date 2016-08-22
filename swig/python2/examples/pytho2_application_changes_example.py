@@ -47,19 +47,19 @@ def print_value(value):
         print "(unprintable)"
 
 def print_change(op, old_val, new_val):
-    if (op == sr.SR_OP_CREATED):
+    if (op.Get() == sr.SR_OP_CREATED):
            print "CREATED: ",
            print_value(new_val)
-    elif (op == sr.SR_OP_DELETED):
+    elif (op.Get() == sr.SR_OP_DELETED):
            print "DELETED: ",
            print_value(old_val);
-    elif (op == sr.SR_OP_MODIFIED):
+    elif (op.Get() == sr.SR_OP_MODIFIED):
            print "MODIFIED: ",
            print "old value",
            print_value(old_val)
            print "new value",
            print_value(new_val)
-    elif (op == sr.SR_OP_MOVED):
+    elif (op.Get() == sr.SR_OP_MOVED):
         print "MOVED: " + new_val.get_xpath() + " after " + old_val.get_xpath()
 
 def print_current_config(session, module_name):
@@ -73,8 +73,8 @@ def print_current_config(session, module_name):
             break
 
 def module_change_cb(session, module_name, event, private_ctx):
-    old_value = sr.Values()
-    new_value = sr.Values()
+    old_value = sr.Value()
+    new_value = sr.Value()
 
     try:
         sess = sr.Session(session)
@@ -91,11 +91,11 @@ def module_change_cb(session, module_name, event, private_ctx):
         it = subscribe.get_changes_iter(change_path);
 
         while True:
-            try:
-                oper = subscribe.get_change_next(it, old_value, new_value)
-                print_change(oper, old_value, new_value)
-            except Exception as e:
+            oper = subscribe.get_change_next(it, old_value, new_value)
+            if oper == None:
                 break
+            print_change(oper, old_value, new_value)
+
         print "\n\n ========== END OF CHANGES =======================================\n\n"
 
     except Exception as e:

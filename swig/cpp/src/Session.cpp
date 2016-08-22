@@ -377,17 +377,21 @@ shared_ptr<Iter_Change> Subscribe::get_changes_iter(const char *xpath)
     return iter;
 }
 
-sr_change_oper_t Subscribe::get_change_next(shared_ptr<Iter_Change> iter, shared_ptr<Value> new_value,\
+shared_ptr<Operation> Subscribe::get_change_next(shared_ptr<Iter_Change> iter, shared_ptr<Value> new_value,\
                                             shared_ptr<Value> old_value)
 {
     sr_change_oper_t operation;
 
     int ret = sr_get_change_next(_sess->Get(), iter->Get(), &operation, new_value->Get(), old_value->Get());
-    if (SR_ERR_OK != ret) {
+    if (SR_ERR_OK == ret) {
+        shared_ptr<Operation> oper(new Operation(operation));
+        return oper;
+    } else if (SR_ERR_NOT_FOUND == ret) {
+        return NULL;
+    } else {
         throw_exception(ret);
+        return NULL;
     }
-
-    return operation;
 }
 
 /*
