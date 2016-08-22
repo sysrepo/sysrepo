@@ -36,7 +36,7 @@ static void
 sr_xpath_next_node_test (void **st)
 {
     char xpath[] = "/example-module:container/list[key1='keyA'][key2='keyB']/leaf";
-    sr_address_state_t state;
+    sr_xpath_ctx_t state;
 
     char *res = NULL;
 
@@ -52,7 +52,7 @@ sr_xpath_next_node_test (void **st)
     assert_non_null(res);
     assert_string_equal(res, "leaf");
 
-    sr_recover_parsed_input(&state);
+    sr_xpath_recover(&state);
 
     assert_string_equal(xpath, "/example-module:container/list[key1='keyA'][key2='keyB']/leaf");
 
@@ -62,7 +62,7 @@ static void
 sr_xpath_next_node_with_ns_test (void **st)
 {
     char xpath[] = "/example-module:container/list[key1='keyA'][key2='keyB']/leaf";
-    sr_address_state_t state;
+    sr_xpath_ctx_t state;
 
     char *res = NULL;
 
@@ -78,7 +78,7 @@ sr_xpath_next_node_with_ns_test (void **st)
     assert_non_null(res);
     assert_string_equal(res, "leaf");
 
-    sr_recover_parsed_input(&state);
+    sr_xpath_recover(&state);
 
     assert_string_equal(xpath, "/example-module:container/list[key1='keyA'][key2='keyB']/leaf");
 
@@ -88,7 +88,7 @@ static void
 sr_xpath_next_key_name_test (void **st)
 {
     char xpath[] = "/example-module:container/list[key1='keyA'][key2='keyB']/leaf";
-    sr_address_state_t state;
+    sr_xpath_ctx_t state;
 
     char *res = NULL;
 
@@ -117,7 +117,7 @@ sr_xpath_next_key_name_test (void **st)
     res = sr_xpath_next_key_name(NULL, &state);
     assert_null(res);
 
-    sr_recover_parsed_input(&state);
+    sr_xpath_recover(&state);
 
     assert_string_equal(xpath, "/example-module:container/list[key1='keyA'][key2='keyB']/leaf");
 
@@ -127,7 +127,7 @@ static void
 sr_xpath_next_key_value_test (void **st)
 {
     char xpath[] = "/example-module:container/list[key1='keyA'][key2='keyB']/leaf";
-    sr_address_state_t state;
+    sr_xpath_ctx_t state;
 
     char *res = NULL;
 
@@ -160,7 +160,7 @@ sr_xpath_next_key_value_test (void **st)
     assert_non_null(res);
     assert_string_equal(res, "leaf");
 
-    sr_recover_parsed_input(&state);
+    sr_xpath_recover(&state);
 
     assert_string_equal(xpath, "/example-module:container/list[key1='keyA'][key2='keyB']/leaf");
 
@@ -170,7 +170,7 @@ static void
 sr_xpath_node_test (void **st)
 {
     char xpath[] = "/example-module:container/list[key1='keyA'][key2='keyB']/leaf";
-    sr_address_state_t state;
+    sr_xpath_ctx_t state;
 
     char *res = NULL;
 
@@ -203,7 +203,7 @@ sr_xpath_node_test (void **st)
     assert_string_equal(res, "list");
 
 
-    sr_recover_parsed_input(&state);
+    sr_xpath_recover(&state);
 
     assert_string_equal(xpath, "/example-module:container/list[key1='keyA'][key2='keyB']/leaf");
 
@@ -213,7 +213,7 @@ static void
 sr_xpath_node_rel_test (void **st)
 {
     char xpath[] = "/example-module:container/list[key1='keyA'][key2='keyB']/leaf";
-    sr_address_state_t state;
+    sr_xpath_ctx_t state;
 
     char *res = NULL;
 
@@ -233,7 +233,7 @@ sr_xpath_node_rel_test (void **st)
     assert_non_null(res);
     assert_string_equal(res, "leaf");
 
-    sr_recover_parsed_input(&state);
+    sr_xpath_recover(&state);
 
     assert_string_equal(xpath, "/example-module:container/list[key1='keyA'][key2='keyB']/leaf");
 
@@ -243,7 +243,7 @@ static void
 sr_xpath_node_idx_test (void **st)
 {
     char xpath[] = "/example-module:container/list[key1='keyA'][key2='keyB']/leaf";
-    sr_address_state_t state;
+    sr_xpath_ctx_t state;
 
     char *res = NULL;
 
@@ -266,7 +266,7 @@ sr_xpath_node_idx_test (void **st)
     assert_non_null(res);
     assert_string_equal(res, "list");
 
-    sr_recover_parsed_input(&state);
+    sr_xpath_recover(&state);
 
     assert_string_equal(xpath, "/example-module:container/list[key1='keyA'][key2='keyB']/leaf");
 
@@ -276,7 +276,7 @@ static void
 sr_xpath_node_idx_rel_test (void **st)
 {
     char xpath[] = "/example-module:container/list[key1='keyA'][key2='keyB']/leaf";
-    sr_address_state_t state;
+    sr_xpath_ctx_t state;
 
     char *res = NULL;
 
@@ -291,7 +291,7 @@ sr_xpath_node_idx_rel_test (void **st)
     res = sr_xpath_node_idx_rel(NULL, 0, &state);
     assert_null(res);
 
-    sr_recover_parsed_input(&state);
+    sr_xpath_recover(&state);
 
     res = sr_xpath_node_idx_rel(xpath, 100, &state);
     assert_null(res);
@@ -300,7 +300,7 @@ sr_xpath_node_idx_rel_test (void **st)
     assert_non_null(res);
     assert_string_equal(res, "container");
 
-    sr_recover_parsed_input(&state);
+    sr_xpath_recover(&state);
 
     assert_string_equal(xpath, "/example-module:container/list[key1='keyA'][key2='keyB']/leaf");
 
@@ -310,7 +310,7 @@ static void
 sr_xpath_node_key_value_test (void **st)
 {
     char xpath[] = "/example-module:container/list[key1='keyA'][key2='keyB']/leaf";
-    sr_address_state_t state;
+    sr_xpath_ctx_t state;
 
     char *res = NULL;
 
@@ -344,7 +344,7 @@ sr_xpath_node_key_value_test (void **st)
     assert_non_null(res);
     assert_string_equal(res, "leaf");
 
-    sr_recover_parsed_input(&state);
+    sr_xpath_recover(&state);
 
     assert_string_equal(xpath, "/example-module:container/list[key1='keyA'][key2='keyB']/leaf");
 
@@ -354,7 +354,7 @@ static void
 sr_xpath_node_key_value_idx_test (void **st)
 {
     char xpath[] = "/example-module:container/list[key1='keyA'][key2='keyB']/leaf";
-    sr_address_state_t state;
+    sr_xpath_ctx_t state;
 
     char *res = NULL;
 
@@ -388,7 +388,7 @@ sr_xpath_node_key_value_idx_test (void **st)
     assert_non_null(res);
     assert_string_equal(res, "leaf");
 
-    sr_recover_parsed_input(&state);
+    sr_xpath_recover(&state);
 
     assert_string_equal(xpath, "/example-module:container/list[key1='keyA'][key2='keyB']/leaf");
 
@@ -398,7 +398,7 @@ static void
 sr_xpath_key_value_test (void **st)
 {
     char xpath[] = "/example-module:container/list[key1='keyA'][key2='keyB']/leaf";
-    sr_address_state_t state;
+    sr_xpath_ctx_t state;
 
     char *res = NULL;
 
@@ -426,7 +426,7 @@ sr_xpath_key_value_test (void **st)
     res = sr_xpath_key_value(NULL, "leaf", "abc", &state);
     assert_null(res);
 
-    sr_recover_parsed_input(&state);
+    sr_xpath_recover(&state);
 
     assert_string_equal(xpath, "/example-module:container/list[key1='keyA'][key2='keyB']/leaf");
 
@@ -436,7 +436,7 @@ static void
 sr_xpath_with_augments_test (void **st)
 {
     char xpath[] = "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/address[ip='192.168.2.100']/prefix-length";
-    sr_address_state_t state;
+    sr_xpath_ctx_t state;
 
     char *res = NULL;
 
@@ -460,7 +460,7 @@ sr_xpath_with_augments_test (void **st)
     assert_non_null(res);
     assert_string_equal(res, "prefix-length");
 
-    sr_recover_parsed_input(&state);
+    sr_xpath_recover(&state);
 
     assert_string_equal(xpath, "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/address[ip='192.168.2.100']/prefix-length");
 
@@ -470,7 +470,7 @@ static void
 sr_xpath_key_value_idx_test (void **st)
 {
     char xpath[] = "/example-module:container/list[key1='keyA'][key2='keyB']/leaf";
-    sr_address_state_t state;
+    sr_xpath_ctx_t state;
 
     char *res = NULL;
 
@@ -498,7 +498,7 @@ sr_xpath_key_value_idx_test (void **st)
     res = sr_xpath_key_value_idx(NULL, 2, 2, &state);
     assert_null(res);
 
-    sr_recover_parsed_input(&state);
+    sr_xpath_recover(&state);
 
     assert_string_equal(xpath, "/example-module:container/list[key1='keyA'][key2='keyB']/leaf");
 
@@ -509,7 +509,7 @@ static void
 sr_xpath_last_node_test (void **st)
 {
     char xpath[] = "/example-module:container/list[key1='keyA'][key2='keyB']/leaf";
-    sr_address_state_t state;
+    sr_xpath_ctx_t state;
 
     char *res = NULL;
 
@@ -521,7 +521,7 @@ sr_xpath_last_node_test (void **st)
     assert_non_null(res);
     assert_string_equal("leaf", res);
 
-    sr_recover_parsed_input(&state);
+    sr_xpath_recover(&state);
 
     assert_string_equal(xpath, "/example-module:container/list[key1='keyA'][key2='keyB']/leaf");
 

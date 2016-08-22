@@ -38,12 +38,12 @@
  * State of xpath parsing. User must not modify nor rely on the content
  * of the structure.
  */
-typedef struct sr_address_state_s {
+typedef struct sr_xpath_ctx_s {
     char *begining;          /**< Pointer to the begining of the processed string */
     char *current_node;      /**< Pointer to the currently processed node, used as a context for key search */
     char *replaced_position; /**< Pointer to the posistion where the last terminating 0 by was written */
     char replaced_char;      /**< Character that was overwritten by the last termination 0 */
-} sr_address_state_t;
+} sr_xpath_ctx_t;
 
 /**
  * @brief The function returns a pointer to  the following node. If xpath is
@@ -51,7 +51,7 @@ typedef struct sr_address_state_s {
  * according to the state.
  *
  * The state is modified upon function successful return from function, so the subsequent
- * calls can continue in processing or xpath can be recovered by calling ::sr_recover_parsed_input.
+ * calls can continue in processing or xpath can be recovered by calling ::sr_xpath_recover.
  *
  * @note It writes terminating zero at the and of the node name.
  *
@@ -61,7 +61,7 @@ typedef struct sr_address_state_s {
  * @param [in] state
  * @return Pointer to the node name, NULL if there are no more node names
  */
-char *sr_xpath_next_node(char *xpath, sr_address_state_t *state);
+char *sr_xpath_next_node(char *xpath, sr_xpath_ctx_t *state);
 
 /**
  * @brief Same as ::sr_get_next_node with the difference that namespace is included in result if present in xpath
@@ -70,7 +70,7 @@ char *sr_xpath_next_node(char *xpath, sr_address_state_t *state);
  * @param [in] state
  * @return Pointer to the node name including namespace, NULL if there are no more node names
  */
-char *sr_xpath_next_node_with_ns(char *xpath, sr_address_state_t *state);
+char *sr_xpath_next_node_with_ns(char *xpath, sr_xpath_ctx_t *state);
 
 /**
  * @brief Returns the name of the next key at the current level in processed xpath.
@@ -79,7 +79,7 @@ char *sr_xpath_next_node_with_ns(char *xpath, sr_address_state_t *state);
  * @param [in] state
  * @return Pointer to the key name, NULL if there are no more keys at the current level
  */
-char *sr_xpath_next_key_name(char *xpath, sr_address_state_t *state);
+char *sr_xpath_next_key_name(char *xpath, sr_xpath_ctx_t *state);
 
 /**
  * @brief Returns the value of the next key at the current level in processed xpath.
@@ -88,7 +88,7 @@ char *sr_xpath_next_key_name(char *xpath, sr_address_state_t *state);
  * @param [in] state
  * @return Pointer to the key value, NULL if there are no more keys at the current level
  */
-char *sr_xpath_next_key_value(char *xpath, sr_address_state_t *state);
+char *sr_xpath_next_key_value(char *xpath, sr_xpath_ctx_t *state);
 
 /**
  * @brief Returns a pointer to the node specified by name. It searches from the beginning of the xpath, returns first match.
@@ -99,7 +99,7 @@ char *sr_xpath_next_key_value(char *xpath, sr_address_state_t *state);
  * @param [in] state
  * @return Pointer to the node, NULL if the node with the specified name is not found
  */
-char *sr_xpath_node(char *xpath, const char *node_name, sr_address_state_t *state);
+char *sr_xpath_node(char *xpath, const char *node_name, sr_xpath_ctx_t *state);
 
 /**
  * @brief Similar to ::sr_xpath_node. The difference is that search start at current node
@@ -110,7 +110,7 @@ char *sr_xpath_node(char *xpath, const char *node_name, sr_address_state_t *stat
  * @param [in] state
  * @return Pointer to the node, NULL if the node with the specified name is not found
  */
-char *sr_xpath_node_rel(char *xpath, const char *node_name, sr_address_state_t *state);
+char *sr_xpath_node_rel(char *xpath, const char *node_name, sr_xpath_ctx_t *state);
 
 /**
  * @brief Returns node specified by index starting at the begin of expression.
@@ -121,7 +121,7 @@ char *sr_xpath_node_rel(char *xpath, const char *node_name, sr_address_state_t *
  * @param [in] state
  * @return Pointer to the specified node, NULL if the index is out of bounds
  */
-char *sr_xpath_node_idx(char *xpath, size_t index, sr_address_state_t *state);
+char *sr_xpath_node_idx(char *xpath, size_t index, sr_xpath_ctx_t *state);
 
 /**
  * @brief Return node specified by index. Following node has index zero.
@@ -131,7 +131,7 @@ char *sr_xpath_node_idx(char *xpath, size_t index, sr_address_state_t *state);
  * @param [in] state
  * @return Pointer to the specified node, NULL if the index is out of bounds
  */
-char *sr_xpath_node_idx_rel(char *xpath, size_t index, sr_address_state_t *state);
+char *sr_xpath_node_idx_rel(char *xpath, size_t index, sr_xpath_ctx_t *state);
 
 
 /**
@@ -142,7 +142,7 @@ char *sr_xpath_node_idx_rel(char *xpath, size_t index, sr_address_state_t *state
  * @param [in] state
  * @return Key value, NULL if the key with the specified name is not found
  */
-char *sr_xpath_node_key_value(char *xpath, const char *key, sr_address_state_t *state);
+char *sr_xpath_node_key_value(char *xpath, const char *key, sr_xpath_ctx_t *state);
 
 
 /**
@@ -154,7 +154,7 @@ char *sr_xpath_node_key_value(char *xpath, const char *key, sr_address_state_t *
  * @param [in] state
  * @return Key value, NULL if the index is out of bound
  */
-char *sr_xpath_node_key_value_idx(char *xpath, size_t index, sr_address_state_t *state);
+char *sr_xpath_node_key_value_idx(char *xpath, size_t index, sr_xpath_ctx_t *state);
 
 /**
  * @brief Looks up the value of the key in a node specified by name.
@@ -165,7 +165,7 @@ char *sr_xpath_node_key_value_idx(char *xpath, size_t index, sr_address_state_t 
  * @param [in] state
  * @return Pointer to the key value, NULL if not found
  */
-char *sr_xpath_key_value(char *xpath, const char *node_name, const char *key_name, sr_address_state_t *state);
+char *sr_xpath_key_value(char *xpath, const char *node_name, const char *key_name, sr_xpath_ctx_t *state);
 
 /**
  * @brief Looks up the value of the key in a node specified by index. First node has index zero.
@@ -176,7 +176,7 @@ char *sr_xpath_key_value(char *xpath, const char *node_name, const char *key_nam
  * @param [in] state
  * @return Pointer to the key value, NULL if not found or index out of bound
  */
-char *sr_xpath_key_value_idx(char *xpath, size_t node_index, size_t key_index, sr_address_state_t *state);
+char *sr_xpath_key_value_idx(char *xpath, size_t node_index, size_t key_index, sr_xpath_ctx_t *state);
 
 
 /**
@@ -185,7 +185,7 @@ char *sr_xpath_key_value_idx(char *xpath, size_t node_index, size_t key_index, s
  * @param [in] state
  * @return Pointer to the last node
  */
-char *sr_xpath_last_node(char *xpath, sr_address_state_t *state);
+char *sr_xpath_last_node(char *xpath, sr_xpath_ctx_t *state);
 
 /**
  * @brief Pointer to the string after last slash.
@@ -199,7 +199,7 @@ char *sr_xpath_node_name(const char *xpath);
  *
  * @param [in] state
  */
-void sr_recover_parsed_input(sr_address_state_t *state);
+void sr_xpath_recover(sr_xpath_ctx_t *state);
 
 
 #endif /* XPATH_UTILS_H */

@@ -24,7 +24,7 @@
 #include "xpath_utils.h"
 
 static char *
-sr_get_next_node_internal(char *xpath, sr_address_state_t *state, bool skip_namespace)
+sr_get_next_node_internal(char *xpath, sr_xpath_ctx_t *state, bool skip_namespace)
 {
     char *index = NULL;
     if (NULL == state) {
@@ -38,7 +38,7 @@ sr_get_next_node_internal(char *xpath, sr_address_state_t *state, bool skip_name
         state->replaced_position = xpath;
         state->replaced_char = *xpath;
     } else {
-        sr_recover_parsed_input(state);
+        sr_xpath_recover(state);
     }
 
     index = state->replaced_position;
@@ -80,19 +80,19 @@ sr_get_next_node_internal(char *xpath, sr_address_state_t *state, bool skip_name
 }
 
 char *
-sr_xpath_next_node(char *xpath, sr_address_state_t *state)
+sr_xpath_next_node(char *xpath, sr_xpath_ctx_t *state)
 {
     return sr_get_next_node_internal(xpath, state, true);
 }
 
 char *
-sr_xpath_next_node_with_ns(char *xpath, sr_address_state_t *state)
+sr_xpath_next_node_with_ns(char *xpath, sr_xpath_ctx_t *state)
 {
     return sr_get_next_node_internal(xpath, state, false);
 }
 
 char *
-sr_xpath_next_key_name(char *xpath, sr_address_state_t *state)
+sr_xpath_next_key_name(char *xpath, sr_xpath_ctx_t *state)
 {
     char *index = NULL, *key = NULL;
     if (NULL == state) {
@@ -106,7 +106,7 @@ sr_xpath_next_key_name(char *xpath, sr_address_state_t *state)
         state->replaced_position = xpath;
         state->replaced_char = *xpath;
     } else {
-        sr_recover_parsed_input(state);
+        sr_xpath_recover(state);
     }
 
     index = state->replaced_position;
@@ -137,7 +137,7 @@ sr_xpath_next_key_name(char *xpath, sr_address_state_t *state)
 }
 
 char *
-sr_xpath_next_key_value(char *xpath, sr_address_state_t *state)
+sr_xpath_next_key_value(char *xpath, sr_xpath_ctx_t *state)
 {
     char *index = NULL, *value = NULL;
     if (NULL == state) {
@@ -151,7 +151,7 @@ sr_xpath_next_key_value(char *xpath, sr_address_state_t *state)
         state->replaced_position = xpath;
         state->replaced_char = *xpath;
     } else {
-        sr_recover_parsed_input(state);
+        sr_xpath_recover(state);
     }
 
     index = state->replaced_position;
@@ -186,7 +186,7 @@ sr_xpath_next_key_value(char *xpath, sr_address_state_t *state)
 }
 
 char *
-sr_xpath_node(char *xpath, const char *node_name, sr_address_state_t *state)
+sr_xpath_node(char *xpath, const char *node_name, sr_xpath_ctx_t *state)
 {
     char *index = NULL;
     if (NULL == state || NULL == node_name) {
@@ -200,7 +200,7 @@ sr_xpath_node(char *xpath, const char *node_name, sr_address_state_t *state)
         state->replaced_position = xpath;
         state->replaced_char = *xpath;
     } else {
-        sr_recover_parsed_input(state);
+        sr_xpath_recover(state);
     }
 
     char *old_pos = state->replaced_position;
@@ -228,7 +228,7 @@ sr_xpath_node(char *xpath, const char *node_name, sr_address_state_t *state)
 }
 
 char *
-sr_xpath_node_rel(char *xpath, const char *node_name, sr_address_state_t *state)
+sr_xpath_node_rel(char *xpath, const char *node_name, sr_xpath_ctx_t *state)
 {
     char *index = NULL;
     if (NULL == state || NULL == node_name) {
@@ -243,7 +243,7 @@ sr_xpath_node_rel(char *xpath, const char *node_name, sr_address_state_t *state)
         state->replaced_char = *xpath;
 
     } else {
-        sr_recover_parsed_input(state);
+        sr_xpath_recover(state);
     }
 
     char *old_pos = state->replaced_position;
@@ -266,7 +266,7 @@ sr_xpath_node_rel(char *xpath, const char *node_name, sr_address_state_t *state)
 }
 
 char *
-sr_xpath_node_idx(char* xpath, size_t index, sr_address_state_t* state)
+sr_xpath_node_idx(char* xpath, size_t index, sr_xpath_ctx_t* state)
 {
     char *node = NULL;
     size_t cnt = 0;
@@ -281,7 +281,7 @@ sr_xpath_node_idx(char* xpath, size_t index, sr_address_state_t* state)
         state->replaced_position = xpath;
         state->replaced_char = *xpath;
     } else {
-        sr_recover_parsed_input(state);
+        sr_xpath_recover(state);
     }
 
     char *old_pos = state->replaced_position;
@@ -304,7 +304,7 @@ sr_xpath_node_idx(char* xpath, size_t index, sr_address_state_t* state)
 }
 
 char *
-sr_xpath_node_idx_rel(char* xpath, size_t index, sr_address_state_t* state)
+sr_xpath_node_idx_rel(char* xpath, size_t index, sr_xpath_ctx_t* state)
 {
     char *node = NULL;
     size_t cnt = 0;
@@ -319,7 +319,7 @@ sr_xpath_node_idx_rel(char* xpath, size_t index, sr_address_state_t* state)
         state->replaced_position = xpath;
         state->replaced_char = *xpath;
     } else {
-        sr_recover_parsed_input(state);
+        sr_xpath_recover(state);
     }
 
     char *old_pos = state->replaced_position;
@@ -337,7 +337,7 @@ sr_xpath_node_idx_rel(char* xpath, size_t index, sr_address_state_t* state)
 }
 
 char *
-sr_xpath_node_key_value(char *xpath, const char *key, sr_address_state_t *state)
+sr_xpath_node_key_value(char *xpath, const char *key, sr_xpath_ctx_t *state)
 {
     char *index = NULL, *key_xp = NULL;
     if (NULL == state || NULL == key) {
@@ -351,7 +351,7 @@ sr_xpath_node_key_value(char *xpath, const char *key, sr_address_state_t *state)
         state->replaced_position = xpath;
         state->replaced_char = *xpath;
     } else {
-        sr_recover_parsed_input(state);
+        sr_xpath_recover(state);
     }
 
     char *old_pos = state->replaced_position;
@@ -359,7 +359,7 @@ sr_xpath_node_key_value(char *xpath, const char *key, sr_address_state_t *state)
 
     if (NULL == state->current_node) {
         index = sr_xpath_next_node(NULL, state);
-        sr_recover_parsed_input(state);
+        sr_xpath_recover(state);
         if (NULL == index) {
             return NULL;
         }
@@ -384,7 +384,7 @@ sr_xpath_node_key_value(char *xpath, const char *key, sr_address_state_t *state)
 }
 
 char *
-sr_xpath_node_key_value_idx(char *xpath, size_t index, sr_address_state_t *state)
+sr_xpath_node_key_value_idx(char *xpath, size_t index, sr_xpath_ctx_t *state)
 {
     char *res = NULL;
     size_t cnt = 0;
@@ -399,7 +399,7 @@ sr_xpath_node_key_value_idx(char *xpath, size_t index, sr_address_state_t *state
         state->replaced_position = xpath;
         state->replaced_char = *xpath;
     } else {
-        sr_recover_parsed_input(state);
+        sr_xpath_recover(state);
     }
 
     char *old_pos = state->replaced_position;
@@ -407,7 +407,7 @@ sr_xpath_node_key_value_idx(char *xpath, size_t index, sr_address_state_t *state
 
     if (NULL == state->current_node) {
         res = sr_xpath_next_node(NULL, state);
-        sr_recover_parsed_input(state);
+        sr_xpath_recover(state);
         if (NULL == res) {
             return NULL;
         }
@@ -428,7 +428,7 @@ sr_xpath_node_key_value_idx(char *xpath, size_t index, sr_address_state_t *state
 }
 
 char *
-sr_xpath_key_value(char *xpath, const char *node_name, const char *key_name, sr_address_state_t *state)
+sr_xpath_key_value(char *xpath, const char *node_name, const char *key_name, sr_xpath_ctx_t *state)
 {
     char *res = NULL;
     if (NULL == state) {
@@ -442,7 +442,7 @@ sr_xpath_key_value(char *xpath, const char *node_name, const char *key_name, sr_
         state->replaced_position = xpath;
         state->replaced_char = *xpath;
     } else {
-        sr_recover_parsed_input(state);
+        sr_xpath_recover(state);
     }
 
     char *old_pos = state->replaced_position;
@@ -466,7 +466,7 @@ sr_xpath_key_value(char *xpath, const char *node_name, const char *key_name, sr_
 }
 
 char *
-sr_xpath_key_value_idx(char *xpath, size_t node_index, size_t key_index, sr_address_state_t *state)
+sr_xpath_key_value_idx(char *xpath, size_t node_index, size_t key_index, sr_xpath_ctx_t *state)
 {
     char *res = NULL;
     if (NULL == state) {
@@ -480,7 +480,7 @@ sr_xpath_key_value_idx(char *xpath, size_t node_index, size_t key_index, sr_addr
         state->replaced_position = xpath;
         state->replaced_char = *xpath;
     } else {
-        sr_recover_parsed_input(state);
+        sr_xpath_recover(state);
     }
 
     char *old_pos = state->replaced_position;
@@ -503,7 +503,7 @@ sr_xpath_key_value_idx(char *xpath, size_t node_index, size_t key_index, sr_addr
 }
 
 char *
-sr_xpath_last_node(char *xpath, sr_address_state_t *state)
+sr_xpath_last_node(char *xpath, sr_xpath_ctx_t *state)
 {
     char *res = NULL;
     if (NULL == state) {
@@ -517,7 +517,7 @@ sr_xpath_last_node(char *xpath, sr_address_state_t *state)
         state->replaced_position = xpath;
         state->replaced_char = *xpath;
     } else {
-        sr_recover_parsed_input(state);
+        sr_xpath_recover(state);
     }
 
     while (NULL != (res = sr_xpath_next_node(NULL, state)));
@@ -526,7 +526,7 @@ sr_xpath_last_node(char *xpath, sr_address_state_t *state)
 }
 
 
-void sr_recover_parsed_input(sr_address_state_t *state)
+void sr_xpath_recover(sr_xpath_ctx_t *state)
 {
     if (NULL != state) {
        if (NULL != state->replaced_position) {
