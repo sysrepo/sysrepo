@@ -318,7 +318,9 @@ rp_dt_xpath_atomize(dm_schema_info_t *schema_info, const char *xpath, struct ly_
     int rc = SR_ERR_OK;
     struct lys_node *start_node = schema_info->module->data;
 
-    /*const char *first_node_name = xpath + strlen(schema_info->module_name) + 2 ;
+    /*
+     * commented out because of https://github.com/CESNET/libyang/issues/102
+     * const char *first_node_name = xpath + strlen(schema_info->module_name) + 2 ;
 
     while (NULL != start_node) {
         if (0 == strncmp(start_node->name, first_node_name, strlen(start_node->name))) {

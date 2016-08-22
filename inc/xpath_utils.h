@@ -1,5 +1,5 @@
 /**
- * @file addressing_utils.h
+ * @file xpath_utils.h
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
  * @brief Sysrepo helpers for node's address manipulation.
  *
@@ -202,5 +202,5 @@ char *sr_xpath_node_name(const char *xpath);
 void sr_recover_parsed_input(sr_address_state_t *state);
 
 
-#endif /* ADDRESSING_UTILS_H */
+#endif /* XPATH_UTILS_H */
 
