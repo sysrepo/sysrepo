@@ -165,6 +165,27 @@ int cl_dp_gps_located (const char *xpath, sr_val_t **values, size_t *values_cnt,
     return -1;
 }
 
+int
+cl_dp_incorrect_data(const char *xpath, sr_val_t **values, size_t *values_cnt, void *private_ctx)
+{
+    sr_list_t *l = (sr_list_t *) private_ctx;
+    if (0 != sr_list_add(l, strdup(xpath))) {
+        SR_LOG_ERR_MSG("Error while adding into list");
+    }
+
+    *values = calloc(1, sizeof(**values));
+    if (NULL == *values) {
+        SR_LOG_ERR_MSG("Allocation failed");
+        return -2;
+    }
+    /* an attempt to to modify config data */
+    (*values)->xpath = strdup("/state-module:bus/vendor_name");
+    (*values)->type = SR_STRING_T;
+    (*values)->data.string_val = strdup("Bus vendor");
+    *values_cnt = 1;
+    return 0;
+}
+
 int cl_dp_weather (const char *xpath, sr_val_t **values, size_t *values_cnt, void *private_ctx)
 {
     return SR_ERR_OK;
@@ -420,6 +441,72 @@ cl_partialy_covered_by_subscription(void **state)
 }
 
 static void
+cl_incorrect_data_subscription(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+    sr_session_ctx_t *session = NULL;
+    sr_subscription_ctx_t *subscription = NULL;
+    sr_list_t *xpath_retrieved = NULL;
+    sr_val_t *values = NULL;
+    size_t cnt = 0;
+    int rc = SR_ERR_OK;
+
+    rc = sr_list_init(&xpath_retrieved);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* start session */
+    rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_module_change_subscribe(session, "state-module", cl_whole_module_cb, NULL,
+            0, SR_SUBSCR_DEFAULT, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* subscribe data providers - data subscriber will try to provide config data */
+    rc = sr_dp_get_items_subscribe(session, "/state-module:bus/gps_located", cl_dp_incorrect_data, xpath_retrieved, SR_SUBSCR_CTX_REUSE, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* retrieve data */
+    rc = sr_get_items(session, "/state-module:bus/*", &values, &cnt);
+    assert_int_equal(rc, SR_ERR_NOT_FOUND);
+
+    /* check data */
+    assert_null(values);
+    assert_int_equal(0, cnt);
+
+    /* check xpath that were retrieved */
+    const char *xpath_expected_to_be_loaded [] = {
+        "/state-module:bus/gps_located",
+    };
+    size_t expected_xp_cnt = sizeof(xpath_expected_to_be_loaded) / sizeof(*xpath_expected_to_be_loaded);
+    assert_int_equal(expected_xp_cnt, xpath_retrieved->count);
+
+    for (size_t i = 0; i < expected_xp_cnt; i++) {
+        bool match = false;
+        for (size_t j = 0; xpath_retrieved->count; j++) {
+            if (0 == strcmp(xpath_expected_to_be_loaded[i], (char *) xpath_retrieved->data[j])) {
+                match = true;
+                break;
+            }
+        }
+        if (!match) {
+            /* assert xpath that can not be found */
+            assert_string_equal("", xpath_expected_to_be_loaded[i]);
+        }
+    }
+
+    /* cleanup */
+    sr_unsubscribe(session, subscription);
+    sr_session_stop(session);
+
+    for (size_t i = 0; i < xpath_retrieved->count; i++) {
+        free(xpath_retrieved->data[i]);
+    }
+    sr_list_cleanup(xpath_retrieved);
+}
+
+static void
 cl_missing_subscription(void **state)
 {
     sr_conn_ctx_t *conn = *state;
@@ -481,6 +568,7 @@ main()
         cmocka_unit_test_setup_teardown(cl_parent_subscription, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_partialy_covered_by_subscription, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_missing_subscription, sysrepo_setup, sysrepo_teardown),
+        cmocka_unit_test_setup_teardown(cl_incorrect_data_subscription, sysrepo_setup, sysrepo_teardown),
 
     };
 
