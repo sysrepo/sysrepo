@@ -433,6 +433,40 @@ sr_xpath_key_value_test (void **st)
 }
 
 static void
+sr_xpath_with_augments_test (void **st)
+{
+    char xpath[] = "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/address[ip='192.168.2.100']/prefix-length";
+    sr_address_state_t state;
+
+    char *res = NULL;
+
+    res = sr_xpath_next_node(xpath, &state);
+    assert_non_null(res);
+    assert_string_equal(res, "interfaces");
+
+    res = sr_xpath_key_value(NULL, "address", "ip", &state);
+    assert_non_null(res);
+    assert_string_equal(res, "192.168.2.100");
+
+    res = sr_xpath_node(NULL, "interface", &state);
+    assert_non_null(res);
+    assert_string_equal(res, "interface");
+
+    res = sr_xpath_next_node_with_ns(NULL, &state);
+    assert_non_null(res);
+    assert_string_equal(res, "ietf-ip:ipv4");
+
+    res = sr_xpath_last_node(NULL, &state);
+    assert_non_null(res);
+    assert_string_equal(res, "prefix-length");
+
+    sr_recover_parsed_input(&state);
+
+    assert_string_equal(xpath, "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/address[ip='192.168.2.100']/prefix-length");
+
+}
+
+static void
 sr_xpath_key_value_idx_test (void **st)
 {
     char xpath[] = "/example-module:container/list[key1='keyA'][key2='keyB']/leaf";
@@ -525,6 +559,7 @@ main() {
         cmocka_unit_test(sr_xpath_key_value_idx_test),
         cmocka_unit_test(sr_xpath_last_node_test),
         cmocka_unit_test(sr_xpath_node_name_test),
+        cmocka_unit_test(sr_xpath_with_augments_test),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);
