@@ -1041,7 +1041,7 @@ sr_set_val_t_type_in_gpb(const sr_val_t *value, Sr__Value *gpb_value){
         break;
 
     default:
-        SR_LOG_ERR("Type can not be mapped to gpb type '%s'", value->xpath);
+        SR_LOG_ERR("Type can not be mapped to gpb type '%s' type %d", value->xpath, value->type);
         return SR_ERR_INTERNAL;
     }
 

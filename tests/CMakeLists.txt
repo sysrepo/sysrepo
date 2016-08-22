@@ -51,6 +51,7 @@ endmacro(ADD_UNIT_TEST)
 
 
 ADD_UNIT_TEST(common_test 0)
+ADD_UNIT_TEST(xpath_utils_test 1)
 ADD_UNIT_TEST(ac_test 1)
 
 ADD_UNIT_TEST(cm_sm_test 0)
@@ -77,6 +78,7 @@ if("${TEST_REPOSITORY_LOC}" STREQUAL "${REPOSITORY_LOC}")
     
     ADD_UNIT_TEST(cl_test 1)
     ADD_UNIT_TEST(cl_notifications_test 1)
+    ADD_UNIT_TEST(cl_state_data_test 1)
     ADD_UNIT_TEST(cl_fd_watcher_test 1)
     ADD_UNIT_TEST(concurr_test 1)
     ADD_UNIT_TEST_WITH_OPTS(perf_test 1 0 "")

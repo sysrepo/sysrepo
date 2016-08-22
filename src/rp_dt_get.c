@@ -30,6 +30,39 @@
 #include "rp_dt_xpath.h"
 #include "rp_dt_edit.h"
 
+typedef struct rp_state_data_ctx_s {
+    np_subscription_t **subscriptions; /**< Array of subscriptions from np for a module */
+    size_t subscription_cnt;           /**< Length of subscriptions array */
+    sr_list_t *subtrees;               /**< List of state data subtrees to be loaded*/
+    size_t *subscr_index;              /**< Index into subscription array (pointing to the subscription)
+                                        * where subtree subtree at n-th position in subtrees list can be found */
+}rp_state_data_ctx_t;
+
+static void
+rp_dt_free_state_data_ctx_content (rp_state_data_ctx_t *state_data)
+{
+    if (NULL != state_data) {
+        if (NULL != state_data->subscriptions) {
+            for (size_t i = 0; i < state_data->subscription_cnt; i++) {
+                np_free_subscription(state_data->subscriptions[i]);
+            }
+            free(state_data->subscriptions);
+            state_data->subscriptions = NULL;
+            state_data->subscription_cnt = 0;
+        }
+        if (NULL != state_data->subtrees) {
+            for (size_t i = 0; i< state_data->subtrees->count; i++) {
+                free(state_data->subtrees->data[i]);
+            }
+        }
+        sr_list_cleanup(state_data->subtrees);
+        state_data->subtrees = NULL;
+
+        free(state_data->subscr_index);
+        state_data->subscr_index = NULL;
+    }
+}
+
 /**
  * @brief Fills sr_val_t from lyd_node structure. It fills xpath and copies the value.
  * @param [in] node
@@ -196,27 +229,254 @@ rp_dt_get_values(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char 
 }
 
 /**
+ * @brief Function tests whether node is located under(in schema hierarchy) subtree node.
+ * @param [in] subtree
+ * @param [in] node
+ * @return bool result of the test
+ */
+static bool
+rp_dt_is_under_subtree(struct lys_node *subtree, struct lys_node *node)
+{
+    struct lys_node *n = node;
+    while (NULL != n) {
+        if (subtree == n) {
+            return true;
+        }
+        n = lys_parent(n);
+    }
+    return false;
+}
+
+/**
+ * @brief Tests if there is an atom located under subtree.
+ * @param [in] atoms
+ * @param [in] subtree
+ * @param [out] result
+ * @return Error code (SR_ERR_OK on success)
+ */
+static int
+rp_dt_atoms_require_subtree(struct ly_set *atoms, struct lys_node *subtree, bool *result)
+{
+    CHECK_NULL_ARG2(atoms, subtree);
+    *result = false;
+
+    for (unsigned int i = 0; i < atoms->number; i++) {
+        if (rp_dt_is_under_subtree(subtree, atoms->set.s[i])) {
+            *result = true;
+            break;
+        }
+    }
+
+    return SR_ERR_OK;
+}
+
+/**
+ * @brief Identifies the subscription which provides data for subtrees. Sets appropriate
+ * indexes in the state data ctx structure.
+ * @param [in] dm_ctx
+ * @param [in] subtree_nodes - list of schema nodes corresponding to the xpath located in state_data_ctx->subtrees list
+ * @param [in] subscr_nodes - list of schema nodes corresponding to the subscriptions
+ * @param [in] state_data_ctx
+ * @return Error code (SR_ERR_OK on success)
+ */
+static int
+rp_dt_find_subscription_for_subtree(dm_ctx_t *dm_ctx, sr_list_t *subtree_nodes, const sr_list_t *subscr_nodes, rp_state_data_ctx_t *state_data_ctx)
+{
+    CHECK_NULL_ARG3(dm_ctx, subtree_nodes, state_data_ctx);
+    int rc = SR_ERR_OK;
+
+    state_data_ctx->subscr_index = calloc(state_data_ctx->subtrees->count, sizeof(*state_data_ctx->subscr_index));
+    CHECK_NULL_NOMEM_GOTO(state_data_ctx->subscr_index, rc, cleanup);
+
+    for (size_t i = 0; i < subtree_nodes->count; i++) {
+        struct lys_node *n = subtree_nodes->data[i];
+        bool match = false;
+        for (size_t s = 0; s < subscr_nodes->count; s++) {
+            struct lys_node *subs = subscr_nodes->data[s];
+            if (rp_dt_is_under_subtree(subs, n)) {
+                state_data_ctx->subscr_index[i] = s;
+                match = true;
+                break;
+            }
+        }
+        if (!match) {
+            SR_LOG_WRN("No subscriber for subtree %s", (char *) state_data_ctx->subtrees->data[i]);
+        }
+    }
+
+cleanup:
+    return rc;
+}
+
+static int
+rp_dt_xpath_atomize(dm_schema_info_t *schema_info, const char *xpath, struct ly_set **atoms)
+{
+    CHECK_NULL_ARG3(schema_info, xpath, atoms);
+
+    int rc = SR_ERR_OK;
+    struct lys_node *start_node = schema_info->module->data;
+
+    /*
+     * commented out because of https://github.com/CESNET/libyang/issues/102
+     * const char *first_node_name = xpath + strlen(schema_info->module_name) + 2 ;
+
+    while (NULL != start_node) {
+        if (0 == strncmp(start_node->name, first_node_name, strlen(start_node->name))) {
+            break;
+        }
+        start_node = start_node->next;
+    }*/
+
+    *atoms = lys_xpath_atomize(start_node, xpath, 0);
+    if (NULL == *atoms) {
+        SR_LOG_ERR("Failed to atomize xpath %s", xpath);
+        rc = SR_ERR_INVAL_ARG;
+    }
+    return rc;
+}
+
+static int
+rp_dt_subscriptions_to_schema_nodes(dm_ctx_t *dm_ctx, np_subscription_t **subscriptions, size_t subscription_cnt, sr_list_t **subscr_nodes)
+{
+    CHECK_NULL_ARG3(dm_ctx, subscriptions, subscr_nodes);
+    int rc = SR_ERR_OK;
+    struct lys_node *sub_node = NULL;
+    sr_list_t *nodes = NULL;
+
+    rc = sr_list_init(&nodes);
+    CHECK_RC_MSG_RETURN(rc, "List init failed");
+
+    /* find schema nodes corresponding to the subscriptions */
+    for (size_t i = 0; i < subscription_cnt; i++) {
+        rc = rp_dt_validate_node_xpath(dm_ctx, NULL, subscriptions[i]->xpath,
+                    NULL, &sub_node);
+        CHECK_RC_LOG_GOTO(rc, cleanup, "Node validation failed for xpath %s", subscriptions[i]->xpath);
+
+        rc = sr_list_add(nodes, sub_node);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "List add failed");
+    }
+
+cleanup:
+    if (SR_ERR_OK != rc) {
+        sr_list_cleanup(nodes);
+    } else {
+        *subscr_nodes = nodes;
+    }
+    return rc;
+}
+
+static int
+rp_dt_has_data_provider_for_subtree(sr_list_t *subscriptions, struct lys_node *subtree, bool *data_provider_found)
+{
+    CHECK_NULL_ARG3(subscriptions, subtree, data_provider_found);
+
+    *data_provider_found = false;
+    for (size_t s = 0; s < subscriptions->count; s++) {
+        struct lys_node *subs = subscriptions->data[s];
+        if (rp_dt_is_under_subtree(subs, subtree)) {
+            *data_provider_found = true;
+            break;
+        }
+    }
+
+    return SR_ERR_OK;
+}
+
+/**
  * @brief Determines if (and what) state data subtrees are needed to be loaded.
  */
 static int
-rp_dt_xpath_requests_state_data(rp_ctx_t *rp_ctx, const char *module_name, const char *xpath, np_subscription_t ***subscriptions_arr, size_t *subscriptions_cnt)
+rp_dt_xpath_requests_state_data(rp_ctx_t *rp_ctx, dm_schema_info_t *schema_info, const char *xpath, rp_state_data_ctx_t *state_data_ctx)
 {
-    CHECK_NULL_ARG4(rp_ctx, xpath, subscriptions_arr, subscriptions_cnt);
+    CHECK_NULL_ARG4(rp_ctx, schema_info, xpath, state_data_ctx);
+    md_ctx_t *md_ctx = NULL;
+    md_module_t *module = NULL;
     int rc = SR_ERR_OK;
-    np_subscription_t **subs = NULL;
-    size_t subs_cnt = 0;
+    struct ly_set *atoms = NULL;
+    sr_list_t *subtree_nodes = NULL;
+    sr_list_t *subscr_nodes = NULL;
+    char *xp = NULL;
 
-    rc = np_get_data_provider_subscriptions(rp_ctx->np_ctx, module_name, &subs, &subs_cnt);
-    CHECK_RC_MSG_RETURN(rc, "Get data provider subscriptions failed");
+    rc = dm_get_md_ctx(rp_ctx->dm_ctx, &md_ctx);
+    CHECK_RC_MSG_RETURN(rc,"Failed to retrieve md_ctx");
 
-    //TODO: optimize which data are loaded, a predicate refer to a node at the different level or state node
-    //TODO: optimize xpath which should be used in request
+    md_ctx_lock(md_ctx, false);
 
-    *subscriptions_arr = subs;
-    *subscriptions_cnt = subs_cnt;
+    rc = np_get_data_provider_subscriptions(rp_ctx->np_ctx, schema_info->module_name, &state_data_ctx->subscriptions, &state_data_ctx->subscription_cnt);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Get data provider subscriptions failed");
 
-    SR_LOG_DBG("%zu data providers asked for data in order to resolve %s", *subscriptions_cnt, xpath);
+    if (0 == state_data_ctx->subscription_cnt) {
+        goto cleanup;
+    }
 
+    rc = rp_dt_subscriptions_to_schema_nodes(rp_ctx->dm_ctx, state_data_ctx->subscriptions, state_data_ctx->subscription_cnt, &subscr_nodes);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Subscriptions to schema nodes failed");
+
+    rc = sr_list_init(&subtree_nodes);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "List init failed");
+
+    rc = rp_dt_xpath_atomize(schema_info, xpath, &atoms);
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to atomize xpath %s", xpath);
+
+    rc = sr_list_init(&state_data_ctx->subtrees);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "List init failed");
+
+    rc = md_get_module_info(md_ctx, schema_info->module_name, NULL, &module);
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Module %s was not found in module dependency", schema_info->module_name);
+
+    /* loop through operational node subtree */
+    sr_llist_node_t *node = module->op_data_subtrees->first;
+    while (NULL != node) {
+        md_subtree_ref_t *sub = node->data;
+        bool subtree_needed = false;
+        bool provider_found = false;
+        node = node->next;
+        struct lys_node *state_data_node = NULL;
+
+        rc = rp_dt_validate_node_xpath(rp_ctx->dm_ctx, NULL,
+                    sub->xpath, NULL, &state_data_node);
+        CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to find schema node for %s", sub->xpath);
+
+        rc = rp_dt_has_data_provider_for_subtree(subscr_nodes, state_data_node, &provider_found);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Has data provider for subtree failed");
+
+        /* check if there is a data provider for this subtree */
+        if (!provider_found) {
+            SR_LOG_DBG("No data provider found for subtree %s", sub->xpath);
+            continue;
+        }
+
+        rc = rp_dt_atoms_require_subtree(atoms, state_data_node, &subtree_needed);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Rp dt atoms require subtree failed");
+
+        /* test if subtree should be loaded */
+        if (subtree_needed) {
+            rc = sr_list_add(subtree_nodes, state_data_node);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "List add failed");
+
+            xp = strdup(sub->xpath);
+            CHECK_NULL_NOMEM_GOTO(xp, rc, cleanup);
+
+            rc = sr_list_add(state_data_ctx->subtrees, xp);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "Adding into subtree list failed");
+            SR_LOG_DBG("State data in subtree %s requested.", xp);
+            xp = NULL;
+        }
+    }
+
+    rc = rp_dt_find_subscription_for_subtree(rp_ctx->dm_ctx, subtree_nodes, subscr_nodes, state_data_ctx);
+
+    SR_LOG_DBG("%zu subtrees of state data will be loaded in order to resolve %s", state_data_ctx->subtrees->count, xpath);
+
+cleanup:
+    free(xp);
+    ly_set_free(atoms);
+    md_ctx_unlock(md_ctx);
+    sr_list_cleanup(subtree_nodes);
+    sr_list_cleanup(subscr_nodes);
+    if (SR_ERR_OK != rc) {
+        rp_dt_free_state_data_ctx_content(state_data_ctx);
+    }
     return rc;
 }
 
@@ -238,51 +498,6 @@ rp_dt_remove_loaded_state_data(rp_ctx_t *rp_ctx, rp_session_t *rp_session)
 }
 
 /**
- * @brief
- *
- * @note Temporary solution will be removed as soon as the logic for loading
- * only subset of state data is implemented
- *
- * @param [in] rp_ctx
- * @param [in] rp_session
- * @param [in] module_name
- * @return Error code (SR_ERR_OK on success)
- */
-static int
-rp_dt_mark_all_state_data_in_module_as_loaded(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char *module_name)
-{
-    CHECK_NULL_ARG3(rp_ctx, rp_session, module_name);
-    int rc = SR_ERR_OK;
-    md_ctx_t *md_ctx = NULL;
-    md_module_t *module = NULL;
-    char *xpath = NULL;
-
-    rc = dm_get_md_ctx(rp_ctx->dm_ctx, &md_ctx);
-    CHECK_RC_MSG_RETURN(rc,"Failed to retrieve md_ctx");
-
-    md_ctx_lock(md_ctx, false);
-
-    rc = md_get_module_info(md_ctx, rp_session->module_name, NULL, &module);
-    CHECK_RC_LOG_GOTO(rc, cleanup, "Module %s was not found in module dependency", rp_session->module_name);
-
-    sr_llist_node_t *node = module->op_data_subtrees->first;
-    while (NULL != node) {
-        md_subtree_ref_t *sub = node->data;
-        xpath = strdup(sub->xpath);
-        CHECK_NULL_NOMEM_GOTO(xpath, rc, cleanup);
-        rc = sr_list_add(rp_session->loaded_state_data[rp_session->datastore], xpath);
-        CHECK_RC_MSG_GOTO(rc, cleanup, "List add failed");
-        xpath = NULL;
-        node = node->next;
-    }
-
-cleanup:
-    md_ctx_unlock(md_ctx);
-    free(xpath);
-    return rc;
-}
-
-/**
  * @brief Loads configuration data and asks for state data if needed. Request
  * can enter this function in RP_REQ_NEW state or RP_REQ_FINISHED.
  *
@@ -300,8 +515,8 @@ rp_dt_prepare_data(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char *xpath
     CHECK_NULL_ARG4(rp_ctx, rp_session, xpath, data_tree);
     int rc = SR_ERR_OK;
     bool has_state_data = false;
-    np_subscription_t **subscriptions = NULL;
-    size_t subscription_cnt = 0;
+    dm_data_info_t *data_info = NULL;
+    rp_state_data_ctx_t state_data_ctx = {0};
 
     if (RP_REQ_NEW == rp_session->state) {
 
@@ -319,11 +534,12 @@ rp_dt_prepare_data(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char *xpath
         rc = ac_check_node_permissions(rp_session->ac_session, xpath, AC_OPER_READ);
         CHECK_RC_LOG_GOTO(rc, cleanup, "Access control check failed for xpath '%s'", xpath);
 
-        rc = dm_get_datatree(rp_ctx->dm_ctx, rp_session->dm_session, rp_session->module_name, data_tree);
+        rc = dm_get_data_info(rp_ctx->dm_ctx, rp_session->dm_session, rp_session->module_name, &data_info);
 
         /* check of data tree's emptiness is performed outside of this function -> ignore SR_ERR_NOT_FOUND */
         rc = SR_ERR_NOT_FOUND == rc ? SR_ERR_OK : rc;
         CHECK_RC_LOG_GOTO(rc, cleanup, "Getting data tree failed (%d) for xpath '%s'", rc, xpath);
+        *data_tree = data_info->node;
 
         /* if the request requires operational data pause the processing and wait for data to be provided */
         if ((SR_DS_RUNNING == rp_session->datastore || SR_DS_CANDIDATE == rp_session->datastore) &&
@@ -331,34 +547,34 @@ rp_dt_prepare_data(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char *xpath
             (!(SR__SESSION_FLAGS__SESS_NOTIFICATION & rp_session->options)) &&
             (SR_ERR_OK == dm_has_state_data(rp_ctx->dm_ctx, rp_session->module_name, &has_state_data) && has_state_data)) {
 
-            rc = rp_dt_xpath_requests_state_data(rp_ctx, rp_session->module_name, xpath, &subscriptions, &subscription_cnt);
+            rc = rp_dt_xpath_requests_state_data(rp_ctx, data_info->schema, xpath, &state_data_ctx);
             CHECK_RC_MSG_GOTO(rc, cleanup, "rp_dt_xpath_requests_state_data failed");
 
-            if (0 == subscription_cnt) {
+            if (NULL == state_data_ctx.subtrees || 0 == state_data_ctx.subtrees->count) {
                 SR_LOG_DBG("No state state data provider is asked for data because of xpath %s", xpath);
+                goto cleanup;
             }
 
-            for (size_t i = 0; i < subscription_cnt; i++) {
-                char *xp = (char *) subscriptions[i]->xpath; /* Todo: xpath that should be used for initial data request */
-                rc = np_data_provider_request(rp_ctx->np_ctx, subscriptions[i], rp_session, xp);
+            for (size_t i = 0; i < state_data_ctx.subtrees->count; i++) {
+                char *xp = strdup((char *) state_data_ctx.subtrees->data[i]);
+                CHECK_NULL_NOMEM_GOTO(xp, rc, cleanup);
+
+                size_t subs_index = state_data_ctx.subscr_index[i];
+                rc = np_data_provider_request(rp_ctx->np_ctx, state_data_ctx.subscriptions[subs_index], rp_session, xp);
                 SR_LOG_DBG("Sending request for state data: %s", xp);
                 if (SR_ERR_OK != rc) {
-                    SR_LOG_WRN("Request for operational data failed with xpath %s on subscription %s", xp, subscriptions[i]->xpath);
+                    SR_LOG_WRN("Request for operational data failed with xpath %s on subscription %s", xp, state_data_ctx.subscriptions[i]->xpath);
                 } else {
                     rp_session->dp_req_waiting += 1;
                 }
-                //TODO: subscriptions should be freed after all potential subsequent request for nested data has been sent
-                np_free_subscription(subscriptions[i]);
+
+                rc = sr_list_add(rp_session->loaded_state_data[rp_session->datastore], xp);
+                CHECK_RC_MSG_GOTO(rc, cleanup, "List add failed");
             }
-            free(subscriptions);
 
             if (rp_session->dp_req_waiting > 0) {
                 rp_session->state = RP_REQ_WAITING_FOR_DATA;
             }
-
-            //TODO: mark only subtrees that were actually loaded
-            rc = rp_dt_mark_all_state_data_in_module_as_loaded(rp_ctx, rp_session, rp_session->module_name);
-            CHECK_RC_MSG_GOTO(rc, cleanup, "Mark all module state data as loaded failed");
 
         }
         CHECK_RC_MSG_GOTO(rc, cleanup, "rp_dt_module_has_state data failed");
@@ -374,6 +590,8 @@ rp_dt_prepare_data(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char *xpath
     }
 
 cleanup:
+    //TODO: subscriptions should be freed after all potential subsequent request for nested data has been sent
+    rp_dt_free_state_data_ctx_content(&state_data_ctx);
     return rc;
 }
 

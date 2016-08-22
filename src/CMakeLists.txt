@@ -1,7 +1,8 @@
 set(COMMON_DIR "${CMAKE_CURRENT_SOURCE_DIR}/common")
+set(UTILS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/utils")
 set(EXECUTABLES_DIR "${CMAKE_CURRENT_SOURCE_DIR}/executables")
 
-include_directories("${PROJECT_SOURCE_DIR}/inc" "${CMAKE_CURRENT_SOURCE_DIR}" "${COMMON_DIR}" "${EXECUTABLES_DIR}")
+include_directories("${PROJECT_SOURCE_DIR}/inc" "${CMAKE_CURRENT_SOURCE_DIR}" "${COMMON_DIR}" "${UTILS_DIR}" "${EXECUTABLES_DIR}")
 
 #compile protobuf-c
 set(PROTO_NAME sysrepo)
@@ -31,6 +32,7 @@ set (COMMON_SOURCES
     ${COMMON_DIR}/sr_logger.c
     ${COMMON_DIR}/sr_protobuf.c
     ${COMMON_DIR}/sr_experimental.c
+    ${UTILS_DIR}/xpath_utils.c
 )
 
 # client library sources
@@ -70,9 +72,9 @@ add_dependencies(SR_ENGINE COMMON)
 set(HEADERS "${PROJECT_SOURCE_DIR}/inc/sysrepo.h")
 
 if(USE_AVL_LIB)
-    set(LINK_LIBRARIES pthread ${AVL_LIBRARIES} ${EV_LIBRARIES} ${PROTOBUF-C_LIBRARIES} ${YANG_LIBRARIES})
+    set(LINK_LIBRARIES pthread rt ${AVL_LIBRARIES} ${EV_LIBRARIES} ${PROTOBUF-C_LIBRARIES} ${YANG_LIBRARIES})
 else(USE_AVL_LIB)
-    set(LINK_LIBRARIES pthread ${REDBLACK_LIBRARIES} ${EV_LIBRARIES} ${PROTOBUF-C_LIBRARIES} ${YANG_LIBRARIES})
+    set(LINK_LIBRARIES pthread rt ${REDBLACK_LIBRARIES} ${EV_LIBRARIES} ${PROTOBUF-C_LIBRARIES} ${YANG_LIBRARIES})
 endif(USE_AVL_LIB)
 
 # sysrepo library
@@ -97,7 +99,7 @@ target_link_libraries(sysrepod sysrepo-engine)
 
 # sysrepo plugin daemon
 add_executable(sysrepo-plugind ${EXECUTABLES_DIR}/sysrepo-plugind.c)
-target_link_libraries(sysrepo-plugind ${EV_LIBRARIES} sysrepo ${CMAKE_DL_LIBS})
+target_link_libraries(sysrepo-plugind sysrepo ${EV_LIBRARIES} ${CMAKE_DL_LIBS})
 
 # sysrepoctl tool
 add_executable(sysrepoctl ${EXECUTABLES_DIR}/sysrepoctl.c)
@@ -116,3 +118,4 @@ install(TARGETS sysrepo-plugind DESTINATION ${BIN_INSTALL_DIR})
 install(TARGETS sysrepoctl DESTINATION ${BIN_INSTALL_DIR})
 install(TARGETS sysrepocfg DESTINATION ${BIN_INSTALL_DIR})
 install(FILES ${HEADERS} DESTINATION ${INCLUDE_INSTALL_DIR})
+install(FILES "${PROJECT_SOURCE_DIR}/inc/xpath_utils.h" DESTINATION ${INCLUDE_INSTALL_DIR}/sysrepo)
