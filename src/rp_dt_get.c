@@ -262,38 +262,24 @@ rp_dt_atoms_require_subtree(struct ly_set *atoms, struct lys_node *subtree, bool
  * indexes in the state data ctx structure.
  * @param [in] dm_ctx
  * @param [in] subtree_nodes - list of schema nodes corresponding to the xpath located in state_data_ctx->subtrees list
+ * @param [in] subscr_nodes - list of schema nodes corresponding to the subscriptions
  * @param [in] state_data_ctx
  * @return Error code (SR_ERR_OK on success)
  */
 static int
-rp_dt_find_subscription_for_subtree(dm_ctx_t *dm_ctx, sr_list_t *subtree_nodes, rp_state_data_ctx_t *state_data_ctx)
+rp_dt_find_subscription_for_subtree(dm_ctx_t *dm_ctx, sr_list_t *subtree_nodes, const sr_list_t *subscr_nodes, rp_state_data_ctx_t *state_data_ctx)
 {
     CHECK_NULL_ARG3(dm_ctx, subtree_nodes, state_data_ctx);
     int rc = SR_ERR_OK;
-    struct lys_node *sub_node = NULL;
-    sr_list_t *sub_nodes = NULL;
-
-    rc = sr_list_init(&sub_nodes);
-    CHECK_RC_MSG_RETURN(rc, "List init failed");
 
     state_data_ctx->subscr_index = calloc(state_data_ctx->subtrees->count, sizeof(*state_data_ctx->subscr_index));
     CHECK_NULL_NOMEM_GOTO(state_data_ctx->subscr_index, rc, cleanup);
 
-    /* find schema nodes corresponding to the subscriptions */
-    for (size_t i = 0; i < state_data_ctx->subscription_cnt; i++) {
-        rc = rp_dt_validate_node_xpath(dm_ctx, NULL, state_data_ctx->subscriptions[i]->xpath,
-                    NULL, &sub_node);
-        CHECK_RC_LOG_GOTO(rc, cleanup, "Node validation failed for xpath %s", state_data_ctx->subscriptions[i]->xpath);
-
-        rc = sr_list_add(sub_nodes, sub_node);
-        CHECK_RC_MSG_GOTO(rc, cleanup, "List add failed");
-    }
-
     for (size_t i = 0; i < subtree_nodes->count; i++) {
         struct lys_node *n = subtree_nodes->data[i];
         bool match = false;
-        for (size_t s = 0; s < sub_nodes->count; s++) {
-            struct lys_node *subs = sub_nodes->data[s];
+        for (size_t s = 0; s < subscr_nodes->count; s++) {
+            struct lys_node *subs = subscr_nodes->data[s];
             if (rp_dt_is_under_subtree(subs, n)) {
                 state_data_ctx->subscr_index[i] = s;
                 match = true;
@@ -306,7 +292,6 @@ rp_dt_find_subscription_for_subtree(dm_ctx_t *dm_ctx, sr_list_t *subtree_nodes, 
     }
 
 cleanup:
-    sr_list_cleanup(sub_nodes);
     return rc;
 }
 
@@ -466,7 +451,7 @@ rp_dt_xpath_requests_state_data(rp_ctx_t *rp_ctx, dm_schema_info_t *schema_info,
         }
     }
 
-    rc = rp_dt_find_subscription_for_subtree(rp_ctx->dm_ctx, subtree_nodes, state_data_ctx);
+    rc = rp_dt_find_subscription_for_subtree(rp_ctx->dm_ctx, subtree_nodes, subscr_nodes, state_data_ctx);
 
     SR_LOG_DBG("%zu subtrees of state data will be loaded in order to resolve %s", state_data_ctx->subtrees->count, xpath);
 
