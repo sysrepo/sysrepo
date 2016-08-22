@@ -212,13 +212,23 @@ cl_parent_subscription(void **state)
     assert_non_null(values);
     assert_int_equal(2, cnt);
 
-    assert_string_equal("/state-module:bus/gps_located", values[0].xpath);
-    assert_int_equal(SR_BOOL_T, values[0].type);
-    assert_int_equal(false, values[0].data.bool_val);
+    if (0 == strcmp("/state-module:bus/gps_located", values[0].xpath)) {
+        assert_string_equal("/state-module:bus/gps_located", values[0].xpath);
+        assert_int_equal(SR_BOOL_T, values[0].type);
+        assert_int_equal(false, values[0].data.bool_val);
 
-    assert_string_equal("/state-module:bus/distance_travelled", values[1].xpath);
-    assert_int_equal(SR_UINT32_T, values[1].type);
-    assert_int_equal(999, values[1].data.uint32_val);
+        assert_string_equal("/state-module:bus/distance_travelled", values[1].xpath);
+        assert_int_equal(SR_UINT32_T, values[1].type);
+        assert_int_equal(999, values[1].data.uint32_val);
+    } else {
+        assert_string_equal("/state-module:bus/distance_travelled", values[0].xpath);
+        assert_int_equal(SR_UINT32_T, values[0].type);
+        assert_int_equal(999, values[0].data.uint32_val);
+
+        assert_string_equal("/state-module:bus/gps_located", values[1].xpath);
+        assert_int_equal(SR_BOOL_T, values[1].type);
+        assert_int_equal(false, values[1].data.bool_val);
+    }
 
     sr_free_values(values, cnt);
 
