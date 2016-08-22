@@ -80,19 +80,19 @@ sr_get_next_node_internal(char *xpath, sr_address_state_t *state, bool skip_name
 }
 
 char *
-sr_get_next_node(char *xpath, sr_address_state_t *state)
+sr_xpath_next_node(char *xpath, sr_address_state_t *state)
 {
     return sr_get_next_node_internal(xpath, state, true);
 }
 
 char *
-sr_get_next_node_with_ns(char *xpath, sr_address_state_t *state)
+sr_xpath_next_node_with_ns(char *xpath, sr_address_state_t *state)
 {
     return sr_get_next_node_internal(xpath, state, false);
 }
 
 char *
-sr_get_next_key_name(char *xpath, sr_address_state_t *state)
+sr_xpath_next_key_name(char *xpath, sr_address_state_t *state)
 {
     char *index = NULL, *key = NULL;
     if (NULL == state) {
@@ -137,7 +137,7 @@ sr_get_next_key_name(char *xpath, sr_address_state_t *state)
 }
 
 char *
-sr_get_next_key_value(char *xpath, sr_address_state_t *state)
+sr_xpath_next_key_value(char *xpath, sr_address_state_t *state)
 {
     char *index = NULL, *value = NULL;
     if (NULL == state) {
@@ -186,7 +186,7 @@ sr_get_next_key_value(char *xpath, sr_address_state_t *state)
 }
 
 char *
-sr_get_node(char *xpath, const char *node_name, sr_address_state_t *state)
+sr_xpath_node(char *xpath, const char *node_name, sr_address_state_t *state)
 {
     char *index = NULL;
     if (NULL == state || NULL == node_name) {
@@ -211,7 +211,7 @@ sr_get_node(char *xpath, const char *node_name, sr_address_state_t *state)
     state->replaced_position = state->begining;
     state->replaced_char = *state->begining;
 
-    while (NULL != (index = sr_get_next_node(NULL, state))) {
+    while (NULL != (index = sr_xpath_next_node(NULL, state))) {
         if (0 == strcmp(node_name, index)) {
             break;
         }
@@ -228,7 +228,7 @@ sr_get_node(char *xpath, const char *node_name, sr_address_state_t *state)
 }
 
 char *
-sr_get_node_rel(char *xpath, const char *node_name, sr_address_state_t *state)
+sr_xpath_node_rel(char *xpath, const char *node_name, sr_address_state_t *state)
 {
     char *index = NULL;
     if (NULL == state || NULL == node_name) {
@@ -249,7 +249,7 @@ sr_get_node_rel(char *xpath, const char *node_name, sr_address_state_t *state)
     char *old_pos = state->replaced_position;
     char old_char = state->replaced_char;
 
-    while (NULL != (index = sr_get_next_node(NULL, state))) {
+    while (NULL != (index = sr_xpath_next_node(NULL, state))) {
         if (0 == strcmp(node_name, index)) {
             break;
         }
@@ -266,7 +266,7 @@ sr_get_node_rel(char *xpath, const char *node_name, sr_address_state_t *state)
 }
 
 char *
-sr_get_node_idx(char* xpath, size_t index, sr_address_state_t* state)
+sr_xpath_node_idx(char* xpath, size_t index, sr_address_state_t* state)
 {
     char *node = NULL;
     size_t cnt = 0;
@@ -292,7 +292,7 @@ sr_get_node_idx(char* xpath, size_t index, sr_address_state_t* state)
     state->replaced_position = state->begining;
     state->replaced_char = *state->begining;
 
-    while (NULL != (node = sr_get_next_node(NULL, state)) && cnt++ < index);
+    while (NULL != (node = sr_xpath_next_node(NULL, state)) && cnt++ < index);
 
     if (NULL == node) {
         /* restore state in case of unsuccessful search */
@@ -304,7 +304,7 @@ sr_get_node_idx(char* xpath, size_t index, sr_address_state_t* state)
 }
 
 char *
-sr_get_node_idx_rel(char* xpath, size_t index, sr_address_state_t* state)
+sr_xpath_node_idx_rel(char* xpath, size_t index, sr_address_state_t* state)
 {
     char *node = NULL;
     size_t cnt = 0;
@@ -325,7 +325,7 @@ sr_get_node_idx_rel(char* xpath, size_t index, sr_address_state_t* state)
     char *old_pos = state->replaced_position;
     char old_char = state->replaced_char;
 
-    while (NULL != (node = sr_get_next_node(NULL, state)) && cnt++ < index);
+    while (NULL != (node = sr_xpath_next_node(NULL, state)) && cnt++ < index);
 
     if (NULL == node) {
         /* restore state in case of unsuccessful search */
@@ -337,7 +337,7 @@ sr_get_node_idx_rel(char* xpath, size_t index, sr_address_state_t* state)
 }
 
 char *
-sr_get_node_key_value(char *xpath, const char *key, sr_address_state_t *state)
+sr_xpath_node_key_value(char *xpath, const char *key, sr_address_state_t *state)
 {
     char *index = NULL, *key_xp = NULL;
     if (NULL == state || NULL == key) {
@@ -358,7 +358,7 @@ sr_get_node_key_value(char *xpath, const char *key, sr_address_state_t *state)
     char old_char = state->replaced_char;
 
     if (NULL == state->current_node) {
-        index = sr_get_next_node(NULL, state);
+        index = sr_xpath_next_node(NULL, state);
         sr_recover_parsed_input(state);
         if (NULL == index) {
             return NULL;
@@ -368,7 +368,7 @@ sr_get_node_key_value(char *xpath, const char *key, sr_address_state_t *state)
     state->replaced_position = state->current_node;
     state->replaced_char = *state->current_node;
 
-    while (NULL != (key_xp = sr_get_next_key_name(NULL, state))) {
+    while (NULL != (key_xp = sr_xpath_next_key_name(NULL, state))) {
         if (0 == strcmp(key, key_xp)) {
             break;
         }
@@ -380,11 +380,11 @@ sr_get_node_key_value(char *xpath, const char *key, sr_address_state_t *state)
         return NULL;
     }
 
-    return sr_get_next_key_value(NULL, state);
+    return sr_xpath_next_key_value(NULL, state);
 }
 
 char *
-sr_get_node_key_value_idx(char *xpath, size_t index, sr_address_state_t *state)
+sr_xpath_node_key_value_idx(char *xpath, size_t index, sr_address_state_t *state)
 {
     char *res = NULL;
     size_t cnt = 0;
@@ -406,7 +406,7 @@ sr_get_node_key_value_idx(char *xpath, size_t index, sr_address_state_t *state)
     char old_char = state->replaced_char;
 
     if (NULL == state->current_node) {
-        res = sr_get_next_node(NULL, state);
+        res = sr_xpath_next_node(NULL, state);
         sr_recover_parsed_input(state);
         if (NULL == res) {
             return NULL;
@@ -416,7 +416,7 @@ sr_get_node_key_value_idx(char *xpath, size_t index, sr_address_state_t *state)
     state->replaced_position = state->current_node;
     state->replaced_char = *state->current_node;
 
-    while (NULL != (res = sr_get_next_key_name(NULL, state)) && cnt++ < index);
+    while (NULL != (res = sr_xpath_next_key_name(NULL, state)) && cnt++ < index);
 
     if (NULL == res) {
         state->replaced_position = old_pos;
@@ -424,11 +424,11 @@ sr_get_node_key_value_idx(char *xpath, size_t index, sr_address_state_t *state)
         return NULL;
     }
 
-    return sr_get_next_key_value(NULL, state);
+    return sr_xpath_next_key_value(NULL, state);
 }
 
 char *
-sr_get_key_value(char *xpath, const char *node_name, const char *key_name, sr_address_state_t *state)
+sr_xpath_key_value(char *xpath, const char *node_name, const char *key_name, sr_address_state_t *state)
 {
     char *res = NULL;
     if (NULL == state) {
@@ -448,13 +448,13 @@ sr_get_key_value(char *xpath, const char *node_name, const char *key_name, sr_ad
     char *old_pos = state->replaced_position;
     char old_char = state->replaced_char;
 
-    res = sr_get_node(NULL, node_name, state);
+    res = sr_xpath_node(NULL, node_name, state);
 
     if (NULL == res) {
         return NULL;
     }
 
-    res = sr_get_node_key_value(NULL, key_name, state);
+    res = sr_xpath_node_key_value(NULL, key_name, state);
 
     if (NULL == res) {
         state->replaced_position = old_pos;
@@ -466,7 +466,7 @@ sr_get_key_value(char *xpath, const char *node_name, const char *key_name, sr_ad
 }
 
 char *
-sr_get_key_value_idx(char *xpath, size_t node_index, size_t key_index, sr_address_state_t *state)
+sr_xpath_key_value_idx(char *xpath, size_t node_index, size_t key_index, sr_address_state_t *state)
 {
     char *res = NULL;
     if (NULL == state) {
@@ -486,13 +486,13 @@ sr_get_key_value_idx(char *xpath, size_t node_index, size_t key_index, sr_addres
     char *old_pos = state->replaced_position;
     char old_char = state->replaced_char;
 
-    res = sr_get_node_idx(NULL, node_index, state);
+    res = sr_xpath_node_idx(NULL, node_index, state);
 
     if (NULL == res) {
         return NULL;
     }
 
-    res = sr_get_node_key_value_idx(NULL, key_index, state);
+    res = sr_xpath_node_key_value_idx(NULL, key_index, state);
 
     if (NULL == res) {
         state->replaced_position = old_pos;
@@ -503,7 +503,7 @@ sr_get_key_value_idx(char *xpath, size_t node_index, size_t key_index, sr_addres
 }
 
 char *
-sr_get_last_node(char *xpath, sr_address_state_t *state)
+sr_xpath_last_node(char *xpath, sr_address_state_t *state)
 {
     char *res = NULL;
     if (NULL == state) {
@@ -520,7 +520,7 @@ sr_get_last_node(char *xpath, sr_address_state_t *state)
         sr_recover_parsed_input(state);
     }
 
-    while (NULL != (res = sr_get_next_node(NULL, state)));
+    while (NULL != (res = sr_xpath_next_node(NULL, state)));
 
     return state->current_node;
 }
