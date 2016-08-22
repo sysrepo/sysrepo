@@ -2480,15 +2480,17 @@ dp_get_items_cb(const char *xpath, sr_val_t **values, size_t *values_cnt, void *
 {
     printf("operational data for '%s' requested.\n", xpath);
 
-    *values = calloc(2, sizeof(**values));
-    (*values)[0].xpath = strdup("/state-module:bus/gps_located");
-    (*values)[0].type = SR_BOOL_T;
-    (*values)[0].data.bool_val = false;
-    (*values)[1].xpath = strdup("/state-module:bus/distance_travelled");
-    (*values)[1].type = SR_UINT32_T;
-    (*values)[1].data.uint32_val = 42;
-
-    *values_cnt = 2;
+    *values = calloc(1, sizeof(**values));
+    if (0 == strcmp(xpath, "/state-module:bus/gps_located")) {
+        (*values)[0].xpath = strdup("/state-module:bus/gps_located");
+        (*values)[0].type = SR_BOOL_T;
+        (*values)[0].data.bool_val = false;
+    } else {
+        (*values)[0].xpath = strdup("/state-module:bus/distance_travelled");
+        (*values)[0].type = SR_UINT32_T;
+        (*values)[0].data.uint32_val = 42;
+    }
+    *values_cnt = 1;
 
     return SR_ERR_OK;
 }
