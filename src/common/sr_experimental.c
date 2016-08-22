@@ -517,7 +517,7 @@ int
 sr_mem_edit_string(sr_mem_ctx_t *sr_mem, char **string_p, const char *new_val)
 {
     char *new_mem = NULL;
-    CHECK_NULL_ARG2(string_p, new_val);
+    CHECK_NULL_ARG(string_p);
 
     if (NULL != *string_p && strlen(*string_p) >= strlen(new_val)) {
         /* overwrite */
@@ -578,8 +578,7 @@ sr_new_val(const char *xpath, sr_val_t **value_p)
         sr_mem_free(sr_mem);
         return SR_ERR_INTERNAL;
     }
-    value->sr_mem = sr_mem;
-    sr_mem->obj_count = 1;
+    value->_sr_mem = sr_mem;
 
     if (xpath) {
         ret = sr_val_set_xpath(value, xpath);
@@ -589,6 +588,7 @@ sr_new_val(const char *xpath, sr_val_t **value_p)
         }
     }
 
+    sr_mem->obj_count = 1;
     *value_p = value;
     return SR_ERR_OK;
 }
@@ -615,7 +615,7 @@ sr_new_values(size_t count, sr_val_t **values_p)
         return SR_ERR_INTERNAL;
     }
     for (size_t i = 0; i < count; ++i) {
-        values[i].sr_mem = sr_mem;
+        values[i]._sr_mem = sr_mem;
     }
     sr_mem->obj_count = 1; /* 1 for the entire array */
 
@@ -627,7 +627,7 @@ int
 sr_val_set_xpath(sr_val_t *value, const char *xpath)
 {
     CHECK_NULL_ARG2(value, xpath);
-    return sr_mem_edit_string(value->sr_mem, &value->xpath, xpath);
+    return sr_mem_edit_string(value->_sr_mem, &value->xpath, xpath);
 }
 
 int
@@ -659,7 +659,7 @@ sr_val_set_string(sr_val_t *value, const char *string_val)
             return SR_ERR_INVAL_ARG;
     }
 
-    return sr_mem_edit_string(value->sr_mem, to_edit, string_val);
+    return sr_mem_edit_string(value->_sr_mem, to_edit, string_val);
 }
 
 static int
@@ -775,7 +775,7 @@ sr_new_node(sr_mem_ctx_t *sr_mem, const char *name, const char *module_name, sr_
 
     node = (sr_node_t *)sr_calloc(sr_mem, 1, sizeof *node);
     CHECK_NULL_NOMEM_RETURN(node);
-    node->sr_mem = sr_mem;
+    node->_sr_mem = sr_mem;
 
     if (name) {
         rc = sr_node_set_name(node, name);
@@ -838,7 +838,7 @@ sr_new_trees(size_t count, sr_node_t **trees_p)
     trees = (sr_node_t *)sr_calloc(sr_mem, count, sizeof *trees);
     CHECK_NULL_NOMEM_GOTO(trees, rc, cleanup);
     for (size_t i = 0; i < count; ++i) {
-        trees[i].sr_mem = sr_mem;
+        trees[i]._sr_mem = sr_mem;
     }
     sr_mem->obj_count = 1; /* 1 for the entire array */
 
@@ -855,14 +855,14 @@ int
 sr_node_set_name(sr_node_t *node, const char *name)
 {
     CHECK_NULL_ARG2(node, name);
-    return sr_mem_edit_string(node->sr_mem, &node->name, name);
+    return sr_mem_edit_string(node->_sr_mem, &node->name, name);
 }
 
 int
 sr_node_set_module(sr_node_t *node, const char *module_name)
 {
     CHECK_NULL_ARG2(node, module_name);
-    return sr_mem_edit_string(node->sr_mem, &node->module_name, module_name);
+    return sr_mem_edit_string(node->_sr_mem, &node->module_name, module_name);
 }
 
 int
@@ -900,7 +900,7 @@ sr_node_add_child(sr_node_t *parent, const char *child_name, const char *child_m
 
     CHECK_NULL_ARG2(parent, child_p);
 
-    rc = sr_new_node(parent->sr_mem, child_name, child_module_name, &child);
+    rc = sr_new_node(parent->_sr_mem, child_name, child_module_name, &child);
 
     if (SR_ERR_OK == rc) {
         sr_node_insert_child(parent, child);
@@ -931,7 +931,7 @@ sr_dup_tree_ctx(sr_mem_ctx_t *sr_mem, sr_node_t *tree, sr_node_t **tree_dup_p)
     /* duplicate descendants */
     child = tree->first_child;
     while (child) {
-        rc = sr_dup_tree_ctx(tree_dup->sr_mem, child, &child_dup);
+        rc = sr_dup_tree_ctx(tree_dup->_sr_mem, child, &child_dup);
         if (SR_ERR_OK != rc) {
             goto cleanup;
         }
@@ -977,7 +977,7 @@ sr_dup_trees(sr_node_t *trees, size_t count, sr_node_t **trees_dup_p)
         /* duplicate descendants */
         child = trees[i].first_child;
         while (child) {
-            rc = sr_dup_tree_ctx(trees_dup->sr_mem, child, &child_dup);
+            rc = sr_dup_tree_ctx(trees_dup->_sr_mem, child, &child_dup);
             if (SR_ERR_OK != rc) {
                 goto cleanup;
             }

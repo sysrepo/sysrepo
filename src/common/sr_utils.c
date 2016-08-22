@@ -704,7 +704,7 @@ sr_libyang_leaf_copy_bits(const struct lyd_node_leaf_list *leaf, sr_val_t *value
             length++; /*space after bit*/
         }
     }
-    bits_str = sr_calloc(value->sr_mem, length, sizeof(*bits_str));
+    bits_str = sr_calloc(value->_sr_mem, length, sizeof(*bits_str));
     if (NULL == bits_str) {
         SR_LOG_ERR_MSG("Memory allocation failed");
         return SR_ERR_NOMEM;
@@ -746,7 +746,7 @@ sr_libyang_leaf_copy_value(const struct lyd_node_leaf_list *leaf, sr_val_t *valu
             SR_LOG_ERR("Binary data in leaf '%s' is NULL", leaf->schema->name);
             return SR_ERR_INTERNAL;
         }
-        sr_mem_edit_string(value->sr_mem, &value->data.binary_val, leaf->value.binary);
+        sr_mem_edit_string(value->_sr_mem, &value->data.binary_val, leaf->value.binary);
         if (NULL == value->data.binary_val) {
             SR_LOG_ERR("Copy value failed for leaf '%s' of type 'binary'", leaf->schema->name);
             return SR_ERR_INTERNAL;
@@ -779,7 +779,7 @@ sr_libyang_leaf_copy_value(const struct lyd_node_leaf_list *leaf, sr_val_t *valu
             SR_LOG_ERR("Missing schema information for node '%s'", leaf->schema->name);
             return SR_ERR_INTERNAL;
         }
-        sr_mem_edit_string(value->sr_mem, &value->data.enum_val, leaf->value.enm->name);
+        sr_mem_edit_string(value->_sr_mem, &value->data.enum_val, leaf->value.enm->name);
         if (NULL == value->data.enum_val) {
             SR_LOG_ERR("Copy value failed for leaf '%s' of type 'enum'", leaf->schema->name);
             return SR_ERR_INTERNAL;
@@ -790,7 +790,7 @@ sr_libyang_leaf_copy_value(const struct lyd_node_leaf_list *leaf, sr_val_t *valu
             SR_LOG_ERR("Identity ref in leaf '%s' is NULL", leaf->schema->name);
             return SR_ERR_INTERNAL;
         }
-        sr_mem_edit_string(value->sr_mem, &value->data.identityref_val, leaf->value.ident->name);
+        sr_mem_edit_string(value->_sr_mem, &value->data.identityref_val, leaf->value.ident->name);
         if (NULL == value->data.identityref_val) {
             SR_LOG_ERR("Copy value failed for leaf '%s' of type 'identityref'", leaf->schema->name);
             return SR_ERR_INTERNAL;
@@ -810,7 +810,7 @@ sr_libyang_leaf_copy_value(const struct lyd_node_leaf_list *leaf, sr_val_t *valu
         return SR_ERR_OK;
     case LY_TYPE_STRING:
         if (NULL != leaf->value.string) {
-            sr_mem_edit_string(value->sr_mem, &value->data.string_val, leaf->value.string);
+            sr_mem_edit_string(value->_sr_mem, &value->data.string_val, leaf->value.string);
             if (NULL == value->data.string_val) {
                 SR_LOG_ERR_MSG("String duplication failed");
                 return SR_ERR_NOMEM;
@@ -1108,12 +1108,18 @@ sr_copy_node_to_tree(struct ly_ctx *ly_ctx, const struct lyd_node *node, sr_node
 int
 sr_nodes_to_trees(struct ly_ctx *ly_ctx, struct ly_set *nodes, sr_mem_ctx_t *sr_mem, sr_node_t **sr_trees, size_t *count)
 {
-    int rc = 0;
+    int rc = SR_ERR_OK;
     sr_node_t *trees = NULL;
     sr_mem_snapshot_t snapshot = { 0, };
     size_t i = 0;
 
     CHECK_NULL_ARG4(ly_ctx, nodes, sr_trees, count);
+
+    if (0 == nodes->number) {
+        *sr_trees = NULL;
+        *count = 0;
+        return rc;
+    }
 
     if (sr_mem) {
         sr_mem_snapshot(sr_mem, &snapshot);
@@ -1126,7 +1132,7 @@ sr_nodes_to_trees(struct ly_ctx *ly_ctx, struct ly_set *nodes, sr_mem_ctx_t *sr_
     }
 
     for (i = 0; i < nodes->number && 0 == rc; ++i) {
-        trees[i].sr_mem = sr_mem;
+        trees[i]._sr_mem = sr_mem;
         rc = sr_copy_node_to_tree(ly_ctx, nodes->set.d[i], trees + i);
     }
 
@@ -1315,7 +1321,7 @@ sr_free_val_content(sr_val_t *value)
     if (NULL == value){
         return;
     }
-    if (NULL != value->sr_mem) {
+    if (NULL != value->_sr_mem) {
         /* do nothing */
         return;
     }
@@ -1366,7 +1372,7 @@ void
 sr_free_tree_content(sr_node_t *tree)
 {
     if (NULL != tree) {
-        if (NULL != tree->sr_mem) {
+        if (NULL != tree->_sr_mem) {
             /* do nothing */
             return;
         }
@@ -1398,6 +1404,10 @@ void
 sr_free_schema(sr_schema_t *schema)
 {
     if (NULL != schema) {
+        if (schema->_sr_mem) {
+            /* do nothing, object counter will be decreased by ::sr_free_schemas */
+            return;
+        }
         free((void*)schema->module_name);
         free((void*)schema->prefix);
         free((void*)schema->ns);

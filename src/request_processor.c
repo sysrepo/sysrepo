@@ -169,15 +169,18 @@ rp_list_schemas_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session,
 
     SR_LOG_DBG_MSG("Processing list_schemas request.");
 
-    /* allocate the response */
-    rc = sr_gpb_resp_alloc(NULL, SR__OPERATION__LIST_SCHEMAS, session->id, &resp);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Cannot allocate list_schemas response.");
-        return SR_ERR_NOMEM;
-    }
-
     /* retrieve schemas from DM */
     rc = dm_list_schemas(rp_ctx->dm_ctx, session->dm_session, &schemas, &schema_cnt);
+
+    /* allocate the response */
+    if (SR_ERR_OK == rc) {
+        rc = sr_gpb_resp_alloc(schemas ? schemas[0]._sr_mem : NULL, SR__OPERATION__LIST_SCHEMAS, session->id, &resp);
+        if (SR_ERR_OK != rc) {
+            sr_free_schemas(schemas, schema_cnt);
+            SR_LOG_ERR_MSG("Cannot allocate list_schemas response.");
+            return SR_ERR_NOMEM;
+        }
+    }
 
     /* copy schemas to response */
     if (SR_ERR_OK == rc) {

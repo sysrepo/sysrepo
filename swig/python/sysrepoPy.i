@@ -22,6 +22,9 @@
    $result = PyInt_FromLong($1);
 }
 
+/* sr_val_t */
+%newobject sr_new_val;
+%delobject sr_free_val;
 /* sr_connect */
 %newobject sr_connect;
 %delobject sr_disconnect;

@@ -154,8 +154,11 @@ typedef union sr_data_u {
  * @brief Structure that contains value of an data element stored in the sysrepo datastore.
  */
 typedef struct sr_val_s {
-    /** Memory context used by this value. */
-    sr_mem_ctx_t *sr_mem;
+    /**
+     * Memory context used internally by Sysrepo for efficient storage
+     * and conversion of this structure.
+     */
+    sr_mem_ctx_t *_sr_mem;
 
     /**
      * XPath identifier of the data element, as defined in
@@ -187,8 +190,11 @@ typedef struct sr_val_s {
  * than to an actual xpath.
  */
 typedef struct sr_node_s {
-    /** Memory context used by this node. */
-    sr_mem_ctx_t *sr_mem;
+    /**
+     * Memory context used internally by Sysrepo for efficient storage
+     * and conversion of this structure.
+     */
+    sr_mem_ctx_t *_sr_mem;
 
     /** Name of the node. */
     char *name;
@@ -563,6 +569,12 @@ typedef struct sr_sch_submodule_s {
  * @brief Structure that contains information about a module installed in sysrepo.
  */
 typedef struct sr_schema_s {
+    /**
+     * Memory context used internally by Sysrepo for efficient storage
+     * and conversion of this structure.
+     */
+    sr_mem_ctx_t *_sr_mem;
+
     const char *module_name;         /**< Name of the module. */
     const char *ns;                  /**< Namespace of the module used in @ref xp_page "XPath". */
     const char *prefix;              /**< Prefix of the module. */
@@ -1592,6 +1604,24 @@ void sr_free_tree(sr_node_t *tree);
  * @param[in] count length of array
  */
 void sr_free_trees(sr_node_t *trees, size_t count);
+
+
+
+
+/**
+ * @brief TODO: move to a separate file together with the rest of the new API.
+ */
+int sr_new_val(const char *xpath, sr_val_t **value);
+
+/**
+ * @brief TODO: move to a separate file together with the rest of the new API.
+ */
+int sr_val_set_string(sr_val_t *value, const char *string_val);
+
+/**
+ * @brief TODO: move to a separate file together with the rest of the new API.
+ */
+int sr_val_set_xpath(sr_val_t *value, const char *xpath);
 
 /**@} cl */
 

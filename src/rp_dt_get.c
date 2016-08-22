@@ -46,7 +46,7 @@ rp_dt_get_value_from_node(struct lyd_node *node, sr_val_t *val)
     struct lyd_node_leaf_list *data_leaf = NULL;
     struct lys_node_container *sch_cont = NULL;
 
-    rc = rp_dt_create_xpath_for_node(val->sr_mem, node, &xpath);
+    rc = rp_dt_create_xpath_for_node(val->_sr_mem, node, &xpath);
     CHECK_RC_MSG_RETURN(rc, "Create xpath for node failed");
     val->xpath = xpath;
 
@@ -114,7 +114,7 @@ rp_dt_get_values_from_nodes(sr_mem_ctx_t *sr_mem, struct ly_set *nodes, sr_val_t
     }
 
     for (size_t i = 0; i < nodes->number; i++) {
-        vals[i].sr_mem = sr_mem;
+        vals[i]._sr_mem = sr_mem;
         node = nodes->set.d[i];
         if (NULL == node || NULL == node->schema || LYS_RPC == node->schema->nodetype ||
             LYS_NOTIF == node->schema->nodetype) {

@@ -363,6 +363,8 @@ int sr_schemas_sr_to_gpb(const sr_schema_t *sr_schemas, const size_t schema_cnt,
 /**
  * @brief Converts array of pointers to GPB schemas to an array of sr_schema_t.
  *
+ * @param[in] sr_mem Sysrepo memory context to use for memory allocation.
+ *                   If NULL then the standard malloc/calloc are used.
  * @param [in] gpb_schemas Array of pointers to GPB schemas.
  * @param [in] schema_cnt Number of schemas in the array.
  * @param [out] sr_schemas Array of sr_schema_t (allocated by the function,
@@ -370,7 +372,7 @@ int sr_schemas_sr_to_gpb(const sr_schema_t *sr_schemas, const size_t schema_cnt,
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int sr_schemas_gpb_to_sr(const Sr__Schema **gpb_schemas, const size_t schema_cnt, sr_schema_t **sr_schemas);
+int sr_schemas_gpb_to_sr(sr_mem_ctx_t *sr_mem, const Sr__Schema **gpb_schemas, const size_t schema_cnt, sr_schema_t **sr_schemas);
 
 /**
  * @brief Fills detailed error information into a GPB error message.

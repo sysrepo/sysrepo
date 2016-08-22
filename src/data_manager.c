@@ -484,7 +484,7 @@ dm_load_schema_file(dm_ctx_t *dm_ctx, const char *schema_filepath, bool append, 
     }
 
     /* load module's persistent data */
-    rc = pm_get_module_info(dm_ctx->pm_ctx, module->name, &module_enabled,
+    rc = pm_get_module_info(dm_ctx->pm_ctx, module->name, NULL, &module_enabled,
             &enabled_subtrees, &enabled_subtrees_cnt, &features, &features_cnt);
     if (SR_ERR_OK == rc) {
         /* enable active features */
@@ -1698,36 +1698,46 @@ dm_get_module_without_lock(dm_ctx_t *dm_ctx, const char *module_name, dm_schema_
 }
 
 static int
-dm_list_rev_file(dm_ctx_t *dm_ctx, const char *module_name, const char *rev_date, sr_sch_revision_t *rev)
+dm_list_rev_file(dm_ctx_t *dm_ctx, sr_mem_ctx_t *sr_mem, const char *module_name, const char *rev_date, sr_sch_revision_t *rev)
 {
     CHECK_NULL_ARG3(dm_ctx, module_name, rev);
     int rc = SR_ERR_OK;
+    char *file_name = NULL;
 
     if (NULL != rev_date && 0 != strcmp("", rev_date)) {
-        rev->revision = strdup(rev_date);
+        sr_mem_edit_string(sr_mem, (char **)&rev->revision, rev_date);
         CHECK_NULL_NOMEM_GOTO(rev->revision, rc, cleanup);
     }
 
-    rc = sr_get_schema_file_name(dm_ctx->schema_search_dir, module_name, rev_date, true, (char**) &rev->file_path_yang);
+    rc = sr_get_schema_file_name(dm_ctx->schema_search_dir, module_name, rev_date, true, &file_name);
+    if (SR_ERR_OK == rc) {
+        if (-1 != access(file_name, F_OK)) {
+            rc = sr_mem_edit_string(sr_mem, (char **)&rev->file_path_yang, file_name);
+        }
+    }
     CHECK_RC_MSG_GOTO(rc, cleanup, "Get schema file name failed");
 
-    rc = sr_get_schema_file_name(dm_ctx->schema_search_dir, module_name, rev_date, false, (char**) &rev->file_path_yin);
+    free(file_name);
+    file_name = NULL;
+
+    rc = sr_get_schema_file_name(dm_ctx->schema_search_dir, module_name, rev_date, false, &file_name);
+    if (SR_ERR_OK == rc) {
+        if (-1 != access(file_name, F_OK)) {
+            sr_mem_edit_string(sr_mem, (char **)&rev->file_path_yin, file_name);
+        }
+    }
     CHECK_RC_MSG_GOTO(rc, cleanup, "Get schema file name failed");
 
-    if (-1 == access(rev->file_path_yang, F_OK)) {
-        free((void*) rev->file_path_yang);
-        rev->file_path_yang = NULL;
-    }
-    if (-1 == access(rev->file_path_yin, F_OK)) {
-        free((void*) rev->file_path_yin);
-        rev->file_path_yin = NULL;
-    }
+    free(file_name);
     return rc;
 
 cleanup:
-    free((void*) rev->revision);
-    free((void*) rev->file_path_yang);
-    free((void*) rev->file_path_yin);
+    free(file_name);
+    if (NULL == sr_mem) {
+        free((void*) rev->revision);
+        free((void*) rev->file_path_yang);
+        free((void*) rev->file_path_yin);
+    }
     return rc;
 }
 
@@ -1749,17 +1759,18 @@ dm_list_module(dm_ctx_t *dm_ctx, md_module_t *module, sr_schema_t *schema)
     sr_llist_node_t *dep = NULL;
     md_dep_t *dep_mod = NULL;
     size_t submod_cnt = 0;
+    sr_mem_ctx_t *sr_mem = schema->_sr_mem;
 
-    schema->module_name = strdup(module->name);
+    sr_mem_edit_string(sr_mem, (char **)&schema->module_name, module->name);
     CHECK_NULL_NOMEM_GOTO(schema->module_name, rc, cleanup);
 
-    schema->ns = strdup(module->ns);
+    sr_mem_edit_string(sr_mem, (char **)&schema->ns, module->ns);
     CHECK_NULL_NOMEM_GOTO(schema->ns, rc, cleanup);
 
-    schema->prefix = strdup(module->prefix);
+    sr_mem_edit_string(sr_mem, (char **)&schema->prefix, module->prefix);
     CHECK_NULL_NOMEM_GOTO(schema->prefix, rc, cleanup);
 
-    rc = dm_list_rev_file(dm_ctx, module->name, module->revision_date, &schema->revision);
+    rc = dm_list_rev_file(dm_ctx, sr_mem, module->name, module->revision_date, &schema->revision);
     CHECK_RC_LOG_GOTO(rc, cleanup, "List rev file failed module %s", module->name);
 
     dep = module->deps->first;
@@ -1772,8 +1783,10 @@ dm_list_module(dm_ctx_t *dm_ctx, md_module_t *module, sr_schema_t *schema)
         submod_cnt++;
     }
 
-    schema->submodules = calloc(submod_cnt, sizeof(*schema->submodules));
-    CHECK_NULL_NOMEM_GOTO(schema->submodules, rc, cleanup);
+    if (0 < submod_cnt) {
+        schema->submodules = sr_calloc(sr_mem, submod_cnt, sizeof(*schema->submodules));
+        CHECK_NULL_NOMEM_GOTO(schema->submodules, rc, cleanup);
+    }
 
     dep = module->deps->first;
     size_t s = 0;
@@ -1783,17 +1796,17 @@ dm_list_module(dm_ctx_t *dm_ctx, md_module_t *module, sr_schema_t *schema)
         if (!dep_mod->dest->submodule) {
             continue;
         }
-        schema->submodules[s].submodule_name = strdup(dep_mod->dest->name);
+        sr_mem_edit_string(sr_mem, (char **)&schema->submodules[s].submodule_name, dep_mod->dest->name);
         CHECK_NULL_NOMEM_GOTO(schema->submodules[s].submodule_name, rc, cleanup);
 
-        rc = dm_list_rev_file(dm_ctx, dep_mod->dest->name, dep_mod->dest->revision_date, &schema->submodules[s].revision);
+        rc = dm_list_rev_file(dm_ctx, sr_mem, dep_mod->dest->name, dep_mod->dest->revision_date, &schema->submodules[s].revision);
         CHECK_RC_LOG_GOTO(rc, cleanup, "List rev file failed module %s", module->name);
 
         schema->submodule_count++;
         s++;
     }
 
-    rc = pm_get_module_info(dm_ctx->pm_ctx, module->name, &module_enabled,
+    rc = pm_get_module_info(dm_ctx->pm_ctx, module->name, sr_mem, &module_enabled,
             &enabled_subtrees, &enabled_subtrees_cnt, &schema->enabled_features, &schema->enabled_feature_cnt);
     if (SR_ERR_OK == rc) {
         /* release memory */
@@ -1824,6 +1837,7 @@ dm_list_schemas(dm_ctx_t *dm_ctx, dm_session_t *dm_session, sr_schema_t **schema
 
     sr_schema_t *sch = NULL;
     size_t sch_count = 0;
+    sr_mem_ctx_t *sr_mem = NULL;
 
     md_ctx_lock(dm_ctx->md_ctx, false);
     module_ll_node = dm_ctx->md_ctx->modules->first;
@@ -1835,8 +1849,13 @@ dm_list_schemas(dm_ctx_t *dm_ctx, dm_session_t *dm_session, sr_schema_t **schema
         }
         sch_count++;
     }
+    if (0 == sch_count) {
+        goto cleanup;
+    }
 
-    sch = calloc(sch_count, sizeof(*sch));
+    rc = sr_mem_new(0, &sr_mem);
+    CHECK_RC_MSG_RETURN(rc, "Failed to create a new Sysrepo memory context.");
+    sch = sr_calloc(sr_mem, sch_count, sizeof(*sch));
     CHECK_NULL_NOMEM_GOTO(sch, rc, cleanup);
 
     module_ll_node = dm_ctx->md_ctx->modules->first;
@@ -1848,6 +1867,7 @@ dm_list_schemas(dm_ctx_t *dm_ctx, dm_session_t *dm_session, sr_schema_t **schema
             continue;
         }
 
+        sch[i]._sr_mem = sr_mem;
         rc = dm_list_module(dm_ctx, module, &sch[i]);
         CHECK_RC_LOG_GOTO(rc, cleanup, "List module %s failed", module->name);
 
@@ -1857,10 +1877,13 @@ dm_list_schemas(dm_ctx_t *dm_ctx, dm_session_t *dm_session, sr_schema_t **schema
 cleanup:
     md_ctx_unlock(dm_ctx->md_ctx);
     if (SR_ERR_OK == rc) {
+        if (NULL != sr_mem) {
+            sr_mem->obj_count = 1; /* 1 for the entire array */
+        }
         *schemas = sch;
         *schema_count = sch_count;
     } else {
-        sr_free_schemas(sch, i);
+        sr_mem_free(sr_mem);
     }
     return rc;
 }

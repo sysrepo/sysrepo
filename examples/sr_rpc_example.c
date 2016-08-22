@@ -145,7 +145,7 @@ main(int argc, char **argv)
 #ifdef EXPERIMENTAL_MEM_MGMT
     assert_int_equal(SR_ERR_OK, sr_new_val("/test-module:activate-software-image/image-name", &input));
     assert_non_null(input);
-    assert_non_null(input->sr_mem);
+    assert_non_null(input->_sr_mem);
     input->type = SR_STRING_T;
     sr_val_set_string(input, "acmefw-2.3");
 #else

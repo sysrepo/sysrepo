@@ -171,7 +171,7 @@ main(int argc, char **argv)
 #ifdef EXPERIMENTAL_MEM_MGMT
     assert_int_equal(SR_ERR_OK, sr_new_tree("image-name", NULL, &input));
     assert_non_null(input);
-    assert_non_null(input->sr_mem);
+    assert_non_null(input->_sr_mem);
     input->type = SR_STRING_T;
     sr_node_set_string(input, "acmefw-2.3");
 #else

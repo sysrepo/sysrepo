@@ -1057,7 +1057,7 @@ sr_set_val_t_value_in_gpb(const sr_val_t *value, Sr__Value *gpb_value){
     CHECK_NULL_ARG2(value, gpb_value);
 
     if (NULL != value->xpath) {
-        if (value->sr_mem) {
+        if (value->_sr_mem) {
             gpb_value->xpath = value->xpath;
         } else {
             gpb_value->xpath = strdup(value->xpath);
@@ -1073,7 +1073,7 @@ sr_set_val_t_value_in_gpb(const sr_val_t *value, Sr__Value *gpb_value){
     case SR_LEAF_EMPTY_T:
         return SR_ERR_OK;
     case SR_BINARY_T:
-        if (value->sr_mem) {
+        if (value->_sr_mem) {
             gpb_value->binary_val = value->data.binary_val;
         } else {
             gpb_value->binary_val = strdup(value->data.binary_val);
@@ -1081,7 +1081,7 @@ sr_set_val_t_value_in_gpb(const sr_val_t *value, Sr__Value *gpb_value){
         }
         return SR_ERR_OK;
     case SR_BITS_T:
-        if (value->sr_mem) {
+        if (value->_sr_mem) {
             gpb_value->bits_val = value->data.bits_val;
         } else {
             gpb_value->bits_val = strdup(value->data.bits_val);
@@ -1097,7 +1097,7 @@ sr_set_val_t_value_in_gpb(const sr_val_t *value, Sr__Value *gpb_value){
         gpb_value->has_decimal64_val = true;
         return SR_ERR_OK;
     case SR_ENUM_T:
-        if (value->sr_mem) {
+        if (value->_sr_mem) {
             gpb_value->enum_val = value->data.enum_val;
         } else {
             gpb_value->enum_val = strdup(value->data.enum_val);
@@ -1105,7 +1105,7 @@ sr_set_val_t_value_in_gpb(const sr_val_t *value, Sr__Value *gpb_value){
         }
         return SR_ERR_OK;
     case SR_IDENTITYREF_T:
-        if (value->sr_mem) {
+        if (value->_sr_mem) {
             gpb_value->identityref_val = value->data.identityref_val;
         } else {
             gpb_value->identityref_val = strdup(value->data.identityref_val);
@@ -1113,7 +1113,7 @@ sr_set_val_t_value_in_gpb(const sr_val_t *value, Sr__Value *gpb_value){
         }
         return SR_ERR_OK;
     case SR_INSTANCEID_T:
-        if (value->sr_mem) {
+        if (value->_sr_mem) {
             gpb_value->instanceid_val = value->data.instanceid_val;
         } else {
             gpb_value->instanceid_val = strdup(value->data.instanceid_val);
@@ -1137,7 +1137,7 @@ sr_set_val_t_value_in_gpb(const sr_val_t *value, Sr__Value *gpb_value){
         gpb_value->has_int64_val = true;
         break;
     case SR_STRING_T:
-        if (value->sr_mem) {
+        if (value->_sr_mem) {
             gpb_value->string_val = value->data.string_val;
         } else {
             gpb_value->string_val = strdup(value->data.string_val);
@@ -1175,11 +1175,11 @@ sr_dup_val_t_to_gpb(const sr_val_t *value, Sr__Value **gpb_value){
     Sr__Value *gpb;
     sr_mem_snapshot_t snapshot = { 0, };
 
-    if (value->sr_mem) {
-        sr_mem_snapshot(value->sr_mem, &snapshot);
+    if (value->_sr_mem) {
+        sr_mem_snapshot(value->_sr_mem, &snapshot);
     }
 
-    gpb = sr_calloc(value->sr_mem, 1, sizeof(*gpb));
+    gpb = sr_calloc(value->_sr_mem, 1, sizeof(*gpb));
     CHECK_NULL_NOMEM_RETURN(gpb);
 
     sr__value__init(gpb);
@@ -1194,7 +1194,7 @@ sr_dup_val_t_to_gpb(const sr_val_t *value, Sr__Value **gpb_value){
     return rc;
 
 cleanup:
-    if (value->sr_mem) {
+    if (value->_sr_mem) {
         sr_mem_restore(&snapshot);
     } else {
         sr__value__free_unpacked(gpb, NULL);
@@ -1284,7 +1284,7 @@ static int
 sr_set_gpb_value_in_val_t(const Sr__Value *gpb_value, sr_val_t *value){
     CHECK_NULL_ARG3(value, gpb_value, gpb_value->xpath);
 
-    if (value->sr_mem) {
+    if (value->_sr_mem) {
         value->xpath = gpb_value->xpath;
     } else {
         value->xpath = strdup(gpb_value->xpath);
@@ -1299,7 +1299,7 @@ sr_set_gpb_value_in_val_t(const Sr__Value *gpb_value, sr_val_t *value){
     case SR__VALUE__TYPES__LEAF_EMPTY:
         return SR_ERR_OK;
     case SR__VALUE__TYPES__BINARY:
-        if (value->sr_mem) {
+        if (value->_sr_mem) {
             value->data.binary_val = gpb_value->binary_val;
         } else {
             value->data.binary_val = strdup(gpb_value->binary_val);
@@ -1307,7 +1307,7 @@ sr_set_gpb_value_in_val_t(const Sr__Value *gpb_value, sr_val_t *value){
         }
         return SR_ERR_OK;
     case SR__VALUE__TYPES__BITS:
-        if (value->sr_mem) {
+        if (value->_sr_mem) {
             value->data.bits_val = gpb_value->bits_val;
         } else {
             value->data.bits_val = strdup(gpb_value->bits_val);
@@ -1321,7 +1321,7 @@ sr_set_gpb_value_in_val_t(const Sr__Value *gpb_value, sr_val_t *value){
         value->data.decimal64_val = gpb_value->decimal64_val;
         return SR_ERR_OK;
     case SR__VALUE__TYPES__ENUM:
-        if (value->sr_mem) {
+        if (value->_sr_mem) {
             value->data.enum_val = gpb_value->enum_val;
         } else {
             value->data.enum_val = strdup(gpb_value->enum_val);
@@ -1329,7 +1329,7 @@ sr_set_gpb_value_in_val_t(const Sr__Value *gpb_value, sr_val_t *value){
         }
         return SR_ERR_OK;
     case SR__VALUE__TYPES__IDENTITYREF:
-        if (value->sr_mem) {
+        if (value->_sr_mem) {
             value->data.identityref_val = gpb_value->identityref_val;
         } else {
             value->data.identityref_val = strdup(gpb_value->identityref_val);
@@ -1337,7 +1337,7 @@ sr_set_gpb_value_in_val_t(const Sr__Value *gpb_value, sr_val_t *value){
         }
         return SR_ERR_OK;
     case SR__VALUE__TYPES__INSTANCEID:
-        if (value->sr_mem) {
+        if (value->_sr_mem) {
             value->data.instanceid_val = gpb_value->instanceid_val;
         } else {
             value->data.instanceid_val = strdup(gpb_value->instanceid_val);
@@ -1357,7 +1357,7 @@ sr_set_gpb_value_in_val_t(const Sr__Value *gpb_value, sr_val_t *value){
         value->data.int64_val = gpb_value->int64_val;
         return SR_ERR_OK;
     case SR__VALUE__TYPES__STRING:
-        if (value->sr_mem) {
+        if (value->_sr_mem) {
             value->data.string_val = gpb_value->string_val;
         } else {
             value->data.string_val = strdup(gpb_value->string_val);
@@ -1418,7 +1418,7 @@ sr_dup_gpb_to_val_t(sr_mem_ctx_t *sr_mem, const Sr__Value *gpb_value, sr_val_t *
 
     val = sr_calloc(sr_mem, 1, sizeof(*val));
     CHECK_NULL_NOMEM_RETURN(val);
-    val->sr_mem = sr_mem;
+    val->_sr_mem = sr_mem;
 
     rc = sr_copy_gpb_to_val_t(gpb_value, val);
     if (SR_ERR_OK != rc) {
@@ -1448,7 +1448,7 @@ sr_values_sr_to_gpb(const sr_val_t *sr_values, const size_t sr_value_cnt, Sr__Va
     CHECK_NULL_ARG2(gpb_values_p, gpb_value_cnt_p);
 
     if ((NULL != sr_values) && (sr_value_cnt > 0)) {
-        sr_mem = sr_values[0].sr_mem;
+        sr_mem = sr_values[0]._sr_mem;
         if (NULL != sr_mem) {
             sr_mem_snapshot(sr_mem, &snapshot);
         }
@@ -1496,7 +1496,7 @@ sr_values_gpb_to_sr(sr_mem_ctx_t *sr_mem, Sr__Value **gpb_values, size_t gpb_val
         CHECK_NULL_NOMEM_RETURN(sr_values);
         if (sr_mem) {
             for (size_t i = 0; i < gpb_value_cnt; i++) {
-                sr_values[i].sr_mem = sr_mem;
+                sr_values[i]._sr_mem = sr_mem;
             }
         }
 
@@ -1533,14 +1533,14 @@ sr_dup_tree_to_gpb(const sr_node_t *sr_tree, Sr__Node **gpb_tree)
     Sr__Node *gpb;
     sr_mem_snapshot_t snapshot = { 0, };
 
-    if (sr_tree->sr_mem) {
-        sr_mem_snapshot(sr_tree->sr_mem, &snapshot);
+    if (sr_tree->_sr_mem) {
+        sr_mem_snapshot(sr_tree->_sr_mem, &snapshot);
     }
 
-    gpb = sr_calloc(sr_tree->sr_mem, 1, sizeof(*gpb));
+    gpb = sr_calloc(sr_tree->_sr_mem, 1, sizeof(*gpb));
     CHECK_NULL_NOMEM_RETURN(gpb);
     sr__node__init(gpb);
-    gpb->value = sr_calloc(sr_tree->sr_mem, 1, sizeof(*gpb->value));
+    gpb->value = sr_calloc(sr_tree->_sr_mem, 1, sizeof(*gpb->value));
     CHECK_NULL_NOMEM_GOTO(gpb->value, rc, cleanup);
     sr__value__init(gpb->value);
     gpb->n_children = 0;
@@ -1554,7 +1554,7 @@ sr_dup_tree_to_gpb(const sr_node_t *sr_tree, Sr__Node **gpb_tree)
 
     /* module_name */
     if (NULL != sr_tree->module_name) {
-        if (NULL != sr_tree->sr_mem) {
+        if (NULL != sr_tree->_sr_mem) {
             gpb->module_name = sr_tree->module_name;
         } else {
             gpb->module_name = strdup(sr_tree->module_name);
@@ -1569,7 +1569,7 @@ sr_dup_tree_to_gpb(const sr_node_t *sr_tree, Sr__Node **gpb_tree)
         sr_subtree = sr_subtree->next;
     }
     if (0 < children_cnt) {
-        gpb->children = sr_calloc(sr_tree->sr_mem, children_cnt, sizeof(*gpb->children));
+        gpb->children = sr_calloc(sr_tree->_sr_mem, children_cnt, sizeof(*gpb->children));
         CHECK_NULL_NOMEM_GOTO(gpb->children, rc, cleanup);
         sr_subtree = sr_tree->first_child;
         i = 0;
@@ -1588,7 +1588,7 @@ sr_dup_tree_to_gpb(const sr_node_t *sr_tree, Sr__Node **gpb_tree)
     return rc;
 
 cleanup:
-    if (sr_tree->sr_mem) {
+    if (sr_tree->_sr_mem) {
         sr_mem_restore(&snapshot);
     } else {
         sr__node__free_unpacked(gpb, NULL);
@@ -1610,7 +1610,7 @@ sr_dup_gpb_to_tree(sr_mem_ctx_t *sr_mem, const Sr__Node *gpb_tree, sr_node_t **s
 
     tree = sr_calloc(sr_mem, 1, sizeof *tree);
     CHECK_NULL_NOMEM_RETURN(tree);
-    tree->sr_mem = sr_mem;
+    tree->_sr_mem = sr_mem;
 
     rc = sr_copy_gpb_to_tree(gpb_tree, tree);
     if (SR_ERR_OK != rc) {
@@ -1651,7 +1651,7 @@ sr_copy_gpb_to_tree(const Sr__Node *gpb_tree, sr_node_t *sr_tree)
 
     /* module_name */
     if (NULL != gpb_tree->module_name && strlen(gpb_tree->module_name)) {
-        if (NULL != sr_tree->sr_mem) {
+        if (NULL != sr_tree->_sr_mem) {
             sr_tree->module_name = gpb_tree->module_name;
         } else {
             sr_tree->module_name = strdup(gpb_tree->module_name);
@@ -1695,7 +1695,7 @@ sr_trees_sr_to_gpb(const sr_node_t *sr_trees, const size_t sr_tree_cnt, Sr__Node
     CHECK_NULL_ARG2(gpb_trees_p, gpb_tree_cnt_p);
 
     if ((NULL != sr_trees) && (sr_tree_cnt > 0)) {
-        sr_mem = sr_trees[0].sr_mem;
+        sr_mem = sr_trees[0]._sr_mem;
         if (NULL != sr_mem) {
             sr_mem_snapshot(sr_mem, &snapshot);
         }
@@ -1742,7 +1742,7 @@ sr_trees_gpb_to_sr(sr_mem_ctx_t *sr_mem, Sr__Node **gpb_trees, size_t gpb_tree_c
         CHECK_NULL_NOMEM_RETURN(sr_trees);
         if (sr_mem) {
             for (size_t i = 0; i < gpb_tree_cnt; i++) {
-                sr_trees[i].sr_mem = sr_mem;
+                sr_trees[i]._sr_mem = sr_mem;
             }
         }
 
@@ -2025,6 +2025,8 @@ sr_schemas_sr_to_gpb(const sr_schema_t *sr_schemas, const size_t schema_cnt, Sr_
 {
     Sr__Schema **schemas = NULL;
     size_t i = 0, j = 0;
+    sr_mem_ctx_t *sr_mem = NULL;
+    sr_mem_snapshot_t snapshot = { 0, };
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG2(sr_schemas, gpb_schemas);
@@ -2033,81 +2035,136 @@ sr_schemas_sr_to_gpb(const sr_schema_t *sr_schemas, const size_t schema_cnt, Sr_
         return SR_ERR_OK;
     }
 
-    schemas = calloc(schema_cnt, sizeof(*schemas));
-    CHECK_NULL_NOMEM_RETURN(schemas);
+    if (sr_schemas->_sr_mem) {
+        sr_mem = sr_schemas->_sr_mem;
+        sr_mem_snapshot(sr_mem, &snapshot);
+    }
+
+    if (0 < schema_cnt) {
+        schemas = sr_calloc(sr_mem, schema_cnt, sizeof(*schemas));
+        CHECK_NULL_NOMEM_RETURN(schemas);
+    }
 
     for (i = 0; i < schema_cnt; i++) {
-        schemas[i] = calloc(1, sizeof(**schemas));
+        schemas[i] = sr_calloc(sr_mem, 1, sizeof(**schemas));
         CHECK_NULL_NOMEM_GOTO(schemas[i], rc, cleanup);
 
         sr__schema__init(schemas[i]);
         if (NULL != sr_schemas[i].module_name) {
-            schemas[i]->module_name = strdup(sr_schemas[i].module_name);
-            CHECK_NULL_NOMEM_GOTO(sr_schemas[i].module_name, rc, cleanup);
+            if (sr_mem) {
+                schemas[i]->module_name = (char *)sr_schemas[i].module_name;
+            } else {
+                schemas[i]->module_name = strdup(sr_schemas[i].module_name);
+                CHECK_NULL_NOMEM_GOTO(sr_schemas[i].module_name, rc, cleanup);
+            }
         }
         if (NULL != sr_schemas[i].ns) {
-            schemas[i]->ns = strdup(sr_schemas[i].ns);
-            CHECK_NULL_NOMEM_GOTO(sr_schemas[i].ns, rc, cleanup);
+            if (sr_mem) {
+                schemas[i]->ns = (char *)sr_schemas[i].ns;
+            } else {
+                schemas[i]->ns = strdup(sr_schemas[i].ns);
+                CHECK_NULL_NOMEM_GOTO(sr_schemas[i].ns, rc, cleanup);
+            }
         }
         if (NULL != sr_schemas[i].prefix) {
-            schemas[i]->prefix = strdup(sr_schemas[i].prefix);
-            CHECK_NULL_NOMEM_GOTO(schemas[i]->prefix, rc, cleanup);
+            if (sr_mem) {
+                schemas[i]->prefix = (char *)sr_schemas[i].prefix;
+            } else {
+                schemas[i]->prefix = strdup(sr_schemas[i].prefix);
+                CHECK_NULL_NOMEM_GOTO(schemas[i]->prefix, rc, cleanup);
+            }
         }
 
-        schemas[i]->revision = calloc(1, sizeof (*schemas[i]->revision));
+        schemas[i]->revision = sr_calloc(sr_mem, 1, sizeof (*schemas[i]->revision));
         CHECK_NULL_NOMEM_GOTO(schemas[i]->revision, rc, cleanup);
 
         sr__schema_revision__init(schemas[i]->revision);
         if (NULL != sr_schemas[i].revision.revision) {
-            schemas[i]->revision->revision = strdup(sr_schemas[i].revision.revision);
-            CHECK_NULL_NOMEM_GOTO(schemas[i]->revision->revision, rc, cleanup);
+            if (sr_mem) {
+                schemas[i]->revision->revision = (char *)sr_schemas[i].revision.revision;
+            } else {
+                schemas[i]->revision->revision = strdup(sr_schemas[i].revision.revision);
+                CHECK_NULL_NOMEM_GOTO(schemas[i]->revision->revision, rc, cleanup);
+            }
         }
         if (NULL != sr_schemas[i].revision.file_path_yang) {
-            schemas[i]->revision->file_path_yang = strdup(sr_schemas[i].revision.file_path_yang);
-            CHECK_NULL_NOMEM_GOTO(schemas[i]->revision->file_path_yang, rc, cleanup);
+            if (sr_mem) {
+                schemas[i]->revision->file_path_yang = (char *)sr_schemas[i].revision.file_path_yang;
+            } else {
+                schemas[i]->revision->file_path_yang = strdup(sr_schemas[i].revision.file_path_yang);
+                CHECK_NULL_NOMEM_GOTO(schemas[i]->revision->file_path_yang, rc, cleanup);
+            }
         }
         if (NULL != sr_schemas[i].revision.file_path_yin) {
-            schemas[i]->revision->file_path_yin = strdup(sr_schemas[i].revision.file_path_yin);
-            CHECK_NULL_NOMEM_GOTO(schemas[i]->revision->file_path_yin, rc, cleanup);
+            if (sr_mem) {
+                schemas[i]->revision->file_path_yin = (char *)sr_schemas[i].revision.file_path_yin;
+            } else {
+                schemas[i]->revision->file_path_yin = strdup(sr_schemas[i].revision.file_path_yin);
+                CHECK_NULL_NOMEM_GOTO(schemas[i]->revision->file_path_yin, rc, cleanup);
+            }
         }
 
-        schemas[i]->enabled_features = calloc(sr_schemas[i].enabled_feature_cnt, sizeof(*schemas[i]->enabled_features));
-        CHECK_NULL_NOMEM_GOTO(schemas[i]->enabled_features, rc, cleanup);
+        if (0 < sr_schemas[i].enabled_feature_cnt) {
+            schemas[i]->enabled_features = sr_calloc(sr_mem, sr_schemas[i].enabled_feature_cnt, sizeof(*schemas[i]->enabled_features));
+            CHECK_NULL_NOMEM_GOTO(schemas[i]->enabled_features, rc, cleanup);
+        }
         for (size_t f = 0; f < sr_schemas[i].enabled_feature_cnt; f++) {
-            if (NULL != sr_schemas[i].enabled_features[f]){
-                schemas[i]->enabled_features[f] = strdup(sr_schemas[i].enabled_features[f]);
-                CHECK_NULL_NOMEM_GOTO(schemas[i]->enabled_features[f], rc, cleanup);
+            if (NULL != sr_schemas[i].enabled_features[f]) {
+                if (sr_mem) {
+                    schemas[i]->enabled_features[f] = sr_schemas[i].enabled_features[f];
+                } else {
+                    schemas[i]->enabled_features[f] = strdup(sr_schemas[i].enabled_features[f]);
+                    CHECK_NULL_NOMEM_GOTO(schemas[i]->enabled_features[f], rc, cleanup);
+                }
             }
             schemas[i]->n_enabled_features++;
         }
 
-        schemas[i]->submodules = calloc(sr_schemas[i].submodule_count, sizeof(*schemas[i]->submodules));
-        CHECK_NULL_NOMEM_GOTO(schemas[i]->submodules, rc, cleanup);
+        if (0 < sr_schemas[i].submodule_count) {
+            schemas[i]->submodules = sr_calloc(sr_mem, sr_schemas[i].submodule_count, sizeof(*schemas[i]->submodules));
+            CHECK_NULL_NOMEM_GOTO(schemas[i]->submodules, rc, cleanup);
+        }
         schemas[i]->n_submodules = sr_schemas[i].submodule_count;
 
         for (size_t s = 0; s < sr_schemas[i].submodule_count; s++) {
-            schemas[i]->submodules[s] = calloc(1, sizeof (*schemas[i]->submodules[s]));
+            schemas[i]->submodules[s] = sr_calloc(sr_mem, 1, sizeof (*schemas[i]->submodules[s]));
             CHECK_NULL_NOMEM_GOTO(schemas[i]->submodules[s], rc, cleanup);
             sr__schema_submodule__init(schemas[i]->submodules[s]);
             if (NULL != sr_schemas[i].submodules[s].submodule_name) {
-                schemas[i]->submodules[s]->submodule_name = strdup(sr_schemas[i].submodules[s].submodule_name);
-                CHECK_NULL_NOMEM_GOTO(schemas[i]->submodules[s]->submodule_name, rc, cleanup);
+                if (sr_mem) {
+                    schemas[i]->submodules[s]->submodule_name = (char *)sr_schemas[i].submodules[s].submodule_name;
+                } else {
+                    schemas[i]->submodules[s]->submodule_name = strdup(sr_schemas[i].submodules[s].submodule_name);
+                    CHECK_NULL_NOMEM_GOTO(schemas[i]->submodules[s]->submodule_name, rc, cleanup);
+                }
             }
 
-            schemas[i]->submodules[s]->revision = calloc(1, sizeof (*schemas[i]->submodules[s]->revision));
+            schemas[i]->submodules[s]->revision = sr_calloc(sr_mem, 1, sizeof (*schemas[i]->submodules[s]->revision));
             CHECK_NULL_NOMEM_GOTO(schemas[i]->submodules[s]->revision, rc, cleanup);
             sr__schema_revision__init(schemas[i]->submodules[s]->revision);
             if (NULL != sr_schemas[i].submodules[s].revision.revision) {
-                schemas[i]->submodules[s]->revision->revision = strdup(sr_schemas[i].submodules[s].revision.revision);
-                CHECK_NULL_NOMEM_GOTO(schemas[i]->submodules[s]->revision->revision, rc, cleanup);
+                if (sr_mem) {
+                    schemas[i]->submodules[s]->revision->revision = (char *)sr_schemas[i].submodules[s].revision.revision;
+                } else {
+                    schemas[i]->submodules[s]->revision->revision = strdup(sr_schemas[i].submodules[s].revision.revision);
+                    CHECK_NULL_NOMEM_GOTO(schemas[i]->submodules[s]->revision->revision, rc, cleanup);
+                }
             }
             if (NULL != sr_schemas[i].submodules[s].revision.file_path_yang) {
-                schemas[i]->submodules[s]->revision->file_path_yang = strdup(sr_schemas[i].submodules[s].revision.file_path_yang);
-                CHECK_NULL_NOMEM_GOTO(schemas[i]->submodules[s]->revision->file_path_yang, rc, cleanup);
+                if (sr_mem) {
+                    schemas[i]->submodules[s]->revision->file_path_yang = (char *)sr_schemas[i].submodules[s].revision.file_path_yang;
+                } else {
+                    schemas[i]->submodules[s]->revision->file_path_yang = strdup(sr_schemas[i].submodules[s].revision.file_path_yang);
+                    CHECK_NULL_NOMEM_GOTO(schemas[i]->submodules[s]->revision->file_path_yang, rc, cleanup);
+                }
             }
             if (NULL != sr_schemas[i].submodules[s].revision.file_path_yin) {
-                schemas[i]->submodules[s]->revision->file_path_yin = strdup(sr_schemas[i].submodules[s].revision.file_path_yin);
-                CHECK_NULL_NOMEM_GOTO(schemas[i]->submodules[s]->revision->file_path_yin, rc, cleanup);
+                if (sr_mem) {
+                    schemas[i]->submodules[s]->revision->file_path_yin = (char *)sr_schemas[i].submodules[s].revision.file_path_yin;
+                } else {
+                    schemas[i]->submodules[s]->revision->file_path_yin = strdup(sr_schemas[i].submodules[s].revision.file_path_yin);
+                    CHECK_NULL_NOMEM_GOTO(schemas[i]->submodules[s]->revision->file_path_yin, rc, cleanup);
+                }
             }
         }
     }
@@ -2116,19 +2173,24 @@ sr_schemas_sr_to_gpb(const sr_schema_t *sr_schemas, const size_t schema_cnt, Sr_
     return SR_ERR_OK;
 
 cleanup:
-    for (j = 0; j < i; j++) {
-        sr__schema__free_unpacked(schemas[j], NULL);
+    if (NULL == sr_mem) {
+        for (j = 0; j < i; j++) {
+            sr__schema__free_unpacked(schemas[j], NULL);
+        }
+        free(schemas);
+    } else {
+        sr_mem_restore(&snapshot);
     }
-    free(schemas);
     return rc;
 }
 
 int
-sr_schemas_gpb_to_sr(const Sr__Schema **gpb_schemas, const size_t schema_cnt, sr_schema_t **sr_schemas)
+sr_schemas_gpb_to_sr(sr_mem_ctx_t *sr_mem, const Sr__Schema **gpb_schemas, const size_t schema_cnt, sr_schema_t **sr_schemas)
 {
     sr_schema_t *schemas = NULL;
     size_t i = 0;
     int rc = SR_ERR_OK;
+    sr_mem_snapshot_t snapshot = { 0, };
 
     CHECK_NULL_ARG2(gpb_schemas, sr_schemas);
     if (0 == schema_cnt) {
@@ -2136,76 +2198,141 @@ sr_schemas_gpb_to_sr(const Sr__Schema **gpb_schemas, const size_t schema_cnt, sr
         return SR_ERR_OK;
     }
 
-    schemas = calloc(schema_cnt, sizeof(*schemas));
-    CHECK_NULL_NOMEM_RETURN(schemas);
+    if (sr_mem) {
+        sr_mem_snapshot(sr_mem, &snapshot);
+    }
+
+    if (0 < schema_cnt) {
+        schemas = sr_calloc(sr_mem, schema_cnt, sizeof(*schemas));
+        CHECK_NULL_NOMEM_RETURN(schemas);
+    }
+
+    for (i = 0; i < schema_cnt; i++) {
+        schemas[i]._sr_mem = sr_mem;
+    }
 
     for (i = 0; i < schema_cnt; i++) {
         if (NULL != gpb_schemas[i]->module_name) {
-            schemas[i].module_name = strdup(gpb_schemas[i]->module_name);
-            CHECK_NULL_NOMEM_GOTO(schemas[i].module_name, rc, cleanup);
+            if (sr_mem) {
+                schemas[i].module_name = gpb_schemas[i]->module_name;
+            } else {
+                schemas[i].module_name = strdup(gpb_schemas[i]->module_name);
+                CHECK_NULL_NOMEM_GOTO(schemas[i].module_name, rc, cleanup);
+            }
         }
         if (NULL != gpb_schemas[i]->ns) {
-            schemas[i].ns = strdup(gpb_schemas[i]->ns);
-            CHECK_NULL_NOMEM_GOTO(schemas[i].ns, rc, cleanup);
+            if (sr_mem) {
+                schemas[i].ns = gpb_schemas[i]->ns;
+            } else {
+                schemas[i].ns = strdup(gpb_schemas[i]->ns);
+                CHECK_NULL_NOMEM_GOTO(schemas[i].ns, rc, cleanup);
+            }
         }
         if (NULL != gpb_schemas[i]->prefix) {
-            schemas[i].prefix = strdup(gpb_schemas[i]->prefix);
-            CHECK_NULL_NOMEM_GOTO(schemas[i].prefix, rc, cleanup);
+            if (sr_mem) {
+                schemas[i].prefix = gpb_schemas[i]->prefix;
+            } else {
+                schemas[i].prefix = strdup(gpb_schemas[i]->prefix);
+                CHECK_NULL_NOMEM_GOTO(schemas[i].prefix, rc, cleanup);
+            }
         }
 
         if (NULL != gpb_schemas[i]->revision->revision) {
-            schemas[i].revision.revision = strdup(gpb_schemas[i]->revision->revision);
-            CHECK_NULL_NOMEM_GOTO(schemas[i].revision.revision, rc, cleanup);
+            if (sr_mem) {
+                schemas[i].revision.revision = gpb_schemas[i]->revision->revision;
+            } else {
+                schemas[i].revision.revision = strdup(gpb_schemas[i]->revision->revision);
+                CHECK_NULL_NOMEM_GOTO(schemas[i].revision.revision, rc, cleanup);
+            }
         }
         if (NULL != gpb_schemas[i]->revision->file_path_yang) {
-            schemas[i].revision.file_path_yang = strdup(gpb_schemas[i]->revision->file_path_yang);
-            CHECK_NULL_NOMEM_GOTO(schemas[i].revision.file_path_yang, rc, cleanup);
+            if (sr_mem) {
+                schemas[i].revision.file_path_yang = gpb_schemas[i]->revision->file_path_yang;
+            } else {
+                schemas[i].revision.file_path_yang = strdup(gpb_schemas[i]->revision->file_path_yang);
+                CHECK_NULL_NOMEM_GOTO(schemas[i].revision.file_path_yang, rc, cleanup);
+            }
         }
         if (NULL != gpb_schemas[i]->revision->file_path_yin) {
-            schemas[i].revision.file_path_yin = strdup(gpb_schemas[i]->revision->file_path_yin);
-            CHECK_NULL_NOMEM_GOTO(schemas[i].revision.file_path_yin, rc, cleanup);
+            if (sr_mem) {
+                schemas[i].revision.file_path_yin = gpb_schemas[i]->revision->file_path_yin;
+            } else {
+                schemas[i].revision.file_path_yin = strdup(gpb_schemas[i]->revision->file_path_yin);
+                CHECK_NULL_NOMEM_GOTO(schemas[i].revision.file_path_yin, rc, cleanup);
+            }
         }
 
-        schemas[i].enabled_features = calloc(gpb_schemas[i]->n_enabled_features, sizeof(*schemas[i].enabled_features));
-        CHECK_NULL_NOMEM_GOTO(schemas[i].enabled_features, rc, cleanup);
+        if (0 < gpb_schemas[i]->n_enabled_features) {
+            schemas[i].enabled_features = sr_calloc(sr_mem, gpb_schemas[i]->n_enabled_features, sizeof(*schemas[i].enabled_features));
+            CHECK_NULL_NOMEM_GOTO(schemas[i].enabled_features, rc, cleanup);
+        }
         for (size_t f = 0; f < gpb_schemas[i]->n_enabled_features; f++){
             if (NULL != gpb_schemas[i]->enabled_features[f]) {
-                schemas[i].enabled_features[f] = strdup(gpb_schemas[i]->enabled_features[f]);
-                CHECK_NULL_NOMEM_GOTO(schemas[i].enabled_features[f], rc, cleanup);
+                if (sr_mem) {
+                    schemas[i].enabled_features[f] = gpb_schemas[i]->enabled_features[f];
+                } else {
+                    schemas[i].enabled_features[f] = strdup(gpb_schemas[i]->enabled_features[f]);
+                    CHECK_NULL_NOMEM_GOTO(schemas[i].enabled_features[f], rc, cleanup);
+                }
             }
             schemas[i].enabled_feature_cnt++;
         }
 
-        schemas[i].submodules = calloc(gpb_schemas[i]->n_submodules, sizeof(*schemas[i].submodules));
-        CHECK_NULL_NOMEM_GOTO(schemas[i].submodules, rc, cleanup);
+        if (0 < gpb_schemas[i]->n_submodules) {
+            schemas[i].submodules = sr_calloc(sr_mem, gpb_schemas[i]->n_submodules, sizeof(*schemas[i].submodules));
+            CHECK_NULL_NOMEM_GOTO(schemas[i].submodules, rc, cleanup);
+        }
 
         for (size_t s = 0; s < gpb_schemas[i]->n_submodules; s++) {
             if (NULL != gpb_schemas[i]->submodules[s]->submodule_name) {
-                schemas[i].submodules[s].submodule_name = strdup(gpb_schemas[i]->submodules[s]->submodule_name);
-                CHECK_NULL_NOMEM_GOTO(schemas[i].submodules[s].submodule_name, rc, cleanup);
+                if (sr_mem) {
+                    schemas[i].submodules[s].submodule_name = gpb_schemas[i]->submodules[s]->submodule_name;
+                } else {
+                    schemas[i].submodules[s].submodule_name = strdup(gpb_schemas[i]->submodules[s]->submodule_name);
+                    CHECK_NULL_NOMEM_GOTO(schemas[i].submodules[s].submodule_name, rc, cleanup);
+                }
             }
 
             if (NULL != gpb_schemas[i]->submodules[s]->revision->revision) {
-                schemas[i].submodules[s].revision.revision = strdup(gpb_schemas[i]->submodules[s]->revision->revision);
-                CHECK_NULL_NOMEM_GOTO(schemas[i].submodules[s].revision.revision, rc, cleanup);
+                if (sr_mem) {
+                    schemas[i].submodules[s].revision.revision = gpb_schemas[i]->submodules[s]->revision->revision;
+                } else {
+                    schemas[i].submodules[s].revision.revision = strdup(gpb_schemas[i]->submodules[s]->revision->revision);
+                    CHECK_NULL_NOMEM_GOTO(schemas[i].submodules[s].revision.revision, rc, cleanup);
+                }
             }
             if (NULL != gpb_schemas[i]->submodules[s]->revision->file_path_yang) {
-                schemas[i].submodules[s].revision.file_path_yang = strdup(gpb_schemas[i]->submodules[s]->revision->file_path_yang);
-                CHECK_NULL_NOMEM_GOTO(schemas[i].submodules[s].revision.file_path_yang, rc, cleanup);
+                if (sr_mem) {
+                    schemas[i].submodules[s].revision.file_path_yang = gpb_schemas[i]->submodules[s]->revision->file_path_yang;
+                } else {
+                    schemas[i].submodules[s].revision.file_path_yang = strdup(gpb_schemas[i]->submodules[s]->revision->file_path_yang);
+                    CHECK_NULL_NOMEM_GOTO(schemas[i].submodules[s].revision.file_path_yang, rc, cleanup);
+                }
             }
             if (NULL != gpb_schemas[i]->submodules[s]->revision->file_path_yin) {
-                schemas[i].submodules[s].revision.file_path_yin = strdup(gpb_schemas[i]->submodules[s]->revision->file_path_yin);
-                CHECK_NULL_NOMEM_GOTO(schemas[i].submodules[s].revision.file_path_yin, rc, cleanup);
+                if (sr_mem) {
+                    schemas[i].submodules[s].revision.file_path_yin = gpb_schemas[i]->submodules[s]->revision->file_path_yin;
+                } else {
+                    schemas[i].submodules[s].revision.file_path_yin = strdup(gpb_schemas[i]->submodules[s]->revision->file_path_yin);
+                    CHECK_NULL_NOMEM_GOTO(schemas[i].submodules[s].revision.file_path_yin, rc, cleanup);
+                }
             }
             schemas[i].submodule_count++;
         }
     }
 
+    if (sr_mem) {
+        ++sr_mem->obj_count;
+    }
     *sr_schemas = schemas;
     return SR_ERR_OK;
 
 cleanup:
-    sr_free_schemas(schemas, schema_cnt);
+    if (sr_mem) {
+        sr_mem_restore(&snapshot);
+    } else {
+        sr_free_schemas(schemas, schema_cnt);
+    }
     return rc;
 }
 
