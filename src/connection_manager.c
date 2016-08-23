@@ -373,7 +373,7 @@ cm_subscr_unsubscribe_destination(cm_ctx_t *cm_ctx, const char *destination_addr
 cleanup:
     if (msg_req) {
         sr_msg_free(msg_req);
-    } else if (sr_mem) {
+    } else {
         sr_mem_free(sr_mem);
     }
     return rc;
@@ -625,6 +625,7 @@ cm_session_start_req_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, Sr__Msg *m
 {
     sm_session_t *session = NULL;
     Sr__Msg *msg = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG5(cm_ctx, conn, msg_in, msg_in->request, msg_in->request->session_start_req);
@@ -632,7 +633,9 @@ cm_session_start_req_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, Sr__Msg *m
     SR_LOG_DBG("Processing session_start request (conn=%p).", (void*)conn);
 
     /* prepare the response */
-    rc = sr_gpb_resp_alloc(NULL, SR__OPERATION__SESSION_START, 0, &msg);
+    rc = sr_mem_new(0, &sr_mem);
+    CHECK_RC_MSG_RETURN(rc, "Failed to create a new Sysrepo memory context.");
+    rc = sr_gpb_resp_alloc(sr_mem, SR__OPERATION__SESSION_START, 0, &msg);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Cannot allocate the response for session_start request (conn=%p).", (void*)conn);
         return SR_ERR_NOMEM;
@@ -673,6 +676,7 @@ static int
 cm_session_stop_req_process(cm_ctx_t *cm_ctx, sm_session_t *session, Sr__Msg *msg_in)
 {
     Sr__Msg *msg_out = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
     int rc = SR_ERR_OK;
     bool drop_session = false;
 
@@ -681,7 +685,9 @@ cm_session_stop_req_process(cm_ctx_t *cm_ctx, sm_session_t *session, Sr__Msg *ms
     SR_LOG_DBG("Processing session_stop request (session id=%"PRIu32").", session->id);
 
     /* prepare the response */
-    rc = sr_gpb_resp_alloc(NULL, SR__OPERATION__SESSION_STOP, msg_in->session_id, &msg_out);
+    rc = sr_mem_new(0, &sr_mem);
+    CHECK_RC_MSG_RETURN(rc, "Failed to create a new Sysrepo memory context.");
+    rc = sr_gpb_resp_alloc(sr_mem, SR__OPERATION__SESSION_STOP, msg_in->session_id, &msg_out);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Cannot allocate the response for session_stop request (session id=%"PRIu32").", session->id);
         return SR_ERR_NOMEM;
@@ -692,7 +698,7 @@ cm_session_stop_req_process(cm_ctx_t *cm_ctx, sm_session_t *session, Sr__Msg *ms
         if (session->id != msg_in->request->session_stop_req->session_id) {
             SR_LOG_ERR("Stopping of other sessions is not allowed (sess id=%"PRIu32", requested id=%"PRIu32").",
                     session->id, msg_in->request->session_stop_req->session_id);
-            sr_gpb_fill_error("Stopping of other sessions is not allowed", NULL, &msg_out->response->error);
+            sr_gpb_fill_error("Stopping of other sessions is not allowed", NULL, sr_mem, &msg_out->response->error);
             rc = SR_ERR_UNSUPPORTED;
         }
     }
@@ -947,7 +953,7 @@ cm_conn_msg_process(cm_ctx_t *cm_ctx, sm_connection_t *conn, uint8_t *msg_data, 
 cleanup:
     if (msg) {
         sr_msg_free(msg);
-    } else if (sr_mem) {
+    } else {
         sr_mem_free(sr_mem);
     }
     return rc;

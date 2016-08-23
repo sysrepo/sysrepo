@@ -237,11 +237,13 @@ int sr_trees_gpb_to_sr(sr_mem_ctx_t *sr_mem, Sr__Node **gpb_trees, size_t gpb_tr
 /**
  * @brief Fills the gpb structures from the set of changes
  * @param [in] sr_changes
+ * @param [in] sr_mem Sysrepo memory context to use for memory allocation.
+ *                    If NULL then the standard malloc/calloc are used.
  * @param [out] changes
  * @param [out] gpb_count
  * @return Error code (SR_ERR_OK on success)
  */
-int sr_changes_sr_to_gpb(sr_list_t *sr_changes, Sr__Change ***changes, size_t *gpb_count);
+int sr_changes_sr_to_gpb(sr_list_t *sr_changes, sr_mem_ctx_t *sr_mem, Sr__Change ***changes, size_t *gpb_count);
 
 /**
  * @brief Converts sysrepo datastore to GPB datastore.
@@ -379,23 +381,28 @@ int sr_schemas_gpb_to_sr(sr_mem_ctx_t *sr_mem, const Sr__Schema **gpb_schemas, c
  *
  * @param[in] error_message Error message (can be NULL). String will be duplicated.
  * @param[in] error_path XPath to node where error occurred (can be NULL). String will be duplicated.
+ * @param [in] sr_mem Sysrepo memory context to use for memory allocation.
+ *                    If NULL then the standard malloc/calloc are used.
  * @param[in,out] gpb_error GPB message where the error information should be filled in.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int sr_gpb_fill_error(const char *error_message, const char *error_path, Sr__Error **gpb_error);
+int sr_gpb_fill_error(const char *error_message, const char *error_path, sr_mem_ctx_t *sr_mem, Sr__Error **gpb_error);
 
 /**
  * @brief Fills detailed error information into an array of pointers to GPB error messages.
  *
  * @param[in] sr_errors Array of detailed error information.
  * @param[in] sr_error_cnt Number of errors in the sr_errors array.
+ * @param [in] sr_mem Sysrepo memory context to use for memory allocation.
+ *                    If NULL then the standard malloc/calloc are used.
  * @param[out] gpb_errors Array of pointers to GPB error messages (will be allocated).
  * @param[out] gpb_error_cnt Number of errors set to gpb_errors array.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int sr_gpb_fill_errors(sr_error_info_t *sr_errors, size_t sr_error_cnt, Sr__Error ***gpb_errors, size_t *gpb_error_cnt);
+int sr_gpb_fill_errors(sr_error_info_t *sr_errors, size_t sr_error_cnt, sr_mem_ctx_t *sr_mem, Sr__Error ***gpb_errors,
+        size_t *gpb_error_cnt);
 
 /**@} gpb_wrappers */
 

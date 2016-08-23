@@ -561,21 +561,29 @@ sr_msg_free(Sr__Msg *msg)
 }
 
 
-
-int
-sr_new_val(const char *xpath, sr_val_t **value_p)
+/**
+ * @brief Create a new instance of sysrepo value.
+ */
+static int
+sr_new_val_ctx(sr_mem_ctx_t *sr_mem, const char *xpath, sr_val_t **value_p)
 {
     int ret = SR_ERR_OK;
-    sr_mem_ctx_t *sr_mem = NULL;
+    bool new_ctx = false;
     sr_val_t *value = NULL;
 
     CHECK_NULL_ARG(value_p);
 
-    ret = sr_mem_new(sizeof *value + (xpath ? strlen(xpath) + 1 : 0), &sr_mem);
-    CHECK_RC_MSG_RETURN(ret, "Failed to obtain new sysrepo memory.");
+    if (NULL == sr_mem) {
+        ret = sr_mem_new(sizeof *value + (xpath ? strlen(xpath) + 1 : 0), &sr_mem);
+        CHECK_RC_MSG_RETURN(ret, "Failed to obtain new sysrepo memory.");
+        new_ctx = true;
+    }
+
     value = (sr_val_t *)sr_calloc(sr_mem, 1, sizeof *value);
     if (NULL == value) {
-        sr_mem_free(sr_mem);
+        if (new_ctx) {
+            sr_mem_free(sr_mem);
+        }
         return SR_ERR_INTERNAL;
     }
     value->_sr_mem = sr_mem;
@@ -583,21 +591,35 @@ sr_new_val(const char *xpath, sr_val_t **value_p)
     if (xpath) {
         ret = sr_val_set_xpath(value, xpath);
         if (SR_ERR_OK != ret) {
-            sr_mem_free(sr_mem);
+            if (new_ctx) {
+                sr_mem_free(sr_mem);
+            } /**
+               * Else leave the allocated data there, saving and restoring snapshot would be
+               * expensive for such a small function.
+               */
             return SR_ERR_INTERNAL;
         }
     }
 
-    sr_mem->obj_count = 1;
+    sr_mem->obj_count += 1;
     *value_p = value;
     return SR_ERR_OK;
 }
 
 int
-sr_new_values(size_t count, sr_val_t **values_p)
+sr_new_val(const char *xpath, sr_val_t **value_p)
+{
+    return sr_new_val_ctx(NULL, xpath, value_p);
+}
+
+/**
+ * @brief Create an array of sysrepo values.
+ */
+static int
+sr_new_values_ctx(sr_mem_ctx_t *sr_mem, size_t count, sr_val_t **values_p)
 {
     int ret = SR_ERR_OK;
-    sr_mem_ctx_t *sr_mem = NULL;
+    bool new_ctx = false;
     sr_val_t *values = NULL;
 
     CHECK_NULL_ARG(values_p);
@@ -607,20 +629,32 @@ sr_new_values(size_t count, sr_val_t **values_p)
         return SR_ERR_OK;
     }
 
-    ret = sr_mem_new((sizeof *values) * count, &sr_mem);
-    CHECK_RC_MSG_RETURN(ret, "Failed to obtain new sysrepo memory.");
+    if (NULL == sr_mem) {
+        ret = sr_mem_new((sizeof *values) * count, &sr_mem);
+        CHECK_RC_MSG_RETURN(ret, "Failed to obtain new sysrepo memory.");
+        new_ctx = true;
+    }
+
     values = (sr_val_t *)sr_calloc(sr_mem, count, sizeof *values);
     if (NULL == values) {
-        sr_mem_free(sr_mem);
+        if (new_ctx) {
+            sr_mem_free(sr_mem);
+        }
         return SR_ERR_INTERNAL;
     }
     for (size_t i = 0; i < count; ++i) {
         values[i]._sr_mem = sr_mem;
     }
-    sr_mem->obj_count = 1; /* 1 for the entire array */
+    sr_mem->obj_count += 1; /* 1 for the entire array */
 
     *values_p = values;
     return SR_ERR_OK;
+}
+
+int
+sr_new_values(size_t count, sr_val_t **values_p)
+{
+    return sr_new_values_ctx(NULL, count, values_p);
 }
 
 int
@@ -709,14 +743,14 @@ sr_dup_val_data(sr_val_t *dest, sr_val_t *source)
 }
 
 int
-sr_dup_val(sr_val_t *value, sr_val_t **value_dup_p)
+sr_dup_val(sr_val_t *value, sr_mem_ctx_t *sr_mem_dest, sr_val_t **value_dup_p)
 {
     int rc = SR_ERR_OK;
     sr_val_t *val_dup = NULL;
 
     CHECK_NULL_ARG2(value, value_dup_p);
 
-    rc = sr_new_val(value->xpath, &val_dup);
+    rc = sr_new_val_ctx(sr_mem_dest, value->xpath, &val_dup);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to create new sysrepo value.");
 
     rc = sr_dup_val_data(val_dup, value);
@@ -733,14 +767,14 @@ cleanup:
 }
 
 int
-sr_dup_values(sr_val_t *values, size_t count, sr_val_t **values_dup_p)
+sr_dup_values(sr_val_t *values, size_t count, sr_mem_ctx_t *sr_mem_dest, sr_val_t **values_dup_p)
 {
     int rc = SR_ERR_OK;
     sr_val_t *values_dup = NULL;
 
     CHECK_NULL_ARG2(values, values_dup_p);
 
-    rc = sr_new_values(count, &values_dup);
+    rc = sr_new_values_ctx(sr_mem_dest, count, &values_dup);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to create new array of sysrepo values.");
 
     for (size_t i = 0; i < count; ++i) {
@@ -765,7 +799,7 @@ cleanup:
 /**
  * @brief Allocate a new instance of a sysrepo node over an existing sysrepo memory context.
  */
-int
+static int
 sr_new_node(sr_mem_ctx_t *sr_mem, const char *name, const char *module_name, sr_node_t **node_p)
 {
     int rc = SR_ERR_OK;
@@ -796,34 +830,53 @@ cleanup:
     return rc;
 }
 
-int
-sr_new_tree(const char *name, const char *module_name, sr_node_t **node_p)
+
+/**
+ * @brief Create a new sysrepo tree.
+ */
+static int
+sr_new_tree_ctx(sr_mem_ctx_t *sr_mem, const char *name, const char *module_name, sr_node_t **node_p)
 {
     int rc = SR_ERR_OK;
-    sr_mem_ctx_t *sr_mem = NULL;
+    bool new_ctx = false;
 
     CHECK_NULL_ARG(node_p);
 
-    rc = sr_mem_new(sizeof(sr_node_t) + (name ? strlen(name) + 1 : 0)
-                                      + (module_name ? strlen(module_name) + 1 : 0),
-                    &sr_mem);
-    CHECK_RC_MSG_RETURN(rc, "Failed to obtain new sysrepo memory.");
+    if (NULL == sr_mem) {
+        rc = sr_mem_new(sizeof(sr_node_t) + (name ? strlen(name) + 1 : 0)
+                                          + (module_name ? strlen(module_name) + 1 : 0),
+                        &sr_mem);
+        CHECK_RC_MSG_RETURN(rc, "Failed to obtain new sysrepo memory.");
+        new_ctx = true;
+    }
 
     rc = sr_new_node(sr_mem, name, module_name, node_p);
     if (SR_ERR_OK != rc) {
-        sr_mem_free(sr_mem);
+        if (new_ctx) {
+            sr_mem_free(sr_mem);
+        }
     } else {
-        sr_mem->obj_count = 1;
+        sr_mem->obj_count += 1;
     }
 
     return rc;
 }
 
 int
-sr_new_trees(size_t count, sr_node_t **trees_p)
+sr_new_tree(const char *name, const char *module_name, sr_node_t **node_p)
+{
+    return sr_new_tree_ctx(NULL, name, module_name, node_p);
+}
+
+
+/**
+ * @brief Create a new array of sysrepo trees.
+ */
+static int
+sr_new_trees_ctx(sr_mem_ctx_t *sr_mem, size_t count, sr_node_t **trees_p)
 {
     int rc = SR_ERR_OK;
-    sr_mem_ctx_t *sr_mem = NULL;
+    bool new_ctx = false;
     sr_node_t *trees = NULL;
 
     CHECK_NULL_ARG(trees_p);
@@ -833,22 +886,33 @@ sr_new_trees(size_t count, sr_node_t **trees_p)
         return SR_ERR_OK;
     }
 
-    rc = sr_mem_new((sizeof *trees) * count, &sr_mem);
-    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to obtain new sysrepo memory.");
+    if (NULL == sr_mem) {
+        rc = sr_mem_new((sizeof *trees) * count, &sr_mem);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to obtain new sysrepo memory.");
+        new_ctx = true;
+    }
+
     trees = (sr_node_t *)sr_calloc(sr_mem, count, sizeof *trees);
     CHECK_NULL_NOMEM_GOTO(trees, rc, cleanup);
     for (size_t i = 0; i < count; ++i) {
         trees[i]._sr_mem = sr_mem;
     }
-    sr_mem->obj_count = 1; /* 1 for the entire array */
+    sr_mem->obj_count += 1; /* 1 for the entire array */
 
 cleanup:
     if (SR_ERR_OK != rc) {
-        sr_mem_free(sr_mem);
+        if (new_ctx) {
+            sr_mem_free(sr_mem);
+        }
     } else {
         *trees_p = trees;
     }
     return SR_ERR_OK;
+}
+int
+sr_new_trees(size_t count, sr_node_t **trees_p)
+{
+    return sr_new_trees_ctx(NULL, count, trees_p);
 }
 
 int
@@ -911,17 +975,17 @@ sr_node_add_child(sr_node_t *parent, const char *child_name, const char *child_m
 }
 
 static int
-sr_dup_tree_ctx(sr_mem_ctx_t *sr_mem, sr_node_t *tree, sr_node_t **tree_dup_p)
+sr_dup_tree_ctx(sr_mem_ctx_t *sr_mem_dest, sr_mem_ctx_t *sr_mem_tree, sr_node_t *tree, sr_node_t **tree_dup_p)
 {
     int rc = SR_ERR_OK;
     sr_node_t *tree_dup = NULL, *child = NULL, *child_dup = NULL;
 
     CHECK_NULL_ARG2(tree, tree_dup_p);
 
-    if (NULL != sr_mem) {
-        rc = sr_new_node(sr_mem, tree->name, tree->module_name, &tree_dup);
+    if (NULL != sr_mem_tree) {
+        rc = sr_new_node(sr_mem_tree, tree->name, tree->module_name, &tree_dup);
     } else {
-        rc = sr_new_tree(tree->name, tree->module_name, &tree_dup);
+        rc = sr_new_tree_ctx(sr_mem_dest, tree->name, tree->module_name, &tree_dup);
     }
     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to create new sysrepo node.");
 
@@ -931,7 +995,7 @@ sr_dup_tree_ctx(sr_mem_ctx_t *sr_mem, sr_node_t *tree, sr_node_t **tree_dup_p)
     /* duplicate descendants */
     child = tree->first_child;
     while (child) {
-        rc = sr_dup_tree_ctx(tree_dup->_sr_mem, child, &child_dup);
+        rc = sr_dup_tree_ctx(sr_mem_dest, tree_dup->_sr_mem, child, &child_dup);
         if (SR_ERR_OK != rc) {
             goto cleanup;
         }
@@ -942,7 +1006,7 @@ sr_dup_tree_ctx(sr_mem_ctx_t *sr_mem, sr_node_t *tree, sr_node_t **tree_dup_p)
     *tree_dup_p = tree_dup;
 
 cleanup:
-    if (SR_ERR_OK != rc && NULL == sr_mem) {
+    if (SR_ERR_OK != rc && NULL == sr_mem_tree) {
         sr_free_tree(tree_dup);
     }
 
@@ -950,20 +1014,20 @@ cleanup:
 }
 
 int
-sr_dup_tree(sr_node_t *tree, sr_node_t **tree_dup_p)
+sr_dup_tree(sr_node_t *tree, sr_mem_ctx_t *sr_mem_dest, sr_node_t **tree_dup_p)
 {
-    return sr_dup_tree_ctx(NULL, tree, tree_dup_p);
+    return sr_dup_tree_ctx(sr_mem_dest, NULL, tree, tree_dup_p);
 }
 
 int
-sr_dup_trees(sr_node_t *trees, size_t count, sr_node_t **trees_dup_p)
+sr_dup_trees(sr_node_t *trees, size_t count, sr_mem_ctx_t *sr_mem_dest, sr_node_t **trees_dup_p)
 {
     int rc = SR_ERR_OK;
     sr_node_t *trees_dup = NULL, *child = NULL, *child_dup = NULL;
 
     CHECK_NULL_ARG2(trees, trees_dup_p);
 
-    rc = sr_new_trees(count, &trees_dup);
+    rc = sr_new_trees_ctx(sr_mem_dest, count, &trees_dup);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to create new array of sysrepo nodes.");
 
     for (size_t i = 0; i < count; ++i) {
@@ -977,7 +1041,7 @@ sr_dup_trees(sr_node_t *trees, size_t count, sr_node_t **trees_dup_p)
         /* duplicate descendants */
         child = trees[i].first_child;
         while (child) {
-            rc = sr_dup_tree_ctx(trees_dup->_sr_mem, child, &child_dup);
+            rc = sr_dup_tree_ctx(sr_mem_dest, trees_dup->_sr_mem, child, &child_dup);
             if (SR_ERR_OK != rc) {
                 goto cleanup;
             }

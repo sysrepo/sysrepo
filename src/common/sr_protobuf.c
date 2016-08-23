@@ -1770,27 +1770,45 @@ cleanup:
 }
 
 int
-sr_changes_sr_to_gpb(sr_list_t *sr_changes, Sr__Change ***gpb_changes_p, size_t *gpb_count) {
+sr_changes_sr_to_gpb(sr_list_t *sr_changes, sr_mem_ctx_t *sr_mem, Sr__Change ***gpb_changes_p, size_t *gpb_count)
+{
     Sr__Change **gpb_changes = NULL;
+    sr_mem_snapshot_t snapshot = { 0, };
+    sr_val_t *value_dup = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG2(gpb_changes_p, gpb_count);
 
     if ((NULL != sr_changes) && (sr_changes->count > 0)) {
-        gpb_changes = calloc(sr_changes->count, sizeof(*gpb_changes));
+        if (sr_mem) {
+            sr_mem_snapshot(sr_mem, &snapshot);
+        }
+        gpb_changes = sr_calloc(sr_mem, sr_changes->count, sizeof(*gpb_changes));
         CHECK_NULL_NOMEM_RETURN(gpb_changes);
 
         for (size_t i = 0; i < sr_changes->count; i++) {
-            gpb_changes[i] = calloc(1, sizeof(**gpb_changes));
+            gpb_changes[i] = sr_calloc(sr_mem, 1, sizeof(**gpb_changes));
             CHECK_NULL_NOMEM_GOTO(gpb_changes[i], rc, cleanup);
             sr__change__init(gpb_changes[i]);
             sr_change_t *ch = sr_changes->data[i];
             if (NULL != ch->new_value) {
-                rc = sr_dup_val_t_to_gpb(ch->new_value, &gpb_changes[i]->new_value);
+                if (sr_mem) {
+                    rc = sr_dup_val(ch->new_value, sr_mem, &value_dup);
+                    CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to duplicate sr_val_t.");
+                } else {
+                    value_dup = ch->new_value;
+                }
+                rc = sr_dup_val_t_to_gpb(value_dup, &gpb_changes[i]->new_value);
                 CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to duplicate sr_val_t to GPB.");
             }
             if (NULL != ch->old_value) {
-                rc = sr_dup_val_t_to_gpb(ch->old_value, &gpb_changes[i]->old_value);
+                if (sr_mem) {
+                    rc = sr_dup_val(ch->old_value, sr_mem, &value_dup);
+                    CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to duplicate sr_val_t.");
+                } else {
+                    value_dup = ch->old_value;
+                }
+                rc = sr_dup_val_t_to_gpb(value_dup, &gpb_changes[i]->old_value);
                 CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to duplicate sr_val_t to GPB.");
             }
             gpb_changes[i]->changeoperation = sr_change_op_sr_to_gpb(ch->oper);
@@ -1803,10 +1821,14 @@ sr_changes_sr_to_gpb(sr_list_t *sr_changes, Sr__Change ***gpb_changes_p, size_t 
     return SR_ERR_OK;
 
 cleanup:
-    for (size_t i = 0; i < sr_changes->count; i++) {
-        sr__change__free_unpacked(gpb_changes[i], NULL);
+    if (sr_mem) {
+        sr_mem_restore(&snapshot);
+    } else {
+        for (size_t i = 0; i < sr_changes->count; i++) {
+            sr__change__free_unpacked(gpb_changes[i], NULL);
+        }
+        free(gpb_changes);
     }
-    free(gpb_changes);
     return rc;
 }
 
@@ -2337,23 +2359,28 @@ cleanup:
 }
 
 int
-sr_gpb_fill_error(const char *error_message, const char *error_path, Sr__Error **gpb_error_p)
+sr_gpb_fill_error(const char *error_message, const char *error_path, sr_mem_ctx_t *sr_mem, Sr__Error **gpb_error_p)
 {
     Sr__Error *gpb_error = NULL;
+    sr_mem_snapshot_t snapshot = { 0, };
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG(gpb_error_p);
 
-    gpb_error = calloc(1, sizeof(*gpb_error));
+    if (sr_mem) {
+        sr_mem_snapshot(sr_mem, &snapshot);
+    }
+
+    gpb_error = sr_calloc(sr_mem, 1, sizeof(*gpb_error));
     CHECK_NULL_NOMEM_RETURN(gpb_error);
 
     sr__error__init(gpb_error);
     if (NULL != error_message) {
-        gpb_error->message = strdup(error_message);
+        sr_mem_edit_string(sr_mem, &gpb_error->message, error_message);
         CHECK_NULL_NOMEM_GOTO(gpb_error->message, rc, cleanup);
     }
     if (NULL != error_path) {
-        gpb_error->xpath = strdup(error_path);
+        sr_mem_edit_string(sr_mem, &gpb_error->xpath, error_path);
         CHECK_NULL_NOMEM_GOTO(gpb_error->xpath, rc, cleanup);
     }
 
@@ -2361,30 +2388,44 @@ sr_gpb_fill_error(const char *error_message, const char *error_path, Sr__Error *
     return SR_ERR_OK;
 
 cleanup:
-    if (NULL != gpb_error) {
-        sr__error__free_unpacked(gpb_error, NULL);
+    if (sr_mem) {
+        sr_mem_restore(&snapshot);
+    } else {
+        if (NULL != gpb_error) {
+            sr__error__free_unpacked(gpb_error, NULL);
+        }
     }
     return rc;
 }
 
 int
-sr_gpb_fill_errors(sr_error_info_t *sr_errors, size_t sr_error_cnt, Sr__Error ***gpb_errors_p, size_t *gpb_error_cnt_p)
+sr_gpb_fill_errors(sr_error_info_t *sr_errors, size_t sr_error_cnt, sr_mem_ctx_t *sr_mem, Sr__Error ***gpb_errors_p,
+        size_t *gpb_error_cnt_p)
 {
     Sr__Error **gpb_errors = NULL;
+    sr_mem_snapshot_t snapshot = { 0, };
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG3(sr_errors, gpb_errors_p, gpb_error_cnt_p);
 
-    gpb_errors = calloc(sr_error_cnt, sizeof(*gpb_errors));
+    if (sr_mem) {
+        sr_mem_snapshot(sr_mem, &snapshot);
+    }
+
+    gpb_errors = sr_calloc(sr_mem, sr_error_cnt, sizeof(*gpb_errors));
     CHECK_NULL_NOMEM_RETURN(gpb_errors);
 
     for (size_t i = 0; i < sr_error_cnt; i++) {
-        rc = sr_gpb_fill_error(sr_errors[i].message, sr_errors[i].xpath, &gpb_errors[i]);
+        rc = sr_gpb_fill_error(sr_errors[i].message, sr_errors[i].xpath, sr_mem, &gpb_errors[i]);
         if (SR_ERR_OK != rc) {
-            for (size_t j = 0; j < i; j++) {
-                sr__error__free_unpacked(gpb_errors[j], NULL);
+            if (sr_mem) {
+                sr_mem_restore(&snapshot);
+            } else {
+                for (size_t j = 0; j < i; j++) {
+                    sr__error__free_unpacked(gpb_errors[j], NULL);
+                }
+                free(gpb_errors);
             }
-            free(gpb_errors);
             return rc;
         }
     }

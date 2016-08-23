@@ -180,22 +180,28 @@ int sr_val_set_string(sr_val_t *value, const char *string_val);
 
 /**
  * @brief Duplicate value (with or without Sysrepo memory context) into a new
- * instance with memory context.
+ * instance with memory context. It is possible to specify the destination memory context
+ * or let the function to create a new one.
  *
  * @param [in] value Sysrepo value to duplicate
+ * @param [in] sr_mem_dest Destination memory context.
+ *                         If NULL, a new context will be created.
  * @param [out] value_dup_p Returned duplicate of the input value.
  */
-int sr_dup_val(sr_val_t *value, sr_val_t **value_dup_p);
+int sr_dup_val(sr_val_t *value, sr_mem_ctx_t *sr_mem_dest, sr_val_t **value_dup_p);
 
 /**
  * @brief Duplicate values (with or without Sysrepo memory context) into a new
- * array with memory context.
+ * array with memory context. It is possible to specify the destination memory context
+ * or let the function to create a new one.
  *
  * @param [in] values Array of sysrepo values to duplicate
  * @param [in] count Size of the array to duplicate.
+ * @param [in] sr_mem_dest Destination memory context.
+ *                         If NULL, a new context will be created.
  * @param [out] values_dup_p Returned duplicate of the input array.
  */
-int sr_dup_values(sr_val_t *values, size_t count, sr_val_t **values_dup_p);
+int sr_dup_values(sr_val_t *values, size_t count, sr_mem_ctx_t *sr_mem_dest, sr_val_t **values_dup_p);
 
 
 
@@ -258,20 +264,26 @@ int sr_node_add_child(sr_node_t *parent, const char *child_name, const char *chi
 /**
  * @brief Duplicate node and all its descendants (with or without Sysrepo memory context)
  * into a new instance of Sysrepo tree with memory context.
+ * It is possible to specify the destination memory context or let the function to create a new one.
  *
  * @param [in] root Root of a Sysrepo tree to duplicate.
+ * @param [in] sr_mem_dest Destination memory context.
+ *                         If NULL, a new context will be created.
  * @param [out] tree_dup_p Returned duplicate of the input tree.
  */
-int sr_dup_tree(sr_node_t *tree, sr_node_t **tree_dup_p);
+int sr_dup_tree(sr_node_t *tree, sr_mem_ctx_t *sr_mem_dest, sr_node_t **tree_dup_p);
 
 /**
  * @brief Duplicate an array of trees (with or without Sysrepo memory context) into a new
- * array of trees with memory context.
+ * array of trees with memory context. It is possible to specify the destination memory context
+ * or let the function to create a new one.
  *
  * @param [in] trees Array of sysrepo trees to duplicate.
  * @param [in] count Size of the array to duplicate.
+ * @param [in] sr_mem_dest Destination memory context.
+ *                         If NULL, a new context will be created.
  * @param [out] trees_dup_p Returned duplicate of the input array.
  */
-int sr_dup_trees(sr_node_t *trees, size_t count, sr_node_t **trees_dup_p);
+int sr_dup_trees(sr_node_t *trees, size_t count, sr_mem_ctx_t *sr_mem_dest, sr_node_t **trees_dup_p);
 
 #endif /* SR_EXPERIMENTAL_H_ */
