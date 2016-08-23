@@ -285,7 +285,7 @@ cl_parent_subscription(void **state)
     sr_list_cleanup(xpath_retrieved);
 }
 
-void
+static void
 cl_exact_match_subscription(void **state)
 {
     sr_conn_ctx_t *conn = *state;
@@ -561,10 +561,7 @@ int
 main()
 {
     const struct CMUnitTest tests[] = {
-        /**
-         * Commented out because of https://github.com/CESNET/libyang/issues/102
-         * cmocka_unit_test_setup_teardown(cl_exact_match_subscription, sysrepo_setup, sysrepo_teardown),
-         * */
+        cmocka_unit_test_setup_teardown(cl_exact_match_subscription, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_parent_subscription, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_partialy_covered_by_subscription, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_missing_subscription, sysrepo_setup, sysrepo_teardown),
