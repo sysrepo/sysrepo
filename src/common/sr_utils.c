@@ -765,6 +765,7 @@ sr_libyang_leaf_copy_value(const struct lyd_node_leaf_list *leaf, sr_val_t *valu
         value->data.bool_val = leaf->value.bln;
         return SR_ERR_OK;
     case LY_TYPE_DEC64:
+        CHECK_NULL_ARG(leaf->schema);
         value->data.decimal64_val = (double) leaf->value.dec64;
         leaf_schema = (struct lys_node_leaf *) leaf->schema;
         for (size_t i = 0; i < leaf_schema->type.info.dec64.dig; i++) {

@@ -1398,6 +1398,28 @@ rp_data_provide_resp_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *m
         SR_LOG_ERR("State data arrived after timeout expiration or session id=%u is invalid.", session->id);
         goto error;
     }
+
+    bool found = false;
+    char *xpath = msg->response->data_provide_resp->xpath;
+    for (size_t i = 0; i < session->loaded_state_data[session->datastore]->count; i++) {
+        if (0 == strcmp((char *) session->loaded_state_data[session->datastore]->data[i], xpath)) {
+            found = true;
+            break;
+        }
+    }
+    if (!found) {
+        SR_LOG_ERR("Data provider sent data for unexpected xpath %s", xpath);
+        goto error;
+    }
+
+    size_t xp_len  = strlen(xpath);
+    for (size_t i = 0; i < values_cnt; i++) {
+        if (0 != strncmp(msg->response->data_provide_resp->xpath, values[i].xpath, xp_len)){
+            SR_LOG_ERR("Unexpected value with xpath %s received from provider", values[i].xpath);
+            goto error;
+        }
+    }
+
     for (size_t i = 0; i < values_cnt; i++) {
         SR_LOG_DBG("Received value from data provider for xpath '%s'.", values[i].xpath);
         rc = rp_dt_set_item(rp_ctx->dm_ctx, session->dm_session, values[i].xpath, SR_EDIT_DEFAULT, &values[i]);
