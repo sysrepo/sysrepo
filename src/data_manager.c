@@ -3341,7 +3341,7 @@ dm_enable_module_subtree_running(dm_ctx_t *ctx, dm_session_t *session, const cha
     int rc = SR_ERR_OK;
 
     rc = dm_get_module_and_lockw(ctx, module_name, &si);
-    CHECK_RC_LOG_RETURN(rc, "Lock schema %s for write failed", si->module_name);
+    CHECK_RC_LOG_RETURN(rc, "Lock schema %s for write failed", module_name);
 
     rc = dm_enable_module_subtree_running_internal(ctx, session, si, module_name, xpath);
     pthread_rwlock_unlock(&si->model_lock);
