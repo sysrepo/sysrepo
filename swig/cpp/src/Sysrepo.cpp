@@ -71,11 +71,14 @@ void Throw_Exception::throw_exception(int error)
     }
 }
 
-Errors::Errors()
+Errors::Errors(const sr_error_info_t *info, size_t cnt)
 {
-    // for consistent swig integration
-    info = NULL;
-    cnt = 0;
+    _info = info;
+    _cnt = cnt;
+}
+
+Errors::~Errors()
+{
     return;
 }
 
@@ -93,4 +96,63 @@ void Logs::set_stderr(sr_log_level_t log_level)
 void Logs::set_syslog(sr_log_level_t log_level)
 {
     sr_log_stderr(log_level);
+}
+
+Schema_Content::Schema_Content(char *con)
+{
+    _con = con;
+}
+
+char *Schema_Content::Get()
+{
+    return _con;
+}
+
+Schema_Content::~Schema_Content()
+{
+    free(_con);
+}
+
+Schemas::Schemas(sr_schema_t *sch, size_t cnt)
+{
+    _sch = sch;
+    _cnt = cnt;
+    _pos = 0;
+}
+
+sr_schema_t *Schemas::Get_val()
+{
+    return &_sch[_pos];
+}
+
+size_t Schemas::Get_cnt()
+{
+    return _cnt;
+}
+
+Schemas::~Schemas()
+{
+    if (_sch && _cnt > 0)
+        sr_free_schemas(_sch, _cnt);
+    return;
+}
+
+bool Schemas::Next()
+{
+    if (_pos + 1 < _cnt) {
+        ++_pos;
+        return true;
+    }
+
+    return false;
+}
+
+bool Schemas::Prev()
+{
+    if (_pos - 1 > 0) {
+        --_pos;
+        return true;
+    }
+
+    return false;
 }

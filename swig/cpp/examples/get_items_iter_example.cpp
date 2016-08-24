@@ -81,6 +81,8 @@ main(int argc, char **argv)
 	shared_ptr<Iter_Value> iter;
 
 	iter = sess.get_items_iter(xpath);
+        if (iter == NULL)
+            return 0;
 
         while (value = sess.get_item_next(iter)) {
             print_value(value);

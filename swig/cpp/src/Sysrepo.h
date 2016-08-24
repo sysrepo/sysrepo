@@ -23,6 +23,7 @@
 #define SYSREPO_H
 
 #include <iostream>
+#include <stdexcept>
 
 extern "C" {
 #include "sysrepo.h"
@@ -76,18 +77,41 @@ public:
 class Errors
 {
 public:
-    Errors();
-    size_t cnt;
-    const sr_error_info_t *info;
+    Errors(const sr_error_info_t *info, size_t cnt = 0);
+    ~Errors();
+
+private:
+    size_t _cnt;
+    const sr_error_info_t *_info;
 };
 
-class Schema
+class Schemas:public Throw_Exception
+{
+public:
+    Schemas(sr_schema_t *sch, size_t cnt);
+    sr_schema_t *Get_val();
+    const char *get_module_name() {return _sch[_pos].module_name;};
+    size_t Get_cnt();
+    bool Next();
+    bool Prev();
+    ~Schemas();
+
+private:
+    sr_schema_t *_sch;
+    size_t _cnt;
+    size_t _pos;
+};
+
+class Schema_Content:public Throw_Exception
 {
 
 public:
-    size_t cnt;
-    sr_schema_t *sch;
-    char *content;
+    Schema_Content(char *con);
+    char *Get();
+    ~Schema_Content();
+
+private:
+    char *_con;
 };
 
 #endif

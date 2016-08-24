@@ -9,6 +9,9 @@
 %shared_ptr(Session)
 %shared_ptr(Subscribe)
 %shared_ptr(Operation)
+%shared_ptr(Schema_Content)
+%shared_ptr(Schemas)
+%shared_ptr(Errors)
 
 %include "../swig_base/sysrepo.i"
 %include "../swig_base/value.i"

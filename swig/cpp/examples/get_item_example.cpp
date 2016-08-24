@@ -42,6 +42,8 @@ main(int argc, char **argv)
         shared_ptr<Value> value = NULL;
 
         value = sess.get_item(xpath);
+        if (value == NULL)
+            return 0;
 
         cout << endl << "Value on xpath: " << value->get_xpath() << " = "\
              << (value->get_bool() ? "true" : "false") << endl << endl;

@@ -37,6 +37,8 @@ main(int argc, char **argv)
 
 	shared_ptr<Values> values;
 	values = sess.get_items(xpath);
+        if (values == NULL)
+            return 0;
 
         do {
             cout << values->get_xpath() << endl;

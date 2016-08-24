@@ -46,11 +46,11 @@ public:
     Session(sr_session_ctx_t *sess);
     void session_stop();
     void session_switch_ds(sr_datastore_t ds);
-    void get_last_error(Errors& err);
-    void get_last_errors(Errors& err);
-    void list_schemas(Schema& schema);
-    void get_schema(Schema& schema, const char *module_name, const char *revision,
-		    const char *submodule_name,  sr_schema_format_t format);
+    shared_ptr<Errors> get_last_error();
+    shared_ptr<Errors> get_last_errors();
+    shared_ptr<Schemas> list_schemas();
+    shared_ptr<Schema_Content> get_schema(const char *module_name, const char *revision,\
+                               const char *submodule_name, sr_schema_format_t format);
     shared_ptr<Value> get_item(const char *xpath);
     shared_ptr<Values> get_items(const char *xpath);
     shared_ptr<Iter_Value> get_items_iter(const char *xpath);
