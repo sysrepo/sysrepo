@@ -300,7 +300,10 @@ cl_subscription_close(sr_session_ctx_t *session, cl_sm_subscription_ctx_t *subsc
 
     /* send the request and receive the response */
     rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__UNSUBSCRIBE);
-    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Error by processing of the request.");
+        /* don't go to cleanup, subscriptions_cnt must be decremented */
+    }
 
     /* cleanup the SM subscription */
     cl_sm_subscription_cleanup(subscription);
