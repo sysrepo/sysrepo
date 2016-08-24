@@ -23,6 +23,7 @@
 #include <memory>
 #include <iostream>
 
+#include "Struct.h"
 #include "Sysrepo.h"
 #include "Value.h"
 #include "Connection.h"
@@ -84,7 +85,7 @@ void Session::session_switch_ds(sr_datastore_t ds)
     }
 }
 
-shared_ptr<Errors> Session::get_last_error()
+shared_ptr<Error> Session::get_last_error()
 {
     const sr_error_info_t *info;
 
@@ -93,7 +94,7 @@ shared_ptr<Errors> Session::get_last_error()
         throw_exception(ret);
     }
 
-    shared_ptr<Errors> error(new Errors(info));
+    shared_ptr<Error> error(new Error(info));
     return error;
 }
 

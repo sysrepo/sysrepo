@@ -8,13 +8,15 @@ set(SYSREPO_CPP_SOURCES
 	cpp/src/Sysrepo.cpp
 	cpp/src/Value.cpp
         cpp/src/Connection.cpp
-        cpp/src/Session.cpp)
+        cpp/src/Session.cpp
+        cpp/src/Struct.cpp)
 
 set(SYSREPO_H_SOURCES
 	cpp/src/Sysrepo.h
 	cpp/src/Value.h
         cpp/src/Connection.h
-        cpp/src/Session.h)
+        cpp/src/Session.h
+        cpp/src/Struct.h)
 
 add_library(Sysrepo_bindings SHARED ${SYSREPO_CPP_SOURCES})
 

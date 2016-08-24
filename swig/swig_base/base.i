@@ -12,6 +12,7 @@
 %shared_ptr(Schema_Content)
 %shared_ptr(Schemas)
 %shared_ptr(Errors)
+%shared_ptr(Error)
 
 %include "../swig_base/sysrepo.i"
 %include "../swig_base/value.i"

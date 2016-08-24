@@ -74,17 +74,6 @@ public:
     void set_syslog(sr_log_level_t log_level);
 };
 
-class Errors
-{
-public:
-    Errors(const sr_error_info_t *info, size_t cnt = 0);
-    ~Errors();
-
-private:
-    size_t _cnt;
-    const sr_error_info_t *_info;
-};
-
 class Schemas:public Throw_Exception
 {
 public:

@@ -26,6 +26,7 @@
 #include <memory>
 #include <vector>
 
+#include "Struct.h"
 #include "Sysrepo.h"
 #include "Value.h"
 #include "Connection.h"
@@ -46,7 +47,7 @@ public:
     Session(sr_session_ctx_t *sess);
     void session_stop();
     void session_switch_ds(sr_datastore_t ds);
-    shared_ptr<Errors> get_last_error();
+    shared_ptr<Error> get_last_error();
     shared_ptr<Errors> get_last_errors();
     shared_ptr<Schemas> list_schemas();
     shared_ptr<Schema_Content> get_schema(const char *module_name, const char *revision,\

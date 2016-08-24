@@ -22,6 +22,7 @@
 #include <iostream>
 #include <stdexcept>
 
+#include "Struct.h"
 #include "Sysrepo.h"
 
 extern "C" {
@@ -69,17 +70,6 @@ void Throw_Exception::throw_exception(int error)
     case(SR_ERR_TIME_OUT):
         throw runtime_error(sr_strerror(SR_ERR_TIME_OUT));
     }
-}
-
-Errors::Errors(const sr_error_info_t *info, size_t cnt)
-{
-    _info = info;
-    _cnt = cnt;
-}
-
-Errors::~Errors()
-{
-    return;
 }
 
 Logs::Logs()
