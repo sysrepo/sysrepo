@@ -29,7 +29,10 @@
 #include "sr_protobuf.h"
 
 /* Configuration */
-#define MAX_BLOCKS_AVAIL_FOR_ALLOC 3
+#define MEM_BLOCK_MIN_SIZE          256
+#define MAX_BLOCKS_AVAIL_FOR_ALLOC    3
+#define MAX_FREE_MEM_CONTEXTS         4
+#define MEM_PEAK_USAGE_HISTORY_LENGTH 3
 
 /**
  * @brief Internal structure representing a single memory block.

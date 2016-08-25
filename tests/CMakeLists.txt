@@ -53,6 +53,7 @@ endmacro(ADD_UNIT_TEST)
 ADD_UNIT_TEST(common_test 0)
 ADD_UNIT_TEST(xpath_utils_test 1)
 ADD_UNIT_TEST(ac_test 1)
+ADD_UNIT_TEST(mem_mgmt_test 1)
 
 ADD_UNIT_TEST(cm_sm_test 0)
 IF (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")

@@ -27,11 +27,6 @@
 #include "sr_mem_mgmt.h"
 #include "sr_common.h"
 
-/* Configuration */
-#define MEM_BLOCK_MIN_SIZE            256
-#define MAX_FREE_MEM_CONTEXTS         4
-#define MEM_PEAK_USAGE_HISTORY_LENGTH 3
-
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 
@@ -134,8 +129,8 @@ sr_mem_new(size_t min_size, sr_mem_ctx_t **sr_mem_p)
             max_recent_peak = MAX(max_recent_peak, fctx_pool->peak_history[i]);
         }
         if (0 < fctx_pool->count) {
-            node_ll = fctx_pool->fctx_llist->first;
-            /* find the first suitable context */
+            node_ll = fctx_pool->fctx_llist->last;
+            /* find the first suitable context starting from the last used (for cache locality) */
             while (node_ll) {
                 sr_mem = (sr_mem_ctx_t *)node_ll->data;
                 if (min_size <= ((sr_mem_block_t *)sr_mem->mem_blocks->first->data)->size) {
@@ -144,12 +139,12 @@ sr_mem_new(size_t min_size, sr_mem_ctx_t **sr_mem_p)
                 } else {
                     sr_mem = NULL;
                 }
-                node_ll = node_ll->next;
+                node_ll = node_ll->prev;
             }
             if (NULL == sr_mem) {
                 /* take also a non-suitable context */
-                sr_mem = (sr_mem_ctx_t *)fctx_pool->fctx_llist->first->data;
-                sr_llist_rm(fctx_pool->fctx_llist, fctx_pool->fctx_llist->first);
+                sr_mem = (sr_mem_ctx_t *)fctx_pool->fctx_llist->last->data;
+                sr_llist_rm(fctx_pool->fctx_llist, fctx_pool->fctx_llist->last);
             }
             --fctx_pool->count;
             sr_mem->piggy_back = max_recent_peak;
