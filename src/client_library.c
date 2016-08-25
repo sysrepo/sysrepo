@@ -186,6 +186,66 @@ cleanup:
 }
 
 /**
+ * @brief Closes and cleans up the subscription.
+ */
+static int
+cl_subscription_close(sr_session_ctx_t *session, cl_sm_subscription_ctx_t *subscription)
+{
+    Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG(session);
+    if (NULL != subscription) {
+        /* prepare unsubscribe message */
+        rc = sr_gpb_req_alloc(SR__OPERATION__UNSUBSCRIBE, session->id, &msg_req);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate unsubscribe message.");
+
+        msg_req->request->unsubscribe_req->type = subscription->type;
+
+        msg_req->request->unsubscribe_req->destination = strdup(subscription->delivery_address);
+        CHECK_NULL_NOMEM_GOTO(msg_req->request->unsubscribe_req->destination, rc, cleanup);
+        msg_req->request->unsubscribe_req->subscription_id = subscription->id;
+
+        if (NULL != subscription->module_name) {
+            msg_req->request->unsubscribe_req->module_name = strdup(subscription->module_name);
+            CHECK_NULL_NOMEM_GOTO(msg_req->request->unsubscribe_req->module_name, rc, cleanup);
+        }
+
+        /* send the request and receive the response */
+        rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__UNSUBSCRIBE);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR_MSG("Error by processing of the request.");
+            /* don't go to cleanup, subscriptions_cnt must be decremented */
+        }
+
+        /* cleanup the SM subscription */
+        cl_sm_subscription_cleanup(subscription);
+    }
+    /* global resources cleanup */
+    pthread_mutex_lock(&global_lock);
+    subscriptions_cnt--;
+    if (0 == subscriptions_cnt) {
+        /* this is the last subscription - destroy subscription manager */
+        cl_sm_cleanup(cl_sm_ctx, true);
+        cl_sm_ctx = NULL;
+    }
+    if ((0 == subscriptions_cnt) && (0 == connections_cnt)) {
+        /* destroy library-global resources */
+        sr_logger_cleanup();
+    }
+    pthread_mutex_unlock(&global_lock);
+
+cleanup:
+    if (NULL != msg_req) {
+        sr__msg__free_unpacked(msg_req, NULL);
+    }
+    if (NULL != msg_resp) {
+        sr__msg__free_unpacked(msg_resp, NULL);
+    }
+    return rc;
+}
+
+/**
  * @brief Initializes a new subscription.
  */
 static int
@@ -213,11 +273,11 @@ cl_subscription_init(sr_session_ctx_t *session, Sr__SubscriptionType type, const
     }
     pthread_mutex_unlock(&global_lock);
 
-    CHECK_RC_MSG_RETURN(rc, "Cannot initialize Client Subscription Manager.");
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot initialize Client Subscription Manager.");
 
     /* prepare subscribe message */
     rc = sr_gpb_req_alloc(SR__OPERATION__SUBSCRIBE, session->id, &msg_req);
-    CHECK_RC_MSG_RETURN(rc, "Cannot allocate subscribe message.");
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate subscribe message.");
 
     /* initialize subscription ctx */
     rc = cl_sm_subscription_init(cl_sm_ctx, server_ctx, &sm_subscription);
@@ -268,67 +328,7 @@ cleanup:
     if (NULL != msg_req) {
         sr__msg__free_unpacked(msg_req, NULL);
     }
-    cl_sm_subscription_cleanup(sm_subscription);
-    return rc;
-}
-
-/**
- * @brief Closes and cleans up the subscription.
- */
-static int
-cl_subscription_close(sr_session_ctx_t *session, cl_sm_subscription_ctx_t *subscription)
-{
-    Sr__Msg *msg_req = NULL, *msg_resp = NULL;
-    int rc = SR_ERR_OK;
-
-    CHECK_NULL_ARG2(session, subscription);
-
-    /* prepare unsubscribe message */
-    rc = sr_gpb_req_alloc(SR__OPERATION__UNSUBSCRIBE, session->id, &msg_req);
-    CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate unsubscribe message.");
-
-    msg_req->request->unsubscribe_req->type = subscription->type;
-
-    msg_req->request->unsubscribe_req->destination = strdup(subscription->delivery_address);
-    CHECK_NULL_NOMEM_GOTO(msg_req->request->unsubscribe_req->destination, rc, cleanup);
-    msg_req->request->unsubscribe_req->subscription_id = subscription->id;
-
-    if (NULL != subscription->module_name) {
-        msg_req->request->unsubscribe_req->module_name = strdup(subscription->module_name);
-        CHECK_NULL_NOMEM_GOTO(msg_req->request->unsubscribe_req->module_name, rc, cleanup);
-    }
-
-    /* send the request and receive the response */
-    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__UNSUBSCRIBE);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Error by processing of the request.");
-        /* don't go to cleanup, subscriptions_cnt must be decremented */
-    }
-
-    /* cleanup the SM subscription */
-    cl_sm_subscription_cleanup(subscription);
-
-    /* global resources cleanup */
-    pthread_mutex_lock(&global_lock);
-    subscriptions_cnt--;
-    if (0 == subscriptions_cnt) {
-        /* this is the last subscription - destroy subscription manager */
-        cl_sm_cleanup(cl_sm_ctx, true);
-        cl_sm_ctx = NULL;
-    }
-    if ((0 == subscriptions_cnt) && (0 == connections_cnt)) {
-        /* destroy library-global resources */
-        sr_logger_cleanup();
-    }
-    pthread_mutex_unlock(&global_lock);
-
-cleanup:
-    if (NULL != msg_req) {
-        sr__msg__free_unpacked(msg_req, NULL);
-    }
-    if (NULL != msg_resp) {
-        sr__msg__free_unpacked(msg_resp, NULL);
-    }
+    cl_subscription_close(session, sm_subscription);
     return rc;
 }
 
@@ -2022,8 +2022,10 @@ cl_rpc_subscribe(sr_api_variant_t api_variant, sr_session_ctx_t *session, const 
     return cl_session_return(session, SR_ERR_OK);
 
 cleanup:
-    cl_subscription_close(session, sm_subscription);
-    cl_sr_subscription_remove_one(sr_subscription);
+    if (NULL != sm_subscription) {
+        cl_subscription_close(session, sm_subscription);
+        cl_sr_subscription_remove_one(sr_subscription);
+    }
     if (NULL != msg_req) {
         sr__msg__free_unpacked(msg_req, NULL);
     }
@@ -2201,8 +2203,10 @@ sr_dp_get_items_subscribe(sr_session_ctx_t *session, const char *xpath, sr_dp_ge
     return cl_session_return(session, SR_ERR_OK);
 
 cleanup:
-    cl_subscription_close(session, sm_subscription);
-    cl_sr_subscription_remove_one(sr_subscription);
+    if (NULL != sm_subscription) {
+        cl_subscription_close(session, sm_subscription);
+        cl_sr_subscription_remove_one(sr_subscription);
+    }
     if (NULL != msg_req) {
         sr__msg__free_unpacked(msg_req, NULL);
     }
@@ -2277,8 +2281,10 @@ cl_event_notif_subscribe(sr_api_variant_t api_variant, sr_session_ctx_t *session
     return cl_session_return(session, SR_ERR_OK);
 
 cleanup:
-    cl_subscription_close(session, sm_subscription);
-    cl_sr_subscription_remove_one(sr_subscription);
+    if (NULL != sm_subscription) {
+        cl_subscription_close(session, sm_subscription);
+        cl_sr_subscription_remove_one(sr_subscription);
+    }
     if (NULL != msg_req) {
         sr__msg__free_unpacked(msg_req, NULL);
     }
