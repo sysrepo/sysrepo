@@ -21,7 +21,7 @@
 
 #include <stdlib.h>
 #include "sr_common.h"
-#include "xpath_utils.h"
+#include "sysrepo/xpath_utils.h"
 
 static char *
 sr_get_next_node_internal(char *xpath, sr_xpath_ctx_t *state, bool skip_namespace)

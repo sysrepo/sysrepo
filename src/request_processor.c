@@ -61,19 +61,20 @@ static int
 rp_resp_fill_errors(Sr__Msg *msg, dm_session_t *dm_session)
 {
     CHECK_NULL_ARG2(msg, dm_session);
+    sr_mem_ctx_t *sr_mem = (sr_mem_ctx_t *)msg->_sysrepo_mem_ctx;
     int rc = SR_ERR_OK;
 
     if (!dm_has_error(dm_session)) {
         return SR_ERR_OK;
     }
 
-    msg->response->error = calloc(1, sizeof(Sr__Error));
+    msg->response->error = sr_calloc(sr_mem, 1, sizeof(Sr__Error));
     if (NULL == msg->response->error) {
         SR_LOG_ERR_MSG("Memory allocation failed");
         return SR_ERR_NOMEM;
     }
     sr__error__init(msg->response->error);
-    rc = dm_copy_errors(dm_session, &msg->response->error->message, &msg->response->error->xpath);
+    rc = dm_copy_errors(dm_session, sr_mem, &msg->response->error->message, &msg->response->error->xpath);
     return rc;
 }
 
@@ -132,13 +133,17 @@ static int
 rp_set_oper_request_timeout(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *request, uint32_t timeout)
 {
     Sr__Msg *msg = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG3(rp_ctx, session, request);
 
     SR_LOG_DBG("Setting up a timeout for op. data request (%"PRIu32" seconds).", timeout);
 
-    rc = sr_gpb_internal_req_alloc(NULL, SR__OPERATION__OPER_DATA_TIMEOUT, &msg);
+    rc = sr_mem_new(0, &sr_mem);
+    if (SR_ERR_OK == rc) {
+        rc = sr_gpb_internal_req_alloc(sr_mem, SR__OPERATION__OPER_DATA_TIMEOUT, &msg);
+    }
     if (SR_ERR_OK == rc) {
         msg->session_id = session->id;
         msg->internal_request->oper_data_timeout_req->request_id = (intptr_t)request;
@@ -148,6 +153,7 @@ rp_set_oper_request_timeout(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *re
     }
 
     if (SR_ERR_OK != rc) {
+        sr_mem_free(sr_mem);
         SR_LOG_ERR("Unable to setup a timeout for op. data request: %s.", sr_strerror(rc));
     }
 
@@ -213,7 +219,11 @@ rp_get_schema_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, S
 
     SR_LOG_DBG_MSG("Processing get_schema request.");
 
-    /* allocate the response */
+    /**
+     * Allocate the response.
+     * @note: Cannot use memory context here as ::dm_get_schema calls lys_print_mem which
+     * cannot be told to use our memory allocation primitives
+     */
     rc = sr_gpb_resp_alloc(NULL, SR__OPERATION__GET_SCHEMA, session->id, &resp);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Cannot allocate get_schema response.");
@@ -241,6 +251,7 @@ static int
 rp_module_install_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
 {
     Sr__Msg *resp = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
     int rc = SR_ERR_OK, oper_rc = SR_ERR_OK;
 
     CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->module_install_req);
@@ -248,8 +259,11 @@ rp_module_install_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *sessio
     SR_LOG_DBG_MSG("Processing module_install request.");
 
     /* allocate the response */
-    rc = sr_gpb_resp_alloc(NULL, SR__OPERATION__MODULE_INSTALL, session->id, &resp);
+    rc = sr_mem_new(0, &sr_mem);
+    CHECK_RC_MSG_RETURN(rc, "Failed to create a new Sysrepo memory context.");
+    rc = sr_gpb_resp_alloc(sr_mem, SR__OPERATION__MODULE_INSTALL, session->id, &resp);
     if (SR_ERR_OK != rc) {
+        sr_mem_free(sr_mem);
         SR_LOG_ERR_MSG("Cannot allocate module_install response.");
         return SR_ERR_NOMEM;
     }
@@ -295,6 +309,7 @@ static int
 rp_feature_enable_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
 {
     Sr__Msg *resp = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
     int rc = SR_ERR_OK, oper_rc = SR_ERR_OK;
 
     CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->feature_enable_req);
@@ -302,8 +317,11 @@ rp_feature_enable_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *sessio
     SR_LOG_DBG_MSG("Processing feature_enable request.");
 
     /* allocate the response */
-    rc = sr_gpb_resp_alloc(NULL, SR__OPERATION__FEATURE_ENABLE, session->id, &resp);
+    rc = sr_mem_new(0, &sr_mem);
+    CHECK_RC_MSG_RETURN(rc, "Failed to create a new Sysrepo memory context.");
+    rc = sr_gpb_resp_alloc(sr_mem, SR__OPERATION__FEATURE_ENABLE, session->id, &resp);
     if (SR_ERR_OK != rc) {
+        sr_mem_free(sr_mem);
         SR_LOG_ERR_MSG("Cannot allocate feature_enable response.");
         return SR_ERR_NOMEM;
     }
@@ -351,8 +369,16 @@ rp_get_item_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, b
     SR_LOG_DBG_MSG("Processing get_item request.");
 
     Sr__Msg *resp = NULL;
-    rc = sr_gpb_resp_alloc(NULL, SR__OPERATION__GET_ITEM, session->id, &resp);
-    CHECK_RC_MSG_RETURN(rc, "Gpb response allocation failed");
+    sr_mem_ctx_t *sr_mem = NULL;
+
+    rc = sr_mem_new(0, &sr_mem);
+    CHECK_RC_MSG_RETURN(rc, "Failed to create a new Sysrepo memory context.");
+    rc = sr_gpb_resp_alloc(sr_mem, SR__OPERATION__GET_ITEM, session->id, &resp);
+    if (SR_ERR_OK != rc) {
+        sr_mem_free(sr_mem);
+        SR_LOG_ERR_MSG("Gpb response allocation failed");
+        return rc;
+    }
 
     sr_val_t *value = NULL;
     char *xpath = msg->request->get_item_req->xpath;
@@ -379,7 +405,7 @@ rp_get_item_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, b
     session->req = msg;
 
     /* get value from data manager */
-    rc = rp_dt_get_value_wrapper(rp_ctx, session, xpath, &value);
+    rc = rp_dt_get_value_wrapper(rp_ctx, session, sr_mem, xpath, &value);
     if (SR_ERR_OK != rc && SR_ERR_NOT_FOUND != rc) {
         SR_LOG_ERR("Get item failed for '%s', session id=%"PRIu32".", xpath, session->id);
     }
@@ -390,6 +416,7 @@ rp_get_item_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, b
         *skip_msg_cleanup = true;
         /* setup timeout */
         rc = rp_set_oper_request_timeout(rp_ctx, session, msg, RP_OPER_DATA_REQ_TIMEOUT);
+        sr_free_val(value);
         sr_msg_free(resp);
         pthread_mutex_unlock(&session->cur_req_mutex);
         return rc;
@@ -415,9 +442,8 @@ cleanup:
         SR_LOG_ERR_MSG("Copying errors to gpb failed");
     }
 
-    rc = cm_msg_send(rp_ctx->cm_ctx, resp);
-
     sr_free_val(value);
+    rc = cm_msg_send(rp_ctx->cm_ctx, resp);
 
     return rc;
 }
@@ -438,8 +464,16 @@ rp_get_items_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, 
     SR_LOG_DBG_MSG("Processing get_items request.");
 
     Sr__Msg *resp = NULL;
-    rc = sr_gpb_resp_alloc(NULL, SR__OPERATION__GET_ITEMS, session->id, &resp);
-    CHECK_RC_MSG_RETURN(rc, "Gpb response allocation failed");
+    sr_mem_ctx_t *sr_mem = NULL;
+
+    rc = sr_mem_new(0, &sr_mem);
+    CHECK_RC_MSG_RETURN(rc, "Failed to create a new Sysrepo memory context.");
+    rc = sr_gpb_resp_alloc(sr_mem, SR__OPERATION__GET_ITEMS, session->id, &resp);
+    if (SR_ERR_OK != rc) {
+        sr_mem_free(sr_mem);
+        SR_LOG_ERR_MSG("Gpb response allocation failed");
+        return rc;
+    }
 
     if (session->options & SR__SESSION_FLAGS__SESS_NOTIFICATION) {
         rc = rp_check_notif_session(rp_ctx, session, msg);
@@ -467,10 +501,10 @@ rp_get_items_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, 
     limit = msg->request->get_items_req->limit;
 
     if (msg->request->get_items_req->has_offset || msg->request->get_items_req->has_limit) {
-        rc = rp_dt_get_values_wrapper_with_opts(rp_ctx, session, &session->get_items_ctx, xpath,
+        rc = rp_dt_get_values_wrapper_with_opts(rp_ctx, session, &session->get_items_ctx, sr_mem, xpath,
                 offset, limit, &values, &count);
     } else {
-        rc = rp_dt_get_values_wrapper(rp_ctx, session, xpath, &values, &count);
+        rc = rp_dt_get_values_wrapper(rp_ctx, session, sr_mem, xpath, &values, &count);
     }
 
     if (SR_ERR_OK != rc) {
@@ -510,8 +544,8 @@ cleanup:
         SR_LOG_ERR_MSG("Copying errors to gpb failed");
     }
 
-    rc = cm_msg_send(rp_ctx->cm_ctx, resp);
     sr_free_values(values, count);
+    rc = cm_msg_send(rp_ctx->cm_ctx, resp);
 
     return rc;
 }
@@ -523,6 +557,7 @@ static int
 rp_set_item_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
 {
     Sr__Msg *resp = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
     char *xpath = NULL;
     sr_val_t *value = NULL;
     int rc = SR_ERR_OK;
@@ -534,20 +569,20 @@ rp_set_item_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
     xpath = msg->request->set_item_req->xpath;
 
     /* allocate the response */
-    rc = sr_gpb_resp_alloc(NULL, SR__OPERATION__SET_ITEM, session->id, &resp);
+    rc = sr_mem_new(0, &sr_mem);
+    CHECK_RC_MSG_RETURN(rc, "Failed to create a new Sysrepo memory context.");
+    rc = sr_gpb_resp_alloc(sr_mem, SR__OPERATION__SET_ITEM, session->id, &resp);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Allocation of set_item response failed.");
-        free(value);
+        sr_mem_free(sr_mem);
         return SR_ERR_NOMEM;
     }
 
     if (NULL != msg->request->set_item_req->value) {
         /* copy the value from gpb */
-        value = calloc(1, sizeof(*value));
-        rc = sr_copy_gpb_to_val_t(msg->request->set_item_req->value, value);
+        rc = sr_dup_gpb_to_val_t((sr_mem_ctx_t *)msg->_sysrepo_mem_ctx, msg->request->set_item_req->value, &value);
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR("Copying gpb value to sr_val_t failed for xpath '%s'", xpath);
-            free(value);
         }
 
         /* set the value in data manager */
@@ -585,6 +620,7 @@ static int
 rp_delete_item_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
 {
     Sr__Msg *resp = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
     char *xpath = NULL;
     int rc = SR_ERR_OK;
 
@@ -595,8 +631,11 @@ rp_delete_item_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg
     xpath = msg->request->delete_item_req->xpath;
 
     /* allocate the response */
-    rc = sr_gpb_resp_alloc(NULL, SR__OPERATION__DELETE_ITEM, session->id, &resp);
+    rc = sr_mem_new(0, &sr_mem);
+    CHECK_RC_MSG_RETURN(rc, "Failed to create a new Sysrepo memory context.");
+    rc = sr_gpb_resp_alloc(sr_mem, SR__OPERATION__DELETE_ITEM, session->id, &resp);
     if (SR_ERR_OK != rc) {
+        sr_mem_free(sr_mem);
         SR_LOG_ERR_MSG("Allocation of delete_item response failed.");
         return SR_ERR_NOMEM;
     }
@@ -628,6 +667,7 @@ static int
 rp_move_item_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
 {
     Sr__Msg *resp = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
     char *xpath = NULL;
     char *relative_item = NULL;
     int rc = SR_ERR_OK;
@@ -640,8 +680,11 @@ rp_move_item_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
     relative_item = msg->request->move_item_req->relative_item;
 
     /* allocate the response */
-    rc = sr_gpb_resp_alloc(NULL, SR__OPERATION__MOVE_ITEM, session->id, &resp);
+    rc = sr_mem_new(0, &sr_mem);
+    CHECK_RC_MSG_RETURN(rc, "Failed to create a new Sysrepo memory context.");
+    rc = sr_gpb_resp_alloc(sr_mem, SR__OPERATION__MOVE_ITEM, session->id, &resp);
     if (SR_ERR_OK != rc) {
+        sr_mem_free(sr_mem);
         SR_LOG_ERR_MSG("Allocation of move_item response failed.");
         return SR_ERR_NOMEM;
     }
@@ -670,6 +713,7 @@ static int
 rp_validate_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
 {
     Sr__Msg *resp = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->validate_req);
@@ -677,8 +721,11 @@ rp_validate_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
     SR_LOG_DBG_MSG("Processing validate request.");
 
     /* allocate the response */
-    rc = sr_gpb_resp_alloc(NULL, SR__OPERATION__VALIDATE, session->id, &resp);
+    rc = sr_mem_new(0, &sr_mem);
+    CHECK_RC_MSG_RETURN(rc, "Failed to create a new Sysrepo memory context.");
+    rc = sr_gpb_resp_alloc(sr_mem, SR__OPERATION__VALIDATE, session->id, &resp);
     if (SR_ERR_OK != rc) {
+        sr_mem_free(sr_mem);
         SR_LOG_ERR_MSG("Allocation of validate response failed.");
         return SR_ERR_NOMEM;
     }
@@ -697,7 +744,7 @@ rp_validate_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
 
     /* copy error information to GPB  (if any) */
     if (err_cnt > 0) {
-        sr_gpb_fill_errors(errors, err_cnt, &resp->response->validate_resp->errors, &resp->response->validate_resp->n_errors);
+        sr_gpb_fill_errors(errors, err_cnt, sr_mem, &resp->response->validate_resp->errors, &resp->response->validate_resp->n_errors);
         sr_free_errors(errors, err_cnt);
     }
 
@@ -714,6 +761,7 @@ static int
 rp_commit_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
 {
     Sr__Msg *resp = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->commit_req);
@@ -721,8 +769,11 @@ rp_commit_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
     SR_LOG_DBG_MSG("Processing commit request.");
 
     /* allocate the response */
-    rc = sr_gpb_resp_alloc(NULL, SR__OPERATION__COMMIT, session->id, &resp);
+    rc = sr_mem_new(0, &sr_mem);
+    CHECK_RC_MSG_RETURN(rc, "Failed to create a new Sysrepo memory context.");
+    rc = sr_gpb_resp_alloc(sr_mem, SR__OPERATION__COMMIT, session->id, &resp);
     if (SR_ERR_OK != rc) {
+        sr_mem_free(sr_mem);
         SR_LOG_ERR_MSG("Allocation of commit response failed.");
         return SR_ERR_NOMEM;
     }
@@ -743,7 +794,7 @@ rp_commit_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
 
     /* copy error information to GPB  (if any) */
     if (err_cnt > 0) {
-        sr_gpb_fill_errors(errors, err_cnt, &resp->response->commit_resp->errors, &resp->response->commit_resp->n_errors);
+        sr_gpb_fill_errors(errors, err_cnt, sr_mem, &resp->response->commit_resp->errors, &resp->response->commit_resp->n_errors);
         sr_free_errors(errors, err_cnt);
     }
 
@@ -760,6 +811,7 @@ static int
 rp_discard_changes_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
 {
     Sr__Msg *resp = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->discard_changes_req);
@@ -767,8 +819,11 @@ rp_discard_changes_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *sessi
     SR_LOG_DBG_MSG("Processing discard_changes request.");
 
     /* allocate the response */
-    rc = sr_gpb_resp_alloc(NULL, SR__OPERATION__DISCARD_CHANGES, session->id, &resp);
+    rc = sr_mem_new(0, &sr_mem);
+    CHECK_RC_MSG_RETURN(rc, "Failed to create a new Sysrepo memory context.");
+    rc = sr_gpb_resp_alloc(sr_mem, SR__OPERATION__DISCARD_CHANGES, session->id, &resp);
     if (SR_ERR_OK != rc) {
+        sr_mem_free(sr_mem);
         SR_LOG_ERR_MSG("Allocation of discard_changes response failed.");
         return SR_ERR_NOMEM;
     }
@@ -796,6 +851,7 @@ static int
 rp_copy_config_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
 {
     Sr__Msg *resp = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->copy_config_req);
@@ -803,8 +859,11 @@ rp_copy_config_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg
     SR_LOG_DBG_MSG("Processing copy_config request.");
 
     /* allocate the response */
-    rc = sr_gpb_resp_alloc(NULL, SR__OPERATION__COPY_CONFIG, session->id, &resp);
+    rc = sr_mem_new(0, &sr_mem);
+    CHECK_RC_MSG_RETURN(rc, "Failed to create a new Sysrepo memory context.");
+    rc = sr_gpb_resp_alloc(sr_mem, SR__OPERATION__COPY_CONFIG, session->id, &resp);
     if (SR_ERR_OK != rc) {
+        sr_mem_free(sr_mem);
         SR_LOG_ERR_MSG("Allocation of copy_config response failed.");
         return SR_ERR_NOMEM;
     }
@@ -834,6 +893,7 @@ static int
 rp_session_refresh_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
 {
     Sr__Msg *resp = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->session_refresh_req);
@@ -841,8 +901,11 @@ rp_session_refresh_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg 
     SR_LOG_DBG_MSG("Processing session_data_refresh request.");
 
     /* allocate the response */
-    rc = sr_gpb_resp_alloc(NULL, SR__OPERATION__SESSION_REFRESH, session->id, &resp);
+    rc = sr_mem_new(0, &sr_mem);
+    CHECK_RC_MSG_RETURN(rc, "Failed to create a new Sysrepo memory context.");
+    rc = sr_gpb_resp_alloc(sr_mem, SR__OPERATION__SESSION_REFRESH, session->id, &resp);
     if (SR_ERR_OK != rc) {
+        sr_mem_free(sr_mem);
         SR_LOG_ERR_MSG("Allocation of session_data_refresh response failed.");
         return SR_ERR_NOMEM;
     }
@@ -857,7 +920,7 @@ rp_session_refresh_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg 
 
     /* copy error information to GPB  (if any) */
     if (NULL != errors) {
-        sr_gpb_fill_errors(errors, err_cnt, &resp->response->session_refresh_resp->errors,
+        sr_gpb_fill_errors(errors, err_cnt, sr_mem, &resp->response->session_refresh_resp->errors,
                 &resp->response->session_refresh_resp->n_errors);
         sr_free_errors(errors, err_cnt);
     }
@@ -872,6 +935,7 @@ static int
 rp_switch_datastore_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
 {
     Sr__Msg *resp = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->session_switch_ds_req);
@@ -879,8 +943,11 @@ rp_switch_datastore_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg
     SR_LOG_DBG_MSG("Processing session_switch_ds request.");
 
     /* allocate the response */
-    rc = sr_gpb_resp_alloc(NULL, SR__OPERATION__SESSION_SWITCH_DS, session->id, &resp);
+    rc = sr_mem_new(0, &sr_mem);
+    CHECK_RC_MSG_RETURN(rc, "Failed to create a new Sysrepo memory context.");
+    rc = sr_gpb_resp_alloc(sr_mem, SR__OPERATION__SESSION_SWITCH_DS, session->id, &resp);
     if (SR_ERR_OK != rc) {
+        sr_mem_free(sr_mem);
         SR_LOG_ERR_MSG("Allocation of session_switch_ds response failed.");
         return SR_ERR_NOMEM;
     }
@@ -905,6 +972,7 @@ static int
 rp_session_set_opts(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
 {
     Sr__Msg *resp = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->session_set_opts_req);
@@ -912,8 +980,11 @@ rp_session_set_opts(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
     SR_LOG_DBG_MSG("Procession session set opts request.");
 
     /* allocate the response */
-    rc = sr_gpb_resp_alloc(NULL, SR__OPERATION__SESSION_SET_OPTS, session->id, &resp);
+    rc = sr_mem_new(0, &sr_mem);
+    CHECK_RC_MSG_RETURN(rc, "Failed to create a new Sysrepo memory context.");
+    rc = sr_gpb_resp_alloc(sr_mem, SR__OPERATION__SESSION_SET_OPTS, session->id, &resp);
     if (SR_ERR_OK != rc) {
+        sr_mem_free(sr_mem);
         SR_LOG_ERR_MSG("Allocation of session_set_opts response failed.");
         return SR_ERR_NOMEM;
     }
@@ -944,6 +1015,7 @@ static int
 rp_lock_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
 {
     Sr__Msg *resp = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->lock_req);
@@ -951,8 +1023,11 @@ rp_lock_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg
     SR_LOG_DBG_MSG("Processing lock request.");
 
     /* allocate the response */
-    rc = sr_gpb_resp_alloc(NULL, SR__OPERATION__LOCK, session->id, &resp);
+    rc = sr_mem_new(0, &sr_mem);
+    CHECK_RC_MSG_RETURN(rc, "Failed to create a new Sysrepo memory context.");
+    rc = sr_gpb_resp_alloc(sr_mem, SR__OPERATION__LOCK, session->id, &resp);
     if (SR_ERR_OK != rc) {
+        sr_mem_free(sr_mem);
         SR_LOG_ERR_MSG("Allocation of lock response failed.");
         return SR_ERR_NOMEM;
     }
@@ -980,6 +1055,7 @@ static int
 rp_unlock_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
 {
     Sr__Msg *resp = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->unlock_req);
@@ -987,8 +1063,11 @@ rp_unlock_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__M
     SR_LOG_DBG_MSG("Processing unlock request.");
 
     /* allocate the response */
-    rc = sr_gpb_resp_alloc(NULL, SR__OPERATION__UNLOCK, session->id, &resp);
+    rc = sr_mem_new(0, &sr_mem);
+    CHECK_RC_MSG_RETURN(rc, "Failed to create a new Sysrepo memory context.");
+    rc = sr_gpb_resp_alloc(sr_mem, SR__OPERATION__UNLOCK, session->id, &resp);
     if (SR_ERR_OK != rc) {
+        sr_mem_free(sr_mem);
         SR_LOG_ERR_MSG("Allocation of unlock response failed.");
         return SR_ERR_NOMEM;
     }
@@ -1022,6 +1101,7 @@ static int
 rp_subscribe_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
 {
     Sr__Msg *resp = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
     Sr__SubscribeReq *subscribe_req = NULL;
     np_subscr_options_t options = NP_SUBSCR_DEFAULT;
     int rc = SR_ERR_OK;
@@ -1031,8 +1111,11 @@ rp_subscribe_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr
     SR_LOG_DBG_MSG("Processing subscribe request.");
 
     /* allocate the response */
-    rc = sr_gpb_resp_alloc(NULL, SR__OPERATION__SUBSCRIBE, session->id, &resp);
+    rc = sr_mem_new(0, &sr_mem);
+    CHECK_RC_MSG_RETURN(rc, "Failed to create a new Sysrepo memory context.");
+    rc = sr_gpb_resp_alloc(sr_mem, SR__OPERATION__SUBSCRIBE, session->id, &resp);
     if (SR_ERR_OK != rc) {
+        sr_mem_free(sr_mem);
         SR_LOG_ERR_MSG("Allocation of subscribe response failed.");
         return SR_ERR_NOMEM;
     }
@@ -1082,6 +1165,7 @@ static int
 rp_unsubscribe_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
 {
     Sr__Msg *resp = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->unsubscribe_req);
@@ -1089,8 +1173,11 @@ rp_unsubscribe_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
     SR_LOG_DBG_MSG("Processing unsubscribe request.");
 
     /* allocate the response */
-    rc = sr_gpb_resp_alloc(NULL, SR__OPERATION__UNSUBSCRIBE, session->id, &resp);
+    rc = sr_mem_new(0, &sr_mem);
+    CHECK_RC_MSG_RETURN(rc, "Failed to create a new Sysrepo memory context.");
+    rc = sr_gpb_resp_alloc(sr_mem, SR__OPERATION__UNSUBSCRIBE, session->id, &resp);
     if (SR_ERR_OK != rc) {
+        sr_mem_free(sr_mem);
         SR_LOG_ERR_MSG("Allocation of unsubscribe response failed.");
         return SR_ERR_NOMEM;
     }
@@ -1121,6 +1208,7 @@ static int
 rp_check_enabled_running_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
 {
     Sr__Msg *resp = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
     int rc = SR_ERR_OK;
     bool enabled = false;
 
@@ -1129,8 +1217,11 @@ rp_check_enabled_running_req_process(const rp_ctx_t *rp_ctx, const rp_session_t 
     SR_LOG_DBG_MSG("Processing check-enabled-running request.");
 
     /* allocate the response */
-    rc = sr_gpb_resp_alloc(NULL, SR__OPERATION__CHECK_ENABLED_RUNNING, session->id, &resp);
+    rc = sr_mem_new(0, &sr_mem);
+    CHECK_RC_MSG_RETURN(rc, "Failed to create a new Sysrepo memory context.");
+    rc = sr_gpb_resp_alloc(sr_mem, SR__OPERATION__CHECK_ENABLED_RUNNING, session->id, &resp);
     if (SR_ERR_OK != rc) {
+        sr_mem_free(sr_mem);
         SR_LOG_ERR_MSG("Allocation of check-enabled-running response failed.");
         return SR_ERR_NOMEM;
     }
@@ -1162,6 +1253,7 @@ static int
 rp_get_changes_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
 {
     Sr__Msg *resp = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
     int rc = SR_ERR_OK;
     dm_commit_ctxs_t *dm_ctxs = NULL;
     dm_commit_context_t *c_ctx = NULL;
@@ -1172,8 +1264,11 @@ rp_get_changes_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg
     SR_LOG_DBG_MSG("Processing get changes request.");
 
     /* allocate the response */
-    rc = sr_gpb_resp_alloc(NULL, SR__OPERATION__GET_CHANGES, session->id, &resp);
+    rc = sr_mem_new(0, &sr_mem);
+    CHECK_RC_MSG_RETURN(rc, "Failed to create a new Sysrepo memory context.");
+    rc = sr_gpb_resp_alloc(sr_mem, SR__OPERATION__GET_CHANGES, session->id, &resp);
     if (SR_ERR_OK != rc) {
+        sr_mem_free(sr_mem);
         SR_LOG_ERR_MSG("Allocation of get changes response failed.");
         return SR_ERR_NOMEM;
     }
@@ -1211,7 +1306,7 @@ rp_get_changes_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg
 
     if (SR_ERR_OK == rc) {
         /* copy values to gpb */
-        rc = sr_changes_sr_to_gpb(changes, &resp->response->get_changes_resp->changes, &resp->response->get_changes_resp->n_changes);
+        rc = sr_changes_sr_to_gpb(changes, sr_mem, &resp->response->get_changes_resp->changes, &resp->response->get_changes_resp->n_changes);
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR_MSG("Copying values to GPB failed.");
         }
@@ -1251,7 +1346,7 @@ rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg 
     np_subscription_t *subscriptions = NULL;
     size_t subscription_cnt = 0;
     Sr__Msg *req = NULL, *resp = NULL;
-    sr_mem_ctx_t *sr_mem_req = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
     int rc = SR_ERR_OK, rc_tmp = SR_ERR_OK;
 
     CHECK_NULL_ARG_NORET5(rc, rp_ctx, session, msg, msg->request, msg->request->rpc_req);
@@ -1261,32 +1356,33 @@ rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg 
 
     SR_LOG_DBG_MSG("Processing RPC request.");
 
+    /* reuse context from msg for req (or resp) */
+    sr_mem = (sr_mem_ctx_t *)msg->_sysrepo_mem_ctx;
+
     /* parse input arguments */
     msg_api_variant = sr_api_variant_gpb_to_sr(msg->request->rpc_req->orig_api_variant);
     switch (msg_api_variant) {
         case SR_API_VALUES:
-            rc = sr_values_gpb_to_sr((sr_mem_ctx_t *)msg->_sysrepo_mem_ctx, msg->request->rpc_req->input,
-                    msg->request->rpc_req->n_input, &input, &input_cnt);
+            rc = sr_values_gpb_to_sr(sr_mem, msg->request->rpc_req->input, msg->request->rpc_req->n_input,
+                    &input, &input_cnt);
             break;
         case SR_API_TREES:
-            rc = sr_trees_gpb_to_sr((sr_mem_ctx_t *)msg->_sysrepo_mem_ctx, msg->request->rpc_req->input_tree,
-                    msg->request->rpc_req->n_input_tree, &input_tree, &input_cnt);
+            rc = sr_trees_gpb_to_sr(sr_mem, msg->request->rpc_req->input_tree, msg->request->rpc_req->n_input_tree,
+                    &input_tree, &input_cnt);
             break;
     }
     CHECK_RC_LOG_GOTO(rc, finalize, "Failed to parse RPC (%s) input arguments from GPB message.",
                       msg->request->rpc_req->xpath);
 
     /* validate RPC request */
-    rc = sr_mem_new(0, &sr_mem_req);
-    CHECK_RC_MSG_GOTO(rc, finalize, "Failed to create a new Sysrepo memory context");
     switch (msg_api_variant) {
         case SR_API_VALUES:
             rc = dm_validate_rpc(rp_ctx->dm_ctx, session->dm_session, msg->request->rpc_req->xpath,
-                                 input, input_cnt, true, sr_mem_req, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
+                                 input, input_cnt, true, sr_mem, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
             break;
         case SR_API_TREES:
             rc = dm_validate_rpc_tree(rp_ctx->dm_ctx, session->dm_session, msg->request->rpc_req->xpath,
-                                 input_tree, input_cnt, true, sr_mem_req, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
+                                 input_tree, input_cnt, true, sr_mem, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
             break;
     }
     CHECK_RC_LOG_GOTO(rc, finalize, "Validation of an RPC (%s) message failed.", msg->request->rpc_req->xpath);
@@ -1309,12 +1405,16 @@ rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg 
     for (size_t i = 0; i < subscription_cnt; i++) {
         if (NULL != subscriptions[i].xpath && 0 == strcmp(subscriptions[i].xpath, msg->request->rpc_req->xpath)) {
             /* duplicate msg into req with the new input values */
-            rc = sr_gpb_req_alloc(sr_mem_req, SR__OPERATION__RPC, session->id, &req);
+            rc = sr_gpb_req_alloc(sr_mem, SR__OPERATION__RPC, session->id, &req);
             CHECK_RC_LOG_GOTO(rc, finalize, "Failed to duplicate RPC request (%s).", msg->request->rpc_req->xpath);
             /*  - xpath */
-            sr_mem_edit_string(sr_mem_req, &req->request->rpc_req->xpath, msg->request->rpc_req->xpath);
-            CHECK_NULL_NOMEM_ERROR(req->request->rpc_req->xpath, rc);
-            CHECK_RC_LOG_GOTO(rc, finalize, "Failed to duplicate RPC request xpath (%s).", msg->request->rpc_req->xpath);
+            if (sr_mem) {
+                req->request->rpc_req->xpath = msg->request->rpc_req->xpath;
+            } else {
+                req->request->rpc_req->xpath = strdup(msg->request->rpc_req->xpath);
+                CHECK_NULL_NOMEM_ERROR(req->request->rpc_req->xpath, rc);
+                CHECK_RC_LOG_GOTO(rc, finalize, "Failed to duplicate RPC request xpath (%s).", msg->request->rpc_req->xpath);
+            }
             /*  - api variant */
             req->request->rpc_req->orig_api_variant = msg->request->rpc_req->orig_api_variant;
             /*  - arguments */
@@ -1330,7 +1430,7 @@ rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg 
             }
             CHECK_RC_LOG_GOTO(rc, finalize, "Failed to duplicate RPC request (%s) input arguments.", msg->request->rpc_req->xpath);
             /* subscription details */
-            sr_mem_edit_string(sr_mem_req, &req->request->rpc_req->subscriber_address, subscriptions[i].dst_address);
+            sr_mem_edit_string(sr_mem, &req->request->rpc_req->subscriber_address, subscriptions[i].dst_address);
             CHECK_NULL_NOMEM_GOTO(req->request->rpc_req->subscriber_address, rc, finalize);
             req->request->rpc_req->subscription_id = subscriptions[i].dst_id;
             req->request->rpc_req->has_subscription_id = true;
@@ -1351,24 +1451,6 @@ rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg 
     }
 
 finalize:
-    if (SR_ERR_OK == rc) {
-        /* forward the request to the subscriber */
-        rc = cm_msg_send(rp_ctx->cm_ctx, req);
-    } else {
-        /* send the response with error */
-        rc_tmp = sr_gpb_resp_alloc(NULL, SR__OPERATION__RPC, session->id, &resp);
-        if (SR_ERR_OK == rc_tmp) {
-            resp->response->result = rc;
-            resp->response->rpc_resp->xpath = strdup(msg->request->rpc_req->xpath);
-            /* send the response */
-            rc = cm_msg_send(rp_ctx->cm_ctx, resp);
-        }
-        /* release the request */
-        if (NULL != req) {
-            sr_msg_free(req);
-        }
-    }
-
     /* free all the allocated data */
     np_free_subscriptions(subscriptions, subscription_cnt);
     free(module_name);
@@ -1378,8 +1460,32 @@ finalize:
         sr_free_trees(input_tree, input_cnt);
     }
 
-    /* also release the message since it won't be released in dispatch */
-    sr_msg_free(msg);
+    if (SR_ERR_OK == rc) {
+        /* release the message since it won't be released in dispatch */
+        sr_msg_free(msg);
+        /* forward the request to the subscriber */
+        rc = cm_msg_send(rp_ctx->cm_ctx, req);
+    } else {
+        /* release the request */
+        if (NULL != req) {
+            sr_msg_free(req);
+        }
+        /* send the response with error */
+        rc_tmp = sr_gpb_resp_alloc(sr_mem, SR__OPERATION__RPC, session->id, &resp);
+        if (SR_ERR_OK == rc_tmp) {
+            resp->response->result = rc;
+            if (sr_mem) {
+                resp->response->rpc_resp->xpath = msg->request->rpc_req->xpath;
+            } else {
+                resp->response->rpc_resp->xpath = strdup(msg->request->rpc_req->xpath);
+            }
+            /* release the message since it won't be released in dispatch */
+            sr_msg_free(msg);
+            /* send the response */
+            rc = cm_msg_send(rp_ctx->cm_ctx, resp);
+        }
+    }
+
     return rc;
 }
 
@@ -1396,8 +1502,8 @@ rp_data_provide_resp_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *m
     CHECK_NULL_ARG5(rp_ctx, session, msg, msg->response, msg->response->data_provide_resp);
 
     /* copy values from GPB to sysrepo */
-    rc = sr_values_gpb_to_sr(NULL, msg->response->data_provide_resp->values, msg->response->data_provide_resp->n_values,
-            &values, &values_cnt);
+    rc = sr_values_gpb_to_sr((sr_mem_ctx_t *)msg->_sysrepo_mem_ctx, msg->response->data_provide_resp->values,
+            msg->response->data_provide_resp->n_values, &values, &values_cnt);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to transform gpb to sr_val_t");
 
     MUTEX_LOCK_TIMED_CHECK_GOTO(&session->cur_req_mutex, rc, cleanup);
@@ -1441,7 +1547,7 @@ rp_rpc_resp_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg
     sr_node_t *output_tree = NULL, *with_def_tree = NULL;
     size_t output_cnt = 0, with_def_cnt = 0, with_def_tree_cnt = 0;
     Sr__Msg *resp = NULL;
-    sr_mem_ctx_t *sr_mem_resp = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG_NORET5(rc, rp_ctx, session, msg, msg->response, msg->response->rpc_resp);
@@ -1451,35 +1557,39 @@ rp_rpc_resp_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg
         return rc;
     }
 
+    /* reuse memory context from msg for resp */
+    sr_mem = (sr_mem_ctx_t *)msg->_sysrepo_mem_ctx;
+
     /* validate the RPC response */
     if (msg->response->rpc_resp->n_output) {
-        rc = sr_values_gpb_to_sr((sr_mem_ctx_t *)msg->_sysrepo_mem_ctx, msg->response->rpc_resp->output,
+        rc = sr_values_gpb_to_sr(sr_mem, msg->response->rpc_resp->output,
                                  msg->response->rpc_resp->n_output, &output, &output_cnt);
     } else if (msg->response->rpc_resp->n_output_tree) {
         msg_api_variant = SR_API_TREES;
-        rc = sr_trees_gpb_to_sr((sr_mem_ctx_t *)msg->_sysrepo_mem_ctx, msg->response->rpc_resp->output_tree,
+        rc = sr_trees_gpb_to_sr(sr_mem, msg->response->rpc_resp->output_tree,
                                  msg->response->rpc_resp->n_output_tree, &output_tree, &output_cnt);
-    }
-    if (SR_ERR_OK == rc) {
-        rc = sr_mem_new(0, &sr_mem_resp);
     }
     if (SR_ERR_OK == rc) {
         if (SR_API_VALUES == msg_api_variant) {
             rc = dm_validate_rpc(rp_ctx->dm_ctx, session->dm_session, msg->response->rpc_resp->xpath,
-                    output, output_cnt, false, sr_mem_resp, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
+                    output, output_cnt, false, sr_mem, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
         } else {
             rc = dm_validate_rpc_tree(rp_ctx->dm_ctx, session->dm_session, msg->response->rpc_resp->xpath,
-                    output_tree, output_cnt, false, sr_mem_resp, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
+                    output_tree, output_cnt, false, sr_mem, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
         }
     }
 
     /* duplicate msg into resp with the new output values */
     if (SR_ERR_OK == rc) {
-        rc = sr_gpb_resp_alloc(sr_mem_resp, SR__OPERATION__RPC, session->id, &resp);
+        rc = sr_gpb_resp_alloc(sr_mem, SR__OPERATION__RPC, session->id, &resp);
     }
     if (SR_ERR_OK == rc) {
-        sr_mem_edit_string(sr_mem_resp, &resp->response->rpc_resp->xpath, msg->response->rpc_resp->xpath);
-        CHECK_NULL_NOMEM_ERROR(resp->response->rpc_resp->xpath, rc);
+        if (sr_mem) {
+            resp->response->rpc_resp->xpath = msg->response->rpc_resp->xpath;
+        } else {
+            resp->response->rpc_resp->xpath = strdup(msg->response->rpc_resp->xpath);
+            CHECK_NULL_NOMEM_ERROR(resp->response->rpc_resp->xpath, rc);
+        }
         resp->response->rpc_resp->orig_api_variant = msg->response->rpc_resp->orig_api_variant;
     }
     if (SR_ERR_OK == rc) {
@@ -1590,6 +1700,7 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
     size_t subscription_cnt = 0;
     bool sub_match = false;
     Sr__Msg *req = NULL, *resp = NULL;
+    sr_mem_ctx_t *sr_mem_msg = NULL;
     int rc = SR_ERR_OK, rc_tmp = SR_ERR_OK;
 
     CHECK_NULL_ARG_NORET5(rc, rp_ctx, session, msg, msg->request, msg->request->event_notif_req);
@@ -1600,13 +1711,14 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
     SR_LOG_DBG_MSG("Processing event notification request.");
 
     /* parse input arguments */
+    sr_mem_msg = (sr_mem_ctx_t *)msg->_sysrepo_mem_ctx;
     if (msg->request->event_notif_req->n_values) {
-        rc = sr_values_gpb_to_sr(NULL, msg->request->event_notif_req->values, msg->request->event_notif_req->n_values,
-                &values, &values_cnt);
+        rc = sr_values_gpb_to_sr(sr_mem_msg, msg->request->event_notif_req->values,
+                msg->request->event_notif_req->n_values, &values, &values_cnt);
     } else if (msg->request->event_notif_req->n_trees) {
         msg_api_variant = SR_API_TREES;
-        rc = sr_trees_gpb_to_sr(NULL, msg->request->event_notif_req->trees, msg->request->event_notif_req->n_trees,
-                &trees, &tree_cnt);
+        rc = sr_trees_gpb_to_sr(sr_mem_msg, msg->request->event_notif_req->trees,
+                msg->request->event_notif_req->n_trees, &trees, &tree_cnt);
     }
     CHECK_RC_LOG_GOTO(rc, finalize, "Failed to parse event notification (%s) data trees from GPB message.",
                       msg->request->event_notif_req->xpath);
@@ -1614,10 +1726,10 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
     /* validate event-notification request */
     if (SR_API_VALUES == msg_api_variant) {
         rc = dm_validate_event_notif(rp_ctx->dm_ctx, session->dm_session, msg->request->event_notif_req->xpath,
-                values, values_cnt, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
+                values, values_cnt, NULL, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
     } else {
         rc = dm_validate_event_notif_tree(rp_ctx->dm_ctx, session->dm_session, msg->request->event_notif_req->xpath,
-                trees, tree_cnt, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
+                trees, tree_cnt, NULL, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
     }
     CHECK_RC_LOG_GOTO(rc, finalize, "Validation of an event notification (%s) message failed.",
                       msg->request->event_notif_req->xpath);
@@ -1640,7 +1752,10 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
     /* broadcast the notification to all subscribed processes */
     for (unsigned i = 0; SR_ERR_OK == rc && i < subscription_cnt; ++i) {
         if (NULL != subscriptions[i].xpath && 0 == strcmp(subscriptions[i].xpath, msg->request->event_notif_req->xpath)) {
-            /* duplicate msg into req with values and subscription details */
+            /* duplicate msg into req with values and subscription details
+             * @note we are not using memory context for the *req* message because with so many
+             * duplications it would be actually less efficient than normally.
+             * */
             rc = sr_gpb_req_alloc(NULL, SR__OPERATION__EVENT_NOTIF, session->id, &req);
             CHECK_RC_LOG_GOTO(rc, finalize, "Failed to duplicate event notification request (%s).",
                               msg->request->event_notif_req->xpath);
@@ -1699,13 +1814,13 @@ finalize:
     }
 
     /* send the response with return code */
-    rc_tmp = sr_gpb_resp_alloc(NULL, SR__OPERATION__EVENT_NOTIF, session->id, &resp);
+    rc_tmp = sr_gpb_resp_alloc(sr_mem_msg, SR__OPERATION__EVENT_NOTIF, session->id, &resp);
+    sr_msg_free(msg);
     if (SR_ERR_OK == rc_tmp) {
         resp->response->result = rc;
         rc = cm_msg_send(rp_ctx->cm_ctx, resp);
     }
 
-    sr_msg_free(msg);
     return rc;
 }
 

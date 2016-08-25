@@ -31,8 +31,10 @@ set (COMMON_SOURCES
     ${COMMON_DIR}/sr_data_structs.c
     ${COMMON_DIR}/sr_logger.c
     ${COMMON_DIR}/sr_protobuf.c
-    ${COMMON_DIR}/sr_experimental.c
+    ${COMMON_DIR}/sr_mem_mgmt.c
     ${UTILS_DIR}/xpath_utils.c
+    ${UTILS_DIR}/values.c
+    ${UTILS_DIR}/trees.c
 )
 
 # client library sources
@@ -68,8 +70,6 @@ add_library(SR_ENGINE OBJECT  ${SYSREPO_ENGINE_SOURCES})
 set_property(TARGET SR_ENGINE PROPERTY COMPILE_FLAGS "-fPIC")
 
 add_dependencies(SR_ENGINE COMMON)
-
-set(HEADERS "${PROJECT_SOURCE_DIR}/inc/sysrepo.h")
 
 if(USE_AVL_LIB)
     set(LINK_LIBRARIES pthread rt ${AVL_LIBRARIES} ${EV_LIBRARIES} ${PROTOBUF-C_LIBRARIES} ${YANG_LIBRARIES})
@@ -117,5 +117,4 @@ install(TARGETS sysrepod DESTINATION ${BIN_INSTALL_DIR})
 install(TARGETS sysrepo-plugind DESTINATION ${BIN_INSTALL_DIR})
 install(TARGETS sysrepoctl DESTINATION ${BIN_INSTALL_DIR})
 install(TARGETS sysrepocfg DESTINATION ${BIN_INSTALL_DIR})
-install(FILES ${HEADERS} DESTINATION ${INCLUDE_INSTALL_DIR})
-install(FILES "${PROJECT_SOURCE_DIR}/inc/xpath_utils.h" DESTINATION ${INCLUDE_INSTALL_DIR}/sysrepo)
+install(DIRECTORY "${PROJECT_SOURCE_DIR}/inc/" DESTINATION ${INCLUDE_INSTALL_DIR})

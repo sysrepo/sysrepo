@@ -1182,14 +1182,14 @@ dm_has_error(dm_session_t *session)
 }
 
 int
-dm_copy_errors(dm_session_t *session, char **error_msg, char **err_xpath)
+dm_copy_errors(dm_session_t *session, sr_mem_ctx_t *sr_mem, char **error_msg, char **err_xpath)
 {
     CHECK_NULL_ARG3(session, error_msg, err_xpath);
     if (NULL != session->error_msg) {
-        *error_msg = strdup(session->error_msg);
+        sr_mem_edit_string(sr_mem, error_msg, session->error_msg);
     }
     if (NULL != session->error_xpath) {
-        *err_xpath = strdup(session->error_xpath);
+        sr_mem_edit_string(sr_mem, err_xpath, session->error_xpath);
     }
     if ((NULL != session->error_msg && NULL == *error_msg) || (NULL != session->error_xpath && NULL == *err_xpath)) {
         SR_LOG_ERR_MSG("Error duplication failed");
@@ -3700,18 +3700,18 @@ dm_validate_rpc_tree(dm_ctx_t *dm_ctx, dm_session_t *session, const char *rpc_xp
 
 int
 dm_validate_event_notif(dm_ctx_t *dm_ctx, dm_session_t *session, const char *event_notif_xpath, sr_val_t *values, size_t value_cnt,
-        sr_val_t **with_def, size_t *with_def_cnt, sr_node_t **with_def_tree, size_t *with_def_tree_cnt)
+        sr_mem_ctx_t *sr_mem, sr_val_t **with_def, size_t *with_def_cnt, sr_node_t **with_def_tree, size_t *with_def_tree_cnt)
 {
     return dm_validate_procedure(dm_ctx, session, DM_PROCEDURE_EVENT_NOTIF, event_notif_xpath, SR_API_VALUES,
-            (void *)values, value_cnt, true, NULL, with_def, with_def_cnt, with_def_tree, with_def_tree_cnt);
+            (void *)values, value_cnt, true, sr_mem, with_def, with_def_cnt, with_def_tree, with_def_tree_cnt);
 }
 
 int
 dm_validate_event_notif_tree(dm_ctx_t *dm_ctx, dm_session_t *session, const char *event_notif_xpath, sr_node_t *trees, size_t tree_cnt,
-        sr_val_t **with_def, size_t *with_def_cnt, sr_node_t **with_def_tree, size_t *with_def_tree_cnt)
+        sr_mem_ctx_t *sr_mem, sr_val_t **with_def, size_t *with_def_cnt, sr_node_t **with_def_tree, size_t *with_def_tree_cnt)
 {
     return dm_validate_procedure(dm_ctx, session, DM_PROCEDURE_EVENT_NOTIF, event_notif_xpath, SR_API_TREES,
-            (void *)trees, tree_cnt, true, NULL, with_def, with_def_cnt, with_def_tree, with_def_tree_cnt);
+            (void *)trees, tree_cnt, true, sr_mem, with_def, with_def_cnt, with_def_tree, with_def_tree_cnt);
 }
 
 struct lyd_node *

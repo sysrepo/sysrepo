@@ -24,20 +24,15 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
+#include <assert.h>
 
 #include "sysrepo.h"
-#include "sr_experimental.h"
+#include "sysrepo/trees.h"
 
 #define NUM_OF_REQUESTS   1000
 #define OUTPUT_LOG_SIZE   100
 
-#define PERF_TEST             1
-#define EXPERIMENTAL_MEM_MGMT 1
-//#define API_ONLY              1
-
-#ifndef PERF_TEST
-#include <assert.h>
-#endif
+#define NEW_API  1
 
 #define assert_int_equal(a, b)     assert(a == b)
 #define assert_string_equal(a, b)  assert(0 == strcmp(a, b))
@@ -54,7 +49,6 @@ test_rpc_cb(const char *xpath, const sr_node_t *input, const size_t input_cnt,
     char msg_str[32] = { 0, };
     *callback_called += 1;
 
-#ifndef PERF_TEST
     /* check input */
     assert_int_equal(2, input_cnt);
     /*   /test-module:activate-software-image/input/image-name */
@@ -75,10 +69,9 @@ test_rpc_cb(const char *xpath, const sr_node_t *input, const size_t input_cnt,
     assert_string_equal("/", sr_in_node->data.string_val);
     assert_null(sr_in_node->first_child);
     assert_null(sr_in_node->last_child);
-#endif
 
     *output_cnt = 3;
-#ifdef EXPERIMENTAL_MEM_MGMT
+#ifdef NEW_API
     assert_int_equal(0, sr_new_trees(*output_cnt, output));
     sr_node_set_name(*output, "status");
     (*output)[0].type = SR_STRING_T;
@@ -103,7 +96,7 @@ test_rpc_cb(const char *xpath, const sr_node_t *input, const size_t input_cnt,
     for (size_t i = 0; i < OUTPUT_LOG_SIZE; ++i) {
         snprintf(msg_str, 32, "Message number: %lu", i);
         sr_node_t *log_msg = NULL, *child = NULL;
-#ifdef EXPERIMENTAL_MEM_MGMT
+#ifdef NEW_API
         assert_int_equal(0, sr_node_add_child((*output) + 2, "log-msg", NULL, &log_msg));
         log_msg->type = SR_LIST_T;
         assert_int_equal(0, sr_node_add_child(log_msg, "msg", NULL, &child));
@@ -141,12 +134,9 @@ main(int argc, char **argv)
     sr_subscription_ctx_t *subscription = NULL;
     int rc = SR_ERR_OK;
     int callback_called = 0;
-#ifndef PERF_TEST
     char msg_str[32] = { 0, };
-#endif
     sr_log_stderr(SR_LL_ERR);
 
-#if !defined(API_ONLY) || !defined(PERF_TEST)
     /* connect to sysrepo */
     rc = sr_connect("rpc-example", SR_CONN_DEFAULT, &connection);
     if (SR_ERR_OK != rc) {
@@ -165,10 +155,9 @@ main(int argc, char **argv)
     if (SR_ERR_OK != rc) {
         goto cleanup;
     }
-#endif
 
     sr_node_t *input = NULL;
-#ifdef EXPERIMENTAL_MEM_MGMT
+#ifdef NEW_API
     assert_int_equal(SR_ERR_OK, sr_new_tree("image-name", NULL, &input));
     assert_non_null(input);
     assert_non_null(input->_sr_mem);
@@ -187,19 +176,14 @@ main(int argc, char **argv)
     size_t output_cnt = 0;
 
     for (int i = 0; i < NUM_OF_REQUESTS; ++i) {
-#if defined(API_ONLY) && defined(PERF_TEST)
-        test_rpc_cb("/test-module:activate-software-image", input, 1, &output, &output_cnt, &callback_called);
-#else
         /* send a RPC */
         rc = sr_rpc_send_tree(session, "/test-module:activate-software-image", input, 1, &output, &output_cnt);
         if (SR_ERR_OK != rc) {
             goto cleanup;
         }
-#endif
 
         assert_int_equal(i + 1, callback_called);
 
-#ifndef PERF_TEST
         /* check output */
         sr_node_t *sr_node = output, *log_msg = NULL, *child = NULL;
         size_t log_msg_cnt = 0;
@@ -276,17 +260,14 @@ main(int argc, char **argv)
             ++log_msg_cnt;
         }
         assert_int_equal(OUTPUT_LOG_SIZE, log_msg_cnt);
-#endif
 
         sr_free_trees(output, output_cnt);
     }
 
     sr_free_tree(input);
 
-#if !defined(API_ONLY) || !defined(PERF_TEST)
     rc = sr_unsubscribe(NULL, subscription);
     assert_int_equal(rc, SR_ERR_OK);
-#endif
 
     printf("OK\n");
 

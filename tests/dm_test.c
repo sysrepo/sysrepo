@@ -585,7 +585,7 @@ dm_event_notif_test(void **state)
 
     /* non-existing event notification */
     rc = dm_validate_event_notif(ctx, session, "/test-module:non-existing-event-notif", values, values_cnt,
-            &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
+            NULL, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
     assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
 
     /* valid event notification */
@@ -611,7 +611,7 @@ dm_event_notif_test(void **state)
     values[5].data.string_val = strdup("eth2");
 
     rc = dm_validate_event_notif(ctx, session, "/test-module:link-removed", values, values_cnt,
-            &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
+            NULL, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
     assert_int_equal(SR_ERR_OK, rc);
     /* including default leaf */
     assert_int_equal(7, with_def_cnt);
@@ -624,7 +624,7 @@ dm_event_notif_test(void **state)
     free(with_def[6].xpath);
     with_def[6].xpath = strdup("/test-module:link-removed/non-existing-node");
     rc = dm_validate_event_notif(ctx, session, "/test-module:link-removed", with_def, with_def_cnt,
-            NULL, NULL, NULL, NULL);
+            NULL, NULL, NULL, NULL, NULL);
     assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
 
     sr_free_values(values, values_cnt);

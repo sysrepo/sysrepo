@@ -1,5 +1,4 @@
 include_directories("${PROJECT_SOURCE_DIR}/inc")
-include_directories("${PROJECT_SOURCE_DIR}/src/common")
 
 add_subdirectory(plugins)
 

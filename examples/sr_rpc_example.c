@@ -24,20 +24,15 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
+#include <assert.h>
 
 #include "sysrepo.h"
-#include "sr_experimental.h"
+#include "sysrepo/values.h"
 
 #define NUM_OF_REQUESTS   1000
 #define OUTPUT_LOG_SIZE   100
 
-#define PERF_TEST             1
-#define EXPERIMENTAL_MEM_MGMT 1
-//#define API_ONLY              1
-
-#ifndef PERF_TEST
-#include <assert.h>
-#endif
+#define NEW_API  1
 
 #define assert_int_equal(a, b)     assert(a == b)
 #define assert_string_equal(a, b)  assert(0 == strcmp(a, b))
@@ -54,7 +49,6 @@ test_rpc_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt,
     char log_msg[256] = { 0, };
     *callback_called += 1;
 
-#ifndef PERF_TEST
     /* check input */
     assert_int_equal(2, input_cnt);
     assert_string_equal("/test-module:activate-software-image/image-name", input[0].xpath);
@@ -66,10 +60,9 @@ test_rpc_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt,
     assert_true(input[1].dflt);
     assert_int_equal(SR_STRING_T, input[1].type);
     assert_string_equal("/", input[1].data.string_val);
-#endif
 
     *output_cnt = 2 + OUTPUT_LOG_SIZE;
-#ifdef EXPERIMENTAL_MEM_MGMT
+#ifdef NEW_API
     sr_new_values(*output_cnt, output);
     sr_val_set_xpath(*output, "/test-module:activate-software-image/status");
     (*output)[0].type = SR_STRING_T;
@@ -92,7 +85,7 @@ test_rpc_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt,
     for (size_t i = 0; i < OUTPUT_LOG_SIZE; ++i) {
         snprintf(log_msg, 256, "/test-module:activate-software-image/init-log/log-msg[msg='Message number: %lu'][time='%lu']/msg-type",
                  i, i);
-#ifdef EXPERIMENTAL_MEM_MGMT
+#ifdef NEW_API
         sr_val_set_xpath(*output + i + 2, log_msg);
         (*output)[i + 2].type = SR_ENUM_T;
         sr_val_set_string(*output + i + 2, "debug");
@@ -114,13 +107,10 @@ main(int argc, char **argv)
     sr_subscription_ctx_t *subscription = NULL;
     int rc = SR_ERR_OK;
     int callback_called = 0;
-#ifndef PERF_TEST
     char log_msg[256] = { 0, }, msg_str[32] = { 0, };
     char *log_msg_tail = NULL;
-#endif
     sr_log_stderr(SR_LL_ERR);
 
-#if !defined(API_ONLY) || !defined(PERF_TEST)
     /* connect to sysrepo */
     rc = sr_connect("rpc-example", SR_CONN_DEFAULT, &connection);
     if (SR_ERR_OK != rc) {
@@ -139,10 +129,9 @@ main(int argc, char **argv)
     if (SR_ERR_OK != rc) {
         goto cleanup;
     }
-#endif
 
     sr_val_t *input = NULL;
-#ifdef EXPERIMENTAL_MEM_MGMT
+#ifdef NEW_API
     assert_int_equal(SR_ERR_OK, sr_new_val("/test-module:activate-software-image/image-name", &input));
     assert_non_null(input);
     assert_non_null(input->_sr_mem);
@@ -161,19 +150,14 @@ main(int argc, char **argv)
     size_t output_cnt = 0;
 
     for (int i = 0; i < NUM_OF_REQUESTS; ++i) {
-#if defined(API_ONLY) && defined(PERF_TEST)
-        test_rpc_cb("/test-module:activate-software-image", input, 1, &output, &output_cnt, &callback_called);
-#else
         /* send a RPC */
         rc = sr_rpc_send(session, "/test-module:activate-software-image", input, 1, &output, &output_cnt);
         if (SR_ERR_OK != rc) {
             goto cleanup;
         }
-#endif
 
         assert_int_equal(i + 1, callback_called);
 
-#ifndef PERF_TEST
         /* check output */
         assert_int_equal(4 + 4 * OUTPUT_LOG_SIZE, output_cnt);
         assert_string_equal("/test-module:activate-software-image/status", output[0].xpath);
@@ -225,17 +209,14 @@ main(int argc, char **argv)
             assert_int_equal(SR_ENUM_T, output[7 + 4*i].type);
             assert_string_equal("debug", output[7 + 4*i].data.enum_val);
         }
-#endif
 
         sr_free_values(output, output_cnt);
     }
 
     sr_free_val(input);
 
-#if !defined(API_ONLY) || !defined(PERF_TEST)
     rc = sr_unsubscribe(NULL, subscription);
     assert_int_equal(rc, SR_ERR_OK);
-#endif
 
     printf("OK\n");
 

@@ -62,11 +62,11 @@ no_subscription_test(void **state)
    rc = rp_dt_get_values_wrapper(ctx, session, "/test-module:containera", &values, &count);
    assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
 #endif
-   rc = rp_dt_get_values_wrapper(ctx, session, "/test-module:*", &values, &count);
+   rc = rp_dt_get_values_wrapper(ctx, session, NULL, "/test-module:*", &values, &count);
    assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
    session->state = RP_REQ_NEW;
-   rc = rp_dt_get_values_wrapper(ctx, session, "/test-module:main", &values, &count);
+   rc = rp_dt_get_values_wrapper(ctx, session, NULL, "/test-module:main", &values, &count);
    assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
    rc = rp_dt_delete_item_wrapper(ctx, session, "/test-module:main", SR_EDIT_DEFAULT);
@@ -191,7 +191,7 @@ edit_enabled(void **state)
 
 
    sr_val_t *v = NULL;
-   rc = rp_dt_get_value_wrapper(ctx, session, "/example-module:container/list[key1='a'][key2='b']/leaf" ,&v);
+   rc = rp_dt_get_value_wrapper(ctx, session, NULL, "/example-module:container/list[key1='a'][key2='b']/leaf" ,&v);
    assert_int_equal(SR_ERR_OK, rc);
    assert_string_equal(v->xpath, "/example-module:container/list[key1='a'][key2='b']/leaf");
    assert_string_equal(v->data.string_val, val.data.string_val);

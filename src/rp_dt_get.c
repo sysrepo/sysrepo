@@ -174,7 +174,7 @@ rp_dt_get_values_from_nodes(sr_mem_ctx_t *sr_mem, struct ly_set *nodes, sr_val_t
 }
 
 int
-rp_dt_get_value(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char *xpath, bool check_enabled, sr_val_t **value)
+rp_dt_get_value(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, sr_mem_ctx_t *sr_mem, const char *xpath, bool check_enabled, sr_val_t **value)
 {
     CHECK_NULL_ARG4(dm_ctx, data_tree, xpath, value);
     int rc = SR_ERR_OK;
@@ -189,13 +189,18 @@ rp_dt_get_value(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char *
         return rc;
     }
 
-    val = calloc(1, sizeof(*val));
+    val = sr_calloc(sr_mem, 1, sizeof(*val));
     CHECK_NULL_NOMEM_RETURN(val);
+
+    if (sr_mem) {
+        val->_sr_mem = sr_mem;
+        sr_mem->obj_count += 1;
+    }
 
     rc = rp_dt_get_value_from_node(node, val);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Get value from node failed for xpath %s", xpath);
-        free(val);
+        sr_free_val(val);
     } else {
         *value = val;
     }
@@ -204,7 +209,8 @@ rp_dt_get_value(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char *
 }
 
 int
-rp_dt_get_values(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char *xpath, bool check_enable, sr_val_t **values, size_t *count)
+rp_dt_get_values(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, sr_mem_ctx_t *sr_mem, const char *xpath, bool check_enable,
+        sr_val_t **values, size_t *count)
 {
     CHECK_NULL_ARG5(dm_ctx, data_tree, xpath, values, count);
 
@@ -219,7 +225,7 @@ rp_dt_get_values(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char 
         return rc;
     }
 
-    rc = rp_dt_get_values_from_nodes(NULL /* TODO: context */, nodes, values, count);
+    rc = rp_dt_get_values_from_nodes(sr_mem, nodes, values, count);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Copying values from nodes failed for xpath '%s'", xpath);
     }
@@ -596,7 +602,7 @@ cleanup:
 }
 
 int
-rp_dt_get_value_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char *xpath, sr_val_t **value)
+rp_dt_get_value_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, sr_mem_ctx_t *sr_mem, const char *xpath, sr_val_t **value)
 {
     CHECK_NULL_ARG4(rp_ctx, rp_ctx->dm_ctx, rp_session, rp_session->dm_session);
     CHECK_NULL_ARG2(xpath, value);
@@ -617,7 +623,7 @@ rp_dt_get_value_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char *
         goto cleanup;
     }
 
-    rc = rp_dt_get_value(rp_ctx->dm_ctx, data_tree, xpath, dm_is_running_ds_session(rp_session->dm_session), value);
+    rc = rp_dt_get_value(rp_ctx->dm_ctx, data_tree, sr_mem, xpath, dm_is_running_ds_session(rp_session->dm_session), value);
 cleanup:
     if (SR_ERR_NOT_FOUND == rc || (SR_ERR_OK == rc && NULL == data_tree)) {
         rc = rp_dt_validate_node_xpath(rp_ctx->dm_ctx, rp_session->dm_session, xpath, NULL, NULL);
@@ -637,7 +643,7 @@ cleanup:
 }
 
 int
-rp_dt_get_values_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char *xpath, sr_val_t **values, size_t *count)
+rp_dt_get_values_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, sr_mem_ctx_t *sr_mem, const char *xpath, sr_val_t **values, size_t *count)
 {
     CHECK_NULL_ARG4(rp_ctx, rp_ctx->dm_ctx, rp_session, rp_session->dm_session);
     CHECK_NULL_ARG3(xpath, values, count);
@@ -658,7 +664,7 @@ rp_dt_get_values_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char 
         goto cleanup;
     }
 
-    rc = rp_dt_get_values(rp_ctx->dm_ctx, data_tree, xpath, dm_is_running_ds_session(rp_session->dm_session), values, count);
+    rc = rp_dt_get_values(rp_ctx->dm_ctx, data_tree, sr_mem, xpath, dm_is_running_ds_session(rp_session->dm_session), values, count);
     if (SR_ERR_OK != rc && SR_ERR_NOT_FOUND != rc) {
         SR_LOG_ERR("Get values failed for xpath '%s'", xpath);
     }
@@ -678,8 +684,8 @@ cleanup:
 }
 
 int
-rp_dt_get_values_wrapper_with_opts(rp_ctx_t *rp_ctx, rp_session_t *rp_session, rp_dt_get_items_ctx_t *get_items_ctx, const char *xpath,
-        size_t offset, size_t limit, sr_val_t **values, size_t *count)
+rp_dt_get_values_wrapper_with_opts(rp_ctx_t *rp_ctx, rp_session_t *rp_session, rp_dt_get_items_ctx_t *get_items_ctx, sr_mem_ctx_t *sr_mem, 
+        const char *xpath, size_t offset, size_t limit, sr_val_t **values, size_t *count)
 {
     CHECK_NULL_ARG5(rp_ctx, rp_ctx->dm_ctx, rp_session, rp_session->dm_session, get_items_ctx);
     CHECK_NULL_ARG3(xpath, values, count);
@@ -715,7 +721,7 @@ rp_dt_get_values_wrapper_with_opts(rp_ctx_t *rp_ctx, rp_session_t *rp_session, r
         goto cleanup;
     }
 
-    rc = rp_dt_get_values_from_nodes(NULL /* TODO : context */, nodes, values, count);
+    rc = rp_dt_get_values_from_nodes(sr_mem, nodes, values, count);
 cleanup:
     if (SR_ERR_NOT_FOUND == rc || (SR_ERR_OK == rc && (0 == count || NULL == data_tree))) {
         rc = rp_dt_validate_node_xpath(rp_ctx->dm_ctx, rp_session->dm_session, xpath, NULL, NULL);

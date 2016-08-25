@@ -21,6 +21,7 @@
  */
 
 #include "sr_protobuf.h"
+#include "values_internal.h"
 
 const char *
 sr_gpb_operation_name(Sr__Operation operation)
@@ -1793,8 +1794,9 @@ sr_changes_sr_to_gpb(sr_list_t *sr_changes, sr_mem_ctx_t *sr_mem, Sr__Change ***
             sr_change_t *ch = sr_changes->data[i];
             if (NULL != ch->new_value) {
                 if (sr_mem) {
-                    rc = sr_dup_val(ch->new_value, sr_mem, &value_dup);
+                    rc = sr_dup_val_ctx(ch->new_value, sr_mem, &value_dup);
                     CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to duplicate sr_val_t.");
+                    --sr_mem->obj_count; /* do not treat value_dup as an object on its own */
                 } else {
                     value_dup = ch->new_value;
                 }
@@ -1803,8 +1805,9 @@ sr_changes_sr_to_gpb(sr_list_t *sr_changes, sr_mem_ctx_t *sr_mem, Sr__Change ***
             }
             if (NULL != ch->old_value) {
                 if (sr_mem) {
-                    rc = sr_dup_val(ch->old_value, sr_mem, &value_dup);
+                    rc = sr_dup_val_ctx(ch->old_value, sr_mem, &value_dup);
                     CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to duplicate sr_val_t.");
+                    --sr_mem->obj_count; /* do not treat value_dup as an object on its own */
                 } else {
                     value_dup = ch->old_value;
                 }
