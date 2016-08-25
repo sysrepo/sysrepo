@@ -581,7 +581,7 @@ cl_dp_neg_subscription(void **state)
 
     /* subscribe not existing module */
     rc = sr_dp_get_items_subscribe(session, "/unknown-module:state-data", cl_dp_distance_travelled, NULL, SR_SUBSCR_CTX_REUSE, &subscription);
-    assert_int_equal(rc, SR_ERR_UNKNOWN_MODEL);
+    assert_int_equal(rc, SR_ERR_INTERNAL);
 
     sr_unsubscribe(session, subscription);
     sr_session_stop(session);
