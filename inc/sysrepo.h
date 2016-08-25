@@ -55,27 +55,6 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-#include <stdio.h>
-#include <string.h>
-
-//#define PRINT_ALLOC_EXECS 1
-#define PRINT_ALLOC_STATS 1
-
-#ifdef PRINT_ALLOC_STATS
-void inc_real_alloc(size_t size);
-void inc_fake_alloc(size_t size);
-# ifdef PRINT_ALLOC_EXECS
-#  define calloc(n,s)  ({ printf("Calling real calloc.\n"); inc_real_alloc(s); void *mem = calloc(n,s); mem; })
-#  define malloc(s)    ({ printf("Calling real malloc.\n"); inc_real_alloc(s); void *mem = malloc(s); mem; })
-#  define realloc(p,s) ({ printf("Calling real realloc.\n"); inc_real_alloc(s); void *mem = realloc(p,s); mem; })
-#  define strdup(s)    ({ printf("Calling real strdup.\n"); inc_real_alloc(strlen(s)+1); char *str = strdup(s); str; })
-# else
-#  define calloc(n,s)  ({ inc_real_alloc(s); void *mem = calloc(n,s); mem; })
-#  define malloc(s)    ({ inc_real_alloc(s); void *mem = malloc(s); mem; })
-#  define realloc(p,s) ({ inc_real_alloc(s); void *mem = realloc(p,s); mem; })
-#  define strdup(s)    ({ inc_real_alloc(strlen(s)+1); char *str = strdup(s); str; })
-# endif
-#endif
 
 ////////////////////////////////////////////////////////////////////////////////
 // Common typedefs and API
@@ -1604,24 +1583,6 @@ void sr_free_tree(sr_node_t *tree);
  * @param[in] count length of array
  */
 void sr_free_trees(sr_node_t *trees, size_t count);
-
-
-
-
-/**
- * @brief TODO: move to a separate file together with the rest of the new API.
- */
-int sr_new_val(const char *xpath, sr_val_t **value);
-
-/**
- * @brief TODO: move to a separate file together with the rest of the new API.
- */
-int sr_val_set_string(sr_val_t *value, const char *string_val);
-
-/**
- * @brief TODO: move to a separate file together with the rest of the new API.
- */
-int sr_val_set_xpath(sr_val_t *value, const char *xpath);
 
 /**@} cl */
 

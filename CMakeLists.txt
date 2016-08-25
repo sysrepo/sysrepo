@@ -128,7 +128,6 @@ CHECK_STRUCT_HAS_MEMBER("struct stat" st_mtim "sys/stat.h" HAVE_STAT_ST_MTIM)
 
 # add subdirectories
 add_subdirectory(src)
-add_subdirectory(inc)
 
 # Examples
 SET(BUILD_EXAMPLES 1 CACHE BOOL "Build examples and install example YANG models.")
