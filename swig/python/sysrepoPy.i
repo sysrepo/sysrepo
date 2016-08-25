@@ -7,8 +7,10 @@
 %include "cdata.i"
 
 %{
-/* Includes the header in the wrapper code */
+/* Includes the headers in the wrapper code */
 #include "sysrepo.h"
+#include "sysrepo/values.h"
+#include "sysrepo/trees.h"
 %}
 
 /* Filter out 'Setting a const char * variable may leak memory' warnings */
@@ -61,6 +63,13 @@
    $1 = &tmp_len;
 }
 
+/* sr_new_values */
+%typemap(in, noblock=1)
+ (size_t value_cnt) {
+   size_t tmp_len = PyInt_AsLong($input);
+   $1 = PyInt_AsLong($input);
+}
+
 %newobject sr_get_items;
 /* pass argument to the function, that return an allocated array */
 %typemap(in,numinputs=0, noblock=1)
@@ -107,6 +116,7 @@
     Py_INCREF(Py_None); /* Py_None is a singleton so increment its reference if used.*/
 %}
 
-/* Parse the header file to generate wrappers */
+/* Parse the header files to generate wrappers */
 %include "../inc/sysrepo.h"
-
+%include "../inc/sysrepo/values.h"
+%include "../inc/sysrepo/trees.h"

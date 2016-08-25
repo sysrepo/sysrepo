@@ -28,20 +28,20 @@
  * one node -- the tree root -- and can be expanded to its full desired size
  * through a repeated use of the function ::sr_node_add_child.
  *
- * @param [in] name Name for the newly allocated tree root. Can be NULL.
- * @param [in] module_name Name of the module that defines scheme of the tree root.
- *                         Can be NULL.
- * @param [out] node_p Returned newly allocated Sysrepo tree.
+ * @param [in] root_name Name for the newly allocated tree root. Can be NULL.
+ * @param [in] root_module_name Name of the module that defines scheme of the tree root.
+ *                              Can be NULL.
+ * @param [out] tree Returned newly allocated Sysrepo tree.
  */
-int sr_new_tree(const char *root_name, const char *root_module_name, sr_node_t **tree_p);
+int sr_new_tree(const char *root_name, const char *root_module_name, sr_node_t **tree);
 
 /**
  * @brief Allocate an array of sysrepo trees (uninitialized tree roots).
  *
- * @param [in] count Length of the array to allocate.
- * @param [out] nodes_p Returned newly allocated array of trees.
+ * @param [in] tree_cnt Length of the array to allocate.
+ * @param [out] trees Returned newly allocated array of trees.
  */
-int sr_new_trees(size_t count, sr_node_t **trees_p);
+int sr_new_trees(size_t tree_cnt, sr_node_t **trees);
 
 /**
  * @brief Set/change name of a Sysrepo node.
@@ -74,19 +74,19 @@ int sr_node_set_string(sr_node_t *node, const char *string_val);
  * @param [in] child_name Name of the newly created child node. Can be NULL.
  * @param [in] child_module_name Name of the module that defines scheme of the newly created
  *                               child node. Can be NULL.
- * @param [out] child_p Returned newly allocated child node.
+ * @param [out] child Returned newly allocated child node.
  */
 int sr_node_add_child(sr_node_t *parent, const char *child_name, const char *child_module_name,
-        sr_node_t **child_p);
+        sr_node_t **child);
 
 /**
  * @brief Duplicate node and all its descendants (with or without Sysrepo memory context)
  * into a new instance of Sysrepo tree with memory context.
  *
- * @param [in] root Root of a Sysrepo tree to duplicate.
- * @param [out] tree_dup_p Returned duplicate of the input tree.
+ * @param [in] tree Sysrepo tree to duplicate.
+ * @param [out] tree_dup Returned duplicate of the input tree.
  */
-int sr_dup_tree(sr_node_t *tree, sr_node_t **tree_dup_p);
+int sr_dup_tree(sr_node_t *tree, sr_node_t **tree_dup);
 
 /**
  * @brief Duplicate an array of trees (with or without Sysrepo memory context) into a new
@@ -94,8 +94,8 @@ int sr_dup_tree(sr_node_t *tree, sr_node_t **tree_dup_p);
  *
  * @param [in] trees Array of sysrepo trees to duplicate.
  * @param [in] count Size of the array to duplicate.
- * @param [out] trees_dup_p Returned duplicate of the input array.
+ * @param [out] trees_dup Returned duplicate of the input array.
  */
-int sr_dup_trees(sr_node_t *trees, size_t count, sr_node_t **trees_dup_p);
+int sr_dup_trees(sr_node_t *trees, size_t count, sr_node_t **trees_dup);
 
 #endif /* TREES_H_ */
