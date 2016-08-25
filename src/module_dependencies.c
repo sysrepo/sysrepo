@@ -334,7 +334,7 @@ md_lyd_new_path(md_ctx_t *md_ctx, const char *xpath_format, const char *value, m
     vsnprintf(xpath, PATH_MAX, xpath_format, va);
     va_end(va);
     ly_errno = LY_SUCCESS;
-    node_data = lyd_new_path(md_ctx->data_tree, md_ctx->ly_ctx, xpath, value, LYD_PATH_OPT_UPDATE);
+    node_data = lyd_new_path(md_ctx->data_tree, md_ctx->ly_ctx, xpath, (void *)value, 0, LYD_PATH_OPT_UPDATE);
     if (!node_data && LY_SUCCESS != ly_errno) {
         SR_LOG_ERR("Failed to %s for module '%s': %s",
                    op_descr, md_get_module_fullname(dest_module), ly_errmsg());

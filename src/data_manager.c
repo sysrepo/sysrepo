@@ -3555,7 +3555,7 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
 
     /* converse sysrepo values/trees to libyang data tree */
     if (SR_API_VALUES == api_variant) {
-        data_tree = lyd_new_path(NULL, schema_info->ly_ctx, xpath, NULL, 0);
+        data_tree = lyd_new_path(NULL, schema_info->ly_ctx, xpath, NULL, 0, 0);
         if (NULL == data_tree) {
             SR_LOG_ERR("%s xpath validation failed ('%s'): %s", procedure_name, xpath, ly_errmsg());
             rc = dm_report_error(session, ly_errmsg(), xpath, SR_ERR_VALIDATION_FAILED);
@@ -3580,7 +3580,7 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
                 }
             }
             /* create the argument node in the tree */
-            new_node = lyd_new_path(data_tree, schema_info->ly_ctx, args[i].xpath, string_value, (input ? 0 : LYD_PATH_OPT_OUTPUT));
+            new_node = lyd_new_path(data_tree, schema_info->ly_ctx, args[i].xpath, string_value, 0, (input ? 0 : LYD_PATH_OPT_OUTPUT));
             free(string_value);
             if (NULL == new_node) {
                 SR_LOG_ERR("Unable to add new %s argument '%s': %s.", procedure_name, args[i].xpath, ly_errmsg());
@@ -3724,7 +3724,7 @@ dm_lyd_new_path(dm_data_info_t *data_info, const char *path, const char *value, 
     }
 
     struct lyd_node *new = NULL;
-    new = lyd_new_path(data_info->node, data_info->schema->ly_ctx, path, value, options);
+    new = lyd_new_path(data_info->node, data_info->schema->ly_ctx, path, (void *)value, 0, options);
     if (NULL == data_info->node) {
         data_info->node = new;
     }

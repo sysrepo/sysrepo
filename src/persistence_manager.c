@@ -218,7 +218,7 @@ pm_modify_persist_data_tree(pm_ctx_t *pm_ctx, struct lyd_node **data_tree, const
 
     if (add) {
         /* add persistent data */
-        new_node = lyd_new_path(*data_tree, pm_ctx->ly_ctx, xpath, value, 0);
+        new_node = lyd_new_path(*data_tree, pm_ctx->ly_ctx, xpath, (void*)value, 0, 0);
         if (NULL == *data_tree) {
             /* if the new data tree has been just created */
             *data_tree = new_node;

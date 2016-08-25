@@ -1186,7 +1186,7 @@ sr_subtree_to_dt(struct ly_ctx *ly_ctx, const sr_node_t *sr_tree, bool output, s
         case SR_CONTAINER_PRESENCE_T:
             /* create the inner node in the tree */
             if (NULL == parent) {
-                node = lyd_new_path(*data_tree, ly_ctx, xpath, NULL, output ? LYD_PATH_OPT_OUTPUT : 0);
+                node = lyd_new_path(*data_tree, ly_ctx, xpath, NULL, 0, output ? LYD_PATH_OPT_OUTPUT : 0);
                 if (NULL == *data_tree) {
                     *data_tree = node;
                 }
@@ -1249,7 +1249,7 @@ sr_subtree_to_dt(struct ly_ctx *ly_ctx, const sr_node_t *sr_tree, bool output, s
             }
             /* create the leaf in the tree */
             if (NULL == parent) {
-                node = lyd_new_path(*data_tree, ly_ctx, xpath, string_val, output ? LYD_PATH_OPT_OUTPUT : 0);
+                node = lyd_new_path(*data_tree, ly_ctx, xpath, string_val, 0, output ? LYD_PATH_OPT_OUTPUT : 0);
                 free(string_val);
                 if (NULL == *data_tree) {
                     *data_tree = node;

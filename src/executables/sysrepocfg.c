@@ -290,7 +290,7 @@ srcfg_get_module_data(struct ly_ctx *ly_ctx, const char *module_name, struct lyd
 
         /* add node to data tree */
         ly_errno = LY_SUCCESS;
-        node = lyd_new_path(*data_tree, ly_ctx, value->xpath, string_val, LYD_PATH_OPT_UPDATE);
+        node = lyd_new_path(*data_tree, ly_ctx, value->xpath, string_val, 0, LYD_PATH_OPT_UPDATE);
         if (!node && LY_SUCCESS != ly_errno) {
             SR_LOG_ERR("Error by lyd_new_path: %s", ly_errmsg());
             goto fail;
