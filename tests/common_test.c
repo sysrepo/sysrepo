@@ -991,6 +991,30 @@ sr_node_t_rpc_output_test(void **state)
     ly_ctx_destroy(ly_ctx, NULL);
 }
 
+static void
+sr_free_schema_test(void **state)
+{
+    sr_schema_t *schema = NULL;
+
+    schema = calloc(1, sizeof *schema);
+    schema->module_name = strdup("example-module");
+    schema->ns = strdup("urn:ietf:params:xml:ns:yang:example");
+    schema->prefix = strdup("ie");
+    schema->revision.file_path_yang = strdup("/etc/sysrepo/yang/example-module.yang");
+    schema->submodule_count = 2;
+    schema->submodules = calloc(schema->submodule_count, sizeof *schema->submodules);
+    schema->submodules[0].submodule_name = strdup("submod1");
+    schema->submodules[1].submodule_name = strdup("submod2");
+    schema->enabled_feature_cnt = 3;
+    schema->enabled_features = calloc(schema->enabled_feature_cnt, sizeof *schema->enabled_features);
+    schema->enabled_features[0] = strdup("feature1");
+    schema->enabled_features[1] = strdup("feature2");
+    schema->enabled_features[2] = strdup("feature3");
+
+    sr_free_schema(schema);
+    free(schema);
+}
+
 int
 main() {
     const struct CMUnitTest tests[] = {
@@ -1005,6 +1029,7 @@ main() {
             cmocka_unit_test_setup_teardown(sr_node_t_with_augments_test, logging_setup, logging_cleanup),
             cmocka_unit_test_setup_teardown(sr_node_t_rpc_input_test, logging_setup, logging_cleanup),
             cmocka_unit_test_setup_teardown(sr_node_t_rpc_output_test, logging_setup, logging_cleanup),
+            cmocka_unit_test_setup_teardown(sr_free_schema_test, logging_setup, logging_cleanup),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);
