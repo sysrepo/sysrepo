@@ -89,7 +89,6 @@ public:
 
 private:
     sr_val_iter_t *_iter;
-
 };
 
 class Iter_Change
@@ -103,7 +102,6 @@ public:
 
 private:
     sr_change_iter_t *_iter;
-
 };
 
 class Values:public Value
@@ -122,17 +120,6 @@ private:
     sr_val_t *_values;
     size_t _cnt;
     size_t _pos;
-};
-
-class Operation
-{
-public:
-    Operation(sr_change_oper_t oper);
-    ~Operation();
-    sr_change_oper_t Get();
-
-private:
-    sr_change_oper_t _oper;
 };
 
 #endif

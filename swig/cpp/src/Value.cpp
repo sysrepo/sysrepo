@@ -21,13 +21,13 @@
 
 #include <iostream>
 #include <stdexcept>
+#include <stdlib.h>
 
 #include "Sysrepo.h"
 #include "Value.h"
 
 extern "C" {
 #include "sysrepo.h"
-#include <stdlib.h>
 }
 
 using namespace std;
@@ -540,17 +540,3 @@ bool Values::Prev()
     return false;
 }
 
-Operation::Operation(sr_change_oper_t oper)
-{
-    _oper = oper;
-}
-
-Operation::~Operation()
-{
-    return;
-}
-
-sr_change_oper_t Operation::Get()
-{
-    return _oper;
-}

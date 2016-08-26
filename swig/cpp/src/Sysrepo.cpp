@@ -21,13 +21,13 @@
 
 #include <iostream>
 #include <stdexcept>
+#include <stdlib.h>
 
 #include "Struct.h"
 #include "Sysrepo.h"
 
 extern "C" {
 #include "sysrepo.h"
-#include <stdlib.h>
 }
 
 using namespace std;
