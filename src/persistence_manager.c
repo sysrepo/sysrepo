@@ -218,7 +218,7 @@ pm_modify_persist_data_tree(pm_ctx_t *pm_ctx, struct lyd_node **data_tree, const
 
     if (add) {
         /* add persistent data */
-        new_node = lyd_new_path(*data_tree, pm_ctx->ly_ctx, xpath, value, 0);
+        new_node = lyd_new_path(*data_tree, pm_ctx->ly_ctx, xpath, (void*)value, 0, 0);
         if (NULL == *data_tree) {
             /* if the new data tree has been just created */
             *data_tree = new_node;
@@ -496,7 +496,7 @@ pm_save_feature_state(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char 
 }
 
 int
-pm_get_module_info(pm_ctx_t *pm_ctx, const char *module_name, bool *module_enabled,
+pm_get_module_info(pm_ctx_t *pm_ctx, const char *module_name, sr_mem_ctx_t *sr_mem_features, bool *module_enabled,
         char ***subtrees_enabled_p, size_t *subtrees_enabled_cnt_p, char ***features_p, size_t *features_cnt_p)
 {
     char xpath[PATH_MAX] = { 0, };
@@ -506,6 +506,7 @@ pm_get_module_info(pm_ctx_t *pm_ctx, const char *module_name, bool *module_enabl
     const char *feature_name = NULL;
     size_t subtrees_enabled_cnt = 0, feature_cnt = 0;
     np_subscription_t subscription = { 0, };
+    sr_mem_snapshot_t snapshot = { 0, };
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG3(pm_ctx, module_name, module_enabled);
@@ -516,6 +517,10 @@ pm_get_module_info(pm_ctx_t *pm_ctx, const char *module_name, bool *module_enabl
     *subtrees_enabled_cnt_p = 0;
     *features_p = NULL;
     *features_cnt_p = 0;
+
+    if (sr_mem_features) {
+        sr_mem_snapshot(sr_mem_features, &snapshot);
+    }
 
     /* load the data tree from persist file */
     rc = pm_load_data_tree(pm_ctx, NULL, module_name, true, &data_tree, NULL);
@@ -534,13 +539,13 @@ pm_get_module_info(pm_ctx_t *pm_ctx, const char *module_name, bool *module_enabl
     node_set = lyd_get_node(data_tree, xpath);
 
     if (NULL != node_set && node_set->number > 0) {
-        features = calloc(node_set->number, sizeof(*features));
+        features = sr_calloc(sr_mem_features, node_set->number, sizeof(*features));
         CHECK_NULL_NOMEM_GOTO(features, rc, cleanup);
 
         for (size_t i = 0; i < node_set->number; i++) {
             feature_name = ((struct lyd_node_leaf_list *)node_set->set.d[i])->value_str;
             if (NULL != feature_name) {
-                features[feature_cnt] = strdup(feature_name);
+                sr_mem_edit_string(sr_mem_features, &features[feature_cnt], feature_name);
                 CHECK_NULL_NOMEM_GOTO(features[feature_cnt], rc, cleanup);
                 feature_cnt++;
             }
@@ -600,11 +605,15 @@ cleanup:
         for (size_t i = 0; i < subtrees_enabled_cnt; i++) {
             free((void*)subtrees_enabled[i]);
         }
-        for (size_t i = 0; i < feature_cnt; i++) {
-            free((void*)features[i]);
-        }
         free(subtrees_enabled);
-        free(features);
+        if (sr_mem_features) {
+            sr_mem_restore(&snapshot);
+        } else {
+            for (size_t i = 0; i < feature_cnt; i++) {
+                free((void*)features[i]);
+            }
+            free(features);
+        }
     }
     return rc;
 }

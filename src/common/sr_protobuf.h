@@ -45,28 +45,31 @@ const char *sr_gpb_operation_name(Sr__Operation operation);
 /**
  * @brief Allocates and initializes GPB request message.
  *
+ * @param[in] sr_mem Sysrepo memory context. If NULL then standard malloc/calloc/free will be used.
  * @param[in] session_id ID of session identifying the recipient. Pass 0 if session is not open yet.
  * @param[in] operation Requested operation.
  * @param[out] msg GPB message.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int sr_gpb_req_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__Msg **msg);
+int sr_gpb_req_alloc(sr_mem_ctx_t *sr_mem, const Sr__Operation operation, const uint32_t session_id, Sr__Msg **msg);
 
 /**
  * @brief Allocates and initializes GPB response message.
  *
+ * @param[in] sr_mem Sysrepo memory context. If NULL then standard malloc/calloc/free will be used.
  * @param[in] session_id ID of session identifying the recipient. Pass 0 if session is not open yet.
  * @param[in] operation Requested operation.
  * @param[out] msg GPB message.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int sr_gpb_resp_alloc(const Sr__Operation operation, const uint32_t session_id, Sr__Msg **msg);
+int sr_gpb_resp_alloc(sr_mem_ctx_t *sr_mem, const Sr__Operation operation, const uint32_t session_id, Sr__Msg **msg);
 
 /**
  * @brief Allocates and initializes GPB notification message.
  *
+ * @param[in] sr_mem Sysrepo memory context. If NULL then standard malloc/calloc/free will be used.
  * @param[in] type Notification type.
  * @param[in] destination Destination (socket path) of the notification.
  * @param[in] subscription_id CLient-local subscription identifier.
@@ -74,28 +77,30 @@ int sr_gpb_resp_alloc(const Sr__Operation operation, const uint32_t session_id, 
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int sr_gpb_notif_alloc(const Sr__SubscriptionType type, const char *destination,
+int sr_gpb_notif_alloc(sr_mem_ctx_t *sr_mem, const Sr__SubscriptionType type, const char *destination,
         const uint32_t subscription_id, Sr__Msg **msg);
 
 /**
  * @brief Allocates and initializes GPB notification acknowledgment message.
  *
+ * @param[in] sr_mem Sysrepo memory context. If NULL then standard malloc/calloc/free will be used.
  * @param[in] notification Original notification to be acknowledged.
  * @param[out] msg GPB message.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int sr_gpb_notif_ack_alloc(Sr__Msg *notification, Sr__Msg **msg);
+int sr_gpb_notif_ack_alloc(sr_mem_ctx_t *sr_mem, Sr__Msg *notification, Sr__Msg **msg);
 
 /**
  * @brief Allocates and initializes GPB internal request message.
  *
+ * @param[in] sr_mem Sysrepo memory context. If NULL then standard malloc/calloc/free will be used.
  * @param[in] operation Requested operation.
  * @param[out] msg GPB message.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int sr_gpb_internal_req_alloc(const Sr__Operation operation, Sr__Msg **msg);
+int sr_gpb_internal_req_alloc(sr_mem_ctx_t *sr_mem, const Sr__Operation operation, Sr__Msg **msg);
 
 /**
  * @brief Validates the message according to excepted message type and operation.
@@ -128,11 +133,14 @@ int sr_dup_val_t_to_gpb(const sr_val_t *value, Sr__Value **gpb_value);
 
 /**
  * @brief Allocates and fills sr_val_t structure from gpb.
+ *
+ * @param[in] sr_mem Sysrepo memory context to use for memory allocation.
+ *                   If NULL then the standard malloc/calloc are used.
  * @param [in] gpb_value
  * @param [out] value
  * @return err_code
  */
-int sr_dup_gpb_to_val_t(const Sr__Value *gpb_value, sr_val_t **value);
+int sr_dup_gpb_to_val_t(sr_mem_ctx_t *sr_mem, const Sr__Value *gpb_value, sr_val_t **value);
 
 /**
  * @brief Fills sr_val_t structure from gpb.
@@ -158,6 +166,8 @@ int sr_values_sr_to_gpb(const sr_val_t *sr_values, const size_t sr_value_cnt, Sr
 /**
  * @brief Copies values from GPB array of pointers to values to sysrepo values array.
  *
+ * @param[in] sr_mem Sysrepo memory context to use for memory allocation.
+ *                   If NULL then the standard malloc/calloc are used.
  * @param[in] gpb_values GPB array of pointers to values.
  * @param[in] gpb_value_cnt Number of values in the input array.
  * @param[out] sr_values Array of sysrepo values.
@@ -165,7 +175,8 @@ int sr_values_sr_to_gpb(const sr_val_t *sr_values, const size_t sr_value_cnt, Sr
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int sr_values_gpb_to_sr(Sr__Value **gpb_values, size_t gpb_value_cnt, sr_val_t **sr_values, size_t *sr_value_cnt);
+int sr_values_gpb_to_sr(sr_mem_ctx_t *sr_mem, Sr__Value **gpb_values, size_t gpb_value_cnt, sr_val_t **sr_values,
+        size_t *sr_value_cnt);
 
 /**
  * @brief Allocates and copies tree data from the sysrepo tree-representation (based on sr_node_t) into
@@ -181,11 +192,13 @@ int sr_dup_tree_to_gpb(const sr_node_t *sr_tree, Sr__Node **gpb_tree);
  * @brief Allocates and copies tree data from the GPB tree-representation (based on Sr__Node) into
  * the sysrepo tree-representation (based on sr_node_t).
  *
+ * @param[in] sr_mem Sysrepo memory context to use for memory allocation.
+ *                   If NULL then the standard malloc/calloc are used.
  * @param [in] gpb_tree GPB tree.
  * @param [out] sr_tree Sysrepo tree.
  * @return err_code
  */
-int sr_dup_gpb_to_tree(const Sr__Node *gpb_tree, sr_node_t **sr_tree);
+int sr_dup_gpb_to_tree(sr_mem_ctx_t *sr_mem, const Sr__Node *gpb_tree, sr_node_t **sr_tree);
 
 /**
  * @brief Fill sysrepo tree content from gpb.
@@ -210,6 +223,8 @@ int sr_trees_sr_to_gpb(const sr_node_t *sr_trees, const size_t sr_tree_cnt, Sr__
 /**
  * @brief Copies and transforms an array of GPB trees into the array of sysrepo-represented trees.
  *
+ * @param[in] sr_mem Sysrepo memory context to use for memory allocation.
+ *                   If NULL then the standard malloc/calloc are used.
  * @param[in] gpb_trees array of GPB trees.
  * @param[in] gpb_tree_cnt Number of GPB trees.
  * @param[out] sr_trees Array of sysrepo trees.
@@ -217,16 +232,18 @@ int sr_trees_sr_to_gpb(const sr_node_t *sr_trees, const size_t sr_tree_cnt, Sr__
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int sr_trees_gpb_to_sr(Sr__Node **gpb_trees, size_t gpb_tree_cnt, sr_node_t **sr_trees, size_t *sr_tree_cnt);
+int sr_trees_gpb_to_sr(sr_mem_ctx_t *sr_mem, Sr__Node **gpb_trees, size_t gpb_tree_cnt, sr_node_t **sr_trees, size_t *sr_tree_cnt);
 
 /**
  * @brief Fills the gpb structures from the set of changes
  * @param [in] sr_changes
+ * @param [in] sr_mem Sysrepo memory context to use for memory allocation.
+ *                    If NULL then the standard malloc/calloc are used.
  * @param [out] changes
  * @param [out] gpb_count
  * @return Error code (SR_ERR_OK on success)
  */
-int sr_changes_sr_to_gpb(sr_list_t *sr_changes, Sr__Change ***changes, size_t *gpb_count);
+int sr_changes_sr_to_gpb(sr_list_t *sr_changes, sr_mem_ctx_t *sr_mem, Sr__Change ***changes, size_t *gpb_count);
 
 /**
  * @brief Converts sysrepo datastore to GPB datastore.
@@ -348,6 +365,8 @@ int sr_schemas_sr_to_gpb(const sr_schema_t *sr_schemas, const size_t schema_cnt,
 /**
  * @brief Converts array of pointers to GPB schemas to an array of sr_schema_t.
  *
+ * @param[in] sr_mem Sysrepo memory context to use for memory allocation.
+ *                   If NULL then the standard malloc/calloc are used.
  * @param [in] gpb_schemas Array of pointers to GPB schemas.
  * @param [in] schema_cnt Number of schemas in the array.
  * @param [out] sr_schemas Array of sr_schema_t (allocated by the function,
@@ -355,30 +374,35 @@ int sr_schemas_sr_to_gpb(const sr_schema_t *sr_schemas, const size_t schema_cnt,
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int sr_schemas_gpb_to_sr(const Sr__Schema **gpb_schemas, const size_t schema_cnt, sr_schema_t **sr_schemas);
+int sr_schemas_gpb_to_sr(sr_mem_ctx_t *sr_mem, const Sr__Schema **gpb_schemas, const size_t schema_cnt, sr_schema_t **sr_schemas);
 
 /**
  * @brief Fills detailed error information into a GPB error message.
  *
  * @param[in] error_message Error message (can be NULL). String will be duplicated.
  * @param[in] error_path XPath to node where error occurred (can be NULL). String will be duplicated.
+ * @param [in] sr_mem Sysrepo memory context to use for memory allocation.
+ *                    If NULL then the standard malloc/calloc are used.
  * @param[in,out] gpb_error GPB message where the error information should be filled in.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int sr_gpb_fill_error(const char *error_message, const char *error_path, Sr__Error **gpb_error);
+int sr_gpb_fill_error(const char *error_message, const char *error_path, sr_mem_ctx_t *sr_mem, Sr__Error **gpb_error);
 
 /**
  * @brief Fills detailed error information into an array of pointers to GPB error messages.
  *
  * @param[in] sr_errors Array of detailed error information.
  * @param[in] sr_error_cnt Number of errors in the sr_errors array.
+ * @param [in] sr_mem Sysrepo memory context to use for memory allocation.
+ *                    If NULL then the standard malloc/calloc are used.
  * @param[out] gpb_errors Array of pointers to GPB error messages (will be allocated).
  * @param[out] gpb_error_cnt Number of errors set to gpb_errors array.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int sr_gpb_fill_errors(sr_error_info_t *sr_errors, size_t sr_error_cnt, Sr__Error ***gpb_errors, size_t *gpb_error_cnt);
+int sr_gpb_fill_errors(sr_error_info_t *sr_errors, size_t sr_error_cnt, sr_mem_ctx_t *sr_mem, Sr__Error ***gpb_errors,
+        size_t *gpb_error_cnt);
 
 /**@} gpb_wrappers */
 

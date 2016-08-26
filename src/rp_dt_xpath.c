@@ -171,7 +171,7 @@ rp_dt_create_xpath_for_list_node(const struct lyd_node *data_tree, char **xpath,
  * @brief Creates xpath for the selected node.
  */
 int
-rp_dt_create_xpath_for_node(const struct lyd_node *node, char **xpath)
+rp_dt_create_xpath_for_node(sr_mem_ctx_t *sr_mem, const struct lyd_node *node, char **xpath)
 {
     CHECK_NULL_ARG2(node, xpath);
     int rc = 0;
@@ -252,7 +252,7 @@ rp_dt_create_xpath_for_node(const struct lyd_node *node, char **xpath)
     }
     length++; /*terminating null byte*/
 
-    result = calloc(length, sizeof(*result));
+    result = sr_calloc(sr_mem, length, sizeof(*result));
     if (NULL == result) {
         SR_LOG_ERR_MSG("Memory allocation failed.");
         for (int j = 0; j < level; j++) {

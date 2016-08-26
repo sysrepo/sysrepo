@@ -290,7 +290,7 @@ srcfg_get_module_data(struct ly_ctx *ly_ctx, const char *module_name, struct lyd
 
         /* add node to data tree */
         ly_errno = LY_SUCCESS;
-        node = lyd_new_path(*data_tree, ly_ctx, value->xpath, string_val, LYD_PATH_OPT_UPDATE);
+        node = lyd_new_path(*data_tree, ly_ctx, value->xpath, string_val, 0, LYD_PATH_OPT_UPDATE);
         if (!node && LY_SUCCESS != ly_errno) {
             SR_LOG_ERR("Error by lyd_new_path: %s", ly_errmsg());
             goto fail;
@@ -351,7 +351,7 @@ static int
 srcfg_convert_lydiff_changed(const char *xpath, struct lyd_node *node)
 {
     int rc = SR_ERR_INTERNAL;
-    sr_val_t value = { 0, SR_UNKNOWN_T };
+    sr_val_t value = { 0, 0, SR_UNKNOWN_T };
     struct lyd_node_leaf_list *data_leaf = NULL;
 
     CHECK_NULL_ARG2(xpath, node);
@@ -407,7 +407,7 @@ srcfg_convert_lydiff_created(struct lyd_node *node)
     int rc = SR_ERR_INTERNAL;
     struct lyd_node *elem = node;
     bool process_children = true;
-    sr_val_t value = { 0, SR_UNKNOWN_T };
+    sr_val_t value = { 0, 0, SR_UNKNOWN_T };
     struct lyd_node_leaf_list *data_leaf = NULL;
     struct lys_node_list *slist = NULL;
     char *xpath = NULL, *delim = NULL;
@@ -427,6 +427,7 @@ srcfg_convert_lydiff_created(struct lyd_node *node)
         free(xpath);
         xpath = value.xpath = NULL;
         value.type = SR_UNKNOWN_T;
+        value.data.uint64_val = 0;
         switch (elem->schema->nodetype) {
             case LYS_LEAF: /* e.g.: /test-module:user[name='nameE']/name */
                 /* get value */

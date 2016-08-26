@@ -905,4 +905,6 @@ message Msg {
   optional Notification notification = 5;         /**< Filled in in case of type == NOTIFICATION. */
   optional NotificationAck notification_ack = 6;  /**< Filled in in case of type == NOTIFICATION_ACK */
   optional InternalRequest internal_request = 7;  /**< Filled in in case of type == INTERNAL. */
+
+  required uint64 _sysrepo_mem_ctx = 20;          /**< Not part of the protocol. Used internally by Sysrepo to store a pointer to memory context. */
 }

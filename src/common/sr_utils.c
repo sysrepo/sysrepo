@@ -684,13 +684,13 @@ sr_check_value_conform_to_schema(const struct lys_node *node, const sr_val_t *va
 /**
  * Functions copies the bits into string
  * @param [in] leaf - data tree node from the bits will be copied
- * @param [out] dest - space separated set bit field
+ * @param [out] value - destination value where a space separated set bit field will be copied to
  * @return Error code (SR_ERR_OK on success)
  */
 static int
-sr_libyang_leaf_copy_bits(const struct lyd_node_leaf_list *leaf, char **dest)
+sr_libyang_leaf_copy_bits(const struct lyd_node_leaf_list *leaf, sr_val_t *value)
 {
-    CHECK_NULL_ARG3(leaf, dest, leaf->schema);
+    CHECK_NULL_ARG3(leaf, value, leaf->schema);
 
     struct lys_node_leaf *sch = (struct lys_node_leaf *) leaf->schema;
     char *bits_str = NULL;
@@ -704,7 +704,7 @@ sr_libyang_leaf_copy_bits(const struct lyd_node_leaf_list *leaf, char **dest)
             length++; /*space after bit*/
         }
     }
-    bits_str = calloc(length, sizeof(*bits_str));
+    bits_str = sr_calloc(value->_sr_mem, length, sizeof(*bits_str));
     if (NULL == bits_str) {
         SR_LOG_ERR_MSG("Memory allocation failed");
         return SR_ERR_NOMEM;
@@ -722,7 +722,7 @@ sr_libyang_leaf_copy_bits(const struct lyd_node_leaf_list *leaf, char **dest)
         bits_str[offset - 1] = '\0';
     }
 
-    *dest = bits_str;
+    value->data.bits_val = bits_str;
     return SR_ERR_OK;
 }
 
@@ -746,7 +746,7 @@ sr_libyang_leaf_copy_value(const struct lyd_node_leaf_list *leaf, sr_val_t *valu
             SR_LOG_ERR("Binary data in leaf '%s' is NULL", node_name);
             return SR_ERR_INTERNAL;
         }
-        value->data.binary_val = strdup(leaf->value.binary);
+        sr_mem_edit_string(value->_sr_mem, &value->data.binary_val, leaf->value.binary);
         if (NULL == value->data.binary_val) {
             SR_LOG_ERR("Copy value failed for leaf '%s' of type 'binary'", node_name);
             return SR_ERR_INTERNAL;
@@ -756,7 +756,7 @@ sr_libyang_leaf_copy_value(const struct lyd_node_leaf_list *leaf, sr_val_t *valu
         if (NULL == leaf->value.bit) {
             SR_LOG_ERR("Missing schema information for node '%s'", node_name);
         }
-        rc = sr_libyang_leaf_copy_bits(leaf, &(value->data.bits_val));
+        rc = sr_libyang_leaf_copy_bits(leaf, value);
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR("Copy value failed for leaf '%s' of type 'bits'", node_name);
         }
@@ -780,7 +780,7 @@ sr_libyang_leaf_copy_value(const struct lyd_node_leaf_list *leaf, sr_val_t *valu
             SR_LOG_ERR("Missing schema information for node '%s'", node_name);
             return SR_ERR_INTERNAL;
         }
-        value->data.enum_val = strdup(leaf->value.enm->name);
+        sr_mem_edit_string(value->_sr_mem, &value->data.enum_val, leaf->value.enm->name);
         if (NULL == value->data.enum_val) {
             SR_LOG_ERR("Copy value failed for leaf '%s' of type 'enum'", node_name);
             return SR_ERR_INTERNAL;
@@ -791,7 +791,7 @@ sr_libyang_leaf_copy_value(const struct lyd_node_leaf_list *leaf, sr_val_t *valu
             SR_LOG_ERR("Identity ref in leaf '%s' is NULL", node_name);
             return SR_ERR_INTERNAL;
         }
-        value->data.identityref_val = strdup(leaf->value.ident->name);
+        sr_mem_edit_string(value->_sr_mem, &value->data.identityref_val, leaf->value.ident->name);
         if (NULL == value->data.identityref_val) {
             SR_LOG_ERR("Copy value failed for leaf '%s' of type 'identityref'", node_name);
             return SR_ERR_INTERNAL;
@@ -811,7 +811,7 @@ sr_libyang_leaf_copy_value(const struct lyd_node_leaf_list *leaf, sr_val_t *valu
         return SR_ERR_OK;
     case LY_TYPE_STRING:
         if (NULL != leaf->value.string) {
-            value->data.string_val = strdup(leaf->value.string);
+            sr_mem_edit_string(value->_sr_mem, &value->data.string_val, leaf->value.string);
             if (NULL == value->data.string_val) {
                 SR_LOG_ERR_MSG("String duplication failed");
                 return SR_ERR_NOMEM;
@@ -1034,17 +1034,14 @@ sr_copy_node_to_tree_internal(struct ly_ctx *ly_ctx, const struct lyd_node *pare
     int rc = SR_ERR_OK;
     struct lyd_node_leaf_list *data_leaf = NULL;
     struct lys_node_container *cont = NULL;
-    size_t child_cnt = 0, i = 0;
     const struct lyd_node *child = NULL;
+    sr_node_t *sr_subtree = NULL;
 
     CHECK_NULL_ARG3(ly_ctx, node, sr_tree);
 
-    /* unset in case the input structure wasn't initialized */
-    memset(sr_tree, '\0', sizeof(*sr_tree));
-
     /* copy node name */
-    sr_tree->name = strdup(node->schema->name);
-    CHECK_NULL_NOMEM_GOTO(sr_tree->name, rc, cleanup);
+    rc = sr_node_set_name(sr_tree, node->schema->name);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to set sysrepo node name");
 
     /* copy value and type */
     switch (node->schema->nodetype) {
@@ -1076,29 +1073,23 @@ sr_copy_node_to_tree_internal(struct ly_ctx *ly_ctx, const struct lyd_node *pare
 
     /* set module_name */
     if (NULL == parent || lyd_node_module(parent) != lyd_node_module(node)) {
-        sr_tree->module_name = strdup(lyd_node_module(node)->name);
-        CHECK_NULL_NOMEM_GOTO(sr_tree->module_name, rc, cleanup);
+        rc = sr_node_set_module(sr_tree, lyd_node_module(node)->name);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to set module of a sysrepo node.");
     }
 
     /* copy children */
     if ((LYS_CONTAINER | LYS_LIST) & node->schema->nodetype) {
         child = node->child;
         while (child) {
-            ++child_cnt;
-            child = child->next;
-        }
-        sr_tree->children = calloc(child_cnt, sizeof(sr_node_t));
-        CHECK_NULL_NOMEM_GOTO(sr_tree->children, rc, cleanup);
-        child = node->child;
-        i = 0;
-        while (child) {
-            rc = sr_copy_node_to_tree_internal(ly_ctx, node, child, sr_tree->children + i);
+            rc = sr_node_add_child(sr_tree, NULL, NULL, &sr_subtree);
+            if (SR_ERR_OK != rc) {
+                goto cleanup;
+            }
+            rc = sr_copy_node_to_tree_internal(ly_ctx, node, child, sr_subtree);
             if (SR_ERR_OK != rc) {
                 goto cleanup;
             }
             child = child->next;
-            ++i;
-            ++sr_tree->children_cnt;
         }
     }
 
@@ -1116,18 +1107,33 @@ sr_copy_node_to_tree(struct ly_ctx *ly_ctx, const struct lyd_node *node, sr_node
 }
 
 int
-sr_nodes_to_trees(struct ly_ctx *ly_ctx, struct ly_set *nodes, sr_node_t **sr_trees, size_t *count)
+sr_nodes_to_trees(struct ly_ctx *ly_ctx, struct ly_set *nodes, sr_mem_ctx_t *sr_mem, sr_node_t **sr_trees, size_t *count)
 {
-    int rc = 0;
+    int rc = SR_ERR_OK;
     sr_node_t *trees = NULL;
+    sr_mem_snapshot_t snapshot = { 0, };
     size_t i = 0;
 
     CHECK_NULL_ARG4(ly_ctx, nodes, sr_trees, count);
 
-    trees = calloc(nodes->number, sizeof(sr_node_t));
+    if (0 == nodes->number) {
+        *sr_trees = NULL;
+        *count = 0;
+        return rc;
+    }
+
+    if (sr_mem) {
+        sr_mem_snapshot(sr_mem, &snapshot);
+    }
+
+    trees = sr_calloc(sr_mem, nodes->number, sizeof *trees);
     CHECK_NULL_NOMEM_RETURN(trees);
+    if (sr_mem) {
+        ++sr_mem->obj_count;
+    }
 
     for (i = 0; i < nodes->number && 0 == rc; ++i) {
+        trees[i]._sr_mem = sr_mem;
         rc = sr_copy_node_to_tree(ly_ctx, nodes->set.d[i], trees + i);
     }
 
@@ -1135,7 +1141,11 @@ sr_nodes_to_trees(struct ly_ctx *ly_ctx, struct ly_set *nodes, sr_node_t **sr_tr
         *sr_trees = trees;
         *count = nodes->number;
     } else {
-        sr_free_trees(trees, i);
+        if (sr_mem) {
+            sr_mem_restore(&snapshot);
+        } else {
+            sr_free_trees(trees, i);
+        }
     }
     return rc;
 }
@@ -1149,6 +1159,7 @@ sr_subtree_to_dt(struct ly_ctx *ly_ctx, const sr_node_t *sr_tree, bool output, s
     struct ly_set *nodeset = NULL;
     const struct lys_module *module = NULL;
     const struct lys_node *sch_node = NULL;
+    sr_node_t *sr_subtree = NULL;
     char *string_val = NULL, *relative_xpath = NULL;
 
     CHECK_NULL_ARG3(ly_ctx, sr_tree, data_tree);
@@ -1176,7 +1187,7 @@ sr_subtree_to_dt(struct ly_ctx *ly_ctx, const sr_node_t *sr_tree, bool output, s
         case SR_CONTAINER_PRESENCE_T:
             /* create the inner node in the tree */
             if (NULL == parent) {
-                node = lyd_new_path(*data_tree, ly_ctx, xpath, NULL, output ? LYD_PATH_OPT_OUTPUT : 0);
+                node = lyd_new_path(*data_tree, ly_ctx, xpath, NULL, 0, output ? LYD_PATH_OPT_OUTPUT : 0);
                 if (NULL == *data_tree) {
                     *data_tree = node;
                 }
@@ -1198,8 +1209,10 @@ sr_subtree_to_dt(struct ly_ctx *ly_ctx, const sr_node_t *sr_tree, bool output, s
                 node = lyd_new(parent, module, sr_tree->name);
             }
             /* process children */
-            for (size_t i = 0; i < sr_tree->children_cnt && SR_ERR_OK == ret; ++i) {
-                ret = sr_subtree_to_dt(ly_ctx, sr_tree->children + i, output, node, NULL, data_tree);
+            sr_subtree = sr_tree->first_child;
+            while  (sr_subtree) {
+                ret = sr_subtree_to_dt(ly_ctx, sr_subtree, output, node, NULL, data_tree);
+                sr_subtree = sr_subtree->next;
             }
             return ret;
 
@@ -1237,7 +1250,7 @@ sr_subtree_to_dt(struct ly_ctx *ly_ctx, const sr_node_t *sr_tree, bool output, s
             }
             /* create the leaf in the tree */
             if (NULL == parent) {
-                node = lyd_new_path(*data_tree, ly_ctx, xpath, string_val, output ? LYD_PATH_OPT_OUTPUT : 0);
+                node = lyd_new_path(*data_tree, ly_ctx, xpath, string_val, 0, output ? LYD_PATH_OPT_OUTPUT : 0);
                 free(string_val);
                 if (NULL == *data_tree) {
                     *data_tree = node;
@@ -1309,6 +1322,10 @@ sr_free_val_content(sr_val_t *value)
     if (NULL == value){
         return;
     }
+    if (NULL != value->_sr_mem) {
+        /* do nothing */
+        return;
+    }
     free(value->xpath);
     if (SR_BINARY_T == value->type){
         free(value->data.binary_val);
@@ -1355,12 +1372,21 @@ sr_free_values_arr_range(sr_val_t **values, size_t from, size_t to)
 void
 sr_free_tree_content(sr_node_t *tree)
 {
-    for (size_t i = 0; i < tree->children_cnt; ++i) {
-        sr_free_tree_content(tree->children + i);
+    if (NULL != tree) {
+        if (NULL != tree->_sr_mem) {
+            /* do nothing */
+            return;
+        }
+
+        sr_node_t *sr_subtree = tree->first_child, *next = NULL;
+        while (sr_subtree) {
+            next = sr_subtree->next;
+            sr_free_tree(sr_subtree);
+            sr_subtree = next;
+        }
+        free(tree->module_name);
+        sr_free_val_content((sr_val_t *)tree);
     }
-    free(tree->children);
-    free(tree->module_name);
-    sr_free_val_content((sr_val_t *)tree);
 }
 
 void
@@ -1379,6 +1405,10 @@ void
 sr_free_schema(sr_schema_t *schema)
 {
     if (NULL != schema) {
+        if (schema->_sr_mem) {
+            /* do nothing, object counter will be decreased by ::sr_free_schemas */
+            return;
+        }
         free((void*)schema->module_name);
         free((void*)schema->prefix);
         free((void*)schema->ns);

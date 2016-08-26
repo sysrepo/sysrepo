@@ -183,6 +183,7 @@ cl_message_recv(sr_conn_ctx_t *conn_ctx, Sr__Msg **msg)
 {
     size_t len = 0, pos = 0;
     size_t msg_size = 0;
+    sr_mem_ctx_t *sr_mem = NULL;
     int rc = 0;
 
     /* expand the buffer if needed */
@@ -245,11 +246,19 @@ cl_message_recv(sr_conn_ctx_t *conn_ctx, Sr__Msg **msg)
     }
 
     /* unpack the message */
-    *msg = sr__msg__unpack(NULL, msg_size, (const uint8_t*)(conn_ctx->msg_buf + SR_MSG_PREAM_SIZE));
+    rc = sr_mem_new(msg_size, &sr_mem);
+    CHECK_RC_MSG_RETURN(rc, "Failed to create a new Sysrepo memory context.");
+    ProtobufCAllocator allocator = sr_get_protobuf_allocator(sr_mem);
+    *msg = sr__msg__unpack(&allocator, msg_size, (const uint8_t*)(conn_ctx->msg_buf + SR_MSG_PREAM_SIZE));
     if (NULL == *msg) {
+        sr_mem_free(sr_mem);
         SR_LOG_ERR_MSG("Malformed message received.");
         return SR_ERR_MALFORMED_MSG;
     }
+
+    /* associate message with context */
+    (*msg)->_sysrepo_mem_ctx = (uint64_t)sr_mem;
+    ++sr_mem->obj_count;
 
     return SR_ERR_OK;
 }

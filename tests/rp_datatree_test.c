@@ -174,7 +174,7 @@ void ietf_interfaces_test(void **state){
     size_t count = 0;
 
 #define INTERFACES "/ietf-interfaces:interfaces/*"
-    rc = rp_dt_get_values(ctx, root, INTERFACES, false, &values, &count);
+    rc = rp_dt_get_values(ctx, root, NULL, INTERFACES, false, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(3, count);
     for (size_t i = 0; i < count; i++) {
@@ -184,7 +184,7 @@ void ietf_interfaces_test(void **state){
     sr_free_values(values, count);
 
 #define INTERFACE_ETH0 "/ietf-interfaces:interfaces/interface[name='eth0']"
-    rc = rp_dt_get_values(ctx, root, INTERFACE_ETH0, false, &values, &count);
+    rc = rp_dt_get_values(ctx, root, NULL, INTERFACE_ETH0, false, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
     check_ietf_interfaces_int_values(values, count);
     for (size_t i = 0; i < count; i++) {
@@ -194,7 +194,7 @@ void ietf_interfaces_test(void **state){
     sr_free_values(values, count);
 
 #define INTERFACE_ETH0_IPV4 "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4"
-    rc = rp_dt_get_values(ctx, root, INTERFACE_ETH0_IPV4, false, &values, &count);
+    rc = rp_dt_get_values(ctx, root, NULL, INTERFACE_ETH0_IPV4, false, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
     check_ietf_interfaces_ipv4_values(values, count);
     for (size_t i = 0; i < count; i++) {
@@ -204,7 +204,7 @@ void ietf_interfaces_test(void **state){
     sr_free_values(values, count);
 
 #define INTERFACE_ETH0_IPV4_IP "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/address[ip='192.168.2.100']"
-    rc = rp_dt_get_values(ctx, root, INTERFACE_ETH0_IPV4_IP, false, &values, &count);
+    rc = rp_dt_get_values(ctx, root, NULL, INTERFACE_ETH0_IPV4_IP, false, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
     check_ietf_interfaces_addr_values(values, count);
     for (size_t i = 0; i < count; i++) {
@@ -232,7 +232,7 @@ void get_values_test_module_test(void **state){
     sr_val_t *value;
 
     /* enum leaf*/
-    rc = rp_dt_get_value(ctx, root, XP_TEST_MODULE_ENUM, false, &value);
+    rc = rp_dt_get_value(ctx, root, NULL, XP_TEST_MODULE_ENUM, false, &value);
     assert_int_equal(SR_ERR_OK, rc);
 
     assert_int_equal(SR_ENUM_T, value->type);
@@ -241,7 +241,7 @@ void get_values_test_module_test(void **state){
     sr_free_val(value);
 
     /* binary leaf*/
-    rc = rp_dt_get_value(ctx, root, XP_TEST_MODULE_RAW, false, &value);
+    rc = rp_dt_get_value(ctx, root, NULL, XP_TEST_MODULE_RAW, false, &value);
     assert_int_equal(SR_ERR_OK, rc);
 
     assert_int_equal(SR_BINARY_T, value->type);
@@ -250,7 +250,7 @@ void get_values_test_module_test(void **state){
     sr_free_val(value);
 
     /*bits leaf*/
-    rc = rp_dt_get_value(ctx, root, XP_TEST_MODULE_BITS, false, &value);
+    rc = rp_dt_get_value(ctx, root, NULL, XP_TEST_MODULE_BITS, false, &value);
     assert_int_equal(SR_ERR_OK, rc);
 
     assert_int_equal(SR_BITS_T, value->type);
@@ -260,7 +260,7 @@ void get_values_test_module_test(void **state){
 
     /* leafref */
 #define LEAFREF_XP "/test-module:university/classes/class[title='CCNA']/student[name='nameB']/age"
-    rc = rp_dt_get_value(ctx, root, LEAFREF_XP, false, &value);
+    rc = rp_dt_get_value(ctx, root, NULL, LEAFREF_XP, false, &value);
     assert_int_equal(SR_ERR_OK, rc);
 
     assert_int_equal(SR_UINT8_T, value->type);
@@ -291,7 +291,7 @@ void get_values_test(void **state){
     size_t count = 0;
 
     #define XP_MODULE "/example-module:*"
-    rc = rp_dt_get_values(ctx, root, XP_MODULE, false, &values, &count);
+    rc = rp_dt_get_values(ctx, root, NULL, XP_MODULE, false, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(4, count); /*container + 3 leaf-list instances */
     for (size_t i = 0; i < count; i++) {
@@ -300,7 +300,7 @@ void get_values_test(void **state){
     sr_free_values(values, count);
 
 #define XP_LEAF "/example-module:container/list[key1='key1'][key2='key2']/leaf"
-    rc = rp_dt_get_values(ctx, root, XP_LEAF, false, &values, &count);
+    rc = rp_dt_get_values(ctx, root, NULL, XP_LEAF, false, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(1, count);
     for (size_t i = 0; i < count; i++) {
@@ -310,7 +310,7 @@ void get_values_test(void **state){
     sr_free_values(values, count);
 
 #define XP_LIST_WITH_KEYS "/example-module:container/list[key1='key1'][key2='key2']/*"
-    rc = rp_dt_get_values(ctx, root, XP_LIST_WITH_KEYS, false, &values, &count);
+    rc = rp_dt_get_values(ctx, root, NULL, XP_LIST_WITH_KEYS, false, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(3, count);
     for (size_t i = 0; i < count; i++) {
@@ -319,7 +319,7 @@ void get_values_test(void **state){
     sr_free_values(values, count);
 
 #define XP_LIST_WITHOUT_KEYS "/example-module:container/list"
-    rc = rp_dt_get_values(ctx, root, XP_LIST_WITHOUT_KEYS, false, &values, &count);
+    rc = rp_dt_get_values(ctx, root, NULL, XP_LIST_WITHOUT_KEYS, false, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(2, count);
     for (size_t i = 0; i < count; i++) {
@@ -328,7 +328,7 @@ void get_values_test(void **state){
     sr_free_values(values, count);
 
 #define XP_CONTAINER "/example-module:container"
-    rc = rp_dt_get_values(ctx, root, XP_LIST_WITHOUT_KEYS, false, &values, &count);
+    rc = rp_dt_get_values(ctx, root, NULL, XP_LIST_WITHOUT_KEYS, false, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(2, count);
     for (size_t i = 0; i < count; i++) {
@@ -337,7 +337,7 @@ void get_values_test(void **state){
     sr_free_values(values, count);
 
 #define XP_LEAFLIST "/example-module:number"
-    rc = rp_dt_get_values(ctx, root, XP_LEAFLIST, false, &values, &count);
+    rc = rp_dt_get_values(ctx, root, NULL, XP_LEAFLIST, false, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(3, count);
     for (size_t i = 0; i < count; i++) {
@@ -379,7 +379,7 @@ void get_values_opts_test(void **state) {
     assert_int_equal(rc, SR_ERR_OK);
     ly_set_free(nodes);
 
-    rc = rp_dt_get_values_wrapper_with_opts(ctx, ses_ctx, &get_items_ctx, EX_CONT, 0, 1, &values, &count);
+    rc = rp_dt_get_values_wrapper_with_opts(ctx, ses_ctx, &get_items_ctx, NULL, EX_CONT, 0, 1, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
     assert_string_equal(EX_CONT, get_items_ctx.xpath);
     assert_int_equal(1, get_items_ctx.offset);
@@ -389,12 +389,12 @@ void get_values_opts_test(void **state) {
     sr_free_values(values, count);
 
     ses_ctx->state = RP_REQ_NEW;
-    rc = rp_dt_get_values_wrapper_with_opts(ctx, ses_ctx, &get_items_ctx, EX_CONT, 100, 1, &values, &count);
+    rc = rp_dt_get_values_wrapper_with_opts(ctx, ses_ctx, &get_items_ctx, NULL, EX_CONT, 100, 1, &values, &count);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
     assert_string_equal(EX_CONT, get_items_ctx.xpath);
 
     ses_ctx->state = RP_REQ_NEW;
-    rc = rp_dt_get_values_wrapper_with_opts(ctx, ses_ctx, &get_items_ctx, "/example-module:*", 0, 10, &values, &count);
+    rc = rp_dt_get_values_wrapper_with_opts(ctx, ses_ctx, &get_items_ctx, NULL, "/example-module:*", 0, 10, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
     assert_string_equal("/example-module:*", get_items_ctx.xpath);
     for (size_t i=0; i < count; i++){
@@ -426,7 +426,7 @@ void get_values_with_augments_test(void **state){
     createDataTreeWithAugments(data_tree->schema->module->ctx, &root);
     assert_non_null(root);
 #define SM_MODULE "/small-module:item/*"
-    rc = rp_dt_get_values(ctx, root, SM_MODULE, false, &values, &count);
+    rc = rp_dt_get_values(ctx, root, NULL, SM_MODULE, false, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(2, count);
 
@@ -453,11 +453,11 @@ void get_value_test(void **state){
     assert_int_equal(SR_ERR_OK, rc);
     sr_val_t *value = NULL;
 
-    assert_int_equal(SR_ERR_INVAL_ARG, rp_dt_get_value(ctx, data_tree, "/example-module:", false, &value));
+    assert_int_equal(SR_ERR_INVAL_ARG, rp_dt_get_value(ctx, data_tree, NULL, "/example-module:", false, &value));
 
     /*leaf*/
 #define XPATH_FOR_VALUE "/example-module:container/list[key1='key1'][key2='key2']/leaf"
-    assert_int_equal(SR_ERR_OK, rp_dt_get_value(ctx, data_tree, XPATH_FOR_VALUE, false, &value));
+    assert_int_equal(SR_ERR_OK, rp_dt_get_value(ctx, data_tree, NULL, XPATH_FOR_VALUE, false, &value));
 
     assert_int_equal(SR_STRING_T, value->type);
     assert_string_equal("Leaf value", value->data.string_val);
@@ -467,7 +467,7 @@ void get_value_test(void **state){
 
     /*list*/
 #define XPATH_FOR_LIST "/example-module:container/list[key1='key1'][key2='key2']"
-    assert_int_equal(SR_ERR_OK, rp_dt_get_value(ctx, data_tree, XPATH_FOR_LIST, false, &value));
+    assert_int_equal(SR_ERR_OK, rp_dt_get_value(ctx, data_tree, NULL, XPATH_FOR_LIST, false, &value));
     assert_non_null(value);
     assert_int_equal(SR_LIST_T, value->type);
     assert_string_equal(XPATH_FOR_LIST, value->xpath);
@@ -475,7 +475,7 @@ void get_value_test(void **state){
 
     /*container*/
 #define XPATH_FOR_CONTAINER "/example-module:container"
-    assert_int_equal(SR_ERR_OK, rp_dt_get_value(ctx, data_tree, "/example-module:container", false, &value));
+    assert_int_equal(SR_ERR_OK, rp_dt_get_value(ctx, data_tree, NULL, "/example-module:container", false, &value));
     assert_non_null(value);
     assert_int_equal(SR_CONTAINER_T, value->type);
     assert_string_equal(XPATH_FOR_CONTAINER, value->xpath);
@@ -611,24 +611,24 @@ void get_value_wrapper_test(void **state){
 
     /* unknown model*/
     sr_val_t *value = NULL;
-    rc = rp_dt_get_value_wrapper(ctx, ses_ctx, "/non-existing:abc", &value);
+    rc = rp_dt_get_value_wrapper(ctx, ses_ctx, NULL, "/non-existing:abc", &value);
     assert_int_equal(SR_ERR_UNKNOWN_MODEL, rc);
 
     /* whole model xpath*/
 
     ses_ctx->state = RP_REQ_NEW;
     value = NULL;
-    rc = rp_dt_get_value_wrapper(ctx, ses_ctx, "/test-module:*", &value);
+    rc = rp_dt_get_value_wrapper(ctx, ses_ctx, NULL, "/test-module:*", &value);
     assert_int_equal(SR_ERR_INVAL_ARG, rc);
 
     /* not existing data tree*/
     ses_ctx->state = RP_REQ_NEW;
-    rc = rp_dt_get_value_wrapper(ctx, ses_ctx, "/small-module:item", &value);
+    rc = rp_dt_get_value_wrapper(ctx, ses_ctx, NULL, "/small-module:item", &value);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
     /* not exisiting now in existing data tree*/
     ses_ctx->state = RP_REQ_NEW;
-    rc = rp_dt_get_value_wrapper(ctx, ses_ctx, "/example-module:container/list[key1='abc'][key2='def']", &value);
+    rc = rp_dt_get_value_wrapper(ctx, ses_ctx, NULL, "/example-module:container/list[key1='abc'][key2='def']", &value);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
     test_rp_session_cleanup(ctx, ses_ctx);
@@ -649,21 +649,21 @@ get_nodes_with_opts_cache_missed_test(void **state)
     get_items_ctx.xpath = NULL;
     get_items_ctx.offset = 0;
 
-    rc = rp_dt_get_values_wrapper_with_opts(ctx, ses_ctx, &get_items_ctx, "/test-module:list[key='k1']/*", 0, 2, &values, &count);
+    rc = rp_dt_get_values_wrapper_with_opts(ctx, ses_ctx, &get_items_ctx, NULL, "/test-module:list[key='k1']/*", 0, 2, &values, &count);
     assert_int_equal(rc, SR_ERR_OK);
     sr_free_values(values, count);
 
     ses_ctx->state = RP_REQ_NEW;
-    rc = rp_dt_get_values_wrapper_with_opts(ctx, ses_ctx, &get_items_ctx, "/test-module:list[key='k1']/*", 2, 2, &values, &count);
+    rc = rp_dt_get_values_wrapper_with_opts(ctx, ses_ctx, &get_items_ctx, NULL, "/test-module:list[key='k1']/*", 2, 2, &values, &count);
     assert_int_equal(rc, SR_ERR_OK);
     sr_free_values(values, count);
 
     ses_ctx->state = RP_REQ_NEW;
-    rc = rp_dt_get_values_wrapper_with_opts(ctx, ses_ctx, &get_items_ctx, "/test-module:list[key='k1']/wireless/*", 0, 2, &values, &count);
+    rc = rp_dt_get_values_wrapper_with_opts(ctx, ses_ctx, &get_items_ctx, NULL, "/test-module:list[key='k1']/wireless/*", 0, 2, &values, &count);
     assert_int_equal(rc, SR_ERR_NOT_FOUND);
 
     ses_ctx->state = RP_REQ_NEW;
-    rc = rp_dt_get_values_wrapper_with_opts(ctx, ses_ctx, &get_items_ctx, "/test-module:list[key='k1']/*", 4, 2, &values, &count);
+    rc = rp_dt_get_values_wrapper_with_opts(ctx, ses_ctx, &get_items_ctx, NULL, "/test-module:list[key='k1']/*", 4, 2, &values, &count);
     assert_int_equal(rc, SR_ERR_NOT_FOUND);
 
     free(get_items_ctx.xpath);
@@ -691,7 +691,7 @@ default_nodes_test(void **state)
 
 
     /* leaf without default value */
-    rc = rp_dt_get_value_wrapper(ctx, ses_ctx, "/test-module:main/string", &val);
+    rc = rp_dt_get_value_wrapper(ctx, ses_ctx, NULL, "/test-module:main/string", &val);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);
     assert_false(val->dflt);
@@ -702,7 +702,7 @@ default_nodes_test(void **state)
     assert_int_equal(SR_ERR_OK, rc);
 
     ses_ctx->state = RP_REQ_NEW;
-    rc = rp_dt_get_value_wrapper(ctx, ses_ctx, "/test-module:with_def[name='withdef']/num", &val);
+    rc = rp_dt_get_value_wrapper(ctx, ses_ctx, NULL, "/test-module:with_def[name='withdef']/num", &val);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);
     assert_int_equal(0, val->data.int8_val);
@@ -720,7 +720,7 @@ default_nodes_test(void **state)
     assert_int_equal(SR_ERR_OK, rc);
 
     ses_ctx->state = RP_REQ_NEW;
-    rc = rp_dt_get_value_wrapper(ctx, ses_ctx, "/test-module:with_def[name='createWithStrict']/num", &val);
+    rc = rp_dt_get_value_wrapper(ctx, ses_ctx, NULL, "/test-module:with_def[name='createWithStrict']/num", &val);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);
     assert_int_equal(99, val->data.int8_val);
@@ -742,7 +742,7 @@ default_nodes_test(void **state)
     assert_int_equal(SR_ERR_OK, rc);
 
     ses_ctx->state = RP_REQ_NEW;
-    rc = rp_dt_get_value_wrapper(ctx, ses_ctx, "/test-module:with_def[name='overwrite']/num", &val);
+    rc = rp_dt_get_value_wrapper(ctx, ses_ctx, NULL, "/test-module:with_def[name='overwrite']/num", &val);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);
     assert_int_equal(42, val->data.int8_val);
@@ -770,7 +770,7 @@ default_nodes_test(void **state)
     assert_int_equal(SR_ERR_OK, rc);
 
     ses_ctx->state = RP_REQ_NEW;
-    rc = rp_dt_get_value_wrapper(ctx, ses_ctx, "/test-module:with_def[name='withother']/num", &val);
+    rc = rp_dt_get_value_wrapper(ctx, ses_ctx, NULL, "/test-module:with_def[name='withother']/num", &val);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);
     assert_int_equal(9, val->data.int8_val);
@@ -788,7 +788,7 @@ default_nodes_test(void **state)
     assert_int_equal(SR_ERR_OK, rc);
 
     ses_ctx->state = RP_REQ_NEW;
-    rc = rp_dt_get_value_wrapper(ctx, ses_ctx, "/test-module:with_def[name='withexpl']/num", &val);
+    rc = rp_dt_get_value_wrapper(ctx, ses_ctx, NULL, "/test-module:with_def[name='withexpl']/num", &val);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);
     assert_false(val->dflt);
@@ -808,7 +808,7 @@ default_nodes_test(void **state)
     assert_int_equal(SR_ERR_OK, rc);
 
     ses_ctx->state = RP_REQ_NEW;
-    rc = rp_dt_get_value_wrapper(ctx, ses_ctx, "/test-module:with_def[name='withmodifdef']/num", &val);
+    rc = rp_dt_get_value_wrapper(ctx, ses_ctx, NULL, "/test-module:with_def[name='withmodifdef']/num", &val);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);
     assert_int_equal(9, val->data.int8_val);
@@ -820,14 +820,14 @@ default_nodes_test(void **state)
 
     /* check after commit */
     ses_ctx->state = RP_REQ_NEW;
-    rc = rp_dt_get_value_wrapper(ctx, ses_ctx, "/test-module:with_def[name='withdef']/num", &val);
+    rc = rp_dt_get_value_wrapper(ctx, ses_ctx, NULL, "/test-module:with_def[name='withdef']/num", &val);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);
     assert_true(val->dflt);
     sr_free_val(val);
 
     ses_ctx->state = RP_REQ_NEW;
-    rc = rp_dt_get_value_wrapper(ctx, ses_ctx, "/test-module:with_def[name='withother']/num", &val);
+    rc = rp_dt_get_value_wrapper(ctx, ses_ctx, NULL, "/test-module:with_def[name='withother']/num", &val);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);
     assert_int_equal(9, val->data.int8_val);
@@ -835,14 +835,14 @@ default_nodes_test(void **state)
     sr_free_val(val);
 
     ses_ctx->state = RP_REQ_NEW;
-    rc = rp_dt_get_value_wrapper(ctx, ses_ctx, "/test-module:with_def[name='withexpl']/num", &val);
+    rc = rp_dt_get_value_wrapper(ctx, ses_ctx, NULL, "/test-module:with_def[name='withexpl']/num", &val);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);
     assert_false(val->dflt);
     sr_free_val(val);
 
     ses_ctx->state = RP_REQ_NEW;
-    rc = rp_dt_get_value_wrapper(ctx, ses_ctx, "/test-module:with_def[name='withmodifdef']/num", &val);
+    rc = rp_dt_get_value_wrapper(ctx, ses_ctx, NULL, "/test-module:with_def[name='withmodifdef']/num", &val);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);
     assert_int_equal(9, val->data.int8_val);
@@ -860,7 +860,7 @@ default_nodes_test(void **state)
     assert_int_equal(SR_ERR_OK, rc);
 
     ses_ctx->state = RP_REQ_NEW;
-    rc = rp_dt_get_value_wrapper(ctx, ses_ctx, "/test-module:with_def[name='withdef']/num", &val);
+    rc = rp_dt_get_value_wrapper(ctx, ses_ctx, NULL, "/test-module:with_def[name='withdef']/num", &val);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);
     assert_false(val->dflt);
@@ -888,7 +888,7 @@ default_nodes_toplevel_test(void **state)
     test_rp_sesssion_create(ctx, SR_DS_STARTUP, &ses_ctx);
 
     /* top-level default value */
-    rc = rp_dt_get_value_wrapper(ctx, ses_ctx, "/test-module:top-level-default", &val);
+    rc = rp_dt_get_value_wrapper(ctx, ses_ctx, NULL, "/test-module:top-level-default", &val);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);
     assert_true(val->dflt);
@@ -898,7 +898,7 @@ default_nodes_toplevel_test(void **state)
     rc = dm_validate_session_data_trees(ctx->dm_ctx, ses_ctx->dm_session, &errors, &e_cnt);
     assert_int_equal(SR_ERR_OK, rc);
     ses_ctx->state = RP_REQ_NEW;
-    rc = rp_dt_get_value_wrapper(ctx, ses_ctx, "/test-module:top-level-default", &val);
+    rc = rp_dt_get_value_wrapper(ctx, ses_ctx, NULL, "/test-module:top-level-default", &val);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);
     assert_true(val->dflt);
@@ -910,7 +910,7 @@ default_nodes_toplevel_test(void **state)
 
     /* default leaf can not be removed */
     ses_ctx->state = RP_REQ_NEW;
-    rc = rp_dt_get_value_wrapper(ctx, ses_ctx, "/test-module:top-level-default", &val);
+    rc = rp_dt_get_value_wrapper(ctx, ses_ctx, NULL, "/test-module:top-level-default", &val);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);
     assert_true(val->dflt);
@@ -923,7 +923,7 @@ default_nodes_toplevel_test(void **state)
 
     /* top-level default value with empty data tree */
     ses_ctx->state = RP_REQ_NEW;
-    rc = rp_dt_get_value_wrapper(ctx, ses_ctx, "/test-module:top-level-default", &val);
+    rc = rp_dt_get_value_wrapper(ctx, ses_ctx, NULL, "/test-module:top-level-default", &val);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);
     assert_true(val->dflt);
