@@ -2,8 +2,6 @@
 
 %include "std_shared_ptr.i"
 
-%shared_ptr(Value)
-%shared_ptr(Values)
 %shared_ptr(Iter_Value)
 %shared_ptr(Iter_Change)
 %shared_ptr(Session)
@@ -40,7 +38,7 @@
 %shared_ptr(Uint64_val)
 
 %include "../swig_base/sysrepo.i"
-%include "../swig_base/value.i"
+%include "../swig_base/structs.i"
 %include "../swig_base/session.i"
 %include "../swig_base/connection.i"
 %include "../swig_base/libsysrepoEnums.i"
