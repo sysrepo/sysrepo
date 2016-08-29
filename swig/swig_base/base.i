@@ -22,6 +22,7 @@
 %shared_ptr(Fd_Change)
 %shared_ptr(Fd_Changes)
 %shared_ptr(Val)
+%shared_ptr(Val_Holder)
 %shared_ptr(Vals)
 
 %shared_ptr(Char_val)
