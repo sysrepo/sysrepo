@@ -39,7 +39,7 @@ class Operation
 public:
     Operation(sr_change_oper_t oper);
     ~Operation();
-    sr_change_oper_t Get() {return _oper;};
+    sr_change_oper_t get() {return _oper;};
 
 private:
     sr_change_oper_t _oper;
@@ -220,10 +220,25 @@ public:
     bool dflt() {return _val->dflt;};
     void dflt_set(bool data) {_val->dflt = data;};
     shared_ptr<Data> data() {shared_ptr<Data> data(new Data(_val->data, _val->type)); return data;};
+    sr_val_t *get() {return _val;};
 
 private:
     sr_val_t *_val;
     bool _free;
+};
+
+
+// class for sysrepo C double pointer struct sr_val_t
+class Val_Holder
+{
+public:
+    Val_Holder(sr_val_t *val = NULL);
+    ~Val_Holder();
+    sr_val_t **get() {return &_val;};
+    shared_ptr<Val> val();
+
+private:
+    sr_val_t *_val;
 };
 
 // class for list of sysrepo C structs sr_val_t
@@ -396,6 +411,31 @@ public:
 private:
     sr_fd_change_t *_ch;
     size_t _cnt;
+};
+
+class Iter_Value
+{
+
+public:
+    Iter_Value(sr_val_iter_t *iter = NULL);
+    ~Iter_Value();
+    sr_val_iter_t *get() {return _iter;};
+    void Set(sr_val_iter_t *iter);
+
+private:
+    sr_val_iter_t *_iter;
+};
+
+class Iter_Change
+{
+
+public:
+    Iter_Change(sr_change_iter_t *iter = NULL);
+    ~Iter_Change();
+    sr_change_iter_t *get() {return _iter;};
+
+private:
+    sr_change_iter_t *_iter;
 };
 
 #endif

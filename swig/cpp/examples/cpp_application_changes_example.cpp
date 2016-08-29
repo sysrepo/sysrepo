@@ -35,12 +35,12 @@ using namespace std;
 volatile int exit_application = 0;
 
 void
-print_value(shared_ptr<Value> value)
+print_value(shared_ptr<Val> value)
 {
-    cout << value->get_xpath();
+    cout << value->xpath();
     cout << " ";
 
-    switch (value->get_type()) {
+    switch (value->type()) {
     case SR_CONTAINER_T:
     case SR_CONTAINER_PRESENCE_T:
         cout << "(container)" << endl;
@@ -49,25 +49,25 @@ print_value(shared_ptr<Value> value)
         cout << "(list instance)" << endl;
         break;
     case SR_STRING_T:
-        cout << "= " << value->get_string() << endl;;
+        cout << "= " << value->data()->get_string()->get() << endl;;
         break;
     case SR_BOOL_T:
-	if (value->get_bool())
+	if (value->data()->get_bool()->get())
             cout << "= true" << endl;
 	else
             cout << "= false" << endl;
         break;
     case SR_UINT8_T:
-        cout << "= " << unsigned(value->get_uint8()) << endl;
+        cout << "= " << unsigned(value->data()->get_uint8()->get()) << endl;
         break;
     case SR_UINT16_T:
-        cout << "= " << unsigned(value->get_uint16()) << endl;
+        cout << "= " << unsigned(value->data()->get_uint16()->get()) << endl;
         break;
     case SR_UINT32_T:
-        cout << "= " << unsigned(value->get_uint32()) << endl;
+        cout << "= " << unsigned(value->data()->get_uint32()->get()) << endl;
         break;
     case SR_IDENTITYREF_T:
-        cout << "= " << value->get_identityref() << endl;
+        cout << "= " << value->data()->get_identityref()->get() << endl;
         break;
     default:
         cout << "(unprintable)" << endl;
@@ -76,8 +76,8 @@ print_value(shared_ptr<Value> value)
 }
 
 static void
-print_change(shared_ptr<Operation> op, shared_ptr<Value> old_val, shared_ptr<Value> new_val) {
-    switch(op->Get()) {
+print_change(shared_ptr<Operation> op, shared_ptr<Val> old_val, shared_ptr<Val> new_val) {
+    switch(op->get()) {
     case SR_OP_CREATED:
         if (NULL != new_val) {
            printf("CREATED: ");
@@ -101,7 +101,7 @@ print_change(shared_ptr<Operation> op, shared_ptr<Value> old_val, shared_ptr<Val
 	break;
     case SR_OP_MOVED:
         if (NULL != new_val) {
-	    cout<<"MOVED: " << new_val->get_xpath() << " after " << old_val->get_xpath() << endl;
+	    cout<<"MOVED: " << new_val->xpath() << " after " << old_val->xpath() << endl;
         }
 	break;
     }
@@ -112,16 +112,16 @@ print_current_config(Session *session, const char *module_name)
 {
     char select_xpath[MAX_LEN];
     try {
-        shared_ptr<Values> values;
+        shared_ptr<Vals> values;
 
         snprintf(select_xpath, MAX_LEN, "/%s:*//*", module_name);
 
         values = session->get_items(&select_xpath[0]);
+        if (values == NULL)
+            return;
 
-        do {
-            print_value(values);
-        } while (values->Next());
-
+        for(unsigned int i = 0; i < values->val_cnt(); i++)
+            print_value(values->val(i));
     } catch( const std::exception& e ) {
         cout << e.what() << endl;
     }
@@ -131,8 +131,8 @@ static int
 module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t event, void *private_ctx)
 {
     char change_path[MAX_LEN];
-    shared_ptr<Value> old_value(new Value());
-    shared_ptr<Value> new_value(new Value());
+    shared_ptr<Val_Holder> old_value(new Val_Holder());
+    shared_ptr<Val_Holder> new_value(new Val_Holder());
     shared_ptr<Iter_Change> it;
     shared_ptr<Operation> oper;
 
@@ -151,7 +151,8 @@ module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_ev
         it = subscribe.get_changes_iter(&change_path[0]);
 
         while (oper = subscribe.get_change_next(it, old_value, new_value)) {
-                print_change(oper, old_value, new_value);
+		if (old_value->val() && new_value->val())
+                    print_change(oper, old_value->val(), new_value->val());
         }
 
         printf("\n\n ========== END OF CHANGES =======================================\n\n");

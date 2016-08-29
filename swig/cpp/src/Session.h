@@ -28,7 +28,6 @@
 
 #include "Struct.h"
 #include "Sysrepo.h"
-#include "Value.h"
 #include "Connection.h"
 #include "Session.h"
 
@@ -38,7 +37,7 @@ extern "C" {
 
 using namespace std;
 
-class Session:public Iter_Value, public Values
+class Session:public Throw_Exception
 {
 
 public:
@@ -52,11 +51,11 @@ public:
     shared_ptr<Schemas> list_schemas();
     shared_ptr<Schema_Content> get_schema(const char *module_name, const char *revision,\
                                const char *submodule_name, sr_schema_format_t format);
-    shared_ptr<Value> get_item(const char *xpath);
-    shared_ptr<Values> get_items(const char *xpath);
+    shared_ptr<Val> get_item(const char *xpath);
+    shared_ptr<Vals> get_items(const char *xpath);
     shared_ptr<Iter_Value> get_items_iter(const char *xpath);
-    shared_ptr<Value> get_item_next(shared_ptr<Iter_Value> iter);
-    void set_item(const char *xpath, shared_ptr<Value> value, const sr_edit_options_t opts = EDIT_DEFAULT);
+    shared_ptr<Val> get_item_next(shared_ptr<Iter_Value> iter);
+    void set_item(const char *xpath, shared_ptr<Val> value, const sr_edit_options_t opts = EDIT_DEFAULT);
     void delete_item(const char *xpath, const sr_edit_options_t opts = EDIT_DEFAULT);
     void move_item(const char *xpath, const sr_move_position_t position, const char *relative_item = NULL);
     void refresh();
@@ -70,7 +69,7 @@ public:
     void copy_config(const char *module_name, sr_datastore_t src_datastore, sr_datastore_t dst_datastore);
     void set_options(const sr_sess_options_t opts);
     ~Session();
-    sr_session_ctx_t *Get();
+    sr_session_ctx_t *get();
 
 private:
     sr_session_ctx_t *_sess;
@@ -78,7 +77,7 @@ private:
     sr_conn_options_t _opts;
 };
 
-class Subscribe:public Throw_Exception, public Iter_Change
+class Subscribe:public Throw_Exception
 {
 
 public:
@@ -95,8 +94,8 @@ public:
     void unsubscribe();
 
     shared_ptr<Iter_Change> get_changes_iter(const char *xpath);
-    shared_ptr<Operation> get_change_next(shared_ptr<Iter_Change> iter, shared_ptr<Value> new_value,\
-                                     shared_ptr<Value> old_value);
+    shared_ptr<Operation> get_change_next(shared_ptr<Iter_Change> iter, shared_ptr<Val_Holder> new_value,\
+                                     shared_ptr<Val_Holder> old_value);
     /*void rpc_subscribe(const char *xpath, sr_rpc_cb callback, void *private_ctx = NULL,\
                        sr_subscr_options_t opts = SUBSCR_DEFAULT);*/
     //void rpc_send(const char *xpath, Values *input, Values *output);

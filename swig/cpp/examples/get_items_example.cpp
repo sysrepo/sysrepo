@@ -35,15 +35,13 @@ main(int argc, char **argv)
 
         const char *xpath = "/ietf-interfaces:interfaces/interface";
 
-	shared_ptr<Values> values;
+	shared_ptr<Vals> values;
 	values = sess.get_items(xpath);
         if (values == NULL)
             return 0;
 
-        do {
-            cout << values->get_xpath() << endl;
-        } while (values->Next());
-
+	for(unsigned int i = 0; i < values->val_cnt(); i++)
+            cout << values->val(i)->xpath() << endl;
     } catch( const std::exception& e ) {
         cout << e.what() << endl;
     }

@@ -39,14 +39,14 @@ main(int argc, char **argv)
 
         const char *xpath = "/ietf-interfaces:interfaces/interface[name='eth0']/enabled";
 
-        shared_ptr<Value> value = NULL;
+        shared_ptr<Val> value = NULL;
 
         value = sess.get_item(xpath);
         if (value == NULL)
             return 0;
 
-        cout << endl << "Value on xpath: " << value->get_xpath() << " = "\
-             << (value->get_bool() ? "true" : "false") << endl << endl;
+        cout << endl << "Value on xpath: " << value->xpath() << " = "\
+             << (value->data()->get_bool()->get() ? "true" : "false") << endl << endl;
     } catch( const std::exception& e ) {
         cout << e.what() << endl;
     }

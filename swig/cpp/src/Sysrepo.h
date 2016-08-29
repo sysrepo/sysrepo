@@ -78,9 +78,9 @@ class Schemas:public Throw_Exception
 {
 public:
     Schemas(sr_schema_t *sch, size_t cnt);
-    sr_schema_t *Get_val();
+    sr_schema_t *get_val();
     const char *get_module_name() {return _sch[_pos].module_name;};
-    size_t Get_cnt();
+    size_t get_cnt();
     bool Next();
     bool Prev();
     ~Schemas();
@@ -96,7 +96,7 @@ class Schema_Content:public Throw_Exception
 
 public:
     Schema_Content(char *con);
-    char *Get();
+    char *get();
     ~Schema_Content();
 
 private:

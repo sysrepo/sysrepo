@@ -26,12 +26,12 @@
 using namespace std;
 
 void
-print_value(shared_ptr<Value> value)
+print_value(shared_ptr<Val> value)
 {
-    cout << value->get_xpath();
+    cout << value->xpath();
     cout << " ";
 
-    switch (value->get_type()) {
+    switch (value->type()) {
     case SR_CONTAINER_T:
     case SR_CONTAINER_PRESENCE_T:
         cout << "(container)" << endl;
@@ -40,32 +40,31 @@ print_value(shared_ptr<Value> value)
         cout << "(list instance)" << endl;
         break;
     case SR_STRING_T:
-        cout << "= " << value->get_string() << endl;;
+        cout << "= " << value->data()->get_string()->get() << endl;;
         break;
     case SR_BOOL_T:
-	if (value->get_bool())
+	if (value->data()->get_bool()->get())
             cout << "= true" << endl;
 	else
             cout << "= false" << endl;
         break;
     case SR_UINT8_T:
-        cout << "= " << unsigned(value->get_uint8()) << endl;
+        cout << "= " << unsigned(value->data()->get_uint8()->get()) << endl;
         break;
     case SR_UINT16_T:
-        cout << "= " << unsigned(value->get_uint16()) << endl;
+        cout << "= " << unsigned(value->data()->get_uint16()->get()) << endl;
         break;
     case SR_UINT32_T:
-        cout << "= " << unsigned(value->get_uint32()) << endl;
+        cout << "= " << unsigned(value->data()->get_uint32()->get()) << endl;
         break;
     case SR_IDENTITYREF_T:
-        cout << "= " << value->get_identityref() << endl;
+        cout << "= " << value->data()->get_identityref()->get() << endl;
         break;
     default:
         cout << "(unprintable)" << endl;
     }
     return;
 }
-
 
 int
 main(int argc, char **argv)
@@ -77,7 +76,7 @@ main(int argc, char **argv)
 
         const char *xpath = "/ietf-interfaces:interfaces/interface//*";
 
-	shared_ptr<Value> value;
+	shared_ptr<Val> value;
 	shared_ptr<Iter_Value> iter;
 
 	iter = sess.get_items_iter(xpath);

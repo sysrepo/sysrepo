@@ -174,7 +174,12 @@ shared_ptr<Uint64_val> Data::get_uint64() {
 }
 
 // Val
-Val::Val(sr_val_t *val, bool free) {_val = val; _free = free;}
+Val::Val(sr_val_t *val, bool free) {
+    if (val == NULL)
+        throw_exception(SR_ERR_INVAL_ARG);
+    _val = val;
+    _free = free;
+}
 Val::~Val() {
     if (_free && _val != NULL)
         sr_free_val(_val);
@@ -373,6 +378,19 @@ Val::Val(uint64_t uint64_val, sr_type_t type) {
     _val = val;
 }
 
+/// Val_Holder
+Val_Holder::Val_Holder(sr_val_t *val) {_val = val;}
+Val_Holder::~Val_Holder() {
+    if (_val != NULL)
+        sr_free_val(_val);
+    return;
+}
+shared_ptr<Val> Val_Holder::val() {
+    if (_val == NULL)
+        return NULL;
+    shared_ptr<Val> val(new Val(_val, false));
+    return val;
+}
 // Vals
 Vals::Vals(sr_val_t *vals, size_t cnt) {_vals = vals; _cnt = cnt;}
 Vals::~Vals() {
@@ -384,7 +402,7 @@ shared_ptr<Val> Vals::val(size_t n) {
     if (n >= _cnt)
         return NULL;
 
-    shared_ptr<Val> val(new Val(&_vals[n]));
+    shared_ptr<Val> val(new Val(&_vals[n], false));
     return val;
 }
 
@@ -508,3 +526,14 @@ shared_ptr<Fd_Change> Fd_Changes::fd_change(size_t n) {
     shared_ptr<Fd_Change> change(new Fd_Change(&_ch[n]));
     return change;
 }
+
+Iter_Value::Iter_Value(sr_val_iter_t *iter) {_iter = iter;}
+Iter_Value::~Iter_Value() {if (_iter) sr_free_val_iter(_iter);}
+void Iter_Value::Set(sr_val_iter_t *iter) {
+    if (_iter)
+        sr_free_val_iter(_iter);
+    _iter = iter;
+}
+
+Iter_Change::Iter_Change(sr_change_iter_t *iter) {_iter = iter;}
+Iter_Change::~Iter_Change() {if (_iter) sr_free_change_iter(_iter);}

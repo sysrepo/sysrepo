@@ -32,12 +32,12 @@ using namespace std;
 volatile int exit_application = 0;
 
 void
-print_value(shared_ptr<Values> value)
+print_value(shared_ptr<Val> value)
 {
-    cout << value->get_xpath();
+    cout << value->xpath();
     cout << " ";
 
-    switch (value->get_type()) {
+    switch (value->type()) {
     case SR_CONTAINER_T:
     case SR_CONTAINER_PRESENCE_T:
         cout << "(container)" << endl;
@@ -46,25 +46,25 @@ print_value(shared_ptr<Values> value)
         cout << "(list instance)" << endl;
         break;
     case SR_STRING_T:
-        cout << "= " << value->get_string() << endl;;
+        cout << "= " << value->data()->get_string()->get() << endl;;
         break;
     case SR_BOOL_T:
-	if (value->get_bool())
+	if (value->data()->get_bool()->get())
             cout << "= true" << endl;
 	else
             cout << "= false" << endl;
         break;
     case SR_UINT8_T:
-        cout << "= " << unsigned(value->get_uint8()) << endl;
+        cout << "= " << unsigned(value->data()->get_uint8()->get()) << endl;
         break;
     case SR_UINT16_T:
-        cout << "= " << unsigned(value->get_uint16()) << endl;
+        cout << "= " << unsigned(value->data()->get_uint16()->get()) << endl;
         break;
     case SR_UINT32_T:
-        cout << "= " << unsigned(value->get_uint32()) << endl;
+        cout << "= " << unsigned(value->data()->get_uint32()->get()) << endl;
         break;
     case SR_IDENTITYREF_T:
-        cout << "= " << value->get_identityref() << endl;
+        cout << "= " << value->data()->get_identityref()->get() << endl;
         break;
     default:
         cout << "(unprintable)" << endl;
@@ -78,13 +78,13 @@ print_current_config(Session *session)
     try {
         const char *xpath = "/ietf-interfaces:*//*";
 
-	shared_ptr<Values> values;
+	shared_ptr<Vals> values;
 	values = session->get_items(xpath);
+        if (values == NULL)
+            return;
 
-        do {
-            print_value(values);
-        } while (values->Next());
-
+        for(unsigned int i = 0; i < values->val_cnt(); i++)
+            print_value(values->val(i));
     } catch( const std::exception& e ) {
         cout << e.what() << endl;
     }

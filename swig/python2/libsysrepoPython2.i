@@ -192,7 +192,7 @@ static int g_dp_get_items_cb(const char *xpath, sr_val_t **values, size_t *value
         self->wrap_cb_l.push_back(class_ctx);
         class_ctx->private_ctx = private_ctx;
 
-        int ret = sr_module_change_subscribe(self->swig_sess->Get(), module_name, g_module_change_subscribe_cb, \
+        int ret = sr_module_change_subscribe(self->swig_sess->get(), module_name, g_module_change_subscribe_cb, \
                                              class_ctx, priority, opts, &self->swig_sub);
         if (SR_ERR_OK != ret) {
             throw std::runtime_error(sr_strerror(ret));
@@ -211,7 +211,7 @@ static int g_dp_get_items_cb(const char *xpath, sr_val_t **values, size_t *value
         self->wrap_cb_l.push_back(class_ctx);
         class_ctx->private_ctx = private_ctx;
 
-        int ret = sr_subtree_change_subscribe(self->swig_sess->Get(), xpath, g_subtree_change_cb, class_ctx,\
+        int ret = sr_subtree_change_subscribe(self->swig_sess->get(), xpath, g_subtree_change_cb, class_ctx,\
                                               priority, opts, &self->swig_sub);
         if (SR_ERR_OK != ret) {
             throw std::runtime_error(sr_strerror(ret));
@@ -230,7 +230,7 @@ static int g_dp_get_items_cb(const char *xpath, sr_val_t **values, size_t *value
         self->wrap_cb_l.push_back(class_ctx);
         class_ctx->private_ctx = private_ctx;
 
-        int ret =  sr_module_install_subscribe(self->swig_sess->Get(), g_module_install_cb, class_ctx,
+        int ret =  sr_module_install_subscribe(self->swig_sess->get(), g_module_install_cb, class_ctx,
                                                opts, &self->swig_sub);
 
         if (SR_ERR_OK != ret) {
@@ -250,7 +250,7 @@ static int g_dp_get_items_cb(const char *xpath, sr_val_t **values, size_t *value
         self->wrap_cb_l.push_back(class_ctx);
         class_ctx->private_ctx = private_ctx;
 
-        int ret = sr_feature_enable_subscribe(self->swig_sess->Get(), g_feature_enable_cb, class_ctx,
+        int ret = sr_feature_enable_subscribe(self->swig_sess->get(), g_feature_enable_cb, class_ctx,
                                               opts, &self->swig_sub);
 
         if (SR_ERR_OK != ret) {
@@ -270,7 +270,7 @@ static int g_dp_get_items_cb(const char *xpath, sr_val_t **values, size_t *value
         self->wrap_cb_l.push_back(class_ctx);
         class_ctx->private_ctx = private_ctx;
 
-        int ret = sr_rpc_subscribe(self->swig_sess->Get(), xpath, g_rpc_subscribe_cb, class_ctx, opts,\
+        int ret = sr_rpc_subscribe(self->swig_sess->get(), xpath, g_rpc_subscribe_cb, class_ctx, opts,\
                                    &self->swig_sub);
 
         if (SR_ERR_OK != ret) {
@@ -290,7 +290,7 @@ static int g_dp_get_items_cb(const char *xpath, sr_val_t **values, size_t *value
         self->wrap_cb_l.push_back(class_ctx);
         class_ctx->private_ctx = private_ctx;
 
-        int ret = sr_dp_get_items_subscribe(self->swig_sess->Get(), xpath, g_dp_get_items_cb, class_ctx,\
+        int ret = sr_dp_get_items_subscribe(self->swig_sess->get(), xpath, g_dp_get_items_cb, class_ctx,\
                                             opts, &self->swig_sub);
 
         if (SR_ERR_OK != ret) {

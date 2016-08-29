@@ -413,7 +413,7 @@ void Value::Set(sr_val_t *val)
     _val = val;
 }
 
-sr_val_t **Value::Get()
+sr_val_t **Value::get()
 {
     return &_val;
 }
@@ -424,57 +424,6 @@ Value::~Value()
         sr_free_val(_val);
         _val = NULL;
     }
-}
-
-Iter_Value::~Iter_Value()
-{
-    if (_iter)
-        sr_free_val_iter(_iter);
-}
-
-Iter_Value::Iter_Value()
-{
-    _iter = NULL;
-}
-
-Iter_Value::Iter_Value(sr_val_iter_t *iter)
-{
-    _iter = iter;
-}
-
-sr_val_iter_t *Iter_Value::Get()
-{
-    return _iter;
-
-}
-
-void Iter_Value::Set(sr_val_iter_t *iter)
-{
-    if (_iter)
-        sr_free_val_iter(_iter);
-    _iter = iter;
-}
-
-Iter_Change::~Iter_Change()
-{
-    if (_iter)
-        sr_free_change_iter(_iter);
-}
-
-Iter_Change::Iter_Change()
-{
-    _iter = NULL;
-}
-
-Iter_Change::Iter_Change(sr_change_iter_t *iter)
-{
-    _iter = iter;
-}
-
-sr_change_iter_t *Iter_Change::Get()
-{
-    return _iter;
-
 }
 
 Values::Values(sr_val_t *val, size_t cnt)
@@ -510,12 +459,12 @@ void Values::Set(sr_val_t *val, size_t cnt)
     }
 }
 
-sr_val_t *Values::Get_val()
+sr_val_t *Values::get_val()
 {
     return _values;
 }
 
-size_t *Values::Get_cnt()
+size_t *Values::get_cnt()
 {
     return &_cnt;
 }

@@ -93,7 +93,7 @@ Schema_Content::Schema_Content(char *con)
     _con = con;
 }
 
-char *Schema_Content::Get()
+char *Schema_Content::get()
 {
     return _con;
 }
@@ -110,12 +110,12 @@ Schemas::Schemas(sr_schema_t *sch, size_t cnt)
     _pos = 0;
 }
 
-sr_schema_t *Schemas::Get_val()
+sr_schema_t *Schemas::get_val()
 {
     return &_sch[_pos];
 }
 
-size_t Schemas::Get_cnt()
+size_t Schemas::get_cnt()
 {
     return _cnt;
 }

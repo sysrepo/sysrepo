@@ -70,38 +70,11 @@ public:
     Value(uint64_t uint64_val, sr_type_t type = SR_UINT64_T);
 
     ~Value();
-    sr_val_t **Get();
+    sr_val_t **get();
     void Set(sr_val_t *val = NULL);
 
 protected:
     sr_val_t *_val;
-};
-
-class Iter_Value
-{
-
-public:
-    Iter_Value();
-    Iter_Value(sr_val_iter_t *iter);
-    ~Iter_Value();
-    sr_val_iter_t *Get();
-    void Set(sr_val_iter_t *iter);
-
-private:
-    sr_val_iter_t *_iter;
-};
-
-class Iter_Change
-{
-
-public:
-    Iter_Change();
-    Iter_Change(sr_change_iter_t *iter);
-    ~Iter_Change();
-    sr_change_iter_t *Get();
-
-private:
-    sr_change_iter_t *_iter;
 };
 
 class Values:public Value
@@ -113,8 +86,8 @@ public:
     bool Next();
     bool Prev();
     void Set(sr_val_t *val, size_t cnt);
-    sr_val_t *Get_val();
-    size_t *Get_cnt();
+    sr_val_t *get_val();
+    size_t *get_cnt();
 
 private:
     sr_val_t *_values;
