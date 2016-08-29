@@ -185,23 +185,23 @@ Val::~Val() {
         sr_free_val(_val);
     return;
 }
-Val::Val(char *value, sr_type_t type) {
+Val::Val(const char *value, sr_type_t type) {
     sr_val_t *val = NULL;
     val = (sr_val_t*) calloc(1, sizeof(sr_val_t));
     if (val == NULL)
         throw_exception(SR_ERR_NOMEM);
     if (type == SR_BINARY_T) {
-	val->data.binary_val = value;
+	val->data.binary_val = (char *) value;
     } else if (type == SR_BITS_T) {
-	val->data.bits_val = value;
+	val->data.bits_val = (char *) value;
     } else if (type == SR_ENUM_T) {
-	val->data.enum_val = value;
+	val->data.enum_val = (char *) value;
     } else if (type == SR_IDENTITYREF_T) {
-	val->data.identityref_val = value;
+	val->data.identityref_val = (char *) value;
     } else if (type == SR_INSTANCEID_T) {
-	val->data.instanceid_val = value;
+	val->data.instanceid_val = (char *) value;
     } else if (type == SR_STRING_T) {
-	val->data.string_val = value;
+	val->data.string_val = (char *) value;
     } else {
         free(val);
         throw_exception(SR_ERR_INVAL_ARG);

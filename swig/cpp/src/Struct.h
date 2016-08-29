@@ -202,7 +202,7 @@ class Val:public Throw_Exception
 {
 public:
     Val(sr_val_t *val, bool free = true);
-    Val(char *val, sr_type_t type = SR_STRING_T);
+    Val(const char *val, sr_type_t type = SR_STRING_T);
     Val(bool bool_val, sr_type_t type = SR_BOOL_T);
     Val(double decimal64_val, sr_type_t type = SR_DECIMAL64_T);
     Val(int8_t int8_val, sr_type_t type = SR_INT16_T);
