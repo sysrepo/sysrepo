@@ -33,11 +33,12 @@
  * @brief Creates xpath for the selected node. Function walks from the node
  * up to the top-level node. Namespace is explictly specified for top level node
  * and augment nodes.
+ * @param [in] sr_mem
  * @param [in] node
  * @param [out] xpath
  * @return Error code (SR_ERR_OK on success)
  */
-int rp_dt_create_xpath_for_node(const struct lyd_node *node, char **xpath);
+int rp_dt_create_xpath_for_node(sr_mem_ctx_t *sr_mem, const struct lyd_node *node, char **xpath);
 
 
 /**

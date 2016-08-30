@@ -465,7 +465,7 @@ dm_rpc_test(void **state)
 
     /* non-existing RPC */
     rc = dm_validate_rpc(ctx, session, "/test-module:non-existing-rpc", input, input_cnt, true,
-            &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
+            NULL, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
     assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
     assert_null(with_def);
     assert_null(with_def_tree);
@@ -478,7 +478,7 @@ dm_rpc_test(void **state)
     input[0].data.string_val = strdup("acmefw-2.3");
 
     rc = dm_validate_rpc(ctx, session, "/test-module:activate-software-image", input, input_cnt, true,
-            &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
+            NULL, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(2, with_def_cnt); /* including default leaf */
     assert_int_equal(2, with_def_tree_cnt);
@@ -489,7 +489,7 @@ dm_rpc_test(void **state)
     free(input[0].xpath);
     input[0].xpath = strdup("/test-module:activate-software-image/non-existing-input");
     rc = dm_validate_rpc(ctx, session, "/test-module:activate-software-image", input, input_cnt, true,
-            &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
+            NULL, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
     assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
 
     /* RPC output */
@@ -503,7 +503,7 @@ dm_rpc_test(void **state)
     output[1].data.string_val = strdup("2.3");
 
     rc = dm_validate_rpc(ctx, session, "/test-module:activate-software-image", output, output_cnt, false,
-            &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
+            NULL, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(3, with_def_cnt); /* including default leaf */
     assert_int_equal(3, with_def_tree_cnt);
@@ -514,7 +514,7 @@ dm_rpc_test(void **state)
     free(output[1].xpath);
     output[1].xpath = strdup("/test-module:activate-software-image/non-existing-output");
     rc = dm_validate_rpc(ctx, session, "/test-module:activate-software-image", output, output_cnt, false,
-            &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
+            NULL, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
     assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
 
     sr_free_values(input, input_cnt);
@@ -585,7 +585,7 @@ dm_event_notif_test(void **state)
 
     /* non-existing event notification */
     rc = dm_validate_event_notif(ctx, session, "/test-module:non-existing-event-notif", values, values_cnt,
-            &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
+            NULL, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
     assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
 
     /* valid event notification */
@@ -611,7 +611,7 @@ dm_event_notif_test(void **state)
     values[5].data.string_val = strdup("eth2");
 
     rc = dm_validate_event_notif(ctx, session, "/test-module:link-removed", values, values_cnt,
-            &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
+            NULL, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
     assert_int_equal(SR_ERR_OK, rc);
     /* including default leaf */
     assert_int_equal(7, with_def_cnt);
@@ -624,7 +624,7 @@ dm_event_notif_test(void **state)
     free(with_def[6].xpath);
     with_def[6].xpath = strdup("/test-module:link-removed/non-existing-node");
     rc = dm_validate_event_notif(ctx, session, "/test-module:link-removed", with_def, with_def_cnt,
-            NULL, NULL, NULL, NULL);
+            NULL, NULL, NULL, NULL, NULL);
     assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
 
     sr_free_values(values, values_cnt);

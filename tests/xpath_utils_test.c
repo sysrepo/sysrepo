@@ -29,7 +29,7 @@
 #include <pthread.h>
 #include <sys/stat.h>
 
-#include "xpath_utils.h"
+#include "sysrepo/xpath_utils.h"
 
 
 static void

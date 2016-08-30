@@ -484,7 +484,7 @@ dm_load_schema_file(dm_ctx_t *dm_ctx, const char *schema_filepath, bool append, 
     }
 
     /* load module's persistent data */
-    rc = pm_get_module_info(dm_ctx->pm_ctx, module->name, &module_enabled,
+    rc = pm_get_module_info(dm_ctx->pm_ctx, module->name, NULL, &module_enabled,
             &enabled_subtrees, &enabled_subtrees_cnt, &features, &features_cnt);
     if (SR_ERR_OK == rc) {
         /* enable active features */
@@ -1182,14 +1182,14 @@ dm_has_error(dm_session_t *session)
 }
 
 int
-dm_copy_errors(dm_session_t *session, char **error_msg, char **err_xpath)
+dm_copy_errors(dm_session_t *session, sr_mem_ctx_t *sr_mem, char **error_msg, char **err_xpath)
 {
     CHECK_NULL_ARG3(session, error_msg, err_xpath);
     if (NULL != session->error_msg) {
-        *error_msg = strdup(session->error_msg);
+        sr_mem_edit_string(sr_mem, error_msg, session->error_msg);
     }
     if (NULL != session->error_xpath) {
-        *err_xpath = strdup(session->error_xpath);
+        sr_mem_edit_string(sr_mem, err_xpath, session->error_xpath);
     }
     if ((NULL != session->error_msg && NULL == *error_msg) || (NULL != session->error_xpath && NULL == *err_xpath)) {
         SR_LOG_ERR_MSG("Error duplication failed");
@@ -1698,36 +1698,46 @@ dm_get_module_without_lock(dm_ctx_t *dm_ctx, const char *module_name, dm_schema_
 }
 
 static int
-dm_list_rev_file(dm_ctx_t *dm_ctx, const char *module_name, const char *rev_date, sr_sch_revision_t *rev)
+dm_list_rev_file(dm_ctx_t *dm_ctx, sr_mem_ctx_t *sr_mem, const char *module_name, const char *rev_date, sr_sch_revision_t *rev)
 {
     CHECK_NULL_ARG3(dm_ctx, module_name, rev);
     int rc = SR_ERR_OK;
+    char *file_name = NULL;
 
     if (NULL != rev_date && 0 != strcmp("", rev_date)) {
-        rev->revision = strdup(rev_date);
+        sr_mem_edit_string(sr_mem, (char **)&rev->revision, rev_date);
         CHECK_NULL_NOMEM_GOTO(rev->revision, rc, cleanup);
     }
 
-    rc = sr_get_schema_file_name(dm_ctx->schema_search_dir, module_name, rev_date, true, (char**) &rev->file_path_yang);
+    rc = sr_get_schema_file_name(dm_ctx->schema_search_dir, module_name, rev_date, true, &file_name);
+    if (SR_ERR_OK == rc) {
+        if (-1 != access(file_name, F_OK)) {
+            rc = sr_mem_edit_string(sr_mem, (char **)&rev->file_path_yang, file_name);
+        }
+    }
     CHECK_RC_MSG_GOTO(rc, cleanup, "Get schema file name failed");
 
-    rc = sr_get_schema_file_name(dm_ctx->schema_search_dir, module_name, rev_date, false, (char**) &rev->file_path_yin);
+    free(file_name);
+    file_name = NULL;
+
+    rc = sr_get_schema_file_name(dm_ctx->schema_search_dir, module_name, rev_date, false, &file_name);
+    if (SR_ERR_OK == rc) {
+        if (-1 != access(file_name, F_OK)) {
+            sr_mem_edit_string(sr_mem, (char **)&rev->file_path_yin, file_name);
+        }
+    }
     CHECK_RC_MSG_GOTO(rc, cleanup, "Get schema file name failed");
 
-    if (-1 == access(rev->file_path_yang, F_OK)) {
-        free((void*) rev->file_path_yang);
-        rev->file_path_yang = NULL;
-    }
-    if (-1 == access(rev->file_path_yin, F_OK)) {
-        free((void*) rev->file_path_yin);
-        rev->file_path_yin = NULL;
-    }
+    free(file_name);
     return rc;
 
 cleanup:
-    free((void*) rev->revision);
-    free((void*) rev->file_path_yang);
-    free((void*) rev->file_path_yin);
+    free(file_name);
+    if (NULL == sr_mem) {
+        free((void*) rev->revision);
+        free((void*) rev->file_path_yang);
+        free((void*) rev->file_path_yin);
+    }
     return rc;
 }
 
@@ -1749,17 +1759,18 @@ dm_list_module(dm_ctx_t *dm_ctx, md_module_t *module, sr_schema_t *schema)
     sr_llist_node_t *dep = NULL;
     md_dep_t *dep_mod = NULL;
     size_t submod_cnt = 0;
+    sr_mem_ctx_t *sr_mem = schema->_sr_mem;
 
-    schema->module_name = strdup(module->name);
+    sr_mem_edit_string(sr_mem, (char **)&schema->module_name, module->name);
     CHECK_NULL_NOMEM_GOTO(schema->module_name, rc, cleanup);
 
-    schema->ns = strdup(module->ns);
+    sr_mem_edit_string(sr_mem, (char **)&schema->ns, module->ns);
     CHECK_NULL_NOMEM_GOTO(schema->ns, rc, cleanup);
 
-    schema->prefix = strdup(module->prefix);
+    sr_mem_edit_string(sr_mem, (char **)&schema->prefix, module->prefix);
     CHECK_NULL_NOMEM_GOTO(schema->prefix, rc, cleanup);
 
-    rc = dm_list_rev_file(dm_ctx, module->name, module->revision_date, &schema->revision);
+    rc = dm_list_rev_file(dm_ctx, sr_mem, module->name, module->revision_date, &schema->revision);
     CHECK_RC_LOG_GOTO(rc, cleanup, "List rev file failed module %s", module->name);
 
     dep = module->deps->first;
@@ -1772,8 +1783,10 @@ dm_list_module(dm_ctx_t *dm_ctx, md_module_t *module, sr_schema_t *schema)
         submod_cnt++;
     }
 
-    schema->submodules = calloc(submod_cnt, sizeof(*schema->submodules));
-    CHECK_NULL_NOMEM_GOTO(schema->submodules, rc, cleanup);
+    if (0 < submod_cnt) {
+        schema->submodules = sr_calloc(sr_mem, submod_cnt, sizeof(*schema->submodules));
+        CHECK_NULL_NOMEM_GOTO(schema->submodules, rc, cleanup);
+    }
 
     dep = module->deps->first;
     size_t s = 0;
@@ -1783,17 +1796,17 @@ dm_list_module(dm_ctx_t *dm_ctx, md_module_t *module, sr_schema_t *schema)
         if (!dep_mod->dest->submodule) {
             continue;
         }
-        schema->submodules[s].submodule_name = strdup(dep_mod->dest->name);
+        sr_mem_edit_string(sr_mem, (char **)&schema->submodules[s].submodule_name, dep_mod->dest->name);
         CHECK_NULL_NOMEM_GOTO(schema->submodules[s].submodule_name, rc, cleanup);
 
-        rc = dm_list_rev_file(dm_ctx, dep_mod->dest->name, dep_mod->dest->revision_date, &schema->submodules[s].revision);
+        rc = dm_list_rev_file(dm_ctx, sr_mem, dep_mod->dest->name, dep_mod->dest->revision_date, &schema->submodules[s].revision);
         CHECK_RC_LOG_GOTO(rc, cleanup, "List rev file failed module %s", module->name);
 
         schema->submodule_count++;
         s++;
     }
 
-    rc = pm_get_module_info(dm_ctx->pm_ctx, module->name, &module_enabled,
+    rc = pm_get_module_info(dm_ctx->pm_ctx, module->name, sr_mem, &module_enabled,
             &enabled_subtrees, &enabled_subtrees_cnt, &schema->enabled_features, &schema->enabled_feature_cnt);
     if (SR_ERR_OK == rc) {
         /* release memory */
@@ -1824,6 +1837,7 @@ dm_list_schemas(dm_ctx_t *dm_ctx, dm_session_t *dm_session, sr_schema_t **schema
 
     sr_schema_t *sch = NULL;
     size_t sch_count = 0;
+    sr_mem_ctx_t *sr_mem = NULL;
 
     md_ctx_lock(dm_ctx->md_ctx, false);
     module_ll_node = dm_ctx->md_ctx->modules->first;
@@ -1835,8 +1849,13 @@ dm_list_schemas(dm_ctx_t *dm_ctx, dm_session_t *dm_session, sr_schema_t **schema
         }
         sch_count++;
     }
+    if (0 == sch_count) {
+        goto cleanup;
+    }
 
-    sch = calloc(sch_count, sizeof(*sch));
+    rc = sr_mem_new(0, &sr_mem);
+    CHECK_RC_MSG_RETURN(rc, "Failed to create a new Sysrepo memory context.");
+    sch = sr_calloc(sr_mem, sch_count, sizeof(*sch));
     CHECK_NULL_NOMEM_GOTO(sch, rc, cleanup);
 
     module_ll_node = dm_ctx->md_ctx->modules->first;
@@ -1848,6 +1867,7 @@ dm_list_schemas(dm_ctx_t *dm_ctx, dm_session_t *dm_session, sr_schema_t **schema
             continue;
         }
 
+        sch[i]._sr_mem = sr_mem;
         rc = dm_list_module(dm_ctx, module, &sch[i]);
         CHECK_RC_LOG_GOTO(rc, cleanup, "List module %s failed", module->name);
 
@@ -1857,10 +1877,13 @@ dm_list_schemas(dm_ctx_t *dm_ctx, dm_session_t *dm_session, sr_schema_t **schema
 cleanup:
     md_ctx_unlock(dm_ctx->md_ctx);
     if (SR_ERR_OK == rc) {
+        if (NULL != sr_mem) {
+            sr_mem->obj_count = 1; /* 1 for the entire array */
+        }
         *schemas = sch;
         *schema_count = sch_count;
     } else {
-        sr_free_schemas(sch, i);
+        sr_mem_free(sr_mem);
     }
     return rc;
 }
@@ -3487,7 +3510,7 @@ typedef enum dm_procedure_e {
 static int
 dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t type, const char *xpath,
         sr_api_variant_t api_variant, void *args_p, size_t arg_cnt, bool input,
-        sr_val_t **with_def, size_t *with_def_cnt, sr_node_t **with_def_tree, size_t *with_def_tree_cnt)
+        sr_mem_ctx_t *sr_mem, sr_val_t **with_def, size_t *with_def_cnt, sr_node_t **with_def_tree, size_t *with_def_tree_cnt)
 {
     sr_val_t *args = NULL;
     sr_node_t *args_tree = NULL;
@@ -3532,7 +3555,7 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
 
     /* converse sysrepo values/trees to libyang data tree */
     if (SR_API_VALUES == api_variant) {
-        data_tree = lyd_new_path(NULL, schema_info->ly_ctx, xpath, NULL, 0);
+        data_tree = lyd_new_path(NULL, schema_info->ly_ctx, xpath, NULL, 0, 0);
         if (NULL == data_tree) {
             SR_LOG_ERR("%s xpath validation failed ('%s'): %s", procedure_name, xpath, ly_errmsg());
             rc = dm_report_error(session, ly_errmsg(), xpath, SR_ERR_VALIDATION_FAILED);
@@ -3557,7 +3580,7 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
                 }
             }
             /* create the argument node in the tree */
-            new_node = lyd_new_path(data_tree, schema_info->ly_ctx, args[i].xpath, string_value, (input ? 0 : LYD_PATH_OPT_OUTPUT));
+            new_node = lyd_new_path(data_tree, schema_info->ly_ctx, args[i].xpath, string_value, 0, (input ? 0 : LYD_PATH_OPT_OUTPUT));
             free(string_value);
             if (NULL == new_node) {
                 SR_LOG_ERR("Unable to add new %s argument '%s': %s.", procedure_name, args[i].xpath, ly_errmsg());
@@ -3613,7 +3636,7 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
                 strcat(tmp_xpath, "//*");
                 nodeset = lyd_get_node(data_tree, tmp_xpath);
                 if (NULL != nodeset) {
-                    rc = rp_dt_get_values_from_nodes(nodeset, with_def, with_def_cnt);
+                    rc = rp_dt_get_values_from_nodes(sr_mem, nodeset, with_def, with_def_cnt);
                 } else {
                     SR_LOG_ERR("No matching nodes returned for xpath '%s'.", tmp_xpath);
                     rc = SR_ERR_INTERNAL;
@@ -3638,7 +3661,7 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
                 strcat(tmp_xpath, "*");
                 nodeset = lyd_get_node(data_tree, tmp_xpath);
                 if (NULL != nodeset) {
-                    rc = sr_nodes_to_trees(schema_info->ly_ctx, nodeset, with_def_tree, with_def_tree_cnt);
+                    rc = sr_nodes_to_trees(schema_info->ly_ctx, nodeset, sr_mem, with_def_tree, with_def_tree_cnt);
                 } else {
                     SR_LOG_ERR("No matching nodes returned for xpath '%s'.", tmp_xpath);
                     rc = SR_ERR_INTERNAL;
@@ -3661,34 +3684,34 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
 
 int
 dm_validate_rpc(dm_ctx_t *dm_ctx, dm_session_t *session, const char *rpc_xpath, sr_val_t *args, size_t arg_cnt, bool input,
-        sr_val_t **with_def, size_t *with_def_cnt, sr_node_t **with_def_tree, size_t *with_def_tree_cnt)
+        sr_mem_ctx_t *sr_mem, sr_val_t **with_def, size_t *with_def_cnt, sr_node_t **with_def_tree, size_t *with_def_tree_cnt)
 {
     return dm_validate_procedure(dm_ctx, session, DM_PROCEDURE_RPC, rpc_xpath, SR_API_VALUES,
-            (void *)args, arg_cnt, input, with_def, with_def_cnt, with_def_tree, with_def_tree_cnt);
+            (void *)args, arg_cnt, input, sr_mem, with_def, with_def_cnt, with_def_tree, with_def_tree_cnt);
 }
 
 int
 dm_validate_rpc_tree(dm_ctx_t *dm_ctx, dm_session_t *session, const char *rpc_xpath, sr_node_t *args, size_t arg_cnt, bool input,
-        sr_val_t **with_def, size_t *with_def_cnt, sr_node_t **with_def_tree, size_t *with_def_tree_cnt)
+        sr_mem_ctx_t *sr_mem, sr_val_t **with_def, size_t *with_def_cnt, sr_node_t **with_def_tree, size_t *with_def_tree_cnt)
 {
     return dm_validate_procedure(dm_ctx, session, DM_PROCEDURE_RPC, rpc_xpath, SR_API_TREES,
-            (void *)args, arg_cnt, input, with_def, with_def_cnt, with_def_tree, with_def_tree_cnt);
+            (void *)args, arg_cnt, input, sr_mem, with_def, with_def_cnt, with_def_tree, with_def_tree_cnt);
 }
 
 int
 dm_validate_event_notif(dm_ctx_t *dm_ctx, dm_session_t *session, const char *event_notif_xpath, sr_val_t *values, size_t value_cnt,
-        sr_val_t **with_def, size_t *with_def_cnt, sr_node_t **with_def_tree, size_t *with_def_tree_cnt)
+        sr_mem_ctx_t *sr_mem, sr_val_t **with_def, size_t *with_def_cnt, sr_node_t **with_def_tree, size_t *with_def_tree_cnt)
 {
     return dm_validate_procedure(dm_ctx, session, DM_PROCEDURE_EVENT_NOTIF, event_notif_xpath, SR_API_VALUES,
-            (void *)values, value_cnt, true, with_def, with_def_cnt, with_def_tree, with_def_tree_cnt);
+            (void *)values, value_cnt, true, sr_mem, with_def, with_def_cnt, with_def_tree, with_def_tree_cnt);
 }
 
 int
 dm_validate_event_notif_tree(dm_ctx_t *dm_ctx, dm_session_t *session, const char *event_notif_xpath, sr_node_t *trees, size_t tree_cnt,
-        sr_val_t **with_def, size_t *with_def_cnt, sr_node_t **with_def_tree, size_t *with_def_tree_cnt)
+        sr_mem_ctx_t *sr_mem, sr_val_t **with_def, size_t *with_def_cnt, sr_node_t **with_def_tree, size_t *with_def_tree_cnt)
 {
     return dm_validate_procedure(dm_ctx, session, DM_PROCEDURE_EVENT_NOTIF, event_notif_xpath, SR_API_TREES,
-            (void *)trees, tree_cnt, true, with_def, with_def_cnt, with_def_tree, with_def_tree_cnt);
+            (void *)trees, tree_cnt, true, sr_mem, with_def, with_def_cnt, with_def_tree, with_def_tree_cnt);
 }
 
 struct lyd_node *
@@ -3701,7 +3724,7 @@ dm_lyd_new_path(dm_data_info_t *data_info, const char *path, const char *value, 
     }
 
     struct lyd_node *new = NULL;
-    new = lyd_new_path(data_info->node, data_info->schema->ly_ctx, path, value, options);
+    new = lyd_new_path(data_info->node, data_info->schema->ly_ctx, path, (void *)value, 0, options);
     if (NULL == data_info->node) {
         data_info->node = new;
     }

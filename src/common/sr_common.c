@@ -67,8 +67,14 @@ void
 sr_free_val(sr_val_t *value)
 {
     if (NULL != value) {
-        sr_free_val_content(value);
-        free(value);
+        if (NULL != value->_sr_mem) {
+            if (0 == --value->_sr_mem->obj_count) {
+                sr_mem_free(value->_sr_mem);
+            }
+        } else {
+            sr_free_val_content(value);
+            free(value);
+        }
     }
 }
 
@@ -76,10 +82,16 @@ void
 sr_free_values(sr_val_t *values, size_t count)
 {
     if (NULL != values) {
-        for (size_t i = 0; i < count; i++) {
-            sr_free_val_content(&values[i]);
+        if (values[0]._sr_mem) {
+            if (0 == --values[0]._sr_mem->obj_count) {
+                sr_mem_free(values[0]._sr_mem);
+            }
+        } else {
+            for (size_t i = 0; i < count; i++) {
+                sr_free_val_content(&values[i]);
+            }
+            free(values);
         }
-        free(values);
     }
 }
 
@@ -87,10 +99,17 @@ void
 sr_free_schemas(sr_schema_t *schemas, size_t count)
 {
     if (NULL != schemas) {
-        for (size_t i = 0; i < count; i++) {
-            sr_free_schema(&schemas[i]);
+        if (schemas[0]._sr_mem) {
+            if (0 == --schemas[0]._sr_mem->obj_count) {
+                sr_mem_free(schemas[0]._sr_mem);
+            }
+            return;
+        } else {
+            for (size_t i = 0; i < count; i++) {
+                sr_free_schema(&schemas[i]);
+            }
+            free(schemas);
         }
-        free(schemas);
     }
 }
 
@@ -98,8 +117,14 @@ void
 sr_free_tree(sr_node_t *tree)
 {
     if (NULL != tree) {
-        sr_free_tree_content(tree);
-        free(tree);
+        if (NULL != tree->_sr_mem) {
+            if (0 == --tree->_sr_mem->obj_count) {
+                sr_mem_free(tree->_sr_mem);
+            }
+        } else {
+            sr_free_tree_content(tree);
+            free(tree);
+        }
     }
 }
 
@@ -107,9 +132,15 @@ void
 sr_free_trees(sr_node_t *trees, size_t count)
 {
     if (NULL != trees) {
-        for (size_t i = 0; i < count; i++) {
-            sr_free_tree_content(trees + i);
+        if (NULL != trees[0]._sr_mem) {
+            if (0 == --trees[0]._sr_mem->obj_count) {
+                sr_mem_free(trees[0]._sr_mem);
+            }
+        } else {
+            for (size_t i = 0; i < count; i++) {
+                sr_free_tree_content(trees + i);
+            }
+            free(trees);
         }
-        free(trees);
     }
 }

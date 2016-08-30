@@ -115,16 +115,19 @@ static int
 cl_send_get_items_iter(sr_session_ctx_t *session, const char *xpath, size_t offset, size_t limit, Sr__Msg **msg_resp)
 {
     Sr__Msg *msg_req = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG4(session, session->conn_ctx, xpath, msg_resp);
 
     /* prepare get_item message */
-    rc = sr_gpb_req_alloc(SR__OPERATION__GET_ITEMS, session->id, &msg_req);
+    rc = sr_mem_new(0, &sr_mem);
+    CHECK_RC_MSG_RETURN(rc, "Failed to create a new Sysrepo memory context.");
+    rc = sr_gpb_req_alloc(sr_mem, SR__OPERATION__GET_ITEMS, session->id, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate get_items message.");
 
     /* fill in the path */
-    msg_req->request->get_items_req->xpath = strdup(xpath);
+    sr_mem_edit_string(sr_mem, &msg_req->request->get_items_req->xpath, xpath);
     CHECK_NULL_NOMEM_GOTO(msg_req->request->get_items_req->xpath, rc, cleanup);
 
     /* fill in other arguments */
@@ -136,13 +139,15 @@ cl_send_get_items_iter(sr_session_ctx_t *session, const char *xpath, size_t offs
     /* send the request and receive the response */
     rc = cl_request_process(session, msg_req, msg_resp, SR__OPERATION__GET_ITEMS);
 
-    sr__msg__free_unpacked(msg_req, NULL);
+    sr_msg_free(msg_req);
 
     return rc;
 
 cleanup:
     if (NULL != msg_req) {
-        sr__msg__free_unpacked(msg_req, NULL);
+        sr_msg_free(msg_req);
+    } else {
+        sr_mem_free(sr_mem);
     }
     return rc;
 }
@@ -154,33 +159,37 @@ static int
 cl_send_get_changes(sr_session_ctx_t *session, const char *xpath, size_t offset, size_t limit, Sr__Msg **msg_resp)
 {
     Sr__Msg *msg_req = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG4(session, session->conn_ctx, xpath, msg_resp);
 
     /* prepare get_item message */
-    rc = sr_gpb_req_alloc(SR__OPERATION__GET_CHANGES, session->id, &msg_req);
+    rc = sr_mem_new(0, &sr_mem);
+    CHECK_RC_MSG_RETURN(rc, "Failed to create a new Sysrepo memory context.");
+    rc = sr_gpb_req_alloc(sr_mem, SR__OPERATION__GET_CHANGES, session->id, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate get_items message.");
 
     /* fill in the path */
-    msg_req->request->get_changes_req->xpath = strdup(xpath);
+    sr_mem_edit_string(sr_mem, &msg_req->request->get_changes_req->xpath, xpath);
     CHECK_NULL_NOMEM_GOTO(msg_req->request->get_changes_req->xpath, rc, cleanup);
 
     /* fill in other arguments */
     msg_req->request->get_changes_req->limit = limit;
     msg_req->request->get_changes_req->offset = offset;
 
-
     /* send the request and receive the response */
     rc = cl_request_process(session, msg_req, msg_resp, SR__OPERATION__GET_CHANGES);
 
-    sr__msg__free_unpacked(msg_req, NULL);
+    sr_msg_free(msg_req);
 
     return rc;
 
 cleanup:
     if (NULL != msg_req) {
-        sr__msg__free_unpacked(msg_req, NULL);
+        sr_msg_free(msg_req);
+    } else {
+        sr_mem_free(sr_mem);
     }
     return rc;
 }
@@ -192,30 +201,34 @@ static int
 cl_subscription_close(sr_session_ctx_t *session, cl_sm_subscription_ctx_t *subscription)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG(session);
     if (NULL != subscription) {
+        
         /* prepare unsubscribe message */
-        rc = sr_gpb_req_alloc(SR__OPERATION__UNSUBSCRIBE, session->id, &msg_req);
+        rc = sr_mem_new(0, &sr_mem);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to create a new Sysrepo memory context.");
+        rc = sr_gpb_req_alloc(sr_mem, SR__OPERATION__UNSUBSCRIBE, session->id, &msg_req);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate unsubscribe message.");
-
+        
         msg_req->request->unsubscribe_req->type = subscription->type;
 
-        msg_req->request->unsubscribe_req->destination = strdup(subscription->delivery_address);
+        sr_mem_edit_string(sr_mem, &msg_req->request->unsubscribe_req->destination, subscription->delivery_address);
         CHECK_NULL_NOMEM_GOTO(msg_req->request->unsubscribe_req->destination, rc, cleanup);
         msg_req->request->unsubscribe_req->subscription_id = subscription->id;
 
         if (NULL != subscription->module_name) {
-            msg_req->request->unsubscribe_req->module_name = strdup(subscription->module_name);
-            CHECK_NULL_NOMEM_GOTO(msg_req->request->unsubscribe_req->module_name, rc, cleanup);
+           sr_mem_edit_string(sr_mem, &msg_req->request->unsubscribe_req->module_name, subscription->module_name);
+           CHECK_NULL_NOMEM_GOTO(msg_req->request->unsubscribe_req->module_name, rc, cleanup);
         }
 
         /* send the request and receive the response */
         rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__UNSUBSCRIBE);
         if (SR_ERR_OK != rc) {
-            SR_LOG_ERR_MSG("Error by processing of the request.");
-            /* don't go to cleanup, subscriptions_cnt must be decremented */
+             SR_LOG_ERR_MSG("Error by processing of the request.");
+             /* don't go to cleanup, subscriptions_cnt must be decremented */
         }
 
         /* cleanup the SM subscription */
@@ -237,10 +250,12 @@ cl_subscription_close(sr_session_ctx_t *session, cl_sm_subscription_ctx_t *subsc
 
 cleanup:
     if (NULL != msg_req) {
-        sr__msg__free_unpacked(msg_req, NULL);
+        sr_msg_free(msg_req);
+    } else {
+        sr_mem_free(sr_mem);
     }
     if (NULL != msg_resp) {
-        sr__msg__free_unpacked(msg_resp, NULL);
+        sr_msg_free(msg_resp);
     }
     return rc;
 }
@@ -254,6 +269,7 @@ cl_subscription_init(sr_session_ctx_t *session, Sr__SubscriptionType type, const
         cl_sm_subscription_ctx_t **sm_subscription_p, Sr__Msg **msg_req_p)
 {
     Sr__Msg *msg_req = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
     sr_subscription_ctx_t *sr_subscription = NULL;
     cl_sm_subscription_ctx_t **tmp = NULL, *sm_subscription = NULL;
     cl_sm_server_ctx_t *server_ctx = NULL;
@@ -276,7 +292,9 @@ cl_subscription_init(sr_session_ctx_t *session, Sr__SubscriptionType type, const
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot initialize Client Subscription Manager.");
 
     /* prepare subscribe message */
-    rc = sr_gpb_req_alloc(SR__OPERATION__SUBSCRIBE, session->id, &msg_req);
+    rc = sr_mem_new(0, &sr_mem);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to create a new Sysrepo memory context.");
+    rc = sr_gpb_req_alloc(sr_mem, SR__OPERATION__SUBSCRIBE, session->id, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate subscribe message.");
 
     /* initialize subscription ctx */
@@ -292,7 +310,7 @@ cl_subscription_init(sr_session_ctx_t *session, Sr__SubscriptionType type, const
     }
 
     /* fill-in subscription details into GPB message */
-    msg_req->request->subscribe_req->destination = strdup(sm_subscription->delivery_address);
+    sr_mem_edit_string(sr_mem, &msg_req->request->subscribe_req->destination, sm_subscription->delivery_address);
     CHECK_NULL_NOMEM_GOTO(msg_req->request->subscribe_req->destination, rc, cleanup);
 
     msg_req->request->subscribe_req->subscription_id = sm_subscription->id;
@@ -326,7 +344,9 @@ cleanup:
         free(sr_subscription);
     }
     if (NULL != msg_req) {
-        sr__msg__free_unpacked(msg_req, NULL);
+        sr_msg_free(msg_req);
+    } else {
+        sr_mem_free(sr_mem);
     }
     cl_subscription_close(session, sm_subscription);
     return rc;
@@ -455,6 +475,7 @@ sr_session_start_user(sr_conn_ctx_t *conn_ctx, const char *user_name, sr_datasto
 {
     sr_session_ctx_t *session = NULL;
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG2(conn_ctx, session_p);
@@ -464,7 +485,9 @@ sr_session_start_user(sr_conn_ctx_t *conn_ctx, const char *user_name, sr_datasto
     CHECK_RC_MSG_RETURN(rc, "Unable to create new session.");
 
     /* prepare session_start message */
-    rc = sr_gpb_req_alloc(SR__OPERATION__SESSION_START, /* undefined session id */ 0, &msg_req);
+    rc = sr_mem_new(0, &sr_mem);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to create a new Sysrepo memory context.");
+    rc = sr_gpb_req_alloc(sr_mem, SR__OPERATION__SESSION_START, /* undefined session id */ 0, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
 
     msg_req->request->session_start_req->options = opts;
@@ -472,7 +495,7 @@ sr_session_start_user(sr_conn_ctx_t *conn_ctx, const char *user_name, sr_datasto
 
     /* set user name if provided */
     if (NULL != user_name) {
-        msg_req->request->session_start_req->user_name = strdup(user_name);
+        sr_mem_edit_string(sr_mem, &msg_req->request->session_start_req->user_name, user_name);
         CHECK_NULL_NOMEM_GOTO(msg_req->request->session_start_req->user_name, rc, cleanup);
     }
 
@@ -481,18 +504,20 @@ sr_session_start_user(sr_conn_ctx_t *conn_ctx, const char *user_name, sr_datasto
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
     session->id = msg_resp->response->session_start_resp->session_id;
-    sr__msg__free_unpacked(msg_req, NULL);
-    sr__msg__free_unpacked(msg_resp, NULL);
+    sr_msg_free(msg_req);
+    sr_msg_free(msg_resp);
 
     *session_p = session;
     return SR_ERR_OK;
 
 cleanup:
     if (NULL != msg_req) {
-        sr__msg__free_unpacked(msg_req, NULL);
+        sr_msg_free(msg_req);
+    } else {
+        sr_mem_free(sr_mem);
     }
     if (NULL != msg_resp) {
-        sr__msg__free_unpacked(msg_resp, NULL);
+        sr_msg_free(msg_resp);
     }
     cl_session_cleanup(session);
     return rc;
@@ -502,6 +527,7 @@ int
 sr_session_stop(sr_session_ctx_t *session)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG2(session, session->conn_ctx);
@@ -509,7 +535,9 @@ sr_session_stop(sr_session_ctx_t *session)
     cl_session_clear_errors(session);
 
     /* prepare session_stop message */
-    rc = sr_gpb_req_alloc(SR__OPERATION__SESSION_STOP, session->id, &msg_req);
+    rc = sr_mem_new(0, &sr_mem);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to create a new Sysrepo memory context.");
+    rc = sr_gpb_req_alloc(sr_mem, SR__OPERATION__SESSION_STOP, session->id, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
 
     msg_req->request->session_stop_req->session_id = session->id;
@@ -518,8 +546,8 @@ sr_session_stop(sr_session_ctx_t *session)
     rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__SESSION_STOP);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
-    sr__msg__free_unpacked(msg_req, NULL);
-    sr__msg__free_unpacked(msg_resp, NULL);
+    sr_msg_free(msg_req);
+    sr_msg_free(msg_resp);
 
     cl_session_cleanup(session);
 
@@ -527,10 +555,12 @@ sr_session_stop(sr_session_ctx_t *session)
 
 cleanup:
     if (NULL != msg_req) {
-        sr__msg__free_unpacked(msg_req, NULL);
+        sr_msg_free(msg_req);
+    } else {
+        sr_mem_free(sr_mem);
     }
     if (NULL != msg_resp) {
-        sr__msg__free_unpacked(msg_resp, NULL);
+        sr_msg_free(msg_resp);
     }
     return cl_session_return(session, rc);
 }
@@ -539,6 +569,7 @@ int
 sr_session_refresh(sr_session_ctx_t *session)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG2(session, session->conn_ctx);
@@ -546,24 +577,28 @@ sr_session_refresh(sr_session_ctx_t *session)
     cl_session_clear_errors(session);
 
     /* prepare session_stop message */
-    rc = sr_gpb_req_alloc(SR__OPERATION__SESSION_REFRESH, session->id, &msg_req);
+    rc = sr_mem_new(0, &sr_mem);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to create a new Sysrepo memory context.");
+    rc = sr_gpb_req_alloc(sr_mem, SR__OPERATION__SESSION_REFRESH, session->id, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
 
     /* send the request and receive the response */
     rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__SESSION_REFRESH);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
-    sr__msg__free_unpacked(msg_req, NULL);
-    sr__msg__free_unpacked(msg_resp, NULL);
+    sr_msg_free(msg_req);
+    sr_msg_free(msg_resp);
 
     return cl_session_return(session, SR_ERR_OK);
 
 cleanup:
     if (NULL != msg_req) {
-        sr__msg__free_unpacked(msg_req, NULL);
+        sr_msg_free(msg_req);
+    } else {
+        sr_mem_free(sr_mem);
     }
     if (NULL != msg_resp) {
-        sr__msg__free_unpacked(msg_resp, NULL);
+        sr_msg_free(msg_resp);
     }
     return cl_session_return(session, rc);
 }
@@ -572,13 +607,16 @@ int
 sr_session_switch_ds(sr_session_ctx_t* session, sr_datastore_t datastore)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG(session);
     cl_session_clear_errors(session);
 
     /* prepare session_switch ds message */
-    rc = sr_gpb_req_alloc(SR__OPERATION__SESSION_SWITCH_DS, session->id, &msg_req);
+    rc = sr_mem_new(0, &sr_mem);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to create a new Sysrepo memory context.");
+    rc = sr_gpb_req_alloc(sr_mem, SR__OPERATION__SESSION_SWITCH_DS, session->id, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
 
     msg_req->request->session_switch_ds_req->datastore = sr_datastore_sr_to_gpb(datastore);
@@ -587,17 +625,19 @@ sr_session_switch_ds(sr_session_ctx_t* session, sr_datastore_t datastore)
     rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__SESSION_SWITCH_DS);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
-    sr__msg__free_unpacked(msg_req, NULL);
-    sr__msg__free_unpacked(msg_resp, NULL);
+    sr_msg_free(msg_req);
+    sr_msg_free(msg_resp);
 
     return cl_session_return(session, SR_ERR_OK);
 
 cleanup:
     if (NULL != msg_req) {
-        sr__msg__free_unpacked(msg_req, NULL);
+        sr_msg_free(msg_req);
+    } else {
+        sr_mem_free(sr_mem);
     }
     if (NULL != msg_resp) {
-        sr__msg__free_unpacked(msg_resp, NULL);
+        sr_msg_free(msg_resp);
     }
     return cl_session_return(session, rc);
 }
@@ -606,13 +646,16 @@ int
 sr_session_set_options(sr_session_ctx_t *session, const sr_sess_options_t opts)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG(session);
     cl_session_clear_errors(session);
 
     /* prepare session_set_opts message */
-    rc = sr_gpb_req_alloc(SR__OPERATION__SESSION_SET_OPTS, session->id, &msg_req);
+    rc = sr_mem_new(0, &sr_mem);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to create a new Sysrepo memory context.");
+    rc = sr_gpb_req_alloc(sr_mem, SR__OPERATION__SESSION_SET_OPTS, session->id, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
 
     msg_req->request->session_set_opts_req->options = opts;
@@ -621,17 +664,19 @@ sr_session_set_options(sr_session_ctx_t *session, const sr_sess_options_t opts)
     rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__SESSION_SET_OPTS);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
-    sr__msg__free_unpacked(msg_req, NULL);
-    sr__msg__free_unpacked(msg_resp, NULL);
+    sr_msg_free(msg_req);
+    sr_msg_free(msg_resp);
 
     return cl_session_return(session, SR_ERR_OK);
 
 cleanup:
     if (NULL != msg_req) {
-        sr__msg__free_unpacked(msg_req, NULL);
+        sr_msg_free(msg_req);
+    } else {
+        sr_mem_free(sr_mem);
     }
     if (NULL != msg_resp) {
-        sr__msg__free_unpacked(msg_resp, NULL);
+        sr_msg_free(msg_resp);
     }
     return cl_session_return(session, rc);
 
@@ -641,6 +686,7 @@ int
 sr_list_schemas(sr_session_ctx_t *session, sr_schema_t **schemas, size_t *schema_cnt)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG4(session, session->conn_ctx, schemas, schema_cnt);
@@ -648,7 +694,9 @@ sr_list_schemas(sr_session_ctx_t *session, sr_schema_t **schemas, size_t *schema
     cl_session_clear_errors(session);
 
     /* prepare list_schemas message */
-    rc = sr_gpb_req_alloc(SR__OPERATION__LIST_SCHEMAS, session->id, &msg_req);
+    rc = sr_mem_new(0, &sr_mem);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to create a new Sysrepo memory context.");
+    rc = sr_gpb_req_alloc(sr_mem, SR__OPERATION__LIST_SCHEMAS, session->id, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
 
     /* send the request and receive the response */
@@ -657,23 +705,26 @@ sr_list_schemas(sr_session_ctx_t *session, sr_schema_t **schemas, size_t *schema
 
     /* copy schemas from response to output argument */
     if (0 != msg_resp->response->list_schemas_resp->n_schemas) {
-        rc = sr_schemas_gpb_to_sr((const Sr__Schema**)msg_resp->response->list_schemas_resp->schemas,
-                msg_resp->response->list_schemas_resp->n_schemas, schemas);
+        rc = sr_schemas_gpb_to_sr((sr_mem_ctx_t *)msg_resp->_sysrepo_mem_ctx,
+                                  (const Sr__Schema**)msg_resp->response->list_schemas_resp->schemas,
+                                  msg_resp->response->list_schemas_resp->n_schemas, schemas);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to copy schemas from GPB.");
     }
     *schema_cnt = msg_resp->response->list_schemas_resp->n_schemas;
 
-    sr__msg__free_unpacked(msg_req, NULL);
-    sr__msg__free_unpacked(msg_resp, NULL);
+    sr_msg_free(msg_req);
+    sr_msg_free(msg_resp);
 
     return cl_session_return(session, SR_ERR_OK);
 
 cleanup:
     if (NULL != msg_req) {
-        sr__msg__free_unpacked(msg_req, NULL);
+        sr_msg_free(msg_req);
+    } else {
+        sr_mem_free(sr_mem);
     }
     if (NULL != msg_resp) {
-        sr__msg__free_unpacked(msg_resp, NULL);
+        sr_msg_free(msg_resp);
     }
     return cl_session_return(session, rc);
 }
@@ -683,6 +734,7 @@ sr_get_schema(sr_session_ctx_t *session, const char *module_name, const char *mo
         const char *submodule_name, sr_schema_format_t format, char **schema_content)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG4(session, session->conn_ctx, module_name, schema_content);
@@ -690,18 +742,20 @@ sr_get_schema(sr_session_ctx_t *session, const char *module_name, const char *mo
     cl_session_clear_errors(session);
 
     /* prepare get_schema message */
-    rc = sr_gpb_req_alloc(SR__OPERATION__GET_SCHEMA, session->id, &msg_req);
+    rc = sr_mem_new(0, &sr_mem);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to create a new Sysrepo memory context.");
+    rc = sr_gpb_req_alloc(sr_mem, SR__OPERATION__GET_SCHEMA, session->id, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
 
     /* set arguments */
-    msg_req->request->get_schema_req->module_name = strdup(module_name);
+    sr_mem_edit_string(sr_mem, &msg_req->request->get_schema_req->module_name, module_name);
     CHECK_NULL_NOMEM_GOTO(msg_req->request->get_schema_req->module_name, rc, cleanup);
     if (NULL != submodule_name) {
-        msg_req->request->get_schema_req->submodule_name = strdup(submodule_name);
+        sr_mem_edit_string(sr_mem, &msg_req->request->get_schema_req->submodule_name, submodule_name);
         CHECK_NULL_NOMEM_GOTO(msg_req->request->get_schema_req->submodule_name, rc, cleanup);
     }
     if(NULL != module_revision) {
-        msg_req->request->get_schema_req->revision = strdup(module_revision);
+        sr_mem_edit_string(sr_mem, &msg_req->request->get_schema_req->revision, module_revision);
         CHECK_NULL_NOMEM_GOTO(msg_req->request->get_schema_req->revision, rc, cleanup);
     }
     msg_req->request->get_schema_req->yang_format = (format == SR_SCHEMA_YANG);
@@ -710,23 +764,25 @@ sr_get_schema(sr_session_ctx_t *session, const char *module_name, const char *mo
     rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__GET_SCHEMA);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
-    /* move pointers to schema content, so we don't need to duplicate the memory */
+    /* copy schema content */
     if (NULL != msg_resp->response->get_schema_resp->schema_content) {
-        *schema_content = msg_resp->response->get_schema_resp->schema_content;
-        msg_resp->response->get_schema_resp->schema_content = NULL;
+        *schema_content = strdup(msg_resp->response->get_schema_resp->schema_content);
+        CHECK_NULL_NOMEM_GOTO(*schema_content, rc, cleanup);
     }
 
-    sr__msg__free_unpacked(msg_req, NULL);
-    sr__msg__free_unpacked(msg_resp, NULL);
+    sr_msg_free(msg_req);
+    sr_msg_free(msg_resp);
 
     return cl_session_return(session, SR_ERR_OK);
 
 cleanup:
     if (NULL != msg_req) {
-        sr__msg__free_unpacked(msg_req, NULL);
+        sr_msg_free(msg_req);
+    } else {
+        sr_mem_free(sr_mem);
     }
     if (NULL != msg_resp) {
-        sr__msg__free_unpacked(msg_resp, NULL);
+        sr_msg_free(msg_resp);
     }
     return cl_session_return(session, rc);
 }
@@ -735,6 +791,7 @@ int
 sr_get_item(sr_session_ctx_t *session, const char *xpath, sr_val_t **value)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG4(session, session->conn_ctx, xpath, value);
@@ -742,11 +799,13 @@ sr_get_item(sr_session_ctx_t *session, const char *xpath, sr_val_t **value)
     cl_session_clear_errors(session);
 
     /* prepare get_item message */
-    rc = sr_gpb_req_alloc(SR__OPERATION__GET_ITEM, session->id, &msg_req);
+    rc = sr_mem_new(0, &sr_mem);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to create a new Sysrepo memory context.");
+    rc = sr_gpb_req_alloc(sr_mem, SR__OPERATION__GET_ITEM, session->id, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
 
     /* fill in the path */
-    msg_req->request->get_item_req->xpath = strdup(xpath);
+    sr_mem_edit_string(sr_mem, &msg_req->request->get_item_req->xpath, xpath);
     CHECK_NULL_NOMEM_GOTO(msg_req->request->get_item_req->xpath, rc, cleanup);
 
     /* send the request and receive the response */
@@ -754,20 +813,23 @@ sr_get_item(sr_session_ctx_t *session, const char *xpath, sr_val_t **value)
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
     /* duplicate the content of gpb to sr_val_t */
-    rc = sr_dup_gpb_to_val_t(msg_resp->response->get_item_resp->value, value);
+    rc = sr_dup_gpb_to_val_t((sr_mem_ctx_t *)msg_resp->_sysrepo_mem_ctx,
+                             msg_resp->response->get_item_resp->value, value);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Value duplication failed.");
 
-    sr__msg__free_unpacked(msg_req, NULL);
-    sr__msg__free_unpacked(msg_resp, NULL);
+    sr_msg_free(msg_req);
+    sr_msg_free(msg_resp);
 
     return cl_session_return(session, SR_ERR_OK);
 
 cleanup:
     if (NULL != msg_req) {
-        sr__msg__free_unpacked(msg_req, NULL);
+        sr_msg_free(msg_req);
+    } else {
+        sr_mem_free(sr_mem);
     }
     if (NULL != msg_resp) {
-        sr__msg__free_unpacked(msg_resp, NULL);
+        sr_msg_free(msg_resp);
     }
     return cl_session_return(session, rc);
 }
@@ -776,6 +838,7 @@ int
 sr_get_items(sr_session_ctx_t *session, const char *xpath, sr_val_t **values, size_t *value_cnt)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG5(session, session->conn_ctx, xpath, values, value_cnt);
@@ -783,11 +846,13 @@ sr_get_items(sr_session_ctx_t *session, const char *xpath, sr_val_t **values, si
     cl_session_clear_errors(session);
 
     /* prepare get_item message */
-    rc = sr_gpb_req_alloc(SR__OPERATION__GET_ITEMS, session->id, &msg_req);
+    rc = sr_mem_new(0, &sr_mem);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to create a new Sysrepo memory context.");
+    rc = sr_gpb_req_alloc(sr_mem, SR__OPERATION__GET_ITEMS, session->id, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
 
     /* fill in the path */
-    msg_req->request->get_items_req->xpath = strdup(xpath);
+    sr_mem_edit_string(sr_mem, &msg_req->request->get_items_req->xpath, xpath);
     CHECK_NULL_NOMEM_GOTO(msg_req->request->get_items_req->xpath, rc, cleanup);
 
     /* send the request and receive the response */
@@ -795,16 +860,18 @@ sr_get_items(sr_session_ctx_t *session, const char *xpath, sr_val_t **values, si
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
     /* copy the content of gpb values to sr_val_t */
-    rc = sr_values_gpb_to_sr(msg_resp->response->get_items_resp->values, msg_resp->response->get_items_resp->n_values,
-            values, value_cnt);
+    rc = sr_values_gpb_to_sr((sr_mem_ctx_t *)msg_resp->_sysrepo_mem_ctx, msg_resp->response->get_items_resp->values, 
+                             msg_resp->response->get_items_resp->n_values, values, value_cnt);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by copying the values from GPB.");
 
 cleanup:
     if (NULL != msg_req) {
-        sr__msg__free_unpacked(msg_req, NULL);
+        sr_msg_free(msg_req);
+    } else {
+        sr_mem_free(sr_mem);
     }
     if (NULL != msg_resp) {
-        sr__msg__free_unpacked(msg_resp, NULL);
+        sr_msg_free(msg_resp);
     }
     return cl_session_return(session, rc);
 }
@@ -844,7 +911,8 @@ sr_get_items_iter(sr_session_ctx_t *session, const char *xpath, sr_val_iter_t **
 
     /* copy the content of gpb to sr_val_t */
     for (size_t i = 0; i < it->count; i++) {
-        rc = sr_dup_gpb_to_val_t(msg_resp->response->get_items_resp->values[i], &it->buff_values[i]);
+        rc = sr_dup_gpb_to_val_t((sr_mem_ctx_t *)msg_resp->_sysrepo_mem_ctx,
+                                 msg_resp->response->get_items_resp->values[i], &it->buff_values[i]);
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR_MSG("Copying from gpb to sr_val_t failed");
             sr_free_values_arr(it->buff_values, i);
@@ -855,18 +923,16 @@ sr_get_items_iter(sr_session_ctx_t *session, const char *xpath, sr_val_iter_t **
 
     *iter = it;
 
-    sr__msg__free_unpacked(msg_resp, NULL);
+    sr_msg_free(msg_resp);
 
     return cl_session_return(session, SR_ERR_OK);
 
 cleanup:
     if (NULL != msg_resp) {
-        sr__msg__free_unpacked(msg_resp, NULL);
+        sr_msg_free(msg_resp);
     }
     if (NULL != it){
-        if (NULL != it->xpath){
-            free(it->xpath);
-        }
+        free(it->xpath);
         free(it);
     }
     return cl_session_return(session, rc);
@@ -894,7 +960,7 @@ sr_get_item_next(sr_session_ctx_t *session, sr_val_iter_t *iter, sr_val_t **valu
         rc = cl_send_get_items_iter(session, iter->xpath, iter->offset,
                 CL_GET_ITEMS_FETCH_LIMIT, &msg_resp);
         if (SR_ERR_NOT_FOUND == rc) {
-            SR_LOG_DBG("All items has been red for xpath '%s'", iter->xpath);
+            SR_LOG_DBG("All items has been read for xpath '%s'", iter->xpath);
             goto cleanup;
         } else {
             CHECK_RC_LOG_GOTO(rc, cleanup, "Fetching more items failed '%s'", iter->xpath);
@@ -919,7 +985,8 @@ sr_get_item_next(sr_session_ctx_t *session, sr_val_iter_t *iter, sr_val_t **valu
 
         /* copy the content of gpb to sr_val_t*/
         for (size_t i = 0; i < iter->count; i++){
-            rc = sr_dup_gpb_to_val_t(msg_resp->response->get_items_resp->values[i], &iter->buff_values[i]);
+            rc = sr_dup_gpb_to_val_t((sr_mem_ctx_t *)msg_resp->_sysrepo_mem_ctx,
+                    msg_resp->response->get_items_resp->values[i], &iter->buff_values[i]);
             if (SR_ERR_OK != rc) {
                 SR_LOG_ERR_MSG("Copying from gpb to sr_val_t failed");
                 sr_free_values_arr(iter->buff_values, i);
@@ -930,13 +997,13 @@ sr_get_item_next(sr_session_ctx_t *session, sr_val_iter_t *iter, sr_val_t **valu
         }
         *value = iter->buff_values[iter->index++];
         iter->offset+=received_cnt;
-        sr__msg__free_unpacked(msg_resp, NULL);
+        sr_msg_free(msg_resp);
     }
     return cl_session_return(session, SR_ERR_OK);
 
 cleanup:
-    if (NULL != msg_resp){
-        sr__msg__free_unpacked(msg_resp, NULL);
+    if (NULL != msg_resp) {
+        sr_msg_free(msg_resp);
     }
     return cl_session_return(session, rc);
 }
@@ -960,6 +1027,8 @@ int
 sr_set_item(sr_session_ctx_t *session, const char *xpath, const sr_val_t *value, const sr_edit_options_t opts)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
+    sr_mem_snapshot_t snapshot = { 0, };
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG3(session, session->conn_ctx, xpath);
@@ -967,11 +1036,18 @@ sr_set_item(sr_session_ctx_t *session, const char *xpath, const sr_val_t *value,
     cl_session_clear_errors(session);
 
     /* prepare get_item message */
-    rc = sr_gpb_req_alloc(SR__OPERATION__SET_ITEM, session->id, &msg_req);
+    if (NULL != value) {
+        sr_mem = value->_sr_mem;
+        sr_mem_snapshot(sr_mem, &snapshot);
+    } else {
+        rc = sr_mem_new(0, &sr_mem);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to create a new Sysrepo memory context.");
+    }
+    rc = sr_gpb_req_alloc(sr_mem, SR__OPERATION__SET_ITEM, session->id, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
 
     /* fill in the path and options */
-    msg_req->request->set_item_req->xpath = strdup(xpath);
+    sr_mem_edit_string(sr_mem, &msg_req->request->set_item_req->xpath, xpath);
     CHECK_NULL_NOMEM_GOTO(msg_req->request->set_item_req->xpath, rc, cleanup);
 
     msg_req->request->set_item_req->options = opts;
@@ -986,18 +1062,26 @@ sr_set_item(sr_session_ctx_t *session, const char *xpath, const sr_val_t *value,
     rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__SET_ITEM);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
-    sr__msg__free_unpacked(msg_req, NULL);
-    sr__msg__free_unpacked(msg_resp, NULL);
+    sr_msg_free(msg_req);
+    sr_msg_free(msg_resp);
 
     return cl_session_return(session, SR_ERR_OK);
 
 cleanup:
-    if (NULL != msg_req) {
-        sr__msg__free_unpacked(msg_req, NULL);
+    if (NULL != sr_mem) {
+        if (NULL != value) {
+            sr_mem_restore(&snapshot);
+        } else {
+            if (NULL != msg_req) {
+                sr_msg_free(msg_req);
+            } else {
+                sr_mem_free(sr_mem);
+            }
+        }
+    } else {
+        sr_msg_free(msg_req);
     }
-    if (NULL != msg_resp) {
-        sr__msg__free_unpacked(msg_resp, NULL);
-    }
+    sr_msg_free(msg_resp);
     return cl_session_return(session, rc);
 }
 
@@ -1005,18 +1089,21 @@ int
 sr_delete_item(sr_session_ctx_t *session, const char *xpath, const sr_edit_options_t opts)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG3(session, session->conn_ctx, xpath);
 
     cl_session_clear_errors(session);
 
-    /* prepare get_item message */
-    rc = sr_gpb_req_alloc(SR__OPERATION__DELETE_ITEM, session->id, &msg_req);
+    /* prepare delete_item message */
+    rc = sr_mem_new(0, &sr_mem);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to create a new Sysrepo memory context.");
+    rc = sr_gpb_req_alloc(sr_mem, SR__OPERATION__DELETE_ITEM, session->id, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
 
     /* fill in the path and options */
-    msg_req->request->delete_item_req->xpath = strdup(xpath);
+    sr_mem_edit_string(sr_mem, &msg_req->request->delete_item_req->xpath, xpath);
     CHECK_NULL_NOMEM_GOTO(msg_req->request->delete_item_req->xpath, rc, cleanup);
 
     msg_req->request->delete_item_req->options = opts;
@@ -1025,17 +1112,19 @@ sr_delete_item(sr_session_ctx_t *session, const char *xpath, const sr_edit_optio
     rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__DELETE_ITEM);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
-    sr__msg__free_unpacked(msg_req, NULL);
-    sr__msg__free_unpacked(msg_resp, NULL);
+    sr_msg_free(msg_req);
+    sr_msg_free(msg_resp);
 
     return cl_session_return(session, SR_ERR_OK);
 
 cleanup:
     if (NULL != msg_req) {
-        sr__msg__free_unpacked(msg_req, NULL);
+        sr_msg_free(msg_req);
+    } else {
+        sr_mem_free(sr_mem);
     }
     if (NULL != msg_resp) {
-        sr__msg__free_unpacked(msg_resp, NULL);
+        sr_msg_free(msg_resp);
     }
     return cl_session_return(session, rc);
 }
@@ -1044,6 +1133,7 @@ int
 sr_move_item(sr_session_ctx_t *session, const char *xpath, const sr_move_position_t position, const char *relative_item)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG3(session, session->conn_ctx, xpath);
@@ -1051,17 +1141,19 @@ sr_move_item(sr_session_ctx_t *session, const char *xpath, const sr_move_positio
     cl_session_clear_errors(session);
 
     /* prepare get_item message */
-    rc = sr_gpb_req_alloc(SR__OPERATION__MOVE_ITEM, session->id, &msg_req);
+    rc = sr_mem_new(0, &sr_mem);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to create a new Sysrepo memory context.");
+    rc = sr_gpb_req_alloc(sr_mem, SR__OPERATION__MOVE_ITEM, session->id, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
 
     /* fill in the path and direction */
-    msg_req->request->move_item_req->xpath = strdup(xpath);
+    sr_mem_edit_string(sr_mem, &msg_req->request->move_item_req->xpath, xpath);
     CHECK_NULL_NOMEM_GOTO(msg_req->request->move_item_req->xpath, rc, cleanup);
 
     msg_req->request->move_item_req->position = sr_move_position_sr_to_gpb(position);
 
     if (NULL != relative_item) {
-        msg_req->request->move_item_req->relative_item = strdup(relative_item);
+        sr_mem_edit_string(sr_mem, &msg_req->request->move_item_req->relative_item, relative_item);
         CHECK_NULL_NOMEM_GOTO(msg_req->request->move_item_req->relative_item, rc, cleanup);
     }
 
@@ -1069,17 +1161,19 @@ sr_move_item(sr_session_ctx_t *session, const char *xpath, const sr_move_positio
     rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__MOVE_ITEM);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
-    sr__msg__free_unpacked(msg_req, NULL);
-    sr__msg__free_unpacked(msg_resp, NULL);
+    sr_msg_free(msg_req);
+    sr_msg_free(msg_resp);
 
     return cl_session_return(session, SR_ERR_OK);
 
 cleanup:
     if (NULL != msg_req) {
-        sr__msg__free_unpacked(msg_req, NULL);
+        sr_msg_free(msg_req);
+    } else {
+        sr_mem_free(sr_mem);
     }
     if (NULL != msg_resp) {
-        sr__msg__free_unpacked(msg_resp, NULL);
+        sr_msg_free(msg_resp);
     }
     return cl_session_return(session, rc);
 }
@@ -1089,6 +1183,7 @@ sr_validate(sr_session_ctx_t *session)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
     Sr__ValidateResp *validate_resp = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG2(session, session->conn_ctx);
@@ -1096,7 +1191,9 @@ sr_validate(sr_session_ctx_t *session)
     cl_session_clear_errors(session);
 
     /* prepare validate message */
-    rc = sr_gpb_req_alloc(SR__OPERATION__VALIDATE, session->id, &msg_req);
+    rc = sr_mem_new(0, &sr_mem);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to create a new Sysrepo memory context.");
+    rc = sr_gpb_req_alloc(sr_mem, SR__OPERATION__VALIDATE, session->id, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
 
     /* send the request and receive the response */
@@ -1116,17 +1213,19 @@ sr_validate(sr_session_ctx_t *session)
         }
     }
 
-    sr__msg__free_unpacked(msg_req, NULL);
-    sr__msg__free_unpacked(msg_resp, NULL);
+    sr_msg_free(msg_req);
+    sr_msg_free(msg_resp);
 
     return cl_session_return(session, rc);
 
 cleanup:
     if (NULL != msg_req) {
-        sr__msg__free_unpacked(msg_req, NULL);
+        sr_msg_free(msg_req);
+    } else {
+        sr_mem_free(sr_mem);
     }
     if (NULL != msg_resp) {
-        sr__msg__free_unpacked(msg_resp, NULL);
+        sr_msg_free(msg_resp);
     }
     return cl_session_return(session, rc);
 }
@@ -1136,6 +1235,7 @@ sr_commit(sr_session_ctx_t *session)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
     Sr__CommitResp *commit_resp = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG2(session, session->conn_ctx);
@@ -1143,7 +1243,9 @@ sr_commit(sr_session_ctx_t *session)
     cl_session_clear_errors(session);
 
     /* prepare commit message */
-    rc = sr_gpb_req_alloc(SR__OPERATION__COMMIT, session->id, &msg_req);
+    rc = sr_mem_new(0, &sr_mem);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to create a new Sysrepo memory context.");
+    rc = sr_gpb_req_alloc(sr_mem, SR__OPERATION__COMMIT, session->id, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
 
     /* send the request and receive the response */
@@ -1163,17 +1265,19 @@ sr_commit(sr_session_ctx_t *session)
         }
     }
 
-    sr__msg__free_unpacked(msg_req, NULL);
-    sr__msg__free_unpacked(msg_resp, NULL);
+    sr_msg_free(msg_req);
+    sr_msg_free(msg_resp);
 
     return cl_session_return(session, rc);
 
 cleanup:
     if (NULL != msg_req) {
-        sr__msg__free_unpacked(msg_req, NULL);
+        sr_msg_free(msg_req);
+    } else {
+        sr_mem_free(sr_mem);
     }
     if (NULL != msg_resp) {
-        sr__msg__free_unpacked(msg_resp, NULL);
+        sr_msg_free(msg_resp);
     }
     return cl_session_return(session, rc);
 }
@@ -1182,6 +1286,7 @@ int
 sr_discard_changes(sr_session_ctx_t *session)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG2(session, session->conn_ctx);
@@ -1189,24 +1294,28 @@ sr_discard_changes(sr_session_ctx_t *session)
     cl_session_clear_errors(session);
 
     /* prepare discard_changes message */
-    rc = sr_gpb_req_alloc(SR__OPERATION__DISCARD_CHANGES, session->id, &msg_req);
+    rc = sr_mem_new(0, &sr_mem);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to create a new Sysrepo memory context.");
+    rc = sr_gpb_req_alloc(sr_mem, SR__OPERATION__DISCARD_CHANGES, session->id, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
 
     /* send the request and receive the response */
     rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__DISCARD_CHANGES);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
-    sr__msg__free_unpacked(msg_req, NULL);
-    sr__msg__free_unpacked(msg_resp, NULL);
+    sr_msg_free(msg_req);
+    sr_msg_free(msg_resp);
 
     return cl_session_return(session, SR_ERR_OK);
 
 cleanup:
     if (NULL != msg_req) {
-        sr__msg__free_unpacked(msg_req, NULL);
+        sr_msg_free(msg_req);
+    } else {
+        sr_mem_free(sr_mem);
     }
     if (NULL != msg_resp) {
-        sr__msg__free_unpacked(msg_resp, NULL);
+        sr_msg_free(msg_resp);
     }
     return cl_session_return(session, rc);
 }
@@ -1216,6 +1325,7 @@ sr_copy_config(sr_session_ctx_t *session, const char *module_name,
         sr_datastore_t src_datastore, sr_datastore_t dst_datastore)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG2(session, session->conn_ctx);
@@ -1223,14 +1333,16 @@ sr_copy_config(sr_session_ctx_t *session, const char *module_name,
     cl_session_clear_errors(session);
 
     /* prepare copy_config message */
-    rc = sr_gpb_req_alloc(SR__OPERATION__COPY_CONFIG, session->id, &msg_req);
+    rc = sr_mem_new(0, &sr_mem);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to create a new Sysrepo memory context.");
+    rc = sr_gpb_req_alloc(sr_mem, SR__OPERATION__COPY_CONFIG, session->id, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
 
     /* set the message content */
     msg_req->request->copy_config_req->src_datastore = sr_datastore_sr_to_gpb(src_datastore);
     msg_req->request->copy_config_req->dst_datastore = sr_datastore_sr_to_gpb(dst_datastore);
     if (NULL != module_name) {
-        msg_req->request->copy_config_req->module_name = strdup(module_name);
+        sr_mem_edit_string(sr_mem, &msg_req->request->copy_config_req->module_name, module_name);
         CHECK_NULL_NOMEM_GOTO(msg_req->request->copy_config_req->module_name, rc, cleanup);
     }
 
@@ -1238,17 +1350,19 @@ sr_copy_config(sr_session_ctx_t *session, const char *module_name,
     rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__COPY_CONFIG);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
-    sr__msg__free_unpacked(msg_req, NULL);
-    sr__msg__free_unpacked(msg_resp, NULL);
+    sr_msg_free(msg_req);
+    sr_msg_free(msg_resp);
 
     return cl_session_return(session, SR_ERR_OK);
 
 cleanup:
     if (NULL != msg_req) {
-        sr__msg__free_unpacked(msg_req, NULL);
+        sr_msg_free(msg_req);
+    } else {
+        sr_mem_free(sr_mem);
     }
     if (NULL != msg_resp) {
-        sr__msg__free_unpacked(msg_resp, NULL);
+        sr_msg_free(msg_resp);
     }
     return cl_session_return(session, rc);
 }
@@ -1269,6 +1383,7 @@ int
 sr_lock_module(sr_session_ctx_t *session, const char *module_name)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG2(session, session->conn_ctx);
@@ -1276,12 +1391,14 @@ sr_lock_module(sr_session_ctx_t *session, const char *module_name)
     cl_session_clear_errors(session);
 
     /* prepare lock message */
-    rc = sr_gpb_req_alloc(SR__OPERATION__LOCK, session->id, &msg_req);
+    rc = sr_mem_new(0, &sr_mem);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to create a new Sysrepo memory context.");
+    rc = sr_gpb_req_alloc(sr_mem, SR__OPERATION__LOCK, session->id, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
 
     /* fill-in module name (if provided) */
     if (NULL != module_name) {
-        msg_req->request->lock_req->module_name = strdup(module_name);
+        sr_mem_edit_string(sr_mem, &msg_req->request->lock_req->module_name, module_name);
         CHECK_NULL_NOMEM_GOTO(msg_req->request->lock_req->module_name, rc, cleanup);
     }
 
@@ -1289,17 +1406,19 @@ sr_lock_module(sr_session_ctx_t *session, const char *module_name)
     rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__LOCK);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
-    sr__msg__free_unpacked(msg_req, NULL);
-    sr__msg__free_unpacked(msg_resp, NULL);
+    sr_msg_free(msg_req);
+    sr_msg_free(msg_resp);
 
     return cl_session_return(session, SR_ERR_OK);
 
 cleanup:
     if (NULL != msg_req) {
-        sr__msg__free_unpacked(msg_req, NULL);
+        sr_msg_free(msg_req);
+    } else {
+        sr_mem_free(sr_mem);
     }
     if (NULL != msg_resp) {
-        sr__msg__free_unpacked(msg_resp, NULL);
+        sr_msg_free(msg_resp);
     }
     return cl_session_return(session, rc);
 }
@@ -1308,6 +1427,7 @@ int
 sr_unlock_module(sr_session_ctx_t *session, const char *module_name)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG2(session, session->conn_ctx);
@@ -1315,12 +1435,14 @@ sr_unlock_module(sr_session_ctx_t *session, const char *module_name)
     cl_session_clear_errors(session);
 
     /* prepare lock message */
-    rc = sr_gpb_req_alloc(SR__OPERATION__UNLOCK, session->id, &msg_req);
+    rc = sr_mem_new(0, &sr_mem);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to create a new Sysrepo memory context.");
+    rc = sr_gpb_req_alloc(sr_mem, SR__OPERATION__UNLOCK, session->id, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
 
     /* fill-in module name (if provided) */
     if (NULL != module_name) {
-        msg_req->request->unlock_req->module_name = strdup(module_name);
+        sr_mem_edit_string(sr_mem, &msg_req->request->unlock_req->module_name, module_name);
         CHECK_NULL_NOMEM_GOTO(msg_req->request->unlock_req->module_name, rc, cleanup);
     }
 
@@ -1328,17 +1450,19 @@ sr_unlock_module(sr_session_ctx_t *session, const char *module_name)
     rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__UNLOCK);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
-    sr__msg__free_unpacked(msg_req, NULL);
-    sr__msg__free_unpacked(msg_resp, NULL);
+    sr_msg_free(msg_req);
+    sr_msg_free(msg_resp);
 
     return cl_session_return(session, SR_ERR_OK);
 
 cleanup:
     if (NULL != msg_req) {
-        sr__msg__free_unpacked(msg_req, NULL);
+        sr_msg_free(msg_req);
+    } else {
+        sr_mem_free(sr_mem);
     }
     if (NULL != msg_resp) {
-        sr__msg__free_unpacked(msg_resp, NULL);
+        sr_msg_free(msg_resp);
     }
     return cl_session_return(session, rc);
 }
@@ -1417,8 +1541,8 @@ sr_module_install_subscribe(sr_session_ctx_t *session, sr_module_install_cb call
     rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__SUBSCRIBE);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
-    sr__msg__free_unpacked(msg_req, NULL);
-    sr__msg__free_unpacked(msg_resp, NULL);
+    sr_msg_free(msg_req);
+    sr_msg_free(msg_resp);
 
     *subscription_p = sr_subscription;
 
@@ -1428,10 +1552,10 @@ cleanup:
     cl_subscription_close(session, sm_subscription);
     cl_sr_subscription_remove_one(sr_subscription);
     if (NULL != msg_req) {
-        sr__msg__free_unpacked(msg_req, NULL);
+        sr_msg_free(msg_req);
     }
     if (NULL != msg_resp) {
-        sr__msg__free_unpacked(msg_resp, NULL);
+        sr_msg_free(msg_resp);
     }
     return cl_session_return(session, rc);
 }
@@ -1463,8 +1587,8 @@ sr_feature_enable_subscribe(sr_session_ctx_t *session, sr_feature_enable_cb call
     rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__SUBSCRIBE);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
-    sr__msg__free_unpacked(msg_req, NULL);
-    sr__msg__free_unpacked(msg_resp, NULL);
+    sr_msg_free(msg_req);
+    sr_msg_free(msg_resp);
 
     *subscription_p = sr_subscription;
 
@@ -1474,10 +1598,10 @@ cleanup:
     cl_subscription_close(session, sm_subscription);
     cl_sr_subscription_remove_one(sr_subscription);
     if (NULL != msg_req) {
-        sr__msg__free_unpacked(msg_req, NULL);
+        sr_msg_free(msg_req);
     }
     if (NULL != msg_resp) {
-        sr__msg__free_unpacked(msg_resp, NULL);
+        sr_msg_free(msg_resp);
     }
     return cl_session_return(session, rc);
 }
@@ -1486,6 +1610,7 @@ int
 sr_check_enabled_running(sr_session_ctx_t *session, const char *module_name, bool *res)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG3(session, module_name, res);
@@ -1493,11 +1618,13 @@ sr_check_enabled_running(sr_session_ctx_t *session, const char *module_name, boo
     cl_session_clear_errors(session);
 
     /* prepare request message */
-    rc = sr_gpb_req_alloc(SR__OPERATION__CHECK_ENABLED_RUNNING, session->id, &msg_req);
+    rc = sr_mem_new(0, &sr_mem);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to create a new Sysrepo memory context.");
+    rc = sr_gpb_req_alloc(sr_mem, SR__OPERATION__CHECK_ENABLED_RUNNING, session->id, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
 
     /* fill-in module name */
-    msg_req->request->check_enabled_running_req->module_name = strdup(module_name);
+    sr_mem_edit_string(sr_mem, &msg_req->request->check_enabled_running_req->module_name, module_name);
     CHECK_NULL_NOMEM_GOTO(msg_req->request->check_enabled_running_req->module_name, rc, cleanup);
 
     /* send the request and receive the response */
@@ -1506,17 +1633,19 @@ sr_check_enabled_running(sr_session_ctx_t *session, const char *module_name, boo
 
     *res = msg_resp->response->check_enabled_running_resp->enabled;
 
-    sr__msg__free_unpacked(msg_req, NULL);
-    sr__msg__free_unpacked(msg_resp, NULL);
+    sr_msg_free(msg_req);
+    sr_msg_free(msg_resp);
 
     return cl_session_return(session, SR_ERR_OK);
 
 cleanup:
     if (NULL != msg_req) {
-        sr__msg__free_unpacked(msg_req, NULL);
+        sr_msg_free(msg_req);
+    } else {
+        sr_mem_free(sr_mem);
     }
     if (NULL != msg_resp) {
-        sr__msg__free_unpacked(msg_resp, NULL);
+        sr_msg_free(msg_resp);
     }
     return cl_session_return(session, rc);
 }
@@ -1526,6 +1655,7 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, s
         void *private_ctx, uint32_t priority, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription_p)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
     sr_subscription_ctx_t *sr_subscription = NULL;
     cl_sm_subscription_ctx_t *sm_subscription = NULL;
     int rc = SR_ERR_OK;
@@ -1545,8 +1675,9 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, s
     sm_subscription->callback.module_change_cb = callback;
 
     /* fill-in subscription details */
+    sr_mem = (sr_mem_ctx_t *)msg_req->_sysrepo_mem_ctx;
     msg_req->request->subscribe_req->type = SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS;
-    msg_req->request->subscribe_req->module_name = strdup(module_name);
+    sr_mem_edit_string(sr_mem, &msg_req->request->subscribe_req->module_name, module_name);
     CHECK_NULL_NOMEM_GOTO(msg_req->request->subscribe_req->module_name, rc, cleanup);
 
     msg_req->request->subscribe_req->has_notif_event = true;
@@ -1561,8 +1692,8 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, s
     rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__SUBSCRIBE);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
-    sr__msg__free_unpacked(msg_req, NULL);
-    sr__msg__free_unpacked(msg_resp, NULL);
+    sr_msg_free(msg_req);
+    sr_msg_free(msg_resp);
 
     *subscription_p = sr_subscription;
 
@@ -1572,10 +1703,10 @@ cleanup:
     cl_subscription_close(session, sm_subscription);
     cl_sr_subscription_remove_one(sr_subscription);
     if (NULL != msg_req) {
-        sr__msg__free_unpacked(msg_req, NULL);
+        sr_msg_free(msg_req);
     }
     if (NULL != msg_resp) {
-        sr__msg__free_unpacked(msg_resp, NULL);
+        sr_msg_free(msg_resp);
     }
     return cl_session_return(session, rc);
 }
@@ -1585,6 +1716,7 @@ sr_subtree_change_subscribe(sr_session_ctx_t *session, const char *xpath, sr_sub
         void *private_ctx, uint32_t priority, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription_p)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
     sr_subscription_ctx_t *sr_subscription = NULL;
     cl_sm_subscription_ctx_t *sm_subscription = NULL;
     char *module_name = NULL;
@@ -1609,10 +1741,11 @@ sr_subtree_change_subscribe(sr_session_ctx_t *session, const char *xpath, sr_sub
     sm_subscription->callback.subtree_change_cb = callback;
 
     /* fill-in subscription details */
+    sr_mem = (sr_mem_ctx_t *)msg_req->_sysrepo_mem_ctx;
     msg_req->request->subscribe_req->type = SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS;
-    msg_req->request->subscribe_req->module_name = strdup(module_name);
+    sr_mem_edit_string(sr_mem, &msg_req->request->subscribe_req->module_name, module_name);
     CHECK_NULL_NOMEM_GOTO(msg_req->request->subscribe_req->module_name, rc, cleanup);
-    msg_req->request->subscribe_req->xpath = strdup(xpath);
+    sr_mem_edit_string(sr_mem, &msg_req->request->subscribe_req->xpath, xpath);
     CHECK_NULL_NOMEM_GOTO(msg_req->request->subscribe_req->xpath, rc, cleanup);
 
     msg_req->request->subscribe_req->has_notif_event = true;
@@ -1627,8 +1760,8 @@ sr_subtree_change_subscribe(sr_session_ctx_t *session, const char *xpath, sr_sub
     rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__SUBSCRIBE);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
-    sr__msg__free_unpacked(msg_req, NULL);
-    sr__msg__free_unpacked(msg_resp, NULL);
+    sr_msg_free(msg_req);
+    sr_msg_free(msg_resp);
     free(module_name);
 
     *subscription_p = sr_subscription;
@@ -1639,10 +1772,10 @@ cleanup:
     cl_subscription_close(session, sm_subscription);
     cl_sr_subscription_remove_one(sr_subscription);
     if (NULL != msg_req) {
-        sr__msg__free_unpacked(msg_req, NULL);
+        sr_msg_free(msg_req);
     }
     if (NULL != msg_resp) {
-        sr__msg__free_unpacked(msg_resp, NULL);
+        sr_msg_free(msg_resp);
     }
     free(module_name);
     return cl_session_return(session, rc);
@@ -1690,11 +1823,13 @@ sr_get_changes_iter(sr_session_ctx_t *session, const char *xpath, sr_change_iter
     /* copy the content of gpb to sr_val_t */
     for (size_t i = 0; i < it->count; i++) {
         if (NULL != msg_resp->response->get_changes_resp->changes[i]->new_value) {
-            rc = sr_dup_gpb_to_val_t(msg_resp->response->get_changes_resp->changes[i]->new_value, &it->new_values[i]);
+            rc = sr_dup_gpb_to_val_t((sr_mem_ctx_t *)msg_resp->_sysrepo_mem_ctx,
+                                     msg_resp->response->get_changes_resp->changes[i]->new_value, &it->new_values[i]);
             CHECK_RC_MSG_GOTO(rc, cleanup, "Copying from gpb to sr_val_t failed");
         }
         if (NULL != msg_resp->response->get_changes_resp->changes[i]->old_value) {
-            rc = sr_dup_gpb_to_val_t(msg_resp->response->get_changes_resp->changes[i]->old_value, &it->old_values[i]);
+            rc = sr_dup_gpb_to_val_t((sr_mem_ctx_t *)msg_resp->_sysrepo_mem_ctx,
+                                     msg_resp->response->get_changes_resp->changes[i]->old_value, &it->old_values[i]);
             CHECK_RC_MSG_GOTO(rc, cleanup, "Copying from gpb to sr_val_t failed");
         }
         it->operations[i] = sr_change_op_gpb_to_sr(msg_resp->response->get_changes_resp->changes[i]->changeoperation);
@@ -1702,13 +1837,13 @@ sr_get_changes_iter(sr_session_ctx_t *session, const char *xpath, sr_change_iter
 
     *iter = it;
 
-    sr__msg__free_unpacked(msg_resp, NULL);
+    sr_msg_free(msg_resp);
 
     return cl_session_return(session, SR_ERR_OK);
 
 cleanup:
     if (NULL != msg_resp) {
-        sr__msg__free_unpacked(msg_resp, NULL);
+        sr_msg_free(msg_resp);
     }
     if (NULL != it){
         sr_free_change_iter(it);
@@ -1780,10 +1915,12 @@ sr_get_change_next(sr_session_ctx_t *session, sr_change_iter_t *iter, sr_change_
         /* copy the content of gpb to sr_val_t*/
         for (size_t i = 0; i < iter->count; i++) {
             if (NULL != msg_resp->response->get_changes_resp->changes[i]->new_value) {
-                rc = sr_dup_gpb_to_val_t(msg_resp->response->get_changes_resp->changes[i]->new_value, &iter->new_values[i]);
+                rc = sr_dup_gpb_to_val_t((sr_mem_ctx_t *)msg_resp->_sysrepo_mem_ctx,
+                        msg_resp->response->get_changes_resp->changes[i]->new_value, &iter->new_values[i]);
             }
             if (SR_ERR_OK == rc && NULL != msg_resp->response->get_changes_resp->changes[i]->old_value) {
-                rc = sr_dup_gpb_to_val_t(msg_resp->response->get_changes_resp->changes[i]->old_value, &iter->old_values[i]);
+                rc = sr_dup_gpb_to_val_t((sr_mem_ctx_t *)msg_resp->_sysrepo_mem_ctx,
+                        msg_resp->response->get_changes_resp->changes[i]->old_value, &iter->old_values[i]);
             }
             if (SR_ERR_OK != rc) {
                 SR_LOG_ERR_MSG("Copying from gpb to sr_val_t failed");
@@ -1800,13 +1937,13 @@ sr_get_change_next(sr_session_ctx_t *session, sr_change_iter_t *iter, sr_change_
         *new_value = iter->new_values[iter->index];
         iter->index++;
         iter->offset += received_cnt;
-        sr__msg__free_unpacked(msg_resp, NULL);
+        sr_msg_free(msg_resp);
     }
     return cl_session_return(session, SR_ERR_OK);
 
 cleanup:
     if (NULL != msg_resp){
-        sr__msg__free_unpacked(msg_resp, NULL);
+        sr_msg_free(msg_resp);
     }
     return cl_session_return(session, rc);
 }
@@ -1867,6 +2004,7 @@ int
 sr_module_install(sr_session_ctx_t *session, const char *module_name, const char *revision, const char *file_name, bool installed)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG3(session, session->conn_ctx, module_name);
@@ -1874,15 +2012,17 @@ sr_module_install(sr_session_ctx_t *session, const char *module_name, const char
     cl_session_clear_errors(session);
 
     /* prepare module_install message */
-    rc = sr_gpb_req_alloc(SR__OPERATION__MODULE_INSTALL, session->id, &msg_req);
+    rc = sr_mem_new(0, &sr_mem);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to create a new Sysrepo memory context.");
+    rc = sr_gpb_req_alloc(sr_mem, SR__OPERATION__MODULE_INSTALL, session->id, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
 
     /* set arguments */
-    msg_req->request->module_install_req->module_name = strdup(module_name);
+    sr_mem_edit_string(sr_mem, &msg_req->request->module_install_req->module_name, module_name);
     CHECK_NULL_NOMEM_GOTO(msg_req->request->module_install_req->module_name, rc, cleanup);
 
     if (NULL != revision) {
-        msg_req->request->module_install_req->revision = strdup(revision);
+        sr_mem_edit_string(sr_mem, &msg_req->request->module_install_req->revision, revision);
         CHECK_NULL_NOMEM_GOTO(msg_req->request->module_install_req->revision, rc, cleanup);
     }
 
@@ -1893,7 +2033,7 @@ sr_module_install(sr_session_ctx_t *session, const char *module_name, const char
         goto cleanup;
     }
     if (NULL != file_name) {
-        msg_req->request->module_install_req->file_name = strdup(file_name);
+        sr_mem_edit_string(sr_mem, &msg_req->request->module_install_req->file_name, file_name);
         CHECK_NULL_NOMEM_GOTO(msg_req->request->module_install_req->file_name, rc, cleanup);
     }
 
@@ -1901,17 +2041,19 @@ sr_module_install(sr_session_ctx_t *session, const char *module_name, const char
     rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__MODULE_INSTALL);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
-    sr__msg__free_unpacked(msg_req, NULL);
-    sr__msg__free_unpacked(msg_resp, NULL);
+    sr_msg_free(msg_req);
+    sr_msg_free(msg_resp);
 
     return cl_session_return(session, SR_ERR_OK);
 
 cleanup:
     if (NULL != msg_req) {
-        sr__msg__free_unpacked(msg_req, NULL);
+        sr_msg_free(msg_req);
+    } else {
+        sr_mem_free(sr_mem);
     }
     if (NULL != msg_resp) {
-        sr__msg__free_unpacked(msg_resp, NULL);
+        sr_msg_free(msg_resp);
     }
     return cl_session_return(session, rc);
 }
@@ -1920,6 +2062,7 @@ int
 sr_feature_enable(sr_session_ctx_t *session, const char *module_name, const char *feature_name, bool enabled)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG4(session, session->conn_ctx, module_name, feature_name);
@@ -1927,14 +2070,16 @@ sr_feature_enable(sr_session_ctx_t *session, const char *module_name, const char
     cl_session_clear_errors(session);
 
     /* prepare feature_enable message */
-    rc = sr_gpb_req_alloc(SR__OPERATION__FEATURE_ENABLE, session->id, &msg_req);
+    rc = sr_mem_new(0, &sr_mem);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to create a new Sysrepo memory context.");
+    rc = sr_gpb_req_alloc(sr_mem, SR__OPERATION__FEATURE_ENABLE, session->id, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
 
     /* set arguments */
-    msg_req->request->feature_enable_req->module_name = strdup(module_name);
+    sr_mem_edit_string(sr_mem, &msg_req->request->feature_enable_req->module_name, module_name);
     CHECK_NULL_NOMEM_GOTO(msg_req->request->feature_enable_req->module_name, rc, cleanup);
 
-    msg_req->request->feature_enable_req->feature_name = strdup(feature_name);
+    sr_mem_edit_string(sr_mem, &msg_req->request->feature_enable_req->feature_name, feature_name);
     CHECK_NULL_NOMEM_GOTO(msg_req->request->feature_enable_req->feature_name, rc, cleanup);
 
     msg_req->request->feature_enable_req->enabled = enabled;
@@ -1943,17 +2088,19 @@ sr_feature_enable(sr_session_ctx_t *session, const char *module_name, const char
     rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__FEATURE_ENABLE);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
-    sr__msg__free_unpacked(msg_req, NULL);
-    sr__msg__free_unpacked(msg_resp, NULL);
+    sr_msg_free(msg_req);
+    sr_msg_free(msg_resp);
 
     return cl_session_return(session, SR_ERR_OK);
 
 cleanup:
     if (NULL != msg_req) {
-        sr__msg__free_unpacked(msg_req, NULL);
+        sr_msg_free(msg_req);
+    } else {
+        sr_mem_free(sr_mem);
     }
     if (NULL != msg_resp) {
-        sr__msg__free_unpacked(msg_resp, NULL);
+        sr_msg_free(msg_resp);
     }
     return cl_session_return(session, rc);
 }
@@ -1979,6 +2126,7 @@ cl_rpc_subscribe(sr_api_variant_t api_variant, sr_session_ctx_t *session, const 
         sr_subscription_ctx_t **subscription_p)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
     sr_subscription_ctx_t *sr_subscription = NULL;
     cl_sm_subscription_ctx_t *sm_subscription = NULL;
     char *module_name = NULL;
@@ -2003,18 +2151,19 @@ cl_rpc_subscribe(sr_api_variant_t api_variant, sr_session_ctx_t *session, const 
     sm_subscription->callback = callback;
 
     /* Fill-in GPB subscription information */
+    sr_mem = (sr_mem_ctx_t *)msg_req->_sysrepo_mem_ctx;
     msg_req->request->subscribe_req->type = SR__SUBSCRIPTION_TYPE__RPC_SUBS;
-    msg_req->request->subscribe_req->module_name = strdup(module_name);
+    sr_mem_edit_string(sr_mem, &msg_req->request->subscribe_req->module_name, module_name);
     CHECK_NULL_NOMEM_GOTO(msg_req->request->subscribe_req->module_name, rc, cleanup);
-    msg_req->request->subscribe_req->xpath = strdup(xpath);
+    sr_mem_edit_string(sr_mem, &msg_req->request->subscribe_req->xpath, xpath);
     CHECK_NULL_NOMEM_GOTO(msg_req->request->subscribe_req->xpath, rc, cleanup);
 
     /* send the request and receive the response */
     rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__SUBSCRIBE);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
-    sr__msg__free_unpacked(msg_req, NULL);
-    sr__msg__free_unpacked(msg_resp, NULL);
+    sr_msg_free(msg_req);
+    sr_msg_free(msg_resp);
     free(module_name);
 
     *subscription_p = sr_subscription;
@@ -2027,10 +2176,10 @@ cleanup:
         cl_sr_subscription_remove_one(sr_subscription);
     }
     if (NULL != msg_req) {
-        sr__msg__free_unpacked(msg_req, NULL);
+        sr_msg_free(msg_req);
     }
     if (NULL != msg_resp) {
-        sr__msg__free_unpacked(msg_resp, NULL);
+        sr_msg_free(msg_resp);
     }
     free(module_name);
     return cl_session_return(session, rc);
@@ -2059,18 +2208,25 @@ sr_rpc_send(sr_session_ctx_t *session, const char *xpath,
         const sr_val_t *input,  const size_t input_cnt, sr_val_t **output, size_t *output_cnt)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
+    sr_mem_snapshot_t snapshot = { 0, };
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG3(session, session->conn_ctx, xpath);
 
+    if (NULL != input) {
+        sr_mem = input[0]._sr_mem;
+        sr_mem_snapshot(sr_mem, &snapshot);
+    }
+
     cl_session_clear_errors(session);
 
     /* prepare RPC message */
-    rc = sr_gpb_req_alloc(SR__OPERATION__RPC, session->id, &msg_req);
+    rc = sr_gpb_req_alloc(sr_mem, SR__OPERATION__RPC, session->id, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
 
     /* set arguments */
-    msg_req->request->rpc_req->xpath = strdup(xpath);
+    sr_mem_edit_string(sr_mem, &msg_req->request->rpc_req->xpath, xpath);
     CHECK_NULL_NOMEM_GOTO(msg_req->request->rpc_req->xpath, rc, cleanup);
     msg_req->request->rpc_req->orig_api_variant = sr_api_variant_sr_to_gpb(SR_API_VALUES);
 
@@ -2084,21 +2240,29 @@ sr_rpc_send(sr_session_ctx_t *session, const char *xpath,
 
     if (NULL != output) {
         /* set output arguments */
-        rc = sr_values_gpb_to_sr(msg_resp->response->rpc_resp->output, msg_resp->response->rpc_resp->n_output, output, output_cnt);
+        rc = sr_values_gpb_to_sr((sr_mem_ctx_t *)msg_resp->_sysrepo_mem_ctx, msg_resp->response->rpc_resp->output,
+                msg_resp->response->rpc_resp->n_output, output, output_cnt);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Error by copying RPC output arguments from GPB.");
     }
 
-    sr__msg__free_unpacked(msg_req, NULL);
-    sr__msg__free_unpacked(msg_resp, NULL);
+    sr_msg_free(msg_req);
+    sr_msg_free(msg_resp);
+
+    if (snapshot.sr_mem) {
+        sr_mem_restore(&snapshot);
+    }
 
     return cl_session_return(session, SR_ERR_OK);
 
 cleanup:
     if (NULL != msg_req) {
-        sr__msg__free_unpacked(msg_req, NULL);
+        sr_msg_free(msg_req);
     }
     if (NULL != msg_resp) {
-        sr__msg__free_unpacked(msg_resp, NULL);
+        sr_msg_free(msg_resp);
+    }
+    if (snapshot.sr_mem) {
+        sr_mem_restore(&snapshot);
     }
     return cl_session_return(session, rc);
 }
@@ -2108,18 +2272,25 @@ sr_rpc_send_tree(sr_session_ctx_t *session, const char *xpath,
         const sr_node_t *input,  const size_t input_cnt, sr_node_t **output, size_t *output_cnt)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
+    sr_mem_snapshot_t snapshot = { 0, };
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG3(session, session->conn_ctx, xpath);
 
+    if (NULL != input) {
+        sr_mem = input[0]._sr_mem;
+        sr_mem_snapshot(sr_mem, &snapshot);
+    }
+
     cl_session_clear_errors(session);
 
     /* prepare RPC message */
-    rc = sr_gpb_req_alloc(SR__OPERATION__RPC, session->id, &msg_req);
+    rc = sr_gpb_req_alloc(sr_mem, SR__OPERATION__RPC, session->id, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
 
     /* set arguments */
-    msg_req->request->rpc_req->xpath = strdup(xpath);
+    sr_mem_edit_string(sr_mem, &msg_req->request->rpc_req->xpath, xpath);
     CHECK_NULL_NOMEM_GOTO(msg_req->request->rpc_req->xpath, rc, cleanup);
     msg_req->request->rpc_req->orig_api_variant = sr_api_variant_sr_to_gpb(SR_API_TREES);
 
@@ -2133,21 +2304,29 @@ sr_rpc_send_tree(sr_session_ctx_t *session, const char *xpath,
 
     if (NULL != output) {
         /* set output arguments */
-        rc = sr_trees_gpb_to_sr(msg_resp->response->rpc_resp->output_tree, msg_resp->response->rpc_resp->n_output_tree, output, output_cnt);
+        rc = sr_trees_gpb_to_sr((sr_mem_ctx_t *)msg_resp->_sysrepo_mem_ctx, msg_resp->response->rpc_resp->output_tree,
+                msg_resp->response->rpc_resp->n_output_tree, output, output_cnt);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Error by copying RPC output arguments from GPB.");
     }
 
-    sr__msg__free_unpacked(msg_req, NULL);
-    sr__msg__free_unpacked(msg_resp, NULL);
+    sr_msg_free(msg_req);
+    sr_msg_free(msg_resp);
+
+    if (snapshot.sr_mem) {
+        sr_mem_restore(&snapshot);
+    }
 
     return cl_session_return(session, SR_ERR_OK);
 
 cleanup:
     if (NULL != msg_req) {
-        sr__msg__free_unpacked(msg_req, NULL);
+        sr_msg_free(msg_req);
     }
     if (NULL != msg_resp) {
-        sr__msg__free_unpacked(msg_resp, NULL);
+        sr_msg_free(msg_resp);
+    }
+    if (snapshot.sr_mem) {
+        sr_mem_restore(&snapshot);
     }
     return cl_session_return(session, rc);
 }
@@ -2160,6 +2339,7 @@ sr_dp_get_items_subscribe(sr_session_ctx_t *session, const char *xpath, sr_dp_ge
     sr_subscription_ctx_t *sr_subscription = NULL;
     cl_sm_subscription_ctx_t *sm_subscription = NULL;
     char *module_name = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG3(session, callback, subscription_p);
@@ -2181,10 +2361,11 @@ sr_dp_get_items_subscribe(sr_session_ctx_t *session, const char *xpath, sr_dp_ge
     sm_subscription->callback.dp_get_items_cb = callback;
 
     /* Fill-in GPB subscription information */
+    sr_mem = (sr_mem_ctx_t *)msg_req->_sysrepo_mem_ctx;
     msg_req->request->subscribe_req->type = SR__SUBSCRIPTION_TYPE__DP_GET_ITEMS_SUBS;
-    msg_req->request->subscribe_req->module_name = strdup(module_name);
+    sr_mem_edit_string(sr_mem, &msg_req->request->subscribe_req->module_name, module_name);
     CHECK_NULL_NOMEM_GOTO(msg_req->request->subscribe_req->module_name, rc, cleanup);
-    msg_req->request->subscribe_req->xpath = strdup(xpath);
+    sr_mem_edit_string(sr_mem, &msg_req->request->subscribe_req->xpath, xpath);
     CHECK_NULL_NOMEM_GOTO(msg_req->request->subscribe_req->xpath, rc, cleanup);
 
     msg_req->request->subscribe_req->has_enable_running = true;
@@ -2194,8 +2375,8 @@ sr_dp_get_items_subscribe(sr_session_ctx_t *session, const char *xpath, sr_dp_ge
     rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__SUBSCRIBE);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
-    sr__msg__free_unpacked(msg_req, NULL);
-    sr__msg__free_unpacked(msg_resp, NULL);
+    sr_msg_free(msg_req);
+    sr_msg_free(msg_resp);
     free(module_name);
 
     *subscription_p = sr_subscription;
@@ -2208,10 +2389,10 @@ cleanup:
         cl_sr_subscription_remove_one(sr_subscription);
     }
     if (NULL != msg_req) {
-        sr__msg__free_unpacked(msg_req, NULL);
+        sr_msg_free(msg_req);
     }
     if (NULL != msg_resp) {
-        sr__msg__free_unpacked(msg_resp, NULL);
+        sr_msg_free(msg_resp);
     }
     free(module_name);
     return cl_session_return(session, rc);
@@ -2241,6 +2422,7 @@ cl_event_notif_subscribe(sr_api_variant_t api_variant, sr_session_ctx_t *session
     sr_subscription_ctx_t *sr_subscription = NULL;
     cl_sm_subscription_ctx_t *sm_subscription = NULL;
     char *module_name = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG2(session, subscription_p);
@@ -2262,18 +2444,19 @@ cl_event_notif_subscribe(sr_api_variant_t api_variant, sr_session_ctx_t *session
     sm_subscription->callback = callback;
 
     /* Fill-in GPB subscription information */
+    sr_mem = (sr_mem_ctx_t *)msg_req->_sysrepo_mem_ctx;
     msg_req->request->subscribe_req->type = SR__SUBSCRIPTION_TYPE__EVENT_NOTIF_SUBS;
-    msg_req->request->subscribe_req->module_name = strdup(module_name);
+    sr_mem_edit_string(sr_mem, &msg_req->request->subscribe_req->module_name, module_name);
     CHECK_NULL_NOMEM_GOTO(msg_req->request->subscribe_req->module_name, rc, cleanup);
-    msg_req->request->subscribe_req->xpath = strdup(xpath);
+    sr_mem_edit_string(sr_mem, &msg_req->request->subscribe_req->xpath, xpath);
     CHECK_NULL_NOMEM_GOTO(msg_req->request->subscribe_req->xpath, rc, cleanup);
 
     /* send the request and receive the response */
     rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__SUBSCRIBE);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
-    sr__msg__free_unpacked(msg_req, NULL);
-    sr__msg__free_unpacked(msg_resp, NULL);
+    sr_msg_free(msg_req);
+    sr_msg_free(msg_resp);
     free(module_name);
 
     *subscription_p = sr_subscription;
@@ -2286,10 +2469,10 @@ cleanup:
         cl_sr_subscription_remove_one(sr_subscription);
     }
     if (NULL != msg_req) {
-        sr__msg__free_unpacked(msg_req, NULL);
+        sr_msg_free(msg_req);
     }
     if (NULL != msg_resp) {
-        sr__msg__free_unpacked(msg_resp, NULL);
+        sr_msg_free(msg_resp);
     }
     free(module_name);
     return cl_session_return(session, rc);
@@ -2320,18 +2503,25 @@ sr_event_notif_send(sr_session_ctx_t *session, const char *xpath,
         const sr_val_t *values,  const size_t values_cnt)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
+    sr_mem_snapshot_t snapshot = { 0, };
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG3(session, session->conn_ctx, xpath);
 
+    if (NULL != values) {
+        sr_mem = values[0]._sr_mem;
+        sr_mem_snapshot(sr_mem, &snapshot);
+    }
+
     cl_session_clear_errors(session);
 
     /* prepare event-notification message */
-    rc = sr_gpb_req_alloc(SR__OPERATION__EVENT_NOTIF, session->id, &msg_req);
+    rc = sr_gpb_req_alloc(sr_mem, SR__OPERATION__EVENT_NOTIF, session->id, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
 
     /* set arguments */
-    msg_req->request->event_notif_req->xpath = strdup(xpath);
+    sr_mem_edit_string(sr_mem, &msg_req->request->event_notif_req->xpath, xpath);
     CHECK_NULL_NOMEM_GOTO(msg_req->request->event_notif_req->xpath, rc, cleanup);
 
     /* set values */
@@ -2343,17 +2533,24 @@ sr_event_notif_send(sr_session_ctx_t *session, const char *xpath,
     rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__EVENT_NOTIF);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
-    sr__msg__free_unpacked(msg_req, NULL);
-    sr__msg__free_unpacked(msg_resp, NULL);
+    sr_msg_free(msg_req);
+    sr_msg_free(msg_resp);
+
+    if (snapshot.sr_mem) {
+        sr_mem_restore(&snapshot);
+    }
 
     return cl_session_return(session, SR_ERR_OK);
 
 cleanup:
     if (NULL != msg_req) {
-        sr__msg__free_unpacked(msg_req, NULL);
+        sr_msg_free(msg_req);
     }
     if (NULL != msg_resp) {
-        sr__msg__free_unpacked(msg_resp, NULL);
+        sr_msg_free(msg_resp);
+    }
+    if (snapshot.sr_mem) {
+        sr_mem_restore(&snapshot);
     }
     return cl_session_return(session, rc);
 }
@@ -2363,18 +2560,25 @@ sr_event_notif_send_tree(sr_session_ctx_t *session, const char *xpath,
         const sr_node_t *trees,  const size_t tree_cnt)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
+    sr_mem_snapshot_t snapshot = { 0, };
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG3(session, session->conn_ctx, xpath);
 
+    if (NULL != trees) {
+        sr_mem = trees[0]._sr_mem;
+        sr_mem_snapshot(sr_mem, &snapshot);
+    }
+
     cl_session_clear_errors(session);
 
     /* prepare event-notification message */
-    rc = sr_gpb_req_alloc(SR__OPERATION__EVENT_NOTIF, session->id, &msg_req);
+    rc = sr_gpb_req_alloc(sr_mem, SR__OPERATION__EVENT_NOTIF, session->id, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
 
     /* set arguments */
-    msg_req->request->event_notif_req->xpath = strdup(xpath);
+    sr_mem_edit_string(sr_mem, &msg_req->request->event_notif_req->xpath, xpath);
     CHECK_NULL_NOMEM_GOTO(msg_req->request->event_notif_req->xpath, rc, cleanup);
 
     /* set trees */
@@ -2386,17 +2590,24 @@ sr_event_notif_send_tree(sr_session_ctx_t *session, const char *xpath,
     rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__EVENT_NOTIF);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
-    sr__msg__free_unpacked(msg_req, NULL);
-    sr__msg__free_unpacked(msg_resp, NULL);
+    sr_msg_free(msg_req);
+    sr_msg_free(msg_resp);
+
+    if (snapshot.sr_mem) {
+        sr_mem_restore(&snapshot);
+    }
 
     return cl_session_return(session, SR_ERR_OK);
 
 cleanup:
     if (NULL != msg_req) {
-        sr__msg__free_unpacked(msg_req, NULL);
+        sr_msg_free(msg_req);
     }
     if (NULL != msg_resp) {
-        sr__msg__free_unpacked(msg_resp, NULL);
+        sr_msg_free(msg_resp);
+    }
+    if (snapshot.sr_mem) {
+        sr_mem_restore(&snapshot);
     }
     return cl_session_return(session, rc);
 }

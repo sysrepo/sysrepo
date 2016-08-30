@@ -71,6 +71,11 @@ typedef struct sr_conn_ctx_s sr_conn_ctx_t;
 typedef struct sr_session_ctx_s sr_session_ctx_t;
 
 /**
+ * @brief Memory context used for efficient memory management for values, trees and GPB messages.
+ */
+typedef struct sr_mem_ctx_s sr_mem_ctx_t;
+
+/**
  * @brief Possible types of an data element stored in the sysrepo datastore.
  */
 typedef enum sr_type_e {
@@ -129,6 +134,12 @@ typedef union sr_data_u {
  */
 typedef struct sr_val_s {
     /**
+     * Memory context used internally by Sysrepo for efficient storage
+     * and conversion of this structure.
+     */
+    sr_mem_ctx_t *_sr_mem;
+
+    /**
      * XPath identifier of the data element, as defined in
      * @ref xp_page "XPath Addressing" documentation or at
      * https://tools.ietf.org/html/draft-ietf-netmod-yang-json#section-6.11
@@ -158,6 +169,12 @@ typedef struct sr_val_s {
  * than to an actual xpath.
  */
 typedef struct sr_node_s {
+    /**
+     * Memory context used internally by Sysrepo for efficient storage
+     * and conversion of this structure.
+     */
+    sr_mem_ctx_t *_sr_mem;
+
     /** Name of the node. */
     char *name;
 
@@ -172,15 +189,24 @@ typedef struct sr_node_s {
 
     /**
      * Name of the module that defines scheme of this node.
-     * If it is NULL, the module name is inherited from the parent node.
+     * NULL if it is the same as that of the predecessor.
      */
     char *module_name;
 
-    /** Array of node's direct descendants. */
-    struct sr_node_s *children;
+    /** Pointer to the parent node (NULL in case of root node). */
+    struct sr_node_s *parent;
 
-    /** Number of child nodes. */
-    size_t children_cnt;
+    /** Pointer to the next sibling node (NULL if there is no one). */
+    struct sr_node_s *next;
+
+    /** Pointer to the previous sibling node (NULL if there is no one). */
+    struct sr_node_s *prev;
+
+    /** Pointer to the first child node (NULL if this is a leaf). */
+    struct sr_node_s *first_child;
+
+    /** Pointer to the last child node (NULL if this is a leaf). */
+    struct sr_node_s *last_child;
 } sr_node_t;
 
 /**
@@ -522,6 +548,12 @@ typedef struct sr_sch_submodule_s {
  * @brief Structure that contains information about a module installed in sysrepo.
  */
 typedef struct sr_schema_s {
+    /**
+     * Memory context used internally by Sysrepo for efficient storage
+     * and conversion of this structure.
+     */
+    sr_mem_ctx_t *_sr_mem;
+
     const char *module_name;         /**< Name of the module. */
     const char *ns;                  /**< Namespace of the module used in @ref xp_page "XPath". */
     const char *prefix;              /**< Prefix of the module. */
