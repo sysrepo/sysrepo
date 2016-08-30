@@ -3524,6 +3524,7 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
     char *procedure_name = NULL;
     int validation_options = 0;
     int ret = 0, rc = SR_ERR_OK;
+    int allow_update = 0;
 
     CHECK_NULL_ARG3(dm_ctx, session, xpath);
 
@@ -3579,10 +3580,13 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
                     break;
                 }
             }
+
+            allow_update = (LYS_LIST == sch_node->nodetype || sr_is_key_node(sch_node)) ? LYD_PATH_OPT_UPDATE : 0;
+
             /* create the argument node in the tree */
-            new_node = lyd_new_path(data_tree, schema_info->ly_ctx, args[i].xpath, string_value, 0, (input ? 0 : LYD_PATH_OPT_OUTPUT));
+            new_node = lyd_new_path(data_tree, schema_info->ly_ctx, args[i].xpath, string_value, 0, (input ? allow_update : allow_update | LYD_PATH_OPT_OUTPUT));
             free(string_value);
-            if (NULL == new_node) {
+            if (NULL == new_node && !allow_update) {
                 SR_LOG_ERR("Unable to add new %s argument '%s': %s.", procedure_name, args[i].xpath, ly_errmsg());
                 rc = dm_report_error(session, ly_errmsg(), ly_errpath(), SR_ERR_VALIDATION_FAILED);
                 break;
