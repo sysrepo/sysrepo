@@ -147,8 +147,7 @@ module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_ev
         auto it = subscribe->get_changes_iter(&change_path[0]);
 
         while (auto oper = subscribe->get_change_next(it, old_value, new_value)) {
-		if (old_value->val() && new_value->val())
-                    print_change(oper, old_value->val(), new_value->val());
+            print_change(oper, old_value->val(), new_value->val());
         }
 
         printf("\n\n ========== END OF CHANGES =======================================\n\n");

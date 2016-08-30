@@ -94,8 +94,7 @@ def module_change_cb(session, module_name, event, private_ctx):
             oper = subscribe.get_change_next(it, old_value, new_value)
             if oper == None:
                 break
-            if (old_value.val() != None and new_value.val() != None):
-                print_change(oper, old_value.val(), new_value.val())
+            print_change(oper, old_value.val(), new_value.val())
 
         print "\n\n ========== END OF CHANGES =======================================\n\n"
 
