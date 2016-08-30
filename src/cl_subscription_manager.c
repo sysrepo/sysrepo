@@ -1375,6 +1375,10 @@ cl_sm_get_server_socket_filename(cl_sm_ctx_t *sm_ctx, const char *module_name, c
         umask(old_umask);
         CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "Unable to create the directory '%s': %s", path, sr_strerror_safe(errno));
         rc = sr_set_socket_dir_permissions(path, SR_DATA_SEARCH_DIR, module_name, false);
+        if (SR_ERR_OK != rc) {
+            rmdir(path);
+            SR_LOG_WRN("Attempt to subscribe to unknown '%s' module probably", module_name);
+        }
         CHECK_RC_LOG_RETURN(rc, "Unable to set socket directory permissions for '%s'.", path);
     }
 
@@ -1470,6 +1474,9 @@ cl_sm_server_init(cl_sm_ctx_t *sm_ctx, const char *module_name, cl_sm_server_ctx
 
 cleanup:
     cl_sm_server_cleanup(sm_ctx, server_ctx);
+    if (server_ctx == (cl_sm_server_ctx_t *) sm_ctx->server_ctx_list->last->data) {
+        sr_llist_rm(sm_ctx->server_ctx_list, sm_ctx->server_ctx_list->last);
+    }
     return rc;
 }
 
@@ -1728,7 +1735,6 @@ cl_sm_get_server_ctx(cl_sm_ctx_t *sm_ctx, const char *module_name, cl_sm_server_
     }
 
     pthread_mutex_unlock(&sm_ctx->server_ctx_lock);
-
     *server_ctx_p = server_ctx;
     return rc;
 }

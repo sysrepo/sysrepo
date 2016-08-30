@@ -304,6 +304,13 @@ int sr_libyang_leaf_copy_value(const struct lyd_node_leaf_list *leaf, sr_val_t *
 int sr_val_to_str(const sr_val_t *value, const struct lys_node *schema_node, char **out);
 
 /**
+ * @brief Test whether provided schema node is a list key node
+ * @param [in] node
+ * @return true if it is a key, false otherwise
+ */
+bool sr_is_key_node(const struct lys_node *node);
+
+/**
  * @brief Convert API variant type to its string representation.
  *
  * @param [in] api_variant API variant to convert.

@@ -1562,7 +1562,7 @@ test_rpc_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt,
     assert_int_equal(SR_STRING_T, input[1].type);
     assert_string_equal("/", input[1].data.string_val);
 
-    *output_cnt = 4;
+    *output_cnt = 6;
     *output = calloc(*output_cnt, sizeof(**output));
     (*output)[0].xpath = strdup("/test-module:activate-software-image/status");
     (*output)[0].type = SR_STRING_T;
@@ -1574,10 +1574,22 @@ test_rpc_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt,
                                 "log-msg[msg='Successfully loaded software image.'][time='1469625110']/msg-type");
     (*output)[2].type = SR_ENUM_T;
     (*output)[2].data.enum_val = strdup("debug");
+
+    /* explictly create list - not necessary - list will be automatically created when any of its inner node is created */
     (*output)[3].xpath = strdup("/test-module:activate-software-image/init-log/"
+                                "log-msg[msg='Successfully loaded software image.'][time='1469625110']");
+    (*output)[3].type = SR_LIST_T;
+    /* explictly create list key - redundant only for test purposes*/
+    (*output)[4].xpath = strdup("/test-module:activate-software-image/init-log/"
+                                "log-msg[msg='Successfully loaded software image.'][time='1469625110']/msg");
+    (*output)[4].type = SR_STRING_T;
+    (*output)[4].data.string_val = strdup("Successfully loaded software image.");
+
+
+    (*output)[5].xpath = strdup("/test-module:activate-software-image/init-log/"
                                 "log-msg[msg='Some soft limit exceeded...'][time='1469625150']/msg-type");
-    (*output)[3].type = SR_ENUM_T;
-    (*output)[3].data.enum_val = strdup("warning");
+    (*output)[5].type = SR_ENUM_T;
+    (*output)[5].data.enum_val = strdup("warning");
 
     return SR_ERR_OK;
 }
