@@ -73,13 +73,12 @@ print_value(shared_ptr<Val> value)
 }
 
 static void
-print_current_config(Session *session)
+print_current_config(shared_ptr<Session> session)
 {
     try {
         const char *xpath = "/ietf-interfaces:*//*";
 
-	shared_ptr<Vals> values;
-	values = session->get_items(xpath);
+        auto values = session->get_items(xpath);
         if (values == NULL)
             return;
 
@@ -96,8 +95,8 @@ module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_ev
 {
     cout << "\n\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: ==========\n" << endl;
 
-    Session sess(session);
-    print_current_config(&sess);
+    shared_ptr<Session> sess(new Session(session));
+    print_current_config(sess);
 
     return SR_ERR_OK;
 }
@@ -112,20 +111,20 @@ int
 main(int argc, char **argv)
 {
     try {
-        Connection conn("examples_application");
+        shared_ptr<Connection> conn(new Connection("examples_application"));
 
-        Session sess(conn);
+        shared_ptr<Session> sess(new Session(conn));
 
         /* read startup config */
         cout << "\n\n ========== READING STARTUP CONFIG: ==========\n" << endl;
 
-        Subscribe subscribe(&sess);
+        shared_ptr<Subscribe> subscribe(new Subscribe(sess));
 
-	subscribe.module_change_subscribe("ietf-interfaces", module_change_cb);
+        subscribe->module_change_subscribe("ietf-interfaces", module_change_cb);
 
-        print_current_config(&sess);
+        print_current_config(sess);
 
-	cout << "\n\n ========== STARTUP CONFIG APPLIED AS RUNNING ==========\n" << endl;
+        cout << "\n\n ========== STARTUP CONFIG APPLIED AS RUNNING ==========\n" << endl;
 
         /* loop until ctrl-c is pressed / SIGINT is received */
         signal(SIGINT, sigint_handler);

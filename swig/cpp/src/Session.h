@@ -41,9 +41,9 @@ class Session:public Throw_Exception
 {
 
 public:
-    Session(Connection& conn, sr_datastore_t datastore = SR_DS_RUNNING, \
+    Session(shared_ptr<Connection> conn, sr_datastore_t datastore = SR_DS_RUNNING, \
             const sr_conn_options_t opts = SESS_DEFAULT, const char *user_name = NULL);
-    Session(sr_session_ctx_t *sess);
+    Session(sr_session_ctx_t *sess, sr_conn_options_t opts = SR_CONN_DEFAULT);
     void session_stop();
     void session_switch_ds(sr_datastore_t ds);
     shared_ptr<Error> get_last_error();
@@ -81,7 +81,7 @@ class Subscribe:public Throw_Exception
 {
 
 public:
-    Subscribe(Session *sess);
+    Subscribe(shared_ptr<Session> sess);
 
     void module_change_subscribe(const char *module_name, sr_module_change_cb callback, void *private_ctx = \
                                 NULL, uint32_t priority = 0, sr_subscr_options_t opts = SUBSCR_DEFAULT);
@@ -105,7 +105,7 @@ public:
 #ifdef SWIG
         void Destructor_Subscribe();
         sr_subscription_ctx_t *swig_sub;
-        Session *swig_sess;
+        shared_ptr<Session> swig_sess;
         std::vector<void*> wrap_cb_l;
 #else
         ~Subscribe();
@@ -113,7 +113,7 @@ public:
 
 private:
     sr_subscription_ctx_t *_sub;
-    Session *_sess;
+    shared_ptr<Session> _sess;
     void d_Subscribe();
 };
 

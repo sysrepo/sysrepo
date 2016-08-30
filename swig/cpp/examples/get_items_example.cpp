@@ -29,14 +29,13 @@ int
 main(int argc, char **argv)
 {
     try {
-        Connection conn("app2");
+        shared_ptr<Connection> conn(new Connection("app2"));
 
-        Session sess(conn);
+        shared_ptr<Session> sess(new Session(conn));
 
         const char *xpath = "/ietf-interfaces:interfaces/interface";
 
-	shared_ptr<Vals> values;
-	values = sess.get_items(xpath);
+	auto values = sess->get_items(xpath);
         if (values == NULL)
             return 0;
 

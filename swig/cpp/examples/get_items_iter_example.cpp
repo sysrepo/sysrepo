@@ -70,20 +70,17 @@ int
 main(int argc, char **argv)
 {
     try {
-        Connection conn("app3");
+        shared_ptr<Connection> conn(new Connection("app3"));
 
-        Session sess(conn);
+        shared_ptr<Session> sess(new Session(conn));
 
         const char *xpath = "/ietf-interfaces:interfaces/interface//*";
 
-	shared_ptr<Val> value;
-	shared_ptr<Iter_Value> iter;
-
-	iter = sess.get_items_iter(xpath);
+	auto iter = sess->get_items_iter(xpath);
         if (iter == NULL)
             return 0;
 
-        while (value = sess.get_item_next(iter)) {
+        while (auto value = sess->get_item_next(iter)) {
             print_value(value);
         }
 

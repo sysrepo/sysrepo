@@ -108,15 +108,13 @@ print_change(shared_ptr<Operation> op, shared_ptr<Val> old_val, shared_ptr<Val> 
 }
 
 static void
-print_current_config(Session *session, const char *module_name)
+print_current_config(shared_ptr<Session> session, const char *module_name)
 {
     char select_xpath[MAX_LEN];
     try {
-        shared_ptr<Vals> values;
-
         snprintf(select_xpath, MAX_LEN, "/%s:*//*", module_name);
 
-        values = session->get_items(&select_xpath[0]);
+        auto values = session->get_items(&select_xpath[0]);
         if (values == NULL)
             return;
 
@@ -133,24 +131,22 @@ module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_ev
     char change_path[MAX_LEN];
     shared_ptr<Val_Holder> old_value(new Val_Holder());
     shared_ptr<Val_Holder> new_value(new Val_Holder());
-    shared_ptr<Iter_Change> it;
-    shared_ptr<Operation> oper;
 
     try {
-        Session sess(session);
+        shared_ptr<Session> sess(new Session(session));
 
         printf("\n\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: ==========\n\n");
 
-        print_current_config(&sess, module_name);
+        print_current_config(sess, module_name);
 
         printf("\n\n ========== CHANGES: =============================================\n\n");
 
         snprintf(change_path, MAX_LEN, "/%s:*", module_name);
 
-        Subscribe subscribe(&sess);
-        it = subscribe.get_changes_iter(&change_path[0]);
+        shared_ptr<Subscribe> subscribe(new Subscribe(sess));
+        auto it = subscribe->get_changes_iter(&change_path[0]);
 
-        while (oper = subscribe.get_change_next(it, old_value, new_value)) {
+        while (auto oper = subscribe->get_change_next(it, old_value, new_value)) {
 		if (old_value->val() && new_value->val())
                     print_change(oper, old_value->val(), new_value->val());
         }
@@ -183,19 +179,19 @@ main(int argc, char **argv)
 
         printf("Application will watch for changes in %s\n", module_name);
         /* connect to sysrepo */
-        Connection conn("example_application");
+        shared_ptr<Connection> conn(new Connection("example_application"));
 
         /* start session */
-        Session sess(conn);
+        shared_ptr<Session> sess(new Session(conn));
 
-	/* subscribe for changes in running config */
-        Subscribe subscribe(&sess);
+        /* subscribe for changes in running config */
+        shared_ptr<Subscribe> subscribe(new Subscribe(sess));
 
-	subscribe.module_change_subscribe(module_name, module_change_cb);
+        subscribe->module_change_subscribe(module_name, module_change_cb);
 
         /* read startup config */
         printf("\n\n ========== READING STARTUP CONFIG: ==========\n\n");
-        print_current_config(&sess, module_name);
+        print_current_config(sess, module_name);
 
         cout << "\n\n ========== STARTUP CONFIG APPLIED AS RUNNING ==========\n" << endl;
 

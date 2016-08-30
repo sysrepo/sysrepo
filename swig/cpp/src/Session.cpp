@@ -34,7 +34,7 @@ extern "C" {
 
 using namespace std;
 
-Session::Session(Connection& conn, sr_datastore_t datastore, const sr_conn_options_t opts, \
+Session::Session(shared_ptr<Connection> conn, sr_datastore_t datastore, const sr_conn_options_t opts, \
 		 const char *user_name)
 {
     int ret;
@@ -43,13 +43,13 @@ Session::Session(Connection& conn, sr_datastore_t datastore, const sr_conn_optio
 
     if (user_name == NULL) {
         /* start session */
-        ret = sr_session_start(conn.get_conn(), _datastore, _opts, &_sess);
+        ret = sr_session_start(conn->get_conn(), _datastore, _opts, &_sess);
         if (SR_ERR_OK != ret) {
             goto cleanup;
         }
     } else {
         /* start session */
-        ret = sr_session_start_user(conn.get_conn(), user_name, _datastore, _opts, &_sess);
+        ret = sr_session_start_user(conn->get_conn(), user_name, _datastore, _opts, &_sess);
         if (SR_ERR_OK != ret) {
             goto cleanup;
         }
@@ -62,10 +62,10 @@ cleanup:
     return;
 }
 
-Session::Session(sr_session_ctx_t *sess)
+Session::Session(sr_session_ctx_t *sess, sr_conn_options_t opts)
 {
     _sess = sess;
-    _opts = SR_CONN_DEFAULT;
+    _opts = opts;
 }
 
 void Session::session_stop()
@@ -325,7 +325,7 @@ void Session::set_options(const sr_sess_options_t opts)
     }
 }
 
-Subscribe::Subscribe(Session *sess)
+Subscribe::Subscribe(shared_ptr<Session> sess)
 {
     _sub = NULL;
     _sess = sess;
