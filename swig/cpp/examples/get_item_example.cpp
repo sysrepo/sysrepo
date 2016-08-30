@@ -44,7 +44,7 @@ main(int argc, char **argv)
             return 0;
 
         cout << endl << "Value on xpath: " << value->xpath() << " = "\
-             << (value->data()->get_bool()->get() ? "true" : "false") << endl << endl;
+             << (value->data()->get_bool() ? "true" : "false") << endl << endl;
     } catch( const std::exception& e ) {
         cout << e.what() << endl;
     }

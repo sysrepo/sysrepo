@@ -25,19 +25,6 @@
 %shared_ptr(Val_Holder)
 %shared_ptr(Vals)
 
-%shared_ptr(Char_val)
-%shared_ptr(Double_val)
-%shared_ptr(Bool_val)
-%shared_ptr(Int8_val)
-%shared_ptr(Int16_val)
-%shared_ptr(Int32_val)
-%shared_ptr(Int64_val)
-
-%shared_ptr(Uint8_val)
-%shared_ptr(Uint16_val)
-%shared_ptr(Uint32_val)
-%shared_ptr(Uint64_val)
-
 %include "../swig_base/sysrepo.i"
 %include "../swig_base/structs.i"
 %include "../swig_base/session.i"

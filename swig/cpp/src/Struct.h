@@ -45,154 +45,30 @@ private:
     sr_change_oper_t _oper;
 };
 
-
-// Char wrapper class
-class Char_val
-{
-public:
-    Char_val(char *data);
-    ~Char_val();
-    char *get() {return _data;};
-
-private:
-    char *_data;
-};
-
-// Bool wrapper class
-class Bool_val
-{
-public:
-    Bool_val(bool data);
-    ~Bool_val();
-    bool get() {return _data;};
-
-private:
-    bool _data;
-};
-// Double wrapper class
-class Double_val
-{
-public:
-    Double_val(double data);
-    ~Double_val();
-    double get() {return _data;};
-
-private:
-    double _data;
-};
-// Int8 wrapper class
-class Int8_val
-{
-public:
-    Int8_val(int8_t data);
-    ~Int8_val();
-    int8_t get() {return _data;};
-
-private:
-    int8_t _data;
-};
-// Int16 wrapper class
-class Int16_val
-{
-public:
-    Int16_val(int16_t data);
-    ~Int16_val();
-    int16_t get() {return _data;};
-
-private:
-    int16_t _data;
-};
-// Int32 wrapper class
-class Int32_val
-{
-public:
-    Int32_val(int32_t data);
-    ~Int32_val();
-    int32_t get() {return _data;};
-
-private:
-    int32_t _data;
-};
-// Int64 wrapper class
-class Int64_val
-{
-public:
-    Int64_val(int64_t data);
-    ~Int64_val();
-    int64_t get() {return _data;};
-
-private:
-    int64_t _data;
-};
-// Uint8 wrapper class
-class Uint8_val
-{
-public:
-    Uint8_val(int8_t data);
-    ~Uint8_val();
-    int8_t get() {return _data;};
-
-private:
-    int8_t _data;
-};
-// Uint16 wrapper class
-class Uint16_val
-{
-public:
-    Uint16_val(int16_t data);
-    ~Uint16_val();
-    int16_t get() {return _data;};
-
-private:
-    int16_t _data;
-};
-// Uint32 wrapper class
-class Uint32_val
-{
-public:
-    Uint32_val(int32_t data);
-    ~Uint32_val();
-    int32_t get() {return _data;};
-
-private:
-    int32_t _data;
-};
-// Uint64 wrapper class
-class Uint64_val
-{
-public:
-    Uint64_val(int64_t data);
-    ~Uint64_val();
-    int64_t get() {return _data;};
-
-private:
-    int64_t _data;
-};
-
 // class for sysrepo C union sr_data_t
-class Data
+class Data:public Throw_Exception
 {
 public:
     Data(sr_data_t data, sr_type_t type);
     ~Data();
-    shared_ptr<Char_val>   get_binary();
-    shared_ptr<Char_val>   get_bits();
-    shared_ptr<Bool_val>   get_bool();
-    shared_ptr<Double_val> get_decimal64();
-    shared_ptr<Char_val>   get_enum();
-    shared_ptr<Char_val>   get_identityref();
-    shared_ptr<Char_val>   get_instanceid();
-    shared_ptr<Int8_val>   get_int8();
-    shared_ptr<Int16_val>  get_int16();
-    shared_ptr<Int32_val>  get_int32();
-    shared_ptr<Int64_val>  get_int64();
-    shared_ptr<Char_val>   get_string();
-    shared_ptr<Uint8_val>  get_uint8();
-    shared_ptr<Uint16_val> get_uint16();
-    shared_ptr<Uint32_val> get_uint32();
-    shared_ptr<Uint64_val> get_uint64();
+    char *get_binary();
+    char *get_bits();
+    bool get_bool();
+    double get_decimal64();
+    char *get_enum();
+    char *get_identityref();
+    char *get_instanceid();
+    int8_t get_int8();
+    int16_t get_int16();
+    int32_t get_int32();
+    int64_t get_int64();
+    char *get_string();
+    uint8_t get_uint8();
+    uint16_t get_uint16();
+    uint32_t get_uint32();
+    uint64_t get_uint64();
 
-protected:
+private:
     sr_data_t _d;
     sr_type_t _t;
 };

@@ -29,20 +29,20 @@ def print_value(value):
     elif (value.type() == sr.SR_LIST_T):
         print "(list instance)"
     elif (value.type() == sr.SR_STRING_T):
-        print "= " + value.data().get_string().get()
+        print "= " + value.data().get_string()
     elif (value.type() == sr.SR_BOOL_T):
-        if (value.data().get_bool().get()):
+        if (value.data().get_bool()):
             print "= true"
         else:
             print "= true"
     elif (value.type() == sr.SR_UINT8_T):
-        print "= " + repr(value.data().get_uint8().get())
+        print "= " + repr(value.data().get_uint8())
     elif (value.type() == sr.SR_UINT16_T):
-        print "= " + repr(value.data().get_uint16().get())
+        print "= " + repr(value.data().get_uint16())
     elif (value.type() == sr.SR_UINT32_T):
-        print "= " + repr(value.data().get_uint32().get())
+        print "= " + repr(value.data().get_uint32())
     elif (value.type() == sr.SR_IDENTITYREF_T):
-        print "= " + repr(value.data().get_identityref().get())
+        print "= " + repr(value.data().get_identityref())
     else:
         print "(unprintable)"
 

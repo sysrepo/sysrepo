@@ -40,25 +40,25 @@ print_value(shared_ptr<Val> value)
         cout << "(list instance)" << endl;
         break;
     case SR_STRING_T:
-        cout << "= " << value->data()->get_string()->get() << endl;;
+        cout << "= " << value->data()->get_string() << endl;;
         break;
     case SR_BOOL_T:
-	if (value->data()->get_bool()->get())
+	if (value->data()->get_bool())
             cout << "= true" << endl;
 	else
             cout << "= false" << endl;
         break;
     case SR_UINT8_T:
-        cout << "= " << unsigned(value->data()->get_uint8()->get()) << endl;
+        cout << "= " << unsigned(value->data()->get_uint8()) << endl;
         break;
     case SR_UINT16_T:
-        cout << "= " << unsigned(value->data()->get_uint16()->get()) << endl;
+        cout << "= " << unsigned(value->data()->get_uint16()) << endl;
         break;
     case SR_UINT32_T:
-        cout << "= " << unsigned(value->data()->get_uint32()->get()) << endl;
+        cout << "= " << unsigned(value->data()->get_uint32()) << endl;
         break;
     case SR_IDENTITYREF_T:
-        cout << "= " << value->data()->get_identityref()->get() << endl;
+        cout << "= " << value->data()->get_identityref() << endl;
         break;
     default:
         cout << "(unprintable)" << endl;

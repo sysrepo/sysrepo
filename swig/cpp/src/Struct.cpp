@@ -34,143 +34,72 @@ using namespace std;
 Operation::Operation(sr_change_oper_t oper) {_oper = oper;}
 Operation::~Operation() {return;}
 
-Char_val::Char_val(char *data) {_data = data;}
-Char_val::~Char_val() {return;}
-Bool_val::Bool_val(bool data) {_data = data;}
-Bool_val::~Bool_val() {return;}
-Double_val::Double_val(double data) {_data = data;}
-Double_val::~Double_val() {return;}
-Int8_val::Int8_val(int8_t data) {_data = data;}
-Int8_val::~Int8_val() {return;}
-Int16_val::Int16_val(int16_t data) {_data = data;}
-Int16_val::~Int16_val() {return;}
-Int32_val::Int32_val(int32_t data) {_data = data;}
-Int32_val::~Int32_val() {return;}
-Int64_val::Int64_val(int64_t data) {_data = data;}
-Int64_val::~Int64_val() {return;}
-Uint8_val::Uint8_val(int8_t data) {_data = data;}
-Uint8_val::~Uint8_val() {return;}
-Uint16_val::Uint16_val(int16_t data) {_data = data;}
-Uint16_val::~Uint16_val() {return;}
-Uint32_val::Uint32_val(int32_t data) {_data = data;}
-Uint32_val::~Uint32_val() {return;}
-Uint64_val::Uint64_val(int64_t data) {_data = data;}
-Uint64_val::~Uint64_val() {return;}
-
 // Data
 Data::Data(sr_data_t data, sr_type_t type) {_d = data; _t = type;}
 Data::~Data() {return;}
-shared_ptr<Char_val> Data::get_binary() {
-    if (_t != SR_BINARY_T)
-        return NULL;
-
-    shared_ptr<Char_val> data(new Char_val(_d.binary_val));
-    return data;
+char *Data::get_binary() {
+    if (_t != SR_BINARY_T) throw_exception(SR_ERR_DATA_MISSING);
+    return _d.binary_val;
 }
-shared_ptr<Char_val> Data::get_bits() {
-    if (_t != SR_BITS_T)
-        return NULL;
-
-    shared_ptr<Char_val> data(new Char_val(_d.bits_val));
-    return data;
+char *Data::get_bits() {
+    if (_t != SR_BITS_T) throw_exception(SR_ERR_DATA_MISSING);
+    return _d.bits_val;
 }
-shared_ptr<Bool_val> Data::get_bool() {
-    if (_t != SR_BOOL_T)
-        return NULL;
-
-    shared_ptr<Bool_val> data(new Bool_val(_d.bool_val));
-    return data;
+bool Data::get_bool() {
+    if (_t != SR_BOOL_T) throw_exception(SR_ERR_DATA_MISSING);
+    return _d.bool_val;
 }
-shared_ptr<Double_val> Data::get_decimal64() {
-    if (_t != SR_DECIMAL64_T)
-        return NULL;
-
-    shared_ptr<Double_val> data(new Double_val(_d.decimal64_val));
-    return data;
+double Data::get_decimal64() {
+    if (_t != SR_DECIMAL64_T) throw_exception(SR_ERR_DATA_MISSING);
+    return _d.decimal64_val;
 }
-shared_ptr<Char_val> Data::get_enum() {
-    if (_t != SR_ENUM_T)
-        return NULL;
-
-    shared_ptr<Char_val> data(new Char_val(_d.enum_val));
-    return data;
+char *Data::get_enum() {
+    if (_t != SR_ENUM_T) throw_exception(SR_ERR_DATA_MISSING);
+    return _d.enum_val;
 }
-shared_ptr<Char_val> Data::get_identityref() {
-    if (_t != SR_IDENTITYREF_T)
-        return NULL;
-
-    shared_ptr<Char_val> data(new Char_val(_d.identityref_val));
-    return data;
+char *Data::get_identityref() {
+    if (_t != SR_IDENTITYREF_T) throw_exception(SR_ERR_DATA_MISSING);
+    return _d.identityref_val;
 }
-shared_ptr<Char_val> Data::get_instanceid() {
-    if (_t != SR_INSTANCEID_T)
-        return NULL;
-
-    shared_ptr<Char_val> data(new Char_val(_d.instanceid_val));
-    return data;
+char *Data::get_instanceid() {
+    if (_t != SR_INSTANCEID_T) throw_exception(SR_ERR_DATA_MISSING);
+    return _d.instanceid_val;
 }
-shared_ptr<Int8_val> Data::get_int8() {
-    if (_t != SR_INT8_T)
-        return NULL;
-
-    shared_ptr<Int8_val> data(new Int8_val(_d.int8_val));
-    return data;
+int8_t Data::get_int8() {
+    if (_t != SR_INT8_T) throw_exception(SR_ERR_DATA_MISSING);
+    return _d.int8_val;
 }
-shared_ptr<Int16_val> Data::get_int16() {
-    if (_t != SR_INT16_T)
-        return NULL;
-
-    shared_ptr<Int16_val> data(new Int16_val(_d.int16_val));
-    return data;
+int16_t Data::get_int16() {
+    if (_t != SR_INT16_T) throw_exception(SR_ERR_DATA_MISSING);
+    return _d.uint32_val;
 }
-shared_ptr<Int32_val> Data::get_int32() {
-    if (_t != SR_INT32_T)
-        return NULL;
-
-    shared_ptr<Int32_val> data(new Int32_val(_d.int32_val));
-    return data;
+int32_t Data::get_int32() {
+    if (_t != SR_INT32_T) throw_exception(SR_ERR_DATA_MISSING);
+    return _d.int32_val;
 }
-shared_ptr<Int64_val> Data::get_int64() {
-    if (_t != SR_INT64_T)
-        return NULL;
-
-    shared_ptr<Int64_val> data(new Int64_val(_d.int64_val));
-    return data;
+int64_t Data::get_int64() {
+    if (_t != SR_INT64_T) throw_exception(SR_ERR_DATA_MISSING);
+    return _d.int64_val;
 }
-shared_ptr<Char_val> Data::get_string() {
-    if (_t != SR_STRING_T)
-        return NULL;
-
-    shared_ptr<Char_val> data(new Char_val(_d.string_val));
-    return data;
+char *Data::get_string() {
+    if (_t != SR_STRING_T) throw_exception(SR_ERR_DATA_MISSING);
+    return _d.string_val;
 }
-shared_ptr<Uint8_val> Data::get_uint8() {
-    if (_t != SR_UINT8_T)
-        return NULL;
-
-    shared_ptr<Uint8_val> data(new Uint8_val(_d.uint8_val));
-    return data;
+uint8_t Data::get_uint8() {
+    if (_t != SR_UINT8_T) throw_exception(SR_ERR_DATA_MISSING);
+    return _d.uint32_val;
 }
-shared_ptr<Uint16_val> Data::get_uint16() {
-    if (_t != SR_UINT16_T)
-        return NULL;
-
-    shared_ptr<Uint16_val> data(new Uint16_val(_d.uint16_val));
-    return data;
+uint16_t Data::get_uint16() {
+    if (_t != SR_UINT16_T) throw_exception(SR_ERR_DATA_MISSING);
+    return _d.uint16_val;
 }
-shared_ptr<Uint32_val> Data::get_uint32() {
-    if (_t != SR_UINT32_T)
-        return NULL;
-
-    shared_ptr<Uint32_val> data(new Uint32_val(_d.uint32_val));
-    return data;
+uint32_t Data::get_uint32() {
+    if (_t != SR_UINT32_T) throw_exception(SR_ERR_DATA_MISSING);
+    return _d.uint32_val;
 }
-shared_ptr<Uint64_val> Data::get_uint64() {
-    if (_t != SR_UINT64_T)
-        return NULL;
-
-    shared_ptr<Uint64_val> data(new Uint64_val(_d.uint64_val));
-    return data;
+uint64_t Data::get_uint64() {
+    if (_t != SR_UINT64_T) throw_exception(SR_ERR_DATA_MISSING);
+    return _d.uint64_val;
 }
 
 // Val
