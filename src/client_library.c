@@ -206,7 +206,6 @@ cl_subscription_close(sr_session_ctx_t *session, cl_sm_subscription_ctx_t *subsc
 
     CHECK_NULL_ARG(session);
     if (NULL != subscription) {
-        
         /* prepare unsubscribe message */
         rc = sr_mem_new(0, &sr_mem);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to create a new Sysrepo memory context.");

@@ -77,7 +77,7 @@ else(USE_AVL_LIB)
     set(LINK_LIBRARIES pthread ${REDBLACK_LIBRARIES} ${EV_LIBRARIES} ${PROTOBUF-C_LIBRARIES} ${YANG_LIBRARIES})
 endif(USE_AVL_LIB)
 
-#handle rt library that doesn't exists on OS X
+#handle rt library that doesn't exist on OS X
 if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
     set(LINK_LIBRARIES rt ${LINK_LIBRARIES})
 endif()
