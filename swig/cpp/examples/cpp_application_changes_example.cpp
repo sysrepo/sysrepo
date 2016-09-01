@@ -39,7 +39,6 @@ print_value(shared_ptr<Val> value)
 {
     cout << value->xpath();
     cout << " ";
-
     switch (value->type()) {
     case SR_CONTAINER_T:
     case SR_CONTAINER_PRESENCE_T:
@@ -57,6 +56,9 @@ print_value(shared_ptr<Val> value)
 	else
             cout << "= false" << endl;
         break;
+    case SR_ENUM_T:
+        cout << "= " << value->data()->get_enum() << endl;;
+        break;
     case SR_UINT8_T:
         cout << "= " << unsigned(value->data()->get_uint8()) << endl;
         break;
@@ -66,8 +68,29 @@ print_value(shared_ptr<Val> value)
     case SR_UINT32_T:
         cout << "= " << unsigned(value->data()->get_uint32()) << endl;
         break;
-    case SR_IDENTITYREF_T:
+    case SR_UINT64_T:
+        cout << "= " << unsigned(value->data()->get_uint64()) << endl;
+        break;
+    case SR_INT8_T:
+        cout << "= " << value->data()->get_int8() << endl;
+        break;
+    case SR_INT16_T:
+        cout << "= " << value->data()->get_int16() << endl;
+        break;
+    case SR_INT32_T:
+        cout << "= " << value->data()->get_int32() << endl;
+        break;
+    case SR_INT64_T:
+        cout << "= " << value->data()->get_int64() << endl;
+        break;
+     case SR_IDENTITYREF_T:
         cout << "= " << value->data()->get_identityref() << endl;
+        break;
+    case SR_BITS_T:
+        cout << "= " << value->data()->get_bits() << endl;
+        break;
+    case SR_BINARY_T:
+        cout << "= " << value->data()->get_binary() << endl;
         break;
     default:
         cout << "(unprintable)" << endl;
