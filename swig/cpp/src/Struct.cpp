@@ -27,6 +27,7 @@
 
 extern "C" {
 #include "sysrepo.h"
+#include "sysrepo/values.h"
 }
 
 using namespace std;
@@ -306,6 +307,208 @@ Val::Val(uint64_t uint64_val, sr_type_t type) {
     val->type = type;
     _val = val;
 }
+void Val::set(const char *xpath, const char *value, sr_type_t type) {
+	if (_val == NULL) throw_exception(SR_ERR_OPERATION_FAILED);
+
+	int ret = sr_val_set_xpath(_val, xpath);
+    if (ret != SR_ERR_OK) throw_exception(ret);
+
+    if (type == SR_BINARY_T) {
+	    _val->data.binary_val = (char *) value;
+    } else if (type == SR_BITS_T) {
+	    _val->data.bits_val = (char *) value;
+    } else if (type == SR_ENUM_T) {
+	    _val->data.enum_val = (char *) value;
+    } else if (type == SR_IDENTITYREF_T) {
+	    _val->data.identityref_val = (char *) value;
+    } else if (type == SR_INSTANCEID_T) {
+	    _val->data.instanceid_val = (char *) value;
+    } else if (type == SR_STRING_T) {
+	    _val->data.string_val = (char *) value;
+    } else {
+        throw_exception(SR_ERR_INVAL_ARG);
+    }
+
+    _val->type = type;
+}
+void Val::set(const char *xpath, bool bool_val, sr_type_t type) {
+	if (_val == NULL) throw_exception(SR_ERR_OPERATION_FAILED);
+
+	int ret = sr_val_set_xpath(_val, xpath);
+    if (ret != SR_ERR_OK) throw_exception(ret);
+
+    if (type == SR_BOOL_T) {
+	    _val->data.bool_val = bool_val;
+    } else {
+        throw_exception(SR_ERR_INVAL_ARG);
+    }
+
+    _val->type = type;
+}
+void Val::set(const char *xpath, double decimal64_val, sr_type_t type) {
+	if (_val == NULL) throw_exception(SR_ERR_OPERATION_FAILED);
+
+	int ret = sr_val_set_xpath(_val, xpath);
+    if (ret != SR_ERR_OK) throw_exception(ret);
+
+    if (type == SR_DECIMAL64_T) {
+	    _val->data.decimal64_val = decimal64_val;
+    } else {
+        throw_exception(SR_ERR_INVAL_ARG);
+    }
+
+    _val->type = type;
+}
+void Val::set(const char *xpath, int8_t int8_val, sr_type_t type) {
+	if (_val == NULL) throw_exception(SR_ERR_OPERATION_FAILED);
+
+	int ret = sr_val_set_xpath(_val, xpath);
+    if (ret != SR_ERR_OK) throw_exception(ret);
+
+    if (type == SR_INT8_T) {
+	    _val->data.int8_val = int8_val;
+    } else {
+        throw_exception(SR_ERR_INVAL_ARG);
+    }
+
+    _val->type = type;
+}
+void Val::set(const char *xpath, int16_t int16_val, sr_type_t type) {
+	if (_val == NULL) throw_exception(SR_ERR_OPERATION_FAILED);
+
+	int ret = sr_val_set_xpath(_val, xpath);
+    if (ret != SR_ERR_OK) throw_exception(ret);
+
+    if (type == SR_INT16_T) {
+	    _val->data.int16_val = int16_val;
+    } else {
+        throw_exception(SR_ERR_INVAL_ARG);
+    }
+
+    _val->type = type;
+}
+void Val::set(const char *xpath, int32_t int32_val, sr_type_t type) {
+	if (_val == NULL) throw_exception(SR_ERR_OPERATION_FAILED);
+
+	int ret = sr_val_set_xpath(_val, xpath);
+    if (ret != SR_ERR_OK) throw_exception(ret);
+
+    if (type == SR_INT32_T) {
+	    _val->data.int32_val = int32_val;
+    } else {
+        throw_exception(SR_ERR_INVAL_ARG);
+    }
+
+    _val->type = type;
+}
+
+void Val::set(const char *xpath, int64_t int64_val, sr_type_t type) {
+	if (_val == NULL) throw_exception(SR_ERR_OPERATION_FAILED);
+
+	int ret = sr_val_set_xpath(_val, xpath);
+    if (ret != SR_ERR_OK) throw_exception(ret);
+
+    if (type == SR_DECIMAL64_T) {
+	    _val->data.uint64_val = (double) int64_val;
+    } else if (type == SR_UINT64_T) {
+        _val->data.uint64_val = (uint64_t) int64_val;
+    } else if (type == SR_UINT32_T) {
+        _val->data.uint32_val = (uint32_t) int64_val;
+    } else if (type == SR_UINT16_T) {
+        _val->data.uint16_val = (uint16_t) int64_val;
+    } else if (type == SR_UINT8_T) {
+        _val->data.uint8_val = (uint8_t) int64_val;
+    } else if (type == SR_INT64_T) {
+        _val->data.int64_val = (int64_t) int64_val;
+    } else if (type == SR_INT32_T) {
+        _val->data.int32_val = (int32_t) int64_val;
+    } else if (type == SR_INT16_T) {
+        _val->data.int16_val = (int16_t) int64_val;
+    } else if (type == SR_INT8_T) {
+        _val->data.int8_val = (int8_t) int64_val;
+    } else {
+        throw_exception(SR_ERR_INVAL_ARG);
+    }
+
+    _val->type = type;
+}
+void Val::set(const char *xpath, uint8_t uint8_val, sr_type_t type) {
+	if (_val == NULL) throw_exception(SR_ERR_OPERATION_FAILED);
+
+	int ret = sr_val_set_xpath(_val, xpath);
+    if (ret != SR_ERR_OK) throw_exception(ret);
+
+    if (type == SR_UINT8_T) {
+	    _val->data.uint8_val = uint8_val;
+    } else {
+        throw_exception(SR_ERR_INVAL_ARG);
+    }
+
+    _val->type = type;
+}
+void Val::set(const char *xpath, uint16_t uint16_val, sr_type_t type) {
+	if (_val == NULL) throw_exception(SR_ERR_OPERATION_FAILED);
+
+	int ret = sr_val_set_xpath(_val, xpath);
+    if (ret != SR_ERR_OK) throw_exception(ret);
+
+    if (type == SR_UINT16_T) {
+	    _val->data.uint16_val = uint16_val;
+    } else {
+        throw_exception(SR_ERR_INVAL_ARG);
+    }
+
+    _val->type = type;
+}
+void Val::set(const char *xpath, uint32_t uint32_val, sr_type_t type) {
+	if (_val == NULL) throw_exception(SR_ERR_OPERATION_FAILED);
+
+	int ret = sr_val_set_xpath(_val, xpath);
+    if (ret != SR_ERR_OK) throw_exception(ret);
+
+    if (type == SR_UINT32_T) {
+	    _val->data.uint32_val = uint32_val;
+    } else {
+        throw_exception(SR_ERR_INVAL_ARG);
+    }
+
+    _val->type = type;
+}
+void Val::set(const char *xpath, uint64_t uint64_val, sr_type_t type) {
+	if (_val == NULL) throw_exception(SR_ERR_OPERATION_FAILED);
+
+	int ret = sr_val_set_xpath(_val, xpath);
+    if (ret != SR_ERR_OK) throw_exception(ret);
+
+    if (type == SR_UINT64_T) {
+	    _val->data.uint64_val = uint64_val;
+    } else {
+        throw_exception(SR_ERR_INVAL_ARG);
+    }
+
+    _val->type = type;
+}
+void Val::set(const char *xpath, sr_type_t type) {
+	if (_val == NULL) throw_exception(SR_ERR_OPERATION_FAILED);
+
+	int ret = sr_val_set_xpath(_val, xpath);
+    if (ret != SR_ERR_OK) throw_exception(ret);
+
+    if (type != SR_LIST_T && type != SR_CONTAINER_T && type != SR_CONTAINER_PRESENCE_T) {
+        throw_exception(SR_ERR_INVAL_ARG);
+    }
+
+    _val->type = type;
+}
+shared_ptr<Val> Val::dup() {
+	sr_val_t *new_val = NULL;
+    int ret = sr_dup_val(_val, &new_val);
+    if (ret != SR_ERR_OK)
+        throw_exception(ret);
+
+    shared_ptr<Val> val(new Val(new_val, true));
+	return val;
+}
 
 /// Val_Holder
 Val_Holder::Val_Holder(sr_val_t *val) {_val = val;}
@@ -321,18 +524,57 @@ shared_ptr<Val> Val_Holder::val() {
     return val;
 }
 // Vals
-Vals::Vals(sr_val_t *vals, size_t cnt) {_vals = vals; _cnt = cnt;}
+Vals::Vals(const sr_val_t *vals, const size_t cnt) {
+    _vals = (sr_val_t *) vals;
+    _cnt = (size_t) cnt;
+    p_vals = NULL;
+}
+Vals::Vals(sr_val_t **vals, size_t *cnt, size_t n) {
+    int ret = sr_new_values(n, vals);
+    if (ret != SR_ERR_OK)
+        throw_exception(ret);
+
+    p_vals = vals;
+    _vals = *vals;
+    _cnt = n;
+
+	*cnt = n;
+}
+Vals::Vals(size_t cnt) {
+    sr_val_t *vals = NULL;
+    int ret = sr_new_values(cnt, &vals);
+    if (ret != SR_ERR_OK)
+        throw_exception(ret);
+
+    p_vals = NULL;
+    _vals = vals;
+    _cnt = cnt;
+}
+Vals::Vals() {
+    p_vals = NULL;
+    _vals = NULL;
+    _cnt = 0;
+}
 Vals::~Vals() {
-    if (_vals != NULL)
+    if (_vals != NULL && p_vals == NULL)
         sr_free_values(_vals, _cnt);
     return;
 }
 shared_ptr<Val> Vals::val(size_t n) {
-    if (n >= _cnt)
+    if (n >= _cnt && _vals == NULL)
         return NULL;
 
     shared_ptr<Val> val(new Val(&_vals[n], false));
     return val;
+}
+shared_ptr<Vals> Vals::dup() {
+	sr_val_t *new_val = NULL;
+    int ret = sr_dup_values(_vals, _cnt, &new_val);
+    if (ret != SR_ERR_OK)
+        throw_exception(ret);
+
+    shared_ptr<Vals> vals(new Vals(new_val, _cnt));
+	return vals;
 }
 
 // Val_iter

@@ -89,7 +89,19 @@ public:
     Val(uint16_t uint16_val, sr_type_t type = SR_UINT16_T);
     Val(uint32_t uint32_val, sr_type_t type = SR_UINT32_T);
     Val(uint64_t uint64_val, sr_type_t type = SR_UINT64_T);
-    ~Val();
+   ~Val();
+    void set(const char *xpath, const char *val, sr_type_t type = SR_STRING_T);
+    void set(const char *xpath, bool bool_val, sr_type_t type = SR_BOOL_T);
+    void set(const char *xpath, double decimal64_val, sr_type_t type);
+    void set(const char *xpath, int8_t int8_val, sr_type_t type);
+    void set(const char *xpath, int16_t int16_val, sr_type_t type);
+    void set(const char *xpath, int32_t int32_val, sr_type_t type);
+    void set(const char *xpath, int64_t int64_val, sr_type_t type);
+    void set(const char *xpath, uint8_t uint8_val, sr_type_t type);
+    void set(const char *xpath, uint16_t uint16_val, sr_type_t type);
+    void set(const char *xpath, uint32_t uint32_val, sr_type_t type);
+    void set(const char *xpath, uint64_t uint64_val, sr_type_t type);
+    void set(const char *xpath, sr_type_t type);
     char *xpath() {return _val->xpath;};
     void xpath_set(char *data) {_val->xpath = data;};
     sr_type_t type() {return _val->type;};
@@ -97,6 +109,7 @@ public:
     void dflt_set(bool data) {_val->dflt = data;};
     shared_ptr<Data> data() {shared_ptr<Data> data(new Data(_val->data, _val->type)); return data;};
     sr_val_t *get() {return _val;};
+    shared_ptr<Val> dup();
 
 private:
     sr_val_t *_val;
@@ -118,17 +131,25 @@ private:
 };
 
 // class for list of sysrepo C structs sr_val_t
-class Vals
+class Vals:public Throw_Exception
 {
 public:
-    Vals(sr_val_t *vals, size_t cnt);
+    Vals(const sr_val_t *vals, const size_t cnt);
+    Vals(sr_val_t **vals, size_t *cnt, size_t n);
+    Vals(size_t cnt);
+    Vals();
     ~Vals();
     shared_ptr<Val> val(size_t n);
     size_t val_cnt() {return _cnt;};
+    size_t *p_val_cnt() {return &_cnt;};
+    sr_val_t *val() {return _vals;};
+    sr_val_t **p_val() {return &_vals;};
+    shared_ptr<Vals> dup();
 
 private:
     size_t _cnt;
     sr_val_t *_vals;
+    sr_val_t **p_vals;
 };
 
 class Val_Iter
