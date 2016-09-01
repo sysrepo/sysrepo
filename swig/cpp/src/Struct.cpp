@@ -28,6 +28,7 @@
 extern "C" {
 #include "sysrepo.h"
 #include "sysrepo/values.h"
+#include "sysrepo/trees.h"
 }
 
 using namespace std;
@@ -601,7 +602,7 @@ shared_ptr<Error> Errors::error(size_t n) {
 }
 
 // Node
-Node::Node(const sr_node_t *node) {_node = node;}
+Node::Node(const sr_node_t *node) {_node = (sr_node_t *) node;}
 Node::~Node() {return;}
 shared_ptr<Node> Node::parent() {
     if (_node->parent == NULL)
@@ -637,6 +638,46 @@ shared_ptr<Node> Node::last_child() {
 
     shared_ptr<Node> node(new Node(_node->last_child));
     return NULL;
+}
+void Node::new_tree(const char *root_name, const char *root_module_name) {
+    int ret = sr_new_tree(root_name, root_module_name, &_node);
+    if (ret != SR_ERR_OK) throw_exception(ret);
+}
+void Node::new_trees(size_t tree_cnt) {
+    int ret = sr_new_trees(tree_cnt, &_node);
+    if (ret != SR_ERR_OK) throw_exception(ret);
+}
+void Node::node_set_name(const char *name) {
+    int ret = sr_node_set_name(_node, name);
+    if (ret != SR_ERR_OK) throw_exception(ret);
+}
+void Node::node_set_module(const char *module_name) {
+    int ret = sr_node_set_module(_node, module_name);
+    if (ret != SR_ERR_OK) throw_exception(ret);
+}
+void Node::node_set_string(const char *string_val) {
+    int ret = sr_node_set_string(_node, string_val);
+    if (ret != SR_ERR_OK) throw_exception(ret);
+}
+void Node::node_add_child(const char *child_name, const char *child_module_name, shared_ptr<Node> child) {
+    int ret = sr_node_add_child(_node, child_name, child_module_name, child->get());
+    if (ret != SR_ERR_OK) throw_exception(ret);
+}
+shared_ptr<Node> Node::dup_tree() {
+    sr_node_t *tree_dup = NULL;
+    int ret = sr_dup_tree(_node, &tree_dup);
+    if (ret != SR_ERR_OK) throw_exception(ret);
+
+    shared_ptr<Node> dup(new Node(tree_dup));
+    return dup;
+}
+shared_ptr<Node> Node::dup_trees(size_t count) {
+    sr_node_t *tree_dup = NULL;
+    int ret = sr_dup_trees(_node, count, &tree_dup);
+    if (ret != SR_ERR_OK) throw_exception(ret);
+
+    shared_ptr<Node> dup(new Node(tree_dup));
+    return dup;
 }
 
 // Schema_Revision
