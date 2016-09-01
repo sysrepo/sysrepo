@@ -440,7 +440,6 @@ shared_ptr<Operation> Subscribe::get_change_next(shared_ptr<Iter_Change> iter, s
     }
 }
 
-/*
 void Subscribe::rpc_subscribe(const char *xpath, sr_rpc_cb callback, void *private_ctx, sr_subscr_options_t opts)
 {
     int ret = sr_rpc_subscribe(_sess->get(), xpath, callback, private_ctx, opts, &_sub);
@@ -449,15 +448,14 @@ void Subscribe::rpc_subscribe(const char *xpath, sr_rpc_cb callback, void *priva
     }
 }
 
-void Subscribe::rpc_send(const char *xpath, Values *input, Values *output)
+void Subscribe::rpc_send(const char *xpath, shared_ptr<Vals> input, shared_ptr<Vals> output)
 {
-    int ret = sr_rpc_send(_sess->get(), xpath, input->get_val(), *input->get_cnt(), &(output->get_val()),\
-                          output->get_cnt());
+    int ret = sr_rpc_send(_sess->get(), xpath, input->val(), input->val_cnt(), output->p_val(),\
+                          output->p_val_cnt());
     if (SR_ERR_OK != ret) {
         throw_exception(ret);
     }
 }
-*/
 
 void Subscribe::dp_get_items_subscribe(const char *xpath, sr_dp_get_items_cb callback, void *private_ctx,\
                                       sr_subscr_options_t opts)
