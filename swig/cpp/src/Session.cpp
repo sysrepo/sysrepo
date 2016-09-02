@@ -24,6 +24,7 @@
 #include <iostream>
 
 #include "Struct.h"
+#include "Tree.h"
 #include "Sysrepo.h"
 #include "Connection.h"
 #include "Session.h"
@@ -460,6 +461,15 @@ void Subscribe::rpc_send(const char *xpath, shared_ptr<Vals> input, shared_ptr<V
 {
     int ret = sr_rpc_send(_sess->get(), xpath, input->val(), input->val_cnt(), output->p_val(),\
                           output->p_val_cnt());
+    if (SR_ERR_OK != ret) {
+        throw_exception(ret);
+    }
+}
+
+void Subscribe::rpc_send_tree(const char *xpath, shared_ptr<Trees> input, shared_ptr<Trees> output)
+{
+    int ret = sr_rpc_send_tree(_sess->get(), xpath, input->trees(), input->tree_cnt(), output->p_trees(),\
+                          output->p_trees_cnt());
     if (SR_ERR_OK != ret) {
         throw_exception(ret);
     }

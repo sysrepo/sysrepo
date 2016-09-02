@@ -27,6 +27,7 @@
 #include <vector>
 
 #include "Struct.h"
+#include "Tree.h"
 #include "Sysrepo.h"
 #include "Connection.h"
 #include "Session.h"
@@ -102,6 +103,7 @@ public:
     void rpc_subscribe_tree(const char *xpath, sr_rpc_tree_cb callback, void *private_ctx = NULL,\
                             sr_subscr_options_t opts = SUBSCR_DEFAULT);
     void rpc_send(const char *xpath, shared_ptr<Vals> input, shared_ptr<Vals> output);
+    void rpc_send_tree(const char *xpath, shared_ptr<Trees> input, shared_ptr<Trees> output);
     void dp_get_items_subscribe(const char *xpath, sr_dp_get_items_cb callback, void *private_ctx, \
                                sr_subscr_options_t opts = SUBSCR_DEFAULT);
 
