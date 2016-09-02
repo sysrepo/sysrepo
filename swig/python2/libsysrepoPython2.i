@@ -127,6 +127,21 @@ public:
             Py_DECREF(result);
     }
 
+    void rpc_tree_cb(const char *xpath, const sr_node_t *input, const size_t input_cnt,\
+                         sr_node_t **output, size_t *output_cnt, void *private_ctx) {
+        PyObject *arglist;
+        PyObject *in =  SWIG_NewPointerObj(SWIG_as_voidptr(input), SWIGTYPE_p_sr_node_s, 0);
+        PyObject *out =  SWIG_NewPointerObj(SWIG_as_voidptr(output), SWIGTYPE_p_p_sr_node_s, 0);
+        PyObject *out_cnt =  SWIG_NewPointerObj(SWIG_as_voidptr(output_cnt), SWIGTYPE_p_size_t, 0);
+        PyObject *p =  SWIG_NewPointerObj(private_ctx, SWIGTYPE_p_void, 0);
+        arglist = Py_BuildValue("(sOiOOO)", xpath, in, input_cnt, out, out_cnt, p);
+        PyObject *result = PyEval_CallObject(_callback, arglist);
+        Py_DECREF(arglist);
+        if (result == NULL)
+            throw std::runtime_error("Python callback failed.\n");
+        else
+            Py_DECREF(result);
+    }
 
     void dp_get_items(const char *xpath, sr_val_t **values, size_t *values_cnt, void *private_ctx) {
         PyObject *arglist;
@@ -181,6 +196,15 @@ static int g_rpc_cb(const char *xpath, const sr_val_t *input, const size_t input
 {
     Wrap_cb *ctx = (Wrap_cb *) private_ctx;
     ctx->rpc_cb(xpath, input, input_cnt, output, output_cnt, ctx->private_ctx);
+
+    return SR_ERR_OK;
+}
+
+static int g_rpc_tree_cb(const char *xpath, const sr_node_t *input, const size_t input_cnt,\
+                         sr_node_t **output, size_t *output_cnt, void *private_ctx)
+{
+    Wrap_cb *ctx = (Wrap_cb *) private_ctx;
+    ctx->rpc_tree_cb(xpath, input, input_cnt, output, output_cnt, ctx->private_ctx);
 
     return SR_ERR_OK;
 }
@@ -293,6 +317,26 @@ static int g_dp_get_items_cb(const char *xpath, sr_val_t **values, size_t *value
             throw std::runtime_error(sr_strerror(ret));
         }
     }
+
+    void rpc_subscribe_tree(const char *xpath, PyObject *callback, void *private_ctx = NULL,\
+                       sr_subscr_options_t opts = SUBSCR_DEFAULT) {
+        Wrap_cb *class_ctx = NULL;
+        class_ctx = new Wrap_cb(callback);
+
+        if (class_ctx == NULL)
+            throw std::runtime_error("Ne enough space for helper class!\n");
+
+        self->wrap_cb_l.push_back(class_ctx);
+        class_ctx->private_ctx = private_ctx;
+
+        int ret = sr_rpc_subscribe_tree(self->swig_sess->get(), xpath, g_rpc_tree_cb, class_ctx, opts,\
+                                   &self->swig_sub);
+
+        if (SR_ERR_OK != ret) {
+            throw std::runtime_error(sr_strerror(ret));
+        }
+    }
+
 /*
     void dp_get_items_subscribe(const char *xpath, PyObject *callback, void *private_ctx, \
                                sr_subscr_options_t opts = SUBSCR_DEFAULT) {

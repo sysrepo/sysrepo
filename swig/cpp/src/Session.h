@@ -98,6 +98,9 @@ public:
                                      shared_ptr<Val_Holder> old_value);
     void rpc_subscribe(const char *xpath, sr_rpc_cb callback, void *private_ctx = NULL,\
                        sr_subscr_options_t opts = SUBSCR_DEFAULT);
+
+    void rpc_subscribe_tree(const char *xpath, sr_rpc_tree_cb callback, void *private_ctx = NULL,\
+                            sr_subscr_options_t opts = SUBSCR_DEFAULT);
     void rpc_send(const char *xpath, shared_ptr<Vals> input, shared_ptr<Vals> output);
     void dp_get_items_subscribe(const char *xpath, sr_dp_get_items_cb callback, void *private_ctx, \
                                sr_subscr_options_t opts = SUBSCR_DEFAULT);
