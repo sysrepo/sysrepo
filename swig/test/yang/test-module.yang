@@ -1,0 +1,254 @@
+module test-module {
+  namespace "urn:ietf:params:xml:ns:yang:test-module";
+  prefix tm;
+
+  organization "organization";
+  description
+    "example yang module";
+  contact
+    "example@example.org";
+
+  container main {
+    leaf enum {
+      type enumeration {
+        enum "yes" {
+          value 1;
+        }
+        enum "no" {
+          value 2;
+        }
+        enum "maybe" {
+          value 3;
+        }
+      }
+    }
+    leaf options {
+      type bits {
+        bit strict;
+        bit recursive;
+        bit logging;
+      }
+    }
+    leaf raw {
+      type binary;
+    }
+    leaf dec64 {
+      type decimal64{
+         fraction-digits 2;
+      }
+    }
+    leaf i8 {
+      type int8;
+    }
+    leaf i16 {
+      type int16;
+    }
+    leaf i32 {
+      type int32;
+    }
+    leaf i64 {
+      type int64;
+    }
+    leaf ui8 {
+      type uint8;
+    }
+    leaf ui16 {
+      type uint16;
+    }
+    leaf ui32 {
+      type uint32;
+    }
+    leaf ui64 {
+      type uint64;
+    }
+    leaf empty {
+      type empty;
+    }
+    leaf boolean {
+      type boolean;
+    }
+    leaf string {
+      type string;
+    }
+    leaf id_ref {
+      type identityref{
+        base base_id;
+      }
+    }
+    leaf-list numbers {
+      type uint8;
+    }
+  }
+
+  identity base_id;
+
+  identity id_1 {
+    base base_id;
+  }
+
+  identity id_2 {
+    base base_id;
+  }
+
+  list list {
+    key "key";
+    leaf key {
+      type string;
+    }
+    leaf id_ref {
+      type identityref{
+        base base_id;
+      }
+    }
+    leaf union {
+      type union{
+          type uint8;
+          type enumeration {
+              enum "infinity";
+          }
+      }
+    }
+    container wireless{
+        presence "wireless is enabled";
+        leaf vendor_name{
+          type string;
+        }
+    }
+  }
+
+  container transfer {
+    choice how {
+        default interval;
+        case interval {
+            leaf interval {
+                type uint16;
+                default 30;
+                units minutes;
+            }
+        }
+        case daily {
+            leaf daily {
+                type empty;
+            }
+            leaf time-of-day {
+                type string;
+                units 24-hour-clock;
+                default 1am;
+            }
+        }
+        case manual {
+            leaf manual {
+                type empty;
+            }
+        }
+    }
+  }
+
+  container location {
+    presence true;
+    leaf name {
+        type string;
+    }
+
+    leaf longitude {
+        type string;
+        mandatory true;
+    }
+
+    leaf latitude {
+        type string;
+        mandatory true;
+    }
+  }
+
+  leaf hexnumber{
+    type string {
+            length "0..4";
+            pattern "[0-9a-fA-F]*";
+        }
+  }
+
+  container interface {
+    leaf ifType {
+        type enumeration {
+          enum ethernet;
+            enum atm;
+        }
+    }
+    leaf ifMTU {
+        type uint32;
+    }
+    must "ifType != 'ethernet' or " +
+         "(ifType = 'ethernet' and ifMTU = 1500)" {
+         error-message "An ethernet MTU must be 1500";
+    }
+    must "ifType != 'atm' or " +
+         "(ifType = 'atm' and ifMTU <= 17966 and ifMTU >= 64)" {
+         error-message "An atm MTU must be  64 .. 17966";
+    }
+ }
+
+  list user {
+    description "This is a list of users in the system.";
+    ordered-by user;
+    config true;
+
+    key "name";
+
+    leaf name {
+        type string;
+    }
+    leaf type {
+        type string;
+    }
+    leaf full-name {
+        type string;
+    }
+  }
+
+  leaf-list ordered-numbers {
+    ordered-by user;
+    type uint8;
+  }
+
+  list with_def {
+    config true;
+    key "name";
+    leaf name {
+        type string;
+    }
+    leaf num {
+        type int8;
+        default 0;
+    }
+  }
+ 
+  rpc activate-software-image {
+    input {
+      leaf image-name {
+        type string;
+      }
+      leaf location {
+        type string;
+        default "/";
+      }
+    }
+    output {
+      leaf status {
+        type string;
+      }
+      leaf version {
+        type string;
+      }
+      leaf location {
+        type string;
+        default "/";
+      }
+    }
+  }
+
+  leaf top-level-default {
+    type string;
+    default "default value";
+  }
+}

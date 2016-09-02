@@ -1,0 +1,11 @@
+<main xmlns="urn:ietf:params:xml:ns:yang:test-module">
+	<enum>yes</enum>
+	<i8>2</i8>
+	<i16>2</i16>
+	<i32>2</i32>
+	<i64>2</i64>
+	<ui8>2</ui8>
+	<ui16>2</ui16>
+	<ui32>2</ui32>
+	<ui64>2</ui64>
+</main>
