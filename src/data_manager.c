@@ -3123,6 +3123,7 @@ dm_validate_rpc(dm_ctx_t *dm_ctx, dm_session_t *session, const char *rpc_xpath, 
     char *string_value = NULL, *tmp_xpath = NULL;
     struct ly_set *ly_nodes = NULL;
     int ret = 0, rc = SR_ERR_OK;
+    int allow_update = 0;
 
     args = *args_p;
     arg_cnt = *arg_cnt_p;
@@ -3153,10 +3154,13 @@ dm_validate_rpc(dm_ctx_t *dm_ctx, dm_session_t *session, const char *rpc_xpath, 
                 break;
             }
         }
+
+        allow_update = (LYS_LIST == sch_node->nodetype || sr_is_key_node(sch_node)) ? LYD_PATH_OPT_UPDATE : 0;
+
         /* create the argument node in the tree */
-        new_node = lyd_new_path(data_tree, dm_ctx->ly_ctx, args[i].xpath, string_value, (input ? 0 : LYD_PATH_OPT_OUTPUT));
+        new_node = lyd_new_path(data_tree, dm_ctx->ly_ctx, args[i].xpath, string_value, (input ? allow_update : allow_update | LYD_PATH_OPT_OUTPUT));
         free(string_value);
-        if (NULL == new_node) {
+        if (NULL == new_node && !allow_update) {
             SR_LOG_ERR("Unable to add new RPC argument '%s': %s.", args[i].xpath, ly_errmsg());
             rc = dm_report_error(session, ly_errmsg(), ly_errpath(), SR_ERR_VALIDATION_FAILED);
             break;
