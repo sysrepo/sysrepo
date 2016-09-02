@@ -67,6 +67,19 @@ public:
     uint16_t get_uint16();
     uint32_t get_uint32();
     uint64_t get_uint64();
+    void set(const char *xpath, const char *val, sr_type_t type = SR_STRING_T);
+    void set(const char *xpath, bool bool_val, sr_type_t type = SR_BOOL_T);
+    void set(const char *xpath, double decimal64_val, sr_type_t type);
+    void set(const char *xpath, int8_t int8_val, sr_type_t type);
+    void set(const char *xpath, int16_t int16_val, sr_type_t type);
+    void set(const char *xpath, int32_t int32_val, sr_type_t type);
+    void set(const char *xpath, int64_t int64_val, sr_type_t type);
+    void set(const char *xpath, uint8_t uint8_val, sr_type_t type);
+    void set(const char *xpath, uint16_t uint16_val, sr_type_t type);
+    void set(const char *xpath, uint32_t uint32_val, sr_type_t type);
+    void set(const char *xpath, uint64_t uint64_val, sr_type_t type);
+    void set(const char *xpath, sr_type_t type);
+
 
 private:
     sr_data_t _d;
@@ -223,6 +236,18 @@ public:
     void set_string(const char *string_val);
     void add_child(const char *child_name, const char *child_module_name, shared_ptr<Node> child);
     sr_node_t **get() {return &_node;};
+    void set(const char *val, sr_type_t type = SR_STRING_T);
+    void set(bool bool_val, sr_type_t type = SR_BOOL_T);
+    void set(double decimal64_val, sr_type_t type);
+    void set(int8_t int8_val, sr_type_t type);
+    void set(int16_t int16_val, sr_type_t type);
+    void set(int32_t int32_val, sr_type_t type);
+    void set(int64_t int64_val, sr_type_t type);
+    void set(uint8_t uint8_val, sr_type_t type);
+    void set(uint16_t uint16_val, sr_type_t type);
+    void set(uint32_t uint32_val, sr_type_t type);
+    void set(uint64_t uint64_val, sr_type_t type);
+    void set(sr_type_t type);
 
 private:
     sr_node_t *_node;
