@@ -40,7 +40,7 @@ static void
 sysrepoctl_test_version(void **state)
 {
     exec_shell_command("../src/sysrepoctl -v",
-                       "^sysrepoctl - sysrepo control tool, version [0-9]\\.[0-9]\\.[0-9]\\s*$", true, 0);
+                       "^sysrepoctl - sysrepo control tool, version [0-9]\\.[0-9]\\.[0-9][0-9]\\s*$", true, 0);
 }
 
 static void
