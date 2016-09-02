@@ -20,6 +20,7 @@
  */
 
 #include <iostream>
+#include <memory>
 
 #include "Session.h"
 
@@ -32,18 +33,18 @@ main(int argc, char **argv)
         Logs log;
         log.set_stderr(SR_LL_DBG);
 
-        Connection conn("app1");
+	shared_ptr<Connection> conn(new Connection("app1"));
 
-        Session sess(conn);
+        shared_ptr<Session> sess(new Session(conn));
 
         const char *xpath = "/ietf-interfaces:interfaces/interface[name='eth0']/enabled";
 
-	Value value;
+        auto value = sess->get_item(xpath);
+        if (value == NULL)
+            return 0;
 
-        sess.get_item(xpath, &value);
-
-        cout << endl << "Value on xpath: " << value.get_xpath() << " = "\
-             << (value.get_bool() ? "true" : "false") << endl << endl;
+        cout << endl << "Value on xpath: " << value->xpath() << " = "\
+             << (value->data()->get_bool() ? "true" : "false") << endl << endl;
     } catch( const std::exception& e ) {
         cout << e.what() << endl;
     }

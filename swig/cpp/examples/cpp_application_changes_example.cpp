@@ -35,12 +35,12 @@ using namespace std;
 volatile int exit_application = 0;
 
 void
-print_value(Values *value)
+print_value(shared_ptr<Val> value)
 {
-    cout << value->get_xpath();
+    cout << value->xpath();
     cout << " ";
 
-    switch (value->get_type()) {
+    switch (value->type()) {
     case SR_CONTAINER_T:
     case SR_CONTAINER_PRESENCE_T:
         cout << "(container)" << endl;
@@ -49,25 +49,25 @@ print_value(Values *value)
         cout << "(list instance)" << endl;
         break;
     case SR_STRING_T:
-        cout << "= " << value->get_string() << endl;;
+        cout << "= " << value->data()->get_string() << endl;;
         break;
     case SR_BOOL_T:
-	if (value->get_bool())
+	if (value->data()->get_bool())
             cout << "= true" << endl;
 	else
             cout << "= false" << endl;
         break;
     case SR_UINT8_T:
-        cout << "= " << unsigned(value->get_uint8()) << endl;
+        cout << "= " << unsigned(value->data()->get_uint8()) << endl;
         break;
     case SR_UINT16_T:
-        cout << "= " << unsigned(value->get_uint16()) << endl;
+        cout << "= " << unsigned(value->data()->get_uint16()) << endl;
         break;
     case SR_UINT32_T:
-        cout << "= " << unsigned(value->get_uint32()) << endl;
+        cout << "= " << unsigned(value->data()->get_uint32()) << endl;
         break;
     case SR_IDENTITYREF_T:
-        cout << "= " << value->get_identityref() << endl;
+        cout << "= " << value->data()->get_identityref() << endl;
         break;
     default:
         cout << "(unprintable)" << endl;
@@ -76,8 +76,8 @@ print_value(Values *value)
 }
 
 static void
-print_change(sr_change_oper_t op, Values *old_val, Values *new_val) {
-    switch(op) {
+print_change(shared_ptr<Operation> op, shared_ptr<Val> old_val, shared_ptr<Val> new_val) {
+    switch(op->get()) {
     case SR_OP_CREATED:
         if (NULL != new_val) {
            printf("CREATED: ");
@@ -101,27 +101,25 @@ print_change(sr_change_oper_t op, Values *old_val, Values *new_val) {
 	break;
     case SR_OP_MOVED:
         if (NULL != new_val) {
-	    cout<<"MOVED: " << new_val->get_xpath() << " after " << old_val->get_xpath() << endl;
+	    cout<<"MOVED: " << new_val->xpath() << " after " << old_val->xpath() << endl;
         }
 	break;
     }
 }
 
 static void
-print_current_config(Session *session, const char *module_name)
+print_current_config(shared_ptr<Session> session, const char *module_name)
 {
     char select_xpath[MAX_LEN];
     try {
-        Values values;
-
         snprintf(select_xpath, MAX_LEN, "/%s:*//*", module_name);
 
-        session->get_items(&select_xpath[0], &values);
+        auto values = session->get_items(&select_xpath[0]);
+        if (values == NULL)
+            return;
 
-        do {
-            print_value(&values);
-        } while (values.Next());
-
+        for(unsigned int i = 0; i < values->val_cnt(); i++)
+            print_value(values->val(i));
     } catch( const std::exception& e ) {
         cout << e.what() << endl;
     }
@@ -131,32 +129,27 @@ static int
 module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t event, void *private_ctx)
 {
     char change_path[MAX_LEN];
-    Values old_value;
-    Values new_value;
-    Iter_Change it;
+    shared_ptr<Val_Holder> old_value(new Val_Holder());
+    shared_ptr<Val_Holder> new_value(new Val_Holder());
 
     try {
-        Session sess(session);
+        shared_ptr<Session> sess(new Session(session));
 
         printf("\n\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: ==========\n\n");
 
-        print_current_config(&sess, module_name);
+        print_current_config(sess, module_name);
 
         printf("\n\n ========== CHANGES: =============================================\n\n");
 
         snprintf(change_path, MAX_LEN, "/%s:*", module_name);
 
-        Subscribe subscribe(&sess);
-        subscribe.get_changes_iter(&change_path[0], &it);
+        shared_ptr<Subscribe> subscribe(new Subscribe(sess));
+        auto it = subscribe->get_changes_iter(&change_path[0]);
 
-	while (true) {
-            try {
-                sr_change_oper_t oper = subscribe.get_change_next(&it, &old_value, &new_value);
-                print_change(oper, &old_value, &new_value);
-            } catch( const std::exception& e ) {
-                break;
-            }
+        while (auto oper = subscribe->get_change_next(it, old_value, new_value)) {
+            print_change(oper, old_value->val(), new_value->val());
         }
+
         printf("\n\n ========== END OF CHANGES =======================================\n\n");
 
     } catch( const std::exception& e ) {
@@ -185,19 +178,19 @@ main(int argc, char **argv)
 
         printf("Application will watch for changes in %s\n", module_name);
         /* connect to sysrepo */
-        Connection conn("example_application");
+        shared_ptr<Connection> conn(new Connection("example_application"));
 
         /* start session */
-        Session sess(conn);
+        shared_ptr<Session> sess(new Session(conn));
 
-	/* subscribe for changes in running config */
-        Subscribe subscribe(&sess);
+        /* subscribe for changes in running config */
+        shared_ptr<Subscribe> subscribe(new Subscribe(sess));
 
-	subscribe.module_change_subscribe(module_name, module_change_cb);
+        subscribe->module_change_subscribe(module_name, module_change_cb);
 
         /* read startup config */
         printf("\n\n ========== READING STARTUP CONFIG: ==========\n\n");
-        print_current_config(&sess, module_name);
+        print_current_config(sess, module_name);
 
         cout << "\n\n ========== STARTUP CONFIG APPLIED AS RUNNING ==========\n" << endl;
 

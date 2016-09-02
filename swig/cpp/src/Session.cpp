@@ -20,10 +20,11 @@
  */
 
 #include <stdexcept>
+#include <memory>
 #include <iostream>
 
+#include "Struct.h"
 #include "Sysrepo.h"
-#include "Value.h"
 #include "Connection.h"
 #include "Session.h"
 
@@ -33,7 +34,7 @@ extern "C" {
 
 using namespace std;
 
-Session::Session(Connection& conn, sr_datastore_t datastore, const sr_conn_options_t opts, \
+Session::Session(shared_ptr<Connection> conn, sr_datastore_t datastore, const sr_conn_options_t opts, \
 		 const char *user_name)
 {
     int ret;
@@ -42,13 +43,13 @@ Session::Session(Connection& conn, sr_datastore_t datastore, const sr_conn_optio
 
     if (user_name == NULL) {
         /* start session */
-        ret = sr_session_start(conn.get_conn(), _datastore, _opts, &_sess);
+        ret = sr_session_start(conn->get_conn(), _datastore, _opts, &_sess);
         if (SR_ERR_OK != ret) {
             goto cleanup;
         }
     } else {
         /* start session */
-        ret = sr_session_start_user(conn.get_conn(), user_name, _datastore, _opts, &_sess);
+        ret = sr_session_start_user(conn->get_conn(), user_name, _datastore, _opts, &_sess);
         if (SR_ERR_OK != ret) {
             goto cleanup;
         }
@@ -61,9 +62,10 @@ cleanup:
     return;
 }
 
-Session::Session(sr_session_ctx_t *sess)
+Session::Session(sr_session_ctx_t *sess, sr_conn_options_t opts)
 {
     _sess = sess;
+    _opts = opts;
 }
 
 void Session::session_stop()
@@ -82,92 +84,135 @@ void Session::session_switch_ds(sr_datastore_t ds)
     }
 }
 
-void Session::get_last_error(Errors& err)
+shared_ptr<Error> Session::get_last_error()
 {
-    int ret = sr_get_last_error(_sess, &err.info);
+    const sr_error_info_t *info;
+
+    int ret = sr_get_last_error(_sess, &info);
     if (ret != SR_ERR_OK) {
         throw_exception(ret);
     }
+
+    shared_ptr<Error> error(new Error(info));
+    return error;
 }
 
-void Session::get_last_errors(Errors& err)
+shared_ptr<Errors> Session::get_last_errors()
 {
-    int ret = sr_get_last_errors(_sess, &err.info, &err.cnt);
+    size_t cnt;
+    const sr_error_info_t *info;
+
+    int ret = sr_get_last_errors(_sess, &info, &cnt);
     if (ret != SR_ERR_OK) {
         throw_exception(ret);
     }
+
+    shared_ptr<Errors> error(new Errors(info, cnt));
+    return error;
 }
 
-void Session::list_schemas(Schema& schema)
+shared_ptr<Schemas> Session::list_schemas()
 {
-    int ret = sr_list_schemas(_sess, &schema.sch, &schema.cnt);
-    if (ret != SR_ERR_OK) {
+    sr_schema_t *sch;
+    size_t cnt;
+
+    int ret = sr_list_schemas(_sess, &sch, &cnt);
+    if (SR_ERR_OK == ret) {
+        shared_ptr<Schemas> schema(new Schemas(sch, cnt));
+        return schema;
+    } else if (SR_ERR_NOT_FOUND == ret) {
+        return NULL;
+    } else {
         throw_exception(ret);
+        return NULL;
     }
 }
 
-void Session::get_schema(Schema& schema, const char *module_name, const char *revision,
-                         const char *submodule_name,  sr_schema_format_t format)
+shared_ptr<Schema_Content> Session::get_schema(const char *module_name, const char *revision,\
+                               const char *submodule_name, sr_schema_format_t format)
 {
-    int ret = sr_get_schema(_sess, module_name, revision, submodule_name, format, &schema.content);
-    if (ret != SR_ERR_OK) {
+    char *content;
+
+    int ret = sr_get_schema(_sess, module_name, revision, submodule_name, format, &content);
+    if (SR_ERR_OK == ret) {
+        shared_ptr<Schema_Content> con(new Schema_Content(content));
+        return con;
+    } else if (SR_ERR_NOT_FOUND == ret) {
+        return NULL;
+    } else {
         throw_exception(ret);
+        return NULL;
     }
 }
 
-void Session::get_item(const char *xpath, Value *value)
+shared_ptr<Val> Session::get_item(const char *xpath)
 {
-
     sr_val_t *tmp_val = NULL;
 
     int ret = sr_get_item(_sess, xpath, &tmp_val);
-    if (ret != SR_ERR_OK) {
+    if (SR_ERR_OK == ret) {
+        shared_ptr<Val> value(new Val(&tmp_val[0]));
+        return value;
+    } else if (SR_ERR_NOT_FOUND == ret) {
+        return NULL;
+    } else {
         throw_exception(ret);
+        return NULL;
     }
-
-    value->Set(&tmp_val[0]);
 }
-
-void Session::get_items_iter(const char *xpath, Iter_Value *iter)
-{
-    sr_val_iter_t *tmp_iter = NULL;
-
-    int ret = sr_get_items_iter(_sess, xpath, &tmp_iter);
-    if (ret != SR_ERR_OK) {
-        throw_exception(ret);
-    }
-
-    iter->Set(tmp_iter);
-}
-
-void Session::get_items(const char *xpath, Values *values)
+shared_ptr<Vals> Session::get_items(const char *xpath)
 {
     sr_val_t *tmp_val = NULL;
     size_t tmp_cnt = 0;
 
     int ret = sr_get_items(_sess, xpath, &tmp_val, &tmp_cnt);
-    if (ret != SR_ERR_OK) {
+    if (SR_ERR_OK == ret) {
+        shared_ptr<Vals> values(new Vals(tmp_val, tmp_cnt));
+        return values;
+    } else if (SR_ERR_NOT_FOUND == ret) {
+        return NULL;
+    } else {
         throw_exception(ret);
+        return NULL;
     }
-
-    values->Set(tmp_val, tmp_cnt);
 }
 
-bool Session::get_item_next(Iter_Value *iter, Value *value)
+shared_ptr<Iter_Value> Session::get_items_iter(const char *xpath)
 {
+    sr_val_iter_t *tmp_iter = NULL;
+
+    int ret = sr_get_items_iter(_sess, xpath, &tmp_iter);
+    if (SR_ERR_OK == ret) {
+        shared_ptr<Iter_Value> iter(new Iter_Value(tmp_iter));
+        return iter;
+    } else if (SR_ERR_NOT_FOUND == ret) {
+        return NULL;
+    } else {
+        throw_exception(ret);
+        return NULL;
+    }
+}
+
+shared_ptr<Val> Session::get_item_next(shared_ptr<Iter_Value> iter)
+{
+    int ret = SR_ERR_OK;
     sr_val_t *tmp_val = NULL;
 
-    if (SR_ERR_OK == sr_get_item_next(_sess, iter->Get(), &tmp_val)){
-        value->Set(tmp_val);
-        return true;
+    ret = sr_get_item_next(_sess, iter->get(), &tmp_val);
+    if (SR_ERR_OK == ret) {
+        shared_ptr<Val> value(new Val(tmp_val));
+        return value;
+    } else if (SR_ERR_NOT_FOUND == ret) {
+        return NULL;
+    } else {
+        throw_exception(ret);
+	return NULL;
     }
-
-    return false;
 }
 
-void Session::set_item(const char *xpath, Value& value, const sr_edit_options_t opts)
+void Session::set_item(const char *xpath, shared_ptr<Val> value, const sr_edit_options_t opts)
 {
-    int ret = sr_set_item(_sess, xpath, *value.Get(), opts);
+    int ret = sr_set_item(_sess, xpath, value->get(), opts);
     if (ret != SR_ERR_OK) {
         throw_exception(ret);
     }
@@ -272,12 +317,19 @@ void Session::copy_config(const char *module_name, sr_datastore_t src_datastore,
     }
 }
 
+void Session::set_options(const sr_sess_options_t opts)
+{
+    int ret = sr_session_set_options(_sess, opts);
+    if (ret != SR_ERR_OK) {
+        throw_exception(ret);
+    }
+}
 
-Subscribe::Subscribe(Session *sess)
+Subscribe::Subscribe(shared_ptr<Session> sess)
 {
     _sub = NULL;
     _sess = sess;
-#ifndef SWIG
+#ifdef SWIG
     swig_sub = _sub;
     swig_sess = _sess;
 #endif
@@ -286,7 +338,7 @@ Subscribe::Subscribe(Session *sess)
 void Subscribe::d_Subscribe()
 {
     if (_sub) {
-        int ret = sr_unsubscribe(_sess->Get(), _sub);
+        int ret = sr_unsubscribe(_sess->get(), _sub);
         if (ret != SR_ERR_OK) {
             throw_exception(ret);
         }
@@ -294,7 +346,7 @@ void Subscribe::d_Subscribe()
     }
 }
 
-#ifndef SWIG
+#ifdef SWIG
 void Subscribe::Destructor_Subscribe()
 {
     d_Subscribe();
@@ -306,7 +358,7 @@ Subscribe::~Subscribe()
 }
 #endif
 
-sr_session_ctx_t *Session::Get()
+sr_session_ctx_t *Session::get()
 {
     return _sess;
 }
@@ -314,7 +366,7 @@ sr_session_ctx_t *Session::Get()
 void Subscribe::module_change_subscribe(const char *module_name, sr_module_change_cb callback, \
                                         void *private_ctx, uint32_t priority, sr_subscr_options_t opts)
 {
-    int ret = sr_module_change_subscribe(_sess->Get(), module_name, callback, private_ctx, priority, opts, &_sub);
+    int ret = sr_module_change_subscribe(_sess->get(), module_name, callback, private_ctx, priority, opts, &_sub);
     if (SR_ERR_OK != ret) {
         throw_exception(ret);
     }
@@ -323,7 +375,7 @@ void Subscribe::module_change_subscribe(const char *module_name, sr_module_chang
 void Subscribe::subtree_change_subscribe(const char *xpath, sr_subtree_change_cb callback, void *private_ctx, \
                                         uint32_t priority, sr_subscr_options_t opts)
 {
-    int ret = sr_subtree_change_subscribe(_sess->Get(), xpath, callback, private_ctx, priority, opts, &_sub);
+    int ret = sr_subtree_change_subscribe(_sess->get(), xpath, callback, private_ctx, priority, opts, &_sub);
     if (SR_ERR_OK != ret) {
         throw_exception(ret);
     }
@@ -331,7 +383,7 @@ void Subscribe::subtree_change_subscribe(const char *xpath, sr_subtree_change_cb
 
 void Subscribe::module_install_subscribe(sr_module_install_cb callback, void *private_ctx, sr_subscr_options_t opts)
 {
-    int ret = sr_module_install_subscribe(_sess->Get(), callback, private_ctx, opts, &_sub);
+    int ret = sr_module_install_subscribe(_sess->get(), callback, private_ctx, opts, &_sub);
     if (SR_ERR_OK != ret) {
         throw_exception(ret);
     }
@@ -339,7 +391,7 @@ void Subscribe::module_install_subscribe(sr_module_install_cb callback, void *pr
 
 void Subscribe::feature_enable_subscribe(sr_feature_enable_cb callback, void *private_ctx, sr_subscr_options_t opts)
 {
-    int ret = sr_feature_enable_subscribe(_sess->Get(), callback, private_ctx, opts, &_sub);
+    int ret = sr_feature_enable_subscribe(_sess->get(), callback, private_ctx, opts, &_sub);
     if (SR_ERR_OK != ret) {
         throw_exception(ret);
     }
@@ -347,7 +399,7 @@ void Subscribe::feature_enable_subscribe(sr_feature_enable_cb callback, void *pr
 
 void Subscribe::unsubscribe()
 {
-    int ret = sr_unsubscribe(_sess->Get(), _sub);
+    int ret = sr_unsubscribe(_sess->get(), _sub);
     if (SR_ERR_OK != ret) {
         throw_exception(ret);
     }
@@ -355,35 +407,43 @@ void Subscribe::unsubscribe()
     _sub = NULL;
 }
 
-void Subscribe::get_changes_iter(const char *xpath, Iter_Change *iter)
+shared_ptr<Iter_Change> Subscribe::get_changes_iter(const char *xpath)
 {
     sr_change_iter_t *tmp_iter = NULL;
 
-    int ret = sr_get_changes_iter(_sess->Get(), xpath, &tmp_iter);
-    if (SR_ERR_OK != ret) {
+    int ret = sr_get_changes_iter(_sess->get(), xpath, &tmp_iter);
+    if (SR_ERR_OK == ret) {
+        shared_ptr<Iter_Change> iter(new Iter_Change(tmp_iter));
+        return iter;
+    } else if (SR_ERR_NOT_FOUND == ret) {
+        return NULL;
+    } else {
         throw_exception(ret);
+        return NULL;
     }
-
-    iter->Set(tmp_iter);
 }
 
-sr_change_oper_t Subscribe::get_change_next(Iter_Change *iter, Values *new_value, Values *old_value)
+shared_ptr<Operation> Subscribe::get_change_next(shared_ptr<Iter_Change> iter, shared_ptr<Val_Holder> new_value,\
+                                            shared_ptr<Val_Holder> old_value)
 {
     sr_change_oper_t operation;
 
-    int ret = sr_get_change_next(_sess->Get(), iter->Get(), &operation, new_value->Get(), old_value->Get());
-    if (SR_ERR_OK != ret) {
+    int ret = sr_get_change_next(_sess->get(), iter->get(), &operation, new_value->get(), old_value->get());
+    if (SR_ERR_OK == ret) {
+        shared_ptr<Operation> oper(new Operation(operation));
+        return oper;
+    } else if (SR_ERR_NOT_FOUND == ret) {
+        return NULL;
+    } else {
         throw_exception(ret);
+        return NULL;
     }
-
-    return operation;
 }
 
 /*
 void Subscribe::rpc_subscribe(const char *xpath, sr_rpc_cb callback, void *private_ctx, sr_subscr_options_t opts)
 {
-
-    int ret = sr_rpc_subscribe(_sess->Get(), xpath, callback, private_ctx, opts, &_sub);
+    int ret = sr_rpc_subscribe(_sess->get(), xpath, callback, private_ctx, opts, &_sub);
     if (SR_ERR_OK != ret) {
         throw_exception(ret);
     }
@@ -391,8 +451,8 @@ void Subscribe::rpc_subscribe(const char *xpath, sr_rpc_cb callback, void *priva
 
 void Subscribe::rpc_send(const char *xpath, Values *input, Values *output)
 {
-    int ret = sr_rpc_send(_sess->Get(), xpath, input->Get_val(), *input->Get_cnt(), &(output->Get_val()),\
-                          output->Get_cnt());
+    int ret = sr_rpc_send(_sess->get(), xpath, input->get_val(), *input->get_cnt(), &(output->get_val()),\
+                          output->get_cnt());
     if (SR_ERR_OK != ret) {
         throw_exception(ret);
     }
@@ -402,7 +462,7 @@ void Subscribe::rpc_send(const char *xpath, Values *input, Values *output)
 void Subscribe::dp_get_items_subscribe(const char *xpath, sr_dp_get_items_cb callback, void *private_ctx,\
                                       sr_subscr_options_t opts)
 {
-    int ret =  sr_dp_get_items_subscribe(_sess->Get(), xpath, callback, private_ctx, opts, &_sub);
+    int ret =  sr_dp_get_items_subscribe(_sess->get(), xpath, callback, private_ctx, opts, &_sub);
     if (SR_ERR_OK != ret) {
         throw_exception(ret);
     }

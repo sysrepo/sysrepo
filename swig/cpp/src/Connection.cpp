@@ -60,4 +60,3 @@ Connection::~Connection()
         sr_disconnect(_conn);
     }
 }
-

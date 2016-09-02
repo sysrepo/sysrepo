@@ -29,19 +29,18 @@ int
 main(int argc, char **argv)
 {
     try {
-        Connection conn("app2");
+        shared_ptr<Connection> conn(new Connection("app2"));
 
-        Session sess(conn);
+        shared_ptr<Session> sess(new Session(conn));
 
         const char *xpath = "/ietf-interfaces:interfaces/interface";
 
-	Values values;
-	sess.get_items(xpath, &values);
+	auto values = sess->get_items(xpath);
+        if (values == NULL)
+            return 0;
 
-        do {
-            cout << values.get_xpath() << endl;
-        } while (values.Next());
-
+	for(unsigned int i = 0; i < values->val_cnt(); i++)
+            cout << values->val(i)->xpath() << endl;
     } catch( const std::exception& e ) {
         cout << e.what() << endl;
     }
