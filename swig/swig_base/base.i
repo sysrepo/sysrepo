@@ -25,6 +25,8 @@
 %shared_ptr(Val)
 %shared_ptr(Val_Holder)
 %shared_ptr(Vals)
+%shared_ptr(Tree)
+%shared_ptr(Trees)
 
 %include "../swig_base/sysrepo.i"
 %include "../swig_base/structs.i"

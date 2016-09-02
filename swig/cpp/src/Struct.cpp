@@ -562,7 +562,7 @@ Vals::~Vals() {
     return;
 }
 shared_ptr<Val> Vals::val(size_t n) {
-    if (n >= _cnt && _vals == NULL)
+    if (n >= _cnt || _vals == NULL)
         return NULL;
 
     shared_ptr<Val> val(new Val(&_vals[n], false));
@@ -639,45 +639,26 @@ shared_ptr<Node> Node::last_child() {
     shared_ptr<Node> node(new Node(_node->last_child));
     return NULL;
 }
-void Node::new_tree(const char *root_name, const char *root_module_name) {
-    int ret = sr_new_tree(root_name, root_module_name, &_node);
-    if (ret != SR_ERR_OK) throw_exception(ret);
-}
-void Node::new_trees(size_t tree_cnt) {
-    int ret = sr_new_trees(tree_cnt, &_node);
-    if (ret != SR_ERR_OK) throw_exception(ret);
-}
-void Node::node_set_name(const char *name) {
+void Node::set_name(const char *name) {
+    if (_node == NULL) throw_exception(SR_ERR_DATA_MISSING);
     int ret = sr_node_set_name(_node, name);
     if (ret != SR_ERR_OK) throw_exception(ret);
 }
-void Node::node_set_module(const char *module_name) {
-    int ret = sr_node_set_module(_node, module_name);
-    if (ret != SR_ERR_OK) throw_exception(ret);
+void Node::set_module(const char *module_name) {
+    if (_node == NULL) throw_exception(SR_ERR_DATA_MISSING);
+    _node->module_name = (char *) module_name;
+    //int ret = sr_node_set_module(_node, module_name);
+    //if (ret != SR_ERR_OK) throw_exception(ret);
 }
-void Node::node_set_string(const char *string_val) {
+void Node::set_string(const char *string_val) {
+    if (_node == NULL) throw_exception(SR_ERR_DATA_MISSING);
     int ret = sr_node_set_string(_node, string_val);
     if (ret != SR_ERR_OK) throw_exception(ret);
 }
-void Node::node_add_child(const char *child_name, const char *child_module_name, shared_ptr<Node> child) {
+void Node::add_child(const char *child_name, const char *child_module_name, shared_ptr<Node> child) {
+    if (_node == NULL) throw_exception(SR_ERR_DATA_MISSING);
     int ret = sr_node_add_child(_node, child_name, child_module_name, child->get());
     if (ret != SR_ERR_OK) throw_exception(ret);
-}
-shared_ptr<Node> Node::dup_tree() {
-    sr_node_t *tree_dup = NULL;
-    int ret = sr_dup_tree(_node, &tree_dup);
-    if (ret != SR_ERR_OK) throw_exception(ret);
-
-    shared_ptr<Node> dup(new Node(tree_dup));
-    return dup;
-}
-shared_ptr<Node> Node::dup_trees(size_t count) {
-    sr_node_t *tree_dup = NULL;
-    int ret = sr_dup_trees(_node, count, &tree_dup);
-    if (ret != SR_ERR_OK) throw_exception(ret);
-
-    shared_ptr<Node> dup(new Node(tree_dup));
-    return dup;
 }
 
 // Schema_Revision

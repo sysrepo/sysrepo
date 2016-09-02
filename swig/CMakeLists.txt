@@ -9,14 +9,16 @@ set(SYSREPO_CPP_SOURCES
         cpp/src/Connection.cpp
         cpp/src/Session.cpp
         cpp/src/Struct.cpp
-        cpp/src/Xpath.cpp)
+        cpp/src/Xpath.cpp
+        cpp/src/Tree.cpp)
 
 set(SYSREPO_H_SOURCES
 	cpp/src/Sysrepo.h
         cpp/src/Connection.h
         cpp/src/Session.h
         cpp/src/Struct.h
-        cpp/src/Xpath.h)
+        cpp/src/Xpath.h
+        cpp/src/Tree.h)
 
 add_library(Sysrepo_bindings SHARED ${SYSREPO_CPP_SOURCES})
 

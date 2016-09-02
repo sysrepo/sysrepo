@@ -218,14 +218,10 @@ public:
     shared_ptr<Node> prev();
     shared_ptr<Node> first_child();
     shared_ptr<Node> last_child();
-    void new_tree(const char *root_name, const char *root_module_name);
-    void new_trees(size_t tree_cnt);
-    void node_set_name(const char *name);
-    void node_set_module(const char *module_name);
-    void node_set_string(const char *string_val);
-    void node_add_child(const char *child_name, const char *child_module_name, shared_ptr<Node> child);
-    shared_ptr<Node> dup_tree();
-    shared_ptr<Node> dup_trees(size_t count);
+    void set_name(const char *name);
+    void set_module(const char *module_name);
+    void set_string(const char *string_val);
+    void add_child(const char *child_name, const char *child_module_name, shared_ptr<Node> child);
     sr_node_t **get() {return &_node;};
 
 private:
