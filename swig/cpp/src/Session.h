@@ -76,6 +76,7 @@ private:
     sr_session_ctx_t *_sess;
     sr_datastore_t _datastore;
     sr_conn_options_t _opts;
+    shared_ptr<Connection> _conn;
 };
 
 class Subscribe:public Throw_Exception

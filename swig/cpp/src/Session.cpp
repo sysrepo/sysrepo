@@ -41,6 +41,7 @@ Session::Session(shared_ptr<Connection> conn, sr_datastore_t datastore, const sr
     int ret;
     _opts = opts;
     _datastore = datastore;
+    _conn = NULL;
 
     if (user_name == NULL) {
         /* start session */
@@ -56,6 +57,7 @@ Session::Session(shared_ptr<Connection> conn, sr_datastore_t datastore, const sr
         }
     }
 
+    _conn = conn;
     return;
 
 cleanup:
@@ -67,6 +69,7 @@ Session::Session(sr_session_ctx_t *sess, sr_conn_options_t opts)
 {
     _sess = sess;
     _opts = opts;
+    _conn = NULL;
 }
 
 void Session::session_stop()
@@ -338,7 +341,7 @@ Subscribe::Subscribe(shared_ptr<Session> sess)
 
 void Subscribe::d_Subscribe()
 {
-    if (_sub) {
+    if (_sub && _sess->get()) {
         int ret = sr_unsubscribe(_sess->get(), _sub);
         if (ret != SR_ERR_OK) {
             throw_exception(ret);
@@ -468,8 +471,7 @@ void Subscribe::rpc_send(const char *xpath, shared_ptr<Vals> input, shared_ptr<V
 
 void Subscribe::rpc_send_tree(const char *xpath, shared_ptr<Trees> input, shared_ptr<Trees> output)
 {
-    int ret = sr_rpc_send_tree(_sess->get(), xpath, input->trees(), input->tree_cnt(), output->p_trees(),\
-                          output->p_trees_cnt());
+    int ret = sr_rpc_send_tree(_sess->get(), xpath, input->trees(), input->tree_cnt(), output->p_trees(), output->p_trees_cnt());
     if (SR_ERR_OK != ret) {
         throw_exception(ret);
     }
