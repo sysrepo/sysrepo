@@ -15,7 +15,6 @@
 %shared_ptr(Errors)
 %shared_ptr(Error)
 %shared_ptr(Data)
-%shared_ptr(Node)
 %shared_ptr(Schema_Revision)
 %shared_ptr(Schema_Submodule)
 %shared_ptr(Yang_Schema)

@@ -214,45 +214,6 @@ private:
     const sr_error_info_t *_info;
 };
 
-// class for sysrepo C struct sr_error_info_t
-class Node:public Throw_Exception
-{
-public:
-    Node(const sr_node_t *node);
-    ~Node();
-    sr_mem_ctx_t *_sr_mem() {return _node->_sr_mem;};
-    char *name() {return _node->name;};
-    sr_type_t type() {return _node->type;};
-    bool dflt() {return _node->dflt;};
-    shared_ptr<Data> data() {shared_ptr<Data> data(new Data(_node->data, _node->type)); return data;};
-    char *module_name() {return _node->module_name;};
-    shared_ptr<Node> parent();
-    shared_ptr<Node> next();
-    shared_ptr<Node> prev();
-    shared_ptr<Node> first_child();
-    shared_ptr<Node> last_child();
-    void set_name(const char *name);
-    void set_module(const char *module_name);
-    void set_string(const char *string_val);
-    void add_child(const char *child_name, const char *child_module_name, shared_ptr<Node> child);
-    sr_node_t **get() {return &_node;};
-    void set(const char *val, sr_type_t type = SR_STRING_T);
-    void set(bool bool_val, sr_type_t type = SR_BOOL_T);
-    void set(double decimal64_val, sr_type_t type);
-    void set(int8_t int8_val, sr_type_t type);
-    void set(int16_t int16_val, sr_type_t type);
-    void set(int32_t int32_val, sr_type_t type);
-    void set(int64_t int64_val, sr_type_t type);
-    void set(uint8_t uint8_val, sr_type_t type);
-    void set(uint16_t uint16_val, sr_type_t type);
-    void set(uint32_t uint32_val, sr_type_t type);
-    void set(uint64_t uint64_val, sr_type_t type);
-    void set(sr_type_t type);
-
-private:
-    sr_node_t *_node;
-};
-
 // class for sysrepo C struct sr_sch_revision_t
 class Schema_Revision
 {

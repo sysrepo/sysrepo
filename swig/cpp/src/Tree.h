@@ -36,14 +36,42 @@ class Tree:public Throw_Exception
 {
 public:
     Tree(const char *root_name, const char *root_module_name);
-    Tree(sr_node_t *tree);
+    Tree(sr_node_t *tree, bool free = false);
     shared_ptr<Tree> dup();
-    shared_ptr<Node> node();
-    sr_node_t *tree() {return _tree;};
+    shared_ptr<Tree> node();
+    sr_node_t *tree() {return _node;};
+    char *name() {return _node->name;};
+    sr_type_t type() {return _node->type;};
+    bool dflt() {return _node->dflt;};
+    shared_ptr<Data> data() {shared_ptr<Data> data(new Data(_node->data, _node->type)); return data;};
+    char *module_name() {return _node->module_name;};
+    shared_ptr<Tree> parent();
+    shared_ptr<Tree> next();
+    shared_ptr<Tree> prev();
+    shared_ptr<Tree> first_child();
+    shared_ptr<Tree> last_child();
+    void set_name(const char *name);
+    void set_module(const char *module_name);
+    void set_string(const char *string_val);
+    void add_child(const char *child_name, const char *child_module_name, shared_ptr<Tree> child);
+    sr_node_t **get() {return &_node;};
+    void set(const char *val, sr_type_t type = SR_STRING_T);
+    void set(bool bool_val, sr_type_t type = SR_BOOL_T);
+    void set(double decimal64_val, sr_type_t type);
+    void set(int8_t int8_val, sr_type_t type);
+    void set(int16_t int16_val, sr_type_t type);
+    void set(int32_t int32_val, sr_type_t type);
+    void set(int64_t int64_val, sr_type_t type);
+    void set(uint8_t uint8_val, sr_type_t type);
+    void set(uint16_t uint16_val, sr_type_t type);
+    void set(uint32_t uint32_val, sr_type_t type);
+    void set(uint64_t uint64_val, sr_type_t type);
+    void set(sr_type_t type);
     ~Tree();
 
 private:
-    sr_node_t *_tree;
+    sr_node_t *_node;
+    bool _free;
 };
 
 class Trees:public Throw_Exception

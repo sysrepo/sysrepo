@@ -36,28 +36,218 @@ Tree::Tree(const char *root_name, const char *root_module_name) {
     if (ret != SR_ERR_OK)
         throw_exception(ret);
 
-    _tree = node;
+    _free = true;
+    _node = node;
 }
-Tree::Tree(sr_node_t *tree) {_tree = tree;}
+Tree::Tree(sr_node_t *tree, bool free) {_node = tree; _free = free;}
 Tree::~Tree() {
-    if (_tree != NULL)
-        sr_free_tree(_tree);
+    if (_node != NULL && _free)
+        sr_free_tree(_node);
 }
 shared_ptr<Tree> Tree::dup() {
     sr_node_t *tree_dup = NULL;
-    if (_tree == NULL) return NULL;
+    if (_node == NULL) return NULL;
 
-    int ret = sr_dup_tree(_tree, &tree_dup);
+    int ret = sr_dup_tree(_node, &tree_dup);
     if (ret != SR_ERR_OK) throw_exception(ret);
 
     shared_ptr<Tree> dup(new Tree(tree_dup));
     return dup;
 }
-shared_ptr<Node> Tree::node() {
-    if (_tree == NULL) return NULL;
+shared_ptr<Tree> Tree::node() {
+    if (_node == NULL) return NULL;
 
-    shared_ptr<Node> node(new Node(_tree));
+    shared_ptr<Tree> node(new Tree(_node));
     return node;
+}
+shared_ptr<Tree> Tree::parent() {
+    if (_node->parent == NULL)
+        return NULL;
+
+    shared_ptr<Tree> node(new Tree(_node->parent));
+    return node;
+}
+shared_ptr<Tree> Tree::next() {
+    if (_node->next == NULL)
+        return NULL;
+
+    shared_ptr<Tree> node(new Tree(_node->next));
+    return node;
+}
+shared_ptr<Tree> Tree::prev() {
+    if (_node->prev == NULL)
+        return NULL;
+
+    shared_ptr<Tree> node(new Tree(_node->prev));
+    return node;
+}
+shared_ptr<Tree> Tree::first_child() {
+    if (_node->first_child == NULL)
+        return NULL;
+
+    shared_ptr<Tree> node(new Tree(_node->first_child));
+    return node;
+}
+shared_ptr<Tree> Tree::last_child() {
+    if (_node->last_child == NULL)
+        return NULL;
+
+    shared_ptr<Tree> node(new Tree(_node->last_child));
+    return node;
+}
+void Tree::set_name(const char *name) {
+    if (_node == NULL) throw_exception(SR_ERR_DATA_MISSING);
+    int ret = sr_node_set_name(_node, name);
+    if (ret != SR_ERR_OK) throw_exception(ret);
+}
+void Tree::set_module(const char *module_name) {
+    if (_node == NULL) throw_exception(SR_ERR_DATA_MISSING);
+    _node->module_name = (char *) module_name;
+    int ret = sr_node_set_module(_node, module_name);
+    if (ret != SR_ERR_OK) throw_exception(ret);
+}
+void Tree::set_string(const char *string_val) {
+    if (_node == NULL) throw_exception(SR_ERR_DATA_MISSING);
+    int ret = sr_node_set_string(_node, string_val);
+    if (ret != SR_ERR_OK) throw_exception(ret);
+}
+void Tree::add_child(const char *child_name, const char *child_module_name, shared_ptr<Tree> child) {
+    if (_node == NULL) throw_exception(SR_ERR_DATA_MISSING);
+    int ret = sr_node_add_child(_node, child_name, child_module_name, child->get());
+    if (ret != SR_ERR_OK) throw_exception(ret);
+}
+void Tree::set(const char *value, sr_type_t type) {
+    if (type == SR_BINARY_T) {
+	    _node->data.binary_val = (char *) value;
+    } else if (type == SR_BITS_T) {
+	    _node->data.bits_val = (char *) value;
+    } else if (type == SR_ENUM_T) {
+	    _node->data.enum_val = (char *) value;
+    } else if (type == SR_IDENTITYREF_T) {
+	    _node->data.identityref_val = (char *) value;
+    } else if (type == SR_INSTANCEID_T) {
+	    _node->data.instanceid_val = (char *) value;
+    } else if (type == SR_STRING_T) {
+	    _node->data.string_val = (char *) value;
+    } else {
+        throw_exception(SR_ERR_INVAL_ARG);
+    }
+
+    _node->type = type;
+}
+void Tree::set(bool bool_val, sr_type_t type) {
+    if (type == SR_BOOL_T) {
+	    _node->data.bool_val = bool_val;
+    } else {
+        throw_exception(SR_ERR_INVAL_ARG);
+    }
+
+    _node->type = type;
+}
+void Tree::set(double decimal64_val, sr_type_t type) {
+    if (type == SR_DECIMAL64_T) {
+	    _node->data.decimal64_val = decimal64_val;
+    } else {
+        throw_exception(SR_ERR_INVAL_ARG);
+    }
+
+    _node->type = type;
+}
+void Tree::set(int8_t int8_val, sr_type_t type) {
+    if (type == SR_INT8_T) {
+	    _node->data.int8_val = int8_val;
+    } else {
+        throw_exception(SR_ERR_INVAL_ARG);
+    }
+
+    _node->type = type;
+}
+void Tree::set(int16_t int16_val, sr_type_t type) {
+    if (type == SR_INT16_T) {
+	    _node->data.int16_val = int16_val;
+    } else {
+        throw_exception(SR_ERR_INVAL_ARG);
+    }
+
+    _node->type = type;
+}
+void Tree::set(int32_t int32_val, sr_type_t type) {
+    if (type == SR_INT32_T) {
+	    _node->data.int32_val = int32_val;
+    } else {
+        throw_exception(SR_ERR_INVAL_ARG);
+    }
+
+    _node->type = type;
+}
+void Tree::set(int64_t int64_val, sr_type_t type) {
+    if (type == SR_DECIMAL64_T) {
+	    _node->data.uint64_val = (double) int64_val;
+    } else if (type == SR_UINT64_T) {
+        _node->data.uint64_val = (uint64_t) int64_val;
+    } else if (type == SR_UINT32_T) {
+        _node->data.uint32_val = (uint32_t) int64_val;
+    } else if (type == SR_UINT16_T) {
+        _node->data.uint16_val = (uint16_t) int64_val;
+    } else if (type == SR_UINT8_T) {
+        _node->data.uint8_val = (uint8_t) int64_val;
+    } else if (type == SR_INT64_T) {
+        _node->data.int64_val = (int64_t) int64_val;
+    } else if (type == SR_INT32_T) {
+        _node->data.int32_val = (int32_t) int64_val;
+    } else if (type == SR_INT16_T) {
+        _node->data.int16_val = (int16_t) int64_val;
+    } else if (type == SR_INT8_T) {
+        _node->data.int8_val = (int8_t) int64_val;
+    } else {
+        throw_exception(SR_ERR_INVAL_ARG);
+    }
+
+    _node->type = type;
+}
+void Tree::set(uint8_t uint8_val, sr_type_t type) {
+    if (type == SR_UINT8_T) {
+	    _node->data.uint8_val = uint8_val;
+    } else {
+        throw_exception(SR_ERR_INVAL_ARG);
+    }
+
+    _node->type = type;
+}
+void Tree::set(uint16_t uint16_val, sr_type_t type) {
+    if (type == SR_UINT16_T) {
+	    _node->data.uint16_val = uint16_val;
+    } else {
+        throw_exception(SR_ERR_INVAL_ARG);
+    }
+
+    _node->type = type;
+}
+void Tree::set(uint32_t uint32_val, sr_type_t type) {
+    if (type == SR_UINT32_T) {
+	    _node->data.uint32_val = uint32_val;
+    } else {
+        throw_exception(SR_ERR_INVAL_ARG);
+    }
+
+    _node->type = type;
+}
+void Tree::set(uint64_t uint64_val, sr_type_t type) {
+    if (type == SR_UINT64_T) {
+	    _node->data.uint64_val = uint64_val;
+    } else {
+        throw_exception(SR_ERR_INVAL_ARG);
+    }
+
+    _node->type = type;
+}
+void Tree::set(sr_type_t type) {
+    if (type != SR_LIST_T && type != SR_CONTAINER_T && type != SR_CONTAINER_PRESENCE_T &&\
+        type != SR_UNKNOWN_T && type != SR_LEAF_EMPTY_T && type != SR_UNION_T) {
+        throw_exception(SR_ERR_INVAL_ARG);
+    }
+
+    _node->type = type;
 }
 
 Trees::Trees() {_trees = NULL; _cnt = 0; p_tree = NULL;}
@@ -68,7 +258,7 @@ Trees::Trees(size_t n) {
     if (ret != SR_ERR_OK)
         throw_exception(ret);
 
-    p_tree = NULL;
+    p_tree = &trees;
     _trees = trees;
     _cnt = n;
 }
@@ -88,7 +278,7 @@ Trees::Trees(const sr_node_t *trees, const size_t n) {
     p_tree = NULL;
 }
 Trees::~Trees() {
-    if (_trees != NULL && p_tree == NULL)
+    if (_trees != NULL && p_tree != NULL)
         sr_free_trees(_trees, _cnt);
 }
 shared_ptr<Tree> Trees::tree(size_t n) {
