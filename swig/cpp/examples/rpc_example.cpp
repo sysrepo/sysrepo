@@ -33,6 +33,70 @@
 using namespace std;
 
 void
+print_node(shared_ptr<Node> node)
+{
+    cout << node->name();
+    cout << " ";
+    switch (node->type()) {
+    case SR_CONTAINER_T:
+    case SR_CONTAINER_PRESENCE_T:
+        cout << "(container)" << endl;
+        break;
+    case SR_LIST_T:
+        cout << "(list instance)" << endl;
+        break;
+    case SR_STRING_T:
+        cout << "= " << node->data()->get_string() << endl;;
+        break;
+    case SR_BOOL_T:
+	if (node->data()->get_bool())
+            cout << "= true" << endl;
+	else
+            cout << "= false" << endl;
+        break;
+    case SR_ENUM_T:
+        cout << "= " << node->data()->get_enum() << endl;;
+        break;
+    case SR_UINT8_T:
+        cout << "= " << unsigned(node->data()->get_uint8()) << endl;
+        break;
+    case SR_UINT16_T:
+        cout << "= " << unsigned(node->data()->get_uint16()) << endl;
+        break;
+    case SR_UINT32_T:
+        cout << "= " << unsigned(node->data()->get_uint32()) << endl;
+        break;
+    case SR_UINT64_T:
+        cout << "= " << unsigned(node->data()->get_uint64()) << endl;
+        break;
+    case SR_INT8_T:
+        cout << "= " << node->data()->get_int8() << endl;
+        break;
+    case SR_INT16_T:
+        cout << "= " << node->data()->get_int16() << endl;
+        break;
+    case SR_INT32_T:
+        cout << "= " << node->data()->get_int32() << endl;
+        break;
+    case SR_INT64_T:
+        cout << "= " << node->data()->get_int64() << endl;
+        break;
+     case SR_IDENTITYREF_T:
+        cout << "= " << node->data()->get_identityref() << endl;
+        break;
+    case SR_BITS_T:
+        cout << "= " << node->data()->get_bits() << endl;
+        break;
+    case SR_BINARY_T:
+        cout << "= " << node->data()->get_binary() << endl;
+        break;
+    default:
+        cout << "(unprintable)" << endl;
+    }
+    return;
+}
+
+void
 print_value(shared_ptr<Val> value)
 {
     cout << value->xpath();
@@ -97,7 +161,7 @@ print_value(shared_ptr<Val> value)
 }
 
 int test_rpc_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt, sr_val_t **output,\
-           size_t *output_cnt, void *private_ctx) {
+                size_t *output_cnt, void *private_ctx) {
     cout << "\n\n ========== RPC CALLED ==========\n" << endl;
 
     shared_ptr<Vals> in_vals(new Vals(input, input_cnt));
@@ -116,9 +180,31 @@ int test_rpc_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt
                         "2.3",\
                         SR_STRING_T);
     out_vals->val(2)->set("/test-module:activate-software-image/location",\
-                        "/",\
+                        "/root/",\
                         SR_STRING_T);
 
+    return SR_ERR_OK;
+}
+
+int test_rpc_tree_cb(const char *xpath, const sr_node_t *input, const size_t input_cnt, sr_node_t **output,\
+                     size_t *output_cnt, void *private_ctx) {
+    cout << "\n\n ========== RPC TREE CALLED ==========\n" << endl;
+
+    shared_ptr<Trees> in_trees(new Trees(input, input_cnt));
+    shared_ptr<Trees> out_trees(new Trees(output, output_cnt, 3));
+
+    if (in_trees == NULL && out_trees == NULL)
+        return SR_ERR_NOMEM;
+
+    for(size_t n=0; n < in_trees->tree_cnt(); ++n)
+        print_node(in_trees->tree(n)->node());
+
+    out_trees->tree(0)->node()->set_name("status");
+    out_trees->tree(0)->node()->set("The image acmefw-2.3 is being installed.", SR_STRING_T);
+    out_trees->tree(1)->node()->set_name("version");
+    out_trees->tree(1)->node()->set("2.3", SR_STRING_T);
+    out_trees->tree(2)->node()->set_name("location");
+    out_trees->tree(2)->node()->set("/root/", SR_STRING_T);
     return SR_ERR_OK;
 }
 
@@ -152,7 +238,7 @@ main(int argc, char **argv)
                            "acmefw-2.3",\
 			   SR_STRING_T);
         in_vals->val(1)->set("/test-module:activate-software-image/location",\
-                           "/",\
+                           "/root/",\
                            SR_STRING_T);
 
         cout << "\n\n ========== START RPC CALL ==========\n" << endl;
@@ -161,6 +247,28 @@ main(int argc, char **argv)
         cout << "\n\n ========== PRINT RETURN VALUE ==========\n" << endl;
         for(size_t n=0; n < out_vals->val_cnt(); ++n)
             print_value(out_vals->val(n));
+
+
+        cout << "\n\n ========== SUBSCRIBE TO RPC TREE CALL ==========\n" << endl;
+        shared_ptr<Subscribe> subscribe_tree(new Subscribe(sess));
+
+        subscribe_tree->rpc_subscribe_tree("/test-module:activate-software-image", test_rpc_tree_cb);
+
+        shared_ptr<Trees> in_trees(new Trees(1));
+        shared_ptr<Trees> out_trees(new Trees());
+
+	if (in_trees == NULL && out_trees == NULL)
+            return 0;
+
+        in_trees->tree(0)->node()->set_name("image-name");
+        in_trees->tree(0)->node()->set("acmefw-2.3", SR_STRING_T);
+
+        cout << "\n\n ========== START RPC TREE CALL ==========\n" << endl;
+        subscribe_tree->rpc_send_tree("/test-module:activate-software-image", in_trees, out_trees);
+
+        cout << "\n\n ========== PRINT RETURN VALUE ==========\n" << endl;
+        for(size_t n=0; n < out_trees->tree_cnt(); ++n)
+            print_node(out_trees->tree(n)->node());
 
         cout << "\n\n ========== END PROGRAM ==========\n" << endl;
     } catch( const std::exception& e ) {
