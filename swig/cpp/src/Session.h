@@ -107,6 +107,10 @@ public:
     void rpc_send_tree(const char *xpath, shared_ptr<Trees> input, shared_ptr<Trees> output);
     void dp_get_items_subscribe(const char *xpath, sr_dp_get_items_cb callback, void *private_ctx, \
                                sr_subscr_options_t opts = SUBSCR_DEFAULT);
+    void event_notif_subscribe(const char *xpath, sr_event_notif_cb callback, void *private_ctx = NULL,\
+                               sr_subscr_options_t opts = SUBSCR_DEFAULT);
+    void event_notif_subscribe_tree(const char *xpath, sr_event_notif_tree_cb callback, void *private_ctx = NULL,\
+                                    sr_subscr_options_t opts = SUBSCR_DEFAULT);
 
 #ifdef SWIG
         void Destructor_Subscribe();

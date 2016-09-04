@@ -485,3 +485,19 @@ void Subscribe::dp_get_items_subscribe(const char *xpath, sr_dp_get_items_cb cal
         throw_exception(ret);
     }
 }
+
+void Subscribe::event_notif_subscribe(const char *xpath, sr_event_notif_cb callback, void *private_ctx, sr_subscr_options_t opts)
+{
+    int ret = sr_event_notif_subscribe(_sess->get(), xpath, callback, private_ctx, opts, &_sub);
+    if (SR_ERR_OK != ret) {
+        throw_exception(ret);
+    }
+}
+
+void Subscribe::event_notif_subscribe_tree(const char *xpath, sr_event_notif_tree_cb callback, void *private_ctx, sr_subscr_options_t opts)
+{
+    int ret = sr_event_notif_subscribe_tree(_sess->get(), xpath, callback, private_ctx, opts, &_sub);
+    if (SR_ERR_OK != ret) {
+        throw_exception(ret);
+    }
+}

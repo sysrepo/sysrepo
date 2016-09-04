@@ -155,6 +155,32 @@ public:
             Py_DECREF(result);
     }
 
+    void event_notif(const char *xpath, const sr_val_t *values, const size_t values_cnt, void *private_ctx) {
+        PyObject *arglist;
+        PyObject *val =  SWIG_NewPointerObj(SWIG_as_voidptr(values), SWIGTYPE_p_sr_val_s, 0);
+        PyObject *p =  SWIG_NewPointerObj(private_ctx, SWIGTYPE_p_void, 0);
+        arglist = Py_BuildValue("(sOiO)", xpath, val, values_cnt, p);
+        PyObject *result = PyEval_CallObject(_callback, arglist);
+        Py_DECREF(arglist);
+        if (result == NULL)
+            throw std::runtime_error("Python callback failed.\n");
+        else
+            Py_DECREF(result);
+    }
+
+    void event_notif_tree(const char *xpath, const sr_node_t *trees, const size_t tree_cnt, void *private_ctx) {
+        PyObject *arglist;
+        PyObject *tree =  SWIG_NewPointerObj(SWIG_as_voidptr(trees), SWIGTYPE_p_sr_node_s, 0);
+        PyObject *p =  SWIG_NewPointerObj(private_ctx, SWIGTYPE_p_void, 0);
+        arglist = Py_BuildValue("(sOiO)", xpath, tree, tree_cnt, p);
+        PyObject *result = PyEval_CallObject(_callback, arglist);
+        Py_DECREF(arglist);
+        if (result == NULL)
+            throw std::runtime_error("Python callback failed.\n");
+        else
+            Py_DECREF(result);
+    }
+
     void *private_ctx;
 
 private:
@@ -216,6 +242,19 @@ static int g_dp_get_items_cb(const char *xpath, sr_val_t **values, size_t *value
 
     return SR_ERR_OK;
 }
+
+static void g_event_notif_cb(const char *xpath, const sr_val_t *values, const size_t values_cnt, void *private_ctx)
+{
+    Wrap_cb *ctx = (Wrap_cb *) private_ctx;
+    ctx->event_notif(xpath, values, values_cnt, ctx->private_ctx);
+}
+
+static void g_event_notif_tree_cb(const char *xpath, const sr_node_t *trees, const size_t tree_cnt, void *private_ctx)
+{
+    Wrap_cb *ctx = (Wrap_cb *) private_ctx;
+    ctx->event_notif_tree(xpath, trees, tree_cnt, ctx->private_ctx);
+}
+
 
 %}
 
@@ -331,6 +370,44 @@ static int g_dp_get_items_cb(const char *xpath, sr_val_t **values, size_t *value
 
         int ret = sr_rpc_subscribe_tree(self->swig_sess->get(), xpath, g_rpc_tree_cb, class_ctx, opts,\
                                    &self->swig_sub);
+
+        if (SR_ERR_OK != ret) {
+            throw std::runtime_error(sr_strerror(ret));
+        }
+    }
+
+    void event_notif_subscribe(const char *xpath, PyObject *callback, void *private_ctx,\
+                               sr_subscr_options_t opts) {
+        Wrap_cb *class_ctx = NULL;
+        class_ctx = new Wrap_cb(callback);
+
+        if (class_ctx == NULL)
+            throw std::runtime_error("Ne enough space for helper class!\n");
+
+        self->wrap_cb_l.push_back(class_ctx);
+        class_ctx->private_ctx = private_ctx;
+
+        int ret = sr_event_notif_subscribe(self->swig_sess->get(), xpath, g_event_notif_cb, class_ctx, opts,\
+                                   &self->swig_sub);
+
+        if (SR_ERR_OK != ret) {
+            throw std::runtime_error(sr_strerror(ret));
+        }
+    }
+
+    void event_notif_subscribe_tree(const char *xpath, PyObject *callback, void *private_ctx,\
+                               sr_subscr_options_t opts) {
+        Wrap_cb *class_ctx = NULL;
+        class_ctx = new Wrap_cb(callback);
+
+        if (class_ctx == NULL)
+            throw std::runtime_error("Ne enough space for helper class!\n");
+
+        self->wrap_cb_l.push_back(class_ctx);
+        class_ctx->private_ctx = private_ctx;
+
+        int ret = sr_event_notif_subscribe_tree(self->swig_sess->get(), xpath, g_event_notif_tree_cb,\
+                                                class_ctx, opts, &self->swig_sub);
 
         if (SR_ERR_OK != ret) {
             throw std::runtime_error(sr_strerror(ret));
