@@ -30,9 +30,10 @@ extern "C" {
 
 using namespace std;
 
-class Xpath_Ctx
+class Xpath_Ctx:public Throw_Exception
 {
 public:
+    Xpath_Ctx();
     Xpath_Ctx(sr_xpath_ctx_t *state);
     ~Xpath_Ctx();
     char *next_node(char *xpath) {return sr_xpath_next_node(xpath, _state);};
@@ -55,6 +56,7 @@ public:
 
 private:
     sr_xpath_ctx_t *_state;
+    bool _free;
 };
 
 #endif

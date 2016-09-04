@@ -26,6 +26,7 @@
 %shared_ptr(Vals)
 %shared_ptr(Tree)
 %shared_ptr(Trees)
+%shared_ptr(Xpath_Ctx)
 
 %include "../swig_base/sysrepo.i"
 %include "../swig_base/structs.i"
