@@ -145,8 +145,10 @@ public:
 
     void dp_get_items(const char *xpath, sr_val_t **values, size_t *values_cnt, void *private_ctx) {
         PyObject *arglist;
+        PyObject *val =  SWIG_NewPointerObj(SWIG_as_voidptr(values), SWIGTYPE_p_p_sr_node_s, 0);
+        PyObject *val_cnt =  SWIG_NewPointerObj(SWIG_as_voidptr(values_cnt), SWIGTYPE_p_size_t, 0);
         PyObject *p =  SWIG_NewPointerObj(private_ctx, SWIGTYPE_p_void, 0);
-        arglist = Py_BuildValue("(sOiO)", xpath, values, values_cnt, p);
+        arglist = Py_BuildValue("(sOOO)", xpath, val, val_cnt, p);
         PyObject *result = PyEval_CallObject(_callback, arglist);
         Py_DECREF(arglist);
         if (result == NULL)
@@ -414,7 +416,6 @@ static void g_event_notif_tree_cb(const char *xpath, const sr_node_t *trees, con
         }
     }
 
-/*
     void dp_get_items_subscribe(const char *xpath, PyObject *callback, void *private_ctx, \
                                sr_subscr_options_t opts = SUBSCR_DEFAULT) {
         Wrap_cb *class_ctx = NULL;
@@ -433,7 +434,7 @@ static void g_event_notif_tree_cb(const char *xpath, const sr_node_t *trees, con
             throw std::runtime_error(sr_strerror(ret));
         }
     }
-*/
+
     ~Subscribe() {
         self->Destructor_Subscribe();
 
