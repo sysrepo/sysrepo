@@ -67,19 +67,6 @@ public:
     uint16_t get_uint16();
     uint32_t get_uint32();
     uint64_t get_uint64();
-    void set(const char *xpath, const char *val, sr_type_t type = SR_STRING_T);
-    void set(const char *xpath, bool bool_val, sr_type_t type = SR_BOOL_T);
-    void set(const char *xpath, double decimal64_val, sr_type_t type);
-    void set(const char *xpath, int8_t int8_val, sr_type_t type);
-    void set(const char *xpath, int16_t int16_val, sr_type_t type);
-    void set(const char *xpath, int32_t int32_val, sr_type_t type);
-    void set(const char *xpath, int64_t int64_val, sr_type_t type);
-    void set(const char *xpath, uint8_t uint8_val, sr_type_t type);
-    void set(const char *xpath, uint16_t uint16_val, sr_type_t type);
-    void set(const char *xpath, uint32_t uint32_val, sr_type_t type);
-    void set(const char *xpath, uint64_t uint64_val, sr_type_t type);
-    void set(const char *xpath, sr_type_t type);
-
 
 private:
     sr_data_t _d;
