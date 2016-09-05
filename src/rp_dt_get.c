@@ -30,15 +30,7 @@
 #include "rp_dt_xpath.h"
 #include "rp_dt_edit.h"
 
-typedef struct rp_state_data_ctx_s {
-    np_subscription_t **subscriptions; /**< Array of subscriptions from np for a module */
-    size_t subscription_cnt;           /**< Length of subscriptions array */
-    sr_list_t *subtrees;               /**< List of state data subtrees to be loaded*/
-    size_t *subscr_index;              /**< Index into subscription array (pointing to the subscription)
-                                        * where subtree subtree at n-th position in subtrees list can be found */
-}rp_state_data_ctx_t;
-
-static void
+void
 rp_dt_free_state_data_ctx_content (rp_state_data_ctx_t *state_data)
 {
     if (NULL != state_data) {
@@ -60,6 +52,12 @@ rp_dt_free_state_data_ctx_content (rp_state_data_ctx_t *state_data)
 
         free(state_data->subscr_index);
         state_data->subscr_index = NULL;
+
+        sr_list_cleanup(state_data->subscription_nodes);
+        state_data->subscription_nodes = NULL;
+
+        sr_list_cleanup(state_data->requested_xpaths);
+        state_data->requested_xpaths = NULL;
     }
 }
 
@@ -240,7 +238,7 @@ rp_dt_get_values(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, sr_mem_ctx_
  * @param [in] node
  * @return bool result of the test
  */
-static bool
+bool
 rp_dt_is_under_subtree(struct lys_node *subtree, struct lys_node *node)
 {
     struct lys_node *n = node;
@@ -390,7 +388,7 @@ rp_dt_has_data_provider_for_subtree(sr_list_t *subscriptions, struct lys_node *s
  * @brief Determines if (and what) state data subtrees are needed to be loaded.
  */
 static int
-rp_dt_xpath_requests_state_data(rp_ctx_t *rp_ctx, dm_schema_info_t *schema_info, const char *xpath, rp_state_data_ctx_t *state_data_ctx)
+rp_dt_xpath_requests_state_data(rp_ctx_t *rp_ctx, rp_session_t *session, dm_schema_info_t *schema_info, const char *xpath, rp_state_data_ctx_t *state_data_ctx)
 {
     CHECK_NULL_ARG4(rp_ctx, schema_info, xpath, state_data_ctx);
     md_ctx_t *md_ctx = NULL;
@@ -398,7 +396,6 @@ rp_dt_xpath_requests_state_data(rp_ctx_t *rp_ctx, dm_schema_info_t *schema_info,
     int rc = SR_ERR_OK;
     struct ly_set *atoms = NULL;
     sr_list_t *subtree_nodes = NULL;
-    sr_list_t *subscr_nodes = NULL;
     char *xp = NULL;
 
     rc = dm_get_md_ctx(rp_ctx->dm_ctx, &md_ctx);
@@ -413,7 +410,7 @@ rp_dt_xpath_requests_state_data(rp_ctx_t *rp_ctx, dm_schema_info_t *schema_info,
         goto cleanup;
     }
 
-    rc = rp_dt_subscriptions_to_schema_nodes(rp_ctx->dm_ctx, state_data_ctx->subscriptions, state_data_ctx->subscription_cnt, &subscr_nodes);
+    rc = rp_dt_subscriptions_to_schema_nodes(rp_ctx->dm_ctx, state_data_ctx->subscriptions, state_data_ctx->subscription_cnt, &session->state_data_ctx.subscription_nodes);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Subscriptions to schema nodes failed");
 
     rc = sr_list_init(&subtree_nodes);
@@ -441,7 +438,7 @@ rp_dt_xpath_requests_state_data(rp_ctx_t *rp_ctx, dm_schema_info_t *schema_info,
                     sub->xpath, NULL, &state_data_node);
         CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to find schema node for %s", sub->xpath);
 
-        rc = rp_dt_has_data_provider_for_subtree(subscr_nodes, state_data_node, &provider_found);
+        rc = rp_dt_has_data_provider_for_subtree(session->state_data_ctx.subscription_nodes, state_data_node, &provider_found);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Has data provider for subtree failed");
 
         /* check if there is a data provider for this subtree */
@@ -468,7 +465,7 @@ rp_dt_xpath_requests_state_data(rp_ctx_t *rp_ctx, dm_schema_info_t *schema_info,
         }
     }
 
-    rc = rp_dt_find_subscription_for_subtree(rp_ctx->dm_ctx, subtree_nodes, subscr_nodes, state_data_ctx);
+    rc = rp_dt_find_subscription_for_subtree(rp_ctx->dm_ctx, subtree_nodes, session->state_data_ctx.subscription_nodes, state_data_ctx);
 
     SR_LOG_DBG("%zu subtrees of state data will be loaded in order to resolve %s", state_data_ctx->subtrees->count, xpath);
 
@@ -477,7 +474,6 @@ cleanup:
     ly_set_free(atoms);
     md_ctx_unlock(md_ctx);
     sr_list_cleanup(subtree_nodes);
-    sr_list_cleanup(subscr_nodes);
     if (SR_ERR_OK != rc) {
         rp_dt_free_state_data_ctx_content(state_data_ctx);
     }
@@ -520,7 +516,6 @@ rp_dt_prepare_data(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char *xpath
     int rc = SR_ERR_OK;
     bool has_state_data = false;
     dm_data_info_t *data_info = NULL;
-    rp_state_data_ctx_t state_data_ctx = {0};
 
     if (RP_REQ_NEW == rp_session->state) {
 
@@ -551,28 +546,39 @@ rp_dt_prepare_data(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char *xpath
             (!(SR__SESSION_FLAGS__SESS_NOTIFICATION & rp_session->options)) &&
             (SR_ERR_OK == dm_has_state_data(rp_ctx->dm_ctx, rp_session->module_name, &has_state_data) && has_state_data)) {
 
-            rc = rp_dt_xpath_requests_state_data(rp_ctx, data_info->schema, xpath, &state_data_ctx);
+            rp_dt_free_state_data_ctx_content(&rp_session->state_data_ctx);
+
+            rc = sr_list_init(&rp_session->state_data_ctx.requested_xpaths);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "List init failed");
+
+            rc = rp_dt_xpath_requests_state_data(rp_ctx, rp_session, data_info->schema, xpath, &rp_session->state_data_ctx);
             CHECK_RC_MSG_GOTO(rc, cleanup, "rp_dt_xpath_requests_state_data failed");
 
-            if (NULL == state_data_ctx.subtrees || 0 == state_data_ctx.subtrees->count) {
+            if (NULL == rp_session->state_data_ctx.subtrees || 0 == rp_session->state_data_ctx.subtrees->count) {
                 SR_LOG_DBG("No state state data provider is asked for data because of xpath %s", xpath);
                 goto cleanup;
             }
 
-            for (size_t i = 0; i < state_data_ctx.subtrees->count; i++) {
-                char *xp = strdup((char *) state_data_ctx.subtrees->data[i]);
+            for (size_t i = 0; i < rp_session->state_data_ctx.subtrees->count; i++) {
+                char *xp = strdup((char *) rp_session->state_data_ctx.subtrees->data[i]);
                 CHECK_NULL_NOMEM_GOTO(xp, rc, cleanup);
 
-                size_t subs_index = state_data_ctx.subscr_index[i];
-                rc = np_data_provider_request(rp_ctx->np_ctx, state_data_ctx.subscriptions[subs_index], rp_session, xp);
+                size_t subs_index = rp_session->state_data_ctx.subscr_index[i];
+                rc = np_data_provider_request(rp_ctx->np_ctx, rp_session->state_data_ctx.subscriptions[subs_index], rp_session, xp);
                 SR_LOG_DBG("Sending request for state data: %s", xp);
                 if (SR_ERR_OK != rc) {
-                    SR_LOG_WRN("Request for operational data failed with xpath %s on subscription %s", xp, state_data_ctx.subscriptions[i]->xpath);
+                    SR_LOG_WRN("Request for operational data failed with xpath %s on subscription %s", xp, rp_session->state_data_ctx.subscriptions[i]->xpath);
                 } else {
                     rp_session->dp_req_waiting += 1;
                 }
 
                 rc = sr_list_add(rp_session->loaded_state_data[rp_session->datastore], xp);
+                CHECK_RC_MSG_GOTO(rc, cleanup, "List add failed");
+
+                xp = strdup((char *) rp_session->state_data_ctx.subtrees->data[i]);
+                CHECK_NULL_NOMEM_GOTO(xp, rc, cleanup);
+
+                rc = sr_list_add(rp_session->state_data_ctx.requested_xpaths, xp);
                 CHECK_RC_MSG_GOTO(rc, cleanup, "List add failed");
             }
 
@@ -594,8 +600,9 @@ rp_dt_prepare_data(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char *xpath
     }
 
 cleanup:
-    //TODO: subscriptions should be freed after all potential subsequent request for nested data has been sent
-    rp_dt_free_state_data_ctx_content(&state_data_ctx);
+    if (SR_ERR_OK != rc) {
+        rp_dt_free_state_data_ctx_content(&rp_session->state_data_ctx);
+    }
     return rc;
 }
 
@@ -682,7 +689,7 @@ cleanup:
 }
 
 int
-rp_dt_get_values_wrapper_with_opts(rp_ctx_t *rp_ctx, rp_session_t *rp_session, rp_dt_get_items_ctx_t *get_items_ctx, sr_mem_ctx_t *sr_mem, 
+rp_dt_get_values_wrapper_with_opts(rp_ctx_t *rp_ctx, rp_session_t *rp_session, rp_dt_get_items_ctx_t *get_items_ctx, sr_mem_ctx_t *sr_mem,
         const char *xpath, size_t offset, size_t limit, sr_val_t **values, size_t *count)
 {
     CHECK_NULL_ARG5(rp_ctx, rp_ctx->dm_ctx, rp_session, rp_session->dm_session, get_items_ctx);
