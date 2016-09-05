@@ -684,6 +684,7 @@ default_nodes_test(void **state)
     sr_error_info_t *errors = NULL;
     size_t e_cnt = 0;
 
+    /* cleanup - remove all list instances */
     rc = rp_dt_delete_item_wrapper(ctx, ses_ctx, "/test-module:with_def", SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
     rc = rp_dt_commit(ctx, ses_ctx, &errors, &e_cnt);
@@ -702,12 +703,9 @@ default_nodes_test(void **state)
     assert_int_equal(SR_ERR_OK, rc);
 
     ses_ctx->state = RP_REQ_NEW;
+    /* due to recent changes in libyang, default nodes are added during validate/commit only */
     rc = rp_dt_get_value_wrapper(ctx, ses_ctx, NULL, "/test-module:with_def[name='withdef']/num", &val);
-    assert_int_equal(SR_ERR_OK, rc);
-    assert_non_null(val);
-    assert_int_equal(0, val->data.int8_val);
-    assert_true(val->dflt);
-    sr_free_val(val);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
     /* set default value with strict */
     sr_val_t *v = NULL;
@@ -908,13 +906,10 @@ default_nodes_toplevel_test(void **state)
     rc = rp_dt_delete_item_wrapper(ctx, ses_ctx, "/test-module:top-level-default", SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
-    /* default leaf can not be removed */
+    /* default is removed it will be put back in place during validate/commit*/
     ses_ctx->state = RP_REQ_NEW;
     rc = rp_dt_get_value_wrapper(ctx, ses_ctx, NULL, "/test-module:top-level-default", &val);
-    assert_int_equal(SR_ERR_OK, rc);
-    assert_non_null(val);
-    assert_true(val->dflt);
-    sr_free_val(val);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
     rc = rp_dt_delete_item_wrapper(ctx, ses_ctx, "/test-module:*", SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
