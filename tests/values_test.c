@@ -47,9 +47,13 @@ sr_new_val_test(void **state)
 
     rc = sr_new_val(NULL, &value);
     assert_int_equal(SR_ERR_OK, rc);
+#ifdef USE_SR_MEM_MGMT
     assert_non_null(value->_sr_mem);
     assert_int_equal(1, value->_sr_mem->obj_count);
     assert_true(0 < value->_sr_mem->used_total);
+#else
+    assert_null(value->_sr_mem);
+#endif
     assert_null(value->xpath);
     assert_false(value->dflt);
     assert_int_equal(SR_UNKNOWN_T, value->type);
@@ -58,9 +62,13 @@ sr_new_val_test(void **state)
 
     rc = sr_new_val(XPATH1, &value);
     assert_int_equal(SR_ERR_OK, rc);
+#ifdef USE_SR_MEM_MGMT
     assert_non_null(value->_sr_mem);
     assert_int_equal(1, value->_sr_mem->obj_count);
     assert_true(0 < value->_sr_mem->used_total);
+#else
+    assert_null(value->_sr_mem);
+#endif
     assert_string_equal(XPATH1, value->xpath);
     assert_false(value->dflt);
     assert_int_equal(SR_UNKNOWN_T, value->type);
@@ -82,13 +90,19 @@ sr_new_values_test(void **state)
     rc = sr_new_values(10, &values);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(values);
+#ifdef USE_SR_MEM_MGMT
     assert_non_null(values->_sr_mem);
     assert_int_equal(1, values->_sr_mem->obj_count);
     assert_true(0 < values->_sr_mem->used_total);
+#else
+    assert_null(values->_sr_mem);
+#endif
     for (int i = 0; i < 10; ++i) {
+#ifdef USE_SR_MEM_MGMT
         if (0 < i) {
             assert_ptr_equal(values[i-1]._sr_mem, values[i]._sr_mem);
         }
+#endif
         assert_null(values[i].xpath);
         assert_false(values[i].dflt);
         assert_int_equal(SR_UNKNOWN_T, values[i].type);
@@ -195,10 +209,14 @@ sr_dup_val_test(void **state)
     rc = sr_dup_val(value, &value_dup);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(value_dup);
+#ifdef USE_SR_MEM_MGMT
     assert_non_null(value_dup->_sr_mem);
     assert_ptr_not_equal(value->_sr_mem, value_dup->_sr_mem);
     assert_int_equal(1, value_dup->_sr_mem->obj_count);
     assert_true(0 < value_dup->_sr_mem->used_total);
+#else
+    assert_null(value_dup->_sr_mem);
+#endif
     assert_string_equal(XPATH1, value_dup->xpath);
     assert_false(value_dup->dflt);
     assert_int_equal(SR_STRING_T, value_dup->type);
@@ -212,10 +230,14 @@ sr_dup_val_test(void **state)
     rc = sr_dup_val(value, &value_dup);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(value_dup);
+#ifdef USE_SR_MEM_MGMT
     assert_non_null(value_dup->_sr_mem);
     assert_ptr_not_equal(value->_sr_mem, value_dup->_sr_mem);
     assert_int_equal(1, value_dup->_sr_mem->obj_count);
     assert_true(0 < value_dup->_sr_mem->used_total);
+#else
+    assert_null(value_dup->_sr_mem);
+#endif
     assert_string_equal(XPATH2, value_dup->xpath);
     assert_true(value_dup->dflt);
     assert_int_equal(SR_STRING_T, value_dup->type);
@@ -228,10 +250,14 @@ sr_dup_val_test(void **state)
     rc = sr_dup_val(value, &value_dup);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(value_dup);
+#ifdef USE_SR_MEM_MGMT
     assert_non_null(value_dup->_sr_mem);
     assert_ptr_not_equal(value->_sr_mem, value_dup->_sr_mem);
     assert_int_equal(1, value_dup->_sr_mem->obj_count);
     assert_true(0 < value_dup->_sr_mem->used_total);
+#else
+    assert_null(value_dup->_sr_mem);
+#endif
     assert_string_equal(XPATH2, value_dup->xpath);
     assert_true(value_dup->dflt);
     assert_int_equal(SR_STRING_T, value_dup->type);
@@ -252,9 +278,13 @@ sr_dup_val_test(void **state)
     rc = sr_dup_val(value, &value_dup);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(value_dup);
+#ifdef USE_SR_MEM_MGMT
     assert_non_null(value_dup->_sr_mem);
     assert_int_equal(1, value_dup->_sr_mem->obj_count);
     assert_true(0 < value_dup->_sr_mem->used_total);
+#else
+    assert_null(value_dup->_sr_mem);
+#endif
     assert_string_equal(XPATH1, value_dup->xpath);
     assert_false(value_dup->dflt);
     assert_int_equal(SR_STRING_T, value_dup->type);
@@ -287,13 +317,19 @@ sr_dup_values_test(void **state)
     rc = sr_dup_values(values, 10, &values_dup);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(values_dup);
+#ifdef USE_SR_MEM_MGMT
     assert_non_null(values_dup->_sr_mem);
     assert_int_equal(1, values_dup->_sr_mem->obj_count);
     assert_true(0 < values_dup->_sr_mem->used_total);
+#else
+    assert_null(values_dup->_sr_mem);
+#endif
     for (int i = 0; i < 10; ++i) {
+#ifdef USE_SR_MEM_MGMT
         if (0 < i) {
             assert_ptr_equal(values_dup[i-1]._sr_mem, values_dup[i]._sr_mem);
         }
+#endif
         snprintf(xpath, PATH_MAX, XPATH_TEMPLATE1, i, i);
         assert_string_equal(xpath, values_dup[i].xpath);
         assert_false(values_dup[i].dflt);
@@ -310,6 +346,9 @@ sr_dup_values_test(void **state)
         assert_int_equal(SR_ERR_OK, rc);
         values[i].dflt = true;
         values[i].type = SR_UINT8_T;
+#ifndef USE_SR_MEM_MGMT
+        free(values[i].data.string_val);
+#endif
         values[i].data.uint8_val = i;
     }
 
@@ -317,13 +356,19 @@ sr_dup_values_test(void **state)
     rc = sr_dup_values(values, 10, &values_dup);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(values_dup);
+#ifdef USE_SR_MEM_MGMT
     assert_non_null(values_dup->_sr_mem);
     assert_int_equal(1, values_dup->_sr_mem->obj_count);
     assert_true(0 < values_dup->_sr_mem->used_total);
+#else
+    assert_null(values_dup->_sr_mem);
+#endif
     for (int i = 0; i < 10; ++i) {
+#ifdef USE_SR_MEM_MGMT
         if (0 < i) {
             assert_ptr_equal(values_dup[i-1]._sr_mem, values_dup[i]._sr_mem);
         }
+#endif
         snprintf(xpath, PATH_MAX, XPATH_TEMPLATE2, i);
         assert_string_equal(xpath, values_dup[i].xpath);
         assert_true(values_dup[i].dflt);
@@ -350,13 +395,19 @@ sr_dup_values_test(void **state)
     rc = sr_dup_values(values, 10, &values_dup);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(values_dup);
+#ifdef USE_SR_MEM_MGMT
     assert_non_null(values_dup->_sr_mem);
     assert_int_equal(1, values_dup->_sr_mem->obj_count);
     assert_true(0 < values_dup->_sr_mem->used_total);
+#else
+    assert_null(values_dup->_sr_mem);
+#endif
     for (int i = 0; i < 10; ++i) {
+#ifdef USE_SR_MEM_MGMT
         if (0 < i) {
             assert_ptr_equal(values_dup[i-1]._sr_mem, values_dup[i]._sr_mem);
         }
+#endif
         snprintf(xpath, PATH_MAX, XPATH_TEMPLATE1, i, i);
         assert_string_equal(xpath, values_dup[i].xpath);
         assert_false(values_dup[i].dflt);

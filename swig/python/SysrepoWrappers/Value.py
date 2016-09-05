@@ -31,7 +31,8 @@ class Value(object):
             self.value = (leaf_type, value)
 
     def __del__(self):
-         sr.sr_free_val(self._cObject)
+        if (self._cObject._sr_mem is not None):
+            sr.sr_free_val(self._cObject)
 
     @property
     def xpath(self):

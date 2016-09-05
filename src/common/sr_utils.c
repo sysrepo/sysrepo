@@ -1360,6 +1360,9 @@ sr_free_val_content(sr_val_t *value)
     else if (SR_BITS_T == value->type){
         free(value->data.bits_val);
     }
+    else if (SR_INSTANCEID_T == value->type){
+        free(value->data.instanceid_val);
+    }
 }
 
 void

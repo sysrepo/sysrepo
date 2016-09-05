@@ -56,9 +56,13 @@ sr_new_tree_test(void **state)
 
     rc = sr_new_tree(NULL, NULL, &tree);
     assert_int_equal(SR_ERR_OK, rc);
+#ifdef USE_SR_MEM_MGMT
     assert_non_null(tree->_sr_mem);
     assert_int_equal(1, tree->_sr_mem->obj_count);
     assert_true(0 < tree->_sr_mem->used_total);
+#else
+    assert_null(tree->_sr_mem);
+#endif
     assert_null(tree->name);
     assert_false(tree->dflt);
     assert_null(tree->module_name);
@@ -73,9 +77,13 @@ sr_new_tree_test(void **state)
 
     rc = sr_new_tree("leaf", NULL, &tree);
     assert_int_equal(SR_ERR_OK, rc);
+#ifdef USE_SR_MEM_MGMT
     assert_non_null(tree->_sr_mem);
     assert_int_equal(1, tree->_sr_mem->obj_count);
     assert_true(0 < tree->_sr_mem->used_total);
+#else
+    assert_null(tree->_sr_mem);
+#endif
     assert_string_equal("leaf", tree->name);
     assert_false(tree->dflt);
     assert_null(tree->module_name);
@@ -90,9 +98,13 @@ sr_new_tree_test(void **state)
 
     rc = sr_new_tree("leaf", "example-module", &tree);
     assert_int_equal(SR_ERR_OK, rc);
+#ifdef USE_SR_MEM_MGMT
     assert_non_null(tree->_sr_mem);
     assert_int_equal(1, tree->_sr_mem->obj_count);
     assert_true(0 < tree->_sr_mem->used_total);
+#else
+    assert_null(tree->_sr_mem);
+#endif
     assert_string_equal("leaf", tree->name);
     assert_false(tree->dflt);
     assert_string_equal("example-module", tree->module_name);
@@ -114,14 +126,20 @@ sr_new_trees_test(void **state)
 
     rc = sr_new_trees(10, &trees);
     assert_int_equal(SR_ERR_OK, rc);
+#ifdef USE_SR_MEM_MGMT
     assert_non_null(trees->_sr_mem);
     assert_int_equal(1, trees->_sr_mem->obj_count);
     assert_true(0 < trees->_sr_mem->used_total);
+#else
+    assert_null(trees->_sr_mem);
+#endif
 
     for (int i = 0; i < 10; ++i) {
+#ifdef USE_SR_MEM_MGMT
         if (0 < i) {
             assert_ptr_equal(trees[i-1]._sr_mem, trees[i]._sr_mem);
         }
+#endif
         assert_null(trees[i].name);
         assert_false(trees[i].dflt);
         assert_null(trees[i].module_name);
@@ -376,10 +394,14 @@ sr_dup_tree_test(void **state)
 
     /* /example_module:container */
     assert_non_null(tree_dup);
+#ifdef USE_SR_MEM_MGMT
     assert_non_null(tree_dup->_sr_mem);
     assert_ptr_not_equal(trees->_sr_mem, tree_dup->_sr_mem);
     assert_int_equal(1, tree_dup->_sr_mem->obj_count);
     assert_true(0 < tree_dup->_sr_mem->used_total);
+#else
+    assert_null(tree_dup->_sr_mem);
+#endif
     assert_string_equal("container", tree_dup->name);
     assert_false(tree_dup->dflt);
     assert_string_equal("example-module", tree_dup->module_name);
@@ -466,10 +488,14 @@ sr_dup_tree_test(void **state)
 
     /* /example_module:number[.=0] */
     assert_non_null(tree_dup);
+#ifdef USE_SR_MEM_MGMT
     assert_non_null(tree_dup->_sr_mem);
     assert_ptr_not_equal(trees->_sr_mem, tree_dup->_sr_mem);
     assert_int_equal(1, tree_dup->_sr_mem->obj_count);
     assert_true(0 < tree_dup->_sr_mem->used_total);
+#else
+    assert_null(tree_dup->_sr_mem);
+#endif
     assert_string_equal("number", tree_dup->name);
     assert_false(tree_dup->dflt);
     assert_string_equal("example-module", tree_dup->module_name);
@@ -502,10 +528,14 @@ sr_dup_trees_test(void **state)
 
     /* /example_module:container */
     assert_non_null(trees_dup);
+#ifdef USE_SR_MEM_MGMT
     assert_non_null(trees_dup->_sr_mem);
     assert_ptr_not_equal(trees->_sr_mem, trees_dup->_sr_mem);
     assert_int_equal(1, trees_dup->_sr_mem->obj_count);
     assert_true(0 < trees_dup->_sr_mem->used_total);
+#else
+    assert_null(trees_dup->_sr_mem);
+#endif
     assert_string_equal("container", trees_dup->name);
     assert_false(trees_dup->dflt);
     assert_string_equal("example-module", trees_dup->module_name);
@@ -589,11 +619,15 @@ sr_dup_trees_test(void **state)
         /* /example_module:number[.=0] */
         leaf = trees_dup + i;
         assert_non_null(leaf);
+#ifdef USE_SR_MEM_MGMT
         assert_non_null(leaf->_sr_mem);
         assert_ptr_not_equal(trees->_sr_mem, leaf->_sr_mem);
         assert_ptr_equal(trees_dup[i-1]._sr_mem, leaf->_sr_mem);
         assert_int_equal(1, leaf->_sr_mem->obj_count);
         assert_true(0 < leaf->_sr_mem->used_total);
+#else
+        assert_null(leaf->_sr_mem);
+#endif
         assert_string_equal("number", leaf->name);
         assert_false(leaf->dflt);
         assert_string_equal("example-module", leaf->module_name);
