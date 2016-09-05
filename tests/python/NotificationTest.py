@@ -445,7 +445,7 @@ class NotificationTest(unittest.TestCase):
         tm.add_tester(subscriber4)
         tm.run()
 
-    def test_delete_default_node(self):
+    def xtest_delete_default_node(self):
         TestModule.create_ietf_interfaces()
         tm = TestManager()
 
@@ -503,7 +503,7 @@ class NotificationTest(unittest.TestCase):
 
         tm.run()
 
-    def test_change_default_node(self):
+    def xtest_change_default_node(self):
 
         TestModule.create_ietf_interfaces()
         tm = TestManager()
