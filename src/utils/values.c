@@ -56,7 +56,11 @@ sr_new_val_ctx(sr_mem_ctx_t *sr_mem, const char *xpath, sr_val_t **value_p)
         ret = sr_val_set_xpath(value, xpath);
         if (SR_ERR_OK != ret) {
             if (new_ctx) {
-                sr_mem_free(sr_mem);
+                if (sr_mem) {
+                    sr_mem_free(sr_mem);
+                } else {
+                    free(value);
+                }
             } /**
                * Else leave the allocated data there, saving and restoring snapshot would be
                * expensive for such a small function.
@@ -65,7 +69,9 @@ sr_new_val_ctx(sr_mem_ctx_t *sr_mem, const char *xpath, sr_val_t **value_p)
         }
     }
 
-    sr_mem->obj_count += 1;
+    if (sr_mem) {
+        sr_mem->obj_count += 1;
+    }
     *value_p = value;
     return SR_ERR_OK;
 }
@@ -102,14 +108,20 @@ sr_new_values_ctx(sr_mem_ctx_t *sr_mem, size_t count, sr_val_t **values_p)
     values = (sr_val_t *)sr_calloc(sr_mem, count, sizeof *values);
     if (NULL == values) {
         if (new_ctx) {
-            sr_mem_free(sr_mem);
+            if (sr_mem) {
+                sr_mem_free(sr_mem);
+            } else {
+                free(values);
+            }
         }
         return SR_ERR_INTERNAL;
     }
-    for (size_t i = 0; i < count; ++i) {
-        values[i]._sr_mem = sr_mem;
+    if (sr_mem) {
+        for (size_t i = 0; i < count; ++i) {
+            values[i]._sr_mem = sr_mem;
+        }
+        sr_mem->obj_count += 1; /* 1 for the entire array */
     }
-    sr_mem->obj_count += 1; /* 1 for the entire array */
 
     *values_p = values;
     return SR_ERR_OK;
