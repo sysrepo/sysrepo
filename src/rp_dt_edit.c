@@ -294,7 +294,6 @@ rp_dt_delete_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, co
             }
         }
     }
-    lyd_wd_add(info->schema->ly_ctx, &info->node, LYD_WD_IMPL_TAG);
 cleanup:
     ly_set_free(parents);
     ly_set_free(nodes);
@@ -437,11 +436,6 @@ rp_dt_set_item(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const
             CHECK_RC_LOG_GOTO(rc, cleanup, "Created node %s not found", xpath);
         }
         node->dflt = 0;
-    }
-
-    /* add default nodes into the data tree */
-    if (node != NULL) {
-        lyd_wd_add(info->schema->ly_ctx, &info->node, LYD_WD_IMPL_TAG | LYD_OPT_NOSIBLINGS);
     }
 
 cleanup:

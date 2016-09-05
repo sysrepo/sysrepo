@@ -994,6 +994,21 @@ sr_val_to_str(const sr_val_t *value, const struct lys_node *schema_node, char **
     return SR_ERR_OK;
 }
 
+bool
+sr_is_key_node(const struct lys_node *node)
+{
+    if (NULL == node || NULL == node->parent || LYS_LIST != node->parent->nodetype) {
+        return false;
+    }
+    struct lys_node_list *list  = (struct lys_node_list *) node->parent;
+    for (uint8_t i = 0;  i < list->keys_size; i++) {
+        if (node == (struct lys_node *)list->keys[i]) {
+            return true;
+        }
+    }
+    return false;
+}
+
 char *
 sr_api_variant_to_str(sr_api_variant_t api_variant)
 {

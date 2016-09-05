@@ -29,14 +29,14 @@ int
 main(int argc, char **argv)
 {
     try {
-        Connection conn("app4");
+        shared_ptr<Connection> conn(new Connection("app4"));
 
-        Session sess(conn);
+        shared_ptr<Session> sess(new Session(conn));
 
         const char *xpath = "/ietf-interfaces:interfaces/interface[name='gigaeth0']/ietf-ip:ipv6/address[ip='fe80::ab8']";
 
-        sess.delete_item(xpath);
-        sess.commit();
+        sess->delete_item(xpath);
+        sess->commit();
 
     } catch( const std::exception& e ) {
         cout << e.what() << endl;

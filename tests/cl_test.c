@@ -1562,7 +1562,7 @@ test_rpc_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt,
     assert_int_equal(SR_STRING_T, input[1].type);
     assert_string_equal("/", input[1].data.string_val);
 
-    *output_cnt = 4;
+    *output_cnt = 6;
     *output = calloc(*output_cnt, sizeof(**output));
     (*output)[0].xpath = strdup("/test-module:activate-software-image/status");
     (*output)[0].type = SR_STRING_T;
@@ -1574,10 +1574,22 @@ test_rpc_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt,
                                 "log-msg[msg='Successfully loaded software image.'][time='1469625110']/msg-type");
     (*output)[2].type = SR_ENUM_T;
     (*output)[2].data.enum_val = strdup("debug");
+
+    /* explictly create list - not necessary - list will be automatically created when any of its inner node is created */
     (*output)[3].xpath = strdup("/test-module:activate-software-image/init-log/"
+                                "log-msg[msg='Successfully loaded software image.'][time='1469625110']");
+    (*output)[3].type = SR_LIST_T;
+    /* explictly create list key - redundant only for test purposes*/
+    (*output)[4].xpath = strdup("/test-module:activate-software-image/init-log/"
+                                "log-msg[msg='Successfully loaded software image.'][time='1469625110']/msg");
+    (*output)[4].type = SR_STRING_T;
+    (*output)[4].data.string_val = strdup("Successfully loaded software image.");
+
+
+    (*output)[5].xpath = strdup("/test-module:activate-software-image/init-log/"
                                 "log-msg[msg='Some soft limit exceeded...'][time='1469625150']/msg-type");
-    (*output)[3].type = SR_ENUM_T;
-    (*output)[3].data.enum_val = strdup("warning");
+    (*output)[5].type = SR_ENUM_T;
+    (*output)[5].data.enum_val = strdup("warning");
 
     return SR_ERR_OK;
 }
@@ -1624,51 +1636,53 @@ cl_rpc_test(void **state)
     assert_false(output[1].dflt);
     assert_int_equal(SR_STRING_T, output[1].type);
     assert_string_equal("2.3", output[1].data.string_val);
-    assert_string_equal("/test-module:activate-software-image/location", output[2].xpath);
-    assert_true(output[2].dflt);
-    assert_int_equal(SR_STRING_T, output[2].type);
-    assert_string_equal("/", output[2].data.string_val);
-    assert_string_equal("/test-module:activate-software-image/init-log", output[3].xpath);
+
+    assert_string_equal("/test-module:activate-software-image/init-log", output[2].xpath);
+    assert_false(output[2].dflt);
+    assert_int_equal(SR_CONTAINER_T, output[2].type);
+    assert_string_equal("/test-module:activate-software-image/init-log/"
+                        "log-msg[msg='Successfully loaded software image.'][time='1469625110']", output[3].xpath);
     assert_false(output[3].dflt);
-    assert_int_equal(SR_CONTAINER_T, output[3].type);
+    assert_int_equal(SR_LIST_T, output[3].type);
     assert_string_equal("/test-module:activate-software-image/init-log/"
-                        "log-msg[msg='Successfully loaded software image.'][time='1469625110']", output[4].xpath);
+                        "log-msg[msg='Successfully loaded software image.'][time='1469625110']/msg", output[4].xpath);
     assert_false(output[4].dflt);
-    assert_int_equal(SR_LIST_T, output[4].type);
+    assert_int_equal(SR_STRING_T, output[4].type);
+    assert_string_equal("Successfully loaded software image.", output[4].data.string_val);
     assert_string_equal("/test-module:activate-software-image/init-log/"
-                        "log-msg[msg='Successfully loaded software image.'][time='1469625110']/msg", output[5].xpath);
+                        "log-msg[msg='Successfully loaded software image.'][time='1469625110']/time", output[5].xpath);
     assert_false(output[5].dflt);
-    assert_int_equal(SR_STRING_T, output[5].type);
-    assert_string_equal("Successfully loaded software image.", output[5].data.string_val);
+    assert_int_equal(SR_UINT32_T, output[5].type);
+    assert_int_equal(1469625110, output[5].data.uint32_val);
     assert_string_equal("/test-module:activate-software-image/init-log/"
-                        "log-msg[msg='Successfully loaded software image.'][time='1469625110']/time", output[6].xpath);
+                        "log-msg[msg='Successfully loaded software image.'][time='1469625110']/msg-type", output[6].xpath);
     assert_false(output[6].dflt);
-    assert_int_equal(SR_UINT32_T, output[6].type);
-    assert_int_equal(1469625110, output[6].data.uint32_val);
+    assert_int_equal(SR_ENUM_T, output[6].type);
+    assert_string_equal("debug", output[6].data.enum_val);
     assert_string_equal("/test-module:activate-software-image/init-log/"
-                        "log-msg[msg='Successfully loaded software image.'][time='1469625110']/msg-type", output[7].xpath);
+                        "log-msg[msg='Some soft limit exceeded...'][time='1469625150']", output[7].xpath);
     assert_false(output[7].dflt);
-    assert_int_equal(SR_ENUM_T, output[7].type);
-    assert_string_equal("debug", output[7].data.enum_val);
+    assert_int_equal(SR_LIST_T, output[7].type);
     assert_string_equal("/test-module:activate-software-image/init-log/"
-                        "log-msg[msg='Some soft limit exceeded...'][time='1469625150']", output[8].xpath);
+                        "log-msg[msg='Some soft limit exceeded...'][time='1469625150']/msg", output[8].xpath);
     assert_false(output[8].dflt);
-    assert_int_equal(SR_LIST_T, output[8].type);
+    assert_int_equal(SR_STRING_T, output[8].type);
+    assert_string_equal("Some soft limit exceeded...", output[8].data.string_val);
     assert_string_equal("/test-module:activate-software-image/init-log/"
-                        "log-msg[msg='Some soft limit exceeded...'][time='1469625150']/msg", output[9].xpath);
+                        "log-msg[msg='Some soft limit exceeded...'][time='1469625150']/time", output[9].xpath);
     assert_false(output[9].dflt);
-    assert_int_equal(SR_STRING_T, output[9].type);
-    assert_string_equal("Some soft limit exceeded...", output[9].data.string_val);
+    assert_int_equal(SR_UINT32_T, output[9].type);
+    assert_int_equal(1469625150, output[9].data.uint32_val);
     assert_string_equal("/test-module:activate-software-image/init-log/"
-                        "log-msg[msg='Some soft limit exceeded...'][time='1469625150']/time", output[10].xpath);
+                        "log-msg[msg='Some soft limit exceeded...'][time='1469625150']/msg-type", output[10].xpath);
     assert_false(output[10].dflt);
-    assert_int_equal(SR_UINT32_T, output[10].type);
-    assert_int_equal(1469625150, output[10].data.uint32_val);
-    assert_string_equal("/test-module:activate-software-image/init-log/"
-                        "log-msg[msg='Some soft limit exceeded...'][time='1469625150']/msg-type", output[11].xpath);
-    assert_false(output[11].dflt);
-    assert_int_equal(SR_ENUM_T, output[11].type);
-    assert_string_equal("warning", output[11].data.enum_val);
+    assert_int_equal(SR_ENUM_T, output[10].type);
+    assert_string_equal("warning", output[10].data.enum_val);
+
+    assert_string_equal("/test-module:activate-software-image/location", output[11].xpath);
+    assert_true(output[11].dflt);
+    assert_int_equal(SR_STRING_T, output[11].type);
+    assert_string_equal("/", output[11].data.string_val);
 
     sr_free_values(output, output_cnt);
 
@@ -1798,7 +1812,7 @@ cl_rpc_tree_test(void **state)
     assert_string_equal("2.3", sr_node->data.string_val);
     assert_int_equal(0, sr_node_t_get_children_cnt(sr_node));
     /*   /test-module:activate-software-image/output/location */
-    sr_node = output + 2;
+    sr_node = output + 3;
     assert_string_equal("location", sr_node->name);
     assert_string_equal("test-module", sr_node->module_name);
     assert_true(sr_node->dflt);
@@ -1806,7 +1820,7 @@ cl_rpc_tree_test(void **state)
     assert_string_equal("/", sr_node->data.string_val);
     assert_int_equal(0, sr_node_t_get_children_cnt(sr_node));
     /*   /test-module:activate-software-image/output/init-log */
-    sr_node = output + 3;
+    sr_node = output + 2;
     assert_string_equal("init-log", sr_node->name);
     assert_string_equal("test-module", sr_node->module_name);
     assert_false(sr_node->dflt);
@@ -1844,7 +1858,7 @@ cl_rpc_tree_test(void **state)
     assert_string_equal("debug", child->data.string_val);
     assert_int_equal(0, sr_node_t_get_children_cnt(child));
     /*   /test-module:activate-software-image/output/init-log/log-msg[2] */
-    sr_node = sr_node_t_get_child(output + 3, 1);
+    sr_node = sr_node_t_get_child(output + 2, 1);
     assert_string_equal("log-msg", sr_node->name);
     assert_null( sr_node->module_name);
     assert_false(sr_node->dflt);
@@ -1929,51 +1943,53 @@ cl_rpc_combo_test(void **state)
     assert_false(output[1].dflt);
     assert_int_equal(SR_STRING_T, output[1].type);
     assert_string_equal("2.3", output[1].data.string_val);
-    assert_string_equal("/test-module:activate-software-image/location", output[2].xpath);
-    assert_true(output[2].dflt);
-    assert_int_equal(SR_STRING_T, output[2].type);
-    assert_string_equal("/", output[2].data.string_val);
-    assert_string_equal("/test-module:activate-software-image/init-log", output[3].xpath);
+
+    assert_string_equal("/test-module:activate-software-image/init-log", output[2].xpath);
+    assert_false(output[2].dflt);
+    assert_int_equal(SR_CONTAINER_T, output[2].type);
+    assert_string_equal("/test-module:activate-software-image/init-log/"
+                        "log-msg[msg='Successfully loaded software image.'][time='1469625110']", output[3].xpath);
     assert_false(output[3].dflt);
-    assert_int_equal(SR_CONTAINER_T, output[3].type);
+    assert_int_equal(SR_LIST_T, output[3].type);
     assert_string_equal("/test-module:activate-software-image/init-log/"
-                        "log-msg[msg='Successfully loaded software image.'][time='1469625110']", output[4].xpath);
+                        "log-msg[msg='Successfully loaded software image.'][time='1469625110']/msg", output[4].xpath);
     assert_false(output[4].dflt);
-    assert_int_equal(SR_LIST_T, output[4].type);
+    assert_int_equal(SR_STRING_T, output[4].type);
+    assert_string_equal("Successfully loaded software image.", output[4].data.string_val);
     assert_string_equal("/test-module:activate-software-image/init-log/"
-                        "log-msg[msg='Successfully loaded software image.'][time='1469625110']/msg", output[5].xpath);
+                        "log-msg[msg='Successfully loaded software image.'][time='1469625110']/time", output[5].xpath);
     assert_false(output[5].dflt);
-    assert_int_equal(SR_STRING_T, output[5].type);
-    assert_string_equal("Successfully loaded software image.", output[5].data.string_val);
+    assert_int_equal(SR_UINT32_T, output[5].type);
+    assert_int_equal(1469625110, output[5].data.uint32_val);
     assert_string_equal("/test-module:activate-software-image/init-log/"
-                        "log-msg[msg='Successfully loaded software image.'][time='1469625110']/time", output[6].xpath);
+                        "log-msg[msg='Successfully loaded software image.'][time='1469625110']/msg-type", output[6].xpath);
     assert_false(output[6].dflt);
-    assert_int_equal(SR_UINT32_T, output[6].type);
-    assert_int_equal(1469625110, output[6].data.uint32_val);
+    assert_int_equal(SR_ENUM_T, output[6].type);
+    assert_string_equal("debug", output[6].data.enum_val);
     assert_string_equal("/test-module:activate-software-image/init-log/"
-                        "log-msg[msg='Successfully loaded software image.'][time='1469625110']/msg-type", output[7].xpath);
+                        "log-msg[msg='Some soft limit exceeded...'][time='1469625150']", output[7].xpath);
     assert_false(output[7].dflt);
-    assert_int_equal(SR_ENUM_T, output[7].type);
-    assert_string_equal("debug", output[7].data.enum_val);
+    assert_int_equal(SR_LIST_T, output[7].type);
     assert_string_equal("/test-module:activate-software-image/init-log/"
-                        "log-msg[msg='Some soft limit exceeded...'][time='1469625150']", output[8].xpath);
+                        "log-msg[msg='Some soft limit exceeded...'][time='1469625150']/msg", output[8].xpath);
     assert_false(output[8].dflt);
-    assert_int_equal(SR_LIST_T, output[8].type);
+    assert_int_equal(SR_STRING_T, output[8].type);
+    assert_string_equal("Some soft limit exceeded...", output[8].data.string_val);
     assert_string_equal("/test-module:activate-software-image/init-log/"
-                        "log-msg[msg='Some soft limit exceeded...'][time='1469625150']/msg", output[9].xpath);
+                        "log-msg[msg='Some soft limit exceeded...'][time='1469625150']/time", output[9].xpath);
     assert_false(output[9].dflt);
-    assert_int_equal(SR_STRING_T, output[9].type);
-    assert_string_equal("Some soft limit exceeded...", output[9].data.string_val);
+    assert_int_equal(SR_UINT32_T, output[9].type);
+    assert_int_equal(1469625150, output[9].data.uint32_val);
     assert_string_equal("/test-module:activate-software-image/init-log/"
-                        "log-msg[msg='Some soft limit exceeded...'][time='1469625150']/time", output[10].xpath);
+                        "log-msg[msg='Some soft limit exceeded...'][time='1469625150']/msg-type", output[10].xpath);
     assert_false(output[10].dflt);
-    assert_int_equal(SR_UINT32_T, output[10].type);
-    assert_int_equal(1469625150, output[10].data.uint32_val);
-    assert_string_equal("/test-module:activate-software-image/init-log/"
-                        "log-msg[msg='Some soft limit exceeded...'][time='1469625150']/msg-type", output[11].xpath);
-    assert_false(output[11].dflt);
-    assert_int_equal(SR_ENUM_T, output[11].type);
-    assert_string_equal("warning", output[11].data.enum_val);
+    assert_int_equal(SR_ENUM_T, output[10].type);
+    assert_string_equal("warning", output[10].data.enum_val);
+
+    assert_string_equal("/test-module:activate-software-image/location", output[11].xpath);
+    assert_true(output[11].dflt);
+    assert_int_equal(SR_STRING_T, output[11].type);
+    assert_string_equal("/", output[11].data.string_val);
 
     sr_free_values(output, output_cnt);
 
@@ -2018,7 +2034,7 @@ cl_rpc_combo_test(void **state)
     assert_string_equal("2.3", sr_node->data.string_val);
     assert_int_equal(0, sr_node_t_get_children_cnt(sr_node));
     /*   /test-module:activate-software-image/output/location */
-    sr_node = output_tree + 2;
+    sr_node = output_tree + 3;
     assert_string_equal("location", sr_node->name);
     assert_string_equal("test-module", sr_node->module_name);
     assert_true(sr_node->dflt);
@@ -2026,7 +2042,7 @@ cl_rpc_combo_test(void **state)
     assert_string_equal("/", sr_node->data.string_val);
     assert_int_equal(0, sr_node_t_get_children_cnt(sr_node));
     /*   /test-module:activate-software-image/output/init-log */
-    sr_node = output_tree + 3;
+    sr_node = output_tree + 2;
     assert_string_equal("init-log", sr_node->name);
     assert_string_equal("test-module", sr_node->module_name);
     assert_false(sr_node->dflt);
@@ -2064,7 +2080,7 @@ cl_rpc_combo_test(void **state)
     assert_string_equal("debug", child->data.string_val);
     assert_int_equal(0, sr_node_t_get_children_cnt(child));
     /*   /test-module:activate-software-image/output/init-log/log-msg[2] */
-    sr_node = sr_node_t_get_child(output_tree + 3, 1);
+    sr_node = sr_node_t_get_child(output_tree + 2, 1);
     assert_string_equal("log-msg", sr_node->name);
     assert_null( sr_node->module_name);
     assert_false(sr_node->dflt);

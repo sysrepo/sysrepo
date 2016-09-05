@@ -557,6 +557,36 @@ cl_missing_subscription(void **state)
     sr_list_cleanup(xpath_retrieved);
 }
 
+static void
+cl_dp_neg_subscription(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+    sr_session_ctx_t *session = NULL;
+    sr_subscription_ctx_t *subscription = NULL;
+
+    int rc = SR_ERR_OK;
+
+    /* start session */
+    rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_module_change_subscribe(session, "state-module", cl_whole_module_cb, NULL,
+            0, SR_SUBSCR_DEFAULT, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* subscribe data not existing node */
+    rc = sr_dp_get_items_subscribe(session, "/state-module:bus/unknown", cl_dp_gps_located, NULL, SR_SUBSCR_CTX_REUSE, &subscription);
+    assert_int_equal(rc, SR_ERR_BAD_ELEMENT);
+
+    /* subscribe not existing module */
+    rc = sr_dp_get_items_subscribe(session, "/unknown-module:state-data", cl_dp_distance_travelled, NULL, SR_SUBSCR_CTX_REUSE, &subscription);
+    assert_int_equal(rc, SR_ERR_INTERNAL);
+
+    sr_unsubscribe(session, subscription);
+    sr_session_stop(session);
+}
+
 int
 main()
 {
@@ -566,7 +596,7 @@ main()
         cmocka_unit_test_setup_teardown(cl_partialy_covered_by_subscription, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_missing_subscription, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_incorrect_data_subscription, sysrepo_setup, sysrepo_teardown),
-
+        cmocka_unit_test_setup_teardown(cl_dp_neg_subscription, sysrepo_setup, sysrepo_teardown),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);

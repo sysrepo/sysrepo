@@ -26,12 +26,12 @@
 using namespace std;
 
 void
-print_value(Value *value)
+print_value(shared_ptr<Val> value)
 {
-    cout << value->get_xpath();
+    cout << value->xpath();
     cout << " ";
 
-    switch (value->get_type()) {
+    switch (value->type()) {
     case SR_CONTAINER_T:
     case SR_CONTAINER_PRESENCE_T:
         cout << "(container)" << endl;
@@ -40,25 +40,25 @@ print_value(Value *value)
         cout << "(list instance)" << endl;
         break;
     case SR_STRING_T:
-        cout << "= " << value->get_string() << endl;;
+        cout << "= " << value->data()->get_string() << endl;;
         break;
     case SR_BOOL_T:
-	if (value->get_bool())
+	if (value->data()->get_bool())
             cout << "= true" << endl;
 	else
             cout << "= false" << endl;
         break;
     case SR_UINT8_T:
-        cout << "= " << unsigned(value->get_uint8()) << endl;
+        cout << "= " << unsigned(value->data()->get_uint8()) << endl;
         break;
     case SR_UINT16_T:
-        cout << "= " << unsigned(value->get_uint16()) << endl;
+        cout << "= " << unsigned(value->data()->get_uint16()) << endl;
         break;
     case SR_UINT32_T:
-        cout << "= " << unsigned(value->get_uint32()) << endl;
+        cout << "= " << unsigned(value->data()->get_uint32()) << endl;
         break;
     case SR_IDENTITYREF_T:
-        cout << "= " << value->get_identityref() << endl;
+        cout << "= " << value->data()->get_identityref() << endl;
         break;
     default:
         cout << "(unprintable)" << endl;
@@ -66,23 +66,22 @@ print_value(Value *value)
     return;
 }
 
-
 int
 main(int argc, char **argv)
 {
     try {
-        Connection conn("app3");
+        shared_ptr<Connection> conn(new Connection("app3"));
 
-        Session sess(conn);
+        shared_ptr<Session> sess(new Session(conn));
 
         const char *xpath = "/ietf-interfaces:interfaces/interface//*";
 
-	Value value;
-	Iter_Value iter;
-	sess.get_items_iter(xpath, &iter);
+	auto iter = sess->get_items_iter(xpath);
+        if (iter == NULL)
+            return 0;
 
-        while (sess.get_item_next(&iter, &value)) {
-            print_value(&value);
+        while (auto value = sess->get_item_next(iter)) {
+            print_value(value);
         }
 
     } catch( const std::exception& e ) {

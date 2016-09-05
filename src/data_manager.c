@@ -658,15 +658,12 @@ dm_load_data_tree_file(dm_ctx_t *dm_ctx, int fd, const char *data_filename, dm_s
     }
 
     /* if the data tree is loaded, validate it*/
-    if (NULL != data_tree && 0 != lyd_validate(&data_tree, LYD_OPT_STRICT | LYD_OPT_CONFIG | LYD_WD_IMPL_TAG)) {
+    if ((NULL != data_tree && 0 != lyd_validate(&data_tree, LYD_OPT_STRICT | LYD_OPT_CONFIG)) ||
+        (NULL == data_tree && 0 != lyd_validate(&data_tree, LYD_OPT_STRICT | LYD_OPT_CONFIG, schema_info->ly_ctx)) ){
         SR_LOG_ERR("Loaded data tree '%s' is not valid", data_filename);
         lyd_free_withsiblings(data_tree);
         free(data);
         return SR_ERR_INTERNAL;
-    }
-    /* add default nodes to the empty data tree */
-    else if (NULL == data_tree) {
-        lyd_wd_add(schema_info->ly_ctx, &data_tree, LYD_WD_IMPL_TAG);
     }
 
     data->schema = schema_info;
@@ -1496,7 +1493,7 @@ dm_has_not_enabled_nodes(dm_data_info_t *info, bool *res)
     LY_TREE_FOR_SAFE(info->node, next, iter)
     {
         if (((LYS_CONTAINER | LYS_LIST | LYS_LEAF | LYS_LEAFLIST) & iter->schema->nodetype)) {
-            if (dm_is_node_enabled(iter->schema)) {
+            if (dm_is_node_enabled(iter->schema) || iter->dflt) {
                 if (!dm_is_node_enabled_with_children(iter->schema) && (LYS_CONTAINER | LYS_LIST) & iter->schema->nodetype) {
                     LY_TREE_FOR(iter->child, child)
                     {
@@ -1517,7 +1514,7 @@ dm_has_not_enabled_nodes(dm_data_info_t *info, bool *res)
 
     while (stack->count != 0) {
         iter = stack->data[stack->count - 1];
-        if (dm_is_node_enabled(iter->schema)) {
+        if (dm_is_node_enabled(iter->schema) || iter->dflt) {
             if (!dm_is_node_enabled_with_children(iter->schema) && (LYS_CONTAINER | LYS_LIST) & iter->schema->nodetype) {
 
                 LY_TREE_FOR(iter->child, child)
@@ -1574,7 +1571,6 @@ dm_get_data_info(dm_ctx_t *dm_ctx, dm_session_t *dm_session_ctx, const char *mod
             SR_LOG_ERR("Removing of not enabled nodes in model %s failed", di->schema->module->name);
             goto cleanup;
         }
-        lyd_wd_add(schema_info->ly_ctx, &di->node, LYD_WD_IMPL_TAG);
     }
     else {
         rc = dm_load_data_tree(dm_ctx, dm_session_ctx, schema_info, dm_session_ctx->datastore, &di);
@@ -2617,9 +2613,7 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
         if (SR_DS_CANDIDATE == session->datastore) {
             /* check if all subtrees are enabled */
             bool has_not_enabled = true;
-            lyd_wd_cleanup(&info->node, 0);
             rc = dm_has_not_enabled_nodes(info, &has_not_enabled);
-            lyd_wd_add(info->schema->ly_ctx, &info->node, LYD_WD_IMPL_TAG);
             CHECK_RC_LOG_RETURN(rc, "Has not enabled check failed for module %s", info->schema->module->name);
             if (has_not_enabled) {
                 SR_LOG_ERR("There is a not enabled node in %s module, it can not be committed to the running", info->schema->module->name);
@@ -2763,7 +2757,6 @@ dm_commit_write_files(dm_session_t *session, dm_commit_context_t *c_ctx)
             }
             ret = ftruncate(c_ctx->fds[count], 0);
             if (0 == ret) {
-                lyd_wd_cleanup(&merged_info->node, 0);
                 ly_errno = LY_SUCCESS; /* needed to check if the error was in libyang or not below */
                 ret = lyd_print_fd(c_ctx->fds[count], merged_info->node, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT);
             }
@@ -2826,7 +2819,6 @@ dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t *c
             continue;
         }
 
-        lyd_wd_add(commit_info->schema->ly_ctx, &commit_info->node, LYD_WD_IMPL_TAG);
         struct lyd_difflist *diff = lyd_diff(prev_info->node, commit_info->node, 0);
         if (NULL == diff) {
             SR_LOG_ERR("Lyd diff failed for module %s", info->schema->module->name);
@@ -3138,7 +3130,6 @@ dm_copy_config(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_list_t *module_
         module_name = module_names->data[i];
         if (SR_DS_CANDIDATE != dst) {
             /* write dest file, dst is either startup or running*/
-            lyd_wd_cleanup(&src_infos[i]->node, 0);
             if (0 != lyd_print_fd(fds[i], src_infos[i]->node, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT)) {
                 SR_LOG_ERR("Copy of module %s failed", module_name);
                 rc = SR_ERR_INTERNAL;
@@ -3148,10 +3139,6 @@ dm_copy_config(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_list_t *module_
                 SR_LOG_ERR("Failed to write data of '%s' module: %s", src_infos[i]->schema->module->name,
                         (ly_errno != LY_SUCCESS) ? ly_errmsg() : sr_strerror_safe(errno));
                 rc = SR_ERR_INTERNAL;
-            }
-            if (SR_DS_CANDIDATE == src) {
-                /* if the source ds is candidate we have bring default nodes back */
-                lyd_wd_add(src_infos[i]->schema->ly_ctx, &src_infos[i]->node, LYD_WD_IMPL_TAG);
             }
         } else {
             /* copy data tree into candidate session */
@@ -3364,7 +3351,7 @@ dm_enable_module_subtree_running(dm_ctx_t *ctx, dm_session_t *session, const cha
     int rc = SR_ERR_OK;
 
     rc = dm_get_module_and_lockw(ctx, module_name, &si);
-    CHECK_RC_LOG_RETURN(rc, "Lock schema %s for write failed", si->module_name);
+    CHECK_RC_LOG_RETURN(rc, "Lock schema %s for write failed", module_name);
 
     rc = dm_enable_module_subtree_running_internal(ctx, session, si, module_name, xpath);
     pthread_rwlock_unlock(&si->model_lock);
@@ -3524,6 +3511,7 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
     char *procedure_name = NULL;
     int validation_options = 0;
     int ret = 0, rc = SR_ERR_OK;
+    int allow_update = 0;
 
     CHECK_NULL_ARG3(dm_ctx, session, xpath);
 
@@ -3579,10 +3567,13 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
                     break;
                 }
             }
+
+            allow_update = (LYS_LIST == sch_node->nodetype || sr_is_key_node(sch_node)) ? LYD_PATH_OPT_UPDATE : 0;
+
             /* create the argument node in the tree */
-            new_node = lyd_new_path(data_tree, schema_info->ly_ctx, args[i].xpath, string_value, 0, (input ? 0 : LYD_PATH_OPT_OUTPUT));
+            new_node = lyd_new_path(data_tree, schema_info->ly_ctx, args[i].xpath, string_value, 0, (input ? allow_update : allow_update | LYD_PATH_OPT_OUTPUT));
             free(string_value);
-            if (NULL == new_node) {
+            if (NULL == new_node && !allow_update) {
                 SR_LOG_ERR("Unable to add new %s argument '%s': %s.", procedure_name, args[i].xpath, ly_errmsg());
                 rc = dm_report_error(session, ly_errmsg(), ly_errpath(), SR_ERR_VALIDATION_FAILED);
                 break;
@@ -3602,7 +3593,7 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
 
     /* validate the content (and also add default nodes) */
     if ((SR_ERR_OK == rc) && (arg_cnt > 0)) {
-        validation_options = LYD_OPT_STRICT | LYD_WD_IMPL_TAG;
+        validation_options = LYD_OPT_STRICT;
         switch (type) {
             case DM_PROCEDURE_RPC:
             case DM_PROCEDURE_ACTION:

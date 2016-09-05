@@ -20,64 +20,61 @@ import libsysrepoPython2 as sr
 import sys
 
 def print_value(value):
-    print value.get_xpath() + " ",
+    print value.xpath() + " ",
 
-    if (value.get_type() == sr.SR_CONTAINER_T):
+    if (value.type() == sr.SR_CONTAINER_T):
         print "(container)"
-    elif (value.get_type() == sr.SR_CONTAINER_PRESENCE_T):
+    elif (value.type() == sr.SR_CONTAINER_PRESENCE_T):
         print "(container)"
-    elif (value.get_type() == sr.SR_LIST_T):
+    elif (value.type() == sr.SR_LIST_T):
         print "(list instance)"
-    elif (value.get_type() == sr.SR_STRING_T):
-        print "= " + value.get_string()
-    elif (value.get_type() == sr.SR_BOOL_T):
-        if (value.get_bool()):
+    elif (value.type() == sr.SR_STRING_T):
+        print "= " + value.data().get_string()
+    elif (value.type() == sr.SR_BOOL_T):
+        if (value.data().get_bool()):
             print "= true"
         else:
             print "= true"
-    elif (value.get_type() == sr.SR_UINT8_T):
-        print "= " + repr(value.get_uint8())
-    elif (value.get_type() == sr.SR_UINT16_T):
-        print "= " + repr(value.get_uint16())
-    elif (value.get_type() == sr.SR_UINT32_T):
-        print "= " + repr(value.get_uint32())
-    elif (value.get_type() == sr.SR_IDENTITYREF_T):
-        print "= " + repr(value.get_identityref())
+    elif (value.type() == sr.SR_UINT8_T):
+        print "= " + repr(value.data().get_uint8())
+    elif (value.type() == sr.SR_UINT16_T):
+        print "= " + repr(value.data().get_uint16())
+    elif (value.type() == sr.SR_UINT32_T):
+        print "= " + repr(value.data().get_uint32())
+    elif (value.type() == sr.SR_IDENTITYREF_T):
+        print "= " + repr(value.data().get_identityref())
     else:
         print "(unprintable)"
 
 def print_change(op, old_val, new_val):
-    if (op == sr.SR_OP_CREATED):
+    if (op.get() == sr.SR_OP_CREATED):
            print "CREATED: ",
            print_value(new_val)
-    elif (op == sr.SR_OP_DELETED):
+    elif (op.get() == sr.SR_OP_DELETED):
            print "DELETED: ",
            print_value(old_val);
-    elif (op == sr.SR_OP_MODIFIED):
+    elif (op.get() == sr.SR_OP_MODIFIED):
            print "MODIFIED: ",
            print "old value",
            print_value(old_val)
            print "new value",
            print_value(new_val)
-    elif (op == sr.SR_OP_MOVED):
+    elif (op.get() == sr.SR_OP_MOVED):
         print "MOVED: " + new_val.get_xpath() + " after " + old_val.get_xpath()
 
 def print_current_config(session, module_name):
-    values = sr.Values()
-
     select_xpath = "/" + module_name + ":*//*"
 
-    session.get_items(select_xpath, values)
+    values = session.get_items(select_xpath)
 
-    while True:
-        print_value(values)
-        if (values.Next() == False):
-            break
+    for i in range(values.val_cnt()):
+        print_value(values.val(i))
 
 def module_change_cb(session, module_name, event, private_ctx):
-    old_value = sr.Values()
-    new_value = sr.Values()
-    it = sr.Iter_Change()
+#def module_change_cb(module_name):
+    print "\n\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: ==========\n\n"
+    old_value = sr.Val_Holder()
+    new_value = sr.Val_Holder()
 
     try:
         sess = sr.Session(session)
@@ -91,14 +88,14 @@ def module_change_cb(session, module_name, event, private_ctx):
         change_path = "/" + module_name + ":*"
 
         subscribe = sr.Subscribe(sess);
-        subscribe.get_changes_iter(change_path, it);
+        it = subscribe.get_changes_iter(change_path);
 
         while True:
-            try:
-                oper = subscribe.get_change_next(it, old_value, new_value)
-                print_change(oper, old_value, new_value)
-            except Exception as e:
+            oper = subscribe.get_change_next(it, old_value, new_value)
+            if oper == None:
                 break
+            print_change(oper, old_value.val(), new_value.val())
+
         print "\n\n ========== END OF CHANGES =======================================\n\n"
 
     except Exception as e:

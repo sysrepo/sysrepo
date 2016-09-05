@@ -81,7 +81,7 @@ createDataTree(struct ly_ctx *ctx, struct lyd_node **root) {
     assert_non_null(node);
     assert_int_equal(0, lyd_insert_after(*root, node));
 
-    assert_int_equal(0, lyd_validate(root, LYD_OPT_STRICT | LYD_OPT_CONFIG | LYD_WD_IMPL_TAG));
+    assert_int_equal(0, lyd_validate(root, LYD_OPT_STRICT | LYD_OPT_CONFIG));
 }
 
 static void
@@ -98,7 +98,7 @@ createDataTreeWithAugments(struct ly_ctx *ctx, struct lyd_node **root){
     lyd_new_leaf(*root, module, "info", "info 123");
 
     /* add default values */
-    assert_int_equal(0, lyd_validate(root, LYD_OPT_STRICT | LYD_OPT_CONFIG | LYD_WD_IMPL_TAG));
+    assert_int_equal(0, lyd_validate(root, LYD_OPT_STRICT | LYD_OPT_CONFIG));
 }
 
 /*
@@ -743,7 +743,7 @@ sr_node_t_with_augments_test(void **state)
         assert_int_equal(SR_ERR_OK, sr_tree_to_dt(ly_ctx, trees + i, NULL, false, &data_tree2));
     }
     /* add default values */
-    assert_int_equal(0, lyd_validate(&data_tree2, LYD_OPT_STRICT | LYD_OPT_CONFIG | LYD_WD_IMPL_TAG));
+    assert_int_equal(0, lyd_validate(&data_tree2, LYD_OPT_STRICT | LYD_OPT_CONFIG));
     lyd_print_fd(STDOUT_FILENO, data_tree2, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT);
 
     /* compare with original */
@@ -791,7 +791,7 @@ sr_node_t_rpc_input_test(void **state)
     sr_free_trees(trees, tree_cnt);
 
     /* add default nodes */
-    assert_int_equal(0, lyd_validate(&data_tree, LYD_OPT_STRICT | LYD_WD_IMPL_TAG | LYD_OPT_RPC));
+    assert_int_equal(0, lyd_validate(&data_tree, LYD_OPT_STRICT | LYD_OPT_RPC));
 
     /* convert RPC input back to sysrepo trees */
     nodeset = lyd_get_node(data_tree, "/test-module:activate-software-image/./*");
@@ -880,7 +880,7 @@ sr_node_t_rpc_output_test(void **state)
     sr_free_trees(trees, tree_cnt);
 
     /* add default nodes */
-    assert_int_equal(0, lyd_validate(&data_tree, LYD_OPT_STRICT | LYD_WD_IMPL_TAG | LYD_OPT_RPCREPLY));
+    assert_int_equal(0, lyd_validate(&data_tree, LYD_OPT_STRICT | LYD_OPT_RPCREPLY));
     lyd_print_fd(STDOUT_FILENO, data_tree, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT);
 
     /* convert RPC input back to sysrepo trees */
@@ -902,7 +902,7 @@ sr_node_t_rpc_output_test(void **state)
     assert_int_equal(0, sr_node_t_get_children_cnt(sr_node));
 
     /* /test-module:activate-software-image/output/location */
-    sr_node = trees + 1;
+    sr_node = trees + 2;
     assert_string_equal("location", sr_node->name);
     assert_string_equal("test-module", sr_node->module_name);
     assert_true(sr_node->dflt);
@@ -911,7 +911,7 @@ sr_node_t_rpc_output_test(void **state)
     assert_int_equal(0, sr_node_t_get_children_cnt(sr_node));
 
     /* /test-module:activate-software-image/output/init-log */
-    sr_node = trees + 2;
+    sr_node = trees + 1;
     assert_string_equal("init-log", sr_node->name);
     assert_string_equal("test-module", sr_node->module_name);
     assert_false(sr_node->dflt);
@@ -951,7 +951,7 @@ sr_node_t_rpc_output_test(void **state)
     assert_int_equal(0, sr_node_t_get_children_cnt(child));
 
     /* /test-module:activate-software-image/output/init-log/log-msg[2] */
-    sr_node = sr_node_t_get_child(trees + 2, 1);
+    sr_node = sr_node_t_get_child(trees + 1, 1);
     assert_string_equal("log-msg", sr_node->name);
     assert_null( sr_node->module_name);
     assert_false(sr_node->dflt);

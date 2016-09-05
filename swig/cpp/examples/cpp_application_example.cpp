@@ -32,12 +32,12 @@ using namespace std;
 volatile int exit_application = 0;
 
 void
-print_value(Values *value)
+print_value(shared_ptr<Val> value)
 {
-    cout << value->get_xpath();
+    cout << value->xpath();
     cout << " ";
 
-    switch (value->get_type()) {
+    switch (value->type()) {
     case SR_CONTAINER_T:
     case SR_CONTAINER_PRESENCE_T:
         cout << "(container)" << endl;
@@ -46,25 +46,25 @@ print_value(Values *value)
         cout << "(list instance)" << endl;
         break;
     case SR_STRING_T:
-        cout << "= " << value->get_string() << endl;;
+        cout << "= " << value->data()->get_string() << endl;;
         break;
     case SR_BOOL_T:
-	if (value->get_bool())
+	if (value->data()->get_bool())
             cout << "= true" << endl;
 	else
             cout << "= false" << endl;
         break;
     case SR_UINT8_T:
-        cout << "= " << unsigned(value->get_uint8()) << endl;
+        cout << "= " << unsigned(value->data()->get_uint8()) << endl;
         break;
     case SR_UINT16_T:
-        cout << "= " << unsigned(value->get_uint16()) << endl;
+        cout << "= " << unsigned(value->data()->get_uint16()) << endl;
         break;
     case SR_UINT32_T:
-        cout << "= " << unsigned(value->get_uint32()) << endl;
+        cout << "= " << unsigned(value->data()->get_uint32()) << endl;
         break;
     case SR_IDENTITYREF_T:
-        cout << "= " << value->get_identityref() << endl;
+        cout << "= " << value->data()->get_identityref() << endl;
         break;
     default:
         cout << "(unprintable)" << endl;
@@ -73,18 +73,17 @@ print_value(Values *value)
 }
 
 static void
-print_current_config(Session *session)
+print_current_config(shared_ptr<Session> session)
 {
     try {
         const char *xpath = "/ietf-interfaces:*//*";
 
-	Values values;
-	session->get_items(xpath, &values);
+        auto values = session->get_items(xpath);
+        if (values == NULL)
+            return;
 
-        do {
-            print_value(&values);
-        } while (values.Next());
-
+        for(unsigned int i = 0; i < values->val_cnt(); i++)
+            print_value(values->val(i));
     } catch( const std::exception& e ) {
         cout << e.what() << endl;
     }
@@ -96,8 +95,8 @@ module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_ev
 {
     cout << "\n\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: ==========\n" << endl;
 
-    Session sess(session);
-    print_current_config(&sess);
+    shared_ptr<Session> sess(new Session(session));
+    print_current_config(sess);
 
     return SR_ERR_OK;
 }
@@ -112,17 +111,18 @@ int
 main(int argc, char **argv)
 {
     try {
-        Connection conn("examples_application");
+        shared_ptr<Connection> conn(new Connection("examples_application"));
 
-        Session sess(conn);
+        shared_ptr<Session> sess(new Session(conn));
 
         /* read startup config */
         cout << "\n\n ========== READING STARTUP CONFIG: ==========\n" << endl;
-        print_current_config(&sess);
 
-        Subscribe subscribe(&sess);
+        shared_ptr<Subscribe> subscribe(new Subscribe(sess));
 
-	subscribe.module_change_subscribe("ietf-interfaces", module_change_cb);
+        subscribe->module_change_subscribe("ietf-interfaces", module_change_cb);
+
+        print_current_config(sess);
 
         cout << "\n\n ========== STARTUP CONFIG APPLIED AS RUNNING ==========\n" << endl;
 
