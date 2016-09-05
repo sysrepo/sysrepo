@@ -126,6 +126,11 @@ CHECK_INCLUDE_FILES(ucred.h HAVE_UCRED_H)
 CHECK_FUNCTION_EXISTS(setfsuid HAVE_SETFSUID)
 CHECK_STRUCT_HAS_MEMBER("struct stat" st_mtim "sys/stat.h" HAVE_STAT_ST_MTIM)
 
+# user options
+option (USE_SR_MEM_MGMT
+        "Use Sysrepo's own memory management (better overall performance but more difficult to track memory bugs)."
+        ON)
+
 # add subdirectories
 add_subdirectory(src)
 

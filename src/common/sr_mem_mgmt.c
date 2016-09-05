@@ -32,7 +32,6 @@
 
 #define QUEUE_PREV(head, len) ((head) == 0 ? ((len)-1) : ((head)-1))
 
-
 /**
  * @brief A Pool of free memory contexts.
  */
@@ -112,8 +111,12 @@ int
 sr_mem_new(size_t min_size, sr_mem_ctx_t **sr_mem_p)
 {
     int rc = SR_ERR_OK;
-
     CHECK_NULL_ARG(sr_mem_p);
+
+#ifndef USE_SR_MEM_MGMT
+    *sr_mem_p = NULL;
+    return rc;
+#else
 
     sr_mem_ctx_t *sr_mem = NULL;
     sr_mem_block_t *mem_block = NULL;
@@ -149,9 +152,6 @@ sr_mem_new(size_t min_size, sr_mem_ctx_t **sr_mem_p)
             --fctx_pool->count;
             sr_mem->piggy_back = max_recent_peak;
             *sr_mem_p = sr_mem;
-#ifdef PRINT_ALLOC_STATS
-            inc_reused_sr_mem();
-#endif
             return SR_ERR_OK;
         }
     }
@@ -173,9 +173,6 @@ sr_mem_new(size_t min_size, sr_mem_ctx_t **sr_mem_p)
     sr_mem->cursor = sr_mem->mem_blocks->last;
     sr_mem->piggy_back = max_recent_peak;
     *sr_mem_p = sr_mem;
-#ifdef PRINT_ALLOC_STATS
-    inc_new_sr_mem();
-#endif
 
 cleanup:
     if (SR_ERR_OK != rc) {
@@ -186,16 +183,16 @@ cleanup:
         }
     }
     return rc;
+#endif /* USE_SR_MEM_MGMT */
 }
 
-void
-*sr_malloc(sr_mem_ctx_t *sr_mem, size_t size)
+void *
+sr_malloc(sr_mem_ctx_t *sr_mem, size_t size)
 {
     size_t used_head = 0;
     void *mem = NULL;
     size_t new_size = 0;
     int err = SR_ERR_OK;
-    bool fake_alloc = true;
     sr_llist_node_t *node_ll = NULL, *for_removal = NULL;
     sr_mem_block_t *mem_block = NULL;
 
@@ -235,7 +232,6 @@ void
         }
         if (sr_mem->cursor == sr_mem->mem_blocks->last) {
             /* add new block */
-            fake_alloc = false;
             new_size = MAX(size, mem_block->size + (mem_block->size >> 1) /* 1.5x */);
             mem_block = (sr_mem_block_t *)malloc(sizeof *mem_block + new_size);
             CHECK_NULL_NOMEM_GOTO(mem_block, err, cleanup);
@@ -263,15 +259,6 @@ void
     }
 
 alloc:
-    if (fake_alloc) {
-#ifdef PRINT_ALLOC_EXECS
-        printf("SR-EXP: Calling fake alloc.\n");
-#endif
-#ifdef PRINT_ALLOC_STATS
-        inc_fake_alloc(size);
-#endif
-    }
-
     mem = mem_block->mem + sr_mem->used[used_head];
     sr_mem->used[used_head] += size;
     assert(mem_block->size >= sr_mem->used[used_head]);
@@ -294,8 +281,8 @@ cleanup:
     return mem;
 }
 
-void
-*sr_calloc(sr_mem_ctx_t *sr_mem, size_t nmemb, size_t size)
+void *
+sr_calloc(sr_mem_ctx_t *sr_mem, size_t nmemb, size_t size)
 {
     void *mem = NULL;
 
@@ -393,9 +380,12 @@ static void
 }
 
 static void
-sr_protobuf_free(void *mem, void *ptr)
+sr_protobuf_free(void *sr_mem, void *ptr)
 {
-    /* do nothing */
+    if (NULL == sr_mem) {
+        free(ptr);
+    }
+    /* else do nothing */
 }
 
 ProtobufCAllocator

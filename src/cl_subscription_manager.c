@@ -990,8 +990,10 @@ cl_sm_conn_msg_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, uint8_t *msg
     }
 
     /* associate message with context */
-    msg->_sysrepo_mem_ctx = (uint64_t)sr_mem;
-    ++sr_mem->obj_count;
+    if (NULL != sr_mem) {
+        msg->_sysrepo_mem_ctx = (uint64_t)sr_mem;
+        ++sr_mem->obj_count;
+    }
 
     /* check the message */
     if (SR__MSG__MSG_TYPE__NOTIFICATION == msg->type) {

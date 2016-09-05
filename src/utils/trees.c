@@ -86,7 +86,9 @@ sr_new_tree_ctx(sr_mem_ctx_t *sr_mem, const char *name, const char *module_name,
             sr_mem_free(sr_mem);
         }
     } else {
-        sr_mem->obj_count += 1;
+        if (sr_mem) {
+            sr_mem->obj_count += 1;
+        }
     }
 
     return rc;
@@ -124,15 +126,21 @@ sr_new_trees_ctx(sr_mem_ctx_t *sr_mem, size_t count, sr_node_t **trees_p)
 
     trees = (sr_node_t *)sr_calloc(sr_mem, count, sizeof *trees);
     CHECK_NULL_NOMEM_GOTO(trees, rc, cleanup);
-    for (size_t i = 0; i < count; ++i) {
-        trees[i]._sr_mem = sr_mem;
+    if (NULL != sr_mem) {
+        for (size_t i = 0; i < count; ++i) {
+            trees[i]._sr_mem = sr_mem;
+        }
+        sr_mem->obj_count += 1; /* 1 for the entire array */
     }
-    sr_mem->obj_count += 1; /* 1 for the entire array */
 
 cleanup:
     if (SR_ERR_OK != rc) {
         if (new_ctx) {
-            sr_mem_free(sr_mem);
+            if (sr_mem) {
+                sr_mem_free(sr_mem);
+            } else {
+                free(trees);
+            }
         }
     } else {
         *trees_p = trees;
