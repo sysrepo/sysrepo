@@ -316,10 +316,8 @@ next:
     if (SR_ERR_OK == rc) {
         if (NULL != *data_tree) {
             /* validate returned data, but most importantly resolve leafrefs */
-            ret = lyd_validate(data_tree, LYD_OPT_STRICT | LYD_OPT_CONFIG | LYD_WD_IMPL_TAG);
+            ret = lyd_validate(data_tree, LYD_OPT_STRICT | LYD_OPT_CONFIG);
             CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_INTERNAL, fail, "Received data tree from sysrepo is not valid: %s", ly_errmsg());
-            /* remove default nodes added by validation */
-            lyd_wd_cleanup(data_tree, 0);
         }
         goto cleanup;
     }
@@ -598,12 +596,9 @@ srcfg_import_datastore(struct ly_ctx *ly_ctx, int fd_in, const char *module_name
 
     /* validate input data */
     if (NULL != new_data_tree) {
-        ret = lyd_validate(&new_data_tree, LYD_OPT_STRICT | LYD_OPT_CONFIG | LYD_WD_IMPL_TAG);
+        ret = lyd_validate(&new_data_tree, LYD_OPT_STRICT | LYD_OPT_CONFIG);
         CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_INTERNAL, cleanup, "Input data is not valid: %s (%s)", ly_errmsg(), ly_errpath());
     }
-
-    /* remove default nodes */
-    lyd_wd_cleanup(&new_data_tree, 0);
 
     /* get data tree of currently stored configuration */
     rc = srcfg_get_module_data(ly_ctx, module_name, &current_data_tree);
