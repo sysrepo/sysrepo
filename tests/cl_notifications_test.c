@@ -413,7 +413,7 @@ cl_get_changes_moved_test(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 
 }
-
+#if 0
 static void
 create_list_with_non_def_leaf(sr_conn_ctx_t *conn)
 {
@@ -605,7 +605,7 @@ cl_get_changes_create_default_test(void **state)
     rc = sr_session_stop(session);
     assert_int_equal(rc, SR_ERR_OK);
 }
-
+#endif
 typedef struct priority_s {
     int count;
     int cb[3];
@@ -959,8 +959,8 @@ main()
         cmocka_unit_test_setup_teardown(cl_get_changes_modified_test, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_get_changes_deleted_test, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_get_changes_moved_test, sysrepo_setup, sysrepo_teardown),
-        cmocka_unit_test_setup_teardown(cl_get_changes_deleted_default_test, sysrepo_setup, sysrepo_teardown),
-        cmocka_unit_test_setup_teardown(cl_get_changes_create_default_test, sysrepo_setup, sysrepo_teardown),
+        //cmocka_unit_test_setup_teardown(cl_get_changes_deleted_default_test, sysrepo_setup, sysrepo_teardown),
+        //cmocka_unit_test_setup_teardown(cl_get_changes_create_default_test, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_notif_priority_test, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_whole_module_changes, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_invalid_xpath_test, sysrepo_setup, sysrepo_teardown),
