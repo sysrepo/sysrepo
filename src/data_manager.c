@@ -1850,7 +1850,7 @@ dm_list_schemas(dm_ctx_t *dm_ctx, dm_session_t *dm_session, sr_schema_t **schema
     }
 
     rc = sr_mem_new(0, &sr_mem);
-    CHECK_RC_MSG_RETURN(rc, "Failed to create a new Sysrepo memory context.");
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to create a new Sysrepo memory context.");
     sch = sr_calloc(sr_mem, sch_count, sizeof(*sch));
     CHECK_NULL_NOMEM_GOTO(sch, rc, cleanup);
 
