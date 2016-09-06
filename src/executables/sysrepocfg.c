@@ -607,7 +607,7 @@ srcfg_import_datastore(struct ly_ctx *ly_ctx, int fd_in, const char *module_name
     }
 
     /* get the list of changes made by the user */
-    diff = lyd_diff(current_data_tree, new_data_tree, 0);
+    diff = lyd_diff(current_data_tree, new_data_tree, LYD_DIFFOPT_WITHDEFAULTS);
     if (NULL == diff) {
         SR_LOG_ERR("Unable to get the list of changes: %s", ly_errmsg());
         goto cleanup;
