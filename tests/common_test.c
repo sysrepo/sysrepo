@@ -658,7 +658,7 @@ sr_node_t_test(void **state)
     lyd_print_fd(STDOUT_FILENO, data_tree2, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT);
 
     /* compare with original */
-    diff = lyd_diff(data_tree, data_tree2, 0);
+    diff = lyd_diff(data_tree, data_tree2, LYD_DIFFOPT_WITHDEFAULTS);
     diff_cnt = 0;
     while (diff && diff->type && LYD_DIFF_END != diff->type[diff_cnt]) {
         ++diff_cnt;
@@ -747,7 +747,7 @@ sr_node_t_with_augments_test(void **state)
     lyd_print_fd(STDOUT_FILENO, data_tree2, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT);
 
     /* compare with original */
-    diff = lyd_diff(data_tree, data_tree2, 0);
+    diff = lyd_diff(data_tree, data_tree2, LYD_DIFFOPT_WITHDEFAULTS);
     diff_cnt = 0;
     while (diff && diff->type && LYD_DIFF_END != diff->type[diff_cnt]) {
         ++diff_cnt;

@@ -78,7 +78,7 @@ srcfg_test_cmp_data_file_content(const char *file_path, LYD_FORMAT file_format, 
     exp_data = lyd_parse_mem(srcfg_test_libyang_ctx, exp, exp_format, LYD_OPT_STRICT | LYD_OPT_CONFIG);
     assert(exp_data || LY_SUCCESS == ly_errno);
 
-    diff = lyd_diff(file_data, exp_data, 0);
+    diff = lyd_diff(file_data, exp_data, LYD_DIFFOPT_WITHDEFAULTS);
     assert_non_null(diff);
 
     while (diff->type && LYD_DIFF_END != diff->type[count]) {

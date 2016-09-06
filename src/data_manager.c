@@ -2819,7 +2819,7 @@ dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t *c
             continue;
         }
 
-        struct lyd_difflist *diff = lyd_diff(prev_info->node, commit_info->node, 0);
+        struct lyd_difflist *diff = lyd_diff(prev_info->node, commit_info->node, LYD_DIFFOPT_WITHDEFAULTS);
         if (NULL == diff) {
             SR_LOG_ERR("Lyd diff failed for module %s", info->schema->module->name);
             continue;
