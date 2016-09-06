@@ -23,6 +23,12 @@
 #include "../inc/sysrepo.h"
 #include <signal.h>
 #include <vector>
+#include <memory>
+
+#include "Sysrepo.h"
+#include "Struct.h"
+#include "Session.h"
+
 
 /* custom infinite loop */
 volatile int exit_application = 0;
@@ -60,31 +66,49 @@ public:
     }
 
     void module_change_subscribe(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t event, \
-                     void *private_ctx) {
+                                 void *private_ctx) {
         PyObject *arglist;
-        PyObject *s =  SWIG_NewPointerObj(session, SWIGTYPE_p_sr_session_ctx_s, 0);
+
+        Session *sess = (Session *)new Session(session);
+        if (sess == NULL)
+            throw std::runtime_error("No memory for class Session in callback module_change_subscribe.\n");
+        shared_ptr<Session> *shared_sess = sess ? new shared_ptr<Session>(sess) : 0;
+        PyObject *s = SWIG_NewPointerObj(SWIG_as_voidptr(shared_sess), SWIGTYPE_p_std__shared_ptrT_Session_t, SWIG_POINTER_DISOWN);
+
         PyObject *p =  SWIG_NewPointerObj(private_ctx, SWIGTYPE_p_void, 0);
         arglist = Py_BuildValue("(OsiO)", s, module_name, event, p);
         PyObject *result = PyEval_CallObject(_callback, arglist);
         Py_DECREF(arglist);
-        if (result == NULL)
-            throw std::runtime_error("Python callback failed.\n");
-        else
+        if (result == NULL) {
+            sess->~Session();
+            throw std::runtime_error("Python callback module_change_subscribe failed.\n");
+        } else {
             Py_DECREF(result);
+            sess->~Session();
+        }
     }
 
     void subtree_change(sr_session_ctx_t *session, const char *xpath, sr_notif_event_t event,\
                        void *private_ctx) {
         PyObject *arglist;
-        PyObject *s =  SWIG_NewPointerObj(session, SWIGTYPE_p_sr_session_ctx_s, 0);
+
+        Session *sess = (Session *)new Session(session);
+        if (sess == NULL)
+            throw std::runtime_error("No memory for class Session in callback subtree_change.\n");
+        shared_ptr<Session> *shared_sess = sess ? new shared_ptr<Session>(sess) : 0;
+        PyObject *s = SWIG_NewPointerObj(SWIG_as_voidptr(shared_sess), SWIGTYPE_p_std__shared_ptrT_Session_t, SWIG_POINTER_DISOWN);
+
         PyObject *p =  SWIG_NewPointerObj(private_ctx, SWIGTYPE_p_void, 0);
         arglist = Py_BuildValue("(OsiO)", s, xpath, event, p);
         PyObject *result = PyEval_CallObject(_callback, arglist);
         Py_DECREF(arglist);
-        if (result == NULL)
-            throw std::runtime_error("Python callback failed.\n");
-        else
+        if (result == NULL) {
+            sess->~Session();
+            throw std::runtime_error("Python callback subtree_change failed.\n");
+        } else {
             Py_DECREF(result);
+            sess->~Session();
+        }
     }
 
     void module_install(const char *module_name, const char *revision, bool installed, void *private_ctx) {
@@ -94,7 +118,7 @@ public:
         PyObject *result = PyEval_CallObject(_callback, arglist);
         Py_DECREF(arglist);
         if (result == NULL)
-            throw std::runtime_error("Python callback failed.\n");
+            throw std::runtime_error("Python callback module_install failed.\n");
         else
             Py_DECREF(result);
     }

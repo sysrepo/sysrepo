@@ -70,10 +70,9 @@ def print_current_config(session, module_name):
     for i in range(values.val_cnt()):
         print_value(values.val(i))
 
-def module_change_cb(session, module_name, event, private_ctx):
+def module_change_cb(sess, module_name, event, private_ctx):
     print "\n\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: ==========\n"
 
-    sess = sr.Session(session)
     print_current_config(sess, module_name)
 
 try:
