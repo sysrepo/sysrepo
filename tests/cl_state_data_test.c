@@ -34,6 +34,8 @@
 
 #include "sr_common.h"
 #include "test_module_helper.h"
+#include "sysrepo/xpath_utils.h"
+#include "sysrepo/values.h"
 
 static int
 sysrepo_setup(void **state)
@@ -202,6 +204,8 @@ int
 cl_dp_traffic_stats(const char *xpath, sr_val_t **values, size_t *values_cnt, void *private_ctx)
 {
     sr_list_t *l = (sr_list_t *) private_ctx;
+    int rc = SR_ERR_OK;
+    #define MAX_LEN 200
     if (0 != sr_list_add(l, strdup(xpath))) {
         SR_LOG_ERR_MSG("Error while adding into list");
     }
@@ -245,10 +249,64 @@ cl_dp_traffic_stats(const char *xpath, sr_val_t **values, size_t *values_cnt, vo
         (*values)[4].type = SR_UINT32_T;
         (*values)[4].data.uint32_val = 15;
         *values_cnt = 5;
-    } else {
+    } else if (0 == strncmp("traffic-light", sr_xpath_node_name(xpath), strlen("traffic-light"))) {
+        char xp[MAX_LEN] = {0};
+        const char *colors[] = {"red", "orange", "green"};
+        sr_xpath_ctx_t xp_ctx = {0};
+
+        *values = calloc(3, sizeof(**values));
+        if (NULL == *values) {
+            SR_LOG_ERR_MSG("Allocation failed");
+            return -2;
+        }
+
+        char *xp_dup = strdup(xpath);
+        char *cross_road_id = sr_xpath_key_value(xp_dup, "cross-roads", "id", &xp_ctx);
+        int cr_index = atoi(cross_road_id);
+
+        free(xp_dup);
+
+        for (int i = 0; i < 3; i++) {
+            snprintf(xp, MAX_LEN, "%s[name='%c']/color", xpath, 'a'+i );
+            (*values)[i].xpath = strdup(xp);
+            (*values)[i].type = SR_ENUM_T;
+            (*values)[i].data.enum_val = strdup(colors[(cr_index + i)%3]);
+        }
+        *values_cnt = 3;
+    } else if (0 == strncmp("advanced_info", sr_xpath_node_name(xpath), strlen("advanced_info"))) {
+        char xp[MAX_LEN] = {0};
+        sr_xpath_ctx_t xp_ctx = {0};
+
+        char *xp_dup = strdup(xpath);
+        char *cross_road_id = sr_xpath_key_value(xp_dup, "cross-roads", "id", &xp_ctx);
+        int cr_index = atoi(cross_road_id);
+
+        free(xp_dup);
+
+        if (0 == cr_index) {
+            /* advanced_info container is only in the first list instance */
+            *values_cnt = 2;
+            rc = sr_new_values(*values_cnt, values);
+            if (SR_ERR_OK != rc) return rc;
+        } else {
+            *values = NULL;
+            *values_cnt = 0;
+            return 0;
+        }
+
+        snprintf(xp, MAX_LEN, "%s/latitude", xpath);
+        (*values)[0].type = SR_STRING_T;
+        sr_val_set_xpath(&(*values)[0], xp);
+        sr_val_set_string(&(*values)[0], "48.729885N");
+
+        snprintf(xp, MAX_LEN, "%s/longitude", xpath);
+        (*values)[1].type = SR_STRING_T;
+        sr_val_set_xpath(&(*values)[1], xp);
+        sr_val_set_string(&(*values)[1], "19.137425E");
+    }
+    else {
         *values = NULL;
         *values_cnt = 0;
-
     }
 
     return 0;
@@ -666,7 +724,7 @@ cl_nested_data_subscription(void **state)
             0, SR_SUBSCR_DEFAULT, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
-    /* subscribe data providers - provider for distance_travelled is missing */
+    /* subscribe data provider */
     rc = sr_dp_get_items_subscribe(session, "/state-module:traffic_stats", cl_dp_traffic_stats, xpath_retrieved, SR_SUBSCR_CTX_REUSE, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
@@ -677,6 +735,92 @@ cl_nested_data_subscription(void **state)
     /* check data */
     assert_non_null(values);
     assert_int_equal(5, cnt);
+
+    sr_free_values(values, cnt);
+
+    /* check xpath that were retrieved */
+    const char *xpath_expected_to_be_loaded [] = {
+        "/state-module:traffic_stats",
+        "/state-module:traffic_stats/cross-roads",
+        "/state-module:traffic_stats/cross-roads[id='0']/traffic-light",
+        "/state-module:traffic_stats/cross-roads[id='0']/advanced_info",
+        "/state-module:traffic_stats/cross-roads[id='1']/traffic-light",
+        "/state-module:traffic_stats/cross-roads[id='1']/advanced_info",
+        "/state-module:traffic_stats/cross-roads[id='2']/traffic-light",
+        "/state-module:traffic_stats/cross-roads[id='2']/advanced_info",
+    };
+    size_t expected_xp_cnt = sizeof(xpath_expected_to_be_loaded) / sizeof(*xpath_expected_to_be_loaded);
+    assert_int_equal(expected_xp_cnt, xpath_retrieved->count);
+
+    for (size_t i = 0; i < expected_xp_cnt; i++) {
+        bool match = false;
+        for (size_t j = 0; xpath_retrieved->count; j++) {
+            if (0 == strcmp(xpath_expected_to_be_loaded[i], (char *) xpath_retrieved->data[j])) {
+                match = true;
+                break;
+            }
+        }
+        if (!match) {
+            /* assert xpath that can not be found */
+            assert_string_equal("", xpath_expected_to_be_loaded[i]);
+        }
+    }
+
+    /* cleanup */
+    sr_unsubscribe(session, subscription);
+    sr_session_stop(session);
+
+    for (size_t i = 0; i < xpath_retrieved->count; i++) {
+        free(xpath_retrieved->data[i]);
+    }
+    sr_list_cleanup(xpath_retrieved);
+}
+
+static void
+cl_nested_data_subscription2(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+    sr_session_ctx_t *session = NULL;
+    sr_subscription_ctx_t *subscription = NULL;
+    sr_list_t *xpath_retrieved = NULL;
+    sr_val_t *values = NULL;
+    size_t cnt = 0;
+    int rc = SR_ERR_OK;
+
+    rc = sr_list_init(&xpath_retrieved);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* start session */
+    rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_module_change_subscribe(session, "state-module", cl_whole_module_cb, NULL,
+            0, SR_SUBSCR_DEFAULT, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* subscribe data providers */
+    rc = sr_dp_get_items_subscribe(session, "/state-module:bus", cl_dp_bus, xpath_retrieved, SR_SUBSCR_CTX_REUSE, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_dp_get_items_subscribe(session, "/state-module:traffic_stats", cl_dp_traffic_stats, xpath_retrieved, SR_SUBSCR_CTX_REUSE, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* retrieve data */
+    rc = sr_get_items(session, "/state-module:traffic_stats/cross-roads[id='0']/advanced_info/*", &values, &cnt);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* check data */
+    assert_non_null(values);
+    assert_int_equal(2, cnt);
+
+    assert_int_equal(values[0].type, SR_STRING_T);
+    assert_string_equal(values[0].xpath, "/state-module:traffic_stats/cross-roads[id='0']/advanced_info/latitude");
+    assert_string_equal(values[0].data.string_val, "48.729885N");
+
+    assert_int_equal(values[1].type, SR_STRING_T);
+    assert_string_equal(values[1].xpath, "/state-module:traffic_stats/cross-roads[id='0']/advanced_info/longitude");
+    assert_string_equal(values[1].data.string_val, "19.137425E");
 
     sr_free_values(values, cnt);
 
@@ -729,6 +873,7 @@ main()
         cmocka_unit_test_setup_teardown(cl_incorrect_data_subscription, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_dp_neg_subscription, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_nested_data_subscription, sysrepo_setup, sysrepo_teardown),
+        cmocka_unit_test_setup_teardown(cl_nested_data_subscription2, sysrepo_setup, sysrepo_teardown),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);
