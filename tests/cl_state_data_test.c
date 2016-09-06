@@ -224,32 +224,32 @@ cl_dp_traffic_stats(const char *xpath, sr_val_t **values, size_t *values_cnt, vo
         (*values)[1].type = SR_UINT8_T;
         (*values)[1].data.uint8_val = 9;
         *values_cnt = 2;
-    } else if (0 == strcmp("/state-module:traffic_stats/cross-roads", xpath)) {
+    } else if (0 == strcmp("/state-module:traffic_stats/cross_road", xpath)) {
         *values = calloc(5, sizeof(**values));
         if (NULL == *values) {
             SR_LOG_ERR_MSG("Allocation failed");
             return -2;
         }
-        (*values)[0].xpath = strdup("/state-module:traffic_stats/cross-roads[id='0']");
+        (*values)[0].xpath = strdup("/state-module:traffic_stats/cross_road[id='0']");
         (*values)[0].type = SR_LIST_T;
 
-        (*values)[1].xpath = strdup("/state-module:traffic_stats/cross-roads[id='0']/status");
+        (*values)[1].xpath = strdup("/state-module:traffic_stats/cross_road[id='0']/status");
         (*values)[1].type = SR_ENUM_T;
         (*values)[1].data.enum_val = strdup("manual");
 
-        (*values)[2].xpath = strdup("/state-module:traffic_stats/cross-roads[id='1']/status");
+        (*values)[2].xpath = strdup("/state-module:traffic_stats/cross_road[id='1']/status");
         (*values)[2].type = SR_ENUM_T;
         (*values)[2].data.enum_val = strdup("automatic");
 
-        (*values)[3].xpath = strdup("/state-module:traffic_stats/cross-roads[id='2']/status");
+        (*values)[3].xpath = strdup("/state-module:traffic_stats/cross_road[id='2']/status");
         (*values)[3].type = SR_ENUM_T;
         (*values)[3].data.enum_val = strdup("automatic");
 
-        (*values)[4].xpath = strdup("/state-module:traffic_stats/cross-roads[id='2']/average_wait_time");
+        (*values)[4].xpath = strdup("/state-module:traffic_stats/cross_road[id='2']/average_wait_time");
         (*values)[4].type = SR_UINT32_T;
         (*values)[4].data.uint32_val = 15;
         *values_cnt = 5;
-    } else if (0 == strncmp("traffic-light", sr_xpath_node_name(xpath), strlen("traffic-light"))) {
+    } else if (0 == strncmp("traffic_light", sr_xpath_node_name(xpath), strlen("traffic_light"))) {
         char xp[MAX_LEN] = {0};
         const char *colors[] = {"red", "orange", "green"};
         sr_xpath_ctx_t xp_ctx = {0};
@@ -261,7 +261,7 @@ cl_dp_traffic_stats(const char *xpath, sr_val_t **values, size_t *values_cnt, vo
         }
 
         char *xp_dup = strdup(xpath);
-        char *cross_road_id = sr_xpath_key_value(xp_dup, "cross-roads", "id", &xp_ctx);
+        char *cross_road_id = sr_xpath_key_value(xp_dup, "cross_road", "id", &xp_ctx);
         int cr_index = atoi(cross_road_id);
 
         free(xp_dup);
@@ -278,7 +278,7 @@ cl_dp_traffic_stats(const char *xpath, sr_val_t **values, size_t *values_cnt, vo
         sr_xpath_ctx_t xp_ctx = {0};
 
         char *xp_dup = strdup(xpath);
-        char *cross_road_id = sr_xpath_key_value(xp_dup, "cross-roads", "id", &xp_ctx);
+        char *cross_road_id = sr_xpath_key_value(xp_dup, "cross_road", "id", &xp_ctx);
         int cr_index = atoi(cross_road_id);
 
         free(xp_dup);
@@ -741,13 +741,13 @@ cl_nested_data_subscription(void **state)
     /* check xpath that were retrieved */
     const char *xpath_expected_to_be_loaded [] = {
         "/state-module:traffic_stats",
-        "/state-module:traffic_stats/cross-roads",
-        "/state-module:traffic_stats/cross-roads[id='0']/traffic-light",
-        "/state-module:traffic_stats/cross-roads[id='0']/advanced_info",
-        "/state-module:traffic_stats/cross-roads[id='1']/traffic-light",
-        "/state-module:traffic_stats/cross-roads[id='1']/advanced_info",
-        "/state-module:traffic_stats/cross-roads[id='2']/traffic-light",
-        "/state-module:traffic_stats/cross-roads[id='2']/advanced_info",
+        "/state-module:traffic_stats/cross_road",
+        "/state-module:traffic_stats/cross_road[id='0']/traffic_light",
+        "/state-module:traffic_stats/cross_road[id='0']/advanced_info",
+        "/state-module:traffic_stats/cross_road[id='1']/traffic_light",
+        "/state-module:traffic_stats/cross_road[id='1']/advanced_info",
+        "/state-module:traffic_stats/cross_road[id='2']/traffic_light",
+        "/state-module:traffic_stats/cross_road[id='2']/advanced_info",
     };
     size_t expected_xp_cnt = sizeof(xpath_expected_to_be_loaded) / sizeof(*xpath_expected_to_be_loaded);
     assert_int_equal(expected_xp_cnt, xpath_retrieved->count);
@@ -807,7 +807,7 @@ cl_nested_data_subscription2(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 
     /* retrieve data */
-    rc = sr_get_items(session, "/state-module:traffic_stats/cross-roads[id='0']/advanced_info/*", &values, &cnt);
+    rc = sr_get_items(session, "/state-module:traffic_stats/cross_road[id='0']/advanced_info/*", &values, &cnt);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* check data */
@@ -815,11 +815,11 @@ cl_nested_data_subscription2(void **state)
     assert_int_equal(2, cnt);
 
     assert_int_equal(values[0].type, SR_STRING_T);
-    assert_string_equal(values[0].xpath, "/state-module:traffic_stats/cross-roads[id='0']/advanced_info/latitude");
+    assert_string_equal(values[0].xpath, "/state-module:traffic_stats/cross_road[id='0']/advanced_info/latitude");
     assert_string_equal(values[0].data.string_val, "48.729885N");
 
     assert_int_equal(values[1].type, SR_STRING_T);
-    assert_string_equal(values[1].xpath, "/state-module:traffic_stats/cross-roads[id='0']/advanced_info/longitude");
+    assert_string_equal(values[1].xpath, "/state-module:traffic_stats/cross_road[id='0']/advanced_info/longitude");
     assert_string_equal(values[1].data.string_val, "19.137425E");
 
     sr_free_values(values, cnt);
@@ -827,13 +827,13 @@ cl_nested_data_subscription2(void **state)
     /* check xpath that were retrieved */
     const char *xpath_expected_to_be_loaded [] = {
         "/state-module:traffic_stats",
-        "/state-module:traffic_stats/cross-roads",
-        "/state-module:traffic_stats/cross-roads[id='0']/traffic-light",
-        "/state-module:traffic_stats/cross-roads[id='0']/advanced_info",
-        "/state-module:traffic_stats/cross-roads[id='1']/traffic-light",
-        "/state-module:traffic_stats/cross-roads[id='1']/advanced_info",
-        "/state-module:traffic_stats/cross-roads[id='2']/traffic-light",
-        "/state-module:traffic_stats/cross-roads[id='2']/advanced_info",
+        "/state-module:traffic_stats/cross_road",
+        "/state-module:traffic_stats/cross_road[id='0']/traffic_light",
+        "/state-module:traffic_stats/cross_road[id='0']/advanced_info",
+        "/state-module:traffic_stats/cross_road[id='1']/traffic_light",
+        "/state-module:traffic_stats/cross_road[id='1']/advanced_info",
+        "/state-module:traffic_stats/cross_road[id='2']/traffic_light",
+        "/state-module:traffic_stats/cross_road[id='2']/advanced_info",
     };
     size_t expected_xp_cnt = sizeof(xpath_expected_to_be_loaded) / sizeof(*xpath_expected_to_be_loaded);
     assert_int_equal(expected_xp_cnt, xpath_retrieved->count);

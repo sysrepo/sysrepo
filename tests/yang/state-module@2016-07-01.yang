@@ -90,7 +90,7 @@ module state-module {
         type uint8;
      }
      
-     list cross-roads {
+     list cross_road {
 
        key id;
        leaf id {
@@ -117,7 +117,7 @@ module state-module {
           type uint32;
        }
 
-       list traffic-light {
+       list traffic_light {
           key name;
           leaf name {
              type string;
