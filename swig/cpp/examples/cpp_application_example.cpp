@@ -34,7 +34,7 @@ using namespace std;
 volatile int exit_application = 0;
 
 void
-print_value(shared_ptr<Val> value)
+print_value(S_Val value)
 {
     cout << value->xpath();
     cout << " ";
@@ -99,7 +99,7 @@ print_value(shared_ptr<Val> value)
 }
 
 static void
-print_current_config(shared_ptr<Session> session, const char *module_name)
+print_current_config(S_Session session, const char *module_name)
 {
     char select_xpath[MAX_LEN];
     try {
@@ -122,7 +122,7 @@ module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_ev
 {
     cout << "\n\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: ==========\n" << endl;
 
-    shared_ptr<Session> sess(new Session(session));
+    S_Session sess(new Session(session));
     print_current_config(sess, module_name);
 
     return SR_ERR_OK;
@@ -146,14 +146,14 @@ main(int argc, char **argv)
         }
 
         printf("Application will watch for changes in %s\n", module_name);
-        shared_ptr<Connection> conn(new Connection("examples_application"));
+        S_Connection conn(new Connection("examples_application"));
 
-        shared_ptr<Session> sess(new Session(conn));
+        S_Session sess(new Session(conn));
 
         /* read startup config */
         cout << "\n\n ========== READING STARTUP CONFIG: ==========\n" << endl;
 
-        shared_ptr<Subscribe> subscribe(new Subscribe(sess));
+        S_Subscribe subscribe(new Subscribe(sess));
 
         subscribe->module_change_subscribe(module_name, module_change_cb);
 

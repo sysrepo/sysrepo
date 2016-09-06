@@ -72,7 +72,7 @@ public:
         Session *sess = (Session *)new Session(session);
         if (sess == NULL)
             throw std::runtime_error("No memory for class Session in callback module_change_subscribe.\n");
-        shared_ptr<Session> *shared_sess = sess ? new shared_ptr<Session>(sess) : 0;
+        S_Session *shared_sess = sess ? new S_Session(sess) : 0;
         PyObject *s = SWIG_NewPointerObj(SWIG_as_voidptr(shared_sess), SWIGTYPE_p_std__shared_ptrT_Session_t, SWIG_POINTER_DISOWN);
 
         PyObject *p =  SWIG_NewPointerObj(private_ctx, SWIGTYPE_p_void, 0);
@@ -95,7 +95,7 @@ public:
         Session *sess = (Session *)new Session(session);
         if (sess == NULL)
             throw std::runtime_error("No memory for class Session in callback subtree_change.\n");
-        shared_ptr<Session> *shared_sess = sess ? new shared_ptr<Session>(sess) : 0;
+        S_Session *shared_sess = sess ? new S_Session(sess) : 0;
         PyObject *s = SWIG_NewPointerObj(SWIG_as_voidptr(shared_sess), SWIGTYPE_p_std__shared_ptrT_Session_t, SWIG_POINTER_DISOWN);
 
         PyObject *p =  SWIG_NewPointerObj(private_ctx, SWIGTYPE_p_void, 0);

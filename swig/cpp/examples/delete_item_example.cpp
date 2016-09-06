@@ -29,9 +29,9 @@ int
 main(int argc, char **argv)
 {
     try {
-        shared_ptr<Connection> conn(new Connection("app4"));
+        S_Connection conn(new Connection("app4"));
 
-        shared_ptr<Session> sess(new Session(conn));
+        S_Session sess(new Session(conn));
 
         const char *xpath = "/ietf-interfaces:interfaces/interface[name='gigaeth0']/ietf-ip:ipv6/address[ip='fe80::ab8']";
 

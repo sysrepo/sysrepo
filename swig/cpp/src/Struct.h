@@ -107,9 +107,9 @@ public:
     sr_type_t type() {return _val->type;};
     bool dflt() {return _val->dflt;};
     void dflt_set(bool data) {_val->dflt = data;};
-    shared_ptr<Data> data() {shared_ptr<Data> data(new Data(_val->data, _val->type)); return data;};
+    S_Data data() {S_Data data(new Data(_val->data, _val->type)); return data;};
     sr_val_t *get() {return _val;};
-    shared_ptr<Val> dup();
+    S_Val dup();
 
 private:
     sr_val_t *_val;
@@ -124,7 +124,7 @@ public:
     Val_Holder(sr_val_t *val = NULL);
     ~Val_Holder();
     sr_val_t **get() {return &_val;};
-    shared_ptr<Val> val();
+    S_Val val();
 
 private:
     sr_val_t *_val;
@@ -139,12 +139,12 @@ public:
     Vals(size_t cnt);
     Vals();
     ~Vals();
-    shared_ptr<Val> val(size_t n);
+    S_Val val(size_t n);
     size_t val_cnt() {return _cnt;};
     size_t *p_val_cnt() {return &_cnt;};
     sr_val_t *val() {return _vals;};
     sr_val_t **p_val() {return &_vals;};
-    shared_ptr<Vals> dup();
+    S_Vals dup();
 
 private:
     size_t _cnt;
@@ -193,7 +193,7 @@ class Errors
 public:
     Errors(const sr_error_info_t *info, size_t cnt);
     ~Errors();
-    shared_ptr<Error> error(size_t n);
+    S_Error error(size_t n);
     size_t error_cnt() {return _cnt;};
 
 private:
@@ -222,7 +222,7 @@ public:
     Schema_Submodule(sr_sch_submodule_t sub);
     ~Schema_Submodule();
     const char *submodule_name() {return _sub.submodule_name;};
-    shared_ptr<Schema_Revision> revision();
+    S_Schema_Revision revision();
 
 private:
     sr_sch_submodule_t _sub;
@@ -237,8 +237,8 @@ public:
     const char *module_name() {return _sch->module_name;};
     const char *ns() {return _sch->ns;};
     const char *prefix() {return _sch->prefix;};
-    shared_ptr<Schema_Revision> revision();
-    shared_ptr<Schema_Submodule> submodule(size_t n);
+    S_Schema_Revision revision();
+    S_Schema_Submodule submodule(size_t n);
     size_t submodule_cnt() {return _sch->submodule_count;};
     char *enabled_features(size_t n);
     size_t enabled_feature_cnt() {return _sch->enabled_feature_cnt;};
@@ -253,7 +253,7 @@ class Yang_Schemas
 public:
     Yang_Schemas(sr_schema_t *sch, size_t cnt);
     ~Yang_Schemas();
-    shared_ptr<Yang_Schema> schema(size_t n);
+    S_Yang_Schema schema(size_t n);
     size_t schema_cnt() {return _cnt;};
 
 private:
@@ -281,7 +281,7 @@ class Fd_Changes
 public:
     Fd_Changes(sr_fd_change_t *ch, size_t cnt);
     ~Fd_Changes();
-    shared_ptr<Fd_Change> fd_change(size_t n);
+    S_Fd_Change fd_change(size_t n);
 
 private:
     sr_fd_change_t *_ch;

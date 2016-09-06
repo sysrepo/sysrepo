@@ -33,9 +33,9 @@ main(int argc, char **argv)
         Logs log;
         log.set_stderr(SR_LL_DBG);
 
-	shared_ptr<Connection> conn(new Connection("app1"));
+	S_Connection conn(new Connection("app1"));
 
-        shared_ptr<Session> sess(new Session(conn));
+        S_Session sess(new Session(conn));
 
         const char *xpath = "/ietf-interfaces:interfaces/interface[name='eth0']/enabled";
 

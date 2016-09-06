@@ -35,7 +35,7 @@ using namespace std;
 volatile int exit_application = 0;
 
 void
-print_value(shared_ptr<Val> value)
+print_value(S_Val value)
 {
     cout << value->xpath();
     cout << " ";
@@ -99,7 +99,7 @@ print_value(shared_ptr<Val> value)
 }
 
 static void
-print_change(shared_ptr<Operation> op, shared_ptr<Val> old_val, shared_ptr<Val> new_val) {
+print_change(S_Operation op, S_Val old_val, S_Val new_val) {
     switch(op->get()) {
     case SR_OP_CREATED:
         if (NULL != new_val) {
@@ -131,7 +131,7 @@ print_change(shared_ptr<Operation> op, shared_ptr<Val> old_val, shared_ptr<Val> 
 }
 
 static void
-print_current_config(shared_ptr<Session> session, const char *module_name)
+print_current_config(S_Session session, const char *module_name)
 {
     char select_xpath[MAX_LEN];
     try {
@@ -152,11 +152,11 @@ static int
 module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t event, void *private_ctx)
 {
     char change_path[MAX_LEN];
-    shared_ptr<Val_Holder> old_value(new Val_Holder());
-    shared_ptr<Val_Holder> new_value(new Val_Holder());
+    S_Val_Holder old_value(new Val_Holder());
+    S_Val_Holder new_value(new Val_Holder());
 
     try {
-        shared_ptr<Session> sess(new Session(session));
+        S_Session sess(new Session(session));
 
         printf("\n\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: ==========\n\n");
 
@@ -166,7 +166,7 @@ module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_ev
 
         snprintf(change_path, MAX_LEN, "/%s:*", module_name);
 
-        shared_ptr<Subscribe> subscribe(new Subscribe(sess));
+        S_Subscribe subscribe(new Subscribe(sess));
         auto it = subscribe->get_changes_iter(&change_path[0]);
 
         while (auto oper = subscribe->get_change_next(it, old_value, new_value)) {
@@ -201,13 +201,13 @@ main(int argc, char **argv)
 
         printf("Application will watch for changes in %s\n", module_name);
         /* connect to sysrepo */
-        shared_ptr<Connection> conn(new Connection("example_application"));
+        S_Connection conn(new Connection("example_application"));
 
         /* start session */
-        shared_ptr<Session> sess(new Session(conn));
+        S_Session sess(new Session(conn));
 
         /* subscribe for changes in running config */
-        shared_ptr<Subscribe> subscribe(new Subscribe(sess));
+        S_Subscribe subscribe(new Subscribe(sess));
 
         subscribe->module_change_subscribe(module_name, module_change_cb);
 

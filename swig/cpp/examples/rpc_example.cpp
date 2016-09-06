@@ -33,7 +33,7 @@
 using namespace std;
 
 void
-print_tree(shared_ptr<Tree> tree)
+print_tree(S_Tree tree)
 {
     cout << tree->name();
     cout << " ";
@@ -97,7 +97,7 @@ print_tree(shared_ptr<Tree> tree)
 }
 
 void
-print_value(shared_ptr<Val> value)
+print_value(S_Val value)
 {
     cout << value->xpath();
     cout << " ";
@@ -164,8 +164,8 @@ int test_rpc_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt
                 size_t *output_cnt, void *private_ctx) {
     cout << "\n\n ========== RPC CALLED ==========\n" << endl;
 
-    shared_ptr<Vals> in_vals(new Vals(input, input_cnt));
-    shared_ptr<Vals> out_vals(new Vals(output, output_cnt, 3));
+    S_Vals in_vals(new Vals(input, input_cnt));
+    S_Vals out_vals(new Vals(output, output_cnt, 3));
 
     if (in_vals == NULL && out_vals == NULL)
         return SR_ERR_NOMEM;
@@ -190,8 +190,8 @@ int test_rpc_tree_cb(const char *xpath, const sr_node_t *input, const size_t inp
                      size_t *output_cnt, void *private_ctx) {
     cout << "\n\n ========== RPC TREE CALLED ==========\n" << endl;
 
-    shared_ptr<Trees> in_trees(new Trees(input, input_cnt));
-    shared_ptr<Trees> out_trees(new Trees(output, output_cnt, 3));
+    S_Trees in_trees(new Trees(input, input_cnt));
+    S_Trees out_trees(new Trees(output, output_cnt, 3));
 
     if (in_trees == NULL && out_trees == NULL)
         return SR_ERR_NOMEM;
@@ -216,20 +216,20 @@ main(int argc, char **argv)
 
         printf("Application will make an rpc call in %s\n", module_name);
         /* connect to sysrepo */
-        shared_ptr<Connection> conn(new Connection("example_application"));
+        S_Connection conn(new Connection("example_application"));
 
         /* start session */
-        shared_ptr<Session> sess(new Session(conn));
+        S_Session sess(new Session(conn));
 
         /* subscribe for changes in running config */
-        shared_ptr<Subscribe> subscribe(new Subscribe(sess));
+        S_Subscribe subscribe(new Subscribe(sess));
 
         cout << "\n\n ========== SUBSCRIBE TO RPC CALL ==========\n" << endl;
 
         subscribe->rpc_subscribe("/test-module:activate-software-image", test_rpc_cb);
 
-        shared_ptr<Vals> in_vals(new Vals(2));
-        shared_ptr<Vals> out_vals(new Vals());
+        S_Vals in_vals(new Vals(2));
+        S_Vals out_vals(new Vals());
 
 	if (in_vals == NULL && out_vals == NULL)
             return 0;
@@ -252,8 +252,8 @@ main(int argc, char **argv)
         cout << "\n\n ========== SUBSCRIBE TO RPC TREE CALL ==========\n" << endl;
         subscribe->rpc_subscribe_tree("/test-module:activate-software-image", test_rpc_tree_cb);
 
-        shared_ptr<Trees> in_trees(new Trees(1));
-        shared_ptr<Trees> out_trees(new Trees());
+        S_Trees in_trees(new Trees(1));
+        S_Trees out_trees(new Trees());
 
 	if (in_trees == NULL && out_trees == NULL)
             return 0;

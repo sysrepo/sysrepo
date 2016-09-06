@@ -44,55 +44,55 @@ Tree::~Tree() {
     if (_node != NULL && _free)
         sr_free_tree(_node);
 }
-shared_ptr<Tree> Tree::dup() {
+S_Tree Tree::dup() {
     sr_node_t *tree_dup = NULL;
     if (_node == NULL) return NULL;
 
     int ret = sr_dup_tree(_node, &tree_dup);
     if (ret != SR_ERR_OK) throw_exception(ret);
 
-    shared_ptr<Tree> dup(new Tree(tree_dup));
+    S_Tree dup(new Tree(tree_dup));
     return dup;
 }
-shared_ptr<Tree> Tree::node() {
+S_Tree Tree::node() {
     if (_node == NULL) return NULL;
 
-    shared_ptr<Tree> node(new Tree(_node));
+    S_Tree node(new Tree(_node));
     return node;
 }
-shared_ptr<Tree> Tree::parent() {
+S_Tree Tree::parent() {
     if (_node->parent == NULL)
         return NULL;
 
-    shared_ptr<Tree> node(new Tree(_node->parent));
+    S_Tree node(new Tree(_node->parent));
     return node;
 }
-shared_ptr<Tree> Tree::next() {
+S_Tree Tree::next() {
     if (_node->next == NULL)
         return NULL;
 
-    shared_ptr<Tree> node(new Tree(_node->next));
+    S_Tree node(new Tree(_node->next));
     return node;
 }
-shared_ptr<Tree> Tree::prev() {
+S_Tree Tree::prev() {
     if (_node->prev == NULL)
         return NULL;
 
-    shared_ptr<Tree> node(new Tree(_node->prev));
+    S_Tree node(new Tree(_node->prev));
     return node;
 }
-shared_ptr<Tree> Tree::first_child() {
+S_Tree Tree::first_child() {
     if (_node->first_child == NULL)
         return NULL;
 
-    shared_ptr<Tree> node(new Tree(_node->first_child));
+    S_Tree node(new Tree(_node->first_child));
     return node;
 }
-shared_ptr<Tree> Tree::last_child() {
+S_Tree Tree::last_child() {
     if (_node->last_child == NULL)
         return NULL;
 
-    shared_ptr<Tree> node(new Tree(_node->last_child));
+    S_Tree node(new Tree(_node->last_child));
     return node;
 }
 void Tree::set_name(const char *name) {
@@ -111,7 +111,7 @@ void Tree::set_string(const char *string_val) {
     int ret = sr_node_set_string(_node, string_val);
     if (ret != SR_ERR_OK) throw_exception(ret);
 }
-void Tree::add_child(const char *child_name, const char *child_module_name, shared_ptr<Tree> child) {
+void Tree::add_child(const char *child_name, const char *child_module_name, S_Tree child) {
     if (_node == NULL) throw_exception(SR_ERR_DATA_MISSING);
     int ret = sr_node_add_child(_node, child_name, child_module_name, child->get());
     if (ret != SR_ERR_OK) throw_exception(ret);
@@ -281,19 +281,19 @@ Trees::~Trees() {
     if (_trees != NULL && p_tree != NULL)
         sr_free_trees(_trees, _cnt);
 }
-shared_ptr<Tree> Trees::tree(size_t n) {
+S_Tree Trees::tree(size_t n) {
     if (_trees == NULL || n >= _cnt) return NULL;
 
-    shared_ptr<Tree> tree(new Tree(&_trees[n]));
+    S_Tree tree(new Tree(&_trees[n]));
     return tree;
 }
-shared_ptr<Trees> Trees::dup() {
+S_Trees Trees::dup() {
     sr_node_t *tree_dup = NULL;
     if (_trees == NULL || _cnt == 0) return NULL;
 
     int ret = sr_dup_trees(_trees, _cnt, &tree_dup);
     if (ret != SR_ERR_OK) throw_exception(ret);
 
-    shared_ptr<Trees> dup(new Trees(tree_dup, _cnt));
+    S_Trees dup(new Trees(tree_dup, _cnt));
     return dup;
 }
