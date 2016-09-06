@@ -1500,7 +1500,7 @@ rp_data_provide_resp_validate (rp_ctx_t *rp_ctx, rp_session_t *session, const ch
     bool found = false;
     dm_schema_info_t *si = NULL;
 
-    rc = dm_get_schema_info(rp_ctx->dm_ctx, session->module_name, &si);
+    rc = dm_get_module_and_lock(rp_ctx->dm_ctx, session->module_name, &si);
     CHECK_RC_MSG_RETURN(rc, "Get schema info failed");
 
     /* verify that provided xpath was requested */
@@ -1511,6 +1511,7 @@ rp_data_provide_resp_validate (rp_ctx_t *rp_ctx, rp_session_t *session, const ch
             *sch_node = (struct lys_node *) ly_ctx_get_node(si->ly_ctx, NULL, xp);
             if (NULL == *sch_node) {
                 SR_LOG_ERR("Schema node not found for %s", xp);
+                pthread_rwlock_unlock(&si->model_lock);
                 return SR_ERR_INVAL_ARG;
             }
             free(xp);
@@ -1518,6 +1519,7 @@ rp_data_provide_resp_validate (rp_ctx_t *rp_ctx, rp_session_t *session, const ch
             break;
         }
     }
+    pthread_rwlock_unlock(&si->model_lock);
 
     if (!found) {
         SR_LOG_ERR("Data provider sent data for unexpected xpath %s", xpath);
@@ -1525,7 +1527,7 @@ rp_data_provide_resp_validate (rp_ctx_t *rp_ctx, rp_session_t *session, const ch
     }
 
     /* test that all values are under requested xpath */
-    size_t xp_len  = strlen(xpath);
+    size_t xp_len = strlen(xpath);
     for (size_t i = 0; i < values_cnt; i++) {
         if (0 != strncmp(xpath, values[i].xpath, xp_len)){
             SR_LOG_ERR("Unexpected value with xpath %s received from provider", values[i].xpath);
@@ -1548,8 +1550,7 @@ rp_data_provide_request_nested(rp_ctx_t *rp_ctx, rp_session_t *session, const ch
     struct ly_set *list_instances = NULL;
     char **xpaths = NULL;
     size_t xp_count = 0;
-    char *xp = NULL;
-
+    char *request_xp = NULL;
 
     /* find subscription where subsequent request will be addressed */
     for (subs_index = 0; subs_index < session->state_data_ctx.subscription_nodes->count; subs_index++) {
@@ -1564,7 +1565,7 @@ rp_data_provide_request_nested(rp_ctx_t *rp_ctx, rp_session_t *session, const ch
         return SR_ERR_INTERNAL;
     }
 
-    /* prepare xpaths where nested data will be requested*/
+    /* prepare xpaths where nested data will be requested */
     if (LYS_LIST == sch_node->nodetype) {
         rc = dm_get_nodes_by_schema(session->dm_session, session->module_name, sch_node, &list_instances);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Dm_get_nodes_by_schema failed");
@@ -1590,29 +1591,29 @@ rp_data_provide_request_nested(rp_ctx_t *rp_ctx, rp_session_t *session, const ch
         if ((LYS_LIST | LYS_CONTAINER) & iter->nodetype) {
             for (size_t i = 0; i < xp_count; i++) {
                 size_t len = strlen(xpaths[i]) + strlen(iter->name) + 2 /* slash + zero byte */;
-                xp = calloc(len, sizeof(*xp));
+                request_xp = calloc(len, sizeof(*request_xp));
+                CHECK_NULL_NOMEM_GOTO(request_xp, rc, cleanup);
 
-                CHECK_NULL_NOMEM_GOTO(xp, rc, cleanup);
-                snprintf(xp, len, "%s/%s", xpaths[i], iter->name);
+                snprintf(request_xp, len, "%s/%s", xpaths[i], iter->name);
 
-                rc = np_data_provider_request(rp_ctx->np_ctx, session->state_data_ctx.subscriptions[subs_index], session, xp);
-                SR_LOG_DBG("Sending request for nested state data: %s", xp);
+                rc = np_data_provider_request(rp_ctx->np_ctx, session->state_data_ctx.subscriptions[subs_index], session, request_xp);
+                SR_LOG_DBG("Sending request for nested state data: %s", request_xp);
 
                 session->dp_req_waiting += 1;
 
-                rc = sr_list_add(session->state_data_ctx.requested_xpaths, xp);
+                rc = sr_list_add(session->state_data_ctx.requested_xpaths, request_xp);
                 CHECK_RC_MSG_GOTO(rc, cleanup, "List add failed");
-                xp = NULL;
+                request_xp = NULL;
             }
         }
     }
 cleanup:
-    for (size_t i = 0; i< xp_count; i++) {
+    for (size_t i = 0; i < xp_count; i++) {
         free(xpaths[i]);
     }
     free(xpaths);
     ly_set_free(list_instances);
-    free(xp);
+    free(request_xp);
 
     return rc;
 }
