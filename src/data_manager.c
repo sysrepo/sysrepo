@@ -1850,7 +1850,7 @@ dm_list_schemas(dm_ctx_t *dm_ctx, dm_session_t *dm_session, sr_schema_t **schema
     }
 
     rc = sr_mem_new(0, &sr_mem);
-    CHECK_RC_MSG_RETURN(rc, "Failed to create a new Sysrepo memory context.");
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to create a new Sysrepo memory context.");
     sch = sr_calloc(sr_mem, sch_count, sizeof(*sch));
     CHECK_NULL_NOMEM_GOTO(sch, rc, cleanup);
 
@@ -2819,7 +2819,7 @@ dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t *c
             continue;
         }
 
-        struct lyd_difflist *diff = lyd_diff(prev_info->node, commit_info->node, 0);
+        struct lyd_difflist *diff = lyd_diff(prev_info->node, commit_info->node, LYD_DIFFOPT_WITHDEFAULTS);
         if (NULL == diff) {
             SR_LOG_ERR("Lyd diff failed for module %s", info->schema->module->name);
             continue;

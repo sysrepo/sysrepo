@@ -169,7 +169,7 @@ rp_list_schemas_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session,
     Sr__Msg *resp = NULL;
     sr_schema_t *schemas = NULL;
     size_t schema_cnt = 0;
-    int rc = SR_ERR_OK;
+    int rc = SR_ERR_OK, rc_tmp = SR_ERR_OK;
 
     CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->list_schemas_req);
 
@@ -179,13 +179,11 @@ rp_list_schemas_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session,
     rc = dm_list_schemas(rp_ctx->dm_ctx, session->dm_session, &schemas, &schema_cnt);
 
     /* allocate the response */
-    if (SR_ERR_OK == rc) {
-        rc = sr_gpb_resp_alloc(schemas ? schemas[0]._sr_mem : NULL, SR__OPERATION__LIST_SCHEMAS, session->id, &resp);
-        if (SR_ERR_OK != rc) {
-            sr_free_schemas(schemas, schema_cnt);
-            SR_LOG_ERR_MSG("Cannot allocate list_schemas response.");
-            return SR_ERR_NOMEM;
-        }
+    rc_tmp = sr_gpb_resp_alloc(schemas ? schemas[0]._sr_mem : NULL, SR__OPERATION__LIST_SCHEMAS, session->id, &resp);
+    if (SR_ERR_OK != rc_tmp) {
+        sr_free_schemas(schemas, schema_cnt);
+        SR_LOG_ERR_MSG("Cannot allocate list_schemas response.");
+        return SR_ERR_NOMEM;
     }
 
     /* copy schemas to response */
@@ -1435,9 +1433,6 @@ rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg 
             req->request->rpc_req->subscription_id = subscriptions[i].dst_id;
             req->request->rpc_req->has_subscription_id = true;
             subscription_match = true;
-            /* deallocate all objects from sr_mem_req context except for request itself before passing to another thread */
-            sr_free_values(with_def, with_def_cnt);
-            sr_free_trees(with_def_tree, with_def_tree_cnt);
             break;
         }
     }
@@ -1459,6 +1454,8 @@ finalize:
     } else {
         sr_free_trees(input_tree, input_cnt);
     }
+    sr_free_values(with_def, with_def_cnt);
+    sr_free_trees(with_def_tree, with_def_tree_cnt);
 
     if (SR_ERR_OK == rc) {
         /* release the message since it won't be released in dispatch */
