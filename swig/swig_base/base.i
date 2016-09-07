@@ -7,7 +7,6 @@
 %shared_ptr(Session)
 %shared_ptr(Subscribe)
 %shared_ptr(Connection)
-%shared_ptr(Operation)
 %shared_ptr(Schema_Content)
 %shared_ptr(Schemas)
 %shared_ptr(Throw_Exception)
@@ -27,6 +26,7 @@
 %shared_ptr(Tree)
 %shared_ptr(Trees)
 %shared_ptr(Xpath_Ctx)
+%shared_ptr(Change)
 
 %include "../swig_base/sysrepo.i"
 %include "../swig_base/structs.i"

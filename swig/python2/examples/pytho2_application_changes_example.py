@@ -63,19 +63,19 @@ def print_value(value):
         print "(unprintable)"
 
 def print_change(op, old_val, new_val):
-    if (op.get() == sr.SR_OP_CREATED):
+    if (op == sr.SR_OP_CREATED):
            print "CREATED: ",
            print_value(new_val)
-    elif (op.get() == sr.SR_OP_DELETED):
+    elif (op == sr.SR_OP_DELETED):
            print "DELETED: ",
            print_value(old_val);
-    elif (op.get() == sr.SR_OP_MODIFIED):
+    elif (op == sr.SR_OP_MODIFIED):
            print "MODIFIED: ",
            print "old value",
            print_value(old_val)
            print "new value",
            print_value(new_val)
-    elif (op.get() == sr.SR_OP_MOVED):
+    elif (op == sr.SR_OP_MOVED):
         print "MOVED: " + new_val.get_xpath() + " after " + old_val.get_xpath()
 
 def print_current_config(session, module_name):
@@ -88,8 +88,6 @@ def print_current_config(session, module_name):
 
 def module_change_cb(sess, module_name, event, private_ctx):
     print "\n\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: ==========\n\n"
-    old_value = sr.Val_Holder()
-    new_value = sr.Val_Holder()
 
     try:
         print_current_config(sess, module_name)
@@ -104,10 +102,10 @@ def module_change_cb(sess, module_name, event, private_ctx):
         it = subscribe.get_changes_iter(change_path);
 
         while True:
-            oper = subscribe.get_change_next(it, old_value, new_value)
-            if oper == None:
+            change = subscribe.get_change_next(it)
+            if change == None:
                 break
-            print_change(oper, old_value.val(), new_value.val())
+            print_change(change.oper(), change.old_val(), change.new_val())
 
         print "\n\n ========== END OF CHANGES =======================================\n\n"
 

@@ -96,8 +96,7 @@ public:
     void unsubscribe();
 
     S_Iter_Change get_changes_iter(const char *xpath);
-    S_Operation get_change_next(S_Iter_Change iter, S_Val_Holder new_value,\
-                                     S_Val_Holder old_value);
+    S_Change get_change_next(S_Iter_Change iter);
     void rpc_subscribe(const char *xpath, sr_rpc_cb callback, void *private_ctx = NULL,\
                        sr_subscr_options_t opts = SUBSCR_DEFAULT);
 

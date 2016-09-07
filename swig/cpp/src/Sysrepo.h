@@ -51,6 +51,7 @@
 #define S_Trees            std::shared_ptr<Trees>
 #define S_Xpath_Ctx        std::shared_ptr<Xpath_Ctx>
 #define S_Logs             std::shared_ptr<Logs>
+#define S_Change           std::shared_ptr<Change>
 
 extern "C" {
 #include "sysrepo.h"

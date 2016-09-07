@@ -99,32 +99,32 @@ print_value(S_Val value)
 }
 
 static void
-print_change(S_Operation op, S_Val old_val, S_Val new_val) {
-    switch(op->get()) {
+print_change(S_Change change) {
+    switch(change->oper()) {
     case SR_OP_CREATED:
-        if (NULL != new_val) {
+        if (NULL != change->new_val()) {
            printf("CREATED: ");
-           print_value(new_val);
+           print_value(change->new_val());
         }
         break;
     case SR_OP_DELETED:
-        if (NULL != old_val) {
+        if (NULL != change->old_val()) {
            printf("DELETED: ");
-           print_value(old_val);
+           print_value(change->old_val());
         }
 	break;
     case SR_OP_MODIFIED:
-        if (NULL != old_val && NULL != new_val) {
+        if (NULL != change->old_val() && NULL != change->new_val()) {
            printf("MODIFIED: ");
            printf("old value");
-           print_value(old_val);
+           print_value(change->old_val());
            printf("new value");
-           print_value(new_val);
+           print_value(change->new_val());
         }
 	break;
     case SR_OP_MOVED:
-        if (NULL != new_val) {
-	    cout<<"MOVED: " << new_val->xpath() << " after " << old_val->xpath() << endl;
+        if (NULL != change->new_val()) {
+	    cout<<"MOVED: " << change->new_val()->xpath() << " after " << change->old_val()->xpath() << endl;
         }
 	break;
     }
@@ -152,8 +152,6 @@ static int
 module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t event, void *private_ctx)
 {
     char change_path[MAX_LEN];
-    S_Val_Holder old_value(new Val_Holder());
-    S_Val_Holder new_value(new Val_Holder());
 
     try {
         S_Session sess(new Session(session));
@@ -169,8 +167,8 @@ module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_ev
         S_Subscribe subscribe(new Subscribe(sess));
         auto it = subscribe->get_changes_iter(&change_path[0]);
 
-        while (auto oper = subscribe->get_change_next(it, old_value, new_value)) {
-            print_change(oper, old_value->val(), new_value->val());
+        while (auto change = subscribe->get_change_next(it)) {
+            print_change(change);
         }
 
         printf("\n\n ========== END OF CHANGES =======================================\n\n");

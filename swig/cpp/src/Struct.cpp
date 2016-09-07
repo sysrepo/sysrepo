@@ -33,9 +33,6 @@ extern "C" {
 
 using namespace std;
 
-Operation::Operation(sr_change_oper_t oper) {_oper = oper;}
-Operation::~Operation() {return;}
-
 // Data
 Data::Data(sr_data_t data, sr_type_t type) {_d = data; _t = type;}
 Data::~Data() {return;}
@@ -671,3 +668,24 @@ void Iter_Value::Set(sr_val_iter_t *iter) {
 
 Iter_Change::Iter_Change(sr_change_iter_t *iter) {_iter = iter;}
 Iter_Change::~Iter_Change() {if (_iter) sr_free_change_iter(_iter);}
+
+Change::Change() {
+_new = NULL;
+_old = NULL;
+}
+S_Val Change::new_val() {
+    if (_new == NULL) return NULL;
+    S_Val new_val(new Val(_new, false));
+    return new_val;
+}
+S_Val Change::old_val() {
+    if (_old == NULL) return NULL;
+    S_Val old_val(new Val(_old, false));
+    return old_val;
+}
+Change::~Change() {
+    if (_new)
+        sr_free_val(_new);
+    if (_old)
+        sr_free_val(_old);
+}

@@ -33,18 +33,6 @@ extern "C" {
 
 using namespace std;
 
-// Operation type wrapeer class
-class Operation
-{
-public:
-    Operation(sr_change_oper_t oper);
-    ~Operation();
-    sr_change_oper_t get() {return _oper;};
-
-private:
-    sr_change_oper_t _oper;
-};
-
 // class for sysrepo C union sr_data_t
 class Data:public Throw_Exception
 {
@@ -311,6 +299,25 @@ public:
 
 private:
     sr_change_iter_t *_iter;
+};
+
+// Change type wrapeer class
+class Change
+{
+public:
+    Change();
+    ~Change();
+    sr_change_oper_t oper() {return _oper;};
+    S_Val new_val();
+    S_Val old_val();
+    sr_change_oper_t *p_oper() {return &_oper;};
+    sr_val_t **p_old() {return &_old;};
+    sr_val_t **p_new() {return &_new;};
+
+private:
+    sr_change_oper_t _oper;
+    sr_val_t *_new;
+    sr_val_t *_old;
 };
 
 #endif

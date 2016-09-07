@@ -427,15 +427,13 @@ S_Iter_Change Subscribe::get_changes_iter(const char *xpath)
     }
 }
 
-S_Operation Subscribe::get_change_next(S_Iter_Change iter, S_Val_Holder new_value,\
-                                            S_Val_Holder old_value)
+S_Change Subscribe::get_change_next(S_Iter_Change iter)
 {
-    sr_change_oper_t operation;
+    S_Change change(new Change());
 
-    int ret = sr_get_change_next(_sess->get(), iter->get(), &operation, new_value->get(), old_value->get());
+    int ret = sr_get_change_next(_sess->get(), iter->get(), change->p_oper(), change->p_old(), change->p_new());
     if (SR_ERR_OK == ret) {
-        S_Operation oper(new Operation(operation));
-        return oper;
+        return change;
     } else if (SR_ERR_NOT_FOUND == ret) {
         return NULL;
     } else {

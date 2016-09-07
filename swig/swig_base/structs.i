@@ -46,4 +46,9 @@
 
 %ignore Iter_Change::Iter_Change(sr_change_iter_t *iter = NULL);
 
+%ignore Change::Change();
+%ignore Change::p_oper();
+%ignore Change::p_old();
+%ignore Change::p_new();
+
 %include "Struct.h"
