@@ -30,6 +30,7 @@
 
 %include "../swig_base/sysrepo.i"
 %include "../swig_base/structs.i"
+%include "../swig_base/tree.i"
 %include "../swig_base/xpath.i"
 %include "../swig_base/session.i"
 %include "../swig_base/connection.i"
