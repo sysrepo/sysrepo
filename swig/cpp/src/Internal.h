@@ -1,7 +1,7 @@
 /**
- * @file Connection.h
+ * @file Internal.h
  * @author Mislav Novakovic <mislav.novakovic@sartura.hr>
- * @brief Sysrepo Connection class header.
+ * @brief Sysrepo class header for internal C++ classes.
  *
  * @copyright
  * Copyright 2016 Deutsche Telekom AG.
@@ -19,28 +19,47 @@
  * limitations under the License.
  */
 
-#ifndef CONNECTION_H
-#define CONNECTION_H
-
-#include <iostream>
-
-#include "Sysrepo.h"
-#include "Internal.h"
+#ifndef INTERNAL_H
+#define INTERNAL_H
 
 extern "C" {
 #include "sysrepo.h"
+#include "sysrepo/trees.h"
 }
 
-class Connection:public Throw_Exception
+using namespace std;
+
+typedef enum free_type_e {
+    VAL,
+    VALS,
+    VALS_POINTER,
+    TREE,
+    TREES,
+    TREES_POINTER,
+} free_type_t;
+
+class Counter
 {
 public:
-    Connection(const char *app_name, const sr_conn_options_t opts = SESS_DEFAULT);
-    sr_conn_ctx_t *get_conn();
-    ~Connection();
+    Counter(sr_val_t *val);
+    Counter(sr_val_t *vals, size_t cnt);
+    Counter(sr_val_t **vals, size_t *cnt);
+    Counter(sr_node_t *tree);
+    Counter(sr_node_t *trees, size_t cnt);
+    Counter(sr_node_t **trees, size_t *cnt);
+    ~Counter();
 
 private:
-    sr_conn_ctx_t *_conn;
-    sr_conn_options_t _opts;
+    sr_val_t *_val;
+    sr_val_t *_vals;
+    size_t _cnt;
+    sr_val_t **p_vals;
+    size_t *p_cnt;
+
+    sr_node_t *_tree;
+    sr_node_t *_trees;
+    sr_node_t **p_trees;
+    free_type_t _t;
 };
 
 #endif

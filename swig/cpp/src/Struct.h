@@ -26,6 +26,7 @@
 #include <memory>
 
 #include "Sysrepo.h"
+#include "Internal.h"
 
 extern "C" {
 #include "sysrepo.h"
@@ -65,7 +66,7 @@ private:
 class Val:public Throw_Exception
 {
 public:
-    Val(sr_val_t *val, bool free = true);
+    Val(sr_val_t *val, S_Counter counter);
     Val(const char *val, sr_type_t type = SR_STRING_T);
     Val(bool bool_val, sr_type_t type = SR_BOOL_T);
     Val(double decimal64_val, sr_type_t type = SR_DECIMAL64_T);
@@ -101,21 +102,7 @@ public:
 
 private:
     sr_val_t *_val;
-    bool _free;
-};
-
-
-// class for sysrepo C double pointer struct sr_val_t
-class Val_Holder
-{
-public:
-    Val_Holder(sr_val_t *val = NULL);
-    ~Val_Holder();
-    sr_val_t **get() {return &_val;};
-    S_Val val();
-
-private:
-    sr_val_t *_val;
+    S_Counter _counter;
 };
 
 // class for list of sysrepo C structs sr_val_t
@@ -137,7 +124,7 @@ public:
 private:
     size_t _cnt;
     sr_val_t *_vals;
-    sr_val_t **p_vals;
+    S_Counter _counter;
 };
 
 class Val_Iter
@@ -318,6 +305,8 @@ private:
     sr_change_oper_t _oper;
     sr_val_t *_new;
     sr_val_t *_old;
+    S_Counter _counter_new;
+    S_Counter _counter_old;
 };
 
 #endif

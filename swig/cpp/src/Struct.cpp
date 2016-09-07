@@ -24,6 +24,7 @@
 
 #include "Struct.h"
 #include "Sysrepo.h"
+#include "Internal.h"
 
 extern "C" {
 #include "sysrepo.h"
@@ -102,17 +103,13 @@ uint64_t Data::get_uint64() {
 }
 
 // Val
-Val::Val(sr_val_t *val, bool free) {
+Val::Val(sr_val_t *val, S_Counter counter) {
     if (val == NULL)
         throw_exception(SR_ERR_INVAL_ARG);
     _val = val;
-    _free = free;
+    _counter = counter;
 }
-Val::~Val() {
-    if (_free && _val != NULL)
-        sr_free_val(_val);
-    return;
-}
+Val::~Val() {return;}
 Val::Val(const char *value, sr_type_t type) {
     sr_val_t *val = NULL;
     val = (sr_val_t*) calloc(1, sizeof(sr_val_t));
@@ -137,6 +134,8 @@ Val::Val(const char *value, sr_type_t type) {
 
     val->type = type;
     _val = val;
+    S_Counter counter(new Counter(val));
+    _counter = counter;
 }
 Val::Val(bool bool_val, sr_type_t type) {
     sr_val_t *val = NULL;
@@ -152,6 +151,8 @@ Val::Val(bool bool_val, sr_type_t type) {
 
     val->type = type;
     _val = val;
+    S_Counter counter(new Counter(val));
+    _counter = counter;
 }
 Val::Val(double decimal64_val, sr_type_t type) {
     sr_val_t *val = NULL;
@@ -167,6 +168,8 @@ Val::Val(double decimal64_val, sr_type_t type) {
 
     val->type = type;
     _val = val;
+    S_Counter counter(new Counter(val));
+    _counter = counter;
 }
 Val::Val(int8_t int8_val, sr_type_t type) {
     sr_val_t *val = NULL;
@@ -182,6 +185,8 @@ Val::Val(int8_t int8_val, sr_type_t type) {
 
     val->type = type;
     _val = val;
+    S_Counter counter(new Counter(val));
+    _counter = counter;
 }
 Val::Val(int16_t int16_val, sr_type_t type) {
     sr_val_t *val = NULL;
@@ -197,6 +202,8 @@ Val::Val(int16_t int16_val, sr_type_t type) {
 
     val->type = type;
     _val = val;
+    S_Counter counter(new Counter(val));
+    _counter = counter;
 }
 Val::Val(int32_t int32_val, sr_type_t type) {
     sr_val_t *val = NULL;
@@ -212,6 +219,8 @@ Val::Val(int32_t int32_val, sr_type_t type) {
 
     val->type = type;
     _val = val;
+    S_Counter counter(new Counter(val));
+    _counter = counter;
 }
 Val::Val(int64_t int64_val, sr_type_t type) {
     sr_val_t *val = NULL;
@@ -244,6 +253,8 @@ Val::Val(int64_t int64_val, sr_type_t type) {
 
     val->type = type;
     _val = val;
+    S_Counter counter(new Counter(val));
+    _counter = counter;
 }
 Val::Val(uint8_t uint8_val, sr_type_t type) {
     sr_val_t *val = NULL;
@@ -259,6 +270,8 @@ Val::Val(uint8_t uint8_val, sr_type_t type) {
 
     val->type = type;
     _val = val;
+    S_Counter counter(new Counter(val));
+    _counter = counter;
 }
 Val::Val(uint16_t uint16_val, sr_type_t type) {
     sr_val_t *val = NULL;
@@ -274,6 +287,8 @@ Val::Val(uint16_t uint16_val, sr_type_t type) {
 
     val->type = type;
     _val = val;
+    S_Counter counter(new Counter(val));
+    _counter = counter;
 }
 Val::Val(uint32_t uint32_val, sr_type_t type) {
     sr_val_t *val = NULL;
@@ -289,6 +304,8 @@ Val::Val(uint32_t uint32_val, sr_type_t type) {
 
     val->type = type;
     _val = val;
+    S_Counter counter(new Counter(val));
+    _counter = counter;
 }
 Val::Val(uint64_t uint64_val, sr_type_t type) {
     sr_val_t *val = NULL;
@@ -304,6 +321,8 @@ Val::Val(uint64_t uint64_val, sr_type_t type) {
 
     val->type = type;
     _val = val;
+    S_Counter counter(new Counter(val));
+    _counter = counter;
 }
 void Val::set(const char *xpath, const char *value, sr_type_t type) {
     if (_val == NULL) throw_exception(SR_ERR_OPERATION_FAILED);
@@ -505,39 +524,30 @@ S_Val Val::dup() {
     if (ret != SR_ERR_OK)
         throw_exception(ret);
 
-    S_Val val(new Val(new_val, true));
-	return val;
-}
-
-/// Val_Holder
-Val_Holder::Val_Holder(sr_val_t *val) {_val = val;}
-Val_Holder::~Val_Holder() {
-    if (_val != NULL)
-        sr_free_val(_val);
-    return;
-}
-S_Val Val_Holder::val() {
-    if (_val == NULL)
-        return NULL;
-    S_Val val(new Val(_val, false));
+    S_Counter counter(new Counter(new_val));
+    S_Val val(new Val(new_val, counter));
     return val;
 }
+
 // Vals
 Vals::Vals(const sr_val_t *vals, const size_t cnt) {
     _vals = (sr_val_t *) vals;
     _cnt = (size_t) cnt;
-    p_vals = NULL;
+
+    S_Counter counter(new Counter(_vals, _cnt));
+    _counter = counter;
 }
 Vals::Vals(sr_val_t **vals, size_t *cnt, size_t n) {
     int ret = sr_new_values(n, vals);
     if (ret != SR_ERR_OK)
         throw_exception(ret);
 
-    p_vals = vals;
     _vals = *vals;
     _cnt = n;
+    *cnt = n;
 
-	*cnt = n;
+    S_Counter counter(new Counter(vals, cnt));
+    _counter = counter;
 }
 Vals::Vals(size_t cnt) {
     sr_val_t *vals = NULL;
@@ -545,35 +555,35 @@ Vals::Vals(size_t cnt) {
     if (ret != SR_ERR_OK)
         throw_exception(ret);
 
-    p_vals = NULL;
     _vals = vals;
     _cnt = cnt;
+    S_Counter counter(new Counter(_vals, _cnt));
+    _counter = counter;
 }
 Vals::Vals() {
-    p_vals = NULL;
     _vals = NULL;
     _cnt = 0;
+    S_Counter counter(new Counter(&_vals, &_cnt));
+    _counter = counter;
 }
 Vals::~Vals() {
-    if (_vals != NULL && p_vals == NULL)
-        sr_free_values(_vals, _cnt);
     return;
 }
 S_Val Vals::val(size_t n) {
     if (n >= _cnt || _vals == NULL)
         return NULL;
 
-    S_Val val(new Val(&_vals[n], false));
+    S_Val val(new Val(&_vals[n], _counter));
     return val;
 }
 S_Vals Vals::dup() {
-	sr_val_t *new_val = NULL;
+    sr_val_t *new_val = NULL;
     int ret = sr_dup_values(_vals, _cnt, &new_val);
     if (ret != SR_ERR_OK)
         throw_exception(ret);
 
     S_Vals vals(new Vals(new_val, _cnt));
-	return vals;
+    return vals;
 }
 
 // Val_iter
@@ -670,17 +680,24 @@ Iter_Change::Iter_Change(sr_change_iter_t *iter) {_iter = iter;}
 Iter_Change::~Iter_Change() {if (_iter) sr_free_change_iter(_iter);}
 
 Change::Change() {
-_new = NULL;
-_old = NULL;
+    _new = NULL;
+    _old = NULL;
+    S_Counter counter_old(new Counter(_old));
+    S_Counter counter_new(new Counter(_new));
+
+    _counter_old = counter_old;
+    _counter_new = counter_new;
 }
 S_Val Change::new_val() {
     if (_new == NULL) return NULL;
-    S_Val new_val(new Val(_new, false));
+
+    S_Val new_val(new Val(_new, _counter_new));
     return new_val;
 }
 S_Val Change::old_val() {
     if (_old == NULL) return NULL;
-    S_Val old_val(new Val(_old, false));
+
+    S_Val old_val(new Val(_old, _counter_old));
     return old_val;
 }
 Change::~Change() {

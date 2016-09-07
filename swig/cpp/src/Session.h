@@ -26,6 +26,7 @@
 #include <memory>
 #include <vector>
 
+#include "Internal.h"
 #include "Struct.h"
 #include "Tree.h"
 #include "Sysrepo.h"

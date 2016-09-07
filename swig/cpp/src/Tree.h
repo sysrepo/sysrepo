@@ -36,7 +36,7 @@ class Tree:public Throw_Exception
 {
 public:
     Tree(const char *root_name, const char *root_module_name);
-    Tree(sr_node_t *tree, bool free = false);
+    Tree(sr_node_t *tree, S_Counter counter);
     S_Tree dup();
     S_Tree node();
     sr_node_t *tree() {return _node;};
@@ -72,6 +72,7 @@ public:
 private:
     sr_node_t *_node;
     bool _free;
+    S_Counter _counter;
 };
 
 class Trees:public Throw_Exception
@@ -90,9 +91,9 @@ public:
     ~Trees();
 
 private:
-    sr_node_t **p_tree;
     sr_node_t *_trees;
     size_t _cnt;
+    S_Counter _counter;
 };
 
 #endif

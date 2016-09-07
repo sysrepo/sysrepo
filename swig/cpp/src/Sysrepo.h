@@ -52,6 +52,9 @@
 #define S_Xpath_Ctx        std::shared_ptr<Xpath_Ctx>
 #define S_Logs             std::shared_ptr<Logs>
 #define S_Change           std::shared_ptr<Change>
+#define S_Counter          std::shared_ptr<Counter>
+
+#include "Internal.h"
 
 extern "C" {
 #include "sysrepo.h"
