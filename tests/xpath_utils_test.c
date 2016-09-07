@@ -36,7 +36,7 @@ static void
 sr_xpath_next_node_test (void **st)
 {
     char xpath[] = "/example-module:container/list[key1='keyA'][key2='keyB']/leaf";
-    sr_xpath_ctx_t state;
+    sr_xpath_ctx_t state = {0};
 
     char *res = NULL;
 
@@ -62,7 +62,7 @@ static void
 sr_xpath_next_node_with_ns_test (void **st)
 {
     char xpath[] = "/example-module:container/list[key1='keyA'][key2='keyB']/leaf";
-    sr_xpath_ctx_t state;
+    sr_xpath_ctx_t state = {0};
 
     char *res = NULL;
 
@@ -88,7 +88,7 @@ static void
 sr_xpath_next_key_name_test (void **st)
 {
     char xpath[] = "/example-module:container/list[key1='keyA'][key2='keyB']/leaf";
-    sr_xpath_ctx_t state;
+    sr_xpath_ctx_t state = {0};
 
     char *res = NULL;
 
@@ -127,7 +127,7 @@ static void
 sr_xpath_next_key_value_test (void **st)
 {
     char xpath[] = "/example-module:container/list[key1='keyA'][key2='keyB']/leaf";
-    sr_xpath_ctx_t state;
+    sr_xpath_ctx_t state = {0};
 
     char *res = NULL;
 
@@ -170,7 +170,7 @@ static void
 sr_xpath_node_test (void **st)
 {
     char xpath[] = "/example-module:container/list[key1='keyA'][key2='keyB']/leaf";
-    sr_xpath_ctx_t state;
+    sr_xpath_ctx_t state = {0};
 
     char *res = NULL;
 
@@ -213,7 +213,7 @@ static void
 sr_xpath_node_rel_test (void **st)
 {
     char xpath[] = "/example-module:container/list[key1='keyA'][key2='keyB']/leaf";
-    sr_xpath_ctx_t state;
+    sr_xpath_ctx_t state = {0};
 
     char *res = NULL;
 
@@ -243,7 +243,7 @@ static void
 sr_xpath_node_idx_test (void **st)
 {
     char xpath[] = "/example-module:container/list[key1='keyA'][key2='keyB']/leaf";
-    sr_xpath_ctx_t state;
+    sr_xpath_ctx_t state = {0};
 
     char *res = NULL;
 
@@ -276,7 +276,7 @@ static void
 sr_xpath_node_idx_rel_test (void **st)
 {
     char xpath[] = "/example-module:container/list[key1='keyA'][key2='keyB']/leaf";
-    sr_xpath_ctx_t state;
+    sr_xpath_ctx_t state = {0};
 
     char *res = NULL;
 
@@ -310,7 +310,7 @@ static void
 sr_xpath_node_key_value_test (void **st)
 {
     char xpath[] = "/example-module:container/list[key1='keyA'][key2='keyB']/leaf";
-    sr_xpath_ctx_t state;
+    sr_xpath_ctx_t state = {0};
 
     char *res = NULL;
 
@@ -354,7 +354,7 @@ static void
 sr_xpath_node_key_value_idx_test (void **st)
 {
     char xpath[] = "/example-module:container/list[key1='keyA'][key2='keyB']/leaf";
-    sr_xpath_ctx_t state;
+    sr_xpath_ctx_t state = {0};
 
     char *res = NULL;
 
@@ -398,7 +398,7 @@ static void
 sr_xpath_key_value_test (void **st)
 {
     char xpath[] = "/example-module:container/list[key1='keyA'][key2='keyB']/leaf";
-    sr_xpath_ctx_t state;
+    sr_xpath_ctx_t state = {0};
 
     char *res = NULL;
 
@@ -436,7 +436,7 @@ static void
 sr_xpath_with_augments_test (void **st)
 {
     char xpath[] = "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/address[ip='192.168.2.100']/prefix-length";
-    sr_xpath_ctx_t state;
+    sr_xpath_ctx_t state = {0};
 
     char *res = NULL;
 
@@ -470,7 +470,7 @@ static void
 sr_xpath_key_value_idx_test (void **st)
 {
     char xpath[] = "/example-module:container/list[key1='keyA'][key2='keyB']/leaf";
-    sr_xpath_ctx_t state;
+    sr_xpath_ctx_t state = {0};
 
     char *res = NULL;
 
@@ -509,7 +509,7 @@ static void
 sr_xpath_last_node_test (void **st)
 {
     char xpath[] = "/example-module:container/list[key1='keyA'][key2='keyB']/leaf";
-    sr_xpath_ctx_t state;
+    sr_xpath_ctx_t state = {0};
 
     char *res = NULL;
 
