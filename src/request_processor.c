@@ -1487,6 +1487,138 @@ finalize:
 }
 
 /**
+ * @brief Checks if the received xpath was requested and find corresponding schema node
+ */
+static int
+rp_data_provide_resp_validate (rp_ctx_t *rp_ctx, rp_session_t *session, const char *xpath, sr_val_t *values, size_t values_cnt, struct lys_node **sch_node)
+{
+    CHECK_NULL_ARG3(rp_ctx, session, sch_node);
+    if (values_cnt > 0) {
+        CHECK_NULL_ARG(values);
+    }
+    int rc = SR_ERR_OK;
+    bool found = false;
+    dm_schema_info_t *si = NULL;
+
+    rc = dm_get_module_and_lock(rp_ctx->dm_ctx, session->module_name, &si);
+    CHECK_RC_MSG_RETURN(rc, "Get schema info failed");
+
+    /* verify that provided xpath was requested */
+    for (size_t i = 0; i < session->state_data_ctx.requested_xpaths->count; i++) {
+        char *xp = (char *) session->state_data_ctx.requested_xpaths->data[i];
+        if (0 == strcmp(xp, xpath)) {
+            found = true;
+            *sch_node = (struct lys_node *) ly_ctx_get_node(si->ly_ctx, NULL, xp);
+            if (NULL == *sch_node) {
+                SR_LOG_ERR("Schema node not found for %s", xp);
+                pthread_rwlock_unlock(&si->model_lock);
+                return SR_ERR_INVAL_ARG;
+            }
+            free(xp);
+            sr_list_rm_at(session->state_data_ctx.requested_xpaths, i);
+            break;
+        }
+    }
+    pthread_rwlock_unlock(&si->model_lock);
+
+    if (!found) {
+        SR_LOG_ERR("Data provider sent data for unexpected xpath %s", xpath);
+        return SR_ERR_INVAL_ARG;
+    }
+
+    /* test that all values are under requested xpath */
+    size_t xp_len = strlen(xpath);
+    for (size_t i = 0; i < values_cnt; i++) {
+        if (0 != strncmp(xpath, values[i].xpath, xp_len)){
+            SR_LOG_ERR("Unexpected value with xpath %s received from provider", values[i].xpath);
+            return SR_ERR_INVAL_ARG;
+        }
+    }
+
+    return rc;
+}
+
+/**
+ * @brief Generate requests for nested data
+ */
+static int
+rp_data_provide_request_nested(rp_ctx_t *rp_ctx, rp_session_t *session, const char *xpath, struct lys_node *sch_node)
+{
+    int rc = SR_ERR_OK;
+    struct lys_node *iter = NULL;
+    size_t subs_index = 0;
+    struct ly_set *list_instances = NULL;
+    char **xpaths = NULL;
+    size_t xp_count = 0;
+    char *request_xp = NULL;
+
+    /* find subscription where subsequent request will be addressed */
+    for (subs_index = 0; subs_index < session->state_data_ctx.subscription_nodes->count; subs_index++) {
+        struct lys_node *subs = session->state_data_ctx.subscription_nodes->data[subs_index];
+        if (rp_dt_is_under_subtree(subs, sch_node)) {
+            break;
+        }
+    }
+
+    if (subs_index >= session->state_data_ctx.subscription_nodes->count) {
+        SR_LOG_ERR ("Subscription not found for xpath %s", xpath);
+        return SR_ERR_INTERNAL;
+    }
+
+    /* prepare xpaths where nested data will be requested */
+    if (LYS_LIST == sch_node->nodetype) {
+        rc = dm_get_nodes_by_schema(session->dm_session, session->module_name, sch_node, &list_instances);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Dm_get_nodes_by_schema failed");
+
+        xpaths = calloc(list_instances->number, sizeof(*xpaths));
+        CHECK_NULL_NOMEM_GOTO(xpaths, rc, cleanup);
+
+        for (xp_count = 0; xp_count < list_instances->number; xp_count++) {
+            xpaths[xp_count] = lyd_path(list_instances->set.d[xp_count]);
+            CHECK_NULL_NOMEM_GOTO(xpaths[xp_count], rc, cleanup);
+        }
+    } else {
+        xpaths = calloc(1, sizeof(*xpaths));
+        CHECK_NULL_NOMEM_GOTO(xpaths, rc, cleanup);
+
+        xpaths[0] = strdup(xpath);
+        CHECK_NULL_NOMEM_GOTO(xpaths[0], rc, cleanup);
+        xp_count = 1;
+    }
+
+    /* loop through the node children */
+    LY_TREE_FOR(sch_node->child, iter) {
+        if ((LYS_LIST | LYS_CONTAINER) & iter->nodetype) {
+            for (size_t i = 0; i < xp_count; i++) {
+                size_t len = strlen(xpaths[i]) + strlen(iter->name) + 2 /* slash + zero byte */;
+                request_xp = calloc(len, sizeof(*request_xp));
+                CHECK_NULL_NOMEM_GOTO(request_xp, rc, cleanup);
+
+                snprintf(request_xp, len, "%s/%s", xpaths[i], iter->name);
+
+                rc = np_data_provider_request(rp_ctx->np_ctx, session->state_data_ctx.subscriptions[subs_index], session, request_xp);
+                SR_LOG_DBG("Sending request for nested state data: %s", request_xp);
+
+                session->dp_req_waiting += 1;
+
+                rc = sr_list_add(session->state_data_ctx.requested_xpaths, request_xp);
+                CHECK_RC_MSG_GOTO(rc, cleanup, "List add failed");
+                request_xp = NULL;
+            }
+        }
+    }
+cleanup:
+    for (size_t i = 0; i < xp_count; i++) {
+        free(xpaths[i]);
+    }
+    free(xpaths);
+    ly_set_free(list_instances);
+    free(request_xp);
+
+    return rc;
+}
+
+/**
  * @brief Processes an operational data provider response.
  */
 static int
@@ -1509,26 +1641,11 @@ rp_data_provide_resp_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *m
         goto error;
     }
 
-    bool found = false;
     char *xpath = msg->response->data_provide_resp->xpath;
-    for (size_t i = 0; i < session->loaded_state_data[session->datastore]->count; i++) {
-        if (0 == strcmp((char *) session->loaded_state_data[session->datastore]->data[i], xpath)) {
-            found = true;
-            break;
-        }
-    }
-    if (!found) {
-        SR_LOG_ERR("Data provider sent data for unexpected xpath %s", xpath);
-        goto error;
-    }
+    struct lys_node *sch_node = NULL;
 
-    size_t xp_len  = strlen(xpath);
-    for (size_t i = 0; i < values_cnt; i++) {
-        if (0 != strncmp(msg->response->data_provide_resp->xpath, values[i].xpath, xp_len)){
-            SR_LOG_ERR("Unexpected value with xpath %s received from provider", values[i].xpath);
-            goto error;
-        }
-    }
+    rc = rp_data_provide_resp_validate(rp_ctx, session, xpath, values, values_cnt, &sch_node);
+    CHECK_RC_MSG_GOTO(rc, error, "Data validation failed.");
 
     for (size_t i = 0; i < values_cnt; i++) {
         SR_LOG_DBG("Received value from data provider for xpath '%s'.", values[i].xpath);
@@ -1538,11 +1655,20 @@ rp_data_provide_resp_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *m
             SR_LOG_WRN("Failed to set operational data for xpath '%s'.", values[i].xpath);
         }
     }
-    //TODO: generate request asking for nested data
+
+    /* handle nested data */
+    if ((LYS_CONTAINER | LYS_LIST) & sch_node->nodetype) {
+        rc = rp_data_provide_request_nested(rp_ctx, session, xpath, sch_node);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_WRN("Requesting nested data for xpath %s was not successful", xpath);
+        }
+    }
+
     session->dp_req_waiting -= 1;
     if (0 == session->dp_req_waiting) {
         SR_LOG_DBG("All data from data providers has been received session id = %u, reenque the request", session->id);
         //TODO validate data
+        rp_dt_free_state_data_ctx_content(&session->state_data_ctx);
         session->state = RP_REQ_DATA_LOADED;
         rp_msg_process(rp_ctx, session, session->req);
     }
@@ -2146,6 +2272,7 @@ rp_session_cleanup(const rp_ctx_t *rp_ctx, rp_session_t *session)
         sr_list_cleanup(session->loaded_state_data[i]);
     }
     free(session->loaded_state_data);
+    rp_dt_free_state_data_ctx_content(&session->state_data_ctx);
     free(session);
 
     return SR_ERR_OK;
