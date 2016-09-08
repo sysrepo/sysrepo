@@ -1211,7 +1211,7 @@ sr_subtree_to_dt(struct ly_ctx *ly_ctx, const sr_node_t *sr_tree, bool output, s
                     return SR_ERR_INTERNAL;
                 }
                 node = NULL;
-                nodeset = lyd_get_node(*data_tree, xpath);
+                nodeset = lyd_find_xpath(*data_tree, xpath);
                 if (NULL != nodeset && 1 == nodeset->number) {
                     node = nodeset->set.d[0];
                 }

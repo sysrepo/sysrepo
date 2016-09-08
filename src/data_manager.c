@@ -3625,7 +3625,7 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
             if (NULL != tmp_xpath) {
                 strcat(tmp_xpath, xpath);
                 strcat(tmp_xpath, "//*");
-                nodeset = lyd_get_node(data_tree, tmp_xpath);
+                nodeset = lyd_find_xpath(data_tree, tmp_xpath);
                 if (NULL != nodeset) {
                     rc = rp_dt_get_values_from_nodes(sr_mem, nodeset, with_def, with_def_cnt);
                 } else {
@@ -3650,7 +3650,7 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
                     strcat(tmp_xpath, "./"); /* skip "input" / "output" */
                 }
                 strcat(tmp_xpath, "*");
-                nodeset = lyd_get_node(data_tree, tmp_xpath);
+                nodeset = lyd_find_xpath(data_tree, tmp_xpath);
                 if (NULL != nodeset) {
                     rc = sr_nodes_to_trees(schema_info->ly_ctx, nodeset, sr_mem, with_def_tree, with_def_tree_cnt);
                 } else {
