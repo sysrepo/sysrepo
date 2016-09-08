@@ -743,11 +743,11 @@ int sr_get_subtree(sr_session_ctx_t *session, const char *xpath, sr_node_t **sub
  * simplifies the implementation and decreases the cost of this operation. The downside is that
  * the user must choose the XPath carefully. If the subtree selection process results in too many
  * node overlaps, the cost of the operation may easily outshine the benefits. As an example,
- * a common XPath expression "//*" is normally used to select all nodes in a data tree, but for this
+ * a common XPath expression "//." is normally used to select all nodes in a data tree, but for this
  * operation it would result in an excessive duplication of transfered data elements.
  * Since you get all the descendants of each matched node implicitly, you probably should not need
  * to use XPath wildcards deeper than on the top-level.
- * (i.e. "/*" is preferred alternative to "//*" for get-subtrees operation).
+ * (i.e. "/." is preferred alternative to "//." for get-subtrees operation).
  *
  * If the response contains too many elements time out may be exceeded, SR_ERR_TIME_OUT
  * will be returned.
