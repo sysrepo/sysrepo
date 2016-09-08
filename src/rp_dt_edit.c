@@ -488,7 +488,7 @@ rp_dt_move_list(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, sr_m
             return rc;
         }
     } else {
-        struct ly_set *siblings = lyd_get_node2(info->node, node->schema);
+        struct ly_set *siblings = lyd_find_instance(info->node, node->schema);
 
         if (NULL == siblings || 0 == siblings->number) {
             SR_LOG_ERR_MSG("No siblings found");

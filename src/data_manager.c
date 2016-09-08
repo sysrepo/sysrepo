@@ -4105,7 +4105,7 @@ dm_get_nodes_by_schema(dm_session_t *session, const char *module_name, const str
     rc = dm_get_data_info(session->dm_ctx, session, module_name, &di);
     CHECK_RC_MSG_RETURN(rc, "Get data info failed");
 
-    *res = lyd_get_node2(di->node, node);
+    *res = lyd_find_instance(di->node, node);
     if (NULL == res) {
         SR_LOG_ERR("Failed to found nodes %s in module %s", node->name, module_name);
         rc = SR_ERR_INTERNAL;
