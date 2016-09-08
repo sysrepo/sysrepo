@@ -260,10 +260,16 @@ cl_dp_traffic_stats(const char *xpath, sr_val_t **values, size_t *values_cnt, vo
             return -2;
         }
 
+        char *cross_road_id = NULL;
+        int cr_index = -1;
         char *xp_dup = strdup(xpath);
-        char *cross_road_id = sr_xpath_key_value(xp_dup, "cross_road", "id", &xp_ctx);
-        int cr_index = atoi(cross_road_id);
 
+        if (NULL != xp_dup) {
+            cross_road_id = sr_xpath_key_value(xp_dup, "cross_road", "id", &xp_ctx);
+            if (NULL != cross_road_id) {
+                cr_index = atoi(cross_road_id);
+            }
+        }
         free(xp_dup);
 
         for (int i = 0; i < 3; i++) {
@@ -276,11 +282,16 @@ cl_dp_traffic_stats(const char *xpath, sr_val_t **values, size_t *values_cnt, vo
     } else if (0 == strncmp("advanced_info", sr_xpath_node_name(xpath), strlen("advanced_info"))) {
         char xp[MAX_LEN] = {0};
         sr_xpath_ctx_t xp_ctx = {0};
-
+        char *cross_road_id = NULL;
+        int cr_index = -1;
         char *xp_dup = strdup(xpath);
-        char *cross_road_id = sr_xpath_key_value(xp_dup, "cross_road", "id", &xp_ctx);
-        int cr_index = atoi(cross_road_id);
 
+        if (NULL != xp_dup) {
+            cross_road_id = sr_xpath_key_value(xp_dup, "cross_road", "id", &xp_ctx);
+            if (NULL != cross_road_id) {
+                cr_index = atoi(cross_road_id);
+            }
+        }
         free(xp_dup);
 
         if (0 == cr_index) {
