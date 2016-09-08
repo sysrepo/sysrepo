@@ -49,6 +49,10 @@ sr_gpb_operation_name(Sr__Operation operation)
         return "get-item";
     case SR__OPERATION__GET_ITEMS:
         return "get-items";
+    case SR__OPERATION__GET_SUBTREE:
+        return "get-subtree";
+    case SR__OPERATION__GET_SUBTREES:
+        return "get-subtrees";
     case SR__OPERATION__SET_ITEM:
         return "set-item";
     case SR__OPERATION__DELETE_ITEM:
@@ -189,6 +193,18 @@ sr_gpb_req_alloc(sr_mem_ctx_t *sr_mem, const Sr__Operation operation, const uint
             CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__get_items_req__init((Sr__GetItemsReq*)sub_msg);
             req->get_items_req = (Sr__GetItemsReq*)sub_msg;
+            break;
+        case SR__OPERATION__GET_SUBTREE:
+            sub_msg = sr_calloc(sr_mem, 1, sizeof(Sr__GetSubtreeReq));
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
+            sr__get_subtree_req__init((Sr__GetSubtreeReq*)sub_msg);
+            req->get_subtree_req = (Sr__GetSubtreeReq*)sub_msg;
+            break;
+        case SR__OPERATION__GET_SUBTREES:
+            sub_msg = sr_calloc(sr_mem, 1, sizeof(Sr__GetSubtreesReq));
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
+            sr__get_subtrees_req__init((Sr__GetSubtreesReq*)sub_msg);
+            req->get_subtrees_req = (Sr__GetSubtreesReq*)sub_msg;
             break;
         case SR__OPERATION__SET_ITEM:
             sub_msg = sr_calloc(sr_mem, 1, sizeof(Sr__SetItemReq));
@@ -408,6 +424,18 @@ sr_gpb_resp_alloc(sr_mem_ctx_t *sr_mem, const Sr__Operation operation, const uin
             CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__get_items_resp__init((Sr__GetItemsResp*)sub_msg);
             resp->get_items_resp = (Sr__GetItemsResp*)sub_msg;
+            break;
+        case SR__OPERATION__GET_SUBTREE:
+            sub_msg = sr_calloc(sr_mem, 1, sizeof(Sr__GetSubtreeResp));
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
+            sr__get_subtree_resp__init((Sr__GetSubtreeResp*)sub_msg);
+            resp->get_subtree_resp = (Sr__GetSubtreeResp*)sub_msg;
+            break;
+        case SR__OPERATION__GET_SUBTREES:
+            sub_msg = sr_calloc(sr_mem, 1, sizeof(Sr__GetSubtreesResp));
+            CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
+            sr__get_subtrees_resp__init((Sr__GetSubtreesResp*)sub_msg);
+            resp->get_subtrees_resp = (Sr__GetSubtreesResp*)sub_msg;
             break;
         case SR__OPERATION__SET_ITEM:
             sub_msg = sr_calloc(sr_mem, 1, sizeof(Sr__SetItemResp));
@@ -787,6 +815,12 @@ sr_gpb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__O
             case SR__OPERATION__GET_ITEMS:
                 CHECK_NULL_RETURN(msg->request->get_items_req, SR_ERR_MALFORMED_MSG);
                 break;
+            case SR__OPERATION__GET_SUBTREE:
+                CHECK_NULL_RETURN(msg->request->get_subtree_req, SR_ERR_MALFORMED_MSG);
+                break;
+            case SR__OPERATION__GET_SUBTREES:
+                CHECK_NULL_RETURN(msg->request->get_subtrees_req, SR_ERR_MALFORMED_MSG);
+                break;
             case SR__OPERATION__SET_ITEM:
                 CHECK_NULL_RETURN(msg->request->set_item_req, SR_ERR_MALFORMED_MSG);
                 break;
@@ -877,6 +911,12 @@ sr_gpb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__O
                 break;
             case SR__OPERATION__GET_ITEMS:
                 CHECK_NULL_RETURN(msg->response->get_items_resp, SR_ERR_MALFORMED_MSG);
+                break;
+            case SR__OPERATION__GET_SUBTREE:
+                CHECK_NULL_RETURN(msg->response->get_subtree_resp, SR_ERR_MALFORMED_MSG);
+                break;
+            case SR__OPERATION__GET_SUBTREES:
+                CHECK_NULL_RETURN(msg->response->get_subtrees_resp, SR_ERR_MALFORMED_MSG);
                 break;
             case SR__OPERATION__SET_ITEM:
                 CHECK_NULL_RETURN(msg->response->set_item_resp, SR_ERR_MALFORMED_MSG);

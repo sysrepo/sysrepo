@@ -301,6 +301,35 @@ message GetItemsResp {
   repeated Value values = 1;
 }
 
+/**
+ * @brief Retrieves a single subtree whose root is stored under provided path.
+ * Sent by sr_get_subtree API call.
+ */
+message GetSubtreeReq {
+  required string xpath = 1;
+}
+
+/**
+ * @brief Response to sr_get_subtree request.
+ */
+message GetSubtreeResp {
+  optional Node tree = 1;
+}
+
+/**
+ * @brief Retrieves an array of subtrees whose root nodes match provided path.
+ * Sent by sr_get_subtrees API call.
+ */
+message GetSubtreesReq {
+  required string xpath = 1;
+}
+
+/**
+ * @brief Response to sr_get_subtrees request.
+ */
+message GetSubtreesResp {
+  repeated Node trees = 1;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 // Data Manipulation API (edit-config functionality)
@@ -731,6 +760,9 @@ enum Operation {
   GET_ITEM = 30;
   GET_ITEMS = 31;
 
+  GET_SUBTREE = 32;
+  GET_SUBTREES = 33;
+
   SET_ITEM = 40;
   DELETE_ITEM = 41;
   MOVE_ITEM = 42;
@@ -777,6 +809,9 @@ message Request {
   optional GetItemReq get_item_req = 30;
   optional GetItemsReq get_items_req = 31;
 
+  optional GetSubtreeReq get_subtree_req = 32;
+  optional GetSubtreesReq get_subtrees_req = 33;
+
   optional SetItemReq set_item_req = 40;
   optional DeleteItemReq delete_item_req = 41;
   optional MoveItemReq move_item_req = 42;
@@ -820,6 +855,9 @@ message Response {
 
   optional GetItemResp get_item_resp = 30;
   optional GetItemsResp get_items_resp = 31;
+
+  optional GetSubtreeResp get_subtree_resp = 32;
+  optional GetSubtreesResp get_subtrees_resp = 33;
 
   optional SetItemResp set_item_resp = 40;
   optional DeleteItemResp delete_item_resp = 41;

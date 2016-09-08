@@ -328,11 +328,10 @@ sr_api_variant_t sr_api_variant_from_str(const char *api_variant_str);
 /**
  * @brief Copy and convert content of a libyang node and its descendands into a sysrepo tree.
  *
- * @param [in] ly_ctx libyang context
  * @param [in] node libyang node.
  * @param [out] sr_tree Returned sysrepo tree.
  */
-int sr_copy_node_to_tree(struct ly_ctx *ly_ctx, const struct lyd_node *node, sr_node_t *sr_tree);
+int sr_copy_node_to_tree(const struct lyd_node *node, sr_node_t *sr_tree);
 
 /**
  * @brief Convert a set of libyang nodes into an array of sysrepo trees. For each node a corresponding
@@ -340,13 +339,12 @@ int sr_copy_node_to_tree(struct ly_ctx *ly_ctx, const struct lyd_node *node, sr_
  * of each other! With this assumption the links between the output trees does not need to be considered which
  * significantly decreses the cost of this operation.
  *
- * @param [in] ly_ctx libyang context
  * @param [in] nodes A set of libyang nodes.
  * @param [in] sr_mem Sysrepo memory context to use for memory allocation. Can be NULL.
  * @param [out] sr_trees Returned array of sysrepo trees.
  * @param [out] count Number of returned trees.
  */
-int sr_nodes_to_trees(struct ly_ctx *ly_ctx, struct ly_set *nodes, sr_mem_ctx_t *sr_mem, sr_node_t **sr_trees, size_t *count);
+int sr_nodes_to_trees(struct ly_set *nodes, sr_mem_ctx_t *sr_mem, sr_node_t **sr_trees, size_t *count);
 
 /**
  * @brief Convert a sysrepo tree into a libyang data tree.

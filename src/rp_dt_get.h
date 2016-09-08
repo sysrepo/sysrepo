@@ -108,6 +108,56 @@ int rp_dt_get_values_wrapper_with_opts(rp_ctx_t *rp_ctx, rp_session_t *rp_sessio
 int rp_dt_get_values_from_nodes(sr_mem_ctx_t *sr_mem, struct ly_set *nodes, sr_val_t **values, size_t *value_cnt);
 
 /**
+ * @brief Returns subtree with the root node at the specified xpath. If more than one node matching xpath,
+ * SR_ERR_INVAL_ARG is returned.
+ * @param [in] dm_ctx
+ * @param [in] data_tree
+ * @param [in] sr_mem
+ * @param [in] xpath
+ * @param [in] check_enable
+ * @param [out] value
+ * @return Error code (SR_ERR_OK on success)
+ */
+int rp_dt_get_subtree(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, sr_mem_ctx_t *sr_mem, const char *xpath, bool check_enable, sr_node_t **subtree);
+
+/**
+ * @brief Retrieves all subtrees with root nodes matching the specified xpath.
+ * @param [in] dm_ctx
+ * @param [in] data_tree
+ * @param [in] sr_mem
+ * @param [in] xpath
+ * @param [in] check_enable
+ * @param [out] values
+ * @param [out] count
+ * @return Error code (SR_ERR_OK on success)
+ */
+int rp_dt_get_subtrees(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, sr_mem_ctx_t *sr_mem, const char *xpath, bool check_enable,
+        sr_node_t **subtrees, size_t *count);
+
+/**
+ * @brief Returns the subtree whose root node is referenced by the specified xpath.
+ * @param [in] rp_ctx
+ * @param [in] rp_session
+ * @param [in] sr_mem
+ * @param [in] xpath
+ * @param [out] subtree
+ * @return Error code (SR_ERR_OK on success), SR_ERR_NOT_FOUND, SR_ERR_UNKNOWN_MODEL, SR_ERR_BAD_ELEMENT
+ */
+int rp_dt_get_subtree_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, sr_mem_ctx_t *sr_mem, const char *xpath, sr_node_t **subtree);
+
+/**
+ * @brief Retrieves all subtrees with root nodes matching the specified xpath.
+ * @param [in] rp_ctx
+ * @param [in] rp_session
+ * @param [in] sr_mem
+ * @param [in] xpath
+ * @param [out] subtrees
+ * @param [out] count
+ * @return Error code (SR_ERR_OK on success), SR_ERR_NOT_FOUND, SR_ERR_UNKNOWN_MODEL, SR_ERR_BAD_ELEMENT
+ */
+int rp_dt_get_subtrees_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, sr_mem_ctx_t *sr_mem, const char *xpath, sr_node_t **subtrees, size_t *count);
+
+/**
  * @brief Transforms difflist to the set of changes
  * @param [in] difflist
  * @param [out] changes

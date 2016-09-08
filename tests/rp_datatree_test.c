@@ -140,7 +140,6 @@ void check_ietf_interfaces_ipv4_values(sr_val_t *values, size_t count){
      }
 }
 
-
 /**
  * Function expects the values under xpath
  * /ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/address[ip='192.168.2.100']
@@ -158,6 +157,181 @@ void check_ietf_interfaces_addr_values(sr_val_t *values, size_t count){
         }
     }
 }
+
+/**
+ * @brief Retrieve child of a parent node by an index.
+ */
+static sr_node_t *
+get_child_by_index(sr_node_t *parent, int index)
+{
+    assert_non_null(parent->first_child);
+    sr_node_t *child = parent->first_child;
+
+    while (index) {
+        child = child->next;
+        assert_non_null(child);
+        --index;
+    }
+    return child;
+}
+
+/**
+ * @brief Get number of children of a parent node.
+ */
+static size_t
+get_child_cnt(sr_node_t *parent)
+{
+    size_t cnt = 0;
+    sr_node_t *child = parent->first_child;
+    while (child) {
+        ++cnt;
+        child = child->next;
+    }
+    return cnt;
+}
+
+/**
+ * Function expects a tree with root's xpath
+ * /ietf-interfaces:interfaces/interface[name='<based on index>']/ietf-ip:ipv4/address[ip='192.168.2.100']
+ */
+void check_ietf_interfaces_addr_tree(sr_node_t *tree, size_t index, bool top)
+{
+    sr_node_t *node = NULL;
+    const char * const addresses[] = {"192.168.2.100", "10.10.1.5"};
+    int8_t prefix_lengths[] = {24, 16};
+
+    assert_true(index < 2);
+
+    // address
+    assert_string_equal("address", tree->name);
+    assert_int_equal(SR_LIST_T, tree->type);
+    if (top) {
+        assert_string_equal("ietf-ip", tree->module_name);
+    } else {
+        assert_null(tree->module_name);
+    }
+    assert_false(tree->dflt);
+    assert_int_equal(2, get_child_cnt(tree));
+    // ip
+    node = get_child_by_index(tree, 0);
+    assert_string_equal("ip", node->name);
+    assert_int_equal(SR_STRING_T, node->type);
+    assert_string_equal(addresses[index], node->data.string_val);
+    assert_null(node->module_name);
+    assert_false(node->dflt);
+    assert_int_equal(0, get_child_cnt(node));
+    // prefix-length
+    node = get_child_by_index(tree, 1);
+    assert_string_equal("prefix-length", node->name);
+    assert_int_equal(SR_UINT8_T, node->type);
+    assert_int_equal(prefix_lengths[index], node->data.uint8_val);
+    assert_null(node->module_name);
+    assert_false(node->dflt);
+    assert_int_equal(0, get_child_cnt(node));
+}
+
+/**
+ * Function expect a tree with root's xpath
+ * /ietf-interfaces:interfaces/interface[name=<based on index>]/ietf-ip:ipv4
+ */
+void check_ietf_interfaces_ipv4_tree(sr_node_t *tree, size_t index)
+{
+    sr_node_t *node = NULL;
+    assert_true(index < 2);
+
+    // ipv4
+    assert_string_equal("ipv4", tree->name);
+    assert_int_equal(SR_CONTAINER_PRESENCE_T, tree->type);
+    assert_string_equal("ietf-ip", tree->module_name);
+    assert_false(tree->dflt);
+    assert_int_equal(4, get_child_cnt(tree));
+    // enabled
+    node = get_child_by_index(tree, 0);
+    assert_string_equal("enabled", node->name);
+    assert_int_equal(SR_BOOL_T, node->type);
+    assert_true(node->data.bool_val);
+    assert_null(node->module_name);
+    assert_false(node->dflt);
+    assert_int_equal(0, get_child_cnt(node));
+    // mtu
+    node = get_child_by_index(tree, 1);
+    assert_string_equal("mtu", node->name);
+    assert_int_equal(SR_UINT16_T, node->type);
+    assert_int_equal(1500, node->data.uint16_val);
+    assert_null(node->module_name);
+    assert_false(node->dflt);
+    assert_int_equal(0, get_child_cnt(node));
+    // address
+    node = get_child_by_index(tree, 2);
+    check_ietf_interfaces_addr_tree(node, index, false);
+    // forwarding
+    node = get_child_by_index(tree, 3);
+    assert_string_equal("forwarding", node->name);
+    assert_int_equal(SR_BOOL_T, node->type);
+    assert_false(node->data.bool_val);
+    assert_null(node->module_name);
+    assert_true(node->dflt);
+    assert_int_equal(0, get_child_cnt(node));
+}
+
+/**
+ * Function expects a tree with root's xpath
+ * "/ietf-interfaces:interfaces/interface[name=<based on index>]"
+ */
+void check_ietf_interfaces_int_tree(sr_node_t *tree, size_t index)
+{
+    sr_node_t *node = NULL;
+    const char * const names[] = {"eth0", "eth1", "gigaeth0"};
+    const char * const descriptions[] = {"Ethernet 0", "Ethernet 1", "GigabitEthernet 0"};
+    bool enabled[] = {true, true, false};
+
+    assert_true(index < 3);
+
+    // interface
+    assert_string_equal("interface", tree->name);
+    assert_int_equal(SR_LIST_T, tree->type);
+    assert_string_equal("ietf-interfaces", tree->module_name);
+    assert_false(tree->dflt);
+    assert_int_equal(index < 2 ? 5 : 4, get_child_cnt(tree));
+    // name
+    node = get_child_by_index(tree, 0);
+    assert_string_equal("name", node->name);
+    assert_int_equal(SR_STRING_T, node->type);
+    assert_string_equal(names[index], node->data.string_val);
+    assert_null(node->module_name);
+    assert_false(node->dflt);
+    assert_int_equal(0, get_child_cnt(node));
+    // description
+    node = get_child_by_index(tree, 1);
+    assert_string_equal("description", node->name);
+    assert_int_equal(SR_STRING_T, node->type);
+    assert_string_equal(descriptions[index], node->data.string_val);
+    assert_null(node->module_name);
+    assert_false(node->dflt);
+    assert_int_equal(0, get_child_cnt(node));
+    // type
+    node = get_child_by_index(tree, 2);
+    assert_string_equal("type", node->name);
+    assert_int_equal(SR_IDENTITYREF_T, node->type);
+    assert_string_equal("ethernetCsmacd", node->data.identityref_val);
+    assert_null(node->module_name);
+    assert_false(node->dflt);
+    assert_int_equal(0, get_child_cnt(node));
+    // enabled
+    node = get_child_by_index(tree, 3);
+    assert_string_equal("enabled", node->name);
+    assert_int_equal(SR_BOOL_T, node->type);
+    assert_true(enabled[index] == node->data.bool_val);
+    assert_null(node->module_name);
+    assert_false(node->dflt);
+    assert_int_equal(0, get_child_cnt(node));
+    // ipv4
+    if (index < 2) {
+        node = get_child_by_index(tree, 4);
+        check_ietf_interfaces_ipv4_tree(node, index);
+    }
+}
+
 
 void ietf_interfaces_test(void **state){
     int rc = 0;
@@ -216,6 +390,83 @@ void ietf_interfaces_test(void **state){
     dm_session_stop(ctx, ses_ctx);
 }
 
+void ietf_interfaces_tree_test(void **state){
+    int rc = 0;
+    rp_ctx_t *rp_ctx = *state;
+    dm_ctx_t *ctx = rp_ctx->dm_ctx;
+    dm_session_t *ses_ctx = NULL;
+    struct lyd_node *root = NULL;
+    createDataTreeIETFinterfacesModule();
+    dm_session_start(ctx, NULL, SR_DS_STARTUP, &ses_ctx);
+    rc = dm_get_datatree(ctx, ses_ctx, "ietf-interfaces", &root);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    sr_node_t *trees = NULL;
+    sr_node_t *tree = NULL;
+    size_t count = 0;
+
+#define INTERFACES "/ietf-interfaces:interfaces/*"
+    rc = rp_dt_get_subtrees(ctx, root, NULL, INTERFACES, false, &trees, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(3, count);
+    for (size_t i = 0; i < count; i++) {
+        assert_null(trees[i].parent);
+        check_ietf_interfaces_int_tree(&trees[i], i);
+    }
+    sr_free_trees(trees, count);
+
+#define INTERFACE_ETH0 "/ietf-interfaces:interfaces/interface[name='eth0']"
+    rc = rp_dt_get_subtree(ctx, root, NULL, INTERFACE_ETH0, false, &tree);
+    assert_int_equal(SR_ERR_OK, rc);
+    check_ietf_interfaces_int_tree(tree, 0);
+    sr_free_tree(tree);
+
+#define INTERFACE_ETH1 "/ietf-interfaces:interfaces/interface[name='eth1']"
+    rc = rp_dt_get_subtree(ctx, root, NULL, INTERFACE_ETH1, false, &tree);
+    assert_int_equal(SR_ERR_OK, rc);
+    check_ietf_interfaces_int_tree(tree, 1);
+    sr_free_tree(tree);
+
+#define INTERFACE_GIGAETH0 "/ietf-interfaces:interfaces/interface[name='gigaeth0']"
+    rc = rp_dt_get_subtree(ctx, root, NULL, INTERFACE_GIGAETH0, false, &tree);
+    assert_int_equal(SR_ERR_OK, rc);
+    check_ietf_interfaces_int_tree(tree, 2);
+    sr_free_tree(tree);
+
+#define INTERFACE_ETH0_IPV4 "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4"
+    rc = rp_dt_get_subtree(ctx, root, NULL, INTERFACE_ETH0_IPV4, false, &tree);
+    assert_int_equal(SR_ERR_OK, rc);
+    check_ietf_interfaces_ipv4_tree(tree, 0);
+    sr_free_tree(tree);
+
+#define INTERFACE_ETH1_IPV4 "/ietf-interfaces:interfaces/interface[name='eth1']/ietf-ip:ipv4"
+    rc = rp_dt_get_subtree(ctx, root, NULL, INTERFACE_ETH1_IPV4, false, &tree);
+    assert_int_equal(SR_ERR_OK, rc);
+    check_ietf_interfaces_ipv4_tree(tree, 1);
+    sr_free_tree(tree);
+
+#define INTERFACE_GIGAETH0_IPV4 "/ietf-interfaces:interfaces/interface[name='gigaeth0']/ietf-ip:ipv4"
+    rc = rp_dt_get_subtree(ctx, root, NULL, INTERFACE_GIGAETH0_IPV4, false, &tree);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+
+#define INTERFACE_ETH0_IPV4_IP "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/address[ip='192.168.2.100']"
+    rc = rp_dt_get_subtree(ctx, root, NULL, INTERFACE_ETH0_IPV4_IP, false, &tree);
+    assert_int_equal(SR_ERR_OK, rc);
+    check_ietf_interfaces_addr_tree(tree, 0, true);
+    sr_free_tree(tree);
+
+#define INTERFACE_ETH1_IPV4_IP "/ietf-interfaces:interfaces/interface[name='eth1']/ietf-ip:ipv4/address[ip='10.10.1.5']"
+    rc = rp_dt_get_subtree(ctx, root, NULL, INTERFACE_ETH1_IPV4_IP, false, &tree);
+    assert_int_equal(SR_ERR_OK, rc);
+    check_ietf_interfaces_addr_tree(tree, 1, true);
+    sr_free_tree(tree);
+
+#define INTERFACE_GIGAETH0_IPV4_IP "/ietf-interfaces:interfaces/interface[name='gigaeth0']/ietf-ip:ipv4/address"
+    rc = rp_dt_get_subtree(ctx, root, NULL, INTERFACE_GIGAETH0_IPV4_IP, false, &tree);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+
+    dm_session_stop(ctx, ses_ctx);
+}
 
 void get_values_test_module_test(void **state){
     int rc = 0;
@@ -271,7 +522,84 @@ void get_values_test_module_test(void **state){
     dm_session_stop(ctx, ses_ctx);
 }
 
+void get_tree_test_module_test(void **state)
+{
+    int rc = 0;
+    rp_ctx_t *rp_ctx = *state;
+    dm_ctx_t *ctx = rp_ctx->dm_ctx;
+    dm_session_t *ses_ctx = NULL;
+    dm_session_start(ctx, NULL, SR_DS_STARTUP, &ses_ctx);
 
+    struct lyd_node *root = NULL;
+    createDataTreeTestModule();
+    dm_get_datatree(ctx, ses_ctx, "test-module", &root);
+    assert_non_null(root);
+
+    sr_node_t *tree = NULL;
+
+    /* enum leaf */
+    rc = rp_dt_get_subtree(ctx, root, NULL, XP_TEST_MODULE_ENUM, false, &tree);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_string_equal("enum", tree->name);
+    assert_string_equal("test-module", tree->module_name);
+    assert_int_equal(SR_ENUM_T, tree->type);
+    assert_string_equal(XP_TEST_MODULE_ENUM_VALUE, tree->data.enum_val);
+    assert_false(tree->dflt);
+    assert_null(tree->parent);
+    assert_null(tree->first_child);
+    assert_null(tree->next);
+    assert_null(tree->prev);
+
+    sr_free_tree(tree);
+
+    /* binary leaf*/
+    rc = rp_dt_get_subtree(ctx, root, NULL, XP_TEST_MODULE_RAW, false, &tree);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_string_equal("raw", tree->name);
+    assert_string_equal("test-module", tree->module_name);
+    assert_int_equal(SR_BINARY_T, tree->type);
+    assert_string_equal(XP_TEST_MODULE_RAW_VALUE, tree->data.binary_val);
+    assert_false(tree->dflt);
+    assert_null(tree->parent);
+    assert_null(tree->first_child);
+    assert_null(tree->next);
+    assert_null(tree->prev);
+
+    sr_free_tree(tree);
+
+    /*bits leaf*/
+    rc = rp_dt_get_subtree(ctx, root, NULL, XP_TEST_MODULE_BITS, false, &tree);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_string_equal("options", tree->name);
+    assert_string_equal("test-module", tree->module_name);
+    assert_int_equal(SR_BITS_T, tree->type);
+    assert_string_equal(XP_TEST_MODULE_BITS_VALUE, tree->data.bits_val);
+    assert_false(tree->dflt);
+    assert_null(tree->parent);
+    assert_null(tree->first_child);
+    assert_null(tree->next);
+    assert_null(tree->prev);
+
+    sr_free_tree(tree);
+
+    /* leafref */
+#define LEAFREF_XP "/test-module:university/classes/class[title='CCNA']/student[name='nameB']/age"
+    rc = rp_dt_get_subtree(ctx, root, NULL, LEAFREF_XP, false, &tree);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_string_equal("age", tree->name);
+    assert_string_equal("test-module", tree->module_name);
+    assert_int_equal(SR_UINT8_T, tree->type);
+    assert_int_equal(17, tree->data.uint8_val);
+    assert_false(tree->dflt);
+    assert_null(tree->parent);
+    assert_null(tree->first_child);
+    assert_null(tree->next);
+    assert_null(tree->prev);
+
+    sr_free_tree(tree);
+
+    dm_session_stop(ctx, ses_ctx);
+}
 
 void get_values_test(void **state){
     int rc = 0;
@@ -328,9 +656,9 @@ void get_values_test(void **state){
     sr_free_values(values, count);
 
 #define XP_CONTAINER "/example-module:container"
-    rc = rp_dt_get_values(ctx, root, NULL, XP_LIST_WITHOUT_KEYS, false, &values, &count);
+    rc = rp_dt_get_values(ctx, root, NULL, XP_CONTAINER, false, &values, &count);
     assert_int_equal(SR_ERR_OK, rc);
-    assert_int_equal(2, count);
+    assert_int_equal(1, count);
     for (size_t i = 0; i < count; i++) {
         assert_int_equal(0, strncmp(XP_CONTAINER, values[i].xpath, strlen(XP_CONTAINER)));
     }
@@ -351,6 +679,151 @@ void get_values_test(void **state){
     dm_session_stop(ctx, ses_ctx);
 }
 
+void get_trees_test(void **state){
+    int rc = 0;
+    rp_ctx_t *rp_ctx = *state;
+    dm_ctx_t *ctx = rp_ctx->dm_ctx;
+    dm_session_t *ses_ctx = NULL;
+    struct lyd_node *data_tree = NULL;
+    dm_session_start(ctx, NULL, SR_DS_STARTUP, &ses_ctx);
+    rc = dm_get_datatree(ctx, ses_ctx, "example-module", &data_tree);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    struct lyd_node *root = NULL;
+    createDataTree(data_tree->schema->module->ctx, &root);
+    assert_non_null(root);
+
+    sr_node_t *trees = NULL;
+    size_t count = 0;
+
+    #define XP_MODULE "/example-module:*"
+    rc = rp_dt_get_subtrees(ctx, root, NULL, XP_MODULE, false, &trees, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(4, count); /*container + 3 leaf-list instances */
+    // container
+    assert_string_equal("container", trees[0].name);
+    assert_string_equal("example-module", trees[0].module_name);
+    assert_int_equal(SR_CONTAINER_T, trees[0].type);
+    assert_false(trees[0].dflt);
+    assert_int_equal(2, get_child_cnt(&trees[0]));
+    // number - 2
+    assert_string_equal("number", trees[1].name);
+    assert_string_equal("example-module", trees[1].module_name);
+    assert_int_equal(SR_UINT16_T, trees[1].type);
+    assert_int_equal(2, trees[1].data.uint16_val);
+    assert_false(trees[1].dflt);
+    assert_int_equal(0, get_child_cnt(&trees[1]));
+    // number - 1
+    assert_string_equal("number", trees[2].name);
+    assert_string_equal("example-module", trees[2].module_name);
+    assert_int_equal(SR_UINT16_T, trees[2].type);
+    assert_int_equal(1, trees[2].data.uint16_val);
+    assert_false(trees[2].dflt);
+    assert_int_equal(0, get_child_cnt(&trees[2]));
+    // number - 42
+    assert_string_equal("number", trees[3].name);
+    assert_string_equal("example-module", trees[3].module_name);
+    assert_int_equal(SR_UINT16_T, trees[3].type);
+    assert_int_equal(42, trees[3].data.uint16_val);
+    assert_false(trees[3].dflt);
+    assert_int_equal(0, get_child_cnt(&trees[3]));
+
+    sr_free_trees(trees, count);
+
+#define XP_LEAF "/example-module:container/list[key1='key1'][key2='key2']/leaf"
+    rc = rp_dt_get_subtrees(ctx, root, NULL, XP_LEAF, false, &trees, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(1, count);
+    assert_string_equal("leaf", trees[0].name);
+    assert_string_equal("example-module", trees[0].module_name);
+    assert_int_equal(SR_STRING_T, trees[0].type);
+    assert_string_equal(LEAF_VALUE, trees[0].data.string_val);
+    assert_false(trees[0].dflt);
+    assert_int_equal(0, get_child_cnt(&trees[0]));
+    sr_free_trees(trees, count);
+
+#define XP_LIST_WITH_KEYS "/example-module:container/list[key1='key1'][key2='key2']/*"
+    rc = rp_dt_get_subtrees(ctx, root, NULL, XP_LIST_WITH_KEYS, false, &trees, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(3, count);
+    // key1
+    assert_string_equal("key1", trees[0].name);
+    assert_string_equal("example-module", trees[0].module_name);
+    assert_int_equal(SR_STRING_T, trees[0].type);
+    assert_string_equal("key1", trees[0].data.string_val);
+    assert_false(trees[0].dflt);
+    assert_int_equal(0, get_child_cnt(&trees[0]));
+    // key2
+    assert_string_equal("key2", trees[1].name);
+    assert_string_equal("example-module", trees[1].module_name);
+    assert_int_equal(SR_STRING_T, trees[1].type);
+    assert_string_equal("key2", trees[1].data.string_val);
+    assert_false(trees[1].dflt);
+    assert_int_equal(0, get_child_cnt(&trees[1]));
+    // leaf
+    assert_string_equal("leaf", trees[2].name);
+    assert_string_equal("example-module", trees[2].module_name);
+    assert_int_equal(SR_STRING_T, trees[2].type);
+    assert_string_equal(LEAF_VALUE, trees[2].data.string_val);
+    assert_false(trees[2].dflt);
+    assert_int_equal(0, get_child_cnt(&trees[2]));
+    sr_free_trees(trees, count);
+
+#define XP_LIST_WITHOUT_KEYS "/example-module:container/list"
+    rc = rp_dt_get_subtrees(ctx, root, NULL, XP_LIST_WITHOUT_KEYS, false, &trees, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(2, count);
+    for (count = 0; count < 2; ++count) {
+        assert_string_equal("list", trees[count].name);
+        assert_string_equal("example-module", trees[count].module_name);
+        assert_int_equal(SR_LIST_T, trees[count].type);
+        assert_false(trees[count].dflt);
+        assert_int_equal(3, get_child_cnt(&trees[count]));
+    }
+    sr_free_trees(trees, count);
+
+#define XP_CONTAINER "/example-module:container"
+    rc = rp_dt_get_subtrees(ctx, root, NULL, XP_CONTAINER, false, &trees, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(1, count);
+    assert_string_equal("container", trees[0].name);
+    assert_string_equal("example-module", trees[0].module_name);
+    assert_int_equal(SR_CONTAINER_T, trees[0].type);
+    assert_false(trees[0].dflt);
+    assert_int_equal(2, get_child_cnt(&trees[0]));
+    sr_free_trees(trees, count);
+
+#define XP_LEAFLIST "/example-module:number"
+    rc = rp_dt_get_subtrees(ctx, root, NULL, XP_LEAFLIST, false, &trees, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(3, count);
+    // number - 2
+    assert_string_equal("number", trees[0].name);
+    assert_string_equal("example-module", trees[0].module_name);
+    assert_int_equal(SR_UINT16_T, trees[0].type);
+    assert_int_equal(2, trees[0].data.uint16_val);
+    assert_false(trees[0].dflt);
+    assert_int_equal(0, get_child_cnt(&trees[0]));
+    // number - 1
+    assert_string_equal("number", trees[1].name);
+    assert_string_equal("example-module", trees[1].module_name);
+    assert_int_equal(SR_UINT16_T, trees[1].type);
+    assert_int_equal(1, trees[1].data.uint16_val);
+    assert_false(trees[1].dflt);
+    assert_int_equal(0, get_child_cnt(&trees[1]));
+    // number - 42
+    assert_string_equal("number", trees[2].name);
+    assert_string_equal("example-module", trees[2].module_name);
+    assert_int_equal(SR_UINT16_T, trees[2].type);
+    assert_int_equal(42, trees[2].data.uint16_val);
+    assert_false(trees[2].dflt);
+    assert_int_equal(0, get_child_cnt(&trees[2]));
+    sr_free_trees(trees, count);
+
+    lyd_free_withsiblings(root);
+
+    dm_session_stop(ctx, ses_ctx);
+}
 
 void get_values_opts_test(void **state) {
     int rc = 0;
@@ -440,7 +913,47 @@ void get_values_with_augments_test(void **state){
     dm_session_stop(ctx, ses_ctx);
 }
 
-void get_value_test(void **state){
+void get_trees_with_augments_test(void **state){
+    int rc = 0;
+    rp_ctx_t *rp_ctx = *state;
+    dm_ctx_t *ctx = rp_ctx->dm_ctx;
+    dm_session_t *ses_ctx = NULL;
+    struct lyd_node *data_tree = NULL;
+    struct lyd_node *root = NULL;
+    size_t count = 0;
+    sr_node_t *trees = NULL;
+    dm_session_start(ctx, NULL, SR_DS_STARTUP, &ses_ctx);
+
+    rc = dm_get_datatree(ctx, ses_ctx, "example-module", &data_tree);
+    assert_int_equal(SR_ERR_OK, rc);
+    createDataTreeWithAugments(data_tree->schema->module->ctx, &root);
+    assert_non_null(root);
+#define SM_MODULE "/small-module:item/*"
+    rc = rp_dt_get_subtrees(ctx, root, NULL, SM_MODULE, false, &trees, &count);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(2, count);
+    // name
+    assert_string_equal("name", trees[0].name);
+    assert_string_equal("small-module", trees[0].module_name);
+    assert_int_equal(SR_STRING_T, trees[0].type);
+    assert_string_equal("hey hou", trees[0].data.string_val);
+    assert_false(trees[0].dflt);
+    assert_int_equal(0, get_child_cnt(&trees[0]));
+    // info
+    assert_string_equal("info", trees[1].name);
+    assert_string_equal("info-module", trees[1].module_name);
+    assert_int_equal(SR_STRING_T, trees[1].type);
+    assert_string_equal("info 123", trees[1].data.string_val);
+    assert_false(trees[1].dflt);
+    assert_int_equal(0, get_child_cnt(&trees[1]));
+    sr_free_trees(trees, count);
+
+    lyd_free_withsiblings(root);
+    dm_session_stop(ctx, ses_ctx);
+}
+
+void get_value_test(void **state)
+{
     int rc = 0;
     rp_ctx_t *rp_ctx = *state;
     dm_ctx_t *ctx = rp_ctx->dm_ctx;
@@ -480,6 +993,62 @@ void get_value_test(void **state){
     assert_int_equal(SR_CONTAINER_T, value->type);
     assert_string_equal(XPATH_FOR_CONTAINER, value->xpath);
     sr_free_val(value);
+
+    dm_session_stop(ctx, ses_ctx);
+}
+
+void get_tree_test(void **state)
+{
+    int rc = 0;
+    rp_ctx_t *rp_ctx = *state;
+    dm_ctx_t *ctx = rp_ctx->dm_ctx;
+    dm_session_t *ses_ctx = NULL;
+    struct lyd_node *data_tree = NULL;
+    dm_session_start(ctx, NULL, SR_DS_STARTUP, &ses_ctx);
+
+    /* Load from file */
+    rc = dm_get_datatree(ctx, ses_ctx, "example-module", &data_tree);
+    assert_int_equal(SR_ERR_OK, rc);
+    sr_node_t *tree = NULL;
+
+    assert_int_equal(SR_ERR_INVAL_ARG, rp_dt_get_subtree(ctx, data_tree, NULL, "/example-module:", false, &tree));
+
+    /*leaf*/
+#define XPATH_FOR_VALUE "/example-module:container/list[key1='key1'][key2='key2']/leaf"
+    assert_int_equal(SR_ERR_OK, rp_dt_get_subtree(ctx, data_tree, NULL, XPATH_FOR_VALUE, false, &tree));
+
+    assert_string_equal("leaf", tree->name);
+    assert_string_equal("example-module", tree->module_name);
+    assert_int_equal(SR_STRING_T, tree->type);
+    assert_string_equal("Leaf value", tree->data.string_val);
+    assert_false(tree->dflt);
+    assert_int_equal(0, get_child_cnt(tree));
+
+    sr_free_tree(tree);
+
+    /*list*/
+#define XPATH_FOR_LIST "/example-module:container/list[key1='key1'][key2='key2']"
+    assert_int_equal(SR_ERR_OK, rp_dt_get_subtree(ctx, data_tree, NULL, XPATH_FOR_LIST, false, &tree));
+
+    assert_string_equal("list", tree->name);
+    assert_string_equal("example-module", tree->module_name);
+    assert_int_equal(SR_LIST_T, tree->type);
+    assert_false(tree->dflt);
+    assert_int_equal(3, get_child_cnt(tree));
+
+    sr_free_tree(tree);
+
+    /*container*/
+#define XPATH_FOR_CONTAINER "/example-module:container"
+    assert_int_equal(SR_ERR_OK, rp_dt_get_subtree(ctx, data_tree, NULL, "/example-module:container", false, &tree));
+
+    assert_string_equal("container", tree->name);
+    assert_string_equal("example-module", tree->module_name);
+    assert_int_equal(SR_CONTAINER_T, tree->type);
+    assert_false(tree->dflt);
+    assert_int_equal(1, get_child_cnt(tree));
+
+    sr_free_tree(tree);
 
     dm_session_stop(ctx, ses_ctx);
 }
@@ -610,6 +1179,37 @@ void get_value_wrapper_test(void **state){
     test_rp_sesssion_create(ctx, SR_DS_STARTUP, &ses_ctx);
 
     /* unknown model*/
+    sr_node_t *tree = NULL;
+    rc = rp_dt_get_subtree_wrapper(ctx, ses_ctx, NULL, "/non-existing:abc", &tree);
+    assert_int_equal(SR_ERR_UNKNOWN_MODEL, rc);
+
+    /* whole model xpath*/
+
+    ses_ctx->state = RP_REQ_NEW;
+    tree = NULL;
+    rc = rp_dt_get_subtree_wrapper(ctx, ses_ctx, NULL, "/test-module:*", &tree);
+    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+
+    /* not existing data tree*/
+    ses_ctx->state = RP_REQ_NEW;
+    rc = rp_dt_get_subtree_wrapper(ctx, ses_ctx, NULL, "/small-module:item", &tree);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+
+    /* not exisiting now in existing data tree*/
+    ses_ctx->state = RP_REQ_NEW;
+    rc = rp_dt_get_subtree_wrapper(ctx, ses_ctx, NULL, "/example-module:container/list[key1='abc'][key2='def']", &tree);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+
+    test_rp_session_cleanup(ctx, ses_ctx);
+}
+
+void get_tree_wrapper_test(void **state){
+    int rc = 0;
+    rp_ctx_t *ctx = *state;
+    rp_session_t *ses_ctx = NULL;
+    test_rp_sesssion_create(ctx, SR_DS_STARTUP, &ses_ctx);
+
+    /* unknown model*/
     sr_val_t *value = NULL;
     rc = rp_dt_get_value_wrapper(ctx, ses_ctx, NULL, "/non-existing:abc", &value);
     assert_int_equal(SR_ERR_UNKNOWN_MODEL, rc);
@@ -681,6 +1281,7 @@ default_nodes_test(void **state)
 
     test_rp_sesssion_create(ctx, SR_DS_STARTUP, &ses_ctx);
     sr_val_t *val = NULL;
+    sr_node_t *tree = NULL;
     sr_error_info_t *errors = NULL;
     size_t e_cnt = 0;
 
@@ -698,6 +1299,13 @@ default_nodes_test(void **state)
     assert_false(val->dflt);
     sr_free_val(val);
 
+    ses_ctx->state = RP_REQ_NEW;
+    rc = rp_dt_get_subtree_wrapper(ctx, ses_ctx, NULL, "/test-module:main/string", &tree);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(tree);
+    assert_false(tree->dflt);
+    sr_free_tree(tree);
+
     /* list with default value */
     rc = rp_dt_set_item_wrapper(ctx, ses_ctx, "/test-module:with_def[name='withdef']", NULL, SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
@@ -705,6 +1313,10 @@ default_nodes_test(void **state)
     ses_ctx->state = RP_REQ_NEW;
     /* due to recent changes in libyang, default nodes are added during validate/commit only */
     rc = rp_dt_get_value_wrapper(ctx, ses_ctx, NULL, "/test-module:with_def[name='withdef']/num", &val);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+
+    ses_ctx->state = RP_REQ_NEW;
+    rc = rp_dt_get_subtree_wrapper(ctx, ses_ctx, NULL, "/test-module:with_def[name='withdef']/num", &tree);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
     /* set default value with strict */
@@ -725,6 +1337,13 @@ default_nodes_test(void **state)
     assert_false(val->dflt);
     sr_free_val(val);
 
+    ses_ctx->state = RP_REQ_NEW;
+    rc = rp_dt_get_subtree_wrapper(ctx, ses_ctx, NULL, "/test-module:with_def[name='createWithStrict']/num", &tree);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(tree);
+    assert_int_equal(99, tree->data.int8_val);
+    assert_false(tree->dflt);
+    sr_free_tree(tree);
 
     /* overwrite default value with strict */
     v = NULL;
@@ -746,6 +1365,14 @@ default_nodes_test(void **state)
     assert_int_equal(42, val->data.int8_val);
     assert_false(val->dflt);
     sr_free_val(val);
+
+    ses_ctx->state = RP_REQ_NEW;
+    rc = rp_dt_get_subtree_wrapper(ctx, ses_ctx, NULL, "/test-module:with_def[name='overwrite']/num", &tree);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(tree);
+    assert_int_equal(42, tree->data.int8_val);
+    assert_false(tree->dflt);
+    sr_free_tree(tree);
 
     /* once the leaf contains non-default value SR_EDIT_STRICT failed */
     v = NULL;
@@ -775,6 +1402,14 @@ default_nodes_test(void **state)
     assert_false(val->dflt);
     sr_free_val(val);
 
+    ses_ctx->state = RP_REQ_NEW;
+    rc = rp_dt_get_subtree_wrapper(ctx, ses_ctx, NULL, "/test-module:with_def[name='withother']/num", &tree);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(tree);
+    assert_int_equal(9, tree->data.int8_val);
+    assert_false(tree->dflt);
+    sr_free_tree(tree);
+
     /* list with explicitly set default value */
     v = NULL;
     v = calloc(1, sizeof(*v));
@@ -791,6 +1426,13 @@ default_nodes_test(void **state)
     assert_non_null(val);
     assert_false(val->dflt);
     sr_free_val(val);
+
+    ses_ctx->state = RP_REQ_NEW;
+    rc = rp_dt_get_subtree_wrapper(ctx, ses_ctx, NULL, "/test-module:with_def[name='withexpl']/num", &tree);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(tree);
+    assert_false(tree->dflt);
+    sr_free_tree(tree);
 
     /* list with default value later overwritten with a non-default one */
     rc = rp_dt_set_item_wrapper(ctx, ses_ctx, "/test-module:with_def[name='withmodifdef']", NULL, SR_EDIT_DEFAULT);
@@ -813,6 +1455,14 @@ default_nodes_test(void **state)
     assert_false(val->dflt);
     sr_free_val(val);
 
+    ses_ctx->state = RP_REQ_NEW;
+    rc = rp_dt_get_subtree_wrapper(ctx, ses_ctx, NULL, "/test-module:with_def[name='withmodifdef']/num", &tree);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(tree);
+    assert_int_equal(9, tree->data.int8_val);
+    assert_false(tree->dflt);
+    sr_free_tree(tree);
+
     rc = rp_dt_commit(ctx, ses_ctx, &errors, &e_cnt);
     assert_int_equal(SR_ERR_OK, rc);
 
@@ -825,12 +1475,27 @@ default_nodes_test(void **state)
     sr_free_val(val);
 
     ses_ctx->state = RP_REQ_NEW;
+    rc = rp_dt_get_subtree_wrapper(ctx, ses_ctx, NULL, "/test-module:with_def[name='withdef']/num", &tree);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(tree);
+    assert_true(tree->dflt);
+    sr_free_tree(tree);
+
+    ses_ctx->state = RP_REQ_NEW;
     rc = rp_dt_get_value_wrapper(ctx, ses_ctx, NULL, "/test-module:with_def[name='withother']/num", &val);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);
     assert_int_equal(9, val->data.int8_val);
     assert_false(val->dflt);
     sr_free_val(val);
+
+    ses_ctx->state = RP_REQ_NEW;
+    rc = rp_dt_get_subtree_wrapper(ctx, ses_ctx, NULL, "/test-module:with_def[name='withother']/num", &tree);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(tree);
+    assert_int_equal(9, tree->data.int8_val);
+    assert_false(tree->dflt);
+    sr_free_tree(tree);
 
     ses_ctx->state = RP_REQ_NEW;
     rc = rp_dt_get_value_wrapper(ctx, ses_ctx, NULL, "/test-module:with_def[name='withexpl']/num", &val);
@@ -840,12 +1505,27 @@ default_nodes_test(void **state)
     sr_free_val(val);
 
     ses_ctx->state = RP_REQ_NEW;
+    rc = rp_dt_get_subtree_wrapper(ctx, ses_ctx, NULL, "/test-module:with_def[name='withexpl']/num", &tree);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(tree);
+    assert_false(tree->dflt);
+    sr_free_tree(tree);
+
+    ses_ctx->state = RP_REQ_NEW;
     rc = rp_dt_get_value_wrapper(ctx, ses_ctx, NULL, "/test-module:with_def[name='withmodifdef']/num", &val);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(val);
     assert_int_equal(9, val->data.int8_val);
     assert_false(val->dflt);
     sr_free_val(val);
+
+    ses_ctx->state = RP_REQ_NEW;
+    rc = rp_dt_get_subtree_wrapper(ctx, ses_ctx, NULL, "/test-module:with_def[name='withmodifdef']/num", &tree);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(tree);
+    assert_int_equal(9, tree->data.int8_val);
+    assert_false(tree->dflt);
+    sr_free_tree(tree);
 
     /* explicitly overwrite default*/
     v = NULL;
@@ -863,6 +1543,13 @@ default_nodes_test(void **state)
     assert_non_null(val);
     assert_false(val->dflt);
     sr_free_val(val);
+
+    ses_ctx->state = RP_REQ_NEW;
+    rc = rp_dt_get_subtree_wrapper(ctx, ses_ctx, NULL, "/test-module:with_def[name='withdef']/num", &tree);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(tree);
+    assert_false(tree->dflt);
+    sr_free_tree(tree);
 
     /* clean up*/
     rc = rp_dt_delete_item_wrapper(ctx, ses_ctx, "/test-module:with_def", SR_EDIT_DEFAULT);
@@ -933,13 +1620,19 @@ int main(){
             cmocka_unit_test(get_node_test_found),
             cmocka_unit_test(get_node_test_not_found),
             cmocka_unit_test(get_value_test),
+            cmocka_unit_test(get_tree_test),
             cmocka_unit_test(get_values_test),
+            cmocka_unit_test(get_trees_test),
             cmocka_unit_test(get_values_with_augments_test),
+            cmocka_unit_test(get_trees_with_augments_test),
             cmocka_unit_test(ietf_interfaces_test),
+            cmocka_unit_test(ietf_interfaces_tree_test),
             cmocka_unit_test(get_values_test_module_test),
+            cmocka_unit_test(get_tree_test_module_test),
             cmocka_unit_test(get_nodes_test),
             cmocka_unit_test(get_values_opts_test),
             cmocka_unit_test(get_value_wrapper_test),
+            cmocka_unit_test(get_tree_wrapper_test),
             cmocka_unit_test(get_nodes_with_opts_cache_missed_test),
             cmocka_unit_test(default_nodes_test),
             cmocka_unit_test(default_nodes_toplevel_test)

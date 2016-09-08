@@ -367,6 +367,159 @@ cl_get_item_test(void **state)
 }
 
 static void
+cl_get_subtree_test(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+
+    sr_session_ctx_t *session = NULL;
+    sr_node_t *tree = NULL, *subtree = NULL;
+    int rc = 0;
+
+    /* start a session */
+    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* perform a get-subtree request */
+
+    /* illegal xpath */
+    rc = sr_get_subtree(session, "^&((", &tree);
+    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+    assert_null(tree);
+
+    /* unknown model */
+    rc = sr_get_subtree(session, "/unknown-model:abc", &tree);
+    assert_int_equal(SR_ERR_UNKNOWN_MODEL, rc);
+    assert_null(tree);
+
+    /* not existing data tree*/
+    rc = sr_get_subtree(session, "/small-module:item", &tree);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+    assert_null(tree);
+
+    /* bad element in existing module returns SR_ERR_NOT_FOUND instead of SR_ERR_BAD_ELEMENT*/
+    rc = sr_get_subtree(session, "/example-module:unknown/next", &tree);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+    assert_null(tree);
+
+    /* existing leaf */
+    rc = sr_get_subtree(session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &tree);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_non_null(tree);
+    assert_string_equal("leaf", tree->name);
+    assert_string_equal("example-module", tree->module_name);
+    assert_int_equal(SR_STRING_T, tree->type);
+    assert_string_equal("Leaf value", tree->data.string_val);
+    assert_null(tree->first_child);
+    sr_free_tree(tree);
+
+    /* container */
+    rc = sr_get_subtree(session, "/example-module:container", &tree);
+    assert_int_equal(rc, SR_ERR_OK);
+    // container
+    assert_non_null(tree);
+    assert_string_equal("container", tree->name);
+    assert_string_equal("example-module", tree->module_name);
+    assert_int_equal(SR_CONTAINER_T, tree->type);
+    assert_false(tree->dflt);
+    assert_null(tree->next);
+    assert_null(tree->prev);
+    // list
+    subtree = tree->first_child;
+    assert_non_null(subtree);
+    assert_string_equal("list", subtree->name);
+    assert_null(subtree->module_name);
+    assert_int_equal(SR_LIST_T, subtree->type);
+    assert_false(subtree->dflt);
+    assert_null(subtree->next);
+    // key1
+    subtree = subtree->first_child;
+    assert_non_null(subtree);
+    assert_string_equal("key1", subtree->name);
+    assert_null(subtree->module_name);
+    assert_int_equal(SR_STRING_T, subtree->type);
+    assert_string_equal("key1", subtree->data.string_val);
+    assert_false(subtree->dflt);
+    assert_null(subtree->first_child);
+    // key2
+    subtree = subtree->next;
+    assert_non_null(subtree);
+    assert_string_equal("key2", subtree->name);
+    assert_null(subtree->module_name);
+    assert_int_equal(SR_STRING_T, subtree->type);
+    assert_string_equal("key2", subtree->data.string_val);
+    assert_false(subtree->dflt);
+    assert_null(subtree->first_child);
+    // leaf
+    subtree = subtree->next;
+    assert_non_null(subtree);
+    assert_string_equal("leaf", subtree->name);
+    assert_null(subtree->module_name);
+    assert_int_equal(SR_STRING_T, subtree->type);
+    assert_string_equal("Leaf value", subtree->data.string_val);
+    assert_false(subtree->dflt);
+    assert_null(subtree->first_child);
+    assert_null(subtree->next);
+    sr_free_tree(tree);
+
+    /* list */
+    rc = sr_get_subtree(session, "/example-module:container/list[key1='key1'][key2='key2']", &tree);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_non_null(tree);
+    // list
+    assert_string_equal("list", tree->name);
+    assert_string_equal("example-module", tree->module_name);
+    assert_int_equal(SR_LIST_T, tree->type);
+    assert_false(tree->dflt);
+    assert_null(tree->next);
+    assert_null(tree->prev);
+    assert_null(tree->parent);
+    // key1
+    subtree = tree->first_child;
+    assert_non_null(subtree);
+    assert_string_equal("key1", subtree->name);
+    assert_null(subtree->module_name);
+    assert_int_equal(SR_STRING_T, subtree->type);
+    assert_string_equal("key1", subtree->data.string_val);
+    assert_false(subtree->dflt);
+    assert_null(subtree->first_child);
+    // key2
+    subtree = subtree->next;
+    assert_non_null(subtree);
+    assert_string_equal("key2", subtree->name);
+    assert_null(subtree->module_name);
+    assert_int_equal(SR_STRING_T, subtree->type);
+    assert_string_equal("key2", subtree->data.string_val);
+    assert_false(subtree->dflt);
+    assert_null(subtree->first_child);
+    // leaf
+    subtree = subtree->next;
+    assert_non_null(subtree);
+    assert_string_equal("leaf", subtree->name);
+    assert_null(subtree->module_name);
+    assert_int_equal(SR_STRING_T, subtree->type);
+    assert_string_equal("Leaf value", subtree->data.string_val);
+    assert_false(subtree->dflt);
+    assert_null(subtree->first_child);
+    assert_null(subtree->next);
+    sr_free_tree(tree);
+
+    /* leafref (transparent for user) */
+    rc = sr_get_subtree(session, "/test-module:university/classes/class[title='CCNA']/student[name='nameB']/age", &tree);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_non_null(tree);
+    assert_string_equal("age", tree->name);
+    assert_string_equal("test-module", tree->module_name);
+    assert_int_equal(SR_UINT8_T, tree->type);
+    assert_int_equal(17, tree->data.uint8_val);
+    sr_free_tree(tree);
+
+    /* stop the session */
+    rc = sr_session_stop(session);
+    assert_int_equal(rc, SR_ERR_OK);
+}
+
+static void
 cl_get_items_test(void **state)
 {
     sr_conn_ctx_t *conn = *state;
@@ -430,6 +583,76 @@ cl_get_items_test(void **state)
     assert_int_equal(rc, SR_ERR_OK);
     assert_int_equal(2, values_cnt);
     sr_free_values(values, values_cnt);
+
+    /* stop the session */
+    rc = sr_session_stop(session);
+    assert_int_equal(rc, SR_ERR_OK);
+}
+
+static void
+cl_get_subtrees_test(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+
+    createDataTreeIETFinterfacesModule();
+    sr_session_ctx_t *session = NULL;
+    sr_node_t *trees = NULL;
+    size_t tree_cnt = 0;
+    int rc = 0;
+
+    /* start a session */
+    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_non_null(session);
+
+    /* perform a get-subtrees request */
+
+    /* illegal xpath */
+    rc = sr_get_subtrees(session, "^&((",  &trees, &tree_cnt);
+    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+
+    /* unknown model */
+    rc = sr_get_subtrees(session, "/unknown-model:abc", &trees, &tree_cnt);
+    assert_int_equal(SR_ERR_UNKNOWN_MODEL, rc);
+
+    /* not existing data tree*/
+    rc = sr_get_subtrees(session, "/small-module:item", &trees, &tree_cnt);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+
+    /* bad element in existing module produces SR_ERR_NOT_FOUND instead of SR_ERR_BAD_ELEMENT */
+    rc = sr_get_subtrees(session, "/example-module:unknown", &trees, &tree_cnt);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+
+    /* container */
+    rc = sr_get_subtrees(session, "/ietf-interfaces:interfaces/*", &trees, &tree_cnt);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_int_equal(3, tree_cnt);
+    sr_free_trees(trees, tree_cnt);
+
+    /* list without keys */
+    rc = sr_get_subtrees(session, "/ietf-interfaces:interfaces/interface", &trees, &tree_cnt);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_int_equal(3, tree_cnt);
+    sr_free_trees(trees, tree_cnt);
+
+    /* list with keys */
+    rc = sr_get_subtrees(session, "/ietf-interfaces:interfaces/interface[name='eth0']/*", &trees, &tree_cnt);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_int_equal(5, tree_cnt);
+    sr_free_trees(trees, tree_cnt);
+
+    /* leaf-list*/
+    rc = sr_get_subtrees(session, "/test-module:main/numbers", &trees, &tree_cnt);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_int_equal(3, tree_cnt);
+    sr_free_trees(trees, tree_cnt);
+
+    /* leafrefs */
+    rc = sr_get_subtrees(session, "/test-module:university/classes/class[title='CCNA']/student[name='nameB']/*", &trees, &tree_cnt);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_int_equal(2, tree_cnt);
+    sr_free_trees(trees, tree_cnt);
 
     /* stop the session */
     rc = sr_session_stop(session);
@@ -3335,6 +3558,8 @@ main()
             cmocka_unit_test_setup_teardown(cl_get_item_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_get_items_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_get_items_iter_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_get_subtree_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_get_subtrees_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_set_item_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_delete_item_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_move_item_test, sysrepo_setup, sysrepo_teardown),
