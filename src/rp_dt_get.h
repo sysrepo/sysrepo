@@ -188,6 +188,9 @@ int rp_dt_get_changes(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context
  */
 int rp_dt_remove_loaded_state_data(rp_ctx_t *rp_ctx, rp_session_t *rp_session);
 
+void rp_dt_free_state_data_ctx_content (rp_state_data_ctx_t *state_data);
+
+bool rp_dt_is_under_subtree(struct lys_node *subtree, struct lys_node *node);
 #endif /* RP_DT_GET_H */
 
 /**

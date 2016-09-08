@@ -90,7 +90,7 @@ module state-module {
         type uint8;
      }
      
-     list cross-roads {
+     list cross_road {
 
        key id;
        leaf id {
@@ -115,6 +115,38 @@ module state-module {
 
        leaf average_wait_time {
           type uint32;
+       }
+
+       list traffic_light {
+          key name;
+          leaf name {
+             type string;
+          }
+          leaf color {
+             type enumeration {
+                enum "red" {
+                   value 0;
+                }
+
+                enum "orange" {
+                   value 1;
+                }
+
+                enum "green" {
+                   value 2;
+                }
+
+             }
+          }
+       }
+       container advanced_info {
+          leaf longitude {
+             type string;
+          }
+
+          leaf latitude {
+             type string;
+          }
        }
 
      }

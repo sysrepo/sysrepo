@@ -189,7 +189,7 @@ char *
 sr_xpath_node(char *xpath, const char *node_name, sr_xpath_ctx_t *state)
 {
     char *index = NULL;
-    if (NULL == state || NULL == node_name) {
+    if (NULL == state || NULL == node_name || (NULL == state->begining && NULL == xpath)) {
         SR_LOG_ERR_MSG("NULL passed as node_name or state argument");
         return NULL;
     }
@@ -270,7 +270,7 @@ sr_xpath_node_idx(char* xpath, size_t index, sr_xpath_ctx_t* state)
 {
     char *node = NULL;
     size_t cnt = 0;
-    if (NULL == state) {
+    if (NULL == state || (NULL == state->begining && NULL == xpath)) {
         SR_LOG_ERR_MSG("NULL passed as state argument");
         return NULL;
     }

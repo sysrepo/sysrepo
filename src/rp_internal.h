@@ -82,6 +82,16 @@ typedef enum rp_request_state_e {
     RP_REQ_FINISHED                     /**< Request processing finished, request can be freed */
 } rp_request_state_t;
 
+typedef struct rp_state_data_ctx_s {
+    np_subscription_t **subscriptions; /**< Array of subscriptions from np for a module */
+    size_t subscription_cnt;           /**< Length of subscriptions array */
+    sr_list_t *subtrees;               /**< List of state data subtrees to be loaded*/
+    size_t *subscr_index;              /**< Index into subscription array (pointing to the subscription)
+                                        * where subtree subtree at n-th position in subtrees list can be found */
+    sr_list_t *subscription_nodes;     /**< Schema node corresponding to the subscriptions */
+    sr_list_t *requested_xpaths;       /**< List of xpath that has been requested and response has not been processed yet */
+}rp_state_data_ctx_t;
+
 /**
  * @brief Structure that holds Request Processor's per-session context.
  */
@@ -106,7 +116,7 @@ typedef struct rp_session_s {
     char *module_name;                   /**< data tree name used in the current request */
     pthread_mutex_t cur_req_mutex;       /**< mutex guarding information about currently processed request */
     sr_list_t **loaded_state_data;       /**< List of xpath for loaded state data in datastore */
-
+    rp_state_data_ctx_t state_data_ctx;  /**< Context used during state data loading */
 } rp_session_t;
 
 #endif /* RP_INTERNAL_H_ */

@@ -1547,7 +1547,7 @@ sr_values_gpb_to_sr(sr_mem_ctx_t *sr_mem, Sr__Value **gpb_values, size_t gpb_val
         }
     }
 
-    if (sr_mem) {
+    if (sr_mem && gpb_value_cnt > 0) {
         ++sr_mem->obj_count;
     }
     *sr_values_p = sr_values;
