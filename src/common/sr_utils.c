@@ -1242,14 +1242,14 @@ sr_subtree_to_dt(struct ly_ctx *ly_ctx, const sr_node_t *sr_tree, bool output, s
             }
             /* get node schema */
             if (NULL == parent) {
-                sch_node = ly_ctx_get_node2(ly_ctx, NULL, xpath, output);
+                sch_node = sr_find_schema_node(module->data, xpath, output ? LYS_FIND_OUTPUT : 0);
             } else {
                 relative_xpath = calloc(strlen(module->name) + strlen(sr_tree->name) + 2, sizeof(*relative_xpath));
                 CHECK_NULL_NOMEM_RETURN(relative_xpath);
                 strcat(relative_xpath, module->name);
                 strcat(relative_xpath, ":");
                 strcat(relative_xpath, sr_tree->name);
-                sch_node = ly_ctx_get_node2(ly_ctx, parent->schema, relative_xpath, output);
+                sch_node = sr_find_schema_node(parent->schema, relative_xpath, output ? LYS_FIND_OUTPUT : 0);
                 free(relative_xpath);
                 relative_xpath = NULL;
             }
@@ -1708,4 +1708,16 @@ sr_clock_get_time(clockid_t clock_id, struct timespec *ts)
 #else
     return clock_gettime(clock_id, ts);
 #endif
+}
+
+struct lys_node *
+sr_find_schema_node(const struct lys_node *node, const char *expr, int options)
+{
+    struct lys_node *result = NULL;
+    struct ly_set *set = lys_find_xpath(node, expr, options);
+    if (NULL != set && 1 == set->number) {
+        result = set->set.s[0];
+    }
+    ly_set_free(set);
+    return result;
 }

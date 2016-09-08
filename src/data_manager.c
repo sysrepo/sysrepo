@@ -3551,7 +3551,7 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
 
         for (size_t i = 0; i < arg_cnt; i++) {
             /* get schema node */
-            sch_node = ly_ctx_get_node2(schema_info->ly_ctx, NULL, args[i].xpath, (input ? 0 : 1));
+            sch_node = sr_find_schema_node(schema_info->module->data, args[i].xpath, (input ? 0 : LYS_FIND_OUTPUT));
             if (NULL == sch_node) {
                 SR_LOG_ERR("%s argument xpath validation failed( '%s'): %s", procedure_name, args[i].xpath, ly_errmsg());
                 rc = dm_report_error(session, ly_errmsg(), args[i].xpath, SR_ERR_VALIDATION_FAILED);

@@ -463,6 +463,15 @@ int sr_clock_get_time(clockid_t clock_id, struct timespec *ts);
  */
 int sr_set_socket_dir_permissions(const char *socket_dir, const char *data_serach_dir, const char *module_name, bool strict);
 
+/**
+ * @brief Function encapsulates the lys_find_xpath for the use cases where the expected
+ * result is one node. If result contains more than one node NULL is returned.
+ * @param [in] node
+ * @param [in] expr
+ * @param [in] options
+ * @return matched node or NULL in case of error or result containing multiple nodes
+ */
+struct lys_node * sr_find_schema_node(const struct lys_node *node, const char *expr, int options);
 /**@} utils */
 
 #endif /* SR_UTILS_H_ */
