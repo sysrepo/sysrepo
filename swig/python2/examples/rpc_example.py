@@ -98,14 +98,13 @@ try:
     subscribe.rpc_subscribe("/test-module:activate-software-image", test_rpc_cb);
 
     in_vals = sr.Vals(2);
-    out_vals = sr.Vals();
 
     in_vals.val(0).set("/test-module:activate-software-image/image-name", "acmefw-2.3", sr.SR_STRING_T)
     in_vals.val(1).set("/test-module:activate-software-image/location", "/", sr.SR_STRING_T)
 
 
     print "\n\n ========== START RPC CALL =========="
-    subscribe.rpc_send("/test-module:activate-software-image", in_vals, out_vals);
+    out_vals = subscribe.rpc_send("/test-module:activate-software-image", in_vals);
 
     print "\n\n ========== PRINT RETURN VALUE =========="
     for n in range (out_vals.val_cnt()):

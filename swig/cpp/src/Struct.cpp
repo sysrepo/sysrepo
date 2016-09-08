@@ -534,8 +534,7 @@ Vals::Vals(const sr_val_t *vals, const size_t cnt) {
     _vals = (sr_val_t *) vals;
     _cnt = (size_t) cnt;
 
-    S_Counter counter(new Counter(_vals, _cnt));
-    _counter = counter;
+    _counter = NULL;
 }
 Vals::Vals(sr_val_t **vals, size_t *cnt, size_t n) {
     int ret = sr_new_values(n, vals);
@@ -544,10 +543,8 @@ Vals::Vals(sr_val_t **vals, size_t *cnt, size_t n) {
 
     _vals = *vals;
     _cnt = n;
-    *cnt = n;
-
-    S_Counter counter(new Counter(vals, cnt));
-    _counter = counter;
+    cnt = &n;
+    _counter = NULL;
 }
 Vals::Vals(size_t cnt) {
     sr_val_t *vals = NULL;

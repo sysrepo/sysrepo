@@ -458,21 +458,25 @@ void Subscribe::rpc_subscribe_tree(const char *xpath, sr_rpc_tree_cb callback, v
     }
 }
 
-void Subscribe::rpc_send(const char *xpath, S_Vals input, S_Vals output)
+S_Vals Subscribe::rpc_send(const char *xpath, S_Vals input)
 {
+    S_Vals output(new Vals());
     int ret = sr_rpc_send(_sess->get(), xpath, input->val(), input->val_cnt(), output->p_val(),\
                           output->p_val_cnt());
     if (SR_ERR_OK != ret) {
         throw_exception(ret);
     }
+    return output;
 }
 
-void Subscribe::rpc_send_tree(const char *xpath, S_Trees input, S_Trees output)
+S_Trees Subscribe::rpc_send_tree(const char *xpath, S_Trees input)
 {
+    S_Trees output(new Trees());
     int ret = sr_rpc_send_tree(_sess->get(), xpath, input->trees(), input->tree_cnt(), output->p_trees(), output->p_trees_cnt());
     if (SR_ERR_OK != ret) {
         throw_exception(ret);
     }
+    return output;
 }
 
 void Subscribe::dp_get_items_subscribe(const char *xpath, sr_dp_get_items_cb callback, void *private_ctx,\

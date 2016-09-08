@@ -229,10 +229,6 @@ main(int argc, char **argv)
         subscribe->rpc_subscribe("/test-module:activate-software-image", test_rpc_cb);
 
         S_Vals in_vals(new Vals(2));
-        S_Vals out_vals(new Vals());
-
-	if (in_vals == NULL && out_vals == NULL)
-            return 0;
 
         in_vals->val(0)->set("/test-module:activate-software-image/image-name",\
                            "acmefw-2.3",\
@@ -242,7 +238,7 @@ main(int argc, char **argv)
                            SR_STRING_T);
 
         cout << "\n\n ========== START RPC CALL ==========\n" << endl;
-        subscribe->rpc_send("/test-module:activate-software-image", in_vals, out_vals);
+        auto out_vals = subscribe->rpc_send("/test-module:activate-software-image", in_vals);
 
         cout << "\n\n ========== PRINT RETURN VALUE ==========\n" << endl;
         for(size_t n=0; n < out_vals->val_cnt(); ++n)
@@ -253,16 +249,12 @@ main(int argc, char **argv)
         subscribe->rpc_subscribe_tree("/test-module:activate-software-image", test_rpc_tree_cb);
 
         S_Trees in_trees(new Trees(1));
-        S_Trees out_trees(new Trees());
-
-	if (in_trees == NULL && out_trees == NULL)
-            return 0;
 
         in_trees->tree(0)->set_name("image-name");
         in_trees->tree(0)->set("acmefw-2.3", SR_STRING_T);
 
         cout << "\n\n ========== START RPC TREE CALL ==========\n" << endl;
-        subscribe->rpc_send_tree("/test-module:activate-software-image", in_trees, out_trees);
+        auto out_trees = subscribe->rpc_send_tree("/test-module:activate-software-image", in_trees);
 
         cout << "\n\n ========== PRINT RETURN VALUE ==========\n" << endl;
         for(size_t n=0; n < out_trees->tree_cnt(); ++n)

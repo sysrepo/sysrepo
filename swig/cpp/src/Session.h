@@ -103,8 +103,8 @@ public:
 
     void rpc_subscribe_tree(const char *xpath, sr_rpc_tree_cb callback, void *private_ctx = NULL,\
                             sr_subscr_options_t opts = SUBSCR_DEFAULT);
-    void rpc_send(const char *xpath, S_Vals input, S_Vals output);
-    void rpc_send_tree(const char *xpath, S_Trees input, S_Trees output);
+    S_Vals rpc_send(const char *xpath, S_Vals input);
+    S_Trees rpc_send_tree(const char *xpath, S_Trees input);
     void dp_get_items_subscribe(const char *xpath, sr_dp_get_items_cb callback, void *private_ctx, \
                                sr_subscr_options_t opts = SUBSCR_DEFAULT);
     void event_notif_subscribe(const char *xpath, sr_event_notif_cb callback, void *private_ctx = NULL,\
