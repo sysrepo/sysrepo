@@ -100,6 +100,7 @@ rp_dt_get_value_from_node(struct lyd_node *node, sr_val_t *val)
     case LYS_CONTAINER:
         sch_cont = (struct lys_node_container *) node->schema;
         val->type = sch_cont->presence == NULL ? SR_CONTAINER_T : SR_CONTAINER_PRESENCE_T;
+        val->dflt = node->dflt;
         break;
     case LYS_LIST:
         val->type = SR_LIST_T;
@@ -329,7 +330,7 @@ rp_dt_xpath_atomize(dm_schema_info_t *schema_info, const char *xpath, struct ly_
         start_node = start_node->next;
     }
 
-    *atoms = lys_xpath_atomize(start_node, xpath, 0);
+    *atoms = lys_xpath_atomize(start_node, LYXP_NODE_ELEM, xpath, 0);
     if (NULL == *atoms) {
         SR_LOG_ERR("Failed to atomize xpath %s", xpath);
         rc = SR_ERR_INVAL_ARG;
