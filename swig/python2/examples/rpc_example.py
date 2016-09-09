@@ -62,11 +62,10 @@ def print_value(value):
     else:
         print "(unprintable)"
 
-def test_rpc_cb(xpath, input_vals, input_cnt, output_vals, output_cnt, private_ctx):
+def test_rpc_cb(xpath, in_vals, out_vals, private_ctx):
 #    try:
         print "\n\n ========== RPC CALLED =========="
-        in_vals = sr.Vals(input_vals, input_cnt)
-        out_vals = sr.Vals(output_vals, output_cnt, 3)
+        out_vals.allocate(3)
 
         if (in_vals == None or out_vals == None):
             return
