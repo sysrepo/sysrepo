@@ -149,13 +149,11 @@ print_current_config(S_Session session, const char *module_name)
 }
 
 static int
-module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t event, void *private_ctx)
+module_change_cb(S_Session sess, const char *module_name, sr_notif_event_t event, void *private_ctx)
 {
     char change_path[MAX_LEN];
 
     try {
-        S_Session sess(new Session(session));
-
         printf("\n\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: ==========\n\n");
 
         print_current_config(sess, module_name);

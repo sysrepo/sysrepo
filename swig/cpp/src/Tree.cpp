@@ -254,6 +254,7 @@ Trees::Trees() {
     _cnt = 0;
     S_Counter counter(new Counter(_trees, _cnt));
     _counter = counter;
+    _allocate = true;
 }
 Trees::Trees(size_t n) {
     sr_node_t *trees = NULL;
@@ -266,23 +267,32 @@ Trees::Trees(size_t n) {
     _cnt = n;
     S_Counter counter(new Counter(_trees, _cnt));
     _counter = counter;
+    _allocate = false;
 }
-Trees::Trees(sr_node_t **trees, size_t *cnt, size_t n) {
-    int ret = sr_new_trees(n, trees);
+Trees::Trees(sr_node_t **trees, size_t *cnt, S_Counter counter) {
+    _trees = *trees;
+    p_cnt = cnt;
+    _cnt = 0;
+    _counter = counter;
+    _allocate = true;
+}
+Trees::Trees(const sr_node_t *trees, const size_t n, S_Counter counter) {
+    _trees = (sr_node_t *) trees;
+    _cnt = (size_t) n;
+
+    _counter = counter;
+    _allocate = false;
+}
+void Trees::allocate(size_t n) {
+    if (!_allocate)
+        throw_exception(SR_ERR_DATA_EXISTS);
+    int ret = sr_new_trees(n, &_trees);
     if (ret != SR_ERR_OK)
         throw_exception(ret);
 
-    _trees = *trees;
     _cnt = n;
-    *cnt = n;
-    _counter = NULL;
-}
-Trees::Trees(const sr_node_t *trees, const size_t n) {
-    _trees = (sr_node_t *) trees;
-    _cnt = (size_t) n;
-    //S_Counter counter(new Counter(_trees, _cnt));
-    //_counter = counter;
-    _counter = NULL;
+    *p_cnt = n;
+    _allocate = false;
 }
 Trees::~Trees() {return;}
 S_Tree Trees::tree(size_t n) {

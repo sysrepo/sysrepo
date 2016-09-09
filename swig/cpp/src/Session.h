@@ -80,45 +80,68 @@ private:
     S_Connection _conn;
 };
 
+#ifndef SWIG
+typedef int (*cpp_module_change_cb)(S_Session session, const char *module_name, sr_notif_event_t event, void *private_ctx);
+typedef int (*cpp_subtree_change_cb)(S_Session session, const char *xpath, sr_notif_event_t event, void *private_ctx);
+typedef int (*cpp_rpc_cb)(const char *xpath, S_Vals input, S_Vals output, void *private_ctx);
+typedef int (*cpp_rpc_tree_cb)(const char *xpath, S_Trees input, S_Trees output, void *private_ctx);
+typedef void (*cpp_event_notif_cb)(const char *xpath, S_Vals vals, void *private_ctx);
+typedef void (*cpp_event_notif_tree_cb)(const char *xpath, S_Trees trees, void *private_ctx);
+typedef int (*cpp_dp_get_items_cb)(const char *xpath, S_Vals vals, void *private_ctx);
+class wrap_cb {
+public:
+    void *private_ctx;
+    cpp_module_change_cb module_change;
+    cpp_subtree_change_cb subtree_change;
+    cpp_rpc_cb rpc;
+    cpp_rpc_tree_cb rpc_tree;
+	cpp_event_notif_cb event_notif;
+	cpp_event_notif_tree_cb event_notif_tree;
+	cpp_dp_get_items_cb dp_get_items;
+};
+#endif
+
 class Subscribe:public Throw_Exception
 {
 
 public:
     Subscribe(S_Session sess);
 
-    void module_change_subscribe(const char *module_name, sr_module_change_cb callback, void *private_ctx = \
+#ifndef SWIG
+    void module_change_subscribe(const char *module_name, cpp_module_change_cb callback, void *private_ctx = \
                                 NULL, uint32_t priority = 0, sr_subscr_options_t opts = SUBSCR_DEFAULT);
-    void subtree_change_subscribe(const char *xpath, sr_subtree_change_cb callback, void *private_ctx = NULL,\
+    void subtree_change_subscribe(const char *xpath, cpp_subtree_change_cb callback, void *private_ctx = NULL,\
                                  uint32_t priority = 0, sr_subscr_options_t opts = SUBSCR_DEFAULT);
     void module_install_subscribe(sr_module_install_cb callback, void *private_ctx = NULL,\
                                   sr_subscr_options_t opts = SUBSCR_DEFAULT);
     void feature_enable_subscribe(sr_feature_enable_cb callback, void *private_ctx = NULL,\
                                   sr_subscr_options_t opts = SUBSCR_DEFAULT);
+    void rpc_subscribe(const char *xpath, cpp_rpc_cb callback, void *private_ctx = NULL,\
+                       sr_subscr_options_t opts = SUBSCR_DEFAULT);
+    void event_notif_subscribe_tree(const char *xpath, cpp_event_notif_tree_cb callback, void *private_ctx = NULL,\
+                                    sr_subscr_options_t opts = SUBSCR_DEFAULT);
+    void event_notif_subscribe(const char *xpath, cpp_event_notif_cb callback, void *private_ctx = NULL,\
+                               sr_subscr_options_t opts = SUBSCR_DEFAULT);
+    void rpc_subscribe_tree(const char *xpath, cpp_rpc_tree_cb callback, void *private_ctx = NULL,\
+                            sr_subscr_options_t opts = SUBSCR_DEFAULT);
+    void dp_get_items_subscribe(const char *xpath, cpp_dp_get_items_cb callback, void *private_ctx, \
+                               sr_subscr_options_t opts = SUBSCR_DEFAULT);
+#endif
     void unsubscribe();
 
     S_Iter_Change get_changes_iter(const char *xpath);
     S_Change get_change_next(S_Iter_Change iter);
-    void rpc_subscribe(const char *xpath, sr_rpc_cb callback, void *private_ctx = NULL,\
-                       sr_subscr_options_t opts = SUBSCR_DEFAULT);
-
-    void rpc_subscribe_tree(const char *xpath, sr_rpc_tree_cb callback, void *private_ctx = NULL,\
-                            sr_subscr_options_t opts = SUBSCR_DEFAULT);
     S_Vals rpc_send(const char *xpath, S_Vals input);
     S_Trees rpc_send_tree(const char *xpath, S_Trees input);
-    void dp_get_items_subscribe(const char *xpath, sr_dp_get_items_cb callback, void *private_ctx, \
-                               sr_subscr_options_t opts = SUBSCR_DEFAULT);
-    void event_notif_subscribe(const char *xpath, sr_event_notif_cb callback, void *private_ctx = NULL,\
-                               sr_subscr_options_t opts = SUBSCR_DEFAULT);
-    void event_notif_subscribe_tree(const char *xpath, sr_event_notif_tree_cb callback, void *private_ctx = NULL,\
-                                    sr_subscr_options_t opts = SUBSCR_DEFAULT);
 
 #ifdef SWIG
-        void Destructor_Subscribe();
-        sr_subscription_ctx_t *swig_sub;
-        S_Session swig_sess;
-        std::vector<void*> wrap_cb_l;
+    void Destructor_Subscribe();
+    sr_subscription_ctx_t *swig_sub;
+    S_Session swig_sess;
+    std::vector<void*> wrap_cb_l;
 #else
-        ~Subscribe();
+    std::vector<S_wrap_cb> _wrap_cb_l;
+    ~Subscribe();
 #endif
 
 private:

@@ -109,11 +109,12 @@ private:
 class Vals:public Throw_Exception
 {
 public:
-    Vals(const sr_val_t *vals, const size_t cnt);
-    Vals(sr_val_t **vals, size_t *cnt, size_t n);
+    Vals(const sr_val_t *vals, const size_t cnt, S_Counter counter = NULL);
+    Vals(sr_val_t **vals, size_t *cnt, S_Counter counter = NULL);
     Vals(size_t cnt);
     Vals();
     ~Vals();
+    void allocate(size_t n);
     S_Val val(size_t n);
     size_t val_cnt() {return _cnt;};
     size_t *p_val_cnt() {return &_cnt;};
@@ -123,8 +124,10 @@ public:
 
 private:
     size_t _cnt;
+    size_t *p_cnt;
     sr_val_t *_vals;
     S_Counter _counter;
+    bool _allocate;
 };
 
 class Val_Iter

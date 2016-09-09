@@ -22,8 +22,10 @@
 #include <stdexcept>
 #include <memory>
 #include <iostream>
+#include <vector>
 
 #include "Struct.h"
+#include "Internal.h"
 #include "Tree.h"
 #include "Sysrepo.h"
 #include "Connection.h"
@@ -367,19 +369,80 @@ sr_session_ctx_t *Session::get()
     return _sess;
 }
 
-void Subscribe::module_change_subscribe(const char *module_name, sr_module_change_cb callback, \
+#ifndef SWIG
+static int module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t event, void *private_ctx) {
+    S_Session sess(new Session(session));
+    wrap_cb *wrap = (wrap_cb *) private_ctx;
+	return wrap->module_change(sess, module_name, event, wrap->private_ctx);
+}
+static int subtree_change_cb(sr_session_ctx_t *session, const char *xpath, sr_notif_event_t event, void *private_ctx) {
+    S_Session sess(new Session(session));
+    wrap_cb *wrap = (wrap_cb *) private_ctx;
+    return wrap->subtree_change(sess, xpath, event, wrap->private_ctx);
+}
+static int rpc_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt,
+        sr_val_t **output, size_t *output_cnt, void *private_ctx) {
+    S_Vals in_vals(new Vals(input, input_cnt, NULL));
+    S_Vals out_vals(new Vals(output, output_cnt, NULL));
+    wrap_cb *wrap = (wrap_cb *) private_ctx;
+    return wrap->rpc(xpath, in_vals, out_vals, wrap->private_ctx);
+}
+static int rpc_tree_cb(const char *xpath, const sr_node_t *input, const size_t input_cnt,
+                       sr_node_t **output, size_t *output_cnt, void *private_ctx) {
+    S_Trees in_tree(new Trees(input, input_cnt, NULL));
+    S_Trees out_tree(new Trees(output, output_cnt, NULL));
+    wrap_cb *wrap = (wrap_cb *) private_ctx;
+    return wrap->rpc_tree(xpath, in_tree, out_tree, wrap->private_ctx);
+}
+static void event_notif_cb(const char *xpath, const sr_val_t *values, const size_t values_cnt, void *private_ctx) {
+    S_Vals vals(new Vals(values, values_cnt, NULL));
+    wrap_cb *wrap = (wrap_cb *) private_ctx;
+    return wrap->event_notif(xpath, vals, wrap->private_ctx);
+}
+static void event_notif_tree_cb(const char *xpath, const sr_node_t *trees, const size_t tree_cnt, void *private_ctx) {
+    S_Trees vals(new Trees(trees, tree_cnt, NULL));
+    wrap_cb *wrap = (wrap_cb *) private_ctx;
+    return wrap->event_notif_tree(xpath, vals, wrap->private_ctx);
+}
+static int dp_get_items_cb(const char *xpath, sr_val_t **values, size_t *values_cnt, void *private_ctx) {
+    S_Vals vals(new Vals(values, values_cnt, NULL));
+    wrap_cb *wrap = (wrap_cb *) private_ctx;
+    return wrap->dp_get_items(xpath, vals, wrap->private_ctx);
+
+}
+
+void Subscribe::module_change_subscribe(const char *module_name, cpp_module_change_cb callback, \
                                         void *private_ctx, uint32_t priority, sr_subscr_options_t opts)
 {
-    int ret = sr_module_change_subscribe(_sess->get(), module_name, callback, private_ctx, priority, opts, &_sub);
+    wrap_cb *wrap = new wrap_cb();
+    if (wrap == NULL)
+        throw_exception(SR_ERR_NOMEM);
+
+	S_wrap_cb l_wrap(wrap);
+	wrap->private_ctx = private_ctx;
+	wrap->module_change = callback;
+    _wrap_cb_l.push_back(l_wrap);
+
+    int ret = sr_module_change_subscribe(_sess->get(), module_name, module_change_cb,\
+                                         wrap, priority, opts, &_sub);
     if (SR_ERR_OK != ret) {
         throw_exception(ret);
     }
 }
 
-void Subscribe::subtree_change_subscribe(const char *xpath, sr_subtree_change_cb callback, void *private_ctx, \
+void Subscribe::subtree_change_subscribe(const char *xpath, cpp_subtree_change_cb callback, void *private_ctx, \
                                         uint32_t priority, sr_subscr_options_t opts)
 {
-    int ret = sr_subtree_change_subscribe(_sess->get(), xpath, callback, private_ctx, priority, opts, &_sub);
+    wrap_cb *wrap = new wrap_cb();
+    if (wrap == NULL)
+        throw_exception(SR_ERR_NOMEM);
+
+	S_wrap_cb l_wrap(wrap);
+	wrap->private_ctx = private_ctx;
+	wrap->subtree_change = callback;
+    _wrap_cb_l.push_back(l_wrap);
+
+	int ret = sr_subtree_change_subscribe(_sess->get(), xpath, subtree_change_cb, wrap, priority, opts, &_sub);
     if (SR_ERR_OK != ret) {
         throw_exception(ret);
     }
@@ -400,6 +463,96 @@ void Subscribe::feature_enable_subscribe(sr_feature_enable_cb callback, void *pr
         throw_exception(ret);
     }
 }
+
+void Subscribe::rpc_subscribe(const char *xpath, cpp_rpc_cb callback, void *private_ctx, sr_subscr_options_t opts)
+{
+    wrap_cb *wrap = new wrap_cb();
+    if (wrap == NULL)
+        throw_exception(SR_ERR_NOMEM);
+
+	S_wrap_cb l_wrap(wrap);
+	wrap->private_ctx = private_ctx;
+	wrap->rpc = callback;
+    _wrap_cb_l.push_back(l_wrap);
+
+	int ret = sr_rpc_subscribe(_sess->get(), xpath, rpc_cb, wrap, opts, &_sub);
+    if (SR_ERR_OK != ret) {
+        throw_exception(ret);
+    }
+}
+
+void Subscribe::rpc_subscribe_tree(const char *xpath, cpp_rpc_tree_cb callback, void *private_ctx, sr_subscr_options_t opts)
+{
+    wrap_cb *wrap = new wrap_cb();
+    if (wrap == NULL)
+        throw_exception(SR_ERR_NOMEM);
+
+	S_wrap_cb l_wrap(wrap);
+	wrap->private_ctx = private_ctx;
+	wrap->rpc_tree = callback;
+    _wrap_cb_l.push_back(l_wrap);
+
+	int ret = sr_rpc_subscribe_tree(_sess->get(), xpath, rpc_tree_cb, wrap, opts, &_sub);
+    if (SR_ERR_OK != ret) {
+        throw_exception(ret);
+    }
+}
+
+void Subscribe::event_notif_subscribe(const char *xpath, cpp_event_notif_cb callback, void *private_ctx, sr_subscr_options_t opts)
+{
+    wrap_cb *wrap = new wrap_cb();
+    if (wrap == NULL)
+        throw_exception(SR_ERR_NOMEM);
+
+	S_wrap_cb l_wrap(wrap);
+	wrap->private_ctx = private_ctx;
+	wrap->event_notif = callback;
+    _wrap_cb_l.push_back(l_wrap);
+
+	int ret = sr_event_notif_subscribe(_sess->get(), xpath, event_notif_cb, wrap, opts, &_sub);
+    if (SR_ERR_OK != ret) {
+        throw_exception(ret);
+    }
+}
+
+    
+void Subscribe::event_notif_subscribe_tree(const char *xpath, cpp_event_notif_tree_cb callback, void *private_ctx, sr_subscr_options_t opts)
+{
+    wrap_cb *wrap = new wrap_cb();
+    if (wrap == NULL)
+        throw_exception(SR_ERR_NOMEM);
+
+	S_wrap_cb l_wrap(wrap);
+	wrap->private_ctx = private_ctx;
+	wrap->event_notif_tree = callback;
+    _wrap_cb_l.push_back(l_wrap);
+
+	int ret = sr_event_notif_subscribe_tree(_sess->get(), xpath, event_notif_tree_cb, wrap, opts, &_sub);
+    if (SR_ERR_OK != ret) {
+        throw_exception(ret);
+    }
+}
+
+void Subscribe::dp_get_items_subscribe(const char *xpath, cpp_dp_get_items_cb callback, void *private_ctx,\
+                                      sr_subscr_options_t opts)
+{
+    wrap_cb *wrap = new wrap_cb();
+    if (wrap == NULL)
+        throw_exception(SR_ERR_NOMEM);
+
+	S_wrap_cb l_wrap(wrap);
+	wrap->private_ctx = private_ctx;
+	wrap->dp_get_items = callback;
+    _wrap_cb_l.push_back(l_wrap);
+
+
+	int ret =  sr_dp_get_items_subscribe(_sess->get(), xpath, dp_get_items_cb, wrap, opts, &_sub);
+    if (SR_ERR_OK != ret) {
+        throw_exception(ret);
+    }
+}
+
+#endif
 
 void Subscribe::unsubscribe()
 {
@@ -442,64 +595,33 @@ S_Change Subscribe::get_change_next(S_Iter_Change iter)
     }
 }
 
-void Subscribe::rpc_subscribe(const char *xpath, sr_rpc_cb callback, void *private_ctx, sr_subscr_options_t opts)
-{
-    int ret = sr_rpc_subscribe(_sess->get(), xpath, callback, private_ctx, opts, &_sub);
-    if (SR_ERR_OK != ret) {
-        throw_exception(ret);
-    }
-}
-
-void Subscribe::rpc_subscribe_tree(const char *xpath, sr_rpc_tree_cb callback, void *private_ctx, sr_subscr_options_t opts)
-{
-    int ret = sr_rpc_subscribe_tree(_sess->get(), xpath, callback, private_ctx, opts, &_sub);
-    if (SR_ERR_OK != ret) {
-        throw_exception(ret);
-    }
-}
-
 S_Vals Subscribe::rpc_send(const char *xpath, S_Vals input)
 {
-    S_Vals output(new Vals());
-    int ret = sr_rpc_send(_sess->get(), xpath, input->val(), input->val_cnt(), output->p_val(),\
-                          output->p_val_cnt());
+    sr_val_t *out = NULL;
+    size_t out_cnt = 0;
+    int ret = sr_rpc_send(_sess->get(), xpath, input->val(), input->val_cnt(), &out, &out_cnt);
     if (SR_ERR_OK != ret) {
         throw_exception(ret);
     }
+
+    if (out_cnt == 0)
+        return NULL;
+
+    S_Counter counter(new Counter(out, out_cnt));
+    S_Vals output(new Vals(out, out_cnt, counter));
     return output;
 }
 
 S_Trees Subscribe::rpc_send_tree(const char *xpath, S_Trees input)
 {
-    S_Trees output(new Trees());
-    int ret = sr_rpc_send_tree(_sess->get(), xpath, input->trees(), input->tree_cnt(), output->p_trees(), output->p_trees_cnt());
+    sr_node_t *out = NULL;
+    size_t out_cnt = 0;
+    int ret = sr_rpc_send_tree(_sess->get(), xpath, input->trees(), input->tree_cnt(), &out, &out_cnt);
     if (SR_ERR_OK != ret) {
         throw_exception(ret);
     }
+
+	S_Counter counter(new Counter(out, out_cnt));
+    S_Trees output(new Trees(out, out_cnt, counter));
     return output;
-}
-
-void Subscribe::dp_get_items_subscribe(const char *xpath, sr_dp_get_items_cb callback, void *private_ctx,\
-                                      sr_subscr_options_t opts)
-{
-    int ret =  sr_dp_get_items_subscribe(_sess->get(), xpath, callback, private_ctx, opts, &_sub);
-    if (SR_ERR_OK != ret) {
-        throw_exception(ret);
-    }
-}
-
-void Subscribe::event_notif_subscribe(const char *xpath, sr_event_notif_cb callback, void *private_ctx, sr_subscr_options_t opts)
-{
-    int ret = sr_event_notif_subscribe(_sess->get(), xpath, callback, private_ctx, opts, &_sub);
-    if (SR_ERR_OK != ret) {
-        throw_exception(ret);
-    }
-}
-
-void Subscribe::event_notif_subscribe_tree(const char *xpath, sr_event_notif_tree_cb callback, void *private_ctx, sr_subscr_options_t opts)
-{
-    int ret = sr_event_notif_subscribe_tree(_sess->get(), xpath, callback, private_ctx, opts, &_sub);
-    if (SR_ERR_OK != ret) {
-        throw_exception(ret);
-    }
 }

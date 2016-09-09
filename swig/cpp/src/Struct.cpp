@@ -530,41 +530,50 @@ S_Val Val::dup() {
 }
 
 // Vals
-Vals::Vals(const sr_val_t *vals, const size_t cnt) {
+Vals::Vals(const sr_val_t *vals, const size_t cnt, S_Counter counter) {
     _vals = (sr_val_t *) vals;
     _cnt = (size_t) cnt;
 
-    _counter = NULL;
+    _counter = counter;
+    _allocate = false;
 }
-Vals::Vals(sr_val_t **vals, size_t *cnt, size_t n) {
-    int ret = sr_new_values(n, vals);
-    if (ret != SR_ERR_OK)
-        throw_exception(ret);
-
+Vals::Vals(sr_val_t **vals, size_t *cnt, S_Counter counter) {
+    p_cnt = cnt;
     _vals = *vals;
-    _cnt = n;
-    cnt = &n;
-    _counter = NULL;
+    _cnt = 0;
+    _counter = counter;
+    _allocate = true;
 }
 Vals::Vals(size_t cnt) {
-    sr_val_t *vals = NULL;
-    int ret = sr_new_values(cnt, &vals);
+    int ret = sr_new_values(cnt, &_vals);
     if (ret != SR_ERR_OK)
         throw_exception(ret);
 
-    _vals = vals;
     _cnt = cnt;
     S_Counter counter(new Counter(_vals, _cnt));
     _counter = counter;
+    _allocate = false;
 }
 Vals::Vals() {
     _vals = NULL;
     _cnt = 0;
     S_Counter counter(new Counter(&_vals, &_cnt));
     _counter = counter;
+    _allocate = true;
 }
 Vals::~Vals() {
     return;
+}
+void Vals::allocate(size_t n) {
+    if (!_allocate)
+        throw_exception(SR_ERR_DATA_EXISTS);
+    int ret = sr_new_values(n, &_vals);
+    if (ret != SR_ERR_OK)
+        throw_exception(ret);
+
+    _cnt = n;
+    *p_cnt = n;
+    _allocate = false;
 }
 S_Val Vals::val(size_t n) {
     if (n >= _cnt || _vals == NULL)

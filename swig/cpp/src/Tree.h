@@ -80,8 +80,9 @@ class Trees:public Throw_Exception
 public:
     Trees();
     Trees(size_t n);
-    Trees(sr_node_t **trees, size_t *cnt, size_t n);
-    Trees(const sr_node_t *trees, const size_t n);
+    Trees(sr_node_t **trees, size_t *cnt, S_Counter counter = NULL);
+    Trees(const sr_node_t *trees, const size_t n, S_Counter counter = NULL);
+    void allocate(size_t n);
     S_Tree tree(size_t n);
     S_Trees dup();
     size_t tree_cnt() {return _cnt;};
@@ -93,7 +94,9 @@ public:
 private:
     sr_node_t *_trees;
     size_t _cnt;
+    size_t *p_cnt;
     S_Counter _counter;
+    bool _allocate;
 };
 
 #endif

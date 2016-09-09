@@ -160,15 +160,10 @@ print_value(S_Val value)
     return;
 }
 
-int test_rpc_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt, sr_val_t **output,\
-                size_t *output_cnt, void *private_ctx) {
+int test_rpc_cb(const char *xpath, const S_Vals in_vals, S_Vals out_vals, void *private_ctx) {
     cout << "\n\n ========== RPC CALLED ==========\n" << endl;
 
-    S_Vals in_vals(new Vals(input, input_cnt));
-    S_Vals out_vals(new Vals(output, output_cnt, 3));
-
-    if (in_vals == NULL && out_vals == NULL)
-        return SR_ERR_NOMEM;
+    out_vals->allocate(3);
 
     for(size_t n=0; n < in_vals->val_cnt(); ++n)
         print_value(in_vals->val(n));
@@ -186,15 +181,10 @@ int test_rpc_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt
     return SR_ERR_OK;
 }
 
-int test_rpc_tree_cb(const char *xpath, const sr_node_t *input, const size_t input_cnt, sr_node_t **output,\
-                     size_t *output_cnt, void *private_ctx) {
+int test_rpc_tree_cb(const char *xpath, S_Trees in_trees, S_Trees out_trees, void *private_ctx) {
     cout << "\n\n ========== RPC TREE CALLED ==========\n" << endl;
 
-    S_Trees in_trees(new Trees(input, input_cnt));
-    S_Trees out_trees(new Trees(output, output_cnt, 3));
-
-    if (in_trees == NULL && out_trees == NULL)
-        return SR_ERR_NOMEM;
+    out_trees->allocate(3);
 
     for(size_t n=0; n < in_trees->tree_cnt(); ++n)
         print_tree(in_trees->tree(n));
@@ -241,8 +231,8 @@ main(int argc, char **argv)
         auto out_vals = subscribe->rpc_send("/test-module:activate-software-image", in_vals);
 
         cout << "\n\n ========== PRINT RETURN VALUE ==========\n" << endl;
-        for(size_t n=0; n < out_vals->val_cnt(); ++n)
-            print_value(out_vals->val(n));
+        //for(size_t n=0; n < out_vals->val_cnt(); ++n)
+        //    print_value(out_vals->val(n));
 
 
         cout << "\n\n ========== SUBSCRIBE TO RPC TREE CALL ==========\n" << endl;
@@ -257,8 +247,8 @@ main(int argc, char **argv)
         auto out_trees = subscribe->rpc_send_tree("/test-module:activate-software-image", in_trees);
 
         cout << "\n\n ========== PRINT RETURN VALUE ==========\n" << endl;
-        for(size_t n=0; n < out_trees->tree_cnt(); ++n)
-            print_tree(out_trees->tree(n));
+        //for(size_t n=0; n < out_trees->tree_cnt(); ++n)
+        //    print_tree(out_trees->tree(n));
 
         cout << "\n\n ========== END PROGRAM ==========\n" << endl;
     } catch( const std::exception& e ) {
