@@ -108,7 +108,8 @@ class SysrepoBasicTest(unittest.TestCase):
         session.delete_item("/test-module:*")
         session.commit()
         with self.assertRaises(RuntimeError):
-            self.session.get_item("/test-module:main")
+            #test random leaf that was deleted
+            self.session.get_item("/test-module:main/string")
         TestModule.create_test_module()
 
 
