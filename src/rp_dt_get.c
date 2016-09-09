@@ -322,11 +322,34 @@ rp_dt_is_under_subtree(struct lys_node *subtree, struct lys_node *node)
 static int
 rp_dt_atoms_require_subtree(struct ly_set *atoms, struct lys_node *subtree, bool *result)
 {
-    CHECK_NULL_ARG2(atoms, subtree);
+    CHECK_NULL_ARG3(atoms, subtree, result);
     *result = false;
 
     for (unsigned int i = 0; i < atoms->number; i++) {
         if (rp_dt_is_under_subtree(subtree, atoms->set.s[i])) {
+            *result = true;
+            break;
+        }
+    }
+
+    return SR_ERR_OK;
+}
+
+/**
+ * @brief Tests if any of the trees contain the provided subtree.
+ * @param [in] tree_roots
+ * @param [in] subtree
+ * @param [out] result
+ * @return Error code (SR_ERR_OK on success)
+ */
+static int
+rp_dt_trees_contain_subtree(struct ly_set *tree_roots, struct lys_node *subtree, bool *result)
+{
+    CHECK_NULL_ARG3(tree_roots, subtree, result);
+    *result = false;
+
+    for (unsigned int i = 0; i < tree_roots->number; i++) {
+        if (rp_dt_is_under_subtree(tree_roots->set.s[i], subtree)) {
             *result = true;
             break;
         }
@@ -374,14 +397,12 @@ cleanup:
 }
 
 static int
-rp_dt_xpath_atomize(dm_schema_info_t *schema_info, const char *xpath, struct ly_set **atoms)
+rp_dt_get_start_node(dm_schema_info_t *schema_info, const char *absolute_xpath, struct lys_node **start_node_p)
 {
-    CHECK_NULL_ARG3(schema_info, xpath, atoms);
+    CHECK_NULL_ARG3(schema_info, absolute_xpath, start_node_p);
 
-    int rc = SR_ERR_OK;
     struct lys_node *start_node = schema_info->module->data;
-
-    const char *first_node_name = xpath + strlen(schema_info->module_name) + 2 /* leading slash and colon */;
+    const char *first_node_name = absolute_xpath + strlen(schema_info->module_name) + 2 /* leading slash and colon */;
 
     while (NULL != start_node) {
         if (0 == strncmp(start_node->name, first_node_name, strlen(start_node->name))) {
@@ -390,9 +411,46 @@ rp_dt_xpath_atomize(dm_schema_info_t *schema_info, const char *xpath, struct ly_
         start_node = start_node->next;
     }
 
-    *atoms = lys_xpath_atomize(start_node, xpath, 0);
+    *start_node_p = start_node;
+    return SR_ERR_OK;
+}
+
+static int
+rp_dt_xpath_atomize(dm_schema_info_t *schema_info, const char *xpath, struct ly_set **atoms)
+{
+    CHECK_NULL_ARG3(schema_info, xpath, atoms);
+
+    int rc = SR_ERR_OK;
+    struct lys_node *start_node = NULL;
+
+    rc = rp_dt_get_start_node(schema_info, xpath, &start_node);
+    CHECK_RC_LOG_RETURN(rc, "Failed to get the start node for xpath %s", xpath);
+
+    *atoms = lys_xpath_atomize(start_node, LYXP_NODE_ROOT, xpath, 0);
     if (NULL == *atoms) {
         SR_LOG_ERR("Failed to atomize xpath %s", xpath);
+        rc = SR_ERR_INVAL_ARG;
+    }
+    return rc;
+}
+
+/**
+ * @brief Get the set of tree roots matching the provided xpath.
+ */
+static int
+rp_dt_get_tree_roots(dm_schema_info_t *schema_info, const char *xpath, struct ly_set **roots)
+{
+    CHECK_NULL_ARG3(schema_info, xpath, roots);
+
+    int rc = SR_ERR_OK;
+    struct lys_node *start_node = NULL;
+
+    rc = rp_dt_get_start_node(schema_info, xpath, &start_node);
+    CHECK_RC_LOG_RETURN(rc, "Failed to get the start node for xpath %s", xpath);
+
+    *roots = lys_find_xpath(start_node, xpath, 0);
+    if (NULL == *roots) {
+        SR_LOG_ERR("Failed to get the set of tree roots for xpath %s", xpath);
         rc = SR_ERR_INVAL_ARG;
     }
     return rc;
@@ -457,6 +515,7 @@ rp_dt_xpath_requests_state_data(rp_ctx_t *rp_ctx, rp_session_t *session, dm_sche
     md_module_t *module = NULL;
     int rc = SR_ERR_OK;
     struct ly_set *atoms = NULL;
+    struct ly_set *tree_roots = NULL;
     sr_list_t *subtree_nodes = NULL;
     char *xp = NULL;
 
@@ -481,13 +540,18 @@ rp_dt_xpath_requests_state_data(rp_ctx_t *rp_ctx, rp_session_t *session, dm_sche
     rc = rp_dt_xpath_atomize(schema_info, xpath, &atoms);
     CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to atomize xpath %s", xpath);
 
+    if (SR_API_TREES == api_variant) {
+        rc = rp_dt_get_tree_roots(schema_info, xpath, &tree_roots);
+        CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to get the set of tree roots matching xpath %s", xpath);
+    }
+
     rc = sr_list_init(&state_data_ctx->subtrees);
     CHECK_RC_MSG_GOTO(rc, cleanup, "List init failed");
 
     rc = md_get_module_info(md_ctx, schema_info->module_name, NULL, &module);
     CHECK_RC_LOG_GOTO(rc, cleanup, "Module %s was not found in module dependency", schema_info->module_name);
 
-    /* loop through operational node subtree */
+    /* loop through operational node subtrees */
     sr_llist_node_t *node = module->op_data_subtrees->first;
     while (NULL != node) {
         md_subtree_ref_t *sub = node->data;
@@ -512,6 +576,12 @@ rp_dt_xpath_requests_state_data(rp_ctx_t *rp_ctx, rp_session_t *session, dm_sche
         rc = rp_dt_atoms_require_subtree(atoms, state_data_node, &subtree_needed);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Rp dt atoms require subtree failed");
 
+        if (!subtree_needed && SR_API_TREES == api_variant) {
+            // consider state data inside requested subtrees
+            rc = rp_dt_trees_contain_subtree(tree_roots, state_data_node, &subtree_needed);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "Rp dt trees contain subtree failed");
+        }
+
         /* test if subtree should be loaded */
         if (subtree_needed) {
             rc = sr_list_add(subtree_nodes, state_data_node);
@@ -534,6 +604,7 @@ rp_dt_xpath_requests_state_data(rp_ctx_t *rp_ctx, rp_session_t *session, dm_sche
 cleanup:
     free(xp);
     ly_set_free(atoms);
+    ly_set_free(tree_roots);
     md_ctx_unlock(md_ctx);
     sr_list_cleanup(subtree_nodes);
     if (SR_ERR_OK != rc) {
