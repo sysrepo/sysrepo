@@ -1176,6 +1176,7 @@ sr_subtree_to_dt(struct ly_ctx *ly_ctx, const sr_node_t *sr_tree, bool output, s
     const struct lys_node *sch_node = NULL;
     sr_node_t *sr_subtree = NULL;
     char *string_val = NULL, *relative_xpath = NULL;
+    struct lys_node *start_node = NULL;
 
     CHECK_NULL_ARG3(ly_ctx, sr_tree, data_tree);
 
@@ -1193,6 +1194,16 @@ sr_subtree_to_dt(struct ly_ctx *ly_ctx, const sr_node_t *sr_tree, bool output, s
         if (NULL == module) {
             SR_LOG_ERR("Failed to obtain module schema for node: %s.", sr_tree->name);
             return SR_ERR_INTERNAL;
+        }
+    } else {
+        char *ns = NULL;
+        ret = sr_copy_first_ns(xpath, &ns);
+        CHECK_RC_MSG_RETURN(ret, "Copy first ns failed");
+        module = ly_ctx_get_module(ly_ctx, ns, NULL);
+        free(ns);
+        if (NULL != module) {
+            start_node = module->data;
+            module = NULL;
         }
     }
 
@@ -1242,7 +1253,7 @@ sr_subtree_to_dt(struct ly_ctx *ly_ctx, const sr_node_t *sr_tree, bool output, s
             }
             /* get node schema */
             if (NULL == parent) {
-                sch_node = sr_find_schema_node(module->data, xpath, output ? LYS_FIND_OUTPUT : 0);
+                sch_node = sr_find_schema_node(start_node, xpath, output ? LYS_FIND_OUTPUT : 0);
             } else {
                 relative_xpath = calloc(strlen(module->name) + strlen(sr_tree->name) + 2, sizeof(*relative_xpath));
                 CHECK_NULL_NOMEM_RETURN(relative_xpath);

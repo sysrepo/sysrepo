@@ -538,7 +538,7 @@ sr_node_t_test(void **state)
     createDataTree(ly_ctx, &data_tree);
 
     /* convert complete data tree to sysrepo trees */
-    nodeset = lyd_get_node(data_tree, "/*");
+    nodeset = lyd_find_xpath(data_tree, "/*");
     assert_non_null(nodeset);
     assert_int_equal(4, nodeset->number);
 
@@ -694,7 +694,7 @@ sr_node_t_with_augments_test(void **state)
     createDataTreeWithAugments(ly_ctx, &data_tree);
 
     /* convert complete data tree to sysrepo trees */
-    nodeset = lyd_get_node(data_tree, "/*");
+    nodeset = lyd_find_xpath(data_tree, "/*");
     assert_non_null(nodeset);
     assert_int_equal(2, nodeset->number);
 
@@ -794,7 +794,7 @@ sr_node_t_rpc_input_test(void **state)
     assert_int_equal(0, lyd_validate(&data_tree, LYD_OPT_STRICT | LYD_OPT_RPC));
 
     /* convert RPC input back to sysrepo trees */
-    nodeset = lyd_get_node(data_tree, "/test-module:activate-software-image/./*");
+    nodeset = lyd_find_xpath(data_tree, "/test-module:activate-software-image/./*");
     assert_non_null(nodeset);
     assert_int_equal(2, nodeset->number);
 
@@ -884,7 +884,7 @@ sr_node_t_rpc_output_test(void **state)
     lyd_print_fd(STDOUT_FILENO, data_tree, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT);
 
     /* convert RPC input back to sysrepo trees */
-    nodeset = lyd_get_node(data_tree, "/test-module:activate-software-image/./*");
+    nodeset = lyd_find_xpath(data_tree, "/test-module:activate-software-image/./*");
     assert_non_null(nodeset);
     assert_int_equal(3, nodeset->number);
 
