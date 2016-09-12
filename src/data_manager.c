@@ -3551,7 +3551,7 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
 
         for (size_t i = 0; i < arg_cnt; i++) {
             /* get schema node */
-            sch_node = ly_ctx_get_node2(schema_info->ly_ctx, NULL, args[i].xpath, (input ? 0 : 1));
+            sch_node = sr_find_schema_node(schema_info->module->data, args[i].xpath, (input ? 0 : LYS_FIND_OUTPUT));
             if (NULL == sch_node) {
                 SR_LOG_ERR("%s argument xpath validation failed( '%s'): %s", procedure_name, args[i].xpath, ly_errmsg());
                 rc = dm_report_error(session, ly_errmsg(), args[i].xpath, SR_ERR_VALIDATION_FAILED);
@@ -3625,7 +3625,7 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
             if (NULL != tmp_xpath) {
                 strcat(tmp_xpath, xpath);
                 strcat(tmp_xpath, "//*");
-                nodeset = lyd_get_node(data_tree, tmp_xpath);
+                nodeset = lyd_find_xpath(data_tree, tmp_xpath);
                 if (NULL != nodeset) {
                     rc = rp_dt_get_values_from_nodes(sr_mem, nodeset, with_def, with_def_cnt);
                 } else {
@@ -3650,7 +3650,7 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
                     strcat(tmp_xpath, "./"); /* skip "input" / "output" */
                 }
                 strcat(tmp_xpath, "*");
-                nodeset = lyd_get_node(data_tree, tmp_xpath);
+                nodeset = lyd_find_xpath(data_tree, tmp_xpath);
                 if (NULL != nodeset) {
                     rc = sr_nodes_to_trees(schema_info->ly_ctx, nodeset, sr_mem, with_def_tree, with_def_tree_cnt);
                 } else {
@@ -4105,7 +4105,7 @@ dm_get_nodes_by_schema(dm_session_t *session, const char *module_name, const str
     rc = dm_get_data_info(session->dm_ctx, session, module_name, &di);
     CHECK_RC_MSG_RETURN(rc, "Get data info failed");
 
-    *res = lyd_get_node2(di->node, node);
+    *res = lyd_find_instance(di->node, node);
     if (NULL == res) {
         SR_LOG_ERR("Failed to found nodes %s in module %s", node->name, module_name);
         rc = SR_ERR_INTERNAL;

@@ -621,10 +621,16 @@ void get_value_wrapper_test(void **state){
     rc = rp_dt_get_value_wrapper(ctx, ses_ctx, NULL, "/test-module:*", &value);
     assert_int_equal(SR_ERR_INVAL_ARG, rc);
 
-    /* not existing data tree*/
+    /* since yang 1.1 empty container might be present */
     ses_ctx->state = RP_REQ_NEW;
     rc = rp_dt_get_value_wrapper(ctx, ses_ctx, NULL, "/small-module:item", &value);
-    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(value);
+    assert_string_equal(value->xpath, "/small-module:item");
+    assert_int_equal(SR_CONTAINER_T, value->type);
+    assert_true(value->dflt);
+    sr_free_val(value);
+    value = NULL;
 
     /* not exisiting now in existing data tree*/
     ses_ctx->state = RP_REQ_NEW;
