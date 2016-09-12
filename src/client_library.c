@@ -1113,7 +1113,7 @@ cleanup:
 int
 sr_get_subtree_chunk(sr_session_ctx_t *session, const char *xpath, bool single,
         size_t offset, size_t child_limit, size_t depth_limit,
-        sr_node_t **chunks, size_t *chunk_cnt);
+        sr_node_t **chunks, size_t *chunk_cnt)
 {
     /* TODO */
     return SR_ERR_OK;
