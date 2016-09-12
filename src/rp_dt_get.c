@@ -403,13 +403,15 @@ rp_dt_get_start_node(dm_schema_info_t *schema_info, const char *absolute_xpath, 
     CHECK_NULL_ARG3(schema_info, absolute_xpath, start_node_p);
 
     struct lys_node *start_node = schema_info->module->data;
+    struct lys_node *n = start_node;
     const char *first_node_name = absolute_xpath + strlen(schema_info->module_name) + 2 /* leading slash and colon */;
 
-    while (NULL != start_node) {
-        if (0 == strncmp(start_node->name, first_node_name, strlen(start_node->name))) {
+    while (NULL != n) {
+        if (0 == strncmp(n->name, first_node_name, strlen(n->name))) {
+            start_node = n;
             break;
         }
-        start_node = start_node->next;
+        n = n->next;
     }
 
     *start_node_p = start_node;
