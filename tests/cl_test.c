@@ -311,10 +311,15 @@ cl_get_item_test(void **state)
     assert_int_equal(SR_ERR_UNKNOWN_MODEL, rc);
     assert_null(value);
 
-    /* not existing data tree*/
+    /* since YANG 1.1 empty containers are present in data tree */
     rc = sr_get_item(session, "/small-module:item", &value);
-    assert_int_equal(SR_ERR_NOT_FOUND, rc);
-    assert_null(value);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(value);
+    assert_int_equal(SR_CONTAINER_T, value->type);
+    assert_true(value->dflt);
+    assert_string_equal(value->xpath, "/small-module:item");
+    sr_free_val(value);
+    value = NULL;
 
     /* bad element in existing module returns SR_ERR_NOT_FOUND instead of SR_ERR_BAD_ELEMENT*/
     rc = sr_get_item(session, "/example-module:unknown/next", &value);
@@ -546,9 +551,16 @@ cl_get_items_test(void **state)
     rc = sr_get_items(session, "/unknown-model:abc",  &values, &values_cnt);
     assert_int_equal(SR_ERR_UNKNOWN_MODEL, rc);
 
-    /* not existing data tree*/
-    rc = sr_get_items(session, "/small-module:item",  &values, &values_cnt);
-    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+    /* since YANG 1.1 empty containers might be present in data tree */
+    rc = sr_get_items(session, "/small-module:item", &values, &values_cnt);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(values);
+    assert_int_equal(1, values_cnt);
+    assert_true(values[0].dflt);
+    assert_int_equal(SR_CONTAINER_T, values[0].type);
+    sr_free_values(values, values_cnt);
+    values = NULL;
+    values_cnt = 0;
 
     /* bad element in existing module produces SR_ERR_NOT_FOUND instead of SR_ERR_BAD_ELEMENT */
     rc = sr_get_items(session, "/example-module:unknown", &values, &values_cnt);
@@ -682,14 +694,17 @@ cl_get_items_iter_test(void **state)
     assert_int_equal(SR_ERR_INVAL_ARG, rc);
     assert_null(it);
 
-    /* non existing item*/
+    /* since YANG 1.1 empty containers might be present in data tree */
     rc = sr_get_items_iter(session, "/small-module:item", &it);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(it);
 
     rc = sr_get_item_next(session, it, &value);
-    assert_int_equal(SR_ERR_NOT_FOUND, rc);
-    assert_null(value);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(value);
+    assert_int_equal(SR_CONTAINER_T, value->type);
+    assert_true(value->dflt);
+    sr_free_val(value);
     sr_free_val_iter(it);
     it = NULL;
 

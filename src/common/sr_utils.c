@@ -1175,6 +1175,7 @@ sr_subtree_to_dt(struct ly_ctx *ly_ctx, const sr_node_t *sr_tree, bool output, s
     const struct lys_node *sch_node = NULL;
     sr_node_t *sr_subtree = NULL;
     char *string_val = NULL, *relative_xpath = NULL;
+    struct lys_node *start_node = NULL;
 
     CHECK_NULL_ARG3(ly_ctx, sr_tree, data_tree);
 
@@ -1193,6 +1194,16 @@ sr_subtree_to_dt(struct ly_ctx *ly_ctx, const sr_node_t *sr_tree, bool output, s
             SR_LOG_ERR("Failed to obtain module schema for node: %s.", sr_tree->name);
             return SR_ERR_INTERNAL;
         }
+    } else {
+        char *ns = NULL;
+        ret = sr_copy_first_ns(xpath, &ns);
+        CHECK_RC_MSG_RETURN(ret, "Copy first ns failed");
+        module = ly_ctx_get_module(ly_ctx, ns, NULL);
+        free(ns);
+        if (NULL != module) {
+            start_node = module->data;
+            module = NULL;
+        }
     }
 
     switch (sr_tree->type) {
@@ -1210,7 +1221,7 @@ sr_subtree_to_dt(struct ly_ctx *ly_ctx, const sr_node_t *sr_tree, bool output, s
                     return SR_ERR_INTERNAL;
                 }
                 node = NULL;
-                nodeset = lyd_get_node(*data_tree, xpath);
+                nodeset = lyd_find_xpath(*data_tree, xpath);
                 if (NULL != nodeset && 1 == nodeset->number) {
                     node = nodeset->set.d[0];
                 }
@@ -1241,14 +1252,14 @@ sr_subtree_to_dt(struct ly_ctx *ly_ctx, const sr_node_t *sr_tree, bool output, s
             }
             /* get node schema */
             if (NULL == parent) {
-                sch_node = ly_ctx_get_node2(ly_ctx, NULL, xpath, output);
+                sch_node = sr_find_schema_node(start_node, xpath, output ? LYS_FIND_OUTPUT : 0);
             } else {
                 relative_xpath = calloc(strlen(module->name) + strlen(sr_tree->name) + 2, sizeof(*relative_xpath));
                 CHECK_NULL_NOMEM_RETURN(relative_xpath);
                 strcat(relative_xpath, module->name);
                 strcat(relative_xpath, ":");
                 strcat(relative_xpath, sr_tree->name);
-                sch_node = ly_ctx_get_node2(ly_ctx, parent->schema, relative_xpath, output);
+                sch_node = sr_find_schema_node(parent->schema, relative_xpath, output ? LYS_FIND_OUTPUT : 0);
                 free(relative_xpath);
                 relative_xpath = NULL;
             }
@@ -1707,4 +1718,16 @@ sr_clock_get_time(clockid_t clock_id, struct timespec *ts)
 #else
     return clock_gettime(clock_id, ts);
 #endif
+}
+
+struct lys_node *
+sr_find_schema_node(const struct lys_node *node, const char *expr, int options)
+{
+    struct lys_node *result = NULL;
+    struct ly_set *set = lys_find_xpath(node, expr, options);
+    if (NULL != set && 1 == set->number) {
+        result = set->set.s[0];
+    }
+    ly_set_free(set);
+    return result;
 }

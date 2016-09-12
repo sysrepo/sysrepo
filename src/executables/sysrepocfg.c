@@ -250,6 +250,7 @@ srcfg_get_module_data(struct ly_ctx *ly_ctx, const char *module_name, struct lyd
     const struct lys_node *schema = NULL;
     char query[PATH_MAX] = { 0, };
     char *string_val = NULL;
+    const struct lys_module *module = NULL;
 
     snprintf(query, PATH_MAX, "/%s:*//.", module_name);
     rc = sr_get_items_iter(srcfg_session, query, &iter);
@@ -260,14 +261,20 @@ srcfg_get_module_data(struct ly_ctx *ly_ctx, const char *module_name, struct lyd
 
     *data_tree = NULL;
     ly_errno = LY_SUCCESS;
+    module = ly_ctx_get_module(ly_ctx, module_name, NULL);
+    if (NULL == module) {
+        SR_LOG_ERR("Module %s not found", module_name);
+        goto cleanup;
+    }
+
     while (SR_ERR_OK == (rc = sr_get_item_next(srcfg_session, iter, &value))) {
         if (NULL == value) {
             goto next;
         }
         /* get node schema */
-        schema = ly_ctx_get_node2(ly_ctx, NULL, value->xpath, 0);
+        schema = sr_find_schema_node(module->data, value->xpath, 0);
         if (!schema) {
-            SR_LOG_ERR("Error by ly_ctx_get_node2: %s", ly_errmsg());
+            SR_LOG_ERR("Error by sr_find_schema_node: %s", ly_errmsg());
             goto fail;
         }
 

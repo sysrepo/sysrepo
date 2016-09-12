@@ -505,8 +505,8 @@ dm_rpc_test(void **state)
     rc = dm_validate_rpc(ctx, session, "/test-module:activate-software-image", output, output_cnt, false,
             NULL, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
     assert_int_equal(SR_ERR_OK, rc);
-    assert_int_equal(3, with_def_cnt); /* including default leaf */
-    assert_int_equal(3, with_def_tree_cnt);
+    assert_int_equal(4, with_def_cnt); /* including default leaf and empty container */
+    assert_int_equal(4, with_def_tree_cnt);
     sr_free_values(with_def, with_def_cnt);
     sr_free_trees(with_def_tree, with_def_tree_cnt);
 
