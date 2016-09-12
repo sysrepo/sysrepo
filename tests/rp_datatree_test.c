@@ -1179,37 +1179,6 @@ void get_value_wrapper_test(void **state){
     test_rp_sesssion_create(ctx, SR_DS_STARTUP, &ses_ctx);
 
     /* unknown model*/
-    sr_node_t *tree = NULL;
-    rc = rp_dt_get_subtree_wrapper(ctx, ses_ctx, NULL, "/non-existing:abc", &tree);
-    assert_int_equal(SR_ERR_UNKNOWN_MODEL, rc);
-
-    /* whole model xpath*/
-
-    ses_ctx->state = RP_REQ_NEW;
-    tree = NULL;
-    rc = rp_dt_get_subtree_wrapper(ctx, ses_ctx, NULL, "/test-module:*", &tree);
-    assert_int_equal(SR_ERR_INVAL_ARG, rc);
-
-    /* not existing data tree*/
-    ses_ctx->state = RP_REQ_NEW;
-    rc = rp_dt_get_subtree_wrapper(ctx, ses_ctx, NULL, "/small-module:item", &tree);
-    assert_int_equal(SR_ERR_NOT_FOUND, rc);
-
-    /* not exisiting now in existing data tree*/
-    ses_ctx->state = RP_REQ_NEW;
-    rc = rp_dt_get_subtree_wrapper(ctx, ses_ctx, NULL, "/example-module:container/list[key1='abc'][key2='def']", &tree);
-    assert_int_equal(SR_ERR_NOT_FOUND, rc);
-
-    test_rp_session_cleanup(ctx, ses_ctx);
-}
-
-void get_tree_wrapper_test(void **state){
-    int rc = 0;
-    rp_ctx_t *ctx = *state;
-    rp_session_t *ses_ctx = NULL;
-    test_rp_sesssion_create(ctx, SR_DS_STARTUP, &ses_ctx);
-
-    /* unknown model*/
     sr_val_t *value = NULL;
     rc = rp_dt_get_value_wrapper(ctx, ses_ctx, NULL, "/non-existing:abc", &value);
     assert_int_equal(SR_ERR_UNKNOWN_MODEL, rc);
@@ -1235,6 +1204,43 @@ void get_tree_wrapper_test(void **state){
     /* not exisiting now in existing data tree*/
     ses_ctx->state = RP_REQ_NEW;
     rc = rp_dt_get_value_wrapper(ctx, ses_ctx, NULL, "/example-module:container/list[key1='abc'][key2='def']", &value);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+
+    test_rp_session_cleanup(ctx, ses_ctx);
+}
+
+void get_tree_wrapper_test(void **state){
+    int rc = 0;
+    rp_ctx_t *ctx = *state;
+    rp_session_t *ses_ctx = NULL;
+    test_rp_sesssion_create(ctx, SR_DS_STARTUP, &ses_ctx);
+
+    /* unknown model*/
+    sr_node_t *tree = NULL;
+    rc = rp_dt_get_subtree_wrapper(ctx, ses_ctx, NULL, "/non-existing:abc", &tree);
+    assert_int_equal(SR_ERR_UNKNOWN_MODEL, rc);
+
+    /* whole model xpath*/
+
+    ses_ctx->state = RP_REQ_NEW;
+    tree = NULL;
+    rc = rp_dt_get_subtree_wrapper(ctx, ses_ctx, NULL, "/test-module:*", &tree);
+    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+
+    /* since yang 1.1 empty container might be present */
+    ses_ctx->state = RP_REQ_NEW;
+    rc = rp_dt_get_subtree_wrapper(ctx, ses_ctx, NULL, "/small-module:item", &tree);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(tree);
+    assert_string_equal("item", tree->name);
+    assert_int_equal(SR_CONTAINER_T, tree->type);
+    assert_true(tree->dflt);
+    sr_free_tree(tree);
+    tree = NULL;
+
+    /* not exisiting now in existing data tree*/
+    ses_ctx->state = RP_REQ_NEW;
+    rc = rp_dt_get_subtree_wrapper(ctx, ses_ctx, NULL, "/example-module:container/list[key1='abc'][key2='def']", &tree);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
     test_rp_session_cleanup(ctx, ses_ctx);

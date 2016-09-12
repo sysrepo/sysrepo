@@ -145,7 +145,7 @@ cl_get_changes_create_test(void **state)
     rc = sr_get_item(session, xpath, &val);
     assert_int_equal(rc, SR_ERR_NOT_FOUND);
 
-    rc = sr_get_subtree(session, xpath, &tree);
+    rc = sr_get_subtree(session, xpath, 0, &tree);
     assert_int_equal(rc, SR_ERR_NOT_FOUND);
 
     /* create the list instance */
@@ -220,7 +220,7 @@ cl_get_changes_modified_test(void **state)
     rc = sr_get_item(session, xpath, &val);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = sr_get_subtree(session, xpath, &tree);
+    rc = sr_get_subtree(session, xpath, 0, &tree);
     assert_int_equal(rc, SR_ERR_OK);
 
     sr_val_t new_val = {0};

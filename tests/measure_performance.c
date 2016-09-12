@@ -378,7 +378,7 @@ perf_get_subtree_test(void **state, int op_num, int *items) {
     /* perform a get-item request */
     for (size_t i = 0; i<op_num; i++){
         /* existing leaf */
-        rc = sr_get_subtree(session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &tree);
+        rc = sr_get_subtree(session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", 0, &tree);
         assert_int_equal(rc, SR_ERR_OK);
         assert_non_null(tree);
         assert_int_equal(SR_STRING_T, tree->type);
@@ -407,7 +407,7 @@ perf_get_subtree_with_data_load_test(void **state, int op_num, int *items) {
         assert_int_equal(rc, SR_ERR_OK);
 
         /* existing leaf */
-        rc = sr_get_subtree(session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &tree);
+        rc = sr_get_subtree(session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", 0, &tree);
         assert_int_equal(rc, SR_ERR_OK);
         assert_non_null(tree);
         assert_int_equal(SR_STRING_T, tree->type);
@@ -438,7 +438,7 @@ perf_get_subtrees_test(void **state, int op_num, int *items) {
     /* perform a get-subtrees request */
     for (size_t i = 0; i<op_num; i++){
         /* existing leaf */
-        rc = sr_get_subtrees(session, "/example-module:container/list/leaf", &trees, &count);
+        rc = sr_get_subtrees(session, "/example-module:container/list/leaf", 0, &trees, &count);
         assert_int_equal(SR_ERR_OK, rc);
         assert_null(trees[0].first_child);
         sr_free_trees(trees, count);
@@ -497,7 +497,7 @@ perf_get_ietf_intefaces_tree_test(void **state, int op_num, int *items) {
 
     /* perform a get-subtrees request */
     for (size_t i = 0; i<op_num; i++){
-        rc = sr_get_subtrees(session, "/ietf-interfaces:interfaces/.", &trees, &count);
+        rc = sr_get_subtrees(session, "/ietf-interfaces:interfaces/.", 0, &trees, &count);
         assert_int_equal(rc, SR_ERR_OK);
         if (0 == i) {
             total_cnt = get_nodes_cnt(trees, count);

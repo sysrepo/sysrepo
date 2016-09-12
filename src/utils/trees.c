@@ -312,3 +312,23 @@ sr_dup_trees(sr_node_t *trees, size_t count, sr_node_t **trees_dup_p)
 {
     return sr_dup_trees_ctx(trees, count, NULL, trees_dup_p);
 }
+
+sr_node_t *
+sr_node_get_child(sr_node_t *node)
+{
+    /* TODO */
+    return node->first_child;
+}
+
+sr_node_t *
+sr_node_get_next_sibling(sr_node_t *node)
+{
+    /* TODO */
+    return node->next;
+}
+
+sr_node_t *
+sr_node_get_parent(sr_node_t *node)
+{
+    return node->parent;
+}

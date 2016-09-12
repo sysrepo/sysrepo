@@ -442,7 +442,7 @@ cl_parent_subscription_tree(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 
     /* retrieve data using the tree API */
-    rc = sr_get_subtree(session, "/state-module:bus", &tree);
+    rc = sr_get_subtree(session, "/state-module:bus", 0, &tree);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* check data */
@@ -591,7 +591,7 @@ cl_exact_match_subscription_tree(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 
     /* retrieve data using the tree API */
-    rc = sr_get_subtree(session, "/state-module:bus", &tree);
+    rc = sr_get_subtree(session, "/state-module:bus", 0, &tree);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* check data */
@@ -723,7 +723,7 @@ cl_partialy_covered_by_subscription_tree(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 
     /* retrieve data */
-    rc = sr_get_subtree(session, "/state-module:bus", &tree);
+    rc = sr_get_subtree(session, "/state-module:bus", 0, &tree);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* check data */
@@ -839,7 +839,7 @@ cl_incorrect_data_subscription_tree(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 
     /* retrieve data */
-    rc = sr_get_subtree(session, "/state-module:bus", &tree);
+    rc = sr_get_subtree(session, "/state-module:bus/gps_located", 0, &tree);
     assert_int_equal(rc, SR_ERR_NOT_FOUND);
 
     /* check data */
@@ -942,7 +942,7 @@ cl_missing_subscription_tree(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 
     /* retrieve data */
-    rc = sr_get_subtree(session, "/state-module:cpu_load", &tree);
+    rc = sr_get_subtree(session, "/state-module:cpu_load", 0, &tree);
     assert_int_equal(rc, SR_ERR_NOT_FOUND);
 
     /* check data */
@@ -1078,7 +1078,7 @@ cl_nested_data_subscription_tree(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 
     /* retrieve data */
-    rc = sr_get_subtree(session, "/state-module:traffic_stats", &tree);
+    rc = sr_get_subtree(session, "/state-module:traffic_stats", 0, &tree);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* check data */
@@ -1542,13 +1542,13 @@ cl_nested_data_subscription2_tree(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 
     /* retrieve data */
-    rc = sr_get_subtree(session, "/state-module:traffic_stats/cross_road[id='0']/advanced_info", &tree);
+    rc = sr_get_subtree(session, "/state-module:traffic_stats/cross_road[id='0']/advanced_info", 0, &tree);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* check data */
     assert_non_null(tree);
     // advanced info
-    node = node->parent->next;
+    node = tree;
     assert_string_equal("advanced_info", node->name);
     assert_string_equal("state-module", node->module_name);
     assert_false(node->dflt);

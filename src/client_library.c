@@ -1020,7 +1020,8 @@ sr_free_val_iter(sr_val_iter_t *iter){
 }
 
 int
-sr_get_subtree(sr_session_ctx_t *session, const char *xpath, sr_node_t **subtree)
+sr_get_subtree(sr_session_ctx_t *session, const char *xpath, sr_get_subtree_options_t opts,
+        sr_node_t **subtree)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
     sr_mem_ctx_t *sr_mem = NULL;
@@ -1067,7 +1068,8 @@ cleanup:
 }
 
 int
-sr_get_subtrees(sr_session_ctx_t *session, const char *xpath, sr_node_t **subtrees, size_t *subtree_cnt)
+sr_get_subtrees(sr_session_ctx_t *session, const char *xpath, sr_get_subtree_options_t opts,
+        sr_node_t **subtrees, size_t *subtree_cnt)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
     sr_mem_ctx_t *sr_mem = NULL;
@@ -1106,6 +1108,15 @@ cleanup:
         sr_msg_free(msg_resp);
     }
     return cl_session_return(session, rc);
+}
+
+int
+sr_get_subtree_chunk(sr_session_ctx_t *session, const char *xpath, bool single,
+        size_t offset, size_t child_limit, size_t depth_limit,
+        sr_node_t **chunks, size_t *chunk_cnt);
+{
+    /* TODO */
+    return SR_ERR_OK;
 }
 
 int

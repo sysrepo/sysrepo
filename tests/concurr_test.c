@@ -84,7 +84,7 @@ test_execute_in_session(sr_session_ctx_t *session)
         assert_non_null(value);
         assert_int_equal(SR_STRING_T, value->type);
         sr_free_val(value);
-        rc = sr_get_subtree(session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &tree);
+        rc = sr_get_subtree(session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", 0, &tree);
         assert_int_equal(rc, SR_ERR_OK);
         assert_non_null(tree);
         assert_int_equal(SR_STRING_T, tree->type);

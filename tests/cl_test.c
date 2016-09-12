@@ -388,27 +388,32 @@ cl_get_subtree_test(void **state)
     /* perform a get-subtree request */
 
     /* illegal xpath */
-    rc = sr_get_subtree(session, "^&((", &tree);
+    rc = sr_get_subtree(session, "^&((", 0, &tree);
     assert_int_equal(SR_ERR_INVAL_ARG, rc);
     assert_null(tree);
 
     /* unknown model */
-    rc = sr_get_subtree(session, "/unknown-model:abc", &tree);
+    rc = sr_get_subtree(session, "/unknown-model:abc", 0, &tree);
     assert_int_equal(SR_ERR_UNKNOWN_MODEL, rc);
     assert_null(tree);
 
-    /* not existing data tree*/
-    rc = sr_get_subtree(session, "/small-module:item", &tree);
-    assert_int_equal(SR_ERR_NOT_FOUND, rc);
-    assert_null(tree);
+    /* since YANG 1.1 empty containers are present in data tree */
+    rc = sr_get_subtree(session, "/small-module:item", 0, &tree);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(tree);
+    assert_string_equal(tree->name, "item");
+    assert_int_equal(SR_CONTAINER_T, tree->type);
+    assert_true(tree->dflt);
+    sr_free_tree(tree);
+    tree = NULL;
 
     /* bad element in existing module returns SR_ERR_NOT_FOUND instead of SR_ERR_BAD_ELEMENT*/
-    rc = sr_get_subtree(session, "/example-module:unknown/next", &tree);
+    rc = sr_get_subtree(session, "/example-module:unknown/next", 0, &tree);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
     assert_null(tree);
 
     /* existing leaf */
-    rc = sr_get_subtree(session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &tree);
+    rc = sr_get_subtree(session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", 0, &tree);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(tree);
     assert_string_equal("leaf", tree->name);
@@ -419,7 +424,7 @@ cl_get_subtree_test(void **state)
     sr_free_tree(tree);
 
     /* container */
-    rc = sr_get_subtree(session, "/example-module:container", &tree);
+    rc = sr_get_subtree(session, "/example-module:container", 0, &tree);
     assert_int_equal(rc, SR_ERR_OK);
     // container
     assert_non_null(tree);
@@ -468,7 +473,7 @@ cl_get_subtree_test(void **state)
     sr_free_tree(tree);
 
     /* list */
-    rc = sr_get_subtree(session, "/example-module:container/list[key1='key1'][key2='key2']", &tree);
+    rc = sr_get_subtree(session, "/example-module:container/list[key1='key1'][key2='key2']", 0, &tree);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(tree);
     // list
@@ -510,7 +515,7 @@ cl_get_subtree_test(void **state)
     sr_free_tree(tree);
 
     /* leafref (transparent for user) */
-    rc = sr_get_subtree(session, "/test-module:university/classes/class[title='CCNA']/student[name='nameB']/age", &tree);
+    rc = sr_get_subtree(session, "/test-module:university/classes/class[title='CCNA']/student[name='nameB']/age", 0, &tree);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(tree);
     assert_string_equal("age", tree->name);
@@ -621,47 +626,55 @@ cl_get_subtrees_test(void **state)
     /* perform a get-subtrees request */
 
     /* illegal xpath */
-    rc = sr_get_subtrees(session, "^&((",  &trees, &tree_cnt);
+    rc = sr_get_subtrees(session, "^&((",  0, &trees, &tree_cnt);
     assert_int_equal(SR_ERR_INVAL_ARG, rc);
 
     /* unknown model */
-    rc = sr_get_subtrees(session, "/unknown-model:abc", &trees, &tree_cnt);
+    rc = sr_get_subtrees(session, "/unknown-model:abc", 0, &trees, &tree_cnt);
     assert_int_equal(SR_ERR_UNKNOWN_MODEL, rc);
 
-    /* not existing data tree*/
-    rc = sr_get_subtrees(session, "/small-module:item", &trees, &tree_cnt);
-    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+    /* since YANG 1.1 empty containers are present in data tree */
+    rc = sr_get_subtrees(session, "/small-module:item", 0, &trees, &tree_cnt);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(1, tree_cnt);
+    assert_non_null(trees);
+    assert_string_equal(trees->name, "item");
+    assert_int_equal(SR_CONTAINER_T, trees->type);
+    assert_true(trees->dflt);
+    sr_free_trees(trees, tree_cnt);
+    trees = NULL;
+    tree_cnt = 0;
 
     /* bad element in existing module produces SR_ERR_NOT_FOUND instead of SR_ERR_BAD_ELEMENT */
-    rc = sr_get_subtrees(session, "/example-module:unknown", &trees, &tree_cnt);
+    rc = sr_get_subtrees(session, "/example-module:unknown", 0, &trees, &tree_cnt);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
     /* container */
-    rc = sr_get_subtrees(session, "/ietf-interfaces:interfaces/*", &trees, &tree_cnt);
+    rc = sr_get_subtrees(session, "/ietf-interfaces:interfaces/*", 0, &trees, &tree_cnt);
     assert_int_equal(rc, SR_ERR_OK);
     assert_int_equal(3, tree_cnt);
     sr_free_trees(trees, tree_cnt);
 
     /* list without keys */
-    rc = sr_get_subtrees(session, "/ietf-interfaces:interfaces/interface", &trees, &tree_cnt);
+    rc = sr_get_subtrees(session, "/ietf-interfaces:interfaces/interface", 0, &trees, &tree_cnt);
     assert_int_equal(rc, SR_ERR_OK);
     assert_int_equal(3, tree_cnt);
     sr_free_trees(trees, tree_cnt);
 
     /* list with keys */
-    rc = sr_get_subtrees(session, "/ietf-interfaces:interfaces/interface[name='eth0']/*", &trees, &tree_cnt);
+    rc = sr_get_subtrees(session, "/ietf-interfaces:interfaces/interface[name='eth0']/*", 0, &trees, &tree_cnt);
     assert_int_equal(rc, SR_ERR_OK);
     assert_int_equal(5, tree_cnt);
     sr_free_trees(trees, tree_cnt);
 
     /* leaf-list*/
-    rc = sr_get_subtrees(session, "/test-module:main/numbers", &trees, &tree_cnt);
+    rc = sr_get_subtrees(session, "/test-module:main/numbers", 0, &trees, &tree_cnt);
     assert_int_equal(rc, SR_ERR_OK);
     assert_int_equal(3, tree_cnt);
     sr_free_trees(trees, tree_cnt);
 
     /* leafrefs */
-    rc = sr_get_subtrees(session, "/test-module:university/classes/class[title='CCNA']/student[name='nameB']/*", &trees, &tree_cnt);
+    rc = sr_get_subtrees(session, "/test-module:university/classes/class[title='CCNA']/student[name='nameB']/*", 0, &trees, &tree_cnt);
     assert_int_equal(rc, SR_ERR_OK);
     assert_int_equal(2, tree_cnt);
     sr_free_trees(trees, tree_cnt);

@@ -109,7 +109,7 @@ perf_get_subtree_test(void **state) {
     for (size_t i = 0; i<100000; i++){
 
         /* existing leaf */
-        rc = sr_get_subtree(session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &tree);
+        rc = sr_get_subtree(session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", 0, &tree);
         assert_int_equal(rc, SR_ERR_OK);
         assert_non_null(tree);
         assert_int_equal(SR_STRING_T, tree->type);
