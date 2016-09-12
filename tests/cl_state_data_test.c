@@ -873,6 +873,84 @@ cl_nested_data_subscription2(void **state)
     sr_list_cleanup(xpath_retrieved);
 }
 
+static void
+cl_all_state_data(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+    sr_session_ctx_t *session = NULL;
+    sr_subscription_ctx_t *subscription = NULL;
+    sr_list_t *xpath_retrieved = NULL;
+    sr_val_t *values = NULL;
+    size_t cnt = 0;
+    int rc = SR_ERR_OK;
+
+    rc = sr_list_init(&xpath_retrieved);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* start session */
+    rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_module_change_subscribe(session, "state-module", cl_whole_module_cb, NULL,
+            0, SR_SUBSCR_DEFAULT, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* subscribe data providers */
+    rc = sr_dp_get_items_subscribe(session, "/state-module:bus", cl_dp_bus, xpath_retrieved, SR_SUBSCR_CTX_REUSE, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_dp_get_items_subscribe(session, "/state-module:traffic_stats", cl_dp_traffic_stats, xpath_retrieved, SR_SUBSCR_CTX_REUSE, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* retrieve data */
+    rc = sr_get_items(session, "/state-module:*", &values, &cnt);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* check data */
+    assert_non_null(values);
+    assert_int_equal(2, cnt);
+
+    sr_free_values(values, cnt);
+
+    /* check xpath that were retrieved */
+    const char *xpath_expected_to_be_loaded [] = {
+        "/state-module:traffic_stats",
+        "/state-module:traffic_stats/cross_road",
+        "/state-module:traffic_stats/cross_road[id='0']/traffic_light",
+        "/state-module:traffic_stats/cross_road[id='0']/advanced_info",
+        "/state-module:traffic_stats/cross_road[id='1']/traffic_light",
+        "/state-module:traffic_stats/cross_road[id='1']/advanced_info",
+        "/state-module:traffic_stats/cross_road[id='2']/traffic_light",
+        "/state-module:traffic_stats/cross_road[id='2']/advanced_info",
+    };
+    size_t expected_xp_cnt = sizeof(xpath_expected_to_be_loaded) / sizeof(*xpath_expected_to_be_loaded);
+    assert_int_equal(expected_xp_cnt, xpath_retrieved->count);
+
+    for (size_t i = 0; i < expected_xp_cnt; i++) {
+        bool match = false;
+        for (size_t j = 0; xpath_retrieved->count; j++) {
+            if (0 == strcmp(xpath_expected_to_be_loaded[i], (char *) xpath_retrieved->data[j])) {
+                match = true;
+                break;
+            }
+        }
+        if (!match) {
+            /* assert xpath that can not be found */
+            assert_string_equal("", xpath_expected_to_be_loaded[i]);
+        }
+    }
+
+    /* cleanup */
+    sr_unsubscribe(session, subscription);
+    sr_session_stop(session);
+
+    for (size_t i = 0; i < xpath_retrieved->count; i++) {
+        free(xpath_retrieved->data[i]);
+    }
+    sr_list_cleanup(xpath_retrieved);
+}
+
 int
 main()
 {
@@ -885,6 +963,7 @@ main()
         cmocka_unit_test_setup_teardown(cl_dp_neg_subscription, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_nested_data_subscription, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_nested_data_subscription2, sysrepo_setup, sysrepo_teardown),
+        cmocka_unit_test_setup_teardown(cl_all_state_data, sysrepo_setup, sysrepo_teardown),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);
