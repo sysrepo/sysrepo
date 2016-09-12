@@ -1,7 +1,7 @@
 /**
- * @file delete_item_example.cpp
+ * @file Xpath.cpp
  * @author Mislav Novakovic <mislav.novakovic@sartura.hr>
- * @brief Example usage of delete_item_example function.
+ * @brief Sysrepo class header implementation for C header xpath_utils.h
  *
  * @copyright
  * Copyright 2016 Deutsche Telekom AG.
@@ -19,28 +19,29 @@
  * limitations under the License.
  */
 
-#include <iostream>
+#include "Sysrepo.h"
+#include "Xpath.h"
 
-#include "Session.h"
+extern "C" {
+#include "sysrepo/xpath_utils.h"
+}
+
+
 
 using namespace std;
 
-int
-main(int argc, char **argv)
-{
-    try {
-        S_Connection conn(new Connection("app4"));
+Xpath_Ctx::Xpath_Ctx() {
+    sr_xpath_ctx_t *state = NULL;
+    state = (sr_xpath_ctx_t *) calloc(1, sizeof(*state));
 
-        S_Session sess(new Session(conn));
+    if (state == NULL)
+        throw_exception(SR_ERR_NOMEM);
 
-        const char *xpath = "/ietf-interfaces:interfaces/interface[name='gigaeth0']/ietf-ip:ipv6/address[ip='fe80::ab8']";
-
-        sess->delete_item(xpath);
-        sess->commit();
-
-    } catch( const std::exception& e ) {
-        cout << e.what() << endl;
-    }
-
-    return 0;
+    _free = true;
+    _state = state;
+}
+Xpath_Ctx::Xpath_Ctx(sr_xpath_ctx_t *state) {_state = state; _free = false;}
+Xpath_Ctx::~Xpath_Ctx() {
+    if (_state != NULL && _free)
+        free(_state);
 }

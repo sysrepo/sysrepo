@@ -26,7 +26,9 @@
 #include <memory>
 #include <vector>
 
+#include "Internal.h"
 #include "Struct.h"
+#include "Tree.h"
 #include "Sysrepo.h"
 #include "Connection.h"
 #include "Session.h"
@@ -41,21 +43,21 @@ class Session:public Throw_Exception
 {
 
 public:
-    Session(shared_ptr<Connection> conn, sr_datastore_t datastore = SR_DS_RUNNING, \
+    Session(S_Connection conn, sr_datastore_t datastore = SR_DS_RUNNING, \
             const sr_conn_options_t opts = SESS_DEFAULT, const char *user_name = NULL);
     Session(sr_session_ctx_t *sess, sr_conn_options_t opts = SR_CONN_DEFAULT);
     void session_stop();
     void session_switch_ds(sr_datastore_t ds);
-    shared_ptr<Error> get_last_error();
-    shared_ptr<Errors> get_last_errors();
-    shared_ptr<Schemas> list_schemas();
-    shared_ptr<Schema_Content> get_schema(const char *module_name, const char *revision,\
+    S_Error get_last_error();
+    S_Errors get_last_errors();
+    S_Schemas list_schemas();
+    S_Schema_Content get_schema(const char *module_name, const char *revision,\
                                const char *submodule_name, sr_schema_format_t format);
-    shared_ptr<Val> get_item(const char *xpath);
-    shared_ptr<Vals> get_items(const char *xpath);
-    shared_ptr<Iter_Value> get_items_iter(const char *xpath);
-    shared_ptr<Val> get_item_next(shared_ptr<Iter_Value> iter);
-    void set_item(const char *xpath, shared_ptr<Val> value, const sr_edit_options_t opts = EDIT_DEFAULT);
+    S_Val get_item(const char *xpath);
+    S_Vals get_items(const char *xpath);
+    S_Iter_Value get_items_iter(const char *xpath);
+    S_Val get_item_next(S_Iter_Value iter);
+    void set_item(const char *xpath, S_Val value, const sr_edit_options_t opts = EDIT_DEFAULT);
     void delete_item(const char *xpath, const sr_edit_options_t opts = EDIT_DEFAULT);
     void move_item(const char *xpath, const sr_move_position_t position, const char *relative_item = NULL);
     void refresh();
@@ -75,45 +77,76 @@ private:
     sr_session_ctx_t *_sess;
     sr_datastore_t _datastore;
     sr_conn_options_t _opts;
+    S_Connection _conn;
 };
+
+#ifndef SWIG
+typedef int (*cpp_module_change_cb)(S_Session session, const char *module_name, sr_notif_event_t event, void *private_ctx);
+typedef int (*cpp_subtree_change_cb)(S_Session session, const char *xpath, sr_notif_event_t event, void *private_ctx);
+typedef int (*cpp_rpc_cb)(const char *xpath, S_Vals input, S_Vals output, void *private_ctx);
+typedef int (*cpp_rpc_tree_cb)(const char *xpath, S_Trees input, S_Trees output, void *private_ctx);
+typedef void (*cpp_event_notif_cb)(const char *xpath, S_Vals vals, void *private_ctx);
+typedef void (*cpp_event_notif_tree_cb)(const char *xpath, S_Trees trees, void *private_ctx);
+typedef int (*cpp_dp_get_items_cb)(const char *xpath, S_Vals vals, void *private_ctx);
+class wrap_cb {
+public:
+    void *private_ctx;
+    cpp_module_change_cb module_change;
+    cpp_subtree_change_cb subtree_change;
+    cpp_rpc_cb rpc;
+    cpp_rpc_tree_cb rpc_tree;
+	cpp_event_notif_cb event_notif;
+	cpp_event_notif_tree_cb event_notif_tree;
+	cpp_dp_get_items_cb dp_get_items;
+};
+#endif
 
 class Subscribe:public Throw_Exception
 {
 
 public:
-    Subscribe(shared_ptr<Session> sess);
+    Subscribe(S_Session sess);
 
-    void module_change_subscribe(const char *module_name, sr_module_change_cb callback, void *private_ctx = \
+#ifndef SWIG
+    void module_change_subscribe(const char *module_name, cpp_module_change_cb callback, void *private_ctx = \
                                 NULL, uint32_t priority = 0, sr_subscr_options_t opts = SUBSCR_DEFAULT);
-    void subtree_change_subscribe(const char *xpath, sr_subtree_change_cb callback, void *private_ctx = NULL,\
+    void subtree_change_subscribe(const char *xpath, cpp_subtree_change_cb callback, void *private_ctx = NULL,\
                                  uint32_t priority = 0, sr_subscr_options_t opts = SUBSCR_DEFAULT);
     void module_install_subscribe(sr_module_install_cb callback, void *private_ctx = NULL,\
                                   sr_subscr_options_t opts = SUBSCR_DEFAULT);
     void feature_enable_subscribe(sr_feature_enable_cb callback, void *private_ctx = NULL,\
                                   sr_subscr_options_t opts = SUBSCR_DEFAULT);
+    void rpc_subscribe(const char *xpath, cpp_rpc_cb callback, void *private_ctx = NULL,\
+                       sr_subscr_options_t opts = SUBSCR_DEFAULT);
+    void event_notif_subscribe_tree(const char *xpath, cpp_event_notif_tree_cb callback, void *private_ctx = NULL,\
+                                    sr_subscr_options_t opts = SUBSCR_DEFAULT);
+    void event_notif_subscribe(const char *xpath, cpp_event_notif_cb callback, void *private_ctx = NULL,\
+                               sr_subscr_options_t opts = SUBSCR_DEFAULT);
+    void rpc_subscribe_tree(const char *xpath, cpp_rpc_tree_cb callback, void *private_ctx = NULL,\
+                            sr_subscr_options_t opts = SUBSCR_DEFAULT);
+    void dp_get_items_subscribe(const char *xpath, cpp_dp_get_items_cb callback, void *private_ctx, \
+                               sr_subscr_options_t opts = SUBSCR_DEFAULT);
+#endif
     void unsubscribe();
 
-    shared_ptr<Iter_Change> get_changes_iter(const char *xpath);
-    shared_ptr<Operation> get_change_next(shared_ptr<Iter_Change> iter, shared_ptr<Val_Holder> new_value,\
-                                     shared_ptr<Val_Holder> old_value);
-    /*void rpc_subscribe(const char *xpath, sr_rpc_cb callback, void *private_ctx = NULL,\
-                       sr_subscr_options_t opts = SUBSCR_DEFAULT);*/
-    //void rpc_send(const char *xpath, Values *input, Values *output);
-    void dp_get_items_subscribe(const char *xpath, sr_dp_get_items_cb callback, void *private_ctx, \
-                               sr_subscr_options_t opts = SUBSCR_DEFAULT);
+    S_Iter_Change get_changes_iter(const char *xpath);
+    S_Change get_change_next(S_Iter_Change iter);
+    S_Vals rpc_send(const char *xpath, S_Vals input);
+    S_Trees rpc_send_tree(const char *xpath, S_Trees input);
 
 #ifdef SWIG
-        void Destructor_Subscribe();
-        sr_subscription_ctx_t *swig_sub;
-        shared_ptr<Session> swig_sess;
-        std::vector<void*> wrap_cb_l;
+    void Destructor_Subscribe();
+    sr_subscription_ctx_t *swig_sub;
+    S_Session swig_sess;
+    std::vector<void*> wrap_cb_l;
 #else
-        ~Subscribe();
+    std::vector<S_wrap_cb> _wrap_cb_l;
+    ~Subscribe();
 #endif
 
 private:
     sr_subscription_ctx_t *_sub;
-    shared_ptr<Session> _sess;
+    S_Session _sess;
     void d_Subscribe();
 };
 

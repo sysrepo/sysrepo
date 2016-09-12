@@ -1,7 +1,7 @@
 /**
- * @file Sysrepo.h
+ * @file Internal.h
  * @author Mislav Novakovic <mislav.novakovic@sartura.hr>
- * @brief Sysrepo Sysrepo class header.
+ * @brief Sysrepo class header for internal C++ classes.
  *
  * @copyright
  * Copyright 2016 Deutsche Telekom AG.
@@ -19,8 +19,8 @@
  * limitations under the License.
  */
 
-#ifndef SYSREPO_H
-#define SYSREPO_H
+#ifndef INTERNAL_H
+#define INTERNAL_H
 
 #define S_Iter_Value       std::shared_ptr<Iter_Value>
 #define S_Iter_Change      std::shared_ptr<Iter_Change>
@@ -50,89 +50,46 @@
 #define S_Logs             std::shared_ptr<Logs>
 #define S_Change           std::shared_ptr<Change>
 #define S_Counter          std::shared_ptr<Counter>
-#define S_wrap_cb          std::shared_ptr<wrap_cb>
-
-#include <iostream>
-#include <stdexcept>
-
-#include "Internal.h"
+#define S_wrap_cb        std::shared_ptr<wrap_cb>
 
 extern "C" {
 #include "sysrepo.h"
+#include "sysrepo/trees.h"
 }
 
-typedef enum conn_flag_e {
-    CONN_DEFAULT = 0,
-    CONN_DAEMON_REQUIRED = 1,
-    CONN_DAEMON_START = 2,
-} conn_flag_t;
+using namespace std;
 
-typedef enum session_flag_e {
-    SESS_DEFAULT = 0,
-    SESS_CONFIG_ONLY = 1,
-} session_flag_t;
+typedef enum free_type_e {
+    VAL,
+    VALS,
+    VALS_POINTER,
+    TREE,
+    TREES,
+    TREES_POINTER,
+} free_type_t;
 
-typedef enum edit_flag_e {
-    EDIT_DEFAULT = 0,
-    EDIT_NON_RECURSIVE = 1,
-    EDIT_STRICT = 2,
-} edit_flag_t;
-
-typedef enum subscr_flag_e {
-    SUBSCR_DEFAULT = 0,
-    SUBSCR_CTX_REUSE = 1,
-    SUBSCR_PASSIVE = 2,
-    SUBSCR_VERIFIER = 4,
-} subscr_flag_t;
-
-typedef enum datastore_e {
-    DS_STARTUP = 0,
-    DS_RUNNING = 1,
-    DS_CANDIDATE = 2,
-} datastore_t;
-
-class Throw_Exception
-{
-
-protected:
-    void throw_exception(int error);
-};
-
-class Logs
+class Counter
 {
 public:
-    Logs();
-    void set_stderr(sr_log_level_t log_level);
-    void set_syslog(sr_log_level_t log_level);
-};
-
-class Schemas:public Throw_Exception
-{
-public:
-    Schemas(sr_schema_t *sch, size_t cnt);
-    sr_schema_t *get_val();
-    const char *get_module_name() {return _sch[_pos].module_name;};
-    size_t get_cnt();
-    bool Next();
-    bool Prev();
-    ~Schemas();
+    Counter(sr_val_t *val);
+    Counter(sr_val_t *vals, size_t cnt);
+    Counter(sr_val_t **vals, size_t *cnt);
+    Counter(sr_node_t *tree);
+    Counter(sr_node_t *trees, size_t cnt);
+    Counter(sr_node_t **trees, size_t *cnt);
+    ~Counter();
 
 private:
-    sr_schema_t *_sch;
+    sr_val_t *_val;
+    sr_val_t *_vals;
     size_t _cnt;
-    size_t _pos;
-};
+    sr_val_t **p_vals;
+    size_t *p_cnt;
 
-class Schema_Content:public Throw_Exception
-{
-
-public:
-    Schema_Content(char *con);
-    char *get();
-    ~Schema_Content();
-
-private:
-    char *_con;
+    sr_node_t *_tree;
+    sr_node_t *_trees;
+    sr_node_t **p_trees;
+    free_type_t _t;
 };
 
 #endif

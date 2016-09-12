@@ -62,25 +62,26 @@ def print_value(value):
     else:
         print "(unprintable)"
 
-def print_current_config(session, module_name):
-    select_xpath = "/" + module_name + ":*//*"
+def test_rpc_cb(xpath, in_vals, out_vals, private_ctx):
+#    try:
+        print "\n\n ========== RPC CALLED =========="
+        out_vals.allocate(3)
 
-    values = session.get_items(select_xpath)
+        if (in_vals == None or out_vals == None):
+            return
 
-    for i in range(values.val_cnt()):
-        print_value(values.val(i))
+        for n in range(in_vals.val_cnt()):
+            print_value(in_vals.val(n))
 
-def module_change_cb(sess, module_name, event, private_ctx):
-    print "\n\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: ==========\n"
+        out_vals.val(0).set("/test-module:activate-software-image/status", "The image acmefw-2.3 is being installed.", sr.SR_STRING_T)
+        out_vals.val(1).set("/test-module:activate-software-image/version", "2.3", sr.SR_STRING_T)
+        out_vals.val(2).set("/test-module:activate-software-image/location", "/", sr.SR_STRING_T)
 
-    print_current_config(sess, module_name)
+#    except Exception as e:
+#        print e
 
 try:
-    module_name = "ietf-interfaces"
-    if len(sys.argv) > 1:
-        module_name = sys.argv[1]
-    else:
-        print "\nYou can pass the module name to be subscribed as the first argument"
+    module_name = "test-module"
 
     # connect to sysrepo
     conn = sr.Connection("example_application")
@@ -91,19 +92,26 @@ try:
     # subscribe for changes in running config */
     subscribe = sr.Subscribe(sess)
 
-    subscribe.module_change_subscribe(module_name, module_change_cb)
 
-    print "\n\n ========== READING STARTUP CONFIG: ==========\n"
-    try:
-        print_current_config(sess, module_name)
-    except Exception as e:
-        print e
+    print "\n\n ========== SUBSCRIBE TO RPC CALL =========="
+    subscribe.rpc_subscribe("/test-module:activate-software-image", test_rpc_cb);
 
-    print "\n\n ========== STARTUP CONFIG APPLIED AS RUNNING ==========\n"
+    in_vals = sr.Vals(2);
 
-    sr.global_loop()
+    in_vals.val(0).set("/test-module:activate-software-image/image-name", "acmefw-2.3", sr.SR_STRING_T)
+    in_vals.val(1).set("/test-module:activate-software-image/location", "/", sr.SR_STRING_T)
 
-    print "Application exit requested, exiting.\n";
+
+    print "\n\n ========== START RPC CALL =========="
+    out_vals = subscribe.rpc_send("/test-module:activate-software-image", in_vals);
+
+    print "\n\n ========== PRINT RETURN VALUE =========="
+    for n in range (out_vals.val_cnt()):
+        print_value(out_vals.val(n))
+
+    print "\n\n ========== END PROGRAM =========="
 
 except Exception as e:
     print e
+
+
