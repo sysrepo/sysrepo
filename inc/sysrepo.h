@@ -707,6 +707,35 @@ int sr_get_items_iter(sr_session_ctx_t *session, const char *xpath, sr_val_iter_
 int sr_get_item_next(sr_session_ctx_t *session, sr_val_iter_t *iter, sr_val_t **value);
 
 /**
+ * @brief Flags used to customize the behaviour of ::sr_get_subtree and ::sr_get_subtrees calls.
+ */
+typedef enum sr_get_subtree_flag_e {
+    /**
+     * Default get-subtree(s) behaviour.
+     * All matched subtrees are sent with all their content in one message.
+     */
+    SR_GET_SUBTREE_DEFAULT = 0,
+
+    /**
+     * The iterative get-subtree(s) behaviour.
+     * The matched subtrees are sent in chunks and only as needed while they are iterated
+     * through using functions ::sr_node_get_child, ::sr_node_get_next_sibling and
+     * ::sr_node_get_parent from "sysrepo/trees.h". This behaviour gives much better
+     * performance than the default one if only a small portion of matched subtree(s) is
+     * actually iterated through.
+     * @note It is considered a programming error to access ::next, ::prev, ::parent,
+     * ::first_child and ::last_child data members of sr_node_t on a partially loaded tree.
+     */
+    SR_GET_SUBTREE_ITERATIVE = 1
+} sr_get_subtree_flag_t;
+
+/**
+ * @brief Options for get-subtree and get-subtrees operations.
+ * It is supposed to be bitwise OR-ed value of any ::sr_get_subtree_flag_t flags.
+ */
+typedef uint32_t sr_get_subtree_options_t;
+
+/**
  * @brief Retrieves a single subtree whose root node is stored under the provided XPath.
  * If multiple nodes matches the xpath SR_ERR_INVAL_ARG is returned.
  *
@@ -725,12 +754,14 @@ int sr_get_item_next(sr_session_ctx_t *session, sr_val_iter_t *iter, sr_val_t **
  *
  * @param[in] session Session context acquired with ::sr_session_start call.
  * @param[in] xpath @ref xp_page "XPath" identifier referencing the root node of the subtree to be retrieved.
+ * @param[in] opts Options overriding default behavior of this operation.
  * @param[out] subtree Nested structure storing all data of the requested subtree
  * (allocated by the function, it is supposed to be freed by the caller using ::sr_free_tree).
  *
  * @return Error code (SR_ERR_OK on success)
  */
-int sr_get_subtree(sr_session_ctx_t *session, const char *xpath, sr_node_t **subtree);
+int sr_get_subtree(sr_session_ctx_t *session, const char *xpath, sr_get_subtree_options_t opts,
+        sr_node_t **subtree);
 
 /**
  * @brief Retrieves an array of subtrees whose root nodes match the provided XPath.
@@ -758,13 +789,15 @@ int sr_get_subtree(sr_session_ctx_t *session, const char *xpath, sr_node_t **sub
  *
  * @param[in] session Session context acquired with ::sr_session_start call.
  * @param[in] xpath @ref xp_page "XPath" identifier referencing root nodes of subtrees to be retrieved.
+ * @param[in] opts Options overriding default behavior of this operation.
  * @param[out] subtrees Array of nested structures storing all data of the requested subtrees
  * (allocated by the function, it is supposed to be freed by the caller using ::sr_free_trees).
  * @param[out] subtree_cnt Number of returned trees in the subtrees array.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int sr_get_subtrees(sr_session_ctx_t *session, const char *xpath, sr_node_t **subtrees, size_t *subtree_cnt);
+int sr_get_subtrees(sr_session_ctx_t *session, const char *xpath, sr_get_subtree_options_t opts,
+        sr_node_t **subtrees, size_t *subtree_cnt);
 
 
 ////////////////////////////////////////////////////////////////////////////////

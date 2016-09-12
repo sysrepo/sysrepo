@@ -63,4 +63,24 @@ int sr_feature_enable(sr_session_ctx_t *session, const char *module_name, const 
  */
 int sr_check_enabled_running(sr_session_ctx_t *session, const char *module_name, bool *res);
 
+/**
+ * @brief Get the first or a next chunk of gradually downloaded subtree(s).
+ * The first chunk is the upper portion of requested subtree(s), while the following
+ * chunks consist of all the nodes inside a pre-configured diameter in the direction of tree
+ * iteration.
+ *
+ * @param[in] session Session context acquired with ::sr_session_start call.
+ * @param[in] xpath @ref xp_page "XPath" identifier referencing root nodes of subtrees to
+ * partially receive (first chunk) or a starting point for the next chunk.
+ * @param[in] first Set to TRUE if this is the first chunk of data to get.
+ * @param[in] single Set to TRUE if the XPath should reference only a single node.
+ *                   Function returns SR_ERR_INVAL_ARG if that is not the case.
+ * @param[out] chunks Array of chunks (sub-sub-trees) returned by this call.
+ * @param[out] chunk_cnt Number of returned chunks.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_get_subtree_chunk(sr_session_ctx_t *session, const char *xpath, bool first, bool single,
+        sr_node_t **chunks, size_t *chunk_cnt);
+
 #endif /* CLIENT_LIBRARY_H_ */
