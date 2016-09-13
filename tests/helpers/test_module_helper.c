@@ -206,7 +206,7 @@ createDataTreeTestModule()
     assert_non_null(n);
 
     /* validate & save */
-    assert_int_equal(0, lyd_validate(&r, LYD_OPT_STRICT | LYD_OPT_CONFIG));
+    assert_int_equal(0, lyd_validate(&r, LYD_OPT_STRICT | LYD_OPT_CONFIG, NULL));
     assert_int_equal(SR_ERR_OK, sr_save_data_tree_file(TEST_MODULE_DATA_FILE_NAME, r));
 
     lyd_free_withsiblings(r);
@@ -230,7 +230,7 @@ createDataTreeExampleModule()
 #define XPATH "/example-module:container/list[key1='key1'][key2='key2']/leaf"
 
     root = lyd_new_path(NULL, ctx, XPATH, "Leaf value", 0, 0);
-    assert_int_equal(0, lyd_validate(&root, LYD_OPT_STRICT | LYD_OPT_CONFIG));
+    assert_int_equal(0, lyd_validate(&root, LYD_OPT_STRICT | LYD_OPT_CONFIG, NULL));
     assert_int_equal(SR_ERR_OK, sr_save_data_tree_file(EXAMPLE_MODULE_DATA_FILE_NAME, root));
 
     lyd_free_withsiblings(root);
@@ -263,7 +263,7 @@ createDataTreeLargeExampleModule(int list_count)
     }
     lyd_new_path(root, ctx, "/example-module:container/list[key1='key1'][key2='key2']/leaf", "Leaf value", 0, 0);
 
-    assert_int_equal(0, lyd_validate(&root, LYD_OPT_STRICT | LYD_OPT_CONFIG));
+    assert_int_equal(0, lyd_validate(&root, LYD_OPT_STRICT | LYD_OPT_CONFIG, NULL));
     assert_int_equal(SR_ERR_OK, sr_save_data_tree_file(EXAMPLE_MODULE_DATA_FILE_NAME, root));
 
     lyd_free_withsiblings(root);
@@ -320,7 +320,7 @@ createDataTreeLargeIETFinterfacesModule(size_t if_count)
     }
 
 
-    assert_int_equal(0, lyd_validate(&root, LYD_OPT_STRICT | LYD_OPT_CONFIG));
+    assert_int_equal(0, lyd_validate(&root, LYD_OPT_STRICT | LYD_OPT_CONFIG, NULL));
     assert_int_equal(SR_ERR_OK, sr_save_data_tree_file(TEST_DATA_SEARCH_DIR"ietf-interfaces"SR_STARTUP_FILE_EXT, root));
 
     lyd_free_withsiblings(root);
@@ -372,7 +372,7 @@ createDataTreeIETFinterfacesModule(){
     lyd_new_leaf(node, module_interfaces, "type", "ethernetCsmacd");
     lyd_new_leaf(node, module_interfaces, "enabled", "false");
 
-    assert_int_equal(0, lyd_validate(&root, LYD_OPT_STRICT | LYD_OPT_CONFIG));
+    assert_int_equal(0, lyd_validate(&root, LYD_OPT_STRICT | LYD_OPT_CONFIG, NULL));
     assert_int_equal(SR_ERR_OK, sr_save_data_tree_file(TEST_DATA_SEARCH_DIR"ietf-interfaces"SR_STARTUP_FILE_EXT, root));
 
     lyd_free_withsiblings(root);

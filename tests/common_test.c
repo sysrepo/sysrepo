@@ -81,7 +81,7 @@ createDataTree(struct ly_ctx *ctx, struct lyd_node **root) {
     assert_non_null(node);
     assert_int_equal(0, lyd_insert_after(*root, node));
 
-    assert_int_equal(0, lyd_validate(root, LYD_OPT_STRICT | LYD_OPT_CONFIG));
+    assert_int_equal(0, lyd_validate(root, LYD_OPT_STRICT | LYD_OPT_CONFIG, NULL));
 }
 
 static void
@@ -98,7 +98,7 @@ createDataTreeWithAugments(struct ly_ctx *ctx, struct lyd_node **root){
     lyd_new_leaf(*root, module, "info", "info 123");
 
     /* add default values */
-    assert_int_equal(0, lyd_validate(root, LYD_OPT_STRICT | LYD_OPT_CONFIG));
+    assert_int_equal(0, lyd_validate(root, LYD_OPT_STRICT | LYD_OPT_CONFIG, NULL));
 }
 
 /*
@@ -743,7 +743,7 @@ sr_node_t_with_augments_test(void **state)
         assert_int_equal(SR_ERR_OK, sr_tree_to_dt(ly_ctx, trees + i, NULL, false, &data_tree2));
     }
     /* add default values */
-    assert_int_equal(0, lyd_validate(&data_tree2, LYD_OPT_STRICT | LYD_OPT_CONFIG));
+    assert_int_equal(0, lyd_validate(&data_tree2, LYD_OPT_STRICT | LYD_OPT_CONFIG, NULL));
     lyd_print_fd(STDOUT_FILENO, data_tree2, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT);
 
     /* compare with original */
