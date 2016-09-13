@@ -79,9 +79,9 @@ typedef struct test_s{
 void
 print_measure_header(const char *title){
     printf("\n\n\t\t%s", title);
-    printf("\n%-32s| %-11s| %-10s| %-12s | %-20s\n",
-            "Operation", "ops/sec", "items/op", "op performed", "test time");
-    printf("------------------------------------------------------------------------------------");
+    printf("\n%-32s| %10s | %10s | %13s | %10s | %10s\n",
+            "Operation", "ops/sec", "items/op", "ops performed", "items/sec", "test time");
+    printf("---------------------------------------------------------------------------------------------------\n");
 }
 
 /**
@@ -120,9 +120,8 @@ measure(void (*func)(void **, int, int *), const char *name, int op_count, void 
     timeval_subtract(&diff, &tv2, &tv1);
 
     seconds = diff.tv_sec + 0.000001*diff.tv_usec;
-    printf("\n%-32s| %11.2f| %10d| %12d | %11.6f",
-            name, ((double) op_count)/ seconds, items, op_count, seconds);
-
+    printf("%-32s| %10.0f | %10d | %13d | %10.0f | %10.2f\n",
+            name, ((double) op_count)/ seconds, items, op_count, ((double) op_count * items)/ seconds, seconds);
 }
 
 void
