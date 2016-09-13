@@ -533,6 +533,7 @@ S_Val Val::dup() {
 Vals::Vals(const sr_val_t *vals, const size_t cnt, S_Counter counter) {
     _vals = (sr_val_t *) vals;
     _cnt = (size_t) cnt;
+    p_cnt = NULL;
 
     _counter = counter;
     _allocate = false;
@@ -550,6 +551,7 @@ Vals::Vals(size_t cnt) {
         throw_exception(ret);
 
     _cnt = cnt;
+    p_cnt = NULL;
     S_Counter counter(new Counter(_vals, _cnt));
     _counter = counter;
     _allocate = false;
@@ -557,6 +559,7 @@ Vals::Vals(size_t cnt) {
 Vals::Vals() {
     _vals = NULL;
     _cnt = 0;
+    p_cnt = NULL;
     S_Counter counter(new Counter(&_vals, &_cnt));
     _counter = counter;
     _allocate = true;
@@ -688,6 +691,7 @@ Iter_Change::~Iter_Change() {if (_iter) sr_free_change_iter(_iter);}
 Change::Change() {
     _new = NULL;
     _old = NULL;
+    _oper = NULL;
     S_Counter counter_old(new Counter(_old));
     S_Counter counter_new(new Counter(_new));
 

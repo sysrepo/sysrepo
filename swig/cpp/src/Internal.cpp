@@ -29,31 +29,47 @@ extern "C" {
 
 using namespace std;
 
+void Counter::init_all() {
+    _val = NULL;
+    _vals = NULL;
+    _cnt = 0;
+    p_vals = NULL;
+    p_cnt = NULL;
 
+    _tree = NULL;
+    _trees = NULL;
+    p_trees = NULL;
+}
 Counter::Counter(sr_val_t *val) {
+    Counter::init_all();
     _val = val;
     _t = VAL;
 }
 Counter::Counter(sr_val_t *vals, size_t cnt) {
+    Counter::init_all();
     _vals = vals;
     _cnt = cnt;
     _t = VALS;
 }
 Counter::Counter(sr_val_t **vals, size_t *cnt) {
+    Counter::init_all();
     p_vals = vals;
     p_cnt = cnt;
     _t = VALS_POINTER;
 }
 Counter::Counter(sr_node_t *tree) {
+    Counter::init_all();
     _tree = tree;
     _t = TREE;
 }
 Counter::Counter(sr_node_t *trees, size_t cnt) {
+    Counter::init_all();
     _trees = trees;
     _cnt = cnt;
     _t = TREES;
 }
 Counter::Counter(sr_node_t **trees, size_t *cnt) {
+    Counter::init_all();
     p_trees = trees;
     p_cnt = cnt;
     _t = TREES_POINTER;

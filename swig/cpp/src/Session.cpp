@@ -157,7 +157,7 @@ S_Val Session::get_item(const char *xpath)
 
     int ret = sr_get_item(_sess, xpath, &tmp_val);
     if (SR_ERR_OK == ret) {
-        S_Val value(new Val(&tmp_val[0]));
+        S_Val value(new Val(tmp_val));
         return value;
     } else if (SR_ERR_NOT_FOUND == ret) {
         return NULL;
@@ -604,8 +604,10 @@ S_Vals Subscribe::rpc_send(const char *xpath, S_Vals input)
         throw_exception(ret);
     }
 
-    if (out_cnt == 0)
+    if (out_cnt == 0) {
+        out = NULL;
         return NULL;
+    }
 
     S_Counter counter(new Counter(out, out_cnt));
     S_Vals output(new Vals(out, out_cnt, counter));

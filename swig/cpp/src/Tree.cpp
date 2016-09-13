@@ -40,7 +40,10 @@ Tree::Tree(const char *root_name, const char *root_module_name) {
     _counter = counter;
     _node = node;
 }
-Tree::Tree(sr_node_t *tree, S_Counter counter) {_node = tree; _counter = counter;}
+Tree::Tree(sr_node_t *tree, S_Counter counter) {
+    _node = tree;
+    _counter = counter;
+}
 Tree::~Tree() {return;}
 S_Tree Tree::dup() {
     sr_node_t *tree_dup = NULL;
@@ -252,6 +255,7 @@ void Tree::set(sr_type_t type) {
 Trees::Trees() {
     _trees = NULL;
     _cnt = 0;
+    p_cnt = NULL;
     S_Counter counter(new Counter(_trees, _cnt));
     _counter = counter;
     _allocate = true;
@@ -265,6 +269,7 @@ Trees::Trees(size_t n) {
 
     _trees = trees;
     _cnt = n;
+    p_cnt = NULL;
     S_Counter counter(new Counter(_trees, _cnt));
     _counter = counter;
     _allocate = false;
@@ -280,6 +285,7 @@ Trees::Trees(const sr_node_t *trees, const size_t n, S_Counter counter) {
     _trees = (sr_node_t *) trees;
     _cnt = (size_t) n;
 
+    p_cnt = NULL;
     _counter = counter;
     _allocate = false;
 }
