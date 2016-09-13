@@ -544,7 +544,7 @@ perf_set_delete_test(void **state, int op_num, int *items) {
     rc = sr_session_stop(session);
     assert_int_equal(rc, SR_ERR_OK);
 
-    *items = 100 /* list instances */ * 3 /* leaves */ * 2 /* set + delete */ ;
+    *items = 1 /* list instances */ * 3 /* leaves */ * 2 /* set + delete */ ;
 }
 
 static void
