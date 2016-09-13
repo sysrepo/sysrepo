@@ -658,8 +658,7 @@ dm_load_data_tree_file(dm_ctx_t *dm_ctx, int fd, const char *data_filename, dm_s
     }
 
     /* if the data tree is loaded, validate it*/
-    if ((NULL != data_tree && 0 != lyd_validate(&data_tree, LYD_OPT_STRICT | LYD_OPT_CONFIG)) ||
-        (NULL == data_tree && 0 != lyd_validate(&data_tree, LYD_OPT_STRICT | LYD_OPT_CONFIG, schema_info->ly_ctx)) ){
+    if (0 != lyd_validate(&data_tree, LYD_OPT_STRICT | LYD_OPT_CONFIG, NULL == data_tree ? schema_info->ly_ctx : NULL)) {
         SR_LOG_ERR("Loaded data tree '%s' is not valid", data_filename);
         lyd_free_withsiblings(data_tree);
         free(data);
@@ -1958,7 +1957,7 @@ dm_validate_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error
                 sr_free_errors(*errors, *err_cnt);
                 return SR_ERR_INTERNAL;
             }
-            if (NULL != info->node && 0 != lyd_validate(&info->node, LYD_OPT_STRICT | LYD_OPT_NOAUTODEL | LYD_OPT_CONFIG)) {
+            if (NULL != info->node && 0 != lyd_validate(&info->node, LYD_OPT_STRICT | LYD_OPT_NOAUTODEL | LYD_OPT_CONFIG, NULL)) {
                 SR_LOG_DBG("Validation failed for %s module", info->schema->module->name);
                 (*err_cnt)++;
                 sr_error_info_t *tmp_err = realloc(*errors, *err_cnt * sizeof(**errors));
@@ -3602,7 +3601,8 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
             case DM_PROCEDURE_EVENT_NOTIF:
                 validation_options |= LYD_OPT_NOTIF;
         }
-        ret = lyd_validate(&data_tree, validation_options);
+        /* TODO: obtain a set of data trees referenced by when/must conditions inside RPC/notification */
+        ret = lyd_validate(&data_tree, validation_options, NULL);
         if (0 != ret) {
             SR_LOG_ERR("%s content validation failed: %s", procedure_name, ly_errmsg());
             rc = dm_report_error(session, ly_errmsg(), ly_errpath(), SR_ERR_VALIDATION_FAILED);

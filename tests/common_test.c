@@ -81,7 +81,7 @@ createDataTree(struct ly_ctx *ctx, struct lyd_node **root) {
     assert_non_null(node);
     assert_int_equal(0, lyd_insert_after(*root, node));
 
-    assert_int_equal(0, lyd_validate(root, LYD_OPT_STRICT | LYD_OPT_CONFIG));
+    assert_int_equal(0, lyd_validate(root, LYD_OPT_STRICT | LYD_OPT_CONFIG, NULL));
 }
 
 static void
@@ -98,7 +98,7 @@ createDataTreeWithAugments(struct ly_ctx *ctx, struct lyd_node **root){
     lyd_new_leaf(*root, module, "info", "info 123");
 
     /* add default values */
-    assert_int_equal(0, lyd_validate(root, LYD_OPT_STRICT | LYD_OPT_CONFIG));
+    assert_int_equal(0, lyd_validate(root, LYD_OPT_STRICT | LYD_OPT_CONFIG, NULL));
 }
 
 /*
@@ -743,7 +743,7 @@ sr_node_t_with_augments_test(void **state)
         assert_int_equal(SR_ERR_OK, sr_tree_to_dt(ly_ctx, trees + i, NULL, false, &data_tree2));
     }
     /* add default values */
-    assert_int_equal(0, lyd_validate(&data_tree2, LYD_OPT_STRICT | LYD_OPT_CONFIG));
+    assert_int_equal(0, lyd_validate(&data_tree2, LYD_OPT_STRICT | LYD_OPT_CONFIG, NULL));
     lyd_print_fd(STDOUT_FILENO, data_tree2, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT);
 
     /* compare with original */
@@ -791,7 +791,7 @@ sr_node_t_rpc_input_test(void **state)
     sr_free_trees(trees, tree_cnt);
 
     /* add default nodes */
-    assert_int_equal(0, lyd_validate(&data_tree, LYD_OPT_STRICT | LYD_OPT_RPC));
+    assert_int_equal(0, lyd_validate(&data_tree, LYD_OPT_STRICT | LYD_OPT_RPC, NULL));
 
     /* convert RPC input back to sysrepo trees */
     nodeset = lyd_find_xpath(data_tree, "/test-module:activate-software-image/./*");
@@ -880,7 +880,7 @@ sr_node_t_rpc_output_test(void **state)
     sr_free_trees(trees, tree_cnt);
 
     /* add default nodes */
-    assert_int_equal(0, lyd_validate(&data_tree, LYD_OPT_STRICT | LYD_OPT_RPCREPLY));
+    assert_int_equal(0, lyd_validate(&data_tree, LYD_OPT_STRICT | LYD_OPT_RPCREPLY, NULL));
     lyd_print_fd(STDOUT_FILENO, data_tree, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT);
 
     /* convert RPC input back to sysrepo trees */

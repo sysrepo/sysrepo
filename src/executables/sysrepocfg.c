@@ -323,7 +323,7 @@ next:
     if (SR_ERR_OK == rc) {
         if (NULL != *data_tree) {
             /* validate returned data, but most importantly resolve leafrefs */
-            ret = lyd_validate(data_tree, LYD_OPT_STRICT | LYD_OPT_CONFIG);
+            ret = lyd_validate(data_tree, LYD_OPT_STRICT | LYD_OPT_CONFIG, NULL);
             CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_INTERNAL, fail, "Received data tree from sysrepo is not valid: %s", ly_errmsg());
         }
         goto cleanup;
@@ -603,7 +603,7 @@ srcfg_import_datastore(struct ly_ctx *ly_ctx, int fd_in, const char *module_name
 
     /* validate input data */
     if (NULL != new_data_tree) {
-        ret = lyd_validate(&new_data_tree, LYD_OPT_STRICT | LYD_OPT_CONFIG);
+        ret = lyd_validate(&new_data_tree, LYD_OPT_STRICT | LYD_OPT_CONFIG, NULL);
         CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_INTERNAL, cleanup, "Input data is not valid: %s (%s)", ly_errmsg(), ly_errpath());
     }
 
