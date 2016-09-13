@@ -3602,7 +3602,8 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
             case DM_PROCEDURE_EVENT_NOTIF:
                 validation_options |= LYD_OPT_NOTIF;
         }
-        ret = lyd_validate(&data_tree, validation_options);
+        /* TODO: obtain a set of data trees referenced by when/must conditions inside RPC/notification */
+        ret = lyd_validate(&data_tree, validation_options, NULL);
         if (0 != ret) {
             SR_LOG_ERR("%s content validation failed: %s", procedure_name, ly_errmsg());
             rc = dm_report_error(session, ly_errmsg(), ly_errpath(), SR_ERR_VALIDATION_FAILED);

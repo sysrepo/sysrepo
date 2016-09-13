@@ -791,7 +791,7 @@ sr_node_t_rpc_input_test(void **state)
     sr_free_trees(trees, tree_cnt);
 
     /* add default nodes */
-    assert_int_equal(0, lyd_validate(&data_tree, LYD_OPT_STRICT | LYD_OPT_RPC));
+    assert_int_equal(0, lyd_validate(&data_tree, LYD_OPT_STRICT | LYD_OPT_RPC, NULL));
 
     /* convert RPC input back to sysrepo trees */
     nodeset = lyd_find_xpath(data_tree, "/test-module:activate-software-image/./*");
@@ -880,7 +880,7 @@ sr_node_t_rpc_output_test(void **state)
     sr_free_trees(trees, tree_cnt);
 
     /* add default nodes */
-    assert_int_equal(0, lyd_validate(&data_tree, LYD_OPT_STRICT | LYD_OPT_RPCREPLY));
+    assert_int_equal(0, lyd_validate(&data_tree, LYD_OPT_STRICT | LYD_OPT_RPCREPLY, NULL));
     lyd_print_fd(STDOUT_FILENO, data_tree, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT);
 
     /* convert RPC input back to sysrepo trees */
