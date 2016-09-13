@@ -487,7 +487,7 @@ perf_get_ietf_intefaces_tree_test(void **state, int op_num, int *items) {
     sr_session_ctx_t *session = NULL;
     sr_node_t *trees = NULL;
     size_t count = 0;
-    size_t total_cnt;
+    size_t total_cnt = 0;
     int rc = 0;
 
     /* start a session */
@@ -508,6 +508,44 @@ perf_get_ietf_intefaces_tree_test(void **state, int op_num, int *items) {
     rc = sr_session_stop(session);
     assert_int_equal(rc, SR_ERR_OK);
     *items = total_cnt;
+}
+
+static void
+perf_set_delete_test(void **state, int op_num, int *items) {
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+    sr_session_ctx_t *session = NULL;
+    char xpath[PATH_MAX] = { 0, };
+    int rc = 0;
+
+    /* start a session */
+    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* perform edit, commit request */
+    sr_val_t value = {0,};
+    for (size_t i = 0; i < op_num; i++) {
+
+        /* set 100 list instances */
+        for (size_t j = 0; j < 100; j++) {
+            sprintf(xpath, "/example-module:container/list[key1='set_del'][key2='set_%zu']/leaf", j);
+            value.type = SR_STRING_T;
+            value.data.string_val = strdup("Leaf");
+            assert_non_null(value.data.string_val);
+            rc = sr_set_item(session, xpath, &value, SR_EDIT_DEFAULT);
+            assert_int_equal(rc, SR_ERR_OK);
+        }
+
+        /* delete 100 list instances */
+        rc = sr_delete_item(session, "/example-module:container/list[key1='set_del']", SR_EDIT_DEFAULT);
+        assert_int_equal(rc, SR_ERR_OK);
+    }
+
+    /* stop the session */
+    rc = sr_session_stop(session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    *items = 100 /* list instances */ * 3 /* leaves */ * 2 /* set + delete */ ;
 }
 
 static void
@@ -615,6 +653,7 @@ main (int argc, char **argv)
         {perf_get_subtree_with_data_load_test, "Get subtree incl session start", OP_COUNT, sysrepo_setup, sysrepo_teardown},
         {perf_get_subtrees_test, "Get subtrees all list", OP_COUNT, sysrepo_setup, sysrepo_teardown},
         {perf_get_ietf_intefaces_tree_test, "Get subtrees ietf-if config", OP_COUNT, sysrepo_setup, sysrepo_teardown},
+        {perf_set_delete_test, "Set & delete 100 list instances", OP_COUNT_COMMIT, sysrepo_setup, sysrepo_teardown},
         {perf_commit_test, "Commit one leaf change", OP_COUNT_COMMIT, sysrepo_setup, sysrepo_teardown},
         {perf_libyang_get_node, "Libyang get one node", OP_COUNT, libyang_setup, libyang_teardown},
         {perf_libyang_get_all_list, "Libyang get all list", OP_COUNT, libyang_setup, libyang_teardown},
