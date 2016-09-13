@@ -693,7 +693,7 @@ main (int argc, char **argv)
         {perf_get_subtree_with_data_load_test, "Get subtree incl session start", OP_COUNT, sysrepo_setup, sysrepo_teardown},
         {perf_get_subtrees_test, "Get subtrees all lists", OP_COUNT, sysrepo_setup, sysrepo_teardown},
         {perf_get_ietf_intefaces_tree_test, "Get subtrees ietf-if config", OP_COUNT, sysrepo_setup, sysrepo_teardown},
-        {perf_set_delete_test, "Set & delete one list", OP_COUNT_COMMIT, sysrepo_setup, sysrepo_teardown},
+        {perf_set_delete_test, "Set & delete one list", OP_COUNT, sysrepo_setup, sysrepo_teardown},
         {perf_set_delete_100_test, "Set & delete 100 lists", OP_COUNT_COMMIT, sysrepo_setup, sysrepo_teardown},
         {perf_commit_test, "Commit one leaf change", OP_COUNT_COMMIT, sysrepo_setup, sysrepo_teardown},
         {perf_libyang_get_node, "Libyang get one node", OP_COUNT, libyang_setup, libyang_teardown},
