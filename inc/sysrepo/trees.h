@@ -98,4 +98,38 @@ int sr_dup_tree(sr_node_t *tree, sr_node_t **tree_dup);
  */
 int sr_dup_trees(sr_node_t *trees, size_t count, sr_node_t **trees_dup);
 
+/**
+ * @brief Returns pointer to the first child (based on the schema) of a given node.
+ * For a fully loaded tree it is equivalent to "node->first_child". For a partially
+ * loaded tree (@see SR_GET_SUBTREE_ITERATIVE) it may internally issue a sysrepo
+ * get-subtree-chunk request in order to obtain the data of the child
+ * (and the data of some surrounding nodes with it for efficiency).
+ *
+ * @param[in] node Node to get the child of.
+ * @return Pointer to a child node. NULL if there is none or an error occured.
+ */
+sr_node_t *sr_node_get_child(sr_node_t *node);
+
+/**
+ * @brief Returns pointer to the next sibling (based on the schema) of a given node.
+ * For a fully loaded tree it is equivalent to "node->next". For a partially
+ * loaded tree (@see SR_GET_SUBTREE_ITERATIVE) it may internally issue a sysrepo
+ * get-subtree-chunk request in order to obtain the data of the next sibling
+ * (and the data of some surrounding nodes with it for efficiency).
+ *
+ * @param[in] node Node to get the next sibling of.
+ * @return Pointer to the next sibling. NULL if this is the last sibling or an error occured.
+ */
+sr_node_t *sr_node_get_next_sibling(sr_node_t *node);
+
+/**
+ * @brief Get the parent of a given node. It is equivalent to "node->parent", but for
+ * a partially loaded tree it is preferred to use this function rather than to access
+ * the pointer directly just for the sake of code cleanliness.
+ *
+ * @param[in] node Node to get the parent of.
+ * @return Pointer to the node's parent or NULL if the node is a root of a (sub)tree.
+ */
+sr_node_t *sr_node_get_parent(sr_node_t *node);
+
 #endif /* TREES_H_ */

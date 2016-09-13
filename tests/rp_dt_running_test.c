@@ -36,12 +36,14 @@
 #include "data_manager.h"
 #include "rp_internal.h"
 
-int setup(void **state){
+int setup(void **state)
+{
    test_rp_ctx_create((rp_ctx_t**)state);
    return 0;
 }
 
-int teardown(void **state){
+int teardown(void **state)
+{
     rp_ctx_t *ctx = *state;
     test_rp_ctx_cleanup(ctx);
     return 0;
@@ -58,6 +60,7 @@ no_subscription_test(void **state)
 
    sr_val_t *values = NULL;
    size_t count = 0;
+   sr_node_t *trees = NULL;
 #if 0
    rc = rp_dt_get_values_wrapper(ctx, session, "/test-module:containera", &values, &count);
    assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
@@ -67,6 +70,9 @@ no_subscription_test(void **state)
 
    session->state = RP_REQ_NEW;
    rc = rp_dt_get_values_wrapper(ctx, session, NULL, "/test-module:main", &values, &count);
+   assert_int_equal(SR_ERR_NOT_FOUND, rc);
+   session->state = RP_REQ_NEW;
+   rc = rp_dt_get_subtrees_wrapper(ctx, session, NULL, "/test-module:main", &trees, &count);
    assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
    rc = rp_dt_delete_item_wrapper(ctx, session, "/test-module:main", SR_EDIT_DEFAULT);
@@ -189,15 +195,26 @@ edit_enabled(void **state)
    rc = rp_dt_set_item(ctx->dm_ctx, session->dm_session, "/example-module:container/list[key1='a'][key2='b']/leaf", SR_EDIT_DEFAULT, &val);
    assert_int_equal(SR_ERR_OK, rc);
 
-
    sr_val_t *v = NULL;
    rc = rp_dt_get_value_wrapper(ctx, session, NULL, "/example-module:container/list[key1='a'][key2='b']/leaf" ,&v);
    assert_int_equal(SR_ERR_OK, rc);
    assert_string_equal(v->xpath, "/example-module:container/list[key1='a'][key2='b']/leaf");
    assert_string_equal(v->data.string_val, val.data.string_val);
 
+   sr_node_t *tree = NULL;
+   session->state = RP_REQ_NEW;
+   rc = rp_dt_get_subtree_wrapper(ctx, session, NULL, "/example-module:container/list[key1='a'][key2='b']/leaf", &tree);
+   assert_int_equal(SR_ERR_OK, rc);
+   assert_string_equal("leaf", tree->name);
+   assert_string_equal("example-module", tree->module_name);
+   assert_int_equal(SR_STRING_T, tree->type);
+   assert_string_equal(val.data.string_val, tree->data.string_val);
+   assert_false(tree->dflt);
+   assert_null(tree->first_child);
+
    sr_free_val_content(&val);
    sr_free_val(v);
+   sr_free_tree(tree);
    test_rp_session_cleanup(ctx, session);
 }
 

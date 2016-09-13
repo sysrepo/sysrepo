@@ -128,6 +128,7 @@ cl_get_changes_create_test(void **state)
     struct timespec ts;
 
     sr_val_t *val = NULL;
+    sr_node_t *tree = NULL;
     const char *xpath = NULL;
     int rc = SR_ERR_OK;
     xpath = "/example-module:container/list[key1='abc'][key2='def']";
@@ -144,6 +145,8 @@ cl_get_changes_create_test(void **state)
     rc = sr_get_item(session, xpath, &val);
     assert_int_equal(rc, SR_ERR_NOT_FOUND);
 
+    rc = sr_get_subtree(session, xpath, 0, &tree);
+    assert_int_equal(rc, SR_ERR_NOT_FOUND);
 
     /* create the list instance */
     rc = sr_set_item(session, xpath, NULL, SR_EDIT_DEFAULT);
@@ -200,6 +203,7 @@ cl_get_changes_modified_test(void **state)
     struct timespec ts;
 
     sr_val_t *val = NULL;
+    sr_node_t *tree = NULL;
     const char *xpath = NULL;
     int rc = SR_ERR_OK;
     xpath = "/example-module:container/list[key1='key1'][key2='key2']/leaf";
@@ -214,6 +218,9 @@ cl_get_changes_modified_test(void **state)
 
     /* check the list presence in candidate */
     rc = sr_get_item(session, xpath, &val);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_get_subtree(session, xpath, 0, &tree);
     assert_int_equal(rc, SR_ERR_OK);
 
     sr_val_t new_val = {0};
@@ -238,6 +245,7 @@ cl_get_changes_modified_test(void **state)
     assert_non_null(changes.new_values[0]);
     assert_non_null(changes.old_values[0]);
     assert_string_equal(val->data.string_val, changes.old_values[0]->data.string_val);
+    assert_string_equal(tree->data.string_val, changes.old_values[0]->data.string_val);
     assert_string_equal(new_val.data.string_val, changes.new_values[0]->data.string_val);
 
     for (size_t i = 0; i < changes.cnt; i++) {
@@ -246,6 +254,7 @@ cl_get_changes_modified_test(void **state)
     }
 
     sr_free_val(val);
+    sr_free_tree(tree);
     pthread_mutex_unlock(&changes.mutex);
 
     rc = sr_unsubscribe(NULL, subscription);

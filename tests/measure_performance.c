@@ -79,7 +79,7 @@ typedef struct test_s{
 void
 print_measure_header(const char *title){
     printf("\n\n\t\t%s", title);
-    printf("\n%-30s| %-11s| %-10s| %-12s | %-20s\n",
+    printf("\n%-32s| %-11s| %-10s| %-12s | %-20s\n",
             "Operation", "ops/sec", "items/op", "op performed", "test time");
     printf("------------------------------------------------------------------------------------");
 }
@@ -120,7 +120,7 @@ measure(void (*func)(void **, int, int *), const char *name, int op_count, void 
     timeval_subtract(&diff, &tv2, &tv1);
 
     seconds = diff.tv_sec + 0.000001*diff.tv_usec;
-    printf("\n%-30s| %11.2f| %10d| %12d | %11.6f",
+    printf("\n%-32s| %11.2f| %10d| %12d | %11.6f",
             name, ((double) op_count)/ seconds, items, op_count, seconds);
 
 }
@@ -363,6 +363,155 @@ perf_get_ietf_intefaces_test(void **state, int op_num, int *items) {
 }
 
 static void
+perf_get_subtree_test(void **state, int op_num, int *items) {
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+
+    sr_session_ctx_t *session = NULL;
+    sr_node_t *tree = NULL;
+    int rc = 0;
+
+    /* start a session */
+    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* perform a get-item request */
+    for (size_t i = 0; i<op_num; i++){
+        /* existing leaf */
+        rc = sr_get_subtree(session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", 0, &tree);
+        assert_int_equal(rc, SR_ERR_OK);
+        assert_non_null(tree);
+        assert_int_equal(SR_STRING_T, tree->type);
+        sr_free_tree(tree);
+    }
+
+    /* stop the session */
+    rc = sr_session_stop(session);
+    assert_int_equal(rc, SR_ERR_OK);
+    *items = 1;
+}
+
+static void
+perf_get_subtree_with_data_load_test(void **state, int op_num, int *items) {
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+
+    sr_session_ctx_t *session = NULL;
+    sr_node_t *tree = NULL;
+    int rc = 0;
+
+    /* perform session_start, get-item, session-stop requests */
+    for (size_t i = 0; i<op_num; i++){
+        /* start a session */
+        rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &session);
+        assert_int_equal(rc, SR_ERR_OK);
+
+        /* existing leaf */
+        rc = sr_get_subtree(session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", 0, &tree);
+        assert_int_equal(rc, SR_ERR_OK);
+        assert_non_null(tree);
+        assert_int_equal(SR_STRING_T, tree->type);
+        sr_free_tree(tree);
+
+        /* stop the session */
+        rc = sr_session_stop(session);
+        assert_int_equal(rc, SR_ERR_OK);
+    }
+
+    *items = 1;
+}
+
+static void
+perf_get_subtrees_test(void **state, int op_num, int *items) {
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+
+    sr_session_ctx_t *session = NULL;
+    sr_node_t *trees = NULL;
+    size_t count = 0;
+    int rc = 0;
+
+    /* start a session */
+    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* perform a get-subtrees request */
+    for (size_t i = 0; i<op_num; i++){
+        /* existing leaf */
+        rc = sr_get_subtrees(session, "/example-module:container/list/leaf", 0, &trees, &count);
+        assert_int_equal(SR_ERR_OK, rc);
+        assert_null(trees[0].first_child);
+        sr_free_trees(trees, count);
+    }
+
+    /* stop the session */
+    rc = sr_session_stop(session);
+    assert_int_equal(rc, SR_ERR_OK);
+    *items = count;
+}
+
+static size_t
+get_nodes_cnt(sr_node_t *trees, size_t tree_cnt)
+{
+    sr_node_t *node = NULL;
+    bool count_children = true;
+    size_t count = 0;
+
+    for (size_t i = 0; i < tree_cnt; ++i) {
+        node = trees+i;
+        count_children = true;
+        do {
+            if (count_children) {
+                while (node->first_child) {
+                    node = node->first_child;
+                }
+            }
+            ++count;
+            if (node->next) {
+                node = node->next;
+                count_children = true;
+            } else {
+                node = node->parent;
+                count_children = false;
+            }
+        } while(node);
+    }
+
+    return count;
+}
+
+static void
+perf_get_ietf_intefaces_tree_test(void **state, int op_num, int *items) {
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+
+    sr_session_ctx_t *session = NULL;
+    sr_node_t *trees = NULL;
+    size_t count = 0;
+    size_t total_cnt;
+    int rc = 0;
+
+    /* start a session */
+    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* perform a get-subtrees request */
+    for (size_t i = 0; i<op_num; i++){
+        rc = sr_get_subtrees(session, "/ietf-interfaces:interfaces/.", 0, &trees, &count);
+        assert_int_equal(rc, SR_ERR_OK);
+        if (0 == i) {
+            total_cnt = get_nodes_cnt(trees, count);
+        }
+        sr_free_trees(trees, count);
+    }
+
+    /* stop the session */
+    rc = sr_session_stop(session);
+    assert_int_equal(rc, SR_ERR_OK);
+    *items = total_cnt;
+}
+
+static void
 perf_commit_test(void **state, int op_num, int *items) {
     sr_conn_ctx_t *conn = *state;
     assert_non_null(conn);
@@ -463,6 +612,10 @@ main (int argc, char **argv)
         {perf_get_items_test, "Get items all list", OP_COUNT, sysrepo_setup, sysrepo_teardown},
         {perf_get_items_iter_test, "Get items iter all list", OP_COUNT, sysrepo_setup, sysrepo_teardown},
         {perf_get_ietf_intefaces_test, "Get items ietf-if config", OP_COUNT, sysrepo_setup, sysrepo_teardown},
+        {perf_get_subtree_test, "Get subtree one leaf", OP_COUNT, sysrepo_setup, sysrepo_teardown},
+        {perf_get_subtree_with_data_load_test, "Get subtree incl session start", OP_COUNT, sysrepo_setup, sysrepo_teardown},
+        {perf_get_subtrees_test, "Get subtrees all list", OP_COUNT, sysrepo_setup, sysrepo_teardown},
+        {perf_get_ietf_intefaces_tree_test, "Get subtrees ietf-if config", OP_COUNT, sysrepo_setup, sysrepo_teardown},
         {perf_commit_test, "Commit one leaf change", OP_COUNT_COMMIT, sysrepo_setup, sysrepo_teardown},
         {perf_libyang_get_node, "Libyang get one node", OP_COUNT, libyang_setup, libyang_teardown},
         {perf_libyang_get_all_list, "Libyang get all list", OP_COUNT, libyang_setup, libyang_teardown},

@@ -1036,14 +1036,13 @@ sr_api_variant_from_str(const char *api_variant_str)
 /**
  * @brief Copy and convert content of a libyang node and its descendands into a sysrepo tree.
  *
- * @param [in] ly_ctx libyang context
  * @param [in] parent Parent node.
  * @param [in] child Child node.
  * @param [in] node libyang node.
  * @param [out] sr_tree Returned sysrepo tree.
  */
 static int
-sr_copy_node_to_tree_internal(struct ly_ctx *ly_ctx, const struct lyd_node *parent, const struct lyd_node *node,
+sr_copy_node_to_tree_internal(const struct lyd_node *parent, const struct lyd_node *node,
         sr_node_t *sr_tree)
 {
     int rc = SR_ERR_OK;
@@ -1052,7 +1051,7 @@ sr_copy_node_to_tree_internal(struct ly_ctx *ly_ctx, const struct lyd_node *pare
     const struct lyd_node *child = NULL;
     sr_node_t *sr_subtree = NULL;
 
-    CHECK_NULL_ARG3(ly_ctx, node, sr_tree);
+    CHECK_NULL_ARG2(node, sr_tree);
 
     /* copy node name */
     rc = sr_node_set_name(sr_tree, node->schema->name);
@@ -1100,7 +1099,7 @@ sr_copy_node_to_tree_internal(struct ly_ctx *ly_ctx, const struct lyd_node *pare
             if (SR_ERR_OK != rc) {
                 goto cleanup;
             }
-            rc = sr_copy_node_to_tree_internal(ly_ctx, node, child, sr_subtree);
+            rc = sr_copy_node_to_tree_internal(node, child, sr_subtree);
             if (SR_ERR_OK != rc) {
                 goto cleanup;
             }
@@ -1116,20 +1115,20 @@ cleanup:
 }
 
 int
-sr_copy_node_to_tree(struct ly_ctx *ly_ctx, const struct lyd_node *node, sr_node_t *sr_tree)
+sr_copy_node_to_tree(const struct lyd_node *node, sr_node_t *sr_tree)
 {
-    return sr_copy_node_to_tree_internal(ly_ctx, NULL, node, sr_tree);
+    return sr_copy_node_to_tree_internal(NULL, node, sr_tree);
 }
 
 int
-sr_nodes_to_trees(struct ly_ctx *ly_ctx, struct ly_set *nodes, sr_mem_ctx_t *sr_mem, sr_node_t **sr_trees, size_t *count)
+sr_nodes_to_trees(struct ly_set *nodes, sr_mem_ctx_t *sr_mem, sr_node_t **sr_trees, size_t *count)
 {
     int rc = SR_ERR_OK;
     sr_node_t *trees = NULL;
     sr_mem_snapshot_t snapshot = { 0, };
     size_t i = 0;
 
-    CHECK_NULL_ARG4(ly_ctx, nodes, sr_trees, count);
+    CHECK_NULL_ARG3(nodes, sr_trees, count);
 
     if (0 == nodes->number) {
         *sr_trees = NULL;
@@ -1149,7 +1148,7 @@ sr_nodes_to_trees(struct ly_ctx *ly_ctx, struct ly_set *nodes, sr_mem_ctx_t *sr_
 
     for (i = 0; i < nodes->number && 0 == rc; ++i) {
         trees[i]._sr_mem = sr_mem;
-        rc = sr_copy_node_to_tree(ly_ctx, nodes->set.d[i], trees + i);
+        rc = sr_copy_node_to_tree(nodes->set.d[i], trees + i);
     }
 
     if (SR_ERR_OK == rc) {

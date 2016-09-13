@@ -211,7 +211,7 @@ cl_subscription_close(sr_session_ctx_t *session, cl_sm_subscription_ctx_t *subsc
         CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to create a new Sysrepo memory context.");
         rc = sr_gpb_req_alloc(sr_mem, SR__OPERATION__UNSUBSCRIBE, session->id, &msg_req);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate unsubscribe message.");
-        
+
         msg_req->request->unsubscribe_req->type = subscription->type;
 
         sr_mem_edit_string(sr_mem, &msg_req->request->unsubscribe_req->destination, subscription->delivery_address);
@@ -856,7 +856,7 @@ sr_get_items(sr_session_ctx_t *session, const char *xpath, sr_val_t **values, si
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
     /* copy the content of gpb values to sr_val_t */
-    rc = sr_values_gpb_to_sr((sr_mem_ctx_t *)msg_resp->_sysrepo_mem_ctx, msg_resp->response->get_items_resp->values, 
+    rc = sr_values_gpb_to_sr((sr_mem_ctx_t *)msg_resp->_sysrepo_mem_ctx, msg_resp->response->get_items_resp->values,
                              msg_resp->response->get_items_resp->n_values, values, value_cnt);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by copying the values from GPB.");
 
@@ -1017,6 +1017,106 @@ sr_free_val_iter(sr_val_iter_t *iter){
         iter->buff_values = NULL;
     }
     free(iter);
+}
+
+int
+sr_get_subtree(sr_session_ctx_t *session, const char *xpath, sr_get_subtree_options_t opts,
+        sr_node_t **subtree)
+{
+    Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG4(session, session->conn_ctx, xpath, subtree);
+
+    cl_session_clear_errors(session);
+
+    /* prepare get_subtree message */
+    rc = sr_mem_new(0, &sr_mem);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to create a new Sysrepo memory context.");
+    rc = sr_gpb_req_alloc(sr_mem, SR__OPERATION__GET_SUBTREE, session->id, &msg_req);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
+
+    /* fill in the path */
+    sr_mem_edit_string(sr_mem, &msg_req->request->get_subtree_req->xpath, xpath);
+    CHECK_NULL_NOMEM_GOTO(msg_req->request->get_subtree_req->xpath, rc, cleanup);
+
+    /* send the request and receive the response */
+    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__GET_SUBTREE);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
+
+    /* duplicate the content of gpb to sr_node_t */
+    rc = sr_dup_gpb_to_tree((sr_mem_ctx_t *)msg_resp->_sysrepo_mem_ctx,
+                             msg_resp->response->get_subtree_resp->tree, subtree);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Subtree duplication failed.");
+
+    sr_msg_free(msg_req);
+    sr_msg_free(msg_resp);
+
+    return cl_session_return(session, SR_ERR_OK);
+
+cleanup:
+    if (NULL != msg_req) {
+        sr_msg_free(msg_req);
+    } else {
+        sr_mem_free(sr_mem);
+    }
+    if (NULL != msg_resp) {
+        sr_msg_free(msg_resp);
+    }
+    return cl_session_return(session, rc);
+}
+
+int
+sr_get_subtrees(sr_session_ctx_t *session, const char *xpath, sr_get_subtree_options_t opts,
+        sr_node_t **subtrees, size_t *subtree_cnt)
+{
+    Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG5(session, session->conn_ctx, xpath, subtrees, subtree_cnt);
+
+    cl_session_clear_errors(session);
+
+    /* prepare get_subtrees message */
+    rc = sr_mem_new(0, &sr_mem);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to create a new Sysrepo memory context.");
+    rc = sr_gpb_req_alloc(sr_mem, SR__OPERATION__GET_SUBTREES, session->id, &msg_req);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
+
+    /* fill in the path */
+    sr_mem_edit_string(sr_mem, &msg_req->request->get_subtrees_req->xpath, xpath);
+    CHECK_NULL_NOMEM_GOTO(msg_req->request->get_subtrees_req->xpath, rc, cleanup);
+
+    /* send the request and receive the response */
+    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__GET_SUBTREES);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
+
+    /* copy the content of gpb values to sr_val_t */
+    rc = sr_trees_gpb_to_sr((sr_mem_ctx_t *)msg_resp->_sysrepo_mem_ctx, msg_resp->response->get_subtrees_resp->trees,
+                             msg_resp->response->get_subtrees_resp->n_trees, subtrees, subtree_cnt);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by copying the values from GPB.");
+
+cleanup:
+    if (NULL != msg_req) {
+        sr_msg_free(msg_req);
+    } else {
+        sr_mem_free(sr_mem);
+    }
+    if (NULL != msg_resp) {
+        sr_msg_free(msg_resp);
+    }
+    return cl_session_return(session, rc);
+}
+
+int
+sr_get_subtree_chunk(sr_session_ctx_t *session, const char *xpath, bool single,
+        size_t offset, size_t child_limit, size_t depth_limit,
+        sr_node_t **chunks, size_t *chunk_cnt)
+{
+    /* TODO */
+    return SR_ERR_OK;
 }
 
 int

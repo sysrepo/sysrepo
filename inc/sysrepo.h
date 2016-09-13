@@ -643,7 +643,7 @@ int sr_get_item(sr_session_ctx_t *session, const char *xpath, sr_val_t **value);
  *
  * If the user does not have read permission to access certain nodes, these
  * won't be part of the result. SR_ERR_NOT_FOUND will be returned if there are
- * no nodes match xpath in the data tree, or the user does not have read permission to access them.
+ * no nodes matching xpath in the data tree, or the user does not have read permission to access them.
  *
  * If the response contains too many elements time out may be exceeded, SR_ERR_TIME_OUT
  * will be returned, use ::sr_get_items_iter.
@@ -705,6 +705,99 @@ int sr_get_items_iter(sr_session_ctx_t *session, const char *xpath, sr_val_iter_
  * @return Error code (SR_ERR_OK on success).
  */
 int sr_get_item_next(sr_session_ctx_t *session, sr_val_iter_t *iter, sr_val_t **value);
+
+/**
+ * @brief Flags used to customize the behaviour of ::sr_get_subtree and ::sr_get_subtrees calls.
+ */
+typedef enum sr_get_subtree_flag_e {
+    /**
+     * Default get-subtree(s) behaviour.
+     * All matched subtrees are sent with all their content in one message.
+     */
+    SR_GET_SUBTREE_DEFAULT = 0,
+
+    /**
+     * The iterative get-subtree(s) behaviour.
+     * The matched subtrees are sent in chunks and only as needed while they are iterated
+     * through using functions ::sr_node_get_child, ::sr_node_get_next_sibling and
+     * ::sr_node_get_parent from "sysrepo/trees.h". This behaviour gives much better
+     * performance than the default one if only a small portion of matched subtree(s) is
+     * actually iterated through.
+     * @note It is considered a programming error to access ::next, ::prev, ::parent,
+     * ::first_child and ::last_child data members of sr_node_t on a partially loaded tree.
+     */
+    SR_GET_SUBTREE_ITERATIVE = 1
+} sr_get_subtree_flag_t;
+
+/**
+ * @brief Options for get-subtree and get-subtrees operations.
+ * It is supposed to be bitwise OR-ed value of any ::sr_get_subtree_flag_t flags.
+ */
+typedef uint32_t sr_get_subtree_options_t;
+
+/**
+ * @brief Retrieves a single subtree whose root node is stored under the provided XPath.
+ * If multiple nodes matches the xpath SR_ERR_INVAL_ARG is returned.
+ *
+ * The functions returns values and all associated information stored under the root node and
+ * all its descendants. While the same data can be obtained using ::sr_get_items in combination
+ * with the expressive power of XPath addressing, the recursive nature of the output data type
+ * also preserves the hierarchical relationships between data elements.
+ *
+ * Values of internal nodes of the subtree have no data filled in and their type is set properly
+ * (SR_LIST_T / SR_CONTAINER_T / SR_CONTAINER_PRESENCE_T), whereas leaf nodes are carrying actual
+ * data (apart from SR_LEAF_EMPTY_T).
+ *
+ * @see @ref xp_page "XPath Addressing" documentation, or
+ * https://tools.ietf.org/html/draft-ietf-netmod-yang-json#section-6.11
+ * for XPath syntax used for identification of yang nodes in sysrepo calls.
+ *
+ * @param[in] session Session context acquired with ::sr_session_start call.
+ * @param[in] xpath @ref xp_page "XPath" identifier referencing the root node of the subtree to be retrieved.
+ * @param[in] opts Options overriding default behavior of this operation.
+ * @param[out] subtree Nested structure storing all data of the requested subtree
+ * (allocated by the function, it is supposed to be freed by the caller using ::sr_free_tree).
+ *
+ * @return Error code (SR_ERR_OK on success)
+ */
+int sr_get_subtree(sr_session_ctx_t *session, const char *xpath, sr_get_subtree_options_t opts,
+        sr_node_t **subtree);
+
+/**
+ * @brief Retrieves an array of subtrees whose root nodes match the provided XPath.
+ *
+ * If the user does not have read permission to access certain nodes, these together with
+ * their descendants won't be part of the result. SR_ERR_NOT_FOUND will be returned if there are
+ * no nodes matching xpath in the data tree, or the user does not have read permission to access them.
+ *
+ * Subtrees that match the provided XPath are not merged even if they overlap. This significantly
+ * simplifies the implementation and decreases the cost of this operation. The downside is that
+ * the user must choose the XPath carefully. If the subtree selection process results in too many
+ * node overlaps, the cost of the operation may easily outshine the benefits. As an example,
+ * a common XPath expression "//." is normally used to select all nodes in a data tree, but for this
+ * operation it would result in an excessive duplication of transfered data elements.
+ * Since you get all the descendants of each matched node implicitly, you probably should not need
+ * to use XPath wildcards deeper than on the top-level.
+ * (i.e. "/." is preferred alternative to "//." for get-subtrees operation).
+ *
+ * If the response contains too many elements time out may be exceeded, SR_ERR_TIME_OUT
+ * will be returned.
+ *
+ * @see @ref xp_page "XPath Addressing" documentation, or
+ * https://tools.ietf.org/html/draft-ietf-netmod-yang-json#section-6.11
+ * for XPath syntax used for identification of yang nodes in sysrepo calls.
+ *
+ * @param[in] session Session context acquired with ::sr_session_start call.
+ * @param[in] xpath @ref xp_page "XPath" identifier referencing root nodes of subtrees to be retrieved.
+ * @param[in] opts Options overriding default behavior of this operation.
+ * @param[out] subtrees Array of nested structures storing all data of the requested subtrees
+ * (allocated by the function, it is supposed to be freed by the caller using ::sr_free_trees).
+ * @param[out] subtree_cnt Number of returned trees in the subtrees array.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_get_subtrees(sr_session_ctx_t *session, const char *xpath, sr_get_subtree_options_t opts,
+        sr_node_t **subtrees, size_t *subtree_cnt);
 
 
 ////////////////////////////////////////////////////////////////////////////////
