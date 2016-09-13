@@ -537,8 +537,11 @@ perf_set_delete_test(void **state, int op_num, int *items) {
         }
 
         /* delete 100 list instances */
-        rc = sr_delete_item(session, "/example-module:container/list[key1='set_del']", SR_EDIT_DEFAULT);
-        assert_int_equal(rc, SR_ERR_OK);
+        for (size_t j = 0; j < 100; j++) {
+            sprintf(xpath, "/example-module:container/list[key1='set_del'][key2='set_%zu']", j);
+            rc = sr_delete_item(session, xpath, SR_EDIT_DEFAULT);
+            assert_int_equal(rc, SR_ERR_OK);
+        }
     }
 
     /* stop the session */
@@ -653,7 +656,7 @@ main (int argc, char **argv)
         {perf_get_subtree_with_data_load_test, "Get subtree incl session start", OP_COUNT, sysrepo_setup, sysrepo_teardown},
         {perf_get_subtrees_test, "Get subtrees all lists", OP_COUNT, sysrepo_setup, sysrepo_teardown},
         {perf_get_ietf_intefaces_tree_test, "Get subtrees ietf-if config", OP_COUNT, sysrepo_setup, sysrepo_teardown},
-        {perf_set_delete_test, "Set item & delete 100 lists", OP_COUNT_COMMIT, sysrepo_setup, sysrepo_teardown},
+        {perf_set_delete_test, "Set & delete 100 lists", OP_COUNT_COMMIT, sysrepo_setup, sysrepo_teardown},
         {perf_commit_test, "Commit one leaf change", OP_COUNT_COMMIT, sysrepo_setup, sysrepo_teardown},
         {perf_libyang_get_node, "Libyang get one node", OP_COUNT, libyang_setup, libyang_teardown},
         {perf_libyang_get_all_list, "Libyang get all list", OP_COUNT, libyang_setup, libyang_teardown},
@@ -673,7 +676,7 @@ main (int argc, char **argv)
     /* 20 list instances*/
     createDataTreeLargeExampleModule(20);
     createDataTreeLargeIETFinterfacesModule(20);
-    test_perf(tests, test_count, "Data file with 20 list instance", selection);
+    test_perf(tests, test_count, "Data file with 20 list instances", selection);
 
 
     /* decrease the number of performed operation on larger file*/
@@ -686,7 +689,7 @@ main (int argc, char **argv)
     /* 100 list instances*/
     createDataTreeLargeExampleModule(100);
     createDataTreeLargeIETFinterfacesModule(100);
-    test_perf(tests, test_count, "Data file with 100 list instance", selection);
+    test_perf(tests, test_count, "Data file with 100 list instances", selection);
     puts("\n\n");
 
     return 0;
