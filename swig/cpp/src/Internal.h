@@ -80,6 +80,7 @@ public:
     ~Counter();
 
 private:
+    void init_all();
     sr_val_t *_val;
     sr_val_t *_vals;
     size_t _cnt;

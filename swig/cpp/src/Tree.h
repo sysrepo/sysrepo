@@ -71,7 +71,6 @@ public:
 
 private:
     sr_node_t *_node;
-    bool _free;
     S_Counter _counter;
 };
 

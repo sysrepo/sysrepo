@@ -292,20 +292,20 @@ private:
 };
 
 // Change type wrapeer class
-class Change
+class Change:public Throw_Exception
 {
 public:
     Change();
     ~Change();
-    sr_change_oper_t oper() {return _oper;};
+    sr_change_oper_t oper() {if (!_oper) throw_exception(SR_ERR_DATA_MISSING); return *_oper;};
     S_Val new_val();
     S_Val old_val();
-    sr_change_oper_t *p_oper() {return &_oper;};
+    sr_change_oper_t *p_oper() {return _oper;};
     sr_val_t **p_old() {return &_old;};
     sr_val_t **p_new() {return &_new;};
 
 private:
-    sr_change_oper_t _oper;
+    sr_change_oper_t *_oper;
     sr_val_t *_new;
     sr_val_t *_old;
     S_Counter _counter_new;
