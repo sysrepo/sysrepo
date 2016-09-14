@@ -2,6 +2,7 @@ set(CMAKE_CXX_FLAGS         "${CMAKE_CXX_FLAGS} -Wall -Wpedantic -std=c++11")
 set(CMAKE_CXX_FLAGS_RELEASE "-DNDEBUG -O2")
 set(CMAKE_CXX_FLAGS_DEBUG   "-g -O0")
 add_definitions(-DSWIG)
+remove_definitions(-DSWIGLUA)
 
 project(Sysrepo_bindings)
 set(SYSREPO_CPP_SOURCES
@@ -100,6 +101,11 @@ endif()
 
 # install binary
 install(TARGETS Sysrepo_bindings DESTINATION ${BIN_INSTALL_DIR})
+
+# build Lua bindings
+if(SWIG_FOUND AND GEN_LUA_BINDINGS AND ${GEN_LUA_VERSION} STREQUAL "5.1")
+    add_subdirectory(lua51)
+endif()
 
 # build C++ bindings
 if(GEN_CPP_BINDINGS)

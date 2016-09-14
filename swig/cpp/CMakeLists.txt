@@ -1,4 +1,5 @@
 remove_definitions(-DSWIG)
+remove_definitions(-DSWIGLUA)
 
 project(Sysrepo_cpp)
 

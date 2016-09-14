@@ -27,8 +27,6 @@ extern "C" {
 #include "sysrepo/trees.h"
 }
 
-using namespace std;
-
 typedef enum free_type_e {
     VAL,
     VALS,
