@@ -5,22 +5,22 @@ add_definitions(-DSWIG)
 
 project(Sysrepo_bindings)
 set(SYSREPO_CPP_SOURCES
-	cpp/src/Sysrepo.cpp
-        cpp/src/Connection.cpp
-        cpp/src/Session.cpp
-        cpp/src/Struct.cpp
-        cpp/src/Xpath.cpp
-        cpp/src/Tree.cpp
-	cpp/src/Internal.cpp)
+	${CMAKE_SOURCE_DIR}/swig/cpp/src/Sysrepo.cpp
+        ${CMAKE_SOURCE_DIR}/swig/cpp/src/Connection.cpp
+        ${CMAKE_SOURCE_DIR}/swig/cpp/src/Session.cpp
+        ${CMAKE_SOURCE_DIR}/swig/cpp/src/Struct.cpp
+        ${CMAKE_SOURCE_DIR}/swig/cpp/src/Xpath.cpp
+        ${CMAKE_SOURCE_DIR}/swig/cpp/src/Tree.cpp
+	${CMAKE_SOURCE_DIR}/swig/cpp/src/Internal.cpp)
 
 set(SYSREPO_H_SOURCES
-	cpp/src/Sysrepo.h
-        cpp/src/Connection.h
-        cpp/src/Session.h
-        cpp/src/Struct.h
-        cpp/src/Xpath.h
-        cpp/src/Tree.h
-	cpp/src/Internal.h)
+	${CMAKE_SOURCE_DIR}/swig/cpp/src/Sysrepo.h
+        ${CMAKE_SOURCE_DIR}/swig/cpp/src/Connection.h
+        ${CMAKE_SOURCE_DIR}/swig/cpp/src/Session.h
+        ${CMAKE_SOURCE_DIR}/swig/cpp/src/Struct.h
+        ${CMAKE_SOURCE_DIR}/swig/cpp/src/Xpath.h
+        ${CMAKE_SOURCE_DIR}/swig/cpp/src/Tree.h
+	${CMAKE_SOURCE_DIR}/swig/cpp/src/Internal.h)
 
 add_library(Sysrepo_bindings SHARED ${SYSREPO_CPP_SOURCES})
 
