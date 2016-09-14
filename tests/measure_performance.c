@@ -79,9 +79,9 @@ typedef struct test_s{
 void
 print_measure_header(const char *title){
     printf("\n\n\t\t%s", title);
-    printf("\n%-32s| %-11s| %-10s| %-12s | %-20s\n",
-            "Operation", "ops/sec", "items/op", "op performed", "test time");
-    printf("------------------------------------------------------------------------------------");
+    printf("\n%-32s| %10s | %10s | %13s | %10s | %10s\n",
+            "Operation", "ops/sec", "items/op", "ops performed", "items/sec", "test time");
+    printf("---------------------------------------------------------------------------------------------------\n");
 }
 
 /**
@@ -120,9 +120,8 @@ measure(void (*func)(void **, int, int *), const char *name, int op_count, void 
     timeval_subtract(&diff, &tv2, &tv1);
 
     seconds = diff.tv_sec + 0.000001*diff.tv_usec;
-    printf("\n%-32s| %11.2f| %10d| %12d | %11.6f",
-            name, ((double) op_count)/ seconds, items, op_count, seconds);
-
+    printf("%-32s| %10.0f | %10d | %13d | %10.0f | %10.2f\n",
+            name, ((double) op_count)/ seconds, items, op_count, ((double) op_count * items)/ seconds, seconds);
 }
 
 void
@@ -488,7 +487,7 @@ perf_get_ietf_intefaces_tree_test(void **state, int op_num, int *items) {
     sr_session_ctx_t *session = NULL;
     sr_node_t *trees = NULL;
     size_t count = 0;
-    size_t total_cnt;
+    size_t total_cnt = 0;
     int rc = 0;
 
     /* start a session */
@@ -509,6 +508,84 @@ perf_get_ietf_intefaces_tree_test(void **state, int op_num, int *items) {
     rc = sr_session_stop(session);
     assert_int_equal(rc, SR_ERR_OK);
     *items = total_cnt;
+}
+
+static void
+perf_set_delete_test(void **state, int op_num, int *items) {
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+    sr_session_ctx_t *session = NULL;
+    char xpath[PATH_MAX] = { 0, };
+    int rc = 0;
+
+    /* start a session */
+    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* perform edit, commit request */
+    sr_val_t value = {0,};
+    for (size_t i = 0; i < op_num; i++) {
+
+        /* set a list instance */
+        sprintf(xpath, "/example-module:container/list[key1='set_del'][key2='set_1']/leaf");
+        value.type = SR_STRING_T;
+        value.data.string_val = strdup("Leaf");
+        assert_non_null(value.data.string_val);
+        rc = sr_set_item(session, xpath, &value, SR_EDIT_DEFAULT);
+        assert_int_equal(rc, SR_ERR_OK);
+
+        /* delete a list instance */
+        sprintf(xpath, "/example-module:container/list[key1='set_del'][key2='set_1']");
+        rc = sr_delete_item(session, xpath, SR_EDIT_DEFAULT);
+        assert_int_equal(rc, SR_ERR_OK);
+    }
+
+    /* stop the session */
+    rc = sr_session_stop(session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    *items = 1 /* list instances */ * 3 /* leaves */ * 2 /* set + delete */ ;
+}
+
+static void
+perf_set_delete_100_test(void **state, int op_num, int *items) {
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+    sr_session_ctx_t *session = NULL;
+    char xpath[PATH_MAX] = { 0, };
+    int rc = 0;
+
+    /* start a session */
+    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* perform edit, commit request */
+    sr_val_t value = {0,};
+    for (size_t i = 0; i < op_num; i++) {
+
+        /* set 100 list instances */
+        for (size_t j = 0; j <= 100; j++) {
+            sprintf(xpath, "/example-module:container/list[key1='set_del'][key2='set_%zu']/leaf", j);
+            value.type = SR_STRING_T;
+            value.data.string_val = strdup("Leaf");
+            assert_non_null(value.data.string_val);
+            rc = sr_set_item(session, xpath, &value, SR_EDIT_DEFAULT);
+            assert_int_equal(rc, SR_ERR_OK);
+        }
+
+        /* delete 100 list instances */
+        for (size_t j = 0; j <= 100; j++) {
+            sprintf(xpath, "/example-module:container/list[key1='set_del'][key2='set_%zu']", j);
+            rc = sr_delete_item(session, xpath, SR_EDIT_DEFAULT);
+            assert_int_equal(rc, SR_ERR_OK);
+        }
+    }
+
+    /* stop the session */
+    rc = sr_session_stop(session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    *items = 100 /* list instances */ * 3 /* leaves */ * 2 /* set + delete */ ;
 }
 
 static void
@@ -607,15 +684,17 @@ main (int argc, char **argv)
 {
     test_t tests[] = {
         {perf_get_item_test, "Get item one leaf", OP_COUNT, sysrepo_setup, sysrepo_teardown},
-        {perf_get_item_first_test, "Get item first", OP_COUNT, sysrepo_setup, sysrepo_teardown},
+        {perf_get_item_first_test, "Get item first leaf", OP_COUNT, sysrepo_setup, sysrepo_teardown},
         {perf_get_item_with_data_load_test, "Get item incl session start", OP_COUNT, sysrepo_setup, sysrepo_teardown},
-        {perf_get_items_test, "Get items all list", OP_COUNT, sysrepo_setup, sysrepo_teardown},
-        {perf_get_items_iter_test, "Get items iter all list", OP_COUNT, sysrepo_setup, sysrepo_teardown},
+        {perf_get_items_test, "Get items all lists", OP_COUNT, sysrepo_setup, sysrepo_teardown},
+        {perf_get_items_iter_test, "Get items iter all lists", OP_COUNT, sysrepo_setup, sysrepo_teardown},
         {perf_get_ietf_intefaces_test, "Get items ietf-if config", OP_COUNT, sysrepo_setup, sysrepo_teardown},
         {perf_get_subtree_test, "Get subtree one leaf", OP_COUNT, sysrepo_setup, sysrepo_teardown},
         {perf_get_subtree_with_data_load_test, "Get subtree incl session start", OP_COUNT, sysrepo_setup, sysrepo_teardown},
-        {perf_get_subtrees_test, "Get subtrees all list", OP_COUNT, sysrepo_setup, sysrepo_teardown},
+        {perf_get_subtrees_test, "Get subtrees all lists", OP_COUNT, sysrepo_setup, sysrepo_teardown},
         {perf_get_ietf_intefaces_tree_test, "Get subtrees ietf-if config", OP_COUNT, sysrepo_setup, sysrepo_teardown},
+        {perf_set_delete_test, "Set & delete one list", OP_COUNT, sysrepo_setup, sysrepo_teardown},
+        {perf_set_delete_100_test, "Set & delete 100 lists", OP_COUNT_COMMIT, sysrepo_setup, sysrepo_teardown},
         {perf_commit_test, "Commit one leaf change", OP_COUNT_COMMIT, sysrepo_setup, sysrepo_teardown},
         {perf_libyang_get_node, "Libyang get one node", OP_COUNT, libyang_setup, libyang_teardown},
         {perf_libyang_get_all_list, "Libyang get all list", OP_COUNT, libyang_setup, libyang_teardown},
@@ -635,7 +714,7 @@ main (int argc, char **argv)
     /* 20 list instances*/
     createDataTreeLargeExampleModule(20);
     createDataTreeLargeIETFinterfacesModule(20);
-    test_perf(tests, test_count, "Data file with 20 list instance", selection);
+    test_perf(tests, test_count, "Data file with 20 list instances", selection);
 
 
     /* decrease the number of performed operation on larger file*/
@@ -648,7 +727,7 @@ main (int argc, char **argv)
     /* 100 list instances*/
     createDataTreeLargeExampleModule(100);
     createDataTreeLargeIETFinterfacesModule(100);
-    test_perf(tests, test_count, "Data file with 100 list instance", selection);
+    test_perf(tests, test_count, "Data file with 100 list instances", selection);
     puts("\n\n");
 
     return 0;
