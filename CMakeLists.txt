@@ -14,7 +14,7 @@ SET(GEN_PYTHON_BINDINGS 1 CACHE BOOL "Enable python bindings.")
 SET(GEN_LUA_BINDINGS 1 CACHE BOOL "Enable Lua bindings.")
 SET(GEN_CPP_BINDINGS 1 CACHE BOOL "Enable C++ bindings.")
 SET(GEN_PYTHON_VERSION "2")
-SET(GEN_LUA_VERSION "5.1")
+SET(GEN_LUA_VERSION "5.2")
 
 # set default build type if not specified by user
 if(NOT CMAKE_BUILD_TYPE)

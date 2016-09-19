@@ -105,6 +105,8 @@ install(TARGETS Sysrepo_bindings DESTINATION ${BIN_INSTALL_DIR})
 # build Lua bindings
 if(SWIG_FOUND AND GEN_LUA_BINDINGS AND ${GEN_LUA_VERSION} STREQUAL "5.1")
     add_subdirectory(lua51)
+elseif(SWIG_FOUND AND GEN_LUA_BINDINGS AND ${GEN_LUA_VERSION} STREQUAL "5.2")
+    add_subdirectory(lua52)
 endif()
 
 # build C++ bindings
