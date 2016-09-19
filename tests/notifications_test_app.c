@@ -29,7 +29,7 @@
 
 volatile int exit_application = 0;
 
-#define MAX_LEN 100
+#define XPATH_MAX_LEN 100
 
 typedef struct settings_s{
     char *filename;

@@ -26,7 +26,9 @@
 #include <setjmp.h>
 #include <cmocka.h>
 #include <string.h>
+#include <pthread.h>
 
+#include "sr_constants.h"
 #include "sysrepo.h"
 #include "client_library.h"
 
@@ -68,6 +70,42 @@ sysrepo_teardown(void **state)
     sr_disconnect(conn);
 
     return 0;
+}
+
+/**
+ * @brief Check size of a linked-list.
+ */
+static size_t
+sr_node_t_get_children_cnt(const sr_node_t *node)
+{
+    size_t size = 0;
+    const sr_node_t *child = node->first_child;
+
+    while (child) {
+        ++size;
+        child = child->next;
+    }
+    return size;
+}
+
+/**
+ * @brief Get node child at a given index.
+ */
+static sr_node_t *
+sr_node_t_get_child(const sr_node_t *node, size_t index)
+{
+    size_t i = 0;
+    sr_node_t *child = (sr_node_t *)node->first_child;
+
+    while (child) {
+        if (index == i) {
+            return child;
+        }
+        ++i;
+        child = child->next;
+    }
+    assert_true(false && "index out of range");
+    return NULL;
 }
 
 static void
@@ -194,6 +232,14 @@ cl_get_schema_test(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 
     /* get schema for specified module, latest revision */
+    rc = sr_get_schema(session, "module-b", NULL, NULL, SR_SCHEMA_YANG, &schema_content);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_non_null(schema_content);
+    printf("%s\n", schema_content);
+    free(schema_content);
+    schema_content = NULL;
+
+    /* get schema for specified module, latest revision */
     rc = sr_get_schema(session, "module-a", NULL, NULL, SR_SCHEMA_YANG, &schema_content);
     assert_int_equal(rc, SR_ERR_OK);
     assert_non_null(schema_content);
@@ -265,10 +311,15 @@ cl_get_item_test(void **state)
     assert_int_equal(SR_ERR_UNKNOWN_MODEL, rc);
     assert_null(value);
 
-    /* not existing data tree*/
+    /* since YANG 1.1 empty containers are present in data tree */
     rc = sr_get_item(session, "/small-module:item", &value);
-    assert_int_equal(SR_ERR_NOT_FOUND, rc);
-    assert_null(value);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(value);
+    assert_int_equal(SR_CONTAINER_T, value->type);
+    assert_true(value->dflt);
+    assert_string_equal(value->xpath, "/small-module:item");
+    sr_free_val(value);
+    value = NULL;
 
     /* bad element in existing module returns SR_ERR_NOT_FOUND instead of SR_ERR_BAD_ELEMENT*/
     rc = sr_get_item(session, "/example-module:unknown/next", &value);
@@ -321,6 +372,164 @@ cl_get_item_test(void **state)
 }
 
 static void
+cl_get_subtree_test(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+
+    sr_session_ctx_t *session = NULL;
+    sr_node_t *tree = NULL, *subtree = NULL;
+    int rc = 0;
+
+    /* start a session */
+    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* perform a get-subtree request */
+
+    /* illegal xpath */
+    rc = sr_get_subtree(session, "^&((", 0, &tree);
+    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+    assert_null(tree);
+
+    /* unknown model */
+    rc = sr_get_subtree(session, "/unknown-model:abc", 0, &tree);
+    assert_int_equal(SR_ERR_UNKNOWN_MODEL, rc);
+    assert_null(tree);
+
+    /* since YANG 1.1 empty containers are present in data tree */
+    rc = sr_get_subtree(session, "/small-module:item", 0, &tree);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(tree);
+    assert_string_equal(tree->name, "item");
+    assert_int_equal(SR_CONTAINER_T, tree->type);
+    assert_true(tree->dflt);
+    sr_free_tree(tree);
+    tree = NULL;
+
+    /* bad element in existing module returns SR_ERR_NOT_FOUND instead of SR_ERR_BAD_ELEMENT*/
+    rc = sr_get_subtree(session, "/example-module:unknown/next", 0, &tree);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+    assert_null(tree);
+
+    /* existing leaf */
+    rc = sr_get_subtree(session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", 0, &tree);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_non_null(tree);
+    assert_string_equal("leaf", tree->name);
+    assert_string_equal("example-module", tree->module_name);
+    assert_int_equal(SR_STRING_T, tree->type);
+    assert_string_equal("Leaf value", tree->data.string_val);
+    assert_null(tree->first_child);
+    sr_free_tree(tree);
+
+    /* container */
+    rc = sr_get_subtree(session, "/example-module:container", 0, &tree);
+    assert_int_equal(rc, SR_ERR_OK);
+    // container
+    assert_non_null(tree);
+    assert_string_equal("container", tree->name);
+    assert_string_equal("example-module", tree->module_name);
+    assert_int_equal(SR_CONTAINER_T, tree->type);
+    assert_false(tree->dflt);
+    assert_null(tree->next);
+    assert_null(tree->prev);
+    // list
+    subtree = tree->first_child;
+    assert_non_null(subtree);
+    assert_string_equal("list", subtree->name);
+    assert_null(subtree->module_name);
+    assert_int_equal(SR_LIST_T, subtree->type);
+    assert_false(subtree->dflt);
+    assert_null(subtree->next);
+    // key1
+    subtree = subtree->first_child;
+    assert_non_null(subtree);
+    assert_string_equal("key1", subtree->name);
+    assert_null(subtree->module_name);
+    assert_int_equal(SR_STRING_T, subtree->type);
+    assert_string_equal("key1", subtree->data.string_val);
+    assert_false(subtree->dflt);
+    assert_null(subtree->first_child);
+    // key2
+    subtree = subtree->next;
+    assert_non_null(subtree);
+    assert_string_equal("key2", subtree->name);
+    assert_null(subtree->module_name);
+    assert_int_equal(SR_STRING_T, subtree->type);
+    assert_string_equal("key2", subtree->data.string_val);
+    assert_false(subtree->dflt);
+    assert_null(subtree->first_child);
+    // leaf
+    subtree = subtree->next;
+    assert_non_null(subtree);
+    assert_string_equal("leaf", subtree->name);
+    assert_null(subtree->module_name);
+    assert_int_equal(SR_STRING_T, subtree->type);
+    assert_string_equal("Leaf value", subtree->data.string_val);
+    assert_false(subtree->dflt);
+    assert_null(subtree->first_child);
+    assert_null(subtree->next);
+    sr_free_tree(tree);
+
+    /* list */
+    rc = sr_get_subtree(session, "/example-module:container/list[key1='key1'][key2='key2']", 0, &tree);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_non_null(tree);
+    // list
+    assert_string_equal("list", tree->name);
+    assert_string_equal("example-module", tree->module_name);
+    assert_int_equal(SR_LIST_T, tree->type);
+    assert_false(tree->dflt);
+    assert_null(tree->next);
+    assert_null(tree->prev);
+    assert_null(tree->parent);
+    // key1
+    subtree = tree->first_child;
+    assert_non_null(subtree);
+    assert_string_equal("key1", subtree->name);
+    assert_null(subtree->module_name);
+    assert_int_equal(SR_STRING_T, subtree->type);
+    assert_string_equal("key1", subtree->data.string_val);
+    assert_false(subtree->dflt);
+    assert_null(subtree->first_child);
+    // key2
+    subtree = subtree->next;
+    assert_non_null(subtree);
+    assert_string_equal("key2", subtree->name);
+    assert_null(subtree->module_name);
+    assert_int_equal(SR_STRING_T, subtree->type);
+    assert_string_equal("key2", subtree->data.string_val);
+    assert_false(subtree->dflt);
+    assert_null(subtree->first_child);
+    // leaf
+    subtree = subtree->next;
+    assert_non_null(subtree);
+    assert_string_equal("leaf", subtree->name);
+    assert_null(subtree->module_name);
+    assert_int_equal(SR_STRING_T, subtree->type);
+    assert_string_equal("Leaf value", subtree->data.string_val);
+    assert_false(subtree->dflt);
+    assert_null(subtree->first_child);
+    assert_null(subtree->next);
+    sr_free_tree(tree);
+
+    /* leafref (transparent for user) */
+    rc = sr_get_subtree(session, "/test-module:university/classes/class[title='CCNA']/student[name='nameB']/age", 0, &tree);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_non_null(tree);
+    assert_string_equal("age", tree->name);
+    assert_string_equal("test-module", tree->module_name);
+    assert_int_equal(SR_UINT8_T, tree->type);
+    assert_int_equal(17, tree->data.uint8_val);
+    sr_free_tree(tree);
+
+    /* stop the session */
+    rc = sr_session_stop(session);
+    assert_int_equal(rc, SR_ERR_OK);
+}
+
+static void
 cl_get_items_test(void **state)
 {
     sr_conn_ctx_t *conn = *state;
@@ -347,9 +556,16 @@ cl_get_items_test(void **state)
     rc = sr_get_items(session, "/unknown-model:abc",  &values, &values_cnt);
     assert_int_equal(SR_ERR_UNKNOWN_MODEL, rc);
 
-    /* not existing data tree*/
-    rc = sr_get_items(session, "/small-module:item",  &values, &values_cnt);
-    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+    /* since YANG 1.1 empty containers might be present in data tree */
+    rc = sr_get_items(session, "/small-module:item", &values, &values_cnt);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(values);
+    assert_int_equal(1, values_cnt);
+    assert_true(values[0].dflt);
+    assert_int_equal(SR_CONTAINER_T, values[0].type);
+    sr_free_values(values, values_cnt);
+    values = NULL;
+    values_cnt = 0;
 
     /* bad element in existing module produces SR_ERR_NOT_FOUND instead of SR_ERR_BAD_ELEMENT */
     rc = sr_get_items(session, "/example-module:unknown", &values, &values_cnt);
@@ -391,6 +607,84 @@ cl_get_items_test(void **state)
 }
 
 static void
+cl_get_subtrees_test(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+
+    createDataTreeIETFinterfacesModule();
+    sr_session_ctx_t *session = NULL;
+    sr_node_t *trees = NULL;
+    size_t tree_cnt = 0;
+    int rc = 0;
+
+    /* start a session */
+    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_non_null(session);
+
+    /* perform a get-subtrees request */
+
+    /* illegal xpath */
+    rc = sr_get_subtrees(session, "^&((",  0, &trees, &tree_cnt);
+    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+
+    /* unknown model */
+    rc = sr_get_subtrees(session, "/unknown-model:abc", 0, &trees, &tree_cnt);
+    assert_int_equal(SR_ERR_UNKNOWN_MODEL, rc);
+
+    /* since YANG 1.1 empty containers are present in data tree */
+    rc = sr_get_subtrees(session, "/small-module:item", 0, &trees, &tree_cnt);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(1, tree_cnt);
+    assert_non_null(trees);
+    assert_string_equal(trees->name, "item");
+    assert_int_equal(SR_CONTAINER_T, trees->type);
+    assert_true(trees->dflt);
+    sr_free_trees(trees, tree_cnt);
+    trees = NULL;
+    tree_cnt = 0;
+
+    /* bad element in existing module produces SR_ERR_NOT_FOUND instead of SR_ERR_BAD_ELEMENT */
+    rc = sr_get_subtrees(session, "/example-module:unknown", 0, &trees, &tree_cnt);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+
+    /* container */
+    rc = sr_get_subtrees(session, "/ietf-interfaces:interfaces/*", 0, &trees, &tree_cnt);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_int_equal(3, tree_cnt);
+    sr_free_trees(trees, tree_cnt);
+
+    /* list without keys */
+    rc = sr_get_subtrees(session, "/ietf-interfaces:interfaces/interface", 0, &trees, &tree_cnt);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_int_equal(3, tree_cnt);
+    sr_free_trees(trees, tree_cnt);
+
+    /* list with keys */
+    rc = sr_get_subtrees(session, "/ietf-interfaces:interfaces/interface[name='eth0']/*", 0, &trees, &tree_cnt);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_int_equal(5, tree_cnt);
+    sr_free_trees(trees, tree_cnt);
+
+    /* leaf-list*/
+    rc = sr_get_subtrees(session, "/test-module:main/numbers", 0, &trees, &tree_cnt);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_int_equal(3, tree_cnt);
+    sr_free_trees(trees, tree_cnt);
+
+    /* leafrefs */
+    rc = sr_get_subtrees(session, "/test-module:university/classes/class[title='CCNA']/student[name='nameB']/*", 0, &trees, &tree_cnt);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_int_equal(2, tree_cnt);
+    sr_free_trees(trees, tree_cnt);
+
+    /* stop the session */
+    rc = sr_session_stop(session);
+    assert_int_equal(rc, SR_ERR_OK);
+}
+
+static void
 cl_get_items_iter_test(void **state)
 {
     sr_conn_ctx_t *conn = *state;
@@ -413,14 +707,17 @@ cl_get_items_iter_test(void **state)
     assert_int_equal(SR_ERR_INVAL_ARG, rc);
     assert_null(it);
 
-    /* non existing item*/
+    /* since YANG 1.1 empty containers might be present in data tree */
     rc = sr_get_items_iter(session, "/small-module:item", &it);
     assert_int_equal(SR_ERR_OK, rc);
     assert_non_null(it);
 
     rc = sr_get_item_next(session, it, &value);
-    assert_int_equal(SR_ERR_NOT_FOUND, rc);
-    assert_null(value);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(value);
+    assert_int_equal(SR_CONTAINER_T, value->type);
+    assert_true(value->dflt);
+    sr_free_val(value);
     sr_free_val_iter(it);
     it = NULL;
 
@@ -1283,8 +1580,10 @@ cl_notification_test(void **state)
             0, SR_SUBSCR_CTX_REUSE, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
+    char file_name[512] = {0};
+    snprintf(file_name, 512, "%s%s.yang", SR_SCHEMA_SEARCH_DIR, "example-module");
     /* do some changes */
-    rc = sr_module_install(session, "example-module", NULL, true);
+    rc = sr_module_install(session, "example-module", NULL, file_name, true);
     assert_int_equal(rc, SR_ERR_OK);
 
     rc = sr_feature_enable(session, "ietf-interfaces", "pre-provisioning", true);
@@ -1330,16 +1629,22 @@ cl_notification_test(void **state)
     rc = sr_feature_enable(session, "example-module", "unknown", true);
     assert_int_equal(rc, SR_ERR_INVAL_ARG);
 
-    rc = sr_module_install(session, "example-module", "2016-05-03", false);
+    snprintf(file_name, 512, "%s%s%s.yang", SR_SCHEMA_SEARCH_DIR, "example-module", "@2016-05-03");
+    rc = sr_module_install(session, "example-module", "2016-05-03", file_name, false);
     assert_int_equal(rc, SR_ERR_NOT_FOUND);
 
-    /* BEWARE: sysrepo must be restarted to access example-module again */
-    rc = sr_module_install(session, "example-module", NULL, false);
+    snprintf(file_name, 512, "%s%s.yang", SR_SCHEMA_SEARCH_DIR, "example-module");
+    rc = sr_module_install(session, "example-module", NULL, file_name, false);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* after module uninstallation all subsequent operation return UNKOWN_MODEL */
     rc = sr_lock_module(session, "example-module");
     assert_int_equal(rc, SR_ERR_UNKNOWN_MODEL);
+
+    /* install module back */
+    snprintf(file_name, 512, "%s%s.yang", SR_SCHEMA_SEARCH_DIR, "example-module");
+    rc = sr_module_install(session, "example-module", NULL, file_name, true);
+    assert_int_equal(rc, SR_ERR_OK);
 
     rc = sr_unsubscribe(session, subscription);
     assert_int_equal(rc, SR_ERR_OK);
@@ -1497,22 +1802,45 @@ test_rpc_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt,
     int *callback_called = (int*)private_ctx;
     *callback_called += 1;
 
-    assert_int_equal(input_cnt, 2);
+    /* check input */
+    assert_int_equal(2, input_cnt);
+    assert_string_equal("/test-module:activate-software-image/image-name", input[0].xpath);
+    assert_false(input[0].dflt);
+    assert_int_equal(SR_STRING_T, input[0].type);
+    assert_string_equal("acmefw-2.3", input[0].data.string_val);
+    assert_string_equal("/test-module:activate-software-image/location", input[1].xpath);
+    assert_true(input[1].dflt);
+    assert_int_equal(SR_STRING_T, input[1].type);
+    assert_string_equal("/", input[1].data.string_val);
 
-    printf("'Executing' RPC: %s\n", xpath);
-    for (size_t i = 0; i < input_cnt; i++) {
-        printf("    input parameter[%zu]: %s = %s\n", i, input[i].xpath, input[i].data.string_val);
-    }
-
-    *output = calloc(2, sizeof(**output));
+    *output_cnt = 6;
+    *output = calloc(*output_cnt, sizeof(**output));
     (*output)[0].xpath = strdup("/test-module:activate-software-image/status");
     (*output)[0].type = SR_STRING_T;
     (*output)[0].data.string_val = strdup("The image acmefw-2.3 is being installed.");
     (*output)[1].xpath = strdup("/test-module:activate-software-image/version");
     (*output)[1].type = SR_STRING_T;
     (*output)[1].data.string_val = strdup("2.3");
+    (*output)[2].xpath = strdup("/test-module:activate-software-image/init-log/"
+                                "log-msg[msg='Successfully loaded software image.'][time='1469625110']/msg-type");
+    (*output)[2].type = SR_ENUM_T;
+    (*output)[2].data.enum_val = strdup("debug");
 
-    *output_cnt = 2;
+    /* explictly create list - not necessary - list will be automatically created when any of its inner node is created */
+    (*output)[3].xpath = strdup("/test-module:activate-software-image/init-log/"
+                                "log-msg[msg='Successfully loaded software image.'][time='1469625110']");
+    (*output)[3].type = SR_LIST_T;
+    /* explictly create list key - redundant only for test purposes*/
+    (*output)[4].xpath = strdup("/test-module:activate-software-image/init-log/"
+                                "log-msg[msg='Successfully loaded software image.'][time='1469625110']/msg");
+    (*output)[4].type = SR_STRING_T;
+    (*output)[4].data.string_val = strdup("Successfully loaded software image.");
+
+
+    (*output)[5].xpath = strdup("/test-module:activate-software-image/init-log/"
+                                "log-msg[msg='Some soft limit exceeded...'][time='1469625150']/msg-type");
+    (*output)[5].type = SR_ENUM_T;
+    (*output)[5].data.enum_val = strdup("warning");
 
     return SR_ERR_OK;
 }
@@ -1547,11 +1875,66 @@ cl_rpc_test(void **state)
     /* send a RPC */
     rc = sr_rpc_send(session, "/test-module:activate-software-image", &input, 1, &output, &output_cnt);
     assert_int_equal(rc, SR_ERR_OK);
+    assert_int_equal(1, callback_called);
 
-    assert_int_equal(output_cnt, 3);
-    for (size_t i = 0; i < output_cnt; i++) {
-        printf("RPC output parameter[%zu]: %s = %s\n", i, output[i].xpath, output[i].data.string_val);
-    }
+    /* check output */
+    assert_int_equal(12, output_cnt);
+    assert_string_equal("/test-module:activate-software-image/status", output[0].xpath);
+    assert_false(output[0].dflt);
+    assert_int_equal(SR_STRING_T, output[0].type);
+    assert_string_equal("The image acmefw-2.3 is being installed.", output[0].data.string_val);
+    assert_string_equal("/test-module:activate-software-image/version", output[1].xpath);
+    assert_false(output[1].dflt);
+    assert_int_equal(SR_STRING_T, output[1].type);
+    assert_string_equal("2.3", output[1].data.string_val);
+
+    assert_string_equal("/test-module:activate-software-image/init-log", output[2].xpath);
+    assert_false(output[2].dflt);
+    assert_int_equal(SR_CONTAINER_T, output[2].type);
+    assert_string_equal("/test-module:activate-software-image/init-log/"
+                        "log-msg[msg='Successfully loaded software image.'][time='1469625110']", output[3].xpath);
+    assert_false(output[3].dflt);
+    assert_int_equal(SR_LIST_T, output[3].type);
+    assert_string_equal("/test-module:activate-software-image/init-log/"
+                        "log-msg[msg='Successfully loaded software image.'][time='1469625110']/msg", output[4].xpath);
+    assert_false(output[4].dflt);
+    assert_int_equal(SR_STRING_T, output[4].type);
+    assert_string_equal("Successfully loaded software image.", output[4].data.string_val);
+    assert_string_equal("/test-module:activate-software-image/init-log/"
+                        "log-msg[msg='Successfully loaded software image.'][time='1469625110']/time", output[5].xpath);
+    assert_false(output[5].dflt);
+    assert_int_equal(SR_UINT32_T, output[5].type);
+    assert_int_equal(1469625110, output[5].data.uint32_val);
+    assert_string_equal("/test-module:activate-software-image/init-log/"
+                        "log-msg[msg='Successfully loaded software image.'][time='1469625110']/msg-type", output[6].xpath);
+    assert_false(output[6].dflt);
+    assert_int_equal(SR_ENUM_T, output[6].type);
+    assert_string_equal("debug", output[6].data.enum_val);
+    assert_string_equal("/test-module:activate-software-image/init-log/"
+                        "log-msg[msg='Some soft limit exceeded...'][time='1469625150']", output[7].xpath);
+    assert_false(output[7].dflt);
+    assert_int_equal(SR_LIST_T, output[7].type);
+    assert_string_equal("/test-module:activate-software-image/init-log/"
+                        "log-msg[msg='Some soft limit exceeded...'][time='1469625150']/msg", output[8].xpath);
+    assert_false(output[8].dflt);
+    assert_int_equal(SR_STRING_T, output[8].type);
+    assert_string_equal("Some soft limit exceeded...", output[8].data.string_val);
+    assert_string_equal("/test-module:activate-software-image/init-log/"
+                        "log-msg[msg='Some soft limit exceeded...'][time='1469625150']/time", output[9].xpath);
+    assert_false(output[9].dflt);
+    assert_int_equal(SR_UINT32_T, output[9].type);
+    assert_int_equal(1469625150, output[9].data.uint32_val);
+    assert_string_equal("/test-module:activate-software-image/init-log/"
+                        "log-msg[msg='Some soft limit exceeded...'][time='1469625150']/msg-type", output[10].xpath);
+    assert_false(output[10].dflt);
+    assert_int_equal(SR_ENUM_T, output[10].type);
+    assert_string_equal("warning", output[10].data.enum_val);
+
+    assert_string_equal("/test-module:activate-software-image/location", output[11].xpath);
+    assert_true(output[11].dflt);
+    assert_int_equal(SR_STRING_T, output[11].type);
+    assert_string_equal("/", output[11].data.string_val);
+
     sr_free_values(output, output_cnt);
 
     /* stop the session */
@@ -1560,6 +1943,433 @@ cl_rpc_test(void **state)
 
     /* unsubscribe */
     rc = sr_unsubscribe(NULL, subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+}
+
+static int
+test_rpc_tree_cb(const char *xpath, const sr_node_t *input, const size_t input_cnt,
+        sr_node_t **output, size_t *output_cnt, void *private_ctx)
+{
+    const sr_node_t *sr_in_node = NULL;
+    sr_node_t *sr_out_node = NULL, *child = NULL;
+    int *callback_called = (int*)private_ctx;
+    *callback_called += 1;
+
+    /* check input */
+    assert_int_equal(2, input_cnt);
+    /*   /test-module:activate-software-image/input/image-name */
+    sr_in_node = input;
+    assert_string_equal("image-name", sr_in_node->name);
+    assert_string_equal("test-module", sr_in_node->module_name);
+    assert_false(sr_in_node->dflt);
+    assert_int_equal(SR_STRING_T, sr_in_node->type);
+    assert_string_equal("acmefw-2.3", sr_in_node->data.string_val);
+    assert_int_equal(0, sr_node_t_get_children_cnt(sr_in_node));
+    /*   /test-module:activate-software-image/input/location */
+    sr_in_node = input + 1;
+    assert_string_equal("location", sr_in_node->name);
+    assert_string_equal("test-module", sr_in_node->module_name);
+    assert_true(sr_in_node->dflt);
+    assert_int_equal(SR_STRING_T, sr_in_node->type);
+    assert_string_equal("/", sr_in_node->data.string_val);
+    assert_int_equal(0, sr_node_t_get_children_cnt(sr_in_node));
+
+    /* prepare output */
+    *output_cnt = 3;
+    *output = calloc(*output_cnt, sizeof(**output));
+    (*output)[0].name = strdup("status");
+    (*output)[0].type = SR_STRING_T;
+    (*output)[0].data.string_val = strdup("The image acmefw-2.3 is being installed.");
+    (*output)[1].name = strdup("version");
+    (*output)[1].type = SR_STRING_T;
+    (*output)[1].data.string_val = strdup("2.3");
+    (*output)[2].name = strdup("init-log");
+    (*output)[2].type = SR_CONTAINER_T;
+    /* log-msg[1] */
+    assert_int_equal(0, sr_node_add_child((*output) + 2, "log-msg", NULL, &sr_out_node));
+    sr_out_node->type = SR_LIST_T;
+    assert_int_equal(0, sr_node_add_child(sr_out_node, "msg", NULL, &child));
+    child->type = SR_STRING_T;
+    child->data.string_val = strdup("Successfully loaded software image.");
+    assert_int_equal(0, sr_node_add_child(sr_out_node, "time", NULL, &child));
+    child->type = SR_UINT32_T;
+    child->data.uint32_val = 1469625110;
+    assert_int_equal(0, sr_node_add_child(sr_out_node, "msg-type", NULL, &child));
+    child->type = SR_ENUM_T;
+    child->data.enum_val = strdup("debug");
+    /* log-msg[2] */
+    assert_int_equal(0, sr_node_add_child((*output) + 2, "log-msg", NULL, &sr_out_node));
+    sr_out_node->type = SR_LIST_T;
+    assert_int_equal(0, sr_node_add_child(sr_out_node, "msg", NULL, &child));
+    child->type = SR_STRING_T;
+    child->data.string_val = strdup("Some soft limit exceeded...");
+    assert_int_equal(0, sr_node_add_child(sr_out_node, "time", NULL, &child));
+    child->type = SR_UINT32_T;
+    child->data.uint32_val = 1469625150;
+    assert_int_equal(0, sr_node_add_child(sr_out_node, "msg-type", NULL, &child));
+    child->type = SR_ENUM_T;
+    child->data.enum_val = strdup("warning");
+
+    return SR_ERR_OK;
+}
+
+static void
+cl_rpc_tree_test(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+
+    sr_session_ctx_t *session = NULL;
+    sr_subscription_ctx_t *subscription = NULL;
+    int callback_called = 0;
+    int rc = SR_ERR_OK;
+
+    /* start a session */
+    rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* subscribe for RPC */
+    rc = sr_rpc_subscribe_tree(session, "/test-module:activate-software-image", test_rpc_tree_cb, &callback_called,
+            SR_SUBSCR_DEFAULT, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    sr_node_t input = { 0, };
+    sr_node_t *output = NULL;
+    size_t output_cnt = 0;
+    input.name = "image-name";
+    input.type = SR_STRING_T;
+    input.data.string_val = "acmefw-2.3";
+
+    /* send a RPC */
+    rc = sr_rpc_send_tree(session, "/test-module:activate-software-image", &input, 1, &output, &output_cnt);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_int_equal(1 , callback_called);
+
+    /* check output */
+    sr_node_t *sr_node = output, *child = NULL;
+    /*   /test-module:activate-software-image/output/status */
+    assert_string_equal("status", sr_node->name);
+    assert_string_equal("test-module", sr_node->module_name);
+    assert_false(sr_node->dflt);
+    assert_int_equal(SR_STRING_T, sr_node->type);
+    assert_string_equal("The image acmefw-2.3 is being installed.", sr_node->data.string_val);
+    assert_int_equal(0, sr_node_t_get_children_cnt(sr_node));
+    /*   /test-module:activate-software-image/output/version */
+    sr_node = output + 1;
+    assert_string_equal("version", sr_node->name);
+    assert_string_equal("test-module", sr_node->module_name);
+    assert_false(sr_node->dflt);
+    assert_int_equal(SR_STRING_T, sr_node->type);
+    assert_string_equal("2.3", sr_node->data.string_val);
+    assert_int_equal(0, sr_node_t_get_children_cnt(sr_node));
+    /*   /test-module:activate-software-image/output/location */
+    sr_node = output + 3;
+    assert_string_equal("location", sr_node->name);
+    assert_string_equal("test-module", sr_node->module_name);
+    assert_true(sr_node->dflt);
+    assert_int_equal(SR_STRING_T, sr_node->type);
+    assert_string_equal("/", sr_node->data.string_val);
+    assert_int_equal(0, sr_node_t_get_children_cnt(sr_node));
+    /*   /test-module:activate-software-image/output/init-log */
+    sr_node = output + 2;
+    assert_string_equal("init-log", sr_node->name);
+    assert_string_equal("test-module", sr_node->module_name);
+    assert_false(sr_node->dflt);
+    assert_int_equal(SR_CONTAINER_T, sr_node->type);
+    assert_int_equal(2, sr_node_t_get_children_cnt(sr_node));
+    /*   /test-module:activate-software-image/output/init-log/log-msg[1] */
+    sr_node = sr_node_t_get_child(sr_node, 0);
+    assert_string_equal("log-msg", sr_node->name);
+    assert_null( sr_node->module_name);
+    assert_false(sr_node->dflt);
+    assert_int_equal(SR_LIST_T, sr_node->type);
+    assert_int_equal(3, sr_node_t_get_children_cnt(sr_node));
+    /*   /test-module:activate-software-image/output/init-log/log-msg[1]/msg */
+    child = sr_node_t_get_child(sr_node, 0);
+    assert_string_equal("msg", child->name);
+    assert_null(child->module_name);
+    assert_false(child->dflt);
+    assert_int_equal(SR_STRING_T, child->type);
+    assert_string_equal("Successfully loaded software image.", child->data.string_val);
+    assert_int_equal(0, sr_node_t_get_children_cnt(child));
+    /*   /test-module:activate-software-image/output/init-log/log-msg[1]/time */
+    child = sr_node_t_get_child(sr_node, 1);
+    assert_string_equal("time", child->name);
+    assert_null(child->module_name);
+    assert_false(child->dflt);
+    assert_int_equal(SR_UINT32_T, child->type);
+    assert_int_equal(1469625110, child->data.uint32_val);
+    assert_int_equal(0, sr_node_t_get_children_cnt(child));
+    /*   /test-module:activate-software-image/output/init-log/log-msg[1]/msg-type */
+    child = sr_node_t_get_child(sr_node, 2);
+    assert_string_equal("msg-type", child->name);
+    assert_null(child->module_name);
+    assert_false(child->dflt);
+    assert_int_equal(SR_ENUM_T, child->type);
+    assert_string_equal("debug", child->data.string_val);
+    assert_int_equal(0, sr_node_t_get_children_cnt(child));
+    /*   /test-module:activate-software-image/output/init-log/log-msg[2] */
+    sr_node = sr_node_t_get_child(output + 2, 1);
+    assert_string_equal("log-msg", sr_node->name);
+    assert_null( sr_node->module_name);
+    assert_false(sr_node->dflt);
+    assert_int_equal(SR_LIST_T, sr_node->type);
+    assert_int_equal(3, sr_node_t_get_children_cnt(sr_node));
+    /*   /test-module:activate-software-image/output/init-log/log-msg[1]/msg */
+    child = sr_node_t_get_child(sr_node, 0);
+    assert_string_equal("msg", child->name);
+    assert_null(child->module_name);
+    assert_false(child->dflt);
+    assert_int_equal(SR_STRING_T, child->type);
+    assert_string_equal("Some soft limit exceeded...", child->data.string_val);
+    assert_int_equal(0, sr_node_t_get_children_cnt(child));
+    /*   /test-module:activate-software-image/output/init-log/log-msg[1]/time */
+    child = sr_node_t_get_child(sr_node, 1);
+    assert_string_equal("time", child->name);
+    assert_null(child->module_name);
+    assert_false(child->dflt);
+    assert_int_equal(SR_UINT32_T, child->type);
+    assert_int_equal(1469625150, child->data.uint32_val);
+    assert_int_equal(0, sr_node_t_get_children_cnt(child));
+    /*   /test-module:activate-software-image/output/init-log/log-msg[1]/msg-type */
+    child = sr_node_t_get_child(sr_node, 2);
+    assert_string_equal("msg-type", child->name);
+    assert_null(child->module_name);
+    assert_false(child->dflt);
+    assert_int_equal(SR_ENUM_T, child->type);
+    assert_string_equal("warning", child->data.string_val);
+    assert_int_equal(0, sr_node_t_get_children_cnt(child));
+
+    sr_free_trees(output, output_cnt);
+
+    /* stop the session */
+    rc = sr_session_stop(session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* unsubscribe */
+    rc = sr_unsubscribe(NULL, subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+}
+
+static void
+cl_rpc_combo_test(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+
+    sr_session_ctx_t *session = NULL;
+    sr_subscription_ctx_t *subscription = NULL;
+    int callback_called = 0;
+    int rc = SR_ERR_OK;
+
+    /* start a session */
+    rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* subscribe for RPC with the tree variant of RPC callback */
+    rc = sr_rpc_subscribe_tree(session, "/test-module:activate-software-image", test_rpc_tree_cb, &callback_called,
+            SR_SUBSCR_DEFAULT, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* while subscription uses the *tree* interface, we will send and received RPC arguments as *values* */
+    sr_val_t input = { 0, };
+    sr_val_t *output = NULL;
+    size_t output_cnt = 0;
+    input.xpath = "/test-module:activate-software-image/image-name";
+    input.type = SR_STRING_T;
+    input.data.string_val = "acmefw-2.3";
+
+    /* send a RPC */
+    rc = sr_rpc_send(session, "/test-module:activate-software-image", &input, 1, &output, &output_cnt);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_int_equal(1, callback_called);
+
+    /* check output */
+    assert_int_equal(12, output_cnt);
+    assert_string_equal("/test-module:activate-software-image/status", output[0].xpath);
+    assert_false(output[0].dflt);
+    assert_int_equal(SR_STRING_T, output[0].type);
+    assert_string_equal("The image acmefw-2.3 is being installed.", output[0].data.string_val);
+    assert_string_equal("/test-module:activate-software-image/version", output[1].xpath);
+    assert_false(output[1].dflt);
+    assert_int_equal(SR_STRING_T, output[1].type);
+    assert_string_equal("2.3", output[1].data.string_val);
+
+    assert_string_equal("/test-module:activate-software-image/init-log", output[2].xpath);
+    assert_false(output[2].dflt);
+    assert_int_equal(SR_CONTAINER_T, output[2].type);
+    assert_string_equal("/test-module:activate-software-image/init-log/"
+                        "log-msg[msg='Successfully loaded software image.'][time='1469625110']", output[3].xpath);
+    assert_false(output[3].dflt);
+    assert_int_equal(SR_LIST_T, output[3].type);
+    assert_string_equal("/test-module:activate-software-image/init-log/"
+                        "log-msg[msg='Successfully loaded software image.'][time='1469625110']/msg", output[4].xpath);
+    assert_false(output[4].dflt);
+    assert_int_equal(SR_STRING_T, output[4].type);
+    assert_string_equal("Successfully loaded software image.", output[4].data.string_val);
+    assert_string_equal("/test-module:activate-software-image/init-log/"
+                        "log-msg[msg='Successfully loaded software image.'][time='1469625110']/time", output[5].xpath);
+    assert_false(output[5].dflt);
+    assert_int_equal(SR_UINT32_T, output[5].type);
+    assert_int_equal(1469625110, output[5].data.uint32_val);
+    assert_string_equal("/test-module:activate-software-image/init-log/"
+                        "log-msg[msg='Successfully loaded software image.'][time='1469625110']/msg-type", output[6].xpath);
+    assert_false(output[6].dflt);
+    assert_int_equal(SR_ENUM_T, output[6].type);
+    assert_string_equal("debug", output[6].data.enum_val);
+    assert_string_equal("/test-module:activate-software-image/init-log/"
+                        "log-msg[msg='Some soft limit exceeded...'][time='1469625150']", output[7].xpath);
+    assert_false(output[7].dflt);
+    assert_int_equal(SR_LIST_T, output[7].type);
+    assert_string_equal("/test-module:activate-software-image/init-log/"
+                        "log-msg[msg='Some soft limit exceeded...'][time='1469625150']/msg", output[8].xpath);
+    assert_false(output[8].dflt);
+    assert_int_equal(SR_STRING_T, output[8].type);
+    assert_string_equal("Some soft limit exceeded...", output[8].data.string_val);
+    assert_string_equal("/test-module:activate-software-image/init-log/"
+                        "log-msg[msg='Some soft limit exceeded...'][time='1469625150']/time", output[9].xpath);
+    assert_false(output[9].dflt);
+    assert_int_equal(SR_UINT32_T, output[9].type);
+    assert_int_equal(1469625150, output[9].data.uint32_val);
+    assert_string_equal("/test-module:activate-software-image/init-log/"
+                        "log-msg[msg='Some soft limit exceeded...'][time='1469625150']/msg-type", output[10].xpath);
+    assert_false(output[10].dflt);
+    assert_int_equal(SR_ENUM_T, output[10].type);
+    assert_string_equal("warning", output[10].data.enum_val);
+
+    assert_string_equal("/test-module:activate-software-image/location", output[11].xpath);
+    assert_true(output[11].dflt);
+    assert_int_equal(SR_STRING_T, output[11].type);
+    assert_string_equal("/", output[11].data.string_val);
+
+    sr_free_values(output, output_cnt);
+
+    /* unsubscribe */
+    rc = sr_unsubscribe(NULL, subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* now subscribe for RPC with the variant of RPC callback that expects *values* */
+    rc = sr_rpc_subscribe(session, "/test-module:activate-software-image", test_rpc_cb, &callback_called,
+            SR_SUBSCR_DEFAULT, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* while subscription uses the *values* interface, we will send and received RPC arguments as *trees* */
+    sr_node_t input_tree = { 0, };
+    sr_node_t *output_tree = NULL;
+    output_cnt = 0;
+    input_tree.name = "image-name";
+    input_tree.type = SR_STRING_T;
+    input_tree.data.string_val = "acmefw-2.3";
+
+    /* send a RPC */
+    callback_called = 0;
+    rc = sr_rpc_send_tree(session, "/test-module:activate-software-image", &input_tree, 1, &output_tree, &output_cnt);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_int_equal(1 , callback_called);
+
+    /* check output */
+    sr_node_t *sr_node = output_tree, *child = NULL;
+    /*   /test-module:activate-software-image/output/status */
+    assert_string_equal("status", sr_node->name);
+    assert_string_equal("test-module", sr_node->module_name);
+    assert_false(sr_node->dflt);
+    assert_int_equal(SR_STRING_T, sr_node->type);
+    assert_string_equal("The image acmefw-2.3 is being installed.", sr_node->data.string_val);
+    assert_int_equal(0, sr_node_t_get_children_cnt(sr_node));
+    /*   /test-module:activate-software-image/output/version */
+    sr_node = output_tree + 1;
+    assert_string_equal("version", sr_node->name);
+    assert_string_equal("test-module", sr_node->module_name);
+    assert_false(sr_node->dflt);
+    assert_int_equal(SR_STRING_T, sr_node->type);
+    assert_string_equal("2.3", sr_node->data.string_val);
+    assert_int_equal(0, sr_node_t_get_children_cnt(sr_node));
+    /*   /test-module:activate-software-image/output/location */
+    sr_node = output_tree + 3;
+    assert_string_equal("location", sr_node->name);
+    assert_string_equal("test-module", sr_node->module_name);
+    assert_true(sr_node->dflt);
+    assert_int_equal(SR_STRING_T, sr_node->type);
+    assert_string_equal("/", sr_node->data.string_val);
+    assert_int_equal(0, sr_node_t_get_children_cnt(sr_node));
+    /*   /test-module:activate-software-image/output/init-log */
+    sr_node = output_tree + 2;
+    assert_string_equal("init-log", sr_node->name);
+    assert_string_equal("test-module", sr_node->module_name);
+    assert_false(sr_node->dflt);
+    assert_int_equal(SR_CONTAINER_T, sr_node->type);
+    assert_int_equal(2, sr_node_t_get_children_cnt(sr_node));
+    /*   /test-module:activate-software-image/output/init-log/log-msg[1] */
+    sr_node = sr_node_t_get_child(sr_node, 0);
+    assert_string_equal("log-msg", sr_node->name);
+    assert_null( sr_node->module_name);
+    assert_false(sr_node->dflt);
+    assert_int_equal(SR_LIST_T, sr_node->type);
+    assert_int_equal(3, sr_node_t_get_children_cnt(sr_node));
+    /*   /test-module:activate-software-image/output/init-log/log-msg[1]/msg */
+    child = sr_node_t_get_child(sr_node, 0);
+    assert_string_equal("msg", child->name);
+    assert_null(child->module_name);
+    assert_false(child->dflt);
+    assert_int_equal(SR_STRING_T, child->type);
+    assert_string_equal("Successfully loaded software image.", child->data.string_val);
+    assert_int_equal(0, sr_node_t_get_children_cnt(child));
+    /*   /test-module:activate-software-image/output/init-log/log-msg[1]/time */
+    child = sr_node_t_get_child(sr_node, 1);
+    assert_string_equal("time", child->name);
+    assert_null(child->module_name);
+    assert_false(child->dflt);
+    assert_int_equal(SR_UINT32_T, child->type);
+    assert_int_equal(1469625110, child->data.uint32_val);
+    assert_int_equal(0, sr_node_t_get_children_cnt(child));
+    /*   /test-module:activate-software-image/output/init-log/log-msg[1]/msg-type */
+    child = sr_node_t_get_child(sr_node, 2);
+    assert_string_equal("msg-type", child->name);
+    assert_null(child->module_name);
+    assert_false(child->dflt);
+    assert_int_equal(SR_ENUM_T, child->type);
+    assert_string_equal("debug", child->data.string_val);
+    assert_int_equal(0, sr_node_t_get_children_cnt(child));
+    /*   /test-module:activate-software-image/output/init-log/log-msg[2] */
+    sr_node = sr_node_t_get_child(output_tree + 2, 1);
+    assert_string_equal("log-msg", sr_node->name);
+    assert_null( sr_node->module_name);
+    assert_false(sr_node->dflt);
+    assert_int_equal(SR_LIST_T, sr_node->type);
+    assert_int_equal(3, sr_node_t_get_children_cnt(sr_node));
+    /*   /test-module:activate-software-image/output/init-log/log-msg[1]/msg */
+    child = sr_node_t_get_child(sr_node, 0);
+    assert_string_equal("msg", child->name);
+    assert_null(child->module_name);
+    assert_false(child->dflt);
+    assert_int_equal(SR_STRING_T, child->type);
+    assert_string_equal("Some soft limit exceeded...", child->data.string_val);
+    assert_int_equal(0, sr_node_t_get_children_cnt(child));
+    /*   /test-module:activate-software-image/output/init-log/log-msg[1]/time */
+    child = sr_node_t_get_child(sr_node, 1);
+    assert_string_equal("time", child->name);
+    assert_null(child->module_name);
+    assert_false(child->dflt);
+    assert_int_equal(SR_UINT32_T, child->type);
+    assert_int_equal(1469625150, child->data.uint32_val);
+    assert_int_equal(0, sr_node_t_get_children_cnt(child));
+    /*   /test-module:activate-software-image/output/init-log/log-msg[1]/msg-type */
+    child = sr_node_t_get_child(sr_node, 2);
+    assert_string_equal("msg-type", child->name);
+    assert_null(child->module_name);
+    assert_false(child->dflt);
+    assert_int_equal(SR_ENUM_T, child->type);
+    assert_string_equal("warning", child->data.string_val);
+    assert_int_equal(0, sr_node_t_get_children_cnt(child));
+
+    sr_free_trees(output_tree, output_cnt);
+
+    /* unsubscribe */
+    rc = sr_unsubscribe(NULL, subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* stop the session */
+    rc = sr_session_stop(session);
     assert_int_equal(rc, SR_ERR_OK);
 }
 
@@ -1946,6 +2756,826 @@ cl_enable_empty_startup(void **state)
     sr_session_stop(sessionA);
 }
 
+static int
+dp_get_items_cb(const char *xpath, sr_val_t **values, size_t *values_cnt, void *private_ctx)
+{
+    printf("operational data for '%s' requested.\n", xpath);
+
+    *values = calloc(1, sizeof(**values));
+    if (0 == strcmp(xpath, "/state-module:bus/gps_located")) {
+        (*values)[0].xpath = strdup("/state-module:bus/gps_located");
+        (*values)[0].type = SR_BOOL_T;
+        (*values)[0].data.bool_val = false;
+    } else {
+        (*values)[0].xpath = strdup("/state-module:bus/distance_travelled");
+        (*values)[0].type = SR_UINT32_T;
+        (*values)[0].data.uint32_val = 42;
+    }
+    *values_cnt = 1;
+
+    return SR_ERR_OK;
+}
+
+static void
+cl_dp_get_items_test(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+    sr_session_ctx_t *session = NULL, *config_only_session = NULL;
+    sr_subscription_ctx_t *subscription = NULL;
+    int rc = SR_ERR_OK;
+    sr_val_t *value = NULL;
+
+    /* start session */
+    rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* subscribe as a data provider */
+    rc = sr_dp_get_items_subscribe(session, "/state-module:bus", dp_get_items_cb, NULL,
+            SR_SUBSCR_DEFAULT, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_get_item(session, "/state-module:bus/distance_travelled", &value);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    assert_int_equal(SR_UINT32_T, value->type);
+    assert_int_equal(42, value->data.uint32_val);
+    sr_free_val(value);
+
+    rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_CONFIG_ONLY, &config_only_session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* no state data in config only session */
+    rc = sr_get_item(config_only_session, "/state-module:bus/distance_travelled", &value);
+    assert_int_equal(rc, SR_ERR_NOT_FOUND);
+
+    /* data are also removed when switched to CONFIG_ONLY */
+    rc = sr_session_set_options(session, SR_SESS_CONFIG_ONLY);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_get_item(session, "/state-module:bus/distance_travelled", &value);
+    assert_int_equal(rc, SR_ERR_NOT_FOUND);
+
+    /* unsubscribe */
+    rc = sr_unsubscribe(NULL, subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* stop the session */
+    rc = sr_session_stop(session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_session_stop(config_only_session);
+    assert_int_equal(rc, SR_ERR_OK);
+}
+
+static void
+cl_session_set_opts(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+    sr_session_ctx_t *session = NULL;
+    int rc;
+
+    rc = sr_session_start(conn, SR_DS_CANDIDATE, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_session_set_options(session, SR_SESS_CONFIG_ONLY);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* stop the session */
+    rc = sr_session_stop(session);
+    assert_int_equal(rc, SR_ERR_OK);
+}
+
+#define CL_TEST_EN_NUM_SESSIONS  5
+
+typedef struct cl_test_en_cb_status_s {
+    int link_discovered;
+    int link_removed;
+    pthread_mutex_t mutex;
+    pthread_cond_t cond;
+} cl_test_en_cb_status_t;
+
+typedef struct cl_test_en_session_s {
+    sr_session_ctx_t *session;
+    sr_subscription_ctx_t *subscription_ld;
+    sr_subscription_ctx_t *subscription_lr;
+    sr_subscription_ctx_t *subscription_lo;
+} cl_test_en_session_t;
+
+static void
+test_event_notif_link_discovery_cb(const char *xpath, const sr_val_t *values, const size_t values_cnt,
+        void *private_ctx)
+{
+    cl_test_en_cb_status_t *cb_status = (cl_test_en_cb_status_t*)private_ctx;
+
+    assert_int_equal(values_cnt, 7);
+    assert_string_equal("/test-module:link-discovered", xpath);
+    assert_string_equal("/test-module:link-discovered/source", values[0].xpath);
+    assert_int_equal(SR_CONTAINER_T, values[0].type);
+    assert_string_equal("/test-module:link-discovered/source/address", values[1].xpath);
+    assert_int_equal(SR_STRING_T, values[1].type);
+    assert_string_equal("10.10.1.5", values[1].data.string_val);
+    assert_string_equal("/test-module:link-discovered/source/interface", values[2].xpath);
+    assert_int_equal(SR_STRING_T, values[2].type);
+    assert_string_equal("eth1", values[2].data.string_val);
+    assert_string_equal("/test-module:link-discovered/destination", values[3].xpath);
+    assert_int_equal(SR_CONTAINER_T, values[3].type);
+    assert_string_equal("/test-module:link-discovered/destination/address", values[4].xpath);
+    assert_int_equal(SR_STRING_T, values[4].type);
+    assert_string_equal("10.10.1.8", values[4].data.string_val);
+    assert_string_equal("/test-module:link-discovered/destination/interface", values[5].xpath);
+    assert_int_equal(SR_STRING_T, values[5].type);
+    assert_string_equal("eth0", values[5].data.string_val);
+    assert_string_equal("/test-module:link-discovered/MTU", values[6].xpath);  /**< default */
+    assert_int_equal(SR_UINT16_T, values[6].type);
+    assert_int_equal(1500, values[6].data.uint16_val);
+
+    assert_int_equal(0, pthread_mutex_lock(&cb_status->mutex));
+    cb_status->link_discovered += 1;
+    if (cb_status->link_discovered == CL_TEST_EN_NUM_SESSIONS) {
+        assert_int_equal(0, pthread_cond_signal(&cb_status->cond));
+    }
+    assert_int_equal(0, pthread_mutex_unlock(&cb_status->mutex));
+}
+
+static void
+test_event_notif_link_removed_cb(const char *xpath, const sr_val_t *values, const size_t values_cnt,
+        void *private_ctx)
+{
+    cl_test_en_cb_status_t *cb_status = (cl_test_en_cb_status_t*)private_ctx;
+
+    assert_int_equal(values_cnt, 7);
+    assert_string_equal("/test-module:link-removed", xpath);
+    assert_string_equal("/test-module:link-removed/source", values[0].xpath);
+    assert_int_equal(SR_CONTAINER_T, values[0].type);
+    assert_string_equal("/test-module:link-removed/source/address", values[1].xpath);
+    assert_int_equal(SR_STRING_T, values[1].type);
+    assert_string_equal("10.10.2.4", values[1].data.string_val);
+    assert_string_equal("/test-module:link-removed/source/interface", values[2].xpath);
+    assert_int_equal(SR_STRING_T, values[2].type);
+    assert_string_equal("eth0", values[2].data.string_val);
+    assert_string_equal("/test-module:link-removed/destination", values[3].xpath);
+    assert_int_equal(SR_CONTAINER_T, values[3].type);
+    assert_string_equal("/test-module:link-removed/destination/address", values[4].xpath);
+    assert_int_equal(SR_STRING_T, values[4].type);
+    assert_string_equal("10.10.2.5", values[4].data.string_val);
+    assert_string_equal("/test-module:link-removed/destination/interface", values[5].xpath);
+    assert_int_equal(SR_STRING_T, values[5].type);
+    assert_string_equal("eth2", values[5].data.string_val);
+    assert_string_equal("/test-module:link-removed/MTU", values[6].xpath); /**< default */
+    assert_int_equal(SR_UINT16_T, values[6].type);
+    assert_int_equal(1500, values[6].data.uint16_val);
+
+    assert_int_equal(0, pthread_mutex_lock(&cb_status->mutex));
+    cb_status->link_removed += 1;
+    if (cb_status->link_removed == CL_TEST_EN_NUM_SESSIONS) {
+        assert_int_equal(0, pthread_cond_signal(&cb_status->cond));
+    }
+    assert_int_equal(0, pthread_mutex_unlock(&cb_status->mutex));
+}
+
+static void
+test_event_notif_link_overutilized_cb(const char *xpath, const sr_val_t *values, const size_t values_cnt,
+        void *private_ctx)
+{
+    assert_true(0 && "This callback should not get called");
+}
+
+static void
+cl_event_notif_test(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+
+    cl_test_en_session_t sub_session[CL_TEST_EN_NUM_SESSIONS];
+    sr_session_ctx_t *notif_session = NULL;
+    cl_test_en_cb_status_t cb_status;
+    sr_val_t values[4];
+    size_t i;
+    int rc = SR_ERR_OK;
+
+    memset(&values, '\0', sizeof(values));
+    cb_status.link_discovered = 0;
+    cb_status.link_removed = 0;
+    assert_int_equal(0, pthread_mutex_init(&cb_status.mutex, NULL));
+    assert_int_equal(0, pthread_cond_init(&cb_status.cond, NULL));
+    assert_int_equal(0, pthread_mutex_lock(&cb_status.mutex));
+
+    /* start sessions */
+    rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &notif_session);
+    assert_int_equal(rc, SR_ERR_OK);
+    for (i = 0; i < CL_TEST_EN_NUM_SESSIONS; ++i) {
+        rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &sub_session[i].session);
+        assert_int_equal(rc, SR_ERR_OK);
+    }
+
+    /* subscribe for link discovery in every session */
+    for (i = 0; i < CL_TEST_EN_NUM_SESSIONS; ++i) {
+        rc = sr_event_notif_subscribe(sub_session[i].session, "/test-module:link-discovered", test_event_notif_link_discovery_cb,
+                &cb_status, SR_SUBSCR_DEFAULT, &sub_session[i].subscription_ld);
+        assert_int_equal(rc, SR_ERR_OK);
+    }
+
+    /* subscribe for link removal in every session */
+    for (i = 0; i < CL_TEST_EN_NUM_SESSIONS; ++i) {
+        rc = sr_event_notif_subscribe(sub_session[i].session, "/test-module:link-removed", test_event_notif_link_removed_cb,
+                &cb_status, SR_SUBSCR_DEFAULT, &sub_session[i].subscription_lr);
+        assert_int_equal(rc, SR_ERR_OK);
+    }
+
+    /* subscribe for nonexistent notification in every session */
+    for (i = 0; i < CL_TEST_EN_NUM_SESSIONS; ++i) {
+        rc = sr_event_notif_subscribe(sub_session[i].session, "/test-module:link-overutilized", test_event_notif_link_overutilized_cb,
+                    &cb_status, SR_SUBSCR_DEFAULT, &sub_session[i].subscription_lo);
+        assert_int_equal(rc, SR_ERR_OK); /**< not verified at this stage */
+    }
+
+    /* send event notification - link discovery */
+    values[0].xpath = "/test-module:link-discovered/source/address";
+    values[0].type = SR_STRING_T;
+    values[0].data.string_val = "10.10.1.5";
+    values[1].xpath = "/test-module:link-discovered/source/interface";
+    values[1].type = SR_STRING_T;
+    values[1].data.string_val = "eth1";
+    values[2].xpath = "/test-module:link-discovered/destination/address";
+    values[2].type = SR_STRING_T;
+    values[2].data.string_val = "10.10.1.8";
+    values[3].xpath = "/test-module:link-discovered/destination/interface";
+    values[3].type = SR_STRING_T;
+    values[3].data.string_val = "eth0";
+
+    rc = sr_event_notif_send(notif_session, "/test-module:link-discovered", values, 4);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* send event notification - link removal */
+    values[0].xpath = "/test-module:link-removed/source/address";
+    values[0].type = SR_STRING_T;
+    values[0].data.string_val = "10.10.2.4";
+    values[1].xpath = "/test-module:link-removed/source/interface";
+    values[1].type = SR_STRING_T;
+    values[1].data.string_val = "eth0";
+    values[2].xpath = "/test-module:link-removed/destination/address";
+    values[2].type = SR_STRING_T;
+    values[2].data.string_val = "10.10.2.5";
+    values[3].xpath = "/test-module:link-removed/destination/interface";
+    values[3].type = SR_STRING_T;
+    values[3].data.string_val = "eth2";
+
+    rc = sr_event_notif_send(notif_session, "/test-module:link-removed", values, 4);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* send event notification - link overutilized (not defined in yang) */
+    values[0].xpath = "/test-module:link-overutilized/source/address";
+    values[0].type = SR_STRING_T;
+    values[0].data.string_val = "10.10.1.5";
+    values[1].xpath = "/test-module:link-overutilized/source/interface";
+    values[1].type = SR_STRING_T;
+    values[1].data.string_val = "eth1";
+    values[2].xpath = "/test-module:link-overutilized/destination/address";
+    values[2].type = SR_STRING_T;
+    values[2].data.string_val = "10.10.1.8";
+    values[3].xpath = "/test-module:link-overutilized/destination/interface";
+    values[3].type = SR_STRING_T;
+    values[3].data.string_val = "eth0";
+
+    rc = sr_event_notif_send(notif_session, "/test-module:link-overutilized", values, 4);
+    assert_int_equal(rc, SR_ERR_VALIDATION_FAILED);
+
+    /* wait at most 5 seconds for all callbacks to get called */
+    struct timespec ts;
+    sr_clock_get_time(CLOCK_REALTIME, &ts);
+    ts.tv_sec += 5;
+    while (ETIMEDOUT != pthread_cond_timedwait(&cb_status.cond, &cb_status.mutex, &ts)
+            && (cb_status.link_removed < CL_TEST_EN_NUM_SESSIONS || cb_status.link_discovered < CL_TEST_EN_NUM_SESSIONS));
+    assert_int_equal(CL_TEST_EN_NUM_SESSIONS, cb_status.link_discovered);
+    assert_int_equal(CL_TEST_EN_NUM_SESSIONS, cb_status.link_removed);
+    assert_int_equal(0, pthread_mutex_unlock(&cb_status.mutex));
+
+    /* unsubscribe */
+    for (i = 0; i < CL_TEST_EN_NUM_SESSIONS; ++i) {
+        rc = sr_unsubscribe(NULL, sub_session[i].subscription_ld);
+        assert_int_equal(rc, SR_ERR_OK);
+        rc = sr_unsubscribe(NULL, sub_session[i].subscription_lr);
+        assert_int_equal(rc, SR_ERR_OK);
+        rc = sr_unsubscribe(NULL, sub_session[i].subscription_lo);
+        assert_int_equal(rc, SR_ERR_OK);
+    }
+
+    /* stop sessions */
+    rc = sr_session_stop(notif_session);
+    assert_int_equal(rc, SR_ERR_OK);
+    for (i = 0; i < CL_TEST_EN_NUM_SESSIONS; ++i) {
+        rc = sr_session_stop(sub_session[i].session);
+        assert_int_equal(rc, SR_ERR_OK);
+    }
+
+    /* cleanup */
+    assert_int_equal(0, pthread_mutex_destroy(&cb_status.mutex));
+    assert_int_equal(0, pthread_cond_destroy(&cb_status.cond));
+}
+
+static void
+test_event_notif_link_discovery_tree_cb(const char *xpath, const sr_node_t *trees, const size_t tree_cnt,
+        void *private_ctx)
+{
+    const sr_node_t *tree = NULL;
+    cl_test_en_cb_status_t *cb_status = (cl_test_en_cb_status_t*)private_ctx;
+
+    assert_string_equal("/test-module:link-discovered", xpath);
+    assert_int_equal(tree_cnt, 3);
+    /*  /test-module:link-discovered/source */
+    tree = trees;
+    assert_string_equal("source", tree->name);
+    assert_string_equal("test-module", tree->module_name);
+    assert_false(tree->dflt);
+    assert_int_equal(SR_CONTAINER_T, tree->type);
+    assert_int_equal(2, sr_node_t_get_children_cnt(tree));
+    /*  /test-module:link-discovered/source/address */
+    tree = sr_node_t_get_child(trees, 0);
+    assert_string_equal("address", tree->name);
+    assert_null(tree->module_name);
+    assert_false(tree->dflt);
+    assert_int_equal(SR_STRING_T, tree->type);
+    assert_string_equal("10.10.1.5", tree->data.string_val);
+    assert_int_equal(0, sr_node_t_get_children_cnt(tree));
+    /*  /test-module:link-discovered/source/interface */
+    tree = sr_node_t_get_child(trees, 1);
+    assert_string_equal("interface", tree->name);
+    assert_null(tree->module_name);
+    assert_false(tree->dflt);
+    assert_int_equal(SR_STRING_T, tree->type);
+    assert_string_equal("eth1", tree->data.string_val);
+    assert_int_equal(0, sr_node_t_get_children_cnt(tree));
+    /*  /test-module:link-discovered/destination */
+    tree = trees + 1;
+    assert_string_equal("destination", tree->name);
+    assert_string_equal("test-module", tree->module_name);
+    assert_false(tree->dflt);
+    assert_int_equal(SR_CONTAINER_T, tree->type);
+    assert_int_equal(2, sr_node_t_get_children_cnt(tree));
+    /*  /test-module:link-discovered/destination/address */
+    tree = sr_node_t_get_child(trees + 1, 0);
+    assert_string_equal("address", tree->name);
+    assert_null(tree->module_name);
+    assert_false(tree->dflt);
+    assert_int_equal(SR_STRING_T, tree->type);
+    assert_string_equal("10.10.1.8", tree->data.string_val);
+    assert_int_equal(0, sr_node_t_get_children_cnt(tree));
+    /*  /test-module:link-discovered/destination/interface */
+    tree = sr_node_t_get_child(trees + 1, 1);
+    assert_string_equal("interface", tree->name);
+    assert_null(tree->module_name);
+    assert_false(tree->dflt);
+    assert_int_equal(SR_STRING_T, tree->type);
+    assert_string_equal("eth0", tree->data.string_val);
+    assert_int_equal(0, sr_node_t_get_children_cnt(tree));
+    /*  /test-module:link-discovered/MTU */
+    tree = trees + 2;
+    assert_string_equal("MTU", tree->name);
+    assert_string_equal("test-module", tree->module_name);
+    assert_true(tree->dflt);  /**< default */
+    assert_int_equal(SR_UINT16_T, tree->type);
+    assert_int_equal(1500, tree->data.uint16_val);
+    assert_int_equal(0, sr_node_t_get_children_cnt(tree));
+
+    assert_int_equal(0, pthread_mutex_lock(&cb_status->mutex));
+    cb_status->link_discovered += 1;
+    if (cb_status->link_discovered == CL_TEST_EN_NUM_SESSIONS) {
+        assert_int_equal(0, pthread_cond_signal(&cb_status->cond));
+    }
+    assert_int_equal(0, pthread_mutex_unlock(&cb_status->mutex));
+}
+
+static void
+test_event_notif_link_removed_tree_cb(const char *xpath, const sr_node_t *trees, const size_t tree_cnt,
+        void *private_ctx)
+{
+    const sr_node_t *tree = NULL;
+    cl_test_en_cb_status_t *cb_status = (cl_test_en_cb_status_t*)private_ctx;
+
+    assert_string_equal("/test-module:link-removed", xpath);
+    assert_int_equal(tree_cnt, 3);
+    /*  /test-module:link-discovered/source */
+    tree = trees;
+    assert_string_equal("source", tree->name);
+    assert_string_equal("test-module", tree->module_name);
+    assert_false(tree->dflt);
+    assert_int_equal(SR_CONTAINER_T, tree->type);
+    assert_int_equal(2, sr_node_t_get_children_cnt(tree));
+    /*  /test-module:link-discovered/source/address */
+    tree = sr_node_t_get_child(trees, 0);
+    assert_string_equal("address", tree->name);
+    assert_null(tree->module_name);
+    assert_false(tree->dflt);
+    assert_int_equal(SR_STRING_T, tree->type);
+    assert_string_equal("10.10.2.4", tree->data.string_val);
+    assert_int_equal(0, sr_node_t_get_children_cnt(tree));
+    /*  /test-module:link-discovered/source/interface */
+    tree = sr_node_t_get_child(trees, 1);
+    assert_string_equal("interface", tree->name);
+    assert_null(tree->module_name);
+    assert_false(tree->dflt);
+    assert_int_equal(SR_STRING_T, tree->type);
+    assert_string_equal("eth0", tree->data.string_val);
+    assert_int_equal(0, sr_node_t_get_children_cnt(tree));
+    /*  /test-module:link-discovered/destination */
+    tree = trees + 1;
+    assert_string_equal("destination", tree->name);
+    assert_string_equal("test-module", tree->module_name);
+    assert_false(tree->dflt);
+    assert_int_equal(SR_CONTAINER_T, tree->type);
+    assert_int_equal(2, sr_node_t_get_children_cnt(tree));
+    /*  /test-module:link-discovered/destination/address */
+    tree = sr_node_t_get_child(trees + 1, 0);
+    assert_string_equal("address", tree->name);
+    assert_null(tree->module_name);
+    assert_false(tree->dflt);
+    assert_int_equal(SR_STRING_T, tree->type);
+    assert_string_equal("10.10.2.5", tree->data.string_val);
+    assert_int_equal(0, sr_node_t_get_children_cnt(tree));
+    /*  /test-module:link-discovered/destination/interface */
+    tree = sr_node_t_get_child(trees + 1, 1);
+    assert_string_equal("interface", tree->name);
+    assert_null(tree->module_name);
+    assert_false(tree->dflt);
+    assert_int_equal(SR_STRING_T, tree->type);
+    assert_string_equal("eth2", tree->data.string_val);
+    assert_int_equal(0, sr_node_t_get_children_cnt(tree));
+    /*  /test-module:link-discovered/MTU */
+    tree = trees + 2;
+    assert_string_equal("MTU", tree->name);
+    assert_string_equal("test-module", tree->module_name);
+    assert_true(tree->dflt);  /**< default */
+    assert_int_equal(SR_UINT16_T, tree->type);
+    assert_int_equal(1500, tree->data.uint16_val);
+    assert_int_equal(0, sr_node_t_get_children_cnt(tree));
+
+    assert_int_equal(0, pthread_mutex_lock(&cb_status->mutex));
+    cb_status->link_removed += 1;
+    if (cb_status->link_removed == CL_TEST_EN_NUM_SESSIONS) {
+        assert_int_equal(0, pthread_cond_signal(&cb_status->cond));
+    }
+    assert_int_equal(0, pthread_mutex_unlock(&cb_status->mutex));
+}
+
+static void
+test_event_notif_link_overutilized_tree_cb(const char *xpath, const sr_node_t *trees, const size_t tree_cnt,
+        void *private_ctx)
+{
+    assert_true(0 && "This callback should not get called");
+}
+
+static void
+cl_event_notif_tree_test(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+
+    cl_test_en_session_t sub_session[CL_TEST_EN_NUM_SESSIONS];
+    sr_session_ctx_t *notif_session = NULL;
+    cl_test_en_cb_status_t cb_status;
+    sr_node_t *trees = NULL;
+    sr_node_t *tree = NULL;
+    size_t tree_cnt = 0;
+    size_t i;
+    int rc = SR_ERR_OK;
+
+    cb_status.link_discovered = 0;
+    cb_status.link_removed = 0;
+    assert_int_equal(0, pthread_mutex_init(&cb_status.mutex, NULL));
+    assert_int_equal(0, pthread_cond_init(&cb_status.cond, NULL));
+    assert_int_equal(0, pthread_mutex_lock(&cb_status.mutex));
+
+    /* start sessions */
+    rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &notif_session);
+    assert_int_equal(rc, SR_ERR_OK);
+    for (i = 0; i < CL_TEST_EN_NUM_SESSIONS; ++i) {
+        rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &sub_session[i].session);
+        assert_int_equal(rc, SR_ERR_OK);
+    }
+
+    /* subscribe for link discovery in every session */
+    for (i = 0; i < CL_TEST_EN_NUM_SESSIONS; ++i) {
+        rc = sr_event_notif_subscribe_tree(sub_session[i].session, "/test-module:link-discovered",
+                test_event_notif_link_discovery_tree_cb,
+                &cb_status, SR_SUBSCR_DEFAULT, &sub_session[i].subscription_ld);
+        assert_int_equal(rc, SR_ERR_OK);
+    }
+
+    /* subscribe for link removal in every session */
+    for (i = 0; i < CL_TEST_EN_NUM_SESSIONS; ++i) {
+        rc = sr_event_notif_subscribe_tree(sub_session[i].session, "/test-module:link-removed",
+                test_event_notif_link_removed_tree_cb,
+                &cb_status, SR_SUBSCR_DEFAULT, &sub_session[i].subscription_lr);
+        assert_int_equal(rc, SR_ERR_OK);
+    }
+
+    /* subscribe for nonexistent notification in every session */
+    for (i = 0; i < CL_TEST_EN_NUM_SESSIONS; ++i) {
+        rc = sr_event_notif_subscribe_tree(sub_session[i].session, "/test-module:link-overutilized",
+                test_event_notif_link_overutilized_tree_cb,
+                &cb_status, SR_SUBSCR_DEFAULT, &sub_session[i].subscription_lo);
+        assert_int_equal(rc, SR_ERR_OK); /**< not verified at this stage */
+    }
+
+    /* send event notification - link discovery */
+    tree_cnt = 2;
+    trees = calloc(tree_cnt, sizeof(*trees));
+    /* - source */
+    tree = trees;
+    tree->name = strdup("source");
+    tree->type = SR_CONTAINER_T;
+    assert_int_equal(0, sr_node_add_child(trees, "address", NULL, &tree));
+    tree->type = SR_STRING_T;
+    tree->data.string_val = strdup("10.10.1.5");
+    assert_int_equal(0, sr_node_add_child(trees, "interface", NULL, &tree));
+    tree->type = SR_STRING_T;
+    tree->data.string_val = strdup("eth1");
+    /* - destination */
+    tree = trees + 1;
+    tree->name = strdup("destination");
+    tree->type = SR_CONTAINER_T;
+    assert_int_equal(0, sr_node_add_child(trees + 1, "address", NULL, &tree));
+    tree->type = SR_STRING_T;
+    tree->data.string_val = strdup("10.10.1.8");
+    assert_int_equal(0, sr_node_add_child(trees + 1, "interface", NULL, &tree));
+    tree->type = SR_STRING_T;
+    tree->data.string_val = strdup("eth0");
+
+    rc = sr_event_notif_send_tree(notif_session, "/test-module:link-discovered", trees, tree_cnt);
+    assert_int_equal(rc, SR_ERR_OK);
+    sr_free_trees(trees, tree_cnt);
+
+    /* send event notification - link removal */
+    tree_cnt = 2;
+    trees = calloc(tree_cnt, sizeof(*trees));
+    /* - source */
+    tree = trees;
+    tree->name = strdup("source");
+    tree->type = SR_CONTAINER_T;
+    assert_int_equal(0, sr_node_add_child(trees, "address", NULL, &tree));
+    tree->type = SR_STRING_T;
+    tree->data.string_val = strdup("10.10.2.4");
+    assert_int_equal(0, sr_node_add_child(trees, "interface", NULL, &tree));
+    tree->type = SR_STRING_T;
+    tree->data.string_val = strdup("eth0");
+    /* - destination */
+    tree = trees + 1;
+    tree->name = strdup("destination");
+    tree->type = SR_CONTAINER_T;
+    assert_int_equal(0, sr_node_add_child(trees + 1, "address", NULL, &tree));
+    tree->type = SR_STRING_T;
+    tree->data.string_val = strdup("10.10.2.5");
+    assert_int_equal(0, sr_node_add_child(trees + 1, "interface", NULL, &tree));
+    tree->type = SR_STRING_T;
+    tree->data.string_val = strdup("eth2");
+
+    rc = sr_event_notif_send_tree(notif_session, "/test-module:link-removed", trees, tree_cnt);
+    assert_int_equal(rc, SR_ERR_OK);
+    sr_free_trees(trees, tree_cnt);
+
+    /* send event notification - link overutilized (not defined in yang) */
+    tree_cnt = 2;
+    trees = calloc(tree_cnt, sizeof(*trees));
+    /* - source */
+    tree = trees;
+    tree->name = strdup("source");
+    tree->type = SR_CONTAINER_T;
+    assert_int_equal(0, sr_node_add_child(trees, "address", NULL, &tree));
+    tree->type = SR_STRING_T;
+    tree->data.string_val = strdup("10.10.1.5");
+    assert_int_equal(0, sr_node_add_child(trees, "interface", NULL, &tree));
+    tree->type = SR_STRING_T;
+    tree->data.string_val = strdup("eth1");
+    /* - destination */
+    tree = trees + 1;
+    tree->name = strdup("destination");
+    tree->type = SR_CONTAINER_T;
+    assert_int_equal(0, sr_node_add_child(trees + 1, "address", NULL, &tree));
+    tree->type = SR_STRING_T;
+    tree->data.string_val = strdup("10.10.1.8");
+    assert_int_equal(0, sr_node_add_child(trees + 1, "interface", NULL, &tree));
+    tree->type = SR_STRING_T;
+    tree->data.string_val = strdup("eth0");
+
+    rc = sr_event_notif_send_tree(notif_session, "/test-module:link-overutilized", trees, tree_cnt);
+    assert_int_equal(rc, SR_ERR_VALIDATION_FAILED);
+    sr_free_trees(trees, tree_cnt);
+
+    /* wait at most 5 seconds for all callbacks to get called */
+    struct timespec ts;
+    sr_clock_get_time(CLOCK_REALTIME, &ts);
+    ts.tv_sec += 5;
+    while (ETIMEDOUT != pthread_cond_timedwait(&cb_status.cond, &cb_status.mutex, &ts)
+            && (cb_status.link_removed < CL_TEST_EN_NUM_SESSIONS || cb_status.link_discovered < CL_TEST_EN_NUM_SESSIONS));
+    assert_int_equal(CL_TEST_EN_NUM_SESSIONS, cb_status.link_discovered);
+    assert_int_equal(CL_TEST_EN_NUM_SESSIONS, cb_status.link_removed);
+    assert_int_equal(0, pthread_mutex_unlock(&cb_status.mutex));
+
+    /* unsubscribe */
+    for (i = 0; i < CL_TEST_EN_NUM_SESSIONS; ++i) {
+        rc = sr_unsubscribe(NULL, sub_session[i].subscription_ld);
+        assert_int_equal(rc, SR_ERR_OK);
+        rc = sr_unsubscribe(NULL, sub_session[i].subscription_lr);
+        assert_int_equal(rc, SR_ERR_OK);
+        rc = sr_unsubscribe(NULL, sub_session[i].subscription_lo);
+        assert_int_equal(rc, SR_ERR_OK);
+    }
+
+    /* stop sessions */
+    rc = sr_session_stop(notif_session);
+    assert_int_equal(rc, SR_ERR_OK);
+    for (i = 0; i < CL_TEST_EN_NUM_SESSIONS; ++i) {
+        rc = sr_session_stop(sub_session[i].session);
+        assert_int_equal(rc, SR_ERR_OK);
+    }
+
+    /* cleanup */
+    assert_int_equal(0, pthread_mutex_destroy(&cb_status.mutex));
+    assert_int_equal(0, pthread_cond_destroy(&cb_status.cond));
+}
+
+
+static void
+cl_event_notif_combo_test(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+
+    cl_test_en_session_t sub_session[CL_TEST_EN_NUM_SESSIONS];
+    sr_session_ctx_t *notif_session = NULL;
+    cl_test_en_cb_status_t cb_status;
+    sr_node_t *trees = NULL;
+    sr_node_t *tree = NULL;
+    sr_val_t values[4];
+    size_t tree_cnt = 0;
+    size_t i;
+    int rc = SR_ERR_OK;
+
+    memset(&values, '\0', sizeof(values));
+    cb_status.link_discovered = 0;
+    cb_status.link_removed = 0;
+    assert_int_equal(0, pthread_mutex_init(&cb_status.mutex, NULL));
+    assert_int_equal(0, pthread_cond_init(&cb_status.cond, NULL));
+    assert_int_equal(0, pthread_mutex_lock(&cb_status.mutex));
+
+    /* start sessions */
+    rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &notif_session);
+    assert_int_equal(rc, SR_ERR_OK);
+    for (i = 0; i < CL_TEST_EN_NUM_SESSIONS; ++i) {
+        rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &sub_session[i].session);
+        assert_int_equal(rc, SR_ERR_OK);
+    }
+
+    /* subscribe for link discovery in every session (mix of values and nodes) */
+    for (i = 0; i < CL_TEST_EN_NUM_SESSIONS; ++i) {
+        if (0 == i % 2) {
+            rc = sr_event_notif_subscribe(sub_session[i].session, "/test-module:link-discovered",
+                    test_event_notif_link_discovery_cb,
+                    &cb_status, SR_SUBSCR_DEFAULT, &sub_session[i].subscription_ld);
+        } else {
+            rc = sr_event_notif_subscribe_tree(sub_session[i].session, "/test-module:link-discovered",
+                    test_event_notif_link_discovery_tree_cb,
+                    &cb_status, SR_SUBSCR_DEFAULT, &sub_session[i].subscription_ld);
+        }
+        assert_int_equal(rc, SR_ERR_OK);
+    }
+
+    /* subscribe for link removal in every session (mix of values and nodes) */
+    for (i = 0; i < CL_TEST_EN_NUM_SESSIONS; ++i) {
+        if (0 == i % 2) {
+            rc = sr_event_notif_subscribe(sub_session[i].session, "/test-module:link-removed",
+                    test_event_notif_link_removed_cb,
+                    &cb_status, SR_SUBSCR_DEFAULT, &sub_session[i].subscription_lr);
+        } else {
+            rc = sr_event_notif_subscribe_tree(sub_session[i].session, "/test-module:link-removed",
+                    test_event_notif_link_removed_tree_cb,
+                    &cb_status, SR_SUBSCR_DEFAULT, &sub_session[i].subscription_lr);
+        }
+        assert_int_equal(rc, SR_ERR_OK);
+    }
+
+    /* subscribe for nonexistent notification in every session (mix of values and nodes) */
+    for (i = 0; i < CL_TEST_EN_NUM_SESSIONS; ++i) {
+        if (0 == i % 2) {
+            rc = sr_event_notif_subscribe(sub_session[i].session, "/test-module:link-overutilized",
+                    test_event_notif_link_overutilized_cb,
+                    &cb_status, SR_SUBSCR_DEFAULT, &sub_session[i].subscription_lo);
+        } else {
+            rc = sr_event_notif_subscribe_tree(sub_session[i].session, "/test-module:link-overutilized",
+                    test_event_notif_link_overutilized_tree_cb,
+                    &cb_status, SR_SUBSCR_DEFAULT, &sub_session[i].subscription_lo);
+        }
+        assert_int_equal(rc, SR_ERR_OK); /**< not verified at this stage */
+    }
+
+    /* send event notification (using nodes) - link discovery */
+    tree_cnt = 2;
+    trees = calloc(tree_cnt, sizeof(*trees));
+    /* - source */
+    tree = trees;
+    tree->name = strdup("source");
+    tree->type = SR_CONTAINER_T;
+    assert_int_equal(0, sr_node_add_child(trees, "address", NULL, &tree));
+    tree->type = SR_STRING_T;
+    tree->data.string_val = strdup("10.10.1.5");
+    assert_int_equal(0, sr_node_add_child(trees, "interface", NULL, &tree));
+    tree->type = SR_STRING_T;
+    tree->data.string_val = strdup("eth1");
+    /* - destination */
+    tree = trees + 1;
+    tree->name = strdup("destination");
+    tree->type = SR_CONTAINER_T;
+    assert_int_equal(0, sr_node_add_child(trees + 1, "address", NULL, &tree));
+    tree->type = SR_STRING_T;
+    tree->data.string_val = strdup("10.10.1.8");
+    assert_int_equal(0, sr_node_add_child(trees + 1, "interface", NULL, &tree));
+    tree->type = SR_STRING_T;
+    tree->data.string_val = strdup("eth0");
+
+    rc = sr_event_notif_send_tree(notif_session, "/test-module:link-discovered", trees, tree_cnt);
+    assert_int_equal(rc, SR_ERR_OK);
+    sr_free_trees(trees, tree_cnt);
+
+    /* send event notification (using values) - link removal */
+    values[0].xpath = "/test-module:link-removed/source/address";
+    values[0].type = SR_STRING_T;
+    values[0].data.string_val = "10.10.2.4";
+    values[1].xpath = "/test-module:link-removed/source/interface";
+    values[1].type = SR_STRING_T;
+    values[1].data.string_val = "eth0";
+    values[2].xpath = "/test-module:link-removed/destination/address";
+    values[2].type = SR_STRING_T;
+    values[2].data.string_val = "10.10.2.5";
+    values[3].xpath = "/test-module:link-removed/destination/interface";
+    values[3].type = SR_STRING_T;
+    values[3].data.string_val = "eth2";
+
+    rc = sr_event_notif_send(notif_session, "/test-module:link-removed", values, 4);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* send event notification - link overutilized (not defined in yang) */
+    tree_cnt = 2;
+    trees = calloc(tree_cnt, sizeof(*trees));
+    /* - source */
+    tree = trees;
+    tree->name = strdup("source");
+    tree->type = SR_CONTAINER_T;
+    assert_int_equal(0, sr_node_add_child(trees, "address", NULL, &tree));
+    tree->type = SR_STRING_T;
+    tree->data.string_val = strdup("10.10.1.5");
+    assert_int_equal(0, sr_node_add_child(trees, "interface", NULL, &tree));
+    tree->type = SR_STRING_T;
+    tree->data.string_val = strdup("eth1");
+    /* - destination */
+    tree = trees + 1;
+    tree->name = strdup("destination");
+    tree->type = SR_CONTAINER_T;
+    assert_int_equal(0, sr_node_add_child(trees + 1, "address", NULL, &tree));
+    tree->type = SR_STRING_T;
+    tree->data.string_val = strdup("10.10.1.8");
+    assert_int_equal(0, sr_node_add_child(trees + 1, "interface", NULL, &tree));
+    tree->type = SR_STRING_T;
+    tree->data.string_val = strdup("eth0");
+
+    rc = sr_event_notif_send_tree(notif_session, "/test-module:link-overutilized", trees, tree_cnt);
+    assert_int_equal(rc, SR_ERR_VALIDATION_FAILED);
+    sr_free_trees(trees, tree_cnt);
+
+    /* wait at most 5 seconds for all callbacks to get called */
+    struct timespec ts;
+    sr_clock_get_time(CLOCK_REALTIME, &ts);
+    ts.tv_sec += 5;
+    while (ETIMEDOUT != pthread_cond_timedwait(&cb_status.cond, &cb_status.mutex, &ts)
+            && (cb_status.link_removed < CL_TEST_EN_NUM_SESSIONS || cb_status.link_discovered < CL_TEST_EN_NUM_SESSIONS));
+    assert_int_equal(CL_TEST_EN_NUM_SESSIONS, cb_status.link_discovered);
+    assert_int_equal(CL_TEST_EN_NUM_SESSIONS, cb_status.link_removed);
+    assert_int_equal(0, pthread_mutex_unlock(&cb_status.mutex));
+
+    /* unsubscribe */
+    for (i = 0; i < CL_TEST_EN_NUM_SESSIONS; ++i) {
+        rc = sr_unsubscribe(NULL, sub_session[i].subscription_ld);
+        assert_int_equal(rc, SR_ERR_OK);
+        rc = sr_unsubscribe(NULL, sub_session[i].subscription_lr);
+        assert_int_equal(rc, SR_ERR_OK);
+        rc = sr_unsubscribe(NULL, sub_session[i].subscription_lo);
+        assert_int_equal(rc, SR_ERR_OK);
+    }
+
+    /* stop sessions */
+    rc = sr_session_stop(notif_session);
+    assert_int_equal(rc, SR_ERR_OK);
+    for (i = 0; i < CL_TEST_EN_NUM_SESSIONS; ++i) {
+        rc = sr_session_stop(sub_session[i].session);
+        assert_int_equal(rc, SR_ERR_OK);
+    }
+
+    /* cleanup */
+    assert_int_equal(0, pthread_mutex_destroy(&cb_status.mutex));
+    assert_int_equal(0, pthread_cond_destroy(&cb_status.cond));
+}
+
 int
 main()
 {
@@ -1956,6 +3586,8 @@ main()
             cmocka_unit_test_setup_teardown(cl_get_item_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_get_items_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_get_items_iter_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_get_subtree_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_get_subtrees_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_set_item_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_delete_item_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_move_item_test, sysrepo_setup, sysrepo_teardown),
@@ -1970,11 +3602,18 @@ main()
             cmocka_unit_test_setup_teardown(cl_copy_config_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_copy_config_test2, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_rpc_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_rpc_tree_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_rpc_combo_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(candidate_ds_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_switch_ds, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_candidate_refresh, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_get_changes_iter_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_enable_empty_startup, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_dp_get_items_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_session_set_opts, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_event_notif_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_event_notif_tree_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_event_notif_combo_test, sysrepo_setup, sysrepo_teardown),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);

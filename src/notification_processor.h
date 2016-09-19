@@ -51,6 +51,7 @@ typedef struct np_subscription_s {
     const char *xpath;                 /**< XPath to the subtree where the subscription is active (if applicable). */
     uint32_t priority;                 /**< Priority of the subscription by delivering notifications (0 is the lowest priority). */
     bool enable_running;               /**< TRUE if the subscription enables specified subtree in the running datastore. */
+    sr_api_variant_t api_variant;      /**< API variant -- values vs. trees (relevant for the callback type only). */
 } np_subscription_t;
 
 /**
@@ -97,13 +98,14 @@ typedef uint32_t np_subscr_options_t;
  * @param[in] xpath XPath to the subtree where the subscription is active (if applicable).
  * @param[in] notif_event Notification event which the notification subscriber is interested in.
  * @param[in] priority Priority of the subscribtion by delivering notifications (0 is the lowest priority).
+ * @param[in] api_variant Variant of the subscription API which was used to create the subscription.
  * @param[in] opts Options overriding default handling. Bitwise OR-ed value of any ::np_subscr_flag_t flags.
  *
  * @return Error code (SR_ERR_OK on success).
  */
 int np_notification_subscribe(np_ctx_t *np_ctx, const rp_session_t *rp_session, Sr__SubscriptionType type,
         const char *dst_address, uint32_t dst_id, const char *module_name, const char *xpath,
-        Sr__NotificationEvent notif_event, uint32_t priority, const np_subscr_options_t opts);
+        Sr__NotificationEvent notif_event, uint32_t priority, sr_api_variant_t api_variant, const np_subscr_options_t opts);
 
 /**
  * @brief Unsubscribe the client from notifications on specified event.
@@ -182,6 +184,20 @@ int np_get_module_change_subscriptions(np_ctx_t *np_ctx, const char *module_name
         np_subscription_t ***subscriptions_arr, size_t *subscriptions_cnt);
 
 /**
+ * @brief Gets all operational data provider subscriptions in specified module
+ * or in a subtree within the specified module.
+ *
+ * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
+ * @param[in] module_name Name of the module where the subscription is active.
+ * @param[out] subscriptions_arr Array of pointers to subscriptions matching the criteria.
+ * @param[out] subscriptions_cnt Count of the matching subscriptions.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int np_get_data_provider_subscriptions(np_ctx_t *np_ctx, const char *module_name,
+        np_subscription_t ***subscriptions_arr, size_t *subscriptions_cnt);
+
+/**
  * @brief Notify the subscriber about the change they are subscribed to.
  *
  * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
@@ -191,6 +207,18 @@ int np_get_module_change_subscriptions(np_ctx_t *np_ctx, const char *module_name
  * @return Error code (SR_ERR_OK on success).
  */
 int np_subscription_notify(np_ctx_t *np_ctx, np_subscription_t *subscription, uint32_t commit_id);
+
+/**
+ * @brief Request operational data from a data provider subscription.
+ *
+ * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
+ * @param[in] subscription Subscription context acquired by ::np_get_data_provider_subscriptions call.
+ * @param[in] session Request Processor session that is requesting the data.
+ * @param[in] xpath XPath identifying requested operational data subtree.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int np_data_provider_request(np_ctx_t *np_ctx, np_subscription_t *subscription, rp_session_t *session, const char *xpath);
 
 /**
  * @brief Notify given subscribers that the commit process has ended.

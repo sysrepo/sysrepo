@@ -206,7 +206,7 @@ createDataTreeTestModule()
     assert_non_null(n);
 
     /* validate & save */
-    assert_int_equal(0, lyd_validate(&r, LYD_OPT_STRICT | LYD_OPT_CONFIG));
+    assert_int_equal(0, lyd_validate(&r, LYD_OPT_STRICT | LYD_OPT_CONFIG, NULL));
     assert_int_equal(SR_ERR_OK, sr_save_data_tree_file(TEST_MODULE_DATA_FILE_NAME, r));
 
     lyd_free_withsiblings(r);
@@ -229,8 +229,8 @@ createDataTreeExampleModule()
 
 #define XPATH "/example-module:container/list[key1='key1'][key2='key2']/leaf"
 
-    root = lyd_new_path(NULL, ctx, XPATH, "Leaf value", 0);
-    assert_int_equal(0, lyd_validate(&root, LYD_OPT_STRICT | LYD_OPT_CONFIG));
+    root = lyd_new_path(NULL, ctx, XPATH, "Leaf value", 0, 0);
+    assert_int_equal(0, lyd_validate(&root, LYD_OPT_STRICT | LYD_OPT_CONFIG, NULL));
     assert_int_equal(SR_ERR_OK, sr_save_data_tree_file(EXAMPLE_MODULE_DATA_FILE_NAME, root));
 
     lyd_free_withsiblings(root);
@@ -256,14 +256,14 @@ createDataTreeLargeExampleModule(int list_count)
 
     for (int i = 0; i < list_count; i++){
         snprintf(xpath, MAX_XP_LEN, template, i, i);
-        node = lyd_new_path(root, ctx, xpath, "Leaf value", 0);
+        node = lyd_new_path(root, ctx, xpath, "Leaf value", 0, 0);
         if (NULL == root) {
             root = node;
         }
     }
-    lyd_new_path(root, ctx, "/example-module:container/list[key1='key1'][key2='key2']/leaf", "Leaf value", 0);
+    lyd_new_path(root, ctx, "/example-module:container/list[key1='key1'][key2='key2']/leaf", "Leaf value", 0, 0);
 
-    assert_int_equal(0, lyd_validate(&root, LYD_OPT_STRICT | LYD_OPT_CONFIG));
+    assert_int_equal(0, lyd_validate(&root, LYD_OPT_STRICT | LYD_OPT_CONFIG, NULL));
     assert_int_equal(SR_ERR_OK, sr_save_data_tree_file(EXAMPLE_MODULE_DATA_FILE_NAME, root));
 
     lyd_free_withsiblings(root);
@@ -298,29 +298,29 @@ createDataTreeLargeIETFinterfacesModule(size_t if_count)
 
     for (size_t i = 1; i < (if_count+1); i++) {
         snprintf(xpath, MAX_IF_LEN, template_prefix_len, i, (i/244 +1), i % 244);
-        node = lyd_new_path(root, ctx, xpath, "24", 0);
+        node = lyd_new_path(root, ctx, xpath, "24", 0, 0);
         if (NULL == root) {
             root = node;
         }
         snprintf(xpath, MAX_IF_LEN, template_type, i);
-        lyd_new_path(root, ctx, xpath, "ethernetCsmacd", 0);
+        lyd_new_path(root, ctx, xpath, "ethernetCsmacd", 0, 0);
 
         snprintf(xpath, MAX_IF_LEN, template_desc, i);
-        lyd_new_path(root, ctx, xpath, "ethernet interface", 0);
+        lyd_new_path(root, ctx, xpath, "ethernet interface", 0, 0);
 
         snprintf(xpath, MAX_IF_LEN, template_enabled, i);
-        lyd_new_path(root, ctx, xpath, "true", 0);
+        lyd_new_path(root, ctx, xpath, "true", 0, 0);
 
         snprintf(xpath, MAX_IF_LEN, template_ipv4_enabled, i);
-        lyd_new_path(root, ctx, xpath, "true", 0);
+        lyd_new_path(root, ctx, xpath, "true", 0, 0);
 
         snprintf(xpath, MAX_IF_LEN, template_ipv4_mtu, i);
-        lyd_new_path(root, ctx, xpath, "1500", 0);
+        lyd_new_path(root, ctx, xpath, "1500", 0, 0);
 
     }
 
 
-    assert_int_equal(0, lyd_validate(&root, LYD_OPT_STRICT | LYD_OPT_CONFIG));
+    assert_int_equal(0, lyd_validate(&root, LYD_OPT_STRICT | LYD_OPT_CONFIG, NULL));
     assert_int_equal(SR_ERR_OK, sr_save_data_tree_file(TEST_DATA_SEARCH_DIR"ietf-interfaces"SR_STARTUP_FILE_EXT, root));
 
     lyd_free_withsiblings(root);
@@ -372,7 +372,7 @@ createDataTreeIETFinterfacesModule(){
     lyd_new_leaf(node, module_interfaces, "type", "ethernetCsmacd");
     lyd_new_leaf(node, module_interfaces, "enabled", "false");
 
-    assert_int_equal(0, lyd_validate(&root, LYD_OPT_STRICT | LYD_OPT_CONFIG));
+    assert_int_equal(0, lyd_validate(&root, LYD_OPT_STRICT | LYD_OPT_CONFIG, NULL));
     assert_int_equal(SR_ERR_OK, sr_save_data_tree_file(TEST_DATA_SEARCH_DIR"ietf-interfaces"SR_STARTUP_FILE_EXT, root));
 
     lyd_free_withsiblings(root);

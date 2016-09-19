@@ -109,7 +109,7 @@ pm_feature_test(void **state)
     rc = pm_save_feature_state(pm_ctx, &test_ctx->user_cred, "example-module", "featureX", true);
     assert_int_equal(SR_ERR_DATA_EXISTS, rc);
 
-    rc = pm_get_module_info(pm_ctx, "example-module", &module_enabled, &subtrees, &subtrees_cnt, &features, &feature_cnt);
+    rc = pm_get_module_info(pm_ctx, "example-module", NULL, &module_enabled, &subtrees, &subtrees_cnt, &features, &feature_cnt);
     assert_int_equal(SR_ERR_OK, rc);
     assert_false(module_enabled);
     assert_int_equal(subtrees_cnt, 0);
@@ -169,10 +169,12 @@ pm_subscription_test(void **state)
     subscription.enable_running = false;
 
     subscription.type = SR__SUBSCRIPTION_TYPE__FEATURE_ENABLE_SUBS;
+    subscription.xpath = NULL;
     rc = pm_add_subscription(pm_ctx, &test_ctx->user_cred, "example-module", &subscription, false);
     assert_int_equal(SR_ERR_OK, rc);
 
     subscription.type = SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS;
+    subscription.xpath = NULL;
     rc = pm_add_subscription(pm_ctx, &test_ctx->user_cred, "example-module", &subscription, false);
     assert_int_equal(SR_ERR_DATA_EXISTS, rc);
 
@@ -180,14 +182,17 @@ pm_subscription_test(void **state)
     subscription.dst_address = "/tmp/test-subscription-address2.sock";
 
     subscription.type = SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS;
+    subscription.xpath = NULL;
     rc = pm_add_subscription(pm_ctx, &test_ctx->user_cred, "example-module", &subscription, false);
     assert_int_equal(SR_ERR_OK, rc);
 
     subscription.type = SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS;
+    subscription.xpath = "/example-module:container";
     rc = pm_add_subscription(pm_ctx, &test_ctx->user_cred, "example-module", &subscription, false);
     assert_int_equal(SR_ERR_OK, rc);
 
     subscription.type = SR__SUBSCRIPTION_TYPE__FEATURE_ENABLE_SUBS;
+    subscription.xpath = NULL;
     rc = pm_add_subscription(pm_ctx, &test_ctx->user_cred, "example-module", &subscription, false);
     assert_int_equal(SR_ERR_OK, rc);
 
@@ -205,7 +210,7 @@ pm_subscription_test(void **state)
     free(subscriptions);
 
     /* retrieve module info */
-    rc = pm_get_module_info(pm_ctx, "example-module", &running_enabled, &subtrees, &subtrees_cnt, &features, &feature_cnt);
+    rc = pm_get_module_info(pm_ctx, "example-module", NULL, &running_enabled, &subtrees, &subtrees_cnt, &features, &feature_cnt);
     assert_int_equal(SR_ERR_OK, rc);
     assert_true(running_enabled);
     assert_int_equal(subtrees_cnt, 1);
@@ -242,7 +247,7 @@ pm_subscription_test(void **state)
     assert_false(disable_running);
 
     /* retrieve module info */
-    rc = pm_get_module_info(pm_ctx, "example-module", &running_enabled, &subtrees, &subtrees_cnt, &features, &feature_cnt);
+    rc = pm_get_module_info(pm_ctx, "example-module", NULL, &running_enabled, &subtrees, &subtrees_cnt, &features, &feature_cnt);
     assert_int_equal(SR_ERR_OK, rc);
     assert_false(running_enabled);
     assert_int_equal(subtrees_cnt, 0);

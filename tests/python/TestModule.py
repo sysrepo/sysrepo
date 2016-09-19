@@ -166,7 +166,7 @@ def create_ietf_interfaces():
     v = Value("/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/enabled", SR_BOOL_T, True)
     session.set_item(v.xpath, v)
 
-    v = Value("/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/mtu", SR_UINT32_T, 1500)
+    v = Value("/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/mtu", SR_UINT16_T, 1500)
     session.set_item(v.xpath, v)
 
     v = Value("/ietf-interfaces:interfaces/interface[name='eth1']/type", SR_IDENTITYREF_T, "ethernetCsmacd")
@@ -184,7 +184,7 @@ def create_ietf_interfaces():
     v = Value("/ietf-interfaces:interfaces/interface[name='eth1']/ietf-ip:ipv4/enabled", SR_BOOL_T, True)
     session.set_item(v.xpath, v)
 
-    v = Value("/ietf-interfaces:interfaces/interface[name='eth1']/ietf-ip:ipv4/mtu", SR_UINT32_T, 1500)
+    v = Value("/ietf-interfaces:interfaces/interface[name='eth1']/ietf-ip:ipv4/mtu", SR_UINT16_T, 1500)
     session.set_item(v.xpath, v)
 
     v = Value("/ietf-interfaces:interfaces/interface[name='gigaeth0']/type", SR_IDENTITYREF_T, "ethernetCsmacd")

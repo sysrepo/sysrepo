@@ -20,13 +20,14 @@ import TestModule
 from SysrepoWrappers import *
 
 class PerfTest(unittest.TestCase):
+    list_count = 4000
 
     @classmethod
     def setUpClass(cls):
         sr = Sysrepo("perf_test")
         session = Session(sr, SR_DS_STARTUP)
         session.delete_item("/example-module:*")
-        for i in range(0, 8000):
+        for i in range(0, PerfTest.list_count):
             v = Value(None, SR_STRING_T, "abcd")
             session.set_item("/example-module:container/list[key1='a{0}'][key2='b{0}']/leaf".format(i), v)
         session.commit()
@@ -56,8 +57,11 @@ class PerfTest(unittest.TestCase):
 
     def test_iter(self):
         iter = self.session.get_items_iter("/example-module:container/list")
+        i = 0
         while iter.hasNext():
             item = iter.getNext()
+            i +=1
+        self.assertEqual(i, PerfTest.list_count)
 
 
 if __name__ == '__main__':

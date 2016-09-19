@@ -1,0 +1,156 @@
+module state-module {
+   namespace "ns:yang:state-module";
+   prefix sm;
+   
+   organization "example-organization";
+   description "Test module with a state data";
+   contact "example@example.org";
+
+   revision 2016-07-01 {
+       description "Intial revision";
+       reference "www.sysrepo.org";
+   }
+
+   leaf cpu_load {
+      config false;
+      type decimal64 {
+         fraction-digits 2;
+      }
+   }
+
+   container bus {
+       list seats {
+          key number;
+          leaf number {
+             type int32;
+          }
+          leaf name {
+             type string;
+          }
+       }
+       
+       leaf vendor_name {
+          type string;
+       }
+
+       leaf gps_located { 
+          config false;
+          type boolean;
+       }
+
+       leaf distance_travelled {
+          config false;
+          type uint32;
+       }
+       
+   }
+   
+  container weather {
+     config false;
+     leaf temperature {
+        type decimal64 {
+           fraction-digits 2;
+        }        
+     }
+
+     leaf humidity {
+        type uint8 {
+            range "0..100";
+        }
+      
+     }
+
+     leaf sky {
+        type enumeration {
+           enum "clear" {
+              value 0;
+           }
+           enum "partly-sunny" {
+              value 1;
+           }
+           enum "mostly-cloudy" {
+              value 2;
+           }
+           enum "cloudy" {
+              value 3;
+           }
+        }
+     }
+  }
+
+  
+  container traffic_stats {
+     config false;
+
+     leaf number_of_accidents {
+        type uint8;
+     }
+
+     leaf cross_roads_offline_count {
+        type uint8;
+     }
+     
+     list cross_road {
+
+       key id;
+       leaf id {
+          type uint32;
+       }
+
+       leaf status { 
+          type enumeration {
+             enum "automatic" {
+                value 0;
+             }
+
+             enum "stopped" {
+                value 1;
+             }
+
+             enum "manual" {
+                value 2;
+             }
+          }
+       }
+
+       leaf average_wait_time {
+          type uint32;
+       }
+
+       list traffic_light {
+          key name;
+          leaf name {
+             type string;
+          }
+          leaf color {
+             type enumeration {
+                enum "red" {
+                   value 0;
+                }
+
+                enum "orange" {
+                   value 1;
+                }
+
+                enum "green" {
+                   value 2;
+                }
+
+             }
+          }
+       }
+       container advanced_info {
+          leaf longitude {
+             type string;
+          }
+
+          leaf latitude {
+             type string;
+          }
+       }
+
+     }
+
+  }
+
+}

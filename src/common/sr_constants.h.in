@@ -38,6 +38,9 @@
 /** Use libavl (if defined) or libredblack (if not defined) for binary tree manipulations. */
 #cmakedefine USE_AVL_LIB
 
+/** Use Sysrepo's own memory management. */
+#cmakedefine USE_SR_MEM_MGMT
+
 /** Path to the directory with schemas. */
 #define SR_SCHEMA_SEARCH_DIR "@SCHEMA_SEARCH_DIR@"
 
@@ -46,6 +49,9 @@
 
 /** Path to the directory with internal schemas. */
 #define SR_INTERNAL_SCHEMA_SEARCH_DIR "@INTERNAL_SCHEMA_SEARCH_DIR@"
+
+/** Path to the directory with internal data files. */
+#define SR_INTERNAL_DATA_SEARCH_DIR "@INTERNAL_DATA_SEARCH_DIR@"
 
 /** Path to the directory with sysrepo plugins. */
 #define SR_PLUGINS_DIR "@PLUGINS_DIR@"

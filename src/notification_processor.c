@@ -29,7 +29,7 @@
 #include "persistence_manager.h"
 #include "notification_processor.h"
 
-#define NP_COMMIT_RELEASE_TIMEOUT 60  /**< Timeout (in seconds) after which the commit will be released
+#define NP_COMMIT_RELEASE_TIMEOUT 10  /**< Timeout (in seconds) after which the commit will be released
                                            also in case that not all notification ACKs have been received. */
 
 /**
@@ -375,7 +375,7 @@ np_cleanup(np_ctx_t *np_ctx)
 int
 np_notification_subscribe(np_ctx_t *np_ctx, const rp_session_t *rp_session, Sr__SubscriptionType type,
         const char *dst_address, uint32_t dst_id, const char *module_name, const char *xpath,
-        Sr__NotificationEvent notif_event, uint32_t priority, const np_subscr_options_t opts)
+        Sr__NotificationEvent notif_event, uint32_t priority, sr_api_variant_t api_variant, const np_subscr_options_t opts)
 {
     np_subscription_t *subscription = NULL;
     np_subscription_t **subscriptions_tmp = NULL;
@@ -406,31 +406,36 @@ np_notification_subscribe(np_ctx_t *np_ctx, const rp_session_t *rp_session, Sr__
     subscription->notif_event = notif_event;
     subscription->priority = priority;
     subscription->enable_running = (opts & NP_SUBSCR_ENABLE_RUNNING);
+    subscription->api_variant = api_variant;
 
     /* save the new subscription */
     if ((SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS == type) ||
             (SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS == type) ||
-            (SR__SUBSCRIPTION_TYPE__RPC_SUBS == type)) {
+            (SR__SUBSCRIPTION_TYPE__DP_GET_ITEMS_SUBS == type) ||
+            (SR__SUBSCRIPTION_TYPE__RPC_SUBS == type) ||
+            (SR__SUBSCRIPTION_TYPE__EVENT_NOTIF_SUBS == type)) {
         /*  update notification destination info */
         rc = np_dst_info_insert(np_ctx, dst_address, module_name);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to update notification destination info.");
+
+        /* enable the module/subtree before the persistent file is edited */
+        if (opts & NP_SUBSCR_ENABLE_RUNNING) {
+            if (SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS == type || SR__SUBSCRIPTION_TYPE__DP_GET_ITEMS_SUBS == type) {
+                /* enable the subtree in running config */
+                rc = dm_enable_module_subtree_running(np_ctx->rp_ctx->dm_ctx, rp_session->dm_session, module_name, xpath, true);
+                CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to enable the subtree in the running datastore.");
+            } else {
+                /* enable the module in running config */
+                rc = dm_enable_module_running(np_ctx->rp_ctx->dm_ctx, rp_session->dm_session, module_name, true);
+                CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to enable the module in the running datastore.");
+            }
+        }
 
         /* add the subscription to module's persistent data */
         rc = pm_add_subscription(np_ctx->rp_ctx->pm_ctx, rp_session->user_credentials, module_name, subscription,
                 (opts & NP_SUBSCR_EXCLUSIVE));
         CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to save the subscription into persistent data file.");
 
-        if (opts & NP_SUBSCR_ENABLE_RUNNING) {
-            if (SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS == type) {
-                /* enable the subtree in running config */
-                rc = dm_enable_module_subtree_running(np_ctx->rp_ctx->dm_ctx, rp_session->dm_session, module_name, xpath, NULL, true);
-                CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to enable the subtree in the running datastore.");
-            } else {
-                /* enable the module in running config */
-                rc = dm_enable_module_running(np_ctx->rp_ctx->dm_ctx, rp_session->dm_session, module_name, NULL, true);
-                CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to enable the module in the running datastore.");
-            }
-        }
         goto cleanup; /* subscription not needed anymore */
     } else {
         /* add the subscription to in-memory subscription list */
@@ -478,7 +483,9 @@ np_notification_unsubscribe(np_ctx_t *np_ctx,  const rp_session_t *rp_session, S
 
     if ((SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS == notif_type) ||
             (SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS == notif_type) ||
-            (SR__SUBSCRIPTION_TYPE__RPC_SUBS == notif_type)) {
+            (SR__SUBSCRIPTION_TYPE__DP_GET_ITEMS_SUBS == notif_type) ||
+            (SR__SUBSCRIPTION_TYPE__RPC_SUBS == notif_type) ||
+            (SR__SUBSCRIPTION_TYPE__EVENT_NOTIF_SUBS == notif_type)) {
         /* remove the subscription to module's persistent data */
         subscription_lookup.dst_address = dst_address;
         subscription_lookup.dst_id = dst_id;
@@ -490,8 +497,8 @@ np_notification_unsubscribe(np_ctx_t *np_ctx,  const rp_session_t *rp_session, S
             rc = np_dst_info_remove(np_ctx, dst_address, module_name);
             pthread_rwlock_unlock(&np_ctx->lock);
             if (disable_running) {
-                SR_LOG_DBG("Disabling running datastore fo module '%s'.", module_name);
-                rc = dm_disable_module_running(np_ctx->rp_ctx->dm_ctx, rp_session->dm_session, module_name, NULL);
+                SR_LOG_DBG("Disabling running datastore for module '%s'.", module_name);
+                rc = dm_disable_module_running(np_ctx->rp_ctx->dm_ctx, rp_session->dm_session, module_name);
                 CHECK_RC_LOG_RETURN(rc, "Disabling module %s failed", module_name);
             }
         }
@@ -550,7 +557,7 @@ np_unsubscribe_destination(np_ctx_t *np_ctx, const char *dst_address)
                     info->subscribed_modules[i]);
             if (disable_running) {
                 SR_LOG_DBG("Disabling running datastore fo module '%s'.", info->subscribed_modules[i]);
-                rc = dm_disable_module_running(np_ctx->rp_ctx->dm_ctx, NULL, info->subscribed_modules[i], NULL);
+                rc = dm_disable_module_running(np_ctx->rp_ctx->dm_ctx, NULL, info->subscribed_modules[i]);
                 CHECK_RC_LOG_GOTO(rc, cleanup, "Disabling module %s failed", info->subscribed_modules[i]);
             }
         }
@@ -578,7 +585,7 @@ np_module_install_notify(np_ctx_t *np_ctx, const char *module_name, const char *
     for (size_t i = 0; i < np_ctx->subscription_cnt; i++) {
         if (SR__SUBSCRIPTION_TYPE__MODULE_INSTALL_SUBS == np_ctx->subscriptions[i]->type) {
             /* allocate the notification */
-            rc = sr_gpb_notif_alloc(SR__SUBSCRIPTION_TYPE__MODULE_INSTALL_SUBS,
+            rc = sr_gpb_notif_alloc(NULL, SR__SUBSCRIPTION_TYPE__MODULE_INSTALL_SUBS,
                     np_ctx->subscriptions[i]->dst_address, np_ctx->subscriptions[i]->dst_id, &notif);
             /* fill-in notification details */
             if (SR_ERR_OK == rc) {
@@ -596,7 +603,7 @@ np_module_install_notify(np_ctx_t *np_ctx, const char *module_name, const char *
                         np_ctx->subscriptions[i]->dst_address, np_ctx->subscriptions[i]->dst_id);
                 rc = cm_msg_send(np_ctx->rp_ctx->cm_ctx, notif);
             } else {
-                sr__msg__free_unpacked(notif, NULL);
+                sr_msg_free(notif);
                 break;
             }
         }
@@ -623,7 +630,7 @@ np_feature_enable_notify(np_ctx_t *np_ctx, const char *module_name, const char *
     for (size_t i = 0; i < np_ctx->subscription_cnt; i++) {
         if (SR__SUBSCRIPTION_TYPE__FEATURE_ENABLE_SUBS == np_ctx->subscriptions[i]->type) {
             /* allocate the notification */
-            rc = sr_gpb_notif_alloc(SR__SUBSCRIPTION_TYPE__FEATURE_ENABLE_SUBS,
+            rc = sr_gpb_notif_alloc(NULL, SR__SUBSCRIPTION_TYPE__FEATURE_ENABLE_SUBS,
                     np_ctx->subscriptions[i]->dst_address, np_ctx->subscriptions[i]->dst_id, &notif);
             /* fill-in notification details */
             if (SR_ERR_OK == rc) {
@@ -641,7 +648,7 @@ np_feature_enable_notify(np_ctx_t *np_ctx, const char *module_name, const char *
                         np_ctx->subscriptions[i]->dst_address, np_ctx->subscriptions[i]->dst_id);
                 rc = cm_msg_send(np_ctx->rp_ctx->cm_ctx, notif);
             } else {
-                sr__msg__free_unpacked(notif, NULL);
+                sr_msg_free(notif);
                 break;
             }
         }
@@ -662,7 +669,7 @@ np_hello_notify(np_ctx_t *np_ctx, const char *module_name, const char *dst_addre
 
     SR_LOG_DBG("Sending HELLO notification to '%s' @ %"PRIu32".", dst_address, dst_id);
 
-    rc = sr_gpb_notif_alloc(SR__SUBSCRIPTION_TYPE__HELLO_SUBS, dst_address, dst_id, &notif);
+    rc = sr_gpb_notif_alloc(NULL, SR__SUBSCRIPTION_TYPE__HELLO_SUBS, dst_address, dst_id, &notif);
 
     if (SR_ERR_OK == rc) {
         /* save notification destination info */
@@ -672,7 +679,7 @@ np_hello_notify(np_ctx_t *np_ctx, const char *module_name, const char *dst_addre
         /* send the message */
         rc = cm_msg_send(np_ctx->rp_ctx->cm_ctx, notif);
     } else {
-        sr__msg__free_unpacked(notif, NULL);
+        sr_msg_free(notif);
     }
 
     return rc;
@@ -740,6 +747,51 @@ cleanup:
 }
 
 int
+np_get_data_provider_subscriptions(np_ctx_t *np_ctx, const char *module_name, np_subscription_t ***subscriptions_arr_p,
+        size_t *subscriptions_cnt_p)
+{
+    np_subscription_t *subscriptions = NULL, **subscriptions_arr = NULL;
+    size_t subscription_cnt = 0, subscriptions_arr_cnt = 0;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG4(np_ctx, module_name, subscriptions_arr_p, subscriptions_cnt_p);
+
+    /* get data provides subscriptions */
+    rc = pm_get_subscriptions(np_ctx->rp_ctx->pm_ctx, module_name, SR__SUBSCRIPTION_TYPE__DP_GET_ITEMS_SUBS,
+            &subscriptions, &subscription_cnt);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to retrieve subtree-change subscriptions");
+
+    if (subscription_cnt > 0) {
+        /* allocate array of pointers to be returned */
+        subscriptions_arr = calloc(subscription_cnt, sizeof(*subscriptions_arr));
+        CHECK_NULL_NOMEM_GOTO(subscriptions_arr, rc, cleanup);
+
+        /* copy the subscriptions */
+        for (size_t i = 0; i < subscription_cnt; i++) {
+            subscriptions_arr[subscriptions_arr_cnt] = calloc(1, sizeof(**subscriptions_arr));
+            CHECK_NULL_NOMEM_GOTO(subscriptions_arr[subscriptions_arr_cnt], rc, cleanup);
+            memcpy(subscriptions_arr[subscriptions_arr_cnt], &subscriptions[i], sizeof(subscriptions[i]));
+            subscriptions_arr_cnt++;
+        }
+        free(subscriptions);
+        subscriptions = NULL;
+    }
+
+    *subscriptions_arr_p = subscriptions_arr;
+    *subscriptions_cnt_p = subscriptions_arr_cnt;
+
+    return SR_ERR_OK;
+
+cleanup:
+    np_free_subscriptions(subscriptions, subscription_cnt);
+    for (size_t i = 0; i < subscriptions_arr_cnt; i++) {
+        free(subscriptions_arr[i]);
+    }
+    free(subscriptions_arr);
+    return rc;
+}
+
+int
 np_subscription_notify(np_ctx_t *np_ctx, np_subscription_t *subscription, uint32_t commit_id)
 {
     Sr__Msg *notif = NULL;
@@ -750,7 +802,7 @@ np_subscription_notify(np_ctx_t *np_ctx, np_subscription_t *subscription, uint32
     SR_LOG_DBG("Sending %s notification to '%s' @ %"PRIu32".", sr_subscription_type_gpb_to_str(subscription->type),
             subscription->dst_address, subscription->dst_id);
 
-    rc = sr_gpb_notif_alloc(subscription->type, subscription->dst_address, subscription->dst_id, &notif);
+    rc = sr_gpb_notif_alloc(NULL, subscription->type, subscription->dst_address, subscription->dst_id, &notif);
 
     if (SR_ERR_OK == rc) {
         notif->notification->commit_id = commit_id;
@@ -778,7 +830,48 @@ np_subscription_notify(np_ctx_t *np_ctx, np_subscription_t *subscription, uint32
             rc = np_commit_notif_cnt_increment(np_ctx, commit_id);
         }
     } else {
-        sr__msg__free_unpacked(notif, NULL);
+        sr_msg_free(notif);
+    }
+
+    return rc;
+}
+
+int
+np_data_provider_request(np_ctx_t *np_ctx, np_subscription_t *subscription, rp_session_t *session, const char *xpath)
+{
+    Sr__Msg *req = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG5(np_ctx, np_ctx->rp_ctx, subscription, subscription->dst_address, xpath);
+    CHECK_NULL_ARG2(session, session->req);
+
+    SR_LOG_DBG("Requesting operational data of '%s' from '%s' @ %"PRIu32".", subscription->xpath,
+            subscription->dst_address, subscription->dst_id);
+
+    rc = sr_gpb_req_alloc(NULL, SR__OPERATION__DATA_PROVIDE, session->id, &req);
+
+    if (SR_ERR_OK == rc) {
+        req->request->data_provide_req->xpath = strdup(xpath);
+        CHECK_NULL_NOMEM_ERROR(req->request->data_provide_req->xpath, rc);
+
+        if (SR_ERR_OK == rc) {
+            req->request->data_provide_req->subscription_id = subscription->dst_id;
+            req->request->data_provide_req->subscriber_address = strdup(subscription->dst_address);
+            CHECK_NULL_NOMEM_ERROR(req->request->data_provide_req->subscriber_address, rc);
+            /* identification of the request that asked for data */
+            req->request->data_provide_req->request_id = (uint64_t) session->req;
+        }
+    }
+
+    if (SR_ERR_OK == rc) {
+        /* save notification destination info */
+        rc = np_dst_info_insert(np_ctx, subscription->dst_address, subscription->module_name);
+    }
+    if (SR_ERR_OK == rc) {
+        /* send the message */
+        rc = cm_msg_send(np_ctx->rp_ctx->cm_ctx, req);
+    } else {
+        sr_msg_free(req);
     }
 
     return rc;
@@ -800,7 +893,7 @@ np_commit_end_notify(np_ctx_t *np_ctx, uint32_t commit_id, sr_list_t *subscripti
     for (size_t i = 0; i < subscriptions->count; i++) {
         /* send commit_end notification */
         subscription = subscriptions->data[i];
-        rc = sr_gpb_notif_alloc(SR__SUBSCRIPTION_TYPE__COMMIT_END_SUBS, subscription->dst_address,
+        rc = sr_gpb_notif_alloc(NULL, SR__SUBSCRIPTION_TYPE__COMMIT_END_SUBS, subscription->dst_address,
                 subscription->dst_id, &notif);
         if (SR_ERR_OK == rc) {
             notif->notification->commit_id = commit_id;
@@ -824,7 +917,7 @@ np_commit_end_notify(np_ctx_t *np_ctx, uint32_t commit_id, sr_list_t *subscripti
             release = true;
         } else {
             /* setup commit release timer */
-            rc = sr_gpb_internal_req_alloc(SR__OPERATION__COMMIT_RELEASE, &req);
+            rc = sr_gpb_internal_req_alloc(NULL, SR__OPERATION__COMMIT_RELEASE, &req);
             if (SR_ERR_OK == rc) {
                 req->internal_request->commit_release_req->commit_id = commit_id;
                 req->internal_request->postpone_timeout = NP_COMMIT_RELEASE_TIMEOUT;

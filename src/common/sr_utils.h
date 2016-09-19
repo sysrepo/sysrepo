@@ -47,6 +47,13 @@ typedef struct sr_change_s {
     sr_val_t *old_value;        /**< Prev value, NULL in case of SR_OP_CREATED, predcessor in case of SR_OP_MOVED */
 }sr_change_t;
 
+/**
+ * @brief Internal structure used across sysrepo to differentiate between supported variants of API.
+ */
+typedef enum sr_api_variant_e {
+    SR_API_VALUES = 0,
+    SR_API_TREES = 1
+} sr_api_variant_t;
 
 /**
  * @defgroup utils Utility Functions
@@ -245,6 +252,9 @@ int sr_lyd_unlink(dm_data_info_t *data_info, struct lyd_node *node);
 
 /**
  * @brief Insert node after sibling and fixes the pointer in dm_data_info if needed.
+ *
+ * @note can be used to insert a top-level node into empty data tree
+ *
  * @param [in] data_info
  * @param [in] sibling
  * @param [in] node
@@ -269,6 +279,14 @@ int sr_lyd_insert_before(dm_data_info_t *data_info, struct lyd_node *sibling, st
 sr_type_t sr_libyang_leaf_get_type(const struct lyd_node_leaf_list *leaf);
 
 /**
+ * @brief Checks if the provided value can be set to the specified schema node.
+ * @param [in] node
+ * @parma [in] value
+ * @return Error code (SR_ERR_OK on success)
+ */
+int sr_check_value_conform_to_schema(const struct lys_node *node, const sr_val_t *value);
+
+/**
  * @brief Copies value from lyd_node_leaf_list to the sr_val_t.
  * @param [in] leaf input which is copied
  * @param [in] value where the content is copied to
@@ -277,7 +295,7 @@ sr_type_t sr_libyang_leaf_get_type(const struct lyd_node_leaf_list *leaf);
 int sr_libyang_leaf_copy_value(const struct lyd_node_leaf_list *leaf, sr_val_t *value);
 
 /**
- * @brief Converts sr_val_t to string representation, used in set item
+ * @brief Converts sr_val_t to string representation, used in set item.
  * @param [in] value
  * @param [in] schema_node
  * @param [out] out
@@ -293,11 +311,61 @@ int sr_val_to_str(const sr_val_t *value, const struct lys_node *schema_node, cha
 bool sr_is_key_node(const struct lys_node *node);
 
 /**
+ * @brief Convert API variant type to its string representation.
+ *
+ * @param [in] api_variant API variant to convert.
+ * @return Pointer to a statically allocated string.
+ */
+char *sr_api_variant_to_str(sr_api_variant_t api_variant);
+
+/**
+ * @brief Get API variant type from its string representation.
+ *
+ * @param [in] api_variant_str API variant string representation.
+ */
+sr_api_variant_t sr_api_variant_from_str(const char *api_variant_str);
+
+/**
+ * @brief Copy and convert content of a libyang node and its descendands into a sysrepo tree.
+ *
+ * @param [in] node libyang node.
+ * @param [out] sr_tree Returned sysrepo tree.
+ */
+int sr_copy_node_to_tree(const struct lyd_node *node, sr_node_t *sr_tree);
+
+/**
+ * @brief Convert a set of libyang nodes into an array of sysrepo trees. For each node a corresponding
+ * sysrepo (sub)tree is constructed. It is assumed that the input nodes are not descendands and predecessors
+ * of each other! With this assumption the links between the output trees does not need to be considered which
+ * significantly decreses the cost of this operation.
+ *
+ * @param [in] nodes A set of libyang nodes.
+ * @param [in] sr_mem Sysrepo memory context to use for memory allocation. Can be NULL.
+ * @param [out] sr_trees Returned array of sysrepo trees.
+ * @param [out] count Number of returned trees.
+ */
+int sr_nodes_to_trees(struct ly_set *nodes, sr_mem_ctx_t *sr_mem, sr_node_t **sr_trees, size_t *count);
+
+/**
+ * @brief Convert a sysrepo tree into a libyang data tree.
+ * @note data_tree is extended with the converted tree, not overwritten.
+ *
+ * @param [in] ly_ctx libyang context.
+ * @param [in] sr_tree Sysrepo tree (based on sr_node_t).
+ * @param [in] root_xpath XPath referencing the tree root (can be NULL for top-level trees).
+ * @param [in] output Is sr_tree an RPC/Action output?
+ * @param [out] data_tree libyang data tree that will get extended with the converted sysrepo tree.
+ */
+int sr_tree_to_dt(struct ly_ctx *ly_ctx, const sr_node_t *sr_tree, const char *root_xpath, bool output,
+        struct lyd_node **data_tree);
+
+/**
  * @brief Returns the string name of the datastore
  * @param [in] ds
  * @return Data store name
  */
 const char * sr_ds_to_str(sr_datastore_t ds);
+
 /**
  * @brief Frees contents of the sr_val_t structure, does not free the
  * value structure itself.
@@ -320,6 +388,11 @@ void sr_free_values_arr(sr_val_t **values, size_t count);
  * @param [in] to
  */
 void sr_free_values_arr_range(sr_val_t **values, const size_t from, const size_t to);
+
+/**
+ * @brief Frees contents of a sysrepo tree, does not free the root node itself.
+ */
+void sr_free_tree_content(sr_node_t *tree);
 
 /**
  * @brief Frees an array of detailed error information.
@@ -373,7 +446,6 @@ void sr_daemonize_signal_success(pid_t parent_pid);
  */
 int sr_clock_get_time(clockid_t clock_id, struct timespec *ts);
 
-
 /**
  * @brief Sets correct permissions on provided socket directory according to the
  * data access permission of the YANG module.
@@ -389,6 +461,15 @@ int sr_clock_get_time(clockid_t clock_id, struct timespec *ts);
  */
 int sr_set_socket_dir_permissions(const char *socket_dir, const char *data_serach_dir, const char *module_name, bool strict);
 
+/**
+ * @brief Function encapsulates the lys_find_xpath for the use cases where the expected
+ * result is one node. If result contains more than one node NULL is returned.
+ * @param [in] node
+ * @param [in] expr
+ * @param [in] options
+ * @return matched node or NULL in case of error or result containing multiple nodes
+ */
+struct lys_node * sr_find_schema_node(const struct lys_node *node, const char *expr, int options);
 /**@} utils */
 
 #endif /* SR_UTILS_H_ */

@@ -41,7 +41,7 @@ int validate_node_wrapper(dm_ctx_t *dm_ctx, dm_session_t *session, const char *x
 int setup(void **state){
     int rc = 0;
     dm_ctx_t *ctx = NULL;
-    rc = dm_init(NULL, NULL, NULL, TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx);
+    rc = dm_init(NULL, NULL, NULL, CM_MODE_LOCAL, TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx);
     *state = ctx;
     return rc;
 }
@@ -166,7 +166,7 @@ check_error_reporting(void **state)
     char *err_xpath = NULL;
 
     assert_true(dm_has_error(session));
-    rc = dm_copy_errors(session, &err_msg, &err_xpath);
+    rc = dm_copy_errors(session, NULL, &err_msg, &err_xpath);
     assert_int_equal(SR_ERR_OK, rc);
     assert_string_equal("Schema node not found.", err_msg);
     assert_string_equal("/example-module:container/unknown/unknown2", err_xpath);
@@ -182,7 +182,7 @@ check_error_reporting(void **state)
 
     err_msg = NULL;
     err_xpath = NULL;
-    rc = dm_copy_errors(session, &err_msg, &err_xpath);
+    rc = dm_copy_errors(session, NULL, &err_msg, &err_xpath);
     assert_int_equal(SR_ERR_OK, rc);
     assert_string_equal("/unknown-model:container/list", err_xpath);
 
@@ -199,7 +199,7 @@ check_error_reporting(void **state)
 #endif
     err_msg = NULL;
     err_xpath = NULL;
-    rc = dm_copy_errors(session, &err_msg, &err_xpath);
+    rc = dm_copy_errors(session, NULL, &err_msg, &err_xpath);
     assert_int_equal(SR_ERR_OK, rc);
     assert_string_equal("/example-module:container/unknown-augment:unknown", err_xpath);
 

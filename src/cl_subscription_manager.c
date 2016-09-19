@@ -74,6 +74,17 @@ typedef struct cl_sm_ctx_s {
     /** Lock for the subscriptions binary tree. */
     pthread_mutex_t subscriptions_lock;
 
+    /** Determines whether application-local file descriptor watcher is in place or not. */
+    bool local_fd_watcher;
+    /** File descriptor changes that need to be applied in application-local file descriptor watcher. */
+    sr_fd_change_t *fd_changeset;
+    /** Count of file descriptor changes in fd_changeset array. */
+    size_t fd_changeset_cnt;
+    /** Lock for the server contexts linked-list. */
+    pthread_mutex_t fd_changeset_lock;
+    /** Pipe used to notify application-local file descriptor watcher about required change in monitored FDs. */
+    int fd_changeset_notify_pipe[2];
+
     /* Thread where Subscription Manger's event loop runs. */
     pthread_t event_loop_thread;
     /** Event loop context. */
@@ -106,6 +117,58 @@ typedef struct cl_sm_conn_ctx_s {
     ev_io write_watcher;      /**< Watcher for writable events on connection's socket. */
     bool close_requested;     /**< TRUE if connection close has been requested. */
 } cl_sm_conn_ctx_t;
+
+/**
+ * @brief Adds a new file descriptor into the set of file descriptors whose monitoring state should be changed.
+ */
+static int
+cl_sm_fd_changeset_add(cl_sm_ctx_t *sm_ctx, int fd, int events, sr_fd_action_t action)
+{
+    sr_fd_change_t *watcher_arr = NULL;
+
+    CHECK_NULL_ARG(sm_ctx);
+
+    /* allocate space for new change */
+    watcher_arr = realloc(sm_ctx->fd_changeset, (sm_ctx->fd_changeset_cnt + 1) * sizeof(*watcher_arr));
+    CHECK_NULL_NOMEM_RETURN(watcher_arr);
+
+    pthread_mutex_lock(&sm_ctx->fd_changeset_lock);
+
+    sm_ctx->fd_changeset = watcher_arr;
+    sm_ctx->fd_changeset[sm_ctx->fd_changeset_cnt].fd = fd;
+    sm_ctx->fd_changeset[sm_ctx->fd_changeset_cnt].events = events;
+    sm_ctx->fd_changeset[sm_ctx->fd_changeset_cnt].action = action;
+
+    sm_ctx->fd_changeset_cnt += 1;
+
+    pthread_mutex_unlock(&sm_ctx->fd_changeset_lock);
+
+    /* signal the changeset notify fd */
+    write(sm_ctx->fd_changeset_notify_pipe[1], "x", 1);
+
+    return SR_ERR_OK;
+}
+
+/**
+ * @brief Retrieves current file descriptor chnageset from the SM context and clears it inside of the context.
+ */
+static int
+cl_sm_get_fd_change_set(cl_sm_ctx_t *sm_ctx, sr_fd_change_t **fd_change_set, size_t *fd_change_set_cnt)
+{
+    CHECK_NULL_ARG3(sm_ctx, fd_change_set, fd_change_set_cnt);
+
+    pthread_mutex_lock(&sm_ctx->fd_changeset_lock);
+
+    *fd_change_set = sm_ctx->fd_changeset;
+    *fd_change_set_cnt = sm_ctx->fd_changeset_cnt;
+    sm_ctx->fd_changeset = NULL;
+    sm_ctx->fd_changeset_cnt = 0;
+
+    pthread_mutex_unlock(&sm_ctx->fd_changeset_lock);
+
+    return SR_ERR_OK;
+}
+
 
 /**
  * @brief Compares two subscriptions by their id
@@ -218,6 +281,24 @@ cl_sm_connection_cleanup(void *connection_p)
 
     if (NULL != connection_p) {
         conn = (cl_sm_conn_ctx_t *)connection_p;
+
+        SR_LOG_DBG("Closing subscriber connection on fd=%d.", conn->fd);
+
+        /* stop monitoring client file descriptor */
+        if (conn->sm_ctx->local_fd_watcher) {
+            cl_sm_fd_changeset_add(conn->sm_ctx, conn->fd, (SR_FD_INPUT_READY | SR_FD_OUTPUT_READY), SR_FD_STOP_WATCHING);
+        } else {
+            if (NULL != conn->read_watcher.data) {
+                ev_io_stop(conn->sm_ctx->event_loop, &conn->read_watcher);
+            }
+            if (NULL != conn->write_watcher.data) {
+                ev_io_stop(conn->sm_ctx->event_loop, &conn->write_watcher);
+            }
+        }
+
+        /* close the file descriptor */
+        close(conn->fd);
+
         free(conn->in_buff.data);
         free(conn->out_buff.data);
         free(conn);
@@ -260,17 +341,6 @@ cl_sm_conn_close(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn)
 {
 
     CHECK_NULL_ARG2(sm_ctx, conn);
-
-    SR_LOG_DBG("Closing subscriber connection on fd=%d.", conn->fd);
-
-    if (NULL != conn->read_watcher.data) {
-        ev_io_stop(conn->sm_ctx->event_loop, &conn->read_watcher);
-    }
-    if (NULL != conn->write_watcher.data) {
-        ev_io_stop(conn->sm_ctx->event_loop, &conn->write_watcher);
-    }
-
-    close(conn->fd);
 
     sr_btree_delete(sm_ctx->fd_btree, conn); /* sm_connection_cleanup auto-invoked */
 
@@ -335,7 +405,11 @@ cl_sm_conn_out_buff_flush(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn)
                 /* mark the position where the unsent data start */
                 conn->out_buff.start = buff_pos;
                 /* monitor fd for writable event */
-                ev_io_start(sm_ctx->event_loop, &conn->write_watcher);
+                if (sm_ctx->local_fd_watcher) {
+                    rc = cl_sm_fd_changeset_add(sm_ctx, conn->fd, SR_FD_OUTPUT_READY, SR_FD_START_WATCHING);
+                } else {
+                    ev_io_start(sm_ctx->event_loop, &conn->write_watcher);
+                }
                 break;
             } else {
                 /* error by writing - close the connection due to an error */
@@ -368,6 +442,7 @@ cl_sm_get_data_session(cl_sm_ctx_t *sm_ctx, cl_sm_subscription_ctx_t *subscripti
     sr_session_ctx_t *session = NULL;
     sr_session_list_t *tmp = NULL;
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG4(sm_ctx, subscription, source_address, config_session_p);
@@ -423,7 +498,10 @@ cl_sm_get_data_session(cl_sm_ctx_t *sm_ctx, cl_sm_subscription_ctx_t *subscripti
         rc = cl_session_create(connection, &session);
 
         /* prepare session_start message */
-        rc = sr_gpb_req_alloc(SR__OPERATION__SESSION_START, /* undefined session id */ 0, &msg_req);
+        rc = sr_mem_new(0, &sr_mem);
+        if (SR_ERR_OK == rc) {
+            rc = sr_gpb_req_alloc(sr_mem, SR__OPERATION__SESSION_START, /* undefined session id */ 0, &msg_req);
+        }
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR_MSG("Cannot allocate session_start message.");
             cl_session_cleanup(session);
@@ -440,7 +518,7 @@ cl_sm_get_data_session(cl_sm_ctx_t *sm_ctx, cl_sm_subscription_ctx_t *subscripti
         rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__SESSION_START);
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR_MSG("Error by processing of session_start request.");
-            sr__msg__free_unpacked(msg_req, NULL);
+            sr_msg_free(msg_req);
             cl_session_cleanup(session);
             return rc;
         }
@@ -448,8 +526,8 @@ cl_sm_get_data_session(cl_sm_ctx_t *sm_ctx, cl_sm_subscription_ctx_t *subscripti
         session->id = msg_resp->response->session_start_resp->session_id;
         session->commit_id = commit_id;
 
-        sr__msg__free_unpacked(msg_req, NULL);
-        sr__msg__free_unpacked(msg_resp, NULL);
+        sr_msg_free(msg_req);
+        sr_msg_free(msg_resp);
     }
 
     subscription->data_session = session;
@@ -531,7 +609,10 @@ cl_sm_msg_send_connection(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *
         /* flush the buffer */
         rc = cl_sm_conn_out_buff_flush(sm_ctx, conn);
         if ((conn->close_requested) || (SR_ERR_OK != rc)) {
-            cl_sm_conn_close(sm_ctx, conn);
+            /* do not close the connection right here - since send is always a consequence of receive,
+             * it will be closed in receive code path */
+            conn->close_requested = true;
+            rc = SR_ERR_DISCONNECT;
         }
     }
 
@@ -548,6 +629,7 @@ cl_sm_notif_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *msg)
     cl_sm_subscription_ctx_t subscription_lookup = { 0, };
     sr_session_ctx_t *data_session = NULL;
     Sr__Msg *ack_msg = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
     int rc = SR_ERR_OK, rc_tmp = SR_ERR_OK;
 
     CHECK_NULL_ARG3(sm_ctx, msg, msg->notification);
@@ -639,12 +721,15 @@ cl_sm_notif_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *msg)
     /* send notification ACK */
     if ((SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS == msg->notification->type) ||
             (SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS == msg->notification->type)) {
-        rc_tmp = sr_gpb_notif_ack_alloc(msg, &ack_msg);
+        rc_tmp = sr_mem_new(0, &sr_mem);
+        if (SR_ERR_OK == rc_tmp) {
+            rc_tmp = sr_gpb_notif_ack_alloc(sr_mem, msg, &ack_msg);
+        }
         if (SR_ERR_OK == rc_tmp) {
             ack_msg->notification_ack->result = rc;
             rc_tmp = cl_sm_msg_send_connection(sm_ctx, conn, ack_msg);
             ack_msg->notification_ack->notif = NULL;
-            sr__msg__free_unpacked(ack_msg, NULL);
+            sr_msg_free(ack_msg);
         }
         if (SR_ERR_OK != rc_tmp) {
             SR_LOG_ERR("Unable to send notification ACK: %s", sr_strerror(rc_tmp));
@@ -658,6 +743,72 @@ cl_sm_notif_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *msg)
 }
 
 /**
+ * @brief Processes an incoming data-provide request message.
+ */
+static int
+cl_sm_dp_request_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *msg)
+{
+    cl_sm_subscription_ctx_t *subscription = NULL;
+    cl_sm_subscription_ctx_t subscription_lookup = { 0, };
+    Sr__Msg *resp = NULL;
+    sr_mem_ctx_t *sr_mem_resp = NULL;
+    sr_val_t *values = NULL;
+    size_t values_cnt = 0;
+    int rc = SR_ERR_OK, cb_rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG4(sm_ctx, msg, msg->request, msg->request->data_provide_req);
+
+    SR_LOG_DBG("Received a data-provide request for subscription id=%"PRIu32".", msg->request->data_provide_req->subscription_id);
+
+    pthread_mutex_lock(&sm_ctx->subscriptions_lock);
+
+    /* find the subscription according to id */
+    subscription_lookup.id = msg->request->data_provide_req->subscription_id;
+    subscription = sr_btree_search(sm_ctx->subscriptions_btree, &subscription_lookup);
+    if (NULL == subscription) {
+        pthread_mutex_unlock(&sm_ctx->subscriptions_lock);
+        SR_LOG_ERR("No matching subscription for subscription id=%"PRIu32".", msg->request->data_provide_req->subscription_id);
+        goto cleanup;
+    }
+
+    SR_LOG_DBG("Calling dp_get_items_cb callback for subscription id=%"PRIu32".", subscription->id);
+
+    cb_rc = subscription->callback.dp_get_items_cb(
+            msg->request->data_provide_req->xpath,
+            &values, &values_cnt,
+            subscription->private_ctx);
+
+    pthread_mutex_unlock(&sm_ctx->subscriptions_lock);
+
+    /* allocate the response and send it */
+    if (NULL != values) {
+        sr_mem_resp = values[0]._sr_mem;
+    }
+    rc = sr_gpb_resp_alloc(sr_mem_resp, SR__OPERATION__DATA_PROVIDE, msg->session_id, &resp);
+    CHECK_RC_MSG_RETURN(rc, "Allocation of data-provide response failed.");
+
+    resp->response->result = cb_rc;
+    resp->response->data_provide_resp->request_id = msg->request->data_provide_req->request_id;
+    sr_mem_edit_string(sr_mem_resp, &resp->response->data_provide_resp->xpath, msg->request->data_provide_req->xpath);
+    CHECK_NULL_NOMEM_GOTO(resp->response->data_provide_resp->xpath, rc, cleanup);
+
+    /* copy output values to GPB */
+    if (SR_ERR_OK == cb_rc) {
+        rc = sr_values_sr_to_gpb(values, values_cnt, &resp->response->data_provide_resp->values,
+                &resp->response->data_provide_resp->n_values);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Error by copying output values to GPB.");
+    }
+
+    /* send the response */
+    rc = cl_sm_msg_send_connection(sm_ctx, conn, resp);
+
+cleanup:
+    sr_free_values(values, values_cnt);
+    sr_msg_free(resp);
+    return rc;
+}
+
+/**
  * @brief Processes an incoming RPC message.
  */
 static int
@@ -667,6 +818,8 @@ cl_sm_rpc_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *msg)
     cl_sm_subscription_ctx_t subscription_lookup = { 0, };
     Sr__Msg *resp = NULL;
     sr_val_t *input = NULL, *output = NULL;
+    sr_node_t *input_tree = NULL, *output_tree = NULL;
+    sr_mem_ctx_t *sr_mem_resp = NULL;
     size_t input_cnt = 0, output_cnt = 0;
     int rc = SR_ERR_OK, rpc_rc = SR_ERR_OK;
 
@@ -675,7 +828,13 @@ cl_sm_rpc_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *msg)
     SR_LOG_DBG("Received a RPC request for subscription id=%"PRIu32".", msg->request->rpc_req->subscription_id);
 
     /* copy input values from GPB */
-    rc = sr_values_gpb_to_sr(msg->request->rpc_req->input, msg->request->rpc_req->n_input, &input, &input_cnt);
+    if (msg->request->rpc_req->n_input) {
+        rc = sr_values_gpb_to_sr((sr_mem_ctx_t *)msg->_sysrepo_mem_ctx, msg->request->rpc_req->input,
+                                 msg->request->rpc_req->n_input, &input, &input_cnt);
+    } else if (msg->request->rpc_req->n_input_tree) {
+        rc = sr_trees_gpb_to_sr((sr_mem_ctx_t *)msg->_sysrepo_mem_ctx, msg->request->rpc_req->input_tree,
+                                msg->request->rpc_req->n_input_tree, &input_tree, &input_cnt);
+    }
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by copying RPC input arguments from GPB.");
 
     pthread_mutex_lock(&sm_ctx->subscriptions_lock);
@@ -691,25 +850,45 @@ cl_sm_rpc_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *msg)
 
     SR_LOG_DBG("Calling RPC callback for subscription id=%"PRIu32".", subscription->id);
 
-    rpc_rc = subscription->callback.rpc_cb(
-            msg->request->rpc_req->xpath,
-            input, input_cnt,
-            &output, &output_cnt,
-            subscription->private_ctx);
+    if (SR_API_VALUES == subscription->api_variant) {
+        rpc_rc = subscription->callback.rpc_cb(
+                        msg->request->rpc_req->xpath,
+                        input, input_cnt,
+                        &output, &output_cnt,
+                        subscription->private_ctx);
+    } else {
+        rpc_rc = subscription->callback.rpc_tree_cb(
+                        msg->request->rpc_req->xpath,
+                        input_tree, input_cnt,
+                        &output_tree, &output_cnt,
+                        subscription->private_ctx);
+    }
 
     pthread_mutex_unlock(&sm_ctx->subscriptions_lock);
 
     /* allocate the response and send it */
-    rc = sr_gpb_resp_alloc(SR__OPERATION__RPC, msg->session_id, &resp);
-    CHECK_RC_MSG_RETURN(rc, "Allocation of RPC response failed.");
+    if (NULL != output) {
+        sr_mem_resp = output[0]._sr_mem;
+    } else if (NULL != output_tree) {
+        sr_mem_resp = output_tree[0]._sr_mem;
+    }
+    rc = sr_gpb_resp_alloc(sr_mem_resp, SR__OPERATION__RPC, msg->session_id, &resp);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Allocation of RPC response failed.");
 
     resp->response->result = rpc_rc;
-    resp->response->rpc_resp->xpath = strdup(msg->request->rpc_req->xpath);
+    sr_mem_edit_string(sr_mem_resp, &resp->response->rpc_resp->xpath, msg->request->rpc_req->xpath);
+    resp->response->rpc_resp->orig_api_variant = msg->request->rpc_req->orig_api_variant;
     CHECK_NULL_NOMEM_GOTO(resp->response->rpc_resp->xpath, rc, cleanup);
 
     /* copy output values to GPB */
     if (SR_ERR_OK == rpc_rc) {
-        rc = sr_values_sr_to_gpb(output, output_cnt, &resp->response->rpc_resp->output, &resp->response->rpc_resp->n_output);
+        if (NULL != output) {
+            rc = sr_values_sr_to_gpb(output, output_cnt, &resp->response->rpc_resp->output,
+                    &resp->response->rpc_resp->n_output);
+        } else if (NULL != output_tree) {
+            rc = sr_trees_sr_to_gpb(output_tree, output_cnt, &resp->response->rpc_resp->output_tree,
+                    &resp->response->rpc_resp->n_output_tree);
+        }
         CHECK_RC_MSG_GOTO(rc, cleanup, "Error by copying RPC output arguments to GPB.");
     }
 
@@ -719,9 +898,68 @@ cl_sm_rpc_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *msg)
 cleanup:
     sr_free_values(input, input_cnt);
     sr_free_values(output, output_cnt);
-    if (NULL != resp) {
-        sr__msg__free_unpacked(resp, NULL);
+    sr_free_trees(input_tree, input_cnt);
+    sr_free_trees(output_tree, output_cnt);
+    sr_msg_free(resp);
+    return rc;
+}
+
+/**
+ * @brief Processes an incoming event notification.
+ */
+static int
+cl_sm_event_notif_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *msg)
+{
+    cl_sm_subscription_ctx_t *subscription = NULL;
+    cl_sm_subscription_ctx_t subscription_lookup = { 0, };
+    sr_val_t *values = NULL;
+    sr_node_t *trees = NULL;
+    size_t values_cnt = 0;
+    size_t tree_cnt = 0;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG4(sm_ctx, msg, msg->request, msg->request->event_notif_req);
+
+    SR_LOG_DBG("Received an event notification for subscription id=%"PRIu32".",
+            msg->request->event_notif_req->subscription_id);
+
+    /* copy input data from GPB */
+    if (msg->request->event_notif_req->n_values) {
+        rc = sr_values_gpb_to_sr((sr_mem_ctx_t *)msg->_sysrepo_mem_ctx, msg->request->event_notif_req->values,
+                msg->request->event_notif_req->n_values, &values, &values_cnt);
+    } else if (msg->request->event_notif_req->n_trees) {
+        rc = sr_trees_gpb_to_sr((sr_mem_ctx_t *)msg->_sysrepo_mem_ctx, msg->request->event_notif_req->trees,
+                msg->request->event_notif_req->n_trees, &trees, &tree_cnt);
     }
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by copying event notification input data from GPB.");
+
+    pthread_mutex_lock(&sm_ctx->subscriptions_lock);
+
+    /* find the subscription according to id */
+    subscription_lookup.id = msg->request->event_notif_req->subscription_id;
+    subscription = sr_btree_search(sm_ctx->subscriptions_btree, &subscription_lookup);
+    if (NULL == subscription) {
+        pthread_mutex_unlock(&sm_ctx->subscriptions_lock);
+        SR_LOG_ERR("No matching subscription for subscription id=%"PRIu32".",
+                msg->request->event_notif_req->subscription_id);
+        goto cleanup;
+    }
+
+    SR_LOG_DBG("Calling event notification callback for subscription id=%"PRIu32".", subscription->id);
+
+    if (SR_API_VALUES == subscription->api_variant) {
+        subscription->callback.event_notif_cb(msg->request->event_notif_req->xpath, values, values_cnt,
+                subscription->private_ctx);
+    } else {
+        subscription->callback.event_notif_tree_cb(msg->request->event_notif_req->xpath, trees, tree_cnt,
+                subscription->private_ctx);
+    }
+
+    pthread_mutex_unlock(&sm_ctx->subscriptions_lock);
+
+cleanup:
+    sr_free_values(values, values_cnt);
+    sr_free_trees(trees, tree_cnt);
     return rc;
 }
 
@@ -732,31 +970,51 @@ static int
 cl_sm_conn_msg_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, uint8_t *msg_data, size_t msg_size)
 {
     Sr__Msg *msg = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG3(sm_ctx, conn, msg_data);
 
     /* unpack the message */
-    msg = sr__msg__unpack(NULL, msg_size, msg_data);
+    rc = sr_mem_new(msg_size, &sr_mem);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Failed to create a new Sysrepo memory context (conn=%p).", (void*)conn);
+        return SR_ERR_INTERNAL;
+    }
+    ProtobufCAllocator allocator = sr_get_protobuf_allocator(sr_mem);
+    msg = sr__msg__unpack(&allocator, msg_size, msg_data);
     if (NULL == msg) {
+        sr_mem_free(sr_mem);
         SR_LOG_ERR("Unable to unpack the message (conn=%p).", (void*)conn);
         return SR_ERR_INTERNAL;
+    }
+
+    /* associate message with context */
+    if (NULL != sr_mem) {
+        msg->_sysrepo_mem_ctx = (uint64_t)sr_mem;
+        ++sr_mem->obj_count;
     }
 
     /* check the message */
     if (SR__MSG__MSG_TYPE__NOTIFICATION == msg->type) {
         /* notification */
         rc = cl_sm_notif_process(sm_ctx, conn, msg);
+    } else if ((SR__MSG__MSG_TYPE__REQUEST == msg->type) && (SR__OPERATION__DATA_PROVIDE == msg->request->operation)) {
+        /* data-provide request */
+        rc = cl_sm_dp_request_process(sm_ctx, conn, msg);
     } else if ((SR__MSG__MSG_TYPE__REQUEST == msg->type) && (SR__OPERATION__RPC == msg->request->operation)) {
         /* RPC request */
         rc = cl_sm_rpc_process(sm_ctx, conn, msg);
+    } else if ((SR__MSG__MSG_TYPE__REQUEST == msg->type) && (SR__OPERATION__EVENT_NOTIF == msg->request->operation)) {
+        /* event notification */
+        rc = cl_sm_event_notif_process(sm_ctx, conn, msg);
     } else {
         SR_LOG_ERR("Invalid or unexpected message received (conn=%p).", (void*)conn);
         rc = SR_ERR_INVAL_ARG;
     }
 
     /* release the message */
-    sr__msg__free_unpacked(msg, NULL);
+    sr_msg_free(msg);
 
     return rc;
 }
@@ -796,7 +1054,7 @@ cl_sm_conn_in_buff_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn)
             buff_pos += SR_MSG_PREAM_SIZE + msg_size;
             if (SR_ERR_OK != rc) {
                 SR_LOG_ERR_MSG("Error by processing of the message.");
-                break;
+                return rc;
             }
         } else {
             /* the message is not completely retrieved, end processing */
@@ -909,6 +1167,34 @@ cl_sm_fd_read_cb(struct ev_loop *loop, ev_io *w, int revents)
 }
 
 /**
+ * @brief Writes data in output buffer into specified connection.
+ */
+static int
+cl_sm_write_conn(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn)
+{
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG2(sm_ctx, conn);
+
+    /* stop monitoring the FD for writable event */
+    if (sm_ctx->local_fd_watcher) {
+        cl_sm_fd_changeset_add(sm_ctx, conn->fd, SR_FD_OUTPUT_READY, SR_FD_STOP_WATCHING);
+    } else {
+        ev_io_stop(sm_ctx->event_loop, &conn->write_watcher);
+    }
+
+    /* flush the output buffer */
+    rc = cl_sm_conn_out_buff_flush(sm_ctx, conn);
+
+    /* close the connection if requested */
+    if ((conn->close_requested) || (SR_ERR_OK != rc)) {
+        cl_sm_conn_close(sm_ctx, conn);
+    }
+
+    return rc;
+}
+
+/**
  * @brief Callback called by the event loop watcher when the file descriptor of
  * a connection is writable (without blocking).
  */
@@ -917,7 +1203,6 @@ cl_sm_conn_write_cb(struct ev_loop *loop, ev_io *w, int revents)
 {
     cl_sm_conn_ctx_t *conn = NULL;
     cl_sm_ctx_t *sm_ctx = NULL;
-    int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG_VOID2(w, w->data);
     conn = (cl_sm_conn_ctx_t*)w->data;
@@ -927,34 +1212,20 @@ cl_sm_conn_write_cb(struct ev_loop *loop, ev_io *w, int revents)
 
     SR_LOG_DBG("fd %d writeable", conn->fd);
 
-    ev_io_stop(sm_ctx->event_loop, &conn->write_watcher);
-
-    /* flush the output buffer */
-    rc = cl_sm_conn_out_buff_flush(sm_ctx, conn);
-
-    /* close the connection if requested */
-    if ((conn->close_requested) || (SR_ERR_OK != rc)) {
-        cl_sm_conn_close(sm_ctx, conn);
-    }
+    cl_sm_write_conn(sm_ctx, conn);
 }
 
 /**
- * @brief Callback called by the event loop watcher when a new connection is detected
- * on the server socket. Accepts new connections to the server and starts
- * monitoring the new client file descriptors.
+ * @brief Accepts new connections on specified unix-domain server socket.
  */
-static void
-cl_sm_server_watcher_cb(struct ev_loop *loop, ev_io *w, int revents)
+static int
+cl_sm_accept_server_connections(cl_sm_ctx_t *sm_ctx, cl_sm_server_ctx_t *server_ctx)
 {
-    cl_sm_server_ctx_t *server_ctx = NULL;
-    cl_sm_ctx_t *sm_ctx = NULL;
     cl_sm_conn_ctx_t *conn = NULL;
     int clnt_fd = -1;
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG_VOID2(w, w->data);
-    server_ctx = (cl_sm_server_ctx_t*)w->data;
-    sm_ctx = server_ctx->sm_ctx;
+    CHECK_NULL_ARG2(sm_ctx, server_ctx);
 
     do {
         clnt_fd = accept(server_ctx->listen_socket_fd, NULL, NULL);
@@ -976,14 +1247,18 @@ cl_sm_server_watcher_cb(struct ev_loop *loop, ev_io *w, int revents)
                 close(clnt_fd);
                 continue;
             }
-            /* start watching this fd */
-            ev_io_init(&conn->read_watcher, cl_sm_fd_read_cb, clnt_fd, EV_READ);
-            conn->read_watcher.data = (void*)sm_ctx;
-            ev_io_start(sm_ctx->event_loop, &conn->read_watcher);
+            /* start watching new client FD */
+            if (sm_ctx->local_fd_watcher) {
+                cl_sm_fd_changeset_add(sm_ctx, clnt_fd, SR_FD_INPUT_READY, SR_FD_START_WATCHING);
+            } else {
+                ev_io_init(&conn->read_watcher, cl_sm_fd_read_cb, clnt_fd, EV_READ);
+                conn->read_watcher.data = (void*)sm_ctx;
+                ev_io_start(sm_ctx->event_loop, &conn->read_watcher);
 
-            ev_io_init(&conn->write_watcher, cl_sm_conn_write_cb, conn->fd, EV_WRITE);
-            conn->write_watcher.data = (void*)conn;
-            /* do not start write watcher - will be started when needed */
+                ev_io_init(&conn->write_watcher, cl_sm_conn_write_cb, conn->fd, EV_WRITE);
+                conn->write_watcher.data = (void*)conn;
+                /* do not start write watcher - will be started when needed */
+            }
         } else {
             if ((EWOULDBLOCK == errno) || (EAGAIN == errno)) {
                 /* no more connections to accept */
@@ -995,15 +1270,44 @@ cl_sm_server_watcher_cb(struct ev_loop *loop, ev_io *w, int revents)
             }
         }
     } while (-1 != clnt_fd); /* accept returns -1 when there are no more connections to accept */
+
+    return rc;
+}
+
+/**
+ * @brief Callback called by the event loop watcher when a new connection is detected
+ * on the server socket. Accepts new connections to the server and starts
+ * monitoring the new client file descriptors.
+ */
+static void
+cl_sm_server_watcher_cb(struct ev_loop *loop, ev_io *w, int revents)
+{
+    cl_sm_server_ctx_t *server_ctx = NULL;
+    cl_sm_ctx_t *sm_ctx = NULL;
+
+    CHECK_NULL_ARG_VOID2(w, w->data);
+    server_ctx = (cl_sm_server_ctx_t*)w->data;
+    sm_ctx = server_ctx->sm_ctx;
+
+    cl_sm_accept_server_connections(sm_ctx, server_ctx);
 }
 
 /**
  * @brief Destroys the unix-domain socket server for subscriber connections.
  */
 static void
-cl_sm_server_cleanup(cl_sm_server_ctx_t *server_ctx)
+cl_sm_server_cleanup(cl_sm_ctx_t *sm_ctx, cl_sm_server_ctx_t *server_ctx)
 {
     if (NULL != server_ctx) {
+        /* stop monitoring the server socket */
+        if (sm_ctx->local_fd_watcher) {
+            cl_sm_fd_changeset_add(sm_ctx, server_ctx->listen_socket_fd, (SR_FD_INPUT_READY | SR_FD_OUTPUT_READY),
+                    SR_FD_STOP_WATCHING);
+        } else {
+            if (NULL != server_ctx->server_watcher.data) {
+                ev_io_stop(sm_ctx->event_loop, &server_ctx->server_watcher);
+            }
+        }
         if (-1 != server_ctx->listen_socket_fd) {
             close(server_ctx->listen_socket_fd);
         }
@@ -1030,7 +1334,7 @@ cl_sm_servers_cleanup(cl_sm_ctx_t *sm_ctx)
         if (NULL != sm_ctx->server_ctx_list) {
             node = sm_ctx->server_ctx_list->first;
             while (NULL != node) {
-                cl_sm_server_cleanup(node->data);
+                cl_sm_server_cleanup(sm_ctx, node->data);
                 node = node->next;
             }
         }
@@ -1073,6 +1377,10 @@ cl_sm_get_server_socket_filename(cl_sm_ctx_t *sm_ctx, const char *module_name, c
         umask(old_umask);
         CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "Unable to create the directory '%s': %s", path, sr_strerror_safe(errno));
         rc = sr_set_socket_dir_permissions(path, SR_DATA_SEARCH_DIR, module_name, false);
+        if (SR_ERR_OK != rc) {
+            rmdir(path);
+            SR_LOG_WRN("Attempt to subscribe to unknown '%s' module probably", module_name);
+        }
         CHECK_RC_LOG_RETURN(rc, "Unable to set socket directory permissions for '%s'.", path);
     }
 
@@ -1142,7 +1450,7 @@ cl_sm_server_init(cl_sm_ctx_t *sm_ctx, const char *module_name, cl_sm_server_ctx
     addr.sun_family = AF_UNIX;
     strncpy(addr.sun_path, server_ctx->socket_path, sizeof(addr.sun_path)-1);
 
-    /* create the unix-domain socket writable to anyone
+    /* bind the unix-domain socket writable to anyone
      * (permission are guarded by the directory where the socket is placed) */
     old_umask = umask(0);
     ret = bind(server_ctx->listen_socket_fd, (struct sockaddr*)&addr, sizeof(addr));
@@ -1153,15 +1461,52 @@ cl_sm_server_init(cl_sm_ctx_t *sm_ctx, const char *module_name, cl_sm_server_ctx
     ret = listen(server_ctx->listen_socket_fd, SOMAXCONN);
     CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_INIT_FAILED, cleanup, "Socket listen error: %s", sr_strerror_safe(errno));
 
-    /* signal the main thread to re-scan for new server contexts */
-    ev_async_send(sm_ctx->event_loop, &sm_ctx->server_ctx_watcher);
+    /* start monitoring the server socket for new connections */
+    if (sm_ctx->local_fd_watcher) {
+        /* add the server socket FD into FD change set */
+        rc = cl_sm_fd_changeset_add(sm_ctx, server_ctx->listen_socket_fd, SR_FD_INPUT_READY, SR_FD_START_WATCHING);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot add the server socket FD into FD change set.");
+    } else {
+        /* send a signal to the thread with event loop to re-scan for new server contexts */
+        ev_async_send(sm_ctx->event_loop, &sm_ctx->server_ctx_watcher);
+    }
 
     *server_ctx_p = server_ctx;
     return SR_ERR_OK;
 
 cleanup:
-    cl_sm_server_cleanup(server_ctx);
+    cl_sm_server_cleanup(sm_ctx, server_ctx);
+    if (server_ctx == (cl_sm_server_ctx_t *) sm_ctx->server_ctx_list->last->data) {
+        sr_llist_rm(sm_ctx->server_ctx_list, sm_ctx->server_ctx_list->last);
+    }
     return rc;
+}
+
+/**
+ * @brief Finds server context matching with provided server socket file descriptor.
+ */
+static cl_sm_server_ctx_t *
+cl_sm_fd_find_server_ctx(cl_sm_ctx_t *sm_ctx, int fd)
+{
+    sr_llist_node_t *node = NULL;
+
+    if (NULL != sm_ctx) {
+        pthread_mutex_lock(&sm_ctx->server_ctx_lock);
+
+        if (NULL != sm_ctx->server_ctx_list) {
+            node = sm_ctx->server_ctx_list->first;
+            while (NULL != node) {
+                if (fd == ((cl_sm_server_ctx_t*)(node->data))->listen_socket_fd) {
+                    pthread_mutex_unlock(&sm_ctx->server_ctx_lock);
+                    return node->data;
+                }
+                node = node->next;
+            }
+        }
+
+        pthread_mutex_unlock(&sm_ctx->server_ctx_lock);
+    }
+    return NULL;
 }
 
 /**
@@ -1238,7 +1583,7 @@ cl_sm_event_loop_threaded(void *sm_ctx_p)
 }
 
 int
-cl_sm_init(cl_sm_ctx_t **sm_ctx_p)
+cl_sm_init(bool local_fd_watcher, int notify_pipe[2], cl_sm_ctx_t **sm_ctx_p)
 {
     cl_sm_ctx_t *ctx = NULL;
     int ret = 0, rc = SR_ERR_OK;
@@ -1250,6 +1595,10 @@ cl_sm_init(cl_sm_ctx_t **sm_ctx_p)
     /* allocate the context */
     ctx = calloc(1, sizeof(*ctx));
     CHECK_NULL_NOMEM_RETURN(ctx);
+
+    ctx->local_fd_watcher = local_fd_watcher;
+    ctx->fd_changeset_notify_pipe[0] = notify_pipe[0];
+    ctx->fd_changeset_notify_pipe[1] = notify_pipe[1];
 
     /* initialize linked-list for server contexts */
     rc = sr_llist_init(&ctx->server_ctx_list);
@@ -1271,29 +1620,38 @@ cl_sm_init(cl_sm_ctx_t **sm_ctx_p)
     /* initialize the mutexes */
     ret = pthread_mutex_init(&ctx->server_ctx_lock, NULL);
     CHECK_ZERO_MSG_GOTO(ret, rc, SR_ERR_INIT_FAILED, cleanup, "Cannot initialize subscriptions server contexts mutex.");
+    ret = pthread_mutex_init(&ctx->fd_changeset_lock, NULL);
+    CHECK_ZERO_MSG_GOTO(ret, rc, SR_ERR_INIT_FAILED, cleanup, "Cannot initialize fd changeset mutex.");
     ret = pthread_mutex_init(&ctx->subscriptions_lock, NULL);
     CHECK_ZERO_MSG_GOTO(ret, rc, SR_ERR_INIT_FAILED, cleanup, "Cannot initialize subscriptions mutex.");
 
     srand(time(NULL));
 
-    /* initialize event loop */
-    /* According to our measurements, EPOLL backend is significantly slower for
-     * fewer file descriptors, so we are disabling it for now. */
-    ctx->event_loop = ev_loop_new((EVBACKEND_ALL ^ EVBACKEND_EPOLL) | EVFLAG_NOENV);
+    if (local_fd_watcher) {
+        /* use application-local file descriptor watcher */
+        SR_LOG_DBG_MSG("Application-local file descriptor watcher will be used for monitoring of subscriptions.");
+    } else {
+        /* initialize event loop */
+        /* According to our measurements, EPOLL backend is significantly slower for
+         * fewer file descriptors, so we are disabling it for now. */
+        ctx->event_loop = ev_loop_new((EVBACKEND_ALL ^ EVBACKEND_EPOLL) | EVFLAG_NOENV);
 
-    /* initialize event watcher for async stop requests */
-    ev_async_init(&ctx->stop_watcher, cl_sm_stop_cb);
-    ctx->stop_watcher.data = (void*)ctx;
-    ev_async_start(ctx->event_loop, &ctx->stop_watcher);
+        /* initialize event watcher for async stop requests */
+        ev_async_init(&ctx->stop_watcher, cl_sm_stop_cb);
+        ctx->stop_watcher.data = (void*)ctx;
+        ev_async_start(ctx->event_loop, &ctx->stop_watcher);
 
-    /* initialize event watcher for changes in server context */
-    ev_async_init(&ctx->server_ctx_watcher, cl_sm_server_ctx_change_cb);
-    ctx->server_ctx_watcher.data = (void*)ctx;
-    ev_async_start(ctx->event_loop, &ctx->server_ctx_watcher);
+        /* initialize event watcher for changes in server context */
+        ev_async_init(&ctx->server_ctx_watcher, cl_sm_server_ctx_change_cb);
+        ctx->server_ctx_watcher.data = (void*)ctx;
+        ev_async_start(ctx->event_loop, &ctx->server_ctx_watcher);
 
-    /* start the event loop in a new thread */
-    ret = pthread_create(&ctx->event_loop_thread, NULL, cl_sm_event_loop_threaded, ctx);
-    CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_INIT_FAILED, cleanup, "Error by creating a new thread: %s", sr_strerror_safe(errno));
+        /* start the event loop in a new thread */
+        ret = pthread_create(&ctx->event_loop_thread, NULL, cl_sm_event_loop_threaded, ctx);
+        CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_INIT_FAILED, cleanup, "Error by creating a new thread: %s", sr_strerror_safe(errno));
+
+        SR_LOG_DBG_MSG("An event loop in the background thread successfully started.");
+    }
 
     SR_LOG_DBG_MSG("Client Subscription Manager initialized successfully.");
 
@@ -1309,12 +1667,11 @@ void
 cl_sm_cleanup(cl_sm_ctx_t *sm_ctx, bool join)
 {
     if (NULL != sm_ctx) {
-        if (join) {
-            ev_async_send(sm_ctx->event_loop, &sm_ctx->stop_watcher);
-            pthread_join(sm_ctx->event_loop_thread, NULL);
-        }
-        if (NULL != sm_ctx->event_loop) {
-            ev_loop_destroy(sm_ctx->event_loop);
+        if (!sm_ctx->local_fd_watcher) {
+            if (join) {
+                ev_async_send(sm_ctx->event_loop, &sm_ctx->stop_watcher);
+                pthread_join(sm_ctx->event_loop_thread, NULL);
+            }
         }
         cl_sm_servers_cleanup(sm_ctx);
 
@@ -1324,9 +1681,23 @@ cl_sm_cleanup(cl_sm_ctx_t *sm_ctx, bool join)
         sr_llist_cleanup(sm_ctx->server_ctx_list);
 
         pthread_mutex_destroy(&sm_ctx->server_ctx_lock);
+        pthread_mutex_destroy(&sm_ctx->fd_changeset_lock);
         pthread_mutex_destroy(&sm_ctx->subscriptions_lock);
 
+        if (sm_ctx->local_fd_watcher) {
+            if (sm_ctx->fd_changeset_cnt > 0) {
+                free(sm_ctx->fd_changeset);
+                sm_ctx->fd_changeset = NULL;
+                sm_ctx->fd_changeset_cnt = 0;
+            }
+        } else {
+            if (NULL != sm_ctx->event_loop) {
+                ev_loop_destroy(sm_ctx->event_loop);
+            }
+        }
+
         free(sm_ctx);
+
         SR_LOG_INF_MSG("Client Subscription Manager successfully destroyed.");
     }
 }
@@ -1366,7 +1737,6 @@ cl_sm_get_server_ctx(cl_sm_ctx_t *sm_ctx, const char *module_name, cl_sm_server_
     }
 
     pthread_mutex_unlock(&sm_ctx->server_ctx_lock);
-
     *server_ctx_p = server_ctx;
     return rc;
 }
@@ -1432,4 +1802,50 @@ cl_sm_subscription_cleanup(cl_sm_subscription_ctx_t *subscription)
     sr_btree_delete(sm_ctx->subscriptions_btree, subscription);
 
     pthread_mutex_unlock(&sm_ctx->subscriptions_lock);
+}
+
+int
+cl_sm_fd_event_process(cl_sm_ctx_t *sm_ctx, int fd, sr_fd_event_t event,
+        sr_fd_change_t **fd_change_set, size_t *fd_change_set_cnt)
+{
+    char buf[256] = { 0, };
+    cl_sm_server_ctx_t *server_ctx = NULL;
+    cl_sm_conn_ctx_t tmp_conn = { 0, };
+    cl_sm_conn_ctx_t *conn = NULL;
+    int ret = 0, rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG3(sm_ctx, fd_change_set, fd_change_set_cnt);
+
+    if (fd == sm_ctx->fd_changeset_notify_pipe[0]) {
+        /* set of file descriptors used for watching needs to be modified */
+        rc = cl_sm_get_fd_change_set(sm_ctx, fd_change_set, fd_change_set_cnt);
+        SR_LOG_DBG("Change in the FD set for watching: %zu changes.", *fd_change_set_cnt);
+        ret = read(fd, buf, sizeof(buf)); /* we do not care about the data, just read it */
+        if (-1 == ret) {
+            SR_LOG_WRN("Error by reading from fd notify pipe: %s", sr_strerror_safe(errno));
+        }
+    } else {
+        if (SR_FD_INPUT_READY == event) {
+            /* the file descriptor is readable */
+            server_ctx = cl_sm_fd_find_server_ctx(sm_ctx, fd);
+            if (NULL != server_ctx) {
+                /* this is a server socket fd - accept */
+                rc = cl_sm_accept_server_connections(sm_ctx, server_ctx);
+            } else {
+                /* this is a client socket connection - read a message from specified fd */
+                rc = cl_sm_fd_read_data(sm_ctx, fd);
+                if (SR_ERR_DISCONNECT == rc) {
+                    SR_LOG_DBG("Client of fd %d disconnected, ignoring this fd.", fd);
+                    rc = SR_ERR_OK;
+                }
+            }
+        } else {
+            /* the file descriptor is writeable */
+            tmp_conn.fd = fd;
+            conn = sr_btree_search(sm_ctx->fd_btree, &tmp_conn);
+            rc = cl_sm_write_conn(sm_ctx, conn);
+        }
+    }
+
+    return rc;
 }

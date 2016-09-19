@@ -24,11 +24,15 @@ class Value(object):
             if isinstance(cobj, sr.sr_val_t):
                 self._cObject = cobj
                 return
-        self._cObject = sr.sr_val_t()
+        self._cObject = sr.sr_new_val(None)
         if xpath is not None:
             self.xpath = xpath
         if leaf_type is not None:
             self.value = (leaf_type, value)
+
+    def __del__(self):
+        if (self._cObject._sr_mem is not None):
+            sr.sr_free_val(self._cObject)
 
     @property
     def xpath(self):
@@ -36,7 +40,7 @@ class Value(object):
 
     @xpath.setter
     def xpath(self, xpath):
-        self._cObject.xpath = xpath
+        sr.sr_val_set_xpath(self._cObject, xpath)
 
     @property
     def data(self):
@@ -88,20 +92,14 @@ class Value(object):
 
         self._cObject.type = leaf_type
 
-        if self.type == sr.SR_BINARY_T:
-            self._cObject.data.binary_val = val
-        elif self.type == sr.SR_BITS_T:
-            self._cObject.data.bits_val = val
+        if (self.type == sr.SR_BINARY_T or self.type == sr.SR_BITS_T or
+            self.type == sr.SR_ENUM_T or self.type == sr.SR_IDENTITYREF_T or
+            self.type == sr.SR_INSTANCEID_T or self.type == sr.SR_STRING_T):
+            sr.sr_val_set_string(self._cObject, val)
         elif self.type == sr.SR_BOOL_T:
             self._cObject.data.bool_val = val
         elif self.type == sr.SR_DECIMAL64_T:
             self._cObject.data.decimal64_val = val
-        elif self.type == sr.SR_ENUM_T:
-            self._cObject.data.enum_val = val
-        elif self.type == sr.SR_IDENTITYREF_T:
-            self._cObject.data.identityref_val = val
-        elif self.type == sr.SR_INSTANCEID_T:
-            self._cObject.data.instanceid_val = val
         elif self.type == sr.SR_INT8_T:
             self._cObject.data.int8_val = val
         elif self.type == sr.SR_INT16_T:
@@ -110,8 +108,6 @@ class Value(object):
             self._cObject.data.int32_val = val
         elif self.type == sr.SR_INT64_T:
             self._cObject.data.int64_val = val
-        elif self.type == sr.SR_STRING_T:
-            self._cObject.data.string_val = val
         elif self.type == sr.SR_UINT8_T:
             self._cObject.data.uint8_val = val
         elif self.type == sr.SR_UINT16_T:

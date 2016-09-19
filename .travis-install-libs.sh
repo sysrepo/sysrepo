@@ -4,6 +4,11 @@ set -e
 INSTALL_PREFIX_DIR=$HOME/local
 export PKG_CONFIG_PATH=$INSTALL_PREFIX_DIR/lib/pkgconfig:$PKG_CONFIG_PATH
 
+sudo apt-get update -qq
+sudo apt-get install -y libavl-dev libev-dev valgrind swig python-dev
+pip install --user codecov
+echo -n | openssl s_client -connect scan.coverity.com:443 | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' | sudo tee -a /etc/ssl/certs/ca-certificates.crt
+
 # check to see if cache folder is empty
 if [ ! -d "$INSTALL_PREFIX_DIR/lib" ]; then
     echo "Building all libraries."
@@ -37,7 +42,7 @@ fi
 # libraries that we don't want to cache
 
 # libyang
-git clone https://github.com/CESNET/libyang.git
+git clone -b devel https://github.com/CESNET/libyang.git
 cd libyang ; mkdir build ; cd build
 cmake -DCMAKE_BUILD_TYPE=Debug -DENABLE_BUILD_TESTS=OFF ..
 make -j2 && sudo make install

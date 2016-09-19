@@ -33,53 +33,59 @@
  * @brief Retrieves all nodes matching xpath using ::rp_dt_find_nodes and copy fills sr_val_t structures.
  * @param [in] dm_ctx
  * @param [in] data_tree
+ * @param [in] sr_mem
  * @param [in] xpath
  * @param [in] check_enable
  * @param [out] values
  * @param [out] count
  * @return Error code (SR_ERR_OK on success)
  */
-int rp_dt_get_values(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char *xpath, bool check_enable, sr_val_t **values, size_t *count);
+int rp_dt_get_values(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, sr_mem_ctx_t *sr_mem, const char *xpath, bool check_enable,
+        sr_val_t **values, size_t *count);
 
 /**
  * @brief Returns the value for the specified xpath. If more than one node matching xpath,
  * SR_ERR_INVAL_ARG is returned.
  * @param [in] dm_ctx
  * @param [in] data_tree
+ * @param [in] sr_mem
  * @param [in] xpath
  * @param [in] check_enable
  * @param [out] value
  * @return Error code (SR_ERR_OK on success)
  */
-int rp_dt_get_value(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char *xpath, bool check_enable, sr_val_t **value);
+int rp_dt_get_value(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, sr_mem_ctx_t *sr_mem, const char *xpath, bool check_enable, sr_val_t **value);
 
 /**
  * @brief Returns the value for the specified xpath.
  * @param [in] rp_ctx
  * @param [in] rp_session
+ * @param [in] sr_mem
  * @param [in] xpath
  * @param [out] value
  * @return Error code (SR_ERR_OK on success), SR_ERR_NOT_FOUND, SR_ERR_UNKNOWN_MODEL, SR_ERR_BAD_ELEMENT
  */
-int rp_dt_get_value_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char *xpath, sr_val_t **value);
+int rp_dt_get_value_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, sr_mem_ctx_t *sr_mem, const char *xpath, sr_val_t **value);
 
 /**
  * @brief Returns the values for the specified xpath.
  * @param [in] rp_ctx
  * @param [in] rp_session
+ * @param [in] sr_mem
  * @param [in] xpath
  * @param [out] values
  * @param [out] count
  * @return Error code (SR_ERR_OK on success), SR_ERR_NOT_FOUND, SR_ERR_UNKNOWN_MODEL, SR_ERR_BAD_ELEMENT
  */
-int rp_dt_get_values_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char *xpath, sr_val_t **values, size_t *count);
+int rp_dt_get_values_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, sr_mem_ctx_t *sr_mem, const char *xpath, sr_val_t **values, size_t *count);
 
 /**
  * @brief Returns the values for the specified xpath. Internally calls ::rp_dt_find_nodes_with_opts
  * to identify the matching nodes. The selection of returned values can be specified by limit and offset.
  * @param [in] rp_ctx
  * @param [in] rp_session
- * @param [in] get_items_ctx
+ * @param [in] get_items_ctx\
+ * @param [in] sr_mem
  * @param [in] xpath
  * @param [in] offset - return the values with index and above
  * @param [in] limit - the maximum count of values that can be returned
@@ -87,18 +93,69 @@ int rp_dt_get_values_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const c
  * @param [out] count
  * @return Error code (SR_ERR_OK on success)
  */
-int rp_dt_get_values_wrapper_with_opts(rp_ctx_t *rp_ctx, rp_session_t *rp_session, rp_dt_get_items_ctx_t *get_items_ctx, const char *xpath,
-                                       size_t offset, size_t limit, sr_val_t **values, size_t *count);
+int rp_dt_get_values_wrapper_with_opts(rp_ctx_t *rp_ctx, rp_session_t *rp_session, rp_dt_get_items_ctx_t *get_items_ctx, sr_mem_ctx_t *sr_mem, 
+        const char *xpath, size_t offset, size_t limit, sr_val_t **values, size_t *count);
 
 /**
  * @brief Fills the values from the array of nodes. The length of the
  * values array is equal to the count of the nodes in nodes set.
+ * @param [in] sr_mem Sysrepo memory context to use for memory allocation (can be NULL).
  * @param [in] nodes
  * @param [out] values
  * @param [out] value_cnt
  * @return Error code (SR_ERR_OK on success)
  */
-int rp_dt_get_values_from_nodes(struct ly_set *nodes, sr_val_t **values, size_t *value_cnt);
+int rp_dt_get_values_from_nodes(sr_mem_ctx_t *sr_mem, struct ly_set *nodes, sr_val_t **values, size_t *value_cnt);
+
+/**
+ * @brief Returns subtree with the root node at the specified xpath. If more than one node matching xpath,
+ * SR_ERR_INVAL_ARG is returned.
+ * @param [in] dm_ctx
+ * @param [in] data_tree
+ * @param [in] sr_mem
+ * @param [in] xpath
+ * @param [in] check_enable
+ * @param [out] value
+ * @return Error code (SR_ERR_OK on success)
+ */
+int rp_dt_get_subtree(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, sr_mem_ctx_t *sr_mem, const char *xpath, bool check_enable, sr_node_t **subtree);
+
+/**
+ * @brief Retrieves all subtrees with root nodes matching the specified xpath.
+ * @param [in] dm_ctx
+ * @param [in] data_tree
+ * @param [in] sr_mem
+ * @param [in] xpath
+ * @param [in] check_enable
+ * @param [out] values
+ * @param [out] count
+ * @return Error code (SR_ERR_OK on success)
+ */
+int rp_dt_get_subtrees(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, sr_mem_ctx_t *sr_mem, const char *xpath, bool check_enable,
+        sr_node_t **subtrees, size_t *count);
+
+/**
+ * @brief Returns the subtree whose root node is referenced by the specified xpath.
+ * @param [in] rp_ctx
+ * @param [in] rp_session
+ * @param [in] sr_mem
+ * @param [in] xpath
+ * @param [out] subtree
+ * @return Error code (SR_ERR_OK on success), SR_ERR_NOT_FOUND, SR_ERR_UNKNOWN_MODEL, SR_ERR_BAD_ELEMENT
+ */
+int rp_dt_get_subtree_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, sr_mem_ctx_t *sr_mem, const char *xpath, sr_node_t **subtree);
+
+/**
+ * @brief Retrieves all subtrees with root nodes matching the specified xpath.
+ * @param [in] rp_ctx
+ * @param [in] rp_session
+ * @param [in] sr_mem
+ * @param [in] xpath
+ * @param [out] subtrees
+ * @param [out] count
+ * @return Error code (SR_ERR_OK on success), SR_ERR_NOT_FOUND, SR_ERR_UNKNOWN_MODEL, SR_ERR_BAD_ELEMENT
+ */
+int rp_dt_get_subtrees_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, sr_mem_ctx_t *sr_mem, const char *xpath, sr_node_t **subtrees, size_t *count);
 
 /**
  * @brief Transforms difflist to the set of changes
@@ -122,6 +179,18 @@ int rp_dt_difflist_to_changes(struct lyd_difflist *difflist, sr_list_t **changes
  */
 int rp_dt_get_changes(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t *c_ctx, const char *xpath,
             size_t offset, size_t limit, sr_list_t **matched_changes);
+
+/**
+ * @brief Removes the state data loaded into a session
+ * @param [in] rp_ctx
+ * @param [in] rp_session
+ * @return Error code (SR_ERR_OK on success)
+ */
+int rp_dt_remove_loaded_state_data(rp_ctx_t *rp_ctx, rp_session_t *rp_session);
+
+void rp_dt_free_state_data_ctx_content (rp_state_data_ctx_t *state_data);
+
+bool rp_dt_is_under_subtree(struct lys_node *subtree, struct lys_node *node);
 #endif /* RP_DT_GET_H */
 
 /**

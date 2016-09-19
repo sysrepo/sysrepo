@@ -35,6 +35,7 @@
 
 #include "sr_common.h"
 #include "client_library.h"
+#include "module_dependencies.h"
 
 #define EXPECTED_MAX_INPUT_FILE_SIZE  4096
 
@@ -61,14 +62,13 @@ typedef enum srcfg_datastore_e {
 
 /* repository */
 static char *srcfg_schema_search_dir = SR_SCHEMA_SEARCH_DIR;
+static char *srcfg_internal_schema_search_dir = SR_INTERNAL_SCHEMA_SEARCH_DIR;
+static char *srcfg_internal_data_search_dir = SR_INTERNAL_DATA_SEARCH_DIR;
 static bool srcfg_custom_repository = false;
 
 /* sysrepo connection */
 static sr_conn_ctx_t *srcfg_connection = NULL;
 static sr_session_ctx_t *srcfg_session = NULL;
-
-/* logging */
-static bool ly_diminish_errors = false;
 
 /**
  * @brief Logging callback called from libyang for each log entry.
@@ -78,20 +78,16 @@ srcfg_ly_log_cb(LY_LOG_LEVEL level, const char *msg, const char *path)
 {
     switch (level) {
         case LY_LLERR:
-            if (ly_diminish_errors)
-                SR_LOG_WRN("libyang: %s", msg);
-            else
-                SR_LOG_ERR("libyang: %s", msg);
-            break;
         case LY_LLWRN:
-            SR_LOG_WRN("libyang: %s", msg);
+            SR_LOG_WRN("libyang: %s (%s)", msg, path);
             break;
         case LY_LLVRB:
-            SR_LOG_INF("libyang: %s", msg);
+            SR_LOG_INF("libyang: %s (%s)", msg, path);
             break;
         case LY_LLDBG:
-            SR_LOG_DBG("libyang: %s", msg);
+            SR_LOG_DBG("libyang: %s (%s)", msg, path);
             break;
+        case LY_LLSILENT:
         default:
             break;
     }
@@ -154,20 +150,47 @@ srcfg_report_error(int rc)
     }
 }
 
+/*
+ * @brief Load schema file at the given path into the libyang context and enable all features.
+ */
+static int
+srcfg_load_module_schema(struct ly_ctx *ly_ctx, const char *filepath)
+{
+    const struct lys_module *module_schema = NULL;
+
+    CHECK_NULL_ARG2(ly_ctx, filepath);
+
+    SR_LOG_DBG("Loading module schema: '%s'.", filepath);
+    module_schema = lys_parse_path(ly_ctx, filepath,
+                                   sr_str_ends_with(filepath, SR_SCHEMA_YANG_FILE_EXT) ? LYS_IN_YANG : LYS_IN_YIN);
+    if (NULL == module_schema) {
+        fprintf(stderr, "Error: Failed to load the schema file at: %s.\n", filepath);
+        return SR_ERR_INTERNAL;
+    }
+
+    /* also enable all features */
+    for (uint8_t i = 0; i < module_schema->features_size; i++) {
+        lys_features_enable(module_schema, module_schema->features[i].name);
+    }
+
+    return SR_ERR_OK;
+}
+
 /**
  * @brief Initializes libyang ctx with all schemas installed for specified module in sysrepo.
  */
 static int
 srcfg_ly_init(struct ly_ctx **ly_ctx, const char *module_name)
 {
-    DIR *dp = NULL;
-    struct dirent *ep = NULL;
-    char *delim = NULL;
-    char schema_filename[PATH_MAX] = { 0, };
-    const struct lys_module *module = NULL;
+    int rc = SR_ERR_OK;
+    md_ctx_t *md_ctx = NULL;
+    md_module_t *module = NULL;
+    sr_llist_node_t *dep_node = NULL;
+    md_dep_t *dep = NULL;
 
     CHECK_NULL_ARG2(ly_ctx, module_name);
 
+    /* init libyang context */
     *ly_ctx = ly_ctx_new(srcfg_schema_search_dir);
     if (NULL == *ly_ctx) {
         SR_LOG_ERR("Unable to initialize libyang context: %s", ly_errmsg());
@@ -175,53 +198,43 @@ srcfg_ly_init(struct ly_ctx **ly_ctx, const char *module_name)
     }
     ly_set_log_clb(srcfg_ly_log_cb, 1);
 
-    /* iterate over all files in the directory with schemas */
-    dp = opendir(srcfg_schema_search_dir);
-    if (NULL == dp) {
-        SR_LOG_ERR("Failed to open the schema directory: %s.", sr_strerror_safe(errno));
-        return SR_ERR_INTERNAL;
+    /* init module dependencies context */
+    rc = md_init(srcfg_schema_search_dir, srcfg_internal_schema_search_dir, srcfg_internal_data_search_dir,
+                 false, &md_ctx);
+    if (SR_ERR_OK != rc) {
+        fprintf(stderr, "Error: Failed to initialize module dependencies context.\n");
+        goto cleanup;
     }
-    while (NULL != (ep = readdir(dp))) {
-        /* test file extension */
-        LYS_INFORMAT fmt = LYS_IN_UNKNOWN;
-        if (sr_str_ends_with(ep->d_name, SR_SCHEMA_YIN_FILE_EXT)) {
-            fmt = LYS_IN_YIN;
-        } else if (sr_str_ends_with(ep->d_name, SR_SCHEMA_YANG_FILE_EXT)) {
-            fmt = LYS_IN_YANG;
-        }
-        if (fmt != LYS_IN_UNKNOWN) {
-            /* strip extension and revision */
-            strcpy(schema_filename, ep->d_name);
-            delim = strrchr(schema_filename, '.');
-            assert(delim);
-            *delim = '\0';
-            delim = strrchr(schema_filename, '@');
-            if (delim) {
-                *delim = '\0';
-            }
-            /* TODO install all revisions and dependencies of the specified module, but not more */
-#if 0 /* XXX install all schemas until we can resolve all dependencies */
-            if (strcmp(schema_filename, module_name) == 0) {
-#endif
-                /* construct full file path */
-                snprintf(schema_filename, PATH_MAX, "%s%s", srcfg_schema_search_dir, ep->d_name);
-                /* load the schema into the context */
-                SR_LOG_DBG("Loading module schema: '%s'.", schema_filename);
-                module = lys_parse_path(*ly_ctx, schema_filename, fmt);
-                if (NULL == module) {
-                    continue;
-                }
-                for (uint8_t i = 0; i < module->features_size; i++) {
-                    lys_features_enable(module, module->features[i].name);
-                }
-#if 0
-            }
-#endif
-        }
-    }
-    closedir(dp);
 
-    return SR_ERR_OK;
+    /* search for the module to use */
+    rc = md_get_module_info(md_ctx, module_name, NULL, &module);
+    if (SR_ERR_OK != rc) {
+        fprintf(stderr, "Error: Module '%s' is not installed.\n", module_name);
+        goto cleanup;
+    }
+
+    /* load the module schema and all its dependencies */
+    rc = srcfg_load_module_schema(*ly_ctx, module->filepath);
+    if (SR_ERR_OK != rc) {
+        goto cleanup;
+    }
+    dep_node = module->deps->first;
+    while (dep_node) {
+        dep = (md_dep_t *)dep_node->data;
+        if (dep->type == MD_DEP_EXTENSION) { /*< imports and includes are automatically loaded by libyang */
+            rc = srcfg_load_module_schema(*ly_ctx, dep->dest->filepath);
+            if (SR_ERR_OK != rc) {
+                goto cleanup;
+            }
+        }
+        dep_node = dep_node->next;
+    }
+
+    rc = SR_ERR_OK;
+
+cleanup:
+    md_destroy(md_ctx);
+    return rc;
 }
 
 /**
@@ -237,6 +250,7 @@ srcfg_get_module_data(struct ly_ctx *ly_ctx, const char *module_name, struct lyd
     const struct lys_node *schema = NULL;
     char query[PATH_MAX] = { 0, };
     char *string_val = NULL;
+    const struct lys_module *module = NULL;
 
     snprintf(query, PATH_MAX, "/%s:*//.", module_name);
     rc = sr_get_items_iter(srcfg_session, query, &iter);
@@ -247,16 +261,20 @@ srcfg_get_module_data(struct ly_ctx *ly_ctx, const char *module_name, struct lyd
 
     *data_tree = NULL;
     ly_errno = LY_SUCCESS;
-    ly_diminish_errors = true;
+    module = ly_ctx_get_module(ly_ctx, module_name, NULL);
+    if (NULL == module) {
+        SR_LOG_ERR("Module %s not found", module_name);
+        goto cleanup;
+    }
+
     while (SR_ERR_OK == (rc = sr_get_item_next(srcfg_session, iter, &value))) {
-        ly_diminish_errors = false;
         if (NULL == value) {
             goto next;
         }
         /* get node schema */
-        schema = ly_ctx_get_node2(ly_ctx, NULL, value->xpath, 0);
+        schema = sr_find_schema_node(module->data, value->xpath, 0);
         if (!schema) {
-            SR_LOG_ERR("Error by ly_ctx_get_node2: %s", ly_errmsg());
+            SR_LOG_ERR("Error by sr_find_schema_node: %s", ly_errmsg());
             goto fail;
         }
 
@@ -279,7 +297,7 @@ srcfg_get_module_data(struct ly_ctx *ly_ctx, const char *module_name, struct lyd
 
         /* add node to data tree */
         ly_errno = LY_SUCCESS;
-        node = lyd_new_path(*data_tree, ly_ctx, value->xpath, string_val, LYD_PATH_OPT_UPDATE);
+        node = lyd_new_path(*data_tree, ly_ctx, value->xpath, string_val, 0, LYD_PATH_OPT_UPDATE);
         if (!node && LY_SUCCESS != ly_errno) {
             SR_LOG_ERR("Error by lyd_new_path: %s", ly_errmsg());
             goto fail;
@@ -297,9 +315,7 @@ next:
             sr_free_val(value);
             value = NULL;
         }
-        ly_diminish_errors = true;
     }
-    ly_diminish_errors = false;
 
     if (SR_ERR_NOT_FOUND == rc) {
         rc = SR_ERR_OK;
@@ -307,10 +323,8 @@ next:
     if (SR_ERR_OK == rc) {
         if (NULL != *data_tree) {
             /* validate returned data, but most importantly resolve leafrefs */
-            ret = lyd_validate(data_tree, LYD_OPT_STRICT | LYD_OPT_CONFIG | LYD_WD_IMPL_TAG);
+            ret = lyd_validate(data_tree, LYD_OPT_STRICT | LYD_OPT_CONFIG, NULL);
             CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_INTERNAL, fail, "Received data tree from sysrepo is not valid: %s", ly_errmsg());
-            /* remove default nodes added by validation */
-            lyd_wd_cleanup(data_tree, 0);
         }
         goto cleanup;
     }
@@ -342,7 +356,7 @@ static int
 srcfg_convert_lydiff_changed(const char *xpath, struct lyd_node *node)
 {
     int rc = SR_ERR_INTERNAL;
-    sr_val_t value = { 0, SR_UNKNOWN_T };
+    sr_val_t value = { 0, 0, SR_UNKNOWN_T };
     struct lyd_node_leaf_list *data_leaf = NULL;
 
     CHECK_NULL_ARG2(xpath, node);
@@ -398,7 +412,7 @@ srcfg_convert_lydiff_created(struct lyd_node *node)
     int rc = SR_ERR_INTERNAL;
     struct lyd_node *elem = node;
     bool process_children = true;
-    sr_val_t value = { 0, SR_UNKNOWN_T };
+    sr_val_t value = { 0, 0, SR_UNKNOWN_T };
     struct lyd_node_leaf_list *data_leaf = NULL;
     struct lys_node_list *slist = NULL;
     char *xpath = NULL, *delim = NULL;
@@ -418,6 +432,7 @@ srcfg_convert_lydiff_created(struct lyd_node *node)
         free(xpath);
         xpath = value.xpath = NULL;
         value.type = SR_UNKNOWN_T;
+        value.data.uint64_val = 0;
         switch (elem->schema->nodetype) {
             case LYS_LEAF: /* e.g.: /test-module:user[name='nameE']/name */
                 /* get value */
@@ -445,6 +460,8 @@ srcfg_convert_lydiff_created(struct lyd_node *node)
                                 if (delim) {
                                     *delim = '\0';
                                 }
+                                /* set type to SR_UNKNOWN_T in order to pass NULL to sr_set_item when a list is created */
+                                value.type = SR_UNKNOWN_T;
                                 goto set_value;
                             } else {
                                 /* create list instance (directly) only once - with the first key */
@@ -580,18 +597,15 @@ srcfg_import_datastore(struct ly_ctx *ly_ctx, int fd_in, const char *module_name
         new_data_tree = lyd_parse_mem(ly_ctx, input_data, format, LYD_OPT_STRICT | LYD_OPT_CONFIG);
     }
     if (NULL == new_data_tree && LY_SUCCESS != ly_errno) {
-        SR_LOG_ERR("Unable to parse the input data: %s", ly_errmsg());
+        SR_LOG_ERR("Unable to parse the input data: %s (%s)", ly_errmsg(), ly_errpath());
         goto cleanup;
     }
 
     /* validate input data */
     if (NULL != new_data_tree) {
-        ret = lyd_validate(&new_data_tree, LYD_OPT_STRICT | LYD_OPT_CONFIG | LYD_WD_IMPL_TAG);
-        CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_INTERNAL, cleanup, "Input data are not valid: %s", ly_errmsg());
+        ret = lyd_validate(&new_data_tree, LYD_OPT_STRICT | LYD_OPT_CONFIG, NULL);
+        CHECK_ZERO_LOG_GOTO(ret, rc, SR_ERR_INTERNAL, cleanup, "Input data is not valid: %s (%s)", ly_errmsg(), ly_errpath());
     }
-
-    /* remove default nodes */
-    lyd_wd_cleanup(&new_data_tree, 0);
 
     /* get data tree of currently stored configuration */
     rc = srcfg_get_module_data(ly_ctx, module_name, &current_data_tree);
@@ -600,7 +614,7 @@ srcfg_import_datastore(struct ly_ctx *ly_ctx, int fd_in, const char *module_name
     }
 
     /* get the list of changes made by the user */
-    diff = lyd_diff(current_data_tree, new_data_tree, 0);
+    diff = lyd_diff(current_data_tree, new_data_tree, LYD_DIFFOPT_WITHDEFAULTS);
     if (NULL == diff) {
         SR_LOG_ERR("Unable to get the list of changes: %s", ly_errmsg());
         goto cleanup;
@@ -1083,7 +1097,8 @@ main(int argc, char* argv[])
     LYD_FORMAT format = LYD_XML;
     bool enabled = false, keep = false, permanent = false;
     int log_level = -1;
-    char local_schema_search_dir[PATH_MAX] = { 0, };
+    char local_schema_search_dir[PATH_MAX] = { 0, }, local_internal_schema_search_dir[PATH_MAX] = { 0, };
+    char local_internal_data_search_dir[PATH_MAX] = { 0, };
     int rc = SR_ERR_OK;
 
     struct option longopts[] = {
@@ -1101,6 +1116,7 @@ main(int argc, char* argv[])
     };
 
     /* parse options */
+    int curind = optind;
     while ((c = getopt_long(argc, argv, ":hvd:f:e:i:x:kpl:0:", longopts, NULL)) != -1) {
         switch (c) {
             case 'h':
@@ -1149,8 +1165,14 @@ main(int argc, char* argv[])
                 /* 'hidden' option - custom repository location */
                 if (NULL != optarg) {
                     strncpy(local_schema_search_dir, optarg, PATH_MAX - 6);
+                    strncpy(local_internal_schema_search_dir, optarg, PATH_MAX - 15);
+                    strncpy(local_internal_data_search_dir, optarg, PATH_MAX - 15);
                     strcat(local_schema_search_dir, "/yang/");
+                    strcat(local_internal_schema_search_dir, "/yang/internal/");
+                    strcat(local_internal_data_search_dir, "/data/internal/");
                     srcfg_schema_search_dir = local_schema_search_dir;
+                    srcfg_internal_schema_search_dir = local_internal_schema_search_dir;
+                    srcfg_internal_data_search_dir = local_internal_data_search_dir;
                     srcfg_custom_repository = true;
                 }
                 break;
@@ -1164,7 +1186,7 @@ main(int argc, char* argv[])
                         operation = SRCFG_OP_EXPORT;
                         break;
                     default:
-                        fprintf(stderr, "%s: option `-%c' requires an argument\n", argv[0], optopt);
+                        fprintf(stderr, "%s: Option '-%c' requires an argument.\n", argv[0], optopt);
                         rc = SR_ERR_INVAL_ARG;
                         goto terminate;
                 }
@@ -1172,10 +1194,15 @@ main(int argc, char* argv[])
             case '?':
             default:
                 /* invalid option */
-                fprintf(stderr, "%s: option `-%c' is invalid. Exiting.\n", argv[0], optopt);
+                if ('\0' != optopt) {
+                    fprintf(stderr, "%s: Unrecognized short option: '-%c'.\n", argv[0], optopt);
+                } else {
+                    fprintf(stderr, "%s: Unrecognized long option: '%s'.\n", argv[0], argv[curind]);
+                }
                 rc = SR_ERR_INVAL_ARG;
                 goto terminate;
         }
+        curind = optind;
     }
 
     /* parse non-option arguments (<module_name>) */
@@ -1244,15 +1271,15 @@ main(int argc, char* argv[])
     if (SRCFG_STORE_RUNNING == datastore) {
         rc = sr_check_enabled_running(srcfg_session, module_name, &enabled);
         if (SR_ERR_OK == rc && !enabled) {
-            printf("Cannot operate on the running datastore as there are no active subscriptions.\n"
-                   "Cancelling the operation.\n");
+            printf("Cannot operate on the running datastore for '%s' as there are no active subscriptions for it.\n"
+                   "Canceling the operation.\n", module_name);
             rc = SR_ERR_INTERNAL;
             goto terminate;
         }
     }
     if (SR_ERR_OK != rc) {
         srcfg_report_error(rc);
-        printf("Unable to connect to sysrepo. Cancelling the operation.\n");
+        printf("Unable to connect to sysrepo. Canceling the operation.\n");
         goto terminate;
     }
 

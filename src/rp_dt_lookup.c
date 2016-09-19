@@ -34,7 +34,7 @@ rp_dt_find_nodes(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char 
         return SR_ERR_NOT_FOUND;
     }
     CHECK_NULL_ARG3(data_tree->schema, data_tree->schema->module, data_tree->schema->module->name);
-    struct ly_set *res = dm_lyd_get_node((dm_ctx_t *)dm_ctx, data_tree, xpath);
+    struct ly_set *res = lyd_find_xpath(data_tree, xpath);
     if (NULL == res) {
         SR_LOG_ERR_MSG("Lyd get node failed");
         return LY_EINVAL == ly_errno || LY_EVALID == ly_errno ? SR_ERR_INVAL_ARG : SR_ERR_INTERNAL;
@@ -43,13 +43,12 @@ rp_dt_find_nodes(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, const char 
     if (check_enable) {
         /* lock ly_ctx_lock to schema_info_tree*/
         dm_schema_info_t *si = NULL;
-        rc = dm_get_schema_info((dm_ctx_t *) dm_ctx, data_tree->schema->module->name, &si);
+        rc = dm_get_module_and_lock((dm_ctx_t *) dm_ctx, data_tree->schema->module->name, &si);
         if (rc != SR_ERR_OK) {
             SR_LOG_ERR("Get schema info failed for %s", data_tree->schema->module->name);
             ly_set_free(res);
             return rc;
         }
-        pthread_rwlock_rdlock(&si->model_lock);
         for (int i = res->number - 1; i >= 0; i--) {
             if (!dm_is_enabled_check_recursively(res->set.d[i]->schema)) {
                 memmove(&res->set.d[i],

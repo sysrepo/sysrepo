@@ -2,6 +2,10 @@ module test-module {
   namespace "urn:ietf:params:xml:ns:yang:test-module";
   prefix tm;
 
+  import ietf-inet-types {
+    prefix inet;
+  }
+
   organization "organization";
   description
     "example yang module";
@@ -244,6 +248,30 @@ module test-module {
         type string;
         default "/";
       }
+      container init-log {
+        list log-msg {
+          key "msg time";
+          leaf msg {
+            type string;
+          }
+          leaf time {
+            type uint32;
+          }
+          leaf msg-type {
+            type enumeration {
+              enum "error" {
+                value 1;
+              }
+              enum "warning" {
+                value 2;
+              }
+              enum "debug" {
+                value 3;
+              }
+            }
+          }
+        }
+      }
     }
   }
 
@@ -321,5 +349,36 @@ module test-module {
         type string;
     }
   }
+
+ grouping link {
+    container source {
+      leaf address {
+        type inet:ipv4-address;
+      }
+      leaf interface {
+        type string;
+      }
+    }
+    container destination {
+      leaf address {
+        type inet:ipv4-address;
+      }
+      leaf interface {
+        type string;
+      }
+    }
+    leaf MTU {
+      type uint16;
+      default 1500;
+    }
+ }
+
+ notification link-discovered {
+   uses link;
+ }
+
+ notification link-removed {
+    uses link;
+ }
 
 }
