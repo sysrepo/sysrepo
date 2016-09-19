@@ -2,25 +2,26 @@ set(CMAKE_CXX_FLAGS         "${CMAKE_CXX_FLAGS} -Wall -Wpedantic -std=c++11")
 set(CMAKE_CXX_FLAGS_RELEASE "-DNDEBUG -O2")
 set(CMAKE_CXX_FLAGS_DEBUG   "-g -O0")
 add_definitions(-DSWIG)
+remove_definitions(-DSWIGLUA)
 
 project(Sysrepo_bindings)
 set(SYSREPO_CPP_SOURCES
-	cpp/src/Sysrepo.cpp
-        cpp/src/Connection.cpp
-        cpp/src/Session.cpp
-        cpp/src/Struct.cpp
-        cpp/src/Xpath.cpp
-        cpp/src/Tree.cpp
-	cpp/src/Internal.cpp)
+	${CMAKE_SOURCE_DIR}/swig/cpp/src/Sysrepo.cpp
+        ${CMAKE_SOURCE_DIR}/swig/cpp/src/Connection.cpp
+        ${CMAKE_SOURCE_DIR}/swig/cpp/src/Session.cpp
+        ${CMAKE_SOURCE_DIR}/swig/cpp/src/Struct.cpp
+        ${CMAKE_SOURCE_DIR}/swig/cpp/src/Xpath.cpp
+        ${CMAKE_SOURCE_DIR}/swig/cpp/src/Tree.cpp
+	${CMAKE_SOURCE_DIR}/swig/cpp/src/Internal.cpp)
 
 set(SYSREPO_H_SOURCES
-	cpp/src/Sysrepo.h
-        cpp/src/Connection.h
-        cpp/src/Session.h
-        cpp/src/Struct.h
-        cpp/src/Xpath.h
-        cpp/src/Tree.h
-	cpp/src/Internal.h)
+	${CMAKE_SOURCE_DIR}/swig/cpp/src/Sysrepo.h
+        ${CMAKE_SOURCE_DIR}/swig/cpp/src/Connection.h
+        ${CMAKE_SOURCE_DIR}/swig/cpp/src/Session.h
+        ${CMAKE_SOURCE_DIR}/swig/cpp/src/Struct.h
+        ${CMAKE_SOURCE_DIR}/swig/cpp/src/Xpath.h
+        ${CMAKE_SOURCE_DIR}/swig/cpp/src/Tree.h
+	${CMAKE_SOURCE_DIR}/swig/cpp/src/Internal.h)
 
 add_library(Sysrepo_bindings SHARED ${SYSREPO_CPP_SOURCES})
 
@@ -100,6 +101,11 @@ endif()
 
 # install binary
 install(TARGETS Sysrepo_bindings DESTINATION ${BIN_INSTALL_DIR})
+
+# build Lua bindings
+if(SWIG_FOUND AND GEN_LUA_BINDINGS AND ${GEN_LUA_VERSION} STREQUAL "5.1")
+    add_subdirectory(lua51)
+endif()
 
 # build C++ bindings
 if(GEN_CPP_BINDINGS)
