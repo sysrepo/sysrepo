@@ -1340,14 +1340,17 @@ cleanup:
 int
 sr_get_subtree_next_chunk(sr_session_ctx_t *session, sr_node_t *parent)
 {
+#define BUFFER_LEN  12
+    typedef char buffer_t[BUFFER_LEN];
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
     sr_mem_ctx_t *sr_mem = NULL;
     sr_node_t *chunk = NULL;
-    size_t offset = 0;
+    size_t offset = 0, i = 0, index = 0;
     const char *tree_id = NULL;
     char *xpath = NULL;
-    size_t xpath_len = 0;
-    sr_node_t *node = NULL, *last_child = NULL, *iterator = NULL;
+    buffer_t *indices = NULL;
+    size_t xpath_len = 0, indices_len = 0;
+    sr_node_t *node = NULL, *last_child = NULL, *iterator = NULL, *prev = NULL;
     char *cur = NULL;
     int rc = SR_ERR_OK;
 
@@ -1383,32 +1386,74 @@ sr_get_subtree_next_chunk(sr_session_ctx_t *session, sr_node_t *parent)
         node = node->prev;
     }
 
-    /* construct the JSON node-id of the parent node */
-    xpath_len = strlen(tree_id);
+    /* construct XPath for the parent node */
+    /* -> number of indices */
     node = parent;
     while (NULL != node->parent) {
+        ++indices_len;
+        node = node->parent;
+    }
+    /* -> alloc indices */
+    indices = calloc(indices_len, sizeof(buffer_t));
+    CHECK_NULL_NOMEM_GOTO(indices, rc, cleanup);
+    /* -> compute indices */
+    i = indices_len;
+    node = parent;
+    while (NULL != node->parent) {
+        --i;
+        index = 1;
+        prev = node->prev;
+        while (prev) {
+            if (0 == strcmp(node->name, prev->name) &&
+                ((NULL != node->module_name && NULL != prev->module_name &&
+                  0 == strcmp(node->module_name, prev->module_name)) ||
+                 (NULL == node->module_name && NULL == prev->module_name))) {
+                ++index;
+            }
+            prev = prev->prev;
+        }
+        snprintf(indices[i], BUFFER_LEN, "%lu", index);
+        node = node->parent;
+    }
+    /* -> xpath length */
+    xpath_len = strlen(tree_id);
+    i = indices_len;
+    node = parent;
+    while (NULL != node->parent) {
+        --i;
         xpath_len += strlen(node->name);
+        xpath_len += strlen(indices[i]) + 2; /* "[" + index + "]" */
         if (NULL != node->module_name) {
             xpath_len += strlen(node->module_name) + 1 /* ":" */;
         }
         xpath_len += 1; /* "/" */
         node = node->parent;
     }
+    /* -> alloc xpath */
     xpath = calloc(xpath_len + 1, 1);
     CHECK_NULL_NOMEM_GOTO(xpath, rc, cleanup);
+    /* -> copy strings */
     strcpy(xpath, tree_id);
+    i = indices_len;
     node = parent;
     cur = xpath + xpath_len;
     while (NULL != node->parent) {
+        --i;
+        --cur;
+        *cur = ']';
+        cur -= strlen(indices[i]);
+        memcpy(cur, indices[i], strlen(indices[i]));
+        --cur;
+        *cur = '[';
         cur -= strlen(node->name);
         memcpy(cur, node->name, strlen(node->name));
         if (NULL != node->module_name) {
-            cur -= 1;
+            --cur;
             *cur = ':';
             cur -= strlen(node->module_name);
             memcpy(cur, node->module_name, strlen(node->module_name));
         }
-        cur -= 1;
+        --cur;
         *cur = '/';
         node = node->parent;
     }
@@ -1479,6 +1524,7 @@ sr_get_subtree_next_chunk(sr_session_ctx_t *session, sr_node_t *parent)
     }
 
 cleanup:
+    free(indices);
     free(xpath);
     if (NULL != msg_req) {
         sr_msg_free(msg_req);
@@ -1490,6 +1536,7 @@ cleanup:
     }
     sr_free_tree(chunk);
     return cl_session_return(session, rc);
+#undef BUFFER_LEN
 }
 
 int
