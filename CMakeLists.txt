@@ -13,6 +13,7 @@ SET(GEN_LANGUAGE_BINDINGS 1 CACHE BOOL "Enable language bindings generation.")
 SET(GEN_PYTHON_BINDINGS 1 CACHE BOOL "Enable python bindings.")
 SET(GEN_LUA_BINDINGS 1 CACHE BOOL "Enable Lua bindings.")
 SET(GEN_CPP_BINDINGS 1 CACHE BOOL "Enable C++ bindings.")
+SET(GEN_JAVA_BINDINGS 1 CACHE BOOL "Enable Java bindings.")
 SET(GEN_PYTHON_VERSION "2")
 SET(GEN_LUA_VERSION "5.1")
 

@@ -1,5 +1,8 @@
 %module base
 
+%include <std_except.i>
+%catches(std::runtime_error, std::exception, std::string);
+
 %include "std_shared_ptr.i"
 
 %shared_ptr(Iter_Value)

@@ -1,4 +1,4 @@
-set(CMAKE_CXX_FLAGS         "${CMAKE_CXX_FLAGS} -Wall -Wpedantic -std=c++11")
+set(CMAKE_CXX_FLAGS         "${CMAKE_CXX_FLAGS} -Wall -Wpedantic -std=c++11 -fno-strict-aliasing")
 set(CMAKE_CXX_FLAGS_RELEASE "-DNDEBUG -O2")
 set(CMAKE_CXX_FLAGS_DEBUG   "-g -O0")
 add_definitions(-DSWIG)
@@ -136,6 +136,33 @@ if(PYTHONLIBS_FOUND AND PYTHONINTERP_FOUND AND ${GEN_PYTHON_VERSION} STREQUAL "3
         COMMAND ln -sf "${CMAKE_BINARY_DIR}/${PYTHON_SWIG_BINDING_3}.py" "${CMAKE_CURRENT_BINARY_DIR}/python3/examples/${PYTHON_SWIG_BINDING_3}.py"
         COMMAND ln -sf "${CMAKE_CURRENT_BINARY_DIR}/_${PYTHON_SWIG_BINDING_3}.so" "${CMAKE_CURRENT_BINARY_DIR}/python3/examples/_${PYTHON_SWIG_BINDING_3}.so"
         )
+endif()
+
+if(SWIG_FOUND AND GEN_JAVA_BINDINGS)
+# export JAVA_HOME=/usr/lib/jvm/java-7-openjdk
+        set(JAVA_SWIG_BINDING libsysrepoJava)
+	find_package(Java REQUIRED)
+	find_package(JNI REQUIRED)
+	find_package(SWIG REQUIRED)
+	include(UseJava)
+	include(UseSWIG)
+
+	include(${SWIG_USE_FILE})
+	include_directories(${CMAKE_CURRENT_SOURCE_DIR})
+	include_directories(${JAVA_INCLUDE_PATH})
+	include_directories(${JAVA_INCLUDE_DIRS})
+        set(CMAKE_SWIG_FLAGS "-c++")
+
+	set_source_files_properties(java/${JAVA_SWIG_BINDING}.i PROPERTIES CPLUSPLUS ON)
+
+	set(CMAKE_SWIG_OUTDIR "${CMAKE_CURRENT_BINARY_DIR}/java")
+	file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/classes")
+
+	swig_add_module(${JAVA_SWIG_BINDING} java java/${JAVA_SWIG_BINDING}.i)
+	swig_link_libraries(${JAVA_SWIG_BINDING} ${JAVA_LIBRARIES} Sysrepo_bindings)
+
+	add_custom_command(TARGET ${JAVA_SWIG_BINDING} POST_BUILD COMMAND "${Java_JAVAC_EXECUTABLE}" -d classes java/*.java COMMAND "${Java_JAR_EXECUTABLE}" -cfM Sysrepo.jar -C classes . )
+	set(NATIVE_JAR "${CMAKE_CURRENT_BINARY_DIR}/Sysrepo.jar")
 endif()
 
 # install binary
