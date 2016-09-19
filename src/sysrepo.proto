@@ -331,6 +331,31 @@ message GetSubtreesResp {
   repeated Node trees = 1;
 }
 
+/**
+ * @brief Retrieves a chunk of a single or multiple subtrees.
+ * A subtree chunk is also a tree, where the root node is the node referenced by XPath,
+ * the next level consists of its children skipping the first "offset" nodes and including
+ * at most "child_limit" nodes, while the remaining (depth_limit-2) levels always start with
+ * the first child (offset is ignored) but also impose the same limiitation on the number
+ * of transferred children. The chunk consists of at most "depth_limit" levels.
+ * @note Order of child nodes is determined by the schema tree.
+ */
+message GetSubtreeChunkReq {
+  required string xpath = 1;
+  required bool single = 2;
+  required uint32 offset = 3;
+  required uint32 child_limit = 4;
+  required uint32 depth_limit = 5;
+}
+
+/**
+ * @brief Response to sr_get_subtree_chunk request.
+ */
+message GetSubtreeChunkResp {
+  repeated string xpath = 1; /**< JSON node-id of the root node for each subtree chunk */
+  repeated Node chunk = 2;   /**< first chunk may carry mutliple trees */
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // Data Manipulation API (edit-config functionality)
 ////////////////////////////////////////////////////////////////////////////////
@@ -762,6 +787,7 @@ enum Operation {
 
   GET_SUBTREE = 32;
   GET_SUBTREES = 33;
+  GET_SUBTREE_CHUNK = 34;
 
   SET_ITEM = 40;
   DELETE_ITEM = 41;
@@ -811,6 +837,7 @@ message Request {
 
   optional GetSubtreeReq get_subtree_req = 32;
   optional GetSubtreesReq get_subtrees_req = 33;
+  optional GetSubtreeChunkReq get_subtree_chunk_req = 34;
 
   optional SetItemReq set_item_req = 40;
   optional DeleteItemReq delete_item_req = 41;
@@ -858,6 +885,7 @@ message Response {
 
   optional GetSubtreeResp get_subtree_resp = 32;
   optional GetSubtreesResp get_subtrees_resp = 33;
+  optional GetSubtreeChunkResp get_subtree_chunk_resp = 34;
 
   optional SetItemResp set_item_resp = 40;
   optional DeleteItemResp delete_item_resp = 41;

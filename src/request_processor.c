@@ -114,6 +114,8 @@ rp_check_notif_session(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
         xpath = msg->request->get_subtree_req->xpath;
     } else if (SR__OPERATION__GET_SUBTREES == msg->request->operation) {
         xpath = msg->request->get_subtrees_req->xpath;
+    } else if (SR__OPERATION__GET_SUBTREE_CHUNK == msg->request->operation) {
+        xpath = msg->request->get_subtree_chunk_req->xpath;
     } else {
         SR_LOG_WRN_MSG("Check notif session called for unknown operation");
     }
@@ -601,7 +603,7 @@ rp_get_subtree_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg
     /* store current request to session */
     session->req = msg;
 
-    /* get value from data manager */
+    /* get subtree from data manager */
     rc = rp_dt_get_subtree_wrapper(rp_ctx, session, sr_mem, xpath, &tree);
     if (SR_ERR_OK != rc && SR_ERR_NOT_FOUND != rc) {
         SR_LOG_ERR("Get subtree failed for '%s', session id=%"PRIu32".", xpath, session->id);
@@ -739,6 +741,134 @@ cleanup:
 
     return rc;
 }
+
+/**
+ * @brief Processes a get_subtree_chunk request.
+ */
+static int
+rp_get_subtree_chunk_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, bool *skip_msg_cleanup)
+{
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->get_subtree_chunk_req);
+
+    SR_LOG_DBG_MSG("Processing get_subtree_chunk request.");
+
+    Sr__Msg *resp = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
+
+    rc = sr_mem_new(0, &sr_mem);
+    CHECK_RC_MSG_RETURN(rc, "Failed to create a new Sysrepo memory context.");
+    rc = sr_gpb_resp_alloc(sr_mem, SR__OPERATION__GET_SUBTREE_CHUNK, session->id, &resp);
+    if (SR_ERR_OK != rc) {
+        sr_mem_free(sr_mem);
+        SR_LOG_ERR_MSG("Gpb response allocation failed");
+        return rc;
+    }
+
+    sr_node_t *chunks = NULL;
+    size_t chunk_cnt = 0;
+    char **chunk_ids = NULL;
+    char *xpath = msg->request->get_subtree_chunk_req->xpath;
+    bool single = msg->request->get_subtree_chunk_req->single;
+    size_t offset = msg->request->get_subtree_chunk_req->offset;
+    size_t child_limit = msg->request->get_subtree_chunk_req->child_limit;
+    size_t depth_limit = msg->request->get_subtree_chunk_req->depth_limit;
+
+    if (session->options & SR__SESSION_FLAGS__SESS_NOTIFICATION) {
+        rc = rp_check_notif_session(rp_ctx, session, msg);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Check notif session failed");
+    }
+
+    MUTEX_LOCK_TIMED_CHECK_GOTO(&session->cur_req_mutex, rc, cleanup);
+    if (RP_REQ_FINISHED == session->state) {
+        session->state = RP_REQ_NEW;
+    } else if (RP_REQ_WAITING_FOR_DATA == session->state) {
+        if (msg == session->req) {
+            SR_LOG_ERR("Time out waiting for operational data expired before all responses have been received, session id = %u", session->id);
+            session->state = RP_REQ_DATA_LOADED;
+        } else {
+            SR_LOG_ERR("A request was not processed, probably invalid state, session id = %u", session->id);
+            sr_msg_free(session->req);
+            session->state = RP_REQ_NEW;
+        }
+    }
+    /* store current request to session */
+    session->req = msg;
+
+    /* get subtree chunk(s) from data manager */
+    if (single) {
+        chunk_ids = sr_calloc(sr_mem, 1, sizeof(char *));
+        if (NULL == chunk_ids) {
+            SR_LOG_ERR("Unable to allocate memory in %s", __func__);
+            rc = SR_ERR_NOMEM;
+        } else {
+            rc = rp_dt_get_subtree_wrapper_with_opts(rp_ctx, session, sr_mem, xpath, offset, child_limit, depth_limit,
+                    &chunks, &chunk_ids[0]);
+            if (SR_ERR_OK == rc) {
+                chunk_cnt = 1;
+            } else {
+                if (NULL == sr_mem) {
+                    free(chunk_ids);
+                }
+                chunk_ids = NULL;
+            }
+        }
+    } else {
+        rc = rp_dt_get_subtrees_wrapper_with_opts(rp_ctx, session, sr_mem, xpath, offset, child_limit, depth_limit,
+                &chunks, &chunk_cnt, &chunk_ids);
+    }
+    if (SR_ERR_OK != rc && SR_ERR_NOT_FOUND != rc) {
+        SR_LOG_ERR("Get subtree chunk failed for '%s', session id=%"PRIu32".", xpath, session->id);
+    }
+
+    if (RP_REQ_WAITING_FOR_DATA == session->state) {
+        SR_LOG_DBG_MSG("Request paused, waiting for data");
+        /* we are waiting for operational data do not free the request */
+        *skip_msg_cleanup = true;
+        /* setup timeout */
+        rc = rp_set_oper_request_timeout(rp_ctx, session, msg, RP_OPER_DATA_REQ_TIMEOUT);
+        sr_free_trees(chunks, chunk_cnt);
+        if (NULL == sr_mem && chunk_ids) {
+            for (size_t i = 0; i < chunk_cnt; ++i) {
+                free(chunk_ids[i]);
+            }
+            free(chunk_ids);
+        }
+        sr_msg_free(resp);
+        pthread_mutex_unlock(&session->cur_req_mutex);
+        return rc;
+    }
+
+    pthread_mutex_unlock(&session->cur_req_mutex);
+
+    /* copy chunk(s) to gpb */
+    if (SR_ERR_OK == rc) {
+        rc = sr_trees_sr_to_gpb(chunks, chunk_cnt, &resp->response->get_subtree_chunk_resp->chunk,
+                &resp->response->get_subtree_chunk_resp->n_chunk);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR("Copying subtree chunk(s) to gpb failed for xpath '%s'", xpath);
+        }
+    }
+    resp->response->get_subtree_chunk_resp->n_xpath = chunk_cnt;
+    resp->response->get_subtree_chunk_resp->xpath = chunk_ids;
+
+cleanup:
+    session->req = NULL;
+    /* set response code */
+    resp->response->result = rc;
+
+    rc = rp_resp_fill_errors(resp, session->dm_session);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Copying errors to gpb failed");
+    }
+
+    sr_free_trees(chunks, chunk_cnt);
+    rc = cm_msg_send(rp_ctx->cm_ctx, resp);
+
+    return rc;
+}
+
 /**
  * @brief Processes a set_item request.
  */
@@ -2197,6 +2327,7 @@ rp_req_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, bool *ski
         case SR__OPERATION__GET_ITEMS:
         case SR__OPERATION__GET_SUBTREE:
         case SR__OPERATION__GET_SUBTREES:
+        case SR__OPERATION__GET_SUBTREE_CHUNK:
         case SR__OPERATION__SET_ITEM:
         case SR__OPERATION__DELETE_ITEM:
         case SR__OPERATION__MOVE_ITEM:
@@ -2240,6 +2371,9 @@ rp_req_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, bool *ski
             break;
         case SR__OPERATION__GET_SUBTREES:
             rc = rp_get_subtrees_req_process(rp_ctx, session, msg, skip_msg_cleanup);
+            break;
+        case SR__OPERATION__GET_SUBTREE_CHUNK:
+            rc = rp_get_subtree_chunk_req_process(rp_ctx, session, msg, skip_msg_cleanup);
             break;
         case SR__OPERATION__SET_ITEM:
             rc = rp_set_item_req_process(rp_ctx, session, msg);
@@ -2304,6 +2438,7 @@ rp_req_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, bool *ski
         case SR__OPERATION__GET_ITEMS:
         case SR__OPERATION__GET_SUBTREE:
         case SR__OPERATION__GET_SUBTREES:
+        case SR__OPERATION__GET_SUBTREE_CHUNK:
         case SR__OPERATION__SET_ITEM:
         case SR__OPERATION__DELETE_ITEM:
         case SR__OPERATION__MOVE_ITEM:
@@ -2405,7 +2540,8 @@ rp_msg_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
                 (SR__OPERATION__GET_CHANGES != msg->request->operation) &&
                 (SR__OPERATION__UNSUBSCRIBE != msg->request->operation) &&
                 (SR__OPERATION__GET_SUBTREE != msg->request->operation) &&
-                (SR__OPERATION__GET_SUBTREES != msg->request->operation)) {
+                (SR__OPERATION__GET_SUBTREES != msg->request->operation) &&
+                (SR__OPERATION__GET_SUBTREE_CHUNK != msg->request->operation)) {
             SR_LOG_ERR("Unsupported operation for notification session (session id=%"PRIu32", operation=%d).",
                     session->id, msg->request->operation);
             sr_msg_free(msg);
