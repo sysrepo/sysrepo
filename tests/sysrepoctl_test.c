@@ -264,6 +264,27 @@ sysrepoctl_test_init(void **state)
     test_file_permissions(TEST_DATA_SEARCH_DIR "ietf-interfaces.persist", mode);
 }
 
+static void
+sysrepoctl_test_set_log_level(void **state)
+{
+    char buff[PATH_MAX] = { 0, };
+    char *user = getenv("USER");
+
+    /* invalid arguments */
+    snprintf(buff, PATH_MAX, "../src/sysrepoctl --init --owner=%s --permissions=644", user);
+    exec_shell_command(buff, "", true, 1);
+
+    /* remove ietf-interfaces data files */
+    snprintf(buff, PATH_MAX, "rm -f \"%s\"*", TEST_DATA_SEARCH_DIR "ietf-interfaces.");
+    exec_shell_command(buff, "", true, 0);
+
+
+    /* initialize already installed ietf-ip */
+    snprintf(buff, PATH_MAX, "../src/sysrepoctl --init --module=ietf-ip --owner=%s --permissions=664", user);
+    exec_shell_command(buff, "", true, 0);
+
+}
+
 int
 main() {
     const struct CMUnitTest tests[] = {
