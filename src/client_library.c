@@ -1778,7 +1778,7 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, s
 
     msg_req->request->subscribe_req->has_notif_event = true;
     msg_req->request->subscribe_req->notif_event =
-            (opts & SR_SUBSCR_VERIFIER) ? SR__NOTIFICATION_EVENT__VERIFY_EV : SR__NOTIFICATION_EVENT__NOTIFY_EV;
+            (opts & SR_SUBSCR_APPLY_ONLY) ? SR__NOTIFICATION_EVENT__VERIFY_EV : SR__NOTIFICATION_EVENT__APPLY_EV;
     msg_req->request->subscribe_req->has_priority = true;
     msg_req->request->subscribe_req->priority = priority;
     msg_req->request->subscribe_req->has_enable_running = true;
@@ -1846,7 +1846,7 @@ sr_subtree_change_subscribe(sr_session_ctx_t *session, const char *xpath, sr_sub
 
     msg_req->request->subscribe_req->has_notif_event = true;
     msg_req->request->subscribe_req->notif_event =
-            (opts & SR_SUBSCR_VERIFIER) ? SR__NOTIFICATION_EVENT__VERIFY_EV : SR__NOTIFICATION_EVENT__NOTIFY_EV;
+            (opts & SR_SUBSCR_APPLY_ONLY) ? SR__NOTIFICATION_EVENT__VERIFY_EV : SR__NOTIFICATION_EVENT__APPLY_EV;
     msg_req->request->subscribe_req->has_priority = true;
     msg_req->request->subscribe_req->priority = priority;
     msg_req->request->subscribe_req->has_enable_running = true;

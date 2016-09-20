@@ -2027,8 +2027,10 @@ sr_notification_event_gpb_to_str(Sr__NotificationEvent event)
     switch (event) {
         case SR__NOTIFICATION_EVENT__VERIFY_EV:
             return "verify";
-        case SR__NOTIFICATION_EVENT__NOTIFY_EV:
-            return "notify";
+        case SR__NOTIFICATION_EVENT__APPLY_EV:
+            return "apply";
+        case SR__NOTIFICATION_EVENT__ABORT_EV:
+            return "abort";
         default:
             return "unknown";
     }
@@ -2040,8 +2042,11 @@ sr_notification_event_str_to_gpb(const char *event_name)
     if (0 == strcmp(event_name, "verify")) {
         return SR__NOTIFICATION_EVENT__VERIFY_EV;
     }
-    if (0 == strcmp(event_name, "notify")) {
-        return SR__NOTIFICATION_EVENT__NOTIFY_EV;
+    if (0 == strcmp(event_name, "apply")) {
+        return SR__NOTIFICATION_EVENT__APPLY_EV;
+    }
+    if (0 == strcmp(event_name, "abort")) {
+        return SR__NOTIFICATION_EVENT__ABORT_EV;
     }
     return _SR__NOTIFICATION_EVENT_IS_INT_SIZE;
 }
@@ -2052,10 +2057,10 @@ sr_notification_event_gpb_to_sr(Sr__NotificationEvent event)
     switch (event) {
         case SR__NOTIFICATION_EVENT__VERIFY_EV:
             return SR_EV_VERIFY;
-        case SR__NOTIFICATION_EVENT__NOTIFY_EV:
-            return SR_EV_NOTIFY;
+        case SR__NOTIFICATION_EVENT__APPLY_EV:
+            return SR_EV_APPLY;
         default:
-            return SR_EV_NOTIFY;
+            return SR_EV_ABORT;
     }
 }
 

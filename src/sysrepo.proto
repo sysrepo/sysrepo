@@ -516,7 +516,8 @@ enum SubscriptionType {
 
 enum NotificationEvent {
   VERIFY_EV = 1;
-  NOTIFY_EV = 2;
+  APPLY_EV = 2;
+  ABORT_EV = 3;
 }
 
 message SubscribeReq {

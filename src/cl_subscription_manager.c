@@ -686,7 +686,7 @@ cl_sm_notif_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *msg)
             break;
         case SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS:
             SR_LOG_DBG("Calling module-change callback for subscription id=%"PRIu32".", subscription->id);
-            subscription->callback.module_change_cb(
+            rc = subscription->callback.module_change_cb(
                     data_session,
                     msg->notification->module_change_notif->module_name,
                     sr_notification_event_gpb_to_sr(msg->notification->module_change_notif->event),
@@ -694,7 +694,7 @@ cl_sm_notif_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *msg)
             break;
         case SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS:
             SR_LOG_DBG("Calling subtree-change callback for subscription id=%"PRIu32".", subscription->id);
-            subscription->callback.subtree_change_cb(
+            rc = subscription->callback.subtree_change_cb(
                     data_session,
                     msg->notification->subtree_change_notif->xpath,
                     sr_notification_event_gpb_to_sr(msg->notification->subtree_change_notif->event),
