@@ -476,7 +476,26 @@ srctl_change(const char *module_name, const char *owner, const char *permissions
 static void
 srctl_ly_log_cb(LY_LOG_LEVEL level, const char *msg, const char *path)
 {
-    return;
+    switch (level) {
+        case LY_LLERR:
+            if (ly_diminish_errors)
+                SR_LOG_WRN("libyang: %s", msg);
+            else
+                SR_LOG_ERR("libyang: %s", msg);
+            break;
+        case LY_LLWRN:
+            SR_LOG_WRN("libyang: %s", msg);
+            break;
+        case LY_LLVRB:
+            SR_LOG_INF("libyang: %s", msg);
+            break;
+        case LY_LLDBG:
+            SR_LOG_DBG("libyang: %s", msg);
+            break;
+        default:
+            break;
+    }
+
 }
 
 /**
@@ -1102,7 +1121,7 @@ main(int argc, char* argv[])
        { 0, 0, 0, 0 }
     };
 
-    while ((c = getopt_long(argc, argv, "hvLliIuce:d:g:n:m:r:o:p:s:0:W;", longopts, NULL)) != -1) {
+    while ((c = getopt_long(argc, argv, "hvL:liIuce:d:g:n:m:r:o:p:s:0:W;", longopts, NULL)) != -1) {
         switch (c) {
             case 'h':
                 srctl_print_help();

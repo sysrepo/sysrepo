@@ -264,6 +264,14 @@ sysrepoctl_test_init(void **state)
     test_file_permissions(TEST_DATA_SEARCH_DIR "ietf-interfaces.persist", mode);
 }
 
+static void
+sysrepoctl_test_set_log_level(void **state)
+{
+	 exec_shell_command("../src/sysrepoctl --level 4", "", true, 0);
+	 exec_shell_command("../src/sysrepoctl -L 4", "", true, 0);
+
+}
+
 int
 main() {
     const struct CMUnitTest tests[] = {
