@@ -476,7 +476,26 @@ srctl_change(const char *module_name, const char *owner, const char *permissions
 static void
 srctl_ly_log_cb(LY_LOG_LEVEL level, const char *msg, const char *path)
 {
-    return;
+    switch (level) {
+        case LY_LLERR:
+            if (ly_diminish_errors)
+                SR_LOG_WRN("libyang: %s", msg);
+            else
+                SR_LOG_ERR("libyang: %s", msg);
+            break;
+        case LY_LLWRN:
+            SR_LOG_WRN("libyang: %s", msg);
+            break;
+        case LY_LLVRB:
+            SR_LOG_INF("libyang: %s", msg);
+            break;
+        case LY_LLDBG:
+            SR_LOG_DBG("libyang: %s", msg);
+            break;
+        default:
+            break;
+    }
+
 }
 
 /**
