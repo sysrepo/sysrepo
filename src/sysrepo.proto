@@ -334,18 +334,19 @@ message GetSubtreesResp {
 /**
  * @brief Retrieves a chunk of a single or multiple subtrees.
  * A subtree chunk is also a tree, where the root node is the node referenced by XPath,
- * the next level consists of its children skipping the first "offset" nodes and including
- * at most "child_limit" nodes, while the remaining (depth_limit-2) levels always start with
- * the first child (offset is ignored) but also impose the same limiitation on the number
- * of transferred children. The chunk consists of at most "depth_limit" levels.
- * @note Order of child nodes is determined by the schema tree.
+ * the next level consists of its children skipping the first "slice_offset" nodes and including
+ * at most "slice_limit" nodes, while the remaining (depth_limit-2) levels always start with
+ * the first child (slice_offset is ignored) and include at most "child_limit" nodes.
+ * The chunk consists of at most "depth_limit" levels.
+ * @note Order of child nodes depends on the libyang implementation.
  */
 message GetSubtreeChunkReq {
   required string xpath = 1;
   required bool single = 2;
-  required uint32 offset = 3;
-  required uint32 child_limit = 4;
-  required uint32 depth_limit = 5;
+  required uint32 slice_offset = 3;
+  required uint32 slice_width = 4;
+  required uint32 child_limit = 5;
+  required uint32 depth_limit = 6;
 }
 
 /**

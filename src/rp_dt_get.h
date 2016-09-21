@@ -93,7 +93,7 @@ int rp_dt_get_values_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, sr_mem_
  * @param [out] count
  * @return Error code (SR_ERR_OK on success)
  */
-int rp_dt_get_values_wrapper_with_opts(rp_ctx_t *rp_ctx, rp_session_t *rp_session, rp_dt_get_items_ctx_t *get_items_ctx, sr_mem_ctx_t *sr_mem, 
+int rp_dt_get_values_wrapper_with_opts(rp_ctx_t *rp_ctx, rp_session_t *rp_session, rp_dt_get_items_ctx_t *get_items_ctx, sr_mem_ctx_t *sr_mem,
         const char *xpath, size_t offset, size_t limit, sr_val_t **values, size_t *count);
 
 /**
@@ -127,7 +127,8 @@ int rp_dt_get_subtree(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, sr_mem
  * @param [in] data_tree
  * @param [in] sr_mem
  * @param [in] xpath
- * @param [in] offset
+ * @param [in] slice_offset
+ * @param [in] slice_width
  * @param [in] child_limit
  * @param [in] depth_limit
  * @param [in] check_enable
@@ -136,7 +137,8 @@ int rp_dt_get_subtree(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, sr_mem
  * @return Error code (SR_ERR_OK on success)
  */
 int rp_dt_get_subtree_chunk(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, sr_mem_ctx_t *sr_mem, const char *xpath,
-    size_t offset, size_t child_limit, size_t depth_limit, bool check_enable, sr_node_t **chunk, char **chunk_id);
+    size_t slice_offset, size_t slice_width, size_t child_limit, size_t depth_limit, bool check_enable,
+    sr_node_t **chunk, char **chunk_id);
 
 /**
  * @brief Retrieves all subtrees with root nodes matching the specified xpath.
@@ -158,7 +160,8 @@ int rp_dt_get_subtrees(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, sr_me
  * @param [in] data_tree
  * @param [in] sr_mem
  * @param [in] xpath
- * @param [in] offset
+ * @param [in] slice_offset
+ * @param [in] slice_width
  * @param [in] child_limit
  * @param [in] depth_limit
  * @param [in] check_enable
@@ -168,7 +171,8 @@ int rp_dt_get_subtrees(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, sr_me
  * @return Error code (SR_ERR_OK on success)
  */
 int rp_dt_get_subtrees_chunks(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, sr_mem_ctx_t *sr_mem, const char *xpath,
-    size_t offset, size_t child_limit, size_t depth_limit, bool check_enable, sr_node_t **chunks, size_t *count, char ***chunk_ids);
+    size_t slice_offset, size_t slice_width, size_t child_limit, size_t depth_limit, bool check_enable, sr_node_t **chunks,
+    size_t *count, char ***chunk_ids);
 
 /**
  * @brief Returns the subtree whose root node is referenced by the specified xpath.
@@ -187,7 +191,8 @@ int rp_dt_get_subtree_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, sr_mem
  * @param [in] rp_session
  * @param [in] sr_mem
  * @param [in] xpath
- * @param [in] offset
+ * @param [in] slice_offset
+ * @param [in] slice_width
  * @param [in] child_limit
  * @param [in] depth_limit
  * @param [out] subtree
@@ -195,7 +200,7 @@ int rp_dt_get_subtree_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, sr_mem
  * @return Error code (SR_ERR_OK on success), SR_ERR_NOT_FOUND, SR_ERR_UNKNOWN_MODEL, SR_ERR_BAD_ELEMENT
  */
 int rp_dt_get_subtree_wrapper_with_opts(rp_ctx_t *rp_ctx, rp_session_t *rp_session, sr_mem_ctx_t *sr_mem, const char *xpath,
-        size_t offset, size_t child_limit, size_t depth_limit, sr_node_t **subtree, char **subtree_id);
+        size_t slice_offset, size_t slice_width, size_t child_limit, size_t depth_limit, sr_node_t **subtree, char **subtree_id);
 
 /**
  * @brief Retrieves all subtrees with root nodes matching the specified xpath.
@@ -216,7 +221,8 @@ int rp_dt_get_subtrees_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, sr_me
  * @param [in] rp_session
  * @param [in] sr_mem
  * @param [in] xpath
- * @param [in] offset
+ * @param [in] slice_offset
+ * @param [in] slice_width
  * @param [in] child_limit
  * @param [in] depth_limit
  * @param [out] subtrees
@@ -225,7 +231,8 @@ int rp_dt_get_subtrees_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, sr_me
  * @return Error code (SR_ERR_OK on success), SR_ERR_NOT_FOUND, SR_ERR_UNKNOWN_MODEL, SR_ERR_BAD_ELEMENT
  */
 int rp_dt_get_subtrees_wrapper_with_opts(rp_ctx_t *rp_ctx, rp_session_t *rp_session, sr_mem_ctx_t *sr_mem, const char *xpath,
-        size_t offset, size_t child_limit, size_t depth_limit, sr_node_t **subtrees, size_t *count, char ***subtree_ids);
+        size_t slice_offset, size_t slice_width, size_t child_limit, size_t depth_limit, sr_node_t **subtrees, size_t *count,
+        char ***subtree_ids);
 
 /**
  * @brief Transforms difflist to the set of changes
@@ -274,14 +281,15 @@ bool rp_dt_is_under_subtree(struct lys_node *subtree, struct lys_node *node);
 /**
  * @brief Function tests whether node is located under(in schema hierarchy) subtree chunk.
  * @param [in] subtree
- * @param [in] offset
+ * @param [in] slice_offset
+ * @param [in] slice_width
  * @param [in] child_limit
  * @param [in] depth_limit
  * @param [in] node
  * @return bool result of the test
  */
-bool rp_dt_is_under_subtree_chunk(struct lys_node *subtree, size_t offset, size_t child_limit, size_t depth_limit,
-        struct lys_node *node);
+bool rp_dt_is_under_subtree_chunk(struct lys_node *subtree, size_t slice_offset, size_t slice_width,
+        size_t child_limit, size_t depth_limit, struct lys_node *node);
 
 #endif /* RP_DT_GET_H */
 

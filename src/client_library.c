@@ -49,10 +49,10 @@
 #define CL_GET_SUBTREE_CHUNK_CHILD_LIMIT 20
 
 /**
- * @brief Maximum number of levels of any subtree chunk sent by the operation
- * sr_get_subtree(s)_*_chunk(s). The first chunk includes even one level less than that.
+ * @brief Maximum number of *not-yet-loaded* levels of any subtree chunk sent by the operation
+ * sr_get_subtree(s)_*_chunk(s).
  */
-#define CL_GET_SUBTREE_CHUNK_DEPTH_LIMIT 3
+#define CL_GET_SUBTREE_CHUNK_DEPTH_LIMIT 2
 
 /**
  * @brief Filesystem path prefix for generating temporary socket names used
@@ -1136,7 +1136,7 @@ cleanup:
  * @brief Add a tree iterator into a subtree chunk.
  */
 static int
-sr_add_tree_iterator(sr_node_t *root, sr_node_t *iterator, const char *xpath, size_t depth_limit)
+sr_add_tree_iterator(sr_node_t *root, sr_node_t *iterator, const char *xpath, bool bounded_slice, size_t depth_limit)
 {
     int rc = SR_ERR_OK;
     bool process_children = true;
@@ -1175,9 +1175,10 @@ sr_add_tree_iterator(sr_node_t *root, sr_node_t *iterator, const char *xpath, si
                 prev = node->prev;
                 while (prev) {
                     ++child_cnt;
-                    prev = node->prev;
+                    prev = prev->prev;
                 }
-                if (CL_GET_SUBTREE_CHUNK_CHILD_LIMIT == child_cnt) {
+                if ((1 < depth || (1 == depth && !bounded_slice))
+                        && CL_GET_SUBTREE_CHUNK_CHILD_LIMIT == child_cnt) {
                     sr_node_insert_child(node->parent, iterator);
                     ++iterator->data.int32_val;
                 }
@@ -1219,9 +1220,10 @@ sr_get_subtree_first_chunk(sr_session_ctx_t *session, const char *xpath, sr_node
     sr_mem_edit_string(sr_mem, &msg_req->request->get_subtree_chunk_req->xpath, xpath);
     CHECK_NULL_NOMEM_GOTO(msg_req->request->get_subtree_chunk_req->xpath, rc, cleanup);
     msg_req->request->get_subtree_chunk_req->single = true;
-    msg_req->request->get_subtree_chunk_req->offset = 0;
+    msg_req->request->get_subtree_chunk_req->slice_offset = 0;
+    msg_req->request->get_subtree_chunk_req->slice_width = CL_GET_SUBTREE_CHUNK_CHILD_LIMIT;
     msg_req->request->get_subtree_chunk_req->child_limit = CL_GET_SUBTREE_CHUNK_CHILD_LIMIT;
-    msg_req->request->get_subtree_chunk_req->depth_limit = CL_GET_SUBTREE_CHUNK_DEPTH_LIMIT-1;
+    msg_req->request->get_subtree_chunk_req->depth_limit = CL_GET_SUBTREE_CHUNK_DEPTH_LIMIT;
 
     /* send the request and receive the response */
     rc = cl_request_process(session, msg_req, &msg_resp, NULL, SR__OPERATION__GET_SUBTREE_CHUNK);
@@ -1247,7 +1249,7 @@ sr_get_subtree_first_chunk(sr_session_ctx_t *session, const char *xpath, sr_node
     CHECK_RC_MSG_GOTO(rc, cleanup, "Subtree chunk duplication failed.");
 
     rc = sr_add_tree_iterator(chunk, NULL, msg_resp->response->get_subtree_chunk_resp->xpath[0],
-            CL_GET_SUBTREE_CHUNK_DEPTH_LIMIT-1);
+            false, CL_GET_SUBTREE_CHUNK_DEPTH_LIMIT);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to add tree iterator into a subtree chunk.");
 
     *chunk_p = chunk;
@@ -1291,9 +1293,10 @@ sr_get_subtrees_first_chunks(sr_session_ctx_t *session, const char *xpath, sr_no
     sr_mem_edit_string(sr_mem, &msg_req->request->get_subtree_chunk_req->xpath, xpath);
     CHECK_NULL_NOMEM_GOTO(msg_req->request->get_subtree_chunk_req->xpath, rc, cleanup);
     msg_req->request->get_subtree_chunk_req->single = false;
-    msg_req->request->get_subtree_chunk_req->offset = 0;
+    msg_req->request->get_subtree_chunk_req->slice_offset = 0;
+    msg_req->request->get_subtree_chunk_req->slice_width = CL_GET_SUBTREE_CHUNK_CHILD_LIMIT;
     msg_req->request->get_subtree_chunk_req->child_limit = CL_GET_SUBTREE_CHUNK_CHILD_LIMIT;
-    msg_req->request->get_subtree_chunk_req->depth_limit = CL_GET_SUBTREE_CHUNK_DEPTH_LIMIT-1;
+    msg_req->request->get_subtree_chunk_req->depth_limit = CL_GET_SUBTREE_CHUNK_DEPTH_LIMIT;
 
     /* send the request and receive the response */
     rc = cl_request_process(session, msg_req, &msg_resp, NULL, SR__OPERATION__GET_SUBTREE_CHUNK);
@@ -1315,7 +1318,7 @@ sr_get_subtrees_first_chunks(sr_session_ctx_t *session, const char *xpath, sr_no
 
     for (size_t i = 0; i < chunk_cnt; ++i) {
         rc = sr_add_tree_iterator(chunks+i, NULL, msg_resp->response->get_subtree_chunk_resp->xpath[i],
-                CL_GET_SUBTREE_CHUNK_DEPTH_LIMIT-1);
+                false, CL_GET_SUBTREE_CHUNK_DEPTH_LIMIT);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to add tree iterator into a subtree chunk.");
     }
 
@@ -1345,13 +1348,14 @@ sr_get_subtree_next_chunk(sr_session_ctx_t *session, sr_node_t *parent)
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
     sr_mem_ctx_t *sr_mem = NULL;
     sr_node_t *chunk = NULL;
-    size_t offset = 0, i = 0, index = 0;
+    size_t slice_offset = 0, slice_width = 0, depth_limit = 0, i = 0, index = 0;
     const char *tree_id = NULL;
     char *xpath = NULL;
     buffer_t *indices = NULL;
     size_t xpath_len = 0, indices_len = 0;
-    sr_node_t *node = NULL, *last_child = NULL, *iterator = NULL, *prev = NULL;
+    sr_node_t *node = NULL, *child = NULL, *iterator = NULL, *prev = NULL, *next = NULL, *node2 = NULL;
     char *cur = NULL;
+    bool bounded_slice = false;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG2(session, parent);
@@ -1360,7 +1364,7 @@ sr_get_subtree_next_chunk(sr_session_ctx_t *session, sr_node_t *parent)
 
     node = parent->first_child;
     while (node && node->type != SR_TREE_ITERATOR_T) {
-        last_child = node;
+        child = node;
         node = node->next;
     }
 
@@ -1379,11 +1383,49 @@ sr_get_subtree_next_chunk(sr_session_ctx_t *session, sr_node_t *parent)
         goto cleanup;
     }
 
-    /* get offset of the first unloaded child */
-    node = last_child;
-    while (node) {
-        ++offset;
-        node = node->prev;
+    /* determine the parameters of the slice */
+    if (NULL == child && NULL != parent->parent) {
+        /* consider also siblings */
+        /*  -> slice offset */
+        node = parent;
+        while (node->prev) {
+            ++slice_offset;
+            node = node->prev;
+        }
+        /*  -> slice width */
+        node = parent;
+        bounded_slice = true;
+        while (CL_GET_SUBTREE_CHUNK_CHILD_LIMIT > slice_width && NULL != node) {
+            if (SR_TREE_ITERATOR_T == node->type) {
+                bounded_slice = false;
+                slice_width = CL_GET_SUBTREE_CHUNK_CHILD_LIMIT;
+                break;
+            }
+            if (node->first_child && SR_TREE_ITERATOR_T == node->first_child->type) {
+                ++slice_width;
+            } else {
+                break;
+            }
+            node = node->next;
+        }
+        assert(slice_width);
+    }
+    if (1 < slice_width) {
+        /* cover also siblings with this chunk */
+        parent = parent->parent;
+        depth_limit = CL_GET_SUBTREE_CHUNK_DEPTH_LIMIT + 2;
+    } else {
+        /* get offset of the first unloaded child */
+        slice_offset = 0;
+        node = child;
+        while (node) {
+            ++slice_offset;
+            node = node->prev;
+        }
+        /* include as many nodes as allowed */
+        bounded_slice = false;
+        slice_width = CL_GET_SUBTREE_CHUNK_CHILD_LIMIT;
+        depth_limit = CL_GET_SUBTREE_CHUNK_DEPTH_LIMIT + 1;
     }
 
     /* construct XPath for the parent node */
@@ -1468,9 +1510,10 @@ sr_get_subtree_next_chunk(sr_session_ctx_t *session, sr_node_t *parent)
     sr_mem_edit_string(sr_mem, &msg_req->request->get_subtree_chunk_req->xpath, xpath);
     CHECK_NULL_NOMEM_GOTO(msg_req->request->get_subtree_chunk_req->xpath, rc, cleanup);
     msg_req->request->get_subtree_chunk_req->single = true;
-    msg_req->request->get_subtree_chunk_req->offset = offset;
+    msg_req->request->get_subtree_chunk_req->slice_offset = slice_offset;
+    msg_req->request->get_subtree_chunk_req->slice_width = slice_width;
     msg_req->request->get_subtree_chunk_req->child_limit = CL_GET_SUBTREE_CHUNK_CHILD_LIMIT;
-    msg_req->request->get_subtree_chunk_req->depth_limit = CL_GET_SUBTREE_CHUNK_DEPTH_LIMIT;
+    msg_req->request->get_subtree_chunk_req->depth_limit = depth_limit;
 
     /* send the request and receive the response */
     rc = cl_request_process(session, msg_req, &msg_resp, parent->_sr_mem, SR__OPERATION__GET_SUBTREE_CHUNK);
@@ -1490,26 +1533,86 @@ sr_get_subtree_next_chunk(sr_session_ctx_t *session, sr_node_t *parent)
                              msg_resp->response->get_subtree_chunk_resp->chunk[0], &chunk);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Subtree chunk duplication failed.");
 
-    rc = sr_add_tree_iterator(chunk, iterator, NULL, CL_GET_SUBTREE_CHUNK_DEPTH_LIMIT);
+    rc = sr_add_tree_iterator(chunk, iterator, NULL, bounded_slice, depth_limit);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to add tree iterator into a subtree chunk.");
 
     /* attach the chunk to the tree */
-    parent->last_child = last_child;
-    if (NULL != chunk->last_child) {
-        parent->last_child = chunk->last_child;
-    }
-    if (last_child) {
-        last_child->next = chunk->first_child;
-        if (SR_TREE_ITERATOR_T != chunk->first_child->type) {
-            chunk->first_child->prev = last_child;
-        }
-    } else {
-        parent->first_child = chunk->first_child;
-    }
-    node = chunk->first_child;
-    while (node && SR_TREE_ITERATOR_T != node->type) {
-        node->parent = parent;
+    prev = NULL;
+    node = parent->first_child;
+    assert(node);
+    node2 = chunk->first_child;
+    while (slice_offset) {
+        prev = node;
         node = node->next;
+        assert(node);
+        --slice_offset;
+    }
+    while (node && slice_width) {
+        if (SR_TREE_ITERATOR_T == node->type) {
+            /* remove iterator reference */
+            assert(false == bounded_slice);
+            --iterator->data.int32_val;
+            /* append the remaining nodes from the chunk */
+            if (NULL != node2) {
+                parent->last_child = chunk->last_child;
+            } else {
+                parent->last_child = prev;
+            }
+            if (prev) {
+                prev->next = node2;
+                if (NULL != node2 && SR_TREE_ITERATOR_T != node2->type) {
+                    node2->prev = prev;
+                }
+            } else {
+                parent->first_child = node2;
+            }
+            while (node2 && SR_TREE_ITERATOR_T != node2->type) {
+                node2->parent = parent;
+                node2 = node2->next;
+            }
+            break; /**< nothing more to add */
+        } else {
+            if (NULL == node2) {
+                /* no more child nodes left in the chunk */
+                break;
+            }
+            /* some clarity checks */
+            assert(SR_TREE_ITERATOR_T != node2->type);
+            assert(node->first_child && SR_TREE_ITERATOR_T == node->first_child->type &&
+                   node->first_child == node->last_child);
+            /* move child nodes from node2 to node */
+            node->first_child = node->last_child = NULL; /**< remove iterator reference */
+            --iterator->data.int32_val;
+            node->first_child = node2->first_child;
+            node->last_child = node2->last_child;
+            node2->first_child = node2->last_child = NULL;
+            child = node->first_child;
+            while (child && SR_TREE_ITERATOR_T != child->type) {
+                child->parent = node;
+                child = child->next;
+            }
+            /* remove the duplicate child node from the chunk */
+            next = node2->next;
+            if (NULL == node2->_sr_mem) {
+                sr_free_tree(node2);
+            }
+            node2 = next;
+        }
+        prev = node;
+        node = node->next;
+        --slice_width;
+    }
+    if (NULL != node2) {
+        /* something unrequested left in the chunk, deallocate it */
+        assert(true == bounded_slice);
+        do {
+            next = node2->next;
+            node2->next = node2->prev = node2->parent = NULL;
+            if (NULL == node2->_sr_mem) {
+                sr_free_tree(node2);
+            }
+            node2 = next;
+        } while (NULL != node2);
     }
 
     /* remove the duplicate of the parent node from the chunk */
@@ -1517,8 +1620,7 @@ sr_get_subtree_next_chunk(sr_session_ctx_t *session, sr_node_t *parent)
     sr_free_tree(chunk);
     chunk = NULL;
 
-    /* decrease the usage counter of the iterator */
-    --iterator->data.int32_val;
+    /* remove the iterator if it is no longer used */
     if (0 == iterator->data.int32_val) {
         sr_free_node(iterator);
     }

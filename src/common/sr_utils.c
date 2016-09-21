@@ -1039,14 +1039,15 @@ sr_api_variant_from_str(const char *api_variant_str)
  * @param [in] parent Parent node.
  * @param [in] node libyang node.
  * @param [in] depth Depth of the node relative to the root node.
- * @param [in] offset Number of child nodes of the chunk root to skip.
- * @param [in] child_limit Limit on the number of copied children imposed on each node.
+ * @param [in] slice_offset Number of child nodes of the chunk root to skip.
+ * @param [in] slice_width Maximum number of child nodes of the chunk root to include.
+ * @param [in] child_limit Limit on the number of copied children imposed on each node starting from 3rd level.
  * @param [in] depth_limit Maximum number of tree levels to copy.
  * @param [out] sr_tree Returned sysrepo tree.
  */
 static int
 sr_copy_node_to_tree_internal(const struct lyd_node *parent, const struct lyd_node *node, size_t depth,
-         size_t offset, size_t child_limit, size_t depth_limit, sr_node_t *sr_tree)
+         size_t slice_offset, size_t slice_width, size_t child_limit, size_t depth_limit, sr_node_t *sr_tree)
 {
     int rc = SR_ERR_OK;
     struct lyd_node_leaf_list *data_leaf = NULL;
@@ -1100,15 +1101,16 @@ sr_copy_node_to_tree_internal(const struct lyd_node *parent, const struct lyd_no
         child = node->child;
         idx = 0;
         while (child) {
-            if ((0 < depth || offset <= idx) /* offset */ &&
-                (child_limit > idx - (0 == depth ? offset : 0)) /* child_limit */ &&
+            if ((0 < depth || slice_offset <= idx) /* slice_offset */ &&
+                (0 < depth || slice_width > idx - slice_offset) /* slice width */ &&
+                (0 == depth || child_limit > idx) /* child_limit */ &&
                 (depth_limit > depth + 1) /* depth limit */) {
                 rc = sr_node_add_child(sr_tree, NULL, NULL, &sr_subtree);
                 if (SR_ERR_OK != rc) {
                     goto cleanup;
                 }
-                rc = sr_copy_node_to_tree_internal(node, child, depth + 1, offset, child_limit, depth_limit,
-                        sr_subtree);
+                rc = sr_copy_node_to_tree_internal(node, child, depth + 1, slice_offset, slice_width,
+                        child_limit, depth_limit, sr_subtree);
                 if (SR_ERR_OK != rc) {
                     goto cleanup;
                 }
@@ -1128,14 +1130,14 @@ cleanup:
 int
 sr_copy_node_to_tree(const struct lyd_node *node, sr_node_t *sr_tree)
 {
-    return sr_copy_node_to_tree_internal(NULL, node, 0, 0, SIZE_MAX, SIZE_MAX, sr_tree);
+    return sr_copy_node_to_tree_internal(NULL, node, 0, 0, SIZE_MAX, SIZE_MAX, SIZE_MAX, sr_tree);
 }
 
 int
-sr_copy_node_to_tree_chunk(const struct lyd_node *node, size_t offset, size_t child_limit, size_t depth_limit,
-        sr_node_t *sr_tree)
+sr_copy_node_to_tree_chunk(const struct lyd_node *node, size_t slice_offset, size_t slice_width, size_t child_limit,
+        size_t depth_limit, sr_node_t *sr_tree)
 {
-    return sr_copy_node_to_tree_internal(NULL, node, 0, offset, child_limit, depth_limit, sr_tree);
+    return sr_copy_node_to_tree_internal(NULL, node, 0, slice_offset, slice_width, child_limit, depth_limit, sr_tree);
 }
 
 int
@@ -1166,7 +1168,7 @@ sr_nodes_to_trees(struct ly_set *nodes, sr_mem_ctx_t *sr_mem, sr_node_t **sr_tre
 
     for (i = 0; i < nodes->number && 0 == rc; ++i) {
         trees[i]._sr_mem = sr_mem;
-        rc = sr_copy_node_to_tree_internal(NULL, nodes->set.d[i], 0, 0, SIZE_MAX, SIZE_MAX, trees + i);
+        rc = sr_copy_node_to_tree_internal(NULL, nodes->set.d[i], 0, 0, SIZE_MAX, SIZE_MAX, SIZE_MAX, trees + i);
     }
 
     if (SR_ERR_OK == rc) {
@@ -1183,8 +1185,8 @@ sr_nodes_to_trees(struct ly_set *nodes, sr_mem_ctx_t *sr_mem, sr_node_t **sr_tre
 }
 
 int
-sr_nodes_to_tree_chunks(struct ly_set *nodes, size_t offset, size_t child_limit, size_t depth_limit, sr_mem_ctx_t *sr_mem,
-        sr_node_t **sr_trees, size_t *count)
+sr_nodes_to_tree_chunks(struct ly_set *nodes, size_t slice_offset, size_t slice_width, size_t child_limit,
+        size_t depth_limit, sr_mem_ctx_t *sr_mem, sr_node_t **sr_trees, size_t *count)
 {
     int rc = SR_ERR_OK;
     sr_node_t *trees = NULL;
@@ -1211,7 +1213,8 @@ sr_nodes_to_tree_chunks(struct ly_set *nodes, size_t offset, size_t child_limit,
 
     for (i = 0; i < nodes->number && 0 == rc; ++i) {
         trees[i]._sr_mem = sr_mem;
-        rc = sr_copy_node_to_tree_internal(NULL, nodes->set.d[i], 0, offset, child_limit, depth_limit, trees + i);
+        rc = sr_copy_node_to_tree_internal(NULL, nodes->set.d[i], 0, slice_offset, slice_width, child_limit,
+                depth_limit, trees + i);
     }
 
     if (SR_ERR_OK == rc) {

@@ -771,7 +771,8 @@ rp_get_subtree_chunk_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Ms
     char **chunk_ids = NULL;
     char *xpath = msg->request->get_subtree_chunk_req->xpath;
     bool single = msg->request->get_subtree_chunk_req->single;
-    size_t offset = msg->request->get_subtree_chunk_req->offset;
+    size_t slice_offset = msg->request->get_subtree_chunk_req->slice_offset;
+    size_t slice_width = msg->request->get_subtree_chunk_req->slice_width;
     size_t child_limit = msg->request->get_subtree_chunk_req->child_limit;
     size_t depth_limit = msg->request->get_subtree_chunk_req->depth_limit;
 
@@ -803,8 +804,8 @@ rp_get_subtree_chunk_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Ms
             SR_LOG_ERR("Unable to allocate memory in %s", __func__);
             rc = SR_ERR_NOMEM;
         } else {
-            rc = rp_dt_get_subtree_wrapper_with_opts(rp_ctx, session, sr_mem, xpath, offset, child_limit, depth_limit,
-                    &chunks, &chunk_ids[0]);
+            rc = rp_dt_get_subtree_wrapper_with_opts(rp_ctx, session, sr_mem, xpath, slice_offset, slice_width, child_limit,
+                    depth_limit, &chunks, &chunk_ids[0]);
             if (SR_ERR_OK == rc) {
                 chunk_cnt = 1;
             } else {
@@ -815,8 +816,8 @@ rp_get_subtree_chunk_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Ms
             }
         }
     } else {
-        rc = rp_dt_get_subtrees_wrapper_with_opts(rp_ctx, session, sr_mem, xpath, offset, child_limit, depth_limit,
-                &chunks, &chunk_cnt, &chunk_ids);
+        rc = rp_dt_get_subtrees_wrapper_with_opts(rp_ctx, session, sr_mem, xpath, slice_offset, slice_width, child_limit,
+                depth_limit, &chunks, &chunk_cnt, &chunk_ids);
     }
     if (SR_ERR_OK != rc && SR_ERR_NOT_FOUND != rc) {
         SR_LOG_ERR("Get subtree chunk failed for '%s', session id=%"PRIu32".", xpath, session->id);
