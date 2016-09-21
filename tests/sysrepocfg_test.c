@@ -834,17 +834,23 @@ main() {
         goto terminate;
     }
 
-    /* load all installed schemas */
+    char *modules_for_tests[] = {
+        "test-module",
+        "example-module",
+        "iana-if-type",
+        "ietf-interfaces",
+        "ietf-ip",
+    };
+    /* load module necessary for tests */
     ret = sr_list_schemas(srcfg_test_session, &schemas, &schema_cnt);
     if (SR_ERR_OK == ret) {
         for (size_t i = 0; i < schema_cnt; i++) {
-            path = schemas[i].revision.file_path_yin;
-            if (NULL != path) {
-                lys_parse_path(srcfg_test_libyang_ctx, path, LYS_IN_YIN);
-            }
             path = schemas[i].revision.file_path_yang;
-            if (NULL != path) {
-                lys_parse_path(srcfg_test_libyang_ctx, path, LYS_IN_YANG);
+            for (int j = 0; j < sizeof(modules_for_tests) / sizeof(*modules_for_tests); j++) {
+                if (NULL != path && 0 == strcmp(modules_for_tests[j], schemas[i].module_name)) {
+                    lys_parse_path(srcfg_test_libyang_ctx, path, LYS_IN_YANG);
+                    break;
+                }
             }
 
         }

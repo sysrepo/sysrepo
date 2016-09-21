@@ -1,0 +1,12 @@
+module top-level-mandatory {
+  namespace "test:top-level-mandatory";
+  prefix tlm;
+
+  container top-level
+  {
+    leaf required-node{
+      type int8;
+      mandatory true;
+    }
+  }
+}

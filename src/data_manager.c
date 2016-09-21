@@ -649,7 +649,7 @@ dm_load_data_tree_file(dm_ctx_t *dm_ctx, int fd, const char *data_filename, dm_s
                 (long long) st.st_mtim.tv_nsec);
 #endif
         ly_errno = 0;
-        data_tree = lyd_parse_fd(schema_info->ly_ctx, fd, LYD_XML, LYD_OPT_STRICT | LYD_OPT_CONFIG);
+        data_tree = lyd_parse_fd(schema_info->ly_ctx, fd, LYD_XML, LYD_OPT_TRUSTED | LYD_OPT_CONFIG);
         if (NULL == data_tree && LY_SUCCESS != ly_errno) {
             SR_LOG_ERR("Parsing data tree from file %s failed: %s", data_filename, ly_errmsg());
             free(data);
@@ -657,8 +657,8 @@ dm_load_data_tree_file(dm_ctx_t *dm_ctx, int fd, const char *data_filename, dm_s
         }
     }
 
-    /* if the data tree is loaded, validate it*/
-    if (0 != lyd_validate(&data_tree, LYD_OPT_STRICT | LYD_OPT_CONFIG, NULL == data_tree ? schema_info->ly_ctx : NULL)) {
+    /* if the data tree is loaded, validate it (only non-empty data trees are validated) */
+    if (NULL != data_tree && 0 != lyd_validate(&data_tree, LYD_OPT_STRICT | LYD_OPT_CONFIG, schema_info->ly_ctx)) {
         SR_LOG_ERR("Loaded data tree '%s' is not valid", data_filename);
         lyd_free_withsiblings(data_tree);
         free(data);
