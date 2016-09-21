@@ -248,10 +248,13 @@ int np_commit_release(np_ctx_t *np_ctx, uint32_t commit_id);
  *
  * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
  * @param[in] commit_id Commit identifier.
+ * @param[in] event Event that is currently being processed.
+ * @param[in] result Result of the notification processing by the subscriber.
+ * @param[in] xpath XPath identifying the subscription.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int np_commit_notification_ack(np_ctx_t *np_ctx, uint32_t commit_id);
+int np_commit_notification_ack(np_ctx_t *np_ctx, uint32_t commit_id, sr_notif_event_t event, int result, char *xpath);
 
 /**
  * @brief Cleans up a subscription context (including all its content).

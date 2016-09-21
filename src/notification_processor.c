@@ -973,7 +973,7 @@ np_commit_release(np_ctx_t *np_ctx, uint32_t commit_id)
 }
 
 int
-np_commit_notification_ack(np_ctx_t *np_ctx, uint32_t commit_id)
+np_commit_notification_ack(np_ctx_t *np_ctx, uint32_t commit_id, sr_notif_event_t event, int result, char *xpath)
 {
     np_commit_ctx_t *commit = NULL;
     sr_llist_node_t *commit_node = NULL;
