@@ -85,15 +85,7 @@ rp_dt_get_value_from_node(struct lyd_node *node, sr_val_t *val)
     case LYS_LEAF:
         data_leaf = (struct lyd_node_leaf_list *) node;
         val->dflt = node->dflt;
-
-        if (data_leaf->value_type == LY_TYPE_LEAFREF && NULL == data_leaf->value.leafref) {
-            if (0 != lyd_validate_leafref(data_leaf)) {
-                SR_LOG_WRN("Cannot resolve leafref \"%s\" just yet.", xpath);
-            }
-        }
-
         val->type = sr_libyang_leaf_get_type(data_leaf);
-
         rc = sr_libyang_leaf_copy_value(data_leaf, val);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Copying of value failed");
         break;
