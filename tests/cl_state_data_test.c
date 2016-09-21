@@ -1626,17 +1626,19 @@ cl_all_state_data(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 
     /* retrieve data */
-    rc = sr_get_items(session, "/state-module:*", &values, &cnt);
+    rc = sr_get_items(session, "/state-module:*//*", &values, &cnt);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* check data */
     assert_non_null(values);
-    assert_int_equal(2, cnt);
+    assert_int_equal(44, cnt);
 
     sr_free_values(values, cnt);
 
     /* check xpath that were retrieved */
     const char *xpath_expected_to_be_loaded [] = {
+        "/state-module:bus/gps_located",
+        "/state-module:bus/distance_travelled",
         "/state-module:traffic_stats",
         "/state-module:traffic_stats/cross_road",
         "/state-module:traffic_stats/cross_road[id='0']/traffic_light",
