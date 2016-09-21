@@ -451,23 +451,42 @@ cl_parent_subscription_tree(void **state)
     assert_string_equal("state-module", tree->module_name);
     assert_false(tree->dflt);
     assert_int_equal(SR_CONTAINER_T, tree->type);
-    // gps located
     node = tree->first_child;
     assert_non_null(node);
-    assert_string_equal("gps_located", node->name);
-    assert_null(node->module_name);
-    assert_false(node->dflt);
-    assert_int_equal(SR_BOOL_T, node->type);
-    assert_false(node->data.bool_val);
-    assert_null(node->first_child);
-    // distance travelled
-    node = node->next;
-    assert_non_null(node);
-    assert_string_equal("distance_travelled", node->name);
-    assert_null(node->module_name);
-    assert_false(node->dflt);
-    assert_int_equal(SR_UINT32_T, node->type);
-    assert_int_equal(999, node->data.uint32_val);
+    if (0 == strcmp("gps_located", node->name)) {
+        // gps located
+        assert_string_equal("gps_located", node->name);
+        assert_null(node->module_name);
+        assert_false(node->dflt);
+        assert_int_equal(SR_BOOL_T, node->type);
+        assert_false(node->data.bool_val);
+        assert_null(node->first_child);
+        // distance travelled
+        node = node->next;
+        assert_non_null(node);
+        assert_string_equal("distance_travelled", node->name);
+        assert_null(node->module_name);
+        assert_false(node->dflt);
+        assert_int_equal(SR_UINT32_T, node->type);
+        assert_int_equal(999, node->data.uint32_val);
+    } else {
+        // distance_travelled
+        assert_string_equal("distance_travelled", node->name);
+        assert_null(node->module_name);
+        assert_false(node->dflt);
+        assert_int_equal(SR_UINT32_T, node->type);
+        assert_int_equal(999, node->data.uint32_val);
+        assert_null(node->first_child);
+
+        // gps_located
+        node = node->next;
+        assert_non_null(node);
+        assert_string_equal("gps_located", node->name);
+        assert_null(node->module_name);
+        assert_false(node->dflt);
+        assert_int_equal(SR_BOOL_T, node->type);
+        assert_false(node->data.bool_val);
+    }
     assert_null(node->first_child);
     assert_null(node->next);
 
