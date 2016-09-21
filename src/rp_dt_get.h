@@ -273,23 +273,11 @@ void rp_dt_free_state_data_ctx_content (rp_state_data_ctx_t *state_data);
 /**
  * @brief Function tests whether node is located under(in schema hierarchy) subtree node.
  * @param [in] subtree
+ * @param [in] depth_limit Maximum number of subtree levels to consider.
  * @param [in] node
  * @return bool result of the test
  */
-bool rp_dt_is_under_subtree(struct lys_node *subtree, struct lys_node *node);
-
-/**
- * @brief Function tests whether node is located under(in schema hierarchy) subtree chunk.
- * @param [in] subtree
- * @param [in] slice_offset
- * @param [in] slice_width
- * @param [in] child_limit
- * @param [in] depth_limit
- * @param [in] node
- * @return bool result of the test
- */
-bool rp_dt_is_under_subtree_chunk(struct lys_node *subtree, size_t slice_offset, size_t slice_width,
-        size_t child_limit, size_t depth_limit, struct lys_node *node);
+bool rp_dt_is_under_subtree(struct lys_node *subtree, size_t depth_limit, struct lys_node *node);
 
 #endif /* RP_DT_GET_H */
 

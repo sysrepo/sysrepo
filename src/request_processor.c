@@ -1877,7 +1877,7 @@ rp_data_provide_request_nested(rp_ctx_t *rp_ctx, rp_session_t *session, const ch
     /* find subscription where subsequent request will be addressed */
     for (subs_index = 0; subs_index < session->state_data_ctx.subscription_nodes->count; subs_index++) {
         struct lys_node *subs = session->state_data_ctx.subscription_nodes->data[subs_index];
-        if (rp_dt_is_under_subtree(subs, sch_node)) {
+        if (rp_dt_is_under_subtree(subs, SIZE_MAX, sch_node)) {
             break;
         }
     }

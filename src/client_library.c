@@ -1133,6 +1133,23 @@ cleanup:
 }
 
 /**
+ * @brief Returns true if the passed node could be an internal one (based on the type), false otherwise.
+ */
+static bool
+sr_is_internal_node(sr_node_t *node)
+{
+    switch (node->type) {
+        case SR_CONTAINER_T:
+        case SR_CONTAINER_PRESENCE_T:
+        case SR_LIST_T:
+        case SR_UNION_T:
+            return true;
+        default:
+            return false;
+    }
+}
+
+/**
  * @brief Add a tree iterator into a subtree chunk.
  */
 static int
@@ -1162,7 +1179,7 @@ sr_add_tree_iterator(sr_node_t *root, sr_node_t *iterator, const char *xpath, bo
                 node = node->first_child;
             }
         }
-        if (NULL == node->first_child && depth == depth_limit-1) {
+        if (sr_is_internal_node(node) && NULL == node->first_child && depth == depth_limit-1) {
             sr_node_insert_child(node, iterator);
             ++iterator->data.int32_val;
         }
@@ -1436,8 +1453,10 @@ sr_get_subtree_next_chunk(sr_session_ctx_t *session, sr_node_t *parent)
         node = node->parent;
     }
     /* -> alloc indices */
-    indices = calloc(indices_len, sizeof(buffer_t));
-    CHECK_NULL_NOMEM_GOTO(indices, rc, cleanup);
+    if (0 < indices_len) {
+        indices = calloc(indices_len, sizeof(buffer_t));
+        CHECK_NULL_NOMEM_GOTO(indices, rc, cleanup);
+    }
     /* -> compute indices */
     i = indices_len;
     node = parent;
