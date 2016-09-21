@@ -301,7 +301,7 @@ np_commit_release_in_dm(np_ctx_t *np_ctx, uint32_t commit_id)
 
     CHECK_NULL_ARG3(np_ctx, np_ctx->rp_ctx, np_ctx->rp_ctx->dm_ctx);
 
-    rc = dm_remove_commit_context(np_ctx->rp_ctx->dm_ctx, commit_id);
+    rc = dm_commit_notifications_complete(np_ctx->rp_ctx->dm_ctx, commit_id, /* TODO */ SR_ERR_OK, NULL);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR_MSG("Unable to release the commit in Data Manager.");
     }

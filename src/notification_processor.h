@@ -242,7 +242,7 @@ int np_commit_end_notify(np_ctx_t *np_ctx, uint32_t commit_id, sr_list_t *subscr
 int np_commit_release(np_ctx_t *np_ctx, uint32_t commit_id);
 
 /**
- * @brief
+ * @brief Track a response to a notification (notification acknowledgment).
  *
  * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
  * @param[in] commit_id Commit identifier.
