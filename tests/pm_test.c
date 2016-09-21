@@ -198,7 +198,7 @@ pm_subscription_test(void **state)
 
     /* retrieve active subscriptions */
     rc = pm_get_subscriptions(pm_ctx, "example-module", SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS,
-            &subscriptions, &subscription_cnt);
+            SR_EV_APPLY, &subscriptions, &subscription_cnt);
     assert_int_equal(SR_ERR_OK, rc);
     assert_true(subscription_cnt >= 1);
     for (size_t i = 0; i < subscription_cnt; i++) {

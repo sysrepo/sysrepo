@@ -280,15 +280,28 @@ np_module_subscriptions_test(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 
     rc = np_notification_subscribe(np_ctx, test_ctx->rp_session_ctx, SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS,
-            "addr3", 456, "example-module", "/example-module:container", SR__NOTIFICATION_EVENT__VERIFY_EV, 20, SR_API_VALUES, NP_SUBSCR_ENABLE_RUNNING);
+            "addr3", 456, "example-module", "/example-module:container", SR__NOTIFICATION_EVENT__VERIFY_EV, 20,
+            SR_API_VALUES, NP_SUBSCR_ENABLE_RUNNING);
     assert_int_equal(rc, SR_ERR_OK);
 
-    /* get subscriptions */
-    rc = np_get_module_change_subscriptions(np_ctx, "example-module", &subscriptions_arr, &subscriptions_cnt);
+    rc = np_notification_subscribe(np_ctx, test_ctx->rp_session_ctx, SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS,
+            "addr3", 789, "example-module", "/example-module:container", SR__NOTIFICATION_EVENT__APPLY_EV, 20,
+            SR_API_VALUES, NP_SUBSCR_ENABLE_RUNNING);
     assert_int_equal(rc, SR_ERR_OK);
-    assert_int_not_equal(subscriptions_cnt, 0);
 
+    /* get verify subscriptions */
+    rc = np_get_module_change_subscriptions(np_ctx, "example-module", SR_EV_VERIFY, &subscriptions_arr, &subscriptions_cnt);
+    assert_int_equal(rc, SR_ERR_OK);
     assert_int_equal(subscriptions_cnt, 2);
+    for (size_t i = 0; i < subscriptions_cnt; i++) {
+        np_free_subscription(subscriptions_arr[i]);
+    }
+    free(subscriptions_arr);
+
+    /* get all subscriptions */
+    rc = np_get_module_change_subscriptions(np_ctx, "example-module", SR_EV_APPLY, &subscriptions_arr, &subscriptions_cnt);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_int_equal(subscriptions_cnt, 3);
 
     rc = sr_list_init(&subscriptions_list);
     assert_int_equal(rc, SR_ERR_OK);
@@ -298,7 +311,8 @@ np_module_subscriptions_test(void **state)
         assert_true((SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS == subscriptions_arr[i]->type) ||
                 (SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS == subscriptions_arr[i]->type));
         assert_true(10 == subscriptions_arr[i]->priority || 20 == subscriptions_arr[i]->priority);
-        assert_true(SR__NOTIFICATION_EVENT__VERIFY_EV == subscriptions_arr[i]->notif_event);
+        assert_true((SR__NOTIFICATION_EVENT__VERIFY_EV == subscriptions_arr[i]->notif_event) ||
+                (SR__NOTIFICATION_EVENT__APPLY_EV == subscriptions_arr[i]->notif_event));
         /* notify and add into list */
         rc = np_subscription_notify(np_ctx, subscriptions_arr[i], 0);
         assert_int_equal(rc, SR_ERR_OK);
@@ -325,6 +339,10 @@ np_module_subscriptions_test(void **state)
     rc = np_notification_unsubscribe(np_ctx, test_ctx->rp_session_ctx, SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS,
             "addr3", 456, "example-module");
     assert_int_equal(rc, SR_ERR_OK);
+
+    rc = np_notification_unsubscribe(np_ctx, test_ctx->rp_session_ctx, SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS,
+            "addr3", 789, "example-module");
+    assert_int_equal(rc, SR_ERR_OK);
 }
 
 static void
@@ -346,11 +364,13 @@ np_dp_subscriptions_test(void **state)
     /* subscribe */
 
     rc = np_notification_subscribe(np_ctx, test_ctx->rp_session_ctx, SR__SUBSCRIPTION_TYPE__DP_GET_ITEMS_SUBS,
-            "addr4", 789, "example-module", "/example-module:container", SR__NOTIFICATION_EVENT__VERIFY_EV, 20, SR_API_VALUES, NP_SUBSCR_ENABLE_RUNNING);
+            "addr4", 789, "example-module", "/example-module:container", SR__NOTIFICATION_EVENT__VERIFY_EV, 20,
+            SR_API_VALUES, NP_SUBSCR_ENABLE_RUNNING);
     assert_int_equal(rc, SR_ERR_OK);
 
     rc = np_notification_subscribe(np_ctx, test_ctx->rp_session_ctx, SR__SUBSCRIPTION_TYPE__DP_GET_ITEMS_SUBS,
-            "addr5", 1011, "example-module", "/example-module:container", SR__NOTIFICATION_EVENT__VERIFY_EV, 20, SR_API_VALUES, NP_SUBSCR_ENABLE_RUNNING);
+            "addr5", 1011, "example-module", "/example-module:container", SR__NOTIFICATION_EVENT__VERIFY_EV, 20,
+            SR_API_VALUES, NP_SUBSCR_ENABLE_RUNNING);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* get subscriptions */

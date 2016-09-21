@@ -686,8 +686,8 @@ np_hello_notify(np_ctx_t *np_ctx, const char *module_name, const char *dst_addre
 }
 
 int
-np_get_module_change_subscriptions(np_ctx_t *np_ctx, const char *module_name, np_subscription_t ***subscriptions_arr_p,
-        size_t *subscriptions_cnt_p)
+np_get_module_change_subscriptions(np_ctx_t *np_ctx, const char *module_name, sr_notif_event_t event,
+        np_subscription_t ***subscriptions_arr_p, size_t *subscriptions_cnt_p)
 {
     np_subscription_t *subscriptions_1 = NULL, *subscriptions_2 = NULL, **subscriptions_arr = NULL;
     size_t subscription_cnt_1 = 0, subscription_cnt_2 = 0, subscriptions_arr_cnt = 0;
@@ -697,12 +697,12 @@ np_get_module_change_subscriptions(np_ctx_t *np_ctx, const char *module_name, np
 
     /* get subtree-change subscriptions */
     rc = pm_get_subscriptions(np_ctx->rp_ctx->pm_ctx, module_name, SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS,
-            &subscriptions_1, &subscription_cnt_1);
+            event, &subscriptions_1, &subscription_cnt_1);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to retrieve subtree-change subscriptions");
 
     /* get module-change subscriptions */
     rc = pm_get_subscriptions(np_ctx->rp_ctx->pm_ctx, module_name, SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS,
-            &subscriptions_2, &subscription_cnt_2);
+            event, &subscriptions_2, &subscription_cnt_2);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to retrieve module-change subscriptions");
 
     if ((subscription_cnt_1 + subscription_cnt_2) > 0) {
@@ -747,8 +747,8 @@ cleanup:
 }
 
 int
-np_get_data_provider_subscriptions(np_ctx_t *np_ctx, const char *module_name, np_subscription_t ***subscriptions_arr_p,
-        size_t *subscriptions_cnt_p)
+np_get_data_provider_subscriptions(np_ctx_t *np_ctx, const char *module_name,
+        np_subscription_t ***subscriptions_arr_p, size_t *subscriptions_cnt_p)
 {
     np_subscription_t *subscriptions = NULL, **subscriptions_arr = NULL;
     size_t subscription_cnt = 0, subscriptions_arr_cnt = 0;
@@ -758,7 +758,7 @@ np_get_data_provider_subscriptions(np_ctx_t *np_ctx, const char *module_name, np
 
     /* get data provides subscriptions */
     rc = pm_get_subscriptions(np_ctx->rp_ctx->pm_ctx, module_name, SR__SUBSCRIPTION_TYPE__DP_GET_ITEMS_SUBS,
-            &subscriptions, &subscription_cnt);
+            SR_EV_APPLY, &subscriptions, &subscription_cnt);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to retrieve subtree-change subscriptions");
 
     if (subscription_cnt > 0) {

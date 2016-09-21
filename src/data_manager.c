@@ -2347,6 +2347,7 @@ dm_prepare_module_subscriptions(dm_ctx_t *dm_ctx, dm_schema_info_t *schema_info,
 
     rc = np_get_module_change_subscriptions(dm_ctx->np_ctx,
             schema_info->module_name,
+            SR_EV_VERIFY, /* TODO: VERIFY for verifiers only, APPLY for all (including verifiers) */
             &ms->subscriptions,
             &ms->subscription_cnt);
 

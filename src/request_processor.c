@@ -1588,7 +1588,7 @@ rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg 
     bool subscription_match = false;
     /* get RPC subscription */
     rc = pm_get_subscriptions(rp_ctx->pm_ctx, module_name, SR__SUBSCRIPTION_TYPE__RPC_SUBS,
-            &subscriptions, &subscription_cnt);
+            SR_EV_APPLY, &subscriptions, &subscription_cnt);
     CHECK_RC_LOG_GOTO(rc, finalize, "Failed to get subscriptions for RPC request (%s).", msg->request->rpc_req->xpath);
 
     for (size_t i = 0; i < subscription_cnt; i++) {
@@ -1994,7 +1994,7 @@ rp_commit_release_req_process(const rp_ctx_t *rp_ctx, Sr__Msg *msg)
 
     CHECK_NULL_ARG4(rp_ctx, msg, msg->internal_request, msg->internal_request->commit_release_req);
 
-    SR_LOG_DBG_MSG("Processing commit-release request.");
+    SR_LOG_DBG_MSG("Processing commit-release request."); // TODO: commit-timeout
 
     rc = np_commit_release(rp_ctx->np_ctx, msg->internal_request->commit_release_req->commit_id);
 
@@ -2081,7 +2081,7 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
 
     /* get event-notification subscriptions */
     rc = pm_get_subscriptions(rp_ctx->pm_ctx, module_name, SR__SUBSCRIPTION_TYPE__EVENT_NOTIF_SUBS,
-            &subscriptions, &subscription_cnt);
+            SR_EV_APPLY, &subscriptions, &subscription_cnt);
     CHECK_RC_LOG_GOTO(rc, finalize, "Failed to get subscriptions for event notification request (%s).",
                       msg->request->event_notif_req->xpath);
 

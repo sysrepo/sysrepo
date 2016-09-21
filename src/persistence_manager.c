@@ -48,9 +48,9 @@
 #define PM_XPATH_SUBSCRIPTION_ENABLE_RUNNING  PM_XPATH_SUBSCRIPTION      "/enable-running"
 #define PM_XPATH_SUBSCRIPTION_API_VARIANT     PM_XPATH_SUBSCRIPTION      "/api-variant"
 
-
 #define PM_XPATH_SUBSCRIPTIONS_BY_TYPE        PM_XPATH_SUBSCRIPTION_LIST "[type='%s']"
 #define PM_XPATH_SUBSCRIPTIONS_BY_TYPE_XPATH  PM_XPATH_SUBSCRIPTION_LIST "[type='%s'][xpath='%s']"
+#define PM_XPATH_SUBSCRIPTIONS_BY_TYPE_EVENT  PM_XPATH_SUBSCRIPTION_LIST "[type='%s'][event='%s']"
 #define PM_XPATH_SUBSCRIPTIONS_BY_DST_ADDR    PM_XPATH_SUBSCRIPTION_LIST "[destination-address='%s']"
 #define PM_XPATH_SUBSCRIPTIONS_BY_DST_ID      PM_XPATH_SUBSCRIPTION_LIST "[destination-address='%s'][destination-id='%"PRIu32"']"
 #define PM_XPATH_SUBSCRIPTIONS_WITH_E_RUNNING PM_XPATH_SUBSCRIPTION_LIST "[enable-running=true()]"
@@ -775,7 +775,7 @@ pm_remove_subscriptions_for_destination(pm_ctx_t *pm_ctx, const char *module_nam
 
 int
 pm_get_subscriptions(pm_ctx_t *pm_ctx, const char *module_name, Sr__SubscriptionType type,
-        np_subscription_t **subscriptions_p, size_t *subscription_cnt_p)
+        sr_notif_event_t event, np_subscription_t **subscriptions_p, size_t *subscription_cnt_p)
 {
     char xpath[PATH_MAX] = { 0, };
     struct lyd_node *data_tree = NULL;
@@ -797,7 +797,15 @@ pm_get_subscriptions(pm_ctx_t *pm_ctx, const char *module_name, Sr__Subscription
         goto cleanup;
     }
 
-    snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTIONS_BY_TYPE, module_name, sr_subscription_type_gpb_to_str(type));
+    if ((SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS == type || SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS == type)
+            && (SR_EV_VERIFY == event)) {
+        /* verifiers only */
+        snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTIONS_BY_TYPE_EVENT, module_name, sr_subscription_type_gpb_to_str(type),
+                sr_notification_event_sr_to_str(event));
+    } else {
+        /* all possible events */
+        snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTIONS_BY_TYPE, module_name, sr_subscription_type_gpb_to_str(type));
+    }
     node_set = lyd_find_xpath(data_tree, xpath);
 
     if (NULL != node_set && node_set->number > 0) {

@@ -2036,6 +2036,21 @@ sr_notification_event_gpb_to_str(Sr__NotificationEvent event)
     }
 }
 
+char *
+sr_notification_event_sr_to_str(sr_notif_event_t event)
+{
+    switch (event) {
+        case SR_EV_VERIFY:
+            return "verify";
+        case SR_EV_APPLY:
+            return "apply";
+        case SR_EV_ABORT:
+            return "abort";
+        default:
+            return "unknown";
+    }
+}
+
 Sr__NotificationEvent
 sr_notification_event_str_to_gpb(const char *event_name)
 {
