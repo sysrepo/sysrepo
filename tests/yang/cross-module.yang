@@ -1,0 +1,38 @@
+module cross-module {
+
+   namespace "urn:cm";
+   prefix cm;
+
+   import referenced-data {
+      prefix rd;
+   }
+
+   leaf reference {
+      type leafref {
+         path "/rd:list-b/rd:name";
+      }
+   }
+
+   container links {
+      leaf number {
+         type uint8;
+      }
+
+      leaf value_in_list {
+         type leafref {
+            path "/rd:list-b/rd:value";
+         }
+      }
+
+      must 'number = /rd:magic_number' {
+         error-message "Number must be equal to magic_number";
+      }
+   }
+
+   leaf universe_question {
+      type string;
+      when "/rd:magic_number = 42" {
+         description "The answer is not correct";
+      }
+   }
+}

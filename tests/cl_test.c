@@ -3545,6 +3545,99 @@ cl_event_notif_combo_test(void **state)
     assert_int_equal(0, pthread_cond_destroy(&cb_status.cond));
 }
 
+static void
+cl_cross_module_dependency(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+#if 0
+    sr_session_ctx_t *session = NULL;
+
+    int rc = SR_ERR_OK;
+    sr_val_t *value = NULL;
+    sr_val_t val = {0};
+
+    /* start session */
+    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* clean prev data */
+    rc = sr_delete_item(session, "/referenced-data:*", SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_delete_item(session, "/cross-module:*", SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_commit(session);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    val.type = SR_STRING_T;
+    val.data.string_val = "abcd";
+
+    /* create leafref */
+    rc = sr_set_item(session, "/cross-module:reference", &val, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_get_item(session, "/cross-module:reference", &value);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    assert_non_null(value);
+    assert_int_equal(SR_STRING_T, value->type);
+    assert_string_equal(val.data.string_val, value->data.string_val);
+    sr_free_val(value);
+
+    /* referenced node does not exists yet*/
+    rc = sr_validate(session);
+    assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
+
+    /* create referenced node*/
+    rc = sr_set_item(session, "/referenced-data:list-b[name='abcd']", NULL, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_validate(session);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = sr_commit(session);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    val.type = SR_UINT32_T;
+    val.data.uint32_val = 100;
+    rc = sr_set_item(session, "/referenced-data:list-b[name='abcd']/value", &val, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_set_item(session, "/cross-module:links/value_in_list", &val, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_validate(session);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    val.type = SR_UINT8_T;
+    val.data.uint8_val = 10;
+
+    rc = sr_set_item(session, "/cross-module:links/number", &val, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    val.type = SR_UINT8_T;
+    val.data.uint8_val = 42;
+
+    rc = sr_set_item(session, "/referenced-data:magic_number", &val, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* must statement not satisfied */
+    rc = sr_validate(session);
+    assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
+
+    rc = sr_set_item(session, "/cross-module:links/number", &val, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* https://github.com/CESNET/libyang/issues/128 */
+    rc = sr_validate(session);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    sr_session_stop(session);
+#endif
+}
+
 int
 main()
 {
@@ -3583,6 +3676,7 @@ main()
             cmocka_unit_test_setup_teardown(cl_event_notif_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_event_notif_tree_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_event_notif_combo_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_cross_module_dependency, sysrepo_setup, sysrepo_teardown),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);
