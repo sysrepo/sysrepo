@@ -344,8 +344,40 @@ cl_dp_traffic_stats(const char *xpath, sr_val_t **values, size_t *values_cnt, vo
 }
 
 static void
-check_bus_values(sr_val_t *values)
+cl_parent_subscription(void **state)
 {
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+    sr_session_ctx_t *session = NULL;
+    sr_subscription_ctx_t *subscription = NULL;
+    sr_list_t *xpath_retrieved = NULL;
+    sr_val_t *values = NULL;
+    size_t cnt = 0;
+    int rc = SR_ERR_OK;
+
+    rc = sr_list_init(&xpath_retrieved);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* start session */
+    rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_module_change_subscribe(session, "state-module", cl_whole_module_cb, NULL,
+            0, SR_SUBSCR_DEFAULT, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* subscribe data providers */
+    rc = sr_dp_get_items_subscribe(session, "/state-module:bus", cl_dp_bus, xpath_retrieved, SR_SUBSCR_CTX_REUSE, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* retrieve data */
+    rc = sr_get_items(session, "/state-module:bus/*", &values, &cnt);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* check data */
+    assert_non_null(values);
+    assert_int_equal(2, cnt);
+
     if (0 == strcmp("/state-module:bus/gps_located", values[0].xpath)) {
         assert_string_equal("/state-module:bus/gps_located", values[0].xpath);
         assert_int_equal(SR_BOOL_T, values[0].type);
@@ -363,12 +395,57 @@ check_bus_values(sr_val_t *values)
         assert_int_equal(SR_BOOL_T, values[1].type);
         assert_int_equal(false, values[1].data.bool_val);
     }
+
+    sr_free_values(values, cnt);
+
+    /* check xpath that were retrieved */
+    const char *xpath_expected_to_be_loaded [] = {
+        "/state-module:bus/gps_located",
+        "/state-module:bus/distance_travelled"
+    };
+    CHECK_LIST_OF_STRINGS(xpath_retrieved, xpath_expected_to_be_loaded);
+
+    /* cleanup */
+    sr_unsubscribe(session, subscription);
+    sr_session_stop(session);
+
+    for (size_t i = 0; i < xpath_retrieved->count; i++) {
+        free(xpath_retrieved->data[i]);
+    }
+    sr_list_cleanup(xpath_retrieved);
 }
 
 static void
-check_bus_tree(sr_node_t *tree)
+cl_parent_subscription_tree(void **state)
 {
-    sr_node_t *node = NULL;
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+    sr_session_ctx_t *session = NULL;
+    sr_subscription_ctx_t *subscription = NULL;
+    sr_list_t *xpath_retrieved = NULL;
+    sr_node_t *tree = NULL, *node = NULL;
+    int rc = SR_ERR_OK;
+
+    rc = sr_list_init(&xpath_retrieved);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* start session */
+    rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_module_change_subscribe(session, "state-module", cl_whole_module_cb, NULL,
+            0, SR_SUBSCR_DEFAULT, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* subscribe data providers */
+    rc = sr_dp_get_items_subscribe(session, "/state-module:bus", cl_dp_bus, xpath_retrieved, SR_SUBSCR_CTX_REUSE, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* retrieve data using the tree API */
+    rc = sr_get_subtree(session, "/state-module:bus", 0, &tree);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* check data */
     assert_non_null(tree);
     assert_string_equal("bus", tree->name);
     assert_string_equal("state-module", tree->module_name);
@@ -412,98 +489,6 @@ check_bus_tree(sr_node_t *tree)
     }
     assert_null(node->first_child);
     assert_null(node->next);
-}
-
-static void
-cl_parent_subscription(void **state)
-{
-    sr_conn_ctx_t *conn = *state;
-    assert_non_null(conn);
-    sr_session_ctx_t *session = NULL;
-    sr_subscription_ctx_t *subscription = NULL;
-    sr_list_t *xpath_retrieved = NULL;
-    sr_val_t *values = NULL;
-    size_t cnt = 0;
-    int rc = SR_ERR_OK;
-
-    rc = sr_list_init(&xpath_retrieved);
-    assert_int_equal(rc, SR_ERR_OK);
-
-    /* start session */
-    rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &session);
-    assert_int_equal(rc, SR_ERR_OK);
-
-    rc = sr_module_change_subscribe(session, "state-module", cl_whole_module_cb, NULL,
-            0, SR_SUBSCR_DEFAULT, &subscription);
-    assert_int_equal(rc, SR_ERR_OK);
-
-    /* subscribe data providers */
-    rc = sr_dp_get_items_subscribe(session, "/state-module:bus", cl_dp_bus, xpath_retrieved, SR_SUBSCR_CTX_REUSE, &subscription);
-    assert_int_equal(rc, SR_ERR_OK);
-
-    /* retrieve data */
-    rc = sr_get_items(session, "/state-module:bus/*", &values, &cnt);
-    assert_int_equal(rc, SR_ERR_OK);
-
-    /* check data */
-    assert_non_null(values);
-    assert_int_equal(2, cnt);
-
-    check_bus_values(values);
-
-    sr_free_values(values, cnt);
-
-    /* check xpath that were retrieved */
-    const char *xpath_expected_to_be_loaded [] = {
-        "/state-module:bus/gps_located",
-        "/state-module:bus/distance_travelled"
-    };
-    CHECK_LIST_OF_STRINGS(xpath_retrieved, xpath_expected_to_be_loaded);
-
-    /* cleanup */
-    sr_unsubscribe(session, subscription);
-    sr_session_stop(session);
-
-    for (size_t i = 0; i < xpath_retrieved->count; i++) {
-        free(xpath_retrieved->data[i]);
-    }
-    sr_list_cleanup(xpath_retrieved);
-}
-
-static void
-cl_parent_subscription_tree(void **state)
-{
-    sr_conn_ctx_t *conn = *state;
-    assert_non_null(conn);
-    sr_session_ctx_t *session = NULL;
-    sr_subscription_ctx_t *subscription = NULL;
-    sr_list_t *xpath_retrieved = NULL;
-    sr_node_t *tree = NULL;
-    int rc = SR_ERR_OK;
-
-    rc = sr_list_init(&xpath_retrieved);
-    assert_int_equal(rc, SR_ERR_OK);
-
-    /* start session */
-    rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &session);
-    assert_int_equal(rc, SR_ERR_OK);
-
-    rc = sr_module_change_subscribe(session, "state-module", cl_whole_module_cb, NULL,
-            0, SR_SUBSCR_DEFAULT, &subscription);
-    assert_int_equal(rc, SR_ERR_OK);
-
-    /* subscribe data providers */
-    rc = sr_dp_get_items_subscribe(session, "/state-module:bus", cl_dp_bus, xpath_retrieved, SR_SUBSCR_CTX_REUSE, &subscription);
-    assert_int_equal(rc, SR_ERR_OK);
-
-    /* retrieve data using the tree API */
-    rc = sr_get_subtree(session, "/state-module:bus", 0, &tree);
-    assert_int_equal(rc, SR_ERR_OK);
-
-    /* check data */
-    assert_non_null(tree);
-
-    check_bus_tree(tree);
 
     sr_free_tree(tree);
 
@@ -565,7 +550,13 @@ cl_exact_match_subscription(void **state)
     assert_non_null(values);
     assert_int_equal(2, cnt);
 
-    check_bus_values(values);
+    assert_string_equal("/state-module:bus/gps_located", values[0].xpath);
+    assert_int_equal(SR_BOOL_T, values[0].type);
+    assert_int_equal(false, values[0].data.bool_val);
+
+    assert_string_equal("/state-module:bus/distance_travelled", values[1].xpath);
+    assert_int_equal(SR_UINT32_T, values[1].type);
+    assert_int_equal(999, values[1].data.uint32_val);
 
     sr_free_values(values, cnt);
 
@@ -594,7 +585,7 @@ cl_exact_match_subscription_tree(void **state)
     sr_session_ctx_t *session = NULL;
     sr_subscription_ctx_t *subscription = NULL;
     sr_list_t *xpath_retrieved = NULL;
-    sr_node_t *tree = NULL;
+    sr_node_t *tree = NULL, *node = NULL;
     int rc = SR_ERR_OK;
 
     rc = sr_list_init(&xpath_retrieved);
@@ -624,8 +615,29 @@ cl_exact_match_subscription_tree(void **state)
 
     /* check data */
     assert_non_null(tree);
-
-    check_bus_tree(tree);
+    assert_string_equal("bus", tree->name);
+    assert_string_equal("state-module", tree->module_name);
+    assert_false(tree->dflt);
+    assert_int_equal(SR_CONTAINER_T, tree->type);
+    // gps located
+    node = tree->first_child;
+    assert_non_null(node);
+    assert_string_equal("gps_located", node->name);
+    assert_null(node->module_name);
+    assert_false(node->dflt);
+    assert_int_equal(SR_BOOL_T, node->type);
+    assert_false(node->data.bool_val);
+    assert_null(node->first_child);
+    // distance travelled
+    node = node->next;
+    assert_non_null(node);
+    assert_string_equal("distance_travelled", node->name);
+    assert_null(node->module_name);
+    assert_false(node->dflt);
+    assert_int_equal(SR_UINT32_T, node->type);
+    assert_int_equal(999, node->data.uint32_val);
+    assert_null(node->first_child);
+    assert_null(node->next);
 
     sr_free_tree(tree);
 
