@@ -787,7 +787,7 @@ sr_libyang_val_str_to_sr_val(const char *val_str, sr_type_t type, sr_val_t *valu
     case SR_IDENTITYREF_T:
     case SR_INSTANCEID_T:
     case SR_STRING_T:
-        value->data.string_val = strdup(val_str);
+        sr_mem_edit_string(value->_sr_mem, &value->data.string_val, val_str);
         CHECK_NULL_NOMEM_RETURN(value->data.string_val);
         return SR_ERR_OK;
     case SR_BOOL_T:
