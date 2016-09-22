@@ -127,12 +127,14 @@ int cl_socket_connect(sr_conn_ctx_t *conn_ctx, const char *socket_path);
  * @param[in] session Session context acquired by ::cl_session_create call.
  * @param[in] msg_req GPB message with the request to be sent.
  * @param[out] msg_resp GPB message with the response.
+ * @param[in] sr_mem_resp Sysrepo memory context to use for the allocation of the response.
+ *                        If NULL, then a new context will be created.
  * @param[in] expected_response_op Expected message type of the response.
  *
  * @return Error code (SR_ERR_OK on success).
  */
 int cl_request_process(sr_session_ctx_t *session, Sr__Msg *msg_req, Sr__Msg **msg_resp,
-        const Sr__Operation expected_response_op);
+        sr_mem_ctx_t *sr_mem_resp, const Sr__Operation expected_response_op);
 
 /**
  * @brief Sets detailed error information into session context.

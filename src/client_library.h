@@ -64,29 +64,40 @@ int sr_feature_enable(sr_session_ctx_t *session, const char *module_name, const 
 int sr_check_enabled_running(sr_session_ctx_t *session, const char *module_name, bool *res);
 
 /**
- * @brief Get first or a next chunk of a gradually downloaded subtree(s).
- * A subtree chunk is also a tree, where the root node is the node referenced by XPath,
- * the next level consists of its children skipping the first "offset" nodes and including
- * at most "child_limit" nodes, while the remaining (depth_limit-2) levels always start with 
- * the first child (offset is ignored) but also impose the same limiitation on the number 
- * of transferred children. The chunk consists of at most "depth_limit" levels.
- * @note Order of child nodes is determined by the schema tree.
+ * @brief Get the first chunk of a gradually downloaded subtree.
  *
  * @param[in] session Session context acquired with ::sr_session_start call.
- * @param[in] xpath @ref xp_page "XPath" identifier referencing the starting point 
- *                  for the next chunk.
- * @param[in] single Set to TRUE if the XPath should reference only a single node.
- *                   Function returns SR_ERR_INVAL_ARG if that is not the case.
- * @param[in] offset Index of the first child to include on the second level of each chunk.
- * @param[in] child_limit Maximum number of children to include. Applied on each level.
- * @param[in] depth_limit The maximum number of levels to include in each chunk.
- * @param[out] chunks Array of chunks (sub-sub-trees) returned by this call.
+ * @param[in] xpath @ref xp_page "XPath" identifier referencing the root node of the subtree
+ * to get the first chunk of.
+ * @param[out] chunk First chunk of the referenced subtree (its upper portion).
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_get_subtree_first_chunk(sr_session_ctx_t *session, const char *xpath, sr_node_t **chunk);
+
+/**
+ * @brief Get the first chunk of each referenced subtree.
+ *
+ * @param[in] session Session context acquired with ::sr_session_start call.
+ * @param[in] xpath @ref xp_page "XPath" identifier referencing a set of subtrees to get the first
+ * chunk of.
+ * @param[out] chunks First chunk of each referenced subtree (their upper portions).
  * @param[out] chunk_cnt Number of returned chunks.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int sr_get_subtree_chunk(sr_session_ctx_t *session, const char *xpath, bool single,
-        size_t offset, size_t child_limit, size_t depth_limit,
-        sr_node_t **chunks, size_t *chunk_cnt);
+int sr_get_subtrees_first_chunks(sr_session_ctx_t *session, const char *xpath,
+                                 sr_node_t **chunks, size_t *chunk_cnt);
+
+/**
+ * @brief Get the next chunk of a gradually downloaded subtree.
+ *
+ * @param[in] session Session context acquired with ::sr_session_start call.
+ * @param[in] parent Parent node to get the next set of its children and possibly
+ * some more descendants.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_get_subtree_next_chunk(sr_session_ctx_t *session, sr_node_t *parent);
 
 #endif /* CLIENT_LIBRARY_H_ */

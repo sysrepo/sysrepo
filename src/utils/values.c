@@ -210,6 +210,7 @@ sr_dup_val_data(sr_val_t *dest, sr_val_t *source)
         case SR_UINT16_T:
         case SR_UINT32_T:
         case SR_UINT64_T:
+        case SR_TREE_ITERATOR_T:
             dest->data = source->data;
         default:
             break;
