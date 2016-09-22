@@ -730,7 +730,7 @@ message UnsubscribeDestinationReq {
   required string destination = 1;
 }
 
-message CommitReleaseReq {
+message CommitTimeoutReq {
   required uint32 commit_id = 1;
 }
 
@@ -786,7 +786,7 @@ enum Operation {
   EVENT_NOTIF = 82;
 
   UNSUBSCRIBE_DESTINATION = 101;
-  COMMIT_RELEASE = 102;
+  COMMIT_TIMEOUT = 102;
   OPER_DATA_TIMEOUT = 103;
 }
 
@@ -916,7 +916,7 @@ message InternalRequest {
   optional uint32 postpone_timeout = 2;
 
   optional UnsubscribeDestinationReq unsubscribe_dst_req = 10;
-  optional CommitReleaseReq commit_release_req = 11;
+  optional CommitTimeoutReq commit_timeout_req = 11;
   optional OperDataTimeoutReq oper_data_timeout_req = 12;
 }
 

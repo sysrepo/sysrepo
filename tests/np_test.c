@@ -321,15 +321,15 @@ np_module_subscriptions_test(void **state)
     free(subscriptions_arr);
 
     /* send commit_end notifications */
-    rc = np_commit_end_notify(np_ctx, 12345, subscriptions_list);
+    rc = np_commit_notifications_sent(np_ctx, 12345, true, subscriptions_list);
     assert_int_equal(rc, SR_ERR_OK);
     for (size_t i = 0; i < subscriptions_list->count; i++) {
         np_free_subscription(subscriptions_list->data[i]);
     }
     sr_list_cleanup(subscriptions_list);
 
-    rc = np_commit_release(np_ctx, 12345);
-    assert_int_equal(rc, SR_ERR_OK);
+//    rc = np_commit_release(np_ctx, 12345); // TODO; remove
+//    assert_int_equal(rc, SR_ERR_OK);
 
     /* unsubscribe */
     rc = np_notification_unsubscribe(np_ctx, test_ctx->rp_session_ctx, SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS,

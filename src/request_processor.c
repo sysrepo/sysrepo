@@ -1985,18 +1985,18 @@ rp_unsubscribe_destination_req_process(const rp_ctx_t *rp_ctx, Sr__Msg *msg)
 }
 
 /**
- * @brief Processes a commit-release internal request.
+ * @brief Processes a commit-timeout internal request.
  */
 static int
-rp_commit_release_req_process(const rp_ctx_t *rp_ctx, Sr__Msg *msg)
+rp_commit_timeout_req_process(const rp_ctx_t *rp_ctx, Sr__Msg *msg)
 {
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG4(rp_ctx, msg, msg->internal_request, msg->internal_request->commit_release_req);
+    CHECK_NULL_ARG4(rp_ctx, msg, msg->internal_request, msg->internal_request->commit_timeout_req);
 
-    SR_LOG_DBG_MSG("Processing commit-release request."); // TODO: commit-timeout
+    SR_LOG_DBG_MSG("Processing commit-timeout request.");
 
-    rc = np_commit_release(rp_ctx->np_ctx, msg->internal_request->commit_release_req->commit_id);
+    rc = np_commit_notifications_complete(rp_ctx->np_ctx, msg->internal_request->commit_timeout_req->commit_id, true);
 
     return rc;
 }
@@ -2381,8 +2381,8 @@ rp_internal_req_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
         case SR__OPERATION__UNSUBSCRIBE_DESTINATION:
             rc = rp_unsubscribe_destination_req_process(rp_ctx, msg);
             break;
-        case SR__OPERATION__COMMIT_RELEASE:
-            rc = rp_commit_release_req_process(rp_ctx, msg);
+        case SR__OPERATION__COMMIT_TIMEOUT:
+            rc = rp_commit_timeout_req_process(rp_ctx, msg);
             break;
         case SR__OPERATION__OPER_DATA_TIMEOUT:
             rc = rp_oper_data_timeout_req_process(rp_ctx, session, msg);

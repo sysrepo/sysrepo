@@ -85,8 +85,8 @@ sr_gpb_operation_name(Sr__Operation operation)
         return "rpc";
     case SR__OPERATION__UNSUBSCRIBE_DESTINATION:
         return "unsubscribe-destination";
-    case SR__OPERATION__COMMIT_RELEASE:
-        return "commit-release";
+    case SR__OPERATION__COMMIT_TIMEOUT:
+        return "commit-timeout";
     case SR__OPERATION__EVENT_NOTIF:
         return "event-notification";
     case SR__OPERATION__OPER_DATA_TIMEOUT:
@@ -734,11 +734,11 @@ sr_gpb_internal_req_alloc(sr_mem_ctx_t *sr_mem, const Sr__Operation operation, S
             sr__unsubscribe_destination_req__init((Sr__UnsubscribeDestinationReq*)sub_msg);
             req->unsubscribe_dst_req = (Sr__UnsubscribeDestinationReq*)sub_msg;
             break;
-        case SR__OPERATION__COMMIT_RELEASE:
-            sub_msg = sr_calloc(sr_mem, 1, sizeof(Sr__CommitReleaseReq));
+        case SR__OPERATION__COMMIT_TIMEOUT:
+            sub_msg = sr_calloc(sr_mem, 1, sizeof(Sr__CommitTimeoutReq));
             CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
-            sr__commit_release_req__init((Sr__CommitReleaseReq*)sub_msg);
-            req->commit_release_req = (Sr__CommitReleaseReq*)sub_msg;
+            sr__commit_timeout_req__init((Sr__CommitTimeoutReq*)sub_msg);
+            req->commit_timeout_req = (Sr__CommitTimeoutReq*)sub_msg;
             break;
         case SR__OPERATION__OPER_DATA_TIMEOUT:
             sub_msg = sr_calloc(sr_mem, 1, sizeof(Sr__OperDataTimeoutReq));
