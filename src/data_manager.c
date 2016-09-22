@@ -1303,6 +1303,7 @@ dm_append_data_tree(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_info_t *dat
     dm_data_info_t *di = NULL;
     char *tmp = NULL;
     struct lyd_node *tmp_node = NULL;
+    struct lyd_node *next_node = NULL;
 
     rc = dm_get_data_info(dm_ctx, session, module_name, &di);
     CHECK_RC_LOG_RETURN(rc, "Get data info failed for module %s", module_name);
@@ -1318,14 +1319,39 @@ dm_append_data_tree(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_info_t *dat
             return SR_ERR_INTERNAL;
         }
         free(tmp);
-        ret = lyd_insert_sibling(&data_info->node, tmp_node);
-        CHECK_ZERO_MSG_GOTO(ret, rc, SR_ERR_INTERNAL, cleanup, "lyd_insert_sibling failed");
+        if (NULL == data_info->node) {
+            data_info->node = tmp_node;
+        } else {
+            const struct lys_module *module = tmp_node->schema->module;
+            struct lyd_node *n = tmp_node;
+
+            /* remove nodes from different modules*/
+            LY_TREE_FOR_SAFE(tmp_node, next_node, n) {
+               if (module != n->schema->module) {
+                  lyd_free(n);
+               }
+            }
+            /* find last node in data_info->node */
+            n = data_info->node;
+            while (NULL != n->next) {
+                n = n->next;
+            }
+
+            /* attach data tree */
+            n->next = tmp_node;
+            tmp_node->prev = n;
+
+            /* fix prev pointer of the first node*/
+            while (NULL != n->next) {
+                n = n->next;
+            }
+            data_info->node->prev = n;
+        }
         tmp_node = NULL;
     } else {
         SR_LOG_DBG("Dependant module %s is empty", di->schema->module->name);
     }
 
-cleanup:
     lyd_free_withsiblings(tmp_node);
     return rc;
 }
