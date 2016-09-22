@@ -31,14 +31,28 @@
 #include "sr_common.h"
 #include "connection_manager.h"
 
+#include "client_library.h"
 #include "cl_subscription_manager.h"
 #include "cl_common.h"
+#include "trees_internal.h"
 
 /**
  * @brief Number of items being fetched in one message from Sysrepo Engine by
  * processing of sr_get_items_iter calls.
  */
 #define CL_GET_ITEMS_FETCH_LIMIT 100
+
+/**
+ * @brief Maximum number of children nodes (of any parent node) being fetched in
+ * one message from Sysrepo Engine by processing of sr_get_subtree(s)_*_chunk(s).
+ */
+#define CL_GET_SUBTREE_CHUNK_CHILD_LIMIT 20
+
+/**
+ * @brief Maximum number of *not-yet-loaded* levels of any subtree chunk sent by the operation
+ * sr_get_subtree(s)_*_chunk(s).
+ */
+#define CL_GET_SUBTREE_CHUNK_DEPTH_LIMIT 2
 
 /**
  * @brief Filesystem path prefix for generating temporary socket names used
@@ -137,7 +151,7 @@ cl_send_get_items_iter(sr_session_ctx_t *session, const char *xpath, size_t offs
     msg_req->request->get_items_req->has_offset = true;
 
     /* send the request and receive the response */
-    rc = cl_request_process(session, msg_req, msg_resp, SR__OPERATION__GET_ITEMS);
+    rc = cl_request_process(session, msg_req, msg_resp, NULL, SR__OPERATION__GET_ITEMS);
 
     sr_msg_free(msg_req);
 
@@ -179,7 +193,7 @@ cl_send_get_changes(sr_session_ctx_t *session, const char *xpath, size_t offset,
     msg_req->request->get_changes_req->offset = offset;
 
     /* send the request and receive the response */
-    rc = cl_request_process(session, msg_req, msg_resp, SR__OPERATION__GET_CHANGES);
+    rc = cl_request_process(session, msg_req, msg_resp, NULL, SR__OPERATION__GET_CHANGES);
 
     sr_msg_free(msg_req);
 
@@ -224,7 +238,7 @@ cl_subscription_close(sr_session_ctx_t *session, cl_sm_subscription_ctx_t *subsc
         }
 
         /* send the request and receive the response */
-        rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__UNSUBSCRIBE);
+        rc = cl_request_process(session, msg_req, &msg_resp, NULL, SR__OPERATION__UNSUBSCRIBE);
         CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
     }
 cleanup:
@@ -496,7 +510,7 @@ sr_session_start_user(sr_conn_ctx_t *conn_ctx, const char *user_name, sr_datasto
     }
 
     /* send the request and receive the response */
-    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__SESSION_START);
+    rc = cl_request_process(session, msg_req, &msg_resp, NULL, SR__OPERATION__SESSION_START);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
     session->id = msg_resp->response->session_start_resp->session_id;
@@ -539,7 +553,7 @@ sr_session_stop(sr_session_ctx_t *session)
     msg_req->request->session_stop_req->session_id = session->id;
 
     /* send the request and receive the response */
-    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__SESSION_STOP);
+    rc = cl_request_process(session, msg_req, &msg_resp, NULL, SR__OPERATION__SESSION_STOP);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
     sr_msg_free(msg_req);
@@ -579,7 +593,7 @@ sr_session_refresh(sr_session_ctx_t *session)
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
 
     /* send the request and receive the response */
-    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__SESSION_REFRESH);
+    rc = cl_request_process(session, msg_req, &msg_resp, NULL, SR__OPERATION__SESSION_REFRESH);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
     sr_msg_free(msg_req);
@@ -618,7 +632,7 @@ sr_session_switch_ds(sr_session_ctx_t* session, sr_datastore_t datastore)
     msg_req->request->session_switch_ds_req->datastore = sr_datastore_sr_to_gpb(datastore);
 
     /* send the request and receive the response */
-    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__SESSION_SWITCH_DS);
+    rc = cl_request_process(session, msg_req, &msg_resp, NULL, SR__OPERATION__SESSION_SWITCH_DS);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
     sr_msg_free(msg_req);
@@ -657,7 +671,7 @@ sr_session_set_options(sr_session_ctx_t *session, const sr_sess_options_t opts)
     msg_req->request->session_set_opts_req->options = opts;
 
     /* send the request and receive the response */
-    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__SESSION_SET_OPTS);
+    rc = cl_request_process(session, msg_req, &msg_resp, NULL, SR__OPERATION__SESSION_SET_OPTS);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
     sr_msg_free(msg_req);
@@ -696,7 +710,7 @@ sr_list_schemas(sr_session_ctx_t *session, sr_schema_t **schemas, size_t *schema
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
 
     /* send the request and receive the response */
-    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__LIST_SCHEMAS);
+    rc = cl_request_process(session, msg_req, &msg_resp, NULL, SR__OPERATION__LIST_SCHEMAS);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
     /* copy schemas from response to output argument */
@@ -757,7 +771,7 @@ sr_get_schema(sr_session_ctx_t *session, const char *module_name, const char *mo
     msg_req->request->get_schema_req->yang_format = (format == SR_SCHEMA_YANG);
 
     /* send the request and receive the response */
-    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__GET_SCHEMA);
+    rc = cl_request_process(session, msg_req, &msg_resp, NULL, SR__OPERATION__GET_SCHEMA);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
     /* copy schema content */
@@ -805,7 +819,7 @@ sr_get_item(sr_session_ctx_t *session, const char *xpath, sr_val_t **value)
     CHECK_NULL_NOMEM_GOTO(msg_req->request->get_item_req->xpath, rc, cleanup);
 
     /* send the request and receive the response */
-    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__GET_ITEM);
+    rc = cl_request_process(session, msg_req, &msg_resp, NULL, SR__OPERATION__GET_ITEM);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
     /* duplicate the content of gpb to sr_val_t */
@@ -852,7 +866,7 @@ sr_get_items(sr_session_ctx_t *session, const char *xpath, sr_val_t **values, si
     CHECK_NULL_NOMEM_GOTO(msg_req->request->get_items_req->xpath, rc, cleanup);
 
     /* send the request and receive the response */
-    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__GET_ITEMS);
+    rc = cl_request_process(session, msg_req, &msg_resp, NULL, SR__OPERATION__GET_ITEMS);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
     /* copy the content of gpb values to sr_val_t */
@@ -1029,6 +1043,10 @@ sr_get_subtree(sr_session_ctx_t *session, const char *xpath, sr_get_subtree_opti
 
     CHECK_NULL_ARG4(session, session->conn_ctx, xpath, subtree);
 
+    if (opts & SR_GET_SUBTREE_ITERATIVE) {
+        return sr_get_subtree_first_chunk(session, xpath, subtree);
+    }
+
     cl_session_clear_errors(session);
 
     /* prepare get_subtree message */
@@ -1042,7 +1060,7 @@ sr_get_subtree(sr_session_ctx_t *session, const char *xpath, sr_get_subtree_opti
     CHECK_NULL_NOMEM_GOTO(msg_req->request->get_subtree_req->xpath, rc, cleanup);
 
     /* send the request and receive the response */
-    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__GET_SUBTREE);
+    rc = cl_request_process(session, msg_req, &msg_resp, NULL, SR__OPERATION__GET_SUBTREE);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
     /* duplicate the content of gpb to sr_node_t */
@@ -1077,6 +1095,10 @@ sr_get_subtrees(sr_session_ctx_t *session, const char *xpath, sr_get_subtree_opt
 
     CHECK_NULL_ARG5(session, session->conn_ctx, xpath, subtrees, subtree_cnt);
 
+    if (opts & SR_GET_SUBTREE_ITERATIVE) {
+        return sr_get_subtrees_first_chunks(session, xpath, subtrees, subtree_cnt);
+    }
+
     cl_session_clear_errors(session);
 
     /* prepare get_subtrees message */
@@ -1090,13 +1112,13 @@ sr_get_subtrees(sr_session_ctx_t *session, const char *xpath, sr_get_subtree_opt
     CHECK_NULL_NOMEM_GOTO(msg_req->request->get_subtrees_req->xpath, rc, cleanup);
 
     /* send the request and receive the response */
-    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__GET_SUBTREES);
+    rc = cl_request_process(session, msg_req, &msg_resp, NULL, SR__OPERATION__GET_SUBTREES);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
-    /* copy the content of gpb values to sr_val_t */
+    /* copy the content of gpb trees to sr_node_t */
     rc = sr_trees_gpb_to_sr((sr_mem_ctx_t *)msg_resp->_sysrepo_mem_ctx, msg_resp->response->get_subtrees_resp->trees,
                              msg_resp->response->get_subtrees_resp->n_trees, subtrees, subtree_cnt);
-    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by copying the values from GPB.");
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by copying subtrees from GPB.");
 
 cleanup:
     if (NULL != msg_req) {
@@ -1110,13 +1132,532 @@ cleanup:
     return cl_session_return(session, rc);
 }
 
-int
-sr_get_subtree_chunk(sr_session_ctx_t *session, const char *xpath, bool single,
-        size_t offset, size_t child_limit, size_t depth_limit,
-        sr_node_t **chunks, size_t *chunk_cnt)
+/**
+ * @brief Returns true if the passed node could be an internal one (based on the type), false otherwise.
+ */
+static bool
+sr_is_internal_node(sr_node_t *node)
 {
-    /* TODO */
-    return SR_ERR_OK;
+    switch (node->type) {
+        case SR_CONTAINER_T:
+        case SR_CONTAINER_PRESENCE_T:
+        case SR_LIST_T:
+        case SR_UNION_T:
+            return true;
+        default:
+            return false;
+    }
+}
+
+/**
+ * @brief Add a tree iterator into a subtree chunk.
+ */
+static int
+sr_add_tree_iterator(sr_node_t *root, sr_node_t *iterator, const char *xpath, bool bounded_slice, size_t depth_limit)
+{
+    int rc = SR_ERR_OK;
+    bool process_children = true;
+    sr_node_t *node = NULL, *prev = NULL;
+    size_t depth = 0, child_cnt = 0;
+    CHECK_NULL_ARG(root);
+
+    if (NULL == iterator) {
+        if (NULL == xpath) {
+            return SR_ERR_INVAL_ARG;
+        }
+        rc = sr_new_node(root->_sr_mem, xpath, "sysrepo", &iterator);
+        CHECK_RC_MSG_RETURN(rc, "Failed to create sysrepo tree iterator.");
+        iterator->type = SR_TREE_ITERATOR_T;
+        iterator->data.int32_val = 0; /* usage counter */
+    }
+
+    node = root;
+    do {
+        if (process_children) {
+            while (node->first_child) {
+                ++depth;
+                node = node->first_child;
+            }
+        }
+        if (sr_is_internal_node(node) && NULL == node->first_child && depth == depth_limit-1) {
+            sr_node_insert_child(node, iterator);
+            ++iterator->data.int32_val;
+        }
+        if (node != root) {
+            if (node->next) {
+                node = node->next;
+                process_children = true;
+            } else {
+                child_cnt = 1;
+                prev = node->prev;
+                while (prev) {
+                    ++child_cnt;
+                    prev = prev->prev;
+                }
+                if ((1 < depth || (1 == depth && !bounded_slice))
+                        && CL_GET_SUBTREE_CHUNK_CHILD_LIMIT == child_cnt) {
+                    sr_node_insert_child(node->parent, iterator);
+                    ++iterator->data.int32_val;
+                }
+                node = node->parent;
+                --depth;
+                process_children = false;
+            }
+        }
+    } while (node != root);
+    assert(0 == depth);
+
+    if (0 == iterator->data.int32_val) {
+        /* iterator is not really used */
+        sr_free_node(iterator);
+    }
+
+    return rc;
+}
+
+int
+sr_get_subtree_first_chunk(sr_session_ctx_t *session, const char *xpath, sr_node_t **chunk_p)
+{
+    Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
+    sr_node_t *chunk = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG4(session, session->conn_ctx, xpath, chunk_p);
+
+    cl_session_clear_errors(session);
+
+    /* prepare get_subtree_chunk message */
+    rc = sr_mem_new(0, &sr_mem);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to create a new Sysrepo memory context.");
+    rc = sr_gpb_req_alloc(sr_mem, SR__OPERATION__GET_SUBTREE_CHUNK, session->id, &msg_req);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
+
+    /* fill in the operation arguments */
+    sr_mem_edit_string(sr_mem, &msg_req->request->get_subtree_chunk_req->xpath, xpath);
+    CHECK_NULL_NOMEM_GOTO(msg_req->request->get_subtree_chunk_req->xpath, rc, cleanup);
+    msg_req->request->get_subtree_chunk_req->single = true;
+    msg_req->request->get_subtree_chunk_req->slice_offset = 0;
+    msg_req->request->get_subtree_chunk_req->slice_width = CL_GET_SUBTREE_CHUNK_CHILD_LIMIT;
+    msg_req->request->get_subtree_chunk_req->child_limit = CL_GET_SUBTREE_CHUNK_CHILD_LIMIT;
+    msg_req->request->get_subtree_chunk_req->depth_limit = CL_GET_SUBTREE_CHUNK_DEPTH_LIMIT;
+
+    /* send the request and receive the response */
+    rc = cl_request_process(session, msg_req, &msg_resp, NULL, SR__OPERATION__GET_SUBTREE_CHUNK);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
+
+    /* duplicate the content of gpb to sr_node_t */
+    if (0 == msg_resp->response->get_subtree_chunk_resp->n_chunk) {
+        rc = SR_ERR_NOT_FOUND;
+        goto cleanup;
+    }
+    if (1 < msg_resp->response->get_subtree_chunk_resp->n_chunk) {
+        SR_LOG_ERR_MSG("Sysrepo returned more subtree chunks than expected.");
+        rc = SR_ERR_INTERNAL;
+        goto cleanup;
+    }
+    if (msg_resp->response->get_subtree_chunk_resp->n_xpath != msg_resp->response->get_subtree_chunk_resp->n_chunk) {
+        SR_LOG_ERR_MSG("List of node-ids does not match the list of subtree chunks.");
+        rc = SR_ERR_INTERNAL;
+        goto cleanup;
+    }
+    rc = sr_dup_gpb_to_tree((sr_mem_ctx_t *)msg_resp->_sysrepo_mem_ctx,
+                             msg_resp->response->get_subtree_chunk_resp->chunk[0], &chunk);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Subtree chunk duplication failed.");
+
+    rc = sr_add_tree_iterator(chunk, NULL, msg_resp->response->get_subtree_chunk_resp->xpath[0],
+            false, CL_GET_SUBTREE_CHUNK_DEPTH_LIMIT);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to add tree iterator into a subtree chunk.");
+
+    *chunk_p = chunk;
+
+cleanup:
+    if (NULL != msg_req) {
+        sr_msg_free(msg_req);
+    } else {
+        sr_mem_free(sr_mem);
+    }
+    if (NULL != msg_resp) {
+        sr_msg_free(msg_resp);
+    }
+    if (SR_ERR_OK != rc) {
+        sr_free_tree(chunk);
+    }
+    return cl_session_return(session, rc);
+}
+
+int
+sr_get_subtrees_first_chunks(sr_session_ctx_t *session, const char *xpath, sr_node_t **chunks_p,
+        size_t *chunk_cnt_p)
+{
+    Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
+    sr_node_t *chunks = NULL;
+    size_t chunk_cnt = 0;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG5(session, session->conn_ctx, xpath, chunks_p, chunk_cnt_p);
+
+    cl_session_clear_errors(session);
+
+    /* prepare get_subtree_chunk message */
+    rc = sr_mem_new(0, &sr_mem);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to create a new Sysrepo memory context.");
+    rc = sr_gpb_req_alloc(sr_mem, SR__OPERATION__GET_SUBTREE_CHUNK, session->id, &msg_req);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
+
+    /* fill in the operation arguments */
+    sr_mem_edit_string(sr_mem, &msg_req->request->get_subtree_chunk_req->xpath, xpath);
+    CHECK_NULL_NOMEM_GOTO(msg_req->request->get_subtree_chunk_req->xpath, rc, cleanup);
+    msg_req->request->get_subtree_chunk_req->single = false;
+    msg_req->request->get_subtree_chunk_req->slice_offset = 0;
+    msg_req->request->get_subtree_chunk_req->slice_width = CL_GET_SUBTREE_CHUNK_CHILD_LIMIT;
+    msg_req->request->get_subtree_chunk_req->child_limit = CL_GET_SUBTREE_CHUNK_CHILD_LIMIT;
+    msg_req->request->get_subtree_chunk_req->depth_limit = CL_GET_SUBTREE_CHUNK_DEPTH_LIMIT;
+
+    /* send the request and receive the response */
+    rc = cl_request_process(session, msg_req, &msg_resp, NULL, SR__OPERATION__GET_SUBTREE_CHUNK);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
+
+    /* duplicate the content of gpb to sr_node_t */
+    if (0 == msg_resp->response->get_subtree_chunk_resp->n_chunk) {
+        rc = SR_ERR_NOT_FOUND;
+        goto cleanup;
+    }
+    if (msg_resp->response->get_subtree_chunk_resp->n_xpath != msg_resp->response->get_subtree_chunk_resp->n_chunk) {
+        SR_LOG_ERR_MSG("List of node-ids does not match the list of subtree chunks.");
+        rc = SR_ERR_INTERNAL;
+        goto cleanup;
+    }
+    rc = sr_trees_gpb_to_sr((sr_mem_ctx_t *)msg_resp->_sysrepo_mem_ctx, msg_resp->response->get_subtree_chunk_resp->chunk,
+                             msg_resp->response->get_subtree_chunk_resp->n_chunk, &chunks, &chunk_cnt);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by copying subtree chunks from GPB.");
+
+    for (size_t i = 0; i < chunk_cnt; ++i) {
+        rc = sr_add_tree_iterator(chunks+i, NULL, msg_resp->response->get_subtree_chunk_resp->xpath[i],
+                false, CL_GET_SUBTREE_CHUNK_DEPTH_LIMIT);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to add tree iterator into a subtree chunk.");
+    }
+
+    *chunks_p = chunks;
+    *chunk_cnt_p = chunk_cnt;
+
+cleanup:
+    if (NULL != msg_req) {
+        sr_msg_free(msg_req);
+    } else {
+        sr_mem_free(sr_mem);
+    }
+    if (NULL != msg_resp) {
+        sr_msg_free(msg_resp);
+    }
+    if (SR_ERR_OK != rc) {
+        sr_free_trees(chunks, chunk_cnt);
+    }
+    return cl_session_return(session, rc);
+}
+
+int
+sr_get_subtree_next_chunk(sr_session_ctx_t *session, sr_node_t *parent)
+{
+#define BUFFER_LEN  12
+    typedef char buffer_t[BUFFER_LEN];
+    Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
+    sr_node_t *chunk = NULL;
+    size_t slice_offset = 0, slice_width = 0, depth_limit = 0, i = 0, index = 0;
+    const char *tree_id = NULL;
+    char *xpath = NULL;
+    buffer_t *indices = NULL;
+    size_t xpath_len = 0, indices_len = 0;
+    sr_node_t *node = NULL, *child = NULL, *iterator = NULL, *prev = NULL, *next = NULL, *node2 = NULL;
+    char *cur = NULL;
+    bool bounded_slice = false;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG2(session, parent);
+
+    cl_session_clear_errors(session);
+
+    node = parent->first_child;
+    while (node && node->type != SR_TREE_ITERATOR_T) {
+        child = node;
+        node = node->next;
+    }
+
+    if (NULL == node) {
+        /* no more children of this parent to be loaded */
+        rc = SR_ERR_NOT_FOUND;
+        goto cleanup;
+    }
+    iterator = node;
+
+    /* get the JSON node-ID of the root node */
+    tree_id = iterator->name;
+    if (NULL == tree_id) {
+        SR_LOG_ERR_MSG("Encountered tree iterator without xpath.");
+        rc = SR_ERR_INTERNAL;
+        goto cleanup;
+    }
+
+    /* determine the parameters of the slice */
+    if (NULL == child && NULL != parent->parent) {
+        /* consider also siblings */
+        /*  -> slice offset */
+        node = parent;
+        while (node->prev) {
+            ++slice_offset;
+            node = node->prev;
+        }
+        /*  -> slice width */
+        node = parent;
+        bounded_slice = true;
+        while (CL_GET_SUBTREE_CHUNK_CHILD_LIMIT > slice_width && NULL != node) {
+            if (SR_TREE_ITERATOR_T == node->type) {
+                bounded_slice = false;
+                slice_width = CL_GET_SUBTREE_CHUNK_CHILD_LIMIT;
+                break;
+            }
+            if (node->first_child && SR_TREE_ITERATOR_T == node->first_child->type) {
+                ++slice_width;
+            } else {
+                break;
+            }
+            node = node->next;
+        }
+        assert(slice_width);
+    }
+    if (1 < slice_width) {
+        /* cover also siblings with this chunk */
+        parent = parent->parent;
+        depth_limit = CL_GET_SUBTREE_CHUNK_DEPTH_LIMIT + 2;
+    } else {
+        /* get offset of the first unloaded child */
+        slice_offset = 0;
+        node = child;
+        while (node) {
+            ++slice_offset;
+            node = node->prev;
+        }
+        /* include as many nodes as allowed */
+        bounded_slice = false;
+        slice_width = CL_GET_SUBTREE_CHUNK_CHILD_LIMIT;
+        depth_limit = CL_GET_SUBTREE_CHUNK_DEPTH_LIMIT + 1;
+    }
+
+    /* construct XPath for the parent node */
+    /* -> number of indices */
+    node = parent;
+    while (NULL != node->parent) {
+        ++indices_len;
+        node = node->parent;
+    }
+    /* -> alloc indices */
+    if (0 < indices_len) {
+        indices = calloc(indices_len, sizeof(buffer_t));
+        CHECK_NULL_NOMEM_GOTO(indices, rc, cleanup);
+    }
+    /* -> compute indices */
+    i = indices_len;
+    node = parent;
+    while (NULL != node->parent) {
+        --i;
+        index = 1;
+        prev = node->prev;
+        while (prev) {
+            if (0 == strcmp(node->name, prev->name) &&
+                ((NULL != node->module_name && NULL != prev->module_name &&
+                  0 == strcmp(node->module_name, prev->module_name)) ||
+                 (NULL == node->module_name && NULL == prev->module_name))) {
+                ++index;
+            }
+            prev = prev->prev;
+        }
+        snprintf(indices[i], BUFFER_LEN, "%lu", index);
+        node = node->parent;
+    }
+    /* -> xpath length */
+    xpath_len = strlen(tree_id);
+    i = indices_len;
+    node = parent;
+    while (NULL != node->parent) {
+        --i;
+        xpath_len += strlen(node->name);
+        xpath_len += strlen(indices[i]) + 2; /* "[" + index + "]" */
+        if (NULL != node->module_name) {
+            xpath_len += strlen(node->module_name) + 1 /* ":" */;
+        }
+        xpath_len += 1; /* "/" */
+        node = node->parent;
+    }
+    /* -> alloc xpath */
+    xpath = calloc(xpath_len + 1, 1);
+    CHECK_NULL_NOMEM_GOTO(xpath, rc, cleanup);
+    /* -> copy strings */
+    strcpy(xpath, tree_id);
+    i = indices_len;
+    node = parent;
+    cur = xpath + xpath_len;
+    while (NULL != node->parent) {
+        --i;
+        --cur;
+        *cur = ']';
+        cur -= strlen(indices[i]);
+        memcpy(cur, indices[i], strlen(indices[i]));
+        --cur;
+        *cur = '[';
+        cur -= strlen(node->name);
+        memcpy(cur, node->name, strlen(node->name));
+        if (NULL != node->module_name) {
+            --cur;
+            *cur = ':';
+            cur -= strlen(node->module_name);
+            memcpy(cur, node->module_name, strlen(node->module_name));
+        }
+        --cur;
+        *cur = '/';
+        node = node->parent;
+    }
+
+    /* prepare get_subtree_chunk message */
+    rc = sr_mem_new(0, &sr_mem);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to create a new Sysrepo memory context.");
+    rc = sr_gpb_req_alloc(sr_mem, SR__OPERATION__GET_SUBTREE_CHUNK, session->id, &msg_req);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
+
+    /* fill in the operation arguments */
+    sr_mem_edit_string(sr_mem, &msg_req->request->get_subtree_chunk_req->xpath, xpath);
+    CHECK_NULL_NOMEM_GOTO(msg_req->request->get_subtree_chunk_req->xpath, rc, cleanup);
+    msg_req->request->get_subtree_chunk_req->single = true;
+    msg_req->request->get_subtree_chunk_req->slice_offset = slice_offset;
+    msg_req->request->get_subtree_chunk_req->slice_width = slice_width;
+    msg_req->request->get_subtree_chunk_req->child_limit = CL_GET_SUBTREE_CHUNK_CHILD_LIMIT;
+    msg_req->request->get_subtree_chunk_req->depth_limit = depth_limit;
+
+    /* send the request and receive the response */
+    rc = cl_request_process(session, msg_req, &msg_resp, parent->_sr_mem, SR__OPERATION__GET_SUBTREE_CHUNK);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
+
+    /* duplicate the content of gpb to sr_node_t */
+    if (0 == msg_resp->response->get_subtree_chunk_resp->n_chunk) {
+        rc = SR_ERR_NOT_FOUND;
+        goto cleanup;
+    }
+    if (1 < msg_resp->response->get_subtree_chunk_resp->n_chunk) {
+        SR_LOG_ERR_MSG("Sysrepo returned more subtree chunks than expected.");
+        rc = SR_ERR_INTERNAL;
+        goto cleanup;
+    }
+    rc = sr_dup_gpb_to_tree((sr_mem_ctx_t *)msg_resp->_sysrepo_mem_ctx,
+                             msg_resp->response->get_subtree_chunk_resp->chunk[0], &chunk);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Subtree chunk duplication failed.");
+
+    rc = sr_add_tree_iterator(chunk, iterator, NULL, bounded_slice, depth_limit);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to add tree iterator into a subtree chunk.");
+
+    /* attach the chunk to the tree */
+    prev = NULL;
+    node = parent->first_child;
+    assert(node);
+    node2 = chunk->first_child;
+    while (slice_offset) {
+        prev = node;
+        node = node->next;
+        assert(node);
+        --slice_offset;
+    }
+    while (node && slice_width) {
+        if (SR_TREE_ITERATOR_T == node->type) {
+            /* remove iterator reference */
+            assert(false == bounded_slice);
+            --iterator->data.int32_val;
+            /* append the remaining nodes from the chunk */
+            if (NULL != node2) {
+                parent->last_child = chunk->last_child;
+            } else {
+                parent->last_child = prev;
+            }
+            if (prev) {
+                prev->next = node2;
+                if (NULL != node2 && SR_TREE_ITERATOR_T != node2->type) {
+                    node2->prev = prev;
+                }
+            } else {
+                parent->first_child = node2;
+            }
+            while (node2 && SR_TREE_ITERATOR_T != node2->type) {
+                node2->parent = parent;
+                node2 = node2->next;
+            }
+            break; /**< nothing more to add */
+        } else {
+            if (NULL == node2) {
+                /* no more child nodes left in the chunk */
+                break;
+            }
+            /* some clarity checks */
+            assert(SR_TREE_ITERATOR_T != node2->type);
+            assert(node->first_child && SR_TREE_ITERATOR_T == node->first_child->type &&
+                   node->first_child == node->last_child);
+            /* move child nodes from node2 to node */
+            node->first_child = node->last_child = NULL; /**< remove iterator reference */
+            --iterator->data.int32_val;
+            node->first_child = node2->first_child;
+            node->last_child = node2->last_child;
+            node2->first_child = node2->last_child = NULL;
+            child = node->first_child;
+            while (child && SR_TREE_ITERATOR_T != child->type) {
+                child->parent = node;
+                child = child->next;
+            }
+            /* remove the duplicate child node from the chunk */
+            next = node2->next;
+            if (NULL == node2->_sr_mem) {
+                sr_free_tree(node2);
+            }
+            node2 = next;
+        }
+        prev = node;
+        node = node->next;
+        --slice_width;
+    }
+    if (NULL != node2) {
+        /* something unrequested left in the chunk, deallocate it */
+        assert(true == bounded_slice);
+        do {
+            next = node2->next;
+            node2->next = node2->prev = node2->parent = NULL;
+            if (NULL == node2->_sr_mem) {
+                sr_free_tree(node2);
+            }
+            node2 = next;
+        } while (NULL != node2);
+    }
+
+    /* remove the duplicate of the parent node from the chunk */
+    chunk->first_child = chunk->last_child = NULL;
+    sr_free_tree(chunk);
+    chunk = NULL;
+
+    /* remove the iterator if it is no longer used */
+    if (0 == iterator->data.int32_val) {
+        sr_free_node(iterator);
+    }
+
+cleanup:
+    free(indices);
+    free(xpath);
+    if (NULL != msg_req) {
+        sr_msg_free(msg_req);
+    } else {
+        sr_mem_free(sr_mem);
+    }
+    if (NULL != msg_resp) {
+        sr_msg_free(msg_resp);
+    }
+    sr_free_tree(chunk);
+    return cl_session_return(session, rc);
+#undef BUFFER_LEN
 }
 
 int
@@ -1155,7 +1696,7 @@ sr_set_item(sr_session_ctx_t *session, const char *xpath, const sr_val_t *value,
     }
 
     /* send the request and receive the response */
-    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__SET_ITEM);
+    rc = cl_request_process(session, msg_req, &msg_resp, NULL, SR__OPERATION__SET_ITEM);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
     sr_msg_free(msg_req);
@@ -1205,7 +1746,7 @@ sr_delete_item(sr_session_ctx_t *session, const char *xpath, const sr_edit_optio
     msg_req->request->delete_item_req->options = opts;
 
     /* send the request and receive the response */
-    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__DELETE_ITEM);
+    rc = cl_request_process(session, msg_req, &msg_resp, NULL, SR__OPERATION__DELETE_ITEM);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
     sr_msg_free(msg_req);
@@ -1254,7 +1795,7 @@ sr_move_item(sr_session_ctx_t *session, const char *xpath, const sr_move_positio
     }
 
     /* send the request and receive the response */
-    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__MOVE_ITEM);
+    rc = cl_request_process(session, msg_req, &msg_resp, NULL, SR__OPERATION__MOVE_ITEM);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
     sr_msg_free(msg_req);
@@ -1293,7 +1834,7 @@ sr_validate(sr_session_ctx_t *session)
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
 
     /* send the request and receive the response */
-    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__VALIDATE);
+    rc = cl_request_process(session, msg_req, &msg_resp, NULL, SR__OPERATION__VALIDATE);
     if ((SR_ERR_OK != rc) && (SR_ERR_VALIDATION_FAILED != rc)) {
         SR_LOG_ERR_MSG("Error by processing of validate request.");
         goto cleanup;
@@ -1345,7 +1886,7 @@ sr_commit(sr_session_ctx_t *session)
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
 
     /* send the request and receive the response */
-    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__COMMIT);
+    rc = cl_request_process(session, msg_req, &msg_resp, NULL, SR__OPERATION__COMMIT);
     if ((SR_ERR_OK != rc) && (SR_ERR_OPERATION_FAILED != rc)) {
         SR_LOG_ERR_MSG("Error by processing of commit request.");
         goto cleanup;
@@ -1396,7 +1937,7 @@ sr_discard_changes(sr_session_ctx_t *session)
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
 
     /* send the request and receive the response */
-    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__DISCARD_CHANGES);
+    rc = cl_request_process(session, msg_req, &msg_resp, NULL, SR__OPERATION__DISCARD_CHANGES);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
     sr_msg_free(msg_req);
@@ -1443,7 +1984,7 @@ sr_copy_config(sr_session_ctx_t *session, const char *module_name,
     }
 
     /* send the request and receive the response */
-    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__COPY_CONFIG);
+    rc = cl_request_process(session, msg_req, &msg_resp, NULL, SR__OPERATION__COPY_CONFIG);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
     sr_msg_free(msg_req);
@@ -1499,7 +2040,7 @@ sr_lock_module(sr_session_ctx_t *session, const char *module_name)
     }
 
     /* send the request and receive the response */
-    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__LOCK);
+    rc = cl_request_process(session, msg_req, &msg_resp, NULL, SR__OPERATION__LOCK);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
     sr_msg_free(msg_req);
@@ -1543,7 +2084,7 @@ sr_unlock_module(sr_session_ctx_t *session, const char *module_name)
     }
 
     /* send the request and receive the response */
-    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__UNLOCK);
+    rc = cl_request_process(session, msg_req, &msg_resp, NULL, SR__OPERATION__UNLOCK);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
     sr_msg_free(msg_req);
@@ -1634,7 +2175,7 @@ sr_module_install_subscribe(sr_session_ctx_t *session, sr_module_install_cb call
     sm_subscription->callback.module_install_cb = callback;
 
     /* send the request and receive the response */
-    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__SUBSCRIBE);
+    rc = cl_request_process(session, msg_req, &msg_resp, NULL, SR__OPERATION__SUBSCRIBE);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
     sr_msg_free(msg_req);
@@ -1680,7 +2221,7 @@ sr_feature_enable_subscribe(sr_session_ctx_t *session, sr_feature_enable_cb call
     sm_subscription->callback.feature_enable_cb = callback;
 
     /* send the request and receive the response */
-    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__SUBSCRIBE);
+    rc = cl_request_process(session, msg_req, &msg_resp, NULL, SR__OPERATION__SUBSCRIBE);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
     sr_msg_free(msg_req);
@@ -1724,7 +2265,7 @@ sr_check_enabled_running(sr_session_ctx_t *session, const char *module_name, boo
     CHECK_NULL_NOMEM_GOTO(msg_req->request->check_enabled_running_req->module_name, rc, cleanup);
 
     /* send the request and receive the response */
-    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__CHECK_ENABLED_RUNNING);
+    rc = cl_request_process(session, msg_req, &msg_resp, NULL, SR__OPERATION__CHECK_ENABLED_RUNNING);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
     *res = msg_resp->response->check_enabled_running_resp->enabled;
@@ -1785,7 +2326,7 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, s
     msg_req->request->subscribe_req->enable_running = !(opts & SR_SUBSCR_PASSIVE);
 
     /* send the request and receive the response */
-    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__SUBSCRIBE);
+    rc = cl_request_process(session, msg_req, &msg_resp, NULL, SR__OPERATION__SUBSCRIBE);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
     sr_msg_free(msg_req);
@@ -1853,7 +2394,7 @@ sr_subtree_change_subscribe(sr_session_ctx_t *session, const char *xpath, sr_sub
     msg_req->request->subscribe_req->enable_running = !(opts & SR_SUBSCR_PASSIVE);
 
     /* send the request and receive the response */
-    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__SUBSCRIBE);
+    rc = cl_request_process(session, msg_req, &msg_resp, NULL, SR__OPERATION__SUBSCRIBE);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
     sr_msg_free(msg_req);
@@ -2134,7 +2675,7 @@ sr_module_install(sr_session_ctx_t *session, const char *module_name, const char
     }
 
     /* send the request and receive the response */
-    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__MODULE_INSTALL);
+    rc = cl_request_process(session, msg_req, &msg_resp, NULL, SR__OPERATION__MODULE_INSTALL);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
     sr_msg_free(msg_req);
@@ -2181,7 +2722,7 @@ sr_feature_enable(sr_session_ctx_t *session, const char *module_name, const char
     msg_req->request->feature_enable_req->enabled = enabled;
 
     /* send the request and receive the response */
-    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__FEATURE_ENABLE);
+    rc = cl_request_process(session, msg_req, &msg_resp, NULL, SR__OPERATION__FEATURE_ENABLE);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
     sr_msg_free(msg_req);
@@ -2255,7 +2796,7 @@ cl_rpc_subscribe(sr_api_variant_t api_variant, sr_session_ctx_t *session, const 
     CHECK_NULL_NOMEM_GOTO(msg_req->request->subscribe_req->xpath, rc, cleanup);
 
     /* send the request and receive the response */
-    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__SUBSCRIBE);
+    rc = cl_request_process(session, msg_req, &msg_resp, NULL, SR__OPERATION__SUBSCRIBE);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
     sr_msg_free(msg_req);
@@ -2331,7 +2872,7 @@ sr_rpc_send(sr_session_ctx_t *session, const char *xpath,
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by copying RPC input arguments to GPB.");
 
     /* send the request and receive the response */
-    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__RPC);
+    rc = cl_request_process(session, msg_req, &msg_resp, NULL, SR__OPERATION__RPC);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
     if (NULL != output) {
@@ -2395,7 +2936,7 @@ sr_rpc_send_tree(sr_session_ctx_t *session, const char *xpath,
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by copying RPC input arguments to GPB.");
 
     /* send the request and receive the response */
-    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__RPC);
+    rc = cl_request_process(session, msg_req, &msg_resp, NULL, SR__OPERATION__RPC);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
     if (NULL != output) {
@@ -2468,7 +3009,7 @@ sr_dp_get_items_subscribe(sr_session_ctx_t *session, const char *xpath, sr_dp_ge
     msg_req->request->subscribe_req->enable_running = !(opts & SR_SUBSCR_PASSIVE);
 
     /* send the request and receive the response */
-    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__SUBSCRIBE);
+    rc = cl_request_process(session, msg_req, &msg_resp, NULL, SR__OPERATION__SUBSCRIBE);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
     sr_msg_free(msg_req);
@@ -2548,7 +3089,7 @@ cl_event_notif_subscribe(sr_api_variant_t api_variant, sr_session_ctx_t *session
     CHECK_NULL_NOMEM_GOTO(msg_req->request->subscribe_req->xpath, rc, cleanup);
 
     /* send the request and receive the response */
-    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__SUBSCRIBE);
+    rc = cl_request_process(session, msg_req, &msg_resp, NULL, SR__OPERATION__SUBSCRIBE);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
     sr_msg_free(msg_req);
@@ -2626,7 +3167,7 @@ sr_event_notif_send(sr_session_ctx_t *session, const char *xpath,
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by copying event notification values to GPB.");
 
     /* send the request and receive the response */
-    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__EVENT_NOTIF);
+    rc = cl_request_process(session, msg_req, &msg_resp, NULL, SR__OPERATION__EVENT_NOTIF);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
     sr_msg_free(msg_req);
@@ -2683,7 +3224,7 @@ sr_event_notif_send_tree(sr_session_ctx_t *session, const char *xpath,
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by copying event notification trees to GPB.");
 
     /* send the request and receive the response */
-    rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__EVENT_NOTIF);
+    rc = cl_request_process(session, msg_req, &msg_resp, NULL, SR__OPERATION__EVENT_NOTIF);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
     sr_msg_free(msg_req);

@@ -806,6 +806,200 @@ cl_get_items_iter_test(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 }
 
+/**
+ * @brief Traverses through at most visited_limit nodes of a given tree and counts visited iterators.
+ */
+static int
+cl_tree_traversal(sr_session_ctx_t *session, sr_node_t *tree, size_t visited_limit, size_t *visited_iter)
+{
+    sr_node_t *node = NULL, *child = NULL, *next = NULL;
+    size_t nodes_cnt = 0;
+    bool backtrack = false;
+
+    CHECK_NULL_ARG3(session, tree, visited_iter);
+    *visited_iter = 0;
+
+    node = tree;
+    do { /**< traverse in DFS pre-order */
+        if (false == backtrack) {
+            ++nodes_cnt;
+            if (visited_limit <= nodes_cnt) {
+                break;
+            }
+            if (node->first_child && SR_TREE_ITERATOR_T == node->first_child->type) {
+                *visited_iter += 1;
+            }
+            child = sr_node_get_child(session, node);
+            if (NULL == child) {
+                backtrack = true;
+            } else {
+                node = child;
+            }
+        } else {
+            if (node->next && SR_TREE_ITERATOR_T == node->next->type) {
+                *visited_iter += 1;
+            }
+            next = sr_node_get_next_sibling(session, node);
+            if (next) {
+                node = next;
+                backtrack = false;
+            } else {
+                node = sr_node_get_parent(session, node);
+                assert(node);
+                backtrack = true;
+            }
+        }
+    } while (node != tree);
+
+    return SR_ERR_OK;
+}
+
+static void
+cl_iterative_tree_traversal(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+
+    sr_session_ctx_t *session = NULL;
+    sr_node_t *tree = NULL, *tree_dup = NULL;
+    size_t visited_iter = 0;
+    int rc = 0;
+
+    createDataTreeLargeIETFinterfacesModule(25);
+
+    /* start a session */
+    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* perform an iterative get-subtree request */
+    rc = sr_get_subtree(session, "/ietf-interfaces:interfaces", SR_GET_SUBTREE_ITERATIVE, &tree);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_non_null(tree);
+
+    /* go the the 3rd level (one more chunk will get fetched) */
+    rc = cl_tree_traversal(session, tree, 3, &visited_iter);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(visited_iter, 1);
+
+    /* duplicate the partly loaded tree */
+    rc = sr_dup_tree(tree, &tree_dup);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(tree_dup);
+    sr_free_tree(tree);
+    tree = tree_dup;
+
+    /* go the the 3rd level again (all needed chunks are already fetched) */
+    rc = cl_tree_traversal(session, tree, 3, &visited_iter);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(visited_iter, 0);
+
+    /* traverse through one interface (one more chunk will get fetched) */
+    rc = cl_tree_traversal(session, tree, 12, &visited_iter);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(visited_iter, 1);
+
+    /* traverse up to the addr list instance of the second interface (this was retrieved by the second chunk) */
+    rc = cl_tree_traversal(session, tree, 16, &visited_iter);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(visited_iter, 0);
+
+    /* traverse through the first and second interface (one more chunk will get fetched) */
+    rc = cl_tree_traversal(session, tree, 23, &visited_iter);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(visited_iter, 1);
+
+    /* duplicate the partly loaded tree */
+    rc = sr_dup_tree(tree, &tree_dup);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(tree_dup);
+    sr_free_tree(tree);
+    tree = tree_dup;
+
+    /**
+     * traverse through the entire tree
+     *  - need to get the content of addr for interfaces 3-20
+     *  - need to get the top 2 levels of last 5 interfaces
+     *  - need to get the content of ipv4 for interfaces 21-25
+     */
+    rc = cl_tree_traversal(session, tree, SIZE_MAX, &visited_iter);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(visited_iter, 18+1+5);
+
+    sr_free_tree(tree);
+
+    /* stop the session */
+    rc = sr_session_stop(session);
+    assert_int_equal(rc, SR_ERR_OK);
+}
+
+static void
+cl_iterative_trees_traversal(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+
+    sr_session_ctx_t *session = NULL;
+    sr_node_t *trees = NULL, *trees_dup = NULL;
+    size_t tree_cnt = 0, visited_iter = 0, i = 0;
+    int rc = 0;
+
+    createDataTreeLargeIETFinterfacesModule(50);
+
+    /* start a session */
+    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* perform an iterative get-subtrees request */
+    rc = sr_get_subtrees(session, "/ietf-interfaces:interfaces/*", SR_GET_SUBTREE_ITERATIVE, &trees, &tree_cnt);
+    assert_int_equal(rc, SR_ERR_OK);
+    assert_non_null(trees);
+    assert_int_equal(50, tree_cnt);
+
+    /* go the the 2rd level on each tree (all needed data are fetched) */
+    for (i = 0; i < 50; ++i) {
+        rc = cl_tree_traversal(session, trees+i, 3, &visited_iter); /* interface, name, ipv4 */
+        assert_int_equal(SR_ERR_OK, rc);
+        assert_int_equal(visited_iter, 0);
+    }
+
+    /* go the the 3rd level in the first half of the trees (they will get fully fetched) */
+    for (i = 0; i < 25; ++i) {
+        rc = cl_tree_traversal(session, trees+i, 4, &visited_iter); /* interface, name, ipv4, addr */
+        assert_int_equal(SR_ERR_OK, rc);
+        assert_int_equal(visited_iter, 1);
+    }
+
+    /* duplicate the partly loaded trees */
+    rc = sr_dup_trees(trees, tree_cnt, &trees_dup);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(trees_dup);
+    sr_free_trees(trees, tree_cnt);
+    trees = trees_dup;
+
+    /* completely traverse through the first half of the trees (all data already loaded) */
+    for (i = 0; i < 25; ++i) {
+        rc = cl_tree_traversal(session, trees+i, SIZE_MAX, &visited_iter);
+        assert_int_equal(SR_ERR_OK, rc);
+        assert_int_equal(visited_iter, 0);
+    }
+
+    /**
+     * traverse through the entire forest
+     *  - need to get one chunk (3rd and 4rd level) for the second half of the trees
+     */
+    for (i = 0; i < 50; ++i) {
+        rc = cl_tree_traversal(session, trees+i, SIZE_MAX, &visited_iter);
+        assert_int_equal(SR_ERR_OK, rc);
+        assert_int_equal(visited_iter, i < 25 ? 0 : 1);
+    }
+
+    sr_free_trees(trees, tree_cnt);
+
+    /* stop the session */
+    rc = sr_session_stop(session);
+    assert_int_equal(rc, SR_ERR_OK);
+}
+
 static void
 cl_set_item_test(void **state)
 {
@@ -3557,6 +3751,8 @@ main()
             cmocka_unit_test_setup_teardown(cl_get_items_iter_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_get_subtree_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_get_subtrees_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_iterative_tree_traversal, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_iterative_trees_traversal, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_set_item_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_delete_item_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_move_item_test, sysrepo_setup, sysrepo_teardown),

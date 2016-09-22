@@ -122,6 +122,13 @@ sr_free_tree(sr_node_t *tree)
                 sr_mem_free(tree->_sr_mem);
             }
         } else {
+            if (SR_TREE_ITERATOR_T == tree->type) {
+                --tree->data.int32_val;
+                if (0 < tree->data.int32_val) {
+                    /* still used */
+                    return;
+                }
+            }
             sr_free_tree_content(tree);
             free(tree);
         }

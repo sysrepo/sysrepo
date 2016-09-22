@@ -42,6 +42,7 @@ set(SYSREPO_SOURCES
     client_library.c
     cl_subscription_manager.c
     cl_common.c
+    ${UTILS_DIR}/cl_trees.c
 )
 
 # sysrepo engine sources

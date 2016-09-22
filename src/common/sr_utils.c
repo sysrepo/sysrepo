@@ -1037,18 +1037,23 @@ sr_api_variant_from_str(const char *api_variant_str)
  * @brief Copy and convert content of a libyang node and its descendands into a sysrepo tree.
  *
  * @param [in] parent Parent node.
- * @param [in] child Child node.
  * @param [in] node libyang node.
+ * @param [in] depth Depth of the node relative to the root node.
+ * @param [in] slice_offset Number of child nodes of the chunk root to skip.
+ * @param [in] slice_width Maximum number of child nodes of the chunk root to include.
+ * @param [in] child_limit Limit on the number of copied children imposed on each node starting from 3rd level.
+ * @param [in] depth_limit Maximum number of tree levels to copy.
  * @param [out] sr_tree Returned sysrepo tree.
  */
 static int
-sr_copy_node_to_tree_internal(const struct lyd_node *parent, const struct lyd_node *node,
-        sr_node_t *sr_tree)
+sr_copy_node_to_tree_internal(const struct lyd_node *parent, const struct lyd_node *node, size_t depth,
+         size_t slice_offset, size_t slice_width, size_t child_limit, size_t depth_limit, sr_node_t *sr_tree)
 {
     int rc = SR_ERR_OK;
     struct lyd_node_leaf_list *data_leaf = NULL;
     struct lys_node_container *cont = NULL;
     const struct lyd_node *child = NULL;
+    size_t idx = 0;
     sr_node_t *sr_subtree = NULL;
 
     CHECK_NULL_ARG2(node, sr_tree);
@@ -1094,16 +1099,24 @@ sr_copy_node_to_tree_internal(const struct lyd_node *parent, const struct lyd_no
     /* copy children */
     if ((LYS_CONTAINER | LYS_LIST) & node->schema->nodetype) {
         child = node->child;
+        idx = 0;
         while (child) {
-            rc = sr_node_add_child(sr_tree, NULL, NULL, &sr_subtree);
-            if (SR_ERR_OK != rc) {
-                goto cleanup;
-            }
-            rc = sr_copy_node_to_tree_internal(node, child, sr_subtree);
-            if (SR_ERR_OK != rc) {
-                goto cleanup;
+            if ((0 < depth || slice_offset <= idx) /* slice_offset */ &&
+                (0 < depth || slice_width > idx - slice_offset) /* slice width */ &&
+                (0 == depth || child_limit > idx) /* child_limit */ &&
+                (depth_limit > depth + 1) /* depth limit */) {
+                rc = sr_node_add_child(sr_tree, NULL, NULL, &sr_subtree);
+                if (SR_ERR_OK != rc) {
+                    goto cleanup;
+                }
+                rc = sr_copy_node_to_tree_internal(node, child, depth + 1, slice_offset, slice_width,
+                        child_limit, depth_limit, sr_subtree);
+                if (SR_ERR_OK != rc) {
+                    goto cleanup;
+                }
             }
             child = child->next;
+            ++idx;
         }
     }
 
@@ -1117,7 +1130,14 @@ cleanup:
 int
 sr_copy_node_to_tree(const struct lyd_node *node, sr_node_t *sr_tree)
 {
-    return sr_copy_node_to_tree_internal(NULL, node, sr_tree);
+    return sr_copy_node_to_tree_internal(NULL, node, 0, 0, SIZE_MAX, SIZE_MAX, SIZE_MAX, sr_tree);
+}
+
+int
+sr_copy_node_to_tree_chunk(const struct lyd_node *node, size_t slice_offset, size_t slice_width, size_t child_limit,
+        size_t depth_limit, sr_node_t *sr_tree)
+{
+    return sr_copy_node_to_tree_internal(NULL, node, 0, slice_offset, slice_width, child_limit, depth_limit, sr_tree);
 }
 
 int
@@ -1148,7 +1168,53 @@ sr_nodes_to_trees(struct ly_set *nodes, sr_mem_ctx_t *sr_mem, sr_node_t **sr_tre
 
     for (i = 0; i < nodes->number && 0 == rc; ++i) {
         trees[i]._sr_mem = sr_mem;
-        rc = sr_copy_node_to_tree(nodes->set.d[i], trees + i);
+        rc = sr_copy_node_to_tree_internal(NULL, nodes->set.d[i], 0, 0, SIZE_MAX, SIZE_MAX, SIZE_MAX, trees + i);
+    }
+
+    if (SR_ERR_OK == rc) {
+        *sr_trees = trees;
+        *count = nodes->number;
+    } else {
+        if (sr_mem) {
+            sr_mem_restore(&snapshot);
+        } else {
+            sr_free_trees(trees, i);
+        }
+    }
+    return rc;
+}
+
+int
+sr_nodes_to_tree_chunks(struct ly_set *nodes, size_t slice_offset, size_t slice_width, size_t child_limit,
+        size_t depth_limit, sr_mem_ctx_t *sr_mem, sr_node_t **sr_trees, size_t *count)
+{
+    int rc = SR_ERR_OK;
+    sr_node_t *trees = NULL;
+    sr_mem_snapshot_t snapshot = { 0, };
+    size_t i = 0;
+
+    CHECK_NULL_ARG3(nodes, sr_trees, count);
+
+    if (0 == nodes->number) {
+        *sr_trees = NULL;
+        *count = 0;
+        return rc;
+    }
+
+    if (sr_mem) {
+        sr_mem_snapshot(sr_mem, &snapshot);
+    }
+
+    trees = sr_calloc(sr_mem, nodes->number, sizeof *trees);
+    CHECK_NULL_NOMEM_RETURN(trees);
+    if (sr_mem) {
+        ++sr_mem->obj_count;
+    }
+
+    for (i = 0; i < nodes->number && 0 == rc; ++i) {
+        trees[i]._sr_mem = sr_mem;
+        rc = sr_copy_node_to_tree_internal(NULL, nodes->set.d[i], 0, slice_offset, slice_width, child_limit,
+                depth_limit, trees + i);
     }
 
     if (SR_ERR_OK == rc) {
@@ -1406,14 +1472,37 @@ sr_free_tree_content(sr_node_t *tree)
             return;
         }
 
-        sr_node_t *sr_subtree = tree->first_child, *next = NULL;
-        while (sr_subtree) {
-            next = sr_subtree->next;
-            sr_free_tree(sr_subtree);
-            sr_subtree = next;
+        if (SR_TREE_ITERATOR_T == tree->type) {
+            assert(0 == tree->data.int32_val);
+        } else {
+            sr_node_t *sr_subtree = tree->first_child, *next = NULL;
+            while (sr_subtree) {
+                next = sr_subtree->next;
+                sr_free_tree(sr_subtree);
+                sr_subtree = next;
+            }
         }
         free(tree->module_name);
         sr_free_val_content((sr_val_t *)tree);
+    }
+}
+
+void
+sr_free_node(sr_node_t *node)
+{
+    if (NULL != node) {
+        if (NULL != node->_sr_mem) {
+            /* do nothing */
+            return;
+        }
+
+        if (SR_TREE_ITERATOR_T == node->type) {
+            assert(0 == node->data.int32_val);
+        }
+
+        free(node->module_name);
+        sr_free_val_content((sr_val_t *)node);
+        free(node);
     }
 }
 

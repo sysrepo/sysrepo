@@ -269,6 +269,60 @@ rp_dt_get_subtree(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, sr_mem_ctx
 }
 
 int
+rp_dt_get_subtree_chunk(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, sr_mem_ctx_t *sr_mem, const char *xpath,
+        size_t slice_offset, size_t slice_width, size_t child_limit, size_t depth_limit, bool check_enabled,
+        sr_node_t **chunk, char **chunk_id)
+{
+    CHECK_NULL_ARG5(dm_ctx, data_tree, xpath, chunk, chunk_id);
+    int rc = SR_ERR_OK;
+    sr_node_t *tree = NULL;
+    char *id = NULL, *id_cpy = NULL;
+    struct lyd_node *node = NULL;
+
+    rc = rp_dt_find_node(dm_ctx, data_tree, xpath, check_enabled, &node);
+    if (SR_ERR_OK != rc) {
+        if (SR_ERR_NOT_FOUND != rc) {
+            SR_LOG_ERR("Find node failed (%d) xpath %s", rc, xpath);
+        }
+        return rc;
+    }
+
+    tree = sr_calloc(sr_mem, 1, sizeof(*tree));
+    CHECK_NULL_NOMEM_RETURN(tree);
+
+    if (sr_mem) {
+        tree->_sr_mem = sr_mem;
+        sr_mem->obj_count += 1;
+    }
+
+    rc = sr_copy_node_to_tree_chunk(node, slice_offset, slice_width, child_limit, depth_limit, tree);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Copy node to tree failed for xpath %s", xpath);
+        sr_free_tree(tree);
+        return rc;
+    }
+
+    id = lyd_path(node);
+    if (NULL == id) {
+        SR_LOG_ERR("Failed to get ID of a subtree chunk with xpath %s", xpath);
+        sr_free_tree(tree);
+        return SR_ERR_INTERNAL;
+    }
+    rc = sr_mem_edit_string(sr_mem, &id_cpy, id);
+    free(id);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Failed to copy ID of a subtree chunk with xpath %s", xpath);
+        sr_free_tree(tree);
+        return rc;
+    }
+
+    *chunk = tree;
+    *chunk_id = id_cpy;
+
+    return rc;
+}
+
+int
 rp_dt_get_subtrees(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, sr_mem_ctx_t *sr_mem, const char *xpath, bool check_enable,
         sr_node_t **subtrees, size_t *count)
 {
@@ -291,25 +345,87 @@ rp_dt_get_subtrees(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, sr_mem_ct
     }
 
     ly_set_free(nodes);
-    return SR_ERR_OK;
+    return rc;
 }
 
-/**
- * @brief Function tests whether node is located under(in schema hierarchy) subtree node.
- * @param [in] subtree
- * @param [in] node
- * @return bool result of the test
- */
+int
+rp_dt_get_subtrees_chunks(const dm_ctx_t *dm_ctx, struct lyd_node *data_tree, sr_mem_ctx_t *sr_mem, const char *xpath,
+        size_t slice_offset, size_t slice_width, size_t child_limit, size_t depth_limit, bool check_enable,
+        sr_node_t **chunks_p, size_t *count_p, char ***chunk_ids_p)
+{
+    CHECK_NULL_ARG3(dm_ctx, data_tree, xpath);
+    CHECK_NULL_ARG3(chunks_p, count_p, chunk_ids_p);
+
+    int rc = SR_ERR_OK;
+    sr_node_t *chunks = NULL;
+    size_t count = 0;
+    char **chunk_ids = NULL;
+    char *chunk_id = NULL;
+
+    struct ly_set *nodes = NULL;
+    rc = rp_dt_find_nodes(dm_ctx, data_tree, xpath, check_enable, &nodes);
+    if (SR_ERR_OK != rc) {
+        if (SR_ERR_NOT_FOUND != rc) {
+            SR_LOG_ERR("Get nodes for xpath %s failed (%d)", xpath, rc);
+        }
+        return rc;
+    }
+
+    rc = sr_nodes_to_tree_chunks(nodes, slice_offset, slice_width, child_limit, depth_limit, sr_mem, &chunks, &count);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Conversion of nodes to trees failed for xpath '%s'", xpath);
+    }
+
+    chunk_ids = sr_calloc(sr_mem, count, sizeof(char *));
+    CHECK_NULL_NOMEM_GOTO(chunk_ids, rc, cleanup);
+    for (size_t i = 0; i < count; ++i) {
+        chunk_id = lyd_path(nodes->set.d[i]);
+        if (NULL == chunk_id) {
+            SR_LOG_ERR("Failed to get ID of a subtree chunk for xpath %s", xpath);
+            rc = SR_ERR_INTERNAL;
+            goto cleanup;
+        }
+        rc = sr_mem_edit_string(sr_mem, chunk_ids+i, chunk_id);
+        free(chunk_id);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR("Failed to get ID of a subtree chunk for xpath %s", xpath);
+            rc = SR_ERR_INTERNAL;
+            goto cleanup;
+        }
+    }
+
+    *chunks_p = chunks;
+    *count_p = count;
+    *chunk_ids_p = chunk_ids;
+
+cleanup:
+    ly_set_free(nodes);
+    if (SR_ERR_OK != rc) {
+        if (NULL == sr_mem && NULL != chunk_ids) {
+            for (size_t i = 0; i < count; ++i) {
+                free(chunk_ids[i]);
+            }
+            free(chunk_ids);
+        }
+        sr_free_trees(chunks, count);
+    }
+    return rc;
+}
+
 bool
-rp_dt_is_under_subtree(struct lys_node *subtree, struct lys_node *node)
+rp_dt_is_under_subtree(struct lys_node *subtree, size_t depth_limit, struct lys_node *node)
 {
     struct lys_node *n = node;
-    while (NULL != n) {
+    size_t depth = 0;
+
+    while (depth_limit > depth && NULL != n) {
         if (subtree == n) {
             return true;
         }
         n = lys_parent(n);
+        ++depth;
     }
+
     return false;
 }
 
@@ -327,7 +443,7 @@ rp_dt_atoms_require_subtree(struct ly_set *atoms, struct lys_node *subtree, bool
     *result = false;
 
     for (unsigned int i = 0; i < atoms->number; i++) {
-        if (rp_dt_is_under_subtree(subtree, atoms->set.s[i])) {
+        if (rp_dt_is_under_subtree(subtree, SIZE_MAX, atoms->set.s[i])) {
             *result = true;
             break;
         }
@@ -337,20 +453,22 @@ rp_dt_atoms_require_subtree(struct ly_set *atoms, struct lys_node *subtree, bool
 }
 
 /**
- * @brief Tests if any of the trees contain the provided subtree.
+ * @brief Tests if any of the tree chunks contain the provided subtree.
  * @param [in] tree_roots
+ * @param [in] depth_limit
  * @param [in] subtree
  * @param [out] result
  * @return Error code (SR_ERR_OK on success)
  */
 static int
-rp_dt_trees_contain_subtree(struct ly_set *tree_roots, struct lys_node *subtree, bool *result)
+rp_dt_tree_chunks_contain_subtree(struct ly_set *tree_roots, size_t depth_limit,
+        struct lys_node *subtree, bool *result)
 {
     CHECK_NULL_ARG3(tree_roots, subtree, result);
     *result = false;
 
     for (unsigned int i = 0; i < tree_roots->number; i++) {
-        if (rp_dt_is_under_subtree(tree_roots->set.s[i], subtree)) {
+        if (rp_dt_is_under_subtree(tree_roots->set.s[i], depth_limit, subtree)) {
             *result = true;
             break;
         }
@@ -382,7 +500,7 @@ rp_dt_find_subscription_for_subtree(dm_ctx_t *dm_ctx, sr_list_t *subtree_nodes, 
         bool match = false;
         for (size_t s = 0; s < subscr_nodes->count; s++) {
             struct lys_node *subs = subscr_nodes->data[s];
-            if (rp_dt_is_under_subtree(subs, n)) {
+            if (rp_dt_is_under_subtree(subs, SIZE_MAX, n)) {
                 state_data_ctx->subscr_index[i] = s;
                 match = true;
                 break;
@@ -497,7 +615,7 @@ rp_dt_has_data_provider_for_subtree(sr_list_t *subscriptions, struct lys_node *s
     *data_provider_found = false;
     for (size_t s = 0; s < subscriptions->count; s++) {
         struct lys_node *subs = subscriptions->data[s];
-        if (rp_dt_is_under_subtree(subs, subtree)) {
+        if (rp_dt_is_under_subtree(subs, SIZE_MAX, subtree)) {
             *data_provider_found = true;
             break;
         }
@@ -510,8 +628,8 @@ rp_dt_has_data_provider_for_subtree(sr_list_t *subscriptions, struct lys_node *s
  * @brief Determines if (and what) state data subtrees are needed to be loaded.
  */
 static int
-rp_dt_xpath_requests_state_data(rp_ctx_t *rp_ctx, rp_session_t *session, dm_schema_info_t *schema_info, const char *xpath, sr_api_variant_t api_variant,
-        rp_state_data_ctx_t *state_data_ctx)
+rp_dt_xpath_requests_state_data(rp_ctx_t *rp_ctx, rp_session_t *session, dm_schema_info_t *schema_info, const char *xpath,
+        sr_api_variant_t api_variant, size_t tree_depth_limit, rp_state_data_ctx_t *state_data_ctx)
 {
     CHECK_NULL_ARG4(rp_ctx, schema_info, xpath, state_data_ctx);
     md_ctx_t *md_ctx = NULL;
@@ -581,7 +699,7 @@ rp_dt_xpath_requests_state_data(rp_ctx_t *rp_ctx, rp_session_t *session, dm_sche
 
         if (!subtree_needed && SR_API_TREES == api_variant) {
             // consider state data inside requested subtrees
-            rc = rp_dt_trees_contain_subtree(tree_roots, state_data_node, &subtree_needed);
+            rc = rp_dt_tree_chunks_contain_subtree(tree_roots, tree_depth_limit, state_data_node, &subtree_needed);
             CHECK_RC_MSG_GOTO(rc, cleanup, "Rp dt trees contain subtree failed");
         }
 
@@ -642,12 +760,14 @@ rp_dt_remove_loaded_state_data(rp_ctx_t *rp_ctx, rp_session_t *rp_session)
  * @param [in] rp_ctx
  * @param [in] rp_session
  * @param [in] xpath
+ * @param [in] api_variant
+ * @param [in] tree_depth_limit
  * @param [out] data_tree
  * @return Error code (SR_ERR_OK on success)
  */
 static int
 rp_dt_prepare_data(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char *xpath, sr_api_variant_t api_variant,
-        struct lyd_node **data_tree)
+        size_t tree_depth_limit,  struct lyd_node **data_tree)
 {
     CHECK_NULL_ARG4(rp_ctx, rp_session, xpath, data_tree);
     int rc = SR_ERR_OK;
@@ -688,7 +808,8 @@ rp_dt_prepare_data(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char *xpath
             rc = sr_list_init(&rp_session->state_data_ctx.requested_xpaths);
             CHECK_RC_MSG_GOTO(rc, cleanup, "List init failed");
 
-            rc = rp_dt_xpath_requests_state_data(rp_ctx, rp_session, data_info->schema, xpath, api_variant, &rp_session->state_data_ctx);
+            rc = rp_dt_xpath_requests_state_data(rp_ctx, rp_session, data_info->schema, xpath, api_variant,
+                    tree_depth_limit, &rp_session->state_data_ctx);
             CHECK_RC_MSG_GOTO(rc, cleanup, "rp_dt_xpath_requests_state_data failed");
 
             if (NULL == rp_session->state_data_ctx.subtrees || 0 == rp_session->state_data_ctx.subtrees->count) {
@@ -753,7 +874,7 @@ rp_dt_get_value_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, sr_mem_ctx_t
     int rc = SR_ERR_OK;
     struct lyd_node *data_tree = NULL;
 
-    rc = rp_dt_prepare_data(rp_ctx, rp_session, xpath, SR_API_VALUES, &data_tree);
+    rc = rp_dt_prepare_data(rp_ctx, rp_session, xpath, SR_API_VALUES, 0, &data_tree);
     CHECK_RC_LOG_GOTO(rc, cleanup, "rp_dt_prepare_data failed %s", sr_strerror(rc));
 
     if (RP_REQ_WAITING_FOR_DATA == rp_session->state) {
@@ -794,7 +915,7 @@ rp_dt_get_values_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, sr_mem_ctx_
     int rc = SR_ERR_OK;
     struct lyd_node *data_tree = NULL;
 
-    rc = rp_dt_prepare_data(rp_ctx, rp_session, xpath, SR_API_VALUES, &data_tree);
+    rc = rp_dt_prepare_data(rp_ctx, rp_session, xpath, SR_API_VALUES, 0, &data_tree);
     CHECK_RC_MSG_GOTO(rc, cleanup, "rp_dt_prepare_data failed");
 
     if (RP_REQ_WAITING_FOR_DATA == rp_session->state) {
@@ -843,7 +964,7 @@ rp_dt_get_values_wrapper_with_opts(rp_ctx_t *rp_ctx, rp_session_t *rp_session, r
         rp_session->state = RP_REQ_DATA_LOADED;
     }
 
-    rc = rp_dt_prepare_data(rp_ctx, rp_session, xpath, SR_API_VALUES, &data_tree);
+    rc = rp_dt_prepare_data(rp_ctx, rp_session, xpath, SR_API_VALUES, 0, &data_tree);
     CHECK_RC_MSG_GOTO(rc, cleanup, "rp_dt_prepare_data failed");
 
     if (RP_REQ_WAITING_FOR_DATA == rp_session->state) {
@@ -892,7 +1013,7 @@ rp_dt_get_subtree_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, sr_mem_ctx
     int rc = SR_ERR_OK;
     struct lyd_node *data_tree = NULL;
 
-    rc = rp_dt_prepare_data(rp_ctx, rp_session, xpath, SR_API_TREES, &data_tree);
+    rc = rp_dt_prepare_data(rp_ctx, rp_session, xpath, SR_API_TREES, SIZE_MAX, &data_tree);
     CHECK_RC_LOG_GOTO(rc, cleanup, "rp_dt_prepare_data failed %s", sr_strerror(rc));
 
     if (RP_REQ_WAITING_FOR_DATA == rp_session->state) {
@@ -914,7 +1035,50 @@ cleanup:
         }
         rc = SR_ERR_NOT_FOUND;
     } else if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Get value failed for xpath '%s'", xpath);
+        SR_LOG_ERR("Get subtree failed for xpath '%s'", xpath);
+    }
+
+    rp_session->state = RP_REQ_FINISHED;
+    free(rp_session->module_name);
+    rp_session->module_name = NULL;
+    return rc;
+}
+
+int
+rp_dt_get_subtree_wrapper_with_opts(rp_ctx_t *rp_ctx, rp_session_t *rp_session, sr_mem_ctx_t *sr_mem, const char *xpath,
+    size_t slice_offset, size_t slice_width, size_t child_limit, size_t depth_limit, sr_node_t **subtree, char **subtree_id)
+{
+    CHECK_NULL_ARG4(rp_ctx, rp_ctx->dm_ctx, rp_session, rp_session->dm_session);
+    CHECK_NULL_ARG3(xpath, subtree, subtree_id);
+    SR_LOG_INF("Get subtree request %s datastore, xpath: %s", sr_ds_to_str(rp_session->datastore), xpath);
+
+    int rc = SR_ERR_OK;
+    struct lyd_node *data_tree = NULL;
+
+    rc = rp_dt_prepare_data(rp_ctx, rp_session, xpath, SR_API_TREES, depth_limit, &data_tree);
+    CHECK_RC_LOG_GOTO(rc, cleanup, "rp_dt_prepare_data failed %s", sr_strerror(rc));
+
+    if (RP_REQ_WAITING_FOR_DATA == rp_session->state) {
+        SR_LOG_DBG("Session id = %u is waiting for the data", rp_session->id);
+        return rc;
+    }
+
+    if (NULL == data_tree) {
+        goto cleanup;
+    }
+
+    rc = rp_dt_get_subtree_chunk(rp_ctx->dm_ctx, data_tree, sr_mem, xpath, slice_offset, slice_width, child_limit,
+            depth_limit, dm_is_running_ds_session(rp_session->dm_session), subtree, subtree_id);
+cleanup:
+    if (SR_ERR_NOT_FOUND == rc || (SR_ERR_OK == rc && NULL == data_tree)) {
+        rc = rp_dt_validate_node_xpath(rp_ctx->dm_ctx, rp_session->dm_session, xpath, NULL, NULL);
+        if (SR_ERR_OK != rc) {
+            /* Print warning only, because we are not able to validate all xpath */
+            SR_LOG_WRN("Validation of xpath %s was not successful", xpath);
+        }
+        rc = SR_ERR_NOT_FOUND;
+    } else if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Get subtree failed for xpath '%s'", xpath);
     }
 
     rp_session->state = RP_REQ_FINISHED;
@@ -933,7 +1097,7 @@ rp_dt_get_subtrees_wrapper(rp_ctx_t *rp_ctx, rp_session_t *rp_session, sr_mem_ct
     int rc = SR_ERR_OK;
     struct lyd_node *data_tree = NULL;
 
-    rc = rp_dt_prepare_data(rp_ctx, rp_session, xpath, SR_API_TREES, &data_tree);
+    rc = rp_dt_prepare_data(rp_ctx, rp_session, xpath, SR_API_TREES, SIZE_MAX, &data_tree);
     CHECK_RC_MSG_GOTO(rc, cleanup, "rp_dt_prepare_data failed");
 
     if (RP_REQ_WAITING_FOR_DATA == rp_session->state) {
@@ -964,6 +1128,49 @@ cleanup:
     return rc;
 }
 
+int
+rp_dt_get_subtrees_wrapper_with_opts(rp_ctx_t *rp_ctx, rp_session_t *rp_session, sr_mem_ctx_t *sr_mem, const char *xpath,
+    size_t slice_offset, size_t slice_width, size_t child_limit, size_t depth_limit, sr_node_t **subtrees, size_t *count,
+    char ***subtree_ids)
+{
+    CHECK_NULL_ARG4(rp_ctx, rp_ctx->dm_ctx, rp_session, rp_session->dm_session);
+    CHECK_NULL_ARG3(xpath, subtrees, count);
+    SR_LOG_INF("Get subtrees request %s datastore, xpath: %s", sr_ds_to_str(rp_session->datastore), xpath);
+
+    int rc = SR_ERR_OK;
+    struct lyd_node *data_tree = NULL;
+
+    rc = rp_dt_prepare_data(rp_ctx, rp_session, xpath, SR_API_TREES, depth_limit, &data_tree);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "rp_dt_prepare_data failed");
+
+    if (RP_REQ_WAITING_FOR_DATA == rp_session->state) {
+        SR_LOG_DBG("Session id = %u is waiting for the data", rp_session->id);
+        return rc;
+    }
+
+    if (NULL == data_tree) {
+        goto cleanup;
+    }
+
+    rc = rp_dt_get_subtrees_chunks(rp_ctx->dm_ctx, data_tree, sr_mem, xpath, slice_offset, slice_width, child_limit,
+            depth_limit, dm_is_running_ds_session(rp_session->dm_session), subtrees, count, subtree_ids);
+    if (SR_ERR_OK != rc && SR_ERR_NOT_FOUND != rc) {
+        SR_LOG_ERR("Get subtrees failed for xpath '%s'", xpath);
+    }
+
+cleanup:
+    if (SR_ERR_NOT_FOUND == rc || (SR_ERR_OK == rc && (0 == count || NULL == data_tree))) {
+        if (SR_ERR_OK != rp_dt_validate_node_xpath(rp_ctx->dm_ctx, rp_session->dm_session, xpath, NULL, NULL)) {
+            /* Print warning only, because we are not able to validate all xpath */
+            SR_LOG_WRN("Validation of xpath %s was not successful", xpath);
+        }
+        rc = SR_ERR_NOT_FOUND;
+    }
+    rp_session->state = RP_REQ_FINISHED;
+    free(rp_session->module_name);
+    rp_session->module_name = NULL;
+    return rc;
+}
 /**
  * @brief generates changes for the children of created/deleted container/list
  *

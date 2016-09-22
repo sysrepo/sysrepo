@@ -334,6 +334,19 @@ sr_api_variant_t sr_api_variant_from_str(const char *api_variant_str);
 int sr_copy_node_to_tree(const struct lyd_node *node, sr_node_t *sr_tree);
 
 /**
+ * @brief Copy and convert content of a libyang node and its descendands into a sysrepo tree chunk.
+ *
+ * @param [in] node libyang node.
+ * @param [in] slice_offset Number of child nodes of the chunk root to skip.
+ * @param [in] slice_width Maximum number of child nodes of the chunk root to include.
+ * @param [in] child_limit Limit on the number of copied children imposed on each node starting from the 3rd level.
+ * @param [in] depth_limit Maximum number of tree levels to copy.
+ * @param [out] sr_tree Returned sysrepo tree.
+ */
+int sr_copy_node_to_tree_chunk(const struct lyd_node *node, size_t slice_offset, size_t slice_width, size_t child_limit,
+        size_t depth_limit, sr_node_t *sr_tree);
+
+/**
  * @brief Convert a set of libyang nodes into an array of sysrepo trees. For each node a corresponding
  * sysrepo (sub)tree is constructed. It is assumed that the input nodes are not descendands and predecessors
  * of each other! With this assumption the links between the output trees does not need to be considered which
@@ -345,6 +358,24 @@ int sr_copy_node_to_tree(const struct lyd_node *node, sr_node_t *sr_tree);
  * @param [out] count Number of returned trees.
  */
 int sr_nodes_to_trees(struct ly_set *nodes, sr_mem_ctx_t *sr_mem, sr_node_t **sr_trees, size_t *count);
+
+/**
+ * @brief Convert a set of libyang nodes into an array of sysrepo tree chunks. For each node a corresponding
+ * sysrepo (sub)tree chunk is constructed. It is assumed that the input nodes are not descendands and predecessors
+ * of each other! With this assumption the links between the output tree chunks does not need to be considered which
+ * significantly decreses the cost of this operation.
+ *
+ * @param [in] nodes A set of libyang nodes.
+ * @param [in] slice_offset Number of child nodes of each chunk root to skip.
+ * @param [in] slice_width Maximum number of child nodes of each chunk root to include.
+ * @param [in] child_limit Limit on the number of copied children imposed on each node starting from the 3rd level.
+ * @param [in] depth_limit Maximum number of tree levels to copy.
+ * @param [in] sr_mem Sysrepo memory context to use for memory allocation. Can be NULL.
+ * @param [out] sr_trees Returned array of sysrepo trees.
+ * @param [out] count Number of returned trees.
+ */
+int sr_nodes_to_tree_chunks(struct ly_set *nodes, size_t slice_offset, size_t slice_width, size_t child_limit,
+        size_t depth_limit, sr_mem_ctx_t *sr_mem, sr_node_t **sr_trees, size_t *count);
 
 /**
  * @brief Convert a sysrepo tree into a libyang data tree.
@@ -393,6 +424,11 @@ void sr_free_values_arr_range(sr_val_t **values, const size_t from, const size_t
  * @brief Frees contents of a sysrepo tree, does not free the root node itself.
  */
 void sr_free_tree_content(sr_node_t *tree);
+
+/**
+ * @brief Frees a single sysrepo node.
+ */
+void sr_free_node(sr_node_t *node);
 
 /**
  * @brief Frees an array of detailed error information.
