@@ -961,6 +961,33 @@ cl_children_subscription_test(void **state)
 }
 
 int
+cl_empty_module_cb (sr_session_ctx_t *session, const char *module_name, sr_notif_event_t ev, void *private_ctx)
+{
+    return SR_ERR_OK;
+}
+
+
+static void
+cl_subscribe_top_level_mandatory(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+    sr_session_ctx_t *session = NULL;
+    sr_subscription_ctx_t *subscription = NULL;
+    int rc = SR_ERR_OK;
+
+    /* start session */
+    rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_module_change_subscribe(session, "top-level-mandatory", cl_empty_module_cb, NULL, 0, SR_SUBSCR_DEFAULT, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    sr_unsubscribe(session, subscription);
+    sr_session_stop(session);
+}
+
+int
 main()
 {
     const struct CMUnitTest tests[] = {
@@ -974,6 +1001,7 @@ main()
         cmocka_unit_test_setup_teardown(cl_whole_module_changes, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_invalid_xpath_test, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_children_subscription_test, sysrepo_setup, sysrepo_teardown),
+        cmocka_unit_test_setup_teardown(cl_subscribe_top_level_mandatory, sysrepo_setup, sysrepo_teardown),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);

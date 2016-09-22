@@ -34,15 +34,31 @@ def print_value(value):
         if (value.data().get_bool()):
             print "= true"
         else:
-            print "= true"
+            print "= false"
+    elif (value.type() == sr.SR_ENUM_T):
+        print "= " + value.data().get_enum()
     elif (value.type() == sr.SR_UINT8_T):
         print "= " + repr(value.data().get_uint8())
     elif (value.type() == sr.SR_UINT16_T):
         print "= " + repr(value.data().get_uint16())
     elif (value.type() == sr.SR_UINT32_T):
         print "= " + repr(value.data().get_uint32())
+    elif (value.type() == sr.SR_UINT64_T):
+        print "= " + repr(value.data().get_uint64())
+    elif (value.type() == sr.SR_INT8_T):
+        print "= " + repr(value.data().get_int8())
+    elif (value.type() == sr.SR_INT16_T):
+        print "= " + repr(value.data().get_int16())
+    elif (value.type() == sr.SR_INT32_T):
+        print "= " + repr(value.data().get_int32())
+    elif (value.type() == sr.SR_INT64_T):
+        print "= " + repr(value.data().get_int64())
     elif (value.type() == sr.SR_IDENTITYREF_T):
         print "= " + repr(value.data().get_identityref())
+    elif (value.type() == sr.SR_BITS_T):
+        print "= " + repr(value.data().get_bits())
+    elif (value.type() == sr.SR_BINARY_T):
+        print "= " + repr(value.data().get_binary())
     else:
         print "(unprintable)"
 
@@ -54,10 +70,9 @@ def print_current_config(session, module_name):
     for i in range(values.val_cnt()):
         print_value(values.val(i))
 
-def module_change_cb(session, module_name, event, private_ctx):
+def module_change_cb(sess, module_name, event, private_ctx):
     print "\n\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: ==========\n"
 
-    sess = sr.Session(session)
     print_current_config(sess, module_name)
 
 try:

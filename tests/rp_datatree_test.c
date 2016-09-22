@@ -1396,16 +1396,10 @@ void get_value_wrapper_test(void **state){
     rc = rp_dt_get_value_wrapper(ctx, ses_ctx, NULL, "/test-module:*", &value);
     assert_int_equal(SR_ERR_INVAL_ARG, rc);
 
-    /* since yang 1.1 empty container might be present */
+    /* empty data tree */
     ses_ctx->state = RP_REQ_NEW;
     rc = rp_dt_get_value_wrapper(ctx, ses_ctx, NULL, "/small-module:item", &value);
-    assert_int_equal(SR_ERR_OK, rc);
-    assert_non_null(value);
-    assert_string_equal(value->xpath, "/small-module:item");
-    assert_int_equal(SR_CONTAINER_T, value->type);
-    assert_true(value->dflt);
-    sr_free_val(value);
-    value = NULL;
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
     /* not exisiting now in existing data tree*/
     ses_ctx->state = RP_REQ_NEW;
@@ -1433,15 +1427,10 @@ void get_tree_wrapper_test(void **state){
     rc = rp_dt_get_subtree_wrapper(ctx, ses_ctx, NULL, "/test-module:*", &tree);
     assert_int_equal(SR_ERR_INVAL_ARG, rc);
 
-    /* since yang 1.1 empty container might be present */
+    /* empty data tree */
     ses_ctx->state = RP_REQ_NEW;
     rc = rp_dt_get_subtree_wrapper(ctx, ses_ctx, NULL, "/small-module:item", &tree);
-    assert_int_equal(SR_ERR_OK, rc);
-    assert_non_null(tree);
-    assert_string_equal("item", tree->name);
-    assert_int_equal(SR_CONTAINER_T, tree->type);
-    assert_true(tree->dflt);
-    sr_free_tree(tree);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
     tree = NULL;
 
     /* not exisiting now in existing data tree*/
@@ -1821,13 +1810,10 @@ default_nodes_toplevel_test(void **state)
     rc = rp_dt_commit(ctx, ses_ctx, &errors, &e_cnt);
     assert_int_equal(SR_ERR_OK, rc);
 
-    /* top-level default value with empty data tree */
+    /* top-level default value with empty data tree is not present #333, will be added during commit or validate */
     ses_ctx->state = RP_REQ_NEW;
     rc = rp_dt_get_value_wrapper(ctx, ses_ctx, NULL, "/test-module:top-level-default", &val);
-    assert_int_equal(SR_ERR_OK, rc);
-    assert_non_null(val);
-    assert_true(val->dflt);
-    sr_free_val(val);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
     test_rp_session_cleanup(ctx, ses_ctx);
 }

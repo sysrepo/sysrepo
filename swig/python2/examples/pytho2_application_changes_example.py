@@ -34,32 +34,48 @@ def print_value(value):
         if (value.data().get_bool()):
             print "= true"
         else:
-            print "= true"
+            print "= false"
+    elif (value.type() == sr.SR_ENUM_T):
+        print "= " + value.data().get_enum()
     elif (value.type() == sr.SR_UINT8_T):
         print "= " + repr(value.data().get_uint8())
     elif (value.type() == sr.SR_UINT16_T):
         print "= " + repr(value.data().get_uint16())
     elif (value.type() == sr.SR_UINT32_T):
         print "= " + repr(value.data().get_uint32())
+    elif (value.type() == sr.SR_UINT64_T):
+        print "= " + repr(value.data().get_uint64())
+    elif (value.type() == sr.SR_INT8_T):
+        print "= " + repr(value.data().get_int8())
+    elif (value.type() == sr.SR_INT16_T):
+        print "= " + repr(value.data().get_int16())
+    elif (value.type() == sr.SR_INT32_T):
+        print "= " + repr(value.data().get_int32())
+    elif (value.type() == sr.SR_INT64_T):
+        print "= " + repr(value.data().get_int64())
     elif (value.type() == sr.SR_IDENTITYREF_T):
         print "= " + repr(value.data().get_identityref())
+    elif (value.type() == sr.SR_BITS_T):
+        print "= " + repr(value.data().get_bits())
+    elif (value.type() == sr.SR_BINARY_T):
+        print "= " + repr(value.data().get_binary())
     else:
         print "(unprintable)"
 
 def print_change(op, old_val, new_val):
-    if (op.get() == sr.SR_OP_CREATED):
+    if (op == sr.SR_OP_CREATED):
            print "CREATED: ",
            print_value(new_val)
-    elif (op.get() == sr.SR_OP_DELETED):
+    elif (op == sr.SR_OP_DELETED):
            print "DELETED: ",
            print_value(old_val);
-    elif (op.get() == sr.SR_OP_MODIFIED):
+    elif (op == sr.SR_OP_MODIFIED):
            print "MODIFIED: ",
            print "old value",
            print_value(old_val)
            print "new value",
            print_value(new_val)
-    elif (op.get() == sr.SR_OP_MOVED):
+    elif (op == sr.SR_OP_MOVED):
         print "MOVED: " + new_val.get_xpath() + " after " + old_val.get_xpath()
 
 def print_current_config(session, module_name):
@@ -70,18 +86,13 @@ def print_current_config(session, module_name):
     for i in range(values.val_cnt()):
         print_value(values.val(i))
 
-def module_change_cb(session, module_name, event, private_ctx):
-#def module_change_cb(module_name):
+def module_change_cb(sess, module_name, event, private_ctx):
     print "\n\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: ==========\n\n"
-    old_value = sr.Val_Holder()
-    new_value = sr.Val_Holder()
 
     try:
-        sess = sr.Session(session)
+        print_current_config(sess, module_name)
 
         print "\n\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: ==========\n\n"
-
-        print_current_config(sess, module_name)
 
         print "\n\n ========== CHANGES: =============================================\n\n"
 
@@ -91,10 +102,10 @@ def module_change_cb(session, module_name, event, private_ctx):
         it = subscribe.get_changes_iter(change_path);
 
         while True:
-            oper = subscribe.get_change_next(it, old_value, new_value)
-            if oper == None:
+            change = subscribe.get_change_next(it)
+            if change == None:
                 break
-            print_change(oper, old_value.val(), new_value.val())
+            print_change(change.oper(), change.old_val(), change.new_val())
 
         print "\n\n ========== END OF CHANGES =======================================\n\n"
 

@@ -7,7 +7,6 @@
 %shared_ptr(Session)
 %shared_ptr(Subscribe)
 %shared_ptr(Connection)
-%shared_ptr(Operation)
 %shared_ptr(Schema_Content)
 %shared_ptr(Schemas)
 %shared_ptr(Throw_Exception)
@@ -24,9 +23,15 @@
 %shared_ptr(Val)
 %shared_ptr(Val_Holder)
 %shared_ptr(Vals)
+%shared_ptr(Tree)
+%shared_ptr(Trees)
+%shared_ptr(Xpath_Ctx)
+%shared_ptr(Change)
 
 %include "../swig_base/sysrepo.i"
 %include "../swig_base/structs.i"
+%include "../swig_base/tree.i"
+%include "../swig_base/xpath.i"
 %include "../swig_base/session.i"
 %include "../swig_base/connection.i"
 %include "../swig_base/libsysrepoEnums.i"

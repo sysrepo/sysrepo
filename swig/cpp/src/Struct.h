@@ -26,24 +26,13 @@
 #include <memory>
 
 #include "Sysrepo.h"
+#include "Internal.h"
 
 extern "C" {
 #include "sysrepo.h"
 }
 
 using namespace std;
-
-// Operation type wrapeer class
-class Operation
-{
-public:
-    Operation(sr_change_oper_t oper);
-    ~Operation();
-    sr_change_oper_t get() {return _oper;};
-
-private:
-    sr_change_oper_t _oper;
-};
 
 // class for sysrepo C union sr_data_t
 class Data:public Throw_Exception
@@ -77,7 +66,7 @@ private:
 class Val:public Throw_Exception
 {
 public:
-    Val(sr_val_t *val, bool free = true);
+    Val(sr_val_t *val, S_Counter counter);
     Val(const char *val, sr_type_t type = SR_STRING_T);
     Val(bool bool_val, sr_type_t type = SR_BOOL_T);
     Val(double decimal64_val, sr_type_t type = SR_DECIMAL64_T);
@@ -89,46 +78,56 @@ public:
     Val(uint16_t uint16_val, sr_type_t type = SR_UINT16_T);
     Val(uint32_t uint32_val, sr_type_t type = SR_UINT32_T);
     Val(uint64_t uint64_val, sr_type_t type = SR_UINT64_T);
-    ~Val();
+   ~Val();
+    void set(const char *xpath, const char *val, sr_type_t type = SR_STRING_T);
+    void set(const char *xpath, bool bool_val, sr_type_t type = SR_BOOL_T);
+    void set(const char *xpath, double decimal64_val, sr_type_t type);
+    void set(const char *xpath, int8_t int8_val, sr_type_t type);
+    void set(const char *xpath, int16_t int16_val, sr_type_t type);
+    void set(const char *xpath, int32_t int32_val, sr_type_t type);
+    void set(const char *xpath, int64_t int64_val, sr_type_t type);
+    void set(const char *xpath, uint8_t uint8_val, sr_type_t type);
+    void set(const char *xpath, uint16_t uint16_val, sr_type_t type);
+    void set(const char *xpath, uint32_t uint32_val, sr_type_t type);
+    void set(const char *xpath, uint64_t uint64_val, sr_type_t type);
+    void set(const char *xpath, sr_type_t type);
     char *xpath() {return _val->xpath;};
     void xpath_set(char *data) {_val->xpath = data;};
     sr_type_t type() {return _val->type;};
     bool dflt() {return _val->dflt;};
     void dflt_set(bool data) {_val->dflt = data;};
-    shared_ptr<Data> data() {shared_ptr<Data> data(new Data(_val->data, _val->type)); return data;};
+    S_Data data() {S_Data data(new Data(_val->data, _val->type)); return data;};
     sr_val_t *get() {return _val;};
+    S_Val dup();
 
 private:
     sr_val_t *_val;
-    bool _free;
-};
-
-
-// class for sysrepo C double pointer struct sr_val_t
-class Val_Holder
-{
-public:
-    Val_Holder(sr_val_t *val = NULL);
-    ~Val_Holder();
-    sr_val_t **get() {return &_val;};
-    shared_ptr<Val> val();
-
-private:
-    sr_val_t *_val;
+    S_Counter _counter;
 };
 
 // class for list of sysrepo C structs sr_val_t
-class Vals
+class Vals:public Throw_Exception
 {
 public:
-    Vals(sr_val_t *vals, size_t cnt);
+    Vals(const sr_val_t *vals, const size_t cnt, S_Counter counter = NULL);
+    Vals(sr_val_t **vals, size_t *cnt, S_Counter counter = NULL);
+    Vals(size_t cnt);
+    Vals();
     ~Vals();
-    shared_ptr<Val> val(size_t n);
+    void allocate(size_t n);
+    S_Val val(size_t n);
     size_t val_cnt() {return _cnt;};
+    size_t *p_val_cnt() {return &_cnt;};
+    sr_val_t *val() {return _vals;};
+    sr_val_t **p_val() {return &_vals;};
+    S_Vals dup();
 
 private:
     size_t _cnt;
+    size_t *p_cnt;
     sr_val_t *_vals;
+    S_Counter _counter;
+    bool _allocate;
 };
 
 class Val_Iter
@@ -172,34 +171,12 @@ class Errors
 public:
     Errors(const sr_error_info_t *info, size_t cnt);
     ~Errors();
-    shared_ptr<Error> error(size_t n);
+    S_Error error(size_t n);
     size_t error_cnt() {return _cnt;};
 
 private:
     size_t _cnt;
     const sr_error_info_t *_info;
-};
-
-// class for sysrepo C struct sr_error_info_t
-class Node
-{
-public:
-    Node(const sr_node_t *node);
-    ~Node();
-    sr_mem_ctx_t *_sr_mem() {return _node->_sr_mem;};
-    char *name() {return _node->name;};
-    sr_type_t type() {return _node->type;};
-    bool dflt() {return _node->dflt;};
-    shared_ptr<Data> data() {shared_ptr<Data> data(new Data(_node->data, _node->type)); return data;};
-    char *module_name() {return _node->module_name;};
-    shared_ptr<Node> parent();
-    shared_ptr<Node> next();
-    shared_ptr<Node> prev();
-    shared_ptr<Node> first_child();
-    shared_ptr<Node> last_child();
-
-private:
-    const sr_node_t *_node;
 };
 
 // class for sysrepo C struct sr_sch_revision_t
@@ -223,7 +200,7 @@ public:
     Schema_Submodule(sr_sch_submodule_t sub);
     ~Schema_Submodule();
     const char *submodule_name() {return _sub.submodule_name;};
-    shared_ptr<Schema_Revision> revision();
+    S_Schema_Revision revision();
 
 private:
     sr_sch_submodule_t _sub;
@@ -238,8 +215,8 @@ public:
     const char *module_name() {return _sch->module_name;};
     const char *ns() {return _sch->ns;};
     const char *prefix() {return _sch->prefix;};
-    shared_ptr<Schema_Revision> revision();
-    shared_ptr<Schema_Submodule> submodule(size_t n);
+    S_Schema_Revision revision();
+    S_Schema_Submodule submodule(size_t n);
     size_t submodule_cnt() {return _sch->submodule_count;};
     char *enabled_features(size_t n);
     size_t enabled_feature_cnt() {return _sch->enabled_feature_cnt;};
@@ -254,7 +231,7 @@ class Yang_Schemas
 public:
     Yang_Schemas(sr_schema_t *sch, size_t cnt);
     ~Yang_Schemas();
-    shared_ptr<Yang_Schema> schema(size_t n);
+    S_Yang_Schema schema(size_t n);
     size_t schema_cnt() {return _cnt;};
 
 private:
@@ -282,7 +259,7 @@ class Fd_Changes
 public:
     Fd_Changes(sr_fd_change_t *ch, size_t cnt);
     ~Fd_Changes();
-    shared_ptr<Fd_Change> fd_change(size_t n);
+    S_Fd_Change fd_change(size_t n);
 
 private:
     sr_fd_change_t *_ch;
@@ -312,6 +289,27 @@ public:
 
 private:
     sr_change_iter_t *_iter;
+};
+
+// Change type wrapeer class
+class Change:public Throw_Exception
+{
+public:
+    Change();
+    ~Change();
+    sr_change_oper_t oper() {if (!_oper) throw_exception(SR_ERR_DATA_MISSING); return *_oper;};
+    S_Val new_val();
+    S_Val old_val();
+    sr_change_oper_t *p_oper() {return _oper;};
+    sr_val_t **p_old() {return &_old;};
+    sr_val_t **p_new() {return &_new;};
+
+private:
+    sr_change_oper_t *_oper;
+    sr_val_t *_new;
+    sr_val_t *_old;
+    S_Counter _counter_new;
+    S_Counter _counter_old;
 };
 
 #endif

@@ -24,15 +24,15 @@
 
 #include "Struct.h"
 #include "Sysrepo.h"
+#include "Internal.h"
 
 extern "C" {
 #include "sysrepo.h"
+#include "sysrepo/values.h"
+#include "sysrepo/trees.h"
 }
 
 using namespace std;
-
-Operation::Operation(sr_change_oper_t oper) {_oper = oper;}
-Operation::~Operation() {return;}
 
 // Data
 Data::Data(sr_data_t data, sr_type_t type) {_d = data; _t = type;}
@@ -103,17 +103,13 @@ uint64_t Data::get_uint64() {
 }
 
 // Val
-Val::Val(sr_val_t *val, bool free) {
+Val::Val(sr_val_t *val, S_Counter counter) {
     if (val == NULL)
         throw_exception(SR_ERR_INVAL_ARG);
     _val = val;
-    _free = free;
+    _counter = counter;
 }
-Val::~Val() {
-    if (_free && _val != NULL)
-        sr_free_val(_val);
-    return;
-}
+Val::~Val() {return;}
 Val::Val(const char *value, sr_type_t type) {
     sr_val_t *val = NULL;
     val = (sr_val_t*) calloc(1, sizeof(sr_val_t));
@@ -138,6 +134,8 @@ Val::Val(const char *value, sr_type_t type) {
 
     val->type = type;
     _val = val;
+    S_Counter counter(new Counter(val));
+    _counter = counter;
 }
 Val::Val(bool bool_val, sr_type_t type) {
     sr_val_t *val = NULL;
@@ -153,6 +151,8 @@ Val::Val(bool bool_val, sr_type_t type) {
 
     val->type = type;
     _val = val;
+    S_Counter counter(new Counter(val));
+    _counter = counter;
 }
 Val::Val(double decimal64_val, sr_type_t type) {
     sr_val_t *val = NULL;
@@ -168,6 +168,8 @@ Val::Val(double decimal64_val, sr_type_t type) {
 
     val->type = type;
     _val = val;
+    S_Counter counter(new Counter(val));
+    _counter = counter;
 }
 Val::Val(int8_t int8_val, sr_type_t type) {
     sr_val_t *val = NULL;
@@ -183,6 +185,8 @@ Val::Val(int8_t int8_val, sr_type_t type) {
 
     val->type = type;
     _val = val;
+    S_Counter counter(new Counter(val));
+    _counter = counter;
 }
 Val::Val(int16_t int16_val, sr_type_t type) {
     sr_val_t *val = NULL;
@@ -198,6 +202,8 @@ Val::Val(int16_t int16_val, sr_type_t type) {
 
     val->type = type;
     _val = val;
+    S_Counter counter(new Counter(val));
+    _counter = counter;
 }
 Val::Val(int32_t int32_val, sr_type_t type) {
     sr_val_t *val = NULL;
@@ -213,6 +219,8 @@ Val::Val(int32_t int32_val, sr_type_t type) {
 
     val->type = type;
     _val = val;
+    S_Counter counter(new Counter(val));
+    _counter = counter;
 }
 Val::Val(int64_t int64_val, sr_type_t type) {
     sr_val_t *val = NULL;
@@ -245,6 +253,8 @@ Val::Val(int64_t int64_val, sr_type_t type) {
 
     val->type = type;
     _val = val;
+    S_Counter counter(new Counter(val));
+    _counter = counter;
 }
 Val::Val(uint8_t uint8_val, sr_type_t type) {
     sr_val_t *val = NULL;
@@ -260,6 +270,8 @@ Val::Val(uint8_t uint8_val, sr_type_t type) {
 
     val->type = type;
     _val = val;
+    S_Counter counter(new Counter(val));
+    _counter = counter;
 }
 Val::Val(uint16_t uint16_val, sr_type_t type) {
     sr_val_t *val = NULL;
@@ -275,6 +287,8 @@ Val::Val(uint16_t uint16_val, sr_type_t type) {
 
     val->type = type;
     _val = val;
+    S_Counter counter(new Counter(val));
+    _counter = counter;
 }
 Val::Val(uint32_t uint32_val, sr_type_t type) {
     sr_val_t *val = NULL;
@@ -290,6 +304,8 @@ Val::Val(uint32_t uint32_val, sr_type_t type) {
 
     val->type = type;
     _val = val;
+    S_Counter counter(new Counter(val));
+    _counter = counter;
 }
 Val::Val(uint64_t uint64_val, sr_type_t type) {
     sr_val_t *val = NULL;
@@ -305,34 +321,278 @@ Val::Val(uint64_t uint64_val, sr_type_t type) {
 
     val->type = type;
     _val = val;
+    S_Counter counter(new Counter(val));
+    _counter = counter;
+}
+void Val::set(const char *xpath, const char *value, sr_type_t type) {
+    if (_val == NULL) throw_exception(SR_ERR_OPERATION_FAILED);
+
+    int ret = sr_val_set_xpath(_val, xpath);
+    if (ret != SR_ERR_OK) throw_exception(ret);
+
+    if (type == SR_BINARY_T) {
+	    _val->data.binary_val = (char *) value;
+    } else if (type == SR_BITS_T) {
+	    _val->data.bits_val = (char *) value;
+    } else if (type == SR_ENUM_T) {
+	    _val->data.enum_val = (char *) value;
+    } else if (type == SR_IDENTITYREF_T) {
+	    _val->data.identityref_val = (char *) value;
+    } else if (type == SR_INSTANCEID_T) {
+	    _val->data.instanceid_val = (char *) value;
+    } else if (type == SR_STRING_T) {
+	    _val->data.string_val = (char *) value;
+    } else {
+        throw_exception(SR_ERR_INVAL_ARG);
+    }
+
+    _val->type = type;
+}
+void Val::set(const char *xpath, bool bool_val, sr_type_t type) {
+    if (_val == NULL) throw_exception(SR_ERR_OPERATION_FAILED);
+
+    int ret = sr_val_set_xpath(_val, xpath);
+    if (ret != SR_ERR_OK) throw_exception(ret);
+
+    if (type == SR_BOOL_T) {
+	    _val->data.bool_val = bool_val;
+    } else {
+        throw_exception(SR_ERR_INVAL_ARG);
+    }
+
+    _val->type = type;
+}
+void Val::set(const char *xpath, double decimal64_val, sr_type_t type) {
+    if (_val == NULL) throw_exception(SR_ERR_OPERATION_FAILED);
+
+    int ret = sr_val_set_xpath(_val, xpath);
+    if (ret != SR_ERR_OK) throw_exception(ret);
+
+    if (type == SR_DECIMAL64_T) {
+	    _val->data.decimal64_val = decimal64_val;
+    } else {
+        throw_exception(SR_ERR_INVAL_ARG);
+    }
+
+    _val->type = type;
+}
+void Val::set(const char *xpath, int8_t int8_val, sr_type_t type) {
+    if (_val == NULL) throw_exception(SR_ERR_OPERATION_FAILED);
+
+    int ret = sr_val_set_xpath(_val, xpath);
+    if (ret != SR_ERR_OK) throw_exception(ret);
+
+    if (type == SR_INT8_T) {
+	    _val->data.int8_val = int8_val;
+    } else {
+        throw_exception(SR_ERR_INVAL_ARG);
+    }
+
+    _val->type = type;
+}
+void Val::set(const char *xpath, int16_t int16_val, sr_type_t type) {
+    if (_val == NULL) throw_exception(SR_ERR_OPERATION_FAILED);
+
+    int ret = sr_val_set_xpath(_val, xpath);
+    if (ret != SR_ERR_OK) throw_exception(ret);
+
+    if (type == SR_INT16_T) {
+	    _val->data.int16_val = int16_val;
+    } else {
+        throw_exception(SR_ERR_INVAL_ARG);
+    }
+
+    _val->type = type;
+}
+void Val::set(const char *xpath, int32_t int32_val, sr_type_t type) {
+    if (_val == NULL) throw_exception(SR_ERR_OPERATION_FAILED);
+
+    int ret = sr_val_set_xpath(_val, xpath);
+    if (ret != SR_ERR_OK) throw_exception(ret);
+
+    if (type == SR_INT32_T) {
+	    _val->data.int32_val = int32_val;
+    } else {
+        throw_exception(SR_ERR_INVAL_ARG);
+    }
+
+    _val->type = type;
 }
 
-/// Val_Holder
-Val_Holder::Val_Holder(sr_val_t *val) {_val = val;}
-Val_Holder::~Val_Holder() {
-    if (_val != NULL)
-        sr_free_val(_val);
-    return;
+void Val::set(const char *xpath, int64_t int64_val, sr_type_t type) {
+    if (_val == NULL) throw_exception(SR_ERR_OPERATION_FAILED);
+
+    int ret = sr_val_set_xpath(_val, xpath);
+    if (ret != SR_ERR_OK) throw_exception(ret);
+
+    if (type == SR_DECIMAL64_T) {
+	    _val->data.uint64_val = (double) int64_val;
+    } else if (type == SR_UINT64_T) {
+        _val->data.uint64_val = (uint64_t) int64_val;
+    } else if (type == SR_UINT32_T) {
+        _val->data.uint32_val = (uint32_t) int64_val;
+    } else if (type == SR_UINT16_T) {
+        _val->data.uint16_val = (uint16_t) int64_val;
+    } else if (type == SR_UINT8_T) {
+        _val->data.uint8_val = (uint8_t) int64_val;
+    } else if (type == SR_INT64_T) {
+        _val->data.int64_val = (int64_t) int64_val;
+    } else if (type == SR_INT32_T) {
+        _val->data.int32_val = (int32_t) int64_val;
+    } else if (type == SR_INT16_T) {
+        _val->data.int16_val = (int16_t) int64_val;
+    } else if (type == SR_INT8_T) {
+        _val->data.int8_val = (int8_t) int64_val;
+    } else {
+        throw_exception(SR_ERR_INVAL_ARG);
+    }
+
+    _val->type = type;
 }
-shared_ptr<Val> Val_Holder::val() {
-    if (_val == NULL)
-        return NULL;
-    shared_ptr<Val> val(new Val(_val, false));
+void Val::set(const char *xpath, uint8_t uint8_val, sr_type_t type) {
+    if (_val == NULL) throw_exception(SR_ERR_OPERATION_FAILED);
+
+    int ret = sr_val_set_xpath(_val, xpath);
+    if (ret != SR_ERR_OK) throw_exception(ret);
+
+    if (type == SR_UINT8_T) {
+	    _val->data.uint8_val = uint8_val;
+    } else {
+        throw_exception(SR_ERR_INVAL_ARG);
+    }
+
+    _val->type = type;
+}
+void Val::set(const char *xpath, uint16_t uint16_val, sr_type_t type) {
+    if (_val == NULL) throw_exception(SR_ERR_OPERATION_FAILED);
+
+    int ret = sr_val_set_xpath(_val, xpath);
+    if (ret != SR_ERR_OK) throw_exception(ret);
+
+    if (type == SR_UINT16_T) {
+	    _val->data.uint16_val = uint16_val;
+    } else {
+        throw_exception(SR_ERR_INVAL_ARG);
+    }
+
+    _val->type = type;
+}
+void Val::set(const char *xpath, uint32_t uint32_val, sr_type_t type) {
+    if (_val == NULL) throw_exception(SR_ERR_OPERATION_FAILED);
+
+    int ret = sr_val_set_xpath(_val, xpath);
+    if (ret != SR_ERR_OK) throw_exception(ret);
+
+    if (type == SR_UINT32_T) {
+	    _val->data.uint32_val = uint32_val;
+    } else {
+        throw_exception(SR_ERR_INVAL_ARG);
+    }
+
+    _val->type = type;
+}
+void Val::set(const char *xpath, uint64_t uint64_val, sr_type_t type) {
+    if (_val == NULL) throw_exception(SR_ERR_OPERATION_FAILED);
+
+    int ret = sr_val_set_xpath(_val, xpath);
+    if (ret != SR_ERR_OK) throw_exception(ret);
+
+    if (type == SR_UINT64_T) {
+	    _val->data.uint64_val = uint64_val;
+    } else {
+        throw_exception(SR_ERR_INVAL_ARG);
+    }
+
+    _val->type = type;
+}
+void Val::set(const char *xpath, sr_type_t type) {
+    if (_val == NULL) throw_exception(SR_ERR_OPERATION_FAILED);
+
+    int ret = sr_val_set_xpath(_val, xpath);
+    if (ret != SR_ERR_OK) throw_exception(ret);
+
+    if (type != SR_LIST_T && type != SR_CONTAINER_T && type != SR_CONTAINER_PRESENCE_T &&\
+        type != SR_UNKNOWN_T && type != SR_LEAF_EMPTY_T && type != SR_UNION_T) {
+        throw_exception(SR_ERR_INVAL_ARG);
+    }
+
+    _val->type = type;
+}
+S_Val Val::dup() {
+    sr_val_t *new_val = NULL;
+    int ret = sr_dup_val(_val, &new_val);
+    if (ret != SR_ERR_OK)
+        throw_exception(ret);
+
+    S_Counter counter(new Counter(new_val));
+    S_Val val(new Val(new_val, counter));
     return val;
 }
+
 // Vals
-Vals::Vals(sr_val_t *vals, size_t cnt) {_vals = vals; _cnt = cnt;}
+Vals::Vals(const sr_val_t *vals, const size_t cnt, S_Counter counter) {
+    _vals = (sr_val_t *) vals;
+    _cnt = (size_t) cnt;
+    p_cnt = NULL;
+
+    _counter = counter;
+    _allocate = false;
+}
+Vals::Vals(sr_val_t **vals, size_t *cnt, S_Counter counter) {
+    p_cnt = cnt;
+    _vals = *vals;
+    _cnt = 0;
+    _counter = counter;
+    _allocate = true;
+}
+Vals::Vals(size_t cnt) {
+    int ret = sr_new_values(cnt, &_vals);
+    if (ret != SR_ERR_OK)
+        throw_exception(ret);
+
+    _cnt = cnt;
+    p_cnt = NULL;
+    S_Counter counter(new Counter(_vals, _cnt));
+    _counter = counter;
+    _allocate = false;
+}
+Vals::Vals() {
+    _vals = NULL;
+    _cnt = 0;
+    p_cnt = NULL;
+    S_Counter counter(new Counter(&_vals, &_cnt));
+    _counter = counter;
+    _allocate = true;
+}
 Vals::~Vals() {
-    if (_vals != NULL)
-        sr_free_values(_vals, _cnt);
     return;
 }
-shared_ptr<Val> Vals::val(size_t n) {
-    if (n >= _cnt)
+void Vals::allocate(size_t n) {
+    if (!_allocate)
+        throw_exception(SR_ERR_DATA_EXISTS);
+    int ret = sr_new_values(n, &_vals);
+    if (ret != SR_ERR_OK)
+        throw_exception(ret);
+
+    _cnt = n;
+    *p_cnt = n;
+    _allocate = false;
+}
+S_Val Vals::val(size_t n) {
+    if (n >= _cnt || _vals == NULL)
         return NULL;
 
-    shared_ptr<Val> val(new Val(&_vals[n], false));
+    S_Val val(new Val(&_vals[n], _counter));
     return val;
+}
+S_Vals Vals::dup() {
+    sr_val_t *new_val = NULL;
+    int ret = sr_dup_values(_vals, _cnt, &new_val);
+    if (ret != SR_ERR_OK)
+        throw_exception(ret);
+
+    S_Vals vals(new Vals(new_val, _cnt));
+    return vals;
 }
 
 // Val_iter
@@ -350,51 +610,12 @@ Error::~Error() {return;}
 // Errors
 Errors::Errors(const sr_error_info_t *info, size_t cnt) {_info = info; _cnt = cnt;}
 Errors::~Errors() {return;}
-shared_ptr<Error> Errors::error(size_t n) {
+S_Error Errors::error(size_t n) {
     if (n >= _cnt)
         return NULL;
 
-    shared_ptr<Error> error(new Error(&_info[n]));
+    S_Error error(new Error(&_info[n]));
     return error;
-}
-
-// Node
-Node::Node(const sr_node_t *node) {_node = node;}
-Node::~Node() {return;}
-shared_ptr<Node> Node::parent() {
-    if (_node->parent == NULL)
-        return NULL;
-
-    shared_ptr<Node> node(new Node(_node->parent));
-    return NULL;
-}
-shared_ptr<Node> Node::next() {
-    if (_node->next == NULL)
-        return NULL;
-
-    shared_ptr<Node> node(new Node(_node->next));
-    return NULL;
-}
-shared_ptr<Node> Node::prev() {
-    if (_node->prev == NULL)
-        return NULL;
-
-    shared_ptr<Node> node(new Node(_node->prev));
-    return NULL;
-}
-shared_ptr<Node> Node::first_child() {
-    if (_node->first_child == NULL)
-        return NULL;
-
-    shared_ptr<Node> node(new Node(_node->first_child));
-    return NULL;
-}
-shared_ptr<Node> Node::last_child() {
-    if (_node->last_child == NULL)
-        return NULL;
-
-    shared_ptr<Node> node(new Node(_node->last_child));
-    return NULL;
 }
 
 // Schema_Revision
@@ -404,23 +625,23 @@ Schema_Revision::~Schema_Revision() {return;}
 // Schema_Submodule
 Schema_Submodule::Schema_Submodule(sr_sch_submodule_t sub) {_sub = sub;}
 Schema_Submodule::~Schema_Submodule() {return;}
-shared_ptr<Schema_Revision> Schema_Submodule::revision() {
-    shared_ptr<Schema_Revision> rev(new Schema_Revision(_sub.revision));
+S_Schema_Revision Schema_Submodule::revision() {
+    S_Schema_Revision rev(new Schema_Revision(_sub.revision));
     return rev;
 }
 
 // Yang_Schema
 Yang_Schema::Yang_Schema(sr_schema_t *sch) {_sch = sch;}
 Yang_Schema::~Yang_Schema() {return;}
-shared_ptr<Schema_Revision> Yang_Schema::revision() {
-    shared_ptr<Schema_Revision> rev(new Schema_Revision(_sch->revision));
+S_Schema_Revision Yang_Schema::revision() {
+    S_Schema_Revision rev(new Schema_Revision(_sch->revision));
     return rev;
 }
-shared_ptr<Schema_Submodule> Yang_Schema::submodule(size_t n) {
+S_Schema_Submodule Yang_Schema::submodule(size_t n) {
     if (n >= _sch->submodule_count)
         return NULL;
 
-    shared_ptr<Schema_Submodule> sub(new Schema_Submodule(_sch->submodules[n]));
+    S_Schema_Submodule sub(new Schema_Submodule(_sch->submodules[n]));
     return sub;
 }
 char *Yang_Schema::enabled_features(size_t n) {
@@ -433,11 +654,11 @@ char *Yang_Schema::enabled_features(size_t n) {
 // Yang_Schemas
 Yang_Schemas::Yang_Schemas(sr_schema_t *sch, size_t cnt) {_sch = sch; _cnt = cnt;}
 Yang_Schemas::~Yang_Schemas() {return;}
-shared_ptr<Yang_Schema> Yang_Schemas::schema(size_t n) {
+S_Yang_Schema Yang_Schemas::schema(size_t n) {
     if (n >= _cnt)
         return NULL;
 
-    shared_ptr<Yang_Schema> rev(new Yang_Schema((sr_schema_t *) &_sch[n]));
+    S_Yang_Schema rev(new Yang_Schema((sr_schema_t *) &_sch[n]));
     return rev;
 }
 
@@ -448,11 +669,11 @@ Fd_Change::~Fd_Change() {return;}
 // Fd_Changes
 Fd_Changes::Fd_Changes(sr_fd_change_t *ch, size_t cnt) {_ch = ch; _cnt = cnt;}
 Fd_Changes::~Fd_Changes() {return;}
-shared_ptr<Fd_Change> Fd_Changes::fd_change(size_t n) {
+S_Fd_Change Fd_Changes::fd_change(size_t n) {
     if (n >= _cnt)
         return NULL;
 
-    shared_ptr<Fd_Change> change(new Fd_Change(&_ch[n]));
+    S_Fd_Change change(new Fd_Change(&_ch[n]));
     return change;
 }
 
@@ -466,3 +687,32 @@ void Iter_Value::Set(sr_val_iter_t *iter) {
 
 Iter_Change::Iter_Change(sr_change_iter_t *iter) {_iter = iter;}
 Iter_Change::~Iter_Change() {if (_iter) sr_free_change_iter(_iter);}
+
+Change::Change() {
+    _new = NULL;
+    _old = NULL;
+    _oper = NULL;
+    S_Counter counter_old(new Counter(_old));
+    S_Counter counter_new(new Counter(_new));
+
+    _counter_old = counter_old;
+    _counter_new = counter_new;
+}
+S_Val Change::new_val() {
+    if (_new == NULL) return NULL;
+
+    S_Val new_val(new Val(_new, _counter_new));
+    return new_val;
+}
+S_Val Change::old_val() {
+    if (_old == NULL) return NULL;
+
+    S_Val old_val(new Val(_old, _counter_old));
+    return old_val;
+}
+Change::~Change() {
+    if (_new)
+        sr_free_val(_new);
+    if (_old)
+        sr_free_val(_old);
+}

@@ -32,21 +32,21 @@ main(int argc, char **argv)
         Logs log;
         log.set_stderr(SR_LL_DBG);
 
-	shared_ptr<Connection> conn(new Connection("app3"));
+	S_Connection conn(new Connection("app3"));
 
-        shared_ptr<Session> sess(new Session(conn));
+        S_Session sess(new Session(conn));
 
         /* create new interface named 'gigaeth0' of type 'ethernetCsmacd' */
 	const char *xpath = "/ietf-interfaces:interfaces/interface[name='gigaeth0']/type";
 	const char *ethernet = "ethernetCsmacd";
-        shared_ptr<Val> value(new Val((char *) ethernet, SR_IDENTITYREF_T));
+        S_Val value(new Val((char *) ethernet, SR_IDENTITYREF_T));
         sess->set_item(xpath, value);
 
         /* set 'prefix-length' leaf inside of the 'address' list entry with key 'fe80::ab8'
         (list entry will be automatically created if it does not exist) */
         const char *xpath_num = "/ietf-interfaces:interfaces/interface[name='gigaeth0']/ietf-ip:ipv6/address[ip='fe80::ab8']/prefix-length";
         uint8_t num = 64;
-        shared_ptr<Val> value_num(new Val(num, SR_UINT8_T));
+        S_Val value_num(new Val(num, SR_UINT8_T));
         sess->set_item(xpath_num, value_num);
 
 	sess->commit();

@@ -26,7 +26,7 @@
 using namespace std;
 
 void
-print_value(shared_ptr<Val> value)
+print_value(S_Val value)
 {
     cout << value->xpath();
     cout << " ";
@@ -70,9 +70,9 @@ int
 main(int argc, char **argv)
 {
     try {
-        shared_ptr<Connection> conn(new Connection("app3"));
+        S_Connection conn(new Connection("app3"));
 
-        shared_ptr<Session> sess(new Session(conn));
+        S_Session sess(new Session(conn));
 
         const char *xpath = "/ietf-interfaces:interfaces/interface//*";
 

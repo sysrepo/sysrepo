@@ -144,9 +144,7 @@ cl_sm_fd_changeset_add(cl_sm_ctx_t *sm_ctx, int fd, int events, sr_fd_action_t a
     pthread_mutex_unlock(&sm_ctx->fd_changeset_lock);
 
     /* signal the changeset notify fd */
-    write(sm_ctx->fd_changeset_notify_pipe[1], "x", 1);
-
-    return SR_ERR_OK;
+    return 1 == write(sm_ctx->fd_changeset_notify_pipe[1], "x", 1) ? SR_ERR_OK : SR_ERR_INTERNAL;
 }
 
 /**

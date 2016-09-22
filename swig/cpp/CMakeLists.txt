@@ -1,20 +1,7 @@
-set(CMAKE_CXX_FLAGS         "${CMAKE_CXX_FLAGS} -Wall -Wpedantic -std=c++11")
-set(CMAKE_CXX_FLAGS_RELEASE "-DNDEBUG -O2")
-set(CMAKE_CXX_FLAGS_DEBUG   "-g -O0")
 remove_definitions(-DSWIG)
+remove_definitions(-DSWIGLUA)
 
 project(Sysrepo_cpp)
-set(SYSREPO_CPP_SOURCES
-	src/Sysrepo.cpp
-        src/Connection.cpp
-        src/Session.cpp
-        src/Struct.cpp)
-
-set(SYSREPO_H_SOURCES
-	src/Sysrepo.h
-        src/Connection.h
-        src/Session.h
-        src/Struct.cpp)
 
 add_library(Sysrepo_cpp SHARED ${SYSREPO_CPP_SOURCES})
 

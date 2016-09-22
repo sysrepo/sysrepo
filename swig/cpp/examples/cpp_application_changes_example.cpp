@@ -35,11 +35,10 @@ using namespace std;
 volatile int exit_application = 0;
 
 void
-print_value(shared_ptr<Val> value)
+print_value(S_Val value)
 {
     cout << value->xpath();
     cout << " ";
-
     switch (value->type()) {
     case SR_CONTAINER_T:
     case SR_CONTAINER_PRESENCE_T:
@@ -57,6 +56,9 @@ print_value(shared_ptr<Val> value)
 	else
             cout << "= false" << endl;
         break;
+    case SR_ENUM_T:
+        cout << "= " << value->data()->get_enum() << endl;;
+        break;
     case SR_UINT8_T:
         cout << "= " << unsigned(value->data()->get_uint8()) << endl;
         break;
@@ -66,8 +68,29 @@ print_value(shared_ptr<Val> value)
     case SR_UINT32_T:
         cout << "= " << unsigned(value->data()->get_uint32()) << endl;
         break;
-    case SR_IDENTITYREF_T:
+    case SR_UINT64_T:
+        cout << "= " << unsigned(value->data()->get_uint64()) << endl;
+        break;
+    case SR_INT8_T:
+        cout << "= " << value->data()->get_int8() << endl;
+        break;
+    case SR_INT16_T:
+        cout << "= " << value->data()->get_int16() << endl;
+        break;
+    case SR_INT32_T:
+        cout << "= " << value->data()->get_int32() << endl;
+        break;
+    case SR_INT64_T:
+        cout << "= " << value->data()->get_int64() << endl;
+        break;
+     case SR_IDENTITYREF_T:
         cout << "= " << value->data()->get_identityref() << endl;
+        break;
+    case SR_BITS_T:
+        cout << "= " << value->data()->get_bits() << endl;
+        break;
+    case SR_BINARY_T:
+        cout << "= " << value->data()->get_binary() << endl;
         break;
     default:
         cout << "(unprintable)" << endl;
@@ -76,39 +99,39 @@ print_value(shared_ptr<Val> value)
 }
 
 static void
-print_change(shared_ptr<Operation> op, shared_ptr<Val> old_val, shared_ptr<Val> new_val) {
-    switch(op->get()) {
+print_change(S_Change change) {
+    switch(change->oper()) {
     case SR_OP_CREATED:
-        if (NULL != new_val) {
+        if (NULL != change->new_val()) {
            printf("CREATED: ");
-           print_value(new_val);
+           print_value(change->new_val());
         }
         break;
     case SR_OP_DELETED:
-        if (NULL != old_val) {
+        if (NULL != change->old_val()) {
            printf("DELETED: ");
-           print_value(old_val);
+           print_value(change->old_val());
         }
 	break;
     case SR_OP_MODIFIED:
-        if (NULL != old_val && NULL != new_val) {
+        if (NULL != change->old_val() && NULL != change->new_val()) {
            printf("MODIFIED: ");
            printf("old value");
-           print_value(old_val);
+           print_value(change->old_val());
            printf("new value");
-           print_value(new_val);
+           print_value(change->new_val());
         }
 	break;
     case SR_OP_MOVED:
-        if (NULL != new_val) {
-	    cout<<"MOVED: " << new_val->xpath() << " after " << old_val->xpath() << endl;
+        if (NULL != change->new_val()) {
+	    cout<<"MOVED: " << change->new_val()->xpath() << " after " << change->old_val()->xpath() << endl;
         }
 	break;
     }
 }
 
 static void
-print_current_config(shared_ptr<Session> session, const char *module_name)
+print_current_config(S_Session session, const char *module_name)
 {
     char select_xpath[MAX_LEN];
     try {
@@ -126,15 +149,11 @@ print_current_config(shared_ptr<Session> session, const char *module_name)
 }
 
 static int
-module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t event, void *private_ctx)
+module_change_cb(S_Session sess, const char *module_name, sr_notif_event_t event, void *private_ctx)
 {
     char change_path[MAX_LEN];
-    shared_ptr<Val_Holder> old_value(new Val_Holder());
-    shared_ptr<Val_Holder> new_value(new Val_Holder());
 
     try {
-        shared_ptr<Session> sess(new Session(session));
-
         printf("\n\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: ==========\n\n");
 
         print_current_config(sess, module_name);
@@ -143,11 +162,11 @@ module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_ev
 
         snprintf(change_path, MAX_LEN, "/%s:*", module_name);
 
-        shared_ptr<Subscribe> subscribe(new Subscribe(sess));
+        S_Subscribe subscribe(new Subscribe(sess));
         auto it = subscribe->get_changes_iter(&change_path[0]);
 
-        while (auto oper = subscribe->get_change_next(it, old_value, new_value)) {
-            print_change(oper, old_value->val(), new_value->val());
+        while (auto change = subscribe->get_change_next(it)) {
+            print_change(change);
         }
 
         printf("\n\n ========== END OF CHANGES =======================================\n\n");
@@ -178,13 +197,13 @@ main(int argc, char **argv)
 
         printf("Application will watch for changes in %s\n", module_name);
         /* connect to sysrepo */
-        shared_ptr<Connection> conn(new Connection("example_application"));
+        S_Connection conn(new Connection("example_application"));
 
         /* start session */
-        shared_ptr<Session> sess(new Session(conn));
+        S_Session sess(new Session(conn));
 
         /* subscribe for changes in running config */
-        shared_ptr<Subscribe> subscribe(new Subscribe(sess));
+        S_Subscribe subscribe(new Subscribe(sess));
 
         subscribe->module_change_subscribe(module_name, module_change_cb);
 
