@@ -205,6 +205,12 @@ dm_free_schema_info(void *schema_info)
     if (NULL != si->ly_ctx) {
         ly_ctx_destroy(si->ly_ctx, dm_free_lys_private_data);
     }
+    if (NULL != si->data_dependant_modules) {
+        for (size_t i = 0; i < si->data_dependant_modules->count; i++) {
+            free(si->data_dependant_modules->data[i]);
+        }
+        sr_list_cleanup(si->data_dependant_modules);
+    }
     free(si);
 }
 
@@ -587,7 +593,26 @@ dm_load_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, 
      *
      * si->cross_module_data_dependency = ...;
      * sr_list_add(..., si->data_dependant_modules)
-     */
+
+    if (0 == strcmp("cross-module", module_name)) {
+        si->cross_module_data_dependency = true;
+        rc = sr_list_init(&si->data_dependant_modules);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "List init failed");
+
+        rc = sr_list_add(si->data_dependant_modules, strdup("referenced-data"));
+        CHECK_RC_MSG_GOTO(rc, cleanup, "List add failed");
+
+        for (size_t i = 0; i < si->data_dependant_modules->count; i++) {
+            char *dependant_module = (char *) si->data_dependant_modules->data[i];
+            rc = md_get_module_info(dm_ctx->md_ctx, dependant_module, NULL, &module);
+            CHECK_RC_LOG_GOTO(rc, cleanup, "Module %s not found in dependency context", dependant_module);
+
+            //TODO: load all dependencies of dependant module :)
+            rc = dm_load_schema_file(dm_ctx, module->filepath, true, &si);
+            CHECK_RC_LOG_GOTO(rc, cleanup, "Loading of schema %s failed", dependant_module);
+        }
+    }
+    */
 
     /* insert schema info into schema tree */
     RWLOCK_WRLOCK_TIMED_CHECK_GOTO(&dm_ctx->schema_tree_lock, rc, cleanup);
@@ -1293,7 +1318,7 @@ dm_append_data_tree(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_info_t *dat
             return SR_ERR_INTERNAL;
         }
         free(tmp);
-        ret = lyd_insert_sibling(&di->node, tmp_node);
+        ret = lyd_insert_sibling(&data_info->node, tmp_node);
         CHECK_ZERO_MSG_GOTO(ret, rc, SR_ERR_INTERNAL, cleanup, "lyd_insert_sibling failed");
         tmp_node = NULL;
     } else {
@@ -1360,8 +1385,10 @@ dm_load_dependant_data(dm_session_t *session, dm_data_info_t *info)
 
     if (info->schema->cross_module_data_dependency && NULL != info->schema->data_dependant_modules) {
         for (size_t i = 0; i < info->schema->data_dependant_modules->count; i++) {
-            rc = dm_append_data_tree(session->dm_ctx, session, info, (char *) info->schema->data_dependant_modules->data[i]);
-            CHECK_RC_LOG_RETURN(rc, "Failed to append data tree %s", (char *) info->schema->data_dependant_modules->data[i]);
+            char *dependant_module = (char *) info->schema->data_dependant_modules->data[i];
+            rc = dm_append_data_tree(session->dm_ctx, session, info, dependant_module);
+            CHECK_RC_LOG_RETURN(rc, "Failed to append data tree %s", dependant_module);
+            SR_LOG_DBG("Data tree %s appended because of validation", dependant_module);
         }
     }
     return rc;
