@@ -2107,7 +2107,7 @@ dm_validate_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error
             if (info->schema->cross_module_data_dependency) {
                 rc = dm_load_dependant_data(session, info);
             }
-            if (NULL != info->node && 0 != lyd_validate(&info->node, LYD_OPT_STRICT | LYD_OPT_NOAUTODEL | LYD_OPT_CONFIG, NULL)) {
+            if (0 != lyd_validate(&info->node, LYD_OPT_STRICT | LYD_OPT_NOAUTODEL | LYD_OPT_CONFIG, info->schema->ly_ctx)) {
                 SR_LOG_DBG("Validation failed for %s module", info->schema->module->name);
                 (*err_cnt)++;
                 sr_error_info_t *tmp_err = realloc(*errors, *err_cnt * sizeof(**errors));
