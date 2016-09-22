@@ -312,10 +312,10 @@ sr_dup_trees_ctx(sr_node_t *trees, size_t count, sr_mem_ctx_t *sr_mem_dest, sr_n
 
         if (SR_TREE_ITERATOR_T != trees[i].type) {
             /* duplicate descendants */
+            sr_node_t *iterator = NULL;
             child = trees[i].first_child;
             while (child) {
-                sr_node_t *iterator = NULL;
-                rc = sr_dup_tree_recursive(sr_mem_dest, child, 1, &child_dup, &iterator);
+                rc = sr_dup_tree_recursive(trees_dup->_sr_mem, child, 1, &child_dup, &iterator);
                 if (SR_ERR_OK != rc) {
                     goto cleanup;
                 }

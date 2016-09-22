@@ -468,6 +468,212 @@ void ietf_interfaces_tree_test(void **state){
     dm_session_stop(ctx, ses_ctx);
 }
 
+void ietf_interfaces_tree_with_opts_test(void **state)
+{
+    int rc = 0;
+    rp_ctx_t *rp_ctx = *state;
+    dm_ctx_t *ctx = rp_ctx->dm_ctx;
+    dm_session_t *ses_ctx = NULL;
+    struct lyd_node *root = NULL;
+    createDataTreeIETFinterfacesModule();
+    dm_session_start(ctx, NULL, SR_DS_STARTUP, &ses_ctx);
+    rc = dm_get_datatree(ctx, ses_ctx, "ietf-interfaces", &root);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    sr_node_t *trees = NULL;
+    sr_node_t *tree = NULL, *node = NULL;
+    char **chunk_ids = NULL, *chunk_id = NULL;
+    size_t count = 0;
+
+#define INTERFACES "/ietf-interfaces:interfaces/*"
+#define INTERFACE_ETH0 "/ietf-interfaces:interfaces/interface[name='eth0']"
+#define INTERFACE_ETH1 "/ietf-interfaces:interfaces/interface[name='eth1']"
+#define INTERFACE_GIGAETH0 "/ietf-interfaces:interfaces/interface[name='gigaeth0']"
+    /* get all interfaces in their entirety */
+    rc = rp_dt_get_subtrees_chunks(ctx, root, NULL, INTERFACES, 0, SIZE_MAX, SIZE_MAX, SIZE_MAX, false,
+            &trees, &count, &chunk_ids);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(3, count);
+    for (size_t i = 0; i < count; i++) {
+        assert_null(trees[i].parent);
+        check_ietf_interfaces_int_tree(&trees[i], i);
+    }
+    assert_string_equal(INTERFACE_ETH0, chunk_ids[0]);
+    assert_string_equal(INTERFACE_ETH1, chunk_ids[1]);
+    assert_string_equal(INTERFACE_GIGAETH0, chunk_ids[2]);
+    for (size_t i = 0; i < count; ++i) {
+        free(chunk_ids[i]);
+    }
+    free(chunk_ids);
+    sr_free_trees(trees, count);
+
+    /* slice interfaces and leave only chunk of eth0 */
+    rc = rp_dt_get_subtree_chunk(ctx, root, NULL, "/ietf-interfaces:interfaces", 0, 1, 2, 3, false, &tree, &chunk_id);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_null(tree->parent);
+    assert_string_equal("/ietf-interfaces:interfaces", chunk_id);
+    free(chunk_id);
+    /* -> interfaces */
+    assert_string_equal("interfaces", tree->name);
+    assert_int_equal(SR_CONTAINER_T, tree->type);
+    assert_string_equal("ietf-interfaces", tree->module_name);
+    assert_false(tree->dflt);
+    assert_int_equal(1, get_child_cnt(tree));
+    /* -> interface */
+    node = get_child_by_index(tree, 0);
+    assert_string_equal("interface", node->name);
+    assert_int_equal(SR_LIST_T, node->type);
+    assert_null(node->module_name);
+    assert_false(node->dflt);
+    assert_int_equal(2, get_child_cnt(node));
+    /* -> name */
+    node = get_child_by_index(node, 0);
+    assert_string_equal("name", node->name);
+    assert_int_equal(SR_STRING_T, node->type);
+    assert_string_equal("eth0", node->data.string_val);
+    assert_null(node->module_name);
+    assert_false(node->dflt);
+    assert_int_equal(0, get_child_cnt(node));
+    /* -> description */
+    node = node->next;
+    assert_string_equal("description", node->name);
+    assert_int_equal(SR_STRING_T, node->type);
+    assert_string_equal("Ethernet 0", node->data.string_val);
+    assert_null(node->module_name);
+    assert_false(node->dflt);
+    assert_int_equal(0, get_child_cnt(node));
+    assert_null(node->next);
+    sr_free_tree(tree);
+
+    /* limit depth to only top nodes of all interfaces */
+    rc = rp_dt_get_subtree_chunk(ctx, root, NULL, "/ietf-interfaces:interfaces", 0, SIZE_MAX, SIZE_MAX, 2, false, &tree,
+            &chunk_id);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_null(tree->parent);
+    assert_string_equal("/ietf-interfaces:interfaces", chunk_id);
+    free(chunk_id);
+    /* -> interfaces */
+    assert_string_equal("interfaces", tree->name);
+    assert_int_equal(SR_CONTAINER_T, tree->type);
+    assert_string_equal("ietf-interfaces", tree->module_name);
+    assert_false(tree->dflt);
+    assert_int_equal(3, get_child_cnt(tree));
+    for (size_t i = 0; i < 3; ++i) {
+        /* -> interface */
+        node = get_child_by_index(tree, i);
+        assert_string_equal("interface", node->name);
+        assert_int_equal(SR_LIST_T, node->type);
+        assert_null(node->module_name);
+        assert_false(node->dflt);
+        assert_int_equal(0, get_child_cnt(node));
+    }
+    sr_free_tree(tree);
+
+    /* slice eth0 out and get full two levels of the remaining interfaces */
+    rc = rp_dt_get_subtree_chunk(ctx, root, NULL, "/ietf-interfaces:interfaces", 1, SIZE_MAX, SIZE_MAX, 3, false, &tree,
+            &chunk_id);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_null(tree->parent);
+    assert_string_equal("/ietf-interfaces:interfaces", chunk_id);
+    free(chunk_id);
+    /* -> interfaces */
+    assert_string_equal("interfaces", tree->name);
+    assert_int_equal(SR_CONTAINER_T, tree->type);
+    assert_string_equal("ietf-interfaces", tree->module_name);
+    assert_false(tree->dflt);
+    assert_int_equal(2, get_child_cnt(tree));
+    /* -> interface, eth1 */
+    node = get_child_by_index(tree, 0);
+    assert_string_equal("interface", node->name);
+    assert_int_equal(SR_LIST_T, node->type);
+    assert_null(node->module_name);
+    assert_false(node->dflt);
+    assert_int_equal(5, get_child_cnt(node));
+    /* -> name */
+    node = get_child_by_index(node, 0);
+    assert_string_equal("name", node->name);
+    assert_int_equal(SR_STRING_T, node->type);
+    assert_string_equal("eth1", node->data.string_val);
+    assert_null(node->module_name);
+    assert_false(node->dflt);
+    assert_int_equal(0, get_child_cnt(node));
+    /* -> description */
+    node = node->next;
+    assert_string_equal("description", node->name);
+    assert_int_equal(SR_STRING_T, node->type);
+    assert_string_equal("Ethernet 1", node->data.string_val);
+    assert_null(node->module_name);
+    assert_false(node->dflt);
+    assert_int_equal(0, get_child_cnt(node));
+    /* -> type */
+    node = node->next;
+    assert_string_equal("type", node->name);
+    assert_int_equal(SR_IDENTITYREF_T, node->type);
+    assert_string_equal("ethernetCsmacd", node->data.identityref_val);
+    assert_null(node->module_name);
+    assert_false(node->dflt);
+    assert_int_equal(0, get_child_cnt(node));
+    /* -> enabled */
+    node = node->next;
+    assert_string_equal("enabled", node->name);
+    assert_int_equal(SR_BOOL_T, node->type);
+    assert_true(node->data.bool_val);
+    assert_null(node->module_name);
+    assert_false(node->dflt);
+    assert_int_equal(0, get_child_cnt(node));
+    /* -> ipv4 */
+    node = node->next;
+    assert_string_equal("ipv4", node->name);
+    assert_int_equal(SR_CONTAINER_PRESENCE_T, node->type);
+    assert_string_equal("ietf-ip", node->module_name);
+    assert_false(node->dflt);
+    assert_int_equal(0, get_child_cnt(node));
+    assert_null(node->next);
+    /* -> interface, gigaeth0 */
+    node = get_child_by_index(tree, 1);
+    assert_string_equal("interface", node->name);
+    assert_int_equal(SR_LIST_T, node->type);
+    assert_null(node->module_name);
+    assert_false(node->dflt);
+    assert_int_equal(4, get_child_cnt(node));
+    /* -> name */
+    node = get_child_by_index(node, 0);
+    assert_string_equal("name", node->name);
+    assert_int_equal(SR_STRING_T, node->type);
+    assert_string_equal("gigaeth0", node->data.string_val);
+    assert_null(node->module_name);
+    assert_false(node->dflt);
+    assert_int_equal(0, get_child_cnt(node));
+    /* -> description */
+    node = node->next;
+    assert_string_equal("description", node->name);
+    assert_int_equal(SR_STRING_T, node->type);
+    assert_string_equal("GigabitEthernet 0", node->data.string_val);
+    assert_null(node->module_name);
+    assert_false(node->dflt);
+    assert_int_equal(0, get_child_cnt(node));
+    /* -> type */
+    node = node->next;
+    assert_string_equal("type", node->name);
+    assert_int_equal(SR_IDENTITYREF_T, node->type);
+    assert_string_equal("ethernetCsmacd", node->data.identityref_val);
+    assert_null(node->module_name);
+    assert_false(node->dflt);
+    assert_int_equal(0, get_child_cnt(node));
+    /* -> enabled */
+    node = node->next;
+    assert_string_equal("enabled", node->name);
+    assert_int_equal(SR_BOOL_T, node->type);
+    assert_false(node->data.bool_val);
+    assert_null(node->module_name);
+    assert_false(node->dflt);
+    assert_int_equal(0, get_child_cnt(node));
+    assert_null(node->next);
+    sr_free_tree(tree);
+
+    dm_session_stop(ctx, ses_ctx);
+}
+
 void get_values_test_module_test(void **state){
     int rc = 0;
     rp_ctx_t *rp_ctx = *state;
@@ -1639,6 +1845,7 @@ int main(){
             cmocka_unit_test(get_trees_with_augments_test),
             cmocka_unit_test(ietf_interfaces_test),
             cmocka_unit_test(ietf_interfaces_tree_test),
+            cmocka_unit_test(ietf_interfaces_tree_with_opts_test),
             cmocka_unit_test(get_values_test_module_test),
             cmocka_unit_test(get_tree_test_module_test),
             cmocka_unit_test(get_nodes_test),
