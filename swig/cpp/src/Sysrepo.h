@@ -22,35 +22,65 @@
 #ifndef SYSREPO_H
 #define SYSREPO_H
 
-#define S_Iter_Value       std::shared_ptr<Iter_Value>
-#define S_Iter_Change      std::shared_ptr<Iter_Change>
-#define S_Session          std::shared_ptr<Session>
-#define S_Subscribe        std::shared_ptr<Subscribe>
-#define S_Connection       std::shared_ptr<Connection>
-#define S_Operation        std::shared_ptr<Operation>
-#define S_Schema_Content   std::shared_ptr<Schema_Content>
-#define S_Schemas          std::shared_ptr<Schemas>
-#define S_Throw_Exception  std::shared_ptr<Throw_Exception>
-
-#define S_Error            std::shared_ptr<Error>
-#define S_Errors           std::shared_ptr<Errors>
-#define S_Data             std::shared_ptr<Data>
-#define S_Schema_Revision  std::shared_ptr<Schema_Revision>
-#define S_Schema_Submodule std::shared_ptr<Schema_Submodule>
-#define S_Yang_Schema      std::shared_ptr<Yang_Schema>
-#define S_Yang_Schemas     std::shared_ptr<Yang_Schemas>
-#define S_Fd_Change        std::shared_ptr<Fd_Change>
-#define S_Fd_Changes       std::shared_ptr<Fd_Changes>
-#define S_Val              std::shared_ptr<Val>
-#define S_Val_Holder       std::shared_ptr<Val_Holder>
-#define S_Vals             std::shared_ptr<Vals>
-#define S_Tree             std::shared_ptr<Tree>
-#define S_Trees            std::shared_ptr<Trees>
-#define S_Xpath_Ctx        std::shared_ptr<Xpath_Ctx>
-#define S_Logs             std::shared_ptr<Logs>
-#define S_Change           std::shared_ptr<Change>
-#define S_Counter          std::shared_ptr<Counter>
-#define S_wrap_cb          std::shared_ptr<wrap_cb>
+#ifdef SWIGLUA
+    #define S_Iter_Value       Iter_Value*
+    #define S_Iter_Change      Iter_Change*
+    #define S_Session          Session*
+    #define S_Subscribe        Subscribe*
+    #define S_Connection       Connection*
+    #define S_Operation        Operation*
+    #define S_Schema_Content   Schema_Content*
+    #define S_Schemas          Schemas*
+    #define S_Throw_Exception  Throw_Exception*
+    #define S_Error            Error*
+    #define S_Errors           Errors*
+    #define S_Data             Data*
+    #define S_Schema_Revision  Schema_Revision*
+    #define S_Schema_Submodule Schema_Submodule*
+    #define S_Yang_Schema      Yang_Schema*
+    #define S_Yang_Schemas     Yang_Schemas*
+    #define S_Fd_Change        Fd_Change*
+    #define S_Fd_Changes       Fd_Changes*
+    #define S_Val              Val*
+    #define S_Val_Holder       Val_Holder*
+    #define S_Vals             Vals*
+    #define S_Tree             Tree*
+    #define S_Trees            Trees*
+    #define S_Xpath_Ctx        Xpath_Ctx*
+    #define S_Logs             Logs*
+    #define S_Change           Change*
+    #define S_Counter          Counter*
+    #define S_wrap_cb          wrap_cb*
+#else
+    #define S_Iter_Value       std::shared_ptr<Iter_Value>
+    #define S_Iter_Change      std::shared_ptr<Iter_Change>
+    #define S_Session          std::shared_ptr<Session>
+    #define S_Subscribe        std::shared_ptr<Subscribe>
+    #define S_Connection       std::shared_ptr<Connection>
+    #define S_Operation        std::shared_ptr<Operation>
+    #define S_Schema_Content   std::shared_ptr<Schema_Content>
+    #define S_Schemas          std::shared_ptr<Schemas>
+    #define S_Throw_Exception  std::shared_ptr<Throw_Exception>
+    #define S_Error            std::shared_ptr<Error>
+    #define S_Errors           std::shared_ptr<Errors>
+    #define S_Data             std::shared_ptr<Data>
+    #define S_Schema_Revision  std::shared_ptr<Schema_Revision>
+    #define S_Schema_Submodule std::shared_ptr<Schema_Submodule>
+    #define S_Yang_Schema      std::shared_ptr<Yang_Schema>
+    #define S_Yang_Schemas     std::shared_ptr<Yang_Schemas>
+    #define S_Fd_Change        std::shared_ptr<Fd_Change>
+    #define S_Fd_Changes       std::shared_ptr<Fd_Changes>
+    #define S_Val              std::shared_ptr<Val>
+    #define S_Val_Holder       std::shared_ptr<Val_Holder>
+    #define S_Vals             std::shared_ptr<Vals>
+    #define S_Tree             std::shared_ptr<Tree>
+    #define S_Trees            std::shared_ptr<Trees>
+    #define S_Xpath_Ctx        std::shared_ptr<Xpath_Ctx>
+    #define S_Logs             std::shared_ptr<Logs>
+    #define S_Change           std::shared_ptr<Change>
+    #define S_Counter          std::shared_ptr<Counter>
+    #define S_wrap_cb          std::shared_ptr<wrap_cb>
+#endif
 
 #include <iostream>
 #include <stdexcept>
