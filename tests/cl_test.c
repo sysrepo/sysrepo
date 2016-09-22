@@ -3824,7 +3824,6 @@ cl_cross_module_dependency(void **state)
     rc = sr_set_item(session, "/cross-module:links/number", &val, SR_EDIT_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
 
-    /* https://github.com/CESNET/libyang/issues/128 */
     rc = sr_validate(session);
     assert_int_equal(SR_ERR_OK, rc);
 
