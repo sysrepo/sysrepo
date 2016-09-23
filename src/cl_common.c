@@ -179,11 +179,11 @@ cl_message_send(sr_conn_ctx_t *conn_ctx, Sr__Msg *msg)
  * @brief Receives a message on provided connection (blocks until a message is received).
  */
 static int
-cl_message_recv(sr_conn_ctx_t *conn_ctx, Sr__Msg **msg)
+cl_message_recv(sr_conn_ctx_t *conn_ctx, Sr__Msg **msg, sr_mem_ctx_t *sr_mem_resp)
 {
     size_t len = 0, pos = 0;
     size_t msg_size = 0;
-    sr_mem_ctx_t *sr_mem = NULL;
+    sr_mem_ctx_t *sr_mem = sr_mem_resp;
     int rc = 0;
 
     /* expand the buffer if needed */
@@ -246,12 +246,16 @@ cl_message_recv(sr_conn_ctx_t *conn_ctx, Sr__Msg **msg)
     }
 
     /* unpack the message */
-    rc = sr_mem_new(msg_size, &sr_mem);
-    CHECK_RC_MSG_RETURN(rc, "Failed to create a new Sysrepo memory context.");
+    if (NULL == sr_mem) {
+        rc = sr_mem_new(msg_size, &sr_mem);
+        CHECK_RC_MSG_RETURN(rc, "Failed to create a new Sysrepo memory context.");
+    }
     ProtobufCAllocator allocator = sr_get_protobuf_allocator(sr_mem);
     *msg = sr__msg__unpack(&allocator, msg_size, (const uint8_t*)(conn_ctx->msg_buf + SR_MSG_PREAM_SIZE));
     if (NULL == *msg) {
-        sr_mem_free(sr_mem);
+        if (NULL == sr_mem_resp) {
+            sr_mem_free(sr_mem);
+        }
         SR_LOG_ERR_MSG("Malformed message received.");
         return SR_ERR_MALFORMED_MSG;
     }
@@ -402,7 +406,7 @@ cl_socket_connect(sr_conn_ctx_t *conn_ctx, const char *socket_path)
 
 int
 cl_request_process(sr_session_ctx_t *session, Sr__Msg *msg_req, Sr__Msg **msg_resp,
-        const Sr__Operation expected_response_op)
+        sr_mem_ctx_t *sr_mem_resp, const Sr__Operation expected_response_op)
 {
     int rc = SR_ERR_OK;
     struct timeval tv = { 0, };
@@ -434,7 +438,7 @@ cl_request_process(sr_session_ctx_t *session, Sr__Msg *msg_req, Sr__Msg **msg_re
     SR_LOG_DBG("%s request sent, waiting for response.", sr_gpb_operation_name(expected_response_op));
 
     /* receive the response */
-    rc = cl_message_recv(session->conn_ctx, msg_resp);
+    rc = cl_message_recv(session->conn_ctx, msg_resp, sr_mem_resp);
     if (SR_ERR_OK != rc) {
         SR_LOG_ERR("Unable to receive the message with response (session id=%"PRIu32", operation=%s).",
                 session->id, sr_gpb_operation_name(msg_req->request->operation));

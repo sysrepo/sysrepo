@@ -513,7 +513,7 @@ cl_sm_get_data_session(cl_sm_ctx_t *sm_ctx, cl_sm_subscription_ctx_t *subscripti
         msg_req->request->session_start_req->datastore = SR__DATA_STORE__RUNNING;
 
         /* send the request and receive the response */
-        rc = cl_request_process(session, msg_req, &msg_resp, SR__OPERATION__SESSION_START);
+        rc = cl_request_process(session, msg_req, &msg_resp, NULL, SR__OPERATION__SESSION_START);
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR_MSG("Error by processing of session_start request.");
             sr_msg_free(msg_req);

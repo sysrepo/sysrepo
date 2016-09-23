@@ -105,10 +105,11 @@ int sr_dup_trees(sr_node_t *trees, size_t count, sr_node_t **trees_dup);
  * get-subtree-chunk request in order to obtain the data of the child
  * (and the data of some surrounding nodes with it for efficiency).
  *
+ * @param[in] session Session context acquired with ::sr_session_start call.
  * @param[in] node Node to get the child of.
  * @return Pointer to a child node. NULL if there is none or an error occured.
  */
-sr_node_t *sr_node_get_child(sr_node_t *node);
+sr_node_t *sr_node_get_child(sr_session_ctx_t *session, sr_node_t *node);
 
 /**
  * @brief Returns pointer to the next sibling (based on the schema) of a given node.
@@ -117,19 +118,21 @@ sr_node_t *sr_node_get_child(sr_node_t *node);
  * get-subtree-chunk request in order to obtain the data of the next sibling
  * (and the data of some surrounding nodes with it for efficiency).
  *
+ * @param[in] session Session context acquired with ::sr_session_start call.
  * @param[in] node Node to get the next sibling of.
  * @return Pointer to the next sibling. NULL if this is the last sibling or an error occured.
  */
-sr_node_t *sr_node_get_next_sibling(sr_node_t *node);
+sr_node_t *sr_node_get_next_sibling(sr_session_ctx_t *session, sr_node_t *node);
 
 /**
  * @brief Get the parent of a given node. It is equivalent to "node->parent", but for
  * a partially loaded tree it is preferred to use this function rather than to access
  * the pointer directly just for the sake of code cleanliness.
  *
+ * @param[in] session Session context acquired with ::sr_session_start call.
  * @param[in] node Node to get the parent of.
  * @return Pointer to the node's parent or NULL if the node is a root of a (sub)tree.
  */
-sr_node_t *sr_node_get_parent(sr_node_t *node);
+sr_node_t *sr_node_get_parent(sr_session_ctx_t *session, sr_node_t *node);
 
 #endif /* TREES_H_ */

@@ -24,6 +24,24 @@
 #define TREES_INTERNAL_H_
 
 /**
+ * @brief Allocate a new instance of a sysrepo node over an existing sysrepo memory context.
+ *
+ * @param [in] sr_mem Sysrepo memory context.
+ * @param [in] name Name of the node to create.
+ * @param [in] module_name Name of the module that this node belongs to.
+ * @param [out] node_p Returned newly allocate node.
+ */
+int sr_new_node(sr_mem_ctx_t *sr_mem, const char *name, const char *module_name, sr_node_t **node_p);
+
+/**
+ * @brief Insert child into the linked-list of children of a given parent node.
+ *
+ * @param [in] parent Parent node.
+ * @param [in] child Child node.
+ */
+void sr_node_insert_child(sr_node_t *parent, sr_node_t *child);
+
+/**
  * @brief Duplicate node and all its descendants (with or without Sysrepo memory context)
  * into a new instance of Sysrepo tree with memory context.
  * It is possible to specify the destination memory context or let the function to create a new one.

@@ -81,6 +81,7 @@ typedef struct sr_mem_ctx_s sr_mem_ctx_t;
 typedef enum sr_type_e {
     /* special types that does not contain any data */
     SR_UNKNOWN_T,              /**< Element unknown to sysrepo (unsupported element). */
+    SR_TREE_ITERATOR_T,        /**< Special type of tree node used to store all data needed for iterative tree loading. */
 
     SR_LIST_T,                 /**< List instance. ([RFC 6020 sec 7.8](http://tools.ietf.org/html/rfc6020#section-7.8)) */
     SR_CONTAINER_T,            /**< Non-presence container. ([RFC 6020 sec 7.5](http://tools.ietf.org/html/rfc6020#section-7.5)) */
