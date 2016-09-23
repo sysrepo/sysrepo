@@ -670,13 +670,13 @@ np_hello_notify(np_ctx_t *np_ctx, const char *module_name, const char *dst_addre
     Sr__Msg *notif = NULL;
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG4(np_ctx, np_ctx->rp_ctx, module_name, dst_address);
+    CHECK_NULL_ARG3(np_ctx, np_ctx->rp_ctx, dst_address);
 
     SR_LOG_DBG("Sending HELLO notification to '%s' @ %"PRIu32".", dst_address, dst_id);
 
     rc = sr_gpb_notif_alloc(NULL, SR__SUBSCRIPTION_TYPE__HELLO_SUBS, dst_address, dst_id, &notif);
 
-    if (SR_ERR_OK == rc) {
+    if (SR_ERR_OK == rc && NULL != module_name) {
         /* save notification destination info */
         rc = np_dst_info_insert(np_ctx, dst_address, module_name);
     }

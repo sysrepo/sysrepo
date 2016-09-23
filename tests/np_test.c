@@ -289,15 +289,6 @@ np_module_subscriptions_test(void **state)
             SR_API_VALUES, NP_SUBSCR_ENABLE_RUNNING);
     assert_int_equal(rc, SR_ERR_OK);
 
-    /* get verify subscriptions */
-    rc = np_get_module_change_subscriptions(np_ctx, "example-module", &subscriptions_arr, &subscriptions_cnt);
-    assert_int_equal(rc, SR_ERR_OK);
-    assert_int_equal(subscriptions_cnt, 2);
-    for (size_t i = 0; i < subscriptions_cnt; i++) {
-        np_free_subscription(subscriptions_arr[i]);
-    }
-    free(subscriptions_arr);
-
     /* get all subscriptions */
     rc = np_get_module_change_subscriptions(np_ctx, "example-module", &subscriptions_arr, &subscriptions_cnt);
     assert_int_equal(rc, SR_ERR_OK);
@@ -327,9 +318,6 @@ np_module_subscriptions_test(void **state)
         np_free_subscription(subscriptions_list->data[i]);
     }
     sr_list_cleanup(subscriptions_list);
-
-//    rc = np_commit_release(np_ctx, 12345); // TODO; remove
-//    assert_int_equal(rc, SR_ERR_OK);
 
     /* unsubscribe */
     rc = np_notification_unsubscribe(np_ctx, test_ctx->rp_session_ctx, SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS,

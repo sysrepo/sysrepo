@@ -732,6 +732,8 @@ cl_sm_notif_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *msg)
         if (SR_ERR_OK != rc_tmp) {
             SR_LOG_ERR("Unable to send notification ACK: %s", sr_strerror(rc_tmp));
             rc = rc_tmp;
+        } else {
+            rc = SR_ERR_OK;
         }
     }
 
