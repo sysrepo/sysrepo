@@ -50,6 +50,8 @@ typedef struct np_commit_ctx_s {
     bool commit_finished;            /**< TRUE if commit has finished and can be released, FALSE if it will continue with another phase. */
     size_t notifications_sent;       /**< Count of sent notifications. */
     size_t notifications_acked;      /**< Count of received acknowledgments. */
+    int result;                      /**< Used to store overall result of the commit operation. */
+    sr_list_t *errors;               /**< Used to store errors returned from commit verifiers. */
 } np_commit_ctx_t;
 
 /**
@@ -942,6 +944,9 @@ np_commit_notification_ack(np_ctx_t *np_ctx, uint32_t commit_id, sr_notif_event_
     commit = np_commit_ctx_find(np_ctx, commit_id, &commit_node);
 
     if (NULL != commit) {
+        if ((SR_ERR_OK != result) && (SR_ERR_OK == commit->result)) {
+            commit->result = result;
+        }
         commit->notifications_acked++;
         if (commit->all_notifications_sent && (commit->notifications_sent == commit->notifications_acked)) {
             all_acks_received = true;
@@ -966,7 +971,7 @@ np_commit_notifications_complete(np_ctx_t *np_ctx, uint32_t commit_id, bool time
     np_commit_ctx_t *commit = NULL;
     sr_llist_node_t *commit_node = NULL;
     bool found = false;
-    int rc = SR_ERR_OK;
+    int result = SR_ERR_OK, rc = SR_ERR_OK;
 
     CHECK_NULL_ARG(np_ctx);
 
@@ -975,6 +980,7 @@ np_commit_notifications_complete(np_ctx_t *np_ctx, uint32_t commit_id, bool time
     commit = np_commit_ctx_find(np_ctx, commit_id, &commit_node);
     if (NULL != commit) {
         found = true;
+        result = commit->result;
         if (commit->commit_finished) {
             /* commit has finished, release commit context */
             SR_LOG_DBG("Releasing commit id=%"PRIu32".", commit_id);
@@ -992,7 +998,11 @@ np_commit_notifications_complete(np_ctx_t *np_ctx, uint32_t commit_id, bool time
     if (found) {
         SR_LOG_DBG("Commit id=%"PRIu32" has .", commit_id);
 
-        rc = dm_commit_notifications_complete(np_ctx->rp_ctx->dm_ctx, commit_id, /* TODO */ SR_ERR_OK, NULL);
+        if (SR_ERR_OK == result && timeout_expired) {
+            result = SR_ERR_TIME_OUT;
+        }
+
+        rc = dm_commit_notifications_complete(np_ctx->rp_ctx->dm_ctx, commit_id, result, NULL /* TODO */);
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR_MSG("Unable to release the commit in Data Manager.");
         }
