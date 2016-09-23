@@ -532,10 +532,62 @@ sr_ly_data_type_to_sr(LY_DATA_TYPE type)
         }
 }
 
+static sr_type_t
+sr_libyang_leaf_get_type_sch(const struct lys_node_leaf *leaf)
+{
+    if (NULL == leaf || !((LYS_LEAF | LYS_LEAFLIST) & leaf->nodetype)) {
+        return SR_UNKNOWN_T;
+    }
+
+    switch(leaf->type.base){
+        case LY_TYPE_BINARY:
+            return SR_BINARY_T;
+        case LY_TYPE_BITS:
+            return SR_BITS_T;
+        case LY_TYPE_BOOL:
+            return SR_BOOL_T;
+        case LY_TYPE_DEC64:
+            return SR_DECIMAL64_T;
+        case LY_TYPE_EMPTY:
+            return SR_LEAF_EMPTY_T;
+        case LY_TYPE_ENUM:
+            return SR_ENUM_T;
+        case LY_TYPE_IDENT:
+            return SR_IDENTITYREF_T;
+        case LY_TYPE_INST:
+            return SR_INSTANCEID_T;
+        case LY_TYPE_LEAFREF:
+            return sr_libyang_leaf_get_type_sch(leaf->type.info.lref.target);
+        case LY_TYPE_STRING:
+            return SR_STRING_T;
+        case LY_TYPE_UNION:
+            return SR_UNION_T;
+        case LY_TYPE_INT8:
+            return SR_INT8_T;
+        case LY_TYPE_UINT8:
+            return SR_UINT8_T;
+        case LY_TYPE_INT16:
+            return SR_INT16_T;
+        case LY_TYPE_UINT16:
+            return SR_UINT16_T;
+        case LY_TYPE_INT32:
+            return SR_INT32_T;
+        case LY_TYPE_UINT32:
+            return SR_UINT32_T;
+        case LY_TYPE_INT64:
+            return SR_INT64_T;
+        case LY_TYPE_UINT64:
+            return SR_UINT64_T;
+        default:
+            return SR_UNKNOWN_T;
+            //LY_DERIVED
+        }
+}
+
 sr_type_t
 sr_libyang_leaf_get_type(const struct lyd_node_leaf_list *leaf)
 {
-    const struct lyd_node_leaf_list *leafref = NULL;
+
     switch(leaf->value_type){
         case LY_TYPE_BINARY:
             return SR_BINARY_T;
@@ -554,11 +606,7 @@ sr_libyang_leaf_get_type(const struct lyd_node_leaf_list *leaf)
         case LY_TYPE_INST:
             return SR_INSTANCEID_T;
         case LY_TYPE_LEAFREF:
-            leafref = (const struct lyd_node_leaf_list *) leaf->value.leafref;
-            if (NULL != leafref) {
-                return sr_libyang_leaf_get_type(leafref);
-            }
-            return SR_UNKNOWN_T;
+            return sr_libyang_leaf_get_type_sch(((struct lys_node_leaf *)leaf->schema)->type.info.lref.target);
         case LY_TYPE_STRING:
             return SR_STRING_T;
         case LY_TYPE_UNION:
@@ -726,6 +774,59 @@ sr_libyang_leaf_copy_bits(const struct lyd_node_leaf_list *leaf, sr_val_t *value
     return SR_ERR_OK;
 }
 
+int
+sr_libyang_val_str_to_sr_val(const char *val_str, sr_type_t type, sr_val_t *value)
+{
+    CHECK_NULL_ARG2(val_str, value);
+    int ret = 0;
+
+    switch (type) {
+    case SR_BINARY_T:
+    case SR_BITS_T:
+    case SR_ENUM_T:
+    case SR_IDENTITYREF_T:
+    case SR_INSTANCEID_T:
+    case SR_STRING_T:
+        sr_mem_edit_string(value->_sr_mem, &value->data.string_val, val_str);
+        CHECK_NULL_NOMEM_RETURN(value->data.string_val);
+        return SR_ERR_OK;
+    case SR_BOOL_T:
+        value->data.bool_val = 0 == strcmp("true", val_str);
+        return SR_ERR_OK;
+    case SR_UINT8_T:
+        ret = sscanf(val_str, "%"SCNu8, &value->data.uint8_val);
+        break;
+    case SR_UINT16_T:
+        ret = sscanf(val_str, "%"SCNu16, &value->data.uint16_val);
+        break;
+    case SR_UINT32_T:
+        ret = sscanf(val_str, "%"SCNu32, &value->data.uint32_val);
+        break;
+    case SR_UINT64_T:
+        ret = sscanf(val_str, "%"SCNu64, &value->data.uint64_val);
+        break;
+    case SR_INT8_T:
+        ret = sscanf(val_str, "%"SCNd8, &value->data.int8_val);
+        break;
+    case SR_INT16_T:
+        ret = sscanf(val_str, "%"SCNd16, &value->data.int16_val);
+        break;
+    case SR_INT32_T:
+        ret = sscanf(val_str, "%"SCNd32, &value->data.int32_val);
+        break;
+    case SR_INT64_T:
+        ret = sscanf(val_str, "%"SCNd64, &value->data.int64_val);
+        break;
+    case SR_DECIMAL64_T:
+        ret = scanf(val_str, "%g", &value->data.decimal64_val);
+        break;
+    default:
+        SR_LOG_ERR_MSG("Unknown type to convert");
+        return SR_ERR_INVAL_ARG;
+    }
+
+    return ret == 1 ? SR_ERR_OK : SR_ERR_INTERNAL;
+}
 
 int
 sr_libyang_leaf_copy_value(const struct lyd_node_leaf_list *leaf, sr_val_t *value)
@@ -807,6 +908,8 @@ sr_libyang_leaf_copy_value(const struct lyd_node_leaf_list *leaf, sr_val_t *valu
         leafref = (const struct lyd_node_leaf_list *) leaf->value.leafref;
         if (NULL != leafref) {
             return sr_libyang_leaf_copy_value(leafref, value);
+        } else {
+            return sr_libyang_val_str_to_sr_val(leaf->value_str, value->type, value);
         }
         return SR_ERR_OK;
     case LY_TYPE_STRING:

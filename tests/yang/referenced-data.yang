@@ -1,0 +1,20 @@
+module referenced-data {
+
+   namespace "urn:rd";
+   prefix rd;
+
+   list list-b {
+      key name;
+      leaf name {
+         type string;
+      }
+
+      leaf value {
+         type uint32;
+      }
+   }
+
+   leaf magic_number {
+      type uint8;
+   }
+}
