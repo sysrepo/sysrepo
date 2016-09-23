@@ -294,6 +294,26 @@ unlock:
     return rc;
 }
 
+/**
+ * @brief Adds an error xpath into commit context.
+ */
+static int
+np_commit_error_add(np_commit_ctx_t *commit_ctx, char *xpath)
+{
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG2(commit_ctx, xpath);
+
+    if (NULL == commit_ctx->errors) {
+        rc = sr_list_init(&commit_ctx->errors);
+        CHECK_RC_MSG_RETURN(rc, "Unable to init sr_list for errors.");
+    }
+
+    rc = sr_list_add(commit_ctx->errors, strdup(xpath));
+
+    return rc;
+}
+
 int
 np_init(rp_ctx_t *rp_ctx, np_ctx_t **np_ctx_p)
 {
@@ -944,8 +964,15 @@ np_commit_notification_ack(np_ctx_t *np_ctx, uint32_t commit_id, sr_notif_event_
     commit = np_commit_ctx_find(np_ctx, commit_id, &commit_node);
 
     if (NULL != commit) {
-        if ((SR_ERR_OK != result) && (SR_ERR_OK == commit->result)) {
-            commit->result = result;
+        if (SR_EV_VERIFY == event && SR_ERR_OK != result) {
+            /* error returned from the verifier */
+            if (SR_ERR_OK == commit->result) {
+                commit->result = result;
+            }
+            if (NULL != xpath) {
+                np_commit_error_add(commit, xpath);
+            }
+            SR_LOG_ERR("Verifier for '%s' returned an error, commit will be aborted.", xpath);
         }
         commit->notifications_acked++;
         if (commit->all_notifications_sent && (commit->notifications_sent == commit->notifications_acked)) {
@@ -970,6 +997,7 @@ np_commit_notifications_complete(np_ctx_t *np_ctx, uint32_t commit_id, bool time
 {
     np_commit_ctx_t *commit = NULL;
     sr_llist_node_t *commit_node = NULL;
+    sr_list_t *errors = NULL;
     bool found = false;
     int result = SR_ERR_OK, rc = SR_ERR_OK;
 
@@ -981,11 +1009,13 @@ np_commit_notifications_complete(np_ctx_t *np_ctx, uint32_t commit_id, bool time
     if (NULL != commit) {
         found = true;
         result = commit->result;
+        errors = commit->errors;
         if (commit->commit_finished) {
             /* commit has finished, release commit context */
             SR_LOG_DBG("Releasing commit id=%"PRIu32".", commit_id);
             sr_llist_rm(np_ctx->commits, commit_node);
             free(commit);
+            commit = NULL;
         } else {
             /* reset the context for the next commit phase */
             commit->all_notifications_sent = false;
@@ -996,16 +1026,19 @@ np_commit_notifications_complete(np_ctx_t *np_ctx, uint32_t commit_id, bool time
     pthread_rwlock_unlock(&np_ctx->lock);
 
     if (found) {
-        SR_LOG_DBG("Commit id=%"PRIu32" has .", commit_id);
+        SR_LOG_DBG("Commit id=%"PRIu32" notifications complete.", commit_id);
 
-        if (SR_ERR_OK == result && timeout_expired) {
+        if (timeout_expired) {
+            SR_LOG_ERR("Commit timeout for commit id=%d.", commit_id);
             result = SR_ERR_TIME_OUT;
         }
 
-        rc = dm_commit_notifications_complete(np_ctx->rp_ctx->dm_ctx, commit_id, result, NULL /* TODO */);
+        /* signal commit notifications complete to DM */
+        rc = dm_commit_notifications_complete(np_ctx->rp_ctx->dm_ctx, commit_id, result, errors);
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR_MSG("Unable to release the commit in Data Manager.");
         }
+        sr_list_cleanup(errors);
     }
 
     return rc;

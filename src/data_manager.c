@@ -2620,7 +2620,7 @@ dm_commit_notifications_complete(dm_ctx_t *dm_ctx, uint32_t c_ctx_id, int result
     // TODO:
     //  - for SR_EV_VERIFY check result code and proceed with commit or rollback it
     //  - for SR_EV_APPLY and SR_EV_ABORT do not check the result code and release commit context
-    //  - release errors if result != SR_ERR_OK and passed
+    //  (errors does not need to be released)
 
     return dm_remove_commit_context(dm_ctx, c_ctx_id);
 }
