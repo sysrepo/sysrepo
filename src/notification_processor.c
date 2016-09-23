@@ -51,6 +51,7 @@ typedef struct np_commit_ctx_s {
     size_t notifications_sent;       /**< Count of sent notifications. */
     size_t notifications_acked;      /**< Count of received acknowledgments. */
     int result;                      /**< Used to store overall result of the commit operation. */
+    sr_list_t *err_subs_xpaths;      /**< Used to store xpaths to subscribers that returned an error. */
     sr_list_t *errors;               /**< Used to store errors returned from commit verifiers. */
 } np_commit_ctx_t;
 
@@ -298,18 +299,29 @@ unlock:
  * @brief Adds an error xpath into commit context.
  */
 static int
-np_commit_error_add(np_commit_ctx_t *commit_ctx, char *xpath)
+np_commit_error_add(np_commit_ctx_t *commit_ctx, const char *err_subs_xpath, const char *err_msg, const char *err_xpath)
 {
+    sr_error_info_t *error = NULL;
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG2(commit_ctx, xpath);
+    CHECK_NULL_ARG2(commit_ctx, err_subs_xpath);
 
-    if (NULL == commit_ctx->errors) {
-        rc = sr_list_init(&commit_ctx->errors);
-        CHECK_RC_MSG_RETURN(rc, "Unable to init sr_list for errors.");
+    if (NULL == commit_ctx->err_subs_xpaths) {
+        rc = sr_list_init(&commit_ctx->err_subs_xpaths);
+        CHECK_RC_MSG_RETURN(rc, "Unable to init sr_list for errored verifier xpaths.");
     }
+    rc = sr_list_add(commit_ctx->err_subs_xpaths, strdup(err_xpath));
 
-    rc = sr_list_add(commit_ctx->errors, strdup(xpath));
+    if (SR_ERR_OK == rc && NULL != err_msg) {
+        if (NULL == commit_ctx->errors) {
+            rc = sr_list_init(&commit_ctx->errors);
+            CHECK_RC_MSG_RETURN(rc, "Unable to init sr_list for errors.");
+        }
+        error = calloc(1, sizeof(*error));
+        error->message = strdup(err_msg);
+        error->xpath = strdup(err_xpath);
+        rc = sr_list_add(commit_ctx->errors, error);
+    }
 
     return rc;
 }
@@ -970,7 +982,7 @@ np_commit_notification_ack(np_ctx_t *np_ctx, uint32_t commit_id, sr_notif_event_
                 commit->result = result;
             }
             if (NULL != xpath) {
-                np_commit_error_add(commit, xpath);
+                np_commit_error_add(commit, xpath, /* TODO */ NULL, NULL);
             }
             SR_LOG_ERR("Verifier for '%s' returned an error, commit will be aborted.", xpath);
         }
@@ -997,7 +1009,7 @@ np_commit_notifications_complete(np_ctx_t *np_ctx, uint32_t commit_id, bool time
 {
     np_commit_ctx_t *commit = NULL;
     sr_llist_node_t *commit_node = NULL;
-    sr_list_t *errors = NULL;
+    sr_list_t *err_subs_xpaths = NULL, *errors = NULL;
     bool found = false;
     int result = SR_ERR_OK, rc = SR_ERR_OK;
 
@@ -1009,6 +1021,7 @@ np_commit_notifications_complete(np_ctx_t *np_ctx, uint32_t commit_id, bool time
     if (NULL != commit) {
         found = true;
         result = commit->result;
+        err_subs_xpaths = commit->err_subs_xpaths;
         errors = commit->errors;
         if (commit->commit_finished) {
             /* commit has finished, release commit context */
@@ -1034,10 +1047,12 @@ np_commit_notifications_complete(np_ctx_t *np_ctx, uint32_t commit_id, bool time
         }
 
         /* signal commit notifications complete to DM */
-        rc = dm_commit_notifications_complete(np_ctx->rp_ctx->dm_ctx, commit_id, result, errors);
+        rc = dm_commit_notifications_complete(np_ctx->rp_ctx->dm_ctx, commit_id, result, err_subs_xpaths, errors);
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR_MSG("Unable to release the commit in Data Manager.");
         }
+        /* TODO cleanup the items in list */
+        sr_list_cleanup(err_subs_xpaths);
         sr_list_cleanup(errors);
     }
 

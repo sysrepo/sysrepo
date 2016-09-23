@@ -2613,13 +2613,14 @@ dm_remove_commit_context(dm_ctx_t *dm_ctx, uint32_t c_ctx_id)
 }
 
 int
-dm_commit_notifications_complete(dm_ctx_t *dm_ctx, uint32_t c_ctx_id, int result, sr_list_t *errors)
+dm_commit_notifications_complete(dm_ctx_t *dm_ctx, uint32_t c_ctx_id, int result,
+        sr_list_t *err_subs_xpaths, sr_list_t *errors)
 {
 
     // TODO:
     //  - for SR_EV_VERIFY check result code and proceed with commit or rollback it
     //  - for SR_EV_APPLY and SR_EV_ABORT do not check the result code and release commit context
-    //  (errors does not need to be released)
+    //  (err_subs_xpaths / errors does not need to be released)
 
     return dm_remove_commit_context(dm_ctx, c_ctx_id);
 }
