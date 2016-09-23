@@ -892,12 +892,14 @@ int dm_get_all_modules(dm_ctx_t *dm_ctx, dm_session_t *session, bool enabled_onl
 int dm_is_model_modified(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module_name, bool *res);
 
 /**
- * @brief Removes commit context identified by id
+ * @brief Used to notify that all commit notifications has been delivered.
  * @param [in] dm_ctx
  * @param [in] c_ctx_id
+ * @param [in] result
+ * @param [in] errors
  * @return Error code (SR_ERR_OK on success)
  */
-int dm_remove_commit_context(dm_ctx_t *dm_ctx, uint32_t c_ctx_id);
+int dm_commit_notifications_complete(dm_ctx_t *dm_ctx, uint32_t c_ctx_id, int result, sr_list_t *errors);
 
 /**
  * @brief Looks up commit context identified by id

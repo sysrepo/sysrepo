@@ -1453,7 +1453,7 @@ rp_subscribe_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr
     rc = np_notification_subscribe(rp_ctx->np_ctx, session, subscribe_req->type,
             subscribe_req->destination, subscribe_req->subscription_id,
             subscribe_req->module_name, subscribe_req->xpath,
-            (subscribe_req->has_notif_event ? subscribe_req->notif_event : SR__NOTIFICATION_EVENT__NOTIFY_EV),
+            (subscribe_req->has_notif_event ? subscribe_req->notif_event : SR__NOTIFICATION_EVENT__APPLY_EV),
             (subscribe_req->has_priority ? subscribe_req->priority : 0),
             sr_api_variant_gpb_to_sr(subscribe_req->api_variant),
             options);
@@ -1719,7 +1719,7 @@ rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg 
     bool subscription_match = false;
     /* get RPC subscription */
     rc = pm_get_subscriptions(rp_ctx->pm_ctx, module_name, SR__SUBSCRIPTION_TYPE__RPC_SUBS,
-            &subscriptions, &subscription_cnt);
+            SR_EV_APPLY, &subscriptions, &subscription_cnt);
     CHECK_RC_LOG_GOTO(rc, finalize, "Failed to get subscriptions for RPC request (%s).", msg->request->rpc_req->xpath);
 
     for (size_t i = 0; i < subscription_cnt; i++) {
@@ -2116,18 +2116,18 @@ rp_unsubscribe_destination_req_process(const rp_ctx_t *rp_ctx, Sr__Msg *msg)
 }
 
 /**
- * @brief Processes a commit-release internal request.
+ * @brief Processes a commit-timeout internal request.
  */
 static int
-rp_commit_release_req_process(const rp_ctx_t *rp_ctx, Sr__Msg *msg)
+rp_commit_timeout_req_process(const rp_ctx_t *rp_ctx, Sr__Msg *msg)
 {
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG4(rp_ctx, msg, msg->internal_request, msg->internal_request->commit_release_req);
+    CHECK_NULL_ARG4(rp_ctx, msg, msg->internal_request, msg->internal_request->commit_timeout_req);
 
-    SR_LOG_DBG_MSG("Processing commit-release request.");
+    SR_LOG_DBG_MSG("Processing commit-timeout request.");
 
-    rc = np_commit_release(rp_ctx->np_ctx, msg->internal_request->commit_release_req->commit_id);
+    rc = np_commit_notifications_complete(rp_ctx->np_ctx, msg->internal_request->commit_timeout_req->commit_id, true);
 
     return rc;
 }
@@ -2212,7 +2212,7 @@ rp_event_notif_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, 
 
     /* get event-notification subscriptions */
     rc = pm_get_subscriptions(rp_ctx->pm_ctx, module_name, SR__SUBSCRIPTION_TYPE__EVENT_NOTIF_SUBS,
-            &subscriptions, &subscription_cnt);
+            SR_EV_APPLY, &subscriptions, &subscription_cnt);
     CHECK_RC_LOG_GOTO(rc, finalize, "Failed to get subscriptions for event notification request (%s).",
                       msg->request->event_notif_req->xpath);
 
@@ -2297,13 +2297,32 @@ finalize:
 static int
 rp_notification_ack_process(rp_ctx_t *rp_ctx, Sr__Msg *msg)
 {
+    Sr__Notification *notif = NULL;
+    Sr__NotificationEvent event = SR__NOTIFICATION_EVENT__APPLY_EV;
+    char *xpath = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG4(rp_ctx, msg, msg->notification_ack, msg->notification_ack->notif);
 
     SR_LOG_DBG("Notification ACK received with result = %"PRIu32".", msg->notification_ack->result);
 
-    rc = np_commit_notification_ack(rp_ctx->np_ctx, msg->notification_ack->notif->commit_id);
+    notif =  msg->notification_ack->notif;
+
+    if (SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS == msg->notification_ack->notif->type) {
+        xpath = notif->module_change_notif->module_name;
+        event = notif->module_change_notif->event;
+    } else if (SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS == msg->notification_ack->notif->type) {
+        xpath = notif->subtree_change_notif->xpath;
+        event = notif->subtree_change_notif->event;
+    }
+
+    if (SR_ERR_OK != msg->notification_ack->result) {
+        SR_LOG_ERR("'%s' subscriber returned and error by processing of %s event: %s",
+                xpath, sr_notification_event_gpb_to_str(event), sr_strerror(msg->notification_ack->result));
+    }
+
+    rc = np_commit_notification_ack(rp_ctx->np_ctx, notif->commit_id, sr_notification_event_gpb_to_sr(event),
+            msg->notification_ack->result, xpath);
 
     return rc;
 }
@@ -2498,8 +2517,8 @@ rp_internal_req_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
         case SR__OPERATION__UNSUBSCRIBE_DESTINATION:
             rc = rp_unsubscribe_destination_req_process(rp_ctx, msg);
             break;
-        case SR__OPERATION__COMMIT_RELEASE:
-            rc = rp_commit_release_req_process(rp_ctx, msg);
+        case SR__OPERATION__COMMIT_TIMEOUT:
+            rc = rp_commit_timeout_req_process(rp_ctx, msg);
             break;
         case SR__OPERATION__OPER_DATA_TIMEOUT:
             rc = rp_oper_data_timeout_req_process(rp_ctx, session, msg);

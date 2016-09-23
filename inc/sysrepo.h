@@ -1048,11 +1048,9 @@ typedef enum sr_subscr_flag_e {
     SR_SUBSCR_PASSIVE = 2,    /**< The subscriber is not the "owner" of the subscribed data tree, just a passive watcher for changes.
                                    When this option is passed in to ::sr_module_change_subscribe or ::sr_subtree_change_subscribe,
                                    the subscription will have no effect on the presence of the subtree in the running datastore. */
-    SR_SUBSCR_VERIFIER = 4,   /**< This subscription is supposed to verify the changes that are going to be committed into the
-                                   datastore just before the changes will be committed to the datastore. The subscriber can
-                                   deny the changes in this phase by returning an error from the callback specified in
-                                   to ::sr_module_change_subscribe or ::sr_subtree_change_subscribe calls.
-                                   @note This option is currently not supported and will be ignored.*/
+    SR_SUBSCR_APPLY_ONLY = 4, /**< The subscriber does not support verification of the changes and wants to be notified only
+                                   after the changes has been applied in the datastore, without the possibility to deny them
+                                   (it will receive only ::SR_EV_APPLY events). */
 } sr_subscr_flag_t;
 
 /**
@@ -1064,16 +1062,21 @@ typedef uint32_t sr_subscr_options_t;
 /**
  * @brief Type of the notification event that has occurred (passed to notification callbacks).
  *
- * @note The correct implementation should subscribe to both SR_EV_VERIFY and SR_EV_NOTIFY events (that means,
- * subscribe to the same module / subtree once by specifying SR_SUBSCR_VERIFIER option and once without it).
+ * @note Each change is normally notified twice: first as ::SR_EV_VERIFY event and then as ::SR_EV_APPLY or ::SR_EV_ABORT
+ * event. If the subscriber does not support verification, it can subscribe only to ::SR_EV_APPLY event by providing
+ * ::SR_SUBSCR_APPLY_ONLY subscription flag.
  */
 typedef enum sr_notif_event_e {
     SR_EV_VERIFY,  /**< Occurs just before the changes are committed to the datastore,
                         the subscriber is supposed to verify that the changes are valid and can be applied
-                        and prepare all resources for the changes. The subscriber can still deny the changes in this phase
-                        by returning an error from the callback. */
-    SR_EV_NOTIFY,  /**< Occurs just after the changes have been committed to the datastore,
-                        the subscriber is supposed to apply the changes now, but cannot deny the changes in this phase. */
+                        and prepare all resources required for the changes. The subscriber can still deny the changes
+                        in this phase by returning an error from the callback. */
+    SR_EV_APPLY,   /**< Occurs just after the changes have been successfully committed to the datastore,
+                        the subscriber is supposed to apply the changes now, but it cannot deny the changes in this
+                        phase anymore (any returned errors are just logged and ignored). */
+    SR_EV_ABORT,   /**< Occurs in case that the commit transaction has failed (possibly because one of the verifiers
+                        has denied the change / returned an error). The subscriber is supposed to return the managed
+                        application to the state before the commit. Any returned errors are just logged and ignored. */
 } sr_notif_event_t;
 
 /**

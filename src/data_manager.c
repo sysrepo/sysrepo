@@ -2523,6 +2523,7 @@ dm_prepare_module_subscriptions(dm_ctx_t *dm_ctx, dm_schema_info_t *schema_info,
 
     rc = np_get_module_change_subscriptions(dm_ctx->np_ctx,
             schema_info->module_name,
+            SR_EV_VERIFY, /* TODO: VERIFY for verifiers only, APPLY for all (including verifiers) */
             &ms->subscriptions,
             &ms->subscription_cnt);
 
@@ -2596,7 +2597,7 @@ dm_insert_commit_context(dm_ctx_t *dm_ctx, dm_commit_context_t *c_ctx)
     return rc;
 }
 
-int
+static int
 dm_remove_commit_context(dm_ctx_t *dm_ctx, uint32_t c_ctx_id)
 {
     pthread_rwlock_wrlock(&dm_ctx->commit_ctxs.lock);
@@ -2610,6 +2611,18 @@ dm_remove_commit_context(dm_ctx_t *dm_ctx, uint32_t c_ctx_id)
     sr_btree_delete(dm_ctx->commit_ctxs.tree, c_ctx);
     pthread_rwlock_unlock(&dm_ctx->commit_ctxs.lock);
     return SR_ERR_OK;
+}
+
+int
+dm_commit_notifications_complete(dm_ctx_t *dm_ctx, uint32_t c_ctx_id, int result, sr_list_t *errors)
+{
+
+    // TODO:
+    //  - for SR_EV_VERIFY check result code and proceed with commit or rollback it
+    //  - for SR_EV_APPLY and SR_EV_ABORT do not check the result code and release commit context
+    //  - release errors if result != SR_ERR_OK and passed
+
+    return dm_remove_commit_context(dm_ctx, c_ctx_id);
 }
 
 int
@@ -3067,7 +3080,7 @@ dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t *c
 
     /* let the np know that the commit has finished */
     if (SR_ERR_OK == rc) {
-        rc = np_commit_end_notify(dm_ctx->np_ctx, c_ctx->id, notified_notif);
+        rc = np_commit_notifications_sent(dm_ctx->np_ctx, c_ctx->id, /* TODO: pass false for verify phase */ true, notified_notif);
     }
 
     sr_list_cleanup(notified_notif);

@@ -156,7 +156,7 @@ pm_subscription_test(void **state)
 
     subscription.type = SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS;
     subscription.enable_running = true;
-    subscription.notif_event = SR__NOTIFICATION_EVENT__NOTIFY_EV;
+    subscription.notif_event = SR__NOTIFICATION_EVENT__APPLY_EV;
     subscription.priority = 53;
     rc = pm_add_subscription(pm_ctx, &test_ctx->user_cred, "example-module", &subscription, false);
     assert_int_equal(SR_ERR_OK, rc);
@@ -198,11 +198,11 @@ pm_subscription_test(void **state)
 
     /* retrieve active subscriptions */
     rc = pm_get_subscriptions(pm_ctx, "example-module", SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS,
-            &subscriptions, &subscription_cnt);
+            SR_EV_APPLY, &subscriptions, &subscription_cnt);
     assert_int_equal(SR_ERR_OK, rc);
     assert_true(subscription_cnt >= 1);
     for (size_t i = 0; i < subscription_cnt; i++) {
-        assert_true(SR__NOTIFICATION_EVENT__NOTIFY_EV == subscriptions[i].notif_event);
+        assert_true(SR__NOTIFICATION_EVENT__APPLY_EV == subscriptions[i].notif_event);
         assert_int_equal(subscriptions[i].priority, 53);
         printf("Found subscription: %s @ %"PRIu32"\n", subscriptions[i].dst_address, subscriptions[i].dst_id);
         np_free_subscription_content(&subscriptions[i]);
