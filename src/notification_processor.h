@@ -175,14 +175,12 @@ int np_hello_notify(np_ctx_t *np_ctx, const char *module_name, const char *dst_a
  *
  * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
  * @param[in] module_name ame of the module where the subscription is active.
- * @param[in] event Event for which the subscription has subscribed. Pass SR_EV_VERIFY / SR_EV_ABORT to retrieve list
- * of all verifier subscriptions and SR_EV_APPLY for all verifiers plus all passive (non-verify) subscribers.
  * @param[out] subscriptions_arr Array of pointers to subscriptions matching the criteria.
  * @param[out] subscriptions_cnt Count of the matching subscriptions.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int np_get_module_change_subscriptions(np_ctx_t *np_ctx, const char *module_name, sr_notif_event_t event,
+int np_get_module_change_subscriptions(np_ctx_t *np_ctx, const char *module_name,
         np_subscription_t ***subscriptions_arr, size_t *subscriptions_cnt);
 
 /**

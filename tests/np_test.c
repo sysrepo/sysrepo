@@ -290,7 +290,7 @@ np_module_subscriptions_test(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 
     /* get verify subscriptions */
-    rc = np_get_module_change_subscriptions(np_ctx, "example-module", SR_EV_VERIFY, &subscriptions_arr, &subscriptions_cnt);
+    rc = np_get_module_change_subscriptions(np_ctx, "example-module", &subscriptions_arr, &subscriptions_cnt);
     assert_int_equal(rc, SR_ERR_OK);
     assert_int_equal(subscriptions_cnt, 2);
     for (size_t i = 0; i < subscriptions_cnt; i++) {
@@ -299,7 +299,7 @@ np_module_subscriptions_test(void **state)
     free(subscriptions_arr);
 
     /* get all subscriptions */
-    rc = np_get_module_change_subscriptions(np_ctx, "example-module", SR_EV_APPLY, &subscriptions_arr, &subscriptions_cnt);
+    rc = np_get_module_change_subscriptions(np_ctx, "example-module", &subscriptions_arr, &subscriptions_cnt);
     assert_int_equal(rc, SR_ERR_OK);
     assert_int_equal(subscriptions_cnt, 3);
 
