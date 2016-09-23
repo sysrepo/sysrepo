@@ -101,6 +101,17 @@ typedef enum dm_operation_e {
     DM_MOVE_OP,
 } dm_operation_t;
 
+typedef enum dm_commit_state_e {
+    DM_COMMIT_STARTED,
+    DM_COMMIT_VALIDATION,
+    DM_COMMIT_LOAD_MODIFIED_MODELS,
+    DM_COMMIT_REPLAY_OPS,
+    DM_COMMIT_VALIDATE_MERGED,
+    DM_COMMIT_NOTIFY_VERIFY,
+    DM_COMMIT_WRITE,
+    DM_COMMIT_NOTIFY_APPLY,
+    DM_COMMIT_FINISHED,
+}dm_commit_state_t;
 /**
  * @brief Structure holding information about operation performed.
  */
@@ -143,6 +154,7 @@ typedef struct dm_model_subscription_s {
  */
 typedef struct dm_commit_context_s {
     uint32_t id;                /**< id used for commit identification in notification session */
+    dm_commit_state_t state;    /**< state the commit tied to this context is in */
     dm_session_t *session;      /**< session where mereged (user changes + file system state) data trees are stored */
     int *fds;                   /**< opened file descriptors */
     bool *existed;              /**< flag wheter the file for the filedesriptor existed (and should be truncated) before commit*/

@@ -667,69 +667,84 @@ rp_dt_replay_operations(dm_ctx_t *ctx, dm_session_t *session, dm_sess_op_t *oper
 }
 
 int
-rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, sr_error_info_t **errors, size_t *err_cnt)
+rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t *c_ctx, sr_error_info_t **errors, size_t *err_cnt)
 {
     CHECK_NULL_ARG4(rp_ctx, session, errors, err_cnt);
     int rc = SR_ERR_OK;
-    dm_commit_context_t *commit_ctx = NULL;
+    dm_commit_context_t *commit_ctx = c_ctx;
+    dm_commit_state_t state = NULL != commit_ctx ? commit_ctx->state : DM_COMMIT_STARTED;
 
-    SR_LOG_DBG_MSG("Commit (1/7): process stared");
-
-    //TODO send validate notifications
-
-    /* YANG validation */
-    rc = dm_validate_session_data_trees(rp_ctx->dm_ctx, session->dm_session, errors, err_cnt);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Data validation failed: %s", *err_cnt > 0 ? errors[0]->message : "(no error)");
-        return SR_ERR_VALIDATION_FAILED;
+    while (state != DM_COMMIT_FINISHED) {
+        switch (state) {
+        case DM_COMMIT_STARTED:
+            SR_LOG_DBG_MSG("Commit (1/7): process stared");
+            state = DM_COMMIT_VALIDATION;
+            break;
+        case DM_COMMIT_VALIDATION:
+            rc = dm_validate_session_data_trees(rp_ctx->dm_ctx, session->dm_session, errors, err_cnt);
+            if (SR_ERR_OK != rc) {
+                SR_LOG_ERR("Data validation failed: %s", *err_cnt > 0 ? errors[0]->message : "(no error)");
+                return SR_ERR_VALIDATION_FAILED;
+            }
+            SR_LOG_DBG_MSG("Commit (2/7): validation succeeded");
+            state = DM_COMMIT_LOAD_MODIFIED_MODELS;
+            break;
+        case DM_COMMIT_LOAD_MODIFIED_MODELS:
+            rc = dm_commit_prepare_context(rp_ctx->dm_ctx, session->dm_session, &commit_ctx);
+            CHECK_RC_MSG_RETURN(rc, "commit prepare context failed");
+            if (0 == commit_ctx->modif_count) {
+                SR_LOG_DBG_MSG("Commit: Finished - no model modified");
+                dm_free_commit_context(commit_ctx);
+                return SR_ERR_OK;
+            }
+            /* open all files */
+            rc = dm_commit_load_modified_models(rp_ctx->dm_ctx, session->dm_session, commit_ctx);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "Loading of modified models failed");
+            SR_LOG_DBG_MSG("Commit (3/7): all modified models loaded successfully");
+            state = DM_COMMIT_REPLAY_OPS;
+            break;
+        case DM_COMMIT_REPLAY_OPS:
+            rc = rp_dt_replay_operations(rp_ctx->dm_ctx, commit_ctx->session, commit_ctx->operations,
+                commit_ctx->oper_count, false, commit_ctx->up_to_date_models);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "Replay of operations failed");
+            SR_LOG_DBG_MSG("Commit (4/7): replay of operation succeeded");
+            state = DM_COMMIT_VALIDATE_MERGED;
+            break;
+        case DM_COMMIT_VALIDATE_MERGED:
+            rc = dm_validate_session_data_trees(rp_ctx->dm_ctx, commit_ctx->session, errors, err_cnt);
+            if (SR_ERR_OK != rc) {
+                SR_LOG_ERR_MSG("Validation after merging failed");
+                rc = SR_ERR_VALIDATION_FAILED;
+                goto cleanup;
+            }
+            SR_LOG_DBG_MSG("Commit (5/7): merged models validation succeeded");
+            state = DM_COMMIT_NOTIFY_VERIFY;
+            break;
+        case DM_COMMIT_NOTIFY_VERIFY:
+            commit_ctx->state = DM_COMMIT_WRITE;
+            state = DM_COMMIT_WRITE;
+            break;
+        case DM_COMMIT_WRITE:
+            rc = dm_commit_write_files(session->dm_session, commit_ctx);
+            if (SR_ERR_OK == rc) {
+                SR_LOG_DBG_MSG("Commit (6/7): data write succeeded");
+            }
+            state = DM_COMMIT_NOTIFY_APPLY;
+            break;
+        case DM_COMMIT_NOTIFY_APPLY:
+            if (SR_ERR_OK == rc) {
+                //apply
+                rc = dm_commit_notify(rp_ctx->dm_ctx, session->dm_session, commit_ctx);
+            } else {
+                //abort
+            }
+            state = DM_COMMIT_FINISHED;
+            break;
+        case DM_COMMIT_FINISHED:
+            goto cleanup;
+            break;
+        }
     }
-    SR_LOG_DBG_MSG("Commit (2/7): validation succeeded");
-
-
-    rc = dm_commit_prepare_context(rp_ctx->dm_ctx, session->dm_session, &commit_ctx);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("commit prepare context failed");
-        return rc;
-    } else if (0 == commit_ctx->modif_count) {
-        SR_LOG_DBG_MSG("Commit: Finished - no model modified");
-        dm_free_commit_context(commit_ctx);
-        return SR_ERR_OK;
-    }
-
-    /* open all files */
-    rc = dm_commit_load_modified_models(rp_ctx->dm_ctx, session->dm_session, commit_ctx);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Loading of modified models failed");
-        goto cleanup;
-    }
-    SR_LOG_DBG_MSG("Commit (3/7): all modified models loaded successfully");
-
-    /* replay operations */
-    rc = rp_dt_replay_operations(rp_ctx->dm_ctx, commit_ctx->session, commit_ctx->operations,
-            commit_ctx->oper_count, false, commit_ctx->up_to_date_models);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Replay of operations failed");
-        goto cleanup;
-    }
-    SR_LOG_DBG_MSG("Commit (4/7): replay of operation succeeded");
-
-    /* validate data trees after merge */
-    rc = dm_validate_session_data_trees(rp_ctx->dm_ctx, commit_ctx->session, errors, err_cnt);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Validation after merging failed");
-        rc = SR_ERR_VALIDATION_FAILED;
-        goto cleanup;
-    }
-    SR_LOG_DBG_MSG("Commit (5/7): merged models validation succeeded");
-
-    rc = dm_commit_write_files(session->dm_session, commit_ctx);
-
-    if (SR_ERR_OK == rc) {
-        SR_LOG_DBG_MSG("Commit (6/7): data write succeeded");
-
-        rc = dm_commit_notify(rp_ctx->dm_ctx, session->dm_session, commit_ctx);
-    }
-
 cleanup:
     /* In case of running datastore, commit context will be freed when
      * all notifications session are closed.
@@ -896,7 +911,7 @@ rp_dt_copy_config_to_running(rp_ctx_t* rp_ctx, rp_session_t* session, const char
         CHECK_RC_MSG_GOTO(rc, cleanup, "Data tree move failed");
     }
     /* commit */
-    rc = rp_dt_commit(rp_ctx, session, &errors, &e_cnt);
+    rc = rp_dt_commit(rp_ctx, session, NULL, &errors, &e_cnt);
     sr_free_errors(errors, e_cnt);
 
 cleanup:

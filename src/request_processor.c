@@ -1106,7 +1106,7 @@ rp_commit_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
     sr_error_info_t *errors = NULL;
     size_t err_cnt = 0;
     if (SR_ERR_OK == rc ) {
-        rc = rp_dt_commit(rp_ctx, session, &errors, &err_cnt);
+        rc = rp_dt_commit(rp_ctx, session, NULL, &errors, &err_cnt);
     }
 
     /* set response code */
