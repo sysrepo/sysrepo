@@ -142,16 +142,13 @@ int pm_remove_subscriptions_for_destination(pm_ctx_t *pm_ctx, const char *module
  * @param[in] pm_ctx Persistence Manager context acquired by ::pm_init call.
  * @param[in] module_name Name of the module.
  * @param[in] notif_type Type of the notification.
- * @param[in] event Event for which the subscription has subscribed. Pass SR_EV_VERIFY / SR_EV_ABORT to retrieve list
- * of all verifier subscriptions and SR_EV_APPLY for all verifiers plus all passive (non-verify) subscribers. If
- * the evnt is not applicable, any value can be passed.
  * @param[out] subscriptions Array of the active subscriptions.
  * @param[out] subscription_cnt Number of subscriptions in returned array.
  *
  * @return Error code (SR_ERR_OK on success).
  */
 int pm_get_subscriptions(pm_ctx_t *pm_ctx, const char *module_name, Sr__SubscriptionType notif_type,
-        sr_notif_event_t event, np_subscription_t **subscriptions, size_t *subscription_cnt);
+        np_subscription_t **subscriptions, size_t *subscription_cnt);
 
 /**@} pm */
 
