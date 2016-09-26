@@ -1057,14 +1057,18 @@ np_commit_notifications_complete(np_ctx_t *np_ctx, uint32_t commit_id, bool time
         }
 
         /* cleanup error lists */
-        for (size_t i = 0; i < err_subs_xpaths->count; i++) {
-            free(err_subs_xpaths->data[i]);
+        if (NULL != err_subs_xpaths) {
+            for (size_t i = 0; i < err_subs_xpaths->count; i++) {
+                free(err_subs_xpaths->data[i]);
+            }
+            sr_list_cleanup(err_subs_xpaths);
         }
-        for (size_t i = 0; i < errors->count; i++) {
-            sr_free_errors(errors->data[i], 1);
+        if (NULL != errors) {
+            for (size_t i = 0; i < errors->count; i++) {
+                sr_free_errors(errors->data[i], 1);
+            }
+            sr_list_cleanup(errors);
         }
-        sr_list_cleanup(err_subs_xpaths);
-        sr_list_cleanup(errors);
     }
 
     return rc;
