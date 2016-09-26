@@ -721,7 +721,14 @@ rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t *c_ctx
             state = DM_COMMIT_NOTIFY_VERIFY;
             break;
         case DM_COMMIT_NOTIFY_VERIFY:
-            commit_ctx->state = DM_COMMIT_WRITE;
+            rc = dm_commit_notify(rp_ctx->dm_ctx, session->dm_session, SR_EV_VERIFY, commit_ctx);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "Sending of verify notifications failed");
+            state = commit_ctx->state;
+            break;
+        case DM_COMMIT_WAIT_FOR_NOTIFICATIONS:
+            rc = dm_save_commit_context(rp_ctx->dm_ctx, commit_ctx);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "Saving of commit context failed");
+            //TODO pause commit processing
             state = DM_COMMIT_WRITE;
             break;
         case DM_COMMIT_WRITE:
@@ -733,10 +740,9 @@ rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t *c_ctx
             break;
         case DM_COMMIT_NOTIFY_APPLY:
             if (SR_ERR_OK == rc) {
-                //apply
-                rc = dm_commit_notify(rp_ctx->dm_ctx, session->dm_session, commit_ctx);
+                rc = dm_commit_notify(rp_ctx->dm_ctx, session->dm_session, SR_EV_APPLY, commit_ctx);
             } else {
-                //abort
+                rc = dm_commit_notify(rp_ctx->dm_ctx, session->dm_session, SR_EV_ABORT, commit_ctx);
             }
             state = DM_COMMIT_FINISHED;
             break;

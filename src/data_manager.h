@@ -108,6 +108,7 @@ typedef enum dm_commit_state_e {
     DM_COMMIT_REPLAY_OPS,
     DM_COMMIT_VALIDATE_MERGED,
     DM_COMMIT_NOTIFY_VERIFY,
+    DM_COMMIT_WAIT_FOR_NOTIFICATIONS,
     DM_COMMIT_WRITE,
     DM_COMMIT_NOTIFY_APPLY,
     DM_COMMIT_FINISHED,
@@ -426,7 +427,7 @@ int dm_commit_write_files(dm_session_t *session, dm_commit_context_t *c_ctx);
  * @param [in] c_ctx
  * @return Error code (SR_ERR_OK on success)
  */
-int dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t *c_ctx);
+int dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, sr_notif_event_t ev, dm_commit_context_t *c_ctx);
 
 /**
  * @brief Frees all resources allocated in commit context closes
