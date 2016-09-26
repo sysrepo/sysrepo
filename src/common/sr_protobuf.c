@@ -2072,6 +2072,20 @@ sr_notification_event_sr_to_str(sr_notif_event_t event)
 }
 
 Sr__NotificationEvent
+sr_notification_event_sr_to_gpb(sr_notif_event_t event)
+{
+    switch (event) {
+    case SR_EV_VERIFY:
+        return SR__NOTIFICATION_EVENT__VERIFY_EV;
+    case SR_EV_APPLY:
+        return SR__NOTIFICATION_EVENT__APPLY_EV;
+    case SR_EV_ABORT:
+    default:
+        return SR__NOTIFICATION_EVENT__ABORT_EV;
+    }
+}
+
+Sr__NotificationEvent
 sr_notification_event_str_to_gpb(const char *event_name)
 {
     if (0 == strcmp(event_name, "verify")) {

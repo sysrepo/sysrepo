@@ -305,7 +305,7 @@ np_module_subscriptions_test(void **state)
         assert_true((SR__NOTIFICATION_EVENT__VERIFY_EV == subscriptions_arr[i]->notif_event) ||
                 (SR__NOTIFICATION_EVENT__APPLY_EV == subscriptions_arr[i]->notif_event));
         /* notify and add into list */
-        rc = np_subscription_notify(np_ctx, subscriptions_arr[i], 0);
+        rc = np_subscription_notify(np_ctx, subscriptions_arr[i], SR_EV_APPLY, 0);
         assert_int_equal(rc, SR_ERR_OK);
         sr_list_add(subscriptions_list, subscriptions_arr[i]);
     }

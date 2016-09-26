@@ -810,7 +810,7 @@ cleanup:
 }
 
 int
-np_subscription_notify(np_ctx_t *np_ctx, np_subscription_t *subscription, uint32_t commit_id)
+np_subscription_notify(np_ctx_t *np_ctx, np_subscription_t *subscription, sr_notif_event_t event, uint32_t commit_id)
 {
     Sr__Msg *notif = NULL;
     int rc = SR_ERR_OK;
@@ -826,12 +826,12 @@ np_subscription_notify(np_ctx_t *np_ctx, np_subscription_t *subscription, uint32
         notif->notification->commit_id = commit_id;
         notif->notification->has_commit_id = true;
         if (SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS == subscription->type) {
-            notif->notification->module_change_notif->event = subscription->notif_event;
+            notif->notification->module_change_notif->event = sr_notification_event_sr_to_gpb(event);
             notif->notification->module_change_notif->module_name = strdup(subscription->module_name);
             CHECK_NULL_NOMEM_ERROR(notif->notification->module_change_notif->module_name, rc);
         }
         if (SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS == subscription->type) {
-            notif->notification->subtree_change_notif->event = subscription->notif_event;
+            notif->notification->subtree_change_notif->event = sr_notification_event_sr_to_gpb(event);
             notif->notification->subtree_change_notif->xpath = strdup(subscription->xpath);
             CHECK_NULL_NOMEM_ERROR(notif->notification->subtree_change_notif->xpath, rc);
         }
