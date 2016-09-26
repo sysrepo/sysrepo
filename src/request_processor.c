@@ -2299,7 +2299,7 @@ rp_notification_ack_process(rp_ctx_t *rp_ctx, Sr__Msg *msg)
 {
     Sr__Notification *notif = NULL;
     Sr__NotificationEvent event = SR__NOTIFICATION_EVENT__APPLY_EV;
-    char *xpath = NULL;
+    char *subs_xpath = NULL, *err_msg = NULL, *err_xpath = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG4(rp_ctx, msg, msg->notification_ack, msg->notification_ack->notif);
@@ -2309,20 +2309,24 @@ rp_notification_ack_process(rp_ctx_t *rp_ctx, Sr__Msg *msg)
     notif =  msg->notification_ack->notif;
 
     if (SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS == msg->notification_ack->notif->type) {
-        xpath = notif->module_change_notif->module_name;
+        subs_xpath = notif->module_change_notif->module_name;
         event = notif->module_change_notif->event;
     } else if (SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS == msg->notification_ack->notif->type) {
-        xpath = notif->subtree_change_notif->xpath;
+        subs_xpath = notif->subtree_change_notif->xpath;
         event = notif->subtree_change_notif->event;
     }
 
     if (SR_ERR_OK != msg->notification_ack->result) {
-        SR_LOG_ERR("'%s' subscriber returned and error by processing of %s event: %s",
-                xpath, sr_notification_event_gpb_to_str(event), sr_strerror(msg->notification_ack->result));
+        if (NULL != msg->notification_ack->error) {
+            err_msg = msg->notification_ack->error->message;
+            err_xpath = msg->notification_ack->error->xpath;
+        }
+        SR_LOG_ERR("'%s' subscriber returned and error by processing of %s event: %s.",
+                subs_xpath, sr_notification_event_gpb_to_str(event), sr_strerror(msg->notification_ack->result));
     }
 
-    rc = np_commit_notification_ack(rp_ctx->np_ctx, notif->commit_id, sr_notification_event_gpb_to_sr(event),
-            msg->notification_ack->result, xpath);
+    rc = np_commit_notification_ack(rp_ctx->np_ctx, notif->commit_id, subs_xpath, sr_notification_event_gpb_to_sr(event),
+            msg->notification_ack->result, err_msg, err_xpath);
 
     return rc;
 }

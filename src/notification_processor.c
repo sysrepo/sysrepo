@@ -310,17 +310,18 @@ np_commit_error_add(np_commit_ctx_t *commit_ctx, const char *err_subs_xpath, con
         rc = sr_list_init(&commit_ctx->err_subs_xpaths);
         CHECK_RC_MSG_RETURN(rc, "Unable to init sr_list for errored verifier xpaths.");
     }
-    rc = sr_list_add(commit_ctx->err_subs_xpaths, strdup(err_xpath));
+    rc = sr_list_add(commit_ctx->err_subs_xpaths, strdup(err_subs_xpath));
 
     if (SR_ERR_OK == rc && NULL != err_msg) {
         if (NULL == commit_ctx->errors) {
             rc = sr_list_init(&commit_ctx->errors);
-            CHECK_RC_MSG_RETURN(rc, "Unable to init sr_list for errors.");
         }
-        error = calloc(1, sizeof(*error));
-        error->message = strdup(err_msg);
-        error->xpath = strdup(err_xpath);
-        rc = sr_list_add(commit_ctx->errors, error);
+        if (SR_ERR_OK == rc) {
+            error = calloc(1, sizeof(*error));
+            error->message = strdup(err_msg);
+            error->xpath = strdup(err_xpath);
+            rc = sr_list_add(commit_ctx->errors, error);
+        }
     }
 
     return rc;
@@ -962,7 +963,8 @@ np_commit_notifications_sent(np_ctx_t *np_ctx, uint32_t commit_id, bool commit_f
 }
 
 int
-np_commit_notification_ack(np_ctx_t *np_ctx, uint32_t commit_id, sr_notif_event_t event, int result, char *xpath)
+np_commit_notification_ack(np_ctx_t *np_ctx, uint32_t commit_id, char *subs_xpath, sr_notif_event_t event, int result,
+        const char *err_msg, const char *err_xpath)
 {
     np_commit_ctx_t *commit = NULL;
     sr_llist_node_t *commit_node = NULL;
@@ -979,12 +981,14 @@ np_commit_notification_ack(np_ctx_t *np_ctx, uint32_t commit_id, sr_notif_event_
         if (SR_EV_VERIFY == event && SR_ERR_OK != result) {
             /* error returned from the verifier */
             if (SR_ERR_OK == commit->result) {
+                /* if there isn't any previous error stored within the commit context, store there this one */
                 commit->result = result;
             }
-            if (NULL != xpath) {
-                np_commit_error_add(commit, xpath, /* TODO */ NULL, NULL);
+            if (NULL != err_msg) {
+                np_commit_error_add(commit, subs_xpath, err_msg, err_xpath);
             }
-            SR_LOG_ERR("Verifier for '%s' returned an error, commit will be aborted.", xpath);
+            SR_LOG_ERR("Verifier for '%s' returned an error (msg: '%s', xpath: '%s'), commit will be aborted.",
+                    subs_xpath, err_msg, err_xpath);
         }
         commit->notifications_acked++;
         if (commit->all_notifications_sent && (commit->notifications_sent == commit->notifications_acked)) {
@@ -1051,7 +1055,14 @@ np_commit_notifications_complete(np_ctx_t *np_ctx, uint32_t commit_id, bool time
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR_MSG("Unable to release the commit in Data Manager.");
         }
-        /* TODO cleanup the items in list */
+
+        /* cleanup error lists */
+        for (size_t i = 0; i < err_subs_xpaths->count; i++) {
+            free(err_subs_xpaths->data[i]);
+        }
+        for (size_t i = 0; i < errors->count; i++) {
+            sr_free_errors(errors->data[i], 1);
+        }
         sr_list_cleanup(err_subs_xpaths);
         sr_list_cleanup(errors);
     }
