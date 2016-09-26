@@ -896,10 +896,12 @@ int dm_is_model_modified(dm_ctx_t *dm_ctx, dm_session_t *session, const char *mo
  * @param [in] dm_ctx
  * @param [in] c_ctx_id
  * @param [in] result
+ * @param [in] err_subscribers
  * @param [in] errors
  * @return Error code (SR_ERR_OK on success)
  */
-int dm_commit_notifications_complete(dm_ctx_t *dm_ctx, uint32_t c_ctx_id, int result, sr_list_t *errors);
+int dm_commit_notifications_complete(dm_ctx_t *dm_ctx, uint32_t c_ctx_id, int result,
+        sr_list_t *err_subs_xpaths, sr_list_t *errors);
 
 /**
  * @brief Looks up commit context identified by id

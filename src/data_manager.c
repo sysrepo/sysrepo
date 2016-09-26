@@ -556,7 +556,7 @@ dm_load_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, 
     md_ctx_lock(dm_ctx->md_ctx, false);
     rc = md_get_module_info(dm_ctx->md_ctx, module_name, revision, &module);
     if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Module '%s:%s' is not installed.\n", module_name, revision ? revision : "<latest>");
+        SR_LOG_ERR("Module '%s:%s' is not installed.", module_name, revision ? revision : "<latest>");
         *schema_info = NULL;
         md_ctx_unlock(dm_ctx->md_ctx);
         return SR_ERR_UNKNOWN_MODEL;
@@ -2523,7 +2523,6 @@ dm_prepare_module_subscriptions(dm_ctx_t *dm_ctx, dm_schema_info_t *schema_info,
 
     rc = np_get_module_change_subscriptions(dm_ctx->np_ctx,
             schema_info->module_name,
-            SR_EV_VERIFY, /* TODO: VERIFY for verifiers only, APPLY for all (including verifiers) */
             &ms->subscriptions,
             &ms->subscription_cnt);
 
@@ -2614,13 +2613,14 @@ dm_remove_commit_context(dm_ctx_t *dm_ctx, uint32_t c_ctx_id)
 }
 
 int
-dm_commit_notifications_complete(dm_ctx_t *dm_ctx, uint32_t c_ctx_id, int result, sr_list_t *errors)
+dm_commit_notifications_complete(dm_ctx_t *dm_ctx, uint32_t c_ctx_id, int result,
+        sr_list_t *err_subs_xpaths, sr_list_t *errors)
 {
 
     // TODO:
     //  - for SR_EV_VERIFY check result code and proceed with commit or rollback it
     //  - for SR_EV_APPLY and SR_EV_ABORT do not check the result code and release commit context
-    //  - release errors if result != SR_ERR_OK and passed
+    //  (err_subs_xpaths / errors does not need to be released)
 
     return dm_remove_commit_context(dm_ctx, c_ctx_id);
 }
@@ -3122,7 +3122,7 @@ dm_install_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revisio
 
     rc = md_insert_module(dm_ctx->md_ctx, file_name);
     if (SR_ERR_DATA_EXISTS == rc) {
-        SR_LOG_WRN("Module '%s' is already installed\n", file_name);
+        SR_LOG_WRN("Module '%s' is already installed", file_name);
         rc = SR_ERR_OK; /*< do not treat as error */
     }
 

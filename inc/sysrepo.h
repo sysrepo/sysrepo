@@ -523,6 +523,22 @@ int sr_get_last_error(sr_session_ctx_t *session, const sr_error_info_t **error_i
  */
 int sr_get_last_errors(sr_session_ctx_t *session, const sr_error_info_t **error_info, size_t *error_cnt);
 
+/**
+ * @brief Sets detailed error information into provided session. Used to notify
+ * the client library about errors that occurred in application code.
+ *
+ * @note Intended for commit verifiers (notification session) - the call has no
+ * impact on any other sessions.
+ *
+ * @param[in] session Session context passed into notification callback.
+ * @param[in] message Human-readable error message.
+ * @param[in] xpath XPath to the node where the error has occurred. NULL value
+ * is also accepted.
+ *
+ * @return Error code (SR_ERR_OK on success)
+ */
+int sr_set_error(sr_session_ctx_t *session, const char *message, const char *xpath);
+
 
 ////////////////////////////////////////////////////////////////////////////////
 // Data Retrieval API (get / get-config functionality)

@@ -51,6 +51,7 @@ typedef struct np_commit_ctx_s {
     size_t notifications_sent;       /**< Count of sent notifications. */
     size_t notifications_acked;      /**< Count of received acknowledgments. */
     int result;                      /**< Used to store overall result of the commit operation. */
+    sr_list_t *err_subs_xpaths;      /**< Used to store xpaths to subscribers that returned an error. */
     sr_list_t *errors;               /**< Used to store errors returned from commit verifiers. */
 } np_commit_ctx_t;
 
@@ -290,6 +291,38 @@ np_commit_notif_cnt_increment(np_ctx_t *np_ctx, uint32_t commit_id)
 
 unlock:
     pthread_rwlock_unlock(&np_ctx->lock);
+
+    return rc;
+}
+
+/**
+ * @brief Adds an error xpath into commit context.
+ */
+static int
+np_commit_error_add(np_commit_ctx_t *commit_ctx, const char *err_subs_xpath, const char *err_msg, const char *err_xpath)
+{
+    sr_error_info_t *error = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG2(commit_ctx, err_subs_xpath);
+
+    if (NULL == commit_ctx->err_subs_xpaths) {
+        rc = sr_list_init(&commit_ctx->err_subs_xpaths);
+        CHECK_RC_MSG_RETURN(rc, "Unable to init sr_list for errored verifier xpaths.");
+    }
+    rc = sr_list_add(commit_ctx->err_subs_xpaths, strdup(err_subs_xpath));
+
+    if (SR_ERR_OK == rc && NULL != err_msg) {
+        if (NULL == commit_ctx->errors) {
+            rc = sr_list_init(&commit_ctx->errors);
+        }
+        if (SR_ERR_OK == rc) {
+            error = calloc(1, sizeof(*error));
+            error->message = strdup(err_msg);
+            error->xpath = strdup(err_xpath);
+            rc = sr_list_add(commit_ctx->errors, error);
+        }
+    }
 
     return rc;
 }
@@ -650,13 +683,13 @@ np_hello_notify(np_ctx_t *np_ctx, const char *module_name, const char *dst_addre
     Sr__Msg *notif = NULL;
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG4(np_ctx, np_ctx->rp_ctx, module_name, dst_address);
+    CHECK_NULL_ARG3(np_ctx, np_ctx->rp_ctx, dst_address);
 
     SR_LOG_DBG("Sending HELLO notification to '%s' @ %"PRIu32".", dst_address, dst_id);
 
     rc = sr_gpb_notif_alloc(NULL, SR__SUBSCRIPTION_TYPE__HELLO_SUBS, dst_address, dst_id, &notif);
 
-    if (SR_ERR_OK == rc) {
+    if (SR_ERR_OK == rc && NULL != module_name) {
         /* save notification destination info */
         rc = np_dst_info_insert(np_ctx, dst_address, module_name);
     }
@@ -671,7 +704,7 @@ np_hello_notify(np_ctx_t *np_ctx, const char *module_name, const char *dst_addre
 }
 
 int
-np_get_module_change_subscriptions(np_ctx_t *np_ctx, const char *module_name, sr_notif_event_t event,
+np_get_module_change_subscriptions(np_ctx_t *np_ctx, const char *module_name,
         np_subscription_t ***subscriptions_arr_p, size_t *subscriptions_cnt_p)
 {
     np_subscription_t *subscriptions_1 = NULL, *subscriptions_2 = NULL, **subscriptions_arr = NULL;
@@ -682,12 +715,12 @@ np_get_module_change_subscriptions(np_ctx_t *np_ctx, const char *module_name, sr
 
     /* get subtree-change subscriptions */
     rc = pm_get_subscriptions(np_ctx->rp_ctx->pm_ctx, module_name, SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS,
-            event, &subscriptions_1, &subscription_cnt_1);
+            &subscriptions_1, &subscription_cnt_1);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to retrieve subtree-change subscriptions");
 
     /* get module-change subscriptions */
     rc = pm_get_subscriptions(np_ctx->rp_ctx->pm_ctx, module_name, SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS,
-            event, &subscriptions_2, &subscription_cnt_2);
+            &subscriptions_2, &subscription_cnt_2);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to retrieve module-change subscriptions");
 
     if ((subscription_cnt_1 + subscription_cnt_2) > 0) {
@@ -743,7 +776,7 @@ np_get_data_provider_subscriptions(np_ctx_t *np_ctx, const char *module_name,
 
     /* get data provides subscriptions */
     rc = pm_get_subscriptions(np_ctx->rp_ctx->pm_ctx, module_name, SR__SUBSCRIPTION_TYPE__DP_GET_ITEMS_SUBS,
-            SR_EV_APPLY, &subscriptions, &subscription_cnt);
+            &subscriptions, &subscription_cnt);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to retrieve subtree-change subscriptions");
 
     if (subscription_cnt > 0) {
@@ -930,7 +963,8 @@ np_commit_notifications_sent(np_ctx_t *np_ctx, uint32_t commit_id, bool commit_f
 }
 
 int
-np_commit_notification_ack(np_ctx_t *np_ctx, uint32_t commit_id, sr_notif_event_t event, int result, char *xpath)
+np_commit_notification_ack(np_ctx_t *np_ctx, uint32_t commit_id, char *subs_xpath, sr_notif_event_t event, int result,
+        const char *err_msg, const char *err_xpath)
 {
     np_commit_ctx_t *commit = NULL;
     sr_llist_node_t *commit_node = NULL;
@@ -944,8 +978,17 @@ np_commit_notification_ack(np_ctx_t *np_ctx, uint32_t commit_id, sr_notif_event_
     commit = np_commit_ctx_find(np_ctx, commit_id, &commit_node);
 
     if (NULL != commit) {
-        if ((SR_ERR_OK != result) && (SR_ERR_OK == commit->result)) {
-            commit->result = result;
+        if (SR_EV_VERIFY == event && SR_ERR_OK != result) {
+            /* error returned from the verifier */
+            if (SR_ERR_OK == commit->result) {
+                /* if there isn't any previous error stored within the commit context, store there this one */
+                commit->result = result;
+            }
+            if (NULL != err_msg) {
+                np_commit_error_add(commit, subs_xpath, err_msg, err_xpath);
+            }
+            SR_LOG_ERR("Verifier for '%s' returned an error (msg: '%s', xpath: '%s'), commit will be aborted.",
+                    subs_xpath, err_msg, err_xpath);
         }
         commit->notifications_acked++;
         if (commit->all_notifications_sent && (commit->notifications_sent == commit->notifications_acked)) {
@@ -970,6 +1013,7 @@ np_commit_notifications_complete(np_ctx_t *np_ctx, uint32_t commit_id, bool time
 {
     np_commit_ctx_t *commit = NULL;
     sr_llist_node_t *commit_node = NULL;
+    sr_list_t *err_subs_xpaths = NULL, *errors = NULL;
     bool found = false;
     int result = SR_ERR_OK, rc = SR_ERR_OK;
 
@@ -981,11 +1025,14 @@ np_commit_notifications_complete(np_ctx_t *np_ctx, uint32_t commit_id, bool time
     if (NULL != commit) {
         found = true;
         result = commit->result;
+        err_subs_xpaths = commit->err_subs_xpaths;
+        errors = commit->errors;
         if (commit->commit_finished) {
             /* commit has finished, release commit context */
             SR_LOG_DBG("Releasing commit id=%"PRIu32".", commit_id);
             sr_llist_rm(np_ctx->commits, commit_node);
             free(commit);
+            commit = NULL;
         } else {
             /* reset the context for the next commit phase */
             commit->all_notifications_sent = false;
@@ -996,15 +1043,31 @@ np_commit_notifications_complete(np_ctx_t *np_ctx, uint32_t commit_id, bool time
     pthread_rwlock_unlock(&np_ctx->lock);
 
     if (found) {
-        SR_LOG_DBG("Commit id=%"PRIu32" has .", commit_id);
+        SR_LOG_DBG("Commit id=%"PRIu32" notifications complete.", commit_id);
 
-        if (SR_ERR_OK == result && timeout_expired) {
+        if (timeout_expired) {
+            SR_LOG_ERR("Commit timeout for commit id=%d.", commit_id);
             result = SR_ERR_TIME_OUT;
         }
 
-        rc = dm_commit_notifications_complete(np_ctx->rp_ctx->dm_ctx, commit_id, result, NULL /* TODO */);
+        /* signal commit notifications complete to DM */
+        rc = dm_commit_notifications_complete(np_ctx->rp_ctx->dm_ctx, commit_id, result, err_subs_xpaths, errors);
         if (SR_ERR_OK != rc) {
             SR_LOG_ERR_MSG("Unable to release the commit in Data Manager.");
+        }
+
+        /* cleanup error lists */
+        if (NULL != err_subs_xpaths) {
+            for (size_t i = 0; i < err_subs_xpaths->count; i++) {
+                free(err_subs_xpaths->data[i]);
+            }
+            sr_list_cleanup(err_subs_xpaths);
+        }
+        if (NULL != errors) {
+            for (size_t i = 0; i < errors->count; i++) {
+                sr_free_errors(errors->data[i], 1);
+            }
+            sr_list_cleanup(errors);
         }
     }
 
