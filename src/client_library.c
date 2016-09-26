@@ -2152,6 +2152,25 @@ sr_get_last_errors(sr_session_ctx_t *session, const sr_error_info_t **error_info
 }
 
 int
+sr_set_error(sr_session_ctx_t *session, const char *message, const char *xpath)
+{
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG2(session, message);
+
+    cl_session_clear_errors(session);
+
+    if (! session->notif_session) {
+        SR_LOG_ERR_MSG("sr_set_error called on a non-notification session - ignoring.");
+        rc = SR_ERR_INVAL_ARG;
+    } else {
+        rc = cl_session_set_error(session, message, xpath);
+    }
+
+    return cl_session_return(session, rc);
+}
+
+int
 sr_module_install_subscribe(sr_session_ctx_t *session, sr_module_install_cb callback, void *private_ctx,
         sr_subscr_options_t opts, sr_subscription_ctx_t **subscription_p)
 {

@@ -489,7 +489,7 @@ cl_sm_get_data_session(cl_sm_ctx_t *sm_ctx, cl_sm_subscription_ctx_t *subscripti
             tmp = tmp->next;
         }
     }
-    /* is the matching session is not already open, open a new session */
+    /* if the matching session is not already open, open a new session */
     if (NULL == session) {
         /* session not found, create a new one */
         SR_LOG_DBG("Creating a new data session at '%s'.", source_address);
@@ -522,6 +522,7 @@ cl_sm_get_data_session(cl_sm_ctx_t *sm_ctx, cl_sm_subscription_ctx_t *subscripti
         }
 
         session->id = msg_resp->response->session_start_resp->session_id;
+        session->notif_session = true;
         session->commit_id = commit_id;
 
         sr_msg_free(msg_req);
@@ -665,6 +666,7 @@ cl_sm_notif_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *msg)
             pthread_mutex_unlock(&sm_ctx->subscriptions_lock);
             return rc;
         }
+        cl_session_clear_errors(data_session);
     }
 
     switch (msg->notification->type) {
@@ -725,6 +727,13 @@ cl_sm_notif_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *msg)
         }
         if (SR_ERR_OK == rc_tmp) {
             ack_msg->notification_ack->result = rc;
+            if (SR_ERR_OK != rc && data_session->error_cnt > 0) {
+                /* error info was provided */
+                rc = sr_gpb_fill_error(data_session->error_info->message, data_session->error_info->xpath, sr_mem,
+                        &ack_msg->notification_ack->error);
+            }
+        }
+        if (SR_ERR_OK == rc_tmp) {
             rc_tmp = cl_sm_msg_send_connection(sm_ctx, conn, ack_msg);
             ack_msg->notification_ack->notif = NULL;
             sr_msg_free(ack_msg);
