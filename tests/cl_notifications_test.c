@@ -64,12 +64,18 @@ sysrepo_teardown(void **state)
     return 0;
 }
 
+#define VERIFY_CALLED 1
+#define APPLY_CALLED 2
+#define ABORT_CALLED 4
+
 #define COND_WAIT_SEC 5
 #define MAX_CHANGE 10
 typedef struct changes_s{
     pthread_mutex_t mutex;
     pthread_cond_t cv;
     size_t cnt;
+    bool verify_fails;
+    int events_received;
     sr_val_t *new_values[MAX_CHANGE];
     sr_val_t *old_values[MAX_CHANGE];
     sr_change_oper_t oper[MAX_CHANGE];
@@ -82,6 +88,22 @@ list_changes_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_eve
     changes_t *ch = (changes_t *) private_ctx;
     sr_change_iter_t *it = NULL;
     int rc = SR_ERR_OK;
+
+    switch(ev){
+    case SR_EV_VERIFY:
+        ch->events_received |= VERIFY_CALLED;
+        break;
+    case SR_EV_APPLY:
+        ch->events_received |= APPLY_CALLED;
+        break;
+    case SR_EV_ABORT:
+        ch->events_received |= ABORT_CALLED;
+        break;
+    }
+
+    if (SR_EV_VERIFY == ev && ch->verify_fails) {
+        return 1;
+    }
 
     pthread_mutex_lock(&ch->mutex);
     char *change_path = NULL;
@@ -106,7 +128,12 @@ list_changes_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_eve
         if (SR_ERR_OK != rc) {
             break;
         }
-        ch->cnt++;
+        if (/*SR_EV_APPLY == ev*/ 1) {
+            ch->cnt++;
+        } else {
+            sr_free_val(ch->old_values[ch->cnt]);
+            sr_free_val(ch->new_values[ch->cnt]);
+        }
     }
 
 cleanup:
@@ -982,11 +1009,200 @@ cl_subscribe_top_level_mandatory(void **state)
     sr_session_stop(session);
 }
 
+static void
+cl_basic_verifier(void **state)
+{
+     sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+    sr_session_ctx_t *session = NULL;
+    sr_subscription_ctx_t *subscription = NULL;
+    changes_t changes = {.mutex = PTHREAD_MUTEX_INITIALIZER, .cv = PTHREAD_COND_INITIALIZER, 0};
+    struct timespec ts;
+
+    sr_val_t *val = NULL;
+    const char *xpath = NULL;
+    int rc = SR_ERR_OK;
+    xpath = "/example-module:container/list[key1='abc'][key2='def']";
+
+    /* start session */
+    rc = sr_session_start(conn, SR_DS_CANDIDATE, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_module_change_subscribe(session, "example-module", list_changes_cb, &changes,
+            0, SR_SUBSCR_DEFAULT, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* check the list presence in candidate */
+    rc = sr_get_item(session, xpath, &val);
+    assert_int_equal(rc, SR_ERR_NOT_FOUND);
+
+    /* create the list instance */
+    rc = sr_set_item(session, xpath, NULL, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* save changes to running */
+    pthread_mutex_lock(&changes.mutex);
+    rc = sr_commit(session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    sr_clock_get_time(CLOCK_REALTIME, &ts);
+    ts.tv_sec += COND_WAIT_SEC;
+    pthread_cond_timedwait(&changes.cv, &changes.mutex, &ts);
+
+    assert_int_equal(changes.cnt, 3);
+    assert_int_equal(changes.oper[0], SR_OP_CREATED);
+    assert_non_null(changes.new_values[0]);
+    assert_null(changes.old_values[0]);
+    assert_string_equal(xpath, changes.new_values[0]->xpath);
+
+    assert_int_equal(changes.oper[1], SR_OP_CREATED);
+    assert_non_null(changes.new_values[1]);
+    assert_null(changes.old_values[1]);
+    assert_string_equal("/example-module:container/list[key1='abc'][key2='def']/key1", changes.new_values[1]->xpath);
+
+    assert_int_equal(changes.oper[2], SR_OP_CREATED);
+    assert_non_null(changes.new_values[2]);
+    assert_null(changes.old_values[2]);
+    assert_string_equal("/example-module:container/list[key1='abc'][key2='def']/key2", changes.new_values[2]->xpath);
+
+    //check that both callbacks were called
+    /*assert_true(changes.events_received & VERIFY_CALLED);
+    assert_true(changes.events_received & APPLY_CALLED);
+    assert_false(changes.events_received & ABORT_CALLED);*/
+
+    for (size_t i = 0; i < changes.cnt; i++) {
+        sr_free_val(changes.new_values[i]);
+        sr_free_val(changes.old_values[i]);
+    }
+
+    pthread_mutex_unlock(&changes.mutex);
+
+    rc = sr_unsubscribe(NULL, subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_session_stop(session);
+    assert_int_equal(rc, SR_ERR_OK);
+}
+
+static void
+cl_combined_subscribers(void **state)
+{
+    /* one subscriber supports verify phase the other does not */
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+    sr_session_ctx_t *session = NULL;
+    sr_subscription_ctx_t *subscriptionV = NULL, *subscriptionA = NULL;
+    changes_t changesV = {.mutex = PTHREAD_MUTEX_INITIALIZER, .cv = PTHREAD_COND_INITIALIZER, 0};
+    changes_t changesA = {.mutex = PTHREAD_MUTEX_INITIALIZER, .cv = PTHREAD_COND_INITIALIZER, 0};
+    struct timespec ts;
+
+    sr_val_t *val = NULL;
+    const char *xpath = NULL;
+    int rc = SR_ERR_OK;
+    xpath = "/example-module:container/list[key1='abc'][key2='def']";
+    char *deleted_xpath = "/test-module:main/i8";
+
+    /* start session */
+    rc = sr_session_start(conn, SR_DS_CANDIDATE, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_module_change_subscribe(session, "example-module", list_changes_cb, &changesV,
+            0, SR_SUBSCR_DEFAULT, &subscriptionV);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_module_change_subscribe(session, "test-module", list_changes_cb, &changesA,
+            0, SR_SUBSCR_DEFAULT, &subscriptionA);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* check the list presence in candidate */
+    rc = sr_get_item(session, xpath, &val);
+    assert_int_equal(rc, SR_ERR_NOT_FOUND);
+
+    /* create the list instance */
+    rc = sr_set_item(session, xpath, NULL, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* delete one leaf */
+    rc = sr_delete_item(session, deleted_xpath, SR_EDIT_STRICT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* save changes to running */
+    pthread_mutex_lock(&changesV.mutex);
+    rc = sr_commit(session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    sr_clock_get_time(CLOCK_REALTIME, &ts);
+    ts.tv_sec += COND_WAIT_SEC;
+    pthread_cond_timedwait(&changesV.cv, &changesV.mutex, &ts);
+    int wait_cycles = 100;
+    while (wait_cycles > 0) {
+        pthread_mutex_lock(&changesA.mutex);
+        if (changesA.cnt > 0) {
+            break;
+        }
+        pthread_mutex_unlock(&changesA.mutex);
+        usleep(10000);
+        wait_cycles--;
+    }
+
+    assert_int_equal(changesV.cnt, 3);
+    assert_int_equal(changesV.oper[0], SR_OP_CREATED);
+    assert_non_null(changesV.new_values[0]);
+    assert_null(changesV.old_values[0]);
+    assert_string_equal(xpath, changesV.new_values[0]->xpath);
+
+    assert_int_equal(changesV.oper[1], SR_OP_CREATED);
+    assert_non_null(changesV.new_values[1]);
+    assert_null(changesV.old_values[1]);
+    assert_string_equal("/example-module:container/list[key1='abc'][key2='def']/key1", changesV.new_values[1]->xpath);
+
+    assert_int_equal(changesV.oper[2], SR_OP_CREATED);
+    assert_non_null(changesV.new_values[2]);
+    assert_null(changesV.old_values[2]);
+    assert_string_equal("/example-module:container/list[key1='abc'][key2='def']/key2", changesV.new_values[2]->xpath);
+
+    /* check that both callbacks were called */
+    /*assert_true(changesV.events_received & VERIFY_CALLED);
+    assert_true(changesV.events_received & APPLY_CALLED);
+    assert_false(changesV.events_received & ABORT_CALLED);
+
+    assert_false(changesA.events_received & VERIFY_CALLED);
+    assert_true(changesA.events_received & APPLY_CALLED);
+    assert_false(changesA.events_received & ABORT_CALLED);*/
+
+    assert_int_equal(changesA.cnt, 1);
+    assert_int_equal(changesA.oper[0], SR_OP_DELETED);
+    assert_null(changesA.new_values[0]);
+    assert_non_null(changesA.old_values[0]);
+    assert_string_equal(deleted_xpath, changesA.old_values[0]->xpath);
+
+    for (size_t i = 0; i < changesV.cnt; i++) {
+        sr_free_val(changesV.new_values[i]);
+        sr_free_val(changesV.old_values[i]);
+    }
+
+    for (size_t i = 0; i < changesA.cnt; i++) {
+        sr_free_val(changesA.new_values[i]);
+        sr_free_val(changesA.old_values[i]);
+    }
+
+    pthread_mutex_unlock(&changesV.mutex);
+
+    rc = sr_unsubscribe(NULL, subscriptionV);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_unsubscribe(NULL, subscriptionA);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_session_stop(session);
+    assert_int_equal(rc, SR_ERR_OK);
+}
+
 int
 main()
 {
     const struct CMUnitTest tests[] = {
-        cmocka_unit_test_setup_teardown(cl_get_changes_create_test, sysrepo_setup, sysrepo_teardown),
+        /*cmocka_unit_test_setup_teardown(cl_get_changes_create_test, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_get_changes_modified_test, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_get_changes_deleted_test, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_get_changes_moved_test, sysrepo_setup, sysrepo_teardown),
@@ -997,6 +1213,8 @@ main()
         cmocka_unit_test_setup_teardown(cl_invalid_xpath_test, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_children_subscription_test, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_subscribe_top_level_mandatory, sysrepo_setup, sysrepo_teardown),
+        cmocka_unit_test_setup_teardown(cl_basic_verifier, sysrepo_setup, sysrepo_teardown),*/
+        cmocka_unit_test_setup_teardown(cl_combined_subscribers, sysrepo_setup, sysrepo_teardown),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);
