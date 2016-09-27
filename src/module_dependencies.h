@@ -34,10 +34,11 @@
  * @ brief Type of a dependency.
  */
 typedef enum md_dep_type_e {
-    MD_DEP_NONE,       /**< Used only in tests */
-    MD_DEP_INCLUDE,    /**< Include */
-    MD_DEP_IMPORT,     /**< Import */
-    MD_DEP_EXTENSION   /**< Extension (augment, derived identity, ...) */
+    MD_DEP_NONE,        /**< Invalid/Uninitialized dependency */
+    MD_DEP_INCLUDE,     /**< Include */
+    MD_DEP_IMPORT,      /**< Import */
+    MD_DEP_EXTENSION,   /**< Extension (augment, derived identity, ...) */
+    MD_DEP_DATA         /**< Cross-module data reference */
 } md_dep_type_t;
 
 typedef struct md_module_s md_module_t; /**< Forward declaration */
@@ -49,6 +50,9 @@ typedef struct md_dep_s {
     md_dep_type_t type; /**< Type of the dependency. */
     md_module_t *dest;  /**< Module on which the source module depends on. */
     bool direct;        /**< Is this a direct dependency or a transitive one? */
+    sr_llist_t *orig_modules; /**< List of modules that introduce this dependency.
+                                   Relevant only for data dependencies.
+                                   Items are of type (md_module_t *) */
 } md_dep_t;
 
 /*

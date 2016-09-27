@@ -101,8 +101,7 @@ int sr_str_join(const char *str1, const char *str2, char **result);
  * @brief Removes all leading and trailing white-space characters from the input string
  * @param [in] str
  */
-void
-sr_str_trim(char *str);
+void sr_str_trim(char *str);
 
 /**
  * @brief Copies the first string from the beginning of the xpath up to the first colon,
@@ -114,6 +113,15 @@ sr_str_trim(char *str);
 int sr_copy_first_ns(const char *xpath, char **namespace);
 
 /**
+ * @brief Returns an allocated C-array of all top-most namespaces found in the given expression.
+ *
+ * @param [in] expr
+ * @param [out] namespaces
+ * @param [out] namespace_cnt
+ */
+int sr_copy_first_ns_from_expr(const char *expr, char*** namespaces, size_t *namespace_cnt);
+
+/**
  * @brief Compares the first namespace of the xpath. If an argument is NULL
  * or does not conatain a namespace it is replaced by an empty string.
  * @param [in] xpath
@@ -121,6 +129,7 @@ int sr_copy_first_ns(const char *xpath, char **namespace);
  * @return same as strcmp function
  */
 int sr_cmp_first_ns(const char *xpath, const char *ns);
+
 
 /**
  * @brief Creates the file name of the data lock file

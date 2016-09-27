@@ -65,7 +65,7 @@ module sysrepo-module-dependencies {
       description "List of dependencies. Only direct (non-transitive) dependencies are stored in the data file.";
 
       list dependency {
-        key "module-name module-revision";
+        key "module-name module-revision type";
         description "An instance of module dependency.";
 
         leaf module-name {
@@ -87,10 +87,33 @@ module sysrepo-module-dependencies {
                     description "The source imports this module.";
                 }
                 enum extension {
-                    description "The source extends this module.";
+                    description "The source is extended by this module.";
+                }
+                enum data {
+                    description "The source references data of this module.";
                 }
             }
             description "Type of the dependency.";
+        }
+
+        container orig-modules {
+          when "../type = 'data'";
+          description "List of modules that introduce this data dependency.";
+
+          list orig-module {
+            key "orig-module-name orig-module-revision";
+            description "Data dependency originator.";
+
+            leaf orig-module-name {
+              type string;
+              description "Name of a module that introduces this dependency.";
+            }
+
+            leaf orig-module-revision {
+              type string;
+              description "Revision of a module that introduces this dependency.";
+            }
+          }
         }
       }
     }
