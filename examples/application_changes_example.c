@@ -146,6 +146,19 @@ print_current_config(sr_session_ctx_t *session, const char *module_name)
     sr_free_values(values, count);
 }
 
+const char *
+ev_to_str(sr_notif_event_t ev) {
+    switch (ev) {
+    case SR_EV_VERIFY:
+        return "verify";
+    case SR_EV_APPLY:
+        return "apply";
+    case SR_EV_ABORT:
+    default:
+        return "abort";
+    }
+}
+
 static int
 module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t event, void *private_ctx)
 {
@@ -157,9 +170,11 @@ module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_ev
     char change_path[XPATH_MAX_LEN] = {0,};
 
 
-    printf("\n\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: ==========\n\n");
-
-    print_current_config(session, module_name);
+    printf("\n\n ========== Notification  %s =============================================", ev_to_str(event));
+    if (SR_EV_APPLY == event) {
+        printf("\n\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: ==========\n\n");
+        print_current_config(session, module_name);
+    }
 
     printf("\n\n ========== CHANGES: =============================================\n\n");
 

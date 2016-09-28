@@ -165,7 +165,7 @@ main(int argc, char **argv)
 
     /* subscribe for changes in running config */
     rc = sr_module_change_subscribe(session, module_name, module_change_cb, NULL,
-            0, SR_SUBSCR_DEFAULT, &subscription);
+            0, SR_SUBSCR_DEFAULT | SR_SUBSCR_APPLY_ONLY, &subscription);
     if (SR_ERR_OK != rc) {
         fprintf(stderr, "Error by sr_module_change_subscribe: %s\n", sr_strerror(rc));
         goto cleanup;
