@@ -34,7 +34,7 @@
 
 #include "sr_common.h"
 #include "test_module_helper.h"
-#include "sysrepo/xpath_utils.h"
+#include "sysrepo/xpath.h"
 #include "sysrepo/values.h"
 
 #define CHECK_LIST_OF_STRINGS(list, expected)                           \
