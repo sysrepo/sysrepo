@@ -33,6 +33,7 @@ set (COMMON_SOURCES
     ${COMMON_DIR}/sr_protobuf.c
     ${COMMON_DIR}/sr_mem_mgmt.c
     ${UTILS_DIR}/xpath_utils.c
+    ${UTILS_DIR}/plugin_utils.c
     ${UTILS_DIR}/values.c
     ${UTILS_DIR}/trees.c
 )
