@@ -1174,16 +1174,16 @@ md_get_module_info(const md_ctx_t *md_ctx, const char *name, const char *revisio
 }
 
 static md_module_t *
-md_get_module_by_prefix(const md_ctx_t *md_ctx, const struct lys_module *orig_module, const char *prefix)
+md_get_imported_module(const md_ctx_t *md_ctx, const struct lys_module *orig_module, const char *name)
 {
     struct lys_module *imp_module = NULL;
     md_module_t module_lkp_key = { 0, };
 
     for (size_t i = 0; i < orig_module->imp_size; ++i) {
-        if (0 == strcmp(orig_module->imp[i].prefix, prefix)) {
-            imp_module = orig_module->imp[i].module;
+        imp_module = orig_module->imp[i].module;
+        if (0 == strcmp(imp_module->name, name)) {
             module_lkp_key.name = (char *)imp_module->name;
-            module_lkp_key.latest_revision = (char *)md_get_module_revision(imp_module);
+            module_lkp_key.revision_date = (char *)md_get_module_revision(imp_module);
             break;
         }
     }
@@ -1209,7 +1209,7 @@ md_collect_data_dependencies(md_ctx_t *md_ctx, const char *ref, md_module_t *mod
     CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to get the list of prefixes from an expression");
 
     for (size_t i = 0; i < namespace_cnt; ++i) {
-        module2 = md_get_module_by_prefix(md_ctx, orig_module_schema, namespaces[i]);
+        module2 = md_get_imported_module(md_ctx, orig_module_schema, namespaces[i]);
         if (NULL == module2) {
             SR_LOG_WRN_MSG("Failed to get the module schema based on the prefix");
             continue;
@@ -1261,7 +1261,7 @@ md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, struct lys_node *
 {
     int rc = SR_ERR_OK;
     struct lys_node *node = NULL, *child = NULL;
-    const struct lys_module *module_schema = NULL, *main_module_schema = NULL;
+    const struct lys_module *main_module_schema = NULL;
     md_module_t *dest_module = NULL;
     bool process_children = true;
     const char *when = NULL, *xpath = NULL, *restr = NULL;
@@ -1273,7 +1273,6 @@ md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, struct lys_node *
         return SR_ERR_OK;
     }
 
-    module_schema = root->module;
     main_module_schema = MD_MAIN_MODULE(root);
     dest_module = (augment ? md_get_destination_module(md_ctx, root) : module);
     if (NULL == dest_module) {
@@ -1355,7 +1354,7 @@ md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, struct lys_node *
                             must_size = uses->refine[i].must_size;
                             for (size_t j = 0; j < must_size; ++j) {
                                 rc = md_collect_data_dependencies(md_ctx, must[j].expr, dest_module, module,
-                                        module_schema);
+                                        node->module);
                                 if (SR_ERR_OK != rc) {
                                     return rc;
                                 }
@@ -1419,7 +1418,7 @@ md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, struct lys_node *
                                     xpath = leaf->type.info.lref.path;
                                     if (NULL != xpath) {
                                         rc = md_collect_data_dependencies(md_ctx, xpath, dest_module, module,
-                                                module_schema);
+                                                node->module);
                                         if (SR_ERR_OK != rc) {
                                             return rc;
                                         }
@@ -1457,7 +1456,7 @@ md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, struct lys_node *
                                     must_size = leaf->type.info.str.pat_count;
                                     for (size_t i = 0; i < must_size; ++i) {
                                         rc = md_collect_data_dependencies(md_ctx, must[i].expr, dest_module, module,
-                                                module_schema);
+                                                node->module);
                                         if (SR_ERR_OK != rc) {
                                             return rc;
                                         }
@@ -1477,7 +1476,7 @@ md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, struct lys_node *
 
             /* when */
             if (NULL != when) {
-                rc = md_collect_data_dependencies(md_ctx, when, dest_module, module, module_schema);
+                rc = md_collect_data_dependencies(md_ctx, when, dest_module, module, node->module);
                 if (SR_ERR_OK != rc) {
                     return rc;
                 }
@@ -1485,13 +1484,13 @@ md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, struct lys_node *
 
             /* must */
             for (size_t i = 0; NULL != must && i < must_size; ++i) {
-                rc = md_collect_data_dependencies(md_ctx, must[i].expr, dest_module, module, module_schema);
+                rc = md_collect_data_dependencies(md_ctx, must[i].expr, dest_module, module, node->module);
                 if (SR_ERR_OK != rc) {
                     return rc;
                 }
             }
             if (NULL != restr) {
-                rc = md_collect_data_dependencies(md_ctx, restr, dest_module, module, module_schema);
+                rc = md_collect_data_dependencies(md_ctx, restr, dest_module, module, node->module);
                 if (SR_ERR_OK != rc) {
                     return rc;
                 }
@@ -1840,7 +1839,7 @@ dependencies:
         struct lys_deviate *deviate = module_schema->deviation[i].deviate;
         if (NULL != deviate) {
             for (size_t j = 0; j < deviate->must_size; ++j) {
-                rc = md_collect_data_dependencies(md_ctx, deviate->must[j].expr, module, module, module_schema);
+                rc = md_collect_data_dependencies(md_ctx, deviate->must[j].expr, main_module, main_module, module_schema);
                 if (SR_ERR_OK != rc) {
                     goto cleanup;
                 }
