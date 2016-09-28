@@ -29,6 +29,7 @@
 #include <fcntl.h>
 #include <libyang/libyang.h>
 #include <string.h>
+#include <inttypes.h>
 
 #include "data_manager.h"
 #include "sr_common.h"
@@ -2579,6 +2580,15 @@ dm_free_commit_context(void *commit_ctx)
         if (NULL != c_ctx->session) {
             dm_session_stop(c_ctx->session->dm_ctx, c_ctx->session);
         }
+        if (NULL != c_ctx->err_subs_xpaths) {
+            for (size_t i = 0; i < c_ctx->err_subs_xpaths->count; i++) {
+                free(c_ctx->err_subs_xpaths->data[i]);
+            }
+            sr_list_cleanup(c_ctx->err_subs_xpaths);
+        }
+        if (NULL != c_ctx->errors && 0 != c_ctx->err_cnt) {
+            sr_free_errors(c_ctx->errors, c_ctx->err_cnt);
+        }
         c_ctx->session = NULL;
         free(c_ctx);
     }
@@ -2605,22 +2615,17 @@ dm_remove_commit_context(dm_ctx_t *dm_ctx, uint32_t c_ctx_id)
     c_ctx = sr_btree_search(dm_ctx->commit_ctxs.tree, &lookup);
     if (NULL == c_ctx) {
         SR_LOG_WRN("Commit context with id %d not found", c_ctx_id);
+    } else {
+        sr_btree_delete(dm_ctx->commit_ctxs.tree, c_ctx);
+        SR_LOG_DBG("Commit context with id %"PRIu32" removed", c_ctx_id);
     }
-    sr_btree_delete(dm_ctx->commit_ctxs.tree, c_ctx);
     pthread_rwlock_unlock(&dm_ctx->commit_ctxs.lock);
     return SR_ERR_OK;
 }
 
 int
-dm_commit_notifications_complete(dm_ctx_t *dm_ctx, uint32_t c_ctx_id, int result,
-        sr_list_t *err_subs_xpaths, sr_list_t *errors)
+dm_commit_notifications_complete(dm_ctx_t *dm_ctx, uint32_t c_ctx_id)
 {
-
-    // TODO:
-    //  - for SR_EV_VERIFY check result code and proceed with commit or rollback it
-    //  - for SR_EV_APPLY and SR_EV_ABORT do not check the result code and release commit context
-    //  (err_subs_xpaths / errors does not need to be released)
-
     return dm_remove_commit_context(dm_ctx, c_ctx_id);
 }
 
@@ -2981,6 +2986,38 @@ dm_commit_write_files(dm_session_t *session, dm_commit_context_t *c_ctx)
 
     return rc;
 }
+/**
+ * @brief Decides whether a subscription should be skipped or not. Takes into account:
+ * SR_EV_VERIFY: skip SR_SUBSCR_APPLY_ONLY subscription
+ * SR_EV_ABORT: skip subscription that returned an error
+ */
+static bool
+dm_should_skip_subscription(np_subscription_t *subscription, dm_commit_context_t *c_ctx, sr_notif_event_t ev)
+{
+    if (NULL == subscription || NULL == c_ctx) {
+        return false;
+    }
+
+    if (SR_EV_VERIFY == ev || SR_EV_ABORT == ev) {
+        if (SR__NOTIFICATION_EVENT__VERIFY_EV != subscription->notif_event) {
+            return true;
+        }
+    }
+
+    /* if subscription returned an error don't send him abort */
+    if (SR_EV_ABORT == ev && c_ctx->err_subs_xpaths != NULL) {
+        for (size_t e = 0; e < c_ctx->err_subs_xpaths->count; e++) {
+            if (0 == strcmp((char *) c_ctx->err_subs_xpaths->data[e],
+                    NULL == subscription->xpath ?
+                    subscription->module_name :
+                    subscription->xpath)) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
 
 int
 dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, sr_notif_event_t ev, dm_commit_context_t *c_ctx)
@@ -3001,7 +3038,7 @@ dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, sr_notif_event_t ev, d
     rc = sr_list_init(&notified_notif);
     CHECK_RC_MSG_RETURN(rc, "List init failed");
 
-    SR_LOG_DBG_MSG("Sending notifications about the changes made in running datastore...");
+    SR_LOG_DBG("Sending %s notifications about the changes made in running datastore...", sr_notification_event_sr_to_str(ev));
     while (NULL != (info = sr_btree_get_at(session->session_modules[session->datastore], i++))) {
         if (!info->modified) {
             continue;
@@ -3070,10 +3107,9 @@ dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, sr_notif_event_t ev, d
 
         /* loop through subscription test if they should be notified */
         for (size_t s = 0; s < ms->subscription_cnt; s++) {
-            /* skip subscription:
-             * SR_EV_VERIFY: skip APPLY ONLY
-             * SR_EV_ABORT: skip APPLY_ONLY and subscriptions that returned an error
-             */
+            if (dm_should_skip_subscription(ms->subscriptions[s], c_ctx, ev)) {
+                continue;
+            }
 
             for (d_cnt = 0; LYD_DIFF_END != ms->difflist->type[d_cnt]; d_cnt++) {
                 const struct lyd_node *cmp_node = dm_get_notification_match_node(ms->difflist, d_cnt);
@@ -3087,7 +3123,7 @@ dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, sr_notif_event_t ev, d
                 }
             }
 
-            if (match && SR_EV_APPLY == ev) {
+            if (match) {
                 /* something has been changed for this subscription, send notification */
                 rc = np_subscription_notify(dm_ctx->np_ctx, ms->subscriptions[s], ev, c_ctx->id);
                 if (SR_ERR_OK != rc) {
@@ -3106,18 +3142,19 @@ dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, sr_notif_event_t ev, d
     if (SR_EV_APPLY == ev || SR_EV_ABORT == ev) {
         dm_release_resources_commit_context(dm_ctx, c_ctx);
         rc = dm_save_commit_context(dm_ctx, c_ctx);
+        /* if there is a verify subscription commit context is already saved */
         if (SR_ERR_DATA_EXISTS == rc) {
             rc = SR_ERR_OK;
         }
     }
 
     /* let the np know that the commit has finished */
-    if (SR_ERR_OK == rc) {
-        rc = np_commit_notifications_sent(dm_ctx->np_ctx, c_ctx->id, /* TODO: pass false for verify phase */ true, notified_notif);
+    if (SR_ERR_OK == rc && notified_notif->count > 0) {
+        rc = np_commit_notifications_sent(dm_ctx->np_ctx, c_ctx->id, SR_EV_VERIFY != ev, notified_notif);
     }
 
     if (SR_EV_VERIFY == ev ){
-        if (0/* some notification were sent */) {
+        if (notified_notif->count > 0) {
             c_ctx->state = DM_COMMIT_WAIT_FOR_NOTIFICATIONS;
         } else {
             c_ctx->state = DM_COMMIT_WRITE;

@@ -28,6 +28,7 @@
 #include "rp_internal.h"
 #include "persistence_manager.h"
 #include "notification_processor.h"
+#include "request_processor.h"
 
 #define NP_COMMIT_TIMEOUT 10  /**< Timeout (in seconds) after which the commit will be aborted / released
                                    also in case that not all notification ACKs have been received. */
@@ -319,7 +320,9 @@ np_commit_error_add(np_commit_ctx_t *commit_ctx, const char *err_subs_xpath, con
         if (SR_ERR_OK == rc) {
             error = calloc(1, sizeof(*error));
             error->message = strdup(err_msg);
-            error->xpath = strdup(err_xpath);
+            if (NULL != err_xpath) {
+                error->xpath = strdup(err_xpath);
+            }
             rc = sr_list_add(commit_ctx->errors, error);
         }
     }
@@ -984,7 +987,7 @@ np_commit_notification_ack(np_ctx_t *np_ctx, uint32_t commit_id, char *subs_xpat
                 /* if there isn't any previous error stored within the commit context, store there this one */
                 commit->result = result;
             }
-            if (NULL != err_msg) {
+            if (SR_ERR_OK != result) {
                 np_commit_error_add(commit, subs_xpath, err_msg, err_xpath);
             }
             SR_LOG_ERR("Verifier for '%s' returned an error (msg: '%s', xpath: '%s'), commit will be aborted.",
@@ -1037,6 +1040,8 @@ np_commit_notifications_complete(np_ctx_t *np_ctx, uint32_t commit_id, bool time
             /* reset the context for the next commit phase */
             commit->all_notifications_sent = false;
             commit->commit_finished = false;
+            commit->err_subs_xpaths = NULL;
+            commit->errors = NULL;
         }
     }
 
@@ -1050,25 +1055,8 @@ np_commit_notifications_complete(np_ctx_t *np_ctx, uint32_t commit_id, bool time
             result = SR_ERR_TIME_OUT;
         }
 
-        /* signal commit notifications complete to DM */
-        rc = dm_commit_notifications_complete(np_ctx->rp_ctx->dm_ctx, commit_id, result, err_subs_xpaths, errors);
-        if (SR_ERR_OK != rc) {
-            SR_LOG_ERR_MSG("Unable to release the commit in Data Manager.");
-        }
-
-        /* cleanup error lists */
-        if (NULL != err_subs_xpaths) {
-            for (size_t i = 0; i < err_subs_xpaths->count; i++) {
-                free(err_subs_xpaths->data[i]);
-            }
-            sr_list_cleanup(err_subs_xpaths);
-        }
-        if (NULL != errors) {
-            for (size_t i = 0; i < errors->count; i++) {
-                sr_free_errors(errors->data[i], 1);
-            }
-            sr_list_cleanup(errors);
-        }
+        /* resume commit processing */
+        rc = rp_resume_commit(np_ctx->rp_ctx, commit_id, result, err_subs_xpaths, errors);
     }
 
     return rc;

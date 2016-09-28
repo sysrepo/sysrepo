@@ -27,6 +27,7 @@
 #include "access_control.h"
 #include <pthread.h>
 #include <libyang/libyang.h>
+#include <inttypes.h>
 
 /**
  * @brief Checks if the schema node has a key node with the specified name
@@ -728,8 +729,10 @@ rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t *c_ctx
         case DM_COMMIT_WAIT_FOR_NOTIFICATIONS:
             rc = dm_save_commit_context(rp_ctx->dm_ctx, commit_ctx);
             CHECK_RC_MSG_GOTO(rc, cleanup, "Saving of commit context failed");
-            //TODO pause commit processing
-            state = DM_COMMIT_WRITE;
+            SR_LOG_DBG("Commit %"PRIu32" processing paused waiting for replies from verifiers", commit_ctx->id);
+            session->state = RP_REQ_WAITING_FOR_VERIFIERS;
+            commit_ctx->init_session = session;
+            return rc;
             break;
         case DM_COMMIT_WRITE:
             rc = dm_commit_write_files(session->dm_session, commit_ctx);
@@ -739,13 +742,17 @@ rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t *c_ctx
             state = DM_COMMIT_NOTIFY_APPLY;
             break;
         case DM_COMMIT_NOTIFY_APPLY:
-            if (SR_ERR_OK == rc) {
-                rc = dm_commit_notify(rp_ctx->dm_ctx, session->dm_session, SR_EV_APPLY, commit_ctx);
-            } else {
-                rc = dm_commit_notify(rp_ctx->dm_ctx, session->dm_session, SR_EV_ABORT, commit_ctx);
-            }
+            rc = dm_commit_notify(rp_ctx->dm_ctx, session->dm_session, SR_EV_APPLY, commit_ctx);
             state = DM_COMMIT_FINISHED;
             break;
+        case DM_COMMIT_NOTIFY_ABORT:
+            rc = dm_commit_notify(rp_ctx->dm_ctx, session->dm_session, SR_EV_ABORT, commit_ctx);
+            session->state = RP_REQ_FINISHED;
+            *errors = c_ctx->errors;
+            *err_cnt = c_ctx->err_cnt;
+            c_ctx->errors = NULL;
+            c_ctx->err_cnt = 0;
+            return SR_ERR_OPERATION_FAILED;
         case DM_COMMIT_FINISHED:
             goto cleanup;
             break;

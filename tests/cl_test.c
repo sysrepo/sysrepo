@@ -1780,10 +1780,10 @@ cl_notification_test(void **state)
 
     /* wait for all callbacks or timeout after 10 seconds */
     for (size_t i = 0; i < 1000; i++) {
-        if (callback_called >= 5) break;
+        if (callback_called >= 7) break;
         usleep(10000); /* 10 ms */
     }
-    assert_true(callback_called >= 5);
+    assert_true(callback_called >= 7);
 
     /* some negative tests */
     rc = sr_feature_enable(session, "unknown-module", "unknown", true);
@@ -1845,7 +1845,7 @@ cl_copy_config_test(void **state)
 
     /* enable running DS for example-module */
     rc = sr_module_change_subscribe(session_startup, "example-module", test_module_change_cb,
-            &callback_called, 0, SR_SUBSCR_DEFAULT, &subscription);
+            &callback_called, 0, SR_SUBSCR_DEFAULT | SR_SUBSCR_APPLY_ONLY, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* edit config in running */
@@ -1919,7 +1919,7 @@ cl_copy_config_test2(void **state)
 
     /* enable example-module */
     rc = sr_module_change_subscribe(session_running, "example-module", test_module_change_cb,
-            &callback_called, 0, SR_SUBSCR_DEFAULT, &subscription);
+            &callback_called, 0, SR_SUBSCR_DEFAULT | SR_SUBSCR_APPLY_ONLY, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* edit config candidate */
@@ -2594,7 +2594,7 @@ candidate_ds_test(void **state)
 
     /* enable running DS for example-module */
     rc = sr_module_change_subscribe(session_startup, "example-module", test_module_change_cb,
-            &callback_called, 0, SR_SUBSCR_DEFAULT, &subscription);
+            &callback_called, 0, SR_SUBSCR_DEFAULT | SR_SUBSCR_APPLY_ONLY, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* commit should pass */
@@ -2716,7 +2716,7 @@ cl_candidate_refresh(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 
     rc = sr_module_change_subscribe(session, "example-module", module_change_cb, &cb_called,
-            0, SR_SUBSCR_DEFAULT, &subscription);
+            0, SR_SUBSCR_DEFAULT | SR_SUBSCR_APPLY_ONLY, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* check the list presence in candidate */
@@ -2823,7 +2823,7 @@ cl_get_changes_iter_test(void **state)
     assert_int_equal(rc, SR_ERR_UNSUPPORTED);
 
     rc = sr_module_change_subscribe(session, "example-module", list_changes_cb, &changes,
-            0, SR_SUBSCR_DEFAULT, &subscription);
+            0, SR_SUBSCR_DEFAULT | SR_SUBSCR_APPLY_ONLY, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* check the list presence in candidate */
