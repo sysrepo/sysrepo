@@ -81,14 +81,9 @@ typedef struct changes_s{
     sr_change_oper_t oper[MAX_CHANGE];
 }changes_t;
 
-
-static int
-list_changes_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t ev, void *private_ctx)
+static void
+log_event(changes_t *ch, sr_notif_event_t ev)
 {
-    changes_t *ch = (changes_t *) private_ctx;
-    sr_change_iter_t *it = NULL;
-    int rc = SR_ERR_OK;
-
     switch(ev){
     case SR_EV_VERIFY:
         ch->events_received |= VERIFY_CALLED;
@@ -100,6 +95,16 @@ list_changes_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_eve
         ch->events_received |= ABORT_CALLED;
         break;
     }
+}
+
+static int
+list_changes_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t ev, void *private_ctx)
+{
+    changes_t *ch = (changes_t *) private_ctx;
+    sr_change_iter_t *it = NULL;
+    int rc = SR_ERR_OK;
+
+    log_event(ch, ev);
 
     if (SR_EV_VERIFY == ev && ch->verify_fails) {
         sr_set_error(session, "Detailed description of the error.", NULL);
@@ -937,9 +942,12 @@ cl_invalid_xpath_test(void **state)
 
 int subtree_example_change_cb(sr_session_ctx_t *session, const char *xpath,
         sr_notif_event_t event, void *private_ctx) {
-        changes_t *ch = (changes_t *) private_ctx;
+
+    changes_t *ch = (changes_t *) private_ctx;
     sr_change_iter_t *it = NULL;
     int rc = SR_ERR_OK;
+
+    log_event(ch, event);
 
     if (SR_EV_VERIFY != event) {
         pthread_mutex_lock(&ch->mutex);
@@ -1462,6 +1470,145 @@ cl_refused_by_verifier(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 }
 
+static void
+cl_no_abort_notifications(void **state)
+{
+    /* there is only one verifier, he rejects the config, since there are no more
+     * no abort notifications are sent */
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+    sr_session_ctx_t *session = NULL;
+    sr_subscription_ctx_t *subscription = NULL;
+    changes_t changes = {.mutex = PTHREAD_MUTEX_INITIALIZER, .cv = PTHREAD_COND_INITIALIZER, 0};
+
+    sr_val_t *val = NULL;
+    const char *xpath = NULL;
+    int rc = SR_ERR_OK;
+    xpath = "/example-module:container/list[key1='abc'][key2='def']";
+
+    /* start session */
+    rc = sr_session_start(conn, SR_DS_CANDIDATE, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_module_change_subscribe(session, "example-module", list_changes_cb, &changes,
+            0, SR_SUBSCR_DEFAULT, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    changes.verify_fails = true;
+
+    /* check the list presence in candidate */
+    rc = sr_get_item(session, xpath, &val);
+    assert_int_equal(rc, SR_ERR_NOT_FOUND);
+
+    /* create the list instance */
+    rc = sr_set_item(session, xpath, NULL, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* save changes to running */
+    rc = sr_commit(session);
+    assert_int_equal(rc, SR_ERR_OPERATION_FAILED);
+
+    assert_int_equal(changes.cnt, 0);
+
+    /* check that both callbacks were called */
+    assert_true(changes.events_received & VERIFY_CALLED);
+    assert_false(changes.events_received & APPLY_CALLED);
+    assert_false(changes.events_received & ABORT_CALLED);
+
+    const sr_error_info_t *err_info = NULL;
+    sr_get_last_error(session, &err_info);
+
+    assert_non_null(err_info->message);
+    assert_string_equal(err_info->message, "Detailed description of the error.");
+    assert_null(err_info->xpath);
+
+    for (size_t i = 0; i < changes.cnt; i++) {
+        sr_free_val(changes.new_values[i]);
+        sr_free_val(changes.old_values[i]);
+    }
+
+    rc = sr_unsubscribe(NULL, subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_session_stop(session);
+    assert_int_equal(rc, SR_ERR_OK);
+}
+
+static void
+cl_subtree_verifier(void **state)
+{
+    /* two verifiers both confirms validation */
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+    sr_session_ctx_t *session = NULL;
+    sr_subscription_ctx_t *subscription = NULL;
+    changes_t changes = {.mutex = PTHREAD_MUTEX_INITIALIZER, .cv = PTHREAD_COND_INITIALIZER, 0};
+    struct timespec ts;
+
+    sr_val_t *val = NULL;
+    const char *xpath = NULL;
+    int rc = SR_ERR_OK;
+    xpath = "/example-module:container/list[key1='abc'][key2='def']";
+
+    /* start session */
+    rc = sr_session_start(conn, SR_DS_CANDIDATE, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_subtree_change_subscribe(session, "/example-module:container", subtree_example_change_cb, &changes,
+            0, SR_SUBSCR_DEFAULT, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* check the list presence in candidate */
+    rc = sr_get_item(session, xpath, &val);
+    assert_int_equal(rc, SR_ERR_NOT_FOUND);
+
+    /* create the list instance */
+    rc = sr_set_item(session, xpath, NULL, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* save changes to running */
+    pthread_mutex_lock(&changes.mutex);
+    rc = sr_commit(session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    sr_clock_get_time(CLOCK_REALTIME, &ts);
+    ts.tv_sec += COND_WAIT_SEC;
+    pthread_cond_timedwait(&changes.cv, &changes.mutex, &ts);
+
+    assert_int_equal(changes.cnt, 3);
+    assert_int_equal(changes.oper[0], SR_OP_CREATED);
+    assert_non_null(changes.new_values[0]);
+    assert_null(changes.old_values[0]);
+    assert_string_equal(xpath, changes.new_values[0]->xpath);
+
+    assert_int_equal(changes.oper[1], SR_OP_CREATED);
+    assert_non_null(changes.new_values[1]);
+    assert_null(changes.old_values[1]);
+    assert_string_equal("/example-module:container/list[key1='abc'][key2='def']/key1", changes.new_values[1]->xpath);
+
+    assert_int_equal(changes.oper[2], SR_OP_CREATED);
+    assert_non_null(changes.new_values[2]);
+    assert_null(changes.old_values[2]);
+    assert_string_equal("/example-module:container/list[key1='abc'][key2='def']/key2", changes.new_values[2]->xpath);
+
+    /* check that both callbacks were called */
+    assert_true(changes.events_received & VERIFY_CALLED);
+    assert_true(changes.events_received & APPLY_CALLED);
+    assert_false(changes.events_received & ABORT_CALLED);
+
+    for (size_t i = 0; i < changes.cnt; i++) {
+        sr_free_val(changes.new_values[i]);
+        sr_free_val(changes.old_values[i]);
+    }
+
+
+    rc = sr_unsubscribe(NULL, subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_session_stop(session);
+    assert_int_equal(rc, SR_ERR_OK);
+}
+
 int
 main()
 {
@@ -1481,6 +1628,8 @@ main()
         cmocka_unit_test_setup_teardown(cl_combined_subscribers, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_successful_verifiers, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_refused_by_verifier, sysrepo_setup, sysrepo_teardown),
+        cmocka_unit_test_setup_teardown(cl_no_abort_notifications, sysrepo_setup, sysrepo_teardown),
+        cmocka_unit_test_setup_teardown(cl_subtree_verifier, sysrepo_setup, sysrepo_teardown),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);
