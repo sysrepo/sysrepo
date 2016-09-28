@@ -19,5 +19,5 @@
  * limitations under the License.
  */
 
-#include "sysrepo/plugin_utils.h"
+#include "sysrepo/plugins.h"
 
