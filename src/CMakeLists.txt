@@ -1,8 +1,16 @@
+set(CLIENTLIB_DIR "${CMAKE_CURRENT_SOURCE_DIR}/clientlib")
 set(COMMON_DIR "${CMAKE_CURRENT_SOURCE_DIR}/common")
-set(UTILS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/utils")
 set(EXECUTABLES_DIR "${CMAKE_CURRENT_SOURCE_DIR}/executables")
+set(UTILS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/utils")
 
-include_directories("${PROJECT_SOURCE_DIR}/inc" "${CMAKE_CURRENT_SOURCE_DIR}" "${COMMON_DIR}" "${UTILS_DIR}" "${EXECUTABLES_DIR}")
+include_directories(
+    "${PROJECT_SOURCE_DIR}/inc" 
+    "${CMAKE_CURRENT_SOURCE_DIR}" 
+    "${CLIENTLIB_DIR}" 
+    "${COMMON_DIR}" 
+    "${EXECUTABLES_DIR}" 
+    "${UTILS_DIR}"
+)
 
 #compile protobuf-c
 set(PROTO_NAME sysrepo)
@@ -40,10 +48,10 @@ set (COMMON_SOURCES
 
 # client library sources
 set(SYSREPO_SOURCES
-    client_library.c
-    cl_subscription_manager.c
-    cl_common.c
-    ${UTILS_DIR}/cl_trees.c
+    ${CLIENTLIB_DIR}/client_library.c
+    ${CLIENTLIB_DIR}/cl_subscription_manager.c
+    ${CLIENTLIB_DIR}/cl_common.c
+    ${CLIENTLIB_DIR}/cl_trees.c
 )
 
 # sysrepo engine sources

@@ -10,7 +10,13 @@ CHECK_INCLUDE_FILES(regex.h HAVE_REGEX_H)
 
 configure_file("${TEST_HELPERS_DIR}/test_data.h.in" "${TEST_HELPERS_DIR}/test_data.h" ESCAPE_QUOTES @ONLY) 
 
-include_directories ("${PROJECT_SOURCE_DIR}/src" "${PROJECT_SOURCE_DIR}/src/common" "${PROJECT_SOURCE_DIR}/inc" "${TEST_HELPERS_DIR}")
+include_directories (
+    "${PROJECT_SOURCE_DIR}/src" 
+    "${PROJECT_SOURCE_DIR}/src/clientlib" 
+    "${PROJECT_SOURCE_DIR}/src/common" 
+    "${PROJECT_SOURCE_DIR}/inc" 
+    "${TEST_HELPERS_DIR}"
+)
 
 find_program(valgrind_FOUND valgrind)
 
