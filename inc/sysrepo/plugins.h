@@ -19,8 +19,8 @@
  * limitations under the License.
  */
 
-#ifndef INC_SYSREPO_PLUGIN_UTILS_H_
-#define INC_SYSREPO_PLUGIN_UTILS_H_
+#ifndef SYSREPO_PLUGINS_H_
+#define SYSREPO_PLUGINS_H_
 
 #include <stdio.h>
 #include <stdint.h>
@@ -29,6 +29,13 @@
 #include <syslog.h>
 
 #include <sysrepo.h>
+
+/**
+ * @defgroup plugin_utils Plugin Utilities
+ * @{
+ *
+ *  @brief TODO
+ */
 
 /** Prints an error message (with format specifiers). */
 #define SRP_LOG_ERR(MSG, ...) SRP_LOG__INTERNAL(SR_LL_ERR, MSG, __VA_ARGS__)
@@ -50,14 +57,13 @@
 /** Prints a development debug message. */
 #define SRP_LOG_DBG_MSG(MSG) SRP_LOG__INTERNAL(SR_LL_DBG, MSG "%s", "")
 
+/**@} plugin_utils */
 
 
+////////////////////////////////////////////////////////////////////////////////
+// Internal macros (not intended to be used directly)
+////////////////////////////////////////////////////////////////////////////////
 
-
-
-/**
- * Controls whether function names should be printed.
- */
 #ifdef NDEBUG
     #define SRP_LOG_PRINT_FUNCTION_NAMES (0)
 #else
@@ -99,4 +105,4 @@ extern volatile uint8_t sr_ll_syslog;       /**< Holds current level of syslog d
             SRP_LOG__SYSLOG(LL, MSG, __VA_ARGS__) \
     } while(0)
 
-#endif /* INC_SYSREPO_PLUGIN_UTILS_H_ */
+#endif /* SYSREPO_PLUGINS_H_ */
