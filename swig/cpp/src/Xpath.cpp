@@ -23,7 +23,7 @@
 #include "Xpath.h"
 
 extern "C" {
-#include "sysrepo/xpath_utils.h"
+#include "sysrepo/xpath.h"
 }
 
 
