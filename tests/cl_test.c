@@ -3861,7 +3861,7 @@ main()
             cmocka_unit_test_setup_teardown(cl_rpc_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_rpc_tree_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_rpc_combo_test, sysrepo_setup, sysrepo_teardown),
-            /*cmocka_unit_test_setup_teardown(candidate_ds_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(candidate_ds_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_switch_ds, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_candidate_refresh, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_get_changes_iter_test, sysrepo_setup, sysrepo_teardown),
@@ -3871,7 +3871,7 @@ main()
             cmocka_unit_test_setup_teardown(cl_event_notif_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_event_notif_tree_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_event_notif_combo_test, sysrepo_setup, sysrepo_teardown),
-            cmocka_unit_test_setup_teardown(cl_cross_module_dependency, sysrepo_setup, sysrepo_teardown),*/
+            cmocka_unit_test_setup_teardown(cl_cross_module_dependency, sysrepo_setup, sysrepo_teardown),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);
