@@ -326,6 +326,13 @@ char *sr_notification_event_gpb_to_str(Sr__NotificationEvent event);
 char *sr_notification_event_sr_to_str(sr_notif_event_t event);
 
 /**
+ * @brief Converts notification event type from sysrepo enum to its GPB enum representation
+ * @param [in] event Syrepo notification event type
+ * @return GPB notification event type
+ */
+Sr__NotificationEvent sr_notification_event_sr_to_gpb(sr_notif_event_t event);
+
+/**
  * @brief Converts notification event type string to its GPB enum representation.
  *
  * @param[in] event_name String name of the notification event type.
