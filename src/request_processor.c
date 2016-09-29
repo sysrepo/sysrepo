@@ -1084,6 +1084,8 @@ rp_commit_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, boo
     sr_mem_ctx_t *sr_mem = NULL;
     int rc = SR_ERR_OK;
     dm_commit_context_t *c_ctx = NULL;
+    sr_error_info_t *errors = NULL;
+    size_t err_cnt = 0;
 
     CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->commit_req);
 
@@ -1109,8 +1111,6 @@ rp_commit_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, boo
         }
     }
 
-    sr_error_info_t *errors = NULL;
-    size_t err_cnt = 0;
     if (SR_ERR_OK == rc ) {
         rc = rp_dt_commit(rp_ctx, session, c_ctx, &errors, &err_cnt);
     }
