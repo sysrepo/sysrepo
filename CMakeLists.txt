@@ -9,13 +9,14 @@ set(SYSREPO_MICRO_VERSION 10)
 set(SYSREPO_VERSION ${SYSREPO_MAJOR_VERSION}.${SYSREPO_MINOR_VERSION}.${SYSREPO_MICRO_VERSION})
 
 # setup bindings
-SET(GEN_LANGUAGE_BINDINGS 1 CACHE BOOL "Enable language bindings generation.")
-SET(GEN_PYTHON_BINDINGS 1 CACHE BOOL "Enable python bindings.")
-SET(GEN_LUA_BINDINGS 1 CACHE BOOL "Enable Lua bindings.")
-SET(GEN_CPP_BINDINGS 1 CACHE BOOL "Enable C++ bindings.")
-SET(GEN_JAVA_BINDINGS 1 CACHE BOOL "Enable Java bindings.")
-SET(GEN_PYTHON_VERSION "2")
-SET(GEN_LUA_VERSION "5.1")
+set(GEN_LANGUAGE_BINDINGS 1 CACHE BOOL "Enable language bindings generation.")
+set(GEN_PYTHON_BINDINGS 1 CACHE BOOL "Enable python bindings.")
+set(GEN_LUA_BINDINGS 1 CACHE BOOL "Enable Lua bindings.")
+set(GEN_CPP_BINDINGS 1 CACHE BOOL "Enable C++ bindings.")
+set(BUILD_CPP_EXAMPLES 1 CACHE BOOL "Build C++ examples.")
+set(GEN_JAVA_BINDINGS 1 CACHE BOOL "Enable Java bindings.")
+set(GEN_PYTHON_VERSION "2" CACHE STRING "Python version")
+set(GEN_LUA_VERSION "5.1" CACHE STRING "Lua version")
 
 # set default build type if not specified by user
 if(NOT CMAKE_BUILD_TYPE)

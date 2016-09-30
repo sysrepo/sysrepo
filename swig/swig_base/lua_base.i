@@ -8,6 +8,8 @@
 %include <std_string.i>
 %include <typemaps.i>
 
+%ignore Callback;
+
 %ignore Val::Val(int8_t,sr_type_t);
 %ignore Val::Val(int16_t,sr_type_t);
 %ignore Val::Val(int32_t,sr_type_t);

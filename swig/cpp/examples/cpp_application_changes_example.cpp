@@ -148,35 +148,34 @@ print_current_config(S_Session session, const char *module_name)
     }
 }
 
-static int
-module_change_cb(S_Session sess, const char *module_name, sr_notif_event_t event, void *private_ctx)
-{
-    char change_path[MAX_LEN];
+class My_Callback:public Callback {
+    void module_change_cb(S_Session sess, const char *module_name, sr_notif_event_t event, void *private_ctx)
+    {
+        char change_path[MAX_LEN];
 
-    try {
-        printf("\n\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: ==========\n\n");
+        try {
+            printf("\n\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: ==========\n\n");
 
-        print_current_config(sess, module_name);
+            print_current_config(sess, module_name);
 
-        printf("\n\n ========== CHANGES: =============================================\n\n");
+            printf("\n\n ========== CHANGES: =============================================\n\n");
 
-        snprintf(change_path, MAX_LEN, "/%s:*", module_name);
+            snprintf(change_path, MAX_LEN, "/%s:*", module_name);
 
-        S_Subscribe subscribe(new Subscribe(sess));
-        auto it = subscribe->get_changes_iter(&change_path[0]);
+            S_Subscribe subscribe(new Subscribe(sess));
+            auto it = subscribe->get_changes_iter(&change_path[0]);
 
-        while (auto change = subscribe->get_change_next(it)) {
-            print_change(change);
+            while (auto change = subscribe->get_change_next(it)) {
+                print_change(change);
+            }
+
+            printf("\n\n ========== END OF CHANGES =======================================\n\n");
+
+        } catch( const std::exception& e ) {
+            cout << e.what() << endl;
         }
-
-        printf("\n\n ========== END OF CHANGES =======================================\n\n");
-
-    } catch( const std::exception& e ) {
-        cout << e.what() << endl;
     }
-
-    return SR_ERR_OK;
-}
+};
 
 static void
 sigint_handler(int signum)
@@ -204,8 +203,9 @@ main(int argc, char **argv)
 
         /* subscribe for changes in running config */
         S_Subscribe subscribe(new Subscribe(sess));
+	S_Callback cb(new My_Callback());
 
-        subscribe->module_change_subscribe(module_name, module_change_cb);
+        subscribe->module_change_subscribe(module_name, cb);
 
         /* read startup config */
         printf("\n\n ========== READING STARTUP CONFIG: ==========\n\n");

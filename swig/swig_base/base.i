@@ -30,6 +30,7 @@
 %shared_ptr(Trees)
 %shared_ptr(Xpath_Ctx)
 %shared_ptr(Change)
+%shared_ptr(Callback)
 
 %include "../swig_base/sysrepo.i"
 %include "../swig_base/structs.i"

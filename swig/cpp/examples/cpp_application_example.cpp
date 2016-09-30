@@ -116,15 +116,14 @@ print_current_config(S_Session session, const char *module_name)
     }
 }
 
-static int
-module_change_cb(S_Session sess, const char *module_name, sr_notif_event_t event, void *private_ctx)
-{
-    cout << "\n\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: ==========\n" << endl;
+class My_Callback:public Callback {
+    void module_change_cb(S_Session sess, const char *module_name, sr_notif_event_t event, void *private_ctx)
+    {
+        cout << "\n\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: ==========\n" << endl;
 
-    print_current_config(sess, module_name);
-
-    return SR_ERR_OK;
-}
+        print_current_config(sess, module_name);
+    }
+};
 
 static void
 sigint_handler(int signum)
@@ -152,8 +151,9 @@ main(int argc, char **argv)
         cout << "\n\n ========== READING STARTUP CONFIG: ==========\n" << endl;
 
         S_Subscribe subscribe(new Subscribe(sess));
+	S_Callback cb(new My_Callback());
 
-        subscribe->module_change_subscribe(module_name, module_change_cb);
+        subscribe->module_change_subscribe(module_name, cb);
 
         print_current_config(sess, module_name);
 

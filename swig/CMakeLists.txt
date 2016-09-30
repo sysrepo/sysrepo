@@ -1,7 +1,6 @@
 set(CMAKE_CXX_FLAGS         "${CMAKE_CXX_FLAGS} -Wall -Wpedantic -std=c++11 -fno-strict-aliasing")
 set(CMAKE_CXX_FLAGS_RELEASE "-DNDEBUG -O2")
 set(CMAKE_CXX_FLAGS_DEBUG   "-g -O0")
-add_definitions(-DSWIG)
 remove_definitions(-DSWIGLUA)
 
 # find SWIG package
@@ -56,7 +55,7 @@ if(GEN_PYTHON_BINDINGS AND SWIG_FOUND)
     endif()
 endif()
 
-project(Sysrepo_bindings)
+project(Sysrepo-cpp)
 set(SYSREPO_CPP_SOURCES
 	${CMAKE_SOURCE_DIR}/swig/cpp/src/Sysrepo.cpp
         ${CMAKE_SOURCE_DIR}/swig/cpp/src/Connection.cpp
@@ -75,14 +74,14 @@ set(SYSREPO_H_SOURCES
         ${CMAKE_SOURCE_DIR}/swig/cpp/src/Tree.h
 	${CMAKE_SOURCE_DIR}/swig/cpp/src/Internal.h)
 
-add_library(Sysrepo_bindings SHARED ${SYSREPO_CPP_SOURCES})
+add_library(Sysrepo-cpp SHARED ${SYSREPO_CPP_SOURCES})
 
 # include custom Modules
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/CMakeModules/")
 
 include_directories(${CMAKE_SOURCE_DIR})
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/cpp/src)
-target_link_libraries(Sysrepo_bindings sysrepo)
+include_directories("${CMAKE_CURRENT_SOURCE_DIR}/cpp/src")
+target_link_libraries(Sysrepo-cpp sysrepo)
 
 if(NOT BIN_INSTALL_DIR)
 	set(BIN_INSTALL_DIR ${CMAKE_INSTALL_PREFIX}/bin)
@@ -102,12 +101,12 @@ if(PYTHONLIBS_FOUND AND PYTHONINTERP_FOUND AND ${GEN_PYTHON_VERSION} STREQUAL "2
         set_source_files_properties(python2/${PYTHON_SWIG_BINDING_2}.i PROPERTIES CPLUSPLUS ON)
 
         swig_add_module(${PYTHON_SWIG_BINDING_2} python python2/${PYTHON_SWIG_BINDING_2}.i)
-        swig_link_libraries(${PYTHON_SWIG_BINDING_2} ${PYTHON_LIBRARIES} Sysrepo_bindings)
+        swig_link_libraries(${PYTHON_SWIG_BINDING_2} ${PYTHON_LIBRARIES} Sysrepo-cpp)
 
         file(COPY "python2/examples" DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/python2")
 
         add_custom_command(
-        TARGET Sysrepo_bindings POST_BUILD
+        TARGET Sysrepo-cpp POST_BUILD
         COMMAND ln -sf "${CMAKE_BINARY_DIR}/${PYTHON_SWIG_BINDING_2}.py" "${CMAKE_CURRENT_BINARY_DIR}/python2/examples/${PYTHON_SWIG_BINDING_2}.py"
         COMMAND ln -sf "${CMAKE_CURRENT_BINARY_DIR}/_${PYTHON_SWIG_BINDING_2}.so" "${CMAKE_CURRENT_BINARY_DIR}/python2/examples/_${PYTHON_SWIG_BINDING_2}.so"
         )
@@ -127,19 +126,18 @@ if(PYTHONLIBS_FOUND AND PYTHONINTERP_FOUND AND ${GEN_PYTHON_VERSION} STREQUAL "3
         set_source_files_properties(python3/${PYTHON_SWIG_BINDING_3}.i PROPERTIES CPLUSPLUS ON)
 
         swig_add_module(${PYTHON_SWIG_BINDING_3} python python3/${PYTHON_SWIG_BINDING_3}.i)
-        swig_link_libraries(${PYTHON_SWIG_BINDING_3} ${PYTHON_LIBRARIES} Sysrepo_bindings)
+        swig_link_libraries(${PYTHON_SWIG_BINDING_3} ${PYTHON_LIBRARIES} Sysrepo-cpp)
 
         file(COPY "python3/examples" DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/python3")
 
 		add_custom_command(
-        TARGET Sysrepo_bindings POST_BUILD
+        TARGET Sysrepo-cpp POST_BUILD
         COMMAND ln -sf "${CMAKE_BINARY_DIR}/${PYTHON_SWIG_BINDING_3}.py" "${CMAKE_CURRENT_BINARY_DIR}/python3/examples/${PYTHON_SWIG_BINDING_3}.py"
         COMMAND ln -sf "${CMAKE_CURRENT_BINARY_DIR}/_${PYTHON_SWIG_BINDING_3}.so" "${CMAKE_CURRENT_BINARY_DIR}/python3/examples/_${PYTHON_SWIG_BINDING_3}.so"
         )
 endif()
 
 if(SWIG_FOUND AND GEN_JAVA_BINDINGS)
-# export JAVA_HOME=/usr/lib/jvm/java-7-openjdk
         set(JAVA_SWIG_BINDING libsysrepoJava)
 	find_package(Java REQUIRED)
 	find_package(JNI REQUIRED)
@@ -159,23 +157,23 @@ if(SWIG_FOUND AND GEN_JAVA_BINDINGS)
 	file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/classes")
 
 	swig_add_module(${JAVA_SWIG_BINDING} java java/${JAVA_SWIG_BINDING}.i)
-	swig_link_libraries(${JAVA_SWIG_BINDING} ${JAVA_LIBRARIES} Sysrepo_bindings)
+	swig_link_libraries(${JAVA_SWIG_BINDING} ${JAVA_LIBRARIES} Sysrepo-cpp)
 
 	add_custom_command(TARGET ${JAVA_SWIG_BINDING} POST_BUILD COMMAND "${Java_JAVAC_EXECUTABLE}" -d classes java/*.java COMMAND "${Java_JAR_EXECUTABLE}" -cfM Sysrepo.jar -C classes . )
 	set(NATIVE_JAR "${CMAKE_CURRENT_BINARY_DIR}/Sysrepo.jar")
 endif()
 
 # install binary
-install(TARGETS Sysrepo_bindings DESTINATION ${BIN_INSTALL_DIR})
+install(TARGETS Sysrepo-cpp DESTINATION ${LIB_INSTALL_DIR})
+
+# Examples
+if(GEN_CPP_BINDINGS AND BUILD_CPP_EXAMPLES)
+	add_subdirectory(cpp/examples)
+endif()
 
 # build Lua bindings
 if(LUA51_FOUND)
     add_subdirectory(lua51)
 elseif(LUA_FOUND)
     add_subdirectory(lua52)
-endif()
-
-# build C++ bindings
-if(GEN_CPP_BINDINGS)
-    add_subdirectory(cpp)
 endif()

@@ -160,43 +160,43 @@ print_value(S_Val value)
     return;
 }
 
-int test_rpc_cb(const char *xpath, const S_Vals in_vals, S_Vals out_vals, void *private_ctx) {
-    cout << "\n\n ========== RPC CALLED ==========\n" << endl;
+class My_Callback:public Callback {
+    void test_rpc_cb(const char *xpath, const S_Vals in_vals, S_Vals out_vals, void *private_ctx) {
+        cout << "\n\n ========== RPC CALLED ==========\n" << endl;
 
-    out_vals->allocate(3);
+        out_vals->allocate(3);
 
-    for(size_t n=0; n < in_vals->val_cnt(); ++n)
-        print_value(in_vals->val(n));
+        for(size_t n=0; n < in_vals->val_cnt(); ++n)
+            print_value(in_vals->val(n));
 
-    out_vals->val(0)->set("/test-module:activate-software-image/status",\
-                          "The image acmefw-2.3 is being installed.",\
-                          SR_STRING_T);
-    out_vals->val(1)->set("/test-module:activate-software-image/version",\
-                        "2.3",\
-                        SR_STRING_T);
-    out_vals->val(2)->set("/test-module:activate-software-image/location",\
-                        "/root/",\
-                        SR_STRING_T);
+        out_vals->val(0)->set("/test-module:activate-software-image/status",\
+                              "The image acmefw-2.3 is being installed.",\
+                              SR_STRING_T);
+        out_vals->val(1)->set("/test-module:activate-software-image/version",\
+                            "2.3",\
+                            SR_STRING_T);
+        out_vals->val(2)->set("/test-module:activate-software-image/location",\
+                            "/root/",\
+                            SR_STRING_T);
 
-    return SR_ERR_OK;
-}
+    }
 
-int test_rpc_tree_cb(const char *xpath, S_Trees in_trees, S_Trees out_trees, void *private_ctx) {
-    cout << "\n\n ========== RPC TREE CALLED ==========\n" << endl;
+    void test_rpc_tree_cb(const char *xpath, S_Trees in_trees, S_Trees out_trees, void *private_ctx) {
+        cout << "\n\n ========== RPC TREE CALLED ==========\n" << endl;
 
-    out_trees->allocate(3);
+        out_trees->allocate(3);
 
-    for(size_t n=0; n < in_trees->tree_cnt(); ++n)
-        print_tree(in_trees->tree(n));
+        for(size_t n=0; n < in_trees->tree_cnt(); ++n)
+            print_tree(in_trees->tree(n));
 
-    out_trees->tree(0)->set_name("status");
-    out_trees->tree(0)->set("The image acmefw-2.3 is being installed.", SR_STRING_T);
-    out_trees->tree(1)->set_name("version");
-    out_trees->tree(1)->set("2.3", SR_STRING_T);
-    out_trees->tree(2)->set_name("location");
-    out_trees->tree(2)->set("/root/", SR_STRING_T);
-    return SR_ERR_OK;
-}
+        out_trees->tree(0)->set_name("status");
+        out_trees->tree(0)->set("The image acmefw-2.3 is being installed.", SR_STRING_T);
+        out_trees->tree(1)->set_name("version");
+        out_trees->tree(1)->set("2.3", SR_STRING_T);
+        out_trees->tree(2)->set_name("location");
+        out_trees->tree(2)->set("/root/", SR_STRING_T);
+    }
+};
 
 int
 main(int argc, char **argv)
@@ -213,10 +213,11 @@ main(int argc, char **argv)
 
         /* subscribe for changes in running config */
         S_Subscribe subscribe(new Subscribe(sess));
+	S_Callback cb(new My_Callback());
 
         cout << "\n\n ========== SUBSCRIBE TO RPC CALL ==========\n" << endl;
 
-        subscribe->rpc_subscribe("/test-module:activate-software-image", test_rpc_cb);
+        subscribe->rpc_subscribe("/test-module:activate-software-image", cb);
 
         S_Vals in_vals(new Vals(2));
 
@@ -236,7 +237,7 @@ main(int argc, char **argv)
 
 
         cout << "\n\n ========== SUBSCRIBE TO RPC TREE CALL ==========\n" << endl;
-        subscribe->rpc_subscribe_tree("/test-module:activate-software-image", test_rpc_tree_cb);
+        subscribe->rpc_subscribe_tree("/test-module:activate-software-image", cb);
 
         S_Trees in_trees(new Trees(1));
 
