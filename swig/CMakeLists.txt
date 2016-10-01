@@ -114,11 +114,14 @@ if(PYTHONLIBS_FOUND AND PYTHONINTERP_FOUND AND ${GEN_PYTHON_VERSION} STREQUAL "2
         swig_link_libraries(${PYTHON_SWIG_BINDING_2} ${PYTHON_LIBRARIES} Sysrepo-cpp)
 
         file(COPY "python2/examples" DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/python2")
+        file(COPY "python2/tests" DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/python2")
 
         add_custom_command(
         TARGET Sysrepo-cpp POST_BUILD
         COMMAND ln -sf "${CMAKE_BINARY_DIR}/${PYTHON_SWIG_BINDING_2}.py" "${CMAKE_CURRENT_BINARY_DIR}/python2/examples/${PYTHON_SWIG_BINDING_2}.py"
         COMMAND ln -sf "${CMAKE_CURRENT_BINARY_DIR}/_${PYTHON_SWIG_BINDING_2}.so" "${CMAKE_CURRENT_BINARY_DIR}/python2/examples/_${PYTHON_SWIG_BINDING_2}.so"
+        COMMAND ln -sf "${CMAKE_BINARY_DIR}/${PYTHON_SWIG_BINDING_2}.py" "${CMAKE_CURRENT_BINARY_DIR}/python2/tests/${PYTHON_SWIG_BINDING_2}.py"
+        COMMAND ln -sf "${CMAKE_CURRENT_BINARY_DIR}/_${PYTHON_SWIG_BINDING_2}.so" "${CMAKE_CURRENT_BINARY_DIR}/python2/tests/_${PYTHON_SWIG_BINDING_2}.so"
         )
 endif()
 
