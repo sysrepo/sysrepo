@@ -52,9 +52,16 @@ typedef struct dm_session_s {
     bool holds_ds_lock;                 /**< flags if the session holds ds lock*/
 } dm_session_t;
 
-int setup(void **state){
+int
+createData(void **state)
+{
     createDataTreeExampleModule();
     createDataTreeTestModule();
+    return 0;
+}
+
+int setup(void **state){
+    createData(state);
     test_rp_ctx_create((rp_ctx_t**)state);
     return 0;
 }
@@ -2286,6 +2293,77 @@ candidate_commit_lock_test(void **state)
     test_rp_session_cleanup(ctx, sessionC);
 }
 
+
+static void
+edit_union_type(void **state)
+{
+    int rc = 0;
+    rp_ctx_t *ctx = *state;
+    rp_session_t *sessionA = NULL;
+    sr_val_t *val = NULL;
+
+    test_rp_sesssion_create(ctx, SR_DS_STARTUP, &sessionA);
+
+    /* union - uint8 */
+    rc = rp_dt_get_value_wrapper(ctx, sessionA, NULL, "/test-module:list[key='k1']/union", &val);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(val);
+    assert_int_equal(SR_UINT8_T, val->type);
+    assert_int_equal(42, val->data.uint8_val);
+    assert_false(val->dflt);
+
+    rc = rp_dt_delete_item_wrapper(ctx, sessionA, "/test-module:list[key='k1']/union", SR_EDIT_STRICT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_set_item_wrapper(ctx, sessionA, val->xpath, val, SR_EDIT_STRICT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* value is freed inside set operation*/
+    val = NULL;
+
+    /* union string*/
+    sessionA->state = RP_REQ_NEW;
+    rc = rp_dt_get_value_wrapper(ctx, sessionA, NULL, "/test-module:list[key='k2']/union", &val);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(val);
+    assert_int_equal(SR_ENUM_T, val->type);
+    assert_string_equal("infinity", val->data.string_val);
+    assert_false(val->dflt);
+
+    rc = rp_dt_delete_item_wrapper(ctx, sessionA, "/test-module:list[key='k2']/union", SR_EDIT_STRICT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_set_item_wrapper(ctx, sessionA, val->xpath, val, SR_EDIT_STRICT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* value is freed inside set operation*/
+    val = NULL;
+
+    /* check that correctly set */
+    sessionA->state = RP_REQ_NEW;
+    rc = rp_dt_get_value_wrapper(ctx, sessionA, NULL, "/test-module:list[key='k2']/union", &val);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(val);
+    assert_int_equal(SR_ENUM_T, val->type);
+    assert_string_equal("infinity", val->data.string_val);
+    assert_false(val->dflt);
+    sr_free_val(val);
+
+
+    sessionA->state = RP_REQ_NEW;
+    rc = rp_dt_get_value_wrapper(ctx, sessionA, NULL, "/test-module:list[key='k1']/union", &val);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(val);
+    assert_int_equal(SR_UINT8_T, val->type);
+    assert_int_equal(42, val->data.uint8_val);
+    assert_false(val->dflt);
+    sr_free_val(val);
+
+    test_rp_session_cleanup(ctx, sessionA);
+
+}
+
+
 int main(){
 
     sr_log_stderr(SR_LL_DBG);
@@ -2322,6 +2400,7 @@ int main(){
             cmocka_unit_test(candidate_edit_test),
             cmocka_unit_test(copy_to_running_test),
             cmocka_unit_test(candidate_commit_lock_test),
+            cmocka_unit_test_setup(edit_union_type, createData),
     };
     return cmocka_run_group_tests(tests, setup, teardown);
 }
