@@ -77,6 +77,7 @@ MESSAGE(STATUS "sysrepo repository location: ${REPOSITORY_LOC}")
 # include custom Modules
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/CMakeModules/")
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
+include_directories("${CMAKE_CURRENT_SOURCE_DIR}/inc")
 
 # find required libraries
 find_package(EV REQUIRED)
