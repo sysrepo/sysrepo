@@ -26,6 +26,7 @@
 #include <setjmp.h>
 #include <cmocka.h>
 #include <string.h>
+#include <inttypes.h>
 #include <pthread.h>
 #include <rpc/rpc_msg.h>
 
@@ -85,6 +86,87 @@ sysrepo_teardown(void **state)
     sr_disconnect(conn);
 
     return 0;
+}
+
+static sr_node_t *
+sr_node_get_child_by_name(sr_session_ctx_t *session, sr_node_t *parent, const char *name)
+{
+    sr_node_t *child = NULL;
+
+    child = sr_node_get_child(session, parent);
+    while (NULL != child && 0 != strcmp(name, child->name)) {
+        child = sr_node_get_next_sibling(session, child);
+    }
+
+    return child;
+}
+
+static bool
+sr_list_matches_key(sr_session_ctx_t *session, sr_node_t *list, const char *key_name, const char *key_val)
+{
+    sr_node_t *child = NULL;
+
+    child = sr_node_get_child(session, list);
+    while (NULL != child) {
+        if (0 == strcmp(key_name, child->name)) {
+            switch (child->type) {
+                case SR_STRING_T:
+                    if (0 == strcmp(child->data.string_val, key_val)) {
+                        return true;
+                    }
+                    break;
+                case SR_UINT32_T:
+                    if (atoi(key_val) == child->data.uint32_val) {
+                        return true;
+                    }
+                    break;
+                case SR_INT32_T:
+                    if (atoi(key_val) == child->data.int32_val) {
+                        return true;
+                    }
+                    break;
+                default:
+                    break; /* not used in unit tests */
+            }
+        }
+        child = sr_node_get_next_sibling(session, child);
+    }
+
+    return false;
+}
+
+static sr_node_t *
+sr_node_get_list_by_key(sr_session_ctx_t *session, sr_node_t *parent, const char *list_name,
+        const char *key_name, const char *key_val)
+{
+    sr_node_t *child = NULL;
+
+    child = sr_node_get_child(session, parent);
+    while (NULL != child) {
+        if (SR_LIST_T == child->type && 0 == strcmp(list_name, child->name)) {
+            if (sr_list_matches_key(session, child, key_name, key_val)) {
+                break;
+            }
+        }
+        child = sr_node_get_next_sibling(session, child);
+    }
+
+    return child;
+}
+
+static int
+sr_node_get_child_cnt(sr_session_ctx_t *session, sr_node_t *parent)
+{
+    int cnt = 0;
+    sr_node_t *child = NULL;
+
+    child = sr_node_get_child(session, parent);
+    while (NULL != child) {
+        ++cnt;
+        child = sr_node_get_next_sibling(session, child);
+    }
+
+    return cnt;
 }
 
 static int
@@ -452,45 +534,24 @@ cl_parent_subscription_tree(void **state)
         assert_string_equal("state-module", tree->module_name);
         assert_false(tree->dflt);
         assert_int_equal(SR_CONTAINER_T, tree->type);
-        node = sr_node_get_child(session, tree);
+        assert_int_equal(2, sr_node_get_child_cnt(session, tree));
+        // gps located
+        node = sr_node_get_child_by_name(session, tree, "gps_located");
         assert_non_null(node);
-        if (0 == strcmp("gps_located", node->name)) {
-            // gps located
-            assert_string_equal("gps_located", node->name);
-            assert_null(node->module_name);
-            assert_false(node->dflt);
-            assert_int_equal(SR_BOOL_T, node->type);
-            assert_false(node->data.bool_val);
-            assert_null(node->first_child);
-            // distance travelled
-            node = sr_node_get_next_sibling(session, node);
-            assert_non_null(node);
-            assert_string_equal("distance_travelled", node->name);
-            assert_null(node->module_name);
-            assert_false(node->dflt);
-            assert_int_equal(SR_UINT32_T, node->type);
-            assert_int_equal(999, node->data.uint32_val);
-            assert_null(node->first_child);
-            assert_null(node->next);
-        } else {
-            // distance travelled
-            assert_string_equal("distance_travelled", node->name);
-            assert_null(node->module_name);
-            assert_false(node->dflt);
-            assert_int_equal(SR_UINT32_T, node->type);
-            assert_int_equal(999, node->data.uint32_val);
-            assert_null(node->first_child);
-            // gps located
-            node = sr_node_get_next_sibling(session, node);
-            assert_non_null(node);
-            assert_string_equal("gps_located", node->name);
-            assert_null(node->module_name);
-            assert_false(node->dflt);
-            assert_int_equal(SR_BOOL_T, node->type);
-            assert_false(node->data.bool_val);
-            assert_null(node->first_child);
-            assert_null(node->next);
-        }
+        assert_string_equal("gps_located", node->name);
+        assert_null(node->module_name);
+        assert_false(node->dflt);
+        assert_int_equal(SR_BOOL_T, node->type);
+        assert_false(node->data.bool_val);
+        assert_null(node->first_child);
+        // distance travelled
+        node = sr_node_get_child_by_name(session, tree, "distance_travelled");
+        assert_non_null(node);
+        assert_null(node->module_name);
+        assert_false(node->dflt);
+        assert_int_equal(SR_UINT32_T, node->type);
+        assert_int_equal(999, node->data.uint32_val);
+        assert_null(node->first_child);
 
         sr_free_tree(tree);
 
@@ -554,13 +615,23 @@ cl_exact_match_subscription(void **state)
     assert_non_null(values);
     assert_int_equal(2, cnt);
 
-    assert_string_equal("/state-module:bus/gps_located", values[0].xpath);
-    assert_int_equal(SR_BOOL_T, values[0].type);
-    assert_int_equal(false, values[0].data.bool_val);
+    if (0 == strcmp("/state-module:bus/gps_located", values[0].xpath)) {
+        assert_string_equal("/state-module:bus/gps_located", values[0].xpath);
+        assert_int_equal(SR_BOOL_T, values[0].type);
+        assert_int_equal(false, values[0].data.bool_val);
 
-    assert_string_equal("/state-module:bus/distance_travelled", values[1].xpath);
-    assert_int_equal(SR_UINT32_T, values[1].type);
-    assert_int_equal(999, values[1].data.uint32_val);
+        assert_string_equal("/state-module:bus/distance_travelled", values[1].xpath);
+        assert_int_equal(SR_UINT32_T, values[1].type);
+        assert_int_equal(999, values[1].data.uint32_val);
+    } else {
+        assert_string_equal("/state-module:bus/distance_travelled", values[0].xpath);
+        assert_int_equal(SR_UINT32_T, values[0].type);
+        assert_int_equal(999, values[0].data.uint32_val);
+
+        assert_string_equal("/state-module:bus/gps_located", values[1].xpath);
+        assert_int_equal(SR_BOOL_T, values[1].type);
+        assert_int_equal(false, values[1].data.bool_val);
+    }
 
     sr_free_values(values, cnt);
 
@@ -624,8 +695,9 @@ cl_exact_match_subscription_tree(void **state)
         assert_string_equal("state-module", tree->module_name);
         assert_false(tree->dflt);
         assert_int_equal(SR_CONTAINER_T, tree->type);
+        assert_int_equal(2, sr_node_get_child_cnt(session, tree));
         // gps located
-        node = sr_node_get_child(session, tree);
+        node = sr_node_get_child_by_name(session, tree, "gps_located");
         assert_non_null(node);
         assert_string_equal("gps_located", node->name);
         assert_null(node->module_name);
@@ -634,7 +706,7 @@ cl_exact_match_subscription_tree(void **state)
         assert_false(node->data.bool_val);
         assert_null(node->first_child);
         // distance travelled
-        node = sr_node_get_next_sibling(session, node);
+        node = sr_node_get_child_by_name(session, tree, "distance_travelled");
         assert_non_null(node);
         assert_string_equal("distance_travelled", node->name);
         assert_null(node->module_name);
@@ -642,7 +714,6 @@ cl_exact_match_subscription_tree(void **state)
         assert_int_equal(SR_UINT32_T, node->type);
         assert_int_equal(999, node->data.uint32_val);
         assert_null(node->first_child);
-        assert_null(node->next);
 
         sr_free_tree(tree);
 
@@ -1121,8 +1192,10 @@ cl_nested_data_subscription_tree(void **state)
         assert_false(node->dflt);
         assert_int_equal(SR_CONTAINER_T, node->type);
         assert_null(node->next);
+        assert_int_equal(5, sr_node_get_child_cnt(session, node));
         // num. of accidents
-        node = sr_node_get_child(session, node);
+        node = sr_node_get_child_by_name(session, node, "number_of_accidents");
+        assert_non_null(node);
         assert_string_equal("number_of_accidents", node->name);
         assert_null(node->module_name);
         assert_false(node->dflt);
@@ -1130,24 +1203,24 @@ cl_nested_data_subscription_tree(void **state)
         assert_int_equal(2, node->data.uint8_val);
         assert_null(node->first_child);
         // cross roads offline count
-        node = sr_node_get_next_sibling(session, node);
-        assert_string_equal("cross_roads_offline_count", node->name);
+        node = sr_node_get_child_by_name(session, node->parent, "cross_roads_offline_count");
+        assert_non_null(node);
         assert_null(node->module_name);
         assert_false(node->dflt);
         assert_int_equal(SR_UINT8_T, node->type);
         assert_int_equal(9, node->data.uint8_val);
         assert_null(node->first_child);
         // cross road, id=0
-        node = sr_node_get_next_sibling(session, node);
-        assert_string_equal("cross_road", node->name);
+        node = sr_node_get_list_by_key(session, node->parent, "cross_road", "id", "0");
+        assert_non_null(node);
         assert_null(node->module_name);
         assert_false(node->dflt);
         assert_int_equal(SR_LIST_T, node->type);
-        if (1 == j) {
-            assert_true(node->first_child && SR_TREE_ITERATOR_T == node->first_child->type);
-        }
+        assert_true(node->first_child);
+        assert_int_equal(6, sr_node_get_child_cnt(session, node));
         // id
-        node = sr_node_get_child(session, node);
+        node = sr_node_get_child_by_name(session, node, "id");
+        assert_non_null(node);
         assert_string_equal("id", node->name);
         assert_null(node->module_name);
         assert_false(node->dflt);
@@ -1155,7 +1228,8 @@ cl_nested_data_subscription_tree(void **state)
         assert_int_equal(0, node->data.uint32_val);
         assert_null(node->first_child);
         // status
-        node = sr_node_get_next_sibling(session, node);
+        node = sr_node_get_child_by_name(session, node->parent, "status");
+        assert_non_null(node);
         assert_string_equal("status", node->name);
         assert_null(node->module_name);
         assert_false(node->dflt);
@@ -1163,14 +1237,17 @@ cl_nested_data_subscription_tree(void **state)
         assert_string_equal("manual", node->data.enum_val);
         assert_null(node->first_child);
         // traffic light, name = a
-        node = sr_node_get_next_sibling(session, node);
+        node = sr_node_get_list_by_key(session, node->parent, "traffic_light", "name", "a");
+        assert_non_null(node);
         assert_string_equal("traffic_light", node->name);
         assert_null(node->module_name);
         assert_false(node->dflt);
         assert_int_equal(SR_LIST_T, node->type);
         assert_non_null(node->first_child);
+        assert_int_equal(2, sr_node_get_child_cnt(session, node));
         // traffic light, name
-        node = sr_node_get_child(session, node);
+        node = sr_node_get_child_by_name(session, node, "name");
+        assert_non_null(node);
         assert_string_equal("name", node->name);
         assert_null(node->module_name);
         assert_false(node->dflt);
@@ -1178,22 +1255,25 @@ cl_nested_data_subscription_tree(void **state)
         assert_string_equal("a", node->data.enum_val);
         assert_null(node->first_child);
         // traffic light, color
-        node = sr_node_get_next_sibling(session, node);
+        node = sr_node_get_child_by_name(session, node->parent, "color");
+        assert_non_null(node);
         assert_string_equal("color", node->name);
         assert_null(node->module_name);
         assert_false(node->dflt);
         assert_int_equal(SR_ENUM_T, node->type);
         assert_string_equal("red", node->data.enum_val);
         assert_null(node->first_child);
-        assert_null(node->next);
         // traffic light, name = b
-        node = sr_node_get_next_sibling(session, sr_node_get_parent(session, node));
+        node = sr_node_get_list_by_key(session, node->parent->parent, "traffic_light", "name", "b");
+        assert_non_null(node);
         assert_string_equal("traffic_light", node->name);
         assert_null(node->module_name);
         assert_false(node->dflt);
         assert_int_equal(SR_LIST_T, node->type);
+        assert_int_equal(2, sr_node_get_child_cnt(session, node));
         // traffic light, name
-        node = sr_node_get_child(session, node);
+        node = sr_node_get_child_by_name(session, node, "name");
+        assert_non_null(node);
         assert_string_equal("name", node->name);
         assert_null(node->module_name);
         assert_false(node->dflt);
@@ -1201,22 +1281,24 @@ cl_nested_data_subscription_tree(void **state)
         assert_string_equal("b", node->data.enum_val);
         assert_null(node->first_child);
         // traffic light, color
-        node = sr_node_get_next_sibling(session, node);
+        node = sr_node_get_child_by_name(session, node->parent, "color");
         assert_string_equal("color", node->name);
         assert_null(node->module_name);
         assert_false(node->dflt);
         assert_int_equal(SR_ENUM_T, node->type);
         assert_string_equal("orange", node->data.enum_val);
         assert_null(node->first_child);
-        assert_null(node->next);
         // traffic light, name = c
-        node = sr_node_get_next_sibling(session, sr_node_get_parent(session, node));
+        node = sr_node_get_list_by_key(session, node->parent->parent, "traffic_light", "name", "c");
+        assert_non_null(node);
         assert_string_equal("traffic_light", node->name);
         assert_null(node->module_name);
         assert_false(node->dflt);
         assert_int_equal(SR_LIST_T, node->type);
+        assert_int_equal(2, sr_node_get_child_cnt(session, node));
         // traffic light, name
-        node = sr_node_get_child(session, node);
+        node = sr_node_get_child_by_name(session, node, "name");
+        assert_non_null(node);
         assert_string_equal("name", node->name);
         assert_null(node->module_name);
         assert_false(node->dflt);
@@ -1224,45 +1306,50 @@ cl_nested_data_subscription_tree(void **state)
         assert_string_equal("c", node->data.enum_val);
         assert_null(node->first_child);
         // traffic light, color
-        node = sr_node_get_next_sibling(session, node);
+        node = sr_node_get_child_by_name(session, node->parent, "color");
+        assert_non_null(node);
         assert_string_equal("color", node->name);
         assert_null(node->module_name);
         assert_false(node->dflt);
         assert_int_equal(SR_ENUM_T, node->type);
         assert_string_equal("green", node->data.enum_val);
         assert_null(node->first_child);
-        assert_null(node->next);
         // advanced info
-        node = sr_node_get_next_sibling(session, sr_node_get_parent(session, node));
+        node = sr_node_get_child_by_name(session, node->parent->parent, "advanced_info");
+        assert_non_null(node);
         assert_string_equal("advanced_info", node->name);
         assert_null(node->module_name);
         assert_false(node->dflt);
         assert_int_equal(SR_CONTAINER_T, node->type);
+        assert_int_equal(2, sr_node_get_child_cnt(session, node));
         // latitude
-        node = sr_node_get_child(session, node);
+        node = sr_node_get_child_by_name(session, node, "latitude");
+        assert_non_null(node);
         assert_string_equal("latitude", node->name);
         assert_null(node->module_name);
         assert_false(node->dflt);
         assert_int_equal(SR_STRING_T, node->type);
         assert_string_equal("48.729885N", node->data.string_val);
         // longitude
-        node = sr_node_get_next_sibling(session, node);
+        node = sr_node_get_child_by_name(session, node->parent, "longitude");
+        assert_non_null(node);
         assert_string_equal("longitude", node->name);
         assert_null(node->module_name);
         assert_false(node->dflt);
         assert_int_equal(SR_STRING_T, node->type);
         assert_string_equal("19.137425E", node->data.string_val);
-        assert_null(node->next);
-        assert_null(node->parent->next);
         // cross road, id=1
-        node = sr_node_get_next_sibling(session, sr_node_get_parent(session, sr_node_get_parent(session, node)));
+        node = sr_node_get_list_by_key(session, node->parent->parent->parent, "cross_road", "id", "1");
+        assert_non_null(node);
         assert_string_equal("cross_road", node->name);
         assert_null(node->module_name);
         assert_false(node->dflt);
         assert_int_equal(SR_LIST_T, node->type);
-        assert_non_null(node->first_child); /* covered by previous chunk */
+        assert_non_null(node->first_child);
+        assert_int_equal(5, sr_node_get_child_cnt(session, node));
         // id
-        node = sr_node_get_child(session, node);
+        node = sr_node_get_child_by_name(session, node, "id");
+        assert_non_null(node);
         assert_string_equal("id", node->name);
         assert_null(node->module_name);
         assert_false(node->dflt);
@@ -1270,7 +1357,8 @@ cl_nested_data_subscription_tree(void **state)
         assert_int_equal(1, node->data.uint32_val);
         assert_null(node->first_child);
         // status
-        node = sr_node_get_next_sibling(session, node);
+        node = sr_node_get_child_by_name(session, node->parent, "status");
+        assert_non_null(node);
         assert_string_equal("status", node->name);
         assert_null(node->module_name);
         assert_false(node->dflt);
@@ -1278,13 +1366,16 @@ cl_nested_data_subscription_tree(void **state)
         assert_string_equal("automatic", node->data.enum_val);
         assert_null(node->first_child);
         // traffic light, name = a
-        node = sr_node_get_next_sibling(session, node);
+        node = sr_node_get_list_by_key(session, node->parent, "traffic_light", "name", "a");
+        assert_non_null(node);
         assert_string_equal("traffic_light", node->name);
         assert_null(node->module_name);
         assert_false(node->dflt);
         assert_int_equal(SR_LIST_T, node->type);
+        assert_int_equal(2, sr_node_get_child_cnt(session, node));
         // traffic light, name
-        node = sr_node_get_child(session, node);
+        node = sr_node_get_child_by_name(session, node, "name");
+        assert_non_null(node);
         assert_string_equal("name", node->name);
         assert_null(node->module_name);
         assert_false(node->dflt);
@@ -1292,22 +1383,25 @@ cl_nested_data_subscription_tree(void **state)
         assert_string_equal("a", node->data.enum_val);
         assert_null(node->first_child);
         // traffic light, color
-        node = sr_node_get_next_sibling(session, node);
+        node = sr_node_get_child_by_name(session, node->parent, "color");
+        assert_non_null(node);
         assert_string_equal("color", node->name);
         assert_null(node->module_name);
         assert_false(node->dflt);
         assert_int_equal(SR_ENUM_T, node->type);
         assert_string_equal("orange", node->data.enum_val);
         assert_null(node->first_child);
-        assert_null(node->next);
         // traffic light, name = b
-        node = sr_node_get_next_sibling(session, sr_node_get_parent(session, node));
+        node = sr_node_get_list_by_key(session, node->parent->parent, "traffic_light", "name", "b");
+        assert_non_null(node);
         assert_string_equal("traffic_light", node->name);
         assert_null(node->module_name);
         assert_false(node->dflt);
         assert_int_equal(SR_LIST_T, node->type);
+        assert_int_equal(2, sr_node_get_child_cnt(session, node));
         // traffic light, name
-        node = sr_node_get_child(session, node);
+        node = sr_node_get_child_by_name(session, node, "name");
+        assert_non_null(node);
         assert_string_equal("name", node->name);
         assert_null(node->module_name);
         assert_false(node->dflt);
@@ -1315,22 +1409,24 @@ cl_nested_data_subscription_tree(void **state)
         assert_string_equal("b", node->data.enum_val);
         assert_null(node->first_child);
         // traffic light, color
-        node = sr_node_get_next_sibling(session, node);
+        node = sr_node_get_child_by_name(session, node->parent, "color");
+        assert_non_null(node);
         assert_string_equal("color", node->name);
         assert_null(node->module_name);
         assert_false(node->dflt);
         assert_int_equal(SR_ENUM_T, node->type);
         assert_string_equal("green", node->data.enum_val);
         assert_null(node->first_child);
-        assert_null(node->next);
         // traffic light, name = c
-        node = sr_node_get_next_sibling(session, sr_node_get_parent(session, node));
+        node = sr_node_get_list_by_key(session, node->parent->parent, "traffic_light", "name", "c");
+        assert_non_null(node);
         assert_string_equal("traffic_light", node->name);
         assert_null(node->module_name);
         assert_false(node->dflt);
         assert_int_equal(SR_LIST_T, node->type);
+        assert_int_equal(2, sr_node_get_child_cnt(session, node));
         // traffic light, name
-        node = sr_node_get_child(session, node);
+        node = sr_node_get_child_by_name(session, node, "name");
         assert_string_equal("name", node->name);
         assert_null(node->module_name);
         assert_false(node->dflt);
@@ -1338,25 +1434,26 @@ cl_nested_data_subscription_tree(void **state)
         assert_string_equal("c", node->data.enum_val);
         assert_null(node->first_child);
         // traffic light, color
-        node = sr_node_get_next_sibling(session, node);
+        node = sr_node_get_child_by_name(session, node->parent, "color");
         assert_string_equal("color", node->name);
         assert_null(node->module_name);
         assert_false(node->dflt);
         assert_int_equal(SR_ENUM_T, node->type);
         assert_string_equal("red", node->data.enum_val);
         assert_null(node->first_child);
-        assert_null(node->next);
         // no advanced info
-        assert_null(sr_node_get_next_sibling(session, sr_node_get_parent(session, node)));
+        assert_null(sr_node_get_child_by_name(session, node->parent->parent, "advanced_info"));
         // cross road, id=2
-        node = sr_node_get_next_sibling(session, sr_node_get_parent(session, sr_node_get_parent(session, node)));
-        assert_string_equal("cross_road", node->name);
+        node = sr_node_get_list_by_key(session, node->parent->parent->parent, "cross_road", "id", "2");
+        assert_non_null(node);
         assert_null(node->module_name);
         assert_false(node->dflt);
         assert_int_equal(SR_LIST_T, node->type);
-        assert_non_null(node->first_child); /* covered by previous chunk */
+        assert_non_null(node->first_child);
+        assert_int_equal(6, sr_node_get_child_cnt(session, node));
         // id
-        node = sr_node_get_child(session, node);
+        node = sr_node_get_child_by_name(session, node, "id");
+        assert_non_null(node);
         assert_string_equal("id", node->name);
         assert_null(node->module_name);
         assert_false(node->dflt);
@@ -1364,7 +1461,8 @@ cl_nested_data_subscription_tree(void **state)
         assert_int_equal(2, node->data.uint32_val);
         assert_null(node->first_child);
         // status
-        node = sr_node_get_next_sibling(session, node);
+        node = sr_node_get_child_by_name(session, node->parent, "status");
+        assert_non_null(node);
         assert_string_equal("status", node->name);
         assert_null(node->module_name);
         assert_false(node->dflt);
@@ -1372,7 +1470,8 @@ cl_nested_data_subscription_tree(void **state)
         assert_string_equal("automatic", node->data.enum_val);
         assert_null(node->first_child);
         // average wait time
-        node = sr_node_get_next_sibling(session, node);
+        node = sr_node_get_child_by_name(session, node->parent, "average_wait_time");
+        assert_non_null(node);
         assert_string_equal("average_wait_time", node->name);
         assert_null(node->module_name);
         assert_false(node->dflt);
@@ -1380,13 +1479,16 @@ cl_nested_data_subscription_tree(void **state)
         assert_int_equal(15, node->data.uint32_val);
         assert_null(node->first_child);
         // traffic light, name = a
-        node = sr_node_get_next_sibling(session, node);
+        node = sr_node_get_list_by_key(session, node->parent, "traffic_light", "name", "a");
+        assert_non_null(node);
         assert_string_equal("traffic_light", node->name);
         assert_null(node->module_name);
         assert_false(node->dflt);
         assert_int_equal(SR_LIST_T, node->type);
+        assert_int_equal(2, sr_node_get_child_cnt(session, node));
         // traffic light, name
-        node = sr_node_get_child(session, node);
+        node = sr_node_get_child_by_name(session, node, "name");
+        assert_non_null(node);
         assert_string_equal("name", node->name);
         assert_null(node->module_name);
         assert_false(node->dflt);
@@ -1394,22 +1496,25 @@ cl_nested_data_subscription_tree(void **state)
         assert_string_equal("a", node->data.enum_val);
         assert_null(node->first_child);
         // traffic light, color
-        node = sr_node_get_next_sibling(session, node);
+        node = sr_node_get_child_by_name(session, node->parent, "color");
+        assert_non_null(node);
         assert_string_equal("color", node->name);
         assert_null(node->module_name);
         assert_false(node->dflt);
         assert_int_equal(SR_ENUM_T, node->type);
         assert_string_equal("green", node->data.enum_val);
         assert_null(node->first_child);
-        assert_null(node->next);
         // traffic light, name = b
-        node = sr_node_get_next_sibling(session, sr_node_get_parent(session, node));
+        node = sr_node_get_list_by_key(session, node->parent->parent, "traffic_light", "name", "b");
+        assert_non_null(node);
         assert_string_equal("traffic_light", node->name);
         assert_null(node->module_name);
         assert_false(node->dflt);
         assert_int_equal(SR_LIST_T, node->type);
+        assert_int_equal(2, sr_node_get_child_cnt(session, node));
         // traffic light, name
-        node = sr_node_get_child(session, node);
+        node = sr_node_get_child_by_name(session, node, "name");
+        assert_non_null(node);
         assert_string_equal("name", node->name);
         assert_null(node->module_name);
         assert_false(node->dflt);
@@ -1417,22 +1522,25 @@ cl_nested_data_subscription_tree(void **state)
         assert_string_equal("b", node->data.enum_val);
         assert_null(node->first_child);
         // traffic light, color
-        node = sr_node_get_next_sibling(session, node);
+        node = sr_node_get_child_by_name(session, node->parent, "color");
+        assert_non_null(node);
         assert_string_equal("color", node->name);
         assert_null(node->module_name);
         assert_false(node->dflt);
         assert_int_equal(SR_ENUM_T, node->type);
         assert_string_equal("red", node->data.enum_val);
         assert_null(node->first_child);
-        assert_null(node->next);
         // traffic light, name = c
-        node = sr_node_get_next_sibling(session, sr_node_get_parent(session, node));
+        node = sr_node_get_list_by_key(session, node->parent->parent, "traffic_light", "name", "c");
+        assert_non_null(node);
         assert_string_equal("traffic_light", node->name);
         assert_null(node->module_name);
         assert_false(node->dflt);
         assert_int_equal(SR_LIST_T, node->type);
+        assert_int_equal(2, sr_node_get_child_cnt(session, node));
         // traffic light, name
-        node = sr_node_get_child(session, node);
+        node = sr_node_get_child_by_name(session, node, "name");
+        assert_non_null(node);
         assert_string_equal("name", node->name);
         assert_null(node->module_name);
         assert_false(node->dflt);
@@ -1440,18 +1548,18 @@ cl_nested_data_subscription_tree(void **state)
         assert_string_equal("c", node->data.enum_val);
         assert_null(node->first_child);
         // traffic light, color
-        node = sr_node_get_next_sibling(session, node);
+        node = sr_node_get_child_by_name(session, node->parent, "color");
+        assert_non_null(node);
         assert_string_equal("color", node->name);
         assert_null(node->module_name);
         assert_false(node->dflt);
         assert_int_equal(SR_ENUM_T, node->type);
         assert_string_equal("orange", node->data.enum_val);
         assert_null(node->first_child);
-        assert_null(node->next);
         // no advanced info
-        assert_null(sr_node_get_next_sibling(session, sr_node_get_parent(session, node)));
+        assert_null(sr_node_get_child_by_name(session, node->parent->parent, "advanced_info"));
         // no more cross roads
-        assert_null(sr_node_get_next_sibling(session, sr_node_get_parent(session, sr_node_get_parent(session, node))));
+        assert_null(sr_node_get_list_by_key(session, node->parent->parent->parent, "cross_road", "id", "3"));
         sr_free_tree(tree);
 
         /* check xpath that were retrieved */
@@ -1539,13 +1647,26 @@ cl_nested_data_subscription2(void **state)
     assert_non_null(values);
     assert_int_equal(2, cnt);
 
-    assert_int_equal(values[0].type, SR_STRING_T);
-    assert_string_equal(values[0].xpath, "/state-module:traffic_stats/cross_road[id='0']/advanced_info/latitude");
-    assert_string_equal(values[0].data.string_val, "48.729885N");
+#define LATITUDE_XPATH "/state-module:traffic_stats/cross_road[id='0']/advanced_info/latitude"
+#define LONGITUDE_XPATH "/state-module:traffic_stats/cross_road[id='0']/advanced_info/longitude"
 
-    assert_int_equal(values[1].type, SR_STRING_T);
-    assert_string_equal(values[1].xpath, "/state-module:traffic_stats/cross_road[id='0']/advanced_info/longitude");
-    assert_string_equal(values[1].data.string_val, "19.137425E");
+    if (0 == strcmp(LATITUDE_XPATH, values[0].xpath)) {
+        assert_int_equal(values[0].type, SR_STRING_T);
+        assert_string_equal(values[0].xpath, LATITUDE_XPATH);
+        assert_string_equal(values[0].data.string_val, "48.729885N");
+
+        assert_int_equal(values[1].type, SR_STRING_T);
+        assert_string_equal(values[1].xpath, LONGITUDE_XPATH);
+        assert_string_equal(values[1].data.string_val, "19.137425E");
+    } else {
+        assert_int_equal(values[0].type, SR_STRING_T);
+        assert_string_equal(values[0].xpath, LONGITUDE_XPATH);
+        assert_string_equal(values[0].data.string_val, "19.137425E");
+
+        assert_int_equal(values[1].type, SR_STRING_T);
+        assert_string_equal(values[1].xpath, LATITUDE_XPATH);
+        assert_string_equal(values[1].data.string_val, "48.729885N");
+    }
 
     sr_free_values(values, cnt);
 
@@ -1616,23 +1737,26 @@ cl_nested_data_subscription2_tree(void **state)
         assert_false(node->dflt);
         assert_int_equal(SR_CONTAINER_T, node->type);
         assert_non_null(node->first_child);
+        assert_null(node->next);
+        assert_int_equal(2, sr_node_get_child_cnt(session, node));
         // latitude
-        node = sr_node_get_child(session, node);
+        node = sr_node_get_child_by_name(session, node, "latitude");
+        assert_non_null(node);
         assert_string_equal("latitude", node->name);
         assert_null(node->module_name);
         assert_false(node->dflt);
         assert_int_equal(SR_STRING_T, node->type);
         assert_string_equal("48.729885N", node->data.string_val);
-        assert_non_null(node->next);
+        assert_null(node->first_child);
         // longitude
-        node = sr_node_get_next_sibling(session, node);
+        node = sr_node_get_child_by_name(session, node->parent, "longitude");
+        assert_non_null(node);
         assert_string_equal("longitude", node->name);
         assert_null(node->module_name);
         assert_false(node->dflt);
         assert_int_equal(SR_STRING_T, node->type);
         assert_string_equal("19.137425E", node->data.string_val);
-        assert_null(node->next);
-        assert_null(node->parent->next);
+        assert_null(node->first_child);
 
         sr_free_tree(tree);
 
@@ -1714,22 +1838,7 @@ cl_all_state_data(void **state)
         "/state-module:traffic_stats/cross_road[id='2']/traffic_light",
         "/state-module:traffic_stats/cross_road[id='2']/advanced_info",
     };
-    size_t expected_xp_cnt = sizeof(xpath_expected_to_be_loaded) / sizeof(*xpath_expected_to_be_loaded);
-    assert_int_equal(expected_xp_cnt, xpath_retrieved->count);
-
-    for (size_t i = 0; i < expected_xp_cnt; i++) {
-        bool match = false;
-        for (size_t j = 0; xpath_retrieved->count; j++) {
-            if (0 == strcmp(xpath_expected_to_be_loaded[i], (char *) xpath_retrieved->data[j])) {
-                match = true;
-                break;
-            }
-        }
-        if (!match) {
-            /* assert xpath that can not be found */
-            assert_string_equal("", xpath_expected_to_be_loaded[i]);
-        }
-    }
+    CHECK_LIST_OF_STRINGS(xpath_retrieved, xpath_expected_to_be_loaded);
 
     /* cleanup */
     sr_unsubscribe(session, subscription);
