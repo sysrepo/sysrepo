@@ -161,7 +161,7 @@ cl_fd_poll_test(void **state)
 
     /* subscribe for changes */
     rc = sr_module_change_subscribe(session, "example-module", module_change_cb, &callback_called, 0,
-            SR_SUBSCR_DEFAULT, &subscription);
+            SR_SUBSCR_DEFAULT | SR_SUBSCR_APPLY_ONLY, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* create the list instance */

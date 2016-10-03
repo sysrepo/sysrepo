@@ -1495,7 +1495,7 @@ default_nodes_test(void **state)
     /* cleanup - remove all list instances */
     rc = rp_dt_delete_item_wrapper(ctx, ses_ctx, "/test-module:with_def", SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
-    rc = rp_dt_commit(ctx, ses_ctx, &errors, &e_cnt);
+    rc = rp_dt_commit(ctx, ses_ctx, NULL, &errors, &e_cnt);
     assert_int_equal(SR_ERR_OK, rc);
 
 
@@ -1670,7 +1670,7 @@ default_nodes_test(void **state)
     assert_false(tree->dflt);
     sr_free_tree(tree);
 
-    rc = rp_dt_commit(ctx, ses_ctx, &errors, &e_cnt);
+    rc = rp_dt_commit(ctx, ses_ctx, NULL, &errors, &e_cnt);
     assert_int_equal(SR_ERR_OK, rc);
 
     /* check after commit */
@@ -1761,7 +1761,7 @@ default_nodes_test(void **state)
     /* clean up*/
     rc = rp_dt_delete_item_wrapper(ctx, ses_ctx, "/test-module:with_def", SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
-    rc = rp_dt_commit(ctx, ses_ctx, &errors, &e_cnt);
+    rc = rp_dt_commit(ctx, ses_ctx, NULL, &errors, &e_cnt);
     assert_int_equal(SR_ERR_OK, rc);
 
     test_rp_session_cleanup(ctx, ses_ctx);
@@ -1807,7 +1807,7 @@ default_nodes_toplevel_test(void **state)
 
     rc = rp_dt_delete_item_wrapper(ctx, ses_ctx, "/test-module:*", SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
-    rc = rp_dt_commit(ctx, ses_ctx, &errors, &e_cnt);
+    rc = rp_dt_commit(ctx, ses_ctx, NULL, &errors, &e_cnt);
     assert_int_equal(SR_ERR_OK, rc);
 
     /* top-level default value with empty data tree is not present #333, will be added during commit or validate */

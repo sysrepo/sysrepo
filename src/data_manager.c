@@ -29,6 +29,7 @@
 #include <fcntl.h>
 #include <libyang/libyang.h>
 #include <string.h>
+#include <inttypes.h>
 
 #include "data_manager.h"
 #include "sr_common.h"
@@ -2579,6 +2580,15 @@ dm_free_commit_context(void *commit_ctx)
         if (NULL != c_ctx->session) {
             dm_session_stop(c_ctx->session->dm_ctx, c_ctx->session);
         }
+        if (NULL != c_ctx->err_subs_xpaths) {
+            for (size_t i = 0; i < c_ctx->err_subs_xpaths->count; i++) {
+                free(c_ctx->err_subs_xpaths->data[i]);
+            }
+            sr_list_cleanup(c_ctx->err_subs_xpaths);
+        }
+        if (NULL != c_ctx->errors && 0 != c_ctx->err_cnt) {
+            sr_free_errors(c_ctx->errors, c_ctx->err_cnt);
+        }
         c_ctx->session = NULL;
         free(c_ctx);
     }
@@ -2592,7 +2602,6 @@ dm_insert_commit_context(dm_ctx_t *dm_ctx, dm_commit_context_t *c_ctx)
     pthread_rwlock_wrlock(&dm_ctx->commit_ctxs.lock);
     rc = sr_btree_insert(dm_ctx->commit_ctxs.tree, c_ctx);
     pthread_rwlock_unlock(&dm_ctx->commit_ctxs.lock);
-    CHECK_RC_MSG_RETURN(rc, "Insert into commit context bin tree failed");
     return rc;
 }
 
@@ -2606,30 +2615,28 @@ dm_remove_commit_context(dm_ctx_t *dm_ctx, uint32_t c_ctx_id)
     c_ctx = sr_btree_search(dm_ctx->commit_ctxs.tree, &lookup);
     if (NULL == c_ctx) {
         SR_LOG_WRN("Commit context with id %d not found", c_ctx_id);
+    } else {
+        sr_btree_delete(dm_ctx->commit_ctxs.tree, c_ctx);
+        SR_LOG_DBG("Commit context with id %"PRIu32" removed", c_ctx_id);
     }
-    sr_btree_delete(dm_ctx->commit_ctxs.tree, c_ctx);
     pthread_rwlock_unlock(&dm_ctx->commit_ctxs.lock);
     return SR_ERR_OK;
 }
 
 int
-dm_commit_notifications_complete(dm_ctx_t *dm_ctx, uint32_t c_ctx_id, int result,
-        sr_list_t *err_subs_xpaths, sr_list_t *errors)
+dm_commit_notifications_complete(dm_ctx_t *dm_ctx, uint32_t c_ctx_id)
 {
-
-    // TODO:
-    //  - for SR_EV_VERIFY check result code and proceed with commit or rollback it
-    //  - for SR_EV_APPLY and SR_EV_ABORT do not check the result code and release commit context
-    //  (err_subs_xpaths / errors does not need to be released)
-
     return dm_remove_commit_context(dm_ctx, c_ctx_id);
 }
 
-int
-dm_save_commit_context(dm_ctx_t *dm_ctx, dm_commit_context_t *c_ctx)
+/**
+ * @brief Releases resources that are no more needed after SR_EV_APPLY or SR_EV_ABORT
+ *
+ */
+static int
+dm_release_resources_commit_context(dm_ctx_t *dm_ctx, dm_commit_context_t *c_ctx)
 {
     CHECK_NULL_ARG(c_ctx);
-    int rc = SR_ERR_OK;
     for (size_t i = 0; i < c_ctx->modif_count; i++) {
         close(c_ctx->fds[i]);
     }
@@ -2643,6 +2650,14 @@ dm_save_commit_context(dm_ctx_t *dm_ctx, dm_commit_context_t *c_ctx)
 
     dm_unlock_datastore(dm_ctx, c_ctx->session);
 
+    return SR_ERR_OK;
+}
+
+int
+dm_save_commit_context(dm_ctx_t *dm_ctx, dm_commit_context_t *c_ctx)
+{
+    CHECK_NULL_ARG(c_ctx);
+    int rc = SR_ERR_OK;
     /* assign id to the commit context and save it to th dm_ctx */
     rc = dm_insert_commit_context(dm_ctx, c_ctx);
 
@@ -2971,9 +2986,41 @@ dm_commit_write_files(dm_session_t *session, dm_commit_context_t *c_ctx)
 
     return rc;
 }
+/**
+ * @brief Decides whether a subscription should be skipped or not. Takes into account:
+ * SR_EV_VERIFY: skip SR_SUBSCR_APPLY_ONLY subscription
+ * SR_EV_ABORT: skip subscription that returned an error
+ */
+static bool
+dm_should_skip_subscription(np_subscription_t *subscription, dm_commit_context_t *c_ctx, sr_notif_event_t ev)
+{
+    if (NULL == subscription || NULL == c_ctx) {
+        return false;
+    }
+
+    if (SR_EV_VERIFY == ev || SR_EV_ABORT == ev) {
+        if (SR__NOTIFICATION_EVENT__VERIFY_EV != subscription->notif_event) {
+            return true;
+        }
+    }
+
+    /* if subscription returned an error don't send him abort */
+    if (SR_EV_ABORT == ev && c_ctx->err_subs_xpaths != NULL) {
+        for (size_t e = 0; e < c_ctx->err_subs_xpaths->count; e++) {
+            if (0 == strcmp((char *) c_ctx->err_subs_xpaths->data[e],
+                    NULL == subscription->xpath ?
+                    subscription->module_name :
+                    subscription->xpath)) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
 
 int
-dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t *c_ctx)
+dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, sr_notif_event_t ev, dm_commit_context_t *c_ctx)
 {
     CHECK_NULL_ARG3(dm_ctx, session, c_ctx);
     int rc = SR_ERR_OK;
@@ -2984,44 +3031,21 @@ dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t *c
     sr_list_t *notified_notif = NULL;
     /* notification are sent only when running or candidate is committed*/
     if (SR_DS_STARTUP == session->datastore) {
+        c_ctx->state = DM_COMMIT_WRITE;
         return SR_ERR_OK;
     }
 
     rc = sr_list_init(&notified_notif);
     CHECK_RC_MSG_RETURN(rc, "List init failed");
 
-    SR_LOG_DBG_MSG("Sending notifications about the changes made in running datastore...");
+    SR_LOG_DBG("Sending %s notifications about the changes made in running datastore...", sr_notification_event_sr_to_str(ev));
     while (NULL != (info = sr_btree_get_at(session->session_modules[session->datastore], i++))) {
         if (!info->modified) {
             continue;
         }
         size_t d_cnt = 0;
         dm_model_subscription_t lookup = {0};
-
-        lookup_info.schema = info->schema;
-        /* configuration before commit */
-        prev_info = sr_btree_search(c_ctx->prev_data_trees, &lookup_info);
-        if (NULL == prev_info) {
-            SR_LOG_ERR("Current data tree for module %s not found", info->schema->module->name);
-            continue;
-        }
-        /* configuration after commit */
-        commit_info = sr_btree_search(c_ctx->session->session_modules[c_ctx->session->datastore], &lookup_info);
-        if (NULL == commit_info) {
-            SR_LOG_ERR("Commit data tree for module %s not found", info->schema->module->name);
-            continue;
-        }
-
-        struct lyd_difflist *diff = lyd_diff(prev_info->node, commit_info->node, LYD_DIFFOPT_WITHDEFAULTS);
-        if (NULL == diff) {
-            SR_LOG_ERR("Lyd diff failed for module %s", info->schema->module->name);
-            continue;
-        }
-        if (diff->type[d_cnt] == LYD_DIFF_END) {
-            SR_LOG_DBG("No changes in module %s", info->schema->module->name);
-            lyd_free_diff(diff);
-            continue;
-        }
+        struct lyd_difflist *diff = NULL;
 
         lookup.schema_info = info->schema;
 
@@ -3032,11 +3056,43 @@ dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t *c
             continue;
         }
 
-        /* store differences in commit context */
-        ms->difflist = diff;
+        /* changes are generated only for SR_EV_VERIFY and SR_EV_ABORT */
+        if (SR_EV_VERIFY == ev || SR_EV_ABORT == ev) {
+            lookup_info.schema = info->schema;
+            /* configuration before commit */
+            prev_info = sr_btree_search(c_ctx->prev_data_trees, &lookup_info);
+            if (NULL == prev_info) {
+                SR_LOG_ERR("Current data tree for module %s not found", info->schema->module->name);
+                continue;
+            }
+            /* configuration after commit */
+            commit_info = sr_btree_search(c_ctx->session->session_modules[c_ctx->session->datastore], &lookup_info);
+            if (NULL == commit_info) {
+                SR_LOG_ERR("Commit data tree for module %s not found", info->schema->module->name);
+                continue;
+            }
+
+            /* for SR_EV_ABORT inverse changes are generated */
+            diff = SR_EV_VERIFY == ev ?
+                lyd_diff(prev_info->node, commit_info->node, LYD_DIFFOPT_WITHDEFAULTS) :
+                lyd_diff(commit_info->node, prev_info->node, LYD_DIFFOPT_WITHDEFAULTS) ;
+            if (NULL == diff) {
+                SR_LOG_ERR("Lyd diff failed for module %s", info->schema->module->name);
+                continue;
+            }
+            if (diff->type[d_cnt] == LYD_DIFF_END) {
+                SR_LOG_DBG("No changes in module %s", info->schema->module->name);
+                lyd_free_diff(diff);
+                continue;
+            }
+
+            lyd_free_diff(ms->difflist);
+            /* store differences in commit context */
+            ms->difflist = diff;
+        }
 
         /* Log changes */
-        if (SR_LL_DBG == sr_ll_stderr || SR_LL_DBG == sr_ll_syslog) {
+        if (NULL != diff && (SR_LL_DBG == sr_ll_stderr || SR_LL_DBG == sr_ll_syslog)) {
             while (LYD_DIFF_END != diff->type[d_cnt]) {
                 char *path = dm_get_notification_changed_xpath(diff, d_cnt);
                 SR_LOG_DBG("%s: %s", dm_get_diff_type_to_string(diff->type[d_cnt]), path);
@@ -3045,11 +3101,18 @@ dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t *c
             }
         }
 
+        if (NULL == ms->difflist) {
+            continue;
+        }
+
         /* loop through subscription test if they should be notified */
         for (size_t s = 0; s < ms->subscription_cnt; s++) {
+            if (dm_should_skip_subscription(ms->subscriptions[s], c_ctx, ev)) {
+                continue;
+            }
 
-            for (d_cnt = 0; LYD_DIFF_END != diff->type[d_cnt]; d_cnt++) {
-                const struct lyd_node *cmp_node = dm_get_notification_match_node(diff, d_cnt);
+            for (d_cnt = 0; LYD_DIFF_END != ms->difflist->type[d_cnt]; d_cnt++) {
+                const struct lyd_node *cmp_node = dm_get_notification_match_node(ms->difflist, d_cnt);
                 rc = dm_match_subscription(ms->nodes[s], cmp_node, &match);
                 if (SR_ERR_OK != rc) {
                     SR_LOG_WRN_MSG("Subscription match failed");
@@ -3062,7 +3125,7 @@ dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t *c
 
             if (match) {
                 /* something has been changed for this subscription, send notification */
-                rc = np_subscription_notify(dm_ctx->np_ctx, ms->subscriptions[s], c_ctx->id);
+                rc = np_subscription_notify(dm_ctx->np_ctx, ms->subscriptions[s], ev, c_ctx->id);
                 if (SR_ERR_OK != rc) {
                    SR_LOG_WRN("Unable to send notifications about the changes for the subscription in module %s xpath %s.",
                            ms->subscriptions[s]->module_name,
@@ -3076,11 +3139,26 @@ dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t *c
         }
     }
 
-    rc = dm_save_commit_context(dm_ctx, c_ctx);
+    if (SR_EV_APPLY == ev || SR_EV_ABORT == ev) {
+        dm_release_resources_commit_context(dm_ctx, c_ctx);
+        rc = dm_save_commit_context(dm_ctx, c_ctx);
+        /* if there is a verify subscription commit context is already saved */
+        if (SR_ERR_DATA_EXISTS == rc) {
+            rc = SR_ERR_OK;
+        }
+    }
 
     /* let the np know that the commit has finished */
-    if (SR_ERR_OK == rc) {
-        rc = np_commit_notifications_sent(dm_ctx->np_ctx, c_ctx->id, /* TODO: pass false for verify phase */ true, notified_notif);
+    if (SR_ERR_OK == rc && notified_notif->count > 0) {
+        rc = np_commit_notifications_sent(dm_ctx->np_ctx, c_ctx->id, SR_EV_VERIFY != ev, notified_notif);
+    }
+
+    if (SR_EV_VERIFY == ev ){
+        if (notified_notif->count > 0) {
+            c_ctx->state = DM_COMMIT_WAIT_FOR_NOTIFICATIONS;
+        } else {
+            c_ctx->state = DM_COMMIT_WRITE;
+        }
     }
 
     sr_list_cleanup(notified_notif);

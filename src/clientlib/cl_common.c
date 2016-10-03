@@ -575,12 +575,16 @@ cl_session_set_errors(sr_session_ctx_t *session, Sr__Error **errors, size_t erro
             if (NULL == session->error_info[i].message) {
                 SR_LOG_WRN_MSG("Unable to allocate error message, will be left NULL.");
             }
+        } else {
+            session->error_info[i].message = NULL;
         }
         if (NULL != errors[i]->xpath) {
             session->error_info[i].xpath = strdup(errors[i]->xpath);
             if (NULL == session->error_info[i].xpath) {
                 SR_LOG_WRN_MSG("Unable to allocate error xpath, will be left NULL.");
             }
+        } else {
+            session->error_info[i].xpath = NULL;
         }
     }
 

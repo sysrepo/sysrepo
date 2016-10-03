@@ -79,6 +79,8 @@ typedef enum rp_request_state_e {
     RP_REQ_NEW,                         /**< New request received in RP */
     RP_REQ_WAITING_FOR_DATA,            /**< Request is waiting for state data from providers */
     RP_REQ_DATA_LOADED,                 /**< Respones for all state data request were received */
+    RP_REQ_WAITING_FOR_VERIFIERS,       /**< Request is waiting for replies from verifiers */
+    RP_REQ_RESUMED,                     /**< Replies from verifiers were received or timeout expired */
     RP_REQ_FINISHED                     /**< Request processing finished, request can be freed */
 } rp_request_state_t;
 
@@ -100,7 +102,7 @@ typedef struct rp_session_s {
     const ac_ucred_t *user_credentials;  /**< Credentials of the user who the session belongs to. */
     sr_datastore_t datastore;            /**< Datastore selected for this session. */
     uint32_t options;                    /**< Session options used to override default session behavior. */
-    uint32_t commit_id;                  /**< Commit ID in case that this is a notification session. */
+    uint32_t commit_id;                  /**< Commit ID in case that this is a notification session or session is about to resume commit processing. */
     uint32_t msg_count;                  /**< Count of unprocessed messages (including waiting in queue). */
     pthread_mutex_t msg_count_mutex;     /**< Mutex for msg_count counter. */
     bool stop_requested;                 /**< Session stop has been requested. */

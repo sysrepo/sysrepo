@@ -492,9 +492,10 @@ rp_dt_validate_node_xpath_intrenal(dm_ctx_t *dm_ctx, dm_session_t *session, dm_s
     size_t xp_len = 0;
     const struct lys_module *module = NULL;
     rc = sr_copy_first_ns(xpath, &namespace);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Namespace copy failed");
-        return rc;
+    CHECK_RC_MSG_RETURN(rc, "Namespace copy failed");
+
+    if (NULL != match) {
+        *match = NULL;
     }
 
     module = ly_ctx_get_module(schema_info->ly_ctx, namespace, NULL);
