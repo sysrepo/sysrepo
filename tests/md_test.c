@@ -77,7 +77,7 @@ static const char * const md_submodule_B_sub1_body =
 "  }\n"
 "\n"
 "  leaf tax-enabled {\n"
-"    when \"/A:base-container/name == 'tax authority'\";\n"
+"    when \"/A:base-container/name = 'tax authority'\";\n"
 "    type boolean;\n"
 "  }";
 
