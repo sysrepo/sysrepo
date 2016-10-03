@@ -16,9 +16,20 @@ __license__ = "Apache 2.0"
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# This sample application demonstrates use of Python programming language bindings for sysrepo library.
+# Original c application was rewritten in Python to show similarities and differences
+# between the two.
+#
+# Most notable difference is in the very different nature of languages, c is weakly statically typed language
+# while Python is strongly dynamiclally typed. Python code is much easier to read and logic easier to comprehend
+# for smaller scripts. Memory safety is not an issue but lower performance can be expected.
+#
+# The original c implementation is also available in the source, so one can refer to it to evaluate trade-offs.
+
 import libsysrepoPython2 as sr
 import sys
 
+# Function for printing out values depending on their type.
 def print_value(value):
     print value.xpath() + " ",
 
@@ -62,6 +73,7 @@ def print_value(value):
     else:
         print "(unprintable)"
 
+# Helper function for printing changes given operation, old and new value.
 def print_change(op, old_val, new_val):
     if (op == sr.SR_OP_CREATED):
            print "CREATED: ",
@@ -78,6 +90,8 @@ def print_change(op, old_val, new_val):
     elif (op == sr.SR_OP_MOVED):
         print "MOVED: " + new_val.get_xpath() + " after " + old_val.get_xpath()
 
+# Function to print current configuration state.
+# It does so by loading all the items of a session and printing them out.
 def print_current_config(session, module_name):
     select_xpath = "/" + module_name + ":*//*"
 
@@ -86,6 +100,7 @@ def print_current_config(session, module_name):
     for i in range(values.val_cnt()):
         print_value(values.val(i))
 
+# Function to be called for subscribed client of given session whenever configuration changes.
 def module_change_cb(sess, module_name, event, private_ctx):
     print "\n\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: ==========\n\n"
 
@@ -114,6 +129,8 @@ def module_change_cb(sess, module_name, event, private_ctx):
 
     return sr.SR_ERR_OK
 
+# Notable difference between c implementation is using exception mechanism for open handling unexpected events.
+# Here it is useful because `Conenction`, `Session` and `Subscribe` could throw an exception.
 try:
     module_name = "ietf-interfaces"
     if len(sys.argv) > 1:
