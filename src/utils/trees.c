@@ -271,8 +271,14 @@ sr_dup_tree_recursive(sr_mem_ctx_t *sr_mem, sr_node_t *tree, size_t depth, sr_no
     *tree_dup_p = tree_dup;
 
 cleanup:
-    if (SR_ERR_OK != rc && 0 == depth) {
-        sr_free_tree(tree_dup);
+    if (SR_ERR_OK != rc) {
+        if (NULL != sr_mem) {
+            if (0 == depth) {
+                sr_free_tree(tree_dup);
+            }
+        } else {
+            sr_free_tree(tree_dup);
+        }
     }
 
     return rc;
