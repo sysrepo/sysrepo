@@ -1078,11 +1078,14 @@ rp_validate_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
  * @brief Processes a commit request.
  */
 static int
-rp_commit_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
+rp_commit_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, bool *skip_msg_cleanup)
 {
     Sr__Msg *resp = NULL;
     sr_mem_ctx_t *sr_mem = NULL;
     int rc = SR_ERR_OK;
+    dm_commit_context_t *c_ctx = NULL;
+    sr_error_info_t *errors = NULL;
+    size_t err_cnt = 0;
 
     CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->commit_req);
 
@@ -1098,17 +1101,29 @@ rp_commit_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
         return SR_ERR_NOMEM;
     }
 
-    rc = rp_dt_remove_loaded_state_data(rp_ctx, session);
-    if (SR_ERR_OK != rc ) {
-        SR_LOG_ERR_MSG("An error occurred while removing state data");
+    if (RP_REQ_RESUMED == session->state) {
+        rc = dm_get_commit_context(rp_ctx->dm_ctx, session->commit_id, &c_ctx);
+        CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to resume commit, commit ctx with id %"PRIu32" not found.", session->commit_id);
+    } else {
+        rc = rp_dt_remove_loaded_state_data(rp_ctx, session);
+        if (SR_ERR_OK != rc ) {
+            SR_LOG_ERR_MSG("An error occurred while removing state data");
+        }
     }
 
-    sr_error_info_t *errors = NULL;
-    size_t err_cnt = 0;
     if (SR_ERR_OK == rc ) {
-        rc = rp_dt_commit(rp_ctx, session, &errors, &err_cnt);
+        rc = rp_dt_commit(rp_ctx, session, c_ctx, &errors, &err_cnt);
+    }
+    if (SR_ERR_OK == rc && RP_REQ_WAITING_FOR_VERIFIERS == session->state) {
+        SR_LOG_DBG_MSG("Request paused, waiting for verifiers");
+        session->req = msg;
+        /* we are waiting for verifiers data do not free the request */
+        *skip_msg_cleanup = true;
+        sr_msg_free(resp);
+        return SR_ERR_OK;
     }
 
+cleanup:
     /* set response code */
     resp->response->result = rc;
 
@@ -1120,7 +1135,7 @@ rp_commit_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
 
     /* send the response */
     rc = cm_msg_send(rp_ctx->cm_ctx, resp);
-
+    session->state = RP_REQ_FINISHED;
     return rc;
 }
 
@@ -1453,7 +1468,7 @@ rp_subscribe_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr
     rc = np_notification_subscribe(rp_ctx->np_ctx, session, subscribe_req->type,
             subscribe_req->destination, subscribe_req->subscription_id,
             subscribe_req->module_name, subscribe_req->xpath,
-            (subscribe_req->has_notif_event ? subscribe_req->notif_event : SR__NOTIFICATION_EVENT__NOTIFY_EV),
+            (subscribe_req->has_notif_event ? subscribe_req->notif_event : SR__NOTIFICATION_EVENT__APPLY_EV),
             (subscribe_req->has_priority ? subscribe_req->priority : 0),
             sr_api_variant_gpb_to_sr(subscribe_req->api_variant),
             options);
@@ -2116,18 +2131,18 @@ rp_unsubscribe_destination_req_process(const rp_ctx_t *rp_ctx, Sr__Msg *msg)
 }
 
 /**
- * @brief Processes a commit-release internal request.
+ * @brief Processes a commit-timeout internal request.
  */
 static int
-rp_commit_release_req_process(const rp_ctx_t *rp_ctx, Sr__Msg *msg)
+rp_commit_timeout_req_process(const rp_ctx_t *rp_ctx, Sr__Msg *msg)
 {
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG4(rp_ctx, msg, msg->internal_request, msg->internal_request->commit_release_req);
+    CHECK_NULL_ARG4(rp_ctx, msg, msg->internal_request, msg->internal_request->commit_timeout_req);
 
-    SR_LOG_DBG_MSG("Processing commit-release request.");
+    SR_LOG_DBG_MSG("Processing commit-timeout request.");
 
-    rc = np_commit_release(rp_ctx->np_ctx, msg->internal_request->commit_release_req->commit_id);
+    rc = np_commit_notifications_complete(rp_ctx->np_ctx, msg->internal_request->commit_timeout_req->commit_id, true);
 
     return rc;
 }
@@ -2297,13 +2312,36 @@ finalize:
 static int
 rp_notification_ack_process(rp_ctx_t *rp_ctx, Sr__Msg *msg)
 {
+    Sr__Notification *notif = NULL;
+    Sr__NotificationEvent event = SR__NOTIFICATION_EVENT__APPLY_EV;
+    char *subs_xpath = NULL, *err_msg = NULL, *err_xpath = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG4(rp_ctx, msg, msg->notification_ack, msg->notification_ack->notif);
 
     SR_LOG_DBG("Notification ACK received with result = %"PRIu32".", msg->notification_ack->result);
 
-    rc = np_commit_notification_ack(rp_ctx->np_ctx, msg->notification_ack->notif->commit_id);
+    notif =  msg->notification_ack->notif;
+
+    if (SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS == msg->notification_ack->notif->type) {
+        subs_xpath = notif->module_change_notif->module_name;
+        event = notif->module_change_notif->event;
+    } else if (SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS == msg->notification_ack->notif->type) {
+        subs_xpath = notif->subtree_change_notif->xpath;
+        event = notif->subtree_change_notif->event;
+    }
+
+    if (SR_ERR_OK != msg->notification_ack->result) {
+        if (NULL != msg->notification_ack->error) {
+            err_msg = msg->notification_ack->error->message;
+            err_xpath = msg->notification_ack->error->xpath;
+        }
+        SR_LOG_ERR("'%s' subscriber returned and error by processing of %s event: %s.",
+                subs_xpath, sr_notification_event_gpb_to_str(event), sr_strerror(msg->notification_ack->result));
+    }
+
+    rc = np_commit_notification_ack(rp_ctx->np_ctx, notif->commit_id, subs_xpath, sr_notification_event_gpb_to_sr(event),
+            msg->notification_ack->result, err_msg, err_xpath);
 
     return rc;
 }
@@ -2389,7 +2427,7 @@ rp_req_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, bool *ski
             rc = rp_validate_req_process(rp_ctx, session, msg);
             break;
         case SR__OPERATION__COMMIT:
-            rc = rp_commit_req_process(rp_ctx, session, msg);
+            rc = rp_commit_req_process(rp_ctx, session, msg, skip_msg_cleanup);
             break;
         case SR__OPERATION__DISCARD_CHANGES:
             rc = rp_discard_changes_req_process(rp_ctx, session, msg);
@@ -2498,8 +2536,8 @@ rp_internal_req_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
         case SR__OPERATION__UNSUBSCRIBE_DESTINATION:
             rc = rp_unsubscribe_destination_req_process(rp_ctx, msg);
             break;
-        case SR__OPERATION__COMMIT_RELEASE:
-            rc = rp_commit_release_req_process(rp_ctx, msg);
+        case SR__OPERATION__COMMIT_TIMEOUT:
+            rc = rp_commit_timeout_req_process(rp_ctx, msg);
             break;
         case SR__OPERATION__OPER_DATA_TIMEOUT:
             rc = rp_oper_data_timeout_req_process(rp_ctx, session, msg);
@@ -2997,5 +3035,70 @@ rp_msg_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
         sr_msg_free(msg);
     }
 
+    return rc;
+}
+
+int
+rp_resume_commit(rp_ctx_t *rp_ctx, uint32_t commit_id, int result,
+        sr_list_t *err_subs_xpaths, sr_list_t *errors)
+{
+    CHECK_NULL_ARG(rp_ctx);
+    int rc = SR_ERR_OK;
+    dm_commit_context_t *c_ctx = NULL;
+
+    rc = dm_get_commit_context(rp_ctx->dm_ctx, commit_id, &c_ctx);
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Commit ctx with id %"PRIu32" not found", commit_id);
+
+    if (DM_COMMIT_WAIT_FOR_NOTIFICATIONS == c_ctx->state &&
+        NULL != c_ctx->init_session &&
+        RP_REQ_WAITING_FOR_VERIFIERS == c_ctx->init_session->state) {
+
+        SR_LOG_INF("Resuming commit with id %"PRIu32" continue with %s", commit_id, SR_ERR_OK == result ? "write" : "abort");
+        c_ctx->state = SR_ERR_OK == result ? DM_COMMIT_WRITE : DM_COMMIT_NOTIFY_ABORT;
+        c_ctx->err_subs_xpaths = err_subs_xpaths;
+
+        c_ctx->init_session->state = RP_REQ_RESUMED;
+        c_ctx->init_session->commit_id = commit_id;
+
+        if (NULL != errors) {
+            c_ctx->errors = calloc(errors->count, sizeof(*c_ctx->errors));
+            c_ctx->err_cnt = 0;
+            CHECK_NULL_NOMEM_GOTO(c_ctx->errors, rc, cleanup);
+            for (size_t i = 0; i < errors->count; i++) {
+                sr_error_info_t *err = errors->data[i];
+                SR_LOG_ERR("Error from verifier: %s %s", err->message, err->xpath);
+                c_ctx->errors[i].message = err->message;
+                c_ctx->errors[i].xpath = err->xpath;
+                free(err);
+                c_ctx->err_cnt += 1;
+            }
+            sr_list_cleanup(errors);
+        }
+        /* reenqueue the request */
+        rc = rp_msg_process(rp_ctx, c_ctx->init_session, c_ctx->init_session->req);
+        c_ctx->init_session->req = NULL;
+    } else {
+        /* apply or abort phase finished, release commit context */
+        SR_LOG_INF("Commit id %"PRIu32" received all notifications", commit_id);
+        rc = dm_commit_notifications_complete(rp_ctx->dm_ctx, commit_id);
+        goto cleanup;
+    }
+
+    return rc;
+
+cleanup:
+    /* cleanup error lists */
+    if (NULL != err_subs_xpaths) {
+        for (size_t i = 0; i < err_subs_xpaths->count; i++) {
+            free(err_subs_xpaths->data[i]);
+        }
+        sr_list_cleanup(err_subs_xpaths);
+    }
+    if (NULL != errors) {
+        for (size_t i = 0; i < errors->count; i++) {
+            sr_free_errors(errors->data[i], 1);
+        }
+        sr_list_cleanup(errors);
+    }
     return rc;
 }

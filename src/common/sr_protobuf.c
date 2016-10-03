@@ -87,8 +87,8 @@ sr_gpb_operation_name(Sr__Operation operation)
         return "rpc";
     case SR__OPERATION__UNSUBSCRIBE_DESTINATION:
         return "unsubscribe-destination";
-    case SR__OPERATION__COMMIT_RELEASE:
-        return "commit-release";
+    case SR__OPERATION__COMMIT_TIMEOUT:
+        return "commit-timeout";
     case SR__OPERATION__EVENT_NOTIF:
         return "event-notification";
     case SR__OPERATION__OPER_DATA_TIMEOUT:
@@ -748,11 +748,11 @@ sr_gpb_internal_req_alloc(sr_mem_ctx_t *sr_mem, const Sr__Operation operation, S
             sr__unsubscribe_destination_req__init((Sr__UnsubscribeDestinationReq*)sub_msg);
             req->unsubscribe_dst_req = (Sr__UnsubscribeDestinationReq*)sub_msg;
             break;
-        case SR__OPERATION__COMMIT_RELEASE:
-            sub_msg = sr_calloc(sr_mem, 1, sizeof(Sr__CommitReleaseReq));
+        case SR__OPERATION__COMMIT_TIMEOUT:
+            sub_msg = sr_calloc(sr_mem, 1, sizeof(Sr__CommitTimeoutReq));
             CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
-            sr__commit_release_req__init((Sr__CommitReleaseReq*)sub_msg);
-            req->commit_release_req = (Sr__CommitReleaseReq*)sub_msg;
+            sr__commit_timeout_req__init((Sr__CommitTimeoutReq*)sub_msg);
+            req->commit_timeout_req = (Sr__CommitTimeoutReq*)sub_msg;
             break;
         case SR__OPERATION__OPER_DATA_TIMEOUT:
             sub_msg = sr_calloc(sr_mem, 1, sizeof(Sr__OperDataTimeoutReq));
@@ -2047,10 +2047,41 @@ sr_notification_event_gpb_to_str(Sr__NotificationEvent event)
     switch (event) {
         case SR__NOTIFICATION_EVENT__VERIFY_EV:
             return "verify";
-        case SR__NOTIFICATION_EVENT__NOTIFY_EV:
-            return "notify";
+        case SR__NOTIFICATION_EVENT__APPLY_EV:
+            return "apply";
+        case SR__NOTIFICATION_EVENT__ABORT_EV:
+            return "abort";
         default:
             return "unknown";
+    }
+}
+
+char *
+sr_notification_event_sr_to_str(sr_notif_event_t event)
+{
+    switch (event) {
+        case SR_EV_VERIFY:
+            return "verify";
+        case SR_EV_APPLY:
+            return "apply";
+        case SR_EV_ABORT:
+            return "abort";
+        default:
+            return "unknown";
+    }
+}
+
+Sr__NotificationEvent
+sr_notification_event_sr_to_gpb(sr_notif_event_t event)
+{
+    switch (event) {
+    case SR_EV_VERIFY:
+        return SR__NOTIFICATION_EVENT__VERIFY_EV;
+    case SR_EV_APPLY:
+        return SR__NOTIFICATION_EVENT__APPLY_EV;
+    case SR_EV_ABORT:
+    default:
+        return SR__NOTIFICATION_EVENT__ABORT_EV;
     }
 }
 
@@ -2060,8 +2091,11 @@ sr_notification_event_str_to_gpb(const char *event_name)
     if (0 == strcmp(event_name, "verify")) {
         return SR__NOTIFICATION_EVENT__VERIFY_EV;
     }
-    if (0 == strcmp(event_name, "notify")) {
-        return SR__NOTIFICATION_EVENT__NOTIFY_EV;
+    if (0 == strcmp(event_name, "apply")) {
+        return SR__NOTIFICATION_EVENT__APPLY_EV;
+    }
+    if (0 == strcmp(event_name, "abort")) {
+        return SR__NOTIFICATION_EVENT__ABORT_EV;
     }
     return _SR__NOTIFICATION_EVENT_IS_INT_SIZE;
 }
@@ -2072,10 +2106,10 @@ sr_notification_event_gpb_to_sr(Sr__NotificationEvent event)
     switch (event) {
         case SR__NOTIFICATION_EVENT__VERIFY_EV:
             return SR_EV_VERIFY;
-        case SR__NOTIFICATION_EVENT__NOTIFY_EV:
-            return SR_EV_NOTIFY;
+        case SR__NOTIFICATION_EVENT__APPLY_EV:
+            return SR_EV_APPLY;
         default:
-            return SR_EV_NOTIFY;
+            return SR_EV_ABORT;
     }
 }
 

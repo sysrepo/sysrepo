@@ -1780,10 +1780,10 @@ cl_notification_test(void **state)
 
     /* wait for all callbacks or timeout after 10 seconds */
     for (size_t i = 0; i < 1000; i++) {
-        if (callback_called >= 5) break;
+        if (callback_called >= 7) break;
         usleep(10000); /* 10 ms */
     }
-    assert_true(callback_called >= 5);
+    assert_true(callback_called >= 7);
 
     /* some negative tests */
     rc = sr_feature_enable(session, "unknown-module", "unknown", true);
@@ -1845,7 +1845,7 @@ cl_copy_config_test(void **state)
 
     /* enable running DS for example-module */
     rc = sr_module_change_subscribe(session_startup, "example-module", test_module_change_cb,
-            &callback_called, 0, SR_SUBSCR_DEFAULT, &subscription);
+            &callback_called, 0, SR_SUBSCR_DEFAULT | SR_SUBSCR_APPLY_ONLY, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* edit config in running */
@@ -1919,7 +1919,7 @@ cl_copy_config_test2(void **state)
 
     /* enable example-module */
     rc = sr_module_change_subscribe(session_running, "example-module", test_module_change_cb,
-            &callback_called, 0, SR_SUBSCR_DEFAULT, &subscription);
+            &callback_called, 0, SR_SUBSCR_DEFAULT | SR_SUBSCR_APPLY_ONLY, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* edit config candidate */
@@ -2051,52 +2051,52 @@ cl_rpc_test(void **state)
     assert_int_equal(SR_STRING_T, output[1].type);
     assert_string_equal("2.3", output[1].data.string_val);
 
-    assert_string_equal("/test-module:activate-software-image/init-log", output[2].xpath);
-    assert_false(output[2].dflt);
-    assert_int_equal(SR_CONTAINER_T, output[2].type);
-    assert_string_equal("/test-module:activate-software-image/init-log/"
-                        "log-msg[msg='Successfully loaded software image.'][time='1469625110']", output[3].xpath);
-    assert_false(output[3].dflt);
-    assert_int_equal(SR_LIST_T, output[3].type);
-    assert_string_equal("/test-module:activate-software-image/init-log/"
-                        "log-msg[msg='Successfully loaded software image.'][time='1469625110']/msg", output[4].xpath);
-    assert_false(output[4].dflt);
-    assert_int_equal(SR_STRING_T, output[4].type);
-    assert_string_equal("Successfully loaded software image.", output[4].data.string_val);
-    assert_string_equal("/test-module:activate-software-image/init-log/"
-                        "log-msg[msg='Successfully loaded software image.'][time='1469625110']/time", output[5].xpath);
-    assert_false(output[5].dflt);
-    assert_int_equal(SR_UINT32_T, output[5].type);
-    assert_int_equal(1469625110, output[5].data.uint32_val);
-    assert_string_equal("/test-module:activate-software-image/init-log/"
-                        "log-msg[msg='Successfully loaded software image.'][time='1469625110']/msg-type", output[6].xpath);
-    assert_false(output[6].dflt);
-    assert_int_equal(SR_ENUM_T, output[6].type);
-    assert_string_equal("debug", output[6].data.enum_val);
-    assert_string_equal("/test-module:activate-software-image/init-log/"
-                        "log-msg[msg='Some soft limit exceeded...'][time='1469625150']", output[7].xpath);
-    assert_false(output[7].dflt);
-    assert_int_equal(SR_LIST_T, output[7].type);
-    assert_string_equal("/test-module:activate-software-image/init-log/"
-                        "log-msg[msg='Some soft limit exceeded...'][time='1469625150']/msg", output[8].xpath);
-    assert_false(output[8].dflt);
-    assert_int_equal(SR_STRING_T, output[8].type);
-    assert_string_equal("Some soft limit exceeded...", output[8].data.string_val);
-    assert_string_equal("/test-module:activate-software-image/init-log/"
-                        "log-msg[msg='Some soft limit exceeded...'][time='1469625150']/time", output[9].xpath);
-    assert_false(output[9].dflt);
-    assert_int_equal(SR_UINT32_T, output[9].type);
-    assert_int_equal(1469625150, output[9].data.uint32_val);
-    assert_string_equal("/test-module:activate-software-image/init-log/"
-                        "log-msg[msg='Some soft limit exceeded...'][time='1469625150']/msg-type", output[10].xpath);
-    assert_false(output[10].dflt);
-    assert_int_equal(SR_ENUM_T, output[10].type);
-    assert_string_equal("warning", output[10].data.enum_val);
+    assert_string_equal("/test-module:activate-software-image/location", output[2].xpath);
+    assert_true(output[2].dflt);
+    assert_int_equal(SR_STRING_T, output[2].type);
+    assert_string_equal("/", output[2].data.string_val);
 
-    assert_string_equal("/test-module:activate-software-image/location", output[11].xpath);
-    assert_true(output[11].dflt);
-    assert_int_equal(SR_STRING_T, output[11].type);
-    assert_string_equal("/", output[11].data.string_val);
+    assert_string_equal("/test-module:activate-software-image/init-log", output[3].xpath);
+    assert_false(output[3].dflt);
+    assert_int_equal(SR_CONTAINER_T, output[3].type);
+    assert_string_equal("/test-module:activate-software-image/init-log/"
+                        "log-msg[msg='Successfully loaded software image.'][time='1469625110']", output[4].xpath);
+    assert_false(output[4].dflt);
+    assert_int_equal(SR_LIST_T, output[4].type);
+    assert_string_equal("/test-module:activate-software-image/init-log/"
+                        "log-msg[msg='Successfully loaded software image.'][time='1469625110']/msg", output[5].xpath);
+    assert_false(output[5].dflt);
+    assert_int_equal(SR_STRING_T, output[5].type);
+    assert_string_equal("Successfully loaded software image.", output[5].data.string_val);
+    assert_string_equal("/test-module:activate-software-image/init-log/"
+                        "log-msg[msg='Successfully loaded software image.'][time='1469625110']/time", output[6].xpath);
+    assert_false(output[6].dflt);
+    assert_int_equal(SR_UINT32_T, output[6].type);
+    assert_int_equal(1469625110, output[6].data.uint32_val);
+    assert_string_equal("/test-module:activate-software-image/init-log/"
+                        "log-msg[msg='Successfully loaded software image.'][time='1469625110']/msg-type", output[7].xpath);
+    assert_false(output[7].dflt);
+    assert_int_equal(SR_ENUM_T, output[7].type);
+    assert_string_equal("debug", output[7].data.enum_val);
+    assert_string_equal("/test-module:activate-software-image/init-log/"
+                        "log-msg[msg='Some soft limit exceeded...'][time='1469625150']", output[8].xpath);
+    assert_false(output[8].dflt);
+    assert_int_equal(SR_LIST_T, output[8].type);
+    assert_string_equal("/test-module:activate-software-image/init-log/"
+                        "log-msg[msg='Some soft limit exceeded...'][time='1469625150']/msg", output[9].xpath);
+    assert_false(output[9].dflt);
+    assert_int_equal(SR_STRING_T, output[9].type);
+    assert_string_equal("Some soft limit exceeded...", output[9].data.string_val);
+    assert_string_equal("/test-module:activate-software-image/init-log/"
+                        "log-msg[msg='Some soft limit exceeded...'][time='1469625150']/time", output[10].xpath);
+    assert_false(output[10].dflt);
+    assert_int_equal(SR_UINT32_T, output[10].type);
+    assert_int_equal(1469625150, output[10].data.uint32_val);
+    assert_string_equal("/test-module:activate-software-image/init-log/"
+                        "log-msg[msg='Some soft limit exceeded...'][time='1469625150']/msg-type", output[11].xpath);
+    assert_false(output[11].dflt);
+    assert_int_equal(SR_ENUM_T, output[11].type);
+    assert_string_equal("warning", output[11].data.enum_val);
 
     sr_free_values(output, output_cnt);
 
@@ -2226,7 +2226,7 @@ cl_rpc_tree_test(void **state)
     assert_string_equal("2.3", sr_node->data.string_val);
     assert_int_equal(0, sr_node_t_get_children_cnt(sr_node));
     /*   /test-module:activate-software-image/output/location */
-    sr_node = output + 3;
+    sr_node = output + 2;
     assert_string_equal("location", sr_node->name);
     assert_string_equal("test-module", sr_node->module_name);
     assert_true(sr_node->dflt);
@@ -2234,7 +2234,7 @@ cl_rpc_tree_test(void **state)
     assert_string_equal("/", sr_node->data.string_val);
     assert_int_equal(0, sr_node_t_get_children_cnt(sr_node));
     /*   /test-module:activate-software-image/output/init-log */
-    sr_node = output + 2;
+    sr_node = output + 3;
     assert_string_equal("init-log", sr_node->name);
     assert_string_equal("test-module", sr_node->module_name);
     assert_false(sr_node->dflt);
@@ -2272,7 +2272,7 @@ cl_rpc_tree_test(void **state)
     assert_string_equal("debug", child->data.string_val);
     assert_int_equal(0, sr_node_t_get_children_cnt(child));
     /*   /test-module:activate-software-image/output/init-log/log-msg[2] */
-    sr_node = sr_node_t_get_child(output + 2, 1);
+    sr_node = sr_node_t_get_child(output + 3, 1);
     assert_string_equal("log-msg", sr_node->name);
     assert_null( sr_node->module_name);
     assert_false(sr_node->dflt);
@@ -2358,52 +2358,52 @@ cl_rpc_combo_test(void **state)
     assert_int_equal(SR_STRING_T, output[1].type);
     assert_string_equal("2.3", output[1].data.string_val);
 
-    assert_string_equal("/test-module:activate-software-image/init-log", output[2].xpath);
-    assert_false(output[2].dflt);
-    assert_int_equal(SR_CONTAINER_T, output[2].type);
-    assert_string_equal("/test-module:activate-software-image/init-log/"
-                        "log-msg[msg='Successfully loaded software image.'][time='1469625110']", output[3].xpath);
-    assert_false(output[3].dflt);
-    assert_int_equal(SR_LIST_T, output[3].type);
-    assert_string_equal("/test-module:activate-software-image/init-log/"
-                        "log-msg[msg='Successfully loaded software image.'][time='1469625110']/msg", output[4].xpath);
-    assert_false(output[4].dflt);
-    assert_int_equal(SR_STRING_T, output[4].type);
-    assert_string_equal("Successfully loaded software image.", output[4].data.string_val);
-    assert_string_equal("/test-module:activate-software-image/init-log/"
-                        "log-msg[msg='Successfully loaded software image.'][time='1469625110']/time", output[5].xpath);
-    assert_false(output[5].dflt);
-    assert_int_equal(SR_UINT32_T, output[5].type);
-    assert_int_equal(1469625110, output[5].data.uint32_val);
-    assert_string_equal("/test-module:activate-software-image/init-log/"
-                        "log-msg[msg='Successfully loaded software image.'][time='1469625110']/msg-type", output[6].xpath);
-    assert_false(output[6].dflt);
-    assert_int_equal(SR_ENUM_T, output[6].type);
-    assert_string_equal("debug", output[6].data.enum_val);
-    assert_string_equal("/test-module:activate-software-image/init-log/"
-                        "log-msg[msg='Some soft limit exceeded...'][time='1469625150']", output[7].xpath);
-    assert_false(output[7].dflt);
-    assert_int_equal(SR_LIST_T, output[7].type);
-    assert_string_equal("/test-module:activate-software-image/init-log/"
-                        "log-msg[msg='Some soft limit exceeded...'][time='1469625150']/msg", output[8].xpath);
-    assert_false(output[8].dflt);
-    assert_int_equal(SR_STRING_T, output[8].type);
-    assert_string_equal("Some soft limit exceeded...", output[8].data.string_val);
-    assert_string_equal("/test-module:activate-software-image/init-log/"
-                        "log-msg[msg='Some soft limit exceeded...'][time='1469625150']/time", output[9].xpath);
-    assert_false(output[9].dflt);
-    assert_int_equal(SR_UINT32_T, output[9].type);
-    assert_int_equal(1469625150, output[9].data.uint32_val);
-    assert_string_equal("/test-module:activate-software-image/init-log/"
-                        "log-msg[msg='Some soft limit exceeded...'][time='1469625150']/msg-type", output[10].xpath);
-    assert_false(output[10].dflt);
-    assert_int_equal(SR_ENUM_T, output[10].type);
-    assert_string_equal("warning", output[10].data.enum_val);
+    assert_string_equal("/test-module:activate-software-image/location", output[2].xpath);
+    assert_true(output[2].dflt);
+    assert_int_equal(SR_STRING_T, output[2].type);
+    assert_string_equal("/", output[2].data.string_val);
 
-    assert_string_equal("/test-module:activate-software-image/location", output[11].xpath);
-    assert_true(output[11].dflt);
-    assert_int_equal(SR_STRING_T, output[11].type);
-    assert_string_equal("/", output[11].data.string_val);
+    assert_string_equal("/test-module:activate-software-image/init-log", output[3].xpath);
+    assert_false(output[3].dflt);
+    assert_int_equal(SR_CONTAINER_T, output[3].type);
+    assert_string_equal("/test-module:activate-software-image/init-log/"
+                        "log-msg[msg='Successfully loaded software image.'][time='1469625110']", output[4].xpath);
+    assert_false(output[4].dflt);
+    assert_int_equal(SR_LIST_T, output[4].type);
+    assert_string_equal("/test-module:activate-software-image/init-log/"
+                        "log-msg[msg='Successfully loaded software image.'][time='1469625110']/msg", output[5].xpath);
+    assert_false(output[5].dflt);
+    assert_int_equal(SR_STRING_T, output[5].type);
+    assert_string_equal("Successfully loaded software image.", output[5].data.string_val);
+    assert_string_equal("/test-module:activate-software-image/init-log/"
+                        "log-msg[msg='Successfully loaded software image.'][time='1469625110']/time", output[6].xpath);
+    assert_false(output[6].dflt);
+    assert_int_equal(SR_UINT32_T, output[6].type);
+    assert_int_equal(1469625110, output[6].data.uint32_val);
+    assert_string_equal("/test-module:activate-software-image/init-log/"
+                        "log-msg[msg='Successfully loaded software image.'][time='1469625110']/msg-type", output[7].xpath);
+    assert_false(output[7].dflt);
+    assert_int_equal(SR_ENUM_T, output[7].type);
+    assert_string_equal("debug", output[7].data.enum_val);
+    assert_string_equal("/test-module:activate-software-image/init-log/"
+                        "log-msg[msg='Some soft limit exceeded...'][time='1469625150']", output[8].xpath);
+    assert_false(output[8].dflt);
+    assert_int_equal(SR_LIST_T, output[8].type);
+    assert_string_equal("/test-module:activate-software-image/init-log/"
+                        "log-msg[msg='Some soft limit exceeded...'][time='1469625150']/msg", output[9].xpath);
+    assert_false(output[9].dflt);
+    assert_int_equal(SR_STRING_T, output[9].type);
+    assert_string_equal("Some soft limit exceeded...", output[9].data.string_val);
+    assert_string_equal("/test-module:activate-software-image/init-log/"
+                        "log-msg[msg='Some soft limit exceeded...'][time='1469625150']/time", output[10].xpath);
+    assert_false(output[10].dflt);
+    assert_int_equal(SR_UINT32_T, output[10].type);
+    assert_int_equal(1469625150, output[10].data.uint32_val);
+    assert_string_equal("/test-module:activate-software-image/init-log/"
+                        "log-msg[msg='Some soft limit exceeded...'][time='1469625150']/msg-type", output[11].xpath);
+    assert_false(output[11].dflt);
+    assert_int_equal(SR_ENUM_T, output[11].type);
+    assert_string_equal("warning", output[11].data.enum_val);
 
     sr_free_values(output, output_cnt);
 
@@ -2448,7 +2448,7 @@ cl_rpc_combo_test(void **state)
     assert_string_equal("2.3", sr_node->data.string_val);
     assert_int_equal(0, sr_node_t_get_children_cnt(sr_node));
     /*   /test-module:activate-software-image/output/location */
-    sr_node = output_tree + 3;
+    sr_node = output_tree + 2;
     assert_string_equal("location", sr_node->name);
     assert_string_equal("test-module", sr_node->module_name);
     assert_true(sr_node->dflt);
@@ -2456,7 +2456,7 @@ cl_rpc_combo_test(void **state)
     assert_string_equal("/", sr_node->data.string_val);
     assert_int_equal(0, sr_node_t_get_children_cnt(sr_node));
     /*   /test-module:activate-software-image/output/init-log */
-    sr_node = output_tree + 2;
+    sr_node = output_tree + 3;
     assert_string_equal("init-log", sr_node->name);
     assert_string_equal("test-module", sr_node->module_name);
     assert_false(sr_node->dflt);
@@ -2494,7 +2494,7 @@ cl_rpc_combo_test(void **state)
     assert_string_equal("debug", child->data.string_val);
     assert_int_equal(0, sr_node_t_get_children_cnt(child));
     /*   /test-module:activate-software-image/output/init-log/log-msg[2] */
-    sr_node = sr_node_t_get_child(output_tree + 2, 1);
+    sr_node = sr_node_t_get_child(output_tree + 3, 1);
     assert_string_equal("log-msg", sr_node->name);
     assert_null( sr_node->module_name);
     assert_false(sr_node->dflt);
@@ -2594,7 +2594,7 @@ candidate_ds_test(void **state)
 
     /* enable running DS for example-module */
     rc = sr_module_change_subscribe(session_startup, "example-module", test_module_change_cb,
-            &callback_called, 0, SR_SUBSCR_DEFAULT, &subscription);
+            &callback_called, 0, SR_SUBSCR_DEFAULT | SR_SUBSCR_APPLY_ONLY, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* commit should pass */
@@ -2716,7 +2716,7 @@ cl_candidate_refresh(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 
     rc = sr_module_change_subscribe(session, "example-module", module_change_cb, &cb_called,
-            0, SR_SUBSCR_DEFAULT, &subscription);
+            0, SR_SUBSCR_DEFAULT | SR_SUBSCR_APPLY_ONLY, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* check the list presence in candidate */
@@ -2823,7 +2823,7 @@ cl_get_changes_iter_test(void **state)
     assert_int_equal(rc, SR_ERR_UNSUPPORTED);
 
     rc = sr_module_change_subscribe(session, "example-module", list_changes_cb, &changes,
-            0, SR_SUBSCR_DEFAULT, &subscription);
+            0, SR_SUBSCR_DEFAULT | SR_SUBSCR_APPLY_ONLY, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* check the list presence in candidate */
@@ -3739,6 +3739,98 @@ cl_event_notif_combo_test(void **state)
     assert_int_equal(0, pthread_cond_destroy(&cb_status.cond));
 }
 
+static void
+cl_cross_module_dependency(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+#if 0
+    sr_session_ctx_t *session = NULL;
+
+    int rc = SR_ERR_OK;
+    sr_val_t *value = NULL;
+    sr_val_t val = {0};
+
+    /* start session */
+    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* clean prev data */
+    rc = sr_delete_item(session, "/referenced-data:*", SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_delete_item(session, "/cross-module:*", SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_commit(session);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    val.type = SR_STRING_T;
+    val.data.string_val = "abcd";
+
+    /* create leafref */
+    rc = sr_set_item(session, "/cross-module:reference", &val, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_get_item(session, "/cross-module:reference", &value);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    assert_non_null(value);
+    assert_int_equal(SR_STRING_T, value->type);
+    assert_string_equal(val.data.string_val, value->data.string_val);
+    sr_free_val(value);
+
+    /* referenced node does not exists yet*/
+    rc = sr_validate(session);
+    assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
+
+    /* create referenced node*/
+    rc = sr_set_item(session, "/referenced-data:list-b[name='abcd']", NULL, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_validate(session);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = sr_commit(session);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    val.type = SR_UINT32_T;
+    val.data.uint32_val = 100;
+    rc = sr_set_item(session, "/referenced-data:list-b[name='abcd']/value", &val, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_set_item(session, "/cross-module:links/value_in_list", &val, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_validate(session);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    val.type = SR_UINT8_T;
+    val.data.uint8_val = 10;
+
+    rc = sr_set_item(session, "/cross-module:links/number", &val, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    val.type = SR_UINT8_T;
+    val.data.uint8_val = 42;
+
+    rc = sr_set_item(session, "/referenced-data:magic_number", &val, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* must statement not satisfied */
+    rc = sr_validate(session);
+    assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
+
+    rc = sr_set_item(session, "/cross-module:links/number", &val, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_validate(session);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    sr_session_stop(session);
+#endif
+}
+
 int
 main()
 {
@@ -3779,6 +3871,7 @@ main()
             cmocka_unit_test_setup_teardown(cl_event_notif_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_event_notif_tree_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_event_notif_combo_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_cross_module_dependency, sysrepo_setup, sysrepo_teardown),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);

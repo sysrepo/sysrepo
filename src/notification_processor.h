@@ -202,11 +202,12 @@ int np_get_data_provider_subscriptions(np_ctx_t *np_ctx, const char *module_name
  *
  * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
  * @param[in] subscription Subscription context acquired by ::np_get_module_change_subscriptions call.
+ * @param[in] type of event to be sent to subscription
  * @param[in] commit_id ID of the commit to be used for starting a new notification session from client library.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int np_subscription_notify(np_ctx_t *np_ctx, np_subscription_t *subscription, uint32_t commit_id);
+int np_subscription_notify(np_ctx_t *np_ctx, np_subscription_t *subscription, sr_notif_event_t event, uint32_t commit_id);
 
 /**
  * @brief Request operational data from a data provider subscription.
@@ -221,35 +222,42 @@ int np_subscription_notify(np_ctx_t *np_ctx, np_subscription_t *subscription, ui
 int np_data_provider_request(np_ctx_t *np_ctx, np_subscription_t *subscription, rp_session_t *session, const char *xpath);
 
 /**
- * @brief Notify given subscribers that the commit process has ended.
+ * @brief Notify NP that all notifications has been sent to the given subscribers.
  *
  * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
  * @param[in] commit_id Commit identifier.
- * @param[in] subscriptions List of subscriptions to be notified about commit end.
+ * @param[in] commit_finished TRUE if commit has finished and can be released, FALSE if it will continue with another phase.
+ * @param[in] subscriptions List of subscriptions to be notified about commit end. Can be NULL if commit_finished != true.
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int np_commit_end_notify(np_ctx_t *np_ctx, uint32_t commit_id, sr_list_t *subscriptions);
+int np_commit_notifications_sent(np_ctx_t *np_ctx, uint32_t commit_id,  bool commit_finished, sr_list_t *subscriptions);
 
 /**
  * @brief Release the commit context related to specified commit ID.
  *
  * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
  * @param[in] commit_id Commit identifier.
- *
+ * @param[in] timout TRUE is commit timeout has expired.
  * @return Error code (SR_ERR_OK on success).
  */
-int np_commit_release(np_ctx_t *np_ctx, uint32_t commit_id);
+int np_commit_notifications_complete(np_ctx_t *np_ctx, uint32_t commit_id, bool timeout_expired);
 
 /**
- * @brief
+ * @brief Track a response to a notification (notification acknowledgment).
  *
  * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
  * @param[in] commit_id Commit identifier.
+ * @param[in] subs_xpath XPath where the subscription is subscribed to.
+ * @param[in] event Event that is currently being processed.
+ * @param[in] result Result of the processing by the subscriber.
+ * @param[in] err_msg Error message (in case that result != SR_ERR_OK and it was provided).
+ * @param[in] xpath XPath to the node where the error occured (in case that result != SR_ERR_OK and it was provided).
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int np_commit_notification_ack(np_ctx_t *np_ctx, uint32_t commit_id);
+int np_commit_notification_ack(np_ctx_t *np_ctx, uint32_t commit_id, char *subs_xpath, sr_notif_event_t event,
+        int result, const char *err_msg, const char *err_xpath);
 
 /**
  * @brief Cleans up a subscription context (including all its content).

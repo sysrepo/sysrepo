@@ -52,9 +52,16 @@ typedef struct dm_session_s {
     bool holds_ds_lock;                 /**< flags if the session holds ds lock*/
 } dm_session_t;
 
-int setup(void **state){
+int
+createData(void **state)
+{
     createDataTreeExampleModule();
     createDataTreeTestModule();
+    return 0;
+}
+
+int setup(void **state){
+    createData(state);
     test_rp_ctx_create((rp_ctx_t**)state);
     return 0;
 }
@@ -1394,7 +1401,7 @@ edit_validate_test(void **state)
     errors = NULL;
     e_cnt = 0;
 
-    rc = dm_validate_session_data_trees(ctx->dm_ctx, session->dm_session, &errors, &e_cnt);
+    rc = dm_validate_session_data_trees(ctx->dm_ctx, session->dm_session, NULL, &errors, &e_cnt);
     assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
     assert_int_equal(2, e_cnt);
     assert_string_equal("Instances of \"number\" list are not unique.", errors[0].message);
@@ -1481,7 +1488,7 @@ empty_commit_test(void **state)
     /* no session copy made*/
     sr_error_info_t *errors = NULL;
     size_t err_cnt = 0;
-    rc = rp_dt_commit(ctx, session, &errors, &err_cnt);
+    rc = rp_dt_commit(ctx, session, NULL, &errors, &err_cnt);
     assert_int_equal(SR_ERR_OK, rc);
     sr_free_errors(errors, err_cnt);
 
@@ -1489,7 +1496,7 @@ empty_commit_test(void **state)
     rc = dm_get_data_info(ctx->dm_ctx, session->dm_session, "test-module", &info);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = rp_dt_commit(ctx, session, &errors, &err_cnt);
+    rc = rp_dt_commit(ctx, session, NULL, &errors, &err_cnt);
     assert_int_equal(SR_ERR_OK, rc);
     sr_free_errors(errors, err_cnt);
 
@@ -1497,7 +1504,7 @@ empty_commit_test(void **state)
     assert_int_equal(SR_ERR_OK, rc);
     info->modified = true;
 
-    rc = rp_dt_commit(ctx, session, &errors, &err_cnt);
+    rc = rp_dt_commit(ctx, session, NULL, &errors, &err_cnt);
     assert_int_equal(SR_ERR_OK, rc);
     sr_free_errors(errors, err_cnt);
 
@@ -1554,7 +1561,7 @@ edit_commit_test(void **state)
     sr_error_info_t *errors = NULL;
     size_t e_cnt = 0;
 
-    rc = rp_dt_commit(ctx, sessionA, &errors, &e_cnt);
+    rc = rp_dt_commit(ctx, sessionA, NULL, &errors, &e_cnt);
     assert_int_equal(SR_ERR_OK, rc);
     sr_free_errors(errors, e_cnt);
 
@@ -1591,7 +1598,7 @@ edit_commit_test(void **state)
     rc = rp_dt_set_item_wrapper(ctx, sessionA, XP_TEST_MODULE_INT64, valueA, SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = rp_dt_commit(ctx, sessionA, &errors, &e_cnt);
+    rc = rp_dt_commit(ctx, sessionA, NULL, &errors, &e_cnt);
     assert_int_equal(SR_ERR_OK, rc);
     sr_free_errors(errors, e_cnt);
 
@@ -1617,11 +1624,11 @@ edit_commit2_test(void **state)
 
     sr_error_info_t *errors = NULL;
     size_t e_cnt = 0;
-    rc = rp_dt_commit(ctx, session, &errors, &e_cnt);
+    rc = rp_dt_commit(ctx, session, NULL, &errors, &e_cnt);
     assert_int_equal(SR_ERR_OK, rc);
 
     /*this commit should failed because main container is already deleted */
-    rc = rp_dt_commit(ctx, sessionB, &errors, &e_cnt);
+    rc = rp_dt_commit(ctx, sessionB, NULL, &errors, &e_cnt);
     assert_int_equal(SR_ERR_DATA_MISSING, rc);
     sr_free_errors(errors, e_cnt);
 
@@ -1662,11 +1669,11 @@ edit_commit3_test(void **state)
     sr_error_info_t *errors = NULL;
     size_t e_cnt = 0;
 
-    rc = rp_dt_commit(ctx, session, &errors, &e_cnt);
+    rc = rp_dt_commit(ctx, session, NULL, &errors, &e_cnt);
     assert_int_equal(SR_ERR_OK, rc);
 
     /* the leaf-list value was committed during the first commit */
-    rc = rp_dt_commit(ctx, sessionB, &errors, &e_cnt);
+    rc = rp_dt_commit(ctx, sessionB, NULL, &errors, &e_cnt);
     assert_int_equal(SR_ERR_DATA_EXISTS, rc);
     sr_free_errors(errors, e_cnt);
 
@@ -1698,7 +1705,7 @@ edit_commit4_test(void **state)
 
     sr_error_info_t *errors = NULL;
     size_t e_cnt = 0;
-    rc = rp_dt_commit(ctx, session, &errors, &e_cnt);
+    rc = rp_dt_commit(ctx, session, NULL, &errors, &e_cnt);
     assert_int_equal(SR_ERR_OK, rc);
 
     test_rp_session_cleanup(ctx, session);
@@ -2057,7 +2064,7 @@ lock_commit_test(void **state)
    /* commit A should fail */
    size_t e_cnt = 0;
    sr_error_info_t *errors = NULL;
-   rc = rp_dt_commit(ctx, sessionA, &errors, &e_cnt);
+   rc = rp_dt_commit(ctx, sessionA, NULL, &errors, &e_cnt);
    assert_int_equal(SR_ERR_LOCKED, rc);
 
    /* unlock B */
@@ -2065,7 +2072,7 @@ lock_commit_test(void **state)
    assert_int_equal(SR_ERR_OK, rc);
 
    /* commit A should succeed */
-   rc = rp_dt_commit(ctx, sessionA, &errors, &e_cnt);
+   rc = rp_dt_commit(ctx, sessionA, NULL, &errors, &e_cnt);
    assert_int_equal(SR_ERR_OK, rc);
 
    /* should be still locked even after commit */
@@ -2097,7 +2104,7 @@ empty_string_leaf_test(void **state)
 
    size_t e_cnt = 0;
    sr_error_info_t *errors = NULL;
-   rc = rp_dt_commit(ctx, sessionA, &errors, &e_cnt);
+   rc = rp_dt_commit(ctx, sessionA, NULL, &errors, &e_cnt);
    assert_int_equal(SR_ERR_OK, rc);
 
    sr_val_t *retrieved = NULL;
@@ -2248,7 +2255,7 @@ candidate_commit_lock_test(void **state)
     assert_int_equal(SR_ERR_OK, rc);
 
     /* commit failed running locked */
-    rc = rp_dt_commit(ctx, sessionA, &errors, &e_cnt);
+    rc = rp_dt_commit(ctx, sessionA, NULL, &errors, &e_cnt);
     assert_int_equal(SR_ERR_LOCKED, rc);
     sr_free_errors(errors, e_cnt);
 
@@ -2256,7 +2263,7 @@ candidate_commit_lock_test(void **state)
     assert_int_equal(SR_ERR_OK, rc);
 
     /* commit failed running & candidate locked */
-    rc = rp_dt_commit(ctx, sessionA, &errors, &e_cnt);
+    rc = rp_dt_commit(ctx, sessionA, NULL, &errors, &e_cnt);
     assert_int_equal(SR_ERR_LOCKED, rc);
     sr_free_errors(errors, e_cnt);
 
@@ -2264,14 +2271,14 @@ candidate_commit_lock_test(void **state)
     assert_int_equal(SR_ERR_OK, rc);
 
     /* commit failed candidate locked */
-    rc = rp_dt_commit(ctx, sessionA, &errors, &e_cnt);
+    rc = rp_dt_commit(ctx, sessionA, NULL, &errors, &e_cnt);
     assert_int_equal(SR_ERR_LOCKED, rc);
     sr_free_errors(errors, e_cnt);
 
     rc = dm_unlock_module(ctx->dm_ctx, sessionC->dm_session, "test-module");
     assert_int_equal(SR_ERR_OK, rc);
 
-    rc = rp_dt_commit(ctx, sessionA, &errors, &e_cnt);
+    rc = rp_dt_commit(ctx, sessionA, NULL, &errors, &e_cnt);
     assert_int_equal(SR_ERR_OK, rc);
 
     rc = rp_dt_get_value_wrapper(ctx, sessionA, NULL, "/test-module:main/i8", &value);
@@ -2285,6 +2292,77 @@ candidate_commit_lock_test(void **state)
     test_rp_session_cleanup(ctx, sessionB);
     test_rp_session_cleanup(ctx, sessionC);
 }
+
+
+static void
+edit_union_type(void **state)
+{
+    int rc = 0;
+    rp_ctx_t *ctx = *state;
+    rp_session_t *sessionA = NULL;
+    sr_val_t *val = NULL;
+
+    test_rp_sesssion_create(ctx, SR_DS_STARTUP, &sessionA);
+
+    /* union - uint8 */
+    rc = rp_dt_get_value_wrapper(ctx, sessionA, NULL, "/test-module:list[key='k1']/union", &val);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(val);
+    assert_int_equal(SR_UINT8_T, val->type);
+    assert_int_equal(42, val->data.uint8_val);
+    assert_false(val->dflt);
+
+    rc = rp_dt_delete_item_wrapper(ctx, sessionA, "/test-module:list[key='k1']/union", SR_EDIT_STRICT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_set_item_wrapper(ctx, sessionA, val->xpath, val, SR_EDIT_STRICT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* value is freed inside set operation*/
+    val = NULL;
+
+    /* union string*/
+    sessionA->state = RP_REQ_NEW;
+    rc = rp_dt_get_value_wrapper(ctx, sessionA, NULL, "/test-module:list[key='k2']/union", &val);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(val);
+    assert_int_equal(SR_ENUM_T, val->type);
+    assert_string_equal("infinity", val->data.string_val);
+    assert_false(val->dflt);
+
+    rc = rp_dt_delete_item_wrapper(ctx, sessionA, "/test-module:list[key='k2']/union", SR_EDIT_STRICT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_set_item_wrapper(ctx, sessionA, val->xpath, val, SR_EDIT_STRICT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* value is freed inside set operation*/
+    val = NULL;
+
+    /* check that correctly set */
+    sessionA->state = RP_REQ_NEW;
+    rc = rp_dt_get_value_wrapper(ctx, sessionA, NULL, "/test-module:list[key='k2']/union", &val);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(val);
+    assert_int_equal(SR_ENUM_T, val->type);
+    assert_string_equal("infinity", val->data.string_val);
+    assert_false(val->dflt);
+    sr_free_val(val);
+
+
+    sessionA->state = RP_REQ_NEW;
+    rc = rp_dt_get_value_wrapper(ctx, sessionA, NULL, "/test-module:list[key='k1']/union", &val);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(val);
+    assert_int_equal(SR_UINT8_T, val->type);
+    assert_int_equal(42, val->data.uint8_val);
+    assert_false(val->dflt);
+    sr_free_val(val);
+
+    test_rp_session_cleanup(ctx, sessionA);
+
+}
+
 
 int main(){
 
@@ -2322,6 +2400,7 @@ int main(){
             cmocka_unit_test(candidate_edit_test),
             cmocka_unit_test(copy_to_running_test),
             cmocka_unit_test(candidate_commit_lock_test),
+            cmocka_unit_test_setup(edit_union_type, createData),
     };
     return cmocka_run_group_tests(tests, setup, teardown);
 }

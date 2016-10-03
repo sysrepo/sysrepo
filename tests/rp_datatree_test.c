@@ -37,9 +37,16 @@
 
 #define LEAF_VALUE "leafV"
 
-int setup(void **state){
+int
+createData(void **state)
+{
    createDataTreeExampleModule();
    createDataTreeTestModule();
+   return 0;
+}
+
+int setup(void **state){
+   createData(state);
    test_rp_ctx_create((rp_ctx_t**)state);
    return 0;
 }
@@ -1495,7 +1502,7 @@ default_nodes_test(void **state)
     /* cleanup - remove all list instances */
     rc = rp_dt_delete_item_wrapper(ctx, ses_ctx, "/test-module:with_def", SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
-    rc = rp_dt_commit(ctx, ses_ctx, &errors, &e_cnt);
+    rc = rp_dt_commit(ctx, ses_ctx, NULL, &errors, &e_cnt);
     assert_int_equal(SR_ERR_OK, rc);
 
 
@@ -1670,7 +1677,7 @@ default_nodes_test(void **state)
     assert_false(tree->dflt);
     sr_free_tree(tree);
 
-    rc = rp_dt_commit(ctx, ses_ctx, &errors, &e_cnt);
+    rc = rp_dt_commit(ctx, ses_ctx, NULL, &errors, &e_cnt);
     assert_int_equal(SR_ERR_OK, rc);
 
     /* check after commit */
@@ -1761,7 +1768,7 @@ default_nodes_test(void **state)
     /* clean up*/
     rc = rp_dt_delete_item_wrapper(ctx, ses_ctx, "/test-module:with_def", SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
-    rc = rp_dt_commit(ctx, ses_ctx, &errors, &e_cnt);
+    rc = rp_dt_commit(ctx, ses_ctx, NULL, &errors, &e_cnt);
     assert_int_equal(SR_ERR_OK, rc);
 
     test_rp_session_cleanup(ctx, ses_ctx);
@@ -1807,13 +1814,45 @@ default_nodes_toplevel_test(void **state)
 
     rc = rp_dt_delete_item_wrapper(ctx, ses_ctx, "/test-module:*", SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
-    rc = rp_dt_commit(ctx, ses_ctx, &errors, &e_cnt);
+    rc = rp_dt_commit(ctx, ses_ctx, NULL, &errors, &e_cnt);
     assert_int_equal(SR_ERR_OK, rc);
 
     /* top-level default value with empty data tree is not present #333, will be added during commit or validate */
     ses_ctx->state = RP_REQ_NEW;
     rc = rp_dt_get_value_wrapper(ctx, ses_ctx, NULL, "/test-module:top-level-default", &val);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
+
+    test_rp_session_cleanup(ctx, ses_ctx);
+}
+
+void
+union_test(void **state)
+{
+    int rc = 0;
+    rp_ctx_t *ctx = *state;
+    rp_session_t *ses_ctx = NULL;
+    sr_val_t *val = NULL;
+
+    test_rp_sesssion_create(ctx, SR_DS_STARTUP, &ses_ctx);
+    sr_log_stderr(SR_LL_DBG);
+    /* union - unint8 */
+    rc = rp_dt_get_value_wrapper(ctx, ses_ctx, NULL, "/test-module:list[key='k1']/union", &val);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(val);
+    assert_int_equal(SR_UINT8_T, val->type);
+    assert_int_equal(42, val->data.uint8_val);
+    assert_false(val->dflt);
+    sr_free_val(val);
+
+    /* union string*/
+    ses_ctx->state = RP_REQ_NEW;
+    rc = rp_dt_get_value_wrapper(ctx, ses_ctx, NULL, "/test-module:list[key='k2']/union", &val);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(val);
+    assert_int_equal(SR_ENUM_T, val->type);
+    assert_string_equal("infinity", val->data.string_val);
+    assert_false(val->dflt);
+    sr_free_val(val);
 
     test_rp_session_cleanup(ctx, ses_ctx);
 }
@@ -1840,7 +1879,8 @@ int main(){
             cmocka_unit_test(get_tree_wrapper_test),
             cmocka_unit_test(get_nodes_with_opts_cache_missed_test),
             cmocka_unit_test(default_nodes_test),
-            cmocka_unit_test(default_nodes_toplevel_test)
+            cmocka_unit_test(default_nodes_toplevel_test),
+            cmocka_unit_test_setup(union_test, createData),
     };
     return cmocka_run_group_tests(tests, setup, teardown);
 }

@@ -318,6 +318,21 @@ Sr__SubscriptionType sr_subsciption_type_str_to_gpb(const char *type_name);
 char *sr_notification_event_gpb_to_str(Sr__NotificationEvent event);
 
 /**
+ * @brief Converts notification event type from sysrepo enum to string representation.
+ *
+ * @param[in] event Sysrepo notification event type.
+ * @return Pointer to statically allocated string with the event type name.
+ */
+char *sr_notification_event_sr_to_str(sr_notif_event_t event);
+
+/**
+ * @brief Converts notification event type from sysrepo enum to its GPB enum representation
+ * @param [in] event Syrepo notification event type
+ * @return GPB notification event type
+ */
+Sr__NotificationEvent sr_notification_event_sr_to_gpb(sr_notif_event_t event);
+
+/**
  * @brief Converts notification event type string to its GPB enum representation.
  *
  * @param[in] event_name String name of the notification event type.

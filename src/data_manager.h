@@ -55,6 +55,11 @@ typedef struct dm_ctx_s dm_ctx_t;
 typedef struct dm_session_s dm_session_t;
 
 /**
+ * @brief Structure that holds request processor session.
+ */
+typedef struct rp_session_s rp_session_t;
+
+/**
  * @brief Holds information related to the schema.
  */
 typedef struct dm_schema_info_s {
@@ -68,6 +73,8 @@ typedef struct dm_schema_info_s {
                                          * Can be NULL if module has been uninstalled
                                          * during sysrepo-engine lifetime */
     const struct lys_module *module;    /**< Pointer to the module, might be NULL if module has been uninstalled*/
+    bool cross_module_data_dependency;  /**< Flag whether data from different module is needed for validation */
+    sr_list_t *data_dependant_modules;  /**< List of modules which data needs to be loaded for validation */
 }dm_schema_info_t;
 
 /**
@@ -99,6 +106,22 @@ typedef enum dm_operation_e {
     DM_MOVE_OP,
 } dm_operation_t;
 
+/**
+ * @brief the stages of commit process
+ */
+typedef enum dm_commit_state_e {
+    DM_COMMIT_STARTED,
+    DM_COMMIT_VALIDATION,
+    DM_COMMIT_LOAD_MODIFIED_MODELS,
+    DM_COMMIT_REPLAY_OPS,
+    DM_COMMIT_VALIDATE_MERGED,
+    DM_COMMIT_NOTIFY_VERIFY,
+    DM_COMMIT_WAIT_FOR_NOTIFICATIONS,
+    DM_COMMIT_WRITE,
+    DM_COMMIT_NOTIFY_APPLY,
+    DM_COMMIT_NOTIFY_ABORT,
+    DM_COMMIT_FINISHED,
+}dm_commit_state_t;
 /**
  * @brief Structure holding information about operation performed.
  */
@@ -141,6 +164,7 @@ typedef struct dm_model_subscription_s {
  */
 typedef struct dm_commit_context_s {
     uint32_t id;                /**< id used for commit identification in notification session */
+    dm_commit_state_t state;    /**< state the commit tied to this context is in */
     dm_session_t *session;      /**< session where mereged (user changes + file system state) data trees are stored */
     int *fds;                   /**< opened file descriptors */
     bool *existed;              /**< flag wheter the file for the filedesriptor existed (and should be truncated) before commit*/
@@ -150,6 +174,10 @@ typedef struct dm_commit_context_s {
     size_t oper_count;          /**< number of operation in the operations list */
     sr_btree_t *subscriptions;  /**< binary trees of subscriptions organised per models */
     sr_btree_t *prev_data_trees;/**< data trees in the state before commit */
+    rp_session_t *init_session; /**< session that initialized the commit, used for resuming commit once verifiers reply */
+    sr_error_info_t *errors;    /**< errors returned by verifiers */
+    size_t err_cnt;             /**< number of errors from verifiers */
+    sr_list_t *err_subs_xpaths; /**< subscriptions that returned an error */
 } dm_commit_context_t;
 
 /**
@@ -412,7 +440,7 @@ int dm_commit_write_files(dm_session_t *session, dm_commit_context_t *c_ctx);
  * @param [in] c_ctx
  * @return Error code (SR_ERR_OK on success)
  */
-int dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t *c_ctx);
+int dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, sr_notif_event_t ev, dm_commit_context_t *c_ctx);
 
 /**
  * @brief Frees all resources allocated in commit context closes
@@ -890,12 +918,13 @@ int dm_get_all_modules(dm_ctx_t *dm_ctx, dm_session_t *session, bool enabled_onl
 int dm_is_model_modified(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module_name, bool *res);
 
 /**
- * @brief Removes commit context identified by id
+ * @brief Used to notify that all commit notifications has been delivered.
+ * Call when apply/abort notifications are received.
  * @param [in] dm_ctx
  * @param [in] c_ctx_id
  * @return Error code (SR_ERR_OK on success)
  */
-int dm_remove_commit_context(dm_ctx_t *dm_ctx, uint32_t c_ctx_id);
+int dm_commit_notifications_complete(dm_ctx_t *dm_ctx, uint32_t c_ctx_id);
 
 /**
  * @brief Looks up commit context identified by id

@@ -902,7 +902,7 @@ sr_node_t_rpc_output_test(void **state)
     assert_int_equal(0, sr_node_t_get_children_cnt(sr_node));
 
     /* /test-module:activate-software-image/output/location */
-    sr_node = trees + 2;
+    sr_node = trees + 1;
     assert_string_equal("location", sr_node->name);
     assert_string_equal("test-module", sr_node->module_name);
     assert_true(sr_node->dflt);
@@ -911,7 +911,7 @@ sr_node_t_rpc_output_test(void **state)
     assert_int_equal(0, sr_node_t_get_children_cnt(sr_node));
 
     /* /test-module:activate-software-image/output/init-log */
-    sr_node = trees + 1;
+    sr_node = trees + 2;
     assert_string_equal("init-log", sr_node->name);
     assert_string_equal("test-module", sr_node->module_name);
     assert_false(sr_node->dflt);
@@ -951,7 +951,7 @@ sr_node_t_rpc_output_test(void **state)
     assert_int_equal(0, sr_node_t_get_children_cnt(child));
 
     /* /test-module:activate-software-image/output/init-log/log-msg[2] */
-    sr_node = sr_node_t_get_child(trees + 1, 1);
+    sr_node = sr_node_t_get_child(trees + 2, 1);
     assert_string_equal("log-msg", sr_node->name);
     assert_null( sr_node->module_name);
     assert_false(sr_node->dflt);

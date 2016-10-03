@@ -28,9 +28,10 @@
 #include "rp_internal.h"
 #include "persistence_manager.h"
 #include "notification_processor.h"
+#include "request_processor.h"
 
-#define NP_COMMIT_RELEASE_TIMEOUT 10  /**< Timeout (in seconds) after which the commit will be released
-                                           also in case that not all notification ACKs have been received. */
+#define NP_COMMIT_TIMEOUT 10  /**< Timeout (in seconds) after which the commit will be aborted / released
+                                   also in case that not all notification ACKs have been received. */
 
 /**
  * @brief Information about a notification destination.
@@ -45,10 +46,14 @@ typedef struct np_dst_info_s {
  * @brief Context holding information about notifications sent per commit.
  */
 typedef struct np_commit_ctx_s {
-    uint32_t commit_id;            /**< Commit identifier. */
-    bool commit_ended;             /**< Flag marking weather the commit already ended. */
-    size_t notifications_sent;     /**< Count of sent notifications. */
-    size_t notifications_acked;    /**< Count of received acknowledgments. */
+    uint32_t commit_id;              /**< Commit identifier. */
+    bool all_notifications_sent;     /**< Flag indicating whether all commit notifications has been already sent. */
+    bool commit_finished;            /**< TRUE if commit has finished and can be released, FALSE if it will continue with another phase. */
+    size_t notifications_sent;       /**< Count of sent notifications. */
+    size_t notifications_acked;      /**< Count of received acknowledgments. */
+    int result;                      /**< Used to store overall result of the commit operation. */
+    sr_list_t *err_subs_xpaths;      /**< Used to store xpaths to subscribers that returned an error. */
+    sr_list_t *errors;               /**< Used to store errors returned from commit verifiers. */
 } np_commit_ctx_t;
 
 /**
@@ -292,18 +297,34 @@ unlock:
 }
 
 /**
- * @brief Releases the commit in Data Manager.
+ * @brief Adds an error xpath into commit context.
  */
 static int
-np_commit_release_in_dm(np_ctx_t *np_ctx, uint32_t commit_id)
+np_commit_error_add(np_commit_ctx_t *commit_ctx, const char *err_subs_xpath, const char *err_msg, const char *err_xpath)
 {
+    sr_error_info_t *error = NULL;
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG3(np_ctx, np_ctx->rp_ctx, np_ctx->rp_ctx->dm_ctx);
+    CHECK_NULL_ARG2(commit_ctx, err_subs_xpath);
 
-    rc = dm_remove_commit_context(np_ctx->rp_ctx->dm_ctx, commit_id);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR_MSG("Unable to release the commit in Data Manager.");
+    if (NULL == commit_ctx->err_subs_xpaths) {
+        rc = sr_list_init(&commit_ctx->err_subs_xpaths);
+        CHECK_RC_MSG_RETURN(rc, "Unable to init sr_list for errored verifier xpaths.");
+    }
+    rc = sr_list_add(commit_ctx->err_subs_xpaths, strdup(err_subs_xpath));
+
+    if (SR_ERR_OK == rc && NULL != err_msg) {
+        if (NULL == commit_ctx->errors) {
+            rc = sr_list_init(&commit_ctx->errors);
+        }
+        if (SR_ERR_OK == rc) {
+            error = calloc(1, sizeof(*error));
+            error->message = strdup(err_msg);
+            if (NULL != err_xpath) {
+                error->xpath = strdup(err_xpath);
+            }
+            rc = sr_list_add(commit_ctx->errors, error);
+        }
     }
 
     return rc;
@@ -665,13 +686,13 @@ np_hello_notify(np_ctx_t *np_ctx, const char *module_name, const char *dst_addre
     Sr__Msg *notif = NULL;
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG4(np_ctx, np_ctx->rp_ctx, module_name, dst_address);
+    CHECK_NULL_ARG3(np_ctx, np_ctx->rp_ctx, dst_address);
 
     SR_LOG_DBG("Sending HELLO notification to '%s' @ %"PRIu32".", dst_address, dst_id);
 
     rc = sr_gpb_notif_alloc(NULL, SR__SUBSCRIPTION_TYPE__HELLO_SUBS, dst_address, dst_id, &notif);
 
-    if (SR_ERR_OK == rc) {
+    if (SR_ERR_OK == rc && NULL != module_name) {
         /* save notification destination info */
         rc = np_dst_info_insert(np_ctx, dst_address, module_name);
     }
@@ -686,8 +707,8 @@ np_hello_notify(np_ctx_t *np_ctx, const char *module_name, const char *dst_addre
 }
 
 int
-np_get_module_change_subscriptions(np_ctx_t *np_ctx, const char *module_name, np_subscription_t ***subscriptions_arr_p,
-        size_t *subscriptions_cnt_p)
+np_get_module_change_subscriptions(np_ctx_t *np_ctx, const char *module_name,
+        np_subscription_t ***subscriptions_arr_p, size_t *subscriptions_cnt_p)
 {
     np_subscription_t *subscriptions_1 = NULL, *subscriptions_2 = NULL, **subscriptions_arr = NULL;
     size_t subscription_cnt_1 = 0, subscription_cnt_2 = 0, subscriptions_arr_cnt = 0;
@@ -747,8 +768,8 @@ cleanup:
 }
 
 int
-np_get_data_provider_subscriptions(np_ctx_t *np_ctx, const char *module_name, np_subscription_t ***subscriptions_arr_p,
-        size_t *subscriptions_cnt_p)
+np_get_data_provider_subscriptions(np_ctx_t *np_ctx, const char *module_name,
+        np_subscription_t ***subscriptions_arr_p, size_t *subscriptions_cnt_p)
 {
     np_subscription_t *subscriptions = NULL, **subscriptions_arr = NULL;
     size_t subscription_cnt = 0, subscriptions_arr_cnt = 0;
@@ -792,7 +813,7 @@ cleanup:
 }
 
 int
-np_subscription_notify(np_ctx_t *np_ctx, np_subscription_t *subscription, uint32_t commit_id)
+np_subscription_notify(np_ctx_t *np_ctx, np_subscription_t *subscription, sr_notif_event_t event, uint32_t commit_id)
 {
     Sr__Msg *notif = NULL;
     int rc = SR_ERR_OK;
@@ -808,12 +829,12 @@ np_subscription_notify(np_ctx_t *np_ctx, np_subscription_t *subscription, uint32
         notif->notification->commit_id = commit_id;
         notif->notification->has_commit_id = true;
         if (SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS == subscription->type) {
-            notif->notification->module_change_notif->event = subscription->notif_event;
+            notif->notification->module_change_notif->event = sr_notification_event_sr_to_gpb(event);
             notif->notification->module_change_notif->module_name = strdup(subscription->module_name);
             CHECK_NULL_NOMEM_ERROR(notif->notification->module_change_notif->module_name, rc);
         }
         if (SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS == subscription->type) {
-            notif->notification->subtree_change_notif->event = subscription->notif_event;
+            notif->notification->subtree_change_notif->event = sr_notification_event_sr_to_gpb(event);
             notif->notification->subtree_change_notif->xpath = strdup(subscription->xpath);
             CHECK_NULL_NOMEM_ERROR(notif->notification->subtree_change_notif->xpath, rc);
         }
@@ -878,106 +899,79 @@ np_data_provider_request(np_ctx_t *np_ctx, np_subscription_t *subscription, rp_s
 }
 
 int
-np_commit_end_notify(np_ctx_t *np_ctx, uint32_t commit_id, sr_list_t *subscriptions)
+np_commit_notifications_sent(np_ctx_t *np_ctx, uint32_t commit_id, bool commit_finished, sr_list_t *subscriptions)
 {
     np_subscription_t *subscription = NULL;
     Sr__Msg *notif = NULL, *req = NULL;
     np_commit_ctx_t *commit = NULL;
     sr_llist_node_t *commit_node = NULL;
-    bool release = false;
+    bool all_acks_received = false;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG3(np_ctx, np_ctx->rp_ctx, subscriptions);
 
-    /* send commit end notifications */
-    for (size_t i = 0; i < subscriptions->count; i++) {
-        /* send commit_end notification */
-        subscription = subscriptions->data[i];
-        rc = sr_gpb_notif_alloc(NULL, SR__SUBSCRIPTION_TYPE__COMMIT_END_SUBS, subscription->dst_address,
-                subscription->dst_id, &notif);
-        if (SR_ERR_OK == rc) {
-            notif->notification->commit_id = commit_id;
-            notif->notification->has_commit_id = true;
+    if (commit_finished) {
+        /* send commit end notifications */
+        for (size_t i = 0; i < subscriptions->count; i++) {
+            /* send commit_end notification */
+            subscription = subscriptions->data[i];
+            rc = sr_gpb_notif_alloc(NULL, SR__SUBSCRIPTION_TYPE__COMMIT_END_SUBS, subscription->dst_address,
+                    subscription->dst_id, &notif);
+            if (SR_ERR_OK == rc) {
+                notif->notification->commit_id = commit_id;
+                notif->notification->has_commit_id = true;
 
-            /* send the message */
-            rc = cm_msg_send(np_ctx->rp_ctx->cm_ctx, notif);
+                /* send the message */
+                rc = cm_msg_send(np_ctx->rp_ctx->cm_ctx, notif);
+            }
+            notif = NULL;
         }
-        notif = NULL;
     }
 
     pthread_rwlock_wrlock(&np_ctx->lock);
 
     commit = np_commit_ctx_find(np_ctx, commit_id, &commit_node);
     if (NULL != commit) {
-        commit->commit_ended = true;
+        commit->all_notifications_sent = true;
+        commit->commit_finished = commit_finished;
         if (commit->notifications_acked == commit->notifications_sent) {
             /* release the commit immediately */
-            sr_llist_rm(np_ctx->commits, commit_node);
-            free(commit);
-            release = true;
+            all_acks_received = true;
         } else {
-            /* setup commit release timer */
-            rc = sr_gpb_internal_req_alloc(NULL, SR__OPERATION__COMMIT_RELEASE, &req);
+            /* setup commit timer */
+            rc = sr_gpb_internal_req_alloc(NULL, SR__OPERATION__COMMIT_TIMEOUT, &req);
             if (SR_ERR_OK == rc) {
-                req->internal_request->commit_release_req->commit_id = commit_id;
-                req->internal_request->postpone_timeout = NP_COMMIT_RELEASE_TIMEOUT;
+                req->internal_request->commit_timeout_req->commit_id = commit_id;
+                req->internal_request->postpone_timeout = NP_COMMIT_TIMEOUT;
                 req->internal_request->has_postpone_timeout = true;
                 rc = cm_msg_send(np_ctx->rp_ctx->cm_ctx, req);
             }
             if (SR_ERR_OK == rc) {
-                SR_LOG_DBG("Setting up a commit-release timer for commit id=%"PRIu32" with timeout=%d seconds.",
-                        commit_id, NP_COMMIT_RELEASE_TIMEOUT);
+                SR_LOG_DBG("Setting up a commit timer for commit id=%"PRIu32" with timeout=%d seconds.",
+                        commit_id, NP_COMMIT_TIMEOUT);
             } else {
-                SR_LOG_ERR("Unable to setup commit-release timer for commit id=%"PRIu32".", commit_id);
+                SR_LOG_ERR("Unable to setup commit timer for commit id=%"PRIu32".", commit_id);
             }
         }
     }
 
     pthread_rwlock_unlock(&np_ctx->lock);
 
-    if (release) {
-        SR_LOG_DBG("Releasing commit id=%"PRIu32".", commit_id);
-        rc = np_commit_release_in_dm(np_ctx, commit_id);
+    if (all_acks_received) {
+        /* all notification acks already received - signal DM and possibly release the commit */
+        rc = np_commit_notifications_complete(np_ctx, commit_id, false);
     }
 
     return rc;
 }
 
 int
-np_commit_release(np_ctx_t *np_ctx, uint32_t commit_id)
+np_commit_notification_ack(np_ctx_t *np_ctx, uint32_t commit_id, char *subs_xpath, sr_notif_event_t event, int result,
+        const char *err_msg, const char *err_xpath)
 {
     np_commit_ctx_t *commit = NULL;
     sr_llist_node_t *commit_node = NULL;
-    bool release = false;
-    int rc = SR_ERR_OK;
-
-    CHECK_NULL_ARG(np_ctx);
-
-    pthread_rwlock_wrlock(&np_ctx->lock);
-
-    commit = np_commit_ctx_find(np_ctx, commit_id, &commit_node);
-    if (NULL != commit) {
-        sr_llist_rm(np_ctx->commits, commit_node);
-        free(commit);
-        release = true;
-    }
-
-    pthread_rwlock_unlock(&np_ctx->lock);
-
-    if (release) {
-        SR_LOG_DBG("Releasing commit id=%"PRIu32".", commit_id);
-        rc = np_commit_release_in_dm(np_ctx, commit_id);
-    }
-
-    return rc;
-}
-
-int
-np_commit_notification_ack(np_ctx_t *np_ctx, uint32_t commit_id)
-{
-    np_commit_ctx_t *commit = NULL;
-    sr_llist_node_t *commit_node = NULL;
-    bool release = false;
+    bool all_acks_received = false;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG(np_ctx);
@@ -987,12 +981,21 @@ np_commit_notification_ack(np_ctx_t *np_ctx, uint32_t commit_id)
     commit = np_commit_ctx_find(np_ctx, commit_id, &commit_node);
 
     if (NULL != commit) {
+        if (SR_EV_VERIFY == event && SR_ERR_OK != result) {
+            /* error returned from the verifier */
+            if (SR_ERR_OK == commit->result) {
+                /* if there isn't any previous error stored within the commit context, store there this one */
+                commit->result = result;
+            }
+            if (SR_ERR_OK != result) {
+                np_commit_error_add(commit, subs_xpath, err_msg, err_xpath);
+            }
+            SR_LOG_ERR("Verifier for '%s' returned an error (msg: '%s', xpath: '%s'), commit will be aborted.",
+                    subs_xpath, err_msg, err_xpath);
+        }
         commit->notifications_acked++;
-        if (commit->commit_ended && (commit->notifications_sent == commit->notifications_acked)) {
-            /* release the commit */
-            sr_llist_rm(np_ctx->commits, commit_node);
-            free(commit);
-            release = true;
+        if (commit->all_notifications_sent && (commit->notifications_sent == commit->notifications_acked)) {
+            all_acks_received = true;
         }
     } else {
         SR_LOG_WRN("No NP commit context for commit ID %"PRIu32".", commit_id);
@@ -1000,9 +1003,60 @@ np_commit_notification_ack(np_ctx_t *np_ctx, uint32_t commit_id)
 
     pthread_rwlock_unlock(&np_ctx->lock);
 
-    if (release) {
-        SR_LOG_DBG("Releasing commit id=%"PRIu32".", commit_id);
-        rc = np_commit_release_in_dm(np_ctx, commit_id);
+    if (all_acks_received) {
+        /* all notification acks already received - signal DM and possibly release the commit */
+        rc = np_commit_notifications_complete(np_ctx, commit_id, false);
+    }
+
+    return rc;
+}
+
+int
+np_commit_notifications_complete(np_ctx_t *np_ctx, uint32_t commit_id, bool timeout_expired)
+{
+    np_commit_ctx_t *commit = NULL;
+    sr_llist_node_t *commit_node = NULL;
+    sr_list_t *err_subs_xpaths = NULL, *errors = NULL;
+    bool found = false;
+    int result = SR_ERR_OK, rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG(np_ctx);
+
+    pthread_rwlock_wrlock(&np_ctx->lock);
+
+    commit = np_commit_ctx_find(np_ctx, commit_id, &commit_node);
+    if (NULL != commit) {
+        found = true;
+        result = commit->result;
+        err_subs_xpaths = commit->err_subs_xpaths;
+        errors = commit->errors;
+        if (commit->commit_finished) {
+            /* commit has finished, release commit context */
+            SR_LOG_DBG("Releasing commit id=%"PRIu32".", commit_id);
+            sr_llist_rm(np_ctx->commits, commit_node);
+            free(commit);
+            commit = NULL;
+        } else {
+            /* reset the context for the next commit phase */
+            commit->all_notifications_sent = false;
+            commit->commit_finished = false;
+            commit->err_subs_xpaths = NULL;
+            commit->errors = NULL;
+        }
+    }
+
+    pthread_rwlock_unlock(&np_ctx->lock);
+
+    if (found) {
+        SR_LOG_DBG("Commit id=%"PRIu32" notifications complete.", commit_id);
+
+        if (timeout_expired) {
+            SR_LOG_ERR("Commit timeout for commit id=%d.", commit_id);
+            result = SR_ERR_TIME_OUT;
+        }
+
+        /* resume commit processing */
+        rc = rp_resume_commit(np_ctx->rp_ctx, commit_id, result, err_subs_xpaths, errors);
     }
 
     return rc;
