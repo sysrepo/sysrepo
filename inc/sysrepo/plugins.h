@@ -34,7 +34,9 @@
  * @defgroup plugin_utils Plugin Utilities
  * @{
  *
- *  @brief TODO
+ *  @brief Utilities that expand sysrepo API aimed for sysrepo plugins.
+ *
+ *  The provided features are: logging macros.
  */
 
 /** Prints an error message (with format specifiers). */
