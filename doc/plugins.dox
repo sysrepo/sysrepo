@@ -70,6 +70,10 @@ to `${CMAKE_INSTALL_PREFIX}/${LIB_INSTALL_DIR}/sysrepo/plugins/`
 The location of the plugin directory can be retrieved via pkg-config variable `SR_PLUGINS_DIR`,
 e.g.: `pkg-config --variable=SR_PLUGINS_DIR libsysrepo`.
 
+@section utils Plugin Utilities
+There is a @ref plugin_utils API that can help by implementation of sysrepo plugins.
+Features provided by the API include: logging macros (+ other that will be added in the future).
+
 @section sysrepo-plugind Sysrepo Plugin Daemon
 Sysrepo plugin daemon loads all plugins (shared libraries) located in the 
 @ref plugin-dir. It should normally be automatically started by 
