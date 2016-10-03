@@ -149,7 +149,7 @@ print_current_config(S_Session session, const char *module_name)
 }
 
 class My_Callback:public Callback {
-    void module_change_cb(S_Session sess, const char *module_name, sr_notif_event_t event, void *private_ctx)
+    void module_change(S_Session sess, const char *module_name, sr_notif_event_t event, void *private_ctx)
     {
         char change_path[MAX_LEN];
 

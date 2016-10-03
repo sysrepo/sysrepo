@@ -130,7 +130,7 @@ if(PYTHONLIBS_FOUND AND PYTHONINTERP_FOUND AND ${GEN_PYTHON_VERSION} STREQUAL "3
 
         file(COPY "python3/examples" DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/python3")
 
-		add_custom_command(
+	add_custom_command(
         TARGET Sysrepo-cpp POST_BUILD
         COMMAND ln -sf "${CMAKE_BINARY_DIR}/${PYTHON_SWIG_BINDING_3}.py" "${CMAKE_CURRENT_BINARY_DIR}/python3/examples/${PYTHON_SWIG_BINDING_3}.py"
         COMMAND ln -sf "${CMAKE_CURRENT_BINARY_DIR}/_${PYTHON_SWIG_BINDING_3}.so" "${CMAKE_CURRENT_BINARY_DIR}/python3/examples/_${PYTHON_SWIG_BINDING_3}.so"
@@ -158,6 +158,8 @@ if(SWIG_FOUND AND GEN_JAVA_BINDINGS)
 
 	swig_add_module(${JAVA_SWIG_BINDING} java java/${JAVA_SWIG_BINDING}.i)
 	swig_link_libraries(${JAVA_SWIG_BINDING} ${JAVA_LIBRARIES} Sysrepo-cpp)
+
+	file(COPY "java/examples" DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/java")
 
 	add_custom_command(TARGET ${JAVA_SWIG_BINDING} POST_BUILD COMMAND "${Java_JAVAC_EXECUTABLE}" -d classes java/*.java COMMAND "${Java_JAR_EXECUTABLE}" -cfM Sysrepo.jar -C classes . )
 	set(NATIVE_JAR "${CMAKE_CURRENT_BINARY_DIR}/Sysrepo.jar")

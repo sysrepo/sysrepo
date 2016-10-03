@@ -88,7 +88,7 @@ def print_change(op, old_val, new_val):
            print "new value",
            print_value(new_val)
     elif (op == sr.SR_OP_MOVED):
-        print "MOVED: " + new_val.get_xpath() + " after " + old_val.get_xpath()
+        print "MOVED: " + new_val.xpath() + " after " + old_val.xpath()
 
 # Function to print current configuration state.
 # It does so by loading all the items of a session and printing them out.

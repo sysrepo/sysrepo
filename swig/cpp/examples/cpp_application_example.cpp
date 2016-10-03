@@ -117,7 +117,8 @@ print_current_config(S_Session session, const char *module_name)
 }
 
 class My_Callback:public Callback {
-    void module_change_cb(S_Session sess, const char *module_name, sr_notif_event_t event, void *private_ctx)
+    public:
+    void module_change(S_Session sess, const char *module_name, sr_notif_event_t event, void *private_ctx)
     {
         cout << "\n\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: ==========\n" << endl;
 
