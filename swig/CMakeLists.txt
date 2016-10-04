@@ -55,6 +55,16 @@ if(GEN_PYTHON_BINDINGS AND SWIG_FOUND)
     endif()
 endif()
 
+# find Python package
+if(GEN_JAVA_BINDINGS AND SWIG_FOUND)
+    find_package(Java REQUIRED)
+    find_package(JNI REQUIRED)
+    if(NOT JAVA_FOUND)
+        message(WARNING "Did not found Java")
+    endif()
+endif()
+
+
 project(Sysrepo-cpp)
 set(SYSREPO_CPP_SOURCES
 	${CMAKE_SOURCE_DIR}/swig/cpp/src/Sysrepo.cpp
@@ -137,17 +147,15 @@ if(PYTHONLIBS_FOUND AND PYTHONINTERP_FOUND AND ${GEN_PYTHON_VERSION} STREQUAL "3
         )
 endif()
 
-if(SWIG_FOUND AND GEN_JAVA_BINDINGS)
+if(JAVA_FOUND)
         set(JAVA_SWIG_BINDING libsysrepoJava)
-	find_package(Java REQUIRED)
-	find_package(JNI REQUIRED)
-	find_package(SWIG REQUIRED)
-	include(UseJava)
-	include(UseSWIG)
+        include(UseJava)
+        include(UseSWIG)
 
 	include(${SWIG_USE_FILE})
 	include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 	include_directories(${JAVA_INCLUDE_PATH})
+	#include_directories("${JAVA_INCLUDE_PATH}/linux")
 	include_directories(${JAVA_INCLUDE_DIRS})
         set(CMAKE_SWIG_FLAGS "-c++")
 

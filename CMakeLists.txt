@@ -14,7 +14,7 @@ set(GEN_PYTHON_BINDINGS 1 CACHE BOOL "Enable python bindings.")
 set(GEN_LUA_BINDINGS 1 CACHE BOOL "Enable Lua bindings.")
 set(GEN_CPP_BINDINGS 1 CACHE BOOL "Enable C++ bindings.")
 set(BUILD_CPP_EXAMPLES 1 CACHE BOOL "Build C++ examples.")
-set(GEN_JAVA_BINDINGS 1 CACHE BOOL "Enable Java bindings.")
+set(GEN_JAVA_BINDINGS 0 CACHE BOOL "Enable Java bindings.")
 set(GEN_PYTHON_VERSION "2" CACHE STRING "Python version")
 set(GEN_LUA_VERSION "5.1" CACHE STRING "Lua version")
 
