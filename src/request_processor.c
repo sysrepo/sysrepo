@@ -1086,6 +1086,7 @@ rp_commit_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, boo
     dm_commit_context_t *c_ctx = NULL;
     sr_error_info_t *errors = NULL;
     size_t err_cnt = 0;
+    bool locked = false;
 
     CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->commit_req);
 
@@ -1101,6 +1102,9 @@ rp_commit_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, boo
         return SR_ERR_NOMEM;
     }
 
+    MUTEX_LOCK_TIMED_CHECK_GOTO(&session->cur_req_mutex, rc, cleanup);
+    locked = true;
+
     if (RP_REQ_RESUMED == session->state) {
         rc = dm_get_commit_context(rp_ctx->dm_ctx, session->commit_id, &c_ctx);
         CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to resume commit, commit ctx with id %"PRIu32" not found.", session->commit_id);
@@ -1112,18 +1116,27 @@ rp_commit_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, boo
     }
 
     if (SR_ERR_OK == rc ) {
+        session->req = msg;
         rc = rp_dt_commit(rp_ctx, session, c_ctx, &errors, &err_cnt);
+        SR_LOG_DBG_MSG("Rp dt commit returned");
     }
     if (SR_ERR_OK == rc && RP_REQ_WAITING_FOR_VERIFIERS == session->state) {
         SR_LOG_DBG_MSG("Request paused, waiting for verifiers");
-        session->req = msg;
         /* we are waiting for verifiers data do not free the request */
         *skip_msg_cleanup = true;
         sr_msg_free(resp);
+        pthread_mutex_unlock(&session->cur_req_mutex);
+        SR_LOG_INF_MSG("UNLocking mutex");
         return SR_ERR_OK;
     }
 
 cleanup:
+    session->state = RP_REQ_FINISHED;
+    session->req = NULL;
+    if (locked) {
+        pthread_mutex_unlock(&session->cur_req_mutex);
+        SR_LOG_INF_MSG("UNLocking mutex");
+    }
     /* set response code */
     resp->response->result = rc;
 
@@ -1135,7 +1148,6 @@ cleanup:
 
     /* send the response */
     rc = cm_msg_send(rp_ctx->cm_ctx, resp);
-    session->state = RP_REQ_FINISHED;
     return rc;
 }
 
@@ -3045,20 +3057,31 @@ rp_resume_commit(rp_ctx_t *rp_ctx, uint32_t commit_id, int result,
     CHECK_NULL_ARG(rp_ctx);
     int rc = SR_ERR_OK;
     dm_commit_context_t *c_ctx = NULL;
+    dm_commit_ctxs_t *dm_ctxs = NULL;
+    bool locked = false;
+
+    rc = dm_get_commit_ctxs(rp_ctx->dm_ctx, &dm_ctxs);
+    CHECK_RC_MSG_RETURN(rc, "Get commit ctx failed");
+    pthread_rwlock_rdlock(&dm_ctxs->lock);
+    locked = true;
 
     rc = dm_get_commit_context(rp_ctx->dm_ctx, commit_id, &c_ctx);
     CHECK_RC_LOG_GOTO(rc, cleanup, "Commit ctx with id %"PRIu32" not found", commit_id);
 
+    SR_LOG_DBG("Commit context in state %d", c_ctx->state);
+
     if (DM_COMMIT_WAIT_FOR_NOTIFICATIONS == c_ctx->state &&
-        NULL != c_ctx->init_session &&
-        RP_REQ_WAITING_FOR_VERIFIERS == c_ctx->init_session->state) {
+        NULL != c_ctx->init_session) {
 
         SR_LOG_INF("Resuming commit with id %"PRIu32" continue with %s", commit_id, SR_ERR_OK == result ? "write" : "abort");
         c_ctx->state = SR_ERR_OK == result ? DM_COMMIT_WRITE : DM_COMMIT_NOTIFY_ABORT;
         c_ctx->err_subs_xpaths = err_subs_xpaths;
 
+        MUTEX_LOCK_TIMED_CHECK_GOTO(&c_ctx->init_session->cur_req_mutex, rc, cleanup);
         c_ctx->init_session->state = RP_REQ_RESUMED;
         c_ctx->init_session->commit_id = commit_id;
+        pthread_mutex_unlock(&c_ctx->init_session->cur_req_mutex);
+        SR_LOG_INF_MSG("UNLocking mutex");
 
         if (NULL != errors) {
             c_ctx->errors = calloc(errors->count, sizeof(*c_ctx->errors));
@@ -3075,18 +3098,27 @@ rp_resume_commit(rp_ctx_t *rp_ctx, uint32_t commit_id, int result,
             sr_list_cleanup(errors);
         }
         /* reenqueue the request */
+        SR_LOG_INF_MSG("REENQUEING COMMIT MSG");
         rc = rp_msg_process(rp_ctx, c_ctx->init_session, c_ctx->init_session->req);
         c_ctx->init_session->req = NULL;
-    } else {
+        pthread_rwlock_unlock(&dm_ctxs->lock);
+    } else if (DM_COMMIT_FINISHED == c_ctx->state){
+        pthread_rwlock_unlock(&dm_ctxs->lock);
+        locked = false;
         /* apply or abort phase finished, release commit context */
         SR_LOG_INF("Commit id %"PRIu32" received all notifications", commit_id);
         rc = dm_commit_notifications_complete(rp_ctx->dm_ctx, commit_id);
         goto cleanup;
+    } else {
+        SR_LOG_WRN("Commit id %"PRIu32" is unexpected state failed to resume", commit_id);
+        pthread_rwlock_unlock(&dm_ctxs->lock);
     }
-
     return rc;
 
 cleanup:
+    if (locked) {
+        pthread_rwlock_unlock(&dm_ctxs->lock);
+    }
     /* cleanup error lists */
     if (NULL != err_subs_xpaths) {
         for (size_t i = 0; i < err_subs_xpaths->count; i++) {
