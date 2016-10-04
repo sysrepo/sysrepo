@@ -28,6 +28,7 @@
 #include <fcntl.h>
 #include <ctype.h>
 #include <signal.h>
+#include <stdarg.h>
 #include <libyang/libyang.h>
 
 #include "sr_common.h"
@@ -1687,6 +1688,51 @@ sr_free_node(sr_node_t *node)
         sr_free_val_content((sr_val_t *)node);
         free(node);
     }
+}
+
+int
+sr_add_error(sr_error_info_t **sr_errors, size_t *sr_error_cnt, const char *xpath,
+        const char *msg_fmt, ...)
+{
+    CHECK_NULL_ARG3(sr_errors, sr_error_cnt, msg_fmt);
+    int rc = SR_ERR_OK;
+    int length = 0;
+    char *message = NULL;
+    char *xpath_dup = NULL;
+    sr_error_info_t *tmp_errors = NULL;
+
+    va_list va;
+    va_start(va, msg_fmt);
+
+    /* copy xpath */
+    if (NULL != xpath) {
+        xpath_dup = strdup(xpath);
+        CHECK_NULL_NOMEM_GOTO(xpath_dup, rc, cleanup);
+    }
+
+    /* construct error message */
+    length = vsnprintf(NULL, 0, msg_fmt, va);
+    message = calloc(length+1, sizeof *message);
+    CHECK_NULL_NOMEM_GOTO(message, rc, cleanup);
+    va_end(va); /**< restart va_list */
+    va_start(va, msg_fmt);
+    vsnprintf(message, length+1, msg_fmt, va);
+
+    /* add error into the array */
+    tmp_errors = realloc(*sr_errors, (*sr_error_cnt+1) * sizeof(**sr_errors));
+    CHECK_NULL_NOMEM_GOTO(tmp_errors, rc, cleanup);
+    *sr_errors = tmp_errors;
+    (*sr_errors)[*sr_error_cnt].message = message;
+    (*sr_errors)[*sr_error_cnt].xpath = xpath_dup;
+    (*sr_error_cnt) += 1;
+
+cleanup:
+    if (SR_ERR_OK != rc) {
+        free(xpath_dup);
+        free(message);
+    }
+    va_end(va);
+    return rc;
 }
 
 void

@@ -440,6 +440,17 @@ void sr_free_tree_content(sr_node_t *tree);
 void sr_free_node(sr_node_t *node);
 
 /**
+ * @brief Add error into the array of detailed error information.
+ *
+ * @param[in, out] sr_errors Array of detailed error information.
+ * @param[in, out] sr_error_cnt Number of errors in the sr_errors array.
+ * @param[in] xpath Xpath to the node where the error has been discovered.
+ * @param[in] msg_fmt Error message format string.
+ */
+int sr_add_error(sr_error_info_t **sr_errors, size_t *sr_error_cnt, const char *xpath,
+        const char *msg_fmt, ...);
+
+/**
  * @brief Frees an array of detailed error information.
  *
  * @param[in] sr_errors Array of detailed error information.

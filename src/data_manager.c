@@ -2123,17 +2123,9 @@ dm_validate_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error
             }
             if (0 != lyd_validate(&info->node, LYD_OPT_STRICT | LYD_OPT_NOAUTODEL | LYD_OPT_CONFIG, info->schema->ly_ctx)) {
                 SR_LOG_DBG("Validation failed for %s module", info->schema->module->name);
-                (*err_cnt)++;
-                sr_error_info_t *tmp_err = realloc(*errors, *err_cnt * sizeof(**errors));
-                if (NULL == tmp_err) {
-                    SR_LOG_ERR_MSG("Memory allocation failed");
-                    sr_free_errors(*errors, *err_cnt - 1);
-                    return SR_ERR_NOMEM;
+                if (SR_ERR_OK != sr_add_error(errors, err_cnt, ly_errpath(), "%s", ly_errmsg())) {
+                    SR_LOG_WRN_MSG("Failed to record validation error");
                 }
-                *errors = tmp_err;
-                (*errors)[(*err_cnt) - 1].message = strdup(ly_errmsg());
-                (*errors)[(*err_cnt) - 1].xpath = strdup(ly_errpath());
-
                 rc = SR_ERR_VALIDATION_FAILED;
             } else {
                 SR_LOG_DBG("Validation succeeded for '%s' module", info->schema->module->name);
@@ -2781,9 +2773,10 @@ dm_commit_lock_model(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_
 }
 
 int
-dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm_commit_context_t *c_ctx)
+dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm_commit_context_t *c_ctx,
+        sr_error_info_t **errors, size_t *err_cnt)
 {
-    CHECK_NULL_ARG(c_ctx);
+    CHECK_NULL_ARG3(c_ctx, errors, err_cnt);
     CHECK_NULL_ARG5(dm_ctx, session, c_ctx->session, c_ctx->fds, c_ctx->existed);
     CHECK_NULL_ARG(c_ctx->up_to_date_models);
     dm_data_info_t *info = NULL;
@@ -2806,8 +2799,13 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
             rc = dm_has_not_enabled_nodes(info, &has_not_enabled);
             CHECK_RC_LOG_RETURN(rc, "Has not enabled check failed for module %s", info->schema->module->name);
             if (has_not_enabled) {
-                SR_LOG_ERR("There is a not enabled node in %s module, it can not be committed to the running", info->schema->module->name);
+#define ERR_FMT "There is a not enabled node in %s module, it can not be committed to the running"
+                if (SR_ERR_OK != sr_add_error(errors, err_cnt, NULL, ERR_FMT, info->schema->module->name)) {
+                    SR_LOG_WRN_MSG("Failed to record commit operation error");
+                }
+                SR_LOG_ERR(ERR_FMT, info->schema->module->name);
                 return SR_ERR_OPERATION_FAILED;
+#undef ERR_FMT
             }
         }
     }
@@ -2826,9 +2824,14 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
         if (-1 == c_ctx->fds[count]) {
             SR_LOG_DBG("File %s can not be opened for read write", file_name);
             if (EACCES == errno) {
-                SR_LOG_ERR("File %s can not be opened because of authorization", file_name);
+#define ERR_FMT "File %s can not be opened because of authorization"
+                if (SR_ERR_OK != sr_add_error(errors, err_cnt, NULL, ERR_FMT, file_name)) {
+                    SR_LOG_WRN_MSG("Failed to record commit operation error");
+                }
+                SR_LOG_ERR(ERR_FMT, file_name);
                 rc = SR_ERR_UNAUTHORIZED;
                 goto cleanup;
+#undef ERR_FMT
             }
 
             if (ENOENT == errno) {
@@ -2844,9 +2847,14 @@ dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm
         /* try to lock for write, non-blocking */
         rc = sr_lock_fd(c_ctx->fds[count], true, false);
         if (SR_ERR_OK != rc) {
-            SR_LOG_ERR("Locking of file '%s' failed: %s.", file_name, sr_strerror(rc));
+#define ERR_FMT "Locking of file '%s' failed: %s."
+            if (SR_ERR_OK != sr_add_error(errors, err_cnt, NULL, ERR_FMT, file_name, sr_strerror(rc))) {
+                SR_LOG_WRN_MSG("Failed to record commit operation error");
+            }
+            SR_LOG_ERR(ERR_FMT, file_name, sr_strerror(rc));
             rc = SR_ERR_OPERATION_FAILED;
             goto cleanup;
+#undef ERR_FMT
         }
         dm_data_info_t *di = NULL;
 
