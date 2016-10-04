@@ -731,6 +731,9 @@ cl_sm_notif_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *msg)
                 /* error info was provided */
                 rc = sr_gpb_fill_error(data_session->error_info->message, data_session->error_info->xpath, sr_mem,
                         &ack_msg->notification_ack->error);
+                if (SR_ERR_OK != rc) {
+                    SR_LOG_WRN_MSG("Unable to fill errors into notification ACK message.");
+                }
             }
         }
         if (SR_ERR_OK == rc_tmp) {

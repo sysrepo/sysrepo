@@ -20,8 +20,15 @@
  * limitations under the License.
  */
 
-#ifndef TREES_H_
-#define TREES_H_
+#ifndef SYSREPO_TREES_H_
+#define SYSREPO_TREES_H_
+
+/**
+ * @defgroup trees Tree Manipulation Utilities
+ * @{
+ *
+ *  @brief TODO
+ */
 
 /**
  * @brief Allocate an instance of Sysrepo tree. The newly allocated tree has only
@@ -135,4 +142,6 @@ sr_node_t *sr_node_get_next_sibling(sr_session_ctx_t *session, sr_node_t *node);
  */
 sr_node_t *sr_node_get_parent(sr_session_ctx_t *session, sr_node_t *node);
 
-#endif /* TREES_H_ */
+/**@} trees */
+
+#endif /* SYSREPO_TREES_H_ */

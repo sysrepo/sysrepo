@@ -702,9 +702,10 @@ main (int argc, char **argv)
 
     size_t test_count = sizeof(tests)/sizeof(*tests);
 
-    int selection = -1;
+    int selection = -1, ret = -1;
     if (argc > 1) {
-        sscanf(argv[1], "%d", &selection);
+        ret = sscanf(argv[1], "%d", &selection);
+        assert_int_equal(ret, 1);
     }
     /* one list instance */
     createDataTreeExampleModule();

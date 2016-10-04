@@ -19,10 +19,14 @@
  * limitations under the License.
  */
 
-#ifndef XPATH_UTILS_H
-#define XPATH_UTILS_H
+#ifndef SYSREPO_XPATH_H_
+#define SYSREPO_XPATH_H_
 
-/** Set of helpers working on a subset of xpath expressions used of node identification
+/**
+ * @defgroup xpath_utils XPath Processing Utilities
+ * @{
+ *
+ *  @brief Set of helpers working on a subset of xpath expressions used of node identification
  *  Functions modify inputs arguments by placing termination zero at appropriate places to save up
  *  string duplication. The state of processing is stored in ::sr_address_state_t opaque for user.
  *  It allows to continue in processing where the processing stopped or recover processed input.
@@ -35,7 +39,7 @@
  */
 
 /**
- * State of xpath parsing. User must not modify nor rely on the content
+ * @brief State of xpath parsing. User must not modify nor rely on the content
  * of the structure.
  */
 typedef struct sr_xpath_ctx_s {
@@ -133,7 +137,6 @@ char *sr_xpath_node_idx(char *xpath, size_t index, sr_xpath_ctx_t *state);
  */
 char *sr_xpath_node_idx_rel(char *xpath, size_t index, sr_xpath_ctx_t *state);
 
-
 /**
  * @brief Looks up the value for the key at the current level in xpath.
  *
@@ -178,7 +181,6 @@ char *sr_xpath_key_value(char *xpath, const char *node_name, const char *key_nam
  */
 char *sr_xpath_key_value_idx(char *xpath, size_t node_index, size_t key_index, sr_xpath_ctx_t *state);
 
-
 /**
  * @brief Returns pointer to the last node.
  * @param [in] xpath
@@ -201,6 +203,7 @@ char *sr_xpath_node_name(const char *xpath);
  */
 void sr_xpath_recover(sr_xpath_ctx_t *state);
 
+/**@} xpath_utils */
 
-#endif /* XPATH_UTILS_H */
+#endif /* SYSREPO_XPATH_H_ */
 

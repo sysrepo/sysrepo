@@ -25,7 +25,7 @@
 #include <iostream>
 
 extern "C" {
-#include "sysrepo/xpath_utils.h"
+#include "sysrepo/xpath.h"
 }
 
 using namespace std;
