@@ -3744,7 +3744,6 @@ cl_cross_module_dependency(void **state)
 {
     sr_conn_ctx_t *conn = *state;
     assert_non_null(conn);
-#if 0
     sr_session_ctx_t *session = NULL;
 
     int rc = SR_ERR_OK;
@@ -3828,7 +3827,6 @@ cl_cross_module_dependency(void **state)
     assert_int_equal(SR_ERR_OK, rc);
 
     sr_session_stop(session);
-#endif
 }
 
 int
