@@ -154,13 +154,13 @@ sr_pd_load_plugins(sr_session_ctx_t *session, sr_pd_plugin_ctx_t **plugins_p, si
 
     dir = opendir(plugins_dir);
     if (NULL == dir) {
-        SR_LOG_ERR("Error by opening plugin directory: %s.\n", sr_strerror_safe(errno));
+        SR_LOG_ERR("Error by opening plugin directory: %s.", sr_strerror_safe(errno));
         return SR_ERR_INVAL_ARG;
     }
     do {
         ret = readdir_r(dir, &entry, &result);
         if (0 != ret) {
-            SR_LOG_ERR("Error by reading plugin directory: %s.\n", sr_strerror_safe(errno));
+            SR_LOG_ERR("Error by reading plugin directory: %s.", sr_strerror_safe(errno));
             break;
         }
         if ((NULL != result) && sr_str_ends_with(entry.d_name, SR_PLUGIN_FILE_EXT)) {
@@ -244,7 +244,7 @@ main(int argc, char* argv[])
     size_t plugins_cnt = 0;
     sr_conn_ctx_t *connection = NULL;
     sr_session_ctx_t *session = NULL;
-    struct ev_loop *event_loop =  EV_DEFAULT;
+    struct ev_loop *event_loop =  NULL;
     ev_signal signal_watcher[2];
     int rc = SR_ERR_OK;
 
@@ -277,6 +277,9 @@ main(int argc, char* argv[])
     parent_pid = sr_daemonize(debug_mode, log_level, SR_PLUGIN_DAEMON_PID_FILE, &pidfile_fd);
 
     SR_LOG_DBG_MSG("Sysrepo plugin daemon initialization started.");
+
+    /* init the event loop */
+    event_loop = ev_loop_new(EVFLAG_AUTO);
 
     /* init signal watchers */
     ev_signal_init(&signal_watcher[0], cm_signal_cb_internal, SIGTERM);
