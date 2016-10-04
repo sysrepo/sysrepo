@@ -304,8 +304,7 @@ Trees::~Trees() {return;}
 S_Tree Trees::tree(size_t n) {
     if (_trees == NULL || n >= _cnt) return NULL;
 
-    S_Counter counter(new Counter(&_trees[n]));
-    S_Tree tree(new Tree(&_trees[n], counter));
+    S_Tree tree(new Tree(&_trees[n], _counter));
     return tree;
 }
 S_Trees Trees::dup() {
