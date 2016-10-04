@@ -26,9 +26,11 @@ macro(INSTALL_EXAMPLE_YANG MODULE_NAME REVISION)
     # install the YANG module
     set(CMD "${CMAKE_BINARY_DIR}/src/sysrepoctl --install --yang=${CMAKE_CURRENT_SOURCE_DIR}/yang/${MODULE_NAME}${REVISION}.yang --permissions=666")
     install(CODE "execute_process(COMMAND ${CMD} OUTPUT_QUIET)")
-    # import data into module
-    set(CMD "${CMAKE_BINARY_DIR}/src/sysrepocfg --import=${CMAKE_CURRENT_SOURCE_DIR}/yang/${MODULE_NAME}.data.xml --datastore=startup --format=xml --level=0 ${MODULE_NAME}")
-    install(CODE "execute_process(COMMAND ${CMD} OUTPUT_QUIET)")
+    if (EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/yang/${MODULE_NAME}.data.xml)
+        # import data into module
+        set(CMD "${CMAKE_BINARY_DIR}/src/sysrepocfg --import=${CMAKE_CURRENT_SOURCE_DIR}/yang/${MODULE_NAME}.data.xml --datastore=startup --format=xml --level=0 ${MODULE_NAME}")
+        install(CODE "execute_process(COMMAND ${CMD} OUTPUT_QUIET)")
+    endif()
 endmacro(INSTALL_EXAMPLE_YANG)
 
 INSTALL_EXAMPLE_YANG("turing-machine" "")
