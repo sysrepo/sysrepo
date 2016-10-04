@@ -116,7 +116,7 @@ public:
     void event_notif_subscribe(const char *xpath, S_Callback callback, void *private_ctx = NULL, sr_subscr_options_t opts = SUBSCR_DEFAULT);
     void rpc_subscribe_tree(const char *xpath, S_Callback callback, void *private_ctx = NULL, sr_subscr_options_t opts = SUBSCR_DEFAULT);
     void dp_get_items_subscribe(const char *xpath, S_Callback callback, void *private_ctx = NULL, sr_subscr_options_t opts = SUBSCR_DEFAULT);
-    std::vector<S_Callback> cb_list;
+    std::vector<S_Callback > cb_list;
 
     void unsubscribe();
     S_Iter_Change get_changes_iter(const char *xpath);
