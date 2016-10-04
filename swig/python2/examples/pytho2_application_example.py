@@ -108,7 +108,7 @@ try:
     # subscribe for changes in running config */
     subscribe = sr.Subscribe(sess)
 
-    subscribe.module_change_subscribe(module_name, module_change_cb)
+    subscribe.module_change_subscribe(module_name, module_change_cb, None, 0, sr.SR_SUBSCR_DEFAULT | sr.SR_SUBSCR_APPLY_ONLY)
 
     print "\n\n ========== READING STARTUP CONFIG: ==========\n"
     try:

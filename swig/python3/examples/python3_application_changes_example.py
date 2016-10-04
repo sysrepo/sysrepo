@@ -19,6 +19,7 @@ __license__ = "Apache 2.0"
 import libsysrepoPython3 as sr
 import sys
 
+# Function for printing out values depending on their type.
 def print_value(value):
     print(value.xpath(), " ",end=" ")
 
@@ -62,6 +63,7 @@ def print_value(value):
     else:
         print("(unprintable)")
 
+# Helper function for printing changes given operation, old and new value.
 def print_change(op, old_val, new_val):
     if (op == sr.SR_OP_CREATED):
            print("CREATED: ", end="")
@@ -78,6 +80,19 @@ def print_change(op, old_val, new_val):
     elif (op == sr.SR_OP_MOVED):
         print("MOVED: ", new_val.get_xpath(), " after ", old_val.get_xpath())
 
+# Helper function for printing events.
+def ev_to_str(ev):
+    if (ev == sr.SR_EV_VERIFY):
+        return "verify"
+    elif (ev == sr.SR_EV_APPLY):
+        return "apply"
+    elif (ev == sr.SR_EV_ABORT):
+        return "abort"
+    else:
+        return "abort"
+
+# Function to print current configuration state.
+# It does so by loading all the items of a session and printing them out.
 def print_current_config(session, module_name):
     select_xpath = "/" + module_name + ":*//*"
 
@@ -86,15 +101,17 @@ def print_current_config(session, module_name):
     for i in range(values.val_cnt()):
         print_value(values.val(i))
 
+# Function to be called for subscribed client of given session whenever configuration changes.
 def module_change_cb(sess, module_name, event, private_ctx):
-    print("\n\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: ==========\n\n")
+    print("\n\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: ==========\n")
 
     try:
-        print_current_config(sess, module_name)
+        print("\n\n ========== Notification " + ev_to_str(event) + " =============================================\n")
+        if (sr.SR_EV_APPLY == event):
+            print ("\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: ==========\n")
+            print_current_config(sess, module_name);
 
-        print("\n\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: ==========\n\n")
-
-        print("\n\n ========== CHANGES: =============================================\n\n")
+        print("\n ========== CHANGES: =============================================\n")
 
         change_path = "/", module_name + ":*"
 
@@ -107,13 +124,15 @@ def module_change_cb(sess, module_name, event, private_ctx):
                 break
             print_change(change.oper(), change.old_val(), change.new_val())
 
-        print("\n\n ========== END OF CHANGES =======================================\n\n")
+        print("\n\n ========== END OF CHANGES =======================================\n")
 
     except Exception as e:
         print(e)
 
     return sr.SR_ERR_OK
 
+# Notable difference between c implementation is using exception mechanism for open handling unexpected events.
+# Here it is useful because `Conenction`, `Session` and `Subscribe` could throw an exception.
 try:
     module_name = "ietf-interfaces"
     if len(sys.argv) > 1:
