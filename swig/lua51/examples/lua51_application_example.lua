@@ -93,6 +93,7 @@ function run()
     subscribe = sr.Subscribe(sess)
 
     wrap = sr.Callback(module_change_cb)
+
     subscribe:module_change_subscribe("ietf-interfaces", wrap);
 
     print("\n\n ========== READING STARTUP CONFIG: ==========\n");

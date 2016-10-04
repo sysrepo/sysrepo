@@ -23,6 +23,7 @@ import java.io.*;
 import java.util.Scanner;
 
 class Print {
+	/* Function for printing out values depending on their type. */
 	public void print_value(Val value) {
 		System.out.print(value.xpath() + " ");
 
@@ -67,6 +68,8 @@ class Print {
 			System.out.println( "(unprintable)");
 	}
 
+	/* Function to print current configuration state.
+	 * It does so by loading all the items of a session and printing them out. */
 	public void current_config(Session session, String module_name) {
 		String select_xpath = "/" + module_name + ":*//*";
 
@@ -79,6 +82,7 @@ class Print {
 }
 
 class My_Callback extends Callback {
+	/* Function to be called for subscribed client of given session whenever configuration changes. */
 	public void module_change(Session sess, String module_name, sr_notif_event_t event, SWIGTYPE_p_void private_ctx) {
 		System.out.println("\n\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: ==========\n");
 
@@ -87,6 +91,8 @@ class My_Callback extends Callback {
 	}
 }
 
+/* Notable difference between c implementation is using exception mechanism for open handling unexpected events.
+ * Here it is useful because `Conenction`, `Session` and `Subscribe` could throw an exception. */
 public class javaApplicationExample {
 	static {
 		System.loadLibrary("libsysrepoJava");
@@ -105,6 +111,7 @@ public class javaApplicationExample {
 			Subscribe subscribe = new Subscribe(sess);
 
 			My_Callback cb = new My_Callback();
+
 			subscribe.module_change_subscribe(module_name, cb);
 
 			System.out.println("\n\n ========== READING STARTUP CONFIG: ==========\n");

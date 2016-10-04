@@ -33,6 +33,7 @@ using namespace std;
 
 volatile int exit_application = 0;
 
+/* Function for printing out values depending on their type. */
 void
 print_value(S_Val value)
 {
@@ -98,6 +99,8 @@ print_value(S_Val value)
     return;
 }
 
+/* Function to print current configuration state.
+ * It does so by loading all the items of a session and printing them out. */
 static void
 print_current_config(S_Session session, const char *module_name)
 {
@@ -118,6 +121,7 @@ print_current_config(S_Session session, const char *module_name)
 
 class My_Callback:public Callback {
     public:
+    /* Function to be called for subscribed client of given session whenever configuration changes. */
     void module_change(S_Session sess, const char *module_name, sr_notif_event_t event, void *private_ctx)
     {
         cout << "\n\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: ==========\n" << endl;
@@ -132,6 +136,8 @@ sigint_handler(int signum)
     exit_application = 1;
 }
 
+/* Notable difference between c implementation is using exception mechanism for open handling unexpected events.
+ * Here it is useful because `Conenction`, `Session` and `Subscribe` could throw an exception. */
 int
 main(int argc, char **argv)
 {
@@ -140,10 +146,10 @@ main(int argc, char **argv)
         if (argc > 1) {
             module_name = argv[1];
         } else {
-            printf("\nYou can pass the module name to be subscribed as the first argument\n");
+            cout << "\nYou can pass the module name to be subscribed as the first argument" << endl;
         }
 
-        printf("Application will watch for changes in %s\n", module_name);
+        cout << "Application will watch for changes in "<< module_name << endl;
         S_Connection conn(new Connection("examples_application"));
 
         S_Session sess(new Session(conn));
@@ -154,7 +160,7 @@ main(int argc, char **argv)
         S_Subscribe subscribe(new Subscribe(sess));
 	S_Callback cb(new My_Callback());
 
-        subscribe->module_change_subscribe(module_name, cb);
+        subscribe->module_change_subscribe(module_name, cb, NULL, 0, SR_SUBSCR_DEFAULT | SR_SUBSCR_APPLY_ONLY);
 
         print_current_config(sess, module_name);
 
@@ -166,7 +172,7 @@ main(int argc, char **argv)
             sleep(1000);  /* or do some more useful work... */
         }
 
-        printf("Application exit requested, exiting.\n");
+        cout << "Application exit requested, exiting." << endl;
 
     } catch( const std::exception& e ) {
         cout << e.what() << endl;

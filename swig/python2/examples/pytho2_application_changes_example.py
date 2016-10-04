@@ -90,6 +90,17 @@ def print_change(op, old_val, new_val):
     elif (op == sr.SR_OP_MOVED):
         print "MOVED: " + new_val.xpath() + " after " + old_val.xpath()
 
+# Helper function for printing events.
+def ev_to_str(ev):
+    if (ev == sr.SR_EV_VERIFY):
+        return "verify"
+    elif (ev == sr.SR_EV_APPLY):
+        return "apply"
+    elif (ev == sr.SR_EV_ABORT):
+        return "abort"
+    else:
+        return "abort"
+
 # Function to print current configuration state.
 # It does so by loading all the items of a session and printing them out.
 def print_current_config(session, module_name):
@@ -102,14 +113,15 @@ def print_current_config(session, module_name):
 
 # Function to be called for subscribed client of given session whenever configuration changes.
 def module_change_cb(sess, module_name, event, private_ctx):
-    print "\n\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: ==========\n\n"
+    print "\n\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: ==========\n"
 
     try:
-        print_current_config(sess, module_name)
+        print "\n\n ========== Notification " + ev_to_str(event) + " =============================================\n"
+        if (sr.SR_EV_APPLY == event):
+            print "\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: ==========\n"
+            print_current_config(sess, module_name);
 
-        print "\n\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: ==========\n\n"
-
-        print "\n\n ========== CHANGES: =============================================\n\n"
+        print "\n ========== CHANGES: =============================================\n"
 
         change_path = "/" + module_name + ":*"
 
@@ -122,7 +134,7 @@ def module_change_cb(sess, module_name, event, private_ctx):
                 break
             print_change(change.oper(), change.old_val(), change.new_val())
 
-        print "\n\n ========== END OF CHANGES =======================================\n\n"
+        print "\n\n ========== END OF CHANGES =======================================\n"
 
     except Exception as e:
         print e

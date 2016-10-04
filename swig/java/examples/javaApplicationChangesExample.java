@@ -22,6 +22,7 @@
 import java.io.*;
 import java.util.Scanner;
 
+/* Function for printing out values depending on their type. */
 class Print {
 	public void print_value(Val value) {
 		System.out.print(value.xpath() + " ");
@@ -67,6 +68,7 @@ class Print {
 			System.out.println( "(unprintable)");
 	}
 
+	/* Helper function for printing changes given operation, old and new value. */
 	public void change(sr_change_oper_t op, Val old_val, Val new_val) {
 		if (op == sr_change_oper_t.SR_OP_CREATED) {
 			System.out.print("CREATED: ");
@@ -85,6 +87,21 @@ class Print {
 		}
 	}
 
+	/* Helper function for printing events. */
+	public String ev_to_str(sr_notif_event_t ev) {
+		if (ev == sr_notif_event_t.SR_EV_VERIFY) {
+			return "verify";
+		} else if (ev == sr_notif_event_t.SR_EV_APPLY) {
+			return "apply";
+		} else if (ev == sr_notif_event_t.SR_EV_ABORT) {
+			return "abort";
+		} else {
+			return "abort";
+		}
+	}
+
+	/* Function to print current configuration state.
+	 * It does so by loading all the items of a session and printing them out. */
 	public void current_config(Session session, String module_name) {
 		String select_xpath = "/" + module_name + ":*//*";
 
@@ -97,14 +114,20 @@ class Print {
 }
 
 class My_Callback extends Callback {
+	/* Function to be called for subscribed client of given session whenever configuration changes. */
 	public void module_change(Session sess, String module_name, sr_notif_event_t event, SWIGTYPE_p_void private_ctx) {
 		System.out.println("\n\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: ==========\n");
 
 		try {
 			Print print = new Print();
-			print.current_config(sess, module_name);
+			System.out.println("\n\n ========== Notification " + print.ev_to_str(event) + " =============================================\n");
+			if (sr_notif_event_t.SR_EV_APPLY == event) {
+				print.current_config(sess, module_name);
 
-			System.out.println("\n\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: ==========\n");
+				System.out.println("\n\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: ==========\n");
+			}
+
+			System.out.println("\n\n ========== CHANGES: =============================================\n");
 
 			String change_path = "/" + module_name + ":*";
 
@@ -125,6 +148,8 @@ class My_Callback extends Callback {
 	}
 }
 
+/* Notable difference between c implementation is using exception mechanism for open handling unexpected events.
+ * Here it is useful because `Conenction`, `Session` and `Subscribe` could throw an exception. */
 public class javaApplicationChangesExample {
 	static {
 		System.loadLibrary("libsysrepoJava");
