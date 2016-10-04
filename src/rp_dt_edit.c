@@ -722,18 +722,15 @@ rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t *c_ctx
             state = DM_COMMIT_NOTIFY_VERIFY;
             break;
         case DM_COMMIT_NOTIFY_VERIFY:
+            commit_ctx->init_session = session;
             rc = dm_commit_notify(rp_ctx->dm_ctx, session->dm_session, SR_EV_VERIFY, commit_ctx);
             CHECK_RC_MSG_GOTO(rc, cleanup, "Sending of verify notifications failed");
             state = commit_ctx->state;
             break;
         case DM_COMMIT_WAIT_FOR_NOTIFICATIONS:
-            rc = dm_save_commit_context(rp_ctx->dm_ctx, commit_ctx);
-            CHECK_RC_MSG_GOTO(rc, cleanup, "Saving of commit context failed");
             SR_LOG_DBG("Commit %"PRIu32" processing paused waiting for replies from verifiers", commit_ctx->id);
             session->state = RP_REQ_WAITING_FOR_VERIFIERS;
-            commit_ctx->init_session = session;
             return rc;
-            break;
         case DM_COMMIT_WRITE:
             rc = dm_commit_write_files(session->dm_session, commit_ctx);
             if (SR_ERR_OK == rc) {

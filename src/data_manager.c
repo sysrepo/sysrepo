@@ -3126,7 +3126,13 @@ dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, sr_notif_event_t ev, d
         }
     }
 
-    if (SR_EV_APPLY == ev || SR_EV_ABORT == ev) {
+    if (SR_EV_VERIFY == ev) {
+        rc = dm_save_commit_context(dm_ctx, c_ctx);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR_MSG("Saving of commit context failed");
+        }
+    } else {
+        /* apply abort */
         dm_release_resources_commit_context(dm_ctx, c_ctx);
         rc = dm_save_commit_context(dm_ctx, c_ctx);
         /* if there is a verify subscription commit context is already saved */
@@ -3135,17 +3141,19 @@ dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, sr_notif_event_t ev, d
         }
     }
 
-    /* let the np know that the commit has finished */
-    if (SR_ERR_OK == rc && notified_notif->count > 0) {
-        rc = np_commit_notifications_sent(dm_ctx->np_ctx, c_ctx->id, SR_EV_VERIFY != ev, notified_notif);
-    }
-
     if (SR_EV_VERIFY == ev ){
         if (notified_notif->count > 0) {
             c_ctx->state = DM_COMMIT_WAIT_FOR_NOTIFICATIONS;
         } else {
             c_ctx->state = DM_COMMIT_WRITE;
         }
+    } else {
+        c_ctx->state = DM_COMMIT_FINISHED;
+    }
+
+    /* let the np know that the commit has finished */
+    if (SR_ERR_OK == rc && notified_notif->count > 0) {
+        rc = np_commit_notifications_sent(dm_ctx->np_ctx, c_ctx->id, SR_EV_VERIFY != ev, notified_notif);
     }
 
     sr_list_cleanup(notified_notif);
