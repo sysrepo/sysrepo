@@ -193,7 +193,7 @@ rp_list_schemas_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session,
     }
 
     /* copy schemas to response */
-    if (SR_ERR_OK == rc) {
+    if (SR_ERR_OK == rc && schema_cnt > 0) {
         rc = sr_schemas_sr_to_gpb(schemas, schema_cnt, &resp->response->list_schemas_resp->schemas);
     }
     if (SR_ERR_OK == rc) {

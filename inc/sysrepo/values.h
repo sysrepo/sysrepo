@@ -20,8 +20,15 @@
  * limitations under the License.
  */
 
-#ifndef VALUES_H_
-#define VALUES_H_
+#ifndef SYSREPO_VALUES_H_
+#define SYSREPO_VALUES_H_
+
+/**
+ * @defgroup values Value Manipulation Utilities
+ * @{
+ *
+ *  @brief TODO
+ */
 
 /**
  * @brief Allocate an instance of Sysrepo value.
@@ -74,4 +81,6 @@ int sr_dup_val(sr_val_t *value, sr_val_t **value_dup);
  */
 int sr_dup_values(sr_val_t *values, size_t count, sr_val_t **values_dup);
 
-#endif /* VALUES_H_ */
+/**@} values */
+
+#endif /* SYSREPO_VALUES_H_ */

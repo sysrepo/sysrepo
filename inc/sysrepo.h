@@ -19,8 +19,8 @@
  * limitations under the License.
  */
 
-#ifndef SYSREPO_H__
-#define SYSREPO_H__
+#ifndef SYSREPO_H_
+#define SYSREPO_H_
 
 /**
  * @defgroup cl Client Library
@@ -1519,7 +1519,7 @@ int sr_event_notif_send_tree(sr_session_ctx_t *session, const char *xpath,
 
 
 ////////////////////////////////////////////////////////////////////////////////
-// Operational Data API - EXPERIMENTAL (work in progress) !!!
+// Operational Data API
 ////////////////////////////////////////////////////////////////////////////////
 
 /**
@@ -1699,4 +1699,4 @@ void sr_free_trees(sr_node_t *trees, size_t count);
 
 /**@} cl */
 
-#endif
+#endif /* SYSREPO_H_ */

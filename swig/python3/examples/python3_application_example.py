@@ -19,6 +19,7 @@ __license__ = "Apache 2.0"
 import libsysrepoPython3 as sr
 import sys
 
+# Function for printing out values depending on their type.
 def print_value(value):
     print(value.xpath(), " ",end=" ")
 
@@ -62,6 +63,8 @@ def print_value(value):
     else:
         print("(unprintable)")
 
+# Function to print current configuration state.
+# It does so by loading all the items of a session and printing them out.
 def print_current_config(session, module_name):
     select_xpath = "/" + module_name + ":*//*"
 
@@ -70,11 +73,14 @@ def print_current_config(session, module_name):
     for i in range(values.val_cnt()):
         print_value(values.val(i))
 
+# Function to be called for subscribed client of given session whenever configuration changes.
 def module_change_cb(sess, module_name, event, private_ctx):
     print("\n\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: ==========\n")
 
     print_current_config(sess, module_name)
 
+# Notable difference between c implementation is using exception mechanism for open handling unexpected events.
+# Here it is useful because `Conenction`, `Session` and `Subscribe` could throw an exception.
 try:
     module_name = "ietf-interfaces"
     if len(sys.argv) > 1:
@@ -91,7 +97,7 @@ try:
     # subscribe for changes in running config */
     subscribe = sr.Subscribe(sess)
 
-    subscribe.module_change_subscribe(module_name, module_change_cb)
+    subscribe.module_change_subscribe(module_name, module_change_cb, None, 0, sr.SR_SUBSCR_DEFAULT | sr.SR_SUBSCR_APPLY_ONLY)
 
     print("\n\n ========== READING STARTUP CONFIG: ==========\n")
     try:

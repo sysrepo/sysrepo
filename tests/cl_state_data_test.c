@@ -28,14 +28,13 @@
 #include <string.h>
 #include <inttypes.h>
 #include <pthread.h>
-#include <rpc/rpc_msg.h>
 
 #include "sysrepo.h"
 #include "client_library.h"
 
 #include "sr_common.h"
 #include "test_module_helper.h"
-#include "sysrepo/xpath_utils.h"
+#include "sysrepo/xpath.h"
 #include "sysrepo/values.h"
 
 #define CHECK_LIST_OF_STRINGS(list, expected)                           \

@@ -1,5 +1,8 @@
 %module base
 
+%include <std_except.i>
+%catches(std::runtime_error, std::exception, std::string);
+
 %include "std_shared_ptr.i"
 
 %shared_ptr(Iter_Value)
@@ -27,6 +30,7 @@
 %shared_ptr(Trees)
 %shared_ptr(Xpath_Ctx)
 %shared_ptr(Change)
+%shared_ptr(Callback)
 
 %include "../swig_base/sysrepo.i"
 %include "../swig_base/structs.i"

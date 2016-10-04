@@ -206,12 +206,6 @@ dm_free_schema_info(void *schema_info)
     if (NULL != si->ly_ctx) {
         ly_ctx_destroy(si->ly_ctx, dm_free_lys_private_data);
     }
-    if (NULL != si->data_dependant_modules) {
-        for (size_t i = 0; i < si->data_dependant_modules->count; i++) {
-            free(si->data_dependant_modules->data[i]);
-        }
-        sr_list_cleanup(si->data_dependant_modules);
-    }
     free(si);
 }
 
@@ -575,45 +569,24 @@ dm_load_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, 
     ll_node = module->deps->first;
     while (ll_node) {
         dep = (md_dep_t *)ll_node->data;
-        if (dep->type == MD_DEP_EXTENSION) { /*< imports are automatically loaded by libyang */
-            /* module write lock is not required because schema info is not added into schema tree yet*/
+        if (dep->type == MD_DEP_EXTENSION) {
+            /**
+             * Note:
+             *  - imports are automatically loaded by libyang
+             *  - module write lock is not required because schema info is not added into schema tree yet
+             */
             rc = dm_load_schema_file(dm_ctx, dep->dest->filepath, true, &si);
             if (SR_ERR_OK != rc) {
                 *schema_info = NULL;
                 md_ctx_unlock(dm_ctx->md_ctx);
                 return rc;
             }
+        } else if (dep->type == MD_DEP_DATA) {
+            /* mark this module as dependent on data from other modules */
+            si->cross_module_data_dependency = true;
         }
         ll_node = ll_node->next;
     }
-
-    /*TODO: fill based on md information
-     * make sure data dependant schemas are loaded
-     * set cross_module_data_dependency flag
-     * fill list of data dependent modules
-     *
-     * si->cross_module_data_dependency = ...;
-     * sr_list_add(..., si->data_dependant_modules)
-
-    if (0 == strcmp("cross-module", module_name)) {
-        si->cross_module_data_dependency = true;
-        rc = sr_list_init(&si->data_dependant_modules);
-        CHECK_RC_MSG_GOTO(rc, cleanup, "List init failed");
-
-        rc = sr_list_add(si->data_dependant_modules, strdup("referenced-data"));
-        CHECK_RC_MSG_GOTO(rc, cleanup, "List add failed");
-
-        for (size_t i = 0; i < si->data_dependant_modules->count; i++) {
-            char *dependant_module = (char *) si->data_dependant_modules->data[i];
-            rc = md_get_module_info(dm_ctx->md_ctx, dependant_module, NULL, &module);
-            CHECK_RC_LOG_GOTO(rc, cleanup, "Module %s not found in dependency context", dependant_module);
-
-            //TODO: load all dependencies of dependant module :)
-            rc = dm_load_schema_file(dm_ctx, module->filepath, true, &si);
-            CHECK_RC_LOG_GOTO(rc, cleanup, "Loading of schema %s failed", dependant_module);
-        }
-    }
-    */
 
     /* insert schema info into schema tree */
     RWLOCK_WRLOCK_TIMED_CHECK_GOTO(&dm_ctx->schema_tree_lock, rc, cleanup);
@@ -1396,27 +1369,41 @@ dm_remove_added_data_trees(dm_session_t *session, dm_data_info_t *data_info)
 /**
  * @brief Append all dependant data.
  *
+ * @param [in] dm_ctx
  * @param [in] session
  * @param [in] info
  * @return Error code (SR_ERR_OK on success)
  */
 static int
-dm_load_dependant_data(dm_session_t *session, dm_data_info_t *info)
+dm_load_dependant_data(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_info_t *info)
 {
-    CHECK_NULL_ARG2(session, info);
+    CHECK_NULL_ARG3(dm_ctx, session, info);
+    sr_llist_node_t *ll_node = NULL;
+    md_module_t *module = NULL;
+    md_dep_t *dep = NULL;
     int rc = SR_ERR_OK;
 
     /* remove previously appended data */
     rc = dm_remove_added_data_trees(session, info);
     CHECK_RC_MSG_RETURN(rc, "Removing of added data trees failed");
 
-    if (info->schema->cross_module_data_dependency && NULL != info->schema->data_dependant_modules) {
-        for (size_t i = 0; i < info->schema->data_dependant_modules->count; i++) {
-            char *dependant_module = (char *) info->schema->data_dependant_modules->data[i];
-            rc = dm_append_data_tree(session->dm_ctx, session, info, dependant_module);
-            CHECK_RC_LOG_RETURN(rc, "Failed to append data tree %s", dependant_module);
-            SR_LOG_DBG("Data tree %s appended because of validation", dependant_module);
+    if (info->schema->cross_module_data_dependency) {
+        md_ctx_lock(dm_ctx->md_ctx, false);
+        rc = md_get_module_info(dm_ctx->md_ctx, info->schema->module_name, NULL, &module);
+        CHECK_RC_LOG_GOTO(rc, unlock, "Unable to get the list of dependencies for module '%s'.", info->schema->module_name);
+        ll_node = module->deps->first;
+        while (ll_node) {
+            dep = (md_dep_t *)ll_node->data;
+            if (MD_DEP_DATA == dep->type && dep->dest->latest_revision) {
+                const char *dependant_module = md_get_module_fullname(dep->dest);
+                rc = dm_append_data_tree(session->dm_ctx, session, info, dependant_module);
+                CHECK_RC_LOG_GOTO(rc, unlock, "Failed to append data tree %s", dependant_module);
+                SR_LOG_DBG("Data tree %s appended because of validation", dependant_module);
+            }
+            ll_node = ll_node->next;
         }
+unlock:
+        md_ctx_unlock(dm_ctx->md_ctx);
     }
     return rc;
 }
@@ -2132,7 +2119,7 @@ dm_validate_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error
             }
             /* attach data dependant modules */
             if (info->schema->cross_module_data_dependency) {
-                rc = dm_load_dependant_data(session, info);
+                rc = dm_load_dependant_data(dm_ctx, session, info);
             }
             if (0 != lyd_validate(&info->node, LYD_OPT_STRICT | LYD_OPT_NOAUTODEL | LYD_OPT_CONFIG, info->schema->ly_ctx)) {
                 SR_LOG_DBG("Validation failed for %s module", info->schema->module->name);
@@ -3199,7 +3186,7 @@ dm_install_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revisio
     md_module_t *module = NULL;
     md_dep_t *dep = NULL;
     sr_llist_node_t *ll_node = NULL;
-    dm_schema_info_t *si = NULL;
+    dm_schema_info_t *si = NULL, *si_ext = NULL;
     dm_schema_info_t lookup = {0};
 
     /* insert module into the dependency graph */
@@ -3239,9 +3226,25 @@ dm_install_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revisio
         ll_node = module->deps->first;
         while (ll_node) {
             dep = (md_dep_t *)ll_node->data;
-            if (dep->type == MD_DEP_EXTENSION) { // imports are automatically loaded by libyang
+            if (dep->type == MD_DEP_EXTENSION) {
+                /* Note: imports are automatically loaded by libyang */
                 rc = dm_load_schema_file(dm_ctx, dep->dest->filepath, true, &si);
                 CHECK_RC_LOG_GOTO(rc, unlock, "Loading of %s was not successfull", dep->dest->name);
+            }
+            ll_node = ll_node->next;
+        }
+
+        /* load this module also into contexts of newly augmented modules */
+        ll_node = module->inv_deps->first;
+        while (ll_node) {
+            dep = (md_dep_t *)ll_node->data;
+            if (dep->type == MD_DEP_EXTENSION && true == dep->dest->latest_revision) {
+                lookup.module_name = (char *)dep->dest->name;
+                si_ext = sr_btree_search(dm_ctx->schema_info_tree, &lookup);
+                if (NULL != si_ext && NULL != si_ext->ly_ctx) {
+                    rc = dm_load_schema_file(dm_ctx, module->filepath, true, &si_ext);
+                    CHECK_RC_LOG_GOTO(rc, unlock, "Failed to load schema %s", module->filepath);
+                }
             }
             ll_node = ll_node->next;
         }
@@ -3888,7 +3891,7 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
             rc = dm_get_data_info(dm_ctx, session, schema_info->module_name, &di);
             CHECK_RC_LOG_GOTO(rc, cleanup, "Dm_get_dat_info failed for module %s", schema_info->module_name);
 
-            rc = dm_load_dependant_data(session, di);
+            rc = dm_load_dependant_data(dm_ctx, session, di);
             CHECK_RC_LOG_GOTO(rc, cleanup, "Loading dependant modules failed for %s", schema_info->module_name);
         }
         ret = lyd_validate(&data_tree, validation_options, NULL != di ? di->node : NULL);

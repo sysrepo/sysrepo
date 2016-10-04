@@ -34,6 +34,7 @@ using namespace std;
 
 volatile int exit_application = 0;
 
+/* Function for printing out values depending on their type. */
 void
 print_value(S_Val value)
 {
@@ -98,27 +99,29 @@ print_value(S_Val value)
     return;
 }
 
+/* Helper function for printing changes given operation, old and new value. */
 static void
 print_change(S_Change change) {
+    cout << endl;
     switch(change->oper()) {
     case SR_OP_CREATED:
         if (NULL != change->new_val()) {
-           printf("CREATED: ");
+           cout <<"CREATED: ";
            print_value(change->new_val());
         }
         break;
     case SR_OP_DELETED:
         if (NULL != change->old_val()) {
-           printf("DELETED: ");
+           cout << "DELETED: ";
            print_value(change->old_val());
         }
 	break;
     case SR_OP_MODIFIED:
         if (NULL != change->old_val() && NULL != change->new_val()) {
-           printf("MODIFIED: ");
-           printf("old value");
+           cout << "MODIFIED: ";
+           cout << "old value ";
            print_value(change->old_val());
-           printf("new value");
+           cout << "new value ";
            print_value(change->new_val());
         }
 	break;
@@ -130,6 +133,8 @@ print_change(S_Change change) {
     }
 }
 
+/* Function to print current configuration state.
+ * It does so by loading all the items of a session and printing them out. */
 static void
 print_current_config(S_Session session, const char *module_name)
 {
@@ -148,35 +153,51 @@ print_current_config(S_Session session, const char *module_name)
     }
 }
 
-static int
-module_change_cb(S_Session sess, const char *module_name, sr_notif_event_t event, void *private_ctx)
-{
-    char change_path[MAX_LEN];
-
-    try {
-        printf("\n\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: ==========\n\n");
-
-        print_current_config(sess, module_name);
-
-        printf("\n\n ========== CHANGES: =============================================\n\n");
-
-        snprintf(change_path, MAX_LEN, "/%s:*", module_name);
-
-        S_Subscribe subscribe(new Subscribe(sess));
-        auto it = subscribe->get_changes_iter(&change_path[0]);
-
-        while (auto change = subscribe->get_change_next(it)) {
-            print_change(change);
-        }
-
-        printf("\n\n ========== END OF CHANGES =======================================\n\n");
-
-    } catch( const std::exception& e ) {
-        cout << e.what() << endl;
+/* Helper function for printing events. */
+const char *ev_to_str(sr_notif_event_t ev) {
+    switch (ev) {
+    case SR_EV_VERIFY:
+        return "verify";
+    case SR_EV_APPLY:
+        return "apply";
+    case SR_EV_ABORT:
+    default:
+        return "abort";
     }
-
-    return SR_ERR_OK;
 }
+
+class My_Callback:public Callback {
+    public:
+    /* Function to be called for subscribed client of given session whenever configuration changes. */
+    void module_change(S_Session sess, const char *module_name, sr_notif_event_t event, void *private_ctx)
+    {
+        char change_path[MAX_LEN];
+
+        try {
+            cout << "\n\n ========== Notification " << ev_to_str(event) << " =============================================";
+            if (SR_EV_APPLY == event) {
+                cout << "\n\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: ==========\n" << endl;
+                print_current_config(sess, module_name);
+            }
+
+            cout << "\n\n ========== CHANGES: =============================================\n" << endl;
+
+	    snprintf(change_path, MAX_LEN, "/%s:*", module_name);
+
+            S_Subscribe subscribe(new Subscribe(sess));
+            auto it = subscribe->get_changes_iter(&change_path[0]);
+
+            while (auto change = subscribe->get_change_next(it)) {
+                print_change(change);
+            }
+
+	    cout << "\n\n ========== END OF CHANGES =======================================\n" << endl;
+
+        } catch( const std::exception& e ) {
+            cout << e.what() << endl;
+        }
+    }
+};
 
 static void
 sigint_handler(int signum)
@@ -184,6 +205,8 @@ sigint_handler(int signum)
     exit_application = 1;
 }
 
+/* Notable difference between c implementation is using exception mechanism for open handling unexpected events.
+ * Here it is useful because `Conenction`, `Session` and `Subscribe` could throw an exception. */
 int
 main(int argc, char **argv)
 {
@@ -192,10 +215,10 @@ main(int argc, char **argv)
         if (argc > 1) {
             module_name = argv[1];
         } else {
-            printf("\nYou can pass the module name to be subscribed as the first argument\n");
+            cout << "\nYou can pass the module name to be subscribed as the first argument" << endl;
         }
 
-        printf("Application will watch for changes in %s\n", module_name);
+        cout << "Application will watch for changes in " << module_name << endl;
         /* connect to sysrepo */
         S_Connection conn(new Connection("example_application"));
 
@@ -204,11 +227,12 @@ main(int argc, char **argv)
 
         /* subscribe for changes in running config */
         S_Subscribe subscribe(new Subscribe(sess));
+	S_Callback cb(new My_Callback());
 
-        subscribe->module_change_subscribe(module_name, module_change_cb);
+        subscribe->module_change_subscribe(module_name, cb);
 
         /* read startup config */
-        printf("\n\n ========== READING STARTUP CONFIG: ==========\n\n");
+        cout << "\n\n ========== READING STARTUP CONFIG: ==========\n" << endl;
         print_current_config(sess, module_name);
 
         cout << "\n\n ========== STARTUP CONFIG APPLIED AS RUNNING ==========\n" << endl;
@@ -219,7 +243,7 @@ main(int argc, char **argv)
             sleep(1000);  /* or do some more useful work... */
         }
 
-        printf("Application exit requested, exiting.\n");
+        cout << "Application exit requested, exiting." << endl;
 
     } catch( const std::exception& e ) {
         cout << e.what() << endl;

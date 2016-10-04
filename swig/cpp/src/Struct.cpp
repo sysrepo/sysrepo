@@ -691,7 +691,6 @@ Iter_Change::~Iter_Change() {if (_iter) sr_free_change_iter(_iter);}
 Change::Change() {
     _new = NULL;
     _old = NULL;
-    _oper = NULL;
     S_Counter counter_old(new Counter(_old));
     S_Counter counter_new(new Counter(_new));
 

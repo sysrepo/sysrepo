@@ -497,13 +497,8 @@ static void g_event_notif_tree_cb(const char *xpath, const sr_node_t *trees, con
         }
     }
 
-    ~Subscribe() {
-        self->Destructor_Subscribe();
-
-        /* clean the callback classes */
-        for(unsigned int i=0; i < self->wrap_cb_l.size(); i++){
-            delete static_cast<Wrap_cb*>(self->wrap_cb_l[i]);
-        }
+    void additional_cleanup(void *private_ctx) {
+        delete static_cast<Wrap_cb*>(private_ctx);
     }
 };
 
