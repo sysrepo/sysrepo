@@ -21,6 +21,7 @@
 
 #include <iostream>
 #include <memory>
+#include <string.h>
 
 #include "Struct.h"
 #include "Sysrepo.h"
@@ -109,6 +110,11 @@ Val::Val(sr_val_t *val, S_Counter counter) {
     _val = val;
     _counter = counter;
 }
+Val::Val() {
+    _val = NULL;
+    S_Counter counter(new Counter(_val));
+    _counter = counter;
+}
 Val::~Val() {return;}
 Val::Val(const char *value, sr_type_t type) {
     sr_val_t *val = NULL;
@@ -116,17 +122,17 @@ Val::Val(const char *value, sr_type_t type) {
     if (val == NULL)
         throw_exception(SR_ERR_NOMEM);
     if (type == SR_BINARY_T) {
-	val->data.binary_val = (char *) value;
+	val->data.binary_val = strdup((char *) value);
     } else if (type == SR_BITS_T) {
-	val->data.bits_val = (char *) value;
+	val->data.bits_val = strdup((char *) value);
     } else if (type == SR_ENUM_T) {
-	val->data.enum_val = (char *) value;
+	val->data.enum_val = strdup((char *) value);
     } else if (type == SR_IDENTITYREF_T) {
-	val->data.identityref_val = (char *) value;
+	val->data.identityref_val = strdup((char *) value);
     } else if (type == SR_INSTANCEID_T) {
-	val->data.instanceid_val = (char *) value;
+	val->data.instanceid_val = strdup((char *) value);
     } else if (type == SR_STRING_T) {
-	val->data.string_val = (char *) value;
+	val->data.string_val = strdup((char *) value);
     } else {
         free(val);
         throw_exception(SR_ERR_INVAL_ARG);
@@ -533,17 +539,13 @@ S_Val Val::dup() {
 Vals::Vals(const sr_val_t *vals, const size_t cnt, S_Counter counter) {
     _vals = (sr_val_t *) vals;
     _cnt = (size_t) cnt;
-    p_cnt = NULL;
 
     _counter = counter;
-    _allocate = false;
 }
 Vals::Vals(sr_val_t **vals, size_t *cnt, S_Counter counter) {
-    p_cnt = cnt;
     _vals = *vals;
-    _cnt = 0;
+    _cnt = *cnt;
     _counter = counter;
-    _allocate = true;
 }
 Vals::Vals(size_t cnt) {
     int ret = sr_new_values(cnt, &_vals);
@@ -551,32 +553,17 @@ Vals::Vals(size_t cnt) {
         throw_exception(ret);
 
     _cnt = cnt;
-    p_cnt = NULL;
     S_Counter counter(new Counter(_vals, _cnt));
     _counter = counter;
-    _allocate = false;
 }
 Vals::Vals() {
     _vals = NULL;
     _cnt = 0;
-    p_cnt = NULL;
     S_Counter counter(new Counter(&_vals, &_cnt));
     _counter = counter;
-    _allocate = true;
 }
 Vals::~Vals() {
     return;
-}
-void Vals::allocate(size_t n) {
-    if (!_allocate)
-        throw_exception(SR_ERR_DATA_EXISTS);
-    int ret = sr_new_values(n, &_vals);
-    if (ret != SR_ERR_OK)
-        throw_exception(ret);
-
-    _cnt = n;
-    *p_cnt = n;
-    _allocate = false;
 }
 S_Val Vals::val(size_t n) {
     if (n >= _cnt || _vals == NULL)
@@ -594,6 +581,29 @@ S_Vals Vals::dup() {
     S_Vals vals(new Vals(new_val, _cnt));
     return vals;
 }
+
+// Vals_Holder
+Vals_Holder::Vals_Holder(sr_val_t **vals, size_t *cnt) {
+    p_vals = vals;
+    p_cnt = cnt;
+    _allocate = true;
+}
+S_Vals Vals_Holder::allocate(size_t n) {
+    if (_allocate == false)
+        throw_exception(SR_ERR_DATA_EXISTS);
+    _allocate = false;
+
+    if (n == 0)
+        return NULL;
+
+    *p_cnt = n;
+    int ret = sr_new_values(n, p_vals);
+    if (ret != SR_ERR_OK)
+        throw_exception(ret);
+    S_Vals vals(new Vals(p_vals, p_cnt, NULL));
+    return vals;
+}
+Vals_Holder::~Vals_Holder() {return;}
 
 // Val_iter
 Val_Iter::Val_Iter(sr_val_iter_t *iter) {_iter = iter;}
