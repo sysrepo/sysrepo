@@ -57,6 +57,7 @@ createData(void **state)
 {
     createDataTreeExampleModule();
     createDataTreeTestModule();
+    createDataTreeIETFinterfacesModule();
     return 0;
 }
 
