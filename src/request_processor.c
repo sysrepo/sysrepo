@@ -1118,7 +1118,6 @@ rp_commit_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, boo
     if (SR_ERR_OK == rc ) {
         session->req = msg;
         rc = rp_dt_commit(rp_ctx, session, c_ctx, &errors, &err_cnt);
-        SR_LOG_DBG_MSG("Rp dt commit returned");
     }
     if (SR_ERR_OK == rc && RP_REQ_WAITING_FOR_VERIFIERS == session->state) {
         SR_LOG_DBG_MSG("Request paused, waiting for verifiers");
@@ -1126,7 +1125,6 @@ rp_commit_req_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, boo
         *skip_msg_cleanup = true;
         sr_msg_free(resp);
         pthread_mutex_unlock(&session->cur_req_mutex);
-        SR_LOG_INF_MSG("UNLocking mutex");
         return SR_ERR_OK;
     }
 
@@ -1135,7 +1133,6 @@ cleanup:
     session->req = NULL;
     if (locked) {
         pthread_mutex_unlock(&session->cur_req_mutex);
-        SR_LOG_INF_MSG("UNLocking mutex");
     }
     /* set response code */
     resp->response->result = rc;
