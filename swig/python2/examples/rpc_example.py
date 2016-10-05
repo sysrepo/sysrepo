@@ -62,10 +62,10 @@ def print_value(value):
     else:
         print "(unprintable)"
 
-def test_rpc_cb(xpath, in_vals, out_vals, private_ctx):
-#    try:
+def test_rpc_cb(xpath, in_vals, holder, private_ctx):
+    try:
         print "\n\n ========== RPC CALLED =========="
-        out_vals.allocate(3)
+        out_vals = holder.allocate(3)
 
         if (in_vals == None or out_vals == None):
             return
@@ -77,8 +77,8 @@ def test_rpc_cb(xpath, in_vals, out_vals, private_ctx):
         out_vals.val(1).set("/test-module:activate-software-image/version", "2.3", sr.SR_STRING_T)
         out_vals.val(2).set("/test-module:activate-software-image/location", "/", sr.SR_STRING_T)
 
-#    except Exception as e:
-#        print e
+    except Exception as e:
+        print e
 
 try:
     module_name = "test-module"
@@ -93,7 +93,7 @@ try:
     subscribe = sr.Subscribe(sess)
 
 
-    print "\n\n ========== SUBSCRIBE TO RPC CALL =========="
+    print "\n ========== SUBSCRIBE TO RPC CALL =========="
     subscribe.rpc_subscribe("/test-module:activate-software-image", test_rpc_cb);
 
     in_vals = sr.Vals(2);
@@ -102,14 +102,14 @@ try:
     in_vals.val(1).set("/test-module:activate-software-image/location", "/", sr.SR_STRING_T)
 
 
-    print "\n\n ========== START RPC CALL =========="
+    print "\n ========== START RPC CALL =========="
     out_vals = subscribe.rpc_send("/test-module:activate-software-image", in_vals);
 
-    print "\n\n ========== PRINT RETURN VALUE =========="
+    print "\n ========== PRINT RETURN VALUE =========="
     for n in range (out_vals.val_cnt()):
         print_value(out_vals.val(n))
 
-    print "\n\n ========== END PROGRAM =========="
+    print "\n ========== END PROGRAM =========="
 
 except Exception as e:
     print e
