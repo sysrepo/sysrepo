@@ -758,6 +758,7 @@ message UnsubscribeDestinationReq {
 
 message CommitTimeoutReq {
   required uint32 commit_id = 1;
+  required bool expired = 2;
 }
 
 message OperDataTimeoutReq {

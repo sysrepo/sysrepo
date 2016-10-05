@@ -2151,7 +2151,8 @@ rp_commit_timeout_req_process(const rp_ctx_t *rp_ctx, Sr__Msg *msg)
 
     SR_LOG_DBG_MSG("Processing commit-timeout request.");
 
-    rc = np_commit_notifications_complete(rp_ctx->np_ctx, msg->internal_request->commit_timeout_req->commit_id, true);
+    rc = np_commit_notifications_complete(rp_ctx->np_ctx, msg->internal_request->commit_timeout_req->commit_id,
+            msg->internal_request->commit_timeout_req->expired);
 
     return rc;
 }

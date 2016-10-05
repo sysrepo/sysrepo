@@ -1548,9 +1548,13 @@ cm_internal_msg_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
         rc = cm_delayed_msg_process(cm_ctx, (NULL != session ? session->cm_data : NULL),
                 msg, msg->internal_request->postpone_timeout);
     } else {
-        SR_LOG_WRN_MSG("Unsupported internal message received, ignoring.");
-        rc = SR_ERR_UNSUPPORTED;
-        sr_msg_free(msg);
+        /* deliver the message immediately */
+        rc = rp_msg_process(cm_ctx->rp_ctx, (NULL != session ? session->cm_data->rp_session : NULL), msg);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_WRN_MSG("Unable to send internal request to the Request Processor.");
+        } else {
+            SR_LOG_DBG_MSG("Internal request sent to the Request Processor.");
+        }
     }
 
     return rc;
