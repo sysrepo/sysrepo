@@ -1118,6 +1118,48 @@ sr_copy_first_ns_from_expr_test(void **state)
     assert_int_equal(SR_ERR_INVAL_ARG, rc);
 }
 
+static void
+sr_error_info_test(void **state)
+{
+    int rc = 0;
+    sr_error_info_t *errors = NULL;
+    size_t error_cnt = 0;
+
+    rc = sr_add_error(&errors, &error_cnt, "/test-module:interface", "An ethernet MTU must be %d", 1500);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(1, error_cnt);
+    assert_non_null(errors);
+
+    rc = sr_add_error(&errors, &error_cnt, "/test-module:location", "%s", "Missing required element \"latitude\" in \"location\".");
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(2, error_cnt);
+    assert_non_null(errors);
+
+    rc = sr_add_error(&errors, &error_cnt, "/test-module:university/classes/class[title='CCNA']/student[name='nameC']/age",
+            "Leafref \"%s\" of value \"%d\" points to a non-existing leaf.",
+            "../../../../students/student[name = current()/../name]/age", 17);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(3, error_cnt);
+    assert_non_null(errors);
+
+    rc = sr_add_error(&errors, &error_cnt, NULL, "%s", "A disabled node present in the running datastore");
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(4, error_cnt);
+    assert_non_null(errors);
+
+    assert_string_equal("/test-module:interface", errors[0].xpath);
+    assert_string_equal("An ethernet MTU must be 1500", errors[0].message);
+    assert_string_equal("/test-module:location", errors[1].xpath);
+    assert_string_equal("Missing required element \"latitude\" in \"location\".", errors[1].message);
+    assert_string_equal("/test-module:university/classes/class[title='CCNA']/student[name='nameC']/age", errors[2].xpath);
+    assert_string_equal("Leafref \"../../../../students/student[name = current()/../name]/age\" "
+                        "of value \"17\" points to a non-existing leaf.", errors[2].message);
+    assert_null(errors[3].xpath);
+    assert_string_equal("A disabled node present in the running datastore", errors[3].message);
+
+    sr_free_errors(errors, error_cnt);
+}
+
 int
 main() {
     const struct CMUnitTest tests[] = {
@@ -1134,6 +1176,7 @@ main() {
             cmocka_unit_test_setup_teardown(sr_node_t_rpc_output_test, logging_setup, logging_cleanup),
             cmocka_unit_test_setup_teardown(sr_free_schema_test, logging_setup, logging_cleanup),
             cmocka_unit_test_setup_teardown(sr_copy_first_ns_from_expr_test, logging_setup, logging_cleanup),
+            cmocka_unit_test_setup_teardown(sr_error_info_test, logging_setup, logging_cleanup),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);
