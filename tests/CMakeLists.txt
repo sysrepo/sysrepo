@@ -5,17 +5,20 @@ set(TEST_INTERNAL_SCHEMA_SEARCH_DIR "${TEST_REPOSITORY_LOC}/yang/internal/")
 set(TEST_INTERNAL_DATA_SEARCH_DIR "${TEST_REPOSITORY_LOC}/data/internal/")
 
 set(TEST_HELPERS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/helpers/")
+set(TEST_HELPERS_BIN_DIR "${CMAKE_CURRENT_BINARY_DIR}/helpers/")
 
 CHECK_INCLUDE_FILES(regex.h HAVE_REGEX_H)
 
-configure_file("${TEST_HELPERS_DIR}/test_data.h.in" "${TEST_HELPERS_DIR}/test_data.h" ESCAPE_QUOTES @ONLY) 
+configure_file("${TEST_HELPERS_DIR}/test_data.h.in" "${TEST_HELPERS_BIN_DIR}/test_data.h" ESCAPE_QUOTES @ONLY)
 
 include_directories (
-    "${PROJECT_SOURCE_DIR}/src" 
-    "${PROJECT_SOURCE_DIR}/src/clientlib" 
-    "${PROJECT_SOURCE_DIR}/src/common" 
-    "${PROJECT_SOURCE_DIR}/inc" 
+    "${PROJECT_SOURCE_DIR}/src"
+    "${PROJECT_SOURCE_DIR}/src/clientlib"
+    "${PROJECT_SOURCE_DIR}/src/common"
+    "${PROJECT_BINARY_DIR}/src/common"
+    "${PROJECT_SOURCE_DIR}/inc"
     "${TEST_HELPERS_DIR}"
+    "${TEST_HELPERS_BIN_DIR}"
 )
 
 find_program(valgrind_FOUND valgrind)
@@ -81,12 +84,12 @@ ADD_UNIT_TEST(rp_dt_running_test 1)
 ADD_UNIT_TEST(md_test 1)
 
 if("${TEST_REPOSITORY_LOC}" STREQUAL "${REPOSITORY_LOC}")
-    # end-to-end tests that work only if test repository location equals to 
+    # end-to-end tests that work only if test repository location equals to
     # global procject's repository location
-    
+
     ADD_UNIT_TEST(cm_test 1)
     ADD_UNIT_TEST(rp_test 0)
-    
+
     ADD_UNIT_TEST(cl_test 1)
     ADD_UNIT_TEST(cl_notifications_test 1)
     ADD_UNIT_TEST(cl_state_data_test 1)
@@ -109,7 +112,7 @@ if("${TEST_REPOSITORY_LOC}" STREQUAL "${REPOSITORY_LOC}")
     FIND_PACKAGE(PythonInterp)
     FIND_PACKAGE(SWIG)
     FIND_PACKAGE(PythonLibs 2)
-    
+
     if (SWIG_FOUND AND PYTHONLIBS_FOUND AND PYTHONINTERP_FOUND)
         macro(ADD_PYTHON_TEST TEST_NAME)
             add_test(NAME python_${TEST_NAME}
