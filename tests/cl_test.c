@@ -1020,6 +1020,30 @@ cl_set_item_test(void **state)
     rc = sr_set_item(session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &value, SR_EDIT_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
 
+    value.type = SR_STRING_T;
+    value.data.string_val = "disabled";
+
+    rc = sr_set_item(session, "/test-module:tpdfs/unival", &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    value.type = SR_UINT8_T;
+    value.data.uint8_val = 42;
+
+    rc = sr_set_item(session, "/test-module:tpdfs/unival", &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    value.type = SR_UINT8_T;
+    value.data.uint8_val = 42;
+
+    rc = sr_set_item(session, "/test-module:tpdfs/intval", &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    value.type = SR_STRING_T;
+    value.data.string_val = "k1";
+
+    rc = sr_set_item(session, "/test-module:tpdfs/leafrefval", &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
     /* stop the session */
     rc = sr_session_stop(session);
     assert_int_equal(rc, SR_ERR_OK);

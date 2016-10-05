@@ -723,7 +723,8 @@ sr_check_value_conform_to_schema(const struct lys_node *node, const sr_val_t *va
         type = SR_LIST_T;
     } else if ((LYS_LEAF | LYS_LEAFLIST) & node->nodetype) {
         struct lys_node_leaf *l = (struct lys_node_leaf *) node;
-        switch(l->type.base){
+        struct lys_type *actual_type = &l->type;
+        switch(actual_type->base){
         case LY_TYPE_BINARY:
             type = SR_BINARY_T;
             break;
@@ -749,7 +750,7 @@ sr_check_value_conform_to_schema(const struct lys_node *node, const sr_val_t *va
             type = SR_INSTANCEID_T;
             break;
         case LY_TYPE_LEAFREF:
-            leafref = l->type.info.lref.target;
+            leafref = actual_type->info.lref.target;
             if (NULL != leafref && ((LYS_LEAF | LYS_LEAFLIST) & leafref->nodetype)) {
                 return sr_check_value_conform_to_schema((const struct lys_node *)leafref, value);
             }
@@ -758,10 +759,14 @@ sr_check_value_conform_to_schema(const struct lys_node *node, const sr_val_t *va
             type = SR_STRING_T;
             break;
         case LY_TYPE_UNION:
-            for (int i = 0; i < l->type.info.uni.count; i++) {
-                type = sr_ly_data_type_to_sr(l->type.info.uni.types[i].base);
-                if (LY_TYPE_LEAFREF == l->type.info.uni.types[i].base) {
-                    leafref = l->type.info.uni.types[i].info.lref.target;
+            /* find the type in typedefs */
+            while (0 == actual_type->info.uni.count) {
+               actual_type = &actual_type->der->type;
+            }
+            for (int i = 0; i < actual_type->info.uni.count; i++) {
+                type = sr_ly_data_type_to_sr(actual_type->info.uni.types[i].base);
+                if (LY_TYPE_LEAFREF == actual_type->info.uni.types[i].base) {
+                    leafref = actual_type->info.uni.types[i].info.lref.target;
                     if (SR_ERR_OK == sr_check_value_conform_to_schema((const struct lys_node *)leafref, value)) {
                         return SR_ERR_OK;
                     }
