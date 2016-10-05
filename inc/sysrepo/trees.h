@@ -27,7 +27,20 @@
  * @defgroup trees Tree Manipulation Utilities
  * @{
  *
- *  @brief TODO
+ *  @brief Set of functions facilitating simplified manipulation and traversal
+ *  of Sysrepo trees. As there are many connections between the tree nodes
+ *  and also some internal attributes associated with each node, it is actually
+ *  recommended to use these function rather than to allocate and initialize trees
+ *  manually, which is very likely to lead to time-wasting and hard-to-debug programming
+ *  errors.
+ *  Iterative tree loading (@see SR_GET_SUBTREE_ITERATIVE) even requires to use
+ *  designated functions for tree traversal -- ::sr_node_get_child and ::sr_node_get_next_sibling.
+ *
+ *  Another added benefit of using these function is that the trees created using
+ *  ::sr_new_tree and ::sr_new_trees will be allocated using the Sysrepo's own memory management
+ *  (if enabled) which was proven to be more efficient for larger data sets
+ *  (far less copying, quicker conversion to/from google protocol buffer messages,
+ *  stable memory footprint, etc.).
  */
 
 /**

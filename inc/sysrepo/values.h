@@ -27,7 +27,24 @@
  * @defgroup values Value Manipulation Utilities
  * @{
  *
- *  @brief TODO
+ *  @brief Set of functions facilitating simplified manipulation with sysrepo
+ *  values. It is not necessary to use these functions in any scenario, values
+ *  can be allocated and initialized manually (just remember to set all uninitialized
+ *  members to zero!).
+ *
+ *  Using these utilities, however, has several benefits. Firstly, all the memory
+ *  allocations associated with creating values and setting their attributes get
+ *  hidden behind these functions. The "old-way" was (and still is) to set xpath
+ *  and string values using strdup, which may repeat in applications communicating
+ *  with sysrepo very often and becomes very annoying to write.
+ *  Secondly, the programmer may actually forget to copy or give-up on the ownership
+ *  of a string passed to sysrepo value which will then get unexpectedly deallocated
+ *  in ::sr_free_value or ::sr_free_values.
+ *  The third benefit is that the values created using ::sr_new_value
+ *  and ::sr_new_values will be allocated using the Sysrepo's own memory management
+ *  (if enabled) which was proven to be more efficient for larger data sets
+ *  (far less copying, quicker conversion to/from google protocol buffer messages,
+ *  stable memory footprint, etc.).
  */
 
 /**
