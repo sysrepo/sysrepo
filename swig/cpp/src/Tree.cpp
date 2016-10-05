@@ -245,7 +245,7 @@ void Tree::set(uint64_t uint64_val, sr_type_t type) {
 }
 void Tree::set(sr_type_t type) {
     if (type != SR_LIST_T && type != SR_CONTAINER_T && type != SR_CONTAINER_PRESENCE_T &&\
-        type != SR_UNKNOWN_T && type != SR_LEAF_EMPTY_T && type != SR_UNION_T) {
+        type != SR_UNKNOWN_T && type != SR_LEAF_EMPTY_T) {
         throw_exception(SR_ERR_INVAL_ARG);
     }
 

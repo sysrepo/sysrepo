@@ -588,8 +588,6 @@ sr_ly_data_type_to_sr(LY_DATA_TYPE type)
             return SR_INSTANCEID_T;
         case LY_TYPE_STRING:
             return SR_STRING_T;
-        case LY_TYPE_UNION:
-            return SR_UNION_T;
         case LY_TYPE_INT8:
             return SR_INT8_T;
         case LY_TYPE_UINT8:
@@ -610,6 +608,7 @@ sr_ly_data_type_to_sr(LY_DATA_TYPE type)
             return SR_UNKNOWN_T;
             //LY_LEAF_REF
             //LY_DERIVED
+            //LY_TYPE_UNION
         }
 }
 
@@ -641,8 +640,6 @@ sr_libyang_leaf_get_type_sch(const struct lys_node_leaf *leaf)
             return sr_libyang_leaf_get_type_sch(leaf->type.info.lref.target);
         case LY_TYPE_STRING:
             return SR_STRING_T;
-        case LY_TYPE_UNION:
-            return SR_UNION_T;
         case LY_TYPE_INT8:
             return SR_INT8_T;
         case LY_TYPE_UINT8:
@@ -690,8 +687,6 @@ sr_libyang_leaf_get_type(const struct lyd_node_leaf_list *leaf)
             return sr_libyang_leaf_get_type_sch(((struct lys_node_leaf *)leaf->schema)->type.info.lref.target);
         case LY_TYPE_STRING:
             return SR_STRING_T;
-        case LY_TYPE_UNION:
-            return SR_UNION_T;
         case LY_TYPE_INT8:
             return SR_INT8_T;
         case LY_TYPE_UINT8:
