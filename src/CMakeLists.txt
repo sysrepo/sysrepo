@@ -1,5 +1,6 @@
 set(CLIENTLIB_DIR "${CMAKE_CURRENT_SOURCE_DIR}/clientlib")
 set(COMMON_DIR "${CMAKE_CURRENT_SOURCE_DIR}/common")
+set(COMMON_BIN_DIR "${CMAKE_CURRENT_BINARY_DIR}/common")
 set(EXECUTABLES_DIR "${CMAKE_CURRENT_SOURCE_DIR}/executables")
 set(UTILS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/utils")
 
@@ -8,6 +9,7 @@ include_directories(
     "${CMAKE_CURRENT_SOURCE_DIR}" 
     "${CLIENTLIB_DIR}" 
     "${COMMON_DIR}" 
+    "${COMMON_BIN_DIR}"
     "${EXECUTABLES_DIR}" 
     "${UTILS_DIR}"
 )
@@ -15,25 +17,26 @@ include_directories(
 #compile protobuf-c
 set(PROTO_NAME sysrepo)
 set(PROTO_FILE "${CMAKE_CURRENT_SOURCE_DIR}/${PROTO_NAME}.proto")
-set(GENERATED_PROTO "${COMMON_DIR}/${PROTO_NAME}.pb-c.c")
+set(GENERATED_PROTO_H "${COMMON_BIN_DIR}/${PROTO_NAME}.pb-c.h")
+set(GENERATED_PROTO_C "${COMMON_BIN_DIR}/${PROTO_NAME}.pb-c.c")
 
 get_filename_component(ABS_PATH ${PROTO_FILE} PATH)
 add_custom_command(
-    OUTPUT "${COMMON_DIR}/${PROTO_NAME}.pb-c.c"
-    "${COMMON_DIR}/${PROTO_NAME}.pb-c.h"
+    OUTPUT "${GENERATED_PROTO_C}"
+           "${GENERATED_PROTO_H}"
    COMMAND  ${PROTOBUFC_PROTOC_EXECUTABLE}
-   ARGS --c_out ${COMMON_DIR} -I ${ABS_PATH} ${PROTO_FILE}
+   ARGS --c_out ${COMMON_BIN_DIR} -I ${ABS_PATH} ${PROTO_FILE}
    DEPENDS ${PROTO_FILE}
    COMMENT "Running C protocol buffer compiler on ${PROTO_FILE}"
    VERBATIM )
 
-add_custom_target(proto DEPENDS ${COMMON_DIR}/${PROTO_NAME}.pb-c.c)
+add_custom_target(proto DEPENDS "${GENERATED_PROTO_C}" "${GENERATED_PROTO_H}")
 
-configure_file("${COMMON_DIR}/sr_constants.h.in" "${COMMON_DIR}/sr_constants.h" ESCAPE_QUOTES @ONLY)
+configure_file("${COMMON_DIR}/sr_constants.h.in" "${COMMON_BIN_DIR}/sr_constants.h" ESCAPE_QUOTES @ONLY)
 
 # common sources
 set (COMMON_SOURCES
-    ${GENERATED_PROTO}
+    ${GENERATED_PROTO_C}
     ${COMMON_DIR}/sr_common.c
     ${COMMON_DIR}/sr_utils.c
     ${COMMON_DIR}/sr_data_structs.c
@@ -79,6 +82,8 @@ set_property(TARGET SR_SRC PROPERTY COMPILE_FLAGS "-fPIC")
 add_library(SR_ENGINE OBJECT  ${SYSREPO_ENGINE_SOURCES})
 set_property(TARGET SR_ENGINE PROPERTY COMPILE_FLAGS "-fPIC")
 
+add_dependencies(COMMON proto)
+add_dependencies(SR_SRC COMMON)
 add_dependencies(SR_ENGINE COMMON)
 
 if(USE_AVL_LIB)
