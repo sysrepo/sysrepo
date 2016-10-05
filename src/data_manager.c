@@ -54,7 +54,7 @@ typedef struct dm_ctx_s {
     char *schema_search_dir;      /**< location where schema files are located */
     char *data_search_dir;        /**< location where data files are located */
     sr_locking_set_t *locking_ctx;/**< lock context for lock/unlock/commit operations */
-    bool ds_lock;                 /**< Flag if the ds lock is hold by a session*/
+    bool *ds_lock;                /**< Flags if the ds lock is hold by a session*/
     pthread_mutex_t ds_lock_mutex;/**< Data store lock mutex */
     sr_btree_t *schema_info_tree; /**< Binary tree holding information about schemas */
     pthread_rwlock_t schema_tree_lock;  /**< rwlock for access schema_info_tree */
@@ -76,7 +76,7 @@ typedef struct dm_session_s {
     char *error_msg;                    /**< description of the last error */
     char *error_xpath;                  /**< xpath of the last error if applicable */
     sr_list_t *locked_files;            /**< set of filename that are locked by this session */
-    bool holds_ds_lock;                 /**< flags if the session holds ds lock*/
+    bool *holds_ds_lock;                /**< flags if the session holds ds lock*/
 } dm_session_t;
 
 /**
@@ -924,15 +924,15 @@ dm_lock_datastore(dm_ctx_t *dm_ctx, dm_session_t *session)
     CHECK_RC_MSG_GOTO(rc, cleanup, "List schemas failed");
 
     pthread_mutex_lock(&dm_ctx->ds_lock_mutex);
-    if (dm_ctx->ds_lock) {
+    if (dm_ctx->ds_lock[session->datastore]) {
         SR_LOG_ERR_MSG("Datastore lock is hold by other session");
         rc = SR_ERR_LOCKED;
         pthread_mutex_unlock(&dm_ctx->ds_lock_mutex);
         goto cleanup;
     }
-    dm_ctx->ds_lock = true;
+    dm_ctx->ds_lock[session->datastore] = true;
     pthread_mutex_unlock(&dm_ctx->ds_lock_mutex);
-    session->holds_ds_lock = true;
+    session->holds_ds_lock[session->datastore] = true;
 
     for (size_t i = 0; i < schema_count; i++) {
         rc = dm_lock_module(dm_ctx, session, (char *) schemas[i].module_name);
@@ -947,9 +947,9 @@ dm_lock_datastore(dm_ctx_t *dm_ctx, dm_session_t *session)
                 dm_unlock_module(dm_ctx, session, (char *) locked->data[l]);
             }
             pthread_mutex_lock(&dm_ctx->ds_lock_mutex);
-            dm_ctx->ds_lock = false;
+            dm_ctx->ds_lock[session->datastore] = false;
             pthread_mutex_unlock(&dm_ctx->ds_lock_mutex);
-            session->holds_ds_lock = false;
+            session->holds_ds_lock[session->datastore] = false;
             goto cleanup;
         }
         SR_LOG_DBG("Module %s locked", schemas[i].module_name);
@@ -1031,11 +1031,13 @@ dm_unlock_datastore(dm_ctx_t *dm_ctx, dm_session_t *session)
         free(session->locked_files->data[0]);
         sr_list_rm_at(session->locked_files, 0);
     }
-    if (session->holds_ds_lock) {
-        pthread_mutex_lock(&dm_ctx->ds_lock_mutex);
-        dm_ctx->ds_lock = false;
-        session->holds_ds_lock = false;
-        pthread_mutex_unlock(&dm_ctx->ds_lock_mutex);
+    for (int i = 0; i < DM_DATASTORE_COUNT; i++) {
+        if (session->holds_ds_lock[i]) {
+            pthread_mutex_lock(&dm_ctx->ds_lock_mutex);
+            dm_ctx->ds_lock[i] = false;
+            session->holds_ds_lock[i] = false;
+            pthread_mutex_unlock(&dm_ctx->ds_lock_mutex);
+        }
     }
     return SR_ERR_OK;
 }
@@ -1436,7 +1438,8 @@ dm_init(ac_ctx_t *ac_ctx, np_ctx_t *np_ctx, pm_ctx_t *pm_ctx, const cm_connectio
     ctx->data_search_dir = strdup(data_search_dir);
     CHECK_NULL_NOMEM_GOTO(ctx->data_search_dir, rc, cleanup);
 
-    pthread_mutex_init(&ctx->ds_lock_mutex, NULL);
+    ctx->ds_lock = calloc(DM_DATASTORE_COUNT, sizeof(*ctx->ds_lock));
+    CHECK_NULL_NOMEM_GOTO(ctx->ds_lock, rc, cleanup);
 
     rc = sr_locking_set_init(&ctx->locking_ctx);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Locking set init failed");
@@ -1487,6 +1490,7 @@ dm_cleanup(dm_ctx_t *dm_ctx)
 
         free(dm_ctx->schema_search_dir);
         free(dm_ctx->data_search_dir);
+        free(dm_ctx->ds_lock);
         sr_btree_cleanup(dm_ctx->schema_info_tree);
         md_destroy(dm_ctx->md_ctx);
         pthread_rwlock_destroy(&dm_ctx->schema_tree_lock);
@@ -1522,6 +1526,8 @@ dm_session_start(dm_ctx_t *dm_ctx, const ac_ucred_t *user_credentials, const sr_
     rc = sr_list_init(&session_ctx->locked_files);
     CHECK_RC_MSG_GOTO(rc, cleanup, "List init failed");
 
+    session_ctx->holds_ds_lock = calloc(DM_DATASTORE_COUNT, sizeof(*session_ctx->holds_ds_lock));
+    CHECK_NULL_NOMEM_GOTO(session_ctx->holds_ds_lock, rc, cleanup);
     session_ctx->operations = calloc(DM_DATASTORE_COUNT, sizeof(*session_ctx->operations));
     CHECK_NULL_NOMEM_GOTO(session_ctx->operations, rc, cleanup);
     session_ctx->oper_count = calloc(DM_DATASTORE_COUNT, sizeof(*session_ctx->oper_count));
@@ -1555,6 +1561,7 @@ dm_session_stop(dm_ctx_t *dm_ctx, dm_session_t *session)
     for (size_t i = 0; i < DM_DATASTORE_COUNT; i++) {
         dm_free_sess_operations(session->operations[i], session->oper_count[i]);
     }
+    free(session->holds_ds_lock);
     free(session->operations);
     free(session->oper_count);
     free(session->oper_size);
