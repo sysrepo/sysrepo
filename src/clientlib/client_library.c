@@ -1142,7 +1142,6 @@ sr_is_internal_node(sr_node_t *node)
         case SR_CONTAINER_T:
         case SR_CONTAINER_PRESENCE_T:
         case SR_LIST_T:
-        case SR_UNION_T:
             return true;
         default:
             return false;

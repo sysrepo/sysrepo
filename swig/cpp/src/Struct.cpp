@@ -512,7 +512,7 @@ void Val::set(const char *xpath, sr_type_t type) {
     if (ret != SR_ERR_OK) throw_exception(ret);
 
     if (type != SR_LIST_T && type != SR_CONTAINER_T && type != SR_CONTAINER_PRESENCE_T &&\
-        type != SR_UNKNOWN_T && type != SR_LEAF_EMPTY_T && type != SR_UNION_T) {
+        type != SR_UNKNOWN_T && type != SR_LEAF_EMPTY_T) {
         throw_exception(SR_ERR_INVAL_ARG);
     }
 
