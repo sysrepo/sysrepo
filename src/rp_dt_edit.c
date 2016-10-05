@@ -699,7 +699,8 @@ rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t *c_ctx
                 return SR_ERR_OK;
             }
             /* open all files */
-            rc = dm_commit_load_modified_models(rp_ctx->dm_ctx, session->dm_session, commit_ctx);
+            rc = dm_commit_load_modified_models(rp_ctx->dm_ctx, session->dm_session, commit_ctx,
+                    errors, err_cnt);
             CHECK_RC_MSG_GOTO(rc, cleanup, "Loading of modified models failed");
             SR_LOG_DBG_MSG("Commit (3/7): all modified models loaded successfully");
             state = DM_COMMIT_REPLAY_OPS;

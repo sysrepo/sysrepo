@@ -418,9 +418,12 @@ int dm_commit_prepare_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit
  * @param [in] dm_ctx
  * @param [in] session
  * @param [in] c_ctx - commit context
+ * @param [out] errors
+ * @param [out] err_cnt
  * @return Error code (SR_ERR_OK on success)
  */
-int dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm_commit_context_t *c_ctx);
+int dm_commit_load_modified_models(dm_ctx_t *dm_ctx, const dm_session_t *session, dm_commit_context_t *c_ctx,
+        sr_error_info_t **errors, size_t *err_cnt);
 
 /**
  * @brief Writes the data trees from commit session stored in commit context into the files.
