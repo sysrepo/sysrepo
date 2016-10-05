@@ -60,10 +60,21 @@
   *($&1_type*)&j$1 = &$1;
 %}
 
-%typemap(javadirectorin) std::shared_ptr<Trees> "new $typemap(jstype, Trees)($1,false)";
-%typemap(directorin,descriptor="L$typemap(jstype, Trees);") std::shared_ptr<Vals> %{
+%typemap(javadirectorin) std::shared_ptr<Vals_Holder> "new $typemap(jstype, Vals_Holder)($1,false)";
+%typemap(directorin,descriptor="L$typemap(jstype, Vals_Holder);") std::shared_ptr<Vals_Holder> %{
   *($&1_type*)&j$1 = &$1;
 %}
+
+%typemap(javadirectorin) std::shared_ptr<Trees> "new $typemap(jstype, Trees)($1,false)";
+%typemap(directorin,descriptor="L$typemap(jstype, Trees);") std::shared_ptr<Trees> %{
+  *($&1_type*)&j$1 = &$1;
+%}
+
+%typemap(javadirectorin) std::shared_ptr<Trees_Holder> "new $typemap(jstype, Trees_Holder)($1,false)";
+%typemap(directorin,descriptor="L$typemap(jstype, Trees_Holder);") std::shared_ptr<Trees_Holder> %{
+  *($&1_type*)&j$1 = &$1;
+%}
+
 
 %ignore Val::Val(int8_t,sr_type_t);
 %ignore Val::Val(int16_t,sr_type_t);
