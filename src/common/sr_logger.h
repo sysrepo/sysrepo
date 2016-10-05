@@ -96,11 +96,11 @@ extern __thread char strerror_buf [MAX_STRERROR_LEN]; /**< thread local buffer f
 #if SR_LOG_PRINT_THREAD_ID
 /* print thread IDs and function names */
 #define SR_LOG__SYSLOG(LL, MSG, ...) \
-        syslog(SR_LOG__LL_FACILITY(LL), "[%s] (%s:%d) " MSG, SR_LOG__LL_STR(LL), __func__, __LINE__, __VA_ARGS__);
+        syslog(SR_LOG__LL_FACILITY(LL), "[%s] [%lu] (%s:%d) " MSG, SR_LOG__LL_STR(LL), (unsigned long)pthread_self(), __func__, __LINE__, __VA_ARGS__);
 #define SR_LOG__STDERR(LL, MSG, ...) \
         fprintf(stderr, "[%s] [%lu] (%s:%d) " MSG "\n", SR_LOG__LL_STR(LL), (unsigned long)pthread_self(), __func__, __LINE__, __VA_ARGS__);
 #define SR_LOG__CALLBACK(LL, MSG, ...) \
-        sr_log_to_cb(LL, "(%s:%d) " MSG, __func__, __LINE__, __VA_ARGS__);
+        sr_log_to_cb(LL, "[%lu] (%s:%d) " MSG, (unsigned long)pthread_self(), __func__, __LINE__, __VA_ARGS__);
 #elif SR_LOG_PRINT_FUNCTION_NAMES
 /* print function names (without thread IDs) */
 #define SR_LOG__SYSLOG(LL, MSG, ...) \
