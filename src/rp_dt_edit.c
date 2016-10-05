@@ -698,6 +698,7 @@ rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t *c_ctx
                 dm_free_commit_context(commit_ctx);
                 return SR_ERR_OK;
             }
+            pthread_mutex_lock(&commit_ctx->mutex);
             /* open all files */
             rc = dm_commit_load_modified_models(rp_ctx->dm_ctx, session->dm_session, commit_ctx,
                     errors, err_cnt);
@@ -731,6 +732,7 @@ rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t *c_ctx
         case DM_COMMIT_WAIT_FOR_NOTIFICATIONS:
             SR_LOG_DBG("Commit %"PRIu32" processing paused waiting for replies from verifiers", commit_ctx->id);
             session->state = RP_REQ_WAITING_FOR_VERIFIERS;
+            pthread_mutex_unlock(&commit_ctx->mutex);
             return rc;
         case DM_COMMIT_WRITE:
             rc = dm_commit_write_files(session->dm_session, commit_ctx);
@@ -750,6 +752,7 @@ rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t *c_ctx
             *err_cnt = c_ctx->err_cnt;
             c_ctx->errors = NULL;
             c_ctx->err_cnt = 0;
+            pthread_mutex_unlock(&commit_ctx->mutex);
             return SR_ERR_OPERATION_FAILED;
         case DM_COMMIT_FINISHED:
             goto cleanup;
@@ -757,6 +760,7 @@ rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t *c_ctx
         }
     }
 cleanup:
+    pthread_mutex_unlock(&commit_ctx->mutex);
     /* In case of running datastore, commit context will be freed when
      * all notifications session are closed.
      */

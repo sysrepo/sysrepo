@@ -2553,6 +2553,7 @@ dm_free_commit_context(void *commit_ctx)
         for (size_t i = 0; i < c_ctx->modif_count; i++) {
             close(c_ctx->fds[i]);
         }
+        pthread_mutex_destroy(&c_ctx->mutex);
         free(c_ctx->fds);
         free(c_ctx->existed);
         sr_list_cleanup(c_ctx->up_to_date_models);
@@ -2676,6 +2677,8 @@ dm_commit_prepare_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_con
             goto cleanup;
         }
     } while (DM_COMMIT_CTX_ID_INVALID == c_ctx->id);
+
+    pthread_mutex_init(&c_ctx->mutex, NULL);
 
     rc = sr_btree_init(dm_module_subscription_cmp, dm_model_subscription_free, &c_ctx->subscriptions);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Binary tree allocation failed");
