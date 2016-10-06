@@ -1297,7 +1297,7 @@ dm_append_data_tree(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_info_t *dat
         free(tmp);
         if (NULL == data_info->node) {
             data_info->node = tmp_node;
-        } else {
+        } else if (NULL != tmp_node) {
             const struct lys_module *module = tmp_node->schema->module;
             struct lyd_node *n = tmp_node;
 

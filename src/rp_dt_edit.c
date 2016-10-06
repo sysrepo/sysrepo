@@ -757,8 +757,7 @@ rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t *c_ctx
             pthread_mutex_unlock(&commit_ctx->mutex);
             SR_LOG_DBG_MSG("Commit (8/9): abort notifications sent");
             return SR_ERR_OPERATION_FAILED;
-        case DM_COMMIT_FINISHED:
-            goto cleanup;
+        default:
             break;
         }
     }
