@@ -359,7 +359,7 @@ static const char * const md_module_E_rev2_body =
 "  }";
 
 static md_test_dep_t *
-md_test_dep(md_dep_type_t type, bool direct, ...)
+md_test_dep(md_dep_type_t type, int is_direct, ...)
 {
     md_test_dep_t *dep = NULL;
     size_t orig_cnt = 0;
@@ -371,10 +371,10 @@ md_test_dep(md_dep_type_t type, bool direct, ...)
     assert_int_equal(SR_ERR_OK, sr_list_init(&dep->orig_modules));
 
     dep->type = type;
-    dep->direct = direct;
+    dep->direct = is_direct;
 
     if (MD_DEP_DATA == type) {
-        va_start(va, direct);
+        va_start(va, is_direct);
         orig_cnt = va_arg(va, int);
 
         for (int i = 0; i < orig_cnt; ++i) {
