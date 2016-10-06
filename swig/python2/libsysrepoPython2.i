@@ -130,7 +130,7 @@ public:
         PyObject *result = PyEval_CallObject(_callback, arglist);
         Py_DECREF(arglist);
         if (result == NULL)
-            throw std::runtime_error("Python callback failed.\n");
+            throw std::runtime_error("Python feature_enable failed.\n");
         else
             Py_DECREF(result);
     }
@@ -140,14 +140,15 @@ public:
         PyObject *arglist;
 
         Vals *in_vals =(Vals *)new Vals(input, input_cnt, NULL);
-        Vals *out_vals =(Vals *)new Vals(output, output_cnt, NULL);
+        Vals_Holder *out_vals =(Vals_Holder *)new Vals_Holder(output, output_cnt);
+
         if (in_vals == NULL && out_vals == NULL)
             throw std::runtime_error("No memory for class Vals in callback rpc_cb.\n");
         shared_ptr<Vals> *shared_in_vals = in_vals ? new shared_ptr<Vals>(in_vals) : 0;
         PyObject *in = SWIG_NewPointerObj(SWIG_as_voidptr(shared_in_vals), SWIGTYPE_p_std__shared_ptrT_Vals_t, SWIG_POINTER_DISOWN);
 
-        shared_ptr<Vals> *shared_out_vals = out_vals ? new shared_ptr<Vals>(out_vals) : 0;
-        PyObject *out = SWIG_NewPointerObj(SWIG_as_voidptr(shared_out_vals), SWIGTYPE_p_std__shared_ptrT_Vals_t, SWIG_POINTER_DISOWN);
+        shared_ptr<Vals_Holder> *shared_out_vals = out_vals ? new shared_ptr<Vals_Holder>(out_vals) : 0;
+        PyObject *out = SWIG_NewPointerObj(SWIG_as_voidptr(shared_out_vals), SWIGTYPE_p_std__shared_ptrT_Vals_Holder_t, SWIG_POINTER_DISOWN);
 
         PyObject *p =  SWIG_NewPointerObj(private_ctx, SWIGTYPE_p_void, 0);
         arglist = Py_BuildValue("(sOOO)", xpath, in, out, p);
@@ -155,11 +156,11 @@ public:
         Py_DECREF(arglist);
         if (result == NULL) {
             in_vals->~Vals();
-            out_vals->~Vals();
-            throw std::runtime_error("Python callback subtree_cb failed.\n");
+            out_vals->~Vals_Holder();
+            throw std::runtime_error("Python callback rpc_cb failed.\n");
         } else {
             in_vals->~Vals();
-            out_vals->~Vals();
+            out_vals->~Vals_Holder();
             Py_DECREF(result);
         }
      }
@@ -169,23 +170,28 @@ public:
         PyObject *arglist;
 
         Trees *in_vals =(Trees *)new Trees(input, input_cnt, NULL);
-        Trees *out_vals =(Trees *)new Trees(output, output_cnt, NULL);
+        Trees_Holder *out_vals =(Trees_Holder *)new Trees_Holder(output, output_cnt);
         if (in_vals == NULL && out_vals == NULL)
             throw std::runtime_error("No memory for class Trees in callback rpc_cb.\n");
         shared_ptr<Trees> *shared_in_vals = in_vals ? new shared_ptr<Trees>(in_vals) : 0;
         PyObject *in = SWIG_NewPointerObj(SWIG_as_voidptr(shared_in_vals), SWIGTYPE_p_std__shared_ptrT_Trees_t, SWIG_POINTER_DISOWN);
 
-        shared_ptr<Trees> *shared_out_vals = out_vals ? new shared_ptr<Trees>(out_vals) : 0;
-        PyObject *out = SWIG_NewPointerObj(SWIG_as_voidptr(shared_out_vals), SWIGTYPE_p_std__shared_ptrT_Trees_t, SWIG_POINTER_DISOWN);
+        shared_ptr<Trees_Holder> *shared_out_vals = out_vals ? new shared_ptr<Trees_Holder>(out_vals) : 0;
+        PyObject *out = SWIG_NewPointerObj(SWIG_as_voidptr(shared_out_vals), SWIGTYPE_p_std__shared_ptrT_Trees_Holder_t, SWIG_POINTER_DISOWN);
 
         PyObject *p =  SWIG_NewPointerObj(private_ctx, SWIGTYPE_p_void, 0);
         arglist = Py_BuildValue("(sOOO)", xpath, in, out, p);
         PyObject *result = PyEval_CallObject(_callback, arglist);
         Py_DECREF(arglist);
-        if (result == NULL)
-            throw std::runtime_error("Python callback failed.\n");
-        else
+        if (result == NULL) {
+            in_vals->~Trees();
+            out_vals->~Trees_Holder();
+            throw std::runtime_error("Python callback rpc_tree_cb failed.\n");
+        } else {
+            in_vals->~Trees();
+            out_vals->~Trees_Holder();
             Py_DECREF(result);
+        }
     }
 
     void dp_get_items(const char *xpath, sr_val_t **values, size_t *values_cnt, void *private_ctx) {
@@ -201,10 +207,13 @@ public:
         arglist = Py_BuildValue("(sOO)", xpath, in, p);
         PyObject *result = PyEval_CallObject(_callback, arglist);
         Py_DECREF(arglist);
-        if (result == NULL)
-            throw std::runtime_error("Python callback failed.\n");
-        else
+        if (result == NULL) {
+            in_vals->~Vals();
+            throw std::runtime_error("Python callback dp_get_items failed.\n");
+        } else {
+            in_vals->~Vals();
             Py_DECREF(result);
+        }
     }
 
     void event_notif(const char *xpath, const sr_val_t *values, const size_t values_cnt, void *private_ctx) {
@@ -220,10 +229,13 @@ public:
         arglist = Py_BuildValue("(sOO)", xpath, in, p);
         PyObject *result = PyEval_CallObject(_callback, arglist);
         Py_DECREF(arglist);
-        if (result == NULL)
-            throw std::runtime_error("Python callback failed.\n");
-        else
+        if (result == NULL) {
+            in_vals->~Vals();
+            throw std::runtime_error("Python callback event_notif failed.\n");
+        } else {
+            in_vals->~Vals();
             Py_DECREF(result);
+        }
     }
 
     void event_notif_tree(const char *xpath, const sr_node_t *trees, const size_t tree_cnt, void *private_ctx) {
@@ -239,10 +251,13 @@ public:
         arglist = Py_BuildValue("(sOO)", xpath, in, p);
         PyObject *result = PyEval_CallObject(_callback, arglist);
         Py_DECREF(arglist);
-        if (result == NULL)
-            throw std::runtime_error("Python callback failed.\n");
-        else
+        if (result == NULL) {
+            in_vals->~Trees();
+            throw std::runtime_error("Python callback event_notif_tree failed.\n");
+        } else {
+            in_vals->~Trees();
             Py_DECREF(result);
+        }
     }
 
     void *private_ctx;

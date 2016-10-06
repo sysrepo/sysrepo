@@ -161,10 +161,10 @@ print_value(S_Val value)
 }
 
 class My_Callback:public Callback {
-    void test_rpc_cb(const char *xpath, const S_Vals in_vals, S_Vals out_vals, void *private_ctx) {
-        cout << "\n\n ========== RPC CALLED ==========\n" << endl;
+    void rpc(const char *xpath, const S_Vals in_vals, S_Vals_Holder holder, void *private_ctx) {
+        cout << "\n ========== RPC CALLED ==========\n" << endl;
 
-        out_vals->allocate(3);
+        auto out_vals = holder->allocate(3);
 
         for(size_t n=0; n < in_vals->val_cnt(); ++n)
             print_value(in_vals->val(n));
@@ -178,13 +178,12 @@ class My_Callback:public Callback {
         out_vals->val(2)->set("/test-module:activate-software-image/location",\
                             "/root/",\
                             SR_STRING_T);
-
     }
 
-    void test_rpc_tree_cb(const char *xpath, S_Trees in_trees, S_Trees out_trees, void *private_ctx) {
-        cout << "\n\n ========== RPC TREE CALLED ==========\n" << endl;
+    void rpc_tree(const char *xpath, S_Trees in_trees, S_Trees_Holder holder, void *private_ctx) {
+        cout << "\n ========== RPC TREE CALLED ==========\n" << endl;
 
-        out_trees->allocate(3);
+        auto out_trees = holder->allocate(3);
 
         for(size_t n=0; n < in_trees->tree_cnt(); ++n)
             print_tree(in_trees->tree(n));
@@ -215,7 +214,7 @@ main(int argc, char **argv)
         S_Subscribe subscribe(new Subscribe(sess));
 	S_Callback cb(new My_Callback());
 
-        cout << "\n\n ========== SUBSCRIBE TO RPC CALL ==========\n" << endl;
+        cout << "\n ========== SUBSCRIBE TO RPC CALL ==========\n" << endl;
 
         subscribe->rpc_subscribe("/test-module:activate-software-image", cb);
 
@@ -228,15 +227,14 @@ main(int argc, char **argv)
                            "/root/",\
                            SR_STRING_T);
 
-        cout << "\n\n ========== START RPC CALL ==========\n" << endl;
+        cout << "\n ========== START RPC CALL ==========\n" << endl;
         auto out_vals = subscribe->rpc_send("/test-module:activate-software-image", in_vals);
 
-        cout << "\n\n ========== PRINT RETURN VALUE ==========\n" << endl;
-        //for(size_t n=0; n < out_vals->val_cnt(); ++n)
-        //    print_value(out_vals->val(n));
+        cout << "\n ========== PRINT RETURN VALUE ==========\n" << endl;
+        for(size_t n=0; n < out_vals->val_cnt(); ++n)
+            print_value(out_vals->val(n));
 
-
-        cout << "\n\n ========== SUBSCRIBE TO RPC TREE CALL ==========\n" << endl;
+        cout << "\n ========== SUBSCRIBE TO RPC TREE CALL ==========\n" << endl;
         subscribe->rpc_subscribe_tree("/test-module:activate-software-image", cb);
 
         S_Trees in_trees(new Trees(1));
@@ -244,14 +242,14 @@ main(int argc, char **argv)
         in_trees->tree(0)->set_name("image-name");
         in_trees->tree(0)->set("acmefw-2.3", SR_STRING_T);
 
-        cout << "\n\n ========== START RPC TREE CALL ==========\n" << endl;
+        cout << "\n ========== START RPC TREE CALL ==========\n" << endl;
         auto out_trees = subscribe->rpc_send_tree("/test-module:activate-software-image", in_trees);
 
-        cout << "\n\n ========== PRINT RETURN VALUE ==========\n" << endl;
-        //for(size_t n=0; n < out_trees->tree_cnt(); ++n)
-        //    print_tree(out_trees->tree(n));
+        cout << "\n ========== PRINT RETURN VALUE ==========\n" << endl;
+        for(size_t n=0; n < out_trees->tree_cnt(); ++n)
+            print_tree(out_trees->tree(n));
 
-        cout << "\n\n ========== END PROGRAM ==========\n" << endl;
+        cout << "\n ========== END PROGRAM ==========\n" << endl;
     } catch( const std::exception& e ) {
         cout << e.what() << endl;
         return -1;
