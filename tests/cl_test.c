@@ -1044,6 +1044,24 @@ cl_set_item_test(void **state)
     rc = sr_set_item(session, "/test-module:tpdfs/leafrefval", &value, SR_EDIT_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
 
+    value.type = SR_DECIMAL64_T;
+    value.data.decimal64_val = 42.42;
+
+    rc = sr_set_item(session, "/test-module:tpdfs/undecided", &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    value.type = SR_BOOL_T;
+    value.data.bool_val = false;
+
+    rc = sr_set_item(session, "/test-module:tpdfs/undecided", &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    value.type = SR_ENUM_T;
+    value.data.enum_val = "a";
+
+    rc = sr_set_item(session, "/test-module:tpdfs/undecided", &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
     /* stop the session */
     rc = sr_session_stop(session);
     assert_int_equal(rc, SR_ERR_OK);

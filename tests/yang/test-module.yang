@@ -393,6 +393,33 @@ module test-module {
   default "disabled";
  }
 
+ typedef enumtpdf {
+    type enumeration {
+       enum "a" {
+          value 1;
+       }
+       enum "b" {
+          value 2;
+       }
+       enum "c" {
+          value 3;
+       }
+    }
+ }
+
+ typedef multiplunions {
+    type union {
+       type uniontpdf;
+       type enumtpdf;
+       type union {
+          type boolean;
+          type decimal64 {
+             fraction-digits 2;
+          }
+       }
+    }
+ }
+
  typedef leafreftpdf {
    type leafref {
       path "/list/key";
@@ -416,6 +443,10 @@ module test-module {
 
     leaf intval {
        type inttpdf;
+    }
+
+    leaf undecided {
+       type multiplunions;
     }
  }
 
