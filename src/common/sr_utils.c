@@ -715,7 +715,9 @@ sr_check_value_conform_to_schema(const struct lys_node *node, const sr_val_t *va
     CHECK_NULL_ARG2(node, value);
 
     struct lys_node_leaf *leafref = NULL;
+    sr_list_t *union_list = NULL;
     sr_type_t type = SR_UNKNOWN_T;
+    int rc = SR_ERR_OK;
     if (LYS_CONTAINER & node->nodetype) {
         struct lys_node_container *cont = (struct lys_node_container *) node;
         type = cont->presence != NULL ? SR_CONTAINER_PRESENCE_T : SR_CONTAINER_T;
@@ -760,19 +762,32 @@ sr_check_value_conform_to_schema(const struct lys_node *node, const sr_val_t *va
             break;
         case LY_TYPE_UNION:
             /* find the type in typedefs */
-            while (0 == actual_type->info.uni.count) {
-               actual_type = &actual_type->der->type;
-            }
-            for (int i = 0; i < actual_type->info.uni.count; i++) {
-                type = sr_ly_data_type_to_sr(actual_type->info.uni.types[i].base);
-                if (LY_TYPE_LEAFREF == actual_type->info.uni.types[i].base) {
-                    leafref = actual_type->info.uni.types[i].info.lref.target;
-                    if (SR_ERR_OK == sr_check_value_conform_to_schema((const struct lys_node *)leafref, value)) {
-                        return SR_ERR_OK;
-                    }
-                } else if (value->type == type) {
-                    break;
+            rc = sr_list_init(&union_list);
+            CHECK_RC_MSG_RETURN(rc, "List init failed");
+
+            rc = sr_list_add(union_list, actual_type);
+            CHECK_RC_MSG_GOTO(rc, matching_done, "List add failed");
+
+            while (union_list->count > 0) {
+                actual_type = (struct lys_type *) union_list->data[0];
+                while (0 == actual_type->info.uni.count) {
+                   actual_type = &actual_type->der->type;
                 }
+                for (int i = 0; i < actual_type->info.uni.count; i++) {
+                    type = sr_ly_data_type_to_sr(actual_type->info.uni.types[i].base);
+                    if (LY_TYPE_LEAFREF == actual_type->info.uni.types[i].base) {
+                        leafref = actual_type->info.uni.types[i].info.lref.target;
+                        if (SR_ERR_OK == sr_check_value_conform_to_schema((const struct lys_node *)leafref, value)) {
+                            return SR_ERR_OK;
+                        }
+                    } else if (LY_TYPE_UNION == actual_type->info.uni.types[i].base) {
+                        rc = sr_list_add(union_list, &actual_type->info.uni.types[i]);
+                        CHECK_RC_MSG_GOTO(rc, matching_done, "List add failed");
+                    } else if (value->type == type) {
+                        goto matching_done;
+                    }
+                }
+                sr_list_rm_at(union_list, 0);
             }
             break;
         case LY_TYPE_INT8:
@@ -804,9 +819,11 @@ sr_check_value_conform_to_schema(const struct lys_node *node, const sr_val_t *va
             //LY_DERIVED
         }
     }
+matching_done:
     if (type != value->type) {
         SR_LOG_ERR("Value doesn't conform to schema expected %d instead of %d", type, value->type);
     }
+    sr_list_cleanup(union_list);
     return type == value->type ? SR_ERR_OK : SR_ERR_INVAL_ARG;
 }
 
