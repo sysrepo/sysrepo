@@ -3081,7 +3081,6 @@ rp_resume_commit(rp_ctx_t *rp_ctx, uint32_t commit_id, int result,
         c_ctx->init_session->state = RP_REQ_RESUMED;
         c_ctx->init_session->commit_id = commit_id;
         pthread_mutex_unlock(&c_ctx->init_session->cur_req_mutex);
-        SR_LOG_INF_MSG("UNLocking mutex");
 
         if (NULL != errors) {
             c_ctx->errors = calloc(errors->count, sizeof(*c_ctx->errors));
@@ -3098,7 +3097,6 @@ rp_resume_commit(rp_ctx_t *rp_ctx, uint32_t commit_id, int result,
             sr_list_cleanup(errors);
         }
         /* reenqueue the request */
-        SR_LOG_INF_MSG("REENQUEING COMMIT MSG");
         rc = rp_msg_process(rp_ctx, c_ctx->init_session, c_ctx->init_session->req);
         c_ctx->init_session->req = NULL;
         pthread_mutex_unlock(&c_ctx->mutex);
