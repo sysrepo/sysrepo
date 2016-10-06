@@ -1991,8 +1991,11 @@ rp_data_provide_resp_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *m
     char *xpath = msg->response->data_provide_resp->xpath;
     struct lys_node *sch_node = NULL;
 
+    session->dp_req_waiting -= 1;
+    SR_LOG_DBG("Data provide response received, waiting for %zu more data providers.", session->dp_req_waiting);
+
     rc = rp_data_provide_resp_validate(rp_ctx, session, xpath, values, values_cnt, &sch_node);
-    CHECK_RC_MSG_GOTO(rc, error, "Data validation failed.");
+    CHECK_RC_MSG_GOTO(rc, finish, "Data validation failed.");
 
     for (size_t i = 0; i < values_cnt; i++) {
         SR_LOG_DBG("Received value from data provider for xpath '%s'.", values[i].xpath);
@@ -2011,7 +2014,7 @@ rp_data_provide_resp_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *m
         }
     }
 
-    session->dp_req_waiting -= 1;
+finish:
     if (0 == session->dp_req_waiting) {
         SR_LOG_DBG("All data from data providers has been received session id = %u, reenque the request", session->id);
         //TODO validate data
@@ -2019,6 +2022,7 @@ rp_data_provide_resp_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *m
         session->state = RP_REQ_DATA_LOADED;
         rp_msg_process(rp_ctx, session, session->req);
     }
+
 error:
     pthread_mutex_unlock(&session->cur_req_mutex);
 
