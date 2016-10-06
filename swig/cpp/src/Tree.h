@@ -35,6 +35,7 @@ using namespace std;
 class Tree:public Throw_Exception
 {
 public:
+    Tree();
     Tree(const char *root_name, const char *root_module_name);
     Tree(sr_node_t *tree, S_Counter counter);
     S_Tree dup();
