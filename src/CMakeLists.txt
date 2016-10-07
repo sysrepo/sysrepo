@@ -98,24 +98,16 @@ if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 endif()
 
 # sysrepo library
-add_library(sysrepo SHARED $<TARGET_OBJECTS:COMMON> $<TARGET_OBJECTS:SR_SRC>)
-add_library(sysrepo_a $<TARGET_OBJECTS:COMMON> $<TARGET_OBJECTS:SR_SRC>)
+add_library(sysrepo SHARED $<TARGET_OBJECTS:COMMON> $<TARGET_OBJECTS:SR_ENGINE> $<TARGET_OBJECTS:SR_SRC>)
+add_library(sysrepo_a $<TARGET_OBJECTS:COMMON> $<TARGET_OBJECTS:SR_ENGINE> $<TARGET_OBJECTS:SR_SRC>)
 SET_TARGET_PROPERTIES(sysrepo_a PROPERTIES
               OUTPUT_NAME sysrepo CLEAN_DIRECT_OUTPUT 1)
-target_link_libraries(sysrepo ${LINK_LIBRARIES} sysrepo-engine)
-target_link_libraries(sysrepo_a ${LINK_LIBRARIES} sysrepo-engine_a)
-
-# sysrepo-engine library
-add_library(sysrepo-engine SHARED $<TARGET_OBJECTS:COMMON> $<TARGET_OBJECTS:SR_ENGINE>)
-add_library(sysrepo-engine_a $<TARGET_OBJECTS:COMMON> $<TARGET_OBJECTS:SR_ENGINE>)
-SET_TARGET_PROPERTIES(sysrepo-engine_a PROPERTIES
-              OUTPUT_NAME sysrepo-engine CLEAN_DIRECT_OUTPUT 1)
-target_link_libraries(sysrepo-engine_a ${LINK_LIBRARIES})
-target_link_libraries(sysrepo-engine ${LINK_LIBRARIES})
+target_link_libraries(sysrepo ${LINK_LIBRARIES})
+target_link_libraries(sysrepo_a ${LINK_LIBRARIES})
 
 # sysrepo daemon
 add_executable(sysrepod ${EXECUTABLES_DIR}/sysrepod.c)
-target_link_libraries(sysrepod sysrepo-engine)
+target_link_libraries(sysrepod sysrepo)
 
 # sysrepo plugin daemon
 add_executable(sysrepo-plugind ${EXECUTABLES_DIR}/sysrepo-plugind.c)
@@ -131,8 +123,6 @@ target_link_libraries(sysrepocfg sysrepo ${YANG_LIBRARIES})
 
 install(TARGETS sysrepo DESTINATION ${LIB_INSTALL_DIR})
 install(TARGETS sysrepo_a DESTINATION ${LIB_INSTALL_DIR})
-install(TARGETS sysrepo-engine DESTINATION ${LIB_INSTALL_DIR})
-install(TARGETS sysrepo-engine_a DESTINATION ${LIB_INSTALL_DIR})
 install(TARGETS sysrepod DESTINATION ${BIN_INSTALL_DIR})
 install(TARGETS sysrepo-plugind DESTINATION ${BIN_INSTALL_DIR})
 install(TARGETS sysrepoctl DESTINATION ${BIN_INSTALL_DIR})
