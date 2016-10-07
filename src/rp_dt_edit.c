@@ -670,8 +670,15 @@ rp_dt_replay_operations(dm_ctx_t *ctx, dm_session_t *session, dm_sess_op_t *oper
 int
 rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t *c_ctx, sr_error_info_t **errors, size_t *err_cnt)
 {
-    CHECK_NULL_ARG4(rp_ctx, session, errors, err_cnt);
     int rc = SR_ERR_OK;
+    CHECK_NULL_ARG_NORET4(rc, rp_ctx, session, errors, err_cnt);
+    if (SR_ERR_OK != rc) {
+        if (NULL != c_ctx) {
+            pthread_mutex_unlock(&c_ctx->mutex);
+        }
+        return rc;
+    }
+
     dm_commit_context_t *commit_ctx = c_ctx;
     dm_commit_state_t state = NULL != commit_ctx ? commit_ctx->state : DM_COMMIT_STARTED;
 
