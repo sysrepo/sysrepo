@@ -25,6 +25,7 @@
 #include <signal.h>
 #include <string.h>
 #include <inttypes.h>
+#include <limits.h>
 
 #include "sysrepo.h"
 #include "sysrepo/values.h"
@@ -36,32 +37,61 @@ static int
 data_provider_cb(const char *xpath, sr_val_t **values, size_t *values_cnt, void *private_ctx)
 {
     sr_val_t *v = NULL;
+    char xpath_buf[PATH_MAX] = { 0, };
+    sr_xpath_ctx_t xp_ctx = {0};
+    int rc = SR_ERR_OK;
 
     printf("Data for '%s' requested.\n", xpath);
 
     if (0 == strcmp(sr_xpath_node_name(xpath), "interface")) {
-        /* return all list instances with their details */
+        /* return all 'interface' list instances with their details */
 
-        sr_new_values(4, &v);
+        /* allocate space for data to return */
+        rc = sr_new_values(4, &v);
+        if (SR_ERR_OK != rc) {
+            return rc;
+        }
 
         sr_val_set_xpath(&v[0], "/ietf-interfaces:interfaces-state/interface[name='eth0']/type");
         v[0].type = SR_IDENTITYREF_T;
         sr_val_set_string(&v[0], "ethernetCsmacd");
 
         sr_val_set_xpath(&v[1], "/ietf-interfaces:interfaces-state/interface[name='eth0']/oper-status");
-        v[1].type = SR_IDENTITYREF_T;
-        sr_val_set_string(&v[1], "testing");
+        v[1].type = SR_ENUM_T;
+        sr_val_set_string(&v[1], "down");
 
         sr_val_set_xpath(&v[2], "/ietf-interfaces:interfaces-state/interface[name='eth1']/type");
         v[2].type = SR_IDENTITYREF_T;
         sr_val_set_string(&v[2], "ethernetCsmacd");
 
         sr_val_set_xpath(&v[3], "/ietf-interfaces:interfaces-state/interface[name='eth1']/oper-status");
-        v[3].type = SR_IDENTITYREF_T;
+        v[3].type = SR_ENUM_T;
         sr_val_set_string(&v[3], "up");
 
         *values = v;
         *values_cnt = 4;
+    } else if (0 == strcmp(sr_xpath_node_name(xpath), "statistics")) {
+        /* return contents of 'statistics' NESTED container for the given list instance */
+
+        /* allocate space for data to return */
+        rc = sr_new_values(1, &v);
+        if (SR_ERR_OK != rc) {
+            return rc;
+        }
+
+        snprintf(xpath_buf, PATH_MAX, "%s/%s", xpath, "discontinuity-time");
+        sr_val_set_xpath(&v[0], xpath_buf);
+        v[0].type = SR_STRING_T;
+
+        /* just return something different for eth0 and eth1 */
+        if (0 == strcmp(sr_xpath_key_value(xpath_buf, "interface", "name", &xp_ctx), "eth0")) {
+            sr_val_set_string(&v[0], "1987-08-31T17:00:30.44Z");
+        } else {
+            sr_val_set_string(&v[0], "2016-10-06T15:12:50.52Z");
+        }
+
+        *values = v;
+        *values_cnt = 1;
     } else {
         /* statistics, ipv4 and ipv6 nested containers not implemented in this example */
         *values = NULL;
@@ -139,6 +169,9 @@ print_value(sr_val_t *value)
         break;
     case SR_IDENTITYREF_T:
         printf("= %s\n", value->data.identityref_val);
+        break;
+    case SR_ENUM_T:
+        printf("= %s\n", value->data.enum_val);
         break;
     default:
         printf("(unprintable)\n");
