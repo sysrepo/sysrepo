@@ -7,7 +7,7 @@ RUN apt-get update && apt-get install -y \
         cmake \
         build-essential \
 	vim \
-	#libyang
+	# libyang
 	libpcre3-dev \
 	# sysrepo 
 	libavl-dev \
@@ -21,18 +21,26 @@ RUN apt-get update && apt-get install -y \
 	libcmocka-dev \
 	valgrind 
 
-RUN \
-	git clone https://github.com/CESNET/libyang.git ; \
-	cd libyang ; mkdir build ; cd build ; \
-	cmake -DCMAKE_BUILD_TYPE=Debug .. ; \
-	make -j2 ; \
-	make install
+RUN mkdir /opt/dev
+
+WORKDIR /opt/dev
 
 RUN \
-        git clone https://github.com/sysrepo/sysrepo.git ; \
-        cd sysrepo ; mkdir build ; cd build ; \
-        cmake -DCMAKE_BUILD_TYPE=Debug .. ; \
-        make -j2 ; \
-        make install
+	git clone https://github.com/CESNET/libyang.git && \
+	cd libyang && mkdir build && cd build && \
+	cmake -DCMAKE_BUILD_TYPE=Debug .. && \
+	make -j2 && \
+	make install && \
+	ldconfig 
 
-CMD ["/usr/bin/sysrepod"]
+RUN \
+        git clone https://github.com/sysrepo/sysrepo.git && \
+        cd sysrepo && mkdir build && cd build && \
+        cmake -DCMAKE_BUILD_TYPE=Debug .. && \
+        make -j2 && \
+        make install && \
+	ldconfig
+
+ENV EDITOR vim
+
+CMD ["/bin/bash"]
