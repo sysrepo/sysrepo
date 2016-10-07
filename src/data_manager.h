@@ -781,6 +781,42 @@ int dm_validate_rpc_tree(dm_ctx_t *dm_ctx, dm_session_t *session, const char *rp
                          sr_mem_ctx_t *sr_mem, sr_val_t **with_def, size_t *with_def_cnt, sr_node_t **with_def_tree, size_t *with_def_tree_cnt);
 
 /**
+ * @brief Validates content of an Action request or reply.
+ * @param [in] dm_ctx DM context.
+ * @param [in] session DM session.
+ * @param [in] action_xpath XPath of the Action.
+ * @param [in] args Input/output arguments of the Action.
+ * @param [in] arg_cnt Number of input/output arguments provided.
+ * @param [in] input TRUE if input arguments were provided, FALSE if output.
+ * @param [in] sr_mem Sysrepo memory context to use for output values (can be NULL).
+ * @param [out] with_def Input/Output arguments including default values represented as sysrepo values.
+ * @param [out] with_def_cnt Number of items inside the *with_def* array.
+ * @param [out] with_def_tree Input/Output arguments including default values represented as sysrepo trees.
+ * @param [out] with_def_tree_cnt Number of items inside the *with_def_tree* array.
+ * @return Error code (SR_ERR_OK on success)
+ */
+int dm_validate_action(dm_ctx_t *dm_ctx, dm_session_t *session, const char *action_xpath, sr_val_t *args, size_t arg_cnt, bool input,
+                    sr_mem_ctx_t *sr_mem, sr_val_t **with_def, size_t *with_def_cnt, sr_node_t **with_def_tree, size_t *with_def_tree_cnt);
+
+/**
+ * @brief Validates content of an Action request or reply with arguments represented using sr_node_t.
+ * @param [in] dm_ctx DM context.
+ * @param [in] session DM session.
+ * @param [in] action_xpath XPath of the Action.
+ * @param [in] args Input/output arguments of the Action.
+ * @param [in] arg_cnt Number of input/output arguments provided.
+ * @param [in] input TRUE if input arguments were provided, FALSE if output.
+ * @param [in] sr_mem Sysrepo memory context to use for output values (can be NULL).
+ * @param [out] with_def Input/Output arguments including default values represented as sysrepo values.
+ * @param [out] with_def_cnt Number of items inside the *with_def* array.
+ * @param [out] with_def_tree Input/Output arguments including default values represented as sysrepo trees.
+ * @param [out] with_def_tree_cnt Number of items inside the *with_def_tree* array.
+ * @return Error code (SR_ERR_OK on success)
+ */
+int dm_validate_action_tree(dm_ctx_t *dm_ctx, dm_session_t *session, const char *action_xpath, sr_node_t *args, size_t arg_cnt, bool input,
+                         sr_mem_ctx_t *sr_mem, sr_val_t **with_def, size_t *with_def_cnt, sr_node_t **with_def_tree, size_t *with_def_tree_cnt);
+
+/**
  * @brief Validates content of an event notification request.
  * @param [in] dm_ctx DM context.
  * @param [in] session DM session.

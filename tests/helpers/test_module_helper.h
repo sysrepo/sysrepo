@@ -27,6 +27,7 @@
 
 #define TEST_MODULE_DATA_FILE_NAME TEST_DATA_SEARCH_DIR "test-module" SR_STARTUP_FILE_EXT
 #define EXAMPLE_MODULE_DATA_FILE_NAME TEST_DATA_SEARCH_DIR "example-module" SR_STARTUP_FILE_EXT
+#define REFERENCED_MODULE_DATA_FILE_NAME TEST_DATA_SEARCH_DIR "referenced-data" SR_STARTUP_FILE_EXT
 
 /**
  * Creates test-module data tree and writes it into a file.
@@ -52,6 +53,11 @@ void createDataTreeLargeExampleModule(int list_count);
  * Creates ietf-interfaces module configuration for specified number of interfaces
  */
 void createDataTreeLargeIETFinterfacesModule(size_t if_count);
+
+/**
+ * Creates referenced-data module configuration.
+ */
+void createDataTreeReferencedModule(int8_t magic_number);
 
 #define XP_TEST_MODULE_ENUM "/test-module:main/enum"
 #define XP_TEST_MODULE_ENUM_VALUE "maybe"
