@@ -3925,7 +3925,7 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
 
     /* validate the content (and also add default nodes) */
     if (arg_cnt > 0) {
-        validation_options = LYD_OPT_STRICT;
+        validation_options = LYD_OPT_STRICT | LYD_OPT_NOSIBLINGS;
         switch (type) {
             case DM_PROCEDURE_RPC:
             case DM_PROCEDURE_ACTION:
@@ -3964,12 +3964,17 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
             rc = dm_load_dependant_data(dm_ctx, session, di);
             CHECK_RC_LOG_GOTO(rc, cleanup, "Loading dependant modules failed for %s", di->schema->module_name);
         }
-        ret = lyd_validate(&data_tree, validation_options, ext_ref ? di->node : NULL);
-        if (0 != ret) {
+        nodeset = lyd_find_xpath(data_tree, xpath);
+        if (1 == nodeset->number) {
+            ret = lyd_validate(&nodeset->set.d[0], validation_options, ext_ref ? di->node : NULL);
+        }
+        if (1 != nodeset->number || 0 != ret) {
+            ly_set_free(nodeset);
             SR_LOG_ERR("%s content validation failed: %s", procedure_name, ly_errmsg());
             rc = dm_report_error(session, ly_errmsg(), ly_errpath(), SR_ERR_VALIDATION_FAILED);
             goto cleanup;
         }
+        ly_set_free(nodeset);
     }
 
     /* re-read the arguments from data tree (it can now contain newly added default nodes) */
@@ -4032,7 +4037,9 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
     }
 
 cleanup:
-    lyd_free_withsiblings(data_tree);
+    if (data_tree) {
+        lyd_free_withsiblings(data_tree);
+    }
 
     return rc;
 }
