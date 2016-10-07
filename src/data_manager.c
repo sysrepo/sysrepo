@@ -3959,7 +3959,7 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
         node = proc_node;
         while (false == ext_ref && (!backtracking || node != proc_node)) {
             if (false == backtracking) {
-                if (node->flags & LYS_XPATH_DEP) {
+                if (node->flags & LYS_VALID_DEP) {
                     ext_ref = true; /* reference outside the procedure subtree */
                 }
                 if (node->child) {
@@ -3982,12 +3982,6 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
             rc = dm_load_dependant_data(dm_ctx, session, di);
             CHECK_RC_LOG_GOTO(rc, cleanup, "Loading dependant modules failed for %s", di->schema->module_name);
         }
-        char *tmp = NULL;
-        ret = lyd_print_fd(STDOUT_FILENO, data_tree, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT);
-        free(tmp);
-        ret = lyd_print_fd(STDOUT_FILENO, di->node, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT);
-        free(tmp);
-
         ret = lyd_validate(&data_tree, validation_options, ext_ref ? di->node : NULL);
         if (0 != ret) {
             SR_LOG_ERR("%s content validation failed: %s", procedure_name, ly_errmsg());

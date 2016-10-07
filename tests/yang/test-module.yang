@@ -437,6 +437,11 @@ module test-module {
               path "/kernel-modules/kernel-module[name = current()/../../name]/location";
             }
           }
+          leaf location2 {
+            type leafref {
+              path "../../location";
+            }
+          }
         }
       }
 
