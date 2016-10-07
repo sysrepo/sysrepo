@@ -778,6 +778,7 @@ sr_check_value_conform_to_schema(const struct lys_node *node, const sr_val_t *va
                     if (LY_TYPE_LEAFREF == actual_type->info.uni.types[i].base) {
                         leafref = actual_type->info.uni.types[i].info.lref.target;
                         if (SR_ERR_OK == sr_check_value_conform_to_schema((const struct lys_node *)leafref, value)) {
+                            sr_list_cleanup(union_list);
                             return SR_ERR_OK;
                         }
                     } else if (LY_TYPE_UNION == actual_type->info.uni.types[i].base) {
