@@ -93,36 +93,6 @@ extern "C" {
 #include "sysrepo.h"
 }
 
-typedef enum conn_flag_e {
-    CONN_DEFAULT = 0,
-    CONN_DAEMON_REQUIRED = 1,
-    CONN_DAEMON_START = 2,
-} conn_flag_t;
-
-typedef enum session_flag_e {
-    SESS_DEFAULT = 0,
-    SESS_CONFIG_ONLY = 1,
-} session_flag_t;
-
-typedef enum edit_flag_e {
-    EDIT_DEFAULT = 0,
-    EDIT_NON_RECURSIVE = 1,
-    EDIT_STRICT = 2,
-} edit_flag_t;
-
-typedef enum subscr_flag_e {
-    SUBSCR_DEFAULT = 0,
-    SUBSCR_CTX_REUSE = 1,
-    SUBSCR_PASSIVE = 2,
-    SUBSCR_VERIFIER = 4,
-} subscr_flag_t;
-
-typedef enum datastore_e {
-    DS_STARTUP = 0,
-    DS_RUNNING = 1,
-    DS_CANDIDATE = 2,
-} datastore_t;
-
 class Throw_Exception
 {
 

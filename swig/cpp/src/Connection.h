@@ -34,7 +34,7 @@ extern "C" {
 class Connection:public Throw_Exception
 {
 public:
-    Connection(const char *app_name, const sr_conn_options_t opts = SESS_DEFAULT);
+    Connection(const char *app_name, const sr_conn_options_t opts = 0);
     sr_conn_ctx_t *get_conn();
     ~Connection();
 

@@ -340,7 +340,7 @@ static void g_event_notif_tree_cb(const char *xpath, const sr_node_t *trees, con
 %extend Subscribe {
 
     void module_change_subscribe(const char *module_name, PyObject *callback, void *private_ctx = NULL, \
-                                 uint32_t priority = 0, sr_subscr_options_t opts = SUBSCR_DEFAULT) {
+                                 uint32_t priority = 0, sr_subscr_options_t opts = 0) {
         /* create class */
         Wrap_cb *class_ctx = NULL;
         class_ctx = new Wrap_cb(callback);
@@ -359,7 +359,7 @@ static void g_event_notif_tree_cb(const char *xpath, const sr_node_t *trees, con
     };
 
     void subtree_change_subscribe(const char *xpath, PyObject *callback, void *private_ctx = NULL,\
-                                 uint32_t priority = 0, sr_subscr_options_t opts = SUBSCR_DEFAULT) {
+                                 uint32_t priority = 0, sr_subscr_options_t opts = 0) {
         /* create class */
         Wrap_cb *class_ctx = NULL;
         class_ctx = new Wrap_cb(callback);
@@ -378,7 +378,7 @@ static void g_event_notif_tree_cb(const char *xpath, const sr_node_t *trees, con
     }
 
     void module_install_subscribe(PyObject *callback, void *private_ctx = NULL,\
-                                  sr_subscr_options_t opts = SUBSCR_DEFAULT) {
+                                  sr_subscr_options_t opts = 0) {
         /* create class */
         Wrap_cb *class_ctx = NULL;
         class_ctx = new Wrap_cb(callback);
@@ -398,7 +398,7 @@ static void g_event_notif_tree_cb(const char *xpath, const sr_node_t *trees, con
     }
 
     void feature_enable_subscribe(PyObject *callback, void *private_ctx = NULL,\
-                                  sr_subscr_options_t opts = SUBSCR_DEFAULT) {
+                                  sr_subscr_options_t opts = 0) {
         /* create class */
         Wrap_cb *class_ctx = NULL;
         class_ctx = new Wrap_cb(callback);
@@ -418,7 +418,7 @@ static void g_event_notif_tree_cb(const char *xpath, const sr_node_t *trees, con
     }
 
     void rpc_subscribe(const char *xpath, PyObject *callback, void *private_ctx = NULL,\
-                       sr_subscr_options_t opts = SUBSCR_DEFAULT) {
+                       sr_subscr_options_t opts = 0) {
         Wrap_cb *class_ctx = NULL;
         class_ctx = new Wrap_cb(callback);
 
@@ -437,7 +437,7 @@ static void g_event_notif_tree_cb(const char *xpath, const sr_node_t *trees, con
     }
 
     void rpc_subscribe_tree(const char *xpath, PyObject *callback, void *private_ctx = NULL,\
-                       sr_subscr_options_t opts = SUBSCR_DEFAULT) {
+                       sr_subscr_options_t opts = 0) {
         Wrap_cb *class_ctx = NULL;
         class_ctx = new Wrap_cb(callback);
 
@@ -456,7 +456,7 @@ static void g_event_notif_tree_cb(const char *xpath, const sr_node_t *trees, con
     }
 
     void event_notif_subscribe(const char *xpath, PyObject *callback, void *private_ctx,\
-                               sr_subscr_options_t opts) {
+                               sr_subscr_options_t opts = 0) {
         Wrap_cb *class_ctx = NULL;
         class_ctx = new Wrap_cb(callback);
 
@@ -475,7 +475,7 @@ static void g_event_notif_tree_cb(const char *xpath, const sr_node_t *trees, con
     }
 
     void event_notif_subscribe_tree(const char *xpath, PyObject *callback, void *private_ctx,\
-                               sr_subscr_options_t opts) {
+                               sr_subscr_options_t opts = 0) {
         Wrap_cb *class_ctx = NULL;
         class_ctx = new Wrap_cb(callback);
 
@@ -494,7 +494,7 @@ static void g_event_notif_tree_cb(const char *xpath, const sr_node_t *trees, con
     }
 
     void dp_get_items_subscribe(const char *xpath, PyObject *callback, void *private_ctx, \
-                               sr_subscr_options_t opts = SUBSCR_DEFAULT) {
+                               sr_subscr_options_t opts = 0) {
         Wrap_cb *class_ctx = NULL;
         class_ctx = new Wrap_cb(callback);
 
