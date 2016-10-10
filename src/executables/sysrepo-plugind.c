@@ -36,6 +36,9 @@
 #define SR_PLUGIN_INIT_FN_NAME     "sr_plugin_init_cb"     /**< Name of the plugin initialization function. */
 #define SR_PLUGIN_CLEANUP_FN_NAME  "sr_plugin_cleanup_cb"  /**< Name of the plugin cleanup function. */
 
+#define SR_PLUGIN_INIT_RETRY_TIMEOUT 10    /**< TODO */
+#define SR_PLUGIN_HEALTH_CHECK_TIMEOUT 10  /**< TODO */
+
 /**
  * @brief Sysrepo plugin initialization callback.
  *
@@ -45,7 +48,8 @@
  * @param[out] private_ctx Private context (opaque to sysrepo) that will be
  * passed to ::sr_plugin_cleanup_cb when plugin cleanup is requested.
  *
- * @return Error code (SR_ERR_OK on success).
+ * @return Error code (SR_ERR_OK on success). If an error is returned, plugin
+ * will be considered as uninitialized.
  */
 typedef int (*sr_plugin_init_cb)(sr_session_ctx_t *session, void **private_ctx);
 
@@ -60,26 +64,65 @@ typedef int (*sr_plugin_init_cb)(sr_session_ctx_t *session, void **private_ctx);
 typedef void (*sr_plugin_cleanup_cb)(sr_session_ctx_t *session, void *private_ctx);
 
 /**
+ * @brief Sysrepo plugin health check callback.
+ *
+ * @param[in] private_ctx Private context as passed in ::sr_plugin_init_cb.
+ */
+typedef int (*sr_plugin_health_check_cb)(void *private_ctx);
+
+/**
  * @brief Sysrepo plugin context.
  */
 typedef struct sr_pd_plugin_ctx_s {
-    void *dl_handle;                  /**< Shared library handle. */
-    sr_plugin_init_cb init_cb;        /**< Initialization function pointer. */
-    sr_plugin_cleanup_cb cleanup_cb;  /**< Cleanup function pointer. */
-    void *private_ctx;                /**< Private context, opaque to . */
+    void *dl_handle;                            /**< Shared library handle. */
+    sr_plugin_init_cb init_cb;                  /**< Initialization function pointer. */
+    sr_plugin_cleanup_cb cleanup_cb;            /**< Cleanup function pointer. */
+    sr_plugin_health_check_cb health_check_cb;  /**< Health check function pointer. */
+    void *private_ctx;                          /**< Private context, opaque to sysrepo. */
+    bool initialized;                           /**< Tracks whether the plugin has been successfully initialized. */
 } sr_pd_plugin_ctx_t;
+
+/**
+ * @brief Sysrepo plugin daemon context.
+ */
+typedef struct sr_pd_ctx_s {
+    sr_conn_ctx_t *connection;
+    sr_session_ctx_t *session;
+    sr_pd_plugin_ctx_t *plugins;
+    size_t plugins_cnt;
+    struct ev_loop *event_loop;
+    ev_signal signal_watcher[2];
+    ev_timer health_check_timer;
+    ev_timer init_retry_timer;
+} sr_pd_ctx_t;
 
 /**
  * @brief Callback called by the event loop watcher when a signal is caught.
  */
 static void
-cm_signal_cb_internal(struct ev_loop *loop, struct ev_signal *w, int revents)
+sr_pd_signal_cb(struct ev_loop *loop, struct ev_signal *w, int revents)
 {
     CHECK_NULL_ARG_VOID2(loop, w);
 
     SR_LOG_DBG("Signal %d caught, breaking the event loop.", w->signum);
 
     ev_break(loop, EVBREAK_ALL);
+}
+
+/**
+ * @brief Callback called by the event loop watcher when health check timer expires.
+ */
+static void
+sr_pd_health_check_timer_cb(struct ev_loop *loop, ev_timer *w, int revents)
+{
+    sr_pd_ctx_t *ctx = NULL;
+
+    CHECK_NULL_ARG_VOID2(w, w->data);
+    ctx = (sr_pd_ctx_t*)w->data;
+
+    CHECK_NULL_ARG_VOID(ctx);
+
+    SR_LOG_DBG_MSG("health check");
 }
 
 static int
@@ -128,19 +171,18 @@ cleanup:
 }
 
 static int
-sr_pd_load_plugins(sr_session_ctx_t *session, sr_pd_plugin_ctx_t **plugins_p, size_t *plugins_cnt_p)
+sr_pd_load_plugins(sr_pd_ctx_t *ctx)
 {
     DIR *dir;
     struct dirent entry, *result;
     char *env_str = NULL;
     char plugins_dir[PATH_MAX + 1] = { 0, };
     char plugin_filename[PATH_MAX + 1] = { 0, };
-    sr_pd_plugin_ctx_t *plugins = NULL, *tmp = NULL;
-    size_t plugins_cnt = 0;
+    sr_pd_plugin_ctx_t *tmp = NULL;
     int ret = 0;
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG3(session, plugins_p, plugins_cnt_p);
+    CHECK_NULL_ARG(ctx);
 
     /* get plugins dir from environment variable, or use default one */
     env_str = getenv("SR_PLUGINS_DIR");
@@ -167,36 +209,33 @@ sr_pd_load_plugins(sr_session_ctx_t *session, sr_pd_plugin_ctx_t **plugins_p, si
             SR_LOG_DBG("Loading plugin '%s'.", entry.d_name);
             snprintf(plugin_filename, PATH_MAX, "%s/%s", plugins_dir, entry.d_name);
             /* realloc plugins array */
-            tmp = realloc(plugins, sizeof(*plugins) * (plugins_cnt + 1));
+            tmp = realloc(ctx->plugins, sizeof(*ctx->plugins) * (ctx->plugins_cnt + 1));
             if (NULL == tmp) {
                 SR_LOG_ERR_MSG("Unable to realloc plugins array, skipping the rest of plugins.");
                 break;
             }
-            plugins = tmp;
+            ctx->plugins = tmp;
             /* load the plugin */
-            rc = sr_pd_load_plugin(session, plugin_filename, &plugins[plugins_cnt]);
+            rc = sr_pd_load_plugin(ctx->session, plugin_filename, &(ctx->plugins[ctx->plugins_cnt]));
             if (SR_ERR_OK == rc) {
-                plugins_cnt += 1;
+                ctx->plugins_cnt += 1;
             }
         }
     } while (NULL != result);
     closedir(dir);
 
-    *plugins_p = plugins;
-    *plugins_cnt_p = plugins_cnt;
-
     return SR_ERR_OK;
 }
 
 static int
-sr_pd_cleanup_plugins(sr_session_ctx_t *session, sr_pd_plugin_ctx_t *plugins, size_t plugins_cnt)
+sr_pd_cleanup_plugins(sr_pd_ctx_t *ctx)
 {
-    if (NULL != plugins) {
-        for (size_t i = 0; i < plugins_cnt; i++) {
-            plugins[i].cleanup_cb(session, plugins[i].private_ctx);
-            dlclose(plugins[i].dl_handle);
+    if (NULL != ctx->plugins) {
+        for (size_t i = 0; i < ctx->plugins_cnt; i++) {
+            ctx->plugins[i].cleanup_cb(ctx->session, ctx->plugins[i].private_ctx);
+            dlclose(ctx->plugins[i].dl_handle);
         }
-        free(plugins);
+        free(ctx->plugins);
     }
     return SR_ERR_OK;
 }
@@ -238,19 +277,13 @@ sr_pd_print_help()
 int
 main(int argc, char* argv[])
 {
+    sr_pd_ctx_t ctx = { 0, };
     pid_t parent_pid = 0;
     int pidfile_fd = -1;
-    sr_pd_plugin_ctx_t *plugins = NULL;
-    size_t plugins_cnt = 0;
-    sr_conn_ctx_t *connection = NULL;
-    sr_session_ctx_t *session = NULL;
-    struct ev_loop *event_loop =  NULL;
-    ev_signal signal_watcher[2];
-    int rc = SR_ERR_OK;
-
     int c = 0;
     bool debug_mode = false;
     int log_level = -1;
+    int rc = SR_ERR_OK;
 
     while ((c = getopt (argc, argv, "hvdl:")) != -1) {
         switch (c) {
@@ -279,24 +312,29 @@ main(int argc, char* argv[])
     SR_LOG_DBG_MSG("Sysrepo plugin daemon initialization started.");
 
     /* init the event loop */
-    event_loop = ev_loop_new(EVFLAG_AUTO);
+    ctx.event_loop = ev_loop_new(EVFLAG_AUTO);
 
     /* init signal watchers */
-    ev_signal_init(&signal_watcher[0], cm_signal_cb_internal, SIGTERM);
-    ev_signal_start(event_loop, &signal_watcher[0]);
-    ev_signal_init(&signal_watcher[1], cm_signal_cb_internal, SIGINT);
-    ev_signal_start(event_loop, &signal_watcher[1]);
+    ev_signal_init(&ctx.signal_watcher[0], sr_pd_signal_cb, SIGTERM);
+    ev_signal_start(ctx.event_loop, &ctx.signal_watcher[0]);
+    ev_signal_init(&ctx.signal_watcher[1], sr_pd_signal_cb, SIGINT);
+    ev_signal_start(ctx.event_loop, &ctx.signal_watcher[1]);
+
+    /* init timers */
+    ev_timer_init(&ctx.health_check_timer, sr_pd_health_check_timer_cb, SR_PLUGIN_HEALTH_CHECK_TIMEOUT,
+            SR_PLUGIN_HEALTH_CHECK_TIMEOUT);
+    ctx.health_check_timer.data = &ctx;
 
     /* connect to sysrepo */
-    rc = sr_connect("sysrepo-plugind", SR_CONN_DEFAULT, &connection);
+    rc = sr_connect("sysrepo-plugind", SR_CONN_DEFAULT, &ctx.connection);
     CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to connect to sysrepo: %s", sr_strerror(rc));
 
     /* start the session */
-    rc = sr_session_start(connection, SR_DS_STARTUP, SR_SESS_DEFAULT, &session);
+    rc = sr_session_start(ctx.connection, SR_DS_STARTUP, SR_SESS_DEFAULT, &ctx.session);
     CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to connect to sysrepo: %s", sr_strerror(rc));
 
     /* load the plugins */
-    rc = sr_pd_load_plugins(session, &plugins, &plugins_cnt);
+    rc = sr_pd_load_plugins(&ctx);
 
     /* tell the parent process that we are okay */
     if (!debug_mode) {
@@ -305,16 +343,19 @@ main(int argc, char* argv[])
 
     SR_LOG_INF_MSG("Sysrepo plugin daemon initialized successfully.");
 
-    /* run the event loop */
-    ev_run(event_loop, 0);
+    /* start health check timer */
+    ev_timer_start(ctx.event_loop, &ctx.health_check_timer);
 
-    ev_loop_destroy(event_loop);
+    /* run the event loop */
+    ev_run(ctx.event_loop, 0);
+
+    ev_loop_destroy(ctx.event_loop);
 
 cleanup:
-    sr_pd_cleanup_plugins(session, plugins, plugins_cnt);
+    sr_pd_cleanup_plugins(&ctx);
 
-    sr_session_stop(session);
-    sr_disconnect(connection);
+    sr_session_stop(ctx.session);
+    sr_disconnect(ctx.connection);
 
     SR_LOG_INF_MSG("Sysrepo plugin daemon terminated.");
     sr_logger_cleanup();
