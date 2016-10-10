@@ -42,15 +42,16 @@
     #define S_Fd_Change        Fd_Change*
     #define S_Fd_Changes       Fd_Changes*
     #define S_Val              Val*
-    #define S_Val_Holder       Val_Holder*
+    #define S_Vals_Holder      Vals_Holder*
     #define S_Vals             Vals*
     #define S_Tree             Tree*
     #define S_Trees            Trees*
+    #define S_Trees_Holder     Trees_Holder*
     #define S_Xpath_Ctx        Xpath_Ctx*
     #define S_Logs             Logs*
     #define S_Change           Change*
     #define S_Counter          Counter*
-    #define S_wrap_cb          wrap_cb*
+    #define S_Callback         Callback*
 #else
     #define S_Iter_Value       std::shared_ptr<Iter_Value>
     #define S_Iter_Change      std::shared_ptr<Iter_Change>
@@ -71,15 +72,16 @@
     #define S_Fd_Change        std::shared_ptr<Fd_Change>
     #define S_Fd_Changes       std::shared_ptr<Fd_Changes>
     #define S_Val              std::shared_ptr<Val>
-    #define S_Val_Holder       std::shared_ptr<Val_Holder>
+    #define S_Vals_Holder      std::shared_ptr<Vals_Holder>
     #define S_Vals             std::shared_ptr<Vals>
     #define S_Tree             std::shared_ptr<Tree>
     #define S_Trees            std::shared_ptr<Trees>
+    #define S_Trees_Holder     std::shared_ptr<Trees_Holder>
     #define S_Xpath_Ctx        std::shared_ptr<Xpath_Ctx>
     #define S_Logs             std::shared_ptr<Logs>
     #define S_Change           std::shared_ptr<Change>
     #define S_Counter          std::shared_ptr<Counter>
-    #define S_wrap_cb          std::shared_ptr<wrap_cb>
+    #define S_Callback         std::shared_ptr<Callback>
 #endif
 
 #include <iostream>
@@ -139,10 +141,12 @@ public:
 class Schemas:public Throw_Exception
 {
 public:
-    Schemas(sr_schema_t *sch, size_t cnt);
-    sr_schema_t *get_val();
+    Schemas(sr_schema_t *sch = NULL, size_t cnt = 0);
+    sr_schema_t *get_val() {return &_sch[_pos];};
     const char *get_module_name() {return _sch[_pos].module_name;};
-    size_t get_cnt();
+    size_t get_cnt() {return _cnt;};
+    sr_schema_t **p_sch() {return &_sch;};
+    size_t *p_cnt() {return &_cnt;};
     bool Next();
     bool Prev();
     ~Schemas();
@@ -157,8 +161,9 @@ class Schema_Content:public Throw_Exception
 {
 
 public:
-    Schema_Content(char *con);
+    Schema_Content(char *con = NULL);
     char *get();
+    char **p_get() {return &_con;};
     ~Schema_Content();
 
 private:

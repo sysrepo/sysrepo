@@ -163,6 +163,7 @@ typedef struct dm_model_subscription_s {
  */
 typedef struct dm_commit_context_s {
     uint32_t id;                /**< id used for commit identification in notification session */
+    pthread_mutex_t mutex;      /**< mutex guarding the acces to the structure */
     dm_commit_state_t state;    /**< state the commit tied to this context is in */
     dm_session_t *session;      /**< session where mereged (user changes + file system state) data trees are stored */
     int *fds;                   /**< opened file descriptors */

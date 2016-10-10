@@ -54,7 +54,7 @@ typedef struct dm_ctx_s {
     char *schema_search_dir;      /**< location where schema files are located */
     char *data_search_dir;        /**< location where data files are located */
     sr_locking_set_t *locking_ctx;/**< lock context for lock/unlock/commit operations */
-    bool ds_lock;                 /**< Flag if the ds lock is hold by a session*/
+    bool *ds_lock;                /**< Flags if the ds lock is hold by a session*/
     pthread_mutex_t ds_lock_mutex;/**< Data store lock mutex */
     sr_btree_t *schema_info_tree; /**< Binary tree holding information about schemas */
     pthread_rwlock_t schema_tree_lock;  /**< rwlock for access schema_info_tree */
@@ -76,7 +76,7 @@ typedef struct dm_session_s {
     char *error_msg;                    /**< description of the last error */
     char *error_xpath;                  /**< xpath of the last error if applicable */
     sr_list_t *locked_files;            /**< set of filename that are locked by this session */
-    bool holds_ds_lock;                 /**< flags if the session holds ds lock*/
+    bool *holds_ds_lock;                /**< flags if the session holds ds lock*/
 } dm_session_t;
 
 /**
@@ -925,15 +925,15 @@ dm_lock_datastore(dm_ctx_t *dm_ctx, dm_session_t *session)
     CHECK_RC_MSG_GOTO(rc, cleanup, "List schemas failed");
 
     pthread_mutex_lock(&dm_ctx->ds_lock_mutex);
-    if (dm_ctx->ds_lock) {
+    if (dm_ctx->ds_lock[session->datastore]) {
         SR_LOG_ERR_MSG("Datastore lock is hold by other session");
         rc = SR_ERR_LOCKED;
         pthread_mutex_unlock(&dm_ctx->ds_lock_mutex);
         goto cleanup;
     }
-    dm_ctx->ds_lock = true;
+    dm_ctx->ds_lock[session->datastore] = true;
     pthread_mutex_unlock(&dm_ctx->ds_lock_mutex);
-    session->holds_ds_lock = true;
+    session->holds_ds_lock[session->datastore] = true;
 
     for (size_t i = 0; i < schema_count; i++) {
         rc = dm_lock_module(dm_ctx, session, (char *) schemas[i].module_name);
@@ -948,9 +948,9 @@ dm_lock_datastore(dm_ctx_t *dm_ctx, dm_session_t *session)
                 dm_unlock_module(dm_ctx, session, (char *) locked->data[l]);
             }
             pthread_mutex_lock(&dm_ctx->ds_lock_mutex);
-            dm_ctx->ds_lock = false;
+            dm_ctx->ds_lock[session->datastore] = false;
             pthread_mutex_unlock(&dm_ctx->ds_lock_mutex);
-            session->holds_ds_lock = false;
+            session->holds_ds_lock[session->datastore] = false;
             goto cleanup;
         }
         SR_LOG_DBG("Module %s locked", schemas[i].module_name);
@@ -1032,11 +1032,13 @@ dm_unlock_datastore(dm_ctx_t *dm_ctx, dm_session_t *session)
         free(session->locked_files->data[0]);
         sr_list_rm_at(session->locked_files, 0);
     }
-    if (session->holds_ds_lock) {
-        pthread_mutex_lock(&dm_ctx->ds_lock_mutex);
-        dm_ctx->ds_lock = false;
-        session->holds_ds_lock = false;
-        pthread_mutex_unlock(&dm_ctx->ds_lock_mutex);
+    for (int i = 0; i < DM_DATASTORE_COUNT; i++) {
+        if (session->holds_ds_lock[i]) {
+            pthread_mutex_lock(&dm_ctx->ds_lock_mutex);
+            dm_ctx->ds_lock[i] = false;
+            session->holds_ds_lock[i] = false;
+            pthread_mutex_unlock(&dm_ctx->ds_lock_mutex);
+        }
     }
     return SR_ERR_OK;
 }
@@ -1296,7 +1298,7 @@ dm_append_data_tree(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_info_t *dat
         free(tmp);
         if (NULL == data_info->node) {
             data_info->node = tmp_node;
-        } else {
+        } else if (NULL != tmp_node) {
             const struct lys_module *module = tmp_node->schema->module;
             struct lyd_node *n = tmp_node;
 
@@ -1437,7 +1439,8 @@ dm_init(ac_ctx_t *ac_ctx, np_ctx_t *np_ctx, pm_ctx_t *pm_ctx, const cm_connectio
     ctx->data_search_dir = strdup(data_search_dir);
     CHECK_NULL_NOMEM_GOTO(ctx->data_search_dir, rc, cleanup);
 
-    pthread_mutex_init(&ctx->ds_lock_mutex, NULL);
+    ctx->ds_lock = calloc(DM_DATASTORE_COUNT, sizeof(*ctx->ds_lock));
+    CHECK_NULL_NOMEM_GOTO(ctx->ds_lock, rc, cleanup);
 
     rc = sr_locking_set_init(&ctx->locking_ctx);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Locking set init failed");
@@ -1488,6 +1491,7 @@ dm_cleanup(dm_ctx_t *dm_ctx)
 
         free(dm_ctx->schema_search_dir);
         free(dm_ctx->data_search_dir);
+        free(dm_ctx->ds_lock);
         sr_btree_cleanup(dm_ctx->schema_info_tree);
         md_destroy(dm_ctx->md_ctx);
         pthread_rwlock_destroy(&dm_ctx->schema_tree_lock);
@@ -1523,6 +1527,8 @@ dm_session_start(dm_ctx_t *dm_ctx, const ac_ucred_t *user_credentials, const sr_
     rc = sr_list_init(&session_ctx->locked_files);
     CHECK_RC_MSG_GOTO(rc, cleanup, "List init failed");
 
+    session_ctx->holds_ds_lock = calloc(DM_DATASTORE_COUNT, sizeof(*session_ctx->holds_ds_lock));
+    CHECK_NULL_NOMEM_GOTO(session_ctx->holds_ds_lock, rc, cleanup);
     session_ctx->operations = calloc(DM_DATASTORE_COUNT, sizeof(*session_ctx->operations));
     CHECK_NULL_NOMEM_GOTO(session_ctx->operations, rc, cleanup);
     session_ctx->oper_count = calloc(DM_DATASTORE_COUNT, sizeof(*session_ctx->oper_count));
@@ -1556,6 +1562,7 @@ dm_session_stop(dm_ctx_t *dm_ctx, dm_session_t *session)
     for (size_t i = 0; i < DM_DATASTORE_COUNT; i++) {
         dm_free_sess_operations(session->operations[i], session->oper_count[i]);
     }
+    free(session->holds_ds_lock);
     free(session->operations);
     free(session->oper_count);
     free(session->oper_size);
@@ -2547,6 +2554,7 @@ dm_free_commit_context(void *commit_ctx)
         for (size_t i = 0; i < c_ctx->modif_count; i++) {
             close(c_ctx->fds[i]);
         }
+        pthread_mutex_destroy(&c_ctx->mutex);
         free(c_ctx->fds);
         free(c_ctx->existed);
         sr_list_cleanup(c_ctx->up_to_date_models);
@@ -2670,6 +2678,8 @@ dm_commit_prepare_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_con
             goto cleanup;
         }
     } while (DM_COMMIT_CTX_ID_INVALID == c_ctx->id);
+
+    pthread_mutex_init(&c_ctx->mutex, NULL);
 
     rc = sr_btree_init(dm_module_subscription_cmp, dm_model_subscription_free, &c_ctx->subscriptions);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Binary tree allocation failed");
@@ -3135,7 +3145,13 @@ dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, sr_notif_event_t ev, d
         }
     }
 
-    if (SR_EV_APPLY == ev || SR_EV_ABORT == ev) {
+    if (SR_EV_VERIFY == ev) {
+        rc = dm_save_commit_context(dm_ctx, c_ctx);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_ERR_MSG("Saving of commit context failed");
+        }
+    } else {
+        /* apply abort */
         dm_release_resources_commit_context(dm_ctx, c_ctx);
         rc = dm_save_commit_context(dm_ctx, c_ctx);
         /* if there is a verify subscription commit context is already saved */
@@ -3144,17 +3160,19 @@ dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, sr_notif_event_t ev, d
         }
     }
 
-    /* let the np know that the commit has finished */
-    if (SR_ERR_OK == rc && notified_notif->count > 0) {
-        rc = np_commit_notifications_sent(dm_ctx->np_ctx, c_ctx->id, SR_EV_VERIFY != ev, notified_notif);
-    }
-
     if (SR_EV_VERIFY == ev ){
         if (notified_notif->count > 0) {
             c_ctx->state = DM_COMMIT_WAIT_FOR_NOTIFICATIONS;
         } else {
             c_ctx->state = DM_COMMIT_WRITE;
         }
+    } else {
+        c_ctx->state = DM_COMMIT_FINISHED;
+    }
+
+    /* let the np know that the commit has finished */
+    if (SR_ERR_OK == rc && notified_notif->count > 0) {
+        rc = np_commit_notifications_sent(dm_ctx->np_ctx, c_ctx->id, SR_EV_VERIFY != ev, notified_notif);
     }
 
     sr_list_cleanup(notified_notif);
@@ -4496,8 +4514,8 @@ dm_get_nodes_by_schema(dm_session_t *session, const char *module_name, const str
     CHECK_RC_MSG_RETURN(rc, "Get data info failed");
 
     *res = lyd_find_instance(di->node, node);
-    if (NULL == res) {
-        SR_LOG_ERR("Failed to found nodes %s in module %s", node->name, module_name);
+    if (NULL == *res) {
+        SR_LOG_ERR("Failed to find nodes %s in module %s", node->name, module_name);
         rc = SR_ERR_INTERNAL;
     }
 

@@ -40,7 +40,7 @@ macro(ADD_UNIT_TEST_WITH_OPTS TEST_NAME USE_HELPERS USE_VALGRIND WRAP_FUNCTION)
         add_executable(${TEST_NAME} ${TEST_NAME}.c)
     endif()
 
-    target_link_libraries(${TEST_NAME} ${CMOCKA_LIBRARIES} sysrepo_a sysrepo-engine_a ${test_link_flags})
+    target_link_libraries(${TEST_NAME} ${CMOCKA_LIBRARIES} sysrepo_a ${test_link_flags})
     add_test(${TEST_NAME} ${TEST_NAME})
     if(valgrind_FOUND)
        if(${USE_VALGRIND})
@@ -108,10 +108,12 @@ if("${TEST_REPOSITORY_LOC}" STREQUAL "${REPOSITORY_LOC}")
         VERBATIM
     )
 
-    # Python tests
-    FIND_PACKAGE(PythonInterp)
-    FIND_PACKAGE(SWIG)
-    FIND_PACKAGE(PythonLibs 2)
+    if(GEN_LANGUAGE_BINDINGS AND GEN_PYTHON_BINDINGS AND ${GEN_PYTHON_VERSION} STREQUAL "2")
+        # Python tests
+        FIND_PACKAGE(PythonInterp)
+        FIND_PACKAGE(SWIG)
+        FIND_PACKAGE(PythonLibs 2)
+    endif()
 
     if (SWIG_FOUND AND PYTHONLIBS_FOUND AND PYTHONINTERP_FOUND)
         macro(ADD_PYTHON_TEST TEST_NAME)

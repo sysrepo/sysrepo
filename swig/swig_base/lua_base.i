@@ -1,9 +1,14 @@
 %module base
 
+%include <std_except.i>
+%catches(std::runtime_error, std::exception, std::string);
+
 %include "shared_ptr.i"
 
 %include <std_string.i>
 %include <typemaps.i>
+
+%ignore Callback;
 
 %ignore Val::Val(int8_t,sr_type_t);
 %ignore Val::Val(int16_t,sr_type_t);

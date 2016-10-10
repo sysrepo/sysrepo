@@ -28,6 +28,7 @@
 #include <errno.h>
 #include <string.h>
 #include <syslog.h>
+#include <pthread.h>
 
 /**
  * @defgroup logger Sysrepo Logger
@@ -66,6 +67,15 @@
     #define SR_LOG_PRINT_FUNCTION_NAMES (1)
 #endif
 
+/**
+ * Controls whether thread IDs should be printed.
+ */
+#ifdef NDEBUG
+    #define SR_LOG_PRINT_THREAD_ID (0)
+#else
+    #define SR_LOG_PRINT_THREAD_ID (0)
+#endif
+
 extern volatile uint8_t sr_ll_stderr;       /**< Holds current level of stderr debugs. */
 extern volatile uint8_t sr_ll_syslog;       /**< Holds current level of syslog debugs. */
 extern volatile sr_log_cb sr_log_callback;  /**< Holds pointer to logging callback, if set. */
@@ -83,7 +93,16 @@ extern __thread char strerror_buf [MAX_STRERROR_LEN]; /**< thread local buffer f
      (SR_LL_WRN == LL) ? LOG_WARNING : \
       LOG_ERR)
 
-#if SR_LOG_PRINT_FUNCTION_NAMES
+#if SR_LOG_PRINT_THREAD_ID
+/* print thread IDs and function names */
+#define SR_LOG__SYSLOG(LL, MSG, ...) \
+        syslog(SR_LOG__LL_FACILITY(LL), "[%s] [%lu] (%s:%d) " MSG, SR_LOG__LL_STR(LL), (unsigned long)pthread_self(), __func__, __LINE__, __VA_ARGS__);
+#define SR_LOG__STDERR(LL, MSG, ...) \
+        fprintf(stderr, "[%s] [%lu] (%s:%d) " MSG "\n", SR_LOG__LL_STR(LL), (unsigned long)pthread_self(), __func__, __LINE__, __VA_ARGS__);
+#define SR_LOG__CALLBACK(LL, MSG, ...) \
+        sr_log_to_cb(LL, "[%lu] (%s:%d) " MSG, (unsigned long)pthread_self(), __func__, __LINE__, __VA_ARGS__);
+#elif SR_LOG_PRINT_FUNCTION_NAMES
+/* print function names (without thread IDs) */
 #define SR_LOG__SYSLOG(LL, MSG, ...) \
         syslog(SR_LOG__LL_FACILITY(LL), "[%s] (%s:%d) " MSG, SR_LOG__LL_STR(LL), __func__, __LINE__, __VA_ARGS__);
 #define SR_LOG__STDERR(LL, MSG, ...) \
@@ -91,6 +110,7 @@ extern __thread char strerror_buf [MAX_STRERROR_LEN]; /**< thread local buffer f
 #define SR_LOG__CALLBACK(LL, MSG, ...) \
         sr_log_to_cb(LL, "(%s:%d) " MSG, __func__, __LINE__, __VA_ARGS__);
 #else
+/* do not print function names nor thread IDs */
 #define SR_LOG__SYSLOG(LL, MSG, ...) \
         syslog(SR_LOG__LL_FACILITY(LL), "[%s] " MSG, SR_LOG__LL_STR(LL), __VA_ARGS__);
 #define SR_LOG__STDERR(LL, MSG, ...) \

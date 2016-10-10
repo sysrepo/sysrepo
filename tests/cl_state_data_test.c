@@ -28,7 +28,6 @@
 #include <string.h>
 #include <inttypes.h>
 #include <pthread.h>
-#include <rpc/rpc_msg.h>
 
 #include "sysrepo.h"
 #include "client_library.h"

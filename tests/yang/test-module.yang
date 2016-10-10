@@ -459,4 +459,74 @@ module test-module {
     }
   }
 
+ typedef uniontpdf {
+   type union {
+      type string {
+        pattern "disabled";
+      }
+      type uint8 {
+        range "1..100";
+      }
+  }
+  default "disabled";
+ }
+
+ typedef enumtpdf {
+    type enumeration {
+       enum "a" {
+          value 1;
+       }
+       enum "b" {
+          value 2;
+       }
+       enum "c" {
+          value 3;
+       }
+    }
+ }
+
+ typedef multiplunions {
+    type union {
+       type uniontpdf;
+       type enumtpdf;
+       type union {
+          type boolean;
+          type decimal64 {
+             fraction-digits 2;
+          }
+       }
+    }
+ }
+
+ typedef leafreftpdf {
+   type leafref {
+      path "/list/key";
+   }
+ }
+
+ typedef inttpdf {
+   type uint8 {
+      range "1..100";
+   }
+ }
+
+ container tpdfs {
+    leaf unival {
+       type uniontpdf;
+	 }
+
+    leaf leafrefval {
+       type leafreftpdf;
+    }
+
+    leaf intval {
+       type inttpdf;
+    }
+
+    leaf undecided {
+       type multiplunions;
+    }
+ }
+
+
 }

@@ -221,6 +221,9 @@ cl_get_changes_create_test(void **state)
 
     pthread_mutex_unlock(&changes.mutex);
 
+    pthread_mutex_destroy(&changes.mutex);
+    pthread_cond_destroy(&changes.cv);
+
     rc = sr_unsubscribe(NULL, subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
@@ -292,6 +295,9 @@ cl_get_changes_modified_test(void **state)
     sr_free_val(val);
     sr_free_tree(tree);
     pthread_mutex_unlock(&changes.mutex);
+
+    pthread_mutex_destroy(&changes.mutex);
+    pthread_cond_destroy(&changes.cv);
 
     rc = sr_unsubscribe(NULL, subscription);
     assert_int_equal(rc, SR_ERR_OK);
@@ -368,6 +374,9 @@ cl_get_changes_deleted_test(void **state)
         sr_free_val(changes.old_values[i]);
     }
     pthread_mutex_unlock(&changes.mutex);
+
+    pthread_mutex_destroy(&changes.mutex);
+    pthread_cond_destroy(&changes.cv);
 
     rc = sr_unsubscribe(NULL, subscription);
     assert_int_equal(rc, SR_ERR_OK);
@@ -446,6 +455,9 @@ cl_get_changes_moved_test(void **state)
         sr_free_val(changes.old_values[i]);
     }
     pthread_mutex_unlock(&changes.mutex);
+
+    pthread_mutex_destroy(&changes.mutex);
+    pthread_cond_destroy(&changes.cv);
 
     rc = sr_unsubscribe(NULL, subscription);
     assert_int_equal(rc, SR_ERR_OK);
@@ -561,6 +573,9 @@ cl_get_changes_deleted_default_test(void **state)
     }
     pthread_mutex_unlock(&changes.mutex);
 
+    pthread_mutex_destroy(&changes.mutex);
+    pthread_cond_destroy(&changes.cv);
+
     rc = sr_unsubscribe(NULL, subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
@@ -639,6 +654,9 @@ cl_get_changes_create_default_test(void **state)
         sr_free_val(changes.old_values[i]);
     }
     pthread_mutex_unlock(&changes.mutex);
+
+    pthread_mutex_destroy(&changes.mutex);
+    pthread_cond_destroy(&changes.cv);
 
     rc = sr_unsubscribe(NULL, subscription);
     assert_int_equal(rc, SR_ERR_OK);
@@ -867,6 +885,9 @@ cl_whole_module_changes(void **state)
     }
     pthread_mutex_unlock(&changes.mutex);
 
+    pthread_mutex_destroy(&changes.mutex);
+    pthread_cond_destroy(&changes.cv);
+
     /* check that cb were called in correct order according to the priority */
     sr_unsubscribe(session, subscription);
     sr_session_stop(session);
@@ -934,6 +955,9 @@ cl_invalid_xpath_test(void **state)
     pthread_cond_timedwait(&changes.cv, &changes.mutex, &ts);
 
     pthread_mutex_unlock(&changes.mutex);
+
+    pthread_mutex_destroy(&changes.mutex);
+    pthread_cond_destroy(&changes.cv);
 
     /* check that cb were called in correct order according to the priority */
     sr_unsubscribe(session, subscription);
@@ -1031,6 +1055,9 @@ cl_children_subscription_test(void **state)
     }
 
     pthread_mutex_unlock(&changes.mutex);
+
+    pthread_mutex_destroy(&changes.mutex);
+    pthread_cond_destroy(&changes.cv);
 
     /* check that cb were called in correct order according to the priority */
     sr_unsubscribe(session, subscription);
@@ -1131,6 +1158,9 @@ cl_basic_verifier(void **state)
     }
 
     pthread_mutex_unlock(&changes.mutex);
+
+    pthread_mutex_destroy(&changes.mutex);
+    pthread_cond_destroy(&changes.cv);
 
     rc = sr_unsubscribe(NULL, subscription);
     assert_int_equal(rc, SR_ERR_OK);
@@ -1239,6 +1269,11 @@ cl_combined_subscribers(void **state)
         sr_free_val(changesA.new_values[i]);
         sr_free_val(changesA.old_values[i]);
     }
+
+    pthread_mutex_destroy(&changesV.mutex);
+    pthread_cond_destroy(&changesV.cv);
+    pthread_mutex_destroy(&changesA.mutex);
+    pthread_cond_destroy(&changesA.cv);
 
     rc = sr_unsubscribe(NULL, subscriptionV);
     assert_int_equal(rc, SR_ERR_OK);
@@ -1351,6 +1386,11 @@ cl_successful_verifiers(void **state)
         sr_free_val(changesB.old_values[i]);
     }
 
+    pthread_mutex_destroy(&changesA.mutex);
+    pthread_cond_destroy(&changesA.cv);
+    pthread_mutex_destroy(&changesB.mutex);
+    pthread_cond_destroy(&changesB.cv);
+
     rc = sr_unsubscribe(NULL, subscriptionA);
     assert_int_equal(rc, SR_ERR_OK);
 
@@ -1460,6 +1500,11 @@ cl_refused_by_verifier(void **state)
         sr_free_val(changesB.old_values[i]);
     }
 
+    pthread_mutex_destroy(&changesA.mutex);
+    pthread_cond_destroy(&changesA.cv);
+    pthread_mutex_destroy(&changesB.mutex);
+    pthread_cond_destroy(&changesB.cv);
+
     rc = sr_unsubscribe(NULL, subscriptionA);
     assert_int_equal(rc, SR_ERR_OK);
 
@@ -1526,6 +1571,9 @@ cl_no_abort_notifications(void **state)
         sr_free_val(changes.new_values[i]);
         sr_free_val(changes.old_values[i]);
     }
+
+    pthread_mutex_destroy(&changes.mutex);
+    pthread_cond_destroy(&changes.cv);
 
     rc = sr_unsubscribe(NULL, subscription);
     assert_int_equal(rc, SR_ERR_OK);
@@ -1601,6 +1649,8 @@ cl_subtree_verifier(void **state)
         sr_free_val(changes.old_values[i]);
     }
 
+    pthread_mutex_destroy(&changes.mutex);
+    pthread_cond_destroy(&changes.cv);
 
     rc = sr_unsubscribe(NULL, subscription);
     assert_int_equal(rc, SR_ERR_OK);

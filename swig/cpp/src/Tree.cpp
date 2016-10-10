@@ -23,6 +23,8 @@
 #include "Struct.h"
 #include "Tree.h"
 
+#include <string.h>
+
 using namespace std;
 
 extern "C" {
@@ -30,6 +32,11 @@ extern "C" {
 #include "sysrepo/trees.h"
 }
 
+Tree::Tree() {
+    _node = NULL;
+    S_Counter counter(new Counter(_node));
+    _counter = counter;
+}
 Tree::Tree(const char *root_name, const char *root_module_name) {
     sr_node_t *node;
     int ret = sr_new_tree(root_name, root_module_name, &node);
@@ -104,7 +111,7 @@ void Tree::set_name(const char *name) {
 }
 void Tree::set_module(const char *module_name) {
     if (_node == NULL) throw_exception(SR_ERR_DATA_MISSING);
-    _node->module_name = (char *) module_name;
+    _node->module_name = strdup((char *) module_name);
     int ret = sr_node_set_module(_node, module_name);
     if (ret != SR_ERR_OK) throw_exception(ret);
 }
@@ -120,17 +127,17 @@ void Tree::add_child(const char *child_name, const char *child_module_name, S_Tr
 }
 void Tree::set(const char *value, sr_type_t type) {
     if (type == SR_BINARY_T) {
-	    _node->data.binary_val = (char *) value;
+	    _node->data.binary_val = strdup((char *) value);
     } else if (type == SR_BITS_T) {
-	    _node->data.bits_val = (char *) value;
+	    _node->data.bits_val = strdup((char *) value);
     } else if (type == SR_ENUM_T) {
-	    _node->data.enum_val = (char *) value;
+	    _node->data.enum_val = strdup((char *) value);
     } else if (type == SR_IDENTITYREF_T) {
-	    _node->data.identityref_val = (char *) value;
+	    _node->data.identityref_val = strdup((char *) value);
     } else if (type == SR_INSTANCEID_T) {
-	    _node->data.instanceid_val = (char *) value;
+	    _node->data.instanceid_val = strdup((char *) value);
     } else if (type == SR_STRING_T) {
-	    _node->data.string_val = (char *) value;
+	    _node->data.string_val = strdup((char *) value);
     } else {
         throw_exception(SR_ERR_INVAL_ARG);
     }
@@ -245,7 +252,7 @@ void Tree::set(uint64_t uint64_val, sr_type_t type) {
 }
 void Tree::set(sr_type_t type) {
     if (type != SR_LIST_T && type != SR_CONTAINER_T && type != SR_CONTAINER_PRESENCE_T &&\
-        type != SR_UNKNOWN_T && type != SR_LEAF_EMPTY_T && type != SR_UNION_T) {
+        type != SR_UNKNOWN_T && type != SR_LEAF_EMPTY_T) {
         throw_exception(SR_ERR_INVAL_ARG);
     }
 
@@ -255,57 +262,34 @@ void Tree::set(sr_type_t type) {
 Trees::Trees() {
     _trees = NULL;
     _cnt = 0;
-    p_cnt = NULL;
     S_Counter counter(new Counter(_trees, _cnt));
     _counter = counter;
-    _allocate = true;
 }
-Trees::Trees(size_t n) {
-    sr_node_t *trees = NULL;
-
-    int ret = sr_new_trees(n, &trees);
+Trees::Trees(size_t cnt) {
+    int ret = sr_new_trees(cnt, &_trees);
     if (ret != SR_ERR_OK)
         throw_exception(ret);
 
-    _trees = trees;
-    _cnt = n;
-    p_cnt = NULL;
+    _cnt = cnt;
     S_Counter counter(new Counter(_trees, _cnt));
     _counter = counter;
-    _allocate = false;
 }
 Trees::Trees(sr_node_t **trees, size_t *cnt, S_Counter counter) {
     _trees = *trees;
-    p_cnt = cnt;
-    _cnt = 0;
+    _cnt = *cnt;
     _counter = counter;
-    _allocate = true;
 }
 Trees::Trees(const sr_node_t *trees, const size_t n, S_Counter counter) {
     _trees = (sr_node_t *) trees;
     _cnt = (size_t) n;
 
-    p_cnt = NULL;
     _counter = counter;
-    _allocate = false;
-}
-void Trees::allocate(size_t n) {
-    if (!_allocate)
-        throw_exception(SR_ERR_DATA_EXISTS);
-    int ret = sr_new_trees(n, &_trees);
-    if (ret != SR_ERR_OK)
-        throw_exception(ret);
-
-    _cnt = n;
-    *p_cnt = n;
-    _allocate = false;
 }
 Trees::~Trees() {return;}
 S_Tree Trees::tree(size_t n) {
     if (_trees == NULL || n >= _cnt) return NULL;
 
-    S_Counter counter(new Counter(&_trees[n]));
-    S_Tree tree(new Tree(&_trees[n], counter));
+    S_Tree tree(new Tree(&_trees[n], _counter));
     return tree;
 }
 S_Trees Trees::dup() {
@@ -318,3 +302,26 @@ S_Trees Trees::dup() {
     S_Trees dup(new Trees(tree_dup, _cnt));
     return dup;
 }
+
+// Trees_Holder
+Trees_Holder::Trees_Holder(sr_node_t **trees, size_t *cnt) {
+    p_trees = trees;
+    p_cnt = cnt;
+    _allocate = true;
+}
+S_Trees Trees_Holder::allocate(size_t n) {
+    if (_allocate == false)
+        throw_exception(SR_ERR_DATA_EXISTS);
+    _allocate = false;
+
+    if (n == 0)
+        return NULL;
+
+    *p_cnt = n;
+    int ret = sr_new_trees(n, p_trees);
+    if (ret != SR_ERR_OK)
+        throw_exception(ret);
+    S_Trees trees(new Trees(p_trees, p_cnt, NULL));
+    return trees;
+}
+Trees_Holder::~Trees_Holder() {return;}

@@ -66,6 +66,7 @@ private:
 class Val:public Throw_Exception
 {
 public:
+    Val();
     Val(sr_val_t *val, S_Counter counter);
     Val(const char *val, sr_type_t type = SR_STRING_T);
     Val(bool bool_val, sr_type_t type = SR_BOOL_T);
@@ -98,6 +99,7 @@ public:
     void dflt_set(bool data) {_val->dflt = data;};
     S_Data data() {S_Data data(new Data(_val->data, _val->type)); return data;};
     sr_val_t *get() {return _val;};
+    sr_val_t **p_get() {return &_val;};
     S_Val dup();
 
 private:
@@ -114,7 +116,6 @@ public:
     Vals(size_t cnt);
     Vals();
     ~Vals();
-    void allocate(size_t n);
     S_Val val(size_t n);
     size_t val_cnt() {return _cnt;};
     size_t *p_val_cnt() {return &_cnt;};
@@ -124,9 +125,21 @@ public:
 
 private:
     size_t _cnt;
-    size_t *p_cnt;
     sr_val_t *_vals;
     S_Counter _counter;
+};
+
+// class for wrapping Vals classes
+class Vals_Holder:public Throw_Exception
+{
+public:
+    Vals_Holder(sr_val_t **vals, size_t *cnt);
+    S_Vals allocate(size_t n);
+    ~Vals_Holder();
+
+private:
+    size_t *p_cnt;
+    sr_val_t **p_vals;
     bool _allocate;
 };
 
@@ -273,6 +286,7 @@ public:
     Iter_Value(sr_val_iter_t *iter = NULL);
     ~Iter_Value();
     sr_val_iter_t *get() {return _iter;};
+    sr_val_iter_t **p_get() {return &_iter;};
     void Set(sr_val_iter_t *iter);
 
 private:
@@ -297,15 +311,15 @@ class Change:public Throw_Exception
 public:
     Change();
     ~Change();
-    sr_change_oper_t oper() {if (!_oper) throw_exception(SR_ERR_DATA_MISSING); return *_oper;};
+    sr_change_oper_t oper() {return _oper;};
     S_Val new_val();
     S_Val old_val();
-    sr_change_oper_t *p_oper() {return _oper;};
+    sr_change_oper_t *p_oper() {return &_oper;};
     sr_val_t **p_old() {return &_old;};
     sr_val_t **p_new() {return &_new;};
 
 private:
-    sr_change_oper_t *_oper;
+    sr_change_oper_t _oper;
     sr_val_t *_new;
     sr_val_t *_old;
     S_Counter _counter_new;

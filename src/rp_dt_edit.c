@@ -670,15 +670,22 @@ rp_dt_replay_operations(dm_ctx_t *ctx, dm_session_t *session, dm_sess_op_t *oper
 int
 rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t *c_ctx, sr_error_info_t **errors, size_t *err_cnt)
 {
-    CHECK_NULL_ARG4(rp_ctx, session, errors, err_cnt);
     int rc = SR_ERR_OK;
+    CHECK_NULL_ARG_NORET4(rc, rp_ctx, session, errors, err_cnt);
+    if (SR_ERR_OK != rc) {
+        if (NULL != c_ctx) {
+            pthread_mutex_unlock(&c_ctx->mutex);
+        }
+        return rc;
+    }
+
     dm_commit_context_t *commit_ctx = c_ctx;
     dm_commit_state_t state = NULL != commit_ctx ? commit_ctx->state : DM_COMMIT_STARTED;
 
     while (state != DM_COMMIT_FINISHED) {
         switch (state) {
         case DM_COMMIT_STARTED:
-            SR_LOG_DBG_MSG("Commit (1/7): process stared");
+            SR_LOG_DBG_MSG("Commit (1/9): process started");
             state = DM_COMMIT_VALIDATION;
             break;
         case DM_COMMIT_VALIDATION:
@@ -687,7 +694,7 @@ rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t *c_ctx
                 SR_LOG_ERR("Data validation failed: %s", *err_cnt > 0 ? errors[0]->message : "(no error)");
                 return SR_ERR_VALIDATION_FAILED;
             }
-            SR_LOG_DBG_MSG("Commit (2/7): validation succeeded");
+            SR_LOG_DBG_MSG("Commit (2/9): validation succeeded");
             state = DM_COMMIT_LOAD_MODIFIED_MODELS;
             break;
         case DM_COMMIT_LOAD_MODIFIED_MODELS:
@@ -698,18 +705,19 @@ rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t *c_ctx
                 dm_free_commit_context(commit_ctx);
                 return SR_ERR_OK;
             }
+            pthread_mutex_lock(&commit_ctx->mutex);
             /* open all files */
             rc = dm_commit_load_modified_models(rp_ctx->dm_ctx, session->dm_session, commit_ctx,
                     errors, err_cnt);
             CHECK_RC_MSG_GOTO(rc, cleanup, "Loading of modified models failed");
-            SR_LOG_DBG_MSG("Commit (3/7): all modified models loaded successfully");
+            SR_LOG_DBG_MSG("Commit (3/9): all modified models loaded successfully");
             state = DM_COMMIT_REPLAY_OPS;
             break;
         case DM_COMMIT_REPLAY_OPS:
             rc = rp_dt_replay_operations(rp_ctx->dm_ctx, commit_ctx->session, commit_ctx->operations,
                 commit_ctx->oper_count, false, commit_ctx->up_to_date_models);
             CHECK_RC_MSG_GOTO(rc, cleanup, "Replay of operations failed");
-            SR_LOG_DBG_MSG("Commit (4/7): replay of operation succeeded");
+            SR_LOG_DBG_MSG("Commit (4/9): replay of operation succeeded");
             state = DM_COMMIT_VALIDATE_MERGED;
             break;
         case DM_COMMIT_VALIDATE_MERGED:
@@ -719,32 +727,32 @@ rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t *c_ctx
                 rc = SR_ERR_VALIDATION_FAILED;
                 goto cleanup;
             }
-            SR_LOG_DBG_MSG("Commit (5/7): merged models validation succeeded");
+            SR_LOG_DBG_MSG("Commit (5/9): merged models validation succeeded");
             state = DM_COMMIT_NOTIFY_VERIFY;
             break;
         case DM_COMMIT_NOTIFY_VERIFY:
+            commit_ctx->init_session = session;
             rc = dm_commit_notify(rp_ctx->dm_ctx, session->dm_session, SR_EV_VERIFY, commit_ctx);
             CHECK_RC_MSG_GOTO(rc, cleanup, "Sending of verify notifications failed");
             state = commit_ctx->state;
+            SR_LOG_DBG_MSG("Commit (6/9): verify phase done");
             break;
         case DM_COMMIT_WAIT_FOR_NOTIFICATIONS:
-            rc = dm_save_commit_context(rp_ctx->dm_ctx, commit_ctx);
-            CHECK_RC_MSG_GOTO(rc, cleanup, "Saving of commit context failed");
             SR_LOG_DBG("Commit %"PRIu32" processing paused waiting for replies from verifiers", commit_ctx->id);
             session->state = RP_REQ_WAITING_FOR_VERIFIERS;
-            commit_ctx->init_session = session;
+            pthread_mutex_unlock(&commit_ctx->mutex);
             return rc;
-            break;
         case DM_COMMIT_WRITE:
             rc = dm_commit_write_files(session->dm_session, commit_ctx);
             if (SR_ERR_OK == rc) {
-                SR_LOG_DBG_MSG("Commit (6/7): data write succeeded");
+                SR_LOG_DBG_MSG("Commit (7/9): data write succeeded");
             }
             state = DM_COMMIT_NOTIFY_APPLY;
             break;
         case DM_COMMIT_NOTIFY_APPLY:
             rc = dm_commit_notify(rp_ctx->dm_ctx, session->dm_session, SR_EV_APPLY, commit_ctx);
             state = DM_COMMIT_FINISHED;
+            SR_LOG_DBG_MSG("Commit (8/9): apply notifications sent");
             break;
         case DM_COMMIT_NOTIFY_ABORT:
             rc = dm_commit_notify(rp_ctx->dm_ctx, session->dm_session, SR_EV_ABORT, commit_ctx);
@@ -753,13 +761,15 @@ rp_dt_commit(rp_ctx_t *rp_ctx, rp_session_t *session, dm_commit_context_t *c_ctx
             *err_cnt = c_ctx->err_cnt;
             c_ctx->errors = NULL;
             c_ctx->err_cnt = 0;
+            pthread_mutex_unlock(&commit_ctx->mutex);
+            SR_LOG_DBG_MSG("Commit (8/9): abort notifications sent");
             return SR_ERR_OPERATION_FAILED;
-        case DM_COMMIT_FINISHED:
-            goto cleanup;
+        default:
             break;
         }
     }
 cleanup:
+    pthread_mutex_unlock(&commit_ctx->mutex);
     /* In case of running datastore, commit context will be freed when
      * all notifications session are closed.
      */
@@ -775,7 +785,7 @@ cleanup:
             dm_remove_session_operations(session->dm_session);
             rc = dm_remove_modified_flag(session->dm_session);
         }
-        SR_LOG_DBG_MSG("Commit (7/7): finished successfully");
+        SR_LOG_DBG_MSG("Commit (9/9): finished successfully");
     }
     return rc;
 }

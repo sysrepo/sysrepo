@@ -1021,6 +1021,48 @@ cl_set_item_test(void **state)
     rc = sr_set_item(session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &value, SR_EDIT_DEFAULT);
     assert_int_equal(rc, SR_ERR_OK);
 
+    value.type = SR_STRING_T;
+    value.data.string_val = "disabled";
+
+    rc = sr_set_item(session, "/test-module:tpdfs/unival", &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    value.type = SR_UINT8_T;
+    value.data.uint8_val = 42;
+
+    rc = sr_set_item(session, "/test-module:tpdfs/unival", &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    value.type = SR_UINT8_T;
+    value.data.uint8_val = 42;
+
+    rc = sr_set_item(session, "/test-module:tpdfs/intval", &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    value.type = SR_STRING_T;
+    value.data.string_val = "k1";
+
+    rc = sr_set_item(session, "/test-module:tpdfs/leafrefval", &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    value.type = SR_DECIMAL64_T;
+    value.data.decimal64_val = 42.42;
+
+    rc = sr_set_item(session, "/test-module:tpdfs/undecided", &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    value.type = SR_BOOL_T;
+    value.data.bool_val = false;
+
+    rc = sr_set_item(session, "/test-module:tpdfs/undecided", &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    value.type = SR_ENUM_T;
+    value.data.enum_val = "a";
+
+    rc = sr_set_item(session, "/test-module:tpdfs/undecided", &value, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
     /* stop the session */
     rc = sr_session_stop(session);
     assert_int_equal(rc, SR_ERR_OK);
@@ -1432,6 +1474,53 @@ cl_locking_test(void **state)
 
     assert_string_equal("test-module", error->xpath);
     assert_string_equal("Module has been modified, it can not be locked. Discard or commit changes", error->message);
+
+    /* stop the sessions */
+    rc = sr_session_stop(sessionA);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_session_stop(sessionB);
+    assert_int_equal(rc, SR_ERR_OK);
+}
+
+static void
+cl_ds_locking_test(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+
+    sr_session_ctx_t *sessionA = NULL, *sessionB = NULL;
+    int rc = 0;
+
+    /* start 2 sessions */
+    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &sessionA);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &sessionB);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* lock startup */
+    rc = sr_lock_datastore(sessionA);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* lock running */
+    rc = sr_lock_datastore(sessionB);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* switch and lock candidate*/
+    rc = sr_unlock_datastore(sessionA);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_session_switch_ds(sessionA, SR_DS_CANDIDATE);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_lock_datastore(sessionA);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* try to lock candidate from different session*/
+    rc = sr_session_switch_ds(sessionB, SR_DS_CANDIDATE);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = sr_lock_datastore(sessionB);
+    assert_int_equal(rc, SR_ERR_LOCKED);
 
     /* stop the sessions */
     rc = sr_session_stop(sessionA);
@@ -4539,6 +4628,7 @@ main()
             cmocka_unit_test_setup_teardown(cl_commit_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_discard_changes_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_locking_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_ds_locking_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_get_error_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_refresh_session, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_refresh_session2, sysrepo_setup, sysrepo_teardown),

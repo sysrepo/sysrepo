@@ -35,6 +35,7 @@ using namespace std;
 class Tree:public Throw_Exception
 {
 public:
+    Tree();
     Tree(const char *root_name, const char *root_module_name);
     Tree(sr_node_t *tree, S_Counter counter);
     S_Tree dup();
@@ -81,7 +82,6 @@ public:
     Trees(size_t n);
     Trees(sr_node_t **trees, size_t *cnt, S_Counter counter = NULL);
     Trees(const sr_node_t *trees, const size_t n, S_Counter counter = NULL);
-    void allocate(size_t n);
     S_Tree tree(size_t n);
     S_Trees dup();
     size_t tree_cnt() {return _cnt;};
@@ -91,10 +91,22 @@ public:
     ~Trees();
 
 private:
-    sr_node_t *_trees;
     size_t _cnt;
-    size_t *p_cnt;
+    sr_node_t *_trees;
     S_Counter _counter;
+};
+
+// class for wrapping Vals classes
+class Trees_Holder:public Throw_Exception
+{
+public:
+    Trees_Holder(sr_node_t **trees, size_t *cnt);
+    S_Trees allocate(size_t n);
+    ~Trees_Holder();
+
+private:
+    size_t *p_cnt;
+    sr_node_t **p_trees;
     bool _allocate;
 };
 

@@ -279,7 +279,7 @@ np_commit_notif_cnt_increment(np_ctx_t *np_ctx, uint32_t commit_id)
 
     if (NULL == commit) {
         /* add a new commit context */
-        SR_LOG_DBG("Crating a new NP commit context for commit ID %"PRIu32".", commit_id);
+        SR_LOG_DBG("Creating a new NP commit context for commit ID %"PRIu32".", commit_id);
 
         commit = calloc(1, sizeof(*commit));
         CHECK_NULL_NOMEM_GOTO(commit, rc, unlock);
@@ -907,7 +907,6 @@ np_commit_notifications_sent(np_ctx_t *np_ctx, uint32_t commit_id, bool commit_f
     Sr__Msg *notif = NULL, *req = NULL;
     np_commit_ctx_t *commit = NULL;
     sr_llist_node_t *commit_node = NULL;
-    bool all_acks_received = false;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG3(np_ctx, np_ctx->rp_ctx, subscriptions);
@@ -936,33 +935,31 @@ np_commit_notifications_sent(np_ctx_t *np_ctx, uint32_t commit_id, bool commit_f
     if (NULL != commit) {
         commit->all_notifications_sent = true;
         commit->commit_finished = commit_finished;
-        if (commit->notifications_acked == commit->notifications_sent) {
-            /* release the commit immediately */
-            all_acks_received = true;
-        } else {
-            /* setup commit timer */
-            rc = sr_gpb_internal_req_alloc(NULL, SR__OPERATION__COMMIT_TIMEOUT, &req);
-            if (SR_ERR_OK == rc) {
-                req->internal_request->commit_timeout_req->commit_id = commit_id;
+
+        /* setup commit timer */
+        rc = sr_gpb_internal_req_alloc(NULL, SR__OPERATION__COMMIT_TIMEOUT, &req);
+        if (SR_ERR_OK == rc) {
+            req->internal_request->commit_timeout_req->commit_id = commit_id;
+            if (commit->notifications_acked == commit->notifications_sent) {
+                /* all ACKs already received - deliver the msg immediately */
+                req->internal_request->commit_timeout_req->expired = false;  /* do not produce error */
+                req->internal_request->has_postpone_timeout = false;
+            } else {
+                /* not all ACKs recieved - deliver the msg after timeout */
+                req->internal_request->commit_timeout_req->expired = true;  /* produce error */
                 req->internal_request->postpone_timeout = NP_COMMIT_TIMEOUT;
                 req->internal_request->has_postpone_timeout = true;
-                rc = cm_msg_send(np_ctx->rp_ctx->cm_ctx, req);
             }
-            if (SR_ERR_OK == rc) {
-                SR_LOG_DBG("Setting up a commit timer for commit id=%"PRIu32" with timeout=%d seconds.",
-                        commit_id, NP_COMMIT_TIMEOUT);
-            } else {
-                SR_LOG_ERR("Unable to setup commit timer for commit id=%"PRIu32".", commit_id);
-            }
+            rc = cm_msg_send(np_ctx->rp_ctx->cm_ctx, req);
+        }
+        if (SR_ERR_OK == rc) {
+            SR_LOG_DBG("Set up commit timeout for commit id=%"PRIu32".", commit_id);
+        } else {
+            SR_LOG_ERR("Unable to setup commit timeout for commit id=%"PRIu32".", commit_id);
         }
     }
 
     pthread_rwlock_unlock(&np_ctx->lock);
-
-    if (all_acks_received) {
-        /* all notification acks already received - signal DM and possibly release the commit */
-        rc = np_commit_notifications_complete(np_ctx, commit_id, false);
-    }
 
     return rc;
 }
