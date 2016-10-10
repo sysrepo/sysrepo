@@ -2986,6 +2986,104 @@ cleanup:
     return cl_session_return(session, rc);
 }
 
+/**
+ * @brief Subscribes for delivery of Action specified by xpath.
+ *
+ * @param[in] sr_api_variant_t API variant.
+ * @param[in] session Session context acquired with ::sr_session_start call.
+ * @param[in] xpath XPath identifying the Action.
+ * @param[in] callback Callback to be called when the Action is called.
+ * @param[in] private_ctx Private context passed to the callback function, opaque to sysrepo.
+ * @param[in] opts Options overriding default behavior of the subscription, it is supposed to be
+ * a bitwise OR-ed value of any ::sr_subscr_flag_t flags.
+ * @param[in,out] subscription Subscription context that is supposed to be released by ::sr_unsubscribe.
+ * @note An existing context may be passed in case that SR_SUBSCR_CTX_REUSE option is specified.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+static int
+cl_action_subscribe(sr_api_variant_t api_variant, sr_session_ctx_t *session, const char *xpath,
+        cl_sm_callback_t callback, void *private_ctx, sr_subscr_options_t opts,
+        sr_subscription_ctx_t **subscription_p)
+{
+    Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
+    sr_subscription_ctx_t *sr_subscription = NULL;
+    cl_sm_subscription_ctx_t *sm_subscription = NULL;
+    char *module_name = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG2(session, subscription_p);
+
+    cl_session_clear_errors(session);
+
+    /* extract module name from xpath */
+    rc = sr_copy_first_ns(xpath, &module_name);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by extracting module name from xpath.");
+
+    /* Initialize the subscription */
+    if (opts & SR_SUBSCR_CTX_REUSE) {
+        sr_subscription = *subscription_p;
+    }
+    rc = cl_subscription_init(session, SR__SUBSCRIPTION_TYPE__ACTION_SUBS, module_name, api_variant,
+            private_ctx, &sr_subscription, &sm_subscription, &msg_req);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by initialization of the subscription in the client library.");
+
+    sm_subscription->callback = callback;
+
+    /* Fill-in GPB subscription information */
+    sr_mem = (sr_mem_ctx_t *)msg_req->_sysrepo_mem_ctx;
+    msg_req->request->subscribe_req->type = SR__SUBSCRIPTION_TYPE__ACTION_SUBS;
+    sr_mem_edit_string(sr_mem, &msg_req->request->subscribe_req->module_name, module_name);
+    CHECK_NULL_NOMEM_GOTO(msg_req->request->subscribe_req->module_name, rc, cleanup);
+    sr_mem_edit_string(sr_mem, &msg_req->request->subscribe_req->xpath, xpath);
+    CHECK_NULL_NOMEM_GOTO(msg_req->request->subscribe_req->xpath, rc, cleanup);
+
+    /* send the request and receive the response */
+    rc = cl_request_process(session, msg_req, &msg_resp, NULL, SR__OPERATION__SUBSCRIBE);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
+
+    sr_msg_free(msg_req);
+    sr_msg_free(msg_resp);
+    free(module_name);
+
+    *subscription_p = sr_subscription;
+
+    return cl_session_return(session, SR_ERR_OK);
+
+cleanup:
+    if (NULL != sm_subscription) {
+        cl_subscription_close(session, sm_subscription);
+        cl_sr_subscription_remove_one(sr_subscription);
+    }
+    if (NULL != msg_req) {
+        sr_msg_free(msg_req);
+    }
+    if (NULL != msg_resp) {
+        sr_msg_free(msg_resp);
+    }
+    free(module_name);
+    return cl_session_return(session, rc);
+}
+
+int
+sr_action_subscribe(sr_session_ctx_t *session, const char *xpath, sr_action_cb callback,
+        void *private_ctx, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription_p)
+{
+    cl_sm_callback_t callback_u;
+    callback_u.action_cb = callback;
+    return cl_action_subscribe(SR_API_VALUES, session, xpath, callback_u, private_ctx, opts, subscription_p);
+}
+
+int
+sr_action_subscribe_tree(sr_session_ctx_t *session, const char *xpath, sr_action_tree_cb callback,
+        void *private_ctx, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription_p)
+{
+    cl_sm_callback_t callback_u;
+    callback_u.action_tree_cb = callback;
+    return cl_action_subscribe(SR_API_TREES, session, xpath, callback_u, private_ctx, opts, subscription_p);
+}
+
 int
 sr_dp_get_items_subscribe(sr_session_ctx_t *session, const char *xpath, sr_dp_get_items_cb callback, void *private_ctx,
         sr_subscr_options_t opts, sr_subscription_ctx_t **subscription_p)

@@ -1523,38 +1523,18 @@ int sr_event_notif_send_tree(sr_session_ctx_t *session, const char *xpath,
 /**
  * @brief Callback to be called by the delivery of Action (operation connected to a specific data node)
  * specified by xpath. Subscribe to it by ::sr_action_subscribe call.
- *
- * @param[in] xpath XPath identifying the Action.
- * @param[in] input Array of input parameters.
- * @param[in] input_cnt Number of input parameters.
- * @param[out] output Array of output parameters. Should be allocated on heap,
- * will be freed by sysrepo after sending of the Action response.
- * @param[out] output_cnt Number of output parameters.
- * @param[in] private_ctx Private context opaque to sysrepo, as passed to ::sr_action_subscribe call.
- *
- * @return Error code (SR_ERR_OK on success).
+ * @see This type is an alias for @ref sr_rpc_cb "the RPC callback type"
  */
-typedef int (*sr_action_cb)(const char *xpath, const sr_val_t *input, const size_t input_cnt,
-        sr_val_t **output, size_t *output_cnt, void *private_ctx);
+typedef sr_rpc_cb sr_action_cb;
 
 /**
  * @brief Callback to be called by the delivery of Action (operation connected to a specific data node)
  * specified by xpath.
  * This callback variant operates with sysrepo trees rather than with sysrepo values,
  * use it with ::sr_actiion_subscribe_tree and ::sr_action_send_tree.
- *
- * @param[in] xpath XPath identifying the Action.
- * @param[in] input Array of input parameters (represented as trees).
- * @param[in] input_cnt Number of input parameters.
- * @param[out] output Array of output parameters (represented as trees). Should be allocated on heap,
- * will be freed by sysrepo after sending of the Action response.
- * @param[out] output_cnt Number of output parameters.
- * @param[in] private_ctx Private context opaque to sysrepo, as passed to ::sr_action_subscribe_tree call.
- *
- * @return Error code (SR_ERR_OK on success).
+ * @see This type is an alias for tree variant of @ref sr_rpc_tree_cb "the RPC callback type"
  */
-typedef int (*sr_action_tree_cb)(const char *xpath, const sr_node_t *input, const size_t input_cnt,
-        sr_node_t **output, size_t *output_cnt, void *private_ctx);
+typedef sr_rpc_tree_cb sr_action_tree_cb;
 
 /**
  * @brief Subscribes for delivery of Action specified by xpath.

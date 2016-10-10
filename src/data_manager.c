@@ -3809,9 +3809,9 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
     char *string_value = NULL, *tmp_xpath = NULL;
     struct ly_set *nodeset = NULL;
     char *module_name = NULL;
-    char *procedure_name = NULL;
+    const char *procedure_name = NULL;
     int validation_options = 0;
-    char *last_delim = NULL;
+    const char *last_delim = NULL;
     int ret = 0, rc = SR_ERR_OK;
     int allow_update = 0;
     bool ext_ref = false, backtracking = false;
@@ -3868,6 +3868,7 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
             strncat(tmp_xpath, xpath, last_delim - xpath);
             nodeset = lyd_find_xpath(di->node, tmp_xpath);
             free(tmp_xpath);
+            tmp_xpath = NULL;
             if (NULL == nodeset || 0 == nodeset->number) {
                 SR_LOG_ERR("%s xpath validation failed ('%s'): the target node is not present in the data tree.",
                         procedure_name, xpath);
@@ -4021,6 +4022,7 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
                 }
                 ly_set_free(nodeset);
                 free(tmp_xpath);
+                tmp_xpath = NULL;
                 if (SR_ERR_OK != rc) {
                     goto cleanup;
                 }
@@ -4047,6 +4049,7 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
                 }
                 ly_set_free(nodeset);
                 free(tmp_xpath);
+                tmp_xpath = NULL;
                 if (SR_ERR_OK != rc) {
                     goto cleanup;
                 }
