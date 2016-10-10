@@ -2342,6 +2342,8 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, s
     msg_req->request->subscribe_req->priority = priority;
     msg_req->request->subscribe_req->has_enable_running = true;
     msg_req->request->subscribe_req->enable_running = !(opts & SR_SUBSCR_PASSIVE);
+    msg_req->request->subscribe_req->has_enable_event = true;
+    msg_req->request->subscribe_req->enable_event = (opts & SR_SUBSCR_EV_ENABLED);
 
     /* send the request and receive the response */
     rc = cl_request_process(session, msg_req, &msg_resp, NULL, SR__OPERATION__SUBSCRIBE);
@@ -2410,6 +2412,8 @@ sr_subtree_change_subscribe(sr_session_ctx_t *session, const char *xpath, sr_sub
     msg_req->request->subscribe_req->priority = priority;
     msg_req->request->subscribe_req->has_enable_running = true;
     msg_req->request->subscribe_req->enable_running = !(opts & SR_SUBSCR_PASSIVE);
+    msg_req->request->subscribe_req->has_enable_event = true;
+    msg_req->request->subscribe_req->enable_event = (opts & SR_SUBSCR_EV_ENABLED);
 
     /* send the request and receive the response */
     rc = cl_request_process(session, msg_req, &msg_resp, NULL, SR__OPERATION__SUBSCRIBE);
