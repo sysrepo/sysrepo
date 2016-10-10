@@ -138,6 +138,11 @@ if(PYTHONLIBS_FOUND AND PYTHONINTERP_FOUND AND ${GEN_PYTHON_VERSION} STREQUAL "3
 
         file(COPY "python3/examples" DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/python3")
 
+        execute_process(COMMAND
+            ${PYTHON_EXECUTABLE} -c
+            "from distutils.sysconfig import get_python_lib; print(get_python_lib())"
+        OUTPUT_VARIABLE PYTHON_MODULE_PATH OUTPUT_STRIP_TRAILING_WHITESPACE)
+
         install( FILES "${CMAKE_CURRENT_BINARY_DIR}/_${PYTHON_SWIG_BINDING_3}.so" DESTINATION ${PYTHON_MODULE_PATH} )
         install( FILES "${CMAKE_BINARY_DIR}/${PYTHON_SWIG_BINDING_3}.py" DESTINATION ${PYTHON_MODULE_PATH} )
 endif()
