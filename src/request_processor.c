@@ -3057,7 +3057,7 @@ rp_msg_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
 }
 
 int
-rp_resume_commit(rp_ctx_t *rp_ctx, uint32_t commit_id, int result,
+rp_all_notifications_received(rp_ctx_t *rp_ctx, uint32_t commit_id, int result,
         sr_list_t *err_subs_xpaths, sr_list_t *errors)
 {
     CHECK_NULL_ARG(rp_ctx);

@@ -1053,7 +1053,7 @@ np_commit_notifications_complete(np_ctx_t *np_ctx, uint32_t commit_id, bool time
         }
 
         /* resume commit processing */
-        rc = rp_resume_commit(np_ctx->rp_ctx, commit_id, result, err_subs_xpaths, errors);
+        rc = rp_all_notifications_received(np_ctx->rp_ctx, commit_id, result, err_subs_xpaths, errors);
     }
 
     return rc;
