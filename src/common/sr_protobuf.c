@@ -85,6 +85,8 @@ sr_gpb_operation_name(Sr__Operation operation)
         return "data-provide";
     case SR__OPERATION__RPC:
         return "rpc";
+    case SR__OPERATION__ACTION:
+        return "action";
     case SR__OPERATION__UNSUBSCRIBE_DESTINATION:
         return "unsubscribe-destination";
     case SR__OPERATION__COMMIT_TIMEOUT:
@@ -299,6 +301,7 @@ sr_gpb_req_alloc(sr_mem_ctx_t *sr_mem, const Sr__Operation operation, const uint
             req->data_provide_req = (Sr__DataProvideReq*)sub_msg;
             break;
         case SR__OPERATION__RPC:
+        case SR__OPERATION__ACTION:
             sub_msg = sr_calloc(sr_mem, 1, sizeof(Sr__RPCReq));
             CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__rpcreq__init((Sr__RPCReq*)sub_msg);
@@ -536,6 +539,7 @@ sr_gpb_resp_alloc(sr_mem_ctx_t *sr_mem, const Sr__Operation operation, const uin
             resp->data_provide_resp = (Sr__DataProvideResp*)sub_msg;
             break;
         case SR__OPERATION__RPC:
+        case SR__OPERATION__ACTION:
             sub_msg = sr_calloc(sr_mem, 1, sizeof(Sr__RPCResp));
             CHECK_NULL_NOMEM_GOTO(sub_msg, rc, error);
             sr__rpcresp__init((Sr__RPCResp*)sub_msg);
@@ -881,6 +885,7 @@ sr_gpb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__O
                 CHECK_NULL_RETURN(msg->request->data_provide_req, SR_ERR_MALFORMED_MSG);
                 break;
             case SR__OPERATION__RPC:
+            case SR__OPERATION__ACTION:
                 CHECK_NULL_RETURN(msg->request->rpc_req, SR_ERR_MALFORMED_MSG);
                 break;
             case SR__OPERATION__EVENT_NOTIF:
@@ -981,6 +986,7 @@ sr_gpb_msg_validate(const Sr__Msg *msg, const Sr__Msg__MsgType type, const Sr__O
                 CHECK_NULL_RETURN(msg->response->data_provide_resp, SR_ERR_MALFORMED_MSG);
                 break;
             case SR__OPERATION__RPC:
+            case SR__OPERATION__ACTION:
                 CHECK_NULL_RETURN(msg->response->rpc_resp, SR_ERR_MALFORMED_MSG);
                 break;
             case SR__OPERATION__EVENT_NOTIF:
@@ -2009,6 +2015,8 @@ sr_subscription_type_gpb_to_str(Sr__SubscriptionType type)
             return "dp-get-items";
         case SR__SUBSCRIPTION_TYPE__RPC_SUBS:
             return "rpc";
+        case SR__SUBSCRIPTION_TYPE__ACTION_SUBS:
+            return "action";
         case SR__SUBSCRIPTION_TYPE__HELLO_SUBS:
             return "hello";
         case SR__SUBSCRIPTION_TYPE__COMMIT_END_SUBS:

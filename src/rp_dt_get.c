@@ -141,7 +141,7 @@ rp_dt_get_values_from_nodes(sr_mem_ctx_t *sr_mem, struct ly_set *nodes, sr_val_t
         vals[i]._sr_mem = sr_mem;
         node = nodes->set.d[i];
         if (NULL == node || NULL == node->schema || LYS_RPC == node->schema->nodetype ||
-            LYS_NOTIF == node->schema->nodetype) {
+            LYS_NOTIF == node->schema->nodetype || LYS_ACTION == node->schema->nodetype) {
             /* ignore this node */
             continue;
         }

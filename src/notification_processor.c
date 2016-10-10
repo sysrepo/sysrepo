@@ -434,6 +434,7 @@ np_notification_subscribe(np_ctx_t *np_ctx, const rp_session_t *rp_session, Sr__
             (SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS == type) ||
             (SR__SUBSCRIPTION_TYPE__DP_GET_ITEMS_SUBS == type) ||
             (SR__SUBSCRIPTION_TYPE__RPC_SUBS == type) ||
+            (SR__SUBSCRIPTION_TYPE__ACTION_SUBS == type) ||
             (SR__SUBSCRIPTION_TYPE__EVENT_NOTIF_SUBS == type)) {
         /*  update notification destination info */
         rc = np_dst_info_insert(np_ctx, dst_address, module_name);
@@ -506,6 +507,7 @@ np_notification_unsubscribe(np_ctx_t *np_ctx,  const rp_session_t *rp_session, S
             (SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS == notif_type) ||
             (SR__SUBSCRIPTION_TYPE__DP_GET_ITEMS_SUBS == notif_type) ||
             (SR__SUBSCRIPTION_TYPE__RPC_SUBS == notif_type) ||
+            (SR__SUBSCRIPTION_TYPE__ACTION_SUBS == notif_type) ||
             (SR__SUBSCRIPTION_TYPE__EVENT_NOTIF_SUBS == notif_type)) {
         /* remove the subscription to module's persistent data */
         subscription_lookup.dst_address = dst_address;
