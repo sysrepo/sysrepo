@@ -108,10 +108,12 @@ if("${TEST_REPOSITORY_LOC}" STREQUAL "${REPOSITORY_LOC}")
         VERBATIM
     )
 
-    # Python tests
-    FIND_PACKAGE(PythonInterp)
-    FIND_PACKAGE(SWIG)
-    FIND_PACKAGE(PythonLibs 2)
+    if(GEN_LANGUAGE_BINDINGS AND GEN_PYTHON_BINDINGS AND ${GEN_PYTHON_VERSION} STREQUAL "2")
+        # Python tests
+        FIND_PACKAGE(PythonInterp)
+        FIND_PACKAGE(SWIG)
+        FIND_PACKAGE(PythonLibs 2)
+    endif()
 
     if (SWIG_FOUND AND PYTHONLIBS_FOUND AND PYTHONINTERP_FOUND)
         macro(ADD_PYTHON_TEST TEST_NAME)
