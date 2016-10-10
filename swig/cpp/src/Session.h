@@ -58,6 +58,9 @@ public:
     S_Vals get_items(const char *xpath);
     S_Iter_Value get_items_iter(const char *xpath);
     S_Val get_item_next(S_Iter_Value iter);
+    S_Tree get_subtree(const char *xpath, sr_get_subtree_options_t opts = (sr_get_subtree_flag_t) 0);
+    S_Trees get_subtrees(const char *xpath, sr_get_subtree_options_t opts = (sr_get_subtree_flag_t) 0);
+
     void set_item(const char *xpath, S_Val value, const sr_edit_options_t opts = EDIT_DEFAULT);
     void delete_item(const char *xpath, const sr_edit_options_t opts = EDIT_DEFAULT);
     void move_item(const char *xpath, const sr_move_position_t position, const char *relative_item = NULL);

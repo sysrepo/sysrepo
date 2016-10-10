@@ -213,6 +213,30 @@ S_Val Session::get_item_next(S_Iter_Value iter)
     }
 }
 
+S_Tree Session::get_subtree(const char *xpath, sr_get_subtree_options_t opts)
+{
+    S_Tree tree(new Tree());
+
+    int ret = sr_get_subtree(_sess, xpath, opts, tree->get());
+    if (ret != SR_ERR_OK) {
+        throw_exception(ret);
+    }
+
+    return tree;
+}
+
+S_Trees Session::get_subtrees(const char *xpath, sr_get_subtree_options_t opts)
+{
+    S_Trees trees(new Trees());
+
+    int ret = sr_get_subtrees(_sess, xpath, opts, trees->p_trees(), trees->p_trees_cnt());
+    if (ret != SR_ERR_OK) {
+        throw_exception(ret);
+    }
+
+    return trees;
+}
+
 void Session::set_item(const char *xpath, S_Val value, const sr_edit_options_t opts)
 {
     int ret = sr_set_item(_sess, xpath, value->get(), opts);
