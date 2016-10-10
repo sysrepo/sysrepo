@@ -280,126 +280,6 @@ rp_dt_create_xpath_for_node(sr_mem_ctx_t *sr_mem, const struct lyd_node *node, c
 }
 
 /**
- * @brief Tries to match lys_node including choice nodes
- * @param [in] dm_ctx
- * @param [in] session
- * @param [in] xpath
- * @param [in] trimmed_xpath
- * @param [in] module
- * @param [out] match
- * @return Error code (SR_ERR_OK on success)
- */
-static int
-rp_dt_find_in_choice(dm_ctx_t *dm_ctx, dm_session_t *session, const char *xpath, const char *trimmed_xpath, const struct lys_module *module, struct lys_node **match)
-{
-    CHECK_NULL_ARG5(dm_ctx, xpath, trimmed_xpath, module, match);
-    /* libyang err_msg is used to parse the match and unmatch part */
-    int rc = SR_ERR_BAD_ELEMENT;
-    /**
-     * @brief Maximum length of node name
-     */
-    #define MAX_NODE_NAME_LEN 100
-    char *unmatch_part = NULL;
-    char *err_msg = NULL;
-    char *search = NULL;
-    size_t search_size = 0;
-    char *xp_copy = strdup(ly_errpath());
-    CHECK_NULL_NOMEM_RETURN(xp_copy);
-    char *last_slash = rindex(xp_copy, '/');
-    if (NULL == last_slash) {
-        goto done;
-    }
-    *last_slash = 0;
-
-    err_msg = strdup(ly_errmsg());
-    CHECK_NULL_NOMEM_GOTO(err_msg, rc, done);
-
-    /* split xpath into unmatched part and the part that may contain a choice */
-    unmatch_part = strdup(trimmed_xpath + strlen(xp_copy) + 1);
-    CHECK_NULL_NOMEM_GOTO(unmatch_part, rc, done);
-
-    search_size = MAX_NODE_NAME_LEN + strlen(unmatch_part);
-    search = calloc(search_size, sizeof(*search));
-    CHECK_NULL_NOMEM_GOTO(search, rc, done);
-
-    const struct lys_node *node = ly_ctx_get_node(module->ctx, NULL, xp_copy);
-    if (NULL == node) {
-        goto done;
-    }
-    struct lys_node *iter = NULL;
-    struct lys_node *child = NULL;
-
-    LY_TREE_FOR(node->child, iter)
-    {
-        if (LYS_CHOICE == iter->nodetype) {
-            /* TODO choice in choice */
-            LY_TREE_FOR(iter->child, child) {
-                if (LYS_CASE == child->nodetype || 0 == strcmp(unmatch_part, child->name)){
-                    snprintf(search, search_size, "%s/%s", child->name, unmatch_part);
-                } else {
-                    continue;
-                }
-                *match = (struct lys_node *) ly_ctx_get_node(module->ctx, iter, search);
-                if (NULL != *match) {
-                    rc = SR_ERR_OK;
-                    goto done;
-                }
-            }
-        }
-    }
-
-
-done:
-    free(search);
-    free(xp_copy);
-    free(unmatch_part);
-    if (SR_ERR_OK != rc && NULL != session) {
-        rc = dm_report_error(session, err_msg, xpath, SR_ERR_BAD_ELEMENT);
-    }
-    free(err_msg);
-    return rc;
-}
-
-/**
- * @brief If the xpath identifies leaf-list instance it is not matched by rp_dt_validate_node_xpath.
- * The function tries to remove last characters identifying the leaf-list instance
- * and match a node.
- */
-static int
-rp_dt_find_leaflist(dm_session_t *session, const char *xpath, char *xp_copy, const struct lys_module *module, struct lys_node **match)
-{
-    CHECK_NULL_ARG4(xpath, xp_copy, module, match);
-    int rc = SR_ERR_BAD_ELEMENT;
-    char *err_msg = NULL;
-
-    err_msg = strdup(ly_errmsg());
-    CHECK_NULL_NOMEM_GOTO(err_msg, rc, not_matched);
-
-    char *last_slash = rindex(xp_copy, '/');
-    if (NULL == last_slash) {
-        goto not_matched;
-    }
-
-    char *leaf_list = strstr(last_slash, "[.='");
-    if (NULL == leaf_list) {
-        goto not_matched;
-    }
-    *leaf_list = 0;
-
-    *match = (struct lys_node *) ly_ctx_get_node(module->ctx, NULL, xp_copy);
-    if (NULL != match) {
-        rc = SR_ERR_OK;
-    }
-
-not_matched:
-    if (SR_ERR_OK != rc && NULL != session) {
-        rc = dm_report_error(session, err_msg, xpath, SR_ERR_BAD_ELEMENT);
-    }
-    free(err_msg);
-    return rc;
-}
-
-/**
  * @brief Removes trailing characters from xpath to make it validateable by ly_ctx_get_node
  * @param [in] dm_ctx
  * @param [in] xpath
@@ -522,26 +402,28 @@ rp_dt_validate_node_xpath_intrenal(dm_ctx_t *dm_ctx, dm_session_t *session, dm_s
         return SR_ERR_OK;
     }
 
-    const struct lys_node *sch_node = ly_ctx_get_node(schema_info->ly_ctx, NULL, xp_copy);
+
+    const struct lys_node *start_node = NULL;
+    if (NULL != schema_info->module) {
+        start_node = schema_info->module->data;
+    } else {
+        const struct lys_module *m = NULL;
+        uint32_t index = 0;
+        while(NULL != (m = ly_ctx_get_module_iter(schema_info->ly_ctx, &index))) {
+            if (NULL != m->data) {
+                start_node = m->data;
+                break;
+            }
+        }
+    }
+
+    const struct lys_node *sch_node = sr_find_schema_node(start_node, xp_copy, 0);
     if (NULL != sch_node) {
         if (NULL != match) {
             *match = (struct lys_node *) sch_node;
         }
     } else {
         switch (ly_vecode) {
-        case LYVE_PATH_INNODE:
-            /* ly_ctx_get_node is not able to locate nodes inside the choice */
-            rc = rp_dt_find_in_choice(dm_ctx, session, xpath, xp_copy, module, (struct lys_node **) &sch_node);
-            if (NULL != match) {
-                *match = (struct lys_node *) sch_node;
-            }
-            break;
-        case LYVE_PATH_INCHAR:
-            rc = rp_dt_find_leaflist(session, xpath, xp_copy, module, (struct lys_node **) &sch_node);
-            if (NULL != match) {
-                *match = (struct lys_node *) sch_node;
-            }
-            break;
         case LYVE_PATH_INKEY:
             if (NULL != session) {
                 rc = dm_report_error(session, ly_errmsg(), ly_errpath(), SR_ERR_BAD_ELEMENT);
@@ -554,6 +436,13 @@ rp_dt_validate_node_xpath_intrenal(dm_ctx_t *dm_ctx, dm_session_t *session, dm_s
                 rc = dm_report_error(session, ly_errmsg(), ly_errpath(), SR_ERR_UNKNOWN_MODEL);
             } else {
                 rc = SR_ERR_UNKNOWN_MODEL;
+            }
+            break;
+        case LYVE_XPATH_INSNODE:
+            if (NULL != session) {
+                rc = dm_report_error(session, ly_errmsg(), xp_copy, SR_ERR_BAD_ELEMENT);
+            } else {
+                rc = SR_ERR_BAD_ELEMENT;
             }
             break;
         default:
