@@ -3531,7 +3531,6 @@ dm_send_enabled_notification(dm_ctx_t *dm_ctx, dm_commit_context_t *c_ctx, const
 cleanup:
     if (SR_ERR_OK != rc) {
         dm_free_commit_context(c_ctx);
-        return rc;
     }
     sr_list_cleanup(notif_list);
     return rc;
