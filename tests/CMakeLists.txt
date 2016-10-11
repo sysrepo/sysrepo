@@ -40,7 +40,7 @@ macro(ADD_UNIT_TEST_WITH_OPTS TEST_NAME USE_HELPERS USE_VALGRIND WRAP_FUNCTION)
         add_executable(${TEST_NAME} ${TEST_NAME}.c)
     endif()
 
-    target_link_libraries(${TEST_NAME} ${CMOCKA_LIBRARIES} sysrepo_a sysrepo-engine_a ${test_link_flags})
+    target_link_libraries(${TEST_NAME} ${CMOCKA_LIBRARIES} sysrepo_a ${test_link_flags})
     add_test(${TEST_NAME} ${TEST_NAME})
     if(valgrind_FOUND)
        if(${USE_VALGRIND})

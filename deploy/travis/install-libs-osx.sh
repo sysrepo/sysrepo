@@ -28,7 +28,11 @@ else
     echo "Using cached libraries from $INSTALL_PREFIX_DIR"
 fi
 
-git clone -b devel https://github.com/CESNET/libyang.git
+if [[ "$TRAVIS_BRANCH" -eq "devel" ]]; then
+    git clone -b devel https://github.com/CESNET/libyang.git
+else
+    git clone https://github.com/CESNET/libyang.git
+fi
 cd libyang ; mkdir build ; cd build
 cmake -DCMAKE_BUILD_TYPE=Debug -DENABLE_BUILD_TESTS=OFF ..
 make -j2 && sudo make install
