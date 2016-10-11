@@ -37,9 +37,6 @@
 #define SR_PLUGIN_CLEANUP_FN_NAME       "sr_plugin_cleanup_cb"       /**< Name of the plugin cleanup function. */
 #define SR_PLUGIN_HEALTH_CHECK_FN_NAME  "sr_plugin_health_check_cb"  /**< Name of the plugin health check function. */
 
-#define SR_PLUGIN_INIT_RETRY_TIMEOUT 10    /**< Plugin initialization retry timeout (in seconds). */
-#define SR_PLUGIN_HEALTH_CHECK_TIMEOUT 10  /**< Plugin health check timeout (in seconds). */
-
 /**
  * @brief Sysrepo plugin initialization callback.
  *

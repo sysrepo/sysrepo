@@ -212,12 +212,12 @@ sr_strerror_safe(int err_no)
     pthread_once(&sr_strerror_buf_create_key_once, sr_strerror_buff_create_key);
     buff = pthread_getspecific(sr_strerror_buf_key);
     if (NULL == buff) {
-        buff = calloc(MAX_STRERROR_LEN, sizeof(*buff));
+        buff = calloc(SR_MAX_STRERROR_LEN, sizeof(*buff));
         pthread_setspecific(sr_strerror_buf_key, buff);
     }
     /* print the message into buffer and call callback */
     if (NULL != buff) {
-        strerror_r(err_no, buff, MAX_STRERROR_LEN);
+        strerror_r(err_no, buff, SR_MAX_STRERROR_LEN);
     }
     return buff;
 }

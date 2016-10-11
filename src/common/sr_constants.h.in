@@ -111,6 +111,12 @@
 #define SR_MSG_PREAM_SIZE sizeof(uint32_t)
 
 /** Strerror buffer length */
-#define MAX_STRERROR_LEN 150
+#define SR_MAX_STRERROR_LEN 200
+
+/** Plugin initialization retry timeout (in seconds). */
+#define SR_PLUGIN_INIT_RETRY_TIMEOUT 10
+
+/** Plugin health check timeout (in seconds). */
+#define SR_PLUGIN_HEALTH_CHECK_TIMEOUT 10
 
 #endif /* SRC_SR_CONSTANTS_H_IN_ */

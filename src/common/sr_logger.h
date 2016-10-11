@@ -79,7 +79,7 @@
 extern volatile uint8_t sr_ll_stderr;       /**< Holds current level of stderr debugs. */
 extern volatile uint8_t sr_ll_syslog;       /**< Holds current level of syslog debugs. */
 extern volatile sr_log_cb sr_log_callback;  /**< Holds pointer to logging callback, if set. */
-extern __thread char strerror_buf [MAX_STRERROR_LEN]; /**< thread local buffer for strerror_r message */
+extern __thread char strerror_buf [SR_MAX_STRERROR_LEN]; /**< thread local buffer for strerror_r message */
 
 #define SR_LOG__LL_STR(LL) \
     ((SR_LL_DBG == LL) ? "DBG" : \
