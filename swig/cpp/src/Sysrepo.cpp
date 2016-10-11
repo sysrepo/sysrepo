@@ -32,8 +32,7 @@ extern "C" {
 
 using namespace std;
 
-void Throw_Exception::throw_exception(int error)
-{
+void throw_exception(int error) {
     switch(error) {
     case(SR_ERR_INVAL_ARG):
         throw runtime_error(sr_strerror(SR_ERR_INVAL_ARG));

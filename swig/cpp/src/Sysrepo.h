@@ -31,7 +31,6 @@
     #define S_Operation        Operation*
     #define S_Schema_Content   Schema_Content*
     #define S_Schemas          Schemas*
-    #define S_Throw_Exception  Throw_Exception*
     #define S_Error            Error*
     #define S_Errors           Errors*
     #define S_Data             Data*
@@ -61,7 +60,6 @@
     #define S_Operation        std::shared_ptr<Operation>
     #define S_Schema_Content   std::shared_ptr<Schema_Content>
     #define S_Schemas          std::shared_ptr<Schemas>
-    #define S_Throw_Exception  std::shared_ptr<Throw_Exception>
     #define S_Error            std::shared_ptr<Error>
     #define S_Errors           std::shared_ptr<Errors>
     #define S_Data             std::shared_ptr<Data>
@@ -93,12 +91,7 @@ extern "C" {
 #include "sysrepo.h"
 }
 
-class Throw_Exception
-{
-
-protected:
-    void throw_exception(int error);
-};
+void throw_exception(int error);
 
 class Logs
 {
@@ -108,7 +101,7 @@ public:
     void set_syslog(sr_log_level_t log_level);
 };
 
-class Schemas:public Throw_Exception
+class Schemas
 {
 public:
     Schemas(sr_schema_t *sch = NULL, size_t cnt = 0);
@@ -127,7 +120,7 @@ private:
     size_t _pos;
 };
 
-class Schema_Content:public Throw_Exception
+class Schema_Content
 {
 
 public:

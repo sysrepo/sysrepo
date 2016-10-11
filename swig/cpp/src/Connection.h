@@ -31,7 +31,7 @@ extern "C" {
 #include "sysrepo.h"
 }
 
-class Connection:public Throw_Exception
+class Connection
 {
 public:
     Connection(const char *app_name, const sr_conn_options_t opts = 0);

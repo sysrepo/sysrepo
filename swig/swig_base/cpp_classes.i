@@ -22,9 +22,7 @@
 #include "Xpath.h"
 %}
 
-#ifndef SWIGLUA
-%shared_ptr(Throw_Exception);
-#endif
+%ignore throw_exception;
 
 #ifndef SWIGLUA
 %shared_ptr(Connection);

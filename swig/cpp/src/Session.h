@@ -40,7 +40,7 @@ extern "C" {
 
 using namespace std;
 
-class Session:public Throw_Exception
+class Session
 {
 
 public:
@@ -104,7 +104,7 @@ public:
     std::map<const char *, void*> private_ctx;
 };
 
-class Subscribe:public Throw_Exception
+class Subscribe
 {
 
 public:
