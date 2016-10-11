@@ -802,7 +802,10 @@ rp_dt_prepare_data(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char *xpath
 
             rc = rp_dt_xpath_requests_state_data(rp_ctx, rp_session, data_info->schema, xpath, api_variant,
                     tree_depth_limit, &rp_session->state_data_ctx);
-            CHECK_RC_MSG_GOTO(rc, cleanup, "rp_dt_xpath_requests_state_data failed");
+            if (SR_ERR_OK != rc) {
+                SR_LOG_WRN_MSG("rp_dt_xpath_requests_state_data failed - state data won't be retrieved");
+                rc = SR_ERR_OK;
+            }
 
             if (NULL == rp_session->state_data_ctx.subtrees || 0 == rp_session->state_data_ctx.subtrees->count) {
                 SR_LOG_DBG("No state state data provider is asked for data because of xpath %s", xpath);
