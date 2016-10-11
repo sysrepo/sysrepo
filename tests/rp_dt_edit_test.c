@@ -2020,7 +2020,7 @@ operation_logging_test(void **state)
    assert_int_equal(DM_MOVE_OP, session->dm_session->operations[session->datastore][session->dm_session->oper_count[session->datastore]-1].op);
 
    rc = rp_dt_move_list_wrapper(ctx, session, "/test-module:!^", SR_MOVE_BEFORE, "/test-module:user[name='nameC']");
-   assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
+   assert_int_equal(SR_ERR_INVAL_ARG, rc);
    assert_int_equal(3, session->dm_session->oper_count[session->datastore]);
 
    /* delete */
