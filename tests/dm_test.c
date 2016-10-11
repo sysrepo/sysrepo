@@ -700,7 +700,7 @@ dm_action_test(void **state)
     assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
     assert_null(with_def);
     assert_null(with_def_tree);
-#if 0
+
     /* action input */
     input_cnt = 1;
     input = calloc(input_cnt, sizeof(*input));
@@ -764,7 +764,7 @@ dm_action_test(void **state)
     rc = dm_validate_action(ctx, session, "/test-module:kernel-modules/kernel-module[name='irqbypass.ko']/load",
             input, input_cnt, true,  NULL, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
     assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
-#endif
+
     /* action output */
     output_cnt = 3;
     output = calloc(output_cnt, sizeof(*output));
