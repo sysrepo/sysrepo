@@ -971,7 +971,7 @@ rp_dt_copy_config(rp_ctx_t *rp_ctx, rp_session_t *session, const char *module_na
     if (SR_DS_RUNNING != dst) {
         if (NULL != module_name) {
             /* copy module content in DM */
-            rc = dm_copy_module(rp_ctx->dm_ctx, session->dm_session, module_name, src, dst);
+            rc = dm_copy_module(rp_ctx->dm_ctx, session->dm_session, module_name, src, dst, NULL);
         } else {
             /* copy all enabled modules */
             rc = dm_copy_all_models(rp_ctx->dm_ctx, session->dm_session, src, dst);

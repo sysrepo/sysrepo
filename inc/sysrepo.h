@@ -1066,6 +1066,7 @@ typedef enum sr_subscr_flag_e {
     SR_SUBSCR_APPLY_ONLY = 4, /**< The subscriber does not support verification of the changes and wants to be notified only
                                    after the changes has been applied in the datastore, without the possibility to deny them
                                    (it will receive only ::SR_EV_APPLY events). */
+    SR_SUBSCR_EV_ENABLED = 8, /**< The subscriber wants ::SR_EV_ENABLED notification to be sent to him. */
 } sr_subscr_flag_t;
 
 /**
@@ -1092,6 +1093,9 @@ typedef enum sr_notif_event_e {
     SR_EV_ABORT,   /**< Occurs in case that the commit transaction has failed (possibly because one of the verifiers
                         has denied the change / returned an error). The subscriber is supposed to return the managed
                         application to the state before the commit. Any returned errors are just logged and ignored. */
+    SR_EV_ENABLED, /**< Occurs just after the subscription. Subscriber gets notified about configuration that was copied
+                        from startup to running. This allows to reuse the callback for applying changes made in running to reflect the changes
+                        when the configuration is copied from startup to running during subscription process */
 } sr_notif_event_t;
 
 /**

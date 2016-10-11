@@ -443,11 +443,11 @@ np_notification_subscribe(np_ctx_t *np_ctx, const rp_session_t *rp_session, Sr__
         if (opts & NP_SUBSCR_ENABLE_RUNNING) {
             if (SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS == type || SR__SUBSCRIPTION_TYPE__DP_GET_ITEMS_SUBS == type) {
                 /* enable the subtree in running config */
-                rc = dm_enable_module_subtree_running(np_ctx->rp_ctx->dm_ctx, rp_session->dm_session, module_name, xpath, true);
+                rc = dm_enable_module_subtree_running(np_ctx->rp_ctx->dm_ctx, rp_session->dm_session, module_name, xpath, opts & NP_SUBSCR_EV_EVENT ? subscription : NULL);
                 CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to enable the subtree in the running datastore.");
             } else {
                 /* enable the module in running config */
-                rc = dm_enable_module_running(np_ctx->rp_ctx->dm_ctx, rp_session->dm_session, module_name, true);
+                rc = dm_enable_module_running(np_ctx->rp_ctx->dm_ctx, rp_session->dm_session, module_name, opts & NP_SUBSCR_EV_EVENT ? subscription : NULL);
                 CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to enable the module in the running datastore.");
             }
         }
@@ -1053,7 +1053,7 @@ np_commit_notifications_complete(np_ctx_t *np_ctx, uint32_t commit_id, bool time
         }
 
         /* resume commit processing */
-        rc = rp_resume_commit(np_ctx->rp_ctx, commit_id, result, err_subs_xpaths, errors);
+        rc = rp_all_notifications_received(np_ctx->rp_ctx, commit_id, result, err_subs_xpaths, errors);
     }
 
     return rc;

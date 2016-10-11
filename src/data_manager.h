@@ -692,11 +692,11 @@ int dm_has_enabled_subtree(dm_ctx_t *ctx, const char *module_name, dm_schema_inf
  * @param [in] ctx DM context.
  * @param [in] session DM session.
  * @param [in] module_name Name of the module to be enabled.
- * @param [in] copy_from_startup - flag denoting whether data should be copied from startup to running.
+ * @param [in] subscription if the subscription is not NULL SR_EV_ENABLED notification is sent to the subscription.
  * @return Error code (SR_ERR_OK on success)
  */
 int dm_enable_module_running(dm_ctx_t *ctx, dm_session_t *session, const char *module_name,
-        bool copy_from_startup);
+        const np_subscription_t *subscription);
 
 /**
  * @brief Enables subtree in running datastore (including copying of the startup data into running).
@@ -704,11 +704,11 @@ int dm_enable_module_running(dm_ctx_t *ctx, dm_session_t *session, const char *m
  * @param [in] session DM session.
  * @param [in] module_name Name of the module where a subtree needs to be enabled.
  * @param [in] xpath XPath identifying the subtree to be enabled.
- * @param [in] copy_from_startup Load data from startup ds (if not already loaded).
+ * @param [in] subscription if the subscription is not NULL SR_EV_ENABLED notification is sent to the subscription.
  * @return Error code (SR_ERR_OK on success)
  */
 int dm_enable_module_subtree_running(dm_ctx_t *ctx, dm_session_t *session, const char *module_name, const char *xpath,
-        bool copy_from_startup);
+        const np_subscription_t *subscription);
 
 /**
  * @brief Disables module in running data store
@@ -730,9 +730,11 @@ int dm_disable_module_running(dm_ctx_t *ctx, dm_session_t *session, const char *
  * @param [in] module_name
  * @param [in] source
  * @param [in] destination
+ * @param [in] subscription if the subscription is not NULL SR_EV_ENABLED notification is sent to the subscription.
  * @return Error code (SR_ERR_OK on success)
  */
-int dm_copy_module(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module_name, sr_datastore_t source, sr_datastore_t destination);
+int dm_copy_module(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module_name, sr_datastore_t source, sr_datastore_t destination,
+        const np_subscription_t *subscription);
 
 /**
  * @brief Copies all enabled modules from one datastore to the another.
