@@ -33,11 +33,12 @@
 
 #include "sr_common.h"
 
-#define SR_PLUGIN_INIT_FN_NAME     "sr_plugin_init_cb"     /**< Name of the plugin initialization function. */
-#define SR_PLUGIN_CLEANUP_FN_NAME  "sr_plugin_cleanup_cb"  /**< Name of the plugin cleanup function. */
+#define SR_PLUGIN_INIT_FN_NAME          "sr_plugin_init_cb"          /**< Name of the plugin initialization function. */
+#define SR_PLUGIN_CLEANUP_FN_NAME       "sr_plugin_cleanup_cb"       /**< Name of the plugin cleanup function. */
+#define SR_PLUGIN_HEALTH_CHECK_FN_NAME  "sr_plugin_health_check_cb"  /**< Name of the plugin health check function. */
 
-#define SR_PLUGIN_INIT_RETRY_TIMEOUT 10    /**< TODO */
-#define SR_PLUGIN_HEALTH_CHECK_TIMEOUT 10  /**< TODO */
+#define SR_PLUGIN_INIT_RETRY_TIMEOUT 10    /**< Plugin initialization retry timeout (in seconds). */
+#define SR_PLUGIN_HEALTH_CHECK_TIMEOUT 10  /**< Plugin health check timeout (in seconds). */
 
 /**
  * @brief Sysrepo plugin initialization callback.
@@ -66,14 +67,16 @@ typedef void (*sr_plugin_cleanup_cb)(sr_session_ctx_t *session, void *private_ct
 /**
  * @brief Sysrepo plugin health check callback.
  *
+ * @param[in] session Sysrepo session that can be used for any API calls.
  * @param[in] private_ctx Private context as passed in ::sr_plugin_init_cb.
  */
-typedef int (*sr_plugin_health_check_cb)(void *private_ctx);
+typedef int (*sr_plugin_health_check_cb)(sr_session_ctx_t *session, void *private_ctx);
 
 /**
  * @brief Sysrepo plugin context.
  */
 typedef struct sr_pd_plugin_ctx_s {
+    char *filename;                             /**< Filename of the shared library. */
     void *dl_handle;                            /**< Shared library handle. */
     sr_plugin_init_cb init_cb;                  /**< Initialization function pointer. */
     sr_plugin_cleanup_cb cleanup_cb;            /**< Cleanup function pointer. */
@@ -86,14 +89,14 @@ typedef struct sr_pd_plugin_ctx_s {
  * @brief Sysrepo plugin daemon context.
  */
 typedef struct sr_pd_ctx_s {
-    sr_conn_ctx_t *connection;
-    sr_session_ctx_t *session;
-    sr_pd_plugin_ctx_t *plugins;
-    size_t plugins_cnt;
-    struct ev_loop *event_loop;
-    ev_signal signal_watcher[2];
-    ev_timer health_check_timer;
-    ev_timer init_retry_timer;
+    sr_conn_ctx_t *connection;     /**< Sysrepo connection that can be used in plugins. */
+    sr_session_ctx_t *session;     /**< Sysrepo session that can be used in plugins. */
+    sr_pd_plugin_ctx_t *plugins;   /**< Array of loaded plugins. */
+    size_t plugins_cnt;            /**< Count of loaded plugins. */
+    struct ev_loop *event_loop;    /**< The main event loop of the daemon. */
+    ev_signal signal_watcher[2];   /**< Signal watchers of the daemon. */
+    ev_timer health_check_timer;   /**< Health check timer. */
+    ev_timer init_retry_timer;     /**< Initialization retry timer. */
 } sr_pd_ctx_t;
 
 /**
@@ -110,27 +113,17 @@ sr_pd_signal_cb(struct ev_loop *loop, struct ev_signal *w, int revents)
 }
 
 /**
- * @brief Callback called by the event loop watcher when health check timer expires.
+ * @brief Loads a plugin form provided filename.
  */
-static void
-sr_pd_health_check_timer_cb(struct ev_loop *loop, ev_timer *w, int revents)
-{
-    sr_pd_ctx_t *ctx = NULL;
-
-    CHECK_NULL_ARG_VOID2(w, w->data);
-    ctx = (sr_pd_ctx_t*)w->data;
-
-    CHECK_NULL_ARG_VOID(ctx);
-
-    SR_LOG_DBG_MSG("health check");
-}
-
 static int
 sr_pd_load_plugin(sr_session_ctx_t *session, const char *plugin_filename, sr_pd_plugin_ctx_t *plugin_ctx)
 {
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG3(session, plugin_filename, plugin_ctx);
+
+    plugin_ctx->filename = strdup(plugin_filename);
+    CHECK_NULL_NOMEM_GOTO(plugin_ctx->filename, rc, cleanup);
 
     /* open the dynamic library with plugin */
     plugin_ctx->dl_handle = dlopen(plugin_filename, RTLD_LAZY);
@@ -156,10 +149,18 @@ sr_pd_load_plugin(sr_session_ctx_t *session, const char *plugin_filename, sr_pd_
         goto cleanup;
     }
 
+    /* get health check function pointer */
+    *(void **) (&plugin_ctx->health_check_cb) = dlsym(plugin_ctx->dl_handle, SR_PLUGIN_HEALTH_CHECK_FN_NAME);
+    if (NULL != plugin_ctx->health_check_cb) {
+        SR_LOG_DBG("'%s' function found, health checks will be applied.", SR_PLUGIN_HEALTH_CHECK_FN_NAME);
+    }
+
     /* call init */
     rc = plugin_ctx->init_cb(session, &plugin_ctx->private_ctx);
     CHECK_RC_LOG_GOTO(rc, cleanup, "Execution of '%s' from '%s' returned an error: %s.",
             SR_PLUGIN_INIT_FN_NAME, plugin_filename, sr_strerror(rc));
+
+    plugin_ctx->initialized = true;
 
     return SR_ERR_OK;
 
@@ -167,9 +168,13 @@ cleanup:
     if (NULL != plugin_ctx->dl_handle) {
         dlclose(plugin_ctx->dl_handle);
     }
+    free(plugin_ctx->filename);
     return rc;
 }
 
+/**
+ * @brief Loads all plugins in plugins directory.
+ */
 static int
 sr_pd_load_plugins(sr_pd_ctx_t *ctx)
 {
@@ -179,6 +184,7 @@ sr_pd_load_plugins(sr_pd_ctx_t *ctx)
     char plugins_dir[PATH_MAX + 1] = { 0, };
     char plugin_filename[PATH_MAX + 1] = { 0, };
     sr_pd_plugin_ctx_t *tmp = NULL;
+    bool init_retry_needed = false;
     int ret = 0;
     int rc = SR_ERR_OK;
 
@@ -208,6 +214,7 @@ sr_pd_load_plugins(sr_pd_ctx_t *ctx)
         if ((NULL != result) && sr_str_ends_with(entry.d_name, SR_PLUGIN_FILE_EXT)) {
             SR_LOG_DBG("Loading plugin '%s'.", entry.d_name);
             snprintf(plugin_filename, PATH_MAX, "%s/%s", plugins_dir, entry.d_name);
+
             /* realloc plugins array */
             tmp = realloc(ctx->plugins, sizeof(*ctx->plugins) * (ctx->plugins_cnt + 1));
             if (NULL == tmp) {
@@ -215,29 +222,116 @@ sr_pd_load_plugins(sr_pd_ctx_t *ctx)
                 break;
             }
             ctx->plugins = tmp;
+
             /* load the plugin */
             rc = sr_pd_load_plugin(ctx->session, plugin_filename, &(ctx->plugins[ctx->plugins_cnt]));
-            if (SR_ERR_OK == rc) {
-                ctx->plugins_cnt += 1;
+            if (SR_ERR_OK != rc) {
+                init_retry_needed = true;
             }
+            ctx->plugins_cnt += 1;
         }
     } while (NULL != result);
     closedir(dir);
 
+    if (init_retry_needed) {
+        SR_LOG_DBG("Scheduling plugin init retry after %d seconds.", SR_PLUGIN_INIT_RETRY_TIMEOUT);
+        ev_timer_start(ctx->event_loop, &ctx->init_retry_timer);
+    }
+
     return SR_ERR_OK;
 }
 
-static int
+/**
+ * @brief Cleans up the provided plugin.
+ */
+static void
+sr_pd_cleanup_plugin(sr_pd_ctx_t *ctx, sr_pd_plugin_ctx_t *plugin)
+{
+    CHECK_NULL_ARG_VOID2(ctx, plugin);
+
+    if (plugin->initialized) {
+        plugin->cleanup_cb(ctx->session, plugin->private_ctx);
+        dlclose(plugin->dl_handle);
+        plugin->initialized = false;
+    }
+}
+
+/**
+ * @brief Cleans up all plugins.
+ */
+static void
 sr_pd_cleanup_plugins(sr_pd_ctx_t *ctx)
 {
     if (NULL != ctx->plugins) {
         for (size_t i = 0; i < ctx->plugins_cnt; i++) {
-            ctx->plugins[i].cleanup_cb(ctx->session, ctx->plugins[i].private_ctx);
-            dlclose(ctx->plugins[i].dl_handle);
+            sr_pd_cleanup_plugin(ctx, &(ctx->plugins[i]));
+            free(ctx->plugins[i].filename);
         }
         free(ctx->plugins);
     }
-    return SR_ERR_OK;
+}
+
+/**
+ * @brief Callback called by the event loop watcher when health check timer expires.
+ */
+static void
+sr_pd_health_check_timer_cb(struct ev_loop *loop, ev_timer *w, int revents)
+{
+    sr_pd_ctx_t *ctx = NULL;
+    bool init_retry_needed = false;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG_VOID2(w, w->data);
+    ctx = (sr_pd_ctx_t*)w->data;
+
+    CHECK_NULL_ARG_VOID(ctx);
+
+    for (size_t i = 0; i < ctx->plugins_cnt; i++) {
+        if (ctx->plugins[i].initialized && (NULL != ctx->plugins[i].health_check_cb)) {
+            rc = ctx->plugins[i].health_check_cb(ctx->session, ctx->plugins[i].private_ctx);
+            if (SR_ERR_OK != rc) {
+                SR_LOG_ERR("Health check of the plugin '%s' returned an error: %s", ctx->plugins[i].filename,
+                        sr_strerror(rc));
+                sr_pd_cleanup_plugin(ctx, &(ctx->plugins[i]));
+                init_retry_needed = true;
+            }
+        }
+    }
+
+    if (init_retry_needed) {
+        SR_LOG_DBG("Scheduling plugin init retry after %d seconds.", SR_PLUGIN_INIT_RETRY_TIMEOUT);
+        ev_timer_start(ctx->event_loop, &ctx->init_retry_timer);
+    }
+}
+
+/**
+ * @brief Callback called by the event loop watcher when init retry timer expires.
+ */
+static void
+sr_pd_init_retry_timer_cb(struct ev_loop *loop, ev_timer *w, int revents)
+{
+    sr_pd_ctx_t *ctx = NULL;
+    bool init_retry_needed = false;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG_VOID2(w, w->data);
+    ctx = (sr_pd_ctx_t*)w->data;
+
+    CHECK_NULL_ARG_VOID(ctx);
+
+    for (size_t i = 0; i < ctx->plugins_cnt; i++) {
+        if (! ctx->plugins[i].initialized) {
+            rc = sr_pd_load_plugin(ctx->session,  ctx->plugins[i].filename,  &(ctx->plugins[i]));
+            if (SR_ERR_OK != rc) {
+                init_retry_needed = true;
+            }
+        }
+    }
+
+    if (init_retry_needed) {
+        SR_LOG_DBG("Scheduling plugin init retry after %d seconds.", SR_PLUGIN_INIT_RETRY_TIMEOUT);
+        ev_timer_start(ctx->event_loop, &ctx->init_retry_timer);
+    }
 }
 
 /**
@@ -324,6 +418,8 @@ main(int argc, char* argv[])
     ev_timer_init(&ctx.health_check_timer, sr_pd_health_check_timer_cb, SR_PLUGIN_HEALTH_CHECK_TIMEOUT,
             SR_PLUGIN_HEALTH_CHECK_TIMEOUT);
     ctx.health_check_timer.data = &ctx;
+    ev_timer_init(&ctx.init_retry_timer, sr_pd_init_retry_timer_cb, SR_PLUGIN_INIT_RETRY_TIMEOUT, 0.);
+    ctx.init_retry_timer.data = &ctx;
 
     /* connect to sysrepo */
     rc = sr_connect("sysrepo-plugind", SR_CONN_DEFAULT, &ctx.connection);
