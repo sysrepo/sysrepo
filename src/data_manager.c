@@ -1280,7 +1280,6 @@ dm_append_data_tree(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_info_t *dat
     dm_data_info_t *di = NULL;
     char *tmp = NULL;
     struct lyd_node *tmp_node = NULL;
-    struct lyd_node *next_node = NULL;
 
     rc = dm_get_data_info(dm_ctx, session, module_name, &di);
     CHECK_RC_LOG_RETURN(rc, "Get data info failed for module %s", module_name);
@@ -1299,37 +1298,24 @@ dm_append_data_tree(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_info_t *dat
         if (NULL == data_info->node) {
             data_info->node = tmp_node;
         } else if (NULL != tmp_node) {
-            const struct lys_module *module = tmp_node->schema->module;
-            struct lyd_node *n = tmp_node;
+            ret = lyd_print_fd(STDOUT_FILENO, tmp_node, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT | LYP_WD_ALL | LYP_KEEPEMPTYCONT);
+            printf("\n\n");
+            ret = lyd_print_fd(STDOUT_FILENO, data_info->node, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT | LYP_WD_ALL | LYP_KEEPEMPTYCONT);
+            printf("\n\n");
 
-            /* remove nodes from different modules*/
-            LY_TREE_FOR_SAFE(tmp_node, next_node, n) {
-               if (module != n->schema->module) {
-                  lyd_free(n);
-               }
-            }
-            /* find last node in data_info->node */
-            n = data_info->node;
-            while (NULL != n->next) {
-                n = n->next;
-            }
+            ret = lyd_merge(data_info->node, tmp_node, LYD_OPT_EXPLICIT);
 
-            /* attach data tree */
-            n->next = tmp_node;
-            tmp_node->prev = n;
+            ret = lyd_print_fd(STDOUT_FILENO, tmp_node, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT | LYP_WD_ALL | LYP_KEEPEMPTYCONT);
+            printf("\n\n");
+            ret = lyd_print_fd(STDOUT_FILENO, data_info->node, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT | LYP_WD_ALL | LYP_KEEPEMPTYCONT);
+            printf("\n\n");
 
-            /* fix prev pointer of the first node*/
-            while (NULL != n->next) {
-                n = n->next;
-            }
-            data_info->node->prev = n;
+            lyd_free_withsiblings(tmp_node);
         }
-        tmp_node = NULL;
     } else {
         SR_LOG_DBG("Dependant module %s is empty", di->schema->module->name);
     }
 
-    lyd_free_withsiblings(tmp_node);
     return rc;
 }
 
