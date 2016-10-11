@@ -128,7 +128,7 @@ sr_pd_load_plugin(sr_session_ctx_t *session, const char *plugin_filename, sr_pd_
     /* open the dynamic library with plugin */
     plugin_ctx->dl_handle = dlopen(plugin_filename, RTLD_LAZY);
     if (NULL == plugin_ctx->dl_handle) {
-        SR_LOG_ERR("Unable to load the plugin: %s.", dlerror());
+        SR_LOG_WRN("Unable to load the plugin: %s.", dlerror());
         rc = SR_ERR_INIT_FAILED;
         goto cleanup;
     }
@@ -136,7 +136,7 @@ sr_pd_load_plugin(sr_session_ctx_t *session, const char *plugin_filename, sr_pd_
     /* get init function pointer */
     *(void **) (&plugin_ctx->init_cb) = dlsym(plugin_ctx->dl_handle, SR_PLUGIN_INIT_FN_NAME);
     if (NULL == plugin_ctx->init_cb) {
-        SR_LOG_ERR("Unable to find '%s' function: %s.", SR_PLUGIN_INIT_FN_NAME, dlerror());
+        SR_LOG_WRN("Unable to find '%s' function: %s.", SR_PLUGIN_INIT_FN_NAME, dlerror());
         rc = SR_ERR_INIT_FAILED;
         goto cleanup;
     }
@@ -144,7 +144,7 @@ sr_pd_load_plugin(sr_session_ctx_t *session, const char *plugin_filename, sr_pd_
     /* get cleanup function pointer */
     *(void **) (&plugin_ctx->cleanup_cb) = dlsym(plugin_ctx->dl_handle, SR_PLUGIN_CLEANUP_FN_NAME);
     if (NULL == plugin_ctx->init_cb) {
-        SR_LOG_ERR("Unable to find '%s' function: %s.", SR_PLUGIN_CLEANUP_FN_NAME, dlerror());
+        SR_LOG_WRN("Unable to find '%s' function: %s.", SR_PLUGIN_CLEANUP_FN_NAME, dlerror());
         rc = SR_ERR_INIT_FAILED;
         goto cleanup;
     }
@@ -155,13 +155,6 @@ sr_pd_load_plugin(sr_session_ctx_t *session, const char *plugin_filename, sr_pd_
         SR_LOG_DBG("'%s' function found, health checks will be applied.", SR_PLUGIN_HEALTH_CHECK_FN_NAME);
     }
 
-    /* call init */
-    rc = plugin_ctx->init_cb(session, &plugin_ctx->private_ctx);
-    CHECK_RC_LOG_GOTO(rc, cleanup, "Execution of '%s' from '%s' returned an error: %s.",
-            SR_PLUGIN_INIT_FN_NAME, plugin_filename, sr_strerror(rc));
-
-    plugin_ctx->initialized = true;
-
     return SR_ERR_OK;
 
 cleanup:
@@ -169,6 +162,29 @@ cleanup:
         dlclose(plugin_ctx->dl_handle);
     }
     free(plugin_ctx->filename);
+    return rc;
+}
+
+/**
+ * @brief Initializes a plugin.
+ */
+static int
+sr_pd_init_plugin(sr_session_ctx_t *session, sr_pd_plugin_ctx_t *plugin_ctx)
+{
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG2(session, plugin_ctx);
+
+    /* call init callback */
+    rc = plugin_ctx->init_cb(session, &plugin_ctx->private_ctx);
+
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("'%s' in '%s' returned an error: %s.", SR_PLUGIN_INIT_FN_NAME, plugin_ctx->filename, sr_strerror(rc));
+        plugin_ctx->initialized = false;
+    } else {
+        plugin_ctx->initialized = true;
+    }
+
     return rc;
 }
 
@@ -226,6 +242,13 @@ sr_pd_load_plugins(sr_pd_ctx_t *ctx)
             /* load the plugin */
             rc = sr_pd_load_plugin(ctx->session, plugin_filename, &(ctx->plugins[ctx->plugins_cnt]));
             if (SR_ERR_OK != rc) {
+                SR_LOG_WRN("Ignoring the file '%s'.", plugin_filename);
+                continue;
+            }
+
+            /* initialize the plugin */
+            rc = sr_pd_init_plugin(ctx->session, &(ctx->plugins[ctx->plugins_cnt]));
+            if (SR_ERR_OK != rc) {
                 init_retry_needed = true;
             }
             ctx->plugins_cnt += 1;
@@ -251,7 +274,6 @@ sr_pd_cleanup_plugin(sr_pd_ctx_t *ctx, sr_pd_plugin_ctx_t *plugin)
 
     if (plugin->initialized) {
         plugin->cleanup_cb(ctx->session, plugin->private_ctx);
-        dlclose(plugin->dl_handle);
         plugin->initialized = false;
     }
 }
@@ -265,6 +287,7 @@ sr_pd_cleanup_plugins(sr_pd_ctx_t *ctx)
     if (NULL != ctx->plugins) {
         for (size_t i = 0; i < ctx->plugins_cnt; i++) {
             sr_pd_cleanup_plugin(ctx, &(ctx->plugins[i]));
+            dlclose(ctx->plugins[i].dl_handle);
             free(ctx->plugins[i].filename);
         }
         free(ctx->plugins);
@@ -321,16 +344,17 @@ sr_pd_init_retry_timer_cb(struct ev_loop *loop, ev_timer *w, int revents)
 
     for (size_t i = 0; i < ctx->plugins_cnt; i++) {
         if (! ctx->plugins[i].initialized) {
-            rc = sr_pd_load_plugin(ctx->session,  ctx->plugins[i].filename,  &(ctx->plugins[i]));
+            rc = sr_pd_init_plugin(ctx->session,  &(ctx->plugins[i]));
             if (SR_ERR_OK != rc) {
                 init_retry_needed = true;
             }
         }
     }
 
-    if (init_retry_needed) {
+    if (!init_retry_needed) {
+        ev_timer_stop(ctx->event_loop, &ctx->init_retry_timer);
+    } else {
         SR_LOG_DBG("Scheduling plugin init retry after %d seconds.", SR_PLUGIN_INIT_RETRY_TIMEOUT);
-        ev_timer_start(ctx->event_loop, &ctx->init_retry_timer);
     }
 }
 
@@ -418,7 +442,7 @@ main(int argc, char* argv[])
     ev_timer_init(&ctx.health_check_timer, sr_pd_health_check_timer_cb, SR_PLUGIN_HEALTH_CHECK_TIMEOUT,
             SR_PLUGIN_HEALTH_CHECK_TIMEOUT);
     ctx.health_check_timer.data = &ctx;
-    ev_timer_init(&ctx.init_retry_timer, sr_pd_init_retry_timer_cb, SR_PLUGIN_INIT_RETRY_TIMEOUT, 0.);
+    ev_timer_init(&ctx.init_retry_timer, sr_pd_init_retry_timer_cb, SR_PLUGIN_INIT_RETRY_TIMEOUT, SR_PLUGIN_INIT_RETRY_TIMEOUT);
     ctx.init_retry_timer.data = &ctx;
 
     /* connect to sysrepo */
