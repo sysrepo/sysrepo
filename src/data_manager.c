@@ -3398,10 +3398,7 @@ dm_remove_non_matching_diff(dm_model_subscription_t *ms, const np_subscription_t
         }
 
         int diff_count = 0;
-        while (LYD_DIFF_END != ms->difflist->type[diff_count]) {
-            diff_count++;
-        }
-        diff_count++;
+        while (LYD_DIFF_END != ms->difflist->type[diff_count++]);
 
         for (int i = diff_count - 2; i >= 0; i--) {
             bool match = false;
@@ -3413,11 +3410,13 @@ dm_remove_non_matching_diff(dm_model_subscription_t *ms, const np_subscription_t
                 memmove(&ms->difflist->type[i],
                         &ms->difflist->type[i + 1],
                         (diff_count - i - 1) * sizeof(*ms->difflist->type));
+                /* there is no items for LYD_DIFF_END in first and second arrays,
+                 * these arrays are shorter thats why there is -2 instead of -1 */
                 memmove(&ms->difflist->first[i],
                         &ms->difflist->first[i + 1],
                         (diff_count - i - 2) * sizeof(*ms->difflist->first));
                 memmove(&ms->difflist->second[i],
-                        &ms->difflist->second[i][i + 1],
+                        &ms->difflist->second[i + 1],
                         (diff_count - i - 2) * sizeof(*ms->difflist->second));
                 diff_count--;
             }
