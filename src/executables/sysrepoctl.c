@@ -831,7 +831,7 @@ srctl_module_has_data(const struct lys_module *module)
     /* iterate through top-level nodes */
     LY_TREE_FOR(module->data, iter) {
         if (((LYS_CONFIG_R & iter->flags) /* operational data */ ||
-             ((LYS_CONTAINER | LYS_LIST | LYS_LEAF | LYS_LEAFLIST | LYS_CHOICE | LYS_RPC) & iter->nodetype) /* data-carrying */)) {
+             ((LYS_CONTAINER | LYS_LIST | LYS_LEAF | LYS_LEAFLIST | LYS_CHOICE | LYS_RPC | LYS_NOTIF) & iter->nodetype) /* data-carrying */)) {
             return true;
         }
     }
