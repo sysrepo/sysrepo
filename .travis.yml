@@ -24,8 +24,8 @@ cache:
 before_install:
   - test $TRAVIS_BRANCH != coverity -o ${TRAVIS_JOB_NUMBER##*.} = 1 || exit 0
   - test $TRAVIS_BRANCH != devel-coverity -o ${TRAVIS_JOB_NUMBER##*.} = 1 || exit 0
-  - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then bash .travis-install-libs.sh; fi
-  - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then sh .travis-install-libs-osx.sh; fi
+  - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then bash deploy/travis/install-libs.sh; fi
+  - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then sh deploy/travis/install-libs-osx.sh; fi
 
 script:
   - mkdir build ; cd build ; cmake -DCMAKE_BUILD_TYPE=Debug -DCMAKE_PREFIX_PATH=$HOME/local -DCMAKE_C_FLAGS="-Werror -coverage" .. && make -j2
