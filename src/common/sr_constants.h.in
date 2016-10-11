@@ -77,9 +77,6 @@
 /** File extension of YIN schema files. */
 #define SR_SCHEMA_YIN_FILE_EXT ".yin"
 
-/** File extension of sysrepo plugins. */
-#define SR_PLUGIN_FILE_EXT ".so"
-
 /** Sysrepo daemon PID file. */
 #define SR_DAEMON_PID_FILE "@DAEMON_PID_FILE@"
 

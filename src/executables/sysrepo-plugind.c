@@ -224,8 +224,8 @@ sr_pd_load_plugins(sr_pd_ctx_t *ctx)
             SR_LOG_ERR("Error by reading plugin directory: %s.", sr_strerror_safe(errno));
             break;
         }
-        if ((NULL != result) && sr_str_ends_with(entry.d_name, SR_PLUGIN_FILE_EXT)) {
-            SR_LOG_DBG("Loading plugin '%s'.", entry.d_name);
+        if ((NULL != result) && (DT_DIR != entry.d_type)) {
+            SR_LOG_DBG("Loading plugin from file '%s'.", entry.d_name);
             snprintf(plugin_filename, PATH_MAX, "%s/%s", plugins_dir, entry.d_name);
 
             /* realloc plugins array */
