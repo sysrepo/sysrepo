@@ -51,7 +51,7 @@
 #ifndef SWIGLUA
 %shared_ptr(Session);
 #endif
-%ignore Session::Session(sr_session_ctx_t *, sr_conn_options_t);
+%ignore Session::Session(sr_session_ctx_t *, sr_sess_options_t);
 %ignore Session::Session(sr_session_ctx_t *);
 %ignore Session::get();
 

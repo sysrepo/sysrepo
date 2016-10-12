@@ -45,8 +45,8 @@ class Session
 
 public:
     Session(S_Connection conn, sr_datastore_t datastore = (sr_datastore_t) DS_RUNNING, \
-            const sr_conn_options_t opts = SESS_DEFAULT, const char *user_name = NULL);
-    Session(sr_session_ctx_t *sess, sr_conn_options_t opts = SESS_DEFAULT);
+            const sr_sess_options_t opts = SESS_DEFAULT, const char *user_name = NULL);
+    Session(sr_session_ctx_t *sess, sr_sess_options_t opts = SESS_DEFAULT);
     void session_stop();
     void session_switch_ds(sr_datastore_t ds);
     S_Error get_last_error();
@@ -80,7 +80,7 @@ public:
 private:
     sr_session_ctx_t *_sess;
     sr_datastore_t _datastore;
-    sr_conn_options_t _opts;
+    sr_sess_options_t _opts;
     S_Connection _conn;
 };
 
