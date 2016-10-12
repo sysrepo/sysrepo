@@ -23,6 +23,33 @@
 #ifndef TREES_INTERNAL_H_
 #define TREES_INTERNAL_H_
 
+#include <stdio.h>
+
+/**
+ * @brief Type of the destination for the print operation.
+ */
+typedef enum sr_print_type_e {
+    SR_PRINT_STREAM,  /**< File stream. */
+    SR_PRINT_FD,      /**< File descriptor. */
+    SR_PRINT_MEM      /**< Memory buffer. */
+} sr_print_type_t;
+
+/**
+ * @brief Context for the print operation.
+ */
+typedef struct sr_print_ctx_s {
+    sr_print_type_t type;
+    union {
+        int fd;
+        FILE *stream;
+        struct {
+            char *buf;
+            size_t len;
+            size_t size;
+        } mem;
+    } method;
+} sr_print_ctx_t;
+
 /**
  * @brief Allocate a new instance of a sysrepo node over an existing sysrepo memory context.
  *
