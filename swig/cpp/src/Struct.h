@@ -71,7 +71,7 @@ public:
     Val(const char *val, sr_type_t type = SR_STRING_T);
     Val(bool bool_val, sr_type_t type = SR_BOOL_T);
     Val(double decimal64_val, sr_type_t type = SR_DECIMAL64_T);
-    Val(int8_t int8_val, sr_type_t type = SR_INT16_T);
+    Val(int8_t int8_val, sr_type_t type = SR_INT8_T);
     Val(int16_t int16_val, sr_type_t type = SR_INT16_T);
     Val(int32_t int32_val, sr_type_t type = SR_INT32_T);
     Val(int64_t int64_val, sr_type_t type = SR_INT64_T);
