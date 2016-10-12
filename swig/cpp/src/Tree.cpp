@@ -153,14 +153,9 @@ void Tree::set(bool bool_val, sr_type_t type) {
 
     _node->type = type;
 }
-void Tree::set(double decimal64_val, sr_type_t type) {
-    if (type == SR_DECIMAL64_T) {
-	    _node->data.decimal64_val = decimal64_val;
-    } else {
-        throw_exception(SR_ERR_INVAL_ARG);
-    }
-
-    _node->type = type;
+void Tree::set(double decimal64_val) {
+    _node->data.decimal64_val = decimal64_val;
+    _node->type = SR_DECIMAL64_T;
 }
 void Tree::set(int8_t int8_val, sr_type_t type) {
     if (type == SR_INT8_T) {
@@ -190,9 +185,7 @@ void Tree::set(int32_t int32_val, sr_type_t type) {
     _node->type = type;
 }
 void Tree::set(int64_t int64_val, sr_type_t type) {
-    if (type == SR_DECIMAL64_T) {
-	    _node->data.uint64_val = (double) int64_val;
-    } else if (type == SR_UINT64_T) {
+    if (type == SR_UINT64_T) {
         _node->data.uint64_val = (uint64_t) int64_val;
     } else if (type == SR_UINT32_T) {
         _node->data.uint32_val = (uint32_t) int64_val;
@@ -250,7 +243,7 @@ void Tree::set(uint64_t uint64_val, sr_type_t type) {
 
     _node->type = type;
 }
-void Tree::set(sr_type_t type) {
+void Tree::set_type(sr_type_t type) {
     if (type != SR_LIST_T && type != SR_CONTAINER_T && type != SR_CONTAINER_PRESENCE_T &&\
         type != SR_UNKNOWN_T && type != SR_LEAF_EMPTY_T) {
         throw_exception(SR_ERR_INVAL_ARG);
