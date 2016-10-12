@@ -58,7 +58,7 @@ public:
     sr_node_t **get() {return &_node;};
     void set(const char *val, sr_type_t type = SR_STRING_T);
     void set(bool bool_val, sr_type_t type = SR_BOOL_T);
-    void set(double decimal64_val, sr_type_t type);
+    void set(double decimal64_val);
     void set(int8_t int8_val, sr_type_t type);
     void set(int16_t int16_val, sr_type_t type);
     void set(int32_t int32_val, sr_type_t type);
@@ -67,7 +67,7 @@ public:
     void set(uint16_t uint16_val, sr_type_t type);
     void set(uint32_t uint32_val, sr_type_t type);
     void set(uint64_t uint64_val, sr_type_t type);
-    void set(sr_type_t type);
+    void set_type(sr_type_t type);
     ~Tree();
 
 private:

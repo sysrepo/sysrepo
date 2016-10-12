@@ -160,19 +160,16 @@ Val::Val(bool bool_val, sr_type_t type) {
     S_Counter counter(new Counter(val));
     _counter = counter;
 }
-Val::Val(double decimal64_val, sr_type_t type) {
+Val::Val(double decimal64_val) {
     sr_val_t *val = NULL;
     val = (sr_val_t*) calloc(1, sizeof(sr_val_t));
-    if (val == NULL)
+    if (val == NULL) {
         throw_exception(SR_ERR_NOMEM);
-    if (type == SR_DECIMAL64_T) {
-	val->data.decimal64_val = decimal64_val;
     } else {
-        free(val);
-        throw_exception(SR_ERR_INVAL_ARG);
+	val->data.decimal64_val = decimal64_val;
     }
 
-    val->type = type;
+    val->type = SR_DECIMAL64_T;
     _val = val;
     S_Counter counter(new Counter(val));
     _counter = counter;
@@ -233,9 +230,7 @@ Val::Val(int64_t int64_val, sr_type_t type) {
     val = (sr_val_t*) calloc(1, sizeof(sr_val_t));
     if (val == NULL)
         throw_exception(SR_ERR_NOMEM);
-    if (type == SR_DECIMAL64_T) {
-	val->data.uint64_val = (double) int64_val;
-    } else if (type == SR_UINT64_T) {
+    if (type == SR_UINT64_T) {
         val->data.uint64_val = (uint64_t) int64_val;
     } else if (type == SR_UINT32_T) {
         val->data.uint32_val = (uint32_t) int64_val;
@@ -368,19 +363,15 @@ void Val::set(const char *xpath, bool bool_val, sr_type_t type) {
 
     _val->type = type;
 }
-void Val::set(const char *xpath, double decimal64_val, sr_type_t type) {
+void Val::set(const char *xpath, double decimal64_val) {
     if (_val == NULL) throw_exception(SR_ERR_OPERATION_FAILED);
 
     int ret = sr_val_set_xpath(_val, xpath);
     if (ret != SR_ERR_OK) throw_exception(ret);
 
-    if (type == SR_DECIMAL64_T) {
-	    _val->data.decimal64_val = decimal64_val;
-    } else {
-        throw_exception(SR_ERR_INVAL_ARG);
-    }
+    _val->data.decimal64_val = decimal64_val;
 
-    _val->type = type;
+    _val->type = SR_DECIMAL64_T;
 }
 void Val::set(const char *xpath, int8_t int8_val, sr_type_t type) {
     if (_val == NULL) throw_exception(SR_ERR_OPERATION_FAILED);
@@ -431,9 +422,7 @@ void Val::set(const char *xpath, int64_t int64_val, sr_type_t type) {
     int ret = sr_val_set_xpath(_val, xpath);
     if (ret != SR_ERR_OK) throw_exception(ret);
 
-    if (type == SR_DECIMAL64_T) {
-	    _val->data.uint64_val = (double) int64_val;
-    } else if (type == SR_UINT64_T) {
+    if (type == SR_UINT64_T) {
         _val->data.uint64_val = (uint64_t) int64_val;
     } else if (type == SR_UINT32_T) {
         _val->data.uint32_val = (uint32_t) int64_val;
@@ -511,7 +500,7 @@ void Val::set(const char *xpath, uint64_t uint64_val, sr_type_t type) {
 
     _val->type = type;
 }
-void Val::set(const char *xpath, sr_type_t type) {
+void Val::set_type(const char *xpath, sr_type_t type) {
     if (_val == NULL) throw_exception(SR_ERR_OPERATION_FAILED);
 
     int ret = sr_val_set_xpath(_val, xpath);
