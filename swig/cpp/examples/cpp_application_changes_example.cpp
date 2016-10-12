@@ -84,6 +84,9 @@ print_value(S_Val value)
     case SR_INT64_T:
         cout << "= " << value->data()->get_int64() << endl;
         break;
+    case SR_DECIMAL64_T:
+        cout << "= " << std::to_string(value->data()->get_decimal64()) << endl;
+        break;
      case SR_IDENTITYREF_T:
         cout << "= " << value->data()->get_identityref() << endl;
         break;
