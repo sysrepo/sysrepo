@@ -517,4 +517,4 @@ static void g_event_notif_tree_cb(const char *xpath, const sr_node_t *trees, con
     }
 };
 
-%include "../swig_base/base.i"
+%include "../swig_base/python_base.i"
