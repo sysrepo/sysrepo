@@ -40,13 +40,13 @@ extern "C" {
 
 using namespace std;
 
-class Session:public Throw_Exception
+class Session
 {
 
 public:
-    Session(S_Connection conn, sr_datastore_t datastore = SR_DS_RUNNING, \
-            const sr_conn_options_t opts = SESS_DEFAULT, const char *user_name = NULL);
-    Session(sr_session_ctx_t *sess, sr_conn_options_t opts = SR_CONN_DEFAULT);
+    Session(S_Connection conn, sr_datastore_t datastore = (sr_datastore_t) DS_RUNNING, \
+            const sr_sess_options_t opts = SESS_DEFAULT, const char *user_name = NULL);
+    Session(sr_session_ctx_t *sess, sr_sess_options_t opts = SESS_DEFAULT);
     void session_stop();
     void session_switch_ds(sr_datastore_t ds);
     S_Error get_last_error();
@@ -58,8 +58,8 @@ public:
     S_Vals get_items(const char *xpath);
     S_Iter_Value get_items_iter(const char *xpath);
     S_Val get_item_next(S_Iter_Value iter);
-    S_Tree get_subtree(const char *xpath, sr_get_subtree_options_t opts = (sr_get_subtree_flag_t) 0);
-    S_Trees get_subtrees(const char *xpath, sr_get_subtree_options_t opts = (sr_get_subtree_flag_t) 0);
+    S_Tree get_subtree(const char *xpath, sr_get_subtree_options_t opts = GET_SUBTREE_DEFAULT);
+    S_Trees get_subtrees(const char *xpath, sr_get_subtree_options_t opts = GET_SUBTREE_DEFAULT);
 
     void set_item(const char *xpath, S_Val value, const sr_edit_options_t opts = EDIT_DEFAULT);
     void delete_item(const char *xpath, const sr_edit_options_t opts = EDIT_DEFAULT);
@@ -80,7 +80,7 @@ public:
 private:
     sr_session_ctx_t *_sess;
     sr_datastore_t _datastore;
-    sr_conn_options_t _opts;
+    sr_sess_options_t _opts;
     S_Connection _conn;
 };
 
@@ -104,7 +104,7 @@ public:
     std::map<const char *, void*> private_ctx;
 };
 
-class Subscribe:public Throw_Exception
+class Subscribe
 {
 
 public:

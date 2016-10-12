@@ -1,12 +1,6 @@
-%module base
-
-%include <std_except.i>
-%catches(std::runtime_error, std::exception, std::string);
+%module lua_base
 
 %include "shared_ptr.i"
-
-%include <std_string.i>
-%include <typemaps.i>
 
 %ignore Callback;
 
@@ -64,10 +58,5 @@
 %ignore Tree::set(uint32_t,sr_type_t);
 %ignore Tree::set(uint64_t,sr_type_t);
 
-%include "../swig_base/sysrepo.i"
-%include "../swig_base/structs.i"
-%include "../swig_base/tree.i"
-%include "../swig_base/xpath.i"
-%include "../swig_base/session.i"
-%include "../swig_base/connection.i"
+%include "../swig_base/base.i"
 %include "../swig_base/libsysrepoEnums.i"

@@ -37,7 +37,7 @@ extern "C" {
 
 using namespace std;
 
-Session::Session(S_Connection conn, sr_datastore_t datastore, const sr_conn_options_t opts, \
+Session::Session(S_Connection conn, sr_datastore_t datastore, const sr_sess_options_t opts, \
 		 const char *user_name)
 {
     int ret;
@@ -68,7 +68,7 @@ cleanup:
     return;
 }
 
-Session::Session(sr_session_ctx_t *sess, sr_conn_options_t opts)
+Session::Session(sr_session_ctx_t *sess, sr_sess_options_t opts)
 {
     _sess = sess;
     _opts = opts;
