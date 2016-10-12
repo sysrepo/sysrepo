@@ -77,12 +77,12 @@ Logs::Logs()
     return;
 }
 
-void Logs::set_stderr(sr_log_level_t log_level)
+void Logs::set_stderr(const sr_log_level_t log_level)
 {
     sr_log_stderr(log_level);
 }
 
-void Logs::set_syslog(sr_log_level_t log_level)
+void Logs::set_syslog(const sr_log_level_t log_level)
 {
     sr_log_stderr(log_level);
 }

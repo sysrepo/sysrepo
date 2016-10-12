@@ -104,8 +104,8 @@ class Logs
 {
 public:
     Logs();
-    void set_stderr(sr_log_level_t log_level);
-    void set_syslog(sr_log_level_t log_level);
+    static void set_stderr(const sr_log_level_t log_level);
+    static void set_syslog(const sr_log_level_t log_level);
 };
 
 class Schemas
