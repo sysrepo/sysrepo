@@ -71,12 +71,6 @@ void throw_exception(int error) {
     }
 }
 
-Logs::Logs()
-{
-    // for consistent swig integration
-    return;
-}
-
 void Logs::set_stderr(const sr_log_level_t log_level)
 {
     sr_log_stderr(log_level);

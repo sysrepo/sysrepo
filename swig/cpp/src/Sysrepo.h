@@ -103,7 +103,7 @@ void throw_exception(int error);
 class Logs
 {
 public:
-    Logs();
+    Logs() = delete;
     static void set_stderr(const sr_log_level_t log_level);
     static void set_syslog(const sr_log_level_t log_level);
 };
