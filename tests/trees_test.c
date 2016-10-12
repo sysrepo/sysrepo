@@ -30,6 +30,7 @@
 #include <sys/stat.h>
 
 #include "sr_common.h"
+#include "system_helper.h"
 
 /**
  * @brief Retrieve child of a parent node by an index.
@@ -644,6 +645,348 @@ sr_dup_trees_test(void **state)
     sr_free_trees(trees, tree_cnt);
 }
 
+static void
+sr_test_all_printers(sr_node_t *tree, int depth_level, const char *expected)
+{
+    int rc = SR_ERR_OK;
+    char *mem = NULL;
+    char filepath1[] = "/tmp/sr_tree_test1.XXXXXX", filepath2[] = "/tmp/sr_tree_test2.XXXXXX";
+    int fd = 0;
+    FILE *stream = NULL;
+
+    /* memory */
+    rc = sr_print_tree_mem(&mem, tree, depth_level);
+    assert_int_equal(SR_ERR_OK, rc);
+    if (NULL == expected) {
+        assert_null(mem);
+    } else {
+        assert_non_null(mem);
+        assert_string_equal(expected, mem);
+    }
+    free(mem);
+
+    /* fd */
+    fd = mkstemp(filepath1);
+    assert_true(0 < fd);
+    rc = sr_print_tree_fd(fd, tree, depth_level);
+    assert_int_equal(SR_ERR_OK, rc);
+    close(fd);
+    test_file_content(filepath1, expected ? expected : "", false);
+    unlink(filepath1);
+
+    /* stream */
+    fd = mkstemp(filepath2);
+    assert_true(0 < fd);
+    stream = fdopen(fd, "w");
+    assert_non_null(stream);
+    rc = sr_print_tree_stream(stream, tree, depth_level);
+    assert_int_equal(SR_ERR_OK, rc);
+    fclose(stream);
+    test_file_content(filepath2, expected ? expected : "", false);
+    unlink(filepath2);
+}
+
+static void
+sr_print_tree_test(void **state)
+{
+    sr_node_t *tree = NULL, *node = NULL;
+
+    /* empty tree */
+    sr_test_all_printers(tree, INT_MAX, NULL);
+
+    /* one leaf tree */
+    assert_int_equal(SR_ERR_OK, sr_new_tree("root", "test-module", &tree));
+    tree->type = SR_UINT32_T;
+    tree->data.uint32_val = 123;
+    sr_test_all_printers(tree, INT_MAX, "test-module:root = 123\n");
+
+    /* 2 levels */
+    tree->type = SR_CONTAINER_T;
+    assert_int_equal(SR_ERR_OK, sr_node_add_child(tree, "root-child1", NULL, &node));
+    node->type = SR_BOOL_T;
+    node->data.bool_val = true;
+    assert_int_equal(SR_ERR_OK, sr_node_add_child(tree, "root-child2", NULL, &node));
+    node->type = SR_STRING_T;
+    assert_int_equal(SR_ERR_OK, sr_node_set_string(node, "string value"));
+    assert_int_equal(SR_ERR_OK, sr_node_add_child(tree, "root-child3", NULL, &node));
+    node->type = SR_LIST_T;
+
+#define TREE_WITH_TWO_LEVELS \
+    "test-module:root (container)\n"\
+    " |\n"\
+    " -- root-child1 = true\n"\
+    " |\n"\
+    " -- root-child2 = string value\n"\
+    " |\n"\
+    " -- root-child3 (list instance)\n"
+
+    sr_test_all_printers(tree, INT_MAX, TREE_WITH_TWO_LEVELS);
+
+    /* 3 levels */
+    node = tree->first_child;
+    assert_int_equal(SR_ERR_OK, sr_node_add_child(node, "a", "another-module", &node));
+    node->type = SR_UINT8_T;
+    node->data.uint8_val = 56;
+    node = node->parent;
+    assert_int_equal(SR_ERR_OK, sr_node_add_child(node, "b", "another-module", &node));
+    node->type = SR_UINT16_T;
+    node->data.uint16_val = 1234;
+    node = node->parent;
+    assert_int_equal(SR_ERR_OK, sr_node_add_child(node, "c", "another-module", &node));
+    node->type = SR_UINT32_T;
+    node->data.uint32_val = 10000;
+    node = node->parent->next;
+    assert_int_equal(SR_ERR_OK, sr_node_add_child(node, "leaf", NULL, &node));
+    node->type = SR_LEAF_EMPTY_T;
+    node = node->parent->next;
+    assert_int_equal(SR_ERR_OK, sr_node_add_child(node, "list1", NULL, &node));
+    node->type = SR_LIST_T;
+    node = node->parent;
+    assert_int_equal(SR_ERR_OK, sr_node_add_child(node, "list2", NULL, &node));
+    node->type = SR_LIST_T;
+    node = node->parent;
+    assert_int_equal(SR_ERR_OK, sr_node_add_child(node, "list3", NULL, &node));
+    node->type = SR_LIST_T;
+
+#define TREE_WITH_THREE_LEVELS \
+    "test-module:root (container)\n"\
+    " |\n"\
+    " -- root-child1 = true\n"\
+    " |   |\n"\
+    " |   -- another-module:a = 56\n"\
+    " |   |\n"\
+    " |   -- another-module:b = 1234\n"\
+    " |   |\n"\
+    " |   -- another-module:c = 10000\n"\
+    " |\n"\
+    " -- root-child2 = string value\n"\
+    " |   |\n"\
+    " |   -- leaf (empty leaf)\n"\
+    " |\n"\
+    " -- root-child3 (list instance)\n"\
+    "     |\n"\
+    "     -- list1 (list instance)\n"\
+    "     |\n"\
+    "     -- list2 (list instance)\n"\
+    "     |\n"\
+    "     -- list3 (list instance)\n"
+
+    sr_test_all_printers(tree, INT_MAX, TREE_WITH_THREE_LEVELS);
+
+    /* 4 levels */
+    node = tree->first_child->first_child;
+    assert_int_equal(SR_ERR_OK, sr_node_add_child(node, "a1", NULL, &node));
+    node->type = SR_STRING_T;
+    assert_int_equal(SR_ERR_OK, sr_node_set_string(node, "abc"));
+    node = node->parent;
+    assert_int_equal(SR_ERR_OK, sr_node_add_child(node, "a2", NULL, &node));
+    node->type = SR_STRING_T;
+    assert_int_equal(SR_ERR_OK, sr_node_set_string(node, "def"));
+    node = node->parent->next->next;
+    assert_int_equal(SR_ERR_OK, sr_node_add_child(node, "c1", NULL, &node));
+    node->type = SR_BOOL_T;
+    node->data.bool_val = true;
+    node = node->parent;
+    assert_int_equal(SR_ERR_OK, sr_node_add_child(node, "c2", NULL, &node));
+    node->type = SR_BOOL_T;
+    node->data.bool_val = true;
+    node = node->parent;
+    assert_int_equal(SR_ERR_OK, sr_node_add_child(node, "c3", NULL, &node));
+    node->type = SR_BOOL_T;
+    node->data.bool_val = false;
+    node = tree->last_child->first_child;
+    assert_int_equal(SR_ERR_OK, sr_node_add_child(node, "key", NULL, &node));
+    node->type = SR_UINT16_T;
+    node->data.uint16_val = 11;
+    node = node->parent->next;
+    assert_int_equal(SR_ERR_OK, sr_node_add_child(node, "key", NULL, &node));
+    node->type = SR_UINT16_T;
+    node->data.uint16_val = 12;
+    node = node->parent->next;
+    assert_int_equal(SR_ERR_OK, sr_node_add_child(node, "key", NULL, &node));
+    node->type = SR_UINT16_T;
+    node->data.uint16_val = 13;
+
+#define TREE_WITH_FOUR_LEVELS \
+    "test-module:root (container)\n"\
+    " |\n"\
+    " -- root-child1 = true\n"\
+    " |   |\n"\
+    " |   -- another-module:a = 56\n"\
+    " |   |   |\n"\
+    " |   |   -- a1 = abc\n"\
+    " |   |   |\n"\
+    " |   |   -- a2 = def\n"\
+    " |   |\n"\
+    " |   -- another-module:b = 1234\n"\
+    " |   |\n"\
+    " |   -- another-module:c = 10000\n"\
+    " |       |\n"\
+    " |       -- c1 = true\n"\
+    " |       |\n"\
+    " |       -- c2 = true\n"\
+    " |       |\n"\
+    " |       -- c3 = false\n"\
+    " |\n"\
+    " -- root-child2 = string value\n"\
+    " |   |\n"\
+    " |   -- leaf (empty leaf)\n"\
+    " |\n"\
+    " -- root-child3 (list instance)\n"\
+    "     |\n"\
+    "     -- list1 (list instance)\n"\
+    "     |   |\n"\
+    "     |   -- key = 11\n"\
+    "     |\n"\
+    "     -- list2 (list instance)\n"\
+    "     |   |\n"\
+    "     |   -- key = 12\n"\
+    "     |\n"\
+    "     -- list3 (list instance)\n"\
+    "         |\n"\
+    "         -- key = 13\n"
+
+    sr_test_all_printers(tree, INT_MAX, TREE_WITH_FOUR_LEVELS);
+
+    /* depth limit = 0 */
+    sr_test_all_printers(tree, 0, NULL);
+
+    /* depth limit = 1 */
+#define DEPTH_LIMIT_ONE \
+    "test-module:root (container)\n"\
+    " |\n"\
+    " ...\n"
+
+    sr_test_all_printers(tree, 1, DEPTH_LIMIT_ONE);
+
+    /* depth limit = 2 */
+#define DEPTH_LIMIT_TWO \
+    "test-module:root (container)\n"\
+    " |\n"\
+    " -- root-child1 = true\n"\
+    " |   |\n"\
+    " |   ...\n"\
+    " |\n"\
+    " -- root-child2 = string value\n"\
+    " |   |\n"\
+    " |   ...\n"\
+    " |\n"\
+    " -- root-child3 (list instance)\n"\
+    "     |\n"\
+    "     ...\n"
+
+    sr_test_all_printers(tree, 2, DEPTH_LIMIT_TWO);
+
+    /* depth limit = 3 */
+#define DEPTH_LIMIT_THREE \
+    "test-module:root (container)\n"\
+    " |\n"\
+    " -- root-child1 = true\n"\
+    " |   |\n"\
+    " |   -- another-module:a = 56\n"\
+    " |   |   |\n"\
+    " |   |   ...\n"\
+    " |   |\n"\
+    " |   -- another-module:b = 1234\n"\
+    " |   |\n"\
+    " |   -- another-module:c = 10000\n"\
+    " |       |\n"\
+    " |       ...\n"\
+    " |\n"\
+    " -- root-child2 = string value\n"\
+    " |   |\n"\
+    " |   -- leaf (empty leaf)\n"\
+    " |\n"\
+    " -- root-child3 (list instance)\n"\
+    "     |\n"\
+    "     -- list1 (list instance)\n"\
+    "     |   |\n"\
+    "     |   ...\n"\
+    "     |\n"\
+    "     -- list2 (list instance)\n"\
+    "     |   |\n"\
+    "     |   ...\n"\
+    "     |\n"\
+    "     -- list3 (list instance)\n"\
+    "         |\n"\
+    "         ...\n"
+
+    sr_test_all_printers(tree, 3, DEPTH_LIMIT_THREE);
+
+    /* subtree */
+#define SUBTREE \
+    "root-child1 = true\n"\
+    " |\n"\
+    " -- another-module:a = 56\n"\
+    " |   |\n"\
+    " |   -- a1 = abc\n"\
+    " |   |\n"\
+    " |   -- a2 = def\n"\
+    " |\n"\
+    " -- another-module:b = 1234\n"\
+    " |\n"\
+    " -- another-module:c = 10000\n"\
+    "     |\n"\
+    "     -- c1 = true\n"\
+    "     |\n"\
+    "     -- c2 = true\n"\
+    "     |\n"\
+    "     -- c3 = false\n"\
+
+    sr_test_all_printers(tree->first_child, INT_MAX, SUBTREE);
+
+    /* with tree iterator */
+    node = tree->first_child->first_child;
+    assert_int_equal(SR_ERR_OK, sr_node_add_child(node, "iter", NULL, &node));
+    node->type = SR_TREE_ITERATOR_T;
+    node->prev = node->next = node->parent = NULL;
+
+#define TREE_WITH_ITERATOR \
+    "test-module:root (container)\n"\
+    " |\n"\
+    " -- root-child1 = true\n"\
+    " |   |\n"\
+    " |   -- another-module:a = 56\n"\
+    " |   |   |\n"\
+    " |   |   -- a1 = abc\n"\
+    " |   |   |\n"\
+    " |   |   -- a2 = def\n"\
+    " |   |   |\n"\
+    " |   |   ...\n"\
+    " |   |\n"\
+    " |   -- another-module:b = 1234\n"\
+    " |   |\n"\
+    " |   -- another-module:c = 10000\n"\
+    " |       |\n"\
+    " |       -- c1 = true\n"\
+    " |       |\n"\
+    " |       -- c2 = true\n"\
+    " |       |\n"\
+    " |       -- c3 = false\n"\
+    " |\n"\
+    " -- root-child2 = string value\n"\
+    " |   |\n"\
+    " |   -- leaf (empty leaf)\n"\
+    " |\n"\
+    " -- root-child3 (list instance)\n"\
+    "     |\n"\
+    "     -- list1 (list instance)\n"\
+    "     |   |\n"\
+    "     |   -- key = 11\n"\
+    "     |\n"\
+    "     -- list2 (list instance)\n"\
+    "     |   |\n"\
+    "     |   -- key = 12\n"\
+    "     |\n"\
+    "     -- list3 (list instance)\n"\
+    "         |\n"\
+    "         -- key = 13\n"
+
+    sr_test_all_printers(tree, INT_MAX, TREE_WITH_ITERATOR);
+
+    sr_free_tree(tree);
+}
+
 int
 main() {
     const struct CMUnitTest tests[] = {
@@ -655,6 +998,7 @@ main() {
         cmocka_unit_test(sr_node_add_child_test),
         cmocka_unit_test(sr_dup_tree_test),
         cmocka_unit_test(sr_dup_trees_test),
+        cmocka_unit_test(sr_print_tree_test)
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);
