@@ -255,7 +255,7 @@ static void global_loop() {
 %extend Subscribe {
 
     void module_change_subscribe(const char *module_name, Callback_lua *cb, void *private_ctx = NULL, \
-                                 uint32_t priority = 0, sr_subscr_options_t opts = 0) {
+                                 uint32_t priority = 0, sr_subscr_options_t opts = SUBSCR_DEFAULT) {
         /* create class */
         SWIGLUA_REF callback = cb->fn;
         Wrap_cb *class_ctx = NULL;
@@ -275,7 +275,7 @@ static void global_loop() {
     };
 
     void subtree_change_subscribe(const char *xpath, Callback_lua *cb, void *private_ctx = NULL,\
-                                 uint32_t priority = 0, sr_subscr_options_t opts = 0) {
+                                 uint32_t priority = 0, sr_subscr_options_t opts = SUBSCR_DEFAULT) {
         /* create class */
         SWIGLUA_REF callback = cb->fn;
         Wrap_cb *class_ctx = NULL;
@@ -295,7 +295,7 @@ static void global_loop() {
     }
 
     void module_install_subscribe(Callback_lua *cb, void *private_ctx = NULL,\
-                                  sr_subscr_options_t opts = 0) {
+                                  sr_subscr_options_t opts = SUBSCR_DEFAULT) {
         /* create class */
         SWIGLUA_REF callback = cb->fn;
         Wrap_cb *class_ctx = NULL;
@@ -316,7 +316,7 @@ static void global_loop() {
     }
 
     void feature_enable_subscribe(Callback_lua *cb, void *private_ctx = NULL,\
-                                  sr_subscr_options_t opts = 0) {
+                                  sr_subscr_options_t opts = SUBSCR_DEFAULT) {
         /* create class */
         SWIGLUA_REF callback = cb->fn;
         Wrap_cb *class_ctx = NULL;
@@ -337,7 +337,7 @@ static void global_loop() {
     }
 
     void rpc_subscribe(const char *xpath, Callback_lua *cb, void *private_ctx = NULL,\
-                       sr_subscr_options_t opts = 0) {
+                       sr_subscr_options_t opts = SUBSCR_DEFAULT) {
         SWIGLUA_REF callback = cb->fn;
         Wrap_cb *class_ctx = NULL;
         class_ctx = new Wrap_cb(callback);
@@ -357,7 +357,7 @@ static void global_loop() {
     }
 
     void rpc_subscribe_tree(const char *xpath, Callback_lua *cb, void *private_ctx = NULL,\
-                       sr_subscr_options_t opts = 0) {
+                       sr_subscr_options_t opts = SUBSCR_DEFAULT) {
         SWIGLUA_REF callback = cb->fn;
         Wrap_cb *class_ctx = NULL;
         class_ctx = new Wrap_cb(callback);
@@ -377,7 +377,7 @@ static void global_loop() {
     }
 
     void event_notif_subscribe(const char *xpath, Callback_lua *cb, void *private_ctx = NULL,\
-                               sr_subscr_options_t opts = 0) {
+                               sr_subscr_options_t opts = SUBSCR_DEFAULT) {
         SWIGLUA_REF callback = cb->fn;
         Wrap_cb *class_ctx = NULL;
         class_ctx = new Wrap_cb(callback);
@@ -397,7 +397,7 @@ static void global_loop() {
     }
 
     void event_notif_subscribe_tree(const char *xpath, Callback_lua *cb, void *private_ctx = NULL,\
-                               sr_subscr_options_t opts = 0) {
+                               sr_subscr_options_t opts = SUBSCR_DEFAULT) {
         SWIGLUA_REF callback = cb->fn;
         Wrap_cb *class_ctx = NULL;
         class_ctx = new Wrap_cb(callback);
@@ -417,7 +417,7 @@ static void global_loop() {
     }
 
     void dp_get_items_subscribe(const char *xpath, Callback_lua *cb, void *private_ctx = NULL, \
-                               sr_subscr_options_t opts = 0) {
+                               sr_subscr_options_t opts = SUBSCR_DEFAULT) {
         SWIGLUA_REF callback = cb->fn;
         Wrap_cb *class_ctx = NULL;
         class_ctx = new Wrap_cb(callback);

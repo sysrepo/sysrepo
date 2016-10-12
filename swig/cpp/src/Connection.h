@@ -34,7 +34,7 @@ extern "C" {
 class Connection
 {
 public:
-    Connection(const char *app_name, const sr_conn_options_t opts = 0);
+    Connection(const char *app_name, const sr_conn_options_t opts = CONN_DEFAULT);
     sr_conn_ctx_t *get_conn();
     ~Connection();
 

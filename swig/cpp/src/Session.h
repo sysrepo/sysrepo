@@ -44,9 +44,9 @@ class Session
 {
 
 public:
-    Session(S_Connection conn, sr_datastore_t datastore = (sr_datastore_t) 1, \
-            const sr_conn_options_t opts = 0, const char *user_name = NULL);
-    Session(sr_session_ctx_t *sess, sr_conn_options_t opts = 0);
+    Session(S_Connection conn, sr_datastore_t datastore = (sr_datastore_t) DS_RUNNING, \
+            const sr_conn_options_t opts = SESS_DEFAULT, const char *user_name = NULL);
+    Session(sr_session_ctx_t *sess, sr_conn_options_t opts = SESS_DEFAULT);
     void session_stop();
     void session_switch_ds(sr_datastore_t ds);
     S_Error get_last_error();
@@ -58,11 +58,11 @@ public:
     S_Vals get_items(const char *xpath);
     S_Iter_Value get_items_iter(const char *xpath);
     S_Val get_item_next(S_Iter_Value iter);
-    S_Tree get_subtree(const char *xpath, sr_get_subtree_options_t opts = 0);
-    S_Trees get_subtrees(const char *xpath, sr_get_subtree_options_t opts = 0);
+    S_Tree get_subtree(const char *xpath, sr_get_subtree_options_t opts = GET_SUBTREE_DEFAULT);
+    S_Trees get_subtrees(const char *xpath, sr_get_subtree_options_t opts = GET_SUBTREE_DEFAULT);
 
-    void set_item(const char *xpath, S_Val value, const sr_edit_options_t opts = 0);
-    void delete_item(const char *xpath, const sr_edit_options_t opts = 0);
+    void set_item(const char *xpath, S_Val value, const sr_edit_options_t opts = EDIT_DEFAULT);
+    void delete_item(const char *xpath, const sr_edit_options_t opts = EDIT_DEFAULT);
     void move_item(const char *xpath, const sr_move_position_t position, const char *relative_item = NULL);
     void refresh();
     void validate();
@@ -110,15 +110,15 @@ class Subscribe
 public:
     Subscribe(S_Session sess);
 
-    void module_change_subscribe(const char *module_name, S_Callback callback, void *private_ctx = NULL, uint32_t priority = 0, sr_subscr_options_t opts = 0);
-    void subtree_change_subscribe(const char *xpath, S_Callback callback, void *private_ctx = NULL, uint32_t priority = 0, sr_subscr_options_t opts = 0);
-    void module_install_subscribe(S_Callback callback, void *private_ctx = NULL, sr_subscr_options_t opts = 0);
-    void feature_enable_subscribe(S_Callback callback, void *private_ctx = NULL, sr_subscr_options_t opts = 0);
-    void rpc_subscribe(const char *xpath, S_Callback callback, void *private_ctx = NULL, sr_subscr_options_t opts = 0);
-    void event_notif_subscribe_tree(const char *xpath, S_Callback callback, void *private_ctx = NULL, sr_subscr_options_t opts = 0);
-    void event_notif_subscribe(const char *xpath, S_Callback callback, void *private_ctx = NULL, sr_subscr_options_t opts = 0);
-    void rpc_subscribe_tree(const char *xpath, S_Callback callback, void *private_ctx = NULL, sr_subscr_options_t opts = 0);
-    void dp_get_items_subscribe(const char *xpath, S_Callback callback, void *private_ctx = NULL, sr_subscr_options_t opts = 0);
+    void module_change_subscribe(const char *module_name, S_Callback callback, void *private_ctx = NULL, uint32_t priority = 0, sr_subscr_options_t opts = SUBSCR_DEFAULT);
+    void subtree_change_subscribe(const char *xpath, S_Callback callback, void *private_ctx = NULL, uint32_t priority = 0, sr_subscr_options_t opts = SUBSCR_DEFAULT);
+    void module_install_subscribe(S_Callback callback, void *private_ctx = NULL, sr_subscr_options_t opts = SUBSCR_DEFAULT);
+    void feature_enable_subscribe(S_Callback callback, void *private_ctx = NULL, sr_subscr_options_t opts = SUBSCR_DEFAULT);
+    void rpc_subscribe(const char *xpath, S_Callback callback, void *private_ctx = NULL, sr_subscr_options_t opts = SUBSCR_DEFAULT);
+    void event_notif_subscribe_tree(const char *xpath, S_Callback callback, void *private_ctx = NULL, sr_subscr_options_t opts = SUBSCR_DEFAULT);
+    void event_notif_subscribe(const char *xpath, S_Callback callback, void *private_ctx = NULL, sr_subscr_options_t opts = SUBSCR_DEFAULT);
+    void rpc_subscribe_tree(const char *xpath, S_Callback callback, void *private_ctx = NULL, sr_subscr_options_t opts = SUBSCR_DEFAULT);
+    void dp_get_items_subscribe(const char *xpath, S_Callback callback, void *private_ctx = NULL, sr_subscr_options_t opts = SUBSCR_DEFAULT);
     std::vector<S_Callback > cb_list;
 
     void unsubscribe();

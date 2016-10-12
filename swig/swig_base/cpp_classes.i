@@ -22,6 +22,13 @@
 #include "Xpath.h"
 %}
 
+%ignore SESS_DEFAULT;
+%ignore DS_RUNNING;
+%ignore EDIT_DEFAULT;
+%ignore CONN_DEFAULT;
+%ignore GET_SUBTREE_DEFAULT;
+%ignore SUBSCR_DEFAULT;
+
 %ignore throw_exception;
 
 #ifndef SWIGLUA

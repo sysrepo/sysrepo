@@ -82,6 +82,13 @@
     #define S_Callback         std::shared_ptr<Callback>
 #endif
 
+#define SESS_DEFAULT 0
+#define DS_RUNNING 1
+#define EDIT_DEFAULT 0
+#define CONN_DEFAULT 0
+#define GET_SUBTREE_DEFAULT 0
+#define SUBSCR_DEFAULT 0
+
 #include <iostream>
 #include <stdexcept>
 
