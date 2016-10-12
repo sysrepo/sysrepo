@@ -89,10 +89,15 @@
 #define GET_SUBTREE_DEFAULT 0
 #define SUBSCR_DEFAULT 0
 
+#include <functional>
 #include <iostream>
 #include <stdexcept>
 
 #include "Internal.h"
+
+#if !defined(SWIGPYTHON) && !defined(SWIGLUA) && !defined(SWIGJAVA)
+#  define SR_SWIG_SUPPORTS_STD_FUNCTION
+#endif
 
 extern "C" {
 #include "sysrepo.h"
@@ -106,6 +111,13 @@ public:
     Logs() = delete;
     static void set_stderr(const sr_log_level_t log_level);
     static void set_syslog(const sr_log_level_t log_level);
+#ifdef SR_SWIG_SUPPORTS_STD_FUNCTION
+    using Callback = std::function<void(const sr_log_level_t, const std::string &)>;
+    static void setCallback(Callback cb);
+private:
+    static Callback log_callback;
+    friend void sr_cpp_log_callback(sr_log_level_t, const char *);
+#endif
 };
 
 class Schemas
