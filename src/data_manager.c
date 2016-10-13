@@ -2087,7 +2087,7 @@ int
 dm_validate_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors, size_t *err_cnt)
 {
     CHECK_NULL_ARG4(dm_ctx, session, errors, err_cnt);
-    int rc = SR_ERR_OK;
+    int rc = SR_ERR_OK, rc_tmp = SR_ERR_OK;
 
     size_t cnt = 0;
     *err_cnt = 0;
@@ -2127,6 +2127,11 @@ dm_validate_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error
                 rc = SR_ERR_VALIDATION_FAILED;
             } else {
                 SR_LOG_DBG("Validation succeeded for '%s' module", info->schema->module->name);
+            }
+            if (info->schema->cross_module_data_dependency) {
+                /* remove data appended from other modules for the purpose of validation */
+                rc_tmp = dm_remove_added_data_trees(session, info);
+                CHECK_RC_MSG_RETURN(rc_tmp, "Removing of added data trees failed");
             }
         }
         node = node->next;
@@ -3980,6 +3985,11 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
             CHECK_RC_LOG_GOTO(rc, cleanup, "Loading dependant modules failed for %s", di->schema->module_name);
         }
         ret = lyd_validate(&data_tree, validation_options, ext_ref ? di->node : NULL);
+        if (ext_ref && di->schema->cross_module_data_dependency) {
+            /* remove data appended from other modules for the purpose of validation */
+            rc = dm_remove_added_data_trees(session, di);
+            CHECK_RC_MSG_RETURN(rc, "Removing of added data trees failed");
+        }
         if (0 != ret) {
             SR_LOG_ERR("%s content validation failed: %s", procedure_name, ly_errmsg());
             rc = dm_report_error(session, ly_errmsg(), ly_errpath(), SR_ERR_VALIDATION_FAILED);
