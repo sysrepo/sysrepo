@@ -456,7 +456,7 @@ static void g_event_notif_tree_cb(const char *xpath, const sr_node_t *trees, con
     }
 
     void event_notif_subscribe(const char *xpath, PyObject *callback, void *private_ctx,\
-                               sr_subscr_options_t opts) {
+                               sr_subscr_options_t opts = SUBSCR_DEFAULT) {
         Wrap_cb *class_ctx = NULL;
         class_ctx = new Wrap_cb(callback);
 
@@ -475,7 +475,7 @@ static void g_event_notif_tree_cb(const char *xpath, const sr_node_t *trees, con
     }
 
     void event_notif_subscribe_tree(const char *xpath, PyObject *callback, void *private_ctx,\
-                               sr_subscr_options_t opts) {
+                               sr_subscr_options_t opts = SUBSCR_DEFAULT) {
         Wrap_cb *class_ctx = NULL;
         class_ctx = new Wrap_cb(callback);
 

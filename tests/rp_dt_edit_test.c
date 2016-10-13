@@ -2026,7 +2026,7 @@ operation_logging_test(void **state)
    assert_int_equal(DM_MOVE_OP, session->dm_session->operations[session->datastore][session->dm_session->oper_count[session->datastore]-1].op);
 
    rc = rp_dt_move_list_wrapper(ctx, session, "/test-module:!^", SR_MOVE_BEFORE, "/test-module:user[name='nameC']");
-   assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
+   assert_int_equal(SR_ERR_INVAL_ARG, rc);
    assert_int_equal(3, session->dm_session->oper_count[session->datastore]);
 
    /* delete */
@@ -2146,7 +2146,7 @@ candidate_edit_test(void **state)
     sr_free_val_content(&iftype);
 
     /* modified module in cadidate is validated before copy */
-    rc = dm_copy_module(ctx->dm_ctx, sessionA->dm_session, "test-module", SR_DS_CANDIDATE, SR_DS_STARTUP);
+    rc = dm_copy_module(ctx->dm_ctx, sessionA->dm_session, "test-module", SR_DS_CANDIDATE, SR_DS_STARTUP, NULL);
     assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
 
     rc = dm_discard_changes(ctx->dm_ctx, sessionA->dm_session);
@@ -2243,7 +2243,7 @@ candidate_commit_lock_test(void **state)
     test_rp_sesssion_create(ctx, SR_DS_RUNNING, &sessionB);
     test_rp_sesssion_create(ctx, SR_DS_CANDIDATE, &sessionC);
 
-    rc = dm_enable_module_running(ctx->dm_ctx, sessionA->dm_session, "test-module", true);
+    rc = dm_enable_module_running(ctx->dm_ctx, sessionA->dm_session, "test-module", NULL);
     assert_int_equal(SR_ERR_OK, rc);
 
     /* lock test module in running*/

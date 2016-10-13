@@ -32,7 +32,7 @@ extern "C" {
 
 using namespace std;
 
-class Tree:public Throw_Exception
+class Tree
 {
 public:
     Tree();
@@ -75,7 +75,7 @@ private:
     S_Counter _counter;
 };
 
-class Trees:public Throw_Exception
+class Trees
 {
 public:
     Trees();
@@ -97,7 +97,7 @@ private:
 };
 
 // class for wrapping Vals classes
-class Trees_Holder:public Throw_Exception
+class Trees_Holder
 {
 public:
     Trees_Holder(sr_node_t **trees, size_t *cnt);

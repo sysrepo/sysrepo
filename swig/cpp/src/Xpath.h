@@ -30,7 +30,7 @@ extern "C" {
 
 using namespace std;
 
-class Xpath_Ctx:public Throw_Exception
+class Xpath_Ctx
 {
 public:
     Xpath_Ctx();

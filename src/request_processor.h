@@ -122,7 +122,7 @@ int rp_msg_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg);
 
 /**
  * @brief Called to signal that all notification has been received and commit processing
- * can continue.
+ * can continue (::SR_EV_VERIFY) or the commit context can be freed (::SR_EV_APPLY, ::SR_EV_ABORT, ::SR_EV_ENABLED).
  *
  * @param [in] rp_ctx
  * @param [in] commit_id
@@ -131,7 +131,7 @@ int rp_msg_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg);
  * @param [in] errors - freed by function
  * @return Error code (SR_ERR_OK on success)
  */
-int rp_resume_commit(rp_ctx_t *rp_ctx, uint32_t commit_id, int result, sr_list_t *err_subs_xpaths, sr_list_t *errors);
+int rp_all_notifications_received(rp_ctx_t *rp_ctx, uint32_t commit_id, int result, sr_list_t *err_subs_xpaths, sr_list_t *errors);
 
 /**@} rp */
 

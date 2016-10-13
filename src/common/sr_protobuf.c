@@ -2059,6 +2059,8 @@ sr_notification_event_gpb_to_str(Sr__NotificationEvent event)
             return "apply";
         case SR__NOTIFICATION_EVENT__ABORT_EV:
             return "abort";
+        case SR__NOTIFICATION_EVENT__ENABLED_EV:
+            return "enabled";
         default:
             return "unknown";
     }
@@ -2074,6 +2076,8 @@ sr_notification_event_sr_to_str(sr_notif_event_t event)
             return "apply";
         case SR_EV_ABORT:
             return "abort";
+        case SR_EV_ENABLED:
+            return "enabled";
         default:
             return "unknown";
     }
@@ -2087,6 +2091,8 @@ sr_notification_event_sr_to_gpb(sr_notif_event_t event)
         return SR__NOTIFICATION_EVENT__VERIFY_EV;
     case SR_EV_APPLY:
         return SR__NOTIFICATION_EVENT__APPLY_EV;
+    case SR_EV_ENABLED:
+        return SR__NOTIFICATION_EVENT__ENABLED_EV;
     case SR_EV_ABORT:
     default:
         return SR__NOTIFICATION_EVENT__ABORT_EV;
@@ -2105,6 +2111,9 @@ sr_notification_event_str_to_gpb(const char *event_name)
     if (0 == strcmp(event_name, "abort")) {
         return SR__NOTIFICATION_EVENT__ABORT_EV;
     }
+    if (0 == strcmp(event_name, "enabled")) {
+        return SR__NOTIFICATION_EVENT__ENABLED_EV;
+    }
     return _SR__NOTIFICATION_EVENT_IS_INT_SIZE;
 }
 
@@ -2116,6 +2125,8 @@ sr_notification_event_gpb_to_sr(Sr__NotificationEvent event)
             return SR_EV_VERIFY;
         case SR__NOTIFICATION_EVENT__APPLY_EV:
             return SR_EV_APPLY;
+        case SR__NOTIFICATION_EVENT__ENABLED_EV:
+            return SR_EV_ENABLED;
         default:
             return SR_EV_ABORT;
     }

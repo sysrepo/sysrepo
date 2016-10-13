@@ -171,6 +171,9 @@ if(JAVA_FOUND)
 
 	add_custom_command(TARGET ${JAVA_SWIG_BINDING} POST_BUILD COMMAND "${Java_JAVAC_EXECUTABLE}" -d classes java/*.java COMMAND "${Java_JAR_EXECUTABLE}" -cfM Sysrepo.jar -C classes . )
 	set(NATIVE_JAR "${CMAKE_CURRENT_BINARY_DIR}/Sysrepo.jar")
+
+	# install so file
+	install(FILES "${CMAKE_CURRENT_BINARY_DIR}/lib${JAVA_SWIG_BINDING}.so" DESTINATION "${LIB_INSTALL_DIR}")
 endif()
 
 # install binary

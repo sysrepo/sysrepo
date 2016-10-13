@@ -37,13 +37,14 @@ extern "C" {
 
 using namespace std;
 
-Session::Session(S_Connection conn, sr_datastore_t datastore, const sr_conn_options_t opts, \
+Session::Session(S_Connection conn, sr_datastore_t datastore, const sr_sess_options_t opts, \
 		 const char *user_name)
 {
     int ret;
     _opts = opts;
     _datastore = datastore;
     _conn = NULL;
+    _sess = NULL;
 
     if (user_name == NULL) {
         /* start session */
@@ -67,11 +68,12 @@ cleanup:
     return;
 }
 
-Session::Session(sr_session_ctx_t *sess, sr_conn_options_t opts)
+Session::Session(sr_session_ctx_t *sess, sr_sess_options_t opts)
 {
     _sess = sess;
     _opts = opts;
     _conn = NULL;
+    _datastore = SR_DS_RUNNING;
 }
 
 void Session::session_stop()

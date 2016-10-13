@@ -425,7 +425,7 @@ dm_copy_module_test(void **state)
    rc = dm_session_start(ctx, NULL, SR_DS_STARTUP, &sessionA);
    assert_int_equal(SR_ERR_OK, rc);
 
-   rc = dm_copy_module(ctx, sessionA, "example-module", SR_DS_STARTUP, SR_DS_RUNNING);
+   rc = dm_copy_module(ctx, sessionA, "example-module", SR_DS_STARTUP, SR_DS_RUNNING, NULL);
    assert_int_equal(SR_ERR_OK, rc);
 
    rc = dm_get_module_and_lockw(ctx, "test-module", &si);

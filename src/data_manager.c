@@ -2649,6 +2649,30 @@ dm_save_commit_context(dm_ctx_t *dm_ctx, dm_commit_context_t *c_ctx)
 
 }
 
+static int
+dm_create_commit_ctx_id(dm_ctx_t *dm_ctx, dm_commit_context_t *c_ctx) {
+    CHECK_NULL_ARG2(dm_ctx, c_ctx);
+
+    pthread_rwlock_rdlock(&dm_ctx->commit_ctxs.lock);
+    size_t attempts = 0;
+    /* generate unique id */
+    do {
+        c_ctx->id = rand();
+        if (NULL != sr_btree_search(dm_ctx->commit_ctxs.tree, c_ctx)) {
+            c_ctx->id = DM_COMMIT_CTX_ID_INVALID;
+        }
+        if (++attempts > DM_COMMIT_CTX_ID_MAX_ATTEMPTS) {
+            SR_LOG_ERR_MSG("Unable to generate an unique session_id.");
+            pthread_rwlock_unlock(&dm_ctx->commit_ctxs.lock);
+            return SR_ERR_INTERNAL;
+        }
+    } while (DM_COMMIT_CTX_ID_INVALID == c_ctx->id);
+
+    pthread_rwlock_unlock(&dm_ctx->commit_ctxs.lock);
+    return SR_ERR_OK;
+}
+
+
 int
 dm_commit_prepare_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_context_t **commit_ctx)
 {
@@ -2661,19 +2685,8 @@ dm_commit_prepare_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_con
     c_ctx = calloc(1, sizeof(*c_ctx));
     CHECK_NULL_NOMEM_RETURN(c_ctx);
 
-    size_t attempts = 0;
-    /* generate unique id */
-    do {
-        c_ctx->id = rand();
-        if (NULL != sr_btree_search(dm_ctx->commit_ctxs.tree, c_ctx)) {
-            c_ctx->id = DM_COMMIT_CTX_ID_INVALID;
-        }
-        if (++attempts > DM_COMMIT_CTX_ID_MAX_ATTEMPTS) {
-            SR_LOG_ERR_MSG("Unable to generate an unique session_id.");
-            rc = SR_ERR_INTERNAL;
-            goto cleanup;
-        }
-    } while (DM_COMMIT_CTX_ID_INVALID == c_ctx->id);
+    rc = dm_create_commit_ctx_id(dm_ctx, c_ctx);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Commit context id generating failed");
 
     pthread_mutex_init(&c_ctx->mutex, NULL);
 
@@ -3327,8 +3340,201 @@ dm_uninstall_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revis
     return rc;
 }
 
+/**
+ * @brief Initializes the commit context structure for the purposes of sending
+ * SR_EV_ENABLED notification.
+ * @return Error code (SR_ERR_OK on success)
+ */
 static int
-dm_copy_config(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_list_t *module_names, sr_datastore_t src, sr_datastore_t dst)
+dm_prepare_c_ctx_for_enable_notification(dm_ctx_t *dm_ctx, dm_commit_context_t **commit_context)
+{
+    CHECK_NULL_ARG(commit_context);
+
+    int rc = SR_ERR_OK;
+    dm_commit_context_t *c_ctx = calloc(1, sizeof(*c_ctx));
+    CHECK_NULL_NOMEM_RETURN(c_ctx);
+
+    rc = dm_create_commit_ctx_id(dm_ctx, c_ctx);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Commit context id generating failed");
+
+    pthread_mutex_init(&c_ctx->mutex, NULL);
+
+    rc = sr_btree_init(dm_module_subscription_cmp, dm_model_subscription_free, &c_ctx->subscriptions);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Binary tree allocation failed");
+
+    rc = sr_btree_init(dm_data_info_cmp, dm_data_info_free, &c_ctx->prev_data_trees);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Binary tree allocation failed");
+
+    c_ctx->state = DM_COMMIT_FINISHED;
+
+    *commit_context = c_ctx;
+    return rc;
+
+cleanup:
+    dm_free_commit_context(c_ctx);
+    return rc;
+}
+/**
+ * @brief Removes diff entries that does not match an xpath.
+ * @param [in] ms
+ * @param [in] subscription
+ * @return Error code (SR_ERR_OK on success)
+ */
+static int
+dm_remove_non_matching_diff(dm_model_subscription_t *ms, const np_subscription_t *subscription)
+{
+    CHECK_NULL_ARG2(ms, subscription);
+
+    int rc = SR_ERR_OK;
+
+    if (NULL != subscription->xpath) {
+        const struct lys_node *sub_node = sr_find_schema_node(ms->schema_info->module->data, subscription->xpath, 0);
+        if (NULL == sub_node) {
+            SR_LOG_ERR("Schema node not found for xpath %s", subscription->xpath);
+            return SR_ERR_INTERNAL;
+        }
+
+        int diff_count = 0;
+        while (LYD_DIFF_END != ms->difflist->type[diff_count++]);
+
+        for (int i = diff_count - 2; i >= 0; i--) {
+            bool match = false;
+            const struct lyd_node *cmp_node = dm_get_notification_match_node(ms->difflist, i);
+            rc = dm_match_subscription(sub_node, cmp_node, &match);
+            CHECK_RC_MSG_RETURN(rc, "Subscription match failed");
+
+            if (!match) {
+                memmove(&ms->difflist->type[i],
+                        &ms->difflist->type[i + 1],
+                        (diff_count - i - 1) * sizeof(*ms->difflist->type));
+                /* there is no items for LYD_DIFF_END in first and second arrays,
+                 * these arrays are shorter thats why there is -2 instead of -1 */
+                memmove(&ms->difflist->first[i],
+                        &ms->difflist->first[i + 1],
+                        (diff_count - i - 2) * sizeof(*ms->difflist->first));
+                memmove(&ms->difflist->second[i],
+                        &ms->difflist->second[i + 1],
+                        (diff_count - i - 2) * sizeof(*ms->difflist->second));
+                diff_count--;
+            }
+        }
+    }
+    return SR_ERR_OK;
+}
+
+/**
+ * @brief Fills dm_model_subscription_t structure for the purposes of browsing changes
+ * after SR_EV_ENABLED is sent.
+ *
+ * @param [in] dm_ctx
+ * @param [in] user_credentials
+ * @param [in] src_session
+ * @param [in] module_name
+ * @param [in] subscription
+ * @param [in] c_ctx
+ * @return Error code (SR_ERR_OK on success).
+ */
+static int
+dm_create_difflist_for_enabled_notif(dm_ctx_t *dm_ctx, const ac_ucred_t *user_credentials, dm_session_t *src_session,
+        const char *module_name, const np_subscription_t *subscription, dm_commit_context_t *c_ctx) {
+
+    CHECK_NULL_ARG5(dm_ctx, src_session, module_name, subscription, c_ctx);
+
+    int rc = SR_ERR_OK;
+    dm_model_subscription_t *ms = NULL;
+
+    rc = dm_session_start(dm_ctx, user_credentials, SR_DS_RUNNING, &c_ctx->session);
+    CHECK_RC_MSG_RETURN(rc, "Start session failed");
+
+    rc = dm_copy_session_tree(dm_ctx, src_session, c_ctx->session, module_name);
+    CHECK_RC_MSG_RETURN(rc, "Data tree copy failed");
+
+    /* there is only one data tree in session */
+    dm_data_info_t *copied_di = (dm_data_info_t *) sr_btree_get_at(c_ctx->session->session_modules[SR_DS_RUNNING], 0);
+    if (NULL == copied_di) {
+        SR_LOG_ERR("Data tree for module %s not found", module_name);
+        return SR_ERR_INTERNAL;
+    }
+
+    ms = calloc(1, sizeof(*ms));
+    CHECK_NULL_NOMEM_RETURN(ms);
+
+    ms->schema_info = copied_di->schema;
+
+    ms->difflist = lyd_diff(NULL, copied_di->node, LYD_DIFFOPT_WITHDEFAULTS);
+    if (NULL == ms->difflist) {
+        SR_LOG_ERR_MSG("Error while generating diff");
+        rc = SR_ERR_INTERNAL;
+        dm_model_subscription_free(ms);
+        goto cleanup;
+    }
+
+    rc = dm_remove_non_matching_diff(ms, subscription);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR_MSG("Dm remove non match diff failed");
+        dm_model_subscription_free(ms);
+        goto cleanup;
+    }
+
+    rc = sr_btree_insert(c_ctx->subscriptions, ms);
+    if (SR_ERR_OK != rc) {
+        dm_model_subscription_free(ms);
+    }
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to insert model subscription structure");
+    return rc;
+
+cleanup:
+    dm_model_subscription_free(ms);
+    return rc;
+}
+
+/**
+ * @brief Sends enabled notification.
+ *
+ * @param [in] dm_ctx
+ * @param [in] c_ctx - do not use after return from the function
+ * @param [in] subscription
+ * @return Error code (SR_ERR_OK on success)
+ */
+static int
+dm_send_enabled_notification(dm_ctx_t *dm_ctx, dm_commit_context_t *c_ctx, const np_subscription_t *subscription) {
+    int rc = SR_ERR_OK;
+    sr_list_t *notif_list = NULL;
+
+    CHECK_NULL_ARG_NORET3(rc, dm_ctx, c_ctx, subscription);
+    if (SR_ERR_OK != rc) {
+        goto cleanup;
+    }
+
+    rc = dm_insert_commit_context(dm_ctx, c_ctx);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to insert commit context");
+
+    uint32_t commit_id = c_ctx->id;
+    /* do not free commit context in cleanup */
+    c_ctx = NULL;
+
+    rc = sr_list_init(&notif_list);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "List init failed");
+
+    rc = sr_list_add(notif_list, (void *) subscription);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "List insert failed");
+
+    rc = np_subscription_notify(dm_ctx->np_ctx, (np_subscription_t *) subscription, SR_EV_ENABLED, commit_id);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Sending of SR_EV_ENABLED notification failed");
+
+    rc = np_commit_notifications_sent(dm_ctx->np_ctx, commit_id, true, notif_list);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Notification sent failed");
+
+cleanup:
+    if (SR_ERR_OK != rc) {
+        dm_free_commit_context(c_ctx);
+    }
+    sr_list_cleanup(notif_list);
+    return rc;
+}
+
+static int
+dm_copy_config(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_list_t *module_names, sr_datastore_t src, sr_datastore_t dst, const np_subscription_t *subscription)
 {
     CHECK_NULL_ARG2(dm_ctx, module_names);
     int rc = SR_ERR_OK;
@@ -3339,9 +3545,19 @@ dm_copy_config(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_list_t *module_
     size_t opened_files = 0;
     char *file_name = NULL;
     int *fds = NULL;
+    dm_commit_context_t *c_ctx = NULL;
 
     if (src == dst || 0 == module_names->count) {
         return rc;
+    }
+
+    if (NULL != subscription) {
+        if (SR_DS_RUNNING != dst) {
+            SR_LOG_ERR_MSG("Notification can no be sent for datastore different from running");
+            return SR_ERR_INVAL_ARG;
+        }
+        rc = dm_prepare_c_ctx_for_enable_notification(dm_ctx, &c_ctx);
+        CHECK_RC_MSG_RETURN(rc, "Preparing of commit context failed");
     }
 
     src_infos = calloc(module_names->count, sizeof(*src_infos));
@@ -3399,6 +3615,12 @@ dm_copy_config(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_list_t *module_
         /* load data tree to be copied*/
         rc = dm_get_data_info(dm_ctx, src_session, module_name, &(src_infos[i]));
         CHECK_RC_MSG_GOTO(rc, cleanup, "Get data info failed");
+
+        if (NULL != subscription && 0 == i) {
+            /* subscription is supposed to be used when only one module/subtree is copied */
+            rc = dm_create_difflist_for_enabled_notif(dm_ctx, session->user_credentials, src_session, module_name, subscription, c_ctx);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to create difflist");
+        }
 
         if (SR_DS_CANDIDATE != dst) {
             /* create data file name */
@@ -3459,6 +3681,14 @@ dm_copy_config(dm_ctx_t *dm_ctx, dm_session_t *session, const sr_list_t *module_
         dm_remove_session_operations(dst_session);
     }
 
+    if (NULL != subscription) {
+        rc = dm_send_enabled_notification(dm_ctx, c_ctx, subscription);
+        CHECK_RC_MSG_GOTO(rc, cleanup, "Sending of enable notification failed");
+
+        /* do not free commit context in cleanup */
+        c_ctx = NULL;
+    }
+
 cleanup:
     if (SR_DS_CANDIDATE != src) {
         dm_session_stop(dm_ctx, src_session);
@@ -3471,6 +3701,7 @@ cleanup:
     }
     free(fds);
     free(src_infos);
+    dm_free_commit_context(c_ctx);
     return rc;
 }
 
@@ -3521,7 +3752,7 @@ dm_has_enabled_subtree(dm_ctx_t *ctx, const char *module_name, dm_schema_info_t 
 
 int
 dm_enable_module_running(dm_ctx_t *ctx, dm_session_t *session, const char *module_name,
-        bool copy_from_startup)
+        const np_subscription_t *subscription)
 {
     CHECK_NULL_ARG2(ctx, module_name); /* schema_info, session can be NULL */
     dm_schema_info_t *si = NULL;
@@ -3534,10 +3765,8 @@ dm_enable_module_running(dm_ctx_t *ctx, dm_session_t *session, const char *modul
     pthread_rwlock_unlock(&si->model_lock);
     CHECK_RC_LOG_RETURN(rc, "Enable module %s running failed", module_name);
 
-    if (SR_ERR_OK == rc && copy_from_startup) {
-        /* copy the config if requested - subscription does not contain SR_SUBSCR_PASSIVE flag */
-        rc = dm_copy_module(ctx, session, module_name, SR_DS_STARTUP, SR_DS_RUNNING);
-    }
+    rc = dm_copy_module(ctx, session, module_name, SR_DS_STARTUP, SR_DS_RUNNING, subscription);
+
     return rc;
 }
 
@@ -3549,10 +3778,11 @@ dm_enable_module_running(dm_ctx_t *ctx, dm_session_t *session, const char *modul
  * @param [in] session
  * @param [in] module
  * @param [in] xpath
+ * @param [in] subscription
  * @return Error code (SR_ERR_OK on success)
  */
 static int
-dm_copy_subtree_startup_running(dm_ctx_t *ctx, dm_session_t *session, const char *module_name, dm_schema_info_t *schema_info, const char *xpath)
+dm_copy_subtree_startup_running(dm_ctx_t *ctx, dm_session_t *session, const char *module_name, dm_schema_info_t *schema_info, const char *xpath, const np_subscription_t *subscription)
 {
     CHECK_NULL_ARG5(ctx, session, module_name, schema_info, xpath);
     int rc = SR_ERR_OK;
@@ -3630,7 +3860,7 @@ dm_copy_subtree_startup_running(dm_ctx_t *ctx, dm_session_t *session, const char
     }
 
     /* copy module candidate -> running */
-    rc = dm_copy_module(ctx, tmp_session, module_name, SR_DS_CANDIDATE, SR_DS_RUNNING);
+    rc = dm_copy_module(ctx, tmp_session, module_name, SR_DS_CANDIDATE, SR_DS_RUNNING, subscription);
 
 cleanup:
     ly_set_free(nodes);
@@ -3641,7 +3871,7 @@ cleanup:
 
 int
 dm_enable_module_subtree_running(dm_ctx_t *ctx, dm_session_t *session, const char *module_name, const char *xpath,
-        bool copy_from_startup)
+        const np_subscription_t *subscription)
 {
     CHECK_NULL_ARG3(ctx, module_name, xpath); /* session can be NULL */
     dm_schema_info_t *si = NULL;
@@ -3654,9 +3884,8 @@ dm_enable_module_subtree_running(dm_ctx_t *ctx, dm_session_t *session, const cha
     pthread_rwlock_unlock(&si->model_lock);
     CHECK_RC_LOG_RETURN(rc, "Enabling of xpath %s failed", xpath);
 
-    if (copy_from_startup) {
-        rc = dm_copy_subtree_startup_running(ctx, session, module_name, si, xpath);
-    }
+    rc = dm_copy_subtree_startup_running(ctx, session, module_name, si, xpath, subscription);
+
     return rc;
 }
 
@@ -3721,7 +3950,8 @@ cleanup:
 }
 
 int
-dm_copy_module(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module_name, sr_datastore_t src, sr_datastore_t dst)
+dm_copy_module(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module_name, sr_datastore_t src, sr_datastore_t dst,
+        const np_subscription_t *subscription)
 {
     CHECK_NULL_ARG2(dm_ctx, module_name);
     sr_list_t *module_list = NULL;
@@ -3737,7 +3967,7 @@ dm_copy_module(dm_ctx_t *dm_ctx, dm_session_t *session, const char *module_name,
     rc = sr_list_add(module_list, schema_info->module_name);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Adding to sr_list failed");
 
-    rc = dm_copy_config(dm_ctx, session, module_list, src, dst);
+    rc = dm_copy_config(dm_ctx, session, module_list, src, dst, subscription);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Dm copy config failed");
 
 cleanup:
@@ -3758,7 +3988,7 @@ dm_copy_all_models(dm_ctx_t *dm_ctx, dm_session_t *session, sr_datastore_t src, 
     rc = dm_get_all_modules(dm_ctx, session, (SR_DS_RUNNING == src || SR_DS_RUNNING == dst), &enabled_modules);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Get all modules failed");
 
-    rc = dm_copy_config(dm_ctx, session, enabled_modules, src, dst);
+    rc = dm_copy_config(dm_ctx, session, enabled_modules, src, dst, NULL);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Dm copy config failed");
 
 cleanup:

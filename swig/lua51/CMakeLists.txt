@@ -31,4 +31,5 @@ swig_add_module(${LUA_SWIG_BINDING_51} lua ${LUA_SWIG_BINDING_51}.i)
 swig_link_libraries(${LUA_SWIG_BINDING_51} ${LUA_LIBRARIES} Sysrepo_Lua)
 
 # install binary
-install(TARGETS Sysrepo_Lua DESTINATION ${BIN_INSTALL_DIR})
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/${LUA_SWIG_BINDING_51}.so" DESTINATION "${LIB_INSTALL_DIR}/lua/5.1/")
+install(TARGETS Sysrepo_Lua DESTINATION ${LIB_INSTALL_DIR})

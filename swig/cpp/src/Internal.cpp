@@ -97,7 +97,7 @@ Counter::~Counter() {
 	_trees = NULL;
     break;
     case TREES_POINTER:
-        if (p_trees) sr_free_trees(*p_trees, *p_cnt);
+        if (*p_trees) sr_free_trees(*p_trees, *p_cnt);
 	*p_trees = NULL;
     break;
     }
