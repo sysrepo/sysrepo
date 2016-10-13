@@ -117,28 +117,25 @@ Val::Val() {
 }
 Val::~Val() {return;}
 Val::Val(const char *value, sr_type_t type) {
+    int ret = SR_ERR_OK;
     sr_val_t *val = NULL;
     val = (sr_val_t*) calloc(1, sizeof(sr_val_t));
+
     if (val == NULL)
         throw_exception(SR_ERR_NOMEM);
-    if (type == SR_BINARY_T) {
-	val->data.binary_val = strdup((char *) value);
-    } else if (type == SR_BITS_T) {
-	val->data.bits_val = strdup((char *) value);
-    } else if (type == SR_ENUM_T) {
-	val->data.enum_val = strdup((char *) value);
-    } else if (type == SR_IDENTITYREF_T) {
-	val->data.identityref_val = strdup((char *) value);
-    } else if (type == SR_INSTANCEID_T) {
-	val->data.instanceid_val = strdup((char *) value);
-    } else if (type == SR_STRING_T) {
-	val->data.string_val = strdup((char *) value);
+
+    val->type = type;
+
+    if (type == SR_BINARY_T || type == SR_BITS_T || type == SR_ENUM_T || type == SR_IDENTITYREF_T || \
+        type == SR_INSTANCEID_T || type == SR_STRING_T) {
+        ret = sr_val_set_string(val, value);
+        if (ret != SR_ERR_OK)
+            throw_exception(ret);
     } else {
         free(val);
         throw_exception(SR_ERR_INVAL_ARG);
     }
 
-    val->type = type;
     _val = val;
     S_Counter counter(new Counter(val));
     _counter = counter;
@@ -331,28 +328,22 @@ Val::Val(uint64_t uint64_val, sr_type_t type) {
     _counter = counter;
 }
 void Val::set(const char *xpath, const char *value, sr_type_t type) {
+    int ret = SR_ERR_OK;
     if (_val == NULL) throw_exception(SR_ERR_OPERATION_FAILED);
 
-    int ret = sr_val_set_xpath(_val, xpath);
+    ret = sr_val_set_xpath(_val, xpath);
     if (ret != SR_ERR_OK) throw_exception(ret);
 
-    if (type == SR_BINARY_T) {
-	    _val->data.binary_val = (char *) value;
-    } else if (type == SR_BITS_T) {
-	    _val->data.bits_val = (char *) value;
-    } else if (type == SR_ENUM_T) {
-	    _val->data.enum_val = (char *) value;
-    } else if (type == SR_IDENTITYREF_T) {
-	    _val->data.identityref_val = (char *) value;
-    } else if (type == SR_INSTANCEID_T) {
-	    _val->data.instanceid_val = (char *) value;
-    } else if (type == SR_STRING_T) {
-	    _val->data.string_val = (char *) value;
+    _val->type = type;
+
+    if (type == SR_BINARY_T || type == SR_BITS_T || type == SR_ENUM_T || type == SR_IDENTITYREF_T || \
+        type == SR_INSTANCEID_T || type == SR_STRING_T) {
+        ret = sr_val_set_string(_val, value);
+        if (ret != SR_ERR_OK)
+            throw_exception(ret);
     } else {
         throw_exception(SR_ERR_INVAL_ARG);
     }
-
-    _val->type = type;
 }
 void Val::set(const char *xpath, bool bool_val, sr_type_t type) {
     if (_val == NULL) throw_exception(SR_ERR_OPERATION_FAILED);
