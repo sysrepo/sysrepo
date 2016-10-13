@@ -1298,15 +1298,7 @@ dm_append_data_tree(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_info_t *dat
         if (NULL == data_info->node) {
             data_info->node = tmp_node;
         } else if (NULL != tmp_node) {
-            ret = lyd_print_fd(STDOUT_FILENO, tmp_node, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT | LYP_WD_ALL | LYP_KEEPEMPTYCONT);
-            printf("\n\n");
-            ret = lyd_print_fd(STDOUT_FILENO, data_info->node, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT | LYP_WD_ALL | LYP_KEEPEMPTYCONT);
-            printf("\n\n");
             ret = lyd_merge(data_info->node, tmp_node, LYD_OPT_EXPLICIT);
-            ret = lyd_print_fd(STDOUT_FILENO, tmp_node, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT | LYP_WD_ALL | LYP_KEEPEMPTYCONT);
-            printf("\n\n");
-            ret = lyd_print_fd(STDOUT_FILENO, data_info->node, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT | LYP_WD_ALL | LYP_KEEPEMPTYCONT);
-            printf("\n\n");
             lyd_free_withsiblings(tmp_node);
         }
     } else {
@@ -2106,7 +2098,7 @@ dm_validate_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error
     rc = sr_llist_init(&session_modules);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot initialize temporary linked-list for session modules.");
 
-    /* collect the list of modules first, it mau change during the validation */
+    /* collect the list of modules first, it may change during the validation */
     while (NULL != (info = sr_btree_get_at(session->session_modules[session->datastore], cnt))) {
         sr_llist_add_new(session_modules, info);
         cnt++;
@@ -3987,21 +3979,7 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
             rc = dm_load_dependant_data(dm_ctx, session, di);
             CHECK_RC_LOG_GOTO(rc, cleanup, "Loading dependant modules failed for %s", di->schema->module_name);
         }
-
-        printf("PROCEDURE (%s):\n", xpath);
-        lyd_print_fd(STDOUT_FILENO, data_tree, LYD_XML, LYP_FORMAT | LYP_WD_ALL | LYP_KEEPEMPTYCONT);
-        printf("\n\n");
-        if (ext_ref) {
-            printf("EXTERNAL (%s):\n", xpath);
-            lyd_print_fd(STDOUT_FILENO, di->node, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT | LYP_WD_ALL | LYP_KEEPEMPTYCONT);
-            printf("\n\n");
-        }
-
         ret = lyd_validate(&data_tree, validation_options, ext_ref ? di->node : NULL);
-
-        printf("PROCEDURE AFTER (%s):\n", xpath);
-        lyd_print_fd(STDOUT_FILENO, data_tree, LYD_XML, LYP_FORMAT | LYP_WD_ALL | LYP_KEEPEMPTYCONT);
-
         if (0 != ret) {
             SR_LOG_ERR("%s content validation failed: %s", procedure_name, ly_errmsg());
             rc = dm_report_error(session, ly_errmsg(), ly_errpath(), SR_ERR_VALIDATION_FAILED);

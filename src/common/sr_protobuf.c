@@ -1573,7 +1573,7 @@ sr_values_gpb_to_sr(sr_mem_ctx_t *sr_mem, Sr__Value **gpb_values, size_t gpb_val
         }
     }
 
-    if (sr_mem && gpb_value_cnt > 0) {
+    if (sr_mem && sr_values) {
         ++sr_mem->obj_count;
     }
     *sr_values_p = sr_values;
@@ -1819,7 +1819,7 @@ sr_trees_gpb_to_sr(sr_mem_ctx_t *sr_mem, Sr__Node **gpb_trees, size_t gpb_tree_c
         }
     }
 
-    if (sr_mem) {
+    if (sr_mem && sr_trees) {
         ++sr_mem->obj_count;
     }
     *sr_trees_p = sr_trees;
@@ -2448,7 +2448,7 @@ sr_schemas_gpb_to_sr(sr_mem_ctx_t *sr_mem, const Sr__Schema **gpb_schemas, const
         }
     }
 
-    if (sr_mem) {
+    if (sr_mem && schemas) {
         ++sr_mem->obj_count;
     }
     *sr_schemas = schemas;

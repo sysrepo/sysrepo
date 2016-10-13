@@ -154,7 +154,7 @@ module sysrepo-persistent-data {
         }
 
         leaf api-variant {
-          when "../type = 'rpc' or ../type = 'event-notification'";
+          when "../type = 'rpc' or ../type = 'event-notification' or ../type = 'action'";
           type enumeration {
             enum "values" {
               value 1;
