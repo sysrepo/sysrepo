@@ -337,17 +337,17 @@ void Val::set(const char *xpath, const char *value, sr_type_t type) {
     if (ret != SR_ERR_OK) throw_exception(ret);
 
     if (type == SR_BINARY_T) {
-	    _val->data.binary_val = (char *) value;
+	    _val->data.binary_val = strdup((char *) value);
     } else if (type == SR_BITS_T) {
-	    _val->data.bits_val = (char *) value;
+	    _val->data.bits_val = strdup((char *) value);
     } else if (type == SR_ENUM_T) {
-	    _val->data.enum_val = (char *) value;
+	    _val->data.enum_val = strdup((char *) value);
     } else if (type == SR_IDENTITYREF_T) {
-	    _val->data.identityref_val = (char *) value;
+	    _val->data.identityref_val = strdup((char *) value);
     } else if (type == SR_INSTANCEID_T) {
-	    _val->data.instanceid_val = (char *) value;
+	    _val->data.instanceid_val = strdup((char *) value);
     } else if (type == SR_STRING_T) {
-	    _val->data.string_val = (char *) value;
+	    _val->data.string_val = strdup((char *) value);
     } else {
         throw_exception(SR_ERR_INVAL_ARG);
     }
