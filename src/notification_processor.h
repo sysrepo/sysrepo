@@ -78,6 +78,7 @@ typedef enum np_subscr_flag_e {
     NP_SUBSCR_DEFAULT = 0,
     NP_SUBSCR_ENABLE_RUNNING = 1,
     NP_SUBSCR_EXCLUSIVE = 2,
+    NP_SUBSCR_EV_EVENT = 4,
 } np_subscr_flag_t;
 
 /**

@@ -31,7 +31,6 @@
     #define S_Operation        Operation*
     #define S_Schema_Content   Schema_Content*
     #define S_Schemas          Schemas*
-    #define S_Throw_Exception  Throw_Exception*
     #define S_Error            Error*
     #define S_Errors           Errors*
     #define S_Data             Data*
@@ -61,7 +60,6 @@
     #define S_Operation        std::shared_ptr<Operation>
     #define S_Schema_Content   std::shared_ptr<Schema_Content>
     #define S_Schemas          std::shared_ptr<Schemas>
-    #define S_Throw_Exception  std::shared_ptr<Throw_Exception>
     #define S_Error            std::shared_ptr<Error>
     #define S_Errors           std::shared_ptr<Errors>
     #define S_Data             std::shared_ptr<Data>
@@ -84,6 +82,13 @@
     #define S_Callback         std::shared_ptr<Callback>
 #endif
 
+#define SESS_DEFAULT 0
+#define DS_RUNNING 1
+#define EDIT_DEFAULT 0
+#define CONN_DEFAULT 0
+#define GET_SUBTREE_DEFAULT 0
+#define SUBSCR_DEFAULT 0
+
 #include <iostream>
 #include <stdexcept>
 
@@ -93,42 +98,7 @@ extern "C" {
 #include "sysrepo.h"
 }
 
-typedef enum conn_flag_e {
-    CONN_DEFAULT = 0,
-    CONN_DAEMON_REQUIRED = 1,
-    CONN_DAEMON_START = 2,
-} conn_flag_t;
-
-typedef enum session_flag_e {
-    SESS_DEFAULT = 0,
-    SESS_CONFIG_ONLY = 1,
-} session_flag_t;
-
-typedef enum edit_flag_e {
-    EDIT_DEFAULT = 0,
-    EDIT_NON_RECURSIVE = 1,
-    EDIT_STRICT = 2,
-} edit_flag_t;
-
-typedef enum subscr_flag_e {
-    SUBSCR_DEFAULT = 0,
-    SUBSCR_CTX_REUSE = 1,
-    SUBSCR_PASSIVE = 2,
-    SUBSCR_VERIFIER = 4,
-} subscr_flag_t;
-
-typedef enum datastore_e {
-    DS_STARTUP = 0,
-    DS_RUNNING = 1,
-    DS_CANDIDATE = 2,
-} datastore_t;
-
-class Throw_Exception
-{
-
-protected:
-    void throw_exception(int error);
-};
+void throw_exception(int error);
 
 class Logs
 {
@@ -138,7 +108,7 @@ public:
     void set_syslog(sr_log_level_t log_level);
 };
 
-class Schemas:public Throw_Exception
+class Schemas
 {
 public:
     Schemas(sr_schema_t *sch = NULL, size_t cnt = 0);
@@ -157,7 +127,7 @@ private:
     size_t _pos;
 };
 
-class Schema_Content:public Throw_Exception
+class Schema_Content
 {
 
 public:

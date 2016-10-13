@@ -32,6 +32,11 @@ extern "C" {
 #include "sysrepo/trees.h"
 }
 
+Tree::Tree() {
+    _node = NULL;
+    S_Counter counter(new Counter(_node));
+    _counter = counter;
+}
 Tree::Tree(const char *root_name, const char *root_module_name) {
     sr_node_t *node;
     int ret = sr_new_tree(root_name, root_module_name, &node);

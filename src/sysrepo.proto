@@ -544,6 +544,7 @@ enum NotificationEvent {
   VERIFY_EV = 1;
   APPLY_EV = 2;
   ABORT_EV = 3;
+  ENABLED_EV = 4;
 }
 
 message SubscribeReq {
@@ -558,6 +559,7 @@ message SubscribeReq {
   optional NotificationEvent notif_event = 10;
   optional uint32 priority = 11;
   optional bool enable_running = 12;
+  optional bool enable_event = 13;
 
   required ApiVariant api_variant = 20;
 }

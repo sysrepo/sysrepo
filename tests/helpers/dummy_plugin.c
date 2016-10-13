@@ -36,3 +36,11 @@ sr_plugin_cleanup_cb(sr_session_ctx_t *session, void *private_ctx)
 {
     printf("dummy plugin cleanup");
 }
+
+int
+sr_plugin_health_check_cb(sr_session_ctx_t *session, void *private_ctx)
+{
+    printf("dummy plugin health check");
+
+    return SR_ERR_OK;
+}

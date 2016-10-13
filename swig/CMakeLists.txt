@@ -114,12 +114,10 @@ if(PYTHONLIBS_FOUND AND PYTHONINTERP_FOUND AND ${GEN_PYTHON_VERSION} STREQUAL "2
         swig_link_libraries(${PYTHON_SWIG_BINDING_2} ${PYTHON_LIBRARIES} Sysrepo-cpp)
 
         file(COPY "python2/examples" DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/python2")
+        file(COPY "python2/tests" DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/python2")
 
-        add_custom_command(
-        TARGET Sysrepo-cpp POST_BUILD
-        COMMAND ln -sf "${CMAKE_BINARY_DIR}/${PYTHON_SWIG_BINDING_2}.py" "${CMAKE_CURRENT_BINARY_DIR}/python2/examples/${PYTHON_SWIG_BINDING_2}.py"
-        COMMAND ln -sf "${CMAKE_CURRENT_BINARY_DIR}/_${PYTHON_SWIG_BINDING_2}.so" "${CMAKE_CURRENT_BINARY_DIR}/python2/examples/_${PYTHON_SWIG_BINDING_2}.so"
-        )
+        install( FILES "${CMAKE_CURRENT_BINARY_DIR}/_${PYTHON_SWIG_BINDING_2}.so" DESTINATION ${PYTHON_MODULE_PATH} )
+        install( FILES "${CMAKE_BINARY_DIR}/${PYTHON_SWIG_BINDING_2}.py" DESTINATION ${PYTHON_MODULE_PATH} )
 endif()
 
 if(PYTHONLIBS_FOUND AND PYTHONINTERP_FOUND AND ${GEN_PYTHON_VERSION} STREQUAL "3")
@@ -140,11 +138,13 @@ if(PYTHONLIBS_FOUND AND PYTHONINTERP_FOUND AND ${GEN_PYTHON_VERSION} STREQUAL "3
 
         file(COPY "python3/examples" DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/python3")
 
-	add_custom_command(
-        TARGET Sysrepo-cpp POST_BUILD
-        COMMAND ln -sf "${CMAKE_BINARY_DIR}/${PYTHON_SWIG_BINDING_3}.py" "${CMAKE_CURRENT_BINARY_DIR}/python3/examples/${PYTHON_SWIG_BINDING_3}.py"
-        COMMAND ln -sf "${CMAKE_CURRENT_BINARY_DIR}/_${PYTHON_SWIG_BINDING_3}.so" "${CMAKE_CURRENT_BINARY_DIR}/python3/examples/_${PYTHON_SWIG_BINDING_3}.so"
-        )
+        execute_process(COMMAND
+            ${PYTHON_EXECUTABLE} -c
+            "from distutils.sysconfig import get_python_lib; print(get_python_lib())"
+        OUTPUT_VARIABLE PYTHON_MODULE_PATH OUTPUT_STRIP_TRAILING_WHITESPACE)
+
+        install( FILES "${CMAKE_CURRENT_BINARY_DIR}/_${PYTHON_SWIG_BINDING_3}.so" DESTINATION ${PYTHON_MODULE_PATH} )
+        install( FILES "${CMAKE_BINARY_DIR}/${PYTHON_SWIG_BINDING_3}.py" DESTINATION ${PYTHON_MODULE_PATH} )
 endif()
 
 if(JAVA_FOUND)
@@ -171,6 +171,9 @@ if(JAVA_FOUND)
 
 	add_custom_command(TARGET ${JAVA_SWIG_BINDING} POST_BUILD COMMAND "${Java_JAVAC_EXECUTABLE}" -d classes java/*.java COMMAND "${Java_JAR_EXECUTABLE}" -cfM Sysrepo.jar -C classes . )
 	set(NATIVE_JAR "${CMAKE_CURRENT_BINARY_DIR}/Sysrepo.jar")
+
+	# install so file
+	install(FILES "${CMAKE_CURRENT_BINARY_DIR}/lib${JAVA_SWIG_BINDING}.so" DESTINATION "${LIB_INSTALL_DIR}")
 endif()
 
 # install binary

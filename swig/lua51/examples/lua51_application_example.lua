@@ -1,9 +1,9 @@
--- This sample application demonstrates use of Python programming language bindings for sysrepo library.
--- Original c application was rewritten in Python to show similarities and differences
+-- This sample application demonstrates use of Lua programming language bindings for sysrepo library.
+-- Original c application was rewritten in Lua to show similarities and differences
 -- between the two.
 --
--- Most notable difference is in the very different nature of languages, c is weakly statically typed language while Python is strongly dynamiclally typed.
--- Python code is much easier to read and logic easier to comprehend for smaller scripts. Memory safety is not an issue but lower performance can be expectd.
+-- Most notable difference is in the very different nature of languages, c is weakly statically typed language while Lua is strongly dynamiclally typed.
+-- Lua code is much easier to read and logic easier to comprehend for smaller scripts. Memory safety is not an issue but lower performance can be expectd.
 
 -- The original c implementation is also available in the source, so one can refer to it to evaluate trade-offs.
 --
@@ -92,8 +92,7 @@ function run()
 
     subscribe = sr.Subscribe(sess)
 
-    wrap = sr.Callback(module_change_cb)
-
+    wrap = sr.Callback_lua(module_change_cb)
     subscribe:module_change_subscribe("ietf-interfaces", wrap);
 
     print("\n\n ========== READING STARTUP CONFIG: ==========\n");

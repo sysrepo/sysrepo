@@ -35,7 +35,7 @@ extern "C" {
 using namespace std;
 
 // class for sysrepo C union sr_data_t
-class Data:public Throw_Exception
+class Data
 {
 public:
     Data(sr_data_t data, sr_type_t type);
@@ -63,7 +63,7 @@ private:
 };
 
 // class for sysrepo C struct sr_val_t
-class Val:public Throw_Exception
+class Val
 {
 public:
     Val();
@@ -71,7 +71,7 @@ public:
     Val(const char *val, sr_type_t type = SR_STRING_T);
     Val(bool bool_val, sr_type_t type = SR_BOOL_T);
     Val(double decimal64_val, sr_type_t type = SR_DECIMAL64_T);
-    Val(int8_t int8_val, sr_type_t type = SR_INT16_T);
+    Val(int8_t int8_val, sr_type_t type = SR_INT8_T);
     Val(int16_t int16_val, sr_type_t type = SR_INT16_T);
     Val(int32_t int32_val, sr_type_t type = SR_INT32_T);
     Val(int64_t int64_val, sr_type_t type = SR_INT64_T);
@@ -108,7 +108,7 @@ private:
 };
 
 // class for list of sysrepo C structs sr_val_t
-class Vals:public Throw_Exception
+class Vals
 {
 public:
     Vals(const sr_val_t *vals, const size_t cnt, S_Counter counter = NULL);
@@ -130,7 +130,7 @@ private:
 };
 
 // class for wrapping Vals classes
-class Vals_Holder:public Throw_Exception
+class Vals_Holder
 {
 public:
     Vals_Holder(sr_val_t **vals, size_t *cnt);
@@ -306,7 +306,7 @@ private:
 };
 
 // Change type wrapeer class
-class Change:public Throw_Exception
+class Change
 {
 public:
     Change();

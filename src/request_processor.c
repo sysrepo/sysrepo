@@ -1473,6 +1473,9 @@ rp_subscribe_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr
     if (SR__SUBSCRIPTION_TYPE__RPC_SUBS == subscribe_req->type) {
         options |= NP_SUBSCR_EXCLUSIVE;
     }
+    if (subscribe_req->has_enable_event && subscribe_req->enable_event) {
+        options |= NP_SUBSCR_EV_EVENT;
+    }
 
     /* subscribe to the notification */
     rc = np_notification_subscribe(rp_ctx->np_ctx, session, subscribe_req->type,
@@ -3054,7 +3057,7 @@ rp_msg_process(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
 }
 
 int
-rp_resume_commit(rp_ctx_t *rp_ctx, uint32_t commit_id, int result,
+rp_all_notifications_received(rp_ctx_t *rp_ctx, uint32_t commit_id, int result,
         sr_list_t *err_subs_xpaths, sr_list_t *errors)
 {
     CHECK_NULL_ARG(rp_ctx);
