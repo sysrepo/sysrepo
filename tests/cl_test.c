@@ -2639,18 +2639,21 @@ test_action_cb1(const char *xpath, const sr_val_t *input, const size_t input_cnt
     assert_string_equal("/test-module:kernel-modules/kernel-module[name='netlink_diag.ko']/load/params", input[0].xpath);
     assert_int_equal(SR_STRING_T, input[0].type);
     assert_string_equal("", input[0].data.string_val);
+    assert_false(input[0].dflt);
     assert_string_equal("/test-module:kernel-modules/kernel-module[name='netlink_diag.ko']/load/force", input[1].xpath);
     assert_int_equal(SR_BOOL_T, input[1].type);
     assert_true(input[1].data.bool_val);
+    assert_false(input[1].dflt);
     assert_string_equal("/test-module:kernel-modules/kernel-module[name='netlink_diag.ko']/load/dry-run", input[2].xpath);
     assert_int_equal(SR_BOOL_T, input[2].type);
     assert_false(input[2].data.bool_val);
+    assert_true(input[2].dflt);
 
     /* prepare output */
     *output = calloc(1, sizeof(**output));
     (*output)[0].xpath = strdup("/test-module:kernel-modules/kernel-module[name='netlink_diag.ko']/load/return-code");
     (*output)[0].type = SR_UINT8_T;
-    (*output)[0].data.int8_val = 0;
+    (*output)[0].data.uint8_val = 0;
     *output_cnt = 1;
 
     return SR_ERR_OK;
@@ -2715,7 +2718,7 @@ test_action_tree_cb1(const char *xpath, const sr_node_t *input, const size_t inp
     sr_in_node = input + 2;
     assert_string_equal("dry-run", sr_in_node->name);
     assert_string_equal("test-module", sr_in_node->module_name);
-    assert_false(sr_in_node->dflt);
+    assert_true(sr_in_node->dflt);
     assert_int_equal(SR_BOOL_T, sr_in_node->type);
     assert_false(sr_in_node->data.bool_val);
     assert_int_equal(0, sr_node_t_get_children_cnt(sr_in_node));
@@ -2723,7 +2726,7 @@ test_action_tree_cb1(const char *xpath, const sr_node_t *input, const size_t inp
     /* prepare output */
     assert_int_equal(SR_ERR_OK, sr_new_tree("return-code", "test-module", output));
     (*output)[0].type = SR_UINT8_T;
-    (*output)[0].data.int8_val = 0;
+    (*output)[0].data.uint8_val = 0;
     *output_cnt = 1;
 
     return SR_ERR_OK;
@@ -2815,22 +2818,16 @@ cl_action_test(void **state)
     assert_int_equal(1, cb1_called);
     assert_int_equal(1, cb2_called);
 
-    assert_int_equal(output_cnt, 5);
+    assert_int_equal(output_cnt, 3);
     assert_string_equal("/test-module:kernel-modules/kernel-module[name='vboxvideo.ko']/get-dependencies/dependency", output[0].xpath);
     assert_int_equal(SR_STRING_T, output[0].type);
-    assert_string_equal("drm", output[0].data.string_val);
+    assert_string_equal("ttm", output[0].data.string_val);
     assert_string_equal("/test-module:kernel-modules/kernel-module[name='vboxvideo.ko']/get-dependencies/dependency", output[1].xpath);
     assert_int_equal(SR_STRING_T, output[1].type);
     assert_string_equal("drm_kms_helper", output[1].data.string_val);
     assert_string_equal("/test-module:kernel-modules/kernel-module[name='vboxvideo.ko']/get-dependencies/dependency", output[2].xpath);
     assert_int_equal(SR_STRING_T, output[2].type);
-    assert_string_equal("ttm", output[2].data.string_val);
-    assert_string_equal("/test-module:kernel-modules/kernel-module[name='vboxvideo.ko']/get-dependencies/location", output[3].xpath);
-    assert_int_equal(SR_STRING_T, output[3].type);
-    assert_string_equal("/lib/modules/kernel/misc", output[3].data.string_val);
-    assert_string_equal("/test-module:kernel-modules/kernel-module[name='vboxvideo.ko']/get-dependencies/location2", output[4].xpath);
-    assert_int_equal(SR_STRING_T, output[4].type);
-    assert_string_equal("/lib/modules/kernel/misc", output[4].data.string_val);
+    assert_string_equal("drm", output[2].data.string_val);
 
     sr_free_values(output, output_cnt);
     output_cnt = 0;
@@ -2839,7 +2836,7 @@ cl_action_test(void **state)
     /* send Action non-existing in the data tree */
     rc = sr_action_send(session, "/test-module:kernel-modules/kernel-module[name='non-existing-module']/get-dependencies",
             NULL, 0, &output, &output_cnt);
-    assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
+    assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
 
     /* stop the session */
     rc = sr_session_stop(session);
@@ -2901,7 +2898,7 @@ cl_action_tree_test(void **state)
     assert_string_equal("return-code", output[0].name);
     assert_string_equal("test-module", output[0].module_name);
     assert_false(output[0].dflt);
-    assert_int_equal(SR_INT8_T, output[0].type);
+    assert_int_equal(SR_UINT8_T, output[0].type);
     assert_int_equal(0, output[0].data.uint8_val);
 
     sr_free_trees(input, 2);
@@ -2916,13 +2913,13 @@ cl_action_tree_test(void **state)
     assert_int_equal(1, cb1_called);
     assert_int_equal(1, cb2_called);
 
-    assert_int_equal(output_cnt, 5);
+    assert_int_equal(output_cnt, 3);
     /*  -> dependency #1 */
     assert_string_equal("dependency", output[0].name);
     assert_string_equal("test-module", output[0].module_name);
     assert_false(output[0].dflt);
     assert_int_equal(SR_STRING_T, output[0].type);
-    assert_string_equal("drm", output[0].data.string_val);
+    assert_string_equal("ttm", output[0].data.string_val);
     /*  -> dependency #2 */
     assert_string_equal("dependency", output[1].name);
     assert_string_equal("test-module", output[1].module_name);
@@ -2934,19 +2931,7 @@ cl_action_tree_test(void **state)
     assert_string_equal("test-module", output[2].module_name);
     assert_false(output[2].dflt);
     assert_int_equal(SR_STRING_T, output[2].type);
-    assert_string_equal("ttm", output[2].data.string_val);
-    /*  -> location */
-    assert_string_equal("location", output[3].name);
-    assert_string_equal("test-module", output[3].module_name);
-    assert_false(output[3].dflt);
-    assert_int_equal(SR_STRING_T, output[3].type);
-    assert_string_equal("/lib/modules/kernel/misc", output[3].data.string_val);
-    /*  -> location2 */
-    assert_string_equal("location2", output[4].name);
-    assert_string_equal("test-module", output[4].module_name);
-    assert_false(output[4].dflt);
-    assert_int_equal(SR_STRING_T, output[4].type);
-    assert_string_equal("/lib/modules/kernel/misc", output[4].data.string_val);
+    assert_string_equal("drm", output[2].data.string_val);
 
     sr_free_trees(output, output_cnt);
     output_cnt = 0;
@@ -2955,7 +2940,7 @@ cl_action_tree_test(void **state)
     /* send Action non-existing in the data tree */
     rc = sr_action_send_tree(session, "/test-module:kernel-modules/kernel-module[name='non-existing-module']/get-dependencies",
             NULL, 0, &output, &output_cnt);
-    assert_int_equal(SR_ERR_BAD_ELEMENT, rc);
+    assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
 
     /* stop the session */
     rc = sr_session_stop(session);
@@ -3023,22 +3008,16 @@ cl_action_combo_test(void **state)
     assert_int_equal(1, cb1_called);
     assert_int_equal(1, cb2_called);
 
-    assert_int_equal(output_cnt, 5);
+    assert_int_equal(output_cnt, 3);
     assert_string_equal("/test-module:kernel-modules/kernel-module[name='vboxvideo.ko']/get-dependencies/dependency", output[0].xpath);
     assert_int_equal(SR_STRING_T, output[0].type);
-    assert_string_equal("drm", output[0].data.string_val);
+    assert_string_equal("ttm", output[0].data.string_val);
     assert_string_equal("/test-module:kernel-modules/kernel-module[name='vboxvideo.ko']/get-dependencies/dependency", output[1].xpath);
     assert_int_equal(SR_STRING_T, output[1].type);
     assert_string_equal("drm_kms_helper", output[1].data.string_val);
     assert_string_equal("/test-module:kernel-modules/kernel-module[name='vboxvideo.ko']/get-dependencies/dependency", output[2].xpath);
     assert_int_equal(SR_STRING_T, output[2].type);
-    assert_string_equal("ttm", output[2].data.string_val);
-    assert_string_equal("/test-module:kernel-modules/kernel-module[name='vboxvideo.ko']/get-dependencies/location", output[3].xpath);
-    assert_int_equal(SR_STRING_T, output[3].type);
-    assert_string_equal("/lib/modules/kernel/misc", output[3].data.string_val);
-    assert_string_equal("/test-module:kernel-modules/kernel-module[name='vboxvideo.ko']/get-dependencies/location2", output[4].xpath);
-    assert_int_equal(SR_STRING_T, output[4].type);
-    assert_string_equal("/lib/modules/kernel/misc", output[4].data.string_val);
+    assert_string_equal("drm", output[2].data.string_val);
 
     sr_free_values(output, output_cnt);
     output_cnt = 0;
@@ -3086,7 +3065,7 @@ cl_action_combo_test(void **state)
     assert_string_equal("return-code", output_tree[0].name);
     assert_string_equal("test-module", output_tree[0].module_name);
     assert_false(output_tree[0].dflt);
-    assert_int_equal(SR_INT8_T, output_tree[0].type);
+    assert_int_equal(SR_UINT8_T, output_tree[0].type);
     assert_int_equal(0, output_tree[0].data.uint8_val);
 
     sr_free_trees(input_tree, 2);
@@ -3101,13 +3080,13 @@ cl_action_combo_test(void **state)
     assert_int_equal(1, cb1_called);
     assert_int_equal(1, cb2_called);
 
-    assert_int_equal(output_cnt, 5);
+    assert_int_equal(output_cnt, 3);
     /*  -> dependency #1 */
     assert_string_equal("dependency", output_tree[0].name);
     assert_string_equal("test-module", output_tree[0].module_name);
     assert_false(output_tree[0].dflt);
     assert_int_equal(SR_STRING_T, output_tree[0].type);
-    assert_string_equal("drm", output_tree[0].data.string_val);
+    assert_string_equal("ttm", output_tree[0].data.string_val);
     /*  -> dependency #2 */
     assert_string_equal("dependency", output_tree[1].name);
     assert_string_equal("test-module", output_tree[1].module_name);
@@ -3119,19 +3098,7 @@ cl_action_combo_test(void **state)
     assert_string_equal("test-module", output_tree[2].module_name);
     assert_false(output_tree[2].dflt);
     assert_int_equal(SR_STRING_T, output_tree[2].type);
-    assert_string_equal("ttm", output_tree[2].data.string_val);
-    /*  -> location */
-    assert_string_equal("location", output_tree[3].name);
-    assert_string_equal("test-module", output_tree[3].module_name);
-    assert_false(output_tree[3].dflt);
-    assert_int_equal(SR_STRING_T, output_tree[3].type);
-    assert_string_equal("/lib/modules/kernel/misc", output_tree[3].data.string_val);
-    /*  -> location2 */
-    assert_string_equal("location2", output_tree[4].name);
-    assert_string_equal("test-module", output_tree[4].module_name);
-    assert_false(output_tree[4].dflt);
-    assert_int_equal(SR_STRING_T, output_tree[4].type);
-    assert_string_equal("/lib/modules/kernel/misc", output_tree[4].data.string_val);
+    assert_string_equal("drm", output_tree[2].data.string_val);
 
     sr_free_trees(output_tree, output_cnt);
     output_cnt = 0;
@@ -4241,7 +4208,7 @@ cl_event_notif_tree_test(void **state)
     tree = trees + 1;
     tree->name = strdup("time-of-change");
     tree->type = SR_UINT32_T;
-    tree->data.bool_val = 18;
+    tree->data.uint32_val = 18;
 
     rc = sr_event_notif_send_tree(notif_session, "/test-module:kernel-modules/kernel-module[name='netlink_diag.ko']/status-change",
             trees, tree_cnt);
@@ -4461,7 +4428,7 @@ cl_event_notif_combo_test(void **state)
     tree = trees + 1;
     tree->name = strdup("time-of-change");
     tree->type = SR_UINT32_T;
-    tree->data.bool_val = 18;
+    tree->data.uint32_val = 18;
 
     rc = sr_event_notif_send_tree(notif_session, "/test-module:kernel-modules/kernel-module[name='netlink_diag.ko']/status-change",
             trees, tree_cnt);
