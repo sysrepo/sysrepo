@@ -1302,14 +1302,11 @@ dm_append_data_tree(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_info_t *dat
             printf("\n\n");
             ret = lyd_print_fd(STDOUT_FILENO, data_info->node, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT | LYP_WD_ALL | LYP_KEEPEMPTYCONT);
             printf("\n\n");
-
             ret = lyd_merge(data_info->node, tmp_node, LYD_OPT_EXPLICIT);
-
             ret = lyd_print_fd(STDOUT_FILENO, tmp_node, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT | LYP_WD_ALL | LYP_KEEPEMPTYCONT);
             printf("\n\n");
             ret = lyd_print_fd(STDOUT_FILENO, data_info->node, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT | LYP_WD_ALL | LYP_KEEPEMPTYCONT);
             printf("\n\n");
-
             lyd_free_withsiblings(tmp_node);
         }
     } else {
@@ -2103,17 +2100,32 @@ dm_validate_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error
     size_t cnt = 0;
     *err_cnt = 0;
     dm_data_info_t *info = NULL;
+    sr_llist_t *session_modules = NULL;
+    sr_llist_node_t *node = NULL;
+
+    rc = sr_llist_init(&session_modules);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot initialize temporary linked-list for session modules.");
+
+    /* collect the list of modules first, it mau change during the validation */
     while (NULL != (info = sr_btree_get_at(session->session_modules[session->datastore], cnt))) {
+        sr_llist_add_new(session_modules, info);
+        cnt++;
+    }
+
+    node = session_modules->first;
+    while (NULL != node) {
+        info = (dm_data_info_t *)node->data;
         /* loaded data trees are valid, so check only the modified ones */
         if (info->modified) {
             if (NULL == info->schema->module || NULL == info->schema->module->name) {
                 SR_LOG_ERR_MSG("Missing schema information");
-                sr_free_errors(*errors, *err_cnt);
-                return SR_ERR_INTERNAL;
+                rc = SR_ERR_INTERNAL;
+                goto cleanup;
             }
             /* attach data dependant modules */
             if (info->schema->cross_module_data_dependency) {
                 rc = dm_load_dependant_data(dm_ctx, session, info);
+                CHECK_RC_LOG_GOTO(rc, cleanup, "Loading dependant modules failed for %s", info->schema->module_name);
             }
             if (0 != lyd_validate(&info->node, LYD_OPT_STRICT | LYD_OPT_NOAUTODEL | LYD_OPT_CONFIG, info->schema->ly_ctx)) {
                 SR_LOG_DBG("Validation failed for %s module", info->schema->module->name);
@@ -2125,8 +2137,14 @@ dm_validate_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error
                 SR_LOG_DBG("Validation succeeded for '%s' module", info->schema->module->name);
             }
         }
-        cnt++;
+        node = node->next;
     }
+
+cleanup:
+    if (SR_ERR_OK != rc && SR_ERR_VALIDATION_FAILED != rc) {
+        sr_free_errors(*errors, *err_cnt);
+    }
+    sr_llist_cleanup(session_modules);
     return rc;
 }
 
@@ -3930,7 +3948,7 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
 
     /* validate the content (and also add default nodes) */
     if (arg_cnt > 0) {
-        validation_options = LYD_OPT_STRICT | LYD_OPT_NOSIBLINGS;
+        validation_options = LYD_OPT_STRICT | LYD_OPT_NOAUTODEL;
         switch (type) {
             case DM_PROCEDURE_RPC:
             case DM_PROCEDURE_ACTION:
@@ -3969,17 +3987,26 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
             rc = dm_load_dependant_data(dm_ctx, session, di);
             CHECK_RC_LOG_GOTO(rc, cleanup, "Loading dependant modules failed for %s", di->schema->module_name);
         }
-        nodeset = lyd_find_xpath(data_tree, xpath);
-        if (1 == nodeset->number) {
-            ret = lyd_validate(&nodeset->set.d[0], validation_options, ext_ref ? di->node : NULL);
+
+        printf("PROCEDURE (%s):\n", xpath);
+        lyd_print_fd(STDOUT_FILENO, data_tree, LYD_XML, LYP_FORMAT | LYP_WD_ALL | LYP_KEEPEMPTYCONT);
+        printf("\n\n");
+        if (ext_ref) {
+            printf("EXTERNAL (%s):\n", xpath);
+            lyd_print_fd(STDOUT_FILENO, di->node, LYD_XML, LYP_WITHSIBLINGS | LYP_FORMAT | LYP_WD_ALL | LYP_KEEPEMPTYCONT);
+            printf("\n\n");
         }
-        if (1 != nodeset->number || 0 != ret) {
-            ly_set_free(nodeset);
+
+        ret = lyd_validate(&data_tree, validation_options, ext_ref ? di->node : NULL);
+
+        printf("PROCEDURE AFTER (%s):\n", xpath);
+        lyd_print_fd(STDOUT_FILENO, data_tree, LYD_XML, LYP_FORMAT | LYP_WD_ALL | LYP_KEEPEMPTYCONT);
+
+        if (0 != ret) {
             SR_LOG_ERR("%s content validation failed: %s", procedure_name, ly_errmsg());
             rc = dm_report_error(session, ly_errmsg(), ly_errpath(), SR_ERR_VALIDATION_FAILED);
             goto cleanup;
         }
-        ly_set_free(nodeset);
     }
 
     /* re-read the arguments from data tree (it can now contain newly added default nodes) */

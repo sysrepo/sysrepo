@@ -1814,6 +1814,8 @@ default_nodes_toplevel_test(void **state)
 
     rc = rp_dt_delete_item_wrapper(ctx, ses_ctx, "/test-module:*", SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
+    rc = rp_dt_delete_item_wrapper(ctx, ses_ctx, "/referenced-data:*", SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
     rc = rp_dt_commit(ctx, ses_ctx, NULL, &errors, &e_cnt);
     assert_int_equal(SR_ERR_OK, rc);
 

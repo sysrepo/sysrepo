@@ -573,6 +573,7 @@ dm_event_notif_test(void **state)
     sr_node_t *with_def_tree = NULL;
     dm_schema_info_t *schema_info = NULL;
     size_t values_cnt = 0, with_def_cnt = 0, with_def_tree_cnt = 0;
+    char *error_msg = NULL, *error_xpath = NULL;
 
     rc = dm_init(NULL, NULL, NULL, CM_MODE_LOCAL, TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx);
     assert_int_equal(SR_ERR_OK, rc);
@@ -588,6 +589,13 @@ dm_event_notif_test(void **state)
     rc = dm_validate_event_notif(ctx, session, "/test-module:non-existing-event-notif", values, values_cnt,
             NULL, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
     assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
+    dm_copy_errors(session, NULL, &error_msg, &error_xpath);
+    assert_string_equal("target node is not present in the schema tree", error_msg);
+    assert_string_equal("/test-module:non-existing-event-notif", error_xpath);
+    free(error_msg);
+    free(error_xpath);
+    error_msg = NULL;
+    error_xpath = NULL;
 
     /* valid event notification */
     values_cnt = 6;
@@ -627,6 +635,13 @@ dm_event_notif_test(void **state)
     rc = dm_validate_event_notif(ctx, session, "/test-module:link-removed", with_def, with_def_cnt,
             NULL, NULL, NULL, NULL, NULL);
     assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
+    dm_copy_errors(session, NULL, &error_msg, &error_xpath);
+    assert_string_equal("Schema node \"non-existing-node\" not found (/test-module:link-removed/non-existing-node).", error_msg);
+    assert_string_equal("/test-module:link-removed/non-existing-node", error_xpath);
+    free(error_msg);
+    free(error_xpath);
+    error_msg = NULL;
+    error_xpath = NULL;
 
     sr_free_values(values, values_cnt);
     sr_free_values(with_def, with_def_cnt);
@@ -646,16 +661,37 @@ dm_event_notif_test(void **state)
     rc = dm_validate_event_notif(ctx, session, "/test-module:kernel-modules/kernel-module[name=\"non-existent-module\"]/status-change",
             values, values_cnt, NULL, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
     assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
+    dm_copy_errors(session, NULL, &error_msg, &error_xpath);
+    assert_string_equal("target node is not present in the data tree", error_msg);
+    assert_string_equal("/test-module:kernel-modules/kernel-module[name=\"non-existent-module\"]/status-change", error_xpath);
+    free(error_msg);
+    free(error_xpath);
+    error_msg = NULL;
+    error_xpath = NULL;
 
     /* more than one target matched by the notification's xpath */
     rc = dm_validate_action(ctx, session, "/test-module:kernel-modules/kernel-module/status-change",
             values, values_cnt, true, NULL, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
     assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
+    dm_copy_errors(session, NULL, &error_msg, &error_xpath);
+    assert_string_equal("xpath references more than one node in the data tree.", error_msg);
+    assert_string_equal("/test-module:kernel-modules/kernel-module/status-change", error_xpath);
+    free(error_msg);
+    free(error_xpath);
+    error_msg = NULL;
+    error_xpath = NULL;
 
     /* unsatisfied "must" condition */
     rc = dm_validate_event_notif(ctx, session, "/test-module:kernel-modules/kernel-module[name=\"irqbypass.ko\"]/status-change",
             values, values_cnt, NULL, NULL, NULL, NULL, NULL);
     assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
+    dm_copy_errors(session, NULL, &error_msg, &error_xpath);
+    assert_string_equal("time-of-change must be greater than magic_number", error_msg);
+    assert_string_equal("/test-module:kernel-modules/kernel-module[name='irqbypass.ko']/status-change/time-of-change", error_xpath);
+    free(error_msg);
+    free(error_xpath);
+    error_msg = NULL;
+    error_xpath = NULL;
 
     /* satisfied "must" condition */
     values[1].data.uint32_val = 132;
@@ -680,9 +716,10 @@ dm_action_test(void **state)
     dm_ctx_t *ctx = NULL;
     dm_session_t *session = NULL;
     sr_val_t *input = NULL, *output = NULL, *with_def = NULL;
-    sr_node_t *with_def_tree = NULL;
+    sr_node_t *input_tree = NULL, *with_def_tree = NULL;
     dm_schema_info_t *schema_info = NULL;
     size_t input_cnt = 0, output_cnt = 0, with_def_cnt = 0, with_def_tree_cnt = 0;
+    char *error_msg = NULL, *error_xpath = NULL;
 
     rc = dm_init(NULL, NULL, NULL, CM_MODE_LOCAL, TEST_SCHEMA_SEARCH_DIR, TEST_DATA_SEARCH_DIR, &ctx);
     assert_int_equal(SR_ERR_OK, rc);
@@ -698,29 +735,36 @@ dm_action_test(void **state)
     rc = dm_validate_action(ctx, session, "/test-module:non-existing-action", input, input_cnt, true,
             NULL, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
     assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
+    dm_copy_errors(session, NULL, &error_msg, &error_xpath);
+    assert_string_equal("target node is not present in the schema tree", error_msg);
+    assert_string_equal("/test-module:non-existing-action", error_xpath);
+    free(error_msg);
+    free(error_xpath);
+    error_msg = NULL;
+    error_xpath = NULL;
     assert_null(with_def);
     assert_null(with_def_tree);
 
     /* action input */
     input_cnt = 1;
     input = calloc(input_cnt, sizeof(*input));
-    input[0].xpath = strdup("/test-module:kernel-modules/kernel-module[name='irqbypass.ko']/load/params");
+    input[0].xpath = strdup("/test-module:kernel-modules/kernel-module[name='netlink_diag.ko']/load/params");
     input[0].type = SR_STRING_T;
     input[0].data.string_val = strdup("--log-level 2");
 
-    rc = dm_validate_action(ctx, session, "/test-module:kernel-modules/kernel-module[name='irqbypass.ko']/load",
+    rc = dm_validate_action(ctx, session, "/test-module:kernel-modules/kernel-module[name='netlink_diag.ko']/load",
             input, input_cnt, true, NULL, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
     assert_int_equal(SR_ERR_OK, rc);
     assert_int_equal(3, with_def_cnt); /* including default leafs */
     assert_int_equal(3, with_def_tree_cnt); /* including default leafs */
     /* -> valued with defaults */
-    assert_string_equal("/test-module:kernel-modules/kernel-module[name='irqbypass.ko']/load/params", with_def[0].xpath);
+    assert_string_equal("/test-module:kernel-modules/kernel-module[name='netlink_diag.ko']/load/params", with_def[0].xpath);
     assert_int_equal(SR_STRING_T, with_def[0].type);
     assert_string_equal("--log-level 2", with_def[0].data.string_val);
-    assert_string_equal("/test-module:kernel-modules/kernel-module[name='irqbypass.ko']/load/force", with_def[1].xpath);
+    assert_string_equal("/test-module:kernel-modules/kernel-module[name='netlink_diag.ko']/load/force", with_def[1].xpath);
     assert_int_equal(SR_BOOL_T, with_def[1].type);
     assert_false(with_def[1].data.bool_val);
-    assert_string_equal("/test-module:kernel-modules/kernel-module[name='irqbypass.ko']/load/dry-run", with_def[2].xpath);
+    assert_string_equal("/test-module:kernel-modules/kernel-module[name='netlink_diag.ko']/load/dry-run", with_def[2].xpath);
     assert_int_equal(SR_BOOL_T, with_def[2].type);
     assert_false(with_def[2].data.bool_val);
     /* -> subtrees with defaults */
@@ -738,32 +782,63 @@ dm_action_test(void **state)
     assert_false(with_def_tree[2].data.bool_val);
 
     sr_free_values(input, input_cnt);
-    input = with_def;
-    input_cnt = with_def_cnt;
-    sr_free_trees(with_def_tree, with_def_tree_cnt);
+    sr_free_values(with_def, with_def_cnt);
+    input_tree = with_def_tree;
+    input_cnt = with_def_tree_cnt;
+    for (int i = 0; i < input_cnt; ++i) {
+        input_tree[i].dflt = false;
+    }
 
     /* unsatisfied "when" condition */
-    input[1].data.bool_val = true;
-    rc = dm_validate_action(ctx, session, "/test-module:kernel-modules/kernel-module[name='irqbypass.ko']/load",
-            input, input_cnt, true, NULL, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
+    rc = dm_validate_action_tree(ctx, session, "/test-module:kernel-modules/kernel-module[name='irqbypass.ko']/load",
+            input_tree, input_cnt, true, NULL, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
     assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
+    dm_copy_errors(session, NULL, &error_msg, &error_xpath);
+    assert_string_equal("When condition \"../../loaded = 'false'\" not satisfied. "
+                        "(path: /test-module:kernel-modules/kernel-module[name='irqbypass.ko']/load/force)",
+                        error_msg);
+    free(error_msg);
+    free(error_xpath);
+    error_msg = NULL;
+    error_xpath = NULL;
 
     /* non-existing location of the Action in the data tree */
-    rc = dm_validate_action(ctx, session, "/test-module:kernel-modules/kernel-module[name='non-existent-module']/load",
-            input, input_cnt, true, NULL, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
+    rc = dm_validate_action_tree(ctx, session, "/test-module:kernel-modules/kernel-module[name='non-existent-module']/load",
+            input_tree, input_cnt, true, NULL, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
     assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
+    dm_copy_errors(session, NULL, &error_msg, &error_xpath);
+    assert_string_equal("target node is not present in the data tree", error_msg);
+    assert_string_equal("/test-module:kernel-modules/kernel-module[name='non-existent-module']/load", error_xpath);
+    free(error_msg);
+    free(error_xpath);
+    error_msg = NULL;
+    error_xpath = NULL;
 
     /* more than one target matched by the Action's xpath */
-    rc = dm_validate_action(ctx, session, "/test-module:kernel-modules/kernel-module/load",
-            input, input_cnt, true, NULL, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
+    rc = dm_validate_action_tree(ctx, session, "/test-module:kernel-modules/kernel-module/load",
+            input_tree, input_cnt, true, NULL, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
     assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
+    dm_copy_errors(session, NULL, &error_msg, &error_xpath);
+    assert_string_equal("xpath references more than one node in the data tree.", error_msg);
+    assert_string_equal("/test-module:kernel-modules/kernel-module/load", error_xpath);
+    free(error_msg);
+    free(error_xpath);
+    error_msg = NULL;
+    error_xpath = NULL;
 
     /* invalid action input */
-    input[2].type = SR_UINT16_T;
-    input[2].data.uint16_val = 1;
-    rc = dm_validate_action(ctx, session, "/test-module:kernel-modules/kernel-module[name='irqbypass.ko']/load",
-            input, input_cnt, true,  NULL, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
+    input_tree[2].type = SR_UINT16_T;
+    input_tree[2].data.uint16_val = 1;
+    rc = dm_validate_action_tree(ctx, session, "/test-module:kernel-modules/kernel-module[name='irqbypass.ko']/load",
+            input_tree, input_cnt, true,  NULL, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
     assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
+    dm_copy_errors(session, NULL, &error_msg, &error_xpath);
+    assert_string_equal("Unable to convert sysrepo tree into a libyang tree", error_msg);
+    assert_string_equal("/test-module:kernel-modules/kernel-module[name='irqbypass.ko']/load/dry-run", error_xpath);
+    free(error_msg);
+    free(error_xpath);
+    error_msg = NULL;
+    error_xpath = NULL;
 
     /* action output */
     output_cnt = 3;
@@ -786,17 +861,36 @@ dm_action_test(void **state)
     sr_free_values(with_def, with_def_cnt);
     sr_free_trees(with_def_tree, with_def_tree_cnt);
 
-    /* invalid action output */
+    /* invalid action output -- invalid leafref value */
     free(output[2].xpath);
     free(output[2].data.string_val);
-    output[2].xpath = strdup("/test-module:kernel-modules/kernel-module[name='vboxvideo.ko']/get-dependencies/return-code");
-    output[2].type = SR_UINT8_T;
-    output[2].data.uint8_val = 0;
+    output[2].xpath = strdup("/test-module:kernel-modules/kernel-module[name='vboxvideo.ko']/get-dependencies/location");
+    output[2].type = SR_STRING_T;
+    output[2].data.string_val = strdup("/lib/modules/kernel/"); /* invalid */
     rc = dm_validate_action(ctx, session, "/test-module:kernel-modules/kernel-module[name='vboxvideo.ko']/get-dependencies",
             output, output_cnt, false, NULL, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
     assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
+    dm_copy_errors(session, NULL, &error_msg, &error_xpath);
+    assert_string_equal("Leafref \"/kernel-modules/kernel-module[name = current()/../../name]/location\" "
+                        "of value \"/lib/modules/kernel/\" points to a non-existing leaf.", error_msg);
+    assert_string_equal("/test-module:kernel-modules/kernel-module[name='vboxvideo.ko']/get-dependencies/location", error_xpath);
+    free(error_msg);
+    free(error_xpath);
+    error_msg = NULL;
+    error_xpath = NULL;
 
-    sr_free_values(input, input_cnt);
+    /* valid action output -- fixed leafref value */
+    free(output[2].data.string_val);
+    output[2].data.string_val = strdup("/lib/modules/kernel/misc");
+    rc = dm_validate_action(ctx, session, "/test-module:kernel-modules/kernel-module[name='vboxvideo.ko']/get-dependencies",
+            output, output_cnt, false,  NULL, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_int_equal(with_def_cnt, 3);
+    assert_int_equal(with_def_tree_cnt, 3);
+    sr_free_values(with_def, with_def_cnt);
+    sr_free_trees(with_def_tree, with_def_tree_cnt);
+
+    sr_free_trees(input_tree, input_cnt);
     sr_free_values(output, output_cnt);
 
     dm_session_stop(ctx, session);
