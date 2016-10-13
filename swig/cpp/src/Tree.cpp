@@ -126,23 +126,18 @@ void Tree::add_child(const char *child_name, const char *child_module_name, S_Tr
     if (ret != SR_ERR_OK) throw_exception(ret);
 }
 void Tree::set(const char *value, sr_type_t type) {
-    if (type == SR_BINARY_T) {
-	    _node->data.binary_val = strdup((char *) value);
-    } else if (type == SR_BITS_T) {
-	    _node->data.bits_val = strdup((char *) value);
-    } else if (type == SR_ENUM_T) {
-	    _node->data.enum_val = strdup((char *) value);
-    } else if (type == SR_IDENTITYREF_T) {
-	    _node->data.identityref_val = strdup((char *) value);
-    } else if (type == SR_INSTANCEID_T) {
-	    _node->data.instanceid_val = strdup((char *) value);
-    } else if (type == SR_STRING_T) {
-	    _node->data.string_val = strdup((char *) value);
+    int ret = SR_ERR_OK;
+
+    _node->type = type;
+
+    if (type == SR_BINARY_T || type == SR_BITS_T || type == SR_ENUM_T || type == SR_IDENTITYREF_T || \
+        type == SR_INSTANCEID_T || type == SR_STRING_T) {
+        ret = sr_node_set_string(_node, value);
+        if (ret != SR_ERR_OK)
+            throw_exception(ret);
     } else {
         throw_exception(SR_ERR_INVAL_ARG);
     }
-
-    _node->type = type;
 }
 void Tree::set(bool bool_val, sr_type_t type) {
     if (type == SR_BOOL_T) {
