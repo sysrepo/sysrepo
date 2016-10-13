@@ -111,7 +111,6 @@ void Tree::set_name(const char *name) {
 }
 void Tree::set_module(const char *module_name) {
     if (_node == NULL) throw_exception(SR_ERR_DATA_MISSING);
-    _node->module_name = strdup((char *) module_name);
     int ret = sr_node_set_module(_node, module_name);
     if (ret != SR_ERR_OK) throw_exception(ret);
 }
