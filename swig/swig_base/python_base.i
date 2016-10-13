@@ -1,6 +1,4 @@
-%module lua_base
-
-%include "shared_ptr.i"
+%module python_base
 
 %ignore Callback;
 
