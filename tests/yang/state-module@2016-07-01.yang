@@ -27,6 +27,10 @@ module state-module {
           leaf name {
              type string;
           }
+          leaf reserved {
+             config false;
+             type boolean;
+          }
        }
        
        leaf vendor_name {
