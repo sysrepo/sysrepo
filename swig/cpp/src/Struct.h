@@ -91,7 +91,6 @@ public:
     void set(const char *xpath, uint16_t uint16_val, sr_type_t type);
     void set(const char *xpath, uint32_t uint32_val, sr_type_t type);
     void set(const char *xpath, uint64_t uint64_val, sr_type_t type);
-    void set_type(const char *xpath, sr_type_t type);
     char *xpath() {return _val->xpath;};
     void xpath_set(char *data) {_val->xpath = data;};
     sr_type_t type() {return _val->type;};

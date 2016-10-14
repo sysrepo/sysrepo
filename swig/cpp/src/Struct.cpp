@@ -131,7 +131,8 @@ Val::Val(const char *value, sr_type_t type) {
         ret = sr_val_set_string(val, value);
         if (ret != SR_ERR_OK)
             throw_exception(ret);
-    } else {
+    } else if (value != NULL && ( type != SR_LIST_T && type != SR_CONTAINER_T && type != SR_CONTAINER_PRESENCE_T &&\
+        type != SR_UNKNOWN_T && type != SR_LEAF_EMPTY_T)) {
         free(val);
         throw_exception(SR_ERR_INVAL_ARG);
     }
@@ -336,7 +337,8 @@ void Val::set(const char *xpath, const char *value, sr_type_t type) {
         ret = sr_val_set_string(_val, value);
         if (ret != SR_ERR_OK)
             throw_exception(ret);
-    } else {
+    } else if (value != NULL && ( type != SR_LIST_T && type != SR_CONTAINER_T && type != SR_CONTAINER_PRESENCE_T &&\
+        type != SR_UNKNOWN_T && type != SR_LEAF_EMPTY_T)) {
         throw_exception(SR_ERR_INVAL_ARG);
     }
 }
@@ -486,19 +488,6 @@ void Val::set(const char *xpath, uint64_t uint64_val, sr_type_t type) {
     if (type == SR_UINT64_T) {
 	    _val->data.uint64_val = uint64_val;
     } else {
-        throw_exception(SR_ERR_INVAL_ARG);
-    }
-
-    _val->type = type;
-}
-void Val::set_type(const char *xpath, sr_type_t type) {
-    if (_val == NULL) throw_exception(SR_ERR_OPERATION_FAILED);
-
-    int ret = sr_val_set_xpath(_val, xpath);
-    if (ret != SR_ERR_OK) throw_exception(ret);
-
-    if (type != SR_LIST_T && type != SR_CONTAINER_T && type != SR_CONTAINER_PRESENCE_T &&\
-        type != SR_UNKNOWN_T && type != SR_LEAF_EMPTY_T) {
         throw_exception(SR_ERR_INVAL_ARG);
     }
 
