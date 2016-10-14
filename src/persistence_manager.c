@@ -681,7 +681,8 @@ pm_add_subscription(pm_ctx_t *pm_ctx, const ac_ucred_t *user_cred, const char *m
         CHECK_RC_MSG_GOTO(rc, cleanup, "Unable to add new leaf into the data tree.");
     }
     if (SR__SUBSCRIPTION_TYPE__RPC_SUBS == subscription->type ||
-            SR__SUBSCRIPTION_TYPE__EVENT_NOTIF_SUBS == subscription->type) {
+            SR__SUBSCRIPTION_TYPE__EVENT_NOTIF_SUBS == subscription->type ||
+            SR__SUBSCRIPTION_TYPE__ACTION_SUBS == subscription->type) {
         snprintf(xpath, PATH_MAX, PM_XPATH_SUBSCRIPTION_API_VARIANT, module_name,
                 sr_subscription_type_gpb_to_str(subscription->type), subscription->dst_address, subscription->dst_id);
         value = sr_api_variant_to_str(subscription->api_variant);

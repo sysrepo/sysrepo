@@ -1404,7 +1404,7 @@ cm_out_dp_request_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
 }
 
 /**
- * @brief Processes an outgoing RPC (RPC to be sent to the client library).
+ * @brief Processes an outgoing RPC/Action (RPC/Action to be sent to the client library).
  */
 static int
 cm_out_rpc_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
@@ -1412,13 +1412,15 @@ cm_out_rpc_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
     sm_session_t *session = NULL;
     sm_connection_t *connection = NULL;
     char *destination_address = NULL;
+    const char *op_name = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG4(cm_ctx, msg, msg->request, msg->request->rpc_req);
 
+    op_name = (msg->request->rpc_req->action ? "Action" : "RPC");
     destination_address = msg->request->rpc_req->subscriber_address;
 
-    SR_LOG_DBG("Sending a RPC request to '%s'.", destination_address);
+    SR_LOG_DBG("Sending a %s request to '%s'.", op_name, destination_address);
 
     /* find the session */
     rc = sm_session_find_id(cm_ctx->sm_ctx, msg->session_id, &session);
@@ -1436,15 +1438,15 @@ cm_out_rpc_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
     /* track that we expect a response for this session */
     session->cm_data->rp_resp_expected += 1;
 
-    /* get a connection to the RPC destination */
+    /* get a connection to the RPC/Action destination */
     rc = sm_connection_find_dst(cm_ctx->sm_ctx, destination_address, &connection);
     if (SR_ERR_OK == rc) {
         /* a connection to the destination already exists - reuse */
-        SR_LOG_DBG("Reusing existing connection on fd=%d for the RPC destination '%s'",
-                connection->fd, destination_address);
+        SR_LOG_DBG("Reusing existing connection on fd=%d for the %s destination '%s'",
+                connection->fd, op_name, destination_address);
     } else {
         /* connection to that destination does not exist - connect */
-        SR_LOG_DBG("Creating a new connection for the RPC destination '%s'", destination_address);
+        SR_LOG_DBG("Creating a new connection for the %s destination '%s'", op_name, destination_address);
         rc = cm_subscr_conn_create(cm_ctx, destination_address, &connection);
     }
 
@@ -1663,7 +1665,8 @@ cm_msg_enqueue_cb(struct ev_loop *loop, ev_async *w, int revents)
                 /* send the data-provide request via subscriber connection */
                 cm_out_dp_request_process(cm_ctx, msg);
             } else if ((SR__MSG__MSG_TYPE__REQUEST == msg->type) &&
-                   (SR__OPERATION__RPC == msg->request->operation)) {
+                            (SR__OPERATION__RPC == msg->request->operation ||
+                             SR__OPERATION__ACTION == msg->request->operation)) {
                /* send the RPC request via subscriber connection */
                cm_out_rpc_process(cm_ctx, msg);
             } else if ((SR__MSG__MSG_TYPE__REQUEST == msg->type) &&

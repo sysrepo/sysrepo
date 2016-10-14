@@ -94,6 +94,7 @@ class SchemasManagementTest(unittest.TestCase):
         Test simulates the request of sysrepoctl trying to uninstall/install module.
         """
         tmp_file = "/tmp/test-module.yang"
+        tmp_file_dep = "/tmp/referenced-data.yang"
         tm = TestManager()
 
         srd = SysrepodDaemonTester("Srd")
@@ -132,6 +133,7 @@ class SchemasManagementTest(unittest.TestCase):
         srd.add_step(srd.waitStep)
         admin.add_step(admin.waitStep)
         tester1.add_step(tester1.getSchemaToFileStep, "test-module", tmp_file)
+        tester2.add_step(tester2.getSchemaToFileStep, "referenced-data", tmp_file_dep)
         tester3.add_step(tester3.unlockModelStep, "test-module")
 
 

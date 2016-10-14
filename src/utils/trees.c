@@ -26,6 +26,10 @@
 #include "values_internal.h"
 #include "trees_internal.h"
 
+#include <stdarg.h>
+
+#define MAX(a, b) ((a) > (b) ? (a) : (b))
+
 /**
  * @brief Allocate a new instance of a sysrepo node over an existing sysrepo memory context.
  *
@@ -345,4 +349,264 @@ int
 sr_dup_trees(sr_node_t *trees, size_t count, sr_node_t **trees_dup_p)
 {
     return sr_dup_trees_ctx(trees, count, NULL, trees_dup_p);
+}
+
+/**
+ * @brief Construct string according to the format and the extra arguments, and then
+ * print it in the given context.
+ *
+ * @param [in] print_ctx Print context to use for printing.
+ * @param [in] format Format string followed by corresponding set of extra arguments.
+ */
+static int
+sr_print(sr_print_ctx_t *print_ctx, const char *format, ...)
+{
+    int rc = SR_ERR_OK, count = 0, len = 0;
+    char *str = NULL, *aux = NULL;
+    size_t new_size;
+    va_list va;
+
+    CHECK_NULL_ARG2(print_ctx, format);
+
+    va_start(va, format);
+
+    switch (print_ctx->type) {
+        case SR_PRINT_FD:
+            count = vdprintf(print_ctx->method.fd, format, va);
+            CHECK_NOT_MINUS1_MSG_GOTO(count, rc, SR_ERR_INTERNAL, cleanup, "vdprintf failed");
+            break;
+        case SR_PRINT_STREAM:
+            count = vfprintf(print_ctx->method.stream, format, va);
+            CHECK_NOT_MINUS1_MSG_GOTO(count, rc, SR_ERR_INTERNAL, cleanup, "vfprintf failed");
+            break;
+        case SR_PRINT_MEM:
+            /* print string to a temporary memory buffer */
+            len = vsnprintf(NULL, 0, format, va);
+            str = calloc(len+1, sizeof *str);
+            CHECK_NULL_NOMEM_GOTO(str, rc, cleanup);
+            va_end(va); /**< restart va_list */
+            va_start(va, format);
+            count = vsnprintf(str, len+1, format, va);
+            CHECK_NOT_MINUS1_MSG_GOTO(count, rc, SR_ERR_INTERNAL, cleanup, "vsnprintf failed");
+            /* append the string to already printed data */
+            if (print_ctx->method.mem.len + count + 1 > print_ctx->method.mem.size) {
+                new_size = MAX(2 * print_ctx->method.mem.size, print_ctx->method.mem.len + count + 1);
+                aux = realloc(print_ctx->method.mem.buf, new_size * sizeof *aux);
+                CHECK_NULL_NOMEM_GOTO(aux, rc, cleanup);
+                print_ctx->method.mem.buf = aux;
+                print_ctx->method.mem.size = new_size;
+            }
+            strcpy(print_ctx->method.mem.buf + print_ctx->method.mem.len, str);
+            print_ctx->method.mem.len += count;
+            break;
+    }
+
+cleanup:
+    free(str);
+    va_end(va);
+    return rc;
+}
+
+/**
+ * @brief Print single sysrepo tree node.
+ *
+ * @param [in] print_ctx Context for printing.
+ * @param [in] node Sysrepo tree node to print.
+ */
+static int
+sr_print_node(sr_print_ctx_t *print_ctx, sr_node_t *node)
+{
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG2(print_ctx, node);
+
+    if (node->module_name && 0 < strlen(node->module_name)) {
+        rc = sr_print(print_ctx, "%s:%s ", node->module_name, node->name);
+    } else {
+        rc = sr_print(print_ctx, "%s ", node->name);
+    }
+    CHECK_RC_MSG_RETURN(rc, "Failed to print name of a sysrepo tree node");
+
+    switch (node->type) {
+    case SR_CONTAINER_T:
+    case SR_CONTAINER_PRESENCE_T:
+        rc = sr_print(print_ctx, "(container)\n");
+        break;
+    case SR_LIST_T:
+        rc = sr_print(print_ctx, "(list instance)\n");
+        break;
+    case SR_STRING_T:
+        rc = sr_print(print_ctx, "= %s\n", node->data.string_val);
+        break;
+    case SR_BOOL_T:
+        rc = sr_print(print_ctx, "= %s\n", node->data.bool_val ? "true" : "false");
+        break;
+    case SR_UINT8_T:
+        rc = sr_print(print_ctx, "= %u\n", node->data.uint8_val);
+        break;
+    case SR_UINT16_T:
+        rc = sr_print(print_ctx, "= %u\n", node->data.uint16_val);
+        break;
+    case SR_UINT32_T:
+        rc = sr_print(print_ctx, "= %u\n", node->data.uint32_val);
+        break;
+    case SR_IDENTITYREF_T:
+        rc = sr_print(print_ctx, "= %s\n", node->data.identityref_val);
+        break;
+    case SR_ENUM_T:
+        rc = sr_print(print_ctx, "= %s\n", node->data.enum_val);
+        break;
+    case SR_LEAF_EMPTY_T:
+        rc = sr_print(print_ctx, "(empty leaf)\n");
+        break;
+    default:
+        rc = sr_print(print_ctx, "(unprintable)\n");
+    }
+
+    CHECK_RC_MSG_RETURN(rc, "Failed to print value of a sysrepo tree node");
+    return rc;
+}
+
+/**
+ * @brief Print sysrepo tree.
+ *
+ * @param [in] print_ctx Context for printing.
+ * @param [in] tree Sysrepo tree to print.
+ * @param [in] depth_limit Maximum number of tree levels to print.
+ */
+static int
+sr_print_tree(sr_print_ctx_t *print_ctx, sr_node_t *tree, int depth_limit)
+{
+    int rc = SR_ERR_OK;
+    sr_node_t *node = NULL, *pred = NULL, *parent = NULL;
+    char *indent = NULL, *aux = NULL, *cur = NULL;
+    int indent_len = 0, new_len = 0;
+    int depth = 0;
+    bool backtracking = false;
+
+    CHECK_NULL_ARG(print_ctx);
+
+    if (0 == depth_limit || NULL == tree) {
+        return rc;
+    }
+
+    indent_len = 24;
+    indent = calloc(indent_len, sizeof *indent);
+    CHECK_NULL_NOMEM_GOTO(indent, rc, cleanup);
+
+    parent = NULL;
+    node = tree;
+    backtracking = false;
+
+    while (!backtracking || node != tree) {
+        if (!backtracking) {
+            /* print the indent */
+            if (0 < depth) {
+                if (indent_len < 4*(depth-1) + 1) {
+                    new_len = MAX(2*indent_len, 4*(depth-1)+1);
+                    aux = realloc(indent, new_len * sizeof *aux);
+                    CHECK_NULL_NOMEM_GOTO(aux, rc, cleanup);
+                    indent_len = new_len;
+                }
+                indent[4*(depth-1)] = '\0';
+                cur = indent + 4*(depth-1);
+                pred = parent;
+                while (cur != indent) {
+                    cur -= 4;
+                    if (pred->next) {
+                        memcpy(cur, " |  ", 4);
+                    } else {
+                        memcpy(cur, "    ", 4);
+                    }
+                    pred = pred->parent;
+                }
+                rc = sr_print(print_ctx, "%s |\n", indent);
+                CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to print indent for sysrepo tree node");
+                if (depth >= depth_limit || SR_TREE_ITERATOR_T == node->type) {
+                    rc = sr_print(print_ctx, "%s ...\n", indent);
+                } else {
+                    rc = sr_print(print_ctx, "%s -- ", indent);
+                }
+                CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to print indent for sysrepo tree node");
+            }
+            /* print the node */
+            if (depth < depth_limit && SR_TREE_ITERATOR_T != node->type) {
+                rc = sr_print_node(print_ctx, node);
+                CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to print sysrepo tree node");
+            }
+            /* next node */
+            if (SR_TREE_ITERATOR_T == node->type) {
+                node = parent;
+                parent = node->parent;
+                --depth;
+                backtracking = true;
+            } else if (depth < depth_limit && node->first_child) {
+                parent = node;
+                node = node->first_child;
+                ++depth;
+            } else if (depth < depth_limit && node->next) {
+                node = node->next;
+            } else {
+                backtracking = true;
+            }
+        } else {
+            /* backtracking */
+            if (depth < depth_limit && node->next) {
+                node = node->next;
+                backtracking = false;
+            } else {
+                node = node->parent;
+                parent = node->parent;
+                --depth;
+            }
+        }
+    }
+
+cleanup:
+    free(indent);
+    return rc;
+}
+
+int
+sr_print_tree_fd(int fd, sr_node_t *tree, int depth_limit)
+{
+    sr_print_ctx_t print_ctx = { 0, };
+
+    print_ctx.type = SR_PRINT_FD;
+    print_ctx.method.fd = fd;
+
+    return sr_print_tree(&print_ctx, tree, depth_limit);
+}
+
+int
+sr_print_tree_stream(FILE *stream, sr_node_t *tree, int depth_limit)
+{
+    sr_print_ctx_t print_ctx = { 0, };
+
+    print_ctx.type = SR_PRINT_STREAM;
+    print_ctx.method.stream = stream;
+
+    return sr_print_tree(&print_ctx, tree, depth_limit);
+}
+
+int
+sr_print_tree_mem(char **mem_p, sr_node_t *tree, int depth_limit)
+{
+    int rc = SR_ERR_OK;
+    sr_print_ctx_t print_ctx = { 0, };
+
+    CHECK_NULL_ARG(mem_p);
+
+    print_ctx.type = SR_PRINT_MEM;
+    print_ctx.method.mem.buf = NULL;
+    print_ctx.method.mem.len = 0;
+    print_ctx.method.mem.size = 0;
+
+    rc = sr_print_tree(&print_ctx, tree, depth_limit);
+    if (SR_ERR_OK == rc) {
+        *mem_p = print_ctx.method.mem.buf;
+    } else {
+        free(print_ctx.method.mem.buf);
+    }
+    return rc;
 }
