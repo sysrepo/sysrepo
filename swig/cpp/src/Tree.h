@@ -67,7 +67,6 @@ public:
     void set(uint16_t uint16_val, sr_type_t type);
     void set(uint32_t uint32_val, sr_type_t type);
     void set(uint64_t uint64_val, sr_type_t type);
-    void set_type(sr_type_t type);
     ~Tree();
 
 private:
