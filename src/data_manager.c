@@ -3984,7 +3984,13 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
             rc = dm_load_dependant_data(dm_ctx, session, di);
             CHECK_RC_LOG_GOTO(rc, cleanup, "Loading dependant modules failed for %s", di->schema->module_name);
         }
-        ret = lyd_validate(&data_tree, validation_options, ext_ref ? di->node : NULL);
+        if (type == DM_PROCEDURE_ACTION && !input) {
+            /* TODO: validation of action output is not yet covered by libyang,
+             * see: https://github.com/CESNET/libyang/issues/153 */
+            ret = 0;
+        } else {
+            ret = lyd_validate(&data_tree, validation_options, ext_ref ? di->node : NULL);
+        }
         if (ext_ref && di->schema->cross_module_data_dependency) {
             /* remove data appended from other modules for the purpose of validation */
             rc = dm_remove_added_data_trees(session, di);
