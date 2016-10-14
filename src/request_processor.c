@@ -1876,6 +1876,7 @@ rp_data_provide_resp_validate (rp_ctx_t *rp_ctx, rp_session_t *session, const ch
     int rc = SR_ERR_OK;
     bool found = false;
     dm_schema_info_t *si = NULL;
+    struct lys_node *value_sch_node = NULL;
 
     rc = dm_get_module_and_lock(rp_ctx->dm_ctx, session->module_name, &si);
     CHECK_RC_MSG_RETURN(rc, "Get schema info failed");
@@ -1888,30 +1889,39 @@ rp_data_provide_resp_validate (rp_ctx_t *rp_ctx, rp_session_t *session, const ch
             *sch_node = (struct lys_node *) ly_ctx_get_node(si->ly_ctx, NULL, xp);
             if (NULL == *sch_node) {
                 SR_LOG_ERR("Schema node not found for %s", xp);
-                pthread_rwlock_unlock(&si->model_lock);
-                return SR_ERR_INVAL_ARG;
+                rc = SR_ERR_INVAL_ARG;
+                goto unlock;
             }
             free(xp);
             sr_list_rm_at(session->state_data_ctx.requested_xpaths, i);
             break;
         }
     }
-    pthread_rwlock_unlock(&si->model_lock);
-
     if (!found) {
         SR_LOG_ERR("Data provider sent data for unexpected xpath %s", xpath);
-        return SR_ERR_INVAL_ARG;
+        rc = SR_ERR_INVAL_ARG;
+        goto unlock;
     }
 
     /* test that all values are under requested xpath */
-    size_t xp_len = strlen(xpath);
     for (size_t i = 0; i < values_cnt; i++) {
-        if (0 != strncmp(xpath, values[i].xpath, xp_len)){
+        value_sch_node = (struct lys_node *) ly_ctx_get_node(si->ly_ctx, NULL, values[i].xpath);
+        if (NULL == value_sch_node) {
+            SR_LOG_ERR("Value with xpath %s received from provider doesn't correspond to any schema node",
+                    values[i].xpath);
+            rc = SR_ERR_INVAL_ARG;
+            goto unlock;
+
+        }
+        if (false == rp_dt_is_under_subtree(*sch_node, SIZE_MAX, value_sch_node)) {
             SR_LOG_ERR("Unexpected value with xpath %s received from provider", values[i].xpath);
-            return SR_ERR_INVAL_ARG;
+            rc = SR_ERR_INVAL_ARG;
+            goto unlock;
         }
     }
 
+unlock:
+    pthread_rwlock_unlock(&si->model_lock);
     return rc;
 }
 

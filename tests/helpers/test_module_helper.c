@@ -446,5 +446,39 @@ createDataTreeReferencedModule(int8_t magic_number)
     lyd_free_withsiblings(r1);
 
     ly_ctx_destroy(ctx, NULL);
+}
+
+void
+createDataTreeStateModule()
+{
+    struct ly_ctx *ctx = NULL;
+    struct lyd_node *r1 = NULL, *r2 = NULL, *leaf = NULL;
+
+    ctx = ly_ctx_new(TEST_SCHEMA_SEARCH_DIR);
+    assert_non_null(ctx);
+
+    const struct lys_module *module = ly_ctx_load_module(ctx, "state-module@2016-07-01", NULL);
+    assert_non_null(module);
+
+    char buf[10];
+    r1 = lyd_new(NULL, module, "bus");
+    assert_non_null(r1);
+    for (int i = 0; i < 10; ++i) {
+        r2 = lyd_new(r1, module, "seats");
+        assert_non_null(r2);
+        snprintf(buf, 10, "seat-%d", i);
+        leaf = lyd_new_leaf(r2, module, "number", buf+5);
+        assert_non_null(leaf);
+        leaf = lyd_new_leaf(r2, module, "name", buf);
+        assert_non_null(leaf);
+    }
+
+    /* validate & save */
+    assert_int_equal(0, lyd_validate(&r1, LYD_OPT_STRICT | LYD_OPT_CONFIG, NULL));
+    assert_int_equal(SR_ERR_OK, sr_save_data_tree_file(STATE_MODULE_DATA_FILE_NAME, r1));
+
+    lyd_free_withsiblings(r1);
+
+    ly_ctx_destroy(ctx, NULL);
 
 }
