@@ -2389,7 +2389,9 @@ sr_subtree_change_subscribe(sr_session_ctx_t *session, const char *xpath, sr_sub
     /* Initialize the subscription */
     if (opts & SR_SUBSCR_CTX_REUSE) {
         sr_subscription = *subscription_p;
-        sm_subscription_cnt = sr_subscription->sm_subscription_cnt;
+        if (sr_subscription) {
+            sm_subscription_cnt = sr_subscription->sm_subscription_cnt;
+        }
     }
     rc = cl_subscription_init(session, SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS, module_name, SR_API_VALUES,
             private_ctx, &sr_subscription, &sm_subscription, &msg_req);
