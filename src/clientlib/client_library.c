@@ -2429,6 +2429,9 @@ cleanup:
     cl_subscription_close(session, sm_subscription);
     if (NULL != sr_subscription && sr_subscription->sm_subscription_cnt > sm_subscription_cnt) {
         cl_sr_subscription_remove_one(sr_subscription);
+        if (0 == sm_subscription_cnt) {
+            *subscription_p = NULL;
+        }
     }
     if (NULL != msg_req) {
         sr_msg_free(msg_req);
