@@ -17,6 +17,20 @@ module test-module {
   contact
     "example@example.org";
 
+  typedef threshold-power-dBm {
+    type union {
+      type decimal64 {
+        fraction-digits 2;
+      }
+      type enumeration {
+        enum off {
+          description "No threshold configured";
+        }
+      }
+    }
+    description "Power in dBm";
+  }
+
   container main {
     leaf enum {
       type enumeration {
@@ -528,5 +542,7 @@ module test-module {
     }
  }
 
-
+ leaf dec64-in-union {
+   type threshold-power-dBm;
+ }
 }
