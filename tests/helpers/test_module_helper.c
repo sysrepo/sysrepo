@@ -243,6 +243,11 @@ createDataTreeTestModule()
     n = lyd_new_leaf(node, module, "loaded", "false");
     assert_non_null(n);
 
+    /* decimal64 defined as one of the types inside union */
+    node = lyd_new_leaf(NULL, module, "dec64-in-union", XP_TEST_MODULE_DEC64_IN_UNION_VALUE);
+    assert_non_null(node);
+    assert_int_equal(0, lyd_insert_after(r, node));
+
     /* validate & save */
     assert_int_equal(0, lyd_validate(&r, LYD_OPT_STRICT | LYD_OPT_CONFIG, NULL));
     assert_int_equal(SR_ERR_OK, sr_save_data_tree_file(TEST_MODULE_DATA_FILE_NAME, r));
