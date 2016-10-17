@@ -1812,6 +1812,9 @@ edit_move2_test(void **state)
     rc = rp_dt_delete_item_wrapper(ctx, session, "/test-module:list", SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
+    rc = rp_dt_delete_item_wrapper(ctx, session, "/test-module:kernel-modules", SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
     rc = rp_dt_get_values_wrapper(ctx, session, NULL, "/test-module:user", &values, &cnt);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
 
@@ -1905,6 +1908,9 @@ edit_move3_test(void **state)
     assert_int_equal(SR_ERR_OK, rc);
 
     rc = rp_dt_delete_item_wrapper(ctx, session, "/test-module:list", SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = rp_dt_delete_item_wrapper(ctx, session, "/test-module:kernel-modules", SR_EDIT_DEFAULT);
     assert_int_equal(SR_ERR_OK, rc);
 
     rc = rp_dt_get_values_wrapper(ctx, session, NULL, "/test-module:user", &values, &cnt);

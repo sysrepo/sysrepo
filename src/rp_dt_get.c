@@ -141,7 +141,7 @@ rp_dt_get_values_from_nodes(sr_mem_ctx_t *sr_mem, struct ly_set *nodes, sr_val_t
         vals[i]._sr_mem = sr_mem;
         node = nodes->set.d[i];
         if (NULL == node || NULL == node->schema || LYS_RPC == node->schema->nodetype ||
-            LYS_NOTIF == node->schema->nodetype) {
+            LYS_NOTIF == node->schema->nodetype || LYS_ACTION == node->schema->nodetype) {
             /* ignore this node */
             continue;
         }
@@ -651,7 +651,13 @@ rp_dt_xpath_requests_state_data(rp_ctx_t *rp_ctx, rp_session_t *session, dm_sche
     CHECK_RC_MSG_GOTO(rc, cleanup, "List init failed");
 
     rc = rp_dt_xpath_atomize(schema_info, xpath, &atoms);
-    CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to atomize xpath %s", xpath);
+    if (SR_ERR_OK != rc) {
+        SR_LOG_ERR("Failed to atomize xpath '%s'", xpath);
+        SR_LOG_WRN_MSG("Request will continue without retrieving state data");
+        rp_dt_free_state_data_ctx_content(state_data_ctx);
+        rc = SR_ERR_OK;
+        goto cleanup;
+    }
 
     if (SR_API_TREES == api_variant) {
         rc = rp_dt_get_tree_roots(schema_info, xpath, &tree_roots);
@@ -802,10 +808,7 @@ rp_dt_prepare_data(rp_ctx_t *rp_ctx, rp_session_t *rp_session, const char *xpath
 
             rc = rp_dt_xpath_requests_state_data(rp_ctx, rp_session, data_info->schema, xpath, api_variant,
                     tree_depth_limit, &rp_session->state_data_ctx);
-            if (SR_ERR_OK != rc) {
-                SR_LOG_WRN_MSG("rp_dt_xpath_requests_state_data failed - state data won't be retrieved");
-                rc = SR_ERR_OK;
-            }
+            CHECK_RC_MSG_GOTO(rc, cleanup, "rp_dt_xpath_requests_state_data failed");
 
             if (NULL == rp_session->state_data_ctx.subtrees || 0 == rp_session->state_data_ctx.subtrees->count) {
                 SR_LOG_DBG("No state state data provider is asked for data because of xpath %s", xpath);
