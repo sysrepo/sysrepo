@@ -68,6 +68,8 @@ function print_current_config(sess, module_name)
 	for i=0, values:val_cnt() - 1, 1 do
             print_value(values:val(i))
 	end
+
+        collectgarbage()
     end
 
     ok,res=pcall(run)
