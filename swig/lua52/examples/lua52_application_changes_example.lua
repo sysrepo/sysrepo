@@ -119,6 +119,8 @@ function module_change_cb(sess, module_name, event, private_ctx)
 	end
 
 	print("\n\n ========== END OF CHANGES =======================================\n\n")
+
+        collectgarbage()
     end
 
     ok,res=pcall(run)

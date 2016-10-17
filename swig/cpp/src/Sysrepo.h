@@ -49,7 +49,7 @@
     #define S_Xpath_Ctx        Xpath_Ctx*
     #define S_Logs             Logs*
     #define S_Change           Change*
-    #define S_Counter          Counter*
+    #define S_Counter          std::shared_ptr<Counter>
     #define S_Callback         Callback*
 #else
     #define S_Iter_Value       std::shared_ptr<Iter_Value>
