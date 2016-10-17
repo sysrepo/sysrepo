@@ -920,6 +920,20 @@ void edit_test_module_test(void **state){
 
     FREE_VARS(value, new_set);
 
+    /* decimal 64 defined inside union */
+    session->state = RP_REQ_NEW;
+    rc = rp_dt_get_value_wrapper(ctx, session, NULL, XP_TEST_MODULE_DEC64_IN_UNION, &value);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    assert_int_equal(SR_DECIMAL64_T, value->type);
+    assert_int_equal(XP_TEST_MODULE_DEC64_IN_UNION_VALUE_T, value->data.decimal64_val);
+
+    delete_get_set_get(ctx, session, XP_TEST_MODULE_DEC64_IN_UNION, value, &new_set);
+
+    assert_int_equal(value->data.decimal64_val, new_set->data.decimal64_val);
+
+    FREE_VARS(value, new_set);
+
     /* enum leaf*/
     session->state = RP_REQ_NEW;
     rc = rp_dt_get_value_wrapper(ctx, session, NULL, XP_TEST_MODULE_ENUM, &value);
