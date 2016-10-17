@@ -129,8 +129,8 @@ void createDataTreeStateModule();
 
 
 #define XP_TEST_MODULE_DEC64_IN_UNION "/test-module:dec64-in-union"
-#define XP_TEST_MODULE_DEC64_IN_UNION_VALUE "-10.00"
-#define XP_TEST_MODULE_DEC64_IN_UNION_VALUE_T -10
+#define XP_TEST_MODULE_DEC64_IN_UNION_VALUE "-11.17"
+#define XP_TEST_MODULE_DEC64_IN_UNION_VALUE_T (-11.17)
 
 
 

@@ -1097,7 +1097,12 @@ sr_dec64_to_str(double val, const struct lys_node *schema_node, char **out)
     size_t fraction_digits = 0;
     if (LYS_LEAF == schema_node->nodetype || LYS_LEAFLIST == schema_node->nodetype) {
         struct lys_node_leaflist *l = (struct lys_node_leaflist *) schema_node;
-        fraction_digits = l->type.info.dec64.dig;
+        struct lys_type *actual_type = sr_libyang_get_actual_leaf_type(&l->type, LY_TYPE_DEC64);
+        if (NULL == actual_type) {
+            SR_LOG_ERR("Missing schema information for node '%s'", schema_node->name);
+            return SR_ERR_INTERNAL;
+        }
+        fraction_digits = actual_type->info.dec64.dig;
     } else {
         SR_LOG_ERR_MSG("Node must be either leaf or leaflist");
         return SR_ERR_INVAL_ARG;
