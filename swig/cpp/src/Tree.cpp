@@ -134,7 +134,8 @@ void Tree::set(const char *value, sr_type_t type) {
         ret = sr_node_set_string(_node, value);
         if (ret != SR_ERR_OK)
             throw_exception(ret);
-    } else {
+    } else if (value != NULL && ( type != SR_LIST_T && type != SR_CONTAINER_T && type != SR_CONTAINER_PRESENCE_T &&\
+        type != SR_UNKNOWN_T && type != SR_LEAF_EMPTY_T)) {
         throw_exception(SR_ERR_INVAL_ARG);
     }
 }
@@ -232,14 +233,6 @@ void Tree::set(uint64_t uint64_val, sr_type_t type) {
     if (type == SR_UINT64_T) {
 	    _node->data.uint64_val = uint64_val;
     } else {
-        throw_exception(SR_ERR_INVAL_ARG);
-    }
-
-    _node->type = type;
-}
-void Tree::set_type(sr_type_t type) {
-    if (type != SR_LIST_T && type != SR_CONTAINER_T && type != SR_CONTAINER_PRESENCE_T &&\
-        type != SR_UNKNOWN_T && type != SR_LEAF_EMPTY_T) {
         throw_exception(SR_ERR_INVAL_ARG);
     }
 
