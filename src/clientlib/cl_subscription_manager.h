@@ -53,6 +53,8 @@ typedef union cl_sm_callback_u {
         sr_dp_get_items_cb dp_get_items_cb;      /**< Callback to be called by operational data requests. */
         sr_rpc_cb rpc_cb;                        /**< Callback to be called by RPC delivery. */
         sr_rpc_tree_cb rpc_tree_cb;              /**< Callback to be called by RPC delivery -- the *tree* variant */
+        sr_action_cb action_cb;                  /**< Callback to be called by Action delivery. */
+        sr_action_tree_cb action_tree_cb;        /**< Callback to be called by Action delivery -- the *tree* variant */
         sr_event_notif_cb event_notif_cb;        /**< Callback to be called by event notification delivery. */
         sr_event_notif_tree_cb event_notif_tree_cb;  /**< Callback to be called by event notification delivery -- the *tree* variant. */
 } cl_sm_callback_t;

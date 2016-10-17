@@ -533,6 +533,7 @@ enum SubscriptionType {
   DP_GET_ITEMS_SUBS = 20;
 
   RPC_SUBS = 30;
+  ACTION_SUBS = 31;
 
   EVENT_NOTIF_SUBS = 40;
 
@@ -643,24 +644,26 @@ message GetChangesResp {
 
 
 ////////////////////////////////////////////////////////////////////////////////
-// RPC (Remote Procedure Calls) API
+// RPC (Remote Procedure Calls) / Action API
 ////////////////////////////////////////////////////////////////////////////////
 
 message RPCReq {
-  required string xpath = 1;
-  required ApiVariant orig_api_variant = 2; /**< which API variant was used to send RPC req. */
-  repeated Value input = 3;
-  repeated Node input_tree = 4;
+  required bool action = 1;
+  required string xpath = 2;
+  required ApiVariant orig_api_variant = 3; /**< which API variant was used to send RPC req. */
+  repeated Value input = 4;
+  repeated Node input_tree = 5;
 
   optional string subscriber_address = 10;
   optional uint32 subscription_id = 11;
 }
 
 message RPCResp {
-  required string xpath = 1;
-  required ApiVariant orig_api_variant = 2; /**< which API variant was used to send RPC req. */
-  repeated Value output = 3;
-  repeated Node output_tree = 4;
+  required bool action = 1;
+  required string xpath = 2;
+  required ApiVariant orig_api_variant = 3; /**< which API variant was used to send RPC req. */
+  repeated Value output = 4;
+  repeated Node output_tree = 5;
 }
 
 
@@ -811,7 +814,8 @@ enum Operation {
 
   DATA_PROVIDE = 80;
   RPC = 81;
-  EVENT_NOTIF = 82;
+  ACTION = 82;
+  EVENT_NOTIF = 83;
 
   UNSUBSCRIBE_DESTINATION = 101;
   COMMIT_TIMEOUT = 102;

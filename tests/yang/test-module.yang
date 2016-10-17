@@ -1,9 +1,14 @@
 module test-module {
+  yang-version 1.1;
   namespace "urn:ietf:params:xml:ns:yang:test-module";
   prefix tm;
 
   import ietf-inet-types {
     prefix inet;
+  }
+
+  import referenced-data {
+    prefix rd;
   }
 
   organization "organization";
@@ -231,6 +236,7 @@ module test-module {
     input {
       leaf image-name {
         type string;
+        must ". != /top-level-default";
       }
       leaf location {
         type string;
@@ -350,36 +356,108 @@ module test-module {
     }
   }
 
- grouping link {
-    container source {
-      leaf address {
-        type inet:ipv4-address;
-      }
-      leaf interface {
-        type string;
-      }
-    }
-    container destination {
-      leaf address {
-        type inet:ipv4-address;
-      }
-      leaf interface {
-        type string;
-      }
-    }
-    leaf MTU {
-      type uint16;
-      default 1500;
-    }
- }
+  grouping link {
+     container source {
+       leaf address {
+         type inet:ipv4-address;
+       }
+       leaf interface {
+         type string;
+       }
+     }
+     container destination {
+       leaf address {
+         type inet:ipv4-address;
+       }
+       leaf interface {
+         type string;
+       }
+     }
+     leaf MTU {
+       type uint16;
+       default 1500;
+     }
+  }
 
- notification link-discovered {
-   uses link;
- }
-
- notification link-removed {
+  notification link-discovered {
     uses link;
- }
+  }
+
+  notification link-removed {
+     uses link;
+  }
+
+  container kernel-modules {
+    list kernel-module {
+      key "name";
+
+      leaf name {
+        type string;
+      }
+
+      leaf location {
+        type string;
+        default "/lib/modules";
+      }
+
+      leaf loaded {
+        type boolean;
+      }
+
+      action load {
+        input {
+          leaf params {
+            mandatory "true";
+            type string;
+          }
+          leaf force {
+            type boolean;
+            default "false";
+            when "../../loaded = 'false'";
+          }
+          leaf dry-run {
+            type boolean;
+            default false;
+          }
+        }
+        output {
+          leaf return-code {
+            type uint8;
+          }
+        }
+      }
+
+      action get-dependencies {
+        output {
+          leaf-list dependency {
+            type string;
+          }
+          leaf location {
+            type leafref {
+              path "/kernel-modules/kernel-module[name = current()/../../name]/location";
+            }
+          }
+          leaf location2 {
+            type leafref {
+              path "../../location";
+            }
+          }
+        }
+      }
+
+      notification status-change {
+        leaf loaded {
+          type boolean;
+        }
+        leaf time-of-change {
+          type uint32;
+          must '. > /rd:magic_number' {
+             error-message "time-of-change must be greater than magic_number";
+          }
+        }
+      }
+    }
+  }
 
  typedef uniontpdf {
    type union {

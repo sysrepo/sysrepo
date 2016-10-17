@@ -1470,7 +1470,8 @@ rp_subscribe_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr
     if (subscribe_req->has_enable_running && subscribe_req->enable_running) {
         options |= NP_SUBSCR_ENABLE_RUNNING;
     }
-    if (SR__SUBSCRIPTION_TYPE__RPC_SUBS == subscribe_req->type) {
+    if (SR__SUBSCRIPTION_TYPE__RPC_SUBS == subscribe_req->type ||
+        SR__SUBSCRIPTION_TYPE__ACTION_SUBS == subscribe_req->type) {
         options |= NP_SUBSCR_EXCLUSIVE;
     }
 
@@ -1678,7 +1679,7 @@ cleanup:
 }
 
 /**
- * @brief Processes a RPC request.
+ * @brief Processes a RPC/Action request.
  */
 static int
 rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
@@ -1692,6 +1693,8 @@ rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg 
     size_t subscription_cnt = 0;
     Sr__Msg *req = NULL, *resp = NULL;
     sr_mem_ctx_t *sr_mem = NULL;
+    const char *op_name = NULL;
+    bool action = false;
     int rc = SR_ERR_OK, rc_tmp = SR_ERR_OK;
 
     CHECK_NULL_ARG_NORET5(rc, rp_ctx, session, msg, msg->request, msg->request->rpc_req);
@@ -1699,7 +1702,9 @@ rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg 
         goto finalize;
     }
 
-    SR_LOG_DBG_MSG("Processing RPC request.");
+    action = msg->request->rpc_req->action;
+    op_name = (action ? "Action" : "RPC");
+    SR_LOG_DBG("Processing %s request.", op_name);
 
     /* reuse context from msg for req (or resp) */
     sr_mem = (sr_mem_ctx_t *)msg->_sysrepo_mem_ctx;
@@ -1716,49 +1721,70 @@ rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg 
                     &input_tree, &input_cnt);
             break;
     }
-    CHECK_RC_LOG_GOTO(rc, finalize, "Failed to parse RPC (%s) input arguments from GPB message.",
-                      msg->request->rpc_req->xpath);
+    CHECK_RC_LOG_GOTO(rc, finalize, "Failed to parse %s (%s) input arguments from GPB message.",
+                      op_name, msg->request->rpc_req->xpath);
 
-    /* validate RPC request */
+    /* validate RPC/Action request */
     switch (msg_api_variant) {
         case SR_API_VALUES:
-            rc = dm_validate_rpc(rp_ctx->dm_ctx, session->dm_session, msg->request->rpc_req->xpath,
-                                 input, input_cnt, true, sr_mem, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
+            if (action) {
+                rc = dm_validate_action(rp_ctx->dm_ctx, session->dm_session, msg->request->rpc_req->xpath,
+                                 input, input_cnt, true, sr_mem, &with_def, &with_def_cnt,
+                                 &with_def_tree, &with_def_tree_cnt);
+
+            } else {
+                rc = dm_validate_rpc(rp_ctx->dm_ctx, session->dm_session, msg->request->rpc_req->xpath,
+                                     input, input_cnt, true, sr_mem, &with_def, &with_def_cnt,
+                                     &with_def_tree, &with_def_tree_cnt);
+            }
             break;
         case SR_API_TREES:
-            rc = dm_validate_rpc_tree(rp_ctx->dm_ctx, session->dm_session, msg->request->rpc_req->xpath,
-                                 input_tree, input_cnt, true, sr_mem, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
+            if (action) {
+                rc = dm_validate_action_tree(rp_ctx->dm_ctx, session->dm_session, msg->request->rpc_req->xpath,
+                                     input_tree, input_cnt, true, sr_mem, &with_def, &with_def_cnt,
+                                     &with_def_tree, &with_def_tree_cnt);
+            } else {
+                rc = dm_validate_rpc_tree(rp_ctx->dm_ctx, session->dm_session, msg->request->rpc_req->xpath,
+                                     input_tree, input_cnt, true, sr_mem, &with_def, &with_def_cnt,
+                                     &with_def_tree, &with_def_tree_cnt);
+            }
             break;
     }
-    CHECK_RC_LOG_GOTO(rc, finalize, "Validation of an RPC (%s) message failed.", msg->request->rpc_req->xpath);
+    CHECK_RC_LOG_GOTO(rc, finalize, "Validation of an %s (%s) message failed.", op_name, msg->request->rpc_req->xpath);
 
     /* get module name */
     rc = sr_copy_first_ns(msg->request->rpc_req->xpath, &module_name);
-    CHECK_RC_LOG_GOTO(rc, finalize, "Failed to obtain module name for RPC request (%s).", msg->request->rpc_req->xpath);
+    CHECK_RC_LOG_GOTO(rc, finalize, "Failed to obtain module name for %s request (%s).", op_name,
+            msg->request->rpc_req->xpath);
 
-    /* authorize (write permissions are required to deliver the RPC) */
+    /* authorize (write permissions are required to deliver the RPC/Action) */
     rc = ac_check_module_permissions(session->ac_session, module_name, AC_OPER_READ_WRITE);
     CHECK_RC_LOG_GOTO(rc, finalize, "Access control check failed for module name '%s'", module_name);
 
     /* fill-in subscription details into the request */
     bool subscription_match = false;
-    /* get RPC subscription */
-    rc = pm_get_subscriptions(rp_ctx->pm_ctx, module_name, SR__SUBSCRIPTION_TYPE__RPC_SUBS,
+    /* get RPC/Action subscription */
+    rc = pm_get_subscriptions(rp_ctx->pm_ctx, module_name,
+            action ? SR__SUBSCRIPTION_TYPE__ACTION_SUBS : SR__SUBSCRIPTION_TYPE__RPC_SUBS,
             &subscriptions, &subscription_cnt);
-    CHECK_RC_LOG_GOTO(rc, finalize, "Failed to get subscriptions for RPC request (%s).", msg->request->rpc_req->xpath);
+    CHECK_RC_LOG_GOTO(rc, finalize, "Failed to get subscriptions for %s request (%s).", op_name,
+            msg->request->rpc_req->xpath);
 
     for (size_t i = 0; i < subscription_cnt; i++) {
         if (NULL != subscriptions[i].xpath && 0 == strcmp(subscriptions[i].xpath, msg->request->rpc_req->xpath)) {
             /* duplicate msg into req with the new input values */
-            rc = sr_gpb_req_alloc(sr_mem, SR__OPERATION__RPC, session->id, &req);
-            CHECK_RC_LOG_GOTO(rc, finalize, "Failed to duplicate RPC request (%s).", msg->request->rpc_req->xpath);
+            rc = sr_gpb_req_alloc(sr_mem, action ? SR__OPERATION__ACTION : SR__OPERATION__RPC, session->id, &req);
+            CHECK_RC_LOG_GOTO(rc, finalize, "Failed to duplicate %s request (%s).", op_name,
+                    msg->request->rpc_req->xpath);
+            req->request->rpc_req->action = action;
             /*  - xpath */
             if (sr_mem) {
                 req->request->rpc_req->xpath = msg->request->rpc_req->xpath;
             } else {
                 req->request->rpc_req->xpath = strdup(msg->request->rpc_req->xpath);
                 CHECK_NULL_NOMEM_ERROR(req->request->rpc_req->xpath, rc);
-                CHECK_RC_LOG_GOTO(rc, finalize, "Failed to duplicate RPC request xpath (%s).", msg->request->rpc_req->xpath);
+                CHECK_RC_LOG_GOTO(rc, finalize, "Failed to duplicate %s request xpath (%s).", op_name,
+                        msg->request->rpc_req->xpath);
             }
             /*  - api variant */
             req->request->rpc_req->orig_api_variant = msg->request->rpc_req->orig_api_variant;
@@ -1773,7 +1799,8 @@ rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg 
                                             &req->request->rpc_req->n_input_tree);
                     break;
             }
-            CHECK_RC_LOG_GOTO(rc, finalize, "Failed to duplicate RPC request (%s) input arguments.", msg->request->rpc_req->xpath);
+            CHECK_RC_LOG_GOTO(rc, finalize, "Failed to duplicate %s request (%s) input arguments.", op_name,
+                    msg->request->rpc_req->xpath);
             /* subscription details */
             sr_mem_edit_string(sr_mem, &req->request->rpc_req->subscriber_address, subscriptions[i].dst_address);
             CHECK_NULL_NOMEM_GOTO(req->request->rpc_req->subscriber_address, rc, finalize);
@@ -1783,11 +1810,12 @@ rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg 
             break;
         }
     }
-    CHECK_RC_LOG_GOTO(rc, finalize, "Failed to process subscription data for RPC request (%s).", msg->request->rpc_req->xpath);
+    CHECK_RC_LOG_GOTO(rc, finalize, "Failed to process subscription data for %s request (%s).", op_name,
+            msg->request->rpc_req->xpath);
 
     if (!subscription_match) {
-        /* no subscription for this RPC */
-        SR_LOG_ERR("No subscription found for RPC delivery (xpath = '%s').", req->request->rpc_req->xpath);
+        /* no subscription for this RPC/Action */
+        SR_LOG_ERR("No subscription found for %s delivery (xpath = '%s').", op_name, req->request->rpc_req->xpath);
         rc = SR_ERR_NOT_FOUND;
         goto finalize;
     }
@@ -1815,9 +1843,11 @@ finalize:
             sr_msg_free(req);
         }
         /* send the response with error */
-        rc_tmp = sr_gpb_resp_alloc(sr_mem, SR__OPERATION__RPC, session->id, &resp);
+        rc_tmp = sr_gpb_resp_alloc(sr_mem, action ? SR__OPERATION__ACTION : SR__OPERATION__RPC,
+                                   session->id, &resp);
         if (SR_ERR_OK == rc_tmp) {
             resp->response->result = rc;
+            resp->response->rpc_resp->action = action;
             if (sr_mem) {
                 resp->response->rpc_resp->xpath = msg->request->rpc_req->xpath;
             } else {
@@ -1846,6 +1876,7 @@ rp_data_provide_resp_validate (rp_ctx_t *rp_ctx, rp_session_t *session, const ch
     int rc = SR_ERR_OK;
     bool found = false;
     dm_schema_info_t *si = NULL;
+    struct lys_node *value_sch_node = NULL;
 
     rc = dm_get_module_and_lock(rp_ctx->dm_ctx, session->module_name, &si);
     CHECK_RC_MSG_RETURN(rc, "Get schema info failed");
@@ -1858,30 +1889,39 @@ rp_data_provide_resp_validate (rp_ctx_t *rp_ctx, rp_session_t *session, const ch
             *sch_node = (struct lys_node *) ly_ctx_get_node(si->ly_ctx, NULL, xp);
             if (NULL == *sch_node) {
                 SR_LOG_ERR("Schema node not found for %s", xp);
-                pthread_rwlock_unlock(&si->model_lock);
-                return SR_ERR_INVAL_ARG;
+                rc = SR_ERR_INVAL_ARG;
+                goto unlock;
             }
             free(xp);
             sr_list_rm_at(session->state_data_ctx.requested_xpaths, i);
             break;
         }
     }
-    pthread_rwlock_unlock(&si->model_lock);
-
     if (!found) {
         SR_LOG_ERR("Data provider sent data for unexpected xpath %s", xpath);
-        return SR_ERR_INVAL_ARG;
+        rc = SR_ERR_INVAL_ARG;
+        goto unlock;
     }
 
     /* test that all values are under requested xpath */
-    size_t xp_len = strlen(xpath);
     for (size_t i = 0; i < values_cnt; i++) {
-        if (0 != strncmp(xpath, values[i].xpath, xp_len)){
+        value_sch_node = (struct lys_node *) ly_ctx_get_node(si->ly_ctx, NULL, values[i].xpath);
+        if (NULL == value_sch_node) {
+            SR_LOG_ERR("Value with xpath %s received from provider doesn't correspond to any schema node",
+                    values[i].xpath);
+            rc = SR_ERR_INVAL_ARG;
+            goto unlock;
+
+        }
+        if (false == rp_dt_is_under_subtree(*sch_node, SIZE_MAX, value_sch_node)) {
             SR_LOG_ERR("Unexpected value with xpath %s received from provider", values[i].xpath);
-            return SR_ERR_INVAL_ARG;
+            rc = SR_ERR_INVAL_ARG;
+            goto unlock;
         }
     }
 
+unlock:
+    pthread_rwlock_unlock(&si->model_lock);
     return rc;
 }
 
@@ -2033,7 +2073,7 @@ cleanup:
 }
 
 /**
- * @brief Processes a RPC response.
+ * @brief Processes a RPC/Action response.
  */
 static int
 rp_rpc_resp_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg *msg)
@@ -2044,6 +2084,7 @@ rp_rpc_resp_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg
     size_t output_cnt = 0, with_def_cnt = 0, with_def_tree_cnt = 0;
     Sr__Msg *resp = NULL;
     sr_mem_ctx_t *sr_mem = NULL;
+    bool action = false;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG_NORET5(rc, rp_ctx, session, msg, msg->response, msg->response->rpc_resp);
@@ -2053,10 +2094,12 @@ rp_rpc_resp_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg
         return rc;
     }
 
+    action = msg->response->rpc_resp->action;
+
     /* reuse memory context from msg for resp */
     sr_mem = (sr_mem_ctx_t *)msg->_sysrepo_mem_ctx;
 
-    /* validate the RPC response */
+    /* validate the RPC/Action response */
     if (msg->response->rpc_resp->n_output) {
         rc = sr_values_gpb_to_sr(sr_mem, msg->response->rpc_resp->output,
                                  msg->response->rpc_resp->n_output, &output, &output_cnt);
@@ -2067,19 +2110,30 @@ rp_rpc_resp_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg
     }
     if (SR_ERR_OK == rc) {
         if (SR_API_VALUES == msg_api_variant) {
-            rc = dm_validate_rpc(rp_ctx->dm_ctx, session->dm_session, msg->response->rpc_resp->xpath,
-                    output, output_cnt, false, sr_mem, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
+            if (action) {
+                rc = dm_validate_action(rp_ctx->dm_ctx, session->dm_session, msg->response->rpc_resp->xpath,
+                        output, output_cnt, false, sr_mem, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
+            } else {
+                rc = dm_validate_rpc(rp_ctx->dm_ctx, session->dm_session, msg->response->rpc_resp->xpath,
+                        output, output_cnt, false, sr_mem, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
+            }
         } else {
-            rc = dm_validate_rpc_tree(rp_ctx->dm_ctx, session->dm_session, msg->response->rpc_resp->xpath,
-                    output_tree, output_cnt, false, sr_mem, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
+            if (action) {
+                rc = dm_validate_action_tree(rp_ctx->dm_ctx, session->dm_session, msg->response->rpc_resp->xpath,
+                        output_tree, output_cnt, false, sr_mem, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
+            } else {
+                rc = dm_validate_rpc_tree(rp_ctx->dm_ctx, session->dm_session, msg->response->rpc_resp->xpath,
+                        output_tree, output_cnt, false, sr_mem, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
+            }
         }
     }
 
     /* duplicate msg into resp with the new output values */
     if (SR_ERR_OK == rc) {
-        rc = sr_gpb_resp_alloc(sr_mem, SR__OPERATION__RPC, session->id, &resp);
+        rc = sr_gpb_resp_alloc(sr_mem, action ? SR__OPERATION__ACTION : SR__OPERATION__RPC, session->id, &resp);
     }
     if (SR_ERR_OK == rc) {
+        resp->response->rpc_resp->action = action;
         if (sr_mem) {
             resp->response->rpc_resp->xpath = msg->response->rpc_resp->xpath;
         } else {
@@ -2121,7 +2175,7 @@ rp_rpc_resp_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg
         SR_LOG_ERR_MSG("Copying errors to gpb failed.");
     }
 
-    /* forward RPC response to the originator */
+    /* forward RPC/Action response to the originator */
     rc = cm_msg_send(rp_ctx->cm_ctx, resp);
 
     return rc;
@@ -2472,6 +2526,7 @@ rp_req_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, bool *ski
             rc = rp_get_changes_req_process(rp_ctx, session, msg);
             break;
         case SR__OPERATION__RPC:
+        case SR__OPERATION__ACTION:
             rc = rp_rpc_req_process(rp_ctx, session, msg);
             *skip_msg_cleanup = true;
             return rc; /* skip further processing */
@@ -2524,6 +2579,7 @@ rp_resp_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, bool *sk
             rc = rp_data_provide_resp_process(rp_ctx, session, msg);
             break;
         case SR__OPERATION__RPC:
+        case SR__OPERATION__ACTION:
             rc = rp_rpc_resp_process(rp_ctx, session, msg);
             *skip_msg_cleanup = true;
             break;

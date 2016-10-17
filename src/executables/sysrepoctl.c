@@ -718,6 +718,18 @@ cleanup:
 }
 
 /**
+ * @brief Check if two file paths refer to the same file.
+ */
+bool
+srctl_same_file(const char *file1, const char *file2)
+{
+    struct stat stat1, stat2;
+    if(stat(file1, &stat1) < 0) return false;
+    if(stat(file2, &stat2) < 0) return false;
+    return (stat1.st_dev == stat2.st_dev) && (stat1.st_ino == stat2.st_ino);
+}
+
+/**
  * @brief Installs specified schema files to sysrepo.
  */
 static int
@@ -732,13 +744,17 @@ srctl_schema_install(const struct lys_module *module, const char *yang_src, cons
         if (-1 != access(yang_src, F_OK)) {
             /* only if the source file actually exists */
             srctl_get_yang_path(module->name, module->rev[0].date, yang_dst, PATH_MAX);
-            printf("Installing the YANG file to '%s'...\n", yang_dst);
-            snprintf(cmd, PATH_MAX, "cp %s %s", yang_src, yang_dst);
-            ret = system(cmd);
-            if (0 != ret) {
-                fprintf(stderr, "Error: Unable to install the YANG file to '%s'.\n", yang_dst);
-                yang_dst[0] = '\0';
-                goto fail;
+            if (srctl_same_file(yang_src, yang_dst)) {
+                printf("Schema of the module %s is already installed, skipping...\n", module->name);
+            } else {
+                printf("Installing the YANG file to '%s'...\n", yang_dst);
+                snprintf(cmd, PATH_MAX, "cp %s %s", yang_src, yang_dst);
+                ret = system(cmd);
+                if (0 != ret) {
+                    fprintf(stderr, "Error: Unable to install the YANG file to '%s'.\n", yang_dst);
+                    yang_dst[0] = '\0';
+                    goto fail;
+                }
             }
         }
     }
@@ -748,13 +764,17 @@ srctl_schema_install(const struct lys_module *module, const char *yang_src, cons
         if (-1 != access(yin_src, F_OK)) {
             /* only if the source file actually exists */
             srctl_get_yin_path(module->name, module->rev[0].date, yin_dst, PATH_MAX);
-            printf("Installing the YIN file to '%s'...\n", yin_dst);
-            snprintf(cmd, PATH_MAX, "cp %s %s", yin_src, yin_dst);
-            ret = system(cmd);
-            if (0 != ret) {
-                fprintf(stderr, "Error: Unable to install the YIN file to '%s'.\n", yin_dst);
-                yin_dst[0] = '\0';
-                goto fail;
+            if (srctl_same_file(yin_src, yin_dst)) {
+                printf("Schema of the module %s is already installed, skipping...\n", module->name);
+            } else {
+                printf("Installing the YIN file to '%s'...\n", yin_dst);
+                snprintf(cmd, PATH_MAX, "cp %s %s", yin_src, yin_dst);
+                ret = system(cmd);
+                if (0 != ret) {
+                    fprintf(stderr, "Error: Unable to install the YIN file to '%s'.\n", yin_dst);
+                    yin_dst[0] = '\0';
+                    goto fail;
+                }
             }
         }
     }
@@ -831,7 +851,8 @@ srctl_module_has_data(const struct lys_module *module)
     /* iterate through top-level nodes */
     LY_TREE_FOR(module->data, iter) {
         if (((LYS_CONFIG_R & iter->flags) /* operational data */ ||
-             ((LYS_CONTAINER | LYS_LIST | LYS_LEAF | LYS_LEAFLIST | LYS_CHOICE | LYS_RPC | LYS_NOTIF) & iter->nodetype) /* data-carrying */)) {
+             ((LYS_CONTAINER | LYS_LIST | LYS_LEAF | LYS_LEAFLIST | LYS_CHOICE | LYS_RPC | LYS_NOTIF | LYS_ACTION) & iter->nodetype))) {
+            /* data-carrying */
             return true;
         }
     }

@@ -2858,13 +2858,29 @@ sr_rpc_subscribe_tree(sr_session_ctx_t *session, const char *xpath, sr_rpc_tree_
     return cl_rpc_subscribe(SR_API_TREES, session, xpath, callback_u, private_ctx, opts, subscription_p);
 }
 
-int
-sr_rpc_send(sr_session_ctx_t *session, const char *xpath,
+/**
+ * @brief Sends a RPC/Action specified by xpath and waits for the result.
+ *
+ * @param[in] session Session context acquired with ::sr_session_start call.
+ * @param[in] xpath XPath identifying the RPC/Action.
+ * @param[in] input Array of input parameters (array of all nodes that hold some
+ * data in RPC/Action input subtree - same as ::sr_get_items would return).
+ * @param[in] input_cnt Number of input parameters.
+ * @param[out] output Array of output parameters (all nodes that hold some data
+ * in RPC/Action output subtree). Will be allocated by sysrepo and should be freed by
+ * caller using ::sr_free_values.
+ * @param[out] output_cnt Number of output parameters.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+static int
+cl_rpc_send(sr_session_ctx_t *session, const char *xpath, bool action,
         const sr_val_t *input,  const size_t input_cnt, sr_val_t **output, size_t *output_cnt)
 {
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
     sr_mem_ctx_t *sr_mem = NULL;
     sr_mem_snapshot_t snapshot = { 0, };
+    const char *op_name = (action ? "Action" : "RPC");
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG3(session, session->conn_ctx, xpath);
@@ -2876,28 +2892,109 @@ sr_rpc_send(sr_session_ctx_t *session, const char *xpath,
 
     cl_session_clear_errors(session);
 
-    /* prepare RPC message */
-    rc = sr_gpb_req_alloc(sr_mem, SR__OPERATION__RPC, session->id, &msg_req);
+    /* prepare RPC/Action message */
+    rc = sr_gpb_req_alloc(sr_mem, action ? SR__OPERATION__ACTION : SR__OPERATION__RPC, session->id, &msg_req);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
 
     /* set arguments */
+    msg_req->request->rpc_req->action = action;
     sr_mem_edit_string(sr_mem, &msg_req->request->rpc_req->xpath, xpath);
     CHECK_NULL_NOMEM_GOTO(msg_req->request->rpc_req->xpath, rc, cleanup);
     msg_req->request->rpc_req->orig_api_variant = sr_api_variant_sr_to_gpb(SR_API_VALUES);
 
     /* set input arguments */
     rc = sr_values_sr_to_gpb(input, input_cnt, &msg_req->request->rpc_req->input, &msg_req->request->rpc_req->n_input);
-    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by copying RPC input arguments to GPB.");
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Error by copying %s input arguments to GPB.", op_name);
 
     /* send the request and receive the response */
-    rc = cl_request_process(session, msg_req, &msg_resp, NULL, SR__OPERATION__RPC);
+    rc = cl_request_process(session, msg_req, &msg_resp, NULL, action ? SR__OPERATION__ACTION : SR__OPERATION__RPC);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
 
     if (NULL != output) {
         /* set output arguments */
         rc = sr_values_gpb_to_sr((sr_mem_ctx_t *)msg_resp->_sysrepo_mem_ctx, msg_resp->response->rpc_resp->output,
                 msg_resp->response->rpc_resp->n_output, output, output_cnt);
-        CHECK_RC_MSG_GOTO(rc, cleanup, "Error by copying RPC output arguments from GPB.");
+        CHECK_RC_LOG_GOTO(rc, cleanup, "Error by copying %soutput arguments from GPB.", op_name);
+    }
+
+    sr_msg_free(msg_req);
+    sr_msg_free(msg_resp);
+
+    if (snapshot.sr_mem) {
+        sr_mem_restore(&snapshot);
+    }
+
+    return cl_session_return(session, SR_ERR_OK);
+
+cleanup:
+    if (NULL != msg_req) {
+        sr_msg_free(msg_req);
+    }
+    if (NULL != msg_resp) {
+        sr_msg_free(msg_resp);
+    }
+    if (snapshot.sr_mem) {
+        sr_mem_restore(&snapshot);
+    }
+    return cl_session_return(session, rc);
+}
+
+/**
+ * @brief Sends a RPC/Action specified by xpath and waits for the result. Input and output data
+ * are represented as arrays of subtrees reflecting the scheme of RPC/Action arguments.
+ *
+ * @param[in] session Session context acquired with ::sr_session_start call.
+ * @param[in] xpath XPath identifying the RPC/Action.
+ * @param[in] input Array of input parameters (organized in trees).
+ * @param[in] input_cnt Number of input parameters.
+ * @param[out] output Array of output parameters (organized in trees).
+ * Will be allocated by sysrepo and should be freed by caller using ::sr_free_trees.
+ * @param[out] output_cnt Number of output parameters.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+static int
+cl_rpc_send_tree(sr_session_ctx_t *session, const char *xpath, bool action,
+        const sr_node_t *input,  const size_t input_cnt, sr_node_t **output, size_t *output_cnt)
+{
+    Sr__Msg *msg_req = NULL, *msg_resp = NULL;
+    sr_mem_ctx_t *sr_mem = NULL;
+    sr_mem_snapshot_t snapshot = { 0, };
+    const char *op_name = (action ? "Action" : "RPC");
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG3(session, session->conn_ctx, xpath);
+
+    if (NULL != input) {
+        sr_mem = input[0]._sr_mem;
+        sr_mem_snapshot(sr_mem, &snapshot);
+    }
+
+    cl_session_clear_errors(session);
+
+    /* prepare RPC/Action message */
+    rc = sr_gpb_req_alloc(sr_mem, action ? SR__OPERATION__ACTION : SR__OPERATION__RPC, session->id, &msg_req);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
+
+    /* set arguments */
+    msg_req->request->rpc_req->action = action;
+    sr_mem_edit_string(sr_mem, &msg_req->request->rpc_req->xpath, xpath);
+    CHECK_NULL_NOMEM_GOTO(msg_req->request->rpc_req->xpath, rc, cleanup);
+    msg_req->request->rpc_req->orig_api_variant = sr_api_variant_sr_to_gpb(SR_API_TREES);
+
+    /* set input arguments */
+    rc = sr_trees_sr_to_gpb(input, input_cnt, &msg_req->request->rpc_req->input_tree, &msg_req->request->rpc_req->n_input_tree);
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Error by copying %s input arguments to GPB.", op_name);
+
+    /* send the request and receive the response */
+    rc = cl_request_process(session, msg_req, &msg_resp, NULL, action ? SR__OPERATION__ACTION : SR__OPERATION__RPC);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
+
+    if (NULL != output) {
+        /* set output arguments */
+        rc = sr_trees_gpb_to_sr((sr_mem_ctx_t *)msg_resp->_sysrepo_mem_ctx, msg_resp->response->rpc_resp->output_tree,
+                msg_resp->response->rpc_resp->n_output_tree, output, output_cnt);
+        CHECK_RC_LOG_GOTO(rc, cleanup, "Error by copying %s output arguments from GPB.", op_name);
     }
 
     sr_msg_free(msg_req);
@@ -2923,67 +3020,129 @@ cleanup:
 }
 
 int
+sr_rpc_send(sr_session_ctx_t *session, const char *xpath,
+        const sr_val_t *input,  const size_t input_cnt, sr_val_t **output, size_t *output_cnt)
+{
+    return cl_rpc_send(session, xpath, false, input, input_cnt, output, output_cnt);
+}
+
+int
 sr_rpc_send_tree(sr_session_ctx_t *session, const char *xpath,
         const sr_node_t *input,  const size_t input_cnt, sr_node_t **output, size_t *output_cnt)
 {
+    return cl_rpc_send_tree(session, xpath, false, input, input_cnt, output, output_cnt);
+}
+
+/**
+ * @brief Subscribes for delivery of Action specified by xpath.
+ *
+ * @param[in] sr_api_variant_t API variant.
+ * @param[in] session Session context acquired with ::sr_session_start call.
+ * @param[in] xpath XPath identifying the Action.
+ * @param[in] callback Callback to be called when the Action is called.
+ * @param[in] private_ctx Private context passed to the callback function, opaque to sysrepo.
+ * @param[in] opts Options overriding default behavior of the subscription, it is supposed to be
+ * a bitwise OR-ed value of any ::sr_subscr_flag_t flags.
+ * @param[in,out] subscription Subscription context that is supposed to be released by ::sr_unsubscribe.
+ * @note An existing context may be passed in case that SR_SUBSCR_CTX_REUSE option is specified.
+ *
+ * @return Error code (SR_ERR_OK on success).
+ */
+static int
+cl_action_subscribe(sr_api_variant_t api_variant, sr_session_ctx_t *session, const char *xpath,
+        cl_sm_callback_t callback, void *private_ctx, sr_subscr_options_t opts,
+        sr_subscription_ctx_t **subscription_p)
+{
     Sr__Msg *msg_req = NULL, *msg_resp = NULL;
     sr_mem_ctx_t *sr_mem = NULL;
-    sr_mem_snapshot_t snapshot = { 0, };
+    sr_subscription_ctx_t *sr_subscription = NULL;
+    cl_sm_subscription_ctx_t *sm_subscription = NULL;
+    char *module_name = NULL;
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG3(session, session->conn_ctx, xpath);
-
-    if (NULL != input) {
-        sr_mem = input[0]._sr_mem;
-        sr_mem_snapshot(sr_mem, &snapshot);
-    }
+    CHECK_NULL_ARG2(session, subscription_p);
 
     cl_session_clear_errors(session);
 
-    /* prepare RPC message */
-    rc = sr_gpb_req_alloc(sr_mem, SR__OPERATION__RPC, session->id, &msg_req);
-    CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot allocate GPB message.");
+    /* extract module name from xpath */
+    rc = sr_copy_first_ns(xpath, &module_name);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by extracting module name from xpath.");
 
-    /* set arguments */
-    sr_mem_edit_string(sr_mem, &msg_req->request->rpc_req->xpath, xpath);
-    CHECK_NULL_NOMEM_GOTO(msg_req->request->rpc_req->xpath, rc, cleanup);
-    msg_req->request->rpc_req->orig_api_variant = sr_api_variant_sr_to_gpb(SR_API_TREES);
+    /* Initialize the subscription */
+    if (opts & SR_SUBSCR_CTX_REUSE) {
+        sr_subscription = *subscription_p;
+    }
+    rc = cl_subscription_init(session, SR__SUBSCRIPTION_TYPE__ACTION_SUBS, module_name, api_variant,
+            private_ctx, &sr_subscription, &sm_subscription, &msg_req);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by initialization of the subscription in the client library.");
 
-    /* set input arguments */
-    rc = sr_trees_sr_to_gpb(input, input_cnt, &msg_req->request->rpc_req->input_tree, &msg_req->request->rpc_req->n_input_tree);
-    CHECK_RC_MSG_GOTO(rc, cleanup, "Error by copying RPC input arguments to GPB.");
+    sm_subscription->callback = callback;
+
+    /* Fill-in GPB subscription information */
+    sr_mem = (sr_mem_ctx_t *)msg_req->_sysrepo_mem_ctx;
+    msg_req->request->subscribe_req->type = SR__SUBSCRIPTION_TYPE__ACTION_SUBS;
+    sr_mem_edit_string(sr_mem, &msg_req->request->subscribe_req->module_name, module_name);
+    CHECK_NULL_NOMEM_GOTO(msg_req->request->subscribe_req->module_name, rc, cleanup);
+    sr_mem_edit_string(sr_mem, &msg_req->request->subscribe_req->xpath, xpath);
+    CHECK_NULL_NOMEM_GOTO(msg_req->request->subscribe_req->xpath, rc, cleanup);
 
     /* send the request and receive the response */
-    rc = cl_request_process(session, msg_req, &msg_resp, NULL, SR__OPERATION__RPC);
+    rc = cl_request_process(session, msg_req, &msg_resp, NULL, SR__OPERATION__SUBSCRIBE);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Error by processing of the request.");
-
-    if (NULL != output) {
-        /* set output arguments */
-        rc = sr_trees_gpb_to_sr((sr_mem_ctx_t *)msg_resp->_sysrepo_mem_ctx, msg_resp->response->rpc_resp->output_tree,
-                msg_resp->response->rpc_resp->n_output_tree, output, output_cnt);
-        CHECK_RC_MSG_GOTO(rc, cleanup, "Error by copying RPC output arguments from GPB.");
-    }
 
     sr_msg_free(msg_req);
     sr_msg_free(msg_resp);
+    free(module_name);
 
-    if (snapshot.sr_mem) {
-        sr_mem_restore(&snapshot);
-    }
+    *subscription_p = sr_subscription;
 
     return cl_session_return(session, SR_ERR_OK);
 
 cleanup:
+    if (NULL != sm_subscription) {
+        cl_subscription_close(session, sm_subscription);
+        cl_sr_subscription_remove_one(sr_subscription);
+    }
     if (NULL != msg_req) {
         sr_msg_free(msg_req);
     }
     if (NULL != msg_resp) {
         sr_msg_free(msg_resp);
     }
-    if (snapshot.sr_mem) {
-        sr_mem_restore(&snapshot);
-    }
+    free(module_name);
     return cl_session_return(session, rc);
+}
+
+int
+sr_action_subscribe(sr_session_ctx_t *session, const char *xpath, sr_action_cb callback,
+        void *private_ctx, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription_p)
+{
+    cl_sm_callback_t callback_u;
+    callback_u.action_cb = callback;
+    return cl_action_subscribe(SR_API_VALUES, session, xpath, callback_u, private_ctx, opts, subscription_p);
+}
+
+int
+sr_action_subscribe_tree(sr_session_ctx_t *session, const char *xpath, sr_action_tree_cb callback,
+        void *private_ctx, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription_p)
+{
+    cl_sm_callback_t callback_u;
+    callback_u.action_tree_cb = callback;
+    return cl_action_subscribe(SR_API_TREES, session, xpath, callback_u, private_ctx, opts, subscription_p);
+}
+
+int
+sr_action_send(sr_session_ctx_t *session, const char *xpath,
+        const sr_val_t *input,  const size_t input_cnt, sr_val_t **output, size_t *output_cnt)
+{
+    return cl_rpc_send(session, xpath, true, input, input_cnt, output, output_cnt);
+}
+
+int
+sr_action_send_tree(sr_session_ctx_t *session, const char *xpath,
+        const sr_node_t *input,  const size_t input_cnt, sr_node_t **output, size_t *output_cnt)
+{
+    return cl_rpc_send_tree(session, xpath, true, input, input_cnt, output, output_cnt);
 }
 
 int
