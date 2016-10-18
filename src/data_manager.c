@@ -3841,7 +3841,6 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
     rc = sr_copy_first_ns(xpath, &module_name);
     CHECK_RC_MSG_RETURN(rc, "Error by extracting module name from xpath.");
     rc = dm_get_data_info(dm_ctx, session, module_name, &di);
-    free(module_name);
     CHECK_RC_LOG_GOTO(rc, cleanup, "Dm_get_dat_info failed for module %s", module_name);
 
     /* test for the presence of the procedure in the schema tree */
@@ -3994,7 +3993,7 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
         if (ext_ref && di->schema->cross_module_data_dependency) {
             /* remove data appended from other modules for the purpose of validation */
             rc = dm_remove_added_data_trees(session, di);
-            CHECK_RC_MSG_RETURN(rc, "Removing of added data trees failed");
+            CHECK_RC_MSG_GOTO(rc, cleanup, "Removing of added data trees failed");
         }
         if (0 != ret) {
             SR_LOG_ERR("%s content validation failed: %s", procedure_name, ly_errmsg());
@@ -4065,6 +4064,7 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
     }
 
 cleanup:
+    free(module_name);
     if (data_tree) {
         lyd_free_withsiblings(data_tree);
     }
