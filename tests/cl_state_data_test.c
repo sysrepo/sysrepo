@@ -98,6 +98,7 @@ sr_val_get_by_xpath(sr_val_t *values, size_t value_cnt, const char *xpath_fmt, .
 
     va_start(va, xpath_fmt);
     vsnprintf(xpath, PATH_MAX, xpath_fmt, va);
+    va_end(va);
 
     for (size_t i = 0; i < value_cnt; ++i) {
         if (0 == strcmp(values[i].xpath, xpath)) {
@@ -105,7 +106,6 @@ sr_val_get_by_xpath(sr_val_t *values, size_t value_cnt, const char *xpath_fmt, .
         }
     }
 
-    va_end(va);
     return NULL;
 }
 

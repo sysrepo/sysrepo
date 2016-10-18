@@ -927,12 +927,43 @@ sr_libyang_val_str_to_sr_val(const char *val_str, sr_type_t type, sr_val_t *valu
     return ret == 1 ? SR_ERR_OK : SR_ERR_INTERNAL;
 }
 
+/**
+ * @brief Get pointer to the first type-info matching the given type in the DFS order,
+ *        starting from base_info as the root node.
+ */
+static struct lys_type *
+sr_libyang_get_actual_leaf_type(struct lys_type *base_info, LY_DATA_TYPE type)
+{
+    struct lys_type *actual_info = NULL;
+
+    if (base_info->base == type) {
+        return base_info;
+    }
+    if (LY_TYPE_LEAFREF == base_info->base) {
+        if (NULL != base_info->info.lref.target) {
+            return sr_libyang_get_actual_leaf_type(&base_info->info.lref.target->type, type);
+        }
+    }
+    if (LY_TYPE_UNION == base_info->base) {
+        while (0 == base_info->info.uni.count) {
+            base_info = &base_info->der->type;
+        }
+        for (int i = 0; i < base_info->info.uni.count; ++i) {
+            actual_info = sr_libyang_get_actual_leaf_type(&base_info->info.uni.types[i], type);
+            if (NULL != actual_info) {
+                return actual_info;
+            }
+        }
+    }
+    return NULL;
+}
+
 int
 sr_libyang_leaf_copy_value(const struct lyd_node_leaf_list *leaf, sr_val_t *value)
 {
     CHECK_NULL_ARG2(leaf, value);
     int rc = SR_ERR_OK;
-    struct lys_node_leaf *leaf_schema = NULL;
+    struct lys_type *actual_type = NULL;
     const struct lyd_node_leaf_list *leafref = NULL;
     LY_DATA_TYPE type = leaf->value_type;
     const char *node_name = "(unknown)";
@@ -967,8 +998,12 @@ sr_libyang_leaf_copy_value(const struct lyd_node_leaf_list *leaf, sr_val_t *valu
     case LY_TYPE_DEC64:
         CHECK_NULL_ARG(leaf->schema);
         value->data.decimal64_val = (double) leaf->value.dec64;
-        leaf_schema = (struct lys_node_leaf *) leaf->schema;
-        for (size_t i = 0; i < leaf_schema->type.info.dec64.dig; i++) {
+        actual_type = sr_libyang_get_actual_leaf_type(&((struct lys_node_leaf *)leaf->schema)->type, LY_TYPE_DEC64);
+        if (NULL == actual_type) {
+            SR_LOG_ERR("Missing schema information for node '%s'", node_name);
+            return SR_ERR_INTERNAL;
+        }
+        for (size_t i = 0; i < actual_type->info.dec64.dig; i++) {
             /* shift decimal point*/
             value->data.decimal64_val *= 0.1;
         }
@@ -1062,7 +1097,12 @@ sr_dec64_to_str(double val, const struct lys_node *schema_node, char **out)
     size_t fraction_digits = 0;
     if (LYS_LEAF == schema_node->nodetype || LYS_LEAFLIST == schema_node->nodetype) {
         struct lys_node_leaflist *l = (struct lys_node_leaflist *) schema_node;
-        fraction_digits = l->type.info.dec64.dig;
+        struct lys_type *actual_type = sr_libyang_get_actual_leaf_type(&l->type, LY_TYPE_DEC64);
+        if (NULL == actual_type) {
+            SR_LOG_ERR("Missing schema information for node '%s'", schema_node->name);
+            return SR_ERR_INTERNAL;
+        }
+        fraction_digits = actual_type->info.dec64.dig;
     } else {
         SR_LOG_ERR_MSG("Node must be either leaf or leaflist");
         return SR_ERR_INVAL_ARG;
