@@ -840,10 +840,6 @@ dm_action_test(void **state)
     error_msg = NULL;
     error_xpath = NULL;
 
-    /* TODO: validation of action output is not yet covered by libyang,
-     * see: https://github.com/CESNET/libyang/issues/153
-     */
-#if 0
     /* action output */
     output_cnt = 3;
     output = calloc(output_cnt, sizeof(*output));
@@ -894,7 +890,6 @@ dm_action_test(void **state)
     sr_free_values(with_def, with_def_cnt);
     sr_free_trees(with_def_tree, with_def_tree_cnt);
 
-#endif
     sr_free_trees(input_tree, input_cnt);
     sr_free_values(output, output_cnt);
 

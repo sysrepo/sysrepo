@@ -133,6 +133,5 @@ void createDataTreeStateModule();
 #define XP_TEST_MODULE_DEC64_IN_UNION_VALUE_T (-11.17)
 
 
-
 #endif /* TEST_MODULE_HELPER_H */
 
