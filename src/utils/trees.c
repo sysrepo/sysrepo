@@ -498,7 +498,7 @@ sr_print_tree(sr_print_ctx_t *print_ctx, sr_node_t *tree, int depth_limit)
     node = tree;
     backtracking = false;
 
-    while (!backtracking || node != tree) {
+    while (node && (!backtracking || node != tree)) {
         if (!backtracking) {
             /* print the indent */
             if (0 < depth) {
@@ -537,7 +537,7 @@ sr_print_tree(sr_print_ctx_t *print_ctx, sr_node_t *tree, int depth_limit)
             /* next node */
             if (SR_TREE_ITERATOR_T == node->type) {
                 node = parent;
-                parent = node->parent;
+                parent = node ? node->parent : NULL;
                 --depth;
                 backtracking = true;
             } else if (depth < depth_limit && node->first_child) {
@@ -556,7 +556,7 @@ sr_print_tree(sr_print_ctx_t *print_ctx, sr_node_t *tree, int depth_limit)
                 backtracking = false;
             } else {
                 node = node->parent;
-                parent = node->parent;
+                parent = node ? node->parent : NULL;
                 --depth;
             }
         }

@@ -907,12 +907,13 @@ void edit_test_module_test(void **state){
     FREE_VARS(value, new_set);
 
     /* decimal 64 leaf*/
+#define ABS(x) ((x) < 0 ? (-(x)) : (x))
     session->state = RP_REQ_NEW;
     rc = rp_dt_get_value_wrapper(ctx, session, NULL, XP_TEST_MODULE_DEC64, &value);
     assert_int_equal(SR_ERR_OK, rc);
 
     assert_int_equal(SR_DECIMAL64_T, value->type);
-    assert_int_equal(XP_TEST_MODULE_DEC64_VALUE_T, value->data.decimal64_val);
+    assert_true(ABS(XP_TEST_MODULE_DEC64_VALUE_T - value->data.decimal64_val) < 0.001);
 
     delete_get_set_get(ctx, session, XP_TEST_MODULE_DEC64, value, &new_set);
 
@@ -926,7 +927,7 @@ void edit_test_module_test(void **state){
     assert_int_equal(SR_ERR_OK, rc);
 
     assert_int_equal(SR_DECIMAL64_T, value->type);
-    assert_int_equal(XP_TEST_MODULE_DEC64_IN_UNION_VALUE_T, value->data.decimal64_val);
+    assert_true(ABS(value->data.decimal64_val - XP_TEST_MODULE_DEC64_IN_UNION_VALUE_T) < 0.001);
 
     delete_get_set_get(ctx, session, XP_TEST_MODULE_DEC64_IN_UNION, value, &new_set);
 

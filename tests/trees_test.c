@@ -653,6 +653,7 @@ sr_test_all_printers(sr_node_t *tree, int depth_level, const char *expected)
     char filepath1[] = "/tmp/sr_tree_test1.XXXXXX", filepath2[] = "/tmp/sr_tree_test2.XXXXXX";
     int fd = 0;
     FILE *stream = NULL;
+    mode_t orig_umask = umask(S_IRWXO|S_IRWXG);
 
     /* memory */
     rc = sr_print_tree_mem(&mem, tree, depth_level);
@@ -684,6 +685,7 @@ sr_test_all_printers(sr_node_t *tree, int depth_level, const char *expected)
     fclose(stream);
     test_file_content(filepath2, expected ? expected : "", false);
     unlink(filepath2);
+    umask(orig_umask);
 }
 
 static void
