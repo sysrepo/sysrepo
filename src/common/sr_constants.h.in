@@ -41,6 +41,9 @@
 /** Use Sysrepo's own memory management. */
 #cmakedefine USE_SR_MEM_MGMT
 
+/** Controls whether thread IDs should be printed. */
+#cmakedefine LOG_THREAD_ID
+
 /** Path to the directory with schemas. */
 #define SR_SCHEMA_SEARCH_DIR "@SCHEMA_SEARCH_DIR@"
 
