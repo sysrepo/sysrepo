@@ -2639,13 +2639,11 @@ sr_unsubscribe(sr_session_ctx_t *session, sr_subscription_ctx_t *sr_subscription
 
     /* close all subscriptions wrapped in the context */
     for (int i = (sr_subscription->sm_subscription_cnt - 1); i >= 0 ; i--) {
-        rc = cl_subscription_close((NULL != session ? session : tmp_session), sr_subscription->sm_subscriptions[i]);
-        if (SR_ERR_OK == rc) {
-            cl_sr_subscription_remove_one(sr_subscription);
-        } else {
-            SR_LOG_ERR_MSG("Unable to close the subscription.");
-            break;
+        if (SR_ERR_OK != cl_subscription_close((NULL != session ? session : tmp_session),
+                                               sr_subscription->sm_subscriptions[i])) {
+            SR_LOG_WRN("Unable to close the subscription id='%"PRIu32"'", sr_subscription->sm_subscriptions[i]->id);
         }
+        cl_sr_subscription_remove_one(sr_subscription);
     }
 
 cleanup:
