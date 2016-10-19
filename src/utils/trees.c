@@ -448,7 +448,7 @@ sr_print_node(sr_print_ctx_t *print_ctx, sr_node_t *node)
         rc = sr_print(print_ctx, "= %u\n", node->data.uint16_val);
         break;
     case SR_UINT32_T:
-        rc = sr_print(print_ctx, "= %u\n", node->data.uint32_val);
+        rc = sr_print(print_ctx, "= %s\n", node->data.string_val);
         break;
     case SR_IDENTITYREF_T:
         rc = sr_print(print_ctx, "= %s\n", node->data.identityref_val);
