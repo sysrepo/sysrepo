@@ -1,7 +1,7 @@
 #!/bin/sh
 set -e
 
-COREFILES=$(find . -maxdepth 1 -name "core*")
+COREFILES=$(find . -name "core*")
 
 for CORE in ${COREFILES}
 do
