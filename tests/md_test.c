@@ -779,13 +779,11 @@ validate_context(md_ctx_t *md_ctx)
         validate_subtree_ref(md_ctx, module->inst_ids,
                                      "/" TEST_MODULE_PREFIX "A:base-container"
                                      "/" TEST_MODULE_PREFIX "C:C-ext-container"
-                                     "/" TEST_MODULE_PREFIX "D:Dcommon-grouping"
-                                     "/D-ext-inst-id", "D@2016-06-10");
+                                     "/" TEST_MODULE_PREFIX "D:D-ext-inst-id", "D@2016-06-10");
         validate_subtree_ref(md_ctx, module->inst_ids,
                                      "/" TEST_MODULE_PREFIX "A:base-container"
                                      "/" TEST_MODULE_PREFIX "C:C-ext-container"
-                                     "/" TEST_MODULE_PREFIX "D:Dcommon-grouping"
-                                     "/D-ext-inst-id", "D@2016-06-20");
+                                     "/" TEST_MODULE_PREFIX "D:D-ext-inst-id", "D@2016-06-20");
         validate_subtree_ref(md_ctx, module->inst_ids,
                                      "/" TEST_MODULE_PREFIX "A:base-container"
                                      "/" TEST_MODULE_PREFIX "C:C-ext-container"
@@ -798,13 +796,11 @@ validate_context(md_ctx_t *md_ctx)
         validate_subtree_ref(md_ctx, module->op_data_subtrees,
                                      "/" TEST_MODULE_PREFIX "A:base-container"
                                      "/" TEST_MODULE_PREFIX "C:C-ext-container"
-                                     "/" TEST_MODULE_PREFIX "D:Dcommon-grouping"
-                                     "/D-ext-op-data", "D@2016-06-10");
+                                     "/" TEST_MODULE_PREFIX "D:D-ext-op-data", "D@2016-06-10");
         validate_subtree_ref(md_ctx, module->op_data_subtrees,
                                      "/" TEST_MODULE_PREFIX "A:base-container"
                                      "/" TEST_MODULE_PREFIX "C:C-ext-container"
-                                     "/" TEST_MODULE_PREFIX "D:Dcommon-grouping"
-                                     "/D-ext-op-data", "D@2016-06-20");
+                                     "/" TEST_MODULE_PREFIX "D:D-ext-op-data", "D@2016-06-20");
         validate_subtree_ref(md_ctx, module->op_data_subtrees,
                                      "/" TEST_MODULE_PREFIX "A:base-container"
                                      "/" TEST_MODULE_PREFIX "C:C-ext-container"
