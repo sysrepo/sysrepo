@@ -302,12 +302,13 @@ md_construct_lys_xpath(const struct lys_node *node_schema, char **xpath)
         cur_schema = ((struct lys_node_augment *)cur_schema)->target;
     }
     while (NULL != cur_schema) {
-        if (cur_schema->parent && cur_schema->parent->nodetype == LYS_AUGMENT) {
-            parent_schema = cur_schema->parent->prev;
-        } else if (cur_schema->parent && cur_schema->parent->nodetype == LYS_USES) {
+        if (cur_schema->parent && cur_schema->parent->nodetype == LYS_USES) {
             parent_schema = cur_schema->parent->parent;
         } else {
             parent_schema = cur_schema->parent;
+        }
+        if (parent_schema && parent_schema->nodetype == LYS_AUGMENT) {
+            parent_schema = parent_schema->prev;
         }
         length += 1 /* "/" */;
         if (!parent_schema || 0 != strcmp(MD_MAIN_MODULE(parent_schema)->name, MD_MAIN_MODULE(cur_schema)->name)) {
@@ -327,12 +328,13 @@ md_construct_lys_xpath(const struct lys_node *node_schema, char **xpath)
     }
     while (NULL != cur_schema) {
         /* parent */
-        if (cur_schema->parent && cur_schema->parent->nodetype == LYS_AUGMENT) {
-            parent_schema = cur_schema->parent->prev;
-        } else if (cur_schema->parent && cur_schema->parent->nodetype == LYS_USES) {
+        if (cur_schema->parent && cur_schema->parent->nodetype == LYS_USES) {
             parent_schema = cur_schema->parent->parent;
         } else {
             parent_schema = cur_schema->parent;
+        }
+        if (parent_schema && parent_schema->nodetype == LYS_AUGMENT) {
+            parent_schema = parent_schema->prev;
         }
         /* node name */
         length = strlen(cur_schema->name);
