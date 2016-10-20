@@ -177,42 +177,6 @@ if(NOT MAN_INSTALL_DIR)
     set(MAN_INSTALL_DIR share/man)
 endif()
 
-set(PYTHON_SWIG_BINDING sysrepoPy)
-
-if(GEN_LANGUAGE_BINDINGS AND GEN_PYTHON_BINDINGS AND ${GEN_PYTHON_VERSION} STREQUAL "2")
-FIND_PACKAGE(SWIG)
-if (SWIG_FOUND)
-    INCLUDE(${SWIG_USE_FILE})
-    FIND_PACKAGE(PythonLibs 2)
-    FIND_PACKAGE(PythonInterp)
-    if (PYTHONLIBS_FOUND AND PYTHONINTERP_FOUND)
-        INCLUDE_DIRECTORIES(${PYTHON_INCLUDE_DIRS})
-        INCLUDE_DIRECTORIES("${PROJECT_SOURCE_DIR}/inc")
-        SET(CMAKE_SWIG_FLAGS "-I${PROJECT_SOURCE_DIR}/inc")
-        SET(CMAKE_SWIG_OUTDIR ${CMAKE_CURRENT_BINARY_DIR}/swig/python)
-
-        SWIG_ADD_MODULE(${PYTHON_SWIG_BINDING} python swig/python/${PYTHON_SWIG_BINDING}.i)
-        SWIG_LINK_LIBRARIES(${PYTHON_SWIG_BINDING} ${PYTHON_LIBRARIES} sysrepo)
-
-        #move .so file to proper location
-        add_custom_command(
-          TARGET ${SWIG_MODULE_${PYTHON_SWIG_BINDING}_REAL_NAME}
-          POST_BUILD
-          COMMAND cp "${CMAKE_CURRENT_BINARY_DIR}/_${PYTHON_SWIG_BINDING}.so" "${CMAKE_CURRENT_BINARY_DIR}/swig/python"
-        )
-    else ()
-        MESSAGE(WARNING "Python libs not found, python bindings will not be generated.")
-    endif()
-
-    #FIND_PACKAGE(JNI REQUIRED)
-    #FIND_PACKAGE(Java REQUIRED)
-
-    #INCLUDE_DIRECTORIES(${JAVA_INCLUDE_PATH})
-    #INCLUDE_DIRECTORIES(${JAVA_INCLUDE_PATH2})
-    #SWIG_ADD_MODULE(sysrepo_java java sysrepo.i)
-endif(SWIG_FOUND)
-endif()
-
 # install repository directories
 install (DIRECTORY DESTINATION ${REPOSITORY_LOC} DIRECTORY_PERMISSIONS
     OWNER_READ OWNER_WRITE OWNER_EXECUTE
@@ -243,24 +207,6 @@ install(DIRECTORY DESTINATION ${PLUGINS_DIR})
 # install internal YANGs
 install (FILES ${PROJECT_SOURCE_DIR}/yang/sysrepo-persistent-data.yang DESTINATION ${INTERNAL_SCHEMA_SEARCH_DIR})
 install (FILES ${PROJECT_SOURCE_DIR}/yang/sysrepo-module-dependencies.yang DESTINATION ${INTERNAL_SCHEMA_SEARCH_DIR})
-
-if(GEN_LANGUAGE_BINDINGS AND GEN_PYTHON_BINDINGS AND ${GEN_PYTHON_VERSION} STREQUAL "2")
-# install swig bindings
-if (SWIG_FOUND AND PYTHONLIBS_FOUND AND PYTHONINTERP_FOUND)
-    #install python bindings
-    execute_process ( COMMAND ${PYTHON_EXECUTABLE} -c
-                "from distutils import sysconfig; print( sysconfig.get_python_lib( plat_specific=True, prefix='${CMAKE_INSTALL_PREFIX}' ) )"
-                OUTPUT_VARIABLE _ABS_PYTHON_MODULE_PATH
-                OUTPUT_STRIP_TRAILING_WHITESPACE )
-    get_filename_component ( _ABS_PYTHON_MODULE_PATH ${_ABS_PYTHON_MODULE_PATH} ABSOLUTE )
-    file ( RELATIVE_PATH _REL_PYTHON_MODULE_PATH ${CMAKE_INSTALL_PREFIX} ${_ABS_PYTHON_MODULE_PATH} )
-    set (PYTHON_MODULE_PATH ${_REL_PYTHON_MODULE_PATH})
-
-    INSTALL ( FILES ${CMAKE_CURRENT_BINARY_DIR}/swig/python/_${PYTHON_SWIG_BINDING}.so DESTINATION ${PYTHON_MODULE_PATH} )
-    INSTALL ( FILES ${CMAKE_CURRENT_BINARY_DIR}/swig/python/${PYTHON_SWIG_BINDING}.py DESTINATION ${PYTHON_MODULE_PATH} )
-    INSTALL ( DIRECTORY ${PROJECT_SOURCE_DIR}/swig/python/SysrepoWrappers DESTINATION ${PYTHON_MODULE_PATH} )
-endif()
-endif()
 
 find_package(PkgConfig QUIET)
 if(PKG_CONFIG_FOUND)
