@@ -1,6 +1,7 @@
 set(CMAKE_CXX_FLAGS         "${CMAKE_CXX_FLAGS} -Wall -Wpedantic -std=c++11 -fno-strict-aliasing")
 set(CMAKE_CXX_FLAGS_RELEASE "-DNDEBUG -O2")
 set(CMAKE_CXX_FLAGS_DEBUG   "-g -O0")
+set(TEST_REPOSITORY_LOC "${CMAKE_BINARY_DIR}/repository")
 remove_definitions(-DSWIGLUA)
 
 # find SWIG package
@@ -110,10 +111,46 @@ if(PYTHONLIBS_FOUND AND PYTHONINTERP_FOUND AND ${GEN_PYTHON_VERSION} STREQUAL "2
         swig_link_libraries(${PYTHON_SWIG_BINDING_2} ${PYTHON_LIBRARIES} Sysrepo-cpp)
 
         file(COPY "python2/examples" DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/python2")
-        file(COPY "python2/tests" DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/python2")
+
+        execute_process(COMMAND
+            ${PYTHON_EXECUTABLE} -c
+            "from distutils.sysconfig import get_python_lib; print(get_python_lib())"
+        OUTPUT_VARIABLE PYTHON_MODULE_PATH OUTPUT_STRIP_TRAILING_WHITESPACE)
 
         install( FILES "${CMAKE_CURRENT_BINARY_DIR}/_${PYTHON_SWIG_BINDING_2}.so" DESTINATION ${PYTHON_MODULE_PATH} )
         install( FILES "${CMAKE_BINARY_DIR}/${PYTHON_SWIG_BINDING_2}.py" DESTINATION ${PYTHON_MODULE_PATH} )
+
+        if("${TEST_REPOSITORY_LOC}" STREQUAL "${REPOSITORY_LOC}" AND ENABLE_TESTS AND GEN_PYTHON2_TESTS)
+          set(PY2_SWIG_DIR ${CMAKE_BINARY_DIR}/swig/python2)
+
+          file(COPY "python2/tests" DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/python2")
+          file(COPY "python2/run_python_test.sh" DESTINATION "${PY2_SWIG_DIR}")
+
+          macro(ADD_PYTHON_TEST TEST_NAME)
+            add_test(NAME python_${TEST_NAME}
+              COMMAND sh ${PY2_SWIG_DIR}/run_python_test.sh
+              "${CMAKE_BINARY_DIR}/src:${CMAKE_BINARY_DIR}/tests"
+              "${PY2_SWIG_DIR}:${PROJECT_SOURCE_DIR}/swig/python2:${PYTHON_BUILD_DIR}"
+              "${PYTHON_EXECUTABLE}"
+              "${PY2_SWIG_DIR}/tests/${TEST_NAME}.py"
+              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+              )
+          endmacro(ADD_PYTHON_TEST)
+
+          ADD_PYTHON_TEST(SysrepoBasicTest)
+          ADD_PYTHON_TEST(SchemasManagementTest)
+          ADD_PYTHON_TEST(LockingTest)
+          ADD_PYTHON_TEST(CommitTest)
+          ADD_PYTHON_TEST(MoveTest)
+          ADD_PYTHON_TEST(SubscriptionTest)
+          ADD_PYTHON_TEST(NotificationTest) # note: needs notifications_test_app to work
+
+          add_custom_command(TARGET ${SWIG_MODULE_${PYTHON_SWIG_BINDING_2}_REAL_NAME} POST_BUILD
+            COMMAND cp "${CMAKE_CURRENT_BINARY_DIR}/_${PYTHON_SWIG_BINDING_2}.so" ${PY2_SWIG_DIR}/tests
+            COMMAND cp "${CMAKE_BINARY_DIR}/${PYTHON_SWIG_BINDING_2}.py" ${PY2_SWIG_DIR}/tests
+            WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+            )
+        endif()
 endif()
 
 if(PYTHONLIBS_FOUND AND PYTHONINTERP_FOUND AND ${GEN_PYTHON_VERSION} STREQUAL "3")
