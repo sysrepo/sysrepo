@@ -34,8 +34,8 @@ extern "C" {
 
 Tree::Tree() {
     _node = NULL;
-    S_Counter counter(new Counter(_node));
-    _counter = counter;
+    S_Deleter deleter(new Deleter(_node));
+    _deleter = deleter;
 }
 Tree::Tree(const char *root_name, const char *root_module_name) {
     sr_node_t *node;
@@ -43,13 +43,13 @@ Tree::Tree(const char *root_name, const char *root_module_name) {
     if (ret != SR_ERR_OK)
         throw_exception(ret);
 
-    S_Counter counter(new Counter(node));
-    _counter = counter;
+    S_Deleter deleter(new Deleter(node));
+    _deleter = deleter;
     _node = node;
 }
-Tree::Tree(sr_node_t *tree, S_Counter counter) {
+Tree::Tree(sr_node_t *tree, S_Deleter deleter) {
     _node = tree;
-    _counter = counter;
+    _deleter = deleter;
 }
 Tree::~Tree() {return;}
 S_Tree Tree::dup() {
@@ -59,49 +59,49 @@ S_Tree Tree::dup() {
     int ret = sr_dup_tree(_node, &tree_dup);
     if (ret != SR_ERR_OK) throw_exception(ret);
 
-    S_Counter counter(new Counter(tree_dup));
-    S_Tree dup(new Tree(tree_dup, counter));
+    S_Deleter deleter(new Deleter(tree_dup));
+    S_Tree dup(new Tree(tree_dup, deleter));
     return dup;
 }
 S_Tree Tree::node() {
     if (_node == NULL) return NULL;
 
-    S_Tree node(new Tree(_node, _counter));
+    S_Tree node(new Tree(_node, _deleter));
     return node;
 }
 S_Tree Tree::parent() {
     if (_node->parent == NULL)
         return NULL;
 
-    S_Tree node(new Tree(_node->parent, _counter));
+    S_Tree node(new Tree(_node->parent, _deleter));
     return node;
 }
 S_Tree Tree::next() {
     if (_node->next == NULL)
         return NULL;
 
-    S_Tree node(new Tree(_node->next, _counter));
+    S_Tree node(new Tree(_node->next, _deleter));
     return node;
 }
 S_Tree Tree::prev() {
     if (_node->prev == NULL)
         return NULL;
 
-    S_Tree node(new Tree(_node->prev, _counter));
+    S_Tree node(new Tree(_node->prev, _deleter));
     return node;
 }
 S_Tree Tree::first_child() {
     if (_node->first_child == NULL)
         return NULL;
 
-    S_Tree node(new Tree(_node->first_child, _counter));
+    S_Tree node(new Tree(_node->first_child, _deleter));
     return node;
 }
 S_Tree Tree::last_child() {
     if (_node->last_child == NULL)
         return NULL;
 
-    S_Tree node(new Tree(_node->last_child, _counter));
+    S_Tree node(new Tree(_node->last_child, _deleter));
     return node;
 }
 void Tree::set_name(const char *name) {
@@ -242,8 +242,8 @@ void Tree::set(uint64_t uint64_val, sr_type_t type) {
 Trees::Trees() {
     _trees = NULL;
     _cnt = 0;
-    S_Counter counter(new Counter(_trees, _cnt));
-    _counter = counter;
+    S_Deleter deleter(new Deleter(_trees, _cnt));
+    _deleter = deleter;
 }
 Trees::Trees(size_t cnt) {
     int ret = sr_new_trees(cnt, &_trees);
@@ -251,25 +251,25 @@ Trees::Trees(size_t cnt) {
         throw_exception(ret);
 
     _cnt = cnt;
-    S_Counter counter(new Counter(_trees, _cnt));
-    _counter = counter;
+    S_Deleter deleter(new Deleter(_trees, _cnt));
+    _deleter = deleter;
 }
-Trees::Trees(sr_node_t **trees, size_t *cnt, S_Counter counter) {
+Trees::Trees(sr_node_t **trees, size_t *cnt, S_Deleter deleter) {
     _trees = *trees;
     _cnt = *cnt;
-    _counter = counter;
+    _deleter = deleter;
 }
-Trees::Trees(const sr_node_t *trees, const size_t n, S_Counter counter) {
+Trees::Trees(const sr_node_t *trees, const size_t n, S_Deleter deleter) {
     _trees = (sr_node_t *) trees;
     _cnt = (size_t) n;
 
-    _counter = counter;
+    _deleter = deleter;
 }
 Trees::~Trees() {return;}
 S_Tree Trees::tree(size_t n) {
     if (_trees == NULL || n >= _cnt) return NULL;
 
-    S_Tree tree(new Tree(&_trees[n], _counter));
+    S_Tree tree(new Tree(&_trees[n], _deleter));
     return tree;
 }
 S_Trees Trees::dup() {

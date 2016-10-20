@@ -67,7 +67,7 @@ class Val
 {
 public:
     Val();
-    Val(sr_val_t *val, S_Counter counter);
+    Val(sr_val_t *val, S_Deleter deleter);
     Val(const char *val, sr_type_t type = SR_STRING_T);
     Val(bool bool_val, sr_type_t type = SR_BOOL_T);
     Val(double decimal64_val);
@@ -103,15 +103,15 @@ public:
 
 private:
     sr_val_t *_val;
-    S_Counter _counter;
+    S_Deleter _deleter;
 };
 
 // class for list of sysrepo C structs sr_val_t
 class Vals
 {
 public:
-    Vals(const sr_val_t *vals, const size_t cnt, S_Counter counter = NULL);
-    Vals(sr_val_t **vals, size_t *cnt, S_Counter counter = NULL);
+    Vals(const sr_val_t *vals, const size_t cnt, S_Deleter deleter = NULL);
+    Vals(sr_val_t **vals, size_t *cnt, S_Deleter deleter = NULL);
     Vals(size_t cnt);
     Vals();
     ~Vals();
@@ -125,7 +125,7 @@ public:
 private:
     size_t _cnt;
     sr_val_t *_vals;
-    S_Counter _counter;
+    S_Deleter _deleter;
 };
 
 // class for wrapping Vals classes
@@ -321,8 +321,8 @@ private:
     sr_change_oper_t _oper;
     sr_val_t *_new;
     sr_val_t *_old;
-    S_Counter _counter_new;
-    S_Counter _counter_old;
+    S_Deleter _deleter_new;
+    S_Deleter _deleter_old;
 };
 
 #endif
