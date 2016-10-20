@@ -65,6 +65,8 @@ sysrepo_setup(void **state)
     createDataTreeTestModule();
     createDataTreeStateModule();
 
+    truncate(TEST_DATA_SEARCH_DIR "state-module.persist", 0);
+
     sr_conn_ctx_t *conn = NULL;
     int rc = SR_ERR_OK;
 
@@ -838,20 +840,20 @@ cl_exact_match_subscription_tree(void **state)
             0, SR_SUBSCR_DEFAULT, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
+    /* subscribe data providers */
+    rc = sr_dp_get_items_subscribe(session, "/state-module:bus/distance_travelled", cl_dp_distance_travelled, xpath_retrieved, SR_SUBSCR_CTX_REUSE, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_dp_get_items_subscribe(session, "/state-module:bus/gps_located", cl_dp_gps_located, xpath_retrieved, SR_SUBSCR_CTX_REUSE, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_dp_get_items_subscribe(session, "/state-module:cpu_load", cl_dp_cpu_load, xpath_retrieved, SR_SUBSCR_CTX_REUSE, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_dp_get_items_subscribe(session, "/state-module:bus/seats/reserved", cl_dp_seats_reserved, xpath_retrieved, SR_SUBSCR_CTX_REUSE, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
     for (int j = 0; j < 2; ++j) {
-        /* subscribe data providers */
-        rc = sr_dp_get_items_subscribe(session, "/state-module:bus/distance_travelled", cl_dp_distance_travelled, xpath_retrieved, SR_SUBSCR_CTX_REUSE, &subscription);
-        assert_int_equal(rc, SR_ERR_OK);
-
-        rc = sr_dp_get_items_subscribe(session, "/state-module:bus/gps_located", cl_dp_gps_located, xpath_retrieved, SR_SUBSCR_CTX_REUSE, &subscription);
-        assert_int_equal(rc, SR_ERR_OK);
-
-        rc = sr_dp_get_items_subscribe(session, "/state-module:cpu_load", cl_dp_cpu_load, xpath_retrieved, SR_SUBSCR_CTX_REUSE, &subscription);
-        assert_int_equal(rc, SR_ERR_OK);
-
-        rc = sr_dp_get_items_subscribe(session, "/state-module:bus/seats/reserved", cl_dp_seats_reserved, xpath_retrieved, SR_SUBSCR_CTX_REUSE, &subscription);
-        assert_int_equal(rc, SR_ERR_OK);
-
         /* retrieve data using the tree API */
         rc = sr_get_subtree(session, "/state-module:bus", 0 == j ? 0 : SR_GET_SUBTREE_ITERATIVE, &tree);
         assert_int_equal(rc, SR_ERR_OK);

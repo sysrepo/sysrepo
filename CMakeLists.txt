@@ -142,6 +142,10 @@ option (USE_SR_MEM_MGMT
         "Use Sysrepo's own memory management (better overall performance but more difficult to track memory bugs)."
         ON)
 
+option (LOG_THREAD_ID
+        "If enabled, sysrepo logger will append thread ID (as well as function name) to each printed message."
+        OFF)
+
 # add subdirectories
 add_subdirectory(src)
 
