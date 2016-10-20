@@ -69,7 +69,7 @@ static int
 md_get_data_file_path(const char *internal_data_search_dir, char **file_path)
 {
     CHECK_NULL_ARG2(internal_data_search_dir, file_path);
-    int rc = sr_str_join(internal_data_search_dir, MD_DATA_FILENAME, file_path);
+    int rc = sr_path_join(internal_data_search_dir, MD_DATA_FILENAME, file_path);
     return rc;
 }
 
@@ -85,7 +85,7 @@ static int
 md_get_schema_file_path(const char *internal_schema_search_dir, char **file_path)
 {
     CHECK_NULL_ARG2(internal_schema_search_dir, file_path);
-    int rc = sr_str_join(internal_schema_search_dir, MD_SCHEMA_FILENAME, file_path);
+    int rc = sr_path_join(internal_schema_search_dir, MD_SCHEMA_FILENAME, file_path);
     return rc;
 }
 
@@ -936,6 +936,7 @@ md_init(const char *schema_search_dir,
     struct lyd_node_leaf_list *leaf = NULL;
     md_module_t *module = NULL;
     sr_llist_node_t *module_ll_node = NULL;
+    struct stat file_stat = { 0, };
 
     CHECK_NULL_ARG4(schema_search_dir, internal_schema_search_dir, internal_data_search_dir, md_ctx);
 
@@ -980,6 +981,18 @@ md_init(const char *schema_search_dir,
     if (NULL == module_schema) {
         SR_LOG_ERR("Unable to parse " MD_SCHEMA_FILENAME " schema file: %s", ly_errmsg());
         goto fail;
+    }
+
+    /* create directory for internal data files if it doesn't exist yet */
+    if (-1 == stat(internal_data_search_dir, &file_stat)) {
+        rc = mkdir(internal_data_search_dir, 0755);
+        if (0 != rc && EEXIST == errno) {
+            rc = SR_ERR_OK; /**< already exists */
+        }
+        CHECK_RC_LOG_GOTO(rc, fail,
+                "Unable to create directory for internal data files (%s): %s. "
+                "Please check the layout of the repository and access permissions.",
+                internal_data_search_dir, strerror(errno));
     }
 
     /* open the internal data file */

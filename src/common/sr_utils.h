@@ -98,6 +98,15 @@ int sr_str_ends_with(const char *str, const char *suffix);
 int sr_str_join(const char *str1, const char *str2, char **result);
 
 /**
+ * @brief Concatenates two file paths into newly allocated one.
+ * @param [in] path1
+ * @param [in] path2
+ * @param [out] result
+ * @return err_code
+ */
+int sr_path_join(const char *path1, const char *path2, char **result);
+
+/**
  * @brief Removes all leading and trailing white-space characters from the input string
  * @param [in] str
  */

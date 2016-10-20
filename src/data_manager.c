@@ -1436,9 +1436,9 @@ dm_init(ac_ctx_t *ac_ctx, np_ctx_t *np_ctx, pm_ctx_t *pm_ctx, const cm_connectio
     rc = pthread_rwlock_init(&ctx->commit_ctxs.lock, &attr);
     CHECK_ZERO_MSG_GOTO(rc, rc, SR_ERR_INTERNAL, cleanup, "c_ctxs_lock init failed");
 
-    rc = sr_str_join(schema_search_dir, "internal/", &internal_schema_search_dir);
+    rc = sr_str_join(schema_search_dir, "internal", &internal_schema_search_dir);
     CHECK_ZERO_MSG_GOTO(rc, rc, SR_ERR_INTERNAL, cleanup, "sr_str_join failed");
-    rc = sr_str_join(data_search_dir, "internal/", &internal_data_search_dir);
+    rc = sr_str_join(data_search_dir, "internal", &internal_data_search_dir);
     CHECK_ZERO_MSG_GOTO(rc, rc, SR_ERR_INTERNAL, cleanup, "sr_str_join failed");
 
     rc = md_init(schema_search_dir, internal_schema_search_dir,
