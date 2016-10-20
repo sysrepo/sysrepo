@@ -200,13 +200,12 @@ provide_distance_travalled(sr_val_t **values, size_t *values_cnt, void *private_
     if (0 != sr_list_add(l, strdup(xpath))) {
         SR_LOG_ERR_MSG("Error while adding into list");
     }
-#if 0
+
     *values = calloc(1, sizeof(**values));
     if (NULL == *values) {
         SR_LOG_ERR_MSG("Allocation failed");
         return -2;
     }
-#endif
     (*values)->xpath = strdup(xpath);
     (*values)->type = SR_UINT32_T;
     (*values)->data.uint32_val = 999;
