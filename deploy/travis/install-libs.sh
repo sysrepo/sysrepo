@@ -5,7 +5,7 @@ INSTALL_PREFIX_DIR=$HOME/local
 export PKG_CONFIG_PATH=$INSTALL_PREFIX_DIR/lib/pkgconfig:$PKG_CONFIG_PATH
 
 sudo apt-get update -qq
-sudo apt-get install -y libavl-dev libev-dev valgrind swig python-dev
+sudo apt-get install -y libavl-dev libev-dev valgrind swig python-dev gdb
 pip install --user codecov
 echo -n | openssl s_client -connect scan.coverity.com:443 | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' | sudo tee -a /etc/ssl/certs/ca-certificates.crt
 
@@ -17,7 +17,7 @@ if [ ! -d "$INSTALL_PREFIX_DIR/lib" ]; then
     # CMocka
     git clone git://git.cryptomilk.org/projects/cmocka.git
     cd cmocka ; mkdir build; cd build
-    cmake -DCMAKE_INSTALL_PREFIX=$INSTALL_PREFIX_DIR ..
+    cmake -DCMAKE_INSTALL_PREFIX=$INSTALL_PREFIX_DIR -DCMAKE_C_FLAGS="-DUNIT_TESTING_DEBUG" ..
     make -j2 && make install
     cd ../..
 
