@@ -44,7 +44,7 @@ public:
     char *name() {return _node->name;};
     sr_type_t type() {return _node->type;};
     bool dflt() {return _node->dflt;};
-    S_Data data() {S_Data data(new Data(_node->data, _node->type)); return data;};
+    S_Data data() {S_Data data(new Data(_node->data, _node->type, _deleter)); return data;};
     char *module_name() {return _node->module_name;};
     S_Tree parent();
     S_Tree next();

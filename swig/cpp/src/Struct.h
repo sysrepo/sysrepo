@@ -38,7 +38,7 @@ using namespace std;
 class Data
 {
 public:
-    Data(sr_data_t data, sr_type_t type);
+    Data(sr_data_t data, sr_type_t type, S_Deleter deleter);
     ~Data();
     char *get_binary();
     char *get_bits();
@@ -60,6 +60,7 @@ public:
 private:
     sr_data_t _d;
     sr_type_t _t;
+    S_Deleter _deleter;
 };
 
 // class for sysrepo C struct sr_val_t
@@ -96,7 +97,7 @@ public:
     sr_type_t type() {return _val->type;};
     bool dflt() {return _val->dflt;};
     void dflt_set(bool data) {_val->dflt = data;};
-    S_Data data() {S_Data data(new Data(_val->data, _val->type)); return data;};
+    S_Data data() {S_Data data(new Data(_val->data, _val->type, _deleter)); return data;};
     sr_val_t *get() {return _val;};
     sr_val_t **p_get() {return &_val;};
     S_Val dup();

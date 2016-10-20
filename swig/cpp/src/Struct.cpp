@@ -36,7 +36,7 @@ extern "C" {
 using namespace std;
 
 // Data
-Data::Data(sr_data_t data, sr_type_t type) {_d = data; _t = type;}
+Data::Data(sr_data_t data, sr_type_t type, S_Deleter deleter) {_d = data; _t = type; _deleter = deleter;}
 Data::~Data() {return;}
 char *Data::get_binary() {
     if (_t != SR_BINARY_T) throw_exception(SR_ERR_DATA_MISSING);
