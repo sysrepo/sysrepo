@@ -29,6 +29,7 @@ before_install:
 
 before_script:
   - ulimit -c unlimited -S
+  - sudo sysctl -w kernel.core_pattern=core.%e.%p
 
 script:
   - mkdir build ; cd build ; cmake -DCMAKE_BUILD_TYPE=Debug -DCMAKE_PREFIX_PATH=$HOME/local -DCMAKE_C_FLAGS="-Werror -coverage" -DLOG_THREAD_ID=ON .. && make -j2
