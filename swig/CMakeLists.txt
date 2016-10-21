@@ -129,7 +129,7 @@ if(PYTHONLIBS_FOUND AND PYTHONINTERP_FOUND AND ${GEN_PYTHON_VERSION} STREQUAL "2
           macro(ADD_PYTHON_TEST TEST_NAME)
             add_test(NAME python_${TEST_NAME}
               COMMAND sh ${PY2_SWIG_DIR}/run_python_test.sh
-              "${CMAKE_BINARY_DIR}/src:${CMAKE_BINARY_DIR}/tests"
+              "${CMAKE_BINARY_DIR}/src:${CMAKE_BINARY_DIR}/tests:${CMAKE_BINARY_DIR}/repository"
               "${PY2_SWIG_DIR}:${PROJECT_SOURCE_DIR}/swig/python2:${PYTHON_BUILD_DIR}"
               "${PYTHON_EXECUTABLE}"
               "${PY2_SWIG_DIR}/tests/${TEST_NAME}.py"
