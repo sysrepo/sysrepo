@@ -39,6 +39,7 @@ typedef struct md_test_inserted_modules_s {
 } md_test_inserted_modules_t;
 
 md_test_inserted_modules_t inserted;
+md_test_inserted_modules_t implemented; /**< inserted AND implemented */
 
 typedef struct md_test_dep_s {
     md_dep_type_t type;
@@ -771,6 +772,11 @@ validate_context(md_ctx_t *md_ctx)
         assert_string_equal("urn:ietf:params:xml:ns:yang:A", module->ns);
         assert_string_equal(md_module_A_filepath, module->filepath);
         assert_true(module->latest_revision);
+        if (implemented.A) {
+            assert_true(module->implemented);
+        } else {
+            assert_false(module->implemented);
+        }
         /* inst_ids */
         check_list_size(module->inst_ids, inserted.B + inserted.D_rev1 + 2*inserted.D_rev2);
         validate_subtree_ref(md_ctx, module->inst_ids,
@@ -852,6 +858,11 @@ validate_context(md_ctx_t *md_ctx)
         assert_string_equal("urn:ietf:params:xml:ns:yang:B", module->ns);
         assert_string_equal(md_module_B_filepath, module->filepath);
         assert_true(module->latest_revision);
+        if (implemented.B) {
+            assert_true(module->implemented);
+        } else {
+            assert_false(module->implemented);
+        }
         /* inst_ids */
         check_list_size(module->inst_ids, 1);
         validate_subtree_ref(md_ctx, module->inst_ids, "/" TEST_MODULE_PREFIX "B:inst-ids/inst-id", "B");
@@ -914,6 +925,11 @@ validate_context(md_ctx_t *md_ctx)
         assert_string_equal("", module->ns);
         assert_string_equal(md_submodule_B_sub1_filepath, module->filepath);
         assert_true(module->latest_revision);
+        if (implemented.B) {
+            assert_true(module->implemented);
+        } else {
+            assert_false(module->implemented);
+        }
         /* inst_ids */
         check_list_size(module->inst_ids, 0);
         /* op_data_subtrees */
@@ -942,6 +958,11 @@ validate_context(md_ctx_t *md_ctx)
         assert_string_equal("", module->ns);
         assert_string_equal(md_submodule_B_sub2_filepath, module->filepath);
         assert_true(module->latest_revision);
+        if (implemented.B) {
+            assert_true(module->implemented);
+        } else {
+            assert_false(module->implemented);
+        }
         /* inst_ids */
         check_list_size(module->inst_ids, 0);
         /* op_data_subtrees */
@@ -970,6 +991,11 @@ validate_context(md_ctx_t *md_ctx)
         assert_string_equal("", module->ns);
         assert_string_equal(md_submodule_B_sub3_filepath, module->filepath);
         assert_true(module->latest_revision);
+        if (implemented.B) {
+            assert_true(module->implemented);
+        } else {
+            assert_false(module->implemented);
+        }
         /* inst_ids */
         check_list_size(module->inst_ids, 0);
         /* op_data_subtrees */
@@ -998,6 +1024,11 @@ validate_context(md_ctx_t *md_ctx)
         assert_string_equal("urn:ietf:params:xml:ns:yang:C", module->ns);
         assert_string_equal(md_module_C_filepath, module->filepath);
         assert_true(module->latest_revision);
+        if (implemented.C) {
+            assert_true(module->implemented);
+        } else {
+            assert_false(module->implemented);
+        }
         /* inst_ids */
         check_list_size(module->inst_ids, 2);
         validate_subtree_ref(md_ctx, module->inst_ids, "/" TEST_MODULE_PREFIX "C:inst-id1", "C");
@@ -1056,6 +1087,11 @@ validate_context(md_ctx_t *md_ctx)
         } else {
             assert_true(module->latest_revision);
         }
+        if (implemented.D_rev1) {
+            assert_true(module->implemented);
+        } else {
+            assert_false(module->implemented);
+        }
         /* inst_ids */
         check_list_size(module->inst_ids, 0);
         /* op_data_subtrees */
@@ -1107,6 +1143,11 @@ validate_context(md_ctx_t *md_ctx)
         assert_string_equal("urn:ietf:params:xml:ns:yang:D", module->ns);
         assert_string_equal(md_module_D_rev2_filepath, module->filepath);
         assert_true(module->latest_revision);
+        if (implemented.D_rev2) {
+            assert_true(module->implemented);
+        } else {
+            assert_false(module->implemented);
+        }
         /* inst_ids */
         check_list_size(module->inst_ids, 0);
         /* op_data_subtrees */
@@ -1154,6 +1195,11 @@ validate_context(md_ctx_t *md_ctx)
         assert_string_equal("", module->ns);
         assert_string_equal(md_submodule_D_common_filepath, module->filepath);
         assert_true(module->latest_revision);
+        if (implemented.D_rev1 || implemented.D_rev2) {
+            assert_true(module->implemented);
+        } else {
+            assert_false(module->implemented);
+        }
         /* inst_ids */
         check_list_size(module->inst_ids, 0);
         /* op_data_subtrees */
@@ -1186,6 +1232,11 @@ validate_context(md_ctx_t *md_ctx)
             assert_false(module->latest_revision);
         } else {
             assert_true(module->latest_revision);
+        }
+        if (implemented.E_rev1) {
+            assert_true(module->implemented);
+        } else {
+            assert_false(module->implemented);
         }
         /* inst_ids */
         check_list_size(module->inst_ids, 1);
@@ -1243,6 +1294,11 @@ validate_context(md_ctx_t *md_ctx)
         assert_string_equal("urn:ietf:params:xml:ns:yang:E", module->ns);
         assert_string_equal(md_module_E_rev2_filepath, module->filepath);
         assert_true(module->latest_revision);
+        if (implemented.E_rev2) {
+            assert_true(module->implemented);
+        } else {
+            assert_false(module->implemented);
+        }
         /* inst_ids */
         check_list_size(module->inst_ids, 1);
         validate_subtree_ref(md_ctx, module->inst_ids, "/" TEST_MODULE_PREFIX "E:inst-id-list/inst-id", "E@2016-06-21");
@@ -1299,6 +1355,7 @@ md_test_insert_module(void **state)
     int rc;
     md_ctx_t *md_ctx = NULL;
     memset(&inserted, 0, sizeof inserted);
+    memset(&implemented, 0, sizeof implemented);
 
     /* initialize context */
     rc = md_init(TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal/",
@@ -1309,31 +1366,47 @@ md_test_insert_module(void **state)
     /* insert module A */
     rc = md_insert_module(md_ctx, md_module_A_filepath);
     assert_int_equal(SR_ERR_OK, rc);
-    inserted.A = true;
+    inserted.A = implemented.A = true;
     validate_context(md_ctx);
+
+    /* try to insert module A again */
+    rc = md_insert_module(md_ctx, md_module_A_filepath);
+    assert_int_equal(SR_ERR_DATA_EXISTS, rc);
 
     /* insert module B */
     rc = md_insert_module(md_ctx, md_module_B_filepath);
     assert_int_equal(SR_ERR_OK, rc);
-    inserted.B = true;
+    inserted.B = implemented.B = true;
     validate_context(md_ctx);
 
     /* insert module C */
     rc = md_insert_module(md_ctx, md_module_C_filepath);
     assert_int_equal(SR_ERR_OK, rc);
-    inserted.C = true;
+    inserted.C = implemented.C = true;
     validate_context(md_ctx);
 
     /* insert module E-rev1 (D-rev1 should get inserted automatically) */
     rc = md_insert_module(md_ctx, md_module_E_rev1_filepath);
     assert_int_equal(SR_ERR_OK, rc);
     inserted.D_rev1 = inserted.E_rev1 = true;
+    implemented.E_rev1 = true;
     validate_context(md_ctx);
+
+    /* D-rev1 is actually only imported, not implemented */
+    rc = md_insert_module(md_ctx, md_module_D_rev1_filepath);
+    assert_int_equal(SR_ERR_OK, rc);
+    implemented.D_rev1 = true;
+    validate_context(md_ctx);
+
+    /* D-rev1 is now really implemented */
+    rc = md_insert_module(md_ctx, md_module_D_rev1_filepath);
+    assert_int_equal(SR_ERR_DATA_EXISTS, rc);
 
     /* insert module E-rev2 (D-rev2 should get inserted automatically) */
     rc = md_insert_module(md_ctx, md_module_E_rev2_filepath);
     assert_int_equal(SR_ERR_OK, rc);
     inserted.D_rev2 = inserted.E_rev2 = true;
+    implemented.E_rev2 = true;
     validate_context(md_ctx);
 
     /* flush changes into the internal data file */
@@ -1366,6 +1439,8 @@ md_test_remove_module(void **state)
     int rc;
     md_ctx_t *md_ctx = NULL;
     memset(&inserted, 1, sizeof inserted);
+    memset(&implemented, 1, sizeof implemented);
+    implemented.D_rev2 = false;
 
     /* initialize context */
     rc = md_init(TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal/",
@@ -1392,7 +1467,7 @@ md_test_remove_module(void **state)
     /* remove module E-rev2 */
     rc = md_remove_module(md_ctx, TEST_MODULE_PREFIX "E", "2016-06-21");
     assert_int_equal(SR_ERR_OK, rc);
-    inserted.E_rev2 = false;
+    inserted.E_rev2 = implemented.E_rev2 = false;
     validate_context(md_ctx);
 
     /* remove module D-rev2 */
@@ -1404,7 +1479,7 @@ md_test_remove_module(void **state)
     /* now there are no modules dependent on B, remove it */
     rc = md_remove_module(md_ctx, TEST_MODULE_PREFIX "B", ""); /*< try "" instead of NULL */
     assert_int_equal(SR_ERR_OK, rc);
-    inserted.B = false;
+    inserted.B = implemented.B =false;
     validate_context(md_ctx);
 
     /* still can't remove A, C, D-rev1 */
@@ -1422,25 +1497,25 @@ md_test_remove_module(void **state)
     /* remove module E-rev1 */
     rc = md_remove_module(md_ctx, TEST_MODULE_PREFIX "E", "2016-06-11");
     assert_int_equal(SR_ERR_OK, rc);
-    inserted.E_rev1 = false;
+    inserted.E_rev1 = implemented.E_rev1 = false;
     validate_context(md_ctx);
 
     /* remove module D-rev1 */
     rc = md_remove_module(md_ctx, TEST_MODULE_PREFIX "D", "2016-06-10");
     assert_int_equal(SR_ERR_OK, rc);
-    inserted.D_rev1 = false;
+    inserted.D_rev1 = implemented.D_rev1 = false;
     validate_context(md_ctx);
 
     /* remove module C */
     rc = md_remove_module(md_ctx, TEST_MODULE_PREFIX "C", NULL);
     assert_int_equal(SR_ERR_OK, rc);
-    inserted.C = false;
+    inserted.C = implemented.C = false;
     validate_context(md_ctx);
 
     /* finally remove module A */
     rc = md_remove_module(md_ctx, TEST_MODULE_PREFIX "A", NULL);
     assert_int_equal(SR_ERR_OK, rc);
-    inserted.A = false;
+    inserted.A = implemented.A = false;
     validate_context(md_ctx);
 
     /* flush changes into the internal data file */

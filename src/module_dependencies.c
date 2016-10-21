@@ -42,6 +42,7 @@
 #define MD_XPATH_MODULE_FILEPATH             MD_XPATH_MODULE "/filepath"
 #define MD_XPATH_MODULE_LATEST_REV_FLAG      MD_XPATH_MODULE "/latest-revision"
 #define MD_XPATH_SUBMODULE_FLAG              MD_XPATH_MODULE "/submodule"
+#define MD_XPATH_IMPLEMENTED_FLAG            MD_XPATH_MODULE "/implemented"
 #define MD_XPATH_MODULE_DEPENDENCY_LIST      MD_XPATH_MODULE "/dependencies/"
 #define MD_XPATH_MODULE_DEPENDENCY           MD_XPATH_MODULE_DEPENDENCY_LIST "dependency[module-name='%s'][module-revision='%s'][type='%s']"
 #define MD_XPATH_MODULE_DEPENDENCY_ORG       MD_XPATH_MODULE_DEPENDENCY "/orig-modules/orig-module[orig-module-name='%s'][orig-module-revision='%s']"
@@ -1036,6 +1037,8 @@ md_init(const char *schema_search_dir,
                             module->latest_revision = leaf->value.bln;
                         } else if (node->schema->name && 0 == strcmp("submodule", node->schema->name)) {
                             module->submodule = leaf->value.bln;
+                        } else if (node->schema->name && 0 == strcmp("implemented", node->schema->name)) {
+                            module->implemented = leaf->value.bln;
                         }
                     }
                     node = node->next;
@@ -1598,6 +1601,7 @@ md_insert_lys_module(md_ctx_t *md_ctx, const struct lys_module *module_schema, c
     CHECK_NULL_NOMEM_GOTO(module->ns, rc, cleanup);
     module->filepath = strdup(module_schema->filepath);
     CHECK_NULL_NOMEM_GOTO(module->filepath, rc, cleanup);
+    module->implemented = module->submodule ? belongsto->implemented : !dependency;
 
     /* Is this the latest revision of this module? */
     module_ll_node = md_ctx->modules->first;
@@ -1608,9 +1612,26 @@ md_insert_lys_module(md_ctx_t *md_ctx, const struct lys_module *module_schema, c
             if (0 == ret) {
                 /* already installed */
                 if (!dependency) {
-                    rc = SR_ERR_DATA_EXISTS;
-                    SR_LOG_WRN("Module '%s' is already installed.", md_get_module_fullname(module));
-                    goto cleanup;
+                    if (module2->implemented) {
+                        rc = SR_ERR_DATA_EXISTS;
+                        SR_LOG_WRN("Module '%s' is already installed.", md_get_module_fullname(module));
+                        goto cleanup;
+                    } else {
+                        module2->implemented = true;
+                        /* update implemented flag */
+                        rc = md_lyd_new_path(md_ctx, MD_XPATH_IMPLEMENTED_FLAG, "true", module2,
+                                             "set implemented flag", NULL, module2->name, module2->revision_date);
+                        if (SR_ERR_OK != rc) {
+                            goto cleanup;
+                        }
+                        SR_LOG_INF("Module '%s' is now implemented, not only imported.",
+                                md_get_module_fullname(module));
+                        /* update submodules */
+                        md_free_module(module);
+                        module = module2;
+                        already_installed = true;
+                        goto dependencies;
+                    }
                 } else {
                     if (!module->submodule) {
                         rc = SR_ERR_OK;
@@ -1619,6 +1640,15 @@ md_insert_lys_module(md_ctx_t *md_ctx, const struct lys_module *module_schema, c
                     /* already installed submodule, still needs to be processed again */
                     md_free_module(module);
                     module = module2;
+                    if (!module->implemented && belongsto->implemented) {
+                        module->implemented = true;
+                        /* update implemented flag */
+                        rc = md_lyd_new_path(md_ctx, MD_XPATH_IMPLEMENTED_FLAG, "true", module,
+                                             "set implemented flag", NULL, module->name, module->revision_date);
+                        if (SR_ERR_OK != rc) {
+                            goto cleanup;
+                        }
+                    }
                     already_installed = true;
                     goto dependencies;
                 }
@@ -1672,6 +1702,12 @@ md_insert_lys_module(md_ctx_t *md_ctx, const struct lys_module *module_schema, c
     if (SR_ERR_OK != rc) {
         goto cleanup;
     }
+    /*  - implemented flag */
+    rc = md_lyd_new_path(md_ctx, MD_XPATH_IMPLEMENTED_FLAG, module->implemented ? "true" : "false", module,
+                         "set implemented flag", NULL, module->name, module->revision_date);
+    if (SR_ERR_OK != rc) {
+        goto cleanup;
+    }
 
 dependencies:
     /* Recursivelly insert all include-based dependencies. */
@@ -1685,6 +1721,12 @@ dependencies:
         if (SR_ERR_OK != rc) {
             goto cleanup;
         }
+    }
+
+    if (!module->submodule && already_installed) {
+        /* we only needed to update submodules */
+        rc = SR_ERR_OK;
+        goto cleanup;
     }
 
     /* Recursivelly insert all import-based dependencies. */
