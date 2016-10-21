@@ -2314,6 +2314,7 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, s
     sr_subscription_ctx_t *sr_subscription = NULL;
     cl_sm_subscription_ctx_t *sm_subscription = NULL;
     int rc = SR_ERR_OK;
+    size_t sm_subscription_cnt = 0;
 
     CHECK_NULL_ARG4(session, module_name, callback, subscription_p);
 
@@ -2322,6 +2323,9 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, s
     /* Initialize the subscription */
     if (opts & SR_SUBSCR_CTX_REUSE) {
         sr_subscription = *subscription_p;
+        if (sr_subscription) {
+            sm_subscription_cnt = sr_subscription->sm_subscription_cnt;
+        }
     }
     rc = cl_subscription_init(session, SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS, module_name, SR_API_VALUES,
             private_ctx, &sr_subscription, &sm_subscription, &msg_req);
@@ -2357,8 +2361,12 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, s
     return cl_session_return(session, SR_ERR_OK);
 
 cleanup:
-    cl_subscription_close(session, sm_subscription);
-    cl_sr_subscription_remove_one(sr_subscription);
+    if (sm_subscription) {
+        cl_subscription_close(session, sm_subscription);
+    }
+    if (sr_subscription && sm_subscription_cnt < sr_subscription->sm_subscription_cnt) {
+        cl_sr_subscription_remove_one(sr_subscription);
+    }
     if (NULL != msg_req) {
         sr_msg_free(msg_req);
     }
@@ -2643,13 +2651,11 @@ sr_unsubscribe(sr_session_ctx_t *session, sr_subscription_ctx_t *sr_subscription
 
     /* close all subscriptions wrapped in the context */
     for (int i = (sr_subscription->sm_subscription_cnt - 1); i >= 0 ; i--) {
-        rc = cl_subscription_close((NULL != session ? session : tmp_session), sr_subscription->sm_subscriptions[i]);
-        if (SR_ERR_OK == rc) {
-            cl_sr_subscription_remove_one(sr_subscription);
-        } else {
-            SR_LOG_ERR_MSG("Unable to close the subscription.");
-            break;
+        if (SR_ERR_OK != cl_subscription_close((NULL != session ? session : tmp_session),
+                                               sr_subscription->sm_subscriptions[i])) {
+            SR_LOG_WRN("Unable to close the subscription id='%"PRIu32"'", sr_subscription->sm_subscriptions[i]->id);
         }
+        cl_sr_subscription_remove_one(sr_subscription);
     }
 
 cleanup:

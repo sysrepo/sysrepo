@@ -69,7 +69,7 @@ static int
 md_get_data_file_path(const char *internal_data_search_dir, char **file_path)
 {
     CHECK_NULL_ARG2(internal_data_search_dir, file_path);
-    int rc = sr_str_join(internal_data_search_dir, MD_DATA_FILENAME, file_path);
+    int rc = sr_path_join(internal_data_search_dir, MD_DATA_FILENAME, file_path);
     return rc;
 }
 
@@ -85,7 +85,7 @@ static int
 md_get_schema_file_path(const char *internal_schema_search_dir, char **file_path)
 {
     CHECK_NULL_ARG2(internal_schema_search_dir, file_path);
-    int rc = sr_str_join(internal_schema_search_dir, MD_SCHEMA_FILENAME, file_path);
+    int rc = sr_path_join(internal_schema_search_dir, MD_SCHEMA_FILENAME, file_path);
     return rc;
 }
 
@@ -292,15 +292,23 @@ md_construct_lys_xpath(const struct lys_node *node_schema, char **xpath)
 
     CHECK_NULL_ARG2(node_schema, xpath);
 
+    if (cur_schema->nodetype == LYS_USES) {
+        SR_LOG_ERR_MSG("md_construct_lys_xpath called for LYS_USES");
+        return SR_ERR_INVAL_ARG;
+    }
+
     /* get the length of the resulting string */
     if (cur_schema->nodetype == LYS_AUGMENT && NULL == cur_schema->parent) {
         cur_schema = ((struct lys_node_augment *)cur_schema)->target;
     }
     while (NULL != cur_schema) {
-        if (cur_schema->parent && cur_schema->parent->nodetype == LYS_AUGMENT) {
-            parent_schema = cur_schema->parent->prev;
+        if (cur_schema->parent && cur_schema->parent->nodetype == LYS_USES) {
+            parent_schema = cur_schema->parent->parent;
         } else {
             parent_schema = cur_schema->parent;
+        }
+        if (parent_schema && parent_schema->nodetype == LYS_AUGMENT) {
+            parent_schema = parent_schema->prev;
         }
         length += 1 /* "/" */;
         if (!parent_schema || 0 != strcmp(MD_MAIN_MODULE(parent_schema)->name, MD_MAIN_MODULE(cur_schema)->name)) {
@@ -320,10 +328,13 @@ md_construct_lys_xpath(const struct lys_node *node_schema, char **xpath)
     }
     while (NULL != cur_schema) {
         /* parent */
-        if (cur_schema->parent && cur_schema->parent->nodetype == LYS_AUGMENT) {
-            parent_schema = cur_schema->parent->prev;
+        if (cur_schema->parent && cur_schema->parent->nodetype == LYS_USES) {
+            parent_schema = cur_schema->parent->parent;
         } else {
             parent_schema = cur_schema->parent;
+        }
+        if (parent_schema && parent_schema->nodetype == LYS_AUGMENT) {
+            parent_schema = parent_schema->prev;
         }
         /* node name */
         length = strlen(cur_schema->name);
@@ -925,6 +936,7 @@ md_init(const char *schema_search_dir,
     struct lyd_node_leaf_list *leaf = NULL;
     md_module_t *module = NULL;
     sr_llist_node_t *module_ll_node = NULL;
+    struct stat file_stat = { 0, };
 
     CHECK_NULL_ARG4(schema_search_dir, internal_schema_search_dir, internal_data_search_dir, md_ctx);
 
@@ -969,6 +981,15 @@ md_init(const char *schema_search_dir,
     if (NULL == module_schema) {
         SR_LOG_ERR("Unable to parse " MD_SCHEMA_FILENAME " schema file: %s", ly_errmsg());
         goto fail;
+    }
+
+    /* create directory for internal data files if it doesn't exist yet */
+    if (-1 == stat(internal_data_search_dir, &file_stat)) {
+        rc = sr_mkdir_recursive(internal_data_search_dir, 0755);
+        CHECK_RC_LOG_GOTO(rc, fail,
+                "Unable to create directory for internal data files (%s): %s. "
+                "Please check the layout of the repository and access permissions.",
+                internal_data_search_dir, strerror(errno));
     }
 
     /* open the internal data file */
@@ -1500,7 +1521,8 @@ md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, struct lys_node *
 #define PRIV_OP_SUBTREE  1
 #define PRIV_CFG_SUBTREE 2
             rc = SR_ERR_OK;
-            if (LYS_CONFIG_R & node->flags) { /*< this node has operational data (and all descendands as well) */
+            if ((LYS_CONFIG_R & node->flags) && (LYS_USES != node->nodetype)) {
+                /*< this node has operational data (and all descendands as well) */
                 if (NULL == node->parent) {
                     rc = md_add_subtree_ref(md_ctx, dest_module, dest_module->op_data_subtrees, module, node,
                                             MD_XPATH_MODULE_OP_DATA_SUBTREE);
@@ -1508,7 +1530,7 @@ md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, struct lys_node *
             } else { /*< this node has configuration data or it is a special kind of node (e.g. augment) */
                 if ((intptr_t)node->priv & PRIV_OP_SUBTREE) {
                     /* some or all children carry operational data */
-                    if ((intptr_t)node->priv & PRIV_CFG_SUBTREE) {
+                    if (((intptr_t)node->priv & PRIV_CFG_SUBTREE) || (LYS_USES == node->nodetype)) {
                         /* a mix of configuration and operational data amongst children */
                         for (child = node->child; child && main_module_schema == MD_MAIN_MODULE(child) && SR_ERR_OK == rc;
                              child = child->next) {

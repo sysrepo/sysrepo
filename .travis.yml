@@ -12,7 +12,7 @@ matrix:
             sudo: required
             compiler: clang
         -   os: osx
-            compiler: gcc         
+            compiler: gcc
     allow_failures:
         -   os: osx
 
@@ -27,13 +27,20 @@ before_install:
   - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then bash deploy/travis/install-libs.sh; fi
   - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then sh deploy/travis/install-libs-osx.sh; fi
 
+before_script:
+  - ulimit -c unlimited -S
+  - sudo sysctl -w kernel.core_pattern=core.%e.%p
+
 script:
-  - mkdir build ; cd build ; cmake -DCMAKE_BUILD_TYPE=Debug -DCMAKE_PREFIX_PATH=$HOME/local -DCMAKE_C_FLAGS="-Werror -coverage" .. && make -j2
+  - mkdir build ; cd build ; cmake -DCMAKE_BUILD_TYPE=Debug -DCMAKE_PREFIX_PATH=$HOME/local -DCMAKE_C_FLAGS="-Werror -coverage" -DLOG_THREAD_ID=ON .. && make -j2
   - ctest --output-on-failure
   - sudo ctest --output-on-failure --tests-regex ac_test
 
 after_success:
   - if [ "$CC" = "gcc" ]; then codecov; fi
+
+after_failure:
+  - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then bash ../deploy/travis/report-crash.sh; fi
 
 env:
   global:

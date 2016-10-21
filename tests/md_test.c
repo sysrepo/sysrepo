@@ -540,8 +540,8 @@ md_test_init_and_destroy(void **state)
     md_ctx_t *md_ctx = NULL;
 
     /* initialize context */
-    rc = md_init(TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal/",
-                 TEST_DATA_SEARCH_DIR "internal/", false, &md_ctx);
+    rc = md_init(TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal",
+                 TEST_DATA_SEARCH_DIR "internal", false, &md_ctx);
     assert_int_equal(0, rc);
     assert_non_null(md_ctx->schema_search_dir);
     assert_int_equal(md_ctx->fd, -1);
@@ -779,13 +779,11 @@ validate_context(md_ctx_t *md_ctx)
         validate_subtree_ref(md_ctx, module->inst_ids,
                                      "/" TEST_MODULE_PREFIX "A:base-container"
                                      "/" TEST_MODULE_PREFIX "C:C-ext-container"
-                                     "/" TEST_MODULE_PREFIX "D:Dcommon-grouping"
-                                     "/D-ext-inst-id", "D@2016-06-10");
+                                     "/" TEST_MODULE_PREFIX "D:D-ext-inst-id", "D@2016-06-10");
         validate_subtree_ref(md_ctx, module->inst_ids,
                                      "/" TEST_MODULE_PREFIX "A:base-container"
                                      "/" TEST_MODULE_PREFIX "C:C-ext-container"
-                                     "/" TEST_MODULE_PREFIX "D:Dcommon-grouping"
-                                     "/D-ext-inst-id", "D@2016-06-20");
+                                     "/" TEST_MODULE_PREFIX "D:D-ext-inst-id", "D@2016-06-20");
         validate_subtree_ref(md_ctx, module->inst_ids,
                                      "/" TEST_MODULE_PREFIX "A:base-container"
                                      "/" TEST_MODULE_PREFIX "C:C-ext-container"
@@ -798,13 +796,11 @@ validate_context(md_ctx_t *md_ctx)
         validate_subtree_ref(md_ctx, module->op_data_subtrees,
                                      "/" TEST_MODULE_PREFIX "A:base-container"
                                      "/" TEST_MODULE_PREFIX "C:C-ext-container"
-                                     "/" TEST_MODULE_PREFIX "D:Dcommon-grouping"
-                                     "/D-ext-op-data", "D@2016-06-10");
+                                     "/" TEST_MODULE_PREFIX "D:D-ext-op-data", "D@2016-06-10");
         validate_subtree_ref(md_ctx, module->op_data_subtrees,
                                      "/" TEST_MODULE_PREFIX "A:base-container"
                                      "/" TEST_MODULE_PREFIX "C:C-ext-container"
-                                     "/" TEST_MODULE_PREFIX "D:Dcommon-grouping"
-                                     "/D-ext-op-data", "D@2016-06-20");
+                                     "/" TEST_MODULE_PREFIX "D:D-ext-op-data", "D@2016-06-20");
         validate_subtree_ref(md_ctx, module->op_data_subtrees,
                                      "/" TEST_MODULE_PREFIX "A:base-container"
                                      "/" TEST_MODULE_PREFIX "C:C-ext-container"
@@ -1301,8 +1297,8 @@ md_test_insert_module(void **state)
     memset(&inserted, 0, sizeof inserted);
 
     /* initialize context */
-    rc = md_init(TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal/",
-                 TEST_DATA_SEARCH_DIR "internal/", true, &md_ctx);
+    rc = md_init(TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal",
+                 TEST_DATA_SEARCH_DIR "internal", true, &md_ctx);
     assert_int_equal(SR_ERR_OK, rc);
     validate_context(md_ctx);
 
@@ -1344,8 +1340,8 @@ md_test_insert_module(void **state)
     md_destroy(md_ctx);
 
     /* reload dependencies from the file and re-test */
-    rc = md_init(TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal/",
-                 TEST_DATA_SEARCH_DIR "internal/", false, &md_ctx);
+    rc = md_init(TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal",
+                 TEST_DATA_SEARCH_DIR "internal", false, &md_ctx);
     assert_int_equal(SR_ERR_OK, rc);
     validate_context(md_ctx);
 
@@ -1368,8 +1364,8 @@ md_test_remove_module(void **state)
     memset(&inserted, 1, sizeof inserted);
 
     /* initialize context */
-    rc = md_init(TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal/",
-                 TEST_DATA_SEARCH_DIR "internal/", true, &md_ctx);
+    rc = md_init(TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal",
+                 TEST_DATA_SEARCH_DIR "internal", true, &md_ctx);
     assert_int_equal(SR_ERR_OK, rc);
     validate_context(md_ctx);
 
@@ -1451,8 +1447,8 @@ md_test_remove_module(void **state)
     md_destroy(md_ctx);
 
     /* reload dependencies from the file and re-test */
-    rc = md_init(TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal/",
-                 TEST_DATA_SEARCH_DIR "internal/", false, &md_ctx);
+    rc = md_init(TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal",
+                 TEST_DATA_SEARCH_DIR "internal", false, &md_ctx);
     assert_int_equal(SR_ERR_OK, rc);
     validate_context(md_ctx);
 

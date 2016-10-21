@@ -5,7 +5,7 @@ set(SYSREPO_DESC "YANG-based system repository")
 # setup version
 set(SYSREPO_MAJOR_VERSION 0)
 set(SYSREPO_MINOR_VERSION 4)
-set(SYSREPO_MICRO_VERSION 3)
+set(SYSREPO_MICRO_VERSION 5)
 set(SYSREPO_VERSION ${SYSREPO_MAJOR_VERSION}.${SYSREPO_MINOR_VERSION}.${SYSREPO_MICRO_VERSION})
 
 # setup bindings
@@ -143,6 +143,10 @@ option (USE_SR_MEM_MGMT
         ON)
 
 set(COMMIT_TIMEOUT 10 CACHE INTEGER "Commit operation timeout (in seconds).")
+
+option (LOG_THREAD_ID
+        "If enabled, sysrepo logger will append thread ID (as well as function name) to each printed message."
+        OFF)
 
 # add subdirectories
 add_subdirectory(src)
