@@ -535,6 +535,14 @@ int sr_set_socket_dir_permissions(const char *socket_dir, const char *data_serac
  * @return matched node or NULL in case of error or result containing multiple nodes
  */
 struct lys_node * sr_find_schema_node(const struct lys_node *node, const char *expr, int options);
+
+/**
+ * @brief Create directory and all its parent directories as needed.
+ *
+ * @param [in] path Path to the directory to create.
+ * @param [in] mode Specifies the mode for any newly created directory.
+ */
+int sr_mkdir_recursive(const char *path, mode_t mode);
 /**@} utils */
 
 #endif /* SR_UTILS_H_ */

@@ -2123,3 +2123,42 @@ sr_find_schema_node(const struct lys_node *node, const char *expr, int options)
     ly_set_free(set);
     return result;
 }
+
+int
+sr_mkdir_recursive(const char *path, mode_t mode)
+{
+    CHECK_NULL_ARG(path);
+
+    const size_t len = strlen(path);
+    char path_dup[PATH_MAX] = { 0, };
+    char *p = NULL;
+
+    errno = 0;
+
+    /* Duplicate string so its mutable */
+    if (len > sizeof(path_dup)-1) {
+        errno = ENAMETOOLONG;
+        return SR_ERR_INVAL_ARG;
+    }
+    strcpy(path_dup, path);
+
+    /* Iterate the string */
+    for (p = path_dup + 1; *p; p++) {
+        if (*p == '/') {
+            /* Temporarily truncate */
+            *p = '\0';
+            if (mkdir(path_dup, mode) != 0) {
+                if (errno != EEXIST)
+                    return SR_ERR_IO;
+            }
+            *p = '/';
+        }
+    }
+
+    if (mkdir(path_dup, mode) != 0) {
+        if (errno != EEXIST)
+            return -1;
+    }
+
+    return 0;
+}
