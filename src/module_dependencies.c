@@ -986,9 +986,6 @@ md_init(const char *schema_search_dir,
     /* create directory for internal data files if it doesn't exist yet */
     if (-1 == stat(internal_data_search_dir, &file_stat)) {
         rc = sr_mkdir_recursive(internal_data_search_dir, 0755);
-        if (0 != rc && EEXIST == errno) {
-            rc = SR_ERR_OK; /**< already exists */
-        }
         CHECK_RC_LOG_GOTO(rc, fail,
                 "Unable to create directory for internal data files (%s): %s. "
                 "Please check the layout of the repository and access permissions.",

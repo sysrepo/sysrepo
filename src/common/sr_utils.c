@@ -2157,7 +2157,7 @@ sr_mkdir_recursive(const char *path, mode_t mode)
 
     if (mkdir(path_dup, mode) != 0) {
         if (errno != EEXIST)
-            return -1;
+            return SR_ERR_IO;
     }
 
     return 0;
