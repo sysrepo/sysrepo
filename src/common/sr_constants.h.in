@@ -116,4 +116,10 @@
 /** Plugin health check timeout (in seconds). */
 #define SR_PLUGIN_HEALTH_CHECK_TIMEOUT 10
 
+/**
+ * Timeout (in seconds) after which the commit will be aborted / released
+ * in case that not all notification ACKs have been received.
+ */
+#define SR_COMMIT_TIMEOUT @COMMIT_TIMEOUT@
+
 #endif /* SRC_SR_CONSTANTS_H_IN_ */
