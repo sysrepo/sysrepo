@@ -1168,8 +1168,8 @@ main(int argc, char* argv[])
                     strncpy(local_internal_schema_search_dir, optarg, PATH_MAX - 15);
                     strncpy(local_internal_data_search_dir, optarg, PATH_MAX - 15);
                     strcat(local_schema_search_dir, "/yang/");
-                    strcat(local_internal_schema_search_dir, "/yang/internal/");
-                    strcat(local_internal_data_search_dir, "/data/internal/");
+                    strcat(local_internal_schema_search_dir, "/yang/internal");
+                    strcat(local_internal_data_search_dir, "/data/internal");
                     srcfg_schema_search_dir = local_schema_search_dir;
                     srcfg_internal_schema_search_dir = local_internal_schema_search_dir;
                     srcfg_internal_data_search_dir = local_internal_data_search_dir;
