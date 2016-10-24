@@ -95,9 +95,6 @@ log_event(changes_t *ch, sr_notif_event_t ev)
     case SR_EV_ABORT:
         ch->events_received |= ABORT_CALLED;
         break;
-    case SR_EV_ENABLED:
-        ch->events_received |= ENABLED_CALLED;
-        break;
     }
 }
 
@@ -1668,6 +1665,43 @@ cl_subtree_verifier(void **state)
 }
 
 static void
+cl_unsuccessfull_subscription(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+    sr_session_ctx_t *session = NULL;
+    sr_subscription_ctx_t *subscription = NULL;
+    changes_t changes = {.mutex = PTHREAD_MUTEX_INITIALIZER, .cv = PTHREAD_COND_INITIALIZER, 0};
+    int rc = SR_ERR_OK;
+
+    /* start session */
+    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_module_change_subscribe(session, "referenced-data", list_changes_cb, &changes,
+            0, SR_SUBSCR_DEFAULT, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_module_change_subscribe(session, "invalid-module", list_changes_cb, &changes,
+            0, SR_SUBSCR_CTX_REUSE, &subscription);
+    assert_int_equal(rc, SR_ERR_INTERNAL);
+
+    rc = sr_module_change_subscribe(session, "invalid-module", list_changes_cb, &changes,
+            0, SR_SUBSCR_CTX_REUSE, &subscription);
+    assert_int_equal(rc, SR_ERR_INTERNAL);
+
+    rc = sr_subtree_change_subscribe(session, "/invalid-module:container", list_changes_cb, &changes,
+            0, SR_SUBSCR_CTX_REUSE, &subscription);
+    assert_int_equal(rc, SR_ERR_INTERNAL);
+
+    rc = sr_unsubscribe(NULL, subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_session_stop(session);
+    assert_int_equal(rc, SR_ERR_OK);
+}
+
+static void
 cl_enabled_notifications(void **state)
 {
     sr_conn_ctx_t *conn = *state;
@@ -1946,6 +1980,7 @@ cl_module_empty_enabled_notifications(void **state)
     rc = sr_session_stop(session);
     assert_int_equal(rc, SR_ERR_OK);
 }
+
 int
 main()
 {
@@ -1967,7 +2002,8 @@ main()
         cmocka_unit_test_setup_teardown(cl_refused_by_verifier, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_no_abort_notifications, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_subtree_verifier, sysrepo_setup, sysrepo_teardown),
-        cmocka_unit_test_setup_teardown(cl_enabled_notifications, sysrepo_setup, sysrepo_teardown),
+        cmocka_unit_test_setup_teardown(cl_unsuccessfull_subscription, sysrepo_setup, sysrepo_teardown),
+	cmocka_unit_test_setup_teardown(cl_enabled_notifications, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_subtree_enabled_notifications, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_multiple_enabled_notifications, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_subtree_empty_enabled_notifications, sysrepo_setup, sysrepo_teardown),
