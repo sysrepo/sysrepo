@@ -166,6 +166,9 @@ def create_ietf_interfaces():
     v = sr.Val(True, sr.SR_BOOL_T)
     session.set_item("/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/enabled", v)
 
+    v = sr.Val(1500, sr.SR_UINT16_T)
+    session.set_item("/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/mtu", v)
+
     v = sr.Val("ethernetCsmacd", sr.SR_IDENTITYREF_T)
     session.set_item("/ietf-interfaces:interfaces/interface[name='eth1']/type", v)
 
