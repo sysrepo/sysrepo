@@ -95,6 +95,9 @@ log_event(changes_t *ch, sr_notif_event_t ev)
     case SR_EV_ABORT:
         ch->events_received |= ABORT_CALLED;
         break;
+    case SR_EV_ENABLED:
+        ch->events_received |= ENABLED_CALLED;
+        break;
     }
 }
 
@@ -1723,7 +1726,7 @@ cl_enabled_notifications(void **state)
 
     sr_clock_get_time(CLOCK_REALTIME, &ts);
     ts.tv_sec += COND_WAIT_SEC;
-    pthread_cond_wait(&changes.cv, &changes.mutex);
+    pthread_cond_timedwait(&changes.cv, &changes.mutex, &ts);
 
     /* check that both callbacks were called */
     assert_true(changes.events_received & ENABLED_CALLED);
@@ -1775,7 +1778,7 @@ cl_subtree_enabled_notifications(void **state)
 
     sr_clock_get_time(CLOCK_REALTIME, &ts);
     ts.tv_sec += COND_WAIT_SEC;
-    pthread_cond_wait(&changes.cv, &changes.mutex);
+    pthread_cond_timedwait(&changes.cv, &changes.mutex, &ts);
 
     /* check that both callbacks were called */
     assert_true(changes.events_received & ENABLED_CALLED);
@@ -1823,7 +1826,7 @@ cl_multiple_enabled_notifications(void **state)
 
     sr_clock_get_time(CLOCK_REALTIME, &ts);
     ts.tv_sec += COND_WAIT_SEC;
-    pthread_cond_wait(&changesA.cv, &changesA.mutex);
+    pthread_cond_timedwait(&changesA.cv, &changesA.mutex, &ts);
 
 
     pthread_mutex_lock(&changesB.mutex);
@@ -1833,7 +1836,7 @@ cl_multiple_enabled_notifications(void **state)
 
     sr_clock_get_time(CLOCK_REALTIME, &ts);
     ts.tv_sec += COND_WAIT_SEC;
-    pthread_cond_wait(&changesB.cv, &changesB.mutex);
+    pthread_cond_timedwait(&changesB.cv, &changesB.mutex, &ts);
 
 
     /* check that both callbacks were called */
@@ -1900,7 +1903,7 @@ cl_subtree_empty_enabled_notifications(void **state)
 
     sr_clock_get_time(CLOCK_REALTIME, &ts);
     ts.tv_sec += COND_WAIT_SEC;
-    pthread_cond_wait(&changes.cv, &changes.mutex);
+    pthread_cond_timedwait(&changes.cv, &changes.mutex, &ts);
 
     /* check that both callbacks were called */
     assert_true(changes.events_received & ENABLED_CALLED);
@@ -1908,12 +1911,7 @@ cl_subtree_empty_enabled_notifications(void **state)
     assert_false(changes.events_received & APPLY_CALLED);
     assert_false(changes.events_received & ABORT_CALLED);
 
-    assert_int_equal(changes.cnt, 1);
-    assert_null(changes.old_values[0]);
-    assert_non_null(changes.new_values[0]);
-    assert_string_equal(changes.new_values[0]->xpath, "/test-module:main");
-    assert_int_equal(SR_CONTAINER_T, changes.new_values[0]->type);
-    assert_true(changes.new_values[0]->dflt);
+    assert_int_equal(changes.cnt, 0);
 
     for (size_t i = 0; i < changes.cnt; i++) {
         sr_free_val(changes.new_values[i]);
@@ -1956,7 +1954,7 @@ cl_module_empty_enabled_notifications(void **state)
 
     sr_clock_get_time(CLOCK_REALTIME, &ts);
     ts.tv_sec += COND_WAIT_SEC;
-    pthread_cond_wait(&changes.cv, &changes.mutex);
+    pthread_cond_timedwait(&changes.cv, &changes.mutex, &ts);
 
     /* check that both callbacks were called */
     assert_true(changes.events_received & ENABLED_CALLED);
