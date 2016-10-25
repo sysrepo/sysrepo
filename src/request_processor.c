@@ -256,6 +256,7 @@ rp_module_install_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *sessio
 {
     Sr__Msg *resp = NULL;
     sr_mem_ctx_t *sr_mem = NULL;
+    sr_list_t *implicitly_installed = NULL, *implicitly_removed = NULL;
     int rc = SR_ERR_OK, oper_rc = SR_ERR_OK;
 
     CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, msg->request->module_install_req);
@@ -284,11 +285,13 @@ rp_module_install_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *sessio
                 dm_install_module(rp_ctx->dm_ctx,
                         msg->request->module_install_req->module_name,
                         msg->request->module_install_req->revision,
-                        msg->request->module_install_req->file_name)
+                        msg->request->module_install_req->file_name,
+                        &implicitly_installed)
                 :
                 dm_uninstall_module(rp_ctx->dm_ctx,
                         msg->request->module_install_req->module_name,
-                        msg->request->module_install_req->revision);
+                        msg->request->module_install_req->revision,
+                        &implicitly_removed);
     }
 
     /* set response code */
@@ -302,6 +305,10 @@ rp_module_install_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *sessio
         rc = np_module_install_notify(rp_ctx->np_ctx, msg->request->module_install_req->module_name,
                 msg->request->module_install_req->revision, msg->request->module_install_req->installed);
     }
+
+    /* cleanup */
+    md_free_module_key_list(implicitly_installed);
+    md_free_module_key_list(implicitly_removed);
 
     return rc;
 }

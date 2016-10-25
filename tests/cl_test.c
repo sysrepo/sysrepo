@@ -1836,6 +1836,9 @@ cl_notification_test(void **state)
     char file_name[512] = {0};
     snprintf(file_name, 512, "%s%s.yang", SR_SCHEMA_SEARCH_DIR, "example-module");
     /* do some changes */
+    rc = sr_module_install(session, "example-module", NULL, file_name, false);
+    assert_int_equal(rc, SR_ERR_OK);
+
     rc = sr_module_install(session, "example-module", NULL, file_name, true);
     assert_int_equal(rc, SR_ERR_OK);
 
