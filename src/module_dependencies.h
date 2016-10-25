@@ -181,7 +181,7 @@ int md_destroy(md_ctx_t *md_ctx);
 void md_free_module_key(md_module_key_t *module_key);
 
 /**
- * @brief Deallocates a list module keys.
+ * @brief Deallocates a list of module keys.
  *
  * @param [in] module_key_list List of keys to deallocate.
  */
