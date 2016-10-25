@@ -42,7 +42,7 @@ fi
 # libraries that we don't want to cache
 
 # libyang
-if [[ "$TRAVIS_BRANCH" -eq "devel" ]]; then
+if [[ "$TRAVIS_BRANCH" == "devel" ]]; then
     git clone -b devel https://github.com/CESNET/libyang.git
 else
     git clone https://github.com/CESNET/libyang.git
