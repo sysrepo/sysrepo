@@ -256,6 +256,7 @@ rp_module_install_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *sessio
 {
     Sr__Msg *resp = NULL;
     sr_mem_ctx_t *sr_mem = NULL;
+    md_module_key_t *module_key = NULL;
     sr_list_t *implicitly_installed = NULL, *implicitly_removed = NULL;
     int rc = SR_ERR_OK, oper_rc = SR_ERR_OK;
 
@@ -303,7 +304,18 @@ rp_module_install_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *sessio
     /* notify subscribers */
     if (SR_ERR_OK == oper_rc) {
         rc = np_module_install_notify(rp_ctx->np_ctx, msg->request->module_install_req->module_name,
-                msg->request->module_install_req->revision, msg->request->module_install_req->installed);
+                msg->request->module_install_req->revision,
+                msg->request->module_install_req->installed ? SR_MS_IMPLEMENTED : SR_MS_UNINSTALLED);
+        for (size_t i = 0; SR_ERR_OK == rc && NULL != implicitly_installed && i < implicitly_installed->count; ++i) {
+            module_key = (md_module_key_t *)implicitly_installed->data[i];
+            rc = np_module_install_notify(rp_ctx->np_ctx, module_key->name, module_key->revision_date,
+                                          SR_MS_IMPORTED);
+        }
+        for (size_t i = 0; SR_ERR_OK == rc && NULL != implicitly_removed && i < implicitly_removed->count; ++i) {
+            module_key = (md_module_key_t *)implicitly_removed->data[i];
+            rc = np_module_install_notify(rp_ctx->np_ctx, module_key->name, module_key->revision_date,
+                                          SR_MS_UNINSTALLED);
+        }
     }
 
     /* cleanup */

@@ -111,10 +111,10 @@ public:
         }
     }
 
-    void module_install(const char *module_name, const char *revision, bool installed, void *private_ctx) {
+    void module_install(const char *module_name, const char *revision, sr_module_state_t state, void *private_ctx) {
         PyObject *arglist;
         PyObject *p =  SWIG_NewPointerObj(private_ctx, SWIGTYPE_p_void, 0);
-        arglist = Py_BuildValue("(ssOO)", module_name, revision, installed ? Py_True: Py_False, p);
+        arglist = Py_BuildValue("(ssOO)", module_name, revision, state, p);
         PyObject *result = PyEval_CallObject(_callback, arglist);
         Py_DECREF(arglist);
         if (result == NULL)
@@ -284,10 +284,10 @@ static int g_subtree_change_cb(sr_session_ctx_t *session, const char *xpath, sr_
     return SR_ERR_OK;
 }
 
-static void g_module_install_cb(const char *module_name, const char *revision, bool installed, void *private_ctx)
+static void g_module_install_cb(const char *module_name, const char *revision, sr_module_state_t state, void *private_ctx)
 {
     Wrap_cb *ctx = (Wrap_cb *) private_ctx;
-    ctx->module_install(module_name, revision, installed, ctx->private_ctx);
+    ctx->module_install(module_name, revision, state, ctx->private_ctx);
 }
 
 static void g_feature_enable_cb(const char *module_name, const char *feature_name, bool enabled, void *private_ctx)

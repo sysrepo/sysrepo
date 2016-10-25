@@ -268,8 +268,10 @@ md_get_module_key(md_module_t *module, md_module_key_t **key_p)
     CHECK_NULL_NOMEM_GOTO(key, rc, cleanup);
     key->name = strdup(module->name);
     CHECK_NULL_NOMEM_GOTO(key->name, rc, cleanup);
-    key->revision_date = strdup(module->revision_date);
-    CHECK_NULL_NOMEM_GOTO(key->revision_date, rc, cleanup);
+    if (0 < strlen(module->revision_date)) {
+        key->revision_date = strdup(module->revision_date);
+        CHECK_NULL_NOMEM_GOTO(key->revision_date, rc, cleanup);
+    }
     key->filepath = strdup(module->filepath);
     CHECK_NULL_NOMEM_GOTO(key->filepath, rc, cleanup);
 

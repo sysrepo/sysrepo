@@ -1908,6 +1908,8 @@ dm_list_module(dm_ctx_t *dm_ctx, md_module_t *module, sr_schema_t *schema)
     sr_mem_edit_string(sr_mem, (char **)&schema->prefix, module->prefix);
     CHECK_NULL_NOMEM_GOTO(schema->prefix, rc, cleanup);
 
+    schema->implemented = module->implemented;
+
     rc = dm_list_rev_file(dm_ctx, sr_mem, module->name, module->revision_date, &schema->revision);
     CHECK_RC_LOG_GOTO(rc, cleanup, "List rev file failed module %s", module->name);
 

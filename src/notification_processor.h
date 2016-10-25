@@ -22,6 +22,8 @@
 #ifndef NOTIFICATION_PROCESSOR_H_
 #define NOTIFICATION_PROCESSOR_H_
 
+#include "sysrepo.h"
+
 typedef struct rp_ctx_s rp_ctx_t;          /**< Forward-declaration of Request Processor context. */
 typedef struct rp_session_s rp_session_t;  /**< Forward-declaration of Request Processor session context. */
 typedef struct ac_ucred_s ac_ucred_t;      /**< Forward-declaration of user credentials context. */
@@ -140,11 +142,12 @@ int np_unsubscribe_destination(np_ctx_t *np_ctx, const char *dst_address);
  * @param[in] np_ctx Notification Processor context acquired by ::np_init call.
  * @param[in] module_name Name of the module that has been (un)installed.
  * @param[in] revision Revision of the module that has been (un)installed.
- * @param[in] installed TRUE if the module has been installed, FALSE if uninstalled.
+ * @param[in] state The new state of the module (uninstalled/imported/implemented).
  *
  * @return Error code (SR_ERR_OK on success).
  */
-int np_module_install_notify(np_ctx_t *np_ctx, const char *module_name, const char *revision, bool installed);
+int np_module_install_notify(np_ctx_t *np_ctx, const char *module_name, const char *revision,
+        sr_module_state_t state);
 
 /**
  * @brief Notify all subscribers about the feature enable/disable event.

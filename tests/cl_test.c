@@ -1745,11 +1745,31 @@ cl_get_error_test(void **state)
 }
 
 static void
-test_module_install_cb(const char *module_name, const char *revision, bool installed, void *private_ctx)
+test_module_install_cb(const char *module_name, const char *revision, sr_module_state_t state, void *private_ctx)
 {
     int *callback_called = (int*)private_ctx;
     *callback_called += 1;
-    printf("Module '%s' revision '%s' has been %s.\n", module_name, revision, installed ? "installed" : "uninstalled");
+    printf("Module '%s' revision '%s' has been %s.\n", module_name, revision, sr_module_state_sr_to_str(state));
+}
+
+typedef struct cl_module_state_s {
+    char *module_name;
+    char *revision;
+    sr_module_state_t state;
+} cl_module_state_t;
+
+static void
+test_module_install_state_cb(const char *module_name, const char *revision, sr_module_state_t state, void *private_ctx)
+{
+    sr_list_t *list = (sr_list_t *)private_ctx;
+
+    cl_module_state_t *module_state = calloc(1, sizeof *module_state);
+    assert_non_null(module_state);
+    module_state->module_name = module_name ? strdup(module_name) : NULL;
+    module_state->revision = revision ? strdup(revision) : NULL;
+    module_state->state = state;
+
+    assert_int_equal(SR_ERR_OK, sr_list_add(list, module_state));
 }
 
 static void
@@ -1812,7 +1832,18 @@ cl_notification_test(void **state)
     sr_subscription_ctx_t *subscription = NULL;
     int callback_called = 0;
     sr_val_t value = { 0, };
+    sr_list_t *module_states = NULL;
     int rc = SR_ERR_OK;
+    cl_module_state_t *module_state = NULL;
+    char example_module_path[PATH_MAX] = {0}, test_module_path[PATH_MAX] = {0};
+    char cross_module_path[PATH_MAX] = {0}, referenced_data_path[PATH_MAX] = {0};
+
+    snprintf(example_module_path, PATH_MAX, "%s%s.yang", SR_SCHEMA_SEARCH_DIR, "example-module");
+    snprintf(test_module_path, PATH_MAX, "%s%s.yang", SR_SCHEMA_SEARCH_DIR, "test-module");
+    snprintf(cross_module_path, PATH_MAX, "%s%s.yang", SR_SCHEMA_SEARCH_DIR, "cross-module");
+    snprintf(referenced_data_path, PATH_MAX, "%s%s.yang", SR_SCHEMA_SEARCH_DIR, "referenced-data");
+
+    assert_int_equal(SR_ERR_OK, sr_list_init(&module_states));
 
     /* start a session */
     rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &session);
@@ -1820,6 +1851,9 @@ cl_notification_test(void **state)
 
     /* subscribe to some notifications */
     rc = sr_module_install_subscribe(session, test_module_install_cb, &callback_called, SR_SUBSCR_DEFAULT, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_module_install_subscribe(session, test_module_install_state_cb, module_states, SR_SUBSCR_CTX_REUSE, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
     rc = sr_feature_enable_subscribe(session, test_feature_enable_cb, &callback_called, SR_SUBSCR_CTX_REUSE, &subscription);
@@ -1833,13 +1867,11 @@ cl_notification_test(void **state)
             0, SR_SUBSCR_CTX_REUSE, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
-    char file_name[512] = {0};
-    snprintf(file_name, 512, "%s%s.yang", SR_SCHEMA_SEARCH_DIR, "example-module");
     /* do some changes */
-    rc = sr_module_install(session, "example-module", NULL, file_name, false);
+    rc = sr_module_install(session, "example-module", NULL, example_module_path, false);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = sr_module_install(session, "example-module", NULL, file_name, true);
+    rc = sr_module_install(session, "example-module", NULL, example_module_path, true);
     assert_int_equal(rc, SR_ERR_OK);
 
     rc = sr_feature_enable(session, "ietf-interfaces", "pre-provisioning", true);
@@ -1877,6 +1909,7 @@ cl_notification_test(void **state)
         usleep(10000); /* 10 ms */
     }
     assert_true(callback_called >= 7);
+    callback_called = 0;
 
     /* some negative tests */
     rc = sr_feature_enable(session, "unknown-module", "unknown", true);
@@ -1885,12 +1918,10 @@ cl_notification_test(void **state)
     rc = sr_feature_enable(session, "example-module", "unknown", true);
     assert_int_equal(rc, SR_ERR_INVAL_ARG);
 
-    snprintf(file_name, 512, "%s%s%s.yang", SR_SCHEMA_SEARCH_DIR, "example-module", "@2016-05-03");
-    rc = sr_module_install(session, "example-module", "2016-05-03", file_name, false);
+    rc = sr_module_install(session, "example-module", "2016-05-03", example_module_path, false);
     assert_int_equal(rc, SR_ERR_NOT_FOUND);
 
-    snprintf(file_name, 512, "%s%s.yang", SR_SCHEMA_SEARCH_DIR, "example-module");
-    rc = sr_module_install(session, "example-module", NULL, file_name, false);
+    rc = sr_module_install(session, "example-module", NULL, example_module_path, false);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* after module uninstallation all subsequent operation return UNKOWN_MODEL */
@@ -1898,10 +1929,122 @@ cl_notification_test(void **state)
     assert_int_equal(rc, SR_ERR_UNKNOWN_MODEL);
 
     /* install module back */
-    snprintf(file_name, 512, "%s%s.yang", SR_SCHEMA_SEARCH_DIR, "example-module");
-    rc = sr_module_install(session, "example-module", NULL, file_name, true);
+    rc = sr_module_install(session, "example-module", NULL, example_module_path, true);
     assert_int_equal(rc, SR_ERR_OK);
 
+    /* uninstall test-module, cross-module && referenced-data */
+    rc = sr_module_install(session, "test-module", NULL, test_module_path, false);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_module_install(session, "cross-module", NULL, cross_module_path, false);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_module_install(session, "referenced-data", NULL, referenced_data_path, false);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* install test-module; referenced-data will get only imported */
+    rc = sr_module_install(session, "test-module", NULL, test_module_path, true);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* install cross-module; referenced-data is already imported */
+    rc = sr_module_install(session, "cross-module", NULL, cross_module_path, true);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* uninstall test-module; referenced-data should remain imported */
+    rc = sr_module_install(session, "test-module", NULL, test_module_path, false);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* uninstall cross-module; referenced-data should be automatically uninstalled */
+    rc = sr_module_install(session, "cross-module", NULL, cross_module_path, false);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* wait for all remaining callbacks or timeout after 10 seconds */
+    for (size_t i = 0; i < 1000; i++) {
+        if (callback_called >= 11 && module_states->count >= 13) break;
+        usleep(10000); /* 10 ms */
+    }
+    assert_int_equal(11, callback_called);
+    assert_int_equal(13, module_states->count);
+
+    /* check callback parameters */
+    for (int i = 0; i < 13; ++i) {
+        module_state = (cl_module_state_t *)module_states->data[i];
+        switch (i) {
+            case 0:
+                assert_string_equal("example-module", module_state->module_name);
+                assert_null(module_state->revision);
+                assert_int_equal(SR_MS_UNINSTALLED, module_state->state);
+                break;
+            case 1:
+                assert_string_equal("example-module", module_state->module_name);
+                assert_null(module_state->revision);
+                assert_int_equal(SR_MS_IMPLEMENTED, module_state->state);
+                break;
+            case 2:
+                assert_string_equal("example-module", module_state->module_name);
+                assert_null(module_state->revision);
+                assert_int_equal(SR_MS_UNINSTALLED, module_state->state);
+                break;
+            case 3:
+                assert_string_equal("example-module", module_state->module_name);
+                assert_null(module_state->revision);
+                assert_int_equal(SR_MS_IMPLEMENTED, module_state->state);
+                break;
+            case 4:
+                assert_string_equal("test-module", module_state->module_name);
+                assert_null(module_state->revision);
+                assert_int_equal(SR_MS_UNINSTALLED, module_state->state);
+                break;
+            case 5:
+                assert_string_equal("cross-module", module_state->module_name);
+                assert_null(module_state->revision);
+                assert_int_equal(SR_MS_UNINSTALLED, module_state->state);
+                break;
+            case 6:
+                assert_string_equal("referenced-data", module_state->module_name);
+                assert_null(module_state->revision);
+                assert_int_equal(SR_MS_UNINSTALLED, module_state->state);
+                break;
+            case 7:
+                assert_string_equal("test-module", module_state->module_name);
+                assert_null(module_state->revision);
+                assert_int_equal(SR_MS_IMPLEMENTED, module_state->state);
+                break;
+            case 8:
+                assert_string_equal("referenced-data", module_state->module_name);
+                assert_null(module_state->revision);
+                assert_int_equal(SR_MS_IMPORTED, module_state->state);
+                break;
+            case 9:
+                assert_string_equal("cross-module", module_state->module_name);
+                assert_null(module_state->revision);
+                assert_int_equal(SR_MS_IMPLEMENTED, module_state->state);
+                break;
+            case 10:
+                assert_string_equal("test-module", module_state->module_name);
+                assert_null(module_state->revision);
+                assert_int_equal(SR_MS_UNINSTALLED, module_state->state);
+                break;
+            case 11:
+                assert_string_equal("cross-module", module_state->module_name);
+                assert_null(module_state->revision);
+                assert_int_equal(SR_MS_UNINSTALLED, module_state->state);
+                break;
+            case 12:
+                assert_string_equal("referenced-data", module_state->module_name);
+                assert_null(module_state->revision);
+                assert_int_equal(SR_MS_UNINSTALLED, module_state->state);
+                break;
+            default:
+                assert_true(false);
+                break;
+
+        }
+        free(module_state->module_name);
+        free(module_state->revision);
+        free(module_state);
+    }
+    sr_list_cleanup(module_states);
+
+    /* unsubscribe */
     rc = sr_unsubscribe(session, subscription);
     assert_int_equal(rc, SR_ERR_OK);
 

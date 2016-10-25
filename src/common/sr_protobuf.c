@@ -2158,6 +2158,51 @@ sr_api_variant_gpb_to_sr(Sr__ApiVariant api_variant_gpb)
     }
 }
 
+char *
+sr_module_state_sr_to_str(sr_module_state_t state)
+{
+    switch (state) {
+        case SR_MS_UNINSTALLED:
+            return "uninstalled";
+        case SR_MS_IMPORTED:
+            return "imported";
+        case SR_MS_IMPLEMENTED:
+            return "implemented";
+        default:
+            return "unknown";
+    }
+}
+
+Sr__ModuleState
+sr_module_state_sr_to_gpb(sr_module_state_t state)
+{
+    switch (state) {
+    case SR_MS_UNINSTALLED:
+        return SR__MODULE_STATE__UNINSTALLED;
+    case SR_MS_IMPORTED:
+        return SR__MODULE_STATE__IMPORTED;
+    case SR_MS_IMPLEMENTED:
+        return SR__MODULE_STATE__IMPLEMENTED;
+    default:
+        return SR__MODULE_STATE__UNINSTALLED;
+    }
+}
+
+sr_module_state_t
+sr_module_state_gpb_to_sr(Sr__ModuleState state)
+{
+    switch (state) {
+        case SR__MODULE_STATE__UNINSTALLED:
+            return SR_MS_UNINSTALLED;
+        case SR__MODULE_STATE__IMPORTED:
+            return SR_MS_IMPORTED;
+        case SR__MODULE_STATE__IMPLEMENTED:
+            return SR_MS_IMPLEMENTED;
+        default:
+            return SR_MS_UNINSTALLED;
+    }
+}
+
 int
 sr_schemas_sr_to_gpb(const sr_schema_t *sr_schemas, const size_t schema_cnt, Sr__Schema ***gpb_schemas)
 {
