@@ -33,6 +33,7 @@
 #include "rp_internal.h"
 #include "rp_dt_get.h"
 #include "rp_dt_edit.h"
+#include "rp_dt_xpath.h"
 
 #define RP_INIT_REQ_QUEUE_SIZE   10  /**< Initial size of the request queue. */
 #define RP_OPER_DATA_REQ_TIMEOUT 2   /**< Timeout (in seconds) for processing of a request that includes operational data. */
@@ -1678,6 +1679,35 @@ cleanup:
     return rc;
 }
 
+static int
+rp_match_subscription_rpc(const rp_ctx_t *rp_ctx, np_subscription_t *subscription, const char *xpath, bool *matched)
+{
+    CHECK_NULL_ARG4(rp_ctx, subscription, xpath, matched);
+    int rc = SR_ERR_OK;
+    dm_schema_info_t *schema_info = NULL;
+    struct lys_node *subs_node = NULL;
+    struct lys_node *rpc_node = NULL;
+
+    *matched = false;
+
+    if (NULL != subscription->xpath) {
+        rc = rp_dt_validate_node_xpath_lock(rp_ctx->dm_ctx, NULL, subscription->xpath, &schema_info, &subs_node);
+        CHECK_RC_LOG_RETURN(rc, "Failed to validate xpath %s", subscription->xpath);
+
+        rc = rp_dt_validate_node_xpath(rp_ctx->dm_ctx, NULL, xpath, NULL, &rpc_node);
+        CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to validate xpath %s", xpath);
+
+        SR_LOG_DBG("Matching subscription %s with xpath %s %s", subscription->xpath, xpath, (subs_node == rpc_node) ? "matched" : "not matched");
+        *matched = subs_node == rpc_node;
+    }
+
+cleanup:
+    if (NULL != schema_info) {
+        pthread_rwlock_unlock(&schema_info->model_lock);
+    }
+    return rc;
+}
+
 /**
  * @brief Processes a RPC/Action request.
  */
@@ -1771,7 +1801,14 @@ rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg 
             msg->request->rpc_req->xpath);
 
     for (size_t i = 0; i < subscription_cnt; i++) {
-        if (NULL != subscriptions[i].xpath && 0 == strcmp(subscriptions[i].xpath, msg->request->rpc_req->xpath)) {
+        if (NULL != subscriptions[i].xpath) {
+            rc = rp_match_subscription_rpc(rp_ctx, &subscriptions[i], msg->request->rpc_req->xpath, &subscription_match);
+            CHECK_RC_MSG_GOTO(rc, finalize, "Failed to match rpc xpath");
+
+            if (!subscription_match) {
+                continue;
+            }
+
             /* duplicate msg into req with the new input values */
             rc = sr_gpb_req_alloc(sr_mem, action ? SR__OPERATION__ACTION : SR__OPERATION__RPC, session->id, &req);
             CHECK_RC_LOG_GOTO(rc, finalize, "Failed to duplicate %s request (%s).", op_name,
@@ -1815,7 +1852,7 @@ rp_rpc_req_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg 
 
     if (!subscription_match) {
         /* no subscription for this RPC/Action */
-        SR_LOG_ERR("No subscription found for %s delivery (xpath = '%s').", op_name, req->request->rpc_req->xpath);
+        SR_LOG_ERR("No subscription found for %s delivery (xpath = '%s').", op_name, msg->request->rpc_req->xpath);
         rc = SR_ERR_NOT_FOUND;
         goto finalize;
     }
