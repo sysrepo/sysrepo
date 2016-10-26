@@ -1668,6 +1668,43 @@ cl_subtree_verifier(void **state)
 }
 
 static void
+cl_unsuccessfull_subscription(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+    sr_session_ctx_t *session = NULL;
+    sr_subscription_ctx_t *subscription = NULL;
+    changes_t changes = {.mutex = PTHREAD_MUTEX_INITIALIZER, .cv = PTHREAD_COND_INITIALIZER, 0};
+    int rc = SR_ERR_OK;
+
+    /* start session */
+    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_module_change_subscribe(session, "referenced-data", list_changes_cb, &changes,
+            0, SR_SUBSCR_DEFAULT, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_module_change_subscribe(session, "invalid-module", list_changes_cb, &changes,
+            0, SR_SUBSCR_CTX_REUSE, &subscription);
+    assert_int_equal(rc, SR_ERR_INTERNAL);
+
+    rc = sr_module_change_subscribe(session, "invalid-module", list_changes_cb, &changes,
+            0, SR_SUBSCR_CTX_REUSE, &subscription);
+    assert_int_equal(rc, SR_ERR_INTERNAL);
+
+    rc = sr_subtree_change_subscribe(session, "/invalid-module:container", list_changes_cb, &changes,
+            0, SR_SUBSCR_CTX_REUSE, &subscription);
+    assert_int_equal(rc, SR_ERR_INTERNAL);
+
+    rc = sr_unsubscribe(NULL, subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_session_stop(session);
+    assert_int_equal(rc, SR_ERR_OK);
+}
+
+static void
 cl_enabled_notifications(void **state)
 {
     sr_conn_ctx_t *conn = *state;
@@ -1689,7 +1726,7 @@ cl_enabled_notifications(void **state)
 
     sr_clock_get_time(CLOCK_REALTIME, &ts);
     ts.tv_sec += COND_WAIT_SEC;
-    pthread_cond_wait(&changes.cv, &changes.mutex);
+    pthread_cond_timedwait(&changes.cv, &changes.mutex, &ts);
 
     /* check that both callbacks were called */
     assert_true(changes.events_received & ENABLED_CALLED);
@@ -1741,7 +1778,7 @@ cl_subtree_enabled_notifications(void **state)
 
     sr_clock_get_time(CLOCK_REALTIME, &ts);
     ts.tv_sec += COND_WAIT_SEC;
-    pthread_cond_wait(&changes.cv, &changes.mutex);
+    pthread_cond_timedwait(&changes.cv, &changes.mutex, &ts);
 
     /* check that both callbacks were called */
     assert_true(changes.events_received & ENABLED_CALLED);
@@ -1789,7 +1826,7 @@ cl_multiple_enabled_notifications(void **state)
 
     sr_clock_get_time(CLOCK_REALTIME, &ts);
     ts.tv_sec += COND_WAIT_SEC;
-    pthread_cond_wait(&changesA.cv, &changesA.mutex);
+    pthread_cond_timedwait(&changesA.cv, &changesA.mutex, &ts);
 
 
     pthread_mutex_lock(&changesB.mutex);
@@ -1799,7 +1836,7 @@ cl_multiple_enabled_notifications(void **state)
 
     sr_clock_get_time(CLOCK_REALTIME, &ts);
     ts.tv_sec += COND_WAIT_SEC;
-    pthread_cond_wait(&changesB.cv, &changesB.mutex);
+    pthread_cond_timedwait(&changesB.cv, &changesB.mutex, &ts);
 
 
     /* check that both callbacks were called */
@@ -1866,7 +1903,7 @@ cl_subtree_empty_enabled_notifications(void **state)
 
     sr_clock_get_time(CLOCK_REALTIME, &ts);
     ts.tv_sec += COND_WAIT_SEC;
-    pthread_cond_wait(&changes.cv, &changes.mutex);
+    pthread_cond_timedwait(&changes.cv, &changes.mutex, &ts);
 
     /* check that both callbacks were called */
     assert_true(changes.events_received & ENABLED_CALLED);
@@ -1874,12 +1911,7 @@ cl_subtree_empty_enabled_notifications(void **state)
     assert_false(changes.events_received & APPLY_CALLED);
     assert_false(changes.events_received & ABORT_CALLED);
 
-    assert_int_equal(changes.cnt, 1);
-    assert_null(changes.old_values[0]);
-    assert_non_null(changes.new_values[0]);
-    assert_string_equal(changes.new_values[0]->xpath, "/test-module:main");
-    assert_int_equal(SR_CONTAINER_T, changes.new_values[0]->type);
-    assert_true(changes.new_values[0]->dflt);
+    assert_int_equal(changes.cnt, 0);
 
     for (size_t i = 0; i < changes.cnt; i++) {
         sr_free_val(changes.new_values[i]);
@@ -1922,7 +1954,7 @@ cl_module_empty_enabled_notifications(void **state)
 
     sr_clock_get_time(CLOCK_REALTIME, &ts);
     ts.tv_sec += COND_WAIT_SEC;
-    pthread_cond_wait(&changes.cv, &changes.mutex);
+    pthread_cond_timedwait(&changes.cv, &changes.mutex, &ts);
 
     /* check that both callbacks were called */
     assert_true(changes.events_received & ENABLED_CALLED);
@@ -1946,6 +1978,7 @@ cl_module_empty_enabled_notifications(void **state)
     rc = sr_session_stop(session);
     assert_int_equal(rc, SR_ERR_OK);
 }
+
 int
 main()
 {
@@ -1967,7 +2000,8 @@ main()
         cmocka_unit_test_setup_teardown(cl_refused_by_verifier, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_no_abort_notifications, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_subtree_verifier, sysrepo_setup, sysrepo_teardown),
-        cmocka_unit_test_setup_teardown(cl_enabled_notifications, sysrepo_setup, sysrepo_teardown),
+        cmocka_unit_test_setup_teardown(cl_unsuccessfull_subscription, sysrepo_setup, sysrepo_teardown),
+	cmocka_unit_test_setup_teardown(cl_enabled_notifications, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_subtree_enabled_notifications, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_multiple_enabled_notifications, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_subtree_empty_enabled_notifications, sysrepo_setup, sysrepo_teardown),

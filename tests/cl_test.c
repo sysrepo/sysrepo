@@ -73,6 +73,12 @@ sysrepo_teardown(void **state)
     return 0;
 }
 
+static int
+empty_module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t event, void *private_ctx)
+{
+    return SR_ERR_OK;
+}
+
 /**
  * @brief Check size of a linked-list.
  */
@@ -2777,11 +2783,14 @@ cl_action_test(void **state)
     rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
-    /* subscribe for actions */
-    rc = sr_action_subscribe(session, "/test-module:kernel-modules/kernel-module[name='netlink_diag.ko']/load",
-            test_action_cb1, &cb1_called, SR_SUBSCR_DEFAULT, &subscription);
+    rc = sr_module_change_subscribe(session, "test-module", empty_module_change_cb, NULL, 0, SR_SUBSCR_DEFAULT, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
-    rc = sr_action_subscribe(session, "/test-module:kernel-modules/kernel-module[name='vboxvideo.ko']/get-dependencies",
+
+    /* subscribe for actions */
+    rc = sr_action_subscribe(session, "/test-module:kernel-modules/kernel-module/load",
+            test_action_cb1, &cb1_called, SR_SUBSCR_CTX_REUSE, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_action_subscribe(session, "/test-module:kernel-modules/kernel-module/get-dependencies",
             test_action_cb2, &cb2_called, SR_SUBSCR_CTX_REUSE, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
@@ -2862,11 +2871,14 @@ cl_action_tree_test(void **state)
     rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
-    /* subscribe for actions */
-    rc = sr_action_subscribe_tree(session, "/test-module:kernel-modules/kernel-module[name='netlink_diag.ko']/load",
-            test_action_tree_cb1, &cb1_called, SR_SUBSCR_DEFAULT, &subscription);
+    rc = sr_module_change_subscribe(session, "test-module", empty_module_change_cb, NULL, 0, SR_SUBSCR_DEFAULT, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
-    rc = sr_action_subscribe_tree(session, "/test-module:kernel-modules/kernel-module[name='vboxvideo.ko']/get-dependencies",
+
+    /* subscribe for actions */
+    rc = sr_action_subscribe_tree(session, "/test-module:kernel-modules/kernel-module/load",
+            test_action_tree_cb1, &cb1_called, SR_SUBSCR_CTX_REUSE, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_action_subscribe_tree(session, "/test-module:kernel-modules/kernel-module/get-dependencies",
             test_action_tree_cb2, &cb2_called, SR_SUBSCR_CTX_REUSE, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
@@ -2966,11 +2978,14 @@ cl_action_combo_test(void **state)
     rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &session);
     assert_int_equal(rc, SR_ERR_OK);
 
-    /* subscribe for actions with the tree variants of Action callbacks*/
-    rc = sr_action_subscribe_tree(session, "/test-module:kernel-modules/kernel-module[name='netlink_diag.ko']/load",
-            test_action_tree_cb1, &cb1_called, SR_SUBSCR_DEFAULT, &subscription);
+    rc = sr_module_change_subscribe(session, "test-module", empty_module_change_cb, NULL, 0, SR_SUBSCR_DEFAULT, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
-    rc = sr_action_subscribe_tree(session, "/test-module:kernel-modules/kernel-module[name='vboxvideo.ko']/get-dependencies",
+
+    /* subscribe for actions with the tree variants of Action callbacks*/
+    rc = sr_action_subscribe_tree(session, "/test-module:kernel-modules/kernel-module/load",
+            test_action_tree_cb1, &cb1_called, SR_SUBSCR_CTX_REUSE, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_action_subscribe_tree(session, "/test-module:kernel-modules/kernel-module/get-dependencies",
             test_action_tree_cb2, &cb2_called, SR_SUBSCR_CTX_REUSE, &subscription);
     assert_int_equal(rc, SR_ERR_OK);
 

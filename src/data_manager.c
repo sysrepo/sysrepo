@@ -2131,7 +2131,7 @@ dm_validate_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error
             if (info->schema->cross_module_data_dependency) {
                 /* remove data appended from other modules for the purpose of validation */
                 rc_tmp = dm_remove_added_data_trees(session, info);
-                CHECK_RC_MSG_RETURN(rc_tmp, "Removing of added data trees failed");
+                CHECK_RC_MSG_GOTO(rc_tmp, cleanup, "Removing of added data trees failed");
             }
         }
         node = node->next;
