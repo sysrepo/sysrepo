@@ -110,6 +110,8 @@ event_to_str(sr_notif_event_t ev)
         return "apply";
     case SR_EV_VERIFY:
         return "verify";
+    case SR_EV_ENABLED:
+        return "enabled";
     }
     return "unknown";
 }
