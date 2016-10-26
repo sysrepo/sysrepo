@@ -201,7 +201,7 @@ check_error_reporting(void **state)
     err_xpath = NULL;
     rc = dm_copy_errors(session, NULL, &err_msg, &err_xpath);
     assert_int_equal(SR_ERR_OK, rc);
-    assert_string_equal("/example-module:container/unknown-augment:unknown", err_xpath);
+    assert_string_equal("/example-module:container", err_xpath);
 
     assert_true(dm_has_error(session));
     free(err_msg);
