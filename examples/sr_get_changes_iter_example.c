@@ -100,6 +100,20 @@ print_change(sr_change_oper_t op, sr_val_t *old_val, sr_val_t *new_val) {
     }
 }
 
+char *
+event_to_str(sr_notif_event_t ev)
+{
+    switch (ev) {
+    case SR_EV_ABORT:
+        return "abort";
+    case SR_EV_APPLY:
+        return "apply";
+    case SR_EV_VERIFY:
+        return "verify";
+    }
+    return "unknown";
+}
+
 static int
 list_changes_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t ev, void *private_ctx)
 {
@@ -110,7 +124,10 @@ list_changes_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_eve
     sr_val_t *new_val = NULL;
     sr_val_t *old_val = NULL;
 
-    pthread_mutex_lock(&ch->mutex);
+    if (SR_EV_VERIFY != ev) {
+        pthread_mutex_lock(&ch->mutex);
+    }
+    printf ("================ %s event =============\n", event_to_str(ev));
 
     rc = sr_get_changes_iter(session, "/ietf-interfaces:interfaces", &it);
     if (SR_ERR_OK != rc) {
@@ -124,11 +141,13 @@ list_changes_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_eve
         sr_free_val(new_val);
         ch->count++;
     }
-
+    puts("======================================================");
 cleanup:
     sr_free_change_iter(it);
-    pthread_cond_signal(&ch->cond);
-    pthread_mutex_unlock(&ch->mutex);
+    if (SR_EV_VERIFY != ev) {
+        pthread_cond_signal(&ch->cond);
+        pthread_mutex_unlock(&ch->mutex);
+    }
     return SR_ERR_OK;
 }
 

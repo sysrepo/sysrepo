@@ -2355,8 +2355,11 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, s
     return cl_session_return(session, SR_ERR_OK);
 
 cleanup:
-    cl_subscription_close(session, sm_subscription);
-    cl_sr_subscription_remove_one(sr_subscription);
+    if (NULL != sm_subscription) {
+        cl_subscription_close(session, sm_subscription);
+        cl_sr_subscription_remove_one(sr_subscription);
+    }
+
     if (NULL != msg_req) {
         sr_msg_free(msg_req);
     }
@@ -2424,8 +2427,10 @@ sr_subtree_change_subscribe(sr_session_ctx_t *session, const char *xpath, sr_sub
     return cl_session_return(session, SR_ERR_OK);
 
 cleanup:
-    cl_subscription_close(session, sm_subscription);
-    cl_sr_subscription_remove_one(sr_subscription);
+    if (NULL != sm_subscription) {
+        cl_subscription_close(session, sm_subscription);
+        cl_sr_subscription_remove_one(sr_subscription);
+    }
     if (NULL != msg_req) {
         sr_msg_free(msg_req);
     }
