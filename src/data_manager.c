@@ -1300,6 +1300,8 @@ dm_append_data_tree(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_info_t *dat
         } else if (NULL != tmp_node) {
             ret = lyd_merge(data_info->node, tmp_node, LYD_OPT_EXPLICIT);
             lyd_free_withsiblings(tmp_node);
+            CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "Failed to merge data of module %s into the data tree of module %s: %s",
+                    di->schema->module->name, data_info->schema->module->name, ly_errmsg());
         }
     } else {
         SR_LOG_DBG("Dependant module %s is empty", di->schema->module->name);

@@ -73,10 +73,18 @@ srcfg_test_cmp_data_file_content(const char *file_path, LYD_FORMAT file_format, 
     fd = open(file_path, O_RDONLY);
     assert_true(fd >= 0);
 
-    file_data = lyd_parse_fd(srcfg_test_libyang_ctx, fd, file_format, LYD_OPT_STRICT | LYD_OPT_CONFIG);
+    file_data = lyd_parse_fd(srcfg_test_libyang_ctx, fd, file_format, LYD_OPT_TRUSTED | LYD_OPT_CONFIG);
+    if (!file_data && LY_SUCCESS != ly_errno) {
+        fprintf(stderr, "lyd_parse_fd error: %s (%s)", ly_errmsg(), ly_errpath());
+    }
     assert_true(file_data || LY_SUCCESS == ly_errno);
-    exp_data = lyd_parse_mem(srcfg_test_libyang_ctx, exp, exp_format, LYD_OPT_STRICT | LYD_OPT_CONFIG);
-    assert_true(exp_data || LY_SUCCESS == ly_errno);
+    if (NULL != exp) {
+        exp_data = lyd_parse_mem(srcfg_test_libyang_ctx, exp, exp_format, LYD_OPT_TRUSTED | LYD_OPT_CONFIG);
+        if (!exp_data && LY_SUCCESS != ly_errno) {
+            fprintf(stderr, "lyd_parse_mem error: %s (%s)", ly_errmsg(), ly_errpath());
+        }
+        assert_true(exp_data || LY_SUCCESS == ly_errno);
+    }
 
     diff = lyd_diff(file_data, exp_data, LYD_DIFFOPT_WITHDEFAULTS);
     assert_non_null(diff);
@@ -119,12 +127,16 @@ srcfg_test_cmp_data_files(const char *file1_path, LYD_FORMAT file1_format, const
     assert_true(fd >= 0);
 
     assert_int_equal(0, fstat(fd, &file_info));
-    file2_content = mmap(0, file_info.st_size, PROT_READ, MAP_SHARED, fd, 0);
-    assert_true(file2_content && MAP_FAILED != file2_content);
+    if (0 < file_info.st_size) {
+        file2_content = mmap(0, file_info.st_size, PROT_READ, MAP_SHARED, fd, 0);
+        assert_true(file2_content && MAP_FAILED != file2_content);
+    }
 
     rc = srcfg_test_cmp_data_file_content(file1_path, file1_format, file2_content, file2_format);
 
-    assert_int_equal(0, munmap(file2_content, file_info.st_size));
+    if (0 < file_info.st_size) {
+        assert_int_equal(0, munmap(file2_content, file_info.st_size));
+    }
     close(fd);
     return rc;
 }
@@ -239,7 +251,7 @@ srcfg_test_export(void **state)
     exec_shell_command("../src/sysrepocfg --export --datastore=running --format=txt ietf-interfaces > /tmp/ietf-interfaces.running.xml", ".*", true, 1);
     exec_shell_command("../src/sysrepocfg --export=/tmp/module.running.xml --datastore=running --format=json", ".*", true, 1);
 
-    /* export ietf-interfaces, test-module and example-module in both xml and json formats */
+    /* export ietf-interfaces, test-module, example-module, cross-module and referenced-data in both xml and json formats */
 
     /* ietf-interfaces */
     /*  startup, xml */
@@ -289,10 +301,44 @@ srcfg_test_export(void **state)
     exec_shell_command("../src/sysrepocfg --export=/tmp/example-module.running.json --datastore=running --format=json example-module", ".*", true, 0);
     assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/example-module.running.json", LYD_JSON, TEST_DATA_SEARCH_DIR "example-module.running", LYD_XML));
 
+    /* cross-module */
+    /*  startup, xml */
+    exec_shell_command("../src/sysrepocfg --export --datastore=startup --format=xml cross-module > /tmp/cross-module.startup.xml", ".*", true, 0);
+    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/cross-module.startup.xml", LYD_XML, TEST_DATA_SEARCH_DIR "cross-module.startup", LYD_XML));
+    /*  startup, json */
+    exec_shell_command("../src/sysrepocfg --export=/tmp/cross-module.startup.json --datastore=startup --format=json cross-module", ".*", true, 0);
+    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/cross-module.startup.json", LYD_JSON, TEST_DATA_SEARCH_DIR "cross-module.startup", LYD_XML));
+    /*  running, xml */
+    exec_shell_command("../src/sysrepocfg --export --datastore=running --format=xml cross-module", "no active subscriptions", true, 1);
+    assert_int_equal(0, srcfg_test_subscribe("cross-module"));
+    exec_shell_command("../src/sysrepocfg --export --datastore=running --format=xml cross-module > /tmp/cross-module.running.xml", ".*", true, 0);
+    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/cross-module.running.xml", LYD_XML, TEST_DATA_SEARCH_DIR "cross-module.running", LYD_XML));
+    /*  running, json */
+    exec_shell_command("../src/sysrepocfg --export=/tmp/cross-module.running.json --datastore=running --format=json cross-module", ".*", true, 0);
+    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/cross-module.running.json", LYD_JSON, TEST_DATA_SEARCH_DIR "cross-module.running", LYD_XML));
+
+    /* referenced-data */
+    /*  startup, xml */
+    exec_shell_command("../src/sysrepocfg --export --datastore=startup --format=xml referenced-data > /tmp/referenced-data.startup.xml", ".*", true, 0);
+    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/referenced-data.startup.xml", LYD_XML, TEST_DATA_SEARCH_DIR "referenced-data.startup", LYD_XML));
+    /*  startup, json */
+    exec_shell_command("../src/sysrepocfg --export=/tmp/referenced-data.startup.json --datastore=startup --format=json referenced-data", ".*", true, 0);
+    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/referenced-data.startup.json", LYD_JSON, TEST_DATA_SEARCH_DIR "referenced-data.startup", LYD_XML));
+    /*  running, xml */
+    exec_shell_command("../src/sysrepocfg --export --datastore=running --format=xml referenced-data", "no active subscriptions", true, 1);
+    assert_int_equal(0, srcfg_test_subscribe("referenced-data"));
+    exec_shell_command("../src/sysrepocfg --export --datastore=running --format=xml referenced-data > /tmp/referenced-data.running.xml", ".*", true, 0);
+    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/referenced-data.running.xml", LYD_XML, TEST_DATA_SEARCH_DIR "referenced-data.running", LYD_XML));
+    /*  running, json */
+    exec_shell_command("../src/sysrepocfg --export=/tmp/referenced-data.running.json --datastore=running --format=json referenced-data", ".*", true, 0);
+    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/referenced-data.running.json", LYD_JSON, TEST_DATA_SEARCH_DIR "referenced-data.running", LYD_XML));
+
     /* restore pre-test state */
     assert_int_equal(0, srcfg_test_unsubscribe("ietf-interfaces"));
     assert_int_equal(0, srcfg_test_unsubscribe("test-module"));
     assert_int_equal(0, srcfg_test_unsubscribe("example-module"));
+    assert_int_equal(0, srcfg_test_unsubscribe("cross-module"));
+    assert_int_equal(0, srcfg_test_unsubscribe("referenced-data"));
 }
 
 static void
@@ -308,7 +354,7 @@ srcfg_test_import(void **state)
     exec_shell_command("../src/sysrepocfg --import --datastore=running --format=txt ietf-interfaces < /tmp/ietf-interfaces.running.xml", ".*", true, 1);
     exec_shell_command("../src/sysrepocfg --import=/tmp/ietf-interfaces.running.xml --datastore=running --format=xml", ".*", true, 1);
 
-    /* import ietf-interfaces, test-module and example-module configuration from temporary files */
+    /* import ietf-interfaces, test-module, example-module, cross-module and referenced-data configuration from temporary files */
 
     /* ietf-interfaces */
     /*  startup, xml */
@@ -346,6 +392,9 @@ srcfg_test_import(void **state)
     exec_shell_command("../src/sysrepocfg --import --datastore=running --format=xml test-module < /tmp/test-module.running.xml",
                        "no active subscriptions", true, 1);
     assert_int_equal(0, srcfg_test_subscribe("test-module"));
+    exec_shell_command("../src/sysrepocfg --import --datastore=running --format=xml test-module < /tmp/test-module.running.xml",
+                       "Cannot read data from module 'referenced-data' .* no active subscriptions", true, 1);
+    assert_int_equal(0, srcfg_test_subscribe("referenced-data"));
     exec_shell_command("../src/sysrepocfg --import --datastore=running --format=xml test-module < /tmp/test-module.running.xml", ".*", true, 0);
     assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/test-module.running.xml", LYD_XML, TEST_DATA_SEARCH_DIR "test-module.running", LYD_XML));
     /*  running, json, permanent */
@@ -359,6 +408,7 @@ srcfg_test_import(void **state)
     rc = md_get_module_info(md_ctx, "test-module", "", &module);
     assert_int_equal(SR_ERR_OK, rc);
     md_destroy(md_ctx);
+    assert_int_equal(0, srcfg_test_unsubscribe("referenced-data"));
 
     /* example-module */
     /*  startup, xml */
@@ -385,11 +435,66 @@ srcfg_test_import(void **state)
     assert_int_equal(SR_ERR_OK, rc);
     md_destroy(md_ctx);
 
+    /* cross-module */
+    /*  startup, xml */
+    exec_shell_command("../src/sysrepocfg --import --datastore=startup --format=xml cross-module < /tmp/cross-module.startup.xml", ".*", true, 0);
+    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/cross-module.startup.xml", LYD_XML, TEST_DATA_SEARCH_DIR "cross-module.startup", LYD_XML));
+    /*  startup, json */
+    exec_shell_command("../src/sysrepocfg --import=/tmp/cross-module.startup.json --datastore=startup --format=json cross-module", ".*", true, 0);
+    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/cross-module.startup.json", LYD_JSON, TEST_DATA_SEARCH_DIR "cross-module.startup", LYD_XML));
+    /*  running, xml */
+    exec_shell_command("../src/sysrepocfg --import --datastore=running --format=xml cross-module < /tmp/cross-module.running.xml",
+                       "no active subscriptions", true, 1);
+    assert_int_equal(0, srcfg_test_subscribe("cross-module"));
+    exec_shell_command("../src/sysrepocfg --import --datastore=running --format=xml cross-module < /tmp/cross-module.running.xml",
+                       "Cannot read data from module 'referenced-data' .* no active subscriptions", true, 1);
+    assert_int_equal(0, srcfg_test_subscribe("referenced-data"));
+    exec_shell_command("../src/sysrepocfg --import --datastore=running --format=xml cross-module < /tmp/cross-module.running.xml", ".*", true, 0);
+    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/cross-module.running.xml", LYD_XML, TEST_DATA_SEARCH_DIR "cross-module.running", LYD_XML));
+    /*  running, json, permanent */
+    exec_shell_command("../src/sysrepocfg --permanent --import=/tmp/cross-module.running.json --datastore=running --format=json cross-module", ".*", true, 0);
+    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/cross-module.running.json", LYD_JSON, TEST_DATA_SEARCH_DIR "cross-module.running", LYD_XML));
+    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/cross-module.running.json", LYD_JSON, TEST_DATA_SEARCH_DIR "cross-module.startup", LYD_XML));
+    /* check the internal data file with module dependencies (just in case) */
+    rc = md_init(TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal/", TEST_DATA_SEARCH_DIR "internal/",
+                 false, &md_ctx);
+    assert_int_equal(0, rc);
+    rc = md_get_module_info(md_ctx, "cross-module", "", &module);
+    assert_int_equal(SR_ERR_OK, rc);
+    md_destroy(md_ctx);
+    assert_int_equal(0, srcfg_test_unsubscribe("referenced-data"));
+
+    /* referenced-data */
+    /*  startup, xml */
+    exec_shell_command("../src/sysrepocfg --import --datastore=startup --format=xml referenced-data < /tmp/referenced-data.startup.xml", ".*", true, 0);
+    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/referenced-data.startup.xml", LYD_XML, TEST_DATA_SEARCH_DIR "referenced-data.startup", LYD_XML));
+    /*  startup, json */
+    exec_shell_command("../src/sysrepocfg --import=/tmp/referenced-data.startup.json --datastore=startup --format=json referenced-data", ".*", true, 0);
+    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/referenced-data.startup.json", LYD_JSON, TEST_DATA_SEARCH_DIR "referenced-data.startup", LYD_XML));
+    /*  running, xml */
+    exec_shell_command("../src/sysrepocfg --import --datastore=running --format=xml referenced-data < /tmp/referenced-data.running.xml",
+                       "no active subscriptions", true, 1);
+    assert_int_equal(0, srcfg_test_subscribe("referenced-data"));
+    exec_shell_command("../src/sysrepocfg --import --datastore=running --format=xml referenced-data < /tmp/referenced-data.running.xml", ".*", true, 0);
+    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/referenced-data.running.xml", LYD_XML, TEST_DATA_SEARCH_DIR "referenced-data.running", LYD_XML));
+    /*  running, json, permanent */
+    exec_shell_command("../src/sysrepocfg --permanent --import=/tmp/referenced-data.running.json --datastore=running --format=json referenced-data", ".*", true, 0);
+    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/referenced-data.running.json", LYD_JSON, TEST_DATA_SEARCH_DIR "referenced-data.running", LYD_XML));
+    assert_int_equal(0, srcfg_test_cmp_data_files("/tmp/referenced-data.running.json", LYD_JSON, TEST_DATA_SEARCH_DIR "referenced-data.startup", LYD_XML));
+    /* check the internal data file with module dependencies (just in case) */
+    rc = md_init(TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal/", TEST_DATA_SEARCH_DIR "internal/",
+                 false, &md_ctx);
+    assert_int_equal(0, rc);
+    rc = md_get_module_info(md_ctx, "referenced-data", "", &module);
+    assert_int_equal(SR_ERR_OK, rc);
+    md_destroy(md_ctx);
 
     /* restore pre-test state */
     assert_int_equal(0, srcfg_test_unsubscribe("ietf-interfaces"));
     assert_int_equal(0, srcfg_test_unsubscribe("test-module"));
     assert_int_equal(0, srcfg_test_unsubscribe("example-module"));
+    assert_int_equal(0, srcfg_test_unsubscribe("cross-module"));
+    assert_int_equal(0, srcfg_test_unsubscribe("referenced-data"));
 }
 
 static void
@@ -460,6 +565,7 @@ srcfg_test_editing(void **state)
     if (0 == strcmp("running", srcfg_test_datastore)) {
         exec_shell_command(cmd, "no active subscriptions", true, 1);
         assert_int_equal(0, srcfg_test_subscribe("test-module"));
+        assert_int_equal(0, srcfg_test_subscribe("referenced-data"));
     }
     exec_shell_command(cmd, "The new configuration was successfully applied.", true, 0);
     if (0 == strcmp("running", srcfg_test_datastore)) {
@@ -569,6 +675,9 @@ srcfg_test_editing(void **state)
     exec_shell_command(cmd, "(.*Unable to apply the changes.*){3}"
                             "Your changes have been saved to 'sysrepocfg_test-dump.txt'", true, 1);
     test_file_content("./sysrepocfg_test-dump.txt", test_module4, false);
+
+    /* remove subscription added due to cross-module dependencies */
+    assert_int_equal(0, srcfg_test_unsubscribe("referenced-data"));
 
     /**
      * module: example-module
@@ -791,11 +900,105 @@ srcfg_test_editing(void **state)
     sr_session_stop(session);
     sr_disconnect(conn);
 
+    /**
+     * module: cross-module
+     * format: xml
+     * valid?: yes (empty config)
+     * permanent?: no
+     **/
+    char *cross_module1 = "";
+    srcfg_test_prepare_config(cross_module1);
+    srcfg_test_prepare_user_input("");
+    strcpy(args,"cross-module");
+    if (0 == strcmp("running", srcfg_test_datastore)) {
+        exec_shell_command(cmd, "no active subscriptions", true, 1);
+        assert_int_equal(0, srcfg_test_subscribe("cross-module"));
+        exec_shell_command(cmd, "no active subscriptions", true, 1);
+        assert_int_equal(0, srcfg_test_subscribe("referenced-data"));
+    }
+    exec_shell_command(cmd, "The new configuration was successfully applied.", true, 0);
+    if (0 == strcmp("running", srcfg_test_datastore)) {
+        exec_shell_command("../src/sysrepocfg --export --datastore=running --format=xml cross-module > /tmp/cross-module_edited.xml", ".*", true, 0);
+    } else {
+        exec_shell_command("../src/sysrepocfg --export --datastore=startup --format=xml cross-module > /tmp/cross-module_edited.xml", ".*", true, 0);
+    }
+    srcfg_test_cmp_data_file_content("/tmp/cross-module_edited.xml", LYD_XML, cross_module1, LYD_XML);
+
+    /**
+     * module: referenced-data
+     * format: xml
+     * valid?: yes (empty config)
+     * permanent?: no
+     **/
+    char *referenced_data1 = "";
+    srcfg_test_prepare_config(referenced_data1);
+    srcfg_test_prepare_user_input("");
+    strcpy(args,"referenced-data");
+    exec_shell_command(cmd, "The new configuration was successfully applied.", true, 0);
+    if (0 == strcmp("running", srcfg_test_datastore)) {
+        exec_shell_command("../src/sysrepocfg --export --datastore=running --format=xml referenced-data > /tmp/referenced-data_edited.xml", ".*", true, 0);
+    } else {
+        exec_shell_command("../src/sysrepocfg --export --datastore=startup --format=xml referenced-data > /tmp/referenced-data_edited.xml", ".*", true, 0);
+    }
+    srcfg_test_cmp_data_file_content("/tmp/referenced-data_edited.xml", LYD_XML, referenced_data1, LYD_XML);
+
+    /**
+     * module: cross-module
+     * format: xml
+     * valid?: no (unsatisfied cross-module dependency)
+     * permanent?: no
+     **/
+    char *cross_module2 = "<reference xmlns=\"urn:cm\">abcd</reference>";
+    srcfg_test_prepare_config(cross_module2);
+    srcfg_test_prepare_user_input("n\n n\n"); /* 1 failed attempt, don't even save locally */
+    strcpy(args, "cross-module");
+    exec_shell_command(cmd, "(.*Unable to apply the changes.*){1}"
+                            "Your changes were discarded", true, 1);
+    /**
+     * module: referenced-data
+     * format: xml
+     * valid?: yes
+     * permanent?: no
+     **/
+    char *referenced_data2 = "<list-b xmlns=\"urn:rd\">\n"
+          "  <name>abcd</name>\n"
+          "</list-b>\n";
+    srcfg_test_prepare_config(referenced_data2);
+    srcfg_test_prepare_user_input("");
+    strcpy(args,"referenced-data");
+    exec_shell_command(cmd, "The new configuration was successfully applied.", true, 0);
+    if (0 == strcmp("running", srcfg_test_datastore)) {
+        exec_shell_command("../src/sysrepocfg --export --datastore=running --format=xml referenced-data > /tmp/referenced-data_edited.xml", ".*", true, 0);
+    } else {
+        exec_shell_command("../src/sysrepocfg --export --datastore=startup --format=xml referenced-data > /tmp/referenced-data_edited.xml", ".*", true, 0);
+    }
+    srcfg_test_cmp_data_file_content("/tmp/referenced-data_edited.xml", LYD_XML, referenced_data2, LYD_XML);
+
+    /**
+     * module: cross-module
+     * format: xml
+     * valid?: yes (satisfied cross-module dependency)
+     * permanent?: no
+     **/
+    char *cross_module3 = "<reference xmlns=\"urn:cm\">abcd</reference>";
+    srcfg_test_prepare_config(cross_module3);
+    srcfg_test_prepare_user_input("");
+    strcpy(args,"cross-module");
+    exec_shell_command(cmd, "The new configuration was successfully applied.", true, 0);
+    if (0 == strcmp("running", srcfg_test_datastore)) {
+        exec_shell_command("../src/sysrepocfg --export --datastore=running --format=xml cross-module > /tmp/cross-module_edited.xml", ".*", true, 0);
+    } else {
+        exec_shell_command("../src/sysrepocfg --export --datastore=startup --format=xml cross-module > /tmp/cross-module_edited.xml", ".*", true, 0);
+    }
+    srcfg_test_cmp_data_file_content("/tmp/cross-module_edited.xml", LYD_XML, cross_module3, LYD_XML);
+
     /* restore pre-test state */
     if (0 == strcmp("running", srcfg_test_datastore)) {
         assert_int_equal(0, srcfg_test_unsubscribe("ietf-interfaces"));
         assert_int_equal(0, srcfg_test_unsubscribe("test-module"));
         assert_int_equal(0, srcfg_test_unsubscribe("example-module"));
+        assert_int_equal(0, srcfg_test_unsubscribe("cross-module"));
+        assert_int_equal(0, srcfg_test_unsubscribe("referenced-data"));
     }
 }
 
@@ -840,6 +1043,8 @@ main() {
         "iana-if-type",
         "ietf-interfaces",
         "ietf-ip",
+        "referenced-data",
+        "cross-module"
     };
     /* load module necessary for tests */
     ret = sr_list_schemas(srcfg_test_session, &schemas, &schema_cnt);
@@ -848,7 +1053,11 @@ main() {
             path = schemas[i].revision.file_path_yang;
             for (int j = 0; j < sizeof(modules_for_tests) / sizeof(*modules_for_tests); j++) {
                 if (NULL != path && 0 == strcmp(modules_for_tests[j], schemas[i].module_name)) {
-                    lys_parse_path(srcfg_test_libyang_ctx, path, LYS_IN_YANG);
+                    if (NULL == lys_parse_path(srcfg_test_libyang_ctx, path, LYS_IN_YANG)) {
+                        fprintf(stderr, "Failed to parse schema file '%s': %s (%s)", path, ly_errmsg(), ly_errpath());
+                        ret = SR_ERR_IO;
+                        goto terminate;
+                    }
                     break;
                 }
             }
@@ -873,6 +1082,8 @@ main() {
     truncate(TEST_DATA_SEARCH_DIR "test-module.persist", 0);
     truncate(TEST_DATA_SEARCH_DIR "ietf-interfaces.persist", 0);
     truncate(TEST_DATA_SEARCH_DIR "example-module.persist", 0);
+    truncate(TEST_DATA_SEARCH_DIR "referenced-data.persist", 0);
+    truncate(TEST_DATA_SEARCH_DIR "cross-module.persist", 0);
 
     ret = cmocka_run_group_tests(tests, NULL, NULL);
 
