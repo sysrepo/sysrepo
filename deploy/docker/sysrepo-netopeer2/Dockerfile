@@ -1,5 +1,7 @@
 FROM ubuntu:16.04
 
+MAINTAINER raszabo@cisco.com
+
 RUN apt-get update && apt-get install -y \
 	# general tools
 	git \
@@ -50,7 +52,7 @@ RUN \
 RUN \
         git clone https://github.com/sysrepo/sysrepo.git && \
         cd sysrepo && mkdir build && cd build && \
-        cmake -DCMAKE_BUILD_TYPE:String="Release" -DENABLE_TESTS=OFF .. && \
+        cmake -DCMAKE_BUILD_TYPE:String="Release" -DENABLE_TESTS=OFF -DREPOSITORY_LOC:PATH=/etc/sysrepo .. && \
         make -j2 && \
         make install && \
         ldconfig

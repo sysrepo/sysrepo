@@ -22,10 +22,11 @@ RUN apt-get update && apt-get install -y \
 	libcmocka-dev \
 	valgrind 
 
+# use /opt/dev as working directory
 RUN mkdir /opt/dev
-
 WORKDIR /opt/dev
 
+# libyang
 RUN \
 	git clone https://github.com/CESNET/libyang.git && \
 	cd libyang && mkdir build && cd build && \
@@ -34,6 +35,7 @@ RUN \
 	make install && \
 	ldconfig 
 
+# sysrepo
 RUN \
         git clone https://github.com/sysrepo/sysrepo.git && \
         cd sysrepo && mkdir build && cd build && \
