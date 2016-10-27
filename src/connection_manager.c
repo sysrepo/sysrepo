@@ -1333,7 +1333,7 @@ cm_out_notif_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
         rc = cm_msg_send_connection(cm_ctx, connection, msg);
     }
 
-    if (SR_ERR_OK != rc) {
+    if (SR_ERR_OK != rc && SR_ERR_DISCONNECT != rc) {
         /* by error, remove subscriptions on this destination */
         cm_subscr_unsubscribe_destination(cm_ctx, msg->notification->destination_address, 0);
     }
@@ -1393,7 +1393,7 @@ cm_out_dp_request_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
         rc = cm_msg_send_connection(cm_ctx, connection, msg);
     }
 
-    if (SR_ERR_OK != rc) {
+    if (SR_ERR_OK != rc && SR_ERR_DISCONNECT != rc) {
         /* by error, remove subscriptions on this destination */
         cm_subscr_unsubscribe_destination(cm_ctx, msg->request->data_provide_req->subscriber_address, 0);
     }
@@ -1455,7 +1455,7 @@ cm_out_rpc_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
         rc = cm_msg_send_connection(cm_ctx, connection, msg);
     }
 
-    if (SR_ERR_OK != rc) {
+    if (SR_ERR_OK != rc && SR_ERR_DISCONNECT != rc) {
         /* by error, remove subscriptions on this destination */
         cm_subscr_unsubscribe_destination(cm_ctx, destination_address, 0);
     }
@@ -1513,7 +1513,7 @@ cm_out_event_notif_process(cm_ctx_t *cm_ctx, Sr__Msg *msg)
         rc = cm_msg_send_connection(cm_ctx, connection, msg);
     }
 
-    if (SR_ERR_OK != rc) {
+    if (SR_ERR_OK != rc && SR_ERR_DISCONNECT != rc) {
         /* by error, remove subscriptions on this destination */
         cm_subscr_unsubscribe_destination(cm_ctx, destination_address, 0);
     }

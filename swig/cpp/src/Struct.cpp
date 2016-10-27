@@ -36,7 +36,7 @@ extern "C" {
 using namespace std;
 
 // Data
-Data::Data(sr_data_t data, sr_type_t type) {_d = data; _t = type;}
+Data::Data(sr_data_t data, sr_type_t type, S_Deleter deleter) {_d = data; _t = type; _deleter = deleter;}
 Data::~Data() {return;}
 char *Data::get_binary() {
     if (_t != SR_BINARY_T) throw_exception(SR_ERR_DATA_MISSING);
@@ -104,16 +104,16 @@ uint64_t Data::get_uint64() {
 }
 
 // Val
-Val::Val(sr_val_t *val, S_Counter counter) {
+Val::Val(sr_val_t *val, S_Deleter deleter) {
     if (val == NULL)
         throw_exception(SR_ERR_INVAL_ARG);
     _val = val;
-    _counter = counter;
+    _deleter = deleter;
 }
 Val::Val() {
     _val = NULL;
-    S_Counter counter(new Counter(_val));
-    _counter = counter;
+    S_Deleter deleter(new Deleter(_val));
+    _deleter = deleter;
 }
 Val::~Val() {return;}
 Val::Val(const char *value, sr_type_t type) {
@@ -138,8 +138,8 @@ Val::Val(const char *value, sr_type_t type) {
     }
 
     _val = val;
-    S_Counter counter(new Counter(val));
-    _counter = counter;
+    S_Deleter deleter(new Deleter(val));
+    _deleter = deleter;
 }
 Val::Val(bool bool_val, sr_type_t type) {
     sr_val_t *val = NULL;
@@ -155,8 +155,8 @@ Val::Val(bool bool_val, sr_type_t type) {
 
     val->type = type;
     _val = val;
-    S_Counter counter(new Counter(val));
-    _counter = counter;
+    S_Deleter deleter(new Deleter(val));
+    _deleter = deleter;
 }
 Val::Val(double decimal64_val) {
     sr_val_t *val = NULL;
@@ -169,8 +169,8 @@ Val::Val(double decimal64_val) {
 
     val->type = SR_DECIMAL64_T;
     _val = val;
-    S_Counter counter(new Counter(val));
-    _counter = counter;
+    S_Deleter deleter(new Deleter(val));
+    _deleter = deleter;
 }
 Val::Val(int8_t int8_val, sr_type_t type) {
     sr_val_t *val = NULL;
@@ -186,8 +186,8 @@ Val::Val(int8_t int8_val, sr_type_t type) {
 
     val->type = type;
     _val = val;
-    S_Counter counter(new Counter(val));
-    _counter = counter;
+    S_Deleter deleter(new Deleter(val));
+    _deleter = deleter;
 }
 Val::Val(int16_t int16_val, sr_type_t type) {
     sr_val_t *val = NULL;
@@ -203,8 +203,8 @@ Val::Val(int16_t int16_val, sr_type_t type) {
 
     val->type = type;
     _val = val;
-    S_Counter counter(new Counter(val));
-    _counter = counter;
+    S_Deleter deleter(new Deleter(val));
+    _deleter = deleter;
 }
 Val::Val(int32_t int32_val, sr_type_t type) {
     sr_val_t *val = NULL;
@@ -220,8 +220,8 @@ Val::Val(int32_t int32_val, sr_type_t type) {
 
     val->type = type;
     _val = val;
-    S_Counter counter(new Counter(val));
-    _counter = counter;
+    S_Deleter deleter(new Deleter(val));
+    _deleter = deleter;
 }
 Val::Val(int64_t int64_val, sr_type_t type) {
     sr_val_t *val = NULL;
@@ -252,8 +252,8 @@ Val::Val(int64_t int64_val, sr_type_t type) {
 
     val->type = type;
     _val = val;
-    S_Counter counter(new Counter(val));
-    _counter = counter;
+    S_Deleter deleter(new Deleter(val));
+    _deleter = deleter;
 }
 Val::Val(uint8_t uint8_val, sr_type_t type) {
     sr_val_t *val = NULL;
@@ -269,8 +269,8 @@ Val::Val(uint8_t uint8_val, sr_type_t type) {
 
     val->type = type;
     _val = val;
-    S_Counter counter(new Counter(val));
-    _counter = counter;
+    S_Deleter deleter(new Deleter(val));
+    _deleter = deleter;
 }
 Val::Val(uint16_t uint16_val, sr_type_t type) {
     sr_val_t *val = NULL;
@@ -286,8 +286,8 @@ Val::Val(uint16_t uint16_val, sr_type_t type) {
 
     val->type = type;
     _val = val;
-    S_Counter counter(new Counter(val));
-    _counter = counter;
+    S_Deleter deleter(new Deleter(val));
+    _deleter = deleter;
 }
 Val::Val(uint32_t uint32_val, sr_type_t type) {
     sr_val_t *val = NULL;
@@ -303,8 +303,8 @@ Val::Val(uint32_t uint32_val, sr_type_t type) {
 
     val->type = type;
     _val = val;
-    S_Counter counter(new Counter(val));
-    _counter = counter;
+    S_Deleter deleter(new Deleter(val));
+    _deleter = deleter;
 }
 Val::Val(uint64_t uint64_val, sr_type_t type) {
     sr_val_t *val = NULL;
@@ -320,8 +320,8 @@ Val::Val(uint64_t uint64_val, sr_type_t type) {
 
     val->type = type;
     _val = val;
-    S_Counter counter(new Counter(val));
-    _counter = counter;
+    S_Deleter deleter(new Deleter(val));
+    _deleter = deleter;
 }
 void Val::set(const char *xpath, const char *value, sr_type_t type) {
     int ret = SR_ERR_OK;
@@ -499,22 +499,22 @@ S_Val Val::dup() {
     if (ret != SR_ERR_OK)
         throw_exception(ret);
 
-    S_Counter counter(new Counter(new_val));
-    S_Val val(new Val(new_val, counter));
+    S_Deleter deleter(new Deleter(new_val));
+    S_Val val(new Val(new_val, deleter));
     return val;
 }
 
 // Vals
-Vals::Vals(const sr_val_t *vals, const size_t cnt, S_Counter counter) {
+Vals::Vals(const sr_val_t *vals, const size_t cnt, S_Deleter deleter) {
     _vals = (sr_val_t *) vals;
     _cnt = (size_t) cnt;
 
-    _counter = counter;
+    _deleter = deleter;
 }
-Vals::Vals(sr_val_t **vals, size_t *cnt, S_Counter counter) {
+Vals::Vals(sr_val_t **vals, size_t *cnt, S_Deleter deleter) {
     _vals = *vals;
     _cnt = *cnt;
-    _counter = counter;
+    _deleter = deleter;
 }
 Vals::Vals(size_t cnt) {
     int ret = sr_new_values(cnt, &_vals);
@@ -522,14 +522,14 @@ Vals::Vals(size_t cnt) {
         throw_exception(ret);
 
     _cnt = cnt;
-    S_Counter counter(new Counter(_vals, _cnt));
-    _counter = counter;
+    S_Deleter deleter(new Deleter(_vals, _cnt));
+    _deleter = deleter;
 }
 Vals::Vals() {
     _vals = NULL;
     _cnt = 0;
-    S_Counter counter(new Counter(&_vals, &_cnt));
-    _counter = counter;
+    S_Deleter deleter(new Deleter(&_vals, &_cnt));
+    _deleter = deleter;
 }
 Vals::~Vals() {
     return;
@@ -538,7 +538,7 @@ S_Val Vals::val(size_t n) {
     if (n >= _cnt || _vals == NULL)
         return NULL;
 
-    S_Val val(new Val(&_vals[n], _counter));
+    S_Val val(new Val(&_vals[n], _deleter));
     return val;
 }
 S_Vals Vals::dup() {
@@ -671,22 +671,22 @@ Change::Change() {
     _oper = SR_OP_CREATED;
     _new = NULL;
     _old = NULL;
-    S_Counter counter_old(new Counter(_old));
-    S_Counter counter_new(new Counter(_new));
+    S_Deleter deleter_old(new Deleter(_old));
+    S_Deleter deleter_new(new Deleter(_new));
 
-    _counter_old = counter_old;
-    _counter_new = counter_new;
+    _deleter_old = deleter_old;
+    _deleter_new = deleter_new;
 }
 S_Val Change::new_val() {
     if (_new == NULL) return NULL;
 
-    S_Val new_val(new Val(_new, _counter_new));
+    S_Val new_val(new Val(_new, _deleter_new));
     return new_val;
 }
 S_Val Change::old_val() {
     if (_old == NULL) return NULL;
 
-    S_Val old_val(new Val(_old, _counter_old));
+    S_Val old_val(new Val(_old, _deleter_old));
     return old_val;
 }
 Change::~Change() {

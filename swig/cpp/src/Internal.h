@@ -22,6 +22,8 @@
 #ifndef INTERNAL_H
 #define INTERNAL_H
 
+#define S_Deleter std::shared_ptr<Deleter>
+
 extern "C" {
 #include "sysrepo.h"
 #include "sysrepo/trees.h"
@@ -36,28 +38,28 @@ typedef enum free_type_e {
     TREES_POINTER,
 } free_type_t;
 
-class Counter
+class Deleter
 {
 public:
-    Counter(sr_val_t *val);
-    Counter(sr_val_t *vals, size_t cnt);
-    Counter(sr_val_t **vals, size_t *cnt);
-    Counter(sr_node_t *tree);
-    Counter(sr_node_t *trees, size_t cnt);
-    Counter(sr_node_t **trees, size_t *cnt);
-    ~Counter();
+    Deleter(sr_val_t *val);
+    Deleter(sr_val_t *vals, size_t cnt);
+    Deleter(sr_val_t **vals, size_t *cnt);
+    Deleter(sr_node_t *tree);
+    Deleter(sr_node_t *trees, size_t cnt);
+    Deleter(sr_node_t **trees, size_t *cnt);
+    ~Deleter();
 
 private:
     void init_all();
-    sr_val_t *_val;
-    sr_val_t *_vals;
     size_t _cnt;
-    sr_val_t **p_vals;
     size_t *p_cnt;
 
+    sr_val_t *_val;
+    sr_val_t **p_vals;
+
     sr_node_t *_tree;
-    sr_node_t *_trees;
     sr_node_t **p_trees;
+
     free_type_t _t;
 };
 

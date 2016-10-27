@@ -93,7 +93,7 @@
 #ifndef SWIGLUA
 %shared_ptr(Val);
 #endif
-%ignore Val::Val(sr_val_t *, S_Counter);
+%ignore Val::Val(sr_val_t *, S_Deleter);
 %ignore Val::Val(sr_val_t *);
 %ignore Val::get();
 %ignore Val::p_get();
@@ -103,10 +103,10 @@
 #ifndef SWIGLUA
 %shared_ptr(Vals);
 #endif
-%ignore Vals::Vals(const sr_val_t *, const size_t, S_Counter counter);
+%ignore Vals::Vals(const sr_val_t *, const size_t, S_Deleter counter);
 %ignore Vals::Vals(const sr_val_t *, const size_t);
 %ignore Vals::Vals(const sr_val_t *);
-%ignore Vals::Vals(sr_val_t **, size_t *, S_Counter);
+%ignore Vals::Vals(sr_val_t **, size_t *, S_Deleter);
 %ignore Vals::Vals(sr_val_t **, size_t *);
 %ignore Vals::Vals(sr_val_t **);
 %ignore Vals::p_val();
@@ -209,7 +209,7 @@
 #endif
 %ignore Tree::Tree(const char *, const char *);
 %ignore Tree::Tree(const char *);
-%ignore Tree::Tree(sr_node_t *, S_Counter);
+%ignore Tree::Tree(sr_node_t *, S_Deleter);
 %ignore Tree::Tree(sr_node_t *);
 %ignore Tree::tree();
 %ignore Tree::get();
@@ -225,10 +225,10 @@
 #ifndef SWIGLUA
 %shared_ptr(Trees);
 #endif
-%ignore Trees::Trees(sr_node_t **, size_t *, S_Counter);
+%ignore Trees::Trees(sr_node_t **, size_t *, S_Deleter);
 %ignore Trees::Trees(sr_node_t **, size_t *);
 %ignore Trees::Trees(sr_node_t **);
-%ignore Trees::Trees(const sr_node_t *, const size_t, S_Counter);
+%ignore Trees::Trees(const sr_node_t *, const size_t, S_Deleter);
 %ignore Trees::Trees(const sr_node_t *, const size_t);
 %ignore Trees::Trees(const sr_node_t *);
 %ignore Trees::trees();

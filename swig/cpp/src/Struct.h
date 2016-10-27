@@ -38,7 +38,7 @@ using namespace std;
 class Data
 {
 public:
-    Data(sr_data_t data, sr_type_t type);
+    Data(sr_data_t data, sr_type_t type, S_Deleter deleter);
     ~Data();
     char *get_binary();
     char *get_bits();
@@ -60,6 +60,7 @@ public:
 private:
     sr_data_t _d;
     sr_type_t _t;
+    S_Deleter _deleter;
 };
 
 // class for sysrepo C struct sr_val_t
@@ -67,7 +68,7 @@ class Val
 {
 public:
     Val();
-    Val(sr_val_t *val, S_Counter counter);
+    Val(sr_val_t *val, S_Deleter deleter);
     Val(const char *val, sr_type_t type = SR_STRING_T);
     Val(bool bool_val, sr_type_t type = SR_BOOL_T);
     Val(double decimal64_val);
@@ -96,22 +97,22 @@ public:
     sr_type_t type() {return _val->type;};
     bool dflt() {return _val->dflt;};
     void dflt_set(bool data) {_val->dflt = data;};
-    S_Data data() {S_Data data(new Data(_val->data, _val->type)); return data;};
+    S_Data data() {S_Data data(new Data(_val->data, _val->type, _deleter)); return data;};
     sr_val_t *get() {return _val;};
     sr_val_t **p_get() {return &_val;};
     S_Val dup();
 
 private:
     sr_val_t *_val;
-    S_Counter _counter;
+    S_Deleter _deleter;
 };
 
 // class for list of sysrepo C structs sr_val_t
 class Vals
 {
 public:
-    Vals(const sr_val_t *vals, const size_t cnt, S_Counter counter = NULL);
-    Vals(sr_val_t **vals, size_t *cnt, S_Counter counter = NULL);
+    Vals(const sr_val_t *vals, const size_t cnt, S_Deleter deleter = NULL);
+    Vals(sr_val_t **vals, size_t *cnt, S_Deleter deleter = NULL);
     Vals(size_t cnt);
     Vals();
     ~Vals();
@@ -125,7 +126,7 @@ public:
 private:
     size_t _cnt;
     sr_val_t *_vals;
-    S_Counter _counter;
+    S_Deleter _deleter;
 };
 
 // class for wrapping Vals classes
@@ -321,8 +322,8 @@ private:
     sr_change_oper_t _oper;
     sr_val_t *_new;
     sr_val_t *_old;
-    S_Counter _counter_new;
-    S_Counter _counter_old;
+    S_Deleter _deleter_new;
+    S_Deleter _deleter_old;
 };
 
 #endif

@@ -93,6 +93,22 @@ sr_str_join(const char *str1, const char *str2, char **result)
     return SR_ERR_OK;
 }
 
+int
+sr_path_join(const char *path1, const char *path2, char **result)
+{
+    CHECK_NULL_ARG3(path1, path2, result);
+    char *res = NULL;
+    size_t l1 = strlen(path1);
+    size_t l2 = strlen(path2);
+    res = calloc(l1 + l2 + 2, sizeof(*res));
+    CHECK_NULL_NOMEM_RETURN(res);
+    strcpy(res, path1);
+    res[l1] = '/';
+    strcpy(res + l1 + 1, path2);
+    *result = res;
+    return SR_ERR_OK;
+}
+
 void
 sr_str_trim(char *str) {
     if (NULL == str) {
@@ -2106,4 +2122,43 @@ sr_find_schema_node(const struct lys_node *node, const char *expr, int options)
     }
     ly_set_free(set);
     return result;
+}
+
+int
+sr_mkdir_recursive(const char *path, mode_t mode)
+{
+    CHECK_NULL_ARG(path);
+
+    const size_t len = strlen(path);
+    char path_dup[PATH_MAX] = { 0, };
+    char *p = NULL;
+
+    errno = 0;
+
+    /* Duplicate string so its mutable */
+    if (len > sizeof(path_dup)-1) {
+        errno = ENAMETOOLONG;
+        return SR_ERR_INVAL_ARG;
+    }
+    strcpy(path_dup, path);
+
+    /* Iterate the string */
+    for (p = path_dup + 1; *p; p++) {
+        if (*p == '/') {
+            /* Temporarily truncate */
+            *p = '\0';
+            if (mkdir(path_dup, mode) != 0) {
+                if (errno != EEXIST)
+                    return SR_ERR_IO;
+            }
+            *p = '/';
+        }
+    }
+
+    if (mkdir(path_dup, mode) != 0) {
+        if (errno != EEXIST)
+            return SR_ERR_IO;
+    }
+
+    return 0;
 }

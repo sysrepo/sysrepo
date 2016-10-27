@@ -29,60 +29,58 @@ extern "C" {
 
 using namespace std;
 
-void Counter::init_all() {
+void Deleter::init_all() {
     _val = NULL;
-    _vals = NULL;
     _cnt = 0;
     p_vals = NULL;
     p_cnt = NULL;
 
     _tree = NULL;
-    _trees = NULL;
     p_trees = NULL;
 }
-Counter::Counter(sr_val_t *val) {
-    Counter::init_all();
+Deleter::Deleter(sr_val_t *val) {
+    Deleter::init_all();
     _val = val;
     _t = VAL;
 }
-Counter::Counter(sr_val_t *vals, size_t cnt) {
-    Counter::init_all();
-    _vals = vals;
+Deleter::Deleter(sr_val_t *vals, size_t cnt) {
+    Deleter::init_all();
+    _val = vals;
     _cnt = cnt;
     _t = VALS;
 }
-Counter::Counter(sr_val_t **vals, size_t *cnt) {
-    Counter::init_all();
+Deleter::Deleter(sr_val_t **vals, size_t *cnt) {
+    Deleter::init_all();
     p_vals = vals;
     p_cnt = cnt;
     _t = VALS_POINTER;
 }
-Counter::Counter(sr_node_t *tree) {
-    Counter::init_all();
+Deleter::Deleter(sr_node_t *tree) {
+    Deleter::init_all();
     _tree = tree;
     _t = TREE;
 }
-Counter::Counter(sr_node_t *trees, size_t cnt) {
-    Counter::init_all();
-    _trees = trees;
+Deleter::Deleter(sr_node_t *trees, size_t cnt) {
+    Deleter::init_all();
+    _tree = trees;
     _cnt = cnt;
     _t = TREES;
 }
-Counter::Counter(sr_node_t **trees, size_t *cnt) {
-    Counter::init_all();
+Deleter::Deleter(sr_node_t **trees, size_t *cnt) {
+    Deleter::init_all();
     p_trees = trees;
     p_cnt = cnt;
     _t = TREES_POINTER;
 }
-Counter::~Counter() {
+Deleter::~Deleter() {
     switch(_t) {
     case VAL:
         if (_val) sr_free_val(_val);
 	_val = NULL;
     break;
     case VALS:
-        if (_vals) sr_free_values(_vals, _cnt);
-	_vals = NULL;
+        if (_val) sr_free_values(_val, _cnt);
+	_val = NULL;
     break;
     case VALS_POINTER:
         if (*p_vals) sr_free_values(*p_vals, *p_cnt);
@@ -93,8 +91,8 @@ Counter::~Counter() {
 	_tree = NULL;
     break;
     case TREES:
-        if (_trees) sr_free_trees(_trees, _cnt);
-	_trees = NULL;
+        if (_tree) sr_free_trees(_tree, _cnt);
+	_tree = NULL;
     break;
     case TREES_POINTER:
         if (*p_trees) sr_free_trees(*p_trees, *p_cnt);

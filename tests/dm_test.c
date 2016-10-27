@@ -794,8 +794,7 @@ dm_action_test(void **state)
             input_tree, input_cnt, true, NULL, &with_def, &with_def_cnt, &with_def_tree, &with_def_tree_cnt);
     assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
     dm_copy_errors(session, NULL, &error_msg, &error_xpath);
-    assert_string_equal("When condition \"../../loaded = 'false'\" not satisfied. "
-                        "(path: /test-module:kernel-modules/kernel-module[name='irqbypass.ko']/load/force)",
+    assert_string_equal("When condition \"../../loaded = 'false'\" not satisfied.",
                         error_msg);
     free(error_msg);
     free(error_xpath);

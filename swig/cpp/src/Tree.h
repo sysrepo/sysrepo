@@ -37,14 +37,14 @@ class Tree
 public:
     Tree();
     Tree(const char *root_name, const char *root_module_name);
-    Tree(sr_node_t *tree, S_Counter counter);
+    Tree(sr_node_t *tree, S_Deleter deleter);
     S_Tree dup();
     S_Tree node();
     sr_node_t *tree() {return _node;};
     char *name() {return _node->name;};
     sr_type_t type() {return _node->type;};
     bool dflt() {return _node->dflt;};
-    S_Data data() {S_Data data(new Data(_node->data, _node->type)); return data;};
+    S_Data data() {S_Data data(new Data(_node->data, _node->type, _deleter)); return data;};
     char *module_name() {return _node->module_name;};
     S_Tree parent();
     S_Tree next();
@@ -71,7 +71,7 @@ public:
 
 private:
     sr_node_t *_node;
-    S_Counter _counter;
+    S_Deleter _deleter;
 };
 
 class Trees
@@ -79,8 +79,8 @@ class Trees
 public:
     Trees();
     Trees(size_t n);
-    Trees(sr_node_t **trees, size_t *cnt, S_Counter counter = NULL);
-    Trees(const sr_node_t *trees, const size_t n, S_Counter counter = NULL);
+    Trees(sr_node_t **trees, size_t *cnt, S_Deleter deleter = NULL);
+    Trees(const sr_node_t *trees, const size_t n, S_Deleter deleter = NULL);
     S_Tree tree(size_t n);
     S_Trees dup();
     size_t tree_cnt() {return _cnt;};
@@ -92,7 +92,7 @@ public:
 private:
     size_t _cnt;
     sr_node_t *_trees;
-    S_Counter _counter;
+    S_Deleter _deleter;
 };
 
 // class for wrapping Vals classes
