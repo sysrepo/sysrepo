@@ -6,6 +6,7 @@ RUN apt-get update && apt-get install -y \
         cmake \
         build-essential \
 	vim \
+	supervisor \
 	# libyang
 	libpcre3-dev \
 	# sysrepo 
@@ -21,17 +22,19 @@ RUN apt-get update && apt-get install -y \
         python-dev
 
 # add netconf user
-RUN adduser --system netconf
-RUN echo "netconf:netconf" | chpasswd && adduser netconf sudo
+RUN \
+	adduser --system netconf && \
+	echo "netconf:netconf" | chpasswd
 
-# generate ssh keys
-RUN mkdir -p /home/netconf/.ssh
-RUN ssh-keygen -A
-RUN ssh-keygen -t dsa -P '' -f /home/netconf/.ssh/id_dsa
-RUN cat /home/netconf/.ssh/id_dsa.pub > /home/netconf/.ssh/authorized_keys
+# generate ssh keys for netconf user
+RUN \
+	mkdir -p /home/netconf/.ssh && \
+	ssh-keygen -A && \
+	ssh-keygen -t dsa -P '' -f /home/netconf/.ssh/id_dsa && \
+	cat /home/netconf/.ssh/id_dsa.pub > /home/netconf/.ssh/authorized_keys
 
-# use /opt/dev as working dir
-RUN mkdir /opt/dev && sudo chown -R netconf /opt/dev
+# use /opt/dev as working directory
+RUN mkdir /opt/dev
 WORKDIR /opt/dev
 
 # libyang
@@ -47,7 +50,16 @@ RUN \
 RUN \
         git clone https://github.com/sysrepo/sysrepo.git && \
         cd sysrepo && mkdir build && cd build && \
-        cmake -DCMAKE_BUILD_TYPE:String="Release" -DENABLE_BUILD_TESTS=OFF .. && \
+        cmake -DCMAKE_BUILD_TYPE:String="Release" -DENABLE_TESTS=OFF .. && \
+        make -j2 && \
+        make install && \
+        ldconfig
+
+# libssh
+RUN \
+        git clone http://git.libssh.org/projects/libssh.git && \
+        cd libssh && mkdir build && cd build && \
+        cmake .. && \
         make -j2 && \
         make install && \
         ldconfig
@@ -61,7 +73,7 @@ RUN \
         make install && \
         ldconfig
 
-# netopeer 2
+# netopeer2
 RUN \
         git clone https://github.com/CESNET/Netopeer2.git && \
         cd Netopeer2/server && mkdir build && cd build && \
