@@ -92,7 +92,7 @@ public:
 
     virtual void module_change(S_Session session, const char *module_name, sr_notif_event_t event, void *private_ctx) {return;};
     virtual void subtree_change(S_Session session, const char *xpath, sr_notif_event_t event, void *private_ctx) {return;};
-    virtual void module_install(const char *module_name, const char *revision, bool installed, void *private_ctx) {return;};
+    virtual void module_install(const char *module_name, const char *revision, sr_module_state_t state, void *private_ctx) {return;};
     virtual void feature_enable(const char *module_name, const char *feature_name, bool enabled, void *private_ctx) {return;};
     virtual void rpc(const char *xpath, S_Vals input, S_Vals_Holder output, void *private_ctx) {return;};
     virtual void rpc_tree(const char *xpath, S_Trees input, S_Trees_Holder output, void *private_ctx) {return;};

@@ -573,6 +573,8 @@ typedef struct sr_schema_s {
     const char *module_name;         /**< Name of the module. */
     const char *ns;                  /**< Namespace of the module used in @ref xp_page "XPath". */
     const char *prefix;              /**< Prefix of the module. */
+    bool implemented;                /**< TRUE if the module is implemented (= explicitly installed),
+                                          not just imported. */
 
     sr_sch_revision_t revision;      /**< Revision the module. */
 
@@ -1109,6 +1111,16 @@ typedef enum sr_change_oper_e {
 } sr_change_oper_t;
 
 /**
+ * @brief State of a module as returned by the ::sr_module_install_cb callback.
+ */
+typedef enum sr_module_state_e {
+    SR_MS_UNINSTALLED,  /**< The module is not installed in the sysrepo repository. */
+    SR_MS_IMPORTED,     /**< The module has been implicitly installed into the sysrepo repository
+                             as it is imported by another implemented/imported module. */
+    SR_MS_IMPLEMENTED   /**< The module has been explicitly installed into the sysrepo repository by the user. */
+} sr_module_state_t;
+
+/**
  * @brief Sysrepo subscription context returned from sr_*_subscribe calls,
  * it is supposed to be released by the caller using ::sr_unsubscribe call.
  */
@@ -1155,11 +1167,12 @@ typedef int (*sr_subtree_change_cb)(sr_session_ctx_t *session, const char *xpath
  * @param[in] module_name Name of the newly installed / uinstalled module.
  * @param[in] revision Revision of the newly installed module (if specified
  * within the YANG model).
- * @param[in] installed TRUE if the module has been installed, FALSE if uninstalled.
+ * @param[in] state The new state of the module (uninstalled vs. imported vs. implemented).
  * @param[in] private_ctx Private context opaque to sysrepo, as passed to
  * ::sr_module_install_subscribe call.
  */
-typedef void (*sr_module_install_cb)(const char *module_name, const char *revision, bool installed, void *private_ctx);
+typedef void (*sr_module_install_cb)(const char *module_name, const char *revision, sr_module_state_t state,
+        void *private_ctx);
 
 /**
  * @brief Callback to be called by the event of enabling / disabling of

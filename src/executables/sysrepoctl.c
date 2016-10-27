@@ -581,9 +581,8 @@ srctl_uninstall(const char *module_name, const char *revision)
     md_ctx_t *md_ctx = NULL;
     md_module_t *module = NULL;
     char *filepath = NULL;
-    sr_llist_t *submodules = NULL;
-    sr_llist_node_t *submodule = NULL, *dep_node = NULL;
-    md_dep_t *dep = NULL;
+    md_module_key_t *module_key = NULL;
+    sr_list_t *implicitly_removed = NULL;
 
     if (NULL == module_name) {
         fprintf(stderr, "Error: Module must be specified for --uninstall operation.\n");
@@ -615,28 +614,15 @@ srctl_uninstall(const char *module_name, const char *revision)
     }
 
     /**
-     * collect list of schemas that need to be removed.
-     *
      * Note: Module should be removed from the dependency graph before the schema files so
      * that the repository will remain in correct state even if the uninstallation fails
      * in-progress.
      */
-    filepath = strdup(module->filepath);
-    CHECK_NULL_NOMEM_GOTO(filepath, rc, fail);
-    rc = sr_llist_init(&submodules);
-    CHECK_RC_MSG_GOTO(rc, fail, "Unable to initialize a linked-list.");
-    dep_node = module->deps->first;
-    while (dep_node) {
-        dep = (md_dep_t *)dep_node->data;
-        if (dep->dest->submodule && dep->dest->inv_deps->first == dep->dest->inv_deps->last) {
-            rc = sr_llist_add_new(submodules, strdup(dep->dest->filepath));
-            CHECK_RC_LOG_GOTO(rc, fail, "Unable to insert subtree filepath (%s) into a linked-list.", dep->dest->filepath);
-        }
-        dep_node = dep_node->next;
-    }
 
     /* try to remove the module from the dependency graph */
-    rc = md_remove_module(md_ctx, module_name, revision);
+    filepath = strdup(module->filepath);
+    CHECK_NULL_NOMEM_GOTO(filepath, rc, fail);
+    rc = md_remove_module(md_ctx, module_name, revision, &implicitly_removed);
     if (SR_ERR_INVAL_ARG == rc) {
         fprintf(stderr, "Error: Uninstalling the module would leave the repository in a state "
                                "with unresolved inter-module dependencies.\n");
@@ -677,20 +663,21 @@ srctl_uninstall(const char *module_name, const char *revision)
         fprintf(stderr, "Warning: Module schema delete was unsuccessful, continuing.\n");
     }
 
-    /* uninstall submodules that are no longer needed */
-    submodule = submodules->first;
-    while (submodule) {
-        rc = srctl_schema_file_delete((char *)submodule->data);
-        if (SR_ERR_OK != rc) {
-            fprintf(stderr, "Warning: Submodule schema delete was unsuccessful, continuing.\n");
-        }
-        submodule = submodule->next;
-    }
-
     /* delete data files */
     rc = srctl_data_uninstall(module_name);
     if (SR_ERR_OK != rc) {
         fprintf(stderr, "Warning: data files removal was unsuccessful, continuing.\n");
+    }
+
+    /* uninstall (sub)modules that are no longer needed */
+    for (size_t i = 0; NULL != implicitly_removed && i < implicitly_removed->count; ++i) {
+        module_key = (md_module_key_t *)implicitly_removed->data[i];
+        printf("Automatically removing no longer needed module '%s'.\n", module_key->name);
+        rc = srctl_schema_file_delete(module_key->filepath);
+        if (SR_ERR_OK != rc) {
+            fprintf(stderr, "Warning: Module schema delete was unsuccessful, continuing.\n");
+        }
+        (void)srctl_data_uninstall(module_key->name); /* ignore errors */
     }
 
     printf("Uninstall operation completed successfully.\n");
@@ -701,19 +688,12 @@ fail:
     printf("Uninstall operation failed.\n");
 
 cleanup:
-    if (submodules) {
-        submodule = submodules->first;
-        while (submodule) {
-            free(submodule->data);
-            submodule = submodule->next;
-        }
-        sr_llist_cleanup(submodules);
-    }
     free(filepath);
     md_destroy(md_ctx);
     if (ly_ctx) {
         ly_ctx_destroy(ly_ctx, NULL);
     }
+    md_free_module_key_list(implicitly_removed);
     return rc;
 }
 
@@ -923,6 +903,7 @@ srctl_install(const char *yang, const char *yin, const char *owner, const char *
     bool local_search_dir = false;
     bool md_installed = false;
     char schema_dst[PATH_MAX] = { 0, };
+    sr_list_t *implicitly_installed = NULL, *implicitly_removed = NULL;
     int rc = SR_ERR_INTERNAL, ret = 0;
 
     if (NULL == yang && NULL == yin) {
@@ -982,7 +963,7 @@ srctl_install(const char *yang, const char *yin, const char *owner, const char *
     else if (NULL != yang) {
         srctl_get_yang_path(module->name, module->rev[0].date, schema_dst, PATH_MAX);
     }
-    rc = md_insert_module(md_ctx, schema_dst);
+    rc = md_insert_module(md_ctx, schema_dst, &implicitly_installed);
     if (SR_ERR_DATA_EXISTS == rc) {
         printf("The module is already installed, exiting...\n");
         rc = SR_ERR_OK; /*< do not treat as error */
@@ -1055,7 +1036,7 @@ fail_data:
         rc = md_init(srctl_schema_search_dir, srctl_internal_schema_search_dir,
                     srctl_internal_data_search_dir, true, &md_ctx);
         if (SR_ERR_OK == rc) {
-            rc = md_remove_module(md_ctx, module->name, module->rev[0].date);
+            rc = md_remove_module(md_ctx, module->name, module->rev[0].date, &implicitly_removed);
         }
         if (SR_ERR_OK == rc) {
             md_flush(md_ctx);
@@ -1075,6 +1056,8 @@ cleanup:
     if (local_search_dir) {
         free((char*)search_dir);
     }
+    md_free_module_key_list(implicitly_installed);
+    md_free_module_key_list(implicitly_removed);
     return rc;
 }
 
@@ -1092,6 +1075,7 @@ srctl_init(const char *module_name, const char *revision, const char *owner, con
     struct dirent *ep = NULL;
     char schema_filename[PATH_MAX] = { 0, };
     const struct lys_module *module = NULL;
+    sr_list_t *implicitly_installed = NULL;
 
     if (NULL == module_name) {
         fprintf(stderr, "Error: Module must be specified for --init operation.\n");
@@ -1156,7 +1140,7 @@ srctl_init(const char *module_name, const char *revision, const char *owner, con
     }
 
     /* update dependencies */
-    rc = md_insert_module(md_ctx, module->filepath);
+    rc = md_insert_module(md_ctx, module->filepath, &implicitly_installed);
     if (SR_ERR_DATA_EXISTS != rc) { /*< ignore if already initialized */
         if (SR_ERR_OK != rc) {
             fprintf(stderr, "Error: Unable to insert the module into the dependency graph.\n");
@@ -1179,6 +1163,7 @@ fail:
 cleanup:
     md_destroy(md_ctx);
     ly_ctx_destroy(ly_ctx, NULL);
+    md_free_module_key_list(implicitly_installed);
     return rc;
 }
 

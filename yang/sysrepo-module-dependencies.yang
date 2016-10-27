@@ -61,6 +61,11 @@ module sysrepo-module-dependencies {
         description "TRUE if this is only submodule, FALSE in case of a proper module.";
     }
 
+    leaf implemented {
+        type boolean;
+        description "TRUE if this module is implemented and not just imported.";
+    }
+
     container dependencies {
       description "List of dependencies. Only direct (non-transitive) dependencies are stored in the data file.";
 

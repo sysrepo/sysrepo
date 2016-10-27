@@ -77,6 +77,7 @@ typedef struct md_module_s {
 
     bool latest_revision;         /**< "true" if this is the latest installed revision of this (sub)module. */
     bool submodule;               /**< "true" if this is actually a submodule, "false" in case of a proper module. */
+    bool implemented;             /**< flag if the module is implemented, not just imported */
 
     sr_llist_t *inst_ids;         /**< List of xpaths referencing all instance-identifiers in the module.
                                        Items are of type (md_subtree_ref_t *) (one node subtrees).
@@ -96,6 +97,16 @@ typedef struct md_module_s {
     struct lyd_node *ly_data;     /**< libyang's representation of this data. For convenience. */
     sr_llist_node_t *ll_node;     /**< Pointer to the node in ::md_ctx_t::modules which is used to store this instance. */
 } md_module_t;
+
+/**
+ * brief A string based reference to a module (which may or may not be inserted in the dependency graph),
+ * used by ::md_insert_module and ::md_remove_module.
+ */
+typedef struct md_module_key_s {
+    char *name;
+    char *revision_date;
+    char *filepath;
+} md_module_key_t;
 
 /*
  * @brief Context used to represent complete, transitively-closed, module dependency graph in-memory (using adjacency lists).
@@ -163,6 +174,20 @@ void md_ctx_unlock(md_ctx_t *md_ctx);
 int md_destroy(md_ctx_t *md_ctx);
 
 /**
+ * @brief Deallocates instance of md_module_key_t structure.
+ *
+ * @param [in] module_key Key to deallocate.
+ */
+void md_free_module_key(md_module_key_t *module_key);
+
+/**
+ * @brief Deallocates a list of module keys.
+ *
+ * @param [in] module_key_list List of keys to deallocate.
+ */
+void md_free_module_key_list(sr_list_t *module_key_list);
+
+/**
  * @brief Get dependency-related information for a given (sub)module.
  *        "revision" set to NULL represents the latest revision.
  *
@@ -197,8 +222,10 @@ const char *md_get_module_fullname(md_module_t *module);
  * @param [in] md_ctx Module Dependencies context
  * @param [in] filepath Path leading to the file with the module schema. Should be installed in the repository
  *                      with all its imports.
+ * @param [out] implicitly_inserted A list of modules (not submodules) that were automatically inserted
+ *              (import-based dependencies). Items are pointers to md_module_key_t.
  */
-int md_insert_module(md_ctx_t *md_ctx, const char *filepath);
+int md_insert_module(md_ctx_t *md_ctx, const char *filepath, sr_list_t **implicitly_inserted);
 
 /**
  * @brief Try to remove module from the dependency graph and update all the edges.
@@ -214,8 +241,10 @@ int md_insert_module(md_ctx_t *md_ctx, const char *filepath);
  * @param [in] md_ctx Module Dependencies context
  * @param [in] name Name of the module to remove
  * @param [in] revision Revision of the module to remove, can be empty string
+ * @param [out] implicitly_removed A list of modules (not submodules) that were automatically removed
+ *              (previous import-based dependencies). Items are pointers to md_module_key_t.
  */
-int md_remove_module(md_ctx_t *md_ctx, const char *name, const char *revision);
+int md_remove_module(md_ctx_t *md_ctx, const char *name, const char *revision, sr_list_t **implicitly_removed);
 
 /**
  * @brief Output the in-memory stored dependency graph from the given context into the internal data file

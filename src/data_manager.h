@@ -649,19 +649,23 @@ int dm_feature_enable(dm_ctx_t *dm_ctx, const char *module_name, const char *fea
  * @param [in] module_name
  * @param [in] revision
  * @param [in] file_name Name of the file that should be used for module installation
+ * @param [out] implicitly_installed List of automatically installed modules (import based dependencies).
  * @return Error code (SR_ERR_OK on success), SR_ERR_NOT_FOUND if module
  * is not loaded successfully
  */
-int dm_install_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, const char *file_name);
+int dm_install_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, const char *file_name,
+        sr_list_t **implicitly_installed);
 
 /**
  * @brief Disables module
  * @param [in] dm_ctx
  * @param [in] module_name
  * @param [in] revision
+ * @param [out] implicitly_removed List of automatically removed modules (import based dependencies).
  * @return Error code (SR_ERR_OK on success)
  */
-int dm_uninstall_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision);
+int dm_uninstall_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision,
+        sr_list_t **implicitly_removed);
 
 /**
  * @brief Checks whether the module contains any state data.

@@ -590,15 +590,16 @@ cleanup:
 }
 
 int
-np_module_install_notify(np_ctx_t *np_ctx, const char *module_name, const char *revision, bool installed)
+np_module_install_notify(np_ctx_t *np_ctx, const char *module_name, const char *revision,
+        sr_module_state_t state)
 {
     Sr__Msg *notif = NULL;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG2(np_ctx, module_name);
 
-    SR_LOG_DBG("Sending module-install notifications, module_name='%s', revision='%s', installed=%d.",
-            module_name, revision, installed);
+    SR_LOG_DBG("Sending module-install notifications, module_name='%s', revision='%s', state=%s.",
+            module_name, revision, sr_module_state_sr_to_str(state));
 
     pthread_rwlock_rdlock(&np_ctx->lock);
 
@@ -609,7 +610,7 @@ np_module_install_notify(np_ctx_t *np_ctx, const char *module_name, const char *
                     np_ctx->subscriptions[i]->dst_address, np_ctx->subscriptions[i]->dst_id, &notif);
             /* fill-in notification details */
             if (SR_ERR_OK == rc) {
-                notif->notification->module_install_notif->installed = installed;
+                notif->notification->module_install_notif->state = sr_module_state_sr_to_gpb(state);
                 notif->notification->module_install_notif->module_name = strdup(module_name);
                 CHECK_NULL_NOMEM_ERROR(notif->notification->module_install_notif->module_name, rc);
             }

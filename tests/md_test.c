@@ -39,6 +39,7 @@ typedef struct md_test_inserted_modules_s {
 } md_test_inserted_modules_t;
 
 md_test_inserted_modules_t inserted;
+md_test_inserted_modules_t implemented; /**< inserted AND implemented */
 
 typedef struct md_test_dep_s {
     md_dep_type_t type;
@@ -771,6 +772,11 @@ validate_context(md_ctx_t *md_ctx)
         assert_string_equal("urn:ietf:params:xml:ns:yang:A", module->ns);
         assert_string_equal(md_module_A_filepath, module->filepath);
         assert_true(module->latest_revision);
+        if (implemented.A) {
+            assert_true(module->implemented);
+        } else {
+            assert_false(module->implemented);
+        }
         /* inst_ids */
         check_list_size(module->inst_ids, inserted.B + inserted.D_rev1 + 2*inserted.D_rev2);
         validate_subtree_ref(md_ctx, module->inst_ids,
@@ -848,6 +854,11 @@ validate_context(md_ctx_t *md_ctx)
         assert_string_equal("urn:ietf:params:xml:ns:yang:B", module->ns);
         assert_string_equal(md_module_B_filepath, module->filepath);
         assert_true(module->latest_revision);
+        if (implemented.B) {
+            assert_true(module->implemented);
+        } else {
+            assert_false(module->implemented);
+        }
         /* inst_ids */
         check_list_size(module->inst_ids, 1);
         validate_subtree_ref(md_ctx, module->inst_ids, "/" TEST_MODULE_PREFIX "B:inst-ids/inst-id", "B");
@@ -910,6 +921,11 @@ validate_context(md_ctx_t *md_ctx)
         assert_string_equal("", module->ns);
         assert_string_equal(md_submodule_B_sub1_filepath, module->filepath);
         assert_true(module->latest_revision);
+        if (implemented.B) {
+            assert_true(module->implemented);
+        } else {
+            assert_false(module->implemented);
+        }
         /* inst_ids */
         check_list_size(module->inst_ids, 0);
         /* op_data_subtrees */
@@ -938,6 +954,11 @@ validate_context(md_ctx_t *md_ctx)
         assert_string_equal("", module->ns);
         assert_string_equal(md_submodule_B_sub2_filepath, module->filepath);
         assert_true(module->latest_revision);
+        if (implemented.B) {
+            assert_true(module->implemented);
+        } else {
+            assert_false(module->implemented);
+        }
         /* inst_ids */
         check_list_size(module->inst_ids, 0);
         /* op_data_subtrees */
@@ -966,6 +987,11 @@ validate_context(md_ctx_t *md_ctx)
         assert_string_equal("", module->ns);
         assert_string_equal(md_submodule_B_sub3_filepath, module->filepath);
         assert_true(module->latest_revision);
+        if (implemented.B) {
+            assert_true(module->implemented);
+        } else {
+            assert_false(module->implemented);
+        }
         /* inst_ids */
         check_list_size(module->inst_ids, 0);
         /* op_data_subtrees */
@@ -994,6 +1020,11 @@ validate_context(md_ctx_t *md_ctx)
         assert_string_equal("urn:ietf:params:xml:ns:yang:C", module->ns);
         assert_string_equal(md_module_C_filepath, module->filepath);
         assert_true(module->latest_revision);
+        if (implemented.C) {
+            assert_true(module->implemented);
+        } else {
+            assert_false(module->implemented);
+        }
         /* inst_ids */
         check_list_size(module->inst_ids, 2);
         validate_subtree_ref(md_ctx, module->inst_ids, "/" TEST_MODULE_PREFIX "C:inst-id1", "C");
@@ -1052,6 +1083,11 @@ validate_context(md_ctx_t *md_ctx)
         } else {
             assert_true(module->latest_revision);
         }
+        if (implemented.D_rev1) {
+            assert_true(module->implemented);
+        } else {
+            assert_false(module->implemented);
+        }
         /* inst_ids */
         check_list_size(module->inst_ids, 0);
         /* op_data_subtrees */
@@ -1103,6 +1139,11 @@ validate_context(md_ctx_t *md_ctx)
         assert_string_equal("urn:ietf:params:xml:ns:yang:D", module->ns);
         assert_string_equal(md_module_D_rev2_filepath, module->filepath);
         assert_true(module->latest_revision);
+        if (implemented.D_rev2) {
+            assert_true(module->implemented);
+        } else {
+            assert_false(module->implemented);
+        }
         /* inst_ids */
         check_list_size(module->inst_ids, 0);
         /* op_data_subtrees */
@@ -1150,6 +1191,11 @@ validate_context(md_ctx_t *md_ctx)
         assert_string_equal("", module->ns);
         assert_string_equal(md_submodule_D_common_filepath, module->filepath);
         assert_true(module->latest_revision);
+        if (implemented.D_rev1 || implemented.D_rev2) {
+            assert_true(module->implemented);
+        } else {
+            assert_false(module->implemented);
+        }
         /* inst_ids */
         check_list_size(module->inst_ids, 0);
         /* op_data_subtrees */
@@ -1182,6 +1228,11 @@ validate_context(md_ctx_t *md_ctx)
             assert_false(module->latest_revision);
         } else {
             assert_true(module->latest_revision);
+        }
+        if (implemented.E_rev1) {
+            assert_true(module->implemented);
+        } else {
+            assert_false(module->implemented);
         }
         /* inst_ids */
         check_list_size(module->inst_ids, 1);
@@ -1239,6 +1290,11 @@ validate_context(md_ctx_t *md_ctx)
         assert_string_equal("urn:ietf:params:xml:ns:yang:E", module->ns);
         assert_string_equal(md_module_E_rev2_filepath, module->filepath);
         assert_true(module->latest_revision);
+        if (implemented.E_rev2) {
+            assert_true(module->implemented);
+        } else {
+            assert_false(module->implemented);
+        }
         /* inst_ids */
         check_list_size(module->inst_ids, 1);
         validate_subtree_ref(md_ctx, module->inst_ids, "/" TEST_MODULE_PREFIX "E:inst-id-list/inst-id", "E@2016-06-21");
@@ -1294,7 +1350,10 @@ md_test_insert_module(void **state)
 {
     int rc;
     md_ctx_t *md_ctx = NULL;
+    md_module_key_t *module_key = NULL;
+    sr_list_t *implicitly_inserted = NULL;
     memset(&inserted, 0, sizeof inserted);
+    memset(&implemented, 0, sizeof implemented);
 
     /* initialize context */
     rc = md_init(TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal",
@@ -1303,33 +1362,77 @@ md_test_insert_module(void **state)
     validate_context(md_ctx);
 
     /* insert module A */
-    rc = md_insert_module(md_ctx, md_module_A_filepath);
+    rc = md_insert_module(md_ctx, md_module_A_filepath, &implicitly_inserted);
     assert_int_equal(SR_ERR_OK, rc);
-    inserted.A = true;
+    inserted.A = implemented.A = true;
+    assert_int_equal(0, implicitly_inserted->count);
+    sr_list_cleanup(implicitly_inserted);
+    implicitly_inserted = NULL;
     validate_context(md_ctx);
 
+    /* try to insert module A again */
+    rc = md_insert_module(md_ctx, md_module_A_filepath, &implicitly_inserted);
+    assert_null(implicitly_inserted);
+    assert_int_equal(SR_ERR_DATA_EXISTS, rc);
+
     /* insert module B */
-    rc = md_insert_module(md_ctx, md_module_B_filepath);
+    rc = md_insert_module(md_ctx, md_module_B_filepath, &implicitly_inserted);
     assert_int_equal(SR_ERR_OK, rc);
-    inserted.B = true;
+    inserted.B = implemented.B = true;
+    assert_int_equal(0, implicitly_inserted->count);
+    sr_list_cleanup(implicitly_inserted);
+    implicitly_inserted = NULL;
     validate_context(md_ctx);
 
     /* insert module C */
-    rc = md_insert_module(md_ctx, md_module_C_filepath);
+    rc = md_insert_module(md_ctx, md_module_C_filepath, &implicitly_inserted);
     assert_int_equal(SR_ERR_OK, rc);
-    inserted.C = true;
+    inserted.C = implemented.C = true;
+    assert_int_equal(0, implicitly_inserted->count);
+    sr_list_cleanup(implicitly_inserted);
+    implicitly_inserted = NULL;
     validate_context(md_ctx);
 
     /* insert module E-rev1 (D-rev1 should get inserted automatically) */
-    rc = md_insert_module(md_ctx, md_module_E_rev1_filepath);
+    rc = md_insert_module(md_ctx, md_module_E_rev1_filepath, &implicitly_inserted);
     assert_int_equal(SR_ERR_OK, rc);
     inserted.D_rev1 = inserted.E_rev1 = true;
+    implemented.E_rev1 = true;
+    assert_int_equal(1, implicitly_inserted->count);
+    module_key = (md_module_key_t *)implicitly_inserted->data[0];
+    assert_string_equal(TEST_MODULE_PREFIX "D", module_key->name);
+    assert_string_equal("2016-06-10", module_key->revision_date);
+    assert_string_equal(md_module_D_rev1_filepath, module_key->filepath);
+    md_free_module_key_list(implicitly_inserted);
+    implicitly_inserted = NULL;
     validate_context(md_ctx);
 
+    /* D-rev1 is actually only imported, not implemented */
+    rc = md_insert_module(md_ctx, md_module_D_rev1_filepath, &implicitly_inserted);
+    assert_int_equal(SR_ERR_OK, rc);
+    implemented.D_rev1 = true;
+    assert_int_equal(0, implicitly_inserted->count);
+    sr_list_cleanup(implicitly_inserted);
+    implicitly_inserted = NULL;
+    validate_context(md_ctx);
+
+    /* D-rev1 is now really implemented */
+    rc = md_insert_module(md_ctx, md_module_D_rev1_filepath, &implicitly_inserted);
+    assert_int_equal(SR_ERR_DATA_EXISTS, rc);
+    assert_null(implicitly_inserted);
+
     /* insert module E-rev2 (D-rev2 should get inserted automatically) */
-    rc = md_insert_module(md_ctx, md_module_E_rev2_filepath);
+    rc = md_insert_module(md_ctx, md_module_E_rev2_filepath, &implicitly_inserted);
     assert_int_equal(SR_ERR_OK, rc);
     inserted.D_rev2 = inserted.E_rev2 = true;
+    implemented.E_rev2 = true;
+    assert_int_equal(1, implicitly_inserted->count);
+    module_key = (md_module_key_t *)implicitly_inserted->data[0];
+    assert_string_equal(TEST_MODULE_PREFIX "D", module_key->name);
+    assert_string_equal("2016-06-20", module_key->revision_date);
+    assert_string_equal(md_module_D_rev2_filepath, module_key->filepath);
+    md_free_module_key_list(implicitly_inserted);
+    implicitly_inserted = NULL;
     validate_context(md_ctx);
 
     /* flush changes into the internal data file */
@@ -1361,7 +1464,11 @@ md_test_remove_module(void **state)
 {
     int rc;
     md_ctx_t *md_ctx = NULL;
+    sr_list_t *implicitly_removed = NULL;
+    md_module_key_t *module_key = NULL;
     memset(&inserted, 1, sizeof inserted);
+    memset(&implemented, 1, sizeof implemented);
+    implemented.D_rev2 = false;
 
     /* initialize context */
     rc = md_init(TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal",
@@ -1370,73 +1477,105 @@ md_test_remove_module(void **state)
     validate_context(md_ctx);
 
     /* there is no module named F */
-    rc = md_remove_module(md_ctx, TEST_MODULE_PREFIX "F", NULL);
+    rc = md_remove_module(md_ctx, TEST_MODULE_PREFIX "F", NULL, &implicitly_removed);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
+    assert_null(implicitly_removed);
 
     /* initialy only the module E can be removed (both rev1, rev2) */
-    rc = md_remove_module(md_ctx, TEST_MODULE_PREFIX "A", NULL);
+    rc = md_remove_module(md_ctx, TEST_MODULE_PREFIX "A", NULL, &implicitly_removed);
     assert_int_equal(SR_ERR_INVAL_ARG, rc);
-    rc = md_remove_module(md_ctx, TEST_MODULE_PREFIX "B", NULL);
+    assert_null(implicitly_removed);
+    rc = md_remove_module(md_ctx, TEST_MODULE_PREFIX "B", NULL, &implicitly_removed);
     assert_int_equal(SR_ERR_INVAL_ARG, rc);
-    rc = md_remove_module(md_ctx, TEST_MODULE_PREFIX "C", NULL);
+    assert_null(implicitly_removed);
+    rc = md_remove_module(md_ctx, TEST_MODULE_PREFIX "C", NULL, &implicitly_removed);
     assert_int_equal(SR_ERR_INVAL_ARG, rc);
-    rc = md_remove_module(md_ctx, TEST_MODULE_PREFIX "D", "2016-06-10");
+    assert_null(implicitly_removed);
+    rc = md_remove_module(md_ctx, TEST_MODULE_PREFIX "D", "2016-06-10", &implicitly_removed);
     assert_int_equal(SR_ERR_INVAL_ARG, rc);
-    rc = md_remove_module(md_ctx, TEST_MODULE_PREFIX "D", "2016-06-20");
+    assert_null(implicitly_removed);
+    rc = md_remove_module(md_ctx, TEST_MODULE_PREFIX "D", "2016-06-20", &implicitly_removed);
     assert_int_equal(SR_ERR_INVAL_ARG, rc);
+    assert_null(implicitly_removed);
 
-    /* remove module E-rev2 */
-    rc = md_remove_module(md_ctx, TEST_MODULE_PREFIX "E", "2016-06-21");
+    /* remove module E-rev2 (D-rev2 should get removed automatically) */
+    rc = md_remove_module(md_ctx, TEST_MODULE_PREFIX "E", "2016-06-21", &implicitly_removed);
     assert_int_equal(SR_ERR_OK, rc);
-    inserted.E_rev2 = false;
-    validate_context(md_ctx);
-
-    /* remove module D-rev2 */
-    rc = md_remove_module(md_ctx, TEST_MODULE_PREFIX "D", "2016-06-20");
-    assert_int_equal(SR_ERR_OK, rc);
+    inserted.E_rev2 = implemented.E_rev2 = false;
     inserted.D_rev2 = false;
+    assert_int_equal(1, implicitly_removed->count);
+    module_key = (md_module_key_t *)implicitly_removed->data[0];
+    assert_string_equal(TEST_MODULE_PREFIX "D", module_key->name);
+    assert_string_equal("2016-06-20", module_key->revision_date);
+    assert_string_equal(md_module_D_rev2_filepath, module_key->filepath);
+    md_free_module_key_list(implicitly_removed);
+    implicitly_removed = NULL;
     validate_context(md_ctx);
+
+    /* D-rev2 is already removed */
+    rc = md_remove_module(md_ctx, TEST_MODULE_PREFIX "D", "2016-06-20", &implicitly_removed);
+    assert_int_equal(SR_ERR_NOT_FOUND, rc);
+    assert_null(implicitly_removed);
 
     /* now there are no modules dependent on B, remove it */
-    rc = md_remove_module(md_ctx, TEST_MODULE_PREFIX "B", ""); /*< try "" instead of NULL */
+    rc = md_remove_module(md_ctx, TEST_MODULE_PREFIX "B", "", &implicitly_removed); /*< try "" instead of NULL */
     assert_int_equal(SR_ERR_OK, rc);
-    inserted.B = false;
+    assert_int_equal(0, implicitly_removed->count);
+    sr_list_cleanup(implicitly_removed);
+    implicitly_removed = NULL;
+    inserted.B = implemented.B =false;
     validate_context(md_ctx);
 
     /* still can't remove A, C, D-rev1 */
-    rc = md_remove_module(md_ctx, TEST_MODULE_PREFIX "A", NULL);
+    rc = md_remove_module(md_ctx, TEST_MODULE_PREFIX "A", NULL, &implicitly_removed);
     assert_int_equal(SR_ERR_INVAL_ARG, rc);
-    rc = md_remove_module(md_ctx, TEST_MODULE_PREFIX "C", NULL);
+    assert_null(implicitly_removed);
+    rc = md_remove_module(md_ctx, TEST_MODULE_PREFIX "C", NULL, &implicitly_removed);
     assert_int_equal(SR_ERR_INVAL_ARG, rc);
-    rc = md_remove_module(md_ctx, TEST_MODULE_PREFIX "D", "2016-06-10");
+    assert_null(implicitly_removed);
+    rc = md_remove_module(md_ctx, TEST_MODULE_PREFIX "D", "2016-06-10", &implicitly_removed);
     assert_int_equal(SR_ERR_INVAL_ARG, rc);
+    assert_null(implicitly_removed);
 
     /* B is not present anymore */
-    rc = md_remove_module(md_ctx, TEST_MODULE_PREFIX "B", NULL);
+    rc = md_remove_module(md_ctx, TEST_MODULE_PREFIX "B", NULL, &implicitly_removed);
     assert_int_equal(SR_ERR_NOT_FOUND, rc);
+    assert_null(implicitly_removed);
 
     /* remove module E-rev1 */
-    rc = md_remove_module(md_ctx, TEST_MODULE_PREFIX "E", "2016-06-11");
+    rc = md_remove_module(md_ctx, TEST_MODULE_PREFIX "E", "2016-06-11", &implicitly_removed);
     assert_int_equal(SR_ERR_OK, rc);
-    inserted.E_rev1 = false;
+    assert_int_equal(0, implicitly_removed->count);
+    sr_list_cleanup(implicitly_removed);
+    implicitly_removed = NULL;
+    inserted.E_rev1 = implemented.E_rev1 = false;
     validate_context(md_ctx);
 
     /* remove module D-rev1 */
-    rc = md_remove_module(md_ctx, TEST_MODULE_PREFIX "D", "2016-06-10");
+    rc = md_remove_module(md_ctx, TEST_MODULE_PREFIX "D", "2016-06-10", &implicitly_removed);
     assert_int_equal(SR_ERR_OK, rc);
-    inserted.D_rev1 = false;
+    assert_int_equal(0, implicitly_removed->count);
+    sr_list_cleanup(implicitly_removed);
+    implicitly_removed = NULL;
+    inserted.D_rev1 = implemented.D_rev1 = false;
     validate_context(md_ctx);
 
     /* remove module C */
-    rc = md_remove_module(md_ctx, TEST_MODULE_PREFIX "C", NULL);
+    rc = md_remove_module(md_ctx, TEST_MODULE_PREFIX "C", NULL, &implicitly_removed);
     assert_int_equal(SR_ERR_OK, rc);
-    inserted.C = false;
+    assert_int_equal(0, implicitly_removed->count);
+    sr_list_cleanup(implicitly_removed);
+    implicitly_removed = NULL;
+    inserted.C = implemented.C = false;
     validate_context(md_ctx);
 
     /* finally remove module A */
-    rc = md_remove_module(md_ctx, TEST_MODULE_PREFIX "A", NULL);
+    rc = md_remove_module(md_ctx, TEST_MODULE_PREFIX "A", NULL, &implicitly_removed);
     assert_int_equal(SR_ERR_OK, rc);
-    inserted.A = false;
+    assert_int_equal(0, implicitly_removed->count);
+    sr_list_cleanup(implicitly_removed);
+    implicitly_removed = NULL;
+    inserted.A = implemented.A = false;
     validate_context(md_ctx);
 
     /* flush changes into the internal data file */

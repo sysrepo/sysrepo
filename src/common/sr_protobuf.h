@@ -365,6 +365,29 @@ Sr__ApiVariant sr_api_variant_sr_to_gpb(sr_api_variant_t api_variant);
 sr_api_variant_t sr_api_variant_gpb_to_sr(Sr__ApiVariant api_variant_gpb);
 
 /**
+ * @brief Converts module state type from sysrepo enum to string representation.
+ *
+ * @param[in] state Sysrepo module state type.
+ * @return Pointer to statically allocated string with the event type name.
+ */
+char *sr_module_state_sr_to_str(sr_module_state_t state);
+
+/**
+ * @brief Converts module state type from sysrepo enum to its GPB enum representation
+ * @param [in] state Syrepo module state type
+ * @return GPB module state type
+ */
+Sr__ModuleState sr_module_state_sr_to_gpb(sr_module_state_t state);
+
+/**
+ * @brief Converts module state type from GPB to sysrepo type.
+ *
+ * @param[in] state GPB module state type.
+ * @return Sysrepo module state type.
+ */
+sr_module_state_t sr_module_state_gpb_to_sr(Sr__ModuleState state);
+
+/**
  * @brief Converts array of sr_schema_t to an array of pointers to GPB schemas.
  *
  * @param [in] sr_schemas Array of sr_schema_t.

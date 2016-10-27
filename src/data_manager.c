@@ -1908,6 +1908,8 @@ dm_list_module(dm_ctx_t *dm_ctx, md_module_t *module, sr_schema_t *schema)
     sr_mem_edit_string(sr_mem, (char **)&schema->prefix, module->prefix);
     CHECK_NULL_NOMEM_GOTO(schema->prefix, rc, cleanup);
 
+    schema->implemented = module->implemented;
+
     rc = dm_list_rev_file(dm_ctx, sr_mem, module->name, module->revision_date, &schema->revision);
     CHECK_RC_LOG_GOTO(rc, cleanup, "List rev file failed module %s", module->name);
 
@@ -3211,9 +3213,10 @@ dm_feature_enable(dm_ctx_t *dm_ctx, const char *module_name, const char *feature
 }
 
 int
-dm_install_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, const char *file_name)
+dm_install_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, const char *file_name,
+        sr_list_t **implicitly_installed_p)
 {
-    CHECK_NULL_ARG3(dm_ctx, module_name, file_name); /* revision can be NULL */
+    CHECK_NULL_ARG4(dm_ctx, module_name, file_name, implicitly_installed_p); /* revision can be NULL */
 
     int rc = 0;
     md_module_t *module = NULL;
@@ -3221,16 +3224,14 @@ dm_install_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revisio
     sr_llist_node_t *ll_node = NULL;
     dm_schema_info_t *si = NULL, *si_ext = NULL;
     dm_schema_info_t lookup = {0};
+    sr_list_t *implicitly_installed = NULL;
 
     /* insert module into the dependency graph */
     md_ctx_lock(dm_ctx->md_ctx, true);
     pthread_rwlock_wrlock(&dm_ctx->schema_tree_lock);
 
-    rc = md_insert_module(dm_ctx->md_ctx, file_name);
-    if (SR_ERR_DATA_EXISTS == rc) {
-        SR_LOG_WRN("Module '%s' is already installed", file_name);
-        rc = SR_ERR_OK; /*< do not treat as error */
-    }
+    rc = md_insert_module(dm_ctx->md_ctx, file_name, &implicitly_installed);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to insert module into the dependency graph");
 
     rc = md_get_module_info(dm_ctx->md_ctx, module_name, revision, &module);
     CHECK_RC_LOG_GOTO(rc, cleanup, "Get module %s info failed", module_name);
@@ -3291,15 +3292,26 @@ unlock:
 cleanup:
     pthread_rwlock_unlock(&dm_ctx->schema_tree_lock);
     md_ctx_unlock(dm_ctx->md_ctx);
+    if (SR_ERR_OK == rc) {
+        *implicitly_installed_p = implicitly_installed;
+    } else {
+        md_free_module_key_list(implicitly_installed);
+    }
     return rc;
 }
 
-int
-dm_uninstall_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision)
+/**
+ * @brief Disables module
+ * @param [in] dm_ctx
+ * @param [in] module_name
+ * @param [in] revision
+ * @return Error code (SR_ERR_OK on success)
+ */
+static int
+dm_uninstall_module_schema(dm_ctx_t *dm_ctx, const char *module_name, const char *revision)
 {
     CHECK_NULL_ARG2(dm_ctx, module_name);
     int rc = SR_ERR_OK;
-    md_module_t *module = NULL;
     dm_schema_info_t lookup = {0};
     dm_schema_info_t *schema_info = NULL;
 
@@ -3330,18 +3342,50 @@ dm_uninstall_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revis
     pthread_rwlock_unlock(&dm_ctx->schema_tree_lock);
 
     CHECK_RC_LOG_RETURN(rc, "Uninstallation of module %s was not successful", module_name);
+    return rc;
+}
+
+int
+dm_uninstall_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision,
+        sr_list_t **implicitly_removed_p)
+{
+    CHECK_NULL_ARG2(dm_ctx, module_name);
+    int rc = SR_ERR_OK;
+    md_module_t *module = NULL;
+    md_module_key_t *module_key = NULL;
+    sr_list_t *implicitly_removed = NULL;
+
+    /* uninstall context with module schema */
+    rc = dm_uninstall_module_schema(dm_ctx, module_name, revision);
+    if (SR_ERR_OK != rc) {
+        goto cleanup;
+    }
 
     md_ctx_lock(dm_ctx->md_ctx, true);
     rc = md_get_module_info(dm_ctx->md_ctx, module_name, revision, &module);
 
+    /* remove module from the dependency graph */
     if (NULL == module) {
         SR_LOG_ERR("Module %s with revision %s was not found", module_name, revision);
         rc = SR_ERR_NOT_FOUND;
     } else {
-        rc = md_remove_module(dm_ctx->md_ctx, module_name, revision);
+        rc = md_remove_module(dm_ctx->md_ctx, module_name, revision, &implicitly_removed);
+    }
+
+    /* uninstall also modules that were "silently" removed */
+    for (size_t i = 0; rc == SR_ERR_OK && NULL != implicitly_removed && i < implicitly_removed->count; ++i) {
+        module_key = (md_module_key_t *)implicitly_removed->data[i];
+        rc = dm_uninstall_module_schema(dm_ctx, module_key->name, module_key->revision_date);
     }
 
     md_ctx_unlock(dm_ctx->md_ctx);
+
+cleanup:
+    if (SR_ERR_OK == rc) {
+        *implicitly_removed_p = implicitly_removed;
+    } else {
+        md_free_module_key_list(implicitly_removed);
+    }
     return rc;
 }
 

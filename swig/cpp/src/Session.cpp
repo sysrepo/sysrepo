@@ -386,9 +386,9 @@ static int module_change_cb(sr_session_ctx_t *session, const char *module_name, 
     wrap->module_change(sess, module_name, event, wrap->private_ctx["module_change"]);
     return SR_ERR_OK;
 }
-static void module_install_cb(const char *module_name, const char *revision, bool installed, void *private_ctx) {
+static void module_install_cb(const char *module_name, const char *revision, sr_module_state_t state, void *private_ctx) {
     Callback *wrap = (Callback*) private_ctx;
-    return wrap->module_install(module_name, revision, installed, wrap->private_ctx["module_install"]);
+    return wrap->module_install(module_name, revision, state, wrap->private_ctx["module_install"]);
 }
 static void feature_enable_cb(const char *module_name, const char *feature_name, bool enabled, void *private_ctx) {
     Callback *wrap = (Callback*) private_ctx;

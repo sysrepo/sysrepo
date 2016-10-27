@@ -675,7 +675,7 @@ cl_sm_notif_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *msg)
             subscription->callback.module_install_cb(
                     msg->notification->module_install_notif->module_name,
                     msg->notification->module_install_notif->revision,
-                    msg->notification->module_install_notif->installed,
+                    sr_module_state_gpb_to_sr(msg->notification->module_install_notif->state),
                     subscription->private_ctx);
             break;
         case SR__SUBSCRIPTION_TYPE__FEATURE_ENABLE_SUBS:
