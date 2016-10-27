@@ -1911,10 +1911,10 @@ cl_notification_test(void **state)
 
     /* wait for all callbacks or timeout after 10 seconds */
     for (size_t i = 0; i < 1000; i++) {
-        if (callback_called >= 7) break;
+        if (callback_called >= 8) break;
         usleep(10000); /* 10 ms */
     }
-    assert_true(callback_called >= 7);
+    assert_true(callback_called == 8);
     callback_called = 0;
 
     /* some negative tests */
