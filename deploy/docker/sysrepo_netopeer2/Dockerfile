@@ -88,5 +88,5 @@ RUN \
 ENV EDITOR vim
 EXPOSE 6001
 
-CMD ["/usr/bin/sysrepod"]
-CMD ["/usr/bin/netopeer2-server", "-d"]
+COPY supervisord.conf /etc/supervisord.conf
+CMD ["/usr/bin/supervisord"]
