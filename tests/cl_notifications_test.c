@@ -347,27 +347,32 @@ cl_get_changes_deleted_test(void **state)
     ts.tv_sec += COND_WAIT_SEC;
     pthread_cond_timedwait(&changes.cv, &changes.mutex, &ts);
 
-    assert_int_equal(changes.cnt, 4);
+    assert_int_equal(changes.cnt, 5);
 
     assert_int_equal(changes.oper[0], SR_OP_DELETED);
     assert_null(changes.new_values[0]);
     assert_non_null(changes.old_values[0]);
-    assert_string_equal("/example-module:container/list[key1='key1'][key2='key2']", changes.old_values[0]->xpath);
+    assert_string_equal("/example-module:container/list[key1='key1'][key2='key2']/key1", changes.old_values[0]->xpath);
 
     assert_int_equal(changes.oper[1], SR_OP_DELETED);
     assert_null(changes.new_values[1]);
     assert_non_null(changes.old_values[1]);
-    assert_string_equal("/example-module:container/list[key1='key1'][key2='key2']/key1", changes.old_values[1]->xpath);
+    assert_string_equal("/example-module:container/list[key1='key1'][key2='key2']/key2", changes.old_values[1]->xpath);
 
     assert_int_equal(changes.oper[2], SR_OP_DELETED);
     assert_null(changes.new_values[2]);
     assert_non_null(changes.old_values[2]);
-    assert_string_equal("/example-module:container/list[key1='key1'][key2='key2']/key2", changes.old_values[2]->xpath);
+    assert_string_equal("/example-module:container/list[key1='key1'][key2='key2']/leaf", changes.old_values[2]->xpath);
 
     assert_int_equal(changes.oper[3], SR_OP_DELETED);
     assert_null(changes.new_values[3]);
     assert_non_null(changes.old_values[3]);
-    assert_string_equal("/example-module:container/list[key1='key1'][key2='key2']/leaf", changes.old_values[3]->xpath);
+    assert_string_equal("/example-module:container/list[key1='key1'][key2='key2']", changes.old_values[3]->xpath);
+
+    assert_int_equal(changes.oper[4], SR_OP_DELETED);
+    assert_null(changes.new_values[4]);
+    assert_non_null(changes.old_values[4]);
+    assert_string_equal("/example-module:container", changes.old_values[4]->xpath);
 
     for (size_t i = 0; i < changes.cnt; i++) {
         sr_free_val(changes.new_values[i]);
@@ -648,6 +653,297 @@ cl_get_changes_create_default_test(void **state)
     assert_false(changes.new_values[0]->dflt);
     assert_int_equal(SR_INT8_T, changes.new_values[0]->type);
     assert_int_equal(99, changes.new_values[0]->data.int8_val);
+
+    for (size_t i = 0; i < changes.cnt; i++) {
+        sr_free_val(changes.new_values[i]);
+        sr_free_val(changes.old_values[i]);
+    }
+    pthread_mutex_unlock(&changes.mutex);
+
+    pthread_mutex_destroy(&changes.mutex);
+    pthread_cond_destroy(&changes.cv);
+
+    rc = sr_unsubscribe(NULL, subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_session_stop(session);
+    assert_int_equal(rc, SR_ERR_OK);
+}
+
+static void
+cl_get_changes_parents_test(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+    sr_session_ctx_t *session = NULL;
+    sr_subscription_ctx_t *subscription = NULL;
+    changes_t changes = {.mutex = PTHREAD_MUTEX_INITIALIZER, .cv = PTHREAD_COND_INITIALIZER, 0};
+    struct timespec ts;
+
+    int rc = SR_ERR_OK;
+#define PRESENCE_CONTAINER                    "/test-module:presence-container"
+#define TOPLEAF1           PRESENCE_CONTAINER "/topleaf1"
+#define TOPLEAF2           PRESENCE_CONTAINER "/topleaf2"
+#define CHILD1             PRESENCE_CONTAINER "/child1"
+#define CHILD1_LEAF        CHILD1             "/child1-leaf"
+#define GRANDCHILD1        CHILD1             "/grandchild1"
+#define GRANDCHILD1_LEAF   GRANDCHILD1        "/grandchild1-leaf"
+#define CHILD2             PRESENCE_CONTAINER "/child2"
+#define CHILD2_LEAF        CHILD2             "/child2-leaf"
+#define GRANDCHILD2        CHILD2             "/grandchild2"
+#define GRANDCHILD2_LEAF1  GRANDCHILD2        "/grandchild2-leaf1"
+#define GRANDCHILD2_LEAF2  GRANDCHILD2        "/grandchild2-leaf2"
+#define GRANDCHILD2_LEAF3  GRANDCHILD2        "/grandchild2-leaf3"
+
+    /* start session */
+    rc = sr_session_start(conn, SR_DS_CANDIDATE, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_module_change_subscribe(session, "test-module", list_changes_cb, &changes,
+            0, SR_SUBSCR_DEFAULT, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    sr_val_t v = {0};
+    v.type = SR_INT8_T;
+    v.data.int8_val = 99;
+
+    /* create leaf + parent container + defaults  */
+    rc = sr_set_item(session, TOPLEAF1, &v, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* save changes to running */
+    pthread_mutex_lock(&changes.mutex);
+    rc = sr_commit(session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    sr_clock_get_time(CLOCK_REALTIME, &ts);
+    ts.tv_sec += COND_WAIT_SEC;
+    pthread_cond_timedwait(&changes.cv, &changes.mutex, &ts);
+
+    assert_int_equal(changes.cnt, 5);
+
+    /* /test-module:presence-container */
+    assert_int_equal(changes.oper[0], SR_OP_CREATED);
+    assert_non_null(changes.new_values[0]);
+    assert_string_equal(PRESENCE_CONTAINER, changes.new_values[0]->xpath);
+    assert_int_equal(SR_CONTAINER_PRESENCE_T, changes.new_values[0]->type);
+    assert_false(changes.new_values[0]->dflt);
+    assert_null(changes.old_values[0]);
+
+    /* /test-module:presence-container/topleaf1 */
+    assert_int_equal(changes.oper[1], SR_OP_CREATED);
+    assert_non_null(changes.new_values[1]);
+    assert_string_equal(TOPLEAF1, changes.new_values[1]->xpath);
+    assert_int_equal(SR_INT8_T, changes.new_values[1]->type);
+    assert_int_equal(99, changes.new_values[1]->data.int8_val);
+    assert_false(changes.new_values[1]->dflt);
+    assert_null(changes.old_values[1]);
+
+    /* /test-module:presence-container/child1 */
+    assert_int_equal(changes.oper[2], SR_OP_CREATED);
+    assert_non_null(changes.new_values[2]);
+    assert_string_equal(CHILD1, changes.new_values[2]->xpath);
+    assert_int_equal(SR_CONTAINER_T, changes.new_values[2]->type);
+    assert_true(changes.new_values[2]->dflt);
+    assert_null(changes.old_values[2]);
+
+    /* /test-module:presence-container/child1/grandchild1 */
+    assert_int_equal(changes.oper[3], SR_OP_CREATED);
+    assert_non_null(changes.new_values[3]);
+    assert_string_equal(GRANDCHILD1, changes.new_values[3]->xpath);
+    assert_int_equal(SR_CONTAINER_T, changes.new_values[3]->type);
+    assert_true(changes.new_values[3]->dflt);
+    assert_null(changes.old_values[3]);
+
+    /* /test-module:presence-container/child1/grandchild1/grandchild1-leaf */
+    assert_int_equal(changes.oper[4], SR_OP_CREATED);
+    assert_non_null(changes.new_values[4]);
+    assert_string_equal(GRANDCHILD1_LEAF, changes.new_values[4]->xpath);
+    assert_int_equal(SR_INT8_T, changes.new_values[4]->type);
+    assert_int_equal(10, changes.new_values[4]->data.int8_val);
+    assert_true(changes.new_values[4]->dflt);
+    assert_null(changes.old_values[4]);
+
+    for (size_t i = 0; i < changes.cnt; i++) {
+        sr_free_val(changes.new_values[i]);
+        sr_free_val(changes.old_values[i]);
+    }
+    pthread_mutex_unlock(&changes.mutex);
+
+    /* create 2 leafs + their predecessors without duplicities */
+    v.data.int8_val = 12;
+    rc = sr_set_item(session, CHILD2_LEAF, &v, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    v.data.int8_val = 13;
+    rc = sr_set_item(session, GRANDCHILD2_LEAF1, &v, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* save changes to running */
+    pthread_mutex_lock(&changes.mutex);
+    rc = sr_commit(session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    sr_clock_get_time(CLOCK_REALTIME, &ts);
+    ts.tv_sec += COND_WAIT_SEC;
+    pthread_cond_timedwait(&changes.cv, &changes.mutex, &ts);
+
+    assert_int_equal(changes.cnt, 4);
+
+    /* /test-module:presence-container/child2 */
+    assert_int_equal(changes.oper[0], SR_OP_CREATED);
+    assert_non_null(changes.new_values[0]);
+    assert_string_equal(CHILD2, changes.new_values[0]->xpath);
+    assert_int_equal(SR_CONTAINER_T, changes.new_values[0]->type);
+    assert_false(changes.new_values[0]->dflt);
+    assert_null(changes.old_values[0]);
+
+    /* /test-module:presence-container/child2/child2-leaf */
+    assert_int_equal(changes.oper[1], SR_OP_CREATED);
+    assert_non_null(changes.new_values[1]);
+    assert_string_equal(CHILD2_LEAF, changes.new_values[1]->xpath);
+    assert_int_equal(SR_INT8_T, changes.new_values[1]->type);
+    assert_int_equal(12, changes.new_values[1]->data.int8_val);
+    assert_false(changes.new_values[1]->dflt);
+    assert_null(changes.old_values[1]);
+
+    /* /test-module:presence-container/child2/grandchild2 */
+    assert_int_equal(changes.oper[2], SR_OP_CREATED);
+    assert_non_null(changes.new_values[2]);
+    assert_string_equal(GRANDCHILD2, changes.new_values[2]->xpath);
+    assert_int_equal(SR_CONTAINER_T, changes.new_values[2]->type);
+    assert_false(changes.new_values[2]->dflt);
+    assert_null(changes.old_values[2]);
+
+    /* /test-module:presence-container/child2/grandchild2/grandchild2-leaf1 */
+    assert_int_equal(changes.oper[3], SR_OP_CREATED);
+    assert_non_null(changes.new_values[3]);
+    assert_string_equal(GRANDCHILD2_LEAF1, changes.new_values[3]->xpath);
+    assert_int_equal(SR_INT8_T, changes.new_values[3]->type);
+    assert_int_equal(13, changes.new_values[3]->data.int8_val);
+    assert_false(changes.new_values[3]->dflt);
+    assert_null(changes.old_values[3]);
+
+    for (size_t i = 0; i < changes.cnt; i++) {
+        sr_free_val(changes.new_values[i]);
+        sr_free_val(changes.old_values[i]);
+    }
+    pthread_mutex_unlock(&changes.mutex);
+
+    /* delete both leafs, but also create all their siblings */
+    v.data.int8_val = 14;
+    rc = sr_set_item(session, GRANDCHILD2_LEAF2, &v, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    v.data.int8_val = 15;
+    rc = sr_set_item(session, GRANDCHILD2_LEAF3, &v, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_delete_item(session, GRANDCHILD2_LEAF1, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_delete_item(session, CHILD2_LEAF, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* save changes to running */
+    pthread_mutex_lock(&changes.mutex);
+    rc = sr_commit(session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    sr_clock_get_time(CLOCK_REALTIME, &ts);
+    ts.tv_sec += COND_WAIT_SEC;
+    pthread_cond_timedwait(&changes.cv, &changes.mutex, &ts);
+
+    assert_int_equal(changes.cnt, 4);
+
+    /* /test-module:presence-container/child2/grandchild2/grandchild2-leaf1 */
+    assert_int_equal(changes.oper[0], SR_OP_DELETED);
+    assert_non_null(changes.old_values[0]);
+    assert_string_equal(GRANDCHILD2_LEAF1, changes.old_values[0]->xpath);
+    assert_int_equal(SR_INT8_T, changes.old_values[0]->type);
+    assert_int_equal(13, changes.old_values[0]->data.int8_val);
+    assert_false(changes.old_values[0]->dflt);
+    assert_null(changes.new_values[0]);
+
+    /* /test-module:presence-container/child2/child2-leaf */
+    assert_int_equal(changes.oper[1], SR_OP_DELETED);
+    assert_non_null(changes.old_values[1]);
+    assert_string_equal(CHILD2_LEAF, changes.old_values[1]->xpath);
+    assert_int_equal(SR_INT8_T, changes.old_values[1]->type);
+    assert_int_equal(12, changes.old_values[1]->data.int8_val);
+    assert_false(changes.old_values[1]->dflt);
+    assert_null(changes.new_values[1]);
+
+    /* /test-module:presence-container/child2/grandchild2/grandchild2-leaf2 */
+    assert_int_equal(changes.oper[2], SR_OP_CREATED);
+    assert_non_null(changes.new_values[2]);
+    assert_string_equal(GRANDCHILD2_LEAF2, changes.new_values[2]->xpath);
+    assert_int_equal(SR_INT8_T, changes.new_values[2]->type);
+    assert_int_equal(14, changes.new_values[2]->data.int8_val);
+    assert_false(changes.new_values[2]->dflt);
+    assert_null(changes.old_values[2]);
+
+    /* /test-module:presence-container/child2/grandchild2/grandchild2-leaf3 */
+    assert_int_equal(changes.oper[3], SR_OP_CREATED);
+    assert_non_null(changes.new_values[3]);
+    assert_string_equal(GRANDCHILD2_LEAF3, changes.new_values[3]->xpath);
+    assert_int_equal(SR_INT8_T, changes.new_values[3]->type);
+    assert_int_equal(15, changes.new_values[3]->data.int8_val);
+    assert_false(changes.new_values[3]->dflt);
+    assert_null(changes.old_values[3]);
+
+    for (size_t i = 0; i < changes.cnt; i++) {
+        sr_free_val(changes.new_values[i]);
+        sr_free_val(changes.old_values[i]);
+    }
+    pthread_mutex_unlock(&changes.mutex);
+
+    /* delete both newly created leafs, empty parents should get removed too (OK?) */
+    rc = sr_delete_item(session, GRANDCHILD2_LEAF2, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_delete_item(session, GRANDCHILD2_LEAF3, SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* save changes to running */
+    pthread_mutex_lock(&changes.mutex);
+    rc = sr_commit(session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    sr_clock_get_time(CLOCK_REALTIME, &ts);
+    ts.tv_sec += COND_WAIT_SEC;
+    pthread_cond_timedwait(&changes.cv, &changes.mutex, &ts);
+
+    assert_int_equal(changes.cnt, 4);
+
+    /* /test-module:presence-container/child2/grandchild2/grandchild2-leaf2 */
+    assert_int_equal(changes.oper[0], SR_OP_DELETED);
+    assert_non_null(changes.old_values[0]);
+    assert_string_equal(GRANDCHILD2_LEAF2, changes.old_values[0]->xpath);
+    assert_int_equal(SR_INT8_T, changes.old_values[0]->type);
+    assert_int_equal(14, changes.old_values[0]->data.int8_val);
+    assert_false(changes.old_values[0]->dflt);
+    assert_null(changes.new_values[0]);
+
+    /* /test-module:presence-container/child2/grandchild2 */
+    assert_int_equal(changes.oper[1], SR_OP_DELETED);
+    assert_non_null(changes.old_values[1]);
+    assert_string_equal(GRANDCHILD2, changes.old_values[1]->xpath);
+    assert_int_equal(SR_CONTAINER_T, changes.old_values[1]->type);
+    assert_false(changes.old_values[1]->dflt);
+    assert_null(changes.new_values[1]);
+
+    /* /test-module:presence-container/child2 */
+    assert_int_equal(changes.oper[2], SR_OP_DELETED);
+    assert_non_null(changes.old_values[2]);
+    assert_string_equal(CHILD2, changes.old_values[2]->xpath);
+    assert_int_equal(SR_CONTAINER_T, changes.old_values[2]->type);
+    assert_false(changes.old_values[2]->dflt);
+    assert_null(changes.new_values[2]);
+
+    /* /test-module:presence-container/child2/grandchild2/grandchild2-leaf3 */
+    assert_int_equal(changes.oper[3], SR_OP_DELETED);
+    assert_non_null(changes.old_values[3]);
+    assert_string_equal(GRANDCHILD2_LEAF3, changes.old_values[3]->xpath);
+    assert_int_equal(SR_INT8_T, changes.old_values[3]->type);
+    assert_int_equal(15, changes.old_values[3]->data.int8_val);
+    assert_false(changes.old_values[3]->dflt);
+    assert_null(changes.new_values[3]);
 
     for (size_t i = 0; i < changes.cnt; i++) {
         sr_free_val(changes.new_values[i]);
@@ -1040,14 +1336,15 @@ cl_children_subscription_test(void **state)
     ts.tv_sec += COND_WAIT_SEC;
     pthread_cond_timedwait(&changes.cv, &changes.mutex, &ts);
 
-    assert_int_equal(changes.cnt, 4);
+    assert_int_equal(changes.cnt, 5);
     for (int i= 0; i < changes.cnt; i++) {
         assert_int_equal(changes.oper[i], SR_OP_DELETED);
     }
-    assert_string_equal("/example-module:container/list[key1='key1'][key2='key2']", changes.old_values[0]->xpath);
-    assert_string_equal("/example-module:container/list[key1='key1'][key2='key2']/key1", changes.old_values[1]->xpath);
-    assert_string_equal("/example-module:container/list[key1='key1'][key2='key2']/key2", changes.old_values[2]->xpath);
-    assert_string_equal("/example-module:container/list[key1='key1'][key2='key2']/leaf", changes.old_values[3]->xpath);
+    assert_string_equal("/example-module:container/list[key1='key1'][key2='key2']/key1", changes.old_values[0]->xpath);
+    assert_string_equal("/example-module:container/list[key1='key1'][key2='key2']/key2", changes.old_values[1]->xpath);
+    assert_string_equal("/example-module:container/list[key1='key1'][key2='key2']/leaf", changes.old_values[2]->xpath);
+    assert_string_equal("/example-module:container/list[key1='key1'][key2='key2']", changes.old_values[3]->xpath);
+    assert_string_equal("/example-module:container", changes.old_values[4]->xpath);
 
     for (size_t i = 0; i < changes.cnt; i++) {
         sr_free_val(changes.new_values[i]);
@@ -1706,6 +2003,7 @@ main()
         cmocka_unit_test_setup_teardown(cl_get_changes_moved_test, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_get_changes_deleted_default_test, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_get_changes_create_default_test, sysrepo_setup, sysrepo_teardown),
+        cmocka_unit_test_setup_teardown(cl_get_changes_parents_test, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_notif_priority_test, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_whole_module_changes, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_invalid_xpath_test, sysrepo_setup, sysrepo_teardown),

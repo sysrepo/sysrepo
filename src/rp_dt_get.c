@@ -1219,7 +1219,7 @@ rp_dt_add_changes_for_children(sr_list_t *changes, LYD_DIFFTYPE type, struct lyd
     *added_p = true;
 
     /* store changes in DFS pre-order */
-    if (added_child) {
+    if (LYD_DIFF_CREATED == type && added_child) {
         memmove(changes->data + orig_len + 1, changes->data + orig_len,
                 (changes->count - orig_len - 1) * sizeof(*changes->data));
         changes->data[orig_len] = (void *)change;
@@ -1233,18 +1233,165 @@ cleanup:
     return rc;
 }
 
-int
-rp_dt_difflist_to_changes(struct lyd_difflist *difflist, sr_list_t **changes)
+/**
+ * @brief Returns true if the given tree, excluding deleted and skipped subtrees,
+ * contains only empty non-presence containers.
+ */
+static bool
+rp_has_only_empty_np_containers(struct lyd_node *root, sr_list_t *deleted, struct lyd_node *skip)
 {
-    CHECK_NULL_ARG2(difflist, changes);
-    int rc = SR_ERR_OK;
-    sr_change_t *ch = NULL;
-    bool added = false;
+    struct lyd_node *child = NULL;
 
-    sr_list_t *list = NULL;
-    rc = sr_list_init(&list);
+    if (NULL == root) {
+        return true;
+    }
+
+    if (root == skip) {
+        return true;
+    }
+
+    for (size_t i = 0; NULL != deleted && i < deleted->count; ++i) {
+        if (root == deleted->data[i]) {
+            return true;
+        }
+    }
+
+    if ((LYS_CONTAINER != root->schema->nodetype) || ((struct lys_node_container *)root->schema)->presence) {
+        return false;
+    }
+
+    child = root->child;
+    if (root->schema->nodetype & (LYS_LEAF | LYS_LEAFLIST | LYS_ANYXML)) {
+        child = NULL;
+    }
+    while (child) {
+        if (!rp_has_only_empty_np_containers(child, deleted, skip)) {
+            return false;
+        }
+        child = child->next;
+    }
+
+    return true;
+}
+
+/**
+ * @brief Generates changes for the parents of created/deleted container/list
+ *
+ */
+static int
+rp_dt_add_changes_for_parents(sr_list_t *changes, sr_list_t *deleted, LYD_DIFFTYPE type, struct lyd_node *first_node,
+        struct lyd_node *first_parent, struct lyd_node *second_parent, int added_parents)
+{
+    CHECK_NULL_ARG(changes);
+    int rc = SR_ERR_OK;
+    sr_val_t *val = NULL;
+    sr_val_t **val_ptr = NULL;
+    sr_change_oper_t op_type = (type == LYD_DIFF_CREATED ?  SR_OP_CREATED : SR_OP_DELETED);
+    struct lyd_node *parent = (SR_OP_CREATED == op_type ? second_parent : first_parent);
+    sr_change_t *change = NULL, *recorded_change = NULL;
+
+    if (NULL == first_parent) {
+        return SR_ERR_OK;
+    }
+
+    /* get value of the node */
+    val = calloc(1, sizeof *val);
+    CHECK_NULL_NOMEM_GOTO(val, rc, fail);
+    rc = rp_dt_get_value_from_node(parent, val);
+    CHECK_RC_MSG_GOTO(rc, fail, "Get value from node failed");
+
+    if (LYD_DIFF_CREATED == type) {
+        for (size_t i = 0; i < changes->count; ++i) {
+            recorded_change = (sr_change_t *)changes->data[i];
+            if (SR_OP_DELETED == recorded_change->oper &&
+                0 == strcmp(val->xpath, recorded_change->old_value->xpath)) {
+                /* removed in this commit, undo delete */
+                recorded_change->sch_node = NULL; /* hack, mark for removal by NULLifying the schema node */
+                sr_free_val(val);
+                goto next_parent;
+            }
+        }
+    }
+
+    if (!rp_has_only_empty_np_containers(first_parent, deleted, first_node)) {
+        /* created/deleted already before this commit */
+        sr_free_val(val);
+        return SR_ERR_OK;
+    }
+
+    for (size_t i = 0; i < changes->count; ++i) {
+        recorded_change = (sr_change_t *)changes->data[i];
+        val_ptr = (SR_OP_CREATED == recorded_change->oper ? &recorded_change->new_value : &recorded_change->old_value);
+        if (op_type == recorded_change->oper &&
+            0 == strcmp(val->xpath, (*val_ptr)->xpath)) {
+            /* already recorded in this commit */
+            sr_free_val(val);
+            return SR_ERR_OK;
+        }
+    }
+
+    change = calloc(1, sizeof(*change));
+    CHECK_NULL_NOMEM_GOTO(change, rc, fail);
+
+    change->oper = (type == LYD_DIFF_CREATED ?  SR_OP_CREATED : SR_OP_DELETED);
+    change->sch_node = parent->schema;
+
+    val_ptr = LYD_DIFF_CREATED == type ? &change->new_value : &change->old_value;
+    *val_ptr = val;
+
+    rc = sr_list_add(changes, change);
+    CHECK_RC_MSG_GOTO(rc, fail, "List add failed");
+
+    /* store changes in DFS pre-order */
+    if (LYD_DIFF_CREATED == type && added_parents) {
+        memmove(changes->data + changes->count - added_parents,
+                changes->data + changes->count - added_parents - 1,
+                added_parents * sizeof(*changes->data));
+        changes->data[changes->count - added_parents - 1] = (void *)change;
+    }
+    change = NULL;
+
+next_parent:
+    return rp_dt_add_changes_for_parents(changes, deleted, type, first_parent, first_parent->parent,
+            second_parent ? second_parent->parent : NULL, added_parents+1);
+
+fail:
+    if (NULL != val) {
+        sr_free_val(val);
+    }
+    if (NULL != change) {
+        sr_free_changes(change, 1);
+    }
+    return rc;
+}
+
+int
+rp_dt_difflist_to_changes(struct lyd_difflist *difflist, sr_list_t **changes_p)
+{
+    CHECK_NULL_ARG2(difflist, changes_p);
+    int rc = SR_ERR_OK;
+    sr_change_t *ch = NULL, *recorded_change = NULL;
+    bool added = false;
+    size_t i = 0;
+
+    sr_list_t *changes = NULL;
+    sr_list_t *deleted = NULL;
+
+    rc = sr_list_init(&changes);
     CHECK_RC_MSG_RETURN(rc, "List init failed");
 
+    rc = sr_list_init(&deleted);
+    CHECK_RC_MSG_RETURN(rc, "List init failed");
+
+    /* collect the list of deleted nodes */
+    for(size_t d_cnt = 0; LYD_DIFF_END != difflist->type[d_cnt]; d_cnt++) {
+        if (LYD_DIFF_DELETED == difflist->type[d_cnt]) {
+            rc = sr_list_add(deleted, difflist->first[d_cnt]);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "List add failed");
+        }
+    }
+
+    /* convert libyang data tree changes into the sysrepo representation of changes */
     for(size_t d_cnt = 0; LYD_DIFF_END != difflist->type[d_cnt]; d_cnt++) {
         if (!(LYD_DIFF_CREATED == difflist->type[d_cnt] && (LYS_LIST | LYS_CONTAINER) & difflist->second[d_cnt]->schema->nodetype) &&
             !(LYD_DIFF_DELETED == difflist->type[d_cnt] && (LYS_LIST | LYS_CONTAINER) & difflist->first[d_cnt]->schema->nodetype)) {
@@ -1254,8 +1401,11 @@ rp_dt_difflist_to_changes(struct lyd_difflist *difflist, sr_list_t **changes)
 
         switch (difflist->type[d_cnt]) {
         case LYD_DIFF_CREATED:
+            rc = rp_dt_add_changes_for_parents(changes, deleted, difflist->type[d_cnt], NULL, difflist->first[d_cnt],
+                    difflist->second[d_cnt]->parent, 0);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "Add changes for parents failed");
             if ((LYS_LIST | LYS_CONTAINER) & difflist->second[d_cnt]->schema->nodetype) {
-                rc = rp_dt_add_changes_for_children(list, difflist->type[d_cnt], difflist->second[d_cnt], &added);
+                rc = rp_dt_add_changes_for_children(changes, difflist->type[d_cnt], difflist->second[d_cnt], &added);
                 CHECK_RC_MSG_GOTO(rc, cleanup, "Add changes for children failed");
             } else {
                 ch->oper = SR_OP_CREATED;
@@ -1268,7 +1418,7 @@ rp_dt_difflist_to_changes(struct lyd_difflist *difflist, sr_list_t **changes)
             break;
         case LYD_DIFF_DELETED:
             if ((LYS_LIST | LYS_CONTAINER) & difflist->first[d_cnt]->schema->nodetype) {
-                rc = rp_dt_add_changes_for_children(list, difflist->type[d_cnt], difflist->first[d_cnt], &added);
+                rc = rp_dt_add_changes_for_children(changes, difflist->type[d_cnt], difflist->first[d_cnt], &added);
                 CHECK_RC_MSG_GOTO(rc, cleanup, "Add changes for children failed");
             } else {
                 ch->oper = SR_OP_DELETED;
@@ -1277,7 +1427,13 @@ rp_dt_difflist_to_changes(struct lyd_difflist *difflist, sr_list_t **changes)
                 CHECK_NULL_NOMEM_GOTO(ch->old_value, rc, cleanup);
                 rc = rp_dt_get_value_from_node(difflist->first[d_cnt], ch->old_value);
                 CHECK_RC_MSG_GOTO(rc, cleanup, "Get value from node failed");
+                rc = sr_list_add(changes, ch);
+                CHECK_RC_MSG_GOTO(rc, cleanup, "List add failed");
+                ch = NULL;
             }
+            rc = rp_dt_add_changes_for_parents(changes, deleted, difflist->type[d_cnt], difflist->first[d_cnt],
+                    difflist->first[d_cnt]->parent, NULL, 0);
+            CHECK_RC_MSG_GOTO(rc, cleanup, "Add changes for parents failed");
             break;
         case LYD_DIFF_MOVEDAFTER1:
             ch->oper = SR_OP_MOVED;
@@ -1326,24 +1482,36 @@ rp_dt_difflist_to_changes(struct lyd_difflist *difflist, sr_list_t **changes)
         }
 
         if (NULL != ch) {
-            rc = sr_list_add(list, ch);
+            rc = sr_list_add(changes, ch);
             CHECK_RC_MSG_GOTO(rc, cleanup, "List add failed");
             ch = NULL;
         }
+    }
 
+    /* remove deletes marked for undoing */
+    i = 0;
+    while (i < changes->count) {
+        recorded_change = (sr_change_t *)changes->data[i];
+        if (SR_OP_DELETED == recorded_change->oper && NULL == recorded_change->sch_node) {
+            sr_free_changes(changes->data[i], 1);
+            sr_list_rm_at(changes, i);
+            continue;
+        }
+        ++i;
     }
 
 cleanup:
+    sr_list_cleanup(deleted);
     if (SR_ERR_OK != rc) {
         if (NULL != ch) {
             sr_free_changes(ch, 1);
         }
-        for (int i = 0; i < list->count; i++) {
-            sr_free_changes(list->data[i], 1);
+        for (int i = 0; i < changes->count; i++) {
+            sr_free_changes(changes->data[i], 1);
         }
-        sr_list_cleanup(list);
+        sr_list_cleanup(changes);
     } else {
-        *changes = list;
+        *changes_p = changes;
     }
     return rc;
 }
