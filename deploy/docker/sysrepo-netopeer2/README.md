@@ -2,7 +2,7 @@
 
 Run `sysrepod` and `netopeer2-server` in the container:
 ```
-docker run -i -t --name sysrepo --rm sysrepo/sysrepo-netopeer2:latest
+docker run -it --name sysrepo --rm sysrepo/sysrepo-netopeer2:latest
 ```
 
 Connect to the NETCONF server via SSH to port `6001` (username / password is `netconf`):
@@ -38,14 +38,14 @@ In order to get running config via the SSH session use the following snippets:
 
 To access `sysrepoctl` or `sysrepocfg` exec bash in the container:
 ```
-sudo docker exec -it sysrepo /bin/bash
+docker exec -it sysrepo /bin/bash
 sysrepoctl -l
 sysrepocfg turing-machine
 ```
 
 You can also connect to the NETCONF server via [testconf](https://hub.docker.com/r/sysrepo/testconf/):
 ```
-docker run -i -t --link sysrepo --rm sysrepo/testconf:latest
+docker run -it --link sysrepo --rm sysrepo/testconf:latest
 ```
 
 asciinema demo:
