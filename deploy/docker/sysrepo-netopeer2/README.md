@@ -12,7 +12,7 @@ docker inspect sysrepo | grep -w "IPAddress"
 ssh netconf@172.17.0.2 -p 6001 -s netconf 
 ```
 
-In order to get running config via the SSH session use the following snippets:
+In order to get running config via the SSH session use the following snippet:
 ```
 <?xml version="1.0" encoding="UTF-8"?>
 <hello xmlns="urn:ietf:params:xml:ns:netconf:base:1.0">
@@ -25,7 +25,7 @@ In order to get running config via the SSH session use the following snippets:
 </hello>
 ]]>]]>
 
-#138
+#139
 <rpc message-id="101" xmlns="urn:ietf:params:xml:ns:netconf:base:1.0">
 <get-config>
 	<source>
