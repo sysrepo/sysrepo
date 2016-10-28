@@ -77,11 +77,12 @@ RUN \
 
 # netopeer2
 RUN \
-        git clone -b devel https://github.com/CESNET/Netopeer2.git && \
+        git clone -b devel-server https://github.com/CESNET/Netopeer2.git && \
         cd Netopeer2/server && mkdir build && cd build && \
         cmake -DCMAKE_BUILD_TYPE:String="Release" .. && \
         make -j2 && \
         make install && \
+        git checkout devel-cli && \
         cd ../../cli && mkdir build && cd build && \
         cmake -DCMAKE_BUILD_TYPE:String="Release" .. && \
         make -j2 && \
