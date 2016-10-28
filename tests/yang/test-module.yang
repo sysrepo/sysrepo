@@ -545,4 +545,47 @@ module test-module {
  leaf dec64-in-union {
    type threshold-power-dBm;
  }
+
+ container presence-container {
+   presence "presence-container";
+
+    leaf topleaf1 {
+      type int8;
+    }
+
+    leaf topleaf2 {
+      type int8;
+    }
+
+    container child1 {
+      leaf child1-leaf {
+        type int8;
+      }
+
+      container grandchild1 {
+        leaf grandchild1-leaf {
+          type int8;
+          default 10;
+        }
+      }
+    }
+
+    container child2 {
+      leaf child2-leaf {
+        type int8;
+       }
+
+      container grandchild2 {
+        leaf grandchild2-leaf1 {
+          type int8;
+        }
+        leaf grandchild2-leaf2 {
+          type int8;
+        }
+        leaf grandchild2-leaf3 {
+          type int8;
+        }
+      }
+    }
+  }
 }
