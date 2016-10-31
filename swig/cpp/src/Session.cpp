@@ -154,11 +154,10 @@ S_Schema_Content Session::get_schema(const char *module_name, const char *revisi
 
 S_Val Session::get_item(const char *xpath)
 {
-    S_Val value(new Val());
-    if (value == NULL) throw_exception(SR_ERR_NOMEM);
-
-    int ret = sr_get_item(_sess, xpath, value->p_get());
+    sr_val_t *val;
+    int ret = sr_get_item(_sess, xpath, &val);
     if (SR_ERR_OK == ret) {
+        S_Val value(new Val(val, std::make_shared<Deleter>(val)));
         return value;
     } else if (SR_ERR_NOT_FOUND == ret) {
         return NULL;
