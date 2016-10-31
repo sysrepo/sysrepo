@@ -1300,6 +1300,8 @@ dm_append_data_tree(dm_ctx_t *dm_ctx, dm_session_t *session, dm_data_info_t *dat
         } else if (NULL != tmp_node) {
             ret = lyd_merge(data_info->node, tmp_node, LYD_OPT_EXPLICIT);
             lyd_free_withsiblings(tmp_node);
+            CHECK_ZERO_LOG_RETURN(ret, SR_ERR_INTERNAL, "Failed to merge data of module %s into the data tree of module %s: %s",
+                    di->schema->module->name, data_info->schema->module->name, ly_errmsg());
         }
     } else {
         SR_LOG_DBG("Dependant module %s is empty", di->schema->module->name);
@@ -2131,7 +2133,7 @@ dm_validate_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error
             if (info->schema->cross_module_data_dependency) {
                 /* remove data appended from other modules for the purpose of validation */
                 rc_tmp = dm_remove_added_data_trees(session, info);
-                CHECK_RC_MSG_RETURN(rc_tmp, "Removing of added data trees failed");
+                CHECK_RC_MSG_GOTO(rc_tmp, cleanup, "Removing of added data trees failed");
             }
         }
         node = node->next;

@@ -2178,6 +2178,7 @@ rp_rpc_resp_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg
             CHECK_NULL_NOMEM_ERROR(resp->response->rpc_resp->xpath, rc);
         }
         resp->response->rpc_resp->orig_api_variant = msg->response->rpc_resp->orig_api_variant;
+        resp->response->result = msg->response->result;
     }
     if (SR_ERR_OK == rc) {
         if (SR_API_VALUES == sr_api_variant_gpb_to_sr(msg->response->rpc_resp->orig_api_variant)) {
@@ -2203,8 +2204,10 @@ rp_rpc_resp_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg
         resp = msg;
     }
 
-    /* set response code */
-    resp->response->result = rc;
+    /* overwrite response code only in case of internal error */
+    if (SR_ERR_OK != rc) {
+        resp->response->result = rc;
+    }
 
     /* copy DM errors, if any */
     rc = rp_resp_fill_errors(resp, session->dm_session);
@@ -2460,7 +2463,7 @@ rp_req_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, bool *ski
 {
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG4(rp_ctx, session, msg, skip_msg_cleanup);
+    CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, skip_msg_cleanup);
 
     *skip_msg_cleanup = false;
 
@@ -2607,7 +2610,7 @@ rp_resp_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, bool *sk
 {
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG4(rp_ctx, session, msg, skip_msg_cleanup);
+    CHECK_NULL_ARG5(rp_ctx, session, msg, msg->response, skip_msg_cleanup);
 
     *skip_msg_cleanup = false;
 
@@ -2638,7 +2641,7 @@ rp_internal_req_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg)
 {
     int rc = SR_ERR_OK;
 
-    CHECK_NULL_ARG2(rp_ctx, msg);
+    CHECK_NULL_ARG3(rp_ctx, msg, msg->internal_request);
 
     switch (msg->internal_request->operation) {
         case SR__OPERATION__UNSUBSCRIBE_DESTINATION:
