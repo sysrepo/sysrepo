@@ -2242,6 +2242,12 @@ cl_module_empty_enabled_notifications(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 
     rc = sr_delete_item(session, "/referenced-data:*", SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* delete dependant data as well to have ds in valid state*/
+    rc = sr_delete_item(session, "/cross-module:*", SR_EDIT_DEFAULT);
+    assert_int_equal(rc, SR_ERR_OK);
+
     rc = sr_commit(session);
 
     pthread_mutex_lock(&changes.mutex);
