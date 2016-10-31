@@ -33,10 +33,7 @@ if [[ "$TRAVIS_BRANCH" == "devel" ]]; then
 else
     git clone https://github.com/CESNET/libyang.git
 fi
-cd libyang ;
-#remove remove #include <endian.h> on OS X
-sed -i .bak 's/\#include <endian.h>//g' src/tree_schema.h
-mkdir build ; cd build
+cd libyang ; mkdir build ; cd build
 cmake -DCMAKE_BUILD_TYPE=Debug -DENABLE_BUILD_TESTS=OFF ..
 make -j2 && sudo make install
 cd ../..
