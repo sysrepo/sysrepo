@@ -424,7 +424,7 @@ static void event_notif_tree_cb(const char *xpath, const sr_node_t *trees, const
     return wrap->event_notif_tree(xpath, vals, wrap->private_ctx["event_notif_tree"]);
 }
 static int dp_get_items_cb(const char *xpath, sr_val_t **values, size_t *values_cnt, void *private_ctx) {
-    S_Vals vals(new Vals(values, values_cnt, NULL));
+    S_Vals_Holder vals(new Vals_Holder(values, values_cnt));
     Callback *wrap = (Callback*) private_ctx;
     wrap->dp_get_items(xpath, vals, wrap->private_ctx["dp_get_items"]);
     return SR_ERR_OK;
