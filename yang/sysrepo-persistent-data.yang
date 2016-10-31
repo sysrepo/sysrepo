@@ -158,11 +158,14 @@ module sysrepo-persistent-data {
           type enumeration {
             enum "values" {
               value 1;
+              description "Flat sysrepo values API variant";
             }
             enum "trees" {
               value 2;
+              description "Sysrepo trees API variant";
             }
           }
+          description "The variant of API that subscriber supports.";
         }
       }
     }
