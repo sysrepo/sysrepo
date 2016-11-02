@@ -22,8 +22,8 @@
 
 #### Installation of required libraries:
 On Debian-like Linux distributions:
-- `apt-get install cmake libev-dev libavl-dev`
-- libyang, Google Protocol Buffers and protobuf-c need to be installed from sources
+- `apt-get install cmake libev-dev libavl-dev protobuf-c-compiler`
+- libyang needs to be installed from sources
 
 On FreBSD:
 - `pkg install cmake protobuf protobuf-c libev libredblack`
