@@ -236,6 +236,8 @@ srcfg_get_module_data(struct ly_ctx *ly_ctx, md_module_t *module, struct lyd_nod
     char *string_val = NULL;
     const struct lys_module *module_schema = NULL;
 
+    CHECK_NULL_ARG3(ly_ctx, module, data_tree);
+
     snprintf(query, PATH_MAX, "/%s:*//.", module->name);
     rc = sr_get_items_iter(srcfg_session, query, &iter);
     if (SR_ERR_OK != rc) {
@@ -246,7 +248,7 @@ srcfg_get_module_data(struct ly_ctx *ly_ctx, md_module_t *module, struct lyd_nod
     *data_tree = NULL;
     ly_errno = LY_SUCCESS;
     module_schema = ly_ctx_get_module(ly_ctx, module->name, NULL);
-    if (NULL == module) {
+    if (NULL == module_schema) {
         SR_LOG_ERR("Module %s not found", module->name);
         goto cleanup;
     }
