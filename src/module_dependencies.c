@@ -438,7 +438,7 @@ md_get_inc_revision(const struct lys_include *inc)
  * @brief Get the module in which the data of the given schema node resides.
  */
 md_module_t *
-md_get_destination_module(md_ctx_t *md_ctx, const struct lys_node *node)
+md_get_destination_module(md_ctx_t *md_ctx, md_module_t *module, const struct lys_node *node)
 {
     const struct lys_node *parent = NULL;
 
@@ -466,6 +466,11 @@ md_get_destination_module(md_ctx_t *md_ctx, const struct lys_node *node)
     md_module_t module_lkp_key;
     module_lkp_key.name = (char *)MD_MAIN_MODULE(node)->name;
     module_lkp_key.revision_date = (char *)md_get_module_revision(MD_MAIN_MODULE(node));
+
+    if (NULL != module && NULL != module->name && 0 == strcmp(module_lkp_key.name, module->name) &&
+        0 == strcmp(module_lkp_key.revision_date, module->revision_date)) {
+        return module;
+    }
 
     return (md_module_t *)sr_btree_search(md_ctx->modules_btree, &module_lkp_key);
 }
@@ -602,7 +607,7 @@ md_transitive_closure(md_ctx_t *md_ctx)
                      *  (***) For a full validation of module A, the data of module C may be needed to be loaded
                      *        in the same libyang context as A.
                      *
-                     *  -> all scenarios in which there are dependancies between (A,B) and (B,C) but of different
+                     *  -> all scenarios in which there are dependencies between (A,B) and (B,C) but of different
                      *     types, do not create even a potential dependency between (A,C)
                      *  -> A path of extensions implies a path of imports in the opposite direction, hence
                      *     the set of inverses of all extensions is a subgraph of all import dependencies
@@ -1295,7 +1300,7 @@ md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, struct lys_node *
     }
 
     main_module_schema = MD_MAIN_MODULE(root);
-    dest_module = (augment ? md_get_destination_module(md_ctx, root) : module);
+    dest_module = (augment ? md_get_destination_module(md_ctx, module, root) : module);
     if (NULL == dest_module) {
         /* shouldn't happen as all imports are already processed */
         SR_LOG_ERR_MSG("Failed to obtain the destination module of a schema node.");
@@ -1824,9 +1829,15 @@ dependencies:
             module_lkp_key.revision_date = (char *)md_get_module_revision(MD_MAIN_MODULE(augment->target));
             module2 = (md_module_t *)sr_btree_search(md_ctx->modules_btree, &module_lkp_key);
             if (NULL == module2) {
-                SR_LOG_ERR_MSG("Unable to resolve dependency induced by an augment.");
-                rc = SR_ERR_INTERNAL;
-                goto cleanup;
+                if (module->submodule && NULL != belongsto &&
+                    0 == strcmp(belongsto->name, module_lkp_key.name) &&
+                    0 == strcmp(belongsto->revision_date, module_lkp_key.revision_date)) {
+                    continue;
+                } else {
+                    SR_LOG_ERR_MSG("Unable to resolve dependency induced by an augment.");
+                    rc = SR_ERR_INTERNAL;
+                    goto cleanup;
+                }
             }
             if (SR_ERR_OK != md_add_dependency(module2->deps, MD_DEP_EXTENSION, main_module, true, NULL) ||
                 SR_ERR_OK != md_add_dependency(main_module->inv_deps, MD_DEP_EXTENSION, module2, true, NULL)) {
