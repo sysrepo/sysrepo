@@ -469,7 +469,7 @@ md_get_inc_revision(const struct lys_include *inc)
  * @brief Get the module in which the data of the given schema node resides.
  */
 md_module_t *
-md_get_destination_module(md_ctx_t *md_ctx, const struct lys_node *node)
+md_get_destination_module(md_ctx_t *md_ctx, md_module_t *module, const struct lys_node *node)
 {
     const struct lys_node *parent = NULL;
 
@@ -497,6 +497,11 @@ md_get_destination_module(md_ctx_t *md_ctx, const struct lys_node *node)
     md_module_t module_lkp;
     module_lkp.name = (char *)MD_MAIN_MODULE(node)->name;
     module_lkp.revision_date = (char *)md_get_module_revision(MD_MAIN_MODULE(node));
+
+    if (NULL != module && NULL != module->name && 0 == strcmp(module_lkp.name, module->name) &&
+        0 == strcmp(module_lkp.revision_date, module->revision_date)) {
+        return module;
+    }
 
     return (md_module_t *)sr_btree_search(md_ctx->modules_btree, &module_lkp);
 }
@@ -1349,7 +1354,7 @@ md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, struct lys_node *
     }
 
     main_module_schema = MD_MAIN_MODULE(root);
-    dest_module = (augment ? md_get_destination_module(md_ctx, root) : module);
+    dest_module = (augment ? md_get_destination_module(md_ctx, module, root) : module);
     if (NULL == dest_module) {
         /* shouldn't happen as all imports are already processed */
         SR_LOG_ERR_MSG("Failed to obtain the destination module of a schema node.");
@@ -1913,9 +1918,15 @@ dependencies:
             module_lkp.revision_date = (char *)md_get_module_revision(MD_MAIN_MODULE(augment->target));
             module2 = (md_module_t *)sr_btree_search(md_ctx->modules_btree, &module_lkp);
             if (NULL == module2) {
-                SR_LOG_ERR_MSG("Unable to resolve dependency induced by an augment.");
-                rc = SR_ERR_INTERNAL;
-                goto cleanup;
+                if (module->submodule && NULL != belongsto &&
+                    0 == strcmp(belongsto->name, module_lkp.name) &&
+                    0 == strcmp(belongsto->revision_date, module_lkp.revision_date)) {
+                    continue;
+                } else {
+                    SR_LOG_ERR("Unable to resolve dependency induced by an augment. %s", module_lkp.name);
+                    rc = SR_ERR_INTERNAL;
+                    goto cleanup;
+                }
             }
             if (SR_ERR_OK != md_add_dependency(module2->deps, MD_DEP_EXTENSION, main_module, true, NULL) ||
                 SR_ERR_OK != md_add_dependency(main_module->inv_deps, MD_DEP_EXTENSION, module2, true, NULL)) {
