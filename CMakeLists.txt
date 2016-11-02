@@ -281,6 +281,16 @@ endif()
 install(FILES ${PROJECT_SOURCE_DIR}/doc/sysrepoctl.1 DESTINATION ${MAN_INSTALL_DIR}/man1)
 install(FILES ${PROJECT_SOURCE_DIR}/doc/sysrepocfg.1 DESTINATION ${MAN_INSTALL_DIR}/man1)
 
+if(WITH_SYSTEMD)
+    # systemd units
+    add_custom_target(systemd-units SOURCES
+        ${PROJECT_SOURCE_DIR}/deploy/systemd/sysrepod.service
+        ${PROJECT_SOURCE_DIR}/deploy/systemd/sysrepo-plugind.service
+    )
+    install(DIRECTORY ${PROJECT_SOURCE_DIR}/deploy/systemd/ DESTINATION "/lib/systemd/system"
+        FILES_MATCHING PATTERN "*.service")
+endif()
+
 if(GEN_LANGUAGE_BINDINGS)
     add_subdirectory(swig)
 endif()
