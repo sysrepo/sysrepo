@@ -739,7 +739,13 @@ srcfg_import_datastore(struct ly_ctx *ly_ctx, int fd_in, md_module_t *module, sr
         /* commit the changes */
         rc = sr_commit(srcfg_session);
         if (SR_ERR_OK != rc) {
+            const sr_error_info_t *err = NULL;
+            size_t err_cnt = 0;
             SR_LOG_ERR("Error returned from sr_commit: %s.", sr_strerror(rc));
+            sr_get_last_errors(srcfg_session, &err, &err_cnt);
+            for (size_t j = 0; j < err_cnt; j++) {
+                SR_LOG_ERR("%s : %s", err[j].xpath, err[j].message);
+            }
             goto cleanup;
         }
         if (SRCFG_STORE_RUNNING == datastore && permanent) {

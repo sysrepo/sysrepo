@@ -3010,6 +3010,7 @@ dm_commit_write_files(dm_session_t *session, dm_commit_context_t *c_ctx)
 
     return rc;
 }
+
 /**
  * @brief Decides whether a subscription should be skipped or not. Takes into account:
  * SR_EV_VERIFY: skip SR_SUBSCR_APPLY_ONLY subscription
@@ -3028,17 +3029,17 @@ dm_should_skip_subscription(np_subscription_t *subscription, dm_commit_context_t
         }
     }
 
-    /* if subscription returned an error don't send him abort */
-    if (SR_EV_ABORT == ev && c_ctx->err_subs_xpaths != NULL) {
-        for (size_t e = 0; e < c_ctx->err_subs_xpaths->count; e++) {
-            if (0 == strcmp((char *) c_ctx->err_subs_xpaths->data[e],
-                    NULL == subscription->xpath ?
-                    subscription->module_name :
-                    subscription->xpath)) {
-                return true;
-            }
-        }
-    }
+//    /* if subscription returned an error don't send him abort */
+//    if (SR_EV_ABORT == ev && c_ctx->err_subs_xpaths != NULL) {
+//        for (size_t e = 0; e < c_ctx->err_subs_xpaths->count; e++) {
+//            if (0 == strcmp((char *) c_ctx->err_subs_xpaths->data[e],
+//                    NULL == subscription->xpath ?
+//                    subscription->module_name :
+//                    subscription->xpath)) {
+//                return true;
+//            }
+//        }
+//    }
 
     return false;
 }

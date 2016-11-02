@@ -1068,7 +1068,7 @@ typedef enum sr_subscr_flag_e {
     SR_SUBSCR_APPLY_ONLY = 4, /**< The subscriber does not support verification of the changes and wants to be notified only
                                    after the changes has been applied in the datastore, without the possibility to deny them
                                    (it will receive only ::SR_EV_APPLY events). */
-    SR_SUBSCR_EV_ENABLED = 8, /**< The subscriber wants ::SR_EV_ENABLED notification to be sent to him. */
+    SR_SUBSCR_EV_ENABLED = 8, /**< The subscriber wants ::SR_EV_ENABLED notifications to be sent to them. */
 } sr_subscr_flag_t;
 
 /**
