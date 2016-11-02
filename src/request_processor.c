@@ -2200,6 +2200,7 @@ rp_rpc_resp_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg
             CHECK_NULL_NOMEM_ERROR(resp->response->rpc_resp->xpath, rc);
         }
         resp->response->rpc_resp->orig_api_variant = msg->response->rpc_resp->orig_api_variant;
+        resp->response->result = msg->response->result;
     }
     if (SR_ERR_OK == rc) {
         if (SR_API_VALUES == sr_api_variant_gpb_to_sr(msg->response->rpc_resp->orig_api_variant)) {
@@ -2225,8 +2226,10 @@ rp_rpc_resp_process(const rp_ctx_t *rp_ctx, const rp_session_t *session, Sr__Msg
         resp = msg;
     }
 
-    /* set response code */
-    resp->response->result = rc;
+    /* overwrite response code only in case of internal error */
+    if (SR_ERR_OK != rc) {
+        resp->response->result = rc;
+    }
 
     /* copy DM errors, if any */
     rc = rp_resp_fill_errors(resp, session->dm_session);

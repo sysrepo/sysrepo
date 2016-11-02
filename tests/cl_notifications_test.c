@@ -1709,7 +1709,7 @@ cl_successful_verifiers(void **state)
 static void
 cl_refused_by_verifier(void **state)
 {
-    /* two verifiers both confirms validation */
+    /* two verifiers one confirms and the other refuses validation */
     sr_conn_ctx_t *conn = *state;
     assert_non_null(conn);
     sr_session_ctx_t *session = NULL;
@@ -1759,21 +1759,22 @@ cl_refused_by_verifier(void **state)
     ts.tv_sec += COND_WAIT_SEC;
     pthread_cond_timedwait(&changesA.cv, &changesA.mutex, &ts);
 
+    /* abort changes are generated as inverse to verify ones */
     assert_int_equal(changesA.cnt, 3);
-    assert_int_equal(changesA.oper[0], SR_OP_CREATED);
-    assert_non_null(changesA.new_values[0]);
-    assert_null(changesA.old_values[0]);
-    assert_string_equal(xpath, changesA.new_values[0]->xpath);
+    assert_int_equal(changesA.oper[0], SR_OP_DELETED);
+    assert_non_null(changesA.old_values[0]);
+    assert_null(changesA.new_values[0]);
+    assert_string_equal("/example-module:container/list[key1='abc'][key2='def']/key1", changesA.old_values[0]->xpath);
 
-    assert_int_equal(changesA.oper[1], SR_OP_CREATED);
-    assert_non_null(changesA.new_values[1]);
-    assert_null(changesA.old_values[1]);
-    assert_string_equal("/example-module:container/list[key1='abc'][key2='def']/key1", changesA.new_values[1]->xpath);
+    assert_int_equal(changesA.oper[1], SR_OP_DELETED);
+    assert_non_null(changesA.old_values[1]);
+    assert_null(changesA.new_values[1]);
+    assert_string_equal("/example-module:container/list[key1='abc'][key2='def']/key2", changesA.old_values[1]->xpath);
 
-    assert_int_equal(changesA.oper[2], SR_OP_CREATED);
-    assert_non_null(changesA.new_values[2]);
-    assert_null(changesA.old_values[2]);
-    assert_string_equal("/example-module:container/list[key1='abc'][key2='def']/key2", changesA.new_values[2]->xpath);
+    assert_int_equal(changesA.oper[2], SR_OP_DELETED);
+    assert_non_null(changesA.old_values[2]);
+    assert_null(changesA.new_values[2]);
+    assert_string_equal(xpath, changesA.old_values[2]->xpath);
 
     /* check that both callbacks were called */
     assert_true(changesA.events_received & VERIFY_CALLED);

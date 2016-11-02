@@ -3111,7 +3111,17 @@ dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, sr_notif_event_t ev, d
                 continue;
             }
 
+            /* remove changes generated during verify phase */
+            if (NULL != ms->changes) {
+                for (int i = 0; i < ms->changes->count; i++) {
+                    sr_free_changes(ms->changes->data[i], 1);
+                }
+                sr_list_cleanup(ms->changes);
+            }
+            ms->changes = NULL;
+
             lyd_free_diff(ms->difflist);
+            ms->changes_generated = false;
             /* store differences in commit context */
             ms->difflist = diff;
         }
