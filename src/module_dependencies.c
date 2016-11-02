@@ -1580,9 +1580,14 @@ md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, struct lys_node *
 #define PRIV_OP_SUBTREE  1
 #define PRIV_CFG_SUBTREE 2
             rc = SR_ERR_OK;
-            if ((LYS_CONFIG_R & node->flags) && (LYS_USES != node->nodetype)) {
+            if ((LYS_USES == node->nodetype) &&
+                ((intptr_t)node->priv & PRIV_OP_SUBTREE) && !((intptr_t)node->priv & PRIV_CFG_SUBTREE)) {
+                /* Treat USES as if it carried operational data */
+                node->flags |= LYS_CONFIG_R;
+            }
+            if (LYS_CONFIG_R & node->flags) {
                 /*< this node has operational data (and all descendands as well) */
-                if (NULL == node->parent) {
+                if ((NULL == node->parent) && (LYS_USES != node->nodetype)) {
                     rc = md_add_subtree_ref(md_ctx, dest_module, dest_module->op_data_subtrees, module, node,
                                             MD_XPATH_MODULE_OP_DATA_SUBTREE);
                 } /*< otherwise leave for the parent to decide */
@@ -1594,8 +1599,8 @@ md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, struct lys_node *
                         for (child = node->child; child && main_module_schema == MD_MAIN_MODULE(child) && SR_ERR_OK == rc;
                              child = child->next) {
                             if (LYS_CONFIG_R & child->flags) {
-                                rc = md_add_subtree_ref(md_ctx, dest_module, dest_module->op_data_subtrees, module, child,
-                                                        MD_XPATH_MODULE_OP_DATA_SUBTREE);
+                                rc = md_add_subtree_ref(md_ctx, dest_module, dest_module->op_data_subtrees, module,
+                                        LYS_USES == child->nodetype ? child->child : child, MD_XPATH_MODULE_OP_DATA_SUBTREE);
                             }
                         }
                     } else {
