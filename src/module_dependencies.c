@@ -1829,7 +1829,7 @@ dependencies:
                     0 == strcmp(belongsto->revision_date, module_lkp_key.revision_date)) {
                     continue;
                 } else {
-                    SR_LOG_ERR("Unable to resolve dependency induced by an augment. %s", module_lkp.name);
+                    SR_LOG_ERR_MSG("Unable to resolve dependency induced by an augment.");
                     rc = SR_ERR_INTERNAL;
                     goto cleanup;
                 }
