@@ -358,6 +358,144 @@ static const char * const md_module_E_rev2_body =
 "    }\n"
 "  }";
 
+static const char * const md_module_X_filepath = TEST_SCHEMA_SEARCH_DIR TEST_MODULE_PREFIX "X" TEST_MODULE_EXT;
+static const char * const md_module_X_body =
+"  grouping config-data {\n"
+"    leaf config-data1 {\n"
+"      type uint8;\n"
+"    }\n"
+"    leaf config-data2 {\n"
+"      type uint8;\n"
+"    }\n"
+"  }\n"
+"  \n"
+"  grouping state-data {\n"
+"    leaf state-data1 {\n"
+"      config false;\n"
+"      type uint8;\n"
+"    }\n"
+"    leaf state-data2 {\n"
+"      config false;\n"
+"      type uint8;\n"
+"    }\n"
+"  }\n"
+"  \n"
+"  grouping mixed-data {\n"
+"    leaf state-data {\n"
+"      config false;\n"
+"      type uint8;\n"
+"    }\n"
+"    leaf config-data {\n"
+"      type uint8;\n"
+"    }\n"
+"  }\n"
+"  \n"
+"  grouping nested-state-data1 {\n"
+"    uses state-data;\n"
+"    leaf state-data3 {\n"
+"      config false;\n"
+"      type uint8;\n"
+"    }\n"
+"    leaf state-data4 {\n"
+"      config false;\n"
+"      type uint8;\n"
+"    }\n"
+"  }\n"
+"  \n"
+"  grouping nested-state-data2 {\n"
+"    uses mixed-data;\n"
+"    leaf state-data2 {\n"
+"      config false;\n"
+"      type uint8;\n"
+"    }\n"
+"    leaf state-data3 {\n"
+"      config false;\n"
+"      type uint8;\n"
+"    }\n"
+"  }\n"
+"  \n"
+"  container container-1 {\n"
+"    uses config-data;\n"
+"    container sensors {\n"
+"      config false;\n"
+"      leaf temperature {\n"
+"        type uint8;\n"
+"      }\n"
+"      leaf humidity {\n"
+"        type uint8;\n"
+"      }\n"
+"    }\n"
+"  }\n"
+"  \n"
+"  container container-2 {\n"
+"    uses state-data;\n"
+"    container sensors {\n"
+"      config false;\n"
+"      leaf temperature {\n"
+"        type uint8;\n"
+"      }\n"
+"      leaf humidity {\n"
+"        type uint8;\n"
+"      }\n"
+"    }\n"
+"  }\n"
+"  \n"
+"  container container-3 {\n"
+"    uses state-data;\n"
+"    container configuration {\n"
+"      leaf config1 {\n"
+"        type uint8;\n"
+"      }\n"
+"      leaf config2 {\n"
+"        type uint8;\n"
+"      }\n"
+"    }\n"
+"  }\n"
+"  \n"
+"  container container-4 {\n"
+"    uses mixed-data;\n"
+"    container sensors {\n"
+"      config false;\n"
+"      leaf temperature {\n"
+"        type uint8;\n"
+"      }\n"
+"      leaf humidity {\n"
+"        type uint8;\n"
+"      }\n"
+"    }\n"
+"  }\n"
+"  \n"
+"  container container-5 {\n"
+"    uses nested-state-data1;\n"
+"    container sensors {\n"
+"      config false;\n"
+"      leaf temperature {\n"
+"        type uint8;\n"
+"      }\n"
+"      leaf humidity {\n"
+"        type uint8;\n"
+"      }\n"
+"    }\n"
+"  }\n"
+"  \n"
+"  container container-6 {\n"
+"    uses nested-state-data2;\n"
+"    container sensors {\n"
+"      config false;\n"
+"      leaf temperature {\n"
+"        type uint8;\n"
+"      }\n"
+"      leaf humidity {\n"
+"        type uint8;\n"
+"      }\n"
+"    }\n"
+"  }\n"
+"  \n"
+"  container container-7 {\n"
+"    uses config-data;\n"
+"    uses mixed-data;\n"
+"  }\n";
+
 static md_test_dep_t *
 md_test_dep(md_dep_type_t type, int is_direct, ...)
 {
@@ -519,6 +657,7 @@ md_tests_setup(void **state)
             "mod-C" /* "TODO: rename to just "C" once the second issue from libyang/#97 is fixed */, NULL);
     create_module_yang_schema("E", md_module_E_rev1_filepath, md_module_E_rev1_body, "D@2016-06-10", "C", NULL);
     create_module_yang_schema("E", md_module_E_rev2_filepath, md_module_E_rev2_body, "D@2016-06-20", "C", NULL);
+    create_module_yang_schema("X", md_module_X_filepath, md_module_X_body, NULL);
     return 0;
 }
 
@@ -1460,11 +1599,52 @@ md_test_remove_module(void **state)
     md_destroy(md_ctx);
 }
 
+/*
+ * @brief Test how YANG groupings and uses are handled.
+ */
+static void
+md_test_grouping_and_uses(void **state)
+{
+    int rc;
+    md_module_t *module = NULL;
+    md_ctx_t *md_ctx = NULL;
+
+    /* initialize context */
+    rc = md_init(TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal",
+                 TEST_DATA_SEARCH_DIR "internal", false, &md_ctx);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* insert module X */
+    rc = md_insert_module(md_ctx, md_module_X_filepath);
+    assert_int_equal(SR_ERR_OK, rc);
+    rc = md_get_module_info(md_ctx, TEST_MODULE_PREFIX "X", NULL, &module);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* validate op_data_subtrees */
+    check_list_size(module->op_data_subtrees, 12);
+    validate_subtree_ref(md_ctx, module->op_data_subtrees, "/" TEST_MODULE_PREFIX "X:container-1/sensors", "X");
+    validate_subtree_ref(md_ctx, module->op_data_subtrees, "/" TEST_MODULE_PREFIX "X:container-2", "X");
+    validate_subtree_ref(md_ctx, module->op_data_subtrees, "/" TEST_MODULE_PREFIX "X:container-3/state-data1", "X");
+    validate_subtree_ref(md_ctx, module->op_data_subtrees, "/" TEST_MODULE_PREFIX "X:container-3/state-data2", "X");
+    validate_subtree_ref(md_ctx, module->op_data_subtrees, "/" TEST_MODULE_PREFIX "X:container-4/state-data", "X");
+    validate_subtree_ref(md_ctx, module->op_data_subtrees, "/" TEST_MODULE_PREFIX "X:container-4/sensors", "X");
+    validate_subtree_ref(md_ctx, module->op_data_subtrees, "/" TEST_MODULE_PREFIX "X:container-5", "X");
+    validate_subtree_ref(md_ctx, module->op_data_subtrees, "/" TEST_MODULE_PREFIX "X:container-6/state-data", "X");
+    validate_subtree_ref(md_ctx, module->op_data_subtrees, "/" TEST_MODULE_PREFIX "X:container-6/state-data2", "X");
+    validate_subtree_ref(md_ctx, module->op_data_subtrees, "/" TEST_MODULE_PREFIX "X:container-6/state-data3", "X");
+    validate_subtree_ref(md_ctx, module->op_data_subtrees, "/" TEST_MODULE_PREFIX "X:container-6/sensors", "X");
+    validate_subtree_ref(md_ctx, module->op_data_subtrees, "/" TEST_MODULE_PREFIX "X:container-7/state-data", "X");
+
+    /* destroy context */
+    md_destroy(md_ctx);
+}
+
 int main(){
     const struct CMUnitTest tests[] = {
             cmocka_unit_test(md_test_init_and_destroy),
             cmocka_unit_test(md_test_insert_module),
             cmocka_unit_test(md_test_remove_module),
+            cmocka_unit_test(md_test_grouping_and_uses),
     };
 
     return cmocka_run_group_tests(tests, md_tests_setup, md_tests_teardown);

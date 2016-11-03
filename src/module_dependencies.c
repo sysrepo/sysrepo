@@ -280,6 +280,28 @@ md_compare_modules(const void *module1_ptr, const void *module2_ptr)
 }
 
 /**
+ * @brief Get the real parent of a schema node, skipping AUGMENTs and USEs.
+ */
+static struct lys_node *
+md_node_get_real_parent(struct lys_node *node, bool skip_uses, bool skip_augment)
+{
+    node = node ? node->parent : NULL;
+
+    while (node &&
+            (((LYS_AUGMENT == node->nodetype) && skip_augment) ||
+             ((LYS_USES == node->nodetype) && skip_uses))) {
+        if (LYS_AUGMENT == node->nodetype) {
+            node = ((struct lys_node_augment *)node)->target;
+        } else {
+            /* LYS_USES */
+            node = node->parent;
+        }
+    }
+
+    return node;
+}
+
+/**
  * @brief Construct a sort of XPath referencing a given scheme node (exclude keys).
  * Returned xpath is allocated on the heap and should be eventually freed.
  */
@@ -302,14 +324,7 @@ md_construct_lys_xpath(const struct lys_node *node_schema, char **xpath)
         cur_schema = ((struct lys_node_augment *)cur_schema)->target;
     }
     while (NULL != cur_schema) {
-        if (cur_schema->parent && cur_schema->parent->nodetype == LYS_USES) {
-            parent_schema = cur_schema->parent->parent;
-        } else {
-            parent_schema = cur_schema->parent;
-        }
-        if (parent_schema && parent_schema->nodetype == LYS_AUGMENT) {
-            parent_schema = parent_schema->prev;
-        }
+        parent_schema = md_node_get_real_parent((struct lys_node *)cur_schema, true, true);
         length += 1 /* "/" */;
         if (!parent_schema || 0 != strcmp(MD_MAIN_MODULE(parent_schema)->name, MD_MAIN_MODULE(cur_schema)->name)) {
             length += strlen(MD_MAIN_MODULE(cur_schema)->name) + 1 /* ":" */;
@@ -328,14 +343,7 @@ md_construct_lys_xpath(const struct lys_node *node_schema, char **xpath)
     }
     while (NULL != cur_schema) {
         /* parent */
-        if (cur_schema->parent && cur_schema->parent->nodetype == LYS_USES) {
-            parent_schema = cur_schema->parent->parent;
-        } else {
-            parent_schema = cur_schema->parent;
-        }
-        if (parent_schema && parent_schema->nodetype == LYS_AUGMENT) {
-            parent_schema = parent_schema->prev;
-        }
+        parent_schema = md_node_get_real_parent((struct lys_node *)cur_schema, true, true);
         /* node name */
         length = strlen(cur_schema->name);
         cur -= length;
@@ -446,18 +454,15 @@ md_get_destination_module(md_ctx_t *md_ctx, md_module_t *module, const struct ly
         return NULL;
     }
 
+    if (node->nodetype == LYS_AUGMENT && NULL == node->parent) {
+        node = ((struct lys_node_augment *)node)->target;
+        if (NULL == node) {
+            return NULL;
+        }
+    }
+
     do {
-        if (node->nodetype == LYS_AUGMENT && NULL == node->parent) {
-            node = ((struct lys_node_augment *)node)->target;
-            if (NULL == node) {
-                return NULL;
-            }
-        }
-        if (NULL != node->parent && node->parent->nodetype == LYS_AUGMENT) {
-            parent = ((struct lys_node_augment *)node->parent)->target;
-        } else {
-            parent = node->parent;
-        }
+        parent = md_node_get_real_parent((struct lys_node *)node, true, true);
         if (parent) {
             node = parent;
         }
@@ -1286,13 +1291,14 @@ static int
 md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, struct lys_node *root, bool augment)
 {
     int rc = SR_ERR_OK;
-    struct lys_node *node = NULL, *child = NULL;
+    struct lys_node *node = NULL, *child = NULL, *parent = NULL;
     const struct lys_module *main_module_schema = NULL;
     md_module_t *dest_module = NULL;
     bool process_children = true;
     const char *when = NULL, *xpath = NULL, *restr = NULL;
     struct lys_restr *must = NULL;
     size_t must_size = 0;
+    bool backtracking = false;
     CHECK_NULL_ARG(md_ctx);
 
     if (NULL == root) {
@@ -1526,27 +1532,40 @@ md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, struct lys_node *
 #define PRIV_OP_SUBTREE  1
 #define PRIV_CFG_SUBTREE 2
             rc = SR_ERR_OK;
-            if ((LYS_USES == node->nodetype) &&
-                ((intptr_t)node->priv & PRIV_OP_SUBTREE) && !((intptr_t)node->priv & PRIV_CFG_SUBTREE)) {
-                /* Treat USES as if it carried operational data */
-                node->flags |= LYS_CONFIG_R;
-            }
-            if (LYS_CONFIG_R & node->flags) {
+            if (LYS_USES == node->nodetype) {
+                /* skip */
+            } else if (LYS_CONFIG_R & node->flags) {
                 /*< this node has operational data (and all descendands as well) */
-                if ((NULL == node->parent) && (LYS_USES != node->nodetype)) {
+                if (NULL == node->parent) {
                     rc = md_add_subtree_ref(md_ctx, dest_module, dest_module->op_data_subtrees, module, node,
                                             MD_XPATH_MODULE_OP_DATA_SUBTREE);
                 } /*< otherwise leave for the parent to decide */
             } else { /*< this node has configuration data or it is a special kind of node (e.g. augment) */
                 if ((intptr_t)node->priv & PRIV_OP_SUBTREE) {
                     /* some or all children carry operational data */
-                    if (((intptr_t)node->priv & PRIV_CFG_SUBTREE) || (LYS_USES == node->nodetype)) {
+                    if ((intptr_t)node->priv & PRIV_CFG_SUBTREE) {
                         /* a mix of configuration and operational data amongst children */
-                        for (child = node->child; child && main_module_schema == MD_MAIN_MODULE(child) && SR_ERR_OK == rc;
-                             child = child->next) {
-                            if (LYS_CONFIG_R & child->flags) {
+                        backtracking = false;
+                        child = node->child;
+                        while ((NULL != child) && (main_module_schema == MD_MAIN_MODULE(child)) && (child != node)) {
+                            assert(!backtracking || (LYS_USES == child->nodetype));
+                            if ((LYS_USES != child->nodetype) && (LYS_CONFIG_R & child->flags)) {
+                                /* child with state data */
                                 rc = md_add_subtree_ref(md_ctx, dest_module, dest_module->op_data_subtrees, module,
-                                        LYS_USES == child->nodetype ? child->child : child, MD_XPATH_MODULE_OP_DATA_SUBTREE);
+                                        child, MD_XPATH_MODULE_OP_DATA_SUBTREE);
+                                if (SR_ERR_OK != rc) {
+                                    break;
+                                }
+                            }
+                            /* next child */
+                            if ((false == backtracking) && (LYS_USES == child->nodetype) && (NULL != child->child)) {
+                                child = child->child;
+                            } else if (child->next) {
+                                backtracking = false;
+                                child = child->next;
+                            } else {
+                                backtracking = true;
+                                child = child->parent;
                             }
                         }
                     } else {
@@ -1558,11 +1577,12 @@ md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, struct lys_node *
             }
             CHECK_RC_MSG_RETURN(rc, "Failed to add operational data subtree reference into the dependency info.");
             /* pass some feedback to the parent node */
-            if ((LYS_CONFIG_R & node->flags) && node->parent) {
-                node->parent->priv = (void *)((intptr_t)node->parent->priv | PRIV_OP_SUBTREE);
+            parent = md_node_get_real_parent(node, true, false);
+            if ((LYS_CONFIG_R & node->flags) && parent) {
+                parent->priv = (void *)((intptr_t)parent->priv | PRIV_OP_SUBTREE);
             }
-            if ((LYS_CONFIG_W & node->flags) && node->parent) {
-                node->parent->priv = (void *)((intptr_t)node->parent->priv | PRIV_CFG_SUBTREE);
+            if ((LYS_CONFIG_W & node->flags) && parent) {
+                parent->priv = (void *)((intptr_t)parent->priv | PRIV_CFG_SUBTREE);
             }
 
             /* backtracking + automatically moving to the next sibling if there is any */
