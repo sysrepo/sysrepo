@@ -2155,3 +2155,28 @@ sr_mkdir_recursive(const char *path, mode_t mode)
 
     return 0;
 }
+
+bool
+sr_lys_module_has_data(const struct lys_module *module)
+{
+    struct lys_node *iter = NULL;
+
+    if (!module) {
+        return false;
+    }
+
+    /* submodules don't have data tree, the data nodes are placed in the main module altogether */
+    if (module->type) {
+        return false;
+    }
+
+    /* iterate through top-level nodes */
+    LY_TREE_FOR(module->data, iter) {
+        if (((LYS_CONFIG_R & iter->flags) /* operational data */ ||
+             ((LYS_CONTAINER | LYS_LIST | LYS_LEAF | LYS_LEAFLIST | LYS_CHOICE | LYS_RPC | LYS_NOTIF | LYS_ACTION) & iter->nodetype))) {
+            /* data-carrying */
+            return true;
+        }
+    }
+    return false;
+}

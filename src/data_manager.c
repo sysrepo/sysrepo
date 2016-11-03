@@ -589,6 +589,9 @@ dm_load_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, 
         ll_node = ll_node->next;
     }
 
+    /* distinguish between modules that can and cannot be locked */
+    si->can_not_be_locked = !module->has_data;
+
     /* insert schema info into schema tree */
     RWLOCK_WRLOCK_TIMED_CHECK_GOTO(&dm_ctx->schema_tree_lock, rc, cleanup);
 
@@ -827,6 +830,11 @@ dm_lock_module(dm_ctx_t *dm_ctx, dm_session_t *session, const char *modul_name)
     /* check if module name is valid */
     rc = dm_get_module_and_lock(dm_ctx, modul_name, &si);
     CHECK_RC_LOG_RETURN(rc, "Unknown module %s to lock", modul_name);
+
+    if (si->can_not_be_locked) {
+        SR_LOG_DBG("Module %s contains no data, locking for the module is no operation.", modul_name);
+        goto cleanup;
+    }
 
     rc = sr_get_lock_data_file_name(dm_ctx->data_search_dir, modul_name, session->datastore, &lock_file);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Lock file name can not be created");
