@@ -5,7 +5,7 @@ set(SYSREPO_DESC "YANG-based system repository")
 # setup version
 set(SYSREPO_MAJOR_VERSION 0)
 set(SYSREPO_MINOR_VERSION 4)
-set(SYSREPO_MICRO_VERSION 10)
+set(SYSREPO_MICRO_VERSION 11)
 set(SYSREPO_VERSION ${SYSREPO_MAJOR_VERSION}.${SYSREPO_MINOR_VERSION}.${SYSREPO_MICRO_VERSION})
 
 # setup bindings
@@ -280,6 +280,16 @@ endif()
 # install doc (man)
 install(FILES ${PROJECT_SOURCE_DIR}/doc/sysrepoctl.1 DESTINATION ${MAN_INSTALL_DIR}/man1)
 install(FILES ${PROJECT_SOURCE_DIR}/doc/sysrepocfg.1 DESTINATION ${MAN_INSTALL_DIR}/man1)
+
+if(WITH_SYSTEMD)
+    # systemd units
+    add_custom_target(systemd-units SOURCES
+        ${PROJECT_SOURCE_DIR}/deploy/systemd/sysrepod.service
+        ${PROJECT_SOURCE_DIR}/deploy/systemd/sysrepo-plugind.service
+    )
+    install(DIRECTORY ${PROJECT_SOURCE_DIR}/deploy/systemd/ DESTINATION "/lib/systemd/system"
+        FILES_MATCHING PATTERN "*.service")
+endif()
 
 if(GEN_LANGUAGE_BINDINGS)
     add_subdirectory(swig)

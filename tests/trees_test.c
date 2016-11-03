@@ -941,6 +941,7 @@ sr_print_tree_test(void **state)
     node = tree->first_child->first_child;
     assert_int_equal(SR_ERR_OK, sr_node_add_child(node, "iter", NULL, &node));
     node->type = SR_TREE_ITERATOR_T;
+    node->data.int32_val = 1;
     node->prev = node->next = node->parent = NULL;
 
 #define TREE_WITH_ITERATOR \

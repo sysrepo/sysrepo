@@ -178,6 +178,8 @@ endif()
 
 # install binary
 install(TARGETS Sysrepo-cpp DESTINATION ${LIB_INSTALL_DIR})
+install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/cpp/src/" DESTINATION ${INCLUDE_INSTALL_DIR}/sysrepo-cpp
+    FILES_MATCHING PATTERN "*.h")
 
 # Examples
 if(GEN_CPP_BINDINGS AND BUILD_CPP_EXAMPLES)

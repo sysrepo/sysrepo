@@ -1,0 +1,15 @@
+[Unit]
+Description=Sysrepo YANG configuration storage and management
+Requires=sysrepod.service
+
+[Service]
+Type=forking
+ExecStart=/usr/bin/sysrepo-plugind
+PIDFile=/var/run/sysrepo-plugind.pid
+PrivateTmp=yes
+ProtectSystem=yes
+ProtectHome=yes
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target
