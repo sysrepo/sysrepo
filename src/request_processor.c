@@ -2461,6 +2461,7 @@ rp_notification_ack_process(rp_ctx_t *rp_ctx, Sr__Msg *msg)
 static int
 rp_req_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, bool *skip_msg_cleanup)
 {
+    bool locked = false;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG5(rp_ctx, session, msg, msg->request, skip_msg_cleanup);
@@ -2481,9 +2482,11 @@ rp_req_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, bool *ski
         case SR__OPERATION__MOVE_ITEM:
         case SR__OPERATION__SESSION_REFRESH:
             pthread_rwlock_rdlock(&rp_ctx->commit_lock);
+            locked = true;
             break;
         case SR__OPERATION__COMMIT:
             pthread_rwlock_wrlock(&rp_ctx->commit_lock);
+            locked = true;
             break;
         default:
             break;
@@ -2581,22 +2584,9 @@ rp_req_dispatch(rp_ctx_t *rp_ctx, rp_session_t *session, Sr__Msg *msg, bool *ski
             break;
     }
 
-    /* release lock*/
-    switch (msg->request->operation) {
-        case SR__OPERATION__GET_ITEM:
-        case SR__OPERATION__GET_ITEMS:
-        case SR__OPERATION__GET_SUBTREE:
-        case SR__OPERATION__GET_SUBTREES:
-        case SR__OPERATION__GET_SUBTREE_CHUNK:
-        case SR__OPERATION__SET_ITEM:
-        case SR__OPERATION__DELETE_ITEM:
-        case SR__OPERATION__MOVE_ITEM:
-        case SR__OPERATION__SESSION_REFRESH:
-        case SR__OPERATION__COMMIT:
-            pthread_rwlock_unlock(&rp_ctx->commit_lock);
-            break;
-        default:
-            break;
+    /* release lock */
+    if (locked) {
+        pthread_rwlock_unlock(&rp_ctx->commit_lock);
     }
 
     return rc;
