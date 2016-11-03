@@ -21,6 +21,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <inttypes.h>
 #include "sysrepo.h"
 
 void
@@ -49,10 +50,10 @@ print_value(sr_val_t *value)
         printf("= %u\n", value->data.uint16_val);
         break;
     case SR_UINT32_T:
-        printf("= %u\n", value->data.uint32_val);
+        printf("= %"PRIu32"\n", value->data.uint32_val);
         break;
     case SR_UINT64_T:
-        printf("= %lu\n", value->data.uint64_val);
+        printf("= %"PRIu64"\n", value->data.uint64_val);
         break;
     case SR_IDENTITYREF_T:
         printf("= %s\n", value->data.identityref_val);
