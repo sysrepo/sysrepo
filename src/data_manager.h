@@ -74,6 +74,7 @@ typedef struct dm_schema_info_s {
                                          * during sysrepo-engine lifetime */
     const struct lys_module *module;    /**< Pointer to the module, might be NULL if module has been uninstalled*/
     bool cross_module_data_dependency;  /**< Flag whether data from different module is needed for validation */
+    bool can_not_be_locked;             /**< If true module contains no data and lock_module for the module is NOP */
 }dm_schema_info_t;
 
 /**
