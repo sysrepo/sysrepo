@@ -588,10 +588,9 @@ dm_load_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, 
         }
         ll_node = ll_node->next;
     }
-    /** TODO:
-     * if module contains no data set this flag to true
-    si->can_not_be_locked =
-    */
+
+    /* distinguish between modules that can and cannot be locked */
+    si->can_not_be_locked = !module->has_data;
 
     /* insert schema info into schema tree */
     RWLOCK_WRLOCK_TIMED_CHECK_GOTO(&dm_ctx->schema_tree_lock, rc, cleanup);
