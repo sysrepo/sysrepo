@@ -836,30 +836,6 @@ fail:
 }
 
 /**
- * @brief Returns true if the passed module defines any data-carrying elements and not only data types and identities.
- */
-static bool
-srctl_module_has_data(const struct lys_module *module)
-{
-    struct lys_node *iter = NULL;
-
-    /* submodules don't have data tree, the data nodes are placed in the main module altogether */
-    if (module->type) {
-        return false;
-    }
-
-    /* iterate through top-level nodes */
-    LY_TREE_FOR(module->data, iter) {
-        if (((LYS_CONFIG_R & iter->flags) /* operational data */ ||
-             ((LYS_CONTAINER | LYS_LIST | LYS_LEAF | LYS_LEAFLIST | LYS_CHOICE | LYS_RPC | LYS_NOTIF | LYS_ACTION) & iter->nodetype))) {
-            /* data-carrying */
-            return true;
-        }
-    }
-    return false;
-}
-
-/**
  * @brief Installs data files for given module and its dependencies (with already installed schema).
  */
 static int
@@ -868,7 +844,7 @@ srctl_data_install(const struct lys_module *module, const char *owner, const cha
     int ret = 0, rc = SR_ERR_OK;
 
     /* install data files only if module can contain any data */
-    if (srctl_module_has_data(module)) {
+    if (sr_lys_module_has_data(module)) {
         printf("Installing data files for module '%s'...\n", module->name);
         ret = srctl_data_files_apply(module->name, srctl_file_create, NULL, false);
         if (0 != ret) {

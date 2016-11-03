@@ -42,6 +42,7 @@
 #define MD_XPATH_MODULE_FILEPATH             MD_XPATH_MODULE "/filepath"
 #define MD_XPATH_MODULE_LATEST_REV_FLAG      MD_XPATH_MODULE "/latest-revision"
 #define MD_XPATH_SUBMODULE_FLAG              MD_XPATH_MODULE "/submodule"
+#define MD_XPATH_HAS_DATA_FLAG               MD_XPATH_MODULE "/has-data"
 #define MD_XPATH_MODULE_DEPENDENCY_LIST      MD_XPATH_MODULE "/dependencies/"
 #define MD_XPATH_MODULE_DEPENDENCY           MD_XPATH_MODULE_DEPENDENCY_LIST "dependency[module-name='%s'][module-revision='%s'][type='%s']"
 #define MD_XPATH_MODULE_DEPENDENCY_ORG       MD_XPATH_MODULE_DEPENDENCY "/orig-modules/orig-module[orig-module-name='%s'][orig-module-revision='%s']"
@@ -1067,6 +1068,8 @@ md_init(const char *schema_search_dir,
                             module->latest_revision = leaf->value.bln;
                         } else if (node->schema->name && 0 == strcmp("submodule", node->schema->name)) {
                             module->submodule = leaf->value.bln;
+                        } else if (node->schema->name && 0 == strcmp("has-data", node->schema->name)) {
+                            module->has_data = leaf->value.bln;
                         }
                     }
                     node = node->next;
@@ -1639,6 +1642,9 @@ md_insert_lys_module(md_ctx_t *md_ctx, const struct lys_module *module_schema, c
         goto cleanup;
     }
 
+    /* Does this module carry any data? */
+    module->has_data = sr_lys_module_has_data(module_schema);
+
     /* Copy basic information */
     module->name = strdup(module_schema->name);
     CHECK_NULL_NOMEM_GOTO(module->name, rc, cleanup);
@@ -1721,6 +1727,12 @@ md_insert_lys_module(md_ctx_t *md_ctx, const struct lys_module *module_schema, c
     /*  - submodule flag */
     rc = md_lyd_new_path(md_ctx, MD_XPATH_SUBMODULE_FLAG, module->submodule ? "true" : "false", module,
                          "set submodule flag", NULL, module->name, module->revision_date);
+    if (SR_ERR_OK != rc) {
+        goto cleanup;
+    }
+    /*  - has-data flag */
+    rc = md_lyd_new_path(md_ctx, MD_XPATH_HAS_DATA_FLAG, module->has_data ? "true" : "false", module,
+                         "set has-data flag", NULL, module->name, module->revision_date);
     if (SR_ERR_OK != rc) {
         goto cleanup;
     }
