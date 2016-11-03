@@ -61,6 +61,12 @@ module sysrepo-module-dependencies {
         description "TRUE if this is only submodule, FALSE in case of a proper module.";
     }
 
+    leaf has-data {
+       type boolean;
+       default true;
+       description "TRUE if this module defines any data-carrying elements and not only data types and identities.";
+    }
+
     container dependencies {
       description "List of dependencies. Only direct (non-transitive) dependencies are stored in the data file.";
 

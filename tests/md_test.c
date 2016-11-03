@@ -910,6 +910,7 @@ validate_context(md_ctx_t *md_ctx)
         assert_string_equal("urn:ietf:params:xml:ns:yang:A", module->ns);
         assert_string_equal(md_module_A_filepath, module->filepath);
         assert_true(module->latest_revision);
+        assert_true(module->has_data);
         /* inst_ids */
         check_list_size(module->inst_ids, inserted.B + inserted.D_rev1 + 2*inserted.D_rev2);
         validate_subtree_ref(md_ctx, module->inst_ids,
@@ -987,6 +988,7 @@ validate_context(md_ctx_t *md_ctx)
         assert_string_equal("urn:ietf:params:xml:ns:yang:B", module->ns);
         assert_string_equal(md_module_B_filepath, module->filepath);
         assert_true(module->latest_revision);
+        assert_true(module->has_data);
         /* inst_ids */
         check_list_size(module->inst_ids, 1);
         validate_subtree_ref(md_ctx, module->inst_ids, "/" TEST_MODULE_PREFIX "B:inst-ids/inst-id", "B");
@@ -1049,6 +1051,7 @@ validate_context(md_ctx_t *md_ctx)
         assert_string_equal("", module->ns);
         assert_string_equal(md_submodule_B_sub1_filepath, module->filepath);
         assert_true(module->latest_revision);
+        assert_false(module->has_data);
         /* inst_ids */
         check_list_size(module->inst_ids, 0);
         /* op_data_subtrees */
@@ -1077,6 +1080,7 @@ validate_context(md_ctx_t *md_ctx)
         assert_string_equal("", module->ns);
         assert_string_equal(md_submodule_B_sub2_filepath, module->filepath);
         assert_true(module->latest_revision);
+        assert_false(module->has_data);
         /* inst_ids */
         check_list_size(module->inst_ids, 0);
         /* op_data_subtrees */
@@ -1105,6 +1109,7 @@ validate_context(md_ctx_t *md_ctx)
         assert_string_equal("", module->ns);
         assert_string_equal(md_submodule_B_sub3_filepath, module->filepath);
         assert_true(module->latest_revision);
+        assert_false(module->has_data);
         /* inst_ids */
         check_list_size(module->inst_ids, 0);
         /* op_data_subtrees */
@@ -1133,6 +1138,7 @@ validate_context(md_ctx_t *md_ctx)
         assert_string_equal("urn:ietf:params:xml:ns:yang:C", module->ns);
         assert_string_equal(md_module_C_filepath, module->filepath);
         assert_true(module->latest_revision);
+        assert_true(module->has_data);
         /* inst_ids */
         check_list_size(module->inst_ids, 2);
         validate_subtree_ref(md_ctx, module->inst_ids, "/" TEST_MODULE_PREFIX "C:inst-id1", "C");
@@ -1191,6 +1197,7 @@ validate_context(md_ctx_t *md_ctx)
         } else {
             assert_true(module->latest_revision);
         }
+        assert_true(module->has_data);
         /* inst_ids */
         check_list_size(module->inst_ids, 0);
         /* op_data_subtrees */
@@ -1242,6 +1249,7 @@ validate_context(md_ctx_t *md_ctx)
         assert_string_equal("urn:ietf:params:xml:ns:yang:D", module->ns);
         assert_string_equal(md_module_D_rev2_filepath, module->filepath);
         assert_true(module->latest_revision);
+        assert_true(module->has_data);
         /* inst_ids */
         check_list_size(module->inst_ids, 0);
         /* op_data_subtrees */
@@ -1289,6 +1297,7 @@ validate_context(md_ctx_t *md_ctx)
         assert_string_equal("", module->ns);
         assert_string_equal(md_submodule_D_common_filepath, module->filepath);
         assert_true(module->latest_revision);
+        assert_false(module->has_data);
         /* inst_ids */
         check_list_size(module->inst_ids, 0);
         /* op_data_subtrees */
@@ -1322,6 +1331,7 @@ validate_context(md_ctx_t *md_ctx)
         } else {
             assert_true(module->latest_revision);
         }
+        assert_true(module->has_data);
         /* inst_ids */
         check_list_size(module->inst_ids, 1);
         validate_subtree_ref(md_ctx, module->inst_ids, "/" TEST_MODULE_PREFIX "E:inst-id-list/inst-id", "E@2016-06-11");
@@ -1331,7 +1341,7 @@ validate_context(md_ctx_t *md_ctx)
                 "/" TEST_MODULE_PREFIX "E:partly-op-data/list-with-op-data", "E@2016-06-11");
         validate_subtree_ref(md_ctx, module->op_data_subtrees,
                 "/" TEST_MODULE_PREFIX "E:partly-op-data/nested-op-data", "E@2016-06-11");
-        /* outsiide references */
+        /* outside references */
         assert_non_null(module->ly_data);
         assert_non_null(module->ll_node);
         /* dependencies */
@@ -1378,6 +1388,7 @@ validate_context(md_ctx_t *md_ctx)
         assert_string_equal("urn:ietf:params:xml:ns:yang:E", module->ns);
         assert_string_equal(md_module_E_rev2_filepath, module->filepath);
         assert_true(module->latest_revision);
+        assert_true(module->has_data);
         /* inst_ids */
         check_list_size(module->inst_ids, 1);
         validate_subtree_ref(md_ctx, module->inst_ids, "/" TEST_MODULE_PREFIX "E:inst-id-list/inst-id", "E@2016-06-21");
@@ -1639,12 +1650,76 @@ md_test_grouping_and_uses(void **state)
     md_destroy(md_ctx);
 }
 
+/*
+ * @brief Test "has-data" flag.
+ */
+static void
+md_test_has_data(void **state)
+{
+    int rc;
+    md_module_t *module = NULL;
+    md_ctx_t *md_ctx = NULL;
+
+    /* initialize context, load module dependency file */
+    rc = md_init(TEST_SCHEMA_SEARCH_DIR, TEST_SCHEMA_SEARCH_DIR "internal",
+                 TEST_DATA_SEARCH_DIR "internal", false, &md_ctx);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* test modules installed by default */
+    rc = md_get_module_info(md_ctx, "example-module", NULL, &module);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_true(module->has_data);
+    rc = md_get_module_info(md_ctx, "iana-if-type", NULL, &module);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_false(module->has_data);
+    rc = md_get_module_info(md_ctx, "ietf-interfaces", "2014-05-08", &module);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_true(module->has_data);
+    rc = md_get_module_info(md_ctx, "ietf-ip", "2014-06-16", &module);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_false(module->has_data);
+    rc = md_get_module_info(md_ctx, "module-a", "2016-02-02", &module);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_true(module->has_data);
+    rc = md_get_module_info(md_ctx, "module-a", "2016-02-10", &module);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_true(module->has_data);
+    rc = md_get_module_info(md_ctx, "module-b", "2016-02-05", &module);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_true(module->has_data);
+    rc = md_get_module_info(md_ctx, "small-module", NULL, &module);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_true(module->has_data);
+    rc = md_get_module_info(md_ctx, "state-module", "2016-07-01", &module);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_true(module->has_data);
+    rc = md_get_module_info(md_ctx, "sub-a-one", "2016-02-02", &module);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_false(module->has_data);
+    rc = md_get_module_info(md_ctx, "sub-a-one", "2016-02-10", &module);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_false(module->has_data);
+    rc = md_get_module_info(md_ctx, "sub-a-two", "2016-02-02", &module);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_false(module->has_data);
+    rc = md_get_module_info(md_ctx, "test-module", NULL, &module);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_true(module->has_data);
+    rc = md_get_module_info(md_ctx, "top-level-mandatory", NULL, &module);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_true(module->has_data);
+
+    /* destroy context */
+    md_destroy(md_ctx);
+}
+
 int main(){
     const struct CMUnitTest tests[] = {
             cmocka_unit_test(md_test_init_and_destroy),
             cmocka_unit_test(md_test_insert_module),
             cmocka_unit_test(md_test_remove_module),
             cmocka_unit_test(md_test_grouping_and_uses),
+            cmocka_unit_test(md_test_has_data),
     };
 
     return cmocka_run_group_tests(tests, md_tests_setup, md_tests_teardown);
