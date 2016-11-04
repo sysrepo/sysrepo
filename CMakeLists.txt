@@ -39,16 +39,7 @@ if(NOT UNIX)
     message(FATAL_ERROR "Only Unix-like systems are supported.")
 endif()
 
-if(NOT LIB_INSTALL_DIR)
-    set(LIB_INSTALL_DIR "lib")
-endif()
-if(NOT BIN_INSTALL_DIR)
-    set(BIN_INSTALL_DIR "bin")
-endif()
-if(NOT INCLUDE_INSTALL_DIR)
-    set(INCLUDE_INSTALL_DIR "include")
-endif()
-set(PLUGINS_DIR "${CMAKE_INSTALL_PREFIX}/${LIB_INSTALL_DIR}/sysrepo/plugins/" CACHE PATH "Sysrepo plugins directory.")
+set(PLUGINS_DIR "${CMAKE_INSTALL_LIBDIR}/sysrepo/plugins/" CACHE PATH "Sysrepo plugins directory.")
 
 # set build-type specific settings
 if(CMAKE_BUILD_TYPE_LOWER MATCHES "debug")
@@ -275,12 +266,12 @@ find_package(PkgConfig QUIET)
 if(PKG_CONFIG_FOUND)
     # generate and install pkg-config file
     configure_file("libsysrepo.pc.in" "libsysrepo.pc" @ONLY)
-    install(FILES "${CMAKE_CURRENT_BINARY_DIR}/libsysrepo.pc" DESTINATION "${CMAKE_INSTALL_PREFIX}/lib/pkgconfig")
+    install(FILES "${CMAKE_CURRENT_BINARY_DIR}/libsysrepo.pc" DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig")
 endif()
 
 # install doc (man)
-install(FILES ${PROJECT_SOURCE_DIR}/doc/sysrepoctl.1 DESTINATION ${MAN_INSTALL_DIR}/man1)
-install(FILES ${PROJECT_SOURCE_DIR}/doc/sysrepocfg.1 DESTINATION ${MAN_INSTALL_DIR}/man1)
+install(FILES ${PROJECT_SOURCE_DIR}/doc/sysrepoctl.1 DESTINATION ${CMAKE_INSTALL_MANDIR}/man1)
+install(FILES ${PROJECT_SOURCE_DIR}/doc/sysrepocfg.1 DESTINATION ${CMAKE_INSTALL_MANDIR}/man1)
 
 if(WITH_SYSTEMD)
     # systemd units

@@ -82,7 +82,7 @@ it later (in periodic intervals) using ::sr_plugin_init_cb.
 
 @section plugin-dir Plugin Directory
 All sysrepo plugins should be placed into `PLUGINS_DIR` directory. This defaults
-to `${CMAKE_INSTALL_PREFIX}/${LIB_INSTALL_DIR}/sysrepo/plugins/` 
+to `${CMAKE_INSTALL_LIBDIR}/sysrepo/plugins/`
 (e.g. `/usr/local/lib/sysrepo/plugins/`) and can be changed by:
 
 - `PLUGINS_DIR` CMake variable in the build time (e.g.
