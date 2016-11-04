@@ -336,7 +336,7 @@ dm_feature_enable_internal(dm_ctx_t *dm_ctx, dm_schema_info_t *schema_info, cons
 
     const struct lys_module *module = ly_ctx_get_module(schema_info->ly_ctx, module_name, NULL);
     if (NULL != module) {
-        rc = enable ? lys_features_enable(module, feature_name) : lys_features_disable(schema_info->module, feature_name);
+        rc = enable ? lys_features_enable(module, feature_name) : lys_features_disable(module, feature_name);
         SR_LOG_DBG("%s feature '%s' in module '%s'", enable ? "Enabling" : "Disabling", feature_name, module_name);
     } else {
         SR_LOG_ERR("Module %s not found in provided context", module_name);
@@ -3253,13 +3253,47 @@ dm_feature_enable(dm_ctx_t *dm_ctx, const char *module_name, const char *feature
     CHECK_NULL_ARG3(dm_ctx, module_name, feature_name);
     int rc = SR_ERR_OK;
     dm_schema_info_t *schema_info = NULL;
+    md_module_t *module = NULL;
+    md_dep_t *dep = NULL;
+    sr_llist_node_t *ll_node = NULL;
+    dm_schema_info_t *si = NULL;
+    dm_schema_info_t lookup = {0};
 
     rc = dm_get_module_and_lockw(dm_ctx, module_name, &schema_info);
     CHECK_RC_LOG_RETURN(rc, "dm_get_module %s and lock failed", module_name);
 
     rc = dm_feature_enable_internal(dm_ctx, schema_info, module_name, feature_name, enable);
-
     pthread_rwlock_unlock(&schema_info->model_lock);
+    CHECK_RC_LOG_RETURN(rc, "Failed to %s feature '%s' in module '%s'.", enable ? "enable" : "disable", feature_name, module_name);
+
+    /* apply the change in all loaded schema infos */
+    md_ctx_lock(dm_ctx->md_ctx, true);
+    pthread_rwlock_wrlock(&dm_ctx->schema_tree_lock);
+    rc = md_get_module_info(dm_ctx->md_ctx, module_name, NULL, &module);
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Get module %s info failed", module_name);
+
+    /* load this module also into contexts of newly augmented modules */
+    ll_node = module->inv_deps->first;
+    while (ll_node) {
+        dep = (md_dep_t *) ll_node->data;
+        if (dep->type == MD_DEP_EXTENSION && true == dep->dest->latest_revision) {
+            lookup.module_name = (char *) dep->dest->name;
+            si = sr_btree_search(dm_ctx->schema_info_tree, &lookup);
+            if (NULL != si && NULL != si->ly_ctx) {
+                rc = dm_lock_schema_info_write(si);
+                CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to lock schema info %s", si->module_name);
+
+                rc = dm_feature_enable_internal(dm_ctx, si, module_name, feature_name, enable);
+                pthread_rwlock_unlock(&si->model_lock);
+                CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to load schema %s", module->filepath);
+            }
+        }
+        ll_node = ll_node->next;
+    }
+
+cleanup:
+    pthread_rwlock_unlock(&dm_ctx->schema_tree_lock);
+    md_ctx_unlock(dm_ctx->md_ctx);
 
     return rc;
 }
