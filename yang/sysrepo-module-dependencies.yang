@@ -72,6 +72,12 @@ module sysrepo-module-dependencies {
        description "TRUE if this module defines any data-carrying elements and not only data types and identities.";
     }
 
+    leaf has-persist {
+       type boolean;
+       default true;
+       description "TRUE if this module has-data is true or the module defines a feature";
+    }
+
     container dependencies {
       description "List of dependencies. Only direct (non-transitive) dependencies are stored in the data file.";
 

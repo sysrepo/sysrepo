@@ -433,6 +433,62 @@ dm_get_schema_info(dm_ctx_t *dm_ctx, const char *module_name, dm_schema_info_t *
     return rc;
 }
 
+static int
+dm_apply_persist_data_for_model(dm_ctx_t *dm_ctx, const char *module_name, dm_schema_info_t *si)
+{
+    CHECK_NULL_ARG3(dm_ctx, module_name, si);
+    char **enabled_subtrees = NULL, **features = NULL;
+    size_t enabled_subtrees_cnt = 0, features_cnt = 0;
+    bool module_enabled = false;
+
+    int rc = SR_ERR_OK;
+    if (NULL == dm_ctx->pm_ctx) {
+        SR_LOG_WRN("Persist manager not initialized, applying of persist data will be skipped for module %s", module_name);
+        return SR_ERR_OK;
+    }
+
+    /* load module's persistent data */
+    rc = pm_get_module_info(dm_ctx->pm_ctx, module_name, NULL, &module_enabled,
+            &enabled_subtrees, &enabled_subtrees_cnt, &features, &features_cnt);
+    if (SR_ERR_OK == rc) {
+        /* enable active features */
+        for (size_t i = 0; i < features_cnt; i++) {
+            rc = dm_feature_enable_internal(dm_ctx, si, module_name, features[i], true);
+            if (SR_ERR_OK != rc) {
+                SR_LOG_WRN("Unable to enable feature '%s' in module '%s' in Data Manager.", features[i], module_name);
+            }
+        }
+
+        if (SR_ERR_OK == rc) {
+            if (module_enabled) {
+                /* enable running datastore for whole module */
+                rc = dm_enable_module_running_internal(dm_ctx, NULL, si, module_name);
+            } else {
+                /* enable running datastore for specified subtrees */
+                for (size_t i = 0; i < enabled_subtrees_cnt; i++) {
+                    rc = dm_enable_module_subtree_running_internal(dm_ctx, NULL, si, module_name, enabled_subtrees[i]);
+                    if (SR_ERR_OK != rc) {
+                        SR_LOG_WRN("Unable to enable subtree '%s' in module '%s' in running ds.", enabled_subtrees[i], module_name);
+                    }
+                }
+            }
+        }
+
+        /* release memory */
+        for (size_t i = 0; i < enabled_subtrees_cnt; i++) {
+            free(enabled_subtrees[i]);
+        }
+        free(enabled_subtrees);
+        for (size_t i = 0; i < features_cnt; i++) {
+            free(features[i]);
+        }
+        free(features);
+    } else if (SR_ERR_DATA_MISSING == rc) {
+        SR_LOG_WRN("Persist file for module %s does not exist.", module_name);
+        rc = SR_ERR_OK;
+    }
+    return rc;
+}
 /**
  * @brief Loads a schema file into the schema_info structure.
  *
@@ -451,9 +507,6 @@ dm_load_schema_file(dm_ctx_t *dm_ctx, const char *schema_filepath, bool append, 
     CHECK_NULL_ARG3(dm_ctx, schema_filepath, schema_info);
     const struct lys_module *module = NULL;
 
-    char **enabled_subtrees = NULL, **features = NULL;
-    size_t enabled_subtrees_cnt = 0, features_cnt = 0;
-    bool module_enabled = false;
     dm_schema_info_t *si = NULL;
     int rc = SR_ERR_OK;
 
@@ -484,43 +537,6 @@ dm_load_schema_file(dm_ctx_t *dm_ctx, const char *schema_filepath, bool append, 
         si->module = module;
     }
 
-    /* load module's persistent data */
-    rc = pm_get_module_info(dm_ctx->pm_ctx, module->name, NULL, &module_enabled,
-            &enabled_subtrees, &enabled_subtrees_cnt, &features, &features_cnt);
-    if (SR_ERR_OK == rc) {
-        /* enable active features */
-        for (size_t i = 0; i < features_cnt; i++) {
-            rc = dm_feature_enable_internal(dm_ctx, si, module->name, features[i], true);
-            if (SR_ERR_OK != rc) {
-                SR_LOG_WRN("Unable to enable feature '%s' in module '%s' in Data Manager.", features[i], module->name);
-            }
-        }
-
-        if (SR_ERR_OK == rc) {
-            if (module_enabled) {
-                /* enable running datastore for whole module */
-                rc = dm_enable_module_running_internal(dm_ctx, NULL, si, module->name);
-            } else {
-                /* enable running datastore for specified subtrees */
-                for (size_t i = 0; i < enabled_subtrees_cnt; i++) {
-                    rc = dm_enable_module_subtree_running_internal(dm_ctx, NULL, si, module->name, enabled_subtrees[i]);
-                    if (SR_ERR_OK != rc) {
-                        SR_LOG_WRN("Unable to enable subtree '%s' in module '%s' in running ds.", enabled_subtrees[i], module->name);
-                    }
-                }
-            }
-        }
-
-        /* release memory */
-        for (size_t i = 0; i < enabled_subtrees_cnt; i++) {
-            free(enabled_subtrees[i]);
-        }
-        free(enabled_subtrees);
-        for (size_t i = 0; i < features_cnt; i++) {
-            free(features[i]);
-        }
-        free(features);
-    }
     *schema_info = si;
     return SR_ERR_OK;
 
@@ -585,6 +601,22 @@ dm_load_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revision, 
         if (dep->type == MD_DEP_DATA) {
             /* mark this module as dependent on data from other modules */
             si->cross_module_data_dependency = true;
+        }
+        ll_node = ll_node->next;
+    }
+
+    /* apply persist data enable features, running datastore */
+    if (module->has_persist) {
+        rc = dm_apply_persist_data_for_model(dm_ctx, module_name, si);
+        CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to apply persist data for module %s", module_name);
+    }
+
+    ll_node = module->deps->first;
+    while (ll_node) {
+        dep = (md_dep_t *)ll_node->data;
+        if (dep->dest->has_persist) {
+            rc = dm_apply_persist_data_for_model(dm_ctx, dep->dest->name, si);
+            CHECK_RC_LOG_GOTO(rc, cleanup, "Failed to apply persist data for module %s", dep->dest->name);
         }
         ll_node = ll_node->next;
     }
@@ -3280,10 +3312,25 @@ dm_install_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revisio
         ll_node = module->deps->first;
         while (ll_node) {
             dep = (md_dep_t *)ll_node->data;
-            if (dep->type == MD_DEP_EXTENSION) {
+            if (dep->type == MD_DEP_EXTENSION || dep->type == MD_DEP_DATA) {
                 /* Note: imports are automatically loaded by libyang */
                 rc = dm_load_schema_file(dm_ctx, dep->dest->filepath, true, &si);
                 CHECK_RC_LOG_GOTO(rc, unlock, "Loading of %s was not successfull", dep->dest->name);
+            }
+            ll_node = ll_node->next;
+        }
+
+        if (module->has_persist) {
+            rc = dm_apply_persist_data_for_model(dm_ctx, module->name, si);
+            CHECK_RC_LOG_GOTO(rc, unlock, "Failed to apply persist data for %s", module->name);
+        }
+
+        ll_node = module->deps->first;
+        while (ll_node) {
+            dep = (md_dep_t *)ll_node->data;
+            if (dep->dest->has_persist) {
+                rc = dm_apply_persist_data_for_model(dm_ctx, dep->dest->name, si);
+                CHECK_RC_LOG_GOTO(rc, unlock, "Failed to apply persist data for %s", dep->dest->name);
             }
             ll_node = ll_node->next;
         }
@@ -3298,6 +3345,11 @@ dm_install_module(dm_ctx_t *dm_ctx, const char *module_name, const char *revisio
                 if (NULL != si_ext && NULL != si_ext->ly_ctx) {
                     rc = dm_load_schema_file(dm_ctx, module->filepath, true, &si_ext);
                     CHECK_RC_LOG_GOTO(rc, unlock, "Failed to load schema %s", module->filepath);
+
+                    if (module->has_persist) {
+                        rc = dm_apply_persist_data_for_model(dm_ctx, module->name, si_ext);
+                        CHECK_RC_LOG_GOTO(rc, unlock, "Failed to apply persist data for %s", module->name);
+                    }
                 }
             }
             ll_node = ll_node->next;

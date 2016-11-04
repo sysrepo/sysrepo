@@ -788,12 +788,15 @@ pm_get_subscriptions(pm_ctx_t *pm_ctx, const char *module_name, Sr__Subscription
 
     /* load the data tree from persist file */
     rc = pm_load_data_tree(pm_ctx, NULL, module_name, true, &data_tree, NULL);
-    CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to load persist data tree for module '%s'.", module_name);
+    if (SR_ERR_DATA_MISSING != rc) {
+        CHECK_RC_LOG_GOTO(rc, cleanup, "Unable to load persist data tree for module '%s' %s.", module_name, sr_strerror(rc));
+    }
 
     if (NULL == data_tree) {
         /* empty data file */
         *subscriptions_p = NULL;
         *subscription_cnt_p = 0;
+        rc = SR_ERR_OK;
         goto cleanup;
     }
 
