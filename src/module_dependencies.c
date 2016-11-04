@@ -1376,11 +1376,12 @@ md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, struct lys_node *
     /* schema traversal (non-recursive DFS post-order on each root) */
     do {
         node = root;
-        if (LYS_GROUPING == node->nodetype) {
-            /* skip grouping */
-            continue;
-        }
         do {
+            /* skip groupings */
+            if (LYS_GROUPING == node->nodetype) {
+                goto next_node;
+            }
+
             /* go as deep as possible */
             if (process_children) {
                 while (!(node->nodetype & (LYS_LEAF | LYS_LEAFLIST | LYS_ANYXML)) && node->child
@@ -1644,7 +1645,7 @@ md_traverse_schema_tree(md_ctx_t *md_ctx, md_module_t *module, struct lys_node *
             if ((LYS_CONFIG_W & node->flags) && parent) {
                 parent->priv = (void *)((intptr_t)parent->priv | PRIV_CFG_SUBTREE);
             }
-
+next_node:
             /* backtracking + automatically moving to the next sibling if there is any */
             if (node != root) {
                 if (node->next && main_module_schema == MD_MAIN_MODULE(node->next)) {

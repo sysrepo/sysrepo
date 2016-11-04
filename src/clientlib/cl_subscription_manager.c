@@ -629,6 +629,7 @@ cl_sm_notif_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *msg)
     sr_session_ctx_t *data_session = NULL;
     Sr__Msg *ack_msg = NULL;
     sr_mem_ctx_t *sr_mem = NULL;
+    const char *errmsg = NULL;
     int rc = SR_ERR_OK, rc_tmp = SR_ERR_OK;
 
     CHECK_NULL_ARG3(sm_ctx, msg, msg->notification);
@@ -663,8 +664,9 @@ cl_sm_notif_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *msg)
                 (msg->notification->has_commit_id ? msg->notification->commit_id : 0),
                 &data_session);
         if (SR_ERR_OK != rc) {
-            pthread_mutex_unlock(&sm_ctx->subscriptions_lock);
-            return rc;
+            errmsg = "Unable to create data session for notification callbacks.";
+            rc = SR_ERR_DISCONNECT;
+            goto ack;
         }
         cl_session_clear_errors(data_session);
     }
@@ -718,6 +720,7 @@ cl_sm_notif_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *msg)
             rc = SR_ERR_INVAL_ARG;
     }
 
+ack:
     /* send notification ACK */
     if ((SR__SUBSCRIPTION_TYPE__MODULE_CHANGE_SUBS == msg->notification->type) ||
             (SR__SUBSCRIPTION_TYPE__SUBTREE_CHANGE_SUBS == msg->notification->type)) {
@@ -727,12 +730,18 @@ cl_sm_notif_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn, Sr__Msg *msg)
         }
         if (SR_ERR_OK == rc_tmp) {
             ack_msg->notification_ack->result = rc;
-            if (SR_ERR_OK != rc && data_session->error_cnt > 0) {
-                /* error info was provided */
-                rc = sr_gpb_fill_error(data_session->error_info->message, data_session->error_info->xpath, sr_mem,
-                        &ack_msg->notification_ack->error);
-                if (SR_ERR_OK != rc) {
+            if (SR_ERR_OK != rc) {
+                if (NULL != data_session && data_session->error_cnt > 0) {
+                    /* error info was provided */
+                    rc_tmp = sr_gpb_fill_error(data_session->error_info->message, data_session->error_info->xpath, sr_mem,
+                            &ack_msg->notification_ack->error);
+                } else if (NULL != errmsg) {
+                    /* internal error message */
+                    rc_tmp = sr_gpb_fill_error(errmsg, NULL, sr_mem, &ack_msg->notification_ack->error);
+                }
+                if (SR_ERR_OK != rc_tmp) {
                     SR_LOG_WRN_MSG("Unable to fill errors into notification ACK message.");
+                    rc_tmp = SR_ERR_OK;
                 }
             }
         }

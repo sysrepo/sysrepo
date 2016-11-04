@@ -1690,6 +1690,8 @@ sr_free_val_content(sr_val_t *value)
     else if (SR_INSTANCEID_T == value->type){
         free(value->data.instanceid_val);
     }
+    value->xpath = NULL;
+    value->data.int64_val = 0;
 }
 
 void

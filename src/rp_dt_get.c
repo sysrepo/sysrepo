@@ -56,8 +56,13 @@ rp_dt_free_state_data_ctx_content (rp_state_data_ctx_t *state_data)
         sr_list_cleanup(state_data->subscription_nodes);
         state_data->subscription_nodes = NULL;
 
-        sr_list_cleanup(state_data->requested_xpaths);
-        state_data->requested_xpaths = NULL;
+        if (NULL != state_data->requested_xpaths) {
+            for (size_t i = 0; i < state_data->requested_xpaths->count; i++) {
+                free(state_data->requested_xpaths->data[i]);
+            }
+            sr_list_cleanup(state_data->requested_xpaths);
+            state_data->requested_xpaths = NULL;
+        }
     }
 }
 
