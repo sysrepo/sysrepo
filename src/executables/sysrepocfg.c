@@ -656,12 +656,9 @@ srcfg_import_datastore(struct ly_ctx *ly_ctx, int fd_in, md_module_t *module, sr
         goto cleanup;
     }
 
-    /* discard previously un-commited changes and refresh the session */
+    /* discard previously un-commited changes (and clear the data-store cache) */
     rc = sr_discard_changes(srcfg_session);
     CHECK_RC_LOG_GOTO(rc, cleanup, "Error by sr_session_discard: %s", sr_strerror(rc));
-
-    rc = sr_session_refresh(srcfg_session);
-    CHECK_RC_LOG_GOTO(rc, cleanup, "Error by sr_session_refresh: %s", sr_strerror(rc));
 
     /* get data trees of data-dependant modules */
     rc = srcfg_get_data_deps(ly_ctx, module, &deps_dt);
