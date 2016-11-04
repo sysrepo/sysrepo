@@ -543,6 +543,14 @@ struct lys_node * sr_find_schema_node(const struct lys_node *node, const char *e
  * @param [in] mode Specifies the mode for any newly created directory.
  */
 int sr_mkdir_recursive(const char *path, mode_t mode);
+
+/**
+ * @brief Returns true if the passed module defines any data-carrying elements and not only data types and identities.
+ *
+ * @param [in] module
+ */
+bool sr_lys_module_has_data(const struct lys_module *module);
+
 /**@} utils */
 
 #endif /* SR_UTILS_H_ */
