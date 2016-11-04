@@ -839,6 +839,16 @@ srctl_data_install(const struct lys_module *module, const char *owner, const cha
         }
     } else {
         printf("Skipping installation of data files for module '%s'...\n", module->name);
+        if (module->features_size > 0) {
+            char path[PATH_MAX] = { 0, };
+            /* install only persist file */
+            snprintf(path, PATH_MAX, "%s%s%s", srctl_data_search_dir, module->name, SR_PERSIST_FILE_EXT);
+            ret = srctl_file_create(path, NULL);
+            if (0 != ret) {
+                rc = SR_ERR_INTERNAL;
+                goto fail;
+            }
+        }
     }
 
     /* install data files for imported module */

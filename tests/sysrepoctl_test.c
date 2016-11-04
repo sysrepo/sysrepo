@@ -158,7 +158,8 @@ sysrepoctl_test_install(void **state)
     test_file_exists(TEST_DATA_SEARCH_DIR "ietf-ip.running", false);
     test_file_exists(TEST_DATA_SEARCH_DIR "ietf-ip.running.lock", false);
     test_file_exists(TEST_DATA_SEARCH_DIR "ietf-ip.candidate.lock", false);
-    test_file_exists(TEST_DATA_SEARCH_DIR "ietf-ip.persist", false);
+    /* since file contains feature definition persist file is created */
+    test_file_exists(TEST_DATA_SEARCH_DIR "ietf-ip.persist", true);
 
     /* auto install dependencies (ietf-interfaces) */
     test_file_exists(TEST_SCHEMA_SEARCH_DIR "ietf-interfaces@2014-05-08.yang", true);
@@ -318,7 +319,8 @@ sysrepoctl_test_init(void **state)
     test_file_exists(TEST_DATA_SEARCH_DIR "ietf-ip.running", false);
     test_file_exists(TEST_DATA_SEARCH_DIR "ietf-ip.running.lock", false);
     test_file_exists(TEST_DATA_SEARCH_DIR "ietf-ip.candidate.lock", false);
-    test_file_exists(TEST_DATA_SEARCH_DIR "ietf-ip.persist", false);
+    /* since file contains feature definition persist file is created */
+    test_file_exists(TEST_DATA_SEARCH_DIR "ietf-ip.persist", true);
 
     /* ... but permissions for dependencies should change */
     mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH;
