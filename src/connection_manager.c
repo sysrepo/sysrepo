@@ -265,6 +265,8 @@ static void
 cm_delayed_request_cb(struct ev_loop *loop, ev_timer *w, int revents)
 {
     cm_delayed_request_ctx_t *req = NULL, *prev = NULL;
+    sm_session_t *sm_session = NULL;
+    bool ignore = false;
     int rc = SR_ERR_OK;
 
     CHECK_NULL_ARG_VOID2(w, w->data);
@@ -272,11 +274,24 @@ cm_delayed_request_cb(struct ev_loop *loop, ev_timer *w, int revents)
 
     CHECK_NULL_ARG_VOID3(req, req->cm_ctx, req->msg);
 
-    rc = rp_msg_process(req->cm_ctx->rp_ctx, (NULL != req->session ? req->session->rp_session : NULL), req->msg);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_WRN_MSG("Unable to send the delayed request to the Request Processor.");
-    } else {
-        SR_LOG_DBG_MSG("Delayed request sent to the Request Processor.");
+    if (NULL != req->session) {
+        /* check if the session is still active */
+        rc = sm_session_find_id(req->cm_ctx->sm_ctx, req->msg->session_id, &sm_session);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_DBG("Unable to find session context for delayed request with session id=%"PRIu32", "
+                    "ignoring the request.", req->msg->session_id);
+            ignore = true;
+        }
+    }
+
+    if (!ignore) {
+        /* send the request to Request processor */
+        rc = rp_msg_process(req->cm_ctx->rp_ctx, (NULL != req->session ? req->session->rp_session : NULL), req->msg);
+        if (SR_ERR_OK != rc) {
+            SR_LOG_WRN_MSG("Unable to send the delayed request to the Request Processor.");
+        } else {
+            SR_LOG_DBG_MSG("Delayed request sent to the Request Processor.");
+        }
     }
 
     /* remove the request from linked list */
@@ -292,6 +307,9 @@ cm_delayed_request_cb(struct ev_loop *loop, ev_timer *w, int revents)
         }
     }
 
+    if (ignore) {
+        sr_msg_free(req->msg);
+    }
     free(req);
 }
 
