@@ -942,6 +942,10 @@ int sr_commit(sr_session_ctx_t *session);
 /**
  * @brief Discard non-committed changes made in current session.
  *
+ * @note Since the function effectively clears all the cached data within the session,
+ * the next operation will operate on fresh data loaded from the datastore
+ * (i.e. no need to call ::sr_session_refresh afterwards).
+ *
  * @param[in] session Session context acquired with ::sr_session_start call.
  *
  * @return Error code (SR_ERR_OK on success).

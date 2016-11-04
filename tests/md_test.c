@@ -495,7 +495,34 @@ static const char * const md_module_X_body =
 "  container container-7 {\n"
 "    uses config-data;\n"
 "    uses mixed-data;\n"
-"  }\n";
+"  }\n"
+"  \n"
+"  container container-8 {\n"
+"    grouping nested-mixed-data {\n"
+"      leaf cfg-property {\n"
+"        type string;\n"
+"      }\n"
+"      container sensors {\n"
+"        config false;\n"
+"        leaf temperature {\n"
+"         type int8;\n"
+"        }\n"
+"        leaf humidity {\n"
+"         type int8;\n"
+"        }\n"
+"      }\n"
+"    }\n"
+"  \n"
+"    container nested-container1 {\n"
+"      uses nested-mixed-data;\n"
+"    }\n"
+"  \n"
+"    container nested-container2 {\n"
+"      uses nested-mixed-data;\n"
+"    }\n"
+"  }";
+
+
 
 static md_test_dep_t *
 md_test_dep(md_dep_type_t type, int is_direct, ...)
@@ -1772,7 +1799,7 @@ md_test_grouping_and_uses(void **state)
     assert_int_equal(SR_ERR_OK, rc);
 
     /* validate op_data_subtrees */
-    check_list_size(module->op_data_subtrees, 12);
+    check_list_size(module->op_data_subtrees, 14);
     validate_subtree_ref(md_ctx, module->op_data_subtrees, "/" TEST_MODULE_PREFIX "X:container-1/sensors", "X");
     validate_subtree_ref(md_ctx, module->op_data_subtrees, "/" TEST_MODULE_PREFIX "X:container-2", "X");
     validate_subtree_ref(md_ctx, module->op_data_subtrees, "/" TEST_MODULE_PREFIX "X:container-3/state-data1", "X");
@@ -1785,6 +1812,8 @@ md_test_grouping_and_uses(void **state)
     validate_subtree_ref(md_ctx, module->op_data_subtrees, "/" TEST_MODULE_PREFIX "X:container-6/state-data3", "X");
     validate_subtree_ref(md_ctx, module->op_data_subtrees, "/" TEST_MODULE_PREFIX "X:container-6/sensors", "X");
     validate_subtree_ref(md_ctx, module->op_data_subtrees, "/" TEST_MODULE_PREFIX "X:container-7/state-data", "X");
+    validate_subtree_ref(md_ctx, module->op_data_subtrees, "/" TEST_MODULE_PREFIX "X:container-8/nested-container1/sensors", "X");
+    validate_subtree_ref(md_ctx, module->op_data_subtrees, "/" TEST_MODULE_PREFIX "X:container-8/nested-container2/sensors", "X");
 
     /* destroy context */
     md_destroy(md_ctx);

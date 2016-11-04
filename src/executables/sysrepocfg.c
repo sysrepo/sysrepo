@@ -240,10 +240,7 @@ srcfg_get_module_data(struct ly_ctx *ly_ctx, md_module_t *module, struct lyd_nod
 
     snprintf(query, PATH_MAX, "/%s:*//.", module->name);
     rc = sr_get_items_iter(srcfg_session, query, &iter);
-    if (SR_ERR_OK != rc) {
-        SR_LOG_ERR("Error by sr_get_items_iter: %s", sr_strerror(rc));
-        goto cleanup;
-    }
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Error by sr_get_items_iter: %s", sr_strerror(rc));
 
     *data_tree = NULL;
     ly_errno = LY_SUCCESS;
@@ -509,7 +506,10 @@ srcfg_convert_lydiff_created(struct lyd_node *node)
                                     *delim = '\0';
                                 }
                                 /* set type to SR_UNKNOWN_T in order to pass NULL to sr_set_item when a list is created */
-                                value.type = SR_UNKNOWN_T;
+                                if (SR_UNKNOWN_T != value.type) {
+                                    sr_free_val_content(&value);
+                                    value.type = SR_UNKNOWN_T;
+                                }
                                 goto set_value;
                             } else {
                                 /* create list instance (directly) only once - with the first key */
@@ -567,6 +567,10 @@ set_value:
             SR_LOG_ERR("Error returned from sr_set_item: %s.", sr_strerror(rc));
             goto cleanup;
         }
+        if (SR_UNKNOWN_T != value.type) {
+            sr_free_val_content(&value);
+            value.type = SR_UNKNOWN_T;
+        }
 
 next_node:
         /* backtracking + automatically moving to the next sibling if there is any */
@@ -590,7 +594,9 @@ cleanup:
     if (NULL != xpath) {
         free(xpath);
     }
-    sr_free_val_content(&value);
+    if (SR_UNKNOWN_T != value.type) {
+        sr_free_val_content(&value);
+    }
     return rc;
 }
 
@@ -649,6 +655,10 @@ srcfg_import_datastore(struct ly_ctx *ly_ctx, int fd_in, md_module_t *module, sr
         SR_LOG_ERR("Unable to parse the input data: %s (%s)", ly_errmsg(), ly_errpath());
         goto cleanup;
     }
+
+    /* discard previously un-commited changes (and clear the data-store cache) */
+    rc = sr_discard_changes(srcfg_session);
+    CHECK_RC_LOG_GOTO(rc, cleanup, "Error by sr_session_discard: %s", sr_strerror(rc));
 
     /* get data trees of data-dependant modules */
     rc = srcfg_get_data_deps(ly_ctx, module, &deps_dt);
