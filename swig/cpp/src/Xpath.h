@@ -51,7 +51,7 @@ public:
     char *key_value_idx(char *xpath, size_t node_index, size_t key_index) {
                         return sr_xpath_key_value_idx(xpath, node_index, key_index, _state);};
     char *last_node(char *xpath) {return sr_xpath_last_node(xpath, _state);};
-    char *node_name(const char *xpath) {return sr_xpath_node_name(xpath);};
+    char *node_name(const char *xpath) {return sr_xpath_last_node_str(xpath);};
     void recover() {return sr_xpath_recover(_state);};
 
 private:

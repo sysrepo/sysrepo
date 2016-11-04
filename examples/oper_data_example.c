@@ -37,13 +37,12 @@ static int
 data_provider_cb(const char *xpath, sr_val_t **values, size_t *values_cnt, void *private_ctx)
 {
     sr_val_t *v = NULL;
-    char xpath_buf[PATH_MAX] = { 0, };
     sr_xpath_ctx_t xp_ctx = {0};
     int rc = SR_ERR_OK;
 
     printf("Data for '%s' requested.\n", xpath);
 
-    if (0 == strcmp(sr_xpath_node_name(xpath), "interface")) {
+    if (sr_xpath_last_node_str_eq(xpath, "interface")) {
         /* return all 'interface' list instances with their details */
 
         /* allocate space for data to return */
@@ -53,24 +52,20 @@ data_provider_cb(const char *xpath, sr_val_t **values, size_t *values_cnt, void 
         }
 
         sr_val_set_xpath(&v[0], "/ietf-interfaces:interfaces-state/interface[name='eth0']/type");
-        v[0].type = SR_IDENTITYREF_T;
-        sr_val_set_string(&v[0], "ethernetCsmacd");
+        sr_val_set_str_data(&v[0], SR_IDENTITYREF_T, "ethernetCsmacd");
 
         sr_val_set_xpath(&v[1], "/ietf-interfaces:interfaces-state/interface[name='eth0']/oper-status");
-        v[1].type = SR_ENUM_T;
-        sr_val_set_string(&v[1], "down");
+        sr_val_set_str_data(&v[1], SR_ENUM_T, "down");
 
         sr_val_set_xpath(&v[2], "/ietf-interfaces:interfaces-state/interface[name='eth1']/type");
-        v[2].type = SR_IDENTITYREF_T;
-        sr_val_set_string(&v[2], "ethernetCsmacd");
+        sr_val_set_str_data(&v[2], SR_IDENTITYREF_T, "ethernetCsmacd");
 
         sr_val_set_xpath(&v[3], "/ietf-interfaces:interfaces-state/interface[name='eth1']/oper-status");
-        v[3].type = SR_ENUM_T;
-        sr_val_set_string(&v[3], "up");
+        sr_val_set_str_data(&v[3], SR_ENUM_T, "up");
 
         *values = v;
         *values_cnt = 4;
-    } else if (0 == strcmp(sr_xpath_node_name(xpath), "statistics")) {
+    } else if (sr_xpath_last_node_str_eq(xpath, "statistics")) {
         /* return contents of 'statistics' NESTED container for the given list instance */
 
         /* allocate space for data to return */
@@ -79,16 +74,15 @@ data_provider_cb(const char *xpath, sr_val_t **values, size_t *values_cnt, void 
             return rc;
         }
 
-        snprintf(xpath_buf, PATH_MAX, "%s/%s", xpath, "discontinuity-time");
-        sr_val_set_xpath(&v[0], xpath_buf);
-        v[0].type = SR_STRING_T;
+        sr_val_build_xpath(&v[0], "%s/%s", xpath, "discontinuity-time");
 
         /* just return something different for eth0 and eth1 */
-        if (0 == strcmp(sr_xpath_key_value(xpath_buf, "interface", "name", &xp_ctx), "eth0")) {
-            sr_val_set_string(&v[0], "1987-08-31T17:00:30.44Z");
+        if (0 == strcmp(sr_xpath_key_value((char*)xpath, "interface", "name", &xp_ctx), "eth0")) {
+            sr_val_set_str_data(&v[0], SR_STRING_T, "1987-08-31T17:00:30.44Z");
         } else {
-            sr_val_set_string(&v[0], "2016-10-06T15:12:50.52Z");
+            sr_val_set_str_data(&v[0], SR_STRING_T, "2016-10-06T15:12:50.52Z");
         }
+        sr_xpath_recover(&xp_ctx); /* we modified const string! - let's recover it */
 
         *values = v;
         *values_cnt = 1;

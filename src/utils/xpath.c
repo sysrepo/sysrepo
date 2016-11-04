@@ -536,14 +536,28 @@ void sr_xpath_recover(sr_xpath_ctx_t *state)
 }
 
 char *
-sr_xpath_node_name(const char *xpath)
+sr_xpath_last_node_str(const char *xpath)
 {
     char *res = NULL;
     if (NULL != xpath) {
         res = rindex(xpath, '/');
-        if (NULL != res){
+        if (NULL != res) {
             res++;
         }
     }
     return res;
+}
+
+bool
+sr_xpath_last_node_str_eq(const char *xpath, const char *node_name)
+{
+    char *xp_node_name = NULL;
+
+    xp_node_name = sr_xpath_last_node_str(xpath);
+
+    if (NULL == xp_node_name || NULL == node_name) {
+        return false;
+    } else {
+        return (0 == strcmp(xp_node_name, node_name));
+    }
 }

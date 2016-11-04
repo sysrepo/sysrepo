@@ -413,7 +413,7 @@ cl_dp_traffic_stats(const char *xpath, sr_val_t **values, size_t *values_cnt, vo
         (*values)[4].type = SR_UINT32_T;
         (*values)[4].data.uint32_val = 15;
         *values_cnt = 5;
-    } else if (0 == strncmp("traffic_light", sr_xpath_node_name(xpath), strlen("traffic_light"))) {
+    } else if (0 == strncmp("traffic_light", sr_xpath_last_node_str(xpath), strlen("traffic_light"))) {
         char xp[MAX_LEN] = {0};
         const char *colors[] = {"red", "orange", "green"};
         sr_xpath_ctx_t xp_ctx = {0};
@@ -443,7 +443,7 @@ cl_dp_traffic_stats(const char *xpath, sr_val_t **values, size_t *values_cnt, vo
             (*values)[i].data.enum_val = strdup(colors[(cr_index + i)%3]);
         }
         *values_cnt = 3;
-    } else if (0 == strncmp("advanced_info", sr_xpath_node_name(xpath), strlen("advanced_info"))) {
+    } else if (0 == strncmp("advanced_info", sr_xpath_last_node_str(xpath), strlen("advanced_info"))) {
         char xp[MAX_LEN] = {0};
         sr_xpath_ctx_t xp_ctx = {0};
         char *cross_road_id = NULL;
@@ -470,14 +470,12 @@ cl_dp_traffic_stats(const char *xpath, sr_val_t **values, size_t *values_cnt, vo
         }
 
         snprintf(xp, MAX_LEN, "%s/latitude", xpath);
-        (*values)[0].type = SR_STRING_T;
         sr_val_set_xpath(&(*values)[0], xp);
-        sr_val_set_string(&(*values)[0], "48.729885N");
+        sr_val_set_str_data(&(*values)[0], SR_STRING_T, "48.729885N");
 
         snprintf(xp, MAX_LEN, "%s/longitude", xpath);
-        (*values)[1].type = SR_STRING_T;
         sr_val_set_xpath(&(*values)[1], xp);
-        sr_val_set_string(&(*values)[1], "19.137425E");
+        sr_val_set_str_data(&(*values)[1], SR_STRING_T, "19.137425E");
     }
     else {
         *values = NULL;

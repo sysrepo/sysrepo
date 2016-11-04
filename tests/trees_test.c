@@ -227,7 +227,7 @@ sr_node_set_module_test(void **state)
 }
 
 static void
-sr_node_set_string_test(void **state)
+sr_node_set_str_data_test(void **state)
 {
     int rc = 0;
     sr_node_t *tree = NULL;
@@ -236,36 +236,30 @@ sr_node_set_string_test(void **state)
     assert_int_equal(SR_ERR_OK, rc);
     assert_null(tree->data.string_val);
 
-    rc = sr_node_set_string(tree, "string value");
+    rc = sr_node_set_str_data(tree, SR_UINT32_T, "string value");
     assert_int_equal(SR_ERR_INVAL_ARG, rc);
 
-    tree->type = SR_STRING_T;
-    rc = sr_node_set_string(tree, "string value");
+    rc = sr_node_set_str_data(tree, SR_STRING_T, "string value");
     assert_int_equal(SR_ERR_OK, rc);
     assert_string_equal("string value", tree->data.string_val);
 
-    tree->type = SR_BINARY_T;
-    rc = sr_node_set_string(tree, "binary value");
+    rc = sr_node_set_str_data(tree, SR_BINARY_T, "binary value");
     assert_int_equal(SR_ERR_OK, rc);
     assert_string_equal("binary value", tree->data.binary_val);
 
-    tree->type = SR_ENUM_T;
-    rc = sr_node_set_string(tree, "enum value");
+    rc = sr_node_set_str_data(tree, SR_ENUM_T, "enum value");
     assert_int_equal(SR_ERR_OK, rc);
     assert_string_equal("enum value", tree->data.enum_val);
 
-    tree->type = SR_BITS_T;
-    rc = sr_node_set_string(tree, "bits");
+    rc = sr_node_set_str_data(tree, SR_BITS_T, "bits");
     assert_int_equal(SR_ERR_OK, rc);
     assert_string_equal("bits", tree->data.bits_val);
 
-    tree->type = SR_IDENTITYREF_T;
-    rc = sr_node_set_string(tree, "identityref value");
+    rc = sr_node_set_str_data(tree, SR_IDENTITYREF_T, "identityref value");
     assert_int_equal(SR_ERR_OK, rc);
     assert_string_equal("identityref value", tree->data.identityref_val);
 
-    tree->type = SR_INSTANCEID_T;
-    rc = sr_node_set_string(tree, "instance ID");
+    rc = sr_node_set_str_data(tree, SR_INSTANCEID_T, "instance ID");
     assert_int_equal(SR_ERR_OK, rc);
     assert_string_equal("instance ID", tree->data.instanceid_val);
 
@@ -309,9 +303,8 @@ create_example_module_trees(size_t *tree_cnt)
         /* /example_module:container/list[key1="key1-i"][key2="key2-i"]/key1 */
         rc = sr_node_add_child(node, "key1", NULL, &leaf);
         assert_int_equal(SR_ERR_OK, rc);
-        leaf->type = SR_STRING_T;
         snprintf(value, 10, "key1-%d", i);
-        rc = sr_node_set_string(leaf, value);
+        rc = sr_node_set_str_data(leaf, SR_STRING_T, value);
         assert_int_equal(SR_ERR_OK, rc);
         assert_ptr_equal(node, leaf->parent);
         assert_null(leaf->prev);
@@ -323,9 +316,8 @@ create_example_module_trees(size_t *tree_cnt)
         /* /example_module:container/list[key1="key1-i"][key2="key2-i"]/key2 */
         rc = sr_node_add_child(node, "key2", NULL, &leaf);
         assert_int_equal(SR_ERR_OK, rc);
-        leaf->type = SR_STRING_T;
         snprintf(value, 10, "key2-%d", i);
-        rc = sr_node_set_string(leaf, value);
+        rc = sr_node_set_str_data(leaf, SR_STRING_T, value);
         assert_int_equal(SR_ERR_OK, rc);
         assert_ptr_equal(node, leaf->parent);
         assert_ptr_equal(get_child_by_index(node, 0), leaf->prev);
@@ -338,9 +330,8 @@ create_example_module_trees(size_t *tree_cnt)
         /* /example_module:container/list[key1="key1-i"][key2="key2-i"]/leaf (="leaf-i") */
         rc = sr_node_add_child(node, "leaf", NULL, &leaf);
         assert_int_equal(SR_ERR_OK, rc);
-        leaf->type = SR_STRING_T;
         snprintf(value, 10, "leaf-%d", i);
-        rc = sr_node_set_string(leaf, value);
+        rc = sr_node_set_str_data(leaf, SR_STRING_T, value);
         assert_int_equal(SR_ERR_OK, rc);
         assert_ptr_equal(node, leaf->parent);
         assert_ptr_equal(get_child_by_index(node, 1), leaf->prev);
@@ -708,8 +699,7 @@ sr_print_tree_test(void **state)
     node->type = SR_BOOL_T;
     node->data.bool_val = true;
     assert_int_equal(SR_ERR_OK, sr_node_add_child(tree, "root-child2", NULL, &node));
-    node->type = SR_STRING_T;
-    assert_int_equal(SR_ERR_OK, sr_node_set_string(node, "string value"));
+    assert_int_equal(SR_ERR_OK, sr_node_set_str_data(node, SR_STRING_T, "string value"));
     assert_int_equal(SR_ERR_OK, sr_node_add_child(tree, "root-child3", NULL, &node));
     node->type = SR_LIST_T;
 
@@ -778,12 +768,10 @@ sr_print_tree_test(void **state)
     /* 4 levels */
     node = tree->first_child->first_child;
     assert_int_equal(SR_ERR_OK, sr_node_add_child(node, "a1", NULL, &node));
-    node->type = SR_STRING_T;
-    assert_int_equal(SR_ERR_OK, sr_node_set_string(node, "abc"));
+    assert_int_equal(SR_ERR_OK, sr_node_set_str_data(node, SR_STRING_T, "abc"));
     node = node->parent;
     assert_int_equal(SR_ERR_OK, sr_node_add_child(node, "a2", NULL, &node));
-    node->type = SR_STRING_T;
-    assert_int_equal(SR_ERR_OK, sr_node_set_string(node, "def"));
+    assert_int_equal(SR_ERR_OK, sr_node_set_str_data(node, SR_STRING_T, "def"));
     node = node->parent->next->next;
     assert_int_equal(SR_ERR_OK, sr_node_add_child(node, "c1", NULL, &node));
     node->type = SR_BOOL_T;
@@ -997,7 +985,7 @@ main() {
         cmocka_unit_test(sr_new_trees_test),
         cmocka_unit_test(sr_node_set_name_test),
         cmocka_unit_test(sr_node_set_module_test),
-        cmocka_unit_test(sr_node_set_string_test),
+        cmocka_unit_test(sr_node_set_str_data_test),
         cmocka_unit_test(sr_node_add_child_test),
         cmocka_unit_test(sr_dup_tree_test),
         cmocka_unit_test(sr_dup_trees_test),

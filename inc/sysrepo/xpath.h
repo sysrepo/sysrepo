@@ -22,6 +22,8 @@
 #ifndef SYSREPO_XPATH_H_
 #define SYSREPO_XPATH_H_
 
+#include <stdbool.h>
+
 /**
  * @defgroup xpath_utils XPath Processing Utilities
  * @{
@@ -190,11 +192,24 @@ char *sr_xpath_key_value_idx(char *xpath, size_t node_index, size_t key_index, s
 char *sr_xpath_last_node(char *xpath, sr_xpath_ctx_t *state);
 
 /**
- * @brief Pointer to the string after last slash.
+ * @brief Pointer to the string after the last slash.
+ *
+ * @note In case that the last node is a list, the returned string also contains the keys.
+ *
  * @param [in] xpath
  * @return Result, NULL in case of the slash was not found
  */
-char *sr_xpath_node_name(const char *xpath);
+char *sr_xpath_last_node_str(const char *xpath);
+
+/**
+ * @brief Compares node name from xpath (the string after the last slash) with provided one.
+ *
+ * @note In case that the last node is a list, it also compares values of the keys.
+ *
+ * @param [in] xpath
+ * @return true in case that the Node names are equal, false otherwise
+ */
+bool sr_xpath_last_node_str_eq(const char *xpath, const char *node_name);
 
 /**
  * @brief Function puts back the character that was replaced by termination zero.

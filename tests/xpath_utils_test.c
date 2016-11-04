@@ -22,6 +22,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
+#include <stdbool.h>
 #include <sys/socket.h>
 #include <setjmp.h>
 #include <cmocka.h>
@@ -504,7 +505,6 @@ sr_xpath_key_value_idx_test (void **st)
 
 }
 
-
 static void
 sr_xpath_last_node_test (void **st)
 {
@@ -528,18 +528,35 @@ sr_xpath_last_node_test (void **st)
 }
 
 static void
-sr_xpath_node_name_test (void **st)
+sr_xpath_last_node_str_test (void **st)
 {
     char *res = NULL;
 
-    res = sr_xpath_node_name("/example-module:container/list[key1='keyA'][key2='keyB']/leaf");
+    res = sr_xpath_last_node_str("/example-module:container/list[key1='keyA'][key2='keyB']/leaf");
     assert_non_null(res);
     assert_string_equal("leaf", res);
 
-    res = sr_xpath_node_name("/example-module:container/list[key1='keyA'][key2='keyB']");
+    res = sr_xpath_last_node_str("/example-module:container/list[key1='keyA'][key2='keyB']");
     assert_non_null(res);
     assert_string_equal("list[key1='keyA'][key2='keyB']", res);
+}
 
+static void
+sr_xpath_last_node_str_eq_test (void **st)
+{
+    bool res = false;
+
+    res = sr_xpath_last_node_str_eq("/example-module:container/list[key1='keyA'][key2='keyB']/leaf", "leaf");
+    assert_true(res);
+
+    res = sr_xpath_last_node_str_eq("/example-module:container/list[key1='keyA'][key2='keyB']/leaf", "/leaf");
+    assert_false(res);
+
+    res = sr_xpath_last_node_str_eq("/example-module:container/list[key1='keyA'][key2='keyB']", "list[key1='keyA'][key2='keyB']");
+    assert_true(res);
+
+    res = sr_xpath_last_node_str_eq("/example-module:container/list[key1='keyA'][key2='keyB']", "list");
+    assert_false(res);
 }
 
 int
@@ -558,7 +575,8 @@ main() {
         cmocka_unit_test(sr_xpath_key_value_test),
         cmocka_unit_test(sr_xpath_key_value_idx_test),
         cmocka_unit_test(sr_xpath_last_node_test),
-        cmocka_unit_test(sr_xpath_node_name_test),
+        cmocka_unit_test(sr_xpath_last_node_str_test),
+        cmocka_unit_test(sr_xpath_last_node_str_eq_test),
         cmocka_unit_test(sr_xpath_with_augments_test),
     };
 

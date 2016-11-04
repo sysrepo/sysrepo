@@ -128,7 +128,7 @@ Val::Val(const char *value, sr_type_t type) {
 
     if (type == SR_BINARY_T || type == SR_BITS_T || type == SR_ENUM_T || type == SR_IDENTITYREF_T || \
         type == SR_INSTANCEID_T || type == SR_STRING_T) {
-        ret = sr_val_set_string(val, value);
+        ret = sr_val_set_str_data(val, type, value);
         if (ret != SR_ERR_OK)
             throw_exception(ret);
     } else if (value != NULL && ( type != SR_LIST_T && type != SR_CONTAINER_T && type != SR_CONTAINER_PRESENCE_T &&\
@@ -334,7 +334,7 @@ void Val::set(const char *xpath, const char *value, sr_type_t type) {
 
     if (type == SR_BINARY_T || type == SR_BITS_T || type == SR_ENUM_T || type == SR_IDENTITYREF_T || \
         type == SR_INSTANCEID_T || type == SR_STRING_T) {
-        ret = sr_val_set_string(_val, value);
+        ret = sr_val_set_str_data(_val, type, value);
         if (ret != SR_ERR_OK)
             throw_exception(ret);
     } else if (value != NULL && ( type != SR_LIST_T && type != SR_CONTAINER_T && type != SR_CONTAINER_PRESENCE_T &&\

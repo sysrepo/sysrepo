@@ -146,7 +146,30 @@ sr_val_set_xpath_test(void **state)
 }
 
 static void
-sr_val_set_string_test(void **state)
+sr_val_build_xpath_test(void **state)
+{
+    int rc = 0;
+    sr_val_t *values = NULL;
+    char xpath[PATH_MAX] = { 0, };
+
+    rc = sr_new_values(10, &values);
+    assert_int_equal(SR_ERR_OK, rc);
+    for (int i = 0; i < 10; ++i) {
+        assert_null(values[i].xpath);
+        snprintf(xpath, PATH_MAX, XPATH_TEMPLATE1, i, i);
+        rc = sr_val_build_xpath(values + i, XPATH_TEMPLATE1, i, i);
+        assert_int_equal(SR_ERR_OK, rc);
+        assert_string_equal(xpath, values[i].xpath);
+        snprintf(xpath, PATH_MAX, XPATH_TEMPLATE2, i);
+        rc = sr_val_build_xpath(values + i, xpath, i);
+        assert_int_equal(SR_ERR_OK, rc);
+        assert_string_equal(xpath, values[i].xpath);
+    }
+    sr_free_values(values, 10);
+}
+
+static void
+sr_val_set_str_data_test(void **state)
 {
     int rc = 0;
     sr_val_t *value = NULL;
@@ -155,36 +178,30 @@ sr_val_set_string_test(void **state)
     assert_int_equal(SR_ERR_OK, rc);
     assert_null(value->data.string_val);
 
-    rc = sr_val_set_string(value, "string value");
+    rc = sr_val_set_str_data(value, SR_UINT32_T, "string value");
     assert_int_equal(SR_ERR_INVAL_ARG, rc);
 
-    value->type = SR_STRING_T;
-    rc = sr_val_set_string(value, "string value");
+    rc = sr_val_set_str_data(value, SR_STRING_T, "string value");
     assert_int_equal(SR_ERR_OK, rc);
     assert_string_equal("string value", value->data.string_val);
 
-    value->type = SR_BINARY_T;
-    rc = sr_val_set_string(value, "binary value");
+    rc = sr_val_set_str_data(value, SR_BINARY_T, "binary value");
     assert_int_equal(SR_ERR_OK, rc);
     assert_string_equal("binary value", value->data.binary_val);
 
-    value->type = SR_ENUM_T;
-    rc = sr_val_set_string(value, "enum value");
+    rc = sr_val_set_str_data(value, SR_ENUM_T, "enum value");
     assert_int_equal(SR_ERR_OK, rc);
     assert_string_equal("enum value", value->data.enum_val);
 
-    value->type = SR_BITS_T;
-    rc = sr_val_set_string(value, "bits");
+    rc = sr_val_set_str_data(value, SR_BITS_T, "bits");
     assert_int_equal(SR_ERR_OK, rc);
     assert_string_equal("bits", value->data.bits_val);
 
-    value->type = SR_IDENTITYREF_T;
-    rc = sr_val_set_string(value, "identityref value");
+    rc = sr_val_set_str_data(value, SR_IDENTITYREF_T, "identityref value");
     assert_int_equal(SR_ERR_OK, rc);
     assert_string_equal("identityref value", value->data.identityref_val);
 
-    value->type = SR_INSTANCEID_T;
-    rc = sr_val_set_string(value, "instance ID");
+    rc = sr_val_set_str_data(value, SR_INSTANCEID_T, "instance ID");
     assert_int_equal(SR_ERR_OK, rc);
     assert_string_equal("instance ID", value->data.instanceid_val);
 
@@ -199,8 +216,7 @@ sr_dup_val_test(void **state)
 
     /* create a new value using the API */
     rc = sr_new_val(NULL, &value);
-    value->type = SR_STRING_T;
-    rc = sr_val_set_string(value, "string value");
+    rc = sr_val_set_str_data(value, SR_STRING_T, "string value");
     assert_int_equal(SR_ERR_OK, rc);
     rc = sr_val_set_xpath(value, XPATH1);
     assert_int_equal(SR_ERR_OK, rc);
@@ -245,7 +261,7 @@ sr_dup_val_test(void **state)
     sr_free_val(value_dup);
 
     /* change string and duplicate */
-    rc = sr_val_set_string(value, "string value2");
+    rc = sr_val_set_str_data(value, SR_STRING_T, "string value2");
     assert_int_equal(SR_ERR_OK, rc);
     rc = sr_dup_val(value, &value_dup);
     assert_int_equal(SR_ERR_OK, rc);
@@ -307,9 +323,8 @@ sr_dup_values_test(void **state)
         snprintf(xpath, PATH_MAX, XPATH_TEMPLATE1, i, i);
         rc = sr_val_set_xpath(values + i, xpath);
         assert_int_equal(SR_ERR_OK, rc);
-        values[i].type = SR_STRING_T;
         snprintf(string_val, 10, "%d", i);
-        rc = sr_val_set_string(values + i, string_val);
+        rc = sr_val_set_str_data(values + i, SR_STRING_T, string_val);
         assert_int_equal(SR_ERR_OK, rc);
     }
 
@@ -425,7 +440,8 @@ main() {
         cmocka_unit_test(sr_new_val_test),
         cmocka_unit_test(sr_new_values_test),
         cmocka_unit_test(sr_val_set_xpath_test),
-        cmocka_unit_test(sr_val_set_string_test),
+        cmocka_unit_test(sr_val_build_xpath_test),
+        cmocka_unit_test(sr_val_set_str_data_test),
         cmocka_unit_test(sr_dup_val_test),
         cmocka_unit_test(sr_dup_values_test)
     };

@@ -114,9 +114,9 @@ void Tree::set_module(const char *module_name) {
     int ret = sr_node_set_module(_node, module_name);
     if (ret != SR_ERR_OK) throw_exception(ret);
 }
-void Tree::set_string(const char *string_val) {
+void Tree::set_str_data(sr_type_t type, const char *string_val) {
     if (_node == NULL) throw_exception(SR_ERR_DATA_MISSING);
-    int ret = sr_node_set_string(_node, string_val);
+    int ret = sr_node_set_str_data(_node, type, string_val);
     if (ret != SR_ERR_OK) throw_exception(ret);
 }
 void Tree::add_child(const char *child_name, const char *child_module_name, S_Tree child) {
@@ -131,7 +131,7 @@ void Tree::set(const char *value, sr_type_t type) {
 
     if (type == SR_BINARY_T || type == SR_BITS_T || type == SR_ENUM_T || type == SR_IDENTITYREF_T || \
         type == SR_INSTANCEID_T || type == SR_STRING_T) {
-        ret = sr_node_set_string(_node, value);
+        ret = sr_node_set_str_data(_node, type, value);
         if (ret != SR_ERR_OK)
             throw_exception(ret);
     } else if (value != NULL && ( type != SR_LIST_T && type != SR_CONTAINER_T && type != SR_CONTAINER_PRESENCE_T &&\

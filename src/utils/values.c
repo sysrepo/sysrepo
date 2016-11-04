@@ -20,10 +20,14 @@
  * limitations under the License.
  */
 
+#include <stdarg.h>
+
 #include "sr_common.h"
 #include "sysrepo/values.h"
 #include "values_internal.h"
 
+#define SR_VAL_XPATH_MAX_SIZE 1024
+#define SR_VAL_STR_DATA_MAX_SIZE 1024
 
 /**
  * @brief Create a new instance of sysrepo value.
@@ -141,12 +145,27 @@ sr_val_set_xpath(sr_val_t *value, const char *xpath)
 }
 
 int
-sr_val_set_string(sr_val_t *value, const char *string_val)
+sr_val_build_xpath(sr_val_t *value, const char *format, ...)
+{
+    va_list arg_list;
+    char xpath_buff[SR_VAL_XPATH_MAX_SIZE] = { 0, };
+
+    CHECK_NULL_ARG2(value, format);
+
+    va_start(arg_list, format);
+    vsnprintf(xpath_buff, SR_VAL_XPATH_MAX_SIZE - 1, format, arg_list);
+    va_end(arg_list);
+
+    return sr_val_set_xpath(value, xpath_buff);
+}
+
+int
+sr_val_set_str_data(sr_val_t *value, sr_type_t type, const char *string_val)
 {
     char **to_edit = NULL;
     CHECK_NULL_ARG2(value, string_val);
 
-    switch (value->type) {
+    switch (type) {
         case SR_BINARY_T:
             to_edit = &value->data.binary_val;
             break;
@@ -168,8 +187,24 @@ sr_val_set_string(sr_val_t *value, const char *string_val)
         default:
             return SR_ERR_INVAL_ARG;
     }
+    value->type = type;
 
     return sr_mem_edit_string(value->_sr_mem, to_edit, string_val);
+}
+
+int
+sr_val_build_str_data(sr_val_t *value, sr_type_t type, const char *format, ...)
+{
+    va_list arg_list;
+    char xpath_buff[SR_VAL_STR_DATA_MAX_SIZE] = { 0, };
+
+    CHECK_NULL_ARG2(value, format);
+
+    va_start(arg_list, format);
+    vsnprintf(xpath_buff, SR_VAL_STR_DATA_MAX_SIZE - 1, format, arg_list);
+    va_end(arg_list);
+
+    return sr_val_set_str_data(value, type, xpath_buff);
 }
 
 int
@@ -179,26 +214,25 @@ sr_dup_val_data(sr_val_t *dest, sr_val_t *source)
     CHECK_NULL_ARG2(source, dest);
 
     dest->dflt = source->dflt;
-    dest->type = source->type;
 
     switch (source->type) {
         case SR_BINARY_T:
-            rc = sr_val_set_string(dest, source->data.binary_val);
+            rc = sr_val_set_str_data(dest, source->type, source->data.binary_val);
             break;
         case SR_BITS_T:
-            rc = sr_val_set_string(dest, source->data.bits_val);
+            rc = sr_val_set_str_data(dest, source->type, source->data.bits_val);
             break;
         case SR_ENUM_T:
-            rc = sr_val_set_string(dest, source->data.enum_val);
+            rc = sr_val_set_str_data(dest, source->type, source->data.enum_val);
             break;
         case SR_IDENTITYREF_T:
-            rc = sr_val_set_string(dest, source->data.identityref_val);
+            rc = sr_val_set_str_data(dest, source->type, source->data.identityref_val);
             break;
         case SR_INSTANCEID_T:
-            rc = sr_val_set_string(dest, source->data.instanceid_val);
+            rc = sr_val_set_str_data(dest, source->type, source->data.instanceid_val);
             break;
         case SR_STRING_T:
-            rc = sr_val_set_string(dest, source->data.string_val);
+            rc = sr_val_set_str_data(dest, source->type, source->data.string_val);
             break;
         case SR_BOOL_T:
         case SR_DECIMAL64_T:
@@ -212,7 +246,10 @@ sr_dup_val_data(sr_val_t *dest, sr_val_t *source)
         case SR_UINT64_T:
         case SR_TREE_ITERATOR_T:
             dest->data = source->data;
+            dest->type = source->type;
+            break;
         default:
+            dest->type = source->type;
             break;
     }
 
