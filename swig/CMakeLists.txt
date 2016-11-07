@@ -93,10 +93,6 @@ include_directories(${CMAKE_SOURCE_DIR})
 include_directories("${CMAKE_CURRENT_SOURCE_DIR}/cpp/src")
 target_link_libraries(Sysrepo-cpp sysrepo)
 
-if(NOT BIN_INSTALL_DIR)
-	set(BIN_INSTALL_DIR ${CMAKE_INSTALL_PREFIX}/bin)
-endif()
-
 if(PYTHONLIBS_FOUND AND PYTHONINTERP_FOUND AND ${GEN_PYTHON_VERSION} STREQUAL "2")
         set(PYTHON_SWIG_BINDING_2 libsysrepoPython2)
         include_directories(${PYTHON_INCLUDE_PATH})
@@ -173,12 +169,12 @@ if(JAVA_FOUND)
 	set(NATIVE_JAR "${CMAKE_CURRENT_BINARY_DIR}/Sysrepo.jar")
 
 	# install so file
-	install(FILES "${CMAKE_CURRENT_BINARY_DIR}/lib${JAVA_SWIG_BINDING}.so" DESTINATION "${LIB_INSTALL_DIR}")
+    install(FILES "${CMAKE_CURRENT_BINARY_DIR}/lib${JAVA_SWIG_BINDING}.so" DESTINATION "${CMAKE_INSTALL_LIBDIR}")
 endif()
 
 # install binary
-install(TARGETS Sysrepo-cpp DESTINATION ${LIB_INSTALL_DIR})
-install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/cpp/src/" DESTINATION ${INCLUDE_INSTALL_DIR}/sysrepo-cpp
+install(TARGETS Sysrepo-cpp DESTINATION ${CMAKE_INSTALL_LIBDIR})
+install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/cpp/src/" DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/sysrepo-cpp
     FILES_MATCHING PATTERN "*.h")
 
 # Examples
