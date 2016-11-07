@@ -209,6 +209,46 @@ sr_val_set_str_data_test(void **state)
 }
 
 static void
+sr_val_build_str_data_test(void **state)
+{
+    int rc = 0;
+    sr_val_t *value = NULL;
+
+    rc = sr_new_val(NULL, &value);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_null(value->data.string_val);
+
+    rc = sr_val_build_str_data(value, SR_UINT32_T, "string value n. %d", 1);
+    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+
+    rc = sr_val_build_str_data(value, SR_STRING_T, "string value n. %d", 1);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_string_equal("string value n. 1", value->data.string_val);
+
+    rc = sr_val_build_str_data(value, SR_BINARY_T, "binary value n. %d", 2);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_string_equal("binary value n. 2", value->data.binary_val);
+
+    rc = sr_val_build_str_data(value, SR_ENUM_T, "enum value n. %d", 3);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_string_equal("enum value n. 3", value->data.enum_val);
+
+    rc = sr_val_build_str_data(value, SR_BITS_T, "bits value n. %d", 4);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_string_equal("bits value n. 4", value->data.bits_val);
+
+    rc = sr_val_build_str_data(value, SR_IDENTITYREF_T, "identityref value n. %d", 5);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_string_equal("identityref value n. 5", value->data.identityref_val);
+
+    rc = sr_val_build_str_data(value, SR_INSTANCEID_T, "instance ID value n. %d", 6);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_string_equal("instance ID value n. 6", value->data.instanceid_val);
+
+    sr_free_val(value);
+}
+
+static void
 sr_dup_val_test(void **state)
 {
     int rc = 0;
@@ -442,6 +482,7 @@ main() {
         cmocka_unit_test(sr_val_set_xpath_test),
         cmocka_unit_test(sr_val_build_xpath_test),
         cmocka_unit_test(sr_val_set_str_data_test),
+        cmocka_unit_test(sr_val_build_str_data_test),
         cmocka_unit_test(sr_dup_val_test),
         cmocka_unit_test(sr_dup_values_test)
     };
