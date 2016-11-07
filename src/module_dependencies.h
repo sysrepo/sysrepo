@@ -79,6 +79,7 @@ typedef struct md_module_s {
     bool submodule;               /**< "true" if this is actually a submodule, "false" in case of a proper module. */
     bool implemented;             /**< flag if the module is implemented, not just imported */
     bool has_data;                /**< "true" if this module defines any data-carrying elements and not only data types and identities. */
+    bool has_persist;             /**< "true" if this module has data or features. */
 
     sr_llist_t *inst_ids;         /**< List of xpaths referencing all instance-identifiers in the module.
                                        Items are of type (md_subtree_ref_t *) (one node subtrees).
