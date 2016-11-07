@@ -2774,6 +2774,10 @@ dm_commit_prepare_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_con
 
     c_ctx->fds = calloc(c_ctx->modif_count, sizeof(*c_ctx->fds));
     CHECK_NULL_NOMEM_GOTO(c_ctx->fds, rc, cleanup);
+    for (size_t i = 0; i < c_ctx->modif_count; i++) {
+        c_ctx->fds[i] = -1;
+    }
+
     c_ctx->existed = calloc(c_ctx->modif_count, sizeof(*c_ctx->existed));
     CHECK_NULL_NOMEM_GOTO(c_ctx->existed, rc, cleanup);
 
