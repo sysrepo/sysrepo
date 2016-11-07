@@ -141,6 +141,17 @@ void sr_mem_restore(sr_mem_snapshot_t *snapshot);
 int sr_mem_edit_string(sr_mem_ctx_t *sr_mem, char **string_p, const char *new_val);
 
 /**
+ * @brief Set/change value of a string using format string and a variable list of arguments.
+ *
+ * @param [in] sr_mem Sysrepo memory context to use for memory allocation.
+ *                    If NULL, calloc is used instead.
+ * @param [in] string_p Pointer to the string to be changed.
+ * @param [in] format Format string of value to set.
+ * @param [in] args Variable list of arguments to the format string.
+ */
+int sr_mem_edit_string_va(sr_mem_ctx_t *sr_mem, char **string_p, const char *format, va_list args);
+
+/**
  * @brief Deallocate an instance of Sr__Msg.
  */
 void sr_msg_free(Sr__Msg *msg);

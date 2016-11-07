@@ -232,7 +232,7 @@ sr_node_set_str_data_test(void **state)
     int rc = 0;
     sr_node_t *tree = NULL;
 
-    rc = sr_new_tree("leaf", "trst-module", &tree);
+    rc = sr_new_tree("leaf", "test-module", &tree);
     assert_int_equal(SR_ERR_OK, rc);
     assert_null(tree->data.string_val);
 
@@ -262,6 +262,46 @@ sr_node_set_str_data_test(void **state)
     rc = sr_node_set_str_data(tree, SR_INSTANCEID_T, "instance ID");
     assert_int_equal(SR_ERR_OK, rc);
     assert_string_equal("instance ID", tree->data.instanceid_val);
+
+    sr_free_tree(tree);
+}
+
+static void
+sr_node_build_str_data_test(void **state)
+{
+    int rc = 0;
+    sr_node_t *tree = NULL;
+
+    rc = sr_new_tree("leaf", "test-module", &tree);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_null(tree->data.string_val);
+
+    rc = sr_node_build_str_data(tree, SR_UINT32_T, "string value n. %d", 1);
+    assert_int_equal(SR_ERR_INVAL_ARG, rc);
+
+    rc = sr_node_build_str_data(tree, SR_STRING_T, "string value n. %d", 1);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_string_equal("string value n. 1", tree->data.string_val);
+
+    rc = sr_node_build_str_data(tree, SR_BINARY_T, "binary value n. %d", 2);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_string_equal("binary value n. 2", tree->data.binary_val);
+
+    rc = sr_node_build_str_data(tree, SR_ENUM_T, "enum value n. %d", 3);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_string_equal("enum value n. 3", tree->data.enum_val);
+
+    rc = sr_node_build_str_data(tree, SR_BITS_T, "bits value n. %d", 4);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_string_equal("bits value n. 4", tree->data.bits_val);
+
+    rc = sr_node_build_str_data(tree, SR_IDENTITYREF_T, "identityref value n. %d", 5);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_string_equal("identityref value n. 5", tree->data.identityref_val);
+
+    rc = sr_node_build_str_data(tree, SR_INSTANCEID_T, "instance ID value n. %d", 6);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_string_equal("instance ID value n. 6", tree->data.instanceid_val);
 
     sr_free_tree(tree);
 }
@@ -986,6 +1026,7 @@ main() {
         cmocka_unit_test(sr_node_set_name_test),
         cmocka_unit_test(sr_node_set_module_test),
         cmocka_unit_test(sr_node_set_str_data_test),
+        cmocka_unit_test(sr_node_build_str_data_test),
         cmocka_unit_test(sr_node_add_child_test),
         cmocka_unit_test(sr_dup_tree_test),
         cmocka_unit_test(sr_dup_trees_test),
