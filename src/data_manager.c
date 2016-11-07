@@ -380,7 +380,7 @@ dm_enable_module_running_internal(dm_ctx_t *ctx, dm_session_t *session, dm_schem
     }
     while (NULL != node) {
         if ((LYS_CONTAINER | LYS_LIST | LYS_LEAF | LYS_LEAFLIST) & node->nodetype) {
-            snprintf(xpath, PATH_MAX, "/%s:%s", node->module->name, node->name);
+            snprintf(xpath, PATH_MAX, "/%s:%s", module->name, node->name);
             rc = rp_dt_enable_xpath(ctx, session, schema_info, xpath);
             if (SR_ERR_OK != rc) {
                 break;

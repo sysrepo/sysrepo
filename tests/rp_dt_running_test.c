@@ -218,6 +218,21 @@ edit_enabled(void **state)
    test_rp_session_cleanup(ctx, session);
 }
 
+void
+enable_running_for_submodule(void **state)
+{
+   int rc = 0;
+   rp_ctx_t *ctx = *state;
+   rp_session_t *session = NULL;
+
+   test_rp_sesssion_create(ctx, SR_DS_RUNNING, &session);
+
+   rc = dm_enable_module_running(ctx->dm_ctx, session->dm_session, "module-a", NULL);
+   assert_int_equal(SR_ERR_OK, rc);
+
+   test_rp_session_cleanup(ctx, session);
+}
+
 int
 main() {
     sr_log_stderr(SR_LL_ERR);
@@ -226,6 +241,7 @@ main() {
             cmocka_unit_test_setup_teardown(no_subscription_test, setup, teardown),
             cmocka_unit_test_setup_teardown(enable_subtree_test, setup, teardown),
             cmocka_unit_test_setup_teardown(edit_enabled, setup, teardown),
+            cmocka_unit_test_setup_teardown(enable_running_for_submodule, setup, teardown),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);
