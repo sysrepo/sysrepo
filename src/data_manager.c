@@ -3925,6 +3925,66 @@ dm_enable_module_running(dm_ctx_t *ctx, dm_session_t *session, const char *modul
     return rc;
 }
 
+static int
+dm_copy_instances_of_the_sch_node(dm_data_info_t *src_info, dm_data_info_t *dst_info, struct lys_node *node)
+{
+    CHECK_NULL_ARG3(src_info, dst_info, node);
+    int rc = SR_ERR_OK;
+
+    struct ly_set *set = lyd_find_instance(src_info->node, node);
+    if (NULL != set) {
+        for (unsigned i = 0; i < set->number; i++) {
+            char *node_xpath = lyd_path(set->set.d[i]);
+            CHECK_NULL_NOMEM_GOTO(node_xpath, rc, cleanup);
+            dm_lyd_new_path(dst_info, node_xpath,
+                    ((struct lyd_node_leaf_list *) set->set.d[i])->value_str, LYD_PATH_OPT_UPDATE);
+            free(node_xpath);
+        }
+    }
+
+cleanup:
+    ly_set_free(set);
+    return rc;
+}
+
+static int
+dm_copy_mandatory_for_subtree(dm_ctx_t *dm_ctx, const char *xpath, dm_data_info_t *startup_info, dm_data_info_t *candidate_info)
+{
+    CHECK_NULL_ARG4(dm_ctx, xpath, startup_info, candidate_info);
+    int rc = SR_ERR_OK;
+
+    struct lys_node *node = NULL, *match = NULL;
+    match = sr_find_schema_node(startup_info->schema->module->data, xpath, 0);
+    if (NULL == match) {
+        SR_LOG_ERR("Schema node not found for %s", xpath);
+        return SR_ERR_INTERNAL;
+    }
+
+    node = match->parent;
+    while (NULL != node) {
+        if (NULL == node->parent && LYS_AUGMENT == node->nodetype) {
+            node = ((struct lys_node_augment *) node)->target;
+            continue;
+        }
+        struct lys_node *n = NULL;
+        if ((LYS_LIST | LYS_CONTAINER) & node->nodetype) {
+            /* enable mandatory leaves */
+            n = node->child;
+            while (NULL != n) {
+                if ((LYS_LEAF | LYS_LEAFLIST) & n->nodetype &&
+                        LYS_MAND_MASK & n->flags) {
+                    rc = dm_copy_instances_of_the_sch_node(startup_info, candidate_info, n);
+                    CHECK_RC_LOG_RETURN(rc, "Copying of instances of sch node '%s' failed", n->name);
+                }
+                n = n->next;
+            }
+        }
+        node = node->parent;
+    }
+
+    return rc;
+}
+
 /**
  * @brief Copies a subtree (specified by xpath) of configuration from startup to running. Replaces
  * the previous configuration under the xpath.
@@ -3975,6 +4035,7 @@ dm_copy_subtree_startup_running(dm_ctx_t *ctx, dm_session_t *session, const char
         rc = SR_ERR_OK;
     }
     CHECK_RC_MSG_GOTO(rc, cleanup, "Find nodes for configuration to be enabled failed");
+    candidate_info->modified = true;
 
     /* insert selected nodes */
     for (unsigned i = 0; NULL != nodes && i < nodes->number; i++) {
@@ -4013,6 +4074,10 @@ dm_copy_subtree_startup_running(dm_ctx_t *ctx, dm_session_t *session, const char
             }
         }
     }
+
+    /* copy mandatory nodes that were enabled automatically */
+    rc = dm_copy_mandatory_for_subtree(ctx, xpath, startup_info, candidate_info);
+    CHECK_RC_MSG_GOTO(rc, cleanup, "Failed to copy mandatory nodes for subtree");
 
     /* copy module candidate -> running */
     rc = dm_copy_module(ctx, tmp_session, module_name, SR_DS_CANDIDATE, SR_DS_RUNNING, subscription);

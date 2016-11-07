@@ -2283,6 +2283,38 @@ cl_module_empty_enabled_notifications(void **state)
     assert_int_equal(rc, SR_ERR_OK);
 }
 
+static void
+cl_auto_enable_manadatory_nodes(void **state)
+{
+    /* mandatory nodes that are direct children of a node in the subtree path (that is begin subscribed to)
+     * are automatically enabled and copied to running.
+     * particularly in the test mandatory node `type` (child of interface list) is handled this way.
+     *
+     * if there were some mandatory nodes not direct successors of a node in the path let's say
+     * /ietf-interfaces:interfaces/interface/something/sth2/mandatory or some nodes needed for when/must evaluation,
+     * these nodes would have to be enabled prior to the subscription in the test */
+
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+    sr_session_ctx_t *session = NULL;
+    sr_subscription_ctx_t *subscription = NULL;
+    int rc = SR_ERR_OK;
+
+    /* start session */
+    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_subtree_change_subscribe(session, "/ietf-interfaces:interfaces/interface/ietf-ip:ipv4/address", cl_empty_module_cb, NULL,
+            0, SR_SUBSCR_DEFAULT, &subscription);
+
+    rc = sr_unsubscribe(NULL, subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_session_stop(session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+}
+
 int
 main()
 {
@@ -2311,6 +2343,7 @@ main()
         cmocka_unit_test_setup_teardown(cl_multiple_enabled_notifications, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_subtree_empty_enabled_notifications, sysrepo_setup, sysrepo_teardown),
         cmocka_unit_test_setup_teardown(cl_module_empty_enabled_notifications, sysrepo_setup, sysrepo_teardown),
+        cmocka_unit_test_setup_teardown(cl_auto_enable_manadatory_nodes, sysrepo_setup, sysrepo_teardown),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);
