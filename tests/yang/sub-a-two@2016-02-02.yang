@@ -22,4 +22,8 @@ submodule sub-a-two {
       }
     }
   }
+
+  leaf sub-two-leaf {
+     type string;
+  }
 }
