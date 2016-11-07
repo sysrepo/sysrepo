@@ -56,4 +56,12 @@ int sr_dup_val_ctx(sr_val_t *value, sr_mem_ctx_t *sr_mem_dest, sr_val_t **value_
  */
 int sr_dup_values_ctx(sr_val_t *values, size_t count, sr_mem_ctx_t *sr_mem_dest, sr_val_t **values_dup_p);
 
+/**
+ * @brief Print sysrepo value in the given context.
+ *
+ * @param [in] print_ctx Context for printing.
+ * @param [in] value Sysrepo value to print.
+ */
+int sr_print_val_ctx(sr_print_ctx_t *print_ctx, sr_val_t *value);
+
 #endif /* VALUES_INTERNAL_H_ */

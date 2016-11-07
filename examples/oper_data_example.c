@@ -139,45 +139,6 @@ cleanup:
     return rc;
 }
 
-void
-print_value(sr_val_t *value)
-{
-    printf("%s ", value->xpath);
-
-    switch (value->type) {
-    case SR_CONTAINER_T:
-    case SR_CONTAINER_PRESENCE_T:
-        printf("(container)\n");
-        break;
-    case SR_LIST_T:
-        printf("(list instance)\n");
-        break;
-    case SR_STRING_T:
-        printf("= %s\n", value->data.string_val);
-        break;
-    case SR_BOOL_T:
-        printf("= %s\n", value->data.bool_val ? "true" : "false");
-        break;
-    case SR_UINT8_T:
-        printf("= %u\n", value->data.uint8_val);
-        break;
-    case SR_UINT16_T:
-        printf("= %u\n", value->data.uint16_val);
-        break;
-    case SR_UINT32_T:
-        printf("= %u\n", value->data.uint32_val);
-        break;
-    case SR_IDENTITYREF_T:
-        printf("= %s\n", value->data.identityref_val);
-        break;
-    case SR_ENUM_T:
-        printf("= %s\n", value->data.enum_val);
-        break;
-    default:
-        printf("(unprintable)\n");
-    }
-}
-
 static int
 data_requester(sr_session_ctx_t *session)
 {
@@ -192,7 +153,7 @@ data_requester(sr_session_ctx_t *session)
     }
 
     while (SR_ERR_OK == sr_get_item_next(session, iter, &value)) {
-        print_value(value);
+        sr_print_val(value);
         sr_free_val(value);
     }
     sr_free_val_iter(iter);

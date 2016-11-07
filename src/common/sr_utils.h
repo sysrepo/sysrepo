@@ -22,7 +22,9 @@
 
 #ifndef SR_UTILS_H_
 #define SR_UTILS_H_
+
 #include <time.h>
+#include <stdio.h>
 
 #ifdef __APPLE__
 /* OS X get_time */
@@ -34,6 +36,9 @@ typedef int clockid_t;
 #endif
 
 #include <libyang/libyang.h>
+
+#define MAX(a, b) ((a) > (b) ? (a) : (b))
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
 
 typedef struct dm_data_info_s dm_data_info_t;  /**< forward declaration */
 
@@ -54,6 +59,31 @@ typedef enum sr_api_variant_e {
     SR_API_VALUES = 0,
     SR_API_TREES = 1
 } sr_api_variant_t;
+
+/**
+ * @brief Type of the destination for the print operation.
+ */
+typedef enum sr_print_type_e {
+    SR_PRINT_STREAM,  /**< File stream. */
+    SR_PRINT_FD,      /**< File descriptor. */
+    SR_PRINT_MEM      /**< Memory buffer. */
+} sr_print_type_t;
+
+/**
+ * @brief Context for the print operation.
+ */
+typedef struct sr_print_ctx_s {
+    sr_print_type_t type;
+    union {
+        int fd;
+        FILE *stream;
+        struct {
+            char *buf;
+            size_t len;
+            size_t size;
+        } mem;
+    } method;
+} sr_print_ctx_t;
 
 /**
  * @defgroup utils Utility Functions
@@ -550,6 +580,15 @@ int sr_mkdir_recursive(const char *path, mode_t mode);
  * @param [in] module
  */
 bool sr_lys_module_has_data(const struct lys_module *module);
+
+/**
+ * @brief Construct string based on the format and extra arguments,
+ * and then print it in the given context.
+ *
+ * @param [in] print_ctx Print context to use for printing.
+ * @param [in] format Format string followed by corresponding set of extra arguments.
+ */
+int sr_print(sr_print_ctx_t *print_ctx, const char *format, ...);
 
 /**@} utils */
 

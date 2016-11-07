@@ -121,6 +121,14 @@ int sr_dup_tree(sr_node_t *tree, sr_node_t **tree_dup);
 int sr_dup_trees(sr_node_t *trees, size_t count, sr_node_t **trees_dup);
 
 /**
+ * @brief Print sysrepo tree to STDOUT.
+ *
+ * @param [in] tree Sysrepo tree to print.
+ * @param [in] depth_limit Maximum number of tree levels to print.
+ */
+int sr_print_tree(sr_node_t *tree, int depth_limit);
+
+/**
  * @brief Print sysrepo tree to the specified file descriptor.
  *
  * @param [in] fd File descriptor to print the tree into.

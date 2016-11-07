@@ -25,7 +25,9 @@
 #include <unistd.h>
 #include <signal.h>
 #include <inttypes.h>
+
 #include "sysrepo.h"
+#include "sysrepo/values.h"
 
 volatile int exit_application = 0;
 
@@ -34,70 +36,7 @@ volatile int exit_application = 0;
 typedef struct settings_s{
     char *filename;
     char *xpath;
-}settings_t;
-
-static void
-print_value(FILE *f, sr_val_t *value)
-{
-    fprintf(f, "%s|", value->xpath);
-
-    switch (value->type) {
-    case SR_CONTAINER_T:
-    case SR_CONTAINER_PRESENCE_T:
-        fprintf(f, "(container)");
-        break;
-    case SR_LIST_T:
-        fprintf(f, "(list instance)");
-        break;
-    case SR_STRING_T:
-        fprintf(f, "%s", value->data.string_val);
-        break;
-    case SR_BOOL_T:
-        fprintf(f, "%s", value->data.bool_val ? "true" : "false");
-        break;
-    case SR_ENUM_T:
-        fprintf(f, "%s", value->data.enum_val);
-        break;
-    case SR_DECIMAL64_T:
-        fprintf(f, "%g", value->data.decimal64_val);
-        break;
-    case SR_INT8_T:
-        fprintf(f, "%" PRId8, value->data.int8_val);
-        break;
-    case SR_INT16_T:
-        fprintf(f, "%" PRId16, value->data.int16_val);
-        break;
-    case SR_INT32_T:
-        fprintf(f, "%" PRId32, value->data.int32_val);
-        break;
-    case SR_INT64_T:
-        fprintf(f, "%" PRId64, value->data.int64_val);
-        break;
-    case SR_UINT8_T:
-        fprintf(f, "%" PRIu8, value->data.uint8_val);
-        break;
-    case SR_UINT16_T:
-        fprintf(f, "%" PRIu16, value->data.uint16_val);
-        break;
-    case SR_UINT32_T:
-        fprintf(f, "%" PRIu32, value->data.uint32_val);
-        break;
-    case SR_UINT64_T:
-        fprintf(f, "%" PRIu64, value->data.uint64_val);
-        break;
-    case SR_IDENTITYREF_T:
-        fprintf(f, "%s", value->data.identityref_val);
-        break;
-    case SR_BITS_T:
-        fprintf(f, "%s", value->data.bits_val);
-        break;
-    case SR_BINARY_T:
-        fprintf(f, "%s", value->data.binary_val);
-        break;
-    default:
-        fprintf(f, "(unprintable)");
-    }
-}
+} settings_t;
 
 static void
 print_change(FILE *f, sr_change_oper_t op, sr_val_t *old_val, sr_val_t *new_val)
@@ -106,21 +45,21 @@ print_change(FILE *f, sr_change_oper_t op, sr_val_t *old_val, sr_val_t *new_val)
     case SR_OP_CREATED:
         if (NULL != new_val) {
             fprintf(f, "CREATED|");
-            print_value(f, new_val);
+            sr_print_val_stream(f, new_val);
         }
         break;
     case SR_OP_DELETED:
         if (NULL != old_val) {
             fprintf(f, "DELETED|");
-            print_value(f, old_val);
+            sr_print_val_stream(f, old_val);
         }
         break;
     case SR_OP_MODIFIED:
         if (NULL != old_val && NULL != new_val) {
             fprintf(f, "MODIFIED|");
-            print_value(f, old_val);
+            sr_print_val_stream(f, old_val);
             fprintf(f, "|");
-            print_value(f, new_val);
+            sr_print_val_stream(f, new_val);
         }
         break;
     case SR_OP_MOVED:
