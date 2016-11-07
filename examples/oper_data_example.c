@@ -42,7 +42,7 @@ data_provider_cb(const char *xpath, sr_val_t **values, size_t *values_cnt, void 
 
     printf("Data for '%s' requested.\n", xpath);
 
-    if (sr_xpath_last_node_str_eq(xpath, "interface")) {
+    if (sr_xpath_node_name_eq(xpath, "interface")) {
         /* return all 'interface' list instances with their details */
 
         /* allocate space for data to return */
@@ -65,7 +65,7 @@ data_provider_cb(const char *xpath, sr_val_t **values, size_t *values_cnt, void 
 
         *values = v;
         *values_cnt = 4;
-    } else if (sr_xpath_last_node_str_eq(xpath, "statistics")) {
+    } else if (sr_xpath_node_name_eq(xpath, "statistics")) {
         /* return contents of 'statistics' NESTED container for the given list instance */
 
         /* allocate space for data to return */
@@ -76,7 +76,7 @@ data_provider_cb(const char *xpath, sr_val_t **values, size_t *values_cnt, void 
 
         sr_val_build_xpath(&v[0], "%s/%s", xpath, "discontinuity-time");
 
-        /* just return something different for eth0 and eth1 */
+        /* just to return something different for eth0 and eth1 */
         if (0 == strcmp(sr_xpath_key_value((char*)xpath, "interface", "name", &xp_ctx), "eth0")) {
             sr_val_set_str_data(&v[0], SR_STRING_T, "1987-08-31T17:00:30.44Z");
         } else {
@@ -87,7 +87,7 @@ data_provider_cb(const char *xpath, sr_val_t **values, size_t *values_cnt, void 
         *values = v;
         *values_cnt = 1;
     } else {
-        /* statistics, ipv4 and ipv6 nested containers not implemented in this example */
+        /* ipv4 and ipv6 nested containers not implemented in this example */
         *values = NULL;
         values_cnt = 0;
     }

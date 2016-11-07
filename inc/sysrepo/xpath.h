@@ -70,6 +70,14 @@ typedef struct sr_xpath_ctx_s {
 char *sr_xpath_next_node(char *xpath, sr_xpath_ctx_t *state);
 
 /**
+ * @brief Returns pointer to the last node.
+ * @param [in] xpath
+ * @param [in] state
+ * @return Pointer to the last node
+ */
+char *sr_xpath_last_node(char *xpath, sr_xpath_ctx_t *state);
+
+/**
  * @brief Same as ::sr_get_next_node with the difference that namespace is included in result if present in xpath
  *
  * @param [in] xpath - xpath to be processed, can be NULL if the user wants to continue in processing of previous input
@@ -149,7 +157,6 @@ char *sr_xpath_node_idx_rel(char *xpath, size_t index, sr_xpath_ctx_t *state);
  */
 char *sr_xpath_node_key_value(char *xpath, const char *key, sr_xpath_ctx_t *state);
 
-
 /**
  * @brief Looks up the value for the key at the current level in xpath specified by index.
  * First key has index zero.
@@ -184,35 +191,31 @@ char *sr_xpath_key_value(char *xpath, const char *node_name, const char *key_nam
 char *sr_xpath_key_value_idx(char *xpath, size_t node_index, size_t key_index, sr_xpath_ctx_t *state);
 
 /**
- * @brief Returns pointer to the last node.
- * @param [in] xpath
- * @param [in] state
- * @return Pointer to the last node
- */
-char *sr_xpath_last_node(char *xpath, sr_xpath_ctx_t *state);
-
-/**
- * @brief Pointer to the string after the last slash.
+ * @brief Returns pointer to the string after the last slash in xpath (node name).
  *
- * @note In case that the last node is a list, the returned string also contains the keys.
+ * @note The returned string can also contain namespace and/or key values
+ * if they were specified for the last node in xpath.
  *
  * @param [in] xpath
  * @return Result, NULL in case of the slash was not found
  */
-char *sr_xpath_last_node_str(const char *xpath);
+char *sr_xpath_node_name(const char *xpath);
 
 /**
- * @brief Compares node name from xpath (the string after the last slash) with provided one.
+ * @brief Compares string after the last slash in xpath (node name) with provided string.
  *
- * @note In case that the last node is a list, it also compares values of the keys.
+ * @note The returned string can also contain namespace and/or key values
+ * if they were specified for the last node in xpath.
  *
  * @param [in] xpath
+ * @param [in] node_str String to test for equality.
  * @return true in case that the Node names are equal, false otherwise
  */
-bool sr_xpath_last_node_str_eq(const char *xpath, const char *node_name);
+bool sr_xpath_node_name_eq(const char *xpath, const char *node_str);
 
 /**
- * @brief Function puts back the character that was replaced by termination zero.
+ * @brief Recovers the xpath string to the original state (puts back the character
+ * that was replaced by termination zero).
  *
  * @param [in] state
  */

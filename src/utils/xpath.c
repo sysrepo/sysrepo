@@ -536,7 +536,7 @@ void sr_xpath_recover(sr_xpath_ctx_t *state)
 }
 
 char *
-sr_xpath_last_node_str(const char *xpath)
+sr_xpath_node_name(const char *xpath)
 {
     char *res = NULL;
     if (NULL != xpath) {
@@ -549,11 +549,11 @@ sr_xpath_last_node_str(const char *xpath)
 }
 
 bool
-sr_xpath_last_node_str_eq(const char *xpath, const char *node_name)
+sr_xpath_node_name_eq(const char *xpath, const char *node_name)
 {
     char *xp_node_name = NULL;
 
-    xp_node_name = sr_xpath_last_node_str(xpath);
+    xp_node_name = sr_xpath_node_name(xpath);
 
     if (NULL == xp_node_name || NULL == node_name) {
         return false;
