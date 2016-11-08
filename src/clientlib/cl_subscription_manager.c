@@ -1450,6 +1450,7 @@ cl_sm_server_init(cl_sm_ctx_t *sm_ctx, const char *module_name, cl_sm_server_ctx
     CHECK_NULL_NOMEM_RETURN(server_ctx);
 
     server_ctx->sm_ctx = sm_ctx;
+    server_ctx->listen_socket_fd = -1;
     server_ctx->module_name = strdup(module_name);
     CHECK_NULL_NOMEM_GOTO(server_ctx->module_name, rc, cleanup);
 
