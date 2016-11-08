@@ -23,6 +23,8 @@
 #include <libyang/libyang.h>
 #include <assert.h>
 #include <pthread.h>
+#include <stdio.h>
+#include <stdarg.h>
 
 #include "sr_mem_mgmt.h"
 #include "sr_common.h"
@@ -433,25 +435,68 @@ sr_mem_edit_string(sr_mem_ctx_t *sr_mem, char **string_p, const char *new_val)
     CHECK_NULL_ARG(string_p);
 
     if (NULL != *string_p && strlen(*string_p) >= strlen(new_val)) {
-        /* overwrite */
+        /* buffer large enough - overwrite */
         strcpy(*string_p, new_val);
         return SR_ERR_OK;
     }
 
     if (NULL == sr_mem) {
+        /* do not use sr_mem mgmt - use calloc */
         new_mem = strdup(new_val);
         CHECK_NULL_NOMEM_RETURN(new_mem);
+
         free(*string_p);
         *string_p = new_mem;
+    } else {
+        /* use sr_mem mgmt */
+        new_mem = (char *)sr_malloc(sr_mem, strlen(new_val) + 1);
+        if (NULL == new_mem) {
+            return SR_ERR_INTERNAL;
+        }
+        strcpy(new_mem, new_val);
+        *string_p = new_mem;
+    }
+
+    return SR_ERR_OK;
+}
+
+int
+sr_mem_edit_string_va(sr_mem_ctx_t *sr_mem, char **string_p, const char *format, va_list args)
+{
+    char *new_mem = NULL;
+    va_list args_copy;
+    size_t len = 0;
+
+    CHECK_NULL_ARG2(string_p, format);
+
+    /* determine required length - need to use a copy of args! */
+    va_copy(args_copy, args);
+    len = vsnprintf(NULL, 0, format, args_copy);
+
+    if (NULL != *string_p && strlen(*string_p) >= len) {
+        /* buffer large enough - overwrite */
+        vsnprintf(*string_p, len + 1, format, args);
         return SR_ERR_OK;
     }
 
-    new_mem = (char *)sr_malloc(sr_mem, strlen(new_val) + 1);
-    if (NULL == new_mem) {
-        return SR_ERR_INTERNAL;
+    if (NULL == sr_mem) {
+        /* do not use sr_mem mgmt - use calloc */
+        new_mem = (char *)calloc(len + 1, sizeof(*new_mem));
+        CHECK_NULL_NOMEM_RETURN(new_mem);
+
+        vsnprintf(new_mem, len + 1, format, args);
+        free(*string_p);
+        *string_p = new_mem;
+    } else {
+        /* use sr_mem mgmt */
+        new_mem = (char *)sr_malloc(sr_mem, len + 1);
+        if (NULL == new_mem) {
+            return SR_ERR_INTERNAL;
+        }
+        vsnprintf(new_mem, len + 1, format, args);
+        *string_p = new_mem;
     }
-    strcpy(new_mem, new_val);
-    *string_p = new_mem;
+
     return SR_ERR_OK;
 }
 

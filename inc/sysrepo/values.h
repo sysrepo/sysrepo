@@ -72,12 +72,32 @@ int sr_new_values(size_t value_cnt, sr_val_t **values);
 int sr_val_set_xpath(sr_val_t *value, const char *xpath);
 
 /**
- * @brief Store string into the Sysrepo value data.
+ * @brief Set/change xpath of a Sysrepo value to a new one, built from
+ * a format string and a variable arguments list.
+ *
+ * @param [in] value Sysrepo value to change the xpath of.
+ * @param [in] format Format string used to build XPath.
+ */
+int sr_val_build_xpath(sr_val_t *value, const char *format, ...);
+
+/**
+ * @brief Store data of string type into the Sysrepo value data.
  *
  * @param [in] value Sysrepo value to edit.
+ * @param [in] type Exact type of the data.
  * @param [in] string_val String value to set.
  */
-int sr_val_set_string(sr_val_t *value, const char *string_val);
+int sr_val_set_str_data(sr_val_t *value, sr_type_t type, const char *string_val);
+
+/**
+ * @brief Store data of string type into the Sysrepo value data. The actual data
+ * will be built from the a format string and a variable arguments list.
+ *
+ * @param [in] value Sysrepo value to edit.
+ * @param [in] type Exact type of the data.
+ * @param [in] format Format string used to build the data.
+ */
+int sr_val_build_str_data(sr_val_t *value, sr_type_t type, const char *format, ...);
 
 /**
  * @brief Duplicate value (with or without Sysrepo memory context) into a new
