@@ -119,7 +119,7 @@ int sr_node_add_child(sr_node_t *parent, const char *child_name, const char *chi
  * @param [in] tree Sysrepo tree to duplicate.
  * @param [out] tree_dup Returned duplicate of the input tree.
  */
-int sr_dup_tree(sr_node_t *tree, sr_node_t **tree_dup);
+int sr_dup_tree(const sr_node_t *tree, sr_node_t **tree_dup);
 
 /**
  * @brief Duplicate an array of trees (with or without Sysrepo memory context) into a new
@@ -129,7 +129,7 @@ int sr_dup_tree(sr_node_t *tree, sr_node_t **tree_dup);
  * @param [in] count Size of the array to duplicate.
  * @param [out] trees_dup Returned duplicate of the input array.
  */
-int sr_dup_trees(sr_node_t *trees, size_t count, sr_node_t **trees_dup);
+int sr_dup_trees(const sr_node_t *trees, size_t count, sr_node_t **trees_dup);
 
 /**
  * @brief Print sysrepo tree to STDOUT.

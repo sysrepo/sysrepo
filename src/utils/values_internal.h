@@ -29,7 +29,7 @@
  * @param [in] dest Destination sysrepo value.
  * @param [in] source Source sysrepo value.
  */
-int sr_dup_val_data(sr_val_t *dest, sr_val_t *source);
+int sr_dup_val_data(sr_val_t *dest, const sr_val_t *source);
 
 /**
  * @brief Duplicate value (with or without Sysrepo memory context) into a new
@@ -41,7 +41,7 @@ int sr_dup_val_data(sr_val_t *dest, sr_val_t *source);
  *                         If NULL, a new context will be created.
  * @param [out] value_dup_p Returned duplicate of the input value.
  */
-int sr_dup_val_ctx(sr_val_t *value, sr_mem_ctx_t *sr_mem_dest, sr_val_t **value_dup_p);
+int sr_dup_val_ctx(const sr_val_t *value, sr_mem_ctx_t *sr_mem_dest, sr_val_t **value_dup_p);
 
 /**
  * @brief Duplicate values (with or without Sysrepo memory context) into a new
@@ -54,7 +54,7 @@ int sr_dup_val_ctx(sr_val_t *value, sr_mem_ctx_t *sr_mem_dest, sr_val_t **value_
  *                         If NULL, a new context will be created.
  * @param [out] values_dup_p Returned duplicate of the input array.
  */
-int sr_dup_values_ctx(sr_val_t *values, size_t count, sr_mem_ctx_t *sr_mem_dest, sr_val_t **values_dup_p);
+int sr_dup_values_ctx(const sr_val_t *values, size_t count, sr_mem_ctx_t *sr_mem_dest, sr_val_t **values_dup_p);
 
 /**
  * @brief Print sysrepo value in the given context.

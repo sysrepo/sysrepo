@@ -248,7 +248,7 @@ sr_node_add_child(sr_node_t *parent, const char *child_name, const char *child_m
  * @brief Recursivelly duplicate sysrepo tree.
  */
 static int
-sr_dup_tree_recursive(sr_mem_ctx_t *sr_mem, sr_node_t *tree, size_t depth, sr_node_t **tree_dup_p, sr_node_t **iterator_p)
+sr_dup_tree_recursive(sr_mem_ctx_t *sr_mem, const sr_node_t *tree, size_t depth, sr_node_t **tree_dup_p, sr_node_t **iterator_p)
 {
     int rc = SR_ERR_OK;
     sr_node_t *tree_dup = NULL, *child = NULL, *child_dup = NULL;
@@ -303,20 +303,20 @@ cleanup:
 }
 
 int
-sr_dup_tree_ctx(sr_node_t *tree, sr_mem_ctx_t *sr_mem_dest, sr_node_t **tree_dup_p)
+sr_dup_tree_ctx(const sr_node_t *tree, sr_mem_ctx_t *sr_mem_dest, sr_node_t **tree_dup_p)
 {
     sr_node_t *iterator = NULL;
     return sr_dup_tree_recursive(sr_mem_dest, tree, 0, tree_dup_p, &iterator);
 }
 
 int
-sr_dup_tree(sr_node_t *tree, sr_node_t **tree_dup_p)
+sr_dup_tree(const sr_node_t *tree, sr_node_t **tree_dup_p)
 {
     return sr_dup_tree_ctx(tree, NULL, tree_dup_p);
 }
 
 int
-sr_dup_trees_ctx(sr_node_t *trees, size_t count, sr_mem_ctx_t *sr_mem_dest, sr_node_t **trees_dup_p)
+sr_dup_trees_ctx(const sr_node_t *trees, size_t count, sr_mem_ctx_t *sr_mem_dest, sr_node_t **trees_dup_p)
 {
     int rc = SR_ERR_OK;
     sr_node_t *trees_dup = NULL, *child = NULL, *child_dup = NULL;
@@ -360,7 +360,7 @@ cleanup:
 }
 
 int
-sr_dup_trees(sr_node_t *trees, size_t count, sr_node_t **trees_dup_p)
+sr_dup_trees(const sr_node_t *trees, size_t count, sr_node_t **trees_dup_p)
 {
     return sr_dup_trees_ctx(trees, count, NULL, trees_dup_p);
 }

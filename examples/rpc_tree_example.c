@@ -37,9 +37,11 @@ rpc_cb(const char *xpath, const sr_node_t *input, const size_t input_cnt,
        sr_node_t **output, size_t *output_cnt, void *private_ctx)
 {
     int rc = SR_ERR_OK;
+    sr_session_ctx_t *session = (sr_session_ctx_t *)private_ctx;
 
     /* print input data */
-    printf("\n>>> Received an RPC request:\n\n");
+    printf("\n\n ========== RECEIVED RPC REQUEST ==========\n\n");
+    printf(">>> RPC Input:\n\n");
     for (size_t i = 0; i < input_cnt; ++i) {
         sr_print_tree(input+i, INT_MAX);
     }
@@ -49,6 +51,7 @@ rpc_cb(const char *xpath, const sr_node_t *input, const size_t input_cnt,
      * Here you would actually run the operation against the provided input data
      * and obtained the output data.
      */
+    printf(">>> Executing RPC...\n\n");
 
     /* allocate output sub-trees */
     rc = sr_new_trees(2, output);
@@ -75,10 +78,27 @@ rpc_cb(const char *xpath, const sr_node_t *input, const size_t input_cnt,
     /* inform sysrepo about the number of output sub-trees */
     *output_cnt = 2;
 
+    printf(">>> RPC Output:\n\n");
+    for (size_t i = 0; i < *output_cnt; ++i) {
+        sr_print_tree(&(*output)[i], INT_MAX);
+    }
+    printf("\n");
+
+    /* send notification for event_notif_sub(_tree)_example */
+    printf(">>> Sending event notification for '/turing-machine:paused'...\n");
+    /* note: we can re-use input trees as Sysrepo trees are not bind to xpath */
+    rc = sr_event_notif_send_tree(session, "/turing-machine:paused", input, input_cnt);
+    if (SR_ERR_NOT_FOUND == rc) {
+        printf("No application subscribed for '/turing-machine:paused', skipping.\n"
+               "(run event_notif_sub_example or event_notif_sub_tree_example)\n\n");
+        rc = SR_ERR_OK;
+    }
+
     /**
      * Do not deallocate input trees!
      * They will get freed automatically by sysrepo.
      */
+    printf(">>> RPC finished.\n\n");
     return rc;
 }
 
@@ -95,8 +115,8 @@ rpc_handler(sr_session_ctx_t *session)
     int rc = SR_ERR_OK;
 
     /* subscribe for handling RPC */
-    rc = sr_rpc_subscribe_tree(session, "/turing-machine:run-until", rpc_cb, NULL,
-            SR_SUBSCR_DEFAULT, &subscription);
+    rc = sr_rpc_subscribe_tree(session, "/turing-machine:run-until", rpc_cb,
+            (void *)session, SR_SUBSCR_DEFAULT, &subscription);
     if (SR_ERR_OK != rc) {
         fprintf(stderr, "Error by sr_rpc_subscribe: %s\n", sr_strerror(rc));
         goto cleanup;
@@ -124,11 +144,12 @@ static int
 rpc_caller(sr_session_ctx_t *session)
 {
     sr_node_t *input = NULL, *list = NULL, *leaf = NULL, *output = NULL;
-    size_t output_cnt = 0;
+    size_t input_cnt = 0, output_cnt = 0;
     int rc = SR_ERR_OK;
 
     /* allocate input sub-trees */
-    rc = sr_new_trees(3, &input);
+    input_cnt = 3;
+    rc = sr_new_trees(input_cnt, &input);
     if (SR_ERR_OK != rc) {
         return rc;
     }
@@ -177,9 +198,15 @@ rpc_caller(sr_session_ctx_t *session)
         sr_node_build_str_data(leaf, SR_STRING_T, "%c", 'A'+i);
     }
 
-    /* execute RPC */
     printf("\n\n ========== EXECUTING RPC ==========\n\n");
-    rc = sr_rpc_send_tree(session, "/turing-machine:run-until", input, 3, &output, &output_cnt);
+    printf(">>> RPC Input:\n\n");
+    for (size_t i = 0; i < input_cnt; ++i) {
+        sr_print_tree(&input[i], INT_MAX);
+    }
+    printf("\n");
+
+    /* execute RPC */
+    rc = sr_rpc_send_tree(session, "/turing-machine:run-until", input, input_cnt, &output, &output_cnt);
     if (SR_ERR_OK != rc) {
         return rc;
     }

@@ -51,7 +51,7 @@ void sr_node_insert_child(sr_node_t *parent, sr_node_t *child);
  *                         If NULL, a new context will be created.
  * @param [out] tree_dup_p Returned duplicate of the input tree.
  */
-int sr_dup_tree_ctx(sr_node_t *tree, sr_mem_ctx_t *sr_mem_dest, sr_node_t **tree_dup_p);
+int sr_dup_tree_ctx(const sr_node_t *tree, sr_mem_ctx_t *sr_mem_dest, sr_node_t **tree_dup_p);
 
 /**
  * @brief Duplicate an array of trees (with or without Sysrepo memory context) into a new
@@ -64,6 +64,6 @@ int sr_dup_tree_ctx(sr_node_t *tree, sr_mem_ctx_t *sr_mem_dest, sr_node_t **tree
  *                         If NULL, a new context will be created.
  * @param [out] trees_dup_p Returned duplicate of the input array.
  */
-int sr_dup_trees_ctx(sr_node_t *trees, size_t count, sr_mem_ctx_t *sr_mem_dest, sr_node_t **trees_dup_p);
+int sr_dup_trees_ctx(const sr_node_t *trees, size_t count, sr_mem_ctx_t *sr_mem_dest, sr_node_t **trees_dup_p);
 
 #endif /* TREES_H_ */

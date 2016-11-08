@@ -236,5 +236,27 @@ module turing-machine {
          halted.";
     }
   }
+
+  notification paused {
+    description
+      "The Turing machine has reached a breakpoint and was paused.";
+    leaf state {
+      type state-index;
+      mandatory "true";
+      description
+        "State of the control unit in which the machine was paused.";
+    }
+    leaf head-position {
+      type cell-index;
+      mandatory "true";
+      description
+        "Position of tape read/write head when the machine was paused.";
+    }
+    container tape {
+      description
+        "Content of the tape when the machine was paused.";
+      uses tape-cells;
+    }
+  }
 }
 

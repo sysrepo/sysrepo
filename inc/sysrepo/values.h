@@ -106,7 +106,7 @@ int sr_val_build_str_data(sr_val_t *value, sr_type_t type, const char *format, .
  * @param [in] value Sysrepo value to duplicate
  * @param [out] value_dup Returned duplicate of the input value.
  */
-int sr_dup_val(sr_val_t *value, sr_val_t **value_dup);
+int sr_dup_val(const sr_val_t *value, sr_val_t **value_dup);
 
 /**
  * @brief Duplicate values (with or without Sysrepo memory context) into a new
@@ -116,7 +116,7 @@ int sr_dup_val(sr_val_t *value, sr_val_t **value_dup);
  * @param [in] count Size of the array to duplicate.
  * @param [out] values_dup Returned duplicate of the input array.
  */
-int sr_dup_values(sr_val_t *values, size_t count, sr_val_t **values_dup);
+int sr_dup_values(const sr_val_t *values, size_t count, sr_val_t **values_dup);
 
 /**
  * @brief Print sysrepo value to STDOUT.

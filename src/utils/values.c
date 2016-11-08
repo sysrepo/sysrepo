@@ -240,7 +240,7 @@ sr_val_build_str_data(sr_val_t *value, sr_type_t type, const char *format, ...)
 }
 
 int
-sr_dup_val_data(sr_val_t *dest, sr_val_t *source)
+sr_dup_val_data(sr_val_t *dest, const sr_val_t *source)
 {
     int rc = SR_ERR_OK;
     CHECK_NULL_ARG2(source, dest);
@@ -289,7 +289,7 @@ sr_dup_val_data(sr_val_t *dest, sr_val_t *source)
 }
 
 int
-sr_dup_val_ctx(sr_val_t *value, sr_mem_ctx_t *sr_mem_dest, sr_val_t **value_dup_p)
+sr_dup_val_ctx(const sr_val_t *value, sr_mem_ctx_t *sr_mem_dest, sr_val_t **value_dup_p)
 {
     int rc = SR_ERR_OK;
     sr_val_t *val_dup = NULL;
@@ -313,13 +313,13 @@ cleanup:
 }
 
 int
-sr_dup_val(sr_val_t *value, sr_val_t **value_dup_p)
+sr_dup_val(const sr_val_t *value, sr_val_t **value_dup_p)
 {
     return sr_dup_val_ctx(value, NULL, value_dup_p);
 }
 
 int
-sr_dup_values_ctx(sr_val_t *values, size_t count, sr_mem_ctx_t *sr_mem_dest, sr_val_t **values_dup_p)
+sr_dup_values_ctx(const sr_val_t *values, size_t count, sr_mem_ctx_t *sr_mem_dest, sr_val_t **values_dup_p)
 {
     int rc = SR_ERR_OK;
     sr_val_t *values_dup = NULL;
@@ -347,7 +347,7 @@ cleanup:
 }
 
 int
-sr_dup_values(sr_val_t *values, size_t count, sr_val_t **values_dup_p)
+sr_dup_values(const sr_val_t *values, size_t count, sr_val_t **values_dup_p)
 {
     return sr_dup_values_ctx(values, count, NULL, values_dup_p);
 }

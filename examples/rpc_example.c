@@ -36,9 +36,12 @@ rpc_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt,
        sr_val_t **output, size_t *output_cnt, void *private_ctx)
 {
     int rc = SR_ERR_OK;
+    sr_val_t *notif = NULL;
+    sr_session_ctx_t *session = (sr_session_ctx_t *)private_ctx;
 
     /* print input values */
-    printf("\n>>> Received an RPC request:\n\n");
+    printf("\n\n ========== RECEIVED RPC REQUEST ==========\n\n");
+    printf(">>> RPC Input:\n\n");
     for (size_t i = 0; i < input_cnt; ++i) {
         sr_print_val(input+i);
     }
@@ -48,6 +51,7 @@ rpc_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt,
      * Here you would actually run the operation against the provided input values
      * and obtained the output values.
      */
+    printf(">>> Executing RPC...\n\n");
 
     /* allocate output values */
     rc = sr_new_values(2, output);
@@ -74,10 +78,42 @@ rpc_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt,
     /* inform sysrepo about the number of output values */
     *output_cnt = 2;
 
+    printf(">>> RPC Output:\n\n");
+    for (size_t i = 0; i < *output_cnt; ++i) {
+        sr_print_val(&(*output)[i]);
+    }
+    printf("\n");
+
+    /* convert input values into data for the notification */
+    rc = sr_dup_values(input, input_cnt, &notif);
+    if (SR_ERR_OK != rc) {
+        return rc;
+    }
+    /* note: sysrepo values are bind to xpath, which is different for the notification */
+    for (size_t i = 0; i < input_cnt; ++i) {
+        rc = sr_val_build_xpath(&notif[i], "/turing-machine:paused/%s",
+                                notif[i].xpath+strlen("/turing-machine:run-until/"));
+        if (SR_ERR_OK != rc) {
+            sr_free_values(notif, input_cnt);
+            return rc;
+        }
+    }
+
+    /* send notification for event_notif_sub(_tree)_example */
+    printf(">>> Sending event notification for '/turing-machine:paused'...\n");
+    rc = sr_event_notif_send(session, "/turing-machine:paused", notif, input_cnt);
+    if (SR_ERR_NOT_FOUND == rc) {
+        printf("No application subscribed for '/turing-machine:paused', skipping.\n"
+               "(run event_notif_sub_example or event_notif_sub_tree_example)\n\n");
+        rc = SR_ERR_OK;
+    }
+    sr_free_values(notif, input_cnt);
+
     /**
      * Do not deallocate input values!
      * They will get freed automatically by sysrepo.
      */
+    printf(">>> RPC finished.\n\n");
     return rc;
 }
 
@@ -94,8 +130,8 @@ rpc_handler(sr_session_ctx_t *session)
     int rc = SR_ERR_OK;
 
     /* subscribe for handling RPC */
-    rc = sr_rpc_subscribe(session, "/turing-machine:run-until", rpc_cb, NULL,
-            SR_SUBSCR_DEFAULT, &subscription);
+    rc = sr_rpc_subscribe(session, "/turing-machine:run-until", rpc_cb,
+            (void *)session, SR_SUBSCR_DEFAULT, &subscription);
     if (SR_ERR_OK != rc) {
         fprintf(stderr, "Error by sr_rpc_subscribe: %s\n", sr_strerror(rc));
         goto cleanup;
@@ -123,11 +159,12 @@ static int
 rpc_caller(sr_session_ctx_t *session)
 {
     sr_val_t *input = NULL, *output = NULL;
-    size_t output_cnt = 0;
+    size_t output_cnt = 0, input_cnt = 0;
     int rc = SR_ERR_OK;
 
     /* allocate input values */
-    rc = sr_new_values(7, &input);
+    input_cnt = 7;
+    rc = sr_new_values(input_cnt, &input);
     if (SR_ERR_OK != rc) {
         return rc;
     }
@@ -156,9 +193,15 @@ rpc_caller(sr_session_ctx_t *session)
         sr_val_build_str_data(&input[i+2], SR_STRING_T, "%c", 'A'+i);
     }
 
-    /* execute RPC */
     printf("\n\n ========== EXECUTING RPC ==========\n\n");
-    rc = sr_rpc_send(session, "/turing-machine:run-until", input, 7, &output, &output_cnt);
+    printf(">>> RPC Input:\n\n");
+    for (size_t i = 0; i < input_cnt; ++i) {
+        sr_print_val(&input[i]);
+    }
+    printf("\n");
+
+    /* execute RPC */
+    rc = sr_rpc_send(session, "/turing-machine:run-until", input, input_cnt, &output, &output_cnt);
     if (SR_ERR_OK != rc) {
         return rc;
     }
