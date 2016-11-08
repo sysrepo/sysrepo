@@ -611,6 +611,116 @@ sr_mem_edit_string_test(void **state)
     assert_ptr_equal(mem_block->mem + strlen(STRING_VALUE) + 1, string);
 
     sr_mem_free(sr_mem);
+
+#undef STRING_VALUE
+#undef SHORTER_STRING_VALUE
+#undef LONGER_STRING_VALUE
+}
+
+static int
+sr_mem_edit_string_va_wrapper(sr_mem_ctx_t *sr_mem, char **string_p, const char *format, ...)
+{
+    va_list arg_list;
+    int rc = SR_ERR_OK;
+
+    va_start(arg_list, format);
+    rc = sr_mem_edit_string_va(sr_mem, string_p, format, arg_list);
+    va_end(arg_list);
+
+    return rc;
+}
+
+static void
+sr_mem_edit_string_va_test(void **state)
+{
+    int rc = SR_ERR_OK;
+    sr_mem_ctx_t *sr_mem = NULL;
+    size_t size = 0;
+    char *string = NULL;
+    const sr_mem_block_t *mem_block = NULL;
+    const size_t size_total = 2*MEM_BLOCK_MIN_SIZE + (MEM_BLOCK_MIN_SIZE>>1) + (1<<20); /* reused from sr_malloc_test */
+
+#define STRING_TEMPLATE "String value %d"
+#define STRING_VALUE "String value 123"
+#define SHORTER_STRING_TEMPLATE "value %d"
+#define SHORTER_STRING_VALUE "value 456"
+#define LONGER_STRING_TEMPLATE "Longer string value %d"
+#define LONGER_STRING_VALUE "Longer string value 789"
+
+    /* standard strdup */
+    rc = sr_mem_edit_string_va_wrapper(NULL, &string, STRING_TEMPLATE, 123);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(string);
+    assert_int_equal(0, strcmp(string, STRING_VALUE));
+    rc = sr_mem_edit_string_va_wrapper(NULL, &string, SHORTER_STRING_TEMPLATE, 456);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(string);
+    assert_int_equal(0, strcmp(string, SHORTER_STRING_VALUE));
+    rc = sr_mem_edit_string_va_wrapper(NULL, &string, LONGER_STRING_TEMPLATE, 789);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(string);
+    assert_int_equal(0, strcmp(string, LONGER_STRING_VALUE));
+    free(string);
+    string = NULL;
+
+    rc = sr_mem_new(0, &sr_mem);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* sysrepo "strdup" */
+    rc = sr_mem_edit_string_va_wrapper(sr_mem, &string, STRING_TEMPLATE, 123);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(string);
+    size = strlen(STRING_VALUE) + 1;
+    assert_int_equal(0, strcmp(string, STRING_VALUE));
+    check_num_of_mem_blocks(sr_mem, 3);
+    check_mem_block_usage(sr_mem, 0, 0, size);
+    assert_ptr_equal(sr_mem->cursor, sr_mem->mem_blocks->first);
+    assert_int_equal(sr_mem->used_total, sr_mem->peak);
+    assert_int_equal(size, sr_mem->used_total);
+    assert_int_equal(0, sr_mem->obj_count);
+    assert_int_equal(size_total, sr_mem->size_total);
+    mem_block = get_mem_block(sr_mem, 0);
+    assert_ptr_equal(mem_block->mem, string);
+
+    /* overwrite */
+    rc = sr_mem_edit_string_va_wrapper(sr_mem, &string, SHORTER_STRING_TEMPLATE, 456);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(string);
+    assert_int_equal(0, strcmp(string, SHORTER_STRING_VALUE));
+    check_num_of_mem_blocks(sr_mem, 3);
+    check_mem_block_usage(sr_mem, 0, 0, size);
+    assert_ptr_equal(sr_mem->cursor, sr_mem->mem_blocks->first);
+    assert_int_equal(sr_mem->used_total, sr_mem->peak);
+    assert_int_equal(size, sr_mem->used_total);
+    assert_int_equal(0, sr_mem->obj_count);
+    assert_int_equal(size_total, sr_mem->size_total);
+    mem_block = get_mem_block(sr_mem, 0);
+    assert_ptr_equal(mem_block->mem, string);
+
+    /* realloc */
+    rc = sr_mem_edit_string_va_wrapper(sr_mem, &string, LONGER_STRING_TEMPLATE, 789);
+    assert_int_equal(SR_ERR_OK, rc);
+    assert_non_null(string);
+    size += strlen(LONGER_STRING_VALUE) + 1;
+    assert_int_equal(0, strcmp(string, LONGER_STRING_VALUE));
+    check_num_of_mem_blocks(sr_mem, 3);
+    check_mem_block_usage(sr_mem, 0, 0, size);
+    assert_ptr_equal(sr_mem->cursor, sr_mem->mem_blocks->first);
+    assert_int_equal(sr_mem->used_total, sr_mem->peak);
+    assert_int_equal(size, sr_mem->used_total);
+    assert_int_equal(0, sr_mem->obj_count);
+    assert_int_equal(size_total, sr_mem->size_total);
+    mem_block = get_mem_block(sr_mem, 0);
+    assert_ptr_equal(mem_block->mem + strlen(STRING_VALUE) + 1, string);
+
+    sr_mem_free(sr_mem);
+
+#undef STRING_TEMPLATE
+#undef STRING_VALUE
+#undef SHORTER_STRING_TEMPLATE
+#undef SHORTER_STRING_VALUE
+#undef LONGER_STRING_TEMPLATE
+#undef LONGER_STRING_VALUE
 }
 
 int
@@ -621,6 +731,7 @@ main() {
         cmocka_unit_test(sr_calloc_test),
         cmocka_unit_test(sr_mem_snapshot_test),
         cmocka_unit_test(sr_mem_edit_string_test),
+        cmocka_unit_test(sr_mem_edit_string_va_test),
 
     };
 

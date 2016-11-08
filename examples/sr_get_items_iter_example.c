@@ -41,13 +41,13 @@ main(int argc, char **argv)
     }
 
     /* start session */
-    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &sess);
+    rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &sess);
     if (SR_ERR_OK != rc) {
         goto cleanup;
     }
 
     /* get all list instances with their content (recursive) */
-    rc = sr_get_items_iter(sess, "/ietf-interfaces:interfaces/interface//*", &iter);
+    rc = sr_get_items_iter(sess, "/ietf-interfaces:interfaces-state/interface//*", &iter);
     if (SR_ERR_OK != rc) {
         goto cleanup;
     }

@@ -183,9 +183,24 @@ sr_node_set_module(sr_node_t *node, const char *module_name)
 }
 
 int
-sr_node_set_string(sr_node_t *node, const char *string_val)
+sr_node_set_str_data(sr_node_t *node, sr_type_t type, const char *string_val)
 {
-    return sr_val_set_string((sr_val_t *)node, string_val);
+    return sr_val_set_str_data((sr_val_t *)node, type, string_val);
+}
+
+int
+sr_node_build_str_data(sr_node_t *node, sr_type_t type, const char *format, ...)
+{
+    va_list arg_list;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG2(node, format);
+
+    va_start(arg_list, format);
+    rc = sr_val_build_str_data_va((sr_val_t *)node, type, format, arg_list);
+    va_end(arg_list);
+
+    return rc;
 }
 
 /**

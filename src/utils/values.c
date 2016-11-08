@@ -22,10 +22,41 @@
 
 #include <unistd.h>
 #include <inttypes.h>
+#include <stdarg.h>
+
 #include "sr_common.h"
 #include "sysrepo/values.h"
 #include "values_internal.h"
 
+/**
+ * @brief Returns pointer to the string where data of given string type is stored.
+ */
+static char **
+sr_val_str_data_ptr(sr_val_t *value, sr_type_t type)
+{
+    switch (type) {
+        case SR_BINARY_T:
+            return &value->data.binary_val;
+            break;
+        case SR_BITS_T:
+            return &value->data.bits_val;
+            break;
+        case SR_ENUM_T:
+            return &value->data.enum_val;
+            break;
+        case SR_IDENTITYREF_T:
+            return &value->data.identityref_val;
+            break;
+        case SR_INSTANCEID_T:
+            return &value->data.instanceid_val;
+            break;
+        case SR_STRING_T:
+            return &value->data.string_val;
+            break;
+        default:
+            return NULL;
+    }
+}
 
 /**
  * @brief Create a new instance of sysrepo value.
@@ -139,39 +170,73 @@ int
 sr_val_set_xpath(sr_val_t *value, const char *xpath)
 {
     CHECK_NULL_ARG2(value, xpath);
+
     return sr_mem_edit_string(value->_sr_mem, &value->xpath, xpath);
 }
 
 int
-sr_val_set_string(sr_val_t *value, const char *string_val)
+sr_val_build_xpath(sr_val_t *value, const char *format, ...)
 {
-    char **to_edit = NULL;
+    va_list arg_list;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG2(value, format);
+
+    va_start(arg_list, format);
+    rc = sr_mem_edit_string_va(value->_sr_mem, &value->xpath, format, arg_list);
+    va_end(arg_list);
+
+    return rc;
+}
+
+int
+sr_val_set_str_data(sr_val_t *value, sr_type_t type, const char *string_val)
+{
+    char **str_to_edit = NULL;
+
     CHECK_NULL_ARG2(value, string_val);
 
-    switch (value->type) {
-        case SR_BINARY_T:
-            to_edit = &value->data.binary_val;
-            break;
-        case SR_BITS_T:
-            to_edit = &value->data.bits_val;
-            break;
-        case SR_ENUM_T:
-            to_edit = &value->data.enum_val;
-            break;
-        case SR_IDENTITYREF_T:
-            to_edit = &value->data.identityref_val;
-            break;
-        case SR_INSTANCEID_T:
-            to_edit = &value->data.instanceid_val;
-            break;
-        case SR_STRING_T:
-            to_edit = &value->data.string_val;
-            break;
-        default:
-            return SR_ERR_INVAL_ARG;
+    str_to_edit = sr_val_str_data_ptr(value, type);
+    if (NULL == str_to_edit) {
+        return SR_ERR_INVAL_ARG;
     }
+    value->type = type;
 
-    return sr_mem_edit_string(value->_sr_mem, to_edit, string_val);
+    return sr_mem_edit_string(value->_sr_mem, str_to_edit, string_val);
+}
+
+int
+sr_val_build_str_data_va(sr_val_t *value, sr_type_t type, const char *format, va_list args)
+{
+    char **str_to_edit = NULL;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG2(value, format);
+
+    str_to_edit = sr_val_str_data_ptr(value, type);
+    if (NULL == str_to_edit) {
+        return SR_ERR_INVAL_ARG;
+    }
+    value->type = type;
+
+    rc = sr_mem_edit_string_va(value->_sr_mem, str_to_edit, format, args);
+
+    return rc;
+}
+
+int
+sr_val_build_str_data(sr_val_t *value, sr_type_t type, const char *format, ...)
+{
+    va_list arg_list;
+    int rc = SR_ERR_OK;
+
+    CHECK_NULL_ARG2(value, format);
+
+    va_start(arg_list, format);
+    rc = sr_val_build_str_data_va(value, type, format, arg_list);
+    va_end(arg_list);
+
+    return rc;
 }
 
 int
@@ -181,26 +246,25 @@ sr_dup_val_data(sr_val_t *dest, sr_val_t *source)
     CHECK_NULL_ARG2(source, dest);
 
     dest->dflt = source->dflt;
-    dest->type = source->type;
 
     switch (source->type) {
         case SR_BINARY_T:
-            rc = sr_val_set_string(dest, source->data.binary_val);
+            rc = sr_val_set_str_data(dest, source->type, source->data.binary_val);
             break;
         case SR_BITS_T:
-            rc = sr_val_set_string(dest, source->data.bits_val);
+            rc = sr_val_set_str_data(dest, source->type, source->data.bits_val);
             break;
         case SR_ENUM_T:
-            rc = sr_val_set_string(dest, source->data.enum_val);
+            rc = sr_val_set_str_data(dest, source->type, source->data.enum_val);
             break;
         case SR_IDENTITYREF_T:
-            rc = sr_val_set_string(dest, source->data.identityref_val);
+            rc = sr_val_set_str_data(dest, source->type, source->data.identityref_val);
             break;
         case SR_INSTANCEID_T:
-            rc = sr_val_set_string(dest, source->data.instanceid_val);
+            rc = sr_val_set_str_data(dest, source->type, source->data.instanceid_val);
             break;
         case SR_STRING_T:
-            rc = sr_val_set_string(dest, source->data.string_val);
+            rc = sr_val_set_str_data(dest, source->type, source->data.string_val);
             break;
         case SR_BOOL_T:
         case SR_DECIMAL64_T:
@@ -214,7 +278,10 @@ sr_dup_val_data(sr_val_t *dest, sr_val_t *source)
         case SR_UINT64_T:
         case SR_TREE_ITERATOR_T:
             dest->data = source->data;
+            dest->type = source->type;
+            break;
         default:
+            dest->type = source->type;
             break;
     }
 

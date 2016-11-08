@@ -64,4 +64,15 @@ int sr_dup_values_ctx(sr_val_t *values, size_t count, sr_mem_ctx_t *sr_mem_dest,
  */
 int sr_print_val_ctx(sr_print_ctx_t *print_ctx, sr_val_t *value);
 
+/**
+ * @brief Stores data of string type into the Sysrepo value data. The actual data
+ * will be built from the a format string and a variable arguments list.
+ *
+ * @param [in] value Sysrepo value to edit.
+ * @param [in] type Exact type of the data.
+ * @param [in] format Format string used to build the data.
+ * @param [in] args List of variable arguments to the format string.
+ */
+int sr_val_build_str_data_va(sr_val_t *value, sr_type_t type, const char *format, va_list args);
+
 #endif /* VALUES_INTERNAL_H_ */

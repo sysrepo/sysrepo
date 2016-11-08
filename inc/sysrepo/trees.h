@@ -82,12 +82,23 @@ int sr_node_set_name(sr_node_t *node, const char *name);
 int sr_node_set_module(sr_node_t *node, const char *module_name);
 
 /**
- * @brief Store string into the Sysrepo node data.
+ * @brief Store data of string type into the Sysrepo node data.
  *
  * @param [in] node Sysrepo node to edit.
+ * @param [in] type Exact type of the data.
  * @param [in] string_val String value to set.
  */
-int sr_node_set_string(sr_node_t *node, const char *string_val);
+int sr_node_set_str_data(sr_node_t *node, sr_type_t type, const char *string_val);
+
+/**
+ * @brief Store data of string type into the Sysrepo node data. The actual data
+ * will be built from the a format string and a variable arguments list.
+ *
+ * @param [in] node Sysrepo node to edit.
+ * @param [in] type Exact type of the data.
+ * @param [in] format Format string used to build the data.
+ */
+int sr_node_build_str_data(sr_node_t *node, sr_type_t type, const char *format, ...);
 
 /**
  * @brief Create a new child for a given Sysrepo node.
