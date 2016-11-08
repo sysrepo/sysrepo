@@ -372,7 +372,7 @@ sr_dup_trees(sr_node_t *trees, size_t count, sr_node_t **trees_dup_p)
  * @param [in] node Sysrepo tree node to print.
  */
 static int
-sr_print_node(sr_print_ctx_t *print_ctx, sr_node_t *node)
+sr_print_node(sr_print_ctx_t *print_ctx, const sr_node_t *node)
 {
     int rc = SR_ERR_OK;
 
@@ -383,7 +383,7 @@ sr_print_node(sr_print_ctx_t *print_ctx, sr_node_t *node)
         CHECK_RC_MSG_RETURN(rc, "Failed to print module name of a sysrepo tree node");
     }
 
-    return sr_print_val_ctx(print_ctx, (sr_val_t *)node);
+    return sr_print_val_ctx(print_ctx, (const sr_val_t *)node);
 }
 
 /**
@@ -394,10 +394,10 @@ sr_print_node(sr_print_ctx_t *print_ctx, sr_node_t *node)
  * @param [in] depth_limit Maximum number of tree levels to print.
  */
 static int
-sr_print_tree_ctx(sr_print_ctx_t *print_ctx, sr_node_t *tree, int depth_limit)
+sr_print_tree_ctx(sr_print_ctx_t *print_ctx, const sr_node_t *tree, int depth_limit)
 {
     int rc = SR_ERR_OK;
-    sr_node_t *node = NULL, *pred = NULL, *parent = NULL;
+    const sr_node_t *node = NULL, *pred = NULL, *parent = NULL;
     char *indent = NULL, *aux = NULL, *cur = NULL;
     int indent_len = 0, new_len = 0;
     int depth = 0;
@@ -487,18 +487,18 @@ cleanup:
 }
 
 int
-sr_print_tree(sr_node_t *tree, int depth_limit)
+sr_print_tree(const sr_node_t *tree, int depth_limit)
 {
     sr_print_ctx_t print_ctx = { 0, };
 
-    print_ctx.type = SR_PRINT_FD;
-    print_ctx.method.fd = STDOUT_FILENO;
+    print_ctx.type = SR_PRINT_STREAM;
+    print_ctx.method.stream = stdout;
 
     return sr_print_tree_ctx(&print_ctx, tree, depth_limit);
 }
 
 int
-sr_print_tree_fd(int fd, sr_node_t *tree, int depth_limit)
+sr_print_tree_fd(int fd, const sr_node_t *tree, int depth_limit)
 {
     sr_print_ctx_t print_ctx = { 0, };
 
@@ -509,7 +509,7 @@ sr_print_tree_fd(int fd, sr_node_t *tree, int depth_limit)
 }
 
 int
-sr_print_tree_stream(FILE *stream, sr_node_t *tree, int depth_limit)
+sr_print_tree_stream(FILE *stream, const sr_node_t *tree, int depth_limit)
 {
     sr_print_ctx_t print_ctx = { 0, };
 
@@ -520,7 +520,7 @@ sr_print_tree_stream(FILE *stream, sr_node_t *tree, int depth_limit)
 }
 
 int
-sr_print_tree_mem(char **mem_p, sr_node_t *tree, int depth_limit)
+sr_print_tree_mem(char **mem_p, const sr_node_t *tree, int depth_limit)
 {
     int rc = SR_ERR_OK;
     sr_print_ctx_t print_ctx = { 0, };

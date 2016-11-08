@@ -353,7 +353,7 @@ sr_dup_values(sr_val_t *values, size_t count, sr_val_t **values_dup_p)
 }
 
 int
-sr_print_val_ctx(sr_print_ctx_t *print_ctx, sr_val_t *value)
+sr_print_val_ctx(sr_print_ctx_t *print_ctx, const sr_val_t *value)
 {
     int rc = SR_ERR_OK;
 
@@ -434,18 +434,18 @@ sr_print_val_ctx(sr_print_ctx_t *print_ctx, sr_val_t *value)
 }
 
 int
-sr_print_val(sr_val_t *value)
+sr_print_val(const sr_val_t *value)
 {
     sr_print_ctx_t print_ctx = { 0, };
 
-    print_ctx.type = SR_PRINT_FD;
-    print_ctx.method.fd = STDOUT_FILENO;
+    print_ctx.type = SR_PRINT_STREAM;
+    print_ctx.method.stream = stdout;
 
     return sr_print_val_ctx(&print_ctx, value);
 }
 
 int
-sr_print_val_fd(int fd, sr_val_t *value)
+sr_print_val_fd(int fd, const sr_val_t *value)
 {
     sr_print_ctx_t print_ctx = { 0, };
 
@@ -456,7 +456,7 @@ sr_print_val_fd(int fd, sr_val_t *value)
 }
 
 int
-sr_print_val_stream(FILE *stream, sr_val_t *value)
+sr_print_val_stream(FILE *stream, const sr_val_t *value)
 {
     sr_print_ctx_t print_ctx = { 0, };
 
@@ -467,7 +467,7 @@ sr_print_val_stream(FILE *stream, sr_val_t *value)
 }
 
 int
-sr_print_val_mem(char **mem_p, sr_val_t *value)
+sr_print_val_mem(char **mem_p, const sr_val_t *value)
 {
     int rc = SR_ERR_OK;
     sr_print_ctx_t print_ctx = { 0, };

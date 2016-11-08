@@ -137,7 +137,7 @@ int sr_dup_trees(sr_node_t *trees, size_t count, sr_node_t **trees_dup);
  * @param [in] tree Sysrepo tree to print.
  * @param [in] depth_limit Maximum number of tree levels to print.
  */
-int sr_print_tree(sr_node_t *tree, int depth_limit);
+int sr_print_tree(const sr_node_t *tree, int depth_limit);
 
 /**
  * @brief Print sysrepo tree to the specified file descriptor.
@@ -146,7 +146,7 @@ int sr_print_tree(sr_node_t *tree, int depth_limit);
  * @param [in] tree Sysrepo tree to print.
  * @param [in] depth_limit Maximum number of tree levels to print.
  */
-int sr_print_tree_fd(int fd, sr_node_t *tree, int depth_limit);
+int sr_print_tree_fd(int fd, const sr_node_t *tree, int depth_limit);
 
 /**
  * @brief Print sysrepo tree to the specified output file stream.
@@ -155,7 +155,7 @@ int sr_print_tree_fd(int fd, sr_node_t *tree, int depth_limit);
  * @param [in] tree Sysrepo tree to print.
  * @param [in] depth_limit Maximum number of tree levels to print.
  */
-int sr_print_tree_stream(FILE *stream, sr_node_t *tree, int depth_limit);
+int sr_print_tree_stream(FILE *stream, const sr_node_t *tree, int depth_limit);
 
 /**
  * @brief Print sysrepo tree into a newly allocated memory buffer.
@@ -165,7 +165,7 @@ int sr_print_tree_stream(FILE *stream, sr_node_t *tree, int depth_limit);
  * @param [in] tree Sysrepo tree to print.
  * @param [in] depth_limit Maximum number of tree levels to print.
  */
-int sr_print_tree_mem(char **mem_p, sr_node_t *tree, int depth_limit);
+int sr_print_tree_mem(char **mem_p, const sr_node_t *tree, int depth_limit);
 
 /**
  * @brief Returns pointer to the first child (based on the schema) of a given node.

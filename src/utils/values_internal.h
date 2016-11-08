@@ -62,7 +62,7 @@ int sr_dup_values_ctx(sr_val_t *values, size_t count, sr_mem_ctx_t *sr_mem_dest,
  * @param [in] print_ctx Context for printing.
  * @param [in] value Sysrepo value to print.
  */
-int sr_print_val_ctx(sr_print_ctx_t *print_ctx, sr_val_t *value);
+int sr_print_val_ctx(sr_print_ctx_t *print_ctx, const sr_val_t *value);
 
 /**
  * @brief Stores data of string type into the Sysrepo value data. The actual data

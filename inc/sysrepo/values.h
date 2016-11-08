@@ -123,7 +123,7 @@ int sr_dup_values(sr_val_t *values, size_t count, sr_val_t **values_dup);
  *
  * @param [in] value Sysrepo value to print.
  */
-int sr_print_val(sr_val_t *value);
+int sr_print_val(const sr_val_t *value);
 
 /**
  * @brief Print sysrepo value to the specified file descriptor.
@@ -131,7 +131,7 @@ int sr_print_val(sr_val_t *value);
  * @param [in] fd File descriptor to print the value into.
  * @param [in] value Sysrepo value to print.
  */
-int sr_print_val_fd(int fd, sr_val_t *value);
+int sr_print_val_fd(int fd, const sr_val_t *value);
 
 /**
  * @brief Print sysrepo value to the specified output file stream.
@@ -139,7 +139,7 @@ int sr_print_val_fd(int fd, sr_val_t *value);
  * @param [in] stream Output file stream to print the value into.
  * @param [in] value Sysrepo value to print.
  */
-int sr_print_val_stream(FILE *stream, sr_val_t *value);
+int sr_print_val_stream(FILE *stream, const sr_val_t *value);
 
 /**
  * @brief Print sysrepo value into a newly allocated memory buffer.
@@ -148,7 +148,7 @@ int sr_print_val_stream(FILE *stream, sr_val_t *value);
  * @param [in] mem_p Pointer to store the resulting dump.
  * @param [in] value Sysrepo value to print.
  */
-int sr_print_val_mem(char **mem_p, sr_val_t *value);
+int sr_print_val_mem(char **mem_p, const sr_val_t *value);
 
 /**@} values */
 

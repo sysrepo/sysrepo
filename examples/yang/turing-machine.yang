@@ -187,6 +187,41 @@ module turing-machine {
       "Start the Turing Machine operation.";
   }
 
+  rpc run-until {
+    description
+      "Start the Turing Machine operation and let it run until it is halted
+       or ALL the defined breakpoint conditions are satisfied.";
+    input {
+      leaf state {
+        type state-index;
+        description
+          "What state the control unit has to be at for the execution to be paused.";
+      }
+      leaf head-position {
+        type cell-index;
+        description
+          "Position of tape read/write head for which the breakpoint applies.";
+      }
+      container tape {
+        description
+          "What content the tape has to have for the breakpoint to apply.";
+        uses tape-cells;
+      }
+    }
+    output {
+      leaf step-count {
+        type uint64;
+        description
+          "The number of steps executed since the last 'run-until' call.";
+      }
+      leaf halted {
+        type boolean;
+        description
+          "'True' if the Turing machine is halted, 'false' if it is only paused.";
+      }
+    }
+  }
+
   /* Notifications */
 
   notification halted {

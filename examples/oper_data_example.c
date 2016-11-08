@@ -25,7 +25,6 @@
 #include <signal.h>
 #include <string.h>
 #include <inttypes.h>
-#include <limits.h>
 
 #include "sysrepo.h"
 #include "sysrepo/values.h"
