@@ -1,8 +1,8 @@
 /**
- * @file rpc_example.c
+ * @file rpc_tree_example.c
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>,
  *         Milan Lenco <milan.lenco@pantheon.tech>
- * @brief Example usage of RPC API.
+ * @brief Example usage of the tree variant of RPC API.
  *
  * @copyright
  * Copyright 2016 Cisco Systems, Inc.
@@ -25,38 +25,39 @@
 #include <unistd.h>
 #include <signal.h>
 #include <string.h>
+#include <limits.h>
 
 #include "sysrepo.h"
-#include "sysrepo/values.h"
+#include "sysrepo/trees.h"
 
 volatile int exit_application = 0;
 
 static int
-rpc_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt,
-       sr_val_t **output, size_t *output_cnt, void *private_ctx)
+rpc_cb(const char *xpath, const sr_node_t *input, const size_t input_cnt,
+       sr_node_t **output, size_t *output_cnt, void *private_ctx)
 {
     int rc = SR_ERR_OK;
 
-    /* print input values */
+    /* print input data */
     printf("\n>>> Received an RPC request:\n\n");
     for (size_t i = 0; i < input_cnt; ++i) {
-        sr_print_val(input+i);
+        sr_print_tree(input+i, INT_MAX);
     }
     printf("\n");
 
     /**
-     * Here you would actually run the operation against the provided input values
-     * and obtained the output values.
+     * Here you would actually run the operation against the provided input data
+     * and obtained the output data.
      */
 
-    /* allocate output values */
-    rc = sr_new_values(2, output);
+    /* allocate output sub-trees */
+    rc = sr_new_trees(2, output);
     if (SR_ERR_OK != rc) {
         return rc;
     }
 
     /* set 'output/step-count' leaf */
-    rc = sr_val_set_xpath(&(*output)[0], "/turing-machine:run-until/step-count");
+    rc = sr_node_set_name(&(*output)[0], "step-count");
     if (SR_ERR_OK != rc) {
         return rc;
     }
@@ -64,18 +65,18 @@ rpc_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt,
     (*output)[0].data.uint64_val = 256;
 
     /* set 'output/halted' leaf */
-    rc = sr_val_set_xpath(&(*output)[1], "/turing-machine:run-until/halted");
+    rc = sr_node_set_name(&(*output)[1], "halted");
     if (SR_ERR_OK != rc) {
         return rc;
     }
     (*output)[1].type = SR_BOOL_T;
     (*output)[1].data.bool_val = false;
 
-    /* inform sysrepo about the number of output values */
+    /* inform sysrepo about the number of output sub-trees */
     *output_cnt = 2;
 
     /**
-     * Do not deallocate input values!
+     * Do not deallocate input trees!
      * They will get freed automatically by sysrepo.
      */
     return rc;
@@ -94,7 +95,7 @@ rpc_handler(sr_session_ctx_t *session)
     int rc = SR_ERR_OK;
 
     /* subscribe for handling RPC */
-    rc = sr_rpc_subscribe(session, "/turing-machine:run-until", rpc_cb, NULL,
+    rc = sr_rpc_subscribe_tree(session, "/turing-machine:run-until", rpc_cb, NULL,
             SR_SUBSCR_DEFAULT, &subscription);
     if (SR_ERR_OK != rc) {
         fprintf(stderr, "Error by sr_rpc_subscribe: %s\n", sr_strerror(rc));
@@ -122,17 +123,18 @@ cleanup:
 static int
 rpc_caller(sr_session_ctx_t *session)
 {
-    sr_val_t *input = NULL, *output = NULL;
+    sr_node_t *input = NULL, *list = NULL, *leaf = NULL, *output = NULL;
     size_t output_cnt = 0;
     int rc = SR_ERR_OK;
 
-    /* allocate input values */
-    rc = sr_new_values(7, &input);
+    /* allocate input sub-trees */
+    rc = sr_new_trees(3, &input);
     if (SR_ERR_OK != rc) {
         return rc;
     }
+
     /* set 'input/state' leaf */
-    rc = sr_val_set_xpath(&input[0], "/turing-machine:run-until/state");
+    rc = sr_node_set_name(&input[0], "state");
     if (SR_ERR_OK != rc) {
         return rc;
     }
@@ -140,38 +142,56 @@ rpc_caller(sr_session_ctx_t *session)
     input[0].data.uint16_val = 10;
 
     /* set 'input/head-position' leaf */
-    rc = sr_val_set_xpath(&input[1], "/turing-machine:run-until/head-position");
+    rc = sr_node_set_name(&input[1], "head-position");
     if (SR_ERR_OK != rc) {
         return rc;
     }
     input[1].type = SR_INT64_T;
     input[1].data.uint16_val = 123;
 
-    /* set 'input/tape' list entries */
+    /* build 'input/tape' subtree */
+    rc = sr_node_set_name(&input[2], "tape");
+    if (SR_ERR_OK != rc) {
+        return rc;
+    }
+    input[2].type = SR_CONTAINER_T;
     for (size_t i = 0; i < 5; ++i) {
-        rc = sr_val_build_xpath(&input[i+2], "/turing-machine:run-until/tape/cell[coord='%d']/symbol", i);
+        /* - list instance */
+        rc = sr_node_add_child(&input[2], "cell", NULL, &list);
         if (SR_ERR_OK != rc) {
             return rc;
         }
-        sr_val_build_str_data(&input[i+2], SR_STRING_T, "%c", 'A'+i);
+        list->type = SR_LIST_T;
+        /* - 'coord' */
+        rc = sr_node_add_child(list, "coord", NULL, &leaf);
+        if (SR_ERR_OK != rc) {
+            return rc;
+        }
+        leaf->type = SR_INT64_T;
+        leaf->data.int64_val = i;
+        /* - 'symbol' */
+        rc = sr_node_add_child(list, "symbol", NULL, &leaf);
+        if (SR_ERR_OK != rc) {
+            return rc;
+        }
+        sr_node_build_str_data(leaf, SR_STRING_T, "%c", 'A'+i);
     }
 
     /* execute RPC */
     printf("\n\n ========== EXECUTING RPC ==========\n\n");
-    rc = sr_rpc_send(session, "/turing-machine:run-until", input, 7, &output, &output_cnt);
+    rc = sr_rpc_send_tree(session, "/turing-machine:run-until", input, 3, &output, &output_cnt);
     if (SR_ERR_OK != rc) {
         return rc;
     }
 
-    /* print output values */
+    /* print output data */
     printf("\n>>> Received an RPC response:\n\n");
     for (size_t i = 0; i < output_cnt; ++i) {
-        sr_print_val(output+i);
+        sr_print_tree(output+i, INT_MAX);
     }
-    printf("\n");
 
-    /* don't forget to de-allocate the output values */
-    sr_free_values(output, output_cnt);
+    /* don't forget to de-allocate the output trees */
+    sr_free_trees(output, output_cnt);
     return SR_ERR_OK;
 }
 
@@ -199,7 +219,7 @@ main(int argc, char **argv)
     if (1 == argc) {
         /* run as a RPC handler */
         printf("This application will be an RPC handler for 'run-until' operation of 'turing-machine'.\n");
-        printf("Run the same executable (or rpc_tree_example) with one (any) argument to execute the RPC.\n");
+        printf("Run the same executable (or rpc_example) with one (any) argument to execute the RPC.\n");
         rc = rpc_handler(session);
     } else {
         /* run as a RPC caller */

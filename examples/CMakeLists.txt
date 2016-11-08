@@ -16,6 +16,7 @@ add_executable(application_changes_example application_changes_example.c)
 add_executable(application_fd_watcher_example application_fd_watcher_example.c)
 add_executable(oper_data_example oper_data_example.c)
 add_executable(rpc_example rpc_example.c)
+add_executable(rpc_tree_example rpc_tree_example.c)
 
 target_link_libraries(sr_get_item_example sysrepo)
 target_link_libraries(sr_get_items_example sysrepo)
@@ -31,6 +32,8 @@ target_link_libraries(application_changes_example sysrepo)
 target_link_libraries(application_fd_watcher_example sysrepo)
 target_link_libraries(oper_data_example sysrepo)
 target_link_libraries(rpc_example sysrepo)
+target_link_libraries(rpc_tree_example sysrepo)
+
 
 macro(EXEC_AT_INSTALL_TIME CMD)
     install(CODE "message(STATUS \"Exec: ${CMD}\")
