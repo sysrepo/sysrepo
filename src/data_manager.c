@@ -380,7 +380,7 @@ dm_enable_module_running_internal(dm_ctx_t *ctx, dm_session_t *session, dm_schem
     }
     while (NULL != node) {
         if ((LYS_CONTAINER | LYS_LIST | LYS_LEAF | LYS_LEAFLIST) & node->nodetype) {
-            snprintf(xpath, PATH_MAX, "/%s:%s", node->module->name, node->name);
+            snprintf(xpath, PATH_MAX, "/%s:%s", module->name, node->name);
             rc = rp_dt_enable_xpath(ctx, session, schema_info, xpath);
             if (SR_ERR_OK != rc) {
                 break;
@@ -2774,6 +2774,10 @@ dm_commit_prepare_context(dm_ctx_t *dm_ctx, dm_session_t *session, dm_commit_con
 
     c_ctx->fds = calloc(c_ctx->modif_count, sizeof(*c_ctx->fds));
     CHECK_NULL_NOMEM_GOTO(c_ctx->fds, rc, cleanup);
+    for (size_t i = 0; i < c_ctx->modif_count; i++) {
+        c_ctx->fds[i] = -1;
+    }
+
     c_ctx->existed = calloc(c_ctx->modif_count, sizeof(*c_ctx->existed));
     CHECK_NULL_NOMEM_GOTO(c_ctx->existed, rc, cleanup);
 
