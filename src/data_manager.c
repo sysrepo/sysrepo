@@ -4505,12 +4505,7 @@ dm_validate_procedure(dm_ctx_t *dm_ctx, dm_session_t *session, dm_procedure_t ty
 cleanup:
     free(module_name);
     if (data_tree) {
-        /**
-         * XXX
-         * Replaced lyd_free_withsiblings with lyd_free until
-         * github.com/CESNET/libyang/issues/188 is fixed.
-         */
-        lyd_free(data_tree);
+        lyd_free_withsiblings(data_tree);
     }
 
     return rc;
