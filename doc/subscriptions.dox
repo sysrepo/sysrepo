@@ -6,21 +6,21 @@
 As explained in @ref rds section, by default the configuration of model in running
 datastore is not accessible. There are two API calls that enable the configuration
 in running datastore:
-- ::sr_module_change_subscribe - this API call enables the whole configuration covered bv a module.
-Internally the startup configuration  of the module is copied to running datastore.
+- ::sr_module_change_subscribe - this API call enables the whole configuration described by a module.
+Internally the startup configuration of the module is copied to running datastore.
 All nodes of the module is marked as enabled thus the get & edit-like operations can
 be issued to the content of the module. Since the configuration nodes defined by augments
-and submodules is by design stored in the datafile of the module they are enabled & copied
+and submodules are by design stored in the datafile of the module the belongs to, they are enabled & copied
 together with the main module. (e.g.: If you have installed `ietf-interfaces` and `ietf-ip` yang models
 on your system. Calling sr_module_change_subscribe for `ietf-interfaces` enables also the configuration
 defined by `ietf-ip` module.)
 
-- ::sr_subtree_change_subscribe  - the selected subtree of the configuration can be enabled by this API.
-Despite the module-level subscription covers many use-case. There are situations when user wants to be
+- ::sr_subtree_change_subscribe  - the selected subtree of the configuration can be enabled by this API. For xpath argument of this API call
+use xpath expression without predicates. Despite the module-level subscription covers many use-case. There are situations when user wants to be
 subscribed only for a subtree. In some cases only a part of the configuration defined by a model
-is covered by the application and the other part might be covered by another application. Split the logic 
-of applying the changes might by another reason for using the call. For xpath argument of this API call
-use xpath expression without predicates. As the name suggests, only a part of the configuration is enabled.
+is covered by the application and the other part might be covered by another application. Splitting the logic 
+of applying the changes might by another reason for using the call. As the name suggests, only a part of the configuration is enabled & copied.
+The subsequent table explains what nodes are enabled.
 
 i.e: Subscription for subtree defined by xpath `/ietf-interfaces:interfaces/interface/ietf-ip:ipv4/address`
 # | Enabled nodes  | Enabled nodes in the example
@@ -38,7 +38,7 @@ Another type of subscription used in running datastore is the one for providing 
 The xpath used is in this API mustn't contains any predicate, it should identify the subtree that subscriber is
 providing state data for. Subsequently, when the sysrepo is asked for the state data it calls the callback that is supposed
 to return expected state data. The callback is given an xpath that identifies the data that sysrepo expects. In general
-callback might called multiple times with different xpath to handle one user request. The aim of this paragraph is to explain what xpath
+callback might be called multiple times with different xpath to handle one user request. The aim of this paragraph is to explain what xpath
 the user will be asked by sysrepo for the particular subscription and model.
 
 @subsection stateDataLeaf Top-level leaf/leaf-list
@@ -110,7 +110,7 @@ rc = sr_dp_get_items_subscribe(session, "/demo:sensors", dp_sensors, private_ctx
 rc = sr_dp_get_items_subscribe(session, "/demo:seats", dp_seats, private_ctx, SR_SUBSCR_CTX_REUSE, &subscription);    
 ~~~~~~~~~~~~~~~
 
-If a user request a node from the container or list, sysrepo will asked for `/demo:sensors` or `/demo:seats`. (In the current
+If a user requests a node from the container or the list, sysrepo will ask for `/demo:sensors` or `/demo:seats`. (In the current
 implementation the sysrepo does not ask for particular node such as `/demo:sensors/temperature`)
 
 # | Xpath requested by sysrepo  | Example of xpath returned by data provider
@@ -184,8 +184,8 @@ module demo {
 ~~~~~~~~~~~~~~~{.c}
 rc = sr_dp_get_items_subscribe(session, "/demo:traffic_stats", dp_traffic_stats, private_ctx, SR_SUBSCR_DEFAULT, &subscription);
 ~~~~~~~~~~~~~~~
-If a user request data from `traffic_stats` container the callback will be data provider's callback multiple times with different xpath.
-Following table summarize the sequence of the request from sysrepo and expected values from data provider.
+If a user requests data from `traffic_stats` container provider's callback will be called multiple times with different xpath.
+Following table summarize the sequence of the requests from sysrepo and expected values from data provider.
 
 # | Xpath requested by sysrepo  | Example of xpath returned by data provider
 --|------------- | -------------
@@ -195,7 +195,7 @@ Following table summarize the sequence of the request from sysrepo and expected 
 4.|```/demo:traffic_stats/cross_road[id='X']/advanced_info``` callback will be called for each list instance returned from previous call with list keys properly filled in xpath.(X will be replaced by the actual value of the key). User is supposed to return the content of the container. | For the xpath ```/demo:traffic_stats/cross_road[id='0']/advanced_info``` provider is supposed to return values with xpath ```/demo:traffic_stats/cross_road[id='0']/advanced_info/longitude```, ```/demo:traffic_stats/cross_road[id='0']/advanced_info/latitude```
 
 
-@section stateDataInConfig State data nodes in configuration container/list
+@subsection stateDataInConfig State data nodes in configuration container/list
 ~~~~~~~~~~~~~~~{.yang}
 module demo {
    /*..*/
