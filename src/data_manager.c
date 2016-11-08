@@ -3054,6 +3054,7 @@ dm_commit_write_files(dm_session_t *session, dm_commit_context_t *c_ctx)
 
     return rc;
 }
+
 /**
  * @brief Decides whether a subscription should be skipped or not. Takes into account:
  * SR_EV_VERIFY: skip SR_SUBSCR_APPLY_ONLY subscription

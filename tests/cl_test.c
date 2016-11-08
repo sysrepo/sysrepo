@@ -2951,16 +2951,13 @@ test_action_tree_cb2(const char *xpath, const sr_node_t *input, const size_t inp
     *output_cnt = 3;
     assert_int_equal(SR_ERR_OK, sr_node_set_name((*output), "dependency"));
     assert_int_equal(SR_ERR_OK, sr_node_set_module((*output), "test-module"));
-    (*output)[0].type = SR_STRING_T;
-    assert_int_equal(SR_ERR_OK, sr_node_set_string((*output), "drm"));
+    assert_int_equal(SR_ERR_OK, sr_node_set_str_data((*output), SR_STRING_T, "drm"));
     assert_int_equal(SR_ERR_OK, sr_node_set_name((*output) + 1, "dependency"));
     assert_int_equal(SR_ERR_OK, sr_node_set_module((*output) + 1, "test-module"));
-    (*output)[1].type = SR_STRING_T;
-    assert_int_equal(SR_ERR_OK, sr_node_set_string((*output) + 1, "drm_kms_helper"));
+    assert_int_equal(SR_ERR_OK, sr_node_set_str_data((*output) + 1, SR_STRING_T, "drm_kms_helper"));
     assert_int_equal(SR_ERR_OK, sr_node_set_name((*output) + 2, "dependency"));
     assert_int_equal(SR_ERR_OK, sr_node_set_module((*output) + 2, "test-module"));
-    (*output)[2].type = SR_STRING_T;
-    assert_int_equal(SR_ERR_OK, sr_node_set_string((*output) + 2, "ttm"));
+    assert_int_equal(SR_ERR_OK, sr_node_set_str_data((*output) + 2, SR_STRING_T, "ttm"));
 
     return SR_ERR_OK;
 }
@@ -3085,8 +3082,7 @@ cl_action_tree_test(void **state)
     /*  -> params */
     assert_int_equal(SR_ERR_OK, sr_node_set_name(input, "params"));
     assert_int_equal(SR_ERR_OK, sr_node_set_module(input, "test-module"));
-    input[0].type = SR_STRING_T;
-    assert_int_equal(SR_ERR_OK, sr_node_set_string(input, ""));
+    assert_int_equal(SR_ERR_OK, sr_node_set_str_data(input, SR_STRING_T, ""));
     /*  -> force */
     assert_int_equal(SR_ERR_OK, sr_node_set_name(input+1, "force"));
     assert_int_equal(SR_ERR_OK, sr_node_set_module(input+1, "test-module"));
@@ -3256,8 +3252,7 @@ cl_action_combo_test(void **state)
     /*  -> params */
     assert_int_equal(SR_ERR_OK, sr_node_set_name(input_tree, "params"));
     assert_int_equal(SR_ERR_OK, sr_node_set_module(input_tree, "test-module"));
-    input_tree[0].type = SR_STRING_T;
-    assert_int_equal(SR_ERR_OK, sr_node_set_string(input_tree, ""));
+    assert_int_equal(SR_ERR_OK, sr_node_set_str_data(input_tree, SR_STRING_T, ""));
     /*  -> force */
     assert_int_equal(SR_ERR_OK, sr_node_set_name(input_tree+1, "force"));
     assert_int_equal(SR_ERR_OK, sr_node_set_module(input_tree+1, "test-module"));

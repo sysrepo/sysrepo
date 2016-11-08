@@ -470,14 +470,12 @@ cl_dp_traffic_stats(const char *xpath, sr_val_t **values, size_t *values_cnt, vo
         }
 
         snprintf(xp, MAX_LEN, "%s/latitude", xpath);
-        (*values)[0].type = SR_STRING_T;
         sr_val_set_xpath(&(*values)[0], xp);
-        sr_val_set_string(&(*values)[0], "48.729885N");
+        sr_val_set_str_data(&(*values)[0], SR_STRING_T, "48.729885N");
 
         snprintf(xp, MAX_LEN, "%s/longitude", xpath);
-        (*values)[1].type = SR_STRING_T;
         sr_val_set_xpath(&(*values)[1], xp);
-        sr_val_set_string(&(*values)[1], "19.137425E");
+        sr_val_set_str_data(&(*values)[1], SR_STRING_T, "19.137425E");
     }
     else {
         *values = NULL;

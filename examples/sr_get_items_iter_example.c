@@ -21,6 +21,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <inttypes.h>
 #include "sysrepo.h"
 
 void
@@ -49,10 +50,16 @@ print_value(sr_val_t *value)
         printf("= %u\n", value->data.uint16_val);
         break;
     case SR_UINT32_T:
-        printf("= %u\n", value->data.uint32_val);
+        printf("= %"PRIu32"\n", value->data.uint32_val);
+        break;
+    case SR_UINT64_T:
+        printf("= %"PRIu64"\n", value->data.uint64_val);
         break;
     case SR_IDENTITYREF_T:
         printf("= %s\n", value->data.identityref_val);
+        break;
+    case SR_ENUM_T:
+        printf("= %s\n", value->data.enum_val);
         break;
     default:
         printf("(unprintable)\n");
@@ -75,13 +82,13 @@ main(int argc, char **argv)
     }
 
     /* start session */
-    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &sess);
+    rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &sess);
     if (SR_ERR_OK != rc) {
         goto cleanup;
     }
 
     /* get all list instances with their content (recursive) */
-    rc = sr_get_items_iter(sess, "/ietf-interfaces:interfaces/interface//*", &iter);
+    rc = sr_get_items_iter(sess, "/ietf-interfaces:interfaces-state/interface//*", &iter);
     if (SR_ERR_OK != rc) {
         goto cleanup;
     }

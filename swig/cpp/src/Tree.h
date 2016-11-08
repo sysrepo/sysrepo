@@ -53,7 +53,7 @@ public:
     S_Tree last_child();
     void set_name(const char *name);
     void set_module(const char *module_name);
-    void set_string(const char *string_val);
+    void set_str_data(sr_type_t type, const char *string_val);
     void add_child(const char *child_name, const char *child_module_name, S_Tree child);
     sr_node_t **get() {return &_node;};
     void set(const char *val, sr_type_t type = SR_STRING_T);

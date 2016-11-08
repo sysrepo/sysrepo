@@ -52,6 +52,7 @@ public:
                         return sr_xpath_key_value_idx(xpath, node_index, key_index, _state);};
     char *last_node(char *xpath) {return sr_xpath_last_node(xpath, _state);};
     char *node_name(const char *xpath) {return sr_xpath_node_name(xpath);};
+    bool node_name_eq(const char *xpath, const char *node_str) {return sr_xpath_node_name_eq(xpath, node_str);};
     void recover() {return sr_xpath_recover(_state);};
 
 private:
