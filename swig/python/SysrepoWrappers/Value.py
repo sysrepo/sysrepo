@@ -95,7 +95,7 @@ class Value(object):
         if (self.type == sr.SR_BINARY_T or self.type == sr.SR_BITS_T or
             self.type == sr.SR_ENUM_T or self.type == sr.SR_IDENTITYREF_T or
             self.type == sr.SR_INSTANCEID_T or self.type == sr.SR_STRING_T):
-            sr.sr_val_set_string(self._cObject, val)
+            sr.sr_val_set_str_data(self._cObject, self.type, val)
         elif self.type == sr.SR_BOOL_T:
             self._cObject.data.bool_val = val
         elif self.type == sr.SR_DECIMAL64_T:
