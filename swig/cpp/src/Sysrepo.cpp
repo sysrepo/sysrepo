@@ -71,21 +71,32 @@ void throw_exception(int error) {
     }
 }
 
-Logs::Logs()
-{
-    // for consistent swig integration
-    return;
-}
-
-void Logs::set_stderr(sr_log_level_t log_level)
+void Logs::set_stderr(const sr_log_level_t log_level)
 {
     sr_log_stderr(log_level);
 }
 
-void Logs::set_syslog(sr_log_level_t log_level)
+void Logs::set_syslog(const sr_log_level_t log_level)
 {
     sr_log_stderr(log_level);
 }
+
+#ifdef SR_SWIG_SUPPORTS_STD_FUNCTION
+Logs::Callback Logs::log_callback;
+
+void sr_cpp_log_callback(sr_log_level_t level, const char *message)
+{
+    if (Logs::log_callback) {
+        Logs::log_callback(level, std::string(message));
+    }
+}
+
+void Logs::setCallback(Callback cb)
+{
+    Logs::log_callback = cb;
+    sr_log_set_cb(sr_cpp_log_callback);
+}
+#endif
 
 Schema_Content::Schema_Content(char *con)
 {

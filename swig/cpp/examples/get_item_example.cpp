@@ -30,8 +30,10 @@ int
 main(int argc, char **argv)
 {
     try {
-        Logs log;
-        log.set_stderr(SR_LL_DBG);
+        Logs::set_stderr(SR_LL_NONE);
+        Logs::setCallback([](const sr_log_level_t logLevel, const std::string &message) {
+            std::cerr << "sysrepo log (" << logLevel << "): " << message << std::endl;
+        });
 
 	S_Connection conn(new Connection("app1"));
 

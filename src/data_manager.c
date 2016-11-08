@@ -3171,7 +3171,7 @@ dm_commit_notify(dm_ctx_t *dm_ctx, dm_session_t *session, sr_notif_event_t ev, d
         }
 
         /* Log changes */
-        if (NULL != diff && (SR_LL_DBG == sr_ll_stderr || SR_LL_DBG == sr_ll_syslog)) {
+        if (NULL != diff && (SR_LL_DBG == sr_ll_stderr || SR_LL_DBG == sr_ll_syslog || sr_log_callback)) {
             while (LYD_DIFF_END != diff->type[d_cnt]) {
                 char *path = dm_get_notification_changed_xpath(diff, d_cnt);
                 SR_LOG_DBG("%s: %s", dm_get_diff_type_to_string(diff->type[d_cnt]), path);

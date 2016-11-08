@@ -29,8 +29,7 @@ int
 main(int argc, char **argv)
 {
     try {
-        Logs log;
-        log.set_stderr(SR_LL_DBG);
+        Logs::set_stderr(SR_LL_DBG);
 
 	S_Connection conn(new Connection("app3"));
 
