@@ -318,7 +318,7 @@ int dm_get_module_and_lockw(dm_ctx_t *dm_ctx, const char *module_name, dm_schema
 /**
  * @brief Retrieves schema info using ::dm_get_module_and_lock. Lock is released. Function can be used to verify
  * that module existed during function execution. To use schema_info afterward, lock must be acquired
- * using ::dm_lock_schem_info or ::dm_lock_schema_info_write.
+ * using ::dm_lock_schema_info or ::dm_lock_schema_info_write.
  *
  * @note Function acquires and releases read lock for the schema info.
  *
@@ -441,6 +441,7 @@ int dm_commit_write_files(dm_session_t *session, dm_commit_context_t *c_ctx);
  * a post-commit notification - failure do not cause the commit to fail.
  * @param [in] dm_ctx
  * @param [in] session
+ * @param [in] ev type of the notification that should be generated
  * @param [in] c_ctx
  * @return Error code (SR_ERR_OK on success)
  */
@@ -859,7 +860,6 @@ int dm_validate_event_notif_tree(dm_ctx_t *dm_ctx, dm_session_t *session, const 
 
 /**
  * @brief Call lyd_new path uses ly_ctx from data_info->schema.
- * @param [in] dm_ctx
  * @param [in] data_info
  * @param [in] path
  * @param [in] value
