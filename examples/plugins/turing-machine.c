@@ -21,44 +21,10 @@
 
 #include <stdio.h>
 #include <syslog.h>
-#include "sysrepo.h"
-#include "sysrepo/plugins.h"
 
-/* prints one value retrieved from sysrepo */
-static void
-print_value(sr_val_t *value)
-{
-    switch (value->type) {
-        case SR_CONTAINER_T:
-        case SR_CONTAINER_PRESENCE_T:
-        case SR_LIST_T:
-            /* do not print */
-            break;
-        case SR_STRING_T:
-            printf("%s = '%s'\n", value->xpath, value->data.string_val);
-            break;
-        case SR_BOOL_T:
-            printf("%s = %s\n", value->xpath, value->data.bool_val ? "true" : "false");
-            break;
-        case SR_UINT8_T:
-            printf("%s = %u\n", value->xpath, value->data.uint8_val);
-            break;
-        case SR_UINT16_T:
-            printf("%s = %u\n", value->xpath, value->data.uint16_val);
-            break;
-        case SR_UINT32_T:
-            printf("%s = %u\n", value->xpath, value->data.uint32_val);
-            break;
-        case SR_IDENTITYREF_T:
-            printf("%s = %s\n", value->xpath, value->data.identityref_val);
-            break;
-        case SR_ENUM_T:
-            printf("%s = %s\n", value->xpath, value->data.enum_val);
-            break;
-        default:
-            printf("%s (unprintable)\n", value->xpath);
-    }
-}
+#include "sysrepo.h"
+#include "sysrepo/values.h"
+#include "sysrepo/plugins.h"
 
 /* retrieves & prints current turing-machine configuration */
 static void
@@ -76,7 +42,7 @@ retrieve_current_config(sr_session_ctx_t *session)
         return;
     }
     for (size_t i = 0; i < count; i++){
-        print_value(&values[i]);
+        sr_print_val(&values[i]);
     }
     sr_free_values(values, count);
 }

@@ -2182,3 +2182,52 @@ sr_lys_module_has_data(const struct lys_module *module)
     }
     return false;
 }
+
+int
+sr_print(sr_print_ctx_t *print_ctx, const char *format, ...)
+{
+    int rc = SR_ERR_OK, count = 0, len = 0;
+    char *str = NULL, *aux = NULL;
+    size_t new_size;
+    va_list va;
+
+    CHECK_NULL_ARG2(print_ctx, format);
+
+    va_start(va, format);
+
+    switch (print_ctx->type) {
+        case SR_PRINT_FD:
+            count = vdprintf(print_ctx->method.fd, format, va);
+            CHECK_NOT_MINUS1_MSG_GOTO(count, rc, SR_ERR_INTERNAL, cleanup, "vdprintf failed");
+            break;
+        case SR_PRINT_STREAM:
+            count = vfprintf(print_ctx->method.stream, format, va);
+            CHECK_NOT_MINUS1_MSG_GOTO(count, rc, SR_ERR_INTERNAL, cleanup, "vfprintf failed");
+            break;
+        case SR_PRINT_MEM:
+            /* print string to a temporary memory buffer */
+            len = vsnprintf(NULL, 0, format, va);
+            str = calloc(len+1, sizeof *str);
+            CHECK_NULL_NOMEM_GOTO(str, rc, cleanup);
+            va_end(va); /**< restart va_list */
+            va_start(va, format);
+            count = vsnprintf(str, len+1, format, va);
+            CHECK_NOT_MINUS1_MSG_GOTO(count, rc, SR_ERR_INTERNAL, cleanup, "vsnprintf failed");
+            /* append the string to already printed data */
+            if (print_ctx->method.mem.len + count + 1 > print_ctx->method.mem.size) {
+                new_size = MAX(2 * print_ctx->method.mem.size, print_ctx->method.mem.len + count + 1);
+                aux = realloc(print_ctx->method.mem.buf, new_size * sizeof *aux);
+                CHECK_NULL_NOMEM_GOTO(aux, rc, cleanup);
+                print_ctx->method.mem.buf = aux;
+                print_ctx->method.mem.size = new_size;
+            }
+            strcpy(print_ctx->method.mem.buf + print_ctx->method.mem.len, str);
+            print_ctx->method.mem.len += count;
+            break;
+    }
+
+cleanup:
+    free(str);
+    va_end(va);
+    return rc;
+}

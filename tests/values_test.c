@@ -30,14 +30,58 @@
 #include <sys/stat.h>
 
 #include "sr_common.h"
-
+#include "system_helper.h"
 
 #define XPATH1 "/example-module:container/list[key1='key1'][key2='key2']/leaf"
 #define XPATH2 "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4"
 #define XPATH3 "/ietf-interfaces:interfaces/interface[name='gigaeth0']"
+#define XPATH4 "/ietf-interfaces:interfaces"
 
 #define XPATH_TEMPLATE1 "/example-module:container/list[key1='key1-%d'][key2='key2-%d']/leaf"
 #define XPATH_TEMPLATE2 "/test-module:main/numbers[.='%d']"
+
+static void
+sr_test_all_printers(sr_val_t *value, const char *expected)
+{
+    int rc = SR_ERR_OK;
+    char *mem = NULL;
+    char filepath1[] = "/tmp/sr_values_test1.XXXXXX", filepath2[] = "/tmp/sr_values_test2.XXXXXX";
+    int fd = 0;
+    FILE *stream = NULL;
+    mode_t orig_umask = umask(S_IRWXO|S_IRWXG);
+
+    /* memory */
+    rc = sr_print_val_mem(&mem, value);
+    assert_int_equal(SR_ERR_OK, rc);
+    if (NULL == expected) {
+        assert_null(mem);
+    } else {
+        assert_non_null(mem);
+        assert_string_equal(expected, mem);
+    }
+    free(mem);
+
+    /* fd */
+    fd = mkstemp(filepath1);
+    assert_true(0 < fd);
+    rc = sr_print_val_fd(fd, value);
+    assert_int_equal(SR_ERR_OK, rc);
+    close(fd);
+    test_file_content(filepath1, expected ? expected : "", false);
+    unlink(filepath1);
+
+    /* stream */
+    fd = mkstemp(filepath2);
+    assert_true(0 < fd);
+    stream = fdopen(fd, "w");
+    assert_non_null(stream);
+    rc = sr_print_val_stream(stream, value);
+    assert_int_equal(SR_ERR_OK, rc);
+    fclose(stream);
+    test_file_content(filepath2, expected ? expected : "", false);
+    unlink(filepath2);
+    umask(orig_umask);
+}
 
 static void
 sr_new_val_test(void **state)
@@ -474,6 +518,43 @@ sr_dup_values_test(void **state)
     sr_free_values(values, 10);
 }
 
+static void
+sr_print_val_test(void **state)
+{
+    sr_val_t *value = NULL;
+
+    /* empty tree */
+    sr_test_all_printers(value, NULL);
+
+    assert_int_equal(SR_ERR_OK, sr_new_val(XPATH1, &value));
+    value->type = SR_UINT32_T;
+    value->data.uint32_val = 123;
+    sr_test_all_printers(value, XPATH1" = 123\n");
+    sr_free_val(value);
+
+    assert_int_equal(SR_ERR_OK, sr_new_val(XPATH1, &value));
+    value->type = SR_BOOL_T;
+    value->data.bool_val = true;
+    sr_test_all_printers(value, XPATH1" = true\n");
+    sr_free_val(value);
+
+    assert_int_equal(SR_ERR_OK, sr_new_val(XPATH2, &value));
+    value->type = SR_STRING_T;
+    value->data.string_val = "192.168.1.1";
+    sr_test_all_printers(value, XPATH2" = 192.168.1.1\n");
+    sr_free_val(value);
+
+    assert_int_equal(SR_ERR_OK, sr_new_val(XPATH3, &value));
+    value->type = SR_LIST_T;
+    sr_test_all_printers(value, XPATH3" (list instance)\n");
+    sr_free_val(value);
+
+    assert_int_equal(SR_ERR_OK, sr_new_val(XPATH4, &value));
+    value->type = SR_CONTAINER_T;
+    sr_test_all_printers(value, XPATH4" (container)\n");
+    sr_free_val(value);
+}
+
 int
 main() {
     const struct CMUnitTest tests[] = {
@@ -484,7 +565,8 @@ main() {
         cmocka_unit_test(sr_val_set_str_data_test),
         cmocka_unit_test(sr_val_build_str_data_test),
         cmocka_unit_test(sr_dup_val_test),
-        cmocka_unit_test(sr_dup_values_test)
+        cmocka_unit_test(sr_dup_values_test),
+        cmocka_unit_test(sr_print_val_test)
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);
