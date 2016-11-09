@@ -20,7 +20,6 @@
  * limitations under the License.
  */
 
-#include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <limits.h>
@@ -85,7 +84,7 @@ main(int argc, char **argv)
 
     /* print the partially loaded tree content */
     printf("\n\nPartially loaded tree on xpath: %s =\n", xpath);
-    sr_print_tree_fd(STDOUT_FILENO, tree, INT_MAX);
+    sr_print_tree(tree, INT_MAX);
 
     /**
      * Traverse the entire tree.
@@ -95,7 +94,7 @@ main(int argc, char **argv)
 
     /* print the fully loaded tree content */
     printf("\nFully loaded tree on xpath: %s =\n", xpath);
-    sr_print_tree_fd(STDOUT_FILENO, tree, INT_MAX);
+    sr_print_tree(tree, INT_MAX);
     printf("\n\n");
 
 

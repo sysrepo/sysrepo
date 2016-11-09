@@ -20,7 +20,6 @@
  * limitations under the License.
  */
 
-#include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <limits.h>
@@ -63,7 +62,7 @@ main(int argc, char **argv)
     printf("\n\n");
     for (size_t i = 0; i < count; ++i) {
         printf("Subtree No. %lu =\n", i+1);
-        sr_print_tree_fd(STDOUT_FILENO, subtrees+i, INT_MAX);
+        sr_print_tree(subtrees+i, INT_MAX);
         printf("\n");
     }
     printf("\n\n");

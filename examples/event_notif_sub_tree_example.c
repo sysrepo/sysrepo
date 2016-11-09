@@ -3,8 +3,8 @@
  * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>,
  *         Milan Lenco <milan.lenco@pantheon.tech>
  * @brief Example usage of sr_event_notif_subscribe_tree function.
- * Use this example in combination with rpc_example or rpc_tree_example
- * which send the notification as part of the RPC handling procedure.
+ * Use this example in combination with rpc_example or rpc_tree_example,
+ * both of which send the notification as part of the RPC handling procedure.
  *
  * @copyright
  * Copyright 2016 Cisco Systems, Inc.

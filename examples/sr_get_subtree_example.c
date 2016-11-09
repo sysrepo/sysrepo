@@ -20,7 +20,6 @@
  * limitations under the License.
  */
 
-#include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <limits.h>
@@ -60,7 +59,7 @@ main(int argc, char **argv)
 
     /* print the subtree content */
     printf("\n\nSubtree on xpath: %s =\n", xpath);
-    sr_print_tree_fd(STDOUT_FILENO, subtree, INT_MAX);
+    sr_print_tree(subtree, INT_MAX);
     printf("\n\n");
 
 cleanup:
