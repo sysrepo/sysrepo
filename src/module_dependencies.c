@@ -1673,6 +1673,8 @@ md_insert_lys_module(md_ctx_t *md_ctx, const struct lys_module *module_schema, c
                      md_module_t *belongsto, sr_list_t *implicitly_inserted)
 {
     int rc = SR_ERR_INTERNAL, ret = 0;
+    struct ly_ctx *tmp_ly_ctx = NULL;
+    const struct lys_module *imp_module_schema = NULL;
     bool already_installed = false;
     md_module_t *module = NULL, *module2 = NULL, *main_module = NULL;
     sr_llist_node_t *module_ll_node = NULL;
@@ -1704,6 +1706,7 @@ md_insert_lys_module(md_ctx_t *md_ctx, const struct lys_module *module_schema, c
     /* Does this module carry any data? */
     module->has_data = sr_lys_module_has_data(module_schema);
 
+    /* Does this module have persist file? */
     module->has_persist = module->has_data || module_schema->features_size > 0;
 
     /* Copy basic information */
@@ -1866,10 +1869,29 @@ dependencies:
             /* skip libyang's internal modules */
             continue;
         }
-        rc = md_insert_lys_module(md_ctx, imp->module, md_get_imp_revision(imp), true, NULL, implicitly_inserted);
+        /* Use a separate context in which the imported module will be implemented. */
+        tmp_ly_ctx = ly_ctx_new(md_ctx->schema_search_dir);
+        if (NULL == tmp_ly_ctx) {
+            rc = SR_ERR_INTERNAL;
+            SR_LOG_ERR("Unable to initialize libyang context: %s", ly_errmsg());
+            goto cleanup;
+        }
+        /* load module schema into the temporary context. */
+        imp_module_schema = lys_parse_path(tmp_ly_ctx, imp->module->filepath,
+                                           sr_str_ends_with(imp->module->filepath,
+                                                            SR_SCHEMA_YIN_FILE_EXT) ? LYS_IN_YIN : LYS_IN_YANG);
+        if (NULL == imp_module_schema) {
+            rc = SR_ERR_INTERNAL;
+            SR_LOG_ERR("Unable to parse '%s' schema file: %s", imp->module->filepath, ly_errmsg());
+            goto cleanup;
+        }
+        rc = md_insert_lys_module(md_ctx, imp_module_schema, md_get_module_revision(imp_module_schema),
+                                  true, NULL, implicitly_inserted);
         if (SR_ERR_OK != rc) {
             goto cleanup;
         }
+        ly_ctx_destroy(tmp_ly_ctx, NULL);
+        tmp_ly_ctx = NULL;
     }
 
     /**
@@ -2058,6 +2080,9 @@ cleanup:
     md_free_module_key(module_key);
     if (!already_installed && module) { /*< not inserted into the btree */
         md_free_module(module);
+    }
+    if (tmp_ly_ctx) {
+        ly_ctx_destroy(tmp_ly_ctx, NULL);
     }
     return rc;
 }
