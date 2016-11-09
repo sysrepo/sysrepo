@@ -1552,7 +1552,7 @@ typedef sr_rpc_cb sr_action_cb;
  * @brief Callback to be called by the delivery of Action (operation connected to a specific data node)
  * specified by xpath.
  * This callback variant operates with sysrepo trees rather than with sysrepo values,
- * use it with ::sr_actiion_subscribe_tree and ::sr_action_send_tree.
+ * use it with ::sr_action_subscribe_tree and ::sr_action_send_tree.
  * @see This type is an alias for tree variant of @ref sr_rpc_tree_cb "the RPC callback type"
  */
 typedef sr_rpc_tree_cb sr_action_tree_cb;
@@ -1641,7 +1641,7 @@ int sr_action_send_tree(sr_session_ctx_t *session, const char *xpath,
  *
  * - If the xpath identifies a container, the provider is supposed to return all leaves and leaf-lists values within it.
  * Nested lists and containers should not be provided - sysrepo will ask for them in subsequent calls.
- * - If the xpath identifies a list, the provider is supposed to return all all leaves and leaf-lists values within all
+ * - If the xpath identifies a list, the provider is supposed to return all leaves and leaf-lists values within all
  * instances of the list. Nested lists and containers should not be provided - sysrepo will ask for them in subsequent calls.
  * - If the xpath identifies a leaf-list, the provider is supposed to return all leaf-list values.
  * - If the xpath identifies a leaf, the provider is supposed to return just the leaf in question.
