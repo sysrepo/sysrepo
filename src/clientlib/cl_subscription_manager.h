@@ -69,6 +69,7 @@ typedef struct cl_sm_subscription_ctx_s {
     const char *module_name;                     /**< Name of the YANG module witch the subscription is tied to.*/
     cl_sm_callback_t callback;                   /**< Callback to be called when the associated notification/action triggers. */
     sr_api_variant_t api_variant;                /**< API variant -- values vs. trees (relevant for the callback type only) */
+    bool dont_send_abort_on_failure;             /**< if the subscriber refused the new configuration, decides whether SR_EV_ABORT should be sent or not(relevant only for VERIFY callback) */
     cl_sm_ctx_t *sm_ctx;                         /**< Associated Subscription Manager context. */
     sr_session_ctx_t *data_session;              /**< Pointer to a data session that can be used from notification callbacks. */
     void *private_ctx;                           /**< Private context pointer, opaque to sysrepo. */

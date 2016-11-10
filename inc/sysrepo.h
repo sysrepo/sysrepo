@@ -1073,6 +1073,8 @@ typedef enum sr_subscr_flag_e {
                                    after the changes has been applied in the datastore, without the possibility to deny them
                                    (it will receive only ::SR_EV_APPLY events). */
     SR_SUBSCR_EV_ENABLED = 8, /**< The subscriber wants ::SR_EV_ENABLED notifications to be sent to them. */
+    SR_SUBSCR_NO_ABORT_FOR_REFUSED_CFG = 16, /**< The subscriber will not receive ::SR_EV_ABORT if he returns an error in verify phase
+                                              * (if the commit is refused by other verifier ::SR_EV_ABORT will be delivered). */
 } sr_subscr_flag_t;
 
 /**

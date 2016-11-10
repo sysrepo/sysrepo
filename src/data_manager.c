@@ -2131,13 +2131,14 @@ int
 dm_validate_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error_info_t **errors, size_t *err_cnt)
 {
     CHECK_NULL_ARG4(dm_ctx, session, errors, err_cnt);
-    int rc = SR_ERR_OK, rc_tmp = SR_ERR_OK;
+    int rc = SR_ERR_OK;
 
     size_t cnt = 0;
     *err_cnt = 0;
     dm_data_info_t *info = NULL;
     sr_llist_t *session_modules = NULL;
     sr_llist_node_t *node = NULL;
+    bool validation_failed = false;
 
     rc = sr_llist_init(&session_modules);
     CHECK_RC_MSG_GOTO(rc, cleanup, "Cannot initialize temporary linked-list for session modules.");
@@ -2168,22 +2169,22 @@ dm_validate_session_data_trees(dm_ctx_t *dm_ctx, dm_session_t *session, sr_error
                 if (SR_ERR_OK != sr_add_error(errors, err_cnt, ly_errpath(), "%s", ly_errmsg())) {
                     SR_LOG_WRN_MSG("Failed to record validation error");
                 }
-                rc = SR_ERR_VALIDATION_FAILED;
+                validation_failed = true;
             } else {
                 SR_LOG_DBG("Validation succeeded for '%s' module", info->schema->module->name);
             }
             if (info->schema->cross_module_data_dependency) {
                 /* remove data appended from other modules for the purpose of validation */
-                rc_tmp = dm_remove_added_data_trees(session, info);
-                CHECK_RC_MSG_GOTO(rc_tmp, cleanup, "Removing of added data trees failed");
+                rc = dm_remove_added_data_trees(session, info);
+                CHECK_RC_MSG_GOTO(rc, cleanup, "Removing of added data trees failed");
             }
         }
         node = node->next;
     }
 
 cleanup:
-    if (SR_ERR_OK != rc && SR_ERR_VALIDATION_FAILED != rc) {
-        sr_free_errors(*errors, *err_cnt);
+    if (validation_failed) {
+        rc = SR_ERR_VALIDATION_FAILED;
     }
     sr_llist_cleanup(session_modules);
     return rc;
@@ -3058,7 +3059,7 @@ dm_commit_write_files(dm_session_t *session, dm_commit_context_t *c_ctx)
 /**
  * @brief Decides whether a subscription should be skipped or not. Takes into account:
  * SR_EV_VERIFY: skip SR_SUBSCR_APPLY_ONLY subscription
- * SR_EV_ABORT: skip subscription that returned an error
+ * SR_EV_ABORT: skip subscription that returned an error and specified SR_SUBSCR_NO_ABORT_FOR_REFUSED_CFG flag
  */
 static bool
 dm_should_skip_subscription(np_subscription_t *subscription, dm_commit_context_t *c_ctx, sr_notif_event_t ev)

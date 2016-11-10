@@ -731,6 +731,9 @@ ack:
         if (SR_ERR_OK == rc_tmp) {
             ack_msg->notification_ack->result = rc;
             if (SR_ERR_OK != rc) {
+                if (subscription->dont_send_abort_on_failure) {
+                    ack_msg->notification_ack->do_not_send_abort = true;
+                }
                 if (NULL != data_session && data_session->error_cnt > 0) {
                     /* error info was provided */
                     rc_tmp = sr_gpb_fill_error(data_session->error_info->message, data_session->error_info->xpath, sr_mem,
