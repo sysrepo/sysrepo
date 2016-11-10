@@ -636,7 +636,7 @@ dm_event_notif_test(void **state)
             NULL, NULL, NULL, NULL, NULL);
     assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
     dm_copy_errors(session, NULL, &error_msg, &error_xpath);
-    assert_string_equal("Schema node \"non-existing-node\" not found (/test-module:link-removed/non-existing-node).", error_msg);
+    assert_string_equal("Resolving XPath expression \"/test-module:link-removed/non-existing-node\" failed.", error_msg);
     assert_string_equal("/test-module:link-removed/non-existing-node", error_xpath);
     free(error_msg);
     free(error_xpath);

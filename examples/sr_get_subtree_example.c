@@ -1,7 +1,8 @@
 /**
- * @file sr_get_items_iter_example.c
- * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
- * @brief Example usage of sr_get_items_iter function
+ * @file sr_get_subtree_example.c
+ * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>,
+ *         Milan Lenco <milan.lenco@pantheon.tech>
+ * @brief Example usage of sr_get_subtree function.
  *
  * @copyright
  * Copyright 2016 Cisco Systems, Inc.
@@ -19,46 +20,52 @@
  * limitations under the License.
  */
 
-#include <stdio.h>
 #include <stdlib.h>
-
+#include <unistd.h>
+#include <limits.h>
 #include "sysrepo.h"
-#include "sysrepo/values.h"
+#include "sysrepo/trees.h"
 
 int
 main(int argc, char **argv)
 {
     sr_conn_ctx_t *conn = NULL;
     sr_session_ctx_t *sess = NULL;
-    sr_val_t *value = NULL;
-    sr_val_iter_t *iter = NULL;
+    const char *xpath = NULL;
+    sr_node_t *subtree = NULL;
     int rc = SR_ERR_OK;
 
+    /* turn on debug logging to stderr - to see what's happening behind the scenes */
+    sr_log_stderr(SR_LL_DBG);
+
     /* connect to sysrepo */
-    rc = sr_connect("app3", SR_CONN_DEFAULT, &conn);
+    rc = sr_connect("app1", SR_CONN_DEFAULT, &conn);
     if (SR_ERR_OK != rc) {
         goto cleanup;
     }
 
     /* start session */
-    rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &sess);
+    rc = sr_session_start(conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &sess);
     if (SR_ERR_OK != rc) {
         goto cleanup;
     }
 
-    /* get all list instances with their content (recursive) */
-    rc = sr_get_items_iter(sess, "/ietf-interfaces:interfaces-state/interface//*", &iter);
+    /* get one subtree */
+    xpath = "/ietf-interfaces:interfaces/interface[name='eth0']";
+    rc = sr_get_subtree(sess, xpath, SR_GET_SUBTREE_DEFAULT, &subtree);
     if (SR_ERR_OK != rc) {
         goto cleanup;
     }
 
-    while (SR_ERR_OK == sr_get_item_next(sess, iter, &value)){
-        sr_print_val(value);
-        sr_free_val(value);
-    }
-    sr_free_val_iter(iter);
+    /* print the subtree content */
+    printf("\n\nSubtree on xpath: %s =\n", xpath);
+    sr_print_tree(subtree, INT_MAX);
+    printf("\n\n");
 
 cleanup:
+    if (NULL != subtree) {
+        sr_free_tree(subtree);
+    }
     if (NULL != sess) {
         sr_session_stop(sess);
     }
@@ -67,4 +74,3 @@ cleanup:
     }
     return rc;
 }
-

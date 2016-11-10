@@ -23,13 +23,14 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
 #include <signal.h>
 #include <inttypes.h>
 #include <errno.h>
 #include <string.h>
 #include <poll.h>
+
 #include "sysrepo.h"
+#include "sysrepo/values.h"
 
 #define XPATH_MAX_LEN 100  /* Maximum length of a xpath statement used in this app. */
 #define POLL_SIZE 32       /* Maximum count of file descriptors used watched by poll in this app. */
@@ -45,72 +46,6 @@ static void
 sigint_handler(int signum)
 {
     exit_application = 1;
-}
-
-/*
- * Prints a value retrieved from sysrepo datastore.
- */
-static void
-print_value(sr_val_t *value)
-{
-    printf("%s ", value->xpath);
-
-    switch (value->type) {
-    case SR_CONTAINER_T:
-    case SR_CONTAINER_PRESENCE_T:
-        printf("(container)\n");
-        break;
-    case SR_LIST_T:
-        printf("(list instance)\n");
-        break;
-    case SR_STRING_T:
-        printf("= %s\n", value->data.string_val);
-        break;
-    case SR_BOOL_T:
-        printf("= %s\n", value->data.bool_val ? "true" : "false");
-        break;
-    case SR_ENUM_T:
-        printf("= %s\n", value->data.enum_val);
-        break;
-    case SR_DECIMAL64_T:
-        printf("= %g\n", value->data.decimal64_val);
-        break;
-    case SR_INT8_T:
-        printf("= %" PRId8 "\n", value->data.int8_val);
-        break;
-    case SR_INT16_T:
-        printf("= %" PRId16 "\n", value->data.int16_val);
-        break;
-    case SR_INT32_T:
-        printf("= %" PRId32 "\n", value->data.int32_val);
-        break;
-    case SR_INT64_T:
-        printf("= %" PRId64 "\n", value->data.int64_val);
-        break;
-    case SR_UINT8_T:
-        printf("= %" PRIu8 "\n", value->data.uint8_val);
-        break;
-    case SR_UINT16_T:
-        printf("= %" PRIu16 "\n", value->data.uint16_val);
-        break;
-    case SR_UINT32_T:
-        printf("= %" PRIu32 "\n", value->data.uint32_val);
-        break;
-    case SR_UINT64_T:
-        printf("= %" PRIu64 "\n", value->data.uint64_val);
-        break;
-    case SR_IDENTITYREF_T:
-        printf("= %s\n", value->data.identityref_val);
-        break;
-    case SR_BITS_T:
-        printf("= %s\n", value->data.bits_val);
-        break;
-    case SR_BINARY_T:
-        printf("= %s\n", value->data.binary_val);
-        break;
-    default:
-        printf("(unprintable)\n");
-    }
 }
 
 /*
@@ -131,7 +66,7 @@ print_current_config(sr_session_ctx_t *session, const char *module_name)
         return;
     }
     for (size_t i = 0; i < count; i++){
-        print_value(&values[i]);
+        sr_print_val(&values[i]);
     }
     sr_free_values(values, count);
 }

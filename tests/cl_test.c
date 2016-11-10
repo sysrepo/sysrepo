@@ -2815,17 +2815,95 @@ cl_failed_rpc_test(void **state)
     input.type = SR_STRING_T;
     input.data.string_val = "acmefw-2.3";
 
-    /* send a RPC */
+    /* send a RPC; callback will return error */
     rc = sr_rpc_send(session, "/test-module:activate-software-image", &input, 1, &output, &output_cnt);
-    assert_int_equal(rc, 12);
     assert_int_equal(1, callback_called);
+    assert_int_equal(rc, 12);
+
+    /* unsubscribe */
+    rc = sr_unsubscribe(NULL, subscription);
+    assert_int_equal(rc, SR_ERR_OK);
 
     /* stop the session */
     rc = sr_session_stop(session);
     assert_int_equal(rc, SR_ERR_OK);
 
+}
+
+static int
+test_invalid_rpc_cb(const char *xpath, const sr_val_t *input, const size_t input_cnt,
+        sr_val_t **output, size_t *output_cnt, void *private_ctx)
+{
+    int *callback_called = (int*)private_ctx;
+    *callback_called += 1;
+
+    *output_cnt = 2;
+    *output = calloc(*output_cnt, sizeof(**output));
+    (*output)[0].xpath = strdup("/test-module:activate-software-image/status");
+    (*output)[0].type = SR_STRING_T;
+    (*output)[0].data.string_val = strdup("invalid status");
+    (*output)[1].xpath = strdup("/test-module:activate-software-image/version");
+    (*output)[1].type = SR_STRING_T;
+    (*output)[1].data.string_val = strdup("2.3");
+
+    return SR_ERR_OK;
+}
+
+static void
+cl_invalid_rpc_test(void **state)
+{
+    sr_conn_ctx_t *conn = *state;
+    assert_non_null(conn);
+
+    sr_session_ctx_t *session = NULL;
+    sr_subscription_ctx_t *subscription = NULL;
+    int callback_called = 0;
+    const sr_error_info_t *error = NULL;
+    int rc = SR_ERR_OK;
+
+    /* start a session */
+    rc = sr_session_start(conn, SR_DS_RUNNING, SR_SESS_DEFAULT, &session);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* subscribe for RPC */
+    callback_called = 0;
+    rc = sr_rpc_subscribe(session, "/test-module:activate-software-image", test_invalid_rpc_cb, &callback_called,
+            SR_SUBSCR_DEFAULT, &subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    sr_val_t input = { 0, };
+    sr_val_t *output = NULL;
+    size_t output_cnt = 0;
+    input.xpath = "/test-module:activate-software-image/location";
+    input.type = SR_STRING_T;
+    input.data.string_val = "invalid location";
+
+    /* send a RPC; request validation will fail */
+    rc = sr_rpc_send(session, "/test-module:activate-software-image", &input, 1, &output, &output_cnt);
+    assert_int_equal(0, callback_called);
+    assert_int_equal(rc, SR_ERR_VALIDATION_FAILED);
+    sr_get_last_error(session, &error);
+    assert_non_null(error);
+    assert_string_equal("/test-module:activate-software-image/location", error->xpath);
+    assert_string_equal("Must condition \". != 'invalid location'\" not satisfied.", error->message);
+
+    input.data.string_val = "valid location";
+
+    /* send a RPC; response validation will fail */
+    rc = sr_rpc_send(session, "/test-module:activate-software-image", &input, 1, &output, &output_cnt);
+    assert_int_equal(1, callback_called);
+    assert_int_equal(rc, SR_ERR_VALIDATION_FAILED);
+    sr_get_last_error(session, &error);
+    assert_non_null(error);
+    assert_string_equal("/test-module:activate-software-image/status", error->xpath);
+    assert_string_equal("Must condition \". != 'invalid status'\" not satisfied.", error->message);
+
     /* unsubscribe */
     rc = sr_unsubscribe(NULL, subscription);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* stop the session */
+    rc = sr_session_stop(session);
     assert_int_equal(rc, SR_ERR_OK);
 }
 
@@ -4813,6 +4891,7 @@ main()
             cmocka_unit_test_setup_teardown(cl_rpc_tree_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_rpc_combo_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_failed_rpc_test, sysrepo_setup, sysrepo_teardown),
+            cmocka_unit_test_setup_teardown(cl_invalid_rpc_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_action_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_action_tree_test, sysrepo_setup, sysrepo_teardown),
             cmocka_unit_test_setup_teardown(cl_action_combo_test, sysrepo_setup, sysrepo_teardown),

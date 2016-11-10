@@ -255,11 +255,13 @@ module test-module {
       leaf location {
         type string;
         default "/";
+        must ". != 'invalid location'";
       }
     }
     output {
       leaf status {
         type string;
+        must ". != 'invalid status'";
       }
       leaf version {
         type string;

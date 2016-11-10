@@ -1904,7 +1904,14 @@ finalize:
         /* send the response with error */
         rc_tmp = sr_gpb_resp_alloc(sr_mem, action ? SR__OPERATION__ACTION : SR__OPERATION__RPC,
                                    session->id, &resp);
+        if (SR_ERR_OK != rc_tmp) {
+            SR_LOG_ERR_MSG("Failed to allocate RPC response message");
+        }
         if (SR_ERR_OK == rc_tmp) {
+            rc_tmp = rp_resp_fill_errors(resp, session->dm_session);
+            if (SR_ERR_OK != rc_tmp) {
+                SR_LOG_WRN_MSG("Copying errors to gpb failed");
+            }
             resp->response->result = rc;
             resp->response->rpc_resp->action = action;
             if (sr_mem) {

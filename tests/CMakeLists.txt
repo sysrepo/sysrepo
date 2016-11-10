@@ -178,6 +178,7 @@ INSTALL_YANG_MODULE("state-module@2016-07-01")
 INSTALL_YANG_MODULE("top-level-mandatory")
 INSTALL_YANG_MODULE("referenced-data")
 INSTALL_YANG_MODULE("cross-module")
+INSTALL_YANG_MODULE("turing-machine")
 
 # dummy testing plugins
 add_library(dummy-plugin-1 SHARED ${TEST_HELPERS_DIR}dummy_plugin.c)
