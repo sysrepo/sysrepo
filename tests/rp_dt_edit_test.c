@@ -2385,6 +2385,39 @@ edit_union_type(void **state)
 
 }
 
+static void
+validaton_of_multiple_models(void **state)
+{
+    /* multiple models are validate the validation of the first fails and succeed for others
+     * test verifies that an error is returned and it is not hidden by success of following models*/
+    int rc = 0;
+    rp_ctx_t *ctx = *state;
+    rp_session_t *sessionA = NULL;
+    sr_error_info_t *errors = NULL;
+    size_t e_cnt = 0;
+
+    test_rp_sesssion_create(ctx, SR_DS_STARTUP, &sessionA);
+
+    rc = rp_dt_delete_item_wrapper(ctx, sessionA, "/ietf-interfaces:interfaces/interface[name='withoutType']", SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* missing mandatory leaf*/
+    rc = rp_dt_set_item_wrapper(ctx, sessionA, "/ietf-interfaces:interfaces/interface[name='withoutType']", NULL, SR_EDIT_STRICT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    /* validation succeed for test-module*/
+    rc = rp_dt_delete_item_wrapper(ctx, sessionA, "/test-module:main/i8", SR_EDIT_DEFAULT);
+    assert_int_equal(SR_ERR_OK, rc);
+
+    rc = dm_validate_session_data_trees(ctx->dm_ctx, sessionA->dm_session, &errors, &e_cnt);
+    assert_int_equal(SR_ERR_VALIDATION_FAILED, rc);
+
+    sr_free_errors(errors, e_cnt);
+
+    test_rp_session_cleanup(ctx, sessionA);
+
+}
+
 
 int main(){
 
@@ -2423,6 +2456,7 @@ int main(){
             cmocka_unit_test(copy_to_running_test),
             cmocka_unit_test(candidate_commit_lock_test),
             cmocka_unit_test_setup(edit_union_type, createData),
+            cmocka_unit_test_setup(validaton_of_multiple_models, createData),
     };
     return cmocka_run_group_tests(tests, setup, teardown);
 }
